@@ -7,20 +7,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "ToxTabStopTokenHandler.hxx"
+#include <ToxTabStopTokenHandler.hxx>
 
-#include "editeng/tstpitem.hxx"
-#include "editeng/lrspitem.hxx"
+#include <editeng/tstpitem.hxx>
+#include <editeng/lrspitem.hxx>
+#include <editeng/boxitem.hxx>
 
-#include "cntfrm.hxx"
-#include "fmtfsize.hxx"
-#include "fmtpdsc.hxx"
-#include "frmfmt.hxx"
-#include "ndtxt.hxx"
-#include "pagedesc.hxx"
-#include "pagefrm.hxx"
-#include "swrect.hxx"
-#include "tox.hxx"
+#include <cntfrm.hxx>
+#include <fmtfsize.hxx>
+#include <fmtpdsc.hxx>
+#include <frmfmt.hxx>
+#include <frmatr.hxx>
+#include <ndtxt.hxx>
+#include <pagedesc.hxx>
+#include <pagefrm.hxx>
+#include <swrect.hxx>
+#include <tox.hxx>
 
 namespace sw {
 
@@ -73,7 +75,7 @@ DefaultToxTabStopTokenHandler::HandleTabStopToken(
         // left margin of paragraph style
         const SvxLRSpaceItem& rLRSpace = targetNode.GetTextColl()->GetLRSpace();
         nRightMargin -= rLRSpace.GetLeft();
-        nRightMargin -= rLRSpace.GetTextFirstLineOfst();
+        nRightMargin -= rLRSpace.GetTextFirstLineOffset();
     }
 
     result.tabStop = SvxTabStop(nRightMargin, SvxTabAdjust::Right, cDfltDecimalChar, aToken.cTabFillChar);
@@ -93,6 +95,9 @@ DefaultToxTabStopTokenHandler::CalculatePageMarginFromPageDescription(const SwTe
     const SwFrameFormat& rPgDscFormat = pPageDesc->GetMaster();
     long result = rPgDscFormat.GetFrameSize().GetWidth() - rPgDscFormat.GetLRSpace().GetLeft()
             - rPgDscFormat.GetLRSpace().GetRight();
+    // Also consider borders
+    const SvxBoxItem& rBox = rPgDscFormat.GetBox();
+    result -= rBox.CalcLineSpace(SvxBoxItemLine::LEFT) + rBox.CalcLineSpace(SvxBoxItemLine::RIGHT);
     return result;
 }
 

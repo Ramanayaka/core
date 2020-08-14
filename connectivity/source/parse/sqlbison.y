@@ -45,10 +45,13 @@
 #include "connectivity/dbconversion.hxx"
 #include <rtl/ustrbuf.hxx>
 #include <sal/macros.h>
+#include <sal/log.hxx>
 
 #if defined _MSC_VER
-#pragma warning(push, 1)
-#pragma warning(disable:4273 4701)
+#pragma warning(push)
+#pragma warning(disable: 4324) // structure was padded due to alignment specifier
+#pragma warning(disable: 4065) // switch statement contains 'default' but no 'case' labels
+#pragma warning(disable: 4702) // unreachable code
 #endif
 
 #ifdef __GNUC__
@@ -56,7 +59,7 @@
 # pragma GCC diagnostic ignored "-Wunused-function"
 #endif
 
-inline connectivity::OSQLInternalNode* newNode(const sal_Char* pNewValue,
+inline connectivity::OSQLInternalNode* newNode(const char* pNewValue,
         const connectivity::SQLNodeType eNodeType,
         const sal_uInt32 nNodeID = 0);
 
@@ -146,8 +149,8 @@ using namespace connectivity;
 /* time and date functions */
 %token <pParseNode> SQL_TOKEN_CURRENT_DATE SQL_TOKEN_CURRENT_TIME SQL_TOKEN_CURRENT_TIMESTAMP SQL_TOKEN_CURDATE SQL_TOKEN_CURTIME
 %token <pParseNode> SQL_TOKEN_DAYNAME  SQL_TOKEN_DAYOFMONTH  SQL_TOKEN_DAYOFWEEK  SQL_TOKEN_DAYOFYEAR SQL_TOKEN_EXTRACT
-%token <pParseNode> SQL_TOKEN_HOUR SQL_TOKEN_MINUTE  SQL_TOKEN_MONTH  SQL_TOKEN_MONTHNAME SQL_TOKEN_NOW SQL_TOKEN_QUARTER SQL_TOKEN_DATEDIFF
-%token <pParseNode> SQL_TOKEN_SECOND SQL_TOKEN_TIMESTAMPADD SQL_TOKEN_TIMESTAMPDIFF SQL_TOKEN_TIMEVALUE SQL_TOKEN_WEEK SQL_TOKEN_YEAR
+%token <pParseNode> SQL_TOKEN_HOUR SQL_TOKEN_MILLISECOND SQL_TOKEN_MINUTE  SQL_TOKEN_MONTH  SQL_TOKEN_MONTHNAME SQL_TOKEN_NOW SQL_TOKEN_QUARTER SQL_TOKEN_DATEDIFF
+%token <pParseNode> SQL_TOKEN_SECOND SQL_TOKEN_TIMESTAMPADD SQL_TOKEN_TIMESTAMPDIFF SQL_TOKEN_TIMEVALUE SQL_TOKEN_WEEK SQL_TOKEN_WEEKDAY SQL_TOKEN_YEAR SQL_TOKEN_YEARDAY
 
 /* numeric functions */
 %token <pParseNode> SQL_TOKEN_ABS SQL_TOKEN_ACOS SQL_TOKEN_ASIN SQL_TOKEN_ATAN SQL_TOKEN_ATAN2 SQL_TOKEN_CEILING
@@ -247,7 +250,7 @@ using namespace connectivity;
 %type <pParseNode> window_function window_function_type ntile_function number_of_tiles lead_or_lag_function lead_or_lag lead_or_lag_extent offset default_expression null_treatment
 %type <pParseNode> first_or_last_value_function first_or_last_value nth_value_function nth_row from_first_or_last window_name_or_specification in_line_window_specification opt_lead_or_lag_function
 %type <pParseNode> opt_null_treatment opt_from_first_or_last simple_value_specification dynamic_parameter_specification window_name window_clause window_definition_list window_definition
-%type <pParseNode> new_window_name window_specification_details existing_window_name window_partition_clause window_partition_column_reference_list window_partition_column_reference window_frame_clause
+%type <pParseNode> new_window_name existing_window_name window_partition_clause window_partition_column_reference_list window_partition_column_reference window_frame_clause
 %type <pParseNode> window_frame_units window_frame_extent window_frame_start window_frame_preceding window_frame_between window_frame_bound_1 window_frame_bound_2 window_frame_bound window_frame_following window_frame_exclusion
 %type <pParseNode> opt_window_frame_clause opt_window_partition_clause opt_existing_window_name window_specification opt_window_frame_exclusion opt_window_clause opt_offset
 %type <pParseNode> opt_fetch_first_row_count fetch_first_clause offset_row_count fetch_first_row_count first_or_next row_or_rows opt_result_offset_clause result_offset_clause
@@ -1115,7 +1118,7 @@ boolean_primary:
                         }
                         else
                         {
-                            nErg = xxx_pGLOBAL_SQLPARSER->buildComparsionRule($$,$1);
+                            nErg = xxx_pGLOBAL_SQLPARSER->buildComparisonRule($$,$1);
                         }
                         if(nErg == 1)
                         {
@@ -2199,11 +2202,19 @@ new_window_name:
 	window_name
 	;
 window_specification:
-	'(' window_specification_details ')'
+	'('
+		opt_existing_window_name
+		opt_window_partition_clause
+		opt_order_by_clause
+		opt_window_frame_clause
+	')'
 	{
 		$$ = SQL_NEW_RULE;
 		$$->append(newNode("(", SQLNodeType::Punctuation));
 		$$->append($2);
+		$$->append($3);
+		$$->append($4);
+		$$->append($5);
 		$$->append(newNode(")", SQLNodeType::Punctuation));
 	}
 	;
@@ -2218,12 +2229,6 @@ opt_window_partition_clause:
 opt_window_frame_clause:
 	/* empty */      {$$ = SQL_NEW_RULE;}
 	|	window_frame_clause
-	;
-window_specification_details:
-	opt_existing_window_name
-	opt_window_partition_clause
-	opt_order_by_clause
-	opt_window_frame_clause
 	;
 existing_window_name:
 	window_name
@@ -4260,6 +4265,9 @@ trigger_name:
 ;
 %%
 
+#if defined _MSC_VER
+#pragma warning(pop)
+#endif
 
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
@@ -4272,7 +4280,7 @@ using namespace ::dbtools;
 
 connectivity::OSQLParser* xxx_pGLOBAL_SQLPARSER;
 
-connectivity::OSQLInternalNode* newNode(const sal_Char* pNewValue,
+connectivity::OSQLInternalNode* newNode(const char* pNewValue,
         const connectivity::SQLNodeType eNodeType,
         const sal_uInt32 nNodeID)
 {
@@ -4488,10 +4496,10 @@ void setParser(OSQLParser* _pParser)
 	xxx_pGLOBAL_SQLPARSER = _pParser;
 }
 
-void OSQLParser::setParseTree(OSQLParseNode * pNewParseTree)
+void OSQLParser::setParseTree(OSQLParseNode* pNewParseTree)
 {
 	::osl::MutexGuard aGuard(getMutex());
-	m_pParseTree = pNewParseTree;
+	m_pParseTree.reset(pNewParseTree);
 }
 
 
@@ -4529,7 +4537,7 @@ static OUString delComment( const OUString& rQuery )
             }
             else
             {
-                // comment can't close anymore, actually an error, but..
+                // comment can't close anymore, actually an error, but...
             }
             continue;
         }
@@ -4555,7 +4563,7 @@ static OUString delComment( const OUString& rQuery )
     return aBuf.makeStringAndClear();
 }
 
-OSQLParseNode* OSQLParser::parseTree(OUString& rErrorMessage,
+std::unique_ptr<OSQLParseNode> OSQLParser::parseTree(OUString& rErrorMessage,
                                      const OUString& rStatement,
                                      bool bInternational)
 {
@@ -4591,6 +4599,7 @@ OSQLParseNode* OSQLParser::parseTree(OUString& rErrorMessage,
 
 		// clear the garbage collector
 		(*s_pGarbageCollector)->clearAndDelete();
+		m_pParseTree.release(); // because the garbage collector deleted it
 		return nullptr;
 	}
 	else
@@ -4603,7 +4612,7 @@ OSQLParseNode* OSQLParser::parseTree(OUString& rErrorMessage,
 
         SAL_WARN_IF(!m_pParseTree, "connectivity.parse",
             "OSQLParser: Parser did not create ParseTree");
-		return m_pParseTree;
+		return std::move(m_pParseTree);
 	}
 }
 
@@ -4753,7 +4762,7 @@ sal_Int16 OSQLParser::buildStringNodes(OSQLParseNode*& pLiteral)
 	return 1;
 }
 
-sal_Int16 OSQLParser::buildComparsionRule(OSQLParseNode*& pAppend,OSQLParseNode* pLiteral)
+sal_Int16 OSQLParser::buildComparisonRule(OSQLParseNode*& pAppend,OSQLParseNode* pLiteral)
 {
     OSQLParseNode* pComp = new OSQLInternalNode("=", SQLNodeType::Equal);
     return buildPredicateRule(pAppend,pLiteral,pComp);
@@ -4779,7 +4788,7 @@ void OSQLParser::reduceLiteral(OSQLParseNode*& pLiteral, bool bAppendBlank)
 }
 
 
-void OSQLParser::error(const sal_Char *fmt)
+void OSQLParser::error(const char *fmt)
 {
 	if(m_sErrorMessage.isEmpty())
 	{
@@ -4818,7 +4827,3 @@ int OSQLParser::SQLlex()
 {
 	return OSQLScanner::SQLlex();
 }
-
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
+#include <config_feature_desktop.h>
 
 #include <sal/config.h>
 
@@ -25,9 +25,10 @@
 #include <osl/module.h>
 #include <osl/diagnose.h>
 #include <osl/mutex.hxx>
-#include <tools/solar.h>
+#include <rtl/ref.hxx>
+#include <tools/svlibrary.h>
 
-#include "helper/accessibilityclient.hxx"
+#include <helper/accessibilityclient.hxx>
 
 namespace toolkit
 {
@@ -37,16 +38,18 @@ namespace toolkit
     namespace
     {
 #ifndef DISABLE_DYNLOADING
-        static oslModule                                s_hAccessibleImplementationModule = nullptr;
+        oslModule                                s_hAccessibleImplementationModule = nullptr;
 #endif
 #if HAVE_FEATURE_DESKTOP
-        static GetStandardAccComponentFactory           s_pAccessibleFactoryFunc = nullptr;
+        GetStandardAccComponentFactory           s_pAccessibleFactoryFunc = nullptr;
 #endif
-        static ::rtl::Reference< IAccessibleFactory >   s_pFactory;
+        ::rtl::Reference< IAccessibleFactory >   s_pFactory;
     }
 
 
     //= AccessibleDummyFactory
+
+    namespace {
 
     class AccessibleDummyFactory:
         public IAccessibleFactory
@@ -112,6 +115,11 @@ namespace toolkit
             return nullptr;
         }
         css::uno::Reference< css::accessibility::XAccessibleContext >
+                createAccessibleContext( VCLXHeaderBar* /*_pXWindow*/ ) override
+        {
+            return nullptr;
+        }
+        css::uno::Reference< css::accessibility::XAccessibleContext >
                 createAccessibleContext( VCLXWindow* /*_pXWindow*/ ) override
         {
             return nullptr;
@@ -123,6 +131,7 @@ namespace toolkit
         }
     };
 
+    }
 
     AccessibleDummyFactory::AccessibleDummyFactory()
     {
@@ -144,7 +153,7 @@ namespace toolkit
 
 #if HAVE_FEATURE_DESKTOP
 #ifndef DISABLE_DYNLOADING
-    extern "C" { static void SAL_CALL thisModule() {} }
+    extern "C" { static void thisModule() {} }
 #else
     extern "C" void *getStandardAccessibleFactory();
 #endif
@@ -159,15 +168,14 @@ namespace toolkit
 
 #if HAVE_FEATURE_DESKTOP
         // load the library implementing the factory
-        if ( !s_pFactory.get() )
+        if (!s_pFactory)
         {
 #ifndef DISABLE_DYNLOADING
             const OUString sModuleName( SVLIBRARY( "acc" ) );
             s_hAccessibleImplementationModule = osl_loadModuleRelative( &thisModule, sModuleName.pData, 0 );
             if ( s_hAccessibleImplementationModule != nullptr )
             {
-                const OUString sFactoryCreationFunc =
-                    OUString("getStandardAccessibleFactory");
+                const OUString sFactoryCreationFunc("getStandardAccessibleFactory");
                 s_pAccessibleFactoryFunc = reinterpret_cast<GetStandardAccComponentFactory>(
                     osl_getFunctionSymbol( s_hAccessibleImplementationModule, sFactoryCreationFunc.pData ));
 
@@ -191,7 +199,7 @@ namespace toolkit
         }
 #endif // HAVE_FEATURE_DESKTOP
 
-        if ( !s_pFactory.get() )
+        if (!s_pFactory)
             // the attempt to load the lib, or to create the factory, failed
             // -> fall back to a dummy factory
             s_pFactory = new AccessibleDummyFactory;

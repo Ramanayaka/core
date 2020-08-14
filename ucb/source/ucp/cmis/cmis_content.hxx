@@ -24,24 +24,19 @@
 #include <com/sun/star/document/CmisVersion.hpp>
 #include <ucbhelper/contenthelper.hxx>
 
-#if defined __GNUC__ && __GNUC__ >= 7
+#if defined __GNUC__ && !defined __clang__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated"
 #pragma GCC diagnostic ignored "-Wunused-but-set-parameter"
-#elif defined __clang__ && __cplusplus > 201402L
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdynamic-exception-spec"
 #endif
 #include <libcmis/libcmis.hxx>
-#if defined __GNUC__ && __GNUC__ >= 7
+#if defined __GNUC__ && !defined __clang__
 #pragma GCC diagnostic pop
-#elif defined __clang__ && __cplusplus > 201402L
-#pragma clang diagnostic pop
 #endif
 
 #include <list>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans {
         struct Property;
         struct PropertyValue;
@@ -49,7 +44,7 @@ namespace com { namespace sun { namespace star {
     namespace sdbc {
         class XRow;
     }
-}}}
+}
 namespace ucbhelper
 {
     class Content;
@@ -74,7 +69,7 @@ private:
     OUString          m_sObjectPath;
     OUString          m_sObjectId;
     OUString          m_sURL;
-    cmis::URL              m_aURL;
+    cmis::URL         m_aURL;
 
     // Members to be set for non-persistent content
     bool                   m_bTransient;
@@ -98,7 +93,7 @@ private:
 
 private:
     typedef rtl::Reference< Content > ContentRef;
-    typedef std::list< ContentRef > ContentRefList;
+    typedef std::vector< ContentRef > ContentRefList;
 
     /// @throws css::uno::Exception
     /// @throws libcmis::Exception
@@ -201,7 +196,7 @@ public:
     css::uno::Sequence< css::ucb::ContentInfo >
         queryCreatableContentsInfo( const css::uno::Reference< css::ucb::XCommandEnvironment >& xEnv );
 
-    virtual std::list< css::uno::Reference< css::ucb::XContent > > getChildren( ) override;
+    virtual std::vector< css::uno::Reference< css::ucb::XContent > > getChildren( ) override;
 
     /// @throws css::uno::RuntimeException
     /// @throws css::ucb::CommandFailedException

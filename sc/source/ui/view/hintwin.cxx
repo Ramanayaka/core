@@ -17,24 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "global.hxx"
-#include "overlayobject.hxx"
-#include "scmod.hxx"
+#include <overlayobject.hxx>
 
-#include <drawinglayer/attribute/fillgradientattribute.hxx>
 #include <drawinglayer/attribute/fontattribute.hxx>
-#include <drawinglayer/primitive2d/fillgradientprimitive2d.hxx>
-#include <drawinglayer/primitive2d/modifiedcolorprimitive2d.hxx>
+#include <drawinglayer/geometry/viewinformation2d.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/textlayoutdevice.hxx>
 #include <drawinglayer/primitive2d/textprimitive2d.hxx>
-#include <drawinglayer/processor2d/processorfromoutputdevice.hxx>
-#include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
-#include <svtools/colorcfg.hxx>
+#include <tools/lineend.hxx>
+#include <vcl/outdev.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/metric.hxx>
 
 #define HINT_LINESPACE  2
 #define HINT_INDENT     3
@@ -78,7 +74,7 @@ drawinglayer::primitive2d::Primitive2DContainer ScOverlayHint::createOverlaySequ
     Point aTextPos(nLeft + aHintMargin.Width() , nTextOffsetY);
     rRange = basegfx::B2DRange(nLeft, nTop, nLeft + aHintMargin.Width(), nTop + aHintMargin.Height());
 
-    basegfx::B2DHomMatrix aTextMatrix(basegfx::tools::createScaleTranslateB2DHomMatrix(
+    basegfx::B2DHomMatrix aTextMatrix(basegfx::utils::createScaleTranslateB2DHomMatrix(
                                             aFontSize.getX(), aFontSize.getY(),
                                             aTextPos.X(), aTextPos.Y()));
 
@@ -112,7 +108,7 @@ drawinglayer::primitive2d::Primitive2DContainer ScOverlayHint::createOverlaySequ
     {
         OUString aLine = m_aMessage.getToken( 0, '\r', nIndex );
 
-        aTextMatrix = basegfx::tools::createScaleTranslateB2DHomMatrix(
+        aTextMatrix = basegfx::utils::createScaleTranslateB2DHomMatrix(
                                 aFontSize.getX(), aFontSize.getY(),
                                 aLineStart.X(), aLineStart.Y() + nTextOffsetY);
 
@@ -128,13 +124,13 @@ drawinglayer::primitive2d::Primitive2DContainer ScOverlayHint::createOverlaySequ
         const drawinglayer::primitive2d::Primitive2DReference aMessage(pMessage);
         aSeq.push_back(aMessage);
 
-        aLineStart.Y() += nLineHeight;
+        aLineStart.AdjustY(nLineHeight );
     }
 
     rRange.expand(basegfx::B2DTuple(rRange.getMaxX() + aHintMargin.Width(),
                                     rRange.getMaxY() + aHintMargin.Height()));
 
-    basegfx::B2DPolygon aPoly(basegfx::tools::createPolygonFromRect(rRange));
+    basegfx::B2DPolygon aPoly(basegfx::utils::createPolygonFromRect(rRange));
 
     const drawinglayer::primitive2d::Primitive2DReference aBg(
         new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(basegfx::B2DPolyPolygon(aPoly), getBaseColor().getBColor()));
@@ -159,7 +155,7 @@ drawinglayer::primitive2d::Primitive2DContainer ScOverlayHint::createOverlayObje
 Size ScOverlayHint::GetSizePixel() const
 {
     basegfx::B2DRange aRange;
-    createOverlaySequence(0, 0, MapUnit::MapPixel, aRange);
+    createOverlaySequence(0, 0, MapMode(MapUnit::MapPixel), aRange);
     return Size(aRange.getWidth(), aRange.getHeight());
 }
 

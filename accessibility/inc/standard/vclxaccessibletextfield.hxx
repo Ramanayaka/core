@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETEXTFIELD_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETEXTFIELD_HXX
+#pragma once
 
 #include <standard/vclxaccessibletextcomponent.hxx>
 
@@ -33,7 +32,7 @@ typedef ::cppu::ImplHelper1< css::accessibility::XAccessible > VCLXAccessible_BA
     accessible by this class.  When the selected item changes then also the
     exported text changes.
 */
-class VCLXAccessibleTextField :
+class VCLXAccessibleTextField final :
     public VCLXAccessibleTextComponent,
     public VCLXAccessible_BASE
 {
@@ -65,21 +64,19 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL
         getSupportedServiceNames() override;
 
-protected:
-    virtual ~VCLXAccessibleTextField() override;
+private:
+    virtual ~VCLXAccessibleTextField() override = default;
 
     /** With this method the text of the currently selected item is made
         available to the VCLXAccessibleTextComponent base class.
     */
     OUString implGetText() override;
 
-private:
     /** We need to save the accessible parent to return it in getAccessibleParent(),
         because this method of the base class returns the wrong parent.
     */
     css::uno::Reference< css::accessibility::XAccessible >  m_xParent;
 };
 
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

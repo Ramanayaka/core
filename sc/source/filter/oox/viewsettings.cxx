@@ -17,16 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "viewsettings.hxx"
+#include <viewsettings.hxx>
 
 #include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XIndexContainer.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/document/IndexedPropertyValues.hpp>
 #include <com/sun/star/document/XViewDataSupplier.hpp>
 #include <com/sun/star/document/NamedPropertyValues.hpp>
+#include <com/sun/star/sheet/XSpreadsheet.hpp>
+#include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
+#include <com/sun/star/table/XCellRange.hpp>
 #include <osl/diagnose.h>
 #include <unotools/mediadescriptor.hxx>
 #include <oox/core/filterbase.hxx>
@@ -37,13 +39,13 @@
 #include <oox/helper/propertyset.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
-#include "addressconverter.hxx"
-#include "unitconverter.hxx"
-#include "workbooksettings.hxx"
-#include "worksheetbuffer.hxx"
+#include <addressconverter.hxx>
+#include <workbooksettings.hxx>
+#include <worksheetbuffer.hxx>
 
-namespace oox {
-namespace xls {
+namespace com::sun::star::container { class XNameContainer; }
+
+namespace oox::xls {
 
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::container;
@@ -90,7 +92,7 @@ const sal_Int16 API_SPLITMODE_NONE                  = 0;        /// No splits in
 const sal_Int16 API_SPLITMODE_SPLIT                 = 1;        /// Window is split.
 const sal_Int16 API_SPLITMODE_FREEZE                = 2;        /// Window has frozen panes.
 
-// no predefined constants for pane idetifiers
+// no predefined constants for pane identifiers
 const sal_Int16 API_SPLITPANE_TOPLEFT               = 0;        /// Top-left, or top pane.
 const sal_Int16 API_SPLITPANE_TOPRIGHT              = 1;        /// Top-right pane.
 const sal_Int16 API_SPLITPANE_BOTTOMLEFT            = 2;        /// Bottom-left, bottom, left, or single pane.
@@ -153,7 +155,7 @@ sal_Int32 SheetViewModel::getPageBreakZoom() const
     return getLimitedValue< sal_Int32 >( nZoom, API_ZOOMVALUE_MIN, API_ZOOMVALUE_MAX );
 }
 
-sal_Int32 SheetViewModel::getGridColor( const FilterBase& rFilter ) const
+::Color SheetViewModel::getGridColor( const FilterBase& rFilter ) const
 {
     return mbDefGridColor ? API_RGB_TRANSPARENT : maGridColor.getColor( rFilter.getGraphicHelper() );
 }
@@ -167,7 +169,7 @@ PaneSelectionModel& SheetViewModel::createPaneSelection( sal_Int32 nPaneId )
 {
     PaneSelectionModelMap::mapped_type& rxPaneSel = maPaneSelMap[ nPaneId ];
     if( !rxPaneSel )
-        rxPaneSel.reset( new PaneSelectionModel );
+        rxPaneSel = std::make_shared<PaneSelectionModel>();
     return *rxPaneSel;
 }
 
@@ -269,44 +271,44 @@ void SheetViewSettings::importSheetView( SequenceInputStream& rStrm )
 void SheetViewSettings::importPane( SequenceInputStream& rStrm )
 {
     OSL_ENSURE( !maSheetViews.empty(), "SheetViewSettings::importPane - missing sheet view model" );
-    if( !maSheetViews.empty() )
-    {
-        SheetViewModel& rModel = *maSheetViews.back();
+    if( maSheetViews.empty() )
+        return;
 
-        BinAddress aSecondPos;
-        sal_Int32 nActivePaneId;
-        sal_uInt8 nFlags;
-        rModel.mfSplitX = rStrm.readDouble();
-        rModel.mfSplitY = rStrm.readDouble();
-        rStrm >> aSecondPos;
-        nActivePaneId = rStrm.readInt32();
-        nFlags = rStrm.readuChar();
+    SheetViewModel& rModel = *maSheetViews.back();
 
-        rModel.maSecondPos    = getAddressConverter().createValidCellAddress( aSecondPos, getSheetIndex(), false );
-        rModel.mnActivePaneId = lclGetOoxPaneId( nActivePaneId, XML_topLeft );
-        rModel.mnPaneState    = getFlagValue( nFlags, BIFF12_PANE_FROZEN, getFlagValue( nFlags, BIFF12_PANE_FROZENNOSPLIT, XML_frozen, XML_frozenSplit ), XML_split );
-    }
+    BinAddress aSecondPos;
+    sal_Int32 nActivePaneId;
+    sal_uInt8 nFlags;
+    rModel.mfSplitX = rStrm.readDouble();
+    rModel.mfSplitY = rStrm.readDouble();
+    rStrm >> aSecondPos;
+    nActivePaneId = rStrm.readInt32();
+    nFlags = rStrm.readuChar();
+
+    rModel.maSecondPos    = getAddressConverter().createValidCellAddress( aSecondPos, getSheetIndex(), false );
+    rModel.mnActivePaneId = lclGetOoxPaneId( nActivePaneId, XML_topLeft );
+    rModel.mnPaneState    = getFlagValue( nFlags, BIFF12_PANE_FROZEN, getFlagValue( nFlags, BIFF12_PANE_FROZENNOSPLIT, XML_frozen, XML_frozenSplit ), XML_split );
 }
 
 void SheetViewSettings::importSelection( SequenceInputStream& rStrm )
 {
     OSL_ENSURE( !maSheetViews.empty(), "SheetViewSettings::importSelection - missing sheet view model" );
-    if( !maSheetViews.empty() )
-    {
-        // pane this selection belongs to
-        sal_Int32 nPaneId = rStrm.readInt32();
-        PaneSelectionModel& rPaneSel = maSheetViews.back()->createPaneSelection( lclGetOoxPaneId( nPaneId, -1 ) );
-        // cursor position
-        BinAddress aActiveCell;
-        rStrm >> aActiveCell;
-        rPaneSel.mnActiveCellId = rStrm.readInt32();
-        rPaneSel.maActiveCell = getAddressConverter().createValidCellAddress( aActiveCell, getSheetIndex(), false );
-        // selection
-        BinRangeList aSelection;
-        rStrm >> aSelection;
-        rPaneSel.maSelection.RemoveAll();
-        getAddressConverter().convertToCellRangeList( rPaneSel.maSelection, aSelection, getSheetIndex(), false );
-    }
+    if( maSheetViews.empty() )
+        return;
+
+    // pane this selection belongs to
+    sal_Int32 nPaneId = rStrm.readInt32();
+    PaneSelectionModel& rPaneSel = maSheetViews.back()->createPaneSelection( lclGetOoxPaneId( nPaneId, -1 ) );
+    // cursor position
+    BinAddress aActiveCell;
+    rStrm >> aActiveCell;
+    rPaneSel.mnActiveCellId = rStrm.readInt32();
+    rPaneSel.maActiveCell = getAddressConverter().createValidCellAddress( aActiveCell, getSheetIndex(), false );
+    // selection
+    BinRangeList aSelection;
+    rStrm >> aSelection;
+    rPaneSel.maSelection.RemoveAll();
+    getAddressConverter().convertToCellRangeList( rPaneSel.maSelection, aSelection, getSheetIndex(), false );
 }
 
 void SheetViewSettings::importChartSheetView( SequenceInputStream& rStrm )
@@ -449,7 +451,7 @@ bool SheetViewSettings::isSheetRightToLeft() const
 
 SheetViewModelRef SheetViewSettings::createSheetView()
 {
-    SheetViewModelRef xModel( new SheetViewModel );
+    SheetViewModelRef xModel = std::make_shared<SheetViewModel>();
     maSheetViews.push_back( xModel );
     return xModel;
 }
@@ -534,8 +536,6 @@ void ViewSettings::setSheetViewSettings( sal_Int16 nSheet, const SheetViewModelR
 void ViewSettings::setSheetUsedArea( const ScRange& rUsedArea )
 {
     assert( rUsedArea.IsValid() );
-    assert( rUsedArea.aStart.Col() <= MAXCOLCOUNT );
-    assert( rUsedArea.aStart.Row() <= MAXROWCOUNT );
     maSheetUsedAreas[ rUsedArea.aStart.Tab() ] = rUsedArea;
 }
 
@@ -553,15 +553,15 @@ void ViewSettings::finalizeImport()
     // view settings for all sheets
     Reference< XNameContainer > xSheetsNC = NamedPropertyValues::create( getBaseFilter().getComponentContext() );
     if( !xSheetsNC.is() ) return;
-    for( SheetPropertiesMap::const_iterator aIt = maSheetProps.begin(), aEnd = maSheetProps.end(); aIt != aEnd; ++aIt )
-        ContainerHelper::insertByName( xSheetsNC, rWorksheets.getCalcSheetName( aIt->first ), aIt->second );
+    for( const auto& [rWorksheet, rObj] : maSheetProps )
+        ContainerHelper::insertByName( xSheetsNC, rWorksheets.getCalcSheetName( rWorksheet ), rObj );
 
     // use active sheet to set sheet properties that are document-global in Calc
     sal_Int16 nActiveSheet = getActiveCalcSheet();
     SheetViewModelRef& rxActiveSheetView = maSheetViews[ nActiveSheet ];
-    OSL_ENSURE( rxActiveSheetView.get(), "ViewSettings::finalizeImport - missing active sheet view settings" );
+    OSL_ENSURE( rxActiveSheetView, "ViewSettings::finalizeImport - missing active sheet view settings" );
     if( !rxActiveSheetView )
-        rxActiveSheetView.reset( new SheetViewModel );
+        rxActiveSheetView = std::make_shared<SheetViewModel>();
 
     Reference< XIndexContainer > xContainer = IndexedPropertyValues::create( getBaseFilter().getComponentContext() );
     if( xContainer.is() ) try
@@ -601,22 +601,22 @@ void ViewSettings::finalizeImport()
     maOleSize.aEnd.SetTab( nActiveSheet );
     const ScRange* pVisibleArea = mbValidOleSize ?
         &maOleSize : ContainerHelper::getMapElement( maSheetUsedAreas, nActiveSheet );
-    if( pVisibleArea )
+    if( !pVisibleArea )
+        return;
+
+    // calculate the visible area in units of 1/100 mm
+    PropertySet aRangeProp( getCellRangeFromDoc( *pVisibleArea ) );
+    css::awt::Point aPos;
+    css::awt::Size aSize;
+    if( aRangeProp.getProperty( aPos, PROP_Position ) && aRangeProp.getProperty( aSize, PROP_Size ) )
     {
-        // calculate the visible area in units of 1/100 mm
-        PropertySet aRangeProp( getCellRangeFromDoc( *pVisibleArea ) );
-        css::awt::Point aPos;
-        css::awt::Size aSize;
-        if( aRangeProp.getProperty( aPos, PROP_Position ) && aRangeProp.getProperty( aSize, PROP_Size ) )
-        {
-            // set the visible area as sequence of long at the media descriptor
-            Sequence< sal_Int32 > aWinExtent( 4 );
-            aWinExtent[ 0 ] = aPos.X;
-            aWinExtent[ 1 ] = aPos.Y;
-            aWinExtent[ 2 ] = aPos.X + aSize.Width;
-            aWinExtent[ 3 ] = aPos.Y + aSize.Height;
-            getBaseFilter().getMediaDescriptor()[ "WinExtent" ] <<= aWinExtent;
-        }
+        // set the visible area as sequence of long at the media descriptor
+        Sequence< sal_Int32 > aWinExtent( 4 );
+        aWinExtent[ 0 ] = aPos.X;
+        aWinExtent[ 1 ] = aPos.Y;
+        aWinExtent[ 2 ] = aPos.X + aSize.Width;
+        aWinExtent[ 3 ] = aPos.Y + aSize.Height;
+        getBaseFilter().getMediaDescriptor()[ "WinExtent" ] <<= aWinExtent;
     }
 }
 
@@ -629,12 +629,11 @@ sal_Int16 ViewSettings::getActiveCalcSheet() const
 
 WorkbookViewModel& ViewSettings::createWorkbookView()
 {
-    WorkbookViewModelRef xModel( new WorkbookViewModel );
+    WorkbookViewModelRef xModel = std::make_shared<WorkbookViewModel>();
     maBookViews.push_back( xModel );
     return *xModel;
 }
 
-} // namespace xls
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

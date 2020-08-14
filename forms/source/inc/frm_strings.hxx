@@ -20,10 +20,6 @@
 #ifndef INCLUDED_FORMS_SOURCE_INC_FRM_STRINGS_HXX
 #define INCLUDED_FORMS_SOURCE_INC_FRM_STRINGS_HXX
 
-#include <sal/types.h>
-#include <rtl/ustring.hxx>
-#include <comphelper/string.hxx>
-
 
 namespace frm
 {
@@ -48,11 +44,12 @@ namespace frm
     #define PROPERTY_CYCLE                    "Cycle"
     #define PROPERTY_CONTROLSOURCE            "DataField"
     #define PROPERTY_ENABLED                  "Enabled"
-    #define PROPERTY_ENABLEVISIBLE                  "EnableVisible"
+    #define PROPERTY_ENABLEVISIBLE            "EnableVisible"
     #define PROPERTY_READONLY                 "ReadOnly"
     #define PROPERTY_RELEVANT                 "Relevant"
     #define PROPERTY_ISREADONLY               "IsReadOnly"
     #define PROPERTY_FILTER                   "Filter"
+    #define PROPERTY_HAVINGCLAUSE             "HavingClause"
     #define PROPERTY_WIDTH                    "Width"
     #define PROPERTY_SEARCHABLE               "IsSearchable"
     #define PROPERTY_MULTILINE                "MultiLine"

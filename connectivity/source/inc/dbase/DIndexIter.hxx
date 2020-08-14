@@ -20,13 +20,11 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DINDEXITER_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DINDEXITER_HXX
 
-#include "file/fcode.hxx"
-#include "dbase/DIndex.hxx"
-#include "dbase/dindexnode.hxx"
+#include <file/fcode.hxx>
+#include <dbase/DIndex.hxx>
+#include <dbase/dindexnode.hxx>
 
-namespace connectivity
-{
-    namespace dbase
+namespace connectivity::dbase
     {
 
         // IndexIterator
@@ -64,7 +62,7 @@ namespace connectivity
             sal_uInt32 Next();
 
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DINDEXITER_HXX
 

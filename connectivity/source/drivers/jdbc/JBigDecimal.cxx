@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "java/math/BigDecimal.hxx"
-#include "java/tools.hxx"
-#include "resource/conn_shared_res.hrc"
+#include <java/math/BigDecimal.hxx>
+#include <java/tools.hxx>
 using namespace connectivity;
 
 //************ Class: java.lang.Boolean

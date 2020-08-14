@@ -30,6 +30,8 @@ $(eval $(call gb_Library_use_custom_headers,vclplug_gen,\
 
 $(eval $(call gb_Library_use_sdk_api,vclplug_gen))
 
+$(eval $(call gb_Library_use_common_precompiled_header,vclplug_gen))
+
 $(eval $(call gb_Library_use_libraries,vclplug_gen,\
     vcl \
     tl \
@@ -58,6 +60,10 @@ $(eval $(call gb_Library_use_externals,vclplug_gen,\
 	icuuc \
 	valgrind \
 	Xrender \
+	$(if $(filter SKIA,$(BUILD_TYPE)), \
+	    skia \
+	    fontconfig \
+	) \
 ))
 
 $(eval $(call gb_Library_add_libs,vclplug_gen,\
@@ -72,7 +78,6 @@ $(eval $(call gb_Library_add_exception_objects,vclplug_gen,\
     vcl/unx/generic/app/i18n_ic \
     vcl/unx/generic/app/i18n_im \
     vcl/unx/generic/app/i18n_keysym \
-    vcl/unx/generic/app/i18n_status \
     vcl/unx/generic/app/i18n_xkb \
     vcl/unx/generic/app/keysymnames \
     vcl/unx/generic/app/randrwrapper \
@@ -92,22 +97,25 @@ $(eval $(call gb_Library_add_exception_objects,vclplug_gen,\
     vcl/unx/generic/dtrans/X11_transferable \
     vcl/unx/generic/gdi/cairo_xlib_cairo \
     vcl/unx/generic/gdi/x11cairotextrender \
-    vcl/unx/generic/gdi/gcach_xpeer \
-	vcl/unx/generic/gdi/gdiimpl \
-	vcl/unx/generic/gdi/openglx11cairotextrender \
+    vcl/unx/generic/gdi/gdiimpl \
     vcl/unx/generic/gdi/salbmp \
     vcl/unx/generic/gdi/salgdi2 \
     vcl/unx/generic/gdi/font \
     vcl/unx/generic/gdi/salgdi \
     vcl/unx/generic/gdi/salvd \
     vcl/unx/generic/gdi/xrender_peer \
-    vcl/unx/generic/window/FWS \
     vcl/unx/generic/window/salframe \
     vcl/unx/generic/window/salobj \
     vcl/unx/x11/x11sys \
     vcl/unx/x11/xlimits \
-	vcl/opengl/x11/gdiimpl \
-	vcl/opengl/x11/salvd \
+    vcl/opengl/x11/cairotextrender \
+    vcl/opengl/x11/gdiimpl \
+    vcl/opengl/x11/salvd \
+    $(if $(filter SKIA,$(BUILD_TYPE)), \
+        vcl/skia/x11/gdiimpl \
+        vcl/skia/x11/salvd \
+        vcl/skia/x11/textrender \
+        ) \
 ))
 
 # ultimately we want to split the x11 dependencies out
@@ -147,7 +155,6 @@ ifeq ($(OS),LINUX)
 $(eval $(call gb_Library_add_libs,vclplug_gen,\
 	-lm \
 	-ldl \
-	-lpthread \
 ))
 endif
 

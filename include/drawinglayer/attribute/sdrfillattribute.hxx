@@ -30,17 +30,15 @@ namespace basegfx {
     class BColor;
 }
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class ImpSdrFillAttribute;
     class FillGradientAttribute;
     class FillHatchAttribute;
     class SdrFillGraphicAttribute;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class DRAWINGLAYER_DLLPUBLIC SdrFillAttribute
         {
@@ -59,10 +57,10 @@ namespace drawinglayer
                 const FillHatchAttribute& rHatch,
                 const SdrFillGraphicAttribute& rFillGraphic);
             SdrFillAttribute();
-            SdrFillAttribute(const SdrFillAttribute& rCandidate);
-            SdrFillAttribute(SdrFillAttribute&& rCandidate);
-            SdrFillAttribute& operator=(const SdrFillAttribute& rCandidate);
-            SdrFillAttribute& operator=(SdrFillAttribute&& rCandidate);
+            SdrFillAttribute(const SdrFillAttribute&);
+            SdrFillAttribute(SdrFillAttribute&&);
+            SdrFillAttribute& operator=(const SdrFillAttribute&);
+            SdrFillAttribute& operator=(SdrFillAttribute&&);
             ~SdrFillAttribute();
 
             // checks if the incarnation is default constructed
@@ -78,8 +76,8 @@ namespace drawinglayer
             const FillHatchAttribute& getHatch() const;
             const SdrFillGraphicAttribute& getFillGraphic() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif //INCLUDED_DRAWINGLAYER_ATTRIBUTE_SDRFILLATTRIBUTE_HXX

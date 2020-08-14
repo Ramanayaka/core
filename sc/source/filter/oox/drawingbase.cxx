@@ -17,33 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingbase.hxx"
+#include <drawingbase.hxx>
+#include <addressconverter.hxx>
 
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <osl/diagnose.h>
 #include <oox/helper/attributelist.hxx>
-#include <oox/helper/binaryinputstream.hxx>
-#include "unitconverter.hxx"
-#include <oox/helper/propertyset.hxx>
+#include <unitconverter.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::oox::drawingml;
 
 namespace {
 
 /** Converts the passed 32-bit integer value from 1/100 mm to EMUs. */
-inline sal_Int64 lclHmmToEmu( sal_Int32 nValue )
+sal_Int64 lclHmmToEmu( sal_Int32 nValue )
 {
     return (nValue < 0) ? -1 : convertHmmToEmu( nValue );
 }
 
 /** Converts the passed 64-bit integer value from EMUs to 1/100 mm. */
-inline sal_Int32 lclEmuToHmm( sal_Int64 nValue )
+sal_Int32 lclEmuToHmm( sal_Int64 nValue )
 {
     return (nValue < 0) ? -1 : convertEmuToHmm( nValue );
 }
@@ -92,6 +89,8 @@ void ShapeAnchor::importAnchor( sal_Int32 nElement, const AttributeList& rAttrib
                     meEditAs = ANCHOR_ABSOLUTE;
                 else if ( sEditAs.equalsIgnoreAsciiCase("oneCell") )
                     meEditAs = ANCHOR_ONECELL;
+                else if (sEditAs.equalsIgnoreAsciiCase("twoCell") )
+                    meEditAs = ANCHOR_TWOCELL;
             }
         }
         break;
@@ -152,23 +151,27 @@ void ShapeAnchor::importVmlAnchor( const OUString& rAnchor )
     meAnchorType = ANCHOR_VML;
     meCellAnchorType = CellAnchorType::Pixel;
 
-    ::std::vector< OUString > aTokens;
-    sal_Int32 nIndex = 0;
-    while( nIndex >= 0 )
-        aTokens.push_back( rAnchor.getToken( 0, ',', nIndex ).trim() );
+    sal_Int32 nValues[8];
+    sal_Int32 nI{ 0 };
 
-    OSL_ENSURE( aTokens.size() >= 8, "ShapeAnchor::importVmlAnchor - missing anchor tokens" );
-    if( aTokens.size() >= 8 )
+    for(sal_Int32 nIndex{ 0 }; nIndex>=0;)
     {
-        maFrom.mnCol       = aTokens[ 0 ].toInt32();
-        maFrom.mnColOffset = aTokens[ 1 ].toInt32();
-        maFrom.mnRow       = aTokens[ 2 ].toInt32();
-        maFrom.mnRowOffset = aTokens[ 3 ].toInt32();
-        maTo.mnCol         = aTokens[ 4 ].toInt32();
-        maTo.mnColOffset   = aTokens[ 5 ].toInt32();
-        maTo.mnRow         = aTokens[ 6 ].toInt32();
-        maTo.mnRowOffset   = aTokens[ 7 ].toInt32();
+        nValues[nI] = rAnchor.getToken( 0, ',', nIndex ).toInt32();
+        if (++nI==8)
+        {
+            maFrom.mnCol       = nValues[0];
+            maFrom.mnColOffset = nValues[1];
+            maFrom.mnRow       = nValues[2];
+            maFrom.mnRowOffset = nValues[3];
+            maTo.mnCol         = nValues[4];
+            maTo.mnColOffset   = nValues[5];
+            maTo.mnRow         = nValues[6];
+            maTo.mnRowOffset   = nValues[7];
+            return;
+        }
     }
+
+    OSL_FAIL("ShapeAnchor::importVmlAnchor - missing anchor tokens" );
 }
 
 bool ShapeAnchor::isAnchorValid() const
@@ -275,8 +278,8 @@ EmuPoint ShapeAnchor::calcCellAnchorEmu( const CellAnchorModel& rModel ) const
         case CellAnchorType::Pixel:
         {
             const UnitConverter& rUnitConv = getUnitConverter();
-            aEmuPoint.X += static_cast< sal_Int64 >( rUnitConv.scaleValue( static_cast< double >( rModel.mnColOffset ), UNIT_SCREENX, UNIT_EMU ) );
-            aEmuPoint.Y += static_cast< sal_Int64 >( rUnitConv.scaleValue( static_cast< double >( rModel.mnRowOffset ), UNIT_SCREENY, UNIT_EMU ) );
+            aEmuPoint.X += static_cast< sal_Int64 >( rUnitConv.scaleValue( static_cast< double >( rModel.mnColOffset ), Unit::ScreenX, Unit::Emu ) );
+            aEmuPoint.Y += static_cast< sal_Int64 >( rUnitConv.scaleValue( static_cast< double >( rModel.mnRowOffset ), Unit::ScreenY, Unit::Emu ) );
         }
         break;
     }
@@ -284,7 +287,6 @@ EmuPoint ShapeAnchor::calcCellAnchorEmu( const CellAnchorModel& rModel ) const
     return aEmuPoint;
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

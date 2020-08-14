@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "databaseobjectview.hxx"
-#include "dbustrings.hrc"
-#include "asyncmodaldialog.hxx"
+#include <databaseobjectview.hxx>
+#include <strings.hxx>
+#include <asyncmodaldialog.hxx>
 
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/frame/TaskCreator.hpp>
@@ -27,10 +27,7 @@
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/sdb/application/XTableUIProvider.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
-#include <com/sun/star/awt/Rectangle.hpp>
 
-#include <comphelper/extract.hxx>
-#include <comphelper/sequence.hxx>
 #include <connectivity/dbtools.hxx>
 #include <osl/diagnose.h>
 #include <toolkit/helper/vclunohelper.hxx>
@@ -132,10 +129,10 @@ namespace dbaui
                     const Reference< XWindow > xFrameWindow( xFrame->getContainerWindow(), UNO_SET_THROW );
                     VclPtr<vcl::Window> pContainerWindow = VCLUnoHelper::GetWindow( xFrameWindow );
                     ENSURE_OR_THROW( pContainerWindow, "no implementation access to the frame's container window!" );
-                    pContainerWindow->SetExtendedStyle( pContainerWindow->GetExtendedStyle() | WB_EXT_DOCUMENT );
+                    pContainerWindow->SetExtendedStyle( pContainerWindow->GetExtendedStyle() | WindowExtendedStyle::Document );
                 }
 
-                Reference< XComponentLoader > xFrameLoader( m_xFrameLoader, UNO_QUERY_THROW );
+                Reference< XComponentLoader > xFrameLoader( m_xFrameLoader, UNO_SET_THROW );
                 xReturn = xFrameLoader->loadComponentFromURL(
                     m_sComponentURL,
                     "_self",
@@ -145,7 +142,7 @@ namespace dbaui
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
             }
         }
         return xReturn;
@@ -233,16 +230,9 @@ namespace dbaui
 
         // try whether the designer is a dialog
         Reference< XExecutableDialog > xDialog( xDesigner, UNO_QUERY_THROW );
-        if ( xDialog.is() )
-        {
-            try { AsyncDialogExecutor::executeModalDialogAsync( xDialog ); }
-            catch( const Exception& ) { DBG_UNHANDLED_EXCEPTION(); }
-            return nullptr;
-        }
-
-        Reference< XComponent > xDesignerComponent( xDesigner, UNO_QUERY );
-        OSL_ENSURE( xDesignerComponent.is(), "TableDesigner::doCreateView: a designer which is no dialog and no component?" );
-        return xDesignerComponent;
+        try { AsyncDialogExecutor::executeModalDialogAsync( xDialog ); }
+        catch( const Exception& ) { DBG_UNHANDLED_EXCEPTION("dbaccess"); }
+        return nullptr;
     }
 
     Reference< XInterface > TableDesigner::impl_getConnectionProvidedDesigner_nothrow( const OUString& _rTableName )
@@ -256,7 +246,7 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
         return xDesigner;
     }

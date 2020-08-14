@@ -13,13 +13,7 @@ $(eval $(call gb_UnpackedTarball_set_tarball,libstaroffice,$(STAROFFICE_TARBALL)
 
 $(eval $(call gb_UnpackedTarball_set_patchlevel,libstaroffice,0))
 
-ifeq ($(COM_IS_CLANG),TRUE)
-ifneq ($(filter -fsanitize=%,$(CC)),)
-$(eval $(call gb_UnpackedTarball_add_patches,libstaroffice, \
-    external/libstaroffice/ubsan-visibility.patch \
-))
-endif
-endif
+$(eval $(call gb_UnpackedTarball_update_autoconf_configs,libstaroffice))
 
 ifneq ($(OS),MACOSX)
 ifneq ($(OS),WNT)
@@ -34,10 +28,5 @@ $(eval $(call gb_UnpackedTarball_add_patches,libstaroffice, \
     external/libstaroffice/rpath.patch \
 ))
 endif
-
-$(eval $(call gb_UnpackedTarball_add_patches,libstaroffice, \
-	external/libstaroffice/0001-ofz-1029-use-correct-loop-index.patch.1 \
-	external/libstaroffice/iOS.patch.0 \
-))
 
 # vim: set noet sw=4 ts=4:

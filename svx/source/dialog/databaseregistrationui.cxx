@@ -17,30 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/databaseregistrationui.hxx"
+#include <svx/databaseregistrationui.hxx>
 
 #include <svx/svxdlg.hxx>
 #include <svx/dialogs.hrc>
 
 #include <sfx2/app.hxx>
 #include <svl/itemset.hxx>
-#include <vcl/msgbox.hxx>
-#include <memory>
 
 namespace svx
 {
-    sal_uInt16 administrateDatabaseRegistration( vcl::Window* _parentWindow )
+    sal_uInt16 administrateDatabaseRegistration(weld::Window* parentWindow)
     {
         sal_uInt16 nResult = RET_CANCEL;
 
         SfxItemSet aRegistrationItems( SfxGetpApp()->GetPool(), svl::Items<SID_SB_DB_REGISTER, SID_SB_DB_REGISTER>{} );
 
         SvxAbstractDialogFactory* pDialogFactory = SvxAbstractDialogFactory::Create();
-        ScopedVclPtr<SfxAbstractDialog> pDialog;
-        if ( pDialogFactory )
-            pDialog.disposeAndReset( pDialogFactory->CreateSfxDialog( _parentWindow, aRegistrationItems, nullptr, RID_SFXPAGE_DBREGISTER ) );
-        if ( pDialog.get() )
-            nResult = pDialog->Execute();
+        ScopedVclPtr<SfxAbstractDialog> pDialog(pDialogFactory->CreateSfxDialog(parentWindow, aRegistrationItems, nullptr, RID_SFXPAGE_DBREGISTER));
+        nResult = pDialog->Execute();
 
         return nResult;
     }

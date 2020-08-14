@@ -19,7 +19,6 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_TABFRM_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_TABFRM_HXX
 
-#include <tools/mempool.hxx>
 #include "layfrm.hxx"
 #include "flowfrm.hxx"
 
@@ -85,13 +84,15 @@ class SwTabFrame: public SwLayoutFrame, public SwFlowFrame
 
     bool m_bInRecalcLowerRow : 1;
 
+    bool m_bSplitRowDisabled : 1;          // loop control
+
     /**
      * Split() splits the Frame at the specified position: a Follow is
      * created and constructed and inserted directly after this.
      * Join() gets the Follow's content and destroys it.
      */
     bool Split( const SwTwips nCutPos, bool bTryToSplit, bool bTableRowKeep );
-    bool Join();
+    void Join();
 
     void UpdateAttr_(
         const SfxPoolItem*,
@@ -99,7 +100,7 @@ class SwTabFrame: public SwLayoutFrame, public SwFlowFrame
         SwAttrSetChg *pa = nullptr,
         SwAttrSetChg *pb = nullptr );
 
-    virtual bool ShouldBwdMoved( SwLayoutFrame *pNewUpper, bool bHead, bool &rReformat ) override;
+    virtual bool ShouldBwdMoved( SwLayoutFrame *pNewUpper, bool &rReformat ) override;
 
     virtual void DestroyImpl() override;
     virtual ~SwTabFrame() override;
@@ -112,7 +113,7 @@ protected:
     virtual SwTwips GrowFrame  ( SwTwips, bool bTst = false, bool bInfo = false ) override;
 
 public:
-    SwTabFrame( SwTable &, SwFrame* );  // calling Regist Flys always after creation _and_pasting!
+    SwTabFrame( SwTable &, SwFrame* );  // calling RegistFlys always after creation _and_pasting!
     SwTabFrame( SwTabFrame & ); // _only_ for the creation of follows
 
     void JoinAndDelFollows();   // for DelFrames of the TableNodes!
@@ -125,23 +126,25 @@ public:
     SwTabFrame* FindMaster( bool bFirstMaster = false ) const;
 
     virtual bool GetInfo( SfxPoolItem &rHint ) const override;
-    virtual void Paint( vcl::RenderContext& rRenderContext, SwRect const&,
+    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const&,
                         SwPrintData const*const pPrintData = nullptr ) const override;
     virtual void CheckDirection( bool bVert ) override;
 
     virtual void Cut() override;
     virtual void Paste( SwFrame* pParent, SwFrame* pSibling = nullptr ) override;
 
-    virtual bool Prepare( const PrepareHint ePrep = PREP_CLEAR,
+    virtual bool Prepare( const PrepareHint ePrep = PrepareHint::Clear,
                           const void *pVoid = nullptr, bool bNotify = true ) override;
 
+                 SwFrame *FindLastContentOrTable();
+    inline const SwFrame *FindLastContentOrTable() const;
                  SwContentFrame *FindLastContent();
     inline const SwContentFrame *FindLastContent() const;
 
     const SwTable *GetTable() const { return m_pTable; }
           SwTable *GetTable()       { return m_pTable; }
 
-    bool IsComplete()  { return m_bComplete; }
+    bool IsComplete() const { return m_bComplete; }
     void SetComplete() { m_bComplete = true; }
     void ResetComplete() { m_bComplete = false; }
 
@@ -173,6 +176,14 @@ public:
     void SetInRecalcLowerRow( bool bNew )
     {
         m_bInRecalcLowerRow = bNew;
+    }
+    bool IsSplitRowDisabled() const
+    {
+        return m_bSplitRowDisabled;
+    }
+    void SetSplitRowDisabled()
+    {
+        m_bSplitRowDisabled = true;
     }
 
     // #i26945#
@@ -217,9 +228,12 @@ public:
     sal_uInt16 GetBottomLineSize() const;
 
     virtual void dumpAsXmlAttributes(xmlTextWriterPtr writer) const override;
-
-    DECL_FIXEDMEMPOOL_NEWDEL(SwTabFrame)
 };
+
+inline const SwFrame *SwTabFrame::FindLastContentOrTable() const
+{
+    return const_cast<SwTabFrame*>(this)->FindLastContentOrTable();
+}
 
 inline const SwContentFrame *SwTabFrame::FindLastContent() const
 {

@@ -19,7 +19,6 @@
 #ifndef INCLUDED_SW_SOURCE_FILTER_INC_WRTSWTBL_HXX
 #define INCLUDED_SW_SOURCE_FILTER_INC_WRTSWTBL_HXX
 
-#include <tools/solar.h>
 #include <tools/color.hxx>
 #include <o3tl/sorted_vector.hxx>
 
@@ -27,6 +26,7 @@
 
 #include <memory>
 #include <vector>
+#include <climits>
 
 class SwTableBox;
 class SwTableLine;
@@ -58,7 +58,7 @@ class SW_DLLPUBLIC SwWriteTableCell
     sal_uInt16 nRowSpan;            // spanned rows
     sal_uInt16 nColSpan;            // spanned columns
 
-    bool bPrcWidthOpt;
+    bool bPercentWidthOpt;
 
 public:
 
@@ -66,7 +66,7 @@ public:
         sal_uInt16 nCSpan, long nHght, const SvxBrushItem *pBGround)
     : pBox( pB ), pBackground( pBGround ), nHeight( nHght ), nWidthOpt( 0 ),
     nRow( nR ), nCol( nC ), nRowSpan( nRSpan ), nColSpan( nCSpan ),
-    bPrcWidthOpt( false )
+    bPercentWidthOpt( false )
     {}
 
     const SwTableBox *GetBox() const { return pBox; }
@@ -82,18 +82,18 @@ public:
 
     const SvxBrushItem *GetBackground() const { return pBackground; }
 
-    void SetWidthOpt( sal_uInt16 nWidth, bool bPrc )
+    void SetWidthOpt( sal_uInt16 nWidth, bool bPercent )
     {
-        nWidthOpt = nWidth; bPrcWidthOpt = bPrc;
+        nWidthOpt = nWidth; bPercentWidthOpt = bPercent;
     }
 
     sal_uInt32 GetWidthOpt() const { return nWidthOpt; }
-    bool HasPrcWidthOpt() const { return bPrcWidthOpt; }
+    bool HasPercentWidthOpt() const { return bPercentWidthOpt; }
 };
 
 typedef std::vector<std::unique_ptr<SwWriteTableCell>> SwWriteTableCells;
 
-class SW_DLLPUBLIC SwWriteTableRow
+class SwWriteTableRow final
 {
     SwWriteTableCells m_Cells;       ///< all cells of the rows
     const SvxBrushItem *pBackground; // background
@@ -103,7 +103,6 @@ class SW_DLLPUBLIC SwWriteTableRow
 
     SwWriteTableRow & operator= (const SwWriteTableRow &) = delete;
 
-protected:
     // GCC >= 3.4 needs accessible T (const T&) to pass T as const T& argument.
     SwWriteTableRow( const SwWriteTableRow & );
 
@@ -152,12 +151,10 @@ inline bool SwWriteTableRow::operator<( const SwWriteTableRow& rRow ) const
     return nPos < rRow.nPos - (mbUseLayoutHeights ? 0 : ROWFUZZY);
 }
 
-class SwWriteTableRows : public o3tl::sorted_vector<SwWriteTableRow*, o3tl::less_ptr_to<SwWriteTableRow> > {
-public:
-    ~SwWriteTableRows() { DeleteAndDestroyAll(); }
-};
+using SwWriteTableRows
+    = o3tl::sorted_vector< std::unique_ptr<SwWriteTableRow>, o3tl::less_uniqueptr_to<SwWriteTableRow> >;
 
-class SW_DLLPUBLIC SwWriteTableCol
+class SwWriteTableCol
 {
     sal_uInt32 nPos;                    // end position of the column
 
@@ -203,14 +200,12 @@ inline bool SwWriteTableCol::operator<( const SwWriteTableCol& rCol ) const
 }
 
 struct SwWriteTableColLess {
-    bool operator()(SwWriteTableCol const * lhs, SwWriteTableCol const * rhs) {
+    bool operator()(std::unique_ptr<SwWriteTableCol> const & lhs, std::unique_ptr<SwWriteTableCol> const & rhs) {
         return lhs->GetPos() < rhs->GetPos();
     }
 };
 
-class SwWriteTableCols : public o3tl::sorted_vector<SwWriteTableCol*, SwWriteTableColLess> {
-public:
-    ~SwWriteTableCols() { DeleteAndDestroyAll(); }
+class SwWriteTableCols : public o3tl::sorted_vector<std::unique_ptr<SwWriteTableCol>, SwWriteTableColLess> {
 };
 
 class SwTable;
@@ -223,7 +218,7 @@ protected:
     SwWriteTableCols m_aCols; // all columns
     SwWriteTableRows m_aRows; // all rows
 
-    sal_uInt32 m_nBorderColor;        // border color
+    Color      m_nBorderColor;        // border color
 
     sal_uInt16 m_nCellSpacing;        // thickness of the inner border
     sal_uInt16 m_nCellPadding;        // distance of border to content
@@ -283,10 +278,11 @@ public:
     sal_uInt32 GetRawWidth( sal_uInt16 nCol, sal_uInt16 nColSpan ) const;
     sal_uInt16 GetAbsWidth( sal_uInt16 nCol, sal_uInt16 nColSpan ) const;
     sal_uInt16 GetRelWidth( sal_uInt16 nCol, sal_uInt16 nColSpan ) const;
-    sal_uInt16 GetPrcWidth( sal_uInt16 nCol, sal_uInt16 nColSpan ) const;
+    sal_uInt16 GetPercentWidth( sal_uInt16 nCol, sal_uInt16 nColSpan ) const;
 
     long GetAbsHeight(long nRawWidth, size_t nRow, sal_uInt16 nRowSpan) const;
 
+    double GetAbsWidthRatio() const { return m_nTabWidth == m_nBaseWidth ? 1.0 : double(m_nTabWidth) / m_nBaseWidth; }
 protected:
     long GetLineHeight( const SwTableLine *pLine );
     static long GetLineHeight( const SwTableBox *pBox );

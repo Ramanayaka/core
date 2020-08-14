@@ -26,14 +26,19 @@ ifneq ($(OS),WNT)
 INVOKE_FPA:="CPU=\$$(EMPTY) $${FB_CPU_ARG}"
 endif
 
-MAKE_PRE=$(call gb_Helper_extend_ld_path,$(call gb_UnpackedTarball_get_dir,icu)/source/lib) LC_ALL=C
+ifeq ($(COM_IS_CLANG),TRUE)
+firebird_NO_CXX11_NARROWING := -Wno-c++11-narrowing
+endif
+
+MAKE_PRE=LC_ALL=C
 
 MAKE_POST=$(if $(filter MACOSX,$(OS)),&& $(PERL) \
 			$(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
-			$(gb_Package_SOURCEDIR_firebird)/gen/$(if $(ENABLE_DEBUG),Debug,Release)/firebird/plugins/libEngine12.dylib \
-			$(gb_Package_SOURCEDIR_firebird)/gen/$(if $(ENABLE_DEBUG),Debug,Release)/firebird/lib/libfbclient.dylib.3.0.0)
+			$(EXTERNAL_WORKDIR)/gen/$(if $(ENABLE_DEBUG),Debug,Release)/firebird/plugins/libEngine12.dylib \
+			$(EXTERNAL_WORKDIR)/gen/$(if $(ENABLE_DEBUG),Debug,Release)/firebird/lib/libfbclient.dylib.3.0.0)
 
 $(call gb_ExternalProject_get_state_target,firebird,build):
+	$(call gb_Trace_StartRange,firebird,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		unset MAKEFLAGS \
 		&& FB_CPU_ARG='$(filter --jobserver-fds=%,$(MAKEFLAGS))' \
@@ -51,11 +56,10 @@ $(call gb_ExternalProject_get_state_target,firebird,build):
 				-I$(call gb_UnpackedTarball_get_dir,icu)/source/i18n \
 				-I$(call gb_UnpackedTarball_get_dir,icu)/source/common \
 			) \
+			$(if $(filter GCC-INTEL,$(COM)-$(CPUNAME)),-Di386=1) \
 			" \
 		&& export CXXFLAGS=" \
 			$(if $(filter MSC,$(COM)),$(if $(MSVC_USE_DEBUG_RUNTIME),-DMSVC_USE_DEBUG_RUNTIME)) \
-			$(if $(filter LINUX/X86_64/TRUE,$(OS)/$(CPUNAME)/$(COM_IS_CLANG)), \
-				-DDEBUG_GDS_ALLOC) \
 			$(if $(HAVE_GCC_FNO_SIZED_DEALLOCATION),-fno-sized-deallocation -fno-delete-null-pointer-checks) \
 			$(if $(SYSTEM_BOOST),$(BOOST_CPPFLAGS), \
 				$(BOOST_CPPFLAGS) \
@@ -66,10 +70,12 @@ $(call gb_ExternalProject_get_state_target,firebird,build):
 				-I$(call gb_UnpackedTarball_get_dir,icu)/source/i18n \
 				-I$(call gb_UnpackedTarball_get_dir,icu)/source/common \
 			) \
-			$(ICU_UCHAR_TYPE) \
 			$(if $(SYSTEM_LIBTOMMATH),$(LIBTOMMATH_CFLAGS), \
 				-L$(call gb_UnpackedTarball_get_dir,libtommath) \
 			) \
+			$(CXXFLAGS_CXX11) \
+			$(firebird_NO_CXX11_NARROWING) \
+			$(if $(call gb_Module__symbols_enabled,firebird),$(gb_DEBUGINFO_FLAGS)) \
 		" \
 		&& export LDFLAGS=" \
 			$(if $(SYSTEM_ICU),$(ICU_LIBS), \
@@ -92,9 +98,19 @@ $(call gb_ExternalProject_get_state_target,firebird,build):
 							'<' 101200)), \
 					ac_cv_func_clock_gettime=no)) \
 		&& if [ -n "$${FB_CPU_ARG}" ]; then \
-			   $(MAKE_PRE) $(MAKE) $(if $(ENABLE_DEBUG),Debug) $(INVOKE_FPA) SHELL='$(SHELL)' $(MAKE_POST); \
+				$(MAKE_PRE) $(MAKE) \
+					$(if $(filter LINUX,$(OS)),CXXFLAGS="$$CXXFLAGS -std=gnu++11") \
+					$(if $(ENABLE_DEBUG),Debug) $(INVOKE_FPA) SHELL='$(SHELL)' \
+					LIBO_TUNNEL_LIBRARY_PATH='$(subst ','\'',$(subst $$,$$$$,$(call gb_Helper_extend_ld_path,$(call gb_UnpackedTarball_get_dir,icu)/source/lib)))' \
+				$(MAKE_POST); \
 			else \
-			   $(MAKE_PRE) $(MAKE) $(if $(ENABLE_DEBUG),Debug) SHELL='$(SHELL)' $(MAKE_POST); \
+				$(MAKE_PRE) $(MAKE) \
+					$(if $(filter LINUX,$(OS)),CXXFLAGS="$$CXXFLAGS -std=gnu++11") \
+					$(if $(ENABLE_DEBUG),Debug) SHELL='$(SHELL)' \
+					LIBO_TUNNEL_LIBRARY_PATH='$(subst ','\'',$(subst $$,$$$$,$(call gb_Helper_extend_ld_path,$(call gb_UnpackedTarball_get_dir,icu)/source/lib)))' \
+				$(MAKE_POST); \
 			fi \
 	)
+	$(call gb_Trace_EndRange,firebird,EXTERNAL)
+
 # vim: set noet sw=4 ts=4:

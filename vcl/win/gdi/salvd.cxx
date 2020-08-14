@@ -28,73 +28,61 @@
 #include <win/salinst.h>
 #include <win/salgdi.h>
 #include <win/salvd.h>
-#include "opengl/win/gdiimpl.hxx"
+#include <opengl/win/gdiimpl.hxx>
+#include <sal/log.hxx>
+#include <o3tl/temporary.hxx>
 
 HBITMAP WinSalVirtualDevice::ImplCreateVirDevBitmap(HDC hDC, long nDX, long nDY, sal_uInt16 nBitCount, void **ppData)
 {
     HBITMAP hBitmap;
 
-     if ( nBitCount == 1 )
-     {
-         hBitmap = CreateBitmap( (int)nDX, (int)nDY, 1, 1, nullptr );
-         SAL_WARN_IF( !hBitmap, "vcl", "CreateBitmap failed: " << WindowsErrorString( GetLastError() ) );
-         ppData = nullptr;
-     }
-     else
-     {
-         if (nBitCount == 0)
-             nBitCount = (WORD)GetDeviceCaps(hDC, BITSPIXEL);
+    if ( nBitCount == 1 )
+    {
+        hBitmap = CreateBitmap( static_cast<int>(nDX), static_cast<int>(nDY), 1, 1, nullptr );
+        SAL_WARN_IF( !hBitmap, "vcl", "CreateBitmap failed: " << WindowsErrorString( GetLastError() ) );
+        ppData = nullptr;
+    }
+    else
+    {
+        if (nBitCount == 0)
+            nBitCount = static_cast<WORD>(GetDeviceCaps(hDC, BITSPIXEL));
 
         // #146839# Don't use CreateCompatibleBitmap() - there seem to
-        // be build-in limits for those HBITMAPs, at least this fails
+        // be built-in limits for those HBITMAPs, at least this fails
         // rather often on large displays/multi-monitor setups.
-         BITMAPINFO aBitmapInfo;
-         aBitmapInfo.bmiHeader.biSize = sizeof( BITMAPINFOHEADER );
-         aBitmapInfo.bmiHeader.biWidth = nDX;
-         aBitmapInfo.bmiHeader.biHeight = nDY;
-         aBitmapInfo.bmiHeader.biPlanes = 1;
-         aBitmapInfo.bmiHeader.biBitCount = nBitCount;
-         aBitmapInfo.bmiHeader.biCompression = BI_RGB;
-         aBitmapInfo.bmiHeader.biSizeImage = 0;
-         aBitmapInfo.bmiHeader.biXPelsPerMeter = 0;
-         aBitmapInfo.bmiHeader.biYPelsPerMeter = 0;
-         aBitmapInfo.bmiHeader.biClrUsed = 0;
-         aBitmapInfo.bmiHeader.biClrImportant = 0;
+        BITMAPINFO aBitmapInfo;
+        aBitmapInfo.bmiHeader.biSize = sizeof( BITMAPINFOHEADER );
+        aBitmapInfo.bmiHeader.biWidth = nDX;
+        aBitmapInfo.bmiHeader.biHeight = nDY;
+        aBitmapInfo.bmiHeader.biPlanes = 1;
+        aBitmapInfo.bmiHeader.biBitCount = nBitCount;
+        aBitmapInfo.bmiHeader.biCompression = BI_RGB;
+        aBitmapInfo.bmiHeader.biSizeImage = 0;
+        aBitmapInfo.bmiHeader.biXPelsPerMeter = 0;
+        aBitmapInfo.bmiHeader.biYPelsPerMeter = 0;
+        aBitmapInfo.bmiHeader.biClrUsed = 0;
+        aBitmapInfo.bmiHeader.biClrImportant = 0;
 
-         hBitmap = CreateDIBSection( hDC, &aBitmapInfo,
-                                     DIB_RGB_COLORS, ppData, nullptr,
-                                     0 );
-         SAL_WARN_IF( !hBitmap, "vcl", "CreateDIBSection failed: " << WindowsErrorString( GetLastError() ) );
-     }
+        hBitmap = CreateDIBSection( hDC, &aBitmapInfo,
+                                    DIB_RGB_COLORS, ppData, nullptr,
+                                    0 );
+        SAL_WARN_IF( !hBitmap, "vcl", "CreateDIBSection failed: " << WindowsErrorString( GetLastError() ) );
+    }
 
     return hBitmap;
 }
 
-SalVirtualDevice* WinSalInstance::CreateVirtualDevice( SalGraphics* pSGraphics,
+std::unique_ptr<SalVirtualDevice> WinSalInstance::CreateVirtualDevice( SalGraphics* pSGraphics,
                                                        long &nDX, long &nDY,
                                                        DeviceFormat eFormat,
                                                        const SystemGraphicsData* pData )
 {
     WinSalGraphics* pGraphics = static_cast<WinSalGraphics*>(pSGraphics);
-
-    sal_uInt16 nBitCount;
-    switch (eFormat)
-    {
-        case DeviceFormat::BITMASK:
-            nBitCount = 1;
-            break;
-        default:
-            nBitCount = 0;
-            break;
-    }
-
-    HDC     hDC = nullptr;
-    HBITMAP hBmp = nullptr;
+    HDC hDC = nullptr;
 
     if( pData )
     {
         hDC = (pData->hDC) ? pData->hDC : GetDC(pData->hWnd);
-        hBmp = nullptr;
         if (hDC)
         {
             nDX = GetDeviceCaps( hDC, HORZRES );
@@ -110,45 +98,52 @@ SalVirtualDevice* WinSalInstance::CreateVirtualDevice( SalGraphics* pSGraphics,
     {
         hDC = CreateCompatibleDC( pGraphics->getHDC() );
         SAL_WARN_IF( !hDC, "vcl", "CreateCompatibleDC failed: " << WindowsErrorString( GetLastError() ) );
+    }
 
-        void *pDummy;
-        hBmp = WinSalVirtualDevice::ImplCreateVirDevBitmap(pGraphics->getHDC(), nDX, nDY, nBitCount, &pDummy);
+    if (!hDC)
+        return nullptr;
 
+    sal_uInt16 nBitCount = (eFormat == DeviceFormat::BITMASK) ? 1 : 0;
+
+    HBITMAP hBmp = nullptr;
+    if (!pData)
+    {
         // #124826# continue even if hBmp could not be created
         // if we would return a failure in this case, the process
         // would terminate which is not required
+        hBmp = WinSalVirtualDevice::ImplCreateVirDevBitmap(pGraphics->getHDC(),
+                                                           nDX, nDY, nBitCount,
+                                                           &o3tl::temporary<void*>(nullptr));
     }
 
-    if (hDC)
+    const bool bForeignDC = pData != nullptr && pData->hDC != nullptr;
+    const SalData* pSalData = GetSalData();
+
+    WinSalVirtualDevice* pVDev = new WinSalVirtualDevice(hDC, hBmp, nBitCount,
+                                                         bForeignDC, nDX, nDY);
+
+    WinSalGraphics* pVirGraphics = new WinSalGraphics(WinSalGraphics::VIRTUAL_DEVICE,
+                                                      pGraphics->isScreen(), nullptr, pVDev);
+
+    // by default no! mirroring for VirtualDevices, can be enabled with EnableRTL()
+    pVirGraphics->SetLayout( SalLayoutFlags::NONE );
+    pVirGraphics->setHDC(hDC);
+
+    if ( pSalData->mhDitherPal && pVirGraphics->isScreen() )
     {
-        WinSalVirtualDevice*    pVDev = new WinSalVirtualDevice(hDC, hBmp, nBitCount, (pData != nullptr && pData->hDC != nullptr ), nDX, nDY);
-        SalData*                pSalData = GetSalData();
-        WinSalGraphics*         pVirGraphics = new WinSalGraphics(WinSalGraphics::VIRTUAL_DEVICE, pGraphics->isScreen(), nullptr, pVDev);
-        pVirGraphics->SetLayout( SalLayoutFlags::NONE );   // by default no! mirroring for VirtualDevices, can be enabled with EnableRTL()
-        pVirGraphics->setHDC(hDC);
-        if ( pSalData->mhDitherPal && pVirGraphics->isScreen() )
-        {
-            pVirGraphics->setDefPal(SelectPalette( hDC, pSalData->mhDitherPal, TRUE ));
-            RealizePalette( hDC );
-        }
-        pVirGraphics->InitGraphics();
-
-        pVDev->setGraphics(pVirGraphics);
-
-        return pVDev;
+        pVirGraphics->setDefPal(SelectPalette( hDC, pSalData->mhDitherPal, TRUE ));
+        RealizePalette( hDC );
     }
-    else
-    {
-        if ( hBmp )
-            DeleteBitmap( hBmp );
-        return nullptr;
-    }
+
+    pVirGraphics->InitGraphics();
+    pVDev->setGraphics(pVirGraphics);
+
+    return std::unique_ptr<SalVirtualDevice>(pVDev);
 }
 
 WinSalVirtualDevice::WinSalVirtualDevice(HDC hDC, HBITMAP hBMP, sal_uInt16 nBitCount, bool bForeignDC, long nWidth, long nHeight)
     : mhLocalDC(hDC),          // HDC or 0 for Cache Device
       mhBmp(hBMP),             // Memory Bitmap
-      mpGraphics(nullptr),     // current VirDev graphics
       mnBitCount(nBitCount),   // BitCount (0 or 1)
       mbGraphics(false),       // is Graphics used
       mbForeignDC(bForeignDC), // uses a foreign DC instead of a bitmap
@@ -184,10 +179,6 @@ WinSalVirtualDevice::~WinSalVirtualDevice()
         SelectBitmap( mpGraphics->getHDC(), mhDefBmp );
     if( !mbForeignDC )
         DeleteDC( mpGraphics->getHDC() );
-    if( mhBmp )
-        DeleteBitmap( mhBmp );
-    delete mpGraphics;
-    mpGraphics = nullptr;
 }
 
 SalGraphics* WinSalVirtualDevice::AcquireGraphics()
@@ -198,7 +189,7 @@ SalGraphics* WinSalVirtualDevice::AcquireGraphics()
     if ( mpGraphics )
         mbGraphics = true;
 
-    return mpGraphics;
+    return mpGraphics.get();
 }
 
 void WinSalVirtualDevice::ReleaseGraphics( SalGraphics* )
@@ -210,35 +201,26 @@ bool WinSalVirtualDevice::SetSize( long nDX, long nDY )
 {
     if( mbForeignDC || !mhBmp )
         return true;    // ???
-    else
+
+    HBITMAP hNewBmp = ImplCreateVirDevBitmap(getHDC(), nDX, nDY, mnBitCount,
+                                             &o3tl::temporary<void*>(nullptr));
+    if (!hNewBmp)
     {
-        void *pDummy;
-        HBITMAP hNewBmp = ImplCreateVirDevBitmap(getHDC(), nDX, nDY, mnBitCount, &pDummy);
-        if ( hNewBmp )
-        {
-            mnWidth = nDX;
-            mnHeight = nDY;
-
-            SelectBitmap( getHDC(), hNewBmp );
-            DeleteBitmap( mhBmp );
-            mhBmp = hNewBmp;
-
-            if (mpGraphics)
-            {
-                WinOpenGLSalGraphicsImpl *pImpl;
-                pImpl = dynamic_cast< WinOpenGLSalGraphicsImpl * >(mpGraphics->GetImpl());
-                if (pImpl)
-                    pImpl->Init();
-            }
-            return true;
-        }
-        else
-        {
-            mnWidth = 0;
-            mnHeight = 0;
-            return false;
-        }
+        mnWidth = 0;
+        mnHeight = 0;
+        return false;
     }
+
+    mnWidth = nDX;
+    mnHeight = nDY;
+
+    SelectBitmap(getHDC(), hNewBmp);
+    mhBmp.reset(hNewBmp);
+
+    if (mpGraphics)
+        mpGraphics->GetImpl()->Init();
+
+    return true;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

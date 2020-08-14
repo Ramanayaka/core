@@ -23,13 +23,12 @@
 #include <sal/config.h>
 #include <sal/types.h>
 #include <sfx2/dllapi.h>
-#include <sfx2/msg.hxx>
 #include <sfx2/groupid.hxx>
-#include <memory>
 #include <vector>
 
 class SfxInterface;
 class SfxSlot;
+class SfxViewFrame;
 
 class SFX2_DLLPUBLIC SfxSlotPool
 {
@@ -48,8 +47,6 @@ public:
     ~SfxSlotPool();
 
     void                RegisterInterface( SfxInterface& rFace );
-    void                ReleaseInterface( SfxInterface& rFace );
-    SfxInterface*       FirstInterface();
 
     static SfxSlotPool& GetSlotPool( SfxViewFrame *pFrame=nullptr );
 

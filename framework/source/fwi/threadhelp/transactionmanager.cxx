@@ -18,10 +18,9 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
-#include <cassert>
-
-#include <threadhelp/transactionmanager.hxx>
+#include <framework/transactionmanager.hxx>
 
 #include <com/sun/star/lang/DisposedException.hpp>
 
@@ -70,29 +69,29 @@ TransactionManager::~TransactionManager()
 void  TransactionManager::setWorkingMode( EWorkingMode eMode )
 {
     // Safe member access.
-    ::osl::ClearableMutexGuard  aAccessGuard( m_aAccessLock );
-    bool                        bWaitFor    = false;
-    // Change working mode first!
-    if  (
-            ( m_eWorkingMode == E_INIT        && eMode == E_WORK        ) ||
-            ( (m_eWorkingMode == E_WORK || m_eWorkingMode == E_INIT) && eMode == E_BEFORECLOSE ) ||
-            ( m_eWorkingMode == E_BEFORECLOSE && eMode == E_CLOSE       ) ||
-            ( m_eWorkingMode == E_CLOSE       && eMode == E_INIT        )
-        )
+    bool bWaitFor = false;
     {
-        m_eWorkingMode = eMode;
-        if( m_eWorkingMode == E_BEFORECLOSE || m_eWorkingMode == E_CLOSE )
+        osl::MutexGuard aAccessGuard(m_aAccessLock);
+        // Change working mode first!
+        if (
+            (m_eWorkingMode == E_INIT && eMode == E_WORK) ||
+            ((m_eWorkingMode == E_WORK || m_eWorkingMode == E_INIT) && eMode == E_BEFORECLOSE) ||
+            (m_eWorkingMode == E_BEFORECLOSE && eMode == E_CLOSE) ||
+            (m_eWorkingMode == E_CLOSE && eMode == E_INIT)
+            )
         {
-            bWaitFor = true;
+            m_eWorkingMode = eMode;
+            if (m_eWorkingMode == E_BEFORECLOSE || m_eWorkingMode == E_CLOSE)
+            {
+                bWaitFor = true;
+            }
         }
     }
-
     // Wait for current existing transactions then!
     // (Only necessary for changing to E_BEFORECLOSE or E_CLOSE!...
-    // otherwise; if you wait at setting E_WORK another thread could finish a acquire-call during our unlock() and wait() call
+    // otherwise; if you wait at setting E_WORK another thread could finish an acquire-call during our unlock() and wait() call
     // ... and we will wait forever here!!!)
     // Don't forget to release access mutex before.
-    aAccessGuard.clear();
     if( bWaitFor )
     {
         m_aBarrier.wait();
@@ -144,10 +143,10 @@ EWorkingMode TransactionManager::getWorkingMode() const
 
 /*-****************************************************************************************************
     @short      start new transaction
-    @descr      A guard should use this method to start a new transaction. He should looks for rejected
+    @descr      A guard should use this method to start a new transaction. He should look for rejected
                 calls to by using parameter eMode and eReason.
                 If call was not rejected your transaction will be non breakable during releasing your transaction
-                guard! BUT ... your code isn't threadsafe then! It's a transaction manager only ....
+                guard! BUT ... your code isn't threadsafe then! It's a transaction manager only...
 
     @seealso    method unregisterTransaction()
 
@@ -164,7 +163,7 @@ void  TransactionManager::registerTransaction( EExceptionMode eMode )
             // Help programmer to find out, why this exception is thrown!
             SAL_WARN( "fwk", "TransactionManager...: Owner instance not correctly initialized yet. Call was rejected! Normally it's an algorithm error ... wrong use of class!" );
             //ATTENTION: temp. disabled - till all bad code positions are detected and changed! */
-            // throw css::uno::RuntimeException( "TransactionManager...\nOwner instance not right initialized yet. Call was rejected! Normally it's an algorithm error... wrong using of class!\n", css::uno::Reference< css::uno::XInterface >() );
+            // throw css::uno::RuntimeException( "TransactionManager.: Owner instance not right initialized yet. Call was rejected! Normally it's an algorithm error... wrong using of class!\n", css::uno::Reference< css::uno::XInterface >() );
         }
         break;
     case E_WORK:
@@ -174,13 +173,13 @@ void  TransactionManager::registerTransaction( EExceptionMode eMode )
         {
             // Help programmer to find out, why this exception is thrown!
             SAL_WARN( "fwk", "TransactionManager...: Owner instance stand in close method. Call was rejected!" );
-            throw css::lang::DisposedException( "TransactionManager...\nOwner instance stand in close method. Call was rejected!" );
+            throw css::lang::DisposedException( "TransactionManager: Owner instance stand in close method. Call was rejected!" );
         }
         break;
     case E_CLOSE:
         // Help programmer to find out, why this exception is thrown!
         SAL_WARN( "fwk", "TransactionManager...: Owner instance already closed. Call was rejected!" );
-        throw css::lang::DisposedException( "TransactionManager...\nOwner instance already closed. Call was rejected!" );
+        throw css::lang::DisposedException( "TransactionManager: Owner instance already closed. Call was rejected!" );
     }
 
     // Register this new transaction.

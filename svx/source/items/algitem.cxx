@@ -17,26 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/svxitems.hrc>
-
-#include <tools/stream.hxx>
+#include <svx/strings.hrc>
+#include <osl/diagnose.h>
 #include <tools/mapunit.hxx>
-#include <com/sun/star/table/BorderLine.hpp>
-#include <com/sun/star/table/ShadowLocation.hpp>
-#include <com/sun/star/table/TableBorder.hpp>
-#include <com/sun/star/table/ShadowFormat.hpp>
-#include <com/sun/star/table/CellRangeAddress.hpp>
-#include <com/sun/star/table/CellContentType.hpp>
-#include <com/sun/star/table/TableOrientation.hpp>
-#include <com/sun/star/util/SortField.hpp>
-#include <com/sun/star/util/SortFieldType.hpp>
+#include <tools/UnitConversion.hxx>
 #include <com/sun/star/table/CellOrientation.hpp>
-#include <com/sun/star/table/CellAddress.hpp>
 
 #include <svx/algitem.hxx>
 #include <svx/dialmgr.hxx>
 #include <editeng/itemtype.hxx>
+#include <editeng/eerdll.hxx>
 #include <svx/unomid.hxx>
+
+#include <climits>
 
 using namespace ::com::sun::star;
 
@@ -50,17 +43,17 @@ SvxOrientationItem::SvxOrientationItem( const SvxCellOrientation eOrientation,
 }
 
 SvxOrientationItem::SvxOrientationItem( sal_Int32 nRotation, bool bStacked, const sal_uInt16 nId ) :
-    SfxEnumItem( nId, SvxCellOrientation::SVX_ORIENTATION_STANDARD )
+    SfxEnumItem( nId, SvxCellOrientation::Standard )
 {
     if( bStacked )
     {
-        SetValue( SVX_ORIENTATION_STACKED );
+        SetValue( SvxCellOrientation::Stacked );
     }
     else switch( nRotation )
     {
-        case 9000:  SetValue( SVX_ORIENTATION_BOTTOMTOP );  break;
-        case 27000: SetValue( SVX_ORIENTATION_TOPBOTTOM );  break;
-        default:    SetValue( SVX_ORIENTATION_STANDARD );
+        case 9000:  SetValue( SvxCellOrientation::BottomUp );  break;
+        case 27000: SetValue( SvxCellOrientation::TopBottom );  break;
+        default:    SetValue( SvxCellOrientation::Standard );
     }
 }
 
@@ -70,7 +63,8 @@ bool SvxOrientationItem::GetPresentation
     SfxItemPresentation /*ePres*/,
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
-    OUString&           rText, const IntlWrapper * ) const
+    OUString&           rText,
+    const IntlWrapper& ) const
 {
     rText = GetValueText( GetValue() );
     return true;
@@ -80,12 +74,12 @@ bool SvxOrientationItem::GetPresentation
 bool SvxOrientationItem::QueryValue( uno::Any& rVal, sal_uInt8 /*nMemberId*/ ) const
 {
     table::CellOrientation eUno = table::CellOrientation_STANDARD;
-    switch ( (SvxCellOrientation)GetValue() )
+    switch ( GetValue() )
     {
-    case SVX_ORIENTATION_STANDARD:  eUno = table::CellOrientation_STANDARD;  break;
-    case SVX_ORIENTATION_TOPBOTTOM: eUno = table::CellOrientation_TOPBOTTOM; break;
-    case SVX_ORIENTATION_BOTTOMTOP: eUno = table::CellOrientation_BOTTOMTOP; break;
-    case SVX_ORIENTATION_STACKED:   eUno = table::CellOrientation_STACKED;    break;
+        case SvxCellOrientation::Standard:  eUno = table::CellOrientation_STANDARD;  break;
+        case SvxCellOrientation::TopBottom: eUno = table::CellOrientation_TOPBOTTOM; break;
+        case SvxCellOrientation::BottomUp:  eUno = table::CellOrientation_BOTTOMTOP; break;
+        case SvxCellOrientation::Stacked:   eUno = table::CellOrientation_STACKED;   break;
     }
     rVal <<= eUno;
     return true;
@@ -99,52 +93,39 @@ bool SvxOrientationItem::PutValue( const uno::Any& rVal, sal_uInt8 /*nMemberId*/
         sal_Int32 nValue = 0;
         if(!(rVal >>= nValue))
             return false;
-        eOrient = (table::CellOrientation)nValue;
+        eOrient = static_cast<table::CellOrientation>(nValue);
     }
-    SvxCellOrientation eSvx = SVX_ORIENTATION_STANDARD;
+    SvxCellOrientation eSvx = SvxCellOrientation::Standard;
     switch (eOrient)
     {
-        case table::CellOrientation_STANDARD:   eSvx = SVX_ORIENTATION_STANDARD;  break;
-        case table::CellOrientation_TOPBOTTOM:  eSvx = SVX_ORIENTATION_TOPBOTTOM; break;
-        case table::CellOrientation_BOTTOMTOP:  eSvx = SVX_ORIENTATION_BOTTOMTOP; break;
-        case table::CellOrientation_STACKED:    eSvx = SVX_ORIENTATION_STACKED;   break;
+        case table::CellOrientation_STANDARD:   eSvx = SvxCellOrientation::Standard;  break;
+        case table::CellOrientation_TOPBOTTOM:  eSvx = SvxCellOrientation::TopBottom; break;
+        case table::CellOrientation_BOTTOMTOP:  eSvx = SvxCellOrientation::BottomUp; break;
+        case table::CellOrientation_STACKED:    eSvx = SvxCellOrientation::Stacked;   break;
         default: ; //prevent warning
     }
     SetValue( eSvx );
     return true;
 }
 
-
-OUString SvxOrientationItem::GetValueText( sal_uInt16 nVal )
+OUString SvxOrientationItem::GetValueText( SvxCellOrientation nVal )
 {
-    DBG_ASSERT( nVal <= SVX_ORIENTATION_STACKED, "enum overflow!" );
-    return SvxResId(RID_SVXITEMS_ORI_STANDARD + nVal);
+    return SvxResId(RID_SVXITEMS_ORI_STANDARD + static_cast<int>(nVal));
 }
 
-
-SfxPoolItem* SvxOrientationItem::Clone( SfxItemPool* ) const
+SvxOrientationItem* SvxOrientationItem::Clone( SfxItemPool* ) const
 {
     return new SvxOrientationItem( *this );
 }
 
-
-SfxPoolItem* SvxOrientationItem::Create( SvStream& rStream, sal_uInt16 ) const
-{
-    sal_uInt16 nVal;
-    rStream.ReadUInt16( nVal );
-    return new SvxOrientationItem( (SvxCellOrientation)nVal, Which() );
-}
-
-
 sal_uInt16 SvxOrientationItem::GetValueCount() const
 {
-    return SVX_ORIENTATION_STACKED + 1; // last enum value + 1
+    return static_cast<sal_uInt16>(SvxCellOrientation::Stacked) + 1; // last enum value + 1
 }
-
 
 bool SvxOrientationItem::IsStacked() const
 {
-    return GetValue() == SVX_ORIENTATION_STACKED;
+    return GetValue() == SvxCellOrientation::Stacked;
 }
 
 sal_Int32 SvxOrientationItem::GetRotation( sal_Int32 nStdAngle ) const
@@ -152,8 +133,8 @@ sal_Int32 SvxOrientationItem::GetRotation( sal_Int32 nStdAngle ) const
     sal_Int32 nAngle = nStdAngle;
     switch( GetValue() )
     {
-        case SVX_ORIENTATION_BOTTOMTOP: nAngle = 9000;break;
-        case SVX_ORIENTATION_TOPBOTTOM: nAngle = 27000;break;
+        case SvxCellOrientation::BottomUp: nAngle = 9000;break;
+        case SvxCellOrientation::TopBottom: nAngle = 27000;break;
         default: ; //prevent warning
     }
     return nAngle;
@@ -186,57 +167,46 @@ SvxMarginItem::SvxMarginItem( sal_Int16 nLeft,
 }
 
 
-SvxMarginItem::SvxMarginItem( const SvxMarginItem& rItem ) :
-
-    SfxPoolItem( rItem.Which() )
-{
-    nLeftMargin = rItem.nLeftMargin;
-    nTopMargin = rItem.nTopMargin;
-    nRightMargin = rItem.nRightMargin;
-    nBottomMargin = rItem.nBottomMargin;
-}
-
-
 bool SvxMarginItem::GetPresentation
 (
     SfxItemPresentation ePres,
     MapUnit             eCoreUnit,
     MapUnit             ePresUnit,
-    OUString&           rText, const IntlWrapper *pIntl
+    OUString&           rText, const IntlWrapper& rIntl
 )   const
 {
-    OUString cpDelimTmp = OUString(cpDelim);
+    OUString cpDelimTmp(cpDelim);
 
     switch ( ePres )
     {
         case SfxItemPresentation::Nameless:
         {
-            rText = GetMetricText( (long)nLeftMargin, eCoreUnit, ePresUnit, pIntl ) +
+            rText = GetMetricText( static_cast<long>(nLeftMargin), eCoreUnit, ePresUnit, &rIntl ) +
                         cpDelimTmp +
-                        GetMetricText( (long)nTopMargin, eCoreUnit, ePresUnit, pIntl ) +
+                        GetMetricText( static_cast<long>(nTopMargin), eCoreUnit, ePresUnit, &rIntl ) +
                         cpDelimTmp +
-                        GetMetricText( (long)nRightMargin, eCoreUnit, ePresUnit, pIntl ) +
+                        GetMetricText( static_cast<long>(nRightMargin), eCoreUnit, ePresUnit, &rIntl ) +
                         cpDelimTmp +
-                        GetMetricText( (long)nBottomMargin, eCoreUnit, ePresUnit, pIntl );
+                        GetMetricText( static_cast<long>(nBottomMargin), eCoreUnit, ePresUnit, &rIntl );
             return true;
         }
         case SfxItemPresentation::Complete:
         {
             rText = SvxResId(RID_SVXITEMS_MARGIN_LEFT) +
-                        GetMetricText( (long)nLeftMargin, eCoreUnit, ePresUnit, pIntl ) +
-                        " " + EditResId::GetString(GetMetricId(ePresUnit)) +
+                        GetMetricText( static_cast<long>(nLeftMargin), eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit)) +
                         cpDelimTmp +
                         SvxResId(RID_SVXITEMS_MARGIN_TOP) +
-                        GetMetricText( (long)nTopMargin, eCoreUnit, ePresUnit, pIntl ) +
-                        " " + EditResId::GetString(GetMetricId(ePresUnit)) +
+                        GetMetricText( static_cast<long>(nTopMargin), eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit)) +
                         cpDelimTmp +
                         SvxResId(RID_SVXITEMS_MARGIN_RIGHT) +
-                        GetMetricText( (long)nRightMargin, eCoreUnit, ePresUnit, pIntl ) +
-                        " " + EditResId::GetString(GetMetricId(ePresUnit)) +
+                        GetMetricText( static_cast<long>(nRightMargin), eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit)) +
                         cpDelimTmp +
                         SvxResId(RID_SVXITEMS_MARGIN_BOTTOM) +
-                        GetMetricText( (long)nBottomMargin, eCoreUnit, ePresUnit, pIntl ) +
-                        " " + EditResId::GetString(GetMetricId(ePresUnit));
+                        GetMetricText( static_cast<long>(nBottomMargin), eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit));
             return true;
         }
         default: ; //prevent warning
@@ -255,36 +225,10 @@ bool SvxMarginItem::operator==( const SfxPoolItem& rItem ) const
              ( nBottomMargin == static_cast<const SvxMarginItem&>(rItem).nBottomMargin ) );
 }
 
-
-SfxPoolItem* SvxMarginItem::Clone( SfxItemPool* ) const
+SvxMarginItem* SvxMarginItem::Clone( SfxItemPool* ) const
 {
     return new SvxMarginItem(*this);
 }
-
-
-SfxPoolItem* SvxMarginItem::Create( SvStream& rStream, sal_uInt16 ) const
-{
-    sal_Int16   nLeft;
-    sal_Int16   nTop;
-    sal_Int16   nRight;
-    sal_Int16   nBottom;
-    rStream.ReadInt16( nLeft );
-    rStream.ReadInt16( nTop );
-    rStream.ReadInt16( nRight );
-    rStream.ReadInt16( nBottom );
-    return new SvxMarginItem( nLeft, nTop, nRight, nBottom, Which() );
-}
-
-
-SvStream& SvxMarginItem::Store( SvStream &rStream, sal_uInt16 /*nItemVersion*/) const
-{
-    rStream.WriteInt16( nLeftMargin );
-    rStream.WriteInt16( nTopMargin );
-    rStream.WriteInt16( nRightMargin );
-    rStream.WriteInt16( nBottomMargin );
-    return rStream;
-}
-
 
 bool SvxMarginItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
 {
@@ -294,16 +238,16 @@ bool SvxMarginItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
     {
         //  now sign everything
         case MID_MARGIN_L_MARGIN:
-            rVal <<= (sal_Int32)( bConvert ? convertTwipToMm100(nLeftMargin) : nLeftMargin );
+            rVal <<= static_cast<sal_Int32>( bConvert ? convertTwipToMm100(nLeftMargin) : nLeftMargin );
             break;
         case MID_MARGIN_R_MARGIN:
-            rVal <<= (sal_Int32)( bConvert ? convertTwipToMm100(nRightMargin) : nRightMargin );
+            rVal <<= static_cast<sal_Int32>( bConvert ? convertTwipToMm100(nRightMargin) : nRightMargin );
             break;
         case MID_MARGIN_UP_MARGIN:
-            rVal <<= (sal_Int32)( bConvert ? convertTwipToMm100(nTopMargin) : nTopMargin );
+            rVal <<= static_cast<sal_Int32>( bConvert ? convertTwipToMm100(nTopMargin) : nTopMargin );
             break;
         case MID_MARGIN_LO_MARGIN:
-            rVal <<= (sal_Int32)( bConvert ? convertTwipToMm100(nBottomMargin) : nBottomMargin );
+            rVal <<= static_cast<sal_Int32>( bConvert ? convertTwipToMm100(nBottomMargin) : nBottomMargin );
             break;
         default:
             OSL_FAIL("unknown MemberId");
@@ -324,16 +268,16 @@ bool SvxMarginItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
     switch ( nMemberId & ~CONVERT_TWIPS )
     {
         case MID_MARGIN_L_MARGIN:
-            nLeftMargin = (sal_Int16)( bConvert ? convertMm100ToTwip(nVal) : nVal );
+            nLeftMargin = static_cast<sal_Int16>( bConvert ? convertMm100ToTwip(nVal) : nVal );
             break;
         case MID_MARGIN_R_MARGIN:
-            nRightMargin = (sal_Int16)( bConvert ? convertMm100ToTwip(nVal) : nVal );
+            nRightMargin = static_cast<sal_Int16>( bConvert ? convertMm100ToTwip(nVal) : nVal );
             break;
         case MID_MARGIN_UP_MARGIN:
-            nTopMargin = (sal_Int16)( bConvert ? convertMm100ToTwip(nVal) : nVal );
+            nTopMargin = static_cast<sal_Int16>( bConvert ? convertMm100ToTwip(nVal) : nVal );
             break;
         case MID_MARGIN_LO_MARGIN:
-            nBottomMargin = (sal_Int16)( bConvert ? convertMm100ToTwip(nVal) : nVal );
+            nBottomMargin = static_cast<sal_Int16>( bConvert ? convertMm100ToTwip(nVal) : nVal );
             break;
         default:
             OSL_FAIL("unknown MemberId");

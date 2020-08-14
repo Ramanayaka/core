@@ -21,24 +21,14 @@
 #include <config.h>
 #endif
 
-#include <uno/mapping.hxx>
-#include <uno/environment.hxx>
 #include <cppuhelper/bootstrap.hxx>
-#include <cppuhelper/component_context.hxx>
+#include <osl/diagnose.h>
 #include "accesslog.hxx"
 #include <com/sun/star/embed/XTransactedObject.hpp>
-#include <comphelper/processfactory.hxx>
 #include <com/sun/star/io/XStream.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/document/XDocumentSubStorageSupplier.hpp>
-#include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/embed/ElementModes.hpp>
-#include <comphelper/types.hxx>
-#include "hsqldb/HStorageAccess.hxx"
-#include "hsqldb/HStorageMap.hxx"
-
-#include <jvmaccess/virtualmachine.hxx>
-#include <com/sun/star/lang/XSingleComponentFactory.hpp>
+#include <hsqldb/HStorageAccess.hxx>
+#include <hsqldb/HStorageMap.hxx>
 
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::uno;
@@ -79,7 +69,8 @@ extern "C" SAL_JNI_EXPORT void JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stora
     DataLogFile aDataLog( env, name, "output" );
     write_to_storage_stream_from_buffer( env, obj_this, name, key, buffer, off, len, &aDataLog );
 #else
-    write_to_storage_stream_from_buffer( env, obj_this, name, key, buffer, off, len );
+    (void)obj_this;
+    write_to_storage_stream_from_buffer( env, name, key, buffer, off, len );
 #endif
 }
 
@@ -97,7 +88,8 @@ extern "C" SAL_JNI_EXPORT void JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stora
     DataLogFile aDataLog( env, name, "output" );
     write_to_storage_stream_from_buffer( env, obj_this, name, key, buffer, 0, env->GetArrayLength( buffer ), &aDataLog );
 #else
-    write_to_storage_stream_from_buffer( env, obj_this, name, key, buffer, 0, env->GetArrayLength( buffer ) );
+    (void)obj_this;
+    write_to_storage_stream_from_buffer( env, name, key, buffer, 0, env->GetArrayLength( buffer ) );
 #endif
 }
 
@@ -117,7 +109,7 @@ extern "C" SAL_JNI_EXPORT void JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stora
 #endif
 
     std::shared_ptr<StreamHelper> pHelper = StorageContainer::getRegisteredStream(env,name,key);
-    Reference< XOutputStream> xFlush = pHelper.get() ? pHelper->getOutputStream() : Reference< XOutputStream>();
+    Reference< XOutputStream> xFlush = pHelper ? pHelper->getOutputStream() : Reference< XOutputStream>();
     if ( xFlush.is() )
         try
         {
@@ -145,9 +137,10 @@ extern "C" SAL_JNI_EXPORT void JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stora
     OperationLogFile( env, name, "output" ).logOperation( "write( int )" );
 
     DataLogFile aDataLog( env, name, "output" );
-    write_to_storage_stream( env, obj_this, name, key, b, &aDataLog );
+    write_to_storage_stream( env, name, key, b, &aDataLog );
 #else
-    write_to_storage_stream( env, obj_this, name, key, b );
+    (void)obj_this;
+    write_to_storage_stream( env, name, key, b );
 #endif
 }
 
@@ -183,7 +176,7 @@ extern "C" SAL_JNI_EXPORT void JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stora
     OperationLogFile( env, name, "output" ).logOperation( "sync" );
 #endif
     std::shared_ptr< StreamHelper > pStream = StorageContainer::getRegisteredStream( env, name, key );
-    Reference< XOutputStream > xFlush = pStream.get() ? pStream->getOutputStream() : Reference< XOutputStream>();
+    Reference< XOutputStream > xFlush = pStream ? pStream->getOutputStream() : Reference< XOutputStream>();
     OSL_ENSURE( xFlush.is(), "StorageNativeOutputStream::sync: could not retrieve an output stream!" );
     if ( xFlush.is() )
     {

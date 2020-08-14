@@ -21,19 +21,16 @@
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/range/b1drange.hxx>
 #include <basegfx/range/b2dpolyrange.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <basegfx/polygon/b2dpolypolygoncutter.hxx>
+#include <osl/diagnose.h>
 
 #include "layer.hxx"
 
 using namespace ::com::sun::star;
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         Layer::Layer( Dummy                     ) :
             maViewEntries(),
             maBounds(),
@@ -78,9 +75,8 @@ namespace slideshow
                 pNewLayer = rNewView->createViewLayer(maBounds);
 
             // add to local list
-            maViewEntries.push_back(
-                ViewEntry( rNewView,
-                           pNewLayer ));
+            maViewEntries.emplace_back( rNewView,
+                           pNewLayer );
 
             return maViewEntries.back().mpViewLayer;
         }
@@ -216,8 +212,8 @@ namespace slideshow
                 // clipping, and render each shape that intersects with
                 // the calculated update area
                 ::basegfx::B2DPolyPolygon aClip( maUpdateAreas.solveCrossovers() );
-                aClip = ::basegfx::tools::stripNeutralPolygons(aClip);
-                aClip = ::basegfx::tools::stripDispensablePolygons(aClip);
+                aClip = ::basegfx::utils::stripNeutralPolygons(aClip);
+                aClip = ::basegfx::utils::stripDispensablePolygons(aClip);
 
                 // actually, if there happen to be shapes with zero
                 // update area in the maUpdateAreas vector, the
@@ -271,7 +267,6 @@ namespace slideshow
             return LayerSharedPtr( new Layer );
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

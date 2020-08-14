@@ -19,10 +19,10 @@
 #ifndef INCLUDED_COM_SUN_STAR_UNO_TYPE_H
 #define INCLUDED_COM_SUN_STAR_UNO_TYPE_H
 
-#include <typelib/typedescription.h>
-#include <com/sun/star/uno/TypeClass.hdl>
-#include <rtl/ustring.hxx>
-#include <rtl/alloc.h>
+#include "typelib/typedescription.h"
+#include "com/sun/star/uno/TypeClass.hdl"
+#include "rtl/ustring.hxx"
+#include "rtl/alloc.h"
 
 
 namespace com
@@ -132,7 +132,7 @@ public:
         @return type class of set type
     */
     TypeClass SAL_CALL getTypeClass() const
-        { return (TypeClass)_pType->eTypeClass; }
+        { return static_cast<TypeClass>(_pType->eTypeClass); }
 
     /** Gets the name of the set type.
 
@@ -179,7 +179,7 @@ public:
     */
     bool SAL_CALL operator == ( const Type & rType ) const
         { return ::typelib_typedescriptionreference_equals( _pType, rType._pType ); }
-    /** Unequality operator: Compares two types.
+    /** Inequality operator: Compares two types.
 
         @param rType another type
         @return false if both types refer the same type, true otherwise

@@ -20,15 +20,15 @@
 #ifndef INCLUDED_OOX_SOURCE_DRAWINGML_DIAGRAM_DIAGRAMDEFINITIONCONTEXT_HXX
 #define INCLUDED_OOX_SOURCE_DRAWINGML_DIAGRAM_DIAGRAMDEFINITIONCONTEXT_HXX
 
-#include "oox/core/contexthandler2.hxx"
+#include <oox/core/contexthandler2.hxx>
 #include "diagram.hxx"
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 class DiagramDefinitionContext : public ::oox::core::ContextHandler2
 {
 public:
-    DiagramDefinitionContext( ::oox::core::ContextHandler2Helper& rParent, const ::oox::AttributeList& rAttributes, const DiagramLayoutPtr &pLayout );
+    DiagramDefinitionContext( ::oox::core::ContextHandler2Helper const & rParent, const ::oox::AttributeList& rAttributes, const DiagramLayoutPtr &pLayout );
     virtual ~DiagramDefinitionContext() override;
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
@@ -37,7 +37,7 @@ private:
     DiagramLayoutPtr mpLayout;
 };
 
-} }
+}
 
 #endif
 

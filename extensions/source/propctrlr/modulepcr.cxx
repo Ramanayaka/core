@@ -19,18 +19,15 @@
 
 #include "modulepcr.hxx"
 
-#include <rtl/instance.hxx>
-#include <osl/getglobalmutex.hxx>
-
+#include <unotools/resmgr.hxx>
 
 namespace pcr
 {
-
-
-    IMPLEMENT_MODULE( PcrModule, "pcr" )
-
+    OUString PcrRes(const char* pId)
+    {
+        return Translate::get(pId, Translate::Create("pcr"));
+    }
 
 } // namespace pcr
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

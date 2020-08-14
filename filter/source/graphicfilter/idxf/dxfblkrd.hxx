@@ -20,7 +20,7 @@
 #ifndef INCLUDED_FILTER_SOURCE_GRAPHICFILTER_IDXF_DXFBLKRD_HXX
 #define INCLUDED_FILTER_SOURCE_GRAPHICFILTER_IDXF_DXFBLKRD_HXX
 
-#include <dxfentrd.hxx>
+#include "dxfentrd.hxx"
 
 
 //---------------- A Block (= Set of Entities) --------------------------
@@ -45,7 +45,7 @@ public:
 
     void Read(DXFGroupReader & rDGR);
         // reads the block (including entities) from a dxf file
-        // by rGDR until a ENDBLK, ENDSEC or EOF.
+        // by rGDR until an ENDBLK, ENDSEC or EOF.
 };
 
 
@@ -54,16 +54,16 @@ public:
 
 class DXFBlocks {
 
-public:
-
     DXFBlock * pFirst;
         // list of blocks, READ ONLY!
+
+public:
 
     DXFBlocks();
     ~DXFBlocks();
 
     void Read(DXFGroupReader & rDGR);
-        // reads all block per rDGR until a ENDSEC or EOF.
+        // reads all block per rDGR until an ENDSEC or EOF.
 
     DXFBlock * Search(OString const& rName) const;
         // looks for a block with the name, return NULL if not successful

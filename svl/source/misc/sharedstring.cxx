@@ -44,7 +44,7 @@ SharedString::SharedString( const SharedString& r ) : mpData(r.mpData), mpDataIg
         rtl_uString_acquire(mpDataIgnoreCase);
 }
 
-SharedString::SharedString( SharedString&& r ) : mpData(r.mpData), mpDataIgnoreCase(r.mpDataIgnoreCase)
+SharedString::SharedString(SharedString&& r) noexcept : mpData(r.mpData), mpDataIgnoreCase(r.mpDataIgnoreCase)
 {
     r.mpData = nullptr;
     r.mpDataIgnoreCase = nullptr;
@@ -60,6 +60,9 @@ SharedString::~SharedString()
 
 SharedString& SharedString::operator= ( const SharedString& r )
 {
+    if(this == &r)
+        return *this;
+
     if (mpData)
         rtl_uString_release(mpData);
     if (mpDataIgnoreCase)
@@ -76,7 +79,7 @@ SharedString& SharedString::operator= ( const SharedString& r )
     return *this;
 }
 
-SharedString& SharedString::operator= ( SharedString&& r )
+SharedString& SharedString::operator=(SharedString&& r) noexcept
 {
     if (mpData)
         rtl_uString_release(mpData);
@@ -94,7 +97,8 @@ SharedString& SharedString::operator= ( SharedString&& r )
 
 bool SharedString::operator== ( const SharedString& r ) const
 {
-    // Only compare case sensitive strings.
+    // Compare only the original (not case-folded) string.
+
     if (mpData == r.mpData)
         return true;
 

@@ -20,15 +20,15 @@
 #ifndef INCLUDED_OOX_DRAWINGML_TABLE_TABLECELLCONTEXT_HXX
 #define INCLUDED_OOX_DRAWINGML_TABLE_TABLECELLCONTEXT_HXX
 
-#include <oox/drawingml/shapecontext.hxx>
+#include <oox/core/contexthandler2.hxx>
 #include <drawingml/table/tablecell.hxx>
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
 class TableCellContext : public ::oox::core::ContextHandler2
 {
 public:
-    TableCellContext( ::oox::core::ContextHandler2Helper& rParent,
+    TableCellContext( ::oox::core::ContextHandler2Helper const & rParent,
         const ::oox::AttributeList& rAttribs, TableCell& rTableCell );
     virtual ~TableCellContext() override;
 
@@ -39,7 +39,7 @@ private:
     TableCell& mrTableCell;
 };
 
-} } }
+}
 
 #endif
 

@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "extended/AccessibleBrowseBoxTableBase.hxx"
-#include <svtools/accessibletableprovider.hxx>
-#include <tools/multisel.hxx>
+#include <extended/AccessibleBrowseBoxTableBase.hxx>
+#include <vcl/accessibletableprovider.hxx>
 #include <comphelper/sequence.hxx>
-#include <comphelper/servicehelper.hxx>
+#include <com/sun/star/accessibility/AccessibleRole.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
 
 using css::uno::Reference;
@@ -30,7 +30,6 @@ using css::uno::Any;
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
-using namespace ::svt;
 
 
 namespace accessibility {
@@ -40,13 +39,9 @@ namespace accessibility {
 
 AccessibleBrowseBoxTableBase::AccessibleBrowseBoxTableBase(
         const Reference< XAccessible >& rxParent,
-        IAccessibleTableProvider&                      rBrowseBox,
-        AccessibleBrowseBoxObjType      eObjType ) :
+        vcl::IAccessibleTableProvider& rBrowseBox,
+        vcl::AccessibleBrowseBoxObjType eObjType ) :
     BrowseBoxAccessibleElement( rxParent, rBrowseBox,nullptr, eObjType )
-{
-}
-
-AccessibleBrowseBoxTableBase::~AccessibleBrowseBoxTableBase()
 {
 }
 
@@ -61,6 +56,7 @@ sal_Int32 SAL_CALL AccessibleBrowseBoxTableBase::getAccessibleChildCount()
 
 sal_Int16 SAL_CALL AccessibleBrowseBoxTableBase::getAccessibleRole()
 {
+    osl::MutexGuard aGuard( getMutex() );
     ensureIsAlive();
     return AccessibleRole::TABLE;
 }
@@ -241,7 +237,7 @@ void AccessibleBrowseBoxTableBase::implSelectRow( sal_Int32 nRow, bool bSelect )
 
 void AccessibleBrowseBoxTableBase::implSelectColumn( sal_Int32 nColumnPos, bool bSelect )
 {
-    mpBrowseBox->SelectColumn( (sal_uInt16)nColumnPos, bSelect );
+    mpBrowseBox->SelectColumn( static_cast<sal_uInt16>(nColumnPos), bSelect );
 }
 
 sal_Int32 AccessibleBrowseBoxTableBase::implGetSelectedRowCount() const

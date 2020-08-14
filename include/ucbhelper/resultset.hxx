@@ -20,11 +20,8 @@
 #ifndef INCLUDED_UCBHELPER_RESULTSET_HXX
 #define INCLUDED_UCBHELPER_RESULTSET_HXX
 
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/ucb/ResultSetException.hpp>
-#include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/ucb/XContentAccess.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
@@ -34,10 +31,12 @@
 
 #include <rtl/ref.hxx>
 #include <salhelper/simplereferenceobject.hxx>
-#include <cppuhelper/weak.hxx>
-#include <ucbhelper/macros.hxx>
+#include <cppuhelper/implbase.hxx>
 #include <ucbhelper/ucbhelperdllapi.h>
 #include <memory>
+
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::ucb { class XCommandEnvironment; }
 
 namespace ucbhelper {
 
@@ -57,17 +56,16 @@ struct ResultSet_Impl;
  *
  * @see ResultSetDataSupplier
  */
-class UCBHELPER_DLLPUBLIC ResultSet :
-                public cppu::OWeakObject,
-                public css::lang::XTypeProvider,
-                public css::lang::XServiceInfo,
-                public css::lang::XComponent,
-                public css::ucb::XContentAccess,
-                public css::sdbc::XResultSet,
-                public css::sdbc::XResultSetMetaDataSupplier,
-                public css::sdbc::XRow,
-                public css::sdbc::XCloseable,
-                public css::beans::XPropertySet
+class UCBHELPER_DLLPUBLIC ResultSet final :
+                public cppu::WeakImplHelper<
+                    css::lang::XServiceInfo,
+                    css::lang::XComponent,
+                    css::ucb::XContentAccess,
+                    css::sdbc::XResultSet,
+                    css::sdbc::XResultSetMetaDataSupplier,
+                    css::sdbc::XRow,
+                    css::sdbc::XCloseable,
+                    css::beans::XPropertySet>
 {
     std::unique_ptr<ResultSet_Impl> m_pImpl;
 
@@ -100,19 +98,6 @@ public:
             const rtl::Reference< ResultSetDataSupplier >& rDataSupplier,
             const css::uno::Reference< css::ucb::XCommandEnvironment >& rxEnv );
     virtual ~ResultSet() override;
-
-    // XInterface
-    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire()
-        throw() override;
-    virtual void SAL_CALL release()
-        throw() override;
-
-    // XTypeProvider
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL
-    getImplementationId() override;
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL
-    getTypes() override;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
@@ -259,7 +244,7 @@ public:
       * @param rEvt is a property change event.
       */
     void propertyChanged(
-                const css::beans::PropertyChangeEvent& rEvt );
+                const css::beans::PropertyChangeEvent& rEvt ) const;
 
     /**
       * This method should be called by the data supplier for the result set
@@ -283,7 +268,7 @@ public:
       * @return a sequence of properties.
       */
     const css::uno::Sequence< css::beans::Property >&
-    getProperties();
+    getProperties() const;
 
     /**
       * This method returns the environment to use for interactions, progress
@@ -292,7 +277,7 @@ public:
       * @return an environment or an empty reference.
       */
     const css::uno::Reference< css::ucb::XCommandEnvironment >&
-    getEnvironment();
+    getEnvironment() const;
 };
 
 
@@ -409,7 +394,7 @@ public:
 
     /**
      * This method is called to instruct the supplier to release the (possibly
-     * presnt) property values at the given index.
+     * present) property values at the given index.
      *
      * @param nIndex is the zero-based index within the logical data array
      *               of the supplier.

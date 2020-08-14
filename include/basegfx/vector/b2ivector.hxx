@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_VECTOR_B2IVECTOR_HXX
-#define INCLUDED_BASEGFX_VECTOR_B2IVECTOR_HXX
+#pragma once
 
 #include <ostream>
 
 #include <basegfx/tuple/b2ituple.hxx>
-#include <basegfx/vector/b2enums.hxx>
 #include <basegfx/basegfxdllapi.h>
 
 namespace basegfx
@@ -128,7 +126,5 @@ namespace basegfx
     }
 
 } // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_VECTOR_B2IVECTOR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,12 +22,10 @@
 
 #include <vcl/dllapi.h>
 #include <sal/types.h>
-#include <rtl/string.hxx>
 #include <tools/color.hxx>
 #include <tools/poly.hxx>
 #include <vcl/graph.hxx>
 
-#include <memory>
 #include <vector>
 
 class SvStream;
@@ -323,8 +321,7 @@ public:
 
      */
     void            getTransform        ( Transform& ) const;
-    /// deprecated
-    bool            IsTiling            () const { return mbTiling;}
+
     /** Query state of texture tiling
 
         @return true, if texture is tiled, false, if output only once.

@@ -18,10 +18,8 @@
  */
 #include "vbalistlevel.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
 #include <com/sun/star/style/NumberingType.hpp>
 #include <ooo/vba/word/WdListNumberStyle.hpp>
-#include <ooo/vba/word/WdTrailingCharacter.hpp>
 #include <com/sun/star/text/HoriOrientation.hpp>
 #include <ooo/vba/word/WdListLevelAlignment.hpp>
 
@@ -312,7 +310,7 @@ void SAL_CALL SwVbaListLevel::setResetOnHigher( ::sal_Int32 /*_resetonhigher*/ )
 
 void SAL_CALL SwVbaListLevel::setStartAt( ::sal_Int32 _startat )
 {
-    sal_Int16 nStartWith = (sal_Int16)_startat;
+    sal_Int16 nStartWith = static_cast<sal_Int16>(_startat);
     pListHelper->setPropertyValueWithNameAndLevel( mnLevel, "StartWith", uno::makeAny( nStartWith ) );
 }
 
@@ -364,25 +362,23 @@ void SAL_CALL SwVbaListLevel::setTextPosition( float _textposition )
 
 void SAL_CALL SwVbaListLevel::setTrailingCharacter( ::sal_Int32 _trailingcharacter )
 {
-    sal_Int16 nLabelFollowedBy = (sal_Int16)_trailingcharacter;
+    sal_Int16 nLabelFollowedBy = static_cast<sal_Int16>(_trailingcharacter);
     pListHelper->setPropertyValueWithNameAndLevel( mnLevel, "LabelFollowedBy", uno::makeAny( nLabelFollowedBy ) );
 }
 
 OUString
 SwVbaListLevel::getServiceImplName()
 {
-    return OUString("SwVbaListLevel");
+    return "SwVbaListLevel";
 }
 
 uno::Sequence< OUString >
 SwVbaListLevel::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.ListLevel";
-    }
+        "ooo.vba.word.ListLevel"
+    };
     return aServiceNames;
 }
 

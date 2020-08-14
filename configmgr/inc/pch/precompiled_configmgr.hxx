@@ -13,19 +13,26 @@
  manual changes will be rewritten by the next run of update_pch.sh (which presumably
  also fixes all possible problems, so it's usually better to use it).
 
- Generated on 2015-11-14 14:16:28 using:
+ Generated on 2020-02-01 10:57:25 using:
  ./bin/update_pch configmgr configmgr --cutoff=6 --exclude:system --include:module --include:local
 
  If after updating build fails, use the following command to locate conflicting headers:
- ./bin/update_pch_bisect ./configmgr/inc/pch/precompiled_configmgr.hxx "/opt/lo/bin/make configmgr.build" --find-conflicts
+ ./bin/update_pch_bisect ./configmgr/inc/pch/precompiled_configmgr.hxx "make configmgr.build" --find-conflicts
 */
 
+#if PCH_LEVEL >= 1
 #include <cassert>
 #include <cstddef>
+#include <limits>
 #include <new>
+#include <ostream>
 #include <set>
+#include <string.h>
+#include <type_traits>
 #include <utility>
 #include <vector>
+#endif // PCH_LEVEL >= 1
+#if PCH_LEVEL >= 2
 #include <osl/conditn.hxx>
 #include <osl/diagnose.h>
 #include <osl/file.hxx>
@@ -35,8 +42,8 @@
 #include <osl/time.h>
 #include <rtl/alloc.h>
 #include <rtl/bootstrap.hxx>
-#include <rtl/byteseq.h>
 #include <rtl/character.hxx>
+#include <rtl/locale.h>
 #include <rtl/ref.hxx>
 #include <rtl/strbuf.hxx>
 #include <rtl/string.h>
@@ -52,26 +59,28 @@
 #include <sal/log.hxx>
 #include <sal/saldllapi.h>
 #include <sal/types.h>
-#include <salhelper/thread.hxx>
-#include <com/sun/star/container/NoSuchElementException.hpp>
+#endif // PCH_LEVEL >= 2
+#if PCH_LEVEL >= 3
 #include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/Type.h>
 #include <com/sun/star/uno/TypeClass.hdl>
-#include <com/sun/star/uno/XAggregation.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <cppu/cppudllapi.h>
 #include <cppu/unotype.hxx>
 #include <cppuhelper/cppuhelperdllapi.h>
 #include <cppuhelper/weak.hxx>
-#include <cppuhelper/weakref.hxx>
+#include <salhelper/thread.hxx>
 #include <typelib/typeclass.h>
 #include <typelib/typedescription.h>
 #include <typelib/uik.h>
+#include <uno/data.h>
 #include <xmlreader/span.hxx>
 #include <xmlreader/xmlreader.hxx>
+#endif // PCH_LEVEL >= 3
+#if PCH_LEVEL >= 4
+#endif // PCH_LEVEL >= 4
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

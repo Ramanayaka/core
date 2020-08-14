@@ -24,51 +24,43 @@
 #endif
 
 #include <com/sun/star/uno/Exception.hpp>
-#include <com/sun/star/datatransfer/XTransferable.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/graphic/GraphicProvider.hpp>
 #include <com/sun/star/graphic/XGraphicProvider.hpp>
 #include <com/sun/star/graphic/XGraphic.hpp>
-#include <com/sun/star/io/XStream.hpp>
 
 
-#include <osl/thread.h>
 #include <vcl/gdimtf.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/cvtgrf.hxx>
-#include <vcl/outdev.hxx>
-#include <vcl/virdev.hxx>
 #include <vcl/bitmapex.hxx>
 #include <vcl/graphicfilter.hxx>
 
 #include <tools/stream.hxx>
-#include <tools/helpers.hxx>
-#include <unotools/tempfile.hxx>
 #include <unotools/ucbstreamhelper.hxx>
-#include <unotools/streamwrap.hxx>
 #include <comphelper/processfactory.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 
-
-#include <sfx2/sfxresid.hxx>
 #include "graphhelp.hxx"
-#include "doc.hrc"
-#include "bitmaps.hlst"
+#include <bitmaps.hlst>
 
 #include <memory>
 
+#if defined _WIN32
+#include <unotools/tempfile.hxx>
+#include <vcl/outdev.hxx>
+#endif
+
 using namespace css;
 
-SvMemoryStream* GraphicHelper::getFormatStrFromGDI_Impl( const GDIMetaFile* pGDIMeta, ConvertDataFormat nFormat )
+std::unique_ptr<SvMemoryStream> GraphicHelper::getFormatStrFromGDI_Impl( const GDIMetaFile* pGDIMeta, ConvertDataFormat nFormat )
 {
-    SvMemoryStream* pResult = nullptr;
+    std::unique_ptr<SvMemoryStream> pResult;
     if ( pGDIMeta )
     {
-        SvMemoryStream* pStream = new SvMemoryStream( 65535, 65535 );
+        std::unique_ptr<SvMemoryStream> pStream(new SvMemoryStream( 65535, 65535 ));
         Graphic aGraph( *pGDIMeta );
         if ( GraphicConverter::Export( *pStream, aGraph, nFormat ) == ERRCODE_NONE )
-            pResult = pStream;
-        else
-            delete pStream;
+            pResult = std::move(pStream);
     }
 
     return pResult;
@@ -78,7 +70,6 @@ SvMemoryStream* GraphicHelper::getFormatStrFromGDI_Impl( const GDIMetaFile* pGDI
 // static
 void* GraphicHelper::getEnhMetaFileFromGDI_Impl( const GDIMetaFile* pGDIMeta )
 {
-    (void)pGDIMeta;  // unused
     void* pResult = nullptr;
 
 #ifdef _WIN32
@@ -89,20 +80,21 @@ void* GraphicHelper::getEnhMetaFileFromGDI_Impl( const GDIMetaFile* pGDIMeta )
 
         OUString aMetaFile = aTempFile.GetFileName();
         OUString aMetaURL = aTempFile.GetURL();
-        OString aWinFile = OUStringToOString( aMetaFile, osl_getThreadTextEncoding() );
 
-        SvStream* pStream = ::utl::UcbStreamHelper::CreateStream( aMetaURL, StreamMode::STD_READWRITE );
+        std::unique_ptr<SvStream> pStream = ::utl::UcbStreamHelper::CreateStream( aMetaURL, StreamMode::STD_READWRITE );
         if ( pStream )
         {
             Graphic aGraph( *pGDIMeta );
             ErrCode nFailed = GraphicConverter::Export( *pStream, aGraph, ConvertDataFormat::EMF );
             pStream->Flush();
-            delete pStream;
+            pStream.reset();
 
             if ( !nFailed )
-                pResult = GetEnhMetaFileA( aWinFile.getStr() );
+                pResult = GetEnhMetaFileW( o3tl::toW(aMetaFile.getStr()) );
         }
     }
+#else
+    (void)pGDIMeta;  // unused
 #endif
 
     return pResult;
@@ -112,8 +104,6 @@ void* GraphicHelper::getEnhMetaFileFromGDI_Impl( const GDIMetaFile* pGDIMeta )
 // static
 void* GraphicHelper::getWinMetaFileFromGDI_Impl( const GDIMetaFile* pGDIMeta, const Size& aMetaSize )
 {
-    (void)pGDIMeta;  // unused
-    (void)aMetaSize; // unused
     void* pResult = nullptr;
 
 #ifdef _WIN32
@@ -125,11 +115,11 @@ void* GraphicHelper::getWinMetaFileFromGDI_Impl( const GDIMetaFile* pGDIMeta, co
         pStream.Flush();
         if ( !nFailed )
         {
-            sal_Int32 nLength = pStream.Seek( STREAM_SEEK_TO_END );
+            sal_Int32 nLength = pStream.TellEnd();
             if ( nLength > 22 )
             {
                 HMETAFILE hMeta = SetMetaFileBitsEx( nLength - 22,
-                                ( static_cast< const unsigned char*>( pStream.GetData() ) ) + 22 );
+                                static_cast< const unsigned char*>( pStream.GetData() ) + 22 );
 
                 if ( hMeta )
                 {
@@ -137,12 +127,11 @@ void* GraphicHelper::getWinMetaFileFromGDI_Impl( const GDIMetaFile* pGDIMeta, co
 
                     if ( hMemory )
                     {
-                           METAFILEPICT* pMF = static_cast<METAFILEPICT*>(GlobalLock( hMemory ));
+                        METAFILEPICT* pMF = static_cast<METAFILEPICT*>(GlobalLock( hMemory ));
 
-                           pMF->hMF = hMeta;
-                           pMF->mm = MM_ANISOTROPIC;
+                        pMF->hMF = hMeta;
+                        pMF->mm = MM_ANISOTROPIC;
 
-                        MapMode aMetaMode = pGDIMeta->GetPrefMapMode();
                         MapMode aWinMode( MapUnit::Map100thMM );
 
                         if ( aWinMode == pGDIMeta->GetPrefMapMode() )
@@ -168,6 +157,9 @@ void* GraphicHelper::getWinMetaFileFromGDI_Impl( const GDIMetaFile* pGDIMeta, co
             }
         }
     }
+#else
+    (void)pGDIMeta;  // unused
+    (void)aMetaSize; // unused
 #endif
 
 
@@ -176,7 +168,7 @@ void* GraphicHelper::getWinMetaFileFromGDI_Impl( const GDIMetaFile* pGDIMeta, co
 
 
 // static
-bool GraphicHelper::getThumbnailFormatFromGDI_Impl(GDIMetaFile* pMetaFile, const uno::Reference<io::XStream>& xStream)
+bool GraphicHelper::getThumbnailFormatFromGDI_Impl(GDIMetaFile const * pMetaFile, const uno::Reference<io::XStream>& xStream)
 {
     bool bResult = false;
 
@@ -197,7 +189,7 @@ bool GraphicHelper::getThumbnailFormatFromGDI_Impl(GDIMetaFile* pMetaFile, const
 
     GraphicFilter& rFilter = GraphicFilter::GetGraphicFilter();
 
-    if (rFilter.compressAsPNG(aResultBitmap, *pStream.get()) != ERRCODE_NONE)
+    if (rFilter.compressAsPNG(aResultBitmap, *pStream) != ERRCODE_NONE)
         return false;
 
     pStream->Flush();

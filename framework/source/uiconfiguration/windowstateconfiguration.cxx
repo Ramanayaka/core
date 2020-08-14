@@ -40,7 +40,9 @@
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <comphelper/sequence.hxx>
+#include <sal/log.hxx>
 
 #include <unordered_map>
 #include <vector>
@@ -58,25 +60,25 @@ using namespace framework;
 namespace {
 
 // Zero based indexes, order must be the same as WindowStateMask && CONFIGURATION_PROPERTIES!
-static const sal_Int16 PROPERTY_LOCKED                  = 0;
-static const sal_Int16 PROPERTY_DOCKED                  = 1;
-static const sal_Int16 PROPERTY_VISIBLE                 = 2;
-static const sal_Int16 PROPERTY_CONTEXT                 = 3;
-static const sal_Int16 PROPERTY_HIDEFROMMENU            = 4;
-static const sal_Int16 PROPERTY_NOCLOSE                 = 5;
-static const sal_Int16 PROPERTY_SOFTCLOSE               = 6;
-static const sal_Int16 PROPERTY_CONTEXTACTIVE           = 7;
-static const sal_Int16 PROPERTY_DOCKINGAREA             = 8;
-static const sal_Int16 PROPERTY_POS                     = 9;
-static const sal_Int16 PROPERTY_SIZE                    = 10;
-static const sal_Int16 PROPERTY_UINAME                  = 11;
-static const sal_Int16 PROPERTY_INTERNALSTATE           = 12;
-static const sal_Int16 PROPERTY_STYLE                   = 13;
-static const sal_Int16 PROPERTY_DOCKPOS                 = 14;
-static const sal_Int16 PROPERTY_DOCKSIZE                = 15;
+const sal_Int16 PROPERTY_LOCKED                  = 0;
+const sal_Int16 PROPERTY_DOCKED                  = 1;
+const sal_Int16 PROPERTY_VISIBLE                 = 2;
+const sal_Int16 PROPERTY_CONTEXT                 = 3;
+const sal_Int16 PROPERTY_HIDEFROMMENU            = 4;
+const sal_Int16 PROPERTY_NOCLOSE                 = 5;
+const sal_Int16 PROPERTY_SOFTCLOSE               = 6;
+const sal_Int16 PROPERTY_CONTEXTACTIVE           = 7;
+const sal_Int16 PROPERTY_DOCKINGAREA             = 8;
+const sal_Int16 PROPERTY_POS                     = 9;
+const sal_Int16 PROPERTY_SIZE                    = 10;
+const sal_Int16 PROPERTY_UINAME                  = 11;
+const sal_Int16 PROPERTY_INTERNALSTATE           = 12;
+const sal_Int16 PROPERTY_STYLE                   = 13;
+const sal_Int16 PROPERTY_DOCKPOS                 = 14;
+const sal_Int16 PROPERTY_DOCKSIZE                = 15;
 
 // Order must be the same as WindowStateMask!!
-static const char* CONFIGURATION_PROPERTIES[]           =
+const char* CONFIGURATION_PROPERTIES[]           =
 {
     WINDOWSTATE_PROPERTY_LOCKED,
     WINDOWSTATE_PROPERTY_DOCKED,
@@ -134,7 +136,7 @@ class ConfigurationAccess_WindowState : public  ::cppu::WeakImplHelper< XNameCon
         virtual void SAL_CALL disposing( const EventObject& aEvent ) override;
 
     protected:
-        enum WindowStateMask
+        enum // WindowStateMask
         {
             WINDOWSTATE_MASK_DOCKINGAREA    = 256,
             WINDOWSTATE_MASK_POS            = 512,
@@ -188,9 +190,9 @@ class ConfigurationAccess_WindowState : public  ::cppu::WeakImplHelper< XNameCon
             sal_uInt32                              nMask; // see WindowStateMask
         };
 
-        void                      impl_putPropertiesFromStruct( const WindowStateInfo& rWinStateInfo, Reference< XPropertySet >& xPropSet );
-        Any                       impl_insertCacheAndReturnSequence( const OUString& rResourceURL, Reference< XNameAccess >& rNameAccess );
-        WindowStateInfo&          impl_insertCacheAndReturnWinState( const OUString& rResourceURL, Reference< XNameAccess >& rNameAccess );
+        void                      impl_putPropertiesFromStruct( const WindowStateInfo& rWinStateInfo, Reference< XPropertySet > const & xPropSet );
+        Any                       impl_insertCacheAndReturnSequence( const OUString& rResourceURL, Reference< XNameAccess > const & rNameAccess );
+        WindowStateInfo&          impl_insertCacheAndReturnWinState( const OUString& rResourceURL, Reference< XNameAccess > const & rNameAccess );
         Any                       impl_getSequenceFromStruct( const WindowStateInfo& rWinStateInfo );
         void                      impl_fillStructFromSequence( WindowStateInfo& rWinStateInfo, const Sequence< PropertyValue >& rSeq );
         Any                       impl_getWindowStateFromResourceURL( const OUString& rResourceURL );
@@ -198,8 +200,7 @@ class ConfigurationAccess_WindowState : public  ::cppu::WeakImplHelper< XNameCon
 
     private:
         typedef std::unordered_map< OUString,
-                                    WindowStateInfo,
-                                    OUStringHash > ResourceURLToInfoCache;
+                                    WindowStateInfo > ResourceURLToInfoCache;
 
         osl::Mutex                        m_aMutex;
         OUString                          m_aConfigWindowAccess;
@@ -213,15 +214,12 @@ class ConfigurationAccess_WindowState : public  ::cppu::WeakImplHelper< XNameCon
 };
 
 ConfigurationAccess_WindowState::ConfigurationAccess_WindowState( const OUString& aModuleName, const Reference< XComponentContext >& rxContext ) :
-    m_aConfigWindowAccess( "/org.openoffice.Office.UI." ),
+    // Create configuration hierarchical access name
+    m_aConfigWindowAccess( "/org.openoffice.Office.UI." + aModuleName + "/UIElements/States"),
+    m_xConfigProvider(theDefaultProvider::get( rxContext )),
     m_bConfigAccessInitialized( false ),
     m_bModified( false )
 {
-    // Create configuration hierarchical access name
-    m_aConfigWindowAccess += aModuleName
-                          +  "/UIElements/States";
-    m_xConfigProvider = theDefaultProvider::get( rxContext );
-
     // Initialize access array with property names.
     sal_Int32 n = 0;
     while ( CONFIGURATION_PROPERTIES[n] )
@@ -254,8 +252,7 @@ Any SAL_CALL ConfigurationAccess_WindowState::getByName( const OUString& rResour
         Any a( impl_getWindowStateFromResourceURL( rResourceURL ) );
         if ( a == Any() )
             throw NoSuchElementException();
-        else
-            return a;
+        return a;
     }
 }
 
@@ -297,7 +294,7 @@ sal_Bool SAL_CALL ConfigurationAccess_WindowState::hasByName( const OUString& rR
 // XElementAccess
 Type SAL_CALL ConfigurationAccess_WindowState::getElementType()
 {
-    return( cppu::UnoType<Sequence< PropertyValue >>::get() );
+    return cppu::UnoType<Sequence< PropertyValue >>::get();
 }
 
 sal_Bool SAL_CALL ConfigurationAccess_WindowState::hasElements()
@@ -321,7 +318,7 @@ sal_Bool SAL_CALL ConfigurationAccess_WindowState::hasElements()
 void SAL_CALL ConfigurationAccess_WindowState::removeByName( const OUString& rResourceURL )
 {
     // SAFE
-    osl::ResettableMutexGuard g(m_aMutex);
+    osl::ClearableMutexGuard g(m_aMutex);
 
     ResourceURLToInfoCache::iterator pIter = m_aResourceURLToInfoCache.find( rResourceURL );
     if ( pIter != m_aResourceURLToInfoCache.end() )
@@ -355,135 +352,127 @@ void SAL_CALL ConfigurationAccess_WindowState::removeByName( const OUString& rRe
 void SAL_CALL ConfigurationAccess_WindowState::insertByName( const OUString& rResourceURL, const css::uno::Any& aPropertySet )
 {
     // SAFE
-    osl::ResettableMutexGuard g(m_aMutex);
+    osl::ClearableMutexGuard g(m_aMutex);
 
     Sequence< PropertyValue > aPropSet;
-    if ( aPropertySet >>= aPropSet )
+    if ( !(aPropertySet >>= aPropSet) )
+        throw IllegalArgumentException();
+
+    ResourceURLToInfoCache::const_iterator pIter = m_aResourceURLToInfoCache.find( rResourceURL );
+    if ( pIter != m_aResourceURLToInfoCache.end() )
+        throw ElementExistException();
+
+    if ( !m_bConfigAccessInitialized )
     {
-        ResourceURLToInfoCache::const_iterator pIter = m_aResourceURLToInfoCache.find( rResourceURL );
-        if ( pIter != m_aResourceURLToInfoCache.end() )
-            throw ElementExistException();
-        else
+        impl_initializeConfigAccess();
+        m_bConfigAccessInitialized = true;
+    }
+
+    // Try to ask our configuration access
+    if ( !m_xConfigAccess.is() )
+        return;
+
+    if ( m_xConfigAccess->hasByName( rResourceURL ) )
+        throw ElementExistException();
+
+    WindowStateInfo aWinStateInfo;
+    impl_fillStructFromSequence( aWinStateInfo, aPropSet );
+    m_aResourceURLToInfoCache.emplace( rResourceURL, aWinStateInfo );
+
+    // insert must be write-through => insert element into configuration
+    Reference< XNameContainer > xNameContainer( m_xConfigAccess, UNO_QUERY );
+    if ( !xNameContainer.is() )
+        return;
+
+    Reference< XSingleServiceFactory > xFactory( m_xConfigAccess, UNO_QUERY );
+    g.clear();
+
+    try
+    {
+        Reference< XPropertySet > xPropSet( xFactory->createInstance(), UNO_QUERY );
+        if ( xPropSet.is() )
         {
-            if ( !m_bConfigAccessInitialized )
-            {
-                impl_initializeConfigAccess();
-                m_bConfigAccessInitialized = true;
-            }
-
-            // Try to ask our configuration access
-            if ( m_xConfigAccess.is() )
-            {
-                if ( m_xConfigAccess->hasByName( rResourceURL ) )
-                    throw ElementExistException();
-                else
-                {
-                    WindowStateInfo aWinStateInfo;
-                    impl_fillStructFromSequence( aWinStateInfo, aPropSet );
-                    m_aResourceURLToInfoCache.insert( ResourceURLToInfoCache::value_type( rResourceURL, aWinStateInfo ));
-
-                    // insert must be write-through => insert element into configuration
-                    Reference< XNameContainer > xNameContainer( m_xConfigAccess, UNO_QUERY );
-                    if ( xNameContainer.is() )
-                    {
-                        Reference< XSingleServiceFactory > xFactory( m_xConfigAccess, UNO_QUERY );
-                        g.clear();
-
-                        try
-                        {
-                            Reference< XPropertySet > xPropSet( xFactory->createInstance(), UNO_QUERY );
-                            if ( xPropSet.is() )
-                            {
-                                Any a;
-                                impl_putPropertiesFromStruct( aWinStateInfo, xPropSet );
-                                a <<= xPropSet;
-                                xNameContainer->insertByName( rResourceURL, a );
-                                Reference< XChangesBatch > xFlush( xFactory, UNO_QUERY );
-                                if ( xFlush.is() )
-                                    xFlush->commitChanges();
-                            }
-                        }
-                        catch ( const Exception& )
-                        {
-                        }
-                    }
-                }
-            }
+            Any a;
+            impl_putPropertiesFromStruct( aWinStateInfo, xPropSet );
+            a <<= xPropSet;
+            xNameContainer->insertByName( rResourceURL, a );
+            Reference< XChangesBatch > xFlush( xFactory, UNO_QUERY );
+            if ( xFlush.is() )
+                xFlush->commitChanges();
         }
     }
-    else
-        throw IllegalArgumentException();
+    catch ( const Exception& )
+    {
+    }
 }
 
 // XNameReplace
 void SAL_CALL ConfigurationAccess_WindowState::replaceByName( const OUString& rResourceURL, const css::uno::Any& aPropertySet )
 {
     // SAFE
-    osl::ResettableMutexGuard g(m_aMutex);
+    osl::ClearableMutexGuard g(m_aMutex);
 
     Sequence< PropertyValue > aPropSet;
-    if ( aPropertySet >>= aPropSet )
+    if ( !(aPropertySet >>= aPropSet) )
+        throw IllegalArgumentException();
+
+    ResourceURLToInfoCache::iterator pIter = m_aResourceURLToInfoCache.find( rResourceURL );
+    if ( pIter != m_aResourceURLToInfoCache.end() )
     {
-        ResourceURLToInfoCache::iterator pIter = m_aResourceURLToInfoCache.find( rResourceURL );
-        if ( pIter != m_aResourceURLToInfoCache.end() )
-        {
-            WindowStateInfo& rWinStateInfo = pIter->second;
-            impl_fillStructFromSequence( rWinStateInfo, aPropSet );
-            m_bModified = true;
-        }
-        else
-        {
-            if ( !m_bConfigAccessInitialized )
-            {
-                impl_initializeConfigAccess();
-                m_bConfigAccessInitialized = true;
-            }
-
-            // Try to ask our configuration access
-            Reference< XNameAccess > xNameAccess;
-            Any a( m_xConfigAccess->getByName( rResourceURL ));
-
-            if ( a >>= xNameAccess )
-            {
-                WindowStateInfo& rWinStateInfo( impl_insertCacheAndReturnWinState( rResourceURL, xNameAccess ));
-                impl_fillStructFromSequence( rWinStateInfo, aPropSet );
-                m_bModified = true;
-                pIter = m_aResourceURLToInfoCache.find( rResourceURL );
-            }
-            else
-                throw NoSuchElementException();
-        }
-
-        if ( m_bModified && pIter != m_aResourceURLToInfoCache.end() )
-        {
-            Reference< XNameContainer > xNameContainer( m_xConfigAccess, UNO_QUERY );
-            if ( xNameContainer.is() )
-            {
-                WindowStateInfo aWinStateInfo( pIter->second );
-                OUString        aResourceURL( pIter->first );
-                m_bModified = false;
-                g.clear();
-
-                try
-                {
-                    Reference< XPropertySet > xPropSet;
-                    if ( xNameContainer->getByName( aResourceURL ) >>= xPropSet )
-                    {
-                        impl_putPropertiesFromStruct( aWinStateInfo, xPropSet );
-
-                        Reference< XChangesBatch > xFlush( m_xConfigAccess, UNO_QUERY );
-                        if ( xFlush.is() )
-                            xFlush->commitChanges();
-                    }
-                }
-                catch ( const Exception& )
-                {
-                }
-            }
-        }
+        WindowStateInfo& rWinStateInfo = pIter->second;
+        impl_fillStructFromSequence( rWinStateInfo, aPropSet );
+        m_bModified = true;
     }
     else
-        throw IllegalArgumentException();
+    {
+        if ( !m_bConfigAccessInitialized )
+        {
+            impl_initializeConfigAccess();
+            m_bConfigAccessInitialized = true;
+        }
+
+        // Try to ask our configuration access
+        Reference< XNameAccess > xNameAccess;
+        Any a( m_xConfigAccess->getByName( rResourceURL ));
+
+        if ( !(a >>= xNameAccess) )
+            throw NoSuchElementException();
+
+        WindowStateInfo& rWinStateInfo( impl_insertCacheAndReturnWinState( rResourceURL, xNameAccess ));
+        impl_fillStructFromSequence( rWinStateInfo, aPropSet );
+        m_bModified = true;
+        pIter = m_aResourceURLToInfoCache.find( rResourceURL );
+
+    }
+
+    if ( !(m_bModified && pIter != m_aResourceURLToInfoCache.end()) )
+        return;
+
+    Reference< XNameContainer > xNameContainer( m_xConfigAccess, UNO_QUERY );
+    if ( !xNameContainer.is() )
+        return;
+
+    WindowStateInfo aWinStateInfo( pIter->second );
+    OUString        aResourceURL( pIter->first );
+    m_bModified = false;
+    g.clear();
+
+    try
+    {
+        Reference< XPropertySet > xPropSet;
+        if ( xNameContainer->getByName( aResourceURL ) >>= xPropSet )
+        {
+            impl_putPropertiesFromStruct( aWinStateInfo, xPropSet );
+
+            Reference< XChangesBatch > xFlush( m_xConfigAccess, UNO_QUERY );
+            if ( xFlush.is() )
+                xFlush->commitChanges();
+        }
+    }
+    catch ( const Exception& )
+    {
+    }
+
 }
 
 // container.XContainerListener
@@ -572,7 +561,7 @@ Any ConfigurationAccess_WindowState::impl_getSequenceFromStruct( const WindowSta
     return makeAny( comphelper::containerToSequence(aPropVec) );
 }
 
-Any ConfigurationAccess_WindowState::impl_insertCacheAndReturnSequence( const OUString& rResourceURL, Reference< XNameAccess >& xNameAccess )
+Any ConfigurationAccess_WindowState::impl_insertCacheAndReturnSequence( const OUString& rResourceURL, Reference< XNameAccess > const & xNameAccess )
 {
     sal_Int32                 nMask( 0 );
     sal_Int32                 nCount( m_aPropArray.size() );
@@ -634,7 +623,7 @@ Any ConfigurationAccess_WindowState::impl_insertCacheAndReturnSequence( const OU
                         if (( nDockingArea >= 0 ) &&
                             ( nDockingArea <= sal_Int32( DockingArea_DOCKINGAREA_RIGHT )))
                         {
-                            aWindowStateInfo.aDockingArea = (DockingArea)nDockingArea;
+                            aWindowStateInfo.aDockingArea = static_cast<DockingArea>(nDockingArea);
                             nMask |= WINDOWSTATE_MASK_DOCKINGAREA;
                             a <<= aWindowStateInfo.aDockingArea;
                             bAddToSeq = true;
@@ -764,11 +753,11 @@ Any ConfigurationAccess_WindowState::impl_insertCacheAndReturnSequence( const OU
     }
 
     aWindowStateInfo.nMask = nMask;
-    m_aResourceURLToInfoCache.insert( ResourceURLToInfoCache::value_type( rResourceURL, aWindowStateInfo ));
+    m_aResourceURLToInfoCache.emplace( rResourceURL, aWindowStateInfo );
     return makeAny( comphelper::containerToSequence(aPropVec) );
 }
 
-ConfigurationAccess_WindowState::WindowStateInfo& ConfigurationAccess_WindowState::impl_insertCacheAndReturnWinState( const OUString& rResourceURL, Reference< XNameAccess >& rNameAccess )
+ConfigurationAccess_WindowState::WindowStateInfo& ConfigurationAccess_WindowState::impl_insertCacheAndReturnWinState( const OUString& rResourceURL, Reference< XNameAccess > const & rNameAccess )
 {
     sal_Int32                 nMask( 0 );
     sal_Int32                 nCount( m_aPropArray.size() );
@@ -829,7 +818,7 @@ ConfigurationAccess_WindowState::WindowStateInfo& ConfigurationAccess_WindowStat
                         if (( nDockingArea >= 0 ) &&
                             ( nDockingArea <= sal_Int32( DockingArea_DOCKINGAREA_RIGHT )))
                         {
-                            aWindowStateInfo.aDockingArea = (DockingArea)nDockingArea;
+                            aWindowStateInfo.aDockingArea = static_cast<DockingArea>(nDockingArea);
                             nMask |= WINDOWSTATE_MASK_DOCKINGAREA;
                         }
                     }
@@ -939,7 +928,7 @@ ConfigurationAccess_WindowState::WindowStateInfo& ConfigurationAccess_WindowStat
     }
 
     aWindowStateInfo.nMask = nMask;
-    ResourceURLToInfoCache::iterator pIter = (m_aResourceURLToInfoCache.insert( ResourceURLToInfoCache::value_type( rResourceURL, aWindowStateInfo ))).first;
+    ResourceURLToInfoCache::iterator pIter = m_aResourceURLToInfoCache.emplace( rResourceURL, aWindowStateInfo ).first;
     return pIter->second;
 }
 
@@ -982,7 +971,7 @@ void ConfigurationAccess_WindowState::impl_fillStructFromSequence( WindowStateIn
     {
         for ( sal_Int32 j = 0; j < nCompareCount; j++ )
         {
-            if ( rSeq[i].Name.equals( m_aPropArray[j] ))
+            if ( rSeq[i].Name == m_aPropArray[j] )
             {
                 switch ( j )
                 {
@@ -1125,7 +1114,7 @@ void ConfigurationAccess_WindowState::impl_fillStructFromSequence( WindowStateIn
     }
 }
 
-void ConfigurationAccess_WindowState::impl_putPropertiesFromStruct( const WindowStateInfo& rWinStateInfo, Reference< XPropertySet >& xPropSet )
+void ConfigurationAccess_WindowState::impl_putPropertiesFromStruct( const WindowStateInfo& rWinStateInfo, Reference< XPropertySet > const & xPropSet )
 {
     sal_Int32                 i( 0 );
     sal_Int32                 nCount( m_aPropArray.size() );
@@ -1179,9 +1168,9 @@ void ConfigurationAccess_WindowState::impl_putPropertiesFromStruct( const Window
                     {
                         OUString aSizeStr;
                         if ( i == PROPERTY_SIZE )
-                            aSizeStr = ( OUString::number( rWinStateInfo.aSize.Width ));
+                            aSizeStr = OUString::number( rWinStateInfo.aSize.Width );
                         else
-                            aSizeStr = ( OUString::number( rWinStateInfo.aDockSize.Width ));
+                            aSizeStr = OUString::number( rWinStateInfo.aDockSize.Width );
                         aSizeStr += aDelim;
                         if ( i == PROPERTY_SIZE )
                             aSizeStr += OUString::number( rWinStateInfo.aSize.Height );
@@ -1209,18 +1198,12 @@ void ConfigurationAccess_WindowState::impl_putPropertiesFromStruct( const Window
 
 void ConfigurationAccess_WindowState::impl_initializeConfigAccess()
 {
-    Sequence< Any > aArgs( 2 );
-    PropertyValue   aPropValue;
-
     try
     {
-        aPropValue.Name  = "nodepath";
-        aPropValue.Value <<= m_aConfigWindowAccess;
-        aArgs[0] <<= aPropValue;
-        aPropValue.Name = "lazywrite";
-        aPropValue.Value <<= true;
-        aArgs[1] <<= aPropValue;
-
+        Sequence<Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"nodepath", Any(m_aConfigWindowAccess)}
+        }));
         m_xConfigAccess.set( m_xConfigProvider->createInstanceWithArguments(
                     "com.sun.star.configuration.ConfigurationUpdateAccess", aArgs ), UNO_QUERY );
         if ( m_xConfigAccess.is() )
@@ -1254,7 +1237,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.WindowStateConfiguration");
+        return "com.sun.star.comp.framework.WindowStateConfiguration";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -1279,12 +1262,10 @@ public:
     virtual sal_Bool SAL_CALL hasElements() override;
 
     typedef std::unordered_map< OUString,
-                                OUString,
-                                OUStringHash > ModuleToWindowStateFileMap;
+                                OUString > ModuleToWindowStateFileMap;
 
     typedef std::unordered_map< OUString,
-                                css::uno::Reference< css::container::XNameAccess >,
-                                OUStringHash > ModuleToWindowStateConfigHashMap;
+                                css::uno::Reference< css::container::XNameAccess > > ModuleToWindowStateConfigHashMap;
 
 private:
     css::uno::Reference< css::uno::XComponentContext>         m_xContext;
@@ -1308,19 +1289,17 @@ WindowStateConfiguration::WindowStateConfiguration( const Reference< XComponentC
     {
     }
     Sequence< PropertyValue > aSeq;
-    OUString                  aModuleIdentifier;
 
-    for ( sal_Int32 i = 0; i < aElementNames.getLength(); i++ )
+    for ( OUString const & aModuleIdentifier : std::as_const(aElementNames) )
     {
-        aModuleIdentifier = aElementNames[i];
         if ( xModuleManager->getByName( aModuleIdentifier ) >>= aSeq )
         {
             OUString aWindowStateFileStr;
-            for ( sal_Int32 y = 0; y < aSeq.getLength(); y++ )
+            for ( PropertyValue const & rProp : std::as_const(aSeq) )
             {
-                if ( aSeq[y].Name == "ooSetupFactoryWindowStateConfigRef" )
+                if ( rProp.Name == "ooSetupFactoryWindowStateConfigRef" )
                 {
-                    aSeq[y].Value >>= aWindowStateFileStr;
+                    rProp.Value >>= aWindowStateFileStr;
                     break;
                 }
             }
@@ -1328,12 +1307,12 @@ WindowStateConfiguration::WindowStateConfiguration( const Reference< XComponentC
             if ( !aWindowStateFileStr.isEmpty() )
             {
                 // Create first mapping ModuleIdentifier ==> Window state configuration file
-                m_aModuleToFileHashMap.insert( ModuleToWindowStateFileMap::value_type( aModuleIdentifier, aWindowStateFileStr ));
+                m_aModuleToFileHashMap.emplace( aModuleIdentifier, aWindowStateFileStr );
 
                 // Create second mapping Command File ==> Window state configuration instance
                 ModuleToWindowStateConfigHashMap::iterator pIter = m_aModuleToWindowStateHashMap.find( aWindowStateFileStr );
                 if ( pIter == m_aModuleToWindowStateHashMap.end() )
-                    m_aModuleToWindowStateHashMap.insert( ModuleToWindowStateConfigHashMap::value_type( aWindowStateFileStr, xEmptyNameAccess ));
+                    m_aModuleToWindowStateHashMap.emplace( aWindowStateFileStr, xEmptyNameAccess );
             }
         }
     }
@@ -1395,7 +1374,7 @@ sal_Bool SAL_CALL WindowStateConfiguration::hasByName( const OUString& aName )
 // XElementAccess
 Type SAL_CALL WindowStateConfiguration::getElementType()
 {
-    return( cppu::UnoType<XNameAccess>::get());
+    return cppu::UnoType<XNameAccess>::get();
 }
 
 sal_Bool SAL_CALL WindowStateConfiguration::hasElements()
@@ -1422,7 +1401,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_WindowStateConfiguration_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

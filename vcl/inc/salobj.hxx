@@ -21,14 +21,17 @@
 #define INCLUDED_VCL_INC_SALOBJ_HXX
 
 #include <vcl/dllapi.h>
+#include <vcl/syschild.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include "salwtype.hxx"
 
 struct SystemEnvData;
 
+typedef void (*SALOBJECTPROC)(SystemChildWindow* pInst, SalObjEvent nEvent);
+
 class VCL_PLUGIN_PUBLIC SalObject
 {
-    void*               m_pInst;
+    VclPtr<SystemChildWindow> m_pInst;
     SALOBJECTPROC       m_pCallback;
     bool                m_bMouseTransparent:1,
                         m_bEraseBackground:1;
@@ -37,7 +40,7 @@ public:
             virtual ~SalObject();
 
     virtual void                    ResetClipRegion() = 0;
-    virtual void                    BeginSetClipRegion( sal_uLong nRects ) = 0;
+    virtual void                    BeginSetClipRegion( sal_uInt32 nRects ) = 0;
     virtual void                    UnionClipRegion( long nX, long nY, long nWidth, long nHeight ) = 0;
     virtual void                    EndSetClipRegion() = 0;
 
@@ -45,6 +48,7 @@ public:
     virtual void                    Show( bool bVisible ) = 0;
     virtual void                    Enable( bool /* nEnable */ ) {} // overridden by WinSalObject
     virtual void                    GrabFocus() {}
+    virtual void                    Reparent(SalFrame* /*pFrame*/) {}
 
     virtual void                    SetForwardKey( bool /* bEnable */ ) {}
 
@@ -52,19 +56,21 @@ public:
 
     virtual const SystemEnvData*    GetSystemData() const = 0;
 
-    void                            SetCallback( void* pInst, SALOBJECTPROC pProc )
+    virtual Size GetOptimalSize() const { return Size(); }
+
+    void                            SetCallback( SystemChildWindow* pInst, SALOBJECTPROC pProc )
                                         { m_pInst = pInst; m_pCallback = pProc; }
     void                            CallCallback( SalObjEvent nEvent )
                                         { if (m_pCallback) m_pCallback( m_pInst, nEvent ); }
 
     void                            SetMouseTransparent( bool bMouseTransparent )
                                         { m_bMouseTransparent = bMouseTransparent; }
-    bool                            IsMouseTransparent()
+    bool                            IsMouseTransparent() const
                                         { return m_bMouseTransparent; }
 
     void                            EnableEraseBackground( bool bEnable )
                                         { m_bEraseBackground = bEnable; }
-    bool                            IsEraseBackgroundEnabled()
+    bool                            IsEraseBackgroundEnabled() const
                                         { return m_bEraseBackground; }
 };
 

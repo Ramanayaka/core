@@ -19,57 +19,75 @@
 
 #include <sal/config.h>
 
-#include <o3tl/make_unique.hxx>
 #include <svx/sdr/properties/defaultproperties.hxx>
 #include <sdr/properties/itemsettools.hxx>
 #include <svl/itemset.hxx>
 #include <svl/whiter.hxx>
-#include <vcl/outdev.hxx>
-
 #include <vector>
 #include <svx/svdobj.hxx>
 #include <svx/svddef.hxx>
-#include <svx/svdpool.hxx>
 #include <editeng/eeitem.hxx>
 #include <libxml/xmlwriter.h>
+#include <svx/svdmodel.hxx>
+#include <svx/svdtrans.hxx>
 
-
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         std::unique_ptr<SfxItemSet> DefaultProperties::CreateObjectSpecificItemSet(SfxItemPool& rPool)
         {
             // Basic implementation; Basic object has NO attributes
-            return o3tl::make_unique<SfxItemSet>(rPool);
+            return std::make_unique<SfxItemSet>(rPool);
         }
 
         DefaultProperties::DefaultProperties(SdrObject& rObj)
-        :   BaseProperties(rObj),
-            mpItemSet(nullptr)
+        :   BaseProperties(rObj)
         {
         }
 
         DefaultProperties::DefaultProperties(const DefaultProperties& rProps, SdrObject& rObj)
-        :   BaseProperties(rObj),
-            mpItemSet(nullptr)
+        :   BaseProperties(rObj)
         {
-            if(rProps.mpItemSet)
-            {
-                mpItemSet.reset(rProps.mpItemSet->Clone());
+            if(!rProps.mpItemSet)
+                return;
 
-                // do not keep parent info, this may be changed by later constructors.
-                // This class just copies the ItemSet, ignore parent.
-                if(mpItemSet && mpItemSet->GetParent())
+            // Clone may be to another model and thus another ItemPool.
+            // SfxItemSet supports that thus we are able to Clone all
+            // SfxItemState::SET items to the target pool.
+            mpItemSet = rProps.mpItemSet->Clone(
+                true,
+                &rObj.getSdrModelFromSdrObject().GetItemPool());
+
+            // React on ModelChange: If metric has changed, scale items.
+            // As seen above, clone is supported, but scale is not included,
+            // thus: TTTT maybe add scale to SfxItemSet::Clone() (?)
+            // tdf#117707 correct ModelChange detection
+            const bool bModelChange(&rObj.getSdrModelFromSdrObject() != &rProps.GetSdrObject().getSdrModelFromSdrObject());
+
+            if(bModelChange)
+            {
+                const MapUnit aOldUnit(rProps.GetSdrObject().getSdrModelFromSdrObject().GetScaleUnit());
+                const MapUnit aNewUnit(rObj.getSdrModelFromSdrObject().GetScaleUnit());
+                const bool bScaleUnitChanged(aNewUnit != aOldUnit);
+
+                if(bScaleUnitChanged)
                 {
-                    mpItemSet->SetParent(nullptr);
+                    const Fraction aMetricFactor(GetMapFactor(aOldUnit, aNewUnit).X());
+
+                    ScaleItemSet(*mpItemSet, aMetricFactor);
                 }
+            }
+
+            // do not keep parent info, this may be changed by later constructors.
+            // This class just copies the ItemSet, ignore parent.
+            if(mpItemSet && mpItemSet->GetParent())
+            {
+                mpItemSet->SetParent(nullptr);
             }
         }
 
-        BaseProperties& DefaultProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> DefaultProperties::Clone(SdrObject& rObj) const
         {
-            return *(new DefaultProperties(*this, rObj));
+            return std::unique_ptr<BaseProperties>(new DefaultProperties(*this, rObj));
         }
 
         DefaultProperties::~DefaultProperties() {}
@@ -165,9 +183,9 @@ namespace sdr
 
             if(bDidChange)
             {
-                for (std::vector< sal_uInt16 >::const_iterator aIter(aPostItemChangeList.begin()), aEnd(aPostItemChangeList.end()); aIter != aEnd; ++aIter)
+                for (const auto& rItem : aPostItemChangeList)
                 {
-                    PostItemChange(*aIter);
+                    PostItemChange(rItem);
                 }
 
                 ItemSetChanged(aSet);
@@ -208,21 +226,13 @@ namespace sdr
         {
         }
 
-        void DefaultProperties::Scale(const Fraction& rScale)
-        {
-            if(mpItemSet)
-            {
-                ScaleItemSet(*mpItemSet, rScale);
-            }
-        }
-
-        void DefaultProperties::dumpAsXml(struct _xmlTextWriter * pWriter) const
+        void DefaultProperties::dumpAsXml(xmlTextWriterPtr pWriter) const
         {
             xmlTextWriterStartElement(pWriter, BAD_CAST("DefaultProperties"));
+            BaseProperties::dumpAsXml(pWriter);
             mpItemSet->dumpAsXml(pWriter);
             xmlTextWriterEndElement(pWriter);
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

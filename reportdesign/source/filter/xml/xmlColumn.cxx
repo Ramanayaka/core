@@ -21,19 +21,22 @@
 #include <xmloff/xmluconv.hxx>
 #include "xmlfilter.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/xmlstyle.hxx>
+#include <xmloff/prstylei.hxx>
+#include <xmloff/ProgressBarHelper.hxx>
+#include <sal/log.hxx>
 #include "xmlEnums.hxx"
 #include "xmlCell.hxx"
-#include "xmlStyleImport.hxx"
 #include "xmlTable.hxx"
-#include <comphelper/namecontainer.hxx>
 #include <comphelper/genericpropertyset.hxx>
+#include <comphelper/propertysetinfo.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include "xmlstrings.hrc"
+#include <strings.hxx>
 
-#define PROPERTY_ID_WIDTH    1
-#define PROPERTY_ID_HEIGHT   2
+#define PROPERTY_ID_WIDTH      1
+#define PROPERTY_ID_HEIGHT     2
+#define PROPERTY_ID_MINHEIGHT  3
 
 namespace rptxml
 {
@@ -44,32 +47,23 @@ namespace rptxml
 
 
 OXMLRowColumn::OXMLRowColumn( ORptFilter& rImport
-                ,sal_uInt16 nPrfx
-                ,const OUString& _sLocalName
-                ,const Reference< XAttributeList > & _xAttrList
+                ,const Reference< XFastAttributeList > & _xAttrList
                 ,OXMLTable* _pContainer
                 ) :
-    SvXMLImportContext( rImport, nPrfx, _sLocalName )
+    SvXMLImportContext( rImport )
     ,m_pContainer(_pContainer)
 {
-
-    const SvXMLNamespaceMap& rMap = rImport.GetNamespaceMap();
-    const SvXMLTokenMap& rTokenMap = rImport.GetColumnTokenMap();
-
-    const sal_Int16 nLength = (_xAttrList.is()) ? _xAttrList->getLength() : 0;
-    for(sal_Int16 i = 0; i < nLength; ++i)
+    for (auto &aIter : sax_fastparser::castToFastAttributeList( _xAttrList ))
     {
-     OUString sLocalName;
-        const OUString sAttrName = _xAttrList->getNameByIndex( i );
-        const sal_uInt16 nPrefix = rMap.GetKeyByAttrName( sAttrName,&sLocalName );
-        const OUString sValue = _xAttrList->getValueByIndex( i );
+        OUString sValue = aIter.toString();
 
-        switch( rTokenMap.Get( nPrefix, sLocalName ) )
+        switch( aIter.getToken() )
         {
-            case XML_TOK_COLUMN_STYLE_NAME:
+            case XML_ELEMENT(TABLE, XML_STYLE_NAME):
                 fillStyle(sValue);
                 break;
             default:
+                SAL_WARN("reportdesign", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << " = " << sValue);
                 break;
         }
     }
@@ -80,32 +74,30 @@ OXMLRowColumn::~OXMLRowColumn()
 {
 }
 
-SvXMLImportContext* OXMLRowColumn::CreateChildContext(
-        sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const Reference< XAttributeList > & xAttrList )
+css::uno::Reference< css::xml::sax::XFastContextHandler > OXMLRowColumn::createFastChildContext(
+        sal_Int32 nElement,
+        const Reference< XFastAttributeList > & xAttrList )
 {
-    SvXMLImportContext *pContext = nullptr;
+    css::uno::Reference< css::xml::sax::XFastContextHandler > xContext;
     ORptFilter& rImport = GetOwnImport();
-    const SvXMLTokenMap&    rTokenMap   = rImport.GetColumnTokenMap();
 
-    switch( rTokenMap.Get( nPrefix, rLocalName ) )
+    switch( nElement )
     {
-        case XML_TOK_COLUMN:
+        case XML_ELEMENT(TABLE, XML_TABLE_COLUMN):
             rImport.GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
-            pContext = new OXMLRowColumn( rImport, nPrefix, rLocalName,xAttrList,m_pContainer);
+            xContext = new OXMLRowColumn( rImport,xAttrList,m_pContainer);
             break;
-        case XML_TOK_ROW:
+        case XML_ELEMENT(TABLE, XML_TABLE_ROW):
             m_pContainer->incrementRowIndex();
             rImport.GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
-            pContext = new OXMLRowColumn( rImport, nPrefix, rLocalName,xAttrList,m_pContainer);
+            xContext = new OXMLRowColumn( rImport,xAttrList,m_pContainer);
             break;
-        case XML_TOK_CELL:
+        case XML_ELEMENT(TABLE, XML_TABLE_CELL):
             m_pContainer->incrementColumnIndex();
             rImport.GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
-            pContext = new OXMLCell( rImport, nPrefix, rLocalName,xAttrList,m_pContainer);
+            xContext = new OXMLCell( rImport,xAttrList,m_pContainer);
             break;
-        case XML_TOK_COV_CELL:
+        case XML_ELEMENT(TABLE, XML_COVERED_TABLE_CELL):
             m_pContainer->incrementColumnIndex();
             m_pContainer->addCell(nullptr);
             break;
@@ -113,46 +105,55 @@ SvXMLImportContext* OXMLRowColumn::CreateChildContext(
             break;
     }
 
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
-
-    return pContext;
+    return xContext;
 }
 
 void OXMLRowColumn::fillStyle(const OUString& _sStyleName)
 {
-    if ( !_sStyleName.isEmpty() )
+    if ( _sStyleName.isEmpty() )
+        return;
+
+    const SvXMLStylesContext* pAutoStyles = GetOwnImport().GetAutoStyles();
+    if ( !pAutoStyles )
+        return;
+
+    PropertySetInfo* pInfo = new PropertySetInfo();
+    static PropertyMapEntry const pMap[] =
     {
-        const SvXMLStylesContext* pAutoStyles = GetOwnImport().GetAutoStyles();
-        if ( pAutoStyles )
+        {OUString(PROPERTY_WIDTH),    PROPERTY_ID_WIDTH,        ::cppu::UnoType<sal_Int32>::get()       ,PropertyAttribute::BOUND,0},
+        {OUString(PROPERTY_HEIGHT),   PROPERTY_ID_HEIGHT,       ::cppu::UnoType<sal_Int32>::get()       ,PropertyAttribute::BOUND,0 },
+        {OUString(PROPERTY_MINHEIGHT), PROPERTY_ID_MINHEIGHT,    ::cppu::UnoType<sal_Int32>::get()       ,PropertyAttribute::BOUND,0 },
+        {OUString(), 0, css::uno::Type(), 0, 0 }
+    };
+    pInfo->add(pMap);
+    Reference<XPropertySet> xProp = GenericPropertySet_CreateInstance(pInfo);
+    XMLPropStyleContext* pAutoStyle = const_cast<XMLPropStyleContext*>(dynamic_cast< const XMLPropStyleContext*>(pAutoStyles->FindStyleChildContext(XmlStyleFamily::TABLE_COLUMN,_sStyleName)));
+    if ( pAutoStyle )
+    {
+        pAutoStyle->FillPropertySet(xProp);
+        sal_Int32 nWidth = 0;
+        xProp->getPropertyValue(PROPERTY_WIDTH) >>= nWidth;
+        m_pContainer->addWidth(nWidth);
+    }
+    else
+    {
+        pAutoStyle = const_cast<XMLPropStyleContext*>(dynamic_cast< const XMLPropStyleContext* >(pAutoStyles->FindStyleChildContext(XmlStyleFamily::TABLE_ROW,_sStyleName)));
+        if ( pAutoStyle )
         {
-            PropertySetInfo* pInfo = new PropertySetInfo();
-            static PropertyMapEntry const pMap[] =
+            pAutoStyle->FillPropertySet(xProp);
+            sal_Int32 nHeight = 0;
+            sal_Int32 nMinHeight = 0;
+            xProp->getPropertyValue(PROPERTY_HEIGHT) >>= nHeight;
+            xProp->getPropertyValue(PROPERTY_MINHEIGHT) >>= nMinHeight;
+            if (nHeight == 0 && nMinHeight > 0)
             {
-                {OUString(PROPERTY_WIDTH),  PROPERTY_ID_WIDTH,          ::cppu::UnoType<sal_Int32>::get()       ,PropertyAttribute::BOUND,0},
-                {OUString(PROPERTY_HEIGHT), PROPERTY_ID_HEIGHT,         ::cppu::UnoType<sal_Int32>::get()       ,PropertyAttribute::BOUND,0},
-                { OUString(), 0, css::uno::Type(), 0, 0 }
-            };
-            pInfo->add(pMap);
-            Reference<XPropertySet> xProp = GenericPropertySet_CreateInstance(pInfo);
-            XMLPropStyleContext* pAutoStyle = const_cast<XMLPropStyleContext*>(dynamic_cast< const XMLPropStyleContext*>(pAutoStyles->FindStyleChildContext(XML_STYLE_FAMILY_TABLE_COLUMN,_sStyleName)));
-            if ( pAutoStyle )
-            {
-                pAutoStyle->FillPropertySet(xProp);
-                sal_Int32 nWidth = 0;
-                xProp->getPropertyValue(PROPERTY_WIDTH) >>= nWidth;
-                m_pContainer->addWidth(nWidth);
+                m_pContainer->addHeight(nMinHeight);
+                m_pContainer->addAutoHeight(true);
             }
             else
             {
-                pAutoStyle = const_cast<XMLPropStyleContext*>(dynamic_cast< const XMLPropStyleContext* >(pAutoStyles->FindStyleChildContext(XML_STYLE_FAMILY_TABLE_ROW,_sStyleName)));
-                if ( pAutoStyle )
-                {
-                    pAutoStyle->FillPropertySet(xProp);
-                    sal_Int32 nHeight = 0;
-                    xProp->getPropertyValue(PROPERTY_HEIGHT) >>= nHeight;
-                    m_pContainer->addHeight(nHeight);
-                }
+                m_pContainer->addHeight(nHeight);
+                m_pContainer->addAutoHeight(false);
             }
         }
     }
@@ -163,7 +164,7 @@ ORptFilter& OXMLRowColumn::GetOwnImport()
     return static_cast<ORptFilter&>(GetImport());
 }
 
-void OXMLRowColumn::EndElement()
+void OXMLRowColumn::endFastElement(sal_Int32 )
 {
 }
 

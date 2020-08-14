@@ -11,8 +11,8 @@
 #include <rtl/ustrbuf.hxx>
 
 #include <mdds/multi_type_vector_types.hpp>
-#include <mdds/multi_type_vector_trait.hpp>
 #include <mdds/multi_type_vector_custom_func1.hpp>
+#include <mdds/multi_type_vector_macro.hpp>
 #include <mdds/multi_type_matrix.hpp>
 
 #include <iostream>
@@ -26,13 +26,17 @@ const mdds::mtv::element_t element_type_string = mdds::mtv::element_type_user_st
 // String block
 typedef mdds::mtv::default_element_block<element_type_string, OUString> string_block;
 
+namespace {
+
 struct matrix_trait
 {
     typedef string_block string_element_block;
-    typedef mdds::mtv::ushort_element_block integer_element_block;
+    typedef mdds::mtv::uint16_element_block integer_element_block;
 
     typedef mdds::mtv::custom_block_func1<string_block> element_block_func;
 };
+
+}
 
 }
 

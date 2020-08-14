@@ -22,14 +22,12 @@
 #include <vcl/dockwin.hxx>
 #include <vcl/layout.hxx>
 #include <vcl/opengl/OpenGLWrapper.hxx>
+#include <sal/log.hxx>
 
 #include <window.h>
 #include <svdata.hxx>
 #include <salframe.hxx>
 #include <config_features.h>
-#include <com/sun/star/awt/MouseEvent.hpp>
-#include <com/sun/star/awt/KeyModifier.hpp>
-#include <com/sun/star/awt/MouseButton.hpp>
 #include <comphelper/scopeguard.hxx>
 
 namespace vcl {
@@ -89,6 +87,17 @@ bool Window::PreNotify( NotifyEvent& rNEvt )
     }
 
     return bDone;
+}
+
+namespace
+{
+    bool parentNotDialogControl(Window* pWindow)
+    {
+        vcl::Window* pParent = getNonLayoutParent(pWindow);
+        if (!pParent)
+            return true;
+        return ((pParent->GetStyle() & (WB_DIALOGCONTROL | WB_NODIALOGCONTROL)) != WB_DIALOGCONTROL);
+    }
 }
 
 bool Window::EventNotify( NotifyEvent& rNEvt )
@@ -174,8 +183,11 @@ bool Window::EventNotify( NotifyEvent& rNEvt )
         // if the parent also has dialog control activated, the parent takes over control
         if ( (rNEvt.GetType() == MouseNotifyEvent::KEYINPUT) || (rNEvt.GetType() == MouseNotifyEvent::KEYUP) )
         {
-            if ( ImplIsOverlapWindow() ||
-                 ((getNonLayoutParent(this)->GetStyle() & (WB_DIALOGCONTROL | WB_NODIALOGCONTROL)) != WB_DIALOGCONTROL) )
+            // ScGridWindow has WB_DIALOGCONTROL set, so pressing tab in ScCheckListMenuControl won't
+            // get processed here by the toplevel DockingWindow of ScCheckListMenuControl by
+            // just checking if parentNotDialogControl is true
+            bool bTopLevelFloatingWindow = (pWrapper && pWrapper->IsFloatingMode());
+            if (ImplIsOverlapWindow() || parentNotDialogControl(this) || bTopLevelFloatingWindow)
             {
                 bRet = ImplDlgCtrl( *rNEvt.GetKeyEvent(), rNEvt.GetType() == MouseNotifyEvent::KEYINPUT );
             }
@@ -213,6 +225,11 @@ void Window::CallEventListeners( VclEventId nEvent, void* pData )
     if ( xWindow->IsDisposed() )
         return;
 
+    // If maEventListeners is empty, the XVCLWindow has not yet been initialized.
+    // Calling GetComponentInterface will do that.
+    if (mpWindowImpl->maEventListeners.empty() && pData)
+        xWindow->GetComponentInterface();
+
     if (!mpWindowImpl->maEventListeners.empty())
     {
         // Copy the list, because this can be destroyed when calling a Link...
@@ -231,7 +248,7 @@ void Window::CallEventListeners( VclEventId nEvent, void* pData )
                 }
             }
         );
-        for ( Link<VclWindowEvent&,void>& rLink : aCopy )
+        for ( const Link<VclWindowEvent&,void>& rLink : aCopy )
         {
             if (xWindow->IsDisposed()) break;
             // check this hasn't been removed in some re-enterancy scenario fdo#47368
@@ -264,7 +281,7 @@ void Window::CallEventListeners( VclEventId nEvent, void* pData )
                     }
                 }
             );
-            for ( Link<VclWindowEvent&,void>& rLink : aCopy )
+            for ( const Link<VclWindowEvent&,void>& rLink : aCopy )
             {
                 if (xWindow->IsDisposed())
                     return;
@@ -279,11 +296,6 @@ void Window::CallEventListeners( VclEventId nEvent, void* pData )
 
         xWindow = xWindow->GetParent();
     }
-}
-
-void Window::FireVclEvent( VclSimpleEvent& rEvent )
-{
-    Application::ImplCallEventListeners(rEvent);
 }
 
 void Window::AddEventListener( const Link<VclWindowEvent&,void>& rEventListener )
@@ -320,7 +332,7 @@ void Window::RemoveChildEventListener( const Link<VclWindowEvent&,void>& rEventL
 
 ImplSVEvent * Window::PostUserEvent( const Link<void*,void>& rLink, void* pCaller, bool bReferenceLink )
 {
-    ImplSVEvent* pSVEvent = new ImplSVEvent;
+    std::unique_ptr<ImplSVEvent> pSVEvent(new ImplSVEvent);
     pSVEvent->mpData    = pCaller;
     pSVEvent->maLink    = rLink;
     pSVEvent->mpWindow  = this;
@@ -329,17 +341,15 @@ ImplSVEvent * Window::PostUserEvent( const Link<void*,void>& rLink, void* pCalle
     {
         // Double check that this is indeed a vcl::Window instance.
         assert(dynamic_cast<vcl::Window *>(
-                        static_cast<vcl::Window *>(rLink.GetInstance())) ==
+                        static_cast<OutputDevice *>(rLink.GetInstance())) ==
                static_cast<vcl::Window *>(rLink.GetInstance()));
         pSVEvent->mpInstanceRef = static_cast<vcl::Window *>(rLink.GetInstance());
     }
 
-    if ( !mpWindowImpl->mpFrame->PostEvent( pSVEvent ) )
-    {
-        delete pSVEvent;
-        pSVEvent = nullptr;
-    }
-    return pSVEvent;
+    auto pTmpEvent = pSVEvent.get();
+    if (!mpWindowImpl->mpFrame->PostEvent( std::move(pSVEvent) ))
+        return nullptr;
+    return pTmpEvent;
 }
 
 void Window::RemoveUserEvent( ImplSVEvent * nUserEvent )
@@ -358,7 +368,7 @@ void Window::RemoveUserEvent( ImplSVEvent * nUserEvent )
 }
 
 
-static MouseEvent ImplTranslateMouseEvent( const MouseEvent& rE, vcl::Window* pSource, vcl::Window* pDest )
+static MouseEvent ImplTranslateMouseEvent( const MouseEvent& rE, vcl::Window const * pSource, vcl::Window const * pDest )
 {
     // the mouse event occurred in a different window, we need to translate the coordinates of
     // the mouse cursor within that (source) window to the coordinates the mouse cursor would
@@ -577,7 +587,17 @@ void Window::ImplCallFocusChangeActivate( vcl::Window* pNewOverlapWindow,
     bool bCallActivate = true;
     bool bCallDeactivate = true;
 
+    if (!pOldOverlapWindow)
+    {
+        return;
+    }
+
     pOldRealWindow = pOldOverlapWindow->ImplGetWindow();
+    if (!pNewOverlapWindow)
+    {
+        return;
+    }
+
     pNewRealWindow = pNewOverlapWindow->ImplGetWindow();
     if ( (pOldRealWindow->GetType() != WindowType::FLOATINGWINDOW) ||
          pOldRealWindow->GetActivateMode() != ActivateModeFlags::NONE )
@@ -585,29 +605,29 @@ void Window::ImplCallFocusChangeActivate( vcl::Window* pNewOverlapWindow,
         if ( (pNewRealWindow->GetType() == WindowType::FLOATINGWINDOW) &&
              pNewRealWindow->GetActivateMode() == ActivateModeFlags::NONE)
         {
-            pSVData->maWinData.mpLastDeacWin = pOldOverlapWindow;
+            pSVData->mpWinData->mpLastDeacWin = pOldOverlapWindow;
             bCallDeactivate = false;
         }
     }
     else if ( (pNewRealWindow->GetType() != WindowType::FLOATINGWINDOW) ||
               pNewRealWindow->GetActivateMode() != ActivateModeFlags::NONE )
     {
-        if ( pSVData->maWinData.mpLastDeacWin )
+        if (pSVData->mpWinData->mpLastDeacWin)
         {
-            if ( pSVData->maWinData.mpLastDeacWin.get() == pNewOverlapWindow )
+            if (pSVData->mpWinData->mpLastDeacWin.get() == pNewOverlapWindow)
                 bCallActivate = false;
             else
             {
-                vcl::Window* pLastRealWindow = pSVData->maWinData.mpLastDeacWin->ImplGetWindow();
-                pSVData->maWinData.mpLastDeacWin->mpWindowImpl->mbActive = false;
-                pSVData->maWinData.mpLastDeacWin->Deactivate();
-                if ( pLastRealWindow != pSVData->maWinData.mpLastDeacWin.get() )
+                vcl::Window* pLastRealWindow = pSVData->mpWinData->mpLastDeacWin->ImplGetWindow();
+                pSVData->mpWinData->mpLastDeacWin->mpWindowImpl->mbActive = false;
+                pSVData->mpWinData->mpLastDeacWin->Deactivate();
+                if (pLastRealWindow != pSVData->mpWinData->mpLastDeacWin.get())
                 {
                     pLastRealWindow->mpWindowImpl->mbActive = true;
                     pLastRealWindow->Activate();
                 }
             }
-            pSVData->maWinData.mpLastDeacWin = nullptr;
+            pSVData->mpWinData->mpLastDeacWin = nullptr;
         }
     }
 
@@ -627,20 +647,18 @@ void Window::ImplCallFocusChangeActivate( vcl::Window* pNewOverlapWindow,
             }
         }
     }
-    if ( bCallActivate && ! pNewOverlapWindow->mpWindowImpl->mbActive )
+    if ( !bCallActivate || pNewOverlapWindow->mpWindowImpl->mbActive )
+        return;
+
+    pNewOverlapWindow->mpWindowImpl->mbActive = true;
+    pNewOverlapWindow->Activate();
+
+    if ( pNewRealWindow != pNewOverlapWindow )
     {
-        if( ! pNewOverlapWindow->mpWindowImpl->mbActive )
+        if( ! pNewRealWindow->mpWindowImpl->mbActive )
         {
-            pNewOverlapWindow->mpWindowImpl->mbActive = true;
-            pNewOverlapWindow->Activate();
-        }
-        if ( pNewRealWindow != pNewOverlapWindow )
-        {
-            if( ! pNewRealWindow->mpWindowImpl->mbActive )
-            {
-                pNewRealWindow->mpWindowImpl->mbActive = true;
-                pNewRealWindow->Activate();
-            }
+            pNewRealWindow->mpWindowImpl->mbActive = true;
+            pNewRealWindow->Activate();
         }
     }
 }

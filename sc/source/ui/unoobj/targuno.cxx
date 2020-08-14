@@ -17,30 +17,29 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/image.hxx>
-#include <vcl/virdev.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <svl/itemprop.hxx>
 #include <svl/hint.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/settings.hxx>
+#include <osl/diagnose.h>
 #include <com/sun/star/awt/XBitmap.hpp>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 
-#include "targuno.hxx"
-#include "miscuno.hxx"
-#include "docuno.hxx"
-#include "datauno.hxx"
-#include "nameuno.hxx"
-#include "docsh.hxx"
-#include "content.hxx"
-#include "scresid.hxx"
-#include "scres.hrc"
-#include "bitmaps.hlst"
-#include "unonames.hxx"
+#include <targuno.hxx>
+#include <miscuno.hxx>
+#include <docuno.hxx>
+#include <datauno.hxx>
+#include <nameuno.hxx>
+#include <docsh.hxx>
+#include <content.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
+#include <bitmaps.hlst>
+#include <unonames.hxx>
 
 using  namespace ::com::sun::star;
 
-sal_uInt16 const nTypeResIds[SC_LINKTARGETTYPE_COUNT] =
+static const char* aTypeResIds[SC_LINKTARGETTYPE_COUNT] =
 {
     SCSTR_CONTENT_TABLE,        // SC_LINKTARGETTYPE_SHEET
     SCSTR_CONTENT_RANGENAME,    // SC_LINKTARGETTYPE_RANGENAME
@@ -51,9 +50,9 @@ static const SfxItemPropertyMapEntry* lcl_GetLinkTargetMap()
 {
     static const SfxItemPropertyMapEntry aLinkTargetMap_Impl[] =
     {
-        {OUString(SC_UNO_LINKDISPBIT),  0,  cppu::UnoType<awt::XBitmap>::get(),   beans::PropertyAttribute::READONLY, 0 },
-        {OUString(SC_UNO_LINKDISPNAME), 0,  cppu::UnoType<OUString>::get(),                beans::PropertyAttribute::READONLY, 0 },
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        {SC_UNO_LINKDISPBIT,  0,  cppu::UnoType<awt::XBitmap>::get(),   beans::PropertyAttribute::READONLY, 0 },
+        {SC_UNO_LINKDISPNAME, 0,  cppu::UnoType<OUString>::get(),                beans::PropertyAttribute::READONLY, 0 },
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     return aLinkTargetMap_Impl;
 }
@@ -71,7 +70,7 @@ ScLinkTargetTypesObj::ScLinkTargetTypesObj(ScDocShell* pDocSh) :
     pDocShell->GetDocument().AddUnoObject(*this);
 
     for (sal_uInt16 i=0; i<SC_LINKTARGETTYPE_COUNT; i++)
-        aNames[i] = ScResId( nTypeResIds[i] );
+        aNames[i] = ScResId(aTypeResIds[i]);
 }
 
 ScLinkTargetTypesObj::~ScLinkTargetTypesObj()
@@ -136,7 +135,7 @@ ScLinkTargetTypeObj::ScLinkTargetTypeObj(ScDocShell* pDocSh, sal_uInt16 nT) :
     nType( nT )
 {
     pDocShell->GetDocument().AddUnoObject(*this);
-    aName = ScResId( nTypeResIds[nType] );    //! on demand?
+    aName = ScResId(aTypeResIds[nType]);    //! on demand?
 }
 
 ScLinkTargetTypeObj::~ScLinkTargetTypeObj()
@@ -200,7 +199,7 @@ void SAL_CALL ScLinkTargetTypeObj::setPropertyValue(const OUString& /* aProperty
     //! exception?
 }
 
-static const OUStringLiteral aContentBmps[]=
+const OUStringLiteral aContentBmps[]=
 {
     RID_BMP_CONTENT_TABLE,
     RID_BMP_CONTENT_RANGENAME,
@@ -229,8 +228,8 @@ void ScLinkTargetTypeObj::SetLinkTargetBitmap( uno::Any& rRet, sal_uInt16 nType 
     }
     if (nImgId != ScContentId::ROOT)
     {
-        BitmapEx aBitmapEx(aContentBmps[(int)nImgId -1 ]);
-        rRet <<= uno::Reference< awt::XBitmap > (VCLUnoHelper::CreateBitmap(aBitmapEx));
+        BitmapEx aBitmapEx(aContentBmps[static_cast<int>(nImgId) -1 ]);
+        rRet <<= VCLUnoHelper::CreateBitmap(aBitmapEx);
     }
 }
 
@@ -261,12 +260,11 @@ ScLinkTargetsObj::~ScLinkTargetsObj()
 
 uno::Any SAL_CALL ScLinkTargetsObj::getByName(const OUString& aName)
 {
-    uno::Reference< beans::XPropertySet >  xProp( ScUnoHelpFunctions::AnyToInterface( xCollection->getByName(aName) ), uno::UNO_QUERY );
+    uno::Reference<beans::XPropertySet> xProp(xCollection->getByName(aName), uno::UNO_QUERY);
     if (xProp.is())
         return uno::makeAny(xProp);
 
     throw container::NoSuchElementException();
-//    return uno::Any();
 }
 
 uno::Sequence<OUString> SAL_CALL ScLinkTargetsObj::getElementNames()

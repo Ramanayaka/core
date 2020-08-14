@@ -19,9 +19,10 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_AXISINDEXDEFINES_HXX
 #define INCLUDED_CHART2_SOURCE_INC_AXISINDEXDEFINES_HXX
 
+#include <sal/types.h>
+
 namespace chart
 {
-
 const sal_Int32 MAIN_AXIS_INDEX = 0;
 const sal_Int32 SECONDARY_AXIS_INDEX = 1;
 

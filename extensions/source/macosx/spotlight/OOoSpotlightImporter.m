@@ -86,6 +86,8 @@ static unsigned char readByte(NSFileHandle *file)
     if (tmpBuf == nil)
         return 0;
     unsigned char *d = (unsigned char*)[tmpBuf bytes];
+    if (d == nil)
+        return 0;
     return *d;
 }
 
@@ -284,7 +286,7 @@ static bool findDataStream(NSFileHandle *file, CentralDirectoryEntry *entry, NSS
     return true;
 }
 
-NSData *getUncompressedData(NSFileHandle *file, NSString *name)
+static NSData *getUncompressedData(NSFileHandle *file, NSString *name)
 {
     CentralDirectoryEntry entry;
     if (!findDataStream(file, &entry, name))
@@ -391,7 +393,7 @@ NSData *getUncompressedData(NSFileHandle *file, NSString *name)
 
     if (unzipFile == nil) {
         //NSLog(@"zip file not open");
-        return YES;
+        return NO;
     }
 
     //first get the metadata

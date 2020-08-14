@@ -22,14 +22,12 @@
 #include <map>
 
 #include <ooxml/OOXMLDocument.hxx>
-#include <comphelper/storagehelper.hxx>
 #include <com/sun/star/embed/XRelationshipAccess.hpp>
 
 extern OUString customTarget;
 extern OUString embeddingsTarget;
 
-namespace writerfilter {
-namespace ooxml
+namespace writerfilter::ooxml
 {
 
 class OOXMLStreamImpl : public OOXMLStream
@@ -58,15 +56,15 @@ class OOXMLStreamImpl : public OOXMLStream
                        const OUString & rId,
                        OUString & rDocumentTarget);
 public:
-    typedef std::shared_ptr<OOXMLStreamImpl> Pointer_t;
+    typedef tools::SvRef<OOXMLStreamImpl> Pointer_t;
 
     OOXMLStreamImpl
-    (OOXMLStreamImpl & rStream, StreamType_t nType);
+    (OOXMLStreamImpl const & rStream, StreamType_t nType);
     OOXMLStreamImpl
     (css::uno::Reference<css::uno::XComponentContext> const & xContext,
      css::uno::Reference<css::io::XInputStream> const & xStorageStream,
      StreamType_t nType, bool bRepairStorage);
-    OOXMLStreamImpl(OOXMLStreamImpl & rStream, const OUString & rId);
+    OOXMLStreamImpl(OOXMLStreamImpl const & rStream, const OUString & rId);
 
     virtual ~OOXMLStreamImpl() override;
 
@@ -81,7 +79,7 @@ public:
     // Giving access to mxDocumentStream. It is needed by resolving custom xml to get list of customxml's used in document.
     const css::uno::Reference<css::io::XStream>& accessDocumentStream() { return mxDocumentStream;}
 };
-}}
+}
 #endif // INCLUDED_WRITERFILTER_SOURCE_OOXML_OOXMLSTREAMIMPL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

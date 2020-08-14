@@ -19,12 +19,16 @@
 #ifndef INCLUDED_COM_SUN_STAR_UNO_REFERENCE_H
 #define INCLUDED_COM_SUN_STAR_UNO_REFERENCE_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cassert>
 #include <cstddef>
 
-#include <rtl/alloc.h>
+#if defined LIBO_INTERNAL_ONLY
+#include <type_traits>
+#endif
+
+#include "rtl/alloc.h"
 
 namespace com
 {
@@ -109,7 +113,7 @@ public:
         @return true if both references are null or refer to the same object, false otherwise
     */
     inline bool SAL_CALL operator == ( XInterface * pInterface ) const;
-    /** Unequality operator: compares two interfaces
+    /** Inequality operator: compares two interfaces
         Checks if both references are null or refer to the same object.
 
         @param pInterface another interface
@@ -124,7 +128,7 @@ public:
         @return true if both references are null or refer to the same object, false otherwise
     */
     inline bool SAL_CALL operator == ( const BaseReference & rRef ) const;
-    /** Unequality operator: compares two interfaces
+    /** Inequality operator: compares two interfaces
         Checks if both references are null or refer to the same object.
 
         @param rRef another reference
@@ -166,57 +170,6 @@ enum UnoReference_SetThrow
 {
     UNO_SET_THROW
 };
-
-/// @cond INTERNAL
-namespace detail {
-
-// A mechanism to enable up-casts, used by the Reference conversion constructor,
-// but at the same time disable up-casts to XInterface, so that the conversion
-// operator for that special case is used in an expression like
-// Reference< XInterface >(x); heavily borrowed from boost::is_base_and_derived
-// (which manages to avoid compilation problems with ambiguous bases and cites
-// comp.lang.c++.moderated mail <http://groups.google.com/groups?
-// selm=df893da6.0301280859.522081f7%40posting.google.com> "SuperSubclass
-// (is_base_and_derived) complete implementation!" by Rani Sharoni and cites
-// Aleksey Gurtovoy for the workaround for MSVC), to avoid including Boost
-// headers in URE headers (could ultimately be based on C++11 std::is_base_of):
-
-template< typename T1, typename T2 > struct UpCast {
-private:
-    template< bool, typename U1, typename > struct C
-    { typedef U1 t; };
-
-    template< typename U1, typename U2 > struct C< false, U1, U2 >
-    { typedef U2 t; };
-
-    struct S { char c[2]; };
-
-#if defined _MSC_VER && _MSC_VER < 1800
-    static char f(T2 *, long);
-    static S f(T1 * const &, int);
-#else
-    template< typename U > static char f(T2 *, U);
-    static S f(T1 *, int);
-#endif
-
-    struct H {
-        H(); // avoid C2514 "class has no constructors" from MSVC
-#if defined _MSC_VER && _MSC_VER < 1800
-        operator T1 * const & () const;
-#else
-        operator T1 * () const;
-#endif
-        operator T2 * ();
-    };
-
-public:
-    typedef typename C< sizeof (f(H(), 0)) == 1, void *, void >::t t;
-};
-
-template< typename T2 > struct UpCast< XInterface, T2 > {};
-
-}
-/// @endcond
 
 /** Template reference class for interface type derived from BaseReference.
     A special constructor given the UNO_QUERY identifier queries interfaces
@@ -307,8 +260,7 @@ public:
 
         @param rRef another reference
     */
-    inline Reference( Reference< interface_type > && rRef );
-#endif
+    inline Reference( Reference< interface_type > && rRef ) noexcept;
 
     /** Up-casting conversion constructor: Copies interface reference.
 
@@ -321,7 +273,10 @@ public:
     template< class derived_type >
     inline Reference(
         const Reference< derived_type > & rRef,
-        typename detail::UpCast< interface_type, derived_type >::t = 0 );
+        std::enable_if_t<
+            std::is_base_of_v<interface_type, derived_type>
+            && !std::is_same_v<interface_type, XInterface>, void *> = nullptr);
+#endif
 
     /** Constructor: Sets given interface pointer.
 
@@ -370,6 +325,12 @@ public:
                      to other constructors
     */
     inline Reference( const BaseReference & rRef, UnoReference_QueryThrow dummy );
+#ifdef LIBO_INTERNAL_ONLY
+    /**
+        Prevent code from calling the QUERY_THROW constructor, when they meant to use the SET_THROW constructor.
+    */
+    Reference( const Reference< interface_type > & rRef, UnoReference_QueryThrow dummy ) = delete;
+#endif
     /** Constructor: Queries given interface for reference interface type (interface_type).
         Throws a RuntimeException if the demanded interface cannot be queried.
 
@@ -419,6 +380,16 @@ public:
     interface_type * SAL_CALL operator -> () const {
         assert(_pInterface != NULL);
         return castFromXInterface(_pInterface);
+    }
+
+    /** Indirection operator.
+
+        @since LibreOffice 6.3
+        @return UNacquired interface reference
+    */
+    interface_type & SAL_CALL operator * () const {
+        assert(_pInterface != NULL);
+        return *castFromXInterface(_pInterface);
     }
 
     /** Gets interface pointer. This call does not acquire the interface.
@@ -510,6 +481,12 @@ public:
                to set methods
     */
     inline void SAL_CALL set( const BaseReference & rRef, UnoReference_QueryThrow dummy );
+#ifdef LIBO_INTERNAL_ONLY
+    /**
+        Prevent code from calling the QUERY_THROW version, when they meant to use the SET_THROW version.
+    */
+    void set( const Reference< interface_type > & rRef, UnoReference_QueryThrow dummy ) = delete;
+#endif
 
     /** Queries given any for reference interface type (interface_type) and
         sets it.  An interface already set will be released.
@@ -564,20 +541,20 @@ public:
         @param rRef an interface reference
         @return this reference
     */
-    inline Reference< interface_type > & SAL_CALL operator = ( Reference< interface_type > && rRef );
+    inline Reference< interface_type > & SAL_CALL operator = ( Reference< interface_type > && rRef ) noexcept;
 #endif
     /** Queries given interface reference for type interface_type.
 
         @param rRef interface reference
         @return interface reference of demanded type (may be null)
     */
-    inline static SAL_WARN_UNUSED_RESULT Reference< interface_type > SAL_CALL query( const BaseReference & rRef );
+    SAL_WARN_UNUSED_RESULT inline static Reference< interface_type > SAL_CALL query( const BaseReference & rRef );
     /** Queries given interface for type interface_type.
 
         @param pInterface interface pointer
         @return interface reference of demanded type (may be null)
     */
-    inline static SAL_WARN_UNUSED_RESULT Reference< interface_type > SAL_CALL query( XInterface * pInterface );
+    SAL_WARN_UNUSED_RESULT inline static Reference< interface_type > SAL_CALL query( XInterface * pInterface );
 };
 
 }

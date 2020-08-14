@@ -18,33 +18,26 @@
  */
 
 
-#include <tools/diagnose_ex.h>
-#include <gdimtftools.hxx>
+#include <sal/log.hxx>
+#include "gdimtftools.hxx"
 
-#include <com/sun/star/document/XExporter.hpp>
-#include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/graphic/XGraphicRenderer.hpp>
-#include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/drawing/GraphicExportFilter.hpp>
 
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 
-#include <comphelper/uno3.hxx>
+#include <comphelper/fileformat.h>
 
-#include <tools/stream.hxx>
-#include <vcl/svapp.hxx>
 #include <vcl/canvastools.hxx>
 #include <vcl/metaact.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/gdimtf.hxx>
-#include <vcl/animate.hxx>
+#include <vcl/animate/Animation.hxx>
 #include <vcl/graph.hxx>
 
-#include <unotools/streamwrap.hxx>
-
-#include "tools.hxx"
+#include <tools.hxx>
 
 using namespace ::com::sun::star;
 
@@ -52,9 +45,7 @@ using namespace ::com::sun::star;
 // free support functions
 // ======================
 
-namespace slideshow
-{
-namespace internal
+namespace slideshow::internal
 {
 // TODO(E2): Detect the case when svx/drawing layer is not
 // in-process, or even not on the same machine, and
@@ -67,7 +58,7 @@ namespace internal
 // calling GetBitmapEx on such a Graphic (see below) will
 // result in one poorly scaled bitmap into another,
 // somewhat arbitrarily sized bitmap.
-bool hasUnsupportedActions( const GDIMetaFile& rMtf )
+static bool hasUnsupportedActions( const GDIMetaFile& rMtf )
 {
     // search metafile for RasterOp action
     MetaAction* pCurrAct;
@@ -86,7 +77,7 @@ bool hasUnsupportedActions( const GDIMetaFile& rMtf )
                 {
                     break;
                 }
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case MetaActionType::MOVECLIPREGION:
             case MetaActionType::REFPOINT:
             case MetaActionType::WALLPAPER:
@@ -125,7 +116,7 @@ public:
         When true, the source of the metafile might be a
         foreign application. The metafile is checked
         against unsupported content, and, if necessary,
-        returned as a pre-rendererd bitmap.
+        returned as a pre-rendered bitmap.
     */
     GDIMetaFileSharedPtr getMtf( bool bForeignSource ) const
     {
@@ -138,19 +129,18 @@ public:
              hasUnsupportedActions(aGraphic.GetGDIMetaFile()) ) )
         {
             // wrap bitmap into GDIMetafile
-            GDIMetaFileSharedPtr xMtf(new GDIMetaFile);
-            ::Point         aEmptyPoint;
+            GDIMetaFileSharedPtr xMtf = std::make_shared<GDIMetaFile>();
 
             ::BitmapEx      aBmpEx( aGraphic.GetBitmapEx() );
 
-            xMtf->AddAction( new MetaBmpExAction( aEmptyPoint,
+            xMtf->AddAction( new MetaBmpExAction( Point(),
                                                  aBmpEx ) );
             xMtf->SetPrefSize( aBmpEx.GetPrefSize() );
             xMtf->SetPrefMapMode( aBmpEx.GetPrefMapMode() );
 
             return xMtf;
         }
-        return GDIMetaFileSharedPtr(new GDIMetaFile(aGraphic.GetGDIMetaFile()));
+        return std::make_shared<GDIMetaFile>(aGraphic.GetGDIMetaFile());
     }
 
 private:
@@ -263,7 +253,7 @@ sal_Int32 getNextActionOffset( MetaAction * pCurrAct )
 }
 
 bool getAnimationFromGraphic( VectorOfMtfAnimationFrames&   o_rFrames,
-                              ::std::size_t&                o_rLoopCount,
+                              sal_uInt32&                   o_rLoopCount,
                               const Graphic&                rGraphic )
 {
     o_rFrames.clear();
@@ -272,7 +262,7 @@ bool getAnimationFromGraphic( VectorOfMtfAnimationFrames&   o_rFrames,
         return false;
 
     // some loop invariants
-    Animation   aAnimation( rGraphic.GetAnimation() );
+    ::Animation   aAnimation( rGraphic.GetAnimation() );
     const Point aEmptyPoint;
     const Size  aAnimSize( aAnimation.GetDisplaySizePixel() );
 
@@ -285,7 +275,7 @@ bool getAnimationFromGraphic( VectorOfMtfAnimationFrames&   o_rFrames,
     pVDev->EnableMapMode( false );
 
     // setup mask VDev (alpha VDev is currently rather slow)
-    ScopedVclPtrInstance< VirtualDevice > pVDevMask;
+    ScopedVclPtrInstance<VirtualDevice> pVDevMask(DeviceFormat::BITMASK);
     pVDevMask->SetOutputSizePixel( aAnimSize );
     pVDevMask->EnableMapMode( false );
 
@@ -293,14 +283,14 @@ bool getAnimationFromGraphic( VectorOfMtfAnimationFrames&   o_rFrames,
 
     for( sal_uInt16 i=0, nCount=aAnimation.Count(); i<nCount; ++i )
     {
-        const AnimationBitmap& rAnimBmp( aAnimation.Get(i) );
-        switch(rAnimBmp.eDisposal)
+        const AnimationBitmap& rAnimationBitmap( aAnimation.Get(i) );
+        switch(rAnimationBitmap.meDisposal)
         {
             case Disposal::Not:
             {
-                pVDev->DrawBitmapEx(rAnimBmp.aPosPix,
-                                   rAnimBmp.aBmpEx);
-                Bitmap aMask = rAnimBmp.aBmpEx.GetMask();
+                pVDev->DrawBitmapEx(rAnimationBitmap.maPositionPixel,
+                                    rAnimationBitmap.maBitmapEx);
+                Bitmap aMask = rAnimationBitmap.maBitmapEx.GetMask();
 
                 if( aMask.IsEmpty() )
                 {
@@ -312,10 +302,9 @@ bool getAnimationFromGraphic( VectorOfMtfAnimationFrames&   o_rFrames,
                 }
                 else
                 {
-                    BitmapEx aTmpMask = BitmapEx(aMask,
-                                                 aMask);
-                    pVDevMask->DrawBitmapEx(rAnimBmp.aPosPix,
-                                           aTmpMask );
+                    BitmapEx aTmpMask(aMask, aMask);
+                    pVDevMask->DrawBitmapEx(rAnimationBitmap.maPositionPixel,
+                                            aTmpMask );
                 }
                 break;
             }
@@ -323,39 +312,39 @@ bool getAnimationFromGraphic( VectorOfMtfAnimationFrames&   o_rFrames,
             case Disposal::Back:
             {
                 // #i70772# react on no mask
-                const Bitmap aMask(rAnimBmp.aBmpEx.GetMask());
-                const Bitmap aContent(rAnimBmp.aBmpEx.GetBitmap());
+                const Bitmap aMask(rAnimationBitmap.maBitmapEx.GetMask());
+                const Bitmap & rContent(rAnimationBitmap.maBitmapEx.GetBitmap());
 
                 pVDevMask->Erase();
-                pVDev->DrawBitmap(rAnimBmp.aPosPix, aContent);
+                pVDev->DrawBitmap(rAnimationBitmap.maPositionPixel, rContent);
 
                 if(aMask.IsEmpty())
                 {
-                    const tools::Rectangle aRect(rAnimBmp.aPosPix, aContent.GetSizePixel());
-                    pVDevMask->SetFillColor(COL_BLACK);
+                    const tools::Rectangle aRect(rAnimationBitmap.maPositionPixel, rContent.GetSizePixel());
+                    pVDevMask->SetFillColor( COL_BLACK);
                     pVDevMask->SetLineColor();
                     pVDevMask->DrawRect(aRect);
                 }
                 else
                 {
-                    pVDevMask->DrawBitmap(rAnimBmp.aPosPix, aMask);
+                    pVDevMask->DrawBitmap(rAnimationBitmap.maPositionPixel, aMask);
                 }
                 break;
             }
 
             case Disposal::Previous :
             {
-                pVDev->DrawBitmapEx(rAnimBmp.aPosPix,
-                                   rAnimBmp.aBmpEx);
-                pVDevMask->DrawBitmap(rAnimBmp.aPosPix,
-                                     rAnimBmp.aBmpEx.GetMask());
+                pVDev->DrawBitmapEx(rAnimationBitmap.maPositionPixel,
+                                    rAnimationBitmap.maBitmapEx);
+                pVDevMask->DrawBitmap(rAnimationBitmap.maPositionPixel,
+                                      rAnimationBitmap.maBitmapEx.GetMask());
                 break;
             }
         }
 
         // extract current aVDev content into a new animation
         // frame
-        GDIMetaFileSharedPtr pMtf( new GDIMetaFile() );
+        GDIMetaFileSharedPtr pMtf = std::make_shared<GDIMetaFile>();
         pMtf->AddAction(
             new MetaBmpExAction( aEmptyPoint,
                                  BitmapEx(
@@ -374,7 +363,7 @@ bool getAnimationFromGraphic( VectorOfMtfAnimationFrames&   o_rFrames,
 
         // Take care of special value for MultiPage TIFFs. ATM these shall just
         // show their first page for _quite_ some time.
-        sal_Int32 nWaitTime100thSeconds( rAnimBmp.nWait );
+        sal_Int32 nWaitTime100thSeconds(rAnimationBitmap.mnWait);
         if( ANIMATION_TIMEOUT_ON_CLICK == nWaitTime100thSeconds )
         {
             // ATM the huge value would block the timer, so use a long
@@ -387,8 +376,7 @@ bool getAnimationFromGraphic( VectorOfMtfAnimationFrames&   o_rFrames,
         if( nWaitTime100thSeconds == 0 )
             nWaitTime100thSeconds = 10;
 
-        o_rFrames.push_back( MtfAnimationFrame( pMtf,
-                                                nWaitTime100thSeconds / 100.0 ) );
+        o_rFrames.emplace_back( pMtf, nWaitTime100thSeconds / 100.0 );
     }
 
     return !o_rFrames.empty();
@@ -410,21 +398,21 @@ bool getRectanglesFromScrollMtf( ::basegfx::B2DRectangle&       o_rScrollRect,
             MetaCommentAction * pAct =
                 static_cast<MetaCommentAction *>(pCurrAct);
             // skip comment if not a special XTEXT... comment
-            if( pAct->GetComment().matchIgnoreAsciiCase( OString("XTEXT") ) )
+            if( pAct->GetComment().matchIgnoreAsciiCase( "XTEXT" ) )
             {
                 if (pAct->GetComment().equalsIgnoreAsciiCase("XTEXT_SCROLLRECT"))
                 {
                     o_rScrollRect = vcl::unotools::b2DRectangleFromRectangle(
-                        *reinterpret_cast<tools::Rectangle const *>(
-                            pAct->GetData() ) );
+                                        *reinterpret_cast<tools::Rectangle const *>(
+                                            pAct->GetData() ));
 
                     bScrollRectSet = true;
                 }
                 else if (pAct->GetComment().equalsIgnoreAsciiCase("XTEXT_PAINTRECT") )
                 {
                     o_rPaintRect = vcl::unotools::b2DRectangleFromRectangle(
-                        *reinterpret_cast<tools::Rectangle const *>(
-                            pAct->GetData() ) );
+                                        *reinterpret_cast<tools::Rectangle const *>(
+                                            pAct->GetData() ));
 
                     bPaintRectSet = true;
                 }
@@ -435,7 +423,6 @@ bool getRectanglesFromScrollMtf( ::basegfx::B2DRectangle&       o_rScrollRect,
     return bScrollRectSet && bPaintRectSet;
 }
 
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

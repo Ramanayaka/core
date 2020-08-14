@@ -20,10 +20,9 @@
 #ifndef INCLUDED_VCL_INC_UNX_CUPSMGR_HXX
 #define INCLUDED_VCL_INC_UNX_CUPSMGR_HXX
 
-#include "printerinfomanager.hxx"
-#include "osl/module.h"
-#include "osl/thread.h"
-#include "osl/mutex.hxx"
+#include <printerinfomanager.hxx>
+#include <osl/thread.h>
+#include <osl/mutex.hxx>
 
 namespace psp
 {
@@ -42,9 +41,9 @@ class CUPSManager : public PrinterInfoManager
     int                                                    m_nDests;
     void*                                                  m_pDests;
     bool                                                   m_bNewDests;
-    std::unordered_map< OUString, int, OUStringHash >      m_aCUPSDestMap;
+    std::unordered_map< OUString, int >      m_aCUPSDestMap;
 
-    std::unordered_map< OUString, PPDContext, OUStringHash > m_aDefaultContexts;
+    std::unordered_map< OUString, PPDContext > m_aDefaultContexts;
 
     OString                                                m_aUser;
     /** this is a security risk, but the CUPS API demands
@@ -82,13 +81,6 @@ public:
 
     /// check if the printer configuration has changed
     virtual bool checkPrintersChanged( bool bWait ) override;
-
-    // members for administration
-    // disable for CUPS
-    virtual bool addPrinter( const OUString& rPrinterName, const OUString& rDriverName ) override;
-    virtual bool removePrinter( const OUString& rPrinterName, bool bCheckOnly ) override;
-    virtual bool writePrinterConfig() override;
-    virtual bool setDefaultPrinter( const OUString& rPrinterName ) override;
 };
 
 } // namespace psp

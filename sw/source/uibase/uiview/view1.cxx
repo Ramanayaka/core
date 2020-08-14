@@ -17,23 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/svdpagv.hxx>
-#include <svx/svdview.hxx>
+#include <svl/eitem.hxx>
 #include <svx/ruler.hxx>
 #include <idxmrk.hxx>
 #include <view.hxx>
+#include <basesh.hxx>
 #include <wrtsh.hxx>
 #include <swmodule.hxx>
-#include <viewopt.hxx>
 #include <docsh.hxx>
-#include <globdoc.hxx>
-#include <navipi.hxx>
 #include <fldwrap.hxx>
 #include <redlndlg.hxx>
-#include <dpage.hxx>
 #include <edtwin.hxx>
-#include "formatclipboard.hxx"
+#include <formatclipboard.hxx>
 #include <cmdid.h>
+#include <sfx2/dispatch.hxx>
 #include <sfx2/request.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <wordcountdialog.hxx>
@@ -68,6 +65,32 @@ void SwView::Activate(bool bMDIActivate)
 
     if ( bMDIActivate )
     {
+        if ( m_pShell )
+        {
+            SfxDispatcher &rDispatcher = GetDispatcher();
+            SfxShell *pTopShell = rDispatcher.GetShell( 0 );
+
+            // this SwView is the top-most shell on the stack
+            if ( pTopShell == this )
+            {
+                for ( sal_uInt16 i = 1; true; ++i )
+                {
+                    SfxShell *pSfxShell = rDispatcher.GetShell( i );
+                    // does the stack contain any shells spawned by this SwView already?
+                    if  ( ( dynamic_cast< const SwBaseShell *>( pSfxShell ) !=  nullptr
+                         || dynamic_cast< const FmFormShell  *>( pSfxShell ) !=  nullptr )
+                         && ( pSfxShell->GetViewShell() == this ) )
+                    {
+                        // it shouldn't b/c we haven't been activated yet
+                        // so assert that 'cause it'll crash during dispose at the latest
+                        assert( pSfxShell && "Corrupted shell stack: dependent shell positioned below its view");
+                    }
+                    else
+                        break;
+                }
+            }
+        }
+
         m_pWrtShell->ShellGetFocus();     // Selections visible
 
         if( !m_sSwViewData.isEmpty() )
@@ -76,7 +99,7 @@ void SwView::Activate(bool bMDIActivate)
             m_sSwViewData.clear();
         }
 
-        AttrChangedNotify(m_pWrtShell);
+        AttrChangedNotify(nullptr);
 
         // Initialize Fielddlg newly if necessary (e.g. for TYP_SETVAR)
         sal_uInt16 nId = SwFieldDlgWrapper::GetChildWindowId();
@@ -106,7 +129,7 @@ void SwView::Activate(bool bMDIActivate)
     }
     else
         // At least call the Notify (as a precaution because of the SlotFilter).
-        AttrChangedNotify(m_pWrtShell);
+        AttrChangedNotify(nullptr);
 
     SfxViewShell::Activate(bMDIActivate);
 }
@@ -131,7 +154,7 @@ void SwView::MarginChanged()
     GetWrtShell().SetBrowseBorder( GetMargin() );
 }
 
-void SwView::ExecFormatPaintbrush(SfxRequest& rReq)
+void SwView::ExecFormatPaintbrush(SfxRequest const & rReq)
 {
     if(!m_pFormatClipboard)
         return;
@@ -149,14 +172,13 @@ void SwView::ExecFormatPaintbrush(SfxRequest& rReq)
         const SfxItemSet *pArgs = rReq.GetArgs();
         if( pArgs && pArgs->Count() >= 1 )
         {
-            bPersistentCopy = static_cast<const SfxBoolItem &>(pArgs->Get(
-                                    SID_FORMATPAINTBRUSH)).GetValue();
+            bPersistentCopy = pArgs->Get(SID_FORMATPAINTBRUSH).GetValue();
         }
 
         m_pFormatClipboard->Copy( GetWrtShell(), GetPool(), bPersistentCopy );
 
         SwApplyTemplate aTemplate;
-        aTemplate.m_pFormatClipboard = m_pFormatClipboard;
+        aTemplate.m_pFormatClipboard = m_pFormatClipboard.get();
         GetEditWin().SetApplyTemplate(aTemplate);
     }
     GetViewFrame()->GetBindings().Invalidate(SID_FORMATPAINTBRUSH);
@@ -167,13 +189,15 @@ void SwView::StateFormatPaintbrush(SfxItemSet &rSet)
     if(!m_pFormatClipboard)
         return;
 
-    bool bHasContent = m_pFormatClipboard && m_pFormatClipboard->HasContent();
-    rSet.Put(SfxBoolItem(SID_FORMATPAINTBRUSH, bHasContent));
-    if(!bHasContent)
+    const bool bHasContent = m_pFormatClipboard->HasContent();
+    if( !bHasContent &&
+        !SwFormatClipboard::CanCopyThisType( GetWrtShell().GetSelectionType())
+      )
     {
-        if( !SwFormatClipboard::CanCopyThisType( GetWrtShell().GetSelectionType() ) )
-            rSet.DisableItem( SID_FORMATPAINTBRUSH );
+        rSet.DisableItem( SID_FORMATPAINTBRUSH );
     }
+    else
+        rSet.Put(SfxBoolItem(SID_FORMATPAINTBRUSH, bHasContent));
 }
 
 void SwView::UpdateWordCount(SfxShell* pShell, sal_uInt16 nSlot)

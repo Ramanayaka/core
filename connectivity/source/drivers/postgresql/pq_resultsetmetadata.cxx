@@ -43,6 +43,7 @@
 
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
+#include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 
@@ -52,7 +53,6 @@ using osl::MutexGuard;
 
 
 using com::sun::star::uno::Any;
-using com::sun::star::uno::RuntimeException;
 using com::sun::star::uno::Exception;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::UNO_QUERY;
@@ -88,7 +88,7 @@ namespace pq_sdbc_driver
 // };
 
 // is not exported by the postgres header
-const static int PQ_VARHDRSZ = sizeof( sal_Int32 );
+const int PQ_VARHDRSZ = sizeof( sal_Int32 );
 
 static void extractPrecisionAndScale( sal_Int32 atttypmod, sal_Int32 *precision, sal_Int32 *scale )
 {
@@ -117,7 +117,7 @@ ResultSetMetaData::ResultSetMetaData(
     const css::uno::Reference< css::sdbc::XResultSet >  & origin,
     ResultSet * pResultSet,
     ConnectionSettings **ppSettings,
-    PGresult *pResult,
+    PGresult const *pResult,
     const OUString &schemaName,
     const OUString &tableName ) :
     m_xMutex( refMutex ),
@@ -153,70 +153,68 @@ ResultSetMetaData::ResultSetMetaData(
 
 void ResultSetMetaData::checkForTypes()
 {
-    if( ! m_checkedForTypes )
+    if(  m_checkedForTypes )
+        return;
+
+    Reference< XStatement > stmt =
+        extractConnectionFromStatement( m_origin->getStatement() )->createStatement();
+    DisposeGuard guard( stmt );
+    OUStringBuffer buf(128);
+    buf.append( "SELECT oid, typname, typtype FROM pg_type WHERE ");
+    for( int i  = 0 ; i < m_colCount ; i ++ )
     {
-        Reference< XStatement > stmt =
-            extractConnectionFromStatement( m_origin->getStatement() )->createStatement();
-        DisposeGuard guard( stmt );
-        OUStringBuffer buf(128);
-        buf.append( "SELECT oid, typname, typtype FROM pg_type WHERE ");
-        for( int i  = 0 ; i < m_colCount ; i ++ )
-        {
-            if( i > 0 )
-                buf.append( " OR " );
-            int oid = m_colDesc[i].typeOid;
-            buf.append( "oid=" );
-            buf.append( (sal_Int32) oid );
-        }
-        Reference< XResultSet > rs = stmt->executeQuery( buf.makeStringAndClear() );
-        Reference< XRow > xRow( rs, UNO_QUERY );
-        while( rs->next() )
-        {
-            Oid oid = xRow->getInt( 1 );
-            OUString typeName = xRow->getString( 2 );
-            OUString typType = xRow->getString( 3 );
+        if( i > 0 )
+            buf.append( " OR " );
+        int oid = m_colDesc[i].typeOid;
+        buf.append( "oid=" );
+        buf.append( static_cast<sal_Int32>(oid) );
+    }
+    Reference< XResultSet > rs = stmt->executeQuery( buf.makeStringAndClear() );
+    Reference< XRow > xRow( rs, UNO_QUERY );
+    while( rs->next() )
+    {
+        Oid oid = xRow->getInt( 1 );
+        OUString typeName = xRow->getString( 2 );
+        OUString typType = xRow->getString( 3 );
 
-            sal_Int32 type = typeNameToDataType( typeName, typType );
+        sal_Int32 type = typeNameToDataType( typeName, typType );
 
-            for( sal_Int32 j = 0; j < m_colCount ; j ++ )
+        for( sal_Int32 j = 0; j < m_colCount ; j ++ )
+        {
+            if( m_colDesc[j].typeOid == oid )
             {
-                if( m_colDesc[j].typeOid == oid )
-                {
-                    m_colDesc[j].typeName = typeName;
-                    m_colDesc[j].type = type;
-                }
+                m_colDesc[j].typeName = typeName;
+                m_colDesc[j].type = type;
             }
         }
-        m_checkedForTypes = true;
     }
+    m_checkedForTypes = true;
 }
 
 void ResultSetMetaData::checkTable()
 {
-    if( ! m_checkedForTable )
+    if(  m_checkedForTable )
+        return;
+
+    m_checkedForTable = true;
+    if( !m_tableName.getLength() )
+        return;
+
+    Reference< css::container::XNameAccess > tables = (*m_ppSettings)->tables;
+    if( ! tables.is() )
     {
-        m_checkedForTable = true;
-        if( m_tableName.getLength() )
-        {
 
-            Reference< css::container::XNameAccess > tables = (*m_ppSettings)->tables;
-            if( ! tables.is() )
-            {
-
-                Reference< XTablesSupplier > supplier =
-                    Reference< XTablesSupplier > (
-                        extractConnectionFromStatement( m_origin->getStatement() ), UNO_QUERY);
-                if( supplier.is() )
-                    tables = supplier->getTables();
-            }
-            if( tables.is() )
-            {
-                const OUString name   (getTableName ( 1 ));
-                const OUString schema (getSchemaName( 1 ));
-                const OUString composedName( schema.isEmpty() ? name : (schema + "." + name) );
-                tables->getByName( composedName ) >>= m_table;
-            }
-        }
+        Reference< XTablesSupplier > supplier(
+                extractConnectionFromStatement( m_origin->getStatement() ), UNO_QUERY);
+        if( supplier.is() )
+            tables = supplier->getTables();
+    }
+    if( tables.is() )
+    {
+        const OUString name   (getTableName ( 1 ));
+        const OUString schema (getSchemaName( 1 ));
+        const OUString composedName( schema.isEmpty() ? name : (schema + "." + name) );
+        tables->getByName( composedName ) >>= m_table;
     }
 }
 
@@ -360,7 +358,7 @@ sal_Int32 ResultSetMetaData::getScale( sal_Int32 column )
 
 OUString ResultSetMetaData::getTableName( sal_Int32 )
 {
-// LEM TODO This is very fishy.. Should probably return the table to which that column belongs!
+// LEM TODO This is very fishy... Should probably return the table to which that column belongs!
     return m_tableName;
 }
 
@@ -420,7 +418,7 @@ sal_Bool ResultSetMetaData::isWritable( sal_Int32 column )
 
 sal_Bool ResultSetMetaData::isDefinitelyWritable( sal_Int32 column )
 {
-    return isWritable(column); // uhh, now it becomes really esoteric ....
+    return isWritable(column); // uhh, now it becomes really esoteric...
 }
 OUString ResultSetMetaData::getColumnServiceName( sal_Int32 )
 {

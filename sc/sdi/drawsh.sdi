@@ -75,6 +75,8 @@ interface TableDraw
     [   ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; Export = FALSE; ]
     SID_ATTR_SHADOW_TRANSPARENCE
     [   ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; Export = FALSE; ]
+    SID_ATTR_SHADOW_BLUR
+    [   ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; Export = FALSE; ]
     SID_ATTR_SHADOW_XDISTANCE
     [   ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; Export = FALSE; ]
     SID_ATTR_SHADOW_YDISTANCE
@@ -100,6 +102,7 @@ interface TableDraw
     SID_ATTR_LINE_CAP [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; Export = FALSE; ]
     SID_ATTRIBUTES_AREA     [ ExecMethod = ExecDrawAttr; StateMethod = GetAttrFuncState; Export = FALSE; ]
     SID_ATTRIBUTES_LINE     [ ExecMethod = ExecDrawAttr; StateMethod = GetAttrFuncState; Export = FALSE; ]
+    SID_MEASURE_DLG         [ ExecMethod = ExecDrawAttr; StateMethod = GetAttrFuncState; Export = FALSE; ]
     SID_ATTR_TRANSFORM      [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawFuncState; Export = FALSE; ]
 
     // For the sidebar
@@ -158,9 +161,11 @@ interface TableDraw
     SID_MIRROR_VERTICAL     [ ExecMethod = ExecDrawFunc; StateMethod = GetDrawFuncState; Export = FALSE; ]
     SID_FLIP_HORIZONTAL     [ ExecMethod = ExecDrawFunc; StateMethod = GetDrawFuncState; Export = FALSE; ]
     SID_FLIP_VERTICAL       [ ExecMethod = ExecDrawFunc; StateMethod = GetDrawFuncState; Export = FALSE; ]
+    SID_ANCHOR_MENU         [ StateMethod = GetDrawFuncState; Export = FALSE; ]
     SID_ANCHOR_PAGE         [ ExecMethod = ExecDrawFunc; StateMethod = GetState; Export = FALSE; ]
     SID_ANCHOR_TOGGLE       [ ExecMethod = ExecDrawFunc; StateMethod = GetDrawFuncState; Export = FALSE; ]
     SID_ANCHOR_CELL         [ ExecMethod = ExecDrawFunc; StateMethod = GetState; Export = FALSE; ]
+    SID_ANCHOR_CELL_RESIZE  [ ExecMethod = ExecDrawFunc; StateMethod = GetState; Export = FALSE; ]
     // FontWork:
     SID_FONTWORK            [ ExecMethod = ExecDrawFunc; StateMethod = GetState; Export = FALSE; ]
     SID_FORMTEXT_STYLE      [ ExecMethod = ExecFormText; StateMethod = GetFormTextState; Export = FALSE; ]
@@ -178,6 +183,7 @@ interface TableDraw
     SID_ATTR_SIZE           [ StateMethod = GetDrawAttrState; Export = FALSE; ]
     SID_TABLE_CELL          [ StateMethod = GetDrawAttrState; Export = FALSE; ]
     SID_ORIGINALSIZE        [ ExecMethod = ExecDrawFunc; StateMethod = GetDrawFuncState; Export = FALSE; ]
+    SID_FITCELLSIZE         [ ExecMethod = ExecDrawFunc; StateMethod = GetDrawFuncState; Export = FALSE; ]
     SID_HYPERLINK_SETLINK   [ ExecMethod = ExecuteHLink; Export = FALSE; ]
     SID_HYPERLINK_GETLINK   [ StateMethod = GetHLinkState; Export = FALSE; ]
     SID_ENABLE_HYPHENATION  [ ExecMethod = ExecDrawFunc; StateMethod = GetDrawFuncState; Export = FALSE; ]
@@ -189,7 +195,7 @@ interface TableDraw
     SID_FORMATPAINTBRUSH    [ ExecMethod = ExecFormatPaintbrush; StateMethod = StateFormatPaintbrush; ]
 
     SID_OPEN_XML_FILTERSETTINGS     [ ExecMethod = ExecDrawFunc ; StateMethod = GetDrawFuncState ; ]
-    SID_EXTRUSION_TOOGLE            [ ExecMethod = ExecDrawFunc ; StateMethod = GetDrawFuncState ; ]
+    SID_EXTRUSION_TOGGLE            [ ExecMethod = ExecDrawFunc ; StateMethod = GetDrawFuncState ; ]
     SID_EXTRUSION_TILT_DOWN         [ ExecMethod = ExecDrawFunc ; StateMethod = GetDrawFuncState ; ]
     SID_EXTRUSION_TILT_UP           [ ExecMethod = ExecDrawFunc ; StateMethod = GetDrawFuncState ; ]
     SID_EXTRUSION_TILT_LEFT         [ ExecMethod = ExecDrawFunc ; StateMethod = GetDrawFuncState ; ]
@@ -217,10 +223,16 @@ interface TableDraw
     SID_FONTWORK_KERN_CHARACTER_PAIRS       [ ExecMethod = ExecDrawFunc ; StateMethod = GetDrawFuncState ; ]
     SID_FONTWORK_CHARACTER_SPACING_DIALOG   [ ExecMethod = ExecDrawFunc ; StateMethod = GetDrawFuncState ; ]
 
-// ISSUE66550_HLINK_FOR_SHAPES
     SID_DRAW_HLINK_EDIT             [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawFuncState; Export = FALSE; ]
     SID_DRAW_HLINK_DELETE           [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawFuncState; Export = FALSE; ]
     SID_OPEN_HYPERLINK              [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawFuncState; Export = FALSE; ]
+
+    SID_ATTR_GLOW_COLOR             [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; Export = FALSE; ]
+    SID_ATTR_GLOW_RADIUS            [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; Export = FALSE; ]
+    SID_ATTR_GLOW_TRANSPARENCY      [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; Export = FALSE; ]
+
+    SID_ATTR_SOFTEDGE_RADIUS        [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; Export = FALSE; ]
+
 }
 
 

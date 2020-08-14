@@ -17,22 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/table/XCell.hpp>
-#include <com/sun/star/table/XColumnRowRange.hpp>
-#include <com/sun/star/beans/XIntrospection.hpp>
+#include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/beans/XIntrospectionAccess.hpp>
 #include <com/sun/star/sheet/XFunctionAccess.hpp>
-#include <com/sun/star/sheet/XCellRangesQuery.hpp>
 #include <com/sun/star/sheet/XCellRangeAddressable.hpp>
-#include <com/sun/star/sheet/CellFlags.hpp>
-#include <com/sun/star/reflection/XIdlMethod.hpp>
-#include <com/sun/star/beans/MethodConcept.hpp>
-#include <comphelper/processfactory.hxx>
-#include <cppuhelper/queryinterface.hxx>
-#include <comphelper/anytostring.hxx>
+#include <ooo/vba/excel/XRange.hpp>
 
 #include "vbawsfunction.hxx"
-#include "compiler.hxx"
+#include <compiler.hxx>
 
 using namespace com::sun::star;
 using namespace ooo::vba;
@@ -84,55 +76,53 @@ ScVbaWSFunction::invoke(const OUString& FunctionName, const uno::Sequence< uno::
     uno::Sequence< uno::Any > aParamTemp( Params );
     if( aParamTemp.hasElements() )
     {
-        uno::Any* pArray = aParamTemp.getArray();
-        uno::Any* pArrayEnd = pArray + aParamTemp.getLength();
-        for( ; pArray < pArrayEnd; ++pArray )
+        for( uno::Any & rArray : aParamTemp )
         {
-            switch( pArray->getValueType().getTypeClass()  )
+            switch( rArray.getValueType().getTypeClass()  )
             {
                 case uno::TypeClass_BOOLEAN:
-                    lclConvertBooleanToDouble( *pArray );
+                    lclConvertBooleanToDouble( rArray );
                     break;
                 case uno::TypeClass_INTERFACE:
                 {
-                    uno::Reference< excel::XRange > myRange( *pArray, uno::UNO_QUERY );
+                    uno::Reference< excel::XRange > myRange( rArray, uno::UNO_QUERY );
                     if( myRange.is() )
-                        *pArray = myRange->getCellRange();
+                        rArray = myRange->getCellRange();
                 }
                     break;
                 case uno::TypeClass_SEQUENCE:
                 {
                     // the sheet.FunctionAccess service doesn't deal with Sequences, only Sequences of Sequence
-                    uno::Type aType = pArray->getValueType();
+                    uno::Type aType = rArray.getValueType();
                     if ( aType.equals( cppu::UnoType<uno::Sequence<sal_Int16>>::get() ) )
                     {
                         uno::Sequence< uno::Sequence< sal_Int16 > >  aTmp(1);
-                        (*pArray) >>= aTmp[ 0 ];
-                        (*pArray) <<= aTmp;
+                        rArray >>= aTmp[ 0 ];
+                        rArray <<= aTmp;
                     }
                     else if ( aType.equals( cppu::UnoType<uno::Sequence<sal_Int32>>::get() ) )
                     {
                         uno::Sequence< uno::Sequence< sal_Int32 > > aTmp(1);
-                        (*pArray) >>= aTmp[ 0 ];
-                        (*pArray) <<= aTmp;
+                        rArray >>= aTmp[ 0 ];
+                        rArray <<= aTmp;
                     }
                     else if ( aType.equals( cppu::UnoType<uno::Sequence<double>>::get() ) )
                     {
                         uno::Sequence< uno::Sequence< double > > aTmp(1);
-                        (*pArray) >>= aTmp[ 0 ];
-                        (*pArray) <<= aTmp;
+                        rArray >>= aTmp[ 0 ];
+                        rArray <<= aTmp;
                     }
                     else if ( aType.equals( cppu::UnoType<uno::Sequence<OUString>>::get() ) )
                     {
                         uno::Sequence< uno::Sequence< OUString > > aTmp(1);
-                        (*pArray) >>= aTmp[ 0 ];
-                        (*pArray) <<= aTmp;
+                        rArray >>= aTmp[ 0 ];
+                        rArray <<= aTmp;
                     }
                     else if ( aType.equals( cppu::UnoType<uno::Sequence<uno::Any>>::get() ) )
                     {
                         uno::Sequence< uno::Sequence<uno::Any > > aTmp(1);
-                        (*pArray) >>= aTmp[ 0 ];
-                        (*pArray) <<= aTmp;
+                        rArray >>= aTmp[ 0 ];
+                        rArray <<= aTmp;
                     }
                 }
                     break;
@@ -176,7 +166,7 @@ ScVbaWSFunction::invoke(const OUString& FunctionName, const uno::Sequence< uno::
 
     if( !aRet.hasValue() )
     {
-        uno::Reference< lang::XMultiComponentFactory > xSMgr( mxContext->getServiceManager(), uno::UNO_QUERY_THROW );
+        uno::Reference< lang::XMultiComponentFactory > xSMgr( mxContext->getServiceManager(), uno::UNO_SET_THROW );
         uno::Reference< sheet::XFunctionAccess > xFunctionAccess( xSMgr->createInstanceWithContext(
             "com.sun.star.sheet.FunctionAccess", mxContext ),
             uno::UNO_QUERY_THROW );
@@ -196,9 +186,9 @@ ScVbaWSFunction::invoke(const OUString& FunctionName, const uno::Sequence< uno::
         if( aRet.has< AnySeqSeq >() )
         {
             AnySeqSeq aAnySeqSeq = aRet.get< AnySeqSeq >();
-            for( sal_Int32 nRow = 0; nRow < aAnySeqSeq.getLength(); ++nRow )
-                for( sal_Int32 nCol = 0; nCol < aAnySeqSeq[ nRow ].getLength(); ++nCol )
-                    lclConvertDoubleToBoolean( aAnySeqSeq[ nRow ][ nCol ] );
+            for( auto& rAnySeq : aAnySeqSeq )
+                for( auto& rAny : rAnySeq )
+                    lclConvertDoubleToBoolean( rAny );
             aRet <<= aAnySeqSeq;
         }
         else
@@ -293,18 +283,16 @@ ScVbaWSFunction::getExactName( const OUString& aApproximateName )
 OUString
 ScVbaWSFunction::getServiceImplName()
 {
-    return OUString("ScVbaWSFunction");
+    return "ScVbaWSFunction";
 }
 
 uno::Sequence< OUString >
 ScVbaWSFunction::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.WorksheetFunction";
-    }
+        "ooo.vba.excel.WorksheetFunction"
+    };
     return aServiceNames;
 }
 

@@ -70,7 +70,7 @@ private:
     void End();
 
 protected:
-    vcl::Region ImplCalcClipRegion( bool bIncludeLogo = true ) const;
+    vcl::Region ImplCalcClipRegion() const;
     void ImplDrawScroller(vcl::RenderContext& rRenderContext, bool bUp);
     using Window::ImplScroll;
     void ImplScroll( const Point& rMousePos );
@@ -120,6 +120,8 @@ public:
     sal_uInt16 GetHighlightedItem() const { return nHighlightedItem; }
 
     void SetPosInParent( sal_uInt16 nPos ) { nPosInParent = nPos; }
+
+    bool MenuInHierarchyHasFocus() const;
 
     virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible() override;
 };

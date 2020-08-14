@@ -18,26 +18,18 @@
  */
 
 #include <svx/svxids.hrc>
-#include <sfx2/app.hxx>
-#include <sfx2/request.hxx>
-#include <svl/srchitem.hxx>
 #include <tools/globname.hxx>
 
 #include <comphelper/classids.hxx>
 
 #include <sfx2/objface.hxx>
 
-#include "app.hrc"
-#include "strings.hrc"
-#include "glob.hrc"
-#include "GraphicDocShell.hxx"
-#include "DrawDocShell.hxx"
-#include "drawdoc.hxx"
-#include "sdresid.hxx"
+#include <GraphicDocShell.hxx>
+#include <DrawDocShell.hxx>
 
 using namespace sd;
-#define GraphicDocShell
-#include "sdgslots.hxx"
+#define ShellClass_GraphicDocShell
+#include <sdgslots.hxx>
 
 namespace sd
 {
@@ -49,22 +41,18 @@ void GraphicDocShell::InitInterface_Impl()
     GetStaticInterface()->RegisterChildWindow(SID_SEARCH_DLG);
 }
 
-SFX_IMPL_OBJECTFACTORY( GraphicDocShell, SvGlobalName(SO3_SDRAW_CLASSID_60), SfxObjectShellFlags::STD_NORMAL, "sdraw" )
+SFX_IMPL_OBJECTFACTORY( GraphicDocShell, SvGlobalName(SO3_SDRAW_CLASSID_60), "sdraw" )
 
-GraphicDocShell::GraphicDocShell(SfxObjectCreateMode eMode,
-                                     bool bDataObject,
-                                     DocumentType eDocType) :
-    DrawDocShell(eMode, bDataObject, eDocType)
+GraphicDocShell::GraphicDocShell(SfxObjectCreateMode eMode) :
+    DrawDocShell(eMode, /*bDataObject*/true, DocumentType::Draw)
 {
-    SetStyleFamily( SD_STYLE_FAMILY_GRAPHICS );
+    SetStyleFamily( SfxStyleFamily::Para );
 }
 
-GraphicDocShell::GraphicDocShell(SfxModelFlags nModelCreationFlags,
-                                     bool bDataObject,
-                                     DocumentType eDocType) :
-    DrawDocShell(nModelCreationFlags, bDataObject, eDocType)
+GraphicDocShell::GraphicDocShell(SfxModelFlags nModelCreationFlags) :
+    DrawDocShell(nModelCreationFlags, /*bDataObject*/false, DocumentType::Draw)
 {
-    SetStyleFamily( SD_STYLE_FAMILY_GRAPHICS );
+    SetStyleFamily( SfxStyleFamily::Para );
 }
 
 GraphicDocShell::~GraphicDocShell()

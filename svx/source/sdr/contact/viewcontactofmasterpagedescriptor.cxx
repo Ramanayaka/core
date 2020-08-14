@@ -20,27 +20,18 @@
 #include <sdr/contact/viewcontactofmasterpagedescriptor.hxx>
 #include <svx/sdr/contact/viewobjectcontact.hxx>
 #include <svx/svdpage.hxx>
-#include <svx/sdr/contact/displayinfo.hxx>
 #include <svx/svdobj.hxx>
-#include <svx/sdr/contact/objectcontactofobjlistpainter.hxx>
-#include <vcl/timer.hxx>
-#include <svx/svdpagv.hxx>
-#include <svx/svdview.hxx>
-#include <sdr/contact/viewcontactofsdrpage.hxx>
 #include <sdr/contact/viewobjectcontactofmasterpagedescriptor.hxx>
-#include <svx/sdr/primitive2d/sdrattributecreator.hxx>
+#include <sdr/primitive2d/sdrattributecreator.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <svx/sdr/primitive2d/sdrdecompositiontools.hxx>
+#include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <drawinglayer/attribute/sdrfillattribute.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <drawinglayer/attribute/fillgradientattribute.hxx>
 
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
         ViewObjectContact& ViewContactOfMasterPageDescriptor::CreateObjectSpecificViewObjectContact(ObjectContact& rObjectContact)
         {
             return *(new ViewObjectContactOfMasterPageDescriptor(rObjectContact, *this));
@@ -63,10 +54,10 @@ namespace sdr
                 // direct model data is the page size, get and use it
                 const SdrPage& rOwnerPage = GetMasterPageDescriptor().GetOwnerPage();
                 const basegfx::B2DRange aInnerRange(
-                    rOwnerPage.GetLftBorder(), rOwnerPage.GetUppBorder(),
-                    rOwnerPage.GetWdt() - rOwnerPage.GetRgtBorder(),
-                    rOwnerPage.GetHgt() - rOwnerPage.GetLwrBorder());
-                const basegfx::B2DPolygon aInnerPolgon(basegfx::tools::createPolygonFromRect(aInnerRange));
+                    rOwnerPage.GetLeftBorder(), rOwnerPage.GetUpperBorder(),
+                    rOwnerPage.GetWidth() - rOwnerPage.GetRightBorder(),
+                    rOwnerPage.GetHeight() - rOwnerPage.GetLowerBorder());
+                const basegfx::B2DPolygon aInnerPolgon(basegfx::utils::createPolygonFromRect(aInnerRange));
                 const drawinglayer::primitive2d::Primitive2DReference xReference(
                     drawinglayer::primitive2d::createPolyPolygonFillPrimitive(
                         basegfx::B2DPolyPolygon(aInnerPolgon),
@@ -105,7 +96,7 @@ namespace sdr
         {
             return &(GetMasterPageDescriptor().GetOwnerPage().GetViewContact());
         }
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

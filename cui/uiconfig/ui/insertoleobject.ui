@@ -1,15 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.20.0 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="cui">
+  <requires lib="gtk+" version="3.18"/>
+  <object class="GtkTreeStore" id="liststore1">
+    <columns>
+      <!-- column-name text -->
+      <column type="gchararray"/>
+      <!-- column-name id -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
   <object class="GtkDialog" id="InsertOLEObjectDialog">
     <property name="can_focus">False</property>
     <property name="border_width">6</property>
-    <property name="title" translatable="yes">Insert OLE Object</property>
+    <property name="title" translatable="yes" context="insertoleobject|InsertOLEObjectDialog">Insert OLE Object</property>
+    <property name="modal">True</property>
+    <property name="default_width">0</property>
+    <property name="default_height">0</property>
     <property name="type_hint">dialog</property>
+    <child>
+      <placeholder/>
+    </child>
     <child internal-child="vbox">
       <object class="GtkBox" id="dialog-vbox1">
         <property name="can_focus">False</property>
+        <property name="hexpand">True</property>
+        <property name="vexpand">True</property>
         <property name="orientation">vertical</property>
         <property name="spacing">12</property>
         <child internal-child="action_area">
@@ -71,9 +87,10 @@
         </child>
         <child>
           <object class="GtkBox" id="box1">
-            <property name="width_request">400</property>
             <property name="visible">True</property>
             <property name="can_focus">False</property>
+            <property name="hexpand">True</property>
+            <property name="vexpand">True</property>
             <property name="orientation">vertical</property>
             <property name="spacing">12</property>
             <child>
@@ -83,10 +100,11 @@
                 <property name="homogeneous">True</property>
                 <child>
                   <object class="GtkRadioButton" id="createnew">
-                    <property name="label" translatable="yes">Create new</property>
+                    <property name="label" translatable="yes" context="insertoleobject|createnew">Create new</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
+                    <property name="use_underline">True</property>
                     <property name="xalign">0</property>
                     <property name="draw_indicator">True</property>
                     <property name="group">createfromfile</property>
@@ -99,10 +117,11 @@
                 </child>
                 <child>
                   <object class="GtkRadioButton" id="createfromfile">
-                    <property name="label" translatable="yes">Create from file</property>
+                    <property name="label" translatable="yes" context="insertoleobject|createfromfile">Create from file</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
+                    <property name="use_underline">True</property>
                     <property name="xalign">0</property>
                     <property name="active">True</property>
                     <property name="draw_indicator">True</property>
@@ -125,20 +144,50 @@
               <object class="GtkFrame" id="objecttypeframe">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
+                <property name="hexpand">True</property>
+                <property name="vexpand">True</property>
                 <property name="label_xalign">0</property>
                 <property name="shadow_type">none</property>
                 <child>
                   <object class="GtkAlignment" id="alignment1">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
+                    <property name="hexpand">True</property>
+                    <property name="vexpand">True</property>
                     <property name="top_padding">6</property>
                     <property name="left_padding">12</property>
                     <child>
-                      <object class="GtkTreeView" id="types:border">
+                      <object class="GtkScrolledWindow">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
-                        <child internal-child="selection">
-                          <object class="GtkTreeSelection" id="treeview-selection1"/>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">True</property>
+                        <property name="shadow_type">in</property>
+                        <child>
+                          <object class="GtkTreeView" id="types">
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="hexpand">True</property>
+                            <property name="vexpand">True</property>
+                            <property name="model">liststore1</property>
+                            <property name="headers_visible">False</property>
+                            <property name="headers_clickable">False</property>
+                            <property name="search_column">0</property>
+                            <property name="show_expanders">False</property>
+                            <child internal-child="selection">
+                              <object class="GtkTreeSelection" id="treeview-selection1"/>
+                            </child>
+                            <child>
+                              <object class="GtkTreeViewColumn" id="treeviewcolumn1">
+                                <child>
+                                  <object class="GtkCellRendererText" id="cellrenderertext1"/>
+                                  <attributes>
+                                    <attribute name="text">0</attribute>
+                                  </attributes>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
                         </child>
                       </object>
                     </child>
@@ -148,7 +197,7 @@
                   <object class="GtkLabel" id="label1">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Object Type</property>
+                    <property name="label" translatable="yes" context="insertoleobject|label1">Object Type</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -184,7 +233,7 @@
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="hexpand">True</property>
-                            <property name="invisible_char">•</property>
+                            <property name="activates_default">True</property>
                           </object>
                           <packing>
                             <property name="left_attach">0</property>
@@ -194,7 +243,7 @@
                         </child>
                         <child>
                           <object class="GtkButton" id="urlbtn">
-                            <property name="label" translatable="yes">Search…</property>
+                            <property name="label" translatable="yes" context="insertoleobject|urlbtn">Search…</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">True</property>
@@ -207,10 +256,11 @@
                         </child>
                         <child>
                           <object class="GtkCheckButton" id="linktofile">
-                            <property name="label" translatable="yes">Link to file</property>
+                            <property name="label" translatable="yes" context="insertoleobject|linktofile">Link to file</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
+                            <property name="use_underline">True</property>
                             <property name="xalign">0</property>
                             <property name="draw_indicator">True</property>
                           </object>
@@ -221,10 +271,11 @@
                         </child>
                         <child>
                           <object class="GtkCheckButton" id="asicon">
-                            <property name="label" translatable="yes">Display as icon</property>
+                            <property name="label" translatable="yes" context="insertoleobject|asicon">Display as icon</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
+                            <property name="use_underline">True</property>
                             <property name="xalign">0</property>
                             <property name="draw_indicator">True</property>
                           </object>
@@ -242,7 +293,7 @@
                   <object class="GtkLabel" id="label2">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">File</property>
+                    <property name="label" translatable="yes" context="insertoleobject|label2">File</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -266,9 +317,9 @@
       </object>
     </child>
     <action-widgets>
-      <action-widget response="0">ok</action-widget>
-      <action-widget response="0">cancel</action-widget>
-      <action-widget response="0">help</action-widget>
+      <action-widget response="-5">ok</action-widget>
+      <action-widget response="-6">cancel</action-widget>
+      <action-widget response="-11">help</action-widget>
     </action-widgets>
   </object>
 </interface>

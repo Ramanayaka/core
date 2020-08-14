@@ -23,9 +23,9 @@
 #include <com/sun/star/text/VertOrientation.hpp>
 #include <com/sun/star/text/RelOrientation.hpp>
 #include "swdllapi.h"
-#include <hintids.hxx>
-#include <swtypes.hxx>
-#include <format.hxx>
+#include "hintids.hxx"
+#include "swtypes.hxx"
+#include "format.hxx"
 #include <svl/poolitem.hxx>
 
 class IntlWrapper;
@@ -38,21 +38,18 @@ class SW_DLLPUBLIC SwFormatVertOrient: public SfxPoolItem
 public:
     SwFormatVertOrient( SwTwips nY = 0, sal_Int16 eVert = css::text::VertOrientation::NONE,
                      sal_Int16 eRel = css::text::RelOrientation::PRINT_AREA );
-    inline SwFormatVertOrient &operator=( const SwFormatVertOrient &rCpy );
+    SwFormatVertOrient(SwFormatVertOrient const &) = default; // SfxPoolItem copy function dichotomy
 
     /// "Pure virtual methods" of SfxPoolItem.
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwFormatVertOrient* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                     OUString &rText,
-                                    const IntlWrapper*    pIntl = nullptr ) const override;
+                                    const IntlWrapper& rIntl ) const override;
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-
-    SvStream& Store(SvStream &rStream, sal_uInt16 itemVersion) const override;
-    SfxPoolItem* Create(SvStream &rStream, sal_uInt16 itemVersion) const override;
 
     sal_Int16 GetVertOrient() const { return m_eOrient; }
     sal_Int16 GetRelationOrient() const { return m_eRelation; }
@@ -62,7 +59,7 @@ public:
     SwTwips GetPos() const { return m_nYPos; }
     void    SetPos( SwTwips nNew ) { m_nYPos = nNew; }
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 class SW_DLLPUBLIC SwFormatHoriOrient: public SfxPoolItem
@@ -74,16 +71,16 @@ class SW_DLLPUBLIC SwFormatHoriOrient: public SfxPoolItem
 public:
     SwFormatHoriOrient( SwTwips nX = 0, sal_Int16 eHori = css::text::HoriOrientation::NONE,
         sal_Int16 eRel = css::text::RelOrientation::PRINT_AREA, bool bPos = false );
-    inline SwFormatHoriOrient &operator=( const SwFormatHoriOrient &rCpy );
+    SwFormatHoriOrient(SwFormatHoriOrient const &) = default; // SfxPoolItem copy function dichotomy
 
     /// "Pure virtual methods" of SfxPoolItem.
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwFormatHoriOrient* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper*    pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
@@ -98,34 +95,24 @@ public:
     bool IsPosToggle() const { return m_bPosToggle; }
     void SetPosToggle( bool bNew ) { m_bPosToggle = bNew; }
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
-inline SwFormatVertOrient &SwFormatVertOrient::operator=( const SwFormatVertOrient &rCpy )
-{
-    m_nYPos = rCpy.GetPos();
-    m_eOrient = rCpy.GetVertOrient();
-    m_eRelation = rCpy.GetRelationOrient();
-    return *this;
-}
-inline SwFormatHoriOrient &SwFormatHoriOrient::operator=( const SwFormatHoriOrient &rCpy )
-{
-    m_nXPos = rCpy.GetPos();
-    m_eOrient = rCpy.GetHoriOrient();
-    m_eRelation = rCpy.GetRelationOrient();
-    m_bPosToggle = rCpy.IsPosToggle();
-    return *this;
-}
-
 inline const SwFormatVertOrient &SwAttrSet::GetVertOrient(bool bInP) const
-    { return static_cast<const SwFormatVertOrient&>(Get( RES_VERT_ORIENT,bInP)); }
+    { return Get( RES_VERT_ORIENT,bInP); }
 inline const SwFormatHoriOrient &SwAttrSet::GetHoriOrient(bool bInP) const
-    { return static_cast<const SwFormatHoriOrient&>(Get( RES_HORI_ORIENT,bInP)); }
+    { return Get( RES_HORI_ORIENT,bInP); }
 
 inline const SwFormatVertOrient &SwFormat::GetVertOrient(bool bInP) const
     { return m_aSet.GetVertOrient(bInP); }
 inline const SwFormatHoriOrient &SwFormat::GetHoriOrient(bool bInP) const
     { return m_aSet.GetHoriOrient(bInP); }
+
+namespace sw {
+
+    bool GetAtPageRelOrientation(sal_Int16 & rOrientation, bool const isIgnorePrintArea);
+
+}
 
 #endif
 

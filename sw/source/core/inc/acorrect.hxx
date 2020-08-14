@@ -21,8 +21,10 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_ACORRECT_HXX
 
 #include <memory>
+
+#include <svl/itemset.hxx>
+#include <tools/solar.h>
 #include <editeng/svxacorr.hxx>
-#include <swundo.hxx>
 
 class SwEditShell;
 class SwPaM;
@@ -32,11 +34,10 @@ class SfxItemSet;
 
 class SwDontExpandItem
 {
-    std::unique_ptr<SfxItemSet> pDontExpItems;
+    std::unique_ptr<SfxItemSet> m_pDontExpandItems;
 
 public:
-    SwDontExpandItem() :
-        pDontExpItems(nullptr){}
+    SwDontExpandItem() {}
     ~SwDontExpandItem();
 
     void SaveDontExpandItems( const SwPosition& rPos );
@@ -46,13 +47,14 @@ public:
 
 class SwAutoCorrDoc : public SvxAutoCorrDoc
 {
-    SwEditShell& rEditSh;
-    SwPaM& rCursor;
-    SwNodeIndex* pIdx;
+    SwEditShell& m_rEditSh;
+    SwPaM& m_rCursor;
+    std::unique_ptr<SwNodeIndex> m_pIndex;
     int m_nEndUndoCounter;
-    bool    bUndoIdInitialized;
+    bool    m_bUndoIdInitialized;
 
     void DeleteSel( SwPaM& rDelPam );
+    void DeleteSelImpl(SwPaM & rDelPam);
 
 public:
     SwAutoCorrDoc( SwEditShell& rEditShell, SwPaM& rPam, sal_Unicode cIns = 0 );
@@ -78,12 +80,13 @@ public:
     virtual bool ChgAutoCorrWord( sal_Int32& rSttPos, sal_Int32 nEndPos,
                                   SvxAutoCorrect& rACorrect,
                                   OUString* pPara ) override;
+    virtual bool TransliterateRTLWord( sal_Int32& rSttPos, sal_Int32 nEndPos ) override;
 
     // Will be called after swapping characters by the functions
     //  - FnCapitalStartWord and
     //  - FnCapitalStartSentence.
     // Afterwards the words can be added into exception list if needed.
-    virtual void SaveCpltSttWord( sal_uLong nFlag, sal_Int32 nPos,
+    virtual void SaveCpltSttWord( ACFlags nFlag, sal_Int32 nPos,
                                     const OUString& rExceptWord, sal_Unicode cChar ) override;
     virtual LanguageType GetLanguage( sal_Int32 nPos ) const override;
 };
@@ -91,17 +94,18 @@ public:
 class SwAutoCorrExceptWord
 {
     OUString m_sWord;
-    sal_uLong m_nFlags, m_nNode;
+    sal_uLong m_nNode;
+    ACFlags m_nFlags;
     sal_Int32 m_nContent;
     sal_Unicode m_cChar;
     LanguageType m_eLanguage;
     bool m_bDeleted;
 
 public:
-    SwAutoCorrExceptWord(sal_uLong nAFlags, sal_uLong nNd, sal_Int32 nContent,
+    SwAutoCorrExceptWord(ACFlags nAFlags, sal_uLong nNd, sal_Int32 nContent,
                          const OUString& rWord, sal_Unicode cChr,
                          LanguageType eLang)
-        : m_sWord(rWord), m_nFlags(nAFlags), m_nNode(nNd), m_nContent(nContent),
+        : m_sWord(rWord), m_nNode(nNd), m_nFlags(nAFlags), m_nContent(nContent),
           m_cChar(cChr), m_eLanguage(eLang), m_bDeleted(false)
     {}
 

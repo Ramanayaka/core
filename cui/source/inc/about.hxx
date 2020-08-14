@@ -19,65 +19,44 @@
 #ifndef INCLUDED_CUI_SOURCE_INC_ABOUT_HXX
 #define INCLUDED_CUI_SOURCE_INC_ABOUT_HXX
 
-#include <vcl/accel.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/fixedhyper.hxx>
-#include <vcl/vclmedit.hxx>
-#include <sfx2/basedlgs.hxx>
-#include <vector>
+#include <vcl/bitmapex.hxx>
+#include <vcl/weld.hxx>
 
-// class AboutDialog -----------------------------------------------------
-
-class AboutDialog : public SfxModalDialog
+class AboutDialog : public weld::GenericDialogController
 {
 private:
-    BitmapEx           aBackgroundBitmap;
-    BitmapEx           aLogoBitmap;
+    std::unique_ptr<weld::LinkButton> m_pCreditsButton;
+    std::unique_ptr<weld::LinkButton> m_pWebsiteButton;
+    std::unique_ptr<weld::LinkButton> m_pReleaseNotesButton;
+    std::unique_ptr<weld::Button> m_pCloseButton;
+    std::unique_ptr<weld::Button> m_pCopyButton;
 
-    VclPtr<VclMultiLineEdit>    m_pVersion;
-    VclPtr<FixedHyperlink>      m_pBuildIdLink;
-    VclPtr<FixedText>           m_pDescriptionText;
-    VclPtr<FixedText>           m_pCopyrightText;
-    VclPtr<FixedImage>          m_pLogoImage;
-    VclPtr<FixedText>           m_pLogoReplacement;
-    VclPtr<PushButton>          m_pCreditsButton;
-    VclPtr<PushButton>          m_pWebsiteButton;
+    std::unique_ptr<weld::Image> m_pBrandImage;
+    std::unique_ptr<weld::Image> m_pAboutImage;
+    std::unique_ptr<weld::Label> m_pVersionLabel;
+    std::unique_ptr<weld::Label> m_pBuildCaption;
+    std::unique_ptr<weld::LinkButton> m_pBuildLabel;
+    std::unique_ptr<weld::Label> m_pEnvLabel;
+    std::unique_ptr<weld::Label> m_pUILabel;
+    std::unique_ptr<weld::Label> m_pLocaleLabel;
+    std::unique_ptr<weld::Label> m_pMiscLabel;
+    std::unique_ptr<weld::Label> m_pCopyrightLabel;
 
-    OUString m_aVersionTextStr;
-    OUString m_aVendorTextStr;
-    OUString m_aCopyrightTextStr;
-    OUString m_aBasedTextStr;
-    OUString m_aBasedDerivedTextStr;
-    OUString m_aCreditsLinkStr;
-    OUString m_sBuildStr;
-    OUString m_aLocaleStr;
-    OUString m_buildIdLinkString;
+    static OUString GetVersionString();
+    static OUString GetBuildString();
+    static OUString GetLocaleString(bool bLocalized = true);
+    static OUString GetMiscString();
 
-    void SetBuildIdLink();
-    void StyleControls();
-    void SetLogo();
-
-    static OUString GetBuildId();
-    OUString GetVersionString();
-    OUString GetCopyrightString();
-    static OUString GetLocaleString();
+    static OUString GetCopyrightString();
     static bool IsStringValidGitHash(const OUString& hash);
 
-protected:
-    virtual bool Close() override;
-    virtual void Paint(vcl::RenderContext& rRenderContext, const ::tools::Rectangle& rRect) override;
-    virtual void Resize() override;
+    DECL_LINK(HandleClick, weld::Button&, void);
 
 public:
-    AboutDialog(vcl::Window* pParent);
+    AboutDialog(weld::Window* pParent);
     virtual ~AboutDialog() override;
-    virtual void dispose() override;
-
-    DECL_LINK( HandleClick, Button*, void );
 };
 
 #endif // INCLUDED_CUI_SOURCE_INC_ABOUT_HXX
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -27,11 +27,14 @@
 #include <com/sun/star/drawing/framework/XResourceId.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
 #include <cppuhelper/implbase.hxx>
+
 #include <memory>
 
-namespace sd { namespace framework {
+namespace com::sun::star::util { class XURLTransformer; }
+namespace com::sun::star::uno { template <class interface_type> class WeakReference; }
+
+namespace sd::framework {
 
 typedef ::cppu::WeakImplHelper <
     css::drawing::framework::XResourceId,
@@ -206,7 +209,7 @@ private:
     void ParseResourceURL();
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

@@ -28,18 +28,8 @@
 #include <com/sun/star/frame/XStatusListener.hpp>
 #include <tools/link.hxx>
 #include <vcl/vclptr.hxx>
+#include "newhelp.hxx"
 #include <vector>
-
-struct HelpHistoryEntry_Impl
-{
-    OUString  aURL;
-    css::uno::Any    aViewData;
-
-    HelpHistoryEntry_Impl( const OUString& rURL, const css::uno::Any& rViewData ) :
-        aURL( rURL ), aViewData(rViewData) {}
-};
-
-typedef ::std::vector< HelpHistoryEntry_Impl* > HelpHistoryList_Impl;
 
 class SfxHelpWindow_Impl;
 class HelpInterceptor_Impl : public ::cppu::WeakImplHelper<
@@ -61,11 +51,10 @@ friend class SfxHelpWindow_Impl;
 
     css::uno::Reference< css::frame::XStatusListener > m_xListener;
 
-    HelpHistoryList_Impl*       m_pHistory;
+    std::vector<OUString>       m_vHistoryUrls;
     VclPtr<SfxHelpWindow_Impl>  m_pWindow;
     sal_uIntPtr                 m_nCurPos;
     OUString                    m_aCurrentURL;
-    css::uno::Any               m_aViewData;
 
     void                        addURL( const OUString& rURL );
 
@@ -75,9 +64,6 @@ public:
 
     void                    setInterception( const css::uno::Reference< css::frame::XFrame >& xFrame );
     const OUString&         GetCurrentURL() const { return m_aCurrentURL; }
-
-
-    const css::uno::Any&     GetViewData()const {return m_aViewData;}
 
     bool                HasHistoryPred() const;     // is there a predecessor for the current in the history
     bool                HasHistorySucc() const;     // is there a successor for the current in the history
@@ -140,7 +126,7 @@ private:
 public:
     HelpStatusListener_Impl(
         css::uno::Reference < css::frame::XDispatch > const & xDispatch,
-        css::util::URL& rURL);
+        css::util::URL const & rURL);
     virtual ~HelpStatusListener_Impl() override;
 
     virtual void SAL_CALL   statusChanged( const css::frame::FeatureStateEvent& Event ) override;

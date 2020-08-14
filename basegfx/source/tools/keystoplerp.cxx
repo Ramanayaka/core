@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <basegfx/tools/keystoplerp.hxx>
+#include <basegfx/utils/keystoplerp.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <osl/diagnose.h>
 
@@ -40,10 +40,8 @@ static void validateInput(const std::vector<double>& rKeyStops)
 #endif
 }
 
-namespace basegfx
+namespace basegfx::utils
 {
-    namespace tools
-    {
         KeyStopLerp::KeyStopLerp( const std::vector<double>& rKeyStops ) :
             maKeyStops(rKeyStops),
             mnLastIndex(0)
@@ -52,10 +50,9 @@ namespace basegfx
         }
 
         KeyStopLerp::KeyStopLerp( const ::css::uno::Sequence<double>& rKeyStops ) :
-            maKeyStops(rKeyStops.getLength()),
+            maKeyStops(rKeyStops.begin(), rKeyStops.end()),
             mnLastIndex(0)
         {
-            std::copy( rKeyStops.begin(), rKeyStops.end(), maKeyStops.begin() );
             validateInput(maKeyStops);
         }
 
@@ -86,9 +83,8 @@ namespace basegfx
             // everything)
             return ResultType(
                 mnLastIndex,
-                clamp(fRawLerp,0.0,1.0));
+                std::clamp(fRawLerp,0.0,1.0));
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

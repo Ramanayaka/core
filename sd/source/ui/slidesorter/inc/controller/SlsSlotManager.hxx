@@ -19,21 +19,17 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSSLOTMANAGER_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSSLOTMANAGER_HXX
 
-#include "model/SlsSharedPageDescriptor.hxx"
+#include <model/SlsSharedPageDescriptor.hxx>
 #include <tools/link.hxx>
-#include <queue>
+#include <rtl/ustring.hxx>
 
 class AbstractSvxNameDialog;
 class SfxItemSet;
 class SfxRequest;
 
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
+namespace sd::slidesorter { class SlideSorter; }
 
-namespace sd { namespace slidesorter { namespace controller {
-
-class Command;
+namespace sd::slidesorter::controller {
 
 /** This manager takes over the work of handling slot calls from the
     controller of the slide sorter.
@@ -81,8 +77,9 @@ private:
     /** The implementation is a copy of the code for SID_RENAMEPAGE in
         drviews2.cxx.
     */
-    void RenameSlide();
+    void RenameSlide( const SfxRequest& rRequest );
     DECL_LINK(RenameSlideHdl, AbstractSvxNameDialog&, bool);
+    DECL_STATIC_LINK(SlotManager, RenameSlideTooltipHdl, AbstractSvxNameDialog&, OUString);
     bool RenameSlideFromDrawViewShell( sal_uInt16 nPageId, const OUString& rName);
 
     /** Handle SID_INSERTPAGE slot calls.
@@ -94,10 +91,10 @@ private:
     /** Use one of several ways to determine where to insert a new page.
         This can be the current selection or the insertion indicator.
     */
-    sal_Int32 GetInsertionPosition();
+    sal_Int32 GetInsertionPosition() const;
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

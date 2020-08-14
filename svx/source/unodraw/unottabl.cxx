@@ -18,26 +18,24 @@
  */
 
 #include <com/sun/star/awt/Gradient.hpp>
-#include <svl/itempool.hxx>
-#include <svl/itemset.hxx>
-#include <svx/xgrad.hxx>
 #include <svx/xflftrit.hxx>
 
 #include <svx/svdmodel.hxx>
-#include <svx/xflhtit.hxx>
-#include "svx/unofill.hxx"
+#include <svx/unofill.hxx>
 #include <svx/unomid.hxx>
 #include "UnoNameItemTable.hxx"
 
 using namespace ::com::sun::star;
 using namespace ::cppu;
 
+namespace {
+
 class SvxUnoTransGradientTable : public SvxUnoNameItemTable
 {
 public:
     explicit SvxUnoTransGradientTable( SdrModel* pModel ) throw();
 
-    virtual NameOrIndex* createItem() const throw() override;
+    virtual NameOrIndex* createItem() const override;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName(  ) override;
@@ -47,6 +45,8 @@ public:
     virtual uno::Type SAL_CALL getElementType(  ) override;
 };
 
+}
+
 SvxUnoTransGradientTable::SvxUnoTransGradientTable( SdrModel* pModel ) throw()
 : SvxUnoNameItemTable( pModel, XATTR_FILLFLOATTRANSPARENCE, MID_FILLGRADIENT )
 {
@@ -54,16 +54,15 @@ SvxUnoTransGradientTable::SvxUnoTransGradientTable( SdrModel* pModel ) throw()
 
 OUString SAL_CALL SvxUnoTransGradientTable::getImplementationName()
 {
-    return OUString("SvxUnoTransGradientTable");
+    return "SvxUnoTransGradientTable";
 }
 
 uno::Sequence< OUString > SAL_CALL SvxUnoTransGradientTable::getSupportedServiceNames(  )
 {
-    uno::Sequence<OUString> aSNS { "com.sun.star.drawing.TransparencyGradientTable" };
-    return aSNS;
+    return { "com.sun.star.drawing.TransparencyGradientTable" };
 }
 
-NameOrIndex* SvxUnoTransGradientTable::createItem() const throw()
+NameOrIndex* SvxUnoTransGradientTable::createItem() const
 {
     XFillFloatTransparenceItem* pNewItem = new XFillFloatTransparenceItem();
     pNewItem->SetEnabled( true );
@@ -79,7 +78,7 @@ uno::Type SAL_CALL SvxUnoTransGradientTable::getElementType(  )
 /**
  * Create a hatchtable
  */
-uno::Reference< uno::XInterface > SAL_CALL SvxUnoTransGradientTable_createInstance( SdrModel* pModel )
+uno::Reference< uno::XInterface > SvxUnoTransGradientTable_createInstance( SdrModel* pModel )
 {
     return *new SvxUnoTransGradientTable(pModel);
 }

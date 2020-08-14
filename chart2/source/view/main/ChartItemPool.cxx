@@ -18,14 +18,12 @@
  */
 
 #include "ChartItemPool.hxx"
-#include "macros.hxx"
-#include "chartview/ChartSfxItemIds.hxx"
+#include <chartview/ChartSfxItemIds.hxx>
 #include <svx/chrtitem.hxx>
 #include <svl/intitem.hxx>
 #include <editeng/brushitem.hxx>
 #include <editeng/sizeitem.hxx>
 #include <svl/stritem.hxx>
-#include <svl/rectitem.hxx>
 #include <svl/ilstitem.hxx>
 #include <editeng/editids.hrc>
 #include <svx/svxids.hrc>
@@ -58,8 +56,9 @@ ChartItemPool::ChartItemPool():
     rPoolDefaults[SCHATTR_PERCENT_NUMBERFORMAT_SOURCE - SCHATTR_START] = new SfxBoolItem(SCHATTR_PERCENT_NUMBERFORMAT_SOURCE);
 
     //legend
-    rPoolDefaults[SCHATTR_LEGEND_POS               - SCHATTR_START] = new SfxInt32Item(SCHATTR_LEGEND_POS, (sal_Int32)css::chart2::LegendPosition_LINE_END );
+    rPoolDefaults[SCHATTR_LEGEND_POS               - SCHATTR_START] = new SfxInt32Item(SCHATTR_LEGEND_POS, sal_Int32(css::chart2::LegendPosition_LINE_END) );
     rPoolDefaults[SCHATTR_LEGEND_SHOW              - SCHATTR_START] = new SfxBoolItem(SCHATTR_LEGEND_SHOW, true);
+    rPoolDefaults[SCHATTR_LEGEND_NO_OVERLAY        - SCHATTR_START] = new SfxBoolItem(SCHATTR_LEGEND_NO_OVERLAY, true);
 
     //text
     rPoolDefaults[SCHATTR_TEXT_DEGREES             - SCHATTR_START] = new SfxInt32Item(SCHATTR_TEXT_DEGREES, 0);
@@ -117,6 +116,7 @@ ChartItemPool::ChartItemPool():
     rPoolDefaults[SCHATTR_AXIS_POSITION        - SCHATTR_START] = new SfxInt32Item(SCHATTR_AXIS_POSITION,0);
     rPoolDefaults[SCHATTR_AXIS_POSITION_VALUE  - SCHATTR_START] = new SvxDoubleItem(0.0, SCHATTR_AXIS_POSITION_VALUE);
     rPoolDefaults[SCHATTR_AXIS_CROSSING_MAIN_AXIS_NUMBERFORMAT - SCHATTR_START] = new SfxUInt32Item(SCHATTR_AXIS_CROSSING_MAIN_AXIS_NUMBERFORMAT,0);
+    rPoolDefaults[SCHATTR_AXIS_SHIFTED_CATEGORY_POSITION - SCHATTR_START] = new SfxBoolItem(SCHATTR_AXIS_SHIFTED_CATEGORY_POSITION,false);
     rPoolDefaults[SCHATTR_AXIS_LABEL_POSITION  - SCHATTR_START] = new SfxInt32Item(SCHATTR_AXIS_LABEL_POSITION,0);
     rPoolDefaults[SCHATTR_AXIS_MARK_POSITION   - SCHATTR_START] = new SfxInt32Item(SCHATTR_AXIS_MARK_POSITION,0);
 
@@ -130,6 +130,7 @@ ChartItemPool::ChartItemPool():
     rPoolDefaults[SCHATTR_STOCK_VOLUME         - SCHATTR_START] = new SfxBoolItem(SCHATTR_STOCK_VOLUME,false);
     rPoolDefaults[SCHATTR_STOCK_UPDOWN         - SCHATTR_START] = new SfxBoolItem(SCHATTR_STOCK_UPDOWN,false);
     rPoolDefaults[SCHATTR_SYMBOL_SIZE          - SCHATTR_START] = new SvxSizeItem(SCHATTR_SYMBOL_SIZE,Size(0,0));
+    rPoolDefaults[SCHATTR_HIDE_DATA_POINT_LEGEND_ENTRY - SCHATTR_START] = new SfxBoolItem(SCHATTR_HIDE_DATA_POINT_LEGEND_ENTRY, false);
 
     // new for New Chart
     rPoolDefaults[SCHATTR_BAR_OVERLAP          - SCHATTR_START] = new SfxInt32Item(SCHATTR_BAR_OVERLAP,0);
@@ -145,6 +146,7 @@ ChartItemPool::ChartItemPool():
     rPoolDefaults[SCHATTR_MISSING_VALUE_TREATMENT    - SCHATTR_START] = new SfxInt32Item(SCHATTR_MISSING_VALUE_TREATMENT, 0);
     rPoolDefaults[SCHATTR_AVAILABLE_MISSING_VALUE_TREATMENTS - SCHATTR_START] = new SfxIntegerListItem(SCHATTR_AVAILABLE_MISSING_VALUE_TREATMENTS, std::vector < sal_Int32 >() );
     rPoolDefaults[SCHATTR_INCLUDE_HIDDEN_CELLS - SCHATTR_START] = new SfxBoolItem(SCHATTR_INCLUDE_HIDDEN_CELLS, true);
+    rPoolDefaults[SCHATTR_HIDE_LEGEND_ENTRY - SCHATTR_START] = new SfxBoolItem(SCHATTR_HIDE_LEGEND_ENTRY, false);
 
     rPoolDefaults[SCHATTR_AXIS_FOR_ALL_SERIES  - SCHATTR_START] = new SfxInt32Item(SCHATTR_AXIS_FOR_ALL_SERIES, 0);
 
@@ -158,8 +160,8 @@ ChartItemPool::ChartItemPool():
     rPoolDefaults[SCHATTR_REGRESSION_SET_INTERCEPT         - SCHATTR_START] = new SfxBoolItem(SCHATTR_REGRESSION_SET_INTERCEPT, false);
     rPoolDefaults[SCHATTR_REGRESSION_INTERCEPT_VALUE       - SCHATTR_START] = new SvxDoubleItem(0.0, SCHATTR_REGRESSION_INTERCEPT_VALUE);
     rPoolDefaults[SCHATTR_REGRESSION_CURVE_NAME            - SCHATTR_START] = new SfxStringItem(SCHATTR_REGRESSION_CURVE_NAME, OUString());
-    rPoolDefaults[SCHATTR_REGRESSION_XNAME                 - SCHATTR_START] = new SfxStringItem(SCHATTR_REGRESSION_XNAME, OUString("x"));
-    rPoolDefaults[SCHATTR_REGRESSION_YNAME                 - SCHATTR_START] = new SfxStringItem(SCHATTR_REGRESSION_YNAME, OUString("f(x)"));
+    rPoolDefaults[SCHATTR_REGRESSION_XNAME                 - SCHATTR_START] = new SfxStringItem(SCHATTR_REGRESSION_XNAME, "x");
+    rPoolDefaults[SCHATTR_REGRESSION_YNAME                 - SCHATTR_START] = new SfxStringItem(SCHATTR_REGRESSION_YNAME, "f(x)");
 
     /**************************************************************************
     * ItemInfos
@@ -177,11 +179,11 @@ ChartItemPool::ChartItemPool():
     pItemInfos[SCHATTR_SYMBOL_SIZE - SCHATTR_START]._nSID  = SID_ATTR_SYMBOLSIZE;
 
     SetDefaults(ppPoolDefaults);
-    SetItemInfos(pItemInfos);
+    SetItemInfos(pItemInfos.get());
 }
 
 ChartItemPool::ChartItemPool(const ChartItemPool& rPool):
-    SfxItemPool(rPool), pItemInfos(nullptr)
+    SfxItemPool(rPool)
 {
 }
 
@@ -190,8 +192,6 @@ ChartItemPool::~ChartItemPool()
     Delete();
     // release and delete static pool default items
     ReleaseDefaults(true);
-
-    delete[] pItemInfos;
 }
 
 SfxItemPool* ChartItemPool::Clone() const

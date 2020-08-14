@@ -16,18 +16,17 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifdef _MSC_VER
-#pragma warning(disable : 4917 4555)
-#endif
 
-#include "stdafx.h"
-#include "servprov.hxx"
-#include "embeddoc.hxx"
+#include <stdafx.h>
+#include <servprov.hxx>
+#include <embeddoc.hxx>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/diagnose.h>
 #include <osl/mutex.hxx>
 #include <osl/thread.h>
+#include <sal/log.hxx>
 
 using namespace com::sun::star;
 
@@ -44,23 +43,26 @@ const GUID* const guidList[ SUPPORTED_FACTORIES_NUM ] = {
     &OID_MathOASISServer
 };
 
+namespace {
+
 class CurThreadData
 {
     public:
         CurThreadData();
         virtual ~CurThreadData();
 
-        bool SAL_CALL setData(void *pData);
+        bool setData(void *pData);
 
-        void* SAL_CALL getData();
+        void* getData();
 
     protected:
         oslThreadKey m_hKey;
 };
 
-CurThreadData::CurThreadData()
+}
+
+CurThreadData::CurThreadData() : m_hKey(osl_createThreadKey( nullptr ))
 {
-    m_hKey = osl_createThreadKey( nullptr );
 }
 
 CurThreadData::~CurThreadData()
@@ -71,16 +73,16 @@ CurThreadData::~CurThreadData()
 bool CurThreadData::setData(void *pData)
 {
     OSL_ENSURE( m_hKey, "No thread key!" );
-    return (osl_setThreadKeyData(m_hKey, pData));
+    return osl_setThreadKeyData(m_hKey, pData);
 }
 
 void *CurThreadData::getData()
 {
     OSL_ENSURE( m_hKey, "No thread key!" );
-    return (osl_getThreadKeyData(m_hKey));
+    return osl_getThreadKeyData(m_hKey);
 }
 
-void o2u_attachCurrentThread()
+static void o2u_attachCurrentThread()
 {
     static CurThreadData oleThreadData;
 
@@ -121,7 +123,7 @@ EmbedServer_Impl::~EmbedServer_Impl()
 
 OUString EmbedServer_Impl::getImplementationName()
 {
-    return OUString("com.sun.star.comp.ole.EmbedServer");
+    return "com.sun.star.comp.ole.EmbedServer";
 }
 
 sal_Bool EmbedServer_Impl::supportsService(OUString const & ServiceName)
@@ -171,7 +173,7 @@ bool EmbedProviderFactory_Impl::deregisterClass()
     return (hresult == NOERROR);
 }
 
-STDMETHODIMP EmbedProviderFactory_Impl::QueryInterface(REFIID riid, void FAR* FAR* ppv)
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedProviderFactory_Impl::QueryInterface(REFIID riid, void FAR* FAR* ppv)
 {
     if(IsEqualIID(riid, IID_IUnknown))
     {
@@ -190,12 +192,12 @@ STDMETHODIMP EmbedProviderFactory_Impl::QueryInterface(REFIID riid, void FAR* FA
     return ResultFromScode(E_NOINTERFACE);
 }
 
-STDMETHODIMP_(ULONG) EmbedProviderFactory_Impl::AddRef()
+COM_DECLSPEC_NOTHROW STDMETHODIMP_(ULONG) EmbedProviderFactory_Impl::AddRef()
 {
     return osl_atomic_increment( &m_refCount);
 }
 
-STDMETHODIMP_(ULONG) EmbedProviderFactory_Impl::Release()
+COM_DECLSPEC_NOTHROW STDMETHODIMP_(ULONG) EmbedProviderFactory_Impl::Release()
 {
     ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex());
     sal_Int32 nCount = --m_refCount;
@@ -207,7 +209,7 @@ STDMETHODIMP_(ULONG) EmbedProviderFactory_Impl::Release()
     return nCount;
 }
 
-STDMETHODIMP EmbedProviderFactory_Impl::CreateInstance(IUnknown FAR* punkOuter,
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedProviderFactory_Impl::CreateInstance(IUnknown FAR* punkOuter,
                                                        REFIID riid,
                                                        void FAR* FAR* ppv)
 {
@@ -218,9 +220,19 @@ STDMETHODIMP EmbedProviderFactory_Impl::CreateInstance(IUnknown FAR* punkOuter,
     return pEmbedDocument->QueryInterface( riid, ppv );
 }
 
-STDMETHODIMP EmbedProviderFactory_Impl::LockServer( int /*fLock*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedProviderFactory_Impl::LockServer( int /*fLock*/ )
 {
     return NOERROR;
 }
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+embedserv_EmbedServer(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    auto msf = uno::Reference<lang::XMultiServiceFactory>(context->getServiceManager(), css::uno::UNO_QUERY_THROW);
+    return cppu::acquire(new EmbedServer_Impl(msf));
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

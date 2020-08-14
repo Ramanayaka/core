@@ -46,6 +46,8 @@
 
 #include <com/sun/star/lang/XMain.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
@@ -73,8 +75,7 @@ public:
 public:     // Methods
 
 
-    virtual sal_Int32 SAL_CALL run( const Sequence< OUString >& aArguments )
-        throw(RuntimeException);
+    virtual sal_Int32 SAL_CALL run( const Sequence< OUString >& aArguments );
 
 
 private: // helper methods
@@ -138,9 +139,9 @@ void PipeClientMain::testPipe( const Reference< XInterface > & rxInterface )
 }
 
 
-sal_Int32 PipeClientMain::run( const Sequence< OUString > & aArguments ) throw ( RuntimeException )
+sal_Int32 PipeClientMain::run( const Sequence< OUString > & aArguments )
 {
-    printf( "Connecting ....\n" );
+    printf( "Connecting...\n" );
 
     if( aArguments.getLength() == 1 )
     {
@@ -166,7 +167,7 @@ sal_Int32 PipeClientMain::run( const Sequence< OUString > & aArguments ) throw (
         {
             OString o = OUStringToOString( e.Message, RTL_TEXTENCODING_ASCII_US );
             printf( "%s\n", o.pData->buffer );
-            printf( "couldn't access local resource ( possible security resons )\n" );
+            printf( "couldn't access local resource (possible security reasons)\n" );
         }
         catch( NoConnectException &e )
         {
@@ -226,7 +227,7 @@ using namespace remotebridges_officeclient;
 extern "C"
 {
 SAL_DLLPUBLIC_EXPORT void * SAL_CALL component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * pRegistryKey )
+    const char * pImplName, void * pServiceManager, void * pRegistryKey )
 {
     void * pRet = 0;
 

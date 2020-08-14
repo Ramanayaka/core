@@ -28,7 +28,7 @@
 
 struct value
 {
-    long val;
+    int val;
     int type;
 };
 
@@ -48,7 +48,7 @@ struct pri
     char ctype;
 };
 
-static struct pri priority[] =
+static const struct pri priority[] =
 {
     {
         0, 0, 0
@@ -238,10 +238,10 @@ static struct pri priority[] =
     },                                  /* ARCHITECTURE */
 };
 
-int evalop(struct pri);
-struct value tokval(Token *);
-struct value vals[NSTAK], *vp;
-enum toktype ops[NSTAK], *op;
+static int evalop(struct pri);
+static struct value tokval(Token *);
+static struct value vals[NSTAK], *vp;
+static enum toktype ops[NSTAK], *op;
 
 /*
  * Evaluate an #if #elif #ifdef #ifndef line.  trp->tp points to the keyword.
@@ -407,7 +407,7 @@ int
 {
     struct value v1;
     struct value v2 = { 0, UND };
-    long rv1, rv2;
+    int rv1, rv2;
     int rtype, oper;
 
     rv2 = 0;
@@ -620,7 +620,7 @@ struct value
     struct value v;
     Nlist *np;
     int i, base;
-    unsigned long n;
+    unsigned int n;
     uchar *p, c;
 
     v.type = SGN;
@@ -633,12 +633,14 @@ struct value
             break;
 
         case NAME1:
-            if ((np = lookup(tp, 0)) != NULL && np->flag & (ISDEFINED | ISMAC))
+            np = lookup(tp, 0);
+            if (np != NULL && np->flag & (ISDEFINED | ISMAC))
                 v.val = 1;
             break;
 
         case NAME2:
-            if ((np = lookup(tp, 0)) != NULL && np->flag & (ISARCHITECTURE))
+            np = lookup(tp, 0);
+            if (np != NULL && np->flag & (ISARCHITECTURE))
                 v.val = 1;
             break;
 
@@ -700,16 +702,19 @@ struct value
             if (*p == '\\')
             {
                 p += 1;
-                if ((i = digit(*p)) >= 0 && i <= 7)
+                i = digit(*p);
+                if (i >= 0 && i <= 7)
                 {
                     n = i;
                     p += 1;
-                    if ((i = digit(*p)) >= 0 && i <= 7)
+                    i = digit(*p);
+                    if (i >= 0 && i <= 7)
                     {
                         p += 1;
                         n <<= 3;
                         n += i;
-                        if ((i = digit(*p)) >= 0 && i <= 7)
+                        i = digit(*p);
+                        if (i >= 0 && i <= 7)
                         {
                             p += 1;
                             n <<= 3;
@@ -721,8 +726,11 @@ struct value
                     if (*p == 'x')
                     {
                         p += 1;
-                        while ((i = digit(*p)) >= 0 && i <= 15)
+                        while (1)
                         {
+                            i = digit(*p);
+                            if (i < 0 || i > 16)
+                                break;
                             p += 1;
                             n <<= 4;
                             n += i;

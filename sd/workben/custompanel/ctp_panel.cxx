@@ -30,7 +30,7 @@
 
 #include <tools/diagnose_ex.h>
 
-namespace sd { namespace colortoolpanel
+namespace sd::colortoolpanel
 {
 
     using ::com::sun::star::uno::Reference;
@@ -84,7 +84,7 @@ namespace sd { namespace colortoolpanel
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("sd");
             }
             return NULL;
         }
@@ -114,7 +114,7 @@ namespace sd { namespace colortoolpanel
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("sd");
         }
         osl_atomic_increment( &m_refCount );
         if ( xParentWindow.is() )
@@ -148,7 +148,7 @@ namespace sd { namespace colortoolpanel
         (void)i_rParentAccessible;
         return Reference< XAccessible >( m_xWindow, UNO_QUERY );
         // TODO: this is, strictly, not correct, as we ignore i_ParentAccessible here. If you are not doing a sample
-        // extension only, you'll want to do this correctly ....
+        // extension only, you'll want to do this correctly...
     }
 
     Reference< XResourceId > SAL_CALL SingleColorPanel::getResourceId(  ) throw (RuntimeException)
@@ -182,7 +182,7 @@ namespace sd { namespace colortoolpanel
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("sd");
         }
     }
 
@@ -205,7 +205,7 @@ namespace sd { namespace colortoolpanel
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("sd");
         }
         m_xWindow.clear();
     }

@@ -23,13 +23,11 @@
 #include <xmloff/prstylei.hxx>
 #include <xmloff/xmlimp.hxx>
 
-class PageStyleContext : public XMLPropStyleContext
+class PageStyleContext final : public XMLPropStyleContext
 {
 private:
     OUString sPageUsage;
     bool                m_bIsFillStyleAlreadyConverted : 1;
-
-protected:
 
     virtual void SetAttribute( sal_uInt16 nPrefixKey,
                                const OUString& rLocalName,
@@ -45,13 +43,17 @@ public:
             bool bDefaultStyle);
     virtual ~PageStyleContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 nPrefix,
             const OUString& rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 
+    // don't call this
     virtual void FillPropertySet(
             const css::uno::Reference< css::beans::XPropertySet > & rPropSet ) override;
+    void FillPropertySet_PageStyle(
+            const css::uno::Reference< css::beans::XPropertySet > & rPropSet,
+            XMLPropStyleContext * pDrawingPageStyle);
 
     //text grid enhancement
     virtual void SetDefaults() override;

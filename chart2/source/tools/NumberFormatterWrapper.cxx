@@ -17,15 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "NumberFormatterWrapper.hxx"
-#include "macros.hxx"
-#include <comphelper/processfactory.hxx>
+#include <NumberFormatterWrapper.hxx>
 #include <svl/numuno.hxx>
-#include <svl/zformat.hxx>
+#include <svl/zforlist.hxx>
 #include <tools/color.hxx>
-#include <i18nlangtag/mslangid.hxx>
 #include <com/sun/star/util/Date.hpp>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 namespace chart
 {
@@ -43,7 +41,7 @@ FixedNumberFormatter::~FixedNumberFormatter()
 {
 }
 
-OUString FixedNumberFormatter::getFormattedString( double fValue, sal_Int32& rLabelColor, bool& rbColorChanged ) const
+OUString FixedNumberFormatter::getFormattedString( double fValue, Color& rLabelColor, bool& rbColorChanged ) const
 {
     return m_aNumberFormatterWrapper.getFormattedString(
         m_nNumberFormatKey, fValue, rLabelColor, rbColorChanged );
@@ -58,7 +56,7 @@ NumberFormatterWrapper::NumberFormatterWrapper( const uno::Reference< util::XNum
     OUString sNullDate( "NullDate" );
     if ( xProp.is() && xProp->getPropertySetInfo()->hasPropertyByName(sNullDate) )
         m_aNullDate = xProp->getPropertyValue(sNullDate);
-    SvNumberFormatsSupplierObj* pSupplierObj = SvNumberFormatsSupplierObj::getImplementation( xSupplier );
+    SvNumberFormatsSupplierObj* pSupplierObj = comphelper::getUnoTunnelImplementation<SvNumberFormatsSupplierObj>( xSupplier );
     if( pSupplierObj )
         m_pNumberFormatter = pSupplierObj->GetNumberFormatter();
     SAL_WARN_IF(!m_pNumberFormatter,"chart2.tools","need a numberformatter");
@@ -79,15 +77,13 @@ Date NumberFormatterWrapper::getNullDate() const
     }
     else if( m_pNumberFormatter )
     {
-        Date* pDate = m_pNumberFormatter->GetNullDate();
-        if( pDate )
-            aRet = *pDate;
+        aRet = m_pNumberFormatter->GetNullDate();
     }
     return aRet;
 }
 
 OUString NumberFormatterWrapper::getFormattedString( sal_Int32 nNumberFormatKey, double fValue,
-                                                     sal_Int32& rLabelColor, bool& rbColorChanged ) const
+                                                     Color& rLabelColor, bool& rbColorChanged ) const
 {
     OUString aText;
     Color* pTextColor = nullptr;
@@ -101,17 +97,17 @@ OUString NumberFormatterWrapper::getFormattedString( sal_Int32 nNumberFormatKey,
     sal_uInt16 nDay = 30,nMonth = 12;
     if ( m_aNullDate.hasValue() )
     {
-        Date* pDate = m_pNumberFormatter->GetNullDate();
-        if ( pDate )
-        {
-            nYear = pDate->GetYear();
-            nMonth = pDate->GetMonth();
-            nDay = pDate->GetDay();
-        } // if ( pDate )
+        const Date& rDate = m_pNumberFormatter->GetNullDate();
+        nYear = rDate.GetYear();
+        nMonth = rDate.GetMonth();
+        nDay = rDate.GetDay();
         util::Date aNewNullDate;
         m_aNullDate >>= aNewNullDate;
         m_pNumberFormatter->ChangeNullDate(aNewNullDate.Day,aNewNullDate.Month,aNewNullDate.Year);
     }
+    // tdf#130969: use UNLIMITED_PRECISION in case of GENERAL Number Format
+    if( m_pNumberFormatter->GetStandardPrec() != SvNumberFormatter::UNLIMITED_PRECISION )
+        m_pNumberFormatter->ChangeStandardPrec(SvNumberFormatter::UNLIMITED_PRECISION);
     m_pNumberFormatter->GetOutputString(fValue, nNumberFormatKey, aText, &pTextColor);
     if ( m_aNullDate.hasValue() )
     {
@@ -121,7 +117,7 @@ OUString NumberFormatterWrapper::getFormattedString( sal_Int32 nNumberFormatKey,
     if(pTextColor)
     {
         rbColorChanged = true;
-        rLabelColor = pTextColor->GetColor();
+        rLabelColor = *pTextColor;
     }
     else
         rbColorChanged = false;

@@ -17,18 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "odbc/ODatabaseMetaData.hxx"
-#include "odbc/OTools.hxx"
-#include "odbc/ODatabaseMetaDataResultSet.hxx"
-#include "FDatabaseMetaDataResultSet.hxx"
+#include <odbc/ODatabaseMetaData.hxx>
+#include <odbc/OTools.hxx>
+#include <odbc/ODatabaseMetaDataResultSet.hxx>
+#include <FDatabaseMetaDataResultSet.hxx>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
 #include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
 #include <com/sun/star/sdbc/TransactionIsolation.hpp>
-#include <connectivity/odbc.hxx>
-#include "TPrivilegesResultSet.hxx"
-#include <connectivity/dbexception.hxx>
+#include <TPrivilegesResultSet.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 using namespace connectivity::odbc;
 using namespace com::sun::star::uno;
@@ -41,7 +40,6 @@ ODatabaseMetaData::ODatabaseMetaData(const SQLHANDLE _pHandle,OConnection* _pCon
                         ,m_aConnectionHandle(_pHandle)
                         ,m_pConnection(_pCon)
                         ,m_bUseCatalog(true)
-                        ,m_bOdbc3(true)
 {
     OSL_ENSURE(m_pConnection,"ODatabaseMetaData::ODatabaseMetaData: No connection set!");
     if(!m_pConnection->isCatalogUsed())
@@ -50,8 +48,6 @@ ODatabaseMetaData::ODatabaseMetaData(const SQLHANDLE _pHandle,OConnection* _pCon
         try
         {
             m_bUseCatalog   = !(usesLocalFiles() || usesLocalFilePerTable());
-            OUString sVersion = getDriverVersion();
-            m_bOdbc3        =  sVersion != "02.50" && sVersion != "02.00";
         }
         catch(SQLException& )
         { // doesn't matter here

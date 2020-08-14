@@ -33,16 +33,12 @@
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/sdbc/XWarningsSupplier.hpp>
-#include <com/sun/star/sdbc/XResultSetUpdate.hpp>
-#include <com/sun/star/sdbc/XRowUpdate.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include <connectivity/CommonTools.hxx>
 #include <comphelper/propertycontainer.hxx>
 #include <connectivity/FValue.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
-#include <salhelper/simplereferenceobject.hxx>
 
 namespace connectivity
 {
@@ -153,11 +149,6 @@ namespace connectivity
         void setRows(const ORows& _rRows);
 
         // XServiceInfo
-
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_Static(  );
 
     protected:
         virtual OUString SAL_CALL getImplementationName(  ) override;

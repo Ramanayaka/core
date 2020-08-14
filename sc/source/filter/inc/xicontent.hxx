@@ -20,17 +20,18 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_XICONTENT_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_XICONTENT_HXX
 
-#include "global.hxx"
-#include "rangelst.hxx"
-#include "xlcontent.hxx"
+#include <rangelst.hxx>
 #include "xistring.hxx"
 #include "xiroot.hxx"
-#include "validat.hxx"
-#include "tabprotection.hxx"
+#include <validat.hxx>
+#include <tabprotection.hxx>
 
 #include <map>
 #include <vector>
 #include <memory>
+
+class ErrCode;
+struct XclRange;
 
 /* ============================================================================
 Classes to import the big Excel document contents (related to several cells or
@@ -118,8 +119,6 @@ public:
 
 // Conditional formatting =====================================================
 
-class ScConditionalFormat;
-
 /** Represents a conditional format with condition formulas, and formatting attributes. */
 class XclImpCondFormat : protected XclImpRoot
 {
@@ -160,8 +159,8 @@ public:
     void                Apply();
 
 private:
-    typedef std::vector< std::unique_ptr<XclImpCondFormat> > XclImpCondFmtList;
-    XclImpCondFmtList   maCondFmtList;      /// List with all conditional formatting.
+    std::vector< std::unique_ptr<XclImpCondFormat> >
+                        maCondFmtList;      /// List with all conditional formatting.
 };
 
 // Data Validation ============================================================
@@ -268,7 +267,7 @@ public:
 
     /** Reads the FILEPASS record, queries a password and sets decryption algorithm.
         @return  Error code that may cause an error message after import. */
-    static ErrCode      ReadFilepass( XclImpStream& rStrm );
+    static const ErrCode&      ReadFilepass( XclImpStream& rStrm );
 };
 
 // Document protection ========================================================

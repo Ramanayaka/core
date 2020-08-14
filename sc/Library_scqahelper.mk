@@ -28,11 +28,17 @@ else
 $(eval $(call gb_Library_use_externals,scqahelper,orcus-parser))
 endif
 
+$(eval $(call gb_Library_use_common_precompiled_header,scqahelper))
+
 $(eval $(call gb_Library_add_defs,scqahelper,\
 	-DSCQAHELPER_DLLIMPLEMENTATION \
 ))
 
-$(eval $(call gb_Library_use_sdk_api,scqahelper))
+$(eval $(call gb_Library_use_api,scqahelper,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_Library_use_libraries,scqahelper,\
 	comphelper \

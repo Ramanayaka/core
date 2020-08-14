@@ -17,16 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "extended/AccessibleBrowseBoxBase.hxx"
-#include <svtools/accessibletableprovider.hxx>
-#include <comphelper/servicehelper.hxx>
+#include <extended/AccessibleBrowseBoxBase.hxx>
+#include <toolkit/helper/convert.hxx>
+#include <vcl/accessibletableprovider.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/IllegalAccessibleComponentStateException.hpp>
 #include <unotools/accessiblerelationsethelper.hxx>
+#include <vcl/window.hxx>
 #include <vcl/svapp.hxx>
+#include <sal/log.hxx>
 
 
 using ::com::sun::star::uno::Reference;
@@ -36,7 +39,6 @@ using ::com::sun::star::uno::Any;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 using namespace ::comphelper;
-using namespace ::svt;
 
 
 namespace accessibility {
@@ -48,9 +50,9 @@ using namespace com::sun::star::accessibility::AccessibleStateType;
 
 AccessibleBrowseBoxBase::AccessibleBrowseBoxBase(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::svt::IAccessibleTableProvider&                      rBrowseBox,
+        ::vcl::IAccessibleTableProvider&                      rBrowseBox,
         const css::uno::Reference< css::awt::XWindow >& _xFocusWindow,
-        ::svt::AccessibleBrowseBoxObjType      eObjType ) :
+        ::vcl::AccessibleBrowseBoxObjType      eObjType ) :
     AccessibleBrowseBoxImplHelper( m_aMutex ),
     mxParent( rxParent ),
     mpBrowseBox( &rBrowseBox ),
@@ -66,9 +68,9 @@ AccessibleBrowseBoxBase::AccessibleBrowseBoxBase(
 
 AccessibleBrowseBoxBase::AccessibleBrowseBoxBase(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::svt::IAccessibleTableProvider&                      rBrowseBox,
+        ::vcl::IAccessibleTableProvider&                      rBrowseBox,
         const css::uno::Reference< css::awt::XWindow >& _xFocusWindow,
-        ::svt::AccessibleBrowseBoxObjType      eObjType,
+        ::vcl::AccessibleBrowseBoxObjType      eObjType,
         const OUString&          rName,
         const OUString&          rDescription ) :
     AccessibleBrowseBoxImplHelper( m_aMutex ),
@@ -154,8 +156,8 @@ sal_Int32 SAL_CALL AccessibleBrowseBoxBase::getAccessibleIndexInParent()
                 }
             }
         }
-   }
-   return nRet;
+    }
+    return nRet;
 }
 
 OUString SAL_CALL AccessibleBrowseBoxBase::getAccessibleDescription()
@@ -175,9 +177,10 @@ OUString SAL_CALL AccessibleBrowseBoxBase::getAccessibleName()
 Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL
 AccessibleBrowseBoxBase::getAccessibleRelationSet()
 {
+    ::osl::MutexGuard aGuard( getMutex() );
     ensureIsAlive();
     // BrowseBox does not have relations.
-       return new utl::AccessibleRelationSetHelper;
+    return new utl::AccessibleRelationSetHelper;
 }
 
 Reference< css::accessibility::XAccessibleStateSet > SAL_CALL
@@ -265,21 +268,21 @@ void SAL_CALL AccessibleBrowseBoxBase::addAccessibleEventListener(
 void SAL_CALL AccessibleBrowseBoxBase::removeAccessibleEventListener(
         const css::uno::Reference< css::accessibility::XAccessibleEventListener>& _rxListener )
 {
-    if( _rxListener.is() && getClientId( ) )
-    {
-        ::osl::MutexGuard aGuard( getMutex() );
-        sal_Int32 nListenerCount = AccessibleEventNotifier::removeEventListener( getClientId( ), _rxListener );
-        if ( !nListenerCount )
-        {
-            // no listeners anymore
-            // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-            // and at least to us not firing any events anymore, in case somebody calls
-            // NotifyAccessibleEvent, again
+    if( !(_rxListener.is() && getClientId( )) )
+        return;
 
-            AccessibleEventNotifier::TClientId nId( getClientId( ) );
-            setClientId( 0 );
-            AccessibleEventNotifier::revokeClient( nId );
-        }
+    ::osl::MutexGuard aGuard( getMutex() );
+    sal_Int32 nListenerCount = AccessibleEventNotifier::removeEventListener( getClientId( ), _rxListener );
+    if ( !nListenerCount )
+    {
+        // no listeners anymore
+        // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
+        // and at least to us not firing any events anymore, in case somebody calls
+        // NotifyAccessibleEvent, again
+
+        AccessibleEventNotifier::TClientId nId( getClientId( ) );
+        setClientId( 0 );
+        AccessibleEventNotifier::revokeClient( nId );
     }
 }
 
@@ -300,8 +303,7 @@ sal_Bool SAL_CALL AccessibleBrowseBoxBase::supportsService(
 
 Sequence< OUString > SAL_CALL AccessibleBrowseBoxBase::getSupportedServiceNames()
 {
-    const OUString aServiceName( "com.sun.star.accessibility.AccessibleContext" );
-    return Sequence< OUString >( &aServiceName, 1 );
+    return { "com.sun.star.accessibility.AccessibleContext" };
 }
 
 // other public methods
@@ -413,7 +415,7 @@ tools::Rectangle AccessibleBrowseBoxBase::getBoundingBoxOnScreen()
 void AccessibleBrowseBoxBase::commitEvent(
         sal_Int16 _nEventId, const Any& _rNewValue, const Any& _rOldValue )
 {
-    ::osl::ClearableMutexGuard aGuard( getMutex() );
+    osl::MutexGuard aGuard( getMutex() );
     if ( !getClientId( ) )
             // if we don't have a client id for the notifier, then we don't have listeners, then
             // we don't need to notify anything
@@ -433,28 +435,29 @@ void AccessibleBrowseBoxBase::commitEvent(
 
 sal_Int16 SAL_CALL AccessibleBrowseBoxBase::getAccessibleRole()
 {
+    osl::MutexGuard aGuard( getMutex() );
     ensureIsAlive();
     sal_Int16 nRole = AccessibleRole::UNKNOWN;
     switch ( meObjType )
     {
-        case BBTYPE_ROWHEADERCELL:
+        case vcl::BBTYPE_ROWHEADERCELL:
             nRole = AccessibleRole::ROW_HEADER;
             break;
-        case BBTYPE_COLUMNHEADERCELL:
+        case vcl::BBTYPE_COLUMNHEADERCELL:
             nRole = AccessibleRole::COLUMN_HEADER;
             break;
-        case BBTYPE_COLUMNHEADERBAR:
-        case BBTYPE_ROWHEADERBAR:
-        case BBTYPE_TABLE:
+        case vcl::BBTYPE_COLUMNHEADERBAR:
+        case vcl::BBTYPE_ROWHEADERBAR:
+        case vcl::BBTYPE_TABLE:
             nRole = AccessibleRole::TABLE;
             break;
-        case BBTYPE_TABLECELL:
+        case vcl::BBTYPE_TABLECELL:
             nRole = AccessibleRole::TABLE_CELL;
             break;
-        case BBTYPE_BROWSEBOX:
+        case vcl::BBTYPE_BROWSEBOX:
             nRole = AccessibleRole::PANEL;
             break;
-        case BBTYPE_CHECKBOXCELL:
+        case vcl::BBTYPE_CHECKBOXCELL:
             nRole = AccessibleRole::CHECK_BOX;
             break;
     }
@@ -476,12 +479,12 @@ sal_Int32 SAL_CALL AccessibleBrowseBoxBase::getForeground(  )
     SolarMethodGuard aGuard(getMutex());
     ensureIsAlive();
 
-    sal_Int32 nColor = 0;
+    Color nColor;
     vcl::Window* pInst = mpBrowseBox->GetWindowInstance();
     if ( pInst )
     {
         if ( pInst->IsControlForeground() )
-            nColor = pInst->GetControlForeground().GetColor();
+            nColor = pInst->GetControlForeground();
         else
         {
             vcl::Font aFont;
@@ -489,11 +492,11 @@ sal_Int32 SAL_CALL AccessibleBrowseBoxBase::getForeground(  )
                 aFont = pInst->GetControlFont();
             else
                 aFont = pInst->GetFont();
-            nColor = aFont.GetColor().GetColor();
+            nColor = aFont.GetColor();
         }
     }
 
-    return nColor;
+    return sal_Int32(nColor);
 }
 
 sal_Int32 SAL_CALL AccessibleBrowseBoxBase::getBackground(  )
@@ -501,17 +504,17 @@ sal_Int32 SAL_CALL AccessibleBrowseBoxBase::getBackground(  )
     SolarMethodGuard aGuard(getMutex());
     ensureIsAlive();
 
-    sal_Int32 nColor = 0;
+    Color nColor;
     vcl::Window* pInst = mpBrowseBox->GetWindowInstance();
     if ( pInst )
     {
         if ( pInst->IsControlBackground() )
-            nColor = pInst->GetControlBackground().GetColor();
+            nColor = pInst->GetControlBackground();
         else
-            nColor = pInst->GetBackground().GetColor().GetColor();
+            nColor = pInst->GetBackground().GetColor();
     }
 
-    return nColor;
+    return sal_Int32(nColor);
 }
 
 
@@ -525,20 +528,21 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( BrowseBoxAccessibleElement, AccessibleBrowseBo
 
 Reference< css::accessibility::XAccessibleContext > SAL_CALL BrowseBoxAccessibleElement::getAccessibleContext()
 {
+    osl::MutexGuard aGuard( getMutex() );
     ensureIsAlive();
     return this;
 }
 
 
-BrowseBoxAccessibleElement::BrowseBoxAccessibleElement( const css::uno::Reference< css::accessibility::XAccessible >& rxParent, ::svt::IAccessibleTableProvider& rBrowseBox,
-        const css::uno::Reference< css::awt::XWindow >& _xFocusWindow, ::svt::AccessibleBrowseBoxObjType  eObjType )
+BrowseBoxAccessibleElement::BrowseBoxAccessibleElement( const css::uno::Reference< css::accessibility::XAccessible >& rxParent, ::vcl::IAccessibleTableProvider& rBrowseBox,
+        const css::uno::Reference< css::awt::XWindow >& _xFocusWindow, ::vcl::AccessibleBrowseBoxObjType  eObjType )
     :AccessibleBrowseBoxBase( rxParent, rBrowseBox, _xFocusWindow, eObjType )
 {
 }
 
 
-BrowseBoxAccessibleElement::BrowseBoxAccessibleElement( const css::uno::Reference< css::accessibility::XAccessible >& rxParent, ::svt::IAccessibleTableProvider& rBrowseBox,
-        const css::uno::Reference< css::awt::XWindow >& _xFocusWindow, ::svt::AccessibleBrowseBoxObjType  eObjType,
+BrowseBoxAccessibleElement::BrowseBoxAccessibleElement( const css::uno::Reference< css::accessibility::XAccessible >& rxParent, ::vcl::IAccessibleTableProvider& rBrowseBox,
+        const css::uno::Reference< css::awt::XWindow >& _xFocusWindow, ::vcl::AccessibleBrowseBoxObjType  eObjType,
         const OUString& rName, const OUString& rDescription )
     :AccessibleBrowseBoxBase( rxParent, rBrowseBox, _xFocusWindow, eObjType, rName, rDescription )
 {

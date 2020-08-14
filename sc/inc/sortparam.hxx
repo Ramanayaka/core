@@ -33,8 +33,8 @@ struct ScQueryParam;
 
 struct ScSortKeyState
 {
-    bool     bDoSort;
     SCCOLROW nField;
+    bool     bDoSort;
     bool     bAscending;
 };
 
@@ -50,6 +50,7 @@ struct SC_DLLPUBLIC ScSortParam
     bool        bCaseSens;
     bool        bNaturalSort;
     bool        bIncludeComments;
+    bool        bIncludeGraphicObjects;
     bool        bUserDef;
     bool        bIncludePattern;
     bool        bInplace;
@@ -80,7 +81,7 @@ struct SC_DLLPUBLIC ScSortParam
 
 namespace sc {
 
-struct SC_DLLPUBLIC ReorderParam
+struct ReorderParam
 {
     /**
      * This sort range already takes into account the presence or absence of

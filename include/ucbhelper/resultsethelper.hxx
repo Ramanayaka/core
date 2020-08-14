@@ -22,15 +22,13 @@
 
 #include <memory>
 #include <osl/mutex.hxx>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/ucb/XDynamicResultSet.hpp>
-#include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/ucb/OpenCommandArgument2.hpp>
-#include <cppuhelper/weak.hxx>
-#include <ucbhelper/macros.hxx>
-#include <ucbhelper/contenthelper.hxx>
+#include <cppuhelper/implbase.hxx>
 #include <ucbhelper/ucbhelperdllapi.h>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace cppu {
     class OInterfaceContainerHelper;
@@ -52,10 +50,9 @@ namespace ucbhelper {
   * - all required interfaces for service css::ucb::DynamicResultSet
   */
 class UCBHELPER_DLLPUBLIC ResultSetImplHelper :
-                public cppu::OWeakObject,
-                public css::lang::XTypeProvider,
-                public css::lang::XServiceInfo,
-                public css::ucb::XDynamicResultSet
+                public cppu::WeakImplHelper<
+                    css::lang::XServiceInfo,
+                    css::ucb::XDynamicResultSet>
 {
     std::unique_ptr<cppu::OInterfaceContainerHelper> m_pDisposeEventListeners;
     bool                         m_bStatic;
@@ -128,19 +125,6 @@ public:
       * Destructor.
       */
     virtual ~ResultSetImplHelper() override;
-
-    // XInterface
-    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire()
-        throw() override;
-    virtual void SAL_CALL release()
-        throw() override;
-
-    // XTypeProvider
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL
-    getImplementationId() override;
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL
-    getTypes() override;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;

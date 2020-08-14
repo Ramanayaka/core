@@ -35,7 +35,7 @@ public:
         FileBase::RC err;
 
         //create a tempfile
-        rtl::OUString aTmpFile;
+        OUString aTmpFile;
         err = FileBase::createTempFile(nullptr, nullptr, &aTmpFile);
         CPPUNIT_ASSERT_EQUAL_MESSAGE("temp File creation failed", osl::FileBase::E_None, err);
 
@@ -43,9 +43,9 @@ public:
         File tmp_file(aTmpFile);
         err = tmp_file.open(osl_File_OpenFlag_Write | osl_File_OpenFlag_Create);
 
-        rtl::OString sErrorMsg = "Expected that '";
-        sErrorMsg += rtl::OUStringToOString(aTmpFile, RTL_TEXTENCODING_ASCII_US);
-        sErrorMsg += "' would exist!";
+        OString sErrorMsg = "Expected that '" +
+            OUStringToOString(aTmpFile, RTL_TEXTENCODING_ASCII_US) +
+            "' would exist!";
         CPPUNIT_ASSERT_EQUAL_MESSAGE(sErrorMsg.getStr(), FileBase::E_EXIST, err);
 
         char buffer[1];

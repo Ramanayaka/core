@@ -21,7 +21,6 @@
 #include "DAVProperties.hxx"
 
 #include "webdavresponseparser.hxx"
-#include <comphelper/seqstream.hxx>
 #include <rtl/strbuf.hxx>
 
 
@@ -112,7 +111,7 @@ serf_bucket_t * SerfPropFindReqProcImpl::createSerfRequestBucket( serf_request_t
                 /* <*propname* xmlns="*propns*" /> */
                 aBuffer.append( "<" );
                 aBuffer.append( thePropName.name );
-                aBuffer.append( " xmlnx=\"" );
+                aBuffer.append( " xmlns=\"" );
                 aBuffer.append( thePropName.nspace );
                 aBuffer.append( "\"/>" );
             }
@@ -162,7 +161,7 @@ serf_bucket_t * SerfPropFindReqProcImpl::createSerfRequestBucket( serf_request_t
     }
     else
     {
-        assert("Headers Bucket missing");
+        assert(!"Headers Bucket missing");
     }
 
     return req_bkt;

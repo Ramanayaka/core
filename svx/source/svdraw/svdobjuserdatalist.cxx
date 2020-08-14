@@ -9,7 +9,6 @@
 
 #include <memory>
 #include <svdobjuserdatalist.hxx>
-#include <vcl/outdev.hxx>
 
 SdrObjUserDataList::SdrObjUserDataList() {}
 SdrObjUserDataList::~SdrObjUserDataList() {}
@@ -21,12 +20,12 @@ size_t SdrObjUserDataList::GetUserDataCount() const
 
 SdrObjUserData& SdrObjUserDataList::GetUserData(size_t nNum)
 {
-    return *maList.at(nNum).get();
+    return *maList.at(nNum);
 }
 
-void SdrObjUserDataList::AppendUserData(SdrObjUserData* pData)
+void SdrObjUserDataList::AppendUserData(std::unique_ptr<SdrObjUserData> pData)
 {
-    maList.push_back(std::unique_ptr<SdrObjUserData>(pData));
+    maList.push_back(std::move(pData));
 }
 
 void SdrObjUserDataList::DeleteUserData(size_t nNum)

@@ -23,6 +23,7 @@ $(eval $(call gb_ExternalProject_use_externals,libabw,\
 ))
 
 $(call gb_ExternalProject_get_state_target,libabw,build) :
+	$(call gb_Trace_StartRange,libabw,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		export PKG_CONFIG="" \
 		&& MAKE=$(MAKE) ./configure \
@@ -31,13 +32,15 @@ $(call gb_ExternalProject_get_state_target,libabw,build) :
 			--disable-shared \
 			--without-docs \
 			--disable-tools \
-			--disable-debug \
+			$(if $(ENABLE_DEBUG),--enable-debug,--disable-debug) \
 			--disable-werror \
 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
-			CXXFLAGS="$(CXXFLAGS) $(BOOST_CPPFLAGS) \
-				-DBOOST_ERROR_CODE_HEADER_ONLY -DBOOST_SYSTEM_NO_DEPRECATED" \
+			$(if $(gb_FULLDEPS),,--disable-dependency-tracking) \
+			CXXFLAGS="$(gb_CXXFLAGS) $(if $(ENABLE_OPTIMIZED),$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS))" \
+			CPPFLAGS="$(CPPFLAGS) $(BOOST_CPPFLAGS)" \
 			$(if $(CROSS_COMPILING),--build=$(BUILD_PLATFORM) --host=$(HOST_PLATFORM)) \
 		&& $(MAKE) \
 	)
+	$(call gb_Trace_EndRange,libabw,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

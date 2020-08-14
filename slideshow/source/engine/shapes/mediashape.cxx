@@ -18,16 +18,14 @@
  */
 
 
-#include <canvas/canvastools.hxx>
-
 #include <com/sun/star/drawing/XShape.hpp>
 
 #include "mediashape.hxx"
 #include "viewmediashape.hxx"
 #include "externalshapebase.hxx"
-#include "slideshowcontext.hxx"
-#include "shape.hxx"
-#include "tools.hxx"
+#include <slideshowcontext.hxx>
+#include <shape.hxx>
+#include <tools.hxx>
 
 #include <algorithm>
 
@@ -35,10 +33,10 @@
 using namespace ::com::sun::star;
 
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
+        namespace {
+
         /** Represents a media shape.
 
             This implementation offers support for media shapes.
@@ -89,6 +87,7 @@ namespace slideshow
             bool                                             mbIsPlaying;
         };
 
+        }
 
         MediaShape::MediaShape( const uno::Reference< drawing::XShape >& xShape,
                                   double                                     nPrio,
@@ -240,13 +239,9 @@ namespace slideshow
             double                                   nPrio,
             const SlideShowContext&                  rContext)
         {
-            std::shared_ptr< MediaShape > pMediaShape(
-                new MediaShape(xShape, nPrio, rContext));
-
-            return pMediaShape;
+            return std::make_shared<MediaShape>(xShape, nPrio, rContext);
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

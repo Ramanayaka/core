@@ -23,9 +23,8 @@
 #include <rtl/ustring.hxx>
 #include <salhelper/simplereferenceobject.hxx>
 
-#include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
+namespace com::sun::star::uno { class Any; }
+namespace com::sun::star::uno { template <class E> class Sequence; }
 
 namespace stoc_sec
 {
@@ -66,9 +65,6 @@ class PermissionCollection
     ::rtl::Reference< Permission > m_head;
 public:
     PermissionCollection()
-        {}
-    PermissionCollection( PermissionCollection const & collection )
-        : m_head( collection.m_head )
         {}
     explicit PermissionCollection( ::rtl::Reference< Permission > const & single )
         : m_head( single )

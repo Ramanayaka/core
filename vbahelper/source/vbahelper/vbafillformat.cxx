@@ -171,18 +171,16 @@ ScVbaFillFormat::ForeColor()
 OUString
 ScVbaFillFormat::getServiceImplName()
 {
-    return OUString("ScVbaFillFormat");
+    return "ScVbaFillFormat";
 }
 
 uno::Sequence< OUString >
 ScVbaFillFormat::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.FillFormat";
-    }
+        "ooo.vba.msforms.FillFormat"
+    };
     return aServiceNames;
 }
 

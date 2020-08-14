@@ -19,27 +19,25 @@
 #ifndef INCLUDED_SVX_SIDEBAR_TEXT_TEXTUNDERLINEPOPUP_HXX
 #define INCLUDED_SVX_SIDEBAR_TEXT_TEXTUNDERLINEPOPUP_HXX
 
-#include <sfx2/tbxctrl.hxx>
-#include <svx/svxdllapi.h>
-
-#include <vcl/vclenum.hxx>
-
-#include <functional>
+#include <svtools/popupwindowcontroller.hxx>
 
 namespace svx {
 
-class SVX_DLLPUBLIC TextUnderlinePopup : public SfxToolBoxControl
+class TextUnderlinePopup final : public svt::PopupWindowController
 {
 public:
-    SFX_DECL_TOOLBOX_CONTROL();
-
-    TextUnderlinePopup(sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx);
+    TextUnderlinePopup(const css::uno::Reference<css::uno::XComponentContext>& rContext);
     virtual ~TextUnderlinePopup() override;
 
-    // XInitialization
-    virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
+    virtual std::unique_ptr<WeldToolbarPopup> weldPopupWindow() override;
+    virtual VclPtr<vcl::Window> createVclPopupWindow( vcl::Window* pParent ) override;
 
-    virtual VclPtr<SfxPopupWindow> CreatePopupWindow() override;
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
+
+    // XInitialization
+    virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& rArguments ) override;
 };
 
 } // end of namespace svx

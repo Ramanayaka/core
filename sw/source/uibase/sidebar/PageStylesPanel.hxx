@@ -22,34 +22,24 @@
 #include <memory>
 #include <com/sun/star/frame/XFrame.hpp>
 
-#include <svx/sidebar/PanelLayout.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
 
 #include <sfx2/sidebar/ControllerItem.hxx>
 
-#include <i18nutil/paper.hxx>
-
 #include <svx/pageitem.hxx>
-#include <svx/rulritem.hxx>
-#include <editeng/sizeitem.hxx>
 
-#include <vcl/ctrl.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <vcl/toolbox.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/field.hxx>
 #include <svl/intitem.hxx>
-#include <tools/fldunit.hxx>
 #include <svl/poolitem.hxx>
-#include <svx/dlgctrl.hxx>
-#include <svx/xfillit.hxx>
-#include <svx/xfillit0.hxx>
+#include <svx/xbtmpit.hxx>
+#include <svx/xflclit.hxx>
+#include <svx/xflgrit.hxx>
+#include <svx/xflhtit.hxx>
 #include <svx/itemwin.hxx>
 #include <svx/pagenumberlistbox.hxx>
 
 class List;
-class SvxColorListBox;
-namespace sw { namespace sidebar {
+class ColorListBox;
+namespace sw::sidebar {
 
 class PageStylesPanel:
     public PanelLayout,
@@ -64,8 +54,11 @@ public:
     virtual void NotifyItemUpdate(
         const sal_uInt16 nSId,
         const SfxItemState eState,
-        const SfxPoolItem* pState,
-        const bool bIsEnabled) override;
+        const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(
+        const sal_uInt16 /*nSId*/,
+        boost::property_tree::ptree& /*rState*/) override {};
 
     SfxBindings* GetBindings() const { return mpBindings; }
     PageStylesPanel(
@@ -94,36 +87,36 @@ private:
     ::sfx2::sidebar::ControllerItem maBgBitmapControl;
     ::sfx2::sidebar::ControllerItem maBgFillStyleControl;
 
-    VclPtr<SvxColorListBox> mpBgColorLB;
-    VclPtr<SvxFillAttrBox>  mpBgHatchingLB;
-    VclPtr<SvxColorListBox> mpBgGradientLB;
-    VclPtr<SvxFillAttrBox>  mpBgBitmapLB;
-    VclPtr<ListBox>         mpLayoutSelectLB;
-    VclPtr<ListBox>         mpColumnCount;
-    VclPtr<PageNumberListBox> mpNumberSelectLB;
-    VclPtr<SvxFillTypeBox>  mpBgFillType;
-    VclPtr<FixedText>       mpCustomEntry;
+    std::unique_ptr<ColorListBox> mxBgColorLB;
+    std::unique_ptr<weld::ComboBox> mxBgHatchingLB;
+    std::unique_ptr<ColorListBox> mxBgGradientLB;
+    std::unique_ptr<weld::ComboBox> mxBgBitmapLB;
+    std::unique_ptr<weld::ComboBox> mxLayoutSelectLB;
+    std::unique_ptr<weld::ComboBox> mxColumnCount;
+    std::unique_ptr<SvxPageNumberListBox> mxNumberSelectLB;
+    std::unique_ptr<weld::ComboBox> mxBgFillType;
+    std::unique_ptr<weld::Label> mxCustomEntry;
     OUString aCustomEntry;
 
     void Initialize();
     void Update();
-    Color GetColorSetOrDefault();
-    XGradient GetGradientSetOrDefault();
-    const OUString GetHatchingSetOrDefault();
-    const OUString GetBitmapSetOrDefault();
-    const OUString GetPatternSetOrDefault();
+    Color const & GetColorSetOrDefault();
+    XGradient const & GetGradientSetOrDefault();
+    OUString const & GetHatchingSetOrDefault();
+    OUString const & GetBitmapSetOrDefault();
+    OUString const & GetPatternSetOrDefault();
 
     void ModifyFillColor();
 
-    DECL_LINK( ModifyColumnCountHdl, ListBox&, void );
-    DECL_LINK( ModifyNumberingHdl, ListBox&, void );
-    DECL_LINK( ModifyLayoutHdl, ListBox&, void );
-    DECL_LINK( ModifyFillStyleHdl, ListBox&, void );
-    DECL_LINK( ModifyFillColorHdl, ListBox&, void );
-    DECL_LINK( ModifyFillColorListHdl, SvxColorListBox&, void );
+    DECL_LINK( ModifyColumnCountHdl, weld::ComboBox&, void );
+    DECL_LINK( ModifyNumberingHdl, weld::ComboBox&, void );
+    DECL_LINK( ModifyLayoutHdl, weld::ComboBox&, void );
+    DECL_LINK( ModifyFillStyleHdl, weld::ComboBox&, void );
+    DECL_LINK( ModifyFillColorHdl, weld::ComboBox&, void );
+    DECL_LINK( ModifyFillColorListHdl, ColorListBox&, void );
 };
 
-} } //end of namespace sw::sidebar
+} //end of namespace sw::sidebar
 
 #endif
 

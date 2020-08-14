@@ -18,6 +18,7 @@
  */
 
 #include <sfx2/minfitem.hxx>
+#include <sal/log.hxx>
 
 SfxPoolItem* SfxMacroInfoItem::CreateDefault() { SAL_WARN( "sfx", "No SfxMacroInfItem factory available"); return nullptr; }
 
@@ -38,20 +39,6 @@ SfxMacroInfoItem::SfxMacroInfoItem(
 {
 }
 
-
-// copy constructor
-
-SfxMacroInfoItem::SfxMacroInfoItem(const SfxMacroInfoItem& rCopy):
-    SfxPoolItem(rCopy),
-    pBasicManager(rCopy.pBasicManager),
-    aLibName(rCopy.aLibName),
-    aModuleName(rCopy.aModuleName),
-    aMethodName(rCopy.aMethodName),
-    aCommentText(rCopy.aCommentText)
-{
-}
-
-
 // op ==
 
 bool SfxMacroInfoItem::operator==( const SfxPoolItem& rCmp) const
@@ -65,20 +52,18 @@ bool SfxMacroInfoItem::operator==( const SfxPoolItem& rCmp) const
             aCommentText == rItem.aCommentText;
 }
 
-
-SfxPoolItem *SfxMacroInfoItem::Clone( SfxItemPool *) const
+SfxMacroInfoItem* SfxMacroInfoItem::Clone( SfxItemPool *) const
 {
     return new SfxMacroInfoItem(*this);
 }
 
-
 OUString SfxMacroInfoItem::GetQualifiedName() const
 {
-    OUString aMacroName = aLibName;
-    aMacroName += ".";
-    aMacroName += aModuleName;
-    aMacroName += ".";
-    aMacroName += aMethodName;
+    OUString aMacroName = aLibName +
+        "." +
+        aModuleName +
+        "." +
+        aMethodName;
     return aMacroName;
 }
 

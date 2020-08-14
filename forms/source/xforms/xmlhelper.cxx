@@ -20,7 +20,6 @@
 
 #include "xmlhelper.hxx"
 
-#include "unohelper.hxx"
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/xml/dom/DocumentBuilder.hpp>
@@ -40,7 +39,7 @@ using com::sun::star::xml::dom::XDocumentBuilder;
 // 2: NameChar
 // 4: NCNameStartChar
 // 8: NCNameChar
-static inline sal_uInt8 lcl_getCharClass( sal_Unicode c )
+static sal_uInt8 lcl_getCharClass( sal_Unicode c )
 {
     sal_uInt8 nClass = 0;
 

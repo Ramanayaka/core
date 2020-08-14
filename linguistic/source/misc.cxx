@@ -18,14 +18,12 @@
  */
 
 #include <memory>
-#include <sal/macros.h>
-#include <unotools/pathoptions.hxx>
+#include <sal/log.hxx>
 #include <svl/lngmisc.hxx>
 #include <ucbhelper/content.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XFastPropertySet.hpp>
-#include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/beans/PropertyValues.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
@@ -36,15 +34,18 @@
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Reference.h>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/sequence.hxx>
+#include <unotools/charclass.hxx>
+#include <unotools/linguprops.hxx>
 #include <unotools/localedatawrapper.hxx>
 #include <unotools/syslocale.hxx>
+#include <svtools/strings.hrc>
+#include <unotools/resmgr.hxx>
 
 #include <rtl/instance.hxx>
 
-#include "linguistic/misc.hxx"
-#include "defs.hxx"
-#include "linguistic/lngprops.hxx"
-#include "linguistic/hyphdta.hxx"
+#include <linguistic/misc.hxx>
+#include <linguistic/hyphdta.hxx>
 
 using namespace osl;
 using namespace com::sun::star;
@@ -57,10 +58,14 @@ using namespace com::sun::star::linguistic2;
 namespace linguistic
 {
 
+namespace {
+
 //!! multi-thread safe mutex for all platforms !!
 struct LinguMutex : public rtl::Static< osl::Mutex, LinguMutex >
 {
 };
+
+}
 
 osl::Mutex &    GetLinguMutex()
 {
@@ -109,11 +114,12 @@ bool LinguIsUnspecified( const OUString & rBcp47 )
     return rBcp47 == "zxx" || rBcp47 == "und" || rBcp47 == "mul";
 }
 
-static inline sal_Int32 Minimum( sal_Int32 n1, sal_Int32 n2, sal_Int32 n3 )
+static sal_Int32 Minimum( sal_Int32 n1, sal_Int32 n2, sal_Int32 n3 )
 {
-    sal_Int32 nMin = n1 < n2 ? n1 : n2;
-    return nMin < n3 ? nMin : n3;
+    return std::min(std::min(n1, n2), n3);
 }
+
+namespace {
 
 class IntArray2D
 {
@@ -126,6 +132,8 @@ public:
 
     sal_Int32 & Value( int i, int k  );
 };
+
+}
 
 IntArray2D::IntArray2D( int nDim1, int nDim2 )
 {
@@ -193,19 +201,14 @@ bool IsUseDicList( const PropertyValues &rProperties,
 {
     bool bRes = true;
 
-    sal_Int32 nLen = rProperties.getLength();
-    const PropertyValue *pVal = rProperties.getConstArray();
-    sal_Int32 i;
+    const PropertyValue *pVal = std::find_if(rProperties.begin(), rProperties.end(),
+        [](const PropertyValue& rVal) { return UPH_IS_USE_DICTIONARY_LIST == rVal.Handle; });
 
-    for ( i = 0;  i < nLen;  ++i)
+    if (pVal != rProperties.end())
     {
-        if (UPH_IS_USE_DICTIONARY_LIST == pVal[i].Handle)
-        {
-            pVal[i].Value >>= bRes;
-            break;
-        }
+        pVal->Value >>= bRes;
     }
-    if (i >= nLen)  // no temporary value found in 'rProperties'
+    else  // no temporary value found in 'rProperties'
     {
         uno::Reference< XFastPropertySet > xFast( rxProp, UNO_QUERY );
         if (xFast.is())
@@ -220,19 +223,14 @@ bool IsIgnoreControlChars( const PropertyValues &rProperties,
 {
     bool bRes = true;
 
-    sal_Int32 nLen = rProperties.getLength();
-    const PropertyValue *pVal = rProperties.getConstArray();
-    sal_Int32 i;
+    const PropertyValue *pVal = std::find_if(rProperties.begin(), rProperties.end(),
+        [](const PropertyValue& rVal) { return UPH_IS_IGNORE_CONTROL_CHARACTERS == rVal.Handle; });
 
-    for ( i = 0;  i < nLen;  ++i)
+    if (pVal != rProperties.end())
     {
-        if (UPH_IS_IGNORE_CONTROL_CHARACTERS == pVal[i].Handle)
-        {
-            pVal[i].Value >>= bRes;
-            break;
-        }
+        pVal->Value >>= bRes;
     }
-    if (i >= nLen)  // no temporary value found in 'rProperties'
+    else  // no temporary value found in 'rProperties'
     {
         uno::Reference< XFastPropertySet > xFast( rxProp, UNO_QUERY );
         if (xFast.is())
@@ -278,7 +276,7 @@ uno::Reference< XDictionaryEntry > SearchDicList(
     sal_Int32 i;
     for (i = 0;  i < nDics;  i++)
     {
-        uno::Reference< XDictionary > axDic( pDic[i], UNO_QUERY );
+        uno::Reference< XDictionary > axDic = pDic[i];
 
         DictionaryType  eType = axDic->getDictionaryType();
         LanguageType    nLang = LinguLocaleToLanguage( axDic->getLocale() );
@@ -292,11 +290,9 @@ uno::Reference< XDictionaryEntry > SearchDicList(
             if (   (!bSearchPosDics  &&  eType == DictionaryType_NEGATIVE)
                 || ( bSearchPosDics  &&  eType == DictionaryType_POSITIVE))
             {
-                if ( (xEntry = axDic->getEntry( rWord )).is() )
-                {
-                    if (bSearchSpellEntry || lcl_HasHyphInfo( xEntry ))
-                        break;
-                }
+                xEntry = axDic->getEntry( rWord );
+                if ( xEntry.is() && (bSearchSpellEntry || lcl_HasHyphInfo( xEntry )) )
+                    break;
                 xEntry = nullptr;
             }
         }
@@ -312,14 +308,12 @@ bool SaveDictionaries( const uno::Reference< XSearchableDictionaryList > &xDicLi
 
     bool bRet = true;
 
-    Sequence< uno::Reference< XDictionary >  > aDics( xDicList->getDictionaries() );
-    const uno::Reference< XDictionary >  *pDic = aDics.getConstArray();
-    sal_Int32 nCount = aDics.getLength();
-    for (sal_Int32 i = 0;  i < nCount;  i++)
+    const Sequence< uno::Reference< XDictionary >  > aDics( xDicList->getDictionaries() );
+    for (const uno::Reference<XDictionary>& rDic : aDics)
     {
         try
         {
-            uno::Reference< frame::XStorable >  xStor( pDic[i], UNO_QUERY );
+            uno::Reference< frame::XStorable >  xStor( rDic, UNO_QUERY );
             if (xStor.is())
             {
                 if (!xStor->isReadonly() && xStor->hasLocation())
@@ -336,7 +330,7 @@ bool SaveDictionaries( const uno::Reference< XSearchableDictionaryList > &xDicLi
 }
 
 DictionaryError AddEntryToDic(
-        uno::Reference< XDictionary >  &rxDic,
+        uno::Reference< XDictionary > const &rxDic,
         const OUString &rWord, bool bIsNeg,
         const OUString &rRplcTxt,
         bool bStripDot )
@@ -376,34 +370,27 @@ DictionaryError AddEntryToDic(
 }
 
 std::vector< LanguageType >
-    LocaleSeqToLangVec( uno::Sequence< Locale > &rLocaleSeq )
+    LocaleSeqToLangVec( uno::Sequence< Locale > const &rLocaleSeq )
 {
-    const Locale *pLocale = rLocaleSeq.getConstArray();
-    sal_Int32 nCount = rLocaleSeq.getLength();
-
     std::vector< LanguageType >   aLangs;
-    for (sal_Int32 i = 0;  i < nCount;  ++i)
-    {
-        aLangs.push_back( LinguLocaleToLanguage( pLocale[i] ) );
-    }
+    aLangs.reserve(rLocaleSeq.getLength());
+
+    std::transform(rLocaleSeq.begin(), rLocaleSeq.end(), std::back_inserter(aLangs),
+        [](const Locale& rLocale) { return LinguLocaleToLanguage(rLocale); });
 
     return aLangs;
 }
 
 uno::Sequence< sal_Int16 >
-     LocaleSeqToLangSeq( uno::Sequence< Locale > &rLocaleSeq )
+     LocaleSeqToLangSeq( uno::Sequence< Locale > const &rLocaleSeq )
 {
-    const Locale *pLocale = rLocaleSeq.getConstArray();
-    sal_Int32 nCount = rLocaleSeq.getLength();
+    std::vector<sal_Int16> aLangs;
+    aLangs.reserve(rLocaleSeq.getLength());
 
-    uno::Sequence< sal_Int16 >   aLangs( nCount );
-    sal_Int16 *pLang = aLangs.getArray();
-    for (sal_Int32 i = 0;  i < nCount;  ++i)
-    {
-        pLang[i] = (sal_uInt16)LinguLocaleToLanguage( pLocale[i] );
-    }
+    std::transform(rLocaleSeq.begin(), rLocaleSeq.end(), std::back_inserter(aLangs),
+        [](const Locale& rLocale) { return static_cast<sal_uInt16>(LinguLocaleToLanguage(rLocale)); });
 
-    return aLangs;
+    return comphelper::containerToSequence(aLangs);
 }
 bool    IsReadOnly( const OUString &rURL, bool *pbExist )
 {
@@ -436,7 +423,7 @@ bool    IsReadOnly( const OUString &rURL, bool *pbExist )
 }
 
 static bool GetAltSpelling( sal_Int16 &rnChgPos, sal_Int16 &rnChgLen, OUString &rRplc,
-        uno::Reference< XHyphenatedWord > &rxHyphWord )
+        uno::Reference< XHyphenatedWord > const &rxHyphWord )
 {
     bool bRes = rxHyphWord->isAlternativeSpelling();
     if (bRes)
@@ -521,7 +508,7 @@ sal_Int32 GetPosInWordToCheck( const OUString &rTxt, sal_Int32 nPos )
 
 uno::Reference< XHyphenatedWord > RebuildHyphensAndControlChars(
         const OUString &rOrigWord,
-        uno::Reference< XHyphenatedWord > &rxHyphWord )
+        uno::Reference< XHyphenatedWord > const &rxHyphWord )
 {
     uno::Reference< XHyphenatedWord > xRes;
     if (!rOrigWord.isEmpty() && rxHyphWord.is())
@@ -556,9 +543,7 @@ uno::Reference< XHyphenatedWord > RebuildHyphensAndControlChars(
             aLeft = rOrigWord.copy( 0, nPos );
             aRight = rOrigWord.copy( nPos ); // FIXME: changes at the right side
 
-            aOrigHyphenatedWord =  aLeft;
-            aOrigHyphenatedWord += aRplc;
-            aOrigHyphenatedWord += aRight;
+            aOrigHyphenatedWord =  aLeft + aRplc + aRight;
 
             nOrigHyphenPos      = sal::static_int_cast< sal_Int16 >(aLeft.getLength() +
                                   rxHyphWord->getHyphenPos() - nChgPos);
@@ -587,7 +572,7 @@ static CharClass & lcl_GetCharClass()
     return aCC;
 }
 
-osl::Mutex & lcl_GetCharClassMutex()
+static osl::Mutex & lcl_GetCharClassMutex()
 {
     static osl::Mutex   aMutex;
     return aMutex;
@@ -604,10 +589,10 @@ bool IsUpper( const OUString &rText, sal_Int32 nPos, sal_Int32 nLen, LanguageTyp
             && !(nFlags & KCharacterType::LOWER);
 }
 
-CapType SAL_CALL capitalType(const OUString& aTerm, CharClass * pCC)
+CapType capitalType(const OUString& aTerm, CharClass const * pCC)
 {
         sal_Int32 tlen = aTerm.getLength();
-        if ((pCC) && (tlen))
+        if (pCC && tlen)
         {
             sal_Int32 nc = 0;
             for (sal_Int32 tindex = 0; tindex < tlen; ++tindex)
@@ -640,7 +625,7 @@ OUString ToLower( const OUString &rText, LanguageType nLanguage )
 
 // sorted(!) array of unicode ranges for code points that are exclusively(!) used as numbers
 // and thus may NOT not be part of names or words like the Chinese/Japanese number characters
-static const sal_uInt32 the_aDigitZeroes [] =
+const sal_uInt32 the_aDigitZeroes [] =
 {
     0x00000030, //0039    ; Decimal # Nd  [10] DIGIT ZERO..DIGIT NINE
     0x00000660, //0669    ; Decimal # Nd  [10] ARABIC-INDIC DIGIT ZERO..ARABIC-INDIC DIGIT NINE
@@ -706,7 +691,7 @@ bool IsNumeric( const OUString &rText )
         for(sal_Int32 i = 0; i < nLen; ++i)
         {
             sal_Unicode cChar = rText[ i ];
-            if ( !('0' <= cChar  &&  cChar <= '9') )
+            if ( '0' > cChar  ||  cChar > '9' )
             {
                 bRes = false;
                 break;
@@ -742,7 +727,10 @@ uno::Reference< XDictionary > GetIgnoreAllList()
     uno::Reference< XDictionary > xRes;
     uno::Reference< XSearchableDictionaryList > xDL( GetDictionaryList() );
     if (xDL.is())
-        xRes = xDL->getDictionaryByName( "IgnoreAllList" );
+    {
+        std::locale loc(Translate::Create("svt"));
+        xRes = xDL->getDictionaryByName( Translate::get(STR_DESCRIPTION_IGNOREALLLIST, loc) );
+    }
     return xRes;
 }
 

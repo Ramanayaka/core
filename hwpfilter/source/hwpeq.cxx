@@ -36,7 +36,7 @@ using namespace std;
 /* @Man: change the hwp formula to LaTeX */
 #ifdef _WIN32
 # define ENDL  "\r\n"
-#else /* !WIN32 */
+#else /* !_WIN32 */
 # define ENDL  "\n"
 #endif
 
@@ -68,6 +68,8 @@ enum { SCRIPT_NONE, SCRIPT_SUB, SCRIPT_SUP, SCRIPT_ALL};
 static int  eq_word(MzString& outs, istream *strm, int script = SCRIPT_NONE);
 static bool eq_sentence(MzString& outs, istream *strm, const char *end = nullptr);
 
+namespace {
+
 struct hwpeq {
   const char    *key;       // hwp math keyword
   const char    *latex;     // corresponding latex keyword
@@ -75,7 +77,9 @@ struct hwpeq {
   unsigned char flag;       // case sensitive?
 };
 
-static const hwpeq eq_tbl[] = {
+}
+
+const hwpeq eq_tbl[] = {
   { "!=",         "\\equiv ", 0,  0   },
   { "#",          "\\\\",     0,  0   },
   { "+-",         "\\pm ",    0,  0   },
@@ -388,7 +392,7 @@ static const hwpeq eq_tbl[] = {
   { "zeta",       nullptr,       0,  EQ_CASE }
 };
 
-static const hwpeq *lookup_eqn(char *str)
+static const hwpeq *lookup_eqn(char const *str)
 {
   static const int eqCount = SAL_N_ELEMENTS(eq_tbl);
   int l = 0, r = eqCount;
@@ -410,7 +414,7 @@ static const hwpeq *lookup_eqn(char *str)
 }
 
 /* If only the first character is uppercase or all characters are uppercase, change to lowercase */
-void make_keyword( char *keyword, const char *token)
+static void make_keyword( char *keyword, const char *token)
 {
     char* ptr;
     bool result = true;
@@ -452,6 +456,8 @@ void make_keyword( char *keyword, const char *token)
     }
 }
 
+namespace {
+
 // token reading function
 struct eq_stack {
   MzString  white;
@@ -459,15 +465,17 @@ struct eq_stack {
   istream   *strm;
 
   eq_stack() { strm = nullptr; };
-  bool state(istream *s) {
+  bool state(istream const *s) {
     if( strm != s) { white = nullptr; token = nullptr; }
     return token.length() != 0;
   }
 };
 
+}
+
 static eq_stack *stk = nullptr;
 
-void push_token(MzString &white, MzString &token, istream *strm)
+static void push_token(MzString const &white, MzString const &token, istream *strm)
 {
   // one time stack
   assert(stk->token.length() == 0);
@@ -481,7 +489,7 @@ void push_token(MzString &white, MzString &token, istream *strm)
  * It returns the length of the read tokens.
  *
  * control char, control sequence, binary sequence,
- * alphabet string, sigle character */
+ * alphabet string, single character */
 static int next_token(MzString &white, MzString &token, istream *strm)
 {
   std::istream::int_type ch = 0;
@@ -496,24 +504,30 @@ static int next_token(MzString &white, MzString &token, istream *strm)
 
   token = nullptr;
   white = nullptr;
-  if( !strm->good() || (ch = strm->get()) == std::istream::traits_type::eof() )
+  if( !strm->good() )
+    return 0;
+  ch = strm->get();
+  if( ch == std::istream::traits_type::eof() )
     return 0;
 
   // read preceding ws
   if( IS_WS(ch) ) {
-    do white << (char) ch;
-    while( IS_WS(ch = strm->get()) );
+    do
+    {
+        white << static_cast<char>(ch);
+        ch = strm->get();
+    } while (IS_WS(ch));
   }
 
   if( ch == '\\' || ch & 0x80
       || (ch != std::istream::traits_type::eof() && rtl::isAsciiAlpha(ch)) )
   {
     if( ch == '\\' ) {
-      token << (char) ch;
+      token << static_cast<char>(ch);
       ch = strm->get();
     }
     do {
-      token << (char) ch;
+      token << static_cast<char>(ch);
       ch = strm->get();
     } while( ch != std::istream::traits_type::eof()
              && (ch & 0x80 || rtl::isAsciiAlpha(ch)) ) ;
@@ -536,19 +550,23 @@ static int next_token(MzString &white, MzString &token, istream *strm)
       token = "^";
   }
   else if( IS_BINARY(ch) ) {
-    do token << (char) ch;
-    while( IS_BINARY(ch = strm->get()) );
+    do
+    {
+        token << static_cast<char>(ch);
+        ch = strm->get();
+    }
+    while( IS_BINARY(ch) );
     strm->putback(static_cast<char>(ch));
   }
   else if( ch != std::istream::traits_type::eof() && rtl::isAsciiDigit(ch) ) {
     do {
-        token << (char) ch;
+        token << static_cast<char>(ch);
         ch = strm->get();
     } while( ch != std::istream::traits_type::eof() && rtl::isAsciiDigit(ch) );
     strm->putback(static_cast<char>(ch));
   }
   else
-    token << (char) ch;
+    token << static_cast<char>(ch);
 
   return token.length();
 }
@@ -564,8 +582,13 @@ static std::istream::int_type read_white_space(MzString& outs, istream *strm)
   }
   else {
     std::istream::int_type ch;
-    while( IS_WS(ch = strm->get()) )
-      outs << (char )ch;
+    for (;;)
+    {
+        ch = strm->get();
+        if (!IS_WS(ch))
+            break;
+        outs << static_cast<char>(ch);
+    }
     strm->putback(static_cast<char>(ch));
     result = ch;
   }
@@ -733,9 +756,13 @@ static char eq2ltxconv(MzString& sstr, istream *strm, const char *sentinel)
           sstr.replace(pos, ' ');
       }
       sstr << token;
-      while( (ch = strm->get()) != std::istream::traits_type::eof()
-             && IS_WS(ch) )
-        sstr << (char)ch;
+      for (;;)
+      {
+        ch = strm->get();
+        if ( ch == std::istream::traits_type::eof() || !IS_WS(ch) )
+            break;
+        sstr << static_cast<char>(ch);
+      }
       if( ch != '{' )
         sstr << "{}";
       else {
@@ -749,7 +776,7 @@ static char eq2ltxconv(MzString& sstr, istream *strm, const char *sentinel)
   return token[0];
 }
 
-void eq2latex(MzString& outs, char *s)
+void eq2latex(MzString& outs, char const *s)
 {
   assert(s);
   if( stk == nullptr )

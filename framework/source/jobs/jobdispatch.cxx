@@ -21,7 +21,6 @@
 #include <jobs/joburl.hxx>
 #include <jobs/job.hxx>
 #include <classes/converter.hxx>
-#include <general.h>
 
 #include <com/sun/star/frame/DispatchResultEvent.hpp>
 #include <com/sun/star/frame/DispatchResultState.hpp>
@@ -37,8 +36,6 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ref.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <unotools/configpaths.hxx>
 #include <vcl/svapp.hxx>
 
 using namespace framework;
@@ -48,7 +45,7 @@ namespace {
 /**
     @short  implements a dispatch object for jobs
     @descr  Such dispatch object will be used by the generic dispatch mechanism if
-            an URL "vnd.sun.star.job:alias=<name>" occurs.
+            a URL "vnd.sun.star.job:alias=<name>" occurs.
             Then an instance of this class will be created and used.
             This new instance will be called within his method
             dispatch() or dispatchWithNotification() for executing the
@@ -92,7 +89,7 @@ public:
 public:
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.jobs.JobDispatch");
+        return "com.sun.star.comp.framework.jobs.JobDispatch";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -185,7 +182,7 @@ void SAL_CALL JobDispatch::initialize( const css::uno::Sequence< css::uno::Any >
 
 /**
     @short  implementation of XDispatchProvider::queryDispatches()
-    @descr  Every protocol handler will be asked for his agreement, if an URL was queried
+    @descr  Every protocol handler will be asked for his agreement, if a URL was queried
             for which this handler is registered. It's the chance for this handler to validate
             the given URL and return a dispatch object (may be itself) or not.
 
@@ -318,7 +315,7 @@ void JobDispatch::impl_dispatchEvent( /*IN*/ const OUString&                    
     // It's not really an error, if no registered jobs could be located.
     // Step over all found jobs and execute it
     int nExecutedJobs=0;
-    for (OUString & lJob : lJobs)
+    for (const OUString & lJob : lJobs)
     {
         /* SAFE { */
         aReadLock.reset();
@@ -360,7 +357,7 @@ void JobDispatch::impl_dispatchEvent( /*IN*/ const OUString&                    
 /**
     @short  dispatch a service
     @descr  We use the given name only to create and if possible to initialize
-            it as an uno service. It can be useful for creating (caching?)
+            it as a uno service. It can be useful for creating (caching?)
             of e.g. one instance services.
 
     @param  sService
@@ -488,7 +485,7 @@ void SAL_CALL JobDispatch::removeStatusListener( /*IN*/ const css::uno::Referenc
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_jobs_JobDispatch_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

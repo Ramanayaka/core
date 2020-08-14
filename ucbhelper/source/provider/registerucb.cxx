@@ -18,8 +18,7 @@
  */
 
 #include <ucbhelper/registerucb.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/ucb/DuplicateProviderException.hpp>
 #include <com/sun/star/ucb/XContentProviderManager.hpp>
 #include <com/sun/star/ucb/XParameterizedContentProvider.hpp>
@@ -28,7 +27,7 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/RuntimeException.hpp>
 
-#include "osl/diagnose.h"
+#include <osl/diagnose.h>
 
 using namespace com::sun::star;
 

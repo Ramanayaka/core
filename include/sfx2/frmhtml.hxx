@@ -23,19 +23,14 @@
 #include <sal/config.h>
 #include <sfx2/dllapi.h>
 
-#include <sfx2/frmdescr.hxx>
-#include <sfx2/sfxhtml.hxx>
+#include <svtools/parhtml.hxx>
 
-class SfxFrameHTMLParser;
-class SfxMedium;
+class SfxFrameDescriptor;
 
-class SFX2_DLLPUBLIC SfxFrameHTMLParser : public SfxHTMLParser
+namespace SfxFrameHTMLParser
 {
-   SfxFrameHTMLParser() = delete;
-
-public:
     // These methods can also be used by other parsers.
-    static void ParseFrameOptions(SfxFrameDescriptor*, const HTMLOptions&, const OUString& );
+    SFX2_DLLPUBLIC void ParseFrameOptions(SfxFrameDescriptor*, const HTMLOptions&, const OUString& );
 
 };
 

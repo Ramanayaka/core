@@ -26,29 +26,27 @@
 #include <com/sun/star/geometry/IntegerRectangle2D.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <oox/dllapi.h>
 #include <oox/drawingml/color.hxx>
 #include <oox/helper/helper.hxx>
 #include <oox/ole/oleobjecthelper.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace graphic { class XGraphic; }
-} } }
+}
 
 namespace oox {
     class GraphicHelper;
 }
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 class ShapePropertyMap;
 
 struct GradientFillProperties
 {
-    typedef ::std::map< double, Color > GradientStopMap;
+    typedef ::std::multimap< double, Color > GradientStopMap;
 
     GradientStopMap     maGradientStops;        /// Gradient stops (colors/transparence).
     OptValue< css::geometry::IntegerRectangle2D > moFillToRect;
@@ -98,8 +96,7 @@ struct ArtisticEffectProperties
 
 struct BlipFillProperties
 {
-    css::uno::Reference< css::graphic::XGraphic >
-                          mxGraphic;              /// The fill graphic.
+    css::uno::Reference<css::graphic::XGraphic> mxFillGraphic; /// The fill graphic.
     OptValue< sal_Int32 > moBitmapMode;         /// Bitmap tile or stretch.
     OptValue< css::geometry::IntegerRectangle2D >
                           moFillRect;             /// Stretch fill offsets.
@@ -127,7 +124,7 @@ struct BlipFillProperties
     void                assignUsed( const BlipFillProperties& rSourceProps );
 };
 
-struct OOX_DLLPUBLIC FillProperties
+struct FillProperties
 {
     OptValue< sal_Int32 > moFillType;           /// Fill type (OOXML token).
     Color               maFillColor;            /// Solid fill color and transparence.
@@ -147,13 +144,12 @@ struct OOX_DLLPUBLIC FillProperties
                             ShapePropertyMap& rPropMap,
                             const GraphicHelper& rGraphicHelper,
                             sal_Int32 nShapeRotation = 0,
-                            sal_Int32 nPhClr = API_RGB_TRANSPARENT,
+                            ::Color nPhClr = API_RGB_TRANSPARENT,
                             bool bFlipH = false,
                             bool bFlipV = false ) const;
 };
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 #endif
 

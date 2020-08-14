@@ -19,13 +19,11 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDCHARACTERHEIGHTPROPERTY_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDCHARACTERHEIGHTPROPERTY_HXX
 
-#include "WrappedProperty.hxx"
+#include <WrappedProperty.hxx>
 
 #include <vector>
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 class ReferenceSizePropertyProvider;
@@ -58,7 +56,7 @@ public:
     explicit WrappedCharacterHeightProperty( ReferenceSizePropertyProvider* pRefSizePropProvider );
     virtual ~WrappedCharacterHeightProperty() override;
 
-    static void addWrappedProperties( std::vector< WrappedProperty* >& rList, ReferenceSizePropertyProvider* pRefSizePropProvider );
+    static void addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList, ReferenceSizePropertyProvider* pRefSizePropProvider );
 };
 
 class WrappedAsianCharacterHeightProperty : public WrappedCharacterHeightProperty_Base
@@ -75,8 +73,7 @@ public:
     virtual ~WrappedComplexCharacterHeightProperty() override;
 };
 
-} //namespace wrapper
-} //namespace chart
+} //namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDCHARACTERHEIGHTPROPERTY_HXX
 #endif

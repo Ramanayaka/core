@@ -26,7 +26,6 @@
 #include <map>
 #include <vector>
 
-#include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/sdb/XSingleSelectQueryAnalyzer.hpp>
 #include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
 #include <comphelper/stl_types.hxx>
@@ -88,13 +87,11 @@ namespace dbaccess
         std::unique_ptr<SelectColumnsMetaData>                m_pParameterNames;      // contains all parameter names
         std::unique_ptr<SelectColumnsMetaData>                m_pForeignColumnNames;  // contains all column names of the rest
         connectivity::OSQLTable                                 m_xTable; // reference to our table
-        css::uno::Reference< css::container::XIndexAccess>      m_xTableKeys;
         // we need a different SQL (statement) for each different combination
         // of NULLness of key & foreign columns;
         // each subclause is either "colName = ?" or "colName IS NULL"
         // (we avoid the standard "colName IS NOT DISTINCT FROM ?" because it is not widely supported)
-        typedef std::vector< bool > FilterColumnsNULL_t;
-        typedef std::map< FilterColumnsNULL_t,
+        typedef std::map< std::vector<bool>,
                             css::uno::Reference< css::sdbc::XPreparedStatement > >
                 vStatements_t;
         vStatements_t                                           m_vStatements;
@@ -114,9 +111,8 @@ namespace dbaccess
         * \param _rKeyRow The current key row of the row set.
         + \param i_nBookmark The bookmark is used to update the parameter
         */
-        void copyRowValue(const ORowSetRow& _rInsertRow,ORowSetRow& _rKeyRow,sal_Int32 i_nBookmark);
+        void copyRowValue(const ORowSetRow& _rInsertRow, ORowSetRow const & _rKeyRow, sal_Int32 i_nBookmark);
 
-        css::uno::Reference< css::container::XNameAccess > getKeyColumns() const;
         // returns true if it did any work
         bool fillAllRows();
         bool fetchRow();
@@ -128,7 +124,7 @@ namespace dbaccess
                                              const OUString& i_rUpdateTableName,
                                              const css::uno::Reference< css::sdbc::XDatabaseMetaData>& i_xMeta,
                                              const css::uno::Reference< css::container::XNameAccess>& i_xQueryColumns,
-                                             std::unique_ptr<SelectColumnsMetaData>& o_pKeyColumnNames);
+                                             std::unique_ptr<SelectColumnsMetaData> const & o_pKeyColumnNames);
         void ensureStatement( );
         virtual void makeNewStatement( );
         static void setOneKeyColumnParameter( sal_Int32 &nPos,
@@ -148,7 +144,6 @@ namespace dbaccess
         virtual ~OKeySet() override;
     public:
         OKeySet(const connectivity::OSQLTable& _xTable,
-                const css::uno::Reference< css::container::XIndexAccess>& _xTableKeys,
                 const OUString& _rUpdateTableName,
                 const css::uno::Reference< css::sdb::XSingleSelectQueryAnalyzer >& _xComposer,
                 const ORowSetValueVector& _aParameterValueForCache,
@@ -182,44 +177,40 @@ namespace dbaccess
         virtual css::uno::Reference< css::sdbc::XArray > SAL_CALL getArray( sal_Int32 columnIndex ) override;
 
 
-        virtual bool SAL_CALL rowUpdated(  ) override;
-        virtual bool SAL_CALL rowInserted(  ) override;
-        virtual bool SAL_CALL rowDeleted(  ) override;
+        virtual bool rowUpdated(  ) override;
+        virtual bool rowInserted(  ) override;
+        virtual bool rowDeleted(  ) override;
+        bool isBeforeFirst(  );
+        bool isAfterLast(  );
+
         // css::sdbc::XResultSet
-        virtual bool SAL_CALL next() override;
-        virtual bool SAL_CALL isBeforeFirst(  ) override;
-        virtual bool SAL_CALL isAfterLast(  ) override;
-        virtual void SAL_CALL beforeFirst(  ) override;
-        virtual void SAL_CALL afterLast(  ) override;
-        virtual bool SAL_CALL first() override;
-        virtual bool SAL_CALL last(  ) override;
-        virtual sal_Int32 SAL_CALL getRow(  ) override;
-        virtual bool SAL_CALL absolute( sal_Int32 row ) override;
-        virtual bool SAL_CALL previous(  ) override;
+        virtual bool next() override;
+        virtual void beforeFirst(  ) override;
+        virtual void afterLast(  ) override;
+        virtual bool first() override;
+        virtual bool last(  ) override;
+        virtual sal_Int32 getRow(  ) override;
+        virtual bool absolute( sal_Int32 row ) override;
+        virtual bool previous(  ) override;
         /// @throws css::sdbc::SQLException
         /// @throws css::uno::RuntimeException
-        void SAL_CALL ensureRowForData(  );
-        virtual void SAL_CALL refreshRow(  ) override;
+        void ensureRowForData(  );
+        virtual void refreshRow(  ) override;
         // css::sdbcx::XRowLocate
-        virtual css::uno::Any SAL_CALL getBookmark() override;
+        virtual css::uno::Any getBookmark() override;
 
-        virtual bool SAL_CALL moveToBookmark( const css::uno::Any& bookmark ) override;
+        virtual bool moveToBookmark( const css::uno::Any& bookmark ) override;
 
-        virtual sal_Int32 SAL_CALL compareBookmarks( const css::uno::Any& first, const css::uno::Any& second ) override;
+        virtual sal_Int32 compareBookmarks( const css::uno::Any& first, const css::uno::Any& second ) override;
 
-        virtual bool SAL_CALL hasOrderedBookmarks(  ) override;
+        virtual bool hasOrderedBookmarks(  ) override;
 
-        virtual sal_Int32 SAL_CALL hashBookmark( const css::uno::Any& bookmark ) override;
+        virtual sal_Int32 hashBookmark( const css::uno::Any& bookmark ) override;
 
         // css::sdbc::XResultSetUpdate
-        virtual void SAL_CALL updateRow(const ORowSetRow& _rInsertRow,const ORowSetRow& _rOriginalRow,const connectivity::OSQLTable& _xTable   ) override;
-        virtual void SAL_CALL deleteRow(const ORowSetRow& _rInsertRow,const connectivity::OSQLTable& _xTable   ) override;
-        virtual void SAL_CALL insertRow( const ORowSetRow& _rInsertRow,const connectivity::OSQLTable& _xTable ) override;
-
-
-        virtual bool previous_checked( bool i_bFetchRow ) override;
-        virtual bool absolute_checked( sal_Int32 row,bool i_bFetchRow ) override;
-        virtual bool last_checked( bool i_bFetchRow) override;
+        virtual void updateRow(const ORowSetRow& _rInsertRow,const ORowSetRow& _rOriginalRow,const connectivity::OSQLTable& _xTable   ) override;
+        virtual void deleteRow(const ORowSetRow& _rInsertRow,const connectivity::OSQLTable& _xTable   ) override;
+        virtual void insertRow( const ORowSetRow& _rInsertRow,const connectivity::OSQLTable& _xTable ) override;
     };
 }
 #endif // INCLUDED_DBACCESS_SOURCE_CORE_API_KEYSET_HXX

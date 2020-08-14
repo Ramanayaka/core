@@ -20,11 +20,12 @@
 #ifndef INCLUDED_VCL_SOURCE_FILTER_WMF_WMFWR_HXX
 #define INCLUDED_VCL_SOURCE_FILTER_WMF_WMFWR_HXX
 
-#include <vcl/metaact.hxx>
-#include <vcl/graph.hxx>
 #include <vcl/gdimtf.hxx>
+#include <vcl/lineinfo.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/fltcall.hxx>
+#include <vcl/FilterConfigItem.hxx>
+#include <com/sun/star/task/XStatusIndicator.hpp>
+#include <tools/stream.hxx>
 
 #define MAXOBJECTHANDLES 16
 
@@ -75,7 +76,6 @@ private:
     FontAlign eSrcTextAlign;
     vcl::Font aSrcFont;
     MapMode   aSrcMapMode;
-    bool      bSrcIsClipping;
     vcl::Region    aSrcClipRegion;
     WMFWriterAttrStackMember * pAttrStack;
 
@@ -92,7 +92,6 @@ private:
 
     sal_uInt16    eDstHorTextAlign;
 
-    bool      bDstIsClipping; // ???: not taken into account at the moment
     vcl::Region    aDstClipRegion; // ???: not taken into account at the moment
     bool bHandleAllocated[MAXOBJECTHANDLES];             // which handles have been assigned
     sal_uInt16 nDstPenHandle,nDstFontHandle,nDstBrushHandle; // which handles are owned by
@@ -168,7 +167,7 @@ private:
     void WMFRecord_SetTextColor(const Color & rColor);
     void WMFRecord_SetWindowExt(const Size & rSize);
     void WMFRecord_SetWindowOrg(const Point & rPoint);
-    void WMFRecord_StretchDIB(const Point & rPoint, const Size & rSize, const Bitmap & rBitmap, sal_uInt32 nROP = 0UL );
+    void WMFRecord_StretchDIB(const Point & rPoint, const Size & rSize, const Bitmap & rBitmap, sal_uInt32 nROP = 0 );
     void WMFRecord_TextOut(const Point & rPoint, const OUString & rString);
     void WMFRecord_IntersectClipRect( const tools::Rectangle& rRect);
 
@@ -198,7 +197,7 @@ private:
 
 public:
     WMFWriter();
-    bool WriteWMF(const GDIMetaFile & rMTF, SvStream & rTargetStream, FilterConfigItem* pFilterConfigItem, bool bPlaceable);
+    bool WriteWMF(const GDIMetaFile & rMTF, SvStream & rTargetStream, FilterConfigItem const * pFilterConfigItem, bool bPlaceable);
 };
 
 #endif

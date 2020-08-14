@@ -26,13 +26,13 @@
 #include <com/sun/star/document/MacroExecMode.hpp>
 #include <com/sun/star/task/ErrorCodeRequest.hpp>
 #include <com/sun/star/task/DocumentMacroConfirmationRequest.hpp>
-#include <com/sun/star/task/InteractionClassification.hpp>
 #include <com/sun/star/security/DocumentDigitalSignatures.hpp>
+#include <com/sun/star/script/XLibraryContainer.hpp>
+#include <com/sun/star/document/XEmbeddedScripts.hpp>
 
 #include <comphelper/processfactory.hxx>
 #include <framework/interaction.hxx>
 #include <osl/file.hxx>
-#include <rtl/ref.hxx>
 #include <unotools/securityoptions.hxx>
 #include <svtools/sfxecode.hxx>
 #include <tools/diagnose_ex.h>
@@ -123,7 +123,7 @@ namespace sfx2
 
     //= DocumentMacroMode
     DocumentMacroMode::DocumentMacroMode( IMacroDocumentAccess& rDocumentAccess )
-        :m_xData( new DocumentMacroMode_Data( rDocumentAccess ) )
+        :m_xData( std::make_shared<DocumentMacroMode_Data>( rDocumentAccess ) )
     {
     }
 
@@ -164,6 +164,12 @@ namespace sfx2
             ||  ( nMacroExecutionMode == MacroExecMode::USE_CONFIG_APPROVE_CONFIRMATION )
             )
         {
+            // check confirm first, as nMacroExecutionMode is always overwritten by the GetMacroSecurityLevel() switch
+            if (nMacroExecutionMode == MacroExecMode::USE_CONFIG_REJECT_CONFIRMATION)
+                eAutoConfirm = eAutoConfirmReject;
+            else if (nMacroExecutionMode == MacroExecMode::USE_CONFIG_APPROVE_CONFIRMATION)
+                eAutoConfirm = eAutoConfirmApprove;
+
             SvtSecurityOptions aOpt;
             switch ( aOpt.GetMacroSecurityLevel() )
             {
@@ -183,11 +189,6 @@ namespace sfx2
                     OSL_FAIL( "DocumentMacroMode::adjustMacroMode: unexpected macro security level!" );
                     nMacroExecutionMode = MacroExecMode::NEVER_EXECUTE;
             }
-
-            if ( nMacroExecutionMode == MacroExecMode::USE_CONFIG_REJECT_CONFIRMATION )
-                eAutoConfirm = eAutoConfirmReject;
-            else if ( nMacroExecutionMode == MacroExecMode::USE_CONFIG_APPROVE_CONFIRMATION )
-                eAutoConfirm = eAutoConfirmApprove;
         }
 
         if ( nMacroExecutionMode == MacroExecMode::NEVER_EXECUTE )
@@ -223,11 +224,17 @@ namespace sfx2
             if ( nMacroExecutionMode != MacroExecMode::FROM_LIST )
             {
                 // the trusted macro check will also retrieve the signature state ( small optimization )
-                bool bHasTrustedMacroSignature = m_xData->m_rDocumentAccess.hasTrustedScriptingSignature( nMacroExecutionMode != MacroExecMode::FROM_LIST_AND_SIGNED_NO_WARN );
+                const SvtSecurityOptions aSecOption;
+                const bool bAllowUIToAddAuthor = nMacroExecutionMode != MacroExecMode::FROM_LIST_AND_SIGNED_NO_WARN
+                                                 && (nMacroExecutionMode == MacroExecMode::ALWAYS_EXECUTE
+                                                     || !aSecOption.IsReadOnly(SvtSecurityOptions::EOption::MacroTrustedAuthors));
+                const bool bHasTrustedMacroSignature = m_xData->m_rDocumentAccess.hasTrustedScriptingSignature(bAllowUIToAddAuthor);
 
                 SignatureState nSignatureState = m_xData->m_rDocumentAccess.getScriptingSignatureState();
                 if ( nSignatureState == SignatureState::BROKEN )
                 {
+                    if (!bAllowUIToAddAuthor)
+                        lcl_showDocumentMacrosDisabledError(rxInteraction, m_xData->m_bDocMacroDisabledMessageShown);
                     return disallowMacroExecution();
                 }
                 else if ( bHasTrustedMacroSignature )
@@ -239,6 +246,8 @@ namespace sfx2
                        || nSignatureState == SignatureState::NOTVALIDATED )
                 {
                     // there is valid signature, but it is not from the trusted author
+                    if (!bAllowUIToAddAuthor)
+                        lcl_showDocumentMacrosDisabledError(rxInteraction, m_xData->m_bDocMacroDisabledMessageShown);
                     return disallowMacroExecution();
                 }
             }
@@ -265,7 +274,7 @@ namespace sfx2
             }
         }
 
-        // conformation is required
+        // confirmation is required
         bool bSecure = false;
 
         if ( eAutoConfirm == eNoAutoConfirm )
@@ -308,31 +317,26 @@ namespace sfx2
                 {
                     const OUString aStdLibName( "Standard" );
                     const OUString aVBAProject( "VBAProject" );
-                    Sequence< OUString > aElements = xContainer->getElementNames();
-                    if ( aElements.getLength() )
+                    const Sequence< OUString > aElements = xContainer->getElementNames();
+                    for( const OUString& aElement : aElements )
                     {
-                        sal_Int32 nElements = aElements.getLength();
-                        for( sal_Int32 i = 0; i < nElements; ++i )
+                        if( aElement == aStdLibName || aElement == aVBAProject )
                         {
-                            const OUString aElement = aElements[i];
-                            if( aElement == aStdLibName || aElement == aVBAProject )
-                            {
-                                Reference < XNameAccess > xLib;
-                                Any aAny = xContainer->getByName( aElement );
-                                aAny >>= xLib;
-                                if ( xLib.is() && xLib->hasElements() )
-                                    return true;
-                            }
-                            else
+                            Reference < XNameAccess > xLib;
+                            Any aAny = xContainer->getByName( aElement );
+                            aAny >>= xLib;
+                            if ( xLib.is() && xLib->hasElements() )
                                 return true;
                         }
+                        else
+                            return true;
                     }
                 }
             }
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("sfx.doc");
         }
         return bHasMacroLib;
     }
@@ -353,7 +357,7 @@ namespace sfx2
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("sfx.doc");
         }
 #endif
         return bHasMacroLib;
@@ -380,7 +384,7 @@ namespace sfx2
             }
             catch ( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("sfx.doc");
             }
         }
         return bHasMacros;
@@ -397,7 +401,7 @@ namespace sfx2
         }
         else
         {
-            if ( m_xData->m_rDocumentAccess.documentStorageHasMacros() || hasMacroLibrary() )
+            if (m_xData->m_rDocumentAccess.documentStorageHasMacros() || hasMacroLibrary() || m_xData->m_rDocumentAccess.macroCallsSeenWhileLoading())
             {
                 bAllow = adjustMacroMode( rxInteraction );
             }

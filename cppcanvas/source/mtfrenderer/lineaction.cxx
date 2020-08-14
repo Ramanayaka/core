@@ -18,30 +18,26 @@
  */
 
 
-#include <lineaction.hxx>
+#include "lineaction.hxx"
 #include <outdevstate.hxx>
 
 #include <com/sun/star/rendering/XCanvas.hpp>
 
-#include <tools/gen.hxx>
-#include <vcl/canvastools.hxx>
-
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <canvas/canvastools.hxx>
+#include <sal/log.hxx>
 
 #include <cppcanvas/canvas.hxx>
 
-#include <mtftools.hxx>
+#include "mtftools.hxx"
 
 
 using namespace ::com::sun::star;
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
         namespace
         {
             class LineAction : public Action
@@ -142,18 +138,17 @@ namespace cppcanvas
             }
         }
 
-        ActionSharedPtr LineActionFactory::createLineAction( const ::basegfx::B2DPoint& rStartPoint,
+        std::shared_ptr<Action> LineActionFactory::createLineAction( const ::basegfx::B2DPoint& rStartPoint,
                                                              const ::basegfx::B2DPoint& rEndPoint,
                                                              const CanvasSharedPtr&     rCanvas,
                                                              const OutDevState&         rState  )
         {
-            return ActionSharedPtr( new LineAction( rStartPoint,
-                                                    rEndPoint,
-                                                    rCanvas,
-                                                    rState) );
+            return std::make_shared<LineAction>( rStartPoint,
+                                                 rEndPoint,
+                                                 rCanvas,
+                                                 rState);
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

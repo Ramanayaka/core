@@ -23,13 +23,11 @@
 #include <osl/diagnose.h>
 #include <com/sun/star/uno/Sequence.hxx>
 
-#include <unomid.h>
-
 using namespace utl;
 using namespace com::sun::star::uno;
 
 // Ctor
-Sequence<OUString> SwPrintOptions::GetPropertyNames()
+Sequence<OUString> SwPrintOptions::GetPropertyNames() const
 {
     static const char* aPropNames[] =
     {
@@ -52,7 +50,7 @@ Sequence<OUString> SwPrintOptions::GetPropertyNames()
         "Content/PrintPlaceholders",    // 16 not in Sw/Web
         "Content/PrintHiddenText"       // 17 not in Sw/Web
     };
-    const int nCount = bIsWeb ? 12 : 18;
+    const int nCount = m_bIsWeb ? 12 : 18;
     Sequence<OUString> aNames(nCount);
     OUString* pNames = aNames.getArray();
     for(int i = 0; i < nCount; i++)
@@ -64,8 +62,8 @@ Sequence<OUString> SwPrintOptions::GetPropertyNames()
 
 SwPrintOptions::SwPrintOptions(bool bWeb) :
     ConfigItem(bWeb ? OUString("Office.WriterWeb/Print") : OUString("Office.Writer/Print"),
-        ConfigItemMode::DelayedUpdate|ConfigItemMode::ReleaseTree),
-    bIsWeb(bWeb)
+        ConfigItemMode::ReleaseTree),
+    m_bIsWeb(bWeb)
 {
     m_bPrintPageBackground = !bWeb;
     m_bPrintBlackFont = bWeb;
@@ -143,7 +141,7 @@ void SwPrintOptions::ImplCommit()
             case  2: pValues[nProp] <<= m_bPrintControl; break;
             case  3: pValues[nProp] <<= m_bPrintPageBackground; break;
             case  4: pValues[nProp] <<= m_bPrintBlackFont; break;
-            case  5: pValues[nProp] <<=  (sal_Int32)m_nPrintPostIts       ; break;
+            case  5: pValues[nProp] <<=  static_cast<sal_Int32>(m_nPrintPostIts)       ; break;
             case  6: pValues[nProp] <<= m_bPrintReverse; break;
             case  7: pValues[nProp] <<= m_bPrintProspect; break;
             case  8: pValues[nProp] <<= m_bPrintProspectRTL; break;

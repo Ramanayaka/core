@@ -22,13 +22,16 @@
  **************************************************************************
 
  *************************************************************************/
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star//ucb/UnsupportedCommandException.hpp>
-#include <com/sun/star/ucb/XPropertySetRegistry.hpp>
+#include <com/sun/star/beans/XPropertySetInfo.hpp>
+#include <com/sun/star/ucb/UnsupportedCommandException.hpp>
+#include <com/sun/star/ucb/XPersistentPropertySet.hpp>
+#include <com/sun/star/ucb/XCommandInfo.hpp>
 
-#include "osl/mutex.hxx"
+#include <cppuhelper/queryinterface.hxx>
+#include <osl/mutex.hxx>
 #include <ucbhelper/contenthelper.hxx>
-#include <ucbhelper/contentinfo.hxx>
+#include "contentinfo.hxx"
+#include <ucbhelper/macros.hxx>
 
 using namespace com::sun::star;
 
@@ -42,7 +45,6 @@ PropertySetInfo::PropertySetInfo(
     const uno::Reference< css::ucb::XCommandEnvironment >& rxEnv,
     ContentImplHelper* pContent )
 : m_xEnv( rxEnv ),
-  m_pProps( nullptr ),
   m_pContent( pContent )
 {
 }
@@ -52,35 +54,6 @@ PropertySetInfo::PropertySetInfo(
 PropertySetInfo::~PropertySetInfo()
 {
 }
-
-
-// XInterface methods.
-
-void SAL_CALL PropertySetInfo::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-void SAL_CALL PropertySetInfo::release()
-    throw()
-{
-    OWeakObject::release();
-}
-
-css::uno::Any SAL_CALL PropertySetInfo::queryInterface( const css::uno::Type & rType )
-{
-    css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< lang::XTypeProvider* >(this)),
-                                               (static_cast< beans::XPropertySetInfo* >(this))
-                                               );
-    return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
-}
-
-// XTypeProvider methods.
-XTYPEPROVIDER_IMPL_2( PropertySetInfo,
-                      lang::XTypeProvider,
-                      beans::XPropertySetInfo );
 
 
 // XPropertySetInfo methods.
@@ -135,12 +108,8 @@ uno::Sequence< beans::Property > SAL_CALL PropertySetInfo::getProperties()
                         sal_Int32 nPos = m_pProps->getLength();
                         m_pProps->realloc( nPos + nAddProps );
 
-                        beans::Property* pProps = m_pProps->getArray();
-                        const beans::Property* pAddProps
-                            = rAddProps.getConstArray();
-
-                        for ( sal_Int32 n = 0; n < nAddProps; ++n, ++nPos )
-                            pProps[ nPos ] = pAddProps[ n ];
+                        std::copy(rAddProps.begin(), rAddProps.end(),
+                                  std::next(m_pProps->begin(), nPos));
                     }
                 }
             }
@@ -158,7 +127,7 @@ beans::Property SAL_CALL PropertySetInfo::getPropertyByName(
     if ( queryProperty( aName, aProp ) )
         return aProp;
 
-    throw beans::UnknownPropertyException();
+    throw beans::UnknownPropertyException(aName);
 }
 
 
@@ -211,7 +180,6 @@ CommandProcessorInfo::CommandProcessorInfo(
     const uno::Reference< css::ucb::XCommandEnvironment >& rxEnv,
     ContentImplHelper* pContent )
 : m_xEnv( rxEnv ),
-  m_pCommands( nullptr ),
   m_pContent( pContent )
 {
 }
@@ -221,38 +189,6 @@ CommandProcessorInfo::CommandProcessorInfo(
 CommandProcessorInfo::~CommandProcessorInfo()
 {
 }
-
-
-// XInterface methods.
-
-
-void SAL_CALL CommandProcessorInfo::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-void SAL_CALL CommandProcessorInfo::release()
-    throw()
-{
-    OWeakObject::release();
-}
-
-css::uno::Any SAL_CALL CommandProcessorInfo::queryInterface( const css::uno::Type & rType )
-{
-    css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< lang::XTypeProvider* >(this)),
-                                               (static_cast< css::ucb::XCommandInfo* >(this))
-                    );
-    return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
-}
-
-// XTypeProvider methods.
-
-
-XTYPEPROVIDER_IMPL_2( CommandProcessorInfo,
-                         lang::XTypeProvider,
-                         css::ucb::XCommandInfo );
 
 
 // XCommandInfo methods.

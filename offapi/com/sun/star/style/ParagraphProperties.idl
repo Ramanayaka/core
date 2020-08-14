@@ -31,10 +31,9 @@
 #include <com/sun/star/style/BreakType.idl>
 #include <com/sun/star/container/XNameContainer.idl>
 #include <com/sun/star/beans/PropertyValue.idl>
+#include <com/sun/star/graphic/XGraphic.idl>
 
-
- module com {  module sun {  module star {  module style {
-
+module com {  module sun {  module star {  module style {
 
 /** describes the style of paragraphs.
  */
@@ -63,9 +62,16 @@ published service ParagraphProperties
 
 
     /** contains the value of a link for the background graphic of a paragraph.
+
+        @deprecated as of LibreOffice 6.1 - use ParaBackGraphic instead
+
+        Note the new behaviour since it this was deprecated:
+        This property can only be set and only external URLs are
+        supported (no more vnd.sun.star.GraphicObject scheme). When an
+        URL is set, then it will load the graphic and set the ParaBackGraphic
+        property.
      */
     [optional, property] string ParaBackGraphicURL;
-
 
     /** contains the name of the graphic filter for the background graphic of a paragraph.
      */
@@ -328,13 +334,15 @@ published service ParagraphProperties
          */
         [optional, property] short ParaHyphenationMaxHyphens;
 
-        /** specifies the maximum number of characters to remain before the
+        /** specifies the minimum number of characters to remain before the
             hyphen character (when hyphenation is applied).
+            @note Confusingly it is named Max but specifies a minimum.
          */
         [optional, property] short ParaHyphenationMaxLeadingChars;
 
-        /** specifies the maximum number of characters to remain after the
+        /** specifies the minimum number of characters to remain after the
             hyphen character (when hyphenation is applied).
+            @note Confusingly it is named Max but specifies a minimum.
          */
         [optional, property] short ParaHyphenationMaxTrailingChars;
 
@@ -379,6 +387,35 @@ published service ParagraphProperties
             <p>Values [1..10] indicates that the paragraph belongs to the corresponding outline level.</p>
          */
         [optional, property] short OutlineLevel;
+
+        /** contains the graphic for the background of a paragraph.
+
+            @since LibreOffice 6.1
+         */
+        [optional, property] com::sun::star::graphic::XGraphic ParaBackGraphic;
+
+        /** specifies that a child node of a parent node that is not counted
+            is continuing the numbering of parent's previous node's sub tree.
+
+            @since OOo 3.0.1
+
+            @note misspelling retained for compatibility
+         */
+        [optional, property, readonly] boolean ContinueingPreviousSubTree;
+
+        /** allows reading the generated numbering list label.
+
+            @since OOo 3.0.1
+         */
+        [optional, property, readonly] string ListLabelString;
+
+        /** Specifies whether words written in CAPS will be hyphenated.
+            Setting to `true` will disable hyphenation of words written in CAPS for this paragraph.
+
+            @since LibreOffice 6.4
+         */
+        [optional, property] boolean ParaHyphenationNoCaps;
+
 };
 
 

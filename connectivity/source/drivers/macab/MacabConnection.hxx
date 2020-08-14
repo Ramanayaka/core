@@ -21,21 +21,17 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABCONNECTION_HXX
 
 #include <map>
-#include <connectivity/OSubComponent.hxx>
 #include <connectivity/CommonTools.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/sdbc/SQLWarning.hpp>
 #include <com/sun/star/sdbc/XWarningsSupplier.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
-#include <comphelper/broadcasthelper.hxx>
 #include <cppuhelper/compbase.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 
-namespace connectivity
+namespace connectivity::macab
 {
-    namespace macab
-    {
 
         typedef ::cppu::WeakComponentImplHelper<css::sdbc::XConnection,
                                                 css::sdbc::XWarningsSupplier,
@@ -45,16 +41,12 @@ namespace connectivity
         class MacabDriver;
         class MacabAddressBook;
 
-        //typedef OMetaConnection_BASE              MacabConnection_BASE; // implements basics and text encoding
         typedef std::vector< css::uno::WeakReferenceHelper > OWeakRefArray;
 
         typedef connectivity::OMetaConnection MacabConnection_BASE;
 
-        class MacabConnection : public MacabConnection_BASE,
-                                public OSubComponent<MacabConnection, MacabConnection_BASE>
+        class MacabConnection : public MacabConnection_BASE
         {
-            friend class OSubComponent<MacabConnection, MacabConnection_BASE>;
-
         protected:
 
             // Data attributes
@@ -63,6 +55,11 @@ namespace connectivity
             MacabDriver*                            m_pDriver;      // pointer to the owning driver object
             css::uno::Reference< css::sdbcx::XTablesSupplier>
                                                     m_xCatalog;     // needed for the SQL interpreter
+
+        private:
+            bool doIsClosed();
+
+            void doClose();
 
         public:
             /// @throws css::sdbc::SQLException
@@ -73,9 +70,6 @@ namespace connectivity
 
             // OComponentHelper
             virtual void SAL_CALL disposing() override;
-
-            // XInterface
-            virtual void SAL_CALL release() throw() override;
 
             // XServiceInfo
             DECLARE_SERVICE_INFO();
@@ -108,13 +102,12 @@ namespace connectivity
             virtual void SAL_CALL clearWarnings(  ) override;
 
             // needed for the SQL interpreter
-            css::uno::Reference< css::sdbcx::XTablesSupplier > SAL_CALL createCatalog();
+            css::uno::Reference< css::sdbcx::XTablesSupplier > createCatalog();
 
             // accessors
             MacabDriver*         getDriver()         const { return m_pDriver;}
                    MacabAddressBook* getAddressBook()   const;
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABCONNECTION_HXX

@@ -22,15 +22,14 @@
 
 #include <editeng/outliner.hxx>
 #include <svx/svxdllapi.h>
-#include <svx/svdobj.hxx>
+#include <tools/weakbase.h>
 
 class SdrTextObj;
 class SdrPage;
 
-class SVX_DLLPUBLIC SdrOutliner : public Outliner
+class SVXCORE_DLLPUBLIC SdrOutliner : public Outliner
 {
-protected:
-    SdrObjectWeakRef mpTextObj;
+    tools::WeakReference<SdrTextObj> mpTextObj;
     const SdrPage* mpVisualizedPage;
 
 public:
@@ -44,7 +43,9 @@ public:
     void setVisualizedPage(const SdrPage* pPage) { if(pPage != mpVisualizedPage) mpVisualizedPage = pPage; }
     const SdrPage* getVisualizedPage() const { return mpVisualizedPage; }
 
-    virtual OUString CalcFieldValue(const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, Color*& rpTxtColor, Color*& rpFldColor) override;
+    virtual OUString CalcFieldValue(const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rpTxtColor, std::optional<Color>& rpFldColor) override;
+
+    bool hasEditViewCallbacks() const;
 };
 
 #endif // INCLUDED_SVX_SVDOUTL_HXX

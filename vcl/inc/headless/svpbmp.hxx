@@ -20,16 +20,16 @@
 #ifndef INCLUDED_VCL_INC_HEADLESS_SVPBMP_HXX
 #define INCLUDED_VCL_INC_HEADLESS_SVPBMP_HXX
 
-#include "sal/config.h"
-#include "tools/solar.h"
+#include <sal/config.h>
 
 #include <salbmp.hxx>
+#include <basegfx/utils/systemdependentdata.hxx>
 
-class VCL_DLLPUBLIC SvpSalBitmap : public SalBitmap
+class VCL_DLLPUBLIC SvpSalBitmap final : public SalBitmap, public basegfx::SystemDependentDataHolder // MM02
 {
-    BitmapBuffer*   mpDIB;
+    std::unique_ptr<BitmapBuffer> mpDIB;
 public:
-    SvpSalBitmap() : mpDIB(nullptr) {}
+             SvpSalBitmap();
     virtual ~SvpSalBitmap() override;
 
     // SalBitmap
@@ -44,10 +44,10 @@ public:
     virtual bool            Create( const css::uno::Reference< css::rendering::XBitmapCanvas >& rBitmapCanvas,
                                     Size& rSize,
                                     bool bMask = false ) override;
-    bool                    Create(BitmapBuffer *pBuf);
+    void                    Create(std::unique_ptr<BitmapBuffer> pBuf);
     const BitmapBuffer*     GetBuffer() const
     {
-        return mpDIB;
+        return mpDIB.get();
     }
     virtual void            Destroy() final override;
     virtual Size            GetSize() const override;
@@ -59,7 +59,29 @@ public:
 
     virtual bool            ScalingSupported() const override;
     virtual bool            Scale( const double& rScaleX, const double& rScaleY, BmpScaleFlag nScaleFlag ) override;
-    virtual bool            Replace( const Color& rSearchColor, const Color& rReplaceColor, sal_uLong nTol ) override;
+    virtual bool            Replace( const Color& rSearchColor, const Color& rReplaceColor, sal_uInt8 nTol ) override;
+
+    // MM02 exclusive management op's for SystemDependentData at WinSalBitmap
+    template<class T>
+    std::shared_ptr<T> getSystemDependentData() const
+    {
+        return std::static_pointer_cast<T>(basegfx::SystemDependentDataHolder::getSystemDependentData(typeid(T).hash_code()));
+    }
+
+    template<class T, class... Args>
+    std::shared_ptr<T> addOrReplaceSystemDependentData(basegfx::SystemDependentDataManager& manager, Args&&... args) const
+    {
+        std::shared_ptr<T> r = std::make_shared<T>(manager, std::forward<Args>(args)...);
+
+        // tdf#129845 only add to buffer if a relevant buffer time is estimated
+        if(r->calculateCombinedHoldCyclesInSeconds() > 0)
+        {
+            basegfx::SystemDependentData_SharedPtr r2(r);
+            const_cast< SvpSalBitmap* >(this)->basegfx::SystemDependentDataHolder::addOrReplaceSystemDependentData(r2);
+        }
+
+        return r;
+    }
 };
 
 #endif // INCLUDED_VCL_INC_HEADLESS_SVPBMP_HXX

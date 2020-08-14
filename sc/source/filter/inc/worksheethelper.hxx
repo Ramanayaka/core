@@ -23,12 +23,13 @@
 #include <oox/helper/containerhelper.hxx>
 #include <oox/helper/progressbar.hxx>
 #include <oox/ole/olehelper.hxx>
-#include "addressconverter.hxx"
+#include <rangelst.hxx>
 #include "formulabase.hxx"
 
 struct ScDataBarFormatData;
+class ScDocument;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt { struct Point; }
     namespace awt { struct Rectangle; }
     namespace awt { struct Size; }
@@ -36,14 +37,11 @@ namespace com { namespace sun { namespace star {
     namespace sheet { class XSpreadsheet; }
     namespace table { class XCell; }
     namespace table { class XCellRange; }
-} } }
+}
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 class AutoFilterBuffer;
-struct BinAddress;
-struct BinRange;
 class CommentsBuffer;
 class CondFormatBuffer;
 class Font;
@@ -177,7 +175,7 @@ public:
                             const WorkbookHelper& rHelper,
                             const ISegmentProgressBarRef& rxProgressBar,
                             WorksheetType eSheetType,
-                            sal_Int16 nSheet );
+                            SCTAB nSheet );
 
     // horrible accessor for hidden WorksheetGlobals ...
     static IWorksheetProgress *getWorksheetInterface( const WorksheetGlobalsRef &xRef );
@@ -204,7 +202,7 @@ public:
     /** Returns the absolute cell position in 1/100 mm. */
     css::awt::Point getCellPosition( sal_Int32 nCol, sal_Int32 nRow ) const;
     /** Returns the size of the entire drawing page in 1/100 mm. */
-    css::awt::Size getDrawPageSize() const;
+    const css::awt::Size& getDrawPageSize() const;
 
     /** Returns the buffer for cell contents and cell formatting. */
     SheetDataBuffer&    getSheetData() const;
@@ -296,12 +294,14 @@ public:
     void setCellFormulaValue(
         const ScAddress& rAddress, const OUString& rValueStr, sal_Int32 nCellType );
 
+    ScDocument& getScDocument();
+
+
 private:
     WorksheetGlobals&   mrSheetGlob;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

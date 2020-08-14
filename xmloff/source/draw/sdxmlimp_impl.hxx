@@ -30,18 +30,6 @@
 #include <vector>
 #include <xmloff/xmlimp.hxx>
 
-enum SdXMLDocElemTokenMap
-{
-    XML_TOK_DOC_FONTDECLS,
-    XML_TOK_DOC_STYLES,
-    XML_TOK_DOC_AUTOSTYLES,
-    XML_TOK_DOC_MASTERSTYLES,
-    XML_TOK_DOC_META,
-    XML_TOK_DOC_BODY,
-    XML_TOK_DOC_SCRIPT,
-    XML_TOK_DOC_SETTINGS,
-};
-
 enum SdXMLBodyElemTokenMap
 {
     XML_TOK_BODY_PAGE,
@@ -64,18 +52,6 @@ enum SdXMLMasterPageElemTokenMap
     XML_TOK_MASTERPAGE_NOTES
 };
 
-enum SdXMLMasterPageAttrTokenMap
-{
-    XML_TOK_MASTERPAGE_NAME,
-    XML_TOK_MASTERPAGE_DISPLAY_NAME,
-    XML_TOK_MASTERPAGE_PAGE_MASTER_NAME,
-    XML_TOK_MASTERPAGE_STYLE_NAME,
-    XML_TOK_MASTERPAGE_PAGE_LAYOUT_NAME,
-    XML_TOK_MASTERPAGE_USE_HEADER_NAME,
-    XML_TOK_MASTERPAGE_USE_FOOTER_NAME,
-    XML_TOK_MASTERPAGE_USE_DATE_TIME_NAME
-};
-
 enum SdXMLPageMasterAttrTokenMap
 {
     XML_TOK_PAGEMASTER_NAME
@@ -92,26 +68,6 @@ enum SdXMLPageMasterStyleAttrTokenMap
     XML_TOK_PAGEMASTERSTYLE_PAGE_ORIENTATION
 };
 
-enum SdXMLDrawPageAttrTokenMap
-{
-    XML_TOK_DRAWPAGE_NAME,
-    XML_TOK_DRAWPAGE_STYLE_NAME,
-    XML_TOK_DRAWPAGE_MASTER_PAGE_NAME,
-    XML_TOK_DRAWPAGE_PAGE_LAYOUT_NAME,
-    XML_TOK_DRAWPAGE_DRAWID,
-    XML_TOK_DRAWPAGE_XMLID,
-    XML_TOK_DRAWPAGE_HREF,
-    XML_TOK_DRAWPAGE_USE_HEADER_NAME,
-    XML_TOK_DRAWPAGE_USE_FOOTER_NAME,
-    XML_TOK_DRAWPAGE_USE_DATE_TIME_NAME
-};
-
-enum SdXMLDrawPageElemTokenMap
-{
-    XML_TOK_DRAWPAGE_NOTES,
-    XML_TOK_DRAWPAGE_PAR,
-    XML_TOK_DRAWPAGE_SEQ
-};
 
 enum SdXMLPresentationPlaceholderAttrTokenMap
 {
@@ -149,15 +105,11 @@ class SdXMLImport: public SvXMLImport
     rtl::Reference<SdXMLMasterStylesContext> mxMasterStylesContext;
 
     // token map lists
-    std::unique_ptr<SvXMLTokenMap>              mpDocElemTokenMap;
     std::unique_ptr<SvXMLTokenMap>              mpBodyElemTokenMap;
     std::unique_ptr<SvXMLTokenMap>              mpStylesElemTokenMap;
     std::unique_ptr<SvXMLTokenMap>              mpMasterPageElemTokenMap;
-    std::unique_ptr<SvXMLTokenMap>              mpMasterPageAttrTokenMap;
     std::unique_ptr<SvXMLTokenMap>              mpPageMasterAttrTokenMap;
     std::unique_ptr<SvXMLTokenMap>              mpPageMasterStyleAttrTokenMap;
-    std::unique_ptr<SvXMLTokenMap>              mpDrawPageAttrTokenMap;
-    std::unique_ptr<SvXMLTokenMap>              mpDrawPageElemTokenMap;
     std::unique_ptr<SvXMLTokenMap>              mpPresentationPlaceholderAttrTokenMap;
 
     sal_Int32                   mnNewPageCount;
@@ -167,19 +119,19 @@ class SdXMLImport: public SvXMLImport
     bool                        mbLoadDoc;
     bool                        mbPreview;
 
-    OUString                    msPageLayouts;
-    OUString                    msPreview;
+    static constexpr OUStringLiteral gsPageLayouts = "PageLayouts";
+    static constexpr OUStringLiteral gsPreview = "Preview";
 
     HeaderFooterDeclMap         maHeaderDeclsMap;
     HeaderFooterDeclMap         maFooterDeclsMap;
     DateTimeDeclMap             maDateTimeDeclsMap;
 
 protected:
+
     // This method is called after the namespace map has been updated, but
     // before a context for the current element has been pushed.
-    virtual SvXMLImportContext *CreateContext(sal_uInt16 nPrefix,
-      const OUString& rLocalName,
-      const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList) override;
+    virtual SvXMLImportContext *CreateFastContext( sal_Int32 nElement,
+        const ::css::uno::Reference< ::css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
 public:
     SdXMLImport(
@@ -199,31 +151,20 @@ public:
     // namespace office
     // NB: in contrast to other CreateFooContexts, this particular one handles
     //     the root element (i.e. office:document-meta)
-    SvXMLImportContext* CreateMetaContext(const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList);
-    SvXMLImportContext* CreateScriptContext( const OUString& rLocalName );
-    SvXMLImportContext* CreateBodyContext(const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList);
-    SvXMLStylesContext* CreateStylesContext(const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList);
-    SvXMLStylesContext* CreateAutoStylesContext(const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList);
-    SvXMLImportContext* CreateMasterStylesContext(const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList);
-    SvXMLImportContext *CreateFontDeclsContext(const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList );
+    SvXMLImportContext* CreateMetaContext(const sal_Int32 nElement,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList);
+    SvXMLStylesContext* CreateStylesContext();
+    SvXMLStylesContext* CreateAutoStylesContext();
+    SvXMLImportContext* CreateMasterStylesContext();
+    SvXMLImportContext *CreateFontDeclsContext();
 
     // Styles and AutoStyles contexts
 
-    const SvXMLTokenMap& GetDocElemTokenMap();
     const SvXMLTokenMap& GetBodyElemTokenMap();
     const SvXMLTokenMap& GetStylesElemTokenMap();
     const SvXMLTokenMap& GetMasterPageElemTokenMap();
-    const SvXMLTokenMap& GetMasterPageAttrTokenMap();
     const SvXMLTokenMap& GetPageMasterAttrTokenMap();
     const SvXMLTokenMap& GetPageMasterStyleAttrTokenMap();
-    const SvXMLTokenMap& GetDrawPageAttrTokenMap();
-    const SvXMLTokenMap& GetDrawPageElemTokenMap();
     const SvXMLTokenMap& GetPresentationPlaceholderAttrTokenMap();
 
     // export local parameters concerning page access and similar

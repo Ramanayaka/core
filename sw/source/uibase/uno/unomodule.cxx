@@ -17,37 +17,29 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/frame/DispatchResultState.hpp>
+#include <com/sun/star/frame/Desktop.hpp>
 
-#include "swmodule.hxx"
-#include "swdll.hxx"
-#include "unofreg.hxx"
+#include <swmodule.hxx>
+#include <swdll.hxx>
 #include "unomodule.hxx"
 #include <cppuhelper/supportsservice.hxx>
+#include <comphelper/processfactory.hxx>
 #include <sfx2/objface.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/request.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <sfx2/frame.hxx>
 #include <vcl/svapp.hxx>
 
 using namespace css;
 
-OUString SAL_CALL SwUnoModule_getImplementationName() throw()
-{
-    return OUString( "com.sun.star.comp.Writer.WriterModule" );
-}
-
-uno::Sequence< OUString > SAL_CALL SwUnoModule_getSupportedServiceNames() throw()
-{
-    uno::Sequence<OUString> aSeq { "com.sun.star.text.ModuleDispatcher" };
-    return aSeq;
-}
-
-uno::Reference< uno::XInterface > SAL_CALL SwUnoModule_createInstance(
-                const uno::Reference< lang::XMultiServiceFactory > &  )
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_comp_Writer_WriterModule_get_implementation(uno::XComponentContext* /*pCtx*/,
+                                                         uno::Sequence<uno::Any> const& /*rSeq*/)
 {
     SolarMutexGuard aGuard;
-    return uno::Reference< uno::XInterface >( dynamic_cast< frame::XDispatch * >(new SwUnoModule), uno::UNO_QUERY );
+    return cppu::acquire(new SwUnoModule);
 }
 
     // XNotifyingDispatch
@@ -68,6 +60,14 @@ void SAL_CALL SwUnoModule::dispatchWithNotification( const util::URL& aURL, cons
     else
     {
         SfxRequest aReq( pSlot, aArgs, SfxCallMode::SYNCHRON, SW_MOD()->GetPool() );
+        SfxAllItemSet aInternalSet( SfxGetpApp()->GetPool() );
+
+        css::uno::Reference<css::frame::XDesktop2> xDesktop = css::frame::Desktop::create(::comphelper::getProcessComponentContext());
+        css::uno::Reference<css::frame::XFrame> xCurrentFrame = xDesktop->getCurrentFrame();
+        if (xCurrentFrame.is()) // an empty set is no problem ... but an empty frame reference can be a problem !
+            aInternalSet.Put(SfxUnoFrameItem(SID_FILLFRAME, xCurrentFrame));
+
+        aReq.SetInternalArgs_Impl(aInternalSet);
         const SfxPoolItem* pResult = SW_MOD()->ExecuteSlot( aReq );
         if ( pResult )
             aState = frame::DispatchResultState::SUCCESS;
@@ -107,12 +107,9 @@ uno::Sequence< uno::Reference< frame::XDispatch > > SAL_CALL SwUnoModule::queryD
     sal_Int32 nCount = seqDescripts.getLength();
     uno::Sequence< uno::Reference< frame::XDispatch > > lDispatcher( nCount );
 
-    for( sal_Int32 i=0; i<nCount; ++i )
-    {
-        lDispatcher[i] = queryDispatch( seqDescripts[i].FeatureURL  ,
-                                        seqDescripts[i].FrameName   ,
-                                        seqDescripts[i].SearchFlags );
-    }
+    std::transform(seqDescripts.begin(), seqDescripts.end(), lDispatcher.begin(),
+        [this](const frame::DispatchDescriptor& rDescr) -> uno::Reference< frame::XDispatch > {
+            return queryDispatch( rDescr.FeatureURL, rDescr.FrameName, rDescr.SearchFlags ); });
 
     return lDispatcher;
 }
@@ -136,7 +133,7 @@ uno::Reference< frame::XDispatch > SAL_CALL SwUnoModule::queryDispatch(
 // XServiceInfo
 OUString SAL_CALL SwUnoModule::getImplementationName(  )
 {
-    return SwUnoModule_getImplementationName();
+    return "com.sun.star.comp.Writer.WriterModule";
 }
 
 sal_Bool SAL_CALL SwUnoModule::supportsService( const OUString& sServiceName )
@@ -146,7 +143,8 @@ sal_Bool SAL_CALL SwUnoModule::supportsService( const OUString& sServiceName )
 
 uno::Sequence< OUString > SAL_CALL SwUnoModule::getSupportedServiceNames(  )
 {
-    return SwUnoModule_getSupportedServiceNames();
+    uno::Sequence<OUString> aSeq { "com.sun.star.text.ModuleDispatcher" };
+    return aSeq;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

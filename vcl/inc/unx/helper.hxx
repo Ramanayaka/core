@@ -20,10 +20,7 @@
 #ifndef INCLUDED_VCL_INC_UNX_HELPER_HXX
 #define INCLUDED_VCL_INC_UNX_HELPER_HXX
 
-#include <list>
-
-#include <vcl/dllapi.h>
-#include <vcl/vclevent.hxx>
+#include <vector>
 
 #include <rtl/ustring.hxx>
 
@@ -34,7 +31,7 @@ namespace osl { class File; }
 namespace psp
 {
 
-void getPrinterPathList( std::list< OUString >& rPathList, const char* pSubDir );
+void getPrinterPathList( std::vector< OUString >& rPathList, const char* pSubDir );
 
 OUString const & getFontPath();
 

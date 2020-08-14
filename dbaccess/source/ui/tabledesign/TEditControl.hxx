@@ -19,18 +19,17 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_TABLEDESIGN_TEDITCONTROL_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_TABLEDESIGN_TEDITCONTROL_HXX
 
-#include "TableDesignControl.hxx"
-#include "TableDesignView.hxx"
+#include <TableDesignControl.hxx>
+#include <TableDesignView.hxx>
 #include "TableFieldDescWin.hxx"
-#include "TableRow.hxx"
-#include "QEnumTypes.hxx"
-#include "TypeInfo.hxx"
+#include <TableRow.hxx>
+#include <TypeInfo.hxx>
 
 class Edit;
 class SfxUndoManager;
 namespace dbaui
 {
-    class OSQLNameEdit;
+    class OSQLNameEditControl;
 
     class OTableEditorCtrl : public OTableRowView
     {
@@ -45,10 +44,10 @@ namespace dbaui
 
         std::vector< std::shared_ptr<OTableRow> >*    m_pRowList;
 
-        VclPtr<OSQLNameEdit>               pNameCell;
-        VclPtr< ::svt::ListBoxControl>      pTypeCell;
-        VclPtr<Edit>                       pHelpTextCell;
-        VclPtr<Edit>                       pDescrCell;
+        VclPtr<OSQLNameEditControl>        pNameCell;
+        VclPtr<::svt::ListBoxControl>      pTypeCell;
+        VclPtr<::svt::EditControl>         pHelpTextCell;
+        VclPtr<::svt::EditControl>         pDescrCell;
         VclPtr<OTableFieldDescWin>         pDescrWin;          // properties of one column
 
          std::shared_ptr<OTableRow> pActRow;
@@ -65,7 +64,7 @@ namespace dbaui
         bool bReadOnly;
 
         // helper class
-        class ClipboardInvalidator
+        class ClipboardInvalidator final
         {
         private:
             AutoTimer m_aInvalidateTimer;
@@ -76,7 +75,7 @@ namespace dbaui
             ~ClipboardInvalidator();
             void Stop();
 
-        protected:
+        private:
             DECL_LINK(OnInvalidate, Timer*, void);
         };
 
@@ -107,9 +106,9 @@ namespace dbaui
         virtual void DeleteRows() override;
         virtual void InsertNewRows( long nRow ) override;
 
-        virtual bool IsPrimaryKeyAllowed( long nRow ) override;
+        virtual bool IsPrimaryKeyAllowed() override;
         virtual bool IsInsertNewAllowed( long nRow ) override;
-        virtual bool IsDeleteAllowed( long nRow ) override;
+        virtual bool IsDeleteAllowed() override;
 
         void ClearModified();
 
@@ -144,7 +143,7 @@ namespace dbaui
 
         std::vector< std::shared_ptr<OTableRow> >* GetRowList(){ return m_pRowList; }
 
-        const std::shared_ptr<OTableRow>& GetActRow(){ return pActRow; }
+        const std::shared_ptr<OTableRow>& GetActRow() const { return pActRow; }
         void CellModified( long nRow, sal_uInt16 nColId );
         void SetReadOnly( bool bRead );
 
@@ -153,8 +152,8 @@ namespace dbaui
 
         bool IsCutAllowed();
         bool IsCopyAllowed();
-        bool IsPasteAllowed();
-        bool IsReadOnly() { return bReadOnly;}
+        bool IsPasteAllowed() const;
+        bool IsReadOnly() const { return bReadOnly;}
         OFieldDescription* GetFieldDescr( long nRow );
 
         // Window overrides

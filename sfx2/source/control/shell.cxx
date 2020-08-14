@@ -19,17 +19,16 @@
 
 #include <com/sun/star/embed/VerbDescriptor.hpp>
 #include <com/sun/star/embed/VerbAttributes.hpp>
-#include <basic/sbstar.hxx>
 #include <officecfg/Office/Common.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/log.hxx>
+#include <osl/diagnose.h>
 #include <svl/itempool.hxx>
 #include <svl/undo.hxx>
-#include "itemdel.hxx"
+#include <itemdel.hxx>
 #include <svtools/asynclink.hxx>
-#include <basic/sbx.hxx>
 #include <unotools/configmgr.hxx>
-#include <sfx2/app.hxx>
+#include <comphelper/lok.hxx>
 #include <sfx2/shell.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
@@ -37,12 +36,12 @@
 #include <sfx2/objface.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/viewsh.hxx>
-#include "sfxtypes.hxx"
 #include <sfx2/request.hxx>
-#include "statcach.hxx"
-#include <sfx2/msgpool.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <statcach.hxx>
 #include <sidebar/ContextChangeBroadcaster.hxx>
 #include <com/sun/star/ui/dialogs/XSLTFilterDialog.hpp>
+#include <tools/debug.hxx>
 
 #include <memory>
 #include <vector>
@@ -62,8 +61,8 @@ struct SfxShell_Impl: public SfxBroadcaster
     SfxRepeatTarget*            pRepeatTarget; // SbxObjectRef xParent;
     bool                        bActive;
     SfxDisableFlags             nDisableFlags;
-    svtools::AsynchronLink*     pExecuter;
-    svtools::AsynchronLink*     pUpdater;
+    std::unique_ptr<svtools::AsynchronLink> pExecuter;
+    std::unique_ptr<svtools::AsynchronLink> pUpdater;
     std::vector<std::unique_ptr<SfxSlot> >  aSlotArr;
 
     css::uno::Sequence < css::embed::VerbDescriptor > aVerbList;
@@ -75,12 +74,10 @@ struct SfxShell_Impl: public SfxBroadcaster
         , pRepeatTarget(nullptr)
         , bActive(false)
         , nDisableFlags(SfxDisableFlags::NONE)
-        , pExecuter(nullptr)
-        , pUpdater(nullptr)
     {
     }
 
-    virtual ~SfxShell_Impl() override { delete pExecuter; delete pUpdater;}
+    virtual ~SfxShell_Impl() override { pExecuter.reset(); pUpdater.reset();}
 };
 
 
@@ -201,12 +198,12 @@ SfxInterface* SfxShell::GetInterface() const
     return GetStaticInterface();
 }
 
-::svl::IUndoManager* SfxShell::GetUndoManager()
+SfxUndoManager* SfxShell::GetUndoManager()
 {
     return pUndoMgr;
 }
 
-void SfxShell::SetUndoManager( ::svl::IUndoManager *pNewUndoMgr )
+void SfxShell::SetUndoManager( SfxUndoManager *pNewUndoMgr )
 {
     OSL_ENSURE( ( pUndoMgr == nullptr ) || ( pNewUndoMgr == nullptr ) || ( pUndoMgr == pNewUndoMgr ),
         "SfxShell::SetUndoManager: exchanging one non-NULL manager with another non-NULL manager? Suspicious!" );
@@ -215,7 +212,7 @@ void SfxShell::SetUndoManager( ::svl::IUndoManager *pNewUndoMgr )
     // a supported scenario (/me thinks it is not), then we would need to notify all such clients instances.
 
     pUndoMgr = pNewUndoMgr;
-    if (pUndoMgr && !utl::ConfigManager::IsAvoidConfig())
+    if (pUndoMgr && !utl::ConfigManager::IsFuzzing())
     {
         pUndoMgr->SetMaxUndoActionCount(
             officecfg::Office::Common::Undo::Steps::get());
@@ -313,7 +310,7 @@ void SfxShell::DoActivate_Impl( SfxViewFrame *pFrame, bool bMDI )
     Activate(bMDI);
 }
 
-void SfxShell::DoDeactivate_Impl( SfxViewFrame *pFrame, bool bMDI )
+void SfxShell::DoDeactivate_Impl( SfxViewFrame const *pFrame, bool bMDI )
 {
 #ifdef DBG_UTIL
     const SfxInterface *p_IF = GetInterface();
@@ -326,7 +323,7 @@ void SfxShell::DoDeactivate_Impl( SfxViewFrame *pFrame, bool bMDI )
             << " bMDI " << (bMDI ? "MDI" : ""));
 
     // Only when it comes from a Frame
-    // (not when for instance by poping BASIC-IDE from AppDisp)
+    // (not when for instance by popping BASIC-IDE from AppDisp)
     if ( bMDI && pImpl->pFrame == pFrame )
     {
         // deliver
@@ -354,7 +351,7 @@ void SfxShell::Activate
                             FALSE
                             the <SfxViewFrame>, on which SfxDispatcher
                             the SfxShell instance is located, was
-                            activated. (for example by a closing dialoge) */
+                            activated. (for example by a closing dialog) */
 )
 {
     BroadcastContextForActivation(true);
@@ -371,7 +368,7 @@ void SfxShell::Deactivate
                             FALSE
                             the <SfxViewFrame>, on which SfxDispatcher
                             the SfxShell instance is located, was
-                            deactivated. (for example by a dialoge) */
+                            deactivated. (for example by a dialog) */
 )
 {
     BroadcastContextForActivation(false);
@@ -388,7 +385,22 @@ bool SfxShell::CanExecuteSlot_Impl( const SfxSlot &rSlot )
     return aSet.GetItemState(nId) != SfxItemState::DISABLED;
 }
 
-void ShellCall_Impl( void* pObj, void* pArg )
+bool SfxShell::IsConditionalFastCall( const SfxRequest &rReq )
+{
+    sal_uInt16 nId = rReq.GetSlot();
+    bool bRet = false;
+
+    if (nId == SID_UNDO || nId == SID_REDO)
+    {
+        const SfxItemSet* pArgs = rReq.GetArgs();
+        if (pArgs && pArgs->HasItem(SID_REPAIRPACKAGE))
+            bRet = true;
+    }
+    return bRet;
+}
+
+
+static void ShellCall_Impl( void* pObj, void* pArg )
 {
     static_cast<SfxShell*>(pObj)->ExecuteSlot( *static_cast<SfxRequest*>(pArg) );
 }
@@ -400,8 +412,8 @@ void SfxShell::ExecuteSlot( SfxRequest& rReq, bool bAsync )
     else
     {
         if( !pImpl->pExecuter )
-            pImpl->pExecuter = new svtools::AsynchronLink(
-                Link<void*,void>( this, ShellCall_Impl ) );
+            pImpl->pExecuter.reset( new svtools::AsynchronLink(
+                Link<void*,void>( this, ShellCall_Impl ) ) );
         pImpl->pExecuter->Call( new SfxRequest( rReq ) );
     }
 }
@@ -476,7 +488,7 @@ const SfxPoolItem* SfxShell::GetSlotState
         eState = SfxItemState::UNKNOWN;
 
     // Evaluate Item and item status and possibly maintain them in pStateSet
-    SfxPoolItem *pRetItem = nullptr;
+    std::unique_ptr<SfxPoolItem> pRetItem;
     if ( eState <= SfxItemState::DISABLED )
     {
         if ( pStateSet )
@@ -487,21 +499,22 @@ const SfxPoolItem* SfxShell::GetSlotState
     {
         if ( pStateSet )
             pStateSet->ClearItem(nSlotId);
-        pRetItem = new SfxVoidItem(0);
+        pRetItem.reset( new SfxVoidItem(0) );
     }
     else
     {
         if ( pStateSet && pStateSet->Put( *pItem ) )
             return &pStateSet->Get( pItem->Which() );
-        pRetItem = pItem->Clone();
+        pRetItem.reset(pItem->Clone());
     }
-    DeleteItemOnIdle(pRetItem);
+    auto pTemp = pRetItem.get();
+    DeleteItemOnIdle(std::move(pRetItem));
 
-    return pRetItem;
+    return pTemp;
 }
 
-SFX_EXEC_STUB(SfxShell, VerbExec)
-void SfxStubSfxShellVerbState(SfxShell *, SfxItemSet& rSet)
+static SFX_EXEC_STUB(SfxShell, VerbExec)
+static void SfxStubSfxShellVerbState(SfxShell *, SfxItemSet& rSet)
 {
     SfxShell::VerbState( rSet );
 }
@@ -531,13 +544,13 @@ void SfxShell::SetVerbs(const css::uno::Sequence < css::embed::VerbDescriptor >&
     for (sal_Int32 n=0; n<aVerbs.getLength(); n++)
     {
         sal_uInt16 nSlotId = SID_VERB_START + nr++;
-        DBG_ASSERT(nSlotId <= SID_VERB_END, "To many Verbs!");
+        DBG_ASSERT(nSlotId <= SID_VERB_END, "Too many Verbs!");
         if (nSlotId > SID_VERB_END)
             break;
 
         SfxSlot *pNewSlot = new SfxSlot;
         pNewSlot->nSlotId = nSlotId;
-        pNewSlot->nGroupId = SfxGroupId(0);
+        pNewSlot->nGroupId = SfxGroupId::NONE;
 
         // Verb slots must be executed asynchronously, so that they can be
         // destroyed while executing.
@@ -553,26 +566,22 @@ void SfxShell::SetVerbs(const css::uno::Sequence < css::embed::VerbDescriptor >&
 
         if (!pImpl->aSlotArr.empty())
         {
-            SfxSlot& rSlot = *pImpl->aSlotArr[0].get();
+            SfxSlot& rSlot = *pImpl->aSlotArr[0];
             pNewSlot->pNextSlot = rSlot.pNextSlot;
             rSlot.pNextSlot = pNewSlot;
         }
         else
             pNewSlot->pNextSlot = pNewSlot;
 
-        pImpl->aSlotArr.insert(pImpl->aSlotArr.begin() + (sal_uInt16) n, std::unique_ptr<SfxSlot>(pNewSlot));
+        pImpl->aSlotArr.insert(pImpl->aSlotArr.begin() + static_cast<sal_uInt16>(n), std::unique_ptr<SfxSlot>(pNewSlot));
     }
 
     pImpl->aVerbList = aVerbs;
 
-    if (pViewSh)
-    {
-        // The status of SID_OBJECT is collected in the controller directly on
-        // the Shell, it is thus enough to encourage a new status update
-        SfxBindings *pBindings = pViewSh->GetViewFrame()->GetDispatcher()->
-                GetBindings();
-        pBindings->Invalidate( SID_OBJECT, true, true );
-    }
+    // The status of SID_OBJECT is collected in the controller directly on
+    // the Shell, it is thus enough to encourage a new status update
+    SfxBindings* pBindings = pViewSh->GetViewFrame()->GetDispatcher()->GetBindings();
+    pBindings->Invalidate(SID_OBJECT, true, true);
 }
 
 const css::uno::Sequence < css::embed::VerbDescriptor >& SfxShell::GetVerbs() const
@@ -584,26 +593,27 @@ void SfxShell::VerbExec(SfxRequest& rReq)
 {
     sal_uInt16 nId = rReq.GetSlot();
     SfxViewShell *pViewShell = GetViewShell();
-    if ( pViewShell )
+    if ( !pViewShell )
+        return;
+
+    bool bReadOnly = pViewShell->GetObjectShell()->IsReadOnly();
+    const css::uno::Sequence < css::embed::VerbDescriptor > aList = pViewShell->GetVerbs();
+    sal_Int32 nVerb = 0;
+    for (const auto& rVerb : aList)
     {
-        bool bReadOnly = pViewShell->GetObjectShell()->IsReadOnly();
-        css::uno::Sequence < css::embed::VerbDescriptor > aList = pViewShell->GetVerbs();
-        for (sal_Int32 n=0, nVerb=0; n<aList.getLength(); n++)
+        // check for ReadOnly verbs
+        if ( bReadOnly && !(rVerb.VerbAttributes & embed::VerbAttributes::MS_VERBATTR_NEVERDIRTIES) )
+            continue;
+
+        // check for verbs that shouldn't appear in the menu
+        if ( !(rVerb.VerbAttributes & embed::VerbAttributes::MS_VERBATTR_ONCONTAINERMENU) )
+            continue;
+
+        if (nId == SID_VERB_START + nVerb++)
         {
-            // check for ReadOnly verbs
-            if ( bReadOnly && !(aList[n].VerbAttributes & embed::VerbAttributes::MS_VERBATTR_NEVERDIRTIES) )
-                continue;
-
-            // check for verbs that shouldn't appear in the menu
-            if ( !(aList[n].VerbAttributes & embed::VerbAttributes::MS_VERBATTR_ONCONTAINERMENU) )
-                continue;
-
-            if (nId == SID_VERB_START + nVerb++)
-            {
-                pViewShell->DoVerb(aList[n].VerbID);
-                rReq.Done();
-                return;
-            }
+            pViewShell->DoVerb(rVerb.VerbID);
+            rReq.Done();
+            return;
         }
     }
 }
@@ -639,7 +649,7 @@ bool SfxShell::HasUIFeature(SfxShellFeature) const
     return false;
 }
 
-void DispatcherUpdate_Impl( void*, void* pArg )
+static void DispatcherUpdate_Impl( void*, void* pArg )
 {
     static_cast<SfxDispatcher*>(pArg)->Update_Impl( true );
     static_cast<SfxDispatcher*>(pArg)->GetBindings()->InvalidateAll(false);
@@ -654,7 +664,7 @@ void SfxShell::UIFeatureChanged()
         // something my get stuck in the bunkered tools. Asynchronous call to
         // prevent recursion.
         if ( !pImpl->pUpdater )
-            pImpl->pUpdater = new svtools::AsynchronLink( Link<void*,void>( this, DispatcherUpdate_Impl ) );
+            pImpl->pUpdater.reset( new svtools::AsynchronLink( Link<void*,void>( this, DispatcherUpdate_Impl ) ) );
 
         // Multiple views allowed
         pImpl->pUpdater->Call( pFrame->GetDispatcher(), true );
@@ -680,7 +690,7 @@ void SfxShell::ApplyItemSet( sal_uInt16, const SfxItemSet& )
 {
 }
 
-void SfxShell::SetContextName (const ::rtl::OUString& rsContextName)
+void SfxShell::SetContextName (const OUString& rsContextName)
 {
     pImpl->maContextChangeBroadcaster.Initialize(rsContextName);
 }
@@ -692,6 +702,12 @@ void SfxShell::SetViewShell_Impl( SfxViewShell* pView )
 
 void SfxShell::BroadcastContextForActivation (const bool bIsActivated)
 {
+    // Avoids activation and de-activation (can be seen on switching view) from causing
+    // the sidebar to re-build. Such switching can happen as we change view to render
+    // using LOK for example, and is un-necessary for Online.
+    if (comphelper::LibreOfficeKit::isDialogPainting())
+        return;
+
     SfxViewFrame* pViewFrame = GetFrame();
     if (pViewFrame != nullptr)
     {

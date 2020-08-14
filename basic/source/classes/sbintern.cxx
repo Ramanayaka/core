@@ -17,19 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sbintern.hxx"
-#include "sbunoobj.hxx"
-#include "token.hxx"
-#include "symtbl.hxx"
-#include "parser.hxx"
-#include "codegen.hxx"
+#include <sbintern.hxx>
+#include <sbunoobj.hxx>
 #include <basic/basmgr.hxx>
 
 SbiGlobals* SbiGlobals::pGlobals = nullptr;
 
 SbiGlobals* GetSbData()
 {
-    if( !SbiGlobals::pGlobals )
+    if (!SbiGlobals::pGlobals)
         SbiGlobals::pGlobals = new SbiGlobals;
     return SbiGlobals::pGlobals;
 }
@@ -37,13 +33,7 @@ SbiGlobals* GetSbData()
 SbiGlobals::SbiGlobals()
 {
     pInst = nullptr;
-    pSbFac= nullptr;
-    pUnoFac = nullptr;
-    pTypeFac = nullptr;
-    pClassFac = nullptr;
-    pOLEFac = nullptr;
-    pFormFac = nullptr;
-    pMod  = nullptr;
+    pMod = nullptr;
     pCompMod = nullptr; // JSM
     nInst = 0;
     nCode = ERRCODE_NONE;
@@ -52,17 +42,10 @@ SbiGlobals::SbiGlobals()
     bCompilerError = false;
     bGlobalInitErr = false;
     bRunInit = false;
-    pTransliterationWrapper = nullptr;
     bBlockCompilerError = false;
-    pAppBasMgr = nullptr;
     pMSOMacroRuntimLib = nullptr;
 }
 
-SbiGlobals::~SbiGlobals()
-{
-    delete pSbFac;
-    delete pUnoFac;
-    delete pTransliterationWrapper;
-}
+SbiGlobals::~SbiGlobals() = default;
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

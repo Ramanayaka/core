@@ -21,22 +21,18 @@
 #define INCLUDED_SC_SOURCE_UI_INC_DBFUNC_HXX
 
 #include "viewfunc.hxx"
-#include "dptypes.hxx"
+#include <dptypes.hxx>
 
-namespace com { namespace sun { namespace star { namespace sheet {
-    struct DataPilotFieldFilter;
-}}}}
-
+namespace com::sun::star::sheet { struct DataPilotFieldFilter; }
 struct ScSortParam;
 struct ScQueryParam;
 class ScDBData;
-class ScDBCollection;
 class ScDPObject;
 class ScDPSaveData;
 struct ScDPNumGroupInfo;
 struct ScSubTotalParam;
 
-class ScDBFunc : public ScViewFunc
+class SAL_DLLPUBLIC_RTTI ScDBFunc : public ScViewFunc
 {
 private:
     void GetSelectedMemberList(ScDPUniqueStringSet& rEntries, long& rDimension);
@@ -103,6 +99,7 @@ public:
 
     void            SelectLevel( bool bColumns, sal_uInt16 nLevel,
                                     bool bRecord = true );
+    void            SetOutlineState( bool bColumn, sal_uInt16 nLevel, sal_uInt16 nEntry, bool bHidden);
     void            ShowOutline( bool bColumns, sal_uInt16 nLevel, sal_uInt16 nEntry,
                                     bool bRecord = true, bool bPaint = true );
     void            HideOutline( bool bColumns, sal_uInt16 nLevel, sal_uInt16 nEntry,
@@ -112,9 +109,11 @@ public:
     void            HideMarkedOutlines( bool bRecord = true );
     bool            OutlinePossible(bool bHide);
 
-    void            UpdateCharts(bool bAllCharts);      // Default: am Cursor
+    void            UpdateCharts(bool bAllCharts);      // Default: at the Cursor
 
     static sal_uInt16   DoUpdateCharts( const ScAddress& rPos, ScDocument* pDoc, bool bAllCharts );
+
+    void            OnLOKShowHideColRow(bool bColumns, SCCOLROW nStartRow);
 };
 
 #endif

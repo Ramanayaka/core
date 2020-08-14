@@ -30,18 +30,15 @@
 #include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <rtl/uri.hxx>
-#include <osl/process.h>
+#include <sal/log.hxx>
 #include <osl/file.hxx>
-#include <osl/mutex.hxx>
 #include <vcl/svapp.hxx>
-#include <basic/sbx.hxx>
 #include <basic/basmgr.hxx>
 #include <basic/basicmanagerrepository.hxx>
 #include <basic/sbstar.hxx>
 #include <basic/sbmod.hxx>
 #include <basic/sbmeth.hxx>
 #include <sfx2/app.hxx>
-#include <sfx2/objsh.hxx>
 
 #include <com/sun/star/util/theMacroExpander.hpp>
 #include <com/sun/star/script/XLibraryContainer2.hpp>
@@ -63,44 +60,12 @@ using namespace ::sf_misc;
 namespace basprov
 {
 
-
-    // component operations
-
-
-    static OUString getImplementationName_BasicProviderImpl()
-    {
-        return OUString( "com.sun.star.comp.scripting.ScriptProviderForBasic"  );
-    }
-
-
-    static Sequence< OUString > getSupportedServiceNames_BasicProviderImpl()
-    {
-        static Sequence< OUString >* pNames = nullptr;
-        if ( !pNames )
-        {
-            ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
-            if ( !pNames )
-            {
-                static Sequence< OUString > aNames(4);
-                aNames.getArray()[0] = "com.sun.star.script.provider.ScriptProviderForBasic";
-                aNames.getArray()[1] = "com.sun.star.script.provider.LanguageScriptProvider";
-                aNames.getArray()[2] = "com.sun.star.script.provider.ScriptProvider";
-                aNames.getArray()[3] = "com.sun.star.script.browse.BrowseNode";
-                pNames = &aNames;
-            }
-        }
-        return *pNames;
-    }
-
-
     // BasicProviderImpl
 
 
     BasicProviderImpl::BasicProviderImpl( const Reference< XComponentContext >& xContext )
         :m_pAppBasicManager( nullptr )
         ,m_pDocBasicManager( nullptr )
-        ,m_xLibContainerApp( nullptr )
-        ,m_xLibContainerDoc( nullptr )
         ,m_xContext( xContext )
         ,m_bIsAppScriptCtx( true )
         ,m_bIsUserCtx(true)
@@ -110,6 +75,8 @@ namespace basprov
 
     BasicProviderImpl::~BasicProviderImpl()
     {
+        SolarMutexGuard aGuard;
+        EndListeningAll();
     }
 
 
@@ -126,7 +93,7 @@ namespace basprov
                 Reference< uri::XUriReferenceFactory > xUriFac( uri::UriReferenceFactory::create( m_xContext ) );
 
                 OUString aLinkURL( xLibContainer->getLibraryLinkURL( rLibName ) );
-                Reference<  uri::XUriReference > xUriRef( xUriFac->parse( aLinkURL ), UNO_QUERY );
+                Reference<  uri::XUriReference > xUriRef = xUriFac->parse( aLinkURL );
 
                 if ( xUriRef.is() )
                 {
@@ -167,10 +134,21 @@ namespace basprov
         return bIsShared;
     }
 
+    // SfxListener
+    void BasicProviderImpl::Notify(SfxBroadcaster& rBC, const SfxHint& rHint)
+    {
+        if (auto pManager = dynamic_cast<const BasicManager*>(&rBC))
+            if (pManager == m_pAppBasicManager && rHint.GetId() == SfxHintId::Dying)
+            {
+                EndListening(*m_pAppBasicManager);
+                m_pAppBasicManager = nullptr;
+            }
+    }
+
     // XServiceInfo
     OUString BasicProviderImpl::getImplementationName(  )
     {
-        return getImplementationName_BasicProviderImpl();
+        return "com.sun.star.comp.scripting.ScriptProviderForBasic";
     }
 
     sal_Bool BasicProviderImpl::supportsService( const OUString& rServiceName )
@@ -180,7 +158,11 @@ namespace basprov
 
     Sequence< OUString > BasicProviderImpl::getSupportedServiceNames(  )
     {
-        return getSupportedServiceNames_BasicProviderImpl();
+        return {
+            "com.sun.star.script.provider.ScriptProviderForBasic",
+            "com.sun.star.script.provider.LanguageScriptProvider",
+            "com.sun.star.script.provider.ScriptProvider",
+            "com.sun.star.script.browse.BrowseNode"};
     }
 
 
@@ -228,8 +210,7 @@ namespace basprov
                 );
             }
 
-            OUString sDoc = "vnd.sun.star.tdoc";
-            if ( m_sScriptingContext.startsWith( sDoc  ) )
+            if ( m_sScriptingContext.startsWith( "vnd.sun.star.tdoc"  ) )
             {
                 xModel = MiscUtils::tDocUrlToModel(  m_sScriptingContext );
                 // TODO: use ScriptingContantsPool for SCRIPTING_DOC_REF
@@ -242,7 +223,7 @@ namespace basprov
             if ( xDocumentScripts.is() )
             {
                 m_pDocBasicManager = ::basic::BasicManagerRepository::getDocumentBasicManager( xModel );
-                m_xLibContainerDoc.set( xDocumentScripts->getBasicLibraries(), UNO_QUERY );
+                m_xLibContainerDoc = xDocumentScripts->getBasicLibraries();
                 OSL_ENSURE( m_pDocBasicManager && m_xLibContainerDoc.is(),
                     "BasicProviderImpl::initialize: invalid BasicManager, or invalid script container!" );
             }
@@ -267,10 +248,14 @@ namespace basprov
 
         // TODO
         if ( !m_pAppBasicManager )
+        {
             m_pAppBasicManager = SfxApplication::GetBasicManager();
+            if (m_pAppBasicManager)
+                StartListening(*m_pAppBasicManager);
+        }
 
         if ( !m_xLibContainerApp.is() )
-            m_xLibContainerApp.set( SfxGetpApp()->GetBasicContainer(), UNO_QUERY );
+            m_xLibContainerApp = SfxGetpApp()->GetBasicContainer();
     }
 
 
@@ -286,17 +271,15 @@ namespace basprov
         Reference< provider::XScript > xScript;
         Reference< uri::XUriReferenceFactory > xFac ( uri::UriReferenceFactory::create( m_xContext )  );
 
-        Reference<  uri::XUriReference > uriRef(
-            xFac->parse( scriptURI ), UNO_QUERY );
+        Reference<  uri::XUriReference > uriRef = xFac->parse( scriptURI );
 
         Reference < uri::XVndSunStarScriptUrl > sfUri( uriRef, UNO_QUERY );
 
         if ( !uriRef.is() || !sfUri.is() )
         {
-            OUString errorMsg("BasicProviderImpl::getScript: failed to parse URI: ");
-            errorMsg = errorMsg.concat( scriptURI );
             throw provider::ScriptFrameworkErrorException(
-                errorMsg, Reference< XInterface >(),
+                "BasicProviderImpl::getScript: failed to parse URI: " + scriptURI,
+                Reference< XInterface >(),
                 scriptURI, "Basic",
                 provider::ScriptFrameworkErrorType::MALFORMED_URL );
         }
@@ -393,7 +376,7 @@ namespace basprov
 
     OUString BasicProviderImpl::getName(  )
     {
-        return OUString("Basic");
+        return "Basic";
     }
 
 
@@ -419,20 +402,19 @@ namespace basprov
 
         if ( pBasicManager && xLibContainer.is() )
         {
-            Sequence< OUString > aLibNames = xLibContainer->getElementNames();
+            const Sequence< OUString > aLibNames = xLibContainer->getElementNames();
             sal_Int32 nLibCount = aLibNames.getLength();
-            const OUString* pLibNames = aLibNames.getConstArray();
             aChildNodes.realloc( nLibCount );
             Reference< browse::XBrowseNode >* pChildNodes = aChildNodes.getArray();
             sal_Int32 childrenFound = 0;
 
-            for ( sal_Int32 i = 0 ; i < nLibCount ; ++i )
+            for ( const OUString& rLibName : aLibNames )
             {
                 bool bCreate = false;
                 if ( m_bIsAppScriptCtx )
                 {
-                    bool bShared = isLibraryShared( xLibContainer, pLibNames[i] );
-                    if ( ( m_bIsUserCtx && !bShared ) || ( !m_bIsUserCtx && bShared ) )
+                    const bool bShared = isLibraryShared( xLibContainer, rLibName );
+                    if (m_bIsUserCtx != bShared)
                         bCreate = true;
                 }
                 else
@@ -441,8 +423,9 @@ namespace basprov
                 }
                 if ( bCreate )
                 {
-                    pChildNodes[childrenFound++] = static_cast< browse::XBrowseNode* >( new BasicLibraryNodeImpl(
-                        m_xContext, m_sScriptingContext, pBasicManager, xLibContainer, pLibNames[i], m_bIsAppScriptCtx ) );
+                    pChildNodes[childrenFound++]
+                        = new BasicLibraryNodeImpl(m_xContext, m_sScriptingContext, pBasicManager,
+                                                   xLibContainer, rLibName, m_bIsAppScriptCtx);
                 }
             }
 
@@ -483,40 +466,14 @@ namespace basprov
 
     // component operations
 
-
-    static Reference< XInterface > SAL_CALL create_BasicProviderImpl(
-        Reference< XComponentContext > const & xContext )
+    extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+    scripting_BasicProviderImpl_get_implementation(
+        css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
     {
-        return static_cast< lang::XTypeProvider * >( new BasicProviderImpl( xContext ) );
+        return cppu::acquire(new BasicProviderImpl(context));
     }
-
-
-    static struct ::cppu::ImplementationEntry s_component_entries [] =
-    {
-        {
-            create_BasicProviderImpl, getImplementationName_BasicProviderImpl,
-            getSupportedServiceNames_BasicProviderImpl, ::cppu::createSingleComponentFactory,
-            nullptr, 0
-        },
-        { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-    };
 
 
 }   // namespace basprov
-
-
-// component exports
-
-
-extern "C"
-{
-    SAL_DLLPUBLIC_EXPORT void * SAL_CALL basprov_component_getFactory(
-        const sal_Char * pImplName, void * pServiceManager,
-        void * pRegistryKey )
-    {
-        return ::cppu::component_getFactoryHelper(
-            pImplName, pServiceManager, pRegistryKey, ::basprov::s_component_entries );
-    }
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

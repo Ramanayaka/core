@@ -17,12 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "AccessiblePresentationOLEShape.hxx"
+#include <AccessiblePresentationOLEShape.hxx>
+#include <com/sun/star/accessibility/AccessibleRole.hpp>
+#include <com/sun/star/drawing/XShapeDescriptor.hpp>
+#include <com/sun/star/drawing/XShape.hpp>
 
-#include "SdShapeTypes.hxx"
+#include <SdShapeTypes.hxx>
 
-#include <svx/DescriptionGenerator.hxx>
-#include <rtl/ustring.h>
+#include <svx/ShapeTypeHandler.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
@@ -47,7 +49,7 @@ AccessiblePresentationOLEShape::~AccessiblePresentationOLEShape()
 OUString SAL_CALL
     AccessiblePresentationOLEShape::getImplementationName()
 {
-    return OUString("AccessiblePresentationOLEShape");
+    return "AccessiblePresentationOLEShape";
 }
 
 /// Set this object's name if it is different to the current name.
@@ -70,48 +72,11 @@ OUString
             break;
         default:
             sName = "UnknownAccessibleImpressOLEShape";
-            uno::Reference<drawing::XShapeDescriptor> xDescriptor (mxShape, uno::UNO_QUERY);
-            if (xDescriptor.is())
-                sName += ": " + xDescriptor->getShapeType();
+            if (mxShape.is())
+                sName += ": " + mxShape->getShapeType();
     }
 
     return sName;
-}
-
-OUString
-    AccessiblePresentationOLEShape::CreateAccessibleDescription()
-{
-    //    return createAccessibleName();
-    DescriptionGenerator aDG (mxShape);
-    ShapeTypeId nShapeType = ShapeTypeHandler::Instance().GetTypeId (mxShape);
-    switch (nShapeType)
-    {
-        case PRESENTATION_OLE:
-            aDG.Initialize ("PresentationOLEShape");
-            //SvxResId(RID_SVXSTR_A11Y_ST_RECTANGLE));
-            aDG.AddProperty ("CLSID" ,DescriptionGenerator::PropertyType::String);
-            break;
-        case PRESENTATION_CHART:
-            aDG.Initialize ("PresentationChartShape");
-            //SvxResId(RID_SVXSTR_A11Y_ST_RECTANGLE));
-            aDG.AddProperty ( "CLSID" , DescriptionGenerator::PropertyType::String);
-            break;
-        case PRESENTATION_TABLE:
-            aDG.Initialize ("PresentationTableShape");
-            //SvxResId(RID_SVXSTR_A11Y_ST_RECTANGLE));
-            aDG.AddProperty ("CLSID" , DescriptionGenerator::PropertyType::String);
-            break;
-        default:
-            aDG.Initialize ("Unknown accessible presentation OLE shape");
-            uno::Reference<drawing::XShapeDescriptor> xDescriptor (mxShape, uno::UNO_QUERY);
-            if (xDescriptor.is())
-            {
-                aDG.AppendString ("service name=");
-                aDG.AppendString (xDescriptor->getShapeType());
-            }
-    }
-
-    return aDG();
 }
 
 //  Return this object's role.

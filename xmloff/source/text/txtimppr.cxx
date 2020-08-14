@@ -176,21 +176,21 @@ void XMLTextImportPropertyMapper::FontFinished(
 }
 
 /** since the properties "CharFontFamilyName", "CharFontStyleName", "CharFontFamily",
-    "CharFontPitch" and "CharFontSet" and theire CJK and CTL counterparts are only
+    "CharFontPitch" and "CharFontSet" and their CJK and CTL counterparts are only
     usable as a union, we add defaults to all values that are not set as long as we
     have an "CharFontFamilyName"
 
     #99928# CL */
 void XMLTextImportPropertyMapper::FontDefaultsCheck(
-                                        XMLPropertyState* pFontFamilyName,
-                                        XMLPropertyState* pFontStyleName,
-                                        XMLPropertyState* pFontFamily,
-                                        XMLPropertyState* pFontPitch,
-                                        XMLPropertyState* pFontCharSet,
-                                        XMLPropertyState** ppNewFontStyleName,
-                                        XMLPropertyState** ppNewFontFamily,
-                                        XMLPropertyState** ppNewFontPitch,
-                                        XMLPropertyState** ppNewFontCharSet ) const
+                                        XMLPropertyState const * pFontFamilyName,
+                                        XMLPropertyState const * pFontStyleName,
+                                        XMLPropertyState const * pFontFamily,
+                                        XMLPropertyState const * pFontPitch,
+                                        XMLPropertyState const * pFontCharSet,
+                                        std::unique_ptr<XMLPropertyState>* ppNewFontStyleName,
+                                        std::unique_ptr<XMLPropertyState>* ppNewFontFamily,
+                                        std::unique_ptr<XMLPropertyState>* ppNewFontPitch,
+                                        std::unique_ptr<XMLPropertyState>* ppNewFontCharSet ) const
 {
     if( pFontFamilyName )
     {
@@ -199,50 +199,50 @@ void XMLTextImportPropertyMapper::FontDefaultsCheck(
         if( !pFontStyleName )
         {
             aAny <<= OUString();
-    #if OSL_DEBUG_LEVEL > 0
-                sal_Int16 nTmp = getPropertySetMapper()->GetEntryContextId(
+    #if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
+            sal_Int16 nTmp = getPropertySetMapper()->GetEntryContextId(
                                                 pFontFamilyName->mnIndex + 1 );
-                assert(nTmp == CTF_FONTSTYLENAME || nTmp == CTF_FONTSTYLENAME_CJK || nTmp == CTF_FONTSTYLENAME_CTL);
+            assert(nTmp == CTF_FONTSTYLENAME || nTmp == CTF_FONTSTYLENAME_CJK || nTmp == CTF_FONTSTYLENAME_CTL);
     #endif
-                *ppNewFontStyleName = new XMLPropertyState( pFontFamilyName->mnIndex + 1,
-                                                       aAny );
+            ppNewFontStyleName->reset(new XMLPropertyState( pFontFamilyName->mnIndex + 1,
+                                                       aAny ));
         }
 
         if( !pFontFamily )
         {
-            aAny <<= (sal_Int16)css::awt::FontFamily::DONTKNOW;
+            aAny <<= sal_Int16(css::awt::FontFamily::DONTKNOW);
 
-    #if OSL_DEBUG_LEVEL > 0
-                sal_Int16 nTmp = getPropertySetMapper()->GetEntryContextId(
+    #if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
+            sal_Int16 nTmp = getPropertySetMapper()->GetEntryContextId(
                                                 pFontFamilyName->mnIndex + 2 );
-                assert(nTmp == CTF_FONTFAMILY || nTmp == CTF_FONTFAMILY_CJK || nTmp == CTF_FONTFAMILY_CTL);
+            assert(nTmp == CTF_FONTFAMILY || nTmp == CTF_FONTFAMILY_CJK || nTmp == CTF_FONTFAMILY_CTL);
     #endif
-                *ppNewFontFamily = new XMLPropertyState( pFontFamilyName->mnIndex + 2,
-                                                       aAny );
+            ppNewFontFamily->reset(new XMLPropertyState( pFontFamilyName->mnIndex + 2,
+                                                       aAny ));
         }
 
         if( !pFontPitch )
         {
-            aAny <<= (sal_Int16)css::awt::FontPitch::DONTKNOW;
-    #if OSL_DEBUG_LEVEL > 0
-                sal_Int16 nTmp = getPropertySetMapper()->GetEntryContextId(
+            aAny <<= sal_Int16(css::awt::FontPitch::DONTKNOW);
+    #if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
+            sal_Int16 nTmp = getPropertySetMapper()->GetEntryContextId(
                                                 pFontFamilyName->mnIndex + 3 );
-                assert(nTmp == CTF_FONTPITCH || nTmp == CTF_FONTPITCH_CJK || nTmp == CTF_FONTPITCH_CTL);
+            assert(nTmp == CTF_FONTPITCH || nTmp == CTF_FONTPITCH_CJK || nTmp == CTF_FONTPITCH_CTL);
     #endif
-                *ppNewFontPitch = new XMLPropertyState( pFontFamilyName->mnIndex + 3,
-                                                       aAny );
+            ppNewFontPitch->reset(new XMLPropertyState( pFontFamilyName->mnIndex + 3,
+                                                       aAny ));
         }
 
         if( !pFontCharSet )
         {
-            aAny <<= (sal_Int16)osl_getThreadTextEncoding();
-    #if OSL_DEBUG_LEVEL > 0
-                sal_Int16 nTmp = getPropertySetMapper()->GetEntryContextId(
+            aAny <<= static_cast<sal_Int16>(osl_getThreadTextEncoding());
+    #if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
+            sal_Int16 nTmp = getPropertySetMapper()->GetEntryContextId(
                                                 pFontFamilyName->mnIndex + 4 );
-                assert(nTmp == CTF_FONTCHARSET || nTmp == CTF_FONTCHARSET_CJK || nTmp == CTF_FONTCHARSET_CTL);
+            assert(nTmp == CTF_FONTCHARSET || nTmp == CTF_FONTCHARSET_CJK || nTmp == CTF_FONTCHARSET_CTL);
     #endif
-                *ppNewFontCharSet = new XMLPropertyState( pFontFamilyName->mnIndex + 4,
-                                                       aAny );
+            ppNewFontCharSet->reset(new XMLPropertyState( pFontFamilyName->mnIndex + 4,
+                                                       aAny ));
         }
     }
 
@@ -277,19 +277,19 @@ isNotDefaultRelSize(const XMLPropertyState* pRelState, const rtl::Reference<XMLP
  * four side, we have to duplicate the compressed attribute during import.
 **/
 void lcl_SeparateBorder(
-    sal_uInt16 nIndex, XMLPropertyState* pAllBorderDistance,
+    sal_uInt16 nIndex, XMLPropertyState const * pAllBorderDistance,
     XMLPropertyState* pBorderDistances[4], XMLPropertyState* pNewBorderDistances[4],
-    XMLPropertyState* pAllBorder, XMLPropertyState* pBorders[4],
+    XMLPropertyState const * pAllBorder, XMLPropertyState* pBorders[4],
     XMLPropertyState* pNewBorders[4], XMLPropertyState* pAllBorderWidth,
     XMLPropertyState* pBorderWidths[4]
-#if OSL_DEBUG_LEVEL > 0
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
     , const rtl::Reference< XMLPropertySetMapper >& rMapper
 #endif
 )
 {
     if( pAllBorderDistance && !pBorderDistances[nIndex] )
     {
-#if OSL_DEBUG_LEVEL > 0
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
         sal_Int16 nTmp = rMapper->GetEntryContextId(
                                     pAllBorderDistance->mnIndex + nIndex + 1 );
         if (CTF_CHARALLBORDERDISTANCE ==
@@ -311,7 +311,7 @@ void lcl_SeparateBorder(
     }
     if( pAllBorder && !pBorders[nIndex] )
     {
-#if OSL_DEBUG_LEVEL > 0
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
         sal_Int16 nTmp = rMapper->GetEntryContextId(
                                         pAllBorder->mnIndex + nIndex + 1 );
         if (CTF_CHARALLBORDER ==
@@ -333,21 +333,21 @@ void lcl_SeparateBorder(
     else
         pBorderWidths[nIndex]->mnIndex = -1;
 
-    if( pBorders[nIndex] && pBorderWidths[nIndex] )
-    {
-        table::BorderLine2 aBorderLine;
-        pBorders[nIndex]->maValue >>= aBorderLine;
+    if( !(pBorders[nIndex] && pBorderWidths[nIndex]) )
+        return;
 
-        table::BorderLine2 aBorderLineWidth;
-        pBorderWidths[nIndex]->maValue >>= aBorderLineWidth;
+    table::BorderLine2 aBorderLine;
+    pBorders[nIndex]->maValue >>= aBorderLine;
 
-        aBorderLine.OuterLineWidth = aBorderLineWidth.OuterLineWidth;
-        aBorderLine.InnerLineWidth = aBorderLineWidth.InnerLineWidth;
-        aBorderLine.LineDistance = aBorderLineWidth.LineDistance;
-        aBorderLine.LineWidth = aBorderLineWidth.LineWidth;
+    table::BorderLine2 aBorderLineWidth;
+    pBorderWidths[nIndex]->maValue >>= aBorderLineWidth;
 
-        pBorders[nIndex]->maValue <<= aBorderLine;
-    }
+    aBorderLine.OuterLineWidth = aBorderLineWidth.OuterLineWidth;
+    aBorderLine.InnerLineWidth = aBorderLineWidth.InnerLineWidth;
+    aBorderLine.LineDistance = aBorderLineWidth.LineDistance;
+    aBorderLine.LineWidth = aBorderLineWidth.LineWidth;
+
+    pBorders[nIndex]->maValue <<= aBorderLine;
 }
 
 }
@@ -366,28 +366,28 @@ void XMLTextImportPropertyMapper::finished(
     XMLPropertyState* pFontFamily = nullptr;
     XMLPropertyState* pFontPitch = nullptr;
     XMLPropertyState* pFontCharSet = nullptr;
-    XMLPropertyState* pNewFontStyleName = nullptr;
-    XMLPropertyState* pNewFontFamily = nullptr;
-    XMLPropertyState* pNewFontPitch = nullptr;
-    XMLPropertyState* pNewFontCharSet = nullptr;
+    std::unique_ptr<XMLPropertyState> pNewFontStyleName;
+    std::unique_ptr<XMLPropertyState> pNewFontFamily;
+    std::unique_ptr<XMLPropertyState> pNewFontPitch;
+    std::unique_ptr<XMLPropertyState> pNewFontCharSet;
     XMLPropertyState* pFontFamilyNameCJK = nullptr;
     XMLPropertyState* pFontStyleNameCJK = nullptr;
     XMLPropertyState* pFontFamilyCJK = nullptr;
     XMLPropertyState* pFontPitchCJK = nullptr;
     XMLPropertyState* pFontCharSetCJK = nullptr;
-    XMLPropertyState* pNewFontStyleNameCJK = nullptr;
-    XMLPropertyState* pNewFontFamilyCJK = nullptr;
-    XMLPropertyState* pNewFontPitchCJK = nullptr;
-    XMLPropertyState* pNewFontCharSetCJK = nullptr;
+    std::unique_ptr<XMLPropertyState> pNewFontStyleNameCJK;
+    std::unique_ptr<XMLPropertyState> pNewFontFamilyCJK;
+    std::unique_ptr<XMLPropertyState> pNewFontPitchCJK;
+    std::unique_ptr<XMLPropertyState> pNewFontCharSetCJK;
     XMLPropertyState* pFontFamilyNameCTL = nullptr;
     XMLPropertyState* pFontStyleNameCTL = nullptr;
     XMLPropertyState* pFontFamilyCTL = nullptr;
     XMLPropertyState* pFontPitchCTL = nullptr;
     XMLPropertyState* pFontCharSetCTL = nullptr;
-    XMLPropertyState* pNewFontStyleNameCTL = nullptr;
-    XMLPropertyState* pNewFontFamilyCTL = nullptr;
-    XMLPropertyState* pNewFontPitchCTL = nullptr;
-    XMLPropertyState* pNewFontCharSetCTL = nullptr;
+    std::unique_ptr<XMLPropertyState> pNewFontStyleNameCTL;
+    std::unique_ptr<XMLPropertyState> pNewFontFamilyCTL;
+    std::unique_ptr<XMLPropertyState> pNewFontPitchCTL;
+    std::unique_ptr<XMLPropertyState> pNewFontCharSetCTL;
     XMLPropertyState* pAllBorderDistance = nullptr;
     XMLPropertyState* pBorderDistances[4] = { nullptr, nullptr, nullptr, nullptr };
     XMLPropertyState* pNewBorderDistances[4] = { nullptr, nullptr, nullptr, nullptr };
@@ -417,11 +417,9 @@ void XMLTextImportPropertyMapper::finished(
     XMLPropertyState* pFillStyle(nullptr);
     XMLPropertyState* pFillColor(nullptr);
 
-    for( ::std::vector< XMLPropertyState >::iterator aIter = rProperties.begin();
-         aIter != rProperties.end();
-         ++aIter )
+    for( auto& rProperty : rProperties )
     {
-        XMLPropertyState* property = &(*aIter);
+        XMLPropertyState* property = &rProperty;
         if( -1 == property->mnIndex )
             continue;
 
@@ -485,7 +483,7 @@ void XMLTextImportPropertyMapper::finished(
         case CTF_FRAMEHEIGHT_MIN_REL:
 //      case CTF_SYNCHEIGHT_MIN:
                                         bHasAnyMinHeight = true;
-                                        SAL_FALLTHROUGH;
+                                        [[fallthrough]];
         case CTF_FRAMEHEIGHT_ABS:
         case CTF_FRAMEHEIGHT_REL:
 //      case CTF_SYNCHEIGHT:
@@ -493,7 +491,7 @@ void XMLTextImportPropertyMapper::finished(
         case CTF_FRAMEWIDTH_MIN_ABS:
         case CTF_FRAMEWIDTH_MIN_REL:
                                         bHasAnyMinWidth = true;
-                                        SAL_FALLTHROUGH;
+                                        [[fallthrough]];
         case CTF_FRAMEWIDTH_ABS:
         case CTF_FRAMEWIDTH_REL:
                                         bHasAnyWidth = true; break;
@@ -547,7 +545,7 @@ void XMLTextImportPropertyMapper::finished(
         if (pAllParaMargin && !pParaMargins[i]
             && isNotDefaultRelSize(pAllParaMargin, getPropertySetMapper()))
         {
-#if OSL_DEBUG_LEVEL > 0
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
             sal_Int16 nTmp = getPropertySetMapper()->GetEntryContextId(
                                         pAllParaMargin->mnIndex + (2*i) + 2 );
             assert(nTmp >= CTF_PARALEFTMARGIN &&
@@ -558,7 +556,7 @@ void XMLTextImportPropertyMapper::finished(
         }
         if (pAllMargin && !pMargins[i])
         {
-#if OSL_DEBUG_LEVEL > 0
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
             sal_Int16 nTmp = getPropertySetMapper()->GetEntryContextId(
                                         pAllMargin->mnIndex + i + 1 );
             assert(nTmp >= CTF_MARGINLEFT && nTmp <= CTF_MARGINBOTTOM);
@@ -571,7 +569,7 @@ void XMLTextImportPropertyMapper::finished(
             i, pAllBorderDistance, pBorderDistances, pNewBorderDistances,
             pAllBorder, pBorders, pNewBorders,
             pAllBorderWidth, pBorderWidths
-#if OSL_DEBUG_LEVEL > 0
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
             , getPropertySetMapper()
 #endif
             );
@@ -580,7 +578,7 @@ void XMLTextImportPropertyMapper::finished(
             i, pCharAllBorderDistance, pCharBorderDistances,
             pCharNewBorderDistances, pCharAllBorder, pCharBorders,
             pCharNewBorders, pCharAllBorderWidth, pCharBorderWidths
-#if OSL_DEBUG_LEVEL > 0
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
             , getPropertySetMapper()
 #endif
             );
@@ -687,82 +685,82 @@ void XMLTextImportPropertyMapper::finished(
     if( pNewFontStyleName )
     {
         rProperties.push_back( *pNewFontStyleName );
-        delete pNewFontStyleName;
+        pNewFontStyleName.reset();
     }
 
     if( pNewFontFamily )
     {
         rProperties.push_back( *pNewFontFamily );
-        delete pNewFontFamily;
+        pNewFontFamily.reset();
     }
 
     if( pNewFontPitch )
     {
         rProperties.push_back( *pNewFontPitch );
-        delete pNewFontPitch;
+        pNewFontPitch.reset();
     }
 
     if( pNewFontCharSet )
     {
         rProperties.push_back( *pNewFontCharSet );
-        delete pNewFontCharSet;
+        pNewFontCharSet.reset();
     }
 
     if( pNewFontStyleNameCJK )
     {
         rProperties.push_back( *pNewFontStyleNameCJK );
-        delete pNewFontStyleNameCJK;
+        pNewFontStyleNameCJK.reset();
     }
 
     if( pNewFontFamilyCJK )
     {
         rProperties.push_back( *pNewFontFamilyCJK );
-        delete pNewFontFamilyCJK;
+        pNewFontFamilyCJK.reset();
     }
 
     if( pNewFontPitchCJK )
     {
         rProperties.push_back( *pNewFontPitchCJK );
-        delete pNewFontPitchCJK;
+        pNewFontPitchCJK.reset();
     }
 
     if( pNewFontCharSetCJK )
     {
         rProperties.push_back( *pNewFontCharSetCJK );
-        delete pNewFontCharSetCJK;
+        pNewFontCharSetCJK.reset();
     }
 
     if( pNewFontStyleNameCTL)
     {
         rProperties.push_back( *pNewFontStyleNameCTL );
-        delete pNewFontStyleNameCTL;
+        pNewFontStyleNameCTL.reset();
     }
 
     if( pNewFontFamilyCTL )
     {
         rProperties.push_back( *pNewFontFamilyCTL );
-        delete pNewFontFamilyCTL;
+        pNewFontFamilyCTL.reset();
     }
 
     if( pNewFontPitchCTL )
     {
         rProperties.push_back( *pNewFontPitchCTL );
-        delete pNewFontPitchCTL;
+        pNewFontPitchCTL.reset();
     }
 
     if( pNewFontCharSetCTL )
     {
         rProperties.push_back( *pNewFontCharSetCTL );
-        delete pNewFontCharSetCTL;
+        pNewFontCharSetCTL.reset();
     }
 
     for (sal_uInt16 i=0; i<4; i++)
     {
-        if (pNewParaMargins[i].get())
+        if (pNewParaMargins[i])
         {
             rProperties.push_back(*pNewParaMargins[i]);
         }
-        if (pNewMargins[i].get())
+        if (pNewMargins[i])
         {
             rProperties.push_back(*pNewMargins[i]);
         }
@@ -809,39 +807,39 @@ void XMLTextImportPropertyMapper::finished(
         if( nSizeTypeIndex != -1 )
         {
             XMLPropertyState aSizeTypeState( nSizeTypeIndex );
-            aSizeTypeState.maValue <<= (sal_Int16)( bHasAnyMinHeight
+            aSizeTypeState.maValue <<= static_cast<sal_Int16>( bHasAnyMinHeight
                                                         ? SizeType::MIN
                                                         : SizeType::FIX);
             rProperties.push_back( aSizeTypeState );
         }
     }
 
-    if( bHasAnyWidth )
+    if( !bHasAnyWidth )
+        return;
+
+    if( nWidthTypeIndex == -2 )
     {
-        if( nWidthTypeIndex == -2 )
+        const_cast < XMLTextImportPropertyMapper * > ( this )
+            ->nWidthTypeIndex  = -1;
+        sal_Int32 nCount = getPropertySetMapper()->GetEntryCount();
+        for( sal_Int32 j=0; j < nCount; j++ )
         {
-            const_cast < XMLTextImportPropertyMapper * > ( this )
-                ->nWidthTypeIndex  = -1;
-            sal_Int32 nCount = getPropertySetMapper()->GetEntryCount();
-            for( sal_Int32 j=0; j < nCount; j++ )
+            if( CTF_FRAMEWIDTH_TYPE  == getPropertySetMapper()
+                    ->GetEntryContextId( j ) )
             {
-                if( CTF_FRAMEWIDTH_TYPE  == getPropertySetMapper()
-                        ->GetEntryContextId( j ) )
-                {
-                    const_cast < XMLTextImportPropertyMapper * > ( this )
-                        ->nWidthTypeIndex = j;
-                    break;
-                }
+                const_cast < XMLTextImportPropertyMapper * > ( this )
+                    ->nWidthTypeIndex = j;
+                break;
             }
         }
-        if( nWidthTypeIndex != -1 )
-        {
-            XMLPropertyState aSizeTypeState( nWidthTypeIndex );
-            aSizeTypeState.maValue <<= (sal_Int16)( bHasAnyMinWidth
-                                                        ? SizeType::MIN
-                                                        : SizeType::FIX);
-            rProperties.push_back( aSizeTypeState );
-        }
+    }
+    if( nWidthTypeIndex != -1 )
+    {
+        XMLPropertyState aSizeTypeState( nWidthTypeIndex );
+        aSizeTypeState.maValue <<= static_cast<sal_Int16>( bHasAnyMinWidth
+                                                    ? SizeType::MIN
+                                                    : SizeType::FIX);
+        rProperties.push_back( aSizeTypeState );
     }
 
     // DO NOT USE ITERATORS/POINTERS INTO THE rProperties-VECTOR AFTER

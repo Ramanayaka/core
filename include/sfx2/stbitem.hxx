@@ -23,14 +23,13 @@
 #include <sfx2/dllapi.h>
 #include <svl/poolitem.hxx>
 #include <svtools/statusbarcontroller.hxx>
-#include <vcl/status.hxx>
-
+#include <vcl/vclptr.hxx>
 
 class SfxModule;
 class SfxStatusBarControl;
-class SfxBindings;
+class StatusBar;
 
-svt::StatusbarController* SAL_CALL SfxStatusBarControllerFactory(
+svt::StatusbarController* SfxStatusBarControllerFactory(
     const css::uno::Reference< css::frame::XFrame >& rFrame,
     StatusBar* pStatusBar,
     unsigned short nID,
@@ -111,7 +110,7 @@ public:
     sal_uInt16      GetId() const { return nId; }
     StatusBar&      GetStatusBar() const { return *pBar; }
 
-    static SfxStatusBarControl* CreateControl( sal_uInt16 nSlotID, sal_uInt16 nId, StatusBar *pBar, SfxModule* );
+    static SfxStatusBarControl* CreateControl( sal_uInt16 nSlotID, sal_uInt16 nId, StatusBar *pBar, SfxModule const * );
     static void RegisterStatusBarControl(SfxModule*, const SfxStbCtrlFactory&);
 
 };

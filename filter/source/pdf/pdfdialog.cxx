@@ -21,39 +21,12 @@
 #include "pdfdialog.hxx"
 #include "impdialog.hxx"
 #include <vcl/svapp.hxx>
-#include <vcl/dialog.hxx>
-#include <svl/solar.hrc>
-#include <com/sun/star/view/XRenderable.hpp>
+#include <comphelper/processfactory.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
-
-#define SERVICE_NAME "com.sun.star.document.PDFDialog"
-
-
-OUString PDFDialog_getImplementationName ()
-{
-    return OUString ( "com.sun.star.comp.PDF.PDFDialog" );
-}
-
-
-Sequence< OUString > SAL_CALL PDFDialog_getSupportedServiceNames()
-{
-    Sequence<OUString> aRet { SERVICE_NAME };
-    return aRet;
-}
-
-
-Reference< XInterface > SAL_CALL PDFDialog_createInstance( const Reference< XMultiServiceFactory > & rSMgr)
-{
-    return static_cast<cppu::OWeakObject*>(new PDFDialog( comphelper::getComponentContext(rSMgr) ));
-}
-
-
-#undef SERVICE_NAME
-
 
 PDFDialog::PDFDialog( const Reference< XComponentContext > &rxContext )
 : PDFDialog_Base( rxContext )
@@ -74,31 +47,28 @@ Sequence< sal_Int8 > SAL_CALL PDFDialog::getImplementationId()
 
 OUString SAL_CALL PDFDialog::getImplementationName()
 {
-    return PDFDialog_getImplementationName();
+    return "com.sun.star.comp.PDF.PDFDialog";
 }
 
 
 Sequence< OUString > SAL_CALL PDFDialog::getSupportedServiceNames()
 {
-    return PDFDialog_getSupportedServiceNames();
+    return { "com.sun.star.document.PDFDialog" };
 }
 
-
-VclPtr<Dialog> PDFDialog::createDialog( vcl::Window* pParent )
+std::unique_ptr<weld::DialogController> PDFDialog::createDialog(const css::uno::Reference<css::awt::XWindow>& rParent)
 {
     if( mxSrcDoc.is() )
-        return VclPtr<ImpPDFTabDialog>::Create( pParent, maFilterData, mxSrcDoc );
-    return VclPtr<Dialog>();
+        return std::make_unique<ImpPDFTabDialog>(Application::GetFrameWeld(rParent), maFilterData, mxSrcDoc);
+    return nullptr;
 }
-
 
 void PDFDialog::executedDialog( sal_Int16 nExecutionResult )
 {
-    if( nExecutionResult && m_pDialog )
-        maFilterData = static_cast< ImpPDFTabDialog* >( m_pDialog.get() )->GetFilterData();
+    if (nExecutionResult && m_xDialog)
+        maFilterData = static_cast<ImpPDFTabDialog*>(m_xDialog.get())->GetFilterData();
     destroyDialog();
 }
-
 
 Reference< XPropertySetInfo > SAL_CALL PDFDialog::getPropertySetInfo()
 {
@@ -106,12 +76,10 @@ Reference< XPropertySetInfo > SAL_CALL PDFDialog::getPropertySetInfo()
     return xInfo;
 }
 
-
 ::cppu::IPropertyArrayHelper& PDFDialog::getInfoHelper()
 {
     return *getArrayHelper();
 }
-
 
 ::cppu::IPropertyArrayHelper* PDFDialog::createArrayHelper() const
 {
@@ -145,11 +113,11 @@ void SAL_CALL PDFDialog::setPropertyValues( const Sequence< PropertyValue >& rPr
 {
     maMediaDescriptor = rProps;
 
-    for( sal_Int32 i = 0, nCount = maMediaDescriptor.getLength(); i < nCount; i++ )
+    for( const PropertyValue& rProp : std::as_const(maMediaDescriptor) )
     {
-        if ( maMediaDescriptor[ i ].Name == "FilterData" )
+        if ( rProp.Name == "FilterData" )
         {
-            maMediaDescriptor[ i ].Value >>= maFilterData;
+            rProp.Value >>= maFilterData;
             break;
         }
     }
@@ -159,6 +127,13 @@ void SAL_CALL PDFDialog::setPropertyValues( const Sequence< PropertyValue >& rPr
 void SAL_CALL PDFDialog::setSourceDocument( const Reference< XComponent >& xDoc )
 {
     mxSrcDoc = xDoc;
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_PDFDialog_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new PDFDialog(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

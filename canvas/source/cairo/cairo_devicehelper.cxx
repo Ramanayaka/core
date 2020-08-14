@@ -18,12 +18,12 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/tools/unopolypolygon.hxx>
-#include <com/sun/star/lang/NoSupportException.hpp>
-#include <toolkit/helper/vclunohelper.hxx>
+#include <basegfx/utils/canvastools.hxx>
+#include <basegfx/utils/unopolypolygon.hxx>
 #include <tools/stream.hxx>
+#include <vcl/bitmapex.hxx>
 #include <vcl/canvastools.hxx>
 #include <vcl/dibtools.hxx>
 
@@ -31,7 +31,6 @@
 
 #include "cairo_canvasbitmap.hxx"
 #include "cairo_devicehelper.hxx"
-#include "cairo_spritecanvas.hxx"
 
 using namespace ::cairo;
 using namespace ::com::sun::star;
@@ -223,7 +222,7 @@ namespace cairocanvas
         };
     }
 
-    uno::Reference<rendering::XColorSpace> DeviceHelper::getColorSpace() const
+    uno::Reference<rendering::XColorSpace> const & DeviceHelper::getColorSpace() const
     {
         // always the same
         return DeviceColorSpace::get();
@@ -233,21 +232,21 @@ namespace cairocanvas
     {
         static sal_Int32 nFilePostfixCount(0);
 
-        if( mpRefDevice )
-        {
-            OUString aFilename = "dbg_frontbuffer" + OUString::number(nFilePostfixCount) + ".bmp";
+        if( !mpRefDevice )
+            return;
 
-            SvFileStream aStream( aFilename, StreamMode::STD_READWRITE );
+        OUString aFilename = "dbg_frontbuffer" + OUString::number(nFilePostfixCount) + ".bmp";
 
-            const ::Point aEmptyPoint;
-            bool bOldMap( mpRefDevice->IsMapModeEnabled() );
-            mpRefDevice->EnableMapMode( false );
-            const ::Bitmap aTempBitmap(mpRefDevice->GetBitmap(aEmptyPoint, mpRefDevice->GetOutputSizePixel()));
-            WriteDIB(aTempBitmap, aStream, false, true);
-            mpRefDevice->EnableMapMode( bOldMap );
+        SvFileStream aStream( aFilename, StreamMode::STD_READWRITE );
 
-            ++nFilePostfixCount;
-        }
+        const ::Point aEmptyPoint;
+        bool bOldMap( mpRefDevice->IsMapModeEnabled() );
+        mpRefDevice->EnableMapMode( false );
+        const ::BitmapEx aTempBitmap(mpRefDevice->GetBitmapEx(aEmptyPoint, mpRefDevice->GetOutputSizePixel()));
+        WriteDIB(aTempBitmap, aStream, false);
+        mpRefDevice->EnableMapMode( bOldMap );
+
+        ++nFilePostfixCount;
     }
 
     SurfaceSharedPtr DeviceHelper::createSurface( const ::basegfx::B2ISize& rSize, int aContent )
@@ -258,7 +257,7 @@ namespace cairocanvas
         return SurfaceSharedPtr();
     }
 
-    SurfaceSharedPtr DeviceHelper::createSurface( BitmapSystemData& rData, const Size& rSize )
+    SurfaceSharedPtr DeviceHelper::createSurface( BitmapSystemData const & rData, const Size& rSize )
     {
         if (mpRefDevice)
             return mpRefDevice->CreateBitmapSurface(rData, rSize);

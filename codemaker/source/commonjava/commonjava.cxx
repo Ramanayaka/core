@@ -18,28 +18,28 @@
  */
 
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "codemaker/commonjava.hxx"
+#include <codemaker/commonjava.hxx>
 
-#include "codemaker/options.hxx"
-#include "codemaker/typemanager.hxx"
-#include "codemaker/unotype.hxx"
+#include <codemaker/options.hxx>
+#include <codemaker/typemanager.hxx>
+#include <codemaker/unotype.hxx>
 
-#include "rtl/strbuf.h"
-#include "rtl/string.h"
-#include "rtl/string.hxx"
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
+#include <rtl/strbuf.h>
+#include <rtl/string.h>
+#include <rtl/string.hxx>
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
 
 #include <vector>
 
-namespace codemaker { namespace java {
+namespace codemaker::java {
 
 OString translateUnoToJavaType(
     codemaker::UnoType::Sort sort, OString const & nucleus, bool referenceType)
 {
-    OStringBuffer buf;
+    OStringBuffer buf(128);
     if (sort <= codemaker::UnoType::Sort::Any) {
         OString const javaTypes[static_cast<int>(codemaker::UnoType::Sort::Any) + 1][2] = {
             { "void", "java/lang/Void" },
@@ -130,6 +130,6 @@ OString translateUnoToJavaIdentifier(
     }
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,26 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <unotools/localfilehelper.hxx>
-#include <vcl/errinf.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/metaact.hxx>
-#include <vcl/virdev.hxx>
-#include <vcl/FilterConfigItem.hxx>
 #include <sfx2/docfile.hxx>
-#include <sfx2/docfilt.hxx>
 #include <sfx2/frame.hxx>
-#include <svx/svdograf.hxx>
-#include <svx/svdpagv.hxx>
-#include <svx/xoutbmp.hxx>
-#include <osl/file.hxx>
+#include <sfx2/sfxsids.hrc>
 
-#include "sdpage.hxx"
-#include "drawdoc.hxx"
-#include "sdresid.hxx"
-#include "sdattr.hxx"
 #include "htmlex.hxx"
-#include "sdhtmlfilter.hxx"
+#include <sdhtmlfilter.hxx>
 
 
 SdHTMLFilter::SdHTMLFilter( SfxMedium& rMedium, ::sd::DrawDocShell& rDocShell ) :

@@ -20,11 +20,10 @@
 #include "filtergrouping.hxx"
 #include <sfx2/fcontnr.hxx>
 #include <sfx2/filedlghelper.hxx>
-#include <sfx2/sfx.hrc>
-#include <sfx2/docfac.hxx>
+#include <sfx2/strings.hrc>
+#include <sfx2/docfilt.hxx>
 #include <sfx2/sfxresid.hxx>
-#include <osl/thread.h>
-#include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/ui/dialogs/XFilterGroupManager.hpp>
 #include <com/sun/star/beans/StringPair.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
@@ -34,6 +33,7 @@
 #include <comphelper/sequence.hxx>
 #include <comphelper/string.hxx>
 #include <tools/diagnose_ex.h>
+#include <tools/debug.hxx>
 
 #include <list>
 #include <vector>
@@ -54,12 +54,12 @@ namespace sfx2
 
     /**
 
-    Some general words about what's going on here ....
+    Some general words about what's going on here...
 
     <p>In our file open dialog, usually we display every filter we know. That's how it was before: every filter
-    lead to an own line in the filter list box, e.g. "StarWriter 5.0 Dokument" or "Microsoft Word 97".</p>
+    lead to an own line in the filter list box, e.g. "StarWriter 5.0 Document" or "Microsoft Word 97".</p>
 
-    <p>But then the PM came. And everything changed ....</p>
+    <p>But then the PM came. And everything changed...</p>
 
     <p>A basic idea are groups: Why simply listing all the single filters? Couldn't we draw nice separators
     between the filters which logically belong together? I.e. all the filters which open a document in StarWriter:
@@ -73,7 +73,7 @@ namespace sfx2
     is a matter of this implementation. We only do this grouping and suggest it to the FilePicker service ...</p>
 
     <p>Now for the second concept:<br/>
-    Thinking about it (and that's what the PM did), both "StarWriter 5.0 Dokument" and "Microsoft Word 97"
+    Thinking about it (and that's what the PM did), both "StarWriter 5.0 Document" and "Microsoft Word 97"
     describe a text document. It's a text. It's of no interest for the user that one of the texts was saved in
     MS' format, and one in our own format.<br/>
     So in a first step, we want to have a filter entry "Text documents". This would cover both above-mentioned
@@ -96,14 +96,14 @@ namespace sfx2
     single filters.</p>
 
     <p>Ehm - it was a lie. Not really at the top. Before this group, there is this single "All files" entry. It forms
-    it's own group. But this is uninteresting here.</p>
+    its own group. But this is uninteresting here.</p>
 
     <p>Local classes must consist of filters which - without the classification - would all belong to the same group.
     Then, they're combined to one entry (in the example above: "Microsoft Word 6.0 / 95"), and this entry is inserted
     into the file picker filter list, instead of the single filters which form the class.</p>
 
     <p>This is an interesting difference between local and global classes: Filters which are part of a global class
-    are listed in there own group, too. Filters in local classes aren't listed a second time - neither directly (as
+    are listed in their own group, too. Filters in local classes aren't listed a second time - neither directly (as
     the filter itself) nor indirectly (as part of another local group).</p>
 
     <p>The only exception are filters which are part of a global class <em>and</em> a local class. This is allowed.
@@ -131,23 +131,25 @@ namespace sfx2
     // which a given filter may belong to
     typedef ::std::map< OUString, FilterGroup::iterator >    FilterGroupEntryReferrer;
 
+    namespace {
+
     /// a descriptor for a filter class (which in the final dialog is represented by one filter entry)
-    typedef struct _tagFilterClass
+    struct FilterClass
     {
         OUString             sDisplayName;       // the display name
         Sequence< FilterName >      aSubFilters;        // the (logical) names of the filter which belong to the class
-    } FilterClass;
+    };
+
+    }
 
     typedef ::std::list< FilterClass >                                  FilterClassList;
     typedef ::std::map< OUString, FilterClassList::iterator >    FilterClassReferrer;
-
-    typedef ::std::vector< OUString >                            StringArray;
 
 
 // = reading of configuration data
 
 
-    void lcl_ReadFilterClass( const OConfigurationNode& _rClassesNode, const OUString& _rLogicalClassName,
+    static void lcl_ReadFilterClass( const OConfigurationNode& _rClassesNode, const OUString& _rLogicalClassName,
         FilterClass& /* [out] */ _rClass )
     {
             // the description node for the current class
@@ -158,6 +160,7 @@ namespace sfx2
         aClassDesc.getNodeValue( "Filters" ) >>= _rClass.aSubFilters;
     }
 
+    namespace {
 
     struct CreateEmptyClassRememberPos
     {
@@ -176,12 +179,12 @@ namespace sfx2
         void operator() ( const FilterName& _rLogicalFilterName )
         {
             // insert a new (empty) class
-            m_rClassList.push_back( FilterClass() );
+            m_rClassList.emplace_back( );
             // get the position of this new entry
             FilterClassList::iterator aInsertPos = m_rClassList.end();
             --aInsertPos;
             // remember this position
-            m_rClassesReferrer.insert( FilterClassReferrer::value_type( _rLogicalFilterName, aInsertPos ) );
+            m_rClassesReferrer.emplace( _rLogicalFilterName, aInsertPos );
         }
     };
 
@@ -208,7 +211,7 @@ namespace sfx2
                 // we do not know this global class
                 OSL_FAIL( "ReadGlobalFilter::operator(): unknown filter name!" );
                 // TODO: perhaps we should be more tolerant - at the moment, the filter is dropped
-                // We could silently push_back it to the container ....
+                // We could silently push_back it to the container...
             }
             else
             {
@@ -218,23 +221,19 @@ namespace sfx2
         }
     };
 
+    }
 
-    void lcl_ReadGlobalFilters( const OConfigurationNode& _rFilterClassification, FilterClassList& _rGlobalClasses, StringArray& _rGlobalClassNames )
+    static void lcl_ReadGlobalFilters( const OConfigurationNode& _rFilterClassification, FilterClassList& _rGlobalClasses, std::vector<OUString>& _rGlobalClassNames )
     {
         _rGlobalClasses.clear();
         _rGlobalClassNames.clear();
-
 
         // get the list describing the order of all global classes
         Sequence< OUString > aGlobalClasses;
         _rFilterClassification.getNodeValue( "GlobalFilters/Order" ) >>= aGlobalClasses;
 
-        const OUString* pNames = aGlobalClasses.getConstArray();
-        const OUString* pNamesEnd = pNames + aGlobalClasses.getLength();
-
         // copy the logical names
-        _rGlobalClassNames.resize( aGlobalClasses.getLength() );
-        ::std::copy( pNames, pNamesEnd, _rGlobalClassNames.begin() );
+        comphelper::sequenceToContainer(_rGlobalClassNames, aGlobalClasses);
 
         // Global classes are presented in an own group, so their order matters (while the order of the
         // "local classes" doesn't).
@@ -242,8 +241,8 @@ namespace sfx2
         // are returned from the configuration - it is completely undefined, and we need a _defined_ order.
         FilterClassReferrer aClassReferrer;
         ::std::for_each(
-            pNames,
-            pNamesEnd,
+            aGlobalClasses.begin(),
+            aGlobalClasses.end(),
             CreateEmptyClassRememberPos( _rGlobalClasses, aClassReferrer )
         );
             // now _rGlobalClasses contains a dummy entry for each global class,
@@ -256,12 +255,13 @@ namespace sfx2
             _rFilterClassification.openNode( "GlobalFilters/Classes" );
         Sequence< OUString > aFilterClasses = aFilterClassesNode.getNodeNames();
         ::std::for_each(
-            aFilterClasses.getConstArray(),
-            aFilterClasses.getConstArray() + aFilterClasses.getLength(),
+            aFilterClasses.begin(),
+            aFilterClasses.end(),
             ReadGlobalFilter( aFilterClassesNode, aClassReferrer )
         );
     }
 
+    namespace {
 
     struct ReadLocalFilter
     {
@@ -288,8 +288,9 @@ namespace sfx2
         }
     };
 
+    }
 
-    void lcl_ReadLocalFilters( const OConfigurationNode& _rFilterClassification, FilterClassList& _rLocalClasses )
+    static void lcl_ReadLocalFilters( const OConfigurationNode& _rFilterClassification, FilterClassList& _rLocalClasses )
     {
         _rLocalClasses.clear();
 
@@ -299,14 +300,14 @@ namespace sfx2
         Sequence< OUString > aFilterClasses = aFilterClassesNode.getNodeNames();
 
         ::std::for_each(
-            aFilterClasses.getConstArray(),
-            aFilterClasses.getConstArray() + aFilterClasses.getLength(),
+            aFilterClasses.begin(),
+            aFilterClasses.end(),
             ReadLocalFilter( aFilterClassesNode, _rLocalClasses )
         );
     }
 
 
-    void lcl_ReadClassification( FilterClassList& _rGlobalClasses, StringArray& _rGlobalClassNames, FilterClassList& _rLocalClasses )
+    static void lcl_ReadClassification( FilterClassList& _rGlobalClasses, std::vector<OUString>& _rGlobalClassNames, FilterClassList& _rLocalClasses )
     {
 
         // open our config node
@@ -322,7 +323,7 @@ namespace sfx2
         lcl_ReadGlobalFilters( aFilterClassification, _rGlobalClasses, _rGlobalClassNames );
 
 
-        // fo for the local classes
+        // go for the local classes
         lcl_ReadLocalFilters( aFilterClassification, _rLocalClasses );
 
     }
@@ -330,6 +331,7 @@ namespace sfx2
 
 // = grouping and classifying
 
+    namespace {
 
     // a struct which adds helps remembering a reference to a class entry
     struct ReferToFilterEntry
@@ -349,7 +351,7 @@ namespace sfx2
         void operator() ( const FilterName& _rName )
         {
             ::std::pair< FilterGroupEntryReferrer::iterator, bool > aInsertRes =
-            m_rEntryReferrer.insert( FilterGroupEntryReferrer::value_type( _rName, m_aClassPos ) );
+            m_rEntryReferrer.emplace( _rName, m_aClassPos );
             SAL_WARN_IF(
                 !aInsertRes.second, "sfx.dialog",
                 "already have an element for " << _rName);
@@ -387,21 +389,23 @@ namespace sfx2
             // and for all the sub filters of the class, remember the class
             // (respectively the position of the class it the group)
             ::std::for_each(
-                _rClass.aSubFilters.getConstArray(),
-                _rClass.aSubFilters.getConstArray() + _rClass.aSubFilters.getLength(),
+                _rClass.aSubFilters.begin(),
+                _rClass.aSubFilters.end(),
                 ReferToFilterEntry( m_rClassReferrer, aClassEntryPos )
             );
         }
     };
 
+    }
 
-    static const sal_Unicode s_cWildcardSeparator( ';' );
+    const sal_Unicode s_cWildcardSeparator( ';' );
 
     static OUString getSeparatorString()
     {
-        return OUString(";");
+        return ";";
     }
 
+    namespace {
 
     struct CheckAppendSingleWildcard
     {
@@ -415,14 +419,13 @@ namespace sfx2
             sal_Int32 nExistentPos = _rToBeExtended.indexOf( _rWC );
             if  ( -1 < nExistentPos )
             {   // found this wildcard (already part of _rToBeExtended)
-                const sal_Unicode* pBuffer = _rToBeExtended.getStr();
                 if  (   ( 0 == nExistentPos )
-                    ||  ( s_cWildcardSeparator == pBuffer[ nExistentPos - 1 ] )
+                    ||  ( s_cWildcardSeparator == _rToBeExtended[ nExistentPos - 1 ] )
                     )
                 {   // the wildcard really starts at this position (it starts at pos 0 or the previous character is a separator
                     sal_Int32 nExistentWCEnd = nExistentPos + _rWC.getLength();
                     if  (   ( _rToBeExtended.getLength() == nExistentWCEnd )
-                        ||  ( s_cWildcardSeparator == pBuffer[ nExistentWCEnd ] )
+                        ||  ( s_cWildcardSeparator == _rToBeExtended[ nExistentWCEnd ] )
                         )
                     {   // it's really the complete wildcard we found
                         // (not something like _rWC being "*.t" and _rToBeExtended containing "*.txt")
@@ -460,12 +463,13 @@ namespace sfx2
         }
     };
 
+    }
 
     AppendWildcardToDescriptor::AppendWildcardToDescriptor( const OUString& _rWildCard )
     {
         DBG_ASSERT( !_rWildCard.isEmpty(),
             "AppendWildcardToDescriptor::AppendWildcardToDescriptor: invalid wildcard!" );
-        DBG_ASSERT( _rWildCard[0] != s_cWildcardSeparator,
+        DBG_ASSERT( _rWildCard.isEmpty() || _rWildCard[0] != s_cWildcardSeparator,
             "AppendWildcardToDescriptor::AppendWildcardToDescriptor: wildcard already separated!" );
 
         aWildCards.reserve( comphelper::string::getTokenCount(_rWildCard, s_cWildcardSeparator) );
@@ -477,7 +481,7 @@ namespace sfx2
         {
             if ( ( s_cWildcardSeparator == *pTokenLoop ) && ( pTokenLoop > pTokenStart ) )
             {   // found a new token separator (and a non-empty token)
-                aWildCards.push_back( OUString( pTokenStart, pTokenLoop - pTokenStart ) );
+                aWildCards.emplace_back( pTokenStart, pTokenLoop - pTokenStart );
 
                 // search the start of the next token
                 while ( ( pTokenStart != pTokenLoopEnd ) && ( *pTokenStart != s_cWildcardSeparator ) )
@@ -492,12 +496,12 @@ namespace sfx2
             }
         }
         if ( pTokenLoop > pTokenStart )
-            // the last one ....
-            aWildCards.push_back( OUString( pTokenStart, pTokenLoop - pTokenStart ) );
+            // the last one...
+            aWildCards.emplace_back( pTokenStart, pTokenLoop - pTokenStart );
     }
 
 
-    void lcl_InitGlobalClasses( GroupedFilterList& _rAllFilters, const FilterClassList& _rGlobalClasses, FilterGroupEntryReferrer& _rGlobalClassesRef )
+    static void lcl_InitGlobalClasses( GroupedFilterList& _rAllFilters, const FilterClassList& _rGlobalClasses, FilterGroupEntryReferrer& _rGlobalClassesRef )
     {
         // we need an extra group in our "all filters" container
         _rAllFilters.push_front( FilterGroup() );
@@ -523,6 +527,8 @@ namespace sfx2
     typedef ::std::vector< ::std::pair< FilterGroupEntryReferrer::mapped_type, FilterGroup::iterator > >
             MapGroupEntry2GroupEntry;
             // this is not really a map - it's just called this way because it is used as a map
+
+    namespace {
 
     struct FindGroupEntry
     {
@@ -556,15 +562,16 @@ namespace sfx2
         }
     };
 
+    }
 
-    void lcl_GroupAndClassify( TSortedFilterList& _rFilterMatcher, GroupedFilterList& _rAllFilters )
+    static void lcl_GroupAndClassify( TSortedFilterList& _rFilterMatcher, GroupedFilterList& _rAllFilters )
     {
         _rAllFilters.clear();
 
 
         // read the classification of filters
         FilterClassList aGlobalClasses, aLocalClasses;
-        StringArray aGlobalClassNames;
+        std::vector<OUString> aGlobalClassNames;
         lcl_ReadClassification( aGlobalClasses, aGlobalClassNames, aLocalClasses );
 
 
@@ -576,7 +583,7 @@ namespace sfx2
         // (this assumes that both numbers are the same, which, speaking strictly, must not hold - but it does, as we know ...)
         sal_Int32 nGlobalClasses = aGlobalClasses.size();
         while ( nGlobalClasses-- )
-            _rAllFilters.push_back( FilterGroup() );
+            _rAllFilters.emplace_back( );
 
 
         // for the local classes:
@@ -625,15 +632,11 @@ namespace sfx2
                     "sfx2::lcl_GroupAndClassify: invalid all-filters array here!" );
                     // the loop below will work on invalid objects else ...
                 ++aGroupPos;
-                StringArray::iterator aGlobalIter = aGlobalClassNames.begin();
-                while   (   ( aGroupPos != _rAllFilters.end() )
-                        &&  ( aGlobalIter != aGlobalClassNames.end() )
-                        &&  ( *aGlobalIter != aServiceName )
-                        )
-                {
-                    ++aGlobalIter;
-                    ++aGroupPos;
-                }
+                auto aGlobalIter = std::find(aGlobalClassNames.begin(), aGlobalClassNames.end(), aServiceName);
+                auto nGroupPosShift = std::min(
+                    std::distance(aGlobalClassNames.begin(), aGlobalIter),
+                    std::distance(aGroupPos, _rAllFilters.end()));
+                std::advance(aGroupPos, nGroupPosShift);
                 if ( aGroupPos != _rAllFilters.end() )
                     // we found a global class name which matches the doc service name -> fill the filters of this
                     // group in the respective prepared group
@@ -673,10 +676,7 @@ namespace sfx2
                 // -> append the wildcard
                 aExtendWildcard( *aBelongsToLocal );
 
-                MapGroupEntry2GroupEntry::iterator aThisGroupFinalPos =
-                    ::std::find_if( aLocalFinalPositions.begin(), aLocalFinalPositions.end(), FindGroupEntry( aBelongsToLocal->second ) );
-
-                if ( aLocalFinalPositions.end() == aThisGroupFinalPos )
+                if ( std::none_of( aLocalFinalPositions.begin(), aLocalFinalPositions.end(), FindGroupEntry( aBelongsToLocal->second ) ) )
                 {   // the position within aCollectedLocals has not been mapped to a final position
                     // within the "real" group (aCollectedLocals is only temporary)
                     // -> do this now (as we just encountered the first filter belonging to this local class
@@ -686,7 +686,7 @@ namespace sfx2
                     FilterGroup::iterator aInsertPos = aCurrentGroup->end();
                     --aInsertPos;
                     // remember this pos
-                    aLocalFinalPositions.push_back( MapGroupEntry2GroupEntry::value_type( aBelongsToLocal->second, aInsertPos ) );
+                    aLocalFinalPositions.emplace_back( aBelongsToLocal->second, aInsertPos );
                 }
             }
             else
@@ -715,6 +715,7 @@ namespace sfx2
         rGlobalFilters.swap( aNonEmptyGlobalFilters );
     }
 
+    namespace {
 
     struct AppendFilter
     {
@@ -746,11 +747,12 @@ namespace sfx2
             }
     };
 
+    }
 
 // = handling for the "all files" entry
 
 
-    bool lcl_hasAllFilesFilter( TSortedFilterList& _rFilterMatcher, OUString& /* [out] */ _rAllFilterName )
+    static bool lcl_hasAllFilesFilter( TSortedFilterList& _rFilterMatcher, OUString& /* [out] */ _rAllFilterName )
     {
         bool        bHasAll = false;
         _rAllFilterName = SfxResId( STR_SFX_FILTERNAME_ALL );
@@ -766,7 +768,7 @@ namespace sfx2
     }
 
 
-    void lcl_EnsureAllFilesEntry( TSortedFilterList& _rFilterMatcher, GroupedFilterList& _rFilters )
+    static void lcl_EnsureAllFilesEntry( TSortedFilterList& _rFilterMatcher, GroupedFilterList& _rFilters )
     {
 
         OUString sAllFilterName;
@@ -785,6 +787,7 @@ namespace sfx2
 
 // = filling an XFilterManager
 
+    namespace {
 
     struct AppendFilterGroup
     {
@@ -810,15 +813,13 @@ namespace sfx2
                 if ( m_xFilterGroupManager.is() )
                 {   // the file dialog implementation supports visual grouping of filters
                     // create a representation of the group which is understandable by the XFilterGroupManager
-                    if ( _rGroup.size() )
+                    if ( !_rGroup.empty() )
                     {
                         Sequence< StringPair > aFilters( comphelper::containerToSequence(_rGroup) );
                         if ( _bAddExtension )
                         {
-                            StringPair* pFilters = aFilters.getArray();
-                            StringPair* pEnd = pFilters + aFilters.getLength();
-                            for ( ; pFilters != pEnd; ++pFilters )
-                                pFilters->First = addExtension( pFilters->First, pFilters->Second, true, *m_pFileDlgImpl );
+                            for ( StringPair & filter : aFilters )
+                                filter.First = addExtension( filter.First, filter.Second, true, *m_pFileDlgImpl );
                         }
                         m_xFilterGroupManager->appendFilterGroup( OUString(), aFilters );
                     }
@@ -833,7 +834,7 @@ namespace sfx2
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("sfx.dialog");
             }
         }
 
@@ -844,6 +845,7 @@ namespace sfx2
         }
     };
 
+    }
 
     TSortedFilterList::TSortedFilterList(const css::uno::Reference< css::container::XEnumeration >& xFilterList)
         : m_nIterator(0)
@@ -880,7 +882,7 @@ namespace sfx2
 
     std::shared_ptr<const SfxFilter> TSortedFilterList::impl_getFilter(sal_Int32 nIndex)
     {
-        if (nIndex<0 || nIndex>=(sal_Int32)m_lFilters.size())
+        if (nIndex<0 || nIndex>=static_cast<sal_Int32>(m_lFilters.size()))
             return nullptr;
         const OUString& sFilterName = m_lFilters[nIndex];
         if (sFilterName.isEmpty())
@@ -941,6 +943,8 @@ namespace sfx2
         }
     }
 
+    namespace {
+
     struct ExportFilter
     {
         ExportFilter( const OUString& _aUIName, const OUString& _aWildcard ) :
@@ -950,6 +954,7 @@ namespace sfx2
         OUString aWildcard;
     };
 
+    }
 
     void appendExportFilters( TSortedFilterList& _rFilterMatcher,
                               const Reference< XFilterManager >& _rxFilterManager,
@@ -962,7 +967,6 @@ namespace sfx2
         sal_Int32                           nHTMLIndex  = -1;
         sal_Int32                           nXHTMLIndex  = -1;
         sal_Int32                           nPDFIndex   = -1;
-        sal_Int32                           nFlashIndex = -1;
         OUString                     sUIName;
         OUString                     sExtensions;
         std::vector< ExportFilter >         aImportantFilterGroup;
@@ -1002,18 +1006,6 @@ namespace sfx2
                 aImportantFilterGroup.insert( aIter, aExportFilter );
                 nPDFIndex = 0;
             }
-            else if ( nFlashIndex == -1 && sTypeName == "graphic_SWF" )
-            {
-                std::vector< ExportFilter >::iterator aIter = aImportantFilterGroup.begin();
-                if ( nHTMLIndex != -1 )
-                    ++aIter;
-                if ( nXHTMLIndex != -1 )
-                    ++aIter;
-                if ( nPDFIndex != -1 )
-                    ++aIter;
-                aImportantFilterGroup.insert( aIter, aExportFilter );
-                nFlashIndex = 0;
-            }
             else
                 aFilterGroup.push_back( aExportFilter );
         }
@@ -1024,7 +1016,7 @@ namespace sfx2
             if ( !aImportantFilterGroup.empty() )
             {
                 Sequence< StringPair > aFilters( aImportantFilterGroup.size() );
-                for ( sal_Int32 i = 0; i < (sal_Int32)aImportantFilterGroup.size(); i++ )
+                for ( sal_Int32 i = 0; i < static_cast<sal_Int32>(aImportantFilterGroup.size()); i++ )
                 {
                     aFilters[i].First   = addExtension( aImportantFilterGroup[i].aUIName,
                                                         aImportantFilterGroup[i].aWildcard,
@@ -1044,7 +1036,7 @@ namespace sfx2
             if ( !aFilterGroup.empty() )
             {
                 Sequence< StringPair > aFilters( aFilterGroup.size() );
-                for ( sal_Int32 i = 0; i < (sal_Int32)aFilterGroup.size(); i++ )
+                for ( sal_Int32 i = 0; i < static_cast<sal_Int32>(aFilterGroup.size()); i++ )
                 {
                     aFilters[i].First   = addExtension( aFilterGroup[i].aUIName,
                                                         aFilterGroup[i].aWildcard,
@@ -1066,7 +1058,7 @@ namespace sfx2
             // Fallback solution just add both filter groups as single filters
             sal_Int32 n;
 
-            for ( n = 0; n < (sal_Int32)aImportantFilterGroup.size(); n++ )
+            for ( n = 0; n < static_cast<sal_Int32>(aImportantFilterGroup.size()); n++ )
             {
                 try
                 {
@@ -1084,7 +1076,7 @@ namespace sfx2
                 }
             }
 
-            for ( n = 0; n < (sal_Int32)aFilterGroup.size(); n++ )
+            for ( n = 0; n < static_cast<sal_Int32>(aFilterGroup.size()); n++ )
             {
                 try
                 {
@@ -1161,9 +1153,7 @@ namespace sfx2
                 // show '*' in extensions only when opening a document
                 sExt = sExt.replaceAll("*", "");
             }
-            sRet += " (";
-            sRet += sExt;
-            sRet += ")";
+            sRet += " (" + sExt + ")";
         }
         _rFileDlgImpl.addFilterPair( _rDisplayText, sRet );
         return sRet;

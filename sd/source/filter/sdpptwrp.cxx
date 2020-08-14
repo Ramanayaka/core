@@ -19,39 +19,41 @@
 
 #include <sfx2/docfile.hxx>
 #include <sfx2/docfilt.hxx>
-#include <sfx2/objsh.hxx>
-#include <osl/module.hxx>
+#include <sfx2/sfxsids.hrc>
 #include <filter/msfilter/msoleexp.hxx>
-#include <filter/msfilter/svxmsbas.hxx>
 #include <svx/svxerr.hxx>
 #include <unotools/fltrcfg.hxx>
+#include <unotools/streamwrap.hxx>
+#include <sot/storage.hxx>
+#include <comphelper/sequenceashashmap.hxx>
+#include <comphelper/processfactory.hxx>
 
-#include "sdpptwrp.hxx"
-#include "ppt/pptin.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-#include <tools/urlobj.hxx>
+#include <com/sun/star/packages/XPackageEncryption.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
+#include <sdpptwrp.hxx>
+#include <DrawDocShell.hxx>
+#include <sfx2/frame.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::task;
 using namespace ::com::sun::star::frame;
 
-typedef sal_Bool ( SAL_CALL *ExportPPTPointer )( const std::vector< css::beans::PropertyValue >&, tools::SvRef<SotStorage>&,
-                                             Reference< XModel > &,
-                                             Reference< XStatusIndicator > &,
+typedef sal_Bool ( *ExportPPTPointer )( const std::vector< css::beans::PropertyValue >&, tools::SvRef<SotStorage> const&,
+                                             Reference< XModel > const &,
+                                             Reference< XStatusIndicator > const &,
                                              SvMemoryStream*, sal_uInt32 nCnvrtFlags );
 
-typedef sal_Bool ( SAL_CALL *ImportPPTPointer )( SdDrawDocument*, SvStream&, SotStorage&, SfxMedium& );
+typedef sal_Bool ( *ImportPPTPointer )( SdDrawDocument*, SvStream&, SotStorage&, SfxMedium& );
 
-typedef sal_Bool ( SAL_CALL *SaveVBAPointer )( SfxObjectShell&, SvMemoryStream*& );
+typedef sal_Bool ( *SaveVBAPointer )( SfxObjectShell&, SvMemoryStream*& );
 
 #ifdef DISABLE_DYNLOADING
 
-extern "C" sal_Bool ExportPPT( const std::vector< css::beans::PropertyValue >&, tools::SvRef<SotStorage>&,
-                               Reference< XModel > &,
-                               Reference< XStatusIndicator > &,
+extern "C" sal_Bool ExportPPT( const std::vector< css::beans::PropertyValue >&, tools::SvRef<SotStorage> const&,
+                               Reference< XModel > const &,
+                               Reference< XStatusIndicator > const &,
                                SvMemoryStream*, sal_uInt32 nCnvrtFlags );
 
 extern "C" sal_Bool ImportPPT( SdDrawDocument*, SvStream&, SotStorage&, SfxMedium& );
@@ -72,9 +74,101 @@ SdPPTFilter::~SdPPTFilter()
     delete pBas;    // deleting the compressed basic storage
 }
 
+static void lcl_getListOfStreams(SotStorage * pStorage, comphelper::SequenceAsHashMap& aStreamsData, const OUString& sPrefix)
+{
+    SvStorageInfoList aElements;
+    pStorage->FillInfoList(&aElements);
+    for (const auto & aElement : aElements)
+    {
+        OUString sStreamFullName = sPrefix.getLength() ? sPrefix + "/" + aElement.GetName() : aElement.GetName();
+        if (aElement.IsStorage())
+        {
+            tools::SvRef<SotStorage> xSubStorage = pStorage->OpenSotStorage(aElement.GetName(), StreamMode::STD_READ | StreamMode::SHARE_DENYALL);
+            lcl_getListOfStreams(xSubStorage.get(), aStreamsData, sStreamFullName);
+        }
+        else
+        {
+            // Read stream
+            tools::SvRef<SotStorageStream> rStream = pStorage->OpenSotStream(aElement.GetName(), StreamMode::READ | StreamMode::SHARE_DENYALL);
+            if (rStream.is())
+            {
+                sal_Int32 nStreamSize = rStream->GetSize();
+                Sequence< sal_Int8 > oData;
+                oData.realloc(nStreamSize);
+                sal_Int32 nReadBytes = rStream->ReadBytes(oData.getArray(), nStreamSize);
+                if (nStreamSize == nReadBytes)
+                    aStreamsData[sStreamFullName] <<= oData;
+            }
+        }
+    }
+}
+
+static tools::SvRef<SotStorage> lcl_DRMDecrypt(SfxMedium& rMedium, tools::SvRef<SotStorage>& rStorage, std::shared_ptr<SvStream>& rNewStorageStrm)
+{
+    tools::SvRef<SotStorage> aNewStorage;
+
+    // We have DRM encrypted storage. We should try to decrypt it first, if we can
+    Sequence< Any > aArguments;
+    Reference<XComponentContext> xComponentContext(comphelper::getProcessComponentContext());
+    Reference< css::packages::XPackageEncryption > xPackageEncryption(
+        xComponentContext->getServiceManager()->createInstanceWithArgumentsAndContext(
+            "com.sun.star.comp.oox.crypto.DRMDataSpace", aArguments, xComponentContext), UNO_QUERY);
+
+    if (!xPackageEncryption.is())
+    {
+        // We do not know how to decrypt this
+        return aNewStorage;
+    }
+
+    comphelper::SequenceAsHashMap aStreamsData;
+    lcl_getListOfStreams(rStorage.get(), aStreamsData, "");
+
+    try {
+        Sequence<NamedValue> aStreams = aStreamsData.getAsConstNamedValueList();
+        if (!xPackageEncryption->readEncryptionInfo(aStreams))
+        {
+            // We failed with decryption
+            return aNewStorage;
+        }
+
+        tools::SvRef<SotStorageStream> rContentStream = rStorage->OpenSotStream("\011DRMContent", StreamMode::READ | StreamMode::SHARE_DENYALL);
+        if (!rContentStream.is())
+        {
+            return aNewStorage;
+        }
+
+        rNewStorageStrm = std::make_shared<SvMemoryStream>();
+
+        Reference<css::io::XInputStream > xInputStream(new utl::OSeekableInputStreamWrapper(rContentStream.get(), false));
+        Reference<css::io::XOutputStream > xDecryptedStream(new utl::OSeekableOutputStreamWrapper(*rNewStorageStrm));
+
+        if (!xPackageEncryption->decrypt(xInputStream, xDecryptedStream))
+        {
+            // We failed with decryption
+            return aNewStorage;
+        }
+
+        rNewStorageStrm->Seek(0);
+
+        // Further reading is done from new document
+        aNewStorage = new SotStorage(*rNewStorageStrm);
+
+        // Set the media descriptor data
+        Sequence<NamedValue> aEncryptionData = xPackageEncryption->createEncryptionData("");
+        rMedium.GetItemSet()->Put(SfxUnoAnyItem(SID_ENCRYPTIONDATA, makeAny(aEncryptionData)));
+    }
+    catch (const std::exception&)
+    {
+        return aNewStorage;
+    }
+
+    return aNewStorage;
+}
+
 bool SdPPTFilter::Import()
 {
-    bool    bRet = false;
+    bool bRet = false;
+    std::shared_ptr<SvStream> aDecryptedStorageStrm;
     tools::SvRef<SotStorage> pStorage = new SotStorage( mrMedium.GetInStream(), false );
     if( !pStorage->GetError() )
     {
@@ -87,7 +181,12 @@ bool SdPPTFilter::Import()
             xDualStorage = pStorage->OpenSotStorage( sDualStorage, StreamMode::STD_READ );
             pStorage = xDualStorage;
         }
-        SvStream* pDocStream = pStorage->OpenSotStream( "PowerPoint Document" , StreamMode::STD_READ );
+        if (pStorage->IsContained("\011DRMContent"))
+        {
+            // Document is DRM encrypted
+            pStorage = lcl_DRMDecrypt(mrMedium, pStorage, aDecryptedStorageStrm);
+        }
+        std::unique_ptr<SvStream> pDocStream(pStorage->OpenSotStream( "PowerPoint Document" , StreamMode::STD_READ ));
         if( pDocStream )
         {
             pDocStream->SetVersion( pStorage->GetVersion() );
@@ -97,27 +196,19 @@ bool SdPPTFilter::Import()
                 mrMedium.SetError(ERRCODE_SVX_READ_FILTER_PPOINT);
             else
             {
-#ifndef DISABLE_DYNLOADING
-                ::osl::Module* pLibrary = OpenLibrary( mrMedium.GetFilter()->GetUserData() );
-                if ( pLibrary )
-                {
-                    ImportPPTPointer PPTImport = reinterpret_cast< ImportPPTPointer >( pLibrary->getFunctionSymbol( "ImportPPT" ) );
-                    if ( PPTImport )
-                        bRet = PPTImport( &mrDocument, *pDocStream, *pStorage, mrMedium );
-
-                    if ( !bRet )
-                        mrMedium.SetError(SVSTREAM_WRONGVERSION);
-                    pLibrary->release(); //TODO: let it get unloaded?
-                    delete pLibrary;
-                }
+#ifdef DISABLE_DYNLOADING
+                ImportPPTPointer pPPTImport = ImportPPT;
 #else
-                bRet = ImportPPT( &mrDocument, *pDocStream, *pStorage, mrMedium );
+                ImportPPTPointer pPPTImport = reinterpret_cast< ImportPPTPointer >(
+                    SdFilter::GetLibrarySymbol(mrMedium.GetFilter()->GetUserData(), "ImportPPT"));
+#endif
+
+                if ( pPPTImport )
+                    bRet = pPPTImport( &mrDocument, *pDocStream, *pStorage, mrMedium );
+
                 if ( !bRet )
                     mrMedium.SetError(SVSTREAM_WRONGVERSION);
-#endif
             }
-
-            delete pDocStream;
         }
     }
 
@@ -126,58 +217,144 @@ bool SdPPTFilter::Import()
 
 bool SdPPTFilter::Export()
 {
-#ifndef DISABLE_DYNLOADING
-    ::osl::Module* pLibrary = OpenLibrary( mrMedium.GetFilter()->GetUserData() );
-#endif
-    bool        bRet = false;
+    bool bRet = false;
 
-#ifndef DISABLE_DYNLOADING
-    if( pLibrary )
-#endif
+    if( mxModel.is() )
     {
-        if( mxModel.is() )
-        {
-            tools::SvRef<SotStorage>    xStorRef = new SotStorage( mrMedium.GetOutStream(), false );
-#ifndef DISABLE_DYNLOADING
-            ExportPPTPointer PPTExport = reinterpret_cast<ExportPPTPointer>(pLibrary->getFunctionSymbol( "ExportPPT" ));
+#ifdef DISABLE_DYNLOADING
+        ExportPPTPointer PPTExport = ExportPPT;
 #else
-            ExportPPTPointer PPTExport = ExportPPT;
+        ExportPPTPointer PPTExport = reinterpret_cast< ExportPPTPointer >(
+            SdFilter::GetLibrarySymbol(mrMedium.GetFilter()->GetUserData(), "ExportPPT"));
 #endif
 
-            if( PPTExport && xStorRef.is() )
+        if( PPTExport)
+        {
+            sal_uInt32          nCnvrtFlags = 0;
+            const SvtFilterOptions& rFilterOptions = SvtFilterOptions::Get();
+            if ( rFilterOptions.IsMath2MathType() )
+                nCnvrtFlags |= OLE_STARMATH_2_MATHTYPE;
+            if ( rFilterOptions.IsWriter2WinWord() )
+                nCnvrtFlags |= OLE_STARWRITER_2_WINWORD;
+            if ( rFilterOptions.IsCalc2Excel() )
+                nCnvrtFlags |= OLE_STARCALC_2_EXCEL;
+            if ( rFilterOptions.IsImpress2PowerPoint() )
+                nCnvrtFlags |= OLE_STARIMPRESS_2_POWERPOINT;
+            if ( rFilterOptions.IsEnablePPTPreview() )
+                nCnvrtFlags |= 0x8000;
+
+            CreateStatusIndicator();
+
+            //OUString sBaseURI( "BaseURI");
+            std::vector< PropertyValue > aProperties;
+            PropertyValue aProperty;
+            aProperty.Name = "BaseURI";
+            aProperty.Value <<= mrMedium.GetBaseURL( true );
+            aProperties.push_back( aProperty );
+
+            SvStream * pOutputStrm = mrMedium.GetOutStream();
+
+            Sequence< NamedValue > aEncryptionData;
+            Reference< css::packages::XPackageEncryption > xPackageEncryption;
+            const SfxUnoAnyItem* pEncryptionDataItem = SfxItemSet::GetItem<SfxUnoAnyItem>(mrMedium.GetItemSet(), SID_ENCRYPTIONDATA, false);
+            std::shared_ptr<SvStream> pMediaStrm;
+            if (pEncryptionDataItem && (pEncryptionDataItem->GetValue() >>= aEncryptionData))
             {
-                sal_uInt32          nCnvrtFlags = 0;
-                const SvtFilterOptions& rFilterOptions = SvtFilterOptions::Get();
-                if ( rFilterOptions.IsMath2MathType() )
-                    nCnvrtFlags |= OLE_STARMATH_2_MATHTYPE;
-                if ( rFilterOptions.IsWriter2WinWord() )
-                    nCnvrtFlags |= OLE_STARWRITER_2_WINWORD;
-                if ( rFilterOptions.IsCalc2Excel() )
-                    nCnvrtFlags |= OLE_STARCALC_2_EXCEL;
-                if ( rFilterOptions.IsImpress2PowerPoint() )
-                    nCnvrtFlags |= OLE_STARIMPRESS_2_POWERPOINT;
-                if ( rFilterOptions.IsEnablePPTPreview() )
-                    nCnvrtFlags |= 0x8000;
+                ::comphelper::SequenceAsHashMap aHashData(aEncryptionData);
+                OUString sCryptoType = aHashData.getUnpackedValueOrDefault("CryptoType", OUString());
 
-                mrDocument.SetSwapGraphicsMode( SdrSwapGraphicsMode::TEMP );
+                if (sCryptoType.getLength())
+                {
+                    Reference<XComponentContext> xComponentContext(comphelper::getProcessComponentContext());
+                    Sequence<Any> aArguments{
+                        makeAny(NamedValue("Binary", makeAny(true))) };
+                    xPackageEncryption.set(
+                        xComponentContext->getServiceManager()->createInstanceWithArgumentsAndContext(
+                            "com.sun.star.comp.oox.crypto." + sCryptoType, aArguments, xComponentContext), UNO_QUERY);
 
-                CreateStatusIndicator();
+                    if (xPackageEncryption.is())
+                    {
+                        // We have an encryptor. Export document into memory stream and encrypt it later
+                        pMediaStrm = std::make_shared<SvMemoryStream>();
+                        pOutputStrm = pMediaStrm.get();
 
-                //OUString sBaseURI( "BaseURI");
-                std::vector< PropertyValue > aProperties;
-                PropertyValue aProperty;
-                aProperty.Name = "BaseURI";
-                aProperty.Value <<= mrMedium.GetBaseURL( true );
-                aProperties.push_back( aProperty );
+                        // Temp removal of EncryptionData to avoid password protection triggering
+                        mrMedium.GetItemSet()->ClearItem(SID_ENCRYPTIONDATA);
+                    }
+                }
+            }
 
-                bRet = PPTExport( aProperties, xStorRef, mxModel, mxStatusIndicator, pBas, nCnvrtFlags );
+            tools::SvRef<SotStorage> xStorRef = new SotStorage(pOutputStrm, false);
+
+            if (xStorRef.is())
+            {
+                bRet = PPTExport(aProperties, xStorRef, mxModel, mxStatusIndicator, pBas, nCnvrtFlags);
                 xStorRef->Commit();
+
+                if (xPackageEncryption.is())
+                {
+                    // Perform DRM encryption
+                    pOutputStrm->Seek(0);
+
+                    xPackageEncryption->setupEncryption(aEncryptionData);
+
+                    Reference<css::io::XInputStream > xInputStream(new utl::OSeekableInputStreamWrapper(pOutputStrm, false));
+                    Sequence<NamedValue> aStreams = xPackageEncryption->encrypt(xInputStream);
+
+                    tools::SvRef<SotStorage> xEncryptedRootStrg = new SotStorage(mrMedium.GetOutStream(), false);
+                    for (const NamedValue & aStreamData : std::as_const(aStreams))
+                    {
+                        // To avoid long paths split and open substorages recursively
+                        // Splitting paths manually, since comphelper::string::split is trimming special characters like \0x01, \0x09
+                        tools::SvRef<SotStorage> pStorage = xEncryptedRootStrg.get();
+                        OUString sFileName;
+                        sal_Int32 idx = 0;
+                        do
+                        {
+                            OUString sPathElem = aStreamData.Name.getToken(0, L'/', idx);
+                            if (!sPathElem.isEmpty())
+                            {
+                                if (idx < 0)
+                                {
+                                    sFileName = sPathElem;
+                                }
+                                else
+                                {
+                                    pStorage = pStorage->OpenSotStorage(sPathElem);
+                                }
+                            }
+                        } while (pStorage && idx >= 0);
+
+                        if (!pStorage)
+                        {
+                            bRet = false;
+                            break;
+                        }
+
+                        tools::SvRef<SotStorageStream> pStream = pStorage->OpenSotStream(sFileName);
+                        if (!pStream)
+                        {
+                            bRet = false;
+                            break;
+                        }
+                        Sequence<sal_Int8> aStreamContent;
+                        aStreamData.Value >>= aStreamContent;
+                        size_t nBytesWritten = pStream->WriteBytes(aStreamContent.getArray(), aStreamContent.getLength());
+                        if (nBytesWritten != static_cast<size_t>(aStreamContent.getLength()))
+                        {
+                            bRet = false;
+                            break;
+                        }
+                    }
+                    xEncryptedRootStrg->Commit();
+
+                    // Restore encryption data
+                    mrMedium.GetItemSet()->Put(SfxUnoAnyItem(SID_ENCRYPTIONDATA, makeAny(aEncryptionData)));
+                }
             }
         }
-#ifndef DISABLE_DYNLOADING
-        delete pLibrary;
-#endif
     }
+
     return bRet;
 }
 
@@ -186,20 +363,14 @@ void SdPPTFilter::PreSaveBasic()
     const SvtFilterOptions& rFilterOptions = SvtFilterOptions::Get();
     if( rFilterOptions.IsLoadPPointBasicStorage() )
     {
-#ifndef DISABLE_DYNLOADING
-        ::osl::Module* pLibrary = OpenLibrary( mrMedium.GetFilter()->GetUserData() );
-        if( pLibrary )
-        {
-            SaveVBAPointer pSaveVBA= reinterpret_cast<SaveVBAPointer>(pLibrary->getFunctionSymbol( "SaveVBA" ));
-            if( pSaveVBA )
-            {
-                pSaveVBA( static_cast<SfxObjectShell&>(mrDocShell), pBas );
-            }
-            delete pLibrary;
-        }
+#ifdef DISABLE_DYNLOADING
+        SaveVBAPointer pSaveVBA= SaveVBA;
 #else
-        SaveVBA( (SfxObjectShell&) mrDocShell, pBas );
+        SaveVBAPointer pSaveVBA = reinterpret_cast< SaveVBAPointer >(
+            SdFilter::GetLibrarySymbol(mrMedium.GetFilter()->GetUserData(), "SaveVBA"));
 #endif
+        if( pSaveVBA )
+            pSaveVBA( static_cast<SfxObjectShell&>(mrDocShell), pBas );
     }
 }
 

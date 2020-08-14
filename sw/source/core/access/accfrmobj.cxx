@@ -17,10 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <accfrmobj.hxx>
+#include "accfrmobj.hxx"
 
 #include <accmap.hxx>
-#include <acccontext.hxx>
+#include "acccontext.hxx"
 
 #include <viewsh.hxx>
 #include <rootfrm.hxx>
@@ -33,11 +33,9 @@
 #include <fmtanchr.hxx>
 #include <dcontact.hxx>
 
-#include <pam.hxx>
-
 #include <vcl/window.hxx>
 
-namespace sw { namespace access {
+namespace sw::access {
 
 SwAccessibleChild::SwAccessibleChild()
     : mpFrame( nullptr )
@@ -94,6 +92,8 @@ SwAccessibleChild::SwAccessibleChild( const SwFrame* pFrame,
             "invalid frame/object/window combination" );
 
 }
+
+SwAccessibleChild::~SwAccessibleChild() = default;
 
 void SwAccessibleChild::Init( const SdrObject* pDrawObj )
 {
@@ -167,21 +167,6 @@ bool SwAccessibleChild::IsBoundAsChar() const
     return bRet;
 }
 
-SwAccessibleChild::SwAccessibleChild( const SwAccessibleChild& r )
-    : mpFrame( r.mpFrame )
-    , mpDrawObj( r.mpDrawObj )
-    , mpWindow( r.mpWindow )
-{}
-
-SwAccessibleChild& SwAccessibleChild::operator=( const SwAccessibleChild& r )
-{
-    mpDrawObj = r.mpDrawObj;
-    mpFrame = r.mpFrame;
-    mpWindow = r.mpWindow;
-
-    return *this;
-}
-
 SwAccessibleChild& SwAccessibleChild::operator=( const SdrObject* pDrawObj )
 {
     Init( pDrawObj );
@@ -243,32 +228,32 @@ SwRect SwAccessibleChild::GetBox( const SwAccessibleMap& rAccMap ) const
         if ( mpFrame->IsPageFrame() &&
              static_cast< const SwPageFrame * >( mpFrame )->IsEmptyPage() )
         {
-            aBox = SwRect( mpFrame->Frame().Left(), mpFrame->Frame().Top()-1, 1, 1 );
+            aBox = SwRect( mpFrame->getFrameArea().Left(), mpFrame->getFrameArea().Top()-1, 1, 1 );
         }
         else if ( mpFrame->IsTabFrame() )
         {
-            aBox = SwRect( mpFrame->Frame() );
-            aBox.Intersection( mpFrame->GetUpper()->Frame() );
+            aBox = mpFrame->getFrameArea();
+            aBox.Intersection( mpFrame->GetUpper()->getFrameArea() );
         }
         else
         {
-            aBox = mpFrame->Frame();
+            aBox = mpFrame->getFrameArea();
         }
     }
     else if( mpDrawObj )
     {
-        SwDrawContact const*const pContact(dynamic_cast<SwDrawContact const*>(::GetUserCall(mpDrawObj)));
+        const SwContact* const pContact = ::GetUserCall(mpDrawObj);
         // assume that a) the SwVirt* objects that don't have this are handled
         // by the mpFrame case above b) for genuine SdrObject this must be set
         // if it's connected to layout
-        assert(pContact);
+        assert(dynamic_cast<SwDrawContact const*>(pContact));
         SwPageFrame const*const pPage(const_cast<SwAnchoredObject *>(
             pContact->GetAnchoredObj(mpDrawObj))->FindPageFrameOfAnchor());
         if (pPage) // may end up here with partial layout -> not visible
         {
             aBox = SwRect( mpDrawObj->GetCurrentBoundRect() );
             // tdf#91260 drawing object may be partially off-page
-            aBox.Intersection(pPage->Frame());
+            aBox.Intersection(pPage->getFrameArea());
         }
     }
     else if ( mpWindow )
@@ -294,10 +279,10 @@ SwRect SwAccessibleChild::GetBounds( const SwAccessibleMap& rAccMap ) const
         if( mpFrame->IsPageFrame() &&
             static_cast< const SwPageFrame * >( mpFrame )->IsEmptyPage() )
         {
-            aBound = SwRect( mpFrame->Frame().Left(), mpFrame->Frame().Top()-1, 0, 0 );
+            aBound = SwRect( mpFrame->getFrameArea().Left(), mpFrame->getFrameArea().Top()-1, 0, 0 );
         }
         else
-            aBound = mpFrame->PaintArea();
+            aBound = mpFrame->GetPaintArea();
     }
     else if( mpDrawObj )
     {
@@ -418,6 +403,6 @@ const SwFrame* SwAccessibleChild::GetParent( const bool bInPagePreview ) const
     return pParent;
 }
 
-} } // eof of namespace sw::access
+} // namespace sw::access
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

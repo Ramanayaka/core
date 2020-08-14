@@ -13,36 +13,49 @@
  manual changes will be rewritten by the next run of update_pch.sh (which presumably
  also fixes all possible problems, so it's usually better to use it).
 
- Generated on 2015-11-14 14:16:28 using:
+ Generated on 2020-01-22 15:57:37 using:
  ./bin/update_pch connectivity postgresql-sdbc-impl --cutoff=3 --exclude:system --exclude:module --exclude:local
 
  If after updating build fails, use the following command to locate conflicting headers:
- ./bin/update_pch_bisect ./connectivity/inc/pch/precompiled_postgresql-sdbc-impl.hxx "/opt/lo/bin/make connectivity.build" --find-conflicts
+ ./bin/update_pch_bisect ./connectivity/inc/pch/precompiled_postgresql-sdbc-impl.hxx "make connectivity.build" --find-conflicts
 */
 
+#if PCH_LEVEL >= 1
 #include <string.h>
-#include <osl/diagnose.h>
+#endif // PCH_LEVEL >= 1
+#if PCH_LEVEL >= 2
 #include <osl/module.h>
-#include <osl/thread.h>
+#include <osl/time.h>
 #include <rtl/bootstrap.hxx>
+#include <rtl/instance.hxx>
 #include <rtl/strbuf.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/uuid.h>
 #include <sal/config.h>
+#include <sal/log.hxx>
+#include <sal/macros.h>
 #include <sal/saldllapi.h>
 #include <sal/types.h>
+#endif // PCH_LEVEL >= 2
+#if PCH_LEVEL >= 3
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/sdbc/KeyRule.hpp>
 #include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XParameters.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbcx/KeyType.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <cppuhelper/implbase.hxx>
+#include <comphelper/sequence.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/typeprovider.hxx>
+#endif // PCH_LEVEL >= 3
+#if PCH_LEVEL >= 4
 #include <connectivity/dbconversion.hxx>
+#endif // PCH_LEVEL >= 4
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

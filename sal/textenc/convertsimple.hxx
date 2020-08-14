@@ -10,14 +10,14 @@
 #ifndef INCLUDED_SAL_TEXTENC_CONVERTSIMPLE_HXX
 #define INCLUDED_SAL_TEXTENC_CONVERTSIMPLE_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "sal/saldllapi.h"
-#include "sal/types.h"
+#include <sal/saldllapi.h>
+#include <sal/types.h>
 
 // Internal, non-stable ABI
 
-namespace sal { namespace detail { namespace textenc {
+namespace sal::detail::textenc {
 
 sal_Size SAL_DLLPUBLIC convertCharToUnicode(
     void const * pData, void * pContext, char const * pSrcBuf,
@@ -29,6 +29,6 @@ sal_Size SAL_DLLPUBLIC convertUnicodeToChar(
     sal_Size nSrcChars, char * pDestBuf, sal_Size nDestBytes, sal_uInt32 nFlags,
     sal_uInt32 * pInfo, sal_Size * pSrcCvtChars);
 
-} } }
+}
 
 #endif

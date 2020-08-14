@@ -11,6 +11,7 @@
 $(eval $(call gb_Library_Library,evoab))
 
 $(eval $(call gb_Library_set_include,evoab,\
+	-I$(SRCDIR)/connectivity/inc \
 	-I$(SRCDIR)/connectivity/source/inc \
 	$$(INCLUDE) \
 	-I$(WORKDIR)/YaccTarget/connectivity/source/parse \
@@ -49,7 +50,6 @@ $(eval $(call gb_Library_add_exception_objects,evoab,\
 	connectivity/source/drivers/evoab2/NDatabaseMetaData \
 	connectivity/source/drivers/evoab2/NStatement \
 	connectivity/source/drivers/evoab2/NPreparedStatement \
-	connectivity/source/drivers/evoab2/NServices \
 	connectivity/source/drivers/evoab2/NResultSet \
 	connectivity/source/drivers/evoab2/NResultSetMetaData \
 	connectivity/source/drivers/evoab2/EApi \

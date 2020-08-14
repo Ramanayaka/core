@@ -32,14 +32,14 @@
 
 #include <cppuhelper/implbase.hxx>
 
-#include <pam.hxx>
-#include <unobaseclass.hxx>
+#include "pam.hxx"
+#include "unobaseclass.hxx"
 
 class SwDoc;
 class SwUnoCursor;
 class SwFrameFormat;
 
-class SW_DLLPUBLIC SwUnoInternalPaM
+class SW_DLLPUBLIC SwUnoInternalPaM final
     : public SwPaM
 {
 
@@ -79,7 +79,7 @@ typedef ::cppu::WeakImplHelper
 ,   css::text::XRedline
 > SwXTextRange_Base;
 
-class SW_DLLPUBLIC SwXTextRange
+class SW_DLLPUBLIC SwXTextRange final
     : public SwXTextRange_Base
 {
 
@@ -108,7 +108,7 @@ private:
 
 public:
 
-    SwXTextRange(SwPaM& rPam,
+    SwXTextRange(SwPaM const & rPam,
             const css::uno::Reference< css::text::XText > & xParent,
             const enum RangePosition eRange = RANGE_IN_TEXT);
     // only for RANGE_IS_TABLE

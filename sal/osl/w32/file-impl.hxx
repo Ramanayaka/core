@@ -15,9 +15,10 @@
 #include <osl/file.h>
 #include <sal/types.h>
 
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-extern "C" oslFileHandle SAL_CALL osl_createFileHandleFromOSHandle(
+extern "C" oslFileHandle osl_createFileHandleFromOSHandle(
     HANDLE hFile, sal_uInt32 uFlags);
 
 #endif

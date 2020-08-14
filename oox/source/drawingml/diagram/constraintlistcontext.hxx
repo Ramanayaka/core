@@ -20,16 +20,15 @@
 #ifndef INCLUDED_OOX_SOURCE_DRAWINGML_DIAGRAM_CONSTRAINTLISTCONTEXT_HXX
 #define INCLUDED_OOX_SOURCE_DRAWINGML_DIAGRAM_CONSTRAINTLISTCONTEXT_HXX
 
-#include "oox/core/contexthandler2.hxx"
+#include <oox/core/contexthandler2.hxx>
 #include "diagramlayoutatoms.hxx"
-#include "diagram.hxx"
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 class ConstraintListContext : public ::oox::core::ContextHandler2
 {
 public:
-    ConstraintListContext( ContextHandler2Helper& rParent, const LayoutAtomPtr &pNode );
+    ConstraintListContext( ContextHandler2Helper const & rParent, const LayoutAtomPtr &pNode );
     virtual ~ConstraintListContext() override;
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const AttributeList& rAttribs ) override;
@@ -37,7 +36,7 @@ private:
     LayoutAtomPtr mpNode;
 };
 
-} }
+}
 
 #endif
 

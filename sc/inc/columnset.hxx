@@ -7,10 +7,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_SC_INC_COLUMNSET_HXX
-#define INCLUDED_SC_INC_COLUMNSET_HXX
+#pragma once
 
-#include "address.hxx"
+#include "types.hxx"
 
 #include <unordered_set>
 #include <unordered_map>
@@ -35,7 +34,5 @@ public:
 };
 
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

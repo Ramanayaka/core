@@ -20,13 +20,10 @@
 #ifndef INCLUDED_FORMULA_FORMULAOPCODEMAPPEROBJ_HXX
 #define INCLUDED_FORMULA_FORMULAOPCODEMAPPEROBJ_HXX
 
-#include <exception>
 #include <memory>
 
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/sheet/XFormulaOpCodeMapper.hpp>
 #include <cppuhelper/implbase.hxx>
@@ -34,12 +31,12 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace sheet { struct FormulaOpCodeMapEntry; }
     namespace sheet { struct FormulaToken; }
     namespace uno { class XComponentContext; }
     namespace uno { class XInterface; }
-} } }
+}
 
 namespace formula
 {
@@ -51,12 +48,8 @@ class FORMULA_DLLPUBLIC FormulaOpCodeMapperObj : public cppu::WeakImplHelper<
                             css::lang::XServiceInfo >
 {
     ::std::unique_ptr<FormulaCompiler> m_pCompiler;
-public:
-    static OUString  getImplementationName_Static();
-    static css::uno::Sequence< OUString> getSupportedServiceNames_Static();
-    static css::uno::Reference< css::uno::XInterface > create(const css::uno::Reference< css::uno::XComponentContext >& _xContext);
 
-protected:
+public:
                             FormulaOpCodeMapperObj(::std::unique_ptr<FormulaCompiler> && _pCompiler);
     virtual                 ~FormulaOpCodeMapperObj() override;
 

@@ -25,7 +25,6 @@
 #include <docary.hxx>
 #include <swundo.hxx>
 #include <section.hxx>
-#include <edimp.hxx>
 #include <sectfrm.hxx>
 #include <cntfrm.hxx>
 #include <tabfrm.hxx>
@@ -41,7 +40,7 @@ SwEditShell::InsertSection(
         StartAllAction();
         GetDoc()->GetIDocumentUndoRedo().StartUndo( SwUndoId::INSSECTION, nullptr );
 
-        for(SwPaM& rPaM : GetCursor()->GetRingContainer())
+        for(const SwPaM& rPaM : GetCursor()->GetRingContainer())
         {
             SwSection const*const pNew =
                 GetDoc()->InsertSwSection( rPaM, rNewData, nullptr, pAttr );
@@ -87,9 +86,10 @@ SwSection* SwEditShell::GetAnySection( bool bOutOfTab, const Point* pPt )
     {
         SwPosition aPos( *GetCursor()->GetPoint() );
         Point aPt( *pPt );
-        GetLayout()->GetCursorOfst( &aPos, aPt );
+        GetLayout()->GetModelPositionForViewPoint( &aPos, aPt );
         SwContentNode *pNd = aPos.nNode.GetNode().GetContentNode();
-        pFrame = pNd->getLayoutFrame( GetLayout(), pPt );
+        std::pair<Point, bool> const tmp(*pPt, true);
+        pFrame = pNd->getLayoutFrame(GetLayout(), nullptr, &tmp);
     }
     else
         pFrame = GetCurrFrame( false );
@@ -123,8 +123,8 @@ bool SwEditShell::IsAnySectionInDoc() const
     {
         SectionType eTmpType;
         if( pFormat->IsInNodesArr() &&
-            ( (eTmpType = pFormat->GetSection()->GetType()) != TOX_CONTENT_SECTION
-               && TOX_HEADER_SECTION != eTmpType ) )
+            ( (eTmpType = pFormat->GetSection()->GetType()) != SectionType::ToxContent
+               && SectionType::ToxHeader != eTmpType ) )
         {
             return true;
         }
@@ -392,34 +392,30 @@ bool SwEditShell::CanSpecialInsert() const
 /** check whether a node can be special-inserted (alt-Enter), and do so. Return
     whether insertion was possible.
  */
-bool SwEditShell::DoSpecialInsert()
+void SwEditShell::DoSpecialInsert()
 {
-    bool bRet = false;
-
     // get current node
     SwPosition* pCursorPos = GetCursor()->GetPoint();
     const SwNode* pInsertNode = lcl_SpecialInsertNode( pCursorPos );
-    if( pInsertNode != nullptr )
-    {
-        StartAllAction();
+    if( pInsertNode == nullptr )
+        return;
 
-        // adjust insert position to insert before start nodes and after end
-        // nodes
-        SwNodeIndex aInsertIndex( *pInsertNode,
-                                  pInsertNode->IsStartNode() ? -1 : 0 );
-        SwPosition aInsertPos( aInsertIndex );
+    StartAllAction();
 
-        // insert a new text node, and set the cursor
-        bRet = GetDoc()->getIDocumentContentOperations().AppendTextNode( aInsertPos );
-        *pCursorPos = aInsertPos;
+    // adjust insert position to insert before start nodes and after end
+    // nodes
+    SwNodeIndex aInsertIndex( *pInsertNode,
+                              pInsertNode->IsStartNode() ? -1 : 0 );
+    SwPosition aInsertPos( aInsertIndex );
 
-        // call AttrChangeNotify for the UI
-        CallChgLnk();
+    // insert a new text node, and set the cursor
+    GetDoc()->getIDocumentContentOperations().AppendTextNode( aInsertPos );
+    *pCursorPos = aInsertPos;
 
-        EndAllAction();
-    }
+    // call AttrChangeNotify for the UI
+    CallChgLnk();
 
-    return bRet;
+    EndAllAction();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

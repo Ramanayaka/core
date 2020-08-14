@@ -19,31 +19,25 @@
 
 
 #include <svtools/htmltokn.h>
-#include <svtools/asynclink.hxx>
 
-#include <sfx2/sfx.hrc>
-
+#include <sfx2/frmdescr.hxx>
 #include <sfx2/frmhtml.hxx>
-#include <sfx2/docfile.hxx>
-#include <sfx2/viewfrm.hxx>
-#include <sfx2/evntconf.hxx>
-#include <sfx2/request.hxx>
-#include <sfx2/fcontnr.hxx>
-#include "sfxtypes.hxx"
 
-static sal_Char const sHTML_SC_yes[] =  "YES";
-static sal_Char const sHTML_SC_no[] =       "NO";
-static sal_Char const sHTML_SC_auto[] = "AUTO";
+char const sHTML_SC_yes[] =  "YES";
+char const sHTML_SC_no[] =       "NO";
+char const sHTML_SC_auto[] = "AUTO";
 
-static HTMLOptionEnum<ScrollingMode> const aScrollingTable[] =
+HTMLOptionEnum<ScrollingMode> const aScrollingTable[] =
 {
     { sHTML_SC_yes,     ScrollingMode::Yes    },
     { sHTML_SC_no,      ScrollingMode::No     },
     { sHTML_SC_auto,    ScrollingMode::Auto   },
-    { nullptr,          (ScrollingMode)0 }
+    { nullptr,          ScrollingMode(0) }
 };
 
-void SfxFrameHTMLParser::ParseFrameOptions(
+namespace SfxFrameHTMLParser
+{
+void ParseFrameOptions(
     SfxFrameDescriptor *pFrame, const HTMLOptions& rOptions, const OUString& rBaseURL )
 {
     // Get and set the options
@@ -60,13 +54,6 @@ void SfxFrameHTMLParser::ParseFrameOptions(
     {
         switch( rOption.GetToken() )
         {
-        case HtmlOptionId::BORDERCOLOR:
-            {
-                Color aColor;
-                rOption.GetColor( aColor );
-                pFrame->SetWallpaper( Wallpaper( aColor ) );
-                break;
-            }
         case HtmlOptionId::SRC:
             pFrame->SetURL(
                     INetURLObject::GetAbsURL(
@@ -76,17 +63,17 @@ void SfxFrameHTMLParser::ParseFrameOptions(
             pFrame->SetName( rOption.GetString() );
             break;
         case HtmlOptionId::MARGINWIDTH:
-            aMargin.Width() = rOption.GetNumber();
+            aMargin.setWidth( rOption.GetNumber() );
 
             if( !bMarginHeight )
-                aMargin.Height() = 0;
+                aMargin.setHeight( 0 );
             bMarginWidth = true;
             break;
         case HtmlOptionId::MARGINHEIGHT:
-            aMargin.Height() = rOption.GetNumber();
+            aMargin.setHeight( rOption.GetNumber() );
 
             if( !bMarginWidth )
-                aMargin.Width() = 0;
+                aMargin.setWidth( 0 );
             bMarginHeight = true;
             break;
         case HtmlOptionId::SCROLLING:
@@ -102,15 +89,13 @@ void SfxFrameHTMLParser::ParseFrameOptions(
             pFrame->SetFrameBorder( bBorder );
             break;
         }
-        case HtmlOptionId::NORESIZE:
-            pFrame->SetResizable( false );
-            break;
         default:
             break;
         }
     }
 
     pFrame->SetMargin( aMargin );
+}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

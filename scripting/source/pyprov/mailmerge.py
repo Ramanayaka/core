@@ -11,8 +11,6 @@
 #   <value>true</value>
 #  </prop>
 
-from __future__ import print_function
-
 import unohelper
 import uno
 import re
@@ -91,7 +89,7 @@ class PyMailSMTPService(unohelper.Base, XSmtpService):
 		self.connectioncontext = xConnectionContext
 		if dbg:
 			print("PyMailSMTPService connect", file=dbgout)
-		server = xConnectionContext.getValueByName("ServerName")
+		server = xConnectionContext.getValueByName("ServerName").strip()
 		if dbg:
 			print("ServerName: " + server, file=dbgout)
 		port = int(xConnectionContext.getValueByName("Port"))
@@ -104,7 +102,10 @@ class PyMailSMTPService(unohelper.Base, XSmtpService):
 			tout = _GLOBAL_DEFAULT_TIMEOUT
 		if dbg:
 			print("Timeout: " + str(tout), file=dbgout)
-		self.server = smtplib.SMTP(server, port,timeout=tout)
+		if port == 465:
+			self.server = smtplib.SMTP_SSL(server, port,timeout=tout)
+		else:
+			self.server = smtplib.SMTP(server, port,timeout=tout)
 
 		#stderr not available for us under windows, but
 		#set_debuglevel outputs there, and so throw
@@ -116,7 +117,7 @@ class PyMailSMTPService(unohelper.Base, XSmtpService):
 		connectiontype = xConnectionContext.getValueByName("ConnectionType")
 		if dbg:
 			print("ConnectionType: " + connectiontype, file=dbgout)
-		if connectiontype.upper() == 'SSL':
+		if connectiontype.upper() == 'SSL' and port != 465:
 			self.server.ehlo()
 			self.server.starttls()
 			self.server.ehlo()
@@ -124,9 +125,6 @@ class PyMailSMTPService(unohelper.Base, XSmtpService):
 		user = xAuthenticator.getUserName()
 		password = xAuthenticator.getPassword()
 		if user != '':
-			if sys.version < '3': # fdo#59249 i#105669 Python 2 needs "ascii"
-				user = user.encode('ascii')
-				password = password.encode('ascii')
 			if dbg:
 				print("Logging in, username of: " + user, file=dbgout)
 			self.server.login(user, password)
@@ -195,20 +193,10 @@ class PyMailSMTPService(unohelper.Base, XSmtpService):
 					except:
 						#it's a bytesequence, get raw bytes
 						textbody = textbody.value
-					if sys.version >= '3':
-						if sys.version_info.minor < 3 or (sys.version_info.minor == 3 and sys.version_info.micro <= 1):
-							#http://stackoverflow.com/questions/9403265/how-do-i-use-python-3-2-email-module-to-send-unicode-messages-encoded-in-utf-8-w
-							#see http://bugs.python.org/16564, etc. basically it now *seems* to be all ok
-							#in python 3.3.2 onwards, but a little busted in 3.3.0
-
-							textbody = textbody.decode('iso8859-1')
-						else:
-							textbody = textbody.decode('utf-8')
-						c = Charset('utf-8')
-						c.body_encoding = QP
-						textmsg.set_payload(textbody, c)
-					else:
-						textmsg.set_payload(textbody)
+					textbody = textbody.decode('utf-8')
+					c = Charset('utf-8')
+					c.body_encoding = QP
+					textmsg.set_payload(textbody, c)
 
 				break
 
@@ -330,9 +318,6 @@ class PyMailIMAPService(unohelper.Base, XMailService):
 		user = xAuthenticator.getUserName()
 		password = xAuthenticator.getPassword()
 		if user != '':
-			if sys.version < '3': # fdo#59249 i#105669 Python 2 needs "ascii"
-				user = user.encode('ascii')
-				password = password.encode('ascii')
 			if dbg:
 				print("Logging in, username of: " + user, file=dbgout)
 			self.server.login(user, password)
@@ -405,12 +390,9 @@ class PyMailPOP3Service(unohelper.Base, XMailService):
 				print("Timeout: " + str(tout), file=dbgout)
 			self.server = poplib.POP3(server, port, timeout=tout)
 		print("AFTER", file=dbgout)
-			
+
 		user = xAuthenticator.getUserName()
 		password = xAuthenticator.getPassword()
-		if sys.version < '3': # fdo#59249 i#105669 Python 2 needs "ascii"
-			user = user.encode('ascii')
-			password = password.encode('ascii')
 		if dbg:
 			print("Logging in, username of: " + user, file=dbgout)
 		self.server.user(user)
@@ -528,3 +510,5 @@ g_ImplementationHelper.addImplementation( \
 g_ImplementationHelper.addImplementation( \
 	PyMailMessage, g_messageImplName,
 		("com.sun.star.mail.MailMessage",),)
+
+# vim: set shiftwidth=4 softtabstop=4 expandtab:

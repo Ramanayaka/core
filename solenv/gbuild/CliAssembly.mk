@@ -12,10 +12,7 @@
 gb_CliConfigTarget_TARGET := $(SRCDIR)/solenv/bin/clipatchconfig.pl
 gb_CliConfigTarget_COMMAND := $(PERL) -w $(gb_CliConfigTarget_TARGET)
 
-gb_CliConfigTarget_VERSIONFILE_DEFAULT := $(SRCDIR)/cli_ure/version/version.txt
-
 define gb_CliConfigTarget__command
-$(call gb_Output_announce,$(2),$(true),CPA,1)
 $(call gb_Helper_abbreviate_dirs,\
 	$(gb_CliConfigTarget_COMMAND) $(3) $(CLI_CONFIG_VERSIONFILE) $(1) \
 )
@@ -25,7 +22,10 @@ $(dir $(call gb_CliConfigTarget_get_target,%))%/.dir :
 	$(if $(wildcard $(dir $@)),,mkdir -p $(dir $@))
 
 $(call gb_CliConfigTarget_get_target,%) :
+	$(call gb_Output_announce,$*,$(true),CPA,1)
+	$(call gb_Trace_StartRange,$*,CPA)
 	$(call gb_CliConfigTarget__command,$@,$*,$<)
+	$(call gb_Trace_EndRange,$*,CPA)
 
 $(call gb_CliConfigTarget_get_clean_target,%) :
 	$(call gb_Output_announce,$*,$(false),CPA,1)
@@ -35,11 +35,11 @@ $(call gb_CliConfigTarget_get_clean_target,%) :
 #
 # gb_CliConfigTarget_CliConfigTarget target source
 define gb_CliConfigTarget_CliConfigTarget
-$(call gb_CliConfigTarget_get_target,$(1)) : CLI_CONFIG_VERSIONFILE := $(gb_CliConfigTarget_VERSIONFILE_DEFAULT)
+$(call gb_CliConfigTarget_get_target,$(1)) : CLI_CONFIG_VERSIONFILE := $(3)
 
 $(call gb_CliConfigTarget_get_target,$(1)) : $(2)
 $(call gb_CliConfigTarget_get_target,$(1)) : $(gb_CliConfigTarget_TARGET)
-$(call gb_CliConfigTarget_get_target,$(1)) : $(gb_CliConfigTarget_VERSIONFILE_DEFAULT)
+$(call gb_CliConfigTarget_get_target,$(1)) : $(3)
 $(call gb_CliConfigTarget_get_target,$(1)) :| $(dir $(call gb_CliConfigTarget_get_target,$(1))).dir
 
 endef
@@ -53,7 +53,6 @@ endef
 gb_CliAssemblyTarget_KEYFILE_DEFAULT := $(SRCDIR)/cli_ure/source/cliuno.snk
 
 define gb_CliAssemblyTarget__command
-$(call gb_Output_announce,$(2),$(true),AL ,2)
 $(call gb_Helper_abbreviate_dirs,\
 	$(GNUCOPY) $(CLI_ASSEMBLY_KEYFILE) $(1).tmp.snk && \
 	al \
@@ -63,7 +62,7 @@ $(call gb_Helper_abbreviate_dirs,\
 		-keyfile:$(1).tmp.snk \
 		-link:$(CLI_ASSEMBLY_CONFIGFILE) \
 		$(if $(CLI_ASSEMBLY_PLATFORM),-platform:$(CLI_ASSEMBLY_PLATFORM)) && \
-	rm -f $(1).tmp/snk && \
+	rm -f $(1).tmp.snk && \
 	touch $(1) \
 )
 endef
@@ -78,7 +77,10 @@ $(call gb_CliAssemblyTarget_get_target,%) :
 	$(if $(strip $(CLI_ASSEMBLY_VERSION)),,$(call gb_Output_error,assembly version not set))
 	$(if $(strip $(CLI_ASSEMBLY_CONFIGFILE)),,$(call gb_Output_error,assembly configuration file not set))
 	$(if $(strip $(CLI_ASSEMBLY_OUTFILE)),,$(call gb_Output_error,assembly name not set))
+	$(call gb_Output_announce,$*,$(true),AL ,2)
+	$(call gb_Trace_StartRange,$*,AL )
 	$(call gb_CliAssemblyTarget__command,$@,$*,$<)
+	$(call gb_Trace_EndRange,$*,AL )
 
 $(call gb_CliAssemblyTarget_get_assembly_target,%) :
 	touch $@
@@ -107,6 +109,7 @@ endef
 define gb_CliAssemblyTarget_set_configfile
 $(call gb_CliAssemblyTarget_get_target,$(1)) : CLI_ASSEMBLY_CONFIGFILE := $(2)
 $(call gb_CliAssemblyTarget_get_target,$(1)) : $(2)
+$(call gb_CliAssemblyTarget_get_clean_target,$(1)) : $(3)
 
 endef
 
@@ -143,6 +146,7 @@ gb_CliAssembly_get_dll = $(call gb_CliAssemblyTarget_get_dll,$(1))
 
 $(call gb_CliAssembly_get_target,%) :
 	$(call gb_Output_announce,$*,$(true),CLA,3)
+	$(call gb_Trace_MakeMark,$*,CLA)
 	mkdir -p $(dir $@) && touch $@
 
 .PHONY : $(call gb_CliAssembly_get_clean_target,%)
@@ -169,19 +173,19 @@ $(call gb_Package_add_file,$(1)_assembly,$(notdir $(2)),$(subst $(WORKDIR)/,,$(2
 endef
 
 define gb_CliAssembly__set_configfile_impl
-$(call gb_CliAssemblyTarget_set_configfile,$(1),$(2))
+$(call gb_CliAssemblyTarget_set_configfile,$(1),$(2),$(3))
 $(call gb_CliAssembly__add_file,$(1),$(2))
 
 endef
 
 define gb_CliAssembly__set_configfile
-$(call gb_CliConfigTarget_CliConfigTarget,$(2),$(3))
-$(call gb_CliAssembly__set_configfile_impl,$(1),$(call gb_CliConfigTarget_get_target,$(2)))
+$(call gb_CliConfigTarget_CliConfigTarget,$(2),$(3),$(4))
+$(call gb_CliAssembly__set_configfile_impl,$(1),$(call gb_CliConfigTarget_get_target,$(2)),$(call gb_CliConfigTarget_get_clean_target,$(2)))
 
 endef
 
 define gb_CliAssembly_set_configfile
-$(call gb_CliAssembly__set_configfile,$(1),$(patsubst %_config,%,$(2)),$(SRCDIR)/$(2))
+$(call gb_CliAssembly__set_configfile,$(1),$(patsubst %_config,%,$(2)),$(SRCDIR)/$(2),$(SRCDIR)/$(3))
 
 endef
 

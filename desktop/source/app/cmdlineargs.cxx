@@ -26,8 +26,8 @@
 #endif
 
 #include "cmdlineargs.hxx"
-#include <vcl/svapp.hxx>
-#include <rtl/uri.hxx>
+#include <osl/thread.hxx>
+#include <tools/stream.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/process.h>
 #include <comphelper/lok.hxx>
@@ -35,11 +35,9 @@
 #include <com/sun/star/uri/ExternalUriReferenceTranslator.hpp>
 #include <unotools/bootstrap.hxx>
 
-#include <svl/documentlockfile.hxx>
-
-#include <ucbhelper/content.hxx>
 #include <rtl/strbuf.hxx>
 #include <osl/file.hxx>
+#include <sal/log.hxx>
 
 using namespace com::sun::star::lang;
 using namespace com::sun::star::uri;
@@ -62,10 +60,10 @@ std::vector< OUString > translateExternalUris(
     std::vector< OUString > const & input)
 {
     std::vector< OUString > t;
-    for (std::vector< OUString >::const_iterator i(input.begin());
-         i != input.end(); ++i)
+    t.reserve(input.size());
+    for (auto const& elem : input)
     {
-        t.push_back(translateExternalUris(*i));
+        t.push_back(translateExternalUris(elem));
     }
     return t;
 }
@@ -80,11 +78,11 @@ public:
     {
         OUString url;
         if (utl::Bootstrap::getProcessWorkingDir(url)) {
-            m_cwdUrl.reset(url);
+            m_cwdUrl = url;
         }
     }
 
-    virtual boost::optional< OUString > getCwdUrl() override { return m_cwdUrl; }
+    virtual std::optional< OUString > getCwdUrl() override { return m_cwdUrl; }
 
     virtual bool next(OUString * argument) override {
         OSL_ASSERT(argument != nullptr);
@@ -97,7 +95,7 @@ public:
     }
 
 private:
-    boost::optional< OUString > m_cwdUrl;
+    std::optional< OUString > m_cwdUrl;
     sal_uInt32 m_count;
     sal_uInt32 m_index;
 };
@@ -128,23 +126,27 @@ CommandLineEvent CheckOfficeURI(/* in,out */ OUString& arg, CommandLineEvent cur
 
     OUString rest2;
     long nURIlen = -1;
+
+    // URL might be encoded
+    OUString decoded_rest = rest1.replaceAll("%7C", "|").replaceAll("%7c", "|");
+
     // 2. Discriminate by command name (incl. 1st command argument descriptor)
     //    Extract URI: everything up to possible next argument
-    if (rest1.startsWith("ofv|u|", &rest2))
+    if (decoded_rest.startsWith("ofv|u|", &rest2))
     {
         // Open for view - override only in default mode
         if (curEvt == CommandLineEvent::Open)
             curEvt = CommandLineEvent::View;
         nURIlen = rest2.indexOf("|");
     }
-    else if (rest1.startsWith("ofe|u|", &rest2))
+    else if (decoded_rest.startsWith("ofe|u|", &rest2))
     {
         // Open for editing - override only in default mode
         if (curEvt == CommandLineEvent::Open)
             curEvt = CommandLineEvent::ForceOpen;
         nURIlen = rest2.indexOf("|");
     }
-    else if (rest1.startsWith("nft|u|", &rest2))
+    else if (decoded_rest.startsWith("nft|u|", &rest2))
     {
         // New from template - override only in default mode
         if (curEvt == CommandLineEvent::Open)
@@ -170,14 +172,14 @@ CommandLineEvent CheckOfficeURI(/* in,out */ OUString& arg, CommandLineEvent cur
 
 // Skip single newline (be it *NIX LF, MacOS CR, of Win CRLF)
 // Changes the offset, and returns true if moved
-bool SkipNewline(const char* pStr, sal_Int32& rOffset)
+bool SkipNewline(const char* & pStr)
 {
-    if ((pStr[rOffset] != '\r') && (pStr[rOffset] != '\n'))
+    if ((*pStr != '\r') && (*pStr != '\n'))
         return false;
-    if (pStr[rOffset] == '\r')
-        ++rOffset;
-    if (pStr[rOffset] == '\n')
-        ++rOffset;
+    if (*pStr == '\r')
+        ++pStr;
+    if (*pStr == '\n')
+        ++pStr;
     return true;
 }
 
@@ -194,54 +196,45 @@ CommandLineEvent CheckWebQuery(/* in,out */ OUString& arg, CommandLineEvent curE
     try
     {
         OUString sFileURL;
+        // Cannot use translateExternalUris yet, because process service factory is not yet available
         if (osl::FileBase::getFileURLFromSystemPath(arg, sFileURL) != osl::FileBase::RC::E_None)
             return curEvt;
-        css::uno::Reference < css::ucb::XCommandEnvironment > xEnv;
-        ucbhelper::Content aSourceContent(sFileURL, xEnv, comphelper::getProcessComponentContext());
-
-        // the file can be opened readonly, no locking will be done
-        css::uno::Reference< css::io::XInputStream > xInput = aSourceContent.openStream();
-        if (!xInput.is())
-            return curEvt;
+        SvFileStream stream(sFileURL, StreamMode::READ);
 
         const sal_Int32 nBufLen = 32000;
-        css::uno::Sequence< sal_Int8 > aBuffer(nBufLen);
-        sal_Int32 nRead = xInput->readBytes(aBuffer, nBufLen);
+        char sBuffer[nBufLen];
+        size_t nRead = stream.ReadBytes(sBuffer, nBufLen);
         if (nRead < 8) // WEB\n1\n...
             return curEvt;
 
-        const char* sBuf = reinterpret_cast<const char*>(aBuffer.getConstArray());
-        sal_Int32 nOffset = 0;
-        if (strncmp(sBuf+nOffset, "WEB", 3) != 0)
+        const char* pPos = sBuffer;
+        if (strncmp(pPos, "WEB", 3) != 0)
             return curEvt;
-        nOffset += 3;
-        if (!SkipNewline(sBuf, nOffset))
+        pPos += 3;
+        if (!SkipNewline(pPos))
             return curEvt;
-        if (sBuf[nOffset] != '1')
+        if (*pPos != '1')
             return curEvt;
-        ++nOffset;
-        if (!SkipNewline(sBuf, nOffset))
+        ++pPos;
+        if (!SkipNewline(pPos))
             return curEvt;
 
-        rtl::OStringBuffer aResult(nRead);
+        OStringBuffer aResult(static_cast<unsigned int>(nRead));
         do
         {
-            // xInput->readBytes() can relocate buffer
-            sBuf = reinterpret_cast<const char*>(aBuffer.getConstArray());
-            const char* sPos = sBuf + nOffset;
-            const char* sPos1 = sPos;
-            const char* sEnd = sBuf + nRead;
-            while ((sPos1 < sEnd) && (*sPos1 != '\r') && (*sPos1 != '\n'))
-                ++sPos1;
-            aResult.append(sPos, sPos1 - sPos);
-            if (sPos1 < sEnd) // newline
+            const char* pPos1 = pPos;
+            const char* pEnd = sBuffer + nRead;
+            while ((pPos1 < pEnd) && (*pPos1 != '\r') && (*pPos1 != '\n'))
+                ++pPos1;
+            aResult.append(pPos, pPos1 - pPos);
+            if (pPos1 < pEnd) // newline
                 break;
-            nOffset = 0;
-        } while ((nRead = xInput->readBytes(aBuffer, nBufLen)) > 0);
+            pPos = sBuffer;
+        } while ((nRead = stream.ReadBytes(sBuffer, nBufLen)) > 0);
 
-        xInput->closeInput();
+        stream.Close();
 
-        arg = OUString::createFromAscii(aResult.getStr());
+        arg = OStringToOUString(aResult.makeStringAndClear(), osl_getThreadTextEncoding());
         return CommandLineEvent::ForceNew;
     }
     catch (...)
@@ -297,9 +290,12 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
         {
             m_bEmpty = false;
             OUString oArg;
-            bool bDeprecated = !aArg.startsWith("--", &oArg)
-                && aArg.startsWith("-", &oArg) && aArg.getLength() > 2;
-                // -h, -?, -n, -o, -p are still valid
+            OUString oDeprecatedArg;
+            if (!aArg.startsWith("--", &oArg) && aArg.startsWith("-", &oArg)
+                && aArg.getLength() > 2) // -h, -?, -n, -o, -p are still valid
+            {
+                oDeprecatedArg = aArg; // save here, since aArg can change later
+            }
 
             OUString rest;
             if ( oArg == "minimized" )
@@ -433,7 +429,7 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
             */
             else if ( aArg.startsWith("-psn") )
             {
-                bDeprecated = false;
+                oDeprecatedArg.clear();
             }
 #endif
 #if HAVE_FEATURE_MACOSX_SANDBOX
@@ -449,7 +445,7 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
             */
             else if ( oArg == "Embedding" )
             {
-                bDeprecated = false;
+                oDeprecatedArg.clear();
             }
 #endif
             else if ( oArg.startsWith("infilter=", &rest))
@@ -573,22 +569,43 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
             {
                 eCurrentEvent = CommandLineEvent::BatchPrint;
             }
-            else if ( eCurrentEvent == CommandLineEvent::BatchPrint && oArg == "printer-name" )
+            else if ( oArg == "printer-name" )
             {
-                // first argument is the printer name
-                if (supplier.next(&aArg))
-                    m_printername = aArg;
+                if (eCurrentEvent == CommandLineEvent::BatchPrint)
+                {
+                    // first argument is the printer name
+                    if (supplier.next(&aArg))
+                        m_printername = aArg;
+                    else if (m_unknown.isEmpty())
+                        m_unknown = "--printer-name must be followed by printername";
+                }
                 else if (m_unknown.isEmpty())
-                    m_unknown = "--printer-name must be followed by printername";
+                {
+                    m_unknown = "--printer-name must directly follow --print-to-file";
+                }
             }
-            else if ( (eCurrentEvent == CommandLineEvent::Conversion ||
-                       eCurrentEvent == CommandLineEvent::BatchPrint)
-                      && oArg == "outdir" )
+            else if ( oArg == "outdir" )
+            {
+                if (eCurrentEvent == CommandLineEvent::Conversion ||
+                    eCurrentEvent == CommandLineEvent::BatchPrint)
+                {
+                    if (supplier.next(&aArg))
+                        m_conversionout = aArg;
+                    else if (m_unknown.isEmpty())
+                        m_unknown = "--outdir must be followed by output directory path";
+                }
+                else if (m_unknown.isEmpty())
+                {
+                    m_unknown = "--outdir must directly follow either output filter specification of --convert-to, or --print-to-file or its printer specification";
+                }
+            }
+            else if ( eCurrentEvent == CommandLineEvent::Conversion
+                      && oArg == "convert-images-to" )
             {
                 if (supplier.next(&aArg))
-                    m_conversionout = aArg;
+                    m_convertimages = aArg;
                 else if (m_unknown.isEmpty())
-                    m_unknown = "--outdir must be followed by output directory path";
+                    m_unknown = "--convert-images-to must be followed by an image type";
             }
             else if ( aArg.startsWith("-") )
             {
@@ -611,7 +628,7 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
                 {
                     m_unknown = aArg;
                 }
-                bDeprecated = false;
+                oDeprecatedArg.clear();
             }
             else
             {
@@ -662,9 +679,9 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
                 }
             }
 
-            if (bDeprecated)
+            if (!oDeprecatedArg.isEmpty())
             {
-                OString sArg(OUStringToOString(aArg, osl_getThreadTextEncoding()));
+                OString sArg(OUStringToOString(oDeprecatedArg, osl_getThreadTextEncoding()));
                 fprintf(stderr, "Warning: %s is deprecated.  Use -%s instead.\n", sArg.getStr(), sArg.getStr());
             }
         }
@@ -675,12 +692,12 @@ void CommandLineArgs::InitParamValues()
 {
     m_minimized = false;
     m_norestore = false;
-#ifdef LIBO_HEADLESS
-    m_invisible = true;
-    m_headless = true;
-#else
+#if HAVE_FEATURE_UI
     m_invisible = false;
     m_headless = false;
+#else
+    m_invisible = true;
+    m_headless = true;
 #endif
     m_eventtesting = false;
     m_quickstart = false;

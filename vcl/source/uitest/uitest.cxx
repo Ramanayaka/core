@@ -8,14 +8,16 @@
  */
 
 #include <memory>
+#include <vcl/floatwin.hxx>
 #include <vcl/uitest/uitest.hxx>
 #include <vcl/uitest/uiobject.hxx>
 
-#include <vcl/dialog.hxx>
+#include <vcl/toolkit/dialog.hxx>
 
-#include "svdata.hxx"
+#include <svdata.hxx>
 
 #include <comphelper/dispatchcommand.hxx>
+#include <com/sun/star/beans/PropertyValue.hpp>
 
 bool UITest::executeCommand(const OUString& rCommand)
 {
@@ -23,6 +25,23 @@ bool UITest::executeCommand(const OUString& rCommand)
         rCommand,
         {{"SynchronMode", -1, css::uno::Any(true),
           css::beans::PropertyState_DIRECT_VALUE}});
+}
+
+bool UITest::executeCommandWithParameters(const OUString& rCommand,
+    const css::uno::Sequence< css::beans::PropertyValue >& rArgs)
+{
+    css::uno::Sequence< css::beans::PropertyValue > lNewArgs =
+        {{"SynchronMode", -1, css::uno::Any(true),
+          css::beans::PropertyState_DIRECT_VALUE}};
+
+    if ( rArgs.hasElements() )
+    {
+        sal_uInt32 nIndex( lNewArgs.getLength() );
+        lNewArgs.realloc( lNewArgs.getLength()+rArgs.getLength() );
+
+        std::copy(rArgs.begin(), rArgs.end(), std::next(lNewArgs.begin(), nIndex));
+    }
+    return comphelper::dispatchCommand(rCommand,lNewArgs);
 }
 
 bool UITest::executeDialog(const OUString& rCommand)
@@ -36,20 +55,20 @@ bool UITest::executeDialog(const OUString& rCommand)
 std::unique_ptr<UIObject> UITest::getFocusTopWindow()
 {
     ImplSVData* pSVData = ImplGetSVData();
-    ImplSVWinData& rWinData = pSVData->maWinData;
+    ImplSVWinData& rWinData = *pSVData->mpWinData;
 
-    if (rWinData.mpLastExecuteDlg)
+    if (!rWinData.mpExecuteDialogs.empty())
     {
-        return rWinData.mpLastExecuteDlg->GetUITestFactory()(rWinData.mpLastExecuteDlg);
+        return rWinData.mpExecuteDialogs.back()->GetUITestFactory()(rWinData.mpExecuteDialogs.back());
     }
 
-    return rWinData.mpFirstFrame->GetUITestFactory()(rWinData.mpFirstFrame);
+    return pSVData->maFrameData.mpFirstFrame->GetUITestFactory()(pSVData->maFrameData.mpFirstFrame);
 }
 
 std::unique_ptr<UIObject> UITest::getFloatWindow()
 {
     ImplSVData* pSVData = ImplGetSVData();
-    ImplSVWinData& rWinData = pSVData->maWinData;
+    ImplSVWinData& rWinData = *pSVData->mpWinData;
 
     VclPtr<vcl::Window> pFloatWin = rWinData.mpFirstFloat;
     if (pFloatWin)

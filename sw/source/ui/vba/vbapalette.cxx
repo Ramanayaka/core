@@ -19,17 +19,15 @@
 
 #include "vbapalette.hxx"
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <ooo/vba/word/WdColor.hpp>
-#include <ooo/vba/word/WdColorIndex.hpp>
 #include <sal/macros.h>
 
 using namespace ::ooo::vba;
 using namespace ::ooo::vba::word;
 using namespace ::com::sun::star;
 
-static const sal_Int32 ColorTable[] =
+const sal_Int32 ColorTable[] =
 {
 WdColor::wdColorAutomatic, // 0
 WdColor::wdColorBlack,             // 1
@@ -51,6 +49,8 @@ WdColor::wdColorGray25,           // 16
 };
 
 typedef ::cppu::WeakImplHelper< container::XIndexAccess > XIndexAccess_BASE;
+
+namespace {
 
 class DefaultPalette : public XIndexAccess_BASE
 {
@@ -82,9 +82,11 @@ public:
 
 };
 
+}
+
 VbaPalette::VbaPalette()
+  : mxPalette(new DefaultPalette())
 {
-    mxPalette = new DefaultPalette();
 }
 
 

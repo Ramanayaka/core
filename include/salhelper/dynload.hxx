@@ -20,10 +20,10 @@
 #ifndef INCLUDED_SALHELPER_DYNLOAD_HXX
 #define INCLUDED_SALHELPER_DYNLOAD_HXX
 
-#include <sal/types.h>
-#include <rtl/ustring.hxx>
-#include <osl/module.h>
-#include <salhelper/salhelperdllapi.h>
+#include "sal/types.h"
+#include "rtl/ustring.hxx"
+#include "osl/module.h"
+#include "salhelper/salhelperdllapi.h"
 
 namespace salhelper
 {
@@ -111,7 +111,7 @@ public:
         m_pLoader = NULL;
     }
 
-    /** Constructor, loads the library if necessary otherwise the refernece count will
+    /** Constructor, loads the library if necessary otherwise the reference count will
         be increased.
 
         @param strModuleName specifies the library name.
@@ -143,7 +143,7 @@ public:
             m_pLoader->acquire();
     }
 
-    /// Destructor, decrease the reference count and unload the library if it is tha last instance.
+    /// Destructor, decrease the reference count and unload the library if it is the last instance.
     ~ODynamicLoader()
     {
         if( m_pLoader )

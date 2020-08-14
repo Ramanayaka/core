@@ -17,36 +17,31 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RelationTableView.hxx"
-#include "JoinExchange.hxx"
-#include <comphelper/extract.hxx>
-#include "browserids.hxx"
+#include <RelationTableView.hxx>
+#include <core_resource.hxx>
+#include <browserids.hxx>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/sdbcx/XKeysSupplier.hpp>
-#include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <com/sun/star/sdbcx/KeyType.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
+#include <com/sun/star/container/XContainer.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include "dbustrings.hrc"
 #include <connectivity/dbtools.hxx>
-#include <comphelper/sequence.hxx>
-#include "dbaccess_helpid.hrc"
-#include "RelationDesignView.hxx"
-#include "JoinController.hxx"
-#include "TableWindow.hxx"
-#include "TableWindowData.hxx"
+#include <helpids.h>
+#include <RelationDesignView.hxx>
+#include <JoinController.hxx>
+#include <TableWindow.hxx>
+#include <TableWindowData.hxx>
 #include "RTableConnection.hxx"
-#include "RTableConnectionData.hxx"
-#include "RelationDlg.hxx"
-#include "sqlmessage.hxx"
-#include "dbu_rel.hrc"
-#include "UITools.hxx"
+#include <RTableConnectionData.hxx>
+#include <RelationDlg.hxx>
+#include <sqlmessage.hxx>
+#include <strings.hrc>
 #include <connectivity/dbexception.hxx>
 #include "RTableWindow.hxx"
-#include "JAccess.hxx"
-#include <svl/undo.hxx>
+#include <JAccess.hxx>
+#include <vcl/stdtext.hxx>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 
 using namespace dbaui;
@@ -59,7 +54,6 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::accessibility;
 
-// class ORelationTableView
 ORelationTableView::ORelationTableView( vcl::Window* pParent, ORelationDesignView* pView )
     :OJoinTableView( pParent, pView )
     , ::comphelper::OContainerListener(m_aMutex)
@@ -180,16 +174,18 @@ void ORelationTableView::AddConnection(const OJoinExchangeData& jxdSource, const
         }
     }
     // insert table connection into view
-    TTableConnectionData::value_type pTabConnData(new ORelationTableConnectionData(pSourceWin->GetData(),
-                                                                                   pDestWin->GetData()));
+    TTableConnectionData::value_type pTabConnData = std::make_shared<ORelationTableConnectionData>(pSourceWin->GetData(),
+                                                                                   pDestWin->GetData());
 
     // the names of the affected fields
-    OUString sSourceFieldName = jxdSource.pListBox->GetEntryText(jxdSource.pEntry);
-    OUString sDestFieldName = jxdDest.pListBox->GetEntryText(jxdDest.pEntry);
+    weld::TreeView& rSourceTreeView = jxdSource.pListBox->get_widget();
+    OUString sSourceFieldName = rSourceTreeView.get_text(jxdSource.nEntry);
+    weld::TreeView& rDestTreeView = jxdDest.pListBox->get_widget();
+    OUString sDestFieldName = rDestTreeView.get_text(jxdDest.nEntry);
 
     // the number of PKey-Fields in the source
     const Reference< XNameAccess> xPrimaryKeyColumns = getPrimaryKeyColumns_throw(pSourceWin->GetData()->getTable());
-    bool bAskUser = xPrimaryKeyColumns.is() && Reference< XIndexAccess>(xPrimaryKeyColumns,UNO_QUERY)->getCount() > 1;
+    bool bAskUser = xPrimaryKeyColumns.is() && Reference< XIndexAccess>(xPrimaryKeyColumns,UNO_QUERY_THROW)->getCount() > 1;
 
     pTabConnData->SetConnLine( 0, sSourceFieldName, sDestFieldName );
 
@@ -219,8 +215,8 @@ void ORelationTableView::AddConnection(const OJoinExchangeData& jxdSource, const
 
 void ORelationTableView::ConnDoubleClicked(VclPtr<OTableConnection>& rConnection)
 {
-    ScopedVclPtrInstance< ORelationDialog > aRelDlg( this, rConnection->GetData() );
-    switch (aRelDlg->Execute())
+    ORelationDialog aRelDlg(this, rConnection->GetData());
+    switch (aRelDlg.run())
     {
         case RET_OK:
             // successfully updated
@@ -246,10 +242,10 @@ void ORelationTableView::ConnDoubleClicked(VclPtr<OTableConnection>& rConnection
 void ORelationTableView::AddNewRelation()
 {
 
-    TTableConnectionData::value_type pNewConnData( new ORelationTableConnectionData() );
-    ScopedVclPtrInstance< ORelationDialog > aRelDlg(this, pNewConnData, true);
+    TTableConnectionData::value_type pNewConnData = std::make_shared<ORelationTableConnectionData>();
+    ORelationDialog aRelDlg(this, pNewConnData, true);
 
-    bool bSuccess = (aRelDlg->Execute() == RET_OK);
+    bool bSuccess = (aRelDlg.run() == RET_OK);
     if (bSuccess)
     {
         // already updated by the dialog
@@ -263,8 +259,9 @@ bool ORelationTableView::RemoveConnection(VclPtr<OTableConnection>& rConn, bool 
     ORelationTableConnectionData* pTabConnData = static_cast<ORelationTableConnectionData*>(rConn->GetData().get());
     try
     {
-        if ( m_bInRemove || pTabConnData->DropRelation())
-            return OJoinTableView::RemoveConnection(rConn, true);
+        if (!m_bInRemove)
+            pTabConnData->DropRelation();
+        return OJoinTableView::RemoveConnection(rConn, true);
     }
     catch(SQLException& e)
     {
@@ -322,8 +319,8 @@ void ORelationTableView::AddTabWin(const OUString& _rComposedName, const OUStrin
 
 void ORelationTableView::RemoveTabWin( OTableWindow* pTabWin )
 {
-    ScopedVclPtrInstance< OSQLWarningBox > aDlg( this, ModuleRes( STR_QUERY_REL_DELETE_WINDOW ), WB_YES_NO | WB_DEF_YES );
-    if ( m_bInRemove || aDlg->Execute() == RET_YES )
+    OSQLWarningBox aDlg(GetFrameWeld(), DBA_RES(STR_QUERY_REL_DELETE_WINDOW), MessBoxStyle::YesNo | MessBoxStyle::DefaultYes);
+    if (m_bInRemove || aDlg.run() == RET_YES)
     {
         m_pView->getController().ClearUndoManager();
         OJoinTableView::RemoveTabWin( pTabWin );
@@ -338,16 +335,16 @@ void ORelationTableView::lookForUiActivities()
 {
     if(m_pExistingConnection)
     {
-        OUString sTitle(ModuleRes(STR_RELATIONDESIGN));
+        OUString sTitle(DBA_RES(STR_RELATIONDESIGN));
         sTitle = sTitle.copy(3);
-        ScopedVclPtrInstance< OSQLMessageBox > aDlg(this,ModuleRes(STR_QUERY_REL_EDIT_RELATION),OUString(),0);
-        aDlg->SetText(sTitle);
-        aDlg->RemoveButton(aDlg->GetButtonId(0));
-        aDlg->AddButton( ModuleRes(STR_QUERY_REL_EDIT), RET_OK, ButtonDialogFlags::Default | ButtonDialogFlags::Focus);
-        aDlg->AddButton( ModuleRes(STR_QUERY_REL_CREATE), RET_YES);
-        aDlg->AddButton( StandardButtonType::Cancel,RET_CANCEL);
-        sal_uInt16 nRet = aDlg->Execute();
-        if( nRet == RET_CANCEL)
+        OSQLMessageBox aDlg(GetFrameWeld(), DBA_RES(STR_QUERY_REL_EDIT_RELATION), OUString(), MessBoxStyle::NONE);
+        aDlg.set_title(sTitle);
+        aDlg.add_button(DBA_RES(STR_QUERY_REL_EDIT), RET_OK);
+        aDlg.set_default_response(RET_OK);
+        aDlg.add_button(DBA_RES(STR_QUERY_REL_CREATE), RET_YES);
+        aDlg.add_button(GetStandardText(StandardButtonType::Cancel), RET_CANCEL);
+        sal_uInt16 nRet = aDlg.run();
+        if (nRet == RET_CANCEL)
         {
             m_pCurrentlyTabConnData.reset();
         }
@@ -360,8 +357,8 @@ void ORelationTableView::lookForUiActivities()
     }
     if(m_pCurrentlyTabConnData)
     {
-        ScopedVclPtrInstance< ORelationDialog > aRelDlg( this, m_pCurrentlyTabConnData );
-        if (aRelDlg->Execute() == RET_OK)
+        ORelationDialog aRelDlg(this, m_pCurrentlyTabConnData);
+        if (aRelDlg.run() == RET_OK)
         {
             // already updated by the dialog
             addConnection( VclPtr<ORelationTableConnection>::Create( this, m_pCurrentlyTabConnData ) );

@@ -12,17 +12,15 @@
 #include <set>
 
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/weakref.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/frame/XInterceptorInfo.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/frame/XDispatchProviderInterceptor.hpp>
-
-#include <macros/xserviceinfo.hxx>
 
 namespace framework {
 
@@ -88,11 +86,10 @@ public:
     virtual void SAL_CALL insertByName( const OUString& aName, const ::css::uno::Any& aElement ) override;
     virtual void SAL_CALL removeByName( const OUString& Name ) override;
 
-    DECLARE_XSERVICEINFO_NOFACTORY
-    /* Helper for registry */
-    /// @throws css::uno::Exception
-    static css::uno::Reference< css::uno::XInterface >             SAL_CALL impl_createInstance                ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
-    static css::uno::Reference< css::lang::XSingleServiceFactory > SAL_CALL impl_createFactory                 ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
+    /* interface XServiceInfo */
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual sal_Bool SAL_CALL supportsService( const OUString& sServiceName ) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
 } // namespace framework

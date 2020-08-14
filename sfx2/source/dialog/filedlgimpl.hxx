@@ -25,7 +25,6 @@
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/beans/StringPair.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/ui/dialogs/XFilePicker2.hpp>
 #include <com/sun/star/ui/dialogs/XFilePickerListener.hpp>
 #include <com/sun/star/ui/dialogs/XDialogClosedListener.hpp>
 #include <sfx2/fcontnr.hxx>
@@ -34,6 +33,7 @@
 class SfxFilterMatcher;
 class GraphicFilter;
 class FileDialogHelper;
+struct ImplSVEvent;
 
 namespace sfx2
 {
@@ -44,15 +44,15 @@ namespace sfx2
     {
         friend class FileDialogHelper;
 
-        css::uno::Reference < css::ui::dialogs::XFilePicker2 > mxFileDlg;
+        css::uno::Reference < css::ui::dialogs::XFilePicker3 > mxFileDlg;
         css::uno::Reference < css::container::XNameAccess >   mxFilterCFG;
 
         std::vector< css::beans::StringPair >   maFilters;
 
         SfxFilterMatcher*           mpMatcher;
-        GraphicFilter*              mpGraphicFilter;
+        std::unique_ptr<GraphicFilter> mpGraphicFilter;
         FileDialogHelper*           mpAntiImpl;
-        VclPtr<vcl::Window>         mpPreferredParentWindow;
+        weld::Window*               mpFrameWeld;
 
         ::std::vector< OUString > mlLastURLs;
 
@@ -167,17 +167,17 @@ namespace sfx2
         // Own methods
                                 FileDialogHelper_Impl(
                                     FileDialogHelper* _pAntiImpl,
-                                    const short nDialogType,
+                                    const sal_Int16 nDialogType,
                                     FileDialogFlags nFlags,
-                                    sal_Int16 nDialog = SFX2_IMPL_DIALOG_CONFIG,
-                                    vcl::Window* _pPreferredParentWindow = nullptr,
+                                    sal_Int16 nDialog,
+                                    weld::Window* pFrameWeld,
                                     const OUString& sStandardDir = OUString(),
-                                    const css::uno::Sequence< OUString >&   rBlackList = css::uno::Sequence< OUString >()
+                                    const css::uno::Sequence< OUString >&   rDenyList = css::uno::Sequence< OUString >()
                                 );
         virtual                 ~FileDialogHelper_Impl() override;
 
         ErrCode                 execute( std::vector<OUString>& rpURLList,
-                                         SfxItemSet *&   rpSet,
+                                         std::unique_ptr<SfxItemSet>& rpSet,
                                          OUString&       rFilter );
         ErrCode                 execute();
 
@@ -208,6 +208,8 @@ namespace sfx2
 
         bool             isSystemFilePicker() const { return mbSystemPicker; }
         bool             isPasswordEnabled() const { return mbIsPwdEnabled; }
+
+        css::uno::Reference<css::awt::XWindow> GetFrameInterface();
     };
 
 }   // end of namespace sfx2

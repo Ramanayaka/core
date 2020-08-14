@@ -27,14 +27,13 @@
  ************************************************************************/
 
 
-#include "com/sun/star/io/IOException.hpp"
-#include "com/sun/star/lang/IllegalArgumentException.hpp"
-#include "com/sun/star/task/XInteractionAbort.hpp"
-#include "com/sun/star/ucb/XWebDAVCommandEnvironment.hpp"
+#include <com/sun/star/io/IOException.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/task/XInteractionAbort.hpp>
+#include <com/sun/star/ucb/XWebDAVCommandEnvironment.hpp>
 
-#include "ucbhelper/simpleauthenticationrequest.hxx"
-#include "comphelper/processfactory.hxx"
-#include "comphelper/seekableinput.hxx"
+#include <ucbhelper/simpleauthenticationrequest.hxx>
+#include <comphelper/seekableinput.hxx>
 
 #include "DAVAuthListenerImpl.hxx"
 #include "DAVResourceAccess.hxx"
@@ -45,6 +44,7 @@ using namespace com::sun::star;
 
 // DAVAuthListener_Impl Implementation.
 
+constexpr sal_uInt32 g_nRedirectLimit = 5;
 
 // virtual
 int DAVAuthListener_Impl::authenticate(
@@ -132,8 +132,7 @@ DAVResourceAccess::DAVResourceAccess(
     const OUString & rURL )
 : m_aURL( rURL ),
   m_xSessionFactory( rSessionFactory ),
-  m_xContext( rxContext ),
-  m_nRedirectLimit( 5 )
+  m_xContext( rxContext )
 {
 }
 
@@ -145,8 +144,7 @@ DAVResourceAccess::DAVResourceAccess( const DAVResourceAccess & rOther )
   m_xSession( rOther.m_xSession ),
   m_xSessionFactory( rOther.m_xSessionFactory ),
   m_xContext( rOther.m_xContext ),
-  m_aRedirectURIs( rOther.m_aRedirectURIs ),
-  m_nRedirectLimit( rOther.m_nRedirectLimit )
+  m_aRedirectURIs( rOther.m_aRedirectURIs )
 {
 }
 
@@ -161,7 +159,6 @@ DAVResourceAccess & DAVResourceAccess::operator=(
     m_xSessionFactory = rOther.m_xSessionFactory;
     m_xContext        = rOther.m_xContext;
     m_aRedirectURIs   = rOther.m_aRedirectURIs;
-    m_nRedirectLimit = rOther.m_nRedirectLimit;
 
     return *this;
 }
@@ -1021,40 +1018,40 @@ void DAVResourceAccess::setURL( const OUString & rNewURL )
 void DAVResourceAccess::initialize()
 {
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
-    if ( m_aPath.isEmpty() )
+    if ( !m_aPath.isEmpty() )
+        return;
+
+    NeonUri aURI( m_aURL );
+    const OUString& aPath( aURI.GetPath() );
+
+    /* #134089# - Check URI */
+    if ( aPath.isEmpty() )
+        throw DAVException( DAVException::DAV_INVALID_ARG );
+
+    /* #134089# - Check URI */
+    if ( aURI.GetHost().isEmpty() )
+        throw DAVException( DAVException::DAV_INVALID_ARG );
+
+    if ( !m_xSession.is() || !m_xSession->CanUse( m_aURL, m_aFlags ) )
     {
-        NeonUri aURI( m_aURL );
-        OUString aPath( aURI.GetPath() );
+        m_xSession.clear();
 
-        /* #134089# - Check URI */
-        if ( aPath.isEmpty() )
-            throw DAVException( DAVException::DAV_INVALID_ARG );
+        // create new webdav session
+        m_xSession
+            = m_xSessionFactory->createDAVSession( m_aURL, m_aFlags, m_xContext );
 
-        /* #134089# - Check URI */
-        if ( aURI.GetHost().isEmpty() )
-            throw DAVException( DAVException::DAV_INVALID_ARG );
-
-        if ( !m_xSession.is() || !m_xSession->CanUse( m_aURL, m_aFlags ) )
-        {
-            m_xSession.clear();
-
-            // create new webdav session
-            m_xSession
-                = m_xSessionFactory->createDAVSession( m_aURL, m_aFlags, m_xContext );
-
-            if ( !m_xSession.is() )
-                return;
-        }
-
-        // Own URI is needed to redirect cycle detection.
-        m_aRedirectURIs.push_back( aURI );
-
-        // Success.
-        m_aPath = aPath;
-
-        // Not only the path has to be encoded
-        m_aURL = aURI.GetURI();
+        if ( !m_xSession.is() )
+            return;
     }
+
+    // Own URI is needed to redirect cycle detection.
+    m_aRedirectURIs.push_back( aURI );
+
+    // Success.
+    m_aPath = aPath;
+
+    // Not only the path has to be encoded
+    m_aURL = aURI.GetURI();
 }
 
 
@@ -1084,15 +1081,14 @@ void DAVResourceAccess::getUserRequestHeaders(
 
         if ( xDAVEnv.is() )
         {
-            uno::Sequence< beans::StringPair > aRequestHeaders
+            const uno::Sequence< beans::StringPair > aRequestHeaders
                 = xDAVEnv->getUserRequestHeaders( rURI, eMethod );
 
-            for ( sal_Int32 n = 0; n < aRequestHeaders.getLength(); ++n )
+            for ( const auto& rRequestHeader : aRequestHeaders )
             {
-                rRequestHeaders.push_back(
-                    DAVRequestHeader(
-                        aRequestHeaders[ n ].First,
-                        aRequestHeaders[ n ].Second ) );
+                rRequestHeaders.emplace_back(
+                        rRequestHeader.First,
+                        rRequestHeader.Second );
             }
         }
     }
@@ -1101,16 +1097,12 @@ void DAVResourceAccess::getUserRequestHeaders(
     // en.wikipedia.org:80 forces back 403 "Scripts should use an informative
     // User-Agent string with contact information, or they may be IP-blocked
     // without notice" otherwise:
-    for ( DAVRequestHeaders::iterator i(rRequestHeaders.begin());
-          i != rRequestHeaders.end(); ++i )
+    if ( std::any_of(rRequestHeaders.begin(), rRequestHeaders.end(),
+            [](const DAVRequestHeader& rHeader) { return rHeader.first.equalsIgnoreAsciiCase( "User-Agent" ); }) )
     {
-        if ( i->first.equalsIgnoreAsciiCase( "User-Agent" ) )
-        {
-            return;
-        }
+        return;
     }
-    rRequestHeaders.push_back(
-        DAVRequestHeader( "User-Agent", "LibreOffice" ) );
+    rRequestHeaders.emplace_back( "User-Agent", "LibreOffice" );
 }
 
 // This function member implements the control on cyclical redirections
@@ -1121,28 +1113,19 @@ bool DAVResourceAccess::detectRedirectCycle(
 
     NeonUri aUri( rRedirectURL );
 
-    std::vector< NeonUri >::const_iterator it  = m_aRedirectURIs.begin();
-    std::vector< NeonUri >::const_iterator end = m_aRedirectURIs.end();
-
     // Check for maximum number of redirections
     // according to <https://tools.ietf.org/html/rfc7231#section-6.4>.
-    // A pratical limit may be 5, due to earlier specifications:
+    // A practical limit may be 5, due to earlier specifications:
     // <https://tools.ietf.org/html/rfc2068#section-10.3>
     // it can be raised keeping in mind the added net activity.
-    if( static_cast< size_t >( m_nRedirectLimit ) <= m_aRedirectURIs.size() )
+    if( static_cast< size_t >( g_nRedirectLimit ) <= m_aRedirectURIs.size() )
         return true;
 
     // try to detect a cyclical redirection
-    while ( it != end )
-    {
-        // if equal, cyclical redirection detected
-        if ( aUri == (*it) )
-            return true;
-
-        ++it;
-    }
-
-    return false;
+    return std::any_of(m_aRedirectURIs.begin(), m_aRedirectURIs.end(),
+        [&aUri](const NeonUri& rUri) {
+            // if equal, cyclical redirection detected
+            return aUri == rUri; });
 }
 
 
@@ -1153,7 +1136,7 @@ void DAVResourceAccess::resetUri()
     {
         std::vector< NeonUri >::const_iterator it  = m_aRedirectURIs.begin();
 
-        NeonUri aUri( (*it) );
+        NeonUri aUri( *it );
         m_aRedirectURIs.clear();
         setURL ( aUri.GetURI() );
         initialize();

@@ -22,25 +22,20 @@
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/container/XNamed.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 
 #include <cppuhelper/implbase.hxx>
+#include <vcl/font.hxx>
 #include <map>
 #include <vector>
 
-#include <stlfamily.hxx>
-#include <stlsheet.hxx>
+#include "stlfamily.hxx"
+#include "stlsheet.hxx"
 
-#include <sddllapi.h>
+#include "sddllapi.h"
 
-class SdStyleSheet;
 class SdDrawDocument;
 class SdPage;
-class SfxStyleSheetBase;
 class SvxNumberFormat;
 
 typedef std::map< const SdPage*, SdStyleFamilyRef > SdStyleFamilyMap;
@@ -51,7 +46,7 @@ typedef ::cppu::ImplInheritanceHelper< SfxStyleSheetPool,
                                         css::container::XNameAccess,
                                         css::lang::XComponent > SdStyleSheetPoolBase;
 
-class SdStyleSheetPool : public SdStyleSheetPoolBase, public SfxListener
+class SAL_DLLPUBLIC_RTTI SdStyleSheetPool final : public SdStyleSheetPoolBase, public SfxListener
 {
     friend class SdDrawDocument;
 public:
@@ -76,12 +71,12 @@ public:
     SD_DLLPUBLIC void                CreateLayoutStyleSheets(const OUString& rLayoutName, bool bCheck = false );
     static void         CreateLayoutSheetNames(const OUString& rLayoutName, std::vector<OUString> &aNameList);
     void                CreateLayoutSheetList(const OUString& rLayoutName, SdStyleSheetVector& rLayoutSheets);
-    void                CopyLayoutSheets(const OUString& rLayoutName, SdStyleSheetPool& rSourcePool, SdStyleSheetVector& rCreatedSheets );
+    void                CopyLayoutSheets(const OUString& rLayoutName, SdStyleSheetPool& rSourcePool, StyleSheetCopyResultVector& rCreatedSheets);
     void                CopyGraphicSheets(SdStyleSheetPool& rSourcePool);
     void                CopyCellSheets(SdStyleSheetPool& rSourcePool);
-    void                CopyTableStyles(SdStyleSheetPool& rSourcePool);
-    void                CopyCellSheets(SdStyleSheetPool& rSourcePool, SdStyleSheetVector& rCreatedSheets);
-    void                RenameAndCopyGraphicSheets(SdStyleSheetPool& rSourcePool, SdStyleSheetVector& rCreatedSheets, OUString &rRenameSuffix);
+    void                CopyTableStyles(SdStyleSheetPool const & rSourcePool);
+    void                CopyCellSheets(SdStyleSheetPool& rSourcePool, StyleSheetCopyResultVector& rCreatedSheets);
+    void                RenameAndCopyGraphicSheets(SdStyleSheetPool& rSourcePool, StyleSheetCopyResultVector& rCreatedSheets, OUString const &rRenameSuffix);
 
     void                CreatePseudosIfNecessary();
     void                UpdateStdNames();
@@ -90,7 +85,7 @@ public:
 
     SdDrawDocument*     GetDoc() const { return mpDoc; }
 
-    static  SdStyleSheetVector CreateChildList( SdStyleSheet* pSheet );
+    static  SdStyleSheetVector CreateChildList( SdStyleSheet const * pSheet );
 
     static void setDefaultOutlineNumberFormatBulletAndIndent(sal_uInt16 i, SvxNumberFormat &rNumberFormat);
 
@@ -121,12 +116,12 @@ public:
     virtual void SAL_CALL addEventListener( const css::uno::Reference< css::lang::XEventListener >& xListener ) override;
     virtual void SAL_CALL removeEventListener( const css::uno::Reference< css::lang::XEventListener >& aListener ) override;
 
-protected:
+private:
     void CopySheets(SdStyleSheetPool& rSourcePool, SfxStyleFamily eFamily );
-    void CopySheets(SdStyleSheetPool& rSourcePool, SfxStyleFamily eFamily, SdStyleSheetVector& rCreatedSheets );
-    void CopySheets(SdStyleSheetPool& rSourcePool, SfxStyleFamily eFamily, SdStyleSheetVector& rCreatedSheets, const OUString &rRenameSuffix );
+    void CopySheets(SdStyleSheetPool& rSourcePool, SfxStyleFamily eFamily, StyleSheetCopyResultVector& rCreatedSheets );
+    void CopySheets(SdStyleSheetPool& rSourcePool, SfxStyleFamily eFamily, StyleSheetCopyResultVector& rCreatedSheets, const OUString &rRenameSuffix );
 
-    virtual SfxStyleSheetBase* Create(const OUString& rName, SfxStyleFamily eFamily, sal_uInt16 nMask) override;
+    virtual SfxStyleSheetBase* Create(const OUString& rName, SfxStyleFamily eFamily, SfxStyleSearchBits nMask) override;
 
     using  SfxStyleSheetPool::Create;
     virtual ~SdStyleSheetPool() override;
@@ -134,7 +129,6 @@ protected:
     void AddStyleFamily( const SdPage* pPage );
     void RemoveStyleFamily( const SdPage* pPage );
 
-private:
     SfxStyleSheetBase*      mpActualStyleSheet;
     SdDrawDocument*         mpDoc;
     SdStyleFamilyRef        mxGraphicFamily;

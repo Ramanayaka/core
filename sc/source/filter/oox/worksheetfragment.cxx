@@ -17,35 +17,34 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "worksheetfragment.hxx"
+#include <worksheetfragment.hxx>
+#include <formulaparser.hxx>
 
+#include <osl/diagnose.h>
 #include <oox/core/filterbase.hxx>
 #include <oox/core/relations.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
-#include "addressconverter.hxx"
-#include "autofilterbuffer.hxx"
-#include "autofiltercontext.hxx"
-#include "commentsfragment.hxx"
-#include "condformatcontext.hxx"
-#include "drawingfragment.hxx"
-#include "externallinkbuffer.hxx"
-#include "pagesettings.hxx"
-#include "pivottablefragment.hxx"
-#include "querytablefragment.hxx"
-#include "scenariobuffer.hxx"
-#include "scenariocontext.hxx"
-#include "sheetdatabuffer.hxx"
-#include "sheetdatacontext.hxx"
-#include "tablefragment.hxx"
-#include "extlstcontext.hxx"
-#include "viewsettings.hxx"
-#include "workbooksettings.hxx"
-#include "worksheetsettings.hxx"
+#include <addressconverter.hxx>
+#include <biffhelper.hxx>
+#include <autofilterbuffer.hxx>
+#include <autofiltercontext.hxx>
+#include <commentsfragment.hxx>
+#include <condformatcontext.hxx>
+#include <drawingfragment.hxx>
+#include <pagesettings.hxx>
+#include <pivottablefragment.hxx>
+#include <querytablefragment.hxx>
+#include <scenariocontext.hxx>
+#include <sheetdatabuffer.hxx>
+#include <sheetdatacontext.hxx>
+#include <tablefragment.hxx>
+#include <extlstcontext.hxx>
+#include <viewsettings.hxx>
+#include <worksheetsettings.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::oox::core;
 
@@ -75,7 +74,7 @@ const sal_uInt16 BIFF12_OLEOBJECT_AUTOLOAD  = 0x0002;
 
 void DataValidationsContextBase::SetValidation( WorksheetHelper& rTarget )
 {
-    if (!mxValModel.get())
+    if (!mxValModel)
         return;
 
     rTarget.getAddressConverter().convertToCellRangeList(mxValModel->maRanges, maSqref, rTarget.getSheetIndex(), true);
@@ -227,7 +226,7 @@ OUString NormalizeOoxList(const OUString& aList)
                     aResult.append("\",\"");
                     break;
                 }
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             default:
                 aResult.append(ch);
                 break;
@@ -341,8 +340,8 @@ WorksheetFragment::WorksheetFragment( const WorksheetHelper& rHelper, const OUSt
 {
     // import data tables related to this worksheet
     RelationsRef xTableRels = getRelations().getRelationsFromTypeFromOfficeDoc( "table" );
-    for( ::std::map< OUString, Relation >::const_iterator aIt = xTableRels->begin(), aEnd = xTableRels->end(); aIt != aEnd; ++aIt )
-        importOoxFragment( new TableFragment( *this, getFragmentPathFromRelation( aIt->second ) ) );
+    for( const auto& rEntry : *xTableRels )
+        importOoxFragment( new TableFragment( *this, getFragmentPathFromRelation( rEntry.second ) ) );
 
     // import comments related to this worksheet
     OUString aCommentsFragmentPath = getFragmentPathFromFirstTypeFromOfficeDoc( "comments" );
@@ -620,13 +619,13 @@ void WorksheetFragment::initializeImport()
 
     // import query table fragments related to this worksheet
     RelationsRef xQueryRels = getRelations().getRelationsFromTypeFromOfficeDoc( "queryTable" );
-    for( ::std::map< OUString, Relation >::const_iterator aIt = xQueryRels->begin(), aEnd = xQueryRels->end(); aIt != aEnd; ++aIt )
-        importOoxFragment( new QueryTableFragment( *this, getFragmentPathFromRelation( aIt->second ) ) );
+    for( const auto& rEntry : *xQueryRels )
+        importOoxFragment( new QueryTableFragment( *this, getFragmentPathFromRelation( rEntry.second ) ) );
 
     // import pivot table fragments related to this worksheet
     RelationsRef xPivotRels = getRelations().getRelationsFromTypeFromOfficeDoc( "pivotTable" );
-    for( ::std::map< OUString, Relation >::const_iterator aIt = xPivotRels->begin(), aEnd = xPivotRels->end(); aIt != aEnd; ++aIt )
-        importOoxFragment( new PivotTableFragment( *this, getFragmentPathFromRelation( aIt->second ) ) );
+    for( const auto& rEntry : *xPivotRels )
+        importOoxFragment( new PivotTableFragment( *this, getFragmentPathFromRelation( rEntry.second ) ) );
 }
 
 void WorksheetFragment::finalizeImport()
@@ -902,7 +901,6 @@ void WorksheetFragment::importEmbeddedOleData( StreamDataSequence& orEmbeddedDat
         getBaseFilter().importBinaryData( orEmbeddedData, aFragmentPath );
 }
 
-} // namespace xls
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

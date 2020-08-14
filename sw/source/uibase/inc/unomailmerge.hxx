@@ -23,7 +23,6 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/interfacecontainer.hxx>
 #include <comphelper/interfacecontainer2.hxx>
-#include <unotools/configitem.hxx>
 
 #include <com/sun/star/task/XJob.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -35,7 +34,7 @@
 #include <svl/itemprop.hxx>
 #include <sfx2/objsh.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
 
     namespace sdbc {
         class XResultSet;
@@ -55,7 +54,7 @@ namespace com { namespace sun { namespace star {
         struct PropertyValue;
     }
 
-}}}
+}
 
 typedef cppu::OMultiTypeInterfaceContainerHelperVar<sal_Int32>
     OPropertyListenerContainerHelper;

@@ -23,10 +23,9 @@
 #include <sfx2/dllapi.h>
 #include <svl/poolitem.hxx>
 
-#include <sfx2/shell.hxx>
+class SfxShell;
 
-
-class SFX2_DLLPUBLIC SfxObjectItem: public SfxPoolItem
+class SFX2_DLLPUBLIC SfxObjectItem final : public SfxPoolItem
 {
     SfxShell*                _pSh;
 
@@ -35,7 +34,7 @@ public:
                              SfxObjectItem( sal_uInt16 nWhich=0, SfxShell *pSh=nullptr );
 
     virtual bool             operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SfxObjectItem*   Clone( SfxItemPool *pPool = nullptr ) const override;
 
     SfxShell*                GetShell() const
                              { return _pSh; }

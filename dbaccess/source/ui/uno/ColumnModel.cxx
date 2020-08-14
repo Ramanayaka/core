@@ -18,21 +18,15 @@
  */
 
 #include "ColumnModel.hxx"
-#include "uiservices.hxx"
-#include <com/sun/star/awt/FontRelief.hpp>
-#include <com/sun/star/awt/FontEmphasisMark.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 
-#include <cppuhelper/queryinterface.hxx>
-#include <comphelper/extract.hxx>
-#include "dbustrings.hrc"
-#include "dbu_reghelper.hxx"
-#include <toolkit/helper/vclunohelper.hxx>
-#include <comphelper/property.hxx>
+#include <stringconstants.hxx>
 
-extern "C" void SAL_CALL createRegistryInfo_OColumnControlModel()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_dbu_OColumnControlModel_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const& )
 {
-    static ::dbaui::OMultiInstanceAutoRegistration< ::dbaui::OColumnControlModel> aAutoRegistration;
+    return cppu::acquire(new ::dbaui::OColumnControlModel());
 }
 
 namespace dbaui
@@ -46,10 +40,9 @@ using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::util;
 
-OColumnControlModel::OColumnControlModel(const Reference<XMultiServiceFactory>& _rxFactory)
+OColumnControlModel::OColumnControlModel()
     :OPropertyContainer(m_aBHelper)
     ,OColumnControlModel_BASE(m_aMutex)
-    ,m_xORB(_rxFactory)
     ,m_sDefaultControl(SERVICE_CONTROLDEFAULT)
     ,m_bEnable(true)
     ,m_nBorder(0)
@@ -58,10 +51,9 @@ OColumnControlModel::OColumnControlModel(const Reference<XMultiServiceFactory>& 
     registerProperties();
 }
 
-OColumnControlModel::OColumnControlModel(const OColumnControlModel* _pSource,const Reference<XMultiServiceFactory>& _rxFactory)
+OColumnControlModel::OColumnControlModel(const OColumnControlModel* _pSource)
     :OPropertyContainer(m_aBHelper)
     ,OColumnControlModel_BASE(m_aMutex)
-    ,m_xORB(_rxFactory)
     ,m_sDefaultControl(_pSource->m_sDefaultControl)
     ,m_aTabStop(_pSource->m_aTabStop)
     ,m_bEnable(_pSource->m_bEnable)
@@ -104,7 +96,7 @@ void OColumnControlModel::registerProperties()
 // XCloneable
 Reference< XCloneable > SAL_CALL OColumnControlModel::createClone( )
 {
-    return new OColumnControlModel( this, m_xORB );
+    return new OColumnControlModel( this );
 }
 
 css::uno::Sequence<sal_Int8> OColumnControlModel::getImplementationId()
@@ -114,7 +106,15 @@ css::uno::Sequence<sal_Int8> OColumnControlModel::getImplementationId()
 
 IMPLEMENT_GETTYPES2(OColumnControlModel,OColumnControlModel_BASE,comphelper::OPropertyContainer)
 IMPLEMENT_PROPERTYCONTAINER_DEFAULTS(OColumnControlModel)
-IMPLEMENT_SERVICE_INFO2_STATIC(OColumnControlModel,"com.sun.star.comp.dbu.OColumnControlModel","com.sun.star.awt.UnoControlModel","com.sun.star.sdb.ColumnDescriptorControlModel")
+OUString SAL_CALL OColumnControlModel::getImplementationName()
+{
+    return "com.sun.star.comp.dbu.OColumnControlModel";
+}
+IMPLEMENT_SERVICE_INFO_SUPPORTS(OColumnControlModel)
+css::uno::Sequence< OUString > SAL_CALL OColumnControlModel::getSupportedServiceNames()
+{
+    return { "com.sun.star.awt.UnoControlModel","com.sun.star.sdb.ColumnDescriptorControlModel" };
+}
 IMPLEMENT_FORWARD_REFCOUNT( OColumnControlModel, OColumnControlModel_BASE )
 Any SAL_CALL OColumnControlModel::queryInterface( const Type& _rType )
 {

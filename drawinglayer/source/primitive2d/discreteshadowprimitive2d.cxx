@@ -23,12 +23,11 @@
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         DiscreteShadow::DiscreteShadow(const BitmapEx& rBitmapEx)
         :   maBitmapEx(rBitmapEx),
             maTopLeft(),
@@ -56,7 +55,7 @@ namespace drawinglayer
                 const sal_Int32 nQuarter((getBitmapEx().GetSizePixel().Width() - 3) >> 2);
                 const_cast< DiscreteShadow* >(this)->maTopLeft = getBitmapEx();
                 const_cast< DiscreteShadow* >(this)->maTopLeft.Crop(
-                    tools::Rectangle(Point(0, 0), Size((nQuarter * 2) + 1, (nQuarter * 2) + 1)));
+                    ::tools::Rectangle(Point(0, 0), Size((nQuarter * 2) + 1, (nQuarter * 2) + 1)));
             }
 
             return maTopLeft;
@@ -69,7 +68,7 @@ namespace drawinglayer
                 const sal_Int32 nQuarter((getBitmapEx().GetSizePixel().Width() - 3) >> 2);
                 const_cast< DiscreteShadow* >(this)->maTop = getBitmapEx();
                 const_cast< DiscreteShadow* >(this)->maTop.Crop(
-                    tools::Rectangle(Point((nQuarter * 2) + 1, 0), Size(1, nQuarter)));
+                    ::tools::Rectangle(Point((nQuarter * 2) + 1, 0), Size(1, nQuarter)));
             }
 
             return maTop;
@@ -82,7 +81,7 @@ namespace drawinglayer
                 const sal_Int32 nQuarter((getBitmapEx().GetSizePixel().Width() - 3) >> 2);
                 const_cast< DiscreteShadow* >(this)->maTopRight = getBitmapEx();
                 const_cast< DiscreteShadow* >(this)->maTopRight.Crop(
-                    tools::Rectangle(Point((nQuarter * 2) + 2, 0), Size((nQuarter * 2) + 1, (nQuarter * 2) + 1)));
+                    ::tools::Rectangle(Point((nQuarter * 2) + 2, 0), Size((nQuarter * 2) + 1, (nQuarter * 2) + 1)));
             }
 
             return maTopRight;
@@ -95,7 +94,7 @@ namespace drawinglayer
                 const sal_Int32 nQuarter((getBitmapEx().GetSizePixel().Width() - 3) >> 2);
                 const_cast< DiscreteShadow* >(this)->maRight = getBitmapEx();
                 const_cast< DiscreteShadow* >(this)->maRight.Crop(
-                    tools::Rectangle(Point((nQuarter * 3) + 3, (nQuarter * 2) + 1), Size(nQuarter, 1)));
+                    ::tools::Rectangle(Point((nQuarter * 3) + 3, (nQuarter * 2) + 1), Size(nQuarter, 1)));
             }
 
             return maRight;
@@ -108,7 +107,7 @@ namespace drawinglayer
                 const sal_Int32 nQuarter((getBitmapEx().GetSizePixel().Width() - 3) >> 2);
                 const_cast< DiscreteShadow* >(this)->maBottomRight = getBitmapEx();
                 const_cast< DiscreteShadow* >(this)->maBottomRight.Crop(
-                    tools::Rectangle(Point((nQuarter * 2) + 2, (nQuarter * 2) + 2), Size((nQuarter * 2) + 1, (nQuarter * 2) + 1)));
+                    ::tools::Rectangle(Point((nQuarter * 2) + 2, (nQuarter * 2) + 2), Size((nQuarter * 2) + 1, (nQuarter * 2) + 1)));
             }
 
             return maBottomRight;
@@ -121,7 +120,7 @@ namespace drawinglayer
                 const sal_Int32 nQuarter((getBitmapEx().GetSizePixel().Width() - 3) >> 2);
                 const_cast< DiscreteShadow* >(this)->maBottom = getBitmapEx();
                 const_cast< DiscreteShadow* >(this)->maBottom.Crop(
-                    tools::Rectangle(Point((nQuarter * 2) + 1, (nQuarter * 3) + 3), Size(1, nQuarter)));
+                    ::tools::Rectangle(Point((nQuarter * 2) + 1, (nQuarter * 3) + 3), Size(1, nQuarter)));
             }
 
             return maBottom;
@@ -134,7 +133,7 @@ namespace drawinglayer
                 const sal_Int32 nQuarter((getBitmapEx().GetSizePixel().Width() - 3) >> 2);
                 const_cast< DiscreteShadow* >(this)->maBottomLeft = getBitmapEx();
                 const_cast< DiscreteShadow* >(this)->maBottomLeft.Crop(
-                    tools::Rectangle(Point(0, (nQuarter * 2) + 2), Size((nQuarter * 2) + 1, (nQuarter * 2) + 1)));
+                    ::tools::Rectangle(Point(0, (nQuarter * 2) + 2), Size((nQuarter * 2) + 1, (nQuarter * 2) + 1)));
             }
 
             return maBottomLeft;
@@ -147,123 +146,120 @@ namespace drawinglayer
                 const sal_Int32 nQuarter((getBitmapEx().GetSizePixel().Width() - 3) >> 2);
                 const_cast< DiscreteShadow* >(this)->maLeft = getBitmapEx();
                 const_cast< DiscreteShadow* >(this)->maLeft.Crop(
-                    tools::Rectangle(Point(0, (nQuarter * 2) + 1), Size(nQuarter, 1)));
+                    ::tools::Rectangle(Point(0, (nQuarter * 2) + 1), Size(nQuarter, 1)));
             }
 
             return maLeft;
         }
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void DiscreteShadowPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*rViewInformation*/) const
         {
             Primitive2DContainer xRetval;
 
-            if(!getDiscreteShadow().getBitmapEx().IsEmpty())
-            {
-                const sal_Int32 nQuarter((getDiscreteShadow().getBitmapEx().GetSizePixel().Width() - 3) >> 2);
-                const basegfx::B2DVector aScale(getTransform() * basegfx::B2DVector(1.0, 1.0));
-                const double fSingleX(getDiscreteUnit() / aScale.getX());
-                const double fSingleY(getDiscreteUnit() / aScale.getY());
-                const double fBorderX(fSingleX * nQuarter);
-                const double fBorderY(fSingleY * nQuarter);
-                const double fBigLenX((fBorderX * 2.0) + fSingleX);
-                const double fBigLenY((fBorderY * 2.0) + fSingleY);
+            if(getDiscreteShadow().getBitmapEx().IsEmpty())
+                return;
 
-                xRetval.resize(8);
+            const sal_Int32 nQuarter((getDiscreteShadow().getBitmapEx().GetSizePixel().Width() - 3) >> 2);
+            const basegfx::B2DVector aScale(getTransform() * basegfx::B2DVector(1.0, 1.0));
+            const double fSingleX(getDiscreteUnit() / aScale.getX());
+            const double fSingleY(getDiscreteUnit() / aScale.getY());
+            const double fBorderX(fSingleX * nQuarter);
+            const double fBorderY(fSingleY * nQuarter);
+            const double fBigLenX((fBorderX * 2.0) + fSingleX);
+            const double fBigLenY((fBorderY * 2.0) + fSingleY);
 
-                // TopLeft
-                xRetval[0] = Primitive2DReference(
-                    new BitmapPrimitive2D(
-                        getDiscreteShadow().getTopLeft(),
-                        basegfx::tools::createScaleTranslateB2DHomMatrix(
-                            fBigLenX,
-                            fBigLenY,
-                            -fBorderX,
-                            -fBorderY)));
+            xRetval.resize(8);
 
-                // Top
-                xRetval[1] = Primitive2DReference(
-                    new BitmapPrimitive2D(
-                        getDiscreteShadow().getTop(),
-                        basegfx::tools::createScaleTranslateB2DHomMatrix(
-                            1.0 - (2.0 * (fBorderX + fSingleX)) + fSingleX,
-                            fBorderY,
-                            fBorderX + fSingleX,
-                            -fBorderY)));
+            // TopLeft
+            xRetval[0] = Primitive2DReference(
+                new BitmapPrimitive2D(
+                    VCLUnoHelper::CreateVCLXBitmap(getDiscreteShadow().getTopLeft()),
+                    basegfx::utils::createScaleTranslateB2DHomMatrix(
+                        fBigLenX,
+                        fBigLenY,
+                        -fBorderX,
+                        -fBorderY)));
 
-                // TopRight
-                xRetval[2] = Primitive2DReference(
-                    new BitmapPrimitive2D(
-                        getDiscreteShadow().getTopRight(),
-                        basegfx::tools::createScaleTranslateB2DHomMatrix(
-                            fBigLenX,
-                            fBigLenY,
-                            1.0 - fBorderX,
-                            -fBorderY)));
+            // Top
+            xRetval[1] = Primitive2DReference(
+                new BitmapPrimitive2D(
+                    VCLUnoHelper::CreateVCLXBitmap(getDiscreteShadow().getTop()),
+                    basegfx::utils::createScaleTranslateB2DHomMatrix(
+                        1.0 - (2.0 * (fBorderX + fSingleX)) + fSingleX,
+                        fBorderY,
+                        fBorderX + fSingleX,
+                        -fBorderY)));
 
-                // Right
-                xRetval[3] = Primitive2DReference(
-                    new BitmapPrimitive2D(
-                        getDiscreteShadow().getRight(),
-                        basegfx::tools::createScaleTranslateB2DHomMatrix(
-                            fBorderX,
-                            1.0 - (2.0 * (fBorderY + fSingleY)) + fSingleY,
-                            1.0 + fSingleX,
-                            fBorderY + fSingleY)));
+            // TopRight
+            xRetval[2] = Primitive2DReference(
+                new BitmapPrimitive2D(
+                    VCLUnoHelper::CreateVCLXBitmap(getDiscreteShadow().getTopRight()),
+                    basegfx::utils::createScaleTranslateB2DHomMatrix(
+                        fBigLenX,
+                        fBigLenY,
+                        1.0 - fBorderX,
+                        -fBorderY)));
 
-                // BottomRight
-                xRetval[4] = Primitive2DReference(
-                    new BitmapPrimitive2D(
-                        getDiscreteShadow().getBottomRight(),
-                        basegfx::tools::createScaleTranslateB2DHomMatrix(
-                            fBigLenX,
-                            fBigLenY,
-                            1.0 - (fBorderX + fSingleX) + fSingleX,
-                            1.0 - (fBorderY + fSingleY) + fSingleY)));
+            // Right
+            xRetval[3] = Primitive2DReference(
+                new BitmapPrimitive2D(
+                    VCLUnoHelper::CreateVCLXBitmap(getDiscreteShadow().getRight()),
+                    basegfx::utils::createScaleTranslateB2DHomMatrix(
+                        fBorderX,
+                        1.0 - (2.0 * (fBorderY + fSingleY)) + fSingleY,
+                        1.0 + fSingleX,
+                        fBorderY + fSingleY)));
 
-                // Bottom
-                xRetval[5] = Primitive2DReference(
-                    new BitmapPrimitive2D(
-                        getDiscreteShadow().getBottom(),
-                        basegfx::tools::createScaleTranslateB2DHomMatrix(
-                            1.0 - (2.0 * (fBorderX + fSingleX)) + fSingleX,
-                            fBorderY,
-                            fBorderX + fSingleX,
-                            1.0 + fSingleY)));
+            // BottomRight
+            xRetval[4] = Primitive2DReference(
+                new BitmapPrimitive2D(
+                    VCLUnoHelper::CreateVCLXBitmap(getDiscreteShadow().getBottomRight()),
+                    basegfx::utils::createScaleTranslateB2DHomMatrix(
+                        fBigLenX,
+                        fBigLenY,
+                        1.0 - (fBorderX + fSingleX) + fSingleX,
+                        1.0 - (fBorderY + fSingleY) + fSingleY)));
 
-                // BottomLeft
-                xRetval[6] = Primitive2DReference(
-                    new BitmapPrimitive2D(
-                        getDiscreteShadow().getBottomLeft(),
-                        basegfx::tools::createScaleTranslateB2DHomMatrix(
-                            fBigLenX,
-                            fBigLenY,
-                            -fBorderX,
-                            1.0 - fBorderY)));
+            // Bottom
+            xRetval[5] = Primitive2DReference(
+                new BitmapPrimitive2D(
+                    VCLUnoHelper::CreateVCLXBitmap(getDiscreteShadow().getBottom()),
+                    basegfx::utils::createScaleTranslateB2DHomMatrix(
+                        1.0 - (2.0 * (fBorderX + fSingleX)) + fSingleX,
+                        fBorderY,
+                        fBorderX + fSingleX,
+                        1.0 + fSingleY)));
 
-                // Left
-                xRetval[7] = Primitive2DReference(
-                    new BitmapPrimitive2D(
-                        getDiscreteShadow().getLeft(),
-                        basegfx::tools::createScaleTranslateB2DHomMatrix(
-                            fBorderX,
-                            1.0 - (2.0 * (fBorderY + fSingleY)) + fSingleY,
-                            -fBorderX,
-                            fBorderY + fSingleY)));
+            // BottomLeft
+            xRetval[6] = Primitive2DReference(
+                new BitmapPrimitive2D(
+                    VCLUnoHelper::CreateVCLXBitmap(getDiscreteShadow().getBottomLeft()),
+                    basegfx::utils::createScaleTranslateB2DHomMatrix(
+                        fBigLenX,
+                        fBigLenY,
+                        -fBorderX,
+                        1.0 - fBorderY)));
 
-                // put all in object transformation to get to target positions
-                rContainer.push_back(
-                    new TransformPrimitive2D(
-                        getTransform(),
-                        xRetval));
-            }
+            // Left
+            xRetval[7] = Primitive2DReference(
+                new BitmapPrimitive2D(
+                    VCLUnoHelper::CreateVCLXBitmap(getDiscreteShadow().getLeft()),
+                    basegfx::utils::createScaleTranslateB2DHomMatrix(
+                        fBorderX,
+                        1.0 - (2.0 * (fBorderY + fSingleY)) + fSingleY,
+                        -fBorderX,
+                        fBorderY + fSingleY)));
+
+            // put all in object transformation to get to target positions
+            rContainer.push_back(
+                new TransformPrimitive2D(
+                    getTransform(),
+                    xRetval));
         }
 
         DiscreteShadowPrimitive2D::DiscreteShadowPrimitive2D(
@@ -315,7 +311,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(DiscreteShadowPrimitive2D, PRIMITIVE2D_ID_DISCRETESHADOWPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

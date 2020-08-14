@@ -20,16 +20,17 @@
 #include "xmlTable.hxx"
 #include "xmlfilter.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/ProgressBarHelper.hxx>
 #include "xmlEnums.hxx"
 #include "xmlStyleImport.hxx"
 #include "xmlHierarchyCollection.hxx"
-#include "xmlstrings.hrc"
-#include <ucbhelper/content.hxx>
-#include <com/sun/star/ucb/XCommandEnvironment.hpp>
+#include <strings.hxx>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <comphelper/namecontainer.hxx>
+#include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <comphelper/propertysequence.hxx>
+#include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 namespace dbaxml
 {
@@ -39,65 +40,50 @@ namespace dbaxml
     using namespace ::com::sun::star::xml::sax;
 
 OXMLTable::OXMLTable( ODBFilter& _rImport
-                ,sal_uInt16 nPrfx
-                ,const OUString& _sLocalName
-                ,const uno::Reference< XAttributeList > & _xAttrList
+                ,const uno::Reference< XFastAttributeList > & _xAttrList
                 ,const uno::Reference< css::container::XNameAccess >& _xParentContainer
                 ,const OUString& _sServiceName
                 )
-    :SvXMLImportContext( _rImport, nPrfx, _sLocalName )
+    :SvXMLImportContext( _rImport )
     ,m_xParentContainer(_xParentContainer)
-    ,m_sServiceName(_sServiceName)
     ,m_bApplyFilter(false)
     ,m_bApplyOrder(false)
 {
-
-    OSL_ENSURE(_xAttrList.is(),"Attribute list is NULL!");
-    const SvXMLNamespaceMap& rMap = GetOwnImport().GetNamespaceMap();
-    const SvXMLTokenMap& rTokenMap = GetOwnImport().GetQueryElemTokenMap();
-
-    sal_Int16 nLength = (_xAttrList.is()) ? _xAttrList->getLength() : 0;
-    for(sal_Int16 i = 0; i < nLength; ++i)
+    for (auto &aIter : sax_fastparser::castToFastAttributeList( _xAttrList ))
     {
-        OUString sLocalName;
-        OUString sAttrName = _xAttrList->getNameByIndex( i );
-        sal_uInt16 nPrefix = rMap.GetKeyByAttrName( sAttrName,&sLocalName );
-        OUString sValue = _xAttrList->getValueByIndex( i );
+        OUString sValue = aIter.toString();
 
-        switch( rTokenMap.Get( nPrefix, sLocalName ) )
+        switch( aIter.getToken() & TOKEN_MASK )
         {
-            case XML_TOK_QUERY_NAME:
+            case XML_NAME:
                 m_sName = sValue;
                 break;
-            case XML_TOK_CATALOG_NAME:
+            case XML_CATALOG_NAME:
                 m_sCatalog = sValue;
                 break;
-            case XML_TOK_SCHEMA_NAME:
+            case XML_SCHEMA_NAME:
                 m_sSchema = sValue;
                 break;
-            case XML_TOK_STYLE_NAME:
+            case XML_STYLE_NAME:
                 m_sStyleName = sValue;
                 break;
-            case XML_TOK_APPLY_FILTER:
+            case XML_APPLY_FILTER:
                 m_bApplyFilter = sValue == "true";
                 break;
-            case XML_TOK_APPLY_ORDER:
+            case XML_APPLY_ORDER:
                 m_bApplyOrder = sValue == "true";
                 break;
+            default:
+                SAL_WARN("dbaccess", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << "=" << aIter.toString());
         }
     }
-    Sequence< Any > aArguments(2);
-    PropertyValue aValue;
-    // set as folder
-    aValue.Name = "Name";
-    aValue.Value <<= m_sName;
-    aArguments[0] <<= aValue;
-    //parent
-    aValue.Name = "Parent";
-    aValue.Value <<= m_xParentContainer;
-    aArguments[1] <<= aValue;
+    uno::Sequence<uno::Any> aArguments(comphelper::InitAnyPropertySequence(
+    {
+        {"Name", uno::Any(m_sName)}, // set as folder
+        {"Parent", uno::Any(m_xParentContainer)}
+    }));
     m_xTable.set(
-        GetOwnImport().GetComponentContext()->getServiceManager()->createInstanceWithArgumentsAndContext(m_sServiceName,aArguments, GetOwnImport().GetComponentContext()),
+        GetOwnImport().GetComponentContext()->getServiceManager()->createInstanceWithArgumentsAndContext(_sServiceName,aArguments, GetOwnImport().GetComponentContext()),
         UNO_QUERY);
 }
 
@@ -106,24 +92,21 @@ OXMLTable::~OXMLTable()
 
 }
 
-SvXMLImportContext* OXMLTable::CreateChildContext(
-        sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const uno::Reference< XAttributeList > & xAttrList )
+css::uno::Reference< css::xml::sax::XFastContextHandler > OXMLTable::createFastChildContext(
+            sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList )
 {
     SvXMLImportContext *pContext = nullptr;
-    const SvXMLTokenMap&    rTokenMap   = GetOwnImport().GetQueryElemTokenMap();
 
-    switch( rTokenMap.Get( nPrefix, rLocalName ) )
+    switch( nElement & TOKEN_MASK )
     {
-        case XML_TOK_FILTER_STATEMENT:
+        case XML_FILTER_STATEMENT:
             {
                 GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
                 OUString s1,s2,s3;
                 fillAttributes(xAttrList,m_sFilterStatement,s1,s2,s3);
             }
             break;
-        case XML_TOK_ORDER_STATEMENT:
+        case XML_ORDER_STATEMENT:
             {
                 GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
                 OUString s1,s2,s3;
@@ -131,7 +114,7 @@ SvXMLImportContext* OXMLTable::CreateChildContext(
             }
             break;
 
-        case XML_TOK_COLUMNS:
+        case XML_COLUMNS:
             {
                 GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
                 uno::Reference< XColumnsSupplier > xColumnsSup(m_xTable,UNO_QUERY);
@@ -140,13 +123,10 @@ SvXMLImportContext* OXMLTable::CreateChildContext(
                 {
                     xColumns = xColumnsSup->getColumns();
                 }
-                pContext = new OXMLHierarchyCollection( GetOwnImport(), nPrefix, rLocalName ,xColumns,m_xTable);
+                pContext = new OXMLHierarchyCollection( GetOwnImport(), xColumns,m_xTable);
             }
             break;
     }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }
@@ -176,74 +156,68 @@ void OXMLTable::setProperties(uno::Reference< XPropertySet > & _xProp )
     }
 }
 
-void OXMLTable::EndElement()
+void OXMLTable::endFastElement(sal_Int32 )
 {
     uno::Reference<XNameContainer> xNameContainer(m_xParentContainer,UNO_QUERY);
-    if ( xNameContainer.is() )
-    {
-        try
-        {
-            if ( m_xTable.is() )
-            {
-                setProperties(m_xTable);
+    if ( !xNameContainer.is() )
+        return;
 
-                if ( !m_sStyleName.isEmpty() )
+    try
+    {
+        if ( m_xTable.is() )
+        {
+            setProperties(m_xTable);
+
+            if ( !m_sStyleName.isEmpty() )
+            {
+                const SvXMLStylesContext* pAutoStyles = GetOwnImport().GetAutoStyles();
+                if ( pAutoStyles )
                 {
-                    const SvXMLStylesContext* pAutoStyles = GetOwnImport().GetAutoStyles();
-                    if ( pAutoStyles )
+                    OTableStyleContext* pAutoStyle = const_cast<OTableStyleContext*>(dynamic_cast< const OTableStyleContext* >(pAutoStyles->FindStyleChildContext(XmlStyleFamily::TABLE_TABLE,m_sStyleName)));
+                    if ( pAutoStyle )
                     {
-                        OTableStyleContext* pAutoStyle = const_cast<OTableStyleContext*>(dynamic_cast< const OTableStyleContext* >(pAutoStyles->FindStyleChildContext(XML_STYLE_FAMILY_TABLE_TABLE,m_sStyleName)));
-                        if ( pAutoStyle )
-                        {
-                            pAutoStyle->FillPropertySet(m_xTable);
-                        }
+                        pAutoStyle->FillPropertySet(m_xTable);
                     }
                 }
-
-                xNameContainer->insertByName(m_sName,makeAny(m_xTable));
             }
+
+            xNameContainer->insertByName(m_sName,makeAny(m_xTable));
         }
-        catch(Exception&)
-        {
-            OSL_FAIL("OXMLQuery::EndElement -> exception caught");
-        }
+    }
+    catch(Exception&)
+    {
+        OSL_FAIL("OXMLQuery::EndElement -> exception caught");
     }
 
 }
 
-void OXMLTable::fillAttributes(const uno::Reference< XAttributeList > & _xAttrList
+void OXMLTable::fillAttributes(const uno::Reference< XFastAttributeList > & _xAttrList
                                 ,OUString& _rsCommand
                                 ,OUString& _rsTableName
                                 ,OUString& _rsTableSchema
                                 ,OUString& _rsTableCatalog
                                 )
 {
-    OSL_ENSURE(_xAttrList.is(),"Attribute list is NULL!");
-    const SvXMLNamespaceMap& rMap = GetOwnImport().GetNamespaceMap();
-    const SvXMLTokenMap& rTokenMap = GetOwnImport().GetQueryElemTokenMap();
-
-    sal_Int16 nLength = (_xAttrList.is()) ? _xAttrList->getLength() : 0;
-    for(sal_Int16 i = 0; i < nLength; ++i)
+    for (auto &aIter : sax_fastparser::castToFastAttributeList( _xAttrList ))
     {
-        OUString sLocalName;
-        OUString sAttrName = _xAttrList->getNameByIndex( i );
-        sal_uInt16 nPrefix = rMap.GetKeyByAttrName( sAttrName,&sLocalName );
-        OUString sValue = _xAttrList->getValueByIndex( i );
+        OUString sValue = aIter.toString();
 
-        switch( rTokenMap.Get( nPrefix, sLocalName ) )
+        switch( aIter.getToken() & TOKEN_MASK )
         {
-            case XML_TOK_COMMAND:
+            case XML_COMMAND:
                 _rsCommand = sValue;
                 break;
-            case XML_TOK_CATALOG_NAME:
+            case XML_CATALOG_NAME:
                 _rsTableCatalog = sValue;
                 break;
-            case XML_TOK_SCHEMA_NAME:
+            case XML_SCHEMA_NAME:
                 _rsTableSchema = sValue;
                 break;
-            case XML_TOK_QUERY_NAME:
+            case XML_QUERY_NAME:
                 _rsTableName = sValue;
                 break;
+            default:
+                SAL_WARN("dbaccess", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << "=" << aIter.toString());
         }
     }
 }

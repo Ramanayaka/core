@@ -59,7 +59,7 @@ class CountUsersOfDefaultParams:
     public RecursiveASTVisitor<CountUsersOfDefaultParams>, public loplugin::Plugin
 {
 public:
-    explicit CountUsersOfDefaultParams(InstantiationData const & data): Plugin(data) {}
+    explicit CountUsersOfDefaultParams(loplugin::InstantiationData const & data): Plugin(data) {}
 
     virtual void run() override
     {
@@ -74,7 +74,7 @@ public:
         for (const MyCallInfo & s : callSet)
             output += "call:\t" + s.returnType + "\t" + s.nameAndParams + "\t" + s.sourceLocationOfCall + "\n";
         std::ofstream myfile;
-        myfile.open( SRCDIR "/loplugin.countusersofdefaultparams.log", std::ios::app | std::ios::out);
+        myfile.open( WORKDIR "/loplugin.countusersofdefaultparams.log", std::ios::app | std::ios::out);
         myfile << output;
         myfile.close();
     }
@@ -93,13 +93,12 @@ void CountUsersOfDefaultParams::niceName(const FunctionDecl* functionDecl, MyFun
 {
     if (functionDecl->getInstantiatedFromMemberFunction())
         functionDecl = functionDecl->getInstantiatedFromMemberFunction();
+#if CLANG_VERSION < 90000
     else if (functionDecl->getClassScopeSpecializationPattern())
         functionDecl = functionDecl->getClassScopeSpecializationPattern();
-// workaround clang-3.5 issue
-#if CLANG_VERSION >= 30600
+#endif
     else if (functionDecl->getTemplateInstantiationPattern())
         functionDecl = functionDecl->getTemplateInstantiationPattern();
-#endif
 
     switch (functionDecl->getAccess())
     {
@@ -108,7 +107,7 @@ void CountUsersOfDefaultParams::niceName(const FunctionDecl* functionDecl, MyFun
     case AS_protected: aInfo.access = "protected"; break;
     default: aInfo.access = "unknown"; break;
     }
-    aInfo.returnType = compat::getReturnType(*functionDecl).getCanonicalType().getAsString();
+    aInfo.returnType = functionDecl->getReturnType().getCanonicalType().getAsString();
 
     if (isa<CXXMethodDecl>(functionDecl)) {
         const CXXRecordDecl* recordDecl = dyn_cast<CXXMethodDecl>(functionDecl)->getParent();
@@ -117,7 +116,7 @@ void CountUsersOfDefaultParams::niceName(const FunctionDecl* functionDecl, MyFun
     }
     aInfo.nameAndParams += functionDecl->getNameAsString() + "(";
     bool bFirst = true;
-    for (const ParmVarDecl *pParmVarDecl : compat::parameters(*functionDecl)) {
+    for (const ParmVarDecl *pParmVarDecl : functionDecl->parameters()) {
         if (bFirst)
             bFirst = false;
         else
@@ -130,7 +129,7 @@ void CountUsersOfDefaultParams::niceName(const FunctionDecl* functionDecl, MyFun
     }
 
     aInfo.sourceLocation = locationToString(functionDecl->getLocation());
-    normalizeDotDotInFilePath(aInfo.sourceLocation);
+    loplugin::normalizeDotDotInFilePath(aInfo.sourceLocation);
 }
 
 bool CountUsersOfDefaultParams::VisitCallExpr(const CallExpr * callExpr) {
@@ -158,13 +157,12 @@ bool CountUsersOfDefaultParams::VisitCallExpr(const CallExpr * callExpr) {
     // work our way back to the root definition for template methods
     if (functionDecl->getInstantiatedFromMemberFunction())
         functionDecl = functionDecl->getInstantiatedFromMemberFunction();
+#if CLANG_VERSION < 90000
     else if (functionDecl->getClassScopeSpecializationPattern())
         functionDecl = functionDecl->getClassScopeSpecializationPattern();
-// workaround clang-3.5 issue
-#if CLANG_VERSION >= 30600
+#endif
     else if (functionDecl->getTemplateInstantiationPattern())
         functionDecl = functionDecl->getTemplateInstantiationPattern();
-#endif
     int n = functionDecl->getNumParams() - 1;
     if (n < 0 || !functionDecl->getParamDecl(n)->hasDefaultArg()) {
         return true;
@@ -176,7 +174,7 @@ bool CountUsersOfDefaultParams::VisitCallExpr(const CallExpr * callExpr) {
     if ( n < (int)callExpr->getNumArgs() && callExpr->getArg(n)->isDefaultArgument()) {
         MyCallInfo callInfo;
         niceName(functionDecl, callInfo);
-        callInfo.sourceLocationOfCall = locationToString(callExpr->getLocStart());
+        callInfo.sourceLocationOfCall = locationToString(compat::getBeginLoc(callExpr));
         callSet.insert(callInfo);
     }
     return true;
@@ -190,13 +188,12 @@ bool CountUsersOfDefaultParams::VisitCXXConstructExpr(const CXXConstructExpr * c
     // work our way back to the root definition for template methods
     if (constructorDecl->getInstantiatedFromMemberFunction())
         constructorDecl = dyn_cast<CXXConstructorDecl>(constructorDecl->getInstantiatedFromMemberFunction());
+#if CLANG_VERSION < 90000
     else if (constructorDecl->getClassScopeSpecializationPattern())
         constructorDecl = dyn_cast<CXXConstructorDecl>(constructorDecl->getClassScopeSpecializationPattern());
-// workaround clang-3.5 issue
-#if CLANG_VERSION >= 30600
+#endif
     else if (constructorDecl->getTemplateInstantiationPattern())
         constructorDecl = dyn_cast<CXXConstructorDecl>(constructorDecl->getTemplateInstantiationPattern());
-#endif
     int n = constructorDecl->getNumParams() - 1;
     if (n < 0 || !constructorDecl->getParamDecl(n)->hasDefaultArg()) {
         return true;
@@ -208,7 +205,7 @@ bool CountUsersOfDefaultParams::VisitCXXConstructExpr(const CXXConstructExpr * c
     if ( n < (int)constructExpr->getNumArgs() && constructExpr->getArg(n)->isDefaultArgument()) {
         MyCallInfo callInfo;
         niceName(constructorDecl, callInfo);
-        callInfo.sourceLocationOfCall = locationToString(constructExpr->getLocStart());
+        callInfo.sourceLocationOfCall = locationToString(compat::getBeginLoc(constructExpr));
         callSet.insert(callInfo);
     }
     return true;
@@ -217,7 +214,7 @@ bool CountUsersOfDefaultParams::VisitCXXConstructExpr(const CXXConstructExpr * c
 std::string CountUsersOfDefaultParams::locationToString(const SourceLocation& sourceLoc)
 {
     SourceLocation expansionLoc = compiler.getSourceManager().getExpansionLoc( sourceLoc );
-    StringRef name = compiler.getSourceManager().getFilename(expansionLoc);
+    StringRef name = getFilenameOfLocation(expansionLoc);
     return std::string(name.substr(strlen(SRCDIR)+1)) + ":" + std::to_string(compiler.getSourceManager().getSpellingLineNumber(expansionLoc));
 }
 

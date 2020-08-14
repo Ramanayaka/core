@@ -20,12 +20,10 @@
 #ifndef INCLUDED_JVMFWK_PLUGINS_SUNMAJOR_PLUGINLIB_VENDORBASE_HXX
 #define INCLUDED_JVMFWK_PLUGINS_SUNMAJOR_PLUGINLIB_VENDORBASE_HXX
 
-#include "config_java.h"
-
-#include "rtl/ustring.hxx"
-#include "rtl/ref.hxx"
-#include "osl/endian.h"
-#include "salhelper/simplereferenceobject.hxx"
+#include <rtl/ustring.hxx>
+#include <rtl/ref.hxx>
+#include <osl/endian.h>
+#include <salhelper/simplereferenceobject.hxx>
 #include <vector>
 
 namespace jfw_plugin
@@ -82,16 +80,10 @@ OpenJDK at least, but probably not true for Lemotes JDK */
 #endif // SPARC, INTEL, POWERPC, MIPS, MIPS64, ARM, IA64, M68K, HPPA, ALPHA
 
 
-class MalformedVersionException : public std::exception
+class MalformedVersionException final : public std::exception
 {
 public:
-    MalformedVersionException();
-
-    MalformedVersionException(const MalformedVersionException &);
-
     virtual ~MalformedVersionException() override;
-
-    MalformedVersionException & operator =(const MalformedVersionException &);
 };
 
 class VendorBase: public salhelper::SimpleReferenceObject
@@ -132,7 +124,6 @@ public:
     const OUString & getHome() const;
     const OUString & getRuntimeLibrary() const;
     const OUString & getLibraryPath() const;
-    bool supportsAccessibility() const;
     bool isValidArch() const;
      /* determines if prior to running java something has to be done,
         like setting the LD_LIBRARY_PATH. This implementation checks
@@ -180,7 +171,6 @@ protected:
     OUString m_sRuntimeLibrary;
     OUString m_sLD_LIBRARY_PATH;
     OUString m_sArch;
-    bool m_bAccessibility;
 
 
     typedef rtl::Reference<VendorBase> (* createInstance_func) ();

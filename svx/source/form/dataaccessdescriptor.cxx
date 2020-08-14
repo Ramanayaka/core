@@ -18,26 +18,20 @@
  */
 
 #include <svx/dataaccessdescriptor.hxx>
-#include <comphelper/genericpropertyset.hxx>
 #include <osl/diagnose.h>
-#include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/ucb/XContent.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <tools/urlobj.hxx>
+#include <map>
 
 namespace svx
 {
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::sdbc;
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::ucb;
-    using namespace ::comphelper;
 
-    struct PropertyMapEntry
-    {
-        OUString       maName;
-        DataAccessDescriptorProperty      mnHandle;
-    };
+    typedef std::pair<OUString const, DataAccessDescriptorProperty> PropertyMapEntry;
 
     class ODADescriptorImpl
     {
@@ -49,9 +43,8 @@ namespace svx
         typedef ::std::map< DataAccessDescriptorProperty, Any >     DescriptorValues;
         DescriptorValues            m_aValues;
         Sequence< PropertyValue >   m_aAsSequence;
-        Reference< XPropertySet >   m_xAsSet;
 
-        typedef ::std::map< OUString, PropertyMapEntry const * >    MapString2PropertyEntry;
+        typedef ::std::map< OUString, DataAccessDescriptorProperty >    MapString2PropertyEntry;
 
     public:
         ODADescriptorImpl();
@@ -90,8 +83,6 @@ namespace svx
         ,m_bSequenceOutOfDate( _rSource.m_bSequenceOutOfDate )
         ,m_aValues( _rSource.m_aValues )
     {
-        if (!m_bSetOutOfDate)
-            m_xAsSet = _rSource.m_xAsSet;
         if (!m_bSequenceOutOfDate)
             m_aAsSequence = _rSource.m_aAsSequence;
     }
@@ -103,15 +94,13 @@ namespace svx
         bool bValidPropsOnly = true;
 
         // loop through the sequence, and fill our m_aValues
-        const PropertyValue* pValues = _rValues.getConstArray();
-        const PropertyValue* pValuesEnd = pValues + _rValues.getLength();
-        for (;pValues != pValuesEnd; ++pValues)
+        for (const PropertyValue& rValue : _rValues)
         {
-            MapString2PropertyEntry::const_iterator aPropPos = rProperties.find( pValues->Name );
+            MapString2PropertyEntry::const_iterator aPropPos = rProperties.find( rValue.Name );
             if ( aPropPos != rProperties.end() )
             {
-                DataAccessDescriptorProperty eProperty = (DataAccessDescriptorProperty)aPropPos->second->mnHandle;
-                m_aValues[eProperty] = pValues->Value;
+                DataAccessDescriptorProperty eProperty = aPropPos->second;
+                m_aValues[eProperty] = rValue.Value;
             }
             else
                 // unknown property
@@ -141,27 +130,20 @@ namespace svx
         }
 
         // build a PropertyValue sequence with the current values
-        Sequence< Property > aProperties = xPropInfo->getProperties();
-        const Property* pProperty = aProperties.getConstArray();
-        const Property* pPropertyEnd = pProperty + aProperties.getLength();
+        const Sequence< Property > aProperties = xPropInfo->getProperties();
 
         Sequence< PropertyValue > aValues(aProperties.getLength());
         PropertyValue* pValues = aValues.getArray();
 
-        for (;pProperty != pPropertyEnd; ++pProperty, ++pValues)
+        for (const Property& rProperty : aProperties)
         {
-            pValues->Name = pProperty->Name;
-            pValues->Value = _rxValues->getPropertyValue(pProperty->Name);
+            pValues->Name = rProperty.Name;
+            pValues->Value = _rxValues->getPropertyValue(rProperty.Name);
+            ++pValues;
         }
 
         bool bValidPropsOnly = buildFrom(aValues);
-        if (bValidPropsOnly)
-        {
-            m_xAsSet = _rxValues;
-            m_bSetOutOfDate = false;
-        }
-        else
-            m_bSetOutOfDate = true;
+        m_bSetOutOfDate = !bValidPropsOnly;
 
         return bValidPropsOnly;
     }
@@ -175,10 +157,7 @@ namespace svx
     const ODADescriptorImpl::MapString2PropertyEntry& ODADescriptorImpl::getPropertyMap( )
     {
         // the properties we know
-        static MapString2PropertyEntry s_aProperties;
-        if ( s_aProperties.empty() )
-        {
-            static PropertyMapEntry const s_aDescriptorProperties[] =
+        static MapString2PropertyEntry s_aProperties
             {
                 { OUString("ActiveConnection"),   DataAccessDescriptorProperty::Connection,            },
                 { OUString("BookmarkSelection"),  DataAccessDescriptorProperty::BookmarkSelection,     },
@@ -196,10 +175,6 @@ namespace svx
                 { OUString("Selection"),          DataAccessDescriptorProperty::Selection,             }
             };
 
-            for (unsigned i=0; i<SAL_N_ELEMENTS(s_aDescriptorProperties); ++i)
-                s_aProperties[ s_aDescriptorProperties[i].maName ] = &s_aDescriptorProperties[i];
-        }
-
         return s_aProperties;
     }
 
@@ -209,14 +184,10 @@ namespace svx
 
         DataAccessDescriptorProperty nNeededHandle = _rPos->first;
 
-        for ( MapString2PropertyEntry::const_iterator loop = rProperties.begin();
-              loop != rProperties.end();
-              ++loop
-            )
-        {
-            if ( nNeededHandle == loop->second->mnHandle )
-                return loop->second;
-        }
+        auto loop = std::find_if(rProperties.begin(), rProperties.end(),
+            [&nNeededHandle](const MapString2PropertyEntry::value_type& rProp) { return nNeededHandle == rProp.second; });
+        if (loop != rProperties.end())
+            return &*loop;
         throw RuntimeException();
     }
 
@@ -227,8 +198,8 @@ namespace svx
 
         // build the property value
         PropertyValue aReturn;
-        aReturn.Name    = pProperty->maName;
-        aReturn.Handle  = (sal_Int32)pProperty->mnHandle;
+        aReturn.Name    = pProperty->first;
+        aReturn.Handle  = static_cast<sal_Int32>(pProperty->second);
         aReturn.Value   = _rPos->second;
         aReturn.State   = PropertyState_DIRECT_VALUE;
 
@@ -267,18 +238,19 @@ namespace svx
     {
     }
 
-    ODataAccessDescriptor::ODataAccessDescriptor( ODataAccessDescriptor&& _rSource )
+    ODataAccessDescriptor::ODataAccessDescriptor(ODataAccessDescriptor&& _rSource) noexcept
         :m_pImpl(std::move(_rSource.m_pImpl))
     {
     }
 
     ODataAccessDescriptor& ODataAccessDescriptor::operator=(const ODataAccessDescriptor& _rSource)
     {
-        m_pImpl.reset(new ODADescriptorImpl(*_rSource.m_pImpl));
+        if (this != &_rSource)
+            m_pImpl.reset(new ODADescriptorImpl(*_rSource.m_pImpl));
         return *this;
     }
 
-    ODataAccessDescriptor& ODataAccessDescriptor::operator=(ODataAccessDescriptor&& _rSource)
+    ODataAccessDescriptor& ODataAccessDescriptor::operator=(ODataAccessDescriptor&& _rSource) noexcept
     {
         m_pImpl = std::move(_rSource.m_pImpl);
         return *this;
@@ -353,7 +325,7 @@ namespace svx
         m_pImpl->buildFrom(_rValues);
     }
 
-    Sequence< PropertyValue > ODataAccessDescriptor::createPropertyValueSequence()
+    Sequence< PropertyValue > const & ODataAccessDescriptor::createPropertyValueSequence()
     {
         m_pImpl->updateSequence();
         return m_pImpl->m_aAsSequence;

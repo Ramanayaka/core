@@ -10,13 +10,13 @@
 #ifndef INCLUDED_VCL_INC_UNX_GTK_GTKPRN_HXX
 #define INCLUDED_VCL_INC_UNX_GTK_GTKPRN_HXX
 
-#include "unx/genprn.h"
+#include <unx/genprn.h>
 
 #include <memory>
 
 struct GtkSalPrinter_Impl;
 
-class GtkSalPrinter : public PspSalPrinter
+class GtkSalPrinter final : public PspSalPrinter
 {
 public:
     GtkSalPrinter(SalInfoPrinter* i_pInfoPrinter);
@@ -34,13 +34,13 @@ private:
     bool impl_doJob(
             const OUString* i_pFileName, const OUString& i_rJobName,
             const OUString& i_rAppName, ImplJobSetup* io_pSetupData,
-            int i_nCopies, bool i_bCollate, vcl::PrinterController& io_rController);
+            bool i_bCollate, vcl::PrinterController& io_rController);
 
 private:
     std::unique_ptr<GtkSalPrinter_Impl> m_xImpl;
 };
 
-class VCL_DLLPUBLIC GtkSalInfoPrinter : public PspSalInfoPrinter
+class GtkSalInfoPrinter final : public PspSalInfoPrinter
 {
 public:
     sal_uInt32 GetCapabilities(const ImplJobSetup* i_pSetupData, PrinterCapType i_nType) override;

@@ -20,9 +20,6 @@
 #ifndef INCLUDED_VCL_SOURCE_FILTER_FILTERCONFIGCACHE_HXX
 #define INCLUDED_VCL_SOURCE_FILTER_FILTERCONFIGCACHE_HXX
 
-#include <com/sun/star/uno/Sequence.h>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <rtl/ustring.hxx>
 #include <vector>
 
@@ -33,7 +30,7 @@ class FilterConfigCache
     {
         OUString sInternalFilterName;
         OUString sType;
-        css::uno::Sequence< OUString > lExtensionList;
+        std::vector< OUString > lExtensionList;
         OUString sUIName;
         OUString sExternalFilterName;
 
@@ -58,17 +55,6 @@ class FilterConfigCache
 
     std::vector< FilterConfigCacheEntry >         aImport;
     std::vector< FilterConfigCacheEntry >         aExport;
-    bool            bUseConfig;
-
-    static bool   bInitialized;
-    static sal_Int32  nIndType;
-    static sal_Int32  nIndUIName;
-    static sal_Int32  nIndDocumentService;
-    static sal_Int32  nIndFilterService;
-    static sal_Int32  nIndFlags;
-    static sal_Int32  nIndUserData;
-    static sal_Int32  nIndFileFormatVersion;
-    static sal_Int32  nIndTemplateName;
 
     static const char*  InternalFilterListForSvxLight[];
 

@@ -368,7 +368,7 @@
             <desc>Indicates whether a text frame can only be selected by clicking on the text or by clicking somewhere in the frame.</desc>
             <label>Only text area selectable</label>
           </info>
-          <value>true</value>
+          <value>false</value>
         </prop>
       </group>
       <group oor:name="CrossFading">
@@ -423,7 +423,7 @@
         <!-- OldLocation: -->
         <!-- UIHints: Default size for newly created objects when using CTRL-Return or CTRL-Click -->
         <info>
-          <desc>Defines the default size of newly created objects using CTRL-Return or CTRL-Click at a object creating Button</desc>
+          <desc>Defines the default size of newly created objects using CTRL-Return or CTRL-Click at an object-creating Button</desc>
           <label>Default Object Size</label>
         </info>
         <prop oor:name="Width" oor:type="xs:int" oor:nillable="false">
@@ -747,7 +747,7 @@
             <desc>Specifies the number of points between two grid points on the X axis.</desc>
             <label>X Axis Subdivision</label>
           </info>
-          <value>9</value>
+          <value>3</value>
         </prop>
         <prop oor:name="YAxis" oor:type="xs:double" oor:nillable="false">
           <!-- OldPath: Draw/Grid/Subdivision -->
@@ -758,7 +758,7 @@
             <desc>Specifies the number of points between two grid points on the Y axis.</desc>
             <label>Y Axis Subdivision</label>
           </info>
-          <value>9</value>
+          <value>3</value>
         </prop>
       </group>
       <group oor:name="SnapGrid">

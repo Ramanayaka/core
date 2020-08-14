@@ -19,24 +19,27 @@
 #ifndef INCLUDED_SVX_SOURCE_SIDEBAR_PARAGRAPH_PARALINESPACINGPOPUP_HXX
 #define INCLUDED_SVX_SOURCE_SIDEBAR_PARAGRAPH_PARALINESPACINGPOPUP_HXX
 
-#include <editeng/lspcitem.hxx>
-#include <vcl/EnumContext.hxx>
-#include <sfx2/tbxctrl.hxx>
-#include <svl/poolitem.hxx>
-#include <svx/svxdllapi.h>
-#include <tools/fldunit.hxx>
+#include <svtools/popupwindowcontroller.hxx>
 
 namespace svx {
 
-class SVX_DLLPUBLIC ParaLineSpacingPopup : public SfxToolBoxControl
+class SvxLineSpacingToolBoxControl final : public svt::PopupWindowController
 {
 public:
-    SFX_DECL_TOOLBOX_CONTROL();
+    explicit SvxLineSpacingToolBoxControl( const css::uno::Reference<css::uno::XComponentContext>& rContext );
+    virtual ~SvxLineSpacingToolBoxControl() override;
 
-    ParaLineSpacingPopup(sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx);
-    virtual ~ParaLineSpacingPopup() override;
+    virtual void SAL_CALL execute(sal_Int16 KeyModifier) override;
 
-    virtual VclPtr<SfxPopupWindow> CreatePopupWindow() override;
+    virtual VclPtr<vcl::Window> createVclPopupWindow( vcl::Window* pParent ) override;
+    virtual std::unique_ptr<WeldToolbarPopup> weldPopupWindow() override;
+
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
+
+    // XInitialization
+    virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& rArguments ) override;
 };
 
 }

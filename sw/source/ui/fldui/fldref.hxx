@@ -20,31 +20,14 @@
 #define INCLUDED_SW_SOURCE_UI_FLDUI_FLDREF_HXX
 
 #include <sfx2/tabdlg.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/button.hxx>
-#include <vcl/group.hxx>
-#include <vcl/edit.hxx>
 
 #include "fldpage.hxx"
 #include <IDocumentOutlineNodes.hxx>
 #include <IDocumentListItems.hxx>
-#include <FldRefTreeListBox.hxx>
 class SwTextNode;
 
 class SwFieldRefPage : public SwFieldPage
 {
-    VclPtr<ListBox>        m_pTypeLB;
-    VclPtr<VclContainer>   m_pSelection;
-    VclPtr<ListBox>        m_pSelectionLB;
-    // #i83479#
-    VclPtr<SwFieldRefTreeListBox> m_pSelectionToolTipLB;
-    VclPtr<VclContainer>   m_pFormat;
-    VclPtr<ListBox>        m_pFormatLB;
-    VclPtr<FixedText>      m_pNameFT;
-    VclPtr<Edit>           m_pNameED;
-    VclPtr<Edit>           m_pValueED;
-    VclPtr<Edit>           m_pFilterED;
     OUString    sBookmarkText;
     OUString    sFootnoteText;
     OUString    sEndnoteText;
@@ -61,11 +44,23 @@ class SwFieldRefPage : public SwFieldPage
     // fallback, if previously selected text node doesn't exist anymore
     size_t mnSavedSelectedPos;
 
-    DECL_LINK(TypeHdl, ListBox&, void);
-    DECL_LINK(SubTypeListBoxHdl, ListBox&, void);
-    DECL_LINK(SubTypeTreeListBoxHdl, SvTreeListBox*, void);
-    DECL_LINK(ModifyHdl, Edit&, void);
-    DECL_LINK(ModifyHdl_Impl, Edit&, void);
+    std::unique_ptr<weld::TreeView> m_xTypeLB;
+    std::unique_ptr<weld::Widget> m_xSelection;
+    std::unique_ptr<weld::TreeView> m_xSelectionLB;
+    // #i83479#
+    std::unique_ptr<weld::TreeView> m_xSelectionToolTipLB;
+    std::unique_ptr<weld::Widget> m_xFormat;
+    std::unique_ptr<weld::TreeView> m_xFormatLB;
+    std::unique_ptr<weld::Label> m_xNameFT;
+    std::unique_ptr<weld::Entry> m_xNameED;
+    std::unique_ptr<weld::Entry> m_xValueED;
+    std::unique_ptr<weld::Entry> m_xFilterED;
+
+    DECL_LINK(TypeHdl, weld::TreeView&, void);
+    DECL_LINK(SubTypeListBoxHdl, weld::TreeView&, void);
+    DECL_LINK(SubTypeTreeListBoxHdl, weld::TreeView&, void);
+    DECL_LINK(ModifyHdl, weld::Entry&, void);
+    DECL_LINK(ModifyHdl_Impl, weld::Entry&, void);
 
     void SubTypeHdl();
 
@@ -82,12 +77,10 @@ protected:
     virtual sal_uInt16      GetGroup() override;
 
 public:
-                        SwFieldRefPage(vcl::Window* pParent, const SfxItemSet* pSet);
+    SwFieldRefPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* pSet);
+    virtual ~SwFieldRefPage() override;
 
-                        virtual ~SwFieldRefPage() override;
-    virtual void        dispose() override;
-
-    static VclPtr<SfxTabPage>  Create(vcl::Window* pParent, const SfxItemSet* rAttrSet);
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet);
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;

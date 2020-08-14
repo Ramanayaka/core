@@ -17,31 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cstddef>
 
 #include "PresenterHelper.hxx"
-#include "CanvasUpdateRequester.hxx"
 #include "PresenterCanvas.hxx"
-#include "facreg.hxx"
 #include <cppcanvas/vclfactory.hxx>
-#include <com/sun/star/awt/WindowAttribute.hpp>
-#include <com/sun/star/awt/WindowClass.hpp>
-#include <com/sun/star/awt/WindowDescriptor.hpp>
+#include <com/sun/star/awt/XWindowPeer.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
 #include <vcl/wrkwin.hxx>
 
-#include "res_bmp.hrc"
-#include "bitmaps.hlst"
-#include "sdresid.hxx"
+
+#include <bitmaps.hlst>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sd { namespace presenter {
+namespace sd::presenter {
 
 //===== PresenterHelper =======================================================
 
@@ -87,13 +82,13 @@ Reference<awt::XWindow> SAL_CALL PresenterHelper::createWindow (
     {
         // Make the frame window transparent and make the parent able to
         // draw behind it.
-        if (pParentWindow.get() != nullptr)
+        if (pParentWindow)
             pParentWindow->EnableChildTransparentMode();
     }
 
     pWindow->Show(bInitiallyVisible);
 
-    pWindow->SetMapMode(MapUnit::MapPixel);
+    pWindow->SetMapMode(MapMode(MapUnit::MapPixel));
     pWindow->SetBackground();
     if ( ! bEnableParentClip)
     {
@@ -142,29 +137,26 @@ Reference<rendering::XCanvas> SAL_CALL PresenterHelper::createCanvas (
     // No shared window is given or an explicit canvas service name is
     // specified.  Create a new canvas.
     VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow(rxWindow);
-    if (pWindow)
-    {
-        Sequence<Any> aArg (5);
-
-        // common: first any is VCL pointer to window (for VCL canvas)
-        aArg[0] <<= reinterpret_cast<sal_Int64>(pWindow.get());
-        aArg[1] = Any();
-        aArg[2] <<= css::awt::Rectangle();
-        aArg[3] <<= false;
-        aArg[4] <<= rxWindow;
-
-        Reference<lang::XMultiServiceFactory> xFactory (
-            mxComponentContext->getServiceManager(), UNO_QUERY_THROW);
-        return Reference<rendering::XCanvas>(
-            xFactory->createInstanceWithArguments(
-                !rsOptionalCanvasServiceName.isEmpty()
-                    ? rsOptionalCanvasServiceName
-                    : OUString("com.sun.star.rendering.Canvas.VCL"),
-                aArg),
-            UNO_QUERY);
-    }
-    else
+    if (!pWindow)
         throw RuntimeException();
+
+    Sequence<Any> aArg(4);
+
+    // common: first any is VCL pointer to window (for VCL canvas)
+    aArg[0] <<= reinterpret_cast<sal_Int64>(pWindow.get());
+    aArg[1] <<= css::awt::Rectangle();
+    aArg[2] <<= false;
+    aArg[3] <<= rxWindow;
+
+    Reference<lang::XMultiServiceFactory> xFactory (
+        mxComponentContext->getServiceManager(), UNO_QUERY_THROW);
+    return Reference<rendering::XCanvas>(
+        xFactory->createInstanceWithArguments(
+            !rsOptionalCanvasServiceName.isEmpty()
+                ? rsOptionalCanvasServiceName
+                : OUString("com.sun.star.rendering.Canvas.VCL"),
+            aArg),
+        UNO_QUERY);
 }
 
 void SAL_CALL PresenterHelper::toTop (
@@ -284,6 +276,10 @@ Reference<rendering::XBitmap> SAL_CALL PresenterHelper::loadBitmap (
           BMP_PRESENTERSCREEN_BUTTON_HELP_NORMAL },
         { "bitmaps/ButtonHelpSelected.png",
           BMP_PRESENTERSCREEN_BUTTON_HELP_SELECTED },
+        { "bitmaps/ButtonExitPresenterMouseOver.png",
+          BMP_PRESENTERSCREEN_BUTTON_EXIT_PRESENTER_MOUSE_OVER },
+        { "bitmaps/ButtonExitPresenterNormal.png",
+          BMP_PRESENTERSCREEN_BUTTON_EXIT_PRESENTER_NORMAL },
         { "bitmaps/ButtonMinusDisabled.png",
           BMP_PRESENTERSCREEN_BUTTON_MINUS_DISABLED },
         { "bitmaps/ButtonMinusMouseOver.png",
@@ -338,6 +334,14 @@ Reference<rendering::XBitmap> SAL_CALL PresenterHelper::loadBitmap (
           BMP_PRESENTERSCREEN_BUTTON_RESTART_TIMER_MOUSE_OVER },
         { "bitmaps/ButtonRestartTimerNormal.png",
           BMP_PRESENTERSCREEN_BUTTON_RESTART_TIMER_NORMAL },
+        { "bitmaps/ButtonPauseTimerMouseOver.png",
+          BMP_PRESENTERSCREEN_BUTTON_PAUSE_TIMER_MOUSE_OVER },
+        { "bitmaps/ButtonPauseTimerNormal.png",
+          BMP_PRESENTERSCREEN_BUTTON_PAUSE_TIMER_NORMAL },
+        { "bitmaps/ButtonResumeTimerMouseOver.png",
+          BMP_PRESENTERSCREEN_BUTTON_RESUME_TIMER_MOUSE_OVER },
+        { "bitmaps/ButtonResumeTimerNormal.png",
+          BMP_PRESENTERSCREEN_BUTTON_RESUME_TIMER_NORMAL },
         { "bitmaps/LabelMouseOverCenter.png",
           BMP_PRESENTERSCREEN_LABEL_MOUSE_OVER_CENTER },
         { "bitmaps/LabelMouseOverLeft.png",
@@ -376,7 +380,9 @@ Reference<rendering::XBitmap> SAL_CALL PresenterHelper::loadBitmap (
           BMP_PRESENTERSCREEN_SCROLLBAR_THUMB_TOP_MOUSE_OVER },
         { "bitmaps/ScrollbarThumbTopNormal.png",
           BMP_PRESENTERSCREEN_SCROLLBAR_THUMB_TOP_NORMAL },
-        { "bitmaps/ViewBackground.png", BMP_PRESENTERSCREEN_VIEW_BACKGROUND }
+        { "bitmaps/ViewBackground.png", BMP_PRESENTERSCREEN_VIEW_BACKGROUND },
+        { "bitmaps/Separator.png",
+          BMP_PRESENTERSCREEN_SEPARATOR }
     };
     OUString bmpid;
     for (std::size_t i = 0; i != SAL_N_ELEMENTS(map); ++i) {
@@ -392,16 +398,15 @@ Reference<rendering::XBitmap> SAL_CALL PresenterHelper::loadBitmap (
     ::osl::MutexGuard aGuard (::osl::Mutex::getGlobalMutex());
 
     const cppcanvas::CanvasSharedPtr pCanvas (
-        cppcanvas::VCLFactory::createCanvas(
-            Reference<css::rendering::XCanvas>(rxCanvas,UNO_QUERY)));
+        cppcanvas::VCLFactory::createCanvas(rxCanvas));
 
-    if (pCanvas.get() != nullptr)
+    if (pCanvas)
     {
         BitmapEx aBitmapEx(bmpid);
         cppcanvas::BitmapSharedPtr xBitmap(
             cppcanvas::VCLFactory::createBitmap(pCanvas,
                 aBitmapEx));
-        if (xBitmap.get() == nullptr)
+        if (!xBitmap)
             return nullptr;
         return xBitmap->getUNOBitmap();
     }
@@ -449,10 +454,10 @@ awt::Rectangle PresenterHelper::getWindowExtentsRelative (
         return awt::Rectangle();
 }
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Draw_PresenterHelper_get_implementation(css::uno::XComponentContext* context,
                                                           css::uno::Sequence<css::uno::Any> const &)
 {

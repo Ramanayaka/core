@@ -18,31 +18,30 @@
  */
 
 #include <tools/gen.hxx>
+#include <tools/debug.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/accessibility/AccessibleTextType.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <comphelper/accessibleeventnotifier.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
-#include <editeng/unolingu.hxx>
-#include "editeng/AccessibleEditableTextPara.hxx"
-#include "editeng/AccessibleImageBullet.hxx"
+#include <i18nlangtag/languagetag.hxx>
+#include <editeng/AccessibleEditableTextPara.hxx>
 #include <editeng/eerdll.hxx>
 
 #include <editeng/editdata.hxx>
-#include <editeng/editeng.hxx>
 #include <editeng/outliner.hxx>
-#include "editeng.hrc"
+#include <editeng/editrids.hrc>
+#include <editeng/unoedsrc.hxx>
 #include <svtools/colorcfg.hxx>
 
+#include "AccessibleImageBullet.hxx"
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
@@ -136,7 +135,7 @@ namespace accessibility
         SolarMutexGuard aGuard;
 
         // Get the string from the resource for the specified id.
-        return EditResId::GetString(RID_SVXSTR_A11Y_IMAGEBULLET_DESCRIPTION);
+        return EditResId(RID_SVXSTR_A11Y_IMAGEBULLET_DESCRIPTION);
     }
 
     OUString SAL_CALL  AccessibleImageBullet::getAccessibleName()
@@ -145,7 +144,7 @@ namespace accessibility
         SolarMutexGuard aGuard;
 
         // Get the string from the resource for the specified id.
-        return EditResId::GetString(RID_SVXSTR_A11Y_IMAGEBULLET_NAME);
+        return EditResId(RID_SVXSTR_A11Y_IMAGEBULLET_NAME);
     }
 
     uno::Reference< XAccessibleRelationSet > SAL_CALL AccessibleImageBullet::getAccessibleRelationSet()
@@ -174,7 +173,7 @@ namespace accessibility
 
         SolarMutexGuard aGuard;
 
-        DBG_ASSERT(GetParagraphIndex() >= 0 && GetParagraphIndex() <= USHRT_MAX,
+        DBG_ASSERT(GetParagraphIndex() >= 0,
                    "AccessibleImageBullet::getLocale: paragraph index value overflow");
 
         // return locale of first character in the paragraph
@@ -191,19 +190,19 @@ namespace accessibility
     void SAL_CALL AccessibleImageBullet::removeAccessibleEventListener( const uno::Reference< XAccessibleEventListener >& xListener )
     {
 
-        if( getNotifierClientId() != -1 )
+        if( getNotifierClientId() == -1 )
+            return;
+
+        const sal_Int32 nListenerCount = ::comphelper::AccessibleEventNotifier::removeEventListener( getNotifierClientId(), xListener );
+        if ( !nListenerCount )
         {
-            const sal_Int32 nListenerCount = ::comphelper::AccessibleEventNotifier::removeEventListener( getNotifierClientId(), xListener );
-            if ( !nListenerCount )
-            {
-                // no listeners anymore
-                // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-                // and at least to us not firing any events anymore, in case somebody calls
-                // NotifyAccessibleEvent, again
-                ::comphelper::AccessibleEventNotifier::TClientId nId( getNotifierClientId() );
-                mnNotifierClientId = -1;
-                ::comphelper::AccessibleEventNotifier::revokeClient( nId );
-            }
+            // no listeners anymore
+            // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
+            // and at least to us not firing any events anymore, in case somebody calls
+            // NotifyAccessibleEvent, again
+            ::comphelper::AccessibleEventNotifier::TClientId nId( getNotifierClientId() );
+            mnNotifierClientId = -1;
+            ::comphelper::AccessibleEventNotifier::revokeClient( nId );
         }
     }
 
@@ -212,7 +211,7 @@ namespace accessibility
 
         SolarMutexGuard aGuard;
 
-        DBG_ASSERT(GetParagraphIndex() >= 0 && GetParagraphIndex() <= USHRT_MAX,
+        DBG_ASSERT(GetParagraphIndex() >= 0,
                    "AccessibleEditableTextPara::contains: index value overflow");
 
         awt::Rectangle aTmpRect = getBounds();
@@ -234,7 +233,7 @@ namespace accessibility
 
         SolarMutexGuard aGuard;
 
-        DBG_ASSERT(GetParagraphIndex() >= 0 && GetParagraphIndex() <= USHRT_MAX,
+        DBG_ASSERT(GetParagraphIndex() >= 0,
                    "AccessibleEditableTextPara::getBounds: index value overflow");
 
         SvxTextForwarder& rCacheTF = GetTextForwarder();
@@ -326,7 +325,7 @@ namespace accessibility
 
         // #104444# Added to XAccessibleComponent interface
         svtools::ColorConfig aColorConfig;
-        sal_uInt32 nColor = aColorConfig.GetColorValue( svtools::FONTCOLOR ).nColor;
+        Color nColor = aColorConfig.GetColorValue( svtools::FONTCOLOR ).nColor;
         return static_cast<sal_Int32>(nColor);
     }
 
@@ -334,18 +333,18 @@ namespace accessibility
     {
 
         // #104444# Added to XAccessibleComponent interface
-        Color aColor( Application::GetSettings().GetStyleSettings().GetWindowColor().GetColor() );
+        Color aColor( Application::GetSettings().GetStyleSettings().GetWindowColor() );
 
         // the background is transparent
         aColor.SetTransparency( 0xFF);
 
-        return static_cast<sal_Int32>( aColor.GetColor() );
+        return static_cast<sal_Int32>( aColor );
     }
 
     OUString SAL_CALL AccessibleImageBullet::getImplementationName()
     {
 
-        return OUString("AccessibleImageBullet");
+        return "AccessibleImageBullet";
     }
 
     sal_Bool SAL_CALL AccessibleImageBullet::supportsService (const OUString& sServiceName)
@@ -356,9 +355,7 @@ namespace accessibility
 
     uno::Sequence< OUString > SAL_CALL AccessibleImageBullet::getSupportedServiceNames()
     {
-
-        const OUString sServiceName ("com.sun.star.accessibility.AccessibleContext");
-        return uno::Sequence< OUString > (&sServiceName, 1);
+        return { "com.sun.star.accessibility.AccessibleContext" };
     }
 
     void AccessibleImageBullet::SetIndexInParent( sal_Int32 nIndex )
@@ -484,13 +481,12 @@ namespace accessibility
     SvxEditSource& AccessibleImageBullet::GetEditSource() const
     {
 
-        if( mpEditSource )
-            return *mpEditSource;
-        else
+        if( !mpEditSource )
             throw uno::RuntimeException("No edit source, object is defunct",
                                         uno::Reference< uno::XInterface >
                                         ( static_cast< ::cppu::OWeakObject* >
                                           ( const_cast< AccessibleImageBullet* > (this) ) ) );  // disambiguate hierarchy
+        return *mpEditSource;
     }
 
     SvxTextForwarder& AccessibleImageBullet::GetTextForwarder() const
@@ -505,13 +501,12 @@ namespace accessibility
                                         ( static_cast< ::cppu::OWeakObject* >
                                           ( const_cast< AccessibleImageBullet* > (this) ) ) );  // disambiguate hierarchy
 
-        if( pTextForwarder->IsValid() )
-            return *pTextForwarder;
-        else
+        if( !pTextForwarder->IsValid() )
             throw uno::RuntimeException("Text forwarder is invalid, object is defunct",
                                         uno::Reference< uno::XInterface >
                                         ( static_cast< ::cppu::OWeakObject* >
                                           ( const_cast< AccessibleImageBullet* > (this) ) ) );  // disambiguate hierarchy
+        return *pTextForwarder;
     }
 
     SvxViewForwarder& AccessibleImageBullet::GetViewForwarder() const
@@ -528,13 +523,12 @@ namespace accessibility
                                           ( const_cast< AccessibleImageBullet* > (this) ) ) );  // disambiguate hierarchy
         }
 
-        if( pViewForwarder->IsValid() )
-            return *pViewForwarder;
-        else
+        if( !pViewForwarder->IsValid() )
             throw uno::RuntimeException("View forwarder is invalid, object is defunct",
                                         uno::Reference< uno::XInterface >
                                         ( static_cast< ::cppu::OWeakObject* >
                                           ( const_cast< AccessibleImageBullet* > (this) )  ) ); // disambiguate hierarchy
+        return *pViewForwarder;
     }
 
 

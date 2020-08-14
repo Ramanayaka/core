@@ -22,9 +22,12 @@
 #include "PropertyHelper.hxx"
 #include "FastPropertyIdRanges.hxx"
 #include "charttoolsdllapi.hxx"
-#include <com/sun/star/beans/Property.hpp>
 
 #include <vector>
+
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::beans { struct Property; }
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
 
 namespace chart
 {
@@ -42,7 +45,8 @@ namespace LinePropertiesHelper
         PROP_LINE_COLOR,
         PROP_LINE_TRANSPARENCE,
         PROP_LINE_WIDTH,
-        PROP_LINE_JOINT
+        PROP_LINE_JOINT,
+        PROP_LINE_CAP
     };
 
     OOO_DLLPUBLIC_CHARTTOOLS void AddPropertiesToVector(

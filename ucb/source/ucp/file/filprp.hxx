@@ -20,7 +20,6 @@
 #define INCLUDED_UCB_SOURCE_UCP_FILE_FILPRP_HXX
 
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
-#include <com/sun/star/ucb/XContentProvider.hpp>
 #include <cppuhelper/implbase.hxx>
 
 
@@ -48,7 +47,6 @@ class XPropertySetInfo_impl : public cppu::WeakImplHelper<
 
     private:
         TaskManager*                                               m_pMyShell;
-        sal_Int32                                            m_count;
         css::uno::Sequence< css::beans::Property >           m_seq;
     };
 }

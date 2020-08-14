@@ -17,14 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/container/NoSuchElementException.hpp>
-#include "com/sun/star/office/XAnnotationEnumeration.hpp"
+#include <com/sun/star/office/XAnnotationEnumeration.hpp>
 
-#include "AnnotationEnumeration.hxx"
-#include "sdpage.hxx"
+#include <AnnotationEnumeration.hxx>
+#include <sdpage.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::office;
@@ -32,6 +32,8 @@ using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
 
 namespace sd {
+
+namespace {
 
 class AnnotationEnumeration: public ::cppu::WeakImplHelper< css::office::XAnnotationEnumeration >
 {
@@ -50,6 +52,8 @@ private:
     AnnotationVector maAnnotations;
     AnnotationVector::iterator maIter;
 };
+
+}
 
 Reference< XAnnotationEnumeration > createAnnotationEnumeration( const sd::AnnotationVector& rAnnotations )
 {

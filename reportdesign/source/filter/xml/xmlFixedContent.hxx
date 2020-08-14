@@ -20,7 +20,6 @@
 #define INCLUDED_REPORTDESIGN_SOURCE_FILTER_XML_XMLFIXEDCONTENT_HXX
 
 #include "xmlReportElementBase.hxx"
-#include <com/sun/star/drawing/XShapes.hpp>
 
 
 namespace rptxml
@@ -32,30 +31,28 @@ namespace rptxml
         OUString     m_sPageText; // page count and page number
         OUString     m_sLabel;
         OXMLCell&           m_rCell;
-        OXMLFixedContent*   m_pInP; // if set than we are in text-p element
+        OXMLFixedContent*   m_pInP; // if set then we are in text-p element
         bool                m_bFormattedField;
 
-    protected:
-        virtual SvXMLImportContext* CreateChildContext_( sal_uInt16 nPrefix,
-                    const OUString& rLocalName,
-                    const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
-    private:
         OXMLFixedContent(const OXMLFixedContent&) = delete;
         OXMLFixedContent& operator =(const OXMLFixedContent&) = delete;
     public:
 
-        OXMLFixedContent( ORptFilter& rImport, sal_uInt16 nPrfx,
-                    const OUString& rLName
+        OXMLFixedContent( ORptFilter& rImport
                     ,OXMLCell& _rCell
                     ,OXMLTable* _pContainer
                     ,OXMLFixedContent* _pInP = nullptr);
         virtual ~OXMLFixedContent() override;
 
+        virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+                    sal_Int32 nElement,
+                    const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList ) override;
+
         // This method is called for all characters that are contained in the
         // current element. The default is to ignore them.
-        virtual void Characters( const OUString& rChars ) override;
+        virtual void SAL_CALL characters( const OUString& rChars ) override;
 
-        virtual void EndElement() override;
+        virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
     };
 
 } // namespace rptxml

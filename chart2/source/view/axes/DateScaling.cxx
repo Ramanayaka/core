@@ -20,16 +20,15 @@
 #include "DateScaling.hxx"
 #include <com/sun/star/chart/TimeUnit.hpp>
 #include <rtl/math.hxx>
-#include "com/sun/star/uno/RuntimeException.hpp"
 #include <cppuhelper/supportsservice.hxx>
 
 namespace
 {
 
-static const char lcl_aServiceName_DateScaling[] = "com.sun.star.chart2.DateScaling";
-static const char lcl_aServiceName_InverseDateScaling[] = "com.sun.star.chart2.InverseDateScaling";
+const char lcl_aServiceName_DateScaling[] = "com.sun.star.chart2.DateScaling";
+const char lcl_aServiceName_InverseDateScaling[] = "com.sun.star.chart2.InverseDateScaling";
 
-static const double lcl_fNumberOfMonths = 12.0;//todo: this needs to be offered by basic tools Date class if it should be more generic
+const double lcl_fNumberOfMonths = 12.0;//todo: this needs to be offered by basic tools Date class if it should be more generic
 }
 
 namespace chart
@@ -54,12 +53,12 @@ DateScaling::~DateScaling()
 double SAL_CALL DateScaling::doScaling( double value )
 {
     double fResult(value);
-    if( ::rtl::math::isNan( value ) || ::rtl::math::isInf( value ) )
+    if( std::isnan( value ) || std::isinf( value ) )
         ::rtl::math::setNan( & fResult );
     else
     {
         Date aDate(m_aNullDate);
-        aDate += static_cast<long>(::rtl::math::approxFloor(value));
+        aDate.AddDays(::rtl::math::approxFloor(value));
         switch( m_nTimeUnit )
         {
             case DAY:
@@ -98,12 +97,12 @@ uno::Reference< XScaling > SAL_CALL DateScaling::getInverseScaling()
 
 OUString SAL_CALL DateScaling::getServiceName()
 {
-    return OUString(lcl_aServiceName_DateScaling);
+    return lcl_aServiceName_DateScaling;
 }
 
 OUString SAL_CALL DateScaling::getImplementationName()
 {
-    return OUString(lcl_aServiceName_DateScaling);
+    return lcl_aServiceName_DateScaling;
 }
 
 sal_Bool SAL_CALL DateScaling::supportsService( const OUString& rServiceName )
@@ -130,7 +129,7 @@ InverseDateScaling::~InverseDateScaling()
 double SAL_CALL InverseDateScaling::doScaling( double value )
 {
     double fResult(value);
-    if( ::rtl::math::isNan( value ) || ::rtl::math::isInf( value ) )
+    if( std::isnan( value ) || std::isinf( value ) )
         ::rtl::math::setNan( & fResult );
     else
     {
@@ -181,12 +180,12 @@ uno::Reference< XScaling > SAL_CALL InverseDateScaling::getInverseScaling()
 
 OUString SAL_CALL InverseDateScaling::getServiceName()
 {
-    return OUString(lcl_aServiceName_InverseDateScaling);
+    return lcl_aServiceName_InverseDateScaling;
 }
 
 OUString SAL_CALL InverseDateScaling::getImplementationName()
 {
-    return OUString(lcl_aServiceName_InverseDateScaling);
+    return lcl_aServiceName_InverseDateScaling;
 }
 
 sal_Bool SAL_CALL InverseDateScaling::supportsService( const OUString& rServiceName )

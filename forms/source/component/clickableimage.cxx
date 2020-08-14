@@ -18,12 +18,10 @@
  */
 
 #include "clickableimage.hxx"
-#include "controlfeatureinterception.hxx"
-#include "urltransformer.hxx"
-#include "componenttools.hxx"
+#include <controlfeatureinterception.hxx>
+#include <urltransformer.hxx>
+#include <componenttools.hxx>
 #include <com/sun/star/form/XSubmit.hpp>
-#include <com/sun/star/awt/SystemPointer.hpp>
-#include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
@@ -36,14 +34,17 @@
 #include <com/sun/star/util/VetoException.hpp>
 #include <tools/urlobj.hxx>
 #include <tools/debug.hxx>
+#include <vcl/graph.hxx>
 #include <vcl/svapp.hxx>
 #include <sfx2/docfile.hxx>
 #include <sfx2/objsh.hxx>
 #include <osl/mutex.hxx>
-#include "services.hxx"
-#include <comphelper/container.hxx>
-#include <comphelper/listenernotification.hxx>
-#include <comphelper/processfactory.hxx>
+#include <property.hxx>
+#include <services.hxx>
+#include <comphelper/interfacecontainer2.hxx>
+#include <comphelper/property.hxx>
+#include <comphelper/types.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <svtools/imageresourceaccess.hxx>
 #define LOCAL_URL_PREFIX    '#'
 
@@ -55,7 +56,6 @@ namespace frm
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::sdb;
     using namespace ::com::sun::star::sdbc;
-    using namespace ::com::sun::star::sdbcx;
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::container;
     using namespace ::com::sun::star::form;
@@ -75,9 +75,8 @@ namespace frm
 
     Sequence<Type> OClickableImageBaseControl::_getTypes()
     {
-        static Sequence<Type> aTypes;
-        if (!aTypes.getLength())
-            aTypes = concatSequences(OControl::_getTypes(), OClickableImageBaseControl_BASE::getTypes());
+        static Sequence<Type> const aTypes =
+            concatSequences(OControl::_getTypes(), OClickableImageBaseControl_BASE::getTypes());
         return aTypes;
     }
 
@@ -297,7 +296,7 @@ namespace frm
                     OUString aTargetFrame;
                     xSet->getPropertyValue(PROPERTY_TARGET_FRAME) >>= aTargetFrame;
 
-                    Reference< XDispatch >  xDisp = Reference< XDispatchProvider > (xFrame,UNO_QUERY)->queryDispatch( aURL, aTargetFrame,
+                    Reference< XDispatch >  xDisp = Reference< XDispatchProvider > (xFrame,UNO_QUERY_THROW)->queryDispatch( aURL, aTargetFrame,
                             FrameSearchFlag::SELF | FrameSearchFlag::PARENT |
                             FrameSearchFlag::SIBLINGS | FrameSearchFlag::CREATE );
 
@@ -313,7 +312,7 @@ namespace frm
                 {
                     URL aHyperLink = m_pFeatureInterception->getTransformer().getStrictURLFromAscii( ".uno:OpenHyperlink" );
 
-                    Reference< XDispatch >  xDisp = Reference< XDispatchProvider > (xFrame,UNO_QUERY)->queryDispatch(aHyperLink, OUString() , 0);
+                    Reference< XDispatch >  xDisp = Reference< XDispatchProvider > (xFrame,UNO_QUERY_THROW)->queryDispatch(aHyperLink, OUString() , 0);
 
                     if ( xDisp.is() )
                     {
@@ -423,10 +422,11 @@ namespace frm
             // allowed to leave
             throw;
         }
-        catch( const Exception& e )
+        catch( const Exception& )
         {
+            css::uno::Any anyEx = cppu::getCaughtException();
             OSL_FAIL( "OClickableImageBaseControl::implSubmit: caught an unknown exception!" );
-            throw WrappedTargetException( OUString(), *this, makeAny( e ) );
+            throw WrappedTargetException( OUString(), *this, anyEx );
         }
     }
 
@@ -448,7 +448,6 @@ namespace frm
         :OControlModel( _rxFactory, _rUnoControlModelTypeName, rDefault )
         ,OPropertyChangeListener(m_aMutex)
         ,m_xGraphicObject()
-        ,m_pMedium(nullptr)
         ,m_bDispatchUrlInternal(false)
         ,m_bProdStarted(false)
     {
@@ -461,7 +460,6 @@ namespace frm
         :OControlModel( _pOriginal, _rxFactory )
         ,OPropertyChangeListener( m_aMutex )
         ,m_xGraphicObject( _pOriginal->m_xGraphicObject )
-        ,m_pMedium( nullptr )
         ,m_bDispatchUrlInternal(false)
         ,m_bProdStarted( false )
     {
@@ -567,12 +565,7 @@ namespace frm
     void OClickableImageBaseModel::disposing()
     {
         OControlModel::disposing();
-        if (m_pMedium)
-        {
-            delete m_pMedium;
-            m_pMedium = nullptr;
-        }
-
+        m_pMedium.reset();
         m_xProducer.clear();
     }
 
@@ -687,11 +680,56 @@ namespace frm
         else
         {
             pImgProd->SetImage(OUString());
-            delete m_pMedium;
-            m_pMedium = nullptr;
+            m_pMedium.reset();
         }
     }
 
+    SfxObjectShell* OClickableImageBaseModel::GetObjectShell()
+    {
+        // Find the XModel to get to the Object shell or at least the
+        // Referer.
+        // There's only a Model if we load HTML documents and the URL is
+        // changed in a document that is already loaded. There's no way
+        // we can get to the Model during loading.
+        Reference< XModel >  xModel;
+        css::uno::Reference<css::uno::XInterface>  xIfc( *this );
+        while( !xModel.is() && xIfc.is() )
+        {
+            Reference<XChild>  xChild( xIfc, UNO_QUERY );
+            xIfc = xChild->getParent();
+            xModel.set(xIfc, css::uno::UNO_QUERY);
+        }
+
+        // Search for the Object shell by iterating over all Object shells
+        // and comparing their XModel to ours.
+        // As an optimization, we try the current Object shell first.
+        SfxObjectShell *pObjSh = nullptr;
+
+        if( xModel.is() )
+        {
+            SfxObjectShell *pTestObjSh = SfxObjectShell::Current();
+            if( pTestObjSh )
+            {
+                Reference< XModel >  xTestModel = pTestObjSh->GetModel();
+                if( xTestModel == xModel )
+                    pObjSh = pTestObjSh;
+            }
+            if( !pObjSh )
+            {
+                pTestObjSh = SfxObjectShell::GetFirst();
+                while( !pObjSh && pTestObjSh )
+                {
+                    Reference< XModel > xTestModel = pTestObjSh->GetModel();
+                    if( xTestModel == xModel )
+                        pObjSh = pTestObjSh;
+                    else
+                        pTestObjSh = SfxObjectShell::GetNext( *pTestObjSh );
+                }
+            }
+        }
+
+        return pObjSh;
+    }
 
     void OClickableImageBaseModel::SetURL( const OUString& rURL )
     {
@@ -699,8 +737,7 @@ namespace frm
         {
             // Free the stream at the Producer, before the medium is deleted
             GetImageProducer()->SetImage(OUString());
-            delete m_pMedium;
-            m_pMedium = nullptr;
+            m_pMedium.reset();
         }
 
         // the SfxMedium is not allowed to be created with an invalid URL, so we have to check this first
@@ -710,54 +747,11 @@ namespace frm
             return;
 
         if (!rURL.isEmpty() && !::svt::GraphicAccess::isSupportedURL( rURL ) )
-       {
-            delete m_pMedium;
+        {
+            m_pMedium.reset(new SfxMedium(rURL, StreamMode::STD_READ));
 
-            m_pMedium = new SfxMedium(rURL, StreamMode::STD_READ);
+            SfxObjectShell *pObjSh = GetObjectShell();
 
-            // Find the XModel to get to the Object shell or at least the
-            // Referer.
-            // There's only a Model if we load HTML documents and the URL is
-            // changed in a document that is already loaded. There's no way
-            // we can get to the Model during loading.
-            Reference< XModel >  xModel;
-            css::uno::Reference<css::uno::XInterface>  xIfc( *this );
-            while( !xModel.is() && xIfc.is() )
-            {
-                Reference<XChild>  xChild( xIfc, UNO_QUERY );
-                xIfc = xChild->getParent();
-                xModel.set(xIfc, css::uno::UNO_QUERY);
-            }
-
-            // Search for the Object shell by iterating over all Object shells
-            // and comparing their XModel to ours.
-            // As an optimization, we try the current Object shell first.
-            SfxObjectShell *pObjSh = nullptr;
-
-            if( xModel.is() )
-            {
-                SfxObjectShell *pTestObjSh = SfxObjectShell::Current();
-                if( pTestObjSh )
-                {
-                    Reference< XModel >  xTestModel = pTestObjSh->GetModel();
-                    if( xTestModel == xModel )
-                        pObjSh = pTestObjSh;
-                }
-                if( !pObjSh )
-                {
-                    pTestObjSh = SfxObjectShell::GetFirst();
-                    while( !pObjSh && pTestObjSh )
-                    {
-                        Reference< XModel > xTestModel = pTestObjSh->GetModel();
-                        if( xTestModel == xModel )
-                            pObjSh = pTestObjSh;
-                        else
-                            pTestObjSh = SfxObjectShell::GetNext( *pTestObjSh );
-                    }
-                }
-            }
-
-    #ifdef USE_REGISTER_TRANSFER
             if( pObjSh )
             {
                 // Transfer target frame, so that javascript: URLs
@@ -766,16 +760,6 @@ namespace frm
                 if( pShMedium )
                     m_pMedium->SetLoadTargetFrame(pShMedium->GetLoadTargetFrame());
             }
-    #else
-            if( pObjSh )
-            {
-                // Transfer target frame, so that javascript: URLs
-                // can also be "loaded"
-                const SfxMedium *pShMedium = pObjSh->GetMedium();
-                if( pShMedium )
-                    m_pMedium->SetLoadTargetFrame(pShMedium->GetLoadTargetFrame());
-            }
-    #endif
 
             m_bProdStarted = false;
 
@@ -800,16 +784,10 @@ namespace frm
     }
 
 
-    void OClickableImageBaseModel::DownloadDone()
-    {
-        DataAvailable();
-    }
-
-
     IMPL_LINK_NOARG( OClickableImageBaseModel, DownloadDoneLink, void*, void )
     {
         ::osl::MutexGuard aGuard( m_aMutex );
-        DownloadDone();
+        DataAvailable();
     }
 
 
@@ -850,13 +828,6 @@ namespace frm
 
 
     // OImageProducerThread_Impl
-
-
-    EventObject* OImageProducerThread_Impl::cloneEvent( const EventObject* _pEvt ) const
-    {
-        return new EventObject( *_pEvt );
-    }
-
 
     void OImageProducerThread_Impl::processEvent( ::cppu::OComponentHelper *pCompImpl,
                                                 const EventObject* pEvt,

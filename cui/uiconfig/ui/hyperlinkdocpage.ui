@@ -1,15 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.18.3 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
-  <requires lib="LibreOffice" version="1.0"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="cui">
+  <requires lib="gtk+" version="3.18"/>
+  <object class="GtkImage" id="image1">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="icon_name">res/target.png</property>
+  </object>
+  <object class="GtkImage" id="image2">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="icon_name">res/fileopen.png</property>
+  </object>
   <object class="GtkBox" id="HyperlinkDocPage">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
     <property name="hexpand">True</property>
     <property name="vexpand">True</property>
+    <property name="border_width">6</property>
     <property name="orientation">vertical</property>
-    <property name="spacing">24</property>
+    <property name="spacing">12</property>
     <child>
       <object class="GtkFrame" id="frame1">
         <property name="visible">True</property>
@@ -35,10 +45,10 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
-                    <property name="xalign">0</property>
-                    <property name="label" translatable="yes">_Path:</property>
+                    <property name="label" translatable="yes" context="hyperlinkdocpage|path_label">_Path:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">path</property>
+                    <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -46,28 +56,34 @@
                   </packing>
                 </child>
                 <child>
-                  <object class="cuilo-SvxHyperURLBox" id="path">
+                  <object class="GtkButton" id="fileopen">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
-                    <property name="hexpand">True</property>
-                    <property name="invisible_char">•</property>
+                    <property name="receives_default">True</property>
+                    <property name="tooltip_text" translatable="yes" context="hyperlinkdocpage|fileopen|tooltip_text">Open File</property>
+                    <property name="image">image2</property>
+                    <property name="always_show_image">True</property>
                   </object>
                   <packing>
-                    <property name="left_attach">1</property>
+                    <property name="left_attach">2</property>
                     <property name="top_attach">0</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkButton" id="fileopen">
-                    <property name="label" translatable="yes">Open File</property>
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkComboBoxText" id="path">
                     <property name="visible">True</property>
-                    <property name="can_focus">True</property>
-                    <property name="receives_default">True</property>
-                    <property name="tooltip_text" translatable="yes">Open File</property>
+                    <property name="can_focus">False</property>
+                    <property name="hexpand">True</property>
+                    <property name="has_entry">True</property>
+                    <child internal-child="entry">
+                      <object class="GtkEntry">
+                        <property name="can_focus">True</property>
+                        <property name="activates_default">True</property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
-                    <property name="left_attach">2</property>
+                    <property name="left_attach">1</property>
                     <property name="top_attach">0</property>
                   </packing>
                 </child>
@@ -79,7 +95,7 @@
           <object class="GtkLabel" id="label2">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Document</property>
+            <property name="label" translatable="yes" context="hyperlinkdocpage|label2">Document</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -115,10 +131,10 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
-                    <property name="xalign">0</property>
-                    <property name="label" translatable="yes">Targ_et:</property>
+                    <property name="label" translatable="yes" context="hyperlinkdocpage|target_label">Targ_et:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">target</property>
+                    <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -130,9 +146,9 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
-                    <property name="xalign">0</property>
-                    <property name="label" translatable="yes">URL:</property>
+                    <property name="label" translatable="yes" context="hyperlinkdocpage|url_label">URL:</property>
                     <property name="use_underline">True</property>
+                    <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -141,12 +157,12 @@
                 </child>
                 <child>
                   <object class="GtkButton" id="browse">
-                    <property name="label" translatable="yes">Target in Document</property>
-                    <property name="use_action_appearance">False</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">True</property>
-                    <property name="tooltip_text" translatable="yes">Target in Document</property>
+                    <property name="tooltip_text" translatable="yes" context="hyperlinkdocpage|browse|tooltip_text">Target in Document</property>
+                    <property name="image">image1</property>
+                    <property name="always_show_image">True</property>
                   </object>
                   <packing>
                     <property name="left_attach">2</property>
@@ -157,7 +173,7 @@
                   <object class="GtkEntry" id="target">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
-                    <property name="invisible_char">•</property>
+                    <property name="activates_default">True</property>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
@@ -170,7 +186,7 @@
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
                     <property name="hexpand">True</property>
-                    <property name="label" translatable="yes">Test text</property>
+                    <property name="label" translatable="yes" context="hyperlinkdocpage|url">Test text</property>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
@@ -188,7 +204,7 @@
           <object class="GtkLabel" id="label3">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Target in Document</property>
+            <property name="label" translatable="yes" context="hyperlinkdocpage|label3">Target in Document</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -205,6 +221,7 @@
       <object class="GtkFrame" id="frame2">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
+        <property name="valign">end</property>
         <property name="hexpand">True</property>
         <property name="vexpand">True</property>
         <property name="label_xalign">0</property>
@@ -226,10 +243,10 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
-                    <property name="xalign">0</property>
-                    <property name="label" translatable="yes">F_rame:</property>
+                    <property name="label" translatable="yes" context="hyperlinkdocpage|frame_label">F_rame:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">frame</property>
+                    <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -241,10 +258,10 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
-                    <property name="xalign">0</property>
-                    <property name="label" translatable="yes">Te_xt:</property>
+                    <property name="label" translatable="yes" context="hyperlinkdocpage|indication_label">Te_xt:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">indication</property>
+                    <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -256,10 +273,10 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
-                    <property name="xalign">0</property>
-                    <property name="label" translatable="yes">N_ame:</property>
+                    <property name="label" translatable="yes" context="hyperlinkdocpage|name_label">N_ame:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">name</property>
+                    <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -270,7 +287,7 @@
                   <object class="GtkEntry" id="indication">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
-                    <property name="invisible_char">•</property>
+                    <property name="activates_default">True</property>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
@@ -281,7 +298,7 @@
                   <object class="GtkEntry" id="name">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
-                    <property name="invisible_char">•</property>
+                    <property name="activates_default">True</property>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
@@ -299,10 +316,10 @@
                       <object class="GtkLabel" id="form_label">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="xalign">0</property>
-                        <property name="label" translatable="yes">F_orm:</property>
+                        <property name="label" translatable="yes" context="hyperlinkdocpage|form_label">F_orm:</property>
                         <property name="use_underline">True</property>
                         <property name="mnemonic_widget">form</property>
+                        <property name="xalign">0</property>
                       </object>
                       <packing>
                         <property name="left_attach">1</property>
@@ -310,9 +327,9 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkComboBox" id="form">
+                      <object class="GtkComboBoxText" id="form">
                         <property name="visible">True</property>
-                        <property name="can_focus">True</property>
+                        <property name="can_focus">False</property>
                         <property name="hexpand">True</property>
                       </object>
                       <packing>
@@ -322,11 +339,11 @@
                     </child>
                     <child>
                       <object class="GtkButton" id="script">
-                        <property name="use_action_appearance">False</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">True</property>
-                        <property name="tooltip_text" translatable="yes">Events</property>
+                        <property name="tooltip_text" translatable="yes" context="hyperlinkdocpage|script|tooltip_text">Events</property>
+                        <property name="always_show_image">True</property>
                       </object>
                       <packing>
                         <property name="left_attach">3</property>
@@ -334,14 +351,15 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkComboBox" id="frame">
+                      <object class="GtkComboBoxText" id="frame">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
                         <property name="hexpand">True</property>
                         <property name="has_entry">True</property>
                         <child internal-child="entry">
                           <object class="GtkEntry" id="combobox-entry">
-                            <property name="can_focus">False</property>
+                            <property name="can_focus">True</property>
+                            <property name="activates_default">True</property>
                           </object>
                         </child>
                       </object>
@@ -364,7 +382,7 @@
           <object class="GtkLabel" id="label1">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Further Settings</property>
+            <property name="label" translatable="yes" context="hyperlinkdocpage|label1">Further Settings</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -383,9 +401,6 @@
       <widget name="path_label"/>
       <widget name="target_label"/>
       <widget name="url_label"/>
-      <widget name="frame_label"/>
-      <widget name="indication_label"/>
-      <widget name="name_label"/>
     </widgets>
   </object>
 </interface>

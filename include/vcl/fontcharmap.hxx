@@ -21,11 +21,12 @@
 #define INCLUDED_FONTCHARMAP_HXX
 
 #include <vcl/dllapi.h>
-#include <vcl/font.hxx>
-#include <vcl/outdev.hxx>
+#include <tools/ref.hxx>
 
 class ImplFontCharMap;
 class CmapResult;
+class FontCharMap;
+class OutputDevice;
 
 typedef sal_uInt32 sal_UCS4;
 typedef tools::SvRef<ImplFontCharMap> ImplFontCharMapRef;
@@ -138,7 +139,7 @@ private:
 
     friend class ::OutputDevice;
 
-    int                 findRangeIndex( sal_uInt32 ) const;
+    int                 findRangeIndex( sal_UCS4 ) const;
 
                         FontCharMap( ImplFontCharMapRef const & pIFCMap );
 
@@ -152,9 +153,9 @@ class VCL_PLUGIN_PUBLIC CmapResult
 {
 public:
     explicit            CmapResult( bool bSymbolic = false,
-                            const sal_uInt32* pRangeCodes = nullptr, int nRangeCount = 0 );
+                            const sal_UCS4* pRangeCodes = nullptr, int nRangeCount = 0 );
 
-    const sal_uInt32*   mpRangeCodes;
+    const sal_UCS4*     mpRangeCodes;
     const int*          mpStartGlyphs;
     const sal_uInt16*   mpGlyphIds;
     int                 mnRangeCount;

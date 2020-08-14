@@ -24,12 +24,11 @@
 #include <editeng/editdata.hxx>
 #include <editeng/outliner.hxx>
 #include <editeng/outlobj.hxx>
-#include <editeng/overflowingtxt.hxx>
 #include <editeng/editstat.hxx>
 #include <svl/itemset.hxx>
 #include <editeng/eeitem.hxx>
 #include <svx/sdtfchim.hxx>
-#include <svx/textchain.hxx>
+#include <textchain.hxx>
 
 
 bool SdrTextObj::HasTextEdit() const
@@ -49,7 +48,7 @@ bool SdrTextObj::BegTextEdit(SdrOutliner& rOutl)
     if ( !IsOutlText() )
         nOutlinerMode = OutlinerMode::TextObject;
     rOutl.Init( nOutlinerMode );
-    rOutl.SetRefDevice( pModel->GetRefDevice() );
+    rOutl.SetRefDevice(getSdrModelFromSdrObject().GetRefDevice());
 
     bool bFitToSize(IsFitToSize());
     bool bContourFrame=IsContourTextFrame();
@@ -77,7 +76,7 @@ bool SdrTextObj::BegTextEdit(SdrOutliner& rOutl)
     if(pOutlinerParaObject!=nullptr)
     {
         rOutl.SetText(*GetOutlinerParaObject());
-        rOutl.SetFixedCellHeight(static_cast<const SdrTextFixedCellHeightItem&>(GetMergedItem(SDRATTR_TEXT_USEFIXEDCELLHEIGHT)).GetValue());
+        rOutl.SetFixedCellHeight(GetMergedItem(SDRATTR_TEXT_USEFIXEDCELLHEIGHT).GetValue());
     }
 
     // if necessary, set frame attributes for the first (new) paragraph of the
@@ -106,8 +105,8 @@ bool SdrTextObj::BegTextEdit(SdrOutliner& rOutl)
         tools::Rectangle aTextRect;
         TakeTextRect(rOutl, aTextRect, false,
             &aAnchorRect);
-        Fraction aFitXKorreg(1,1);
-        ImpSetCharStretching(rOutl,aTextRect.GetSize(),aAnchorRect.GetSize(),aFitXKorreg);
+        Fraction aFitXCorrection(1,1);
+        ImpSetCharStretching(rOutl,aTextRect.GetSize(),aAnchorRect.GetSize(),aFitXCorrection);
     }
     else if (IsAutoFit())
     {
@@ -144,13 +143,11 @@ void SdrTextObj::TakeTextEditArea(Size* pPaperMin, Size* pPaperMax, tools::Recta
         aViewInit.Move(aCenter.X(),aCenter.Y());
     }
     Size aAnkSiz(aViewInit.GetSize());
-    aAnkSiz.Width()--; aAnkSiz.Height()--; // because GetSize() adds 1
+    aAnkSiz.AdjustWidth( -1 ); aAnkSiz.AdjustHeight( -1 ); // because GetSize() adds 1
     Size aMaxSiz(1000000,1000000);
-    if (pModel!=nullptr) {
-        Size aTmpSiz(pModel->GetMaxObjSize());
-        if (aTmpSiz.Width()!=0) aMaxSiz.Width()=aTmpSiz.Width();
-        if (aTmpSiz.Height()!=0) aMaxSiz.Height()=aTmpSiz.Height();
-    }
+    Size aTmpSiz(getSdrModelFromSdrObject().GetMaxObjSize());
+    if (aTmpSiz.Width()!=0) aMaxSiz.setWidth(aTmpSiz.Width() );
+    if (aTmpSiz.Height()!=0) aMaxSiz.setHeight(aTmpSiz.Height() );
 
     // Done earlier since used in else tree below
     SdrTextHorzAdjust eHAdj(GetTextHorizontalAdjust());
@@ -206,15 +203,15 @@ void SdrTextObj::TakeTextEditArea(Size* pPaperMin, Size* pPaperMax, tools::Recta
                 }
             }
 
-            aPaperMax.Width()=nMaxWdt;
-            aPaperMax.Height()=nMaxHgt;
+            aPaperMax.setWidth(nMaxWdt );
+            aPaperMax.setHeight(nMaxHgt );
         }
         else
         {
             aPaperMax=aMaxSiz;
         }
-        aPaperMin.Width()=nMinWdt;
-        aPaperMin.Height()=nMinHgt;
+        aPaperMin.setWidth(nMinWdt );
+        aPaperMin.setHeight(nMinHgt );
     }
     else
     {
@@ -233,30 +230,30 @@ void SdrTextObj::TakeTextEditArea(Size* pPaperMin, Size* pPaperMax, tools::Recta
         *pViewMin=aViewInit;
 
         long nXFree=aAnkSiz.Width()-aPaperMin.Width();
-        if (eHAdj==SDRTEXTHORZADJUST_LEFT) pViewMin->Right()-=nXFree;
-        else if (eHAdj==SDRTEXTHORZADJUST_RIGHT) pViewMin->Left()+=nXFree;
-        else { pViewMin->Left()+=nXFree/2; pViewMin->Right()=pViewMin->Left()+aPaperMin.Width(); }
+        if (eHAdj==SDRTEXTHORZADJUST_LEFT) pViewMin->AdjustRight( -nXFree );
+        else if (eHAdj==SDRTEXTHORZADJUST_RIGHT) pViewMin->AdjustLeft(nXFree );
+        else { pViewMin->AdjustLeft(nXFree/2 ); pViewMin->SetRight(pViewMin->Left()+aPaperMin.Width() ); }
 
         long nYFree=aAnkSiz.Height()-aPaperMin.Height();
-        if (eVAdj==SDRTEXTVERTADJUST_TOP) pViewMin->Bottom()-=nYFree;
-        else if (eVAdj==SDRTEXTVERTADJUST_BOTTOM) pViewMin->Top()+=nYFree;
-        else { pViewMin->Top()+=nYFree/2; pViewMin->Bottom()=pViewMin->Top()+aPaperMin.Height(); }
+        if (eVAdj==SDRTEXTVERTADJUST_TOP) pViewMin->AdjustBottom( -nYFree );
+        else if (eVAdj==SDRTEXTVERTADJUST_BOTTOM) pViewMin->AdjustTop(nYFree );
+        else { pViewMin->AdjustTop(nYFree/2 ); pViewMin->SetBottom(pViewMin->Top()+aPaperMin.Height() ); }
     }
 
     // PaperSize should grow automatically in most cases
     if(IsVerticalWriting())
-        aPaperMin.Width() = 0;
+        aPaperMin.setWidth( 0 );
     else
-        aPaperMin.Height() = 0;
+        aPaperMin.setHeight( 0 );
 
     if(eHAdj!=SDRTEXTHORZADJUST_BLOCK || bFitToSize) {
-        aPaperMin.Width()=0;
+        aPaperMin.setWidth(0 );
     }
 
     // For complete vertical adjustment support, set paper min height to 0, here.
     if(SDRTEXTVERTADJUST_BLOCK != eVAdj || bFitToSize)
     {
-        aPaperMin.Height() = 0;
+        aPaperMin.setHeight( 0 );
     }
 
     if (pPaperMin!=nullptr) *pPaperMin=aPaperMin;
@@ -272,8 +269,7 @@ void SdrTextObj::EndTextEdit(SdrOutliner& rOutl)
         // to make the gray field background vanish again
         rOutl.UpdateFields();
 
-        bool bNewTextTransferred = false;
-        OutlinerParaObject* pNewText = rOutl.CreateParaObject( 0, rOutl.GetParagraphCount() );
+        std::unique_ptr<OutlinerParaObject> pNewText = rOutl.CreateParaObject( 0, rOutl.GetParagraphCount() );
 
         // need to end edit mode early since SetOutlinerParaObject already
         // uses GetCurrentBoundRect() which needs to take the text into account
@@ -285,16 +281,11 @@ void SdrTextObj::EndTextEdit(SdrOutliner& rOutl)
             GetTextChain()->SetSwitchingToNextBox(this, false);
             if( getActiveText() )
             {
-                getActiveText()->SetOutlinerParaObject( pNewText);
-                bNewTextTransferred = true;
+                getActiveText()->SetOutlinerParaObject( std::move(pNewText) );
             }
         } else { // If we are not doing in-chaining switching just set the ParaObject
-            SetOutlinerParaObject(pNewText);
-            bNewTextTransferred = true;
+            SetOutlinerParaObject(std::move(pNewText));
         }
-
-        if (!bNewTextTransferred)
-            delete pNewText;
     }
 
     /* Chaining-related code */
@@ -345,24 +336,25 @@ EEAnchorMode SdrTextObj::GetOutlinerViewAnchorMode() const
 
 void SdrTextObj::ImpSetTextEditParams() const
 {
-    if (pEdtOutl!=nullptr) {
-        bool bUpdMerk=pEdtOutl->GetUpdateMode();
-        if (bUpdMerk) pEdtOutl->SetUpdateMode(false);
-        Size aPaperMin;
-        Size aPaperMax;
-        tools::Rectangle aEditArea;
-        TakeTextEditArea(&aPaperMin,&aPaperMax,&aEditArea,nullptr);
-        bool bContourFrame=IsContourTextFrame();
-        pEdtOutl->SetMinAutoPaperSize(aPaperMin);
-        pEdtOutl->SetMaxAutoPaperSize(aPaperMax);
-        pEdtOutl->SetPaperSize(Size());
-        if (bContourFrame) {
-            tools::Rectangle aAnchorRect;
-            TakeTextAnchorRect(aAnchorRect);
-            ImpSetContourPolygon(*pEdtOutl,aAnchorRect, true);
-        }
-        if (bUpdMerk) pEdtOutl->SetUpdateMode(true);
+    if (pEdtOutl==nullptr)
+        return;
+
+    bool bUpdBuf=pEdtOutl->GetUpdateMode();
+    if (bUpdBuf) pEdtOutl->SetUpdateMode(false);
+    Size aPaperMin;
+    Size aPaperMax;
+    tools::Rectangle aEditArea;
+    TakeTextEditArea(&aPaperMin,&aPaperMax,&aEditArea,nullptr);
+    bool bContourFrame=IsContourTextFrame();
+    pEdtOutl->SetMinAutoPaperSize(aPaperMin);
+    pEdtOutl->SetMaxAutoPaperSize(aPaperMax);
+    pEdtOutl->SetPaperSize(Size());
+    if (bContourFrame) {
+        tools::Rectangle aAnchorRect;
+        TakeTextAnchorRect(aAnchorRect);
+        ImpSetContourPolygon(*pEdtOutl,aAnchorRect, true);
     }
+    if (bUpdBuf) pEdtOutl->SetUpdateMode(true);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

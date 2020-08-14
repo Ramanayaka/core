@@ -17,19 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/core/fragmenthandler2.hxx"
-#include "oox/core/xmlfilterbase.hxx"
+#include <sal/config.h>
+
+#include <com/sun/star/frame/XModel.hpp>
+#include <oox/core/fragmenthandler2.hxx>
+#include <oox/core/xmlfilterbase.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
+using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
-
-using ::com::sun::star::uno::Sequence;
 
 FragmentHandler2::FragmentHandler2( XmlFilterBase& rFilter, const OUString& rFragmentPath, bool bEnableTrimSpace ) :
     FragmentHandler( rFilter, rFragmentPath ),
@@ -66,18 +67,31 @@ bool FragmentHandler2::prepareMceContext( sal_Int32 nElement, const AttributeLis
                 if (aMceState.empty() || aMceState.back() != MCE_STATE::Started)
                     return false;
 
-                OUString aRequires = rAttribs.getString( (XML_Requires ), "none" );
+                OUString aRequires = rAttribs.getString( XML_Requires, "none" );
 
                 // At this point we can't access namespaces as the correct xml filter
                 // is long gone. For now let's decide depending on a list of supported
                 // namespaces like we do in writerfilter
 
-                static std::vector<OUString> aSupportedNS =
+                std::vector<OUString> aSupportedNS =
                 {
+                    "a14", // Impress needs this to import math formulas.
                     "p14",
                     "p15",
                     "x12ac",
+                    "v",
                 };
+
+                uno::Reference<lang::XServiceInfo> xModel(getFilter().getModel(), uno::UNO_QUERY);
+                if (xModel.is() && xModel->supportsService("com.sun.star.sheet.SpreadsheetDocument"))
+                {
+                    // No a14 for Calc documents, it would cause duplicated shapes as-is.
+                    auto it = std::find(aSupportedNS.begin(), aSupportedNS.end(), "a14");
+                    if (it != aSupportedNS.end())
+                    {
+                        aSupportedNS.erase(it);
+                    }
+                }
 
                 if (std::find(aSupportedNS.begin(), aSupportedNS.end(), aRequires) != aSupportedNS.end())
                     aMceState.back() = MCE_STATE::FoundChoice;
@@ -203,7 +217,6 @@ void FragmentHandler2::finalizeImport()
 {
 }
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

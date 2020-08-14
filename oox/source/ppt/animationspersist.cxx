@@ -17,23 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ppt/animationspersist.hxx"
+#include <oox/ppt/animationspersist.hxx>
 
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/presentation/ParagraphTarget.hpp>
 #include <com/sun/star/presentation/ShapeAnimationSubType.hpp>
+#include <com/sun/star/animations/Event.hpp>
+#include <com/sun/star/animations/XAnimationNode.hpp>
 
-#include "oox/drawingml/shape.hxx"
-#include <oox/helper/attributelist.hxx>
+#include <oox/drawingml/shape.hxx>
 #include <oox/helper/addtosequence.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::presentation;
+using namespace ::com::sun::star::animations;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::text;
 
@@ -71,7 +74,7 @@ Any addToSequence( const Any& rOldValue, const Any& rNewValue )
 
 } // namespace oox
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
     void ShapeTargetElement::convert( css::uno::Any & rTarget, sal_Int16 & rSubType ) const
     {
@@ -97,7 +100,7 @@ namespace oox { namespace ppt {
                 switch(mnRangeType)
                 {
                 case XML_charRg:
-                    // TODO calculate the corresponding paragraph for the text range....
+                    // TODO calculate the corresponding paragraph for the text range...
                     SAL_INFO("oox.ppt", "OOX: TODO calculate the corresponding paragraph for the text range..." );
                     break;
                 case XML_pRg:
@@ -141,8 +144,14 @@ namespace oox { namespace ppt {
                 sShapeName = maShapeTarget.msSubShapeId;
 
             Any rTarget;
-            ::oox::drawingml::ShapePtr pShape = pSlide->getShape(sShapeName);
-            SAL_WARN_IF( !pShape, "oox.ppt", "failed to locate Shape");
+            ::oox::drawingml::ShapePtr pShape = pSlide->getShape( sShapeName );
+            SAL_WARN_IF( !pShape, "oox.ppt", "failed to locate Shape" );
+
+            if( !pShape && maShapeTarget.mnType == XML_dgm )
+            {
+                pShape = pSlide->getShape( msValue );
+            }
+
             if( pShape )
             {
                 Reference< XShape > xShape( pShape->getXShape() );
@@ -162,13 +171,30 @@ namespace oox { namespace ppt {
         return aTarget;
     }
 
+    // Convert a time node condition to XAnimation.Begin or XAnimation.End
     Any AnimationCondition::convert(const SlidePersistPtr & pSlide) const
     {
         Any aAny;
-        if( mpTarget )
+        Event aEvent;
+        if(mpTarget && (maValue >>= aEvent))
         {
             sal_Int16 nSubType;
             aAny = mpTarget->convert( pSlide, nSubType );
+            aEvent.Source = aAny;
+            aAny <<= aEvent;
+        }
+        else if (mnType == PPT_TOKEN(tn) && (maValue >>= aEvent))
+        {
+            OUString sId;
+            aEvent.Source >>= sId;
+            css::uno::Reference<XAnimationNode> xNode = pSlide->getAnimationNode(sId);
+            if (xNode.is())
+            {
+                aEvent.Source <<= xNode;
+            }
+            else
+                aEvent.Source.clear();
+            aAny <<= aEvent;
         }
         else
         {
@@ -180,14 +206,17 @@ namespace oox { namespace ppt {
     Any AnimationCondition::convertList(const SlidePersistPtr & pSlide, const AnimationConditionList & l)
     {
         Any aAny;
-        for( AnimationConditionList::const_iterator iter = l.begin();
-             iter != l.end(); ++iter)
+
+        if (l.size() == 1)
+            return l[0].convert(pSlide);
+
+        for (auto const& elem : l)
         {
-            aAny = addToSequence( aAny, iter->convert(pSlide) );
+            aAny = addToSequence( aAny, elem.convert(pSlide) );
         }
         return aAny;
     }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

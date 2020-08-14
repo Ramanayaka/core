@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SW_INC_SIDEBARWINDOWSTYPES_HXX
-#define INCLUDED_SW_INC_SIDEBARWINDOWSTYPES_HXX
+#pragma once
 
-namespace sw { namespace sidebarwindows {
+namespace sw::sidebarwindows {
 
 enum class ViewState
 {
@@ -36,8 +35,6 @@ enum class SidebarPosition
     NONE    // sidebar on neither side
 };
 
-} } // end of namespace sw::sidebarwindows
-
-#endif
+} // end of namespace sw::sidebarwindows
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -26,34 +26,35 @@
 
 #include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <unotools/charclass.hxx>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Any;
 
-#include "nameuno.hxx"
-#include "miscuno.hxx"
-#include "cellsuno.hxx"
-#include "convuno.hxx"
-#include "targuno.hxx"
-#include "tokenuno.hxx"
-#include "tokenarray.hxx"
-#include "docsh.hxx"
-#include "docfunc.hxx"
-#include "rangenam.hxx"
-#include "unonames.hxx"
+#include <nameuno.hxx>
+#include <miscuno.hxx>
+#include <cellsuno.hxx>
+#include <convuno.hxx>
+#include <targuno.hxx>
+#include <tokenuno.hxx>
+#include <tokenarray.hxx>
+#include <docsh.hxx>
+#include <docfunc.hxx>
+#include <rangenam.hxx>
+#include <unonames.hxx>
 
-#include "scui_def.hxx"
+#include <scui_def.hxx>
 
 static const SfxItemPropertyMapEntry* lcl_GetNamedRangeMap()
 {
     static const SfxItemPropertyMapEntry aNamedRangeMap_Impl[] =
     {
-        {OUString(SC_UNO_LINKDISPBIT),      0,  cppu::UnoType<awt::XBitmap>::get(), beans::PropertyAttribute::READONLY, 0 },
-        {OUString(SC_UNO_LINKDISPNAME),     0,  cppu::UnoType<OUString>::get(),                beans::PropertyAttribute::READONLY, 0 },
-        {OUString(SC_UNONAME_TOKENINDEX),   0,  cppu::UnoType<sal_Int32>::get(),                    beans::PropertyAttribute::READONLY, 0 },
-        {OUString(SC_UNONAME_ISSHAREDFMLA), 0,  cppu::UnoType<bool>::get(),                          0, 0 },
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        {SC_UNO_LINKDISPBIT,      0,  cppu::UnoType<awt::XBitmap>::get(), beans::PropertyAttribute::READONLY, 0 },
+        {SC_UNO_LINKDISPNAME,     0,  cppu::UnoType<OUString>::get(),                beans::PropertyAttribute::READONLY, 0 },
+        {SC_UNONAME_TOKENINDEX,   0,  cppu::UnoType<sal_Int32>::get(),                    beans::PropertyAttribute::READONLY, 0 },
+        {SC_UNONAME_ISSHAREDFMLA, 0,  cppu::UnoType<bool>::get(),                          0, 0 },
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     return aNamedRangeMap_Impl;
 }
@@ -62,8 +63,8 @@ static const SfxItemPropertyMapEntry* lcl_GetNamedRangesMap()
 {
     static const SfxItemPropertyMapEntry aNamedRangesMap_Impl[] =
     {
-        {OUString(SC_UNO_MODIFY_BROADCAST), 0,  cppu::UnoType<bool>::get(), 0, 0 },
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        {SC_UNO_MODIFY_BROADCAST, 0,  cppu::UnoType<bool>::get(), 0, 0 },
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     return aNamedRangesMap_Impl;
 }
@@ -121,7 +122,7 @@ ScRangeData* ScNamedRangeObj::GetRangeData_Impl()
             pNames = pDocShell->GetDocument().GetRangeName();
         if (pNames)
         {
-            pRet = pNames->findByUpperName(ScGlobal::pCharClass->uppercase(aName));
+            pRet = pNames->findByUpperName(ScGlobal::getCharClassPtr()->uppercase(aName));
             if (pRet)
                 pRet->ValidateTabRefs();        // adjust relative tab refs to valid tables
         }
@@ -165,11 +166,11 @@ void ScNamedRangeObj::Modify_Impl( const OUString* pNewName, const ScTokenArray*
     if (!pNames)
         return;
 
-    const ScRangeData* pOld = pNames->findByUpperName(ScGlobal::pCharClass->uppercase(aName));
+    const ScRangeData* pOld = pNames->findByUpperName(ScGlobal::getCharClassPtr()->uppercase(aName));
     if (!pOld)
         return;
 
-    ScRangeName* pNewRanges = new ScRangeName(*pNames);
+    std::unique_ptr<ScRangeName> pNewRanges(new ScRangeName(*pNames));
 
     OUString aInsName = pOld->GetName();
     if (pNewName)
@@ -199,14 +200,13 @@ void ScNamedRangeObj::Modify_Impl( const OUString* pNewName, const ScTokenArray*
     pNewRanges->erase(*pOld);
     if (pNewRanges->insert(pNew))
     {
-        pDocShell->GetDocFunc().SetNewRangeNames(pNewRanges, mxParent->IsModifyAndBroadcast(), nTab);
+        pDocShell->GetDocFunc().SetNewRangeNames(std::move(pNewRanges), mxParent->IsModifyAndBroadcast(), nTab);
 
         aName = aInsName;   //! broadcast?
     }
     else
     {
         pNew = nullptr;        //! uno::Exception/Error or something
-        delete pNewRanges;
     }
 }
 
@@ -276,7 +276,7 @@ table::CellAddress SAL_CALL ScNamedRangeObj::getReferencePosition()
 void SAL_CALL ScNamedRangeObj::setReferencePosition( const table::CellAddress& aReferencePosition )
 {
     SolarMutexGuard aGuard;
-    ScAddress aPos( (SCCOL)aReferencePosition.Column, (SCROW)aReferencePosition.Row, aReferencePosition.Sheet );
+    ScAddress aPos( static_cast<SCCOL>(aReferencePosition.Column), static_cast<SCROW>(aReferencePosition.Row), aReferencePosition.Sheet );
     // GRAM_API for API compatibility.
     Modify_Impl( nullptr, nullptr, nullptr, &aPos, nullptr,formula::FormulaGrammar::GRAM_API );
 }
@@ -321,7 +321,7 @@ uno::Sequence<sheet::FormulaToken> SAL_CALL ScNamedRangeObj::getTokens()
     {
         ScTokenArray* pTokenArray = pData->GetCode();
         if ( pTokenArray )
-            (void)ScTokenConversion::ConvertToTokenSequence( pDocShell->GetDocument(), aSequence, *pTokenArray );
+            ScTokenConversion::ConvertToTokenSequence( pDocShell->GetDocument(), aSequence, *pTokenArray );
     }
     return aSequence;
 }
@@ -331,7 +331,7 @@ void SAL_CALL ScNamedRangeObj::setTokens( const uno::Sequence<sheet::FormulaToke
     SolarMutexGuard aGuard;
     if( pDocShell )
     {
-        ScTokenArray aTokenArray;
+        ScTokenArray aTokenArray(&pDocShell->GetDocument());
         (void)ScTokenConversion::ConvertToTokenArray( pDocShell->GetDocument(), aTokenArray, rTokens );
         // GRAM_API for API compatibility.
         Modify_Impl( nullptr, &aTokenArray, nullptr, nullptr, nullptr, formula::FormulaGrammar::GRAM_API );
@@ -408,7 +408,7 @@ SC_IMPL_DUMMY_PROPERTY_LISTENER( ScNamedRangeObj )
 
 OUString SAL_CALL ScNamedRangeObj::getImplementationName()
 {
-    return OUString( "ScNamedRangeObj" );
+    return "ScNamedRangeObj";
 }
 
 sal_Bool SAL_CALL ScNamedRangeObj::supportsService( const OUString& rServiceName )
@@ -426,9 +426,7 @@ uno::Sequence<OUString> SAL_CALL ScNamedRangeObj::getSupportedServiceNames()
 sal_Int64 SAL_CALL ScNamedRangeObj::getSomething(
                 const uno::Sequence<sal_Int8 >& rId )
 {
-    if ( rId.getLength() == 16 &&
-          0 == memcmp( getUnoTunnelId().getConstArray(),
-                                    rId.getConstArray(), 16 ) )
+    if ( isUnoTunnelId<ScNamedRangeObj>(rId) )
     {
         return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_IntPtr>(this));
     }
@@ -477,7 +475,7 @@ void SAL_CALL ScNamedRangesObj::addNewByName( const OUString& aName,
     sal_Int32 nUnoType )
 {
     SolarMutexGuard aGuard;
-    ScAddress aPos( (SCCOL)aPosition.Column, (SCROW)aPosition.Row, aPosition.Sheet );
+    ScAddress aPos( static_cast<SCCOL>(aPosition.Column), static_cast<SCROW>(aPosition.Row), aPosition.Sheet );
 
     ScRangeData::Type nNewType = ScRangeData::Type::Name;
     if ( nUnoType & sheet::NamedRangeFlag::FILTER_CRITERIA )    nNewType |= ScRangeData::Type::Criteria;
@@ -490,21 +488,20 @@ void SAL_CALL ScNamedRangesObj::addNewByName( const OUString& aName,
     {
         ScDocument& rDoc = pDocShell->GetDocument();
         ScRangeName* pNames = GetRangeName_Impl();
-        if (pNames && !pNames->findByUpperName(ScGlobal::pCharClass->uppercase(aName)))
+        if (pNames && !pNames->findByUpperName(ScGlobal::getCharClassPtr()->uppercase(aName)))
         {
-            ScRangeName* pNewRanges = new ScRangeName( *pNames );
+            std::unique_ptr<ScRangeName> pNewRanges(new ScRangeName( *pNames ));
             // GRAM_API for API compatibility.
             ScRangeData* pNew = new ScRangeData( &rDoc, aName, aContent,
                                                 aPos, nNewType,formula::FormulaGrammar::GRAM_API );
             if ( pNewRanges->insert(pNew) )
             {
-                pDocShell->GetDocFunc().SetNewRangeNames(pNewRanges, mbModifyAndBroadcast, GetTab_Impl());
+                pDocShell->GetDocFunc().SetNewRangeNames(std::move(pNewRanges), mbModifyAndBroadcast, GetTab_Impl());
                 bDone = true;
             }
             else
             {
                 pNew = nullptr;
-                delete pNewRanges;
             }
         }
     }
@@ -546,12 +543,12 @@ void SAL_CALL ScNamedRangesObj::removeByName( const OUString& aName )
         ScRangeName* pNames = GetRangeName_Impl();
         if (pNames)
         {
-            const ScRangeData* pData = pNames->findByUpperName(ScGlobal::pCharClass->uppercase(aName));
+            const ScRangeData* pData = pNames->findByUpperName(ScGlobal::getCharClassPtr()->uppercase(aName));
             if (pData && lcl_UserVisibleName(*pData))
             {
-                ScRangeName* pNewRanges = new ScRangeName(*pNames);
+                std::unique_ptr<ScRangeName> pNewRanges(new ScRangeName(*pNames));
                 pNewRanges->erase(*pData);
-                pDocShell->GetDocFunc().SetNewRangeNames( pNewRanges, mbModifyAndBroadcast, GetTab_Impl());
+                pDocShell->GetDocFunc().SetNewRangeNames( std::move(pNewRanges), mbModifyAndBroadcast, GetTab_Impl());
                 bDone = true;
             }
         }
@@ -564,7 +561,7 @@ void SAL_CALL ScNamedRangesObj::removeByName( const OUString& aName )
 void SAL_CALL ScNamedRangesObj::outputList( const table::CellAddress& aOutputPosition )
 {
     SolarMutexGuard aGuard;
-    ScAddress aPos( (SCCOL)aOutputPosition.Column, (SCROW)aOutputPosition.Row, aOutputPosition.Sheet );
+    ScAddress aPos( static_cast<SCCOL>(aOutputPosition.Column), static_cast<SCROW>(aOutputPosition.Row), aOutputPosition.Sheet );
     if (pDocShell)
         pDocShell->GetDocFunc().InsertNameList( aPos, true );
 }
@@ -588,9 +585,8 @@ sal_Int32 SAL_CALL ScNamedRangesObj::getCount()
         ScRangeName* pNames = GetRangeName_Impl();
         if (pNames)
         {
-            ScRangeName::const_iterator itr = pNames->begin(), itrEnd = pNames->end();
-            for (; itr != itrEnd; ++itr)
-                if (lcl_UserVisibleName(*itr->second))
+            for (const auto& rName : *pNames)
+                if (lcl_UserVisibleName(*rName.second))
                     ++nRet;
         }
     }
@@ -600,11 +596,11 @@ sal_Int32 SAL_CALL ScNamedRangesObj::getCount()
 uno::Any SAL_CALL ScNamedRangesObj::getByIndex( sal_Int32 nIndex )
 {
     SolarMutexGuard aGuard;
-    uno::Reference< sheet::XNamedRange >  xRange(GetObjectByIndex_Impl((sal_uInt16)nIndex));
-    if ( xRange.is() )
-        return uno::makeAny(xRange);
-    else
+    uno::Reference< sheet::XNamedRange >  xRange(GetObjectByIndex_Impl(static_cast<sal_uInt16>(nIndex)));
+    if ( !xRange.is() )
         throw lang::IndexOutOfBoundsException();
+
+    return uno::makeAny(xRange);
 }
 
 uno::Type SAL_CALL ScNamedRangesObj::getElementType()
@@ -652,10 +648,10 @@ uno::Any SAL_CALL ScNamedRangesObj::getByName( const OUString& aName )
 {
     SolarMutexGuard aGuard;
     uno::Reference< sheet::XNamedRange >  xRange(GetObjectByName_Impl(aName));
-    if ( xRange.is() )
-        return uno::makeAny(xRange);
-    else
+    if ( !xRange.is() )
         throw container::NoSuchElementException();
+
+    return uno::makeAny(xRange);
 }
 
 uno::Sequence<OUString> SAL_CALL ScNamedRangesObj::getElementNames()
@@ -670,11 +666,10 @@ uno::Sequence<OUString> SAL_CALL ScNamedRangesObj::getElementNames()
             uno::Sequence<OUString> aSeq(nVisCount);
             OUString* pAry = aSeq.getArray();
             sal_uInt16 nVisPos = 0;
-            ScRangeName::const_iterator itr = pNames->begin(), itrEnd = pNames->end();
-            for (; itr != itrEnd; ++itr)
+            for (const auto& rName : *pNames)
             {
-                if (lcl_UserVisibleName(*itr->second))
-                    pAry[nVisPos++] = itr->second->GetName();
+                if (lcl_UserVisibleName(*rName.second))
+                    pAry[nVisPos++] = rName.second->GetName();
             }
             return aSeq;
         }
@@ -690,7 +685,7 @@ sal_Bool SAL_CALL ScNamedRangesObj::hasByName( const OUString& aName )
         ScRangeName* pNames = GetRangeName_Impl();
         if (pNames)
         {
-            const ScRangeData* pData = pNames->findByUpperName(ScGlobal::pCharClass->uppercase(aName));
+            const ScRangeData* pData = pNames->findByUpperName(ScGlobal::getCharClassPtr()->uppercase(aName));
             if (pData && lcl_UserVisibleName(*pData))
                 return true;
         }
@@ -750,20 +745,20 @@ void ScNamedRangesObj::removeActionLock()
 void ScNamedRangesObj::setActionLocks( sal_Int16 nLock )
 {
     SolarMutexGuard aGuard;
-    if ( nLock >= 0 )
+    if ( nLock < 0 )
+        return;
+
+    ScDocument& rDoc = pDocShell->GetDocument();
+    sal_Int16 nLockCount = rDoc.GetNamedRangesLockCount();
+    if ( nLock == 0 && nLockCount > 0 )
     {
-        ScDocument& rDoc = pDocShell->GetDocument();
-        sal_Int16 nLockCount = rDoc.GetNamedRangesLockCount();
-        if ( nLock == 0 && nLockCount > 0 )
-        {
-            unlock();
-        }
-        if ( nLock > 0 && nLockCount == 0 )
-        {
-            lock();
-        }
-        rDoc.SetNamedRangesLockCount( nLock );
+        unlock();
     }
+    if ( nLock > 0 && nLockCount == 0 )
+    {
+        lock();
+    }
+    rDoc.SetNamedRangesLockCount( nLock );
 }
 
 sal_Int16 ScNamedRangesObj::resetActionLocks()
@@ -799,14 +794,13 @@ ScNamedRangeObj* ScGlobalNamedRangesObj::GetObjectByIndex_Impl(sal_uInt16 nIndex
     if (!pNames)
         return nullptr;
 
-    ScRangeName::const_iterator itr = pNames->begin(), itrEnd = pNames->end();
     sal_uInt16 nPos = 0;
-    for (; itr != itrEnd; ++itr)
+    for (const auto& rName : *pNames)
     {
-        if (lcl_UserVisibleName(*itr->second))
+        if (lcl_UserVisibleName(*rName.second))
         {
             if (nPos == nIndex)
-                return new ScNamedRangeObj(this, pDocShell, itr->second->GetName());
+                return new ScNamedRangeObj(this, pDocShell, rName.second->GetName());
         }
         ++nPos;
     }
@@ -865,14 +859,13 @@ ScNamedRangeObj* ScLocalNamedRangesObj::GetObjectByIndex_Impl( sal_uInt16 nIndex
     if (!pNames)
         return nullptr;
 
-    ScRangeName::const_iterator itr = pNames->begin(), itrEnd = pNames->end();
     sal_uInt16 nPos = 0;
-    for (; itr != itrEnd; ++itr)
+    for (const auto& rName : *pNames)
     {
-        if (lcl_UserVisibleName(*itr->second))
+        if (lcl_UserVisibleName(*rName.second))
         {
             if (nPos == nIndex)
-                return new ScNamedRangeObj(this, pDocShell, itr->second->GetName(), mxSheet);
+                return new ScNamedRangeObj(this, pDocShell, rName.second->GetName(), mxSheet);
         }
         ++nPos;
     }
@@ -933,39 +926,39 @@ ScRangePair* ScLabelRangeObj::GetData_Impl()
 
 void ScLabelRangeObj::Modify_Impl( const ScRange* pLabel, const ScRange* pData )
 {
-    if (pDocShell)
-    {
-        ScDocument& rDoc = pDocShell->GetDocument();
-        ScRangePairList* pOldList = bColumn ? rDoc.GetColNameRanges() : rDoc.GetRowNameRanges();
-        if (pOldList)
-        {
-            ScRangePairListRef xNewList(pOldList->Clone());
-            ScRangePair* pEntry = xNewList->Find( aRange );
-            if (pEntry)
-            {
-                if ( pLabel )
-                    pEntry->GetRange(0) = *pLabel;
-                if ( pData )
-                    pEntry->GetRange(1) = *pData;
+    if (!pDocShell)
+        return;
 
-                xNewList->Join( *pEntry, true );
+    ScDocument& rDoc = pDocShell->GetDocument();
+    ScRangePairList* pOldList = bColumn ? rDoc.GetColNameRanges() : rDoc.GetRowNameRanges();
+    if (!pOldList)
+        return;
 
-                if (bColumn)
-                    rDoc.GetColNameRangesRef() = xNewList;
-                else
-                    rDoc.GetRowNameRangesRef() = xNewList;
+    ScRangePairListRef xNewList(pOldList->Clone());
+    ScRangePair* pEntry = xNewList->Find( aRange );
+    if (!pEntry)
+        return;
 
-                rDoc.CompileColRowNameFormula();
-                pDocShell->PostPaint( 0,0,0, MAXCOL,MAXROW,MAXTAB, PaintPartFlags::Grid );
-                pDocShell->SetDocumentModified();
+    if ( pLabel )
+        pEntry->GetRange(0) = *pLabel;
+    if ( pData )
+        pEntry->GetRange(1) = *pData;
 
-                //! Undo ?!?! (here and from dialog)
+    xNewList->Join( *pEntry, true );
 
-                if ( pLabel )
-                    aRange = *pLabel;   // adapt object to find range again
-            }
-        }
-    }
+    if (bColumn)
+        rDoc.GetColNameRangesRef() = xNewList;
+    else
+        rDoc.GetRowNameRangesRef() = xNewList;
+
+    rDoc.CompileColRowNameFormula();
+    pDocShell->PostPaint( 0,0,0, rDoc.MaxCol(),rDoc.MaxRow(),MAXTAB, PaintPartFlags::Grid );
+    pDocShell->SetDocumentModified();
+
+    //! Undo ?!?! (here and from dialog)
+
+    if ( pLabel )
+        aRange = *pLabel;   // adapt object to find range again
 }
 
 // sheet::XLabelRange
@@ -1041,9 +1034,8 @@ ScLabelRangeObj* ScLabelRangesObj::GetObjectByIndex_Impl(size_t nIndex)
         ScRangePairList* pList = bColumn ? rDoc.GetColNameRanges() : rDoc.GetRowNameRanges();
         if ( pList && nIndex < pList->size() )
         {
-            ScRangePair* pData = (*pList)[nIndex];
-            if (pData)
-                return new ScLabelRangeObj( pDocShell, bColumn, pData->GetRange(0) );
+            ScRangePair & rData = (*pList)[nIndex];
+            return new ScLabelRangeObj( pDocShell, bColumn, rData.GetRange(0) );
         }
     }
     return nullptr;
@@ -1053,32 +1045,32 @@ void SAL_CALL ScLabelRangesObj::addNew( const table::CellRangeAddress& aLabelAre
                                 const table::CellRangeAddress& aDataArea )
 {
     SolarMutexGuard aGuard;
-    if (pDocShell)
-    {
-        ScDocument& rDoc = pDocShell->GetDocument();
-        ScRangePairList* pOldList = bColumn ? rDoc.GetColNameRanges() : rDoc.GetRowNameRanges();
-        if (pOldList)
-        {
-            ScRangePairListRef xNewList(pOldList->Clone());
+    if (!pDocShell)
+        return;
 
-            ScRange aLabelRange;
-            ScRange aDataRange;
-            ScUnoConversion::FillScRange( aLabelRange, aLabelArea );
-            ScUnoConversion::FillScRange( aDataRange,  aDataArea );
-            xNewList->Join( ScRangePair( aLabelRange, aDataRange ) );
+    ScDocument& rDoc = pDocShell->GetDocument();
+    ScRangePairList* pOldList = bColumn ? rDoc.GetColNameRanges() : rDoc.GetRowNameRanges();
+    if (!pOldList)
+        return;
 
-            if (bColumn)
-                rDoc.GetColNameRangesRef() = xNewList;
-            else
-                rDoc.GetRowNameRangesRef() = xNewList;
+    ScRangePairListRef xNewList(pOldList->Clone());
 
-            rDoc.CompileColRowNameFormula();
-            pDocShell->PostPaint( 0,0,0, MAXCOL,MAXROW,MAXTAB, PaintPartFlags::Grid );
-            pDocShell->SetDocumentModified();
+    ScRange aLabelRange;
+    ScRange aDataRange;
+    ScUnoConversion::FillScRange( aLabelRange, aLabelArea );
+    ScUnoConversion::FillScRange( aDataRange,  aDataArea );
+    xNewList->Join( ScRangePair( aLabelRange, aDataRange ) );
 
-            //! Undo ?!?! (here and from dialog)
-        }
-    }
+    if (bColumn)
+        rDoc.GetColNameRangesRef() = xNewList;
+    else
+        rDoc.GetRowNameRangesRef() = xNewList;
+
+    rDoc.CompileColRowNameFormula();
+    pDocShell->PostPaint( 0,0,0, rDoc.MaxCol(),rDoc.MaxRow(),MAXTAB, PaintPartFlags::Grid );
+    pDocShell->SetDocumentModified();
+
+    //! Undo ?!?! (here and from dialog)
 }
 
 void SAL_CALL ScLabelRangesObj::removeByIndex( sal_Int32 nIndex )
@@ -1090,27 +1082,23 @@ void SAL_CALL ScLabelRangesObj::removeByIndex( sal_Int32 nIndex )
         ScDocument& rDoc = pDocShell->GetDocument();
         ScRangePairList* pOldList = bColumn ? rDoc.GetColNameRanges() : rDoc.GetRowNameRanges();
 
-        if ( pOldList && nIndex >= 0 && nIndex < (sal_Int32)pOldList->size() )
+        if ( pOldList && nIndex >= 0 && nIndex < static_cast<sal_Int32>(pOldList->size()) )
         {
             ScRangePairListRef xNewList(pOldList->Clone());
 
-            ScRangePair* pEntry = (*xNewList)[nIndex];
-            if (pEntry)
-            {
-                xNewList->Remove( pEntry );
+            xNewList->Remove( nIndex );
 
-                if (bColumn)
-                    rDoc.GetColNameRangesRef() = xNewList;
-                else
-                    rDoc.GetRowNameRangesRef() = xNewList;
+            if (bColumn)
+                rDoc.GetColNameRangesRef() = xNewList;
+            else
+                rDoc.GetRowNameRangesRef() = xNewList;
 
-                rDoc.CompileColRowNameFormula();
-                pDocShell->PostPaint( 0,0,0, MAXCOL,MAXROW,MAXTAB, PaintPartFlags::Grid );
-                pDocShell->SetDocumentModified();
-                bDone = true;
+            rDoc.CompileColRowNameFormula();
+            pDocShell->PostPaint( 0,0,0, rDoc.MaxCol(),rDoc.MaxRow(),MAXTAB, PaintPartFlags::Grid );
+            pDocShell->SetDocumentModified();
+            bDone = true;
 
-                //! Undo ?!?! (here and from dialog)
-            }
+            //! Undo ?!?! (here and from dialog)
         }
     }
     if (!bDone)
@@ -1143,11 +1131,11 @@ sal_Int32 SAL_CALL ScLabelRangesObj::getCount()
 uno::Any SAL_CALL ScLabelRangesObj::getByIndex( sal_Int32 nIndex )
 {
     SolarMutexGuard aGuard;
-    uno::Reference< sheet::XLabelRange >  xRange(GetObjectByIndex_Impl((sal_uInt16)nIndex));
-    if ( xRange.is() )
-        return uno::makeAny(xRange);
-    else
+    uno::Reference< sheet::XLabelRange >  xRange(GetObjectByIndex_Impl(static_cast<sal_uInt16>(nIndex)));
+    if ( !xRange.is() )
         throw lang::IndexOutOfBoundsException();
+
+    return uno::makeAny(xRange);
 }
 
 uno::Type SAL_CALL ScLabelRangesObj::getElementType()

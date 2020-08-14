@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "toolkit/awt/vclxspinbutton.hxx"
-#include "toolkit/helper/property.hxx"
+#include <awt/vclxspinbutton.hxx>
+#include <toolkit/helper/property.hxx>
 #include <com/sun/star/awt/ScrollBarOrientation.hpp>
 
-#include <vcl/spin.hxx>
+#include <vcl/toolkit/spin.hxx>
 #include <vcl/svapp.hxx>
 #include "vclxwindows_internal.hxx"
 
@@ -95,7 +95,7 @@ namespace toolkit
     namespace
     {
         typedef void (SpinButton::*SetSpinButtonValue) (long);
-        typedef long (SpinButton::*GetSpinButtonValue) (void) const;
+        typedef long (SpinButton::*GetSpinButtonValue) () const;
 
 
         void lcl_setSpinButtonValue(vcl::Window* _pWindow, SetSpinButtonValue _pSetter, sal_Int32 _nValue )
@@ -234,45 +234,45 @@ namespace toolkit
         sal_Int32 nValue = 0;
         bool  bIsLongValue = ( Value >>= nValue );
 
-        if ( GetWindow() )
+        if ( !GetWindow() )
+            return;
+
+        sal_uInt16 nPropertyId = GetPropertyId( PropertyName );
+        switch ( nPropertyId )
         {
-            sal_uInt16 nPropertyId = GetPropertyId( PropertyName );
-            switch ( nPropertyId )
-            {
-            case BASEPROPERTY_BACKGROUNDCOLOR:
-                // the default implementation of the base class doesn't work here, since our
-                // interpretation for this property is slightly different
-                setButtonLikeFaceColor( GetWindow(), Value);
-                break;
+        case BASEPROPERTY_BACKGROUNDCOLOR:
+            // the default implementation of the base class doesn't work here, since our
+            // interpretation for this property is slightly different
+            setButtonLikeFaceColor( GetWindow(), Value);
+            break;
 
-            case BASEPROPERTY_SPINVALUE:
-                if ( bIsLongValue )
-                    setValue( nValue );
-                break;
+        case BASEPROPERTY_SPINVALUE:
+            if ( bIsLongValue )
+                setValue( nValue );
+            break;
 
-            case BASEPROPERTY_SPINVALUE_MIN:
-                if ( bIsLongValue )
-                    setMinimum( nValue );
-                break;
+        case BASEPROPERTY_SPINVALUE_MIN:
+            if ( bIsLongValue )
+                setMinimum( nValue );
+            break;
 
-            case BASEPROPERTY_SPINVALUE_MAX:
-                if ( bIsLongValue )
-                    setMaximum( nValue );
-                break;
+        case BASEPROPERTY_SPINVALUE_MAX:
+            if ( bIsLongValue )
+                setMaximum( nValue );
+            break;
 
-            case BASEPROPERTY_SPININCREMENT:
-                if ( bIsLongValue )
-                    setSpinIncrement( nValue );
-                break;
+        case BASEPROPERTY_SPININCREMENT:
+            if ( bIsLongValue )
+                setSpinIncrement( nValue );
+            break;
 
-            case BASEPROPERTY_ORIENTATION:
-                if ( bIsLongValue )
-                    lcl_modifyStyle( GetWindow(), WB_HSCROLL, nValue == ScrollBarOrientation::HORIZONTAL );
-                break;
+        case BASEPROPERTY_ORIENTATION:
+            if ( bIsLongValue )
+                lcl_modifyStyle( GetWindow(), WB_HSCROLL, nValue == ScrollBarOrientation::HORIZONTAL );
+            break;
 
-            default:
-                VCLXWindow::setProperty( PropertyName, Value );
-            }
+        default:
+            VCLXWindow::setProperty( PropertyName, Value );
         }
     }
 
@@ -311,8 +311,7 @@ namespace toolkit
                 break;
 
             case BASEPROPERTY_ORIENTATION:
-                aReturn <<= (sal_Int32)
-                    (   ( 0 != ( GetWindow()->GetStyle() & WB_HSCROLL ) )
+                aReturn <<= static_cast<sal_Int32>(   ( 0 != ( GetWindow()->GetStyle() & WB_HSCROLL ) )
                     ?   ScrollBarOrientation::HORIZONTAL
                     :   ScrollBarOrientation::VERTICAL
                     );

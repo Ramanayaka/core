@@ -19,11 +19,11 @@
 #ifndef INCLUDED_IDLC_INC_ASTENUM_HXX
 #define INCLUDED_IDLC_INC_ASTENUM_HXX
 
-#include <asttype.hxx>
-#include <astscope.hxx>
-#include <astconstant.hxx>
+#include "asttype.hxx"
+#include "astscope.hxx"
+#include "astconstant.hxx"
 
-class AstEnum : public AstType
+class AstEnum final : public AstType
               , public AstScope
 {
 public:

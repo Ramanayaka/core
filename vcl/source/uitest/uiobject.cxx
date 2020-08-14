@@ -8,20 +8,36 @@
  */
 
 #include <vcl/uitest/uiobject.hxx>
+#include <vcl/uitest/metricfielduiobject.hxx>
+#include <vcl/uitest/formattedfielduiobject.hxx>
 
+#include <vcl/svapp.hxx>
+#include <vcl/toolkit/combobox.hxx>
 #include <vcl/event.hxx>
+#include <vcl/floatwin.hxx>
 #include <vcl/tabpage.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/spin.hxx>
-#include <vcl/spinfld.hxx>
-#include <vcl/button.hxx>
-#include <vcl/dialog.hxx>
+#include <vcl/tabctrl.hxx>
+#include <vcl/toolkit/lstbox.hxx>
+#include <vcl/toolkit/spin.hxx>
+#include <vcl/toolkit/fmtfield.hxx>
+#include <vcl/toolkit/spinfld.hxx>
+#include <vcl/ivctrl.hxx>
+#include <vcl/toolkit/button.hxx>
+#include <vcl/toolkit/dialog.hxx>
+#include <vcl/toolkit/field.hxx>
 #include <vcl/edit.hxx>
+#include <vcl/menubtn.hxx>
+#include <vcl/vclmedit.hxx>
+#include <vcl/uitest/logger.hxx>
+#include <uiobject-internal.hxx>
+#include <verticaltabctrl.hxx>
+#include <vcl/toolbox.hxx>
 
 #include <comphelper/string.hxx>
+#include <comphelper/lok.hxx>
 
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 #include <iostream>
 #include <memory>
@@ -47,7 +63,7 @@ void UIObject::execute(const OUString& /*rAction*/,
 
 OUString UIObject::get_type() const
 {
-    return OUString("Generic UIObject");
+    return "Generic UIObject";
 }
 
 std::unique_ptr<UIObject> UIObject::get_child(const OUString&)
@@ -77,11 +93,10 @@ OUString UIObject::get_action(VclEventId /*nEvent*/) const
 
 namespace {
 
-bool isDialogWindow(vcl::Window* pWindow)
+bool isDialogWindow(vcl::Window const * pWindow)
 {
     WindowType nType = pWindow->GetType();
-    // DIALOG to MODALDIALOG
-    if (nType >= WindowType::DIALOG && nType <= WindowType::MODALDIALOG)
+    if (nType == WindowType::DIALOG || nType == WindowType::MODELESSDIALOG)
         return true;
 
     // MESSBOX, INFOBOX, WARNINGBOX, ERRORBOX, QUERYBOX
@@ -94,10 +109,14 @@ bool isDialogWindow(vcl::Window* pWindow)
     return false;
 }
 
-bool isTopWindow(vcl::Window* pWindow)
+bool isTopWindow(vcl::Window const * pWindow)
 {
     WindowType eType = pWindow->GetType();
-    return eType == WindowType::FLOATINGWINDOW;
+    if (eType == WindowType::FLOATINGWINDOW)
+    {
+        return pWindow->GetStyle() & WB_SYSTEMFLOATWIN;
+    }
+    return false;
 }
 
 vcl::Window* get_top_parent(vcl::Window* pWindow)
@@ -119,7 +138,7 @@ std::vector<KeyEvent> generate_key_events_from_text(const OUString& rStr)
     for (sal_Int32 i = 0, n = rStr.getLength();
             i != n; ++i)
     {
-        aEvents.push_back(KeyEvent(rStr[i], aCode));
+        aEvents.emplace_back(rStr[i], aCode);
     }
     return aEvents;
 }
@@ -179,6 +198,7 @@ std::vector<KeyEvent> generate_key_events_from_keycode(const OUString& rStr)
         {"RIGHT", KEY_RIGHT},
         {"DELETE", KEY_DELETE},
         {"INSERT", KEY_INSERT},
+        {"SPACE", KEY_SPACE},
         {"BACKSPACE", KEY_BACKSPACE},
         {"RETURN", KEY_RETURN},
         {"HOME", KEY_HOME},
@@ -195,9 +215,9 @@ std::vector<KeyEvent> generate_key_events_from_keycode(const OUString& rStr)
     OUString aRemainingText;
 
     std::vector<OUString> aTokens = comphelper::string::split(rStr, '+');
-    for (auto itr = aTokens.begin(), itrEnd = aTokens.end(); itr != itrEnd; ++itr)
+    for (auto const& token : aTokens)
     {
-        OUString aToken = itr->trim();
+        OUString aToken = token.trim();
         if (aToken == "CTRL")
         {
             bMod1 = true;
@@ -218,13 +238,13 @@ std::vector<KeyEvent> generate_key_events_from_keycode(const OUString& rStr)
     if (isFunctionKey(aRemainingText, nFunctionKey))
     {
         vcl::KeyCode aCode(nFunctionKey, bShift, bMod1, bMod2, false);
-        aEvents.push_back(KeyEvent(0, aCode));
+        aEvents.emplace_back(0, aCode);
     }
     else if (aKeyMap.find(aRemainingText) != aKeyMap.end())
     {
         sal_uInt16 nKey = aKeyMap[aRemainingText];
         vcl::KeyCode aCode(nKey, bShift, bMod1, bMod2, false);
-        aEvents.push_back(KeyEvent( 'a', aCode));
+        aEvents.emplace_back( 'a', aCode);
     }
     else
     {
@@ -233,7 +253,7 @@ std::vector<KeyEvent> generate_key_events_from_keycode(const OUString& rStr)
             bool bShiftThroughKey = false;
             sal_uInt16 nKey = get_key(aRemainingText[i], bShiftThroughKey);
             vcl::KeyCode aCode(nKey, bShift || bShiftThroughKey, bMod1, bMod2, false);
-            aEvents.push_back(KeyEvent(aRemainingText[i], aCode));
+            aEvents.emplace_back(aRemainingText[i], aCode);
         }
     }
 
@@ -242,22 +262,20 @@ std::vector<KeyEvent> generate_key_events_from_keycode(const OUString& rStr)
 
 OUString to_string(const Point& rPos)
 {
-    OUStringBuffer aBuffer;
-    aBuffer.append(OUString::number(rPos.X()));
-    aBuffer.append("x");
-    aBuffer.append(OUString::number(rPos.Y()));
+    OUString sStr = OUString::number(rPos.X())
+                  + "x"
+                  + OUString::number(rPos.Y());
 
-    return aBuffer.makeStringAndClear();
+    return sStr;
 }
 
 OUString to_string(const Size& rSize)
 {
-    OUStringBuffer aBuffer;
-    aBuffer.append(rSize.Width());
-    aBuffer.append("x");
-    aBuffer.append(rSize.Height());
+    OUString sStr = OUString::number(rSize.Width())
+                  + "x"
+                  + OUString::number(rSize.Height());
 
-    return aBuffer.makeStringAndClear();
+    return sStr;
 }
 
 }
@@ -269,11 +287,16 @@ WindowUIObject::WindowUIObject(const VclPtr<vcl::Window>& xWindow):
 
 StringMap WindowUIObject::get_state()
 {
+    // Double-buffering is not interesting for uitesting, but can result in direct paint for a
+    // double-buffered widget, which is incorrect.
+    if (mxWindow->SupportsDoubleBuffering())
+        mxWindow->RequestDoubleBuffering(false);
+
     StringMap aMap;
     aMap["Visible"] = OUString::boolean(mxWindow->IsVisible());
     aMap["ReallyVisible"] = OUString::boolean(mxWindow->IsReallyVisible());
     aMap["Enabled"] = OUString::boolean(mxWindow->IsEnabled());
-    aMap["WindowType"] = OUString::number((sal_uInt16)mxWindow->GetType(), 16);
+    aMap["WindowType"] = OUString::number(static_cast<sal_uInt16>(mxWindow->GetType()), 16);
 
     Point aPos = mxWindow->GetPosPixel();
     aMap["RelPosition"] = to_string(aPos);
@@ -313,9 +336,9 @@ void WindowUIObject::execute(const OUString& rAction,
     bool bHandled = true;
     if (rAction == "SET")
     {
-        for (auto itr = rParameters.begin(); itr != rParameters.end(); ++itr)
+        for (auto const& parameter : rParameters)
         {
-            std::cout << itr->first;
+            std::cout << parameter.first;
         }
     }
     else if (rAction == "TYPE")
@@ -325,10 +348,9 @@ void WindowUIObject::execute(const OUString& rAction,
         {
             const OUString& rText = it->second;
             auto aKeyEvents = generate_key_events_from_text(rText);
-            for (auto itr = aKeyEvents.begin(), itrEnd = aKeyEvents.end();
-                    itr != itrEnd; ++itr)
+            for (auto const& keyEvent : aKeyEvents)
             {
-                mxWindow->KeyInput(*itr);
+                mxWindow->KeyInput(keyEvent);
             }
         }
         else if (rParameters.find("KEYCODE") != rParameters.end())
@@ -336,10 +358,9 @@ void WindowUIObject::execute(const OUString& rAction,
             auto itr = rParameters.find("KEYCODE");
             const OUString rText = itr->second;
             auto aKeyEvents = generate_key_events_from_keycode(rText);
-            for (auto itrKey = aKeyEvents.begin(), itrKeyEnd = aKeyEvents.end();
-                    itrKey != itrKeyEnd; ++itrKey)
+            for (auto const& keyEvent : aKeyEvents)
             {
-                mxWindow->KeyInput(*itrKey);
+                mxWindow->KeyInput(keyEvent);
             }
         }
         else
@@ -347,6 +368,10 @@ void WindowUIObject::execute(const OUString& rAction,
             SAL_WARN("vcl.uitest", "missing parameter TEXT to action TYPE");
             return;
         }
+    }
+    else if (rAction == "FOCUS")
+    {
+        mxWindow->GrabFocus();
     }
     else
     {
@@ -389,7 +414,7 @@ vcl::Window* findChild(vcl::Window* pParent, const OUString& rID)
     return nullptr;
 }
 
-void addChildren(vcl::Window* pParent, std::set<OUString>& rChildren)
+void addChildren(vcl::Window const * pParent, std::set<OUString>& rChildren)
 {
     if (!pParent)
         return;
@@ -416,8 +441,15 @@ void addChildren(vcl::Window* pParent, std::set<OUString>& rChildren)
 
 std::unique_ptr<UIObject> WindowUIObject::get_child(const OUString& rID)
 {
-    vcl::Window* pDialogParent = get_top_parent(mxWindow.get());
-    vcl::Window* pWindow = findChild(pDialogParent, rID);
+    // in a first step try the real children before moving to the top level parent
+    // This makes it easier to handle cases with the same ID as there is a way
+    // to resolve conflicts
+    vcl::Window* pWindow = findChild(mxWindow.get(), rID);
+    if (!pWindow)
+    {
+        vcl::Window* pDialogParent = get_top_parent(mxWindow.get());
+        pWindow = findChild(pDialogParent, rID);
+    }
 
     if (!pWindow)
         throw css::uno::RuntimeException("Could not find child with id: " + rID);
@@ -437,7 +469,7 @@ std::set<OUString> WindowUIObject::get_children() const
 
 OUString WindowUIObject::get_name() const
 {
-    return OUString("WindowUIObject");
+    return "WindowUIObject";
 }
 
 namespace {
@@ -452,11 +484,11 @@ OUString escape(const OUString& rStr)
 OUString WindowUIObject::dumpState() const
 {
     OUStringBuffer aStateString = "{\"name\":\"" + mxWindow->get_id() + "\"";
-    aStateString.append(", \"ImplementationName\":\"").appendAscii(typeid(*mxWindow.get()).name()).append("\"");
+    aStateString.append(", \"ImplementationName\":\"").appendAscii(typeid(*mxWindow).name()).append("\"");
     StringMap aState = const_cast<WindowUIObject*>(this)->get_state();
-    for (auto itr = aState.begin(), itrEnd = aState.end(); itr != itrEnd; ++itr)
+    for (auto const& elem : aState)
     {
-        OUString property = ",\"" + itr->first + "\":\"" + escape(itr->second) + "\"";
+        OUString property = ",\"" + elem.first + "\":\"" + escape(elem.second) + "\"";
         aStateString.append(property);
     }
 
@@ -516,8 +548,8 @@ OUString WindowUIObject::get_action(VclEventId nEvent) const
         default:
             aActionName = OUString::number(static_cast<int>(nEvent));
     }
-
-    return "Action on element: " + mxWindow->get_id() + " with action : " + aActionName;
+    return "";
+    //return "Action on element: " + mxWindow->get_id() + " with action : " + aActionName;
 }
 
 std::unique_ptr<UIObject> WindowUIObject::create(vcl::Window* pWindow)
@@ -548,14 +580,70 @@ void ButtonUIObject::execute(const OUString& rAction,
         const StringMap& rParameters)
 {
     if (rAction == "CLICK")
+    {
+        //Click doesn't call toggle when it's a pushbutton tweaked to be a toggle-button
+        if (PushButton *pPushButton = (mxButton->GetStyle() & WB_TOGGLE) ? dynamic_cast<PushButton*>(mxButton.get()) : nullptr)
+        {
+            pPushButton->Check(!pPushButton->IsChecked());
+            pPushButton->Toggle();
+            return;
+        }
         mxButton->Click();
+    }
     else
         WindowUIObject::execute(rAction, rParameters);
 }
 
 OUString ButtonUIObject::get_name() const
 {
-    return OUString("ButtonUIObject");
+    return "ButtonUIObject";
+}
+
+OUString ButtonUIObject::get_action(VclEventId nEvent) const
+{
+    if (nEvent == VclEventId::ButtonClick)
+    {
+        if(mxButton->get_id()=="writer_all")
+        {
+            UITestLogger::getInstance().setAppName("writer");
+            return "Start writer" ;
+        }
+        else if(mxButton->get_id()=="calc_all")
+        {
+            UITestLogger::getInstance().setAppName("calc");
+            return "Start calc" ;
+        }
+        else if(mxButton->get_id()=="impress_all")
+        {
+            UITestLogger::getInstance().setAppName("impress");
+            return "Start impress" ;
+        }
+        else if(mxButton->get_id()=="draw_all")
+        {
+            UITestLogger::getInstance().setAppName("draw");
+            return "Start draw" ;
+        }
+        else if(mxButton->get_id()=="math_all")
+        {
+            UITestLogger::getInstance().setAppName("math");
+            return "Start math" ;
+        }
+        else if(mxButton->get_id()=="database_all")
+        {
+            UITestLogger::getInstance().setAppName("database");
+            return "Start database" ;
+        }
+        else{
+            if (get_top_parent(mxButton)->get_id().isEmpty()){
+                //This part because if we don't have parent
+                return "Click on '" + mxButton->get_id() ;
+            }
+            return "Click on '" + mxButton->get_id() + "' from "+
+                get_top_parent(mxButton)->get_id();
+        }
+    }
+    else
+        return WindowUIObject::get_action(nEvent);
 }
 
 std::unique_ptr<UIObject> ButtonUIObject::create(vcl::Window* pWindow)
@@ -585,7 +673,7 @@ StringMap DialogUIObject::get_state()
 
 OUString DialogUIObject::get_name() const
 {
-    return OUString("DialogUIObject");
+    return "DialogUIObject";
 }
 
 std::unique_ptr<UIObject> DialogUIObject::create(vcl::Window* pWindow)
@@ -622,20 +710,32 @@ void EditUIObject::execute(const OUString& rAction,
 
             const OUString& rText = it->second;
             auto aKeyEvents = generate_key_events_from_text(rText);
-            for (auto itr = aKeyEvents.begin(), itrEnd = aKeyEvents.end();
-                    itr != itrEnd; ++itr)
+            for (auto const& keyEvent : aKeyEvents)
             {
-                mxEdit->KeyInput(*itr);
+                mxEdit->KeyInput(keyEvent);
             }
-        }
-        else if (rParameters.find("SELECTION") != rParameters.end())
-        {
-            // TODO: moggi: add code
         }
         else
         {
             bHandled = false;
         }
+    }
+    else if (rAction == "SELECT")
+    {
+        if (rParameters.find("FROM") != rParameters.end() &&
+                rParameters.find("TO") != rParameters.end())
+        {
+            long nMin = rParameters.find("FROM")->second.toInt32();
+            long nMax = rParameters.find("TO")->second.toInt32();
+            Selection aSelection(nMin, nMax);
+            mxEdit->SetSelection(aSelection);
+        }
+    }
+    else if (rAction == "CLEAR")
+    {
+        mxEdit->SetText("");
+        mxEdit->Modify();
+        bHandled = true;
     }
     else
     {
@@ -656,9 +756,35 @@ StringMap EditUIObject::get_state()
     return aMap;
 }
 
+OUString EditUIObject::get_action(VclEventId nEvent) const
+{
+    if (nEvent == VclEventId::EditSelectionChanged)
+    {
+        const Selection& rSelection  = mxEdit->GetSelection();
+        long nMin = rSelection.Min();
+        long nMax = rSelection.Max();
+        if(get_top_parent(mxEdit)->get_id().isEmpty()){
+            //This part because if we don't have parent
+            return  "Select in '" +
+                mxEdit->get_id() +
+                "' {\"FROM\": \"" + OUString::number(nMin) + "\", \"TO\": \"" +
+                OUString::number(nMax) + "\"}"
+                ;
+        }
+        return  "Select in '" +
+                mxEdit->get_id() +
+                "' {\"FROM\": \"" + OUString::number(nMin) + "\", \"TO\": \"" +
+                OUString::number(nMax) + "\"} from "
+                + get_top_parent(mxEdit)->get_id()
+                ;
+    }
+    else
+        return WindowUIObject::get_action(nEvent);
+}
+
 OUString EditUIObject::get_name() const
 {
-    return OUString("EditUIObject");
+    return "EditUIObject";
 }
 
 std::unique_ptr<UIObject> EditUIObject::create(vcl::Window* pWindow)
@@ -666,6 +792,67 @@ std::unique_ptr<UIObject> EditUIObject::create(vcl::Window* pWindow)
     Edit* pEdit = dynamic_cast<Edit*>(pWindow);
     assert(pEdit);
     return std::unique_ptr<UIObject>(new EditUIObject(pEdit));
+}
+
+MultiLineEditUIObject::MultiLineEditUIObject(const VclPtr<VclMultiLineEdit>& xEdit):
+    WindowUIObject(xEdit),
+    mxEdit(xEdit)
+{
+}
+
+MultiLineEditUIObject::~MultiLineEditUIObject()
+{
+}
+
+void MultiLineEditUIObject::execute(const OUString& rAction,
+        const StringMap& rParameters)
+{
+    bool bHandled = true;
+    if (rAction == "TYPE")
+    {
+        WindowUIObject aChildObj(mxEdit->GetTextWindow());
+        aChildObj.execute(rAction, rParameters);
+    }
+    else if (rAction == "SELECT")
+    {
+        if (rParameters.find("FROM") != rParameters.end() &&
+                rParameters.find("TO") != rParameters.end())
+        {
+            long nMin = rParameters.find("FROM")->second.toInt32();
+            long nMax = rParameters.find("TO")->second.toInt32();
+            Selection aSelection(nMin, nMax);
+            mxEdit->SetSelection(aSelection);
+        }
+    }
+    else
+    {
+        bHandled = false;
+    }
+
+    if (!bHandled)
+        WindowUIObject::execute(rAction, rParameters);
+}
+
+StringMap MultiLineEditUIObject::get_state()
+{
+    StringMap aMap = WindowUIObject::get_state();
+    aMap["MaxTextLength"] = OUString::number(mxEdit->GetMaxTextLen());
+    aMap["SelectedText"] = mxEdit->GetSelected();
+    aMap["Text"] = mxEdit->GetText();
+
+    return aMap;
+}
+
+OUString MultiLineEditUIObject::get_name() const
+{
+    return "MultiLineEditUIObject";
+}
+
+std::unique_ptr<UIObject> MultiLineEditUIObject::create(vcl::Window* pWindow)
+{
+    VclMultiLineEdit* pEdit = dynamic_cast<VclMultiLineEdit*>(pWindow);
+    assert(pEdit);
+    return std::unique_ptr<UIObject>(new MultiLineEditUIObject(pEdit));
 }
 
 CheckBoxUIObject::CheckBoxUIObject(const VclPtr<CheckBox>& xCheckbox):
@@ -698,7 +885,22 @@ StringMap CheckBoxUIObject::get_state()
 
 OUString CheckBoxUIObject::get_name() const
 {
-    return OUString("CheckBoxUIObject");
+    return "CheckBoxUIObject";
+}
+
+OUString CheckBoxUIObject::get_action(VclEventId nEvent) const
+{
+    if (nEvent == VclEventId::CheckboxToggle)
+    {
+        if(get_top_parent(mxCheckBox)->get_id().isEmpty()){
+            //This part because if we don't have parent
+            return "Toggle '" + mxCheckBox->get_id() + "' CheckBox";
+        }
+        return "Toggle '" + mxCheckBox->get_id() + "' CheckBox from " +
+            get_top_parent(mxCheckBox)->get_id();
+    }
+    else
+        return WindowUIObject::get_action(nEvent);
 }
 
 std::unique_ptr<UIObject> CheckBoxUIObject::create(vcl::Window* pWindow)
@@ -730,13 +932,29 @@ void RadioButtonUIObject::execute(const OUString& rAction,
 StringMap RadioButtonUIObject::get_state()
 {
     StringMap aMap = WindowUIObject::get_state();
+    aMap["Checked"] = OUString::boolean(mxRadioButton->IsChecked());
 
     return aMap;
 }
 
 OUString RadioButtonUIObject::get_name() const
 {
-    return OUString("RadioButtonUIObject");
+    return "RadioButtonUIObject";
+}
+
+OUString RadioButtonUIObject::get_action(VclEventId nEvent) const
+{
+    if (nEvent == VclEventId::RadiobuttonToggle)
+    {
+        if(get_top_parent(mxRadioButton)->get_id().isEmpty()){
+            //This part because if we don't have parent
+            return "Select '" + mxRadioButton->get_id() + "' RadioButton";
+        }
+        return "Select '" + mxRadioButton->get_id() + "' RadioButton from " +
+            get_top_parent(mxRadioButton)->get_id();
+    }
+    else
+        return WindowUIObject::get_action(nEvent);
 }
 
 std::unique_ptr<UIObject> RadioButtonUIObject::create(vcl::Window* pWindow)
@@ -761,7 +979,7 @@ void TabPageUIObject::execute(const OUString& rAction,
 {
     if (rAction == "SELECT")
     {
-
+        /* code */
     }
 }
 
@@ -774,7 +992,7 @@ StringMap TabPageUIObject::get_state()
 
 OUString TabPageUIObject::get_name() const
 {
-    return OUString("TabPageUIObject");
+    return "TabPageUIObject";
 }
 
 ListBoxUIObject::ListBoxUIObject(const VclPtr<ListBox>& xListBox):
@@ -790,7 +1008,11 @@ ListBoxUIObject::~ListBoxUIObject()
 void ListBoxUIObject::execute(const OUString& rAction,
         const StringMap& rParameters)
 {
-    if (!mxListBox->IsEnabled() || !mxListBox->IsReallyVisible())
+    if (!mxListBox->IsEnabled())
+        return;
+
+    bool isTiledRendering = comphelper::LibreOfficeKit::isActive();
+    if (!isTiledRendering && !mxListBox->IsReallyVisible())
         return;
 
     if (rAction == "SELECT")
@@ -821,24 +1043,40 @@ StringMap ListBoxUIObject::get_state()
     aMap["ReadOnly"] = OUString::boolean(mxListBox->IsReadOnly());
     aMap["MultiSelect"] = OUString::boolean(mxListBox->IsMultiSelectionEnabled());
     aMap["EntryCount"] = OUString::number(mxListBox->GetEntryCount());
-    aMap["SelectEntryCount"] = OUString::number(mxListBox->GetSelectEntryCount());
-    aMap["SelectEntryPos"] = OUString::number(mxListBox->GetSelectEntryPos());
-    aMap["SelectEntryText"] = mxListBox->GetSelectEntry();
+    aMap["SelectEntryCount"] = OUString::number(mxListBox->GetSelectedEntryCount());
+    aMap["SelectEntryPos"] = OUString::number(mxListBox->GetSelectedEntryPos());
+    aMap["SelectEntryText"] = mxListBox->GetSelectedEntry();
 
     return aMap;
 }
 
 OUString ListBoxUIObject::get_name() const
 {
-    return OUString("ListBoxUIObject");
+    return "ListBoxUIObject";
 }
 
 OUString ListBoxUIObject::get_action(VclEventId nEvent) const
 {
     if (nEvent == VclEventId::ListboxSelect)
     {
-        sal_Int32 nPos = mxListBox->GetSelectEntryPos();
-        return "Action on element: " + mxListBox->get_id() + " with action : SELECT and content {\"POS\": \"" + OUString::number(nPos) + "\"}";
+        sal_Int32 nPos = mxListBox->GetSelectedEntryPos();
+        if(get_top_parent(mxListBox)->get_id().isEmpty()){
+            //This part because if we don't have parent
+            return "Select element with position " + OUString::number(nPos) +
+                 " in '" + mxListBox->get_id();
+        }
+        return "Select element with position " + OUString::number(nPos) +
+                 " in '" + mxListBox->get_id() +"' from" + get_top_parent(mxListBox)->get_id() ;
+    }
+    else if (nEvent == VclEventId::ListboxFocus)
+    {
+        if(get_top_parent(mxListBox)->get_id().isEmpty())
+        {
+            //This part because if we don't have parent
+            return this->get_type() + " Action:FOCUS Id:" + mxListBox->get_id();
+        }
+        return this->get_type() + " Action:FOCUS Id:" + mxListBox->get_id() +
+            " Parent:" + get_top_parent(mxListBox)->get_id();
     }
     else
         return WindowUIObject::get_action(nEvent);
@@ -873,10 +1111,15 @@ void ComboBoxUIObject::execute(const OUString& rAction,
             sal_Int32 nPos = aVal.toInt32();
             mxComboBox->SelectEntryPos(nPos);
         }
+        else if(rParameters.find("TEXT") != rParameters.end()){
+            auto itr = rParameters.find("TEXT");
+            OUString aVal = itr->second;
+            sal_Int32 nPos = mxComboBox->GetEntryPos(aVal);
+            mxComboBox->SelectEntryPos(nPos);
+        }
         mxComboBox->Select();
     }
-    else if (rAction == "TYPE")
-    {
+    else if ( rAction == "TYPE" || rAction == "SET" || rAction == "CLEAR" ){
         if (mxComboBox->GetSubEdit())
         {
             Edit* pEdit = mxComboBox->GetSubEdit();
@@ -893,13 +1136,30 @@ void ComboBoxUIObject::execute(const OUString& rAction,
 StringMap ComboBoxUIObject::get_state()
 {
     StringMap aMap = WindowUIObject::get_state();
-
     return aMap;
 }
 
 OUString ComboBoxUIObject::get_name() const
 {
-    return OUString("ComboBoxUIObject");
+    return "ComboBoxUIObject";
+}
+
+OUString ComboBoxUIObject::get_action(VclEventId nEvent) const
+{
+    if (nEvent == VclEventId::ComboboxSelect)
+    {
+        sal_Int32 nPos = mxComboBox->GetSelectedEntryPos();
+        if (get_top_parent(mxComboBox)->get_id().isEmpty()){
+            //This part because if we don't have parent
+            return "Select in '" + mxComboBox->get_id() +
+                "' ComboBox item number " + OUString::number(nPos);
+        }
+        return "Select in '" + mxComboBox->get_id() +
+                "' ComboBox item number " + OUString::number(nPos) +
+                " from " + get_top_parent(mxComboBox)->get_id();
+    }
+    else
+        return WindowUIObject::get_action(nEvent);
 }
 
 std::unique_ptr<UIObject> ComboBoxUIObject::create(vcl::Window* pWindow)
@@ -924,10 +1184,11 @@ void SpinUIObject::execute(const OUString& rAction,
 {
     if (rAction == "UP")
     {
-        /* code */
+        mxSpinButton->Up();
     }
     else if (rAction == "DOWN")
     {
+        mxSpinButton->Down();
     }
 }
 
@@ -942,9 +1203,25 @@ StringMap SpinUIObject::get_state()
     return aMap;
 }
 
+OUString SpinUIObject::get_action(VclEventId nEvent) const
+{
+    if (nEvent == VclEventId::SpinbuttonUp)
+    {
+        return this->get_type() + " Action:UP Id:" + mxSpinButton->get_id() +
+            " Parent:" + get_top_parent(mxSpinButton)->get_id();
+    }
+    else if (nEvent == VclEventId::SpinbuttonDown)
+    {
+        return this->get_type() + " Action:DOWN Id:" + mxSpinButton->get_id() +
+            " Parent:" + get_top_parent(mxSpinButton)->get_id();
+    }
+    else
+        return WindowUIObject::get_action(nEvent);
+}
+
 OUString SpinUIObject::get_name() const
 {
-    return OUString("SpinUIObject");
+    return "SpinUIObject";
 }
 
 SpinFieldUIObject::SpinFieldUIObject(const VclPtr<SpinField>& xSpinField):
@@ -988,9 +1265,35 @@ StringMap SpinFieldUIObject::get_state()
     return aMap;
 }
 
+OUString SpinFieldUIObject::get_action(VclEventId nEvent) const
+{
+    if (nEvent == VclEventId::SpinfieldUp)
+    {
+        if(get_top_parent(mxSpinField)->get_id().isEmpty())
+        {
+            //This part because if we don't have parent
+            return "Increase '" + mxSpinField->get_id();
+        }
+        return "Increase '" + mxSpinField->get_id() +
+            "' from " + get_top_parent(mxSpinField)->get_id();
+    }
+    else if (nEvent == VclEventId::SpinfieldDown)
+    {
+        if(get_top_parent(mxSpinField)->get_id().isEmpty())
+        {
+            //This part because if we don't have parent
+            return "Decrease '" + mxSpinField->get_id();
+        }
+        return "Decrease '" + mxSpinField->get_id() +
+            "' from " + get_top_parent(mxSpinField)->get_id();
+    }
+    else
+        return WindowUIObject::get_action(nEvent);
+}
+
 OUString SpinFieldUIObject::get_name() const
 {
-    return OUString("SpinFieldUIObject");
+    return "SpinFieldUIObject";
 }
 
 std::unique_ptr<UIObject> SpinFieldUIObject::create(vcl::Window* pWindow)
@@ -998,6 +1301,97 @@ std::unique_ptr<UIObject> SpinFieldUIObject::create(vcl::Window* pWindow)
     SpinField* pSpinField = dynamic_cast<SpinField*>(pWindow);
     assert(pSpinField);
     return std::unique_ptr<UIObject>(new SpinFieldUIObject(pSpinField));
+}
+
+
+MetricFieldUIObject::MetricFieldUIObject(const VclPtr<MetricField>& xMetricField):
+    SpinFieldUIObject(xMetricField),
+    mxMetricField(xMetricField)
+{
+}
+
+MetricFieldUIObject::~MetricFieldUIObject()
+{
+}
+
+void MetricFieldUIObject::execute(const OUString& rAction,
+        const StringMap& rParameters)
+{
+    if (rAction == "VALUE")
+    {
+        auto itPos = rParameters.find("VALUE");
+        if (itPos != rParameters.end())
+        {
+            mxMetricField->SetValueFromString(itPos->second);
+        }
+    }
+    else
+        SpinFieldUIObject::execute(rAction, rParameters);
+}
+
+StringMap MetricFieldUIObject::get_state()
+{
+    StringMap aMap = EditUIObject::get_state();
+    aMap["Value"] = mxMetricField->GetValueString();
+
+    return aMap;
+}
+
+OUString MetricFieldUIObject::get_name() const
+{
+    return "MetricFieldUIObject";
+}
+
+std::unique_ptr<UIObject> MetricFieldUIObject::create(vcl::Window* pWindow)
+{
+    MetricField* pMetricField = dynamic_cast<MetricField*>(pWindow);
+    assert(pMetricField);
+    return std::unique_ptr<UIObject>(new MetricFieldUIObject(pMetricField));
+}
+
+FormattedFieldUIObject::FormattedFieldUIObject(const VclPtr<FormattedField>& xFormattedField):
+    SpinFieldUIObject(xFormattedField),
+    mxFormattedField(xFormattedField)
+{
+}
+
+FormattedFieldUIObject::~FormattedFieldUIObject()
+{
+}
+
+void FormattedFieldUIObject::execute(const OUString& rAction,
+        const StringMap& rParameters)
+{
+    if (rAction == "VALUE")
+    {
+        auto itPos = rParameters.find("VALUE");
+        if (itPos != rParameters.end())
+        {
+            mxFormattedField->SetValueFromString(itPos->second);
+        }
+    }
+    else
+        SpinFieldUIObject::execute(rAction, rParameters);
+}
+
+StringMap FormattedFieldUIObject::get_state()
+{
+    StringMap aMap = EditUIObject::get_state();
+    aMap["Value"] = OUString::number(mxFormattedField->GetFormatter().GetValue());
+
+    return aMap;
+}
+
+OUString FormattedFieldUIObject::get_name() const
+{
+    return "FormattedFieldUIObject";
+}
+
+std::unique_ptr<UIObject> FormattedFieldUIObject::create(vcl::Window* pWindow)
+{
+    FormattedField* pFormattedField = dynamic_cast<FormattedField*>(pWindow);
+    assert(pFormattedField);
+    return std::unique_ptr<UIObject>(new FormattedFieldUIObject(pFormattedField));
 }
 
 TabControlUIObject::TabControlUIObject(const VclPtr<TabControl>& xTabControl):
@@ -1030,13 +1424,37 @@ void TabControlUIObject::execute(const OUString& rAction,
 StringMap TabControlUIObject::get_state()
 {
     StringMap aMap = WindowUIObject::get_state();
+    aMap["PageCount"] = OUString::number(mxTabControl->GetPageCount());
+
+    sal_uInt16 nPageId = mxTabControl->GetCurPageId();
+    aMap["CurrPageId"] = OUString::number(nPageId);
+    aMap["CurrPagePos"] = OUString::number(mxTabControl->GetPagePos(nPageId));
 
     return aMap;
 }
 
+OUString TabControlUIObject::get_action(VclEventId nEvent) const
+{
+    if (nEvent == VclEventId::TabpageActivate)
+    {
+        sal_Int32 nPageId = mxTabControl->GetCurPageId();
+
+        if(get_top_parent(mxTabControl)->get_id().isEmpty()){
+            //This part because if we don't have parent
+            return "Choose Tab number " + OUString::number(mxTabControl->GetPagePos(nPageId)) +
+                " in '" + mxTabControl->get_id();
+        }
+        return "Choose Tab number " + OUString::number(mxTabControl->GetPagePos(nPageId)) +
+                " in '" + mxTabControl->get_id()+
+                "' from " + get_top_parent(mxTabControl)->get_id() ;
+    }
+    else
+        return WindowUIObject::get_action(nEvent);
+}
+
 OUString TabControlUIObject::get_name() const
 {
-    return OUString("TabControlUIObject");
+    return "TabControlUIObject";
 }
 
 std::unique_ptr<UIObject> TabControlUIObject::create(vcl::Window* pWindow)
@@ -1046,6 +1464,212 @@ std::unique_ptr<UIObject> TabControlUIObject::create(vcl::Window* pWindow)
     return std::unique_ptr<UIObject>(new TabControlUIObject(pTabControl));
 }
 
+RoadmapWizardUIObject::RoadmapWizardUIObject(const VclPtr<vcl::RoadmapWizard>& xRoadmapWizard):
+    WindowUIObject(xRoadmapWizard),
+    mxRoadmapWizard(xRoadmapWizard)
+{
+}
 
+RoadmapWizardUIObject::~RoadmapWizardUIObject()
+{
+}
+
+void RoadmapWizardUIObject::execute(const OUString& rAction,
+        const StringMap& rParameters)
+{
+    if (rAction == "SELECT")
+    {
+        if (rParameters.find("POS") != rParameters.end())
+        {
+            auto itr = rParameters.find("POS");
+            sal_uInt32 nPos = itr->second.toUInt32();
+            mxRoadmapWizard->SelectRoadmapItemByID(nPos);
+        }
+    }
+    else
+        WindowUIObject::execute(rAction, rParameters);
+}
+
+StringMap RoadmapWizardUIObject::get_state()
+{
+    StringMap aMap = WindowUIObject::get_state();
+
+    aMap["CurrentStep"] = OUString::number(mxRoadmapWizard->GetCurrentRoadmapItemID());
+
+    return aMap;
+}
+
+OUString RoadmapWizardUIObject::get_name() const
+{
+    return "RoadmapWizardUIObject";
+}
+
+std::unique_ptr<UIObject> RoadmapWizardUIObject::create(vcl::Window* pWindow)
+{
+    vcl::RoadmapWizard* pRoadmapWizard = dynamic_cast<vcl::RoadmapWizard*>(pWindow);
+    assert(pRoadmapWizard);
+    return std::unique_ptr<UIObject>(new RoadmapWizardUIObject(pRoadmapWizard));
+}
+
+VerticalTabControlUIObject::VerticalTabControlUIObject(const VclPtr<VerticalTabControl>& xTabControl):
+    WindowUIObject(xTabControl),
+    mxTabControl(xTabControl)
+{
+}
+
+VerticalTabControlUIObject::~VerticalTabControlUIObject()
+{
+}
+
+void VerticalTabControlUIObject::execute(const OUString& rAction,
+        const StringMap& rParameters)
+{
+    if (rAction == "SELECT")
+    {
+        if (rParameters.find("POS") != rParameters.end())
+        {
+            auto itr = rParameters.find("POS");
+            sal_uInt32 nPos = itr->second.toUInt32();
+            OString xid = mxTabControl->GetPageId(nPos);
+            mxTabControl->SetCurPageId(xid);
+        }
+    }
+    else
+        WindowUIObject::execute(rAction, rParameters);
+}
+
+StringMap VerticalTabControlUIObject::get_state()
+{
+    StringMap aMap = WindowUIObject::get_state();
+    aMap["PageCount"] = OUString::number(mxTabControl->GetPageCount());
+
+    OString nPageId = mxTabControl->GetCurPageId();
+    aMap["CurrPageTitel"] = mxTabControl->GetPageText(nPageId);
+    aMap["CurrPagePos"] = OUString::number(mxTabControl->GetPagePos(nPageId));
+
+    return aMap;
+}
+
+OUString VerticalTabControlUIObject::get_name() const
+{
+    return "VerticalTabControlUIObject";
+}
+
+std::unique_ptr<UIObject> VerticalTabControlUIObject::create(vcl::Window* pWindow)
+{
+    VerticalTabControl* pTabControl = dynamic_cast<VerticalTabControl*>(pWindow);
+    assert(pTabControl);
+    return std::unique_ptr<UIObject>(new VerticalTabControlUIObject(pTabControl));
+}
+
+
+ToolBoxUIObject::ToolBoxUIObject(const VclPtr<ToolBox>& xToolBox):
+    WindowUIObject(xToolBox),
+    mxToolBox(xToolBox)
+{
+}
+
+ToolBoxUIObject::~ToolBoxUIObject()
+{
+}
+
+void ToolBoxUIObject::execute(const OUString& rAction,
+        const StringMap& rParameters)
+{
+    if (rAction == "CLICK")
+    {
+        if (rParameters.find("POS") != rParameters.end())
+        {
+            auto itr = rParameters.find("POS");
+            sal_uInt16 nPos = itr->second.toUInt32();
+            mxToolBox->SetCurItemId(nPos);
+            mxToolBox->Click();
+            mxToolBox->Select();
+        }
+    }
+    else
+        WindowUIObject::execute(rAction, rParameters);
+}
+
+StringMap ToolBoxUIObject::get_state()
+{
+    StringMap aMap = WindowUIObject::get_state();
+    aMap["CurrSelectedItemID"] = OUString::number(mxToolBox->GetCurItemId());
+    aMap["CurrSelectedItemText"] = mxToolBox->GetItemText(mxToolBox->GetCurItemId());
+    aMap["CurrSelectedItemCommand"] = mxToolBox->GetItemCommand(mxToolBox->GetCurItemId());
+    aMap["ItemCount"] = OUString::number(mxToolBox->GetItemCount());
+    return aMap;
+}
+
+OUString ToolBoxUIObject::get_name() const
+{
+    return "ToolBoxUIObject";
+}
+
+std::unique_ptr<UIObject> ToolBoxUIObject::create(vcl::Window* pWindow)
+{
+    ToolBox* pToolBox = dynamic_cast<ToolBox*>(pWindow);
+    assert(pToolBox);
+    return std::unique_ptr<UIObject>(new ToolBoxUIObject(pToolBox));
+}
+
+MenuButtonUIObject::MenuButtonUIObject(const VclPtr<MenuButton>& xMenuButton):
+    WindowUIObject(xMenuButton),
+    mxMenuButton(xMenuButton)
+{
+}
+
+MenuButtonUIObject::~MenuButtonUIObject()
+{
+}
+
+StringMap MenuButtonUIObject::get_state()
+{
+    StringMap aMap = WindowUIObject::get_state();
+    aMap["Label"] = mxMenuButton->GetDisplayText();
+    return aMap;
+}
+
+void MenuButtonUIObject::execute(const OUString& rAction,
+        const StringMap& rParameters)
+{
+    if (rAction == "CLICK")
+    {
+        mxMenuButton->Check(!mxMenuButton->IsChecked());
+        mxMenuButton->Toggle();
+    }
+    else if (rAction == "OPENLIST")
+    {
+        mxMenuButton->ExecuteMenu();
+    }
+    else if (rAction == "OPENFROMLIST")
+    {
+        auto itr = rParameters.find("POS");
+        sal_uInt32 nPos = itr->second.toUInt32();
+
+        sal_uInt32 nId = mxMenuButton->GetPopupMenu()->GetItemId(nPos);
+        mxMenuButton->GetPopupMenu()->SetSelectedEntry(nId);
+        mxMenuButton->SetCurItemId();
+        mxMenuButton->Select();
+    }
+    else if (rAction == "CLOSELIST")
+    {
+        mxMenuButton->GetPopupMenu()->EndExecute();
+    }
+    else
+        WindowUIObject::execute(rAction, rParameters);
+}
+
+OUString MenuButtonUIObject::get_name() const
+{
+    return "MenuButtonUIObject";
+}
+
+std::unique_ptr<UIObject> MenuButtonUIObject::create(vcl::Window* pWindow)
+{
+    MenuButton* pMenuButton = dynamic_cast<MenuButton*>(pWindow);
+    assert(pMenuButton);
+    return std::unique_ptr<UIObject>(new MenuButtonUIObject(pMenuButton));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,20 +21,21 @@
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_LAYER_HXX
 
 #include <basegfx/range/b2dpolyrange.hxx>
-#include <cppcanvas/spritecanvas.hxx>
 
-#include "view.hxx"
-#include "animatableshape.hxx"
+#include <shape.hxx>
+#include <view.hxx>
 
 #include <vector>
 #include <memory>
 
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         class LayerEndUpdate;
+        class Layer;
+        typedef ::std::shared_ptr< Layer >    LayerSharedPtr;
+        typedef ::std::weak_ptr< Layer >      LayerWeakPtr;
+
 
         /* Definition of Layer class */
 
@@ -71,7 +72,7 @@ namespace slideshow
                 This method will create a layer without a ViewLayer,
                 i.e. one that displays directly on the background.
              */
-            static ::std::shared_ptr< Layer > createBackgroundLayer();
+            static LayerSharedPtr createBackgroundLayer();
 
             /** Create non-background layer
 
@@ -79,7 +80,7 @@ namespace slideshow
                 background, to contain shapes that should appear in
                 front of animated objects.
              */
-            static ::std::shared_ptr< Layer > createLayer();
+            static LayerSharedPtr createLayer();
 
 
             /** Predicate, whether this layer is the special
@@ -185,7 +186,7 @@ namespace slideshow
                 EndUpdater is destroyed, the Layer leaves update mode
                 again.
 
-                @return a update end RAII object.
+                @return an update end RAII object.
             */
             EndUpdater beginUpdate();
 
@@ -255,11 +256,6 @@ namespace slideshow
             bool                       mbClipSet; // true, if beginUpdate set a clip
         };
 
-        typedef ::std::shared_ptr< Layer >    LayerSharedPtr;
-        typedef ::std::weak_ptr< Layer >      LayerWeakPtr;
-        typedef ::std::vector< LayerSharedPtr > LayerVector;
-
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_LAYER_HXX

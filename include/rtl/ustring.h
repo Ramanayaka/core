@@ -20,13 +20,13 @@
 #ifndef INCLUDED_RTL_USTRING_H
 #define INCLUDED_RTL_USTRING_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
-#include <osl/interlck.h>
-#include <rtl/string.h>
-#include <rtl/textenc.h>
-#include <sal/saldllapi.h>
-#include <sal/types.h>
+#include "osl/interlck.h"
+#include "rtl/string.h"
+#include "rtl/textenc.h"
+#include "sal/saldllapi.h"
+#include "sal/types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -161,7 +161,7 @@ SAL_DLLPUBLIC sal_Int32 SAL_CALL rtl_ustr_reverseCompare_WithLength(
 /** Compare two strings from back to front for equality.
 
     The comparison is based on the numeric value of each character in the
-    strings and returns 'true' if, ans only if, both strings are equal.
+    strings and returns 'true' if, and only if, both strings are equal.
     This function cannot be used for language-specific sorting.
 
     @param first
@@ -1000,7 +1000,7 @@ SAL_DLLPUBLIC sal_Int32 SAL_CALL rtl_ustr_valueOfInt64(
  */
 SAL_DLLPUBLIC sal_Int32 SAL_CALL rtl_ustr_valueOfUInt64(
         sal_Unicode * str, sal_uInt64 l, sal_Int16 radix ) SAL_THROW_EXTERN_C();
-#define RTL_USTR_MAX_VALUEOFINT64 RTL_STR_MAX_VALUEOFINT64
+#define RTL_USTR_MAX_VALUEOFUINT64 RTL_STR_MAX_VALUEOFUINT64
 
 /** Create the string representation of a float.
 
@@ -1113,6 +1113,31 @@ SAL_DLLPUBLIC sal_uInt32 SAL_CALL rtl_ustr_toUInt32(
 SAL_DLLPUBLIC sal_Int64 SAL_CALL rtl_ustr_toInt64(
         const sal_Unicode * str, sal_Int16 radix ) SAL_THROW_EXTERN_C();
 
+/** Interpret a string as a long integer.
+
+    This function cannot be used for language-specific conversion.  The string
+    must be null-terminated.
+
+    @param str
+    a null-terminated string.
+
+    @param radix
+    the radix.  Must be between RTL_USTR_MIN_RADIX (2) and RTL_USTR_MAX_RADIX
+    (36), inclusive.
+
+    @param nStrLength
+    number of chars to process
+
+    @return
+    the long integer value represented by the string, or 0 if the string does
+    not represent a long integer.
+
+    @internal
+    @since LibreOffice 6.4
+*/
+SAL_DLLPUBLIC sal_Int64 SAL_CALL rtl_ustr_toInt64_WithLength(
+        const sal_Unicode * str, sal_Int16 radix, sal_Int32 nStrLength ) SAL_THROW_EXTERN_C();
+
 /** Interpret a string as an unsigned long integer.
 
     This function cannot be used for language-specific conversion.  The string
@@ -1166,7 +1191,7 @@ SAL_DLLPUBLIC double SAL_CALL rtl_ustr_toDouble(
 
 /* ======================================================================= */
 
-#if defined(SAL_W32)
+#if defined(_WIN32)
 #pragma pack(push, 4)
 #endif
 
@@ -1181,7 +1206,7 @@ typedef struct SAL_DLLPUBLIC_RTTI _rtl_uString
 } rtl_uString;
 /** @endcond */
 
-#if defined(SAL_W32)
+#if defined(_WIN32)
 #pragma pack(pop)
 #endif
 
@@ -1219,7 +1244,7 @@ SAL_DLLPUBLIC void SAL_CALL rtl_uString_new(
     The reference count of the new string will be 1. The length of the string
     will be nLen. This function does not handle out-of-memory conditions.
 
-    For nLen < 0 or failed allocation this method returns NULL.
+    For failed allocation this method returns NULL.
 
     The characters of the capacity are not cleared, and the length is set to
     nLen, unlike the similar method of rtl_uString_new_WithLength which
@@ -1230,7 +1255,8 @@ SAL_DLLPUBLIC void SAL_CALL rtl_uString_new(
     alternatively pass ownership to an OUString with
     rtl::OUString(newStr, SAL_NO_ACQUIRE);
 
-    @param[in] nLen the number of characters.
+    @param[in] nLen the number of characters. Must be >= 0.
+
     @return pointer to the new string.
 
     @since LibreOffice 4.1
@@ -1484,7 +1510,7 @@ SAL_DLLPUBLIC void SAL_CALL rtl_uString_newConcatUtf16L(
 
     The new string results from replacing a number of characters (count),
     starting at the specified position (index) in the original string (str),
-    with some new substring (subStr).  If subStr is null, than only a number
+    with some new substring (subStr).  If subStr is null, then only a number
     of characters is deleted.
 
     The new string does not necessarily have a reference count of 1, so it
@@ -2023,7 +2049,9 @@ SAL_DLLPUBLIC void SAL_CALL rtl_uString_newToAsciiUpperCase(
     string.
 
     The new string results from removing all characters with values less than
-    or equal to 32 (the space character) form both ends of str.
+    or equal to 32 (the space character), and also Unicode General Punctuation
+    area Space and some Control characters, form both ends of str (see
+    rtl_ImplIsWhitespace).
 
     This function cannot be used for language-specific conversion.  The new
     string does not necessarily have a reference count of 1 (in cases where

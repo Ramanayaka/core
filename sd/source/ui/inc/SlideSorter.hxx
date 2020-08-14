@@ -20,41 +20,36 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_SLIDESORTER_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_SLIDESORTER_HXX
 
-#include "fupoor.hxx"
-#include "Window.hxx"
-#include <com/sun/star/frame/XController.hpp>
 #include <cppuhelper/weakref.hxx>
-#include <sfx2/viewfrm.hxx>
 #include <vcl/scrbar.hxx>
-#include "sddllapi.h"
+#include <sddllapi.h>
 #include <memory>
 
-class ScrollBar;
-class ScrollBarBox;
 namespace vcl { class Window; }
+namespace com::sun::star::frame { class XController; }
+namespace rtl { template <class reference_type> class Reference; }
 
 namespace sd {
 class ViewShell;
 class ViewShellBase;
 class Window;
+class FuPoor;
 }
 
-namespace sd { namespace slidesorter { namespace model {
-class SlideSorterModel;
-} } }
+namespace sd::slidesorter::model { class SlideSorterModel; }
 
-namespace sd { namespace slidesorter { namespace view {
-class SlideSorterView;
-class Theme;
-} } }
+namespace sd::slidesorter::view {
+    class SlideSorterView;
+    class Theme;
+}
 
-namespace sd { namespace slidesorter { namespace controller {
-class SlideSorterController;
-class SlotManager;
-class Properties;
-} } }
+namespace sd::slidesorter::controller {
+    class SlideSorterController;
+    class SlotManager;
+    class Properties;
+}
 
-namespace sd { namespace slidesorter {
+namespace sd::slidesorter {
 
 /** Show previews for all the slides in a document and allow the user to
     insert or delete slides and modify the order of the slides.
@@ -115,7 +110,6 @@ public:
     */
     static std::shared_ptr<SlideSorter> CreateSlideSorter (
         ViewShellBase& rBase,
-        ViewShell* pViewShell,
         vcl::Window& rParentWindow);
 
     /** Return the control of the vertical scroll bar.
@@ -170,7 +164,7 @@ public:
         const Point& rOffset,
         const Size& rSize);
 
-    bool RelocateToWindow (vcl::Window* pWindow);
+    void RelocateToWindow (vcl::Window* pWindow);
 
     /** Set the current function at the view shell or, when it is not
         present, set it at the content window.  This method supports the use
@@ -202,12 +196,6 @@ private:
     */
     model::SlideSorterModel* CreateModel();
 
-    /** Create the controller for the view shell.  When called from the default
-        implementation of CreateModelViewController() then both the view and
-        the controller do exist.  Test their pointers when in doubt.
-    */
-    controller::SlideSorterController* CreateController();
-
     bool mbIsValid;
 
     std::unique_ptr<controller::SlideSorterController> mpSlideSorterController;
@@ -235,7 +223,6 @@ private:
         ScrollBarBox* pScrollBarBox);
     SlideSorter (
         ViewShellBase& rBase,
-        ViewShell* pViewShell,
         vcl::Window& rParentWindow);
 
     void Init();
@@ -257,7 +244,7 @@ private:
     void ReleaseListeners();
 };
 
-} } // end of namespace ::sd::slidesorter
+} // end of namespace ::sd::slidesorter
 
 #endif
 

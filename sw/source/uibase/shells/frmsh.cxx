@@ -21,13 +21,8 @@
 
 #include <hintids.hxx>
 #include <svl/whiter.hxx>
-#include <svtools/imapobj.hxx>
-#include <svtools/miscopt.hxx>
-#include <svl/srchitem.hxx>
-#include <svtools/imap.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <basic/sbstar.hxx>
-#include <svl/rectitem.hxx>
 #include <svl/ptitem.hxx>
 #include <svl/stritem.hxx>
 #include <svl/intitem.hxx>
@@ -35,15 +30,14 @@
 #include <editeng/colritem.hxx>
 #include <editeng/lineitem.hxx>
 #include <editeng/boxitem.hxx>
-#include <editeng/protitem.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/request.hxx>
 #include <sfx2/objface.hxx>
 #include <vcl/EnumContext.hxx>
 #include <svx/hlnkitem.hxx>
 #include <svx/svdview.hxx>
-#include <vcl/msgbox.hxx>
 #include <vcl/commandinfoprovider.hxx>
+#include <sal/log.hxx>
 
 #include <doc.hxx>
 #include <drawdoc.hxx>
@@ -55,37 +49,30 @@
 #include <swmodule.hxx>
 #include <wrtsh.hxx>
 #include <wview.hxx>
-#include <frmatr.hxx>
 #include <uitool.hxx>
 #include <frmfmt.hxx>
 #include <frmsh.hxx>
 #include <frmmgr.hxx>
-#include <frmdlg.hxx>
-#include <swevent.hxx>
-#include <usrpref.hxx>
 #include <edtwin.hxx>
 #include <swdtflvr.hxx>
-#include <swwait.hxx>
-#include <docstat.hxx>
-#include <IDocumentStatistics.hxx>
+#include <viewopt.hxx>
 
-#include <helpid.h>
 #include <cmdid.h>
-#include <cfgitems.hxx>
-#include <globals.hrc>
-#include <shells.hrc>
-#include "swabstdlg.hxx"
-#include "misc.hrc"
+#include <strings.hrc>
+#include <swabstdlg.hxx>
 
-#include <svx/dialogs.hrc>
+#include <svx/svxdlg.hxx>
 
 #include <docsh.hxx>
 #include <svx/drawitem.hxx>
 #include <memory>
 
-#define SwFrameShell
+#define ShellClass_SwFrameShell
 #include <sfx2/msg.hxx>
-#include "swslots.hxx"
+#include <swslots.hxx>
+#include <grfatr.hxx>
+#include <fldmgr.hxx>
+#include <flyfrm.hxx>
 
 using ::editeng::SvxBorderLine;
 using namespace ::com::sun::star;
@@ -93,7 +80,7 @@ using namespace ::com::sun::star::uno;
 
 // Prototypes
 static void lcl_FrameGetMaxLineWidth(const SvxBorderLine* pBorderLine, SvxBorderLine& rBorderLine);
-static const SwFrameFormat* lcl_GetFrameFormatByName(SwWrtShell& rSh, const OUString& rName)
+static const SwFrameFormat* lcl_GetFrameFormatByName(SwWrtShell const & rSh, const OUString& rName)
 {
     const size_t nCount = rSh.GetFlyCount(FLYCNTTYPE_FRM);
     for( size_t i = 0; i < nCount; ++i )
@@ -112,6 +99,32 @@ void SwFrameShell::InitInterface_Impl()
     GetStaticInterface()->RegisterPopupMenu("frame");
 
     GetStaticInterface()->RegisterObjectBar(SFX_OBJECTBAR_OBJECT, SfxVisibilityFlags::Invisible, ToolbarId::Frame_Toolbox);
+}
+
+void SwFrameShell::ExecMove(SfxRequest& rReq)
+{
+    SwWrtShell& rSh = GetShell();
+    sal_uInt16 nSlot = rReq.GetSlot();
+    switch (nSlot)
+    {
+        case SID_SELECTALL:
+            rSh.SelAll();
+            rReq.Done();
+            break;
+    }
+}
+
+void SwFrameShell::ExecField(const SfxRequest& rReq)
+{
+    SwWrtShell& rSh = GetShell();
+    sal_uInt16 nSlot = rReq.GetSlot();
+    switch (nSlot)
+    {
+        case FN_POSTIT:
+            SwFieldMgr aFieldMgr(&rSh);
+            rSh.InsertPostIt(aFieldMgr, rReq);
+            break;
+    }
 }
 
 void SwFrameShell::Execute(SfxRequest &rReq)
@@ -168,7 +181,7 @@ void SwFrameShell::Execute(SfxRequest &rReq)
 
                 SfxItemSet aSet(GetPool(),svl::Items<RES_COL,RES_COL>{});
                 rSh.GetFlyFrameAttr( aSet );
-                SwFormatCol aCol(static_cast<const SwFormatCol&>(aSet.Get(RES_COL)));
+                SwFormatCol aCol(aSet.Get(RES_COL));
                 // GutterWidth will not always passed, hence get firstly
                 // (see view2: Execute on this slot)
                 sal_uInt16 nGutterWidth = aCol.GetGutterWidth();
@@ -203,7 +216,7 @@ void SwFrameShell::Execute(SfxRequest &rReq)
 
                 SfxItemSet aSet( rSh.GetAttrPool(), svl::Items<RES_URL, RES_URL>{} );
                 rSh.GetFlyFrameAttr( aSet );
-                SwFormatURL aURL( static_cast<const SwFormatURL&>(aSet.Get( RES_URL )) );
+                SwFormatURL aURL( aSet.Get( RES_URL ) );
 
                 OUString sOldName(rHLinkItem.GetName().toAsciiUpperCase());
                 OUString sFlyName(rSh.GetFlyName().toAsciiUpperCase());
@@ -213,9 +226,7 @@ void SwFrameShell::Execute(SfxRequest &rReq)
                     sal_uInt16 i = 1;
                     while (rSh.FindFlyByName(sName))
                     {
-                        sName = sOldName;
-                        sName += "_";
-                        sName += OUString::number(i++);
+                        sName = sOldName + "_" + OUString::number(i++);
                     }
                     rSh.SetFlyName(sName);
                 }
@@ -265,7 +276,7 @@ void SwFrameShell::Execute(SfxRequest &rReq)
         return;
     }
 
-    SwFlyFrameAttrMgr aMgr( false, &rSh, Frmmgr_Type::NONE );
+    SwFlyFrameAttrMgr aMgr( false, &rSh, Frmmgr_Type::NONE, nullptr );
     bool bUpdateMgr = true;
     bool bCopyToFormat = false;
     switch ( nSlot )
@@ -347,7 +358,22 @@ void SwFrameShell::Execute(SfxRequest &rReq)
 
         case SID_ATTR_TRANSFORM:
         {
+            bool bApplyNewPos = false;
             bool bApplyNewSize = false;
+
+            Point aNewPos = aMgr.GetPos();
+            if (pArgs &&
+                SfxItemState::SET == pArgs->GetItemState(SID_ATTR_TRANSFORM_POS_X, false, &pItem))
+            {
+                aNewPos.setX( static_cast<const SfxInt32Item*>(pItem)->GetValue() );
+                bApplyNewPos = true;
+            }
+            if (pArgs &&
+                SfxItemState::SET == pArgs->GetItemState(SID_ATTR_TRANSFORM_POS_Y, false, &pItem))
+            {
+                aNewPos.setY( static_cast<const SfxInt32Item*>(pItem)->GetValue() );
+                bApplyNewPos = true;
+            }
 
             Size aNewSize = aMgr.GetSize();
             if (pArgs &&
@@ -364,11 +390,41 @@ void SwFrameShell::Execute(SfxRequest &rReq)
                 bApplyNewSize = true;
             }
 
+            if (pArgs && (pArgs->HasItem(SID_ATTR_TRANSFORM_ANGLE) || pArgs->HasItem(SID_ATTR_TRANSFORM_DELTA_ANGLE)))
+            {
+                SfxItemSet aSet(rSh.GetAttrPool(), svl::Items<RES_GRFATR_ROTATION, RES_GRFATR_ROTATION>{} );
+                rSh.GetCurAttr(aSet);
+                const SwRotationGrf& rRotation = aSet.Get(RES_GRFATR_ROTATION);
+                const sal_uInt32 nOldRot(rRotation.GetValue());
+
+                if (pArgs && SfxItemState::SET == pArgs->GetItemState(SID_ATTR_TRANSFORM_DELTA_ANGLE, false, &pItem))
+                {
+                    const sal_uInt32 nDeltaRot(static_cast<const SfxUInt32Item*>(pItem)->GetValue() / 10);
+                    aMgr.SetRotation(nOldRot, nOldRot + nDeltaRot, rRotation.GetUnrotatedSize());
+                }
+
+                // RotGrfFlyFrame: Get Value and disable is in SwGrfShell::GetAttrStateForRotation, but the
+                // value setter uses SID_ATTR_TRANSFORM and a group of three values. Rotation is
+                // added now, so use it in this central place. Do no forget to convert angle from
+                // 100th degrees in SID_ATTR_TRANSFORM_ANGLE to 10th degrees in RES_GRFATR_ROTATION
+                if (pArgs && SfxItemState::SET == pArgs->GetItemState(SID_ATTR_TRANSFORM_ANGLE, false, &pItem))
+                {
+                    const sal_uInt32 nNewRot(static_cast<const SfxUInt32Item*>(pItem)->GetValue() / 10);
+
+                    // RotGrfFlyFrame: Rotation change here, SwFlyFrameAttrMgr aMgr is available
+                    aMgr.SetRotation(nOldRot, nNewRot, rRotation.GetUnrotatedSize());
+                }
+            }
+
+            if (bApplyNewPos)
+            {
+                aMgr.SetAbsPos(aNewPos);
+            }
             if ( bApplyNewSize )
             {
                 aMgr.SetSize( aNewSize );
             }
-            else
+            if (!bApplyNewPos && !bApplyNewSize)
             {
                 bUpdateMgr = false;
             }
@@ -428,12 +484,12 @@ void SwFrameShell::Execute(SfxRequest &rReq)
                 }
 
                 const SwRect &rPg = rSh.GetAnyCurRect(CurRectType::Page);
-                SwFormatFrameSize aFrameSize(ATT_VAR_SIZE, rPg.Width(), rPg.Height());
+                SwFormatFrameSize aFrameSize(SwFrameSize::Variable, rPg.Width(), rPg.Height());
                 aFrameSize.SetWhich(GetPool().GetWhich(SID_ATTR_PAGE_SIZE));
                 aSet.Put(aFrameSize);
 
                 const SwRect &rPr = rSh.GetAnyCurRect(CurRectType::PagePrt);
-                SwFormatFrameSize aPrtSize(ATT_VAR_SIZE, rPr.Width(), rPr.Height());
+                SwFormatFrameSize aPrtSize(SwFrameSize::Variable, rPr.Width(), rPr.Height());
                 aPrtSize.SetWhich(GetPool().GetWhich(FN_GET_PRINT_AREA));
                 aSet.Put(aPrtSize);
 
@@ -441,7 +497,7 @@ void SwFrameShell::Execute(SfxRequest &rReq)
                 aSet.SetParent( aMgr.GetAttrSet().GetParent() );
 
                 // On % values initialize size
-                SwFormatFrameSize& rSize = const_cast<SwFormatFrameSize&>(static_cast<const SwFormatFrameSize&>(aSet.Get(RES_FRM_SIZE)));
+                SwFormatFrameSize& rSize = const_cast<SwFormatFrameSize&>(aSet.Get(RES_FRM_SIZE));
                 if (rSize.GetWidthPercent() && rSize.GetWidthPercent() != SwFormatFrameSize::SYNCED)
                     rSize.SetWidth(rSh.GetAnyCurRect(CurRectType::FlyEmbedded).Width());
                 if (rSize.GetHeightPercent() && rSize.GetHeightPercent() != SwFormatFrameSize::SYNCED)
@@ -461,17 +517,15 @@ void SwFrameShell::Execute(SfxRequest &rReq)
                 FieldUnit eMetric = ::GetDfltMetric(dynamic_cast<SwWebView*>( &GetView()) != nullptr );
                 SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric) ));
                 SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-                assert(pFact);
                 ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateFrameTabDialog(
                                                         nSel & SelectionType::Graphic ? OUString("PictureDialog") :
                                                         nSel & SelectionType::Ole ? OUString("ObjectDialog"):
                                                                                         OUString("FrameDialog"),
                                                         GetView().GetViewFrame(),
-                                                        GetView().GetWindow(),
+                                                        GetView().GetFrameWeld(),
                                                         aSet,
                                                         false,
                                                         sDefPage));
-                assert(pDlg);
 
                 if ( nSlot == FN_DRAW_WRAP_DLG )
                 {
@@ -619,11 +673,8 @@ void SwFrameShell::Execute(SfxRequest &rReq)
             {
                 OUString aName(rSh.GetFlyName());
                 SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                assert(pFact);
                 ScopedVclPtr<AbstractSvxObjectNameDialog> pDlg(
-                    pFact->CreateSvxObjectNameDialog( aName ));
-
-                assert(pDlg);
+                    pFact->CreateSvxObjectNameDialog(GetView().GetFrameWeld(), aName));
 
                 if ( pDlg->Execute() == RET_OK )
                 {
@@ -645,11 +696,9 @@ void SwFrameShell::Execute(SfxRequest &rReq)
                 OUString aTitle(rSh.GetObjTitle());
 
                 SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                assert(pFact);
                 ScopedVclPtr<AbstractSvxObjectTitleDescDialog> pDlg(
-                    pFact->CreateSvxObjectTitleDescDialog( aTitle,
-                                                           aDescription ));
-                assert(pDlg);
+                    pFact->CreateSvxObjectTitleDescDialog(GetView().GetFrameWeld(),
+                        aTitle, aDescription ));
 
                 if ( pDlg->Execute() == RET_OK )
                 {
@@ -685,275 +734,333 @@ void SwFrameShell::GetState(SfxItemSet& rSet)
 {
     SwWrtShell &rSh = GetShell();
     bool bHtmlMode = 0 != ::GetHtmlMode(rSh.GetView().GetDocShell());
-    if (rSh.IsFrameSelected())
+    if (!rSh.IsFrameSelected())
+        return;
+
+    SfxItemSet aSet(
+        rSh.GetAttrPool(),
+        svl::Items<
+            RES_LR_SPACE, RES_UL_SPACE,
+            RES_PRINT, RES_HORI_ORIENT>{});
+    rSh.GetFlyFrameAttr( aSet );
+
+    bool bProtect = rSh.IsSelObjProtected(FlyProtectFlags::Pos) != FlyProtectFlags::NONE;
+    bool bParentCntProt = rSh.IsSelObjProtected( FlyProtectFlags::Content|FlyProtectFlags::Parent ) != FlyProtectFlags::NONE;
+
+    bProtect |= bParentCntProt;
+
+    const FrameTypeFlags eFrameType = rSh.GetFrameType(nullptr,true);
+    SwFlyFrameAttrMgr aMgr( false, &rSh, Frmmgr_Type::NONE, nullptr );
+
+    SfxWhichIter aIter( rSet );
+    sal_uInt16 nWhich = aIter.FirstWhich();
+    while ( nWhich )
     {
-        SfxItemSet aSet(
-            rSh.GetAttrPool(),
-            svl::Items<
-                RES_LR_SPACE, RES_UL_SPACE,
-                RES_PRINT, RES_HORI_ORIENT>{});
-        rSh.GetFlyFrameAttr( aSet );
-
-        bool bProtect = rSh.IsSelObjProtected(FlyProtectFlags::Pos) != FlyProtectFlags::NONE;
-        bool bParentCntProt = rSh.IsSelObjProtected( FlyProtectFlags::Content|FlyProtectFlags::Parent ) != FlyProtectFlags::NONE;
-
-        bProtect |= bParentCntProt;
-
-        const FrameTypeFlags eFrameType = rSh.GetFrameType(nullptr,true);
-        SwFlyFrameAttrMgr aMgr( false, &rSh, Frmmgr_Type::NONE );
-
-        SfxWhichIter aIter( rSet );
-        sal_uInt16 nWhich = aIter.FirstWhich();
-        while ( nWhich )
+        switch ( nWhich )
         {
-            switch ( nWhich )
+            case RES_FRM_SIZE:
             {
-                case RES_FRM_SIZE:
-                {
-                    SwFormatFrameSize aSz(aMgr.GetFrameSize());
-                    rSet.Put(aSz);
-                }
-                break;
-                case RES_VERT_ORIENT:
-                case RES_HORI_ORIENT:
-                case SID_ATTR_ULSPACE:
-                case SID_ATTR_LRSPACE:
-                case RES_LR_SPACE:
-                case RES_UL_SPACE:
-                case RES_PROTECT:
-                case RES_OPAQUE:
-                case RES_PRINT:
-                case RES_SURROUND:
-                {
-                    rSet.Put(aSet.Get(GetPool().GetWhich(nWhich)));
-                }
-                break;
-                case SID_OBJECT_ALIGN_LEFT   :
-                case SID_OBJECT_ALIGN_CENTER :
-                case SID_OBJECT_ALIGN_RIGHT  :
-                case FN_FRAME_ALIGN_HORZ_CENTER:
-                case FN_FRAME_ALIGN_HORZ_RIGHT:
-                case FN_FRAME_ALIGN_HORZ_LEFT:
-                    if ( (eFrameType & FrameTypeFlags::FLY_INCNT) ||
-                         bProtect ||
-                         ((nWhich == FN_FRAME_ALIGN_HORZ_CENTER  || nWhich == SID_OBJECT_ALIGN_CENTER) &&
-                          bHtmlMode ))
-                        rSet.DisableItem( nWhich );
-                break;
-                case FN_FRAME_ALIGN_VERT_ROW_TOP:
-                case FN_FRAME_ALIGN_VERT_ROW_CENTER:
-                case FN_FRAME_ALIGN_VERT_ROW_BOTTOM:
-                case FN_FRAME_ALIGN_VERT_CHAR_TOP:
-                case FN_FRAME_ALIGN_VERT_CHAR_CENTER:
-                case FN_FRAME_ALIGN_VERT_CHAR_BOTTOM:
-                    if ( !(eFrameType & FrameTypeFlags::FLY_INCNT) || bProtect
-                         || (bHtmlMode && FN_FRAME_ALIGN_VERT_CHAR_BOTTOM == nWhich) )
-                        rSet.DisableItem( nWhich );
-                break;
-
-                case SID_OBJECT_ALIGN_UP     :
-                case SID_OBJECT_ALIGN_MIDDLE :
-                case SID_OBJECT_ALIGN_DOWN :
-
-                case FN_FRAME_ALIGN_VERT_TOP:
-                case FN_FRAME_ALIGN_VERT_CENTER:
-                case FN_FRAME_ALIGN_VERT_BOTTOM:
-                    if ( bProtect || (bHtmlMode && eFrameType & FrameTypeFlags::FLY_ATCNT))
-                        rSet.DisableItem( nWhich );
-                    else
-                    {
-                        // These slots need different labels depending on whether they are anchored in a character
-                        // or on a paragraph/page etc.
-                        OUString sNewLabel;
-                        if (eFrameType & FrameTypeFlags::FLY_INCNT)
-                        {
-                            switch (nWhich)
-                            {
-                                case SID_OBJECT_ALIGN_UP     :
-                                case FN_FRAME_ALIGN_VERT_TOP:
-                                    sNewLabel = SwResId(STR_TOP_BASE);
-                                    break;
-                                case SID_OBJECT_ALIGN_MIDDLE :
-                                case FN_FRAME_ALIGN_VERT_CENTER:
-                                    sNewLabel = SwResId(STR_CENTER_BASE);
-                                    break;
-                                case SID_OBJECT_ALIGN_DOWN :
-                                case FN_FRAME_ALIGN_VERT_BOTTOM:
-                                    if(!bHtmlMode)
-                                        sNewLabel = SwResId(STR_BOTTOM_BASE);
-                                    else
-                                        rSet.DisableItem( nWhich );
-                                break;
-                            }
-                        }
-                        else
-                        {
-                            if (nWhich != FN_FRAME_ALIGN_VERT_TOP &&
-                                    nWhich != SID_OBJECT_ALIGN_UP )
-                            {
-                                if (aMgr.GetAnchor() == RndStdIds::FLY_AT_FLY)
-                                {
-                                    const SwFrameFormat* pFormat = rSh.IsFlyInFly();
-                                    if (pFormat)
-                                    {
-                                        const SwFormatFrameSize& rFrameSz = pFormat->GetFrameSize();
-                                        if (rFrameSz.GetHeightSizeType() != ATT_FIX_SIZE)
-                                        {
-                                            rSet.DisableItem( nWhich );
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            OUString aModuleName(vcl::CommandInfoProvider::GetModuleIdentifier(GetFrame()->GetFrame().GetFrameInterface()));
-                            switch (nWhich)
-                            {
-                                case SID_OBJECT_ALIGN_UP :
-                                case FN_FRAME_ALIGN_VERT_TOP:
-                                    sNewLabel = vcl::CommandInfoProvider::GetLabelForCommand(".uno:AlignTop", aModuleName);
-                                    break;
-                                case SID_OBJECT_ALIGN_MIDDLE:
-                                case FN_FRAME_ALIGN_VERT_CENTER:
-                                    sNewLabel = vcl::CommandInfoProvider::GetLabelForCommand(".uno:AlignVerticalCenter", aModuleName);
-                                    break;
-                                case SID_OBJECT_ALIGN_DOWN:
-                                case FN_FRAME_ALIGN_VERT_BOTTOM:
-                                    sNewLabel = vcl::CommandInfoProvider::GetLabelForCommand(".uno:AlignBottom", aModuleName);
-                                    break;
-                            }
-                        }
-                        if ( !sNewLabel.isEmpty() )
-                            rSet.Put( SfxStringItem( nWhich, sNewLabel ));
-                    }
-                break;
-                case SID_HYPERLINK_GETLINK:
-                {
-                    SvxHyperlinkItem aHLinkItem;
-                    const SfxPoolItem* pItem;
-
-                    SfxItemSet aURLSet(GetPool(), svl::Items<RES_URL, RES_URL>{});
-                    rSh.GetFlyFrameAttr( aURLSet );
-
-                    if(SfxItemState::SET == aURLSet.GetItemState(RES_URL, true, &pItem))
-                    {
-                        const SwFormatURL* pFormatURL = static_cast<const SwFormatURL*>(pItem);
-                        aHLinkItem.SetURL(pFormatURL->GetURL());
-                        aHLinkItem.SetTargetFrame(pFormatURL->GetTargetFrameName());
-                        aHLinkItem.SetName(rSh.GetFlyName());
-                    }
-
-                    aHLinkItem.SetInsertMode((SvxLinkInsertMode)(aHLinkItem.GetInsertMode() |
-                        (bHtmlMode ? HLINK_HTMLMODE : 0)));
-
-                    rSet.Put(aHLinkItem);
-                }
-                break;
-
-                case FN_FRAME_CHAIN:
-                {
-                    const SelectionType nSel = rSh.GetSelectionType();
-                    if (nSel & SelectionType::Graphic || nSel & SelectionType::Ole)
-                        rSet.DisableItem( FN_FRAME_CHAIN );
-                    else
-                    {
-                        const SwFrameFormat *pFormat = rSh.GetFlyFrameFormat();
-                        if ( bParentCntProt || rSh.GetView().GetEditWin().GetApplyTemplate() ||
-                             !pFormat || pFormat->GetChain().GetNext() )
-                        {
-                            rSet.DisableItem( FN_FRAME_CHAIN );
-                        }
-                        else
-                        {
-                            bool bChainMode = rSh.GetView().GetEditWin().IsChainMode();
-                            rSet.Put( SfxBoolItem( FN_FRAME_CHAIN, bChainMode ) );
-                        }
-                    }
-                }
-                break;
-                case FN_FRAME_UNCHAIN:
-                {
-                    const SelectionType nSel = rSh.GetSelectionType();
-                    if (nSel & SelectionType::Graphic || nSel & SelectionType::Ole)
-                        rSet.DisableItem( FN_FRAME_UNCHAIN );
-                    else
-                    {
-                        const SwFrameFormat *pFormat = rSh.GetFlyFrameFormat();
-                        if ( bParentCntProt || rSh.GetView().GetEditWin().GetApplyTemplate() ||
-                             !pFormat || !pFormat->GetChain().GetNext() )
-                        {
-                            rSet.DisableItem( FN_FRAME_UNCHAIN );
-                        }
-                    }
-                }
-                break;
-                case SID_FRAME_TO_TOP:
-                case SID_FRAME_TO_BOTTOM:
-                case FN_FRAME_UP:
-                case FN_FRAME_DOWN:
-                    if ( bParentCntProt )
-                        rSet.DisableItem( nWhich );
-                break;
-
-                case SID_ATTR_TRANSFORM:
+                const SwFormatFrameSize& aSz(aMgr.GetFrameSize());
+                rSet.Put(aSz);
+            }
+            break;
+            case RES_VERT_ORIENT:
+            case RES_HORI_ORIENT:
+            case SID_ATTR_ULSPACE:
+            case SID_ATTR_LRSPACE:
+            case RES_LR_SPACE:
+            case RES_UL_SPACE:
+            case RES_PROTECT:
+            case RES_OPAQUE:
+            case RES_PRINT:
+            case RES_SURROUND:
+            {
+                rSet.Put(aSet.Get(GetPool().GetWhich(nWhich)));
+            }
+            break;
+            case SID_OBJECT_ALIGN:
+            {
+                if ( bProtect )
+                    rSet.DisableItem( nWhich );
+            }
+            break;
+            case SID_OBJECT_ALIGN_LEFT   :
+            case SID_OBJECT_ALIGN_CENTER :
+            case SID_OBJECT_ALIGN_RIGHT  :
+            case FN_FRAME_ALIGN_HORZ_CENTER:
+            case FN_FRAME_ALIGN_HORZ_RIGHT:
+            case FN_FRAME_ALIGN_HORZ_LEFT:
+                if ( (eFrameType & FrameTypeFlags::FLY_INCNT) ||
+                     bProtect ||
+                     ((nWhich == FN_FRAME_ALIGN_HORZ_CENTER  || nWhich == SID_OBJECT_ALIGN_CENTER) &&
+                      bHtmlMode ))
                 {
                     rSet.DisableItem( nWhich );
                 }
-                break;
-
-                case SID_ATTR_TRANSFORM_PROTECT_SIZE:
+                else
                 {
-                    const FlyProtectFlags eProtection = rSh.IsSelObjProtected( FlyProtectFlags::Size );
-                    if ( ( eProtection & FlyProtectFlags::Content ) ||
-                         ( eProtection & FlyProtectFlags::Size ) )
+                    sal_Int16 nHoriOrient = -1;
+                    switch(nWhich)
                     {
-                        rSet.Put( SfxBoolItem( SID_ATTR_TRANSFORM_PROTECT_SIZE, true ) );
+                        case SID_OBJECT_ALIGN_LEFT:
+                            nHoriOrient = text::HoriOrientation::LEFT;
+                            break;
+                        case SID_OBJECT_ALIGN_CENTER:
+                            nHoriOrient = text::HoriOrientation::CENTER;
+                            break;
+                        case SID_OBJECT_ALIGN_RIGHT:
+                            nHoriOrient = text::HoriOrientation::RIGHT;
+                            break;
+                        default:
+                            break;
+                    }
+                    SwFormatHoriOrient aHOrient(aMgr.GetHoriOrient());
+                    if (nHoriOrient != -1)
+                        rSet.Put(SfxBoolItem(nWhich, nHoriOrient == aHOrient.GetHoriOrient()));
+                }
+            break;
+            case FN_FRAME_ALIGN_VERT_ROW_TOP:
+            case FN_FRAME_ALIGN_VERT_ROW_CENTER:
+            case FN_FRAME_ALIGN_VERT_ROW_BOTTOM:
+            case FN_FRAME_ALIGN_VERT_CHAR_TOP:
+            case FN_FRAME_ALIGN_VERT_CHAR_CENTER:
+            case FN_FRAME_ALIGN_VERT_CHAR_BOTTOM:
+                if ( !(eFrameType & FrameTypeFlags::FLY_INCNT) || bProtect
+                     || (bHtmlMode && FN_FRAME_ALIGN_VERT_CHAR_BOTTOM == nWhich) )
+                    rSet.DisableItem( nWhich );
+            break;
+
+            case SID_OBJECT_ALIGN_UP     :
+            case SID_OBJECT_ALIGN_MIDDLE :
+            case SID_OBJECT_ALIGN_DOWN :
+
+            case FN_FRAME_ALIGN_VERT_TOP:
+            case FN_FRAME_ALIGN_VERT_CENTER:
+            case FN_FRAME_ALIGN_VERT_BOTTOM:
+                if ( bProtect || (bHtmlMode && eFrameType & FrameTypeFlags::FLY_ATCNT))
+                    rSet.DisableItem( nWhich );
+                else
+                {
+                    // These slots need different labels depending on whether they are anchored in a character
+                    // or on a paragraph/page etc.
+                    OUString sNewLabel;
+                    if (eFrameType & FrameTypeFlags::FLY_INCNT)
+                    {
+                        switch (nWhich)
+                        {
+                            case SID_OBJECT_ALIGN_UP     :
+                            case FN_FRAME_ALIGN_VERT_TOP:
+                                sNewLabel = SwResId(STR_FRMUI_TOP_BASE);
+                                break;
+                            case SID_OBJECT_ALIGN_MIDDLE :
+                            case FN_FRAME_ALIGN_VERT_CENTER:
+                                sNewLabel = SwResId(STR_FRMUI_CENTER_BASE);
+                                break;
+                            case SID_OBJECT_ALIGN_DOWN :
+                            case FN_FRAME_ALIGN_VERT_BOTTOM:
+                                if(!bHtmlMode)
+                                    sNewLabel = SwResId(STR_FRMUI_BOTTOM_BASE);
+                                else
+                                    rSet.DisableItem( nWhich );
+                            break;
+                        }
                     }
                     else
                     {
-                        rSet.Put( SfxBoolItem( SID_ATTR_TRANSFORM_PROTECT_SIZE, false ) );
+                        if (nWhich != FN_FRAME_ALIGN_VERT_TOP &&
+                                nWhich != SID_OBJECT_ALIGN_UP )
+                        {
+                            if (aMgr.GetAnchor() == RndStdIds::FLY_AT_FLY)
+                            {
+                                const SwFrameFormat* pFormat = rSh.IsFlyInFly();
+                                if (pFormat)
+                                {
+                                    const SwFormatFrameSize& rFrameSz = pFormat->GetFrameSize();
+                                    if (rFrameSz.GetHeightSizeType() != SwFrameSize::Fixed)
+                                    {
+                                        rSet.DisableItem( nWhich );
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        OUString aModuleName(vcl::CommandInfoProvider::GetModuleIdentifier(GetFrame()->GetFrame().GetFrameInterface()));
+                        switch (nWhich)
+                        {
+                            case SID_OBJECT_ALIGN_UP :
+                            case FN_FRAME_ALIGN_VERT_TOP:
+                            {
+                                auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(".uno:AlignTop", aModuleName);
+                                sNewLabel = vcl::CommandInfoProvider::GetLabelForCommand(aProperties);
+                                break;
+                            }
+                            case SID_OBJECT_ALIGN_MIDDLE:
+                            case FN_FRAME_ALIGN_VERT_CENTER:
+                            {
+                                auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(".uno:AlignVerticalCenter", aModuleName);
+                                sNewLabel = vcl::CommandInfoProvider::GetLabelForCommand(aProperties);
+                                break;
+                            }
+                            case SID_OBJECT_ALIGN_DOWN:
+                            case FN_FRAME_ALIGN_VERT_BOTTOM:
+                            {
+                                auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(".uno:AlignBottom", aModuleName);
+                                sNewLabel = vcl::CommandInfoProvider::GetLabelForCommand(aProperties);
+                                break;
+                            }
+                        }
                     }
+                    if ( !sNewLabel.isEmpty() )
+                        rSet.Put( SfxStringItem( nWhich, sNewLabel ));
                 }
-                break;
+            break;
+            case SID_HYPERLINK_GETLINK:
+            {
+                SvxHyperlinkItem aHLinkItem;
+                const SfxPoolItem* pItem;
 
-                case SID_ATTR_TRANSFORM_WIDTH:
-                {
-                    rSet.Put( SfxUInt32Item( SID_ATTR_TRANSFORM_WIDTH, aMgr.GetSize().getWidth() ) );
-                }
-                break;
+                SfxItemSet aURLSet(GetPool(), svl::Items<RES_URL, RES_URL>{});
+                rSh.GetFlyFrameAttr( aURLSet );
 
-                case SID_ATTR_TRANSFORM_HEIGHT:
+                if(SfxItemState::SET == aURLSet.GetItemState(RES_URL, true, &pItem))
                 {
-                    rSet.Put( SfxUInt32Item( SID_ATTR_TRANSFORM_HEIGHT, aMgr.GetSize().getHeight() ) );
+                    const SwFormatURL* pFormatURL = static_cast<const SwFormatURL*>(pItem);
+                    aHLinkItem.SetURL(pFormatURL->GetURL());
+                    aHLinkItem.SetTargetFrame(pFormatURL->GetTargetFrameName());
+                    aHLinkItem.SetName(rSh.GetFlyName());
                 }
-                break;
 
-                case FN_FORMAT_FRAME_DLG:
-                {
-                    const SelectionType nSel = rSh.GetSelectionType();
-                    if ( bParentCntProt || nSel & SelectionType::Graphic)
-                        rSet.DisableItem( nWhich );
-                }
-                break;
-                // #i73249#
-                case FN_TITLE_DESCRIPTION_SHAPE:
-                case FN_NAME_SHAPE:
-                {
-                    SwWrtShell &rWrtSh = GetShell();
-                    SdrView* pSdrView = rWrtSh.GetDrawViewWithValidMarkList();
-                    if ( !pSdrView ||
-                         pSdrView->GetMarkedObjectCount() != 1 )
-                    {
-                        rSet.DisableItem( nWhich );
-                    }
-                }
-                break;
+                aHLinkItem.SetInsertMode(static_cast<SvxLinkInsertMode>(aHLinkItem.GetInsertMode() |
+                    (bHtmlMode ? HLINK_HTMLMODE : 0)));
 
-                default:
-                    /* do nothing */;
-                    break;
+                rSet.Put(aHLinkItem);
             }
-            nWhich = aIter.NextWhich();
+            break;
+
+            case FN_FRAME_CHAIN:
+            {
+                const SelectionType nSel = rSh.GetSelectionType();
+                if (nSel & SelectionType::Graphic || nSel & SelectionType::Ole)
+                    rSet.DisableItem( FN_FRAME_CHAIN );
+                else
+                {
+                    const SwFrameFormat *pFormat = rSh.GetFlyFrameFormat();
+                    if ( bParentCntProt || rSh.GetView().GetEditWin().GetApplyTemplate() ||
+                         !pFormat || pFormat->GetChain().GetNext() )
+                    {
+                        rSet.DisableItem( FN_FRAME_CHAIN );
+                    }
+                    else
+                    {
+                        bool bChainMode = rSh.GetView().GetEditWin().IsChainMode();
+                        rSet.Put( SfxBoolItem( FN_FRAME_CHAIN, bChainMode ) );
+                    }
+                }
+            }
+            break;
+            case FN_FRAME_UNCHAIN:
+            {
+                const SelectionType nSel = rSh.GetSelectionType();
+                if (nSel & SelectionType::Graphic || nSel & SelectionType::Ole)
+                    rSet.DisableItem( FN_FRAME_UNCHAIN );
+                else
+                {
+                    const SwFrameFormat *pFormat = rSh.GetFlyFrameFormat();
+                    if ( bParentCntProt || rSh.GetView().GetEditWin().GetApplyTemplate() ||
+                         !pFormat || !pFormat->GetChain().GetNext() )
+                    {
+                        rSet.DisableItem( FN_FRAME_UNCHAIN );
+                    }
+                }
+            }
+            break;
+            case SID_FRAME_TO_TOP:
+            case SID_FRAME_TO_BOTTOM:
+            case FN_FRAME_UP:
+            case FN_FRAME_DOWN:
+                if ( bParentCntProt )
+                    rSet.DisableItem( nWhich );
+            break;
+
+            case SID_ATTR_TRANSFORM:
+            {
+                rSet.DisableItem( nWhich );
+            }
+            break;
+
+            case SID_ATTR_TRANSFORM_PROTECT_SIZE:
+            {
+                const FlyProtectFlags eProtection = rSh.IsSelObjProtected( FlyProtectFlags::Size );
+                if ( ( eProtection & FlyProtectFlags::Content ) ||
+                     ( eProtection & FlyProtectFlags::Size ) )
+                {
+                    rSet.Put( SfxBoolItem( SID_ATTR_TRANSFORM_PROTECT_SIZE, true ) );
+                }
+                else
+                {
+                    rSet.Put( SfxBoolItem( SID_ATTR_TRANSFORM_PROTECT_SIZE, false ) );
+                }
+            }
+            break;
+
+            case SID_ATTR_TRANSFORM_WIDTH:
+            {
+                rSet.Put( SfxUInt32Item( SID_ATTR_TRANSFORM_WIDTH, aMgr.GetSize().getWidth() ) );
+            }
+            break;
+
+            case SID_ATTR_TRANSFORM_HEIGHT:
+            {
+                rSet.Put( SfxUInt32Item( SID_ATTR_TRANSFORM_HEIGHT, aMgr.GetSize().getHeight() ) );
+            }
+            break;
+
+            case FN_FORMAT_FRAME_DLG:
+            {
+                const SelectionType nSel = rSh.GetSelectionType();
+                if ( bParentCntProt || nSel & SelectionType::Graphic)
+                    rSet.DisableItem( nWhich );
+            }
+            break;
+            // #i73249#
+            case FN_TITLE_DESCRIPTION_SHAPE:
+            case FN_NAME_SHAPE:
+            {
+                SwWrtShell &rWrtSh = GetShell();
+                SdrView* pSdrView = rWrtSh.GetDrawViewWithValidMarkList();
+                if ( !pSdrView ||
+                     pSdrView->GetMarkedObjectCount() != 1 )
+                {
+                    rSet.DisableItem( nWhich );
+                }
+            }
+            break;
+
+            case FN_POSTIT:
+            {
+                SwFlyFrame* pFly = rSh.GetSelectedFlyFrame();
+                if (pFly)
+                {
+                    SwFrameFormat* pFormat = pFly->GetFormat();
+                    if (pFormat)
+                    {
+                        RndStdIds eAnchorId = pFormat->GetAnchor().GetAnchorId();
+                        // SwWrtShell::InsertPostIt() only works on as-char and at-char anchored
+                        // images.
+                        if (eAnchorId != RndStdIds::FLY_AS_CHAR && eAnchorId != RndStdIds::FLY_AT_CHAR)
+                        {
+                            rSet.DisableItem(nWhich);
+                        }
+                    }
+                }
+            }
+            break;
+
+            default:
+                /* do nothing */;
+                break;
         }
+        nWhich = aIter.NextWhich();
     }
 }
 
@@ -974,7 +1081,7 @@ SwFrameShell::~SwFrameShell()
     SwTransferable::ClearSelection( GetShell(), this );
 }
 
-void SwFrameShell::ExecFrameStyle(SfxRequest& rReq)
+void SwFrameShell::ExecFrameStyle(SfxRequest const & rReq)
 {
     SwWrtShell &rSh = GetShell();
     bool bDefault = false;
@@ -983,18 +1090,18 @@ void SwFrameShell::ExecFrameStyle(SfxRequest& rReq)
     // At first pick the default BoxItem out of the pool.
     // If unequal to regular box item, then it has already
     // been changed (New one is no default).
-    const SvxBoxItem* pPoolBoxItem = static_cast<const SvxBoxItem*>(::GetDfltAttr(RES_BOX));
+    const SvxBoxItem* pPoolBoxItem = ::GetDfltAttr(RES_BOX);
 
     const SfxItemSet *pArgs = rReq.GetArgs();
     SfxItemSet aFrameSet(rSh.GetAttrPool(), svl::Items<RES_BOX, RES_BOX>{});
 
     rSh.GetFlyFrameAttr( aFrameSet );
-    const SvxBoxItem& rBoxItem = static_cast<const SvxBoxItem&>(aFrameSet.Get(RES_BOX));
+    const SvxBoxItem& rBoxItem = aFrameSet.Get(RES_BOX);
 
     if (pPoolBoxItem == &rBoxItem)
         bDefault = true;
 
-    SvxBoxItem aBoxItem(rBoxItem);
+    std::unique_ptr<SvxBoxItem> aBoxItem(rBoxItem.Clone());
 
     SvxBorderLine aBorderLine;
     const SfxPoolItem *pItem = nullptr;
@@ -1007,16 +1114,20 @@ void SwFrameShell::ExecFrameStyle(SfxRequest& rReq)
             {
                 if (pArgs->GetItemState(RES_BOX, true, &pItem) == SfxItemState::SET)
                 {
-                    SvxBoxItem aNewBox(*static_cast<const SvxBoxItem *>(pItem));
+                    std::unique_ptr<SvxBoxItem> aNewBox(static_cast<SvxBoxItem*>(pItem->Clone()));
                     const SvxBorderLine* pBorderLine;
 
-                    if ((pBorderLine = aBoxItem.GetTop()) != nullptr)
+                    pBorderLine = aBoxItem->GetTop();
+                    if (pBorderLine != nullptr)
                         lcl_FrameGetMaxLineWidth(pBorderLine, aBorderLine);
-                    if ((pBorderLine = aBoxItem.GetBottom()) != nullptr)
+                    pBorderLine = aBoxItem->GetBottom();
+                    if (pBorderLine != nullptr)
                         lcl_FrameGetMaxLineWidth(pBorderLine, aBorderLine);
-                    if ((pBorderLine = aBoxItem.GetLeft()) != nullptr)
+                    pBorderLine = aBoxItem->GetLeft();
+                    if (pBorderLine != nullptr)
                         lcl_FrameGetMaxLineWidth(pBorderLine, aBorderLine);
-                    if ((pBorderLine = aBoxItem.GetRight()) != nullptr)
+                    pBorderLine = aBoxItem->GetRight();
+                    if (pBorderLine != nullptr)
                         lcl_FrameGetMaxLineWidth(pBorderLine, aBorderLine);
 
                     if(aBorderLine.GetOutWidth() == 0)
@@ -1032,20 +1143,19 @@ void SwFrameShell::ExecFrameStyle(SfxRequest& rReq)
 #endif
                     {
                         // TODO: should this copy 4 individual Dist instead?
-                        aNewBox.SetAllDistances(rBoxItem.GetSmallestDistance());
+                        aNewBox->SetAllDistances(rBoxItem.GetSmallestDistance());
                     }
 
-                    aBoxItem = aNewBox;
-                    SvxBorderLine aDestBorderLine;
+                    aBoxItem = std::move(aNewBox);
 
-                    if( aBoxItem.GetTop() != nullptr )
-                        aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::TOP);
-                    if( aBoxItem.GetBottom() != nullptr )
-                        aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::BOTTOM);
-                    if( aBoxItem.GetLeft() != nullptr )
-                        aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::LEFT);
-                    if( aBoxItem.GetRight() != nullptr )
-                        aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::RIGHT);
+                    if( aBoxItem->GetTop() != nullptr )
+                        aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::TOP);
+                    if( aBoxItem->GetBottom() != nullptr )
+                        aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::BOTTOM);
+                    if( aBoxItem->GetLeft() != nullptr )
+                        aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::LEFT);
+                    if( aBoxItem->GetRight() != nullptr )
+                        aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::RIGHT);
                 }
             }
             break;
@@ -1061,44 +1171,44 @@ void SwFrameShell::ExecFrameStyle(SfxRequest& rReq)
                     {
                         aBorderLine = *(pLineItem->GetLine());
 
-                        if (!aBoxItem.GetTop() && !aBoxItem.GetBottom() &&
-                            !aBoxItem.GetLeft() && !aBoxItem.GetRight())
+                        if (!aBoxItem->GetTop() && !aBoxItem->GetBottom() &&
+                            !aBoxItem->GetLeft() && !aBoxItem->GetRight())
                         {
-                            aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::TOP);
-                            aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::BOTTOM);
-                            aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::LEFT);
-                            aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::RIGHT);
+                            aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::TOP);
+                            aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::BOTTOM);
+                            aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::LEFT);
+                            aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::RIGHT);
                         }
                         else
                         {
-                            if( aBoxItem.GetTop() )
+                            if( aBoxItem->GetTop() )
                             {
-                                aBorderLine.SetColor( aBoxItem.GetTop()->GetColor() );
-                                aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::TOP);
+                                aBorderLine.SetColor( aBoxItem->GetTop()->GetColor() );
+                                aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::TOP);
                             }
-                            if( aBoxItem.GetBottom() )
+                            if( aBoxItem->GetBottom() )
                             {
-                                aBorderLine.SetColor( aBoxItem.GetBottom()->GetColor());
-                                aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::BOTTOM);
+                                aBorderLine.SetColor( aBoxItem->GetBottom()->GetColor());
+                                aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::BOTTOM);
                             }
-                            if( aBoxItem.GetLeft() )
+                            if( aBoxItem->GetLeft() )
                             {
-                                aBorderLine.SetColor( aBoxItem.GetLeft()->GetColor());
-                                aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::LEFT);
+                                aBorderLine.SetColor( aBoxItem->GetLeft()->GetColor());
+                                aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::LEFT);
                             }
-                            if( aBoxItem.GetRight() )
+                            if( aBoxItem->GetRight() )
                             {
-                                aBorderLine.SetColor(aBoxItem.GetRight()->GetColor());
-                                aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::RIGHT);
+                                aBorderLine.SetColor(aBoxItem->GetRight()->GetColor());
+                                aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::RIGHT);
                             }
                         }
                     }
                     else
                     {
-                        aBoxItem.SetLine(nullptr, SvxBoxItemLine::TOP);
-                        aBoxItem.SetLine(nullptr, SvxBoxItemLine::BOTTOM);
-                        aBoxItem.SetLine(nullptr, SvxBoxItemLine::LEFT);
-                        aBoxItem.SetLine(nullptr, SvxBoxItemLine::RIGHT);
+                        aBoxItem->SetLine(nullptr, SvxBoxItemLine::TOP);
+                        aBoxItem->SetLine(nullptr, SvxBoxItemLine::BOTTOM);
+                        aBoxItem->SetLine(nullptr, SvxBoxItemLine::LEFT);
+                        aBoxItem->SetLine(nullptr, SvxBoxItemLine::RIGHT);
                     }
                 }
             }
@@ -1110,37 +1220,37 @@ void SwFrameShell::ExecFrameStyle(SfxRequest& rReq)
                 {
                     const Color& rNewColor = static_cast<const SvxColorItem*>(pItem)->GetValue();
 
-                    if (!aBoxItem.GetTop() && !aBoxItem.GetBottom() &&
-                        !aBoxItem.GetLeft() && !aBoxItem.GetRight())
+                    if (!aBoxItem->GetTop() && !aBoxItem->GetBottom() &&
+                        !aBoxItem->GetLeft() && !aBoxItem->GetRight())
                     {
                         aBorderLine.SetColor( rNewColor );
-                        aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::TOP);
-                        aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::BOTTOM);
-                        aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::LEFT);
-                        aBoxItem.SetLine(&aBorderLine, SvxBoxItemLine::RIGHT);
+                        aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::TOP);
+                        aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::BOTTOM);
+                        aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::LEFT);
+                        aBoxItem->SetLine(&aBorderLine, SvxBoxItemLine::RIGHT);
                     }
                     else
                     {
-                        if ( aBoxItem.GetTop() )
-                            const_cast<SvxBorderLine*>(aBoxItem.GetTop())->SetColor( rNewColor );
-                        if ( aBoxItem.GetBottom() )
-                            const_cast<SvxBorderLine*>(aBoxItem.GetBottom())->SetColor( rNewColor );
-                        if ( aBoxItem.GetLeft() )
-                            const_cast<SvxBorderLine*>(aBoxItem.GetLeft())->SetColor( rNewColor );
-                        if ( aBoxItem.GetRight() )
-                            const_cast<SvxBorderLine*>(aBoxItem.GetRight())->SetColor( rNewColor );
+                        if ( aBoxItem->GetTop() )
+                            const_cast<SvxBorderLine*>(aBoxItem->GetTop())->SetColor( rNewColor );
+                        if ( aBoxItem->GetBottom() )
+                            const_cast<SvxBorderLine*>(aBoxItem->GetBottom())->SetColor( rNewColor );
+                        if ( aBoxItem->GetLeft() )
+                            const_cast<SvxBorderLine*>(aBoxItem->GetLeft())->SetColor( rNewColor );
+                        if ( aBoxItem->GetRight() )
+                            const_cast<SvxBorderLine*>(aBoxItem->GetRight())->SetColor( rNewColor );
                     }
                 }
             }
             break;
         }
     }
-    if (bDefault && (aBoxItem.GetTop() || aBoxItem.GetBottom() ||
-        aBoxItem.GetLeft() || aBoxItem.GetRight()))
+    if (bDefault && (aBoxItem->GetTop() || aBoxItem->GetBottom() ||
+        aBoxItem->GetLeft() || aBoxItem->GetRight()))
     {
-        aBoxItem.SetAllDistances(MIN_BORDER_DIST);
+        aBoxItem->SetAllDistances(MIN_BORDER_DIST);
     }
-    aFrameSet.Put( aBoxItem );
+    aFrameSet.Put( *aBoxItem );
     // Template AutoUpdate
     SwFrameFormat* pFormat = rSh.GetSelectedFrameFormat();
     if(pFormat && pFormat->IsAutoUpdateFormat())
@@ -1182,7 +1292,7 @@ void SwFrameShell::GetLineStyleState(SfxItemSet &rSet)
 
             rSh.GetFlyFrameAttr(aFrameSet);
 
-            const SvxBorderLine* pLine = static_cast<const SvxBoxItem&>(aFrameSet.Get(RES_BOX)).GetTop();
+            const SvxBorderLine* pLine = aFrameSet.Get(RES_BOX).GetTop();
             rSet.Put(SvxColorItem(pLine ? pLine->GetColor() : Color(), SID_FRAME_LINECOLOR));
         }
     }
@@ -1221,7 +1331,7 @@ void SwFrameShell::GetDrawAttrStateTextFrame(SfxItemSet &rSet)
     }
 }
 
-void SwFrameShell::ExecDrawAttrArgsTextFrame(SfxRequest& rReq)
+void SwFrameShell::ExecDrawAttrArgsTextFrame(SfxRequest const & rReq)
 {
     const SfxItemSet* pArgs = rReq.GetArgs();
     SwWrtShell& rSh = GetShell();
@@ -1263,7 +1373,7 @@ void SwFrameShell::ExecDrawAttrArgsTextFrame(SfxRequest& rReq)
     }
 }
 
-void SwFrameShell::ExecDrawDlgTextFrame(SfxRequest& rReq)
+void SwFrameShell::ExecDrawDlgTextFrame(SfxRequest const & rReq)
 {
     switch(rReq.GetSlot())
     {
@@ -1273,44 +1383,44 @@ void SwFrameShell::ExecDrawDlgTextFrame(SfxRequest& rReq)
 
             if(rSh.IsFrameSelected())
             {
-                SdrView* pView = rSh.GetDrawView();
-                SdrModel* pDoc = pView->GetModel();
+                SdrModel* pDoc = rSh.GetDrawView()->GetModel();
                 SfxItemSet aNewAttr(pDoc->GetItemPool());
 
                 // get attributes from FlyFrame
                 rSh.GetFlyFrameAttr(aNewAttr);
 
                 SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                assert(pFact);
-                ScopedVclPtr<AbstractSvxAreaTabDialog> pDlg(pFact->CreateSvxAreaTabDialog(
-                    nullptr,
+                VclPtr<AbstractSvxAreaTabDialog> pDlg(pFact->CreateSvxAreaTabDialog(
+                    GetView().GetFrameWeld(),
                     &aNewAttr,
                     pDoc,
                     false));
-                assert(pDlg);
 
-                if(RET_OK == pDlg->Execute())
-                {
-                    // set attributes at FlyFrame
-                    rSh.SetFlyFrameAttr(const_cast< SfxItemSet& >(*pDlg->GetOutputItemSet()));
-
-                    static sal_uInt16 aInval[] =
+                pDlg->StartExecuteAsync([pDlg, this](sal_Int32 nResult){
+                    if(nResult == RET_OK)
                     {
-                        SID_ATTR_FILL_STYLE,
-                        SID_ATTR_FILL_COLOR,
-                        SID_ATTR_FILL_TRANSPARENCE,
-                        SID_ATTR_FILL_FLOATTRANSPARENCE,
-                        0
-                    };
+                        // set attributes at FlyFrame
+                        GetShell().SetFlyFrameAttr(const_cast< SfxItemSet& >(*pDlg->GetOutputItemSet()));
 
-                    SfxBindings &rBnd = GetView().GetViewFrame()->GetBindings();
+                        static sal_uInt16 aInval[] =
+                        {
+                            SID_ATTR_FILL_STYLE,
+                            SID_ATTR_FILL_COLOR,
+                            SID_ATTR_FILL_TRANSPARENCE,
+                            SID_ATTR_FILL_FLOATTRANSPARENCE,
+                            0
+                        };
 
-                    rBnd.Invalidate(aInval);
-                    rBnd.Update(SID_ATTR_FILL_STYLE);
-                    rBnd.Update(SID_ATTR_FILL_COLOR);
-                    rBnd.Update(SID_ATTR_FILL_TRANSPARENCE);
-                    rBnd.Update(SID_ATTR_FILL_FLOATTRANSPARENCE);
-                }
+                        SfxBindings &rBnd = GetView().GetViewFrame()->GetBindings();
+
+                        rBnd.Invalidate(aInval);
+                        rBnd.Update(SID_ATTR_FILL_STYLE);
+                        rBnd.Update(SID_ATTR_FILL_COLOR);
+                        rBnd.Update(SID_ATTR_FILL_TRANSPARENCE);
+                        rBnd.Update(SID_ATTR_FILL_FLOATTRANSPARENCE);
+                    }
+                    pDlg->disposeOnce();
+                });
             }
 
             break;

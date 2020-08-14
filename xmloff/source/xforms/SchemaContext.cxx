@@ -23,13 +23,9 @@
 #include "SchemaSimpleTypeContext.hxx"
 
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltkmap.hxx>
-#include <xmloff/xmluconv.hxx>
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/xsd/WhiteSpaceTreatment.hpp>
 #include <com/sun/star/xforms/XDataTypeRepository.hpp>
 
 using com::sun::star::uno::Reference;
@@ -38,12 +34,12 @@ using com::sun::star::xforms::XDataTypeRepository;
 using namespace xmloff::token;
 
 
-static const SvXMLTokenMapEntry aAttributes[] =
+const SvXMLTokenMapEntry aAttributes[] =
 {
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aChildren[] =
+const SvXMLTokenMapEntry aChildren[] =
 {
     TOKEN_MAP_ENTRY( XSD, SIMPLETYPE ),
     XML_TOKEN_MAP_END
@@ -71,10 +67,10 @@ SvXMLImportContext* SchemaContext::HandleChild(
     const OUString& rLocalName,
     const Reference<XAttributeList>& )
 {
-    return ( nToken == XML_SIMPLETYPE )
-        ? new SchemaSimpleTypeContext( GetImport(), nPrefix, rLocalName,
-                                       mxRepository )
-        : new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
+    if ( nToken == XML_SIMPLETYPE )
+        return new SchemaSimpleTypeContext( GetImport(), nPrefix, rLocalName,
+                                       mxRepository );
+    return nullptr;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

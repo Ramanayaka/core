@@ -38,17 +38,7 @@ End
 
 #if defined (WITH_GALLERY_BUILD)
 
-GALLERY_FILELIST(arrows)
-GALLERY_FILELIST(computers)
-GALLERY_FILELIST(diagrams)
-GALLERY_FILELIST(education)
-GALLERY_FILELIST(environment)
-GALLERY_FILELIST(finance)
-GALLERY_FILELIST(people)
 GALLERY_FILELIST(sounds)
-GALLERY_FILELIST(symbols)
-GALLERY_FILELIST(transportation)
-GALLERY_FILELIST(txtshapes)
 
 #endif
 
@@ -77,4 +67,11 @@ File gid_File_Extra_Wordbook_sl
     TXT_FILE_BODY;
     Styles = (PACKED, FORCELANGUAGEPACK);
     Name = "sl.dic";
+End
+
+File gid_File_Extra_Wordbook_hu_AkH11
+    Dir = gid_Dir_Wordbook;
+    TXT_FILE_BODY;
+    Styles = (PACKED, FORCELANGUAGEPACK);
+    Name = "hu_AkH11.dic";
 End

@@ -21,8 +21,10 @@
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_GENERICTOOLBARCONTROLLER_HXX
 
 #include <svtools/toolboxcontroller.hxx>
+#include <com/sun/star/container/XIndexAccess.hpp>
 
 #include <tools/link.hxx>
+#include <vcl/menu.hxx>
 #include <vcl/vclptr.hxx>
 
 class PopupMenu;
@@ -31,7 +33,7 @@ class ToolBox;
 namespace framework
 {
 
-class GenericToolbarController : public svt::ToolboxController
+class GenericToolbarController final : public svt::ToolboxController
 {
     public:
         GenericToolbarController( const css::uno::Reference< css::uno::XComponentContext >& rxContext,
@@ -59,15 +61,15 @@ class GenericToolbarController : public svt::ToolboxController
             css::uno::Sequence< css::beans::PropertyValue >  aArgs;
         };
 
-    protected:
-        VclPtr<ToolBox>     m_pToolbar;
+    private:
+        VclPtr<ToolBox>     m_xToolbar;
         sal_uInt16          m_nID;
         bool                m_bEnumCommand : 1,
                             m_bMadeInvisible : 1;
         OUString            m_aEnumCommand;
 };
 
-class MenuToolbarController : public svt::ToolboxController
+class MenuToolbarController final : public svt::ToolboxController
 {
     css::uno::Reference< css::container::XIndexAccess > m_xMenuDesc;
     VclPtr<PopupMenu>                                   pMenu;

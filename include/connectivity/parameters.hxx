@@ -22,14 +22,6 @@
 #include <map>
 #include <vector>
 
-#include <com/sun/star/uno/XAggregation.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/form/XDatabaseParameterListener.hpp>
-#include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/task/XInteractionHandler.hpp>
-#include <com/sun/star/sdbc/XParameters.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
 
 #include <connectivity/dbtoolsdllapi.hxx>
@@ -37,6 +29,20 @@
 #include <unotools/sharedunocomponent.hxx>
 #include <comphelper/interfacecontainer2.hxx>
 
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::container { class XIndexAccess; }
+namespace com::sun::star::form { class XDatabaseParameterListener; }
+namespace com::sun::star::io { class XInputStream; }
+namespace com::sun::star::sdbc { class XArray; }
+namespace com::sun::star::sdbc { class XBlob; }
+namespace com::sun::star::sdbc { class XClob; }
+namespace com::sun::star::sdbc { class XConnection; }
+namespace com::sun::star::sdbc { class XDatabaseMetaData; }
+namespace com::sun::star::sdbc { class XParameters; }
+namespace com::sun::star::sdbc { class XRef; }
+namespace com::sun::star::task { class XInteractionHandler; }
+namespace com::sun::star::uno { class XAggregation; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace dbtools
 {
@@ -146,7 +152,7 @@ namespace dbtools
         /// clears the instance data
                 void    clearAllParameterInformation();
 
-        /// checks whether the parameter information are up-to-date
+        /// checks whether the parameter information is up-to-date
         bool    isUpToDate() const { return m_bUpToDate; }
 
         /** updates all parameter information represented by the instance
@@ -231,7 +237,7 @@ namespace dbtools
         void clearParameters();
 
     private:
-        /// checkes whether the object is already initialized, and not yet disposed
+        /// checks whether the object is already initialized, and not yet disposed
         bool    isAlive() const { return m_xComponent.get().is() && m_xInnerParamUpdate.is(); }
 
         /** creates a filter expression from a master-detail link where the detail denotes a column name
@@ -296,13 +302,19 @@ namespace dbtools
                 the detail part denotes a column name. In such a case, an additional filter needs to be created,
                 containing a new parameter.
 
+            @param  _out_rAdditionalHavingComponents
+                the additional having clause components which are required for master-detail relationships where
+                the detail part denotes a column name. In such a case, an additional filter needs to be created,
+                containing a new parameter.
+
             @precond
                 <member>m_aMasterFields</member> and <member>m_aDetailFields</member> have the same length
         */
         void    classifyLinks(
                     const css::uno::Reference< css::container::XNameAccess >& _rxParentColumns,
                     const css::uno::Reference< css::container::XNameAccess >& _rxColumns,
-                    ::std::vector< OUString >& _out_rAdditionalFilterComponents
+                    ::std::vector< OUString >& _out_rAdditionalFilterComponents,
+                    ::std::vector< OUString >& _out_rAdditionalHavingComponents
                 );
 
         /** finalizes our <member>m_pOuterParameters</member> so that it can be used for
@@ -381,7 +393,7 @@ namespace dbtools
 
         /** retrieves the active connection of the database component
         */
-        bool    getConnection(
+        void    getConnection(
                     css::uno::Reference< css::sdbc::XConnection >& /* [out] */ _rxConnection
                 );
 

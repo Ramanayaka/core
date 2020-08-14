@@ -21,11 +21,10 @@
 
 #include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/container/XNameReplace.hpp>
+#include <com/sun/star/util/XChangesBatch.hpp>
 #include <rtl/instance.hxx>
 #include <sal/log.hxx>
 #include <osl/mutex.hxx>
@@ -33,6 +32,7 @@
 #include <i18nlangtag/mslangid.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <tools/debug.hxx>
+#include <unotools/configitem.hxx>
 #include <unotools/lingucfg.hxx>
 #include <unotools/linguprops.hxx>
 #include <sal/macros.h>
@@ -68,7 +68,7 @@ static bool lcl_SetLocale( LanguageType &rLanguage, const uno::Any &rVal )
     return bSucc;
 }
 
-static inline const OUString lcl_LanguageToCfgLocaleStr( LanguageType nLanguage )
+static OUString lcl_LanguageToCfgLocaleStr( LanguageType nLanguage )
 {
     OUString aRes;
     if (LANGUAGE_SYSTEM != nLanguage)
@@ -148,7 +148,7 @@ class SvtLinguConfigItem : public utl::ConfigItem
     SvtLinguOptions     aOpt;
 
     static bool GetHdlByName( sal_Int32 &rnHdl, const OUString &rPropertyName, bool bFullPropName = false );
-    static const uno::Sequence< OUString > GetPropertyNames();
+    static uno::Sequence< OUString > GetPropertyNames();
     void                LoadOptions( const uno::Sequence< OUString > &rProperyNames );
     bool                SaveOptions( const uno::Sequence< OUString > &rProperyNames );
 
@@ -208,12 +208,18 @@ void SvtLinguConfigItem::ImplCommit()
     SaveOptions( GetPropertyNames() );
 }
 
-static struct NamesToHdl
+namespace {
+
+struct NamesToHdl
 {
     const char   *pFullPropName;      // full qualified name as used in configuration
     const char   *pPropName;          // property name only (atom) of above
-    sal_Int32   nHdl;               // numeric handle representing the property
-}aNamesToHdl[] =
+    sal_Int32    nHdl;               // numeric handle representing the property
+};
+
+}
+
+NamesToHdl const aNamesToHdl[] =
 {
 {/*  0 */    "General/DefaultLocale",                         UPN_DEFAULT_LOCALE,                    UPH_DEFAULT_LOCALE},
 {/*  1 */    "General/DictionaryList/ActiveDictionaries",     UPN_ACTIVE_DICTIONARIES,               UPH_ACTIVE_DICTIONARIES},
@@ -256,7 +262,7 @@ static struct NamesToHdl
 {            nullptr,                                            nullptr,                                      -1}
 };
 
-const uno::Sequence< OUString > SvtLinguConfigItem::GetPropertyNames()
+uno::Sequence< OUString > SvtLinguConfigItem::GetPropertyNames()
 {
     uno::Sequence< OUString > aNames;
 
@@ -267,7 +273,7 @@ const uno::Sequence< OUString > SvtLinguConfigItem::GetPropertyNames()
     sal_Int32 nIdx = 0;
     for (sal_Int32 i = 0; i < nMax;  ++i)
     {
-        const sal_Char *pFullPropName = aNamesToHdl[i].pFullPropName;
+        const char *pFullPropName = aNamesToHdl[i].pFullPropName;
         if (pFullPropName)
             pNames[ nIdx++ ] = OUString::createFromAscii( pFullPropName );
     }
@@ -281,7 +287,7 @@ bool SvtLinguConfigItem::GetHdlByName(
     const OUString &rPropertyName,
     bool bFullPropName )
 {
-    NamesToHdl *pEntry = &aNamesToHdl[0];
+    NamesToHdl const *pEntry = &aNamesToHdl[0];
 
     if (bFullPropName)
     {
@@ -394,7 +400,7 @@ uno::Any SvtLinguConfigItem::GetProperty( sal_Int32 nPropertyHandle ) const
     else if (pnVal)
         aRes <<= *pnVal;
     else if (plVal)
-        aRes <<= (sal_Int16)(sal_uInt16)*plVal;
+        aRes <<= static_cast<sal_Int16>(static_cast<sal_uInt16>(*plVal));
     else if (pnInt32Val)
         aRes <<= *pnInt32Val;
 
@@ -522,7 +528,7 @@ bool SvtLinguConfigItem::SetProperty( sal_Int32 nPropertyHandle, const uno::Any 
         sal_Int16 nNew = sal_Int16();
         if (rValue >>= nNew)
         {
-            if (nNew != (sal_uInt16)*plVal)
+            if (nNew != static_cast<sal_uInt16>(*plVal))
             {
                 *plVal = LanguageType(static_cast<sal_uInt16>(nNew));
                 bMod = true;
@@ -631,19 +637,20 @@ void SvtLinguConfigItem::LoadOptions( const uno::Sequence< OUString > &rProperyN
                     { rOpt.bROIsAutoReplaceUniqueEntries = pROStates[i]; rVal >>= rOpt.bIsAutoReplaceUniqueEntries;  } break;
 
                 case UPH_IS_DIRECTION_TO_SIMPLIFIED :
-                    { rOpt.bROIsDirectionToSimplified = pROStates[i];
-                            if( ! (rVal >>= rOpt.bIsDirectionToSimplified) )
+                    {
+                        rOpt.bROIsDirectionToSimplified = pROStates[i];
+                        if( ! (rVal >>= rOpt.bIsDirectionToSimplified) )
+                        {
+                            //default is locale dependent:
+                            if (MsLangId::isTraditionalChinese(rOpt.nDefaultLanguage_CJK))
                             {
-                                //default is locale dependent:
-                                if (MsLangId::isTraditionalChinese(rOpt.nDefaultLanguage_CJK))
-                                {
-                                    rOpt.bIsDirectionToSimplified = false;
-                                }
-                                else
-                                {
-                                    rOpt.bIsDirectionToSimplified = true;
-                                }
+                                rOpt.bIsDirectionToSimplified = false;
                             }
+                            else
+                            {
+                                rOpt.bIsDirectionToSimplified = true;
+                            }
+                        }
                     } break;
                 case UPH_IS_USE_CHARACTER_VARIANTS :
                     { rOpt.bROIsUseCharacterVariants = pROStates[i]; rVal >>= rOpt.bIsUseCharacterVariants;  } break;
@@ -796,7 +803,7 @@ bool SvtLinguConfigItem::IsReadOnly( sal_Int32 nPropertyHandle ) const
 static SvtLinguConfigItem *pCfgItem = nullptr;
 static sal_Int32           nCfgItemRefCount = 0;
 
-static const char aG_Dictionaries[] = "Dictionaries";
+const char aG_Dictionaries[] = "Dictionaries";
 
 SvtLinguConfig::SvtLinguConfig()
 {
@@ -831,12 +838,12 @@ SvtLinguConfigItem & SvtLinguConfig::GetConfigItem()
     return *pCfgItem;
 }
 
-uno::Sequence< OUString > SvtLinguConfig::GetNodeNames( const OUString &rNode )
+uno::Sequence< OUString > SvtLinguConfig::GetNodeNames( const OUString &rNode ) const
 {
     return GetConfigItem().GetNodeNames( rNode );
 }
 
-uno::Sequence< uno::Any > SvtLinguConfig::GetProperties( const uno::Sequence< OUString > &rNames )
+uno::Sequence< uno::Any > SvtLinguConfig::GetProperties( const uno::Sequence< OUString > &rNames ) const
 {
     return GetConfigItem().GetProperties(rNames);
 }
@@ -867,10 +874,9 @@ bool SvtLinguConfig::SetProperty( sal_Int32 nPropertyHandle, const uno::Any &rVa
     return GetConfigItem().SetProperty( nPropertyHandle, rValue );
 }
 
-bool SvtLinguConfig::GetOptions( SvtLinguOptions &rOptions ) const
+void SvtLinguConfig::GetOptions( SvtLinguOptions &rOptions ) const
 {
     rOptions = GetConfigItem().GetOptions();
-    return true;
 }
 
 bool SvtLinguConfig::IsReadOnly( const OUString &rPropertyName ) const
@@ -913,7 +919,7 @@ bool SvtLinguConfig::GetSupportedDictionaryFormatsFor(
         xNA.set( xNA->getByName( rSetEntry ), uno::UNO_QUERY_THROW );
         if (xNA->getByName( "SupportedDictionaryFormats" ) >>= rFormatList)
             bSuccess = true;
-        DBG_ASSERT( rFormatList.getLength(), "supported dictionary format list is empty" );
+        DBG_ASSERT( rFormatList.hasElements(), "supported dictionary format list is empty" );
     }
     catch (uno::Exception &)
     {
@@ -962,17 +968,16 @@ bool SvtLinguConfig::GetDictionaryEntry(
         bSuccess =  (xNA->getByName( "Locations" ) >>= aLocations)  &&
                     (xNA->getByName( "Format" )    >>= aFormatName) &&
                     (xNA->getByName( "Locales" )   >>= aLocaleNames);
-        DBG_ASSERT( aLocations.getLength(), "Dictionary locations not set" );
+        DBG_ASSERT( aLocations.hasElements(), "Dictionary locations not set" );
         DBG_ASSERT( !aFormatName.isEmpty(), "Dictionary format name not set" );
-        DBG_ASSERT( aLocaleNames.getLength(), "No locales set for the dictionary" );
+        DBG_ASSERT( aLocaleNames.hasElements(), "No locales set for the dictionary" );
 
         // if successful continue
         if (bSuccess)
         {
             // get file URL's for the locations
-            for (sal_Int32 i = 0;  i < aLocations.getLength();  ++i)
+            for (OUString& rLocation : aLocations)
             {
-                OUString &rLocation = aLocations[i];
                 if (!lcl_GetFileUrlFromOrigin( rLocation, rLocation ))
                     bSuccess = false;
             }
@@ -1008,7 +1013,7 @@ uno::Sequence< OUString > SvtLinguConfig::GetDisabledDictionaries() const
 }
 
 std::vector< SvtLinguConfigDictionaryEntry > SvtLinguConfig::GetActiveDictionariesByFormat(
-    const OUString &rFormatName )
+    const OUString &rFormatName ) const
 {
     std::vector< SvtLinguConfigDictionaryEntry > aRes;
     if (rFormatName.isEmpty())
@@ -1018,33 +1023,27 @@ std::vector< SvtLinguConfigDictionaryEntry > SvtLinguConfig::GetActiveDictionari
     {
         uno::Sequence< OUString > aElementNames;
         GetElementNamesFor( aG_Dictionaries, aElementNames );
-        sal_Int32 nLen = aElementNames.getLength();
-        const OUString *pElementNames = aElementNames.getConstArray();
 
         const uno::Sequence< OUString > aDisabledDics( GetDisabledDictionaries() );
 
         SvtLinguConfigDictionaryEntry aDicEntry;
-        for (sal_Int32 i = 0;  i < nLen;  ++i)
+        for (const OUString& rElementName : std::as_const(aElementNames))
         {
             // does dictionary match the format we are looking for?
-            if (GetDictionaryEntry( pElementNames[i], aDicEntry ) &&
+            if (GetDictionaryEntry( rElementName, aDicEntry ) &&
                 aDicEntry.aFormatName == rFormatName)
             {
                 // check if it is active or not
-                bool bDicIsActive = true;
-                for (sal_Int32 k = 0;  bDicIsActive && k < aDisabledDics.getLength();  ++k)
-                {
-                    if (aDisabledDics[k] == pElementNames[i])
-                        bDicIsActive = false;
-                }
+                bool bDicIsActive = std::none_of(aDisabledDics.begin(), aDisabledDics.end(),
+                    [&rElementName](const OUString& rDic) { return rDic == rElementName; });
 
                 if (bDicIsActive)
                 {
                     DBG_ASSERT( !aDicEntry.aFormatName.isEmpty(),
                             "FormatName not set" );
-                    DBG_ASSERT( aDicEntry.aLocations.getLength(),
+                    DBG_ASSERT( aDicEntry.aLocations.hasElements(),
                             "Locations not set" );
-                    DBG_ASSERT( aDicEntry.aLocaleNames.getLength(),
+                    DBG_ASSERT( aDicEntry.aLocaleNames.hasElements(),
                             "Locales not set" );
                     aRes.push_back( aDicEntry );
                 }
@@ -1118,7 +1117,7 @@ OUString SvtLinguConfig::GetVendorImageUrl_Impl(
     }
     catch (uno::Exception &)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("unotools");
     }
     return aRes;
 }
@@ -1130,9 +1129,7 @@ OUString SvtLinguConfig::GetSpellAndGrammarContextSuggestionImage(
     OUString   aRes;
     if (!rServiceImplName.isEmpty())
     {
-        OUString aImageName( "SpellAndGrammarContextMenuSuggestionImage" );
-        OUString aPath( GetVendorImageUrl_Impl( rServiceImplName, aImageName ) );
-        aRes = aPath;
+        aRes = GetVendorImageUrl_Impl( rServiceImplName, "SpellAndGrammarContextMenuSuggestionImage" );
     }
     return aRes;
 }
@@ -1144,9 +1141,7 @@ OUString SvtLinguConfig::GetSpellAndGrammarContextDictionaryImage(
     OUString   aRes;
     if (!rServiceImplName.isEmpty())
     {
-        OUString aImageName( "SpellAndGrammarContextMenuDictionaryImage" );
-        OUString aPath( GetVendorImageUrl_Impl( rServiceImplName, aImageName ) );
-        aRes = aPath;
+        aRes = GetVendorImageUrl_Impl( rServiceImplName, "SpellAndGrammarContextMenuDictionaryImage" );
     }
     return aRes;
 }
@@ -1175,7 +1170,7 @@ bool SvtLinguConfig::HasGrammarChecker() const
         xNA.set( xNA->getByName("GrammarCheckerList"), uno::UNO_QUERY_THROW );
 
         uno::Sequence< OUString > aElementNames( xNA->getElementNames() );
-        bRes = aElementNames.getLength() > 0;
+        bRes = aElementNames.hasElements();
     }
     catch (const uno::Exception&)
     {

@@ -37,7 +37,6 @@ officecfg_XCSFILES := \
     Office/Linguistic \
     Office/Logging \
     Office/Math \
-    Office/OOoImprovement/Settings \
     Office/OptionsDialog \
     Office/Paths \
     Office/PresentationMinimizer \
@@ -47,7 +46,6 @@ officecfg_XCSFILES := \
     Office/ReportDesign \
     Office/Scripting \
     Office/Security \
-    Office/TabBrowse \
     Office/TableWizard \
     Office/TypeDetection \
     Office/UI \
@@ -78,9 +76,9 @@ officecfg_XCSFILES := \
     Office/UI/GenericCommands \
     Office/UI/GlobalSettings \
     Office/UI/ImpressWindowState \
+    Office/UI/Infobar \
     Office/UI/MathCommands \
     Office/UI/MathWindowState \
-    Office/UI/Notebookbar \
     Office/UI/ReportCommands \
     Office/UI/Sidebar \
     Office/UI/StartModuleCommands \

@@ -20,12 +20,10 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_DOCFUNC_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_DOCFUNC_HXX
 
-#include <tools/link.hxx>
-#include "global.hxx"
+#include <tools/solar.h>
+#include <global.hxx>
 #include <formula/grammar.hxx>
-#include "tabbgcolor.hxx"
-#include "token.hxx"
-#include "rangenam.hxx"
+#include <tabbgcolor.hxx>
 
 #include <memory>
 #include <vector>
@@ -47,6 +45,9 @@ struct ScCellMergeOption;
 class ScConditionalFormat;
 class ScConditionalFormatList;
 class ScUndoRemoveMerge;
+class ScRangeName;
+class ScPostIt;
+
 enum class TransliterationFlags;
 enum class CreateNameFlags;
 namespace sc {
@@ -69,10 +70,10 @@ protected:
 public:
     virtual         ~ScDocFunc() {}
 
-    DECL_LINK( NotifyDrawUndo, SdrUndoAction*, void );
+    void            NotifyDrawUndo(std::unique_ptr<SdrUndoAction>);
 
     // for grouping multiple operations into one with a new name
-    void            EnterListAction( sal_uInt16 nNameResId );
+    void            EnterListAction(const char* pNameResId);
     void            EndListAction();
 
     bool            DetectiveAddPred(const ScAddress& rPos);
@@ -104,19 +105,21 @@ public:
     bool SetStringOrEditCell( const ScAddress& rPos, const OUString& rStr, bool bInteraction );
 
     /**
-     * This method takes ownership of the formula cell instance. The caller
+     * Below two methods take ownership of the formula cell instance(s). The caller
      * must not delete it after passing it to this call.
      */
     bool SetFormulaCell( const ScAddress& rPos, ScFormulaCell* pCell, bool bInteraction );
+    bool SetFormulaCells( const ScAddress& rPos, std::vector<ScFormulaCell*>& rCells, bool bInteraction );
     void PutData( const ScAddress& rPos, ScEditEngineDefaulter& rEngine, bool bApi );
     bool SetCellText(
         const ScAddress& rPos, const OUString& rText, bool bInterpret, bool bEnglish, bool bApi,
         const formula::FormulaGrammar::Grammar eGrammar );
 
-    bool            ShowNote( const ScAddress& rPos, bool bShow );
+    SC_DLLPUBLIC bool ShowNote( const ScAddress& rPos, bool bShow );
 
     void            SetNoteText( const ScAddress& rPos, const OUString& rNoteText, bool bApi );
     void            ReplaceNote( const ScAddress& rPos, const OUString& rNoteText, const OUString* pAuthor, const OUString* pDate, bool bApi );
+    SC_DLLPUBLIC ScPostIt* ImportNote( const ScAddress& rPos, const OUString& rNoteText );
 
     bool            ApplyAttributes( const ScMarkData& rMark, const ScPatternAttr& rPattern,
                                            bool bApi );
@@ -193,7 +196,8 @@ public:
     bool            UnmergeCells( const ScRange& rRange, bool bRecord, ScUndoRemoveMerge* pUndoRemoveMerge );
     bool            UnmergeCells( const ScCellMergeOption& rOption, bool bRecord, ScUndoRemoveMerge* pUndoRemoveMerge );
 
-    void            SetNewRangeNames( ScRangeName* pNewRanges, bool bModifyDoc, SCTAB nTab = -1 );     // takes ownership of pNewRanges //nTab = -1 for local range names
+    // takes ownership of pNewRanges, nTab = -1 for local range names
+    void            SetNewRangeNames( std::unique_ptr<ScRangeName> pNewRanges, bool bModifyDoc, SCTAB nTab );
     void            ModifyRangeNames( const ScRangeName& rNewRanges, SCTAB nTab = -1 );
     /**
      * Modify all range names, global scope names as well as sheet local ones,
@@ -215,7 +219,7 @@ public:
      * @param nOldIndex If 0 don't delete an old format
      * @param pFormat if NULL only delete an old format
      */
-    void ReplaceConditionalFormat( sal_uLong nOldIndex, ScConditionalFormat* pFormat, SCTAB nTab, const ScRangeList& rRanges );
+    void ReplaceConditionalFormat( sal_uLong nOldIndex, std::unique_ptr<ScConditionalFormat> pFormat, SCTAB nTab, const ScRangeList& rRanges );
 
     /**
      * Sets or replaces the conditional format list of a table

@@ -20,7 +20,6 @@
 #include <com/sun/star/document/EventObject.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
@@ -30,8 +29,7 @@
 #include <comphelper/interfacecontainer2.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/mutex.hxx>
-#include <rtl/ref.hxx>
-#include <svx/unoprov.hxx>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -235,7 +233,7 @@ sal_Bool SAL_CALL SvxShapeCollection::hasElements()
 // XServiceInfo
 OUString SAL_CALL SvxShapeCollection::getImplementationName()
 {
-    return OUString("com.sun.star.drawing.SvxShapeCollection");
+    return "com.sun.star.drawing.SvxShapeCollection";
 }
 
 sal_Bool SAL_CALL SvxShapeCollection::supportsService( const OUString& ServiceName )
@@ -245,15 +243,12 @@ sal_Bool SAL_CALL SvxShapeCollection::supportsService( const OUString& ServiceNa
 
 uno::Sequence< OUString > SAL_CALL SvxShapeCollection::getSupportedServiceNames()
 {
-    uno::Sequence< OUString > aSeq(2);
-    aSeq.getArray()[0] = "com.sun.star.drawing.Shapes";
-    aSeq.getArray()[1] = "com.sun.star.drawing.ShapeCollection";
-    return aSeq;
+    return { "com.sun.star.drawing.Shapes", "com.sun.star.drawing.ShapeCollection" };
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_drawing_SvxShapeCollection_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

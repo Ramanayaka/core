@@ -17,32 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifdef _MSC_VER
-#pragma warning( disable: 4668 )
-#endif
-
 #include <sal/types.h>
 #include <sal/macros.h>
 
-#include <onlinecheck.hxx>
+#include "onlinecheck.hxx"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <wininet.h>
 
-#ifdef UNICODE
-#define _UNICODE
-#endif
-#include <tchar.h>
-
 // #i71984
-extern "C" bool SAL_CALL WNT_hasInternetConnection()
+extern "C" bool WNT_hasInternetConnection()
 {
     DWORD   dwFlags;
-    TCHAR   szConnectionName[1024];
+    WCHAR   szConnectionName[1024];
 
     __try {
-    BOOL fIsConnected = InternetGetConnectedStateEx(
+    bool fIsConnected = InternetGetConnectedStateExW(
         &dwFlags,
         szConnectionName,
         SAL_N_ELEMENTS(szConnectionName),

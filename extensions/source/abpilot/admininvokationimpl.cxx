@@ -19,16 +19,15 @@
 
 #include "admininvokationimpl.hxx"
 #include <tools/debug.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/sdbc/DriverManager.hpp>
+#include <comphelper/propertysequence.hxx>
+#include <strings.hrc>
+#include <componentmodule.hxx>
 #include <vcl/stdtext.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include "abpresid.hrc"
-#include "componentmodule.hxx"
-#include <vcl/waitobj.hxx>
-
+#include <vcl/weld.hxx>
+#include <osl/diagnose.h>
 
 namespace abp
 {
@@ -42,15 +41,15 @@ namespace abp
     using namespace ::com::sun::star::sdbc;
 
     OAdminDialogInvokation::OAdminDialogInvokation(const Reference< XComponentContext >& _rxContext,
-                    const css::uno::Reference< css::beans::XPropertySet >& _rxDataSource
-                    , vcl::Window* _pMessageParent)
+                    const css::uno::Reference< css::beans::XPropertySet >& _rxDataSource,
+                    weld::Window* _pMessageParent)
         :m_xContext(_rxContext)
         ,m_xDataSource(_rxDataSource)
         ,m_pMessageParent(_pMessageParent)
     {
         DBG_ASSERT(m_xContext.is(), "OAdminDialogInvokation::OAdminDialogInvokation: invalid service factory!");
         DBG_ASSERT(m_xDataSource.is(), "OAdminDialogInvokation::OAdminDialogInvokation: invalid preferred name!");
-        DBG_ASSERT(m_pMessageParent, "OAdminDialogInvokation::OAdminDialogInvokation: invalid message parent!");
+        assert(m_pMessageParent && "OAdminDialogInvokation::OAdminDialogInvokation: invalid message parent!");
     }
 
 
@@ -66,26 +65,20 @@ namespace abp
             static const char s_sDataSourceTypeChangeDialog[] = "com.sun.star.sdb.DataSourceTypeChangeDialog";
 
             // the parameters for the call
-            Sequence< Any > aArguments(3);
-            Any* pArguments = aArguments.getArray();
+            Sequence<Any> aArguments(comphelper::InitAnyPropertySequence(
+            {
+                {"ParentWindow", Any(m_pMessageParent->GetXWindow())},
+                {"Title", Any(compmodule::ModuleRes(RID_STR_ADMINDIALOGTITLE))},
+                {"InitialSelection", Any(m_xDataSource)}, // the name of the new data source
+            }));
 
-            // the parent window
-            Reference< XWindow > xDialogParent = VCLUnoHelper::GetInterface(m_pMessageParent);
-            *pArguments++ <<= PropertyValue("ParentWindow", -1, makeAny(xDialogParent), PropertyState_DIRECT_VALUE);
-
-            // the title of the dialog
-            OUString sAdminDialogTitle(compmodule::ModuleRes(RID_STR_ADMINDIALOGTITLE));
-            *pArguments++ <<= PropertyValue("Title", -1, makeAny(sAdminDialogTitle), PropertyState_DIRECT_VALUE);
-
-            // the name of the new data source
-            *pArguments++ <<= PropertyValue("InitialSelection", -1, makeAny(m_xDataSource), PropertyState_DIRECT_VALUE);
 
             // create the dialog
             Reference< XExecutableDialog > xDialog;
             {
                 // creating the dialog service is potentially expensive (if all the libraries invoked need to be loaded)
                 // so we display a wait cursor
-                WaitObject aWaitCursor(m_pMessageParent);
+                weld::WaitObject aWaitCursor(m_pMessageParent);
                 Reference<XInterface> x = m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(s_sDataSourceTypeChangeDialog, aArguments, m_xContext);
                 xDialog.set( x, UNO_QUERY );
 
@@ -96,7 +89,7 @@ namespace abp
                 // As this wizard is intended to run on the first office start, it is very likely that the
                 // context needs to be freshly created
                 // Thus, we access the context here (within the WaitCursor), which means the user sees a waitcursor
-                // while his/her office blocks a few seconds ....
+                // while his/her office blocks a few seconds...
                 DriverManager::create( m_xContext );
             }
 

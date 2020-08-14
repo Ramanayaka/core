@@ -22,23 +22,13 @@
 
 #include "PresenterPaneBase.hxx"
 #include "PresenterSprite.hxx"
-#include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/awt/XMouseListener.hpp>
-#include <com/sun/star/awt/XMouseMotionListener.hpp>
-#include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/drawing/XPresenterHelper.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
-#include <com/sun/star/drawing/framework/XPaneBorderPainter.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
 #include <com/sun/star/rendering/XSpriteCanvas.hpp>
-#include <cppuhelper/basemutex.hxx>
 #include <rtl/ref.hxx>
 #include <memory>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 /** Use a sprite to display the contents and the border of a pane.  Windows
     are still used to define the locations and sizes of both the border and
@@ -56,8 +46,6 @@ public:
     virtual void SAL_CALL disposing() override;
 
     using PresenterPaneBase::disposing;
-
-    const std::shared_ptr<PresenterSprite>& GetSprite();
 
     // XPane
 
@@ -80,17 +68,15 @@ public:
     virtual void SAL_CALL windowPaint (const css::awt::PaintEvent& rEvent) override;
 
 private:
-    css::uno::Reference<css::awt::XWindow> mxParentWindow;
     css::uno::Reference<css::rendering::XSpriteCanvas> mxParentCanvas;
     std::shared_ptr<PresenterSprite> mpSprite;
 
     virtual void CreateCanvases (
-        const css::uno::Reference<css::awt::XWindow>& rxParentWindow,
         const css::uno::Reference<css::rendering::XSpriteCanvas>& rxParentCanvas) override;
     void UpdateCanvases();
 };
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 #endif
 

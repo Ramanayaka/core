@@ -20,11 +20,12 @@
 #define INCLUDED_SVX_SDRUNDOMANAGER_HXX
 
 #include <svx/svxdllapi.h>
-#include <sal/types.h>
 #include <editeng/editund2.hxx>
 #include <tools/link.hxx>
 
-class SVX_DLLPUBLIC SdrUndoManager : public EditUndoManager
+class SfxObjectShell;
+
+class SVXCORE_DLLPUBLIC SdrUndoManager : public EditUndoManager
 {
 private:
     using EditUndoManager::Undo;
@@ -34,9 +35,11 @@ private:
     SfxUndoAction*  mpLastUndoActionBeforeTextEdit;
     bool            mbEndTextEditTriggeredFromUndo;
 
+    SfxObjectShell* m_pDocSh;
 protected:
     // call to check for TextEdit active
     bool isTextEditActive() const;
+    virtual void EmptyActionsChanged() override;
 
 public:
     SdrUndoManager();
@@ -58,7 +61,8 @@ public:
     // check from outside if we are inside a callback for ending text edit. This
     // is needed to detect inside end text edit if it is a regular one or triggered
     // by a last undo during text edit
-    bool isEndTextEditTriggeredFromUndo() { return mbEndTextEditTriggeredFromUndo; }
+    bool isEndTextEditTriggeredFromUndo() const { return mbEndTextEditTriggeredFromUndo; }
+    void SetDocShell(SfxObjectShell* pDocShell);
 };
 
 #endif // INCLUDED_SVX_SDRUNDOMANAGER_HXX

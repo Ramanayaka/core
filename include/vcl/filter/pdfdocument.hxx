@@ -15,19 +15,29 @@
 #include <map>
 #include <vector>
 
-#include <com/sun/star/security/XCertificate.hpp>
-
 #include <tools/stream.hxx>
-
 #include <vcl/dllapi.h>
 
-namespace vcl
-{
-namespace filter
-{
+#include <vcl/filter/pdfobjectcontainer.hxx>
 
+namespace com::sun::star::security
+{
+class XCertificate;
+}
+
+namespace com::sun::star::uno
+{
+template <class interface_type> class Reference;
+}
+
+namespace tools
+{
+class Rectangle;
+}
+
+namespace vcl::filter
+{
 class PDFTrailerElement;
-class PDFHexStringElement;
 class PDFReferenceElement;
 class PDFDocument;
 class PDFDictionaryElement;
@@ -38,13 +48,21 @@ class PDFNumberElement;
 /// A byte range in a PDF file.
 class VCL_DLLPUBLIC PDFElement
 {
+    bool m_bVisiting = false;
+    bool m_bParsing = false;
+
 public:
+    PDFElement() = default;
     virtual bool Read(SvStream& rStream) = 0;
-    virtual ~PDFElement() { }
+    virtual ~PDFElement() = default;
+    void setVisiting(bool bVisiting) { m_bVisiting = bVisiting; }
+    bool alreadyVisiting() const { return m_bVisiting; }
+    void setParsing(bool bParsing) { m_bParsing = bParsing; }
+    bool alreadyParsing() const { return m_bParsing; }
 };
 
 /// Indirect object: something with a unique ID.
-class VCL_DLLPUBLIC PDFObjectElement : public PDFElement
+class VCL_DLLPUBLIC PDFObjectElement final : public PDFElement
 {
     /// The document owning this element.
     PDFDocument& m_rDoc;
@@ -67,9 +85,9 @@ class VCL_DLLPUBLIC PDFObjectElement : public PDFElement
     /// The stream of this object, used when this is an object stream.
     PDFStreamElement* m_pStreamElement;
     /// Objects of an object stream.
-    std::vector< std::unique_ptr<PDFObjectElement> > m_aStoredElements;
+    std::vector<std::unique_ptr<PDFObjectElement>> m_aStoredElements;
     /// Elements of an object in an object stream.
-    std::vector< std::unique_ptr<PDFElement> > m_aElements;
+    std::vector<std::unique_ptr<PDFElement>> m_aElements;
     /// Uncompressed buffer of an object in an object stream.
     std::unique_ptr<SvMemoryStream> m_pStreamBuffer;
     /// List of all reference elements inside this object's dictionary and
@@ -99,13 +117,13 @@ public:
     /// Access to the stream of the object, if it has any.
     PDFStreamElement* GetStream() const;
     void SetArrayOffset(sal_uInt64 nArrayOffset);
-    sal_uInt64 GetArrayOffset();
+    sal_uInt64 GetArrayOffset() const;
     void SetArrayLength(sal_uInt64 nArrayLength);
-    sal_uInt64 GetArrayLength();
+    sal_uInt64 GetArrayLength() const;
     PDFArrayElement* GetArray() const;
     /// Parse objects stored in this object stream.
     void ParseStoredObjects();
-    std::vector< std::unique_ptr<PDFElement> >& GetStoredElements();
+    std::vector<std::unique_ptr<PDFElement>>& GetStoredElements();
     SvMemoryStream* GetStreamBuffer() const;
     void SetStreamBuffer(std::unique_ptr<SvMemoryStream>& pStreamBuffer);
     PDFDocument& GetDocument();
@@ -117,11 +135,12 @@ class VCL_DLLPUBLIC PDFArrayElement : public PDFElement
     std::vector<PDFElement*> m_aElements;
     /// The object that contains this array.
     PDFObjectElement* m_pObject;
+
 public:
     PDFArrayElement(PDFObjectElement* pObject);
     bool Read(SvStream& rStream) override;
     void PushBack(PDFElement* pElement);
-    const std::vector<PDFElement*>& GetElements();
+    const std::vector<PDFElement*>& GetElements() const;
 };
 
 /// Reference object: something with a unique ID.
@@ -136,7 +155,8 @@ class VCL_DLLPUBLIC PDFReferenceElement : public PDFElement
     PDFNumberElement& m_rObject;
 
 public:
-    PDFReferenceElement(PDFDocument& rDoc, PDFNumberElement& rObject, PDFNumberElement& rGeneration);
+    PDFReferenceElement(PDFDocument& rDoc, PDFNumberElement& rObject,
+                        PDFNumberElement const& rGeneration);
     bool Read(SvStream& rStream) override;
     /// Assuming the reference points to a number object, return its value.
     double LookupNumber(SvStream& rStream) const;
@@ -164,19 +184,18 @@ public:
 };
 
 /// Name object: a key string.
-class VCL_DLLPUBLIC PDFNameElement : public PDFElement
+class VCL_DLLPUBLIC PDFNameElement final : public PDFElement
 {
     OString m_aValue;
     /// Offset after the '/' token.
-    sal_uInt64 m_nLocation;
-    /// Length till the next token start.
-    sal_uInt64 m_nLength;
+    sal_uInt64 m_nLocation = 0;
+
 public:
     PDFNameElement();
     bool Read(SvStream& rStream) override;
     const OString& GetValue() const;
     sal_uInt64 GetLocation() const;
-    sal_uInt64 GetLength() const;
+    static sal_uInt64 GetLength() { return 0; }
 };
 
 /// Dictionary object: a set key-value pairs.
@@ -195,8 +214,10 @@ public:
     PDFDictionaryElement();
     bool Read(SvStream& rStream) override;
 
-    static size_t Parse(const std::vector< std::unique_ptr<PDFElement> >& rElements, PDFElement* pThis, std::map<OString, PDFElement*>& rDictionary);
-    static PDFElement* Lookup(const std::map<OString, PDFElement*>& rDictionary, const OString& rKey);
+    static size_t Parse(const std::vector<std::unique_ptr<PDFElement>>& rElements,
+                        PDFElement* pThis, std::map<OString, PDFElement*>& rDictionary);
+    static PDFElement* Lookup(const std::map<OString, PDFElement*>& rDictionary,
+                              const OString& rKey);
     void SetKeyOffset(const OString& rKey, sal_uInt64 nOffset);
     sal_uInt64 GetKeyOffset(const OString& rKey) const;
     void SetKeyValueLength(const OString& rKey, sal_uInt64 nLength);
@@ -227,40 +248,55 @@ enum class XRefEntryType
     FREE,
     /// xref "n" or xref stream "1".
     NOT_COMPRESSED,
-    /// xref stream "2.
+    /// xref stream "2".
     COMPRESSED
 };
 
 /// An entry in a cross-reference stream.
-struct XRefEntry
+class XRefEntry
 {
-    XRefEntryType m_eType;
+    XRefEntryType m_eType = XRefEntryType::NOT_COMPRESSED;
     /**
      * Non-compressed: The byte offset of the object, starting from the
      * beginning of the file.
      * Compressed: The object number of the object stream in which this object is
      * stored.
      */
-    sal_uInt64 m_nOffset;
+    sal_uInt64 m_nOffset = 0;
     /// Are changed as part of an incremental update?.
-    bool m_bDirty;
+    bool m_bDirty = false;
 
+public:
     XRefEntry();
+
+    void SetType(XRefEntryType eType) { m_eType = eType; }
+
+    XRefEntryType GetType() const { return m_eType; }
+
+    void SetOffset(sal_uInt64 nOffset) { m_nOffset = nOffset; }
+
+    sal_uInt64 GetOffset() const { return m_nOffset; }
+
+    void SetDirty(bool bDirty) { m_bDirty = bDirty; }
+
+    bool GetDirty() const { return m_bDirty; }
 };
 
 /// Hex string: in <AABB> form.
-class VCL_DLLPUBLIC PDFHexStringElement : public PDFElement
+class VCL_DLLPUBLIC PDFHexStringElement final : public PDFElement
 {
     OString m_aValue;
+
 public:
     bool Read(SvStream& rStream) override;
     const OString& GetValue() const;
 };
 
 /// Literal string: in (asdf) form.
-class VCL_DLLPUBLIC PDFLiteralStringElement : public PDFElement
+class VCL_DLLPUBLIC PDFLiteralStringElement final : public PDFElement
 {
     OString m_aValue;
+
 public:
     bool Read(SvStream& rStream) override;
     const OString& GetValue() const;
@@ -290,10 +326,10 @@ public:
  * elements remember their source offset / length, and based on that it's
  * possible to modify the input file.
  */
-class VCL_DLLPUBLIC PDFDocument
+class VCL_DLLPUBLIC PDFDocument : public PDFObjectContainer
 {
     /// This vector owns all elements.
-    std::vector< std::unique_ptr<PDFElement> > m_aElements;
+    std::vector<std::unique_ptr<PDFElement>> m_aElements;
     /// Object ID <-> object offset map.
     std::map<size_t, XRefEntry> m_aXRef;
     /// Object offset <-> Object pointer map.
@@ -308,36 +344,45 @@ class VCL_DLLPUBLIC PDFDocument
     std::map<size_t, PDFTrailerElement*> m_aOffsetTrailers;
     /// List of EOF offsets we know.
     std::vector<size_t> m_aEOFs;
-    PDFTrailerElement* m_pTrailer;
+    PDFTrailerElement* m_pTrailer = nullptr;
     /// When m_pTrailer is nullptr, this can still have a dictionary.
-    PDFObjectElement* m_pXRefStream;
+    PDFObjectElement* m_pXRefStream = nullptr;
     /// All editing takes place in this buffer, if it happens.
     SvMemoryStream m_aEditBuffer;
 
-    static int AsHex(char ch);
+    /// Signature line in PDF format, to be consumed by the next Sign() invocation.
+    std::vector<sal_Int8> m_aSignatureLine;
+
+    /// 0-based page number where m_aSignatureLine should be placed.
+    size_t m_nSignaturePage = 0;
+
     /// Suggest a minimal, yet free signature ID to use for the next signature.
     sal_uInt32 GetNextSignature();
     /// Write the signature object as part of signing.
-    sal_Int32 WriteSignatureObject(const OUString& rDescription, bool bAdES, sal_uInt64& rLastByteRangeOffset, sal_Int64& rSignatureContentOffset);
+    sal_Int32 WriteSignatureObject(const OUString& rDescription, bool bAdES,
+                                   sal_uInt64& rLastByteRangeOffset, sal_Int64& rContentOffset);
     /// Write the appearance object as part of signing.
-    sal_Int32 WriteAppearanceObject();
+    sal_Int32 WriteAppearanceObject(tools::Rectangle& rSignatureRectangle);
     /// Write the annot object as part of signing.
-    sal_Int32 WriteAnnotObject(PDFObjectElement& rFirstPage, sal_Int32 nSignatureId, sal_Int32 nAppearanceId);
+    sal_Int32 WriteAnnotObject(PDFObjectElement const& rFirstPage, sal_Int32 nSignatureId,
+                               sal_Int32 nAppearanceId,
+                               const tools::Rectangle& rSignatureRectangle);
     /// Write the updated Page object as part of signing.
     bool WritePageObject(PDFObjectElement& rFirstPage, sal_Int32 nAnnotId);
     /// Write the updated Catalog object as part of signing.
     bool WriteCatalogObject(sal_Int32 nAnnotId, PDFReferenceElement*& pRoot);
     /// Write the updated cross-references as part of signing.
-    void WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement* pRoot);
+    void WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement const* pRoot);
 
 public:
     PDFDocument();
+    virtual ~PDFDocument();
     PDFDocument& operator=(const PDFDocument&) = delete;
     PDFDocument(const PDFDocument&) = delete;
     /// @name Low-level functions, to be used by PDFElement subclasses.
     //@{
     /// Decode a hex dump.
-    static std::vector<unsigned char> DecodeHexString(PDFHexStringElement* pElement);
+    static std::vector<unsigned char> DecodeHexString(PDFHexStringElement const* pElement);
     static OString ReadKeyword(SvStream& rStream);
     static size_t FindStartXRef(SvStream& rStream);
     void ReadXRef(SvStream& rStream);
@@ -346,7 +391,7 @@ public:
     /// Instead of all whitespace, just skip CR and NL characters.
     static void SkipLineBreaks(SvStream& rStream);
     size_t GetObjectOffset(size_t nIndex) const;
-    const std::vector< std::unique_ptr<PDFElement> >& GetElements();
+    const std::vector<std::unique_ptr<PDFElement>>& GetElements() const;
     std::vector<PDFObjectElement*> GetPages();
     /// Remember the end location of an EOF token.
     void PushBackEOF(size_t nOffset);
@@ -355,7 +400,9 @@ public:
     /// Access to the input document, even after the input stream is gone.
     SvMemoryStream& GetEditBuffer();
     /// Tokenize elements from current offset.
-    bool Tokenize(SvStream& rStream, TokenizeMode eMode, std::vector< std::unique_ptr<PDFElement> >& rElements, PDFObjectElement* pObject);
+    bool Tokenize(SvStream& rStream, TokenizeMode eMode,
+                  std::vector<std::unique_ptr<PDFElement>>& rElements,
+                  PDFObjectElement* pObjectElement);
     /// Register an object (owned directly or indirectly by m_aElements) as a provider for a given ID.
     void SetIDObject(size_t nID, PDFObjectElement* pObject);
     //@}
@@ -364,19 +411,30 @@ public:
     //@{
     /// Read elements from the start of the stream till its end.
     bool Read(SvStream& rStream);
+    void SetSignatureLine(const std::vector<sal_Int8>& rSignatureLine);
+    void SetSignaturePage(size_t nPage);
     /// Sign the read document with xCertificate in the edit buffer.
-    bool Sign(const css::uno::Reference<css::security::XCertificate>& xCertificate, const OUString& rDescription, bool bAdES);
+    bool Sign(const css::uno::Reference<css::security::XCertificate>& xCertificate,
+              const OUString& rDescription, bool bAdES);
     /// Serializes the contents of the edit buffer.
     bool Write(SvStream& rStream);
     /// Get a list of signatures embedded into this document.
     std::vector<PDFObjectElement*> GetSignatureWidgets();
     /// Remove the nth signature from read document in the edit buffer.
     bool RemoveSignature(size_t nPosition);
+    /// Get byte offsets of the end of incremental updates.
+    const std::vector<size_t>& GetEOFs() const;
     //@}
+
+    /// See vcl::PDFObjectContainer::createObject().
+    sal_Int32 createObject() override;
+    /// See vcl::PDFObjectContainer::updateObject().
+    bool updateObject(sal_Int32 n) override;
+    /// See vcl::PDFObjectContainer::writeBuffer().
+    bool writeBuffer(const void* pBuffer, sal_uInt64 nBytes) override;
 };
 
-} // namespace pdfio
-} // namespace xmlsecurity
+} // namespace vcl::filter
 
 #endif // INCLUDED_VCL_FILTER_PDFDOCUMENT_HXX
 

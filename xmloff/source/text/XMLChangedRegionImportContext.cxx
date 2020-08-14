@@ -26,8 +26,8 @@
 #include <sax/tools/converter.hxx>
 
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
 
 
@@ -92,12 +92,12 @@ void XMLChangedRegionImportContext::StartElement(
     }
 }
 
-SvXMLImportContext* XMLChangedRegionImportContext::CreateChildContext(
+SvXMLImportContextRef XMLChangedRegionImportContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
-    const Reference<XAttributeList> & xAttrList)
+    const Reference<XAttributeList> & /*xAttrList*/)
 {
-    SvXMLImportContext* pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     if (XML_NAMESPACE_TEXT == nPrefix)
     {
@@ -109,7 +109,7 @@ SvXMLImportContext* XMLChangedRegionImportContext::CreateChildContext(
              IsXMLToken( rLocalName, XML_FORMAT_CHANGE ) )
         {
             // create XMLChangeElementImportContext for all kinds of changes
-            pContext = new XMLChangeElementImportContext(
+            xContext = new XMLChangeElementImportContext(
                GetImport(), nPrefix, rLocalName,
                IsXMLToken( rLocalName, XML_DELETION ),
                *this);
@@ -117,23 +117,14 @@ SvXMLImportContext* XMLChangedRegionImportContext::CreateChildContext(
         // else: it may be a text element, see below
     }
 
-    if (nullptr == pContext)
+    if (!xContext)
     {
         // illegal element content! TODO: discard the redlines
         // for the moment -> use text
-
-        pContext = SvXMLImportContext::CreateChildContext(nPrefix, rLocalName,
-                                                          xAttrList);
-
         // or default if text fail
-        if (nullptr == pContext)
-        {
-            pContext = SvXMLImportContext::CreateChildContext(
-                nPrefix, rLocalName, xAttrList);
-        }
     }
 
-    return pContext;
+    return xContext;
 }
 
 void XMLChangedRegionImportContext::EndElement()
@@ -159,7 +150,7 @@ void XMLChangedRegionImportContext::SetChangeInfo(
     const OUString& rDate)
 {
     util::DateTime aDateTime;
-    if (::sax::Converter::parseDateTime(aDateTime, nullptr, rDate))
+    if (::sax::Converter::parseDateTime(aDateTime, rDate))
     {
         GetImport().GetTextImport()->RedlineAdd(
             rType, sID, rAuthor, rComment, aDateTime, bMergeLastPara);
@@ -169,24 +160,24 @@ void XMLChangedRegionImportContext::SetChangeInfo(
 void XMLChangedRegionImportContext::UseRedlineText()
 {
     // if we haven't already installed the redline cursor, do it now
-    if (! xOldCursor.is())
+    if ( xOldCursor.is())
+        return;
+
+    // get TextImportHelper and old Cursor
+    rtl::Reference<XMLTextImportHelper> rHelper(GetImport().GetTextImport());
+    Reference<XTextCursor> xCursor( rHelper->GetCursor() );
+
+    // create Redline and new Cursor
+    Reference<XTextCursor> xNewCursor =
+        rHelper->RedlineCreateText(xCursor, sID);
+
+    if (xNewCursor.is())
     {
-        // get TextImportHelper and old Cursor
-        rtl::Reference<XMLTextImportHelper> rHelper(GetImport().GetTextImport());
-        Reference<XTextCursor> xCursor( rHelper->GetCursor() );
-
-        // create Redline and new Cursor
-        Reference<XTextCursor> xNewCursor =
-            rHelper->RedlineCreateText(xCursor, sID);
-
-        if (xNewCursor.is())
-        {
-            // save old cursor and install new one
-            xOldCursor = xCursor;
-            rHelper->SetCursor( xNewCursor );
-        }
-        // else: leave as is
+        // save old cursor and install new one
+        xOldCursor = xCursor;
+        rHelper->SetCursor( xNewCursor );
     }
+    // else: leave as is
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

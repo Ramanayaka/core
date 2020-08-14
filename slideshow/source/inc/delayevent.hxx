@@ -23,8 +23,7 @@
 
 #include <functional>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /** Event, which delays the functor call the given amount of time
  */
@@ -78,7 +77,7 @@ private:
 template <typename FuncT>
 inline EventSharedPtr makeDelay_( FuncT const& func, double nTimeout, OUString const& rsDescription )
 {
-    return EventSharedPtr( new Delay( func, nTimeout, rsDescription ) );
+    return std::make_shared<Delay>( func, nTimeout, rsDescription );
 }
 
 /** Generate immediate event
@@ -91,7 +90,7 @@ inline EventSharedPtr makeDelay_( FuncT const& func, double nTimeout, OUString c
 template <typename FuncT>
 inline EventSharedPtr makeEvent_( FuncT const& func, OUString const& rsDescription)
 {
-    return EventSharedPtr( new Delay( func, 0.0, rsDescription ) );
+    return std::make_shared<Delay>( func, 0.0, rsDescription );
 }
 
 
@@ -134,8 +133,7 @@ inline EventSharedPtr makeDelay_(
 
 #endif // OSL_DEBUG_LEVEL <= 1
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_DELAYEVENT_HXX
 

@@ -16,12 +16,9 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_CONNECTIVITY_SQLSCAN_HXX
-#define INCLUDED_CONNECTIVITY_SQLSCAN_HXX
+#pragma once
 
-#include <stdarg.h>
 #include <connectivity/IParseContext.hxx>
-#include <connectivity/dbtoolsdllapi.hxx>
 
 namespace connectivity
 {
@@ -30,7 +27,7 @@ namespace connectivity
 
     /** Scanner for SQL92
     */
-    class OOO_DLLPUBLIC_DBTOOLS OSQLScanner
+    class OSQLScanner
     {
         const IParseContext*    m_pContext;                 // context for parse, knows all international stuff
         OString          m_sStatement;               // statement to parse
@@ -43,15 +40,6 @@ namespace connectivity
     public:
         OSQLScanner();
         virtual ~OSQLScanner();
-
-        static void * SAL_CALL operator new( size_t nSize )
-            { return ::rtl_allocateMemory( nSize ); }
-        static void * SAL_CALL operator new( size_t,void* _pHint )
-            { return _pHint; }
-        static void SAL_CALL operator delete( void * pMem )
-            { ::rtl_freeMemory( pMem ); }
-        static void SAL_CALL operator delete( void *,void* )
-            {  }
 
         sal_Int32 SQLyygetc();
         void SQLyyerror(char const *fmt);
@@ -75,7 +63,5 @@ namespace connectivity
         sal_Int32 GetCurrentPos() const { return m_nCurrentPos; }
     };
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

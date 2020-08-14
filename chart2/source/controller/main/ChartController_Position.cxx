@@ -17,27 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ChartController.hxx"
+#include <ChartController.hxx>
 
-#include "macros.hxx"
-#include "ChartWindow.hxx"
-#include "DrawViewWrapper.hxx"
-#include "PositionAndSizeHelper.hxx"
-#include "ChartModelHelper.hxx"
+#include <ChartWindow.hxx>
+#include <DrawViewWrapper.hxx>
+#include <PositionAndSizeHelper.hxx>
+#include <ChartModel.hxx>
+#include <ChartModelHelper.hxx>
 #include "UndoGuard.hxx"
-#include "Strings.hrc"
-#include "ObjectNameProvider.hxx"
-#include "DiagramHelper.hxx"
-#include "chartview/ExplicitValueProvider.hxx"
-#include "CommonConverters.hxx"
+#include <ObjectNameProvider.hxx>
+#include <DiagramHelper.hxx>
+#include <chartview/ExplicitValueProvider.hxx>
+#include <CommonConverters.hxx>
 #include <svx/ActionDescriptionProvider.hxx>
 
-#include <vcl/msgbox.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <svx/svxids.hrc>
 #include <svx/rectenum.hxx>
-#include <svl/aeitem.hxx>
+#include <svl/intitem.hxx>
 #include <svx/svxdlg.hxx>
-#include <svx/dialogs.hrc>
+#include <tools/diagnose_ex.h>
 #include <vcl/svapp.hxx>
 #include <memory>
 
@@ -46,7 +45,7 @@ namespace chart
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
 
-void lcl_getPositionAndSizeFromItemSet( const SfxItemSet& rItemSet, awt::Rectangle& rPosAndSize, const awt::Size& rOriginalSize )
+static void lcl_getPositionAndSizeFromItemSet( const SfxItemSet& rItemSet, awt::Rectangle& rPosAndSize, const awt::Size& rOriginalSize )
 {
     long nPosX(0);
     long nPosY(0);
@@ -67,7 +66,7 @@ void lcl_getPositionAndSizeFromItemSet( const SfxItemSet& rItemSet, awt::Rectang
     if (rItemSet.GetItemState(SID_ATTR_TRANSFORM_HEIGHT,true,&pPoolItem)==SfxItemState::SET)
         nSizY=static_cast<const SfxUInt32Item*>(pPoolItem)->GetValue();
     if (rItemSet.GetItemState(SID_ATTR_TRANSFORM_SIZE_POINT,true,&pPoolItem)==SfxItemState::SET)
-        eRP=(RectPoint)static_cast<const SfxAllEnumItem*>(pPoolItem)->GetValue();
+        eRP=static_cast<RectPoint>(static_cast<const SfxUInt16Item*>(pPoolItem)->GetValue());
 
     switch( eRP )
     {
@@ -108,7 +107,7 @@ void lcl_getPositionAndSizeFromItemSet( const SfxItemSet& rItemSet, awt::Rectang
     rPosAndSize = awt::Rectangle(nPosX,nPosY,nSizX,nSizY);
 }
 
-void ChartController::executeDispatch_PositionAndSize()
+void ChartController::executeDispatch_PositionAndSize(const ::css::uno::Sequence< ::css::beans::PropertyValue >* pArgs)
 {
     const OUString aCID( m_aSelection.getSelectedCID() );
 
@@ -116,9 +115,9 @@ void ChartController::executeDispatch_PositionAndSize()
         return;
 
     awt::Size aSelectedSize;
-    ExplicitValueProvider* pProvider( ExplicitValueProvider::getExplicitValueProvider( m_xChartView ) );
+    ExplicitValueProvider* pProvider( comphelper::getUnoTunnelImplementation<ExplicitValueProvider>( m_xChartView ) );
     if( pProvider )
-        aSelectedSize = ToSize( ( pProvider->getRectangleOfObject( aCID ) ) );
+        aSelectedSize = ToSize( pProvider->getRectangleOfObject( aCID ) );
 
     ObjectType eObjectType = ObjectIdentifier::getObjectType( aCID );
 
@@ -131,46 +130,78 @@ void ChartController::executeDispatch_PositionAndSize()
     try
     {
         SfxItemSet aItemSet = m_pDrawViewWrapper->getPositionAndSizeItemSetFromMarkedObject();
-
-        //prepare and open dialog
-        SdrView* pSdrView = m_pDrawViewWrapper;
-        bool bResizePossible = m_aSelection.isResizeableObjectSelected();
-
-        SolarMutexGuard aGuard;
-        SvxAbstractDialogFactory * pFact = SvxAbstractDialogFactory::Create();
-        OSL_ENSURE( pFact, "No dialog factory" );
-        ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSchTransformTabDialog(
-            GetChartWindow(), &aItemSet, pSdrView, bResizePossible ));
-        OSL_ENSURE( pDlg, "Couldn't create SchTransformTabDialog" );
-
-        if( pDlg->Execute() == RET_OK )
+        const SfxItemSet* pOutItemSet = nullptr;
+        if (!pArgs)
         {
-            const SfxItemSet* pOutItemSet = pDlg->GetOutputItemSet();
-            if(pOutItemSet)
+            //prepare and open dialog
+            SdrView* pSdrView = m_pDrawViewWrapper.get();
+            bool bResizePossible = m_aSelection.isResizeableObjectSelected();
+
+            SolarMutexGuard aGuard;
+            SvxAbstractDialogFactory * pFact = SvxAbstractDialogFactory::Create();
+            ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSchTransformTabDialog(
+               GetChartFrame(), &aItemSet, pSdrView, bResizePossible));
+
+            if( pDlg->Execute() == RET_OK )
             {
-                awt::Rectangle aObjectRect;
-                aItemSet.Put(*pOutItemSet);//overwrite old values with new values (-> all items are set)
-                lcl_getPositionAndSizeFromItemSet( aItemSet, aObjectRect, aSelectedSize );
-                awt::Size aPageSize( ChartModelHelper::getPageSize( getModel() ) );
-                awt::Rectangle aPageRect( 0,0,aPageSize.Width,aPageSize.Height );
-
-                bool bChanged = false;
-                if ( eObjectType == OBJECTTYPE_LEGEND )
-                {
-                    ChartModel& rModel = dynamic_cast<ChartModel&>(*getModel().get());
-                    bChanged = DiagramHelper::switchDiagramPositioningToExcludingPositioning(rModel, false , true);
-                }
-
-                bool bMoved = PositionAndSizeHelper::moveObject( m_aSelection.getSelectedCID(), getModel()
-                            , aObjectRect, aPageRect );
-                if( bMoved || bChanged )
-                    aUndoGuard.commit();
+                pOutItemSet = pDlg->GetOutputItemSet();
+                if (pOutItemSet)
+                    aItemSet.Put(*pOutItemSet);//overwrite old values with new values (-> all items are set)
             }
         }
+        else
+        {
+            const SfxItemPool* pPool = aItemSet.GetPool();
+            if (!pPool)
+                return;
+
+            sal_uInt16 nWhich;
+            for (const auto& aProp: *pArgs)
+            {
+                sal_Int32 nValue = 0;
+                aProp.Value >>= nValue;
+                if (aProp.Name == "TransformPosX") {
+                    nWhich = pPool->GetWhich(SID_ATTR_TRANSFORM_POS_X);
+                    aItemSet.Put(SfxInt32Item(nWhich, nValue));
+                }
+                else if (aProp.Name == "TransformPosY") {
+                    nWhich = pPool->GetWhich(SID_ATTR_TRANSFORM_POS_Y);
+                    aItemSet.Put(SfxInt32Item(nWhich, nValue));
+                }
+                else if (aProp.Name == "TransformWidth") {
+                    nWhich = pPool->GetWhich(SID_ATTR_TRANSFORM_WIDTH);
+                    aItemSet.Put(SfxUInt32Item(nWhich, static_cast<sal_uInt32>(nValue)));
+                }
+                else if (aProp.Name == "TransformHeight") {
+                    nWhich = pPool->GetWhich(SID_ATTR_TRANSFORM_HEIGHT);
+                    aItemSet.Put(SfxUInt32Item(nWhich, static_cast<sal_uInt32>(nValue)));
+                }
+            }
+        }
+
+        if(pOutItemSet || pArgs)
+        {
+            awt::Rectangle aObjectRect;
+            lcl_getPositionAndSizeFromItemSet( aItemSet, aObjectRect, aSelectedSize );
+            awt::Size aPageSize( ChartModelHelper::getPageSize( getModel() ) );
+            awt::Rectangle aPageRect( 0,0,aPageSize.Width,aPageSize.Height );
+
+            bool bChanged = false;
+            if ( eObjectType == OBJECTTYPE_LEGEND )
+            {
+                ChartModel& rModel = dynamic_cast<ChartModel&>(*getModel());
+                bChanged = DiagramHelper::switchDiagramPositioningToExcludingPositioning(rModel, false , true);
+            }
+
+            bool bMoved = PositionAndSizeHelper::moveObject( m_aSelection.getSelectedCID(), getModel()
+                        , aObjectRect, awt::Rectangle(), aPageRect );
+            if( bMoved || bChanged )
+                aUndoGuard.commit();
+        }
     }
-    catch(const uno::Exception& e)
+    catch(const uno::Exception&)
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
 }
 

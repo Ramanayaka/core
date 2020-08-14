@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_RANGE_BASICRANGE_HXX
-#define INCLUDED_BASEGFX_RANGE_BASICRANGE_HXX
+#pragma once
 
 #include <sal/types.h>
 #include <float.h>
@@ -120,7 +119,7 @@ namespace basegfx
                 }
                 else
                 {
-                    return !((rRange.mnMaximum < mnMinimum) || (rRange.mnMinimum > mnMaximum));
+                    return (rRange.mnMaximum >= mnMinimum) && (rRange.mnMinimum <= mnMaximum);
                 }
             }
         }
@@ -248,6 +247,28 @@ namespace basegfx
             }
         }
 
+        T clamp(T nValue) const
+        {
+            if(isEmpty())
+            {
+                return nValue;
+            }
+            else
+            {
+                if(nValue < mnMinimum)
+                {
+                    return mnMinimum;
+                }
+
+                if(nValue > mnMaximum)
+                {
+                    return mnMaximum;
+                }
+
+                return nValue;
+            }
+        }
+
         typename Traits::DifferenceType getRange() const
         {
             if(isEmpty())
@@ -275,13 +296,11 @@ namespace basegfx
     {
         static sal_Int32 minVal() { return SAL_MIN_INT32; };
         static sal_Int32 maxVal() { return SAL_MAX_INT32; };
-        static sal_Int32 neutral() { return 0L; };
+        static sal_Int32 neutral() { return 0; };
 
         typedef sal_Int64 DifferenceType;
     };
 
 } // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_RANGE_BASICRANGE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

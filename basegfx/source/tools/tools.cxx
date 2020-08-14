@@ -17,18 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <basegfx/tools/tools.hxx>
+#include <basegfx/utils/tools.hxx>
 #include <basegfx/range/b2drange.hxx>
 
 #include <algorithm>
 
-namespace basegfx
+namespace basegfx::utils
 {
-    namespace tools
-    {
         namespace
         {
-            inline double distance( const double&                   nX,
+            double distance( const double&                   nX,
                                     const double&                   nY,
                                     const ::basegfx::B2DVector&     rNormal,
                                     const double&                   nC )
@@ -108,7 +106,6 @@ namespace basegfx
             moveLineOutsideRect( io_rLeftTop, io_rRightTop, aNormalTop, rFitTarget );
             moveLineOutsideRect( io_rLeftBottom, io_rRightBottom, aNormalBottom, rFitTarget );
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

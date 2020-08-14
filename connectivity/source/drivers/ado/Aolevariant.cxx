@@ -17,15 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/Aolevariant.hxx"
+#include <ado/Aolevariant.hxx>
 #include <connectivity/dbconversion.hxx>
 #include <osl/diagnose.h>
+#include <o3tl/char16_t2wchar_t.hxx>
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/util/Time.hpp>
 #include <com/sun/star/util/Date.hpp>
 #include <com/sun/star/util/DateTime.hpp>
-#include "resource/sharedresources.hxx"
-#include "resource/ado_res.hrc"
+#include <resource/sharedresources.hxx>
+#include <strings.hrc>
 #include <com/sun/star/bridge/oleautomation/Date.hpp>
 #include <com/sun/star/bridge/oleautomation/Currency.hpp>
 #include <com/sun/star/bridge/oleautomation/SCode.hpp>
@@ -46,7 +47,7 @@ OLEString::OLEString(const BSTR& _sBStr)
 }
 OLEString::OLEString(const OUString& _sBStr)
 {
-    m_sStr = ::SysAllocString(reinterpret_cast<LPCOLESTR>(_sBStr.getStr()));
+    m_sStr = ::SysAllocString(o3tl::toW(_sBStr.getStr()));
 }
 OLEString::~OLEString()
 {
@@ -57,7 +58,7 @@ OLEString& OLEString::operator=(const OUString& _rSrc)
 {
     if(m_sStr)
         ::SysFreeString(m_sStr);
-    m_sStr = ::SysAllocString(reinterpret_cast<LPCOLESTR>(_rSrc.getStr()));
+    m_sStr = ::SysAllocString(o3tl::toW(_rSrc.getStr()));
     return *this;
 }
 OLEString& OLEString::operator=(const OLEString& _rSrc)
@@ -79,7 +80,7 @@ OLEString& OLEString::operator=(const BSTR& _rSrc)
 }
 OUString OLEString::asOUString() const
 {
-    return (m_sStr != nullptr) ? OUString(reinterpret_cast<const sal_Unicode*>(LPCOLESTR(m_sStr)),::SysStringLen(m_sStr)) : OUString();
+    return (m_sStr != nullptr) ? OUString(o3tl::toU(LPCOLESTR(m_sStr)),::SysStringLen(m_sStr)) : OUString();
 }
 BSTR OLEString::asBSTR() const
 {
@@ -115,13 +116,13 @@ OLEVariant::OLEVariant(bool x)              {   VariantInit(this);  vt = VT_BOOL
 OLEVariant::OLEVariant(sal_Int8 n)              {   VariantInit(this);  vt = VT_I1;     bVal        = n;}
 OLEVariant::OLEVariant(sal_Int16 n)             {   VariantInit(this);  vt = VT_I2;     intVal      = n;}
 OLEVariant::OLEVariant(sal_Int32 n)             {   VariantInit(this);  vt = VT_I4;     lVal        = n;}
-OLEVariant::OLEVariant(sal_Int64 x)             {   VariantInit(this);  vt = VT_I4;     lVal        = (LONG)x;}
+OLEVariant::OLEVariant(sal_Int64 x)             {   VariantInit(this);  vt = VT_I4;     lVal        = static_cast<LONG>(x);}
 
 OLEVariant::OLEVariant(const OUString& us)
 {
     ::VariantInit(this);
     vt      = VT_BSTR;
-    bstrVal = SysAllocString(reinterpret_cast<LPCOLESTR>(us.getStr()));
+    bstrVal = SysAllocString(o3tl::toW(us.getStr()));
 }
 OLEVariant::~OLEVariant()
 {
@@ -277,7 +278,7 @@ void OLEVariant::setString(const OUString& us)
     HRESULT eRet = VariantClear(this);
     OSL_ENSURE(eRet == S_OK,"Error while clearing an ado variant!");
     vt = VT_BSTR;
-    bstrVal     = ::SysAllocString(reinterpret_cast<LPCOLESTR>(us.getStr()));
+    bstrVal     = ::SysAllocString(o3tl::toW(us.getStr()));
 }
 void OLEVariant::setNoArg()
 {
@@ -311,7 +312,7 @@ void OLEVariant::setArray(SAFEARRAY* pSafeArray, VARTYPE vtType)
 {
     HRESULT eRet = VariantClear(this);
     OSL_ENSURE(eRet == S_OK,"Error while clearing an ado variant!");
-    vt = (VARTYPE)(VT_ARRAY|vtType);
+    vt = static_cast<VARTYPE>(VT_ARRAY|vtType);
     parray = pSafeArray;
 }
 
@@ -353,7 +354,7 @@ VARIANT_BOOL OLEVariant::VariantBool(bool bEinBoolean)
 
 void OLEVariant::CHS()
 {
-    cyVal.Lo  ^= (sal_uInt32)-1;
+    cyVal.Lo  ^= sal_uInt32(-1);
     cyVal.Hi ^= -1;
     cyVal.Lo++;
     if( !cyVal.Lo )
@@ -364,12 +365,12 @@ void OLEVariant::set(double n)
 {
     if( n >= 0 )
     {
-        cyVal.Hi = (sal_Int32)(n / 4294967296.0);
-        cyVal.Lo  = (sal_uInt32)(n - ((double)cyVal.Hi * 4294967296.0));
+        cyVal.Hi = static_cast<sal_Int32>(n / 4294967296.0);
+        cyVal.Lo  = static_cast<sal_uInt32>(n - (static_cast<double>(cyVal.Hi) * 4294967296.0));
     }
     else {
-        cyVal.Hi = (sal_Int32)(-n / 4294967296.0);
-        cyVal.Lo  = (sal_uInt32)(-n - ((double)cyVal.Hi * 4294967296.0));
+        cyVal.Hi = static_cast<sal_Int32>(-n / 4294967296.0);
+        cyVal.Lo  = static_cast<sal_uInt32>(-n - (static_cast<double>(cyVal.Hi) * 4294967296.0));
         CHS();
     }
 }
@@ -377,7 +378,7 @@ void OLEVariant::set(double n)
 OUString OLEVariant::getString() const
 {
     if (V_VT(this) == VT_BSTR)
-        return reinterpret_cast<const sal_Unicode*>(LPCOLESTR(V_BSTR(this)));
+        return o3tl::toU(LPCOLESTR(V_BSTR(this)));
 
     if(isNull())
         return OUString();
@@ -386,7 +387,7 @@ OUString OLEVariant::getString() const
 
     varDest.ChangeType(VT_BSTR, this);
 
-    return reinterpret_cast<const sal_Unicode*>(LPCOLESTR(V_BSTR(&varDest)));
+    return o3tl::toU(LPCOLESTR(V_BSTR(&varDest)));
 }
 
 
@@ -683,16 +684,16 @@ css::uno::Any OLEVariant::makeAny() const
          {
              Currency cy(cyVal.int64);
              aValue <<= cy;
-            break;
+             break;
          }
         case VT_DATE:
          {
              aValue <<= getDate();
-            break;
+             break;
          }
         case VT_BSTR:
         {
-            OUString b(reinterpret_cast<const sal_Unicode*>(bstrVal));
+            OUString b(o3tl::toU(bstrVal));
             aValue.setValue( &b, cppu::UnoType<decltype(b)>::get());
             break;
         }

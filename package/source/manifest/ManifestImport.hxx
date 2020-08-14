@@ -22,20 +22,22 @@
 
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
+#include <com/sun/star/beans/NamedValue.hpp>
 #include <vector>
+#include <rtl/ustrbuf.hxx>
 
 #include <HashMaps.hxx>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
     namespace beans { struct PropertyValue; }
-} } }
+}
 
-typedef std::unordered_map< OUString, OUString, OUStringHash, eqFunc > StringHashMap;
+typedef std::unordered_map< OUString, OUString > StringHashMap;
 
 struct ManifestScopeEntry
 {
-    OUString m_aConvertedName;
+    OUString        m_aConvertedName;
     StringHashMap   m_aNamespaces;
     bool            m_bValid;
 
@@ -48,65 +50,18 @@ struct ManifestScopeEntry
 
 typedef ::std::vector< ManifestScopeEntry > ManifestStack;
 
-class ManifestImport : public cppu::WeakImplHelper < css::xml::sax::XDocumentHandler >
+class ManifestImport final : public cppu::WeakImplHelper < css::xml::sax::XDocumentHandler >
 {
-protected:
+    std::vector< css::beans::NamedValue > aKeyInfoSequence;
+    std::vector< css::uno::Sequence< css::beans::NamedValue > > aKeys;
     std::vector< css::beans::PropertyValue > aSequence;
+    OUStringBuffer aCurrentCharacters{64};
     ManifestStack aStack;
     bool bIgnoreEncryptData;
+    bool bPgpEncryption;
     sal_Int32 nDerivedKeySize;
     ::std::vector < css::uno::Sequence < css::beans::PropertyValue > > & rManVector;
 
-    const OUString sFileEntryElement;
-    const OUString sEncryptionDataElement;
-    const OUString sAlgorithmElement;
-    const OUString sStartKeyAlgElement;
-    const OUString sKeyDerivationElement;
-
-    const OUString sMediaTypeAttribute;
-    const OUString sVersionAttribute;
-    const OUString sFullPathAttribute;
-    const OUString sSizeAttribute;
-    const OUString sSaltAttribute;
-    const OUString sInitialisationVectorAttribute;
-    const OUString sIterationCountAttribute;
-    const OUString sKeySizeAttribute;
-    const OUString sAlgorithmNameAttribute;
-    const OUString sStartKeyAlgNameAttribute;
-    const OUString sKeyDerivationNameAttribute;
-    const OUString sChecksumAttribute;
-    const OUString sChecksumTypeAttribute;
-
-    const OUString sFullPathProperty;
-    const OUString sMediaTypeProperty;
-    const OUString sVersionProperty;
-    const OUString sIterationCountProperty;
-    const OUString sDerivedKeySizeProperty;
-    const OUString sSaltProperty;
-    const OUString sInitialisationVectorProperty;
-    const OUString sSizeProperty;
-    const OUString sDigestProperty;
-    const OUString sEncryptionAlgProperty;
-    const OUString sStartKeyAlgProperty;
-    const OUString sDigestAlgProperty;
-
-    const OUString sSHA256_URL_ODF12;
-    const OUString sSHA256_URL;
-    const OUString sSHA1_Name;
-    const OUString sSHA1_URL;
-
-    const OUString sSHA256_1k_URL;
-    const OUString sSHA1_1k_Name;
-    const OUString sSHA1_1k_URL;
-
-    const OUString sBlowfish_Name;
-    const OUString sBlowfish_URL;
-    const OUString sAES128_URL;
-    const OUString sAES192_URL;
-    const OUString sAES256_URL;
-
-    const OUString sPBKDF2_Name;
-    const OUString sPBKDF2_URL;
 
     OUString PushNameAndNamespaces( const OUString& aName,
                                            const css::uno::Reference< css::xml::sax::XAttributeList >& xAttribs,
@@ -125,6 +80,7 @@ public:
     virtual void SAL_CALL ignorableWhitespace( const OUString& aWhitespaces ) override;
     virtual void SAL_CALL processingInstruction( const OUString& aTarget, const OUString& aData ) override;
     virtual void SAL_CALL setDocumentLocator( const css::uno::Reference< css::xml::sax::XLocator >& xLocator ) override;
+
 private:
     /// @throws css::uno::RuntimeException
     void doFileEntry(StringHashMap &rConvertedAttribs);
@@ -136,6 +92,11 @@ private:
     void doKeyDerivation(StringHashMap &rConvertedAttribs);
     /// @throws css::uno::RuntimeException
     void doStartKeyAlg(StringHashMap &rConvertedAttribs);
+    void doEncryptedKey(StringHashMap &);
+    void doEncryptionMethod(StringHashMap &, const OUString &);
+    void doEncryptedCipherValue();
+    void doEncryptedKeyId();
+    void doEncryptedKeyPacket();
 };
 #endif
 

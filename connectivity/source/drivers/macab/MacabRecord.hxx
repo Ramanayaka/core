@@ -20,6 +20,10 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABRECORD_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABRECORD_HXX
 
+#include <sal/config.h>
+
+#include <memory>
+
 #include <sal/types.h>
 #include <osl/diagnose.h>
 #include <rtl/ustring.hxx>
@@ -29,10 +33,8 @@
 #include <AddressBook/ABAddressBookC.h>
 #include <postmac.h>
 
-namespace connectivity
+namespace connectivity::macab
 {
-    namespace macab
-    {
         /* a MacabRecord is at root a list of macabfields (which is just
          * something to hold both a CFTypeRef (a CoreFoundation object) and
          * its Address Book type.
@@ -46,7 +48,7 @@ namespace connectivity
         class MacabRecord{
             protected:
                 sal_Int32 size;
-                macabfield **fields;
+                std::unique_ptr<macabfield *[]> fields;
             protected:
                 void releaseFields();
             public:
@@ -65,7 +67,6 @@ namespace connectivity
                 static OUString fieldToString(const macabfield *_aField);
 
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABRECORD_HXX

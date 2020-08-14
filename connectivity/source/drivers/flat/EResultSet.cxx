@@ -19,8 +19,8 @@
 
 #include <com/sun/star/sdbcx/CompareBookmark.hpp>
 #include <com/sun/star/sdbcx/XDeleteRows.hpp>
-#include "flat/EResultSet.hxx"
-#include <com/sun/star/lang/DisposedException.hpp>
+#include <flat/EResultSet.hxx>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <comphelper/sequence.hxx>
 #include <comphelper/types.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -46,15 +46,12 @@ OFlatResultSet::OFlatResultSet( OStatement_Base* pStmt,connectivity::OSQLParseTr
 
 OUString SAL_CALL OFlatResultSet::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdbcx.flat.ResultSet");
+    return "com.sun.star.sdbcx.flat.ResultSet";
 }
 
 Sequence< OUString > SAL_CALL OFlatResultSet::getSupportedServiceNames(  )
 {
-     Sequence< OUString > aSupported(2);
-    aSupported[0] = "com.sun.star.sdbc.ResultSet";
-    aSupported[1] = "com.sun.star.sdbcx.ResultSet";
-    return aSupported;
+    return { "com.sun.star.sdbc.ResultSet", "com.sun.star.sdbcx.ResultSet" };
 }
 
 sal_Bool SAL_CALL OFlatResultSet::supportsService( const OUString& _rServiceName )
@@ -96,16 +93,16 @@ Sequence<  Type > SAL_CALL OFlatResultSet::getTypes(  )
 // XRowLocate
 Any SAL_CALL OFlatResultSet::getBookmark(  )
 {
-     ::osl::MutexGuard aGuard( m_aMutex );
+    ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OResultSet_BASE::rBHelper.bDisposed);
 
-    return makeAny((sal_Int32)(m_aRow->get())[0]->getValue());
+    return makeAny(static_cast<sal_Int32>((*m_aRow)[0]->getValue()));
 }
 
 sal_Bool SAL_CALL OFlatResultSet::moveToBookmark( const  Any& bookmark )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
-        checkDisposed(OResultSet_BASE::rBHelper.bDisposed);
+    checkDisposed(OResultSet_BASE::rBHelper.bDisposed);
 
 
     m_bRowDeleted = m_bRowInserted = m_bRowUpdated = false;
@@ -116,8 +113,7 @@ sal_Bool SAL_CALL OFlatResultSet::moveToBookmark( const  Any& bookmark )
 sal_Bool SAL_CALL OFlatResultSet::moveRelativeToBookmark( const  Any& bookmark, sal_Int32 rows )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
-        checkDisposed(OResultSet_BASE::rBHelper.bDisposed);
-
+    checkDisposed(OResultSet_BASE::rBHelper.bDisposed);
 
     m_bRowDeleted = m_bRowInserted = m_bRowUpdated = false;
 

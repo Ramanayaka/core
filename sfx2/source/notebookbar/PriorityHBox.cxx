@@ -19,149 +19,184 @@
 
 #include <vcl/builderfactory.hxx>
 #include <vcl/layout.hxx>
-#include <sfx2/dllapi.h>
 #include <sfx2/viewfrm.hxx>
-#include "DropdownBox.hxx"
+#include "PriorityHBox.hxx"
+#include <comphelper/lok.hxx>
 
-#include <vector>
-
-bool lcl_comparePriority(const vcl::IPrioritable* a, const vcl::IPrioritable* b)
+namespace
 {
-    return a->GetPriority() < b->GetPriority();
+    bool lcl_comparePriority(const vcl::IPrioritable* a, const vcl::IPrioritable* b)
+    {
+        return a->GetPriority() < b->GetPriority();
+    }
 }
 
-/*
- * PriorityHBox is a VclHBox which hides its own children if there is no sufficient space.
- * Hiding order can be modified using child's priorities. If a control have default
- * priority assigned (VCL_PRIORITY_DEFAULT), it is always shown.
- */
-
-class SFX2_DLLPUBLIC PriorityHBox : public VclHBox
+PriorityHBox::PriorityHBox(vcl::Window *pParent)
+    : VclHBox(pParent)
+    , m_bInitialized(false)
 {
-private:
-    bool m_bInitialized;
+}
 
-    std::vector<vcl::IPrioritable*> m_aSortedChilds;
+PriorityHBox::~PriorityHBox()
+{
+    disposeOnce();
+}
 
-public:
-    explicit PriorityHBox(vcl::Window *pParent)
-        : VclHBox(pParent)
-        , m_bInitialized(false)
+void PriorityHBox::Initialize()
+{
+    m_bInitialized = true;
+
+    GetChildrenWithPriorities();
+    SetSizeFromParent();
+}
+
+int PriorityHBox::GetHiddenCount() const
+{
+    int nCount = 0;
+
+    for (auto pWindow : m_aSortedChildren)
+        if (pWindow->IsHidden())
+            nCount++;
+
+    return nCount;
+}
+
+void PriorityHBox::SetSizeFromParent()
+{
+    vcl::Window* pParent = GetParent();
+    if (pParent)
     {
+        Size aParentSize = pParent->GetSizePixel();
+        SetSizePixel(Size(aParentSize.getWidth(), aParentSize.getHeight()));
+    }
+}
+
+Size PriorityHBox::calculateRequisition() const
+{
+    if (!m_bInitialized)
+    {
+        return VclHBox::calculateRequisition();
     }
 
-    virtual ~PriorityHBox() override
-    {
-        disposeOnce();
-    }
+    sal_uInt16 nVisibleChildren = 0;
 
-    virtual Size calculateRequisition() const override
+    Size aSize;
+    for (vcl::Window *pChild = GetWindow(GetWindowType::FirstChild); pChild; pChild = pChild->GetWindow(GetWindowType::Next))
     {
-        sal_uInt16 nVisibleChildren = 0;
+        if (!pChild->IsVisible())
+            continue;
+        ++nVisibleChildren;
+        Size aChildSize = getLayoutRequisition(*pChild);
 
-        Size aSize;
-        for (vcl::Window *pChild = GetWindow(GetWindowType::FirstChild); pChild; pChild = pChild->GetWindow(GetWindowType::Next))
+        bool bAllwaysExpanded = true;
+
+        vcl::IPrioritable* pPrioritable = dynamic_cast<vcl::IPrioritable*>(pChild);
+        if (pPrioritable && pPrioritable->GetPriority() != VCL_PRIORITY_DEFAULT)
+            bAllwaysExpanded = false;
+
+        if (bAllwaysExpanded)
         {
-            if (!pChild->IsVisible())
-                continue;
-            ++nVisibleChildren;
-            Size aChildSize = getLayoutRequisition(*pChild);
+            long nPrimaryDimension = getPrimaryDimension(aChildSize);
+            nPrimaryDimension += pChild->get_padding() * 2;
+            setPrimaryDimension(aChildSize, nPrimaryDimension);
+        }
+        else
+            setPrimaryDimension(aChildSize, 0);
 
-            bool bAllwaysExpanded = true;
+        accumulateMaxes(aChildSize, aSize);
+    }
 
-            vcl::IPrioritable* pPrioritable = dynamic_cast<vcl::IPrioritable*>(pChild);
-            if (pPrioritable && pPrioritable->GetPriority() != VCL_PRIORITY_DEFAULT)
-                bAllwaysExpanded = false;
+    return finalizeMaxes(aSize, nVisibleChildren);
+}
 
-            if (bAllwaysExpanded)
-            {
-                long nPrimaryDimension = getPrimaryDimension(aChildSize);
-                nPrimaryDimension += pChild->get_padding() * 2;
-                setPrimaryDimension(aChildSize, nPrimaryDimension);
-            }
-            else
-                setPrimaryDimension(aChildSize, 0);
+void PriorityHBox::Resize()
+{
+    if (!m_bInitialized && SfxViewFrame::Current())
+        Initialize();
 
-            accumulateMaxes(aChildSize, aSize);
+    if (!m_bInitialized || comphelper::LibreOfficeKit::isActive())
+    {
+        return VclHBox::Resize();
+    }
+
+    long nWidth = GetSizePixel().Width();
+    long nCurrentWidth = VclHBox::calculateRequisition().getWidth();
+
+    // Hide lower priority controls
+    for (vcl::IPrioritable* pPrioritable : m_aSortedChildren)
+    {
+        if (nCurrentWidth <= nWidth)
+            break;
+
+        vcl::Window* pWindow = dynamic_cast<vcl::Window*>(pPrioritable);
+
+        if (pWindow && pWindow->GetParent() == this)
+        {
+            nCurrentWidth -= pWindow->GetOutputWidthPixel() + get_spacing();
+            pWindow->Show();
+            pPrioritable->HideContent();
+            nCurrentWidth += pWindow->GetOutputWidthPixel() + get_spacing();
+        }
+    }
+
+    auto pChildR = m_aSortedChildren.rbegin();
+    // Show higher priority controls if we already have enough space
+    while (pChildR != m_aSortedChildren.rend())
+    {
+        vcl::Window* pWindow = dynamic_cast<vcl::Window*>(*pChildR);
+        vcl::IPrioritable* pPrioritable = *pChildR;
+
+        if(pWindow->GetParent() != this)
+        {
+            pChildR++;
+            continue;
         }
 
-        return finalizeMaxes(aSize, nVisibleChildren);
-    }
-
-    virtual void Resize() override
-    {
-        long nWidth = GetSizePixel().Width();
-        long nCurrentWidth = VclHBox::calculateRequisition().getWidth();
-
-        // Hide lower priority controls
-        auto pChild = m_aSortedChilds.begin();
-        while (nCurrentWidth > nWidth && pChild != m_aSortedChilds.end())
+        if (pWindow)
         {
-            // ATM DropdownBox is the only one derived class from IPrioritable
-            DropdownBox* pDropdownBox = static_cast<DropdownBox*>(*pChild);
-
-            nCurrentWidth -= pDropdownBox->GetOutputWidthPixel() + get_spacing();
-            pDropdownBox->HideContent();
-            nCurrentWidth += pDropdownBox->GetOutputWidthPixel() + get_spacing();
-
-            pChild++;
-        }
-
-        // Show higher priority controls if we already have enough space
-        while (pChild != m_aSortedChilds.end())
-        {
-            DropdownBox* pBox = static_cast<DropdownBox*>(*pChild);
-
-            nCurrentWidth -= pBox->GetOutputWidthPixel() + get_spacing();
-            pBox->ShowContent();
-            nCurrentWidth += getLayoutRequisition(*pBox).Width() + get_spacing();
+            nCurrentWidth -= pWindow->GetOutputWidthPixel() + get_spacing();
+            pWindow->Show();
+            pPrioritable->ShowContent();
+            nCurrentWidth += getLayoutRequisition(*pWindow).Width() + get_spacing();
 
             if (nCurrentWidth > nWidth)
             {
-                pBox->HideContent();
+                pPrioritable->HideContent();
                 break;
             }
-
-            pChild++;
         }
 
-        VclHBox::Resize();
+        pChildR++;
     }
 
-    virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override
+    VclHBox::Resize();
+}
+
+void PriorityHBox::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect)
+{
+    if (!m_bInitialized && SfxViewFrame::Current())
+        Initialize();
+
+    VclHBox::Paint(rRenderContext, rRect);
+}
+
+void PriorityHBox::GetChildrenWithPriorities()
+{
+    for (sal_uInt16 i = 0; i < GetChildCount(); ++i)
     {
-        if (!m_bInitialized && SfxViewFrame::Current())
-        {
-            m_bInitialized = true;
+        vcl::Window* pChild = GetChild(i);
 
-            GetChildrenWithPriorities();
-
-            SystemWindow* pSystemWindow = SfxViewFrame::Current()->GetFrame().GetSystemWindow();
-            if (pSystemWindow)
-            {
-                long nWidth = pSystemWindow->GetSizePixel().Width();
-                SetSizePixel(Size(nWidth, GetSizePixel().Height()));
-            }
-        }
-
-        VclHBox::Paint(rRenderContext, rRect);
+        // Add only containers which have explicitly assigned priority.
+        vcl::IPrioritable* pPrioritable = dynamic_cast<vcl::IPrioritable*>(pChild);
+        if (pPrioritable && pPrioritable->GetPriority() != VCL_PRIORITY_DEFAULT)
+            m_aSortedChildren.push_back(pPrioritable);
     }
 
-    void GetChildrenWithPriorities()
-    {
-        for (sal_uInt16 i = 0; i < GetChildCount(); ++i)
-        {
-            vcl::Window* pChild = GetChild(i);
+    if (m_aSortedChildren.empty())
+        m_bInitialized = false;
 
-            // Add only containers which have explicitly assigned priority.
-            vcl::IPrioritable* pPrioritable = dynamic_cast<vcl::IPrioritable*>(pChild);
-            if (pPrioritable && pPrioritable->GetPriority() != VCL_PRIORITY_DEFAULT)
-                m_aSortedChilds.push_back(pPrioritable);
-        }
-
-        std::sort(m_aSortedChilds.begin(), m_aSortedChilds.end(), lcl_comparePriority);
-    }
-};
+    std::sort(m_aSortedChildren.begin(), m_aSortedChildren.end(), lcl_comparePriority);
+}
 
 VCL_BUILDER_FACTORY(PriorityHBox)
 

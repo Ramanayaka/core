@@ -20,15 +20,13 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_INC_SLIDE_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_INC_SLIDE_HXX
 
-#include "shapemanager.hxx"
-#include "subsettableshapemanager.hxx"
 #include "unoviewcontainer.hxx"
 #include "slidebitmap.hxx"
 #include "shapemaps.hxx"
 
 #include <memory>
 
-namespace com {  namespace sun { namespace star {
+namespace com::sun::star {
     namespace drawing {
         class XDrawPage;
         class XDrawPagesSupplier;
@@ -38,7 +36,8 @@ namespace com {  namespace sun { namespace star {
     }
     namespace animations {
         class XAnimationNode;
-} } } }
+    }
+}
 
 namespace basegfx
 {
@@ -47,9 +46,7 @@ namespace basegfx
 
 /* Definition of Slide interface */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         class RGBColor;
         class ScreenUpdater;
@@ -74,13 +71,13 @@ namespace slideshow
                 After this call, the slide will render itself to the
                 views, and start its animations.
 
-                @param bSlideBackgoundPainted
+                @param bSlideBackgroundPainted
                 When true, the initial slide content on the background
                 layer is already rendered (e.g. from a previous slide
                 transition). When false, Slide renders initial content of
                 slide.
              */
-            virtual void show( bool bSlideBackgoundPainted ) = 0;
+            virtual void show( bool bSlideBackgroundPainted ) = 0;
 
             /** Force-ends the slide
 
@@ -97,7 +94,7 @@ namespace slideshow
 
                 This value is retrieved from the XDrawPage properties.
              */
-            virtual basegfx::B2IVector getSlideSize() const = 0;
+            virtual basegfx::B2ISize getSlideSize() const = 0;
 
             /// Gets the underlying API page
             virtual css::uno::Reference< css::drawing::XDrawPage > getXDrawPage() const = 0;
@@ -115,7 +112,6 @@ namespace slideshow
             virtual bool isPaintOverlayActive() const = 0;
 
             virtual void enablePaintOverlay() = 0;
-            virtual void disablePaintOverlay() = 0;
 
             virtual void update_settings( bool bUserPaintEnabled, RGBColor const& aUserPaintColor, double dUserPaintStrokeWidth ) = 0;
 
@@ -153,6 +149,7 @@ namespace slideshow
 
         class EventQueue;
         class CursorManager;
+        class MediaFileManager;
         class EventMultiplexer;
         class ActivitiesQueue;
         class UserEventQueue;
@@ -195,6 +192,7 @@ namespace slideshow
                                     ActivitiesQueue&                                    rActivitiesQueue,
                                     UserEventQueue&                                     rUserEventQueue,
                                     CursorManager&                                      rCursorManager,
+                                    MediaFileManager&                                      rMediaFileManager,
                                     const UnoViewContainer&                             rViewContainer,
                                     const css::uno::Reference< css::uno::XComponentContext >&      xContext,
                                     const ShapeEventListenerMap&                        rShapeListenerMap,
@@ -205,7 +203,6 @@ namespace slideshow
                                     bool                                                bUserPaintEnabled,
                                     bool                                                bIntrinsicAnimationsAllowed,
                                     bool                                                bDisableAnimationZOrder );
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_SLIDE_HXX

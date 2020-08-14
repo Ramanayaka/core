@@ -25,15 +25,14 @@
 #include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 
-#include <vcl/unowrap.hxx>
+#include <vcl/toolkit/unowrap.hxx>
 #include <vcl/window.hxx>
 
-#include "helper/accessibilityclient.hxx"
-
-//  class UnoWrapper
+#include <helper/accessibilityclient.hxx>
 
 
-class UnoWrapper : public UnoWrapperBase
+
+class UnoWrapper final : public UnoWrapperBase
 {
 private:
     css::uno::Reference< css::awt::XToolkit>  mxToolkit;
@@ -54,6 +53,7 @@ public:
     // Window
     virtual css::uno::Reference< css::awt::XWindowPeer> GetWindowInterface( vcl::Window* pWindow ) override;
     virtual void        SetWindowInterface( vcl::Window* pWindow, css::uno::Reference< css::awt::XWindowPeer> xIFace ) override;
+    virtual VclPtr<vcl::Window> GetWindow(const css::uno::Reference<css::awt::XWindow>& rxWindow) override;
 
     void                WindowDestroyed( vcl::Window* pWindow ) override;
 

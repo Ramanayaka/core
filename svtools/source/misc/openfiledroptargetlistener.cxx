@@ -22,13 +22,13 @@
 #include <com/sun/star/datatransfer/dnd/DNDConstants.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
 
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include <sot/filelist.hxx>
-#include <comphelper/processfactory.hxx>
 
 #include <osl/file.hxx>
 #include <vcl/svapp.hxx>
@@ -161,20 +161,16 @@ bool OpenFileDropTargetListener::implts_IsDropFormatSupported( SotClipboardForma
     /* SAFE { */
     SolarMutexGuard aGuard;
 
-    DataFlavorExVector::iterator aIter( m_aFormats.begin() ), aEnd( m_aFormats.end() );
-    bool bRet = false;
-
-    while ( aIter != aEnd )
+    for (auto const& format : m_aFormats)
     {
-        if ( nFormat == (*aIter++).mnSotId )
+        if (nFormat == format.mnSotId)
         {
-            bRet = true;
-            aIter = aEnd;
+            return true;
         }
     }
     /* } SAFE */
 
-    return bRet;
+    return false;
 }
 
 void OpenFileDropTargetListener::implts_OpenFile( const OUString& rFilePath )

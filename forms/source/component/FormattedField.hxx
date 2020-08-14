@@ -22,15 +22,16 @@
 
 #include "EditBase.hxx"
 #include <tools/link.hxx>
-#include <comphelper/propmultiplex.hxx>
 #include <cppuhelper/implbase1.hxx>
 #include "errorbroadcaster.hxx"
+
+#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 
 struct ImplSVEvent;
 
 namespace frm
 {
-class OFormattedModel
+class OFormattedModel final
                     :public OEditBaseModel
                     ,public OErrorBroadcaster
     {
@@ -42,12 +43,10 @@ class OFormattedModel
         css::util::Date        m_aNullDate;
         css::uno::Any          m_aSaveValue;
 
-        sal_Int32                           m_nFieldType;
         sal_Int16                           m_nKeyType;
         bool                                m_bOriginalNumeric      : 1,
                                             m_bNumeric              : 1;    // analogous for the TreatAsNumeric-property
 
-    protected:
         css::uno::Reference< css::util::XNumberFormatsSupplier>  calcDefaultFormatsSupplier() const;
         css::uno::Reference< css::util::XNumberFormatsSupplier>  calcFormFormatsSupplier() const;
         css::uno::Reference< css::util::XNumberFormatsSupplier>  calcFormatsSupplier() const;
@@ -56,7 +55,6 @@ class OFormattedModel
 
         friend class OFormattedFieldWrapper;
 
-    protected:
         // XInterface
         DECLARE_UNO3_AGG_DEFAULTS( OFormattedModel, OEditBaseModel )
 
@@ -71,7 +69,7 @@ class OFormattedModel
 
         // XServiceInfo
         OUString SAL_CALL getImplementationName() override
-        { return OUString("com.sun.star.form.OFormattedModel"); }
+        { return "com.sun.star.form.OFormattedModel"; }
 
         virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -105,7 +103,6 @@ class OFormattedModel
         using OEditBaseModel::disposing;
         using OEditBaseModel::getFastPropertyValue;
 
-    protected:
         virtual sal_uInt16 getPersistenceFlags() const override;
         // as we have an own version handling for persistence
 
@@ -129,7 +126,6 @@ class OFormattedModel
         virtual void        onConnectedDbColumn( const css::uno::Reference< css::uno::XInterface >& _rxForm ) override;
         virtual void        onDisconnectedDbColumn() override;
 
-    private:
         virtual css::uno::Reference< css::util::XCloneable > SAL_CALL createClone(  ) override;
 
         void implConstruct();
@@ -154,7 +150,7 @@ class OFormattedModel
 
         // css::lang::XServiceInfo
         OUString SAL_CALL getImplementationName() override
-        { return OUString("com.sun.star.form.OFormattedControl"); }
+        { return "com.sun.star.form.OFormattedControl"; }
 
         virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 

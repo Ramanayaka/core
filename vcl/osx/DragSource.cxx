@@ -21,7 +21,7 @@
 #include <com/sun/star/datatransfer/XTransferable.hpp>
 #include <com/sun/star/awt/MouseButton.hpp>
 
-#include "rtl/ustring.hxx"
+#include <rtl/ustring.hxx>
 
 #include <cppuhelper/supportsservice.hxx>
 
@@ -30,7 +30,7 @@
 #include "clipboard.hxx"
 #include "DragActionConversion.hxx"
 
-#include "osx/salframe.h"
+#include <osx/salframe.h>
 
 #include <cassert>
 
@@ -54,12 +54,12 @@ NSView* DragSource::g_DragSourceView = nil;
 bool DragSource::g_DropSuccessSet = false;
 bool DragSource::g_DropSuccess = false;
 
-OUString dragSource_getImplementationName()
+static OUString dragSource_getImplementationName()
 {
-  return OUString("com.sun.star.comp.datatransfer.dnd.OleDragSource_V1");
+  return "com.sun.star.comp.datatransfer.dnd.OleDragSource_V1";
 }
 
-Sequence<OUString> dragSource_getSupportedServiceNames()
+static Sequence<OUString> dragSource_getSupportedServiceNames()
 {
   return { OUString("com.sun.star.datatransfer.dnd.OleDragSource") };
 }
@@ -146,6 +146,7 @@ DragSource::DragSource():
   mView(nullptr),
   mpFrame(nullptr),
   mLastMouseEventBeforeStartDrag(nil),
+  mDragSourceHelper(nil),
   m_MouseButton(0)
 {
 }
@@ -153,7 +154,7 @@ DragSource::DragSource():
 DragSource::~DragSource()
 {
     if( mpFrame && AquaSalFrame::isAlive( mpFrame ) )
-        [(id <MouseEventListener>)mView unregisterMouseEventListener: mDragSourceHelper];
+        [static_cast<id <MouseEventListener>>(mView) unregisterMouseEventListener: mDragSourceHelper];
     [mDragSourceHelper release];
 }
 
@@ -198,7 +199,7 @@ void SAL_CALL DragSource::initialize(const Sequence< Any >& aArguments)
                       static_cast<OWeakObject*>(this));
     }
 
-  [(id <MouseEventListener>)mView registerMouseEventListener: mDragSourceHelper];
+  [static_cast<id <MouseEventListener>>(mView) registerMouseEventListener: mDragSourceHelper];
 }
 
 sal_Bool SAL_CALL DragSource::isDragImageSupported(  )
@@ -220,8 +221,8 @@ void SAL_CALL DragSource::startDrag(const DragGestureEvent& trigger,
 {
   MutexGuard guard(m_aMutex);
 
-  assert(listener.is() && "DragSource::startDrag: No XDragSourceListener provided\n");
-  assert(transferable.is() && "DragSource::startDrag: No transferable provided\n");
+  assert(listener.is() && "DragSource::startDrag: No XDragSourceListener provided");
+  assert(transferable.is() && "DragSource::startDrag: No transferable provided");
 
   trigger.Event >>= mMouseEvent;
   m_MouseButton= mMouseEvent.Buttons;
@@ -267,7 +268,7 @@ void SAL_CALL DragSource::startDrag(const DragGestureEvent& trigger,
    event: mLastMouseEventBeforeStartDrag
    pasteboard: clipb->getPasteboard()
    source: mDragSourceHelper
-   slideBack: 1];
+   slideBack: true];
    SAL_WNODEPRECATED_DECLARATIONS_POP
 
   [dragImage release];

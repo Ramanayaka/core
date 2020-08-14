@@ -59,7 +59,7 @@ sub create_pathvariables
     my $filelistpath = $environment->{'WORKDIR'};
     $variables{'filelistpath'} = $filelistpath;
 
-    my $licensepath = $environment->{'SRCDIR'} . $installer::globals::separator . "readlicense_oo/license";
+    my $licensepath = $environment->{'WORKDIR'} . $installer::globals::separator . "CustomTarget/readlicense_oo/license";
     $variables{'licensepath'} = $licensepath;
 
     my $packinfopath = $environment->{'SRCDIR'} . $installer::globals::separator . "setup_native/source/packinfo";
@@ -108,8 +108,6 @@ sub set_global_environment_variables
     $installer::globals::cpuname = $environment->{'CPUNAME'};
     $installer::globals::platformid = $environment->{'PLATFORMID'};
 
-    if ( $ENV{'LAST_MINOR'} ) { $installer::globals::lastminor = $ENV{'LAST_MINOR'}; }
-
     if ( $ENV{'ENABLE_DBGUTIL'} ) {} else { $installer::globals::pro = 1; }
 
     if ( $ENV{'VERBOSE'} && ( (lc $ENV{'VERBOSE'}) eq "false" ) ) { $installer::globals::quiet = 1; }
@@ -122,8 +120,8 @@ sub set_global_environment_variables
     if ( $ENV{'RPM'} ) { $installer::globals::rpm = $ENV{'RPM'}; }
     if ( $ENV{'DONTCOMPRESS'} ) { $installer::globals::solarisdontcompress = 1; }
     if ( $ENV{'IGNORE_ERROR_IN_LOGFILE'} ) { $installer::globals::ignore_error_in_logfile = 1; }
-    if (( $ENV{'DISABLE_STRIP'} ) && ( $ENV{'DISABLE_STRIP'} ne '' )) { $installer::globals::strip = 0; }
     if (( $ENV{'ENABLE_STRIP'} ) && ( $ENV{'ENABLE_STRIP'} ne '' )) { $installer::globals::strip = 1; }
+    if (( $ENV{'DISABLE_STRIP'} ) && ( $ENV{'DISABLE_STRIP'} ne '' )) { $installer::globals::strip = 0; }
 
     if ( $installer::globals::localinstalldir ) { $installer::globals::localinstalldirset = 1; }
     # Special handling, if LOCALINSTALLDIR contains "~" in the path

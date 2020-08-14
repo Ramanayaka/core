@@ -19,8 +19,7 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 
 /** A wrapper for a binary output stream that supports aligned write operations.
@@ -31,7 +30,7 @@ namespace ole {
     Unlike it's reader class counterpart it is NOT possible to construct this
     wrapper with an unseekable output stream.
  */
-class AxAlignedOutputStream : public BinaryOutputStream
+class AxAlignedOutputStream final : public BinaryOutputStream
 {
 public:
     explicit            AxAlignedOutputStream( BinaryOutputStream& rOutStrm );
@@ -86,7 +85,7 @@ public:
         respective flag in the property mask is set. */
     template< typename StreamType, typename DataType >
     void                writeIntProperty( DataType ornValue )
-                            { if( startNextProperty() ) maOutStrm.writeAligned< StreamType >( ornValue ); }
+                            { startNextProperty(); maOutStrm.writeAligned< StreamType >( ornValue ); }
     /** Write a boolean property value to the stream, the
         respective flag in the property mask is set. */
     void                writeBoolProperty( bool orbValue );
@@ -106,7 +105,7 @@ public:
 
 private:
     bool                ensureValid();
-    bool                startNextProperty( bool bSkip = false );
+    void                startNextProperty( bool bSkip = false );
 
 private:
     /** Base class for complex properties such as string, point, size, GUID, picture. */
@@ -158,8 +157,7 @@ private:
 };
 
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 #endif
 

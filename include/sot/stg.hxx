@@ -20,31 +20,22 @@
 #ifndef INCLUDED_SOT_STG_HXX
 #define INCLUDED_SOT_STG_HXX
 
-#include <com/sun/star/uno/Any.h>
-#include <com/sun/star/uno/Reference.h>
-
-#include <com/sun/star/io/XInputStream.hpp>
-
-#include <com/sun/star/ucb/XCommandEnvironment.hpp>
-
-#include <com/sun/star/embed/XStorage.hpp>
-
-
 #include <tools/solar.h>
 #include <tools/stream.hxx>
 #include <tools/globname.hxx>
 #include <sot/storinfo.hxx>
 #include <sot/sotdllapi.h>
+#include <config_options.h>
 
-class Storage;
-class StorageStream;
+namespace com::sun::star::ucb { class XProgressHandler; }
+namespace com::sun::star::uno { class Any; }
+namespace com::sun::star::uno { template <typename > class Reference; }
+
 class StgIo;
 class StgDirEntry;
-class StgStrm;
-class SvGlobalName;
 typedef struct SvGUID ClsId;
 
-class SOT_DLLPUBLIC StorageBase : public SvRefBase
+class StorageBase : public SvRefBase
 {
 protected:
     mutable ErrCode m_nError;                   // error code
@@ -79,9 +70,9 @@ public:
     virtual bool        Equals( const BaseStorageStream& rStream ) const = 0;
 };
 
-enum class SotClipboardFormatId : sal_uLong;
+enum class SotClipboardFormatId : sal_uInt32;
 
-class BaseStorage : public StorageBase
+class SAL_DLLPUBLIC_RTTI BaseStorage : public StorageBase
 {
 public:
     virtual const OUString&     GetName() const = 0;
@@ -129,14 +120,14 @@ protected:
                     OLEStorageBase( StgIo*, StgDirEntry*, StreamMode& );
                     ~OLEStorageBase();
     bool            Validate_Impl( bool ) const;
-    static bool     ValidateMode_Impl( StreamMode, StgDirEntry* p = nullptr );
+    static bool     ValidateMode_Impl( StreamMode, StgDirEntry const * p = nullptr );
 };
 
-class StorageStream : public BaseStorageStream, public OLEStorageBase
+class StorageStream final : public BaseStorageStream, public OLEStorageBase
 {
 //friend class Storage;
     sal_uLong           nPos;                             // current position
-protected:
+
                         virtual ~StorageStream() override;
 public:
                         StorageStream( StgIo*, StgDirEntry*, StreamMode );
@@ -156,13 +147,12 @@ public:
 
 class UCBStorageStream;
 
-class SOT_DLLPUBLIC Storage : public BaseStorage, public OLEStorageBase
+class UNLESS_MERGELIBS(SOT_DLLPUBLIC) Storage final : public BaseStorage, public OLEStorageBase
 {
     OUString                    aName;
     bool                        bIsRoot;
     void                        Init( bool bCreate );
                                 Storage( StgIo*, StgDirEntry*, StreamMode );
-protected:
                                 virtual ~Storage() override;
 public:
                                 Storage( const OUString &, StreamMode, bool bDirect );
@@ -207,7 +197,7 @@ public:
     virtual bool                ValidateFAT() override;
     virtual bool                Validate( bool=false ) const override;
     virtual bool                ValidateMode( StreamMode ) const override;
-    bool                        ValidateMode( StreamMode, StgDirEntry* p ) const;
+    bool                        ValidateMode( StreamMode, StgDirEntry const * p ) const;
     virtual bool                Equals( const BaseStorage& rStream ) const override;
 };
 
@@ -256,7 +246,6 @@ protected:
                                 virtual ~UCBStorage() override;
 public:
     static bool                 IsStorageFile( SvStream* );
-    static OUString             GetLinkedFile( SvStream& );
 
                                 UCBStorage( const ::ucbhelper::Content& rContent,
                                             const OUString& rName,
@@ -319,7 +308,7 @@ public:
     virtual bool                Equals( const BaseStorage& rStream ) const override;
 
     UCBStorageElement_Impl*     FindElement_Impl( const OUString& rName ) const;
-    bool                        CopyStorageElement_Impl( UCBStorageElement_Impl& rElement,
+    bool                        CopyStorageElement_Impl( UCBStorageElement_Impl const & rElement,
                                                          BaseStorage* pDest, const OUString& rNew ) const;
     BaseStorage*                OpenStorage_Impl( const OUString & rEleName,
                                                   StreamMode, bool bDirect, bool bForceUCBStorage );

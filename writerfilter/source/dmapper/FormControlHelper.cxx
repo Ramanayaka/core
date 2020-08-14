@@ -37,13 +37,13 @@
 #include "FormControlHelper.hxx"
 #include <xmloff/odffields.hxx>
 #include <comphelper/sequence.hxx>
+#include <tools/diagnose_ex.h>
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
 using namespace ::com::sun::star;
 
-struct FormControlHelper::FormControlHelper_Impl
+struct FormControlHelper::FormControlHelper_Impl : public virtual SvRefBase
 {
     FieldId m_eFieldId;
     awt::Size aSize;
@@ -97,8 +97,7 @@ uno::Reference<form::XForm> const & FormControlHelper::FormControlHelper_Impl::g
             while (xFormsNamedContainer->hasByName(sFormName))
             {
                 ++nUnique;
-                sFormName = sDOCXForm;
-                sFormName += OUString::number(nUnique);
+                sFormName = sDOCXForm + OUString::number(nUnique);
             }
 
             uno::Reference<uno::XInterface> xForm(getServiceFactory()->createInstance("com.sun.star.form.component.Form"));
@@ -202,47 +201,96 @@ bool FormControlHelper::createCheckbox(uno::Reference<text::XTextRange> const& x
 
 void FormControlHelper::processField(uno::Reference<text::XFormField> const& xFormField)
 {
+    // Set field type first before adding parameters.
+    if (m_pImpl->m_eFieldId == FIELD_FORMTEXT )
+    {
+        xFormField->setFieldType(ODF_FORMTEXT);
+    }
+    else if (m_pImpl->m_eFieldId == FIELD_FORMCHECKBOX )
+    {
+        xFormField->setFieldType(ODF_FORMCHECKBOX);
+    }
+    else if (m_pImpl->m_eFieldId == FIELD_FORMDROPDOWN )
+    {
+        xFormField->setFieldType(ODF_FORMDROPDOWN);
+    }
+
     uno::Reference<container::XNameContainer> xNameCont = xFormField->getParameters();
     uno::Reference<container::XNamed> xNamed( xFormField, uno::UNO_QUERY );
-    if ( m_pFFData && xNamed.is() && xNameCont.is() )
+    if ( !(m_pFFData && xNamed.is() && xNameCont.is()) )
+        return;
+
+    OUString sTmp = m_pFFData->getEntryMacro();
+    if ( !sTmp.isEmpty() )
+        xNameCont->insertByName( "EntryMacro", uno::makeAny(sTmp) );
+    sTmp = m_pFFData->getExitMacro();
+    if ( !sTmp.isEmpty() )
+        xNameCont->insertByName( "ExitMacro", uno::makeAny(sTmp) );
+
+    sTmp = m_pFFData->getHelpText();
+    if ( !sTmp.isEmpty() )
+        xNameCont->insertByName( "Help", uno::makeAny(sTmp) );
+
+    sTmp = m_pFFData->getStatusText();
+    if ( !sTmp.isEmpty() )
+        xNameCont->insertByName( "Hint", uno::makeAny(sTmp) );
+
+    if (m_pImpl->m_eFieldId == FIELD_FORMTEXT )
     {
+        sTmp = m_pFFData->getName();
+        try
+        {
+            if ( !sTmp.isEmpty() )
+                xNamed->setName( sTmp );
+        }
+        catch ( uno::Exception& )
+        {
+            TOOLS_INFO_EXCEPTION("writerfilter", "Set Formfield name failed");
+        }
 
-        if (m_pImpl->m_eFieldId == FIELD_FORMTEXT )
+        sTmp = m_pFFData->getTextType();
+        if ( !sTmp.isEmpty() )
+            xNameCont->insertByName( "Type", uno::makeAny(sTmp) );
+
+        const sal_uInt16 nMaxLength = m_pFFData->getTextMaxLength();
+        if ( nMaxLength )
         {
-            xFormField->setFieldType(ODF_FORMTEXT);
-            if (  !m_pFFData->getName().isEmpty() )
-            {
-                xNamed->setName( m_pFFData->getName() );
-            }
+            xNameCont->insertByName( "MaxLength", uno::makeAny(nMaxLength) );
         }
-        else if (m_pImpl->m_eFieldId == FIELD_FORMCHECKBOX )
+
+        sTmp = m_pFFData->getTextDefault();
+        if ( !sTmp.isEmpty() )
+            xNameCont->insertByName( "Content", uno::makeAny(sTmp) );
+
+        sTmp = m_pFFData->getTextFormat();
+        if ( !sTmp.isEmpty() )
+            xNameCont->insertByName( "Format", uno::makeAny(sTmp) );
+    }
+    else if (m_pImpl->m_eFieldId == FIELD_FORMCHECKBOX )
+    {
+        uno::Reference<beans::XPropertySet> xPropSet(xFormField, uno::UNO_QUERY);
+        uno::Any aAny;
+        aAny <<= m_pFFData->getCheckboxChecked();
+        if ( xPropSet.is() )
+            xPropSet->setPropertyValue("Checked", aAny);
+    }
+    else if (m_pImpl->m_eFieldId == FIELD_FORMDROPDOWN )
+    {
+        const FFDataHandler::DropDownEntries_t& rEntries = m_pFFData->getDropDownEntries();
+        if (!rEntries.empty())
         {
-            xFormField->setFieldType(ODF_FORMCHECKBOX);
-            uno::Reference<beans::XPropertySet> xPropSet(xFormField, uno::UNO_QUERY);
-            uno::Any aAny;
-            aAny <<= m_pFFData->getCheckboxChecked();
-            if ( xPropSet.is() )
-                xPropSet->setPropertyValue("Checked", aAny);
-        }
-        else if (m_pImpl->m_eFieldId == FIELD_FORMDROPDOWN )
-        {
-            xFormField->setFieldType(ODF_FORMDROPDOWN);
-            const FFDataHandler::DropDownEntries_t& rEntries = m_pFFData->getDropDownEntries();
-            if (!rEntries.empty())
+            if ( xNameCont->hasByName(ODF_FORMDROPDOWN_LISTENTRY) )
+                xNameCont->replaceByName(ODF_FORMDROPDOWN_LISTENTRY, uno::makeAny(comphelper::containerToSequence(rEntries)));
+            else
+                xNameCont->insertByName(ODF_FORMDROPDOWN_LISTENTRY, uno::makeAny(comphelper::containerToSequence(rEntries)));
+
+            sal_Int32 nResult = m_pFFData->getDropDownResult().toInt32();
+            if ( nResult )
             {
-                if ( xNameCont->hasByName(ODF_FORMDROPDOWN_LISTENTRY) )
-                    xNameCont->replaceByName(ODF_FORMDROPDOWN_LISTENTRY, uno::makeAny(comphelper::containerToSequence(rEntries)));
+                if ( xNameCont->hasByName(ODF_FORMDROPDOWN_RESULT) )
+                    xNameCont->replaceByName(ODF_FORMDROPDOWN_RESULT, uno::makeAny( nResult ) );
                 else
-                    xNameCont->insertByName(ODF_FORMDROPDOWN_LISTENTRY, uno::makeAny(comphelper::containerToSequence(rEntries)));
-
-                sal_Int32 nResult = m_pFFData->getDropDownResult().toInt32();
-                if ( nResult )
-                {
-                    if ( xNameCont->hasByName(ODF_FORMDROPDOWN_RESULT) )
-                        xNameCont->replaceByName(ODF_FORMDROPDOWN_RESULT, uno::makeAny( nResult ) );
-                    else
-                        xNameCont->insertByName(ODF_FORMDROPDOWN_RESULT, uno::makeAny( nResult ) );
-                }
+                    xNameCont->insertByName(ODF_FORMDROPDOWN_RESULT, uno::makeAny( nResult ) );
             }
         }
     }
@@ -307,7 +355,7 @@ void FormControlHelper::insertControl(uno::Reference<text::XTextRange> const& xT
 
     uno::Reference<beans::XPropertySet> xShapeProps(xShape, uno::UNO_QUERY);
 
-    sal_uInt16 nTmp = (sal_uInt16)text::TextContentAnchorType_AS_CHARACTER;
+    sal_uInt16 nTmp = sal_uInt16(text::TextContentAnchorType_AS_CHARACTER);
     xShapeProps->setPropertyValue("AnchorType", uno::makeAny<sal_uInt16>(nTmp));
 
     nTmp = text::VertOrientation::CENTER;
@@ -322,6 +370,6 @@ void FormControlHelper::insertControl(uno::Reference<text::XTextRange> const& xT
     m_pImpl->getDrawPage()->add(xShape);
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

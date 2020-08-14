@@ -18,22 +18,22 @@
  */
 
 
-#include <helperminimaldepth3d.hxx>
+#include "helperminimaldepth3d.hxx"
 #include <drawinglayer/processor3d/baseprocessor3d.hxx>
 #include <drawinglayer/primitive3d/drawinglayer_primitivetypes3d.hxx>
 #include <drawinglayer/primitive3d/transformprimitive3d.hxx>
 #include <drawinglayer/primitive3d/polygonprimitive3d.hxx>
 #include <drawinglayer/primitive3d/polypolygonprimitive3d.hxx>
-#include <svx/sdr/contact/viewcontactofe3d.hxx>
+#include <sdr/contact/viewcontactofe3d.hxx>
 #include <svx/sdr/contact/viewcontactofe3dscene.hxx>
 #include <svx/obj3d.hxx>
 #include <svx/scene3d.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::processor3d
 {
-    namespace processor3d
-    {
+        namespace {
+
         class MinimalDephInViewExtractor : public BaseProcessor3D
         {
         private:
@@ -53,6 +53,8 @@ namespace drawinglayer
             // data access
             double getMinimalDepth() const { return mfMinimalDepth; }
         };
+
+        }
 
         void MinimalDephInViewExtractor::processBasePrimitive3D(const primitive3d::BasePrimitive3D& rCandidate)
         {
@@ -86,7 +88,7 @@ namespace drawinglayer
                 {
                     // PolygonHairlinePrimitive3D
                     const primitive3d::PolygonHairlinePrimitive3D& rPrimitive = static_cast< const primitive3d::PolygonHairlinePrimitive3D& >(rCandidate);
-                       const basegfx::B3DPolygon& rPolygon = rPrimitive.getB3DPolygon();
+                    const basegfx::B3DPolygon& rPolygon = rPrimitive.getB3DPolygon();
                     const sal_uInt32 nCount(rPolygon.count());
 
                     for(sal_uInt32 a(0); a < nCount; a++)
@@ -105,12 +107,12 @@ namespace drawinglayer
                 {
                     // PolyPolygonMaterialPrimitive3D
                     const primitive3d::PolyPolygonMaterialPrimitive3D& rPrimitive = static_cast< const primitive3d::PolyPolygonMaterialPrimitive3D& >(rCandidate);
-                       const basegfx::B3DPolyPolygon& rPolyPolygon = rPrimitive.getB3DPolyPolygon();
+                    const basegfx::B3DPolyPolygon& rPolyPolygon = rPrimitive.getB3DPolyPolygon();
                     const sal_uInt32 nPolyCount(rPolyPolygon.count());
 
                     for(sal_uInt32 a(0); a < nPolyCount; a++)
                     {
-                           const basegfx::B3DPolygon aPolygon(rPolyPolygon.getB3DPolygon(a));
+                        const basegfx::B3DPolygon& aPolygon(rPolyPolygon.getB3DPolygon(a));
                         const sal_uInt32 nCount(aPolygon.count());
 
                         for(sal_uInt32 b(0); b < nCount; b++)
@@ -134,8 +136,7 @@ namespace drawinglayer
                 }
             }
         }
-    } // end of namespace processor3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 
 // changed to create values using VCs, Primitive3DContainer and ViewInformation3D to allow
@@ -147,7 +148,7 @@ namespace drawinglayer
 
 double getMinimalDepthInViewCoordinates(const E3dCompoundObject& rObject)
 {
-    // this is a E3dCompoundObject, so it cannot be a scene (which is a E3dObject).
+    // this is an E3dCompoundObject, so it cannot be a scene (which is an E3dObject).
     // Get primitive sequence using VC
     const sdr::contact::ViewContactOfE3d& rVCObject = static_cast< sdr::contact::ViewContactOfE3d& >(rObject.GetViewContact());
     const drawinglayer::primitive3d::Primitive3DContainer aPrimitives = rVCObject.getViewIndependentPrimitive3DContainer();
@@ -155,7 +156,7 @@ double getMinimalDepthInViewCoordinates(const E3dCompoundObject& rObject)
 
     if(!aPrimitives.empty())
     {
-        const E3dScene* pScene = rObject.GetScene();
+        const E3dScene* pScene(rObject.getRootE3dSceneFromE3dObject());
 
         if(pScene)
         {
@@ -168,14 +169,14 @@ double getMinimalDepthInViewCoordinates(const E3dCompoundObject& rObject)
             // and the object's transform is part of aPrimitives (and taken into account when decomposing
             // to PolygonHairlinePrimitive3D and PolyPolygonMaterialPrimitive3D). The missing part may be
             // some Scene SdrObjects lying in-between which may need to be added. This is e.g. used in chart,
-            // and generally allowed in 3d scenes an their 3d object hierarchy
+            // and generally allowed in 3d scenes and their 3d object hierarchy
             basegfx::B3DHomMatrix aInBetweenSceneMatrix;
-            E3dScene* pParentScene = dynamic_cast< E3dScene* >(rObject.GetParentObj());
+            E3dScene* pParentScene(rObject.getParentE3dSceneFromE3dObject());
 
             while(pParentScene && pParentScene != pScene)
             {
                 aInBetweenSceneMatrix = pParentScene->GetTransform() * aInBetweenSceneMatrix;
-                pParentScene = dynamic_cast< E3dScene* >(pParentScene->GetParentObj());
+                pParentScene = pParentScene->getParentE3dSceneFromE3dObject();
             }
 
             // build new ViewInformation containing all transforms

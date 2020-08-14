@@ -23,8 +23,6 @@
 #include <i18nlangtag/lang.h>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
 // class SvxLanguageItem -------------------------------------------------
 
 /*  [Description]
@@ -33,14 +31,14 @@ class SvXMLUnitConverter;
 */
 
 // MSVC hack:
-class SvxLanguageItem_Base: public SfxEnumItem<LanguageType> {
+class SAL_DLLPUBLIC_RTTI SvxLanguageItem_Base: public SfxEnumItem<LanguageType> {
 protected:
     explicit SvxLanguageItem_Base(sal_uInt16 nWhich, LanguageType nValue):
         SfxEnumItem(nWhich, nValue)
     {}
 };
 
-class EDITENG_DLLPUBLIC SvxLanguageItem : public SvxLanguageItem_Base
+class EDITENG_DLLPUBLIC SvxLanguageItem final : public SvxLanguageItem_Base
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -52,18 +50,12 @@ public:
     virtual bool GetPresentation(SfxItemPresentation ePres,
                                  MapUnit eCoreMetric,
                                  MapUnit ePresMetric,
-                                 OUString &rText, const IntlWrapper * = nullptr) const override;
+                                 OUString &rText, const IntlWrapper&) const override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion) const override;
+    virtual SvxLanguageItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual sal_uInt16      GetValueCount() const override;
 
-    SvxLanguageItem& operator=(const SvxLanguageItem& rLang)
-        {
-            SetValue( rLang.GetValue() );
-            return *this;
-        }
+    SvxLanguageItem(SvxLanguageItem const &) = default; // SfxPoolItem copy function dichotomy
 
     LanguageType            GetLanguage() const
                                 { return GetValue(); }

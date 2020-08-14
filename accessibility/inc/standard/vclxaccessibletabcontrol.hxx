@@ -17,25 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETABCONTROL_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETABCONTROL_HXX
+#pragma once
 
 #include <toolkit/awt/vclxaccessiblecomponent.hxx>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
+#include <vcl/tabctrl.hxx>
 #include <vcl/vclptr.hxx>
 
 #include <vector>
 
-class TabControl;
 
-
-//  class VCLXAccessibleTabControl
 
 
 typedef ::cppu::ImplHelper1 <
     css::accessibility::XAccessibleSelection > VCLXAccessibleTabControl_BASE;
 
-class VCLXAccessibleTabControl :    public VCLXAccessibleComponent,
+class VCLXAccessibleTabControl final : public VCLXAccessibleComponent,
                                     public VCLXAccessibleTabControl_BASE
 {
 private:
@@ -44,7 +41,10 @@ private:
     AccessibleChildren      m_aAccessibleChildren;
     VclPtr<TabControl>      m_pTabControl;
 
-protected:
+    css::uno::Reference< css::accessibility::XAccessible > implGetAccessibleChild( sal_Int32 i );
+    bool implIsAccessibleChildSelected( sal_Int32 nChildIndex );
+
+
     void                    UpdateFocused();
     void                    UpdateSelected( sal_Int32 i, bool bSelected );
     void                    UpdatePageText( sal_Int32 i );
@@ -62,7 +62,6 @@ protected:
 
 public:
     VCLXAccessibleTabControl( VCLXWindow* pVCLXWindow );
-    virtual ~VCLXAccessibleTabControl() override;
 
     // XInterface
     DECLARE_XINTERFACE()
@@ -91,6 +90,5 @@ public:
 };
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETABCONTROL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

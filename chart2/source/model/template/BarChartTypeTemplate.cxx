@@ -18,14 +18,17 @@
  */
 
 #include "BarChartTypeTemplate.hxx"
-#include "macros.hxx"
-#include "DiagramHelper.hxx"
-#include "servicenames_charttypes.hxx"
-#include "DataSeriesHelper.hxx"
-#include "PropertyHelper.hxx"
+#include <DiagramHelper.hxx>
+#include <servicenames_charttypes.hxx>
+#include <DataSeriesHelper.hxx>
+#include <PropertyHelper.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
 #include <com/sun/star/chart2/DataPointGeometry3D.hpp>
+#include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <tools/diagnose_ex.h>
 
 #include <algorithm>
 
@@ -47,18 +50,16 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "Dimension",
+    rOutProperties.emplace_back( "Dimension",
                   PROP_BAR_TEMPLATE_DIMENSION,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
-    rOutProperties.push_back(
-        Property( "Geometry3D",
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
+    rOutProperties.emplace_back( "Geometry3D",
                   PROP_BAR_TEMPLATE_GEOMETRY3D,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 }
 
 struct StaticBarChartTypeTemplateDefaults_Initializer
@@ -206,9 +207,9 @@ Reference< chart2::XChartType > BarChartTypeTemplate::getChartTypeForIndex( sal_
         xResult.set( xFact->createInstance(
                          CHART2_SERVICE_NAME_CHARTTYPE_COLUMN ), uno::UNO_QUERY_THROW );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return xResult;
@@ -251,19 +252,19 @@ void SAL_CALL BarChartTypeTemplate::applyStyle(
 {
     ChartTypeTemplate::applyStyle( xSeries, nChartTypeIndex, nSeriesIndex, nSeriesCount );
     DataSeriesHelper::setPropertyAlsoToAllAttributedDataPoints( xSeries, "BorderStyle", uno::Any( drawing::LineStyle_NONE ) );
-    if( getDimension() == 3 )
+    if( getDimension() != 3 )
+        return;
+
+    try
     {
-        try
-        {
-            //apply Geometry3D
-            uno::Any aAGeometry3D;
-            this->getFastPropertyValue( aAGeometry3D, PROP_BAR_TEMPLATE_GEOMETRY3D );
-            DataSeriesHelper::setPropertyAlsoToAllAttributedDataPoints( xSeries, "Geometry3D", aAGeometry3D );
-        }
-        catch( const uno::Exception & ex )
-        {
-            ASSERT_EXCEPTION( ex );
-        }
+        //apply Geometry3D
+        uno::Any aAGeometry3D;
+        getFastPropertyValue( aAGeometry3D, PROP_BAR_TEMPLATE_GEOMETRY3D );
+        DataSeriesHelper::setPropertyAlsoToAllAttributedDataPoints( xSeries, "Geometry3D", aAGeometry3D );
+    }
+    catch( const uno::Exception & )
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -274,10 +275,9 @@ void SAL_CALL BarChartTypeTemplate::resetStyles(
     std::vector< Reference< chart2::XDataSeries > > aSeriesVec(
         DiagramHelper::getDataSeriesFromDiagram( xDiagram ));
     uno::Any aLineStyleAny( drawing::LineStyle_NONE );
-    for( std::vector< Reference< chart2::XDataSeries > >::iterator aIt( aSeriesVec.begin());
-         aIt != aSeriesVec.end(); ++aIt )
+    for (auto const& series : aSeriesVec)
     {
-        Reference< beans::XPropertyState > xState( *aIt, uno::UNO_QUERY );
+        Reference< beans::XPropertyState > xState(series, uno::UNO_QUERY);
         if( xState.is())
         {
             if( getDimension() == 3 )

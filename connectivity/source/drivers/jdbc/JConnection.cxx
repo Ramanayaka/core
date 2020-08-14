@@ -19,34 +19,31 @@
 
 #include <sal/config.h>
 
-#include "java/sql/Connection.hxx"
-#include "java/lang/Class.hxx"
-#include "java/tools.hxx"
-#include "java/ContextClassLoader.hxx"
-#include "java/sql/DatabaseMetaData.hxx"
-#include "java/sql/JStatement.hxx"
-#include "java/sql/Driver.hxx"
-#include "java/sql/PreparedStatement.hxx"
-#include "java/sql/CallableStatement.hxx"
-#include "java/sql/SQLWarning.hxx"
-#include <com/sun/star/lang/DisposedException.hpp>
+#include <java/sql/Connection.hxx>
+#include <java/lang/Class.hxx>
+#include <java/tools.hxx>
+#include <java/ContextClassLoader.hxx>
+#include <java/sql/DatabaseMetaData.hxx>
+#include <java/sql/JStatement.hxx>
+#include <java/sql/Driver.hxx>
+#include <java/sql/PreparedStatement.hxx>
+#include <java/sql/CallableStatement.hxx>
+#include <java/sql/SQLWarning.hxx>
 #include <com/sun/star/sdbc/SQLWarning.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
-#include <connectivity/sqlparse.hxx>
 #include <connectivity/dbexception.hxx>
-#include "java/util/Property.hxx"
-#include "java/LocalRef.hxx"
-#include "resource/conn_shared_res.hrc"
+#include <java/util/Property.hxx>
+#include <java/LocalRef.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <jvmaccess/classpath.hxx>
 #include <comphelper/namedvaluecollection.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <jni.h>
-#include "resource/common_res.hrc"
+#include <strings.hrc>
 #include <unotools/confignode.hxx>
-#include "strings.hxx"
+#include <strings.hxx>
 
-#include <list>
+#include <vector>
 #include <memory>
 
 using namespace connectivity;
@@ -71,19 +68,12 @@ struct ClassMapEntry {
     jweak classObject;
 };
 
-typedef std::list< ClassMapEntry > ClassMap;
+typedef std::vector< ClassMapEntry > ClassMap;
 
 struct ClassMapData {
     osl::Mutex mutex;
 
     ClassMap map;
-};
-
-struct ClassMapDataInit {
-    ClassMapData * operator()() {
-        static ClassMapData instance;
-        return &instance;
-    }
 };
 
 template < typename T >
@@ -133,17 +123,14 @@ bool loadClass(
     OSL_ASSERT(classLoaderPtr != nullptr);
     // For any jweak entries still present in the map upon destruction,
     // DeleteWeakGlobalRef is not called (which is a leak):
-    ClassMapData * d =
-        rtl_Instance< ClassMapData, ClassMapDataInit, osl::MutexGuard,
-        osl::GetGlobalMutex >::create(
-            ClassMapDataInit(), osl::GetGlobalMutex());
-    osl::MutexGuard g(d->mutex);
-    ClassMap::iterator i(d->map.begin());
+    static ClassMapData classMapData;
+    osl::MutexGuard g(classMapData.mutex);
+    ClassMap::iterator i(classMapData.map.begin());
     LocalRef< jobject > cloader(environment);
     LocalRef< jclass > cl(environment);
     // Prune dangling weak references from the list while searching for a match,
     // so that the list cannot grow unbounded:
-    for (; i != d->map.end();)
+    for (; i != classMapData.map.end();)
     {
         LocalRef< jobject > classLoader( environment );
         if ( !getLocalFromWeakRef( i->classLoader, classLoader ) )
@@ -155,7 +142,7 @@ bool loadClass(
 
         if ( !classLoader.is() && !classObject.is() )
         {
-            i = d->map.erase(i);
+            i = classMapData.map.erase(i);
         }
         else if ( i->classPath == classPath && i->className == name )
         {
@@ -170,7 +157,7 @@ bool loadClass(
     }
     if ( !cloader.is() || !cl.is() )
     {
-        if ( i == d->map.end() )
+        if ( i == classMapData.map.end() )
         {
             // Push a new ClassMapEntry (which can potentially fail) before
             // loading the class, so that it never happens that a class is
@@ -178,8 +165,8 @@ bool loadClass(
             // JVM that are not easily undone).  If the pushed ClassMapEntry is
             // not used after all (return false, etc.) it will be pruned on next
             // call because its classLoader/classObject are null:
-            d->map.push_front( ClassMapEntry( classPath, name ) );
-            i = d->map.begin();
+            classMapData.map.push_back( ClassMapEntry( classPath, name ) );
+            i = std::prev(classMapData.map.end());
         }
 
         LocalRef< jclass > clClass( environment );
@@ -260,14 +247,12 @@ jclass java_sql_Connection::theClass = nullptr;
 
 java_sql_Connection::java_sql_Connection( const java_sql_Driver& _rDriver )
     :java_lang_Object()
-    ,OSubComponent<java_sql_Connection, java_sql_Connection_BASE>(static_cast<cppu::OWeakObject*>(const_cast<java_sql_Driver *>(&_rDriver)), this)
     ,m_xContext( _rDriver.getContext() )
     ,m_pDriver( &_rDriver )
     ,m_pDriverobject(nullptr)
     ,m_pDriverClassLoader()
     ,m_Driver_theClass(nullptr)
     ,m_aLogger( _rDriver.getLogger() )
-    ,m_bParameterSubstitution(false)
     ,m_bIgnoreDriverPrivileges(true)
     ,m_bIgnoreCurrency(false)
 {
@@ -276,26 +261,21 @@ java_sql_Connection::java_sql_Connection( const java_sql_Driver& _rDriver )
 java_sql_Connection::~java_sql_Connection()
 {
     ::rtl::Reference< jvmaccess::VirtualMachine > xTest = java_lang_Object::getVM();
-    if ( xTest.is() )
+    if ( !xTest.is() )
+        return;
+
+    SDBThreadAttach t;
+    clearObject(*t.pEnv);
+
     {
-        SDBThreadAttach t;
-        clearObject(*t.pEnv);
-
-        {
-            if ( m_pDriverobject )
-                t.pEnv->DeleteGlobalRef( m_pDriverobject );
-            m_pDriverobject = nullptr;
-            if ( m_Driver_theClass )
-                t.pEnv->DeleteGlobalRef( m_Driver_theClass );
-            m_Driver_theClass = nullptr;
-        }
-        SDBThreadAttach::releaseRef();
+        if ( m_pDriverobject )
+            t.pEnv->DeleteGlobalRef( m_pDriverobject );
+        m_pDriverobject = nullptr;
+        if ( m_Driver_theClass )
+            t.pEnv->DeleteGlobalRef( m_Driver_theClass );
+        m_Driver_theClass = nullptr;
     }
-}
-
-void SAL_CALL java_sql_Connection::release() throw()
-{
-    release_ChildImpl();
+    SDBThreadAttach::releaseRef();
 }
 
 void java_sql_Connection::disposing()
@@ -304,7 +284,6 @@ void java_sql_Connection::disposing()
 
     m_aLogger.log( LogLevel::INFO, STR_LOG_SHUTDOWN_CONNECTION );
 
-    dispose_ChildImpl();
     java_sql_Connection_BASE::disposing();
 
     if ( object )
@@ -465,32 +444,6 @@ Reference< XStatement > SAL_CALL java_sql_Connection::createStatement(  )
     return xStmt;
 }
 
-OUString java_sql_Connection::transFormPreparedStatement(const OUString& _sSQL)
-{
-    OUString sSqlStatement = _sSQL;
-    if ( m_bParameterSubstitution )
-    {
-        try
-        {
-            OSQLParser aParser( m_pDriver->getContext() );
-            OUString sErrorMessage;
-            OUString sNewSql;
-            OSQLParseNode* pNode = aParser.parseTree(sErrorMessage,_sSQL);
-            if(pNode)
-            {   // special handling for parameters
-                OSQLParseNode::substituteParameterNames(pNode);
-                pNode->parseNodeToStr( sNewSql, this );
-                delete pNode;
-                sSqlStatement = sNewSql;
-            }
-        }
-        catch(const Exception&)
-        {
-        }
-    }
-    return sSqlStatement;
-}
-
 Reference< XPreparedStatement > SAL_CALL java_sql_Connection::prepareStatement( const OUString& sql )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
@@ -498,10 +451,8 @@ Reference< XPreparedStatement > SAL_CALL java_sql_Connection::prepareStatement( 
     m_aLogger.log( LogLevel::FINE, STR_LOG_PREPARE_STATEMENT, sql );
 
     SDBThreadAttach t;
-    OUString sSqlStatement = sql;
-    sSqlStatement = transFormPreparedStatement( sSqlStatement );
 
-    java_sql_PreparedStatement* pStatement = new java_sql_PreparedStatement( t.pEnv, *this, sSqlStatement );
+    java_sql_PreparedStatement* pStatement = new java_sql_PreparedStatement( t.pEnv, *this, sql );
     Reference< XPreparedStatement > xReturn( pStatement );
     m_aStatements.push_back(WeakReferenceHelper(xReturn));
 
@@ -516,10 +467,8 @@ Reference< XPreparedStatement > SAL_CALL java_sql_Connection::prepareCall( const
     m_aLogger.log( LogLevel::FINE, STR_LOG_PREPARE_CALL, sql );
 
     SDBThreadAttach t;
-    OUString sSqlStatement = sql;
-    sSqlStatement = transFormPreparedStatement( sSqlStatement );
 
-    java_sql_CallableStatement* pStatement = new java_sql_CallableStatement( t.pEnv, *this, sSqlStatement );
+    java_sql_CallableStatement* pStatement = new java_sql_CallableStatement( t.pEnv, *this, sql );
     Reference< XPreparedStatement > xStmt( pStatement );
     m_aStatements.push_back(WeakReferenceHelper(xStmt));
 
@@ -573,7 +522,7 @@ Any SAL_CALL java_sql_Connection::getWarnings(  )
     if( out )
     {
         java_sql_SQLWarning_BASE        warn_base(t.pEnv, out);
-        SQLException aAsException( static_cast< css::sdbc::SQLException >( java_sql_SQLWarning( warn_base, *this ) ) );
+        SQLException aAsException( java_sql_SQLWarning( warn_base, *this ) );
 
         // translate to warning
         SQLWarning aWarning;
@@ -616,7 +565,7 @@ namespace
     bool lcl_setSystemProperties_nothrow( const java::sql::ConnectionLog& _rLogger,
         JNIEnv& _rEnv, const Sequence< NamedValue >& _rSystemProperties )
     {
-        if ( _rSystemProperties.getLength() == 0 )
+        if ( !_rSystemProperties.hasElements() )
             // nothing to do
             return true;
 
@@ -633,17 +582,14 @@ namespace
         if ( nSetPropertyMethodID == nullptr )
             return false;
 
-        for (   const NamedValue* pSystemProp = _rSystemProperties.getConstArray();
-                pSystemProp != _rSystemProperties.getConstArray() + _rSystemProperties.getLength();
-                ++pSystemProp
-            )
+        for ( auto const & systemProp : _rSystemProperties )
         {
             OUString sValue;
-            OSL_VERIFY( pSystemProp->Value >>= sValue );
+            OSL_VERIFY( systemProp.Value >>= sValue );
 
-            _rLogger.log( LogLevel::FINER, STR_LOG_SETTING_SYSTEM_PROPERTY, pSystemProp->Name, sValue );
+            _rLogger.log( LogLevel::FINER, STR_LOG_SETTING_SYSTEM_PROPERTY, systemProp.Name, sValue );
 
-            LocalRef< jstring > jName( _rEnv, convertwchar_tToJavaString( &_rEnv, pSystemProp->Name ) );
+            LocalRef< jstring > jName( _rEnv, convertwchar_tToJavaString( &_rEnv, systemProp.Name ) );
             LocalRef< jstring > jValue( _rEnv, convertwchar_tToJavaString( &_rEnv, sValue ) );
 
             _rEnv.CallStaticObjectMethod( systemClass.get(), nSetPropertyMethodID, jName.get(), jValue.get() );
@@ -707,7 +653,7 @@ void java_sql_Connection::loadDriverFromProperties( const OUString& _sDriverClas
 
                     ThrowLoggedSQLException( m_aLogger, t.pEnv, *this );
                 }
-                if ( pDrvClass.get() )
+                if (pDrvClass)
                 {
                     LocalRef< jobject > driverObject( t.env() );
                     driverObject.set( pDrvClass->newInstanceObject() );
@@ -730,21 +676,23 @@ void java_sql_Connection::loadDriverFromProperties( const OUString& _sDriverClas
             }
         }
     }
-    catch( const SQLException& e )
+    catch( const SQLException& )
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         throw SQLException(
             lcl_getDriverLoadErrorMessage( getResources(),_sDriverClass, _sDriverClassPath ),
             *this,
             OUString(),
             1000,
-            makeAny(e)
-        );
+            anyEx);
     }
     catch( Exception& )
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         ::dbtools::throwGenericSQLException(
             lcl_getDriverLoadErrorMessage( getResources(),_sDriverClass, _sDriverClassPath ),
-            *this
+            *this,
+            anyEx
         );
     }
 }
@@ -788,7 +736,6 @@ bool java_sql_Connection::construct(const OUString& url,
         sDriverClassPath = impl_getJavaDriverClassPath_nothrow(sDriverClass);
     bAutoRetrievingEnabled = aSettings.getOrDefault( "IsAutoRetrievingEnabled", bAutoRetrievingEnabled );
     sGeneratedValueStatement = aSettings.getOrDefault( "AutoRetrievingStatement", sGeneratedValueStatement );
-    m_bParameterSubstitution = aSettings.getOrDefault( "ParameterNameSubstitution", m_bParameterSubstitution );
     m_bIgnoreDriverPrivileges = aSettings.getOrDefault( "IgnoreDriverPrivileges", m_bIgnoreDriverPrivileges );
     m_bIgnoreCurrency = aSettings.getOrDefault( "IgnoreCurrency", m_bIgnoreCurrency );
     aSystemProperties = aSettings.getOrDefault( "SystemProperties", aSystemProperties );
@@ -812,7 +759,7 @@ bool java_sql_Connection::construct(const OUString& url,
             jvalue args[2];
             // convert Parameter
             args[0].l = convertwchar_tToJavaString(t.pEnv,url);
-            java_util_Properties* pProps = createStringPropertyArray(info);
+            std::unique_ptr<java_util_Properties> pProps = createStringPropertyArray(info);
             args[1].l = pProps->getJavaObject();
 
             LocalRef< jobject > ensureDelete( t.env(), args[0].l );
@@ -834,8 +781,7 @@ bool java_sql_Connection::construct(const OUString& url,
             {
                 ContextClassLoaderScope ccl( t.env(), getDriverClassLoader(), getLogger(), *this );
                 out = t.pEnv->CallObjectMethod( m_pDriverobject, mID, args[0].l,args[1].l );
-                delete pProps;
-                pProps = nullptr;
+                pProps.reset();
                 ThrowLoggedSQLException( m_aLogger, t.pEnv, *this );
             }
 
@@ -851,7 +797,7 @@ bool java_sql_Connection::construct(const OUString& url,
             m_aConnectionInfo = info;
         } //mID
     } //t.pEnv
-     return object != nullptr;
+    return object != nullptr;
 }
 
 

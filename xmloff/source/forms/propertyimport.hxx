@@ -30,10 +30,10 @@
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include "layerimport.hxx"
 
-namespace com { namespace sun { namespace star { namespace util {
+namespace com::sun::star::util {
     struct Time;
     struct Date;
-} } } }
+}
 
 namespace xmloff
 {
@@ -46,12 +46,11 @@ namespace xmloff
         static css::uno::Any convertString(
             const css::uno::Type& _rExpectedType,
             const OUString& _rReadCharacters,
-            const SvXMLEnumMapEntry<EnumT>* _pEnumMap = nullptr,
-            const bool _bInvertBoolean = false
+            const SvXMLEnumMapEntry<EnumT>* _pEnumMap = nullptr
         )
         {
             return convertString(_rExpectedType, _rReadCharacters,
-                    reinterpret_cast<const SvXMLEnumMapEntry<sal_uInt16>*>(_pEnumMap), _bInvertBoolean);
+                    reinterpret_cast<const SvXMLEnumMapEntry<sal_uInt16>*>(_pEnumMap), /*_bInvertBoolean*/false);
         }
         static css::uno::Any convertString(
             const css::uno::Type& _rExpectedType,
@@ -95,7 +94,7 @@ namespace xmloff
     public:
         OPropertyImport(OFormLayerXMLImport_Impl& _rImport, sal_uInt16 _nPrefix, const OUString& _rName);
 
-        virtual SvXMLImportContext* CreateChildContext(
+        virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 _nPrefix, const OUString& _rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList >& _rxAttrList) override;
 
@@ -122,9 +121,9 @@ namespace xmloff
             const OUString& _rLocalName,
             const OUString& _rValue);
 
-        /** determine if the element imported by the object had an given attribute.
+        /** determine if the element imported by the object had a given attribute.
             <p>Please be aware of the fact that the name given must be a local name, i.e. not contain a namespace.
-            All form relevant attributes are in the same namespace, so this would be an redundant information.</p>
+            All form relevant attributes are in the same namespace, so this would be a redundant information.</p>
         */
         bool    encounteredAttribute(const OUString& _rAttributeName) const;
 
@@ -150,21 +149,20 @@ namespace xmloff
             m_aGenericValues.push_back(_rProp);
         }
     };
-    typedef tools::SvRef<OPropertyImport> OPropertyImportRef;
+    typedef rtl::Reference<OPropertyImport> OPropertyImportRef;
 
     //= OPropertyElementsContext
     /** helper class for importing the &lt;form:properties&gt; element
     */
     class OPropertyElementsContext : public SvXMLImportContext
     {
-    protected:
         OPropertyImportRef  m_xPropertyImporter;    // to add the properties
 
     public:
         OPropertyElementsContext(SvXMLImport& _rImport, sal_uInt16 _nPrefix, const OUString& _rName,
                 const OPropertyImportRef& _rPropertyImporter);
 
-        virtual SvXMLImportContext* CreateChildContext(
+        virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 _nPrefix, const OUString& _rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList >& _rxAttrList) override;
 
@@ -186,7 +184,7 @@ namespace xmloff
         OSinglePropertyContext(SvXMLImport& _rImport, sal_uInt16 _nPrefix, const OUString& _rName,
                 const OPropertyImportRef& _rPropertyImporter);
 
-        virtual SvXMLImportContext* CreateChildContext(
+        virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 _nPrefix, const OUString& _rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList >& _rxAttrList) override;
 
@@ -211,7 +209,7 @@ namespace xmloff
 
         virtual void EndElement() override;
 
-        virtual SvXMLImportContext* CreateChildContext(
+        virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 _nPrefix, const OUString& _rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList >& _rxAttrList) override;
     };

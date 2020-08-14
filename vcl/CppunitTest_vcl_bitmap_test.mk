@@ -11,13 +11,18 @@ $(eval $(call gb_CppunitTest_CppunitTest,vcl_bitmap_test))
 
 $(eval $(call gb_CppunitTest_add_exception_objects,vcl_bitmap_test, \
     vcl/qa/cppunit/BitmapTest \
+    vcl/qa/cppunit/BitmapExTest \
+    vcl/qa/cppunit/bitmapcolor \
+    vcl/qa/cppunit/ScanlineToolsTest \
+    vcl/qa/cppunit/BitmapScaleTest \
+    vcl/qa/cppunit/BitmapFilterTest \
 ))
 
 $(eval $(call gb_CppunitTest_use_externals,vcl_bitmap_test,\
 	boost_headers \
 	glm_headers \
 ))
-ifeq ($(ENABLE_HEADLESS),)
+ifeq ($(DISABLE_GUI),)
 $(eval $(call gb_CppunitTest_use_externals,vcl_bitmap_test,\
      epoxy \
  ))
@@ -29,6 +34,7 @@ $(eval $(call gb_CppunitTest_set_include,vcl_bitmap_test,\
 ))
 
 $(eval $(call gb_CppunitTest_use_libraries,vcl_bitmap_test, \
+	basegfx \
 	comphelper \
 	cppu \
 	cppuhelper \

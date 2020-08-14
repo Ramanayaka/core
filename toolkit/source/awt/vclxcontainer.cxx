@@ -22,16 +22,15 @@
 #include <toolkit/helper/vclunohelper.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
-#include <rtl/uuid.h>
+#include <comphelper/interfacecontainer2.hxx>
 
 #include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
 #include <tools/debug.hxx>
-#include "toolkit/awt/scrollabledialog.hxx"
+#include <helper/scrollabledialog.hxx>
 #include <toolkit/helper/property.hxx>
 
 
-//  class VCLXContainer
 
 
 void VCLXContainer::ImplGetPropertyIds( std::vector< sal_uInt16 > &rIds )
@@ -51,17 +50,24 @@ VCLXContainer::~VCLXContainer()
 css::uno::Any VCLXContainer::queryInterface( const css::uno::Type & rType )
 {
     css::uno::Any aRet = ::cppu::queryInterface( rType,
-                                        (static_cast< css::awt::XVclContainer* >(this)),
-                                        (static_cast< css::awt::XVclContainerPeer* >(this)) );
+                                        static_cast< css::awt::XVclContainer* >(this),
+                                        static_cast< css::awt::XVclContainerPeer* >(this) );
     return (aRet.hasValue() ? aRet : VCLXWindow::queryInterface( rType ));
 }
 
+IMPL_IMPLEMENTATION_ID( VCLXContainer )
+
 // css::lang::XTypeProvider
-IMPL_XTYPEPROVIDER_START( VCLXContainer )
-    cppu::UnoType<css::awt::XVclContainer>::get(),
-    cppu::UnoType<css::awt::XVclContainerPeer>::get(),
-    VCLXWindow::getTypes()
-IMPL_XTYPEPROVIDER_END
+css::uno::Sequence< css::uno::Type > VCLXContainer::getTypes()
+{
+    static const ::cppu::OTypeCollection aTypeList(
+        cppu::UnoType<css::lang::XTypeProvider>::get(),
+        cppu::UnoType<css::awt::XVclContainer>::get(),
+        cppu::UnoType<css::awt::XVclContainerPeer>::get(),
+        VCLXWindow::getTypes()
+    );
+    return aTypeList.getTypes();
+}
 
 
 // css::awt::XVclContainer
@@ -128,7 +134,7 @@ void VCLXContainer::setTabOrder( const css::uno::Sequence< css::uno::Reference< 
     SolarMutexGuard aGuard;
 
     sal_uInt32 nCount = Components.getLength();
-    DBG_ASSERT( nCount == (sal_uInt32)Tabs.getLength(), "setTabOrder: TabCount != ComponentCount" );
+    DBG_ASSERT( nCount == static_cast<sal_uInt32>(Tabs.getLength()), "setTabOrder: TabCount != ComponentCount" );
     const css::uno::Reference< css::awt::XWindow > * pComps = Components.getConstArray();
     const css::uno::Any* pTabs = Tabs.getConstArray();
 

@@ -21,12 +21,9 @@
 #define INCLUDED_SDEXT_SOURCE_MINIMIZER_UNODIALOG_HXX
 
 #include <com/sun/star/uno/Sequence.h>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/awt/XControl.hpp>
 #include <com/sun/star/awt/XControlModel.hpp>
@@ -34,33 +31,25 @@
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/awt/XActionListener.hpp>
-#include <com/sun/star/awt/XTextListener.hpp>
 #include <com/sun/star/awt/XButton.hpp>
 #include <com/sun/star/awt/XCheckBox.hpp>
 #include <com/sun/star/awt/XComboBox.hpp>
-#include <com/sun/star/awt/XTextComponent.hpp>
 #include <com/sun/star/awt/XRadioButton.hpp>
 #include <com/sun/star/awt/XListBox.hpp>
 #include <com/sun/star/awt/XFixedText.hpp>
 #include <com/sun/star/awt/XUnoControlDialog.hpp>
-#include <com/sun/star/awt/XControlContainer.hpp>
 #include <com/sun/star/awt/XReschedule.hpp>
-#include <com/sun/star/awt/XDialog.hpp>
-#include <com/sun/star/awt/Size.hpp>
 
 
 class UnoDialog
 {
 public:
 
-    UnoDialog( const css::uno::Reference< css::uno::XComponentContext >& rxMSF, css::uno::Reference< css::frame::XFrame >& rxFrame );
+    UnoDialog( const css::uno::Reference< css::uno::XComponentContext >& rxMSF, css::uno::Reference< css::frame::XFrame > const & rxFrame );
     ~UnoDialog();
 
     void execute();
     void endExecute( bool bStatus );
-
-    /// @throws css::uno::Exception
-    css::uno::Reference< css::awt::XWindowPeer > createWindowPeer( css::uno::Reference< css::awt::XWindowPeer > const & xParentPeer );
 
     css::uno::Reference< css::uno::XInterface > insertControlModel( const OUString& rServiceName, const OUString& rName,
         const css::uno::Sequence< OUString >& rPropertyNames, const css::uno::Sequence< css::uno::Any >& rPropertyValues );
@@ -98,10 +87,19 @@ public:
     void enableControl( const OUString& rControlName );
     void disableControl( const OUString& rControlName );
 
+    void reschedule() const { mxReschedule->reschedule(); }
+    bool endStatus() const { return mbStatus; }
+    css::uno::Reference<css::awt::XControl> getControl(const OUString& rControlName) const { return mxDialog->getControl(rControlName); }
+    const css::uno::Reference<css::frame::XController>& controller() const { return mxController; }
+    void setPropertyValues(const css::uno::Sequence<OUString>& rNameSeq, const css::uno::Sequence<css::uno::Any>& rValueSeq)
+        { mxDialogModelMultiPropertySet->setPropertyValues(rNameSeq, rValueSeq); }
+
+protected:
     css::uno::Reference< css::uno::XComponentContext >        mxContext;
     css::uno::Reference< css::frame::XController >            mxController;
-    css::uno::Reference< css::awt::XReschedule >              mxReschedule;
 
+private:
+    css::uno::Reference< css::awt::XReschedule >              mxReschedule;
     css::uno::Reference< css::uno::XInterface >               mxDialogModel;
     css::uno::Reference< css::beans::XMultiPropertySet >      mxDialogModelMultiPropertySet;
     css::uno::Reference< css::lang::XMultiServiceFactory >    mxDialogModelMSF;
@@ -112,8 +110,6 @@ public:
 
     css::uno::Reference< css::awt::XUnoControlDialog >        mxDialog;
     css::uno::Reference< css::awt::XControl >                 mxControl;
-    css::uno::Reference< css::awt::XWindowPeer >              mxWindowPeer;
-
     bool                                                                        mbStatus;
 };
 

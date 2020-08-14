@@ -22,9 +22,10 @@ using namespace com::sun::star;
 using namespace ooo::vba;
 
 // uno servicename com.sun.star.awt.UnoControlProgressBarMode
-const OUString SVALUE( "ProgressValue" );
+const OUStringLiteral SVALUE( "ProgressValue" );
 
-ScVbaProgressBar::ScVbaProgressBar( const uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, AbstractGeometryAttributes* pGeomHelper ) : ProgressBarImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper )
+ScVbaProgressBar::ScVbaProgressBar( const uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, std::unique_ptr<ov::AbstractGeometryAttributes> pGeomHelper )
+    : ProgressBarImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) )
 {
 }
 
@@ -44,18 +45,16 @@ ScVbaProgressBar::setValue( const uno::Any& _value )
 OUString
 ScVbaProgressBar::getServiceImplName()
 {
-    return OUString( "ScVbaProgressBar" );
+    return "ScVbaProgressBar";
 }
 
 uno::Sequence< OUString >
 ScVbaProgressBar::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.Label";
-    }
+        "ooo.vba.msforms.Label"
+    };
     return aServiceNames;
 }
 

@@ -29,7 +29,7 @@
     This item contains a name of a page template.
 */
 
-class EDITENG_DLLPUBLIC SvxPageModelItem : public SfxStringItem
+class EDITENG_DLLPUBLIC SvxPageModelItem final : public SfxStringItem
 {
 private:
     bool bAuto;
@@ -40,14 +40,13 @@ public:
     explicit inline SvxPageModelItem( sal_uInt16 nWh  );
     inline SvxPageModelItem( const OUString& rModel, bool bA /*= false*/,
                              sal_uInt16 nWh  );
-    inline SvxPageModelItem& operator=( const SvxPageModelItem& rModel );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxPageModelItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -65,12 +64,6 @@ inline SvxPageModelItem::SvxPageModelItem( const OUString& rModel, bool bA,
     SfxStringItem( nWh, rModel ),
     bAuto( bA )
 {}
-
-inline SvxPageModelItem& SvxPageModelItem::operator=( const SvxPageModelItem& rModel )
-{
-    SetValue( rModel.GetValue() );
-    return *this;
-}
 
 #endif
 

@@ -29,13 +29,10 @@
 
 #include <rtl/ustring.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <framework/fwedllapi.h>
 
 namespace framework{
 
-class FWE_DLLPUBLIC ReadMenuDocumentHandlerBase :
-                                    public ::cppu::WeakImplHelper< css::xml::sax::XDocumentHandler >
+class ReadMenuDocumentHandlerBase : public ::cppu::WeakImplHelper< css::xml::sax::XDocumentHandler >
 {
     public:
         ReadMenuDocumentHandlerBase();
@@ -79,7 +76,7 @@ class FWE_DLLPUBLIC ReadMenuDocumentHandlerBase :
         OUString m_aStyle;
 };
 
-class FWE_DLLPUBLIC OReadMenuDocumentHandler : public ReadMenuDocumentHandlerBase
+class OReadMenuDocumentHandler final : public ReadMenuDocumentHandlerBase
 {
     public:
         OReadMenuDocumentHandler(
@@ -107,7 +104,7 @@ class FWE_DLLPUBLIC OReadMenuDocumentHandler : public ReadMenuDocumentHandlerBas
           css::uno::Reference< css::lang::XSingleComponentFactory > m_xContainerFactory;
 };  // OReadMenuDocumentHandler
 
-class FWE_DLLPUBLIC OReadMenuBarHandler : public ReadMenuDocumentHandlerBase
+class OReadMenuBarHandler final : public ReadMenuDocumentHandlerBase
 {
     public:
         OReadMenuBarHandler(
@@ -135,7 +132,7 @@ class FWE_DLLPUBLIC OReadMenuBarHandler : public ReadMenuDocumentHandlerBase
         css::uno::Reference< css::lang::XSingleComponentFactory > m_xContainerFactory;
 };  // OReadMenuBarHandler
 
-class FWE_DLLPUBLIC OReadMenuHandler : public ReadMenuDocumentHandlerBase
+class OReadMenuHandler final : public ReadMenuDocumentHandlerBase
 {
     public:
         OReadMenuHandler( const css::uno::Reference< css::container::XIndexContainer >& rMenuContainer,
@@ -162,7 +159,7 @@ class FWE_DLLPUBLIC OReadMenuHandler : public ReadMenuDocumentHandlerBase
         css::uno::Reference< css::lang::XSingleComponentFactory > m_xContainerFactory;
 }; // OReadMenuHandler
 
-class FWE_DLLPUBLIC OReadMenuPopupHandler : public ReadMenuDocumentHandlerBase
+class OReadMenuPopupHandler final : public ReadMenuDocumentHandlerBase
 {
     public:
         OReadMenuPopupHandler( const css::uno::Reference< css::container::XIndexContainer >& rMenuContainer,
@@ -194,7 +191,7 @@ class FWE_DLLPUBLIC OReadMenuPopupHandler : public ReadMenuDocumentHandlerBase
         NextElementClose                                           m_nNextElementExpected;
 }; // OReadMenuPopupHandler
 
-class FWE_DLLPUBLIC OWriteMenuDocumentHandler final
+class OWriteMenuDocumentHandler final
 {
     public:
         OWriteMenuDocumentHandler(

@@ -19,53 +19,54 @@
 
 #include <config_features.h>
 
-#include "scitems.hxx"
+#include <basic/sberrors.hxx>
+#include <scitems.hxx>
 #include <comphelper/lok.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/request.hxx>
+#include <sfx2/sfxdlg.hxx>
 #include <svl/aeitem.hxx>
 #include <basic/sbxcore.hxx>
 #include <svl/whiter.hxx>
 #include <svl/zforlist.hxx>
-#include <vcl/msgbox.hxx>
 #include <svl/stritem.hxx>
 #include <svl/visitem.hxx>
 #include <svtools/miscopt.hxx>
 #include <unotools/moduleoptions.hxx>
 
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
-#include <com/sun/star/sdbc/XResultSet.hpp>
+#include <com/sun/star/sheet/TableValidationVisibility.hpp>
 
-#include "cellsh.hxx"
-#include "tabvwsh.hxx"
-#include "sc.hrc"
-#include "globstr.hrc"
-#include "global.hxx"
-#include "globalnames.hxx"
-#include "scmod.hxx"
-#include "docsh.hxx"
-#include "document.hxx"
-#include "uiitems.hxx"
-#include "dbfunc.hxx"
-#include "dbdocfun.hxx"
-#include "filtdlg.hxx"
-#include "dbnamdlg.hxx"
-#include "reffact.hxx"
-#include "validat.hxx"
-#include "validate.hxx"
-#include "scresid.hxx"
+#include <cellsh.hxx>
+#include <dbdata.hxx>
+#include <queryparam.hxx>
+#include <tabvwsh.hxx>
+#include <sc.hrc>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <global.hxx>
+#include <scmod.hxx>
+#include <docsh.hxx>
+#include <document.hxx>
+#include <uiitems.hxx>
+#include <dbdocfun.hxx>
+#include <reffact.hxx>
+#include <validat.hxx>
+#include <validate.hxx>
+#include <datamapper.hxx>
 
-#include "scui_def.hxx"
-#include "scabstdlg.hxx"
-#include "impex.hxx"
-#include "asciiopt.hxx"
-#include "datastream.hxx"
-#include "datastreamdlg.hxx"
-#include "queryentry.hxx"
-#include "markdata.hxx"
+#include <scui_def.hxx>
+#include <scabstdlg.hxx>
+#include <impex.hxx>
+#include <asciiopt.hxx>
+#include <datastream.hxx>
+#include <datastreamdlg.hxx>
+#include <dataproviderdlg.hxx>
+#include <queryentry.hxx>
+#include <markdata.hxx>
 #include <documentlinkmgr.hxx>
 
+#include <o3tl/make_shared.hxx>
 #include <memory>
 
 using namespace com::sun::star;
@@ -127,7 +128,7 @@ static bool lcl_GetTextToColumnsRange( const ScViewData* pData, ScRange& rRange,
     return bRet;
 }
 
-static bool lcl_GetSortParam( const ScViewData* pData, ScSortParam& rSortParam )
+static bool lcl_GetSortParam( const ScViewData* pData, const ScSortParam& rSortParam )
 {
     ScTabViewShell* pTabViewShell   = pData->GetViewShell();
     ScDBData*   pDBData             = pTabViewShell->GetDBData();
@@ -142,14 +143,22 @@ static bool lcl_GetSortParam( const ScViewData* pData, ScSortParam& rSortParam )
     if( rSortParam.nRow1 != rSortParam.nRow2 )
         eFillDir = DIR_TOP;
 
-    if( rSortParam.nRow2 == MAXROW )
+    if( rSortParam.nRow2 == pDoc->MaxRow() )
     {
         // Assume that user selected entire column(s), but cater for the
         // possibility that the start row is not the first row.
         SCSIZE nCount = pDoc->GetEmptyLinesInBlock( rSortParam.nCol1, rSortParam.nRow1, nTab,
                                                     rSortParam.nCol2, rSortParam.nRow2, nTab, eFillDir );
         aExternalRange = ScRange( rSortParam.nCol1,
-                ::std::min( rSortParam.nRow1 + sal::static_int_cast<SCROW>( nCount ), MAXROW), nTab );
+                ::std::min( rSortParam.nRow1 + sal::static_int_cast<SCROW>( nCount ), pDoc->MaxRow()), nTab,
+                rSortParam.nCol2, rSortParam.nRow2, nTab);
+        aExternalRange.PutInOrder();
+    }
+    else if (rSortParam.nCol1 != rSortParam.nCol2 || rSortParam.nRow1 != rSortParam.nRow2)
+    {
+        // Preserve a preselected area.
+        aExternalRange = ScRange( rSortParam.nCol1, rSortParam.nRow1, nTab, rSortParam.nCol2, rSortParam.nRow2, nTab);
+        aExternalRange.PutInOrder();
     }
     else
         aExternalRange = ScRange( pData->GetCurX(), pData->GetCurY(), nTab );
@@ -169,18 +178,15 @@ static bool lcl_GetSortParam( const ScViewData* pData, ScSortParam& rSortParam )
         ((rSortParam.nCol1 == rSortParam.nCol2 && aExternalRange.aStart.Col() != aExternalRange.aEnd.Col()) ||
          (rSortParam.nRow1 == rSortParam.nRow2 && aExternalRange.aStart.Row() != aExternalRange.aEnd.Row())))
     {
-        pTabViewShell->AddHighlightRange( aExternalRange,Color( COL_LIGHTBLUE ) );
-        ScRange rExtendRange( aExternalRange.aStart.Col(), aExternalRange.aStart.Row(), nTab, aExternalRange.aEnd.Col(), aExternalRange.aEnd.Row(), nTab );
-        OUString aExtendStr(rExtendRange.Format(ScRefFlags::VALID, pDoc));
+        pTabViewShell->AddHighlightRange( aExternalRange,COL_LIGHTBLUE );
+        OUString aExtendStr( aExternalRange.Format(*pDoc, ScRefFlags::VALID));
 
-        ScRange rCurrentRange( rSortParam.nCol1, rSortParam.nRow1, nTab, rSortParam.nCol2, rSortParam.nRow2, nTab );
-        OUString aCurrentStr(rCurrentRange.Format(ScRefFlags::VALID, pDoc));
+        ScRange aCurrentRange( rSortParam.nCol1, rSortParam.nRow1, nTab, rSortParam.nCol2, rSortParam.nRow2, nTab );
+        OUString aCurrentStr(aCurrentRange.Format(*pDoc, ScRefFlags::VALID));
 
         ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-        OSL_ENSURE(pFact, "ScAbstractFactory create fail!");
 
-        ScopedVclPtr<AbstractScSortWarningDlg> pWarningDlg(pFact->CreateScSortWarningDlg( pTabViewShell->GetDialogParent(), aExtendStr, aCurrentStr ));
-        OSL_ENSURE(pWarningDlg, "Dialog create fail!");
+        ScopedVclPtr<AbstractScSortWarningDlg> pWarningDlg(pFact->CreateScSortWarningDlg(pTabViewShell->GetFrameWeld(), aExtendStr, aCurrentStr));
         short bResult = pWarningDlg->Execute();
         if( bResult == BTN_EXTEND_RANGE || bResult == BTN_CURRENT_SELECTION )
         {
@@ -199,6 +205,26 @@ static bool lcl_GetSortParam( const ScViewData* pData, ScSortParam& rSortParam )
         pTabViewShell->ClearHighlightRanges();
     }
     return bSort;
+}
+
+namespace
+{
+    // this registers the dialog which Find1RefWindow search for
+    class ScValidationRegisteredDlg
+    {
+        std::shared_ptr<SfxDialogController> m_xDlg;
+    public:
+        ScValidationRegisteredDlg(weld::Window* pParent, const std::shared_ptr<SfxDialogController>& rDlg)
+            : m_xDlg(rDlg)
+        {
+            SC_MOD()->RegisterRefController(static_cast<sal_uInt16>(ScValidationDlg::SLOTID), m_xDlg, pParent);
+        }
+        ~ScValidationRegisteredDlg()
+        {
+            m_xDlg->Close();
+            SC_MOD()->UnregisterRefController(static_cast<sal_uInt16>(ScValidationDlg::SLOTID), m_xDlg);
+        }
+    };
 }
 
 void ScCellShell::ExecuteDB( SfxRequest& rReq )
@@ -331,11 +357,9 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
         case SID_DATA_FORM:
             {
                 ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-                OSL_ENSURE(pFact, "ScAbstractFactory create fail!");
 
                 ScopedVclPtr<AbstractScDataFormDlg> pDlg(pFact->CreateScDataFormDlg(
-                    pTabViewShell->GetDialogParent(), pTabViewShell));
-                OSL_ENSURE(pDlg, "Dialog create fail!");
+                    pTabViewShell->GetFrameWeld(), pTabViewShell));
 
                 pDlg->Execute();
 
@@ -377,6 +401,7 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                     aSortParam.bCaseSens        = false;
                     aSortParam.bNaturalSort     = false;
                     aSortParam.bIncludeComments = false;
+                    aSortParam.bIncludeGraphicObjects = true;
                     aSortParam.bIncludePattern  = true;
                     aSortParam.bInplace         = true;
                     aSortParam.maKeyState[0].bDoSort = true;
@@ -430,6 +455,8 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                             aSortParam.bNaturalSort = static_cast<const SfxBoolItem*>(pItem)->GetValue();
                         if ( pArgs->GetItemState( SID_SORT_INCCOMMENTS, true, &pItem ) == SfxItemState::SET )
                             aSortParam.bIncludeComments = static_cast<const SfxBoolItem*>(pItem)->GetValue();
+                        if ( pArgs->GetItemState( SID_SORT_INCIMAGES, true, &pItem ) == SfxItemState::SET )
+                            aSortParam.bIncludeGraphicObjects = static_cast<const SfxBoolItem*>(pItem)->GetValue();
                         if ( pArgs->GetItemState( SID_SORT_ATTRIBS, true, &pItem ) == SfxItemState::SET )
                             aSortParam.bIncludePattern = static_cast<const SfxBoolItem*>(pItem)->GetValue();
                         if ( pArgs->GetItemState( SID_SORT_USERDEF, true, &pItem ) == SfxItemState::SET )
@@ -488,65 +515,29 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                         aArgSet.Put( ScSortItem( SCITEM_SORTDATA, GetViewData(), &aSortParam ) );
 
                         ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-                        assert(pFact); //ScAbstractFactory create fail!
-
-                        ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateScSortDlg(pTabViewShell->GetDialogParent(),  &aArgSet));
-                        assert(pDlg); //Dialog create fail!
+                        std::shared_ptr<ScAsyncTabController> pDlg(pFact->CreateScSortDlg(pTabViewShell->GetFrameWeld(),  &aArgSet));
                         pDlg->SetCurPageId("criteria");  // 1=sort field tab  2=sort options tab
 
-                        if ( pDlg->Execute() == RET_OK )
-                        {
-                            const SfxItemSet* pOutSet = pDlg->GetOutputItemSet();
-                            const ScSortParam& rOutParam = static_cast<const ScSortItem&>(
-                                pOutSet->Get( SCITEM_SORTDATA )).GetSortData();
-
-                            // subtotal when needed new
-
-                            pTabViewShell->UISort( rOutParam );
-
-                            if ( rOutParam.bInplace )
+                        VclAbstractDialog::AsyncContext aContext;
+                        aContext.maEndDialogFn = [pDlg, pData, pTabViewShell](sal_Int32 nResult)
                             {
-                                rReq.AppendItem( SfxBoolItem( SID_SORT_BYROW,
-                                    rOutParam.bByRow ) );
-                                rReq.AppendItem( SfxBoolItem( SID_SORT_HASHEADER,
-                                    rOutParam.bHasHeader ) );
-                                rReq.AppendItem( SfxBoolItem( SID_SORT_CASESENS,
-                                    rOutParam.bCaseSens ) );
-                                rReq.AppendItem( SfxBoolItem( SID_SORT_NATURALSORT,
-                                            rOutParam.bNaturalSort ) );
-                                rReq.AppendItem( SfxBoolItem( SID_SORT_INCCOMMENTS,
-                                            rOutParam.bIncludeComments ) );
-                                rReq.AppendItem( SfxBoolItem( SID_SORT_ATTRIBS,
-                                    rOutParam.bIncludePattern ) );
-                                sal_uInt16 nUser = rOutParam.bUserDef ? ( rOutParam.nUserIndex + 1 ) : 0;
-                                rReq.AppendItem( SfxUInt16Item( SID_SORT_USERDEF, nUser ) );
-                                if ( rOutParam.maKeyState[0].bDoSort )
+                                if ( nResult == RET_OK )
                                 {
-                                    rReq.AppendItem( SfxInt32Item( FN_PARAM_1,
-                                        rOutParam.maKeyState[0].nField + 1 ) );
-                                    rReq.AppendItem( SfxBoolItem( FN_PARAM_2,
-                                        rOutParam.maKeyState[0].bAscending ) );
-                                }
-                                if ( rOutParam.maKeyState[1].bDoSort )
-                                {
-                                    rReq.AppendItem( SfxInt32Item( FN_PARAM_3,
-                                        rOutParam.maKeyState[1].nField + 1 ) );
-                                    rReq.AppendItem( SfxBoolItem( FN_PARAM_4,
-                                        rOutParam.maKeyState[1].bAscending ) );
-                                }
-                                if ( rOutParam.maKeyState[2].bDoSort )
-                                {
-                                    rReq.AppendItem( SfxInt32Item( FN_PARAM_5,
-                                        rOutParam.maKeyState[2].nField + 1 ) );
-                                    rReq.AppendItem( SfxBoolItem( FN_PARAM_6,
-                                        rOutParam.maKeyState[2].bAscending ) );
-                                }
-                            }
+                                    const SfxItemSet* pOutSet = pDlg->GetOutputItemSet();
+                                    const ScSortParam& rOutParam = static_cast<const ScSortItem&>(
+                                        pOutSet->Get( SCITEM_SORTDATA )).GetSortData();
 
-                            rReq.Done();
-                        }
-                        else
-                            GetViewData()->GetDocShell()->CancelAutoDBRange();
+                                    // subtotal when needed new
+
+                                    pTabViewShell->UISort( rOutParam );
+                                }
+                                else
+                                {
+                                    pData->GetDocShell()->CancelAutoDBRange();
+                                }
+                            };
+
+                        pDlg->StartExecuteAsync(aContext);
                     }
                 }
             }
@@ -680,7 +671,7 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                 }
 #if HAVE_FEATURE_SCRIPTING
                 else if (rReq.IsAPI())
-                    SbxBase::SetError(ERRCODE_SBX_BAD_PARAMETER);
+                    SbxBase::SetError(ERRCODE_BASIC_BAD_PARAMETER);
 #endif
             }
             break;
@@ -704,18 +695,10 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
             {
                 if ( pReqArgs )
                 {
-                    const SfxStringItem* pItem =
-                        static_cast<const SfxStringItem*>(&pReqArgs->Get( SID_SELECT_DB ));
-
-                    if( pItem )
-                    {
-                        pTabViewShell->GotoDBArea( pItem->GetValue() );
-                        rReq.Done();
-                    }
-                    else
-                    {
-                        OSL_FAIL("NULL");
-                    }
+                    const SfxStringItem& rItem
+                        = static_cast<const SfxStringItem&>(pReqArgs->Get(SID_SELECT_DB));
+                    pTabViewShell->GotoDBArea(rItem.GetValue());
+                    rReq.Done();
                 }
                 else
                 {
@@ -726,19 +709,15 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                     {
                         std::vector<OUString> aList;
                         const ScDBCollection::NamedDBs& rDBs = pDBCol->getNamedDBs();
-                        ScDBCollection::NamedDBs::const_iterator itr = rDBs.begin(), itrEnd = rDBs.end();
-                        for (; itr != itrEnd; ++itr)
-                            aList.push_back((*itr)->GetName());
+                        for (const auto& rxDB : rDBs)
+                            aList.push_back(rxDB->GetName());
 
                         ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-                        OSL_ENSURE(pFact, "ScAbstractFactory create fail!");
 
-                        ScopedVclPtr<AbstractScSelEntryDlg> pDlg(pFact->CreateScSelEntryDlg( pTabViewShell->GetDialogParent(),
-                                                                                                  aList ));
-                        OSL_ENSURE(pDlg, "Dialog create fail!");
+                        ScopedVclPtr<AbstractScSelEntryDlg> pDlg(pFact->CreateScSelEntryDlg(pTabViewShell->GetFrameWeld(), aList));
                         if ( pDlg->Execute() == RET_OK )
                         {
-                            OUString aName = pDlg->GetSelectEntry();
+                            OUString aName = pDlg->GetSelectedEntry();
                             pTabViewShell->GotoDBArea( aName );
                             rReq.AppendItem( SfxStringItem( SID_SELECT_DB, aName ) );
                             rReq.Done();
@@ -749,15 +728,15 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
             break;
         case SID_DATA_STREAMS:
         {
-            ScopedVclPtrInstance< sc::DataStreamDlg > aDialog( GetViewData()->GetDocShell(), pTabViewShell->GetDialogParent() );
+            sc::DataStreamDlg aDialog(GetViewData()->GetDocShell(), pTabViewShell->GetFrameWeld());
             ScDocument *pDoc = GetViewData()->GetDocument();
             sc::DocumentLinkManager& rMgr = pDoc->GetDocLinkManager();
             sc::DataStream* pStrm = rMgr.getDataStream();
             if (pStrm)
-                aDialog->Init(*pStrm);
+                aDialog.Init(*pStrm);
 
-            if (aDialog->Execute() == RET_OK)
-                aDialog->StartStream();
+            if (aDialog.run() == RET_OK)
+                aDialog.StartStream();
         }
         break;
         case SID_DATA_STREAMS_PLAY:
@@ -778,10 +757,33 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                 pStrm->StopImport();
         }
         break;
+        case SID_DATA_PROVIDER:
+        {
+            auto xDoc = o3tl::make_shared<ScDocument>();
+            xDoc->InsertTab(0, "test");
+            ScDocument* pDoc = GetViewData()->GetDocument();
+            ScDataProviderDlg aDialog(pTabViewShell->GetDialogParent(), xDoc, pDoc);
+            if (aDialog.run() == RET_OK)
+            {
+                aDialog.import(pDoc);
+            }
+        }
+        break;
+        case SID_DATA_PROVIDER_REFRESH:
+        {
+            ScDocument* pDoc = GetViewData()->GetDocument();
+            auto& rDataMapper = pDoc->GetExternalDataMapper();
+            for (auto& rDataSource : rDataMapper.getDataSources())
+            {
+                rDataSource.refresh(pDoc, false);
+            }
+        }
+        break;
         case SID_MANAGE_XML_SOURCE:
             ExecuteXMLSourceDialog();
         break;
         case FID_VALIDATION:
+        case FID_CURRENTVALIDATION:
             {
                 const SfxPoolItem* pItem;
                 const SfxItemSet* pArgs = rReq.GetArgs();
@@ -793,7 +795,7 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                 {
                     SfxItemSet aArgSet( GetPool(), ScTPValidationValue::GetRanges() );
                     ScValidationMode eMode = SC_VALID_ANY;
-                    ScConditionMode eOper = SC_COND_EQUAL;
+                    ScConditionMode eOper = ScConditionMode::Equal;
                     OUString aExpr1, aExpr2;
                     bool bBlank = true;
                     sal_Int16 nListType = css::sheet::TableValidationVisibility::UNSORTED;
@@ -808,8 +810,8 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                     SCROW nCurY = GetViewData()->GetCurY();
                     SCTAB nTab = GetViewData()->GetTabNo();
                     ScAddress aCursorPos( nCurX, nCurY, nTab );
-                    sal_uLong nIndex = static_cast<const SfxUInt32Item*>(pDoc->GetAttr(
-                                nCurX, nCurY, nTab, ATTR_VALIDDATA ))->GetValue();
+                    sal_uLong nIndex = pDoc->GetAttr(
+                                nCurX, nCurY, nTab, ATTR_VALIDDATA )->GetValue();
                     if ( nIndex )
                     {
                         const ScValidationData* pOldData = pDoc->GetValidationEntry( nIndex );
@@ -817,11 +819,11 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                         {
                             eMode = pOldData->GetDataMode();
                             eOper = pOldData->GetOperation();
-                            sal_uLong nNumFmt = 0;
+                            sal_uInt32 nNumFmt = 0;
                             if ( eMode == SC_VALID_DATE || eMode == SC_VALID_TIME )
                             {
-                                short nType = ( eMode == SC_VALID_DATE ) ? css::util::NumberFormat::DATE
-                                                                         : css::util::NumberFormat::TIME;
+                                SvNumFormatType nType = ( eMode == SC_VALID_DATE ) ? SvNumFormatType::DATE
+                                                                         : SvNumFormatType::TIME;
                                 nNumFmt = pDoc->GetFormatTable()->GetStandardFormat(
                                                                     nType, ScGlobal::eLnge );
                             }
@@ -833,8 +835,8 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                             bShowHelp = pOldData->GetInput( aHelpTitle, aHelpText );
                             bShowError = pOldData->GetErrMsg( aErrTitle, aErrText, eErrStyle );
 
-                            aArgSet.Put( SfxAllEnumItem( FID_VALID_MODE,        sal::static_int_cast<sal_uInt16>(eMode) ) );
-                            aArgSet.Put( SfxAllEnumItem( FID_VALID_CONDMODE,    sal::static_int_cast<sal_uInt16>(eOper) ) );
+                            aArgSet.Put( SfxUInt16Item( FID_VALID_MODE,         sal::static_int_cast<sal_uInt16>(eMode) ) );
+                            aArgSet.Put( SfxUInt16Item( FID_VALID_CONDMODE,     sal::static_int_cast<sal_uInt16>(eOper) ) );
                             aArgSet.Put( SfxStringItem(  FID_VALID_VALUE1,      aExpr1 ) );
                             aArgSet.Put( SfxStringItem(  FID_VALID_VALUE2,      aExpr2 ) );
                             aArgSet.Put( SfxBoolItem(    FID_VALID_BLANK,       bBlank ) );
@@ -843,24 +845,27 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                             aArgSet.Put( SfxStringItem(  FID_VALID_HELPTITLE,   aHelpTitle ) );
                             aArgSet.Put( SfxStringItem(  FID_VALID_HELPTEXT,    aHelpText ) );
                             aArgSet.Put( SfxBoolItem(    FID_VALID_SHOWERR,     bShowError ) );
-                            aArgSet.Put( SfxAllEnumItem( FID_VALID_ERRSTYLE,    sal::static_int_cast<sal_uInt16>(eErrStyle) ) );
+                            aArgSet.Put( SfxUInt16Item( FID_VALID_ERRSTYLE,     sal::static_int_cast<sal_uInt16>(eErrStyle) ) );
                             aArgSet.Put( SfxStringItem(  FID_VALID_ERRTITLE,    aErrTitle ) );
                             aArgSet.Put( SfxStringItem(  FID_VALID_ERRTEXT,     aErrText ) );
                         }
                     }
 
                     // cell range picker
-                    ScopedVclPtrInstance<ScValidationDlg> pDlg(nullptr, &aArgSet, pTabViewShell);
+                    vcl::Window* pWin = GetViewData()->GetActiveWin();
+                    weld::Window* pParentWin = pWin ? pWin->GetFrameWeld() : nullptr;
+                    auto xDlg = std::make_shared<ScValidationDlg>(pParentWin, &aArgSet, pTabViewShell);
+                    ScValidationRegisteredDlg aRegisterThatDlgExists(pParentWin, xDlg);
 
-                    short nResult = pDlg->Execute();
+                    short nResult = xDlg->run();
                     if ( nResult == RET_OK )
                     {
-                        const SfxItemSet* pOutSet = pDlg->GetOutputItemSet();
+                        const SfxItemSet* pOutSet = xDlg->GetOutputItemSet();
 
                         if ( pOutSet->GetItemState( FID_VALID_MODE, true, &pItem ) == SfxItemState::SET )
-                            eMode = (ScValidationMode) static_cast<const SfxAllEnumItem*>(pItem)->GetValue();
+                            eMode = static_cast<ScValidationMode>(static_cast<const SfxUInt16Item*>(pItem)->GetValue());
                         if ( pOutSet->GetItemState( FID_VALID_CONDMODE, true, &pItem ) == SfxItemState::SET )
-                            eOper = (ScConditionMode) static_cast<const SfxAllEnumItem*>(pItem)->GetValue();
+                            eOper = static_cast<ScConditionMode>(static_cast<const SfxUInt16Item*>(pItem)->GetValue());
                         if ( pOutSet->GetItemState( FID_VALID_VALUE1, true, &pItem ) == SfxItemState::SET )
                         {
                             OUString aTemp1 = static_cast<const SfxStringItem*>(pItem)->GetValue();
@@ -871,7 +876,7 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                                 if (pDoc->GetFormatTable()->IsNumberFormat(aTemp1, nNumIndex, nVal))
                                     aExpr1 = ::rtl::math::doubleToUString( nVal,
                                             rtl_math_StringFormat_Automatic, rtl_math_DecimalPlaces_Max,
-                                            ScGlobal::pLocaleData->getNumDecimalSep()[0], true);
+                                            ScGlobal::getLocaleDataPtr()->getNumDecimalSep()[0], true);
                                 else
                                     aExpr1 = aTemp1;
                             }
@@ -888,20 +893,20 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                                 if (pDoc->GetFormatTable()->IsNumberFormat(aTemp2, nNumIndex, nVal))
                                     aExpr2 = ::rtl::math::doubleToUString( nVal,
                                             rtl_math_StringFormat_Automatic, rtl_math_DecimalPlaces_Max,
-                                            ScGlobal::pLocaleData->getNumDecimalSep()[0], true);
+                                            ScGlobal::getLocaleDataPtr()->getNumDecimalSep()[0], true);
                                 else
                                     aExpr2 = aTemp2;
                                 if ( eMode == SC_VALID_TIME ) {
                                     sal_Int32 wraparound = aExpr1.compareTo(aExpr2);
                                     if (wraparound > 0) {
-                                        if (eOper == SC_COND_BETWEEN) {
-                                            eOper = SC_COND_NOTBETWEEN;
+                                        if (eOper == ScConditionMode::Between) {
+                                            eOper = ScConditionMode::NotBetween;
                                             OUString tmp = aExpr1;
                                             aExpr1 = aExpr2;
                                             aExpr2 = tmp;
                                         }
-                                        else if (eOper == SC_COND_NOTBETWEEN) {
-                                            eOper = SC_COND_BETWEEN;
+                                        else if (eOper == ScConditionMode::NotBetween) {
+                                            eOper = ScConditionMode::Between;
                                             OUString tmp = aExpr1;
                                             aExpr1 = aExpr2;
                                             aExpr2 = tmp;
@@ -927,7 +932,7 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                         if ( pOutSet->GetItemState( FID_VALID_SHOWERR, true, &pItem ) == SfxItemState::SET )
                             bShowError = static_cast<const SfxBoolItem*>(pItem)->GetValue();
                         if ( pOutSet->GetItemState( FID_VALID_ERRSTYLE, true, &pItem ) == SfxItemState::SET )
-                            eErrStyle = (ScValidErrorStyle) static_cast<const SfxAllEnumItem*>(pItem)->GetValue();
+                            eErrStyle = static_cast<ScValidErrorStyle>(static_cast<const SfxUInt16Item*>(pItem)->GetValue());
                         if ( pOutSet->GetItemState( FID_VALID_ERRTITLE, true, &pItem ) == SfxItemState::SET )
                             aErrTitle = static_cast<const SfxStringItem*>(pItem)->GetValue();
                         if ( pOutSet->GetItemState( FID_VALID_ERRTEXT, true, &pItem ) == SfxItemState::SET )
@@ -976,17 +981,15 @@ void ScCellShell::ExecuteDB( SfxRequest& rReq )
                     aExport.ExportStream( aStream, OUString(), SotClipboardFormatId::STRING );
 
                     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-                    OSL_ENSURE( pFact, "ScCellShell::ExecuteDB: SID_TEXT_TO_COLUMNS - pFact is null!" );
                     ScopedVclPtr<AbstractScImportAsciiDlg> pDlg(pFact->CreateScImportAsciiDlg(
-                        OUString(), &aStream, SC_TEXTTOCOLUMNS));
-                    OSL_ENSURE( pDlg, "ScCellShell::ExecuteDB: SID_TEXT_TO_COLUMNS - pDlg is null!" );
+                            pTabViewShell->GetFrameWeld(), OUString(), &aStream, SC_TEXTTOCOLUMNS));
 
                     if ( pDlg->Execute() == RET_OK )
                     {
                         ScDocShell* pDocSh = pData->GetDocShell();
                         OSL_ENSURE( pDocSh, "ScCellShell::ExecuteDB: SID_TEXT_TO_COLUMNS - pDocSh is null!" );
 
-                        OUString aUndo = ScGlobal::GetRscString( STR_UNDO_TEXTTOCOLUMNS );
+                        OUString aUndo = ScResId( STR_UNDO_TEXTTOCOLUMNS );
                         pDocSh->GetUndoManager()->EnterListAction( aUndo, aUndo, 0, pData->GetViewShell()->GetViewShellId() );
 
                         ScImportExport aImport( pDoc, aRange.aStart );
@@ -1184,6 +1187,16 @@ void ScCellShell::GetDBState( SfxItemSet& rSet )
                     }
                 }
                 break;
+            case SID_DATA_PROVIDER:
+            break;
+            case SID_DATA_PROVIDER_REFRESH:
+            {
+                ScDocument* pDoc = GetViewData()->GetDocument();
+                auto& rDataMapper = pDoc->GetExternalDataMapper();
+                if (rDataMapper.getDataSources().empty())
+                    rSet.DisableItem(nWhich);
+            }
+            break;
             case SID_DATA_STREAMS:
             case SID_DATA_STREAMS_PLAY:
             case SID_DATA_STREAMS_STOP:
@@ -1203,8 +1216,7 @@ void ScCellShell::GetDBState( SfxItemSet& rSet )
                 }
                 break;
             case SID_MANAGE_XML_SOURCE:
-                rSet.DisableItem(nWhich);
-            break;
+                break;
         }
         nWhich = aIter.NextWhich();
     }

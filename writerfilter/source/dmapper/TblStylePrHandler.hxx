@@ -22,13 +22,12 @@
 
 #include "TablePropertiesHandler.hxx"
 
-#include <DomainMapper.hxx>
+#include "DomainMapper.hxx"
 #include "LoggedResources.hxx"
 #include <memory>
 #include <vector>
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
 class DomainMapper;
 
@@ -68,9 +67,9 @@ public:
     explicit TblStylePrHandler( DomainMapper & rDMapper );
     virtual ~TblStylePrHandler( ) override;
 
-    const PropertyMapPtr&       getProperties() { return m_pProperties; };
-    TblStyleType         getType() { return m_nType; };
-    OUString getTypeString();
+    const PropertyMapPtr&       getProperties() const { return m_pProperties; };
+    TblStyleType         getType() const { return m_nType; };
+    OUString getTypeString() const;
     void appendInteropGrabBag(const OUString& aKey, const OUString& aValue);
     css::beans::PropertyValue getInteropGrabBag(const OUString& aName);
 
@@ -79,9 +78,7 @@ private:
     void resolveSprmProps(Sprm & rSprm);
 };
 
-typedef std::shared_ptr< TblStylePrHandler > TblStylePrHandlerPtr;
-
-}}
+}
 
 #endif
 

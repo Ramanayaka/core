@@ -22,7 +22,6 @@
 
 #include <xmloff/xmlexp.hxx>
 
-#include <com/sun/star/task/XStatusIndicator.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 
@@ -38,7 +37,6 @@ class XMLShapeExportPropertyMapper;
 class XMLPageExportPropertyMapper;
 
 typedef ::std::vector< ImpXMLEXPPageMasterInfo* > ImpXMLEXPPageMasterList;
-typedef ::std::vector< ImpXMLAutoLayoutInfo*    > ImpXMLAutoLayoutInfoList;
 
 enum XmlPlaceholder
 {
@@ -82,11 +80,11 @@ class SdXMLExport : public SvXMLExport
     sal_uInt32                  mnObjectCount;
 
     // temporary infos
-    ImpXMLEXPPageMasterList*    mpPageMasterInfoList;
-    ImpXMLEXPPageMasterList*    mpPageMasterUsageList;
-    ImpXMLEXPPageMasterList*    mpNotesPageMasterUsageList;
+    std::vector< std::unique_ptr<ImpXMLEXPPageMasterInfo> > mvPageMasterInfoList;
+    ImpXMLEXPPageMasterList     mvPageMasterUsageList;
+    ImpXMLEXPPageMasterList     mvNotesPageMasterUsageList;
     ImpXMLEXPPageMasterInfo*    mpHandoutPageMaster;
-    ImpXMLAutoLayoutInfoList*   mpAutoLayoutInfoList;
+    std::vector< std::unique_ptr<ImpXMLAutoLayoutInfo> >    mvAutoLayoutInfoList;
 
     css::uno::Sequence< OUString > maDrawPagesAutoLayoutNames;
 
@@ -107,12 +105,10 @@ class SdXMLExport : public SvXMLExport
     rtl::Reference<XMLShapeExportPropertyMapper> mpPropertySetMapper;
     rtl::Reference<XMLPageExportPropertyMapper>  mpPresPagePropsMapper;
 
-    SdXMLFormatMap  maUsedDateStyles;           // this is a vector with the used formatings for date fields
-    SdXMLFormatMap  maUsedTimeStyles;           // this is a vector with the used formatings for time fields
+    SdXMLFormatMap  maUsedDateStyles;           // this is a vector with the used formattings for date fields
+    SdXMLFormatMap  maUsedTimeStyles;           // this is a vector with the used formattings for time fields
 
-    bool                    mbIsDraw;
-
-    const OUString         msPageLayoutNames;
+    bool            mbIsDraw;
 
     virtual void ExportStyles_(bool bUsed) override;
     virtual void ExportAutoStyles_() override;
@@ -161,6 +157,8 @@ public:
         OUString const & implementationName,
         bool bIsDraw, SvXMLExportFlags nExportFlags );
     virtual ~SdXMLExport() override;
+
+    void collectAutoStyles() override;
 
     // XExporter
     virtual void SAL_CALL setSourceDocument( const css::uno::Reference< css::lang::XComponent >& xDoc ) override;

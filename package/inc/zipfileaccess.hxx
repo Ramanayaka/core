@@ -32,12 +32,12 @@
 #include <comphelper/refcountedmutex.hxx>
 #include <cppuhelper/implbase.hxx>
 
-#include <ZipFile.hxx>
-#include <HashMaps.hxx>
+#include "ZipFile.hxx"
+#include "HashMaps.hxx"
 
 #include <memory>
 
-class OZipFileAccess : public ::cppu::WeakImplHelper<
+class OZipFileAccess final : public ::cppu::WeakImplHelper<
                         css::packages::zip::XZipFileAccess2,
                         css::lang::XInitialization,
                         css::lang::XComponent,
@@ -47,7 +47,7 @@ class OZipFileAccess : public ::cppu::WeakImplHelper<
     css::uno::Reference< css::uno::XComponentContext > m_xContext;
     css::uno::Reference< css::io::XInputStream > m_xContentStream;
     std::unique_ptr<ZipFile> m_pZipFile;
-    ::comphelper::OInterfaceContainerHelper2* m_pListenersContainer;
+    std::unique_ptr<::comphelper::OInterfaceContainerHelper2> m_pListenersContainer;
     bool m_bDisposed;
     bool m_bOwnContent;
 
@@ -60,13 +60,6 @@ public:
 
     static bool StringGoodForPattern_Impl( const OUString& aString,
                                         const css::uno::Sequence< OUString >& aPattern );
-
-    static css::uno::Sequence< OUString > SAL_CALL impl_staticGetSupportedServiceNames();
-
-    static OUString SAL_CALL impl_staticGetImplementationName();
-
-    static css::uno::Reference< css::uno::XInterface > SAL_CALL impl_staticCreateSelfInstance(
-            const css::uno::Reference< css::lang::XMultiServiceFactory >& rxMSF );
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;

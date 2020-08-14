@@ -19,14 +19,9 @@
 #include "xmlFormattedField.hxx"
 #include "xmlfilter.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
-#include "xmlEnums.hxx"
-#include "xmlControlProperty.hxx"
-#include "xmlHelper.hxx"
-#include <xmloff/xmluconv.hxx>
-#include "xmlReportElement.hxx"
-#include "xmlComponent.hxx"
+#include <xmloff/xmlnamespace.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 
 namespace rptxml
@@ -34,37 +29,31 @@ namespace rptxml
     using namespace ::com::sun::star;
     using namespace xml::sax;
 
-OXMLFormattedField::OXMLFormattedField( ORptFilter& rImport,
-                sal_uInt16 nPrfx, const OUString& rLName
-                ,const uno::Reference< xml::sax::XAttributeList > & _xAttrList
+OXMLFormattedField::OXMLFormattedField( ORptFilter& rImport
+                ,const uno::Reference< xml::sax::XFastAttributeList > & _xAttrList
                 ,const uno::Reference< XFormattedField > & _xComponent
                 ,OXMLTable* _pContainer
                 ,bool _bPageCount) :
-    OXMLReportElementBase( rImport, nPrfx, rLName,_xComponent.get(),_pContainer)
+    OXMLReportElementBase( rImport,_xComponent.get(),_pContainer)
 {
     OSL_ENSURE(m_xReportComponent.is(),"Component is NULL!");
-    const SvXMLNamespaceMap& rMap = rImport.GetNamespaceMap();
-    const SvXMLTokenMap& rTokenMap = rImport.GetControlElemTokenMap();
 
-    const sal_Int16 nLength = (_xAttrList.is()) ? _xAttrList->getLength() : 0;
     try
     {
-        for(sal_Int16 i = 0; i < nLength; ++i)
+        for (auto &aIter : sax_fastparser::castToFastAttributeList( _xAttrList ))
         {
-         OUString sLocalName;
-            const OUString sAttrName = _xAttrList->getNameByIndex( i );
-            const sal_uInt16 nPrefix = rMap.GetKeyByAttrName( sAttrName,&sLocalName );
-            const OUString sValue = _xAttrList->getValueByIndex( i );
+            OUString sValue = aIter.toString();
 
-            switch( rTokenMap.Get( nPrefix, sLocalName ) )
+            switch( aIter.getToken() )
             {
-                case XML_TOK_DATA_FORMULA:
+                case XML_ELEMENT(REPORT, XML_FORMULA):
                     _xComponent->setDataField(ORptFilter::convertFormula(sValue));
                     break;
-                case XML_TOK_SELECT_PAGE:
+                case XML_ELEMENT(REPORT, XML_SELECT_PAGE):
                     _xComponent->setDataField("rpt:PageNumber()");
                     break;
                 default:
+                    SAL_WARN("reportdesign", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << " = " << sValue);
                     break;
             }
         }

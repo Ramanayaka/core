@@ -18,21 +18,22 @@
  */
 
 #include <memory>
-#include "worksheetsettings.hxx"
+#include <worksheetsettings.hxx>
 
+#include <com/sun/star/sheet/XSpreadsheet.hpp>
+#include <oox/core/binarycodec.hxx>
 #include <oox/core/filterbase.hxx>
 #include <oox/helper/binaryinputstream.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
-#include "biffcodec.hxx"
-#include "pagesettings.hxx"
-#include "workbooksettings.hxx"
-#include "tabprotection.hxx"
-#include "document.hxx"
+#include <pagesettings.hxx>
+#include <tabprotection.hxx>
+#include <document.hxx>
+#include <addressconverter.hxx>
+#include <biffhelper.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::uno;
 
@@ -56,6 +57,7 @@ SheetSettingsModel::SheetSettingsModel() :
 }
 
 SheetProtectionModel::SheetProtectionModel() :
+    mnSpinCount( 0 ),
     mnPasswordHash( 0 ),
     mbSheet( false ),
     mbObjects( false ),
@@ -107,6 +109,10 @@ void WorksheetSettings::importOutlinePr( const AttributeList& rAttribs )
 
 void WorksheetSettings::importSheetProtection( const AttributeList& rAttribs )
 {
+    maSheetProt.maAlgorithmName    = rAttribs.getString( XML_algorithmName, OUString());
+    maSheetProt.maHashValue        = rAttribs.getString( XML_hashValue, OUString());
+    maSheetProt.maSaltValue        = rAttribs.getString( XML_saltValue, OUString());
+    maSheetProt.mnSpinCount        = rAttribs.getUnsigned( XML_spinCount, 0);
     maSheetProt.mnPasswordHash     = oox::core::CodecHelper::getPasswordHash( rAttribs, XML_password );
     maSheetProt.mbSheet            = rAttribs.getBool( XML_sheet, false );
     maSheetProt.mbObjects          = rAttribs.getBool( XML_objects, false );
@@ -140,10 +146,10 @@ void WorksheetSettings::importProtectedRange( const AttributeList& rAttribs )
      * 'saltValue' and 'spinCount' that are written if the protection was newly
      * created. */
     aProt.mnPasswordVerifier = rAttribs.getIntegerHex( XML_password, 0);
-    aProt.maAlgorithmName = rAttribs.getString( XML_algorithmName, OUString());
-    aProt.maHashValue = rAttribs.getString( XML_hashValue, OUString());
-    aProt.maSaltValue = rAttribs.getString( XML_saltValue, OUString());
-    aProt.mnSpinCount = rAttribs.getUnsigned( XML_spinCount, 0);
+    aProt.maPasswordHash.maAlgorithmName = rAttribs.getString( XML_algorithmName, OUString());
+    aProt.maPasswordHash.maHashValue = rAttribs.getString( XML_hashValue, OUString());
+    aProt.maPasswordHash.maSaltValue = rAttribs.getString( XML_saltValue, OUString());
+    aProt.maPasswordHash.mnSpinCount = rAttribs.getUnsigned( XML_spinCount, 0);
     OUString aRefs( rAttribs.getString( XML_sqref, OUString()));
     if (!aRefs.isEmpty())
     {
@@ -237,11 +243,17 @@ void WorksheetSettings::finalizeImport()
     {
         ScTableProtection aProtect;
         aProtect.setProtected(true);
+        aProtect.setPasswordHash( maSheetProt.maAlgorithmName, maSheetProt.maHashValue,
+                maSheetProt.maSaltValue, maSheetProt.mnSpinCount);
+        // Set the simple hash after the proper hash because setting the proper
+        // hash resets the simple hash, yet if the simple hash is present we
+        // may as well use it and more important want to keep it for saving the
+        // document again.
         if (maSheetProt.mnPasswordHash)
         {
-            Sequence<sal_Int8> aPass(2);
-            aPass[0] = ( maSheetProt.mnPasswordHash>> 8) & 0xFF;
-            aPass[1] = maSheetProt.mnPasswordHash & 0xFF;
+            Sequence<sal_Int8> aPass{
+                sal_Int8(maSheetProt.mnPasswordHash >> 8),
+                sal_Int8(maSheetProt.mnPasswordHash & 0xFF)};
             aProtect.setPasswordHash(aPass, PASSHASH_XL);
         }
         aProtect.setOption( ScTableProtection::OBJECTS, !maSheetProt.mbObjects);
@@ -272,12 +284,11 @@ void WorksheetSettings::finalizeImport()
     // sheet tab color
     if( !maSheetSettings.maTabColor.isAuto() )
     {
-        sal_Int32 nColor = maSheetSettings.maTabColor.getColor( getBaseFilter().getGraphicHelper() );
+        ::Color nColor = maSheetSettings.maTabColor.getColor( getBaseFilter().getGraphicHelper() );
         aPropSet.setProperty( PROP_TabColor, nColor );
     }
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

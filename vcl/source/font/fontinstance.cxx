@@ -18,8 +18,13 @@
  */
 
 
-#include "svdata.hxx"
-#include "fontinstance.hxx"
+#include <hb-ot.h>
+#include <hb-graphite2.h>
+
+#include <fontinstance.hxx>
+#include <impfontcache.hxx>
+
+#include <PhysicalFontFace.hxx>
 
 // extend std namespace to add custom hash needed for LogicalFontInstance
 
@@ -29,40 +34,92 @@ namespace std
     {
         size_t operator()(const pair< sal_UCS4, FontWeight >& rData) const
         {
-            size_t h1 = hash<sal_UCS4>()(rData.first);
-            size_t h2 = hash<int>()(rData.second);
-            return h1 ^ h2;
+            std::size_t seed = 0;
+            boost::hash_combine(seed, rData.first);
+            boost::hash_combine(seed, rData.second);
+            return seed;
         }
     };
 }
 
 
-LogicalFontInstance::LogicalFontInstance( const FontSelectPattern& rFontSelData )
-    : mpFontCache(nullptr)
-    , maFontSelData( rFontSelData )
-    , mxFontMetric( new ImplFontMetricData( rFontSelData ))
+LogicalFontInstance::LogicalFontInstance(const PhysicalFontFace& rFontFace, const FontSelectPattern& rFontSelData )
+    : mxFontMetric( new ImplFontMetricData( rFontSelData ))
     , mpConversion( nullptr )
     , mnLineHeight( 0 )
-    , mnRefCount( 1 )
     , mnOwnOrientation( 0 )
     , mnOrientation( 0 )
     , mbInit( false )
-    , mpUnicodeFallbackList( nullptr )
+    , mpFontCache( nullptr )
+    , m_aFontSelData(rFontSelData)
+    , m_pHbFont(nullptr)
+    , m_nAveWidthFactor(1.0f)
+    , m_pFontFace(&const_cast<PhysicalFontFace&>(rFontFace))
 {
-    maFontSelData.mpFontInstance = this;
 }
 
 LogicalFontInstance::~LogicalFontInstance()
 {
-    delete mpUnicodeFallbackList;
+    mpUnicodeFallbackList.reset();
     mpFontCache = nullptr;
     mxFontMetric = nullptr;
+
+    if (m_pHbFont)
+        hb_font_destroy(m_pHbFont);
+}
+
+hb_font_t* LogicalFontInstance::InitHbFont(hb_face_t* pHbFace)
+{
+    assert(pHbFace);
+    hb_font_t* pHbFont = hb_font_create(pHbFace);
+    unsigned int nUPEM = hb_face_get_upem(pHbFace);
+    hb_font_set_scale(pHbFont, nUPEM, nUPEM);
+    hb_ot_font_set_funcs(pHbFont);
+    // hb_font_t keeps a reference to hb_face_t, so destroy this one.
+    hb_face_destroy(pHbFace);
+    return pHbFont;
+}
+
+int LogicalFontInstance::GetKashidaWidth()
+{
+    hb_font_t* pHbFont = GetHbFont();
+    hb_position_t nWidth = 0;
+    hb_codepoint_t nIndex = 0;
+
+    if (hb_font_get_glyph(pHbFont, 0x0640, 0, &nIndex))
+    {
+        double nXScale = 0;
+        GetScale(&nXScale, nullptr);
+        nWidth = hb_font_get_glyph_h_advance(pHbFont, nIndex) * nXScale;
+    }
+
+    return nWidth;
+}
+
+void LogicalFontInstance::GetScale(double* nXScale, double* nYScale)
+{
+    hb_face_t* pHbFace = hb_font_get_face(GetHbFont());
+    unsigned int nUPEM = hb_face_get_upem(pHbFace);
+
+    double nHeight(m_aFontSelData.mnHeight);
+
+    // On Windows, mnWidth is relative to average char width not font height,
+    // and we need to keep it that way for GDI to correctly scale the glyphs.
+    // Here we compensate for this so that HarfBuzz gives us the correct glyph
+    // positions.
+    double nWidth(m_aFontSelData.mnWidth ? m_aFontSelData.mnWidth * m_nAveWidthFactor : nHeight);
+
+    if (nYScale)
+        *nYScale = nHeight / nUPEM;
+
+    if (nXScale)
+        *nXScale = nWidth / nUPEM;
 }
 
 void LogicalFontInstance::AddFallbackForUnicode( sal_UCS4 cChar, FontWeight eWeight, const OUString& rFontName )
 {
     if( !mpUnicodeFallbackList )
-        mpUnicodeFallbackList = new UnicodeFallbackList;
+        mpUnicodeFallbackList.reset(new UnicodeFallbackList);
     (*mpUnicodeFallbackList)[ std::pair< sal_UCS4, FontWeight >(cChar,eWeight) ] = rFontName;
 }
 
@@ -88,5 +145,24 @@ void LogicalFontInstance::IgnoreFallbackForUnicode( sal_UCS4 cChar, FontWeight e
         mpUnicodeFallbackList->erase( it );
 }
 
+bool LogicalFontInstance::GetGlyphBoundRect(sal_GlyphId nID, tools::Rectangle &rRect, bool bVertical) const
+{
+    if (mpFontCache && mpFontCache->GetCachedGlyphBoundRect(this, nID, rRect))
+        return true;
+
+    bool res = ImplGetGlyphBoundRect(nID, rRect, bVertical);
+    if (mpFontCache && res)
+        mpFontCache->CacheGlyphBoundRect(this, nID, rRect);
+    return res;
+}
+
+bool LogicalFontInstance::IsGraphiteFont()
+{
+    if (!m_xbIsGraphiteFont)
+    {
+        m_xbIsGraphiteFont = hb_graphite2_face_get_gr_face(hb_font_get_face(GetHbFont())) != nullptr;
+    }
+    return *m_xbIsGraphiteFont;
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

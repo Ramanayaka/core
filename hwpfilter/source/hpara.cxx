@@ -29,7 +29,7 @@
 #include "hbox.h"
 #include "hutil.h"
 
-void LineInfo::Read(HWPFile & hwpf, HWPPara *pPara)
+void LineInfo::Read(HWPFile & hwpf, HWPPara const *pPara)
 {
     if (!hwpf.Read2b(pos))
         return;
@@ -75,11 +75,10 @@ HWPPara::HWPPara()
     , etcflag(0)
     , ctrlflag(0)
     , pstyno(0)
-    , cshape(new CharShape)
-    , pshape(new ParaShape)
+    , cshape(std::make_shared<CharShape>())
+    , pshape(std::make_shared<ParaShape>())
 {
     memset(cshape.get(), 0, sizeof(CharShape));
-    memset(pshape.get(), 0, sizeof(ParaShape));
 }
 
 HWPPara::~HWPPara()
@@ -88,17 +87,19 @@ HWPPara::~HWPPara()
 
 bool HWPPara::Read(HWPFile & hwpf, unsigned char flag)
 {
-    unsigned char same_cshape;
+    DepthGuard aGuard(hwpf);
+    if (aGuard.toodeep())
+        return false;
     int ii;
     scflag = flag;
 // Paragraph Information
-    hwpf.Read1b(&reuse_shape, 1);
+    hwpf.Read1b(reuse_shape);
     hwpf.Read2b(&nch, 1);
     hwpf.Read2b(&nline, 1);
-    hwpf.Read1b(&contain_cshape, 1);
-    hwpf.Read1b(&etcflag, 1);
+    hwpf.Read1b(contain_cshape);
+    hwpf.Read1b(etcflag);
     hwpf.Read4b(&ctrlflag, 1);
-    hwpf.Read1b(&pstyno, 1);
+    hwpf.Read1b(pstyno);
 
 /* Paragraph representative character */
     cshape->Read(hwpf);
@@ -109,7 +110,7 @@ bool HWPPara::Read(HWPFile & hwpf, unsigned char flag)
     if (nch && !reuse_shape)
     {
         pshape->Read(hwpf);
-        pshape->cshape = cshape.get();
+        pshape->cshape = cshape;
         pshape->pagebreak = etcflag;
     }
 
@@ -123,8 +124,8 @@ bool HWPPara::Read(HWPFile & hwpf, unsigned char flag)
     }
 
     if (nch && !reuse_shape){
-         if( pshape->coldef.ncols > 1 ) {
-             hwpf.SetColumnDef(&(pshape->coldef));
+         if( pshape->xColdef->ncols > 1 ) {
+             hwpf.SetColumnDef(pshape->xColdef);
          }
     }
 
@@ -143,10 +144,11 @@ bool HWPPara::Read(HWPFile & hwpf, unsigned char flag)
 
         for (ii = 0; ii < nch; ii++)
         {
-            cshapep[ii].reset(new CharShape);
+            cshapep[ii] = std::make_shared<CharShape>();
             memset(cshapep[ii].get(), 0, sizeof(CharShape));
 
-            hwpf.Read1b(&same_cshape, 1);
+            unsigned char same_cshape(0);
+            hwpf.Read1b(same_cshape);
             if (!same_cshape)
             {
                 cshapep[ii]->Read(hwpf);
@@ -160,16 +162,16 @@ bool HWPPara::Read(HWPFile & hwpf, unsigned char flag)
         }
     }
 // read string
-    hhstr.resize(nch);
     ii = 0;
     while (ii < nch)
     {
-        hhstr[ii] = readHBox(hwpf);
-        if (!hhstr[ii])
+        auto hBox = readHBox(hwpf);
+        if (!hBox)
             return false;
+        hhstr[ii] = std::move(hBox);
         if (hhstr[ii]->hh == CH_END_PARA)
             break;
-          if( hhstr[ii]->hh < CH_END_PARA )
+        if( hhstr[ii]->hh < CH_END_PARA )
                 pshape->reserved[0] = 0;
         ii += hhstr[ii]->WSize();
     }
@@ -230,7 +232,8 @@ std::unique_ptr<HBox> HWPPara::readHBox(HWPFile & hwpf)
                 hbox.reset(new Hidden);
                 break;
             case CH_HEADER_FOOTER:                // 16
-                hbox.reset(new HeaderFooter);
+                if (!hwpf.already_importing_type(CH_HEADER_FOOTER))
+                    hbox.reset(new HeaderFooter);
                 break;
             case CH_FOOTNOTE:                     // 17
                 hbox.reset(new Footnote);
@@ -275,11 +278,19 @@ std::unique_ptr<HBox> HWPPara::readHBox(HWPFile & hwpf)
                 break;
         }
     }
-    if (!hbox || !hbox->Read(hwpf))
+
+    if (!hbox)
+        return nullptr;
+
+    hwpf.push_hpara_type(scflag);
+    bool bRead = hbox->Read(hwpf);
+    hwpf.pop_hpara_type();
+    if (!bRead)
     {
         hbox.reset();
-        return hbox;
+        return nullptr;
     }
+
     if( hh == CH_TEXT_BOX || hh == CH_PICTURE || hh == CH_LINE )
     {
         FBox *fbox = static_cast<FBox *>(hbox.get());

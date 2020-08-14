@@ -23,6 +23,7 @@
 #include <vcl/notebookbar.hxx>
 #include <vcl/window.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <vcl/NotebookBarAddonsMerger.hxx>
 
 #include <com/sun/star/frame/XFrame.hpp>
 
@@ -32,13 +33,12 @@ enum class DrawButtonFlags;
 enum class BorderWindowStyle {
     NONE             = 0x0000,
     Overlap          = 0x0001,
-    Border           = 0x0002,
     Float            = 0x0004,
     Frame            = 0x0008,
     App              = 0x0010
 };
 namespace o3tl {
-    template<> struct typed_flags<BorderWindowStyle> : is_typed_flags<BorderWindowStyle, 0x001f> {};
+    template<> struct typed_flags<BorderWindowStyle> : is_typed_flags<BorderWindowStyle, 0x001d> {};
 };
 
 enum class BorderWindowHitTest {
@@ -60,7 +60,7 @@ enum class BorderWindowHitTest {
     Help           = 0x4000,
 };
 namespace o3tl {
-    template<> struct typed_flags<BorderWindowHitTest> : is_typed_flags<BorderWindowHitTest, 0xffff> {};
+    template<> struct typed_flags<BorderWindowHitTest> : is_typed_flags<BorderWindowHitTest, 0x7fff> {};
 };
 
 enum class BorderWindowTitleType {
@@ -82,7 +82,7 @@ class ImplBorderWindow : public vcl::Window
     friend class ImplStdBorderWindowView;
 
 private:
-    ImplBorderWindowView*   mpBorderView;
+    std::unique_ptr<ImplBorderWindowView> mpBorderView;
     VclPtr<vcl::Window>     mpMenuBarWindow;
     VclPtr<NotebookBar>     mpNotebookBar;
     long                    mnMinWidth;
@@ -153,8 +153,10 @@ public:
     void                    SetMenuBarWindow( vcl::Window* pWindow );
     void                    SetMenuBarMode( bool bHide );
 
-    void                    SetNotebookBar(const OUString& rUIXMLDescription, const css::uno::Reference<css::frame::XFrame>& rFrame);
-    void                    CloseNotebookBar();
+    void SetNotebookBar(const OUString& rUIXMLDescription,
+                        const css::uno::Reference<css::frame::XFrame>& rFrame,
+                        const NotebookBarAddonsItem &aNotebookBarAddonsItem);
+    void CloseNotebookBar();
     const VclPtr<NotebookBar>& GetNotebookBar() const { return mpNotebookBar; }
 
     void                    SetMinOutputSize( long nWidth, long nHeight )
@@ -226,13 +228,13 @@ public:
     virtual tools::Rectangle       GetMenuRect() const;
 
     static void             ImplInitTitle( ImplBorderFrameData* pData );
-    static BorderWindowHitTest ImplHitTest( ImplBorderFrameData* pData, const Point& rPos );
-    static bool             ImplMouseMove( ImplBorderFrameData* pData, const MouseEvent& rMEvt );
-    static OUString         ImplRequestHelp( ImplBorderFrameData* pData, const Point& rPos, tools::Rectangle& rHelpRect );
+    static BorderWindowHitTest ImplHitTest( ImplBorderFrameData const * pData, const Point& rPos );
+    static void             ImplMouseMove( ImplBorderFrameData* pData, const MouseEvent& rMEvt );
+    static OUString         ImplRequestHelp( ImplBorderFrameData const * pData, const Point& rPos, tools::Rectangle& rHelpRect );
     static long             ImplCalcTitleWidth( const ImplBorderFrameData* pData );
 };
 
-class ImplNoBorderWindowView : public ImplBorderWindowView
+class ImplNoBorderWindowView final : public ImplBorderWindowView
 {
 public:
                             ImplNoBorderWindowView();
@@ -269,8 +271,6 @@ public:
 class ImplStdBorderWindowView : public ImplBorderWindowView
 {
     ImplBorderFrameData     maFrameData;
-    VclPtr<VirtualDevice>   mpATitleVirDev;
-    VclPtr<VirtualDevice>   mpDTitleVirDev;
 
 public:
                             ImplStdBorderWindowView( ImplBorderWindow* pBorderWindow );

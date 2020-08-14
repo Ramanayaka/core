@@ -20,56 +20,46 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_DLG_DSSELECT_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_DLG_DSSELECT_HXX
 
-#include "dsntypes.hxx"
-#include "odbcconfig.hxx"
-#include "commontypes.hxx"
-
-#include <vcl/dialog.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/button.hxx>
-#include <vcl/group.hxx>
-#include <vcl/fixed.hxx>
 #include <rtl/ustring.hxx>
+#include <vcl/weld.hxx>
 
 #include <memory>
+#include <set>
 
 class SfxItemSet;
 namespace dbaui
 {
 
 // ODatasourceSelector
-class ODatasourceSelectDialog : public ModalDialog
+class ODatasourceSelectDialog final : public weld::GenericDialogController
 {
-protected:
-    VclPtr<ListBox>        m_pDatasource;
-    VclPtr<OKButton>       m_pOk;
-    VclPtr<CancelButton>   m_pCancel;
+    std::unique_ptr<weld::TreeView> m_xDatasource;
+    std::unique_ptr<weld::Button> m_xOk;
+    std::unique_ptr<weld::Button> m_xCancel;
+    std::unique_ptr<weld::Button> m_xManageDatasources;
 #ifdef HAVE_ODBC_ADMINISTRATION
-    VclPtr<PushButton>     m_pManageDatasources;
-    std::unique_ptr< OOdbcManagement >
-    m_pODBCManagement;
+    std::unique_ptr<OOdbcManagement> m_xODBCManagement;
 #endif
 
 public:
-    ODatasourceSelectDialog( vcl::Window* _pParent, const StringBag& _rDatasources );
+    ODatasourceSelectDialog(weld::Window* pParent, const std::set<OUString>& rDatasources);
     virtual ~ODatasourceSelectDialog() override;
-    virtual void dispose() override;
     OUString GetSelected() const {
-        return m_pDatasource->GetSelectEntry();
+        return m_xDatasource->get_selected_text();
     }
     void     Select( const OUString& _rEntry ) {
-        m_pDatasource->SelectEntry(_rEntry);
+        m_xDatasource->select_text(_rEntry);
     }
 
-    virtual bool    Close() override;
+    virtual short run() override;
 
-protected:
-    DECL_LINK( ListDblClickHdl, ListBox&, void );
+private:
+    DECL_LINK( ListDblClickHdl, weld::TreeView&, bool );
 #ifdef HAVE_ODBC_ADMINISTRATION
-    DECL_LINK(ManageClickHdl, Button*, void);
-    DECL_LINK( ManageProcessFinished, void*, void );
+    DECL_LINK(ManageClickHdl, weld::Button&, void);
+    DECL_LINK(ManageProcessFinished, void*, void);
 #endif
-    void fillListBox(const StringBag& _rDatasources);
+    void fillListBox(const std::set<OUString>& _rDatasources);
 };
 
 }   // namespace dbaui

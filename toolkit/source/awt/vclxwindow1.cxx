@@ -27,9 +27,9 @@
 #include <prewin.h>
 #include <postwin.h>
 #elif defined ( MACOSX )
-#include "premac.h"
+#include <premac.h>
 #include <Cocoa/Cocoa.h>
-#include "postmac.h"
+#include <postmac.h>
 #endif
 #include <vcl/sysdata.hxx>
 
@@ -55,14 +55,12 @@ void VCLXWindow::SetSystemParent_Impl( const css::uno::Any& rHandle )
         css::uno::Sequence< css::beans::NamedValue > aProps;
         if( rHandle >>= aProps )
         {
-            const int nProps = aProps.getLength();
-            const css::beans::NamedValue* pProps = aProps.getConstArray();
-            for( int i = 0; i < nProps; i++ )
+            for( const css::beans::NamedValue& rProp : std::as_const(aProps) )
             {
-                if ( pProps[i].Name == "WINDOW" )
-                    pProps[i].Value >>= nHandle;
-                else if ( pProps[i].Name == "XEMBED" )
-                    pProps[i].Value >>= bXEmbed;
+                if ( rProp.Name == "WINDOW" )
+                    rProp.Value >>= nHandle;
+                else if ( rProp.Name == "XEMBED" )
+                    rProp.Value >>= bXEmbed;
             }
         }
         else
@@ -86,7 +84,7 @@ void VCLXWindow::SetSystemParent_Impl( const css::uno::Any& rHandle )
 #elif defined( IOS )
     // Nothing
 #elif defined( UNX )
-    aSysParentData.aWindow = (long)nHandle;
+    aSysParentData.aWindow = static_cast<long>(nHandle);
     aSysParentData.bXEmbedSupport = bXEmbed;
 #endif
 

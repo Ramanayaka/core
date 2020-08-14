@@ -20,22 +20,20 @@
 #ifndef SC_SC_HRC
 #define SC_SC_HRC
 
-#include <sfx2/sfx.hrc>
-#include <svx/dialogs.hrc>
-
-#include "svx/svxcommands.h"
-#include "helpids.h"
-
-#define VAR_ARGS                30 // variable Parameter in scfuncs.src
-#define PAIRED_VAR_ARGS         (VAR_ARGS + VAR_ARGS)
+#include <sfx2/sfxsids.hrc>
+#include <svx/svxids.hrc>
 
 // areas
 
+#ifndef SC_VIEW_START // duplicated in sfx2/sfxsids.hrc
 #define SC_VIEW_START           (SID_SC_START)
+#endif
 //      SC_VIEW_END             (SID_SC_START + 99)
 #define SC_MESSAGE_START        (SID_SC_START + 100)
 //      SC_MESSAGE_END          (SID_SC_START + 199)
+#ifndef SC_FUNCTION_START // duplicated in sfx2/sfxsids.hrc
 #define SC_FUNCTION_START       (SID_SC_START + 200)
+#endif
 //      SC_FUNCTION_END         (SID_SC_START + 299)
 #define SC_PARAM_START          (SID_SC_START + 300)
 //      SC_PARAM_END            (SID_SC_START + 399)
@@ -58,23 +56,6 @@
 #define HID_SC_SHEET_PAGE_STD   (HID_SC_SHEET_START +10 )
 #define HID_SC_SHEET_PAGE_REP   (HID_SC_SHEET_START +11 )
 
-// help IDs for shells (helper) (max. 20)
-#define HID_SCSHELL_DOCSH       (HID_SC_SHELL_START +1 )
-#define HID_SCSHELL_DRAWSH      (HID_SC_SHELL_START +2 )
-#define HID_SCSHELL_DRTXTOB     (HID_SC_SHELL_START +3 )
-#define HID_SCSHELL_PIVOTSH     (HID_SC_SHELL_START +4 )
-#define HID_SCSHELL_PREVWSH     (HID_SC_SHELL_START +5 )
-#define HID_SCSHELL_TABVWSH     (HID_SC_SHELL_START +6 )
-#define HID_SCSHELL_AUDIT       (HID_SC_SHELL_START +7 )
-#define HID_SCSHELL_DRAWFORMSH  (HID_SC_SHELL_START +8 )
-#define HID_SCSHELL_CELLSH      (HID_SC_SHELL_START +9 )
-#define HID_SCSHELL_FORMATSH    (HID_SC_SHELL_START +10)
-#define HID_SCSHELL_OLEOBEJCTSH (HID_SC_SHELL_START +11)
-#define HID_SCSHELL_CHARTSH     (HID_SC_SHELL_START +12)
-#define HID_SCSHELL_GRAPHIC     (HID_SC_SHELL_START +13)
-#define HID_SCSHELL_PAGEBREAK   (HID_SC_SHELL_START +14)
-#define HID_SCSHELL_MEDIA       (HID_SC_SHELL_START +15)
-
 // view-functions (max. 100)
 #define FID_SCALESTATUS         (SC_VIEW_START + 10)
 #define SID_UPDATECHART         (SC_VIEW_START + 13)
@@ -87,6 +68,9 @@
 #define SID_SCFORMULAOPTIONS    (SC_VIEW_START + 20)
 #define SID_SCDEFAULTSOPTIONS   (SC_VIEW_START + 21)
 
+
+#define SID_DATA_PROVIDER       (SC_VIEW_START + 31)
+#define SID_DATA_PROVIDER_REFRESH (SC_VIEW_START + 32)
 #define SID_DATA_STREAMS_PLAY   (SC_VIEW_START + 33)
 #define SID_DATA_STREAMS_STOP   (SC_VIEW_START + 34)
 #define SID_DATA_STREAMS        (SC_VIEW_START + 35)
@@ -124,6 +108,7 @@
 #define SID_NUMBER_TIME         (SC_VIEW_START + 56)
 #define SID_NUMBER_INCDEC       (SC_VIEW_START + 57)
 #define SID_NUMBER_DECDEC       (SC_VIEW_START + 58)
+#define SID_NUMBER_THOUSANDS    (SC_VIEW_START + 59)
 
 // misc:
 #define SID_LINKS               (SC_VIEW_START + 60)
@@ -134,9 +119,6 @@
 #define SID_SCPRINTOPTIONS      (SC_VIEW_START + 68)
 #define SID_WINDOW_SPLIT        (SC_VIEW_START + 69)
 #define SID_WINDOW_FIX          (SC_VIEW_START + 70)
-#ifdef SID_DRAW_CHART
-#undef SID_DRAW_CHART
-#endif
 #define SID_DRAW_CHART          (SC_VIEW_START + 71)
 #define SID_UPDATETABLINKS      (SC_VIEW_START + 72)
 
@@ -224,20 +206,22 @@
 #define SID_AUTO_SUM            (SC_MESSAGE_START + 39)
 
 // messages for opening dialogs:
-#define SID_OPENDLG_CONSOLIDATE     (SC_MESSAGE_START + 50)
-#define SID_OPENDLG_PIVOTTABLE      (SC_MESSAGE_START + 51)
-#define SID_OPENDLG_FUNCTION        (SC_MESSAGE_START + 52)
-#define SID_OPENDLG_SOLVE           (SC_MESSAGE_START + 53)
-#define SID_OPENDLG_TABOP           (SC_MESSAGE_START + 54)
-#define SID_OPENDLG_CONDFRMT        (SC_MESSAGE_START + 59)
-#define SID_OPENDLG_OPTSOLVER       (SC_MESSAGE_START + 60)
-#define SID_VALIDITY_REFERENCE      (SC_MESSAGE_START + 61)
-#define SID_OPENDLG_CONDFRMT_MANAGER (SC_MESSAGE_START + 62)
-#define SID_POPUP_CONDFRMT          (SC_MESSAGE_START + 63)
-#define SID_OPENDLG_COLORSCALE      (SC_MESSAGE_START + 66)
-#define SID_OPENDLG_DATABAR         (SC_MESSAGE_START + 67)
-#define SID_OPENDLG_ICONSET         (SC_MESSAGE_START + 68)
-#define SID_OPENDLG_CONDDATE        (SC_MESSAGE_START + 69)
+#define SID_OPENDLG_CONSOLIDATE             (SC_MESSAGE_START + 50)
+#define SID_OPENDLG_PIVOTTABLE              (SC_MESSAGE_START + 51)
+#define SID_OPENDLG_FUNCTION                (SC_MESSAGE_START + 52)
+#define SID_OPENDLG_SOLVE                   (SC_MESSAGE_START + 53)
+#define SID_OPENDLG_TABOP                   (SC_MESSAGE_START + 54)
+#define SID_OPENDLG_CURRENTCONDFRMT         (SC_MESSAGE_START + 58)
+#define SID_OPENDLG_CONDFRMT                (SC_MESSAGE_START + 59)
+#define SID_OPENDLG_OPTSOLVER               (SC_MESSAGE_START + 60)
+#define SID_VALIDITY_REFERENCE              (SC_MESSAGE_START + 61)
+#define SID_OPENDLG_CONDFRMT_MANAGER        (SC_MESSAGE_START + 62)
+#define SID_POPUP_CONDFRMT                  (SC_MESSAGE_START + 63)
+#define SID_OPENDLG_CURRENTCONDFRMT_MANAGER (SC_MESSAGE_START + 64)
+#define SID_OPENDLG_COLORSCALE              (SC_MESSAGE_START + 66)
+#define SID_OPENDLG_DATABAR                 (SC_MESSAGE_START + 67)
+#define SID_OPENDLG_ICONSET                 (SC_MESSAGE_START + 68)
+#define SID_OPENDLG_CONDDATE                (SC_MESSAGE_START + 69)
 
 #define SID_RANDOM_NUMBER_GENERATOR_DIALOG  (SC_MESSAGE_START + 70)
 #define SID_SAMPLING_DIALOG                 (SC_MESSAGE_START + 71)
@@ -257,14 +241,19 @@
 #define SID_WINDOW_FIX_COL                  (SC_MESSAGE_START + 85)
 #define SID_COLUMN_OPERATIONS               (SC_MESSAGE_START + 86)
 #define SID_ROW_OPERATIONS                  (SC_MESSAGE_START + 87)
+#define SID_FOURIER_ANALYSIS_DIALOG         (SC_MESSAGE_START + 88)
 
 // functions
 
 #define SID_OPEN_CALC                   (SC_FUNCTION_START + 4)
 #define SID_CONVERT_FORMULA_TO_VALUE    (SC_FUNCTION_START + 5)
+#ifndef FILE_MENU_END // duplicated in sfx2/sfxsids.hrc
 #define FILE_MENU_END                   (SC_FUNCTION_START + 20)
+#endif
 
+#ifndef EDIT_MENU_START // duplicated in sfx2/sfxsids.hrc
 #define EDIT_MENU_START         (FILE_MENU_END)
+#endif
 #define FID_DELETE_CELL         (EDIT_MENU_START + 2)
 #define FID_DELETE_TABLE        (EDIT_MENU_START + 3)
 #define FID_FILL_TO_BOTTOM      (EDIT_MENU_START + 4)
@@ -320,7 +309,8 @@
 #define FID_INS_COLUMNS_AFTER   (INSERT_MENU_START + 21)
 #define FID_INS_ROWS_BEFORE     (INSERT_MENU_START + 22)
 #define FID_INS_COLUMNS_BEFORE  (INSERT_MENU_START + 23)
-#define INSERT_MENU_END         (INSERT_MENU_START + 24)
+#define FID_DEFINE_CURRENT_NAME (INSERT_MENU_START + 24)
+#define INSERT_MENU_END         (INSERT_MENU_START + 25)
 
 #define FORMAT_MENU_START       (INSERT_MENU_END)
 #define FID_CELL_FORMAT         (FORMAT_MENU_START)
@@ -422,8 +412,10 @@
 #define DRAW_BAR_START          (RID_INPUTBAR_END)
 #define SID_ANCHOR_PAGE         (DRAW_BAR_START+24)
 #define SID_ANCHOR_CELL         (DRAW_BAR_START+25)
-#define SID_ANCHOR_TOGGLE       (DRAW_BAR_START+26)
-#define SID_ORIGINALSIZE        (DRAW_BAR_START+27)
+#define SID_ANCHOR_CELL_RESIZE  (DRAW_BAR_START+26)
+#define SID_ANCHOR_TOGGLE       (DRAW_BAR_START+27)
+#define SID_ORIGINALSIZE        (DRAW_BAR_START+28)
+#define SID_FITCELLSIZE         (DRAW_BAR_START+29)
 
 #define DRAW_BAR_END            (DRAW_BAR_START+50)
 
@@ -474,22 +466,9 @@
 #define SID_PREVIEW_END         (SID_PREVIEW_START+20)
 
 //from sfx: #define SID_KEYFUNC_START       (SID_PREVIEW_END+5)
-#define SID_CURSORDOWN_SEL      (SID_KEYFUNC_START + 0)
-#define SID_CURSORUP_SEL        (SID_KEYFUNC_START + 1)
-#define SID_CURSORLEFT_SEL      (SID_KEYFUNC_START + 2)
-#define SID_CURSORRIGHT_SEL     (SID_KEYFUNC_START + 3)
-#define SID_CURSORPAGEDOWN_SEL  (SID_KEYFUNC_START + 4)
-#define SID_CURSORPAGEUP_SEL    (SID_KEYFUNC_START + 5)
-
+// from SID_KEYFUNC_START + 0 to SID_KEYFUNC_START + 13 are defined in include/sfx2/sfxsids.hrc
 #define SID_CURSORPAGELEFT_     (SID_KEYFUNC_START + 6)
-#define SID_CURSORPAGELEFT_SEL  (SID_KEYFUNC_START + 7)
 #define SID_CURSORPAGERIGHT_    (SID_KEYFUNC_START + 8)
-#define SID_CURSORPAGERIGHT_SEL (SID_KEYFUNC_START + 9)
-
-#define SID_CURSORTOPOFFILE_SEL (SID_KEYFUNC_START + 10)
-#define SID_CURSORENDOFFILE_SEL (SID_KEYFUNC_START + 11)
-#define SID_CURSORHOME_SEL      (SID_KEYFUNC_START + 12)
-#define SID_CURSOREND_SEL       (SID_KEYFUNC_START + 13)
 #define SID_CURSORBLKUP         (SID_KEYFUNC_START + 14)
 #define SID_CURSORBLKDOWN       (SID_KEYFUNC_START + 15)
 #define SID_CURSORBLKLEFT       (SID_KEYFUNC_START + 16)
@@ -538,7 +517,7 @@
 #define SID_RANGE_ROW           (SID_NEW_SLOTS+20)
 #define SID_RANGE_COL           (SID_NEW_SLOTS+21)
 #define SID_RANGE_TABLE         (SID_NEW_SLOTS+22)
-#define SID_RANGE_VALUE         (SID_NEW_SLOTS+23)
+// empty, was SID_RANGE_VALUE
 #define SID_RANGE_FORMULA       (SID_NEW_SLOTS+24)
 #define SID_RANGE_TEXTVALUE     (SID_NEW_SLOTS+26)
 #define SID_TABLE_ACTIVATE      (SID_NEW_SLOTS+27)
@@ -568,6 +547,7 @@
 
 #define SID_OLE_SELECT          (SID_NEW_SLOTS+50)
 
+#define FID_CURRENTVALIDATION   (SID_NEW_SLOTS+51)
 #define SID_RANGE_NOTETEXT      (SID_NEW_SLOTS+52)
 #define FID_INSERT_FILE         (SID_NEW_SLOTS+53)
 
@@ -598,12 +578,6 @@
 #define SID_REFRESH_DBAREA      (SID_NEW_SLOTS+72)
 
 #define FID_FOCUS_POSWND        (SID_NEW_SLOTS+74)
-
-//  single slots for different underline kinds (popup menu)
-#define SID_ULINE_VAL_NONE      (SID_NEW_SLOTS+75)
-#define SID_ULINE_VAL_SINGLE    (SID_NEW_SLOTS+76)
-#define SID_ULINE_VAL_DOUBLE    (SID_NEW_SLOTS+77)
-#define SID_ULINE_VAL_DOTTED    (SID_NEW_SLOTS+78)
 
 #define FID_DEL_MANUALBREAKS    (SID_NEW_SLOTS+79)
 #define SID_ADD_PRINTAREA       (SID_NEW_SLOTS+80)
@@ -640,6 +614,7 @@
 #define SID_SORT_USERDEF        (SC_PARAM_START+4)
 #define SID_SORT_NATURALSORT    (SC_PARAM_START+5)
 #define SID_SORT_INCCOMMENTS    (SC_PARAM_START+6)
+#define SID_SORT_INCIMAGES      (SC_PARAM_START+7)
 
 // Sidebar -------------------------------------------------------------
 
@@ -653,8 +628,6 @@
 #define SID_INSERT_CURRENT_TIME (SC_RESOURCE_START+17)
 #define FID_TAB_TOGGLE_GRID     (SC_RESOURCE_START+18) // toggle sheet grid
 #define WID_SIMPLE_REF          (SC_RESOURCE_START+20)
-#define RID_ERRHDLSC            (SC_RESOURCE_START+23)
-#define RID_FUNCTION_CATEGORIES (SC_RESOURCE_START+62)
 
 #endif
 

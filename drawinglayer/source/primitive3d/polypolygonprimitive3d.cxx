@@ -19,17 +19,14 @@
 
 #include <drawinglayer/primitive3d/polypolygonprimitive3d.hxx>
 #include <basegfx/polygon/b3dpolypolygontools.hxx>
-#include <basegfx/tools/canvastools.hxx>
 #include <drawinglayer/primitive3d/drawinglayer_primitivetypes3d.hxx>
 
 
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         PolyPolygonMaterialPrimitive3D::PolyPolygonMaterialPrimitive3D(
             const basegfx::B3DPolyPolygon& rPolyPolygon,
             const attribute::MaterialAttribute3D& rMaterial,
@@ -57,13 +54,12 @@ namespace drawinglayer
 
         basegfx::B3DRange PolyPolygonMaterialPrimitive3D::getB3DRange(const geometry::ViewInformation3D& /*rViewInformation*/) const
         {
-            return basegfx::tools::getRange(getB3DPolyPolygon());
+            return basegfx::utils::getRange(getB3DPolyPolygon());
         }
 
         // provide unique ID
         ImplPrimitive3DIDBlock(PolyPolygonMaterialPrimitive3D, PRIMITIVE3D_ID_POLYPOLYGONMATERIALPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

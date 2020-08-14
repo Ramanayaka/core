@@ -28,7 +28,7 @@ typedef tools::SvRef<ImplFontCharMap> ImplFontCharMapRef;
 
 class CmapResult;
 
-class VCL_PLUGIN_PUBLIC ImplFontCharMap : public SvRefBase
+class ImplFontCharMap : public SvRefBase
 {
 public:
     explicit            ImplFontCharMap( const CmapResult& );
@@ -51,7 +51,7 @@ private:
     int                 mnCharCount;      // covered codepoints
 };
 
-bool ParseCMAP( const unsigned char* pRawData, int nRawLength, CmapResult& );
+bool VCL_DLLPUBLIC ParseCMAP( const unsigned char* pRawData, int nRawLength, CmapResult& );
 
 #endif // INCLUDED_VCL_INC_IMPFONTCHARMAP_HXX
 

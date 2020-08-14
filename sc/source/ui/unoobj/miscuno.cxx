@@ -24,22 +24,13 @@
 #include <o3tl/any.hxx>
 #include <vcl/svapp.hxx>
 
-#include "miscuno.hxx"
+#include <miscuno.hxx>
 
 using namespace com::sun::star;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Any;
 
 SC_SIMPLE_SERVICE_INFO( ScNameToIndexAccess, "ScNameToIndexAccess", "stardiv.unknown" )
-
-uno::Reference<uno::XInterface> ScUnoHelpFunctions::AnyToInterface( const uno::Any& rAny )
-{
-    if ( rAny.getValueTypeClass() == uno::TypeClass_INTERFACE )
-    {
-        return uno::Reference<uno::XInterface>(rAny, uno::UNO_QUERY);
-    }
-    return uno::Reference<uno::XInterface>();   //! Exception?
-}
 
 bool ScUnoHelpFunctions::GetBoolProperty( const uno::Reference<beans::XPropertySet>& xProp,
                                             const OUString& rName, bool bDefault )
@@ -177,7 +168,7 @@ sal_Int32 ScUnoHelpFunctions::GetEnumFromAny( const uno::Any& aAny )
 }
 
 void ScUnoHelpFunctions::SetOptionalPropertyValue(
-    Reference<beans::XPropertySet>& rPropSet, const sal_Char* pPropName, const Any& rVal )
+    const Reference<beans::XPropertySet>& rPropSet, const char* pPropName, const Any& rVal )
 {
     try
     {
@@ -226,7 +217,7 @@ uno::Any SAL_CALL ScIndexEnumeration::nextElement()
 
 OUString SAL_CALL ScIndexEnumeration::getImplementationName()
 {
-    return OUString("ScIndexEnumeration");
+    return "ScIndexEnumeration";
 }
 
 sal_Bool SAL_CALL ScIndexEnumeration::supportsService( const OUString& ServiceName )
@@ -237,8 +228,7 @@ sal_Bool SAL_CALL ScIndexEnumeration::supportsService( const OUString& ServiceNa
 css::uno::Sequence< OUString >
     SAL_CALL ScIndexEnumeration::getSupportedServiceNames()
 {
-    css::uno::Sequence<OUString> aRet { sServiceName };
-    return aRet;
+    return { sServiceName };
 }
 
 ScNameToIndexAccess::ScNameToIndexAccess( const css::uno::Reference<

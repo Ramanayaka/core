@@ -17,11 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "urltransformer.hxx"
+#include <urltransformer.hxx>
 
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <tools/debug.hxx>
-#include <comphelper/processfactory.hxx>
 
 
 namespace frm
@@ -66,13 +65,13 @@ namespace frm
     }
 
 
-    URL UrlTransformer::getStrictURLFromAscii( const sal_Char* _pAsciiURL ) const
+    URL UrlTransformer::getStrictURLFromAscii( const char* _pAsciiURL ) const
     {
         return getStrictURL( OUString::createFromAscii( _pAsciiURL ) );
     }
 
 
-    void UrlTransformer::parseSmartWithAsciiProtocol( css::util::URL& _rURL, const sal_Char* _pAsciiURL ) const
+    void UrlTransformer::parseSmartWithAsciiProtocol( css::util::URL& _rURL, const char* _pAsciiURL ) const
     {
         if ( implEnsureTransformer() )
             m_xTransformer->parseSmart( _rURL, OUString::createFromAscii( _pAsciiURL ) );

@@ -20,19 +20,15 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_PRESENTATIONFACTORY_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_PRESENTATIONFACTORY_HXX
 
-#include "MutexOwner.hxx"
+#include <MutexOwner.hxx>
 
 #include <com/sun/star/drawing/framework/XResourceFactory.hpp>
 #include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/frame/XController.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/compbase.hxx>
 
-#include <memory>
+namespace com::sun::star::frame { class XController; }
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::drawing::framework::XResourceFactory,
@@ -75,15 +71,13 @@ public:
         const css::lang::EventObject& rEventObject) override;
 
 private:
-    css::uno::Reference<css::drawing::framework::XConfigurationController>
-        mxConfigurationController;
     css::uno::Reference<css::frame::XController> mxController;
 
     /// @throws css::lang::DisposedException
     void ThrowIfDisposed() const;
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

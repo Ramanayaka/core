@@ -35,8 +35,8 @@
 #define UNO_NAME_FILLHATCH                      "FillHatch"
 #define UNO_NAME_FILLHATCHNAME                  "FillHatchName"
 #define UNO_NAME_FILLBITMAP                     "FillBitmap"
-#define UNO_NAME_FILLBITMAPNAME                 "FillBitmapName"
 #define UNO_NAME_FILLBITMAPURL                  "FillBitmapURL"
+#define UNO_NAME_FILLBITMAPNAME                 "FillBitmapName"
 #define UNO_NAME_FILLGRADIENTSTEPCOUNT          "FillGradientStepCount"
 #define UNO_NAME_FILLBACKGROUND                 "FillBackground"
 #define UNO_NAME_FILLCOLOR_2                    "FillColor2"
@@ -84,7 +84,10 @@
 #define UNO_NAME_SHADOWCOLOR                    "ShadowColor"
 #define UNO_NAME_SHADOWXDIST                    "ShadowXDistance"
 #define UNO_NAME_SHADOWYDIST                    "ShadowYDistance"
+#define UNO_NAME_SHADOWSIZEX                    "ShadowSizeX"
+#define UNO_NAME_SHADOWSIZEY                    "ShadowSizeY"
 #define UNO_NAME_SHADOWTRANSPARENCE             "ShadowTransparence"
+#define UNO_NAME_SHADOWBLUR                     "ShadowBlur"
 
 #define UNO_NAME_EDGERADIUS                     "CornerRadius"
 
@@ -161,12 +164,22 @@
 #define UNO_NAME_MISC_OBJ_DESCRIPTION           "Description"
 
 #define UNO_NAME_GRAPHOBJ_FILLBITMAP            "GraphicObjectFillBitmap"
-#define UNO_NAME_GRAPHOBJ_GRAFURL               "GraphicURL"
-#define UNO_NAME_GRAPHOBJ_REPLACEMENTGRAFURL    "ReplacementGraphicURL"
+#define UNO_NAME_GRAPHOBJ_REPLACEMENT_GRAPHIC   "ReplacementGraphic"
 #define UNO_NAME_GRAPHOBJ_GRAFSTREAMURL         "GraphicStreamURL"
-#define UNO_NAME_GRAPHOBJ_URLPREFIX             "vnd.sun.star.GraphicObject:"
 #define UNO_NAME_GRAPHOBJ_URLPKGPREFIX          "vnd.sun.star.Package:"
 #define UNO_NAME_GRAPHOBJ_GRAPHIC               "Graphic"
+#define UNO_NAME_GRAPHOBJ_GRAPHIC_URL           "GraphicURL"
+#define UNO_NAME_GRAPHOBJ_IS_SIGNATURELINE      "IsSignatureLine"
+#define UNO_NAME_GRAPHOBJ_SIGNATURELINE_ID      "SignatureLineId"
+#define UNO_NAME_GRAPHOBJ_SIGNATURELINE_SUGGESTED_SIGNER_NAME "SignatureLineSuggestedSignerName"
+#define UNO_NAME_GRAPHOBJ_SIGNATURELINE_SUGGESTED_SIGNER_TITLE "SignatureLineSuggestedSignerTitle"
+#define UNO_NAME_GRAPHOBJ_SIGNATURELINE_SUGGESTED_SIGNER_EMAIL "SignatureLineSuggestedSignerEmail"
+#define UNO_NAME_GRAPHOBJ_SIGNATURELINE_SIGNING_INSTRUCTIONS "SignatureLineSigningInstructions"
+#define UNO_NAME_GRAPHOBJ_SIGNATURELINE_SHOW_SIGN_DATE "SignatureLineShowSignDate"
+#define UNO_NAME_GRAPHOBJ_SIGNATURELINE_CAN_ADD_COMMENT "SignatureLineCanAddComment"
+#define UNO_NAME_GRAPHOBJ_SIGNATURELINE_UNSIGNED_IMAGE "SignatureLineUnsignedImage"
+#define UNO_NAME_GRAPHOBJ_SIGNATURELINE_IS_SIGNED "SignatureLineIsSigned"
+#define UNO_NAME_GRAPHOBJ_QRCODE                "QRCodeProperties"
 
 #define UNO_NAME_OLE2_METAFILE                  "MetaFile"
 #define UNO_NAME_OLE2_PERSISTNAME               "PersistName"
@@ -310,11 +323,11 @@
 #define UNO_NAME_EDIT_CHAR_LOCALE_COMPLEX       "CharLocaleComplex"
 
 #define UNO_NAME_EDIT_CHAR_COLOR                "CharColor"
+#define UNO_NAME_EDIT_CHAR_TRANSPARENCE         "CharTransparence"
 #define UNO_NAME_EDIT_CHAR_CROSSEDOUT           "CharCrossedOut"
 #define UNO_NAME_EDIT_CHAR_STRIKEOUT            "CharStrikeout"
 #define UNO_NAME_EDIT_CHAR_CASEMAP              "CharCaseMap"
 #define UNO_NAME_EDIT_CHAR_ESCAPEMENT           "CharEscapement"
-#define UNO_NAME_EDIT_CHAR_FONTNAME             "CharFontName"
 #define UNO_NAME_EDIT_CHAR_SHADOWED             "CharShadowed"
 #define UNO_NAME_EDIT_CHAR_UNDERLINE            "CharUnderline"
 #define UNO_NAME_EDIT_CHAR_OVERLINE             "CharOverline"
@@ -333,8 +346,6 @@
 #define UNO_NAME_GRAPHIC_TRANSPARENCY           "Transparency"
 #define UNO_NAME_GRAPHIC_COLOR_MODE             "GraphicColorMode"
 #define UNO_NAME_GRAPHIC_GRAPHICCROP            "GraphicCrop"
-
-#define UNO_NAME_CUSTOMSHAPE_ADJUSTMENT         "CustomShapeAdjustment"
 
 #endif
 

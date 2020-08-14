@@ -20,13 +20,16 @@
 #ifndef INCLUDED_FRAMEWORK_SFXHELPERFUNCTIONS_HXX
 #define INCLUDED_FRAMEWORK_SFXHELPERFUNCTIONS_HXX
 
-#include <framework/fwedllapi.h>
-#include <com/sun/star/frame/XFrame.hpp>
+#include <framework/fwkdllapi.h>
 #include <rtl/ustring.hxx>
-#include <vcl/toolbox.hxx>
-#include <vcl/status.hxx>
-#include <svtools/toolboxcontroller.hxx>
-#include <svtools/statusbarcontroller.hxx>
+
+namespace com::sun::star::frame { class XFrame; }
+namespace com::sun::star::uno { template <typename > class Reference; }
+namespace svt { class StatusbarController; }
+namespace svt { class ToolboxController; }
+
+class StatusBar;
+class ToolBox;
 
 typedef svt::ToolboxController* ( *pfunc_setToolBoxControllerCreator)(
     const css::uno::Reference< css::frame::XFrame >& rFrame,
@@ -41,7 +44,7 @@ typedef svt::StatusbarController* ( *pfunc_setStatusBarControllerCreator)(
     const OUString& aCommandURL );
 
 typedef void ( *pfunc_getRefreshToolbars)(
-    css::uno::Reference< css::frame::XFrame >& rFrame );
+    css::uno::Reference< css::frame::XFrame > const & rFrame );
 
 typedef void ( *pfunc_createDockingWindow)(
     const css::uno::Reference< css::frame::XFrame >& rFrame,
@@ -54,31 +57,31 @@ typedef bool ( *pfunc_isDockingWindowVisible)(
 
 namespace framework
 {
-FWE_DLLPUBLIC pfunc_setToolBoxControllerCreator SAL_CALL SetToolBoxControllerCreator( pfunc_setToolBoxControllerCreator pSetToolBoxControllerCreator );
-FWE_DLLPUBLIC svt::ToolboxController* SAL_CALL CreateToolBoxController(
+FWK_DLLPUBLIC pfunc_setToolBoxControllerCreator SetToolBoxControllerCreator( pfunc_setToolBoxControllerCreator pSetToolBoxControllerCreator );
+FWK_DLLPUBLIC svt::ToolboxController* CreateToolBoxController(
     const css::uno::Reference< css::frame::XFrame >& rFrame,
     ToolBox* pToolbox,
     unsigned short nID,
     const OUString& aCommandURL );
 
-FWE_DLLPUBLIC pfunc_setStatusBarControllerCreator SAL_CALL SetStatusBarControllerCreator( pfunc_setStatusBarControllerCreator pSetStatusBarControllerCreator );
-FWE_DLLPUBLIC svt::StatusbarController* SAL_CALL CreateStatusBarController(
+FWK_DLLPUBLIC pfunc_setStatusBarControllerCreator SetStatusBarControllerCreator( pfunc_setStatusBarControllerCreator pSetStatusBarControllerCreator );
+FWK_DLLPUBLIC svt::StatusbarController* CreateStatusBarController(
     const css::uno::Reference< css::frame::XFrame >& rFrame,
     StatusBar* pStatusBar,
     unsigned short nID,
      const OUString& aCommandURL );
 
-FWE_DLLPUBLIC pfunc_getRefreshToolbars SAL_CALL SetRefreshToolbars( pfunc_getRefreshToolbars pRefreshToolbarsFunc );
-FWE_DLLPUBLIC void SAL_CALL RefreshToolbars(
-     css::uno::Reference< css::frame::XFrame >& rFrame );
+FWK_DLLPUBLIC pfunc_getRefreshToolbars SetRefreshToolbars( pfunc_getRefreshToolbars pRefreshToolbarsFunc );
+FWK_DLLPUBLIC void RefreshToolbars(
+     css::uno::Reference< css::frame::XFrame > const & rFrame );
 
-FWE_DLLPUBLIC pfunc_createDockingWindow SAL_CALL SetDockingWindowCreator( pfunc_createDockingWindow pCreateDockingWindow );
-FWE_DLLPUBLIC void SAL_CALL CreateDockingWindow(
+FWK_DLLPUBLIC pfunc_createDockingWindow SetDockingWindowCreator( pfunc_createDockingWindow pCreateDockingWindow );
+FWK_DLLPUBLIC void CreateDockingWindow(
     const css::uno::Reference< css::frame::XFrame >& rFrame,
     const OUString& rResourceURL );
 
-FWE_DLLPUBLIC pfunc_isDockingWindowVisible SAL_CALL SetIsDockingWindowVisible( pfunc_isDockingWindowVisible pIsDockingWindowVisible );
-FWE_DLLPUBLIC bool SAL_CALL IsDockingWindowVisible(
+FWK_DLLPUBLIC pfunc_isDockingWindowVisible SetIsDockingWindowVisible( pfunc_isDockingWindowVisible pIsDockingWindowVisible );
+FWK_DLLPUBLIC bool IsDockingWindowVisible(
     const css::uno::Reference< css::frame::XFrame >& rFrame,
     const OUString& rResourceURL );
 }

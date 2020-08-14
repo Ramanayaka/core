@@ -18,7 +18,9 @@
  */
 
 #include <xmlscript/xml_helper.hxx>
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
+#include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
@@ -37,14 +39,14 @@ void XMLElement::addSubElement( Reference< xml::sax::XAttributeList > const & xE
     _subElems.push_back( xElem );
 }
 
-Reference< xml::sax::XAttributeList > XMLElement::getSubElement( sal_Int32 nIndex )
+Reference< xml::sax::XAttributeList > const & XMLElement::getSubElement( sal_Int32 nIndex )
 {
-    return _subElems[ (size_t)nIndex ];
+    return _subElems[ static_cast<size_t>(nIndex) ];
 }
 
 void XMLElement::dumpSubElements( Reference< xml::sax::XDocumentHandler > const & xOut )
 {
-    for (Reference<XAttributeList> & _subElem : _subElems)
+    for (const Reference<XAttributeList> & _subElem : _subElems)
     {
         XMLElement * pElem = static_cast< XMLElement * >( _subElem.get() );
         pElem->dump( xOut );
@@ -69,13 +71,13 @@ sal_Int16 XMLElement::getLength()
 
 OUString XMLElement::getNameByIndex( sal_Int16 nPos )
 {
-    OSL_ASSERT( (size_t)nPos < _attrNames.size() );
+    OSL_ASSERT( nPos >= 0 && o3tl::make_unsigned(nPos) < _attrNames.size() );
     return _attrNames[ nPos ];
 }
 
 OUString XMLElement::getTypeByIndex( sal_Int16 nPos )
 {
-    OSL_ASSERT( (size_t)nPos < _attrNames.size() );
+    OSL_ASSERT( nPos >= 0 && o3tl::make_unsigned(nPos) < _attrNames.size() );
     // xxx todo
     return OUString();
 }
@@ -88,7 +90,7 @@ OUString XMLElement::getTypeByName( OUString const & /*rName*/ )
 
 OUString XMLElement::getValueByIndex( sal_Int16 nPos )
 {
-    OSL_ASSERT( (size_t)nPos < _attrNames.size() );
+    OSL_ASSERT( nPos >= 0 && o3tl::make_unsigned(nPos) < _attrNames.size() );
     return _attrValues[ nPos ];
 }
 

@@ -17,62 +17,36 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
-
 #include <comphelper/lok.hxx>
+#include <comphelper/base64.hxx>
 #include <com/sun/star/document/XDocumentProperties.hpp>
 #include <unotools/historyoptions.hxx>
 #include <unotools/useroptions.hxx>
+#include <tools/datetime.hxx>
 #include <tools/urlobj.hxx>
-#include <framework/menuconfiguration.hxx>
-#include <sax/tools/converter.hxx>
 #include <svl/inethist.hxx>
-#include <svl/stritem.hxx>
-#include <svl/eitem.hxx>
 #include <vcl/gdimtf.hxx>
 #include <vcl/pngwrite.hxx>
+#include <vcl/svapp.hxx>
 #include <officecfg/Office/Common.hxx>
-#include <osl/file.hxx>
-#include <unotools/localfilehelper.hxx>
-#include <cppuhelper/implbase.hxx>
 
 
 #include <sfx2/app.hxx>
-#include "sfxpicklist.hxx"
-#include <sfx2/sfxuno.hxx>
-#include "sfxtypes.hxx"
-#include <sfx2/request.hxx>
+#include <sfxpicklist.hxx>
 #include <sfx2/sfxsids.hrc>
-#include <sfx2/sfx.hrc>
 #include <sfx2/event.hxx>
 #include <sfx2/objsh.hxx>
-#include <sfx2/bindings.hxx>
 #include <sfx2/docfile.hxx>
-#include "objshimp.hxx"
 #include <openurlhint.hxx>
 #include <sfx2/docfilt.hxx>
+#include <sfx2/viewfrm.hxx>
 
 #include <rtl/instance.hxx>
-
-#include <algorithm>
 
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::util;
-
-
-class StringLength : public ::cppu::WeakImplHelper< XStringWidth >
-{
-    public:
-        StringLength() {}
-
-        // XStringWidth
-        sal_Int32 SAL_CALL queryStringWidth( const OUString& aString ) override
-        {
-            return aString.getLength();
-        }
-};
 
 
 namespace
@@ -83,23 +57,19 @@ namespace
 
 class SfxPickListImpl : public SfxListener
 {
-private:
-    sal_uInt32 m_nAllowedMenuSize;
-    css::uno::Reference< css::util::XStringWidth > m_xStringLength;
-
     /**
      * Adds the given document to the pick list (recent documents) if it satisfies
        certain requirements, e.g. being writable. Check implementation for requirement
        details.
      */
-    static void         AddDocumentToPickList( SfxObjectShell* pDocShell );
+    static void         AddDocumentToPickList( const SfxObjectShell* pDocShell );
 
 public:
-    SfxPickListImpl(sal_uInt32 nMenuSize);
+    SfxPickListImpl(SfxApplication& rApp);
     virtual void Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 };
 
-void SfxPickListImpl::AddDocumentToPickList( SfxObjectShell* pDocSh )
+void SfxPickListImpl::AddDocumentToPickList( const SfxObjectShell* pDocSh )
 {
     if (pDocSh->IsAvoidRecentDocs() || comphelper::LibreOfficeKit::isActive())
         return;
@@ -118,12 +88,8 @@ void SfxPickListImpl::AddDocumentToPickList( SfxObjectShell* pDocSh )
     if ( aURL.GetProtocol() == INetProtocol::VndSunStarHelp )
         return;
 
+    // add no document that forbids this
     if ( !pMed->IsUpdatePickList() )
-        return;
-
-    // add no document that forbids this (for example Message-Body)
-    const SfxBoolItem* pPicklistItem = SfxItemSet::GetItem<SfxBoolItem>(pMed->GetItemSet(), SID_PICKLIST, false);
-    if ( pPicklistItem && !pPicklistItem->GetValue() )
         return;
 
     // ignore hidden documents
@@ -132,11 +98,11 @@ void SfxPickListImpl::AddDocumentToPickList( SfxObjectShell* pDocSh )
 
     OUString  aTitle = pDocSh->GetTitle(SFX_TITLE_PICKLIST);
     OUString  aFilter;
-    std::shared_ptr<const SfxFilter> pFilter = pMed->GetOrigFilter();
+    std::shared_ptr<const SfxFilter> pFilter = pMed->GetFilter();
     if ( pFilter )
         aFilter = pFilter->GetFilterName();
 
-    boost::optional<OUString> aThumbnail;
+    std::optional<OUString> aThumbnail;
 
     // generate the thumbnail
     //fdo#74834: only generate thumbnail for history if the corresponding option is not disabled in the configuration
@@ -162,7 +128,7 @@ void SfxPickListImpl::AddDocumentToPickList( SfxObjectShell* pDocSh )
                 {
                     Sequence<sal_Int8> aSequence(static_cast<const sal_Int8*>(aStream.GetData()), aStream.Tell());
                     OUStringBuffer aBuffer;
-                    ::sax::Converter::encodeBase64(aBuffer, aSequence);
+                    ::comphelper::Base64::encode(aBuffer, aSequence);
                     aThumbnail = aBuffer.makeStringAndClear();
                 }
             }
@@ -178,32 +144,22 @@ void SfxPickListImpl::AddDocumentToPickList( SfxObjectShell* pDocSh )
 
     if ( aURL.GetProtocol() == INetProtocol::File )
         Application::AddToRecentDocumentList( aURL.GetURLNoPass( INetURLObject::DecodeMechanism::NONE ),
-                                                                 (pFilter) ? pFilter->GetMimeType() : OUString(),
-                                                                 (pFilter) ? pFilter->GetServiceName() : OUString() );
+                                                                 pFilter ? pFilter->GetMimeType() : OUString(),
+                                                                 pFilter ? pFilter->GetServiceName() : OUString() );
 }
 
-SfxPickList::SfxPickList(sal_uInt32 nAllowedMenuSize)
-    : mxImpl(new SfxPickListImpl(nAllowedMenuSize))
+SfxPickList::SfxPickList(SfxApplication& rApp)
+    : mxImpl(new SfxPickListImpl(rApp))
 {
 }
 
 SfxPickList::~SfxPickList()
 {
-    std::unique_ptr<SolarMutexGuard> xGuard(comphelper::SolarMutex::get() ? new SolarMutexGuard : nullptr);
-    mxImpl.reset();
 }
 
-void SfxPickList::ensure()
+SfxPickListImpl::SfxPickListImpl(SfxApplication& rApp)
 {
-    static SfxPickList aUniqueInstance(SvtHistoryOptions().GetSize(ePICKLIST));
-}
-
-SfxPickListImpl::SfxPickListImpl( sal_uInt32 nAllowedMenuSize ) :
-    m_nAllowedMenuSize( nAllowedMenuSize )
-{
-    m_xStringLength = new StringLength;
-    m_nAllowedMenuSize = ::std::min( m_nAllowedMenuSize, (sal_uInt32)PICKLIST_MAXSIZE );
-    StartListening( *SfxGetpApp() );
+    StartListening(rApp);
 }
 
 void SfxPickListImpl::Notify( SfxBroadcaster&, const SfxHint& rHint )
@@ -215,64 +171,64 @@ void SfxPickListImpl::Notify( SfxBroadcaster&, const SfxHint& rHint )
     }
 
     const SfxEventHint* pEventHint = dynamic_cast<const SfxEventHint*>(&rHint);
-    if ( pEventHint )
+    if ( !pEventHint )
+        return;
+
+    // only ObjectShell-related events with media interest
+    SfxObjectShell* pDocSh = pEventHint->GetObjShell();
+    if( !pDocSh )
+        return;
+
+    switch ( pEventHint->GetEventId() )
     {
-        // only ObjectShell-related events with media interest
-        SfxObjectShell* pDocSh = pEventHint->GetObjShell();
-        if( !pDocSh )
-            return;
-
-        switch ( pEventHint->GetEventId() )
+        case SfxEventHintId::CreateDoc:
         {
-            case SfxEventHintId::CreateDoc:
-            {
-                bool bAllowModif = pDocSh->IsEnableSetModified();
-                if ( bAllowModif )
-                    pDocSh->EnableSetModified( false );
+            bool bAllowModif = pDocSh->IsEnableSetModified();
+            if ( bAllowModif )
+                pDocSh->EnableSetModified( false );
 
-                using namespace ::com::sun::star;
-                uno::Reference<document::XDocumentProperties> xDocProps(
-                    pDocSh->getDocProperties());
-                if (xDocProps.is()) {
-                    xDocProps->setAuthor( SvtUserOptions().GetFullName() );
-                    ::DateTime now( ::DateTime::SYSTEM );
-                    xDocProps->setCreationDate( now.GetUNODateTime() );
-                }
-
-                if ( bAllowModif )
-                    pDocSh->EnableSetModified( bAllowModif );
+            using namespace ::com::sun::star;
+            uno::Reference<document::XDocumentProperties> xDocProps(
+                pDocSh->getDocProperties());
+            if (xDocProps.is()) {
+                xDocProps->setAuthor( SvtUserOptions().GetFullName() );
+                ::DateTime now( ::DateTime::SYSTEM );
+                xDocProps->setCreationDate( now.GetUNODateTime() );
             }
-            break;
 
-            case SfxEventHintId::OpenDoc:
-            case SfxEventHintId::SaveDocDone:
-            case SfxEventHintId::SaveAsDocDone:
-            case SfxEventHintId::SaveToDocDone:
-            case SfxEventHintId::CloseDoc:
+            if ( bAllowModif )
+                pDocSh->EnableSetModified( bAllowModif );
+        }
+        break;
+
+        case SfxEventHintId::OpenDoc:
+        case SfxEventHintId::SaveDocDone:
+        case SfxEventHintId::SaveAsDocDone:
+        case SfxEventHintId::SaveToDocDone:
+        case SfxEventHintId::CloseDoc:
+        {
+            AddDocumentToPickList(pDocSh);
+        }
+        break;
+
+        case SfxEventHintId::SaveAsDoc:
+        {
+            SfxMedium *pMedium = pDocSh->GetMedium();
+            if (!pMedium)
+                return;
+
+            // We're starting a "Save As". Add the current document (if it's
+            // not a "new" document) to the "Recent Documents" list before we
+            // switch to the new path.
+            // If the current document is new, path will be empty.
+            OUString path = pMedium->GetOrigURL();
+            if (!path.isEmpty())
             {
                 AddDocumentToPickList(pDocSh);
             }
-            break;
-
-            case SfxEventHintId::SaveAsDoc:
-            {
-                SfxMedium *pMedium = pDocSh->GetMedium();
-                if (!pMedium)
-                    return;
-
-                // We're starting a "Save As". Add the current document (if it's
-                // not a "new" document) to the "Recent Documents" list before we
-                // switch to the new path.
-                // If the current document is new, path will be empty.
-                OUString path = pMedium->GetOrigURL();
-                if (!path.isEmpty())
-                {
-                    AddDocumentToPickList(pDocSh);
-                }
-            }
-            break;
-            default: break;
         }
+        break;
+        default: break;
     }
 }
 

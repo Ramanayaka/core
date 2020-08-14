@@ -13,40 +13,35 @@
  manual changes will be rewritten by the next run of update_pch.sh (which presumably
  also fixes all possible problems, so it's usually better to use it).
 
- Generated on 2015-11-14 14:16:41 using:
+ Generated on 2020-08-12 11:07:07 using:
  ./bin/update_pch unotools utl --cutoff=3 --exclude:system --exclude:module --include:local
 
  If after updating build fails, use the following command to locate conflicting headers:
- ./bin/update_pch_bisect ./unotools/inc/pch/precompiled_utl.hxx "/opt/lo/bin/make unotools.build" --find-conflicts
+ ./bin/update_pch_bisect ./unotools/inc/pch/precompiled_utl.hxx "make unotools.build" --find-conflicts
 */
 
+#if PCH_LEVEL >= 1
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
-#include <iomanip>
-#include <limits>
-#include <list>
 #include <memory>
-#include <new>
+#include <optional>
 #include <ostream>
 #include <stddef.h>
-#include <stdio.h>
-#include <string.h>
+#include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
-#include <boost/optional.hpp>
+#endif // PCH_LEVEL >= 1
+#if PCH_LEVEL >= 2
 #include <osl/detail/file.h>
 #include <osl/diagnose.h>
-#include <osl/file.h>
+#include <osl/endian.h>
 #include <osl/file.hxx>
-#include <osl/getglobalmutex.hxx>
-#include <osl/interlck.h>
 #include <osl/mutex.hxx>
 #include <osl/nlsupport.h>
-#include <osl/pipe.h>
 #include <osl/process.h>
-#include <osl/security.h>
-#include <osl/socket.h>
+#include <osl/thread.h>
 #include <osl/thread.hxx>
 #include <osl/time.h>
 #include <rtl/alloc.h>
@@ -56,103 +51,95 @@
 #include <rtl/locale.h>
 #include <rtl/math.hxx>
 #include <rtl/ref.hxx>
-#include <rtl/strbuf.hxx>
 #include <rtl/string.h>
 #include <rtl/string.hxx>
-#include <rtl/stringutils.hxx>
 #include <rtl/tencinfo.h>
-#include <rtl/textcvt.h>
 #include <rtl/textenc.h>
-#include <rtl/unload.h>
+#include <rtl/uri.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
-#include <rtl/uuid.h>
 #include <sal/config.h>
 #include <sal/log.hxx>
 #include <sal/macros.h>
 #include <sal/saldllapi.h>
 #include <sal/types.h>
 #include <sal/typesizes.h>
-#include <salhelper/condition.hxx>
+#include <vcl/errcode.hxx>
+#endif // PCH_LEVEL >= 2
+#if PCH_LEVEL >= 3
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
+#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/i18n/TransliterationModules.hpp>
-#include <com/sun/star/i18n/TransliterationModulesExtra.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/io/XSeekable.hpp>
-#include <com/sun/star/io/XStream.hpp>
+#include <com/sun/star/io/BufferSizeExceededException.hpp>
+#include <com/sun/star/io/NotConnectedException.hpp>
+#include <com/sun/star/io/XActiveDataSink.hpp>
 #include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/task/XInteractionHandler.hpp>
-#include <com/sun/star/task/XInteractionRequest.hpp>
 #include <com/sun/star/ucb/CommandAbortedException.hpp>
-#include <com/sun/star/ucb/InteractiveIOException.hpp>
-#include <com/sun/star/ucb/UniversalContentBroker.hpp>
-#include <com/sun/star/ucb/XCommandEnvironment.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/util/Date.hpp>
-#include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/Time.hpp>
 #include <com/sun/star/util/XChangesBatch.hpp>
 #include <comphelper/comphelperdllapi.h>
 #include <comphelper/configurationhelper.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
-#include <comphelper/servicedecl.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <cppu/cppudllapi.h>
+#include <cppu/unotype.hxx>
 #include <cppuhelper/cppuhelperdllapi.h>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/implbase1.hxx>
-#include <cppuhelper/weak.hxx>
 #include <i18nlangtag/lang.h>
 #include <i18nlangtag/languagetag.hxx>
 #include <i18nlangtag/mslangid.hxx>
+#include <i18nutil/transliteration.hxx>
 #include <o3tl/enumarray.hxx>
+#include <o3tl/safeint.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <o3tl/underlyingenumvalue.hxx>
+#include <salhelper/condition.hxx>
 #include <tools/date.hxx>
-#include <tools/datetime.hxx>
 #include <tools/debug.hxx>
-#include <vcl/errinf.hxx>
+#include <tools/diagnose_ex.h>
 #include <tools/lineend.hxx>
 #include <tools/ref.hxx>
-#include <tools/solar.h>
 #include <tools/stream.hxx>
 #include <tools/time.hxx>
 #include <tools/toolsdllapi.h>
 #include <tools/urlobj.hxx>
 #include <ucbhelper/content.hxx>
 #include <ucbhelper/ucbhelperdllapi.h>
-#include <unotools/bootstrap.hxx>
+#endif // PCH_LEVEL >= 3
+#if PCH_LEVEL >= 4
+#include <unotools/charclass.hxx>
 #include <unotools/configitem.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/configpaths.hxx>
 #include <unotools/fontdefs.hxx>
-#include <unotools/moduleoptions.hxx>
+#include <unotools/localedatawrapper.hxx>
 #include <unotools/options.hxx>
 #include <unotools/pathoptions.hxx>
-#include <unotools/readwritemutexguard.hxx>
 #include <unotools/securityoptions.hxx>
+#include <unotools/streamwrap.hxx>
 #include <unotools/syslocale.hxx>
 #include <unotools/syslocaleoptions.hxx>
 #include <unotools/ucbhelper.hxx>
 #include <unotools/unotoolsdllapi.h>
+#endif // PCH_LEVEL >= 4
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

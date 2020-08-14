@@ -19,15 +19,16 @@
 #ifndef INCLUDED_UNOTOOLS_FLTRCFG_HXX
 #define INCLUDED_UNOTOOLS_FLTRCFG_HXX
 
+#include <o3tl/deleter.hxx>
 #include <unotools/unotoolsdllapi.h>
 #include <unotools/configitem.hxx>
 #include <memory>
 
 struct SvtFilterOptions_Impl;
-class UNOTOOLS_DLLPUBLIC SvtFilterOptions : public utl::ConfigItem
+class UNOTOOLS_DLLPUBLIC SvtFilterOptions final : public utl::ConfigItem
 {
 private:
-    std::unique_ptr<SvtFilterOptions_Impl> pImpl;
+    std::unique_ptr<SvtFilterOptions_Impl, o3tl::default_delete<SvtFilterOptions_Impl>> pImpl;
 
     virtual void            ImplCommit() override;
 
@@ -90,6 +91,12 @@ public:
     bool IsCharBackground2Shading() const;
     void SetCharBackground2Highlighting();
     void SetCharBackground2Shading();
+
+    bool IsMSOLockFileCreationIsEnabled() const;
+    void EnableMSOLockFileCreation(bool bEnable);
+
+    bool IsVisio2Draw() const;
+    void SetVisio2Draw(bool bFlag);
 
     static SvtFilterOptions& Get();
 };

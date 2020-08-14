@@ -16,19 +16,21 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
+
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+
 #include <comphelper/accessiblekeybindinghelper.hxx>
 #include <swurl.hxx>
 #include <vcl/svapp.hxx>
-#include <ndtxt.hxx>
-#include <txtinet.hxx>
 #include <frmfmt.hxx>
 
-#include <accnotexthyperlink.hxx>
+#include "accnotexthyperlink.hxx"
 
 #include <fmturl.hxx>
 
-#include <svtools/imap.hxx>
-#include <svtools/imapobj.hxx>
+#include <vcl/imap.hxx>
+#include <vcl/imapobj.hxx>
+#include <vcl/keycodes.hxx>
 
 #include <accmap.hxx>
 
@@ -38,7 +40,7 @@ using namespace css::uno;
 using namespace css::accessibility;
 
 SwAccessibleNoTextHyperlink::SwAccessibleNoTextHyperlink( SwAccessibleNoTextFrame *p, const SwFrame *aFrame ) :
-    xFrame( p ),
+    mxFrame( p ),
     mpFrame( aFrame )
 {
 }
@@ -77,7 +79,7 @@ sal_Bool SAL_CALL SwAccessibleNoTextHyperlink::doAccessibleAction( sal_Int32 nIn
         IMapObject* pMapObj = pMap->GetIMapObject(nIndex);
         if (!pMapObj->GetURL().isEmpty())
         {
-            SwViewShell *pVSh = xFrame->GetShell();
+            SwViewShell *pVSh = mxFrame->GetShell();
             if( pVSh )
             {
                 LoadURL( *pVSh, pMapObj->GetURL(), LoadUrlFlags::NONE,
@@ -88,7 +90,7 @@ sal_Bool SAL_CALL SwAccessibleNoTextHyperlink::doAccessibleAction( sal_Int32 nIn
     }
     else if (!aURL.GetURL().isEmpty())
     {
-        SwViewShell *pVSh = xFrame->GetShell();
+        SwViewShell *pVSh = mxFrame->GetShell();
         if( pVSh )
         {
             LoadURL( *pVSh, aURL.GetURL(), LoadUrlFlags::NONE,
@@ -176,7 +178,7 @@ Any SAL_CALL SwAccessibleNoTextHyperlink::getAccessibleActionAnchor(
 
     Any aRet;
     //SwFrame* pAnchor = static_cast<SwFlyFrame*>(mpFrame)->GetAnchor();
-    Reference< XAccessible > xAnchor = xFrame->GetAccessibleMap()->GetContext(mpFrame);
+    Reference< XAccessible > xAnchor = mxFrame->GetAccessibleMap()->GetContext(mpFrame);
     //SwAccessibleNoTextFrame* pFrame = xFrame.get();
     //Reference< XAccessible > xAnchor = (XAccessible*)pFrame;
     aRet <<= xAnchor;

@@ -18,11 +18,11 @@
  */
 
 #include "TableDesignPanel.hxx"
-#include "createtabledesignpanel.hxx"
+#include <createtabledesignpanel.hxx>
 
-#include "ViewShellBase.hxx"
+#include <ViewShellBase.hxx>
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 TableDesignPanel::TableDesignPanel (
     vcl::Window* pParentWindow,
@@ -52,6 +52,6 @@ css::ui::LayoutSize TableDesignPanel::GetHeightForWidth (const sal_Int32 /*nWidt
     return css::ui::LayoutSize(nMinimumHeight,-1, nMinimumHeight);
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

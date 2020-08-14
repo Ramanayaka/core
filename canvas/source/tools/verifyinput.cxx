@@ -19,14 +19,8 @@
 
 #include <sal/config.h>
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/range/b2drange.hxx>
-#include <basegfx/range/b2drectangle.hxx>
 #include <basegfx/range/b2irange.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <basegfx/utils/canvastools.hxx>
 #include <com/sun/star/geometry/AffineMatrix2D.hpp>
 #include <com/sun/star/geometry/IntegerPoint2D.hpp>
 #include <com/sun/star/geometry/IntegerSize2D.hpp>
@@ -35,43 +29,39 @@
 #include <com/sun/star/geometry/RealPoint2D.hpp>
 #include <com/sun/star/geometry/RealRectangle2D.hpp>
 #include <com/sun/star/geometry/RealSize2D.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
-#include <com/sun/star/rendering/FloatingPointBitmapFormat.hpp>
-#include <com/sun/star/rendering/FloatingPointBitmapLayout.hpp>
+#include <com/sun/star/rendering/FontRequest.hpp>
 #include <com/sun/star/rendering/IntegerBitmapLayout.hpp>
 #include <com/sun/star/rendering/PathCapType.hpp>
 #include <com/sun/star/rendering/PathJoinType.hpp>
 #include <com/sun/star/rendering/RenderState.hpp>
+#include <com/sun/star/rendering/Texture.hpp>
 #include <com/sun/star/rendering/TexturingMode.hpp>
 #include <com/sun/star/rendering/ViewState.hpp>
-#include <com/sun/star/rendering/XCanvas.hpp>
 #include <com/sun/star/util/Endianness.hpp>
 
-#include <canvas/verifyinput.hxx>
-#include <canvas/canvastools.hxx>
+#include <verifyinput.hxx>
 
 
 using namespace ::com::sun::star;
 
-namespace canvas
+namespace canvas::tools
 {
-    namespace tools
-    {
         void verifyInput( const geometry::RealPoint2D&              rPoint,
                           const char*                               pStr,
                           const uno::Reference< uno::XInterface >&  xIf,
                           ::sal_Int16                               nArgPos )
         {
 #if OSL_DEBUG_LEVEL > 0
-            if( !::rtl::math::isFinite( rPoint.X ) )
+            if( !std::isfinite( rPoint.X ) )
             {
                 throw lang::IllegalArgumentException(
                     OUString::createFromAscii( pStr ) + ": verifyInput(): point X value contains infinite or NAN",
                     xIf, nArgPos );
             }
 
-            if( !::rtl::math::isFinite( rPoint.Y ) )
+            if( !std::isfinite( rPoint.Y ) )
             {
                 throw lang::IllegalArgumentException(
                     OUString::createFromAscii( pStr ) + ": verifyInput(): point X value contains infinite or NAN",
@@ -79,8 +69,8 @@ namespace canvas
             }
 #else
             (void)pStr; (void)xIf; (void)nArgPos;
-            if( !::rtl::math::isFinite( rPoint.X ) ||
-                !::rtl::math::isFinite( rPoint.Y ) )
+            if( !std::isfinite( rPoint.X ) ||
+                !std::isfinite( rPoint.Y ) )
             {
                 throw lang::IllegalArgumentException();
             }
@@ -93,7 +83,7 @@ namespace canvas
                           ::sal_Int16                               nArgPos )
         {
 #if OSL_DEBUG_LEVEL > 0
-            if( !::rtl::math::isFinite( rSegment.Px ) )
+            if( !std::isfinite( rSegment.Px ) )
             {
                 throw lang::IllegalArgumentException(
                     OUString::createFromAscii( pStr ) +
@@ -101,7 +91,7 @@ namespace canvas
                     xIf, nArgPos );
             }
 
-            if( !::rtl::math::isFinite( rSegment.Py ) )
+            if( !std::isfinite( rSegment.Py ) )
             {
                 throw lang::IllegalArgumentException(
                     OUString::createFromAscii( pStr ) +
@@ -109,7 +99,7 @@ namespace canvas
                     xIf, nArgPos );
             }
 
-            if( !::rtl::math::isFinite( rSegment.C1x ) )
+            if( !std::isfinite( rSegment.C1x ) )
             {
                 throw lang::IllegalArgumentException(
                     OUString::createFromAscii( pStr ) +
@@ -117,7 +107,7 @@ namespace canvas
                     xIf, nArgPos );
             }
 
-            if( !::rtl::math::isFinite( rSegment.C1y ) )
+            if( !std::isfinite( rSegment.C1y ) )
             {
                 throw lang::IllegalArgumentException(
                     OUString::createFromAscii( pStr ) +
@@ -125,7 +115,7 @@ namespace canvas
                     xIf, nArgPos );
             }
 
-            if( !::rtl::math::isFinite( rSegment.C2x ) )
+            if( !std::isfinite( rSegment.C2x ) )
             {
                 throw lang::IllegalArgumentException(
                     OUString::createFromAscii( pStr ) +
@@ -133,7 +123,7 @@ namespace canvas
                     xIf, nArgPos );
             }
 
-            if( !::rtl::math::isFinite( rSegment.C2y ) )
+            if( !std::isfinite( rSegment.C2y ) )
             {
                 throw lang::IllegalArgumentException(
                     OUString::createFromAscii( pStr ) +
@@ -142,12 +132,12 @@ namespace canvas
             }
 #else
             (void)pStr; (void)xIf; (void)nArgPos;
-            if( !::rtl::math::isFinite( rSegment.Px ) ||
-                !::rtl::math::isFinite( rSegment.Py ) ||
-                !::rtl::math::isFinite( rSegment.C1x ) ||
-                !::rtl::math::isFinite( rSegment.C1y ) ||
-                !::rtl::math::isFinite( rSegment.C2x ) ||
-                !::rtl::math::isFinite( rSegment.C2y ) )
+            if( !std::isfinite( rSegment.Px ) ||
+                !std::isfinite( rSegment.Py ) ||
+                !std::isfinite( rSegment.C1x ) ||
+                !std::isfinite( rSegment.C1y ) ||
+                !std::isfinite( rSegment.C2x ) ||
+                !std::isfinite( rSegment.C2y ) )
             {
                 throw lang::IllegalArgumentException();
             }
@@ -160,7 +150,7 @@ namespace canvas
                           ::sal_Int16                               nArgPos )
         {
 #if OSL_DEBUG_LEVEL > 0
-            if( !::rtl::math::isFinite( rRect.X1 ) )
+            if( !std::isfinite( rRect.X1 ) )
             {
                 throw lang::IllegalArgumentException(
                     OUString::createFromAscii(pStr) +
@@ -168,7 +158,7 @@ namespace canvas
                     xIf, nArgPos );
             }
 
-            if( !::rtl::math::isFinite( rRect.Y1 ) )
+            if( !std::isfinite( rRect.Y1 ) )
             {
                 throw lang::IllegalArgumentException(
                     OUString::createFromAscii(pStr) +
@@ -176,7 +166,7 @@ namespace canvas
                     xIf, nArgPos );
             }
 
-            if( !::rtl::math::isFinite( rRect.X2 ) )
+            if( !std::isfinite( rRect.X2 ) )
             {
                 throw lang::IllegalArgumentException(
                     OUString::createFromAscii(pStr) +
@@ -184,7 +174,7 @@ namespace canvas
                     xIf, nArgPos );
             }
 
-            if( !::rtl::math::isFinite( rRect.Y2 ) )
+            if( !std::isfinite( rRect.Y2 ) )
             {
                 throw lang::IllegalArgumentException(
                     OUString::createFromAscii(pStr) +
@@ -193,10 +183,10 @@ namespace canvas
             }
 #else
             (void)pStr; (void)xIf; (void)nArgPos;
-            if( !::rtl::math::isFinite( rRect.X1 ) ||
-                !::rtl::math::isFinite( rRect.Y1 ) ||
-                !::rtl::math::isFinite( rRect.X2 ) ||
-                !::rtl::math::isFinite( rRect.Y2 ) )
+            if( !std::isfinite( rRect.X1 ) ||
+                !std::isfinite( rRect.Y1 ) ||
+                !std::isfinite( rRect.X2 ) ||
+                !std::isfinite( rRect.Y2 ) )
             {
                 throw lang::IllegalArgumentException();
             }
@@ -210,12 +200,12 @@ namespace canvas
         {
 #if OSL_DEBUG_LEVEL > 0
             const sal_Int32 nBinaryState(
-                100000 * int(!::rtl::math::isFinite( matrix.m00 )) +
-                 10000 * int(!::rtl::math::isFinite( matrix.m01 )) +
-                  1000 * int(!::rtl::math::isFinite( matrix.m02 )) +
-                   100 * int(!::rtl::math::isFinite( matrix.m10 )) +
-                    10 * int(!::rtl::math::isFinite( matrix.m11 )) +
-                     1 * int(!::rtl::math::isFinite( matrix.m12 )) );
+                100000 * int(!std::isfinite( matrix.m00 )) +
+                 10000 * int(!std::isfinite( matrix.m01 )) +
+                  1000 * int(!std::isfinite( matrix.m02 )) +
+                   100 * int(!std::isfinite( matrix.m10 )) +
+                    10 * int(!std::isfinite( matrix.m11 )) +
+                     1 * int(!std::isfinite( matrix.m12 )) );
 
             if( nBinaryState )
             {
@@ -227,12 +217,12 @@ namespace canvas
             }
 #else
             (void)pStr; (void)xIf; (void)nArgPos;
-            if( !::rtl::math::isFinite( matrix.m00 ) ||
-                !::rtl::math::isFinite( matrix.m01 ) ||
-                !::rtl::math::isFinite( matrix.m02 ) ||
-                !::rtl::math::isFinite( matrix.m10 ) ||
-                !::rtl::math::isFinite( matrix.m11 ) ||
-                !::rtl::math::isFinite( matrix.m12 ) )
+            if( !std::isfinite( matrix.m00 ) ||
+                !std::isfinite( matrix.m01 ) ||
+                !std::isfinite( matrix.m02 ) ||
+                !std::isfinite( matrix.m10 ) ||
+                !std::isfinite( matrix.m11 ) ||
+                !std::isfinite( matrix.m12 ) )
             {
                 throw lang::IllegalArgumentException();
             }
@@ -246,10 +236,10 @@ namespace canvas
         {
 #if OSL_DEBUG_LEVEL > 0
             const sal_Int32 nBinaryState(
-                1000 * int(!::rtl::math::isFinite( matrix.m00 )) +
-                 100 * int(!::rtl::math::isFinite( matrix.m01 )) +
-                  10 * int(!::rtl::math::isFinite( matrix.m10 )) +
-                   1 * int(!::rtl::math::isFinite( matrix.m11 )) );
+                1000 * int(!std::isfinite( matrix.m00 )) +
+                 100 * int(!std::isfinite( matrix.m01 )) +
+                  10 * int(!std::isfinite( matrix.m10 )) +
+                   1 * int(!std::isfinite( matrix.m11 )) );
 
             if( nBinaryState )
             {
@@ -261,10 +251,10 @@ namespace canvas
             }
 #else
             (void)pStr; (void)xIf; (void)nArgPos;
-            if( !::rtl::math::isFinite( matrix.m00 ) ||
-                !::rtl::math::isFinite( matrix.m01 ) ||
-                !::rtl::math::isFinite( matrix.m10 ) ||
-                !::rtl::math::isFinite( matrix.m11 ) )
+            if( !std::isfinite( matrix.m00 ) ||
+                !std::isfinite( matrix.m01 ) ||
+                !std::isfinite( matrix.m10 ) ||
+                !std::isfinite( matrix.m11 ) )
             {
                 throw lang::IllegalArgumentException();
             }
@@ -305,20 +295,20 @@ namespace canvas
 #endif
             }
 
-            if( renderState.CompositeOperation < rendering::CompositeOperation::CLEAR ||
-                renderState.CompositeOperation > rendering::CompositeOperation::SATURATE )
-            {
+            if( renderState.CompositeOperation >= rendering::CompositeOperation::CLEAR &&
+                renderState.CompositeOperation <= rendering::CompositeOperation::SATURATE )
+                return;
+
 #if OSL_DEBUG_LEVEL > 0
-                throw lang::IllegalArgumentException(
-                    OUString::createFromAscii(pStr) +
-                    ": verifyInput(): render state's CompositeOperation value out of range (" +
-                    OUString::number(sal::static_int_cast<sal_Int32>(renderState.CompositeOperation)) +
-                    " not known)",
-                    xIf, nArgPos );
+            throw lang::IllegalArgumentException(
+                OUString::createFromAscii(pStr) +
+                ": verifyInput(): render state's CompositeOperation value out of range (" +
+                OUString::number(sal::static_int_cast<sal_Int32>(renderState.CompositeOperation)) +
+                " not known)",
+                xIf, nArgPos );
 #else
-                throw lang::IllegalArgumentException();
+            throw lang::IllegalArgumentException();
 #endif
-            }
         }
 
         void verifyInput( const rendering::Texture&                 texture,
@@ -329,7 +319,7 @@ namespace canvas
             verifyInput( texture.AffineTransform,
                          pStr, xIf, nArgPos );
 
-            if( !::rtl::math::isFinite( texture.Alpha ) ||
+            if( !std::isfinite( texture.Alpha ) ||
                 texture.Alpha < 0.0 ||
                 texture.Alpha > 1.0 )
             {
@@ -371,20 +361,20 @@ namespace canvas
 #endif
             }
 
-            if( texture.RepeatModeY < rendering::TexturingMode::NONE ||
-                texture.RepeatModeY > rendering::TexturingMode::REPEAT )
-            {
+            if( texture.RepeatModeY >= rendering::TexturingMode::NONE &&
+                texture.RepeatModeY <= rendering::TexturingMode::REPEAT )
+                return;
+
 #if OSL_DEBUG_LEVEL > 0
-                throw lang::IllegalArgumentException(
-                    OUString::createFromAscii(pStr) +
-                    ": verifyInput(): textures' RepeatModeY value is out of range (" +
-                    OUString::number(sal::static_int_cast<sal_Int32>(texture.RepeatModeY)) +
-                    " not known)",
-                    xIf, nArgPos );
+            throw lang::IllegalArgumentException(
+                OUString::createFromAscii(pStr) +
+                ": verifyInput(): textures' RepeatModeY value is out of range (" +
+                OUString::number(sal::static_int_cast<sal_Int32>(texture.RepeatModeY)) +
+                " not known)",
+                xIf, nArgPos );
 #else
-                throw lang::IllegalArgumentException();
+            throw lang::IllegalArgumentException();
 #endif
-            }
         }
 
         namespace
@@ -402,17 +392,13 @@ namespace canvas
 
                 void operator()( const double& rVal )
                 {
-                    if( !::rtl::math::isFinite( rVal ) || rVal < 0.0 )
+                    if( !std::isfinite( rVal ) || rVal < 0.0 )
                     {
-#if OSL_DEBUG_LEVEL > 0
                         throw lang::IllegalArgumentException(
                             OUString::createFromAscii(mpStr) +
                             ": verifyInput(): one of stroke attributes' DashArray value out of range (is " +
                             OUString::number(rVal) + ")",
                             mrIf, mnArgPos );
-#else
-                        throw lang::IllegalArgumentException();
-#endif
                     }
                 }
 
@@ -427,7 +413,7 @@ namespace canvas
                           const uno::Reference< uno::XInterface >&  xIf,
                           ::sal_Int16                               nArgPos )
         {
-            if( !::rtl::math::isFinite( strokeAttributes.StrokeWidth ) ||
+            if( !std::isfinite( strokeAttributes.StrokeWidth ) ||
                 strokeAttributes.StrokeWidth < 0.0 )
             {
 #if OSL_DEBUG_LEVEL > 0
@@ -442,7 +428,7 @@ namespace canvas
 #endif
             }
 
-            if( !::rtl::math::isFinite( strokeAttributes.MiterLimit ) ||
+            if( !std::isfinite( strokeAttributes.MiterLimit ) ||
                 strokeAttributes.MiterLimit < 0.0 )
             {
 #if OSL_DEBUG_LEVEL > 0
@@ -493,20 +479,20 @@ namespace canvas
 #endif
             }
 
-            if( strokeAttributes.JoinType < rendering::PathJoinType::NONE ||
-                strokeAttributes.JoinType > rendering::PathJoinType::BEVEL )
-            {
+            if( strokeAttributes.JoinType >= rendering::PathJoinType::NONE &&
+                strokeAttributes.JoinType <= rendering::PathJoinType::BEVEL )
+                return;
+
 #if OSL_DEBUG_LEVEL > 0
-                throw lang::IllegalArgumentException(
-                    OUString::createFromAscii(pStr) +
-                    ": verifyInput(): stroke attributes' JoinType value is out of range (" +
-                    OUString::number(sal::static_int_cast<sal_Int32>(strokeAttributes.JoinType)) +
-                    " not known)",
-                    xIf, nArgPos );
+            throw lang::IllegalArgumentException(
+                OUString::createFromAscii(pStr) +
+                ": verifyInput(): stroke attributes' JoinType value is out of range (" +
+                OUString::number(sal::static_int_cast<sal_Int32>(strokeAttributes.JoinType)) +
+                " not known)",
+                xIf, nArgPos );
 #else
-                throw lang::IllegalArgumentException();
+            throw lang::IllegalArgumentException();
 #endif
-            }
         }
 
         void verifyInput( const rendering::IntegerBitmapLayout&     bitmapLayout,
@@ -550,44 +536,32 @@ namespace canvas
                 throw lang::IllegalArgumentException();
 #endif
             }
-            else
+            if( bitmapLayout.ColorSpace->getBitsPerPixel() < 0 )
             {
-                if( bitmapLayout.ColorSpace->getBitsPerPixel() < 0 )
-                {
 #if OSL_DEBUG_LEVEL > 0
-                    throw lang::IllegalArgumentException(
-                        OUString::createFromAscii(pStr) +
-                        ": verifyInput(): bitmap layout's ColorSpace getBitsPerPixel() is negative",
-                        xIf, nArgPos );
+                throw lang::IllegalArgumentException(
+                    OUString::createFromAscii(pStr) +
+                    ": verifyInput(): bitmap layout's ColorSpace getBitsPerPixel() is negative",
+                    xIf, nArgPos );
 #else
-                    throw lang::IllegalArgumentException();
+                throw lang::IllegalArgumentException();
 #endif
-                }
-
-                if( bitmapLayout.ColorSpace->getEndianness() < util::Endianness::LITTLE ||
-                    bitmapLayout.ColorSpace->getEndianness() > util::Endianness::BIG )
-                {
-#if OSL_DEBUG_LEVEL > 0
-                    throw lang::IllegalArgumentException(
-                        OUString::createFromAscii(pStr) +
-                        ": verifyInput(): bitmap layout's ColorSpace getEndianness() value is out of range (" +
-                        OUString::number(sal::static_int_cast<sal_Int32>(bitmapLayout.ColorSpace->getEndianness())) +
-                        " not known)",
-                        xIf, nArgPos );
-#else
-                    throw lang::IllegalArgumentException();
-#endif
-                }
             }
-        }
 
-        void verifyInput( const rendering::FontInfo&                /*fontInfo*/,
-                          const char*                               /*pStr*/,
-                          const uno::Reference< uno::XInterface >&  /*xIf*/,
-                          ::sal_Int16                               /*nArgPos*/ )
-        {
-            // TODO(E3): Implement FontDescription checks, once the
-            // Panose stuff is ready.
+            if( bitmapLayout.ColorSpace->getEndianness() >= util::Endianness::LITTLE &&
+                bitmapLayout.ColorSpace->getEndianness() <= util::Endianness::BIG )
+                return;
+
+#if OSL_DEBUG_LEVEL > 0
+            throw lang::IllegalArgumentException(
+                OUString::createFromAscii(pStr) +
+                ": verifyInput(): bitmap layout's ColorSpace getEndianness() value is out of range (" +
+                OUString::number(sal::static_int_cast<sal_Int32>(bitmapLayout.ColorSpace->getEndianness())) +
+                " not known)",
+                xIf, nArgPos );
+#else
+            throw lang::IllegalArgumentException();
+#endif
         }
 
         void verifyInput( const rendering::FontRequest&             fontRequest,
@@ -598,7 +572,7 @@ namespace canvas
             verifyInput( fontRequest.FontDescription,
                          pStr, xIf, nArgPos );
 
-            if( !::rtl::math::isFinite( fontRequest.CellSize ) )
+            if( !std::isfinite( fontRequest.CellSize ) )
             {
 #if OSL_DEBUG_LEVEL > 0
                 throw lang::IllegalArgumentException(
@@ -610,7 +584,7 @@ namespace canvas
 #endif
             }
 
-            if( !::rtl::math::isFinite( fontRequest.ReferenceAdvancement ) )
+            if( !std::isfinite( fontRequest.ReferenceAdvancement ) )
             {
 #if OSL_DEBUG_LEVEL > 0
                 throw lang::IllegalArgumentException(
@@ -682,19 +656,19 @@ namespace canvas
 #endif
             }
 
-            if( size.Height <= 0 )
-            {
+            if( size.Height > 0 )
+                return;
+
 #if OSL_DEBUG_LEVEL > 0
-                throw lang::IllegalArgumentException(
-                    OUString::createFromAscii(pStr) +
-                    ": verifyBitmapSize(): size has 0 or negative height (value: " +
-                    OUString::number(size.Height) +
-                    ")",
-                    xIf, 0 );
+            throw lang::IllegalArgumentException(
+                OUString::createFromAscii(pStr) +
+                ": verifyBitmapSize(): size has 0 or negative height (value: " +
+                OUString::number(size.Height) +
+                ")",
+                xIf, 0 );
 #else
-                throw lang::IllegalArgumentException();
+            throw lang::IllegalArgumentException();
 #endif
-            }
         }
 
         void verifySpriteSize( const geometry::RealSize2D&              size,
@@ -730,8 +704,6 @@ namespace canvas
         }
 
 
-    } // namespace tools
-
-} // namespace canvas
+} // namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

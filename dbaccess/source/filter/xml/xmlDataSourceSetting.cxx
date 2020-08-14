@@ -17,20 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <map>
 
 #include "xmlDataSourceSetting.hxx"
-#include "xmlDataSource.hxx"
 #include <sax/tools/converter.hxx>
 #include "xmlfilter.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/ProgressBarHelper.hxx>
 #include "xmlEnums.hxx"
-#include "xmlstrings.hrc"
-#include <rtl/strbuf.hxx>
+#include <osl/diagnose.h>
 
 namespace dbaxml
 {
@@ -38,49 +36,40 @@ namespace dbaxml
     using namespace ::com::sun::star::xml::sax;
 
 OXMLDataSourceSetting::OXMLDataSourceSetting( ODBFilter& rImport
-                ,sal_uInt16 nPrfx
-                ,const OUString& _sLocalName
-                ,const Reference< XAttributeList > & _xAttrList
+                ,const Reference< XFastAttributeList > & _xAttrList
                 ,OXMLDataSourceSetting* _pContainer) :
-    SvXMLImportContext( rImport, nPrfx, _sLocalName )
+    SvXMLImportContext( rImport )
     ,m_pContainer(_pContainer)
     ,m_bIsList(false)
 {
 
     m_aPropType = cppu::UnoType<void>::get();
 
-    OSL_ENSURE(_xAttrList.is(),"Attribute list is NULL!");
-    const SvXMLNamespaceMap& rMap = rImport.GetNamespaceMap();
-    const SvXMLTokenMap& rTokenMap = rImport.GetDataSourceInfoElemTokenMap();
-
-    sal_Int16 nLength = (_xAttrList.is()) ? _xAttrList->getLength() : 0;
-    for(sal_Int16 i = 0; i < nLength; ++i)
+    for (auto &aIter : sax_fastparser::castToFastAttributeList( _xAttrList ))
     {
-        OUString sLocalName;
-        OUString sAttrName = _xAttrList->getNameByIndex( i );
-        sal_uInt16 nPrefix = rMap.GetKeyByAttrName( sAttrName,&sLocalName );
-        OUString sValue = _xAttrList->getValueByIndex( i );
+        OUString sValue = aIter.toString();
 
-        switch( rTokenMap.Get( nPrefix, sLocalName ) )
+        switch( aIter.getToken() & TOKEN_MASK )
         {
-            case XML_TOK_DATA_SOURCE_SETTING_IS_LIST:
+            case XML_DATA_SOURCE_SETTING_IS_LIST:
                 m_bIsList = sValue == "true";
                 break;
-            case XML_TOK_DATA_SOURCE_SETTING_TYPE:
+            case XML_DATA_SOURCE_SETTING_TYPE:
                 {
                     // needs to be translated into a css::uno::Type
-                    static std::map< OUString, css::uno::Type > s_aTypeNameMap;
-                    if (s_aTypeNameMap.empty())
+                    static std::map< OUString, css::uno::Type > s_aTypeNameMap = [&]()
                     {
-                        s_aTypeNameMap[GetXMLToken( XML_BOOLEAN)]   = cppu::UnoType<bool>::get();
+                        std::map< OUString, css::uno::Type > tmp;
+                        tmp[GetXMLToken( XML_BOOLEAN)]   = cppu::UnoType<bool>::get();
                         // Not a copy paste error, see comment xmloff/source/forms/propertyimport.cxx lines 244-248
-                        s_aTypeNameMap[GetXMLToken( XML_FLOAT)]     = ::cppu::UnoType<double>::get();
-                        s_aTypeNameMap[GetXMLToken( XML_DOUBLE)]    = ::cppu::UnoType<double>::get();
-                        s_aTypeNameMap[GetXMLToken( XML_STRING)]    = ::cppu::UnoType<OUString>::get();
-                        s_aTypeNameMap[GetXMLToken( XML_INT)]       = ::cppu::UnoType<sal_Int32>::get();
-                        s_aTypeNameMap[GetXMLToken( XML_SHORT)]     = ::cppu::UnoType<sal_Int16>::get();
-                        s_aTypeNameMap[GetXMLToken( XML_VOID)]      = cppu::UnoType<void>::get();
-                    }
+                        tmp[GetXMLToken( XML_FLOAT)]     = ::cppu::UnoType<double>::get();
+                        tmp[GetXMLToken( XML_DOUBLE)]    = ::cppu::UnoType<double>::get();
+                        tmp[GetXMLToken( XML_STRING)]    = ::cppu::UnoType<OUString>::get();
+                        tmp[GetXMLToken( XML_INT)]       = ::cppu::UnoType<sal_Int32>::get();
+                        tmp[GetXMLToken( XML_SHORT)]     = ::cppu::UnoType<sal_Int16>::get();
+                        tmp[GetXMLToken( XML_VOID)]      = cppu::UnoType<void>::get();
+                        return tmp;
+                    }();
 
                     const std::map< OUString, css::uno::Type >::const_iterator aTypePos = s_aTypeNameMap.find(sValue);
                     OSL_ENSURE(s_aTypeNameMap.end() != aTypePos, "OXMLDataSourceSetting::OXMLDataSourceSetting: invalid type!");
@@ -88,9 +77,11 @@ OXMLDataSourceSetting::OXMLDataSourceSetting( ODBFilter& rImport
                         m_aPropType = aTypePos->second;
                 }
                 break;
-            case XML_TOK_DATA_SOURCE_SETTING_NAME:
+            case XML_DATA_SOURCE_SETTING_NAME:
                 m_aSetting.Name = sValue;
                 break;
+            default:
+                SAL_WARN("dbaccess", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << "=" << aIter.toString());
         }
     }
 
@@ -100,37 +91,31 @@ OXMLDataSourceSetting::~OXMLDataSourceSetting()
 {
 }
 
-SvXMLImportContext* OXMLDataSourceSetting::CreateChildContext(
-        sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const Reference< XAttributeList > & xAttrList )
+css::uno::Reference< css::xml::sax::XFastContextHandler > OXMLDataSourceSetting::createFastChildContext(
+            sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList )
 {
     SvXMLImportContext *pContext = nullptr;
-    const SvXMLTokenMap&    rTokenMap   = GetOwnImport().GetDataSourceInfoElemTokenMap();
 
-    switch( rTokenMap.Get( nPrefix, rLocalName ) )
+    switch( nElement & TOKEN_MASK )
     {
-        case XML_TOK_DATA_SOURCE_SETTING:
+        case XML_DATA_SOURCE_SETTING:
             GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
-            pContext = new OXMLDataSourceSetting( GetOwnImport(), nPrefix, rLocalName,xAttrList);
+            pContext = new OXMLDataSourceSetting( GetOwnImport(), xAttrList);
             break;
-        case XML_TOK_DATA_SOURCE_SETTING_VALUE:
+        case XML_DATA_SOURCE_SETTING_VALUE:
             GetOwnImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
-            pContext = new OXMLDataSourceSetting( GetOwnImport(), nPrefix, rLocalName,xAttrList,this );
+            pContext = new OXMLDataSourceSetting( GetOwnImport(), xAttrList,this );
             break;
     }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }
 
-void OXMLDataSourceSetting::EndElement()
+void OXMLDataSourceSetting::endFastElement(sal_Int32 )
 {
     if ( !m_aSetting.Name.isEmpty() )
     {
-        if ( m_bIsList && m_aInfoSequence.getLength() )
+        if ( m_bIsList && m_aInfoSequence.hasElements() )
             m_aSetting.Value <<= m_aInfoSequence;
 
         // if our property is of type string, but was empty, ensure that
@@ -142,7 +127,7 @@ void OXMLDataSourceSetting::EndElement()
     }
 }
 
-void OXMLDataSourceSetting::Characters( const OUString& rChars )
+void OXMLDataSourceSetting::characters( const OUString& rChars )
 {
     if ( m_pContainer )
         m_pContainer->addValue(rChars);
@@ -195,7 +180,7 @@ Any OXMLDataSourceSetting::convertString(const css::uno::Type& _rExpectedType, c
                     "OXMLDataSourceSetting::convertString: could not convert \""
                     << _rReadCharacters << "\" into an integer!");
                 if (TypeClass_SHORT == _rExpectedType.getTypeClass())
-                    aReturn <<= (sal_Int16)nValue;
+                    aReturn <<= static_cast<sal_Int16>(nValue);
                 else
                     aReturn <<= nValue;
                 break;

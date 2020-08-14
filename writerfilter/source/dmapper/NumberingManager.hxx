@@ -22,16 +22,16 @@
 
 #include "PropertyMap.hxx"
 
-#include <DomainMapper.hxx>
+#include "DomainMapper.hxx"
 #include "LoggedResources.hxx"
+#include "StyleSheetTable.hxx"
 
 #include <editeng/numitem.hxx>
 
 #include <com/sun/star/container/XIndexReplace.hpp>
-#include <com/sun/star/graphic/XGraphic.hpp>
+#include <com/sun/star/awt/XBitmap.hpp>
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
 class DomainMapper;
 class StyleSheetEntry;
@@ -42,79 +42,78 @@ class StyleSheetEntry;
 class ListLevel : public PropertyMap
 {
     sal_Int32                                     m_nIStartAt;       //LN_CT_Lvl_start
+    sal_Int32                                     m_nStartOverride;
     sal_Int32                                     m_nNFC;            //LN_CT_Lvl_numFmt
-    sal_Int32                                     m_nJC;             //LN_JC
+    /// LN_CT_NumFmt_format, in case m_nNFC is custom.
+    OUString m_aCustomNumberFormat;
     sal_Int16                                     m_nXChFollow;      //LN_IXCHFOLLOW
     OUString                               m_sBulletChar;
-    OUString                               m_sGraphicURL;
     css::awt::Size                         m_aGraphicSize;
-    css::uno::Reference<css::graphic::XGraphic> m_sGraphicBitmap;
-    sal_Int32                                     m_nTabstop;
-    std::shared_ptr< StyleSheetEntry >          m_pParaStyle;
+    css::uno::Reference<css::awt::XBitmap> m_xGraphicBitmap;
+    std::optional<sal_Int32>               m_nTabstop;
+    tools::SvRef< StyleSheetEntry >          m_pParaStyle;
     bool                                          m_outline;
+    bool m_bHasValues = false;
 
 public:
 
-    typedef std::shared_ptr< ListLevel > Pointer;
+    typedef tools::SvRef< ListLevel > Pointer;
 
     ListLevel() :
         m_nIStartAt(-1)
+        ,m_nStartOverride(-1)
         ,m_nNFC(-1)
-        ,m_nJC(-1)
         ,m_nXChFollow(SvxNumberFormat::LISTTAB)
-        ,m_nTabstop( 0 )
         ,m_outline(false)
         {}
 
     // Setters for the import
     void SetValue( Id nId, sal_Int32 nValue );
+    void SetCustomNumberFormat(const OUString& rValue);
     void SetBulletChar( const OUString& sValue ) { m_sBulletChar = sValue; };
-    void SetGraphicURL( const OUString& sValue ) { m_sGraphicURL = sValue; };
     void SetGraphicSize( const css::awt::Size& aValue ) { m_aGraphicSize = aValue; };
 
-    void SetGraphicBitmap(css::uno::Reference<css::graphic::XGraphic> const& sValue)
-        { m_sGraphicBitmap = sValue; }
-    void SetParaStyle( const std::shared_ptr< StyleSheetEntry >& pStyle );
+    void SetGraphicBitmap(css::uno::Reference<css::awt::XBitmap> const& xGraphicBitmap)
+        { m_xGraphicBitmap = xGraphicBitmap; }
+    void SetParaStyle( const tools::SvRef< StyleSheetEntry >& pStyle );
 
     // Getters
-    const OUString& GetBulletChar( ) { return m_sBulletChar; };
-    const std::shared_ptr< StyleSheetEntry >& GetParaStyle( ) { return m_pParaStyle; };
+    const OUString& GetBulletChar( ) const { return m_sBulletChar; };
+    const tools::SvRef< StyleSheetEntry >& GetParaStyle( ) const { return m_pParaStyle; };
     bool isOutlineNumbering() const { return m_outline; }
+    sal_Int32 GetStartOverride() const { return m_nStartOverride; };
+    /// Determines if SetValue() was called at least once.
+    bool HasValues() const;
 
     // UNO mapping functions
-
-    // rPrefix and rSuffix are out parameters
-    static sal_Int16 GetParentNumbering( const OUString& sText, sal_Int16 nLevel,
-        OUString& rPrefix, OUString& rSuffix );
-
-    css::uno::Sequence<css::beans::PropertyValue> GetProperties();
+    css::uno::Sequence<css::beans::PropertyValue> GetProperties(bool bDefaults);
 
     css::uno::Sequence<css::beans::PropertyValue> GetCharStyleProperties();
 private:
 
-    css::uno::Sequence<css::beans::PropertyValue> GetLevelProperties();
+    css::uno::Sequence<css::beans::PropertyValue> GetLevelProperties(bool bDefaults);
 
     void AddParaProperties(css::uno::Sequence<css::beans::PropertyValue>* pProps);
 };
 
 /// Represents a numbering picture bullet: an id and a graphic.
-class NumPicBullet final
+class NumPicBullet final : public virtual SvRefBase
 {
 public:
-    typedef std::shared_ptr<NumPicBullet> Pointer;
+    typedef tools::SvRef<NumPicBullet> Pointer;
     NumPicBullet();
-    ~NumPicBullet();
+    ~NumPicBullet() override;
 
     void SetId(sal_Int32 nId);
-    sal_Int32 GetId() { return m_nId;}
+    sal_Int32 GetId() const { return m_nId;}
     void SetShape(css::uno::Reference<css::drawing::XShape> const& xShape);
-    const css::uno::Reference<css::drawing::XShape>& GetShape() { return m_xShape; }
+    const css::uno::Reference<css::drawing::XShape>& GetShape() const { return m_xShape; }
 private:
     sal_Int32 m_nId;
     css::uno::Reference<css::drawing::XShape> m_xShape;
 };
 
-class AbstractListDef
+class AbstractListDef : public virtual SvRefBase
 {
 private:
     // The ID member reflects either the abstractNumId or the numId
@@ -125,35 +124,47 @@ private:
     // levels of a numbering.
     ::std::vector< ListLevel::Pointer >  m_aLevels;
 
-    // Only used during the numberings import
+    // Only used during the numbering import
     ListLevel::Pointer                         m_pCurrentLevel;
 
     // The style name linked to.
-    ::rtl::OUString                      m_sNumStyleLink;
+    OUString                      m_sNumStyleLink;
+
+    // This abstract numbering is a base definition for this style
+    OUString                      m_sStyleLink;
+
+    /// list id to use for all derived numbering definitions
+    std::optional<OUString> m_oListId;
 
 public:
-    typedef std::shared_ptr< AbstractListDef > Pointer;
+    typedef tools::SvRef< AbstractListDef > Pointer;
 
     AbstractListDef( );
-    virtual ~AbstractListDef( );
+    virtual ~AbstractListDef( ) override;
 
     // Setters using during the import
     void SetId( sal_Int32 nId ) { m_nId = nId; };
     static void SetValue( sal_uInt32 nSprmId );
 
     // Accessors
-    sal_Int32             GetId( ) { return m_nId; };
+    sal_Int32             GetId( ) const { return m_nId; };
 
     sal_Int16             Size( ) { return sal_Int16( m_aLevels.size( ) ); };
     ListLevel::Pointer    GetLevel( sal_uInt16 nLvl );
-    void                  AddLevel( );
+    void                  AddLevel( sal_uInt16 nLvl );
 
-    const ListLevel::Pointer&  GetCurrentLevel( ) { return m_pCurrentLevel; };
+    const ListLevel::Pointer&  GetCurrentLevel( ) const { return m_pCurrentLevel; };
 
-    virtual css::uno::Sequence< css::uno::Sequence<css::beans::PropertyValue> > GetPropertyValues();
+    css::uno::Sequence< css::uno::Sequence<css::beans::PropertyValue> > GetPropertyValues(bool bDefaults);
 
     void                  SetNumStyleLink(const OUString& sValue) { m_sNumStyleLink = sValue; };
-    const OUString&       GetNumStyleLink() { return m_sNumStyleLink; };
+    const OUString&       GetNumStyleLink() const { return m_sNumStyleLink; };
+
+    void                  SetStyleLink(const OUString& sValue) { m_sStyleLink = sValue; };
+    const OUString&       GetStyleLink() const { return m_sStyleLink; };
+
+    const OUString& MapListId(OUString const& rId);
+    bool isOutlineNumbering( sal_uInt16 nLvl ) { return GetLevel(nLvl) && GetLevel(nLvl)->isOutlineNumbering(); }
 };
 
 class ListDef : public AbstractListDef
@@ -165,24 +176,33 @@ private:
     // Cache for the UNO numbering rules
     css::uno::Reference< css::container::XIndexReplace > m_xNumRules;
 
+    /// mapped list style name
+    OUString m_StyleName;
+
+    /// not custom outline parent levels
+    sal_Int16 m_nDefaultParentLevels;
+
 public:
-    typedef std::shared_ptr< ListDef > Pointer;
+    typedef tools::SvRef< ListDef > Pointer;
 
     ListDef( );
     virtual ~ListDef( ) override;
 
     // Accessors
     void SetAbstractDefinition( AbstractListDef::Pointer pAbstract ) { m_pAbstractDef = pAbstract; };
-    const AbstractListDef::Pointer& GetAbstractDefinition( ) { return m_pAbstractDef; };
+    const AbstractListDef::Pointer& GetAbstractDefinition( ) const { return m_pAbstractDef; };
 
     // Mapping functions
-    static OUString GetStyleName( sal_Int32 nId );
+    OUString GetStyleName() const { return m_StyleName; };
+    OUString GetStyleName(sal_Int32 nId, css::uno::Reference<css::container::XNameContainer> const& xStyles);
 
-    css::uno::Sequence< css::uno::Sequence<css::beans::PropertyValue> > GetPropertyValues() override;
+    sal_Int16 GetDefaultParentLevels() const { return m_nDefaultParentLevels; };
+
+    css::uno::Sequence< css::uno::Sequence<css::beans::PropertyValue> > GetMergedPropertyValues();
 
     void CreateNumberingRules(DomainMapper& rDMapper, css::uno::Reference<css::lang::XMultiServiceFactory> const& xFactory);
 
-    const css::uno::Reference<css::container::XIndexReplace>& GetNumberingRules() { return m_xNumRules; }
+    const css::uno::Reference<css::container::XIndexReplace>& GetNumberingRules() const { return m_xNumRules; }
 
 };
 
@@ -214,14 +234,14 @@ private:
     virtual void lcl_sprm(Sprm & sprm) override;
 
     // Table
-    virtual void lcl_entry(int pos, writerfilter::Reference<Properties>::Pointer_t ref) override;
+    virtual void lcl_entry(writerfilter::Reference<Properties>::Pointer_t ref) override;
 
 public:
 
     ListsManager(DomainMapper& rDMapper, const css::uno::Reference<css::lang::XMultiServiceFactory>& xFactory);
     virtual ~ListsManager() override;
 
-    typedef std::shared_ptr< ListsManager >  Pointer;
+    typedef tools::SvRef< ListsManager >  Pointer;
 
     ListDef::Pointer        GetList( sal_Int32 nId );
 
@@ -232,7 +252,7 @@ public:
     void DisposeNumPicBullets( );
 };
 
-} }
+}
 
 #endif
 

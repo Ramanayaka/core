@@ -10,11 +10,14 @@
 #include "vbamenu.hxx"
 #include <cppuhelper/implbase.hxx>
 #include <ooo/vba/office/MsoControlType.hpp>
+#include <ooo/vba/XCommandBarControls.hpp>
 
 using namespace com::sun::star;
 using namespace ooo::vba;
 
 typedef ::cppu::WeakImplHelper< container::XEnumeration > MenuEnumeration_BASE;
+
+namespace {
 
 class MenuEnumeration : public MenuEnumeration_BASE
 {
@@ -33,21 +36,22 @@ public:
     virtual uno::Any SAL_CALL nextElement() override
     {
         // FIXME: should be add menu
-        if( hasMoreElements() )
-        {
-            uno::Reference< XCommandBarControl > xCommandBarControl( m_xEnumeration->nextElement(), uno::UNO_QUERY_THROW );
-            if( xCommandBarControl->getType() == office::MsoControlType::msoControlPopup )
-            {
-                uno::Reference< excel::XMenu > xMenu( new ScVbaMenu( m_xParent, m_xContext, xCommandBarControl ) );
-                return uno::makeAny( xMenu );
-            }
-            nextElement();
-        }
-        else
+        if( !hasMoreElements() )
             throw container::NoSuchElementException();
+
+        uno::Reference< XCommandBarControl > xCommandBarControl( m_xEnumeration->nextElement(), uno::UNO_QUERY_THROW );
+        if( xCommandBarControl->getType() == office::MsoControlType::msoControlPopup )
+        {
+            uno::Reference< excel::XMenu > xMenu( new ScVbaMenu( m_xParent, m_xContext, xCommandBarControl ) );
+            return uno::makeAny( xMenu );
+        }
+        nextElement();
+
         return uno::Any();
     }
 };
+
+}
 
 ScVbaMenus::ScVbaMenus( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< XCommandBarControls >& xCommandBarControls ) : Menus_BASE( xParent, xContext, uno::Reference< container::XIndexAccess>() ), m_xCommandBarControls( xCommandBarControls )
 {
@@ -104,18 +108,16 @@ uno::Reference< excel::XMenu > SAL_CALL ScVbaMenus::Add( const OUString& Caption
 OUString
 ScVbaMenus::getServiceImplName()
 {
-    return OUString("ScVbaMenus");
+    return "ScVbaMenus";
 }
 
 uno::Sequence<OUString>
 ScVbaMenus::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Menus";
-    }
+        "ooo.vba.excel.Menus"
+    };
     return aServiceNames;
 }
 

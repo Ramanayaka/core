@@ -26,7 +26,6 @@
 
 #include <xmloff/dllapi.h>
 #include <sal/types.h>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
@@ -37,7 +36,7 @@
 
 extern css::uno::Reference< css::uno::XInterface >  SvUnoAttributeContainer_CreateInstance();
 
-class XMLOFF_DLLPUBLIC SvUnoAttributeContainer:
+class XMLOFF_DLLPUBLIC SvUnoAttributeContainer final :
     public ::cppu::WeakAggImplHelper3<
         css::lang::XServiceInfo,
         css::lang::XUnoTunnel,

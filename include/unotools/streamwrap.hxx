@@ -29,17 +29,18 @@
 #include <com/sun/star/io/XStream.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/implbase1.hxx>
+#include <memory>
 
 class SvStream;
 
 namespace utl
 {
 
-//= OInputStreamWrapper
+// workaround for incremental linking bugs in MSVC2015
+class SAL_DLLPUBLIC_TEMPLATE OInputStreamWrapper_Base : public cppu::WeakImplHelper< css::io::XInputStream > {};
 
-/// helper class for wrapping an SvStream into an com.sun.star.io::XInputStream
-class UNOTOOLS_DLLPUBLIC OInputStreamWrapper
-        : public cppu::WeakImplHelper<css::io::XInputStream>
+/// helper class for wrapping an SvStream into a com.sun.star.io::XInputStream
+class UNOTOOLS_DLLPUBLIC OInputStreamWrapper : public OInputStreamWrapper_Base
 {
 protected:
     ::osl::Mutex    m_aMutex;
@@ -53,6 +54,7 @@ protected:
 public:
     OInputStreamWrapper(SvStream& _rStream);
     OInputStreamWrapper(SvStream* pStream, bool bOwner=false);
+    OInputStreamWrapper(std::unique_ptr<SvStream> pStream);
     virtual ~OInputStreamWrapper() override;
 
 // css::io::XInputStream
@@ -71,7 +73,7 @@ protected:
 
 //= OSeekableInputStreamWrapper
 
-/** helper class for wrapping an SvStream into an com.sun.star.io::XInputStream
+/** helper class for wrapping an SvStream into a com.sun.star.io::XInputStream
     which is seekable (i.e. supports the com.sun.star.io::XSeekable interface).
 */
 class UNOTOOLS_DLLPUBLIC OSeekableInputStreamWrapper
@@ -117,10 +119,10 @@ protected:
 
 typedef ::cppu::ImplHelper1 <   css::io::XSeekable
                             >   OSeekableOutputStreamWrapper_Base;
-/** helper class for wrapping an SvStream into an com.sun.star.io::XOutputStream
+/** helper class for wrapping an SvStream into a com.sun.star.io::XOutputStream
     which is seekable (i.e. supports the com.sun.star.io::XSeekable interface).
 */
-class UNOTOOLS_DLLPUBLIC OSeekableOutputStreamWrapper
+class UNOTOOLS_DLLPUBLIC OSeekableOutputStreamWrapper final
                 :public OOutputStreamWrapper
                 ,public OSeekableOutputStreamWrapper_Base
 {
@@ -132,8 +134,10 @@ private:
 
     // disambiguate XInterface
     virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& _rType ) override;
-    virtual void SAL_CALL acquire(  ) throw () override;
-    virtual void SAL_CALL release(  ) throw () override;
+    virtual void SAL_CALL acquire(  ) throw () override
+    { OOutputStreamWrapper::acquire(); }
+    virtual void SAL_CALL release(  ) throw () override
+    { OOutputStreamWrapper::release(); }
 
     // XSeekable
     virtual void SAL_CALL seek( sal_Int64 _nLocation ) override;
@@ -141,17 +145,17 @@ private:
     virtual sal_Int64 SAL_CALL getLength(  ) override;
 };
 
-class UNOTOOLS_DLLPUBLIC OStreamWrapper
+class UNOTOOLS_DLLPUBLIC OStreamWrapper final
         : public cppu::ImplInheritanceHelper<OSeekableInputStreamWrapper,
                                              css::io::XStream,
                                              css::io::XOutputStream,
                                              css::io::XTruncate>
 {
-protected:
     ~OStreamWrapper() override;
 
 public:
     OStreamWrapper(SvStream& _rStream);
+    OStreamWrapper(std::unique_ptr<SvStream> _rStream);
 
 // css::io::XStream
     virtual css::uno::Reference< css::io::XInputStream > SAL_CALL getInputStream(  ) override;

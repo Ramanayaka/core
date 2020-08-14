@@ -20,8 +20,9 @@
 #ifndef INCLUDED_SVX_E3DUNDO_HXX
 #define INCLUDED_SVX_E3DUNDO_HXX
 
+#include <svl/itemset.hxx>
 #include <svx/svdundo.hxx>
-#include <svx/scene3d.hxx>
+#include <svx/obj3d.hxx>
 #include <svx/svxdllapi.h>
 
 /************************************************************************\
@@ -31,17 +32,15 @@
 \************************************************************************/
 class SAL_WARN_UNUSED E3dUndoAction : public SdrUndoAction
 {
-
     protected:
-        E3dObject *pMy3DObj;
+        E3dObject&      mrMy3DObj;
 
     public:
-        E3dUndoAction (SdrModel  *pModel,
-                       E3dObject *p3DObj) :
-            SdrUndoAction (*pModel),
-            pMy3DObj (p3DObj)
-            {
-            }
+        E3dUndoAction(E3dObject &r3DObj)
+        :   SdrUndoAction(r3DObj.getSdrModelFromSdrObject()),
+            mrMy3DObj(r3DObj)
+        {
+        }
 
         virtual ~E3dUndoAction () override;
 
@@ -53,27 +52,27 @@ class SAL_WARN_UNUSED E3dUndoAction : public SdrUndoAction
 |* Undo for 3D rotation through the rotation matrices
 |*
 \************************************************************************/
-class SAL_WARN_UNUSED E3dRotateUndoAction : public E3dUndoAction
+class SAL_WARN_UNUSED E3dRotateUndoAction final : public E3dUndoAction
 {
-        basegfx::B3DHomMatrix aMyOldRotation;
-        basegfx::B3DHomMatrix aMyNewRotation;
+private:
+    basegfx::B3DHomMatrix   maMyOldRotation;
+    basegfx::B3DHomMatrix   maMyNewRotation;
 
-    public:
-        E3dRotateUndoAction (SdrModel       *pModel,
-                             E3dObject      *p3DObj,
-                             const basegfx::B3DHomMatrix &aOldRotation,
-                             const basegfx::B3DHomMatrix &aNewRotation) :
-            E3dUndoAction (pModel, p3DObj),
-            aMyOldRotation (aOldRotation),
-            aMyNewRotation (aNewRotation)
-            {
-            }
+public:
+    E3dRotateUndoAction(
+        E3dObject& r3DObj,
+        const basegfx::B3DHomMatrix &aOldRotation,
+        const basegfx::B3DHomMatrix &aNewRotation)
+    :   E3dUndoAction(r3DObj),
+        maMyOldRotation(aOldRotation),
+        maMyNewRotation(aNewRotation)
+    {
+    }
 
-        virtual ~E3dRotateUndoAction () override;
+    virtual ~E3dRotateUndoAction () override;
 
-        virtual void Undo() override;
-        virtual void Redo() override;
-
+    virtual void Undo() override;
+    virtual void Redo() override;
 };
 
 /************************************************************************\
@@ -81,18 +80,18 @@ class SAL_WARN_UNUSED E3dRotateUndoAction : public E3dUndoAction
 |* Undo for 3D attributes (implemented using Set3DAttributes())
 |*
 \************************************************************************/
-class SAL_WARN_UNUSED SVX_DLLPUBLIC E3dAttributesUndoAction : public SdrUndoAction
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC E3dAttributesUndoAction final : public SdrUndoAction
 {
+private:
     using SdrUndoAction::Repeat;
 
-    SdrObject*  pObject;
-
-    const SfxItemSet aNewSet;
-    const SfxItemSet aOldSet;
+    SdrObject&          mrObject;
+    const SfxItemSet    maNewSet;
+    const SfxItemSet    maOldSet;
 
  public:
-        E3dAttributesUndoAction( SdrModel &rModel,
-            E3dObject* pInObject,
+        E3dAttributesUndoAction(
+            E3dObject& rInObject,
             const SfxItemSet& rNewSet,
             const SfxItemSet& rOldSet);
 

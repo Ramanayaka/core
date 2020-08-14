@@ -17,30 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svl/itempool.hxx>
-#include <vcl/cvtgrf.hxx>
-#include <svl/itemset.hxx>
 #include <svx/xit.hxx>
 #include "UnoNameItemTable.hxx"
 
 #include <svx/xbtmpit.hxx>
 #include <svx/svdmodel.hxx>
-#include <svx/xflhtit.hxx>
-#include "svx/unoapi.hxx"
 #include <svx/unomid.hxx>
-#include <editeng/unoprnms.hxx>
-#include "svx/unofill.hxx"
-#include <editeng/memberids.hrc>
+#include <svx/unofill.hxx>
+#include <com/sun/star/awt/XBitmap.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::cppu;
+
+namespace {
 
 class SvxUnoBitmapTable : public SvxUnoNameItemTable
 {
 public:
     explicit SvxUnoBitmapTable( SdrModel* pModel ) throw();
 
-    virtual NameOrIndex* createItem() const throw() override;
+    virtual NameOrIndex* createItem() const override;
     virtual bool isValid( const NameOrIndex* pItem ) const override;
 
     // XServiceInfo
@@ -51,8 +47,10 @@ public:
     virtual uno::Type SAL_CALL getElementType(  ) override;
 };
 
+}
+
 SvxUnoBitmapTable::SvxUnoBitmapTable( SdrModel* pModel ) throw()
-: SvxUnoNameItemTable( pModel, XATTR_FILLBITMAP, MID_GRAFURL )
+: SvxUnoNameItemTable( pModel, XATTR_FILLBITMAP, MID_BITMAP )
 {
 }
 
@@ -74,16 +72,15 @@ bool SvxUnoBitmapTable::isValid( const NameOrIndex* pItem ) const
 
 OUString SAL_CALL SvxUnoBitmapTable::getImplementationName()
 {
-    return OUString("SvxUnoBitmapTable");
+    return "SvxUnoBitmapTable";
 }
 
 uno::Sequence< OUString > SAL_CALL SvxUnoBitmapTable::getSupportedServiceNames(  )
 {
-    uno::Sequence<OUString> aSNS { "com.sun.star.drawing.BitmapTable" };
-    return aSNS;
+    return { "com.sun.star.drawing.BitmapTable" };
 }
 
-NameOrIndex* SvxUnoBitmapTable::createItem() const throw()
+NameOrIndex* SvxUnoBitmapTable::createItem() const
 {
     return new XFillBitmapItem();
 }
@@ -91,13 +88,13 @@ NameOrIndex* SvxUnoBitmapTable::createItem() const throw()
 // XElementAccess
 uno::Type SAL_CALL SvxUnoBitmapTable::getElementType(  )
 {
-    return ::cppu::UnoType<OUString>::get();
+    return ::cppu::UnoType<awt::XBitmap>::get();
 }
 
 /**
  * Create a bitmaptable
  */
-uno::Reference< uno::XInterface > SAL_CALL SvxUnoBitmapTable_createInstance( SdrModel* pModel )
+uno::Reference< uno::XInterface > SvxUnoBitmapTable_createInstance( SdrModel* pModel )
 {
     return *new SvxUnoBitmapTable(pModel);
 }

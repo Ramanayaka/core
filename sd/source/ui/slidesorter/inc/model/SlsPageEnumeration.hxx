@@ -20,17 +20,13 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_MODEL_SLSPAGEENUMERATION_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_MODEL_SLSPAGEENUMERATION_HXX
 
-#include <sal/types.h>
-
-#include "pres.hxx"
-
-#include "model/SlsEnumeration.hxx"
-#include "model/SlsSharedPageDescriptor.hxx"
+#include <model/SlsEnumeration.hxx>
+#include <model/SlsSharedPageDescriptor.hxx>
 
 #include <functional>
 #include <memory>
 
-namespace sd { namespace slidesorter { namespace model {
+namespace sd::slidesorter::model {
 
 class SlideSorterModel;
 
@@ -99,7 +95,7 @@ private:
 
 };
 
-} } } // end of namespace ::sd::slidesorter::model
+} // end of namespace ::sd::slidesorter::model
 
 #endif
 

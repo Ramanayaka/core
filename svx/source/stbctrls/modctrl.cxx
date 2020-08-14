@@ -21,16 +21,17 @@
 #include <vcl/image.hxx>
 #include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
+#include <vcl/event.hxx>
 #include <svl/eitem.hxx>
-#include <sfx2/app.hxx>
+#include <tools/debug.hxx>
 
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
 #include <svx/modctrl.hxx>
 #include <svx/dialmgr.hxx>
 
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include "modctrl_internal.hxx"
-#include "bitmaps.hlst"
+#include <bitmaps.hlst>
 
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::beans::PropertyValue;
@@ -55,9 +56,9 @@ struct SvxModifyControl::ImplData
     ImplData():
         mnModState(MODIFICATION_STATE_NO)
     {
-        maImages[MODIFICATION_STATE_NO]       = Image(BitmapEx(RID_SVXBMP_DOC_MODIFIED_NO));
-        maImages[MODIFICATION_STATE_YES]      = Image(BitmapEx(RID_SVXBMP_DOC_MODIFIED_YES));
-        maImages[MODIFICATION_STATE_FEEDBACK] = Image(BitmapEx(RID_SVXBMP_DOC_MODIFIED_FEEDBACK));
+        maImages[MODIFICATION_STATE_NO]       = Image(StockImage::Yes, RID_SVXBMP_DOC_MODIFIED_NO);
+        maImages[MODIFICATION_STATE_YES]      = Image(StockImage::Yes, RID_SVXBMP_DOC_MODIFIED_YES);
+        maImages[MODIFICATION_STATE_FEEDBACK] = Image(StockImage::Yes, RID_SVXBMP_DOC_MODIFIED_FEEDBACK);
 
         maIdle.SetPriority(TaskPriority::LOWEST);
         maIdle.SetDebugName("svx::SvxModifyControl maIdle");
@@ -66,7 +67,7 @@ struct SvxModifyControl::ImplData
 
 SvxModifyControl::SvxModifyControl( sal_uInt16 _nSlotId, sal_uInt16 _nId, StatusBar& rStb ) :
     SfxStatusBarControl( _nSlotId, _nId, rStb ),
-    mxImpl(new ImplData)
+    mxImpl(std::make_shared<ImplData>())
 {
     mxImpl->maIdle.SetInvokeHandler( LINK(this, SvxModifyControl, OnTimer) );
 }
@@ -89,8 +90,8 @@ void SvxModifyControl::StateChanged( sal_uInt16, SfxItemState eState,
 
     _repaint();
 
-    int nResId = modified ? RID_SVXSTR_DOC_MODIFIED_YES : RID_SVXSTR_DOC_MODIFIED_NO;
-    GetStatusBar().SetQuickHelpText(GetId(), SvxResId(nResId));
+    const char* pResId = modified ? RID_SVXSTR_DOC_MODIFIED_YES : RID_SVXSTR_DOC_MODIFIED_NO;
+    GetStatusBar().SetQuickHelpText(GetId(), SvxResId(pResId));
 
     if ( start )
         mxImpl->maIdle.Start();
@@ -111,8 +112,7 @@ IMPL_LINK( SvxModifyControl, OnTimer, Timer *, pTimer, void )
 
 void SvxModifyControl::_repaint()
 {
-    if ( GetStatusBar().AreItemsVisible() )
-        GetStatusBar().SetItemData( GetId(), nullptr );    // force repaint
+    GetStatusBar().SetItemData( GetId(), nullptr );    // force repaint
 }
 
 /**

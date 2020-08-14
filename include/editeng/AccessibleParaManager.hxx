@@ -20,15 +20,17 @@
 #ifndef INCLUDED_EDITENG_ACCESSIBLEPARAMANAGER_HXX
 #define INCLUDED_EDITENG_ACCESSIBLEPARAMANAGER_HXX
 
+#include <config_options.h>
 #include <vector>
-#include <algorithm>
 #include <utility>
 #include <tools/gen.hxx>
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <cppuhelper/weakref.hxx>
-#include <com/sun/star/accessibility/XAccessibleContext.hpp>
+#include <rtl/ref.hxx>
 #include <editeng/editengdllapi.h>
+
+namespace com::sun::star::accessibility { class XAccessible; }
 
 class SvxEditSourceAdapter;
 
@@ -84,7 +86,7 @@ namespace accessibility
         To facilitate automatic deletion of paragraphs no longer used,
         this class uses the WeakCppRef helper to hold the objects weakly.
      */
-    class EDITENG_DLLPUBLIC AccessibleParaManager
+    class UNLESS_MERGELIBS(EDITENG_DLLPUBLIC) AccessibleParaManager
     {
     public:
         typedef WeakCppRef < css::accessibility::XAccessible, AccessibleEditableTextPara > WeakPara;

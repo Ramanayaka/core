@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <typeinfo>
 #include <exception>
@@ -29,9 +29,9 @@
 #endif
 #include <unwind.h>
 
-#include "config_cxxabi.h"
-#include "uno/any2.h"
-#include "uno/mapping.h"
+#include <config_cxxabi.h>
+#include <uno/any2.h>
+#include <uno/mapping.h>
 
 #if !HAVE_CXXABI_H_CLASS_TYPE_INFO
 // <https://mentorembedded.github.io/cxx-abi/abi.html>,
@@ -101,19 +101,33 @@ public:
 }
 #endif
 
-#if !HAVE_CXXABI_H_CXA_EH_GLOBALS
+#if !HAVE_CXXABI_H_CXA_EXCEPTION
 // <https://mentorembedded.github.io/cxx-abi/abi-eh.html>,
 // libcxxabi/src/cxa_exception.hpp:
 namespace __cxxabiv1 {
 struct __cxa_exception {
 #if defined _LIBCPPABI_VERSION // detect libc++abi
 #if defined __LP64__ || LIBCXXABI_ARM_EHABI
+#if 0
+    // This is a new field added with LLVM 10
+    // <https://github.com/llvm/llvm-project/commit/674ec1eb16678b8addc02a4b0534ab383d22fa77>
+    // "[libcxxabi] Insert padding in __cxa_exception struct for compatibility".  The HACK in
+    // fillUnoException (bridges/source/cpp_uno/gcc3_linux_x86-64/except.cxx) tries to find out at
+    // runtime whether a __cxa_exception has this member.  Once we can be sure that we only run
+    // against new libcxxabi that has this member, we can drop the "#if 0" here and drop the hack
+    // in fillUnoException.
+
+    // Now _Unwind_Exception is marked with __attribute__((aligned)),
+    // which implies __cxa_exception is also aligned. Insert padding
+    // in the beginning of the struct, rather than before unwindHeader.
+    void *reserve;
+#endif
     std::size_t referenceCount;
 #endif
 #endif
     std::type_info * exceptionType;
     void (* exceptionDestructor)(void *);
-    std::unexpected_handler unexpectedHandler;
+    void (*unexpectedHandler)(); // std::unexpected_handler dropped from C++17
     std::terminate_handler terminateHandler;
     __cxa_exception * nextException;
     int handlerCount;
@@ -143,6 +157,12 @@ extern "C" __cxa_eh_globals * __cxa_get_globals() throw();
 }
 #endif
 
+#if !HAVE_CXXABI_H_CXA_CURRENT_EXCEPTION_TYPE
+namespace __cxxabiv1 {
+extern "C" std::type_info *__cxa_current_exception_type() throw();
+}
+#endif
+
 #if !HAVE_CXXABI_H_CXA_ALLOCATE_EXCEPTION
 namespace __cxxabiv1 {
 extern "C" void * __cxa_allocate_exception(std::size_t thrown_size) throw();
@@ -165,8 +185,7 @@ namespace CPPU_CURRENT_NAMESPACE
 void raiseException(
     uno_Any * pUnoExc, uno_Mapping * pUno2Cpp );
 
-void fillUnoException(
-    __cxxabiv1::__cxa_exception * header, uno_Any *, uno_Mapping * pCpp2Uno );
+void fillUnoException(uno_Any *, uno_Mapping * pCpp2Uno);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,7 +20,7 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_APREPAREDSTATEMENT_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_APREPAREDSTATEMENT_HXX
 
-#include "ado/AStatement.hxx"
+#include <ado/AStatement.hxx>
 #include <com/sun/star/sdbc/XPreparedStatement.hpp>
 #include <com/sun/star/sdbc/XParameters.hpp>
 #include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
@@ -46,7 +46,7 @@ namespace connectivity
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
             void setParameter(sal_Int32 parameterIndex, const DataTypeEnum& _eType, sal_Int32 _nSize,const OLEVariant& Val);
-            void replaceParameterNodeName(  OSQLParseNode* _pNode,
+            void replaceParameterNodeName(  OSQLParseNode const * _pNode,
                                             const OUString& _sDefaultName,
                                             sal_Int32& _nParameterCount);
         protected:

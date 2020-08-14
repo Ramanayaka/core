@@ -19,18 +19,21 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_DIALOGS_DIALOGMODEL_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_DIALOGS_DIALOGMODEL_HXX
 
-#include "TimerTriggeredControllerLock.hxx"
-#include <com/sun/star/chart2/XChartDocument.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-
-#include "ChartModel.hxx"
+#include <TimerTriggeredControllerLock.hxx>
+#include <rtl/ustring.hxx>
 
 #include <map>
 #include <memory>
 #include <vector>
 
-namespace com { namespace sun { namespace star { namespace chart2 {
+namespace chart { class ChartModel; }
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::chart2 { class XChartDocument; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { template <class E> class Sequence; }
+
+namespace com::sun::star::chart2 {
     class XDataSeriesContainer;
     class XDataSeries;
     class XChartType;
@@ -40,7 +43,7 @@ namespace com { namespace sun { namespace star { namespace chart2 {
         class XDataProvider;
         class XLabeledDataSequence;
     }
-}}}}
+}
 
 namespace chart
 {
@@ -96,14 +99,13 @@ public:
         const OUString & aRoleOfSequenceForLabel,
         const css::uno::Reference< css::chart2::XChartType > & xChartType );
 
-    enum eMoveDirection
+    enum class MoveDirection
     {
-        MOVE_DOWN,
-        MOVE_UP
+        Down, Up
     };
 
     void moveSeries( const css::uno::Reference< css::chart2::XDataSeries > & xSeries,
-                     eMoveDirection eDirection );
+                     MoveDirection eDirection );
 
     /// @return the newly inserted series
     css::uno::Reference<

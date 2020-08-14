@@ -19,15 +19,17 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_FORMATTEDSTRINGHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_INC_FORMATTEDSTRINGHELPER_HXX
 
-#include <com/sun/star/chart2/XFormattedString2.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include "charttoolsdllapi.hxx"
+#include <com/sun/star/uno/Sequence.h>
+
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::chart2 { class XFormattedString2; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
 
 namespace chart
 {
 
-class OOO_DLLPUBLIC_CHARTTOOLS FormattedStringHelper
+class FormattedStringHelper
 {
 public:
     static css::uno::Sequence<

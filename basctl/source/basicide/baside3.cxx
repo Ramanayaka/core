@@ -17,22 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "basidesh.hrc"
-#include "helpid.hrc"
+#include <strings.hrc>
+#include <helpids.h>
+#include <iderid.hxx>
 
-#include "accessibledialogwindow.hxx"
-#include "baside3.hxx"
-#include "basidesh.hxx"
-#include "bastype2.hxx"
-#include "dlged.hxx"
-#include "dlgeddef.hxx"
-#include "dlgedmod.hxx"
-#include "dlgedview.hxx"
-#include "iderdll.hxx"
-#include "localizationmgr.hxx"
-#include "managelang.hxx"
+#include <accessibledialogwindow.hxx>
+#include <baside3.hxx>
+#include <basidesh.hxx>
+#include <bastype2.hxx>
+#include <basobj.hxx>
+#include <dlged.hxx>
+#include <dlgeddef.hxx>
+#include <dlgedmod.hxx>
+#include <dlgedview.hxx>
+#include <iderdll.hxx>
+#include <localizationmgr.hxx>
+#include <managelang.hxx>
 
-#include <basic/basmgr.hxx>
+#include <com/sun/star/script/XLibraryContainer2.hpp>
 #include <com/sun/star/resource/StringResourceWithLocation.hpp>
 #include <com/sun/star/ucb/SimpleFileAccess.hpp>
 #include <com/sun/star/ui/dialogs/ExtendedFilePickerElementIds.hpp>
@@ -42,15 +44,18 @@
 #include <comphelper/processfactory.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/request.hxx>
-#include <svl/aeitem.hxx>
+#include <sfx2/viewfrm.hxx>
 #include <svl/visitem.hxx>
 #include <svl/whiter.hxx>
 #include <svx/svdundo.hxx>
+#include <svx/svxids.hrc>
 #include <tools/diagnose_ex.h>
 #include <tools/urlobj.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/commandevent.hxx>
+#include <vcl/weld.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/stdtext.hxx>
+#include <vcl/svapp.hxx>
 #include <xmlscript/xmldlg_imexp.hxx>
 
 namespace basctl
@@ -83,7 +88,7 @@ DialogWindow::DialogWindow(DialogWindowLayout* pParent, ScriptDocument const& rD
     InitSettings();
 
     m_pEditor->GetModel().SetNotifyUndoActionHdl(
-        LINK(this, DialogWindow, NotifyUndoActionHdl)
+        &DialogWindow::NotifyUndoActionHdl
     );
 
     SetHelpId( HID_BASICIDE_DIALOGWINDOW );
@@ -217,13 +222,11 @@ void DialogWindow::Command( const CommandEvent& rCEvt )
 }
 
 
-IMPL_STATIC_LINK(
-    DialogWindow, NotifyUndoActionHdl, SdrUndoAction *, pUndoAction, void )
+void DialogWindow::NotifyUndoActionHdl( std::unique_ptr<SdrUndoAction> )
 {
     // #i120515# pUndoAction needs to be deleted, this hand over is an ownership
     // change. As long as it does not get added to the undo manager, it needs at
     // least to be deleted.
-    delete pUndoAction;
 }
 
 void DialogWindow::DoInit()
@@ -357,6 +360,8 @@ void DialogWindow::GetState( SfxItemSet& rSet )
             case SID_INSERT_PATTERNFIELD:
             case SID_INSERT_FILECONTROL:
             case SID_INSERT_SPINBUTTON:
+            case SID_INSERT_GRIDCONTROL:
+            case SID_INSERT_HYPERLINKCONTROL:
             case SID_INSERT_TREECONTROL:
             {
                 if ( IsReadOnly() )
@@ -505,6 +510,12 @@ void DialogWindow::ExecuteCommand( SfxRequest& rReq )
         case SID_INSERT_SPINBUTTON:
             nInsertObj = OBJ_DLG_SPINBUTTON;
             break;
+        case SID_INSERT_GRIDCONTROL:
+            nInsertObj = OBJ_DLG_GRIDCONTROL;
+            break;
+        case SID_INSERT_HYPERLINKCONTROL:
+            nInsertObj = OBJ_DLG_HYPERLINKCONTROL;
+            break;
         case SID_INSERT_TREECONTROL:
             nInsertObj = OBJ_DLG_TREECONTROL;
             break;
@@ -533,7 +544,7 @@ void DialogWindow::ExecuteCommand( SfxRequest& rReq )
             break;
 
         case SID_BASICIDE_DELETECURRENT:
-            if (QueryDelDialog(m_aName, this))
+            if (QueryDelDialog(m_aName, GetFrameWeld()))
             {
                 if (RemoveDialog(m_aDocument, m_aLibName, m_aName))
                 {
@@ -563,14 +574,14 @@ void DialogWindow::ExecuteCommand( SfxRequest& rReq )
     rReq.Done();
 }
 
-Reference< container::XNameContainer > DialogWindow::GetDialog() const
+Reference< container::XNameContainer > const & DialogWindow::GetDialog() const
 {
     return m_pEditor->GetDialog();
 }
 
 bool DialogWindow::RenameDialog( const OUString& rNewName )
 {
-    if ( !basctl::RenameDialog( this, GetDocument(), GetLibName(), GetName(), rNewName ) )
+    if (!basctl::RenameDialog(GetFrameWeld(), GetDocument(), GetLibName(), GetName(), rNewName))
         return false;
 
     if (SfxBindings* pBindings = GetBindingsPtr())
@@ -610,139 +621,141 @@ void DialogWindow::SaveDialog()
     xFP->appendFilter( IDEResId(RID_STR_FILTER_ALLFILES), FilterMask_All );
     xFP->setCurrentFilter( aDialogStr );
 
-    if( xFP->execute() == RET_OK )
+    if( xFP->execute() != RET_OK )
+        return;
+
+    Sequence< OUString > aPaths = xFP->getSelectedFiles();
+    m_sCurPath = aPaths[0];
+
+    // export dialog model to xml
+    Reference< container::XNameContainer > xDialogModel = GetDialog();
+    Reference< XInputStreamProvider > xISP = ::xmlscript::exportDialogModel( xDialogModel, xContext, GetDocument().isDocument() ? GetDocument().getDocument() : Reference< frame::XModel >() );
+    Reference< XInputStream > xInput( xISP->createInputStream() );
+
+    Reference< XSimpleFileAccess3 > xSFI( SimpleFileAccess::create(xContext) );
+
+    Reference< XOutputStream > xOutput;
+    try
     {
-        Sequence< OUString > aPaths = xFP->getSelectedFiles();
-        m_sCurPath = aPaths[0];
+        if( xSFI->exists( m_sCurPath ) )
+            xSFI->kill( m_sCurPath );
+        xOutput = xSFI->openFileWrite( m_sCurPath );
+    }
+    catch(const Exception& )
+    {}
 
-        // export dialog model to xml
-        Reference< container::XNameContainer > xDialogModel = GetDialog();
-        Reference< XInputStreamProvider > xISP = ::xmlscript::exportDialogModel( xDialogModel, xContext, GetDocument().isDocument() ? GetDocument().getDocument() : Reference< frame::XModel >() );
-        Reference< XInputStream > xInput( xISP->createInputStream() );
-
-        Reference< XSimpleFileAccess3 > xSFI( SimpleFileAccess::create(xContext) );
-
-        Reference< XOutputStream > xOutput;
-        try
+    if( xOutput.is() )
+    {
+        Sequence< sal_Int8 > bytes;
+        sal_Int32 nRead = xInput->readBytes( bytes, xInput->available() );
+        for (;;)
         {
-            if( xSFI->exists( m_sCurPath ) )
-                xSFI->kill( m_sCurPath );
-            xOutput = xSFI->openFileWrite( m_sCurPath );
+            if( nRead )
+                xOutput->writeBytes( bytes );
+
+            nRead = xInput->readBytes( bytes, 1024 );
+            if (! nRead)
+                break;
         }
-        catch(const Exception& )
-        {}
 
-        if( xOutput.is() )
+        // With resource?
+        Reference< beans::XPropertySet > xDialogModelPropSet( xDialogModel, UNO_QUERY );
+        Reference< resource::XStringResourceResolver > xStringResourceResolver;
+        if( xDialogModelPropSet.is() )
         {
-            Sequence< sal_Int8 > bytes;
-            sal_Int32 nRead = xInput->readBytes( bytes, xInput->available() );
-            for (;;)
+            try
             {
-                if( nRead )
-                    xOutput->writeBytes( bytes );
-
-                nRead = xInput->readBytes( bytes, 1024 );
-                if (! nRead)
-                    break;
+                Any aResourceResolver = xDialogModelPropSet->getPropertyValue( "ResourceResolver" );
+                aResourceResolver >>= xStringResourceResolver;
             }
+            catch(const beans::UnknownPropertyException& )
+            {}
+        }
 
-            // With resource?
-            Reference< beans::XPropertySet > xDialogModelPropSet( xDialogModel, UNO_QUERY );
-            Reference< resource::XStringResourceResolver > xStringResourceResolver;
-            if( xDialogModelPropSet.is() )
+        bool bResource = false;
+        if( xStringResourceResolver.is() )
+        {
+            Sequence< lang::Locale > aLocaleSeq = xStringResourceResolver->getLocales();
+            if( aLocaleSeq.hasElements() )
+                bResource = true;
+        }
+
+        if( bResource )
+        {
+            INetURLObject aURLObj( m_sCurPath );
+            aURLObj.removeExtension();
+            OUString aDialogName( aURLObj.getName() );
+            aURLObj.removeSegment();
+            OUString aURL( aURLObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
+            OUString aComment = "# " + aDialogName + " strings" ;
+            Reference< task::XInteractionHandler > xDummyHandler;
+
+            // Remove old properties files in case of overwriting Dialog files
+            if( xSFI->isFolder( aURL ) )
             {
-                try
+                Sequence< OUString > aContentSeq = xSFI->getFolderContents( aURL, false );
+
+                OUString aDialogName_ = aDialogName + "_" ;
+                sal_Int32 nCount = aContentSeq.getLength();
+                const OUString* pFiles = aContentSeq.getConstArray();
+                for( int i = 0 ; i < nCount ; i++ )
                 {
-                    Any aResourceResolver = xDialogModelPropSet->getPropertyValue( "ResourceResolver" );
-                    aResourceResolver >>= xStringResourceResolver;
-                }
-                catch(const beans::UnknownPropertyException& )
-                {}
-            }
-
-            bool bResource = false;
-            if( xStringResourceResolver.is() )
-            {
-                Sequence< lang::Locale > aLocaleSeq = xStringResourceResolver->getLocales();
-                sal_Int32 nLocaleCount = aLocaleSeq.getLength();
-                if( nLocaleCount > 0 )
-                    bResource = true;
-            }
-
-            if( bResource )
-            {
-                INetURLObject aURLObj( m_sCurPath );
-                aURLObj.removeExtension();
-                OUString aDialogName( aURLObj.getName() );
-                aURLObj.removeSegment();
-                OUString aURL( aURLObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
-                OUString aComment = "# " + aDialogName + " strings" ;
-                Reference< task::XInteractionHandler > xDummyHandler;
-
-                // Remove old properties files in case of overwriting Dialog files
-                if( xSFI->isFolder( aURL ) )
-                {
-                    Sequence< OUString > aContentSeq = xSFI->getFolderContents( aURL, false );
-
-                    OUString aDialogName_( aDialogName );
-                    aDialogName_ += "_" ;
-                    sal_Int32 nCount = aContentSeq.getLength();
-                    const OUString* pFiles = aContentSeq.getConstArray();
-                    for( int i = 0 ; i < nCount ; i++ )
+                    OUString aCompleteName = pFiles[i];
+                    OUString aPureName;
+                    OUString aExtension;
+                    sal_Int32 iDot = aCompleteName.lastIndexOf( '.' );
+                    sal_Int32 iSlash = aCompleteName.lastIndexOf( '/' );
+                    if( iDot != -1 )
                     {
-                        OUString aCompleteName = pFiles[i];
-                        OUString aPureName;
-                        OUString aExtension;
-                        sal_Int32 iDot = aCompleteName.lastIndexOf( '.' );
-                        sal_Int32 iSlash = aCompleteName.lastIndexOf( '/' );
-                        if( iDot != -1 )
-                        {
-                            sal_Int32 iCopyFrom = (iSlash != -1) ? iSlash + 1 : 0;
-                            aPureName = aCompleteName.copy( iCopyFrom, iDot-iCopyFrom );
-                            aExtension = aCompleteName.copy( iDot + 1 );
-                        }
+                        sal_Int32 iCopyFrom = (iSlash != -1) ? iSlash + 1 : 0;
+                        aPureName = aCompleteName.copy( iCopyFrom, iDot-iCopyFrom );
+                        aExtension = aCompleteName.copy( iDot + 1 );
+                    }
 
-                        if( aExtension == "properties" || aExtension == "default" )
+                    if( aExtension == "properties" || aExtension == "default" )
+                    {
+                        if( aPureName.startsWith( aDialogName_ ) )
                         {
-                            if( aPureName.startsWith( aDialogName_ ) )
+                            try
                             {
-                                try
-                                {
-                                    xSFI->kill( aCompleteName );
-                                }
-                                catch(const uno::Exception& )
-                                {}
+                                xSFI->kill( aCompleteName );
                             }
+                            catch(const uno::Exception& )
+                            {}
                         }
                     }
                 }
-
-                Reference< XStringResourceWithLocation > xStringResourceWithLocation =
-                    StringResourceWithLocation::create( xContext, aURL, false/*bReadOnly*/,
-                        xStringResourceResolver->getDefaultLocale(), aDialogName, aComment, xDummyHandler );
-
-                // Add locales
-                Sequence< lang::Locale > aLocaleSeq = xStringResourceResolver->getLocales();
-                const lang::Locale* pLocales = aLocaleSeq.getConstArray();
-                sal_Int32 nLocaleCount = aLocaleSeq.getLength();
-                for( sal_Int32 iLocale = 0 ; iLocale < nLocaleCount ; iLocale++ )
-                {
-                    const lang::Locale& rLocale = pLocales[ iLocale ];
-                    xStringResourceWithLocation->newLocale( rLocale );
-                }
-
-                LocalizationMgr::copyResourceForDialog( xDialogModel,
-                    xStringResourceResolver, xStringResourceWithLocation );
-
-                xStringResourceWithLocation->store();
             }
+
+            Reference< XStringResourceWithLocation > xStringResourceWithLocation =
+                StringResourceWithLocation::create( xContext, aURL, false/*bReadOnly*/,
+                    xStringResourceResolver->getDefaultLocale(), aDialogName, aComment, xDummyHandler );
+
+            // Add locales
+            Sequence< lang::Locale > aLocaleSeq = xStringResourceResolver->getLocales();
+            const lang::Locale* pLocales = aLocaleSeq.getConstArray();
+            sal_Int32 nLocaleCount = aLocaleSeq.getLength();
+            for( sal_Int32 iLocale = 0 ; iLocale < nLocaleCount ; iLocale++ )
+            {
+                const lang::Locale& rLocale = pLocales[ iLocale ];
+                xStringResourceWithLocation->newLocale( rLocale );
+            }
+
+            LocalizationMgr::copyResourceForDialog( xDialogModel,
+                xStringResourceResolver, xStringResourceWithLocation );
+
+            xStringResourceWithLocation->store();
         }
-        else
-            ScopedVclPtrInstance<MessageDialog>(this, IDEResId(RID_STR_COULDNTWRITE))->Execute();
+    }
+    else
+    {
+        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(GetFrameWeld(),
+                                                  VclMessageType::Warning, VclButtonsType::Ok, IDEResId(RID_STR_COULDNTWRITE)));
+        xBox->run();
     }
 }
 
-std::vector< lang::Locale > implGetLanguagesOnlyContainedInFirstSeq
+static std::vector< lang::Locale > implGetLanguagesOnlyContainedInFirstSeq
     ( const Sequence< lang::Locale >& aFirstSeq, const Sequence< lang::Locale >& aSecondSeq )
 {
     std::vector< lang::Locale > avRet;
@@ -776,58 +789,48 @@ std::vector< lang::Locale > implGetLanguagesOnlyContainedInFirstSeq
     return avRet;
 }
 
+namespace {
 
-class NameClashQueryBox : public MessBox
+class NameClashQueryBox
 {
+private:
+    std::unique_ptr<weld::MessageDialog> m_xQueryBox;
 public:
-    NameClashQueryBox( vcl::Window* pParent,
-        const OUString& rTitle, const OUString& rMessage );
+    NameClashQueryBox(weld::Window* pParent, const OUString& rTitle, const OUString& rMessage)
+        : m_xQueryBox(Application::CreateMessageDialog(pParent, VclMessageType::Question, VclButtonsType::NONE, rMessage))
+    {
+        if (!rTitle.isEmpty())
+            m_xQueryBox->set_title(rTitle);
+        m_xQueryBox->add_button(IDEResId(RID_STR_DLGIMP_CLASH_RENAME), RET_YES);
+        m_xQueryBox->add_button(IDEResId(RID_STR_DLGIMP_CLASH_REPLACE), RET_NO);
+        m_xQueryBox->add_button(GetStandardText(StandardButtonType::Cancel), RET_CANCEL);
+        m_xQueryBox->set_default_response(RET_YES);
+    }
+    short run() { return m_xQueryBox->run(); }
 };
 
-NameClashQueryBox::NameClashQueryBox( vcl::Window* pParent,
-    const OUString& rTitle, const OUString& rMessage )
-        : MessBox( pParent, 0, rTitle, rMessage )
+class LanguageMismatchQueryBox
 {
-    if ( !rTitle.isEmpty() )
-        SetText( rTitle );
-
-    maMessText = rMessage;
-
-    AddButton( IDEResId(RID_STR_DLGIMP_CLASH_RENAME), RET_YES,
-        ButtonDialogFlags::Default | ButtonDialogFlags::OK | ButtonDialogFlags::Focus );
-    AddButton( IDEResId(RID_STR_DLGIMP_CLASH_REPLACE), RET_NO );
-    AddButton( StandardButtonType::Cancel, RET_CANCEL, ButtonDialogFlags::Cancel );
-
-    SetImage( QueryBox::GetStandardImage() );
-}
-
-
-class LanguageMismatchQueryBox : public MessBox
-{
+private:
+    std::unique_ptr<weld::MessageDialog> m_xQueryBox;
 public:
-    LanguageMismatchQueryBox( vcl::Window* pParent,
-        const OUString& rTitle, const OUString& rMessage );
+    LanguageMismatchQueryBox(weld::Window* pParent, const OUString& rTitle, const OUString& rMessage)
+        : m_xQueryBox(Application::CreateMessageDialog(pParent, VclMessageType::Question, VclButtonsType::NONE, rMessage))
+    {
+        if (!rTitle.isEmpty())
+            m_xQueryBox->set_title(rTitle);
+        m_xQueryBox->add_button(IDEResId(RID_STR_DLGIMP_MISMATCH_ADD), RET_YES);
+        m_xQueryBox->add_button(IDEResId(RID_STR_DLGIMP_MISMATCH_OMIT), RET_NO);
+        m_xQueryBox->add_button(GetStandardText(StandardButtonType::Cancel), RET_CANCEL);
+        m_xQueryBox->add_button(GetStandardText(StandardButtonType::Help), RET_HELP);
+        m_xQueryBox->set_default_response(RET_YES);
+    }
+    short run() { return m_xQueryBox->run(); }
 };
 
-LanguageMismatchQueryBox::LanguageMismatchQueryBox( vcl::Window* pParent,
-    const OUString& rTitle, const OUString& rMessage )
-        : MessBox( pParent, 0, rTitle, rMessage )
-{
-    if ( !rTitle.isEmpty() )
-        SetText( rTitle );
-
-    maMessText = rMessage;
-    AddButton( IDEResId(RID_STR_DLGIMP_MISMATCH_ADD), RET_YES,
-        ButtonDialogFlags::Default | ButtonDialogFlags::OK | ButtonDialogFlags::Focus );
-    AddButton( IDEResId(RID_STR_DLGIMP_MISMATCH_OMIT), RET_NO );
-    AddButton( StandardButtonType::Cancel, RET_CANCEL, ButtonDialogFlags::Cancel );
-    AddButton( StandardButtonType::Help, RET_HELP, ButtonDialogFlags::Help, 4 );
-
-    SetImage( QueryBox::GetStandardImage() );
 }
 
-
-bool implImportDialog( vcl::Window* pWin, const OUString& rCurPath, const ScriptDocument& rDocument, const OUString& aLibName )
+bool implImportDialog(weld::Window* pWin, const OUString& rCurPath, const ScriptDocument& rDocument, const OUString& aLibName)
 {
     bool bDone = false;
 
@@ -877,22 +880,17 @@ bool implImportDialog( vcl::Window* pWin, const OUString& rCurPath, const Script
 
             OUString aXmlDlgName;
             Reference< beans::XPropertySet > xDialogModelPropSet( xDialogModel, UNO_QUERY );
-            if( xDialogModelPropSet.is() )
+            assert(xDialogModelPropSet.is());
+            try
             {
-                try
-                {
-                    Any aXmlDialogNameAny = xDialogModelPropSet->getPropertyValue( DLGED_PROP_NAME );
-                    OUString aOUXmlDialogName;
-                    aXmlDialogNameAny >>= aOUXmlDialogName;
-                    aXmlDlgName = aOUXmlDialogName;
-                }
-                catch(const beans::UnknownPropertyException& )
-                {}
+                Any aXmlDialogNameAny = xDialogModelPropSet->getPropertyValue( DLGED_PROP_NAME );
+                aXmlDialogNameAny >>= aXmlDlgName;
             }
-            bool bValidName = !aXmlDlgName.isEmpty();
-            OSL_ASSERT( bValidName );
-            if( !bValidName )
-                return bDone;
+            catch(const beans::UnknownPropertyException& )
+            {
+                TOOLS_WARN_EXCEPTION("basctl", "");
+            }
+            assert( !aXmlDlgName.isEmpty() );
 
             bool bDialogAlreadyExists = rDocument.hasDialog( aLibName, aXmlDlgName );
 
@@ -910,8 +908,8 @@ bool implImportDialog( vcl::Window* pWin, const OUString& rCurPath, const Script
                 OUString aQueryBoxText(IDEResId(RID_STR_DLGIMP_CLASH_TEXT));
                 aQueryBoxText = aQueryBoxText.replaceAll("$(ARG1)", aXmlDlgName);
 
-                ScopedVclPtrInstance< NameClashQueryBox > aQueryBox( pWin, aQueryBoxTitle, aQueryBoxText );
-                sal_uInt16 nRet = aQueryBox->Execute();
+                NameClashQueryBox aQueryBox(pWin, aQueryBoxTitle, aQueryBoxText);
+                sal_uInt16 nRet = aQueryBox.run();
                 if( nRet == RET_YES )
                 {
                     // RET_YES == Rename, see NameClashQueryBox::NameClashQueryBox
@@ -931,11 +929,7 @@ bool implImportDialog( vcl::Window* pWin, const OUString& rCurPath, const Script
             }
 
             Shell* pShell = GetShell();
-            if (!pShell)
-            {
-                OSL_ASSERT(pShell);
-                return bDone;
-            }
+            assert(pShell);
 
             // Resource?
             css::lang::Locale aLocale = Application::GetSettings().GetUILanguageTag().getLocale();
@@ -971,8 +965,8 @@ bool implImportDialog( vcl::Window* pWin, const OUString& rCurPath, const Script
             {
                 OUString aQueryBoxTitle(IDEResId(RID_STR_DLGIMP_MISMATCH_TITLE));
                 OUString aQueryBoxText(IDEResId(RID_STR_DLGIMP_MISMATCH_TEXT));
-                ScopedVclPtrInstance< LanguageMismatchQueryBox > aQueryBox( pWin, aQueryBoxTitle, aQueryBoxText );
-                sal_uInt16 nRet = aQueryBox->Execute();
+                LanguageMismatchQueryBox aQueryBox(pWin, aQueryBoxTitle, aQueryBoxText);
+                sal_uInt16 nRet = aQueryBox.run();
                 if( nRet == RET_YES )
                 {
                     // RET_YES == Add, see LanguageMismatchQueryBox::LanguageMismatchQueryBox
@@ -994,10 +988,9 @@ bool implImportDialog( vcl::Window* pWin, const OUString& rCurPath, const Script
                 bool bCopyResourcesForDialog = true;
                 if( bAddDialogLanguagesToLib )
                 {
-                    std::shared_ptr<LocalizationMgr> pCurMgr = pShell->GetCurLocalizationMgr();
+                    const std::shared_ptr<LocalizationMgr>& pCurMgr = pShell->GetCurLocalizationMgr();
 
-                    lang::Locale aFirstLocale;
-                    aFirstLocale = aOnlyInImportLanguages[0];
+                    lang::Locale aFirstLocale = aOnlyInImportLanguages[0];
                     if( nOnlyInImportLanguageCount > 1 )
                     {
                         // Check if import default belongs to only import languages and use it then
@@ -1014,9 +1007,7 @@ bool implImportDialog( vcl::Window* pWin, const OUString& rCurPath, const Script
                         }
                     }
 
-                    Sequence< lang::Locale > aFirstLocaleSeq( 1 );
-                    aFirstLocaleSeq[0] = aFirstLocale;
-                    pCurMgr->handleAddLocales( aFirstLocaleSeq );
+                    pCurMgr->handleAddLocales( {aFirstLocale} );
 
                     if( nOnlyInImportLanguageCount > 1 )
                     {
@@ -1034,16 +1025,14 @@ bool implImportDialog( vcl::Window* pWin, const OUString& rCurPath, const Script
                 }
                 else if( !bLibLocalized )
                 {
-                    Reference< resource::XStringResourceManager > xImportStringResourceManager( xImportStringResource, UNO_QUERY );
-                    LocalizationMgr::resetResourceForDialog( xDialogModel, xImportStringResourceManager );
+                    LocalizationMgr::resetResourceForDialog( xDialogModel, xImportStringResource );
                     bCopyResourcesForDialog = false;
                 }
 
                 if( bCopyResourcesForDialog )
                 {
-                    Reference< resource::XStringResourceResolver > xImportStringResourceResolver( xImportStringResource, UNO_QUERY );
                     LocalizationMgr::copyResourceForDroppedDialog( xDialogModel, aXmlDlgName,
-                        xLibStringResourceManager, xImportStringResourceResolver );
+                        xLibStringResourceManager, xImportStringResource );
                 }
             }
             else if( bLibLocalized )
@@ -1113,12 +1102,11 @@ bool implImportDialog( vcl::Window* pWin, const OUString& rCurPath, const Script
     return bDone;
 }
 
-
 void DialogWindow::ImportDialog()
 {
     const ScriptDocument& rDocument = GetDocument();
     OUString aLibName = GetLibName();
-    implImportDialog( this, m_sCurPath, rDocument, aLibName );
+    implImportDialog(GetFrameWeld(), m_sCurPath, rDocument, aLibName);
 }
 
 DlgEdModel& DialogWindow::GetModel() const
@@ -1141,7 +1129,7 @@ bool DialogWindow::IsModified()
     return m_pEditor->IsModified();
 }
 
-::svl::IUndoManager* DialogWindow::GetUndoManager()
+SfxUndoManager* DialogWindow::GetUndoManager()
 {
     return m_pUndoMgr.get();
 }
@@ -1155,9 +1143,8 @@ EntryDescriptor DialogWindow::CreateEntryDescriptor()
 {
     ScriptDocument aDocument( GetDocument() );
     OUString aLibName( GetLibName() );
-    OUString aLibSubName;
     LibraryLocation eLocation = aDocument.getLibraryLocation( aLibName );
-    return EntryDescriptor( aDocument, eLocation, aLibName, aLibSubName, GetName(), OBJ_TYPE_DIALOG );
+    return EntryDescriptor( aDocument, eLocation, aLibName, OUString(), GetName(), OBJ_TYPE_DIALOG );
 }
 
 void DialogWindow::SetReadOnly (bool bReadOnly)
@@ -1177,32 +1164,32 @@ bool DialogWindow::IsPasteAllowed()
 
 void DialogWindow::StoreData()
 {
-    if ( IsModified() )
+    if ( !IsModified() )
+        return;
+
+    try
     {
-        try
+        Reference< container::XNameContainer > xLib = GetDocument().getLibrary( E_DIALOGS, GetLibName(), true );
+
+        if( xLib.is() )
         {
-            Reference< container::XNameContainer > xLib = GetDocument().getLibrary( E_DIALOGS, GetLibName(), true );
+            Reference< container::XNameContainer > xDialogModel = m_pEditor->GetDialog();
 
-            if( xLib.is() )
+            if( xDialogModel.is() )
             {
-                Reference< container::XNameContainer > xDialogModel = m_pEditor->GetDialog();
-
-                if( xDialogModel.is() )
-                {
-                    Reference< XComponentContext > xContext(
-                        comphelper::getProcessComponentContext() );
-                    Reference< XInputStreamProvider > xISP = ::xmlscript::exportDialogModel( xDialogModel, xContext, GetDocument().isDocument() ? GetDocument().getDocument() : Reference< frame::XModel >() );
-                    xLib->replaceByName( GetName(), Any( xISP ) );
-                }
+                Reference< XComponentContext > xContext(
+                    comphelper::getProcessComponentContext() );
+                Reference< XInputStreamProvider > xISP = ::xmlscript::exportDialogModel( xDialogModel, xContext, GetDocument().isDocument() ? GetDocument().getDocument() : Reference< frame::XModel >() );
+                xLib->replaceByName( GetName(), Any( xISP ) );
             }
         }
-        catch (const uno::Exception& )
-        {
-            DBG_UNHANDLED_EXCEPTION();
-        }
-        MarkDocumentModified( GetDocument() );
-        m_pEditor->ClearModifyFlag();
     }
+    catch (const uno::Exception& )
+    {
+        DBG_UNHANDLED_EXCEPTION("basctl.basicide");
+    }
+    MarkDocumentModified( GetDocument() );
+    m_pEditor->ClearModifyFlag();
 }
 
 void DialogWindow::Activating ()
@@ -1244,8 +1231,7 @@ void DialogWindow::InitSettings()
 {
     // FIXME RenderContext
     const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
-    vcl::Font aFont;
-    aFont = rStyleSettings.GetFieldFont();
+    vcl::Font aFont = rStyleSettings.GetFieldFont();
     SetPointFont(*this, aFont);
 
     SetTextColor( rStyleSettings.GetFieldTextColor() );
@@ -1256,7 +1242,7 @@ void DialogWindow::InitSettings()
 
 css::uno::Reference< css::accessibility::XAccessible > DialogWindow::CreateAccessible()
 {
-    return static_cast<css::accessibility::XAccessible*>(new AccessibleDialogWindow( this ));
+    return new AccessibleDialogWindow(this);
 }
 
 char const* DialogWindow::GetHid () const
@@ -1274,7 +1260,6 @@ ItemType DialogWindow::GetType () const
 
 DialogWindowLayout::DialogWindowLayout (vcl::Window* pParent, ObjectCatalog& rObjectCatalog_) :
     Layout(pParent),
-    pChild(nullptr),
     rObjectCatalog(rObjectCatalog_),
     pPropertyBrowser(nullptr)
 {
@@ -1291,7 +1276,6 @@ void DialogWindowLayout::dispose()
     if (pPropertyBrowser)
         Remove(pPropertyBrowser);
     pPropertyBrowser.disposeAndClear();
-    pChild.clear();
     Layout::dispose();
 }
 
@@ -1334,7 +1318,6 @@ void DialogWindowLayout::UpdatePropertyBrowser ()
 void DialogWindowLayout::Activating (BaseWindow& rChild)
 {
     assert(dynamic_cast<DialogWindow*>(&rChild));
-    pChild = &static_cast<DialogWindow&>(rChild);
     rObjectCatalog.SetLayoutWindow(this);
     rObjectCatalog.UpdateEntries();
     rObjectCatalog.Show();
@@ -1349,7 +1332,6 @@ void DialogWindowLayout::Deactivating ()
     rObjectCatalog.Hide();
     if (pPropertyBrowser)
         pPropertyBrowser->Hide();
-    pChild = nullptr;
 }
 
 void DialogWindowLayout::ExecuteGlobal (SfxRequest& rReq)

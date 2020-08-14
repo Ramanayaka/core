@@ -20,8 +20,6 @@
 #include <sal/config.h>
 
 #include <cppuhelper/supportsservice.hxx>
-#include <tools/diagnose_ex.h>
-#include <vcl/bitmapaccess.hxx>
 
 #include "canvasbitmap.hxx"
 
@@ -41,7 +39,7 @@ namespace vclcanvas
     {
         // create bitmap for given reference device
         // ========================================
-        const sal_uInt16 nBitCount( (sal_uInt16)24U );
+        const sal_uInt16 nBitCount( sal_uInt16(24U) );
         const BitmapPalette*    pPalette = nullptr;
 
         Bitmap aBitmap( rSize, nBitCount, pPalette );
@@ -76,7 +74,7 @@ namespace vclcanvas
 
     OUString SAL_CALL CanvasBitmap::getImplementationName(  )
     {
-        return OUString( "VCLCanvas.CanvasBitmap" );
+        return "VCLCanvas.CanvasBitmap";
     }
 
     sal_Bool SAL_CALL CanvasBitmap::supportsService( const OUString& ServiceName )

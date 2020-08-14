@@ -22,45 +22,40 @@
 
 #include "adminpages.hxx"
 
-#include <vcl/edit.hxx>
-#include <vcl/field.hxx>
-#include <vcl/fixed.hxx>
-
-#include <svtools/dialogcontrolling.hxx>
+#include <vcl/weld.hxx>
 
 namespace dbaui
 {
 
     // MySQLNativeSettings
-    class MySQLNativeSettings : public TabPage
+    class MySQLNativeSettings
     {
     private:
-        VclPtr<FixedText>           m_pDatabaseNameLabel;
-        VclPtr<Edit>                m_pDatabaseName;
-        VclPtr<RadioButton>         m_pHostPortRadio;
-        VclPtr<RadioButton>         m_pSocketRadio;
-        VclPtr<RadioButton>         m_pNamedPipeRadio;
-        VclPtr<FixedText>           m_pHostNameLabel;
-        VclPtr<Edit>                m_pHostName;
-        VclPtr<FixedText>           m_pPortLabel;
-        VclPtr<NumericField>        m_pPort;
-        VclPtr<FixedText>           m_pDefaultPort;
-        VclPtr<Edit>                m_pSocket;
-        VclPtr<Edit>                m_pNamedPipe;
-        Link<void*,void>            m_aControlModificationLink;
-        ::svt::ControlDependencyManager
-                                    m_aControlDependencies;
-        DECL_LINK(RadioToggleHdl, RadioButton&, void);
-        DECL_LINK(EditModifyHdl, Edit&, void);
+        std::unique_ptr<weld::Builder> m_xBuilder;
+        std::unique_ptr<weld::Widget> m_xContainer;
+        std::unique_ptr<weld::Label> m_xDatabaseNameLabel;
+        std::unique_ptr<weld::Entry> m_xDatabaseName;
+        std::unique_ptr<weld::RadioButton> m_xHostPortRadio;
+        std::unique_ptr<weld::RadioButton> m_xSocketRadio;
+        std::unique_ptr<weld::RadioButton> m_xNamedPipeRadio;
+        std::unique_ptr<weld::Label> m_xHostNameLabel;
+        std::unique_ptr<weld::Entry> m_xHostName;
+        std::unique_ptr<weld::Label> m_xPortLabel;
+        std::unique_ptr<weld::SpinButton> m_xPort;
+        std::unique_ptr<weld::Label> m_xDefaultPort;
+        std::unique_ptr<weld::Entry> m_xSocket;
+        std::unique_ptr<weld::Entry> m_xNamedPipe;
+        Link<weld::Widget*,void> m_aControlModificationLink;
+        DECL_LINK(RadioToggleHdl, weld::ToggleButton&, void);
+        DECL_LINK(SpinModifyHdl, weld::SpinButton&, void);
+        DECL_LINK(EditModifyHdl, weld::Entry&, void);
 
     public:
-        MySQLNativeSettings( vcl::Window& _rParent, const Link<void*,void>& _rControlModificationLink );
-        virtual ~MySQLNativeSettings() override;
-        virtual void dispose() override;
-        void fillControls( std::vector< ISaveValueWrapper* >& _rControlList );
-        void fillWindows( std::vector< ISaveValueWrapper* >& _rControlList );
+        MySQLNativeSettings(weld::Widget* pParent, const Link<weld::Widget*,void>& rControlModificationLink);
+        void fillControls( std::vector< std::unique_ptr<ISaveValueWrapper> >& _rControlList );
+        void fillWindows( std::vector< std::unique_ptr<ISaveValueWrapper> >& _rControlList );
 
-        bool FillItemSet( SfxItemSet* _rCoreAttrs );
+        bool FillItemSet( SfxItemSet* rCoreAttrs );
         void implInitControls( const SfxItemSet& _rSet );
 
         bool canAdvance() const;

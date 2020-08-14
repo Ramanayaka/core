@@ -20,7 +20,6 @@
 #ifndef INCLUDED_AVMEDIA_MEDIATOOLBOX_HXX
 #define INCLUDED_AVMEDIA_MEDIATOOLBOX_HXX
 
-#include <svl/lstner.hxx>
 #include <sfx2/tbxctrl.hxx>
 #include <avmedia/avmediadllapi.h>
 
@@ -29,7 +28,7 @@ namespace avmedia
 
 class MediaItem;
 
-class AVMEDIA_DLLPUBLIC MediaToolBoxControl : public SfxToolBoxControl
+class AVMEDIA_DLLPUBLIC MediaToolBoxControl final : public SfxToolBoxControl
 {
      friend class MediaToolBoxControl_Impl;
 
@@ -41,7 +40,7 @@ public:
                                 virtual ~MediaToolBoxControl() override;
 
     virtual void                StateChanged( sal_uInt16 nSID, SfxItemState eState, const SfxPoolItem* pState ) override;
-    virtual VclPtr<vcl::Window> CreateItemWindow( vcl::Window* pParent ) override;
+    virtual VclPtr<InterimItemWindow> CreateItemWindow( vcl::Window* pParent ) override;
 
 private:
 

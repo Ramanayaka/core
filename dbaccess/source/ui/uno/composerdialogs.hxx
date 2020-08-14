@@ -23,12 +23,12 @@
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sdbc/XRowSet.hpp>
 
+#include <comphelper/proparrhlp.hxx>
+#include <connectivity/CommonTools.hxx>
 #include <svtools/genericunodialog.hxx>
-#include "moduledbu.hxx"
-#include "apitools.hxx"
+#include <apitools.hxx>
 
 namespace dbaui
 {
@@ -41,7 +41,6 @@ namespace dbaui
             :public svt::OGenericUnoDialog
             ,public ComposerDialog_PBASE
     {
-        OModuleClient m_aModuleClient;
     protected:
         // <properties>
         css::uno::Reference< css::sdb::XSingleSelectQueryComposer >
@@ -61,15 +60,15 @@ namespace dbaui
 
     protected:
         // own overridables
-        virtual VclPtr<Dialog> createComposerDialog(
-            vcl::Window* _pParent,
+        virtual std::unique_ptr<weld::GenericDialogController> createComposerDialog(
+            weld::Window* _pParent,
             const css::uno::Reference< css::sdbc::XConnection >& _rxConnection,
             const css::uno::Reference< css::container::XNameAccess >& _rxColumns
         ) = 0;
 
     private:
         // OGenericUnoDialog overridables
-        virtual VclPtr<Dialog> createDialog(vcl::Window* _pParent) override;
+        virtual std::unique_ptr<weld::DialogController> createDialog(const css::uno::Reference<css::awt::XWindow>& rParent) override;
     };
 
     // RowsetFilterDialog
@@ -81,17 +80,11 @@ namespace dbaui
         );
 
         DECLARE_SERVICE_INFO();
-        /// @throws css::uno::RuntimeException
-        static OUString SAL_CALL getImplementationName_Static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_Static(  );
-        static css::uno::Reference< css::uno::XInterface >
-        SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
 
     protected:
         // own overridables
-        virtual VclPtr<Dialog> createComposerDialog(
-            vcl::Window* _pParent,
+        virtual std::unique_ptr<weld::GenericDialogController> createComposerDialog(
+            weld::Window* _pParent,
             const css::uno::Reference< css::sdbc::XConnection >& _rxConnection,
             const css::uno::Reference< css::container::XNameAccess >& _rxColumns
         ) override;
@@ -111,17 +104,11 @@ namespace dbaui
         );
 
         DECLARE_SERVICE_INFO();
-        /// @throws css::uno::RuntimeException
-        static OUString SAL_CALL getImplementationName_Static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_Static(  );
-        static css::uno::Reference< css::uno::XInterface >
-        SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
 
     protected:
         // own overridables
-        virtual VclPtr<Dialog> createComposerDialog(
-            vcl::Window* _pParent,
+        virtual std::unique_ptr<weld::GenericDialogController> createComposerDialog(
+            weld::Window* _pParent,
             const css::uno::Reference< css::sdbc::XConnection >& _rxConnection,
             const css::uno::Reference< css::container::XNameAccess >& _rxColumns
         ) override;

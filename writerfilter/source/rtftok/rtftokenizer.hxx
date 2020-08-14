@@ -10,58 +10,55 @@
 #ifndef INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFTOKENIZER_HXX
 #define INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFTOKENIZER_HXX
 
-#include <rtflistener.hxx>
+#include "rtflistener.hxx"
 
 #include <vector>
+#include <unordered_map>
 
-#include <com/sun/star/task/XStatusIndicator.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/uno/Reference.h>
 
+#include <rtl/ustring.hxx>
+#include <tools/ref.hxx>
+
+namespace com::sun::star::task
+{
+class XStatusIndicator;
+}
 class SvStream;
 
-namespace writerfilter
-{
-namespace rtftok
+namespace writerfilter::rtftok
 {
 /// RTF tokenizer that separates control words from text.
-class RTFTokenizer final
+class RTFTokenizer final : public virtual SvRefBase
 {
 public:
-    RTFTokenizer(RTFListener& rImport, SvStream* pInStream, css::uno::Reference<css::task::XStatusIndicator> const& xStatusIndicator);
-    ~RTFTokenizer();
+    RTFTokenizer(RTFListener& rImport, SvStream* pInStream,
+                 css::uno::Reference<css::task::XStatusIndicator> const& xStatusIndicator);
+    ~RTFTokenizer() override;
 
     RTFError resolveParse();
-    static int asHex(char ch);
     /// Number of states on the stack.
-    int getGroup() const
-    {
-        return m_nGroup;
-    }
+    int getGroup() const { return m_nGroup; }
     /// To be invoked by the pushState() callback to signal when the importer enters a group.
     void pushGroup();
-    /// To be invoked by the popState() callback to single when the importer leaves a group.
+    /// To be invoked by the popState() callback to signal when the importer leaves a group.
     void popGroup();
     OUString getPosition();
-    std::size_t getGroupStart()
-    {
-        return m_nGroupStart;
-    }
+    std::size_t getGroupStart() const { return m_nGroupStart; }
     /// To look up additional properties of a math symbol.
     static bool lookupMathKeyword(RTFMathSymbol& rSymbol);
+
 private:
-    SvStream& Strm()
-    {
-        return *m_pInStream;
-    }
+    SvStream& Strm() { return *m_pInStream; }
     RTFError resolveKeyword();
-    RTFError dispatchKeyword(OString& rKeyword, bool bParam, int nParam);
+    RTFError dispatchKeyword(OString const& rKeyword, bool bParam, int nParam);
 
     RTFListener& m_rImport;
     SvStream* m_pInStream;
     css::uno::Reference<css::task::XStatusIndicator> const& m_xStatusIndicator;
-    // This is the same as aRTFControlWords, but sorted
-    static std::vector<RTFSymbol> s_aRTFControlWords;
-    static bool s_bControlWordsSorted;
+    // This is the same as aRTFControlWords, but mapped by token name for fast lookup
+    static std::unordered_map<OString, RTFSymbol> s_aRTFControlWords;
+    static bool s_bControlWordsInitialised;
     // This is the same as aRTFMathControlWords, but sorted
     static std::vector<RTFMathSymbol> s_aRTFMathControlWords;
     static bool s_bMathControlWordsSorted;
@@ -71,8 +68,7 @@ private:
     std::size_t m_nLineStartPos;
     std::size_t m_nGroupStart;
 };
-} // namespace rtftok
-} // namespace writerfilter
+} // namespace writerfilter::rtftok
 
 #endif // INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFTOKENIZER_HXX
 

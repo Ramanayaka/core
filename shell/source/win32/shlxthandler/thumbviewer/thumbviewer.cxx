@@ -20,32 +20,24 @@
 #ifndef DONT_HAVE_GDIPLUS
 
 
-#include "global.hxx"
+#include <global.hxx>
 
-#include "thumbviewer.hxx"
-#include "shlxthdl.hxx"
-#include "registry.hxx"
-#include "fileextensions.hxx"
-#include "config.hxx"
-#include "zipfile.hxx"
-#include "utilities.hxx"
+#include <thumbviewer.hxx>
+#include <shlxthdl.hxx>
+#include <registry.hxx>
+#include <fileextensions.hxx>
+#include <config.hxx>
+#include <zipfile.hxx>
+#include <utilities.hxx>
 
-#include "resource.h"
+#include <resource.h>
 
 #include <stdio.h>
 #include <utility>
 #include <stdlib.h>
 
-#if defined _MSC_VER
-#pragma warning(push, 1)
-#endif
 #include <shellapi.h>
-#ifdef _WIN32_WINNT_WINBLUE
-#include <VersionHelpers.h>
-#endif
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
+
 #include <memory>
 
 namespace internal
@@ -53,43 +45,21 @@ namespace internal
     /* The signet.png used for thumbnails of signed documents
        is contained as resource in this module, the resource
        id is 2000 */
-    void LoadSignetImageFromResource(ZipFile::ZipContentBuffer_t& buffer)
+    static void LoadSignetImageFromResource(ZipFile::ZipContentBuffer_t& buffer)
     {
-        HRSRC hrc = FindResourceW(g_hModule, L"#2000", RT_RCDATA);
+        HRSRC hrc = FindResourceW(g_hModule, L"#2000", reinterpret_cast<LPWSTR>(RT_RCDATA));
         DWORD size = SizeofResource(g_hModule, hrc);
         HGLOBAL hglob = LoadResource(g_hModule, hrc);
         char* data = static_cast<char*>(LockResource(hglob));
         buffer = ZipFile::ZipContentBuffer_t(data, data + size);
     }
 
-    bool IsSignedDocument(const ZipFile* zipfile)
+    static bool IsSignedDocument(const ZipFile* zipfile)
     {
         return zipfile->HasContent("META-INF/documentsignatures.xml");
     }
 
-    bool IsWindowsXP()
-    {
-// the Win32 SDK 8.1 deprecates GetVersionEx()
-#ifdef _WIN32_WINNT_WINBLUE
-        return IsWindowsXPOrGreater();
-#else
-        OSVERSIONINFO osvi;
-        ZeroMemory(&osvi, sizeof(osvi));
-        osvi.dwOSVersionInfoSize = sizeof(osvi);
-        GetVersionEx(&osvi);
-
-        return ((osvi.dwPlatformId == VER_PLATFORM_WIN32_NT) &&
-                ((osvi.dwMajorVersion >= 5) && (osvi.dwMinorVersion >= 1)));
-#endif
-    }
-
-    /* Calculate where to position the signet image.
-       On Windows ME we need to shift the signet a
-       little bit to the left because Windows ME
-       puts an overlay icon to the lower right
-       corner of a thumbnail image so that our signet
-       we be hidden. */
-    Gdiplus::Point CalcSignetPosition(
+    static Gdiplus::Point CalcSignetPosition(
         const Gdiplus::Rect& canvas, const Gdiplus::Rect& thumbnail_border, const Gdiplus::Rect& signet)
     {
         int x = 0;
@@ -108,9 +78,6 @@ namespace internal
             y = thumbnail_border.GetBottom() - signet.GetBottom() + min(signet.GetBottom() / 2, voffset);
         }
 
-        if (!IsWindowsXP())
-            x -= 15;
-
         return Gdiplus::Point(x,y);
     }
 }
@@ -126,8 +93,6 @@ Gdiplus::Rect CalcScaledAspectRatio(const Gdiplus::Rect& src, const Gdiplus::Rec
         result = Gdiplus::Rect(0, 0, src.Width * dest.Height / src.Height, dest.Height);
 
     return result;
-}
-
 }
 
 class StreamOnZipBuffer final : public IStream
@@ -158,6 +123,8 @@ private:
     const ZipFile::ZipContentBuffer_t& ref_zip_buffer_;
     size_t pos_;
 };
+
+}
 
 StreamOnZipBuffer::StreamOnZipBuffer(const ZipFile::ZipContentBuffer_t& zip_buffer) :
     ref_count_(1),
@@ -222,7 +189,7 @@ HRESULT STDMETHODCALLTYPE StreamOnZipBuffer::Read(void *pv, ULONG cb, ULONG *pcb
 
 HRESULT STDMETHODCALLTYPE StreamOnZipBuffer::Seek(LARGE_INTEGER dlibMove, DWORD dwOrigin, ULARGE_INTEGER *)
 {
-    __int64 size = (__int64) ref_zip_buffer_.size();
+    __int64 size = static_cast<__int64>(ref_zip_buffer_.size());
     __int64 p = 0;
 
     switch (dwOrigin)
@@ -230,23 +197,23 @@ HRESULT STDMETHODCALLTYPE StreamOnZipBuffer::Seek(LARGE_INTEGER dlibMove, DWORD 
         case STREAM_SEEK_SET:
             break;
         case STREAM_SEEK_CUR:
-            p = (__int64) pos_;
+            p = static_cast<__int64>(pos_);
             break;
         case STREAM_SEEK_END:
             p = size - 1;
             break;
-   }
+    }
 
-   HRESULT hr = STG_E_INVALIDFUNCTION;
+    HRESULT hr = STG_E_INVALIDFUNCTION;
 
-   p += dlibMove.QuadPart;
+    p += dlibMove.QuadPart;
 
-   if ( ( p >= 0 ) && (p < size) )
-   {
-        pos_ = (size_t) p;
+    if ( ( p >= 0 ) && (p < size) )
+    {
+        pos_ = static_cast<size_t>(p);
         hr = S_OK;
-   }
-   return hr;
+    }
+    return hr;
 }
 
 HRESULT STDMETHODCALLTYPE StreamOnZipBuffer::Stat(STATSTG *pstatstg, DWORD grfStatFlag)
@@ -376,7 +343,7 @@ HRESULT STDMETHODCALLTYPE CThumbviewer::Extract(HBITMAP *phBmpImage)
     try
     {
         std::wstring fname = getShortPathName( filename_ );
-        std::unique_ptr<ZipFile> zipfile( new ZipFile( WStringToString( fname ) ) );
+        std::unique_ptr<ZipFile> zipfile( new ZipFile( fname ) );
 
         if (zipfile->HasContent(THUMBNAIL_CONTENT))
         {
@@ -477,7 +444,7 @@ HRESULT STDMETHODCALLTYPE CThumbviewer::Extract(HBITMAP *phBmpImage)
     }
     catch(std::exception&)
     {
-        OutputDebugStringFormatA( "CThumbviewer Extract ERROR!\n" );
+        OutputDebugStringFormatW( L"CThumbviewer Extract ERROR!\n" );
         hr = E_FAIL;
     }
     return hr;

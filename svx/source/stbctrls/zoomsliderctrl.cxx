@@ -23,11 +23,13 @@
 #include <vcl/image.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/event.hxx>
 #include <svx/zoomslideritem.hxx>
 #include <svx/dialmgr.hxx>
-#include <svx/dialogs.hrc>
-#include <basegfx/tools/zoomtools.hxx>
-#include "bitmaps.hlst"
+#include <svx/strings.hrc>
+#include <basegfx/utils/zoomtools.hxx>
+#include <bitmaps.hlst>
+#include <com/sun/star/beans/PropertyValue.hpp>
 
 #include <set>
 
@@ -65,7 +67,7 @@ const long nSliderXOffset = 20;
 const long nSnappingEpsilon = 5; // snapping epsilon in pixels
 const long nSnappingPointsMinDist = nSnappingEpsilon; // minimum distance of two adjacent snapping points
 
-// nOffset referes to the origin of the control:
+// nOffset refers to the origin of the control:
 // + ----------- -
 sal_uInt16 SvxZoomSliderControl::Offset2Zoom( long nOffset ) const
 {
@@ -80,12 +82,8 @@ sal_uInt16 SvxZoomSliderControl::Offset2Zoom( long nOffset ) const
 
     // check for snapping points:
     sal_uInt16 nCount = 0;
-    for ( std::vector< long >::const_iterator aSnappingPointIter = mxImpl->maSnappingPointOffsets.begin(),
-           aEnd = mxImpl->maSnappingPointOffsets.end();
-          aSnappingPointIter != aEnd;
-          ++aSnappingPointIter )
+    for ( const long nCurrent : mxImpl->maSnappingPointOffsets )
     {
-        const long nCurrent = *aSnappingPointIter;
         if ( std::abs(nCurrent - nOffset) < nSnappingEpsilon )
         {
             nOffset = nCurrent;
@@ -157,9 +155,9 @@ SvxZoomSliderControl::SvxZoomSliderControl( sal_uInt16 _nSlotId,  sal_uInt16 _nI
     SfxStatusBarControl( _nSlotId, _nId, rStatusBar ),
     mxImpl( new SvxZoomSliderControl_Impl )
 {
-    mxImpl->maSliderButton   = Image(BitmapEx(RID_SVXBMP_SLIDERBUTTON));
-    mxImpl->maIncreaseButton = Image(BitmapEx(RID_SVXBMP_SLIDERINCREASE));
-    mxImpl->maDecreaseButton = Image(BitmapEx(RID_SVXBMP_SLIDERDECREASE));
+    mxImpl->maSliderButton   = Image(StockImage::Yes, RID_SVXBMP_SLIDERBUTTON);
+    mxImpl->maIncreaseButton = Image(StockImage::Yes, RID_SVXBMP_SLIDERINCREASE);
+    mxImpl->maDecreaseButton = Image(StockImage::Yes, RID_SVXBMP_SLIDERDECREASE);
 }
 
 SvxZoomSliderControl::~SvxZoomSliderControl()
@@ -183,7 +181,7 @@ void SvxZoomSliderControl::StateChanged( sal_uInt16 /*nSID*/, SfxItemState eStat
         mxImpl->mbValuesSet   = true;
 
         if ( mxImpl->mnSliderCenter == mxImpl->mnMaxZoom )
-            mxImpl->mnSliderCenter = mxImpl->mnMinZoom + (sal_uInt16)((mxImpl->mnMaxZoom - mxImpl->mnMinZoom) * 0.5);
+            mxImpl->mnSliderCenter = mxImpl->mnMinZoom + static_cast<sal_uInt16>((mxImpl->mnMaxZoom - mxImpl->mnMinZoom) * 0.5);
 
 
         DBG_ASSERT( mxImpl->mnMinZoom <= mxImpl->mnCurrentZoom &&
@@ -198,19 +196,16 @@ void SvxZoomSliderControl::StateChanged( sal_uInt16 /*nSID*/, SfxItemState eStat
 
         // get all snapping points:
         std::set< sal_uInt16 > aTmpSnappingPoints;
-        for ( sal_Int32 j = 0; j < rSnappingPoints.getLength(); ++j )
+        for ( const sal_Int32 nSnappingPoint : rSnappingPoints )
         {
-            const sal_Int32 nSnappingPoint = rSnappingPoints[j];
-            aTmpSnappingPoints.insert( (sal_uInt16)nSnappingPoint );
+            aTmpSnappingPoints.insert( static_cast<sal_uInt16>(nSnappingPoint) );
         }
 
-        // remove snapping points that are to close to each other:
+        // remove snapping points that are too close to each other:
         long nLastOffset = 0;
 
-        for ( std::set< sal_uInt16 >::const_iterator aSnappingPointIter = aTmpSnappingPoints.begin(),
-              aEnd = aTmpSnappingPoints.end(); aSnappingPointIter != aEnd; ++aSnappingPointIter )
+        for ( const sal_uInt16 nCurrent : aTmpSnappingPoints )
         {
-            const sal_uInt16 nCurrent = *aSnappingPointIter;
             const long nCurrentOffset = Zoom2Offset( nCurrent );
 
             if ( nCurrentOffset - nLastOffset >= nSnappingPointsMinDist )
@@ -235,52 +230,52 @@ void SvxZoomSliderControl::Paint( const UserDrawEvent& rUsrEvt )
     tools::Rectangle           aRect = rUsrEvt.GetRect();
     tools::Rectangle           aSlider = aRect;
 
-    long nSliderHeight  = 2 * pDev->GetDPIScaleFactor();
-    long nSnappingHeight = 4 * pDev->GetDPIScaleFactor();
+    long nSliderHeight  = 1 * pDev->GetDPIScaleFactor();
+    long nSnappingHeight = 2 * pDev->GetDPIScaleFactor();
 
-    aSlider.Top()   += (aControlRect.GetHeight() - nSliderHeight)/2;
-    aSlider.Bottom() = aSlider.Top() + nSliderHeight - 1;
-    aSlider.Left()  += nSliderXOffset;
-    aSlider.Right() -= nSliderXOffset;
+    aSlider.AdjustTop((aControlRect.GetHeight() - nSliderHeight)/2 );
+    aSlider.SetBottom( aSlider.Top() + nSliderHeight - 1 );
+    aSlider.AdjustLeft(nSliderXOffset );
+    aSlider.AdjustRight( -nSliderXOffset );
 
     Color               aOldLineColor = pDev->GetLineColor();
     Color               aOldFillColor = pDev->GetFillColor();
 
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
-    pDev->SetLineColor( rStyleSettings.GetShadowColor() );
-    pDev->SetFillColor( rStyleSettings.GetShadowColor() );
+    pDev->SetLineColor( rStyleSettings.GetDarkShadowColor() );
+    pDev->SetFillColor( rStyleSettings.GetDarkShadowColor() );
 
+    // draw slider
+    pDev->DrawRect( aSlider );
+    // shadow
+    pDev->SetLineColor( rStyleSettings.GetShadowColor() );
+    pDev->DrawLine(Point(aSlider.Left()+1,aSlider.Bottom()+1), Point(aSlider.Right()+1,aSlider.Bottom()+1));
+    pDev->SetLineColor( rStyleSettings.GetDarkShadowColor() );
 
     // draw snapping points:
-    for ( std::vector< long >::const_iterator aSnappingPointIter = mxImpl->maSnappingPointOffsets.begin(),
-            aEnd = mxImpl->maSnappingPointOffsets.end();
-          aSnappingPointIter != aEnd;
-          ++aSnappingPointIter )
+    for ( const auto& rSnappingPoint : mxImpl->maSnappingPointOffsets )
     {
-        long nSnapPosX = aRect.Left() + *aSnappingPointIter;
+        long nSnapPosX = aRect.Left() + rSnappingPoint;
 
         pDev->DrawRect( tools::Rectangle( nSnapPosX - 1, aSlider.Top() - nSnappingHeight,
                     nSnapPosX, aSlider.Bottom() + nSnappingHeight ) );
     }
 
-    // draw slider
-    pDev->DrawRect( aSlider );
-
     // draw slider button
     Point aImagePoint = aRect.TopLeft();
-    aImagePoint.X() += Zoom2Offset( mxImpl->mnCurrentZoom );
-    aImagePoint.X() -= mxImpl->maSliderButton.GetSizePixel().Width()/2;
-    aImagePoint.Y() += (aControlRect.GetHeight() - mxImpl->maSliderButton.GetSizePixel().Height())/2;
+    aImagePoint.AdjustX(Zoom2Offset( mxImpl->mnCurrentZoom ) );
+    aImagePoint.AdjustX( -(mxImpl->maSliderButton.GetSizePixel().Width()/2) );
+    aImagePoint.AdjustY((aControlRect.GetHeight() - mxImpl->maSliderButton.GetSizePixel().Height())/2 );
     pDev->DrawImage( aImagePoint, mxImpl->maSliderButton );
 
     // draw decrease button
     aImagePoint = aRect.TopLeft();
-    aImagePoint.X() += (nSliderXOffset - mxImpl->maDecreaseButton.GetSizePixel().Width())/2;
-    aImagePoint.Y() += (aControlRect.GetHeight() - mxImpl->maDecreaseButton.GetSizePixel().Height())/2;
+    aImagePoint.AdjustX((nSliderXOffset - mxImpl->maDecreaseButton.GetSizePixel().Width())/2 );
+    aImagePoint.AdjustY((aControlRect.GetHeight() - mxImpl->maDecreaseButton.GetSizePixel().Height())/2 );
     pDev->DrawImage( aImagePoint, mxImpl->maDecreaseButton );
 
     // draw increase button
-    aImagePoint.X() = aRect.TopLeft().X() + aControlRect.GetWidth() - mxImpl->maIncreaseButton.GetSizePixel().Width() - (nSliderXOffset - mxImpl->maIncreaseButton.GetSizePixel().Height())/2;
+    aImagePoint.setX( aRect.TopLeft().X() + aControlRect.GetWidth() - mxImpl->maIncreaseButton.GetSizePixel().Width() - (nSliderXOffset - mxImpl->maIncreaseButton.GetSizePixel().Height())/2 );
     pDev->DrawImage( aImagePoint, mxImpl->maIncreaseButton );
 
     pDev->SetLineColor( aOldLineColor );
@@ -380,8 +375,7 @@ bool SvxZoomSliderControl::MouseMove( const MouseEvent & rEvt )
 
 void SvxZoomSliderControl::forceRepaint() const
 {
-    if (GetStatusBar().AreItemsVisible())
-        GetStatusBar().SetItemData(GetId(), nullptr);
+    GetStatusBar().SetItemData(GetId(), nullptr);
 }
 
 void SvxZoomSliderControl::repaintAndExecute()

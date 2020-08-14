@@ -18,10 +18,11 @@
  */
 
 #include <sal/macros.h>
-#include "ado/Awrapado.hxx"
-#include "ado/Awrapadox.hxx"
+#include <ado/Awrapado.hxx>
+#include <ado/Awrapadox.hxx>
 #include <comphelper/types.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 using namespace connectivity::ado;
 
@@ -104,7 +105,7 @@ bool WpADOConnection::Execute(const OUString& CommandText,OLEVariant& RecordsAff
 {
     assert(pInterface);
     OLEString sStr1(CommandText);
-    bool bErg = SUCCEEDED(pInterface->Execute(sStr1.asBSTR(),&RecordsAffected,Options,reinterpret_cast<_ADORecordset**>(ppiRset)));
+    bool bErg = SUCCEEDED(pInterface->Execute(sStr1.asBSTR(),&RecordsAffected,Options,reinterpret_cast<ADORecordset**>(ppiRset)));
     return bErg;
 }
 
@@ -237,7 +238,7 @@ sal_Int32 WpADOConnection::get_State() const
     return nRet;
 }
 
-bool WpADOConnection::OpenSchema(SchemaEnum eNum,OLEVariant& Restrictions,OLEVariant& SchemaID,ADORecordset**pprset)
+bool WpADOConnection::OpenSchema(SchemaEnum eNum,OLEVariant const & Restrictions,OLEVariant const & SchemaID,ADORecordset**pprset)
 {
     assert(pInterface);
     return SUCCEEDED(pInterface->OpenSchema(eNum,Restrictions,SchemaID,pprset));
@@ -513,8 +514,7 @@ void WpADOField::get_Value(OLEVariant& aValVar) const
 {
     assert(pInterface);
     aValVar.setEmpty();
-    bool bOk = SUCCEEDED(pInterface->get_Value(&aValVar));
-    (void)bOk;
+    pInterface->get_Value(&aValVar);
 }
 
 OLEVariant WpADOField::get_Value() const
@@ -1038,15 +1038,13 @@ void WpADOColumn::put_Name(const OUString& _rName)
 {
     assert(pInterface);
     OLEString bstr(_rName);
-    bool bErg = SUCCEEDED(pInterface->put_Name(bstr.asBSTR()));
-    (void)bErg;
+    pInterface->put_Name(bstr.asBSTR());
 }
 void WpADOColumn::put_RelatedColumn(const OUString& _rName)
 {
     assert(pInterface);
     OLEString bstr(_rName);
-    bool bErg = SUCCEEDED(pInterface->put_RelatedColumn(bstr.asBSTR()));
-    (void)bErg;
+    pInterface->put_RelatedColumn(bstr.asBSTR());
 }
 
 DataTypeEnum WpADOColumn::get_Type() const
@@ -1149,8 +1147,7 @@ void WpADOKey::put_Name(const OUString& _rName)
 {
     assert(pInterface);
     OLEString bstr(_rName);
-    bool bErg = SUCCEEDED(pInterface->put_Name(bstr.asBSTR()));
-    (void)bErg;
+    pInterface->put_Name(bstr.asBSTR());
 }
 
 KeyTypeEnum WpADOKey::get_Type() const
@@ -1179,8 +1176,7 @@ void WpADOKey::put_RelatedTable(const OUString& _rName)
 {
     assert(pInterface);
     OLEString bstr(_rName);
-    bool bErg = SUCCEEDED(pInterface->put_RelatedTable(bstr.asBSTR()));
-    (void)bErg;
+    pInterface->put_RelatedTable(bstr.asBSTR());
 }
 
 RuleEnum WpADOKey::get_DeleteRule() const
@@ -1233,8 +1229,7 @@ void WpADOIndex::put_Name(const OUString& _rName)
 {
     assert(pInterface);
     OLEString bstr(_rName);
-    bool bErg = SUCCEEDED(pInterface->put_Name(bstr.asBSTR()));
-    (void)bErg;
+    pInterface->put_Name(bstr.asBSTR());
 }
 
 bool WpADOIndex::get_Clustered() const
@@ -1355,8 +1350,7 @@ void WpADOTable::put_Name(const OUString& _rName)
 {
     assert(pInterface);
     OLEString bstr(_rName);
-    bool bErg = SUCCEEDED(pInterface->put_Name(bstr.asBSTR()));
-    (void)bErg;
+    pInterface->put_Name(bstr.asBSTR());
 }
 
 OUString WpADOTable::get_Type() const
@@ -1431,7 +1425,7 @@ void WpADOView::get_Command(OLEVariant& _rVar) const
     pInterface->get_Command(&_rVar);
 }
 
-void WpADOView::put_Command(OLEVariant& _rVar)
+void WpADOView::put_Command(OLEVariant const & _rVar)
 {
     assert(pInterface);
     pInterface->put_Command(_rVar);
@@ -1447,8 +1441,7 @@ OUString WpADOGroup::get_Name() const
 void WpADOGroup::put_Name(const OUString& _rName)
 {
     OLEString bstr(_rName);
-    bool bErg = SUCCEEDED(pInterface->put_Name(bstr.asBSTR()));
-    (void)bErg;
+    pInterface->put_Name(bstr.asBSTR());
 }
 
 RightsEnum WpADOGroup::GetPermissions(
@@ -1492,8 +1485,7 @@ OUString WpADOUser::get_Name() const
 void WpADOUser::put_Name(const OUString& _rName)
 {
     OLEString bstr(_rName);
-    bool bErg = SUCCEEDED(pInterface->put_Name(bstr.asBSTR()));
-    (void)bErg;
+    pInterface->put_Name(bstr.asBSTR());
 }
 
 bool WpADOUser::ChangePassword(const OUString& _rPwd,const OUString& _rNewPwd)
@@ -1543,9 +1535,7 @@ WpBase::WpBase(IDispatch* pInt)
 {
     if (pIUnknown)
     {
-        ULONG nCount = pIUnknown->AddRef();
-        (void)nCount;
-        //  OSL_ENSURE(nCount == 1,"Count is greater than 1");
+        pIUnknown->AddRef();
     }
 }
 
@@ -1559,14 +1549,7 @@ WpBase::WpBase(const WpBase& aWrapper)
 //inline
 WpBase& WpBase::operator=(const WpBase& rhs)
 {
-    if (rhs.pIUnknown != pIUnknown)
-    {
-        if (pIUnknown)
-            pIUnknown->Release();
-        pIUnknown = rhs.pIUnknown;
-        if (pIUnknown)
-            pIUnknown->AddRef();
-    }
+    operator=(rhs.pIUnknown);
     return *this;
 };
 

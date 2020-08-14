@@ -23,8 +23,9 @@
 #include <svtools/svtdllapi.h>
 #include <sal/types.h>
 
-#include <com/sun/star/task/XInteractionRequest.hpp>
-#include <svtools/javacontext.hxx>
+#include <com/sun/star/task/XInteractionHandler.hpp>
+
+namespace com :: sun :: star :: task { class XInteractionRequest; }
 
 #define JAVA_INTERACTION_HANDLER_NAME "java-vm.interaction-handler"
 
@@ -34,7 +35,7 @@ namespace svt
 //generated class. This conflicts with other libraries if they use the same inline
 //class.
 
-class SVT_DLLPUBLIC JavaInteractionHandler:
+class SVT_DLLPUBLIC JavaInteractionHandler final :
         public css::task::XInteractionHandler
 {
 public:
@@ -56,13 +57,6 @@ private:
     JavaInteractionHandler(JavaInteractionHandler const&) = delete;
     JavaInteractionHandler& operator = (JavaInteractionHandler const &) = delete;
     SVT_DLLPRIVATE virtual ~JavaInteractionHandler();
-    bool m_bShowErrorsOnce;
-    bool m_bJavaDisabled_Handled;
-    bool m_bInvalidSettings_Handled;
-    bool m_bJavaNotFound_Handled;
-    bool m_bVMCreationFailure_Handled;
-    bool m_bRestartRequired_Handled;
-    sal_uInt16 m_nResult_JavaDisabled;
 };
 }
 

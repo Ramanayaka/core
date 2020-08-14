@@ -23,13 +23,10 @@
 #include "NTable.hxx"
 #include <connectivity/sdbcx/VCollection.hxx>
 
-namespace connectivity
+namespace connectivity::evoab
 {
-    namespace evoab
-    {
-        class OEvoabColumns : public sdbcx::OCollection
+        class OEvoabColumns final : public sdbcx::OCollection
         {
-        protected:
             OEvoabTable*    m_pTable;
 
             virtual sdbcx::ObjectType createObject(const OUString& _rName) override;
@@ -38,12 +35,11 @@ namespace connectivity
         public:
             OEvoabColumns(  OEvoabTable* _pTable,
                         ::osl::Mutex& _rMutex,
-                        const TStringVector &_rVector
+                        const ::std::vector< OUString> &_rVector
                         ) : sdbcx::OCollection(*_pTable,true,_rMutex,_rVector),
                             m_pTable(_pTable)
             { }
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_EVOAB2_NCOLUMNS_HXX

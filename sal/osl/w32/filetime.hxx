@@ -12,6 +12,7 @@
 
 #include <sal/config.h>
 
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 #include <osl/time.h>
@@ -20,7 +21,7 @@ BOOL TimeValueToFileTime(TimeValue const * cpTimeVal, FILETIME * pFTime);
 
 BOOL FileTimeToTimeValue(FILETIME const * cpFTime, TimeValue * pTimeVal);
 
-namespace osl { namespace detail {
+namespace osl::detail {
 
 inline __int64 getFiletime(FILETIME const & ft) {
     return (DWORD64(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
@@ -31,7 +32,7 @@ inline void setFiletime(FILETIME & ft, __int64 value) {
     ft.dwLowDateTime = value & 0xFFFFFFFF;
 }
 
-} }
+}
 
 #endif
 

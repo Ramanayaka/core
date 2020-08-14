@@ -18,13 +18,13 @@
  */
 
 
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
+#include <tools/diagnose_ex.h>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
-#include "slideshowexceptions.hxx"
-#include "activity.hxx"
-#include "activitiesqueue.hxx"
+#include <slideshowexceptions.hxx>
+#include <activity.hxx>
+#include <activitiesqueue.hxx>
 
 #include <algorithm>
 #include <memory>
@@ -32,10 +32,8 @@
 
 using namespace ::com::sun::star;
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         ActivitiesQueue::ActivitiesQueue(
           const std::shared_ptr< ::canvas::tools::ElapsedTime >& pPresTimer ) :
             mpTimer( pPresTimer ),
@@ -55,9 +53,9 @@ namespace slideshow
                 for( const auto& pActivity : maCurrentActivitiesReinsert )
                     pActivity->dispose();
             }
-            catch (const uno::Exception& e)
+            catch (const uno::Exception&)
             {
-                SAL_WARN("slideshow", "" << e.Message);
+                TOOLS_WARN_EXCEPTION("slideshow", "");
             }
         }
 
@@ -80,13 +78,9 @@ namespace slideshow
 
             // accumulate time lag for all activities, and lag time
             // base if necessary:
-            ActivityQueue::const_iterator iPos(
-                maCurrentActivitiesWaiting.begin() );
-            const ActivityQueue::const_iterator iEnd(
-                maCurrentActivitiesWaiting.end() );
             double fLag = 0.0;
-            for ( ; iPos != iEnd; ++iPos )
-                fLag = std::max<double>( fLag, (*iPos)->calcTimeLag() );
+            for ( const auto& rxActivity : maCurrentActivitiesWaiting )
+                fLag = std::max<double>( fLag, rxActivity->calcTimeLag() );
             if (fLag > 0.0)
             {
                 mpTimer->adjustTimer( -fLag );
@@ -122,7 +116,7 @@ namespace slideshow
                     // since this will also capture segmentation
                     // violations and the like. In such a case, we
                     // still better let our clients now...
-                    SAL_WARN( "slideshow", comphelper::anyToString( cppu::getCaughtException() ) );
+                    TOOLS_WARN_EXCEPTION( "slideshow", "" );
                 }
                 catch( SlideShowException& )
                 {
@@ -182,7 +176,6 @@ namespace slideshow
                 pActivity->dequeued();
             ActivityQueue().swap( maCurrentActivitiesReinsert );
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

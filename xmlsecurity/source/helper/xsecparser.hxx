@@ -20,14 +20,13 @@
 #ifndef INCLUDED_XMLSECURITY_SOURCE_HELPER_XSECPARSER_HXX
 #define INCLUDED_XMLSECURITY_SOURCE_HELPER_XSECPARSER_HXX
 
-#include "xsecctl.hxx"
-
-#include <com/sun/star/xml/sax/XParser.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 
 #include <cppuhelper/implbase.hxx>
+
+class XMLSignatureHelper;
+class XSecController;
 
 class XSecParser: public cppu::WeakImplHelper
 <
@@ -59,6 +58,7 @@ private:
     OUString m_ouX509Certificate;
     OUString m_ouGpgCertificate;
     OUString m_ouGpgKeyID;
+    OUString m_ouGpgOwner;
     OUString m_ouCertDigest;
     OUString m_ouEncapsulatedX509Certificate;
     OUString m_ouDigestValue;
@@ -66,6 +66,9 @@ private:
     OUString m_ouDate;
     /// Characters of a <dc:description> element, as just read from XML.
     OUString m_ouDescription;
+    OUString m_ouSignatureLineId;
+    OUString m_ouSignatureLineValidImage;
+    OUString m_ouSignatureLineInvalidImage;
 
     /*
      * whether inside a particular element
@@ -75,6 +78,7 @@ private:
     bool m_bInX509Certificate;
     bool m_bInGpgCertificate;
     bool m_bInGpgKeyID;
+    bool m_bInGpgOwner;
     bool m_bInCertDigest;
     bool m_bInEncapsulatedX509Certificate;
     bool m_bInSigningTime;
@@ -82,6 +86,9 @@ private:
     bool m_bInSignatureValue;
     bool m_bInDate;
     bool m_bInDescription;
+    bool m_bInSignatureLineId;
+    bool m_bInSignatureLineValidImage;
+    bool m_bInSignatureLineInvalidImage;
 
     /*
      * the XSecController collaborating with XSecParser

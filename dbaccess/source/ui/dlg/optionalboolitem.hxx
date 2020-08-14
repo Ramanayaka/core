@@ -22,7 +22,7 @@
 
 #include <svl/poolitem.hxx>
 
-#include <boost/optional.hpp>
+#include <optional>
 
 namespace dbaui
 {
@@ -30,21 +30,20 @@ namespace dbaui
     // OptionalBoolItem
     class OptionalBoolItem : public SfxPoolItem
     {
-        ::boost::optional< bool >   m_aValue;
+        ::std::optional< bool >   m_aValue;
 
     public:
-        explicit OptionalBoolItem( sal_Int16 nWhich );
-        OptionalBoolItem( const OptionalBoolItem& _rSource );
+        explicit OptionalBoolItem( sal_uInt16 nWhich );
 
         virtual bool             operator==( const SfxPoolItem& _rItem ) const override;
-        virtual SfxPoolItem*     Clone( SfxItemPool* _pPool = nullptr ) const override;
+        virtual OptionalBoolItem* Clone( SfxItemPool* _pPool = nullptr ) const override;
 
         bool    HasValue() const                { return !!m_aValue; }
         void    ClearValue()                    { m_aValue.reset(); }
         bool    GetValue() const                { return *m_aValue; }
-        void    SetValue( const bool _bValue )  { m_aValue.reset( _bValue ); }
+        void    SetValue(bool _bValue)          { m_aValue = _bValue; }
 
-        const ::boost::optional< bool >&
+        const ::std::optional< bool >&
             GetFullValue() const { return m_aValue; }
     };
 

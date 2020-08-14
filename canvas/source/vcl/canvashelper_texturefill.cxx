@@ -24,36 +24,26 @@
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/polygon/b2dlinegeometry.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <basegfx/range/b2drectangle.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/tools/keystoplerp.hxx>
-#include <basegfx/tools/lerp.hxx>
-#include <basegfx/tools/tools.hxx>
-#include <basegfx/vector/b2dsize.hxx>
-#include <com/sun/star/rendering/PathCapType.hpp>
-#include <com/sun/star/rendering/PathJoinType.hpp>
-#include <com/sun/star/rendering/TextDirection.hpp>
+#include <basegfx/utils/canvastools.hxx>
+#include <basegfx/utils/keystoplerp.hxx>
+#include <basegfx/utils/lerp.hxx>
+#include <basegfx/utils/tools.hxx>
 #include <com/sun/star/rendering/TexturingMode.hpp>
-#include <comphelper/sequence.hxx>
 #include <rtl/math.hxx>
 #include <tools/diagnose_ex.h>
 #include <tools/poly.hxx>
 #include <vcl/bitmapex.hxx>
-#include <vcl/bitmapaccess.hxx>
 #include <vcl/canvastools.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/window.hxx>
 
 #include <canvas/canvastools.hxx>
-#include <canvas/parametricpolypolygon.hxx>
+#include <parametricpolypolygon.hxx>
 
 #include "canvashelper.hxx"
 #include "impltools.hxx"
-#include "spritecanvas.hxx"
 
 
 using namespace ::com::sun::star;
@@ -78,8 +68,8 @@ namespace vclcanvas
 
             for( nY=0; nY < nTilesY; ++nY )
             {
-                aCurrPos.X() = rPosPixel.X() + nY*rNextTileY.Width();
-                aCurrPos.Y() = rPosPixel.Y() + nY*rNextTileY.Height();
+                aCurrPos.setX( rPosPixel.X() + nY*rNextTileY.Width() );
+                aCurrPos.setY( rPosPixel.Y() + nY*rNextTileY.Height() );
 
                 for( nX=0; nX < nTilesX; ++nX )
                 {
@@ -90,8 +80,8 @@ namespace vclcanvas
                                            rTileSize,
                                            &rAttr );
 
-                    aCurrPos.X() += rNextTileX.Width();
-                    aCurrPos.Y() += rNextTileX.Height();
+                    aCurrPos.AdjustX(rNextTileX.Width() );
+                    aCurrPos.AdjustY(rNextTileX.Height() );
                 }
             }
 
@@ -143,11 +133,11 @@ namespace vclcanvas
             // now, we potentially have to enlarge our gradient area
             // atop and below the transformed [0,1]x[0,1] unit rect,
             // for the gradient to fill the complete bound rect.
-            ::basegfx::tools::infiniteLineFromParallelogram( aLeftTop,
+            ::basegfx::utils::infiniteLineFromParallelogram( aLeftTop,
                                                              aLeftBottom,
                                                              aRightTop,
                                                              aRightBottom,
-                                                             vcl::unotools::b2DRectangleFromRectangle( rBounds ) );
+                                                             vcl::unotools::b2DRectangleFromRectangle(rBounds) );
 
 
             // render gradient
@@ -197,7 +187,7 @@ namespace vclcanvas
 
             rOutDev.SetLineColor();
 
-            basegfx::tools::KeyStopLerp aLerper(rValues.maStops);
+            basegfx::utils::KeyStopLerp aLerper(rValues.maStops);
 
             // only iterate nStepCount-1 steps, as the last strip is
             // explicitly painted below
@@ -208,11 +198,11 @@ namespace vclcanvas
                 std::tie(nIndex,fAlpha)=aLerper.lerp(double(i)/nStepCount);
 
                 rOutDev.SetFillColor(
-                    Color( (sal_uInt8)(basegfx::tools::lerp(rColors[nIndex].GetRed(),rColors[nIndex+1].GetRed(),fAlpha)),
-                           (sal_uInt8)(basegfx::tools::lerp(rColors[nIndex].GetGreen(),rColors[nIndex+1].GetGreen(),fAlpha)),
-                           (sal_uInt8)(basegfx::tools::lerp(rColors[nIndex].GetBlue(),rColors[nIndex+1].GetBlue(),fAlpha)) ));
+                    Color( static_cast<sal_uInt8>(basegfx::utils::lerp(rColors[nIndex].GetRed(),rColors[nIndex+1].GetRed(),fAlpha)),
+                           static_cast<sal_uInt8>(basegfx::utils::lerp(rColors[nIndex].GetGreen(),rColors[nIndex+1].GetGreen(),fAlpha)),
+                           static_cast<sal_uInt8>(basegfx::utils::lerp(rColors[nIndex].GetBlue(),rColors[nIndex+1].GetBlue(),fAlpha)) ));
 
-                // copy right egde of polygon to left edge (and also
+                // copy right edge of polygon to left edge (and also
                 // copy the closing point)
                 aTempPoly[0] = aTempPoly[4] = aTempPoly[1];
                 aTempPoly[3] = aTempPoly[2];
@@ -241,7 +231,7 @@ namespace vclcanvas
             // diagonal to the 'right'
 
 
-            // copy right egde of polygon to left edge (and also
+            // copy right edge of polygon to left edge (and also
             // copy the closing point)
             aTempPoly[0] = aTempPoly[4] = aTempPoly[1];
             aTempPoly[3] = aTempPoly[2];
@@ -266,7 +256,6 @@ namespace vclcanvas
                                     const ::basegfx::B2DHomMatrix&                 rTextureTransform,
                                     const ::tools::Rectangle&                             rBounds,
                                     unsigned int                                   nStepCount,
-                                    bool                                           bFillNonOverlapping,
                                     const ::canvas::ParametricPolyPolygon::Values& rValues,
                                     const std::vector< ::Color >&                  rColors )
         {
@@ -285,7 +274,7 @@ namespace vclcanvas
             // subdivide polygon _before_ rendering, would otherwise have
             // to be performed on every loop turn.
             if( aOuterPoly.areControlPointsUsed() )
-                aOuterPoly = ::basegfx::tools::adaptiveSubdivideByAngle(aOuterPoly);
+                aOuterPoly = ::basegfx::utils::adaptiveSubdivideByAngle(aOuterPoly);
 
             aInnerPoly = aOuterPoly;
 
@@ -354,133 +343,50 @@ namespace vclcanvas
 
             rOutDev.SetLineColor();
 
-            basegfx::tools::KeyStopLerp aLerper(rValues.maStops);
+            basegfx::utils::KeyStopLerp aLerper(rValues.maStops);
 
-            if( !bFillNonOverlapping )
+            // fill background
+            rOutDev.SetFillColor( rColors.front() );
+            rOutDev.DrawRect( rBounds );
+
+            // render polygon
+            // ==============
+
+            for( unsigned int i=1,p; i<nStepCount; ++i )
             {
-                // fill background
-                rOutDev.SetFillColor( rColors.front() );
-                rOutDev.DrawRect( rBounds );
+                const double fT( i/double(nStepCount) );
 
-                // render polygon
-                // ==============
+                std::ptrdiff_t nIndex;
+                double fAlpha;
+                std::tie(nIndex,fAlpha)=aLerper.lerp(fT);
 
-                for( unsigned int i=1,p; i<nStepCount; ++i )
+                // lerp color
+                rOutDev.SetFillColor(
+                    Color( static_cast<sal_uInt8>(basegfx::utils::lerp(rColors[nIndex].GetRed(),rColors[nIndex+1].GetRed(),fAlpha)),
+                           static_cast<sal_uInt8>(basegfx::utils::lerp(rColors[nIndex].GetGreen(),rColors[nIndex+1].GetGreen(),fAlpha)),
+                           static_cast<sal_uInt8>(basegfx::utils::lerp(rColors[nIndex].GetBlue(),rColors[nIndex+1].GetBlue(),fAlpha)) ));
+
+                // scale and render polygon, by interpolating between
+                // outer and inner polygon.
+
+                for( p=0; p<nNumPoints; ++p )
                 {
-                    const double fT( i/double(nStepCount) );
+                    const ::basegfx::B2DPoint& rOuterPoint( aOuterPoly.getB2DPoint(p) );
+                    const ::basegfx::B2DPoint& rInnerPoint( aInnerPoly.getB2DPoint(p) );
 
-                    std::ptrdiff_t nIndex;
-                    double fAlpha;
-                    std::tie(nIndex,fAlpha)=aLerper.lerp(fT);
-
-                    // lerp color
-                    rOutDev.SetFillColor(
-                        Color( (sal_uInt8)(basegfx::tools::lerp(rColors[nIndex].GetRed(),rColors[nIndex+1].GetRed(),fAlpha)),
-                               (sal_uInt8)(basegfx::tools::lerp(rColors[nIndex].GetGreen(),rColors[nIndex+1].GetGreen(),fAlpha)),
-                               (sal_uInt8)(basegfx::tools::lerp(rColors[nIndex].GetBlue(),rColors[nIndex+1].GetBlue(),fAlpha)) ));
-
-                    // scale and render polygon, by interpolating between
-                    // outer and inner polygon.
-
-                    for( p=0; p<nNumPoints; ++p )
-                    {
-                        const ::basegfx::B2DPoint& rOuterPoint( aOuterPoly.getB2DPoint(p) );
-                        const ::basegfx::B2DPoint& rInnerPoint( aInnerPoly.getB2DPoint(p) );
-
-                        aTempPoly[(sal_uInt16)p] = ::Point(
-                            basegfx::fround( fT*rInnerPoint.getX() + (1-fT)*rOuterPoint.getX() ),
-                            basegfx::fround( fT*rInnerPoint.getY() + (1-fT)*rOuterPoint.getY() ) );
-                    }
-
-                    // close polygon explicitly
-                    aTempPoly[(sal_uInt16)p] = aTempPoly[0];
-
-                    // TODO(P1): compare with vcl/source/gdi/outdev4.cxx,
-                    // OutputDevice::ImplDrawComplexGradient(), there's a note
-                    // that on some VDev's, rendering disjunct poly-polygons
-                    // is faster!
-                    rOutDev.DrawPolygon( aTempPoly );
+                    aTempPoly[static_cast<sal_uInt16>(p)] = ::Point(
+                        basegfx::fround( fT*rInnerPoint.getX() + (1-fT)*rOuterPoint.getX() ),
+                        basegfx::fround( fT*rInnerPoint.getY() + (1-fT)*rOuterPoint.getY() ) );
                 }
-            }
-            else
-            {
-                // render polygon
-                // ==============
 
-                // For performance reasons, we create a temporary VCL polygon
-                // here, keep it all the way and only change the vertex values
-                // in the loop below (as ::Polygon is a pimpl class, creating
-                // one every loop turn would really stress the mem allocator)
-                ::tools::PolyPolygon aTempPolyPoly;
-                ::tools::Polygon aTempPoly2( static_cast<sal_uInt16>(nNumPoints+1) );
+                // close polygon explicitly
+                aTempPoly[static_cast<sal_uInt16>(p)] = aTempPoly[0];
 
-                aTempPoly2[0] = rBounds.TopLeft();
-                aTempPoly2[1] = rBounds.TopRight();
-                aTempPoly2[2] = rBounds.BottomRight();
-                aTempPoly2[3] = rBounds.BottomLeft();
-                aTempPoly2[4] = rBounds.TopLeft();
-
-                aTempPolyPoly.Insert( aTempPoly );
-                aTempPolyPoly.Insert( aTempPoly2 );
-
-                for( unsigned int i=0,p; i<nStepCount; ++i )
-                {
-                    const double fT( (i+1)/double(nStepCount) );
-
-                    std::ptrdiff_t nIndex;
-                    double fAlpha;
-                    std::tie(nIndex,fAlpha)=aLerper.lerp(fT);
-
-                    // lerp color
-                    rOutDev.SetFillColor(
-                        Color( (sal_uInt8)(basegfx::tools::lerp(rColors[nIndex].GetRed(),rColors[nIndex+1].GetRed(),fAlpha)),
-                               (sal_uInt8)(basegfx::tools::lerp(rColors[nIndex].GetGreen(),rColors[nIndex+1].GetGreen(),fAlpha)),
-                               (sal_uInt8)(basegfx::tools::lerp(rColors[nIndex].GetBlue(),rColors[nIndex+1].GetBlue(),fAlpha)) ));
-
-#if OSL_DEBUG_LEVEL > 0
-                    if( i && !(i % 10) )
-                        rOutDev.SetFillColor( COL_RED );
-#endif
-
-                    // scale and render polygon. Note that here, we
-                    // calculate the inner polygon, which is actually the
-                    // start of the _next_ color strip. Thus, i+1
-
-                    for( p=0; p<nNumPoints; ++p )
-                    {
-                        const ::basegfx::B2DPoint& rOuterPoint( aOuterPoly.getB2DPoint(p) );
-                        const ::basegfx::B2DPoint& rInnerPoint( aInnerPoly.getB2DPoint(p) );
-
-                        aTempPoly[(sal_uInt16)p] = ::Point(
-                            basegfx::fround( fT*rInnerPoint.getX() + (1-fT)*rOuterPoint.getX() ),
-                            basegfx::fround( fT*rInnerPoint.getY() + (1-fT)*rOuterPoint.getY() ) );
-                    }
-
-                    // close polygon explicitly
-                    aTempPoly[(sal_uInt16)p] = aTempPoly[0];
-
-                    // swap inner and outer polygon
-                    aTempPolyPoly.Replace( aTempPolyPoly.GetObject( 1 ), 0 );
-
-                    if( i+1<nStepCount )
-                    {
-                        // assign new inner polygon. Note that with this
-                        // formulation, the internal pimpl objects for both
-                        // temp polygons and the polypolygon remain identical,
-                        // minimizing heap accesses (only a Polygon wrapper
-                        // object is freed and deleted twice during this swap).
-                        aTempPolyPoly.Replace( aTempPoly, 1 );
-                    }
-                    else
-                    {
-                        // last, i.e. inner strip. Now, the inner polygon
-                        // has zero area anyway, and to not leave holes in
-                        // the gradient, finally render a simple polygon:
-                        aTempPolyPoly.Remove( 1 );
-                    }
-
-                    rOutDev.DrawPolyPolygon( aTempPolyPoly );
-                }
+                // TODO(P1): compare with vcl/source/gdi/outdev4.cxx,
+                // OutputDevice::ImplDrawComplexGradient(), there's a note
+                // that on some VDev's, rendering disjunct poly-polygons
+                // is faster!
+                rOutDev.DrawPolygon( aTempPoly );
             }
         }
 
@@ -488,9 +394,8 @@ namespace vclcanvas
                              const ::canvas::ParametricPolyPolygon::Values& rValues,
                              const std::vector< ::Color >&                  rColors,
                              const ::basegfx::B2DHomMatrix&                 rTextureTransform,
-                             const ::tools::Rectangle&                             rBounds,
-                             unsigned int                                   nStepCount,
-                             bool                                           bFillNonOverlapping )
+                             const ::tools::Rectangle&                      rBounds,
+                             unsigned int                                   nStepCount )
         {
             switch( rValues.meType )
             {
@@ -504,13 +409,11 @@ namespace vclcanvas
                     break;
 
                 case ::canvas::ParametricPolyPolygon::GradientType::Elliptical:
-                    // FALLTHROUGH intended
                 case ::canvas::ParametricPolyPolygon::GradientType::Rectangular:
                     fillPolygonalGradient( rOutDev,
                                            rTextureTransform,
                                            rBounds,
                                            nStepCount,
-                                           bFillNonOverlapping,
                                            rValues,
                                            rColors );
                     break;
@@ -585,8 +488,7 @@ namespace vclcanvas
                                 rColors,
                                 aTotalTransform,
                                 aPolygonDeviceRectOrig,
-                                nStepCount,
-                                false );
+                                nStepCount );
                 rOutDev.Pop();
 
                 if( p2ndOutDev && nTransparency < 253 )
@@ -604,15 +506,14 @@ namespace vclcanvas
                 const vcl::Region aPolyClipRegion( rPoly );
 
                 rOutDev.Push( PushFlags::CLIPREGION );
-                rOutDev.SetClipRegion( aPolyClipRegion );
+                rOutDev.IntersectClipRegion( aPolyClipRegion );
 
                 doGradientFill( rOutDev,
                                 rValues,
                                 rColors,
                                 aTotalTransform,
                                 aPolygonDeviceRectOrig,
-                                nStepCount,
-                                false );
+                                nStepCount );
                 rOutDev.Pop();
 
                 if( p2ndOutDev && nTransparency < 253 )
@@ -661,12 +562,12 @@ namespace vclcanvas
     {
         ENSURE_ARG_OR_THROW( xPolyPolygon.is(),
                          "CanvasHelper::fillPolyPolygon(): polygon is NULL");
-        ENSURE_ARG_OR_THROW( textures.getLength(),
+        ENSURE_ARG_OR_THROW( textures.hasElements(),
                          "CanvasHelper::fillTexturedPolyPolygon: empty texture sequence");
 
-        if( mpOutDev )
+        if( mpOutDevProvider )
         {
-            tools::OutDevStateKeeper aStateKeeper( mpProtectedOutDev );
+            tools::OutDevStateKeeper aStateKeeper( mpProtectedOutDevProvider );
 
             const int nTransparency( setupOutDevState( viewState, renderState, IGNORE_COLOR ) );
             ::tools::PolyPolygon aPolyPoly( tools::mapPolyPolygon(
@@ -681,7 +582,7 @@ namespace vclcanvas
                 ::canvas::ParametricPolyPolygon* pGradient =
                       dynamic_cast< ::canvas::ParametricPolyPolygon* >( textures[0].Gradient.get() );
 
-                if( pGradient && pGradient->getValues().maColors.getLength() )
+                if( pGradient && pGradient->getValues().maColors.hasElements() )
                 {
                     // copy state from Gradient polypoly locally
                     // (given object might change!)
@@ -706,8 +607,8 @@ namespace vclcanvas
 
                         // TODO(E1): Return value
                         // TODO(F1): FillRule
-                        gradientFill( mpOutDev->getOutDev(),
-                                      mp2ndOutDev.get() ? &mp2ndOutDev->getOutDev() : nullptr,
+                        gradientFill( mpOutDevProvider->getOutDev(),
+                                      mp2ndOutDevProvider ? &mp2ndOutDevProvider->getOutDev() : nullptr,
                                       rValues,
                                       aColors,
                                       aPolyPoly,
@@ -726,7 +627,7 @@ namespace vclcanvas
             }
             else if( textures[0].Bitmap.is() )
             {
-                const geometry::IntegerSize2D aBmpSize( textures[0].Bitmap->getSize() );
+                geometry::IntegerSize2D aBmpSize( textures[0].Bitmap->getSize() );
 
                 ENSURE_ARG_OR_THROW( aBmpSize.Width != 0 &&
                                  aBmpSize.Height != 0,
@@ -844,26 +745,48 @@ namespace vclcanvas
                         // GraphicObject only supports scaling, rotation
                         // and translation)
 
-                        // setup GraphicAttr
-                        aGrfAttr.SetMirrorFlags(
-                            ( aScale.getX() < 0.0 ? BmpMirrorFlags::Horizontal : BmpMirrorFlags::NONE ) |
-                            ( aScale.getY() < 0.0 ? BmpMirrorFlags::Vertical : BmpMirrorFlags::NONE ) );
-                        aGrfAttr.SetRotation( static_cast< sal_uInt16 >(::basegfx::fround( nRotate*10.0 )) );
+                        // #i75339# don't apply mirror flags, having
+                        // negative size values is enough to make
+                        // GraphicObject flip the bitmap
 
-                        pGrfObj.reset( new GraphicObject( aBmpEx ) );
+                        // The angle has to be mapped from radian to tenths of
+                        // degrees with the orientation reversed: [0,2Pi) ->
+                        // (3600,0].  Note that the original angle may have
+                        // values outside the [0,2Pi) interval.
+                        const double nAngleInTenthOfDegrees (3600.0 - nRotate * 3600.0 / (2*M_PI));
+                        aGrfAttr.SetRotation( static_cast< sal_uInt16 >(::basegfx::fround(nAngleInTenthOfDegrees)) );
+
+                        pGrfObj = std::make_shared<GraphicObject>( aBmpEx );
                     }
                     else
                     {
+                        // modify output position, to account for the fact
+                        // that transformBitmap() always normalizes its output
+                        // bitmap into the smallest enclosing box.
+                        ::basegfx::B2DRectangle aDestRect;
+                        ::canvas::tools::calcTransformedRectBounds( aDestRect,
+                                                                    ::basegfx::B2DRectangle(0,
+                                                                                            0,
+                                                                                            aBmpSize.Width,
+                                                                                            aBmpSize.Height),
+                                                                    aMatrix );
+
+                        aOutputPos.setX( aDestRect.getMinX() );
+                        aOutputPos.setY( aDestRect.getMinY() );
+
                         // complex transformation, use generic affine bitmap
                         // transformation
                         aBmpEx = tools::transformBitmap( aBmpEx,
                                                          aTotalTransform);
 
-                        pGrfObj.reset( new GraphicObject( aBmpEx ) );
+                        pGrfObj = std::make_shared<GraphicObject>( aBmpEx );
 
                         // clear scale values, generated bitmap already
                         // contains scaling
-                        aScale.setX( 0.0 ); aScale.setY( 0.0 );
+                        aScale.setX( 1.0 ); aScale.setY( 1.0 );
+
+                        // update bitmap size, bitmap has changed above.
+                        aBmpSize = vcl::unotools::integerSize2DFromSize(aBmpEx.GetSizePixel());
                     }
 
 
@@ -871,7 +794,7 @@ namespace vclcanvas
                     // =================================
 
                     // calc device space direction vectors. We employ
-                    // the followin approach for tiled output: the
+                    // the following approach for tiled output: the
                     // texture bitmap is output in texture space
                     // x-major order, i.e. tile neighbors in texture
                     // space x direction are rendered back-to-back in
@@ -903,8 +826,7 @@ namespace vclcanvas
                     // start point from it.
                     ::basegfx::B2DRectangle aTextureSpacePolygonRect;
                     ::canvas::tools::calcTransformedRectBounds( aTextureSpacePolygonRect,
-                                                                vcl::unotools::b2DRectangleFromRectangle(
-                                                                    aPolygonDeviceRect ),
+                                                                vcl::unotools::b2DRectangleFromRectangle(aPolygonDeviceRect),
                                                                 aInverseTextureTransform );
 
                     // calc left, top of extended polygon rect in
@@ -947,7 +869,7 @@ namespace vclcanvas
                     const sal_Int32 nTilesY( textures[0].RepeatModeX == rendering::TexturingMode::NONE ?
                                              1 : nY2 - nY1 );
 
-                    OutputDevice& rOutDev( mpOutDev->getOutDev() );
+                    OutputDevice& rOutDev( mpOutDevProvider->getOutDev() );
 
                     if( bRectangularPolygon )
                     {
@@ -990,9 +912,9 @@ namespace vclcanvas
                                      aSz,
                                      aGrfAttr );
 
-                        if( mp2ndOutDev )
+                        if( mp2ndOutDevProvider )
                         {
-                            OutputDevice& r2ndOutDev( mp2ndOutDev->getOutDev() );
+                            OutputDevice& r2ndOutDev( mp2ndOutDevProvider->getOutDev() );
                             r2ndOutDev.IntersectClipRegion( aPolygonDeviceRect );
                             textureFill( r2ndOutDev,
                                          *pGrfObj,
@@ -1029,7 +951,7 @@ namespace vclcanvas
                             const vcl::Region aPolyClipRegion( aPolyPoly );
 
                             pVDev->SetClipRegion( aPolyClipRegion );
-                            textureFill( *pVDev.get(),
+                            textureFill( *pVDev,
                                          *pGrfObj,
                                          aOutPos,
                                          aIntegerNextTileX,
@@ -1042,8 +964,8 @@ namespace vclcanvas
                             // output VDev content alpha-blended to
                             // target position.
                             const ::Point aEmptyPoint;
-                            Bitmap aContentBmp(
-                                pVDev->GetBitmap( aEmptyPoint,
+                            BitmapEx aContentBmp(
+                                pVDev->GetBitmapEx( aEmptyPoint,
                                                  pVDev->GetOutputSizePixel() ) );
 
                             sal_uInt8 nCol( static_cast< sal_uInt8 >(
@@ -1051,12 +973,12 @@ namespace vclcanvas
                             AlphaMask aAlpha( pVDev->GetOutputSizePixel(),
                                               &nCol );
 
-                            BitmapEx aOutputBmpEx( aContentBmp, aAlpha );
+                            BitmapEx aOutputBmpEx( aContentBmp.GetBitmap(), aAlpha );
                             rOutDev.DrawBitmapEx( aPolygonDeviceRect.TopLeft(),
                                                   aOutputBmpEx );
 
-                            if( mp2ndOutDev )
-                                mp2ndOutDev->getOutDev().DrawBitmapEx( aPolygonDeviceRect.TopLeft(),
+                            if( mp2ndOutDevProvider )
+                                mp2ndOutDevProvider->getOutDev().DrawBitmapEx( aPolygonDeviceRect.TopLeft(),
                                                                        aOutputBmpEx );
                         }
                         else
@@ -1064,7 +986,7 @@ namespace vclcanvas
                             const vcl::Region aPolyClipRegion( aPolyPoly );
 
                             rOutDev.Push( PushFlags::CLIPREGION );
-                            rOutDev.SetClipRegion( aPolyClipRegion );
+                            rOutDev.IntersectClipRegion( aPolyClipRegion );
 
                             textureFill( rOutDev,
                                          *pGrfObj,
@@ -1077,12 +999,12 @@ namespace vclcanvas
                                          aGrfAttr );
                             rOutDev.Pop();
 
-                            if( mp2ndOutDev )
+                            if( mp2ndOutDevProvider )
                             {
-                                OutputDevice& r2ndOutDev( mp2ndOutDev->getOutDev() );
+                                OutputDevice& r2ndOutDev( mp2ndOutDevProvider->getOutDev() );
                                 r2ndOutDev.Push( PushFlags::CLIPREGION );
 
-                                r2ndOutDev.SetClipRegion( aPolyClipRegion );
+                                r2ndOutDev.IntersectClipRegion( aPolyClipRegion );
                                 textureFill( r2ndOutDev,
                                              *pGrfObj,
                                              aPt,

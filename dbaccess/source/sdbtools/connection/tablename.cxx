@@ -18,9 +18,9 @@
  */
 
 #include "tablename.hxx"
-#include "sdbt_resource.hrc"
-#include "module_sdbt.hxx"
-#include "sdbtstrings.hrc"
+#include <core_resource.hxx>
+#include <strings.hrc>
+#include <strings.hxx>
 
 #include <com/sun/star/sdb/tools/CompositionType.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
@@ -53,8 +53,6 @@ namespace sdbtools
     // TableName
     struct TableName_Impl
     {
-        SdbtClient      m_aModuleClient;    // keep the module alive as long as this instance lives
-
         OUString sCatalog;
         OUString sSchema;
         OUString sName;
@@ -119,7 +117,7 @@ namespace sdbtools
         EntryGuard aGuard( *this );
 
         Reference< XTablesSupplier > xSuppTables( getConnection(), UNO_QUERY_THROW );
-        Reference< XNameAccess > xTables( xSuppTables->getTables(), UNO_QUERY_THROW );
+        Reference< XNameAccess > xTables( xSuppTables->getTables(), css::uno::UNO_SET_THROW );
 
         Reference< XPropertySet > xTable;
         try
@@ -134,7 +132,7 @@ namespace sdbtools
         catch( const NoSuchElementException& ) { throw; }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
             throw NoSuchElementException();
         }
 
@@ -152,7 +150,7 @@ namespace sdbtools
             ||  !xPSI->hasPropertyByName( PROPERTY_NAME )
             )
             throw IllegalArgumentException(
-                SdbtRes( STR_NO_TABLE_OBJECT ),
+                DBA_RES( STR_NO_TABLE_OBJECT ),
                 *this,
                 0
             );
@@ -172,13 +170,13 @@ namespace sdbtools
 
     namespace
     {
-        /** translates a CompositionType into a EComposeRule
+        /** translates a CompositionType into an EComposeRule
             @throws IllegalArgumentException
                 if the given value does not denote a valid CompositionType
         */
         EComposeRule lcl_translateCompositionType_throw( sal_Int32 _nType )
         {
-            const struct
+            static const struct
             {
                 sal_Int32       nCompositionType;
                 EComposeRule    eComposeRule;
@@ -189,7 +187,7 @@ namespace sdbtools
                 { CompositionType::ForDataManipulation,      EComposeRule::InDataManipulation },
                 { CompositionType::ForProcedureCalls,        EComposeRule::InProcedureCalls },
                 { CompositionType::ForPrivilegeDefinitions,  EComposeRule::InPrivilegeDefinitions },
-                { CompositionType::ForPrivilegeDefinitions,  EComposeRule::Complete }
+                { CompositionType::Complete,                 EComposeRule::Complete }
             };
 
             bool found = false;
@@ -199,7 +197,7 @@ namespace sdbtools
                     found = true;
             if ( !found )
                 throw IllegalArgumentException(
-                    SdbtRes( STR_INVALID_COMPOSITION_TYPE ),
+                    DBA_RES( STR_INVALID_COMPOSITION_TYPE ),
                     nullptr,
                     0
                 );

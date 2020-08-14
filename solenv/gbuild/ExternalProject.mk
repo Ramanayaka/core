@@ -57,6 +57,7 @@ $(call gb_ExternalProject_get_preparation_target,%) :
 
 $(call gb_ExternalProject_get_target,%) :
 	$(call gb_Output_announce,$*,$(true),PRJ,3)
+	$(call gb_Trace_MakeMark,$*,PRJ)
 	touch $@
 
 .PHONY : $(call gb_ExternalProject_get_clean_target,%)
@@ -220,7 +221,7 @@ $(if $(findstring YES,$(UNPACKED_IS_BIN_TARBALL)),\
 $(call gb_Helper_print_on_error,cd $(EXTERNAL_WORKDIR)/$(3) && \
 	unset Platform && \
 	$(if $(WRAPPERS),export $(WRAPPERS) &&) \
-	$(if $(NMAKE),INCLUDE="$(gb_ExternalProject_INCLUDE)" LIB="$(ILIB)" MAKEFLAGS=) \
+	$(if $(NMAKE),export $(NMAKE) &&) \
 	$(2) && touch $@,$(EXTERNAL_WORKDIR)/$(if $(3),$(3)/,)$(if $(4),$(4),$(1).log))
 )
 endef

@@ -18,21 +18,18 @@
  */
 
 #include <memory>
-#include <config_features.h>
+#include <config_feature_desktop.h>
 
-#include "dp_help.hrc"
-#include "dp_backend.h"
+#include <strings.hrc>
+#include <dp_backend.h>
 #include "dp_helpbackenddb.hxx"
-#include "dp_services.hxx"
-#include "dp_ucb.h"
+#include <dp_ucb.h>
 #include <rtl/uri.hxx>
 #include <osl/file.hxx>
-#include <rtl/bootstrap.hxx>
 #include <ucbhelper/content.hxx>
-#include <comphelper/servicedecl.hxx>
 #include <svl/inettype.hxx>
-#include <uno/current_context.hxx>
 #include <unotools/pathoptions.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 #if HAVE_FEATURE_DESKTOP
 #include <helpcompiler/compilehelp.hxx>
@@ -42,16 +39,14 @@
 #include <com/sun/star/deployment/ExtensionRemovedException.hpp>
 #include <com/sun/star/ucb/SimpleFileAccess.hpp>
 #include <com/sun/star/util/XMacroExpander.hpp>
-#include <boost/optional.hpp>
+#include <optional>
 
 using namespace ::dp_misc;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::ucb;
 
-namespace dp_registry {
-namespace backend {
-namespace help {
+namespace dp_registry::backend::help {
 namespace {
 
 
@@ -99,7 +94,7 @@ class BackendImpl : public ::dp_registry::backend::PackageRegistryBackend
     void implCollectXhpFiles( const OUString& aDir,
         std::vector< OUString >& o_rXhpFileVector );
 
-    ::boost::optional<HelpBackendDb::Data> readDataFromDb(OUString const & url);
+    ::std::optional<HelpBackendDb::Data> readDataFromDb(OUString const & url);
     bool hasActiveEntry(OUString const & url);
     bool activateEntry(OUString const & url);
 
@@ -113,6 +108,11 @@ class BackendImpl : public ::dp_registry::backend::PackageRegistryBackend
 public:
     BackendImpl( Sequence<Any> const & args,
                  Reference<XComponentContext> const & xComponentContext );
+
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
     // XPackageRegistry
     virtual Sequence< Reference<deployment::XPackageTypeInfo> > SAL_CALL
@@ -128,25 +128,41 @@ BackendImpl::BackendImpl(
     : PackageRegistryBackend( args, xComponentContext ),
       m_xHelpTypeInfo( new Package::TypeInfo("application/vnd.sun.star.help",
                                OUString(),
-                               getResourceString(RID_STR_HELP)
+                               DpResId(RID_STR_HELP)
                                ) ),
       m_typeInfos( 1 )
 {
     m_typeInfos[ 0 ] = m_xHelpTypeInfo;
-    if (!transientMode())
-    {
-        OUString dbFile = makeURL(getCachePath(), "backenddb.xml");
-        m_backendDb.reset(
-            new HelpBackendDb(getComponentContext(), dbFile));
+    if (transientMode())
+        return;
 
-        //clean up data folders which are no longer used.
-        //This must not be done in the same process where the help files
-        //are still registers. Only after revoking and restarting OOo the folders
-        //can be removed. This works now, because the extension manager is a singleton
-        //and the backends are only create once per process.
-        std::list<OUString> folders = m_backendDb->getAllDataUrls();
-        deleteUnusedFolders(folders);
-   }
+    OUString dbFile = makeURL(getCachePath(), "backenddb.xml");
+    m_backendDb.reset(
+        new HelpBackendDb(getComponentContext(), dbFile));
+
+    //clean up data folders which are no longer used.
+    //This must not be done in the same process where the help files
+    //are still registers. Only after revoking and restarting OOo the folders
+    //can be removed. This works now, because the extension manager is a singleton
+    //and the backends are only create once per process.
+    std::vector<OUString> folders = m_backendDb->getAllDataUrls();
+    deleteUnusedFolders(folders);
+}
+
+// XServiceInfo
+OUString BackendImpl::getImplementationName()
+{
+    return "com.sun.star.comp.deployment.help.PackageRegistryBackend";
+}
+
+sal_Bool BackendImpl::supportsService( const OUString& ServiceName )
+{
+    return cppu::supportsService(this, ServiceName);
+}
+
+css::uno::Sequence< OUString > BackendImpl::getSupportedServiceNames()
+{
+    return { BACKEND_SERVICE_NAME };
 }
 
 // XPackageRegistry
@@ -159,7 +175,7 @@ BackendImpl::getSupportedPackageTypes()
 
 void BackendImpl::packageRemoved(OUString const & url, OUString const & /*mediaType*/)
 {
-    if (m_backendDb.get())
+    if (m_backendDb)
         m_backendDb->removeEntry(url);
 }
 
@@ -173,7 +189,7 @@ Reference<deployment::XPackage> BackendImpl::bindPackage_(
     // we don't support auto detection:
     if (mediaType_.isEmpty())
         throw lang::IllegalArgumentException(
-            StrCannotDetectMediaType::get() + url,
+            StrCannotDetectMediaType() + url,
             static_cast<OWeakObject *>(this), static_cast<sal_Int16>(-1) );
 
     OUString type, subType;
@@ -199,30 +215,30 @@ Reference<deployment::XPackage> BackendImpl::bindPackage_(
         }
     }
     throw lang::IllegalArgumentException(
-        StrUnsupportedMediaType::get() + mediaType_,
+        StrUnsupportedMediaType() + mediaType_,
         static_cast<OWeakObject *>(this),
         static_cast<sal_Int16>(-1) );
 }
 
-::boost::optional<HelpBackendDb::Data> BackendImpl::readDataFromDb(
+::std::optional<HelpBackendDb::Data> BackendImpl::readDataFromDb(
     OUString const & url)
 {
-    ::boost::optional<HelpBackendDb::Data> data;
-    if (m_backendDb.get())
+    ::std::optional<HelpBackendDb::Data> data;
+    if (m_backendDb)
         data = m_backendDb->getEntry(url);
     return data;
 }
 
 bool BackendImpl::hasActiveEntry(OUString const & url)
 {
-    if (m_backendDb.get())
+    if (m_backendDb)
         return m_backendDb->hasActiveEntry(url);
     return false;
 }
 
 bool BackendImpl::activateEntry(OUString const & url)
 {
-    if (m_backendDb.get())
+    if (m_backendDb)
         return m_backendDb->activateEntry(url);
     return false;
 }
@@ -337,7 +353,7 @@ beans::Optional< OUString > BackendImpl::PackageImpl::getRegistrationDataURL()
     if (m_bRemoved)
         throw deployment::ExtensionRemovedException();
 
-    ::boost::optional<HelpBackendDb::Data> data =
+    ::std::optional<HelpBackendDb::Data> data =
           getMyBackend()->readDataFromDb(getURL());
 
     if (data && getMyBackend()->hasActiveEntry(getURL()))
@@ -370,8 +386,8 @@ void BackendImpl::implProcessHelp(
                 OUString aExpandedHelpURL = dp_misc::expandUnoRcUrl( aHelpURL );
                 if( !xSFA->isFolder( aExpandedHelpURL ) )
                 {
-                    OUString aErrStr = getResourceString( RID_STR_HELPPROCESSING_GENERAL_ERROR );
-                    aErrStr += "No help folder";
+                    OUString aErrStr = DpResId( RID_STR_HELPPROCESSING_GENERAL_ERROR ) +
+                        "No help folder";
                     OWeakObject* oWeakThis = static_cast<OWeakObject *>(this);
                     throw deployment::DeploymentException( OUString(), oWeakThis,
                                                            makeAny( uno::Exception( aErrStr, oWeakThis ) ) );
@@ -404,19 +420,17 @@ void BackendImpl::implProcessHelp(
                             langFolderDest, xCmdEnv);
 
                         const OUString aHelpStr("help");
-                        const OUString aSlash("/");
 
                         OUString aJarFile(
-                            makeURL(sHelpFolder, langFolderURLSegment + aSlash + aHelpStr + ".jar"));
+                            makeURL(sHelpFolder, langFolderURLSegment + "/" + aHelpStr + ".jar"));
                         aJarFile = ::dp_misc::expandUnoRcUrl(aJarFile);
 
                         OUString aEncodedJarFilePath = rtl::Uri::encode(
                             aJarFile, rtl_UriCharClassPchar,
                             rtl_UriEncodeIgnoreEscapes,
                             RTL_TEXTENCODING_UTF8 );
-                        OUString aDestBasePath = "vnd.sun.star.zip://";
-                        aDestBasePath += aEncodedJarFilePath;
-                        aDestBasePath += "/" ;
+                        OUString aDestBasePath = "vnd.sun.star.zip://" +
+                            aEncodedJarFilePath + "/" ;
 
                         sal_Int32 nLenLangFolderURL = aLangURL.getLength() + 1;
 
@@ -440,7 +454,7 @@ void BackendImpl::implProcessHelp(
 
                         // Call compiler
                         sal_Int32 nXhpFileCount = aXhpFileVector.size();
-                        OUString* pXhpFiles = new OUString[nXhpFileCount];
+                        std::unique_ptr<OUString[]> pXhpFiles(new OUString[nXhpFileCount]);
                         for( sal_Int32 iXhp = 0 ; iXhp < nXhpFileCount ; ++iXhp )
                         {
                             OUString aXhpFile = aXhpFileVector[iXhp];
@@ -455,10 +469,10 @@ void BackendImpl::implProcessHelp(
                         HelpProcessingErrorInfo aErrorInfo;
                         bool bSuccess = compileExtensionHelp(
                             aOfficeHelpPathFileURL, aHelpStr, aLangURL,
-                            nXhpFileCount, pXhpFiles,
+                            nXhpFileCount, pXhpFiles.get(),
                             langFolderDestExpanded, aErrorInfo );
 
-                        delete[] pXhpFiles;
+                        pXhpFiles.reset();
 
                         if( bSuccess )
                         {
@@ -475,18 +489,18 @@ void BackendImpl::implProcessHelp(
 
                         if( !bSuccess )
                         {
-                            sal_uInt16 nErrStrId = 0;
+                            const char* pErrStrId = nullptr;
                             switch( aErrorInfo.m_eErrorClass )
                             {
-                            case HelpProcessingErrorClass::General:      nErrStrId = RID_STR_HELPPROCESSING_GENERAL_ERROR; break;
-                            case HelpProcessingErrorClass::XmlParsing:   nErrStrId = RID_STR_HELPPROCESSING_XMLPARSING_ERROR; break;
+                            case HelpProcessingErrorClass::General:      pErrStrId = RID_STR_HELPPROCESSING_GENERAL_ERROR; break;
+                            case HelpProcessingErrorClass::XmlParsing:   pErrStrId = RID_STR_HELPPROCESSING_XMLPARSING_ERROR; break;
                             default: ;
                             };
 
                             OUString aErrStr;
-                            if( nErrStrId != 0 )
+                            if (pErrStrId)
                             {
-                                aErrStr = getResourceString( nErrStrId );
+                                aErrStr = DpResId(pErrStrId);
 
                                 // Remove CR/LF
                                 OUString aErrMsg( aErrorInfo.m_aErrorMsg );
@@ -506,7 +520,7 @@ void BackendImpl::implProcessHelp(
                                     aErrMsg = aErrMsg.copy( 0, nCopy );
                                 }
                                 aErrStr += aErrMsg;
-                                if( nErrStrId == RID_STR_HELPPROCESSING_XMLPARSING_ERROR && !aErrorInfo.m_aXMLParsingFile.isEmpty() )
+                                if (!strcmp(pErrStrId, RID_STR_HELPPROCESSING_XMLPARSING_ERROR) && !aErrorInfo.m_aXMLParsingFile.isEmpty() )
                                 {
                                     aErrStr += " in ";
 
@@ -515,8 +529,8 @@ void BackendImpl::implProcessHelp(
                                     aErrStr += aDecodedFile;
                                     if( aErrorInfo.m_nXMLParsingLine != -1 )
                                     {
-                                        aErrStr += ", line ";
-                                        aErrStr += OUString::number( aErrorInfo.m_nXMLParsingLine );
+                                        aErrStr += ", line " +
+                                            OUString::number( aErrorInfo.m_nXMLParsingLine );
                                     }
                                 }
                             }
@@ -533,13 +547,13 @@ void BackendImpl::implProcessHelp(
             }
             // Writing the data entry replaces writing the flag file. If we got to this
             // point the registration was successful.
-            if (m_backendDb.get())
+            if (m_backendDb)
                 m_backendDb->addEntry(xPackage->getURL(), data);
         }
     } //if (doRegisterPackage)
     else
     {
-        if (m_backendDb.get())
+        if (m_backendDb)
             m_backendDb->revokeEntry(xPackage->getURL());
     }
 }
@@ -594,15 +608,13 @@ Reference< ucb::XSimpleFileAccess3 > const & BackendImpl::getFileAccess()
 
 } // anon namespace
 
-namespace sdecl = comphelper::service_decl;
-sdecl::class_<BackendImpl, sdecl::with_args<true> > serviceBI;
-sdecl::ServiceDecl const serviceDecl(
-    serviceBI,
-    "com.sun.star.comp.deployment.help.PackageRegistryBackend",
-    BACKEND_SERVICE_NAME );
-
-} // namespace help
-} // namespace backend
 } // namespace dp_registry
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_deployment_help_PackageRegistryBackend_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
+{
+    return cppu::acquire(new dp_registry::backend::help::BackendImpl(args, context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,17 +21,20 @@
 
 #include "ItemConverter.hxx"
 #include "GraphicPropertyItemConverter.hxx"
+#include <com/sun/star/uno/Sequence.h>
 
-#include <com/sun/star/chart2/XDataSeries.hpp>
-#include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <tools/color.hxx>
 
 #include <vector>
 
+namespace com::sun::star::awt { struct Size; }
+namespace com::sun::star::chart2 { class XDataSeries; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::uno { class XComponentContext; }
+
 class SdrModel;
 
-namespace chart { namespace wrapper {
+namespace chart::wrapper {
 
 class DataPointItemConverter : public ItemConverter
 {
@@ -44,14 +47,15 @@ public:
         SfxItemPool& rItemPool,
         SdrModel& rDrawModel,
         const css::uno::Reference<css::lang::XMultiServiceFactory>& xNamedPropertyContainerFactory,
-        GraphicObjectType eMapTo = GraphicObjectType::FilledDataPoint,
+        GraphicObjectType eMapTo,
         const css::awt::Size* pRefSize = nullptr,
         bool bDataSeries = false,
         bool bUseSpecialFillColor = false,
         sal_Int32 nSpecialFillColor = 0,
         bool bOverwriteLabelsForAttributedDataPointsAlso = false,
         sal_Int32 nNumberFormat = 0,
-        sal_Int32 nPercentNumberFormat = 0 );
+        sal_Int32 nPercentNumberFormat = 0,
+        sal_Int32 nPointIndex = -1 );
 
     virtual ~DataPointItemConverter() override;
 
@@ -66,18 +70,21 @@ protected:
     virtual bool ApplySpecialItem( sal_uInt16 nWhichId, const SfxItemSet & rItemSet ) override;
 
 private:
-    std::vector< ItemConverter * >    m_aConverters;
+    std::vector< std::unique_ptr<ItemConverter> > m_aConverters;
     bool                                m_bDataSeries;
     bool                                m_bOverwriteLabelsForAttributedDataPointsAlso;
     bool                                m_bUseSpecialFillColor;
-    sal_Int32                           m_nSpecialFillColor;
+    Color                               m_nSpecialFillColor;
     sal_Int32                           m_nNumberFormat;
     sal_Int32                           m_nPercentNumberFormat;
     css::uno::Sequence<sal_Int32>       m_aAvailableLabelPlacements;
     bool                                m_bForbidPercentValue;
+    bool                                m_bHideLegendEntry;
+    sal_Int32                           m_nPointIndex;
+    css::uno::Reference<css::chart2::XDataSeries> m_xSeries;
 };
 
-}}
+}
 
 #endif
 

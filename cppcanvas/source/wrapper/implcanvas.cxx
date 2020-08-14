@@ -18,27 +18,21 @@
  */
 
 
-#include <rtl/ustring.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 
 #include <com/sun/star/rendering/XCanvas.hpp>
 
 #include <canvas/canvastools.hxx>
-#include <cppcanvas/polypolygon.hxx>
 
-#include "implfont.hxx"
-#include "implcolor.hxx"
 #include "implcanvas.hxx"
 
 
 using namespace ::com::sun::star;
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
 
         ImplCanvas::ImplCanvas( const uno::Reference< rendering::XCanvas >& xCanvas ) :
             maViewState(),
@@ -69,7 +63,7 @@ namespace cppcanvas
         void ImplCanvas::setClip( const ::basegfx::B2DPolyPolygon& rClipPoly )
         {
             // TODO(T3): not thread-safe. B2DPolyPolygon employs copy-on-write
-            maClipPolyPolygon.reset( rClipPoly );
+            maClipPolyPolygon = rClipPoly;
             maViewState.Clip.clear();
         }
 
@@ -84,14 +78,9 @@ namespace cppcanvas
             return !maClipPolyPolygon ? nullptr : &(*maClipPolyPolygon);
         }
 
-        ColorSharedPtr ImplCanvas::createColor() const
-        {
-            return ColorSharedPtr( new ImplColor( getUNOCanvas()->getDevice() ) );
-        }
-
         CanvasSharedPtr ImplCanvas::clone() const
         {
-            return CanvasSharedPtr( new ImplCanvas( *this ) );
+            return std::make_shared<ImplCanvas>( *this );
         }
 
         void ImplCanvas::clear() const
@@ -122,7 +111,6 @@ namespace cppcanvas
             return maViewState;
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

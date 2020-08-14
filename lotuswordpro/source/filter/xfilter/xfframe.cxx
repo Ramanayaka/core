@@ -57,8 +57,10 @@
  * @file
  * Frame whose anchor is not page.
  ************************************************************************/
-#include "xfframe.hxx"
-#include "xfparagraph.hxx"
+#include <xfilter/xfglobal.hxx>
+#include <xfilter/ixfattrlist.hxx>
+#include <xfilter/xfframe.hxx>
+
 #define     ZINDEX_MIN 0
 
 XFFrame::XFFrame()
@@ -72,7 +74,7 @@ XFFrame::XFFrame(bool isTextBox)
     , m_nZIndex(ZINDEX_MIN)
     , m_fMinHeight(0)
     , m_eType(enumXFFrameTextbox)
-    , m_nFlag(0)
+    , m_nFrameFlag(0)
     , m_isTextBox(isTextBox)
 {}
 
@@ -104,7 +106,7 @@ void    XFFrame::SetZIndex(sal_uInt32 zIndex)
     AdjustZIndex();
 }
 
-enumXFFrameType XFFrame::GetFrameType()
+enumXFFrameType XFFrame::GetFrameType() const
 {
     return m_eType;
 }
@@ -158,10 +160,10 @@ void    XFFrame::StartFrame(IXFStream *pStrm)
     pAttrList->AddAttribute( "svg:x", OUString::number(m_aRect.GetX()) + "cm" );
     pAttrList->AddAttribute( "svg:y", OUString::number(m_aRect.GetY()) + "cm" );
     pAttrList->AddAttribute( "svg:width", OUString::number(m_aRect.GetWidth()) + "cm" );
-    if( m_nFlag& XFFRAME_FLAG_MINHEIGHT )
+    if( m_nFrameFlag& XFFRAME_FLAG_MINHEIGHT )
     {
         pAttrList->AddAttribute( "fo:min-height", OUString::number(m_fMinHeight) + "cm" );
-        if( m_nFlag&XFFRAME_FLAG_MAXHEIGHT )
+        if( m_nFrameFlag&XFFRAME_FLAG_MAXHEIGHT )
             pAttrList->AddAttribute( "fo:max-height", OUString::number(0) + "cm" );
     }
     else

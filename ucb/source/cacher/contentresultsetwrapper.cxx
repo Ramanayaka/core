@@ -18,14 +18,12 @@
  */
 
 
-#include <contentresultsetwrapper.hxx>
-#include <com/sun/star/sdbc/FetchDirection.hpp>
-#include <com/sun/star/ucb/FetchError.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/sdbc/ResultSetType.hpp>
+#include "contentresultsetwrapper.hxx"
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <rtl/ustring.hxx>
 #include <osl/diagnose.h>
+#include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/interfacecontainer.hxx>
 
 using namespace com::sun::star::beans;
 using namespace com::sun::star::lang;
@@ -37,23 +35,14 @@ using namespace comphelper;
 using namespace cppu;
 
 
-// class ContentResultSetWrapper
 
 
 ContentResultSetWrapper::ContentResultSetWrapper(
                                 Reference< XResultSet > const & xOrigin )
                 : m_xResultSetOrigin( xOrigin )
-                , m_xRowOrigin( nullptr )
-                , m_xContentAccessOrigin( nullptr )
-                , m_xPropertySetOrigin( nullptr )
-                , m_xPropertySetInfo( nullptr )
                 , m_nForwardOnly( 2 )
-                , m_xMetaDataFromOrigin( nullptr )
                 , m_bDisposed( false )
                 , m_bInDispose( false )
-                , m_pDisposeEventListeners( nullptr )
-                , m_pPropertyChangeListeners( nullptr )
-                , m_pVetoableChangeListeners( nullptr )
 {
     m_xMyListenerImpl = new ContentResultSetWrapperListener( this );
 
@@ -63,7 +52,7 @@ ContentResultSetWrapper::ContentResultSetWrapper(
 };
 
 
-void SAL_CALL ContentResultSetWrapper::impl_init_xRowOrigin()
+void ContentResultSetWrapper::impl_init_xRowOrigin()
 {
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
@@ -71,8 +60,7 @@ void SAL_CALL ContentResultSetWrapper::impl_init_xRowOrigin()
             return;
     }
 
-    Reference< XRow > xOrgig =
-        Reference< XRow >( m_xResultSetOrigin, UNO_QUERY );
+    Reference< XRow > xOrgig( m_xResultSetOrigin, UNO_QUERY );
 
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
@@ -81,7 +69,7 @@ void SAL_CALL ContentResultSetWrapper::impl_init_xRowOrigin()
     }
 }
 
-void SAL_CALL ContentResultSetWrapper::impl_init_xContentAccessOrigin()
+void ContentResultSetWrapper::impl_init_xContentAccessOrigin()
 {
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
@@ -89,8 +77,7 @@ void SAL_CALL ContentResultSetWrapper::impl_init_xContentAccessOrigin()
             return;
     }
 
-    Reference< XContentAccess > xOrgig =
-        Reference< XContentAccess >( m_xResultSetOrigin, UNO_QUERY );
+    Reference< XContentAccess > xOrgig( m_xResultSetOrigin, UNO_QUERY );
 
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
@@ -100,7 +87,7 @@ void SAL_CALL ContentResultSetWrapper::impl_init_xContentAccessOrigin()
 }
 
 
-void SAL_CALL ContentResultSetWrapper::impl_init_xPropertySetOrigin()
+void ContentResultSetWrapper::impl_init_xPropertySetOrigin()
 {
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
@@ -108,8 +95,7 @@ void SAL_CALL ContentResultSetWrapper::impl_init_xPropertySetOrigin()
             return;
     }
 
-    Reference< XPropertySet > xOrig =
-        Reference< XPropertySet >( m_xResultSetOrigin, UNO_QUERY );
+    Reference< XPropertySet > xOrig( m_xResultSetOrigin, UNO_QUERY );
 
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
@@ -118,7 +104,7 @@ void SAL_CALL ContentResultSetWrapper::impl_init_xPropertySetOrigin()
     }
 }
 
-void SAL_CALL ContentResultSetWrapper::impl_init()
+void ContentResultSetWrapper::impl_init()
 {
     //call this at the end of constructor of derived class
 
@@ -132,13 +118,9 @@ void SAL_CALL ContentResultSetWrapper::impl_init()
 ContentResultSetWrapper::~ContentResultSetWrapper()
 {
     //call impl_deinit() at start of destructor of derived class
-
-    delete m_pDisposeEventListeners;
-    delete m_pPropertyChangeListeners;
-    delete m_pVetoableChangeListeners;
 };
 
-void SAL_CALL ContentResultSetWrapper::impl_deinit()
+void ContentResultSetWrapper::impl_deinit()
 {
     //call this at start of destructor of derived class
 
@@ -146,7 +128,7 @@ void SAL_CALL ContentResultSetWrapper::impl_deinit()
 }
 
 //virtual
-void SAL_CALL ContentResultSetWrapper::impl_initPropertySetInfo()
+void ContentResultSetWrapper::impl_initPropertySetInfo()
 {
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
@@ -167,30 +149,30 @@ void SAL_CALL ContentResultSetWrapper::impl_initPropertySetInfo()
     }
 }
 
-void SAL_CALL ContentResultSetWrapper::impl_EnsureNotDisposed()
+void ContentResultSetWrapper::impl_EnsureNotDisposed()
 {
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
     if( m_bDisposed )
         throw DisposedException();
 }
 
-void SAL_CALL ContentResultSetWrapper::impl_getPropertyChangeListenerContainer()
+void ContentResultSetWrapper::impl_getPropertyChangeListenerContainer()
 {
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
     if ( !m_pPropertyChangeListeners )
-        m_pPropertyChangeListeners =
-            new PropertyChangeListenerContainer_Impl( m_aContainerMutex );
+        m_pPropertyChangeListeners.reset(
+            new PropertyChangeListenerContainer_Impl( m_aContainerMutex ) );
 }
 
-void SAL_CALL ContentResultSetWrapper::impl_getVetoableChangeListenerContainer()
+void ContentResultSetWrapper::impl_getVetoableChangeListenerContainer()
 {
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
     if ( !m_pVetoableChangeListeners )
-        m_pVetoableChangeListeners =
-            new PropertyChangeListenerContainer_Impl( m_aContainerMutex );
+        m_pVetoableChangeListeners.reset(
+            new PropertyChangeListenerContainer_Impl( m_aContainerMutex ) );
 }
 
-void SAL_CALL ContentResultSetWrapper::impl_notifyPropertyChangeListeners( const PropertyChangeEvent& rEvt )
+void ContentResultSetWrapper::impl_notifyPropertyChangeListeners( const PropertyChangeEvent& rEvt )
 {
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
@@ -228,7 +210,7 @@ void SAL_CALL ContentResultSetWrapper::impl_notifyPropertyChangeListeners( const
     }
 }
 
-void SAL_CALL ContentResultSetWrapper::impl_notifyVetoableChangeListeners( const PropertyChangeEvent& rEvt )
+void ContentResultSetWrapper::impl_notifyVetoableChangeListeners( const PropertyChangeEvent& rEvt )
 {
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
@@ -266,7 +248,7 @@ void SAL_CALL ContentResultSetWrapper::impl_notifyVetoableChangeListeners( const
     }
 }
 
-bool SAL_CALL ContentResultSetWrapper::impl_isForwardOnly()
+bool ContentResultSetWrapper::impl_isForwardOnly()
 {
     //m_nForwardOnly == 2 -> don't know
     //m_nForwardOnly == 1 -> YES
@@ -324,13 +306,13 @@ css::uno::Any SAL_CALL ContentResultSetWrapper::queryInterface( const css::uno::
 {
     //list all interfaces inclusive baseclasses of interfaces
     css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< XComponent* >(this)),
-                                               (static_cast< XCloseable* >(this)),
-                                               (static_cast< XResultSetMetaDataSupplier* >(this)),
-                                               (static_cast< XPropertySet* >(this)),
-                                               (static_cast< XContentAccess* >(this)),
-                                               (static_cast< XResultSet* >(this)),
-                                               (static_cast< XRow* >(this))
+                                               static_cast< XComponent* >(this),
+                                               static_cast< XCloseable* >(this),
+                                               static_cast< XResultSetMetaDataSupplier* >(this),
+                                               static_cast< XPropertySet* >(this),
+                                               static_cast< XContentAccess* >(this),
+                                               static_cast< XResultSet* >(this),
+                                               static_cast< XRow* >(this)
                                                );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
@@ -437,8 +419,8 @@ void SAL_CALL ContentResultSetWrapper::addEventListener( const Reference< XEvent
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
 
     if ( !m_pDisposeEventListeners )
-        m_pDisposeEventListeners =
-                    new OInterfaceContainerHelper2( m_aContainerMutex );
+        m_pDisposeEventListeners.reset(
+                    new OInterfaceContainerHelper2( m_aContainerMutex ) );
 
     m_pDisposeEventListeners->addInterface( Listener );
 }
@@ -555,29 +537,29 @@ void SAL_CALL ContentResultSetWrapper::addPropertyChangeListener( const OUString
 
     impl_getPropertyChangeListenerContainer();
     bool bNeedRegister = !m_pPropertyChangeListeners->
-                        getContainedTypes().getLength();
+                        getContainedTypes().hasElements();
     m_pPropertyChangeListeners->addInterface( aPropertyName, xListener );
-    if( bNeedRegister )
+    if( !bNeedRegister )
+        return;
+
+    impl_init_xPropertySetOrigin();
     {
-        impl_init_xPropertySetOrigin();
+        osl::Guard< osl::Mutex > aGuard( m_aMutex );
+        if( !m_xPropertySetOrigin.is() )
         {
-            osl::Guard< osl::Mutex > aGuard( m_aMutex );
-            if( !m_xPropertySetOrigin.is() )
-            {
-                OSL_FAIL( "broadcaster was disposed already" );
-                return;
-            }
+            OSL_FAIL( "broadcaster was disposed already" );
+            return;
         }
-        try
-        {
-            m_xPropertySetOrigin->addPropertyChangeListener(
-                OUString(), static_cast< XPropertyChangeListener * >( m_xMyListenerImpl.get() ) );
-        }
-        catch( Exception& )
-        {
-            m_pPropertyChangeListeners->removeInterface( aPropertyName, xListener );
-            throw;
-        }
+    }
+    try
+    {
+        m_xPropertySetOrigin->addPropertyChangeListener(
+            OUString(), static_cast< XPropertyChangeListener * >( m_xMyListenerImpl.get() ) );
+    }
+    catch( Exception& )
+    {
+        m_pPropertyChangeListeners->removeInterface( aPropertyName, xListener );
+        throw;
     }
 }
 
@@ -600,29 +582,29 @@ void SAL_CALL ContentResultSetWrapper::addVetoableChangeListener( const OUString
 
     impl_getVetoableChangeListenerContainer();
     bool bNeedRegister = !m_pVetoableChangeListeners->
-                        getContainedTypes().getLength();
+                        getContainedTypes().hasElements();
     m_pVetoableChangeListeners->addInterface( rPropertyName, xListener );
-    if( bNeedRegister )
+    if( !bNeedRegister )
+        return;
+
+    impl_init_xPropertySetOrigin();
     {
-        impl_init_xPropertySetOrigin();
+        osl::Guard< osl::Mutex > aGuard( m_aMutex );
+        if( !m_xPropertySetOrigin.is() )
         {
-            osl::Guard< osl::Mutex > aGuard( m_aMutex );
-            if( !m_xPropertySetOrigin.is() )
-            {
-                OSL_FAIL( "broadcaster was disposed already" );
-                return;
-            }
+            OSL_FAIL( "broadcaster was disposed already" );
+            return;
         }
-        try
-        {
-            m_xPropertySetOrigin->addVetoableChangeListener(
-                OUString(), static_cast< XVetoableChangeListener * >( m_xMyListenerImpl.get() ) );
-        }
-        catch( Exception& )
-        {
-            m_pVetoableChangeListeners->removeInterface( rPropertyName, xListener );
-            throw;
-        }
+    }
+    try
+    {
+        m_xPropertySetOrigin->addVetoableChangeListener(
+            OUString(), static_cast< XVetoableChangeListener * >( m_xMyListenerImpl.get() ) );
+    }
+    catch( Exception& )
+    {
+        m_pVetoableChangeListeners->removeInterface( rPropertyName, xListener );
+        throw;
     }
 }
 
@@ -656,26 +638,26 @@ void SAL_CALL ContentResultSetWrapper::removePropertyChangeListener( const OUStr
 
     m_pPropertyChangeListeners->removeInterface( rPropertyName, xListener );
 
-    if( !m_pPropertyChangeListeners->getContainedTypes().getLength() )
+    if( m_pPropertyChangeListeners->getContainedTypes().hasElements() )
+        return;
+
+    impl_init_xPropertySetOrigin();
     {
-        impl_init_xPropertySetOrigin();
+        osl::Guard< osl::Mutex > aGuard( m_aMutex );
+        if( !m_xPropertySetOrigin.is() )
         {
-            osl::Guard< osl::Mutex > aGuard( m_aMutex );
-            if( !m_xPropertySetOrigin.is() )
-            {
-                OSL_FAIL( "broadcaster was disposed already" );
-                return;
-            }
+            OSL_FAIL( "broadcaster was disposed already" );
+            return;
         }
-        try
-        {
-            m_xPropertySetOrigin->removePropertyChangeListener(
-                OUString(), static_cast< XPropertyChangeListener * >( m_xMyListenerImpl.get() ) );
-        }
-        catch( Exception& )
-        {
-            OSL_FAIL( "could not remove PropertyChangeListener" );
-        }
+    }
+    try
+    {
+        m_xPropertySetOrigin->removePropertyChangeListener(
+            OUString(), static_cast< XPropertyChangeListener * >( m_xMyListenerImpl.get() ) );
+    }
+    catch( Exception& )
+    {
+        OSL_FAIL( "could not remove PropertyChangeListener" );
     }
 }
 
@@ -699,7 +681,7 @@ void SAL_CALL ContentResultSetWrapper::removeVetoableChangeListener( const OUStr
         if( !rPropertyName.isEmpty() )
         {
             if( !getPropertySetInfo().is() )
-                throw UnknownPropertyException();
+                throw UnknownPropertyException(rPropertyName);
 
             m_xPropertySetInfo->getPropertyByName( rPropertyName );
             //throws UnknownPropertyException, if so
@@ -709,26 +691,26 @@ void SAL_CALL ContentResultSetWrapper::removeVetoableChangeListener( const OUStr
 
     m_pVetoableChangeListeners->removeInterface( rPropertyName, xListener );
 
-    if( !m_pVetoableChangeListeners->getContainedTypes().getLength() )
+    if( m_pVetoableChangeListeners->getContainedTypes().hasElements() )
+        return;
+
+    impl_init_xPropertySetOrigin();
     {
-        impl_init_xPropertySetOrigin();
+        osl::Guard< osl::Mutex > aGuard( m_aMutex );
+        if( !m_xPropertySetOrigin.is() )
         {
-            osl::Guard< osl::Mutex > aGuard( m_aMutex );
-            if( !m_xPropertySetOrigin.is() )
-            {
-                OSL_FAIL( "broadcaster was disposed already" );
-                return;
-            }
+            OSL_FAIL( "broadcaster was disposed already" );
+            return;
         }
-        try
-        {
-            m_xPropertySetOrigin->removeVetoableChangeListener(
-                OUString(), static_cast< XVetoableChangeListener * >( m_xMyListenerImpl.get() ) );
-        }
-        catch( Exception& )
-        {
-            OSL_FAIL( "could not remove VetoableChangeListener" );
-        }
+    }
+    try
+    {
+        m_xPropertySetOrigin->removeVetoableChangeListener(
+            OUString(), static_cast< XVetoableChangeListener * >( m_xMyListenerImpl.get() ) );
+    }
+    catch( Exception& )
+    {
+        OSL_FAIL( "could not remove VetoableChangeListener" );
     }
 }
 
@@ -737,7 +719,7 @@ void SAL_CALL ContentResultSetWrapper::removeVetoableChangeListener( const OUStr
 
 
 //virtual
-void SAL_CALL ContentResultSetWrapper::impl_disposing( const EventObject& )
+void ContentResultSetWrapper::impl_disposing( const EventObject& )
 {
     impl_EnsureNotDisposed();
 
@@ -760,7 +742,7 @@ void SAL_CALL ContentResultSetWrapper::impl_disposing( const EventObject& )
 }
 
 //virtual
-void SAL_CALL ContentResultSetWrapper::impl_propertyChange( const PropertyChangeEvent& rEvt )
+void ContentResultSetWrapper::impl_propertyChange( const PropertyChangeEvent& rEvt )
 {
     impl_EnsureNotDisposed();
 
@@ -771,7 +753,7 @@ void SAL_CALL ContentResultSetWrapper::impl_propertyChange( const PropertyChange
 }
 
 //virtual
-void SAL_CALL ContentResultSetWrapper::impl_vetoableChange( const PropertyChangeEvent& rEvt )
+void ContentResultSetWrapper::impl_vetoableChange( const PropertyChangeEvent& rEvt )
 {
     impl_EnsureNotDisposed();
 
@@ -1066,15 +1048,16 @@ Reference< XInterface > SAL_CALL ContentResultSetWrapper::getStatement()
 // XRow methods.
 
 
-#define XROW_GETXXX( getXXX )                                   \
-impl_EnsureNotDisposed();                                       \
-impl_init_xRowOrigin();                                         \
-if( !m_xRowOrigin.is() )                                        \
-{                                                               \
-    OSL_FAIL( "broadcaster was disposed already" );\
-    throw RuntimeException();                                   \
-}                                                               \
-return m_xRowOrigin->getXXX( columnIndex );
+void ContentResultSetWrapper::verifyGet()
+{
+    impl_EnsureNotDisposed();
+    impl_init_xRowOrigin();
+    if( !m_xRowOrigin.is() )
+    {
+        OSL_FAIL( "broadcaster was disposed already" );
+        throw RuntimeException();
+    }
+}
 
 //virtual
 sal_Bool SAL_CALL ContentResultSetWrapper::wasNull()
@@ -1092,85 +1075,99 @@ sal_Bool SAL_CALL ContentResultSetWrapper::wasNull()
 //virtual
 OUString SAL_CALL ContentResultSetWrapper::getString( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getString );
+    verifyGet();
+    return m_xRowOrigin->getString( columnIndex );
 }
 
 //virtual
 sal_Bool SAL_CALL ContentResultSetWrapper::getBoolean( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getBoolean );
+    verifyGet();
+    return m_xRowOrigin->getBoolean( columnIndex );
 }
 
 //virtual
 sal_Int8 SAL_CALL ContentResultSetWrapper::getByte( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getByte );
+    verifyGet();
+    return m_xRowOrigin->getByte( columnIndex );
 }
 
 //virtual
 sal_Int16 SAL_CALL ContentResultSetWrapper::getShort( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getShort );
+    verifyGet();
+    return m_xRowOrigin->getShort( columnIndex );
 }
 
 //virtual
 sal_Int32 SAL_CALL ContentResultSetWrapper::getInt( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getInt );
+    verifyGet();
+    return m_xRowOrigin->getInt( columnIndex );
 }
 
 //virtual
 sal_Int64 SAL_CALL ContentResultSetWrapper::getLong( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getLong );
+    verifyGet();
+    return m_xRowOrigin->getLong( columnIndex );
 }
 
 //virtual
 float SAL_CALL ContentResultSetWrapper::getFloat( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getFloat );
+    verifyGet();
+    return m_xRowOrigin->getFloat( columnIndex );
 }
 
 //virtual
 double SAL_CALL ContentResultSetWrapper::getDouble( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getDouble );
+    verifyGet();
+    return m_xRowOrigin->getDouble( columnIndex );
 }
 
 //virtual
 Sequence< sal_Int8 > SAL_CALL ContentResultSetWrapper::getBytes( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getBytes );
+    verifyGet();
+    return m_xRowOrigin->getBytes( columnIndex );
 }
 
 //virtual
 Date SAL_CALL ContentResultSetWrapper::getDate( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getDate );
+    verifyGet();
+    return m_xRowOrigin->getDate( columnIndex );
 }
 
 //virtual
 Time SAL_CALL ContentResultSetWrapper::getTime( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getTime );
+    verifyGet();
+    return m_xRowOrigin->getTime( columnIndex );
 }
 
 //virtual
 DateTime SAL_CALL ContentResultSetWrapper::getTimestamp( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getTimestamp );
+    verifyGet();
+    return m_xRowOrigin->getTimestamp( columnIndex );
 }
 
 //virtual
 Reference< css::io::XInputStream > SAL_CALL ContentResultSetWrapper::getBinaryStream( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getBinaryStream );
+    verifyGet();
+    return m_xRowOrigin->getBinaryStream( columnIndex );
 }
 
 //virtual
 Reference< css::io::XInputStream > SAL_CALL ContentResultSetWrapper::getCharacterStream( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getCharacterStream );
+    verifyGet();
+    return m_xRowOrigin->getCharacterStream( columnIndex );
 }
 
 //virtual
@@ -1192,29 +1189,32 @@ Any SAL_CALL ContentResultSetWrapper::getObject( sal_Int32 columnIndex, const Re
 //virtual
 Reference< XRef > SAL_CALL ContentResultSetWrapper::getRef( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getRef );
+    verifyGet();
+    return m_xRowOrigin->getRef( columnIndex );
 }
 
 //virtual
 Reference< XBlob > SAL_CALL ContentResultSetWrapper::getBlob( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getBlob );
+    verifyGet();
+    return m_xRowOrigin->getBlob( columnIndex );
 }
 
 //virtual
 Reference< XClob > SAL_CALL ContentResultSetWrapper::getClob( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getClob );
+    verifyGet();
+    return m_xRowOrigin->getClob( columnIndex );
 }
 
 //virtual
 Reference< XArray > SAL_CALL ContentResultSetWrapper::getArray( sal_Int32 columnIndex )
 {
-    XROW_GETXXX( getArray );
+    verifyGet();
+    return m_xRowOrigin->getArray( columnIndex );
 }
 
 
-// class ContentResultSetWrapperListener
 
 
 ContentResultSetWrapperListener::ContentResultSetWrapperListener(
@@ -1284,7 +1284,7 @@ void SAL_CALL ContentResultSetWrapperListener::vetoableChange( const PropertyCha
         m_pOwner->impl_vetoableChange( rEvt );
 }
 
-void SAL_CALL ContentResultSetWrapperListener::impl_OwnerDies()
+void ContentResultSetWrapperListener::impl_OwnerDies()
 {
     m_pOwner = nullptr;
 }

@@ -23,7 +23,7 @@
 #include <tools/globname.hxx>
 #include <svl/poolitem.hxx>
 
-class SVL_DLLPUBLIC SfxGlobalNameItem: public SfxPoolItem
+class SVL_DLLPUBLIC SfxGlobalNameItem final : public SfxPoolItem
 {
     SvGlobalName            m_aName;
 
@@ -34,8 +34,13 @@ public:
                             SfxGlobalNameItem( sal_uInt16 nWhich, const SvGlobalName& );
                             virtual ~SfxGlobalNameItem() override;
 
+    SfxGlobalNameItem(SfxGlobalNameItem const &) = default;
+    SfxGlobalNameItem(SfxGlobalNameItem &&) = default;
+    SfxGlobalNameItem & operator =(SfxGlobalNameItem const &) = delete; // due to SfxPoolItem
+    SfxGlobalNameItem & operator =(SfxGlobalNameItem &&) = delete; // due to SfxPoolItem
+
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SfxGlobalNameItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     const SvGlobalName&     GetValue() const { return m_aName; }
 
     virtual bool            PutValue  ( const css::uno::Any& rVal,

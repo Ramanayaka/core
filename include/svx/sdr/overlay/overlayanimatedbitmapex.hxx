@@ -24,13 +24,10 @@
 #include <vcl/bitmapex.hxx>
 
 
-namespace sdr
-{
-    namespace overlay
+namespace sdr::overlay
     {
-        class SVX_DLLPUBLIC OverlayAnimatedBitmapEx : public OverlayObjectWithBasePosition
+        class SVXCORE_DLLPUBLIC OverlayAnimatedBitmapEx final : public OverlayObjectWithBasePosition
         {
-        protected:
             // the Bitmaps
             BitmapEx                                maBitmapEx1;
             BitmapEx                                maBitmapEx2;
@@ -68,14 +65,6 @@ namespace sdr
                 double fRotation = 0.0);
             virtual ~OverlayAnimatedBitmapEx() override;
 
-            const BitmapEx& getBitmapEx1() const { return maBitmapEx1; }
-            const BitmapEx& getBitmapEx2() const { return maBitmapEx2; }
-
-            sal_uInt16 getCenterX1() const { return mnCenterX1; }
-            sal_uInt16 getCenterY1() const { return mnCenterY1; }
-            sal_uInt16 getCenterX2() const { return mnCenterX2; }
-            sal_uInt16 getCenterY2() const { return mnCenterY2; }
-
             // execute event from base class sdr::animation::Event. Default
             // implementation does nothing and does not create a new event.
             virtual void Trigger(sal_uInt32 nTime) override;
@@ -84,8 +73,7 @@ namespace sdr
             double getShearX() const { return mfShearX; }
             double getRotation() const { return mfRotation; }
         };
-    } // end of namespace overlay
-} // end of namespace sdr
+} // end of namespace sdr::overlay
 
 
 #endif // INCLUDED_SVX_SDR_OVERLAY_OVERLAYANIMATEDBITMAPEX_HXX

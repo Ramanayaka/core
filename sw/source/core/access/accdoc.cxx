@@ -23,28 +23,24 @@
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <unotools/accessiblestatesethelper.hxx>
-#include <sfx2/viewsh.hxx>
+#include <cppuhelper/typeprovider.hxx>
 #include <vcl/svapp.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <viewsh.hxx>
 #include <doc.hxx>
 #include <accmap.hxx>
-#include <accdoc.hxx>
-#include "access.hrc"
+#include "accdoc.hxx"
+#include <strings.hrc>
 #include <pagefrm.hxx>
 
-#include <editeng/brushitem.hxx>
 #include <swatrset.hxx>
-#include <frmatr.hxx>
-#include "unostyle.hxx"
-#include "docsh.hxx"
+#include <docsh.hxx>
 #include <crsrsh.hxx>
-#include "fesh.hxx"
+#include <fesh.hxx>
 #include <fmtclds.hxx>
 #include <flyfrm.hxx>
-#include <colfrm.hxx>
 #include <txtfrm.hxx>
 #include <sectfrm.hxx>
 #include <section.hxx>
@@ -57,8 +53,8 @@
 #include <dview.hxx>
 #include <dcontact.hxx>
 #include <svx/svdmark.hxx>
-const sal_Char sServiceName[] = "com.sun.star.text.AccessibleTextDocumentView";
-const sal_Char sImplementationName[] = "com.sun.star.comp.Writer.SwAccessibleDocumentView";
+const char sServiceName[] = "com.sun.star.text.AccessibleTextDocumentView";
+const char sImplementationName[] = "com.sun.star.comp.Writer.SwAccessibleDocumentView";
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
@@ -185,10 +181,10 @@ sal_Int32 SAL_CALL SwAccessibleDocumentBase::getAccessibleIndexInParent()
         }
         catch(const css::lang::IndexOutOfBoundsException &)
         {
-            return -1L;
+            return -1;
         }
     }
-    return -1L;
+    return -1;
 }
 
 OUString SAL_CALL SwAccessibleDocumentBase::getAccessibleDescription()
@@ -424,7 +420,7 @@ IMPL_LINK( SwAccessibleDocument, WindowChildEventListener, VclWindowEvent&, rEve
 
 OUString SAL_CALL SwAccessibleDocument::getImplementationName()
 {
-    return OUString(sImplementationName);
+    return sImplementationName;
 }
 
 sal_Bool SAL_CALL SwAccessibleDocument::supportsService(const OUString& sTestServiceName)
@@ -434,11 +430,7 @@ sal_Bool SAL_CALL SwAccessibleDocument::supportsService(const OUString& sTestSer
 
 uno::Sequence< OUString > SAL_CALL SwAccessibleDocument::getSupportedServiceNames()
 {
-    uno::Sequence< OUString > aRet(2);
-    OUString* pArray = aRet.getArray();
-    pArray[0] = sServiceName;
-    pArray[1] = sAccessibleServiceName;
-    return aRet;
+    return { sServiceName, sAccessibleServiceName };
 }
 
 // XInterface
@@ -457,11 +449,6 @@ uno::Any SwAccessibleDocument::queryInterface(
         uno::Reference<XAccessibleExtendedAttributes> aAttribute = this;
         aRet <<= aAttribute;
     }
-    else if(rType == cppu::UnoType<XAccessibleGetAccFlowTo>::get())
-    {
-        uno::Reference<XAccessibleGetAccFlowTo> AccFlowTo = this;
-        aRet <<= AccFlowTo;
-    }
     else
         aRet = SwAccessibleContext::queryInterface( rType );
     return aRet;
@@ -470,15 +457,9 @@ uno::Any SwAccessibleDocument::queryInterface(
 // XTypeProvider
 uno::Sequence< uno::Type > SAL_CALL SwAccessibleDocument::getTypes()
 {
-    uno::Sequence< uno::Type > aTypes( SwAccessibleDocumentBase::getTypes() );
-
-    sal_Int32 nIndex = aTypes.getLength();
-    //Reset types memory alloc
-    aTypes.realloc( nIndex + 1 );
-
-    uno::Type* pTypes = aTypes.getArray();
-    pTypes[nIndex] = cppu::UnoType<XAccessibleSelection>::get();
-    return aTypes;
+    return cppu::OTypeCollection(
+            cppu::UnoType<XAccessibleSelection>::get(),
+            SwAccessibleDocumentBase::getTypes() ).getTypes();
 }
 
 uno::Sequence< sal_Int8 > SAL_CALL SwAccessibleDocument::getImplementationId()
@@ -543,7 +524,6 @@ uno::Any SAL_CALL SwAccessibleDocument::getExtendedAttributes()
     SwFEShell* pFEShell = dynamic_cast<const SwFEShell*>( pCursorShell) !=  nullptr
                                 ? static_cast<SwFEShell*>( pCursorShell )
                             : nullptr;
-    OUString sAttrName;
     OUString sValue;
     sal_uInt16 nPage, nLogPage;
     OUString sDisplay;
@@ -551,18 +531,12 @@ uno::Any SAL_CALL SwAccessibleDocument::getExtendedAttributes()
     if( pFEShell )
     {
         pFEShell->GetPageNumber(-1,true,nPage,nLogPage,sDisplay);
-        sAttrName = "page-name:";
 
-        sValue = sAttrName + sDisplay ;
-        sAttrName = ";page-number:";
-        sValue += sAttrName;
-        sValue += OUString::number( nPage ) ;
-        sAttrName = ";total-pages:";
-        sValue += sAttrName;
-        sValue += OUString::number( pCursorShell->GetPageCnt() ) ;
-        sValue += ";";
-
-        sAttrName = "line-number:";
+        sValue = "page-name:" + sDisplay +
+            ";page-number:" +
+            OUString::number( nPage ) +
+            ";total-pages:" +
+            OUString::number( pCursorShell->GetPageCnt() ) + ";";
 
         SwContentFrame* pCurrFrame = pCursorShell->GetCurrFrame();
         SwPageFrame* pCurrPage=static_cast<SwFrame*>(pCurrFrame)->FindPageFrame();
@@ -583,7 +557,10 @@ uno::Any SAL_CALL SwAccessibleDocument::getExtendedAttributes()
             }
         }
         else
+        {
+            assert(dynamic_cast<SwTextFrame*>(pCurrFrame));
             pCurrTextFrame = static_cast<SwTextFrame* >(pCurrFrame);
+        }
         //check whether the text frame where the Graph/OLE/Frame anchored is in the Header/Footer
         SwFrame* pFrame = pCurrTextFrame;
         while ( pFrame && !pFrame->IsHeaderFrame() && !pFrame->IsFooterFrame() )
@@ -626,29 +603,25 @@ uno::Any SAL_CALL SwAccessibleDocument::getExtendedAttributes()
                 SwPaM* pCaret = pCursorShell->GetCursor();
                 if (!pCurrTextFrame->IsEmpty() && pCaret)
                 {
-                    if (pCurrTextFrame->IsTextFrame())
+                    assert(pCurrTextFrame->IsTextFrame());
+                    const SwPosition* pPoint = nullptr;
+                    if (pCurrTextFrame->IsInFly())
                     {
-                        const SwPosition* pPoint = nullptr;
-                        if(pCurrTextFrame->IsInFly())
-                        {
-                            SwFlyFrame *pFlyFrame = pCurrTextFrame->FindFlyFrame();
-                            const SwFormatAnchor& rAnchor = pFlyFrame->GetFormat()->GetAnchor();
-                            pPoint= rAnchor.GetContentAnchor();
-                        }
-                        else
-                            pPoint = pCaret->GetPoint();
-                        const sal_Int32 nActPos = pPoint->nContent.GetIndex();
-                        nLineNum += pCurrTextFrame->GetLineCount( nActPos );
+                        SwFlyFrame *pFlyFrame = pCurrTextFrame->FindFlyFrame();
+                        const SwFormatAnchor& rAnchor = pFlyFrame->GetFormat()->GetAnchor();
+                        pPoint = rAnchor.GetContentAnchor();
+                        SwContentNode *const pNode(pPoint->nNode.GetNode().GetContentNode());
+                        pCurrTextFrame = pNode
+                            ? static_cast<SwTextFrame*>(pNode->getLayoutFrame(
+                                        pCurrTextFrame->getRootFrame(), pPoint))
+                            : nullptr;
                     }
-                    else//graphic, form, shape, etc.
+                    else
+                        pPoint = pCaret->GetPoint();
+                    if (pCurrTextFrame)
                     {
-                        SwPosition* pPoint =  pCaret->GetPoint();
-                        Point aPt = pCursorShell->GetCursor_()->GetPtPos();
-                        if( pCursorShell->GetLayout()->GetCursorOfst( pPoint, aPt/*,* &eTmpState*/ ) )
-                        {
-                            const sal_Int32 nActPos = pPoint->nContent.GetIndex();
-                            nLineNum += pCurrTextFrame->GetLineCount( nActPos );
-                        }
+                        TextFrameIndex const nActPos(pCurrTextFrame->MapModelToViewPos(*pPoint));
+                        nLineNum += pCurrTextFrame->GetLineCount( nActPos );
                     }
                 }
                 else
@@ -656,15 +629,11 @@ uno::Any SAL_CALL SwAccessibleDocument::getExtendedAttributes()
             }
         }
 
-        sValue += sAttrName;
-        sValue += OUString::number( nLineNum ) ;
-
-        sValue += ";";
+        sValue += "line-number:" + OUString::number( nLineNum ) + ";";
 
         SwFrame* pCurrCol=static_cast<SwFrame*>(pCurrFrame)->FindColFrame();
 
-        sAttrName = "column-number:";
-        sValue += sAttrName;
+        sValue += "column-number:";
 
         int nCurrCol = 1;
         if(pCurrCol!=nullptr)
@@ -688,25 +657,16 @@ uno::Any SAL_CALL SwAccessibleDocument::getExtendedAttributes()
                 }
             }
         }
-        sValue += OUString::number( nCurrCol ) ;
-        sValue += ";";
-
-        sAttrName = "total-columns:";
+        sValue += OUString::number( nCurrCol ) + ";";
 
         const SwFormatCol &rFormatCol=pCurrPage->GetAttrSet()->GetCol();
         sal_uInt16 nColCount=rFormatCol.GetNumCols();
         nColCount = nColCount>0?nColCount:1;
-        sValue += sAttrName;
-        sValue += OUString::number( nColCount ) ;
-
-        sValue += ";";
+        sValue += "total-columns:" + OUString::number( nColCount ) + ";";
 
         SwSectionFrame* pCurrSctFrame=static_cast<SwFrame*>(pCurrFrame)->FindSctFrame();
         if(pCurrSctFrame!=nullptr && pCurrSctFrame->GetSection()!=nullptr )
         {
-            sAttrName = "section-name:";
-
-            sValue += sAttrName;
             OUString sectionName = pCurrSctFrame->GetSection()->GetSectionName();
 
             sectionName = sectionName.replaceFirst( "\\" , "\\\\" );
@@ -715,12 +675,9 @@ uno::Any SAL_CALL SwAccessibleDocument::getExtendedAttributes()
             sectionName = sectionName.replaceFirst( "," , "\\," );
             sectionName = sectionName.replaceFirst( ":" , "\\:" );
 
-            sValue += sectionName;
-
-            sValue += ";";
+            sValue += "section-name:" + sectionName + ";";
 
             //section-columns-number
-            sAttrName = "section-columns-number:";
 
             nCurrCol = 1;
 
@@ -737,19 +694,15 @@ uno::Any SAL_CALL SwAccessibleDocument::getExtendedAttributes()
                     }
                 }
             }
-            sValue += sAttrName;
-            sValue += OUString::number( nCurrCol ) ;
-            sValue += ";";
+            sValue += "section-columns-number:" +
+                OUString::number( nCurrCol ) + ";";
 
             //section-total-columns
-            sAttrName = "section-total-columns:";
             const SwFormatCol &rFormatSctCol=pCurrSctFrame->GetAttrSet()->GetCol();
             sal_uInt16 nSctColCount=rFormatSctCol.GetNumCols();
             nSctColCount = nSctColCount>0?nSctColCount:1;
-            sValue += sAttrName;
-            sValue += OUString::number( nSctColCount ) ;
-
-            sValue += ";";
+            sValue += "section-total-columns:" +
+                OUString::number( nSctColCount ) + ";";
         }
 
         anyAtrribute <<= sValue;
@@ -760,128 +713,7 @@ uno::Any SAL_CALL SwAccessibleDocument::getExtendedAttributes()
 sal_Int32 SAL_CALL SwAccessibleDocument::getBackground()
 {
     SolarMutexGuard aGuard;
-    return SW_MOD()->GetColorConfig().GetColorValue( ::svtools::DOCCOLOR ).nColor;
-}
-
-css::uno::Sequence< css::uno::Any >
-        SAL_CALL SwAccessibleDocument::getAccFlowTo(const css::uno::Any& rAny, sal_Int32 nType)
-{
-    SolarMutexGuard g;
-
-    const sal_Int32 FORSPELLCHECKFLOWTO = 1;
-    const sal_Int32 FORFINDREPLACEFLOWTO = 2;
-    SwAccessibleMap* pAccMap = GetMap();
-    if ( !pAccMap )
-    {
-        return uno::Sequence< uno::Any >();
-    }
-
-    if ( nType == FORSPELLCHECKFLOWTO )
-    {
-        uno::Reference< css::drawing::XShape > xShape;
-        rAny >>= xShape;
-        if( xShape.is() )
-        {
-            SdrObject* pObj = GetSdrObjectFromXShape(xShape);
-            if( pObj )
-            {
-                uno::Reference<XAccessible> xAcc = pAccMap->GetContext(pObj, this, false);
-                uno::Reference < XAccessibleSelection > xAccSelection( xAcc, uno::UNO_QUERY );
-                if ( xAccSelection.is() )
-                {
-                    try
-                    {
-                        if ( xAccSelection->getSelectedAccessibleChildCount() )
-                        {
-                            uno::Reference < XAccessible > xSel = xAccSelection->getSelectedAccessibleChild( 0 );
-                            if ( xSel.is() )
-                            {
-                                uno::Reference < XAccessibleContext > xSelContext( xSel->getAccessibleContext() );
-                                if ( xSelContext.is() )
-                                {
-                                    //if in sw we find the selected paragraph here
-                                    if ( xSelContext->getAccessibleRole() == AccessibleRole::PARAGRAPH )
-                                    {
-                                        uno::Sequence<uno::Any> aRet( 1 );
-                                        aRet[0] <<= xSel;
-                                        return aRet;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch ( const css::lang::IndexOutOfBoundsException& )
-                    {
-                        return uno::Sequence< uno::Any >();
-                    }
-                    //end of try...catch
-                }
-            }
-        }
-        else
-        {
-            uno::Reference< XAccessible > xAcc = pAccMap->GetCursorContext();
-            SwAccessibleContext *pAccImpl = static_cast< SwAccessibleContext *>( xAcc.get() );
-            if ( pAccImpl && pAccImpl->getAccessibleRole() == AccessibleRole::PARAGRAPH )
-            {
-                uno::Sequence< uno::Any > aRet(1);
-                aRet[0] <<= xAcc;
-                return aRet;
-            }
-        }
-    }
-    else if ( nType == FORFINDREPLACEFLOWTO )
-    {
-        SwCursorShell* pCursorShell = GetCursorShell();
-        if ( pCursorShell )
-        {
-            SwPaM *_pStartCursor = pCursorShell->GetCursor(), *_pStartCursor2 = _pStartCursor;
-            SwContentNode* pPrevNode = nullptr;
-            std::vector<SwFrame*> vFrameList;
-            do
-            {
-                if ( _pStartCursor && _pStartCursor->HasMark() )
-                {
-                    SwContentNode* pContentNode = _pStartCursor->GetContentNode();
-                    if ( pContentNode == pPrevNode )
-                    {
-                        continue;
-                    }
-                    SwFrame* pFrame = pContentNode ? pContentNode->getLayoutFrame( pCursorShell->GetLayout() ) : nullptr;
-                    if ( pFrame )
-                    {
-                        vFrameList.push_back( pFrame );
-                    }
-
-                    pPrevNode = pContentNode;
-                }
-            }
-
-            while( _pStartCursor && ( (_pStartCursor = _pStartCursor->GetNext()) != _pStartCursor2) );
-
-            if ( vFrameList.size() )
-            {
-                uno::Sequence< uno::Any > aRet(vFrameList.size());
-                std::vector<SwFrame*>::iterator aIter = vFrameList.begin();
-                for ( sal_Int32 nIndex = 0; aIter != vFrameList.end(); ++aIter, nIndex++ )
-                {
-                    uno::Reference< XAccessible > xAcc = pAccMap->GetContext(*aIter, false);
-                    if ( xAcc.is() )
-                    {
-                        SwAccessibleContext *pAccImpl = static_cast< SwAccessibleContext *>( xAcc.get() );
-                        if ( pAccImpl && pAccImpl->getAccessibleRole() == AccessibleRole::PARAGRAPH )
-                        {
-                            aRet[nIndex] <<= xAcc;
-                        }
-                    }
-                }
-
-                return aRet;
-            }
-        }
-    }
-
-    return uno::Sequence< uno::Any >();
+    return sal_Int32(SW_MOD()->GetColorConfig().GetColorValue( ::svtools::DOCCOLOR ).nColor);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

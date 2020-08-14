@@ -543,7 +543,7 @@ public class DatabaseDocument extends TestCase implements com.sun.star.document.
      *  Well, I do not really have a good term for this... The point is, database documents are in real
      *  only *one* aspect of a more complex thing. The second aspect is a data source. Both, in some sense,
      *  just represent different views on the same thing. For a given database, there's at each time at most
-     *  one data source, and at most one database document. Both have a independent life time, and are
+     *  one data source, and at most one database document. Both have an independent life time, and are
      *  created when needed.
      *  In particular, a document can be closed (this is what happens when the last UI window displaying
      *  this document is closed), and then dies. Now when the other "view", the data source, still exists,
@@ -595,7 +595,7 @@ public class DatabaseDocument extends TestCase implements com.sun.star.document.
         assertTrue( "The test case marker did not survive re-retrieval of the doc from the data source.",
             impl_hasMarker( databaseDoc.getArgs() ) );
 
-        // on the other hand, closing and regulary re-loading the doc *without* the marker should indeed
+        // on the other hand, closing and regularly re-loading the doc *without* the marker should indeed
         // lose it
         impl_closeDocument( databaseDoc );
         databaseDoc = impl_loadDocument( documentURL, impl_getDefaultLoadArgs() );
@@ -945,7 +945,7 @@ public class DatabaseDocument extends TestCase implements com.sun.star.document.
     {
         if ("OnTitleChanged".equals(_Event.EventName))
         // OnTitleChanged events are notified too often. This is known, and accepted.
-        // (the deeper reason is that it's difficult to determine, in the DatabaseDocument implementatin,
+        // (the deeper reason is that it's difficult to determine, in the DatabaseDocument implementation,
         // when the title actually changed. In particular, when we do a saveAsURL, and then ask for a
         // title *before* the TitleHelper got the document's OnSaveAsDone event, then the wrong (old)
         // title is obtained.

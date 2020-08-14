@@ -29,10 +29,8 @@
 #include <AddressBook/ABAddressBookC.h>
 #include <postmac.h>
 
-namespace connectivity
+namespace connectivity::macab
 {
-    namespace macab
-    {
 
         inline OUString CFStringToOUString(const CFStringRef sOrig)
         {
@@ -134,8 +132,7 @@ namespace connectivity
             return dataType;
         }
 
-        void impl_throwError(sal_uInt16 _nErrorId);
-    }
+        void impl_throwError(const char* pErrorId);
 }
 
 #endif // _ CONNECTIVITY_MACAB_UTILITIES_HXX_

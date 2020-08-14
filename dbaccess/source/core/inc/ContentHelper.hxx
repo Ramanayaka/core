@@ -24,26 +24,20 @@
 #include <com/sun/star/beans/XPropertiesChangeNotifier.hpp>
 #include <com/sun/star/beans/XPropertyContainer.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <comphelper/interfacecontainer2.hxx>
-#include <comphelper/uno3.hxx>
 #include <com/sun/star/beans/Property.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/sdbcx/XRename.hpp>
 #include <connectivity/sqlerror.hxx>
 #include <memory>
 
-namespace com { namespace sun { namespace star { namespace beans {
-    struct PropertyValue;
-} } } }
+namespace com::sun::star::beans { struct PropertyValue; }
 
 namespace dbaccess
 {
@@ -51,7 +45,7 @@ namespace dbaccess
     struct ContentProperties
     {
         OUString aTitle;         // Title
-        ::boost::optional< OUString >
+        ::std::optional< OUString >
                         aContentType;   // ContentType (aka MediaType aka MimeType)
         bool        bIsDocument;    // IsDocument
         bool        bIsFolder;      // IsFolder
@@ -80,7 +74,6 @@ namespace dbaccess
 
     typedef cppu::OMultiTypeInterfaceContainerHelperVar<OUString>
         PropertyChangeListenerContainer;
-    typedef ::cppu::BaseMutex    OContentHelper_MBASE;
     typedef ::cppu::WeakComponentImplHelper<   css::ucb::XContent
                                            ,   css::ucb::XCommandProcessor
                                            ,   css::lang::XServiceInfo
@@ -92,12 +85,11 @@ namespace dbaccess
                                            ,   css::sdbcx::XRename
                                            >   OContentHelper_COMPBASE;
 
-    class OContentHelper :   public OContentHelper_MBASE
+    class OContentHelper :   public ::cppu::BaseMutex
                             ,public OContentHelper_COMPBASE
     {
         css::uno::Sequence< css::uno::Any >
-            setPropertyValues( const css::uno::Sequence< css::beans::PropertyValue >& rValues,
-                               const css::uno::Reference< css::ucb::XCommandEnvironment >& xEnv );
+            setPropertyValues( const css::uno::Sequence< css::beans::PropertyValue >& rValues );
 
         void impl_rename_throw(const OUString& _sNewName,bool _bNotify = true);
 
@@ -135,7 +127,7 @@ namespace dbaccess
 
         // css::lang::XTypeProvider
         virtual css::uno::Sequence<sal_Int8> SAL_CALL getImplementationId(  ) override;
-        static css::uno::Sequence< sal_Int8 >  getUnoTunnelImplementationId();
+
         // css::lang::XServiceInfo
         virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
@@ -165,7 +157,7 @@ namespace dbaccess
 
         // css::lang::XUnoTunnel
         virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-        static OContentHelper* getImplementation( const css::uno::Reference< css::uno::XInterface >& _rxComponent );
+        static css::uno::Sequence< sal_Int8 >  getUnoTunnelId();
 
         // css::container::XChild
         virtual css::uno::Reference< css::uno::XInterface > SAL_CALL getParent(  ) override;

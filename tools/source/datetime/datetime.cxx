@@ -18,6 +18,24 @@
  */
 #include <tools/datetime.hxx>
 #include <rtl/math.hxx>
+#include <sal/log.hxx>
+
+#include <systemdatetime.hxx>
+
+DateTime::DateTime(DateTimeInitSystem)
+    : Date( Date::EMPTY )
+    , Time( Time::EMPTY )
+{
+    sal_Int32 nD = 0;
+    sal_Int64 nT = 0;
+    if ( GetSystemDateTime( &nD, &nT ) )
+    {
+        Date::operator=( Date( nD ) );
+        SetTime( nT );
+    }
+    else
+        Date::operator=( Date( 1, 1, 1900 ) ); // Time::nTime is already 0
+}
 
 DateTime::DateTime( const css::util::DateTime& rDateTime )
   : Date( rDateTime.Day, rDateTime.Month, rDateTime.Year ),
@@ -34,46 +52,31 @@ DateTime& DateTime::operator =( const css::util::DateTime& rUDateTime )
 
 bool DateTime::IsBetween( const DateTime& rFrom, const DateTime& rTo ) const
 {
-    if ( (*this >= rFrom) && (*this <= rTo) )
-        return true;
-    else
-        return false;
+    return (*this >= rFrom) && (*this <= rTo);
 }
 
 bool DateTime::operator >( const DateTime& rDateTime ) const
 {
-    if ( (Date::operator>( rDateTime )) ||
-         (Date::operator==( rDateTime ) && tools::Time::operator>( rDateTime )) )
-        return true;
-    else
-        return false;
+    return (Date::operator>( rDateTime )) ||
+         (Date::operator==( rDateTime ) && tools::Time::operator>( rDateTime ));
 }
 
 bool DateTime::operator <( const DateTime& rDateTime ) const
 {
-    if ( (Date::operator<( rDateTime )) ||
-         (Date::operator==( rDateTime ) && tools::Time::operator<( rDateTime )) )
-        return true;
-    else
-        return false;
+    return (Date::operator<( rDateTime )) ||
+         (Date::operator==( rDateTime ) && tools::Time::operator<( rDateTime ));
 }
 
 bool DateTime::operator >=( const DateTime& rDateTime ) const
 {
-    if ( (Date::operator>( rDateTime )) ||
-         (Date::operator==( rDateTime ) && tools::Time::operator>=( rDateTime )) )
-        return true;
-    else
-        return false;
+    return (Date::operator>( rDateTime )) ||
+         (Date::operator==( rDateTime ) && tools::Time::operator>=( rDateTime ));
 }
 
 bool DateTime::operator <=( const DateTime& rDateTime ) const
 {
-    if ( (Date::operator<( rDateTime )) ||
-         (Date::operator==( rDateTime ) && tools::Time::operator<=( rDateTime )) )
-        return true;
-    else
-        return false;
+    return (Date::operator<( rDateTime )) ||
+         (Date::operator==( rDateTime ) && tools::Time::operator<=( rDateTime ));
 }
 
 sal_Int64 DateTime::GetSecFromDateTime( const Date& rDate ) const
@@ -152,14 +155,14 @@ DateTime& DateTime::operator -=( const tools::Time& rTime )
 DateTime operator +( const DateTime& rDateTime, sal_Int32 nDays )
 {
     DateTime aDateTime( rDateTime );
-    aDateTime += nDays;
+    aDateTime.AddDays( nDays );
     return aDateTime;
 }
 
 DateTime operator -( const DateTime& rDateTime, sal_Int32 nDays )
 {
     DateTime aDateTime( rDateTime );
-    aDateTime -= nDays;
+    aDateTime.AddDays( -nDays );
     return aDateTime;
 }
 
@@ -177,7 +180,7 @@ DateTime operator -( const DateTime& rDateTime, const tools::Time& rTime )
     return aDateTime;
 }
 
-DateTime& DateTime::operator +=( double fTimeInDays )
+void DateTime::AddTime( double fTimeInDays )
 {
     double fInt, fFrac;
     if ( fTimeInDays < 0.0 )
@@ -190,7 +193,7 @@ DateTime& DateTime::operator +=( double fTimeInDays )
         fInt = ::rtl::math::approxFloor( fTimeInDays );
         fFrac = fInt >= fTimeInDays ? 0.0 : fTimeInDays - fInt;
     }
-    Date::operator+=( sal_Int32(fInt) );     // full days
+    AddDays( sal_Int32(fInt) );     // full days
     if ( fFrac )
     {
         tools::Time aTime(0);  // default ctor calls system time, we don't need that
@@ -198,13 +201,12 @@ DateTime& DateTime::operator +=( double fTimeInDays )
         aTime.MakeTimeFromNS( static_cast<sal_Int64>(fFrac) );    // method handles negative ns
         operator+=( aTime );
     }
-    return *this;
 }
 
 DateTime operator +( const DateTime& rDateTime, double fTimeInDays )
 {
     DateTime aDateTime( rDateTime );
-    aDateTime += fTimeInDays;
+    aDateTime.AddTime( fTimeInDays );
     return aDateTime;
 }
 
@@ -224,7 +226,7 @@ double operator -( const DateTime& rDateTime1, const DateTime& rDateTime2 )
     return double(nDays);
 }
 
-void DateTime::GetWin32FileDateTime( sal_uInt32 & rLower, sal_uInt32 & rUpper )
+void DateTime::GetWin32FileDateTime( sal_uInt32 & rLower, sal_uInt32 & rUpper ) const
 {
     const sal_Int64 a100nPerSecond = SAL_CONST_INT64( 10000000 );
     const sal_Int64 a100nPerDay = a100nPerSecond * sal_Int64( 60 * 60 * 24 );
@@ -268,12 +270,32 @@ DateTime DateTime::CreateFromWin32FileDateTime( sal_uInt32 rLower, sal_uInt32 rU
     Date aDate(1,1,1601);
     // (0xffffffffffffffff / a100nPerDay = 21350398) fits into sal_Int32
     // (0x7fffffff = 2147483647)
-    aDate += static_cast<sal_Int32>(nDays);
+    aDate.AddDays(nDays);
 
     SAL_WARN_IF( aDate - Date(1,1,1601) != static_cast<sal_Int32>(nDays), "tools.datetime",
             "DateTime::CreateFromWin32FileDateTime - date truncated to max");
 
     sal_uInt64 nNanos = (aTime - (nDays * a100nPerDay)) * 100;
+    return DateTime( aDate, tools::Time(
+                static_cast<sal_uInt32>((nNanos / tools::Time::nanoSecPerHour)   % sal_uInt64( 24 )),
+                static_cast<sal_uInt32>((nNanos / tools::Time::nanoSecPerMinute) % sal_uInt64( 60 )),
+                static_cast<sal_uInt32>((nNanos / tools::Time::nanoSecPerSec)    % sal_uInt64( 60 )),
+                static_cast<sal_uInt64>( nNanos % tools::Time::nanoSecPerSec)));
+}
+
+DateTime DateTime::CreateFromUnixTime(const double fSecondsSinceEpoch)
+{
+    double fValue = fSecondsSinceEpoch / Time::secondPerDay;
+    const sal_Int32 nDays = static_cast <sal_Int32>(::rtl::math::approxFloor(fValue));
+
+    Date aDate (1, 1, 1970);
+    aDate.AddDays(nDays);
+    SAL_WARN_IF(aDate - Date(1, 1, 1970) != nDays, "tools.datetime",
+                "DateTime::CreateFromUnixTime - date truncated to max");
+
+    fValue -= nDays;
+
+    const sal_uInt64 nNanos = fValue * tools::Time::nanoSecPerDay;
     return DateTime( aDate, tools::Time(
                 static_cast<sal_uInt32>((nNanos / tools::Time::nanoSecPerHour)   % sal_uInt64( 24 )),
                 static_cast<sal_uInt32>((nNanos / tools::Time::nanoSecPerMinute) % sal_uInt64( 60 )),

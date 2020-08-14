@@ -22,7 +22,6 @@
 
 #include <memory>
 #include <tools/stream.hxx>
-#include <basic/sberrors.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
 class SvStream;
@@ -60,10 +59,10 @@ class SbiStream
 public:
     SbiStream();
    ~SbiStream();
-    ErrCode Open( const OString&, StreamMode, SbiStreamFlags, short );
-    ErrCode Close();
+    ErrCode const & Open( const OString&, StreamMode, SbiStreamFlags, short );
+    ErrCode const & Close();
     ErrCode Read(OString&, sal_uInt16 = 0, bool bForceReadingPerByte=false);
-    ErrCode Read( char& );
+    ErrCode const & Read( char& );
     ErrCode Write( const OString& );
 
     bool IsText() const     { return !bool(nMode & SbiStreamFlags::Binary); }
@@ -91,7 +90,7 @@ class SbiIoSystem
     void      WriteCon(const OUString&);
 public:
     SbiIoSystem();
-   ~SbiIoSystem();
+   ~SbiIoSystem() COVERITY_NOEXCEPT_FALSE;
     ErrCode GetError();
     void  Shutdown();
     void  SetPrompt(const OString& r) { aPrompt = r; }

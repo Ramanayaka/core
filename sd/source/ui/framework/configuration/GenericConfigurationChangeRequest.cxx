@@ -19,13 +19,13 @@
 
 #include "GenericConfigurationChangeRequest.hxx"
 
-#include "framework/FrameworkHelper.hxx"
+#include <framework/FrameworkHelper.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 GenericConfigurationChangeRequest::GenericConfigurationChangeRequest (
     const Reference<XResourceId>& rxResourceId,
@@ -45,25 +45,25 @@ GenericConfigurationChangeRequest::~GenericConfigurationChangeRequest() throw()
 void SAL_CALL GenericConfigurationChangeRequest::execute (
     const Reference<XConfiguration>& rxConfiguration)
 {
-    if (rxConfiguration.is())
-    {
-        switch (meMode)
-        {
-            case Activation:
-                rxConfiguration->addResource(mxResourceId);
-                break;
+    if (!rxConfiguration.is())
+        return;
 
-            case Deactivation:
-                rxConfiguration->removeResource(mxResourceId);
-                break;
-        }
+    switch (meMode)
+    {
+        case Activation:
+            rxConfiguration->addResource(mxResourceId);
+            break;
+
+        case Deactivation:
+            rxConfiguration->removeResource(mxResourceId);
+            break;
     }
 }
 
 OUString SAL_CALL GenericConfigurationChangeRequest::getName()
 {
     return "GenericConfigurationChangeRequest "
-        + (meMode==Activation ? OUString("activate ") : OUString("deactivate "))
+        + (meMode==Activation ? OUStringLiteral("activate ") : OUStringLiteral("deactivate "))
         + FrameworkHelper::ResourceIdToString(mxResourceId);
 }
 
@@ -72,6 +72,6 @@ void SAL_CALL GenericConfigurationChangeRequest::setName (const OUString&)
     // Ignored.
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

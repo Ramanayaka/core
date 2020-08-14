@@ -20,14 +20,15 @@
 #include "SchXMLLegendContext.hxx"
 #include "SchXMLEnumConverter.hxx"
 
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/xmlement.hxx>
-#include <xmloff/prstylei.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlimp.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmluconv.hxx>
 
-#include <com/sun/star/chart/ChartLegendPosition.hpp>
+#include <sal/log.hxx>
+
 #include <com/sun/star/chart/ChartLegendExpansion.hpp>
+#include <com/sun/star/chart/XChartDocument.hpp>
 #include <com/sun/star/drawing/FillStyle.hpp>
 
 using namespace ::xmloff::token;
@@ -39,6 +40,7 @@ namespace
 enum LegendAttributeTokens
 {
     XML_TOK_LEGEND_POSITION,
+    XML_TOK_LEGEND_OVERLAY,
     XML_TOK_LEGEND_X,
     XML_TOK_LEGEND_Y,
     XML_TOK_LEGEND_STYLE_NAME,
@@ -53,6 +55,7 @@ enum LegendAttributeTokens
 const SvXMLTokenMapEntry aLegendAttributeTokenMap[] =
 {
     { XML_NAMESPACE_CHART,      XML_LEGEND_POSITION,    XML_TOK_LEGEND_POSITION     },
+    { XML_NAMESPACE_LO_EXT,     XML_OVERLAY,            XML_TOK_LEGEND_OVERLAY      },
     { XML_NAMESPACE_SVG,        XML_X,                  XML_TOK_LEGEND_X            },
     { XML_NAMESPACE_SVG,        XML_Y,                  XML_TOK_LEGEND_Y            },
     { XML_NAMESPACE_CHART,      XML_STYLE_NAME,         XML_TOK_LEGEND_STYLE_NAME   },
@@ -103,7 +106,7 @@ void SchXMLLegendContext::StartElement( const uno::Reference< xml::sax::XAttribu
         }
     }
 
-    uno::Reference< drawing::XShape > xLegendShape( xDoc->getLegend(), uno::UNO_QUERY );
+    uno::Reference< drawing::XShape > xLegendShape = xDoc->getLegend();
     uno::Reference< beans::XPropertySet > xLegendProps( xLegendShape, uno::UNO_QUERY );
     if( !xLegendShape.is() || !xLegendProps.is() )
     {
@@ -116,6 +119,7 @@ void SchXMLLegendContext::StartElement( const uno::Reference< xml::sax::XAttribu
     const SvXMLTokenMap& rAttrTokenMap = theLegendAttributeTokenMap::get();
 
     awt::Point aLegendPos;
+    bool bOverlay = false;
     bool bHasXPosition=false;
     bool bHasYPosition=false;
     awt::Size aLegendSize;
@@ -137,19 +141,27 @@ void SchXMLLegendContext::StartElement( const uno::Reference< xml::sax::XAttribu
         switch( rAttrTokenMap.Get( nPrefix, aLocalName ))
         {
             case XML_TOK_LEGEND_POSITION:
+                try
                 {
-                    try
-                    {
-                        if( SchXMLEnumConverter::getLegendPositionConverter().importXML( aValue, aAny, GetImport().GetMM100UnitConverter() ) )
-                            xLegendProps->setPropertyValue("Alignment", aAny );
-                    }
-                    catch(const beans::UnknownPropertyException&)
-                    {
-                        SAL_INFO("xmloff.chart", "Property Alignment (legend) not found" );
-                    }
+                    if( SchXMLEnumConverter::getLegendPositionConverter().importXML( aValue, aAny, GetImport().GetMM100UnitConverter() ) )
+                        xLegendProps->setPropertyValue("Alignment", aAny );
+                }
+                catch(const beans::UnknownPropertyException&)
+                {
+                    SAL_INFO("xmloff.chart", "Property Alignment (legend) not found" );
                 }
                 break;
-
+            case XML_TOK_LEGEND_OVERLAY:
+                try
+                {
+                    bOverlay = xAttrList->getValueByIndex(i).toBoolean();
+                    xLegendProps->setPropertyValue("Overlay", uno::makeAny(bOverlay));
+                }
+                catch(const beans::UnknownPropertyException&)
+                {
+                    SAL_INFO("xmloff.chart", "Property Overlay (legend) not found" );
+                }
+                break;
             case XML_TOK_LEGEND_X:
                 GetImport().GetMM100UnitConverter().convertMeasureToCore(
                         aLegendPos.X, aValue );

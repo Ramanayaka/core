@@ -19,11 +19,12 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_TABVIEW_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_TABVIEW_HXX
 
+#include <sal/config.h>
+
+#include <array>
 #include <memory>
 #include <vcl/scrbar.hxx>
 #include <vcl/help.hxx>
-
-#include <sfx2/ipclient.hxx>
 
 #include "hiranges.hxx"
 #include "viewutil.hxx"
@@ -36,14 +37,12 @@ namespace editeng {
 }
 
 class ScEditEngineDefaulter;
-class ScGridWindow;
 class ScOutlineWindow;
 class ScRowBar;
 class ScColBar;
 class ScTabControl;
 class ScTabViewShell;
 struct ScRangeFindData;
-class ScDrawView;
 class SvBorder;
 class FuPoor;
 class Splitter;
@@ -53,11 +52,15 @@ class SdrObject;
 class ScPageBreakData;
 class SdrHdlList;
 class TabBar;
+namespace com::sun::star::chart2::data { struct HighlightedRange; }
+namespace tools { class JsonWriter; }
 
-namespace com { namespace sun { namespace star {
-namespace chart2 { namespace data {
-    struct HighlightedRange;
-}}}}}
+enum HeaderType
+{
+    COLUMN_HEADER,
+    ROW_HEADER,
+    BOTH_HEADERS
+};
 
 //      Help - Window
 
@@ -65,14 +68,13 @@ class ScCornerButton : public vcl::Window
 {
 private:
     ScViewData*     pViewData;
-    bool            bAdd;
 
 protected:
     virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
     virtual void    Resize() override;
     virtual void    MouseButtonDown( const MouseEvent& rMEvt ) override;
 public:
-                    ScCornerButton( vcl::Window* pParent, ScViewData* pData, bool bAdditional );
+                    ScCornerButton( vcl::Window* pParent, ScViewData* pData );
                     virtual ~ScCornerButton() override;
 
     virtual void    StateChanged( StateChangedType nType ) override;
@@ -85,7 +87,7 @@ private:
     enum ModifierTagType { Adder, Remover };
 
 public:
-    ScExtraEditViewManager(ScTabViewShell* pThisViewShell, VclPtr<ScGridWindow>* pGridWin)
+    ScExtraEditViewManager(ScTabViewShell* pThisViewShell, std::array<VclPtr<ScGridWindow>, 4> const & pGridWin)
         : mpThisViewShell(pThisViewShell)
         , mpGridWin(pGridWin)
         , mpOtherEditView(nullptr)
@@ -94,15 +96,9 @@ public:
 
     ~ScExtraEditViewManager();
 
-    void Add(SfxViewShell* pViewShell, ScSplitPos eWhich)
-    {
-        Apply<Adder>(pViewShell, eWhich);
-    }
+    void Add(SfxViewShell* pViewShell, ScSplitPos eWhich);
 
-    void Remove(SfxViewShell* pViewShell, ScSplitPos eWhich)
-    {
-        Apply<Remover>(pViewShell, eWhich);
-    }
+    void Remove(SfxViewShell* pViewShell, ScSplitPos eWhich);
 
 private:
     template<ModifierTagType ModifierTag>
@@ -113,7 +109,7 @@ private:
 
 private:
     ScTabViewShell* mpThisViewShell;
-    VclPtr<ScGridWindow>* mpGridWin;
+    std::array<VclPtr<ScGridWindow>, 4> const & mpGridWin;
     EditView* mpOtherEditView;
     int nTotalWindows;
 };
@@ -126,25 +122,29 @@ private:
     VclPtr<vcl::Window>             pFrameWin;              // First !!!
     ScViewData          aViewData;              // must be at the front !
 
-    ScViewSelectionEngine*  pSelEngine;
+    std::unique_ptr<ScViewSelectionEngine> pSelEngine;
     ScViewFunctionSet       aFunctionSet;
 
-    ScHeaderSelectionEngine* pHdrSelEng;
+    std::unique_ptr<ScHeaderSelectionEngine> pHdrSelEng;
     ScHeaderFunctionSet      aHdrFunc;
 
-    ScDrawView*         pDrawView;
+    std::unique_ptr<ScDrawView> pDrawView;
 
     Size                aFrameSize;             // passed on as for DoResize
     Point               aBorderPos;
 
+    // The ownership of these two is rather weird. we seem to need
+    // to keep an old copy alive for some period of time to avoid crashing.
     FuPoor*             pDrawActual;
     FuPoor*             pDrawOld;
 
-    VclPtr<ScGridWindow>        pGridWin[4];
-    VclPtr<ScColBar>            pColBar[2];
-    VclPtr<ScRowBar>            pRowBar[2];
-    VclPtr<ScOutlineWindow>     pColOutline[2];
-    VclPtr<ScOutlineWindow>     pRowOutline[2];
+    std::shared_ptr<weld::MessageDialog> m_xMessageBox;
+
+    std::array<VclPtr<ScGridWindow>, 4> pGridWin;
+    std::array<VclPtr<ScColBar>, 2> pColBar;
+    std::array<VclPtr<ScRowBar>, 2> pRowBar;
+    std::array<VclPtr<ScOutlineWindow>, 2> pColOutline;
+    std::array<VclPtr<ScOutlineWindow>, 2> pRowOutline;
     VclPtr<ScTabSplitter>       pHSplitter;
     VclPtr<ScTabSplitter>       pVSplitter;
     VclPtr<ScTabControl>        pTabControl;
@@ -158,11 +158,11 @@ private:
 
     std::unique_ptr<sdr::overlay::OverlayObjectList> mxInputHintOO; // help hint for data validation
 
-    ScPageBreakData*    pPageBreakData;
-    std::vector<ScHighlightEntry>   maHighlightRanges;
+    std::unique_ptr<ScPageBreakData>  pPageBreakData;
+    std::vector<ScHighlightEntry>     maHighlightRanges;
 
-    ScDocument*         pBrushDocument;         // cell formats for format paint brush
-    SfxItemSet*         pDrawBrushSet;          // drawing object attributes for paint brush
+    ScDocumentUniquePtr               pBrushDocument;         // cell formats for format paint brush
+    std::unique_ptr<SfxItemSet>       pDrawBrushSet;          // drawing object attributes for paint brush
 
     Timer               aScrollTimer;
     VclPtr<ScGridWindow>       pTimerWindow;
@@ -170,7 +170,7 @@ private:
 
     ScExtraEditViewManager aExtraEditViewManager;
 
-    sal_uLong               nTipVisible;
+    void*                   nTipVisible;
     tools::Rectangle               aTipRectangle;
     QuickHelpFlags          nTipAlign;
     OUString                sTipString;
@@ -195,6 +195,11 @@ private:
     SCROW               nOldCurY;
 
     double              mfPendingTabBarWidth;       // Tab bar width relative to frame window width.
+
+    SCROW               mnLOKStartHeaderRow;
+    SCROW               mnLOKEndHeaderRow;
+    SCCOL               mnLOKStartHeaderCol;
+    SCCOL               mnLOKEndHeaderCol;
 
     bool                bMinimized:1;
     bool                bInUpdateHeader:1;
@@ -226,12 +231,12 @@ private:
     void            UpdateVarZoom();
 
     static void     SetScrollBar( ScrollBar& rScroll, long nRangeMax, long nVisible, long nPos, bool bLayoutRTL );
-    static long     GetScrollBarPos( ScrollBar& rScroll );
+    static long     GetScrollBarPos( const ScrollBar& rScroll );
 
     void            GetAreaMoveEndPosition(SCCOL nMovX, SCROW nMovY, ScFollowMode eMode,
                                            SCCOL& rAreaX, SCROW& rAreaY, ScFollowMode& rMode);
 
-    void            SkipCursorHorizontal(SCCOL& rCurX, SCROW& rCurY, SCCOL nOldX, SCROW nMovX);
+    void            SkipCursorHorizontal(SCCOL& rCurX, SCROW& rCurY, SCCOL nOldX, SCCOL nMovX);
     void            SkipCursorVertical(SCCOL& rCurX, SCROW& rCurY, SCROW nOldY, SCROW nMovY);
 
     /**
@@ -244,7 +249,7 @@ private:
      *
      **/
 
-    void            PaintRangeFinderEntry (ScRangeFindData* pData, SCTAB nTab);
+    void            PaintRangeFinderEntry (const ScRangeFindData* pData, SCTAB nTab);
 
 protected:
     void            UpdateHeaderWidth( const ScVSplitPos* pWhich = nullptr,
@@ -276,7 +281,7 @@ public:
                     ScTabView( vcl::Window* pParent, ScDocShell& rDocSh, ScTabViewShell* pViewShell );
                     ~ScTabView();
 
-    enum SplitMethod { SC_SPLIT_METHOD_FIRST_COL, SC_SPLIT_METHOD_FIRST_ROW, SC_SPLIT_METHOD_CURSOR };
+    enum SplitMethod { SC_SPLIT_METHOD_COL, SC_SPLIT_METHOD_ROW, SC_SPLIT_METHOD_CURSOR };
 
     void            MakeDrawLayer();
 
@@ -319,8 +324,8 @@ public:
     void            DrawMarkListHasChanged();
     void            UpdateAnchorHandles();
 
-    ScPageBreakData* GetPageBreakData()     { return pPageBreakData; }
-    const std::vector<ScHighlightEntry>& GetHighlightRanges()   { return maHighlightRanges; }
+    ScPageBreakData* GetPageBreakData()     { return pPageBreakData.get(); }
+    const std::vector<ScHighlightEntry>& GetHighlightRanges() const { return maHighlightRanges; }
 
     void            UpdatePageBreakData( bool bForcePaint = false );
 
@@ -328,13 +333,11 @@ public:
     const ScViewData&   GetViewData() const { return aViewData; }
 
     ScViewFunctionSet&      GetFunctionSet()    { return aFunctionSet; }
-    ScViewSelectionEngine*  GetSelEngine()      { return pSelEngine; }
+    ScViewSelectionEngine*  GetSelEngine()      { return pSelEngine.get(); }
 
     bool            SelMouseButtonDown( const MouseEvent& rMEvt );
 
-    ScDrawView*     GetScDrawView()         { return pDrawView; }
-    // against CLOKs
-    SdrView*        GetSdrView()            { return pDrawView; }
+    ScDrawView*     GetScDrawView()         { return pDrawView.get(); }
 
     bool            IsMinimized() const     { return bMinimized; }
 
@@ -364,11 +367,11 @@ public:
     void            FakeButtonUp( ScSplitPos eWhich );
 
     ScGridWindow*   GetActiveWin();
-    vcl::Window*         GetWindowByPos( ScSplitPos ePos ) { return pGridWin[ePos]; }
+    vcl::Window*    GetWindowByPos( ScSplitPos ePos ) const { return pGridWin[ePos]; }
 
-    ScSplitPos      FindWindow( vcl::Window* pWindow ) const;
+    ScSplitPos      FindWindow( const vcl::Window* pWindow ) const;
 
-    void            SetActivePointer( const Pointer& rPointer );
+    void            SetActivePointer( PointerStyle nPointer );
 
     void            ActiveGrabFocus();
 
@@ -377,7 +380,7 @@ public:
     SC_DLLPUBLIC void SetCursor( SCCOL nPosX, SCROW nPosY, bool bNew = false );
 
     SC_DLLPUBLIC void           CellContentChanged();
-    void            SelectionChanged();
+    void            SelectionChanged( bool bFromPaste = false );
     void            CursorPosChanged();
     void            UpdateInputContext();
 
@@ -386,12 +389,12 @@ public:
     void            InvertHorizontal( ScVSplitPos eWhich, long nDragPos );
     void            InvertVertical( ScHSplitPos eWhich, long nDragPos );
 
-    Point           GetInsertPos();
+    Point           GetInsertPos() const;
 
     Point           GetChartInsertPos( const Size& rSize, const ScRange& rCellRange );
     Point           GetChartDialogPos( const Size& rDialogSize, const tools::Rectangle& rLogicChart );
 
-    void            UpdateAutoFillMark();
+    void            UpdateAutoFillMark( bool bFromPaste = false );
 
     void            ShowCursor();
     void            HideAllCursors();
@@ -451,7 +454,7 @@ public:
 
     bool            ScrollCommand( const CommandEvent& rCEvt, ScSplitPos ePos );
 
-    void            ScrollToObject( SdrObject* pDrawObj );
+    void            ScrollToObject( const SdrObject* pDrawObj );
     void            MakeVisible( const tools::Rectangle& rHMMRect );
 
                                     // Drawing
@@ -478,7 +481,7 @@ public:
     void            UpdateShrinkOverlay();
     void            UpdateAllOverlays();
 
-    void            UpdateFormulas();
+    void            UpdateFormulas( SCCOL nStartCol = -1, SCROW nStartRow = -1, SCCOL nEndCol = -1, SCROW nEndRow = -1 );
     void            InterpretVisible();
     void            CheckNeedsRepaint();
     bool            NeedsRepaint();
@@ -493,8 +496,9 @@ public:
     long            GetGridWidth( ScHSplitPos eWhich );
     long            GetGridHeight( ScVSplitPos eWhich );
 
-    void            UpdateScrollBars();
+    void            UpdateScrollBars( HeaderType eHeaderType = BOTH_HEADERS );
     void            SetNewVisArea();
+    void            SetTabProtectionSymbol( SCTAB nTab, const bool bProtect ); // for protection icon of a tab on tabbar
 
     void            InvalidateAttribs();
 
@@ -565,24 +569,24 @@ public:
 
     Point           GetMousePosPixel();
 
-    void            FreezeSplitters( bool bFreeze, SplitMethod eSplitMethod = SC_SPLIT_METHOD_CURSOR );
+    void            FreezeSplitters( bool bFreeze, SplitMethod eSplitMethod = SC_SPLIT_METHOD_CURSOR, SCCOLROW nFreezeIndex = -1 );
     void            RemoveSplit();
     void            SplitAtCursor();
     void            SplitAtPixel( const Point& rPixel );
     void            InvalidateSplit();
 
-    void            ErrorMessage( sal_uInt16 nGlobStrId );
+    void            ErrorMessage(const char* pGlobStrId);
 
     void            EnableRefInput(bool bFlag);
 
     vcl::Window*         GetFrameWin() const { return pFrameWin; }
 
     bool            HasPaintBrush() const           { return pBrushDocument || pDrawBrushSet; }
-    ScDocument*     GetBrushDocument() const        { return pBrushDocument; }
-    SfxItemSet*     GetDrawBrushSet() const         { return pDrawBrushSet; }
+    ScDocument*     GetBrushDocument() const        { return pBrushDocument.get(); }
+    SfxItemSet*     GetDrawBrushSet() const         { return pDrawBrushSet.get(); }
     bool            IsPaintBrushLocked() const      { return bLockPaintBrush; }
-    void            SetBrushDocument( ScDocument* pNew, bool bLock );
-    void            SetDrawBrushSet( SfxItemSet* pNew, bool bLock );
+    void            SetBrushDocument( ScDocumentUniquePtr pNew, bool bLock );
+    void            SetDrawBrushSet( std::unique_ptr<SfxItemSet> pNew, bool bLock );
     void            ResetBrushDocument();
 
     bool ContinueOnlineSpelling();
@@ -590,8 +594,18 @@ public:
     void ResetAutoSpell();
     void SetAutoSpellData( SCCOL nPosX, SCROW nPosY, const std::vector<editeng::MisspellRanges>* pRanges );
     /// @see ScModelObj::getRowColumnHeaders().
-    OUString getRowColumnHeaders(const tools::Rectangle& rRectangle);
+    void getRowColumnHeaders(const tools::Rectangle& rRectangle, tools::JsonWriter& rJsonWriter);
+    /// @see ScModelObj::getSheetGeometryData()
+    OString getSheetGeometryData(bool bColumns, bool bRows, bool bSizes, bool bHidden,
+                                 bool bFiltered, bool bGroups);
+    void extendTiledAreaIfNeeded();
+
     static void OnLOKNoteStateChanged(const ScPostIt* pNote);
+
+    SCROW GetLOKStartHeaderRow() const { return mnLOKStartHeaderRow; }
+    SCROW GetLOKEndHeaderRow() const { return mnLOKEndHeaderRow; }
+    SCCOL GetLOKStartHeaderCol() const { return mnLOKStartHeaderCol; }
+    SCCOL GetLOKEndHeaderCol() const { return mnLOKEndHeaderCol; }
 };
 
 #endif

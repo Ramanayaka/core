@@ -17,20 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "gridcols.hxx"
+#include <gridcols.hxx>
 #include <tools/debug.hxx>
-#include <comphelper/types.hxx>
-#include "fmservs.hxx"
-#include "svx/fmtools.hxx"
+#include <fmservs.hxx>
+#include <com/sun/star/uno/Sequence.hxx>
+
 using namespace ::com::sun::star::uno;
 
 
-const css::uno::Sequence<OUString>& getColumnTypes()
+static const css::uno::Sequence<OUString>& getColumnTypes()
 {
-    static css::uno::Sequence<OUString> aColumnTypes(10);
-    if (aColumnTypes.getConstArray()[0].isEmpty())
+    static css::uno::Sequence<OUString> aColumnTypes = [&]()
     {
-        OUString* pNames = aColumnTypes.getArray();
+        css::uno::Sequence<OUString> tmp(10);
+        OUString* pNames = tmp.getArray();
         pNames[TYPE_CHECKBOX] = FM_COL_CHECKBOX;
         pNames[TYPE_COMBOBOX] = FM_COL_COMBOBOX;
         pNames[TYPE_CURRENCYFIELD] = FM_COL_CURRENCYFIELD;
@@ -41,15 +41,20 @@ const css::uno::Sequence<OUString>& getColumnTypes()
         pNames[TYPE_PATTERNFIELD] = FM_COL_PATTERNFIELD;
         pNames[TYPE_TEXTFIELD] = FM_COL_TEXTFIELD;
         pNames[TYPE_TIMEFIELD] = FM_COL_TIMEFIELD;
-    }
+        return tmp;
+    }();
     return aColumnTypes;
 }
 
 
+extern "C" {
+
 // comparison of PropertyInfo
-extern "C" int SAL_CALL NameCompare(const void* pFirst, const void* pSecond)
+static int NameCompare(const void* pFirst, const void* pSecond)
 {
     return static_cast<OUString const *>(pFirst)->compareTo(*static_cast<OUString const *>(pSecond));
+}
+
 }
 
 namespace
@@ -82,7 +87,7 @@ sal_Int32 getColumnTypeByModelName(const OUString& aModelName)
         sal_Int32 nPrefixPos = aModelName.indexOf(aModelPrefix);
 #ifdef DBG_UTIL
         sal_Int32 nCompatiblePrefixPos = aModelName.indexOf(aCompatibleModelPrefix);
-        DBG_ASSERT( (nPrefixPos != -1) ||   (nCompatiblePrefixPos != -1), "::getColumnTypeByModelName() : wrong servivce !");
+        DBG_ASSERT( (nPrefixPos != -1) ||   (nCompatiblePrefixPos != -1), "::getColumnTypeByModelName() : wrong service!");
 #endif
 
         OUString aColumnType = (nPrefixPos != -1)

@@ -20,6 +20,7 @@
 #ifndef INCLUDED_UCBHELPER_INTERACTIONREQUEST_HXX
 #define INCLUDED_UCBHELPER_INTERACTIONREQUEST_HXX
 
+#include <config_options.h>
 #include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/task/XInteractionRequest.hpp>
 #include <com/sun/star/task/XInteractionAbort.hpp>
@@ -29,10 +30,11 @@
 #include <com/sun/star/ucb/XInteractionAuthFallback.hpp>
 #include <com/sun/star/ucb/XInteractionReplaceExistingData.hpp>
 #include <com/sun/star/ucb/XInteractionSupplyAuthentication2.hpp>
-#include <rtl/ref.hxx>
-#include <cppuhelper/weak.hxx>
+#include <cppuhelper/implbase.hxx>
 #include <ucbhelper/ucbhelperdllapi.h>
 #include <memory>
+
+namespace rtl { template <class reference_type> class Reference; }
 
 namespace ucbhelper {
 
@@ -60,9 +62,8 @@ struct InteractionRequest_Impl;
   * This class can also be used as base class for more specialized requests,
   * like authentication requests.
   */
-class UCBHELPER_DLLPUBLIC InteractionRequest : public cppu::OWeakObject,
-                           public css::lang::XTypeProvider,
-                           public css::task::XInteractionRequest
+class UCBHELPER_DLLPUBLIC InteractionRequest :
+                           public cppu::WeakImplHelper<css::task::XInteractionRequest>
 {
     std::unique_ptr<InteractionRequest_Impl> m_pImpl;
 
@@ -87,20 +88,6 @@ public:
       */
     void setContinuations(
         const css::uno::Sequence< css::uno::Reference< css::task::XInteractionContinuation > > & rContinuations );
-
-    // XInterface
-    virtual css::uno::Any SAL_CALL
-    queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire()
-        throw() override;
-    virtual void SAL_CALL release()
-        throw() override;
-
-    // XTypeProvider
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL
-    getTypes() override;
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL
-    getImplementationId() override;
 
     // XInteractionRequest
     virtual css::uno::Any SAL_CALL
@@ -169,7 +156,7 @@ public:
   * along with an interaction request to indicate the possibility to abort
   * the operation that caused the request.
   */
-class UCBHELPER_DLLPUBLIC InteractionAbort : public InteractionContinuation,
+class UCBHELPER_DLLPUBLIC InteractionAbort final : public InteractionContinuation,
                          public css::lang::XTypeProvider,
                          public css::task::XInteractionAbort
 {
@@ -180,10 +167,10 @@ public:
     // XInterface
     virtual css::uno::Any SAL_CALL
     queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire()
-        throw() override;
-    virtual void SAL_CALL release()
-        throw() override;
+    virtual void SAL_CALL acquire() throw() override
+    { OWeakObject::acquire(); }
+    virtual void SAL_CALL release() throw() override
+    { OWeakObject::release(); }
 
     // XTypeProvider
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL
@@ -202,7 +189,7 @@ public:
   * along with an interaction request to indicate the possibility to retry
   * the operation that caused the request.
   */
-class UCBHELPER_DLLPUBLIC InteractionRetry : public InteractionContinuation,
+class UCBHELPER_DLLPUBLIC InteractionRetry final : public InteractionContinuation,
                          public css::lang::XTypeProvider,
                          public css::task::XInteractionRetry
 {
@@ -213,10 +200,10 @@ public:
     // XInterface
     virtual css::uno::Any SAL_CALL
     queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire()
-        throw() override;
-    virtual void SAL_CALL release()
-        throw() override;
+    virtual void SAL_CALL acquire() throw() override
+    { OWeakObject::acquire(); }
+    virtual void SAL_CALL release() throw() override
+    { OWeakObject::release(); }
 
     // XTypeProvider
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL
@@ -235,7 +222,7 @@ public:
   * along with an interaction request to indicate the possibility to approve
   * the request.
   */
-class UCBHELPER_DLLPUBLIC InteractionApprove : public InteractionContinuation,
+class UNLESS_MERGELIBS(UCBHELPER_DLLPUBLIC) InteractionApprove final : public InteractionContinuation,
                            public css::lang::XTypeProvider,
                            public css::task::XInteractionApprove
 {
@@ -246,10 +233,10 @@ public:
     // XInterface
     virtual css::uno::Any SAL_CALL
     queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire()
-        throw() override;
-    virtual void SAL_CALL release()
-        throw() override;
+    virtual void SAL_CALL acquire() throw() override
+    { OWeakObject::acquire(); }
+    virtual void SAL_CALL release() throw() override
+    { OWeakObject::release(); }
 
     // XTypeProvider
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL
@@ -268,7 +255,7 @@ public:
   * along with an interaction request to indicate the possibility to disapprove
   * the request.
   */
-class UCBHELPER_DLLPUBLIC InteractionDisapprove : public InteractionContinuation,
+class UNLESS_MERGELIBS(UCBHELPER_DLLPUBLIC) InteractionDisapprove final : public InteractionContinuation,
                               public css::lang::XTypeProvider,
                               public css::task::XInteractionDisapprove
 {
@@ -279,10 +266,10 @@ public:
     // XInterface
     virtual css::uno::Any SAL_CALL
     queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire()
-        throw() override;
-    virtual void SAL_CALL release()
-        throw() override;
+    virtual void SAL_CALL acquire() throw() override
+    { OWeakObject::acquire(); }
+    virtual void SAL_CALL release() throw() override
+    { OWeakObject::release(); }
 
     // XTypeProvider
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL
@@ -301,7 +288,7 @@ public:
   * passed along with an authentication interaction request to enable the
   * interaction handler to supply the missing authentication data.
   */
-class UCBHELPER_DLLPUBLIC InteractionSupplyAuthentication :
+class UNLESS_MERGELIBS(UCBHELPER_DLLPUBLIC) InteractionSupplyAuthentication final :
                   public InteractionContinuation,
                   public css::lang::XTypeProvider,
                   public css::ucb::XInteractionSupplyAuthentication2
@@ -313,7 +300,6 @@ class UCBHELPER_DLLPUBLIC InteractionSupplyAuthentication :
     OUString m_aRealm;
     OUString m_aUserName;
     OUString m_aPassword;
-    OUString m_aAccount;
     css::ucb::RememberAuthentication m_eRememberPasswordMode;
     css::ucb::RememberAuthentication m_eDefaultRememberPasswordMode;
     css::ucb::RememberAuthentication m_eDefaultRememberAccountMode;
@@ -372,10 +358,10 @@ public:
     // XInterface
     virtual css::uno::Any SAL_CALL
     queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire()
-        throw() override;
-    virtual void SAL_CALL release()
-        throw() override;
+    virtual void SAL_CALL acquire() throw() override
+    { OWeakObject::acquire(); }
+    virtual void SAL_CALL release() throw() override
+    { OWeakObject::release(); }
 
     // XTypeProvider
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL
@@ -497,7 +483,7 @@ inline InteractionSupplyAuthentication::InteractionSupplyAuthentication(
   * passed along with an interaction request to indicate the possibility to
   * replace existing data.
   */
-class InteractionReplaceExistingData :
+class InteractionReplaceExistingData final :
                   public InteractionContinuation,
                   public css::lang::XTypeProvider,
                   public css::ucb::XInteractionReplaceExistingData
@@ -509,10 +495,10 @@ public:
     // XInterface
     virtual css::uno::Any SAL_CALL
     queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire()
-        throw() override;
-    virtual void SAL_CALL release()
-        throw() override;
+    virtual void SAL_CALL acquire() throw() override
+    { OWeakObject::acquire(); }
+    virtual void SAL_CALL release() throw() override
+    { OWeakObject::release(); }
 
     // XTypeProvider
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL
@@ -524,7 +510,7 @@ public:
     virtual void SAL_CALL select() override;
 };
 
-class UCBHELPER_DLLPUBLIC InteractionAuthFallback:
+class UCBHELPER_DLLPUBLIC InteractionAuthFallback final :
                   public InteractionContinuation,
                   public css::ucb::XInteractionAuthFallback
 {
@@ -537,10 +523,10 @@ public:
     // XInterface
     virtual css::uno::Any SAL_CALL
     queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire()
-        throw() override;
-    virtual void SAL_CALL release()
-        throw() override;
+    virtual void SAL_CALL acquire() throw() override
+    { OWeakObject::acquire(); }
+    virtual void SAL_CALL release() throw() override
+    { OWeakObject::release(); }
 
     // XInteractionContinuation
     virtual void SAL_CALL select() override;
@@ -548,7 +534,7 @@ public:
     // XAuthFallback
     virtual void SAL_CALL setCode( const OUString& code ) override;
     /// @throws css::uno::RuntimeException
-    const OUString& SAL_CALL getCode();
+    const OUString& getCode() const;
 
 
 };

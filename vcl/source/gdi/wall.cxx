@@ -26,7 +26,8 @@
 #include <wall2.hxx>
 #include <vcl/dibtools.hxx>
 #include <vcl/settings.hxx>
-#include <o3tl/make_unique.hxx>
+
+#include <TypeSerializer.hxx>
 
 ImplWallpaper::ImplWallpaper() :
     maColor( COL_TRANSPARENT ), meStyle( WallpaperStyle::NONE )
@@ -37,17 +38,16 @@ ImplWallpaper::ImplWallpaper( const ImplWallpaper& rImplWallpaper ) :
     maColor( rImplWallpaper.maColor ), meStyle(rImplWallpaper.meStyle)
 {
     if ( rImplWallpaper.mpBitmap )
-        mpBitmap = o3tl::make_unique<BitmapEx>( *rImplWallpaper.mpBitmap );
+        mpBitmap = std::make_unique<BitmapEx>( *rImplWallpaper.mpBitmap );
 
     if( rImplWallpaper.mpCache )
-        mpCache = o3tl::make_unique<BitmapEx>( *rImplWallpaper.mpCache );
+        mpCache = std::make_unique<BitmapEx>( *rImplWallpaper.mpCache );
 
     if ( rImplWallpaper.mpGradient )
-        mpGradient = o3tl::make_unique<Gradient>( *rImplWallpaper.mpGradient );
+        mpGradient = std::make_unique<Gradient>( *rImplWallpaper.mpGradient );
 
     if ( rImplWallpaper.mpRect )
-        mpRect = o3tl::make_unique<tools::Rectangle>( *rImplWallpaper.mpRect );
-
+        mpRect = *rImplWallpaper.mpRect;
 }
 
 ImplWallpaper::~ImplWallpaper()
@@ -57,45 +57,47 @@ ImplWallpaper::~ImplWallpaper()
 SvStream& ReadImplWallpaper( SvStream& rIStm, ImplWallpaper& rImplWallpaper )
 {
     VersionCompat   aCompat( rIStm, StreamMode::READ );
-    sal_uInt16          nTmp16;
 
     rImplWallpaper.mpRect.reset();
     rImplWallpaper.mpGradient.reset();
     rImplWallpaper.mpBitmap.reset();
 
     // version 1
-    ReadColor( rIStm, rImplWallpaper.maColor );
-    rIStm.ReadUInt16( nTmp16 ); rImplWallpaper.meStyle = (WallpaperStyle) nTmp16;
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readColor(rImplWallpaper.maColor);
+    sal_uInt16 nTmp16(0);
+    rIStm.ReadUInt16(nTmp16);
+    rImplWallpaper.meStyle = static_cast<WallpaperStyle>(nTmp16);
 
     // version 2
     if( aCompat.GetVersion() >= 2 )
     {
-        bool bRect, bGrad, bBmp, bDummy;
+        bool bRect(false), bGrad(false), bBmp(false), bDummy;
 
         rIStm.ReadCharAsBool( bRect ).ReadCharAsBool( bGrad ).ReadCharAsBool( bBmp ).ReadCharAsBool( bDummy ).ReadCharAsBool( bDummy ).ReadCharAsBool( bDummy );
 
         if( bRect )
         {
-            rImplWallpaper.mpRect = o3tl::make_unique<tools::Rectangle>();
-            ReadRectangle( rIStm, *rImplWallpaper.mpRect );
+            rImplWallpaper.mpRect = tools::Rectangle();
+            aSerializer.readRectangle(*rImplWallpaper.mpRect);
         }
 
         if( bGrad )
         {
-            rImplWallpaper.mpGradient = o3tl::make_unique<Gradient>();
-            ReadGradient( rIStm, *rImplWallpaper.mpGradient );
+            rImplWallpaper.mpGradient = std::make_unique<Gradient>();
+            aSerializer.readGradient(*rImplWallpaper.mpGradient);
         }
 
         if( bBmp )
         {
-            rImplWallpaper.mpBitmap = o3tl::make_unique<BitmapEx>();
+            rImplWallpaper.mpBitmap = std::make_unique<BitmapEx>();
             ReadDIBBitmapEx(*rImplWallpaper.mpBitmap, rIStm);
         }
 
         // version 3 (new color format)
         if( aCompat.GetVersion() >= 3 )
         {
-            rImplWallpaper.maColor.Read( rIStm );
+            rIStm.ReadUInt32(rImplWallpaper.maColor.mValue);
         }
     }
 
@@ -111,23 +113,29 @@ SvStream& WriteImplWallpaper( SvStream& rOStm, const ImplWallpaper& rImplWallpap
     bool            bDummy = false;
 
     // version 1
-    WriteColor( rOStm, rImplWallpaper.maColor );
+    TypeSerializer aSerializer(rOStm);
+    aSerializer.writeColor(rImplWallpaper.maColor);
+
     rOStm.WriteUInt16( static_cast<sal_uInt16>(rImplWallpaper.meStyle) );
 
     // version 2
     rOStm.WriteBool( bRect ).WriteBool( bGrad ).WriteBool( bBmp ).WriteBool( bDummy ).WriteBool( bDummy ).WriteBool( bDummy );
 
     if( bRect )
-        WriteRectangle( rOStm, *rImplWallpaper.mpRect );
+    {
+        aSerializer.writeRectangle(*rImplWallpaper.mpRect);
+    }
 
-    if( bGrad )
-        WriteGradient( rOStm, *rImplWallpaper.mpGradient );
+    if (bGrad)
+    {
+        aSerializer.writeGradient(*rImplWallpaper.mpGradient);
+    }
 
     if( bBmp )
         WriteDIBBitmapEx(*rImplWallpaper.mpBitmap, rOStm);
 
     // version 3 (new color format)
-    rImplWallpaper.maColor.Write( rOStm );
+    rOStm.WriteUInt32(rImplWallpaper.maColor.mValue);
 
     return rOStm;
 }
@@ -142,15 +150,9 @@ Wallpaper::Wallpaper() : mpImplWallpaper(theGlobalDefault::get())
 {
 }
 
-Wallpaper::Wallpaper( const Wallpaper& rWallpaper )
-    : mpImplWallpaper( rWallpaper.mpImplWallpaper)
-{
-}
+Wallpaper::Wallpaper( const Wallpaper& ) = default;
 
-Wallpaper::Wallpaper( Wallpaper&& rWallpaper )
-    : mpImplWallpaper( std::move(rWallpaper.mpImplWallpaper) )
-{
-}
+Wallpaper::Wallpaper( Wallpaper&& ) = default;
 
 Wallpaper::Wallpaper( const Color& rColor ) : mpImplWallpaper()
 {
@@ -160,24 +162,22 @@ Wallpaper::Wallpaper( const Color& rColor ) : mpImplWallpaper()
 
 Wallpaper::Wallpaper( const BitmapEx& rBmpEx ) : mpImplWallpaper()
 {
-    mpImplWallpaper->mpBitmap   = o3tl::make_unique<BitmapEx>( rBmpEx );
+    mpImplWallpaper->mpBitmap   = std::make_unique<BitmapEx>( rBmpEx );
     mpImplWallpaper->meStyle    = WallpaperStyle::Tile;
 }
 
 Wallpaper::Wallpaper( const Gradient& rGradient ) : mpImplWallpaper()
 {
-    mpImplWallpaper->mpGradient = o3tl::make_unique<Gradient>( rGradient );
+    mpImplWallpaper->mpGradient = std::make_unique<Gradient>( rGradient );
     mpImplWallpaper->meStyle    = WallpaperStyle::Tile;
 }
 
-Wallpaper::~Wallpaper()
-{
-}
+Wallpaper::~Wallpaper() = default;
 
 void Wallpaper::ImplSetCachedBitmap( BitmapEx& rBmp ) const
 {
    if( !mpImplWallpaper->mpCache )
-      const_cast< ImplWallpaper* >(mpImplWallpaper.get())->mpCache = o3tl::make_unique<BitmapEx>( rBmp );
+      const_cast< ImplWallpaper* >(mpImplWallpaper.get())->mpCache = std::make_unique<BitmapEx>( rBmp );
    else
       *const_cast< ImplWallpaper* >(mpImplWallpaper.get())->mpCache = rBmp;
 }
@@ -237,7 +237,7 @@ void Wallpaper::SetBitmap( const BitmapEx& rBitmap )
         if ( mpImplWallpaper->mpBitmap )
             *(mpImplWallpaper->mpBitmap) = rBitmap;
         else
-            mpImplWallpaper->mpBitmap = o3tl::make_unique<BitmapEx>( rBitmap );
+            mpImplWallpaper->mpBitmap = std::make_unique<BitmapEx>( rBitmap );
     }
 
     if( WallpaperStyle::NONE == mpImplWallpaper->meStyle || WallpaperStyle::ApplicationGradient == mpImplWallpaper->meStyle)
@@ -264,7 +264,7 @@ void Wallpaper::SetGradient( const Gradient& rGradient )
     if ( mpImplWallpaper->mpGradient )
         *(mpImplWallpaper->mpGradient) = rGradient;
     else
-        mpImplWallpaper->mpGradient = o3tl::make_unique<Gradient>( rGradient );
+        mpImplWallpaper->mpGradient = std::make_unique<Gradient>( rGradient );
 
     if( WallpaperStyle::NONE == mpImplWallpaper->meStyle || WallpaperStyle::ApplicationGradient == mpImplWallpaper->meStyle )
         mpImplWallpaper->meStyle = WallpaperStyle::Tile;
@@ -307,17 +307,14 @@ void Wallpaper::SetRect( const tools::Rectangle& rRect )
     }
     else
     {
-        if ( mpImplWallpaper->mpRect )
-            *(mpImplWallpaper->mpRect) = rRect;
-        else
-            mpImplWallpaper->mpRect = o3tl::make_unique<tools::Rectangle>( rRect );
+        mpImplWallpaper->mpRect = rRect;
     }
 }
 
 tools::Rectangle Wallpaper::GetRect() const
 {
     if ( mpImplWallpaper->mpRect )
-        return *(mpImplWallpaper->mpRect);
+        return *mpImplWallpaper->mpRect;
     else
         return tools::Rectangle();
 }
@@ -347,17 +344,9 @@ bool Wallpaper::IsScrollable() const
         return false;
 }
 
-Wallpaper& Wallpaper::operator=( const Wallpaper& rWallpaper )
-{
-    mpImplWallpaper = rWallpaper.mpImplWallpaper;
-    return *this;
-}
+Wallpaper& Wallpaper::operator=( const Wallpaper& ) = default;
 
-Wallpaper& Wallpaper::operator=( Wallpaper&& rWallpaper )
-{
-    mpImplWallpaper = std::move(rWallpaper.mpImplWallpaper);
-    return *this;
-}
+Wallpaper& Wallpaper::operator=( Wallpaper&& ) = default;
 
 bool Wallpaper::operator==( const Wallpaper& rWallpaper ) const
 {

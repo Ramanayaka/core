@@ -11,7 +11,7 @@ $(eval $(call gb_Library_Library,PresentationMinimizer))
 
 $(eval $(call gb_Library_set_componentfile,PresentationMinimizer,sdext/source/minimizer/minimizer))
 
-$(eval $(call gb_Library_set_precompiled_header,PresentationMinimizer,$(SRCDIR)/sdext/inc/pch/precompiled_PresentationMinimizer))
+$(eval $(call gb_Library_set_precompiled_header,PresentationMinimizer,sdext/inc/pch/precompiled_PresentationMinimizer))
 
 $(eval $(call gb_Library_use_externals,PresentationMinimizer,\
 	boost_headers \
@@ -30,9 +30,13 @@ $(eval $(call gb_Library_set_include,PresentationMinimizer,\
 ))
 
 $(eval $(call gb_Library_use_libraries,PresentationMinimizer,\
+    comphelper \
     cppu \
     cppuhelper \
     sal \
+	sfx \
+	svt \
+	vcl \
     tl \
 ))
 
@@ -49,7 +53,6 @@ $(eval $(call gb_Library_add_exception_objects,PresentationMinimizer,\
     sdext/source/minimizer/pppoptimizer \
     sdext/source/minimizer/pppoptimizerdialog \
     sdext/source/minimizer/pppoptimizertoken \
-    sdext/source/minimizer/pppoptimizeruno \
     sdext/source/minimizer/unodialog \
 ))
 

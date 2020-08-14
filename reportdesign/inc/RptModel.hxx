@@ -38,7 +38,7 @@ namespace rptui
 class OReportPage;
 class OXUndoEnvironment;
 
-class REPORTDESIGN_DLLPUBLIC OReportModel : public SdrModel
+class REPORTDESIGN_DLLPUBLIC OReportModel final : public SdrModel
 {
     friend class OReportPage;
 
@@ -63,7 +63,7 @@ public:
     /** @returns the numbering type that is used to format page fields in drawing shapes */
     virtual SvxNumType  GetPageNumType() const override;
 
-    OXUndoEnvironment&  GetUndoEnv() { return *m_xUndoEnv.get();}
+    OXUndoEnvironment&  GetUndoEnv() { return *m_xUndoEnv;}
     void                SetModified(bool _bModified);
 
     dbaui::DBSubComponentController* getController() const { return m_pController; }

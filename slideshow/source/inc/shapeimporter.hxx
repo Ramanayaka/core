@@ -20,18 +20,20 @@
 #define INCLUDED_SLIDESHOW_SOURCE_INC_SHAPEIMPORTER_HXX
 
 #include <com/sun/star/drawing/XDrawPage.hpp>
+#include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/drawing/XLayer.hpp>
-#include "unoviewcontainer.hxx"
+
+#include <cppcanvas/canvasgraphic.hxx>
+
 #include "unoview.hxx"
 
 #include "shape.hxx"
 
 #include <stack>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 struct SlideShowContext;
 
@@ -90,9 +92,9 @@ public:
         importShape() call.
     */
     bool isImportDone() const;
-    const PolyPolygonVector& getPolygons();
+    const PolyPolygonVector& getPolygons() const;
 
-    double getImportedShapesCount() { return mnAscendingPrio; }
+    double getImportedShapesCount() const{ return mnAscendingPrio; }
 private:
     bool isSkip( css::uno::Reference<css::beans::XPropertySet> const& xPropSet,
                  OUString const& shapeType,
@@ -122,19 +124,17 @@ private:
             : mpGroupShape(), mxShapes(xShapes),
               mnCount(xShapes->getCount()), mnPos(0) {}
     };
-    typedef ::std::stack<XShapesEntry> XShapesStack;
 
     css::uno::Reference<css::drawing::XDrawPage> mxPage;
     css::uno::Reference<css::drawing::XDrawPagesSupplier> mxPagesSupplier;
     const SlideShowContext&                   mrContext;
     PolyPolygonVector                         maPolygons;
-    XShapesStack                              maShapesStack;
+    ::std::stack<XShapesEntry>                maShapesStack;
     double                                    mnAscendingPrio;
     bool                                      mbConvertingMasterPage;
 };
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif
 

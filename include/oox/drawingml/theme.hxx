@@ -31,12 +31,11 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace dom { class XDocument; } }
-} } }
+namespace com::sun::star {
+    namespace xml::dom { class XDocument; }
+}
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 struct EffectProperties;
 struct FillProperties;
@@ -97,6 +96,7 @@ public:
     Shape&                   getTxDef() { return maTxDef; }
     const Shape&             getTxDef() const { return maTxDef; }
 
+    const css::uno::Reference<css::xml::dom::XDocument>& getFragment() const { return mxFragment; }
     void                     setFragment( const css::uno::Reference< css::xml::dom::XDocument>& xRef ) { mxFragment=xRef; }
 
 private:
@@ -114,8 +114,7 @@ private:
 };
 
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 #endif
 

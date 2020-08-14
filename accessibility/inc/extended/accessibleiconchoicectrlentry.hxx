@@ -17,18 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEICONCHOICECTRLENTRY_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEICONCHOICECTRLENTRY_HXX
+#pragma once
 
-#include <deque>
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleStateSet.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 #include <com/sun/star/accessibility/XAccessibleAction.hpp>
-#include <com/sun/star/accessibility/XAccessibleSelection.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/compbase8.hxx>
@@ -45,7 +42,6 @@ class SvtIconChoiceCtrl;
 namespace accessibility
 {
 
-// class AccessibleIconChoiceCtrlEntry
 
     typedef ::cppu::WeakAggComponentImplHelper8< css::accessibility::XAccessible
                                                 , css::accessibility::XAccessibleContext
@@ -57,22 +53,19 @@ namespace accessibility
                                                 , css::lang::XEventListener > AccessibleIconChoiceCtrlEntry_BASE;
 
     /** the class AccessibleListBoxEntry represents the class for an accessible object of a listbox entry */
-    class AccessibleIconChoiceCtrlEntry :   public ::cppu::BaseMutex,
-                                       public AccessibleIconChoiceCtrlEntry_BASE,
-                                    public ::comphelper::OCommonAccessibleText
+    class AccessibleIconChoiceCtrlEntry final : public ::cppu::BaseMutex,
+                                                public AccessibleIconChoiceCtrlEntry_BASE,
+                                                public ::comphelper::OCommonAccessibleText
     {
-    private:
         /** The treelistbox control */
         VclPtr<SvtIconChoiceCtrl>           m_pIconCtrl;
         sal_Int32                           m_nIndex;
 
-    protected:
         /// client id in the AccessibleEventNotifier queue
         sal_uInt32                          m_nClientId;
 
         css::uno::Reference< css::accessibility::XAccessible > m_xParent;
 
-    private:
         tools::Rectangle               GetBoundingBox_Impl() const;
         tools::Rectangle               GetBoundingBoxOnScreen_Impl() const;
         bool                IsAlive_Impl() const;
@@ -87,7 +80,6 @@ namespace accessibility
         /// @throws css::lang::DisposedException
         void                    EnsureIsAlive() const;
 
-    protected:
         virtual ~AccessibleIconChoiceCtrlEntry() override;
         /** this function is called upon disposing the component
         */
@@ -96,7 +88,7 @@ namespace accessibility
         // OCommonAccessibleText
         virtual OUString                        implGetText() override;
         virtual css::lang::Locale               implGetLocale() override;
-        virtual void                            implGetSelection( sal_Int32& nStartIndex, sal_Int32& nEndIndex ) override;
+        virtual void                            implGetSelection( sal_Int32& nStartIndex, sal_Int32& nEndIndex ) override final;
 
     public:
         /** Ctor()
@@ -166,6 +158,7 @@ namespace accessibility
         virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
         virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
         virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+        virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 
         // XAccessibleEventBroadcaster
         virtual void SAL_CALL addAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
@@ -182,6 +175,5 @@ namespace accessibility
 }// namespace accessibility
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEICONCHOICECTRLENTRY_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

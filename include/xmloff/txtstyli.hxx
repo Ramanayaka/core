@@ -23,37 +23,27 @@
 #include <xmloff/dllapi.h>
 #include <xmloff/prstylei.hxx>
 
-class SvXMLTokenMap;
 class XMLEventsImportContext;
 
 class XMLOFF_DLLPUBLIC XMLTextStyleContext : public XMLPropStyleContext
 {
-    OUString             sListStyleName;
-    OUString             sCategoryVal;
-    OUString             sDropCapTextStyleName;
-    OUString             sMasterPageName;
-    OUString             sDataStyleName; // for grid columns only
-    const OUString       sIsAutoUpdate;
-    const OUString       sCategory;
-    const OUString       sNumberingStyleName;
-    const OUString       sOutlineLevel;
+    OUString             m_sListStyleName;
+    OUString             m_sCategoryVal;
+    OUString             m_sDropCapTextStyleName;
+    OUString             m_sMasterPageName;
+    OUString             m_sDataStyleName; // for grid columns only
 
-public:
-    const OUString       sDropCapCharStyleName;
-private:
-    const OUString       sPageDescName;
+    sal_Int8    m_nOutlineLevel;
 
-    sal_Int8    nOutlineLevel;
+    bool        m_isAutoUpdate : 1;
+    bool        m_bHasMasterPageName : 1;
 
-    bool        bAutoUpdate : 1;
-    bool        bHasMasterPageName : 1;
-
-    bool        bHasCombinedCharactersLetter : 1;
+    bool        m_bHasCombinedCharactersLetter : 1;
 
     // Introduce import of empty list style (#i69523#)
-    bool        mbListStyleSet : 1;
+    bool        m_bListStyleSet : 1;
 
-    rtl::Reference<XMLEventsImportContext> mxEventContext;
+    rtl::Reference<XMLEventsImportContext> m_xEventContext;
 
 protected:
 
@@ -67,29 +57,29 @@ public:
     XMLTextStyleContext( SvXMLImport& rImport, sal_uInt16 nPrfx,
             const OUString& rLName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
-            SvXMLStylesContext& rStyles, sal_uInt16 nFamily,
+            SvXMLStylesContext& rStyles, XmlStyleFamily nFamily,
             bool bDefaultStyle = false );
     ~XMLTextStyleContext() override;
 
     XMLTextStyleContext(const XMLTextStyleContext &) = delete;
     XMLTextStyleContext operator=(const XMLTextStyleContext &) = delete;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 nPrefix,
             const OUString& rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 
-    const OUString& GetListStyle() const { return sListStyleName; }
-    // XML import: reconstrution of assignment of paragraph style to outline levels (#i69629#)
+    const OUString& GetListStyle() const { return m_sListStyleName; }
+    // XML import: reconstruction of assignment of paragraph style to outline levels (#i69629#)
     bool IsListStyleSet() const
     {
-        return mbListStyleSet;
+        return m_bListStyleSet;
     }
 
-    const OUString& GetMasterPageName() const { return sMasterPageName; }
-    bool HasMasterPageName() const { return bHasMasterPageName; }
-    const OUString& GetDropCapStyleName() const { return sDropCapTextStyleName; }
-    const OUString& GetDataStyleName() const { return sDataStyleName; }
+    const OUString& GetMasterPageName() const { return m_sMasterPageName; }
+    bool HasMasterPageName() const { return m_bHasMasterPageName; }
+    const OUString& GetDropCapStyleName() const { return m_sDropCapTextStyleName; }
+    const OUString& GetDataStyleName() const { return m_sDataStyleName; }
 
     virtual void CreateAndInsert( bool bOverwrite ) override;
     virtual void Finish( bool bOverwrite ) override;
@@ -99,8 +89,8 @@ public:
     virtual void FillPropertySet(
             const css::uno::Reference< css::beans::XPropertySet > & rPropSet ) override;
 
-    bool HasCombinedCharactersLetter()
-        { return bHasCombinedCharactersLetter; }
+    bool HasCombinedCharactersLetter() const
+        { return m_bHasCombinedCharactersLetter; }
 
     const ::std::vector< XMLPropertyState > & GetProperties_() { return GetProperties(); }
 };

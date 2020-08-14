@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <comphelper/propmultiplex.hxx>
 #include <osl/diagnose.h>
 
@@ -88,21 +89,21 @@ void OPropertyChangeMultiplexer::unlock()
 
 void OPropertyChangeMultiplexer::dispose()
 {
-    if (m_bListening)
-    {
-        Reference< XPropertyChangeListener> xPreventDelete(this);
+    if (!m_bListening)
+        return;
 
-        for (const OUString& rProp : m_aProperties)
-            m_xSet->removePropertyChangeListener(rProp, static_cast< XPropertyChangeListener*>(this));
+    Reference< XPropertyChangeListener> xPreventDelete(this);
 
-        m_pListener->setAdapter(nullptr);
+    for (const OUString& rProp : m_aProperties)
+        m_xSet->removePropertyChangeListener(rProp, static_cast< XPropertyChangeListener*>(this));
 
-        m_pListener = nullptr;
-        m_bListening = false;
+    m_pListener->setAdapter(nullptr);
 
-        if (m_bAutoSetRelease)
-            m_xSet = nullptr;
-    }
+    m_pListener = nullptr;
+    m_bListening = false;
+
+    if (m_bAutoSetRelease)
+        m_xSet = nullptr;
 }
 
 // XEventListener
@@ -115,7 +116,7 @@ void SAL_CALL OPropertyChangeMultiplexer::disposing( const  EventObject& _rSourc
         if (!locked())
             m_pListener->_disposing(_rSource);
         // disconnect the listener
-        if (m_pListener)    // may have been reset whilest calling into _disposing
+        if (m_pListener)    // may have been reset whilst calling into _disposing
             m_pListener->setAdapter(nullptr);
     }
 

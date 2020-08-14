@@ -27,13 +27,8 @@
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
-#include <com/sun/star/awt/FontSlant.hpp>
 #include <FormattedFieldBeautifier.hxx>
 
-#include <svx/unopage.hxx>
-
-// DBG_*
-#include <tools/debug.hxx>
 // DBG_UNHANDLED_EXCEPTION
 #include <tools/diagnose_ex.h>
 
@@ -83,38 +78,35 @@ public:
     {
             VclEventId nEvent = _rEvt.GetId();
 
-            if (nEvent == VclEventId::ApplicationDataChanged )
-            {
-                DataChangedEvent* pData = static_cast<DataChangedEvent*>(static_cast<VclWindowEvent&>(_rEvt).GetData());
-                if ( pData && ((( pData->GetType() == DataChangedEventType::SETTINGS  )   ||
-                                ( pData->GetType() == DataChangedEventType::DISPLAY   ))  &&
-                               ( pData->GetFlags() & AllSettingsFlags::STYLE     )))
-                {
-                    OEnvLock aLock(*this);
+            if (nEvent != VclEventId::ApplicationDataChanged )
+                return;
 
-                    // send all Section Objects a 'tingle'
-                    // maybe they need a change in format, color, etc
-                    ::std::vector< uno::Reference< container::XChild > >::const_iterator aIter = m_pImpl->m_aSections.begin();
-                    ::std::vector< uno::Reference< container::XChild > >::const_iterator aEnd = m_pImpl->m_aSections.end();
-                    for (;aIter != aEnd; ++aIter)
+            DataChangedEvent* pData = static_cast<DataChangedEvent*>(static_cast<VclWindowEvent&>(_rEvt).GetData());
+            if ( !(pData && ((( pData->GetType() == DataChangedEventType::SETTINGS  )   ||
+                            ( pData->GetType() == DataChangedEventType::DISPLAY   ))  &&
+                           ( pData->GetFlags() & AllSettingsFlags::STYLE     ))))
+                return;
+
+            OEnvLock aLock(*this);
+
+            // send all Section Objects a 'tingle'
+            // maybe they need a change in format, color, etc
+            for (const uno::Reference<container::XChild>& xChild : m_pImpl->m_aSections)
+            {
+                if (xChild.is())
+                {
+                    uno::Reference<report::XSection> xSection(xChild, uno::UNO_QUERY);
+                    if (xSection.is())
                     {
-                        const uno::Reference<container::XChild> xChild (*aIter);
-                        if (xChild.is())
+                        const sal_Int32 nCount = xSection->getCount();
+                        for (sal_Int32 i = 0; i < nCount; ++i)
                         {
-                            uno::Reference<report::XSection> xSection(xChild, uno::UNO_QUERY);
-                            if (xSection.is())
+                            const uno::Any aObj = xSection->getByIndex(i);
+                            uno::Reference < report::XReportComponent > xReportComponent(aObj, uno::UNO_QUERY);
+                            if (xReportComponent.is())
                             {
-                                const sal_Int32 nCount = xSection->getCount();
-                                for (sal_Int32 i = 0; i < nCount; ++i)
-                                {
-                                    const uno::Any aObj = xSection->getByIndex(i);
-                                    uno::Reference < report::XReportComponent > xReportComponent(aObj, uno::UNO_QUERY);
-                                    if (xReportComponent.is())
-                                    {
-                                        m_aFormattedFieldBeautifier.handle(xReportComponent);
-                                        m_aFixedTextColor.handle(xReportComponent);
-                                    }
-                                }
+                                m_aFormattedFieldBeautifier.handle(xReportComponent);
+                                m_aFixedTextColor.handle(xReportComponent);
                             }
                         }
                     }
@@ -146,7 +138,7 @@ public:
     // XPropertyChangeListener
     void SAL_CALL OXReportControllerObserver::propertyChange(const beans::PropertyChangeEvent& _rEvent)
     {
-        ::osl::ClearableMutexGuard aGuard( m_pImpl->m_aMutex );
+        osl::MutexGuard aGuard( m_pImpl->m_aMutex );
 
         if ( m_pImpl->m_nLocks != 0 )
             return;
@@ -181,7 +173,7 @@ void OXReportControllerObserver::AddSection(const uno::Reference< report::XSecti
     }
     catch(const uno::Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
     }
 }
 
@@ -199,30 +191,7 @@ void OXReportControllerObserver::RemoveSection(const uno::Reference< report::XSe
     }
     catch(uno::Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
-    }
-}
-
-
-void OXReportControllerObserver::TogglePropertyListening(const uno::Reference< uno::XInterface > & Element)
-{
-    // listen at Container
-    uno::Reference< container::XIndexAccess >  xContainer(Element, uno::UNO_QUERY);
-    if (xContainer.is())
-    {
-        uno::Reference< uno::XInterface > xInterface;
-        sal_Int32 nCount = xContainer->getCount();
-        for(sal_Int32 i = 0;i != nCount;++i)
-        {
-            xInterface.set(xContainer->getByIndex( i ),uno::UNO_QUERY);
-            TogglePropertyListening(xInterface);
-        }
-    }
-
-    uno::Reference< beans::XPropertySet >  xSet(Element, uno::UNO_QUERY);
-    if (xSet.is())
-    {
-        xSet->addPropertyChangeListener( OUString(), this );
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
     }
 }
 
@@ -259,7 +228,7 @@ void OXReportControllerObserver::switchListening( const uno::Reference< containe
     }
     catch( const uno::Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
     }
 }
 
@@ -290,7 +259,7 @@ void OXReportControllerObserver::switchListening( const uno::Reference< uno::XIn
     }
     catch( const uno::Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
     }
 }
 
@@ -324,21 +293,6 @@ void OXReportControllerObserver::RemoveElement(const uno::Reference< uno::XInter
 }
 
 
-::std::vector< uno::Reference< container::XChild> >::const_iterator OXReportControllerObserver::getSection(const uno::Reference<container::XChild>& _xContainer) const
-{
-    ::std::vector< uno::Reference< container::XChild> >::const_iterator aFind = m_pImpl->m_aSections.end();
-    if ( _xContainer.is() )
-    {
-        aFind = ::std::find(m_pImpl->m_aSections.begin(),m_pImpl->m_aSections.end(),_xContainer);
-
-        if ( aFind == m_pImpl->m_aSections.end() )
-        {
-            uno::Reference<container::XChild> xParent(_xContainer->getParent(),uno::UNO_QUERY);
-            aFind = getSection(xParent);
-        }
-    }
-    return aFind;
-}
 // XContainerListener
 
 void SAL_CALL OXReportControllerObserver::elementInserted(const container::ContainerEvent& evt)

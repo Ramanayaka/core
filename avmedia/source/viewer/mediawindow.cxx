@@ -19,20 +19,22 @@
 
 #include <avmedia/mediawindow.hxx>
 #include "mediawindow_impl.hxx"
-#include "mediamisc.hxx"
-#include "bitmaps.hlst"
-#include "mediawindow.hrc"
+#include <mediamisc.hxx>
+#include <bitmaps.hlst>
+#include <strings.hrc>
 #include <tools/urlobj.hxx>
-#include <vcl/layout.hxx>
-#include <unotools/pathoptions.hxx>
+#include <vcl/graph.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <sfx2/filedlghelper.hxx>
-#include <comphelper/processfactory.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/media/XManager.hpp>
-#include "com/sun/star/ui/dialogs/ExtendedFilePickerElementIds.hpp"
-#include "com/sun/star/ui/dialogs/TemplateDescription.hpp"
-#include "com/sun/star/ui/dialogs/XFilePickerControlAccess.hpp"
+#include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/media/XPlayer.hpp>
+#include <com/sun/star/ui/dialogs/ExtendedFilePickerElementIds.hpp>
+#include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
+#include <com/sun/star/ui/dialogs/XFilePicker3.hpp>
+#include <com/sun/star/ui/dialogs/XFilePickerControlAccess.hpp>
 #include <memory>
+#include <sal/log.hxx>
 
 #define AVMEDIA_FRAMEGRABBER_DEFAULTFRAME_MEDIATIME 3.0
 
@@ -129,9 +131,9 @@ void MediaWindow::setPosSize( const tools::Rectangle& rNewRect )
 }
 
 
-void MediaWindow::setPointer( const Pointer& rPointer )
+void MediaWindow::setPointer( PointerStyle nPointer )
 {
-    mpImpl->setPointer( rPointer );
+    mpImpl->setPointer( nPointer );
 }
 
 
@@ -171,96 +173,88 @@ vcl::Window* MediaWindow::getWindow() const
 }
 
 
-void MediaWindow::getMediaFilters( FilterNameVector& rFilterNameVector )
+FilterNameVector MediaWindow::getMediaFilters()
 {
-    static const char* pFilters[] = { "Advanced Audio Coding", "aac",
-                                      "AIF Audio", "aif;aiff",
-                                      "Advanced Systems Format", "asf;wma;wmv",
-                                      "AU Audio", "au",
-                                      "AC3 Audio", "ac3",
-                                      "AVI", "avi",
-                                      "CD Audio", "cda",
-                                      "Digital Video", "dv",
-                                      "FLAC Audio", "flac",
-                                      "Flash Video", "flv",
-                                      "Matroska Media", "mkv",
-                                      "MIDI Audio", "mid;midi",
-                                      "MPEG Audio", "mp2;mp3;mpa;m4a",
-                                      "MPEG Video", "mpg;mpeg;mpv;mp4;m4v",
-                                      "Ogg Audio", "ogg;oga;opus",
-                                      "Ogg Video", "ogv;ogx",
-                                      "Real Audio", "ra",
-                                      "Real Media", "rm",
-                                      "RMI MIDI Audio", "rmi",
-                                      "SND (SouND) Audio", "snd",
-                                      "Quicktime Video", "mov",
-                                      "Vivo Video", "viv",
-                                      "WAVE Audio", "wav",
-                                      "WebM Video", "webm",
-                                      "Windows Media Audio", "wma",
-                                      "Windows Media Video", "wmv"};
-
-    for( size_t i = 0; i < SAL_N_ELEMENTS(pFilters); i += 2 )
-    {
-        rFilterNameVector.push_back( std::make_pair< OUString, OUString >(
-                                        OUString::createFromAscii(pFilters[i]),
-                                        OUString::createFromAscii(pFilters[i+1]) ) );
-    }
+    return {{"Advanced Audio Coding", "aac"},
+            {"AIF Audio", "aif;aiff"},
+            {"Advanced Systems Format", "asf;wma;wmv"},
+            {"AU Audio", "au"},
+            {"AC3 Audio", "ac3"},
+            {"AVI", "avi"},
+            {"CD Audio", "cda"},
+            {"Digital Video", "dv"},
+            {"FLAC Audio", "flac"},
+            {"Flash Video", "flv"},
+            {"Matroska Media", "mkv"},
+            {"MIDI Audio", "mid;midi"},
+            {"MPEG Audio", "mp2;mp3;mpa;m4a"},
+            {"MPEG Video", "mpg;mpeg;mpv;mp4;m4v"},
+            {"Ogg Audio", "ogg;oga;opus"},
+            {"Ogg Video", "ogv;ogx"},
+            {"Real Audio", "ra"},
+            {"Real Media", "rm"},
+            {"RMI MIDI Audio", "rmi"},
+            {"SND (SouND) Audio", "snd"},
+            {"Quicktime Video", "mov"},
+            {"Vivo Video", "viv"},
+            {"WAVE Audio", "wav"},
+            {"WebM Video", "webm"},
+            {"Windows Media Audio", "wma"},
+            {"Windows Media Video", "wmv"}};
 }
 
 
-bool MediaWindow::executeMediaURLDialog(OUString& rURL, bool *const o_pbLink)
+bool MediaWindow::executeMediaURLDialog(weld::Window* pParent, OUString& rURL, bool *const o_pbLink)
 {
-    ::sfx2::FileDialogHelper        aDlg( o_pbLink
+    ::sfx2::FileDialogHelper        aDlg(o_pbLink != nullptr
             ? ui::dialogs::TemplateDescription::FILEOPEN_LINK_PREVIEW
-            : ui::dialogs::TemplateDescription::FILEOPEN_SIMPLE );
+            : ui::dialogs::TemplateDescription::FILEOPEN_SIMPLE,
+            FileDialogFlags::NONE, pParent);
     static const char               aWildcard[] = "*.";
-    FilterNameVector                aFilters;
+    FilterNameVector                aFilters = getMediaFilters();
     static const char               aSeparator[] = ";";
-    OUString                        aAllTypes;
+    OUStringBuffer                  aAllTypes;
 
-    aDlg.SetTitle( AvmResId( (o_pbLink)
+    aDlg.SetTitle( AvmResId( o_pbLink != nullptr
                 ? AVMEDIA_STR_INSERTMEDIA_DLG : AVMEDIA_STR_OPENMEDIA_DLG ) );
-
-    getMediaFilters( aFilters );
 
     for( FilterNameVector::size_type i = 0; i < aFilters.size(); ++i )
     {
         for( sal_Int32 nIndex = 0; nIndex >= 0; )
         {
             if( !aAllTypes.isEmpty() )
-                aAllTypes += aSeparator;
+                aAllTypes.append(aSeparator);
 
-            ( aAllTypes += aWildcard ) += aFilters[ i ].second.getToken( 0, ';', nIndex );
+            aAllTypes.append(aWildcard).append(aFilters[ i ].second.getToken( 0, ';', nIndex ));
         }
     }
 
     // add filter for all media types
-    aDlg.AddFilter( AvmResId( AVMEDIA_STR_ALL_MEDIAFILES ), aAllTypes );
+    aDlg.AddFilter( AvmResId( AVMEDIA_STR_ALL_MEDIAFILES ), aAllTypes.makeStringAndClear() );
 
     for( FilterNameVector::size_type i = 0; i < aFilters.size(); ++i )
     {
-        OUString aTypes;
+        OUStringBuffer aTypes;
 
         for( sal_Int32 nIndex = 0; nIndex >= 0; )
         {
             if( !aTypes.isEmpty() )
-                aTypes += aSeparator;
+                aTypes.append(aSeparator);
 
-            ( aTypes += aWildcard ) += aFilters[ i ].second.getToken( 0, ';', nIndex );
+            aTypes.append(aWildcard).append(aFilters[ i ].second.getToken( 0, ';', nIndex ));
         }
 
         // add single filters
-        aDlg.AddFilter( aFilters[ i ].first, aTypes );
+        aDlg.AddFilter( aFilters[ i ].first, aTypes.makeStringAndClear() );
     }
 
     // add filter for all types
     aDlg.AddFilter( AvmResId( AVMEDIA_STR_ALL_FILES ), "*.*" );
 
-    uno::Reference<ui::dialogs::XFilePicker2> const xFP(aDlg.GetFilePicker());
+    uno::Reference<ui::dialogs::XFilePicker3> const xFP(aDlg.GetFilePicker());
     uno::Reference<ui::dialogs::XFilePickerControlAccess> const xCtrlAcc(xFP,
             uno::UNO_QUERY_THROW);
-    if (o_pbLink)
+    if (o_pbLink != nullptr)
     {
         // for video link should be the default
         xCtrlAcc->setValue(
@@ -277,7 +271,7 @@ bool MediaWindow::executeMediaURLDialog(OUString& rURL, bool *const o_pbLink)
         const INetURLObject aURL( aDlg.GetPath() );
         rURL = aURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous );
 
-        if (o_pbLink)
+        if (o_pbLink != nullptr)
         {
             uno::Any const any = xCtrlAcc->getValue(
                 ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_LINK, 0);
@@ -294,20 +288,16 @@ bool MediaWindow::executeMediaURLDialog(OUString& rURL, bool *const o_pbLink)
     return !rURL.isEmpty();
 }
 
-
-void MediaWindow::executeFormatErrorBox( vcl::Window* pParent )
+void MediaWindow::executeFormatErrorBox(weld::Window* pParent)
 {
-    ScopedVclPtrInstance< MessageDialog > aErrBox( pParent, AvmResId( AVMEDIA_STR_ERR_URL ) );
-
-    aErrBox->Execute();
-    aErrBox.disposeAndClear();
+    std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(pParent,
+                                              VclMessageType::Warning, VclButtonsType::Ok, AvmResId(AVMEDIA_STR_ERR_URL)));
+    xBox->run();
 }
-
 
 bool MediaWindow::isMediaURL( const OUString& rURL, const OUString& rReferer, bool bDeep, Size* pPreferredSizePixel )
 {
     const INetURLObject aURL( rURL );
-    bool                bRet = false;
 
     if( aURL.GetProtocol() != INetProtocol::NotValid )
     {
@@ -321,15 +311,15 @@ bool MediaWindow::isMediaURL( const OUString& rURL, const OUString& rReferer, bo
 
                 if( xPlayer.is() )
                 {
-                    bRet = true;
-
                     if( pPreferredSizePixel )
                     {
                         const awt::Size aAwtSize( xPlayer->getPreferredPlayerWindowSize() );
 
-                        pPreferredSizePixel->Width() = aAwtSize.Width;
-                        pPreferredSizePixel->Height() = aAwtSize.Height;
+                        pPreferredSizePixel->setWidth( aAwtSize.Width );
+                        pPreferredSizePixel->setHeight( aAwtSize.Height );
                     }
+
+                    return true;
                 }
             }
             catch( ... )
@@ -338,23 +328,21 @@ bool MediaWindow::isMediaURL( const OUString& rURL, const OUString& rReferer, bo
         }
         else
         {
-            FilterNameVector        aFilters;
+            FilterNameVector        aFilters = getMediaFilters();
             const OUString          aExt( aURL.getExtension() );
 
-            getMediaFilters( aFilters );
-
-            for( FilterNameVector::size_type i = 0; ( i < aFilters.size() ) && !bRet; ++i )
+            for( FilterNameVector::size_type i = 0; i < aFilters.size(); ++i )
             {
-                for( sal_Int32 nIndex = 0; nIndex >= 0 && !bRet; )
+                for( sal_Int32 nIndex = 0; nIndex >= 0; )
                 {
                     if( aExt.equalsIgnoreAsciiCase( aFilters[ i ].second.getToken( 0, ';', nIndex ) ) )
-                        bRet = true;
+                        return true;
                 }
             }
         }
     }
 
-    return bRet;
+    return false;
 }
 
 
@@ -398,13 +386,13 @@ uno::Reference< graphic::XGraphic > MediaWindow::grabFrame( const OUString& rURL
         }
     }
 
-    if( !xRet.is() && !xGraphic.get() )
+    if (!xRet.is() && !xGraphic)
     {
         const BitmapEx aBmpEx(AVMEDIA_BMP_EMPTYLOGO);
         xGraphic.reset( new Graphic( aBmpEx ) );
     }
 
-    if( xGraphic.get() )
+    if (xGraphic)
         xRet = xGraphic->GetXGraphic();
 
     return xRet;

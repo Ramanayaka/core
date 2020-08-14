@@ -20,11 +20,11 @@
 #ifndef INCLUDED_FILTER_SOURCE_GRAPHICFILTER_IDXF_DXFENTRD_HXX
 #define INCLUDED_FILTER_SOURCE_GRAPHICFILTER_IDXF_DXFENTRD_HXX
 
-#include <dxfgrprd.hxx>
-#include <dxfvec.hxx>
+#include "dxfgrprd.hxx"
+#include "dxfvec.hxx"
 
-#include <deque>
 #include <memory>
+#include <vector>
 
 enum DXFEntityType {
     DXF_LINE,
@@ -63,7 +63,6 @@ public:
     // commented with group codes:
     OString m_sLayer;                     //  8
     OString m_sLineType;                  //  6
-    double fElevation;                    // 38
     double fThickness;                    // 39
     long nColor;                          // 62
     long nSpace;                          // 67
@@ -207,14 +206,14 @@ protected:
 
 class DXFShapeEntity : public DXFBasicEntity {
 
-public:
-
     DXFVector aP0;                    // 10,20,30
     double fSize;                     // 40
     OString m_sName;                  //  2
     double fRotAngle;                 // 50
     double fXScale;                   // 41
     double fOblAngle;                 // 51
+
+public:
 
     DXFShapeEntity();
 
@@ -248,8 +247,6 @@ protected:
 
 class DXFAttDefEntity : public DXFBasicEntity {
 
-public:
-
     DXFVector aP0;                      // 10,20,30
     double fHeight;                     // 40
     OString m_sDefVal;                  //  1
@@ -265,6 +262,8 @@ public:
     long nHorzJust;                     // 72
     long nVertJust;                     // 74
     DXFVector aAlign;                   // 11,21,31
+
+public:
 
     DXFAttDefEntity();
 
@@ -303,7 +302,6 @@ class DXFPolyLineEntity : public DXFBasicEntity {
 
 public:
 
-    double fElevation; // 30
     long nFlags;       // 70
     double fSWidth;    // 40
     double fEWidth;    // 41
@@ -323,16 +321,16 @@ protected:
 class DXFLWPolyLineEntity : public DXFBasicEntity
 {
         sal_Int32   nIndex;
+        sal_Int32   nCount;         // 90
 
     public:
 
-        sal_Int32   nCount;         // 90
         sal_Int32   nFlags;         // 70   1 = closed, 128 = plinegen
         double      fConstantWidth; // 43   (optional - default: 0, not used if fStartWidth and/or fEndWidth is used)
         double      fStartWidth;    // 40
         double      fEndWidth;      // 41
 
-        std::unique_ptr<DXFVector[]>  pP;
+        std::vector<DXFVector>  aP;
 
         DXFLWPolyLineEntity();
 
@@ -400,10 +398,12 @@ struct DXFEdgeTypeSpline : public DXFEdgeType
 
 struct DXFBoundaryPathData
 {
+private:
+    sal_Int32           nPointCount;            // 93
+public:
     sal_Int32           nFlags;                 // 92
     sal_Int32           nHasBulgeFlag;          // 72
     sal_Int32           nIsClosedFlag;          // 73
-    sal_Int32           nPointCount;            // 93
     double              fBulge;                 // 42
     sal_Int32           nSourceBoundaryObjects; // 97
     sal_Int32           nEdgeCount;             // 93
@@ -411,8 +411,8 @@ struct DXFBoundaryPathData
     bool                bIsPolyLine;
     sal_Int32           nPointIndex;
 
-    std::unique_ptr<DXFVector[]> pP;
-    std::deque<DXFEdgeType*> aEdges;
+    std::vector<DXFVector> aP;
+    std::vector<std::unique_ptr<DXFEdgeType>> aEdges;
 
     DXFBoundaryPathData();
     ~DXFBoundaryPathData();

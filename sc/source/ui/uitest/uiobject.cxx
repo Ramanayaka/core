@@ -8,35 +8,45 @@
  */
 
 #include <memory>
-#include "uiobject.hxx"
+#include <uiobject.hxx>
 
-#include "rangeutl.hxx"
-#include "gridwin.hxx"
+#include <rangeutl.hxx>
+#include <gridwin.hxx>
 
-#include "viewdata.hxx"
-#include "dbfunc.hxx"
-#include "tabvwsh.hxx"
+#include <viewdata.hxx>
+#include <viewfunc.hxx>
+#include <dbfunc.hxx>
+#include <tabvwsh.hxx>
+#include <drwlayer.hxx>
+#include <navipi.hxx>
+#include <sfx2/sidebar/Sidebar.hxx>
+#include <sfx2/viewfrm.hxx>
+#include <sfx2/dispatch.hxx>
+#include <appoptio.hxx>
+#include <scmod.hxx>
+#include <fudraw.hxx>
+#include <postit.hxx>
 
 #include <svx/svditer.hxx>
 #include <svx/svdobj.hxx>
-#include <svx/svdpage.hxx>
 #include <svx/svdoole2.hxx>
+#include <sal/log.hxx>
 
 namespace {
 
-ScAddress get_address_from_string(const OUString& rStr)
+ScAddress get_address_from_string(const ScDocument* pDoc, const OUString& rStr)
 {
     ScAddress aAddr;
     sal_Int32 nOffset = 0;
-    ScRangeStringConverter::GetAddressFromString(aAddr, rStr, nullptr, formula::FormulaGrammar::CONV_OOO, nOffset);
+    ScRangeStringConverter::GetAddressFromString(aAddr, rStr, pDoc, formula::FormulaGrammar::CONV_OOO, nOffset);
     return aAddr;
 }
 
-ScRange get_range_from_string(const OUString& rStr)
+ScRange get_range_from_string(const ScDocument* pDoc, const OUString& rStr)
 {
     ScRange aRange;
     sal_Int32 nOffset = 0;
-    ScRangeStringConverter::GetRangeFromString(aRange, rStr, nullptr, formula::FormulaGrammar::CONV_OOO, nOffset);
+    ScRangeStringConverter::GetRangeFromString(aRange, rStr, pDoc, formula::FormulaGrammar::CONV_OOO, nOffset);
 
     return aRange;
 }
@@ -68,6 +78,18 @@ StringMap ScGridWinUIObject::get_state()
     ScRangeStringConverter::GetStringFromRangeList(aMarkedAreaString, &aMarkedArea, mxGridWindow->getViewData()->GetDocument(), formula::FormulaGrammar::CONV_OOO);
 
     aMap["MarkedArea"] = aMarkedAreaString;
+
+    ScDocument* pDoc = mxGridWindow->getViewData()->GetDocument();
+    ScAddress aPos( mxGridWindow->getViewData()->GetCurX() , mxGridWindow->getViewData()->GetCurY() , mxGridWindow->getViewData()->GetTabNo() );
+    if ( pDoc->HasNote( aPos ) )
+    {
+        ScPostIt* pNote = pDoc->GetNote(aPos);
+        assert(pNote);
+        aMap["CurrentCellCommentText"] = pNote->GetText();
+    }
+
+    ScAppOptions aOpt = SC_MOD()->GetAppOptions();
+    aMap["Zoom"] = OUString::number( aOpt.GetZoom() );
     return aMap;
 }
 
@@ -95,6 +117,14 @@ ScTabViewShell* ScGridWinUIObject::getViewShell()
     return pViewShell;
 }
 
+ScViewFunc* ScGridWinUIObject::getViewFunc()
+{
+    ScViewData* pViewData = mxGridWindow->getViewData();
+    ScViewFunc* pViewFunc = pViewData->GetView();
+
+    return pViewFunc;
+}
+
 void ScGridWinUIObject::execute(const OUString& rAction,
         const StringMap& rParameters)
 {
@@ -112,7 +142,7 @@ void ScGridWinUIObject::execute(const OUString& rAction,
         {
             auto itr = rParameters.find("CELL");
             const OUString& rStr = itr->second;
-            ScAddress aAddr = get_address_from_string(rStr);
+            ScAddress aAddr = get_address_from_string(mxGridWindow->getViewData()->GetDocument(), rStr);
             ScDBFunc* pFunc = getDBFunc();
             pFunc->MarkRange(ScRange(aAddr), true, bExtend);
             mxGridWindow->CursorChanged();
@@ -121,7 +151,7 @@ void ScGridWinUIObject::execute(const OUString& rAction,
         {
             auto itr = rParameters.find("RANGE");
             const OUString rStr = itr->second;
-            ScRange aRange = get_range_from_string(rStr);
+            ScRange aRange = get_range_from_string(mxGridWindow->getViewData()->GetDocument(), rStr);
             ScDBFunc* pFunc = getDBFunc();
             pFunc->MarkRange(aRange, true, bExtend);
             mxGridWindow->CursorChanged();
@@ -131,7 +161,9 @@ void ScGridWinUIObject::execute(const OUString& rAction,
             auto itr = rParameters.find("TABLE");
             const OUString rStr = itr->second;
             sal_Int32 nTab = rStr.toUInt32();
-            mxGridWindow->getViewData()->SetTabNo(nTab);
+            ScTabView* pTabView = mxGridWindow->getViewData()->GetView();
+            if (pTabView)
+                pTabView->SetTabNo(nTab);
         }
         else if (rParameters.find("OBJECT") != rParameters.end())
         {
@@ -181,8 +213,7 @@ void ScGridWinUIObject::execute(const OUString& rAction,
     }
     else if (rAction == "LAUNCH")
     {
-        auto itr = rParameters.find("AUTOFILTER");
-        if (itr != rParameters.end())
+        if ( rParameters.find("AUTOFILTER") != rParameters.end())
         {
             auto itrCol = rParameters.find("COL");
             if (itrCol == rParameters.end())
@@ -200,6 +231,83 @@ void ScGridWinUIObject::execute(const OUString& rAction,
             SCROW nRow = itrRow->second.toUInt32();
             SCCOL nCol = itrCol->second.toUInt32();
             mxGridWindow->LaunchAutoFilterMenu(nCol, nRow);
+        }
+        else if ( rParameters.find("SELECTMENU") != rParameters.end())
+        {
+            auto itrCol = rParameters.find("COL");
+            if (itrCol == rParameters.end())
+            {
+                SAL_WARN("sc.uitest", "missing COL parameter");
+                return;
+            }
+
+            auto itrRow = rParameters.find("ROW");
+            if (itrRow == rParameters.end())
+            {
+                SAL_WARN("sc.uitest", "missing ROW parameter");
+                return;
+            }
+            SCROW nRow = itrRow->second.toUInt32();
+            SCCOL nCol = itrCol->second.toUInt32();
+            mxGridWindow->LaunchDataSelectMenu(nCol, nRow);
+        }
+    }
+    else if (rAction == "COMMENT")
+    {
+        if ( rParameters.find("OPEN") != rParameters.end() )
+        {
+            ScViewFunc* pViewFunc = getViewFunc();
+            pViewFunc->EditNote();
+        }
+        else if ( rParameters.find("CLOSE") != rParameters.end() )
+        {
+            FuDraw* pDraw = dynamic_cast<FuDraw*>(getViewFunc()->GetDrawFuncPtr());
+            assert(pDraw);
+            ScViewData* pViewData = mxGridWindow->getViewData();
+            pViewData->GetDispatcher().Execute( pDraw->GetSlotID() , SfxCallMode::SLOT | SfxCallMode::RECORD );
+        }
+        else if ( rParameters.find("SETTEXT") != rParameters.end() )
+        {
+            auto itr = rParameters.find("SETTEXT");
+            const OUString rStr = itr->second;
+            ScDocument* pDoc = mxGridWindow->getViewData()->GetDocument();
+            ScAddress aPos( mxGridWindow->getViewData()->GetCurX() , mxGridWindow->getViewData()->GetCurY() , mxGridWindow->getViewData()->GetTabNo() );
+            pDoc->GetOrCreateNote( aPos )->SetText( aPos , rStr );
+        }
+    }
+    else if (rAction == "SIDEBAR")
+    {
+        SfxViewFrame* pViewFrm = SfxViewFrame::Current();
+        DBG_ASSERT(pViewFrm, "ScGridWinUIObject::execute: no viewframe");
+        pViewFrm->ShowChildWindow(SID_SIDEBAR);
+
+        auto itr = rParameters.find("PANEL");
+        if (itr != rParameters.end())
+        {
+            OUString aVal = itr->second;
+            ::sfx2::sidebar::Sidebar::ShowPanel(aVal, pViewFrm->GetFrame().GetFrameInterface());
+        }
+    }
+    else if (rAction == "SET")
+    {
+        if (rParameters.find("ZOOM") != rParameters.end())
+        {
+            auto itr = rParameters.find("ZOOM");
+            OUString aVal = itr->second;
+            sal_Int32 nVal = aVal.toInt32();
+            ScTabViewShell* pViewShell = getViewShell();
+            ScModule*  pScMod = SC_MOD();
+            if( nVal )
+            {
+                ScAppOptions aNewOpt = pScMod->GetAppOptions();
+                aNewOpt.SetZoom( nVal );
+                pScMod->SetAppOptions( aNewOpt );
+                Fraction aFract( nVal, 100 );
+                pViewShell->SetZoom( aFract, aFract, true );
+                pViewShell->PaintGrid();
+                pViewShell->PaintTop();
+                pViewShell->PaintLeft();
+            }
         }
     }
     else
@@ -232,7 +340,7 @@ std::set<OUString> collect_charts(VclPtr<ScGridWindow> const & xGridWindow)
     if (!pPage)
         return aRet;
 
-    SdrObjListIter aIter( *pPage, SdrIterMode::Flat );
+    SdrObjListIter aIter( pPage, SdrIterMode::Flat );
     SdrObject* pObject = aIter.Next();
     while (pObject)
     {
@@ -240,8 +348,6 @@ std::set<OUString> collect_charts(VclPtr<ScGridWindow> const & xGridWindow)
         {
             aRet.insert(static_cast<SdrOle2Obj*>(pObject)->GetPersistName());
         }
-        else
-            SAL_DEBUG(pObject->GetName());
         pObject = aIter.Next();
     }
 
@@ -270,7 +376,35 @@ std::unique_ptr<UIObject> ScGridWinUIObject::create(vcl::Window* pWindow)
 
 OUString ScGridWinUIObject::get_name() const
 {
-    return OUString("ScGridWinUIObject");
+    return "ScGridWinUIObject";
 }
 
+ScNavigatorDlgUIObject::ScNavigatorDlgUIObject(const VclPtr<ScNavigatorDlg>& xScNavigatorDlg):
+    WindowUIObject(xScNavigatorDlg),
+    mxScNavigatorDlg(xScNavigatorDlg)
+{
+}
+
+void ScNavigatorDlgUIObject::execute(const OUString& rAction,
+        const StringMap& rParameters)
+{
+    if (rAction == "ROOT")
+    {
+        mxScNavigatorDlg->ToolBoxSelectHdl("toggle");
+    }
+    else
+        WindowUIObject::execute(rAction, rParameters);
+}
+
+std::unique_ptr<UIObject> ScNavigatorDlgUIObject::create(vcl::Window* pWindow)
+{
+    ScNavigatorDlg* pScNavigatorDlg = dynamic_cast<ScNavigatorDlg*>(pWindow);
+    assert(pScNavigatorDlg);
+    return std::unique_ptr<UIObject>(new ScNavigatorDlgUIObject(pScNavigatorDlg));
+}
+
+OUString ScNavigatorDlgUIObject::get_name() const
+{
+    return "ScNavigatorDlgUIObject";
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,22 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_METAFILEPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_METAFILEPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <vcl/gdimtf.hxx>
+#include <vcl/gdimetafiletools.hxx>
 
 
 // MetafilePrimitive2D class
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** MetafilePrimitive2D class
 
             This is the MetaFile representing primitive. It's geometry is defined
@@ -53,7 +51,7 @@ namespace drawinglayer
             have many advantages; Metafile would no longer have to be rendered by
             sub-systems and a standard way for converting Metafiles would exist.
          */
-        class DRAWINGLAYER_DLLPUBLIC MetafilePrimitive2D : public BufferedDecompositionPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC MetafilePrimitive2D final : public BufferedDecompositionPrimitive2D, public MetafileAccessor
         {
         private:
             /// the geometry definition
@@ -62,7 +60,6 @@ namespace drawinglayer
             /// the content definition
             GDIMetaFile                                 maMetaFile;
 
-        protected:
             /// local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
         public:
@@ -81,13 +78,13 @@ namespace drawinglayer
             /// get range
             virtual basegfx::B2DRange getB2DRange(const geometry::ViewInformation2D& rViewInformation) const override;
 
+            /// from MetafileAccessor
+            virtual void accessMetafile(GDIMetaFile& rTargetMetafile) const override;
+
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_METAFILEPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

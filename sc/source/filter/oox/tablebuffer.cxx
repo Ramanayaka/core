@@ -17,21 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "tablebuffer.hxx"
+#include <tablebuffer.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sheet/XDatabaseRange.hpp>
 #include <com/sun/star/sheet/XDatabaseRanges.hpp>
+#include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/helper/binaryinputstream.hxx>
 #include <oox/helper/propertyset.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
-#include "addressconverter.hxx"
+#include <addressconverter.hxx>
+#include <biffhelper.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::sheet;
 using namespace ::com::sun::star::uno;
@@ -86,7 +88,10 @@ void Table::finalizeImport()
     // ranges (or tables in their terminology) as Table1, Table2 etc.  We need
     // to import them as named db ranges because they may be referenced by
     // name in formula expressions.
-    if( (maModel.mnId > 0) && !maModel.maDisplayName.isEmpty() ) try
+    if( (maModel.mnId <= 0) || maModel.maDisplayName.isEmpty() )
+        return;
+
+    try
     {
         maDBRangeName = maModel.maDisplayName;
 
@@ -126,20 +131,20 @@ void Table::finalizeImport()
 
 void Table::applyAutoFilters()
 {
-    if( !maDBRangeName.isEmpty() )
+    if( maDBRangeName.isEmpty() )
+        return;
+
+    try
     {
-        try
-        {
-            // get the range ( maybe we should cache the xDatabaseRange from finalizeImport )
-            PropertySet aDocProps( getDocument() );
-            Reference< XDatabaseRanges > xDatabaseRanges( aDocProps.getAnyProperty( PROP_DatabaseRanges ), UNO_QUERY_THROW );
-            Reference< XDatabaseRange > xDatabaseRange( xDatabaseRanges->getByName( maDBRangeName ), UNO_QUERY );
-            maAutoFilters.finalizeImport( xDatabaseRange );
-        }
-        catch( Exception& )
-        {
-            OSL_FAIL( "Table::applyAutofilters - cannot create filter" );
-        }
+        // get the range ( maybe we should cache the xDatabaseRange from finalizeImport )
+        PropertySet aDocProps( getDocument() );
+        Reference< XDatabaseRanges > xDatabaseRanges( aDocProps.getAnyProperty( PROP_DatabaseRanges ), UNO_QUERY_THROW );
+        Reference< XDatabaseRange > xDatabaseRange( xDatabaseRanges->getByName( maDBRangeName ), UNO_QUERY );
+        maAutoFilters.finalizeImport( xDatabaseRange );
+    }
+    catch( Exception& )
+    {
+        OSL_FAIL( "Table::applyAutofilters - cannot create filter" );
     }
 }
 
@@ -155,7 +160,7 @@ TableBuffer::TableBuffer( const WorkbookHelper& rHelper ) :
 
 Table& TableBuffer::createTable()
 {
-    TableVector::value_type xTable( new Table( *this ) );
+    TableVector::value_type xTable = std::make_shared<Table>( *this );
     maTables.push_back( xTable );
     return *xTable;
 }
@@ -163,8 +168,8 @@ Table& TableBuffer::createTable()
 void TableBuffer::finalizeImport()
 {
     // map all tables by identifier and display name
-    for( TableVector::iterator aIt = maTables.begin(), aEnd = maTables.end(); aIt != aEnd; ++aIt )
-        insertTableToMaps( *aIt );
+    for( const auto& rxTable : maTables )
+        insertTableToMaps( rxTable );
     // finalize all valid tables
     maIdTables.forEachMem( &Table::finalizeImport );
 }
@@ -204,7 +209,6 @@ void TableBuffer::insertTableToMaps( const TableRef& rxTable )
     }
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

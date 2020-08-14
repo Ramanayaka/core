@@ -24,10 +24,8 @@
 #include <rtl/instance.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpSdrFormTextOutlineAttribute
         {
         public:
@@ -108,7 +106,7 @@ namespace drawinglayer
             return *this;
         }
 
-        SdrFormTextOutlineAttribute& SdrFormTextOutlineAttribute::operator=(SdrFormTextOutlineAttribute&& rCandidate)
+        SdrFormTextOutlineAttribute& SdrFormTextOutlineAttribute::operator=(SdrFormTextOutlineAttribute&& rCandidate) noexcept
         {
             mpSdrFormTextOutlineAttribute = std::move(rCandidate.mpSdrFormTextOutlineAttribute);
             return *this;
@@ -137,7 +135,7 @@ namespace drawinglayer
         {
             return mpSdrFormTextOutlineAttribute->getTransparence();
         }
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

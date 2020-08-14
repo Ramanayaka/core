@@ -21,7 +21,6 @@
 #define INCLUDED_SVX_EXTRUSIONBAR_HXX
 
 #include <sfx2/shell.hxx>
-#include <sfx2/module.hxx>
 #include <svx/ifaceids.hxx>
 #include <svx/svxdllapi.h>
 
@@ -33,9 +32,9 @@ class SdrView;
 namespace svx
 {
 
-SVX_DLLPUBLIC bool checkForSelectedCustomShapes( SdrView* pSdrView, bool bOnlyExtruded );
+SVXCORE_DLLPUBLIC bool checkForSelectedCustomShapes( SdrView const * pSdrView, bool bOnlyExtruded );
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC ExtrusionBar : public SfxShell
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC ExtrusionBar final : public SfxShell
 {
 public:
     SFX_DECL_INTERFACE(SVX_INTERFACE_EXTRUSION_BAR)
@@ -48,8 +47,8 @@ public:
     ExtrusionBar(SfxViewShell* pViewShell);
     virtual ~ExtrusionBar() override;
 
-    static void execute( SdrView* pSdrView, SfxRequest& rReq, SfxBindings& rBindings );
-    static void getState( SdrView* pSdrView, SfxItemSet& rSet );
+    static void execute( SdrView* pSdrView, SfxRequest const & rReq, SfxBindings& rBindings );
+    static void getState( SdrView const * pSdrView, SfxItemSet& rSet );
 };
 
 }

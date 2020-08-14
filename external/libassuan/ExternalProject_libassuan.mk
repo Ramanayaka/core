@@ -19,17 +19,49 @@ $(eval $(call gb_ExternalProject_use_externals,libassuan,\
        libgpg-error \
 ))
 
+ifeq ($(COM),MSC)
+gb_ExternalProject_libassuan_host := $(if $(filter INTEL,$(CPUNAME)),i686-mingw32,x86_64-w64-mingw32)
+gb_ExternalProject_libassuan_target := $(if $(filter INTEL,$(CPUNAME)),pe-i386,pe-x86-64)
+$(call gb_ExternalProject_get_state_target,libassuan,build): $(call gb_Executable_get_target,cpp)
+	$(call gb_Trace_StartRange,libassuan,EXTERNAL)
+	$(call gb_ExternalProject_run,build,\
+	  autoreconf \
+	  && ./configure \
+		--enable-static \
+		--disable-shared \
+		--disable-doc \
+		$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
+		CXXFLAGS="$(CXXFLAGS)" \
+		GPG_ERROR_CFLAGS="$(GPG_ERROR_CFLAGS)" \
+		GPG_ERROR_LIBS="$(GPG_ERROR_LIBS)" \
+        --host=$(gb_ExternalProject_libassuan_host) \
+		RC='windres -O COFF --target=$(gb_ExternalProject_libassuan_target) --preprocessor='\''$(call gb_Executable_get_target,cpp) -+ -DRC_INVOKED -DWINAPI_FAMILY=0 $(SOLARINC)'\' \
+		MAKE=$(MAKE) \
+	  && $(MAKE) \
+	)
+	$(call gb_Trace_EndRange,libassuan,EXTERNAL)
+else
 $(call gb_ExternalProject_get_state_target,libassuan,build):
+	$(call gb_Trace_StartRange,libassuan,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		autoreconf \
 		&& ./configure \
+		   --disable-doc \
 		   GPG_ERROR_CFLAGS="$(GPG_ERROR_CFLAGS)" \
 		   GPG_ERROR_LIBS="$(GPG_ERROR_LIBS)" \
 		   $(if $(filter LINUX,$(OS)), \
 				'LDFLAGS=-Wl$(COMMA)-z$(COMMA)origin \
 					-Wl$(COMMA)-rpath$(COMMA)\$$$$ORIGIN') \
 		   $(if $(CROSS_COMPILING),--build=$(BUILD_PLATFORM) --host=$(HOST_PLATFORM)) \
+		   $(if $(filter MACOSX,$(OS)),--prefix=/@.__________________________________________________OOO) \
+	           $(if $(filter TRUE,$(DISABLE_DYNLOADING)),--disable-shared,--disable-static) \
 	  && $(MAKE) \
+	  $(if $(filter MACOSX,$(OS)),\
+		  && $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
+			  $(EXTERNAL_WORKDIR)/src/.libs/libassuan.0.dylib \
+		) \
 	)
+	$(call gb_Trace_EndRange,libassuan,EXTERNAL)
 
+endif
 # vim: set noet sw=4 ts=4:

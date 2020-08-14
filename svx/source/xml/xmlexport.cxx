@@ -21,19 +21,15 @@
 #include <tools/diagnose_ex.h>
 #include <com/sun/star/xml/sax/InputSource.hpp>
 #include <com/sun/star/xml/sax/Parser.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
-#include <com/sun/star/xml/sax/SAXParseException.hpp>
+#include <com/sun/star/xml/sax/XFastParser.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/document/XExporter.hpp>
 #include <com/sun/star/document/XImporter.hpp>
 #include <comphelper/processfactory.hxx>
-#include <unotools/streamwrap.hxx>
-#include <sot/storage.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/xmleohlp.hxx>
 #include <svx/xmlgrhlp.hxx>
@@ -52,11 +48,11 @@ bool SvxDrawingLayerExport( SdrModel* pModel, const uno::Reference<io::XOutputSt
 {
     bool bDocRet = xOut.is();
 
-    Reference< document::XGraphicObjectResolver > xGraphicResolver;
-    SvXMLGraphicHelper *pGraphicHelper = nullptr;
+    uno::Reference<document::XGraphicStorageHandler> xGraphicStorageHandler;
+    rtl::Reference<SvXMLGraphicHelper> xGraphicHelper;
 
     Reference< document::XEmbeddedObjectResolver > xObjectResolver;
-    SvXMLEmbeddedObjectHelper *pObjectHelper = nullptr;
+    rtl::Reference<SvXMLEmbeddedObjectHelper> xObjectHelper;
 
     Reference< lang::XComponent > xSourceDoc( xComponent );
     try
@@ -76,61 +72,57 @@ bool SvxDrawingLayerExport( SdrModel* pModel, const uno::Reference<io::XOutputSt
             ::comphelper::IEmbeddedHelper *pPersist = pModel->GetPersist();
             if( pPersist )
             {
-                pObjectHelper = SvXMLEmbeddedObjectHelper::Create( *pPersist, SvXMLEmbeddedObjectHelperMode::Write );
-                xObjectResolver = pObjectHelper;
+                xObjectHelper = SvXMLEmbeddedObjectHelper::Create( *pPersist, SvXMLEmbeddedObjectHelperMode::Write );
+                xObjectResolver = xObjectHelper.get();
             }
 
-            pGraphicHelper = SvXMLGraphicHelper::Create( SvXMLGraphicHelperMode::Write );
-            xGraphicResolver = pGraphicHelper;
+            xGraphicHelper = SvXMLGraphicHelper::Create( SvXMLGraphicHelperMode::Write );
+            xGraphicStorageHandler = xGraphicHelper.get();
+
+            uno::Reference<xml::sax::XDocumentHandler>  xHandler = xWriter;
+
+            // doc export
+            xWriter->setOutputStream( xOut );
+
+            uno::Sequence< uno::Any > aArgs( xObjectResolver.is() ? 3 : 2 );
+            aArgs[0] <<= xHandler;
+            aArgs[1] <<= xGraphicStorageHandler;
+            if( xObjectResolver.is() )
+                aArgs[2] <<= xObjectResolver;
+
+            uno::Reference< document::XFilter > xFilter( xContext->getServiceManager()->createInstanceWithArgumentsAndContext( OUString::createFromAscii( pExportService ), aArgs, xContext ), uno::UNO_QUERY );
+            if( !xFilter.is() )
+            {
+                OSL_FAIL( "com.sun.star.comp.Draw.XMLExporter service missing" );
+                bDocRet = false;
+            }
 
             if( bDocRet )
             {
-                uno::Reference<xml::sax::XDocumentHandler>  xHandler( xWriter, uno::UNO_QUERY );
-
-                // doc export
-                uno::Reference< io::XActiveDataSource > xDocSrc( xWriter, uno::UNO_QUERY );
-                xDocSrc->setOutputStream( xOut );
-
-                uno::Sequence< uno::Any > aArgs( xObjectResolver.is() ? 3 : 2 );
-                aArgs[0] <<= xHandler;
-                aArgs[1] <<= xGraphicResolver;
-                if( xObjectResolver.is() )
-                    aArgs[2] <<= xObjectResolver;
-
-                uno::Reference< document::XFilter > xFilter( xContext->getServiceManager()->createInstanceWithArgumentsAndContext( OUString::createFromAscii( pExportService ), aArgs, xContext ), uno::UNO_QUERY );
-                if( !xFilter.is() )
+                uno::Reference< document::XExporter > xExporter( xFilter, uno::UNO_QUERY );
+                if( xExporter.is() )
                 {
-                    OSL_FAIL( "com.sun.star.comp.Draw.XMLExporter service missing" );
-                    bDocRet = false;
-                }
+                    xExporter->setSourceDocument( xSourceDoc );
 
-                if( bDocRet )
-                {
-                    uno::Reference< document::XExporter > xExporter( xFilter, uno::UNO_QUERY );
-                    if( xExporter.is() )
-                    {
-                        xExporter->setSourceDocument( xSourceDoc );
-
-                        uno::Sequence< beans::PropertyValue > aDescriptor( 0 );
-                        bDocRet = xFilter->filter( aDescriptor );
-                    }
+                    uno::Sequence< beans::PropertyValue > aDescriptor( 0 );
+                    bDocRet = xFilter->filter( aDescriptor );
                 }
             }
         }
     }
     catch(uno::Exception const&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
         bDocRet = false;
     }
 
-    if( pGraphicHelper )
-        SvXMLGraphicHelper::Destroy( pGraphicHelper );
-    xGraphicResolver = nullptr;
+    if( xGraphicHelper )
+        xGraphicHelper->dispose();
+    xGraphicHelper.clear();
+    xGraphicStorageHandler = nullptr;
 
-    if( pObjectHelper )
-        SvXMLEmbeddedObjectHelper::Destroy( pObjectHelper );
-    xObjectResolver = nullptr;
+    if( xObjectHelper.is() )
+        xObjectHelper->dispose();
 
     return bDocRet;
 }
@@ -152,11 +144,11 @@ bool SvxDrawingLayerImport( SdrModel* pModel, const uno::Reference<io::XInputStr
 {
     bool bRet = true;
 
-    Reference< document::XGraphicObjectResolver > xGraphicResolver;
-    SvXMLGraphicHelper *pGraphicHelper = nullptr;
+    uno::Reference<document::XGraphicStorageHandler> xGraphicStorageHandler;
+    rtl::Reference<SvXMLGraphicHelper> xGraphicHelper;
 
     Reference< document::XEmbeddedObjectResolver > xObjectResolver;
-    SvXMLEmbeddedObjectHelper *pObjectHelper = nullptr;
+    rtl::Reference<SvXMLEmbeddedObjectHelper> xObjectHelper;
 
     Reference< lang::XComponent > xTargetDocument( xComponent );
     if( !xTargetDocument.is() )
@@ -176,16 +168,16 @@ bool SvxDrawingLayerImport( SdrModel* pModel, const uno::Reference<io::XInputStr
             xTargetModel->lockControllers();
 
 
-        pGraphicHelper = SvXMLGraphicHelper::Create( SvXMLGraphicHelperMode::Read );
-        xGraphicResolver = pGraphicHelper;
+        xGraphicHelper = SvXMLGraphicHelper::Create( SvXMLGraphicHelperMode::Read );
+        xGraphicStorageHandler = xGraphicHelper.get();
 
         ::comphelper::IEmbeddedHelper *pPersist = pModel->GetPersist();
         if( pPersist )
         {
-            pObjectHelper = SvXMLEmbeddedObjectHelper::Create(
+            xObjectHelper = SvXMLEmbeddedObjectHelper::Create(
                                         *pPersist,
                                         SvXMLEmbeddedObjectHelperMode::Read );
-            xObjectResolver = pObjectHelper;
+            xObjectResolver = xObjectHelper.get();
         }
 
         // parse
@@ -199,11 +191,13 @@ bool SvxDrawingLayerImport( SdrModel* pModel, const uno::Reference<io::XInputStr
         // prepare filter arguments
         Sequence<Any> aFilterArgs( 2 );
         Any *pArgs = aFilterArgs.getArray();
-        *pArgs++ <<= xGraphicResolver;
+        *pArgs++ <<= xGraphicStorageHandler;
         *pArgs++ <<= xObjectResolver;
 
         // get filter
         Reference< xml::sax::XDocumentHandler > xFilter( xContext->getServiceManager()->createInstanceWithArgumentsAndContext( OUString::createFromAscii( pImportService ), aFilterArgs, xContext), UNO_QUERY );
+        uno::Reference< xml::sax::XFastParser > xFastParser = dynamic_cast<
+                            xml::sax::XFastParser* >( xFilter.get() );
         DBG_ASSERT( xFilter.is(), "Can't instantiate filter component." );
 
         bRet = false;
@@ -217,22 +211,27 @@ bool SvxDrawingLayerImport( SdrModel* pModel, const uno::Reference<io::XInputStr
             xImporter->setTargetDocument( xTargetDocument );
 
             // finally, parser the stream
-            xParser->parseStream( aParserInput );
+            if( xFastParser.is() )
+                xFastParser->parseStream( aParserInput );
+            else
+                xParser->parseStream( aParserInput );
 
             bRet = true;
         }
     }
     catch( uno::Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 
-    if( pGraphicHelper )
-        SvXMLGraphicHelper::Destroy( pGraphicHelper );
-    xGraphicResolver = nullptr;
+    if( xGraphicHelper )
+        xGraphicHelper->dispose();
+    xGraphicHelper.clear();
+    xGraphicStorageHandler = nullptr;
 
-    if( pObjectHelper )
-        SvXMLEmbeddedObjectHelper::Destroy( pObjectHelper );
+    if( xObjectHelper.is() )
+        xObjectHelper->dispose();
+    xObjectHelper.clear();
     xObjectResolver = nullptr;
 
     if ( xTargetModel.is() )

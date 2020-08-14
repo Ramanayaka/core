@@ -20,19 +20,21 @@
 #ifndef INCLUDED_STORE_SOURCE_STORDATA_HXX
 #define INCLUDED_STORE_SOURCE_STORDATA_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <memory>
 
-#include "sal/types.h"
-#include "sal/macros.h"
-#include "rtl/string.h"
+#include <sal/types.h>
+#include <rtl/string.h>
 
-#include "store/types.h"
+#include <store/types.h>
 #include "storbase.hxx"
+#include <string.h>
 
 namespace store
 {
+
+class OStorePageBIOS;
 
 constexpr sal_uInt32 STORE_MAGIC_DATAPAGE(0x94190310);
 
@@ -80,7 +82,7 @@ struct OStoreDataPageData : public store::PageData
 
     /** guard (external representation).
     */
-    void guard() { (void) this; /* loplugin:staticmethods */ }
+    void guard() const { (void) this; /* loplugin:staticmethods */ }
 
     /** verify (external representation).
     */
@@ -170,8 +172,7 @@ struct OStoreIndirectionPageData : public store::PageData
     */
     void guard()
     {
-        sal_uInt32 nCRC32 = 0;
-        nCRC32 = rtl_crc32 (nCRC32, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
+        sal_uInt32 nCRC32 = rtl_crc32 (0, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
         nCRC32 = rtl_crc32 (nCRC32, m_pData, capacity());
         m_aGuard.m_nCRC32 = store::htonl(nCRC32);
     }
@@ -180,8 +181,7 @@ struct OStoreIndirectionPageData : public store::PageData
     */
     storeError verify() const
     {
-        sal_uInt32 nCRC32 = 0;
-        nCRC32 = rtl_crc32 (nCRC32, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
+        sal_uInt32 nCRC32 = rtl_crc32 (0, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
         nCRC32 = rtl_crc32 (nCRC32, m_pData, capacity());
         if (m_aGuard.m_nCRC32 != store::htonl(nCRC32))
             return store_E_InvalidChecksum;
@@ -216,20 +216,20 @@ public:
     storeError read (
         sal_uInt16             nSingle,
         OStoreDataPageObject  &rData,
-        OStorePageBIOS        &rBIOS);
+        OStorePageBIOS        &rBIOS) const;
 
     storeError read (
         sal_uInt16             nDouble,
         sal_uInt16             nSingle,
         OStoreDataPageObject  &rData,
-        OStorePageBIOS        &rBIOS);
+        OStorePageBIOS        &rBIOS) const;
 
     storeError read (
         sal_uInt16             nTriple,
         sal_uInt16             nDouble,
         sal_uInt16             nSingle,
         OStoreDataPageObject  &rData,
-        OStorePageBIOS        &rBIOS);
+        OStorePageBIOS        &rBIOS) const;
 
     /** write (indirect data page).
     */
@@ -278,27 +278,22 @@ struct OStorePageNameBlock
     */
     G          m_aGuard;
     K          m_aKey;
-    sal_uInt32 m_nAttrib;
-    sal_Char   m_pData[STORE_MAXIMUM_NAMESIZE];
+    sal_uInt32 m_nAttrib = 0;
+    char       m_pData[STORE_MAXIMUM_NAMESIZE] = {};
 
     /** size.
     */
-    static const size_t theSize = sizeof(G) + sizeof(K) + sizeof(sal_uInt32) + sizeof(sal_Char[STORE_MAXIMUM_NAMESIZE]);
+    static const size_t theSize = sizeof(G) + sizeof(K) + sizeof(sal_uInt32) + sizeof(char[STORE_MAXIMUM_NAMESIZE]);
 
     /** Construction.
     */
-    OStorePageNameBlock()
-        : m_aGuard(), m_aKey(), m_nAttrib (0)
-    {
-        memset (m_pData, 0, sizeof(m_pData));
-    }
+    OStorePageNameBlock() = default;
 
     /** guard (external representation).
     */
     void guard()
     {
-        sal_uInt32 nCRC32 = 0;
-        nCRC32 = rtl_crc32 (nCRC32, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
+        sal_uInt32 nCRC32 = rtl_crc32 (0, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
         nCRC32 = rtl_crc32 (nCRC32, &m_aKey, static_cast<sal_uInt32>(theSize - sizeof(G)));
         m_aGuard.m_nCRC32 = store::htonl(nCRC32);
     }
@@ -307,8 +302,7 @@ struct OStorePageNameBlock
     */
     storeError verify() const
     {
-        sal_uInt32 nCRC32 = 0;
-        nCRC32 = rtl_crc32 (nCRC32, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
+        sal_uInt32 nCRC32 = rtl_crc32 (0, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
         nCRC32 = rtl_crc32 (nCRC32, &m_aKey, static_cast<sal_uInt32>(theSize - sizeof(G)));
         if (m_aGuard.m_nCRC32 != store::htonl(nCRC32))
             return store_E_InvalidChecksum;
@@ -340,10 +334,10 @@ struct OStoreDirectoryDataBlock
         /** Construction.
         */
         LinkDescriptor()
-            : m_nIndex0 ((sal_uInt16)(~0)),
-              m_nIndex1 ((sal_uInt16)(~0)),
-              m_nIndex2 ((sal_uInt16)(~0)),
-              m_nIndex3 ((sal_uInt16)(~0))
+            : m_nIndex0 (sal_uInt16(~0)),
+              m_nIndex1 (sal_uInt16(~0)),
+              m_nIndex2 (sal_uInt16(~0)),
+              m_nIndex3 (sal_uInt16(~0))
         {}
     };
 
@@ -396,8 +390,7 @@ struct OStoreDirectoryDataBlock
     */
     void guard()
     {
-        sal_uInt32 nCRC32 = 0;
-        nCRC32 = rtl_crc32 (nCRC32, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
+        sal_uInt32 nCRC32 = rtl_crc32 (0, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
         nCRC32 = rtl_crc32 (nCRC32, &m_aTable, static_cast<sal_uInt32>(theSize - sizeof(G)));
         m_aGuard.m_nCRC32 = store::htonl(nCRC32);
     }
@@ -406,8 +399,7 @@ struct OStoreDirectoryDataBlock
     */
     storeError verify() const
     {
-        sal_uInt32 nCRC32 = 0;
-        nCRC32 = rtl_crc32 (nCRC32, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
+        sal_uInt32 nCRC32 = rtl_crc32 (0, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
         nCRC32 = rtl_crc32 (nCRC32, &m_aTable, static_cast<sal_uInt32>(theSize - sizeof(G)));
         if (m_aGuard.m_nCRC32 != store::htonl(nCRC32))
             return store_E_InvalidChecksum;
@@ -417,7 +409,7 @@ struct OStoreDirectoryDataBlock
 
     /** direct.
     */
-    static const sal_uInt16 directCount = ((sal_uInt16)(STORE_LIMIT_DATAPAGE_DIRECT));
+    static const sal_uInt16 directCount = sal_uInt16(STORE_LIMIT_DATAPAGE_DIRECT);
 
     sal_uInt32 directLink (sal_uInt16 nIndex) const
     {
@@ -434,7 +426,7 @@ struct OStoreDirectoryDataBlock
 
     /** single.
     */
-    static const sal_uInt16 singleCount = ((sal_uInt16)(STORE_LIMIT_DATAPAGE_SINGLE));
+    static const sal_uInt16 singleCount = sal_uInt16(STORE_LIMIT_DATAPAGE_SINGLE);
 
     sal_uInt32 singleLink (sal_uInt16 nIndex) const
     {
@@ -451,7 +443,7 @@ struct OStoreDirectoryDataBlock
 
     /** double.
     */
-    static const sal_uInt16 doubleCount = ((sal_uInt16)(STORE_LIMIT_DATAPAGE_DOUBLE));
+    static const sal_uInt16 doubleCount = sal_uInt16(STORE_LIMIT_DATAPAGE_DOUBLE);
 
     sal_uInt32 doubleLink (sal_uInt16 nIndex) const
     {
@@ -468,7 +460,7 @@ struct OStoreDirectoryDataBlock
 
     /** triple.
     */
-    static const sal_uInt16 tripleCount = ((sal_uInt16)(STORE_LIMIT_DATAPAGE_TRIPLE));
+    static const sal_uInt16 tripleCount = sal_uInt16(STORE_LIMIT_DATAPAGE_TRIPLE);
 
     sal_uInt32 tripleLink (sal_uInt16 nIndex) const
     {
@@ -559,10 +551,10 @@ struct OStoreDirectoryPageData : public store::PageData
         /** Construction.
         */
         ChunkDescriptor (sal_uInt32 nPosition, sal_uInt16 nCapacity)
+             : m_nPage(nPosition / nCapacity),
+               m_nOffset(static_cast<sal_uInt16>((nPosition % nCapacity) & 0xffff)),
+               m_nLength(nCapacity - m_nOffset)
         {
-            m_nPage   = nPosition / nCapacity;
-            m_nOffset = (sal_uInt16)((nPosition % nCapacity) & 0xffff);
-            m_nLength = nCapacity - m_nOffset;
         }
     };
 
@@ -637,7 +629,7 @@ public:
     sal_uInt32 path() const
     {
         page const & rPage = PAGE();
-        const sal_Char * pszName = rPage.m_aNameBlock.m_pData;
+        const char * pszName = rPage.m_aNameBlock.m_pData;
         sal_uInt32       nPath   = store::ntohl(rPage.m_aNameBlock.m_aKey.m_nHigh);
         return rtl_crc32 (nPath, pszName, rtl_str_getLength(pszName));
     }
@@ -707,7 +699,7 @@ public:
     storeError read (
         sal_uInt32             nPage,
         OStoreDataPageObject  &rData,
-        OStorePageBIOS        &rBIOS);
+        OStorePageBIOS        &rBIOS) const;
 
     /** write (external data page).
     */

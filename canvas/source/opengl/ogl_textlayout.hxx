@@ -15,8 +15,6 @@
 
 #include <com/sun/star/rendering/XTextLayout.hpp>
 
-#include <basegfx/vector/b2isize.hxx>
-
 #include "ogl_canvasfont.hxx"
 
 
@@ -60,11 +58,6 @@ namespace oglcanvas
         virtual sal_Int8 SAL_CALL getMainTextDirection(  ) override;
         virtual css::uno::Reference< css::rendering::XCanvasFont > SAL_CALL getFont(  ) override;
         virtual css::rendering::StringContext SAL_CALL getText(  ) override;
-
-        bool draw( const css::rendering::ViewState&         rViewState,
-                   const css::rendering::RenderState&       rRenderState,
-                   const css::uno::Reference<
-                         css::rendering::XGraphicDevice >&  xGraphicDevice ) const;
 
     private:
         css::rendering::StringContext              maText;

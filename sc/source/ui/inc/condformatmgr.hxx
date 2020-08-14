@@ -10,48 +10,38 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_CONDFORMATMGR_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_CONDFORMATMGR_HXX
 
-#include "scres.hrc"
-
-#include <vcl/dialog.hxx>
-#include <vcl/layout.hxx>
-#include <svtools/svtabbx.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <svtools/simptabl.hxx>
-
-#include "conditio.hxx"
+#include <vcl/weld.hxx>
 
 #include <map>
 
 class ScDocument;
+class ScConditionalFormat;
+class ScConditionalFormatList;
 
-class ScCondFormatManagerWindow : public SvSimpleTable
+class ScCondFormatManagerWindow
 {
 private:
     void Init();
-    OUString createEntryString(const ScConditionalFormat& rFormat);
     void setColSizes();
 
-    ScDocument* mpDoc;
+    weld::TreeView& mrTreeView;
+    ScDocument*     mpDoc;
     ScConditionalFormatList* mpFormatList;
-    std::map<SvTreeListEntry*, sal_Int32> maMapLBoxEntryToCondIndex;
 
 public:
-    ScCondFormatManagerWindow(SvSimpleTableContainer& rParent, ScDocument* pDoc, ScConditionalFormatList* pFormatList);
+    ScCondFormatManagerWindow(weld::TreeView& rTreeView, ScDocument* pDoc, ScConditionalFormatList* pFormatList);
 
     void DeleteSelection();
     ScConditionalFormat* GetSelection();
-    virtual void Resize() override;
 };
 
-class ScCondFormatManagerDlg : public ModalDialog
+class ScCondFormatManagerDlg : public weld::GenericDialogController
 {
 public:
-    ScCondFormatManagerDlg(vcl::Window* pParent, ScDocument* pDoc, const ScConditionalFormatList* pFormatList);
+    ScCondFormatManagerDlg(weld::Window* pParent, ScDocument* pDoc, const ScConditionalFormatList* pFormatList);
     virtual ~ScCondFormatManagerDlg() override;
-    virtual void dispose() override;
 
-    ScConditionalFormatList* GetConditionalFormatList();
+    std::unique_ptr<ScConditionalFormatList> GetConditionalFormatList();
 
     bool CondFormatsChanged() const;
     void SetModified();
@@ -59,20 +49,21 @@ public:
     ScConditionalFormat* GetCondFormatSelected();
 
 private:
-    VclPtr<PushButton> m_pBtnAdd;
-    VclPtr<PushButton> m_pBtnRemove;
-    VclPtr<PushButton> m_pBtnEdit;
-    ScConditionalFormatList* mpFormatList;
-    VclPtr<ScCondFormatManagerWindow> m_pCtrlManager;
+    bool m_bModified;
+    std::unique_ptr<ScConditionalFormatList> m_xFormatList;
 
-    ScDocument* mpDoc;
+    std::unique_ptr<weld::Button> m_xBtnAdd;
+    std::unique_ptr<weld::Button> m_xBtnRemove;
+    std::unique_ptr<weld::Button> m_xBtnEdit;
+    std::unique_ptr<weld::TreeView> m_xTreeView;
+    std::unique_ptr<ScCondFormatManagerWindow> m_xCtrlManager;
 
-    DECL_LINK(RemoveBtnHdl, Button*, void);
-    DECL_LINK(EditBtnClickHdl, Button*, void);
-    DECL_LINK(AddBtnHdl, Button*, void);
-    DECL_LINK(EditBtnHdl, SvTreeListBox*, bool);
+    void UpdateButtonSensitivity();
 
-    bool mbModified;
+    DECL_LINK(RemoveBtnHdl, weld::Button&, void);
+    DECL_LINK(EditBtnClickHdl, weld::Button&, void);
+    DECL_LINK(AddBtnHdl, weld::Button&, void);
+    DECL_LINK(EditBtnHdl, weld::TreeView&, bool);
 };
 
 #endif

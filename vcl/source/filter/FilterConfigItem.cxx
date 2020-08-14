@@ -21,14 +21,16 @@
 
 #include <unotools/configmgr.hxx>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/string.hxx>
 #include <osl/diagnose.h>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/util/XChangesBatch.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
+#include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/task/XStatusIndicator.hpp>
 
 using namespace ::com::sun::star::lang      ;   // XMultiServiceFactory
 using namespace ::com::sun::star::beans     ;   // PropertyValue
@@ -39,25 +41,19 @@ using namespace ::com::sun::star::container ;
 using namespace ::com::sun::star::configuration;
 using namespace ::com::sun::star::task      ;   // XStatusIndicator
 
-static bool ImpIsTreeAvailable( Reference< XMultiServiceFactory >& rXCfgProv, const OUString& rTree )
+static bool ImpIsTreeAvailable( Reference< XMultiServiceFactory > const & rXCfgProv, const OUString& rTree )
 {
     bool bAvailable = !rTree.isEmpty();
     if ( bAvailable )
     {
-        using comphelper::string::getTokenCount;
-
-        sal_Int32 nTokenCount = getTokenCount(rTree, '/');
-        sal_Int32 i = 0;
-
+        sal_Int32 nIdx{0};
         if ( rTree[0] == '/' )
-            ++i;
-        if ( rTree.endsWith("/") )
-            --nTokenCount;
+            ++nIdx;
 
         // creation arguments: nodepath
         PropertyValue aPathArgument;
         aPathArgument.Name = "nodepath";
-        aPathArgument.Value <<= rTree.getToken(i++, '/');
+        aPathArgument.Value <<= rTree.getToken(0, '/', nIdx);
 
         Sequence< Any > aArguments( 1 );
         aArguments[ 0 ] <<= aPathArgument;
@@ -75,7 +71,8 @@ static bool ImpIsTreeAvailable( Reference< XMultiServiceFactory >& rXCfgProv, co
         }
         if ( xReadAccess.is() )
         {
-            for ( ; bAvailable && ( i < nTokenCount ); i++ )
+            const sal_Int32 nEnd {rTree.getLength()};
+            while (bAvailable && nIdx>=0 && nIdx<nEnd)
             {
                 Reference< XHierarchicalNameAccess > xHierarchicalNameAccess
                     ( xReadAccess, UNO_QUERY );
@@ -84,7 +81,7 @@ static bool ImpIsTreeAvailable( Reference< XMultiServiceFactory >& rXCfgProv, co
                     bAvailable = false;
                 else
                 {
-                    OUString aNode( rTree.getToken(i, '/') );
+                    const OUString aNode( rTree.getToken(0, '/', nIdx) );
                     if ( !xHierarchicalNameAccess->hasByHierarchicalName( aNode ) )
                         bAvailable = false;
                     else
@@ -108,34 +105,28 @@ void FilterConfigItem::ImpInitTree( const OUString& rSubTree )
     Reference< XMultiServiceFactory > xCfgProv = theDefaultProvider::get( xContext );
 
     OUString sTree = "/org.openoffice." + rSubTree;
-    if ( ImpIsTreeAvailable(xCfgProv, sTree) )
+    if ( !ImpIsTreeAvailable(xCfgProv, sTree) )
+        return;
+
+    // creation arguments: nodepath
+    PropertyValue aPathArgument;
+    aPathArgument.Name = "nodepath";
+    aPathArgument.Value <<= sTree;
+
+    Sequence< Any > aArguments( 1 );
+    aArguments[ 0 ] <<= aPathArgument;
+
+    try
     {
-        // creation arguments: nodepath
-        PropertyValue aPathArgument;
-        aPathArgument.Name = "nodepath";
-        aPathArgument.Value <<= sTree;
-
-        // creation arguments: commit mode
-        PropertyValue aModeArgument;
-        aModeArgument.Name = "lazywrite";
-        aModeArgument.Value <<= true;
-
-        Sequence< Any > aArguments( 2 );
-        aArguments[ 0 ] <<= aPathArgument;
-        aArguments[ 1 ] <<= aModeArgument;
-
-        try
-        {
-            xUpdatableView = xCfgProv->createInstanceWithArguments(
-                    "com.sun.star.configuration.ConfigurationUpdateAccess",
-                    aArguments );
-            if ( xUpdatableView.is() )
-                xPropSet.set( xUpdatableView, UNO_QUERY );
-        }
-        catch ( css::uno::Exception& )
-        {
-            OSL_FAIL( "FilterConfigItem::FilterConfigItem - Could not access configuration Key" );
-        }
+        xUpdatableView = xCfgProv->createInstanceWithArguments(
+                "com.sun.star.configuration.ConfigurationUpdateAccess",
+                aArguments );
+        if ( xUpdatableView.is() )
+            xPropSet.set( xUpdatableView, UNO_QUERY );
+    }
+    catch ( css::uno::Exception& )
+    {
+        OSL_FAIL( "FilterConfigItem::FilterConfigItem - Could not access configuration Key" );
     }
 }
 
@@ -144,7 +135,7 @@ FilterConfigItem::FilterConfigItem( const OUString& rSubTree )
     ImpInitTree( rSubTree );
 }
 
-FilterConfigItem::FilterConfigItem( css::uno::Sequence< css::beans::PropertyValue >* pFilterData )
+FilterConfigItem::FilterConfigItem( css::uno::Sequence< css::beans::PropertyValue > const * pFilterData )
     : bModified(false)
 {
     if ( pFilterData )
@@ -152,7 +143,7 @@ FilterConfigItem::FilterConfigItem( css::uno::Sequence< css::beans::PropertyValu
 }
 
 FilterConfigItem::FilterConfigItem( const OUString& rSubTree,
-    css::uno::Sequence< css::beans::PropertyValue >* pFilterData )
+    css::uno::Sequence< css::beans::PropertyValue > const * pFilterData )
 {
     ImpInitTree( rSubTree );
 
@@ -167,23 +158,23 @@ FilterConfigItem::~FilterConfigItem()
 
 void FilterConfigItem::WriteModifiedConfig()
 {
-    if ( xUpdatableView.is() )
+    if ( !xUpdatableView.is() )
+        return;
+
+    if ( !(xPropSet.is() && bModified) )
+        return;
+
+    Reference< XChangesBatch > xUpdateControl( xUpdatableView, UNO_QUERY );
+    if ( xUpdateControl.is() )
     {
-        if ( xPropSet.is() && bModified )
+        try
         {
-            Reference< XChangesBatch > xUpdateControl( xUpdatableView, UNO_QUERY );
-            if ( xUpdateControl.is() )
-            {
-                try
-                {
-                    xUpdateControl->commitChanges();
-                    bModified = false;
-                }
-                catch ( css::uno::Exception& )
-                {
-                    OSL_FAIL( "FilterConfigItem::FilterConfigItem - Could not update configuration data" );
-                }
-            }
+            xUpdateControl->commitChanges();
+            bModified = false;
+        }
+        catch ( css::uno::Exception& )
+        {
+            OSL_FAIL( "FilterConfigItem::FilterConfigItem - Could not update configuration data" );
         }
     }
 }
@@ -228,18 +219,11 @@ bool FilterConfigItem::ImplGetPropertyValue( Any& rAny, const Reference< XProper
 // otherwise the result is null
 PropertyValue* FilterConfigItem::GetPropertyValue( Sequence< PropertyValue >& rPropSeq, const OUString& rName )
 {
-    PropertyValue* pPropValue = nullptr;
-
-    sal_Int32 i, nCount;
-    for ( i = 0, nCount = rPropSeq.getLength(); i < nCount; i++ )
-    {
-        if ( rPropSeq[ i ].Name == rName )
-        {
-            pPropValue = &rPropSeq[ i ];
-            break;
-        }
-    }
-    return pPropValue;
+    auto pProp = std::find_if(rPropSeq.begin(), rPropSeq.end(),
+        [&rName](const PropertyValue& rProp) { return rProp.Name == rName; });
+    if (pProp != rPropSeq.end())
+        return pProp;
+    return nullptr;
 }
 
 /* if PropertySequence already includes a PropertyValue using the same name, the
@@ -251,12 +235,10 @@ bool FilterConfigItem::WritePropertyValue( Sequence< PropertyValue >& rPropSeq, 
     bool bRet = false;
     if ( !rPropValue.Name.isEmpty() )
     {
-        sal_Int32 i, nCount;
-        for ( i = 0, nCount = rPropSeq.getLength(); i < nCount; i++ )
-        {
-            if ( rPropSeq[ i ].Name == rPropValue.Name )
-                break;
-        }
+        auto pProp = std::find_if(rPropSeq.begin(), rPropSeq.end(),
+            [&rPropValue](const PropertyValue& rProp) { return rProp.Name == rPropValue.Name; });
+        sal_Int32 i = std::distance(rPropSeq.begin(), pProp);
+        sal_Int32 nCount = rPropSeq.getLength();
         if ( i == nCount )
             rPropSeq.realloc( ++nCount );
 
@@ -334,27 +316,27 @@ void FilterConfigItem::WriteBool( const OUString& rKey, bool bNewValue )
     aBool.Value <<= bNewValue;
     WritePropertyValue( aFilterData, aBool );
 
-    if ( xPropSet.is() )
+    if ( !xPropSet.is() )
+        return;
+
+    Any aAny;
+    if ( !ImplGetPropertyValue( aAny, xPropSet, rKey ) )
+        return;
+
+    bool bOldValue(true);
+    if ( !(aAny >>= bOldValue) )
+        return;
+
+    if ( bOldValue != bNewValue )
     {
-        Any aAny;
-        if ( ImplGetPropertyValue( aAny, xPropSet, rKey ) )
+        try
         {
-            bool bOldValue(true);
-            if ( aAny >>= bOldValue )
-            {
-                if ( bOldValue != bNewValue )
-                {
-                    try
-                    {
-                        xPropSet->setPropertyValue( rKey, Any(bNewValue) );
-                        bModified = true;
-                    }
-                    catch ( css::uno::Exception& )
-                    {
-                        OSL_FAIL( "FilterConfigItem::WriteBool - could not set PropertyValue" );
-                    }
-                }
-            }
+            xPropSet->setPropertyValue( rKey, Any(bNewValue) );
+            bModified = true;
+        }
+        catch ( css::uno::Exception& )
+        {
+            OSL_FAIL( "FilterConfigItem::WriteBool - could not set PropertyValue" );
         }
     }
 }
@@ -366,28 +348,28 @@ void FilterConfigItem::WriteInt32( const OUString& rKey, sal_Int32 nNewValue )
     aInt32.Value <<= nNewValue;
     WritePropertyValue( aFilterData, aInt32 );
 
-    if ( xPropSet.is() )
-    {
-        Any aAny;
+    if ( !xPropSet.is() )
+        return;
 
-        if ( ImplGetPropertyValue( aAny, xPropSet, rKey ) )
+    Any aAny;
+
+    if ( !ImplGetPropertyValue( aAny, xPropSet, rKey ) )
+        return;
+
+    sal_Int32 nOldValue = 0;
+    if ( !(aAny >>= nOldValue) )
+        return;
+
+    if ( nOldValue != nNewValue )
+    {
+        try
         {
-            sal_Int32 nOldValue = 0;
-            if ( aAny >>= nOldValue )
-            {
-                if ( nOldValue != nNewValue )
-                {
-                    try
-                    {
-                        xPropSet->setPropertyValue( rKey, Any(nNewValue) );
-                        bModified = true;
-                    }
-                    catch ( css::uno::Exception& )
-                    {
-                        OSL_FAIL( "FilterConfigItem::WriteInt32 - could not set PropertyValue" );
-                    }
-                }
-            }
+            xPropSet->setPropertyValue( rKey, Any(nNewValue) );
+            bModified = true;
+        }
+        catch ( css::uno::Exception& )
+        {
+            OSL_FAIL( "FilterConfigItem::WriteInt32 - could not set PropertyValue" );
         }
     }
 }
@@ -398,14 +380,12 @@ Reference< XStatusIndicator > FilterConfigItem::GetStatusIndicator() const
     Reference< XStatusIndicator > xStatusIndicator;
     const OUString sStatusIndicator( "StatusIndicator" );
 
-    sal_Int32 i, nCount = aFilterData.getLength();
-    for ( i = 0; i < nCount; i++ )
+    auto pPropVal = std::find_if(aFilterData.begin(), aFilterData.end(),
+        [&sStatusIndicator](const css::beans::PropertyValue& rPropVal) {
+            return rPropVal.Name == sStatusIndicator; });
+    if (pPropVal != aFilterData.end())
     {
-        if ( aFilterData[ i ].Name == sStatusIndicator )
-        {
-            aFilterData[ i ].Value >>= xStatusIndicator;
-            break;
-        }
+        pPropVal->Value >>= xStatusIndicator;
     }
     return xStatusIndicator;
 }

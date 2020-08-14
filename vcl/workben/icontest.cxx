@@ -29,14 +29,15 @@
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/bootstrap.hxx>
 #include <osl/file.hxx>
+#include <sal/log.hxx>
+#include <tools/stream.hxx>
 #include <vcl/builder.hxx>
-#include <vcl/button.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/fixed.hxx>
+#include <vcl/toolkit/button.hxx>
+#include <vcl/toolkit/dialog.hxx>
+#include <vcl/toolkit/fixed.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <vcl/image.hxx>
-#include <vcl/openglwin.hxx>
 #include <vcl/opengl/OpenGLContext.hxx>
 #include <vcl/opengl/OpenGLHelper.hxx>
 #include <vcl/svapp.hxx>
@@ -52,23 +53,18 @@ namespace {
     {
         TimeValue aValue;
         osl_getSystemTime(&aValue);
-        return (double)aValue.Seconds +
-            (double)aValue.Nanosec / (1000*1000*1000);
+        return static_cast<double>(aValue.Seconds) +
+            static_cast<double>(aValue.Nanosec) / (1000*1000*1000);
     }
-
-}
 
 class MyWorkWindow : public WorkWindow
 {
-private:
-
-protected:
     double mnStartTime;
     int mnPaintCount;
 
 public:
     Graphic maGraphic;
-    Bitmap *mpBitmap;
+    BitmapEx *mpBitmap;
     VclPtr<FixedBitmap> mpFixedBitmap;
 
     MyWorkWindow( vcl::Window* pParent, WinBits nWinStyle );
@@ -79,6 +75,8 @@ public:
     virtual void Paint( vcl::RenderContext& /*rRenderContext*/, const tools::Rectangle& rRect ) override;
     virtual void Resize() override;
 };
+
+}
 
 MyWorkWindow::MyWorkWindow( vcl::Window* pParent, WinBits nWinStyle )
     : WorkWindow(pParent, nWinStyle)
@@ -106,19 +104,19 @@ void MyWorkWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Rectan
     std::cout << "==> Paint! " << mnPaintCount++ << " (vcl) " << GetSizePixel() << " " << getTimeNow() - mnStartTime << std::endl;
 
     Size aGraphicSize( maGraphic.GetSizePixel() );
-    float aspect = ((float) aGraphicSize.Width()) / aGraphicSize.Height();
+    float aspect = static_cast<float>(aGraphicSize.Width()) / aGraphicSize.Height();
     Size aSize;
-    if( aspect >= ((float) WIDTH) / HEIGHT )
+    if( aspect >= (float(WIDTH)) / HEIGHT )
         aSize = Size( WIDTH, HEIGHT/aspect );
     else
         aSize = Size( WIDTH * aspect, HEIGHT );
     aSize.setWidth( aSize.Width() * (1 + (0.1*sin(mnPaintCount/60.))) );
     aSize.setHeight( aSize.Height() * (1 + (0.1*sin(mnPaintCount/50.))) );
 
-    Bitmap aEmpty;
+    BitmapEx aEmpty;
     mpFixedBitmap->SetBitmap( aEmpty );
     GraphicConversionParameters aConv( aSize );
-    mpBitmap = new Bitmap( maGraphic.GetBitmap( aConv ) );
+    mpBitmap = new BitmapEx(maGraphic.GetBitmapEx( aConv ));
     mpFixedBitmap->SetBitmap( *mpBitmap );
     mpFixedBitmap->SetSizePixel( aSize );
 
@@ -135,6 +133,8 @@ void MyWorkWindow::Resize()
     SAL_INFO("vcl.icontest", "Resize " << GetSizePixel());
 }
 
+namespace {
+
 class IconTestApp : public Application
 {
 public:
@@ -149,6 +149,8 @@ private:
     void DoItWithVcl(const OUString& sImageFile);
 };
 
+}
+
 void IconTestApp::Init()
 {
     nRet = EXIT_SUCCESS;
@@ -157,8 +159,7 @@ void IconTestApp::Init()
         cppu::defaultBootstrap_InitialComponentContext();
     uno::Reference<lang::XMultiComponentFactory> xFactory =
         xContext->getServiceManager();
-    uno::Reference<lang::XMultiServiceFactory> xSFactory =
-        uno::Reference<lang::XMultiServiceFactory> (xFactory, uno::UNO_QUERY_THROW);
+    uno::Reference<lang::XMultiServiceFactory> xSFactory(xFactory, uno::UNO_QUERY_THROW);
     comphelper::setProcessServiceFactory(xSFactory);
 
     // Create UCB (for backwards compatibility, in case some code still uses

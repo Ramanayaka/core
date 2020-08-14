@@ -21,30 +21,16 @@
 #define INCLUDED_VCL_INC_UNX_SALDATA_HXX
 
 #include <X11/Xlib.h>
-#include <X11/Xutil.h>
 
 #include <unx/saldisp.hxx>
-#include <unx/salunx.h>
-#include <vcl/salgtype.hxx>
-#include <salframe.hxx>
-#include <unx/salinst.h>
 #include <unx/gendata.hxx>
-#include <osl/module.h>
 #include <vclpluginapi.h>
 
 class SalXLib;
 class SalDisplay;
 class SalPrinter;
 
-#if defined LINUX || defined NETBSD || defined AIX || \
-    defined FREEBSD || defined OPENBSD || defined DRAGONFLY || \
-    defined ANDROID
-#include <pthread.h>
-#else
-typedef unsigned int pthread_t;
-#endif
-
-class VCLPLUG_GEN_PUBLIC X11SalData : public SalGenericData
+class X11SalData final : public GenericUnixSalData
 {
     struct XErrorStackEntry
     {
@@ -55,24 +41,20 @@ class VCLPLUG_GEN_PUBLIC X11SalData : public SalGenericData
     std::vector< XErrorStackEntry > m_aXErrorHandlerStack;
     XIOErrorHandler m_aOrigXIOErrorHandler;
 
-protected:
-    SalXLib      *pXLib_;
+    std::unique_ptr<SalXLib>  pXLib_;
 
 public:
-             X11SalData( SalGenericDataType t, SalInstance *pInstance );
+             X11SalData( GenericUnixSalDataType t, SalInstance *pInstance );
     virtual ~X11SalData() override;
 
     virtual void            Init();
     virtual void            Dispose() override;
 
-    virtual void            initNWF();
-    virtual void            deInitNWF();
-
     void                    DeleteDisplay(); // for shutdown
 
-    SalXLib*        GetLib() const { return pXLib_; }
+    SalXLib*                GetLib() const { return pXLib_.get(); }
 
-    static void             Timeout( bool idle );
+    static void             Timeout();
 
     // X errors
     virtual void            ErrorTrapPush() override;

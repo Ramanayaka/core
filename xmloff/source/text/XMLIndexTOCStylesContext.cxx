@@ -23,8 +23,8 @@
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <sax/tools/converter.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
@@ -85,29 +85,29 @@ void XMLIndexTOCStylesContext::StartElement(
 void XMLIndexTOCStylesContext::EndElement()
 {
     // if valid...
-    if (nOutlineLevel >= 0)
+    if (nOutlineLevel < 0)
+        return;
+
+    // copy vector into sequence
+    const sal_Int32 nCount = aStyleNames.size();
+    Sequence<OUString> aStyleNamesSequence(nCount);
+    for(sal_Int32 i = 0; i < nCount; i++)
     {
-        // copy vector into sequence
-        const sal_Int32 nCount = aStyleNames.size();
-        Sequence<OUString> aStyleNamesSequence(nCount);
-        for(sal_Int32 i = 0; i < nCount; i++)
-        {
-            aStyleNamesSequence[i] = GetImport().GetStyleDisplayName(
-                            XML_STYLE_FAMILY_TEXT_PARAGRAPH,
-                               aStyleNames[i] );
-        }
-
-        // get index replace
-        Any aAny = rTOCPropertySet->getPropertyValue("LevelParagraphStyles");
-        Reference<XIndexReplace> xIndexReplace;
-        aAny >>= xIndexReplace;
-
-        // set style names
-        xIndexReplace->replaceByIndex(nOutlineLevel, Any(aStyleNamesSequence));
+        aStyleNamesSequence[i] = GetImport().GetStyleDisplayName(
+                        XmlStyleFamily::TEXT_PARAGRAPH,
+                           aStyleNames[i] );
     }
+
+    // get index replace
+    Any aAny = rTOCPropertySet->getPropertyValue("LevelParagraphStyles");
+    Reference<XIndexReplace> xIndexReplace;
+    aAny >>= xIndexReplace;
+
+    // set style names
+    xIndexReplace->replaceByIndex(nOutlineLevel, Any(aStyleNamesSequence));
 }
 
-SvXMLImportContext *XMLIndexTOCStylesContext::CreateChildContext(
+SvXMLImportContextRef XMLIndexTOCStylesContext::CreateChildContext(
     sal_uInt16 p_nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList> & xAttrList )

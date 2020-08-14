@@ -23,11 +23,11 @@
 #include "TokenContext.hxx"
 #include <com/sun/star/uno/Reference.hxx>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
     namespace beans { class XPropertySet; }
     namespace xforms { class XDataTypeRepository; }
-} } }
+}
 
 class SvXMLImport;
 class SvXMLImportContext;
@@ -37,17 +37,17 @@ class SchemaRestrictionContext : public TokenContext
 {
     css::uno::Reference<css::xforms::XDataTypeRepository> mxRepository;
     css::uno::Reference<css::beans::XPropertySet> mxDataType;
-    OUString msTypeName;
+    OUString const msTypeName;
     OUString msBaseName;
 
 public:
     SchemaRestrictionContext( SvXMLImport& rImport,
                               sal_uInt16 nPrfx,
                               const OUString& rLName,
-                              css::uno::Reference<css::xforms::XDataTypeRepository>& rRepository,
+                              css::uno::Reference<css::xforms::XDataTypeRepository> const & rRepository,
                               const OUString& sTypeName );
 
-protected:
+private:
     // create mxDataType (if not already present)
     void CreateDataType();
 

@@ -20,46 +20,38 @@
 #include <config_features.h>
 
 #include "ListBox.hxx"
-#include "property.hxx"
-#include "property.hrc"
-#include "services.hxx"
-#include "frm_resource.hxx"
-#include "frm_resource.hrc"
+#include <property.hxx>
+#include <services.hxx>
+#include <frm_resource.hxx>
+#include <strings.hrc>
 #include "BaseListBox.hxx"
-#include "listenercontainers.hxx"
-#include "componenttools.hxx"
+#include <componenttools.hxx>
 
-#include <com/sun/star/util/XNumberFormatTypes.hpp>
-#include <com/sun/star/sdbc/XRowSet.hpp>
+#include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/sdb/XSQLQueryComposerFactory.hpp>
-#include <com/sun/star/sdb/XQueriesSupplier.hpp>
-#include <com/sun/star/util/NumberFormat.hpp>
+#include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/sdb/CommandType.hpp>
 
 #include <comphelper/basicio.hxx>
-#include <comphelper/container.hxx>
-#include <comphelper/numbers.hxx>
-#include <comphelper/processfactory.hxx>
-#include <comphelper/listenernotification.hxx>
+#include <comphelper/property.hxx>
 #include <comphelper/sequence.hxx>
+#include <comphelper/string.hxx>
+#include <comphelper/types.hxx>
 #include <connectivity/dbtools.hxx>
 #include <connectivity/formattedcolumnvalue.hxx>
-#include <connectivity/dbconversion.hxx>
-#include <cppuhelper/queryinterface.hxx>
 #include <o3tl/any.hxx>
+#include <o3tl/safeint.hxx>
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 #include <unotools/sharedunocomponent.hxx>
-#include <vcl/svapp.hxx>
 
-#include <boost/optional.hpp>
+#include <optional>
 
 #include <algorithm>
-#include <functional>
 #include <iterator>
+#include <climits>
 
 namespace frm
 {
@@ -164,7 +156,7 @@ namespace frm
 
         m_nClassId = FormComponentType::LISTBOX;
         m_eListSourceType = ListSourceType_VALUELIST;
-        m_aBoundColumn <<= (sal_Int16)1;
+        m_aBoundColumn <<= sal_Int16(1);
         initValueProperty( PROPERTY_SELECT_SEQ, PROPERTY_ID_SELECT_SEQ);
 
         init();
@@ -322,8 +314,8 @@ namespace frm
             // copy to member
             ValueList().swap(m_aListSourceValues);
             ::std::copy(
-                aListSource.getConstArray(),
-                aListSource.getConstArray() + aListSource.getLength(),
+                aListSource.begin(),
+                aListSource.end(),
                 ::std::insert_iterator< ValueList >( m_aListSourceValues, m_aListSourceValues.end() )
             );
 
@@ -467,21 +459,18 @@ namespace frm
         // #i27024#
         const Any* pSelectSequenceValue = nullptr;
 
-        const OUString* pStartPos = _rPropertyNames.getConstArray();
-        const OUString* pEndPos   = _rPropertyNames.getConstArray() + _rPropertyNames.getLength();
-        const OUString* pSelectedItemsPos = ::std::find_if(
-            pStartPos, pEndPos,
-             ::std::bind2nd( ::std::equal_to< OUString >(), PROPERTY_SELECT_SEQ )
+        const OUString* pSelectedItemsPos = std::find(
+            _rPropertyNames.begin(), _rPropertyNames.end(), PROPERTY_SELECT_SEQ
         );
-        const OUString* pStringItemListPos = ::std::find_if(
-            pStartPos, pEndPos,
-             ::std::bind2nd( ::std::equal_to< OUString >(), PROPERTY_STRINGITEMLIST )
+        auto aStringItemListExists = std::any_of(
+            _rPropertyNames.begin(), _rPropertyNames.end(),
+             [](OUString const & s) { return s == PROPERTY_STRINGITEMLIST; }
         );
-        if ( ( pSelectedItemsPos != pEndPos ) && ( pStringItemListPos != pEndPos ) )
+        if ( ( pSelectedItemsPos != _rPropertyNames.end() ) && aStringItemListExists )
         {
             // both properties are present
             // -> remember the value for the select sequence
-            pSelectSequenceValue = _rValues.getConstArray() + ( pSelectedItemsPos - pStartPos );
+            pSelectSequenceValue = _rValues.getConstArray() + ( pSelectedItemsPos - _rPropertyNames.begin() );
         }
 
         OBoundControlModel::setPropertyValues( _rPropertyNames, _rValues );
@@ -552,7 +541,7 @@ namespace frm
 
     OUString SAL_CALL OListBoxModel::getServiceName()
     {
-        return OUString(FRM_COMPONENT_LISTBOX);   // old (non-sun) name for compatibility !
+        return FRM_COMPONENT_LISTBOX;   // old (non-sun) name for compatibility !
     }
 
 
@@ -575,7 +564,7 @@ namespace frm
         _rxOutStream << nAnyMask;
 
         _rxOutStream << lcl_convertToStringSequence( m_aListSourceValues );
-        _rxOutStream << (sal_Int16)m_eListSourceType;
+        _rxOutStream << static_cast<sal_Int16>(m_eListSourceType);
         _rxOutStream << aDummySeq;
         _rxOutStream << m_aDefaultSelectSeq;
 
@@ -610,7 +599,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            SAL_WARN( "forms.component", "OComboBoxModel::read: caught an exception while examining the aggregate's string item list!" );
+            TOOLS_WARN_EXCEPTION( "forms.component", "OComboBoxModel::read: caught an exception while examining the aggregate's string item list" );
         }
 
         // Version
@@ -621,7 +610,7 @@ namespace frm
         {
             SAL_WARN( "forms.component", "OListBoxModel::read : invalid (means unknown) version !");
             ValueList().swap(m_aListSourceValues);
-            m_aBoundColumn <<= (sal_Int16)0;
+            m_aBoundColumn <<= sal_Int16(0);
             clearBoundValues();
             m_eListSourceType = ListSourceType_VALUELIST;
             m_aDefaultSelectSeq.realloc(0);
@@ -641,19 +630,12 @@ namespace frm
             OUString sListSource;
             _rxInStream >> sListSource;
 
-            sal_Int32 nTokens = 1;
-            const sal_Unicode* pStr = sListSource.getStr();
-            while ( *pStr )
-            {
-                if ( *pStr == ';' )
-                    nTokens++;
-                pStr++;
-            }
+            const sal_Int32 nTokens{ comphelper::string::getTokenCount(sListSource, ';') };
             aListSourceSeq.realloc( nTokens );
+            sal_Int32 nIdx{ 0 };
             for (sal_Int32 i=0; i<nTokens; ++i)
             {
-                sal_Int32 nTmp = 0;
-                aListSourceSeq.getArray()[i] = sListSource.getToken(i,';',nTmp);
+                aListSourceSeq.getArray()[i] = sListSource.getToken(0, ';', nIdx);
             }
         }
         else
@@ -661,7 +643,7 @@ namespace frm
 
         sal_Int16 nListSourceType;
         _rxInStream >> nListSourceType;
-        m_eListSourceType = (ListSourceType)nListSourceType;
+        m_eListSourceType = static_cast<ListSourceType>(nListSourceType);
         Any aListSourceSeqAny;
         aListSourceSeqAny <<= aListSourceSeq;
 
@@ -750,12 +732,12 @@ namespace frm
             return;
         }
 
-        ::boost::optional< sal_Int16 > aBoundColumn(boost::none);
+        ::std::optional< sal_Int16 > aBoundColumn(std::nullopt);
         if ( m_aBoundColumn.getValueType().getTypeClass() == TypeClass_SHORT )
         {
             sal_Int16 nBoundColumn( 0 );
             m_aBoundColumn >>= nBoundColumn;
-            aBoundColumn.reset( nBoundColumn );
+            aBoundColumn = nBoundColumn;
         }
 
         ::utl::SharedUNOComponent< XResultSet > xListCursor;
@@ -788,7 +770,7 @@ namespace frm
                         Reference<XPropertySet> xFieldAsSet(xFieldsByIndex->getByIndex( *aBoundColumn ),UNO_QUERY);
                         assert(xFieldAsSet.is());
                         xFieldAsSet->getPropertyValue(PROPERTY_NAME) >>= aBoundFieldName;
-                        aBoundColumn.reset( 1 );
+                        aBoundColumn = 1;
 
                         xFieldAsSet.set(xFieldsByIndex->getByIndex(0),UNO_QUERY);
                         xFieldAsSet->getPropertyValue(PROPERTY_NAME) >>= aFieldName;
@@ -828,8 +810,7 @@ namespace frm
                     aStatement += quoteName(aQuote,aFieldName);
                     if (!aBoundFieldName.isEmpty())
                     {
-                        aStatement += ", ";
-                        aStatement += quoteName(aQuote, aBoundFieldName);
+                        aStatement += ", " + quoteName(aQuote, aBoundFieldName);
                     }
                     aStatement += " FROM ";
 
@@ -931,7 +912,7 @@ namespace frm
                         }
                         catch( const Exception& )
                         {
-                            DBG_UNHANDLED_EXCEPTION();
+                            DBG_UNHANDLED_EXCEPTION("forms.component");
                         }
                     }
                     else if ( *aBoundColumn == -1)
@@ -947,7 +928,7 @@ namespace frm
                     while ( xListCursor->next() && ( entryPos++ < SHRT_MAX ) ) // SHRT_MAX is the maximum number of entries
                     {
                         aStr = aValueFormatter.getFormattedValue();
-                        aDisplayList.push_back( aStr );
+                        aDisplayList.emplace_back(aStr );
 
                         if(*aBoundColumn >= 0)
                             aBoundValue.fill( *aBoundColumn + 1, m_nBoundColumnType, xCursorRow );
@@ -974,8 +955,8 @@ namespace frm
                     {
                         css::uno::Sequence<OUString> seqNames = xFieldNames->getElementNames();
                         ::std::copy(
-                            seqNames.getConstArray(),
-                            seqNames.getConstArray() + seqNames.getLength(),
+                            seqNames.begin(),
+                            seqNames.end(),
                             ::std::insert_iterator< ValueList >( aDisplayList, aDisplayList.end() )
                         );
                         if(*aBoundColumn == -1)
@@ -983,7 +964,7 @@ namespace frm
                             // the type of i matters! It will be the type of the ORowSetValue pushed to aValueList!
                             for(size_t i=0; i < aDisplayList.size(); ++i)
                             {
-                                aValueList.push_back(ORowSetValue(sal_Int16(i)));
+                                aValueList.emplace_back(sal_Int16(i));
                             }
                         }
                         else
@@ -1005,7 +986,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
             return;
         }
 
@@ -1076,23 +1057,24 @@ namespace frm
         assert(s_aEmptyValue.isNull());
         m_nNULLPos = -1;
         m_aConvertedBoundValues.resize(m_aBoundValues.size());
-        ValueList::const_iterator src = m_aBoundValues.begin();
-        const ValueList::const_iterator end = m_aBoundValues.end();
         ValueList::iterator dst = m_aConvertedBoundValues.begin();
-        for (; src != end; ++src, ++dst )
+        sal_Int16 nPos = 0;
+        for (auto const& src : m_aBoundValues)
         {
             if(m_nNULLPos == -1 &&
                !isRequired()    &&
-               (*src == s_aEmptyStringValue || *src == s_aEmptyValue || src->isNull()) )
+               (src == s_aEmptyStringValue || src == s_aEmptyValue || src.isNull()) )
             {
-                m_nNULLPos = src - m_aBoundValues.begin();
+                m_nNULLPos = nPos;
                 dst->setNull();
             }
             else
             {
-                *dst = *src;
+                *dst = src;
             }
             dst->setTypeKind(nFieldType);
+            ++dst;
+            ++nPos;
         }
         m_nConvertedBoundValuesType = nFieldType;
         OSL_ENSURE(dst == m_aConvertedBoundValues.end(), "OListBoxModel::convertBoundValues expected to have overwritten all of m_aConvertedBoundValues, but did not.");
@@ -1122,12 +1104,11 @@ namespace frm
         const std::vector< OUString >& aStringItems( getStringItemList() );
         ValueList aValues( aStringItems.size() );
         ValueList::iterator dst = aValues.begin();
-        std::vector< OUString >::const_iterator src(aStringItems.begin());
-        std::vector< OUString >::const_iterator const end = aStringItems.end();
-        for (; src != end; ++src, ++dst )
+        for (auto const& src : aStringItems)
         {
-            *dst = *src;
+            *dst = src;
             dst->setTypeKind(nFieldType);
+            ++dst;
         }
         m_nConvertedBoundValuesType = nFieldType;
         OSL_ENSURE(dst == aValues.end(), "OListBoxModel::impl_getValues expected to have set all of aValues, but did not.");
@@ -1143,7 +1124,7 @@ namespace frm
 
         Sequence< sal_Int16 > aSelectedIndices;
         OSL_VERIFY( m_xAggregateFastSet->getFastPropertyValue( getValuePropertyAggHandle() ) >>= aSelectedIndices );
-        if ( !aSelectedIndices.getLength() )
+        if ( !aSelectedIndices.hasElements() )
             // nothing selected at all
             return s_aEmptyValue;
 
@@ -1229,14 +1210,12 @@ namespace frm
 
 #if HAVE_FEATURE_DBCONNECTIVITY
         sal_Int16 *pIndex = aSelectionIndicies.getArray();
-        const Any *pValue = i_aValues.getConstArray();
-        const Any * const pValueEnd = i_aValues.getConstArray() + i_aValues.getLength();
-        for (;pValue < pValueEnd; ++pValue)
+        for ( auto const & value : i_aValues)
         {
-            if ( pValue->hasValue() )
+            if ( value.hasValue() )
             {
                 ORowSetValue v;
-                v.fill(*pValue);
+                v.fill(value);
                 v.setTypeKind( m_nConvertedBoundValuesType );
                 ValueList::const_iterator curValuePos = ::std::find( aValues.begin(), aValues.end(), v );
                 if ( curValuePos != aValues.end() )
@@ -1288,7 +1267,7 @@ namespace frm
     Any OListBoxModel::getDefaultForReset() const
     {
         Any aValue;
-        if (m_aDefaultSelectSeq.getLength())
+        if (m_aDefaultSelectSeq.hasElements())
             aValue <<= m_aDefaultSelectSeq;
         else if (m_nNULLPos != -1)  // bound Listbox
         {
@@ -1401,8 +1380,8 @@ namespace frm
             OSL_VERIFY( _rExternalValue >>= aSelectIndexesPure );
             aSelectIndexes.realloc( aSelectIndexesPure.getLength() );
             ::std::copy(
-                aSelectIndexesPure.getConstArray(),
-                aSelectIndexesPure.getConstArray() + aSelectIndexesPure.getLength(),
+                aSelectIndexesPure.begin(),
+                aSelectIndexesPure.end(),
                 aSelectIndexes.getArray()
             );
         }
@@ -1412,7 +1391,7 @@ namespace frm
         {
             sal_Int32 nSelectIndex = -1;
             OSL_VERIFY( _rExternalValue >>= nSelectIndex );
-            if ( ( nSelectIndex >= 0 ) && ( nSelectIndex < (sal_Int32)getStringItemList().size() ) )
+            if ( ( nSelectIndex >= 0 ) && ( nSelectIndex < static_cast<sal_Int32>(getStringItemList().size()) ) )
             {
                 aSelectIndexes.realloc( 1 );
                 aSelectIndexes[ 0 ] = static_cast< sal_Int16 >( nSelectIndex );
@@ -1429,18 +1408,15 @@ namespace frm
             ::std::set< sal_Int16 > aSelectionSet;
 
             // find the selection entries in our item list
-            const OUString* pSelectEntries = aSelectEntries.getArray();
-            const OUString* pSelectEntriesEnd = pSelectEntries + aSelectEntries.getLength();
-            while ( pSelectEntries != pSelectEntriesEnd )
+            for ( OUString const & selectEntry : std::as_const(aSelectEntries) )
             {
                 int idx = 0;
                 for(const OUString& s : getStringItemList())
                 {
-                    if (s==*pSelectEntries)
+                    if (s==selectEntry)
                         aSelectionSet.insert(idx);
                     ++idx;
                 }
-                ++pSelectEntries;
             }
 
             // copy the indexes to the sequence
@@ -1483,8 +1459,8 @@ namespace frm
 
             OUString operator ()( sal_Int16 _nIndex )
             {
-                OSL_ENSURE( _nIndex < (sal_Int32)m_rList.size(), "ExtractStringFromSequence_Safe: inconsistence!" );
-                if ( _nIndex < (sal_Int32)m_rList.size() )
+                OSL_ENSURE( _nIndex < static_cast<sal_Int32>(m_rList.size()), "ExtractStringFromSequence_Safe: inconsistence!" );
+                if ( _nIndex < static_cast<sal_Int32>(m_rList.size()) )
                     return m_rList[ _nIndex ];
                 return OUString();
             }
@@ -1535,8 +1511,8 @@ namespace frm
         {
             Sequence< OUString > aSelectedEntriesTexts( _rSelectSequence.getLength() );
             ::std::transform(
-                _rSelectSequence.getConstArray(),
-                _rSelectSequence.getConstArray() + _rSelectSequence.getLength(),
+                _rSelectSequence.begin(),
+                _rSelectSequence.end(),
                 aSelectedEntriesTexts.getArray(),
                 ExtractStringFromSequence_Safe( _rStringList )
             );
@@ -1554,8 +1530,8 @@ namespace frm
 
             Any operator ()( sal_Int16 _nIndex )
             {
-                OSL_ENSURE( static_cast<ValueList::size_type>(_nIndex) < m_rList.size(), "ExtractAnyFromValueList: inconsistence!" );
-                if ( static_cast<ValueList::size_type>(_nIndex) < m_rList.size() )
+                OSL_ENSURE( o3tl::make_unsigned(_nIndex) < m_rList.size(), "ExtractAnyFromValueList: inconsistence!" );
+                if ( o3tl::make_unsigned(_nIndex) < m_rList.size() )
                     return m_rList[ _nIndex ].makeAny();
                 return Any();
             }
@@ -1582,8 +1558,8 @@ namespace frm
         {
             Sequence< Any > aSelectedEntriesValues( _rSelectSequence.getLength() );
             ::std::transform(
-                _rSelectSequence.getConstArray(),
-                _rSelectSequence.getConstArray() + _rSelectSequence.getLength(),
+                _rSelectSequence.begin(),
+                _rSelectSequence.end(),
                 aSelectedEntriesValues.getArray(),
                 ExtractAnyFromValueList_Safe( _rStringList )
             );
@@ -1616,8 +1592,8 @@ namespace frm
             // expects int's
             Sequence< sal_Int32 > aTransformed( aSelectSequence.getLength() );
             ::std::copy(
-                aSelectSequence.getConstArray(),
-                aSelectSequence.getConstArray() + aSelectSequence.getLength(),
+                aSelectSequence.begin(),
+                aSelectSequence.end(),
                 aTransformed.getArray()
             );
             aReturn <<= aTransformed;
@@ -1675,7 +1651,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
 
         return aCurrentValue;
@@ -1693,7 +1669,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
 
         return aCurrentValue;
@@ -1722,7 +1698,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
 
         return aCurrentValue;
@@ -1755,7 +1731,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
         resumeValueListening();
 
@@ -1770,24 +1746,10 @@ namespace frm
             }
             else
             {
-                if ( m_aDefaultSelectSeq.getLength() )
+                if ( m_aDefaultSelectSeq.hasElements() )
                     setControlValue( makeAny( m_aDefaultSelectSeq ), eOther );
             }
         }
-    }
-
-
-    void OListBoxModel::connectedExternalListSource( )
-    {
-        // TODO?
-    }
-
-
-    void OListBoxModel::disconnectedExternalListSource( )
-    {
-        // TODO: in case we're part of an already loaded form, we should probably simulate
-        // an onConnectedDbColumn, so our list get's filled with the data as indicated
-        // by our SQL-binding related properties
     }
 
 
@@ -1936,7 +1898,7 @@ namespace frm
             m_aItemListeners.notifyEach( &XItemListener::itemStateChanged, _rEvent );
 
         // and do the handling for the ChangeListeners
-        ::osl::ClearableMutexGuard aGuard(m_aMutex);
+        osl::MutexGuard aGuard(m_aMutex);
         if ( m_aChangeIdle.IsActive() )
         {
             Reference<XPropertySet> xSet(getModel(), UNO_QUERY);
@@ -2213,14 +2175,14 @@ namespace frm
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OListBoxModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new frm::OListBoxModel(component));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OListBoxControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

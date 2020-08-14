@@ -17,18 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <hintids.hxx>
 #include <svx/svxids.hrc>
-#include <svl/stritem.hxx>
 #include <svx/drawitem.hxx>
-#include <svx/svdmodel.hxx>
 #include <svx/svdoutl.hxx>
 #include <svx/xtable.hxx>
 #include <unotools/configmgr.hxx>
 #include <docsh.hxx>
-#include <doc.hxx>
 #include <drawdoc.hxx>
-#include <IDocumentDrawModelAccess.hxx>
+#include <swtypes.hxx>
 
 using namespace ::com::sun::star;
 
@@ -52,12 +48,12 @@ void InitDrawModelAndDocShell(SwDocShell* pSwDocShell, SwDrawModel* pSwDrawDocum
             // get and decide on the color table to use
             if(pSwDocShell)
             {
-                const SvxColorListItem* pColItemFromDocShell = static_cast< const SvxColorListItem* >(pSwDocShell->GetItem(SID_COLOR_TABLE));
+                const SvxColorListItem* pColItemFromDocShell = pSwDocShell->GetItem(SID_COLOR_TABLE);
 
                 if(pColItemFromDocShell)
                 {
                     // the DocShell has a ColorTable, use it also in DrawingLayer
-                    XColorListRef xCol(pColItemFromDocShell->GetColorList());
+                    const XColorListRef& xCol(pColItemFromDocShell->GetColorList());
                     pSwDrawDocument->SetPropertyList(static_cast<XPropertyList*>(xCol.get()));
                 }
                 else
@@ -68,7 +64,7 @@ void InitDrawModelAndDocShell(SwDocShell* pSwDocShell, SwDrawModel* pSwDrawDocum
                     {
                         pSwDocShell->PutItem(SvxColorListItem(xColorList, SID_COLOR_TABLE));
                     }
-                    else if (!utl::ConfigManager::IsAvoidConfig())
+                    else if (!utl::ConfigManager::IsFuzzing())
                     {
                         // there wasn't one, get the standard and set to the
                         // docshell and then to the drawdocument

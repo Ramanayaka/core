@@ -37,15 +37,15 @@
       <Time100SecSeparator>.</Time100SecSeparator>
       <ListSeparator>;</ListSeparator>
       <LongDateDayOfWeekSeparator>, </LongDateDayOfWeekSeparator>
-      <LongDateDaySeparator>.</LongDateDaySeparator>
+      <LongDateDaySeparator>. </LongDateDaySeparator>
       <LongDateMonthSeparator> </LongDateMonthSeparator>
       <LongDateYearSeparator> </LongDateYearSeparator>
     </Separators>
     <Markers>
-      <QuotationStart>‚</QuotationStart>
-      <QuotationEnd>‘</QuotationEnd>
-      <DoubleQuotationStart>„</DoubleQuotationStart>
-      <DoubleQuotationEnd>“</DoubleQuotationEnd>
+      <QuotationStart>‹</QuotationStart>
+      <QuotationEnd>›</QuotationEnd>
+      <DoubleQuotationStart>«</DoubleQuotationStart>
+      <DoubleQuotationEnd>»</DoubleQuotationEnd>
     </Markers>
     <TimeAM>vorm.</TimeAM>
     <TimePM>nachm.</TimePM>
@@ -194,6 +194,9 @@
     </FormatElement>
     <FormatElement msgid="DateTimeFormatskey2" default="false" type="medium" usage="DATE_TIME" formatindex="47">
       <FormatCode>TT.MM.JJJJ HH:MM:SS</FormatCode>
+    </FormatElement>
+    <FormatElement msgid="DateTimeFormatskey3" default="false" type="medium" usage="DATE_TIME" formatindex="50">
+      <FormatCode>TT.MM.JJJJ HH:MM</FormatCode>
     </FormatElement>
   </LC_FORMAT>
   <LC_COLLATION ref="de_DE" />

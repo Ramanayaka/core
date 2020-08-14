@@ -16,19 +16,22 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
+
 #include <sfx2/sidebar/Theme.hxx>
-#include <sfx2/sidebar/Paint.hxx>
-#include <sfx2/sidebar/Tools.hxx>
+#include <sidebar/Paint.hxx>
+#include <sidebar/Tools.hxx>
 #include <sfx2/app.hxx>
 
-#include <tools/svborder.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <tools/diagnose_ex.h>
+
+#include <com/sun/star/awt/Rectangle.hpp>
 
 using namespace css;
 using namespace css::uno;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 Theme& Theme::GetCurrentTheme()
 {
@@ -90,7 +93,7 @@ const Paint& Theme::GetPaint (const ThemeItem eItem)
     return rTheme.maPaints[nIndex];
 }
 
-const Wallpaper Theme::GetWallpaper (const ThemeItem eItem)
+Wallpaper Theme::GetWallpaper (const ThemeItem eItem)
 {
     return GetPaint(eItem).GetWallpaper();
 }
@@ -334,9 +337,9 @@ void Theme::UpdateTheme()
             maPropertyIdToNameMap[Rect_ToolBoxBorder],
             Any(awt::Rectangle(1,1,1,1)));
     }
-    catch(beans::UnknownPropertyException& rException)
+    catch(beans::UnknownPropertyException const &)
     {
-        SAL_WARN("sfx", "unknown property: " << rException.Message);
+        DBG_UNHANDLED_EXCEPTION("sfx", "unknown property");
         OSL_ASSERT(false);
     }
 }
@@ -348,21 +351,13 @@ void SAL_CALL Theme::disposing()
 
     const lang::EventObject aEvent (static_cast<XWeak*>(this));
 
-    for (ChangeListeners::const_iterator
-             iContainer(aListeners.begin()),
-             iContainerEnd(aListeners.end());
-         iContainer != iContainerEnd;
-         ++iContainer)
+    for (const auto& rContainer : aListeners)
     {
-        for (ChangeListenerContainer::const_iterator
-                 iListener(iContainer->second.begin()),
-                 iEnd(iContainer->second.end());
-             iListener!=iEnd;
-             ++iListener)
+        for (const auto& rxListener : rContainer.second)
         {
             try
             {
-                (*iListener)->disposing(aEvent);
+                rxListener->disposing(aEvent);
             }
             catch(const Exception&)
             {
@@ -382,7 +377,7 @@ Reference<beans::XPropertySetInfo> SAL_CALL Theme::getPropertySetInfo()
 }
 
 void SAL_CALL Theme::setPropertyValue (
-    const ::rtl::OUString& rsPropertyName,
+    const OUString& rsPropertyName,
     const css::uno::Any& rValue)
 {
     PropertyNameToIdMap::const_iterator iId (maPropertyNameToIdMap.find(rsPropertyName));
@@ -425,15 +420,15 @@ void SAL_CALL Theme::setPropertyValue (
 }
 
 Any SAL_CALL Theme::getPropertyValue (
-    const ::rtl::OUString& rsPropertyName)
+    const OUString& rsPropertyName)
 {
     PropertyNameToIdMap::const_iterator iId (maPropertyNameToIdMap.find(rsPropertyName));
     if (iId == maPropertyNameToIdMap.end())
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(rsPropertyName);
 
     const PropertyType eType (GetPropertyType(iId->second));
     if (eType == PT_Invalid)
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(rsPropertyName);
 
     const ThemeItem eItem (iId->second);
 
@@ -441,7 +436,7 @@ Any SAL_CALL Theme::getPropertyValue (
 }
 
 void SAL_CALL Theme::addPropertyChangeListener(
-    const ::rtl::OUString& rsPropertyName,
+    const OUString& rsPropertyName,
     const css::uno::Reference<css::beans::XPropertyChangeListener>& rxListener)
 {
     ThemeItem eItem (AnyItem_);
@@ -449,11 +444,11 @@ void SAL_CALL Theme::addPropertyChangeListener(
     {
         PropertyNameToIdMap::const_iterator iId (maPropertyNameToIdMap.find(rsPropertyName));
         if (iId == maPropertyNameToIdMap.end())
-            throw beans::UnknownPropertyException();
+            throw beans::UnknownPropertyException(rsPropertyName);
 
         const PropertyType eType (GetPropertyType(iId->second));
         if (eType == PT_Invalid)
-            throw beans::UnknownPropertyException();
+            throw beans::UnknownPropertyException(rsPropertyName);
 
         eItem = iId->second;
     }
@@ -463,7 +458,7 @@ void SAL_CALL Theme::addPropertyChangeListener(
 }
 
 void SAL_CALL Theme::removePropertyChangeListener(
-    const ::rtl::OUString& rsPropertyName,
+    const OUString& rsPropertyName,
     const css::uno::Reference<css::beans::XPropertyChangeListener>& rxListener)
 {
     ThemeItem eItem (AnyItem_);
@@ -471,11 +466,11 @@ void SAL_CALL Theme::removePropertyChangeListener(
     {
         PropertyNameToIdMap::const_iterator iId (maPropertyNameToIdMap.find(rsPropertyName));
         if (iId == maPropertyNameToIdMap.end())
-            throw beans::UnknownPropertyException();
+            throw beans::UnknownPropertyException(rsPropertyName);
 
         const PropertyType eType (GetPropertyType(iId->second));
         if (eType == PT_Invalid)
-            throw beans::UnknownPropertyException();
+            throw beans::UnknownPropertyException(rsPropertyName);
 
         eItem = iId->second;
     }
@@ -495,7 +490,7 @@ void SAL_CALL Theme::removePropertyChangeListener(
 }
 
 void SAL_CALL Theme::addVetoableChangeListener(
-    const ::rtl::OUString& rsPropertyName,
+    const OUString& rsPropertyName,
     const css::uno::Reference<css::beans::XVetoableChangeListener>& rxListener)
 {
     ThemeItem eItem (AnyItem_);
@@ -503,11 +498,11 @@ void SAL_CALL Theme::addVetoableChangeListener(
     {
         PropertyNameToIdMap::const_iterator iId (maPropertyNameToIdMap.find(rsPropertyName));
         if (iId == maPropertyNameToIdMap.end())
-            throw beans::UnknownPropertyException();
+            throw beans::UnknownPropertyException(rsPropertyName);
 
         const PropertyType eType (GetPropertyType(iId->second));
         if (eType == PT_Invalid)
-            throw beans::UnknownPropertyException();
+            throw beans::UnknownPropertyException(rsPropertyName);
 
         eItem = iId->second;
     }
@@ -517,7 +512,7 @@ void SAL_CALL Theme::addVetoableChangeListener(
 }
 
 void SAL_CALL Theme::removeVetoableChangeListener(
-    const ::rtl::OUString& rsPropertyName,
+    const OUString& rsPropertyName,
     const css::uno::Reference<css::beans::XVetoableChangeListener>& rxListener)
 {
     ThemeItem eItem (AnyItem_);
@@ -525,11 +520,11 @@ void SAL_CALL Theme::removeVetoableChangeListener(
     {
         PropertyNameToIdMap::const_iterator iId (maPropertyNameToIdMap.find(rsPropertyName));
         if (iId == maPropertyNameToIdMap.end())
-            throw beans::UnknownPropertyException();
+            throw beans::UnknownPropertyException(rsPropertyName);
 
         const PropertyType eType (GetPropertyType(iId->second));
         if (eType == PT_Invalid)
-            throw beans::UnknownPropertyException();
+            throw beans::UnknownPropertyException(rsPropertyName);
 
         eItem = iId->second;
     }
@@ -572,15 +567,15 @@ css::uno::Sequence<css::beans::Property> SAL_CALL Theme::getProperties()
         aProperties.size());
 }
 
-beans::Property SAL_CALL Theme::getPropertyByName (const ::rtl::OUString& rsPropertyName)
+beans::Property SAL_CALL Theme::getPropertyByName (const OUString& rsPropertyName)
 {
     PropertyNameToIdMap::const_iterator iId (maPropertyNameToIdMap.find(rsPropertyName));
     if (iId == maPropertyNameToIdMap.end())
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(rsPropertyName);
 
     const PropertyType eType (GetPropertyType(iId->second));
     if (eType == PT_Invalid)
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(rsPropertyName);
 
     const ThemeItem eItem (iId->second);
 
@@ -591,7 +586,7 @@ beans::Property SAL_CALL Theme::getPropertyByName (const ::rtl::OUString& rsProp
         0);
 }
 
-sal_Bool SAL_CALL Theme::hasPropertyByName (const ::rtl::OUString& rsPropertyName)
+sal_Bool SAL_CALL Theme::hasPropertyByName (const OUString& rsPropertyName)
 {
     PropertyNameToIdMap::const_iterator iId (maPropertyNameToIdMap.find(rsPropertyName));
     if (iId == maPropertyNameToIdMap.end())
@@ -839,12 +834,12 @@ Theme::PropertyType Theme::GetPropertyType (const ThemeItem eItem)
     }
 }
 
-css::uno::Type Theme::GetCppuType (const PropertyType eType)
+css::uno::Type const & Theme::GetCppuType (const PropertyType eType)
 {
     switch(eType)
     {
         case PT_Image:
-            return cppu::UnoType<rtl::OUString>::get();
+            return cppu::UnoType<OUString>::get();
 
         case PT_Color:
             return cppu::UnoType<sal_uInt32>::get();
@@ -932,13 +927,9 @@ bool Theme::DoVetoableListenersVeto (
     VetoableListenerContainer aListeners (*pListeners);
     try
     {
-        for (VetoableListenerContainer::const_iterator
-                 iListener(aListeners.begin()),
-                 iEnd(aListeners.end());
-             iListener!=iEnd;
-             ++iListener)
+        for (const auto& rxListener : aListeners)
         {
-            (*iListener)->vetoableChange(rEvent);
+            rxListener->vetoableChange(rEvent);
         }
     }
     catch(const beans::PropertyVetoException&)
@@ -962,13 +953,9 @@ void Theme::BroadcastPropertyChange (
     const ChangeListenerContainer aListeners (*pListeners);
     try
     {
-        for (ChangeListenerContainer::const_iterator
-                 iListener(aListeners.begin()),
-                 iEnd(aListeners.end());
-             iListener!=iEnd;
-             ++iListener)
+        for (const auto& rxListener : aListeners)
         {
-            (*iListener)->propertyChange(rEvent);
+            rxListener->propertyChange(rEvent);
         }
     }
     catch(const Exception&)
@@ -987,7 +974,7 @@ void Theme::ProcessNewValue (
     {
         case PT_Image:
         {
-            ::rtl::OUString sURL;
+            OUString sURL;
             if (rValue >>= sURL)
             {
                 maImages[nIndex] = Tools::GetImage(sURL, nullptr);
@@ -1055,6 +1042,6 @@ void Theme::ProcessNewValue (
     }
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

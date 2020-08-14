@@ -19,25 +19,23 @@
 
 
 #include <tools/urlobj.hxx>
+#include <tools/debug.hxx>
 
-#include <sfx2/objsh.hxx>
 #include <sfx2/docfile.hxx>
-#include "openflag.hxx"
+#include <sfx2/event.hxx>
+#include <openflag.hxx>
 
 #include <svtools/htmlkywd.hxx>
 #include <svtools/htmltokn.h>
-#include <svtools/imap.hxx>
-#include <svtools/imapcirc.hxx>
-#include <svtools/imapobj.hxx>
-#include <svtools/imappoly.hxx>
-#include <svtools/imaprect.hxx>
+#include <vcl/imap.hxx>
+#include <vcl/imapcirc.hxx>
+#include <vcl/imapobj.hxx>
+#include <vcl/imappoly.hxx>
+#include <vcl/imaprect.hxx>
 #include <svl/zforlist.hxx>
-#include <rtl/tencinfo.h>
-#include <tools/tenccvt.hxx>
 
 #include <sfx2/sfxhtml.hxx>
 
-#include <com/sun/star/beans/XPropertyContainer.hpp>
 #include <comphelper/string.hxx>
 
 #include <vector>
@@ -47,7 +45,7 @@ using namespace ::com::sun::star;
 
 
 // <INPUT TYPE=xxx>
-static HTMLOptionEnum<sal_uInt16> const aAreaShapeOptEnums[] =
+HTMLOptionEnum<sal_uInt16> const aAreaShapeOptEnums[] =
 {
     { OOO_STRING_SVTOOLS_HTML_SH_rect,      IMAP_OBJ_RECTANGLE  },
     { OOO_STRING_SVTOOLS_HTML_SH_rectangle, IMAP_OBJ_RECTANGLE  },
@@ -62,7 +60,6 @@ SfxHTMLParser::SfxHTMLParser( SvStream& rStream, bool bIsNewDoc,
                               SfxMedium *pMed )
     : HTMLParser(rStream, bIsNewDoc)
     , pMedium(pMed)
-    , pDLMedium(nullptr)
     , eScriptType(STARBASIC)
 {
     DBG_ASSERT( RTL_TEXTENCODING_UTF8 == GetSrcEncoding( ),
@@ -102,8 +99,8 @@ bool SfxHTMLParser::ParseMapOptions(
 
 bool SfxHTMLParser::ParseAreaOptions(ImageMap * pImageMap, const OUString& rBaseURL,
                                      const HTMLOptions& rOptions,
-                                     sal_uInt16 nEventMouseOver,
-                                     sal_uInt16 nEventMouseOut )
+                                     SvMacroItemId nEventMouseOver,
+                                     SvMacroItemId nEventMouseOut )
 {
     DBG_ASSERT( pImageMap, "ParseAreaOptions: no Image-Map" );
 
@@ -115,7 +112,7 @@ bool SfxHTMLParser::ParseAreaOptions(ImageMap * pImageMap, const OUString& rBase
 
     for (size_t i = rOptions.size(); i; )
     {
-        sal_uInt16 nEvent = 0;
+        SvMacroItemId nEvent = SvMacroItemId::NONE;
         ScriptType eScrpType = STARBASIC;
         const HTMLOption& rOption = rOptions[--i];
         switch( rOption.GetToken() )
@@ -144,19 +141,19 @@ bool SfxHTMLParser::ParseAreaOptions(ImageMap * pImageMap, const OUString& rBase
 
         case HtmlOptionId::ONMOUSEOVER:
             eScrpType = JAVASCRIPT;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case HtmlOptionId::SDONMOUSEOVER:
             nEvent = nEventMouseOver;
             goto IMAPOBJ_SETEVENT;
 
         case HtmlOptionId::ONMOUSEOUT:
             eScrpType = JAVASCRIPT;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case HtmlOptionId::SDONMOUSEOUT:
             nEvent = nEventMouseOut;
             goto IMAPOBJ_SETEVENT;
 IMAPOBJ_SETEVENT:
-            if( nEvent )
+            if( nEvent != SvMacroItemId::NONE)
             {
                 OUString sTmp( rOption.GetString() );
                 if( !sTmp.isEmpty() )
@@ -181,22 +178,22 @@ IMAPOBJ_SETEVENT:
         {
             tools::Rectangle aRect( aCoords[0], aCoords[1],
                              aCoords[2], aCoords[3] );
-            IMapRectangleObject aMapRObj( aRect, aHRef, aAlt, OUString(), aTarget, aName,
-                                          !bNoHRef );
+            std::unique_ptr<IMapRectangleObject> pMapRObj( new IMapRectangleObject(aRect, aHRef, aAlt, OUString(), aTarget, aName,
+                                          !bNoHRef ));
             if( !aMacroTbl.empty() )
-                aMapRObj.SetMacroTable( aMacroTbl );
-            pImageMap->InsertIMapObject( aMapRObj );
+                pMapRObj->SetMacroTable( aMacroTbl );
+            pImageMap->InsertIMapObject( std::move(pMapRObj) );
         }
         break;
     case IMAP_OBJ_CIRCLE:
         if( aCoords.size() >=3 )
         {
             Point aPoint( aCoords[0], aCoords[1] );
-            IMapCircleObject aMapCObj( aPoint, aCoords[2],aHRef, aAlt, OUString(),
-                                       aTarget, aName, !bNoHRef );
+            std::unique_ptr<IMapCircleObject> pMapCObj(new IMapCircleObject(aPoint, aCoords[2],aHRef, aAlt, OUString(),
+                                       aTarget, aName, !bNoHRef ));
             if( !aMacroTbl.empty() )
-                aMapCObj.SetMacroTable( aMacroTbl );
-            pImageMap->InsertIMapObject( aMapCObj );
+                pMapCObj->SetMacroTable( aMacroTbl );
+            pImageMap->InsertIMapObject( std::move(pMapCObj) );
         }
         break;
     case IMAP_OBJ_POLYGON:
@@ -206,11 +203,11 @@ IMAPOBJ_SETEVENT:
             tools::Polygon aPoly( nCount );
             for( sal_uInt16 i=0; i<nCount; i++ )
                 aPoly[i] = Point( aCoords[2*i], aCoords[2*i+1] );
-            IMapPolygonObject aMapPObj( aPoly, aHRef, aAlt, OUString(), aTarget, aName,
-                                        !bNoHRef );
+            std::unique_ptr<IMapPolygonObject> pMapPObj(new IMapPolygonObject( aPoly, aHRef, aAlt, OUString(), aTarget, aName,
+                                        !bNoHRef ));
             if( !aMacroTbl.empty() )
-                aMapPObj.SetMacroTable( aMacroTbl );
-            pImageMap->InsertIMapObject( aMapPObj );
+                pMapPObj->SetMacroTable( aMacroTbl );
+            pImageMap->InsertIMapObject( std::move(pMapPObj) );
         }
         break;
     default:
@@ -242,11 +239,9 @@ bool SfxHTMLParser::FinishFileDownload( OUString& rStr )
         if( pStream )
             aStream.WriteStream( *pStream );
 
-        aStream.Seek( STREAM_SEEK_TO_END );
-        sal_uInt64 const nLen = aStream.Tell();
+        sal_uInt64 const nLen = aStream.TellEnd();
         aStream.Seek( 0 );
-        OString sBuffer = read_uInt8s_ToOString(aStream, nLen);
-        rStr = OStringToOUString( sBuffer, RTL_TEXTENCODING_UTF8 );
+        rStr = read_uInt8s_ToOUString(aStream, nLen, RTL_TEXTENCODING_UTF8);
     }
 
     pDLMedium.reset();
@@ -258,43 +253,43 @@ void SfxHTMLParser::GetScriptType_Impl( SvKeyValueIterator *pHTTPHeader )
 {
     aScriptType = SVX_MACRO_LANGUAGE_JAVASCRIPT;
     eScriptType = JAVASCRIPT;
-    if( pHTTPHeader )
+    if( !pHTTPHeader )
+        return;
+
+    SvKeyValue aKV;
+    for( bool bCont = pHTTPHeader->GetFirst( aKV ); bCont;
+         bCont = pHTTPHeader->GetNext( aKV ) )
     {
-        SvKeyValue aKV;
-        for( bool bCont = pHTTPHeader->GetFirst( aKV ); bCont;
-             bCont = pHTTPHeader->GetNext( aKV ) )
+        if( aKV.GetKey().equalsIgnoreAsciiCase(
+                                OOO_STRING_SVTOOLS_HTML_META_content_script_type ) )
         {
-            if( aKV.GetKey().equalsIgnoreAsciiCase(
-                                    OOO_STRING_SVTOOLS_HTML_META_content_script_type ) )
+            if( !aKV.GetValue().isEmpty() )
             {
-                if( !aKV.GetValue().isEmpty() )
+                OUString aTmp( aKV.GetValue() );
+                if( aTmp.startsWithIgnoreAsciiCase( "text/" ) )
+                    aTmp = aTmp.copy( 5 );
+                else if( aTmp.startsWithIgnoreAsciiCase( "application/" ) )
+                    aTmp = aTmp.copy( 12 );
+                else
+                    break;
+
+                if( aTmp.startsWithIgnoreAsciiCase( "x-" ) ) // MIME-experimental
                 {
-                    OUString aTmp( aKV.GetValue() );
-                    if( aTmp.startsWithIgnoreAsciiCase( "text/" ) )
-                        aTmp = aTmp.copy( 5 );
-                    else if( aTmp.startsWithIgnoreAsciiCase( "application/" ) )
-                        aTmp = aTmp.copy( 12 );
-                    else
-                        break;
-
-                    if( aTmp.startsWithIgnoreAsciiCase( "x-" ) ) // MIME-experimental
-                    {
-                        aTmp = aTmp.copy( 2 );
-                    }
-
-                    if( aTmp.equalsIgnoreAsciiCase( OOO_STRING_SVTOOLS_HTML_LG_starbasic ) )
-                    {
-                        eScriptType = STARBASIC;
-                        aScriptType = SVX_MACRO_LANGUAGE_STARBASIC;
-                    }
-                    if( !aTmp.equalsIgnoreAsciiCase( OOO_STRING_SVTOOLS_HTML_LG_javascript ) )
-                    {
-                        eScriptType = EXTENDED_STYPE;
-                        aScriptType = aTmp;
-                    }
+                    aTmp = aTmp.copy( 2 );
                 }
-                break;
+
+                if( aTmp.equalsIgnoreAsciiCase( OOO_STRING_SVTOOLS_HTML_LG_starbasic ) )
+                {
+                    eScriptType = STARBASIC;
+                    aScriptType = SVX_MACRO_LANGUAGE_STARBASIC;
+                }
+                if( !aTmp.equalsIgnoreAsciiCase( OOO_STRING_SVTOOLS_HTML_LG_javascript ) )
+                {
+                    eScriptType = EXTENDED_STYPE;
+                    aScriptType = aTmp;
+                }
             }
+            break;
         }
     }
 }
@@ -326,17 +321,16 @@ double SfxHTMLParser::GetTableDataOptionsValNum( sal_uInt32& nNumForm,
     (void)rFormatter.IsNumberFormat(aValStr, nParseForm, fVal);
     if ( comphelper::string::getTokenCount(aNumStr, ';') > 2 )
     {
-        eNumLang = LanguageType(aNumStr.getToken( 1, ';' ).toInt32());
-        sal_Int32 nPos = aNumStr.indexOf( ';' );
-        nPos = aNumStr.indexOf( ';', nPos + 1 );
-        OUString aFormat( aNumStr.copy( nPos + 1 ) );
+        sal_Int32 nIdx {0};
+        eNumLang = LanguageType(aNumStr.getToken( 1, ';', nIdx ).toInt32());
+        OUString aFormat( aNumStr.copy( nIdx ) );
         sal_Int32 nCheckPos;
-        short nType;
+        SvNumFormatType nType;
         if ( eNumLang != LANGUAGE_SYSTEM )
             rFormatter.PutEntry( aFormat, nCheckPos, nType, nNumForm, eNumLang );
         else
             rFormatter.PutandConvertEntry( aFormat, nCheckPos, nType, nNumForm,
-                                           eParseLang, eNumLang );
+                                           eParseLang, eNumLang, true);
     }
     else
     {

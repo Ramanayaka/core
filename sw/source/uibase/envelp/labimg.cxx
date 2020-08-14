@@ -20,15 +20,13 @@
 #include <sal/config.h>
 
 #include <o3tl/any.hxx>
-#include <tools/stream.hxx>
-#include <tools/resid.hxx>
+#include <osl/diagnose.h>
+#include <tools/UnitConversion.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <unotools/useroptions.hxx>
 #include <swmodule.hxx>
-#include "labimg.hxx"
-#include "cmdid.h"
-#include "swtypes.hxx"
-#include <unomid.h>
+#include <labimg.hxx>
+#include <cmdid.h>
 
 using namespace utl;
 using namespace ::com::sun::star::uno;
@@ -55,12 +53,6 @@ SwLabItem::SwLabItem() :
     m_lPHeight = 5669; // 10 cm
 }
 
-SwLabItem::SwLabItem(const SwLabItem& rItem) :
-    SfxPoolItem(FN_LABEL)
-{
-        *this = rItem;
-}
-
 SwLabItem& SwLabItem::operator =(const SwLabItem& rItem)
 {
     m_bAddr    = rItem.m_bAddr;
@@ -73,7 +65,6 @@ SwLabItem& SwLabItem::operator =(const SwLabItem& rItem)
     m_aType    = rItem.m_aType;
     m_bPage    = rItem.m_bPage;
     m_bSynchron = rItem.m_bSynchron;
-    m_aBin     = rItem.m_aBin;
     m_nCol     = rItem.m_nCol;
     m_nRow     = rItem.m_nRow;
     m_lHDist   = rItem.m_lHDist;
@@ -131,7 +122,6 @@ bool SwLabItem::operator ==(const SfxPoolItem& rItem) const
            m_bCont    == rLab.m_bCont   &&
            m_bPage    == rLab.m_bPage   &&
            m_bSynchron == rLab.m_bSynchron &&
-           m_aBin     == rLab.m_aBin    &&
            m_nCol     == rLab.m_nCol    &&
            m_nRow     == rLab.m_nRow    &&
            m_lHDist   == rLab.m_lHDist  &&
@@ -186,12 +176,12 @@ bool SwLabItem::operator ==(const SfxPoolItem& rItem) const
             m_sGlossaryBlockName ==    rLab.m_sGlossaryBlockName;
 }
 
-SfxPoolItem* SwLabItem::Clone(SfxItemPool*) const
+SwLabItem* SwLabItem::Clone(SfxItemPool*) const
 {
     return new SwLabItem(*this);
 }
 
-Sequence<OUString> SwLabCfgItem::GetPropertyNames()
+Sequence<OUString> SwLabCfgItem::GetPropertyNames() const
 {
     static const char* aLabelPropNames[] =
     {
@@ -371,29 +361,30 @@ SwLabCfgItem::SwLabCfgItem(bool bLabel) :
             }
         }
     }
-    if(!bIsLabel && bNoConfigValues)
-    {
 
-        SvtUserOptions& rUserOpt = SW_MOD()->GetUserOptions();
-        aItem.m_aPrivFirstName = rUserOpt.GetFirstName();
-        aItem.m_aPrivName = rUserOpt.GetLastName();
-        aItem.m_aPrivShortCut = rUserOpt.GetID();
-        aItem.m_aCompCompany = rUserOpt.GetCompany();
-        aItem.m_aCompStreet = aItem.m_aPrivStreet = rUserOpt.GetStreet();
+    if(bIsLabel || !bNoConfigValues)
+        return;
 
-        aItem.m_aCompCountry = aItem.m_aPrivCountry = rUserOpt.GetCountry();
-        aItem.m_aCompZip = aItem.m_aPrivZip= rUserOpt.GetZip();
-        aItem.m_aCompCity = aItem.m_aPrivCity = rUserOpt.GetCity();
-        aItem.m_aPrivTitle = rUserOpt.GetTitle();
-        aItem.m_aCompPosition = rUserOpt.GetPosition();
-        aItem.m_aPrivPhone = rUserOpt.GetTelephoneHome();
-        aItem.m_aCompPhone = rUserOpt.GetTelephoneWork();
-        aItem.m_aCompFax = aItem.m_aPrivFax = rUserOpt.GetFax();
-        aItem.m_aCompMail = aItem.m_aPrivMail = rUserOpt.GetEmail();
-        aItem.m_aCompState = aItem.m_aPrivState = rUserOpt.GetState();
-        aItem.m_bSynchron = true;
-        SetModified();
-    }
+    SvtUserOptions& rUserOpt = SW_MOD()->GetUserOptions();
+    aItem.m_aPrivFirstName = rUserOpt.GetFirstName();
+    aItem.m_aPrivName = rUserOpt.GetLastName();
+    aItem.m_aPrivShortCut = rUserOpt.GetID();
+    aItem.m_aCompCompany = rUserOpt.GetCompany();
+    aItem.m_aCompStreet = aItem.m_aPrivStreet = rUserOpt.GetStreet();
+
+    aItem.m_aCompCountry = aItem.m_aPrivCountry = rUserOpt.GetCountry();
+    aItem.m_aCompZip = aItem.m_aPrivZip= rUserOpt.GetZip();
+    aItem.m_aCompCity = aItem.m_aPrivCity = rUserOpt.GetCity();
+    aItem.m_aPrivTitle = rUserOpt.GetTitle();
+    aItem.m_aCompPosition = rUserOpt.GetPosition();
+    aItem.m_aPrivPhone = rUserOpt.GetTelephoneHome();
+    aItem.m_aCompPhone = rUserOpt.GetTelephoneWork();
+    aItem.m_aCompFax = aItem.m_aPrivFax = rUserOpt.GetFax();
+    aItem.m_aCompMail = aItem.m_aPrivMail = rUserOpt.GetEmail();
+    aItem.m_aCompState = aItem.m_aPrivState = rUserOpt.GetState();
+    aItem.m_bSynchron = true;
+    SetModified();
+
 }
 
 void SwLabCfgItem::Notify( const css::uno::Sequence< OUString >& ) {}

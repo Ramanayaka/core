@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <notationsmap.hxx>
+#include "notationsmap.hxx"
 
 #include <osl/diagnose.h>
-
-#include <documenttype.hxx>
 
 using namespace css::uno;
 using namespace css::xml::dom;

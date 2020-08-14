@@ -22,7 +22,7 @@ import com.sun.star.uno.AnyConverter;
 
 
 /**
- * Implemets a simple interaction handler,
+ * Implements a simple interaction handler,
  * which can abort all incoming interactions only ... but make it possible to
  * log it. So it can be used for debug and test purposes.
  */
@@ -95,7 +95,7 @@ public class InteractionHandler implements XInteractionHandler
             catch(com.sun.star.lang.IllegalArgumentException exArg) {}
         }
 
-        // try it again, but only if it wasn't tried to much before.
+        // try it again, but only if it wasn't tried too much before.
         if (xRetry != null)
         {
             synchronized(this)

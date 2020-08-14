@@ -19,9 +19,7 @@
 
 
 #include <tools/diagnose_ex.h>
-
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
+#include <sal/log.hxx>
 
 #include <event.hxx>
 #include <eventqueue.hxx>
@@ -33,15 +31,13 @@
 
 using namespace ::com::sun::star;
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         bool EventQueue::EventEntry::operator<( const EventEntry& rEvent ) const
         {
             // negate comparison, we want priority queue to be sorted
             // in increasing order of activation times
-            return this->nTime > rEvent.nTime;
+            return nTime > rEvent.nTime;
         }
 
 
@@ -58,11 +54,9 @@ namespace slideshow
         EventQueue::~EventQueue()
         {
             // add in all that have been added explicitly for this round:
-            EventEntryVector::const_iterator const iEnd( maNextEvents.end() );
-            for ( EventEntryVector::const_iterator iPos( maNextEvents.begin() );
-                  iPos != iEnd; ++iPos )
+            for ( const auto& rEvent : maNextEvents )
             {
-                maEvents.push(*iPos);
+                maEvents.push(rEvent);
             }
             EventEntryVector().swap( maNextEvents );
 
@@ -73,9 +67,9 @@ namespace slideshow
                 {
                     maEvents.top().pEvent->dispose();
                 }
-                catch (const uno::Exception& e)
+                catch (const uno::Exception&)
                 {
-                    SAL_WARN("slideshow", "" << e.Message);
+                    TOOLS_WARN_EXCEPTION("slideshow", "");
                 }
                 maEvents.pop();
             }
@@ -117,11 +111,10 @@ namespace slideshow
                 << " with delay " << rEvent->getActivationTime(0.0)
                 );
 
-            ENSURE_OR_RETURN_FALSE( rEvent.get() != nullptr,
+            ENSURE_OR_RETURN_FALSE( rEvent,
                                "EventQueue::addEvent: event ptr NULL" );
-            maNextEvents.push_back(
-                EventEntry( rEvent, rEvent->getActivationTime(
-                                mpTimer->getElapsedTime()) ) );
+            maNextEvents.emplace_back( rEvent, rEvent->getActivationTime(
+                                mpTimer->getElapsedTime()) );
             return true;
         }
 
@@ -135,9 +128,7 @@ namespace slideshow
                 << " with delay " << rpEvent->getActivationTime(0.0)
                 );
 
-            ENSURE_OR_RETURN_FALSE(
-                rpEvent.get() != nullptr,
-                    "EventQueue::addEvent: event ptr NULL");
+            ENSURE_OR_RETURN_FALSE( rpEvent, "EventQueue::addEvent: event ptr NULL");
 
             maNextNextEvents.push(
                 EventEntry(
@@ -166,10 +157,8 @@ namespace slideshow
             SAL_INFO("slideshow.verbose", "EventQueue: heartbeat" );
 
             // add in all that have been added explicitly for this round:
-            EventEntryVector::const_iterator const iEnd( maNextEvents.end() );
-            for ( EventEntryVector::const_iterator iPos( maNextEvents.begin() );
-                  iPos != iEnd; ++iPos ) {
-                maEvents.push(*iPos);
+            for ( const auto& rEvent : maNextEvents ) {
+                maEvents.push(rEvent);
             }
             EventEntryVector().swap( maNextEvents );
 
@@ -184,7 +173,7 @@ namespace slideshow
                 && !bFireAllEvents
                 && (maEvents.empty() || maEvents.top().nTime > nCurrTime))
             {
-                const EventEntry aEvent (maNextNextEvents.top());
+                const EventEntry aEvent (std::move(maNextNextEvents.top()));
                 maNextNextEvents.pop();
                 maEvents.push(aEvent);
             }
@@ -196,7 +185,7 @@ namespace slideshow
             while( !maEvents.empty() &&
                    (bFireAllEvents || maEvents.top().nTime <= nCurrTime) )
             {
-                EventEntry event( maEvents.top() );
+                EventEntry event( std::move(maEvents.top()) );
                 maEvents.pop();
 
                 // only process event, if it is still 'charged',
@@ -238,7 +227,7 @@ namespace slideshow
                         // since this will also capture segmentation
                         // violations and the like. In such a case, we
                         // still better let our clients now...
-                        SAL_WARN( "slideshow", comphelper::anyToString( cppu::getCaughtException() ) );
+                        TOOLS_WARN_EXCEPTION( "slideshow", "" );
                     }
                     catch( SlideShowException& )
                     {
@@ -301,7 +290,6 @@ namespace slideshow
             maNextEvents.clear();
             maNextNextEvents = ImplQueueType();
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -37,7 +37,8 @@ class SwFrameFormat;
 class SwDrawFrameFormat;
 class SwFlyFrameFormat;
 class SwNodeIndex;
-class SwFormatField;
+class SwRootFrame;
+class SwTextAttr;
 
 namespace utl { class TransliterationWrapper; }
 namespace svt { class EmbeddedObjectRef; }
@@ -66,6 +67,19 @@ enum class SwInsertFlags
 namespace o3tl
 {
     template<> struct typed_flags<SwInsertFlags> : is_typed_flags<SwInsertFlags, 0x07> {};
+}
+
+enum class SwCopyFlags
+{
+    Default         = 0,
+    CopyAll         = (1<<0), ///< copy break attributes even when source is single node
+    CheckPosInFly   = (1<<1), ///< check if target position is in fly anchored at source range
+    IsMoveToFly     = (1<<2), ///< MakeFlyAndMove
+    // TODO: mbCopyIsMove? mbIsRedlineMove?
+};
+namespace o3tl
+{
+    template<> struct typed_flags<SwCopyFlags> : is_typed_flags<SwCopyFlags, 0x07> {};
 }
 
 /** Text operation/manipulation interface
@@ -103,12 +117,13 @@ public:
         @param rPos
         The target copy destination
 
-        @param bCheckPos
+        @param flags
+        SwCopyFlags::CheckPos:
         If this function should check if rPos is in a fly frame anchored in
         rPam. If false, then no such check will be performed, and it is assumed
         that the caller took care of verifying this constraint already.
      */
-    virtual bool CopyRange(SwPaM& rPam, SwPosition& rPos, const bool bCopyAll, bool bCheckPos ) const = 0;
+    virtual bool CopyRange(SwPaM& rPam, SwPosition& rPos, SwCopyFlags flags) const = 0;
 
     /** Delete section containing the node.
     */
@@ -116,7 +131,7 @@ public:
 
     /** Delete a range SwFlyFrameFormat.
     */
-    virtual bool DeleteRange(SwPaM&) = 0;
+    virtual void DeleteRange(SwPaM&) = 0;
 
     /** Delete full paragraphs.
     */
@@ -148,7 +163,7 @@ public:
     virtual bool InsertString(const SwPaM &rRg, const OUString&,
               const SwInsertFlags nInsertMode = SwInsertFlags::EMPTYEXPAND ) = 0;
 
-    /** change text to Upper/Lower/Hiragana/Katagana/...
+    /** change text to Upper/Lower/Hiragana/Katakana/...
      */
     virtual void TransliterateText(const SwPaM& rPaM, utl::TransliterationWrapper&) = 0;
 
@@ -163,11 +178,11 @@ public:
     virtual SwFlyFrameFormat* InsertGraphicObject(
         const SwPaM& rRg, const GraphicObject& rGrfObj,
         const SfxItemSet* pFlyAttrSet,
-        const SfxItemSet* pGrfAttrSet, SwFrameFormat*) = 0;
+        const SfxItemSet* pGrfAttrSet) = 0;
 
     /** Transpose graphic (with undo)
      */
-    virtual void ReRead(SwPaM&, const OUString& rGrfName, const OUString& rFltName, const Graphic* pGraphic, const GraphicObject* pGrfObj) = 0;
+    virtual void ReRead(SwPaM&, const OUString& rGrfName, const OUString& rFltName, const Graphic* pGraphic) = 0;
 
     /** Insert a DrawObject. The object must be already registered
         in DrawModel.
@@ -179,7 +194,7 @@ public:
     */
     virtual SwFlyFrameFormat* InsertEmbObject(
         const SwPaM &rRg, const svt::EmbeddedObjectRef& xObj,
-        const SfxItemSet* pFlyAttrSet) = 0;
+        SfxItemSet* pFlyAttrSet) = 0;
 
     virtual SwFlyFrameFormat* InsertOLE(
         const SwPaM &rRg, const OUString& rObjName, sal_Int64 nAspect,
@@ -213,10 +228,14 @@ public:
         false.
     */
     virtual bool InsertPoolItem(const SwPaM &rRg, const SfxPoolItem&,
-                                const SetAttrMode nFlags = SetAttrMode::DEFAULT, bool bExpandCharToPara=false) = 0;
+                                const SetAttrMode nFlags = SetAttrMode::DEFAULT,
+                                SwRootFrame const* pLayout = nullptr,
+                                bool bExpandCharToPara = false,
+                                SwTextAttr **ppNewTextAttr = nullptr) = 0;
 
-    virtual bool InsertItemSet (const SwPaM &rRg, const SfxItemSet&,
-        const SetAttrMode nFlags = SetAttrMode::DEFAULT) = 0;
+    virtual void InsertItemSet (const SwPaM &rRg, const SfxItemSet&,
+        const SetAttrMode nFlags = SetAttrMode::DEFAULT,
+        SwRootFrame const* pLayout = nullptr) = 0;
 
     /** Removes any leading white space from the paragraph
     */

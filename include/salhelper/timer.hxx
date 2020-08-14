@@ -21,9 +21,9 @@
 #ifndef INCLUDED_SALHELPER_TIMER_HXX
 #define INCLUDED_SALHELPER_TIMER_HXX
 
-#include <salhelper/simplereferenceobject.hxx>
-#include <osl/time.h>
-#include <salhelper/salhelperdllapi.h>
+#include "salhelper/simplereferenceobject.hxx"
+#include "osl/time.h"
+#include "salhelper/salhelperdllapi.h"
 
 namespace salhelper
 {
@@ -50,15 +50,9 @@ struct SAL_WARN_UNUSED TTimeValue : public TimeValue
 
     TTimeValue(sal_uInt32 MilliSecs)
     {
-        Seconds = MilliSecs / 1000L;
+        Seconds = MilliSecs / 1000;
         Nanosec = (MilliSecs % 1000) * 1000000L;
 
-        normalize();
-    }
-
-    TTimeValue( const TTimeValue& rTimeValue ):
-        TimeValue(rTimeValue)
-    {
         normalize();
     }
 
@@ -192,11 +186,11 @@ protected:
 
 protected:
 
-    /** holds (initial) exparation time of this timer.
+    /** holds (initial) expiration time of this timer.
      */
     TTimeValue  m_aTimeOut;
 
-    /** holds the time of exparation of this timer.
+    /** holds the time of expiration of this timer.
      */
     TTimeValue  m_aExpired;
 

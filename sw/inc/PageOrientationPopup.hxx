@@ -19,23 +19,26 @@
 #ifndef INCLUDED_SW_INC_PAGEORIENTATIONPOPUP_HXX
 #define INCLUDED_SW_INC_PAGEORIENTATIONPOPUP_HXX
 
-#include <sfx2/tbxctrl.hxx>
-#include <swdllapi.h>
-#include <vcl/vclenum.hxx>
-#include <functional>
+#include <svtools/popupwindowcontroller.hxx>
+#include "swdllapi.h"
 
-class SW_DLLPUBLIC PageOrientationPopup : public SfxToolBoxControl
+class PageOrientationPopup final : public svt::PopupWindowController
 {
 public:
-    SFX_DECL_TOOLBOX_CONTROL();
-
-    PageOrientationPopup(sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx);
+    PageOrientationPopup(const css::uno::Reference<css::uno::XComponentContext>& rContext);
     virtual ~PageOrientationPopup() override;
 
-    virtual VclPtr<SfxPopupWindow> CreatePopupWindow() override;
+    virtual std::unique_ptr<WeldToolbarPopup> weldPopupWindow() override;
+    virtual VclPtr<vcl::Window> createVclPopupWindow( vcl::Window* pParent ) override;
+
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
+
+    // XInitialization
+    virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& rArguments ) override;
 };
 
 #endif
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

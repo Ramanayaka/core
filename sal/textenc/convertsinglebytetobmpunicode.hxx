@@ -20,16 +20,16 @@
 #ifndef INCLUDED_SAL_TEXTENC_CONVERTSINGLEBYTETOBMPUNICODE_HXX
 #define INCLUDED_SAL_TEXTENC_CONVERTSINGLEBYTETOBMPUNICODE_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cstddef>
 
-#include "sal/types.h"
+#include <sal/types.h>
 
 
 /// @HTML
 
-namespace rtl { namespace textenc {
+namespace rtl::textenc {
 
 /**
    Maps a range of BMP Unicode code points to individual bytes.
@@ -93,7 +93,7 @@ struct BmpUnicodeToSingleByteConverterData {
     BmpUnicodeToSingleByteRange const * unicodeToByte;
 };
 
-} }
+}
 
 /**
    Function to convert from a single-byte character set to BMP Unicode.
@@ -101,7 +101,7 @@ struct BmpUnicodeToSingleByteConverterData {
    @see ImplConvertToUnicodeProc
  */
 sal_Size rtl_textenc_convertSingleByteToBmpUnicode(
-    void const * data, void * context, sal_Char const * srcBuf,
+    void const * data, void * context, char const * srcBuf,
     sal_Size srcBytes, sal_Unicode * destBuf, sal_Size destChars,
     sal_uInt32 flags, sal_uInt32 * info, sal_Size * srcCvtBytes);
 
@@ -112,7 +112,7 @@ sal_Size rtl_textenc_convertSingleByteToBmpUnicode(
  */
 sal_Size rtl_textenc_convertBmpUnicodeToSingleByte(
     void const * data, void * context,
-    sal_Unicode const * srcBuf, sal_Size srcChars, sal_Char * destBuf,
+    sal_Unicode const * srcBuf, sal_Size srcChars, char * destBuf,
     sal_Size destBytes, sal_uInt32 flags, sal_uInt32 * info,
     sal_Size * srcCvtChars);
 

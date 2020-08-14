@@ -19,10 +19,12 @@
 #ifndef INCLUDED_SC_INC_DPCACHE_HXX
 #define INCLUDED_SC_INC_DPCACHE_HXX
 
-#include "global.hxx"
-#include "dpnumgroupinfo.hxx"
+#include "address.hxx"
 #include "calcmacros.hxx"
-#include <tools/date.hxx>
+#include "dpitemdata.hxx"
+#include "dpnumgroupinfo.hxx"
+#include "scdllapi.h"
+#include "types.hxx"
 
 #include <mdds/flat_segment_tree.hpp>
 
@@ -33,8 +35,10 @@
 
 struct ScQueryParam;
 class ScDPObject;
-class ScDPItemData;
-struct ScDPNumGroupInfo;
+class ScDocument;
+class SvNumberFormatter;
+
+enum class SvNumFormatType : sal_Int16;
 
 /**
  * This class represents the cached data part of the datapilot cache table
@@ -43,13 +47,13 @@ struct ScDPNumGroupInfo;
 class SC_DLLPUBLIC ScDPCache
 {
 public:
-    typedef std::unordered_set<OUString, OUStringHash> StringSetType;
+    typedef std::unordered_set<OUString> StringSetType;
     typedef mdds::flat_segment_tree<SCROW, bool> EmptyRowsType;
     typedef std::vector<ScDPItemData> ScDPItemDataVec;
     typedef std::set<ScDPObject*> ScDPObjectSet;
     typedef std::vector<SCROW> IndexArrayType;
 
-    struct GroupItems
+    struct SAL_DLLPRIVATE GroupItems
     {
         ScDPItemDataVec maItems;
         ScDPNumGroupInfo maInfo;
@@ -61,7 +65,7 @@ public:
         GroupItems(const ScDPNumGroupInfo& rInfo, sal_Int32 nGroupType);
     };
 
-    struct Field
+    struct SAL_DLLPRIVATE Field
     {
         /**
          * Optional items for grouped field.
@@ -98,7 +102,7 @@ public:
         virtual bool first() = 0;
         virtual bool next() = 0;
         virtual void finish() = 0;
-        virtual void getValue(long nCol, ScDPItemData& rData, short& rNumType) const = 0;
+        virtual void getValue(long nCol, ScDPItemData& rData, SvNumFormatType& rNumType) const = 0;
         virtual ~DBConnector() {}
     };
 
@@ -145,6 +149,7 @@ public:
     SCROW SetGroupItem(long nDim, const ScDPItemData& rData);
     void GetGroupDimMemberIds(long nDim, std::vector<SCROW>& rIds) const;
     void ClearGroupFields();
+    void ClearAllFields();
     const ScDPNumGroupInfo* GetNumGroupInfo(long nDim) const;
 
     /**
@@ -204,7 +209,6 @@ public:
 private:
     void PostInit();
     void Clear();
-    void AddLabel(const OUString& rLabel);
     const GroupItems* GetGroupItems(long nDim) const;
 };
 

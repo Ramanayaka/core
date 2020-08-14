@@ -17,23 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/helper/attributelist.hxx"
-#include "drawingml/guidcontext.hxx"
-#include "drawingml/table/tablecontext.hxx"
-#include "drawingml/table/tableproperties.hxx"
-#include "drawingml/table/tablestylecontext.hxx"
-#include "drawingml/table/tablerowcontext.hxx"
+#include <oox/helper/attributelist.hxx>
+#include <drawingml/colorchoicecontext.hxx>
+#include <drawingml/guidcontext.hxx>
+#include <drawingml/table/tablecontext.hxx>
+#include <drawingml/table/tableproperties.hxx>
+#include <drawingml/table/tablestylecontext.hxx>
+#include <drawingml/table/tablerowcontext.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
 using namespace ::oox::core;
 using namespace ::com::sun::star;
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
-TableContext::TableContext( ContextHandler2Helper& rParent, const ShapePtr& pShapePtr )
+TableContext::TableContext( ContextHandler2Helper const & rParent, const ShapePtr& pShapePtr )
 : ShapeContext( rParent, ShapePtr(), pShapePtr )
-, mrTableProperties( *pShapePtr->getTableProperties().get() )
+, mrTableProperties( *pShapePtr->getTableProperties() )
 {
     pShapePtr->setTableType();
 }
@@ -57,10 +58,12 @@ TableContext::onCreateContext( ::sal_Int32 aElementToken, const AttributeList& r
             mrTableProperties.setBandCol( rAttribs.getBool( XML_bandCol, false ) );
         }
         break;
+    case A_TOKEN(solidFill):
+        return new ColorContext(*this, mrTableProperties.getBgColor());
     case A_TOKEN( tableStyle ):         // CT_TableStyle
         {
             std::shared_ptr< TableStyle >& rTableStyle = mrTableProperties.getTableStyle();
-            rTableStyle.reset( new TableStyle() );
+            rTableStyle = std::make_shared<TableStyle>();
             return new TableStyleContext( *this, rAttribs, *rTableStyle );
         }
     case A_TOKEN( tableStyleId ):       // ST_Guid
@@ -77,7 +80,7 @@ TableContext::onCreateContext( ::sal_Int32 aElementToken, const AttributeList& r
     case A_TOKEN( tr ):                 // CT_TableRow
         {
             std::vector< TableRow >& rvTableRows( mrTableProperties.getTableRows() );
-            rvTableRows.resize( rvTableRows.size() + 1 );
+            rvTableRows.emplace_back();
             return new TableRowContext( *this, rAttribs, rvTableRows.back() );
         }
     }
@@ -85,6 +88,6 @@ TableContext::onCreateContext( ::sal_Int32 aElementToken, const AttributeList& r
     return this;
 }
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

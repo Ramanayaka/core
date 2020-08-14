@@ -18,18 +18,18 @@
  */
 
 
-#include "fmcontrolbordermanager.hxx"
-#include "fmcontrollayout.hxx"
-#include "formcontroller.hxx"
-#include "formfeaturedispatcher.hxx"
-#include "fmdocumentclassification.hxx"
-#include "formcontrolling.hxx"
-#include "fmprop.hrc"
-#include "svx/dialmgr.hxx"
-#include "svx/fmresids.hrc"
-#include "fmservs.hxx"
-#include "svx/fmtools.hxx"
-#include "fmurl.hxx"
+#include <fmcontrolbordermanager.hxx>
+#include <fmcontrollayout.hxx>
+#include <formcontroller.hxx>
+#include <formfeaturedispatcher.hxx>
+#include <fmdocumentclassification.hxx>
+#include <formcontrolling.hxx>
+#include <fmprop.hxx>
+#include <svx/dialmgr.hxx>
+#include <svx/strings.hrc>
+#include <fmservs.hxx>
+#include <svx/fmtools.hxx>
+#include <fmurl.hxx>
 
 #include <com/sun/star/awt/FocusChangeReason.hpp>
 #include <com/sun/star/awt/XCheckBox.hpp>
@@ -48,14 +48,14 @@
 #include <com/sun/star/form/XReset.hpp>
 #include <com/sun/star/form/control/FilterControl.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/sdb/ParametersRequest.hpp>
 #include <com/sun/star/sdb/RowChangeAction.hpp>
+#include <com/sun/star/sdb/SQLFilterOperator.hpp>
 #include <com/sun/star/sdb/XInteractionSupplyParameters.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/task/InteractionHandler.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/form/runtime/FormOperations.hpp>
 #include <com/sun/star/form/runtime/FormFeature.hpp>
 #include <com/sun/star/container/XContainer.hpp>
@@ -66,15 +66,12 @@
 
 #include <comphelper/enumhelper.hxx>
 #include <comphelper/interaction.hxx>
-#include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/propagg.hxx>
 #include <comphelper/property.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/flagguard.hxx>
-#include <cppuhelper/queryinterface.hxx>
+#include <comphelper/types.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <connectivity/IParseContext.hxx>
 #include <connectivity/dbtools.hxx>
 #include <connectivity/sqlparse.hxx>
@@ -82,15 +79,16 @@
 #include <toolkit/helper/vclunohelper.hxx>
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
-#include <vcl/msgbox.hxx>
+#include <unotools/localedatawrapper.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/window.hxx>
+#include <o3tl/safeint.hxx>
 #include <osl/mutex.hxx>
+#include <sal/log.hxx>
 
 #include <algorithm>
 #include <iterator>
-
-#include <o3tl/functional.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::comphelper;
@@ -98,7 +96,7 @@ using namespace ::connectivity;
 using namespace ::dbtools;
 
 
-css::uno::Reference< css::uno::XInterface > SAL_CALL
+css::uno::Reference< css::uno::XInterface >
     FormController_NewInstance_Impl( const css::uno::Reference< css::lang::XMultiServiceFactory > & _rxORB )
 {
     return *( new ::svxform::FormController( comphelper::getComponentContext(_rxORB) ) );
@@ -124,7 +122,6 @@ namespace svxform
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::beans::XPropertySetInfo;
     using ::com::sun::star::beans::PropertyValue;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::lang::IndexOutOfBoundsException;
     using ::com::sun::star::sdb::XInteractionSupplyParameters;
     using ::com::sun::star::awt::XTextComponent;
@@ -151,7 +148,6 @@ namespace svxform
     using ::com::sun::star::form::runtime::XFilterControllerListener;
     using ::com::sun::star::awt::XControlContainer;
     using ::com::sun::star::container::XIdentifierReplace;
-    using ::com::sun::star::lang::WrappedTargetException;
     using ::com::sun::star::form::XFormControllerListener;
     using ::com::sun::star::awt::XWindow;
     using ::com::sun::star::sdbc::XResultSet;
@@ -204,6 +200,8 @@ namespace svxform
     namespace RowChangeAction = ::com::sun::star::sdb::RowChangeAction;
     namespace FormFeature = ::com::sun::star::form::runtime::FormFeature;
 
+namespace {
+
 struct ColumnInfo
 {
     // information about the column itself
@@ -238,6 +236,8 @@ struct ColumnInfo
     {
     }
 };
+
+}
 
 class ColumnInfoCache
 {
@@ -287,7 +287,7 @@ ColumnInfoCache::ColumnInfoCache( const Reference< XColumnsSupplier >& _rxColSup
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 }
 
@@ -302,7 +302,7 @@ namespace
 
     bool lcl_isInputRequired( const Reference< XPropertySet >& _rxControlModel )
     {
-        bool bInputRequired = true;
+        bool bInputRequired = false;
         OSL_VERIFY( _rxControlModel->getPropertyValue( FM_PROP_INPUT_REQUIRED ) >>= bInputRequired );
         return bInputRequired;
     }
@@ -318,14 +318,11 @@ namespace
 
 void ColumnInfoCache::deinitializeControls()
 {
-    ColumnInfos::const_iterator aEnd = m_aColumns.end();
-    for (   ColumnInfos::iterator col = m_aColumns.begin();
-            col != aEnd;
-            ++col
-        )
+    for (auto& rCol : m_aColumns)
     {
-        lcl_resetColumnControlInfo( *col );
+        lcl_resetColumnControlInfo( rCol );
     }
+    m_bControlsInitialized = false;
 }
 
 
@@ -333,19 +330,15 @@ void ColumnInfoCache::initializeControls( const Sequence< Reference< XControl > 
 {
     try
     {
-        ColumnInfos::const_iterator aEnd = m_aColumns.end();
         // for every of our known columns, find the controls which are bound to this column
-        for (   ColumnInfos::iterator col = m_aColumns.begin();
-                col != aEnd;
-                ++col
-            )
+        for (auto& rCol : m_aColumns)
         {
-            OSL_ENSURE( !col->xFirstControlWithInputRequired.is() && !col->xFirstGridWithInputRequiredColumn.is()
-                && ( col->nRequiredGridColumn == -1 ), "ColumnInfoCache::initializeControls: called me twice?" );
+            OSL_ENSURE( !rCol.xFirstControlWithInputRequired.is() && !rCol.xFirstGridWithInputRequiredColumn.is()
+                && ( rCol.nRequiredGridColumn == -1 ), "ColumnInfoCache::initializeControls: called me twice?" );
 
-            lcl_resetColumnControlInfo( *col );
+            lcl_resetColumnControlInfo( rCol );
 
-            Reference< XInterface > xNormColumn( col->xColumn, UNO_QUERY_THROW );
+            Reference< XInterface > xNormColumn( rCol.xColumn, UNO_QUERY_THROW );
 
             const Reference< XControl >* pControl( _rControls.getConstArray() );
             const Reference< XControl >* pControlEnd( pControl + _rControls.getLength() );
@@ -379,8 +372,8 @@ void ColumnInfoCache::initializeControls( const Sequence< Reference< XControl > 
                     if ( gridCol < gridColCount )
                     {
                         // found a grid column which is bound to the given
-                        col->xFirstGridWithInputRequiredColumn = xGrid;
-                        col->nRequiredGridColumn = gridCol;
+                        rCol.xFirstGridWithInputRequiredColumn = xGrid;
+                        rCol.nRequiredGridColumn = gridCol;
                         break;
                     }
 
@@ -400,12 +393,12 @@ void ColumnInfoCache::initializeControls( const Sequence< Reference< XControl > 
                 // did not find a control which is bound to this particular column, and for which the input is required
                 continue;   // with next DB column
 
-            col->xFirstControlWithInputRequired = *pControl;
+            rCol.xFirstControlWithInputRequired = *pControl;
         }
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 
     m_bControlsInitialized = true;
@@ -420,6 +413,8 @@ const ColumnInfo& ColumnInfoCache::getColumnInfo( size_t _pos )
     return m_aColumns[ _pos ];
 }
 
+namespace {
+
 class OParameterContinuation : public OInteraction< XInteractionSupplyParameters >
 {
     Sequence< PropertyValue >       m_aValues;
@@ -433,6 +428,7 @@ public:
     virtual void SAL_CALL setParameters( const Sequence< PropertyValue >& _rValues ) override;
 };
 
+}
 
 void SAL_CALL OParameterContinuation::setParameters( const Sequence< PropertyValue >& _rValues )
 {
@@ -454,6 +450,8 @@ struct FmFieldInfo
     {xField->getPropertyValue(FM_PROP_NAME) >>= aFieldName;}
 };
 
+namespace {
+
 class FmXAutoControl: public UnoControl
 
 {
@@ -462,13 +460,14 @@ public:
     {
     }
 
-    virtual OUString GetComponentServiceName() override {return OUString("Edit");}
+    virtual OUString GetComponentServiceName() override {return "Edit";}
     virtual void SAL_CALL createPeer( const Reference< XToolkit > & rxToolkit, const Reference< XWindowPeer >  & rParentPeer ) override;
 
 protected:
     virtual void ImplSetPeerProperty( const OUString& rPropName, const Any& rVal ) override;
 };
 
+}
 
 void FmXAutoControl::createPeer( const Reference< XToolkit > & rxToolkit, const Reference< XWindowPeer >  & rParentPeer )
 {
@@ -498,6 +497,7 @@ IMPL_LINK_NOARG( FormController, OnActivateTabOrder, Timer*, void )
     activateTabOrder();
 }
 
+namespace {
 
 struct UpdateAllListeners
 {
@@ -509,15 +509,14 @@ struct UpdateAllListeners
     }
 };
 
+}
+
 IMPL_LINK_NOARG( FormController, OnInvalidateFeatures, Timer*, void )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
-    for ( ::std::set< sal_Int16 >::const_iterator aLoop = m_aInvalidFeatures.begin();
-          aLoop != m_aInvalidFeatures.end();
-          ++aLoop
-        )
+    for (const auto& rFeature : m_aInvalidFeatures)
     {
-        DispatcherContainer::const_iterator aDispatcherPos = m_aFeatureDispatchers.find( *aLoop );
+        DispatcherContainer::const_iterator aDispatcherPos = m_aFeatureDispatchers.find( rFeature );
         if ( aDispatcherPos != m_aFeatureDispatchers.end() )
         {
             // TODO: for the real and actual listener notifications, we should release
@@ -655,7 +654,7 @@ sal_Bool SAL_CALL FormController::supportsService(const OUString& ServiceName)
 
 OUString SAL_CALL FormController::getImplementationName()
 {
-    return OUString("org.openoffice.comp.svx.FormController");
+    return "org.openoffice.comp.svx.FormController";
 }
 
 Sequence< OUString> SAL_CALL FormController::getSupportedServiceNames()
@@ -686,13 +685,11 @@ void SAL_CALL FormController::resetted(const EventObject& rEvent)
 
 Sequence< OUString> const & FormController::getSupportedServiceNames_Static()
 {
-    static Sequence< OUString> aServices;
-    if (!aServices.getLength())
+    static Sequence< OUString> const aServices
     {
-        aServices.realloc(2);
-        aServices.getArray()[0] = "com.sun.star.form.runtime.FormController";
-        aServices.getArray()[1] = "com.sun.star.awt.control.TabController";
-    }
+        "com.sun.star.form.runtime.FormController",
+        "com.sun.star.awt.control.TabController"
+    };
     return aServices;
 }
 
@@ -741,18 +738,15 @@ void FormController::impl_setTextOnAllFilter_throw()
         return;
 
     // set the text for all filters
-    OSL_ENSURE( m_aFilterRows.size() > (size_t)m_nCurrentFilterPosition,
+    OSL_ENSURE( m_aFilterRows.size() > o3tl::make_unsigned(m_nCurrentFilterPosition),
         "FormController::impl_setTextOnAllFilter_throw: m_nCurrentFilterPosition too big" );
 
-    if ( (size_t)m_nCurrentFilterPosition < m_aFilterRows.size() )
+    if ( o3tl::make_unsigned(m_nCurrentFilterPosition) < m_aFilterRows.size() )
     {
         FmFilterRow& rRow = m_aFilterRows[ m_nCurrentFilterPosition ];
-        for (   FmFilterRow::const_iterator iter2 = rRow.begin();
-                iter2 != rRow.end();
-                ++iter2
-            )
+        for (const auto& rEntry : rRow)
         {
-            iter2->first->setText( iter2->second );
+            rEntry.first->setText( rEntry.second );
         }
     }
 }
@@ -787,10 +781,8 @@ void FormController::getFastPropertyValue( Any& rValue, sal_Int32 nHandle ) cons
                 // now add the filter rows
                 try
                 {
-                    for ( FmFilterRows::const_iterator row = m_aFilterRows.begin(); row != m_aFilterRows.end(); ++row )
+                    for (const FmFilterRow& rRow : m_aFilterRows)
                     {
-                        const FmFilterRow& rRow = *row;
-
                         if ( rRow.empty() )
                             continue;
 
@@ -805,7 +797,7 @@ void FormController::getFastPropertyValue( Any& rValue, sal_Int32 nHandle ) cons
                             OUString sFilterValue( condition->second );
 
                             OUString sErrorMsg, sCriteria;
-                            const std::shared_ptr< OSQLParseNode > pParseNode =
+                            const std::unique_ptr< OSQLParseNode > pParseNode =
                                 predicateTree( sErrorMsg, sFilterValue, xFormatter, xField );
                             OSL_ENSURE( pParseNode != nullptr, "FormController::getFastPropertyValue: could not parse the field value predicate!" );
                             if ( pParseNode != nullptr )
@@ -830,7 +822,7 @@ void FormController::getFastPropertyValue( Any& rValue, sal_Int32 nHandle ) cons
                 }
                 catch( const Exception& )
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("svx");
                     aFilter.setLength(0);
                 }
             }
@@ -945,26 +937,20 @@ Sequence< Sequence< OUString > > FormController::getPredicateExpressions()
 
     Sequence< Sequence< OUString > > aExpressions( m_aFilterRows.size() );
     sal_Int32 termIndex = 0;
-    for (   FmFilterRows::const_iterator row = m_aFilterRows.begin();
-            row != m_aFilterRows.end();
-            ++row, ++termIndex
-        )
+    for (const FmFilterRow& rRow : m_aFilterRows)
     {
-        const FmFilterRow& rRow( *row );
-
         Sequence< OUString > aConjunction( m_aFilterComponents.size() );
         sal_Int32 componentIndex = 0;
-        for (   FilterComponents::const_iterator comp = m_aFilterComponents.begin();
-                comp != m_aFilterComponents.end();
-                ++comp, ++componentIndex
-            )
+        for (const auto& rComp : m_aFilterComponents)
         {
-            FmFilterRow::const_iterator predicate = rRow.find( *comp );
+            FmFilterRow::const_iterator predicate = rRow.find( rComp );
             if ( predicate != rRow.end() )
                 aConjunction[ componentIndex ] = predicate->second;
+            ++componentIndex;
         }
 
         aExpressions[ termIndex ] = aConjunction;
+        ++termIndex;
     }
 
     return aExpressions;
@@ -1083,7 +1069,7 @@ Any SAL_CALL FormController::getByIndex(sal_Int32 Index)
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     if (Index < 0 ||
-        Index >= (sal_Int32)m_aChildren.size())
+        Index >= static_cast<sal_Int32>(m_aChildren.size()))
         throw IndexOutOfBoundsException();
 
     return makeAny( m_aChildren[ Index ] );
@@ -1116,19 +1102,15 @@ void SAL_CALL FormController::disposing(const EventObject& e)
 
 void FormController::disposeAllFeaturesAndDispatchers()
 {
-    DispatcherContainer::const_iterator aEnd = m_aFeatureDispatchers.end();
-    for ( DispatcherContainer::iterator aDispatcher = m_aFeatureDispatchers.begin();
-          aDispatcher != aEnd;
-          ++aDispatcher
-        )
+    for (auto& rDispatcher : m_aFeatureDispatchers)
     {
         try
         {
-            ::comphelper::disposeComponent( aDispatcher->second );
+            ::comphelper::disposeComponent( rDispatcher.second );
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
     m_aFeatureDispatchers.clear();
@@ -1164,11 +1146,10 @@ void FormController::disposing()
     implSetCurrentControl( nullptr );
 
     // clean up our children
-    for (FmFormControllers::const_iterator i = m_aChildren.begin();
-        i != m_aChildren.end(); ++i)
+    for (const auto& rpChild : m_aChildren)
     {
         // search the position of the model within the form
-        Reference< XFormComponent >  xForm((*i)->getModel(), UNO_QUERY);
+        Reference< XFormComponent >  xForm(rpChild->getModel(), UNO_QUERY);
         sal_uInt32 nPos = m_xModelAsIndex->getCount();
         Reference< XFormComponent > xTemp;
         for( ; nPos; )
@@ -1177,13 +1158,13 @@ void FormController::disposing()
             m_xModelAsIndex->getByIndex( --nPos ) >>= xTemp;
             if ( xForm.get() == xTemp.get() )
             {
-                Reference< XInterface > xIfc( *i, UNO_QUERY );
+                Reference< XInterface > xIfc( rpChild, UNO_QUERY );
                 m_xModelAsManager->detach( nPos, xIfc );
                 break;
             }
         }
 
-        Reference< XComponent > (*i, UNO_QUERY)->dispose();
+        Reference< XComponent > (rpChild, UNO_QUERY_THROW)->dispose();
     }
     m_aChildren.clear();
 
@@ -1299,16 +1280,13 @@ bool FormController::replaceControl( const Reference< XControl >& _rxExistentCon
         {
             // look up the ID of _rxExistentControl
             Sequence< sal_Int32 > aIdentifiers( xContainer->getIdentifiers() );
-            const sal_Int32* pIdentifiers = aIdentifiers.getConstArray();
-            const sal_Int32* pIdentifiersEnd = aIdentifiers.getConstArray() + aIdentifiers.getLength();
-            for ( ; pIdentifiers != pIdentifiersEnd; ++pIdentifiers )
-            {
-                Reference< XControl > xCheck( xContainer->getByIdentifier( *pIdentifiers ), UNO_QUERY );
-                if ( xCheck == _rxExistentControl )
-                    break;
-            }
-            DBG_ASSERT( pIdentifiers != pIdentifiersEnd, "FormController::replaceControl: did not find the control in the container!" );
-            if ( pIdentifiers != pIdentifiersEnd )
+            const sal_Int32* pIdentifiers = std::find_if(aIdentifiers.begin(), aIdentifiers.end(),
+                [&xContainer, &_rxExistentControl](const sal_Int32 nId) {
+                    Reference< XControl > xCheck( xContainer->getByIdentifier( nId ), UNO_QUERY );
+                    return xCheck == _rxExistentControl;
+                });
+            DBG_ASSERT( pIdentifiers != aIdentifiers.end(), "FormController::replaceControl: did not find the control in the container!" );
+            if ( pIdentifiers != aIdentifiers.end() )
             {
                 bool bReplacedWasActive = ( m_xActiveControl.get() == _rxExistentControl.get() );
                 bool bReplacedWasCurrent = ( m_xCurrentControl.get() == _rxExistentControl.get() );
@@ -1340,7 +1318,7 @@ bool FormController::replaceControl( const Reference< XControl >& _rxExistentCon
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 
     Reference< XControl > xDisposeIt( bSuccess ? _rxExistentControl : _rxNewControl );
@@ -1375,7 +1353,7 @@ void FormController::toggleAutoFields(bool bAutoFields)
                     Reference< XPropertySet >  xField;
                     xSet->getPropertyValue(FM_PROP_BOUNDFIELD) >>= xField;
 
-                    // is it a autofield?
+                    // is it an autofield?
                     if  (   xField.is()
                         &&  ::comphelper::hasProperty( FM_PROP_AUTOINCREMENT, xField )
                         &&  ::comphelper::getBOOL( xField->getPropertyValue( FM_PROP_AUTOINCREMENT ) )
@@ -1403,7 +1381,7 @@ void FormController::toggleAutoFields(bool bAutoFields)
                     Reference< XPropertySet >  xField;
                     xSet->getPropertyValue(FM_PROP_BOUNDFIELD) >>= xField;
 
-                    // is it a autofield?
+                    // is it an autofield?
                     if  (   xField.is()
                         &&  ::comphelper::hasProperty( FM_PROP_AUTOINCREMENT, xField )
                         &&  ::comphelper::getBOOL( xField->getPropertyValue(FM_PROP_AUTOINCREMENT ) )
@@ -1430,7 +1408,6 @@ IMPL_LINK_NOARG(FormController, OnToggleAutoFields, void*, void)
 }
 
 // XTextListener
-
 void SAL_CALL FormController::textChanged(const TextEvent& e)
 {
     // SYNCHRONIZED -->
@@ -1452,7 +1429,7 @@ void SAL_CALL FormController::textChanged(const TextEvent& e)
         appendEmptyDisjunctiveTerm();
 
     // find the current row
-    if ( ( (size_t)m_nCurrentFilterPosition >= m_aFilterRows.size() ) || ( m_nCurrentFilterPosition < 0 ) )
+    if ( ( m_nCurrentFilterPosition < 0 ) || ( o3tl::make_unsigned(m_nCurrentFilterPosition) >= m_aFilterRows.size() )  )
     {
         OSL_ENSURE( false, "FormController::textChanged: m_nCurrentFilterPosition is wrong!" );
         return;
@@ -1487,7 +1464,6 @@ void SAL_CALL FormController::textChanged(const TextEvent& e)
 }
 
 // XItemListener
-
 void SAL_CALL FormController::itemStateChanged(const ItemEvent& /*rEvent*/)
 {
     OSL_ENSURE( !impl_isDisposed_nofail(), "FormController: already disposed!" );
@@ -1495,14 +1471,12 @@ void SAL_CALL FormController::itemStateChanged(const ItemEvent& /*rEvent*/)
 }
 
 // XModificationBroadcaster
-
 void SAL_CALL FormController::addModifyListener(const Reference< XModifyListener > & l)
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     impl_checkDisposed_throw();
     m_aModifyListeners.addInterface( l );
 }
-
 
 void FormController::removeModifyListener(const Reference< XModifyListener > & l)
 {
@@ -1512,7 +1486,6 @@ void FormController::removeModifyListener(const Reference< XModifyListener > & l
 }
 
 // XModificationListener
-
 void FormController::modified( const EventObject& _rEvent )
 {
     OSL_ENSURE( !impl_isDisposed_nofail(), "FormController: already disposed!" );
@@ -1533,19 +1506,17 @@ void FormController::modified( const EventObject& _rEvent )
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 
     impl_onModify();
 }
-
 
 void FormController::impl_checkDisposed_throw() const
 {
     if ( impl_isDisposed_nofail() )
         throw DisposedException( OUString(), *const_cast< FormController* >( this ) );
 }
-
 
 void FormController::impl_onModify()
 {
@@ -1561,7 +1532,6 @@ void FormController::impl_onModify()
     m_aModifyListeners.notifyEach( &XModifyListener::modified, aEvt );
 }
 
-
 void FormController::impl_addFilterRow( const FmFilterRow& _row )
 {
     m_aFilterRows.push_back( _row );
@@ -1573,7 +1543,6 @@ void FormController::impl_addFilterRow( const FmFilterRow& _row )
     }
 }
 
-
 void FormController::impl_appendEmptyFilterRow( ::osl::ClearableMutexGuard& _rClearBeforeNotify )
 {
     // SYNCHRONIZED -->
@@ -1582,12 +1551,11 @@ void FormController::impl_appendEmptyFilterRow( ::osl::ClearableMutexGuard& _rCl
     // notify the listeners
     FilterEvent aEvent;
     aEvent.Source = *this;
-    aEvent.DisjunctiveTerm = (sal_Int32)m_aFilterRows.size() - 1;
+    aEvent.DisjunctiveTerm = static_cast<sal_Int32>(m_aFilterRows.size()) - 1;
     _rClearBeforeNotify.clear();
     // <-- SYNCHRONIZED
     m_aFilterListeners.notifyEach( &XFilterControllerListener::disjunctiveTermAdded, aEvent );
 }
-
 
 bool FormController::determineLockState() const
 {
@@ -1605,7 +1573,6 @@ bool FormController::determineLockState() const
 }
 
 //  FocusListener
-
 void FormController::focusGained(const FocusEvent& e)
 {
     // SYNCHRONIZED -->
@@ -1640,7 +1607,7 @@ void FormController::focusGained(const FocusEvent& e)
             )
         {
             // check the old control if the content is ok
-#if OSL_DEBUG_LEVEL > 0
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
             Reference< XBoundControl >  xLockingTest(m_xCurrentControl, UNO_QUERY);
             bool bControlIsLocked = xLockingTest.is() && xLockingTest->getLock();
             assert(!bControlIsLocked && "FormController::Gained: I'm modified and the current control is locked ? How this ?");
@@ -1675,7 +1642,6 @@ void FormController::focusGained(const FocusEvent& e)
 
         if (!m_bFiltering && m_bCycle && (e.FocusFlags & FocusChangeReason::AROUND) && m_xCurrentControl.is())
         {
-            SQLErrorEvent aErrorEvent;
             OSL_ENSURE( m_xFormOperations.is(), "FormController::focusGained: hmm?" );
                 // should have been created in setModel
             try
@@ -1694,7 +1660,7 @@ void FormController::focusGained(const FocusEvent& e)
             catch ( const Exception& )
             {
                 // don't handle this any further. That's an ... admissible error.
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("svx");
             }
         }
     }
@@ -1742,14 +1708,12 @@ void FormController::focusGained(const FocusEvent& e)
         xContext->makeVisible( xCurrentControl );
 }
 
-
 IMPL_LINK_NOARG( FormController, OnActivated, void*, void )
 {
     EventObject aEvent;
     aEvent.Source = *this;
     m_aActivateListeners.notifyEach( &XFormControllerListener::formActivated, aEvent );
 }
-
 
 IMPL_LINK_NOARG( FormController, OnDeactivated, void*, void )
 {
@@ -1758,7 +1722,6 @@ IMPL_LINK_NOARG( FormController, OnDeactivated, void*, void )
     m_aActivateListeners.notifyEach( &XFormControllerListener::formDeactivated, aEvent );
 }
 
-
 void FormController::focusLost(const FocusEvent& e)
 {
     OSL_ENSURE( !impl_isDisposed_nofail(), "FormController: already disposed!" );
@@ -1766,6 +1729,9 @@ void FormController::focusLost(const FocusEvent& e)
     m_aControlBorderManager.focusLost( e.Source );
 
     Reference< XWindowPeer >  xNext(e.NextFocus, UNO_QUERY);
+    // if focus hasn't passed to some other window, e.g. focus in a welded item, don't deactivate
+    if (!xNext)
+        return;
     Reference< XControl >  xNextControl = isInList(xNext);
     if (!xNextControl.is())
     {
@@ -1774,30 +1740,25 @@ void FormController::focusLost(const FocusEvent& e)
     }
 }
 
-
 void SAL_CALL FormController::mousePressed( const awt::MouseEvent& /*_rEvent*/ )
 {
     // not interested in
 }
-
 
 void SAL_CALL FormController::mouseReleased( const awt::MouseEvent& /*_rEvent*/ )
 {
     // not interested in
 }
 
-
 void SAL_CALL FormController::mouseEntered( const awt::MouseEvent& _rEvent )
 {
     m_aControlBorderManager.mouseEntered( _rEvent.Source );
 }
 
-
 void SAL_CALL FormController::mouseExited( const awt::MouseEvent& _rEvent )
 {
     m_aControlBorderManager.mouseExited( _rEvent.Source );
 }
-
 
 void SAL_CALL FormController::componentValidityChanged( const EventObject& _rSource )
 {
@@ -1907,7 +1868,7 @@ void FormController::setModel(const Reference< XTabControllerModel > & Model)
                 else
                     m_aControlBorderManager.disableDynamicBorderColor();
 
-                sal_Int32 nColor = 0;
+                Color nColor;
                 if ( xModelProps->getPropertyValue( FM_PROP_CONTROL_BORDER_COLOR_FOCUS ) >>= nColor )
                     m_aControlBorderManager.setStatusColor( ControlStatus::Focused, nColor );
                 if ( xModelProps->getPropertyValue( FM_PROP_CONTROL_BORDER_COLOR_MOUSE ) >>= nColor )
@@ -1919,7 +1880,7 @@ void FormController::setModel(const Reference< XTabControllerModel > & Model)
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 }
 
@@ -1945,19 +1906,19 @@ void FormController::addToEventAttacher(const Reference< XControl > & xControl)
 
     // register at the event attacher
     Reference< XFormComponent >  xComp(xControl->getModel(), UNO_QUERY);
-    if (xComp.is() && m_xModelAsIndex.is())
+    if (!(xComp.is() && m_xModelAsIndex.is()))
+        return;
+
+    // and look for the position of the ControlModel in it
+    sal_uInt32 nPos = m_xModelAsIndex->getCount();
+    Reference< XFormComponent > xTemp;
+    for( ; nPos; )
     {
-        // and look for the position of the ControlModel in it
-        sal_uInt32 nPos = m_xModelAsIndex->getCount();
-        Reference< XFormComponent > xTemp;
-        for( ; nPos; )
+        m_xModelAsIndex->getByIndex(--nPos) >>= xTemp;
+        if (xComp.get() == xTemp.get())
         {
-            m_xModelAsIndex->getByIndex(--nPos) >>= xTemp;
-            if (xComp.get() == xTemp.get())
-            {
-                m_xModelAsManager->attach( nPos, Reference<XInterface>( xControl, UNO_QUERY ), makeAny(xControl) );
-                break;
-            }
+            m_xModelAsManager->attach( nPos, Reference<XInterface>( xControl, UNO_QUERY ), makeAny(xControl) );
+            break;
         }
     }
 }
@@ -1972,19 +1933,19 @@ void FormController::removeFromEventAttacher(const Reference< XControl > & xCont
 
     // register at the event attacher
     Reference< XFormComponent >  xComp(xControl->getModel(), UNO_QUERY);
-    if ( xComp.is() && m_xModelAsIndex.is() )
+    if ( !(xComp.is() && m_xModelAsIndex.is()) )
+        return;
+
+    // and look for the position of the ControlModel in it
+    sal_uInt32 nPos = m_xModelAsIndex->getCount();
+    Reference< XFormComponent > xTemp;
+    for( ; nPos; )
     {
-        // and look for the position of the ControlModel in it
-        sal_uInt32 nPos = m_xModelAsIndex->getCount();
-        Reference< XFormComponent > xTemp;
-        for( ; nPos; )
+        m_xModelAsIndex->getByIndex(--nPos) >>= xTemp;
+        if (xComp.get() == xTemp.get())
         {
-            m_xModelAsIndex->getByIndex(--nPos) >>= xTemp;
-            if (xComp.get() == xTemp.get())
-            {
-                m_xModelAsManager->detach( nPos, Reference<XInterface>( xControl, UNO_QUERY ) );
-                break;
-            }
+            m_xModelAsManager->detach( nPos, Reference<XInterface>( xControl, UNO_QUERY ) );
+            break;
         }
     }
 }
@@ -2014,10 +1975,8 @@ void FormController::setContainer(const Reference< XControlContainer > & xContai
         m_aFilterComponents.clear();
 
         // collecting the controls
-        const Reference< XControl >* pControls = m_aControls.getConstArray();
-        const Reference< XControl >* pControlsEnd = pControls + m_aControls.getLength();
-        while ( pControls != pControlsEnd )
-            implControlRemoved( *pControls++, true );
+        for ( const Reference< XControl >& rControl : std::as_const(m_aControls) )
+            implControlRemoved( rControl, true );
 
         // make database-specific things
         if (m_bDBConnection && isListeningForChanges())
@@ -2032,8 +1991,7 @@ void FormController::setContainer(const Reference< XControlContainer > & xContai
     // What controls belong to the container?
     if (xContainer.is() && xTabModel.is())
     {
-        Sequence< Reference< XControlModel > > aModels = xTabModel->getControlModels();
-        const Reference< XControlModel > * pModels = aModels.getConstArray();
+        const Sequence< Reference< XControlModel > > aModels = xTabModel->getControlModels();
         Sequence< Reference< XControl > > aAllControls = xContainer->getControls();
 
         sal_Int32 nCount = aModels.getLength();
@@ -2041,10 +1999,10 @@ void FormController::setContainer(const Reference< XControlContainer > & xContai
         Reference< XControl > * pControls = m_aControls.getArray();
 
         // collecting the controls
-        sal_Int32 i, j;
-        for (i = 0, j = 0; i < nCount; ++i, ++pModels )
+        sal_Int32 j = 0;
+        for (const Reference< XControlModel >& rModel : aModels )
         {
-            Reference< XControl > xControl = findControl( aAllControls, *pModels, false, true );
+            Reference< XControl > xControl = findControl( aAllControls, rModel, false, true );
             if ( xControl.is() )
             {
                 pControls[j++] = xControl;
@@ -2053,7 +2011,7 @@ void FormController::setContainer(const Reference< XControlContainer > & xContai
         }
 
         // not every model had an associated control
-        if (j != i)
+        if (j != nCount)
             m_aControls.realloc(j);
 
         // listen at the container
@@ -2098,8 +2056,7 @@ Sequence< Reference< XControl > > FormController::getControls()
         if (!xModel.is())
             return m_aControls;
 
-        Sequence< Reference< XControlModel > > aControlModels = xModel->getControlModels();
-        const Reference< XControlModel > * pModels = aControlModels.getConstArray();
+        const Sequence< Reference< XControlModel > > aControlModels = xModel->getControlModels();
         sal_Int32 nModels = aControlModels.getLength();
 
         Sequence< Reference< XControl > > aNewControls(nModels);
@@ -2109,9 +2066,9 @@ Sequence< Reference< XControl > > FormController::getControls()
 
         // rearrange the controls according to the tab order sequence
         sal_Int32 j = 0;
-        for (sal_Int32 i = 0; i < nModels; ++i, ++pModels )
+        for ( const Reference< XControlModel >& rModel : aControlModels )
         {
-            xControl = findControl( m_aControls, *pModels, true, true );
+            xControl = findControl( m_aControls, rModel, true, true );
             if ( xControl.is() )
                 pControls[j++] = xControl;
         }
@@ -2158,47 +2115,48 @@ void FormController::setControlLock(const Reference< XControl > & xControl)
     // a. if the entire record is locked
     // b. if the associated field is locked
     Reference< XBoundControl >  xBound(xControl, UNO_QUERY);
-    if (xBound.is() && (( (bLocked && bLocked != bool(xBound->getLock())) ||
-                         !bLocked)))    // always uncheck individual fields when unlocking
+    if (!(xBound.is() &&
+        ( (bLocked && bLocked != bool(xBound->getLock())) ||
+          !bLocked)))    // always uncheck individual fields when unlocking
+        return;
+
+    // there is a data source
+    Reference< XPropertySet >  xSet(xControl->getModel(), UNO_QUERY);
+    if (!(xSet.is() && ::comphelper::hasProperty(FM_PROP_BOUNDFIELD, xSet)))
+        return;
+
+    // what about the ReadOnly and Enable properties
+    bool bTouch = true;
+    if (::comphelper::hasProperty(FM_PROP_ENABLED, xSet))
+        bTouch = ::comphelper::getBOOL(xSet->getPropertyValue(FM_PROP_ENABLED));
+    if (::comphelper::hasProperty(FM_PROP_READONLY, xSet))
+        bTouch = !::comphelper::getBOOL(xSet->getPropertyValue(FM_PROP_READONLY));
+
+    if (!bTouch)
+        return;
+
+    Reference< XPropertySet >  xField;
+    xSet->getPropertyValue(FM_PROP_BOUNDFIELD) >>= xField;
+    if (!xField.is())
+        return;
+
+    if (bLocked)
+        xBound->setLock(bLocked);
+    else
     {
-        // there is a data source
-        Reference< XPropertySet >  xSet(xControl->getModel(), UNO_QUERY);
-        if (xSet.is() && ::comphelper::hasProperty(FM_PROP_BOUNDFIELD, xSet))
+        try
         {
-            // what about the ReadOnly and Enable properties
-            bool bTouch = true;
-            if (::comphelper::hasProperty(FM_PROP_ENABLED, xSet))
-                bTouch = ::comphelper::getBOOL(xSet->getPropertyValue(FM_PROP_ENABLED));
-            if (::comphelper::hasProperty(FM_PROP_READONLY, xSet))
-                bTouch = !::comphelper::getBOOL(xSet->getPropertyValue(FM_PROP_READONLY));
-
-            if (bTouch)
-            {
-                Reference< XPropertySet >  xField;
-                xSet->getPropertyValue(FM_PROP_BOUNDFIELD) >>= xField;
-                if (xField.is())
-                {
-                    if (bLocked)
-                        xBound->setLock(bLocked);
-                    else
-                    {
-                        try
-                        {
-                            Any aVal = xField->getPropertyValue(FM_PROP_ISREADONLY);
-                            if (aVal.hasValue() && ::comphelper::getBOOL(aVal))
-                                xBound->setLock(true);
-                            else
-                                xBound->setLock(bLocked);
-                        }
-                        catch( const Exception& )
-                        {
-                            DBG_UNHANDLED_EXCEPTION();
-                        }
-
-                    }
-                }
-            }
+            Any aVal = xField->getPropertyValue(FM_PROP_ISREADONLY);
+            if (aVal.hasValue() && ::comphelper::getBOOL(aVal))
+                xBound->setLock(true);
+            else
+                xBound->setLock(bLocked);
         }
+        catch( const Exception& )
+        {
+            DBG_UNHANDLED_EXCEPTION("svx");
+        }
+
     }
 }
 
@@ -2207,10 +2165,8 @@ void FormController::setLocks()
 {
     OSL_ENSURE( !impl_isDisposed_nofail(), "FormController: already disposed!" );
     // lock/unlock all controls connected to a data source
-    const Reference< XControl >* pControls = m_aControls.getConstArray();
-    const Reference< XControl >* pControlsEnd = pControls + m_aControls.getLength();
-    while ( pControls != pControlsEnd )
-        setControlLock( *pControls++ );
+    for ( const Reference< XControl >& rControl : std::as_const(m_aControls) )
+        setControlLock( rControl );
 }
 
 
@@ -2347,10 +2303,8 @@ void FormController::startListening()
     m_bModified  = false;
 
     // now register at bound fields
-    const Reference< XControl >* pControls = m_aControls.getConstArray();
-    const Reference< XControl >* pControlsEnd = pControls + m_aControls.getLength();
-    while ( pControls != pControlsEnd )
-        startControlModifyListening( *pControls++ );
+    for ( const Reference< XControl >& rControl : std::as_const(m_aControls) )
+        startControlModifyListening( rControl );
 }
 
 
@@ -2360,10 +2314,8 @@ void FormController::stopListening()
     m_bModified  = false;
 
     // now register at bound fields
-    const Reference< XControl >* pControls = m_aControls.getConstArray();
-    const Reference< XControl >* pControlsEnd = pControls + m_aControls.getLength();
-    while ( pControls != pControlsEnd )
-        stopControlModifyListening( *pControls++ );
+    for ( const Reference< XControl >& rControl : std::as_const(m_aControls) )
+        stopControlModifyListening( rControl );
 }
 
 
@@ -2372,23 +2324,20 @@ Reference< XControl >  FormController::findControl(Sequence< Reference< XControl
     OSL_ENSURE( !impl_isDisposed_nofail(), "FormController: already disposed!" );
     DBG_ASSERT( xCtrlModel.is(), "findControl - which ?!" );
 
-    Reference< XControl >* pControls = _rControls.getArray();
-    Reference< XControlModel >  xModel;
-    for ( sal_Int32 i = 0, nCount = _rControls.getLength(); i < nCount; ++i, ++pControls )
+    Reference< XControl >* pControls = std::find_if(_rControls.begin(), _rControls.end(),
+        [&xCtrlModel](const Reference< XControl >& rControl) {
+            return rControl.is() && rControl->getModel().get() == xCtrlModel.get(); });
+    if (pControls != _rControls.end())
     {
-        if ( pControls->is() )
+        Reference< XControl > xControl( *pControls );
+        if ( _bRemove )
         {
-            xModel = (*pControls)->getModel();
-            if ( xModel.get() == xCtrlModel.get() )
-            {
-                Reference< XControl > xControl( *pControls );
-                if ( _bRemove )
-                    ::comphelper::removeElementAt( _rControls, i );
-                else if ( _bOverWrite )
-                    pControls->clear();
-                return xControl;
-            }
+            auto i = static_cast<sal_Int32>(std::distance(_rControls.begin(), pControls));
+            ::comphelper::removeElementAt( _rControls, i );
         }
+        else if ( _bOverWrite )
+            pControls->clear();
+        return xControl;
     }
     return Reference< XControl > ();
 }
@@ -2411,23 +2360,23 @@ void FormController::implControlInserted( const Reference< XControl>& _rxControl
     if ( xInterception.is() )
         createInterceptor( xInterception );
 
-    if ( _rxControl.is() )
+    if ( !_rxControl.is() )
+        return;
+
+    Reference< XControlModel > xModel( _rxControl->getModel() );
+
+    // we want to know about the reset of the model of our controls
+    // (for correctly resetting m_bModified)
+    Reference< XReset >  xReset( xModel, UNO_QUERY );
+    if ( xReset.is() )
+        xReset->addResetListener( this );
+
+    // and we want to know about the validity, to visually indicate it
+    Reference< XValidatableFormComponent > xValidatable( xModel, UNO_QUERY );
+    if ( xValidatable.is() )
     {
-        Reference< XControlModel > xModel( _rxControl->getModel() );
-
-        // we want to know about the reset of the model of our controls
-        // (for correctly resetting m_bModified)
-        Reference< XReset >  xReset( xModel, UNO_QUERY );
-        if ( xReset.is() )
-            xReset->addResetListener( this );
-
-        // and we want to know about the validity, to visually indicate it
-        Reference< XValidatableFormComponent > xValidatable( xModel, UNO_QUERY );
-        if ( xValidatable.is() )
-        {
-            xValidatable->addFormComponentValidityListener( this );
-            m_aControlBorderManager.validityChanged( _rxControl, xValidatable );
-        }
+        xValidatable->addFormComponentValidityListener( this );
+        m_aControlBorderManager.validityChanged( _rxControl, xValidatable );
     }
 
 }
@@ -2488,7 +2437,7 @@ void FormController::insertControl(const Reference< XControl > & xControl)
     m_aControls.realloc(m_aControls.getLength() + 1);
     m_aControls.getArray()[m_aControls.getLength() - 1] = xControl;
 
-    if ( m_pColumnInfoCache.get() )
+    if (m_pColumnInfoCache)
         m_pColumnInfoCache->deinitializeControls();
 
     implControlInserted( xControl, m_bAttachEvents );
@@ -2504,15 +2453,12 @@ void FormController::insertControl(const Reference< XControl > & xControl)
 void FormController::removeControl(const Reference< XControl > & xControl)
 {
     OSL_ENSURE( !impl_isDisposed_nofail(), "FormController: already disposed!" );
-    const Reference< XControl >* pControls = m_aControls.getConstArray();
-    const Reference< XControl >* pControlsEnd = pControls + m_aControls.getLength();
-    while ( pControls != pControlsEnd )
+    auto pControl = std::find_if(m_aControls.begin(), m_aControls.end(),
+        [&xControl](const Reference< XControl >& rControl) { return xControl.get() == rControl.get(); });
+    if (pControl != m_aControls.end())
     {
-        if ( xControl.get() == (*pControls++).get() )
-        {
-            ::comphelper::removeElementAt( m_aControls, pControls - m_aControls.getConstArray() - 1 );
-            break;
-        }
+        auto nIndex = static_cast<sal_Int32>(std::distance(m_aControls.begin(), pControl));
+        ::comphelper::removeElementAt( m_aControls, nIndex );
     }
 
     FilterComponents::iterator componentPos = ::std::find( m_aFilterComponents.begin(), m_aFilterComponents.end(), xControl );
@@ -2543,7 +2489,7 @@ void FormController::loaded(const EventObject& rEvent)
             Any aVal        = xSet->getPropertyValue(FM_PROP_CYCLE);
             sal_Int32 aVal2 = 0;
             ::cppu::enum2int(aVal2,aVal);
-            m_bCycle        = !aVal.hasValue() || (form::TabulatorCycle)aVal2 == TabulatorCycle_RECORDS;
+            m_bCycle        = !aVal.hasValue() || static_cast<form::TabulatorCycle>(aVal2) == TabulatorCycle_RECORDS;
             m_bCanUpdate    = canUpdate(xSet);
             m_bCanInsert    = canInsert(xSet);
             m_bCurrentRecordModified = ::comphelper::getBOOL(xSet->getPropertyValue(FM_PROP_ISMODIFIED));
@@ -2679,11 +2625,9 @@ void FormController::unload()
 
 void FormController::removeBoundFieldListener()
 {
-    const Reference< XControl >* pControls = m_aControls.getConstArray();
-    const Reference< XControl >* pControlsEnd = pControls + m_aControls.getLength();
-    while ( pControls != pControlsEnd )
+    for ( const Reference< XControl >& rControl : std::as_const(m_aControls) )
     {
-        Reference< XPropertySet > xProp( *pControls++, UNO_QUERY );
+        Reference< XPropertySet > xProp( rControl, UNO_QUERY );
         if ( xProp.is() )
             xProp->removePropertyChangeListener( FM_PROP_BOUNDFIELD, this );
     }
@@ -2719,7 +2663,7 @@ void FormController::startFormListening( const Reference< XPropertySet >& _rxFor
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 }
 
@@ -2751,7 +2695,7 @@ void FormController::stopFormListening( const Reference< XPropertySet >& _rxForm
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 }
 
@@ -3045,30 +2989,28 @@ void FormController::setFilter(::std::vector<FmFieldInfo>& rFieldInfos)
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 
     if (m_xComposer.is())
     {
-        Sequence< Sequence < PropertyValue > > aFilterRows = m_xComposer->getStructuredFilter();
+        const Sequence< Sequence < PropertyValue > > aFilterRows = m_xComposer->getStructuredFilter();
 
         // ok, we receive the list of filters as sequence of fieldnames, value
         // now we have to transform the fieldname into UI names, that could be a label of the field or
-        // a aliasname or the fieldname itself
+        // an aliasname or the fieldname itself
 
         // first adjust the field names if necessary
         Reference< XNameAccess > xQueryColumns =
             Reference< XColumnsSupplier >( m_xComposer, UNO_QUERY_THROW )->getColumns();
 
-        ::std::vector<FmFieldInfo>::const_iterator aEnd = rFieldInfos.end();
-        for (::std::vector<FmFieldInfo>::iterator iter = rFieldInfos.begin();
-            iter != aEnd; ++iter)
+        for (auto& rFieldInfo : rFieldInfos)
         {
-            if ( xQueryColumns->hasByName((*iter).aFieldName) )
+            if ( xQueryColumns->hasByName(rFieldInfo.aFieldName) )
             {
-                if ( (xQueryColumns->getByName((*iter).aFieldName) >>= (*iter).xField) && (*iter).xField.is() )
-                    (*iter).xField->getPropertyValue(FM_PROP_REALNAME) >>= (*iter).aFieldName;
+                if ( (xQueryColumns->getByName(rFieldInfo.aFieldName) >>= rFieldInfo.xField) && rFieldInfo.xField.is() )
+                    rFieldInfo.xField->getPropertyValue(FM_PROP_REALNAME) >>= rFieldInfo.aFieldName;
             }
         }
 
@@ -3082,23 +3024,15 @@ void FormController::setFilter(::std::vector<FmFieldInfo>& rFieldInfos)
         xFormatter->attachNumberFormatsSupplier(xFormatSupplier);
         Locale aAppLocale = Application::GetSettings().GetUILanguageTag().getLocale();
         const LocaleDataWrapper& rLocaleWrapper( Application::GetSettings().GetUILocaleDataWrapper() );
-        /* FIXME: casting this to sal_Char is plain wrong and of course only
-         * works for ASCII separators, but
-         * pParseNode->parseNodeToPredicateStr() expects a sal_Char. Fix it
-         * there. */
-        sal_Char cDecimalSeparator = (sal_Char)rLocaleWrapper.getNumDecimalSep()[0];
-        SAL_WARN_IF( (sal_Unicode)cDecimalSeparator != rLocaleWrapper.getNumDecimalSep()[0],
-                "svx.form", "FormController::setFilter: wrong cast of decimal separator to sal_Char!");
+        OUString strDecimalSeparator = rLocaleWrapper.getNumDecimalSep();
 
         // retrieving the filter
-        const Sequence < PropertyValue >* pRow = aFilterRows.getConstArray();
-        for (sal_Int32 i = 0, nLen = aFilterRows.getLength(); i < nLen; ++i)
+        for (const Sequence < PropertyValue >& rRow : aFilterRows)
         {
             FmFilterRow aRow;
 
             // search a field for the given name
-            const PropertyValue* pRefValues = pRow[i].getConstArray();
-            for (sal_Int32 j = 0, nLen1 = pRow[i].getLength(); j < nLen1; j++)
+            for (const PropertyValue& rRefValue : rRow)
             {
                 // look for the text component
                 Reference< XPropertySet > xField;
@@ -3108,15 +3042,15 @@ void FormController::setFilter(::std::vector<FmFieldInfo>& rFieldInfos)
                     OUString aRealName;
 
                     // first look with the given name
-                    if (xQueryColumns->hasByName(pRefValues[j].Name))
+                    if (xQueryColumns->hasByName(rRefValue.Name))
                     {
-                        xQueryColumns->getByName(pRefValues[j].Name) >>= xSet;
+                        xQueryColumns->getByName(rRefValue.Name) >>= xSet;
 
                         // get the RealName
                         xSet->getPropertyValue("RealName") >>= aRealName;
 
                         // compare the condition field name and the RealName
-                        if (aCompare(aRealName, pRefValues[j].Name))
+                        if (aCompare(aRealName, rRefValue.Name))
                             xField = xSet;
                     }
                     if (!xField.is())
@@ -3127,7 +3061,7 @@ void FormController::setFilter(::std::vector<FmFieldInfo>& rFieldInfos)
                         {
                             xColumnsByIndex->getByIndex(n) >>= xSet;
                             xSet->getPropertyValue("RealName") >>= aRealName;
-                            if (aCompare(aRealName, pRefValues[j].Name))
+                            if (aCompare(aRealName, rRefValue.Name))
                             {
                                 // get the column by its alias
                                 xField = xSet;
@@ -3144,40 +3078,70 @@ void FormController::setFilter(::std::vector<FmFieldInfo>& rFieldInfos)
                 }
 
                 // find the text component
-                for (::std::vector<FmFieldInfo>::const_iterator iter = rFieldInfos.begin();
-                    iter != aEnd; ++iter)
+                for (const auto& rFieldInfo : rFieldInfos)
                 {
                     // we found the field so insert a new entry to the filter row
-                    if ((*iter).xField == xField)
+                    if (rFieldInfo.xField == xField)
                     {
                         // do we already have the control ?
-                        if (aRow.find((*iter).xText) != aRow.end())
+                        if (aRow.find(rFieldInfo.xText) != aRow.end())
                         {
-                            OUString aCompText = aRow[(*iter).xText];
-                            aCompText += " ";
                             OString aVal = m_pParser->getContext().getIntlKeywordAscii(IParseContext::InternationalKeyCode::And);
-                            aCompText += OUString(aVal.getStr(),aVal.getLength(),RTL_TEXTENCODING_ASCII_US);
-                            aCompText += " ";
-                            aCompText += ::comphelper::getString(pRefValues[j].Value);
-                            aRow[(*iter).xText] = aCompText;
+                            OUString aCompText = aRow[rFieldInfo.xText] + " "  +
+                                OUString(aVal.getStr(),aVal.getLength(),RTL_TEXTENCODING_ASCII_US) + " " +
+                                ::comphelper::getString(rRefValue.Value);
+                            aRow[rFieldInfo.xText] = aCompText;
                         }
                         else
                         {
                             OUString sPredicate,sErrorMsg;
-                            pRefValues[j].Value >>= sPredicate;
-                            std::shared_ptr< OSQLParseNode > pParseNode = predicateTree(sErrorMsg, sPredicate, xFormatter, xField);
+                            rRefValue.Value >>= sPredicate;
+                            std::unique_ptr< OSQLParseNode > pParseNode = predicateTree(sErrorMsg, sPredicate, xFormatter, xField);
                             if ( pParseNode != nullptr )
                             {
                                 OUString sCriteria;
+                                switch (rRefValue.Handle)
+                                {
+                                    case css::sdb::SQLFilterOperator::EQUAL:
+                                        sCriteria += "=";
+                                        break;
+                                    case css::sdb::SQLFilterOperator::NOT_EQUAL:
+                                        sCriteria += "!=";
+                                        break;
+                                    case css::sdb::SQLFilterOperator::LESS:
+                                        sCriteria += "<";
+                                        break;
+                                    case css::sdb::SQLFilterOperator::GREATER:
+                                        sCriteria += ">";
+                                        break;
+                                    case css::sdb::SQLFilterOperator::LESS_EQUAL:
+                                        sCriteria += "<=";
+                                        break;
+                                    case css::sdb::SQLFilterOperator::GREATER_EQUAL:
+                                        sCriteria += ">=";
+                                        break;
+                                    case css::sdb::SQLFilterOperator::LIKE:
+                                        sCriteria += "LIKE ";
+                                        break;
+                                    case css::sdb::SQLFilterOperator::NOT_LIKE:
+                                        sCriteria += "NOT LIKE ";
+                                        break;
+                                    case css::sdb::SQLFilterOperator::SQLNULL:
+                                        sCriteria += "IS NULL";
+                                        break;
+                                    case css::sdb::SQLFilterOperator::NOT_SQLNULL:
+                                        sCriteria += "IS NOT NULL";
+                                        break;
+                                }
                                 pParseNode->parseNodeToPredicateStr( sCriteria
                                                                     ,xConnection
                                                                     ,xFormatter
                                                                     ,xField
                                                                     ,OUString()
                                                                     ,aAppLocale
-                                                                    ,cDecimalSeparator
+                                                                    ,strDecimalSeparator
                                                                     ,getParseContext());
-                                aRow[(*iter).xText] = sCriteria;
+                                aRow[rFieldInfo.xText] = sCriteria;
                             }
                         }
                     }
@@ -3192,12 +3156,9 @@ void FormController::setFilter(::std::vector<FmFieldInfo>& rFieldInfos)
     }
 
     // now set the filter controls
-    for (   ::std::vector<FmFieldInfo>::const_iterator field = rFieldInfos.begin(), aEnd = rFieldInfos.end();
-            field != aEnd;
-            ++field
-        )
+    for (const auto& rFieldInfo : rFieldInfos)
     {
-        m_aFilterComponents.push_back( field->xText );
+        m_aFilterComponents.push_back( rFieldInfo.xText );
     }
 }
 
@@ -3275,7 +3236,7 @@ void FormController::startFiltering()
                                 if (xText.is() && xField.is() && ::comphelper::hasProperty(FM_PROP_SEARCHABLE, xField) &&
                                     ::comphelper::getBOOL(xField->getPropertyValue(FM_PROP_SEARCHABLE)))
                                 {
-                                    aFieldInfos.push_back(FmFieldInfo(xField, xText));
+                                    aFieldInfos.emplace_back(xField, xText);
                                     xText->addTextListener(this);
                                 }
                             }
@@ -3310,7 +3271,7 @@ void FormController::startFiltering()
                     if ( replaceControl( xControl, xFilterControl ) )
                     {
                         Reference< XTextComponent > xFilterText( xFilterControl, UNO_QUERY );
-                        aFieldInfos.push_back( FmFieldInfo( xField, xFilterText ) );
+                        aFieldInfos.emplace_back( xField, xFilterText );
                         xFilterText->addTextListener(this);
                     }
                 }
@@ -3442,10 +3403,9 @@ void FormController::setMode(const OUString& Mode)
     else
         stopFiltering();
 
-    for (FmFormControllers::const_iterator i = m_aChildren.begin();
-        i != m_aChildren.end(); ++i)
+    for (const auto& rChild : m_aChildren)
     {
-        Reference< XModeSelector > xMode(*i, UNO_QUERY);
+        Reference< XModeSelector > xMode(rChild, UNO_QUERY);
         if ( xMode.is() )
             xMode->setMode(Mode);
     }
@@ -3466,13 +3426,11 @@ Sequence< OUString > SAL_CALL FormController::getSupportedModes()
     ::osl::MutexGuard aGuard( m_aMutex );
     impl_checkDisposed_throw();
 
-    static Sequence< OUString > aModes;
-    if (!aModes.getLength())
+    static Sequence< OUString > const aModes
     {
-        aModes.realloc(2);
-        aModes[0] = "DataMode";
-        aModes[1] = "FilterMode";
-    }
+        "DataMode",
+        "FilterMode"
+    };
     return aModes;
 }
 
@@ -3483,13 +3441,7 @@ sal_Bool SAL_CALL FormController::supportsMode(const OUString& Mode)
     impl_checkDisposed_throw();
 
     Sequence< OUString > aModes(getSupportedModes());
-    const OUString* pModes = aModes.getConstArray();
-    for (sal_Int32 i = aModes.getLength(); i > 0; )
-    {
-        if (pModes[--i] == Mode)
-            return true;
-    }
-    return false;
+    return comphelper::findValue(aModes, Mode) != -1;
 }
 
 
@@ -3500,12 +3452,12 @@ vcl::Window* FormController::getDialogParentWindow()
     try
     {
         Reference< XControl > xContainerControl( getContainer(), UNO_QUERY_THROW );
-        Reference< XWindowPeer > xContainerPeer( xContainerControl->getPeer(), UNO_QUERY_THROW );
+        Reference< XWindowPeer > xContainerPeer( xContainerControl->getPeer(), UNO_SET_THROW );
         pParentWindow = VCLUnoHelper::GetWindow( xContainerPeer ).get();
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
     return pParentWindow;
 }
@@ -3546,7 +3498,7 @@ bool FormController::checkFormComponentValidity( OUString& /* [out] */ _rFirstIn
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
     return true;
 }
@@ -3556,24 +3508,22 @@ Reference< XControl > FormController::locateControl( const Reference< XControlMo
 {
     try
     {
-        Sequence< Reference< XControl > > aControls( getControls() );
-        const Reference< XControl >* pControls = aControls.getConstArray();
-        const Reference< XControl >* pControlsEnd = aControls.getConstArray() + aControls.getLength();
+        const Sequence< Reference< XControl > > aControls( getControls() );
 
-        for ( ; pControls != pControlsEnd; ++pControls )
+        for ( auto const & control : aControls )
         {
-            OSL_ENSURE( pControls->is(), "FormController::locateControl: NULL-control?" );
-            if ( pControls->is() )
+            OSL_ENSURE( control.is(), "FormController::locateControl: NULL-control?" );
+            if ( control.is() )
             {
-                if ( ( *pControls)->getModel() == _rxModel )
-                    return *pControls;
+                if ( control->getModel() == _rxModel )
+                    return control;
             }
         }
         OSL_FAIL( "FormController::locateControl: did not find a control for this model!" );
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
     return nullptr;
 }
@@ -3632,7 +3582,7 @@ namespace
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
 
         return true;
@@ -3678,8 +3628,8 @@ sal_Bool SAL_CALL FormController::approveRowChange(const RowChangeEvent& _rEvent
     if ( !lcl_shouldValidateRequiredFields_nothrow( _rEvent.Source ) )
         return true;
 
-    OSL_ENSURE( m_pColumnInfoCache.get(), "FormController::approveRowChange: no column infos!" );
-    if ( !m_pColumnInfoCache.get() )
+    OSL_ENSURE(m_pColumnInfoCache, "FormController::approveRowChange: no column infos!");
+    if (!m_pColumnInfoCache)
         return true;
 
     try
@@ -3691,8 +3641,6 @@ sal_Bool SAL_CALL FormController::approveRowChange(const RowChangeEvent& _rEvent
         for ( size_t col = 0; col < colCount; ++col )
         {
             const ColumnInfo& rColInfo = m_pColumnInfoCache->getColumnInfo( col );
-            if ( rColInfo.nNullable != ColumnValue::NO_NULLS )
-                continue;
 
             if ( rColInfo.bAutoIncrement )
                 continue;
@@ -3701,10 +3649,12 @@ sal_Bool SAL_CALL FormController::approveRowChange(const RowChangeEvent& _rEvent
                 continue;
 
             if ( !rColInfo.xFirstControlWithInputRequired.is() && !rColInfo.xFirstGridWithInputRequiredColumn.is() )
+            {
                 continue;
+            }
 
             // TODO: in case of binary fields, this "getString" below is extremely expensive
-            if ( !rColInfo.xColumn->getString().isEmpty() || !rColInfo.xColumn->wasNull() )
+            if ( !rColInfo.xColumn->wasNull() || !rColInfo.xColumn->getString().isEmpty() )
                 continue;
 
             OUString sMessage( SvxResId( RID_ERR_FIELDREQUIRED ) );
@@ -3722,7 +3672,7 @@ sal_Bool SAL_CALL FormController::approveRowChange(const RowChangeEvent& _rEvent
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 
     return true;
@@ -3798,7 +3748,7 @@ void SAL_CALL FormController::errorOccured(const SQLErrorEvent& aEvent)
     else
     {
         aGuard.clear();
-        displayException( aEvent );
+        displayException(aEvent, getDialogParentWindow());
     }
 }
 
@@ -3913,7 +3863,7 @@ sal_Bool SAL_CALL FormController::approveParameter(const DatabaseParameterEvent&
 #ifdef DBG_UTIL
                     OUString sName;
                     xParam->getPropertyValue(FM_PROP_NAME) >>= sName;
-                    DBG_ASSERT(sName.equals(pFinalValues->Name), "FormController::approveParameter: suspicious value names!");
+                    DBG_ASSERT(sName == pFinalValues->Name, "FormController::approveParameter: suspicious value names!");
 #endif
                     try { xParam->setPropertyValue(FM_PROP_VALUE, pFinalValues->Value); }
                     catch(Exception&)
@@ -3925,7 +3875,7 @@ sal_Bool SAL_CALL FormController::approveParameter(const DatabaseParameterEvent&
         }
         catch(Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
     return true;
@@ -4007,7 +3957,7 @@ sal_Bool SAL_CALL FormController::confirmDelete(const RowChangeEvent& aEvent)
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("svx");
     }
 
     return false;
@@ -4017,10 +3967,8 @@ sal_Bool SAL_CALL FormController::confirmDelete(const RowChangeEvent& aEvent)
 void SAL_CALL FormController::invalidateFeatures( const Sequence< ::sal_Int16 >& Features )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
-    // for now, just copy the ids of the features, because ....
-    ::std::copy( Features.begin(), Features.end(),
-        ::std::insert_iterator< ::std::set< sal_Int16 > >( m_aInvalidFeatures, m_aInvalidFeatures.begin() )
-    );
+    // for now, just copy the ids of the features, because...
+    m_aInvalidFeatures.insert( Features.begin(), Features.end() );
 
     // ... we will do the real invalidation asynchronously
     if ( !m_aFeatureInvalidationTimer.IsActive() )
@@ -4035,7 +3983,7 @@ void SAL_CALL FormController::invalidateAllFeatures(  )
     Sequence< sal_Int16 > aInterceptedFeatures( comphelper::mapKeysToSequence(m_aFeatureDispatchers) );
 
     aGuard.clear();
-    if ( aInterceptedFeatures.getLength() )
+    if ( aInterceptedFeatures.hasElements() )
         invalidateFeatures( aInterceptedFeatures );
 }
 
@@ -4066,8 +4014,8 @@ FormController::interceptedQueryDispatch( const URL& aURL,
             DispatcherContainer::const_iterator aDispatcherPos = m_aFeatureDispatchers.find( nFormFeature );
             if ( aDispatcherPos == m_aFeatureDispatchers.end() )
             {
-                aDispatcherPos = m_aFeatureDispatchers.insert(
-                    DispatcherContainer::value_type( nFormFeature, new svx::OSingleFeatureDispatcher( aURL, nFormFeature, m_xFormOperations, m_aMutex ) )
+                aDispatcherPos = m_aFeatureDispatchers.emplace(
+                    nFormFeature, new svx::OSingleFeatureDispatcher( aURL, nFormFeature, m_xFormOperations, m_aMutex )
                 ).first;
             }
 
@@ -4150,7 +4098,7 @@ Reference< XDispatchProviderInterceptor >  FormController::createInterceptor(con
 {
     OSL_ENSURE( !impl_isDisposed_nofail(), "FormController: already disposed!" );
 #ifdef DBG_UTIL
-    // check if we already have a interceptor for the given object
+    // check if we already have an interceptor for the given object
     for ( const auto & it : m_aControlDispatchInterceptors )
     {
         if (it->getIntercepted() == _xInterception)
@@ -4173,7 +4121,8 @@ bool FormController::ensureInteractionHandler()
         return false;
     m_bAttemptedHandlerCreation = true;
 
-    m_xInteractionHandler = InteractionHandler::createWithParent(m_xComponentContext, nullptr);
+    m_xInteractionHandler = InteractionHandler::createWithParent(m_xComponentContext,
+                                                                 VCLUnoHelper::GetInterface(getDialogParentWindow()));
     return m_xInteractionHandler.is();
 }
 
@@ -4190,19 +4139,16 @@ void FormController::deleteInterceptor(const Reference< XDispatchProviderInterce
 {
     OSL_ENSURE( !impl_isDisposed_nofail(), "FormController: already disposed!" );
     // search the interceptor responsible for the given object
-    const auto aEnd = m_aControlDispatchInterceptors.end();
-    for ( auto aIter = m_aControlDispatchInterceptors.begin();
-            aIter != aEnd;
-            ++aIter
-        )
+    auto aIter = std::find_if(m_aControlDispatchInterceptors.begin(), m_aControlDispatchInterceptors.end(),
+        [&_xInterception](const rtl::Reference<DispatchInterceptionMultiplexer>& rpInterceptor) {
+            return rpInterceptor->getIntercepted() == _xInterception;
+        });
+    if (aIter != m_aControlDispatchInterceptors.end())
     {
-        if ((*aIter)->getIntercepted() == _xInterception) {
-            // log off the interception from its interception object
-            (*aIter)->dispose();
-            // remove the interceptor from our array
-            m_aControlDispatchInterceptors.erase(aIter);
-            return;
-        }
+        // log off the interception from its interception object
+        (*aIter)->dispose();
+        // remove the interceptor from our array
+        m_aControlDispatchInterceptors.erase(aIter);
     }
 }
 

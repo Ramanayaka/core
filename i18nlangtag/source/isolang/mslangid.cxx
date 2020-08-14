@@ -19,14 +19,13 @@
 
 #include <sal/config.h>
 #include <rtl/ustring.hxx>
-#include <rtl/string.hxx>
 #include <com/sun/star/i18n/ScriptType.hpp>
 
-#include "i18nlangtag/mslangid.hxx"
+#include <i18nlangtag/mslangid.hxx>
 
 // Only very limited few functions that are guaranteed to not be called from
 // LanguageTag may use LanguageTag ...
-#include "i18nlangtag/languagetag.hxx"
+#include <i18nlangtag/languagetag.hxx>
 
 
 LanguageType MsLangId::nConfiguredSystemLanguage   = LANGUAGE_SYSTEM;
@@ -144,26 +143,20 @@ LanguageType MsLangId::resolveSystemLanguageByScriptType( LanguageType nLang, sa
 
 // static
 css::lang::Locale MsLangId::Conversion::convertLanguageToLocale(
-        LanguageType nLang, bool bResolveSystem )
+        LanguageType nLang )
 {
     css::lang::Locale aLocale;
-    if (!bResolveSystem && simplifySystemLanguages( nLang) == LANGUAGE_SYSTEM)
-        ;   // nothing => empty locale
-    else
+    // Still resolve LANGUAGE_DONTKNOW if resolving is not requested,
+    // but not LANGUAGE_SYSTEM or others.
+    LanguageType nOrigLang = nLang;
+    nLang = MsLangId::getRealLanguage(nLang);
+    convertLanguageToLocaleImpl( nLang, aLocale, true );
+    if (aLocale.Language.isEmpty() && simplifySystemLanguages(nOrigLang) == LANGUAGE_SYSTEM)
     {
-        // Still resolve LANGUAGE_DONTKNOW if resolving is not requested,
-        // but not LANGUAGE_SYSTEM or others.
-        LanguageType nOrigLang = nLang;
-        if (bResolveSystem || nLang == LANGUAGE_DONTKNOW)
-            nLang = MsLangId::getRealLanguage( nLang);
-        convertLanguageToLocaleImpl( nLang, aLocale, true);
-        if (bResolveSystem && aLocale.Language.isEmpty() && simplifySystemLanguages( nOrigLang) == LANGUAGE_SYSTEM)
-        {
-            // None found but resolve requested, last resort is "en-US".
-            aLocale.Language = "en";
-            aLocale.Country  = "US";
-            aLocale.Variant.clear();
-        }
+        // None found but resolve requested, last resort is "en-US".
+        aLocale.Language = "en";
+        aLocale.Country  = "US";
+        aLocale.Variant.clear();
     }
     return aLocale;
 }
@@ -187,7 +180,7 @@ css::lang::Locale MsLangId::getFallbackLocale(
 {
     // empty language => LANGUAGE_SYSTEM
     if (rLocale.Language.isEmpty())
-        return Conversion::lookupFallbackLocale( Conversion::convertLanguageToLocale( LANGUAGE_SYSTEM, true));
+        return Conversion::lookupFallbackLocale( Conversion::convertLanguageToLocale( LANGUAGE_SYSTEM ));
     else
         return Conversion::lookupFallbackLocale( rLocale);
 }
@@ -221,7 +214,9 @@ bool MsLangId::isRightToLeft( LanguageType nLang )
         LANGUAGE_KURDISH_ARABIC_LSO,
         LANGUAGE_USER_KURDISH_SOUTHERN_IRAN,
         LANGUAGE_USER_KURDISH_SOUTHERN_IRAQ,
-        LANGUAGE_USER_HUNGARIAN_ROVAS))
+        LANGUAGE_USER_HUNGARIAN_ROVAS,
+        LANGUAGE_USER_MALAY_ARABIC_MALAYSIA,
+        LANGUAGE_USER_MALAY_ARABIC_BRUNEI))
     {
             return true;
     }
@@ -338,7 +333,9 @@ sal_Int16 MsLangId::getScriptType( LanguageType nLang )
          LANGUAGE_USER_KYRGYZ_CHINA,
          LANGUAGE_USER_HUNGARIAN_ROVAS,
          LANGUAGE_USER_MANCHU,
-         LANGUAGE_USER_XIBE))
+         LANGUAGE_USER_XIBE,
+         LANGUAGE_USER_MALAY_ARABIC_MALAYSIA,
+         LANGUAGE_USER_MALAY_ARABIC_BRUNEI))
     {
             nScript = css::i18n::ScriptType::COMPLEX;
     }
@@ -477,14 +474,12 @@ bool MsLangId::isNonLatinWestern( LanguageType nLang )
 // static
 bool MsLangId::isLegacy( LanguageType nLang )
 {
-    if (nLang.anyOf(
+    return nLang.anyOf(
          LANGUAGE_SERBIAN_CYRILLIC_SAM,
-         LANGUAGE_SERBIAN_LATIN_SAM))
+         LANGUAGE_SERBIAN_LATIN_SAM);
             /* TODO: activate once dictionary was renamed from pap-AN to
              * pap-CW, or the pap-CW one supports also pap-AN, see fdo#44112 */
         //case LANGUAGE_PAPIAMENTU:
-            return true;
-    return false;
 }
 
 
@@ -538,11 +533,6 @@ LanguageType MsLangId::getReplacementForObsoleteLanguage( LanguageType nLang )
     // no_NO is an alias for nb_NO
     else if (nLang == LANGUAGE_NORWEGIAN)
         nLang = LANGUAGE_NORWEGIAN_BOKMAL;
-
-    // #i94435# A Spanish variant that differs only in collation details we
-    // do not support.
-    else if (nLang == LANGUAGE_SPANISH_DATED)
-        nLang = LANGUAGE_SPANISH_MODERN;
 
     // The erroneous Tibetan vs. Dzongkha case, #i53497#
     // We (and MS) have stored LANGUAGE_TIBETAN_BHUTAN. This will need

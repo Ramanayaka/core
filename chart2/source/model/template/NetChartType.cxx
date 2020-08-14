@@ -18,15 +18,12 @@
  */
 
 #include "NetChartType.hxx"
-#include "PropertyHelper.hxx"
-#include "macros.hxx"
-#include "PolarCoordinateSystem.hxx"
-#include "servicenames_charttypes.hxx"
-#include "AxisIndexDefines.hxx"
-#include "AxisHelper.hxx"
+#include <PolarCoordinateSystem.hxx>
+#include <servicenames_charttypes.hxx>
+#include <AxisIndexDefines.hxx>
+#include <AxisHelper.hxx>
 
 #include <cppuhelper/supportsservice.hxx>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/chart2/AxisType.hpp>
 
 using namespace ::com::sun::star;
@@ -39,9 +36,7 @@ using ::com::sun::star::uno::Reference;
 namespace chart
 {
 
-NetChartType_Base::NetChartType_Base(
-    const uno::Reference< uno::XComponentContext > & xContext ) :
-        ChartType( xContext )
+NetChartType_Base::NetChartType_Base()
 {}
 
 NetChartType_Base::NetChartType_Base( const NetChartType_Base & rOther ) :
@@ -61,7 +56,7 @@ Reference< XCoordinateSystem > SAL_CALL
             static_cast< ::cppu::OWeakObject* >( this ), 0 );
 
     Reference< XCoordinateSystem > xResult(
-        new PolarCoordinateSystem( GetComponentContext(), DimensionCount ));
+        new PolarCoordinateSystem( DimensionCount ));
 
     Reference< XAxis > xAxis( xResult->getAxisByDimension( 0, MAIN_AXIS_INDEX ) );
     if( xAxis.is() )
@@ -135,9 +130,7 @@ uno::Reference< beans::XPropertySetInfo > SAL_CALL NetChartType_Base::getPropert
     return *StaticNetChartTypeInfo::get();
 }
 
-NetChartType::NetChartType(
-    const uno::Reference< uno::XComponentContext > & xContext ) :
-        NetChartType_Base( xContext )
+NetChartType::NetChartType()
 {}
 
 NetChartType::NetChartType( const NetChartType & rOther ) :
@@ -157,12 +150,12 @@ uno::Reference< util::XCloneable > SAL_CALL NetChartType::createClone()
 // ____ XChartType ____
 OUString SAL_CALL NetChartType::getChartType()
 {
-    return OUString(CHART2_SERVICE_NAME_CHARTTYPE_NET);
+    return CHART2_SERVICE_NAME_CHARTTYPE_NET;
 }
 
 OUString SAL_CALL NetChartType::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.NetChartType");
+    return "com.sun.star.comp.chart.NetChartType";
 }
 
 sal_Bool SAL_CALL NetChartType::supportsService( const OUString& rServiceName )
@@ -180,11 +173,11 @@ css::uno::Sequence< OUString > SAL_CALL NetChartType::getSupportedServiceNames()
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart_NetChartType_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart_NetChartType_get_implementation(css::uno::XComponentContext * /*context*/,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::NetChartType(context));
+    return cppu::acquire(new ::chart::NetChartType);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

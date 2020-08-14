@@ -16,18 +16,14 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "FixedLine.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include "corestrings.hrc"
-#include "core_resource.hrc"
-#include "core_resource.hxx"
-#include <comphelper/property.hxx>
+#include <FixedLine.hxx>
+#include <strings.hxx>
+#include <strings.hrc>
+#include <core_resource.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "Tools.hxx"
-#include "FormatCondition.hxx"
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/text/ParagraphVertAlign.hpp>
-#include "ReportHelperImpl.hxx"
+#include <Tools.hxx>
+#include <FormatCondition.hxx>
+#include <ReportHelperImpl.hxx>
 
 #define MIN_WIDTH   80
 #define MIN_HEIGHT  20
@@ -36,8 +32,7 @@ namespace reportdesign
 {
 
     using namespace com::sun::star;
-    using namespace comphelper;
-uno::Sequence< OUString > lcl_getLineOptionals()
+static uno::Sequence< OUString > lcl_getLineOptionals()
 {
     OUString pProps[] = {
              OUString(PROPERTY_DATAFIELD)
@@ -136,7 +131,7 @@ OFixedLine::OFixedLine(uno::Reference< uno::XComponentContext > const & _xContex
 ,m_LineTransparence(0)
 ,m_LineWidth(0)
 {
-    m_aProps.aComponent.m_sName  = RPT_RESSTRING(RID_STR_FIXEDLINE);
+    m_aProps.aComponent.m_sName  = RptResId(RID_STR_FIXEDLINE);
     m_aProps.aComponent.m_nWidth = MIN_WIDTH;
 }
 
@@ -153,7 +148,7 @@ OFixedLine::OFixedLine(uno::Reference< uno::XComponentContext > const & _xContex
 ,m_LineTransparence(0)
 ,m_LineWidth(0)
 {
-    m_aProps.aComponent.m_sName  = RPT_RESSTRING(RID_STR_FIXEDLINE);
+    m_aProps.aComponent.m_sName  = RptResId(RID_STR_FIXEDLINE);
     m_aProps.aComponent.m_xFactory = _xFactory;
     osl_atomic_increment( &m_refCount );
     try
@@ -204,33 +199,14 @@ void SAL_CALL OFixedLine::dispose()
     cppu::WeakComponentImplHelperBase::dispose();
 }
 
-OUString OFixedLine::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.report.OFixedLine");
-}
-
-
 OUString SAL_CALL OFixedLine::getImplementationName(  )
 {
-    return getImplementationName_Static();
+    return "com.sun.star.comp.report.OFixedLine";
 }
-
-uno::Sequence< OUString > OFixedLine::getSupportedServiceNames_Static(  )
-{
-    uno::Sequence< OUString > aServices { SERVICE_FIXEDLINE };
-
-    return aServices;
-}
-
-uno::Reference< uno::XInterface > OFixedLine::create(uno::Reference< uno::XComponentContext > const & xContext)
-{
-    return *(new OFixedLine(xContext));
-}
-
 
 uno::Sequence< OUString > SAL_CALL OFixedLine::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_Static();
+    return { SERVICE_FIXEDLINE };
 }
 
 sal_Bool SAL_CALL OFixedLine::supportsService(const OUString& ServiceName)
@@ -510,12 +486,10 @@ awt::Size SAL_CALL OFixedLine::getSize(  )
 
 void SAL_CALL OFixedLine::setSize( const awt::Size& aSize )
 {
-    const char hundredthmmC[] = "0\xe2\x80\x89\xC2\xB5""m"; // in UTF-8: 0, thin space, µ (micro), m (meter)
-    const OUString hundredthmm(hundredthmmC, sizeof(hundredthmmC)-1, RTL_TEXTENCODING_UTF8);
     if ( aSize.Width < MIN_WIDTH && m_nOrientation == 1 )
-        throw beans::PropertyVetoException("Too small width for FixedLine; minimum is "  + OUString::number(MIN_WIDTH)  + hundredthmm, static_cast<cppu::OWeakObject*>(this));
+        throw beans::PropertyVetoException("Too small width for FixedLine; minimum is "  + OUString::number(MIN_WIDTH)  + "0 micrometer", static_cast<cppu::OWeakObject*>(this));
     else if ( aSize.Height < MIN_HEIGHT && m_nOrientation == 0 )
-        throw beans::PropertyVetoException("Too small height for FixedLine; minimum is " + OUString::number(MIN_HEIGHT) + hundredthmm, static_cast<cppu::OWeakObject*>(this));
+        throw beans::PropertyVetoException("Too small height for FixedLine; minimum is " + OUString::number(MIN_HEIGHT) + "0 micrometer", static_cast<cppu::OWeakObject*>(this));
     OShapeHelper::setSize(aSize,this);
 }
 
@@ -525,7 +499,7 @@ OUString SAL_CALL OFixedLine::getShapeType(  )
     ::osl::MutexGuard aGuard(m_aMutex);
     if ( m_aProps.aComponent.m_xShape.is() )
         return m_aProps.aComponent.m_xShape->getShapeType();
-    return OUString("com.sun.star.drawing.ControlShape");
+    return "com.sun.star.drawing.ControlShape";
 }
 
 OUString SAL_CALL OFixedLine::getHyperLinkURL()
@@ -567,5 +541,12 @@ void SAL_CALL OFixedLine::setPrintRepeatedValues( sal_Bool /*_printrepeatedvalue
 
 } // namespace reportdesign
 
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+reportdesign_OFixedLine_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new reportdesign::OFixedLine(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

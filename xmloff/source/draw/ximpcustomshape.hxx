@@ -28,13 +28,12 @@
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/PropertyValues.hpp>
 #include <com/sun/star/drawing/XShape.hpp>
-#include <com/sun/star/drawing/EnhancedCustomShapeParameter.hpp>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XIndexContainer; }
     namespace beans { class XPropertySet; }
-    namespace xml { namespace sax { class XAttributeList; } }
-} } }
+    namespace xml::sax { class XAttributeList; }
+}
 
 class XMLEnhancedCustomShapeContext : public SvXMLImportContext
 {
@@ -58,7 +57,7 @@ public:
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
     virtual void EndElement() override;
 
-    SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName,
+    SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList> & xAttrList ) override;
 };
 

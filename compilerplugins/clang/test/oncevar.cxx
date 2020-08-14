@@ -18,6 +18,15 @@ void call_value(OUString);
 void call_const_ref(OUString const &);
 void call_ref(OUString &);
 
+template<typename T> void f() {
+    int i = sizeof (T) + 1; // expected-error {{var used only once, should be inlined or declared const [loplugin:oncevar]}}
+    call_value(i); // expected-note {{used here [loplugin:oncevar]}}
+}
+template void f<int>(); // needed for clang-cl
+
+class Foo;
+void method1(const Foo**);
+
 int main() {
 /* TODO
     int i;
@@ -49,6 +58,9 @@ int main() {
     call_ref(s3);
     OUString const s4("xxx");
     call_value(s4);
+
+    const Foo* pInternalArgs[] = { nullptr };
+    method1(pInternalArgs);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

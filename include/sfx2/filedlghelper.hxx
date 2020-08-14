@@ -22,42 +22,30 @@
 #include <sal/config.h>
 #include <sfx2/dllapi.h>
 #include <sal/types.h>
-#include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
+#include <comphelper/documentconstants.hxx>
+#include <tools/link.hxx>
 #include <vcl/errcode.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/button.hxx>
-#include <vcl/graph.hxx>
-#include <sfx2/sfxuno.hxx>
-#include <sfx2/docfilt.hxx>
+#include <o3tl/typed_flags_set.hxx>
 
 #include <memory>
+#include <vector>
 
-namespace com
+namespace com::sun::star::ui::dialogs
 {
-    namespace sun
-    {
-        namespace star
-        {
-            namespace ui
-            {
-                namespace dialogs
-                {
-                    class XFilePicker2;
-                    class XFilePickerListener;
-                    struct FilePickerEvent;
-                    struct DialogClosedEvent;
-                }
-            }
-        }
-    }
+    class XFilePicker3;
+    struct FilePickerEvent;
+    struct DialogClosedEvent;
 }
+namespace com::sun::star::awt { class XWindow; }
+namespace com::sun::star::uno { template <typename > class Reference; }
+namespace weld { class Window; }
 
+class Graphic;
+class SfxFilter;
 class SfxItemSet;
-namespace vcl { class Window; }
 
 enum class FileDialogFlags {
     NONE              = 0x00,
@@ -101,33 +89,34 @@ private:
 
 
 public:
-                            FileDialogHelper( sal_Int16 nDialogType,
-                                              FileDialogFlags nFlags = FileDialogFlags::NONE,
-                                              vcl::Window* _pPreferredParent = nullptr );
+                            FileDialogHelper(sal_Int16 nDialogType,
+                                             FileDialogFlags nFlags,
+                                             weld::Window* pPreferredParent);
 
-                            FileDialogHelper( sal_Int16 nDialogType,
-                                              FileDialogFlags nFlags,
-                                              const OUString& rFactory,
-                                              SfxFilterFlags nMust = SfxFilterFlags::NONE,
-                                              SfxFilterFlags nDont = SfxFilterFlags::NONE );
+                            FileDialogHelper(sal_Int16 nDialogType,
+                                             FileDialogFlags nFlags,
+                                             const OUString& rFactory,
+                                             SfxFilterFlags nMust,
+                                             SfxFilterFlags nDont,
+                                             weld::Window* pPreferredParent);
 
-                            FileDialogHelper( sal_Int16 nDialogType,
-                                              FileDialogFlags nFlags,
-                                              const OUString& rFactory,
-                                              sal_Int16 nDialog,
-                                              SfxFilterFlags nMust,
-                                              SfxFilterFlags nDont,
-                                              const OUString& rStandardDir,
-                                              const css::uno::Sequence< OUString >& rBlackList,
-                                              vcl::Window* _pPreferredParent = nullptr);
+                            FileDialogHelper(sal_Int16 nDialogType,
+                                             FileDialogFlags nFlags,
+                                             const OUString& rFactory,
+                                             sal_Int16 nDialog,
+                                             SfxFilterFlags nMust,
+                                             SfxFilterFlags nDont,
+                                             const OUString& rStandardDir,
+                                             const css::uno::Sequence< OUString >& rDenyList,
+                                             weld::Window* pPreferredParent);
 
-                            FileDialogHelper( sal_Int16 nDialogType,
-                                              FileDialogFlags nFlags,
-                                              const OUString& aFilterUIName,
-                                              const OUString& aExtName,
-                                              const OUString& rStandardDir,
-                                              const css::uno::Sequence< OUString >& rBlackList,
-                                              vcl::Window* _pPreferredParent = nullptr );
+                            FileDialogHelper(sal_Int16 nDialogType,
+                                             FileDialogFlags nFlags,
+                                             const OUString& aFilterUIName,
+                                             const OUString& aExtName,
+                                             const OUString& rStandardDir,
+                                             const css::uno::Sequence< OUString >& rDenyList,
+                                             weld::Window* pPreferredParent);
 
     virtual                 ~FileDialogHelper();
 
@@ -136,7 +125,7 @@ public:
 
     ErrCode                 Execute();
     void                    StartExecuteModal( const Link<FileDialogHelper*,void>& rEndDialogHdl );
-    ErrCode          GetError() const { return m_nError; }
+    ErrCode const &         GetError() const { return m_nError; }
     sal_Int16               GetDialogType() const;
     bool                    IsPasswordEnabled() const;
     OUString                GetRealFilter() const;
@@ -189,7 +178,7 @@ public:
         with the following differences:
         <ul><li>The FileDialogHelper remembers the given file name, and upon execution,
                 strips its extension if the dialog is set up for "automatic file name extension".</li>
-            <li>Exceptions thrown from the <code>XFilePicker2</code> are caught and silenced.</li>
+            <li>Exceptions thrown from the <code>XFilePicker3</code> are caught and silenced.</li>
         </ul>
     */
     void                     SetFileName( const OUString& _rFileName );
@@ -198,17 +187,17 @@ public:
     OUString                 GetDisplayDirectory() const;
     ErrCode                  GetGraphic( Graphic& rGraphic ) const;
 
-    const css::uno::Reference < css::ui::dialogs::XFilePicker2 >& GetFilePicker() const;
+    const css::uno::Reference < css::ui::dialogs::XFilePicker3 >& GetFilePicker() const;
 
     // XFilePickerListener methods
-    void SAL_CALL   FileSelectionChanged();
-    void SAL_CALL   DirectoryChanged();
-    virtual void SAL_CALL   ControlStateChanged( const css::ui::dialogs::FilePickerEvent& aEvent );
-    void SAL_CALL   DialogSizeChanged();
-    static OUString SAL_CALL    HelpRequested( const css::ui::dialogs::FilePickerEvent& aEvent );
+    void   FileSelectionChanged();
+    void   DirectoryChanged();
+    virtual void   ControlStateChanged( const css::ui::dialogs::FilePickerEvent& aEvent );
+    void   DialogSizeChanged();
+    static OUString    HelpRequested( const css::ui::dialogs::FilePickerEvent& aEvent );
 
     // XDialogClosedListener methods
-    void SAL_CALL   DialogClosed( const css::ui::dialogs::DialogClosedEvent& _rEvent );
+    void   DialogClosed( const css::ui::dialogs::DialogClosedEvent& _rEvent );
 
     /** sets help ids for the controls in the dialog
         @param _pControlId
@@ -230,10 +219,10 @@ public:
    DECL_LINK( ExecuteSystemFilePicker, void*, void );
 
    ErrCode                  Execute( std::vector<OUString>& rpURLList,
-                                     SfxItemSet *&   rpSet,
+                                     std::unique_ptr<SfxItemSet>& rpSet,
                                      OUString&         rFilter,
                                      const OUString&   rDirPath );
-   ErrCode                  Execute( SfxItemSet *&   rpSet,
+   ErrCode                  Execute( std::unique_ptr<SfxItemSet>& rpSet,
                                      OUString&         rFilter );
 };
 
@@ -242,19 +231,19 @@ public:
 #define SFX2_IMPL_DIALOG_OOO 2
 #define SFX2_IMPL_DIALOG_REMOTE 3
 
-ErrCode FileOpenDialog_Impl( sal_Int16 nDialogType,
+ErrCode FileOpenDialog_Impl( weld::Window* pParent,
+                             sal_Int16 nDialogType,
                              FileDialogFlags nFlags,
-                             const OUString& rFact,
                              std::vector<OUString>& rpURLList,
                              OUString& rFilter,
-                             SfxItemSet *& rpSet,
+                             std::unique_ptr<SfxItemSet>& rpSet,
                              const OUString* pPath,
                              sal_Int16 nDialog,
-                             const OUString& rStandardDir = OUString(),
-                             const css::uno::Sequence< OUString >& rBlackList = css::uno::Sequence< OUString >());
+                             const OUString& rStandardDir,
+                             const css::uno::Sequence< OUString >& rDenyList = css::uno::Sequence< OUString >());
 
 
-ErrCode RequestPassword(const std::shared_ptr<const SfxFilter>& pCurrentFilter, OUString& aURL, SfxItemSet* pSet);
+ErrCode RequestPassword(const std::shared_ptr<const SfxFilter>& pCurrentFilter, OUString const & aURL, SfxItemSet* pSet, const css::uno::Reference<css::awt::XWindow>& rParent);
 }
 
 #endif

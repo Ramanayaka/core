@@ -15,7 +15,12 @@ class ImplSchedulerDataPrinter(object):
     '''Prints the ImplSchedulerData linked list.
 
        This can be used to dump the current state of the scheduler via:
-          p *ImplGetSVData()->mpFirstSchedulerData
+          p *ImplGetSVData()->maSchedCtx.mpFirstSchedulerData
+
+       This doesn't include currently invoked tasks AKA the stack.
+
+       To dump the scheduler stack of invoked tasks use:
+          p *ImplGetSVData()->maSchedCtx.mpSchedulerStack
     '''
 
     def __init__(self, typename, value):
@@ -46,10 +51,9 @@ class ImplSchedulerDataPrinter(object):
             if (task_type == "Timer"):
                 res = "{}: {}ms".format(res, timer['mnTimeout'])
             else:
-                assert 1 == timer['mnTimeout'], "Idle with timeout == {}".format( timer['mnTimeout'] )
+                assert 0 == timer['mnTimeout'], "Idle with timeout == {}".format( timer['mnTimeout'] )
             return res
         else:
-            assert gdbobj['mbDelete'], "No task set and not marked for deletion!"
             return "(no task)"
 
     def to_string(self):

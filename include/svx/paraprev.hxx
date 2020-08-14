@@ -19,13 +19,14 @@
 #ifndef INCLUDED_SVX_PARAPREV_HXX
 #define INCLUDED_SVX_PARAPREV_HXX
 
-#include <vcl/window.hxx>
+#include <vcl/customweld.hxx>
 #include <editeng/svxenum.hxx>
 #include <svx/svxdllapi.h>
 
 enum class SvxPrevLineSpace
 {
     N1 = 0,
+    N115,
     N15,
     N2,
     Prop,
@@ -33,16 +34,14 @@ enum class SvxPrevLineSpace
     Leading
 };
 
-class SVX_DLLPUBLIC SvxParaPrevWindow : public vcl::Window
+class SVX_DLLPUBLIC SvxParaPrevWindow final : public weld::CustomWidgetController
 {
-    using Window::Draw;
-private:
     Size                aSize;
 
     // indentation
     long                nLeftMargin;
     long                nRightMargin;
-    short               nFirstLineOfst;
+    short               nFirstLineOffset;
     // distances
     sal_uInt16          nUpper;
     sal_uInt16          nLower;
@@ -53,21 +52,16 @@ private:
     // line distance
     SvxPrevLineSpace    eLine;
 
-    OUString            aText;
-    tools::Rectangle    Lines[9];
-
-protected:
     virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
-    virtual Size GetOptimalSize() const override;
-
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
     void DrawParagraph(vcl::RenderContext& rRenderContext);
 
 public:
-    SvxParaPrevWindow( vcl::Window* pParent, WinBits nBits);
+    SvxParaPrevWindow();
 
-    void SetFirstLineOfst( short nNew )
+    void SetFirstLineOffset( short nNew )
     {
-        nFirstLineOfst = nNew;
+        nFirstLineOffset = nNew;
     }
     void SetLeftMargin( long nNew )
     {
@@ -97,19 +91,12 @@ public:
     {
         eLine = eNew;
     }
-    void SetText( const OUString& rStr ) override
-    {
-        aText = rStr;
-    }
     void SetSize( Size aNew )
     {
         aSize = aNew;
     }
-    OUString GetText() const override
-    {
-        return aText;
-    }
 };
+
 
 #endif
 

@@ -22,16 +22,49 @@
 
 #include <vcl/bitmapex.hxx>
 
-#include <unordered_map>
-#include <vector>
-
-struct ImplImage
+class ImplImage
 {
+private:
     BitmapChecksum maBitmapChecksum;
+    /// if non-empty: cached original size of maStockName else Size of maBitmap
+    Size maSizePixel;
+    Size maPreferedSizePixel;
+    /// If set - defines the bitmap via images.zip*
+    OUString maStockName;
+
+
+    /// Original bitmap - or cache of a potentially scaled bitmap
     BitmapEx maBitmapEx;
     BitmapEx maDisabledBitmapEx;
 
+    bool loadStockAtScale(double fScale, BitmapEx &rBitmapEx);
+
+public:
     ImplImage(const BitmapEx& rBitmapEx);
+    ImplImage(const OUString &aStockName, Size const & rPreferedSize);
+
+    bool isStock() const
+    {
+        return maStockName.getLength() > 0;
+    }
+
+    OUString getStock() const
+    {
+        return maStockName;
+    }
+
+    /// get size in co-ordinates not scaled for HiDPI
+    Size getSizePixel();
+    /// Legacy - the original bitmap
+    BitmapEx const & getBitmapEx(bool bDisabled = false);
+    /// Taking account of HiDPI scaling
+    BitmapEx const & getBitmapExForHiDPI(bool bDisabled = false);
+
+    bool isEqual(const ImplImage &ref) const;
+    bool isSizeEmpty() const
+    {
+        return maSizePixel == Size();
+    }
 };
 
 #endif // INCLUDED_VCL_INC_IMAGE_H

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE script:module PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "module.dtd">
-<script:module xmlns:script="http://openoffice.org/2000/script" script:name="CommandBarControl" script:language="StarBasic">REM =======================================================================================================================
+<script:module xmlns:script="http://openoffice.org/2000/script" script:name="CommandBarControl" script:language="StarBasic">
+REM =======================================================================================================================
 REM ===					The Access2Base library is a part of the LibreOffice project.									===
 REM ===					Full documentation is available on http://www.access2base.com									===
 REM =======================================================================================================================
@@ -15,6 +16,8 @@ REM --- CLASS ROOT FIELDS 								        														---
 REM -----------------------------------------------------------------------------------------------------------------------
 
 Private _Type					As String		&apos;	Must be COMMANDBARCONTROL
+Private _This					As Object		&apos;	Workaround for absence of This builtin function
+Private _Parent					As Object
 Private _InternalIndex			As Integer		&apos;	Index in toolbar including separators
 Private _Index					As Integer		&apos;	Index in collection, starting at 1 !!
 Private _ControlType			As Integer		&apos;	1 of the msoControl* constants
@@ -29,6 +32,8 @@ REM --- CONSTRUCTORS / DESTRUCTORS						        														---
 REM -----------------------------------------------------------------------------------------------------------------------
 Private Sub Class_Initialize()
 	_Type = OBJCOMMANDBARCONTROL
+	Set _This = Nothing
+	Set _Parent = Nothing
 	_Index = -1
 	_ParentCommandBarName = &quot;&quot;
 	Set _ParentCommandBar = Nothing
@@ -105,9 +110,9 @@ Dim vProperty As Variant, vPropertiesList() As Variant, sObject As String
 	vPropertiesList = _PropertiesList()
 	sObject = Utils._PCase(_Type)
 	If IsMissing(pvIndex) Then
-		vProperty = PropertiesGet._Properties(sObject, _Name, vPropertiesList)
+		vProperty = PropertiesGet._Properties(sObject, _This, vPropertiesList)
 	Else
-		vProperty = PropertiesGet._Properties(sObject, _Name, vPropertiesList, pvIndex)
+		vProperty = PropertiesGet._Properties(sObject, _This, vPropertiesList, pvIndex)
 		vProperty._Value = _PropertyGet(vPropertiesList(pvIndex))
 	End If
 	
@@ -235,7 +240,7 @@ Const cstUnoPrefix = &quot;.uno:&quot;
 		Case UCase(&quot;OnAction&quot;)
 			_PropertyGet = _GetPropertyValue(_Element, &quot;CommandURL&quot;, &quot;&quot;)
 		Case UCase(&quot;Parent&quot;)
-			Set _PropertyGet = Application.CommandBars(_ParentCommandBarName)
+			Set _PropertyGet = _Parent
 		Case UCase(&quot;TooltipText&quot;)
 				sValue = _GetPropertyValue(_Element, &quot;Tooltip&quot;, &quot;&quot;)
 				If sValue &lt;&gt; &quot;&quot; Then _PropertyGet = sValue Else _PropertyGet = _GetPropertyValue(_Element, &quot;Label&quot;, &quot;&quot;)
@@ -330,4 +335,5 @@ Error_Function:
 	_PropertySet = False
 	GoTo Exit_Function
 End Function			&apos;	_PropertySet
+
 </script:module>

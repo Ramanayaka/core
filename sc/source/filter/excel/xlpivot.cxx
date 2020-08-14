@@ -17,17 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dpgroup.hxx"
-#include "dpsave.hxx"
-#include "xestream.hxx"
-#include "xistream.hxx"
-#include "xestring.hxx"
-#include "xlpivot.hxx"
-#include "generalfunction.hxx"
+#include <dpsave.hxx>
+#include <xestream.hxx>
+#include <xistream.hxx>
+#include <xestring.hxx>
+#include <xlpivot.hxx>
+#include <generalfunction.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <com/sun/star/sheet/DataPilotFieldGroupBy.hpp>
+#include <com/sun/star/sheet/DataPilotFieldSortMode.hpp>
+#include <com/sun/star/sheet/DataPilotFieldShowItemsMode.hpp>
+#include <com/sun/star/sheet/DataPilotFieldLayoutMode.hpp>
+#include <com/sun/star/sheet/DataPilotFieldReferenceType.hpp>
+#include <com/sun/star/sheet/DataPilotFieldReferenceItemType.hpp>
 
-using ::com::sun::star::sheet::GeneralFunction;
 using ::com::sun::star::sheet::DataPilotFieldOrientation;
 
 namespace ScDPSortMode = ::com::sun::star::sheet::DataPilotFieldSortMode;
@@ -60,19 +64,17 @@ void XclPCItem::SetText( const OUString& rText )
     maText = rText;
 }
 
-void XclPCItem::SetDouble( double fValue )
+void XclPCItem::SetDouble( double fValue, const OUString& rText )
 {
     meType = EXC_PCITEM_DOUBLE;
-    //TODO convert double to string
-    maText.clear();
+    maText = rText;
     mfValue = fValue;
 }
 
-void XclPCItem::SetDateTime( const DateTime& rDateTime )
+void XclPCItem::SetDateTime( const DateTime& rDateTime, const OUString& rText )
 {
     meType = EXC_PCITEM_DATETIME;
-    //TODO convert date to string
-    maText.clear();
+    maText = rText;
     maDateTime = rDateTime;
 }
 
@@ -101,11 +103,10 @@ void XclPCItem::SetError( sal_uInt16 nError )
     }
 }
 
-void XclPCItem::SetBool( bool bValue )
+void XclPCItem::SetBool( bool bValue, const OUString& rText )
 {
     meType = EXC_PCITEM_BOOL;
-    //TODO convert boolean to string
-    maText.clear();
+    maText = rText;
     mbValue = bValue;
 }
 
@@ -159,6 +160,11 @@ const sal_uInt16* XclPCItem::GetError() const
 const bool* XclPCItem::GetBool() const
 {
     return (meType == EXC_PCITEM_BOOL) ? &mbValue : nullptr;
+}
+
+XclPCItemType XclPCItem::GetType() const
+{
+    return meType;
 }
 
 // Field settings =============================================================
@@ -407,7 +413,7 @@ XclExpStream& operator<<( XclExpStream& rStrm, const XclPTCachedName& rCachedNam
     if( rCachedName.mbUseCache )
         rStrm << EXC_PT_NOSTRING;
     else
-        rStrm << XclExpString( rCachedName.maName, EXC_STR_DEFAULT, EXC_PT_MAXSTRLEN );
+        rStrm << XclExpString( rCachedName.maName, XclStrFlags::NONE, EXC_PT_MAXSTRLEN );
     return rStrm;
 }
 
@@ -512,9 +518,9 @@ void XclPTFieldInfo::GetSubtotals( XclPTSubtotalVec& rSubtotals ) const
 void XclPTFieldInfo::SetSubtotals( const XclPTSubtotalVec& rSubtotals )
 {
     mnSubtotals = EXC_SXVD_SUBT_NONE;
-    for( XclPTSubtotalVec::const_iterator aIt = rSubtotals.begin(), aEnd = rSubtotals.end(); aIt != aEnd; ++aIt )
+    for( const auto& rSubtotal : rSubtotals )
     {
-        switch( *aIt )
+        switch( rSubtotal )
         {
             case ScGeneralFunction::AUTO:      mnSubtotals |= EXC_SXVD_SUBT_DEFAULT;   break;
             case ScGeneralFunction::SUM:       mnSubtotals |= EXC_SXVD_SUBT_SUM;       break;
@@ -566,8 +572,7 @@ XclPTFieldExtInfo::XclPTFieldExtInfo() :
     mnFlags( EXC_SXVDEX_DEFAULTFLAGS ),
     mnSortField( EXC_SXVDEX_SORT_OWN ),
     mnShowField( EXC_SXVDEX_SHOW_NONE ),
-    mnNumFmt(0),
-    mpFieldTotalName(nullptr)
+    mnNumFmt(0)
 {
 }
 
@@ -635,7 +640,7 @@ XclImpStream& operator>>( XclImpStream& rStrm, XclPTFieldExtInfo& rInfo )
     rStrm.Ignore(10);
     if (nNameLen != 0xFF)
         // Custom field total name is used.  Pick it up.
-        rInfo.mpFieldTotalName.reset(new OUString(rStrm.ReadUniString(nNameLen, 0)));
+        rInfo.mpFieldTotalName = rStrm.ReadUniString(nNameLen, 0);
 
     return rStrm;
 }
@@ -647,7 +652,7 @@ XclExpStream& operator<<( XclExpStream& rStrm, const XclPTFieldExtInfo& rInfo )
             << rInfo.mnShowField
             << EXC_SXVDEX_FORMAT_NONE;
 
-    if (rInfo.mpFieldTotalName.get() && !rInfo.mpFieldTotalName->isEmpty())
+    if (rInfo.mpFieldTotalName && !rInfo.mpFieldTotalName->isEmpty())
     {
         OUString aFinalName = *rInfo.mpFieldTotalName;
         if (aFinalName.getLength() >= 254)
@@ -655,7 +660,7 @@ XclExpStream& operator<<( XclExpStream& rStrm, const XclPTFieldExtInfo& rInfo )
         sal_uInt8 nNameLen = static_cast<sal_uInt8>(aFinalName.getLength());
         rStrm << nNameLen;
         rStrm.WriteZeroBytes(10);
-        rStrm << XclExpString(aFinalName, EXC_STR_NOHEADER);
+        rStrm << XclExpString(aFinalName, XclStrFlags::NoHeader);
     }
     else
     {
@@ -988,7 +993,7 @@ void XclPTViewEx9Info::Init( const ScDPObject& rDPObj )
     const ScDPSaveData* pData = rDPObj.GetSaveData();
     if (pData)
     {
-        const OUString* pGrandTotal = pData->GetGrandTotalName();
+        const std::optional<OUString> & pGrandTotal = pData->GetGrandTotalName();
         if (pGrandTotal)
             maGrandTotalName = *pGrandTotal;
     }
@@ -1014,7 +1019,25 @@ XclExpStream& operator<<( XclExpStream& rStrm, const XclPTViewEx9Info& rInfo )
         << EXC_PT_AUTOFMT_FLAGS
         << rInfo.mnAutoFormat
         << rInfo.mnGridLayout
-        << XclExpString(rInfo.maGrandTotalName, EXC_STR_DEFAULT, EXC_PT_MAXSTRLEN);
+        << XclExpString(rInfo.maGrandTotalName, XclStrFlags::NONE, EXC_PT_MAXSTRLEN);
+}
+
+XclPTAddl::XclPTAddl() :
+    mbCompactMode(false)
+{
+}
+
+XclImpStream& operator>>(XclImpStream& rStrm, XclPTAddl& rInfo)
+{
+    rStrm.Ignore(4);
+    sal_uInt8 sxc = rStrm.ReaduInt8();
+    sal_uInt8 sxd = rStrm.ReaduInt8();
+    if(sxc == 0x00 && sxd == 0x19) // SxcView / sxdVer12Info
+    {
+        sal_uInt32 nFlags = rStrm.ReaduInt32();
+        rInfo.mbCompactMode = ((nFlags & 0x00000008) != 0);
+    }
+    return rStrm;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

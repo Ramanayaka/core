@@ -21,10 +21,11 @@
 
 #include <svl/svldllapi.h>
 #include <sal/types.h>
+#include <o3tl/typed_flags_set.hxx>
 #include <unotools/configitem.hxx>
 #include <unotools/options.hxx>
 #include <i18nlangtag/lang.h>
-#include <o3tl/typed_flags_set.hxx>
+#include <memory>
 
 // class SvtLanguageOptions ----------------------------------------------------
 
@@ -46,11 +47,11 @@ namespace o3tl
 class SvtCJKOptions;
 class SvtCTLOptions;
 
-class SVL_DLLPUBLIC SvtLanguageOptions : public ::utl::detail::Options
+class SVL_DLLPUBLIC SvtLanguageOptions final : public ::utl::detail::Options
 {
 private:
-    SvtCJKOptions*  m_pCJKOptions;
-    SvtCTLOptions*  m_pCTLOptions;
+    std::unique_ptr<SvtCJKOptions>  m_pCJKOptions;
+    std::unique_ptr<SvtCTLOptions>  m_pCTLOptions;
 
 public:
     enum EOption
@@ -111,7 +112,7 @@ public:
 
 /** #i42730# Gives access to the Windows 16bit system locale
  */
-class SVL_DLLPUBLIC SvtSystemLanguageOptions : public utl::ConfigItem
+class SvtSystemLanguageOptions final : public utl::ConfigItem
 {
 private:
     OUString m_sWin16SystemLocale;
@@ -130,9 +131,6 @@ public:
 
     bool            isCJKKeyboardLayoutInstalled() const;
 };
-
-OUString SVL_DLLPUBLIC getInstalledLocaleForLanguage(css::uno::Sequence<OUString> const & installed, OUString const & locale);
-OUString SVL_DLLPUBLIC getInstalledLocaleForSystemUILanguage(css::uno::Sequence<OUString> const & installed);
 
 #endif // INCLUDED_SVL_LANGUAGEOPTIONS_HXX
 

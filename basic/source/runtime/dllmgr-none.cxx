@@ -24,12 +24,10 @@
 #include <postwin.h>
 #endif
 
+#include <basic/sberrors.hxx>
 #include <basic/sbx.hxx>
 #include <basic/sbxvar.hxx>
-#include <rtl/ref.hxx>
-#include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
-#include <salhelper/simplereferenceobject.hxx>
 #include <osl/time.h>
 
 #include "dllmgr.hxx"
@@ -44,9 +42,9 @@ ErrCode returnInt64InOutArg(SbxArray *pArgs, SbxVariable &rRetVal,
 {
     if (!rRetVal.PutLong(1) && !rRetVal.PutInteger(1))
         return ERRCODE_BASIC_BAD_ARGUMENT;
-    if (!pArgs || pArgs->Count() != 2)
+    if (!pArgs || pArgs->Count32() != 2)
         return ERRCODE_BASIC_BAD_ARGUMENT;
-    SbxVariable *pOut = pArgs->Get(1);
+    SbxVariable *pOut = pArgs->Get32(1);
     if (!pOut)
         return ERRCODE_BASIC_BAD_ARGUMENT;
     if (pOut->IsCurrency())

@@ -20,18 +20,15 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSCURRENTSLIDEMANAGER_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSCURRENTSLIDEMANAGER_HXX
 
-#include "model/SlsSharedPageDescriptor.hxx"
+#include <model/SlsSharedPageDescriptor.hxx>
 #include <vcl/timer.hxx>
 #include <tools/link.hxx>
-#include <com/sun/star/drawing/XDrawPage.hpp>
 
 class SdPage;
 
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
+namespace sd::slidesorter { class SlideSorter; }
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 /** Manage the current slide.  This includes setting the according flags at
     the PageDescriptor objects and setting the current slide at the main
@@ -73,7 +70,7 @@ public:
     /** Return the page descriptor for the current slide.  Note, that when
         there is no current slide then the returned pointer is empty.
     */
-    const model::SharedPageDescriptor& GetCurrentSlide() { return mpCurrentSlide;}
+    const model::SharedPageDescriptor& GetCurrentSlide() const { return mpCurrentSlide;}
 
     /** Release all references to model data.
     */
@@ -109,7 +106,7 @@ private:
     DECL_LINK(SwitchPageCallback, Timer*, void);
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

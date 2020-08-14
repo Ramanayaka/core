@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "columnsettings.hxx"
-#include "dbastrings.hrc"
+#include <columnsettings.hxx>
+#include <stringconstants.hxx>
+#include <strings.hxx>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 
-#include <cppuhelper/typeprovider.hxx>
 #include <comphelper/property.hxx>
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
 
 namespace dbaccess
@@ -141,7 +140,7 @@ namespace dbaccess
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
         return true;
     }

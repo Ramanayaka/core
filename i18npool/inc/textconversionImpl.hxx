@@ -19,18 +19,17 @@
 #ifndef INCLUDED_I18NPOOL_INC_TEXTCONVERSIONIMPL_HXX
 #define INCLUDED_I18NPOOL_INC_TEXTCONVERSIONIMPL_HXX
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/i18n/XExtendedTextConversion.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace com::sun::star::uno { class XComponentContext; }
+
+namespace i18npool {
 
 
-//  class TextConversion
 
-class TextConversionImpl : public cppu::WeakImplHelper
+class TextConversionImpl final : public cppu::WeakImplHelper
 <
     css::i18n::XExtendedTextConversion,
     css::lang::XServiceInfo
@@ -69,13 +68,10 @@ private:
     css::uno::Reference < css::uno::XComponentContext > m_xContext;
 
     /// @throws css::lang::NoSupportException
-    void SAL_CALL getLocaleSpecificTextConversion( const css::lang::Locale& rLocale );
+    void getLocaleSpecificTextConversion( const css::lang::Locale& rLocale );
 };
 
-} // i18n
-} // star
-} // sun
-} // com
+} // i18npool
 
 
 #endif

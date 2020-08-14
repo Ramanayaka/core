@@ -21,19 +21,13 @@
 #include "formlinkdialog.hxx"
 
 #include "modulepcr.hxx"
-#include "formresid.hrc"
+#include <strings.hrc>
 #include "formstrings.hxx"
 #include <sal/log.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/waitobj.hxx>
-#include <vcl/tabpage.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/builderfactory.hxx>
+#include <tools/diagnose_ex.h>
+#include <vcl/svapp.hxx>
 #include <connectivity/dbtools.hxx>
 #include <connectivity/dbexception.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
@@ -44,7 +38,7 @@
 #include <com/sun/star/sdbc/XRowSet.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/sdb/SQLContext.hpp>
-
+#include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
 
 namespace pcr
 {
@@ -52,7 +46,6 @@ namespace pcr
 
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::lang;
-    using namespace ::com::sun::star::form;
     using namespace ::com::sun::star::sdb;
     using namespace ::com::sun::star::sdbc;
     using namespace ::com::sun::star::sdbcx;
@@ -62,18 +55,18 @@ namespace pcr
 
     //= FieldLinkRow
 
-    class FieldLinkRow : public TabPage
+    class FieldLinkRow
     {
     private:
-        VclPtr<ComboBox>   m_pDetailColumn;
-        VclPtr<ComboBox>   m_pMasterColumn;
+        std::unique_ptr<weld::ComboBox> m_xDetailColumn;
+        std::unique_ptr<weld::ComboBox> m_xMasterColumn;
 
         Link<FieldLinkRow&,void> m_aLinkChangeHandler;
 
     public:
-        explicit FieldLinkRow( vcl::Window* _pParent );
-        virtual ~FieldLinkRow() override;
-        virtual void dispose() override;
+        FieldLinkRow(std::unique_ptr<weld::ComboBox> xDetailColumn,
+                     std::unique_ptr<weld::ComboBox> xMasterColumn);
+
 
         void         SetLinkChangeHandler( const Link<FieldLinkRow&,void>& _rHdl ) { m_aLinkChangeHandler = _rHdl; }
 
@@ -90,132 +83,103 @@ namespace pcr
 
         void    fillList( LinkParticipant _eWhich, const Sequence< OUString >& _rFieldNames );
 
+        void    Show()
+        {
+            m_xDetailColumn->show();
+            m_xMasterColumn->show();
+        }
+
     private:
-        DECL_LINK( OnFieldNameChanged, Edit&, void );
+        DECL_LINK( OnFieldNameChanged, weld::ComboBox&, void );
     };
 
 
-    FieldLinkRow::FieldLinkRow( vcl::Window* _pParent )
-        :TabPage( _pParent, "FieldLinkRow", "modules/spropctrlr/ui/fieldlinkrow.ui" )
+    FieldLinkRow::FieldLinkRow(std::unique_ptr<weld::ComboBox> xDetailColumn,
+                               std::unique_ptr<weld::ComboBox> xMasterColumn)
+        : m_xDetailColumn(std::move(xDetailColumn))
+        , m_xMasterColumn(std::move(xMasterColumn))
     {
-        get(m_pDetailColumn, "detailCombobox");
-        get(m_pMasterColumn, "masterCombobox");
-
-        m_pDetailColumn->SetDropDownLineCount( 10 );
-        m_pMasterColumn->SetDropDownLineCount( 10 );
-
-        m_pDetailColumn->SetModifyHdl( LINK( this, FieldLinkRow, OnFieldNameChanged ) );
-        m_pMasterColumn->SetModifyHdl( LINK( this, FieldLinkRow, OnFieldNameChanged ) );
-    }
-
-    FieldLinkRow::~FieldLinkRow()
-    {
-        disposeOnce();
-    }
-
-    void FieldLinkRow::dispose()
-    {
-        m_pDetailColumn.clear();
-        m_pMasterColumn.clear();
-        TabPage::dispose();
+        m_xDetailColumn->connect_changed( LINK( this, FieldLinkRow, OnFieldNameChanged ) );
+        m_xMasterColumn->connect_changed( LINK( this, FieldLinkRow, OnFieldNameChanged ) );
     }
 
     void FieldLinkRow::fillList( LinkParticipant _eWhich, const Sequence< OUString >& _rFieldNames )
     {
-        ComboBox* pBox = ( _eWhich == eDetailField ) ? m_pDetailColumn.get() : m_pMasterColumn.get();
+        weld::ComboBox* pBox = ( _eWhich == eDetailField ) ? m_xDetailColumn.get() : m_xMasterColumn.get();
 
         const OUString* pFieldName    = _rFieldNames.getConstArray();
         const OUString* pFieldNameEnd = pFieldName + _rFieldNames.getLength();
         for ( ; pFieldName != pFieldNameEnd; ++pFieldName )
-            pBox->InsertEntry( *pFieldName );
+            pBox->append_text( *pFieldName );
     }
-
 
     bool FieldLinkRow::GetFieldName( LinkParticipant _eWhich, OUString& /* [out] */ _rName ) const
     {
-        const ComboBox* pBox = ( _eWhich == eDetailField ) ? m_pDetailColumn : m_pMasterColumn;
-        _rName = pBox->GetText();
+        const weld::ComboBox* pBox = ( _eWhich == eDetailField ) ? m_xDetailColumn.get() : m_xMasterColumn.get();
+        _rName = pBox->get_active_text();
         return !_rName.isEmpty();
     }
 
-
     void FieldLinkRow::SetFieldName( LinkParticipant _eWhich, const OUString& _rName )
     {
-        ComboBox* pBox = ( _eWhich == eDetailField ) ? m_pDetailColumn.get() : m_pMasterColumn.get();
-        pBox->SetText( _rName );
+        weld::ComboBox* pBox = ( _eWhich == eDetailField ) ? m_xDetailColumn.get() : m_xMasterColumn.get();
+        pBox->set_entry_text( _rName );
     }
 
-
-    IMPL_LINK_NOARG( FieldLinkRow, OnFieldNameChanged, Edit&, void )
+    IMPL_LINK_NOARG( FieldLinkRow, OnFieldNameChanged, weld::ComboBox&, void )
     {
         m_aLinkChangeHandler.Call( *this );
     }
 
-    VCL_BUILDER_FACTORY(FieldLinkRow)
-
     //= FormLinkDialog
 
-    FormLinkDialog::FormLinkDialog( vcl::Window* _pParent, const Reference< XPropertySet >& _rxDetailForm,
+    FormLinkDialog::FormLinkDialog(weld::Window* _pParent, const Reference< XPropertySet >& _rxDetailForm,
             const Reference< XPropertySet >& _rxMasterForm, const Reference< XComponentContext >& _rxContext,
             const OUString& _sExplanation,
             const OUString& _sDetailLabel,
             const OUString& _sMasterLabel)
-        :ModalDialog( _pParent, "FormLinks", "modules/spropctrlr/ui/formlinksdialog.ui" )
-        ,m_aRow1       ( VclPtr<FieldLinkRow>::Create( get<VclVBox>("box") ) )
-        ,m_aRow2       ( VclPtr<FieldLinkRow>::Create( get<VclVBox>("box") ) )
-        ,m_aRow3       ( VclPtr<FieldLinkRow>::Create( get<VclVBox>("box") ) )
-        ,m_aRow4       ( VclPtr<FieldLinkRow>::Create( get<VclVBox>("box") ) )
-        ,m_xContext    ( _rxContext )
-        ,m_xDetailForm( _rxDetailForm )
-        ,m_xMasterForm( _rxMasterForm )
-        ,m_sDetailLabel(_sDetailLabel)
-        ,m_sMasterLabel(_sMasterLabel)
+        : GenericDialogController(_pParent, "modules/spropctrlr/ui/formlinksdialog.ui", "FormLinks")
+        , m_xContext    ( _rxContext )
+        , m_xDetailForm( _rxDetailForm )
+        , m_xMasterForm( _rxMasterForm )
+        , m_sDetailLabel(_sDetailLabel)
+        , m_sMasterLabel(_sMasterLabel)
+        , m_xExplanation(m_xBuilder->weld_label("explanationLabel"))
+        , m_xDetailLabel(m_xBuilder->weld_label("detailLabel"))
+        , m_xMasterLabel(m_xBuilder->weld_label("masterLabel"))
+        , m_xRow1(std::make_unique<FieldLinkRow>(m_xBuilder->weld_combo_box("detailCombobox1"),
+                                                 m_xBuilder->weld_combo_box("masterCombobox1")))
+        , m_xRow2(std::make_unique<FieldLinkRow>(m_xBuilder->weld_combo_box("detailCombobox2"),
+                                                 m_xBuilder->weld_combo_box("masterCombobox2")))
+        , m_xRow3(std::make_unique<FieldLinkRow>(m_xBuilder->weld_combo_box("detailCombobox3"),
+                                                 m_xBuilder->weld_combo_box("masterCombobox3")))
+        , m_xRow4(std::make_unique<FieldLinkRow>(m_xBuilder->weld_combo_box("detailCombobox4"),
+                                                 m_xBuilder->weld_combo_box("masterCombobox4")))
+        , m_xOK(m_xBuilder->weld_button("ok"))
+        , m_xSuggest(m_xBuilder->weld_button("suggestButton"))
     {
-        get(m_pExplanation, "explanationLabel");
-        get(m_pDetailLabel, "detailLabel");
-        get(m_pMasterLabel, "masterLabel");
-        get(m_pOK, "ok");
-        get(m_pSuggest, "suggestButton");
-        m_aRow1->Show();
-        m_aRow2->Show();
-        m_aRow3->Show();
-        m_aRow4->Show();
-        set_width_request(600);
+        m_xRow1->Show();
+        m_xRow2->Show();
+        m_xRow3->Show();
+        m_xRow4->Show();
+        m_xDialog->set_size_request(600, -1);
 
         if ( !_sExplanation.isEmpty() )
-            m_pExplanation->SetText(_sExplanation);
+            m_xExplanation->set_label(_sExplanation);
 
-        m_pSuggest->SetClickHdl       ( LINK( this, FormLinkDialog, OnSuggest      ) );
-        m_aRow1->SetLinkChangeHandler( LINK( this, FormLinkDialog, OnFieldChanged ) );
-        m_aRow2->SetLinkChangeHandler( LINK( this, FormLinkDialog, OnFieldChanged ) );
-        m_aRow3->SetLinkChangeHandler( LINK( this, FormLinkDialog, OnFieldChanged ) );
-        m_aRow4->SetLinkChangeHandler( LINK( this, FormLinkDialog, OnFieldChanged ) );
+        m_xSuggest->connect_clicked(LINK(this, FormLinkDialog, OnSuggest));
+        m_xRow1->SetLinkChangeHandler( LINK( this, FormLinkDialog, OnFieldChanged ) );
+        m_xRow2->SetLinkChangeHandler( LINK( this, FormLinkDialog, OnFieldChanged ) );
+        m_xRow3->SetLinkChangeHandler( LINK( this, FormLinkDialog, OnFieldChanged ) );
+        m_xRow4->SetLinkChangeHandler( LINK( this, FormLinkDialog, OnFieldChanged ) );
 
-        PostUserEvent( LINK( this, FormLinkDialog, OnInitialize ), nullptr, true );
+        Application::PostUserEvent(LINK(this, FormLinkDialog, OnInitialize));
 
         updateOkButton();
     }
 
-
-    FormLinkDialog::~FormLinkDialog( )
+    FormLinkDialog::~FormLinkDialog()
     {
-        disposeOnce();
-    }
-
-    void FormLinkDialog::dispose( )
-    {
-        m_pExplanation.clear();
-        m_pDetailLabel.clear();
-        m_pMasterLabel.clear();
-        m_pOK.clear();
-        m_pSuggest.clear();
-
-        m_aRow1.disposeAndClear();
-        m_aRow2.disposeAndClear();
-        m_aRow3.disposeAndClear();
-        m_aRow4.disposeAndClear();
-
-        ModalDialog::dispose();
     }
 
     void FormLinkDialog::commitLinkPairs()
@@ -225,7 +189,7 @@ namespace pcr
         std::vector< OUString > aMasterFields; aMasterFields.reserve( 4 );
 
         const FieldLinkRow* aRows[] = {
-            m_aRow1.get(), m_aRow2.get(), m_aRow3.get(), m_aRow4.get()
+            m_xRow1.get(), m_xRow2.get(), m_xRow3.get(), m_xRow4.get()
         };
 
         for (const FieldLinkRow* aRow : aRows)
@@ -243,11 +207,10 @@ namespace pcr
         // and set as property values
         try
         {
-            Reference< XPropertySet > xDetailFormProps( m_xDetailForm, UNO_QUERY );
-            if ( xDetailFormProps.is() )
+            if ( m_xDetailForm.is() )
             {
-                xDetailFormProps->setPropertyValue( PROPERTY_DETAILFIELDS, makeAny( Sequence< OUString >( aDetailFields.data(), aDetailFields.size() ) ) );
-                xDetailFormProps->setPropertyValue( PROPERTY_MASTERFIELDS, makeAny( Sequence< OUString >( aMasterFields.data(), aMasterFields.size() ) ) );
+                m_xDetailForm->setPropertyValue( PROPERTY_DETAILFIELDS, makeAny( Sequence< OUString >( aDetailFields.data(), aDetailFields.size() ) ) );
+                m_xDetailForm->setPropertyValue( PROPERTY_MASTERFIELDS, makeAny( Sequence< OUString >( aMasterFields.data(), aMasterFields.size() ) ) );
             }
         }
         catch( const Exception& )
@@ -256,17 +219,15 @@ namespace pcr
         }
     }
 
-
-    short FormLinkDialog::Execute()
+    short FormLinkDialog::run()
     {
-        short nResult = ModalDialog::Execute();
+        short nResult = GenericDialogController::run();
 
         if ( RET_OK == nResult )
             commitLinkPairs();
 
         return nResult;
     }
-
 
     void FormLinkDialog::initializeFieldLists()
     {
@@ -277,7 +238,7 @@ namespace pcr
         getFormFields( m_xMasterForm, sMasterFields );
 
         FieldLinkRow* aRows[] = {
-            m_aRow1.get(), m_aRow2.get(), m_aRow3.get(), m_aRow4.get()
+            m_xRow1.get(), m_xRow2.get(), m_xRow3.get(), m_xRow4.get()
         };
         for (FieldLinkRow* aRow : aRows)
         {
@@ -300,7 +261,7 @@ namespace pcr
             }
             sDetailType = m_sDetailLabel;
         }
-        m_pDetailLabel->SetText( sDetailType );
+        m_xDetailLabel->set_label( sDetailType );
 
         // label for the master form
         OUString sMasterType = getFormDataSourceType( m_xMasterForm );
@@ -312,9 +273,8 @@ namespace pcr
             }
             sMasterType = m_sMasterLabel;
         }
-        m_pMasterLabel->SetText( sMasterType );
+        m_xMasterLabel->set_label( sMasterType );
     }
-
 
     void FormLinkDialog::initializeFieldRowsFrom( std::vector< OUString >& _rDetailFields, std::vector< OUString >& _rMasterFields )
     {
@@ -323,7 +283,7 @@ namespace pcr
         _rMasterFields.resize( 4 );
 
         FieldLinkRow* aRows[] = {
-            m_aRow1.get(), m_aRow2.get(), m_aRow3.get(), m_aRow4.get()
+            m_xRow1.get(), m_xRow2.get(), m_xRow3.get(), m_xRow4.get()
         };
         for ( sal_Int32 i = 0; i < 4; ++i )
         {
@@ -340,11 +300,10 @@ namespace pcr
             Sequence< OUString > aDetailFields;
             Sequence< OUString > aMasterFields;
 
-            Reference< XPropertySet > xDetailFormProps( m_xDetailForm, UNO_QUERY );
-            if ( xDetailFormProps.is() )
+            if ( m_xDetailForm.is() )
             {
-                xDetailFormProps->getPropertyValue( PROPERTY_DETAILFIELDS ) >>= aDetailFields;
-                xDetailFormProps->getPropertyValue( PROPERTY_MASTERFIELDS ) >>= aMasterFields;
+                m_xDetailForm->getPropertyValue( PROPERTY_DETAILFIELDS ) >>= aDetailFields;
+                m_xDetailForm->getPropertyValue( PROPERTY_MASTERFIELDS ) >>= aMasterFields;
             }
 
             std::vector< OUString > aDetailFields1;
@@ -355,7 +314,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "FormLinkDialog::initializeLinks: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "FormLinkDialog::initializeLinks" );
         }
     }
 
@@ -368,7 +327,7 @@ namespace pcr
         bool bEnable = true;
 
         const FieldLinkRow* aRows[] = {
-            m_aRow1.get(), m_aRow2.get(), m_aRow3.get(), m_aRow4.get()
+            m_xRow1.get(), m_xRow2.get(), m_xRow3.get(), m_xRow4.get()
         };
 
         for ( sal_Int32 i = 0; ( i < 4 ) && bEnable; ++i )
@@ -380,9 +339,8 @@ namespace pcr
                 bEnable = false;
         }
 
-        m_pOK->Enable( bEnable );
+        m_xOK->set_sensitive(bEnable);
     }
-
 
     OUString FormLinkDialog::getFormDataSourceType( const Reference< XPropertySet >& _rxForm )
     {
@@ -405,11 +363,10 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "FormLinkDialog::getFormDataSourceType: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "FormLinkDialog::getFormDataSourceType" );
         }
         return sReturn;
     }
-
 
     void FormLinkDialog::getFormFields( const Reference< XPropertySet >& _rxForm, Sequence< OUString >& /* [out] */ _rNames ) const
     {
@@ -419,7 +376,7 @@ namespace pcr
         OUString sCommand;
         try
         {
-            WaitObject aWaitCursor( const_cast< FormLinkDialog* >( this ) );
+            weld::WaitObject aWaitCursor(m_xDialog.get());
 
             OSL_ENSURE( _rxForm.is(), "FormLinkDialog::getFormFields: invalid form!" );
 
@@ -443,24 +400,23 @@ namespace pcr
         catch (const SQLException& e ) { aErrorInfo = e; }
         catch( const Exception& )
         {
-            OSL_FAIL( "FormLinkDialog::getFormFields: caught a non-SQL exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "FormLinkDialog::getFormFields: caught a non-SQL exception!" );
         }
 
-        if ( aErrorInfo.isValid() )
+        if ( !aErrorInfo.isValid() )
+            return;
+
+        OUString sErrorMessage;
         {
-            OUString sErrorMessage;
-            {
-                sErrorMessage = PcrRes(STR_ERROR_RETRIEVING_COLUMNS);
-                sErrorMessage = sErrorMessage.replaceFirst("#", sCommand);
-            }
-
-            SQLContext aContext;
-            aContext.Message = sErrorMessage;
-            aContext.NextException = aErrorInfo.get();
-            ::dbtools::showError( aContext, VCLUnoHelper::GetInterface( const_cast< FormLinkDialog* >( this ) ), m_xContext );
+            sErrorMessage = PcrRes(STR_ERROR_RETRIEVING_COLUMNS);
+            sErrorMessage = sErrorMessage.replaceFirst("#", sCommand);
         }
-    }
 
+        SQLContext aContext;
+        aContext.Message = sErrorMessage;
+        aContext.NextException = aErrorInfo.get();
+        ::dbtools::showError(aContext, m_xDialog->GetXWindow(), m_xContext);
+    }
 
     void FormLinkDialog::ensureFormConnection( const Reference< XPropertySet >& _rxFormProps, Reference< XConnection >& /* [out] */ _rxConnection ) const
     {
@@ -471,7 +427,7 @@ namespace pcr
             _rxConnection.set(_rxFormProps->getPropertyValue(PROPERTY_ACTIVE_CONNECTION),UNO_QUERY);
 
         if ( !_rxConnection.is() )
-            _rxConnection = ::dbtools::connectRowset( Reference< XRowSet >( _rxFormProps, UNO_QUERY ), m_xContext, true );
+            _rxConnection = ::dbtools::connectRowset( Reference< XRowSet >( _rxFormProps, UNO_QUERY ), m_xContext, nullptr );
     }
 
 
@@ -493,7 +449,7 @@ namespace pcr
         Reference< XPropertySet > xTable;
         try
         {
-            Reference< XTablesSupplier > xTablesInForm( ::dbtools::getCurrentSettingsComposer( _rxFormProps, m_xContext ), UNO_QUERY );
+            Reference< XTablesSupplier > xTablesInForm( ::dbtools::getCurrentSettingsComposer( _rxFormProps, m_xContext, nullptr ), UNO_QUERY );
             Reference< XNameAccess > xTables;
             if ( xTablesInForm.is() )
                 xTables = xTablesInForm->getTables();
@@ -509,7 +465,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "FormLinkDialog::getCanonicUnderlyingTable: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "FormLinkDialog::getCanonicUnderlyingTable" );
         }
         return xTable;
     }
@@ -574,7 +530,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "FormLinkDialog::getExistingRelation: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "FormLinkDialog::getExistingRelation" );
         }
 
         return ( !_rLeftFields.empty() ) && ( !_rLeftFields[ 0 ].isEmpty() );
@@ -583,29 +539,22 @@ namespace pcr
 
     void FormLinkDialog::initializeSuggest()
     {
-        Reference< XPropertySet > xDetailFormProps( m_xDetailForm, UNO_QUERY );
-        Reference< XPropertySet > xMasterFormProps( m_xMasterForm, UNO_QUERY );
-        if ( !xDetailFormProps.is() || !xMasterFormProps.is() )
+        if ( !m_xDetailForm.is() || !m_xMasterForm.is() )
             return;
 
         try
         {
-            bool bEnable = true;
-
             // only show the button when both forms are based on the same data source
-            if ( bEnable )
-            {
-                OUString sMasterDS, sDetailDS;
-                xMasterFormProps->getPropertyValue( PROPERTY_DATASOURCE ) >>= sMasterDS;
-                xDetailFormProps->getPropertyValue( PROPERTY_DATASOURCE ) >>= sDetailDS;
-                bEnable = ( sMasterDS == sDetailDS );
-            }
+            OUString sMasterDS, sDetailDS;
+            m_xMasterForm->getPropertyValue( PROPERTY_DATASOURCE ) >>= sMasterDS;
+            m_xDetailForm->getPropertyValue( PROPERTY_DATASOURCE ) >>= sDetailDS;
+            bool bEnable = ( sMasterDS == sDetailDS );
 
             // only show the button when the connection supports relations
             if ( bEnable )
             {
                 Reference< XDatabaseMetaData > xMeta;
-                getConnectionMetaData( xDetailFormProps, xMeta );
+                getConnectionMetaData( m_xDetailForm, xMeta );
                 OSL_ENSURE( xMeta.is(), "FormLinkDialog::initializeSuggest: unable to retrieve the meta data for the connection!" );
                 try
                 {
@@ -621,8 +570,8 @@ namespace pcr
             Reference< XPropertySet > xDetailTable, xMasterTable;
             if ( bEnable )
             {
-                xDetailTable = getCanonicUnderlyingTable( xDetailFormProps );
-                xMasterTable = getCanonicUnderlyingTable( xMasterFormProps );
+                xDetailTable = getCanonicUnderlyingTable( m_xDetailForm );
+                xMasterTable = getCanonicUnderlyingTable( m_xMasterForm );
                 bEnable = xDetailTable.is() && xMasterTable.is();
             }
 
@@ -648,26 +597,23 @@ namespace pcr
                 bEnable = ( m_aRelationMasterColumns.size() <= 4 );
             }
 
-            m_pSuggest->Enable( bEnable );
+            m_xSuggest->set_sensitive(bEnable);
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "FormLinkDialog::initializeSuggest: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "FormLinkDialog::initializeSuggest" );
         }
     }
 
-
-    IMPL_LINK_NOARG( FormLinkDialog, OnSuggest, Button*, void )
+    IMPL_LINK_NOARG( FormLinkDialog, OnSuggest, weld::Button&, void )
     {
         initializeFieldRowsFrom( m_aRelationDetailColumns, m_aRelationMasterColumns );
     }
-
 
     IMPL_LINK_NOARG( FormLinkDialog, OnFieldChanged, FieldLinkRow&, void )
     {
         updateOkButton();
     }
-
 
     IMPL_LINK_NOARG( FormLinkDialog, OnInitialize, void*, void )
     {

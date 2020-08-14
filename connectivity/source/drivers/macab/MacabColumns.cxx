@@ -23,6 +23,7 @@
 #include "MacabTables.hxx"
 #include "MacabCatalog.hxx"
 #include <connectivity/sdbcx/VColumn.hxx>
+#include <com/sun/star/sdbc/XRow.hpp>
 
 using namespace connectivity::macab;
 using namespace connectivity::sdbcx;
@@ -44,7 +45,7 @@ sdbcx::ObjectType MacabColumns::createObject(const OUString& _rName)
     Reference< XResultSet > xResult = m_pTable->getConnection()->getMetaData()->getColumns(
         aCatalog, sSchemaName, sTableName, _rName);
 
-    sdbcx::ObjectType xRet = nullptr;
+    sdbcx::ObjectType xRet;
     if (xResult.is())
     {
         Reference< XRow > xRow(xResult,UNO_QUERY);
@@ -85,7 +86,7 @@ void MacabColumns::impl_refresh()
 
 MacabColumns::MacabColumns( MacabTable* _pTable,
                         ::osl::Mutex& _rMutex,
-                        const TStringVector &_rVector)
+                        const ::std::vector< OUString> &_rVector)
     : sdbcx::OCollection(*_pTable, true, _rMutex, _rVector),
       m_pTable(_pTable)
 {

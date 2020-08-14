@@ -23,29 +23,17 @@
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 
-#include "ado_pre_sys_include.h"
 #include <oaidl.h>
-#include "ado_post_sys_include.h"
 
-namespace com
+namespace com::sun::star::util
 {
-    namespace sun
-    {
-        namespace star
-        {
-            namespace util
-            {
-                struct Date;
-                struct Time;
-                struct DateTime;
-            }
-        }
-    }
+    struct Date;
+    struct Time;
+    struct DateTime;
 }
-namespace connectivity
+
+namespace connectivity::ado
 {
-    namespace ado
-    {
         class OLEString
         {
             BSTR m_sStr;
@@ -148,7 +136,6 @@ namespace connectivity
             void set(double n);
 
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AOLEVARIANT_HXX

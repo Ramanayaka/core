@@ -16,22 +16,21 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXHEADERCELL_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXHEADERCELL_HXX
+#pragma once
 
-#include "extended/AccessibleBrowseBoxBase.hxx"
+#include <extended/AccessibleBrowseBoxBase.hxx>
 
 namespace accessibility
 {
-    class AccessibleBrowseBoxHeaderCell : public BrowseBoxAccessibleElement
+    class AccessibleBrowseBoxHeaderCell final : public BrowseBoxAccessibleElement
     {
         sal_Int32   m_nColumnRowId;
     public:
         AccessibleBrowseBoxHeaderCell(sal_Int32 _nColumnRowId,
                                           const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-                                          ::svt::IAccessibleTableProvider&                  _rBrowseBox,
+                                          ::vcl::IAccessibleTableProvider&                  _rBrowseBox,
                                           const css::uno::Reference< css::awt::XWindow >& _xFocusWindow,
-                                          ::svt::AccessibleBrowseBoxObjType  _eObjType);
+                                          ::vcl::AccessibleBrowseBoxObjType  _eObjType);
         /** @return  The count of visible children. */
         virtual sal_Int32 SAL_CALL getAccessibleChildCount() override;
 
@@ -47,7 +46,7 @@ namespace accessibility
 
         bool isRowBarCell() const
         {
-            return getType() == ::svt::BBTYPE_ROWHEADERCELL;
+            return getType() == ::vcl::BBTYPE_ROWHEADERCELL;
         }
 
         /** @return
@@ -62,13 +61,12 @@ namespace accessibility
         */
         ::utl::AccessibleStateSetHelper* implCreateStateSetHelper() override;
 
-    protected:
+    private:
         virtual tools::Rectangle implGetBoundingBox() override;
 
         virtual tools::Rectangle implGetBoundingBoxOnScreen() override;
     };
 }
 
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXHEADERCELL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

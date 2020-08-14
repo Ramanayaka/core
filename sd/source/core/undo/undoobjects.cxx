@@ -17,14 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "undo/undoobjects.hxx"
-#include "sdpage.hxx"
-#include "CustomAnimationEffect.hxx"
-#include "drawdoc.hxx"
-#include "undoanim.hxx"
-#include "ViewShell.hxx"
-#include "ViewShellBase.hxx"
-#include "DrawDocShell.hxx"
+#include <tools/debug.hxx>
+#include <undo/undoobjects.hxx>
+#include <sdpage.hxx>
+#include <CustomAnimationEffect.hxx>
+#include <drawdoc.hxx>
+#include <undoanim.hxx>
+#include <ViewShell.hxx>
+#include <ViewShellBase.hxx>
+#include <DrawDocShell.hxx>
 
 using namespace sd;
 
@@ -44,34 +45,31 @@ ViewShellId SdUndoAction::GetViewShellId() const
 }
 
 UndoRemovePresObjectImpl::UndoRemovePresObjectImpl( SdrObject& rObject )
-: mpUndoUsercall(nullptr)
-, mpUndoAnimation(nullptr)
-, mpUndoPresObj(nullptr)
 {
-    SdPage* pPage = dynamic_cast< SdPage* >( rObject.GetPage() );
-    if( pPage )
-    {
-        if( pPage->IsPresObj(&rObject) )
-            mpUndoPresObj = new UndoObjectPresentationKind( rObject );
-        if( rObject.GetUserCall() )
-            mpUndoUsercall = new UndoObjectUserCall(rObject);
+    SdPage* pPage = dynamic_cast< SdPage* >( rObject.getSdrPageFromSdrObject() );
+    if( !pPage )
+        return;
 
-        if( pPage->hasAnimationNode() )
+    if( pPage->IsPresObj(&rObject) )
+        mpUndoPresObj.reset( new UndoObjectPresentationKind( rObject ) );
+    if( rObject.GetUserCall() )
+        mpUndoUsercall.reset( new UndoObjectUserCall(rObject) );
+
+    if( pPage->hasAnimationNode() )
+    {
+        css::uno::Reference< css::drawing::XShape > xShape( rObject.getUnoShape(), css::uno::UNO_QUERY );
+        if( pPage->getMainSequence()->hasEffect( xShape ) )
         {
-            css::uno::Reference< css::drawing::XShape > xShape( rObject.getUnoShape(), css::uno::UNO_QUERY );
-            if( pPage->getMainSequence()->hasEffect( xShape ) )
-            {
-                mpUndoAnimation = new UndoAnimation( static_cast< SdDrawDocument* >( pPage->GetModel() ), pPage );
-            }
+            mpUndoAnimation.reset(
+                new UndoAnimation( // TTTT may use ref? Or just *SdrPage?
+                    static_cast< SdDrawDocument* >(&pPage->getSdrModelFromSdrPage()),
+                    pPage));
         }
     }
 }
 
 UndoRemovePresObjectImpl::~UndoRemovePresObjectImpl()
 {
-    delete mpUndoAnimation;
-    delete mpUndoPresObj;
-    delete mpUndoUsercall;
 }
 
 void UndoRemovePresObjectImpl::Undo()
@@ -94,8 +92,8 @@ void UndoRemovePresObjectImpl::Redo()
         mpUndoUsercall->Redo();
 }
 
-UndoRemoveObject::UndoRemoveObject( SdrObject& rObject, bool bOrdNumDirect )
-: SdrUndoRemoveObj( rObject, bOrdNumDirect ), UndoRemovePresObjectImpl( rObject )
+UndoRemoveObject::UndoRemoveObject( SdrObject& rObject )
+: SdrUndoRemoveObj( rObject ), UndoRemovePresObjectImpl( rObject )
 , mxSdrObject(&rObject)
 {
 }
@@ -147,8 +145,8 @@ void UndoDeleteObject::Redo()
     }
 }
 
-UndoReplaceObject::UndoReplaceObject( SdrObject& rOldObject, SdrObject& rNewObject, bool bOrdNumDirect )
-: SdrUndoReplaceObj( rOldObject, rNewObject, bOrdNumDirect )
+UndoReplaceObject::UndoReplaceObject( SdrObject& rOldObject, SdrObject& rNewObject )
+: SdrUndoReplaceObj( rOldObject, rNewObject )
 , UndoRemovePresObjectImpl( rOldObject )
 , mxSdrObject( &rOldObject )
 {
@@ -176,17 +174,19 @@ void UndoReplaceObject::Redo()
 
 UndoObjectSetText::UndoObjectSetText( SdrObject& rObject, sal_Int32 nText )
 : SdrUndoObjSetText( rObject, nText )
-, mpUndoAnimation(nullptr)
 , mbNewEmptyPresObj(false)
 , mxSdrObject( &rObject )
 {
-    SdPage* pPage = dynamic_cast< SdPage* >( rObject.GetPage() );
+    SdPage* pPage = dynamic_cast< SdPage* >( rObject.getSdrPageFromSdrObject() );
     if( pPage && pPage->hasAnimationNode() )
     {
         css::uno::Reference< css::drawing::XShape > xShape( rObject.getUnoShape(), css::uno::UNO_QUERY );
         if( pPage->getMainSequence()->hasEffect( xShape ) )
         {
-            mpUndoAnimation.reset( new UndoAnimation( static_cast< SdDrawDocument* >( pPage->GetModel() ), pPage ) );
+            mpUndoAnimation.reset(
+                new UndoAnimation(
+                    static_cast< SdDrawDocument* >(&pPage->getSdrModelFromSdrPage()),
+                    pPage));
         }
     }
 }
@@ -252,26 +252,26 @@ void UndoObjectUserCall::Redo()
 
 UndoObjectPresentationKind::UndoObjectPresentationKind(SdrObject& rObject)
 :   SdrUndoObj(rObject)
-,   meOldKind(PRESOBJ_NONE)
-,   meNewKind(PRESOBJ_NONE)
-,   mxPage( rObject.GetPage() )
+,   meOldKind(PresObjKind::NONE)
+,   meNewKind(PresObjKind::NONE)
+,   mxPage( static_cast<SdPage*>(rObject.getSdrPageFromSdrObject()) )
 ,   mxSdrObject( &rObject )
 {
     DBG_ASSERT( mxPage.is(), "sd::UndoObjectPresentationKind::UndoObjectPresentationKind(), does not work for shapes without a slide!" );
 
     if( mxPage.is() )
-        meOldKind = static_cast< SdPage* >( mxPage.get() )->GetPresObjKind( &rObject );
+        meOldKind = mxPage->GetPresObjKind( &rObject );
 }
 
 void UndoObjectPresentationKind::Undo()
 {
     if( mxPage.is() && mxSdrObject.is() )
     {
-        SdPage* pPage = static_cast< SdPage* >( mxPage.get() );
+        SdPage* pPage = mxPage.get();
         meNewKind =  pPage->GetPresObjKind( mxSdrObject.get() );
-        if( meNewKind != PRESOBJ_NONE )
+        if( meNewKind != PresObjKind::NONE )
             pPage->RemovePresObj( mxSdrObject.get() );
-        if( meOldKind != PRESOBJ_NONE )
+        if( meOldKind != PresObjKind::NONE )
             pPage->InsertPresObj( mxSdrObject.get(), meOldKind );
     }
 }
@@ -280,10 +280,10 @@ void UndoObjectPresentationKind::Redo()
 {
     if( mxPage.is() && mxSdrObject.is() )
     {
-        SdPage* pPage = static_cast< SdPage* >( mxPage.get() );
-        if( meOldKind != PRESOBJ_NONE )
+        SdPage* pPage = mxPage.get();
+        if( meOldKind != PresObjKind::NONE )
             pPage->RemovePresObj( mxSdrObject.get() );
-        if( meNewKind != PRESOBJ_NONE )
+        if( meNewKind != PresObjKind::NONE )
             pPage->InsertPresObj( mxSdrObject.get(), meNewKind );
     }
 }
@@ -300,14 +300,14 @@ void UndoAutoLayoutPosAndSize::Undo()
 
 void UndoAutoLayoutPosAndSize::Redo()
 {
-    SdPage* pPage = static_cast< SdPage* >( mxPage.get() );
+    SdPage* pPage = mxPage.get();
     if( pPage )
         pPage->SetAutoLayout( pPage->GetAutoLayout() );
 }
 
 UndoGeoObject::UndoGeoObject( SdrObject& rNewObj )
 : SdrUndoGeoObj( rNewObj )
-, mxPage( rNewObj.GetPage() )
+, mxPage( static_cast<SdPage*>(rNewObj.getSdrPageFromSdrObject()) )
 , mxSdrObject( &rNewObj )
 {
 }
@@ -319,7 +319,7 @@ void UndoGeoObject::Undo()
     {
         if( mxPage.is() )
         {
-            ScopeLockGuard aGuard( static_cast< SdPage* >( mxPage.get() )->maLockAutoLayoutArrangement );
+            ScopeLockGuard aGuard( mxPage->maLockAutoLayoutArrangement );
             SdrUndoGeoObj::Undo();
         }
         else
@@ -336,7 +336,7 @@ void UndoGeoObject::Redo()
     {
         if( mxPage.is() )
         {
-            ScopeLockGuard aGuard( static_cast< SdPage* >(mxPage.get())->maLockAutoLayoutArrangement );
+            ScopeLockGuard aGuard( mxPage->maLockAutoLayoutArrangement );
             SdrUndoGeoObj::Redo();
         }
         else
@@ -348,7 +348,7 @@ void UndoGeoObject::Redo()
 
 UndoAttrObject::UndoAttrObject( SdrObject& rObject, bool bStyleSheet1, bool bSaveText )
 : SdrUndoAttrObj( rObject, bStyleSheet1, bSaveText )
-, mxPage( rObject.GetPage() )
+, mxPage( static_cast<SdPage*>(rObject.getSdrPageFromSdrObject()) )
 , mxSdrObject( &rObject )
 {
 }
@@ -360,7 +360,7 @@ void UndoAttrObject::Undo()
     {
         if( mxPage.is() )
         {
-            ScopeLockGuard aGuard( static_cast< SdPage* >( mxPage.get() )->maLockAutoLayoutArrangement );
+            ScopeLockGuard aGuard( mxPage->maLockAutoLayoutArrangement );
             SdrUndoAttrObj::Undo();
         }
         else
@@ -377,7 +377,7 @@ void UndoAttrObject::Redo()
     {
         if( mxPage.is() )
         {
-            ScopeLockGuard aGuard( static_cast< SdPage* >( mxPage.get() )->maLockAutoLayoutArrangement );
+            ScopeLockGuard aGuard( mxPage->maLockAutoLayoutArrangement );
             SdrUndoAttrObj::Redo();
         }
         else

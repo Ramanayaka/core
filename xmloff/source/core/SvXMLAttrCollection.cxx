@@ -20,7 +20,8 @@ bool SvXMLAttrCollection::operator ==( const SvXMLAttrCollection& rCmp ) const
 bool SvXMLAttrCollection::AddAttr( const OUString& rLName,
                                        const OUString& rValue )
 {
-    aAttrs.push_back( SvXMLAttr(rLName, rValue) );
+    assert(!rLName.isEmpty());
+    aAttrs.emplace_back(rLName, rValue );
     return true;
 }
 
@@ -29,8 +30,11 @@ bool SvXMLAttrCollection::AddAttr( const OUString& rPrefix,
                                        const OUString& rLName,
                                        const OUString& rValue )
 {
+    assert(!rPrefix.isEmpty());
+    assert(!rNamespace.isEmpty());
+    assert(!rLName.isEmpty());
     sal_uInt16 nPos = aNamespaceMap.Add( rPrefix, rNamespace );
-    aAttrs.push_back( SvXMLAttr(nPos, rLName, rValue) );
+    aAttrs.emplace_back(nPos, rLName, rValue );
     return true;
 }
 
@@ -38,10 +42,12 @@ bool SvXMLAttrCollection::AddAttr( const OUString& rPrefix,
                                        const OUString& rLName,
                                        const OUString& rValue )
 {
+    assert(!rPrefix.isEmpty());
+    assert(!rLName.isEmpty());
     sal_uInt16 nPos = aNamespaceMap.GetIndexByPrefix( rPrefix );
     if( USHRT_MAX == nPos )
         return false;
-    aAttrs.push_back( SvXMLAttr(nPos, rLName, rValue) );
+    aAttrs.emplace_back(nPos, rLName, rValue );
     return true;
 }
 
@@ -49,6 +55,7 @@ bool SvXMLAttrCollection::SetAt( size_t i,
                                      const OUString& rLName,
                                      const OUString& rValue )
 {
+    assert(!rLName.isEmpty());
     if( i >= GetAttrCount() )
         return false;
     aAttrs[i] = SvXMLAttr(rLName, rValue);
@@ -61,6 +68,9 @@ bool SvXMLAttrCollection::SetAt( size_t i,
                                      const OUString& rLName,
                                      const OUString& rValue )
 {
+    assert(!rPrefix.isEmpty());
+    assert(!rNamespace.isEmpty());
+    assert(!rLName.isEmpty());
     if( i >= GetAttrCount() )
         return false;
 
@@ -77,6 +87,8 @@ bool SvXMLAttrCollection::SetAt( size_t i,
                                      const OUString& rLName,
                                      const OUString& rValue )
 {
+    assert(!rPrefix.isEmpty());
+    assert(!rLName.isEmpty());
     if( i >= GetAttrCount() )
         return false;
 
@@ -117,7 +129,7 @@ const OUString& SvXMLAttrCollection::GetAttrValue(size_t i) const
     return aAttrs[i].getValue();
 }
 
-const OUString SvXMLAttrCollection::GetAttrNamespace( size_t i ) const
+OUString SvXMLAttrCollection::GetAttrNamespace( size_t i ) const
 {
     OUString sRet;
     sal_uInt16 nPos = GetPrefixPos( i );
@@ -127,7 +139,7 @@ const OUString SvXMLAttrCollection::GetAttrNamespace( size_t i ) const
     return sRet;
 }
 
-const OUString SvXMLAttrCollection::GetAttrPrefix( size_t i ) const
+OUString SvXMLAttrCollection::GetAttrPrefix( size_t i ) const
 {
     OUString sRet;
     sal_uInt16 nPos = GetPrefixPos( i );

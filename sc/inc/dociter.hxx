@@ -22,11 +22,12 @@
 
 #include "address.hxx"
 #include "formulagroup.hxx"
-#include <tools/solar.h>
 #include "global.hxx"
 #include "scdllapi.h"
 #include "cellvalue.hxx"
 #include "mtvelements.hxx"
+#include "queryparam.hxx"
+#include <vcl/outdev.hxx>
 #include <vcl/vclptr.hxx>
 
 #include <memory>
@@ -37,7 +38,6 @@ class ScDocument;
 class ScPatternAttr;
 class ScAttrArray;
 class ScAttrIterator;
-class ScRange;
 class ScFlatBoolRowSegments;
 class ScMatrix;
 struct ScDBQueryParamBase;
@@ -45,22 +45,26 @@ struct ScQueryParam;
 struct ScDBQueryParamInternal;
 struct ScDBQueryParamMatrix;
 class ScFormulaCell;
+class OutputDevice;
+struct ScInterpreterContext;
+enum class SvNumFormatType : sal_Int16;
 
 class ScValueIterator            // walk through all values in an area
 {
     typedef sc::CellStoreType::const_position_type PositionType;
 
     ScDocument*     pDoc;
+    ScInterpreterContext* pContext;
     const ScAttrArray*  pAttrArray;
-    sal_uLong           nNumFormat;     // for CalcAsShown
-    sal_uLong           nNumFmtIndex;
+    sal_uInt32      nNumFormat;     // for CalcAsShown
+    sal_uInt32      nNumFmtIndex;
     ScAddress       maStartPos;
     ScAddress       maEndPos;
     SCCOL           mnCol;
     SCTAB           mnTab;
     SCROW           nAttrEndRow;
     SubtotalFlags   mnSubTotalFlags;
-    short           nNumFmtType;
+    SvNumFormatType nNumFmtType;
     bool            bNumValid;
     bool            bCalcAsShown;
     bool            bTextAsZero;
@@ -84,13 +88,15 @@ public:
         ScDocument* pDocument, const ScRange& rRange, SubtotalFlags nSubTotalFlags = SubtotalFlags::NONE,
         bool bTextAsZero = false );
 
-    void GetCurNumFmtInfo( short& nType, sal_uLong& nIndex );
+    void GetCurNumFmtInfo( const ScInterpreterContext& rContext, SvNumFormatType& nType, sal_uInt32& nIndex );
 
     /// Does NOT reset rValue if no value found!
     bool GetFirst( double& rValue, FormulaError& rErr );
 
     /// Does NOT reset rValue if no value found!
     bool GetNext( double& rValue, FormulaError& rErr );
+
+    void SetInterpreterContext( ScInterpreterContext* context ) { pContext = context; }
 };
 
 class ScDBQueryDataIterator
@@ -109,7 +115,7 @@ public:
 private:
     static const sc::CellStoreType* GetColumnCellStore(ScDocument& rDoc, SCTAB nTab, SCCOL nCol);
     static const ScAttrArray* GetAttrArrayByCol(ScDocument& rDoc, SCTAB nTab, SCCOL nCol);
-    static bool IsQueryValid(ScDocument& rDoc, const ScQueryParam& rParam, SCTAB nTab, SCROW nRow, ScRefCellValue* pCell);
+    static bool IsQueryValid(ScDocument& rDoc, const ScQueryParam& rParam, SCTAB nTab, SCROW nRow, const ScRefCellValue* pCell);
 
     class DataAccess
     {
@@ -121,11 +127,11 @@ private:
         virtual bool getNext(Value& rValue) = 0;
     };
 
-    class DataAccessInternal : public DataAccess
+    class DataAccessInternal final : public DataAccess
     {
         typedef std::pair<sc::CellStoreType::const_iterator,size_t> PositionType;
     public:
-        DataAccessInternal(ScDBQueryParamInternal* pParam, ScDocument* pDoc);
+        DataAccessInternal(ScDBQueryParamInternal* pParam, ScDocument* pDoc, const ScInterpreterContext& rContext);
         virtual ~DataAccessInternal() override;
         virtual bool getCurrent(Value& rValue) override;
         virtual bool getFirst(Value& rValue) override;
@@ -139,18 +145,19 @@ private:
         PositionType maCurPos;
         ScDBQueryParamInternal* mpParam;
         ScDocument*         mpDoc;
+        const ScInterpreterContext& mrContext;
         const ScAttrArray*  pAttrArray;
-        sal_uLong               nNumFormat;     // for CalcAsShown
-        sal_uLong               nNumFmtIndex;
+        sal_uInt32          nNumFormat;     // for CalcAsShown
+        sal_uInt32          nNumFmtIndex;
         SCCOL               nCol;
         SCROW               nRow;
         SCROW               nAttrEndRow;
         SCTAB               nTab;
-        short               nNumFmtType;
+        SvNumFormatType     nNumFmtType;
         bool                bCalcAsShown;
     };
 
-    class DataAccessMatrix : public DataAccess
+    class DataAccessMatrix final : public DataAccess
     {
     public:
         DataAccessMatrix(ScDBQueryParamMatrix* pParam);
@@ -165,14 +172,13 @@ private:
         ScDBQueryParamMatrix* mpParam;
         SCROW mnCurRow;
         SCROW mnRows;
-        SCCOL mnCols;
     };
 
     ::std::unique_ptr<ScDBQueryParamBase> mpParam;
     ::std::unique_ptr<DataAccess>         mpData;
 
 public:
-                    ScDBQueryDataIterator(ScDocument* pDocument, ScDBQueryParamBase* pParam);
+                    ScDBQueryDataIterator(ScDocument* pDocument, const ScInterpreterContext& rContext, std::unique_ptr<ScDBQueryParamBase> pParam);
     /// Does NOT reset rValue if no value found!
     bool            GetFirst(Value& rValue);
     /// Does NOT reset rValue if no value found!
@@ -228,7 +234,7 @@ public:
     const ScAddress& GetPos() const { return maCurPos; }
 
     CellType getType() const { return maCurCell.meType;}
-    OUString getString();
+    OUString getString() const;
     const EditTextObject* getEditText() const { return maCurCell.mpEditText;}
     ScFormulaCell* getFormulaCell() { return maCurCell.mpFormula;}
     const ScFormulaCell* getFormulaCell() const { return maCurCell.mpFormula;}
@@ -236,7 +242,6 @@ public:
     const ScRefCellValue& getRefCellValue() const { return maCurCell;}
 
     bool hasString() const;
-    bool hasEmptyData() const;
     bool isEmpty() const;
     bool equalsWithoutFormat( const ScAddress& rPos ) const;
 
@@ -265,8 +270,9 @@ class ScQueryCellIterator           // walk through all non-empty cells in an ar
     typedef sc::CellStoreType::const_position_type PositionType;
     PositionType maCurPos;
 
-    std::unique_ptr<ScQueryParam> mpParam;
+    ScQueryParam    maParam;
     ScDocument*     pDoc;
+    const ScInterpreterContext& mrContext;
     SCTAB           nTab;
     SCCOL           nCol;
     SCROW           nRow;
@@ -293,14 +299,14 @@ class ScQueryCellIterator           // walk through all non-empty cells in an ar
     bool BinarySearch();
 
 public:
-                    ScQueryCellIterator(ScDocument* pDocument, SCTAB nTable,
-                                        const ScQueryParam& aParam, bool bMod = true);
-                                        // for bMod = FALSE the QueryParam has to be filled
+                    ScQueryCellIterator(ScDocument* pDocument, const ScInterpreterContext& rContext, SCTAB nTable,
+                                        const ScQueryParam& aParam, bool bMod);
+                                        // when !bMod, the QueryParam has to be filled
                                         // (bIsString)
     bool GetFirst();
     bool GetNext();
-    SCCOL           GetCol() { return nCol; }
-    SCROW           GetRow() { return nRow; }
+    SCCOL           GetCol() const { return nCol; }
+    SCROW           GetRow() const { return nRow; }
 
                     // increments all Entry.nField, if column
                     // changes, for ScInterpreter ScHLookup()
@@ -359,6 +365,31 @@ public:
                         number format!
                       */
     bool            FindEqualOrSortedLastInRange( SCCOL& nFoundCol, SCROW& nFoundRow );
+};
+
+// Used by ScInterpreter::ScCountIf.
+// Walk through all non-empty cells in an area.
+class ScCountIfCellIterator
+{
+    typedef sc::CellStoreType::const_position_type PositionType;
+    PositionType    maCurPos;
+    ScQueryParam    maParam;
+    ScDocument*     pDoc;
+    const ScInterpreterContext& mrContext;
+    SCTAB           nTab;
+    SCCOL           nCol;
+    SCROW           nRow;
+
+    /** Initialize position for new column. */
+    void            InitPos();
+    void            IncPos();
+    void            IncBlock();
+    void            AdvanceQueryParamEntryField();
+
+public:
+                    ScCountIfCellIterator(ScDocument* pDocument, const ScInterpreterContext& rContext, SCTAB nTable,
+                                        const ScQueryParam& aParam);
+    int             GetCount();
 };
 
 class ScDocAttrIterator             // all attribute areas
@@ -422,8 +453,6 @@ class ScHorizontalCellIterator      // walk through all non empty cells in an ar
     SCCOL           nEndCol;
     SCROW           nStartRow;
     SCROW           nEndRow;
-    SCROW*          pNextRows;
-    SCSIZE*         pNextIndices;
     SCCOL           mnCol;
     SCROW           mnRow;
     ScRefCellValue  maCurCell;
@@ -454,7 +483,7 @@ private:
     const ScAttrArray        *pAttrArray;
     std::unique_ptr<ScHorizontalCellIterator>
                               pCellIter;
-    sal_uLong                 nNumFormat;     // for CalcAsShown
+    sal_uInt32                nNumFormat;     // for CalcAsShown
     SCTAB                     nEndTab;
     SCCOL                     nCurCol;
     SCROW                     nCurRow;
@@ -483,10 +512,11 @@ private:
     SCCOL                   nEndCol;
     SCROW                   nEndRow;
 
-    SCROW*                  pNextEnd;
-    SCCOL*                  pHorizEnd;
-    SCSIZE*                 pIndices;
-    const ScPatternAttr**   ppPatterns;
+    std::unique_ptr<SCROW[]>  pNextEnd;
+    std::unique_ptr<SCCOL[]>  pHorizEnd;
+    std::unique_ptr<SCSIZE[]> pIndices;
+    std::unique_ptr<const ScPatternAttr*[]>
+                              ppPatterns;
     SCCOL                   nCol;
     SCROW                   nRow;
     bool                    bRowEmpty;
@@ -564,9 +594,9 @@ public:
     struct TabRanges
     {
         SCTAB mnTab;
-        std::shared_ptr<ScFlatBoolRowSegments> mpRanges;
+        ScFlatBoolRowSegments maRanges;
 
-        TabRanges(SCTAB nTab);
+        TabRanges(SCTAB nTab, SCROW nMaxRow);
     };
 
     /**

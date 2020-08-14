@@ -21,18 +21,16 @@
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_STATUSINDICATORINTERFACEWRAPPER_HXX
 
 #include <com/sun/star/task/XStatusIndicator.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 
 #include <rtl/ustring.hxx>
 #include <cppuhelper/implbase.hxx>
-
-#include <vector>
+#include <cppuhelper/weakref.hxx>
 
 namespace framework
 {
 
-class StatusIndicatorInterfaceWrapper :   public ::cppu::WeakImplHelper< css::task::XStatusIndicator>
+class StatusIndicatorInterfaceWrapper final : public ::cppu::WeakImplHelper< css::task::XStatusIndicator>
 {
     public:
         StatusIndicatorInterfaceWrapper( const css::uno::Reference< css::lang::XComponent >& rStatusIndicatorImpl );

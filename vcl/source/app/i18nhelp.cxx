@@ -17,18 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "comphelper/processfactory.hxx"
-#include "unotools/localedatawrapper.hxx"
-#include "unotools/transliterationwrapper.hxx"
+#include <unotools/localedatawrapper.hxx>
+#include <unotools/transliterationwrapper.hxx>
 
-#include "i18nlangtag/languagetag.hxx"
-#include "i18nutil/transliteration.hxx"
+#include <i18nlangtag/languagetag.hxx>
+#include <i18nutil/transliteration.hxx>
 
-#include "rtl/ustrbuf.hxx"
+#include <rtl/ustrbuf.hxx>
 
 #include <vcl/i18nhelp.hxx>
-
-#include "com/sun/star/lang/XMultiServiceFactory.hpp"
 
 using namespace ::com::sun::star;
 
@@ -49,11 +46,8 @@ vcl::I18nHelper::~I18nHelper()
 
 void vcl::I18nHelper::ImplDestroyWrappers()
 {
-    delete mpLocaleDataWrapper;
-    mpLocaleDataWrapper = nullptr;
-
-    delete mpTransliterationWrapper;
-    mpTransliterationWrapper= nullptr;
+    mpLocaleDataWrapper.reset();
+    mpTransliterationWrapper.reset();
 }
 
 utl::TransliterationWrapper& vcl::I18nHelper::ImplGetTransliterationWrapper() const
@@ -64,7 +58,7 @@ utl::TransliterationWrapper& vcl::I18nHelper::ImplGetTransliterationWrapper() co
         if ( mbTransliterateIgnoreCase )
             nModules |= TransliterationFlags::IGNORE_CASE;
 
-        const_cast<vcl::I18nHelper*>(this)->mpTransliterationWrapper = new utl::TransliterationWrapper( m_xContext, nModules );
+        const_cast<vcl::I18nHelper*>(this)->mpTransliterationWrapper.reset(new utl::TransliterationWrapper( m_xContext, nModules ));
         const_cast<vcl::I18nHelper*>(this)->mpTransliterationWrapper->loadModuleIfNeeded( maLanguageTag.getLanguageType() );
     }
     return *mpTransliterationWrapper;
@@ -74,12 +68,12 @@ LocaleDataWrapper& vcl::I18nHelper::ImplGetLocaleDataWrapper() const
 {
     if ( !mpLocaleDataWrapper )
     {
-        const_cast<vcl::I18nHelper*>(this)->mpLocaleDataWrapper = new LocaleDataWrapper( m_xContext, maLanguageTag );
+        const_cast<vcl::I18nHelper*>(this)->mpLocaleDataWrapper.reset(new LocaleDataWrapper( m_xContext, maLanguageTag ));
     }
     return *mpLocaleDataWrapper;
 }
 
-inline bool is_formatting_mark( sal_Unicode c )
+static bool is_formatting_mark( sal_Unicode c )
 {
     if( (c >= 0x200B) && (c <= 0x200F) )    // BiDi and zero-width-markers
         return true;
@@ -90,7 +84,7 @@ inline bool is_formatting_mark( sal_Unicode c )
 
 /* #i100057# filter formatting marks out of strings before passing them to
    the transliteration. The real solution would have been an additional TransliterationModule
-   to ignore these marks during transliteration; however changin the code in i18npool that actually
+   to ignore these marks during transliteration; however changing the code in i18npool that actually
    implements this could produce unwanted side effects.
 
    Of course this copying around is not really good, but looking at i18npool, one more time
@@ -119,8 +113,7 @@ sal_Int32 vcl::I18nHelper::CompareString( const OUString& rStr1, const OUString&
         // Change mbTransliterateIgnoreCase and destroy the wrapper, next call to
         // ImplGetTransliterationWrapper() will create a wrapper with the correct bIgnoreCase
         const_cast<vcl::I18nHelper*>(this)->mbTransliterateIgnoreCase = false;
-        delete const_cast<vcl::I18nHelper*>(this)->mpTransliterationWrapper;
-        const_cast<vcl::I18nHelper*>(this)->mpTransliterationWrapper = nullptr;
+        const_cast<vcl::I18nHelper*>(this)->mpTransliterationWrapper.reset();
     }
 
     OUString aStr1( filterFormattingChars(rStr1) );
@@ -137,8 +130,7 @@ bool vcl::I18nHelper::MatchString( const OUString& rStr1, const OUString& rStr2 
         // Change mbTransliterateIgnoreCase and destroy the wrapper, next call to
         // ImplGetTransliterationWrapper() will create a wrapper with the correct bIgnoreCase
         const_cast<vcl::I18nHelper*>(this)->mbTransliterateIgnoreCase = true;
-        delete const_cast<vcl::I18nHelper*>(this)->mpTransliterationWrapper;
-        const_cast<vcl::I18nHelper*>(this)->mpTransliterationWrapper = nullptr;
+        const_cast<vcl::I18nHelper*>(this)->mpTransliterationWrapper.reset();
     }
 
     OUString aStr1( filterFormattingChars(rStr1) );

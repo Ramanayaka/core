@@ -20,9 +20,9 @@
 #ifndef INCLUDED_SVX_ENHANCEDCUSTOMSHAPEFUNCTIONPARSER_HXX
 #define INCLUDED_SVX_ENHANCEDCUSTOMSHAPEFUNCTIONPARSER_HXX
 
+#include <config_options.h>
 #include <sal/config.h>
 #include <com/sun/star/drawing/EnhancedCustomShapeParameter.hpp>
-#include <com/sun/star/drawing/EnhancedCustomShapeParameterType.hpp>
 #include <memory>
 #include <ostream>
 #include <vector>
@@ -126,15 +126,15 @@ inline std::basic_ostream<charT, traits> & operator <<(
 
     case ExpressionFunct::TernaryIf : return stream << "if";
 
-    default: return stream << "?(" << (int)eFunc << ")";
+    default: return stream << "?(" << static_cast<int>(eFunc) << ")";
     }
 }
 
 #define EXPRESSION_FLAG_SUMANGLE_MODE 1
 
-SVX_DLLPUBLIC void FillEquationParameter( const css::drawing::EnhancedCustomShapeParameter&, const sal_Int32, EnhancedCustomShapeEquation& );
+SVXCORE_DLLPUBLIC void FillEquationParameter( const css::drawing::EnhancedCustomShapeParameter&, const sal_Int32, EnhancedCustomShapeEquation& );
 
-class ExpressionNode
+class SAL_DLLPUBLIC_RTTI ExpressionNode
 {
 public:
     virtual ~ExpressionNode();
@@ -143,7 +143,7 @@ public:
 
         This predicate returns true, if this node is
         neither time- nor ViewInfo dependent. This allows
-        for certain obtimizations, i.e. not the full
+        for certain optimizations, i.e. not the full
         expression tree needs be represented by
         ExpressionNodes.
 
@@ -233,7 +233,7 @@ public:
         @return the generated function object.
        */
 
-    SVX_DLLPUBLIC static std::shared_ptr<ExpressionNode> parseFunction( const OUString& rFunction, const EnhancedCustomShape2d& rCustoShape );
+    UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) static std::shared_ptr<ExpressionNode> const & parseFunction( const OUString& rFunction, const EnhancedCustomShape2d& rCustoShape );
 
     // this is a singleton
     FunctionParser() = delete;

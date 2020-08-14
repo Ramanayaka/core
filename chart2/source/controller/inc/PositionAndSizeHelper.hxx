@@ -20,8 +20,10 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_POSITIONANDSIZEHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_POSITIONANDSIZEHELPER_HXX
 
-#include "ObjectIdentifier.hxx"
-#include <com/sun/star/frame/XModel.hpp>
+#include <ObjectIdentifier.hxx>
+
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::awt { struct Rectangle; }
 
 namespace chart
 {
@@ -32,11 +34,13 @@ public:
     static bool moveObject( ObjectType eObjectType
             , const css::uno::Reference< css::beans::XPropertySet >& xObjectProp
             , const css::awt::Rectangle& rNewPositionAndSize
+            , const css::awt::Rectangle& rOldPositionAndSize
             , const css::awt::Rectangle& rPageRectangle );
 
     static bool moveObject( const OUString& rObjectCID
             , const css::uno::Reference< css::frame::XModel >& xChartModel
             , const css::awt::Rectangle& rNewPositionAndSize
+            , const css::awt::Rectangle& rOldPositionAndSize
             , const css::awt::Rectangle& rPageRectangle );
 };
 

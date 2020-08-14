@@ -22,23 +22,17 @@
 
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Sequence.h>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XPropertyAccess.hpp>
-#include <com/sun/star/beans/XPropertyChangeListener.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XServiceDisplayName.hpp>
 
-#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/linguistic2/XLinguProperties.hpp>
 #include <com/sun/star/linguistic2/XThesaurus.hpp>
 
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/interfacecontainer.h>
+#include <linguistic/misc.hxx>
 
 #include <map>
 #include <memory>
 
-#include "lngopt.hxx"
+#include "defs.hxx"
 
 
 class ThesaurusDispatcher :
@@ -73,7 +67,7 @@ public:
     virtual css::uno::Sequence< css::uno::Reference< css::linguistic2::XMeaning > > SAL_CALL
         queryMeanings( const OUString& aTerm,
                 const css::lang::Locale& aLocale,
-                const css::beans::PropertyValues& aProperties ) override;
+                const css::uno::Sequence< ::css::beans::PropertyValue >& aProperties ) override;
 
     // LinguDispatcher
     virtual void
@@ -87,8 +81,9 @@ public:
 inline css::uno::Reference< css::linguistic2::XLinguProperties >
         ThesaurusDispatcher::GetPropSet()
 {
-    return xPropSet.is() ?
-        xPropSet : xPropSet = linguistic::GetLinguProperties();
+    if (!xPropSet.is())
+        xPropSet = linguistic::GetLinguProperties();
+    return xPropSet;
 }
 
 

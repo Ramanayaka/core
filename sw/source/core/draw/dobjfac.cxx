@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <dpage.hxx>
 #include <dobjfac.hxx>
 #include <dflyobj.hxx>
 
@@ -31,7 +30,7 @@ IMPL_STATIC_LINK(
         // No switch, there's only one at the moment
         OSL_ENSURE( aParams.nObjIdentifier == SwFlyDrawObjIdentifier,
                                         "Wrong inventor or identifier" );
-        return new SwFlyDrawObj;
+        return new SwFlyDrawObj(aParams.rSdrModel);
     }
     return nullptr;
 }

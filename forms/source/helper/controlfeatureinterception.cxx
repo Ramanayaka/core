@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "controlfeatureinterception.hxx"
-#include "urltransformer.hxx"
+#include <controlfeatureinterception.hxx>
+#include <urltransformer.hxx>
 #include <osl/diagnose.h>
 
 
@@ -37,7 +37,7 @@ namespace frm
     }
 
 
-    void SAL_CALL ControlFeatureInterception::registerDispatchProviderInterceptor( const Reference< XDispatchProviderInterceptor >& _rxInterceptor )
+    void ControlFeatureInterception::registerDispatchProviderInterceptor( const Reference< XDispatchProviderInterceptor >& _rxInterceptor )
     {
         if ( !_rxInterceptor.is() )
         {
@@ -48,9 +48,8 @@ namespace frm
         if ( m_xFirstDispatchInterceptor.is() )
         {
             // there is already an interceptor; the new one will become its master
-            Reference< XDispatchProvider > xFirstProvider( m_xFirstDispatchInterceptor, UNO_QUERY );
-            _rxInterceptor->setSlaveDispatchProvider( xFirstProvider );
-            m_xFirstDispatchInterceptor->setMasterDispatchProvider( xFirstProvider );
+            _rxInterceptor->setSlaveDispatchProvider( m_xFirstDispatchInterceptor );
+            m_xFirstDispatchInterceptor->setMasterDispatchProvider( m_xFirstDispatchInterceptor );
         }
 
         // we are the master of the chain's first interceptor
@@ -60,7 +59,7 @@ namespace frm
     }
 
 
-    void SAL_CALL ControlFeatureInterception::releaseDispatchProviderInterceptor( const Reference< XDispatchProviderInterceptor >& _rxInterceptor )
+    void ControlFeatureInterception::releaseDispatchProviderInterceptor( const Reference< XDispatchProviderInterceptor >& _rxInterceptor )
     {
         if ( !_rxInterceptor.is() )
         {
@@ -136,7 +135,7 @@ namespace frm
     }
 
 
-    Reference< XDispatch > ControlFeatureInterception::queryDispatch( const sal_Char* _pAsciiURL )
+    Reference< XDispatch > ControlFeatureInterception::queryDispatch( const char* _pAsciiURL )
     {
         return queryDispatch( m_pUrlTransformer->getStrictURLFromAscii( _pAsciiURL ) );
     }

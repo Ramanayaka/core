@@ -11,12 +11,13 @@ $(eval $(call gb_Library_Library,dbaxml))
 
 $(eval $(call gb_Library_set_include,dbaxml,\
     $$(INCLUDE) \
+    -I$(SRCDIR)/dbaccess/inc \
     -I$(SRCDIR)/dbaccess/source/inc \
 ))
 
 $(eval $(call gb_Library_use_external,dbaxml,boost_headers))
 
-$(eval $(call gb_Library_set_precompiled_header,dbaxml,$(SRCDIR)/dbaccess/inc/pch/precompiled_dbaxml))
+$(eval $(call gb_Library_set_precompiled_header,dbaxml,dbaccess/inc/pch/precompiled_dbaxml))
 
 $(eval $(call gb_Library_use_sdk_api,dbaxml))
 
@@ -62,13 +63,10 @@ $(eval $(call gb_Library_add_exception_objects,dbaxml,\
     dbaccess/source/filter/xml/xmlLogin \
     dbaccess/source/filter/xml/xmlQuery \
     dbaccess/source/filter/xml/xmlServerDatabase \
-    dbaccess/source/filter/xml/xmlservices \
     dbaccess/source/filter/xml/xmlStyleImport \
     dbaccess/source/filter/xml/xmlTable \
     dbaccess/source/filter/xml/xmlTableFilterList \
     dbaccess/source/filter/xml/xmlTableFilterPattern \
-    dbaccess/source/shared/flt_reghelper \
-    dbaccess/source/shared/xmlstrings \
 ))
 
 # vim: set noet sw=4 ts=4:

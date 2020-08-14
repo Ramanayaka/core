@@ -25,9 +25,9 @@
 
 #include <vcl/svapp.hxx>
 
-#include "AccContainerEventListener.hxx"
-#include "AccObjectManagerAgent.hxx"
-#include "unomsaaevent.hxx"
+#include <AccContainerEventListener.hxx>
+#include <AccObjectManagerAgent.hxx>
+#include <unomsaaevent.hxx>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::accessibility;
@@ -63,7 +63,7 @@ void  AccContainerEventListener::notifyEvent( const css::accessibility::Accessib
         break;
     case AccessibleEventId::TEXT_CHANGED:
         HandleTextChangedEvent(aEvent.OldValue, aEvent.NewValue);
-        SAL_FALLTHROUGH; //TODO ???
+        [[fallthrough]]; //TODO ???
     case AccessibleEventId::VISIBLE_DATA_CHANGED:
         HandleVisibleDataChangedEvent();
         break;
@@ -137,12 +137,10 @@ void AccContainerEventListener::HandleChildChangedEvent(Any oldValue, Any newVal
                 pAgent->NotifyAccEvent(UM_EVENT_CHILD_ADDED, pAcc);
             }
         }
-        else
-        {}
     }
     else if (oldValue >>= xChild)
     {
-        //delete a existing child
+        //delete an existing child
         if(xChild.is())
         {
             XAccessible* pAcc = xChild.get();
@@ -153,8 +151,6 @@ void AccContainerEventListener::HandleChildChangedEvent(Any oldValue, Any newVal
             pAgent->DeleteAccObj( pAcc );
 
         }
-        else
-        {}
     }
 
 }
@@ -373,13 +369,13 @@ void AccContainerEventListener::FireStateFocusedChange(bool enable)
             //for editable combobox, send focus event on only edit control,
             bool bSendFocusOnCombobox = true;
             //send focused event to the first text child
-            Reference<XAccessibleContext> mxContext(m_xAccessible.get()->getAccessibleContext(), UNO_QUERY);
+            Reference<XAccessibleContext> mxContext = m_xAccessible->getAccessibleContext();
             if(mxContext.is())
             {
                 Reference<XAccessible> mxChild = mxContext->getAccessibleChild(0);
                 if(mxChild.is())
                 {
-                    Reference<XAccessibleContext> mxChildContext(mxChild->getAccessibleContext(),UNO_QUERY);
+                    Reference<XAccessibleContext> mxChildContext = mxChild->getAccessibleContext();
                     short childrole = mxChildContext->getAccessibleRole();
                     if (childrole == AccessibleRole::TEXT)
                     {
@@ -487,7 +483,7 @@ void AccContainerEventListener::HandleSelectionChangedWithinEvent(const Any& /*o
 
 void AccContainerEventListener::UpdateAllChildrenState(XAccessible* pXAccessible)
 {
-    Reference<css::accessibility::XAccessibleContext> xContext(pXAccessible->getAccessibleContext(),UNO_QUERY);
+    Reference<css::accessibility::XAccessibleContext> xContext = pXAccessible->getAccessibleContext();
     if(!xContext.is())
     {
         return;
@@ -543,7 +539,7 @@ void  AccContainerEventListener::HandleNameChangedEvent( Any name )
             Reference<XAccessible> mxChild = mxContext->getAccessibleChild(0);
             if(mxChild.is())
             {
-                Reference<XAccessibleContext> mxChildContext(mxChild->getAccessibleContext(),UNO_QUERY);
+                Reference<XAccessibleContext> mxChildContext = mxChild->getAccessibleContext();
                 short childrole = mxChildContext->getAccessibleRole();
                 if (childrole == AccessibleRole::TEXT)
                 {

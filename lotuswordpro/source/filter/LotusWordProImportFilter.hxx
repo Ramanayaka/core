@@ -20,19 +20,18 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LOTUSWORDPROIMPORTFILTER_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LOTUSWORDPROIMPORTFILTER_HXX
 
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/document/XImporter.hpp>
 #include <com/sun/star/document/XExtendedFilterDetection.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <rtl/ustrbuf.hxx>
 
 /* This component will be instantiated for both import or export. Whether it calls
  * setSourceDocument or setTargetDocument determines which Impl function the filter
  * member calls */
-class LotusWordProImportFilter : public cppu::WeakImplHelper
+class LotusWordProImportFilter final : public cppu::WeakImplHelper
 <
     css::document::XFilter,
     css::document::XImporter,
@@ -41,15 +40,12 @@ class LotusWordProImportFilter : public cppu::WeakImplHelper
     css::lang::XServiceInfo
 >
 {
-private:
-
-protected:
     // oo.org declares
     css::uno::Reference< css::uno::XComponentContext > mxContext;
     css::uno::Reference< css::lang::XComponent > mxDoc;
 
     /// @throws css::uno::RuntimeException
-    bool SAL_CALL importImpl( const css::uno::Sequence< css::beans::PropertyValue >& aDescriptor );
+    bool importImpl( const css::uno::Sequence< css::beans::PropertyValue >& aDescriptor );
 
 public:
     explicit LotusWordProImportFilter( const css::uno::Reference< css::uno::XComponentContext > &rxContext)

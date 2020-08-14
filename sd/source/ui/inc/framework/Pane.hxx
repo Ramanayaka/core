@@ -20,19 +20,16 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_PANE_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_PANE_HXX
 
-#include "MutexOwner.hxx"
+#include <MutexOwner.hxx>
 
 #include <com/sun/star/drawing/framework/XPane.hpp>
 #include <com/sun/star/drawing/framework/XPane2.hpp>
-#include <com/sun/star/drawing/framework/TabBarButton.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <vcl/vclptr.hxx>
-#include <memory>
+#include <vcl/window.hxx>
 
-namespace vcl { class Window; }
-
-namespace sd { namespace framework {
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
       css::drawing::framework::XPane,
@@ -57,7 +54,7 @@ class Pane
       public PaneInterfaceBase
 {
 public:
-    /** Create a new Pane object that wrapps the given window.
+    /** Create a new Pane object that wraps the given window.
         @param rsPaneURL
             The URL that is used by the configuration to identify the pane.
             The given URL has to be valid.
@@ -141,7 +138,7 @@ protected:
     void ThrowIfDisposed() const;
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

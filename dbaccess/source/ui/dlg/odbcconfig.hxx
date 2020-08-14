@@ -20,8 +20,6 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_DLG_ODBCCONFIG_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_DLG_ODBCCONFIG_HXX
 
-#include "commontypes.hxx"
-
 #if defined(_WIN32) || (defined (UNX) && !defined(ANDROID) && !defined(IOS))
 #define HAVE_ODBC_SUPPORT
 #endif
@@ -30,17 +28,19 @@
 #define HAVE_ODBC_ADMINISTRATION
 #endif
 
+#include <rtl/ustring.hxx>
 #include <tools/link.hxx>
 #include <osl/module.h>
 
 #include <memory>
+#include <set>
 
 namespace dbaui
 {
 
 // OOdbcEnumeration
 struct OdbcTypesImpl;
-class OOdbcEnumeration
+class OOdbcEnumeration final
 {
     oslModule        m_pOdbcLib;     // the library handle
     OUString         m_sLibPath;     // the path to the library
@@ -68,13 +68,13 @@ public:
 #endif
     const OUString& getLibraryName() const { return m_sLibPath; }
 
-    void        getDatasourceNames(StringBag& _rNames);
+    void        getDatasourceNames(std::set<OUString>& _rNames);
 
-protected:
-    oslGenericFunction  loadSymbol(const sal_Char* _pFunctionName);
+private:
+    oslGenericFunction  loadSymbol(const char* _pFunctionName);
 
     /// load the lib
-    bool        load(const sal_Char* _pLibPath);
+    bool        load(const char* _pLibPath);
     /// unload the lib
     void        unload();
     /// ensure that an ODBC environment is allocated
@@ -89,7 +89,7 @@ class ProcessTerminationWait;
 class OOdbcManagement
 {
     std::unique_ptr< ProcessTerminationWait >   m_pProcessWait;
-    Link<void*,void>                              m_aAsyncFinishCallback;
+    Link<void*,void>                            m_aAsyncFinishCallback;
 
 public:
     explicit OOdbcManagement( const Link<void*,void>& _rAsyncFinishCallback );
@@ -97,6 +97,8 @@ public:
 
     bool    manageDataSources_async();
     bool    isRunning() const;
+    void    disableCallback();
+    void    receivedCallback();
 };
 #endif
 

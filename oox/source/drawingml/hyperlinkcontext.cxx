@@ -21,22 +21,21 @@
 
 #include <com/sun/star/xml/sax/XFastContextHandler.hpp>
 
-#include "oox/helper/propertymap.hxx"
-#include "oox/core/relations.hxx"
-#include "oox/core/xmlfilterbase.hxx"
+#include <oox/helper/attributelist.hxx>
+#include <oox/helper/propertymap.hxx>
+#include <oox/core/relations.hxx>
+#include <oox/core/xmlfilterbase.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
-#include "drawingml/embeddedwavaudiofile.hxx"
 
 using namespace ::oox::core;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
-HyperLinkContext::HyperLinkContext( ContextHandler2Helper& rParent,
+HyperLinkContext::HyperLinkContext( ContextHandler2Helper const & rParent,
         const AttributeList& rAttribs, PropertyMap& aProperties )
     : ContextHandler2( rParent )
     , maProperties(aProperties)
@@ -86,19 +85,16 @@ HyperLinkContext::HyperLinkContext( ContextHandler2Helper& rParent,
             sal_Int32 nIndex = aPPAct.indexOf( '?' );
             OUString aPPAction( nIndex > 0 ? aPPAct.copy( 0, nIndex ) : aPPAct );
 
-            const OUString sHlinkshowjump( "hlinkshowjump" );
-            const OUString sHlinksldjump( "hlinksldjump" );
-            if ( aPPAction.match( sHlinkshowjump ) )
+            if ( aPPAction.match( "hlinkshowjump" ) )
             {
                 const OUString sJump( "jump=" );
                 if ( aPPAct.match( sJump, nIndex + 1 ) )
                 {
                     OUString aDestination( aPPAct.copy( nIndex + 1 + sJump.getLength() ) );
-                    sURL = sURL.concat( "#action?jump=" );
-                    sURL = sURL.concat( aDestination );
+                    sURL += "#action?jump=" + aDestination;
                 }
             }
-            else if ( aPPAction.match( sHlinksldjump ) )
+            else if ( aPPAction.match( "hlinksldjump" ) )
             {
                 sURL.clear();
 
@@ -123,12 +119,10 @@ HyperLinkContext::HyperLinkContext( ContextHandler2Helper& rParent,
                     sal_Int32 nPageNumber = sHref.copy( nIndex2, nLength ).toInt32();
                     if ( nPageNumber )
                     {
-                        const OUString sSlide( "slide" );
-                        const OUString sNotesSlide( "notesSlide" );
                         const OUString aSlideType( sHref.copy( 0, nIndex2 ) );
-                        if ( aSlideType.match( sSlide ) )
+                        if ( aSlideType.match( "slide" ) )
                             sURL = "#Slide " + OUString::number( nPageNumber );
-                        else if ( aSlideType.match( sNotesSlide ) )
+                        else if ( aSlideType.match( "notesSlide" ) )
                             sURL = "#Notes " + OUString::number( nPageNumber );
 //                      else: todo for other types such as notesMaster or slideMaster as they can't be referenced easily
                     }
@@ -165,7 +159,6 @@ ContextHandlerRef HyperLinkContext::onCreateContext(
     return this;
 }
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

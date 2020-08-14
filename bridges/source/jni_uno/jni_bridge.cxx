@@ -18,6 +18,7 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <cassert>
 #include <memory>
@@ -25,10 +26,10 @@
 #include "jni_bridge.h"
 #include "jniunoenvironmentdata.hxx"
 
-#include "jvmaccess/unovirtualmachine.hxx"
-#include "rtl/ref.hxx"
-#include "rtl/strbuf.hxx"
-#include "uno/lbnames.h"
+#include <jvmaccess/unovirtualmachine.hxx>
+#include <rtl/ref.hxx>
+#include <rtl/strbuf.hxx>
+#include <uno/lbnames.h>
 
 using namespace ::osl;
 using namespace ::jni_uno;
@@ -39,7 +40,7 @@ extern "C"
 {
 
 
-void SAL_CALL Mapping_acquire( uno_Mapping * mapping )
+void Mapping_acquire( uno_Mapping * mapping )
     SAL_THROW_EXTERN_C()
 {
     Mapping const * that = static_cast< Mapping const * >( mapping );
@@ -47,7 +48,7 @@ void SAL_CALL Mapping_acquire( uno_Mapping * mapping )
 }
 
 
-void SAL_CALL Mapping_release( uno_Mapping * mapping )
+void Mapping_release( uno_Mapping * mapping )
     SAL_THROW_EXTERN_C()
 {
     Mapping const * that = static_cast< Mapping const * >( mapping );
@@ -55,7 +56,7 @@ void SAL_CALL Mapping_release( uno_Mapping * mapping )
 }
 
 
-void SAL_CALL Mapping_map_to_uno(
+void Mapping_map_to_uno(
     uno_Mapping * mapping, void ** ppOut,
     void * pIn, typelib_InterfaceTypeDescription * td )
     SAL_THROW_EXTERN_C()
@@ -104,7 +105,7 @@ void SAL_CALL Mapping_map_to_uno(
         {
             SAL_WARN(
                 "bridges",
-                "ingoring BridgeRuntimeError \"" << err.m_message << "\"");
+                "ignoring BridgeRuntimeError \"" << err.m_message << "\"");
         }
         catch (const ::jvmaccess::VirtualMachine::AttachGuard::CreationException &)
         {
@@ -114,7 +115,7 @@ void SAL_CALL Mapping_map_to_uno(
 }
 
 
-void SAL_CALL Mapping_map_to_java(
+void Mapping_map_to_java(
     uno_Mapping * mapping, void ** ppOut,
     void * pIn, typelib_InterfaceTypeDescription * td )
     SAL_THROW_EXTERN_C()
@@ -168,7 +169,7 @@ void SAL_CALL Mapping_map_to_java(
     {
         SAL_WARN(
             "bridges",
-            "ingoring BridgeRuntimeError \"" << err.m_message << "\"");
+            "ignoring BridgeRuntimeError \"" << err.m_message << "\"");
     }
     catch (const ::jvmaccess::VirtualMachine::AttachGuard::CreationException &)
     {
@@ -177,7 +178,7 @@ void SAL_CALL Mapping_map_to_java(
 }
 
 
-void SAL_CALL Bridge_free( uno_Mapping * mapping )
+void Bridge_free( uno_Mapping * mapping )
     SAL_THROW_EXTERN_C()
 {
     Mapping * that = static_cast< Mapping * >( mapping );
@@ -194,29 +195,29 @@ namespace jni_uno
 
 void Bridge::acquire() const
 {
-    if (osl_atomic_increment( &m_ref ) == 1)
+    if (++m_ref != 1)
+        return;
+
+    if (m_registered_java2uno)
     {
-        if (m_registered_java2uno)
-        {
-            uno_Mapping * mapping = const_cast< Mapping * >( &m_java2uno );
-            uno_registerMapping(
-                &mapping, Bridge_free,
-                m_java_env, &m_uno_env->aBase, nullptr );
-        }
-        else
-        {
-            uno_Mapping * mapping = const_cast< Mapping * >( &m_uno2java );
-            uno_registerMapping(
-                &mapping, Bridge_free,
-                &m_uno_env->aBase, m_java_env, nullptr );
-        }
+        uno_Mapping * mapping = const_cast< Mapping * >( &m_java2uno );
+        uno_registerMapping(
+            &mapping, Bridge_free,
+            m_java_env, &m_uno_env->aBase, nullptr );
+    }
+    else
+    {
+        uno_Mapping * mapping = const_cast< Mapping * >( &m_uno2java );
+        uno_registerMapping(
+            &mapping, Bridge_free,
+            &m_uno_env->aBase, m_java_env, nullptr );
     }
 }
 
 
 void Bridge::release() const
 {
-    if (! osl_atomic_decrement( &m_ref ))
+    if (! --m_ref )
     {
         uno_revokeMapping(
             m_registered_java2uno
@@ -421,41 +422,41 @@ using namespace ::jni_uno;
 
 extern "C" {
 
-void SAL_CALL java_env_dispose(uno_Environment * env) {
+static void java_env_dispose(uno_Environment * env) {
     auto * envData
         = static_cast<jni_uno::JniUnoEnvironmentData *>(env->pContext);
-    if (envData != nullptr) {
-        jobject async;
-        {
-            osl::MutexGuard g(envData->mutex);
-            async = envData->asynchronousFinalizer;
-            envData->asynchronousFinalizer = nullptr;
-        }
-        if (async != nullptr) {
-            try {
-                JNI_guarded_context jni(envData->info, envData->machine);
-                jni->CallObjectMethodA(
-                    async, envData->info->m_method_AsynchronousFinalizer_drain,
-                    nullptr);
-                jni.ensure_no_exception();
-                jni->DeleteGlobalRef(async);
-            } catch (const BridgeRuntimeError & e) {
-                SAL_WARN(
-                    "bridges",
-                    "ignoring BridgeRuntimeError \"" << e.m_message << "\"");
-            } catch (
-                jvmaccess::VirtualMachine::AttachGuard::CreationException &)
-            {
-                SAL_WARN(
-                    "bridges",
-                    ("ignoring jvmaccess::VirtualMachine::AttachGuard"
-                     "::CreationException"));
-            }
-        }
+    if (envData == nullptr)        return;
+
+    jobject async;
+    {
+        osl::MutexGuard g(envData->mutex);
+        async = envData->asynchronousFinalizer;
+        envData->asynchronousFinalizer = nullptr;
+    }
+    if (async == nullptr)        return;
+
+    try {
+        JNI_guarded_context jni(envData->info, envData->machine);
+        jni->CallObjectMethodA(
+            async, envData->info->m_method_AsynchronousFinalizer_drain,
+            nullptr);
+        jni.ensure_no_exception();
+        jni->DeleteGlobalRef(async);
+    } catch (const BridgeRuntimeError & e) {
+        SAL_WARN(
+            "bridges",
+            "ignoring BridgeRuntimeError \"" << e.m_message << "\"");
+    } catch (
+        jvmaccess::VirtualMachine::AttachGuard::CreationException &)
+    {
+        SAL_WARN(
+            "bridges",
+            ("ignoring jvmaccess::VirtualMachine::AttachGuard"
+             "::CreationException"));
     }
 }
 
-void SAL_CALL java_env_disposing(uno_Environment * env) {
+static void java_env_disposing(uno_Environment * env) {
     java_env_dispose(env);
     delete static_cast<jni_uno::JniUnoEnvironmentData *>(env->pContext);
 }
@@ -465,7 +466,7 @@ void SAL_CALL java_env_disposing(uno_Environment * env) {
 #endif
 
 
-SAL_DLLPUBLIC_EXPORT void SAL_CALL uno_initEnvironment( uno_Environment * java_env )
+SAL_DLLPUBLIC_EXPORT void uno_initEnvironment( uno_Environment * java_env )
     SAL_THROW_EXTERN_C()
 {
     try {
@@ -510,7 +511,7 @@ SAL_DLLPUBLIC_EXPORT void SAL_CALL uno_initEnvironment( uno_Environment * java_e
 #endif
 
 
-SAL_DLLPUBLIC_EXPORT void SAL_CALL uno_ext_getMapping(
+SAL_DLLPUBLIC_EXPORT void uno_ext_getMapping(
     uno_Mapping ** ppMapping, uno_Environment * pFrom, uno_Environment * pTo )
     SAL_THROW_EXTERN_C()
 {
@@ -551,7 +552,7 @@ SAL_DLLPUBLIC_EXPORT void SAL_CALL uno_ext_getMapping(
             uno_registerMapping(
                 &mapping, Bridge_free,
                 pFrom, &pTo->pExtEnv->aBase, nullptr );
-            // coverity[leaked_storage]
+            // coverity[leaked_storage] - on purpose
         }
         else if ( from_env_typename == UNO_LB_UNO && to_env_typename == UNO_LB_JAVA )
         {
@@ -561,7 +562,7 @@ SAL_DLLPUBLIC_EXPORT void SAL_CALL uno_ext_getMapping(
             uno_registerMapping(
                 &mapping, Bridge_free,
                 &pFrom->pExtEnv->aBase, pTo, nullptr );
-            // coverity[leaked_storage]
+            // coverity[leaked_storage] - on purpose
         }
     }
     catch (const BridgeRuntimeError & err)

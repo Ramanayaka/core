@@ -21,17 +21,15 @@
 #define INCLUDED_FORMS_SOURCE_COMPONENT_GRID_HXX
 
 #include "errorbroadcaster.hxx"
-#include "FormComponent.hxx"
-#include "formcontrolfont.hxx"
-#include "InterfaceContainer.hxx"
+#include <FormComponent.hxx>
+#include <formcontrolfont.hxx>
+#include <InterfaceContainer.hxx>
 
 #include <com/sun/star/form/XGridColumnFactory.hpp>
-#include <com/sun/star/form/XLoadable.hpp>
 #include <com/sun/star/sdb/XRowSetSupplier.hpp>
 #include <com/sun/star/sdb/XRowSetChangeBroadcaster.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 
-#include <comphelper/proparrhlp.hxx>
 #include <cppuhelper/implbase7.hxx>
 
 
@@ -51,7 +49,7 @@ typedef ::cppu::ImplHelper7 <   css::awt::XControlModel
                             ,   css::sdb::XRowSetChangeBroadcaster
                             >   OGridControlModel_BASE;
 
-class OGridControlModel :public OControlModel
+class OGridControlModel final :public OControlModel
                         ,public OInterfaceContainer
                         ,public OErrorBroadcaster
                         ,public FontControlModel
@@ -87,7 +85,6 @@ class OGridControlModel :public OControlModel
     bool                    m_bDisplaySynchron  : 1;    // transient
 // [properties]
 
-protected:
     void _reset();
 
 public:
@@ -102,7 +99,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OGridControlModel"); }
+    { return "com.sun.star.form.OGridControlModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -164,10 +161,9 @@ public:
     using OControlModel::disposing;
     using OControlModel::getFastPropertyValue;
 
-protected:
+private:
     virtual css::uno::Reference< css::util::XCloneable > SAL_CALL createClone(  ) override;
 
-protected:
     virtual void approveNewElement(
             const css::uno::Reference< css::beans::XPropertySet >& _rxObject,
             ElementDescription* _pElement
@@ -175,11 +171,8 @@ protected:
 
     css::uno::Reference< css::beans::XPropertySet>  createColumnById(sal_Int32 nTypeId) const;
 
-    static OGridColumn* getColumnImplementation(const css::uno::Reference<css::uno::XInterface>& _rxIFace);
-
     virtual ElementDescription* createElementMetaData( ) override;
 
-protected:
     virtual void implRemoved(const css::uno::Reference<css::uno::XInterface>& _rxObject) override;
     virtual void implInserted( const ElementDescription* _pElement ) override;
     virtual void impl_replacedElement(

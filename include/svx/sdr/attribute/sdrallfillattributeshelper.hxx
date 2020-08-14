@@ -19,21 +19,20 @@
 #ifndef INCLUDED_SVX_SDR_ATTRIBUTE_SDRALLFILLATTRIBUTESHELPER_HXX
 #define INCLUDED_SVX_SDR_ATTRIBUTE_SDRALLFILLATTRIBUTESHELPER_HXX
 
-#include "svx/svxdllapi.h"
+#include <svx/svxdllapi.h>
 #include <drawinglayer/attribute/fillgradientattribute.hxx>
 #include <drawinglayer/attribute/sdrfillattribute.hxx>
-#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
-#include <tools/color.hxx>
+#include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
 #include <svl/itemset.hxx>
 #include <memory>
 
 //////////////////////////////////////////////////////////////////////////////
 
-namespace drawinglayer
-{
-    namespace attribute
+class Color;
+
+namespace drawinglayer::attribute
     {
-        class SVX_DLLPUBLIC SdrAllFillAttributesHelper
+        class SVXCORE_DLLPUBLIC SdrAllFillAttributesHelper
         {
         private:
             basegfx::B2DRange                                                   maLastPaintRange;
@@ -52,7 +51,7 @@ namespace drawinglayer
             ~SdrAllFillAttributesHelper();
 
             bool isUsed() const;
-            bool hasSdrFillAttribute() const { return maFillAttribute.get(); }
+            bool hasSdrFillAttribute() const { return bool(maFillAttribute); }
             bool isTransparent() const;
 
             const drawinglayer::attribute::SdrFillAttribute& getFillAttribute() const;
@@ -72,18 +71,15 @@ namespace drawinglayer
             // oriented
             bool needCompleteRepaint() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 //////////////////////////////////////////////////////////////////////////////
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         typedef std::shared_ptr< SdrAllFillAttributesHelper > SdrAllFillAttributesHelperPtr;
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::attribute
 
 //////////////////////////////////////////////////////////////////////////////
 

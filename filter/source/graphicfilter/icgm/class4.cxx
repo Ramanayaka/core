@@ -18,23 +18,27 @@
  */
 
 
-#include <main.hxx>
-#include <chart.hxx>
-#include <outact.hxx>
+#include "bitmap.hxx"
+#include "cgm.hxx"
+#include "chart.hxx"
+#include "elements.hxx"
+#include "outact.hxx"
+
+#include <o3tl/safeint.hxx>
+
 #include <math.h>
 #include <memory>
 
 using namespace ::com::sun::star;
 
-double CGM::ImplGetOrientation( FloatPoint& rCenter, FloatPoint& rPoint )
+double CGM::ImplGetOrientation( FloatPoint const & rCenter, FloatPoint const & rPoint )
 {
-    double fOrientation;
-
     double nX = rPoint.X - rCenter.X;
     double nY = rPoint.Y - rCenter.Y;
 
-    fOrientation = acos( nX / sqrt( nX * nX + nY * nY ) ) * 57.29577951308;
-    if ( nY > 0 )
+    double fSqrt = sqrt(nX * nX + nY * nY);
+    double fOrientation = fSqrt != 0.0 ? (acos(nX / fSqrt) * 57.29577951308) : 0.0;
+    if (nY > 0)
         fOrientation = 360 - fOrientation;
 
     return fOrientation;
@@ -63,7 +67,7 @@ void CGM::ImplGetVector( double* pVector )
     {
         for ( sal_uInt32 i = 0; i < 4; i++ )
         {
-            pVector[ i ] = (double)ImplGetI( pElement->nVDCIntegerPrecision );
+            pVector[ i ] = static_cast<double>(ImplGetI( pElement->nVDCIntegerPrecision ));
         }
     }
     pVector[ 0 ] *= mnVDCXmul;
@@ -108,13 +112,12 @@ void CGM::ImplDoClass4()
     if ( mbFirstOutPut )
         mpOutAct->FirstOutPut();
 
-    if ( mpBitmapInUse && ( mnElementID != 9 ) )    // process existend graphic
+    if ( mpBitmapInUse && ( mnElementID != 9 ) )    // process existed graphic
     {                                               // because there are now no pending bitmap actions
         CGMBitmapDescriptor* pBmpDesc = mpBitmapInUse->GetBitmap();
         // do anything with the bitmap
         mpOutAct->DrawBitmap( pBmpDesc );
-        delete mpBitmapInUse;
-        mpBitmapInUse = nullptr;
+        mpBitmapInUse.reset();
     }
 
     if ( ( mpChart == nullptr ) || mpChart->IsAnnotation() )
@@ -124,12 +127,12 @@ void CGM::ImplDoClass4()
             case 0x01 : /*PolyLine*/
             {
                 sal_uInt32 nPoints = mnElementSize / ImplGetPointSize();
-                tools::Polygon aPolygon( (sal_uInt16)nPoints );
+                tools::Polygon aPolygon( static_cast<sal_uInt16>(nPoints) );
                 for ( sal_uInt32 i = 0; i < nPoints; i++)
                 {
                     FloatPoint  aFloatPoint;
                     ImplGetPoint( aFloatPoint, true );
-                    aPolygon.SetPoint( Point( (long)aFloatPoint.X, (long)aFloatPoint.Y ), i );
+                    aPolygon.SetPoint( Point( static_cast<long>(aFloatPoint.X), static_cast<long>(aFloatPoint.Y) ), i );
                 }
                 if ( mbFigure )
                     mpOutAct->RegPolyLine( aPolygon );
@@ -152,20 +155,20 @@ void CGM::ImplDoClass4()
                         for ( sal_uInt16 i = 0; i < nPoints; i++ )
                         {
                             ImplGetPoint( aFloatPoint, true );
-                            aPolygon.SetPoint( Point( (long)aFloatPoint.X, (long)aFloatPoint.Y ), 0 );
+                            aPolygon.SetPoint( Point( static_cast<long>(aFloatPoint.X), static_cast<long>(aFloatPoint.Y) ), 0 );
                         }
                         mpOutAct->RegPolyLine( aPolygon );
                     }
                     else
                     {
                         mpOutAct->BeginGroup();
-                        tools::Polygon aPolygon( (sal_uInt16)2 );
+                        tools::Polygon aPolygon( sal_uInt16(2) );
                         for ( sal_uInt16 i = 0; i < nPoints; i++ )
                         {
                             ImplGetPoint( aFloatPoint, true );
-                            aPolygon.SetPoint( Point( (long)aFloatPoint.X, (long)aFloatPoint.Y ), 0 );
+                            aPolygon.SetPoint( Point( static_cast<long>(aFloatPoint.X), static_cast<long>(aFloatPoint.Y) ), 0 );
                             ImplGetPoint( aFloatPoint, true );
-                            aPolygon.SetPoint( Point( (long)aFloatPoint.X, (long)aFloatPoint.Y ), 1);
+                            aPolygon.SetPoint( Point( static_cast<long>(aFloatPoint.X), static_cast<long>(aFloatPoint.Y) ), 1);
                             mpOutAct->DrawPolyLine( aPolygon );
                         }
                         mpOutAct->EndGroup();
@@ -186,15 +189,14 @@ void CGM::ImplDoClass4()
                 sal_uInt32 nType = ImplGetUI16();
                 sal_uInt32 nSize = ImplGetUI( 1 );
 
-                if (static_cast<sal_uIntPtr>(mpEndValidSource - (mpSource + mnParaSize)) < nSize)
+                if (o3tl::make_unsigned(mpEndValidSource - (mpSource + mnParaSize)) < nSize)
                     throw css::uno::Exception("attempt to read past end of input", nullptr);
 
-                mpSource[mnParaSize + nSize] = 0;
+                OUString aStr(reinterpret_cast<char*>(mpSource) + mnParaSize, nSize, RTL_TEXTENCODING_ASCII_US);
 
                 awt::Size aSize;
-                awt::Point aPoint( (long)aFloatPoint.X, (long)aFloatPoint.Y );
-                mpOutAct->DrawText( aPoint, aSize,
-                                reinterpret_cast<char*>(mpSource) + mnParaSize, (FinalFlag)nType );
+                awt::Point aPoint( static_cast<long>(aFloatPoint.X), static_cast<long>(aFloatPoint.Y) );
+                mpOutAct->DrawText(aPoint, aSize, aStr, static_cast<FinalFlag>(nType));
                 mnParaSize = mnElementSize;
             }
             break;
@@ -214,8 +216,8 @@ void CGM::ImplDoClass4()
                 }
                 else
                 {
-                    dx = (double)ImplGetI( pElement->nVDCIntegerPrecision );
-                    dy = (double)ImplGetI( pElement->nVDCIntegerPrecision );
+                    dx = static_cast<double>(ImplGetI( pElement->nVDCIntegerPrecision ));
+                    dy = static_cast<double>(ImplGetI( pElement->nVDCIntegerPrecision ));
                 }
                 ImplMapDouble( dx );
                 ImplMapDouble( dy );
@@ -224,15 +226,14 @@ void CGM::ImplDoClass4()
                 sal_uInt32 nType = ImplGetUI16();
                 sal_uInt32 nSize = ImplGetUI(1);
 
-                if (static_cast<sal_uIntPtr>(mpEndValidSource - (mpSource + mnParaSize)) < nSize)
+                if (o3tl::make_unsigned(mpEndValidSource - (mpSource + mnParaSize)) < nSize)
                     throw css::uno::Exception("attempt to read past end of input", nullptr);
 
-                mpSource[ mnParaSize + nSize ] = 0;
+                OUString aStr(reinterpret_cast<char*>(mpSource) + mnParaSize, nSize, RTL_TEXTENCODING_ASCII_US);
 
-                awt::Point aPoint( (long)aFloatPoint.X, (long)aFloatPoint.Y );
-                awt::Size aSize((long)dx, (long)dy);
-                mpOutAct->DrawText( aPoint, aSize ,
-                                reinterpret_cast<char*>(mpSource) + mnParaSize, (FinalFlag)nType );
+                awt::Point aPoint( static_cast<long>(aFloatPoint.X), static_cast<long>(aFloatPoint.Y) );
+                awt::Size aSize(static_cast<long>(dx), static_cast<long>(dy));
+                mpOutAct->DrawText(aPoint, aSize , aStr, static_cast<FinalFlag>(nType));
                 mnParaSize = mnElementSize;
             }
             break;
@@ -242,7 +243,7 @@ void CGM::ImplDoClass4()
                 (void)ImplGetUI16(); // nType
                 sal_uInt32 nSize = ImplGetUI( 1 );
 
-                if (static_cast<sal_uIntPtr>(mpEndValidSource - (mpSource + mnParaSize)) < nSize)
+                if (o3tl::make_unsigned(mpEndValidSource - (mpSource + mnParaSize)) <= nSize)
                     throw css::uno::Exception("attempt to read past end of input", nullptr);
 
                 mpSource[ mnParaSize + nSize ] = 0;
@@ -264,7 +265,7 @@ void CGM::ImplDoClass4()
                 {
                     FloatPoint  aFloatPoint;
                     ImplGetPoint( aFloatPoint, true );
-                    aPolygon.SetPoint( Point ( (long)( aFloatPoint.X ), (long)( aFloatPoint.Y ) ), i );
+                    aPolygon.SetPoint( Point ( static_cast<long>( aFloatPoint.X ), static_cast<long>( aFloatPoint.Y ) ), i );
                 }
                 mpOutAct->DrawPolygon( aPolygon );
             }
@@ -285,7 +286,7 @@ void CGM::ImplDoClass4()
                 {
                     ImplGetPoint( aFloatPoint, true );
                     nEdgeFlag = ImplGetUI16();
-                    pPoints[ nPoints++ ] = Point( (long)aFloatPoint.X, (long)aFloatPoint.Y );
+                    pPoints[ nPoints++ ] = Point( static_cast<long>(aFloatPoint.X), static_cast<long>(aFloatPoint.Y) );
                     if ( ( nEdgeFlag & 2 ) || ( mnParaSize == mnElementSize ) )
                     {
                         tools::Polygon aPolygon( nPoints );
@@ -309,16 +310,15 @@ void CGM::ImplDoClass4()
 
                 if ( mpBitmapInUse )
                 {
-                    CGMBitmap* pBmpDesc = mpBitmapInUse->GetNext();
-                    if ( pBmpDesc ) // we possibly get a bitmap back which does not fit to
+                    std::unique_ptr<CGMBitmap> xBmpDesc(mpBitmapInUse->GetNext());
+                    if (xBmpDesc) // we possibly get a bitmap back which does not fit to
                     {               // to the previous -> we need to delete this one too
-                        mpOutAct->DrawBitmap( pBmpDesc->GetBitmap() );
-                        delete pBmpDesc;
+                        mpOutAct->DrawBitmap(xBmpDesc->GetBitmap());
                     }
                 }
                 else
                 {
-                    mpBitmapInUse = new CGMBitmap( *this );
+                    mpBitmapInUse.reset( new CGMBitmap( *this ) );
                 }
             }
             break;
@@ -353,7 +353,7 @@ void CGM::ImplDoClass4()
                 if ( pElement->eVDCType == VDC_REAL )
                     aRadius.X = ImplGetFloat( pElement->eVDCRealPrecision, pElement->nVDCRealSize );
                 else
-                    aRadius.X = (double)ImplGetI( pElement->nVDCIntegerPrecision );
+                    aRadius.X = static_cast<double>(ImplGetI( pElement->nVDCIntegerPrecision ));
                 ImplMapDouble( aRadius.X );
                 aRadius.Y = aRadius.X;
                 mpOutAct->DrawEllipse( aCenter, aRadius, fRotation );
@@ -411,9 +411,9 @@ void CGM::ImplDoClass4()
 
                     if ( mbFigure )
                     {
-                        tools::Rectangle aBoundingBox( Point( (long)( aCenterPoint.X - fRadius ), long( aCenterPoint.Y - fRadius ) ),
-                            Size( ( static_cast< long >( 2 * fRadius ) ), (long)( 2 * fRadius) ) );
-                        tools::Polygon aPolygon( aBoundingBox, Point( (long)aStartingPoint.X, (long)aStartingPoint.Y ) ,Point( (long)aEndingPoint.X, (long)aEndingPoint.Y ), PolyStyle::Arc );
+                        tools::Rectangle aBoundingBox(aCenterPoint.X - fRadius, aCenterPoint.Y - fRadius);
+                        aBoundingBox.SaturatingSetSize(Size(2 * fRadius, 2 * fRadius));
+                        tools::Polygon aPolygon( aBoundingBox, Point( static_cast<long>(aStartingPoint.X), static_cast<long>(aStartingPoint.Y) ) ,Point( static_cast<long>(aEndingPoint.X), static_cast<long>(aEndingPoint.Y) ), PolyStyle::Arc );
                         if ( nSwitch )
                             mpOutAct->RegPolyLine( aPolygon, true );
                         else
@@ -508,14 +508,16 @@ void CGM::ImplDoClass4()
                 }
                 else
                 {
-                    aRadius.X = (double)ImplGetI( pElement->nVDCIntegerPrecision );
+                    aRadius.X = static_cast<double>(ImplGetI( pElement->nVDCIntegerPrecision ));
                 }
 
                 ImplMapDouble( aRadius.X );
                 aRadius.Y = aRadius.X;
 
-                fStartAngle = acos( vector[ 0 ] / sqrt( vector[ 0 ] * vector[ 0 ] + vector[ 1 ] * vector[ 1 ] ) ) * 57.29577951308;
-                fEndAngle = acos( vector[ 2 ] / sqrt( vector[ 2 ] * vector[ 2 ] + vector[ 3 ] * vector[ 3 ] ) ) * 57.29577951308;
+                const double fStartSqrt = sqrt(vector[0] * vector[ 0 ] + vector[1] * vector[1]);
+                fStartAngle = fStartSqrt != 0.0 ? (acos(vector[0] / fStartSqrt) * 57.29577951308) : 0.0;
+                const double fEndSqrt = sqrt(vector[2] * vector[ 2 ] + vector[3] * vector[3]);
+                fEndAngle = fEndSqrt != 0.0 ? (acos(vector[ 2 ] / fEndSqrt) * 57.29577951308) : 0.0;
 
                 if ( vector[ 1 ] > 0 )
                     fStartAngle = 360 - fStartAngle;
@@ -527,12 +529,11 @@ void CGM::ImplDoClass4()
 
                 if ( mbFigure )
                 {
-                    tools::Rectangle aBoundingBox(
-                        Point( (long)( aCenter.X - aRadius.X ), long( aCenter.Y - aRadius.X ) ),
-                        Size( static_cast< long >( 2 * aRadius.X ), (long)( 2 * aRadius.X ) ) );
+                    tools::Rectangle aBoundingBox(aCenter.X - aRadius.X, aCenter.Y - aRadius.X);
+                    aBoundingBox.SaturatingSetSize(Size(2 * aRadius.X, 2 * aRadius.X));
                     tools::Polygon aPolygon( aBoundingBox,
-                        Point( (long)vector[ 0 ], (long)vector[ 1 ] ),
-                        Point( (long)vector[ 2 ], (long)vector[ 3 ] ), PolyStyle::Arc );
+                        Point( static_cast<long>(vector[ 0 ]), static_cast<long>(vector[ 1 ]) ),
+                        Point( static_cast<long>(vector[ 2 ]), static_cast<long>(vector[ 3 ]) ), PolyStyle::Arc );
                     mpOutAct->RegPolyLine( aPolygon );
                 }
                 else
@@ -547,7 +548,7 @@ void CGM::ImplDoClass4()
 
             case 0x10 : /*Circular Arc Centre Close*/
             {
-                double fOrientation, fStartAngle, fEndAngle, vector[ 4 ];
+                double fOrientation, vector[ 4 ];
                 FloatPoint aCenter, aRadius;
 
                 if ( mbFigure )
@@ -561,12 +562,14 @@ void CGM::ImplDoClass4()
                 }
                 else
                 {
-                    aRadius.X = (double)ImplGetI( pElement->nVDCIntegerPrecision );
+                    aRadius.X = static_cast<double>(ImplGetI( pElement->nVDCIntegerPrecision ));
                 }
                 ImplMapDouble( aRadius.X );
                 aRadius.Y = aRadius.X;
-                fStartAngle = acos( vector[ 0 ] / sqrt( vector[ 0 ] * vector[ 0 ] + vector[ 1 ] * vector[ 1 ] ) ) * 57.29577951308;
-                fEndAngle = acos( vector[ 2 ] / sqrt( vector[ 2 ] * vector[ 2 ] + vector[ 3 ] * vector[ 3 ] ) ) * 57.29577951308;
+                const double fStartSqrt = sqrt(vector[0] * vector[0] + vector[1] * vector[1]);
+                double fStartAngle = fStartSqrt ? (acos(vector[0] / fStartSqrt) * 57.29577951308) : 0.0;
+                const double fEndSqrt = sqrt(vector[2] * vector[2] + vector[3] * vector[3]);
+                double fEndAngle = fEndSqrt ? acos(vector[2] / fEndSqrt) * 57.29577951308 : 0.0;
 
                 if ( vector[ 1 ] > 0 )
                     fStartAngle = 360 - fStartAngle;
@@ -617,8 +620,10 @@ void CGM::ImplDoClass4()
                 bool bDirection = ImplGetEllipse( aCenter, aRadius, fOrientation );
                 ImplGetVector( &vector[ 0 ] );
 
-                fStartAngle = acos( vector[ 0 ] / sqrt( vector[ 0 ] * vector[ 0 ] + vector[ 1 ] * vector[ 1 ] ) ) * 57.29577951308;
-                fEndAngle = acos( vector[ 2 ] / sqrt( vector[ 2 ] * vector[ 2 ] + vector[ 3 ] * vector[ 3 ] ) ) * 57.29577951308;
+                double fStartSqrt = sqrt(vector[0] * vector[0] + vector[1] * vector[1]);
+                fStartAngle = fStartSqrt ? (acos(vector[0] / fStartSqrt) * 57.29577951308) : 0.0;
+                double fEndSqrt = sqrt(vector[2] * vector[2] + vector[3] * vector[3]);
+                fEndAngle = fEndSqrt ? (acos(vector[2] / fEndSqrt) * 57.29577951308) : 0.0;
 
                 if ( vector[ 1 ] > 0 )
                     fStartAngle = 360 - fStartAngle;
@@ -645,8 +650,10 @@ void CGM::ImplDoClass4()
                 bool bDirection = ImplGetEllipse( aCenter, aRadius, fOrientation );
                 ImplGetVector( &vector[ 0 ] );
 
-                fStartAngle = acos( vector[ 0 ] / sqrt( vector[ 0 ] * vector[ 0 ] + vector[ 1 ] * vector[ 1 ] ) ) * 57.29577951308;
-                fEndAngle = acos( vector[ 2 ] / sqrt( vector[ 2 ] * vector[ 2 ] + vector[ 3 ] * vector[ 3 ] ) ) * 57.29577951308;
+                double fStartSqrt = sqrt(vector[0] * vector[0] + vector[1] * vector[1]);
+                fStartAngle = fStartSqrt ? (acos(vector[0] / fStartSqrt) * 57.29577951308) : 0.0;
+                double fEndSqrt = sqrt(vector[2] * vector[2] + vector[3] * vector[3]);
+                fEndAngle = fEndSqrt ? (acos(vector[2] / fEndSqrt) * 57.29577951308) : 0.0;
 
                 if ( vector[ 1 ] > 0 )
                     fStartAngle = 360 - fStartAngle;
@@ -715,7 +722,7 @@ void CGM::ImplDoClass4()
                 {
                     FloatPoint  aFloatPoint;
                     ImplGetPoint( aFloatPoint, true );
-                    aPolygon.SetPoint( Point ( (long)( aFloatPoint.X ), (long)( aFloatPoint.Y ) ), i );
+                    aPolygon.SetPoint( Point ( static_cast<long>( aFloatPoint.X ), static_cast<long>( aFloatPoint.Y ) ), i );
                 }
                 if ( nOrder & 4 )
                 {

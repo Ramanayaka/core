@@ -21,16 +21,15 @@
 #define INCLUDED_UNOTOOLS_LINGUCFG_HXX
 
 #include <unotools/unotoolsdllapi.h>
-#include <com/sun/star/beans/PropertyValues.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Any.h>
-#include <com/sun/star/lang/Locale.hpp>
-#include <com/sun/star/util/XChangesBatch.hpp>
 #include <rtl/ustring.hxx>
-#include <unotools/configitem.hxx>
 #include <unotools/options.hxx>
 #include <i18nlangtag/lang.h>
 #include <vector>
+
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::util { class XChangesBatch; }
 
 class SvtLinguConfigItem;
 
@@ -136,7 +135,7 @@ struct UNOTOOLS_DLLPUBLIC SvtLinguConfigDictionaryEntry
     css::uno::Sequence< OUString >  aLocaleNames;
 };
 
-class UNOTOOLS_DLLPUBLIC SvtLinguConfig: public utl::detail::Options
+class UNOTOOLS_DLLPUBLIC SvtLinguConfig final : public utl::detail::Options
 {
     // returns static object
     UNOTOOLS_DLLPRIVATE static SvtLinguConfigItem & GetConfigItem();
@@ -158,11 +157,11 @@ public:
     // borrowed from utl::ConfigItem
 
     css::uno::Sequence< OUString >
-        GetNodeNames( const OUString &rNode );
+        GetNodeNames( const OUString &rNode ) const;
 
     css::uno::Sequence< css::uno::Any >
         GetProperties(
-            const css::uno::Sequence< OUString > &rNames );
+            const css::uno::Sequence< OUString > &rNames ) const;
 
     bool
         ReplaceSetProperties(
@@ -179,7 +178,7 @@ public:
     bool    SetProperty( sal_Int32 nPropertyHandle,
                          const css::uno::Any &rValue );
 
-    bool    GetOptions( SvtLinguOptions &rOptions ) const;
+    void    GetOptions( SvtLinguOptions &rOptions ) const;
 
     bool    IsReadOnly( const OUString &rPropertyName ) const;
 
@@ -195,7 +194,7 @@ public:
 
     css::uno::Sequence< OUString > GetDisabledDictionaries() const;
 
-    std::vector< SvtLinguConfigDictionaryEntry > GetActiveDictionariesByFormat( const OUString &rFormatName );
+    std::vector< SvtLinguConfigDictionaryEntry > GetActiveDictionariesByFormat( const OUString &rFormatName ) const;
 
     // functions returning file URLs to the respective images (if found) and empty string otherwise
     OUString     GetSpellAndGrammarContextSuggestionImage( const OUString &rServiceImplName ) const;

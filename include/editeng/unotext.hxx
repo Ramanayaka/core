@@ -21,16 +21,13 @@
 #define INCLUDED_EDITENG_UNOTEXT_HXX
 
 #include <memory>
-#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/text/XTextRange.hpp>
-#include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/text/XTextContent.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/text/XTextRangeMover.hpp>
 #include <com/sun/star/text/XTextCursor.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
@@ -38,7 +35,6 @@
 #include <com/sun/star/beans/XMultiPropertyStates.hpp>
 #include <com/sun/star/text/XTextAppend.hpp>
 #include <com/sun/star/text/XTextCopy.hpp>
-#include <com/sun/star/text/XTextField.hpp>
 #include <com/sun/star/container/XIndexReplace.hpp>
 #include <com/sun/star/awt/FontSlant.hpp>
 #include <com/sun/star/awt/FontDescriptor.hpp>
@@ -51,17 +47,17 @@
 #include <osl/diagnose.hxx>
 #include <osl/mutex.hxx>
 #include <comphelper/servicehelper.hxx>
-#include <tools/link.hxx>
-#include <svl/itemprop.hxx>
 #include <svl/itemset.hxx>
 #include <svl/solar.hrc>
 #include <editeng/editdata.hxx>
 #include <editeng/unoedsrc.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/editengdllapi.h>
-#include <editeng/memberids.hrc>
+#include <editeng/memberids.h>
 
 class SvxItemPropertySet;
+struct SfxItemPropertyMapEntry;
+struct SfxItemPropertySimpleEntry;
 
 #define WID_FONTDESC                OWN_ATTR_VALUE_START
 #define WID_NUMLEVEL                OWN_ATTR_VALUE_START+1
@@ -70,109 +66,107 @@ class SvxItemPropertySet;
 #define WID_PARAISNUMBERINGRESTART  OWN_ATTR_VALUE_START+4
 
 #define SVX_UNOEDIT_NUMBERING_PROPERTIE \
-    {OUString(UNO_NAME_NUMBERING_RULES),        EE_PARA_NUMBULLET,  cppu::UnoType<css::container::XIndexReplace>::get(), 0, 0 }, \
-    {OUString(UNO_NAME_NUMBERING),              EE_PARA_BULLETSTATE,cppu::UnoType<bool>::get(), 0, 0 }
+    {UNO_NAME_NUMBERING_RULES,        EE_PARA_NUMBULLET,  cppu::UnoType<css::container::XIndexReplace>::get(), 0, 0 }, \
+    {UNO_NAME_NUMBERING,              EE_PARA_BULLETSTATE,cppu::UnoType<bool>::get(), 0, 0 }
 
 #define SVX_UNOEDIT_OUTLINER_PROPERTIES \
     SVX_UNOEDIT_NUMBERING_PROPERTIE, \
-    {OUString(UNO_NAME_NUMBERING_LEVEL),        WID_NUMLEVEL,       ::cppu::UnoType<sal_Int16>::get(), 0, 0 }, \
-    {OUString("NumberingStartValue"),           WID_NUMBERINGSTARTVALUE, ::cppu::UnoType<sal_Int16>::get(), 0, 0 }, \
-    {OUString("ParaIsNumberingRestart"),        WID_PARAISNUMBERINGRESTART, cppu::UnoType<bool>::get(), 0, 0 }
+    {UNO_NAME_NUMBERING_LEVEL,        WID_NUMLEVEL,       ::cppu::UnoType<sal_Int16>::get(), 0, 0 }, \
+    {"NumberingStartValue",           WID_NUMBERINGSTARTVALUE, ::cppu::UnoType<sal_Int16>::get(), 0, 0 }, \
+    {"ParaIsNumberingRestart",        WID_PARAISNUMBERINGRESTART, cppu::UnoType<bool>::get(), 0, 0 }
 
 #define SVX_UNOEDIT_CHAR_PROPERTIES \
-    { OUString(UNO_NAME_EDIT_CHAR_HEIGHT),      EE_CHAR_FONTHEIGHT, cppu::UnoType<float>::get(),            0, MID_FONTHEIGHT|CONVERT_TWIPS }, \
-    { OUString("CharScaleWidth"),               EE_CHAR_FONTWIDTH,  ::cppu::UnoType<sal_Int16>::get(),    0, 0 }, \
-    { OUString(UNO_NAME_EDIT_CHAR_FONTNAME),    EE_CHAR_FONTINFO,   ::cppu::UnoType<OUString>::get(),  0, MID_FONT_FAMILY_NAME },\
-    { OUString(UNO_NAME_EDIT_CHAR_FONTSTYLENAME),EE_CHAR_FONTINFO,  ::cppu::UnoType<OUString>::get(),  0, MID_FONT_STYLE_NAME }, \
-    { OUString(UNO_NAME_EDIT_CHAR_FONTFAMILY),  EE_CHAR_FONTINFO,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_FAMILY }, \
-    { OUString(UNO_NAME_EDIT_CHAR_FONTCHARSET), EE_CHAR_FONTINFO,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_CHAR_SET }, \
-    { OUString(UNO_NAME_EDIT_CHAR_FONTPITCH),   EE_CHAR_FONTINFO,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_PITCH }, \
-    { OUString(UNO_NAME_EDIT_CHAR_POSTURE),     EE_CHAR_ITALIC,     ::cppu::UnoType<css::awt::FontSlant>::get(),0, MID_POSTURE }, \
-    { OUString(UNO_NAME_EDIT_CHAR_WEIGHT),      EE_CHAR_WEIGHT,     cppu::UnoType<float>::get(),            0, MID_WEIGHT }, \
-    { OUString(UNO_NAME_EDIT_CHAR_LOCALE),      EE_CHAR_LANGUAGE,   ::cppu::UnoType<css::lang::Locale>::get(),0, MID_LANG_LOCALE }, \
-    { OUString(UNO_NAME_EDIT_CHAR_COLOR),       EE_CHAR_COLOR,      ::cppu::UnoType<sal_Int32>::get(),        0, 0 }, \
-    { OUString("CharBackColor"),                EE_CHAR_BKGCOLOR,   ::cppu::UnoType<sal_Int32>::get(),        0, 0 }, \
-    { OUString("CharBackTransparent"),          EE_CHAR_BKGCOLOR,   ::cppu::UnoType<bool>::get(),             0, MID_GRAPHIC_TRANSPARENT }, \
-    { OUString(UNO_NAME_EDIT_CHAR_ESCAPEMENT),  EE_CHAR_ESCAPEMENT, ::cppu::UnoType<sal_Int16>::get(),        0, MID_ESC }, \
-    { OUString(UNO_NAME_EDIT_CHAR_UNDERLINE),   EE_CHAR_UNDERLINE,  ::cppu::UnoType<sal_Int16>::get(),        0, MID_TL_STYLE }, \
-    { OUString("CharUnderlineColor"),           EE_CHAR_UNDERLINE,  ::cppu::UnoType<sal_Int32>::get(),        0, MID_TL_COLOR }, \
-    { OUString("CharUnderlineHasColor"),        EE_CHAR_UNDERLINE,  cppu::UnoType<bool>::get(),                    0, MID_TL_HASCOLOR } , \
-    { OUString(UNO_NAME_EDIT_CHAR_OVERLINE),    EE_CHAR_OVERLINE,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_TL_STYLE }, \
-    { OUString("CharOverlineColor"),            EE_CHAR_OVERLINE,   ::cppu::UnoType<sal_Int32>::get(),        0, MID_TL_COLOR }, \
-    { OUString("CharOverlineHasColor"),         EE_CHAR_OVERLINE,   cppu::UnoType<bool>::get(),                    0, MID_TL_HASCOLOR } , \
-    { OUString(UNO_NAME_EDIT_CHAR_CROSSEDOUT),  EE_CHAR_STRIKEOUT,  cppu::UnoType<bool>::get(),                    0, MID_CROSSED_OUT }, \
-    { OUString(UNO_NAME_EDIT_CHAR_STRIKEOUT),   EE_CHAR_STRIKEOUT,  ::cppu::UnoType<sal_Int16>::get(),        0, MID_CROSS_OUT}, \
-    { OUString(UNO_NAME_EDIT_CHAR_CASEMAP),     EE_CHAR_CASEMAP,    ::cppu::UnoType<sal_Int16>::get(),        0, 0 }, \
-    { OUString(UNO_NAME_EDIT_CHAR_SHADOWED),    EE_CHAR_SHADOW,     cppu::UnoType<bool>::get(),                    0, 0 }, \
-    { OUString("CharContoured"),                EE_CHAR_OUTLINE,    cppu::UnoType<bool>::get(),                    0, 0 }, \
-    { OUString("CharEscapementHeight"),         EE_CHAR_ESCAPEMENT, cppu::UnoType<sal_Int8>::get(),         0, MID_ESC_HEIGHT },\
-    { OUString("CharAutoKerning"),              EE_CHAR_PAIRKERNING,cppu::UnoType<bool>::get(),                    0, 0 } , \
-    { OUString("CharKerning"),                  EE_CHAR_KERNING,    ::cppu::UnoType<sal_Int16>::get()  ,      0, 0 }, \
-    { OUString("CharWordMode"),                 EE_CHAR_WLM,        cppu::UnoType<bool>::get(),                    0, 0 }, \
-    { OUString("CharEmphasis"),                 EE_CHAR_EMPHASISMARK, ::cppu::UnoType<sal_Int16>::get(),       0, MID_EMPHASIS},\
-    { OUString(UNO_NAME_EDIT_CHAR_HEIGHT_ASIAN),        EE_CHAR_FONTHEIGHT_CJK, cppu::UnoType<float>::get(),            0, MID_FONTHEIGHT|CONVERT_TWIPS }, \
-    { OUString(UNO_NAME_EDIT_CHAR_FONTNAME_ASIAN),      EE_CHAR_FONTINFO_CJK,   ::cppu::UnoType<OUString>::get(),  0, MID_FONT_FAMILY_NAME },\
-    { OUString(UNO_NAME_EDIT_CHAR_FONTSTYLENAME_ASIAN), EE_CHAR_FONTINFO_CJK,   ::cppu::UnoType<OUString>::get(),  0, MID_FONT_STYLE_NAME }, \
-    { OUString(UNO_NAME_EDIT_CHAR_FONTFAMILY_ASIAN),    EE_CHAR_FONTINFO_CJK,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_FAMILY }, \
-    { OUString(UNO_NAME_EDIT_CHAR_FONTCHARSET_ASIAN),   EE_CHAR_FONTINFO_CJK,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_CHAR_SET }, \
-    { OUString(UNO_NAME_EDIT_CHAR_FONTPITCH_ASIAN),     EE_CHAR_FONTINFO_CJK,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_PITCH }, \
-    { OUString(UNO_NAME_EDIT_CHAR_POSTURE_ASIAN),       EE_CHAR_ITALIC_CJK,     ::cppu::UnoType<css::awt::FontSlant>::get(),0, MID_POSTURE }, \
-    { OUString(UNO_NAME_EDIT_CHAR_WEIGHT_ASIAN),        EE_CHAR_WEIGHT_CJK,     cppu::UnoType<float>::get(),            0, MID_WEIGHT }, \
-    { OUString(UNO_NAME_EDIT_CHAR_LOCALE_ASIAN),        EE_CHAR_LANGUAGE_CJK,   ::cppu::UnoType<css::lang::Locale>::get(),0, MID_LANG_LOCALE }, \
-    { OUString(UNO_NAME_EDIT_CHAR_HEIGHT_COMPLEX),      EE_CHAR_FONTHEIGHT_CTL, cppu::UnoType<float>::get(),            0, MID_FONTHEIGHT|CONVERT_TWIPS }, \
-    { OUString(UNO_NAME_EDIT_CHAR_FONTNAME_COMPLEX),    EE_CHAR_FONTINFO_CTL,   ::cppu::UnoType<OUString>::get(),  0, MID_FONT_FAMILY_NAME },\
-    { OUString(UNO_NAME_EDIT_CHAR_FONTSTYLENAME_COMPLEX),EE_CHAR_FONTINFO_CTL,  ::cppu::UnoType<OUString>::get(),  0, MID_FONT_STYLE_NAME }, \
-    { OUString(UNO_NAME_EDIT_CHAR_FONTFAMILY_COMPLEX),  EE_CHAR_FONTINFO_CTL,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_FAMILY }, \
-    { OUString(UNO_NAME_EDIT_CHAR_FONTCHARSET_COMPLEX), EE_CHAR_FONTINFO_CTL,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_CHAR_SET }, \
-    { OUString(UNO_NAME_EDIT_CHAR_FONTPITCH_COMPLEX),   EE_CHAR_FONTINFO_CTL,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_PITCH }, \
-    { OUString(UNO_NAME_EDIT_CHAR_POSTURE_COMPLEX),     EE_CHAR_ITALIC_CTL,     ::cppu::UnoType<css::awt::FontSlant>::get(),0, MID_POSTURE }, \
-    { OUString(UNO_NAME_EDIT_CHAR_WEIGHT_COMPLEX),      EE_CHAR_WEIGHT_CTL,     cppu::UnoType<float>::get(),            0, MID_WEIGHT }, \
-    { OUString(UNO_NAME_EDIT_CHAR_LOCALE_COMPLEX),      EE_CHAR_LANGUAGE_CTL,   ::cppu::UnoType<css::lang::Locale>::get(),0, MID_LANG_LOCALE }, \
-    { OUString("CharRelief"),                           EE_CHAR_RELIEF,         ::cppu::UnoType<sal_Int16>::get(),    0, MID_RELIEF }, \
-    { OUString("CharInteropGrabBag"),                   EE_CHAR_GRABBAG,        cppu::UnoType<css::uno::Sequence<css::beans::PropertyValue >>::get(), 0, 0}
+    { UNO_NAME_EDIT_CHAR_HEIGHT,      EE_CHAR_FONTHEIGHT, cppu::UnoType<float>::get(),            0, MID_FONTHEIGHT|CONVERT_TWIPS }, \
+    { "CharScaleWidth",               EE_CHAR_FONTWIDTH,  ::cppu::UnoType<sal_Int16>::get(),    0, 0 }, \
+    { UNO_NAME_EDIT_CHAR_FONTNAME,    EE_CHAR_FONTINFO,   ::cppu::UnoType<OUString>::get(),  0, MID_FONT_FAMILY_NAME },\
+    { UNO_NAME_EDIT_CHAR_FONTSTYLENAME,EE_CHAR_FONTINFO,  ::cppu::UnoType<OUString>::get(),  0, MID_FONT_STYLE_NAME }, \
+    { UNO_NAME_EDIT_CHAR_FONTFAMILY,  EE_CHAR_FONTINFO,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_FAMILY }, \
+    { UNO_NAME_EDIT_CHAR_FONTCHARSET, EE_CHAR_FONTINFO,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_CHAR_SET }, \
+    { UNO_NAME_EDIT_CHAR_FONTPITCH,   EE_CHAR_FONTINFO,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_PITCH }, \
+    { UNO_NAME_EDIT_CHAR_POSTURE,     EE_CHAR_ITALIC,     ::cppu::UnoType<css::awt::FontSlant>::get(),0, MID_POSTURE }, \
+    { UNO_NAME_EDIT_CHAR_WEIGHT,      EE_CHAR_WEIGHT,     cppu::UnoType<float>::get(),            0, MID_WEIGHT }, \
+    { UNO_NAME_EDIT_CHAR_LOCALE,      EE_CHAR_LANGUAGE,   ::cppu::UnoType<css::lang::Locale>::get(),0, MID_LANG_LOCALE }, \
+    { UNO_NAME_EDIT_CHAR_COLOR,       EE_CHAR_COLOR,      ::cppu::UnoType<sal_Int32>::get(),        0, 0 }, \
+    { UNO_NAME_EDIT_CHAR_TRANSPARENCE,EE_CHAR_COLOR,      ::cppu::UnoType<sal_Int16>::get(),        0, MID_COLOR_ALPHA }, \
+    { "CharBackColor",                EE_CHAR_BKGCOLOR,   ::cppu::UnoType<sal_Int32>::get(),        0, 0 }, \
+    { "CharBackTransparent",          EE_CHAR_BKGCOLOR,   ::cppu::UnoType<bool>::get(),             0, MID_GRAPHIC_TRANSPARENT }, \
+    { UNO_NAME_EDIT_CHAR_ESCAPEMENT,  EE_CHAR_ESCAPEMENT, ::cppu::UnoType<sal_Int16>::get(),        0, MID_ESC }, \
+    { UNO_NAME_EDIT_CHAR_UNDERLINE,   EE_CHAR_UNDERLINE,  ::cppu::UnoType<sal_Int16>::get(),        0, MID_TL_STYLE }, \
+    { "CharUnderlineColor",           EE_CHAR_UNDERLINE,  ::cppu::UnoType<sal_Int32>::get(),        0, MID_TL_COLOR }, \
+    { "CharUnderlineHasColor",        EE_CHAR_UNDERLINE,  cppu::UnoType<bool>::get(),                    0, MID_TL_HASCOLOR } , \
+    { UNO_NAME_EDIT_CHAR_OVERLINE,    EE_CHAR_OVERLINE,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_TL_STYLE }, \
+    { "CharOverlineColor",            EE_CHAR_OVERLINE,   ::cppu::UnoType<sal_Int32>::get(),        0, MID_TL_COLOR }, \
+    { "CharOverlineHasColor",         EE_CHAR_OVERLINE,   cppu::UnoType<bool>::get(),                    0, MID_TL_HASCOLOR } , \
+    { UNO_NAME_EDIT_CHAR_CROSSEDOUT,  EE_CHAR_STRIKEOUT,  cppu::UnoType<bool>::get(),                    0, MID_CROSSED_OUT }, \
+    { UNO_NAME_EDIT_CHAR_STRIKEOUT,   EE_CHAR_STRIKEOUT,  ::cppu::UnoType<sal_Int16>::get(),        0, MID_CROSS_OUT}, \
+    { UNO_NAME_EDIT_CHAR_CASEMAP,     EE_CHAR_CASEMAP,    ::cppu::UnoType<sal_Int16>::get(),        0, 0 }, \
+    { UNO_NAME_EDIT_CHAR_SHADOWED,    EE_CHAR_SHADOW,     cppu::UnoType<bool>::get(),                    0, 0 }, \
+    { "CharContoured",                EE_CHAR_OUTLINE,    cppu::UnoType<bool>::get(),                    0, 0 }, \
+    { "CharEscapementHeight",         EE_CHAR_ESCAPEMENT, cppu::UnoType<sal_Int8>::get(),         0, MID_ESC_HEIGHT },\
+    { "CharAutoKerning",              EE_CHAR_PAIRKERNING,cppu::UnoType<bool>::get(),                    0, 0 } , \
+    { "CharKerning",                  EE_CHAR_KERNING,    ::cppu::UnoType<sal_Int16>::get()  ,      0, 0 }, \
+    { "CharWordMode",                 EE_CHAR_WLM,        cppu::UnoType<bool>::get(),                    0, 0 }, \
+    { "CharEmphasis",                 EE_CHAR_EMPHASISMARK, ::cppu::UnoType<sal_Int16>::get(),       0, MID_EMPHASIS},\
+    { UNO_NAME_EDIT_CHAR_HEIGHT_ASIAN,        EE_CHAR_FONTHEIGHT_CJK, cppu::UnoType<float>::get(),            0, MID_FONTHEIGHT|CONVERT_TWIPS }, \
+    { UNO_NAME_EDIT_CHAR_FONTNAME_ASIAN,      EE_CHAR_FONTINFO_CJK,   ::cppu::UnoType<OUString>::get(),  0, MID_FONT_FAMILY_NAME },\
+    { UNO_NAME_EDIT_CHAR_FONTSTYLENAME_ASIAN, EE_CHAR_FONTINFO_CJK,   ::cppu::UnoType<OUString>::get(),  0, MID_FONT_STYLE_NAME }, \
+    { UNO_NAME_EDIT_CHAR_FONTFAMILY_ASIAN,    EE_CHAR_FONTINFO_CJK,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_FAMILY }, \
+    { UNO_NAME_EDIT_CHAR_FONTCHARSET_ASIAN,   EE_CHAR_FONTINFO_CJK,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_CHAR_SET }, \
+    { UNO_NAME_EDIT_CHAR_FONTPITCH_ASIAN,     EE_CHAR_FONTINFO_CJK,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_PITCH }, \
+    { UNO_NAME_EDIT_CHAR_POSTURE_ASIAN,       EE_CHAR_ITALIC_CJK,     ::cppu::UnoType<css::awt::FontSlant>::get(),0, MID_POSTURE }, \
+    { UNO_NAME_EDIT_CHAR_WEIGHT_ASIAN,        EE_CHAR_WEIGHT_CJK,     cppu::UnoType<float>::get(),            0, MID_WEIGHT }, \
+    { UNO_NAME_EDIT_CHAR_LOCALE_ASIAN,        EE_CHAR_LANGUAGE_CJK,   ::cppu::UnoType<css::lang::Locale>::get(),0, MID_LANG_LOCALE }, \
+    { UNO_NAME_EDIT_CHAR_HEIGHT_COMPLEX,      EE_CHAR_FONTHEIGHT_CTL, cppu::UnoType<float>::get(),            0, MID_FONTHEIGHT|CONVERT_TWIPS }, \
+    { UNO_NAME_EDIT_CHAR_FONTNAME_COMPLEX,    EE_CHAR_FONTINFO_CTL,   ::cppu::UnoType<OUString>::get(),  0, MID_FONT_FAMILY_NAME },\
+    { UNO_NAME_EDIT_CHAR_FONTSTYLENAME_COMPLEX,EE_CHAR_FONTINFO_CTL,  ::cppu::UnoType<OUString>::get(),  0, MID_FONT_STYLE_NAME }, \
+    { UNO_NAME_EDIT_CHAR_FONTFAMILY_COMPLEX,  EE_CHAR_FONTINFO_CTL,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_FAMILY }, \
+    { UNO_NAME_EDIT_CHAR_FONTCHARSET_COMPLEX, EE_CHAR_FONTINFO_CTL,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_CHAR_SET }, \
+    { UNO_NAME_EDIT_CHAR_FONTPITCH_COMPLEX,   EE_CHAR_FONTINFO_CTL,   ::cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_PITCH }, \
+    { UNO_NAME_EDIT_CHAR_POSTURE_COMPLEX,     EE_CHAR_ITALIC_CTL,     ::cppu::UnoType<css::awt::FontSlant>::get(),0, MID_POSTURE }, \
+    { UNO_NAME_EDIT_CHAR_WEIGHT_COMPLEX,      EE_CHAR_WEIGHT_CTL,     cppu::UnoType<float>::get(),            0, MID_WEIGHT }, \
+    { UNO_NAME_EDIT_CHAR_LOCALE_COMPLEX,      EE_CHAR_LANGUAGE_CTL,   ::cppu::UnoType<css::lang::Locale>::get(),0, MID_LANG_LOCALE }, \
+    { "CharRelief",                           EE_CHAR_RELIEF,         ::cppu::UnoType<sal_Int16>::get(),    0, MID_RELIEF }, \
+    { "CharInteropGrabBag",                   EE_CHAR_GRABBAG,        cppu::UnoType<css::uno::Sequence<css::beans::PropertyValue >>::get(), 0, 0}
 
 
 #define SVX_UNOEDIT_FONT_PROPERTIES \
-    {OUString(UNO_NAME_EDIT_FONT_DESCRIPTOR),   WID_FONTDESC,       cppu::UnoType<css::awt::FontDescriptor>::get(),    0, MID_FONT_FAMILY_NAME }
+    {UNO_NAME_EDIT_FONT_DESCRIPTOR,   WID_FONTDESC,       cppu::UnoType<css::awt::FontDescriptor>::get(),    0, MID_FONT_FAMILY_NAME }
 
 #define SVX_UNOEDIT_PARA_PROPERTIES \
-    {OUString(UNO_NAME_EDIT_PARA_ADJUST),       EE_PARA_JUST,               ::cppu::UnoType<sal_Int16>::get(),            0, MID_PARA_ADJUST }, \
-    {OUString(UNO_NAME_EDIT_PARA_BMARGIN),      EE_PARA_ULSPACE,            ::cppu::UnoType<sal_Int32>::get(),            0, MID_LO_MARGIN|SFX_METRIC_ITEM }, \
-    {OUString(UNO_NAME_EDIT_PARA_IS_HYPHEN),    EE_PARA_HYPHENATE,          cppu::UnoType<bool>::get(),                0, 0 }, \
-    {OUString(UNO_NAME_EDIT_PARA_LASTLINEADJ),  EE_PARA_JUST,               ::cppu::UnoType<sal_Int16>::get(),            0, MID_LAST_LINE_ADJUST }, \
-    {OUString(UNO_NAME_EDIT_PARA_LMARGIN),      EE_PARA_LRSPACE,            ::cppu::UnoType<sal_Int32>::get(),            0, MID_TXT_LMARGIN|SFX_METRIC_ITEM }, \
-    {OUString(UNO_NAME_EDIT_PARA_LINESPACING),  EE_PARA_SBL,                cppu::UnoType<css::style::LineSpacing>::get(),     0, CONVERT_TWIPS}, \
-    {OUString(UNO_NAME_EDIT_PARA_RMARGIN),      EE_PARA_LRSPACE,            ::cppu::UnoType<sal_Int32>::get(),            0, MID_R_MARGIN|SFX_METRIC_ITEM }, \
-    {OUString(UNO_NAME_EDIT_PARA_TAPSTOPS),     EE_PARA_TABS,               cppu::UnoType<css::uno::Sequence< css::style::TabStop >>::get(), 0, 0 }, \
-    {OUString(UNO_NAME_EDIT_PARA_TMARGIN),      EE_PARA_ULSPACE,            ::cppu::UnoType<sal_Int32>::get(),            0, MID_UP_MARGIN|SFX_METRIC_ITEM },\
-    {OUString(UNO_NAME_EDIT_PARA_FIRST_LINE_INDENT),     EE_PARA_LRSPACE,       ::cppu::UnoType<sal_Int32>::get(),            0, MID_FIRST_LINE_INDENT|SFX_METRIC_ITEM}, \
-    {OUString(UNO_NAME_EDIT_PARA_IS_HANGING_PUNCTUATION),EE_PARA_HANGINGPUNCTUATION,    cppu::UnoType<bool>::get(),                0 ,0 }, \
-    {OUString(UNO_NAME_EDIT_PARA_IS_CHARACTER_DISTANCE), EE_PARA_ASIANCJKSPACING,   cppu::UnoType<bool>::get(),                0 ,0 }, \
-    {OUString(UNO_NAME_EDIT_PARA_IS_FORBIDDEN_RULES),    EE_PARA_FORBIDDENRULES,        cppu::UnoType<bool>::get(),                0 ,0 },\
-    {OUString("WritingMode"),                   EE_PARA_WRITINGDIR,         ::cppu::UnoType<sal_Int16>::get(),            0, 0 }
+    {UNO_NAME_EDIT_PARA_ADJUST,       EE_PARA_JUST,               ::cppu::UnoType<sal_Int16>::get(),            0, MID_PARA_ADJUST }, \
+    {UNO_NAME_EDIT_PARA_BMARGIN,      EE_PARA_ULSPACE,            ::cppu::UnoType<sal_Int32>::get(),            0, MID_LO_MARGIN, PropertyMoreFlags::METRIC_ITEM }, \
+    {UNO_NAME_EDIT_PARA_IS_HYPHEN,    EE_PARA_HYPHENATE,  ::cppu::UnoType<bool>::get(),                0, 0 }, \
+    {"ParaHyphenationNoCaps",         EE_PARA_HYPHENATE_NO_CAPS, ::cppu::UnoType<bool>::get(),       0, 0 }, \
+    {UNO_NAME_EDIT_PARA_LASTLINEADJ,  EE_PARA_JUST,               ::cppu::UnoType<sal_Int16>::get(),            0, MID_LAST_LINE_ADJUST }, \
+    {UNO_NAME_EDIT_PARA_LMARGIN,      EE_PARA_LRSPACE,    ::cppu::UnoType<sal_Int32>::get(),            0, MID_TXT_LMARGIN, PropertyMoreFlags::METRIC_ITEM }, \
+    {UNO_NAME_EDIT_PARA_LINESPACING,  EE_PARA_SBL,                cppu::UnoType<css::style::LineSpacing>::get(),     0, CONVERT_TWIPS}, \
+    {UNO_NAME_EDIT_PARA_RMARGIN,      EE_PARA_LRSPACE,    ::cppu::UnoType<sal_Int32>::get(),            0, MID_R_MARGIN, PropertyMoreFlags::METRIC_ITEM }, \
+    {UNO_NAME_EDIT_PARA_TAPSTOPS,     EE_PARA_TABS,               cppu::UnoType<css::uno::Sequence< css::style::TabStop >>::get(), 0, 0 }, \
+    {UNO_NAME_EDIT_PARA_TMARGIN,      EE_PARA_ULSPACE,            ::cppu::UnoType<sal_Int32>::get(),            0, MID_UP_MARGIN, PropertyMoreFlags::METRIC_ITEM },\
+    {UNO_NAME_EDIT_PARA_FIRST_LINE_INDENT,     EE_PARA_LRSPACE,   ::cppu::UnoType<sal_Int32>::get(),            0, MID_FIRST_LINE_INDENT, PropertyMoreFlags::METRIC_ITEM}, \
+    {UNO_NAME_EDIT_PARA_IS_HANGING_PUNCTUATION,EE_PARA_HANGINGPUNCTUATION,  cppu::UnoType<bool>::get(),                0 ,0 }, \
+    {UNO_NAME_EDIT_PARA_IS_CHARACTER_DISTANCE, EE_PARA_ASIANCJKSPACING,   cppu::UnoType<bool>::get(),                0 ,0 }, \
+    {UNO_NAME_EDIT_PARA_IS_FORBIDDEN_RULES,    EE_PARA_FORBIDDENRULES,     cppu::UnoType<bool>::get(),                0 ,0 },\
+    {"WritingMode",                   EE_PARA_WRITINGDIR, ::cppu::UnoType<sal_Int16>::get(),            0, 0 }
 
-class SvxEditSource;
-class SvxTextForwarder;
 class SvxFieldItem;
-class SvxTextEditSource;
 class SvxFieldData;
-struct ESelection;
 
-EDITENG_DLLPUBLIC void GetSelection( struct ESelection& rSel, SvxTextForwarder* pForwarder ) throw();
-EDITENG_DLLPUBLIC void CheckSelection( struct ESelection& rSel, SvxTextForwarder* pForwarder ) throw();
+EDITENG_DLLPUBLIC void GetSelection( struct ESelection& rSel, SvxTextForwarder const * pForwarder ) throw();
+EDITENG_DLLPUBLIC void CheckSelection( struct ESelection& rSel, SvxTextForwarder const * pForwarder ) throw();
 
 
 // This class implements a SvxEditSource and SvxTextForwarder and does
 // nothing otherwise
 
 
-class SvxDummyTextSource : public SvxEditSource, public SvxTextForwarder
+class SvxDummyTextSource final : public SvxEditSource, public SvxTextForwarder
 {
 public:
 
     // SvxEditSource
     virtual ~SvxDummyTextSource() override;
-    virtual SvxEditSource*          Clone() const override;
+    virtual std::unique_ptr<SvxEditSource> Clone() const override;
     virtual SvxTextForwarder*       GetTextForwarder() override;
     virtual void                    UpdateData() override;
 
@@ -196,8 +190,8 @@ public:
     virtual void            QuickSetAttribs( const SfxItemSet& rSet, const ESelection& rSel ) override;
     virtual void            QuickInsertLineBreak( const ESelection& rSel ) override;
 
-    virtual OUString        CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, Color*& rpTxtColor, Color*& rpFldColor ) override;
-    virtual void            FieldClicked( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos ) override;
+    virtual OUString        CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rpTxtColor, std::optional<Color>& rpFldColor ) override;
+    virtual void            FieldClicked( const SvxFieldItem& rField ) override;
 
     virtual bool            IsValid() const override;
 
@@ -250,46 +244,46 @@ class EDITENG_DLLPUBLIC SvxUnoTextRangeBase : public css::text::XTextRange,
 {
     friend class SvxUnoTextRangeEnumeration;
     friend class ::accessibility::AccessibleEditableTextPara;
-
-protected:
-    SvxEditSource*          mpEditSource;
-    ESelection              maSelection;
     const SvxItemPropertySet* mpPropSet;
 
+protected:
+    std::unique_ptr<SvxEditSource> mpEditSource;
+    ESelection              maSelection;
+
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::beans::PropertyVetoException
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::lang::WrappedTargetException
     /// @throws css::uno::RuntimeException
-    void SAL_CALL _setPropertyValue( const OUString& aPropertyName, const css::uno::Any& aValue, sal_Int32 nPara = -1 );
+    void _setPropertyValue( const OUString& aPropertyName, const css::uno::Any& aValue, sal_Int32 nPara = -1 );
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::lang::WrappedTargetException
     /// @throws css::uno::RuntimeException
-    css::uno::Any SAL_CALL _getPropertyValue( const OUString& PropertyName, sal_Int32 nPara = -1 );
+    css::uno::Any _getPropertyValue( const OUString& PropertyName, sal_Int32 nPara = -1 );
 
     /// @throws css::beans::PropertyVetoException
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::lang::WrappedTargetException
     /// @throws css::uno::RuntimeException
-    void SAL_CALL _setPropertyValues( const css::uno::Sequence< OUString >& aPropertyNames, const css::uno::Sequence< css::uno::Any >& aValues, sal_Int32 nPara = -1 );
+    void _setPropertyValues( const css::uno::Sequence< OUString >& aPropertyNames, const css::uno::Sequence< css::uno::Any >& aValues, sal_Int32 nPara = -1 );
     /// @throws css::uno::RuntimeException
-    css::uno::Sequence< css::uno::Any > SAL_CALL _getPropertyValues( const css::uno::Sequence< OUString >& aPropertyNames, sal_Int32 nPara = -1 );
+    css::uno::Sequence< css::uno::Any > _getPropertyValues( const css::uno::Sequence< OUString >& aPropertyNames, sal_Int32 nPara = -1 );
 
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::uno::RuntimeException
-    css::beans::PropertyState SAL_CALL _getPropertyState( const SfxItemPropertySimpleEntry* pMap, sal_Int32 nPara = -1 );
+    css::beans::PropertyState _getPropertyState( const SfxItemPropertySimpleEntry* pMap, sal_Int32 nPara = -1 );
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::uno::RuntimeException
-    css::beans::PropertyState SAL_CALL _getPropertyState( const OUString& PropertyName, sal_Int32 nPara = -1 );
+    css::beans::PropertyState _getPropertyState( const OUString& PropertyName, sal_Int32 nPara = -1 );
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::uno::RuntimeException
-    css::uno::Sequence< css::beans::PropertyState > SAL_CALL _getPropertyStates( const css::uno::Sequence< OUString >& aPropertyName, sal_Int32 nPara = -1  );
+    css::uno::Sequence< css::beans::PropertyState > _getPropertyStates( const css::uno::Sequence< OUString >& aPropertyName, sal_Int32 nPara = -1  );
     // returns true if property found or false if unknown property
     static bool _getOnePropertyStates(const SfxItemSet* pSet, const SfxItemPropertySimpleEntry* pMap, css::beans::PropertyState& rState);
 
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::uno::RuntimeException
-    void SAL_CALL _setPropertyToDefault( const OUString& PropertyName, sal_Int32 nPara = -1 );
+    void _setPropertyToDefault( const OUString& PropertyName, sal_Int32 nPara = -1 );
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::uno::RuntimeException
     void _setPropertyToDefault( SvxTextForwarder* pForwarder, const SfxItemPropertySimpleEntry* pMap, sal_Int32 nPara );
@@ -302,14 +296,19 @@ protected:
     /// @throws css::lang::IllegalArgumentException
     void setPropertyValue( const SfxItemPropertySimpleEntry* pMap, const css::uno::Any& rValue, const ESelection& rSelection, const SfxItemSet& rOldSet, SfxItemSet& rNewSet );
 
-    SvxUnoTextRangeBase( const SvxItemPropertySet* _pSet ) throw();
-    SvxUnoTextRangeBase( const SvxEditSource* pSource, const SvxItemPropertySet* _pSet ) throw();
-    SvxUnoTextRangeBase( const SvxUnoTextRangeBase& rRange ) throw();
+    SvxUnoTextRangeBase(const SvxItemPropertySet* _pSet);
+    SvxUnoTextRangeBase(const SvxEditSource* pSource, const SvxItemPropertySet* _pSet);
+    SvxUnoTextRangeBase(const SvxUnoTextRangeBase& rRange);
     virtual ~SvxUnoTextRangeBase() throw();
 
 public:
     // Internal
-    const ESelection&       GetSelection() const throw() { CheckSelection( const_cast<SvxUnoTextRangeBase*>(this)->maSelection, mpEditSource->GetTextForwarder() ); return maSelection; };
+    const ESelection& GetSelection() const throw()
+    {
+        const SvxTextForwarder* pForwarder = mpEditSource ? mpEditSource->GetTextForwarder() : nullptr;
+        CheckSelection(const_cast<SvxUnoTextRangeBase*>(this)->maSelection, pForwarder);
+        return maSelection;
+    }
     void                    SetSelection( const ESelection& rSelection ) throw();
 
     void            CollapseToStart() throw();
@@ -322,13 +321,13 @@ public:
 
     //const SfxItemPropertyMapEntry*   getPropertyMapEntries() const throw() { return maPropSet.getPropertyMapEntries(); }
     const SvxItemPropertySet*   getPropertySet() const throw() { return mpPropSet; }
-    SvxEditSource*              GetEditSource() const throw() { return mpEditSource; }
+    SvxEditSource*              GetEditSource() const throw() { return mpEditSource.get(); }
 
     static bool SetPropertyValueHelper( const SfxItemPropertySimpleEntry* pMap, const css::uno::Any& aValue, SfxItemSet& rNewSet, const ESelection* pSelection = nullptr, SvxEditSource* pEditSource = nullptr );
     /// @throws css::uno::RuntimeException
-    static bool GetPropertyValueHelper(  SfxItemSet& rSet, const SfxItemPropertySimpleEntry* pMap, css::uno::Any& aAny, const ESelection* pSelection = nullptr,  SvxEditSource* pEditSource = nullptr  );
+    static bool GetPropertyValueHelper(  SfxItemSet const & rSet, const SfxItemPropertySimpleEntry* pMap, css::uno::Any& aAny, const ESelection* pSelection = nullptr,  SvxEditSource* pEditSource = nullptr  );
 
-    void attachField( const SvxFieldData* pData ) throw();
+    void attachField( std::unique_ptr<SvxFieldData> pData ) throw();
 
     UNO3_GETIMPLEMENTATION_DECL( SvxUnoTextRangeBase )
 
@@ -373,12 +372,12 @@ public:
     // css::lang::XServiceInfo
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-    static  css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_Static( );
+    static  css::uno::Sequence< OUString > getSupportedServiceNames_Static( );
 };
 
 
 class SvxUnoTextBase;
-class EDITENG_DLLPUBLIC SvxUnoTextRange : public SvxUnoTextRangeBase,
+class EDITENG_DLLPUBLIC SvxUnoTextRange final : public SvxUnoTextRangeBase,
                         public css::lang::XTypeProvider,
                         public ::cppu::OWeakAggObject
 {
@@ -388,7 +387,7 @@ private:
     bool mbPortion;
 
 public:
-    SvxUnoTextRange( const SvxUnoTextBase& rParent, bool bPortion = false ) throw();
+    SvxUnoTextRange(const SvxUnoTextBase& rParent, bool bPortion = false);
     virtual ~SvxUnoTextRange() throw() override;
 
     // css::uno::XInterface
@@ -415,12 +414,12 @@ class EDITENG_DLLPUBLIC SvxUnoTextBase  : public SvxUnoTextRangeBase,
                         public css::text::XTextRangeMover,
                         public css::lang::XTypeProvider
 {
-protected:
     css::uno::Reference< css::text::XText >   xParentText;
 
-    SvxUnoTextBase( const SvxItemPropertySet* _pSet ) throw();
-    SvxUnoTextBase( const SvxEditSource* pSource, const SvxItemPropertySet* _pSet, css::uno::Reference < css::text::XText > const & xParent ) throw();
-    SvxUnoTextBase( const SvxUnoTextBase& rText ) throw();
+protected:
+    SvxUnoTextBase(const SvxItemPropertySet* _pSet);
+    SvxUnoTextBase(const SvxEditSource* pSource, const SvxItemPropertySet* _pSet, css::uno::Reference < css::text::XText > const & xParent);
+    SvxUnoTextBase(const SvxUnoTextBase& rText);
     virtual ~SvxUnoTextBase() throw() override;
 
 public:
@@ -507,7 +506,7 @@ public:
 };
 
 
-class SvxUnoTextContent : public SvxUnoTextRangeBase,
+class SvxUnoTextContent final : public SvxUnoTextRangeBase,
                           public css::text::XTextContent,
                           public css::container::XEnumerationAccess,
                           public css::lang::XTypeProvider,
@@ -587,8 +586,6 @@ private:
     css::uno::Reference< css::text::XText > mxParentText;
     std::unique_ptr<SvxEditSource>          mpEditSource;
     sal_Int32               mnNextParagraph;
-    const SvxUnoTextBase&   mrText;
-    const ESelection        maSelection;
     std::vector< rtl::Reference<SvxUnoTextContent> >  maContents;
 
 public:
@@ -606,14 +603,11 @@ class SvxUnoTextRangeEnumeration : public ::cppu::WeakAggImplHelper1< css::conta
 private:
     std::unique_ptr<SvxEditSource>      mpEditSource;
     css::uno::Reference< css::text::XText > mxParentText;
-    const SvxUnoTextBase&    mrParentText;
-    sal_Int32                mnParagraph;
     std::vector< rtl::Reference<SvxUnoTextRange> >  maPortions;
     sal_uInt16               mnNextPortion;
-    const ESelection         mnSel;
 
 public:
-    SvxUnoTextRangeEnumeration( const SvxUnoTextBase& rText, sal_Int32 nPara, const ESelection& rSel ) throw();
+    SvxUnoTextRangeEnumeration(const SvxUnoTextBase& rText, sal_Int32 nPara, const ESelection& rSel);
     virtual ~SvxUnoTextRangeEnumeration() throw() override;
 
     // css::container::XEnumeration
@@ -670,9 +664,9 @@ public:
 };
 
 EDITENG_DLLPUBLIC const SvxItemPropertySet* ImplGetSvxUnoOutlinerTextCursorSvxPropertySet();
-EDITENG_DLLPUBLIC const SfxItemPropertyMapEntry* ImplGetSvxUnoOutlinerTextCursorPropertyMap();
-EDITENG_DLLPUBLIC const SvxItemPropertySet* ImplGetSvxTextPortionSvxPropertySet();
-EDITENG_DLLPUBLIC const SfxItemPropertyMapEntry* ImplGetSvxTextPortionPropertyMap();
+const SfxItemPropertyMapEntry* ImplGetSvxUnoOutlinerTextCursorPropertyMap();
+const SvxItemPropertySet* ImplGetSvxTextPortionSvxPropertySet();
+const SfxItemPropertyMapEntry* ImplGetSvxTextPortionPropertyMap();
 
 #endif
 

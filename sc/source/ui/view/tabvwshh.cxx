@@ -19,28 +19,27 @@
 
 #include <config_features.h>
 
+#include <basic/sberrors.hxx>
 #include <svx/svdmark.hxx>
 #include <svx/svdoole2.hxx>
 #include <svx/svdview.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/request.hxx>
 #include <basic/sbxcore.hxx>
+#include <svl/stritem.hxx>
 #include <svl/whiter.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/svapp.hxx>
 
-#include "tabvwsh.hxx"
-#include "client.hxx"
-#include "document.hxx"
-#include "docsh.hxx"
-#include "sc.hrc"
-#include "drwlayer.hxx"
-#include "retypepassdlg.hxx"
-#include "tabprotection.hxx"
+#include <tabvwsh.hxx>
+#include <document.hxx>
+#include <sc.hrc>
+#include <drwlayer.hxx>
+#include <retypepassdlg.hxx>
+#include <tabprotection.hxx>
 
 using namespace com::sun::star;
 
-void ScTabViewShell::ExecuteObject( SfxRequest& rReq )
+void ScTabViewShell::ExecuteObject( const SfxRequest& rReq )
 {
     sal_uInt16 nSlotId = rReq.GetSlot();
     const SfxItemSet* pReqArgs = rReq.GetArgs();
@@ -61,7 +60,7 @@ void ScTabViewShell::ExecuteObject( SfxRequest& rReq )
                 // In both cases, first select in the visible View
 
                 OUString aName;
-                SdrView* pDrView = GetSdrView();
+                SdrView* pDrView = GetScDrawView();
                 if (pDrView)
                 {
                     const SdrMarkList& rMarkList = pDrView->GetMarkedObjectList();
@@ -95,7 +94,7 @@ void ScTabViewShell::ExecuteObject( SfxRequest& rReq )
 
                     //! convert from something into 1/100mm ??????
 
-                    SdrView* pDrView = GetSdrView();
+                    SdrView* pDrView = GetScDrawView();
                     if ( pDrView )
                     {
                         const SdrMarkList& rMarkList = pDrView->GetMarkedObjectList();
@@ -122,7 +121,7 @@ void ScTabViewShell::ExecuteObject( SfxRequest& rReq )
                 }
 #if HAVE_FEATURE_SCRIPTING
                 if (!bDone)
-                    SbxBase::SetError( ERRCODE_SBX_BAD_PARAMETER );  // basic error
+                    SbxBase::SetError( ERRCODE_BASIC_BAD_PARAMETER );  // basic error
 #endif
             }
             break;
@@ -130,7 +129,7 @@ void ScTabViewShell::ExecuteObject( SfxRequest& rReq )
     }
 }
 
-static uno::Reference < embed::XEmbeddedObject > lcl_GetSelectedObj( SdrView* pDrView )       //! member of ScDrawView?
+static uno::Reference < embed::XEmbeddedObject > lcl_GetSelectedObj( const SdrView* pDrView )       //! member of ScDrawView?
 {
     uno::Reference < embed::XEmbeddedObject > xRet;
     if (pDrView)
@@ -161,7 +160,7 @@ void ScTabViewShell::GetObjectState( SfxItemSet& rSet )
             case SID_ACTIVE_OBJ_NAME:
                 {
                     OUString aName;
-                    uno::Reference < embed::XEmbeddedObject > xOLE = lcl_GetSelectedObj( GetSdrView() );
+                    uno::Reference < embed::XEmbeddedObject > xOLE = lcl_GetSelectedObj( GetScDrawView() );
                     if (xOLE.is())
                     {
                         aName = GetViewData().GetSfxDocShell()->GetEmbeddedObjectContainer().GetEmbeddedObjectName( xOLE );
@@ -174,7 +173,7 @@ void ScTabViewShell::GetObjectState( SfxItemSet& rSet )
             case SID_OBJECT_WIDTH:
             case SID_OBJECT_HEIGHT:
                 {
-                    SdrView* pDrView = GetSdrView();
+                    SdrView* pDrView = GetScDrawView();
                     if ( pDrView )
                     {
                         const SdrMarkList& rMarkList = pDrView->GetMarkedObjectList();
@@ -208,7 +207,7 @@ void ScTabViewShell::GetObjectState( SfxItemSet& rSet )
 void ScTabViewShell::AddAccessibilityObject( SfxListener& rObject )
 {
     if (!pAccessibilityBroadcaster)
-        pAccessibilityBroadcaster = new SfxBroadcaster;
+        pAccessibilityBroadcaster.reset( new SfxBroadcaster );
 
     rObject.StartListening( *pAccessibilityBroadcaster );
     ScDocument* pDoc = GetViewData().GetDocument();
@@ -239,7 +238,7 @@ void ScTabViewShell::BroadcastAccessibility( const SfxHint &rHint )
         pAccessibilityBroadcaster->Broadcast( rHint );
 }
 
-bool ScTabViewShell::HasAccessibilityObjects()
+bool ScTabViewShell::HasAccessibilityObjects() const
 {
     return pAccessibilityBroadcaster != nullptr;
 }
@@ -248,13 +247,13 @@ bool ScTabViewShell::ExecuteRetypePassDlg(ScPasswordHash eDesiredHash)
 {
     ScDocument* pDoc = GetViewData().GetDocument();
 
-    VclPtrInstance< ScRetypePassDlg > pDlg(GetDialogParent());
-    pDlg->SetDataFromDocument(*pDoc);
-    pDlg->SetDesiredHash(eDesiredHash);
-    if (pDlg->Execute() != RET_OK)
+    ScRetypePassDlg aDlg(GetFrameWeld());
+    aDlg.SetDataFromDocument(*pDoc);
+    aDlg.SetDesiredHash(eDesiredHash);
+    if (aDlg.run() != RET_OK)
         return false;
 
-    pDlg->WriteNewDataToDocument(*pDoc);
+    aDlg.WriteNewDataToDocument(*pDoc);
     return true;
 }
 

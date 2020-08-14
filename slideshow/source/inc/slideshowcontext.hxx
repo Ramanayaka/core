@@ -23,15 +23,13 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <memory>
 
-namespace com{ namespace sun{ namespace star{ namespace uno
-{
-    class XComponentContext;
-}}}}
+namespace com::sun::star::uno { class XComponentContext; }
+namespace box2d::utils { class box2DWorld;
+                         typedef ::std::shared_ptr< box2DWorld > Box2DWorldSharedPtr; }
 
 
-namespace slideshow
-{
-    namespace internal
+
+namespace slideshow::internal
     {
         class ShapeManager;
         class EventQueue;
@@ -41,7 +39,9 @@ namespace slideshow
         class ScreenUpdater;
         class UnoViewContainer;
         class CursorManager;
+        class MediaFileManager;
         class SubsettableShapeManager;
+        typedef ::std::shared_ptr< SubsettableShapeManager > SubsettableShapeManagerSharedPtr;
 
         /** Common arguments for slideshow objects.
 
@@ -72,6 +72,9 @@ namespace slideshow
                 Activities queue, where repeating activities are
                 to be scheduled.
 
+                @param rMediaFileManager
+                To handle media file with package urls.
+
                 @param rUserEventQueue
                 User event queue
 
@@ -81,15 +84,17 @@ namespace slideshow
                 @param rComponentContext
                 To create UNO services from
             */
-            SlideShowContext( std::shared_ptr<SubsettableShapeManager>&       rSubsettableShapeManager,
+            SlideShowContext( SubsettableShapeManagerSharedPtr&                 rSubsettableShapeManager,
                               EventQueue&                                       rEventQueue,
                               EventMultiplexer&                                 rEventMultiplexer,
                               ScreenUpdater&                                    rScreenUpdater,
                               ActivitiesQueue&                                  rActivitiesQueue,
                               UserEventQueue&                                   rUserEventQueue,
                               CursorManager&                                    rCursorManager,
+                              MediaFileManager&                                 rMediaFileManager,
                               const UnoViewContainer&                           rViewContainer,
-                              const css::uno::Reference< css::uno::XComponentContext>&    rComponentContext );
+                              const css::uno::Reference< css::uno::XComponentContext>&    rComponentContext,
+                              box2d::utils::Box2DWorldSharedPtr&                rBox2DWorldPtr );
             void dispose();
 
             std::shared_ptr<SubsettableShapeManager>&     mpSubsettableShapeManager;
@@ -99,10 +104,12 @@ namespace slideshow
             ActivitiesQueue&                                mrActivitiesQueue;
             UserEventQueue&                                 mrUserEventQueue;
             CursorManager&                                  mrCursorManager;
+            MediaFileManager&                               mrMediaFileManager;
             const UnoViewContainer&                         mrViewContainer;
             css::uno::Reference< css::uno::XComponentContext>   mxComponentContext;
+            box2d::utils::Box2DWorldSharedPtr&              mpBox2DWorld;
         };
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_SLIDESHOWCONTEXT_HXX

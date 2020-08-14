@@ -22,12 +22,11 @@
 
 #include <vector>
 #include <memory>
-#include "globstr.hrc"
-#include "ftools.hxx"
-#include "scdllapi.h"
+#include <rtl/ustring.hxx>
+#include <progress.hxx>
 
 class SfxObjectShell;
-class ScProgress;
+class SvStream;
 
 const sal_Int32 SCF_INV_SEGMENT = -1;
 
@@ -106,8 +105,8 @@ public:
     ScfProgressBar(const ScfProgressBar&) = delete;
     const ScfProgressBar operator=(const ScfProgressBar&) = delete;
 
-    explicit            ScfProgressBar( SfxObjectShell* pDocShell, const OUString& rText );
-    explicit            ScfProgressBar( SfxObjectShell* pDocShell, sal_uInt16 nResId );
+    explicit            ScfProgressBar(SfxObjectShell* pDocShell, const OUString& rText);
+    explicit            ScfProgressBar(SfxObjectShell* pDocShell, const char* pResId);
                         ~ScfProgressBar();
 
     /** Adds a new segment to the progress bar.
@@ -187,8 +186,8 @@ private:
 class ScfSimpleProgressBar
 {
 public:
-    explicit            ScfSimpleProgressBar( std::size_t nSize, SfxObjectShell* pDocShell, const OUString& rText );
-    explicit            ScfSimpleProgressBar( std::size_t nSize, SfxObjectShell* pDocShell, sal_uInt16 nResId );
+    explicit            ScfSimpleProgressBar(std::size_t nSize, SfxObjectShell* pDocShell, const OUString& rText);
+    explicit            ScfSimpleProgressBar(std::size_t nSize, SfxObjectShell* pDocShell, const char* pResId);
 
     /** Set progress bar to the specified position. */
     void         ProgressAbs( std::size_t nPos ) { maProgress.ProgressAbs( nPos ); }

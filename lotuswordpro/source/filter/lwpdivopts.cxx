@@ -59,7 +59,7 @@
  ************************************************************************/
 
 #include "lwpdivopts.hxx"
-#include "lwpfilehdr.hxx"
+#include <lwpfilehdr.hxx>
 
 LwpHyphenOptions::LwpHyphenOptions()
     : m_nFlags(0)
@@ -121,7 +121,7 @@ sal_uInt16 LwpTextLanguage::ConvertFrom96(sal_uInt16 orgLang)
     return orgLang;
 }
 
-LwpDivisionOptions::LwpDivisionOptions(LwpObjectHeader& objHdr, LwpSvStream* pStrm)
+LwpDivisionOptions::LwpDivisionOptions(LwpObjectHeader const & objHdr, LwpSvStream* pStrm)
     : LwpObject(objHdr, pStrm)
     , m_nOptionFlag(0)
 {

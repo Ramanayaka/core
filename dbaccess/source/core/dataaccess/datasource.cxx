@@ -18,58 +18,56 @@
  */
 
 #include "datasource.hxx"
-#include "userinformation.hxx"
 #include "commandcontainer.hxx"
-#include "dbastrings.hrc"
-#include "core_resource.hxx"
-#include "core_resource.hrc"
+#include <stringconstants.hxx>
+#include <core_resource.hxx>
+#include <strings.hrc>
 #include "connection.hxx"
 #include "SharedConnection.hxx"
 #include "databasedocument.hxx"
-#include "OAuthenticationContinuation.hxx"
+#include <OAuthenticationContinuation.hxx>
+
+#include <hsqlimport.hxx>
+#include <migrwarndlg.hxx>
 
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/PropertyState.hpp>
-#include <com/sun/star/beans/XPropertyContainer.hpp>
 #include <com/sun/star/document/XDocumentSubStorageSupplier.hpp>
-#include <com/sun/star/embed/XTransactedObject.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/reflection/ProxyFactory.hpp>
 #include <com/sun/star/sdb/DatabaseContext.hpp>
+#include <com/sun/star/sdb/SQLContext.hpp>
 #include <com/sun/star/sdbc/ConnectionPool.hpp>
 #include <com/sun/star/sdbc/XDriverAccess.hpp>
 #include <com/sun/star/sdbc/XDriverManager.hpp>
 #include <com/sun/star/sdbc/DriverManager.hpp>
-#include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/ucb/AuthenticationRequest.hpp>
 #include <com/sun/star/ucb/XInteractionSupplyAuthentication.hpp>
-#include <com/sun/star/ui/XUIConfigurationManagerSupplier.hpp>
-#include <com/sun/star/view/XPrintable.hpp>
 
-#include <comphelper/guarding.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/interaction.hxx>
-#include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/property.hxx>
-#include <comphelper/seqstream.hxx>
 #include <comphelper/sequence.hxx>
+#include <comphelper/types.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <connectivity/dbexception.hxx>
 #include <connectivity/dbtools.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
 #include <osl/diagnose.h>
+#include <osl/process.h>
+#include <sal/log.hxx>
+#include <svtools/miscopt.hxx>
 #include <tools/urlobj.hxx>
-#include <typelib/typedescription.hxx>
-#include <unotools/confignode.hxx>
 #include <unotools/sharedunocomponent.hxx>
 #include <rtl/digest.h>
 
 #include <algorithm>
 #include <iterator>
 #include <set>
+
+#include <config_firebird.h>
 
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdbcx;
@@ -93,6 +91,8 @@ using namespace ::comphelper;
 namespace dbaccess
 {
 
+namespace {
+
 /** helper class which implements a XFlushListener, and forwards all
     notification events to another XFlushListener
 
@@ -112,14 +112,14 @@ private:
 public:
     static void installAdapter( const Reference< XFlushable >& _rxBroadcaster, const Reference< XFlushListener >& _rxListener )
     {
-        Reference< XFlushListener > xAdapter( new FlushNotificationAdapter( _rxBroadcaster, _rxListener ) );
+        new FlushNotificationAdapter( _rxBroadcaster, _rxListener );
     }
 
 protected:
     FlushNotificationAdapter( const Reference< XFlushable >& _rxBroadcaster, const Reference< XFlushListener >& _rxListener );
     virtual ~FlushNotificationAdapter() override;
 
-    void SAL_CALL impl_dispose();
+    void impl_dispose();
 
 protected:
     // XFlushListener
@@ -127,6 +127,8 @@ protected:
     // XEventListener
     virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 };
+
+}
 
 FlushNotificationAdapter::FlushNotificationAdapter( const Reference< XFlushable >& _rxBroadcaster, const Reference< XFlushListener >& _rxListener )
     :m_aBroadcaster( _rxBroadcaster )
@@ -147,7 +149,7 @@ FlushNotificationAdapter::~FlushNotificationAdapter()
 {
 }
 
-void SAL_CALL FlushNotificationAdapter::impl_dispose()
+void FlushNotificationAdapter::impl_dispose()
 {
     Reference< XFlushListener > xKeepAlive( this );
 
@@ -250,6 +252,8 @@ void SAL_CALL OAuthenticationContinuation::setRememberAccount( RememberAuthentic
     SAL_WARN("dbaccess","OAuthenticationContinuation::setRememberAccount: not supported!");
 }
 
+namespace {
+
 /** The class OSharedConnectionManager implements a structure to share connections.
     It owns the master connections which will be disposed when the last connection proxy is gone.
 */
@@ -264,18 +268,20 @@ struct TDigestHolder
 
 };
 
+}
+
 class OSharedConnectionManager : public ::cppu::WeakImplHelper< XEventListener >
 {
 
      // contains the currently used master connections
-    typedef struct
+    struct TConnectionHolder
     {
         Reference< XConnection >    xMasterConnection;
         oslInterlockedCount         nALiveCount;
-    } TConnectionHolder;
+    };
 
     // the less-compare functor, used for the stl::map
-    struct TDigestLess : public std::binary_function< TDigestHolder, TDigestHolder, bool>
+    struct TDigestLess
     {
         bool operator() (const TDigestHolder& x, const TDigestHolder& y) const
         {
@@ -306,7 +312,7 @@ public:
                                             const OUString& password,
                                             const Sequence< PropertyValue >& _aInfo,
                                             ODatabaseSource* _pDataSource);
-    void addEventListener(const Reference<XConnection>& _rxConnection,TConnectionMap::iterator& _rIter);
+    void addEventListener(const Reference<XConnection>& _rxConnection, TConnectionMap::iterator const & _rIter);
 };
 
 OSharedConnectionManager::OSharedConnectionManager(const Reference< XComponentContext >& _rxContext)
@@ -369,7 +375,7 @@ Reference<XConnection> OSharedConnectionManager::getConnection( const OUString& 
         TConnectionHolder aHolder;
         aHolder.nALiveCount = 0; // will be incremented by addListener
         aHolder.xMasterConnection = _pDataSource->buildIsolatedConnection(user,password);
-        aIter = m_aConnections.insert(TConnectionMap::value_type(nId,aHolder)).first;
+        aIter = m_aConnections.emplace(nId,aHolder).first;
     }
 
     Reference<XConnection> xRet;
@@ -377,14 +383,14 @@ Reference<XConnection> OSharedConnectionManager::getConnection( const OUString& 
     {
         Reference< XAggregation > xConProxy = m_xProxyFactory->createProxy(aIter->second.xMasterConnection.get());
         xRet = new OSharedConnection(xConProxy);
-        m_aSharedConnection.insert(TSharedConnectionMap::value_type(xRet,aIter));
+        m_aSharedConnection.emplace(xRet,aIter);
         addEventListener(xRet,aIter);
     }
 
     return xRet;
 }
 
-void OSharedConnectionManager::addEventListener(const Reference<XConnection>& _rxConnection,TConnectionMap::iterator& _rIter)
+void OSharedConnectionManager::addEventListener(const Reference<XConnection>& _rxConnection, TConnectionMap::iterator const & _rIter)
 {
     Reference<XComponent> xComp(_rxConnection,UNO_QUERY);
     xComp->addEventListener(this);
@@ -435,7 +441,7 @@ namespace
                 }
             }
             if ( !aRet.empty() )
-                return Sequence< PropertyValue >(&(*aRet.begin()),aRet.size());
+                return comphelper::containerToSequence(aRet);
         }
         return Sequence< PropertyValue >();
     }
@@ -472,7 +478,7 @@ ODatabaseSource::ODatabaseSource(const ::rtl::Reference<ODatabaseModelImpl>& _pI
             :ModelDependentComponent( _pImpl )
             ,ODatabaseSource_Base( getMutex() )
             ,OPropertySetHelper( ODatabaseSource_Base::rBHelper )
-            ,m_xBookmarks( new OBookmarkContainer( *this, getMutex() ) )
+            , m_Bookmarks(*this, getMutex())
             ,m_aFlushListeners( getMutex() )
 {
     // some kind of default
@@ -491,9 +497,9 @@ ODatabaseSource::~ODatabaseSource()
 
 void ODatabaseSource::setName( const Reference< XDocumentDataSource >& _rxDocument, const OUString& _rNewName, DBContextAccess )
 {
-    ODatabaseSource& rModelImpl = dynamic_cast< ODatabaseSource& >( *_rxDocument.get() );
+    ODatabaseSource& rModelImpl = dynamic_cast< ODatabaseSource& >( *_rxDocument );
 
-    ::osl::MutexGuard aGuard( rModelImpl.m_aMutex );
+    SolarMutexGuard g;
     if ( rModelImpl.m_pImpl.is() )
         rModelImpl.m_pImpl->m_sName = _rNewName;
 }
@@ -544,7 +550,7 @@ void SAL_CALL ODatabaseSource::disposing( const css::lang::EventObject& Source )
 // XServiceInfo
 OUString ODatabaseSource::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.dba.ODatabaseSource");
+    return "com.sun.star.comp.dba.ODatabaseSource";
 }
 
 Sequence< OUString > ODatabaseSource::getSupportedServiceNames(  )
@@ -572,11 +578,91 @@ void ODatabaseSource::disposing()
     m_pImpl.clear();
 }
 
+weld::Window* ODatabaseModelImpl::GetFrameWeld()
+{
+    if (m_xDialogParent.is())
+        return Application::GetFrameWeld(m_xDialogParent);
+
+    Reference<XModel> xModel = getModel_noCreate();
+    if (!xModel.is())
+        return nullptr;
+    Reference<XController> xController(xModel->getCurrentController());
+    if (!xController.is())
+        return nullptr;
+    Reference<XFrame> xFrame(xController->getFrame());
+    if (!xFrame.is())
+        return nullptr;
+    Reference<css::awt::XWindow> xWindow(xFrame->getContainerWindow());
+    return Application::GetFrameWeld(xWindow);
+}
+
 Reference< XConnection > ODatabaseSource::buildLowLevelConnection(const OUString& _rUid, const OUString& _rPwd)
 {
     Reference< XConnection > xReturn;
 
     Reference< XDriverManager > xManager;
+
+#if ENABLE_FIREBIRD_SDBC
+    bool bIgnoreMigration = false;
+    bool bNeedMigration = false;
+    Reference< XModel > xModel = m_pImpl->getModel_noCreate();
+    if ( xModel)
+    {
+        //See ODbTypeWizDialogSetup::SaveDatabaseDocument
+        ::comphelper::NamedValueCollection aArgs( xModel->getArgs() );
+        aArgs.get("IgnoreFirebirdMigration") >>= bIgnoreMigration;
+    }
+    else
+    {
+        //ignore when we don't have a model. E.g. Mailmerge, data sources, fields...
+        bIgnoreMigration = true;
+    }
+    SvtMiscOptions aMiscOptions;
+
+    if (!aMiscOptions.IsExperimentalMode())
+        bIgnoreMigration = true;
+
+    if(!bIgnoreMigration && m_pImpl->m_sConnectURL == "sdbc:embedded:hsqldb")
+    {
+        Reference<XStorage> const xRootStorage = m_pImpl->getOrCreateRootStorage();
+        OUString sMigrEnvVal;
+        osl_getEnvironment(OUString("DBACCESS_HSQL_MIGRATION").pData,
+            &sMigrEnvVal.pData);
+        if(!sMigrEnvVal.isEmpty())
+            bNeedMigration = true;
+        else
+        {
+            Reference<XPropertySet> const xPropSet(xRootStorage, UNO_QUERY_THROW);
+            sal_Int32 nOpenMode(0);
+            if ((xPropSet->getPropertyValue("OpenMode") >>= nOpenMode)
+                && (nOpenMode & css::embed::ElementModes::WRITE)
+                && (!Application::IsHeadlessModeEnabled()))
+            {
+                MigrationWarnDialog aWarnDlg(m_pImpl->GetFrameWeld());
+                bNeedMigration = aWarnDlg.run() == RET_OK;
+            }
+        }
+        if (bNeedMigration)
+        {
+            // back up content xml file if migration was successful
+            constexpr char BACKUP_XML_NAME[] = "content_before_migration.xml";
+            try
+            {
+                if(xRootStorage->isStreamElement(BACKUP_XML_NAME))
+                    xRootStorage->removeElement(BACKUP_XML_NAME);
+            }
+            catch (NoSuchElementException&)
+            {
+                SAL_INFO("dbaccess", "No file content_before_migration.xml found" );
+            }
+            xRootStorage->copyElementTo("content.xml", xRootStorage,
+                BACKUP_XML_NAME);
+
+            m_pImpl->m_sConnectURL = "sdbc:embedded:firebird";
+        }
+    }
+#endif
+
     try {
         xManager.set( ConnectionPool::create( m_pImpl->m_aContext ), UNO_QUERY_THROW );
     } catch( const Exception& ) {  }
@@ -594,7 +680,7 @@ Reference< XConnection > ODatabaseSource::buildLowLevelConnection(const OUString
             sPwd = m_pImpl->m_aPassword;
     }
 
-    sal_uInt16 nExceptionMessageId = RID_STR_COULDNOTCONNECT_UNSPECIFIED;
+    const char* pExceptionMessageId = RID_STR_COULDNOTCONNECT_UNSPECIFIED;
     if (xManager.is())
     {
         sal_Int32 nAdditionalArgs(0);
@@ -617,20 +703,22 @@ Reference< XConnection > ODatabaseSource::buildLowLevelConnection(const OUString
         Reference< XDriver > xDriver;
         try
         {
+
+            // choose driver
             Reference< XDriverAccess > xAccessDrivers( xManager, UNO_QUERY );
             if ( xAccessDrivers.is() )
                 xDriver = xAccessDrivers->getDriverByURL( m_pImpl->m_sConnectURL );
         }
         catch( const Exception& )
         {
-            SAL_WARN("dbaccess",  "ODatabaseSource::buildLowLevelConnection: got a strange exception while analyzing the error!" );
+            TOOLS_WARN_EXCEPTION("dbaccess",  "ODatabaseSource::buildLowLevelConnection: got a strange exception while analyzing the error" );
         }
         if ( !xDriver.is() || !xDriver->acceptsURL( m_pImpl->m_sConnectURL ) )
         {
             // Nowadays, it's allowed for a driver to be registered for a given URL, but actually not to accept it.
             // This is because registration nowadays happens at compile time (by adding respective configuration data),
             // but acceptance is decided at runtime.
-            nExceptionMessageId = RID_STR_COULDNOTCONNECT_NODRIVER;
+            pExceptionMessageId = RID_STR_COULDNOTCONNECT_NODRIVER;
         }
         else
         {
@@ -672,11 +760,11 @@ Reference< XConnection > ODatabaseSource::buildLowLevelConnection(const OUString
         }
     }
     else
-        nExceptionMessageId = RID_STR_COULDNOTLOAD_MANAGER;
+        pExceptionMessageId = RID_STR_COULDNOTLOAD_MANAGER;
 
     if ( !xReturn.is() )
     {
-        OUString sMessage = DBA_RES(nExceptionMessageId)
+        OUString sMessage = DBA_RES(pExceptionMessageId)
             .replaceAll("$name$", m_pImpl->m_sConnectURL);
 
         SQLContext aContext;
@@ -685,6 +773,17 @@ Reference< XConnection > ODatabaseSource::buildLowLevelConnection(const OUString
 
         throwGenericSQLException( sMessage, static_cast< XDataSource* >( this ), makeAny( aContext ) );
     }
+
+#if ENABLE_FIREBIRD_SDBC
+    if( bNeedMigration )
+    {
+        Reference< css::document::XDocumentSubStorageSupplier> xDocSup(
+                m_pImpl->getDocumentSubStorageSupplier() );
+        dbahsql::HsqlImporter importer(xReturn,
+                xDocSup->getDocumentSubStorage("database",ElementModes::READWRITE) );
+        importer.importHsqlDatabase(m_pImpl->GetFrameWeld());
+    }
+#endif
 
     return xReturn;
 }
@@ -759,11 +858,9 @@ sal_Bool ODatabaseSource::convertFastPropertyValue(Any & rConvertedValue, Any & 
                 if (!(rValue >>= aValues))
                     throw IllegalArgumentException();
 
-                const PropertyValue* valueEnd = aValues.getConstArray() + aValues.getLength();
-                const PropertyValue* checkName = aValues.getConstArray();
-                for ( ;checkName != valueEnd; ++checkName )
+                for ( auto const & checkName : std::as_const(aValues) )
                 {
-                    if ( checkName->Name.isEmpty() )
+                    if ( checkName.Name.isEmpty() )
                         throw IllegalArgumentException();
                 }
 
@@ -773,7 +870,7 @@ sal_Bool ODatabaseSource::convertFastPropertyValue(Any & rConvertedValue, Any & 
                 {
                     const PropertyValue* pInfoIter = aSettings.getConstArray();
                     const PropertyValue* checkValue = aValues.getConstArray();
-                    for ( ;!bModified && checkValue != valueEnd ; ++checkValue,++pInfoIter)
+                    for ( ;!bModified && checkValue != aValues.end() ; ++checkValue,++pInfoIter)
                     {
                         bModified = checkValue->Name != pInfoIter->Name;
                         if ( !bModified )
@@ -821,37 +918,34 @@ namespace
     void lcl_setPropertyValues_resetOrRemoveOther( const Reference< XPropertyBag >& _rxPropertyBag, const Sequence< PropertyValue >& _rAllNewPropertyValues )
     {
         // sequences are ugly to operate on
-        typedef std::set< OUString >   StringSet;
-        StringSet aToBeSetPropertyNames;
+        std::set<OUString> aToBeSetPropertyNames;
         std::transform(
-            _rAllNewPropertyValues.getConstArray(),
-            _rAllNewPropertyValues.getConstArray() + _rAllNewPropertyValues.getLength(),
-            std::insert_iterator< StringSet >( aToBeSetPropertyNames, aToBeSetPropertyNames.end() ),
+            _rAllNewPropertyValues.begin(),
+            _rAllNewPropertyValues.end(),
+            std::inserter( aToBeSetPropertyNames, aToBeSetPropertyNames.end() ),
             SelectPropertyName()
         );
 
         try
         {
             // obtain all properties currently known at the bag
-            Reference< XPropertySetInfo > xPSI( _rxPropertyBag->getPropertySetInfo(), UNO_QUERY_THROW );
-            Sequence< Property > aAllExistentProperties( xPSI->getProperties() );
+            Reference< XPropertySetInfo > xPSI( _rxPropertyBag->getPropertySetInfo(), UNO_SET_THROW );
+            const Sequence< Property > aAllExistentProperties( xPSI->getProperties() );
 
             Reference< XPropertyState > xPropertyState( _rxPropertyBag, UNO_QUERY_THROW );
 
             // loop through them, and reset resp. default properties which are not to be set
-            const Property* pExistentProperty( aAllExistentProperties.getConstArray() );
-            const Property* pExistentPropertyEnd( aAllExistentProperties.getConstArray() + aAllExistentProperties.getLength() );
-            for ( ; pExistentProperty != pExistentPropertyEnd; ++pExistentProperty )
+            for ( auto const & existentProperty : aAllExistentProperties )
             {
-                if ( aToBeSetPropertyNames.find( pExistentProperty->Name ) != aToBeSetPropertyNames.end() )
+                if ( aToBeSetPropertyNames.find( existentProperty.Name ) != aToBeSetPropertyNames.end() )
                     continue;
 
                 // this property is not to be set, but currently exists in the bag.
                 // -> Remove it, or reset it to the default.
-                if ( ( pExistentProperty->Attributes & PropertyAttribute::REMOVABLE ) != 0 )
-                    _rxPropertyBag->removeProperty( pExistentProperty->Name );
+                if ( ( existentProperty.Attributes & PropertyAttribute::REMOVABLE ) != 0 )
+                    _rxPropertyBag->removeProperty( existentProperty.Name );
                 else
-                    xPropertyState->setPropertyToDefault( pExistentProperty->Name );
+                    xPropertyState->setPropertyToDefault( existentProperty.Name );
             }
 
             // finally, set the new property values
@@ -859,138 +953,135 @@ namespace
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 }
 
 void ODatabaseSource::setFastPropertyValue_NoBroadcast( sal_Int32 nHandle, const Any& rValue )
 {
-    if ( m_pImpl.is() )
+    if ( !m_pImpl.is() )
+        return;
+
+    switch(nHandle)
     {
-        switch(nHandle)
-        {
-            case PROPERTY_ID_TABLEFILTER:
-                rValue >>= m_pImpl->m_aTableFilter;
-                break;
-            case PROPERTY_ID_TABLETYPEFILTER:
-                rValue >>= m_pImpl->m_aTableTypeFilter;
-                break;
-            case PROPERTY_ID_USER:
-                rValue >>= m_pImpl->m_sUser;
-                // if the user name has changed, reset the password
-                (m_pImpl->m_aPassword).clear();
-                break;
-            case PROPERTY_ID_PASSWORD:
-                rValue >>= m_pImpl->m_aPassword;
-                break;
-            case PROPERTY_ID_ISPASSWORDREQUIRED:
-                m_pImpl->m_bPasswordRequired = any2bool(rValue);
-                break;
-            case PROPERTY_ID_SUPPRESSVERSIONCL:
-                m_pImpl->m_bSuppressVersionColumns = any2bool(rValue);
-                break;
-            case PROPERTY_ID_URL:
-                rValue >>= m_pImpl->m_sConnectURL;
-                break;
-            case PROPERTY_ID_INFO:
-            {
-                Sequence< PropertyValue > aInfo;
-                OSL_VERIFY( rValue >>= aInfo );
-                lcl_setPropertyValues_resetOrRemoveOther( m_pImpl->m_xSettings, aInfo );
-            }
+        case PROPERTY_ID_TABLEFILTER:
+            rValue >>= m_pImpl->m_aTableFilter;
             break;
-            case PROPERTY_ID_LAYOUTINFORMATION:
-                rValue >>= m_pImpl->m_aLayoutInformation;
-                break;
+        case PROPERTY_ID_TABLETYPEFILTER:
+            rValue >>= m_pImpl->m_aTableTypeFilter;
+            break;
+        case PROPERTY_ID_USER:
+            rValue >>= m_pImpl->m_sUser;
+            // if the user name has changed, reset the password
+            m_pImpl->m_aPassword.clear();
+            break;
+        case PROPERTY_ID_PASSWORD:
+            rValue >>= m_pImpl->m_aPassword;
+            break;
+        case PROPERTY_ID_ISPASSWORDREQUIRED:
+            m_pImpl->m_bPasswordRequired = any2bool(rValue);
+            break;
+        case PROPERTY_ID_SUPPRESSVERSIONCL:
+            m_pImpl->m_bSuppressVersionColumns = any2bool(rValue);
+            break;
+        case PROPERTY_ID_URL:
+            rValue >>= m_pImpl->m_sConnectURL;
+            break;
+        case PROPERTY_ID_INFO:
+        {
+            Sequence< PropertyValue > aInfo;
+            OSL_VERIFY( rValue >>= aInfo );
+            lcl_setPropertyValues_resetOrRemoveOther( m_pImpl->m_xSettings, aInfo );
         }
-        m_pImpl->setModified(true);
+        break;
+        case PROPERTY_ID_LAYOUTINFORMATION:
+            rValue >>= m_pImpl->m_aLayoutInformation;
+            break;
     }
+    m_pImpl->setModified(true);
 }
 
 void ODatabaseSource::getFastPropertyValue( Any& rValue, sal_Int32 nHandle ) const
 {
-    if ( m_pImpl.is() )
+    if ( !m_pImpl.is() )
+        return;
+
+    switch (nHandle)
     {
-        switch (nHandle)
-        {
-            case PROPERTY_ID_TABLEFILTER:
-                rValue <<= m_pImpl->m_aTableFilter;
-                break;
-            case PROPERTY_ID_TABLETYPEFILTER:
-                rValue <<= m_pImpl->m_aTableTypeFilter;
-                break;
-            case PROPERTY_ID_USER:
-                rValue <<= m_pImpl->m_sUser;
-                break;
-            case PROPERTY_ID_PASSWORD:
-                rValue <<= m_pImpl->m_aPassword;
-                break;
-            case PROPERTY_ID_ISPASSWORDREQUIRED:
-                rValue <<= m_pImpl->m_bPasswordRequired;
-                break;
-            case PROPERTY_ID_SUPPRESSVERSIONCL:
-                rValue <<= m_pImpl->m_bSuppressVersionColumns;
-                break;
-            case PROPERTY_ID_ISREADONLY:
-                rValue <<= m_pImpl->m_bReadOnly;
-                break;
-            case PROPERTY_ID_INFO:
-            {
-                try
-                {
-                    // collect the property attributes of all current settings
-                    Reference< XPropertySet > xSettingsAsProps( m_pImpl->m_xSettings, UNO_QUERY_THROW );
-                    Reference< XPropertySetInfo > xPST( xSettingsAsProps->getPropertySetInfo(), UNO_QUERY_THROW );
-                    Sequence< Property > aSettings( xPST->getProperties() );
-                    std::map< OUString, sal_Int32 > aPropertyAttributes;
-                    for (   const Property* pSettings = aSettings.getConstArray();
-                            pSettings != aSettings.getConstArray() + aSettings.getLength();
-                            ++pSettings
-                        )
-                    {
-                        aPropertyAttributes[ pSettings->Name ] = pSettings->Attributes;
-                    }
-
-                    // get all current settings with their values
-                    Sequence< PropertyValue > aValues( m_pImpl->m_xSettings->getPropertyValues() );
-
-                    // transform them so that only property values which fulfill certain
-                    // criteria survive
-                    Sequence< PropertyValue > aNonDefaultOrUserDefined( aValues.getLength() );
-                    const PropertyValue* pCopyEnd = std::remove_copy_if(
-                        aValues.getConstArray(),
-                        aValues.getConstArray() + aValues.getLength(),
-                        aNonDefaultOrUserDefined.getArray(),
-                        IsDefaultAndNotRemoveable( aPropertyAttributes )
-                    );
-                    aNonDefaultOrUserDefined.realloc( pCopyEnd - aNonDefaultOrUserDefined.getArray() );
-                    rValue <<= aNonDefaultOrUserDefined;
-                }
-                catch( const Exception& )
-                {
-                    DBG_UNHANDLED_EXCEPTION();
-                }
-            }
+        case PROPERTY_ID_TABLEFILTER:
+            rValue <<= m_pImpl->m_aTableFilter;
             break;
-            case PROPERTY_ID_SETTINGS:
-                rValue <<= m_pImpl->m_xSettings;
-                break;
-            case PROPERTY_ID_URL:
-                rValue <<= m_pImpl->m_sConnectURL;
-                break;
-            case PROPERTY_ID_NUMBERFORMATSSUPPLIER:
-                rValue <<= m_pImpl->getNumberFormatsSupplier();
-                break;
-            case PROPERTY_ID_NAME:
-                rValue <<= m_pImpl->m_sName;
-                break;
-            case PROPERTY_ID_LAYOUTINFORMATION:
-                rValue <<= m_pImpl->m_aLayoutInformation;
-                break;
-            default:
-                SAL_WARN("dbaccess","unknown Property");
+        case PROPERTY_ID_TABLETYPEFILTER:
+            rValue <<= m_pImpl->m_aTableTypeFilter;
+            break;
+        case PROPERTY_ID_USER:
+            rValue <<= m_pImpl->m_sUser;
+            break;
+        case PROPERTY_ID_PASSWORD:
+            rValue <<= m_pImpl->m_aPassword;
+            break;
+        case PROPERTY_ID_ISPASSWORDREQUIRED:
+            rValue <<= m_pImpl->m_bPasswordRequired;
+            break;
+        case PROPERTY_ID_SUPPRESSVERSIONCL:
+            rValue <<= m_pImpl->m_bSuppressVersionColumns;
+            break;
+        case PROPERTY_ID_ISREADONLY:
+            rValue <<= m_pImpl->m_bReadOnly;
+            break;
+        case PROPERTY_ID_INFO:
+        {
+            try
+            {
+                // collect the property attributes of all current settings
+                Reference< XPropertySet > xSettingsAsProps( m_pImpl->m_xSettings, UNO_QUERY_THROW );
+                Reference< XPropertySetInfo > xPST( xSettingsAsProps->getPropertySetInfo(), UNO_SET_THROW );
+                const Sequence< Property > aSettings( xPST->getProperties() );
+                std::map< OUString, sal_Int32 > aPropertyAttributes;
+                for ( auto const & setting : aSettings )
+                {
+                    aPropertyAttributes[ setting.Name ] = setting.Attributes;
+                }
+
+                // get all current settings with their values
+                Sequence< PropertyValue > aValues( m_pImpl->m_xSettings->getPropertyValues() );
+
+                // transform them so that only property values which fulfill certain
+                // criteria survive
+                Sequence< PropertyValue > aNonDefaultOrUserDefined( aValues.getLength() );
+                const PropertyValue* pCopyEnd = std::remove_copy_if(
+                    aValues.begin(),
+                    aValues.end(),
+                    aNonDefaultOrUserDefined.getArray(),
+                    IsDefaultAndNotRemoveable( aPropertyAttributes )
+                );
+                aNonDefaultOrUserDefined.realloc( pCopyEnd - aNonDefaultOrUserDefined.getArray() );
+                rValue <<= aNonDefaultOrUserDefined;
+            }
+            catch( const Exception& )
+            {
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
+            }
         }
+        break;
+        case PROPERTY_ID_SETTINGS:
+            rValue <<= m_pImpl->m_xSettings;
+            break;
+        case PROPERTY_ID_URL:
+            rValue <<= m_pImpl->m_sConnectURL;
+            break;
+        case PROPERTY_ID_NUMBERFORMATSSUPPLIER:
+            rValue <<= m_pImpl->getNumberFormatsSupplier();
+            break;
+        case PROPERTY_ID_NAME:
+            rValue <<= m_pImpl->m_sName;
+            break;
+        case PROPERTY_ID_LAYOUTINFORMATION:
+            rValue <<= m_pImpl->m_aLayoutInformation;
+            break;
+        default:
+            SAL_WARN("dbaccess","unknown Property");
     }
 }
 
@@ -1028,7 +1119,7 @@ Reference< XConnection > SAL_CALL ODatabaseSource::getIsolatedConnectionWithComp
     return connectWithCompletion(_rxHandler,true);
 }
 
-Reference< XConnection > SAL_CALL ODatabaseSource::connectWithCompletion( const Reference< XInteractionHandler >& _rxHandler,bool _bIsolated )
+Reference< XConnection > ODatabaseSource::connectWithCompletion( const Reference< XInteractionHandler >& _rxHandler,bool _bIsolated )
 {
     ModelMethodGuard aGuard( *this );
 
@@ -1072,13 +1163,11 @@ Reference< XConnection > SAL_CALL ODatabaseSource::connectWithCompletion( const 
         // handle the request
         try
         {
-            MutexRelease aRelease( getMutex() );
-                // release the mutex when calling the handler, it may need to lock the SolarMutex
             _rxHandler->handle(xRequest);
         }
         catch(Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
 
         if (!pAuthenticate->wasSelected())
@@ -1093,7 +1182,7 @@ Reference< XConnection > SAL_CALL ODatabaseSource::connectWithCompletion( const 
             m_pImpl->m_aPassword = pAuthenticate->getPassword();
             bNewPasswordGiven = true;
         }
-        (m_pImpl->m_sFailedPassword).clear();
+        m_pImpl->m_sFailedPassword.clear();
     }
 
     try
@@ -1106,9 +1195,9 @@ Reference< XConnection > SAL_CALL ODatabaseSource::connectWithCompletion( const 
         {
             m_pImpl->m_sFailedPassword = m_pImpl->m_aPassword;
             // assume that we had an authentication problem. Without this we may, after an unsuccessful connect, while
-            // the user gave us a password an the order to remember it, never allow an password input again (at least
+            // the user gave us a password and the order to remember it, never allow a password input again (at least
             // not without restarting the session)
-            (m_pImpl->m_aPassword).clear();
+            m_pImpl->m_aPassword.clear();
         }
         throw;
     }
@@ -1153,7 +1242,7 @@ Reference< XConnection > ODatabaseSource::getConnection(const OUString& user, co
         Reference< XComponent> xComp(xConn,UNO_QUERY);
         if ( xComp.is() )
             xComp->addEventListener( static_cast< XContainerListener* >( this ) );
-        m_pImpl->m_aConnections.push_back(css::uno::WeakReference< css::sdbc::XConnection >(xConn));
+        m_pImpl->m_aConnections.emplace_back(xConn);
     }
 
     return xConn;
@@ -1162,7 +1251,8 @@ Reference< XConnection > ODatabaseSource::getConnection(const OUString& user, co
 Reference< XNameAccess > SAL_CALL ODatabaseSource::getBookmarks(  )
 {
     ModelMethodGuard aGuard( *this );
-    return static_cast< XNameContainer* >(m_xBookmarks.get());
+    // tdf#114596 this may look nutty but see OBookmarkContainer::acquire()
+    return static_cast<XNameContainer*>(&m_Bookmarks);
 }
 
 Reference< XNameAccess > SAL_CALL ODatabaseSource::getQueryDefinitions( )
@@ -1234,7 +1324,7 @@ void SAL_CALL ODatabaseSource::flush(  )
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -1313,6 +1403,13 @@ Reference< XOfficeDatabaseDocument > SAL_CALL ODatabaseSource::getDatabaseDocume
     return Reference< XOfficeDatabaseDocument >( xModel, UNO_QUERY_THROW );
 }
 
+void SAL_CALL ODatabaseSource::initialize( css::uno::Sequence< css::uno::Any > const & rArguments)
+{
+    ::comphelper::NamedValueCollection aProperties( rArguments );
+    if (aProperties.has("ParentWindow"))
+        aProperties.get("ParentWindow") >>= m_pImpl->m_xDialogParent;
+}
+
 Reference< XInterface > ODatabaseSource::getThis() const
 {
     return *const_cast< ODatabaseSource* >( this );
@@ -1320,7 +1417,7 @@ Reference< XInterface > ODatabaseSource::getThis() const
 
 }   // namespace dbaccess
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_dba_ODatabaseSource(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {

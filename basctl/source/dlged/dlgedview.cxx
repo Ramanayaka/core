@@ -17,23 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dlgedview.hxx"
-#include "dlged.hxx"
+#include <dlgedview.hxx>
+#include <dlged.hxx>
 #include <dlgedpage.hxx>
 
-#include <svx/svxids.hrc>
-#include <sfx2/viewfrm.hxx>
+#include <vcl/canvastools.hxx>
+#include <vcl/scrbar.hxx>
 
-#include <basidesh.hxx>
-#include <iderdll.hxx>
-#include "dlgedobj.hxx"
+#include <dlgedobj.hxx>
 
 namespace basctl
 {
 
-
-DlgEdView::DlgEdView (SdrModel& rModel, OutputDevice& rOut, DlgEditor& rEditor) :
-    SdrView(&rModel, &rOut),
+DlgEdView::DlgEdView(
+    SdrModel& rSdrModel,
+    OutputDevice& rOut,
+    DlgEditor& rEditor)
+:   SdrView(rSdrModel, &rOut),
     rDlgEditor(rEditor)
 {
     SetBufferedOutputAllowed(true);
@@ -63,65 +63,64 @@ void DlgEdView::MakeVisible( const tools::Rectangle& rRect, vcl::Window& rWin )
     tools::Rectangle aVisRect( RectTmp );
 
     // check, if rectangle is inside visible area
-    if ( !aVisRect.IsInside( rRect ) )
-    {
-        // calculate scroll distance; the rectangle must be inside the visible area
-        sal_Int32 nScrollX = 0, nScrollY = 0;
+    if ( aVisRect.IsInside( rRect ) )
+        return;
 
-        sal_Int32 nVisLeft   = aVisRect.Left();
-        sal_Int32 nVisRight  = aVisRect.Right();
-        sal_Int32 nVisTop    = aVisRect.Top();
-        sal_Int32 nVisBottom = aVisRect.Bottom();
+    // calculate scroll distance; the rectangle must be inside the visible area
+    sal_Int32 nScrollX = 0, nScrollY = 0;
 
-        sal_Int32 nDeltaX = rDlgEditor.GetHScroll()->GetLineSize();
-        sal_Int32 nDeltaY = rDlgEditor.GetVScroll()->GetLineSize();
+    sal_Int32 nVisLeft   = aVisRect.Left();
+    sal_Int32 nVisRight  = aVisRect.Right();
+    sal_Int32 nVisTop    = aVisRect.Top();
+    sal_Int32 nVisBottom = aVisRect.Bottom();
 
-        while ( rRect.Right() > nVisRight + nScrollX )
-            nScrollX += nDeltaX;
+    sal_Int32 nDeltaX = rDlgEditor.GetHScroll()->GetLineSize();
+    sal_Int32 nDeltaY = rDlgEditor.GetVScroll()->GetLineSize();
 
-        while ( rRect.Left() < nVisLeft + nScrollX )
-            nScrollX -= nDeltaX;
+    while ( rRect.Right() > nVisRight + nScrollX )
+        nScrollX += nDeltaX;
 
-        while ( rRect.Bottom() > nVisBottom + nScrollY )
-            nScrollY += nDeltaY;
+    while ( rRect.Left() < nVisLeft + nScrollX )
+        nScrollX -= nDeltaX;
 
-        while ( rRect.Top() < nVisTop + nScrollY )
-            nScrollY -= nDeltaY;
+    while ( rRect.Bottom() > nVisBottom + nScrollY )
+        nScrollY += nDeltaY;
 
-        // don't scroll beyond the page size
-        Size aPageSize = rDlgEditor.GetPage().GetSize();
-        sal_Int32 nPageWidth  = aPageSize.Width();
-        sal_Int32 nPageHeight = aPageSize.Height();
+    while ( rRect.Top() < nVisTop + nScrollY )
+        nScrollY -= nDeltaY;
 
-        if ( nVisRight + nScrollX > nPageWidth )
-            nScrollX = nPageWidth - nVisRight;
+    // don't scroll beyond the page size
+    Size aPageSize = rDlgEditor.GetPage().GetSize();
+    sal_Int32 nPageWidth  = aPageSize.Width();
+    sal_Int32 nPageHeight = aPageSize.Height();
 
-        if ( nVisLeft + nScrollX < 0 )
-            nScrollX = -nVisLeft;
+    if ( nVisRight + nScrollX > nPageWidth )
+        nScrollX = nPageWidth - nVisRight;
 
-        if ( nVisBottom + nScrollY > nPageHeight )
-            nScrollY = nPageHeight - nVisBottom;
+    if ( nVisLeft + nScrollX < 0 )
+        nScrollX = -nVisLeft;
 
-        if ( nVisTop + nScrollY < 0 )
-            nScrollY = -nVisTop;
+    if ( nVisBottom + nScrollY > nPageHeight )
+        nScrollY = nPageHeight - nVisBottom;
 
-        // scroll window
-        rWin.Update();
-        rWin.Scroll( -nScrollX, -nScrollY );
-        aMap.SetOrigin( Point( aOrg.X() - nScrollX, aOrg.Y() - nScrollY ) );
-        rWin.SetMapMode( aMap );
-        rWin.Update();
-        rWin.Invalidate();
+    if ( nVisTop + nScrollY < 0 )
+        nScrollY = -nVisTop;
 
-        // update scroll bars
-        rDlgEditor.UpdateScrollBars();
+    // scroll window
+    rWin.PaintImmediately();
+    rWin.Scroll( -nScrollX, -nScrollY );
+    aMap.SetOrigin( Point( aOrg.X() - nScrollX, aOrg.Y() - nScrollY ) );
+    rWin.SetMapMode( aMap );
+    rWin.Invalidate();
 
-        DlgEdHint aHint( DlgEdHint::WINDOWSCROLLED );
-        rDlgEditor.Broadcast( aHint );
-    }
+    // update scroll bars
+    rDlgEditor.UpdateScrollBars();
+
+    DlgEdHint aHint( DlgEdHint::WINDOWSCROLLED );
+    rDlgEditor.Broadcast( aHint );
 }
 
-SdrObject* impLocalHitCorrection(SdrObject* pRetval, const Point& rPnt, sal_uInt16 nTol)
+static SdrObject* impLocalHitCorrection(SdrObject* pRetval, const Point& rPnt, sal_uInt16 nTol)
 {
     DlgEdObj* pDlgEdObj = dynamic_cast< DlgEdObj* >(pRetval);
 
@@ -148,9 +147,7 @@ SdrObject* impLocalHitCorrection(SdrObject* pRetval, const Point& rPnt, sal_uInt
 
             if(!aOuterRectangle.IsEmpty())
             {
-                basegfx::B2DRange aOuterRange(
-                    aOuterRectangle.Left(), aOuterRectangle.Top(),
-                    aOuterRectangle.Right(), aOuterRectangle.Bottom());
+                basegfx::B2DRange aOuterRange = vcl::unotools::b2DRectangleFromRectangle(aOuterRectangle);
 
                 if(nTol)
                 {
@@ -175,7 +172,7 @@ SdrObject* DlgEdView::CheckSingleSdrObjectHit(const Point& rPnt, sal_uInt16 nTol
 
     if(pRetval)
     {
-        // check hitted object locally
+        // check hit object locally
         pRetval = impLocalHitCorrection(pRetval, rPnt, nTol);
     }
 

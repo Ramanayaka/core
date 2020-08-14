@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "XMLStringBufferImportContext.hxx"
+#include <XMLStringBufferImportContext.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 
 
 using ::com::sun::star::uno::Reference;
@@ -38,11 +38,25 @@ XMLStringBufferImportContext::XMLStringBufferImportContext(
 {
 }
 
+XMLStringBufferImportContext::XMLStringBufferImportContext(
+    SvXMLImport& rImport,
+    OUStringBuffer& rBuffer) :
+    SvXMLImportContext(rImport),
+    rTextBuffer(rBuffer)
+{
+}
+
 XMLStringBufferImportContext::~XMLStringBufferImportContext()
 {
 }
 
-SvXMLImportContext *XMLStringBufferImportContext::CreateChildContext(
+css::uno::Reference< css::xml::sax::XFastContextHandler > XMLStringBufferImportContext::createFastChildContext(
+        sal_Int32 /*nElement*/, const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*xAttrList*/ )
+{
+    return new XMLStringBufferImportContext(GetImport(), rTextBuffer);
+}
+
+SvXMLImportContextRef XMLStringBufferImportContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList> &)
@@ -51,10 +65,29 @@ SvXMLImportContext *XMLStringBufferImportContext::CreateChildContext(
                                             rLocalName, rTextBuffer);
 }
 
+void XMLStringBufferImportContext::characters(const OUString& rChars )
+{
+    rTextBuffer.append(rChars);
+}
+
 void XMLStringBufferImportContext::Characters(
     const OUString& rChars )
 {
     rTextBuffer.append(rChars);
+}
+
+void XMLStringBufferImportContext::endFastElement(sal_Int32 nElement)
+{
+    // add return for paragraph elements
+    if ( nElement == XML_ELEMENT(TEXT, XML_P) || nElement == XML_ELEMENT(LO_EXT, XML_P))
+    {
+        rTextBuffer.append(u'\x000a');
+    }
+}
+
+void XMLStringBufferImportContext::startFastElement( sal_Int32 /*nElement*/,
+    const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*xAttrList*/ )
+{
 }
 
 void XMLStringBufferImportContext::EndElement()

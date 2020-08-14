@@ -28,29 +28,21 @@
 #define INCLUDED_SCADDINS_SOURCE_PRICING_PRICING_HXX
 
 
-#include <string.h>
 #include <vector>
+#include <memory>
 #include <com/sun/star/lang/XServiceName.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/sheet/XAddIn.hpp>
 #include <com/sun/star/sheet/XCompatibilityNames.hpp>
 #include <com/sun/star/sheet/addin/XPricingFunctions.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <tools/resid.hxx>
-#include <tools/resary.hxx>
 
-#define RETURN_FINITE(d)    if( ::rtl::math::isFinite( d ) ) return d; else throw css::lang::IllegalArgumentException()
+namespace com::sun::star::lang { class XMultiServiceFactory; }
+
+#define RETURN_FINITE(d)    if( !std::isfinite( d ) ) throw css::lang::IllegalArgumentException(); return d;
 
 
-namespace sca {
-namespace pricing {
-
-class ScaResId : public ResId
-{
-public:
-    ScaResId( sal_uInt16 nResId, ResMgr& rResMgr );
-};
+namespace sca::pricing {
 
 enum class ScaCategory
 {
@@ -64,9 +56,9 @@ enum class ScaCategory
 
 struct ScaFuncDataBase
 {
-    const sal_Char*             pIntName;           // internal name (get***)
-    sal_uInt16                  nUINameID;          // resource ID to UI name
-    sal_uInt16                  nDescrID;           // resource ID to description, parameter names and ~ description
+    const char*                 pIntName;           // internal name (get***)
+    const char*                 pUINameID;          // resource ID to UI name
+    const char**                pDescrID;           // resource ID to description, parameter names and ~ description
     // pCompName was originally meant to be able to load Excel documents that for
     // some time were stored with localized function names.
     // This is not relevant to this add-in, so we only supply the same
@@ -82,21 +74,20 @@ struct ScaFuncDataBase
 class ScaFuncData final
 {
 private:
-    OUString             aIntName;           // internal name (get***)
-    sal_uInt16                  nUINameID;          // resource ID to UI name
-    sal_uInt16                  nDescrID;           // leads also to parameter descriptions!
-    sal_uInt16                  nParamCount;        // num of parameters
-    std::vector<OUString>       aCompList;          // list of all valid names
-    ScaCategory                 eCat;               // function category
+    OUString                aIntName;           // internal name (get***)
+    const char*             pUINameID;          // resource ID to UI name
+    const char**            pDescrID;           // leads also to parameter descriptions!
+    sal_uInt16              nParamCount;        // num of parameters
+    std::vector<OUString>   aCompList;          // list of all valid names
+    ScaCategory             eCat;               // function category
     bool                    bDouble;            // name already exist in Calc
     bool                    bWithOpt;           // first parameter is internal
 
 public:
     ScaFuncData(const ScaFuncDataBase& rBaseData);
-    ~ScaFuncData();
 
-    sal_uInt16           GetUINameID() const     { return nUINameID; }
-    sal_uInt16           GetDescrID() const      { return nDescrID; }
+    const char*          GetUINameID() const     { return pUINameID; }
+    const char**         GetDescrID() const      { return pDescrID; }
     ScaCategory          GetCategory() const     { return eCat; }
     bool                 IsDouble() const        { return bDouble; }
 
@@ -117,15 +108,10 @@ struct FindScaFuncData
 {
     const OUString& m_rId;
     explicit FindScaFuncData( const OUString& rId ) : m_rId(rId) {}
-    bool operator() ( ScaFuncData& rCandidate ) const { return rCandidate.Is(m_rId); }
+    bool operator() ( ScaFuncData const & rCandidate ) const { return rCandidate.Is(m_rId); }
 };
 
-} // namespace pricing
-} // namespace sca
-
-
-css::uno::Reference< css::uno::XInterface > SAL_CALL PricingFunctionAddIn_CreateInstance(
-    const css::uno::Reference< css::lang::XMultiServiceFactory >& );
+} // namespace sca::pricing
 
 
 // AddIn class for pricing functions
@@ -139,26 +125,23 @@ class ScaPricingAddIn : public ::cppu::WeakImplHelper<
 {
 private:
     css::lang::Locale  aFuncLoc;
-    css::lang::Locale* pDefLocales;
-    ResMgr*                     pResMgr;
-    sca::pricing::ScaFuncDataList*            pFuncDataList;
+    std::unique_ptr<css::lang::Locale[]> pDefLocales;
+    std::locale        aResLocale;
+    std::unique_ptr<sca::pricing::ScaFuncDataList> pFuncDataList;
 
 
     void                        InitDefLocales();
     const css::lang::Locale& GetLocale( sal_uInt32 nIndex );
-    /// @throws css::uno::RuntimeException
-    ResMgr&                     GetResMgr();
     void                        InitData();
 
     /// @throws css::uno::RuntimeException
-    OUString             GetFuncDescrStr( sal_uInt16 nResId, sal_uInt16 nStrIndex );
+    OUString             GetFuncDescrStr(const char** pResId, sal_uInt16 nStrIndex);
 
 public:
                                 ScaPricingAddIn();
     virtual                     ~ScaPricingAddIn() override;
 
-    static OUString      getImplementationName_Static();
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
+    OUString ScaResId(const char* pResId);
 
                                 // XAddIn
     virtual OUString SAL_CALL getProgrammaticFuntionName( const OUString& aDisplayName ) override;

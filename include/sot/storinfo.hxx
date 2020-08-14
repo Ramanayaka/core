@@ -20,40 +20,42 @@
 #ifndef INCLUDED_SOT_STORINFO_HXX
 #define INCLUDED_SOT_STORINFO_HXX
 
-#include <tools/globname.hxx>
+#include <rtl/ustring.hxx>
 #include <tools/solar.h>
 #include <vector>
 #include <sot/sotdllapi.h>
-#include <sot/exchange.hxx>
+#include <sot/formats.hxx>
 
 class StgDirEntry;
+class SvStream;
+
 class SvStorageInfo
 {
 friend class SotStorage;
-    OUString        aName;
-    sal_uLong       nSize;
-    bool            bStream;
-    bool            bStorage;
+    OUString aName;
+    sal_uLong nSize;
+    bool bStream;
+    bool  bStorage;
 
 public:
-                            SvStorageInfo( const StgDirEntry& );
-                            SvStorageInfo( const OUString& rName, sal_uLong nSz, bool bIsStorage )
-                                : aName( rName )
-                                , nSize( nSz )
-                                , bStream( !bIsStorage )
-                                , bStorage( bIsStorage )
-                            {}
+    SvStorageInfo(const StgDirEntry&);
+    SvStorageInfo(const OUString& rName, sal_uLong nSz, bool bIsStorage)
+        : aName(rName)
+        , nSize(nSz)
+        , bStream(!bIsStorage)
+        , bStorage(bIsStorage)
+    {}
 
-    const OUString &        GetName() const { return aName; }
-    bool                    IsStream() const { return bStream; }
-    bool                    IsStorage() const { return bStorage; }
-    sal_uLong               GetSize() const { return nSize;      }
+    const OUString & GetName() const { return aName; }
+    bool IsStream() const { return bStream; }
+    bool IsStorage() const { return bStorage; }
+    sal_uLong GetSize() const { return nSize; }
 };
 
-typedef ::std::vector< SvStorageInfo > SvStorageInfoList;
+typedef std::vector<SvStorageInfo> SvStorageInfoList;
 
-SOT_DLLPUBLIC SotClipboardFormatId ReadClipboardFormat( SvStream & rStm );
-SOT_DLLPUBLIC void WriteClipboardFormat( SvStream & rStm, SotClipboardFormatId nFormat );
+SotClipboardFormatId ReadClipboardFormat(SvStream & rStm);
+SOT_DLLPUBLIC void WriteClipboardFormat(SvStream & rStm, SotClipboardFormatId nFormat);
 
 #endif // _STORINFO_HXX
 

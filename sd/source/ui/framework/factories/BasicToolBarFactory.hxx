@@ -20,21 +20,16 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_FACTORIES_BASICTOOLBARFACTORY_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_FACTORIES_BASICTOOLBARFACTORY_HXX
 
-#include "MutexOwner.hxx"
-
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/drawing/framework/XResourceFactory.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XResourceId.hpp>
-#include <com/sun/star/frame/XController.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 
-namespace sd {
-class ViewShellBase;
-}
+namespace com::sun::star::frame { class XController; }
+namespace com::sun::star::drawing::framework { class XResourceId; }
+namespace com::sun::star::drawing::framework { class XConfigurationController; }
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::drawing::framework::XResourceFactory,
@@ -87,7 +82,7 @@ private:
     void ThrowIfDisposed() const;
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

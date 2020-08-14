@@ -18,9 +18,7 @@
  */
 
 
-#include "codemaker/options.hxx"
-
-using ::rtl::OString;
+#include <codemaker/options.hxx>
 
 Options::Options()
 {

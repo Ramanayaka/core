@@ -20,13 +20,15 @@
 #ifndef INCLUDED_SVGIO_INC_SVGDOCUMENT_HXX
 #define INCLUDED_SVGIO_INC_SVGDOCUMENT_HXX
 
-#include <svgnode.hxx>
+#include "svgnode.hxx"
+#include <memory>
 #include <unordered_map>
+#include <vector>
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
+        typedef std::vector< std::unique_ptr<SvgNode> > SvgNodeVector;
+
         class SvgDocument
         {
         private:
@@ -37,14 +39,11 @@ namespace svgio
             const OUString     maAbsolutePath;
 
             /// hash mapper to find nodes by their id
-            typedef std::unordered_map< OUString, const SvgNode*,
-                      OUStringHash > IdTokenMapper;
-            typedef std::pair< const OUString, const SvgNode* > IdTokenValueType;
+            typedef std::unordered_map< OUString, const SvgNode* > IdTokenMapper;
             IdTokenMapper           maIdTokenMapperList;
 
             /// hash mapper to find css styles by their id
-            typedef std::unordered_map< OUString, const SvgStyleAttributes*, OUStringHash > IdStyleTokenMapper;
-            typedef std::pair< const OUString, const SvgStyleAttributes* > IdStyleTokenValueType;
+            typedef std::unordered_map< OUString, const SvgStyleAttributes* > IdStyleTokenMapper;
             IdStyleTokenMapper      maIdStyleTokenMapperList;
 
         public:
@@ -55,7 +54,7 @@ namespace svgio
             SvgDocument& operator=(const SvgDocument&) = delete;
 
             /// append another root node, ownership changes
-            void appendNode(SvgNode* pNode);
+            void appendNode(std::unique_ptr<SvgNode> pNode);
 
             /// add/remove nodes with Id to mapper
             void addSvgNodeToMapper(const OUString& rStr, const SvgNode& rNode);
@@ -75,8 +74,8 @@ namespace svgio
             const SvgNodeVector& getSvgNodeVector() const { return maNodes; }
             const OUString& getAbsolutePath() const { return maAbsolutePath; }
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGDOCUMENT_HXX
 

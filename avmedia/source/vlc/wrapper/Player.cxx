@@ -9,10 +9,10 @@
 
 #include <rtl/ustring.h>
 #include "Types.hxx"
-#include "Player.hxx"
-#include "Media.hxx"
+#include <wrapper/Player.hxx>
+#include <wrapper/Media.hxx>
 #include "SymbolLoader.hxx"
-#include "Common.hxx"
+#include <wrapper/Common.hxx>
 
 struct libvlc_media_t;
 
@@ -36,11 +36,11 @@ namespace { extern "C" {
                                           const char *psz_filepath,
                                           unsigned int i_width,
                                           unsigned int i_height );
-#if defined UNX
-    void ( *libvlc_media_player_set_xwindow ) ( libvlc_media_player_t *p_mi, uint32_t drawable );
-#elif defined MACOSX
+#if defined MACOSX
     void ( *libvlc_media_player_set_nsobject ) ( libvlc_media_player_t *p_mi, void *drawable );
-#elif defined WNT
+#elif defined UNX
+    void ( *libvlc_media_player_set_xwindow ) ( libvlc_media_player_t *p_mi, uint32_t drawable );
+#elif defined _WIN32
     void ( *libvlc_media_player_set_hwnd ) ( libvlc_media_player_t *p_mi, void *drawable );
 #else
 #error unknown OS
@@ -59,15 +59,11 @@ namespace { extern "C" {
     int ( *libvlc_audio_set_track ) (libvlc_media_player_t *p_mi, int i_track);
 } }
 
-namespace avmedia
-{
-namespace vlc
-{
-namespace wrapper
+namespace avmedia::vlc::wrapper
 {
     bool Player::LoadSymbols()
     {
-        ApiMap VLC_PLAYER_API[] =
+        static ApiMap const VLC_PLAYER_API[] =
         {
             SYM_MAP( libvlc_media_player_new_from_media ),
             SYM_MAP( libvlc_media_player_release ),
@@ -83,11 +79,11 @@ namespace wrapper
             SYM_MAP( libvlc_audio_set_mute ),
             SYM_MAP( libvlc_audio_get_mute ),
             SYM_MAP( libvlc_video_take_snapshot ),
-#if defined UNX
-            SYM_MAP( libvlc_media_player_set_xwindow ),
-#elif defined MACOSX
+#if defined MACOSX
             SYM_MAP( libvlc_media_player_set_nsobject ),
-#elif defined WNT
+#elif defined UNX
+            SYM_MAP( libvlc_media_player_set_xwindow ),
+#elif defined _WIN32
             SYM_MAP( libvlc_media_player_set_hwnd ),
 #endif
             SYM_MAP( libvlc_media_player_has_vout ),
@@ -180,20 +176,6 @@ namespace wrapper
         libvlc_video_set_scale( mPlayer, factor );
     }
 
-    unsigned Player::getWidth() const
-    {
-        unsigned width, height;
-        libvlc_video_get_size( mPlayer, 0, &width, &height );
-        return width;
-    }
-
-    unsigned Player::getHeight() const
-    {
-        unsigned width, height;
-        libvlc_video_get_size( mPlayer, 0, &width, &height );
-        return height;
-    }
-
     void Player::setMouseHandling(bool flag)
     {
         libvlc_video_set_mouse_input( mPlayer, flag );
@@ -202,11 +184,6 @@ namespace wrapper
     bool Player::isPlaying() const
     {
         return libvlc_media_player_is_playing( mPlayer ) == 1;
-    }
-
-    float Player::getRate() const
-    {
-        return libvlc_media_player_get_rate( mPlayer );
     }
 
     void Player::setVolume( int volume )
@@ -239,28 +216,26 @@ namespace wrapper
 
     void Player::setWindow( intptr_t id )
     {
-#if defined UNX
-        libvlc_media_player_set_xwindow( mPlayer, (uint32_t) id );
-#elif defined MACOSX
+#if defined MACOSX
         libvlc_media_player_set_nsobject( mPlayer, reinterpret_cast<void*>( id ) );
-#elif defined WNT
+#elif defined UNX
+        libvlc_media_player_set_xwindow( mPlayer, static_cast<uint32_t>(id) );
+#elif defined _WIN32
         libvlc_media_player_set_hwnd( mPlayer, reinterpret_cast<void*>( id ) );
 #endif
     }
 
-    bool Player::takeSnapshot( const rtl::OUString& file )
+    void Player::takeSnapshot( const OUString& file )
     {
-        rtl::OString dest;
+        OString dest;
         file.convertToString( &dest, RTL_TEXTENCODING_UTF8, 0 );
-        return libvlc_video_take_snapshot( mPlayer, 0, dest.getStr(), 480, 360 ) == 0;
+        libvlc_video_take_snapshot( mPlayer, 0, dest.getStr(), 480, 360 );
     }
 
     bool Player::hasVout() const
     {
         return libvlc_media_player_has_vout( mPlayer );
     }
-}
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

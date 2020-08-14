@@ -24,14 +24,10 @@
 #include "composeduiupdate.hxx"
 #include "formbrowsertools.hxx"
 
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/inspection/XPropertyHandler.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/beans/UnknownPropertyException.hpp>
-#include <com/sun/star/beans/PropertyVetoException.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <comphelper/listenernotification.hxx>
 
 #include <memory>
 #include <vector>
@@ -110,7 +106,7 @@ namespace pcr
         virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
         // IPropertyExistenceCheck
-        virtual bool SAL_CALL hasPropertyByName( const OUString& _rName ) override;
+        virtual bool hasPropertyByName( const OUString& _rName ) override;
 
     private:
         /** ensures that m_pUIRequestComposer exists
@@ -135,7 +131,7 @@ namespace pcr
                 : ::osl::MutexGuard( _rInstance.m_aMutex )
             {
                 if ( _rInstance.m_aSlaveHandlers.empty() )
-                    throw css::lang::DisposedException( OUString(), *(&_rInstance) );
+                    throw css::lang::DisposedException( OUString(), _rInstance );
             }
         };
     };

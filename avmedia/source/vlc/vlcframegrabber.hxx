@@ -17,16 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_VLC_VLCFRAMEGRABBER_HXX
-#define INCLUDED_AVMEDIA_SOURCE_VLC_VLCFRAMEGRABBER_HXX
+#pragma once
 
 #include <com/sun/star/media/XFrameGrabber.hpp>
 #include <cppuhelper/implbase.hxx>
 #include "vlccommon.hxx"
-#include "wrapper/Wrapper.hxx"
+#include <wrapper/Wrapper.hxx>
 
-namespace avmedia {
-namespace vlc {
+namespace avmedia::vlc {
 
 typedef ::cppu::WeakImplHelper< css::media::XFrameGrabber,
                                 css::lang::XServiceInfo > FrameGrabber_BASE;
@@ -38,18 +36,16 @@ class VLCFrameGrabber : public FrameGrabber_BASE
     wrapper::Player mPlayer;
     wrapper::EventHandler& mEventHandler;
 public:
-    VLCFrameGrabber( wrapper::EventHandler& eh, const rtl::OUString& url );
+    VLCFrameGrabber( wrapper::EventHandler& eh, const OUString& url );
 
     css::uno::Reference< css::graphic::XGraphic > SAL_CALL grabFrame( double fMediaTime ) override;
 
-    ::rtl::OUString SAL_CALL getImplementationName() override;
-    sal_Bool SAL_CALL supportsService( const ::rtl::OUString& serviceName ) override;
-    css::uno::Sequence< ::rtl::OUString > SAL_CALL getSupportedServiceNames() override;
+    OUString SAL_CALL getImplementationName() override;
+    sal_Bool SAL_CALL supportsService( const OUString& serviceName ) override;
+    css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
 }
-}
 
-#endif // INCLUDED_AVMEDIA_SOURCE_VLC_VLCFRAMEGRABBER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,14 +20,15 @@
 #define INCLUDED_XMLOFF_SOURCE_TEXT_TXTPARAI_HXX
 
 
+#include <com/sun/star/container/XIndexReplace.hpp>
 #include <com/sun/star/uno/Reference.h>
 #include <xmloff/xmlictxt.hxx>
 
 class XMLHints_Impl;
-namespace com { namespace sun { namespace star {
-namespace text {  class XTextRange; }
-namespace xml { namespace sax { class XAttributeList; } }
-} } }
+namespace com::sun::star {
+    namespace text {  class XTextRange; }
+    namespace xml::sax { class XAttributeList; }
+}
 
 #define CONV_FROM_STAR_BATS 1
 #define CONV_FROM_STAR_MATH 2
@@ -44,9 +45,10 @@ class XMLParaContext : public SvXMLImportContext
     OUString             m_sDatatype;
     bool                 m_bHaveAbout;
     sal_Int8             nOutlineLevel;
-    XMLHints_Impl       *pHints;
+    std::unique_ptr<XMLHints_Impl> m_xHints;
     // Lost outline numbering in master document (#i73509#)
     bool                 mbOutlineLevelAttrFound;
+    bool                 mbOutlineContentVisible;
     bool                 bIgnoreLeadingSpace;
     bool                 bHeading;
     bool                 bIsListHeader;
@@ -63,9 +65,9 @@ public:
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
             bool bHeading );
 
-    virtual ~XMLParaContext() override;
+    virtual void EndElement() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
             const OUString& rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 
@@ -79,8 +81,6 @@ class XMLNumberedParaContext : public SvXMLImportContext
     sal_Int16 m_Level;
     /// text:start-value
     sal_Int16 m_StartValue;
-    /// xml:id
-    OUString m_XmlId;
     /// text:list-id
     OUString m_ListId;
     /// text:style-name
@@ -96,7 +96,7 @@ public:
 
     virtual void EndElement() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 i_nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 i_nPrefix,
             const OUString& i_rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & i_xAttrList ) override;
 

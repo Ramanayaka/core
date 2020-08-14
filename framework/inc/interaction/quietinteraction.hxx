@@ -20,8 +20,6 @@
 #ifndef INCLUDED_FRAMEWORK_INC_INTERACTION_QUIETINTERACTION_HXX
 #define INCLUDED_FRAMEWORK_INC_INTERACTION_QUIETINTERACTION_HXX
 
-#include <general.h>
-
 #include <com/sun/star/task/XInteractionHandler.hpp>
 #include <com/sun/star/task/XInteractionRequest.hpp>
 
@@ -40,7 +38,7 @@ namespace framework{
                     - InteractiveAugmentedIOException
                 All other requests will be aborted.
  */
-class QuietInteraction : public  ::cppu::WeakImplHelper<
+class QuietInteraction final : public  ::cppu::WeakImplHelper<
                                     css::task::XInteractionHandler >
 {
     // member

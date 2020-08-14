@@ -24,21 +24,14 @@
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/accessibility/IllegalAccessibleComponentStateException.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <cppuhelper/weak.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/XServiceName.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <cppuhelper/interfacecontainer.h>
 
 #include <svl/lstner.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase5.hxx>
 #include <cppuhelper/implbase1.hxx>
-#include <comphelper/servicehelper.hxx>
 
 namespace tools { class Rectangle; }
 
@@ -78,10 +71,10 @@ protected:
 public:
 
     /// @throws css::uno::RuntimeException
-    bool SAL_CALL isShowing(  );
+    bool isShowing();
 
     /// @throws css::uno::RuntimeException
-    virtual bool SAL_CALL isVisible();
+    virtual bool isVisible();
 
     ///=====  SfxListener  =====================================================
 
@@ -215,7 +208,7 @@ public:
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL
         getTypes() override;
 
-    /** Returns a implementation id.
+    /** Returns an implementation id.
     */
     virtual css::uno::Sequence<sal_Int8> SAL_CALL
         getImplementationId() override;
@@ -224,13 +217,13 @@ protected:
     /// Return this object's description.
     ///
     /// @throws css::uno::RuntimeException
-    virtual OUString SAL_CALL
+    virtual OUString
         createAccessibleDescription();
 
     /// Return the object's current name.
     ///
     /// @throws css::uno::RuntimeException
-    virtual OUString SAL_CALL
+    virtual OUString
         createAccessibleName();
 
     /// Return the object's current bounding box relative to the desktop.
@@ -248,6 +241,14 @@ public:
     void
         CommitChange(const css::accessibility::AccessibleEventObject& rEvent) const;
 
+    /// Use this method to set initial Name without notification
+    void SetName(const OUString& rName) { msName = rName; }
+
+    /// Use this method to set initial Description without notification
+    void SetDescription(const OUString& rDesc) { msDescription = rDesc; }
+
+    void SetParent(const css::uno::Reference<css::accessibility::XAccessible>& rParent) { mxParent = rParent; }
+
 protected:
     /// Calls all FocusListener to tell they that the focus is gained.
     void CommitFocusGained() const;
@@ -259,11 +260,6 @@ protected:
 
     /// @throws css::lang::DisposedException
     void IsObjectValid() const;
-
-    /// Use this method to set initial Name without notification
-    void SetName(const OUString& rName) { msName = rName; }
-    /// Use this method to set initial Description without notification
-    void SetDescription(const OUString& rDesc) { msDescription = rDesc; }
 
     /// Reference to the parent object.
     css::uno::Reference<css::accessibility::XAccessible> mxParent;

@@ -60,13 +60,13 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPPARABORDEROVERRIDE_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPPARABORDEROVERRIDE_HXX
 
-#include "lwpoverride.hxx"
+#include <lwpoverride.hxx>
 
 class LwpBorderStuff;
 class LwpShadow;
 class LwpMargins;
 
-class LwpParaBorderOverride : public LwpOverride
+class LwpParaBorderOverride final : public LwpOverride
 {
 public:
     LwpParaBorderOverride();
@@ -81,33 +81,32 @@ public:
         PB_MARGINWIDTH  = 2,        /* Border extends to margins */
         PB_CUSTOMWIDTH  = 3         /* Border width is specified explicitly */
     };
-public:
     virtual void Read(LwpObjectStream *pStrm) override;
 
-    LwpShadow*  GetShadow(){ return m_pShadow; }
-    LwpBorderStuff* GetBorderStuff(){ return m_pBorderStuff; }
-    LwpMargins* GetMargins() { return m_pMargins; };
+    LwpShadow*  GetShadow(){ return m_pShadow.get(); }
+    LwpBorderStuff* GetBorderStuff(){ return m_pBorderStuff.get(); }
+    LwpMargins* GetMargins() { return m_pMargins.get(); };
 
     void Override(LwpParaBorderOverride* pOther);
 
-    inline bool IsBorderStuffOverridden();
-    inline bool IsBetweenStuffOverridden();
-    inline bool IsShadowOverridden();
-    inline bool IsMarginsOverridden();
-    inline bool IsAboveTypeOverridden();
-    inline bool IsBelowTypeOverridden();
-    inline bool IsRightTypeOverridden();
-    inline bool IsBetweenTypeOverridden();
-    inline bool IsAboveWidthOverridden();
-    inline bool IsBelowWidthOverridden();
-    inline bool IsBetweenWidthOverridden();
-    inline bool IsRightWidthOverridden();
-    inline bool IsBetweenMarginOverridden();
+    inline bool IsBorderStuffOverridden() const;
+    inline bool IsBetweenStuffOverridden() const;
+    inline bool IsShadowOverridden() const;
+    inline bool IsMarginsOverridden() const;
+    inline bool IsAboveTypeOverridden() const;
+    inline bool IsBelowTypeOverridden() const;
+    inline bool IsRightTypeOverridden() const;
+    inline bool IsBetweenTypeOverridden() const;
+    inline bool IsAboveWidthOverridden() const;
+    inline bool IsBelowWidthOverridden() const;
+    inline bool IsBetweenWidthOverridden() const;
+    inline bool IsRightWidthOverridden() const;
+    inline bool IsBetweenMarginOverridden() const;
 
-    void OverrideBorderStuff(LwpBorderStuff* pBorderStuff);
-    void OverrideBetweenStuff(LwpBorderStuff* pBorderStuff);
-    void OverrideShadow(LwpShadow* pShadow);
-    void OverrideMargins(LwpMargins* pMargins);
+    void OverrideBorderStuff(LwpBorderStuff const * pBorderStuff);
+    void OverrideBetweenStuff(LwpBorderStuff const * pBorderStuff);
+    void OverrideShadow(LwpShadow const * pShadow);
+    void OverrideMargins(LwpMargins const * pMargins);
     void OverrideAboveType(BorderWidthType eNewType);
     void OverrideBelowType(BorderWidthType eNewType);
     void OverrideRightType(BorderWidthType eNewType);
@@ -134,13 +133,10 @@ public:
 
     friend class LwpParaBorderPiece;
 
-protected:
-    LwpParaBorderOverride(LwpParaBorderOverride const& rOther);
-
 private:
+    LwpParaBorderOverride(LwpParaBorderOverride const& rOther);
     LwpParaBorderOverride& operator=(LwpParaBorderOverride const& rOther) = delete;
 
-protected:
     enum
     {
         PBO_STUFF           = 0x0001,
@@ -158,11 +154,10 @@ protected:
         PBO_RIGHT           = 0x1000
     };
 
-private:
-    LwpBorderStuff      *m_pBorderStuff;
-    LwpBorderStuff      *m_pBetweenStuff;
-    LwpShadow           *m_pShadow;
-    LwpMargins          *m_pMargins;
+    std::unique_ptr<LwpBorderStuff> m_pBorderStuff;
+    std::unique_ptr<LwpBorderStuff> m_pBetweenStuff;
+    std::unique_ptr<LwpShadow>      m_pShadow;
+    std::unique_ptr<LwpMargins>     m_pMargins;
 
     BorderWidthType     m_eAboveType;
     BorderWidthType     m_eBelowType;
@@ -177,55 +172,55 @@ private:
     sal_uInt32          m_nBetweenMargin;
 };
 
-inline bool LwpParaBorderOverride::IsBorderStuffOverridden()
+inline bool LwpParaBorderOverride::IsBorderStuffOverridden() const
 {
     return ((m_nOverride & PBO_STUFF) != 0);
 }
-inline bool LwpParaBorderOverride::IsBetweenStuffOverridden()
+inline bool LwpParaBorderOverride::IsBetweenStuffOverridden() const
 {
     return ((m_nOverride & PBO_BETWEENSTUFF) != 0);
 }
-inline bool LwpParaBorderOverride::IsShadowOverridden()
+inline bool LwpParaBorderOverride::IsShadowOverridden() const
 {
     return ((m_nOverride & PBO_SHADOW) != 0);
 }
-inline bool LwpParaBorderOverride::IsMarginsOverridden()
+inline bool LwpParaBorderOverride::IsMarginsOverridden() const
 {
     return ((m_nOverride & PBO_MARGINS) != 0);
 }
-inline bool LwpParaBorderOverride::IsAboveTypeOverridden()
+inline bool LwpParaBorderOverride::IsAboveTypeOverridden() const
 {
     return ((m_nOverride & PBO_ABOVETYPE) != 0);
 }
-inline bool LwpParaBorderOverride::IsBelowTypeOverridden()
+inline bool LwpParaBorderOverride::IsBelowTypeOverridden() const
 {
     return ((m_nOverride & PBO_BELOWTYPE) != 0);
 }
-inline bool LwpParaBorderOverride::IsRightTypeOverridden()
+inline bool LwpParaBorderOverride::IsRightTypeOverridden() const
 {
     return ((m_nOverride & PBO_RIGHTTYPE) != 0);
 }
-inline bool LwpParaBorderOverride::IsBetweenTypeOverridden()
+inline bool LwpParaBorderOverride::IsBetweenTypeOverridden() const
 {
     return ((m_nOverride & PBO_BETWEENTYPE) != 0);
 }
-inline bool LwpParaBorderOverride::IsAboveWidthOverridden()
+inline bool LwpParaBorderOverride::IsAboveWidthOverridden() const
 {
     return ((m_nOverride & PBO_ABOVE) != 0);
 }
-inline bool LwpParaBorderOverride::IsBelowWidthOverridden()
+inline bool LwpParaBorderOverride::IsBelowWidthOverridden() const
 {
     return ((m_nOverride & PBO_BELOW) != 0);
 }
-inline bool LwpParaBorderOverride::IsBetweenWidthOverridden()
+inline bool LwpParaBorderOverride::IsBetweenWidthOverridden() const
 {
     return ((m_nOverride & PBO_BETWEEN) != 0);
 }
-inline bool LwpParaBorderOverride::IsRightWidthOverridden()
+inline bool LwpParaBorderOverride::IsRightWidthOverridden() const
 {
     return ((m_nOverride & PBO_RIGHT) != 0);
 }
-inline bool LwpParaBorderOverride::IsBetweenMarginOverridden()
+inline bool LwpParaBorderOverride::IsBetweenMarginOverridden() const
 {
     return ((m_nOverride & PBO_BETWEENMARGIN) != 0);
 }

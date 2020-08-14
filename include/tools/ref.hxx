@@ -35,7 +35,7 @@ template<typename T> class SAL_DLLPUBLIC_RTTI SvRef final {
 public:
     SvRef(): pObj(nullptr) {}
 
-    SvRef(SvRef&& rObj)
+    SvRef(SvRef&& rObj) noexcept
     {
         pObj = rObj.pObj;
         rObj.pObj = nullptr;
@@ -130,11 +130,9 @@ protected:
 
 public:
                     SvRefBase() : nRefCount(0), bNoDelete(1) {}
-
                     SvRefBase(const SvRefBase &) : nRefCount(0), bNoDelete(1) {}
 
-    SvRefBase &     operator = ( const SvRefBase & )
-                    { return *this; }
+    SvRefBase &     operator=(const SvRefBase &) { return *this; }
 
     void            RestoreNoDelete()
                     { bNoDelete = 1; }
@@ -173,10 +171,10 @@ public:
 template<typename T>
 class SvCompatWeakBase;
 
-/** SvCompatWeakHdl acts as a intermediary between SvCompatWeakRef<T> and T.
+/** SvCompatWeakHdl acts as an intermediary between SvCompatWeakRef<T> and T.
 */
 template<typename T>
-class SvCompatWeakHdl : public SvRefBase
+class SvCompatWeakHdl final : public SvRefBase
 {
     friend class SvCompatWeakBase<T>;
     T* _pObj;

@@ -17,17 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "odbc/OTools.hxx"
-#include "odbc/OFunctions.hxx"
+#include <odbc/OTools.hxx>
+#include <odbc/OFunctions.hxx>
 #include <com/sun/star/sdbc/DataType.hpp>
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
 #include <osl/endian.h>
-#include "odbc/OConnection.hxx"
+#include <odbc/OConnection.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 #include <string.h>
-#include <string>
-#include <algorithm>
 
 using namespace connectivity::odbc;
 using namespace com::sun::star::uno;
@@ -123,7 +123,7 @@ void appendSQLWCHARs(OUStringBuffer & s, SQLWCHAR const * d, sal_Int32 n)
 }
 
 
-void OTools::getValue(  OConnection* _pConnection,
+void OTools::getValue(  OConnection const * _pConnection,
                         SQLHANDLE _aStatementHandle,
                         sal_Int32 columnIndex,
                         SQLSMALLINT _nType,
@@ -138,21 +138,21 @@ void OTools::getValue(  OConnection* _pConnection,
     else
     {
         OSL_ENSURE(static_cast<size_t>(_nSize) == properSize, "connectivity::odbc::OTools::getValue got wrongly sized memory region to write result to");
-        if ( static_cast<size_t>(_nSize) > properSize )
+        if ( o3tl::make_unsigned(_nSize) > properSize )
         {
             SAL_WARN( "connectivity.drivers", "memory region is too big - trying to fudge it");
             memset(_pValue, 0, _nSize);
 #ifdef OSL_BIGENDIAN
             // This is skewed in favour of integer types
-            _pValue += _nSize - properSize;
+            _pValue = static_cast<char*>(_pValue) + _nSize - properSize;
 #endif
         }
     }
-    OSL_ENSURE(static_cast<size_t>(_nSize) >= properSize, "memory region is too small");
+    OSL_ENSURE(o3tl::make_unsigned(_nSize) >= properSize, "memory region is too small");
     SQLLEN pcbValue = SQL_NULL_DATA;
     OTools::ThrowException(_pConnection,
                             (*reinterpret_cast<T3SQLGetData>(_pConnection->getOdbcFunction(ODBC3SQLFunctionId::GetData)))(_aStatementHandle,
-                                        (SQLUSMALLINT)columnIndex,
+                                        static_cast<SQLUSMALLINT>(columnIndex),
                                         _nType,
                                         _pValue,
                                         _nSize,
@@ -161,7 +161,7 @@ void OTools::getValue(  OConnection* _pConnection,
     _bWasNull = pcbValue == SQL_NULL_DATA;
 }
 
-void OTools::bindValue( OConnection* _pConnection,
+void OTools::bindValue( OConnection const * _pConnection,
                         SQLHANDLE _aStatementHandle,
                         sal_Int32 columnIndex,
                         SQLSMALLINT _nType,
@@ -187,7 +187,7 @@ void OTools::bindValue( OConnection* _pConnection,
     {
         *pLen = SQL_NULL_DATA;
         nRetcode = (*reinterpret_cast<T3SQLBindCol>(_pConnection->getOdbcFunction(ODBC3SQLFunctionId::BindCol)))(_aStatementHandle,
-                                (SQLUSMALLINT)columnIndex,
+                                static_cast<SQLUSMALLINT>(columnIndex),
                                 fCType,
                                 _pData,
                                 _nMaxLen,
@@ -218,7 +218,7 @@ void OTools::bindValue( OConnection* _pConnection,
                 case SQL_NUMERIC:
                 {
                     OString aString = OString::number(*static_cast<double const *>(_pValue));
-                    *pLen = (SQLSMALLINT)aString.getLength();
+                    *pLen = static_cast<SQLSMALLINT>(aString.getLength());
                     *static_cast<OString*>(_pData) = aString;
                     // Pointer on Char*
                     _pData = const_cast<char *>(static_cast<OString*>(_pData)->getStr());
@@ -256,20 +256,18 @@ void OTools::bindValue( OConnection* _pConnection,
                 {
                     /* see https://msdn.microsoft.com/en-us/library/ms716238%28v=vs.85%29.aspx
                      * for an explanation of that apparently weird cast */
-                    _pData = reinterpret_cast<void*>((uintptr_t)columnIndex);
-                    sal_Int32 nLen = 0;
-                    nLen = static_cast<const css::uno::Sequence< sal_Int8 > *>(_pValue)->getLength();
-                    *pLen = (SQLLEN)SQL_LEN_DATA_AT_EXEC(nLen);
+                    _pData = reinterpret_cast<void*>(static_cast<uintptr_t>(columnIndex));
+                    sal_Int32 nLen = static_cast<const css::uno::Sequence< sal_Int8 > *>(_pValue)->getLength();
+                    *pLen = static_cast<SQLLEN>(SQL_LEN_DATA_AT_EXEC(nLen));
                 }
                     break;
                 case SQL_LONGVARCHAR:
                 {
                     /* see https://msdn.microsoft.com/en-us/library/ms716238%28v=vs.85%29.aspx
                      * for an explanation of that apparently weird cast */
-                    _pData = reinterpret_cast<void*>((uintptr_t)columnIndex);
-                    sal_Int32 nLen = 0;
-                    nLen = static_cast<OUString const *>(_pValue)->getLength();
-                    *pLen = (SQLLEN)SQL_LEN_DATA_AT_EXEC(nLen);
+                    _pData = reinterpret_cast<void*>(static_cast<uintptr_t>(columnIndex));
+                    sal_Int32 nLen = static_cast<OUString const *>(_pValue)->getLength();
+                    *pLen = static_cast<SQLLEN>(SQL_LEN_DATA_AT_EXEC(nLen));
                 }   break;
                 case SQL_DATE:
                     *pLen = sizeof(DATE_STRUCT);
@@ -290,7 +288,7 @@ void OTools::bindValue( OConnection* _pConnection,
         }
 
         nRetcode = (*reinterpret_cast<T3SQLBindCol>(_pConnection->getOdbcFunction(ODBC3SQLFunctionId::BindCol)))(_aStatementHandle,
-                                (SQLUSMALLINT)columnIndex,
+                                static_cast<SQLUSMALLINT>(columnIndex),
                                 fCType,
                                 _pData,
                                 _nMaxLen,
@@ -306,8 +304,7 @@ void OTools::ThrowException(const OConnection* _pConnection,
                             const SQLHANDLE _pContext,
                             const SQLSMALLINT _nHandleType,
                             const Reference< XInterface >& _xInterface,
-                            const bool _bNoFound,
-                            const rtl_TextEncoding _nTextEncoding)
+                            const bool _bNoFound)
 {
     switch(_rRetCode)
     {
@@ -319,7 +316,7 @@ void OTools::ThrowException(const OConnection* _pConnection,
                         return;
         case SQL_NO_DATA_FOUND:
                                 if(_bNoFound)
-                                    return; // no need to throw a exception
+                                    return; // no need to throw an exception
                                 break;
         case SQL_ERROR:             break;
 
@@ -350,6 +347,7 @@ void OTools::ThrowException(const OConnection* _pConnection,
     OSL_ENSURE(n != SQL_INVALID_HANDLE,"SdbODBC3_SetStatus: SQLError returned SQL_INVALID_HANDLE");
     OSL_ENSURE(n == SQL_SUCCESS || n == SQL_SUCCESS_WITH_INFO || n == SQL_NO_DATA_FOUND || n == SQL_ERROR,"SdbODBC3_SetStatus: SQLError failed");
 
+    rtl_TextEncoding _nTextEncoding = osl_getThreadTextEncoding();
     // For the Return Code of SQLError see ODBC 2.0 Programmer's Reference Page 287ff
     throw SQLException( OUString(reinterpret_cast<char *>(szErrorMessage), pcbErrorMsg, _nTextEncoding),
                                     _xInterface,
@@ -382,7 +380,7 @@ Sequence<sal_Int8> OTools::getBytesValue(const OConnection* _pConnection,
         OTools::ThrowException(_pConnection,
                                (*reinterpret_cast<T3SQLGetData>(_pConnection->getOdbcFunction(ODBC3SQLFunctionId::GetData)))(
                                    _aStatementHandle,
-                                   (SQLUSMALLINT)columnIndex,
+                                   static_cast<SQLUSMALLINT>(columnIndex),
                                    _fSqlType,
                                    static_cast<SQLPOINTER>(aCharArray),
                                    nMaxLen,
@@ -412,7 +410,7 @@ Sequence<sal_Int8> OTools::getBytesValue(const OConnection* _pConnection,
     return aData;
 }
 
-OUString OTools::getStringValue(OConnection* _pConnection,
+OUString OTools::getStringValue(OConnection const * _pConnection,
                                        SQLHANDLE _aStatementHandle,
                                        sal_Int32 columnIndex,
                                        SQLSMALLINT _fSqlType,
@@ -442,10 +440,10 @@ OUString OTools::getStringValue(OConnection* _pConnection,
             OTools::ThrowException(_pConnection,
                                    (*reinterpret_cast<T3SQLGetData>(_pConnection->getOdbcFunction(ODBC3SQLFunctionId::GetData)))(
                                        _aStatementHandle,
-                                       (SQLUSMALLINT)columnIndex,
+                                       static_cast<SQLUSMALLINT>(columnIndex),
                                        SQL_C_WCHAR,
                                        &waCharArray,
-                                       (SQLLEN)nMaxLen*sizeof(sal_Unicode),
+                                       SQLLEN(nMaxLen)*sizeof(sal_Unicode),
                                        &pcbValue),
                                    _aStatementHandle,SQL_HANDLE_STMT,_xInterface);
             _bWasNull = pcbValue == SQL_NULL_DATA;
@@ -486,7 +484,7 @@ OUString OTools::getStringValue(OConnection* _pConnection,
             OTools::ThrowException(_pConnection,
                                    (*reinterpret_cast<T3SQLGetData>(_pConnection->getOdbcFunction(ODBC3SQLFunctionId::GetData)))(
                                        _aStatementHandle,
-                                       (SQLUSMALLINT)columnIndex,
+                                       static_cast<SQLUSMALLINT>(columnIndex),
                                        SQL_C_CHAR,
                                        &aCharArray,
                                        nMaxLen,
@@ -522,7 +520,7 @@ OUString OTools::getStringValue(OConnection* _pConnection,
     return aData.makeStringAndClear();
 }
 
-void OTools::GetInfo(OConnection* _pConnection,
+void OTools::GetInfo(OConnection const * _pConnection,
                      SQLHANDLE _aConnectionHandle,
                      SQLUSMALLINT _nInfo,
                      OUString &_rValue,
@@ -538,7 +536,7 @@ void OTools::GetInfo(OConnection* _pConnection,
     _rValue = OUString(aValue,nValueLen,_nTextEncoding);
 }
 
-void OTools::GetInfo(OConnection* _pConnection,
+void OTools::GetInfo(OConnection const * _pConnection,
                      SQLHANDLE _aConnectionHandle,
                      SQLUSMALLINT _nInfo,
                      sal_Int32 &_rValue,
@@ -551,7 +549,7 @@ void OTools::GetInfo(OConnection* _pConnection,
         _aConnectionHandle,SQL_HANDLE_DBC,_xInterface);
 }
 
-void OTools::GetInfo(OConnection* _pConnection,
+void OTools::GetInfo(OConnection const * _pConnection,
                      SQLHANDLE _aConnectionHandle,
                      SQLUSMALLINT _nInfo,
                      SQLUINTEGER &_rValue,
@@ -564,7 +562,7 @@ void OTools::GetInfo(OConnection* _pConnection,
         _aConnectionHandle,SQL_HANDLE_DBC,_xInterface);
 }
 
-void OTools::GetInfo(OConnection* _pConnection,
+void OTools::GetInfo(OConnection const * _pConnection,
                      SQLHANDLE _aConnectionHandle,
                      SQLUSMALLINT _nInfo,
                      SQLUSMALLINT &_rValue,

@@ -12,20 +12,18 @@
 
 #include <svl/poolitem.hxx>
 #include <unotools/configitem.hxx>
-#include <formula/grammar.hxx>
 #include "scdllapi.h"
-#include "global.hxx"
+#include "types.hxx"
 
 class SC_DLLPUBLIC ScDefaultsOptions
 {
 private:
     SCTAB nInitTabCount;             // number of Tabs for new Spreadsheet doc
     OUString aInitTabPrefix;  // The Tab prefix name in new Spreadsheet doc
+    bool     bJumboSheets;
 
 public:
     ScDefaultsOptions();
-    ScDefaultsOptions( const ScDefaultsOptions& rCpy );
-    ~ScDefaultsOptions();
 
     void SetDefaults();
 
@@ -33,23 +31,28 @@ public:
     void   SetInitTabCount( SCTAB nTabs) { nInitTabCount = nTabs; }
     void   SetInitTabPrefix(const OUString& aPrefix) { aInitTabPrefix = aPrefix; }
     const OUString& GetInitTabPrefix() const { return aInitTabPrefix; }
+    bool   GetInitJumboSheets() const           { return bJumboSheets; }
+    void   SetInitJumboSheets( bool b) { bJumboSheets = b; }
 
-    ScDefaultsOptions&  operator=  ( const ScDefaultsOptions& rCpy );
     bool                operator== ( const ScDefaultsOptions& rOpt ) const;
 
 };
 
 // item for the dialog / options page
 
-class SC_DLLPUBLIC ScTpDefaultsItem : public SfxPoolItem
+class SC_DLLPUBLIC ScTpDefaultsItem final : public SfxPoolItem
 {
 public:
     ScTpDefaultsItem( const ScDefaultsOptions& rOpt );
-    ScTpDefaultsItem( const ScTpDefaultsItem& rItem );
     virtual ~ScTpDefaultsItem() override;
 
+    ScTpDefaultsItem(ScTpDefaultsItem const &) = default;
+    ScTpDefaultsItem(ScTpDefaultsItem &&) = default;
+    ScTpDefaultsItem & operator =(ScTpDefaultsItem const &) = delete; // due to SfxPoolItem
+    ScTpDefaultsItem & operator =(ScTpDefaultsItem &&) = delete; // due to SfxPoolItem
+
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScTpDefaultsItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const ScDefaultsOptions& GetDefaultsOptions() const { return theOptions; }
 
@@ -59,7 +62,7 @@ private:
 
 // config item
 
-class ScDefaultsCfg : public ScDefaultsOptions, public utl::ConfigItem
+class ScDefaultsCfg final : public ScDefaultsOptions, public utl::ConfigItem
 {
 private:
     static css::uno::Sequence<OUString> GetPropertyNames();

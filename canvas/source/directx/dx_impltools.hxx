@@ -40,31 +40,29 @@ namespace basegfx
     class B2DPolyPolygon;
 };
 
-namespace com { namespace sun { namespace star { namespace geometry
+namespace com::sun::star::geometry
 {
     struct IntegerRectangle2D;
     struct RealPoint2D;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace rendering
+namespace com::sun::star::rendering
 {
     class  XBitmap;
     class  XPolyPolygon2D;
     class  XCanvasFont;
-} } } }
+}
 
 
-namespace dxcanvas
+namespace dxcanvas::tools
 {
-    namespace tools
-    {
         struct RawRGBABitmap;
 
         ::basegfx::B2DPolyPolygon
         polyPolygonFromXPolyPolygon2D( const css::uno::Reference< css::rendering::XPolyPolygon2D >& );
 
         Gdiplus::Graphics* createGraphicsFromHDC(HDC);
-        Gdiplus::Graphics* createGraphicsFromBitmap(const BitmapSharedPtr&);
+        GraphicsSharedPtr createGraphicsFromBitmap(const BitmapSharedPtr&);
 
         void setupGraphics( Gdiplus::Graphics& rGraphics );
 
@@ -121,8 +119,8 @@ namespace dxcanvas
                                          double                           nGreenModulation,
                                          double                           nBlueModulation,
                                          double                           nAlphaModulation );
-    }
 }
+
 
 #endif // INCLUDED_CANVAS_SOURCE_DIRECTX_DX_IMPLTOOLS_HXX
 

@@ -18,12 +18,14 @@
  */
 
 #include "UndoManager.hxx"
-#include "ChartViewHelper.hxx"
+#include <ChartViewHelper.hxx>
 
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
 
 #include <framework/undomanagerhelper.hxx>
+#include <framework/imutex.hxx>
 #include <officecfg/Office/Common.hxx>
 #include <svl/undo.hxx>
 
@@ -33,7 +35,6 @@ namespace chart
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::uno::XInterface;
     using ::com::sun::star::uno::UNO_QUERY;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::lang::DisposedException;
     using ::com::sun::star::document::XUndoManager;
@@ -66,7 +67,7 @@ namespace chart
 
             ::osl::Mutex&                       getMutex();
             // IUndoManagerImplementation
-            virtual ::svl::IUndoManager&        getImplUndoManager() override;
+            virtual SfxUndoManager&             getImplUndoManager() override;
             virtual Reference< XUndoManager >   getThis() override;
 
             // attribute access
@@ -96,7 +97,7 @@ namespace chart
             return m_rMutex;
         }
 
-        ::svl::IUndoManager& UndoManager_Impl::getImplUndoManager()
+        SfxUndoManager& UndoManager_Impl::getImplUndoManager()
         {
             return m_aUndoManager;
         }
@@ -120,6 +121,8 @@ namespace chart
             if ( m_bDisposed )
                 throw DisposedException( OUString(), getThis() );
         }
+
+        namespace {
 
         /** guard for public UNO methods of the UndoManager
 
@@ -153,6 +156,8 @@ namespace chart
             virtual void acquire() override { }
             virtual void release() override { }
         };
+
+        }
 
         ::framework::IMutex& UndoManagerMethodGuard::getGuardedMutex()
         {
@@ -319,7 +324,7 @@ namespace chart
     Reference< XInterface > SAL_CALL UndoManager::getParent(  )
     {
         UndoManagerMethodGuard aGuard( *m_pImpl );
-        return *&m_pImpl->getParent();
+        return m_pImpl->getParent();
     }
 
     void SAL_CALL UndoManager::setParent( const Reference< XInterface >& )

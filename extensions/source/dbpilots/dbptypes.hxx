@@ -22,16 +22,16 @@
 
 #include <sal/config.h>
 
+#include <rtl/ustring.hxx>
+
 #include <map>
 #include <set>
-#include <vector>
 
 
 namespace dbp
 {
 
 
-    typedef std::vector<OUString> StringArray;
     typedef std::set<OUString> StringBag;
     typedef std::map<sal_uInt32, OUString> MapInt2String;
 

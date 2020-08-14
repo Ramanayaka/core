@@ -17,13 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "XMLStarBasicExportHandler.hxx"
+#include <XMLStarBasicExportHandler.hxx>
 
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 
 
 using namespace ::com::sun::star::uno;
@@ -32,12 +32,13 @@ using namespace ::xmloff::token;
 using ::com::sun::star::beans::PropertyValue;
 
 
-XMLStarBasicExportHandler::XMLStarBasicExportHandler() :
-    sStarBasic("StarBasic"),
-    sLibrary("Library"),
-    sMacroName("MacroName"),
-    sStarOffice("StarOffice"),
-    sApplication("application")
+const OUStringLiteral gsStarBasic("StarBasic");
+const OUStringLiteral gsLibrary("Library");
+const OUStringLiteral gsMacroName("MacroName");
+const OUStringLiteral gsStarOffice("StarOffice");
+const OUStringLiteral gsApplication("application");
+
+XMLStarBasicExportHandler::XMLStarBasicExportHandler()
 {
 }
 
@@ -48,42 +49,38 @@ XMLStarBasicExportHandler::~XMLStarBasicExportHandler()
 void XMLStarBasicExportHandler::Export(
     SvXMLExport& rExport,
     const OUString& rEventQName,
-    Sequence<PropertyValue> & rValues,
+    const Sequence<PropertyValue> & rValues,
     bool bUseWhitespace)
 {
     rExport.AddAttribute(XML_NAMESPACE_SCRIPT, XML_LANGUAGE,
                          rExport.GetNamespaceMap().GetQNameByKey(
-                             XML_NAMESPACE_OOO, sStarBasic ) );
+                             XML_NAMESPACE_OOO, gsStarBasic ) );
     rExport.AddAttribute(XML_NAMESPACE_SCRIPT, XML_EVENT_NAME, rEventQName);
 
     OUString sLocation, sName;
-    sal_Int32 nCount = rValues.getLength();
-    for(sal_Int32 i = 0; i < nCount; i++)
+    for(const auto& rValue : rValues)
     {
-        if (sLibrary.equals(rValues[i].Name))
+        if (gsLibrary == rValue.Name)
         {
             OUString sTmp;
-            rValues[i].Value >>= sTmp;
+            rValue.Value >>= sTmp;
             sLocation = GetXMLToken(
-                (sTmp.equalsIgnoreAsciiCase(sApplication) ||
-                 sTmp.equalsIgnoreAsciiCase(sStarOffice) ) ? XML_APPLICATION
+                (sTmp.equalsIgnoreAsciiCase(gsApplication) ||
+                 sTmp.equalsIgnoreAsciiCase(gsStarOffice) ) ? XML_APPLICATION
                                                            : XML_DOCUMENT );
         }
-        else if (sMacroName.equals(rValues[i].Name))
+        else if (gsMacroName == rValue.Name)
         {
-            rValues[i].Value >>= sName;
+            rValue.Value >>= sName;
         }
         // else: disregard
     }
 
     if( !sLocation.isEmpty() )
     {
-        OUStringBuffer sTmp( sLocation.getLength() + sName.getLength() + 1 );
-        sTmp = sLocation;
-        sTmp.append( ':' );
-        sTmp.append( sName );
+        OUString sTmp = sLocation + ":" + sName;
         rExport.AddAttribute(XML_NAMESPACE_SCRIPT, XML_MACRO_NAME,
-                            sTmp.makeStringAndClear());
+                            sTmp);
     }
     else
     {

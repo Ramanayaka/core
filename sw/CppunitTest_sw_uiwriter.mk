@@ -11,17 +11,22 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sw_uiwriter))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sw_uiwriter))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sw_uiwriter, \
     sw/qa/extras/uiwriter/uiwriter \
+    sw/qa/extras/uiwriter/uiwriter2 \
+    sw/qa/extras/uiwriter/uiwriter3 \
 ))
 
-# note: this links msword only for the reason to have a order dependency,
+# note: this links msword only for the reason to have an order dependency,
 # because "make sw.check" will not see the dependency through services.rdb
 $(eval $(call gb_CppunitTest_use_libraries,sw_uiwriter, \
     comphelper \
     cppu \
     cppuhelper \
     editeng \
+    i18nlangtag \
     msword \
     sal \
     sfx \
@@ -29,11 +34,13 @@ $(eval $(call gb_CppunitTest_use_libraries,sw_uiwriter, \
     svt \
     svxcore \
     sw \
+	swqahelper \
     test \
     unotest \
     vcl \
     tl \
     utl \
+    svx \
 ))
 
 $(eval $(call gb_CppunitTest_use_externals,sw_uiwriter,\
@@ -45,11 +52,17 @@ $(eval $(call gb_CppunitTest_set_include,sw_uiwriter,\
     -I$(SRCDIR)/sw/inc \
     -I$(SRCDIR)/sw/source/core/inc \
     -I$(SRCDIR)/sw/source/uibase/inc \
-    -I$(SRCDIR)/sw/qa/extras/inc \
+    -I$(SRCDIR)/sw/source/filter/inc \
+    -I$(SRCDIR)/sw/source/filter/html \
+    -I$(SRCDIR)/sw/qa/inc \
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_CppunitTest_use_sdk_api,sw_uiwriter))
+$(eval $(call gb_CppunitTest_use_api,sw_uiwriter,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_CppunitTest_use_ure,sw_uiwriter))
 $(eval $(call gb_CppunitTest_use_vcl,sw_uiwriter))
@@ -58,7 +71,18 @@ $(eval $(call gb_CppunitTest_use_rdb,sw_uiwriter,services))
 
 $(eval $(call gb_CppunitTest_use_configuration,sw_uiwriter))
 
+$(eval $(call gb_CppunitTest_use_uiconfigs,sw_uiwriter, \
+    modules/swriter \
+))
+
+$(eval $(call gb_CppunitTest_use_packages,sw_uiwriter, \
+    oox_customshapes \
+    sfx2_classification \
+))
+
 $(call gb_CppunitTest_get_target,sw_uiwriter): \
     $(call gb_Library_get_target,textconv_dict)
+
+$(eval $(call gb_CppunitTest_use_more_fonts,sw_uiwriter))
 
 # vim: set noet sw=4 ts=4:

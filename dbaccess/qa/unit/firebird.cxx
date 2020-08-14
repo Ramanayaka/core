@@ -15,8 +15,6 @@
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XStatement.hpp>
-#include <svtools/miscopt.hxx>
-#include <config_firebird.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::sdb;
@@ -30,20 +28,11 @@ public:
     void testEmptyDBConnection();
     void testIntegerDatabase();
 
-    virtual void setUp() override;
-
     CPPUNIT_TEST_SUITE(FirebirdTest);
     CPPUNIT_TEST(testEmptyDBConnection);
     CPPUNIT_TEST(testIntegerDatabase);
     CPPUNIT_TEST_SUITE_END();
 };
-
-void FirebirdTest::setUp()
-{
-    DBTestBase::setUp();
-    SvtMiscOptions aMiscOptions;
-    aMiscOptions.SetExperimentalMode(true);
-}
 
 /**
  * Test the loading of an "empty" file, i.e. the embedded database has not yet
@@ -51,8 +40,9 @@ void FirebirdTest::setUp()
  */
 void FirebirdTest::testEmptyDBConnection()
 {
+    auto const tmp = createTempCopy("firebird_empty.odb");
     uno::Reference< XOfficeDatabaseDocument > xDocument =
-        getDocumentForFileName("firebird_empty.odb");
+        getDocumentForUrl(tmp.GetURL());
 
     getConnectionForDocument(xDocument);
 
@@ -66,7 +56,7 @@ void FirebirdTest::testEmptyDBConnection()
 void FirebirdTest::testIntegerDatabase()
 {
     uno::Reference< XOfficeDatabaseDocument > xDocument =
-        getDocumentForFileName("firebird_integer_x64le_ods12.odb");
+        getDocumentForFileName("firebird_integer_ods12.odb");
 
     uno::Reference< XConnection > xConnection =
         getConnectionForDocument(xDocument);

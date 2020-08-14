@@ -18,15 +18,15 @@
  */
 
 #include <vcl/idle.hxx>
-#include "saltimer.hxx"
+#include <vcl/scheduler.hxx>
 
-Idle::Idle( bool bAuto, const sal_Char *pDebugName )
+Idle::Idle( bool bAuto, const char *pDebugName )
     : Timer( bAuto, pDebugName )
 {
     SetPriority( TaskPriority::DEFAULT_IDLE );
 }
 
-Idle::Idle( const sal_Char *pDebugName )
+Idle::Idle( const char *pDebugName )
     : Idle( false, pDebugName )
 {
 }
@@ -40,8 +40,7 @@ void Idle::Start()
     {
         switch ( GetPriority() )
         {
-            case TaskPriority::LOW:
-            case TaskPriority::LOWER:
+            case TaskPriority::DEFAULT_IDLE:
             case TaskPriority::LOWEST:
                 nPeriod = Scheduler::InfiniteTimeoutMs;
                 break;
@@ -53,21 +52,14 @@ void Idle::Start()
     Task::StartTimer(nPeriod);
 }
 
-bool Idle::ReadyForSchedule( bool bIdle, sal_uInt64 /* nTimeNow */ ) const
+sal_uInt64 Idle::UpdateMinPeriod( sal_uInt64 /* nTimeNow */ ) const
 {
-    // always ready if not only looking for timers.
-    return bIdle;
-}
-
-bool Idle::IsIdle() const
-{
-    return true;
-}
-
-sal_uInt64 Idle::UpdateMinPeriod( sal_uInt64 /* nMinPeriod */, sal_uInt64 /* nTimeNow */ ) const
-{
-    assert(false); // idles currently don't hit this.
     return Scheduler::ImmediateTimeoutMs;
+}
+
+AutoIdle::AutoIdle( const char *pDebugName )
+    : Idle( true, pDebugName )
+{
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

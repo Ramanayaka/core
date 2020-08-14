@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEBOX_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEBOX_HXX
+#pragma once
 
-#include <map>
-#include <standard/vclxaccessibleedit.hxx>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
+#include <com/sun/star/accessibility/XAccessible.hpp>
+#include <com/sun/star/accessibility/XAccessibleAction.hpp>
 #include <com/sun/star/accessibility/XAccessibleKeyBinding.hpp>
 #include <com/sun/star/accessibility/XAccessibleValue.hpp>
+#include <toolkit/awt/vclxaccessiblecomponent.hxx>
 #include <cppuhelper/implbase3.hxx>
 
 
@@ -70,7 +69,7 @@ public:
         actual list.  The text field is not provided for non drop down list
         boxes.
     */
-    sal_Int32 SAL_CALL getAccessibleChildCount() override;
+    sal_Int32 SAL_CALL getAccessibleChildCount() final override;
     /** For drop down list boxes the text field is a not editable
         VCLXAccessibleTextField, for combo boxes it is an
         editable VLCAccessibleEdit.
@@ -81,13 +80,11 @@ public:
     */
     sal_Int16 SAL_CALL getAccessibleRole() override;
 
-    sal_Int32 SAL_CALL getAccessibleIndexInParent() override;
-
     // XAccessibleAction
 
     /** There is one action for drop down boxes and none for others.
     */
-    virtual sal_Int32 SAL_CALL getAccessibleActionCount() override;
+    virtual sal_Int32 SAL_CALL getAccessibleActionCount() final override;
     /** The action for drop down boxes lets the user toggle the visibility of the
         popup menu.
     */
@@ -142,7 +139,7 @@ protected:
     */
     bool m_bHasListChild;
 
-    virtual ~VCLXAccessibleBox() override;
+    virtual ~VCLXAccessibleBox() override = default;
 
     /** Returns true when the object is valid.
     */
@@ -153,11 +150,8 @@ protected:
 
     virtual void FillAccessibleStateSet( utl::AccessibleStateSetHelper& rStateSet ) override;
 
-private:
-    /// Index in parent.  This is settable from the outside.
-    sal_Int32 m_nIndexInParent;
+    sal_Int32 implGetAccessibleChildCount();
 };
 
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

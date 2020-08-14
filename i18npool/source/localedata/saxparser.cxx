@@ -17,24 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cstdlib>
 #include <iostream>
 #include <stdio.h>
-#include <string.h>
+#include <string>
 #include <stack>
 
-#include "sal/main.h"
+#include <sal/main.h>
 
 #include <com/sun/star/lang/XComponent.hpp>
 
-#include <com/sun/star/xml/sax/SAXParseException.hpp>
+#include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
-
-#include <com/sun/star/io/XOutputStream.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
 
 #include <cppuhelper/bootstrap.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -49,6 +46,7 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::io;
 
+namespace {
 
 /************
  * Sequence of bytes -> InputStream
@@ -64,9 +62,7 @@ public:
 public:
     virtual sal_Int32 SAL_CALL readBytes( Sequence< sal_Int8 >& aData, sal_Int32 nBytesToRead ) override
         {
-            nBytesToRead = (nBytesToRead > m_seq.getLength() - nPos ) ?
-                m_seq.getLength() - nPos :
-                nBytesToRead;
+            nBytesToRead = std::min(nBytesToRead, m_seq.getLength() - nPos);
             aData = Sequence< sal_Int8 > ( &(m_seq.getConstArray()[nPos]) , nBytesToRead );
             nPos += nBytesToRead;
             return nBytesToRead;
@@ -93,10 +89,11 @@ public:
     Sequence< sal_Int8> m_seq;
 };
 
+}
 
 // Helper : create an input stream from a file
 
-Reference< XInputStream > createStreamFromFile(
+static Reference< XInputStream > createStreamFromFile(
     const char *pcFile )
 {
     Reference<  XInputStream >  r;
@@ -140,6 +137,7 @@ Reference< XInputStream > createStreamFromFile(
     return r;
 }
 
+namespace {
 
 class TestDocumentHandler :
     public WeakImplHelper< XExtendedDocumentHandler , XEntityResolver , XErrorHandler >
@@ -148,10 +146,9 @@ public:
     TestDocumentHandler(const char* locale, const char* outFile )
         : rootNode(nullptr)
         , nError(0)
+        , theLocale(locale)
         , of(outFile, locale)
     {
-        strncpy( theLocale, locale, sizeof(theLocale) );
-        theLocale[sizeof(theLocale)-1] = 0;
     }
 
     virtual ~TestDocumentHandler(  ) override
@@ -190,7 +187,7 @@ public: // ExtendedDocumentHandler
 
     virtual void SAL_CALL startDocument() override
     {
-    printf( "parsing document %s started\n", theLocale);
+    printf( "parsing document %s started\n", theLocale.c_str());
     of.writeAsciiString("#include <sal/types.h>\n\n\n");
     of.writeAsciiString("#include <stdio.h>\n\n");
     of.writeAsciiString("extern \"C\" {\n\n");
@@ -204,16 +201,16 @@ public: // ExtendedDocumentHandler
             int err = rootNode->getError();
             if (err)
             {
-                printf( "Error: in data for %s: %d\n", theLocale, err);
+                printf( "Error: in data for %s: %d\n", theLocale.c_str(), err);
                 nError += err;
             }
         }
         else
         {
             ++nError;
-            printf( "Error: no data for %s\n", theLocale);
+            printf( "Error: no data for %s\n", theLocale.c_str());
         }
-        printf( "parsing document %s finished\n", theLocale);
+        printf( "parsing document %s finished\n", theLocale.c_str());
 
         of.writeAsciiString("} // extern \"C\"\n\n");
         of.closeOutput();
@@ -294,10 +291,11 @@ public: // ExtendedDocumentHandler
 
 public:
     int nError;
-    sal_Char theLocale[50];
+    std::string theLocale;
     OFileWriter of;
 };
 
+}
 
 SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
 {

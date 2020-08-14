@@ -20,7 +20,7 @@
 
 #include <biginteger.hxx>
 
-#include "xmlsec-wrapper.h"
+#include <xmlsec-wrapper.h>
 #include <com/sun/star/uno/Sequence.hxx>
 
 using namespace ::com::sun::star::uno ;
@@ -36,7 +36,7 @@ Sequence< sal_Int8 > numericStringToBigInteger ( const OUString& numeral )
 
     OString onumeral = OUStringToOString( numeral , RTL_TEXTENCODING_ASCII_US ) ;
 
-    chNumeral = xmlStrndup( reinterpret_cast<const xmlChar*>(onumeral.getStr()), ( int )onumeral.getLength() ) ;
+    chNumeral = xmlStrndup( reinterpret_cast<const xmlChar*>(onumeral.getStr()), static_cast<int>(onumeral.getLength()) ) ;
 
     if( xmlSecBnInitialize( &bn, 0 ) < 0 ) {
         xmlFree( chNumeral ) ;
@@ -77,7 +77,7 @@ OUString bigIntegerToNumericString ( const Sequence< sal_Int8 >& integer )
 {
     OUString aRet ;
 
-    if( integer.getLength() ) {
+    if( integer.hasElements() ) {
         xmlSecBn bn ;
         xmlChar* chNumeral ;
 

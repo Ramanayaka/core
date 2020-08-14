@@ -19,12 +19,18 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_EXPLICITCATEGORIESPROVIDER_HXX
 #define INCLUDED_CHART2_SOURCE_INC_EXPLICITCATEGORIESPROVIDER_HXX
 
-#include <com/sun/star/chart2/XCoordinateSystem.hpp>
-#include <com/sun/star/chart2/data/XTextualDataSequence.hpp>
 #include "charttoolsdllapi.hxx"
-#include "ChartModel.hxx"
+#include <cppuhelper/weakref.hxx>
+#include <com/sun/star/uno/Reference.h>
+#include <com/sun/star/uno/Sequence.h>
 
 #include <vector>
+
+namespace chart { class ChartModel; }
+namespace com::sun::star::chart2 { class XCoordinateSystem; }
+namespace com::sun::star::chart2::data { class XDataSequence; }
+namespace com::sun::star::chart2::data { class XLabeledDataSequence; }
+namespace com::sun::star::uno { class Any; }
 
 namespace chart
 {
@@ -38,7 +44,7 @@ struct OOO_DLLPUBLIC_CHARTTOOLS ComplexCategory
     {}
 };
 
-class OOO_DLLPUBLIC_CHARTTOOLS SplitCategoriesProvider
+class SplitCategoriesProvider
 {
 public:
     virtual ~SplitCategoriesProvider();
@@ -78,12 +84,15 @@ public:
     sal_Int32 getCategoryLevelCount() const;
 
     const css::uno::Sequence< css::uno::Reference<
-        css::chart2::data::XLabeledDataSequence> >& getSplitCategoriesList() { return m_aSplitCategoriesList;}
+        css::chart2::data::XLabeledDataSequence> >& getSplitCategoriesList() const { return m_aSplitCategoriesList;}
 
     bool isDateAxis();
     const std::vector< double >&  getDateCategories();
 
-private: //member
+private:
+    ExplicitCategoriesProvider(ExplicitCategoriesProvider const &) = delete;
+    ExplicitCategoriesProvider& operator =(ExplicitCategoriesProvider const &) = delete;
+
     bool volatile m_bDirty;
     css::uno::WeakReference< css::chart2::XCoordinateSystem >   m_xCooSysModel;
     ChartModel& mrModel;

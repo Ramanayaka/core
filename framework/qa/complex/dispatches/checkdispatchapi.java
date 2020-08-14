@@ -193,7 +193,7 @@ public class checkdispatchapi
     @Test public void checkInterceptorLifeTime() throws Exception
     {
         // Note: It's important for the following test, that aInterceptor will be hold alive by the uno reference
-        // xInterceptor. Otherwhise we can't check some internal states of aInterceptor at the end of this method, because
+        // xInterceptor. Otherwise we can't check some internal states of aInterceptor at the end of this method, because
         // it was already killed .-)
 
         Interceptor aInterceptor = new Interceptor(m_xMSF);
@@ -267,7 +267,7 @@ public class checkdispatchapi
         impl_closeFrame(xFrame);
     }
 
-    /** @short  load an URL into the current test frame.
+    /** @short  load a URL into the current test frame.
      */
     private void impl_loadIntoFrame(XFrame xFrame, String sURL, PropertyValue args[]) throws Exception
     {
@@ -285,7 +285,7 @@ public class checkdispatchapi
         }
     }
 
-    /** @short  create an uno implementation directly.
+    /** @short  create a uno implementation directly.
      */
     private Object impl_createUNOComponent(String sName)
     {
@@ -345,7 +345,7 @@ public class checkdispatchapi
                 {
                     // Error
                     fail("At least one DispatchInformation item does not match the requested group.\n\trequested group=[" + nGroup
-                            + "] returned groupd=[" + aInfo.GroupId + "] command=\"" + aInfo.Command + "\""); // true => don't break this test
+                            + "] returned group=[" + aInfo.GroupId + "] command=\"" + aInfo.Command + "\""); // true => don't break this test
                     continue;
                 }
 

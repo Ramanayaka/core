@@ -20,17 +20,20 @@
 #include <sal/config.h>
 
 #include <com/sun/star/lang/IllegalAccessException.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/container/ElementExistException.hpp>
+#include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/sdb/XDatabaseRegistrations.hpp>
 
 #include <cppuhelper/basemutex.hxx>
 #include <comphelper/interfacecontainer2.hxx>
 #include <cppuhelper/implbase1.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <osl/diagnose.h>
 #include <unotools/pathoptions.hxx>
 #include <tools/urlobj.hxx>
 #include <unotools/confignode.hxx>
 
-#include <databaseregistrations.hxx>
+#include "databaseregistrations.hxx"
 
 namespace dbaccess
 {
@@ -50,22 +53,25 @@ namespace dbaccess
 
     static OUString getConfigurationRootPath()
     {
-        return OUString("org.openoffice.Office.DataAccess/RegisteredNames");
+        return "org.openoffice.Office.DataAccess/RegisteredNames";
     }
 
     static OUString getLocationNodeName()
     {
-        return OUString("Location");
+        return "Location";
     }
 
     static OUString getNameNodeName()
     {
-        return OUString("Name");
+        return "Name";
     }
 
     // DatabaseRegistrations - declaration
     typedef ::cppu::WeakAggImplHelper1  <   XDatabaseRegistrations
                                         >   DatabaseRegistrations_Base;
+
+    namespace {
+
     class DatabaseRegistrations :public ::cppu::BaseMutex
                                 ,public DatabaseRegistrations_Base
     {
@@ -115,7 +121,7 @@ namespace dbaccess
             simply do a "getByName" (equivalent) when we want to retrieve the node for a given registration name.
             Instead, we must search all nodes.
 
-            If a node with the given name already exists, then a ElementExistException is thrown.
+            If a node with the given name already exists, then an ElementExistException is thrown.
 
             If no exception is thrown, then a valid node is returned: If the node did not yet exist a new node is created,
             in this case the root node is not yet committed.
@@ -133,6 +139,8 @@ namespace dbaccess
         ::comphelper::OInterfaceContainerHelper2  m_aRegistrationListeners;
     };
 
+    }
+
     // DatabaseRegistrations - implementation
     DatabaseRegistrations::DatabaseRegistrations( const Reference<XComponentContext> & _rxContext )
         :m_aContext( _rxContext )
@@ -149,13 +157,10 @@ namespace dbaccess
 
     ::utl::OConfigurationNode DatabaseRegistrations::impl_getNodeForName_nothrow( const OUString& _rName )
     {
-        Sequence< OUString > aNames( m_aConfigurationRoot.getNodeNames() );
-        for (   const OUString* pName = aNames.getConstArray();
-                pName != aNames.getConstArray() + aNames.getLength();
-                ++pName
-            )
+        const Sequence< OUString > aNames( m_aConfigurationRoot.getNodeNames() );
+        for ( auto const & nodeName : aNames )
         {
-            ::utl::OConfigurationNode aNodeForName = m_aConfigurationRoot.openNode( *pName );
+            ::utl::OConfigurationNode aNodeForName = m_aConfigurationRoot.openNode( nodeName );
 
             OUString sTestName;
             OSL_VERIFY( aNodeForName.getNodeValue( getNameNodeName() ) >>= sTestName );
@@ -240,17 +245,15 @@ namespace dbaccess
         if ( !m_aConfigurationRoot.isValid() )
             throw RuntimeException( OUString(), *this );
 
-        Sequence< OUString > aProgrammaticNames( m_aConfigurationRoot.getNodeNames() );
+        const Sequence< OUString > aProgrammaticNames( m_aConfigurationRoot.getNodeNames() );
         Sequence< OUString > aDisplayNames( aProgrammaticNames.getLength() );
         OUString* pDisplayName = aDisplayNames.getArray();
 
-        for (   const OUString* pName = aProgrammaticNames.getConstArray();
-                pName != aProgrammaticNames.getConstArray() + aProgrammaticNames.getLength();
-                ++pName, ++pDisplayName
-            )
+        for ( auto const & name : aProgrammaticNames )
         {
-            ::utl::OConfigurationNode aRegistrationNode = m_aConfigurationRoot.openNode( *pName );
+            ::utl::OConfigurationNode aRegistrationNode = m_aConfigurationRoot.openNode( name );
             OSL_VERIFY( aRegistrationNode.getNodeValue( getNameNodeName() ) >>= *pDisplayName );
+            ++pDisplayName;
         }
 
         return aDisplayNames;

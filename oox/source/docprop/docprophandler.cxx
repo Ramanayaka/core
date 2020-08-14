@@ -22,22 +22,23 @@
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/PropertyExistException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/xml/sax/SAXException.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 
+#include <o3tl/safeint.hxx>
 #include <osl/time.h>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <i18nlangtag/languagetag.hxx>
 
 #include <vector>
 #include <boost/algorithm/string.hpp>
 
-#include "oox/helper/attributelist.hxx"
+#include <oox/helper/attributelist.hxx>
 
 using namespace ::com::sun::star;
 
-namespace oox {
-namespace docprop {
+namespace oox::docprop {
 
 OOXMLDocPropHandler::OOXMLDocPropHandler( const uno::Reference< uno::XComponentContext >& xContext,
                                           const uno::Reference< document::XDocumentProperties >& rDocProp )
@@ -68,26 +69,26 @@ void OOXMLDocPropHandler::InitNew()
 
 void OOXMLDocPropHandler::AddCustomProperty( const uno::Any& aAny )
 {
-    if ( !m_aCustomPropertyName.isEmpty() )
-    {
-        const uno::Reference< beans::XPropertyContainer > xUserProps =
-            m_xDocProp->getUserDefinedProperties();
-        if ( !xUserProps.is() )
-            throw uno::RuntimeException();
+    if ( m_aCustomPropertyName.isEmpty() )
+        return;
 
-        try
-        {
-            xUserProps->addProperty( m_aCustomPropertyName,
-                    beans::PropertyAttribute::REMOVABLE, aAny );
-        }
-        catch( beans::PropertyExistException& )
-        {
-            // conflicts with core and extended properties are possible
-        }
-        catch( uno::Exception& )
-        {
-            OSL_FAIL( "Can not add custom property!" );
-        }
+    const uno::Reference< beans::XPropertyContainer > xUserProps =
+        m_xDocProp->getUserDefinedProperties();
+    if ( !xUserProps.is() )
+        throw uno::RuntimeException();
+
+    try
+    {
+        xUserProps->addProperty( m_aCustomPropertyName,
+                beans::PropertyAttribute::REMOVABLE, aAny );
+    }
+    catch( beans::PropertyExistException& )
+    {
+        // conflicts with core and extended properties are possible
+    }
+    catch( uno::Exception& )
+    {
+        OSL_FAIL( "Can not add custom property!" );
     }
 }
 
@@ -97,25 +98,25 @@ util::DateTime OOXMLDocPropHandler::GetDateTimeFromW3CDTF( const OUString& aChar
     const sal_Int32 nLen = aChars.getLength();
     if ( nLen >= 4 )
     {
-        aOslDTime.Year = (sal_Int16)aChars.copy( 0, 4 ).toInt32();
+        aOslDTime.Year = static_cast<sal_Int16>(aChars.copy( 0, 4 ).toInt32());
 
         if ( nLen >= 7 && aChars[4] == '-' )
         {
-            aOslDTime.Month = (sal_uInt16)aChars.copy( 5, 2 ).toInt32();
+            aOslDTime.Month = static_cast<sal_uInt16>(aChars.copy( 5, 2 ).toInt32());
 
             if ( nLen >= 10 && aChars[7] == '-' )
             {
-                aOslDTime.Day = (sal_uInt16)aChars.copy( 8, 2 ).toInt32();
+                aOslDTime.Day = static_cast<sal_uInt16>(aChars.copy( 8, 2 ).toInt32());
 
                 if ( nLen >= 16 && aChars[10] == 'T' && aChars[13] == ':' )
                 {
-                    aOslDTime.Hours = (sal_uInt16)aChars.copy( 11, 2 ).toInt32();
-                    aOslDTime.Minutes = (sal_uInt16)aChars.copy( 14, 2 ).toInt32();
+                    aOslDTime.Hours = static_cast<sal_uInt16>(aChars.copy( 11, 2 ).toInt32());
+                    aOslDTime.Minutes = static_cast<sal_uInt16>(aChars.copy( 14, 2 ).toInt32());
 
                     sal_Int32 nOptTime = 0;
                     if ( nLen >= 19 && aChars[16] == ':' )
                     {
-                        aOslDTime.Seconds = (sal_uInt16)aChars.copy( 17, 2 ).toInt32();
+                        aOslDTime.Seconds = static_cast<sal_uInt16>(aChars.copy( 17, 2 ).toInt32());
                         nOptTime += 3;
                         if ( nLen >= 20 && aChars[19] == '.' )
                         {
@@ -200,9 +201,11 @@ uno::Sequence< OUString > OOXMLDocPropHandler::GetKeywordsSet( const OUString& a
         {
             uno::Sequence< OUString > aResult( aUtf8Result.size() );
             OUString* pResultValues = aResult.getArray();
-            for ( std::vector< std::string >::const_iterator i = aUtf8Result.begin();
-                  i != aUtf8Result.end(); ++i, ++pResultValues )
-                *pResultValues = OUString( i->c_str(), static_cast< sal_Int32 >( i->size() ),RTL_TEXTENCODING_UTF8 );
+            for (auto const& elem : aUtf8Result)
+            {
+                *pResultValues = OUString( elem.c_str(), static_cast< sal_Int32 >( elem.size() ),RTL_TEXTENCODING_UTF8 );
+                ++pResultValues;
+            }
 
             return aResult;
         }
@@ -242,27 +245,24 @@ void OOXMLDocPropHandler::UpdateDocStatistic( const OUString& aChars )
         break;
     }
 
-    if ( !aName.isEmpty() )
-    {
-        bool bFound = false;
-        sal_Int32 nLen = aSet.getLength();
-        for ( sal_Int32 nInd = 0; nInd < nLen; nInd++ )
-            if ( aSet[nInd].Name.equals( aName ) )
-            {
-                aSet[nInd].Value <<= aChars.toInt32();
-                bFound = true;
-                break;
-            }
+    if ( aName.isEmpty() )
+        return;
 
-        if ( !bFound )
-        {
-            aSet.realloc( nLen + 1 );
-            aSet[nLen].Name = aName;
-            aSet[nLen].Value <<= aChars.toInt32();
-        }
+    sal_Int32 nInd = 0;
+    for ( auto pProp = aSet.getConstArray(); nInd < aSet.getLength(); ++nInd )
+        if ( pProp[nInd].Name == aName )
+            break;
 
-        m_xDocProp->setDocumentStatistics( aSet );
-    }
+    if (nInd == aSet.getLength())
+        aSet.realloc( nInd + 1 );
+
+    beans::NamedValue aProp;
+    aProp.Name = aName;
+    aProp.Value <<= aChars.toInt32();
+
+    aSet[nInd] = aProp;
+
+    m_xDocProp->setDocumentStatistics( aSet );
 }
 
 // com.sun.star.xml.sax.XFastDocumentHandler
@@ -315,9 +315,19 @@ void SAL_CALL OOXMLDocPropHandler::startFastElement( ::sal_Int32 nElement, const
     {
         m_nType = nElement;
     }
+    // variant tags in vector
+    else if ( m_nState && m_nInBlock == 3 && getNamespace( nElement ) == NMSP_officeDocPropsVT )
+    {
+        m_nType = nElement;
+    }
+    // lpstr or i4 tags in vector
+    else if ( m_nState && m_nInBlock == 4 && getNamespace( nElement ) == NMSP_officeDocPropsVT )
+    {
+        m_nType = nElement;
+    }
     else
     {
-        SAL_WARN("oox", "OOXMLDocPropHandler::startFastElement: unknown element " << getBaseToken(nElement));
+        SAL_WARN("oox", "OOXMLDocPropHandler::startFastElement: unknown element " << getBaseToken(nElement) << " m_nState=" << m_nState << " m_nInBlock=" << m_nInBlock);
     }
 
     if ( m_nInBlock == SAL_MAX_INT32 )
@@ -338,41 +348,41 @@ void SAL_CALL OOXMLDocPropHandler::startUnknownElement( const OUString& aNamespa
 
 void SAL_CALL OOXMLDocPropHandler::endFastElement( ::sal_Int32 )
 {
-    if ( m_nInBlock )
-    {
-        m_nInBlock--;
+    if ( !m_nInBlock )
+        return;
 
-        if ( !m_nInBlock )
-            m_nState = 0;
-        else if ( m_nInBlock == 1 )
+    m_nInBlock--;
+
+    if ( !m_nInBlock )
+        m_nState = 0;
+    else if ( m_nInBlock == 1 )
+    {
+        m_nBlock = 0;
+        m_aCustomPropertyName.clear();
+    }
+    else if ( m_nInBlock == 2 )
+    {
+        if (   m_nState == CUSTPR_TOKEN(Properties)
+            && m_nBlock == CUSTPR_TOKEN(property))
         {
-            m_nBlock = 0;
-            m_aCustomPropertyName.clear();
-        }
-        else if ( m_nInBlock == 2 )
-        {
-            if (   m_nState == CUSTPR_TOKEN(Properties)
-                && m_nBlock == CUSTPR_TOKEN(property))
+            switch (m_nType)
             {
-                switch (m_nType)
-                {
-                    case VT_TOKEN(bstr):
-                    case VT_TOKEN(lpstr):
-                    case VT_TOKEN(lpwstr):
-                        if (!m_aCustomPropertyName.isEmpty() &&
-                            INSERTED != m_CustomStringPropertyState)
-                        {
-                            // the property has string type, so it is valid
-                            // even with an empty value - characters() has
-                            // not been called in that case
-                            AddCustomProperty(uno::makeAny(OUString()));
-                        }
-                    break;
-                }
+                case VT_TOKEN(bstr):
+                case VT_TOKEN(lpstr):
+                case VT_TOKEN(lpwstr):
+                    if (!m_aCustomPropertyName.isEmpty() &&
+                        INSERTED != m_CustomStringPropertyState)
+                    {
+                        // the property has string type, so it is valid
+                        // even with an empty value - characters() has
+                        // not been called in that case
+                        AddCustomProperty(uno::makeAny(OUString()));
+                    }
+                break;
             }
-            m_CustomStringPropertyState = NONE;
-            m_nType = 0;
         }
+        m_CustomStringPropertyState = NONE;
+        m_nType = 0;
     }
 }
 
@@ -501,17 +511,22 @@ void SAL_CALL OOXMLDocPropHandler::characters( const OUString& aChars )
                     break;
 
                 case EXTPR_TOKEN( TotalTime ):
-                    try
+                {
+                    sal_Int32 nDuration;
+                    if (!o3tl::checked_multiply<sal_Int32>(aChars.toInt32(), 60, nDuration))
                     {
-                        // The TotalTime is in mins as per ECMA specification.
-                        m_xDocProp->setEditingDuration( aChars.toInt32() * 60 );
-                    }
-                    catch (lang::IllegalArgumentException &)
-                    {
-                        // ignore
+                        try
+                        {
+                            // The TotalTime is in mins as per ECMA specification.
+                            m_xDocProp->setEditingDuration(nDuration);
+                        }
+                        catch (const lang::IllegalArgumentException&)
+                        {
+                            // ignore
+                        }
                     }
                     break;
-
+                }
                 case EXTPR_TOKEN( Characters ):
                 case EXTPR_TOKEN( CharactersWithSpaces ):
                 case EXTPR_TOKEN( Pages ):
@@ -628,7 +643,7 @@ void SAL_CALL OOXMLDocPropHandler::characters( const OUString& aChars )
 
                     case VT_TOKEN( i1 ):
                     case VT_TOKEN( i2 ):
-                        AddCustomProperty( uno::makeAny( (sal_Int16)aChars.toInt32() ) );
+                        AddCustomProperty( uno::makeAny( static_cast<sal_Int16>(aChars.toInt32()) ) );
                         break;
 
                     case VT_TOKEN( i4 ):
@@ -668,16 +683,16 @@ void SAL_CALL OOXMLDocPropHandler::characters( const OUString& aChars )
     {
         throw;
     }
-    catch( uno::Exception& e )
+    catch( uno::Exception& )
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         throw xml::sax::SAXException(
             "Error while setting document property!",
             uno::Reference< uno::XInterface >(),
-            uno::makeAny( e ) );
+            anyEx );
     }
 }
 
-} // namespace docprop
-} // namespace oox
+} // namespace oox::docprop
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

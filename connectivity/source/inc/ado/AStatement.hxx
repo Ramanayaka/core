@@ -30,16 +30,13 @@
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include <comphelper/uno3.hxx>
-#include "ado/AConnection.hxx"
-#include <list>
-#include "ado/Awrapado.hxx"
+#include <ado/AConnection.hxx>
+#include <vector>
+#include <ado/Awrapado.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         typedef ::cppu::WeakComponentImplHelper<   css::sdbc::XStatement,
                                                    css::sdbc::XWarningsSupplier,
                                                    css::util::XCancellable,
@@ -52,17 +49,15 @@ namespace connectivity
         class OStatement_Base       :   public cppu::BaseMutex,
                                         public  OStatement_BASE,
                                         public  ::cppu::OPropertySetHelper,
-                                        public  ::comphelper::OPropertyArrayUsageHelper<OStatement_Base>,
-                                        public  connectivity::OSubComponent<OStatement_Base, OStatement_BASE>
+                                        public  ::comphelper::OPropertyArrayUsageHelper<OStatement_Base>
 
         {
-            friend class connectivity::OSubComponent<OStatement_Base, OStatement_BASE>;
             friend class OResultSet;
 
             css::sdbc::SQLWarning          m_aLastWarning;
 
         protected:
-            std::list< OUString>               m_aBatchList;
+            std::vector< OUString>               m_aBatchVector;
 
             css::uno::WeakReference< css::sdbc::XResultSet>    m_xResultSet;   // The last ResultSet created
                                                                         //  for this Statement
@@ -217,7 +212,6 @@ namespace connectivity
             virtual void SAL_CALL clearBatch(  ) override;
             virtual css::uno::Sequence< sal_Int32 > SAL_CALL executeBatch(  ) override;
         };
-    }
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ASTATEMENT_HXX
 

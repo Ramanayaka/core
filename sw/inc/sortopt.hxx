@@ -20,17 +20,18 @@
 #define INCLUDED_SW_INC_SORTOPT_HXX
 
 #include <rtl/ustring.hxx>
+#include <i18nlangtag/lang.h>
 #include "swdllapi.h"
+#include <memory>
 #include <vector>
 
-enum SwSortOrder        { SRT_ASCENDING, SRT_DESCENDING };
-enum SwSortDirection    { SRT_COLUMNS, SRT_ROWS         };
+enum class SwSortOrder     { Ascending, Descending };
+enum class SwSortDirection { Columns, Rows };
 
 struct SW_DLLPUBLIC SwSortKey
 {
     SwSortKey();
     SwSortKey( sal_uInt16 nId, const OUString& rSrtType, SwSortOrder eOrder );
-    SwSortKey( const SwSortKey& rOld );
 
     OUString        sSortType;
     SwSortOrder     eSortOrder;
@@ -44,7 +45,9 @@ struct SW_DLLPUBLIC SwSortOptions
     ~SwSortOptions();
     SwSortOptions(const SwSortOptions& rOpt);
 
-    std::vector<SwSortKey*> aKeys;
+    SwSortOptions& operator=( SwSortOptions const & ) = delete; // MSVC2015 workaround
+
+    std::vector<std::unique_ptr<SwSortKey>> aKeys;
     SwSortDirection         eDirection;
     sal_Unicode             cDeli;
     LanguageType            nLanguage;

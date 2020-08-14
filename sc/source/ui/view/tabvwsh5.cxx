@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
 #include <svl/hint.hxx>
 #include <comphelper/lok.hxx>
 #include <svl/zforlist.hxx>
@@ -26,19 +25,17 @@
 #include <svx/svxids.hrc>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/objsh.hxx>
+#include <sfx2/viewfrm.hxx>
 
-#include "tabvwsh.hxx"
-#include "sc.hrc"
-#include "global.hxx"
-#include "docsh.hxx"
-#include "document.hxx"
-#include "formulacell.hxx"
-#include "globstr.hrc"
-#include "scmod.hxx"
-#include "uiitems.hxx"
-#include "editsh.hxx"
-#include "hints.hxx"
-#include "cellvalue.hxx"
+#include <tabvwsh.hxx>
+#include <global.hxx>
+#include <docsh.hxx>
+#include <document.hxx>
+#include <formulacell.hxx>
+#include <scmod.hxx>
+#include <uiitems.hxx>
+#include <hints.hxx>
+#include <cellvalue.hxx>
 #include <svl/sharedstring.hxx>
 
 void ScTabViewShell::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
@@ -226,11 +223,7 @@ void ScTabViewShell::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
                     if (!bRefMode)
                         StopRefMode();
                     else
-                    {
                         GetSelEngine()->Reset();
-                        GetFunctionSet().SetAnchorFlag(true);
-                        //  AnchorFlag, so immediately Control can appended
-                    }
                 }
                 break;
 
@@ -302,6 +295,14 @@ void ScTabViewShell::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
                 SetTabNo( GetViewData().GetTabNo(), true );
                 break;
 
+            case SfxHintId::LanguageChanged:
+            {
+                GetViewFrame()->GetBindings().Invalidate(SID_LANGUAGE_STATUS);
+                if ( ScGridWindow* pWin = GetViewData().GetActiveWin() )
+                    pWin->ResetAutoSpell();
+            }
+                break;
+
             default:
                 break;
         }
@@ -310,7 +311,7 @@ void ScTabViewShell::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
     SfxViewShell::Notify( rBC, rHint );
 }
 
-SvxNumberInfoItem* ScTabViewShell::MakeNumberInfoItem( ScDocument* pDoc, ScViewData* pViewData )
+std::unique_ptr<SvxNumberInfoItem> ScTabViewShell::MakeNumberInfoItem( ScDocument* pDoc, const ScViewData* pViewData )
 {
 
     // construct NumberInfo item
@@ -360,13 +361,13 @@ SvxNumberInfoItem* ScTabViewShell::MakeNumberInfoItem( ScDocument* pDoc, ScViewD
     switch ( eValType )
     {
         case SvxNumberValueType::String:
-            return new SvxNumberInfoItem(
+            return std::make_unique<SvxNumberInfoItem>(
                                 pDoc->GetFormatTable(),
                                 aCellString,
                                 SID_ATTR_NUMBERFORMAT_INFO );
 
         case SvxNumberValueType::Number:
-            return new SvxNumberInfoItem(
+            return std::make_unique<SvxNumberInfoItem>(
                                 pDoc->GetFormatTable(),
                                 nCellValue,
                                 SID_ATTR_NUMBERFORMAT_INFO );
@@ -376,22 +377,15 @@ SvxNumberInfoItem* ScTabViewShell::MakeNumberInfoItem( ScDocument* pDoc, ScViewD
             ;
     }
 
-    return new SvxNumberInfoItem(
+    return std::make_unique<SvxNumberInfoItem>(
         pDoc->GetFormatTable(), static_cast<sal_uInt16>(SID_ATTR_NUMBERFORMAT_INFO));
 }
 
 void ScTabViewShell::UpdateNumberFormatter(
                         const SvxNumberInfoItem& rInfoItem )
 {
-    const sal_uInt32 nDelCount = rInfoItem.GetDelCount();
-
-    if ( nDelCount > 0 )
-    {
-        const sal_uInt32* pDelArr = rInfoItem.GetDelArray();
-
-        for ( sal_uInt32 i=0; i<nDelCount; i++ )
-            rInfoItem.GetNumberFormatter()->DeleteEntry( pDelArr[i] );
-    }
+    for ( sal_uInt32 key : rInfoItem.GetDelFormats() )
+        rInfoItem.GetNumberFormatter()->DeleteEntry( key );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

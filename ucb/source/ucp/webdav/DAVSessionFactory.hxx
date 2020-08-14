@@ -31,13 +31,12 @@
 #include <rtl/ref.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <ucbhelper/proxydecider.hxx>
-#include "DAVException.hxx"
 
 using namespace com::sun::star;
 
-namespace com { namespace sun { namespace star { namespace lang {
+namespace com::sun::star::lang {
     class XMultiServiceFactory;
-} } } }
+}
 
 namespace http_dav_ucp
 {

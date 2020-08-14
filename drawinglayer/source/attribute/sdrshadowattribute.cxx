@@ -23,44 +23,54 @@
 #include <rtl/instance.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpSdrShadowAttribute
         {
         public:
             // shadow definitions
             basegfx::B2DVector                  maOffset;                   // shadow offset 1/100th mm
+            basegfx::B2DVector                  maSize;                     // [0.0 .. 2.0]
             double                              mfTransparence;             // [0.0 .. 1.0], 0.0==no transp.
+            sal_Int32                           mnBlur;                     // [0   .. 180], radius of the blur
             basegfx::BColor                     maColor;                    // color of shadow
 
             ImpSdrShadowAttribute(
                 const basegfx::B2DVector& rOffset,
+                const basegfx::B2DVector& rSize,
                 double fTransparence,
+                sal_Int32 nBlur,
                 const basegfx::BColor& rColor)
             :   maOffset(rOffset),
+                maSize(rSize),
                 mfTransparence(fTransparence),
+                mnBlur(nBlur),
                 maColor(rColor)
             {
             }
 
             ImpSdrShadowAttribute()
             :   maOffset(basegfx::B2DVector()),
+                maSize(basegfx::B2DVector()),
                 mfTransparence(0.0),
+                mnBlur(0),
                 maColor(basegfx::BColor())
             {
             }
 
             // data read access
             const basegfx::B2DVector& getOffset() const { return maOffset; }
+            const basegfx::B2DVector& getSize() const { return maSize; }
             double getTransparence() const { return mfTransparence; }
+            sal_Int32 getBlur() const { return mnBlur; }
             const basegfx::BColor& getColor() const { return maColor; }
 
             bool operator==(const ImpSdrShadowAttribute& rCandidate) const
             {
                 return (getOffset() == rCandidate.getOffset()
+                    && getSize() == rCandidate.getSize()
                     && getTransparence() == rCandidate.getTransparence()
+                        && getBlur() == rCandidate.getBlur()
                     && getColor() == rCandidate.getColor());
             }
         };
@@ -74,10 +84,12 @@ namespace drawinglayer
 
         SdrShadowAttribute::SdrShadowAttribute(
             const basegfx::B2DVector& rOffset,
+            const basegfx::B2DVector& rSize,
             double fTransparence,
+            sal_Int32 nBlur,
             const basegfx::BColor& rColor)
         :   mpSdrShadowAttribute(ImpSdrShadowAttribute(
-                rOffset, fTransparence, rColor))
+                rOffset, rSize, fTransparence,nBlur, rColor))
         {
         }
 
@@ -86,36 +98,20 @@ namespace drawinglayer
         {
         }
 
-        SdrShadowAttribute::SdrShadowAttribute(const SdrShadowAttribute& rCandidate)
-        :   mpSdrShadowAttribute(rCandidate.mpSdrShadowAttribute)
-        {
-        }
+        SdrShadowAttribute::SdrShadowAttribute(const SdrShadowAttribute&) = default;
 
-        SdrShadowAttribute::SdrShadowAttribute(SdrShadowAttribute&& rCandidate)
-        :   mpSdrShadowAttribute(std::move(rCandidate.mpSdrShadowAttribute))
-        {
-        }
+        SdrShadowAttribute::SdrShadowAttribute(SdrShadowAttribute&&) = default;
 
-        SdrShadowAttribute::~SdrShadowAttribute()
-        {
-        }
+        SdrShadowAttribute::~SdrShadowAttribute() = default;
 
         bool SdrShadowAttribute::isDefault() const
         {
             return mpSdrShadowAttribute.same_object(theGlobalDefault::get());
         }
 
-        SdrShadowAttribute& SdrShadowAttribute::operator=(const SdrShadowAttribute& rCandidate)
-        {
-            mpSdrShadowAttribute = rCandidate.mpSdrShadowAttribute;
-            return *this;
-        }
+        SdrShadowAttribute& SdrShadowAttribute::operator=(const SdrShadowAttribute&) = default;
 
-        SdrShadowAttribute& SdrShadowAttribute::operator=(SdrShadowAttribute&& rCandidate)
-        {
-            mpSdrShadowAttribute = std::move(rCandidate.mpSdrShadowAttribute);
-            return *this;
-        }
+        SdrShadowAttribute& SdrShadowAttribute::operator=(SdrShadowAttribute&&) = default;
 
         bool SdrShadowAttribute::operator==(const SdrShadowAttribute& rCandidate) const
         {
@@ -131,16 +127,26 @@ namespace drawinglayer
             return mpSdrShadowAttribute->getOffset();
         }
 
+        const basegfx::B2DVector& SdrShadowAttribute::getSize() const
+        {
+            return mpSdrShadowAttribute->getSize();
+        }
+
         double SdrShadowAttribute::getTransparence() const
         {
             return mpSdrShadowAttribute->getTransparence();
+        }
+
+        sal_Int32 SdrShadowAttribute::getBlur() const
+        {
+            return mpSdrShadowAttribute->getBlur();
         }
 
         const basegfx::BColor& SdrShadowAttribute::getColor() const
         {
             return mpSdrShadowAttribute->getColor();
         }
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

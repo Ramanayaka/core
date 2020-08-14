@@ -18,27 +18,25 @@
  */
 
 #include <com/sun/star/drawing/LineDash.hpp>
-#include <svl/itempool.hxx>
-#include <svl/itemset.hxx>
 
-#include <vector>
 #include "UnoNameItemTable.hxx"
 #include <svx/xlndsit.hxx>
 #include <svx/unomid.hxx>
 
-#include <svx/xdash.hxx>
 #include <svx/svdmodel.hxx>
-#include "svx/unofill.hxx"
+#include <svx/unofill.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::cppu;
+
+namespace {
 
 class SvxUnoDashTable : public SvxUnoNameItemTable
 {
 public:
     explicit SvxUnoDashTable( SdrModel* pModel ) throw();
 
-    virtual NameOrIndex* createItem() const throw() override;
+    virtual NameOrIndex* createItem() const override;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName(  ) override;
@@ -48,6 +46,8 @@ public:
     virtual uno::Type SAL_CALL getElementType(  ) override;
 };
 
+}
+
 SvxUnoDashTable::SvxUnoDashTable( SdrModel* pModel ) throw()
 : SvxUnoNameItemTable( pModel, XATTR_LINEDASH, MID_LINEDASH )
 {
@@ -55,16 +55,15 @@ SvxUnoDashTable::SvxUnoDashTable( SdrModel* pModel ) throw()
 
 OUString SAL_CALL SvxUnoDashTable::getImplementationName()
 {
-    return OUString("SvxUnoDashTable");
+    return "SvxUnoDashTable";
 }
 
 uno::Sequence< OUString > SAL_CALL SvxUnoDashTable::getSupportedServiceNames(  )
 {
-    uno::Sequence<OUString> aSNS { "com.sun.star.drawing.DashTable" };
-    return aSNS;
+    return { "com.sun.star.drawing.DashTable" };
 }
 
-NameOrIndex* SvxUnoDashTable::createItem() const throw()
+NameOrIndex* SvxUnoDashTable::createItem() const
 {
     XLineDashItem* pNewItem = new XLineDashItem();
     pNewItem->SetWhich( XATTR_LINEDASH ); // set which id for pooling
@@ -80,7 +79,7 @@ uno::Type SAL_CALL SvxUnoDashTable::getElementType(  )
 /**
  * Create a gradienttable
  */
-uno::Reference< uno::XInterface > SAL_CALL SvxUnoDashTable_createInstance( SdrModel* pModel )
+uno::Reference< uno::XInterface > SvxUnoDashTable_createInstance( SdrModel* pModel )
 {
     return *new SvxUnoDashTable(pModel);
 }

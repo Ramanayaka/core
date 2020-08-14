@@ -19,15 +19,11 @@
 
 
 #include "informationdialog.hxx"
-#include "optimizationstats.hxx"
-#include <com/sun/star/graphic/GraphicProvider.hpp>
-#include <com/sun/star/graphic/XGraphicProvider.hpp>
-#include <com/sun/star/graphic/XGraphic.hpp>
-#include <com/sun/star/io/TempFile.hpp>
+#include <com/sun/star/awt/PushButtonType.hpp>
 #include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
-#include "com/sun/star/util/URL.hpp"
-#include "com/sun/star/util/URLTransformer.hpp"
-#include "com/sun/star/util/XURLTransformer.hpp"
+#include <com/sun/star/util/URL.hpp>
+#include <com/sun/star/util/URLTransformer.hpp>
+#include <com/sun/star/util/XURLTransformer.hpp>
 #include <rtl/ustrbuf.hxx>
 #include <sal/macros.h>
 
@@ -38,7 +34,6 @@
 
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::ui;
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::uno;
@@ -49,7 +44,7 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 
 
-OUString InsertFixedText( InformationDialog& rInformationDialog, const OUString& rControlName, const OUString& rLabel,
+OUString InsertFixedText( UnoDialog& rInformationDialog, const OUString& rControlName, const OUString& rLabel,
                                 sal_Int32 nXPos, sal_Int32 nYPos, sal_Int32 nWidth, sal_Int32 nHeight, bool bMultiLine, sal_Int16 nTabIndex )
 {
     OUString pNames[] = {
@@ -68,7 +63,7 @@ OUString InsertFixedText( InformationDialog& rInformationDialog, const OUString&
         Any( bMultiLine ),
         Any( nXPos ),
         Any( nYPos ),
-        Any( (sal_Int16)0 ),
+        Any( sal_Int16(0) ),
         Any( nTabIndex ),
         Any( nWidth ) };
 
@@ -82,7 +77,7 @@ OUString InsertFixedText( InformationDialog& rInformationDialog, const OUString&
 }
 
 OUString InsertImage(
-    InformationDialog& rInformationDialog,
+    UnoDialog& rInformationDialog,
     const OUString& rControlName,
     const OUString& rURL,
     sal_Int32 nPosX,
@@ -117,10 +112,11 @@ OUString InsertImage(
     return rControlName;
 }
 
-OUString InsertCheckBox( InformationDialog& rInformationDialog, const OUString& rControlName,
+OUString InsertCheckBox( UnoDialog& rInformationDialog, const OUString& rControlName,
     const Reference< XItemListener >& rItemListener, const OUString& rLabel,
-        sal_Int32 nXPos, sal_Int32 nYPos, sal_Int32 nWidth, sal_Int32 nHeight, sal_Int16 nTabIndex )
+    sal_Int32 nXPos, sal_Int32 nYPos, sal_Int32 nWidth, sal_Int16 nTabIndex )
 {
+    sal_Int32 nHeight = 8;
     OUString pNames[] = {
         OUString("Enabled"),
         OUString("Height"),
@@ -137,7 +133,7 @@ OUString InsertCheckBox( InformationDialog& rInformationDialog, const OUString& 
         Any( rLabel ),
         Any( nXPos ),
         Any( nYPos ),
-        Any( (sal_Int16)0 ),
+        Any( sal_Int16(0) ),
         Any( nTabIndex ),
         Any( nWidth ) };
 
@@ -152,9 +148,10 @@ OUString InsertCheckBox( InformationDialog& rInformationDialog, const OUString& 
     return rControlName;
 }
 
-OUString InsertButton( InformationDialog& rInformationDialog, const OUString& rControlName, Reference< XActionListener >& xActionListener,
-    sal_Int32 nXPos, sal_Int32 nYPos, sal_Int32 nWidth, sal_Int32 nHeight, sal_Int16 nTabIndex, PPPOptimizerTokenEnum nResID )
+OUString InsertButton( UnoDialog& rInformationDialog, const OUString& rControlName, Reference< XActionListener > const & xActionListener,
+    sal_Int32 nXPos, sal_Int32 nYPos, sal_Int32 nWidth, sal_Int16 nTabIndex, const OUString& rText )
 {
+    sal_Int32 nHeight = 14;
     OUString pNames[] = {
         OUString("Enabled"),
         OUString("Height"),
@@ -169,11 +166,11 @@ OUString InsertButton( InformationDialog& rInformationDialog, const OUString& rC
     Any pValues[] = {
         Any( true ),
         Any( nHeight ),
-        Any( rInformationDialog.getString( nResID ) ),
+        Any( rText ),
         Any( nXPos ),
         Any( nYPos ),
         Any( static_cast< sal_Int16 >( PushButtonType_OK ) ),
-        Any( (sal_Int16)0 ),
+        Any( sal_Int16(0) ),
         Any( nTabIndex ),
         Any( nWidth ) };
 
@@ -230,7 +227,7 @@ void InformationDialog::InitDialog()
     Sequence< OUString >   aNames( pNames, nCount );
     Sequence< Any >             aValues( pValues, nCount );
 
-    mxDialogModelMultiPropertySet->setPropertyValues( aNames, aValues );
+    setPropertyValues(aNames, aValues);
 
     sal_Int64 nSource = mnSourceSize;
     sal_Int64 nDest   = mnDestSize;
@@ -295,15 +292,15 @@ void InformationDialog::InitDialog()
                  5, 5, 25, 25, false );
     InsertFixedText( *this, "fixedtext", aInfoString, PAGE_POS_X, 6, PAGE_WIDTH, 24, true, 0 );
     if ( !maSaveAsURL.isEmpty() )
-        InsertCheckBox(  *this, "OpenNewDocument", xItemListener, getString( STR_AUTOMATICALLY_OPEN ), PAGE_POS_X, 42, PAGE_WIDTH, 8, 1 );
-    InsertButton( *this, "button", mxActionListener, DIALOG_WIDTH / 2 - 25, nDialogHeight - 20, 50, 14, 2, STR_OK );
+        InsertCheckBox(  *this, "OpenNewDocument", xItemListener, getString( STR_AUTOMATICALLY_OPEN ), PAGE_POS_X, 42, PAGE_WIDTH, 1 );
+    InsertButton( *this, "button", mxActionListener, DIALOG_WIDTH / 2 - 25, nDialogHeight - 20, 50, 2, getString( STR_OK ) );
 
     bool bOpenNewDocument = mrbOpenNewDocument;
-    setControlProperty( "OpenNewDocument", "State", Any( (sal_Int16)bOpenNewDocument ) );
+    setControlProperty( "OpenNewDocument", "State", Any( static_cast<sal_Int16>(bOpenNewDocument) ) );
 }
 
 
-InformationDialog::InformationDialog( const Reference< XComponentContext > &rxContext, Reference< XFrame >& rxFrame, const OUString& rSaveAsURL, bool& rbOpenNewDocument, sal_Int64 rSourceSize, sal_Int64 rDestSize, sal_Int64 rApproxSize ) :
+InformationDialog::InformationDialog( const Reference< XComponentContext > &rxContext, Reference< XFrame > const & rxFrame, const OUString& rSaveAsURL, bool& rbOpenNewDocument, sal_Int64 rSourceSize, sal_Int64 rDestSize, sal_Int64 rApproxSize ) :
     UnoDialog( rxContext, rxFrame ),
     ConfigurationAccess( rxContext ),
     mxActionListener( new OKActionListener( *this ) ),
@@ -313,11 +310,6 @@ InformationDialog::InformationDialog( const Reference< XComponentContext > &rxCo
     mrbOpenNewDocument( rbOpenNewDocument ),
     maSaveAsURL( rSaveAsURL )
 {
-    Reference< XFrame > xFrame( mxController->getFrame() );
-    Reference< XWindow > xContainerWindow( xFrame->getContainerWindow() );
-    Reference< XWindowPeer > xWindowPeer( xContainerWindow, UNO_QUERY_THROW );
-    createWindowPeer( xWindowPeer );
-
     InitDialog();
 }
 
@@ -348,7 +340,7 @@ void OKActionListener::actionPerformed( const ActionEvent& rEvent )
 {
     if ( rEvent.ActionCommand == "button" )
     {
-        mrInformationDialog.endExecute( true );
+        mrDialog.endExecute( true );
     }
 }
 void OKActionListener::disposing( const css::lang::EventObject& /* Source */ )

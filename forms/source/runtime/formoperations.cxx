@@ -20,10 +20,9 @@
 #include <config_features.h>
 
 #include "formoperations.hxx"
-#include "frm_strings.hxx"
-#include "frm_resource.hxx"
-#include "frm_resource.hrc"
-#include "services.hxx"
+#include <frm_strings.hxx>
+#include <frm_resource.hxx>
+#include <strings.hrc>
 
 #include <com/sun/star/ucb/AlreadyInitializedException.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
@@ -40,7 +39,8 @@
 #include <com/sun/star/sdb/RowChangeAction.hpp>
 #include <com/sun/star/sdb/OrderDialog.hpp>
 #include <com/sun/star/sdb/FilterDialog.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
+#include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/form/XReset.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
@@ -50,17 +50,16 @@
 #include <connectivity/dbexception.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/stdtext.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/waitobj.hxx>
+#include <vcl/weld.hxx>
 #include <tools/diagnose_ex.h>
 #include <comphelper/container.hxx>
 #include <comphelper/property.hxx>
 #include <comphelper/namedvaluecollection.hxx>
-#include <comphelper/processfactory.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/mutex.hxx>
-#include <sal/macros.h>
+#include <sal/log.hxx>
+#include <tools/debug.hxx>
 
 
 namespace frm
@@ -154,7 +153,7 @@ namespace frm
 
     OUString SAL_CALL FormOperations::getImplementationName(  )
     {
-        return OUString( "com.sun.star.comp.forms.FormOperations" );
+        return "com.sun.star.comp.forms.FormOperations";
     }
 
     sal_Bool SAL_CALL FormOperations::supportsService( const OUString& ServiceName )
@@ -255,8 +254,7 @@ namespace frm
             case FormFeature::ReloadForm:
             {
                 // there must be an active connection
-                Reference< XRowSet > xCursorRowSet( m_xCursor, UNO_QUERY );
-                aState.Enabled = ::dbtools::getConnection( xCursorRowSet ).is();
+                aState.Enabled = ::dbtools::getConnection( m_xCursor ).is();
 
                 // and an active command
                 OUString sActiveCommand;
@@ -307,8 +305,10 @@ namespace frm
             case FormFeature::ToggleApplyFilter:
             {
                 OUString sFilter;
-                m_xCursorProperties->getPropertyValue( PROPERTY_FILTER ) >>= sFilter;
-                if ( !sFilter.isEmpty() )
+                OUString sHaving;
+                m_xCursorProperties->getPropertyValue( PROPERTY_FILTER )       >>= sFilter;
+                m_xCursorProperties->getPropertyValue( PROPERTY_HAVINGCLAUSE ) >>= sHaving;
+                if ( ! (sFilter.isEmpty() && sHaving.isEmpty()) )
                 {
                     aState.State = m_xCursorProperties->getPropertyValue( PROPERTY_APPLYFILTER );
                     aState.Enabled = !impl_isInsertOnlyForm_throw();
@@ -377,7 +377,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "FormOperations::getState: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "forms.runtime", "FormOperations::getState" );
         }
 
         return aState;
@@ -432,17 +432,22 @@ namespace frm
             if(needConfirmation)
             {
                 // TODO: shouldn't this be done with an interaction handler?
-                ScopedVclPtrInstance< QueryBox > aQuery( nullptr, WB_YES_NO_CANCEL | WB_DEF_YES, FRM_RES_STRING( RID_STR_QUERY_SAVE_MODIFIED_ROW ) );
-                switch ( aQuery->Execute() )
+                std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(nullptr,
+                                                               VclMessageType::Question, VclButtonsType::YesNo,
+                                                               FRM_RES_STRING(RID_STR_QUERY_SAVE_MODIFIED_ROW)));
+                xQueryBox->add_button(GetStandardText(StandardButtonType::Cancel), RET_CANCEL);
+                xQueryBox->set_default_response(RET_YES);
+
+                switch (xQueryBox->run())
                 {
-                case RET_NO:
-                    shouldCommit = false;
-                    SAL_FALLTHROUGH; // don't ask again!
-                case RET_YES:
-                    needConfirmation = false;
-                    return true;
-                case RET_CANCEL:
-                    return false;
+                    case RET_NO:
+                        shouldCommit = false;
+                        [[fallthrough]]; // don't ask again!
+                    case RET_YES:
+                        needConfirmation = false;
+                        return true;
+                    case RET_CANCEL:
+                        return false;
                 }
             }
             return true;
@@ -469,14 +474,12 @@ namespace frm
         {
             bool shouldCommit(true);
             assert(xCntrl.is());
-            Reference< XIndexAccess > xSubForms(xCntrl, UNO_QUERY);
-            assert(xSubForms.is());
-            if(xSubForms.is())
+            if(xCntrl.is())
             {
-                const sal_Int32 cnt = xSubForms->getCount();
+                const sal_Int32 cnt = xCntrl->getCount();
                 for(int i=0; i < cnt; ++i)
                 {
-                    Reference< XFormController > xSubForm(xSubForms->getByIndex(i), UNO_QUERY);
+                    Reference< XFormController > xSubForm(xCntrl->getByIndex(i), UNO_QUERY);
                     assert(xSubForm.is());
                     if (xSubForm.is())
                     {
@@ -515,7 +518,6 @@ namespace frm
             // No control...  do what we can with the models
             bool shouldCommit(true);
             Reference< XIndexAccess > xFormComps(xFrm, UNO_QUERY_THROW);
-            assert( xFormComps.is() );
 
             const sal_Int32 cnt = xFormComps->getCount();
             for(int i=0; i < cnt; ++i)
@@ -578,9 +580,9 @@ namespace frm
             case FormFeature::MoveToLast:
             {
 /*
-                // TODO: re-implement this .....
-                // run in an own thread if ...
-                // ... the data source is thread safe ...
+                // TODO: re-implement this...
+                // run in an own thread if...
+                // ... the data source is thread safe...
                 sal_Bool bAllowOwnThread = sal_False;
                 if ( ::comphelper::hasProperty( PROPERTY_THREADSAFE, m_xCursorProperties ) )
                     m_xCursorProperties->getPropertyValue( PROPERTY_THREADSAFE ) >>= bAllowOwnThread;
@@ -601,7 +603,7 @@ namespace frm
             case FormFeature::ReloadForm:
                 if ( m_xLoadableForm.is() )
                 {
-                    WaitObject aWO( nullptr );
+                    weld::WaitObject aWO(Application::GetFrameWeld(GetDialogParent()));
                     m_xLoadableForm->reload();
 
                     // refresh all controls in the form (and sub forms) which can be refreshed
@@ -718,15 +720,17 @@ namespace frm
                 OSL_ENSURE( xProperties.is(), "FormOperations::execute: no multi property access!" );
                 if ( xProperties.is() )
                 {
-                    Sequence< OUString > aNames( 2 );
+                    Sequence< OUString > aNames( 3 );
                     aNames[0] = PROPERTY_FILTER;
-                    aNames[1] = PROPERTY_SORT;
+                    aNames[1] = PROPERTY_HAVINGCLAUSE;
+                    aNames[2] = PROPERTY_SORT;
 
-                    Sequence< Any> aValues( 2 );
+                    Sequence< Any> aValues( 3 );
                     aValues[0] <<= OUString();
                     aValues[1] <<= OUString();
+                    aValues[2] <<= OUString();
 
-                    WaitObject aWO( nullptr );
+                    weld::WaitObject aWO(Application::GetFrameWeld(GetDialogParent()));
                     xProperties->setPropertyValues( aNames, aValues );
 
                     if ( m_xLoadableForm.is() )
@@ -744,7 +748,7 @@ namespace frm
                     m_xCursorProperties->setPropertyValue( PROPERTY_APPLYFILTER, makeAny( !bApplied ) );
 
                     // and reload
-                    WaitObject aWO( nullptr );
+                    weld::WaitObject aWO(Application::GetFrameWeld(GetDialogParent()));
                     m_xLoadableForm->reload();
                 }
                 break;
@@ -771,12 +775,12 @@ namespace frm
 
             default:
             {
-                sal_uInt16 nErrorResourceId = RID_STR_FEATURE_UNKNOWN;
+                const char* pErrorResourceId = RID_STR_FEATURE_UNKNOWN;
                 if ( lcl_requiresArguments( _nFeature ) )
-                    nErrorResourceId = RID_STR_FEATURE_REQUIRES_PARAMETERS;
+                    pErrorResourceId = RID_STR_FEATURE_REQUIRES_PARAMETERS;
                 else if ( !lcl_isExecutableFeature( _nFeature ) )
-                    nErrorResourceId = RID_STR_FEATURE_NOT_EXECUTABLE;
-                throw IllegalArgumentException( FRM_RES_STRING( nErrorResourceId ), *this, 1 );
+                    pErrorResourceId = RID_STR_FEATURE_NOT_EXECUTABLE;
+                throw IllegalArgumentException( FRM_RES_STRING( pErrorResourceId ), *this, 1 );
             }
             }   // switch
         }
@@ -928,7 +932,7 @@ namespace frm
         catch( const SQLException& ) { throw; }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.runtime");
             bSuccess = false;
         }
 
@@ -1019,34 +1023,39 @@ namespace frm
             impl_invalidateAllSupportedFeatures_nothrow( aGuard );
         }
 
-        if ( m_xParser.is() && ( m_xCursor == _rEvent.Source ) )
+        if ( !(m_xParser.is() && ( m_xCursor == _rEvent.Source )) )
+            return;
+
+        try
         {
-            try
+            OUString sNewValue;
+            _rEvent.NewValue >>= sNewValue;
+            if ( _rEvent.PropertyName == PROPERTY_ACTIVECOMMAND )
             {
-                OUString sNewValue;
+                m_xParser->setElementaryQuery( sNewValue );
+            }
+            else if ( _rEvent.PropertyName == PROPERTY_FILTER )
+            {
+                if ( m_xParser->getFilter() != sNewValue )
+                    m_xParser->setFilter( sNewValue );
+            }
+            else if ( _rEvent.PropertyName == PROPERTY_HAVINGCLAUSE )
+            {
+                if ( m_xParser->getHavingClause() != sNewValue )
+                    m_xParser->setHavingClause( sNewValue );
+            }
+            else if ( _rEvent.PropertyName == PROPERTY_SORT )
+            {
                 _rEvent.NewValue >>= sNewValue;
-                if ( _rEvent.PropertyName == PROPERTY_ACTIVECOMMAND )
-                {
-                    m_xParser->setElementaryQuery( sNewValue );
-                }
-                else if ( _rEvent.PropertyName == PROPERTY_FILTER )
-                {
-                    if ( m_xParser->getFilter() != sNewValue )
-                        m_xParser->setFilter( sNewValue );
-                }
-                else if ( _rEvent.PropertyName == PROPERTY_SORT )
-                {
-                    _rEvent.NewValue >>= sNewValue;
-                    if ( m_xParser->getOrder() != sNewValue )
-                        m_xParser->setOrder( sNewValue );
-                }
+                if ( m_xParser->getOrder() != sNewValue )
+                    m_xParser->setOrder( sNewValue );
             }
-            catch( const Exception& )
-            {
-                OSL_FAIL( "FormOperations::propertyChange: caught an exception while updating the parser!" );
-            }
-            impl_invalidateAllSupportedFeatures_nothrow( aGuard );
         }
+        catch( const Exception& )
+        {
+            OSL_FAIL( "FormOperations::propertyChange: caught an exception while updating the parser!" );
+        }
+        impl_invalidateAllSupportedFeatures_nothrow( aGuard );
     }
 
 
@@ -1074,13 +1083,12 @@ namespace frm
                 m_xCursorProperties->removePropertyChangeListener( PROPERTY_ISNEW, this );
             }
 
-            Reference< XModifyBroadcaster > xBroadcaster( m_xController, UNO_QUERY );
-            if ( xBroadcaster.is() )
-                xBroadcaster->removeModifyListener( this );
+            if ( m_xController.is() )
+                m_xController->removeModifyListener( this );
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.runtime");
         }
 
         m_xController.clear();
@@ -1110,9 +1118,8 @@ namespace frm
 
         impl_initFromForm_throw();
 
-        Reference< XModifyBroadcaster > xBroadcaster( m_xController, UNO_QUERY );
-        if ( xBroadcaster.is() )
-            xBroadcaster->addModifyListener( this );
+        if ( m_xController.is() )
+            m_xController->addModifyListener( this );
     }
 
 
@@ -1174,19 +1181,13 @@ namespace frm
             // nobody's interested in ...
             return;
 
-        static Sequence< sal_Int16 > s_aModifyDependentFeatures;
-        if ( s_aModifyDependentFeatures.getLength() == 0 )
+        static Sequence< sal_Int16 > const s_aModifyDependentFeatures
         {
-            sal_Int16 pModifyDependentFeatures[] =
-            {
-                FormFeature::MoveToNext,
-                FormFeature::MoveToInsertRow,
-                FormFeature::SaveRecordChanges,
-                FormFeature::UndoRecordChanges
-            };
-            size_t const nFeatureCount = SAL_N_ELEMENTS( pModifyDependentFeatures );
-            s_aModifyDependentFeatures = Sequence< sal_Int16 >( pModifyDependentFeatures, nFeatureCount );
-        }
+            FormFeature::MoveToNext,
+            FormFeature::MoveToInsertRow,
+            FormFeature::SaveRecordChanges,
+            FormFeature::UndoRecordChanges
+        };
 
         Reference< XFeatureInvalidation > xInvalidation = m_xFeatureInvalidation;
         _rClearForCallback.clear();
@@ -1221,14 +1222,17 @@ namespace frm
                 {
                     OUString sStatement;
                     OUString sFilter;
+                    OUString sHaving;
                     OUString sSort;
 
                     m_xCursorProperties->getPropertyValue( PROPERTY_ACTIVECOMMAND   ) >>= sStatement;
                     m_xCursorProperties->getPropertyValue( PROPERTY_FILTER          ) >>= sFilter;
+                    m_xCursorProperties->getPropertyValue( PROPERTY_HAVINGCLAUSE    ) >>= sHaving;
                     m_xCursorProperties->getPropertyValue( PROPERTY_SORT            ) >>= sSort;
 
                     m_xParser->setElementaryQuery( sStatement );
                     m_xParser->setFilter         ( sFilter    );
+                    m_xParser->setHavingClause   ( sHaving    );
                     m_xParser->setOrder          ( sSort      );
                 }
 
@@ -1236,12 +1240,13 @@ namespace frm
                 // we can keep our parser in sync
                 m_xCursorProperties->addPropertyChangeListener( PROPERTY_ACTIVECOMMAND, this );
                 m_xCursorProperties->addPropertyChangeListener( PROPERTY_FILTER, this );
+                m_xCursorProperties->addPropertyChangeListener( PROPERTY_HAVINGCLAUSE, this );
                 m_xCursorProperties->addPropertyChangeListener( PROPERTY_SORT, this );
             }
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "FormOperations::impl_ensureInitializedParser_nothrow: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "forms.runtime", "FormOperations::impl_ensureInitializedParser_nothrow" );
         }
 
         m_bInitializedParser = true;
@@ -1257,6 +1262,7 @@ namespace frm
             if ( m_xParser.is() && m_xCursorProperties.is() )
             {
                 m_xCursorProperties->removePropertyChangeListener( PROPERTY_FILTER, this );
+                m_xCursorProperties->removePropertyChangeListener( PROPERTY_HAVINGCLAUSE, this );
                 m_xCursorProperties->removePropertyChangeListener( PROPERTY_ACTIVECOMMAND, this );
                 m_xCursorProperties->removePropertyChangeListener( PROPERTY_SORT, this );
             }
@@ -1270,7 +1276,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "FormOperations::impl_disposeParser_nothrow: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "forms.runtime", "FormOperations::impl_disposeParser_nothrow" );
         }
     }
 
@@ -1313,7 +1319,7 @@ namespace frm
 
     sal_Int32 FormOperations::impl_getRowCount_throw() const
     {
-        return lcl_safeGetPropertyValue_throw( m_xCursorProperties, PROPERTY_ROWCOUNT, (sal_Int32)0 );
+        return lcl_safeGetPropertyValue_throw( m_xCursorProperties, PROPERTY_ROWCOUNT, sal_Int32(0) );
     }
 
     bool FormOperations::impl_isRowCountFinal_throw() const
@@ -1337,7 +1343,9 @@ namespace frm
 
     bool FormOperations::impl_hasFilterOrOrder_throw() const
     {
-        return impl_isParseable_throw() && ( !m_xParser->getFilter().isEmpty() || !m_xParser->getOrder().isEmpty() );
+        return impl_isParseable_throw() && ( !m_xParser->getFilter().isEmpty() ||
+                                             !m_xParser->getHavingClause().isEmpty() ||
+                                             !m_xParser->getOrder().isEmpty() );
     }
 
 
@@ -1388,7 +1396,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.runtime");
         }
 
         return xField;
@@ -1423,7 +1431,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.runtime");
         }
         return -1;
     }
@@ -1513,7 +1521,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.runtime");
         }
     }
 
@@ -1545,7 +1553,7 @@ namespace frm
             impl_appendOrderByColumn_throw aAction(this, xBoundField, _bUp);
             impl_doActionInSQLContext_throw(aAction, RID_STR_COULD_NOT_SET_ORDER );
 
-            WaitObject aWO( nullptr );
+            weld::WaitObject aWO(Application::GetFrameWeld(GetDialogParent()));
             try
             {
                 m_xCursorProperties->setPropertyValue( PROPERTY_SORT, makeAny( m_xParser->getOrder() ) );
@@ -1600,21 +1608,27 @@ namespace frm
                 return;
 
             OUString sOriginalFilter;
-            m_xCursorProperties->getPropertyValue( PROPERTY_FILTER ) >>= sOriginalFilter;
+            OUString sOriginalHaving;
+            m_xCursorProperties->getPropertyValue( PROPERTY_FILTER       ) >>= sOriginalFilter;
+            m_xCursorProperties->getPropertyValue( PROPERTY_HAVINGCLAUSE ) >>= sOriginalHaving;
             bool bApplied = true;
             m_xCursorProperties->getPropertyValue( PROPERTY_APPLYFILTER ) >>= bApplied;
 
             // if we have a filter, but it's not applied, then we have to overwrite it, else append one
             if ( !bApplied )
+            {
                 m_xParser->setFilter( OUString() );
+                m_xParser->setHavingClause( OUString() );
+            }
 
-            impl_appendFilterByColumn_throw aAction(this, xBoundField);
+            impl_appendFilterByColumn_throw aAction(this, m_xParser, xBoundField);
             impl_doActionInSQLContext_throw( aAction, RID_STR_COULD_NOT_SET_FILTER );
 
-            WaitObject aWO( nullptr );
+            weld::WaitObject aWO(Application::GetFrameWeld(GetDialogParent()));
             try
             {
-                m_xCursorProperties->setPropertyValue( PROPERTY_FILTER, makeAny( m_xParser->getFilter() ) );
+                m_xCursorProperties->setPropertyValue( PROPERTY_FILTER,       makeAny( m_xParser->getFilter() ) );
+                m_xCursorProperties->setPropertyValue( PROPERTY_HAVINGCLAUSE, makeAny( m_xParser->getHavingClause() ) );
                 m_xCursorProperties->setPropertyValue( PROPERTY_APPLYFILTER, makeAny( true ) );
 
                 m_xLoadableForm->reload();
@@ -1629,9 +1643,11 @@ namespace frm
             {   // something went wrong -> restore the original state
                 try
                 {
-                    m_xParser->setOrder( sOriginalFilter );
+                    m_xParser->setFilter      ( sOriginalFilter );
+                    m_xParser->setHavingClause( sOriginalHaving );
                     m_xCursorProperties->setPropertyValue( PROPERTY_APPLYFILTER, makeAny( bApplied ) );
-                    m_xCursorProperties->setPropertyValue( PROPERTY_FILTER, makeAny( m_xParser->getFilter() ) );
+                    m_xCursorProperties->setPropertyValue( PROPERTY_FILTER,       makeAny( m_xParser->getFilter() ) );
+                    m_xCursorProperties->setPropertyValue( PROPERTY_HAVINGCLAUSE, makeAny( m_xParser->getHavingClause() ) );
                     m_xLoadableForm->reload();
                 }
                 catch( const Exception& )
@@ -1649,6 +1665,23 @@ namespace frm
         }
     }
 
+    css::uno::Reference<css::awt::XWindow> FormOperations::GetDialogParent() const
+    {
+        css::uno::Reference<css::awt::XWindow> xDialogParent;
+
+        //tdf#122152 extract parent for dialog
+        if (m_xController.is())
+        {
+            css::uno::Reference<css::awt::XControl> xContainerControl(m_xController->getContainer(), css::uno::UNO_QUERY);
+            if (xContainerControl.is())
+            {
+                css::uno::Reference<css::awt::XWindowPeer> xContainerPeer = xContainerControl->getPeer();
+                xDialogParent = css::uno::Reference<css::awt::XWindow>(xContainerPeer, css::uno::UNO_QUERY);
+            }
+        }
+
+        return xDialogParent;
+    }
 
     void FormOperations::impl_executeFilterOrSort_throw( bool _bFilter ) const
     {
@@ -1662,23 +1695,28 @@ namespace frm
             return;
         try
         {
+            css::uno::Reference<css::awt::XWindow> xDialogParent(GetDialogParent());
+
             Reference< XExecutableDialog> xDialog;
             if ( _bFilter )
             {
                 xDialog = css::sdb::FilterDialog::createWithQuery(m_xContext, m_xParser, m_xCursor,
-                              Reference<css::awt::XWindow>());
+                                                                  xDialogParent);
             }
             else
             {
-                xDialog = css::sdb::OrderDialog::createWithQuery(m_xContext, m_xParser, m_xCursorProperties);
+                xDialog = css::sdb::OrderDialog::createWithQuery(m_xContext, m_xParser, m_xCursorProperties,
+                                                                 xDialogParent);
             }
-
 
             if ( RET_OK == xDialog->execute() )
             {
-                WaitObject aWO( nullptr );
+                weld::WaitObject aWO(Application::GetFrameWeld(xDialogParent));
                 if ( _bFilter )
-                    m_xCursorProperties->setPropertyValue( PROPERTY_FILTER, makeAny( m_xParser->getFilter() ) );
+                {
+                    m_xCursorProperties->setPropertyValue( PROPERTY_FILTER,       makeAny( m_xParser->getFilter() ) );
+                    m_xCursorProperties->setPropertyValue( PROPERTY_HAVINGCLAUSE, makeAny( m_xParser->getHavingClause() ) );
+                }
                 else
                     m_xCursorProperties->setPropertyValue( PROPERTY_SORT, makeAny( m_xParser->getOrder() ) );
                 m_xLoadableForm->reload();
@@ -1695,7 +1733,7 @@ namespace frm
 
 
     template < typename FunctObj >
-    void FormOperations::impl_doActionInSQLContext_throw( FunctObj f, sal_uInt16 _nErrorResourceId ) const
+    void FormOperations::impl_doActionInSQLContext_throw( FunctObj f, const char* pErrorResourceId ) const
     {
         try
         {
@@ -1704,12 +1742,11 @@ namespace frm
 #if HAVE_FEATURE_DBCONNECTIVITY
         catch( const SQLException& )
         {
-            if ( !_nErrorResourceId )
-                // no information to prepend
+            if (!pErrorResourceId) // no information to prepend
                 throw;
 
             SQLExceptionInfo aInfo( ::cppu::getCaughtException() );
-            OUString sAdditionalError( FRM_RES_STRING( _nErrorResourceId ) );
+            OUString sAdditionalError( FRM_RES_STRING( pErrorResourceId ) );
             aInfo.prepend( sAdditionalError );
             aInfo.doThrow();
         }
@@ -1717,7 +1754,7 @@ namespace frm
         catch( const RuntimeException& ) { throw; }
         catch( const Exception& )
         {
-            OUString sAdditionalError( FRM_RES_STRING( _nErrorResourceId ) );
+            OUString sAdditionalError( FRM_RES_STRING( pErrorResourceId ) );
             throw WrappedTargetException( sAdditionalError, *const_cast< FormOperations* >( this ), ::cppu::getCaughtException() );
         }
     }
@@ -1726,7 +1763,7 @@ namespace frm
 } // namespace frm
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_forms_FormOperations_get_implementation(css::uno::XComponentContext* context,
                                                           css::uno::Sequence<css::uno::Any> const &)
 {

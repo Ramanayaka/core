@@ -20,6 +20,7 @@
 #include "player.hxx"
 #include "framegrabber.hxx"
 #include "window.hxx"
+#include <rtl/ref.hxx>
 
 #include <cmath> // for log10()
 
@@ -37,7 +38,7 @@ using namespace ::com::sun::star;
 
 - (void)onNotification:(NSNotification*)pNotification
 {
-    NSString* pNoteName = (NSString*)[pNotification name];
+    NSString* pNoteName = [pNotification name];
     HandlersForObject::iterator it = maHandlersForObject.find( [pNotification object]);
     if( it != maHandlersForObject.end() )
         (*it).second->handleObservation( pNoteName );
@@ -56,7 +57,7 @@ using namespace ::com::sun::star;
 @end
 
 
-namespace avmedia { namespace macavf {
+namespace avmedia::macavf {
 
 MacAVObserverObject* MacAVObserverHandler::mpMacAVObserverObject = nullptr;
 
@@ -71,9 +72,8 @@ MacAVObserverObject* MacAVObserverHandler::getObserver()
 }
 
 
-Player::Player( const uno::Reference< lang::XMultiServiceFactory >& rxMgr )
-:   mxMgr( rxMgr )
-,   mpPlayer( nullptr )
+Player::Player()
+:   mpPlayer( nullptr )
 ,   mfUnmutedVolume( 0 )
 ,   mfStopTime( DBL_MAX )
 ,   mbMuted( false )
@@ -108,7 +108,7 @@ bool Player::handleObservation( NSString* pKeyPath )
 }
 
 
-bool Player::create( const ::rtl::OUString& rURL )
+bool Player::create( const OUString& rURL )
 {
     // get the media asset
     NSString* aNSStr = [NSString stringWithCharacters:reinterpret_cast<unichar const *>(rURL.getStr()) length:rURL.getLength()];
@@ -221,13 +221,13 @@ double SAL_CALL Player::getMediaTime()
 }
 
 
-void SAL_CALL Player::setStopTime( double fTime )
+void Player::setStopTime( double fTime )
 {
     mfStopTime = fTime;
 }
 
 
-double SAL_CALL Player::getStopTime()
+double Player::getStopTime()
 {
     return mfStopTime;
 }
@@ -281,12 +281,12 @@ sal_Int16 SAL_CALL Player::getVolumeDB()
     // get the actual volume
     const float fVolume = [mpPlayer volume];
 
-    // convert into Dezibel value
+    // convert into Decibel value
     // -40dB <-> AVPlayer volume 0.0
     //   0dB <-> AVPlayer volume 1.0
     const int nVolumeDB = (fVolume <= 0) ? -40 : lrint( 20.0*log10(fVolume));
 
-    return (sal_Int16)nVolumeDB;
+    return static_cast<sal_Int16>(nVolumeDB);
 }
 
 
@@ -298,7 +298,7 @@ awt::Size SAL_CALL Player::getPreferredPlayerWindowSize()
     NSArray* pVideoTracks = [pMovie tracksWithMediaType:AVMediaTypeVideo];
     if ([pVideoTracks count] > 0)
     {
-        AVAssetTrack* pFirstVideoTrack = (AVAssetTrack*) [pVideoTracks objectAtIndex:0];
+        AVAssetTrack* pFirstVideoTrack = static_cast<AVAssetTrack*>([pVideoTracks objectAtIndex:0]);
         const CGSize aPrefSize = [pFirstVideoTrack naturalSize];
         aSize = awt::Size( aPrefSize.width, aPrefSize.height );
     }
@@ -318,48 +318,42 @@ uno::Reference< ::media::XPlayerWindow > SAL_CALL Player::createPlayerWindow( co
     NSView* pParentView = reinterpret_cast<NSView*>(nNSViewPtr);
 
     // check the window parameters
-    uno::Reference< ::media::XPlayerWindow > xRet;
     if( (aSize.Width <= 0) || (aSize.Height <= 0) || (pParentView == nullptr) )
-         return xRet;
+         return {};
 
     // create the window
-    ::avmedia::macavf::Window* pWindow = new ::avmedia::macavf::Window( mxMgr, *this, pParentView );
-    xRet = pWindow;
-    return xRet;
+    return new ::avmedia::macavf::Window( *this, pParentView );
 }
 
 
 uno::Reference< media::XFrameGrabber > SAL_CALL Player::createFrameGrabber()
 {
-    uno::Reference< media::XFrameGrabber > xRet;
-
-    FrameGrabber* pGrabber = new FrameGrabber( mxMgr );
+    rtl::Reference<FrameGrabber> pGrabber = new FrameGrabber();
     AVAsset* pMovie = [[mpPlayer currentItem] asset];
-    if( pGrabber->create( pMovie ) )
-        xRet = pGrabber;
+    if( !pGrabber->create( pMovie ) )
+        return {};
 
-    return xRet;
+    return pGrabber.get();
 }
 
 
-::rtl::OUString SAL_CALL Player::getImplementationName(  )
+OUString SAL_CALL Player::getImplementationName(  )
 {
-    return ::rtl::OUString( AVMEDIA_MACAVF_PLAYER_IMPLEMENTATIONNAME );
+    return AVMEDIA_MACAVF_PLAYER_IMPLEMENTATIONNAME;
 }
 
 
-sal_Bool SAL_CALL Player::supportsService( const ::rtl::OUString& ServiceName )
+sal_Bool SAL_CALL Player::supportsService( const OUString& ServiceName )
 {
     return ServiceName == AVMEDIA_MACAVF_PLAYER_SERVICENAME;
 }
 
 
-uno::Sequence< ::rtl::OUString > SAL_CALL Player::getSupportedServiceNames(  )
+uno::Sequence< OUString > SAL_CALL Player::getSupportedServiceNames(  )
 {
     return { AVMEDIA_MACAVF_PLAYER_SERVICENAME };
 }
 
-} // namespace macavf
-} // namespace avmedia
+} // namespace avmedia::macavf
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

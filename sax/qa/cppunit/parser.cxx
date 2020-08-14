@@ -16,14 +16,16 @@
 
 #include <cppuhelper/implbase.hxx>
 #include <sax/fastparser.hxx>
+#include <sax/fastattribs.hxx>
 #include <test/bootstrapfixture.hxx>
+#include <rtl/ref.hxx>
 
 using namespace css;
 using namespace css::xml::sax;
 
 namespace {
 
-class DummyTokenHandler : public cppu::WeakImplHelper< xml::sax::XFastTokenHandler >
+class DummyTokenHandler : public sax_fastparser::FastTokenHandlerBase
 {
 public:
              DummyTokenHandler() {}
@@ -36,6 +38,10 @@ public:
     {
         CPPUNIT_ASSERT_MESSAGE( "getUTF8Identifier: unexpected call", false );
         return uno::Sequence<sal_Int8>();
+    }
+    virtual sal_Int32 getTokenDirect( const char * /* pToken */, sal_Int32 /* nLength */ ) const override
+    {
+        return -1;
     }
 };
 

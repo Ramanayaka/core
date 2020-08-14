@@ -18,19 +18,16 @@
  */
 
 #include "DataSeriesPointWrapper.hxx"
-#include "macros.hxx"
-#include "RegressionCurveHelper.hxx"
 #include "Chart2ModelContact.hxx"
-#include "ChartTypeHelper.hxx"
-#include "DiagramHelper.hxx"
-#include "ChartModelHelper.hxx"
-#include "LinePropertiesHelper.hxx"
-#include "FillProperties.hxx"
-#include "CharacterProperties.hxx"
-#include "UserDefinedProperties.hxx"
+#include <ChartTypeHelper.hxx>
+#include <DiagramHelper.hxx>
+#include <LinePropertiesHelper.hxx>
+#include <FillProperties.hxx>
+#include <CharacterProperties.hxx>
+#include <UserDefinedProperties.hxx>
 #include "WrappedCharacterHeightProperty.hxx"
-#include "WrappedProperty.hxx"
-#include "WrappedIgnoreProperty.hxx"
+#include <WrappedProperty.hxx>
+#include <WrappedIgnoreProperty.hxx>
 #include "WrappedStatisticProperties.hxx"
 #include "WrappedSymbolProperties.hxx"
 #include "WrappedDataCaptionProperties.hxx"
@@ -40,7 +37,6 @@
 #include "WrappedTextRotationProperty.hxx"
 #include <unonames.hxx>
 
-#include <rtl/ustrbuf.hxx>
 #include <rtl/math.hxx>
 
 #include <algorithm>
@@ -49,12 +45,14 @@
 #include <com/sun/star/chart/ChartAxisAssign.hpp>
 #include <com/sun/star/chart/ChartErrorCategory.hpp>
 #include <com/sun/star/chart/ChartSymbolType.hpp>
-#include <com/sun/star/chart/XChartDocument.hpp>
-#include <com/sun/star/drawing/FillStyle.hpp>
 #include <com/sun/star/drawing/LineJoint.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
+#include <com/sun/star/drawing/FillStyle.hpp>
+#include <com/sun/star/drawing/Hatch.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/exc_hlp.hxx>
+#include <cppuhelper/propshlp.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::chart::wrapper;
@@ -85,122 +83,134 @@ enum
     PROP_SERIES_DATAPOINT_LABEL_BORDER_STYLE,
     PROP_SERIES_DATAPOINT_LABEL_BORDER_WIDTH,
     PROP_SERIES_DATAPOINT_LABEL_BORDER_COLOR,
-    PROP_SERIES_DATAPOINT_LABEL_BORDER_TRANS
+    PROP_SERIES_DATAPOINT_LABEL_BORDER_TRANS,
+    PROP_SERIES_DATAPOINT_LABEL_FILL_STYLE,
+    PROP_SERIES_DATAPOINT_LABEL_FILL_COLOR,
+    PROP_SERIES_DATAPOINT_LABEL_FILL_BACKGROUND,
+    PROP_SERIES_DATAPOINT_LABEL_FILL_HATCH_NAME
 };
 
 void lcl_AddPropertiesToVector_PointProperties(
     std::vector< Property > & rOutProperties )
 {
     //service chart::Chart3DBarProperties
-    rOutProperties.push_back(
-        Property( "SolidType",
+    rOutProperties.emplace_back( "SolidType",
                   PROP_SERIES_DATAPOINT_SOLIDTYPE,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "SegmentOffset",
+    rOutProperties.emplace_back( "SegmentOffset",
                   PROP_SERIES_DATAPOINT_SEGMENT_OFFSET,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "D3DPercentDiagonal",
+    rOutProperties.emplace_back( "D3DPercentDiagonal",
                   PROP_SERIES_DATAPOINT_PERCENT_DIAGONAL,
                   cppu::UnoType<sal_Int16>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "LabelSeparator",
+    rOutProperties.emplace_back( "LabelSeparator",
                   PROP_SERIES_DATAPOINT_LABEL_SEPARATOR,
                   cppu::UnoType<OUString>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_NUMFMT,
+    rOutProperties.emplace_back( CHART_UNONAME_NUMFMT,
                   PROP_SERIES_NUMBERFORMAT,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "PercentageNumberFormat",
+    rOutProperties.emplace_back( CHART_UNONAME_LINK_TO_SRC_NUMFMT,
+                  PROP_SERIES_LINK_NUMBERFORMAT_TO_SOURCE,
+                  cppu::UnoType<bool>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
+
+    rOutProperties.emplace_back( "PercentageNumberFormat",
                   PROP_SERIES_PERCENTAGE_NUMBERFORMAT,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "TextWordWrap",
+    rOutProperties.emplace_back( "TextWordWrap",
                   PROP_SERIES_DATAPOINT_TEXT_WORD_WRAP,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "LabelPlacement",
+    rOutProperties.emplace_back( "LabelPlacement",
                   PROP_SERIES_DATAPOINT_LABEL_PLACEMENT,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "TextRotation",
+    rOutProperties.emplace_back( "TextRotation",
                   PROP_SERIES_DATAPOINT_TEXT_ROTATION,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_LABEL_BORDER_STYLE,
+    rOutProperties.emplace_back( CHART_UNONAME_LABEL_BORDER_STYLE,
                   PROP_SERIES_DATAPOINT_LABEL_BORDER_STYLE,
                   cppu::UnoType<drawing::LineStyle>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_LABEL_BORDER_WIDTH,
+    rOutProperties.emplace_back( CHART_UNONAME_LABEL_FILL_STYLE,
+                  PROP_SERIES_DATAPOINT_LABEL_FILL_STYLE,
+                  cppu::UnoType<drawing::FillStyle>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
+
+    rOutProperties.emplace_back( CHART_UNONAME_LABEL_FILL_COLOR,
+                  PROP_SERIES_DATAPOINT_LABEL_FILL_COLOR,
+                  cppu::UnoType<sal_Int32>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEVOID
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
+
+    rOutProperties.emplace_back( CHART_UNONAME_LABEL_FILL_BACKGROUND,
+                  PROP_SERIES_DATAPOINT_LABEL_FILL_BACKGROUND,
+                  cppu::UnoType<sal_Bool>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
+    rOutProperties.emplace_back( CHART_UNONAME_LABEL_FILL_HATCH_NAME,
+                  PROP_SERIES_DATAPOINT_LABEL_FILL_HATCH_NAME,
+                  cppu::UnoType<OUString>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
+    rOutProperties.emplace_back( CHART_UNONAME_LABEL_BORDER_WIDTH,
                   PROP_SERIES_DATAPOINT_LABEL_BORDER_WIDTH,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_LABEL_BORDER_COLOR,
+    rOutProperties.emplace_back( CHART_UNONAME_LABEL_BORDER_COLOR,
                   PROP_SERIES_DATAPOINT_LABEL_BORDER_COLOR,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
                   | beans::PropertyAttribute::MAYBEVOID         // "maybe auto"
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_LABEL_BORDER_TRANS,
+    rOutProperties.emplace_back( CHART_UNONAME_LABEL_BORDER_TRANS,
                   PROP_SERIES_DATAPOINT_LABEL_BORDER_TRANS,
                   cppu::UnoType<sal_Int16>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 }
 
 void lcl_AddPropertiesToVector_SeriesOnly(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "Axis",
+    rOutProperties.emplace_back( "Axis",
                   PROP_SERIES_ATTACHED_AXIS,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
-
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_LINK_TO_SRC_NUMFMT,
-                  PROP_SERIES_LINK_NUMBERFORMAT_TO_SOURCE,
-                  cppu::UnoType<bool>::get(),
-                  beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 }
 
 uno::Sequence< Property > lcl_GetPropertySequence( DataSeriesPointWrapper::eType _eType )
@@ -348,7 +358,7 @@ Any WrappedSegmentOffsetProperty::convertOuterToInnerValue( const Any& rOuterVal
     Any aResult( rOuterValue );
 
     if( rOuterValue >>= nOffset )
-        aResult <<= (static_cast< double >( nOffset ) / 100.0);
+        aResult <<= static_cast< double >( nOffset ) / 100.0;
 
     return aResult;
 }
@@ -367,7 +377,6 @@ public:
 protected:
     DataSeriesPointWrapper* m_pDataSeriesPointWrapper;
     mutable Any             m_aDefaultValue;
-    mutable Any             m_aOuterValue;
 };
 
 WrappedLineColorProperty::WrappedLineColorProperty(
@@ -375,23 +384,18 @@ WrappedLineColorProperty::WrappedLineColorProperty(
                 : WrappedSeriesAreaOrLineProperty("LineColor","BorderColor","Color", pDataSeriesPointWrapper )
                 , m_pDataSeriesPointWrapper( pDataSeriesPointWrapper )
                 , m_aDefaultValue(uno::Any(sal_Int32( 0x0099ccff )))  // blue 8
-                , m_aOuterValue(m_aDefaultValue)
 {
 }
 
 void WrappedLineColorProperty::setPropertyValue( const Any& rOuterValue, const Reference< beans::XPropertySet >& xInnerPropertySet ) const
 {
-    if( m_pDataSeriesPointWrapper && m_pDataSeriesPointWrapper->isLinesForbidden() )
-        m_aOuterValue = rOuterValue;
-    else
+    if( !m_pDataSeriesPointWrapper || !m_pDataSeriesPointWrapper->isLinesForbidden() )
         WrappedSeriesAreaOrLineProperty::setPropertyValue( rOuterValue, xInnerPropertySet );
 }
 
 void WrappedLineColorProperty::setPropertyToDefault( const Reference< beans::XPropertyState >& xInnerPropertyState ) const
 {
-    if( m_pDataSeriesPointWrapper && m_pDataSeriesPointWrapper->isLinesForbidden() )
-        m_aOuterValue = m_aDefaultValue;
-    else
+    if( !m_pDataSeriesPointWrapper || !m_pDataSeriesPointWrapper->isLinesForbidden() )
         WrappedSeriesAreaOrLineProperty::setPropertyToDefault( xInnerPropertyState );
 }
 
@@ -414,16 +418,12 @@ public:
 
 protected:
     DataSeriesPointWrapper* m_pDataSeriesPointWrapper;
-    mutable Any             m_aDefaultValue;
-    mutable Any             m_aOuterValue;
 };
 
 WrappedLineStyleProperty::WrappedLineStyleProperty(
                 DataSeriesPointWrapper* pDataSeriesPointWrapper )
                 : WrappedSeriesAreaOrLineProperty("LineStyle","BorderStyle", "LineStyle", pDataSeriesPointWrapper )
                 , m_pDataSeriesPointWrapper( pDataSeriesPointWrapper )
-                , m_aDefaultValue(uno::Any(drawing::LineStyle_SOLID))
-                , m_aOuterValue(m_aDefaultValue)
 {
 }
 
@@ -432,7 +432,6 @@ void WrappedLineStyleProperty::setPropertyValue( const Any& rOuterValue, const R
     Any aNewValue(rOuterValue);
     if( m_pDataSeriesPointWrapper && m_pDataSeriesPointWrapper->isLinesForbidden() )
     {
-        m_aOuterValue = rOuterValue;
         aNewValue <<= drawing::LineStyle_NONE;
     }
     WrappedSeriesAreaOrLineProperty::setPropertyValue( aNewValue, xInnerPropertySet );
@@ -440,17 +439,13 @@ void WrappedLineStyleProperty::setPropertyValue( const Any& rOuterValue, const R
 
 void WrappedLineStyleProperty::setPropertyToDefault( const Reference< beans::XPropertyState >& xInnerPropertyState ) const
 {
-    if( m_pDataSeriesPointWrapper && m_pDataSeriesPointWrapper->isLinesForbidden() )
-        m_aOuterValue = m_aDefaultValue;
-    else
+    if( !m_pDataSeriesPointWrapper || !m_pDataSeriesPointWrapper->isLinesForbidden() )
         WrappedSeriesAreaOrLineProperty::setPropertyToDefault( xInnerPropertyState );
 }
 
 } // anonymous namespace
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 DataSeriesPointWrapper::DataSeriesPointWrapper(const std::shared_ptr<Chart2ModelContact>& spChart2ModelContact)
@@ -460,18 +455,17 @@ DataSeriesPointWrapper::DataSeriesPointWrapper(const std::shared_ptr<Chart2Model
     , m_nSeriesIndexInNewAPI( -1 )
     , m_nPointIndex( -1 )
     , m_bLinesAllowed(true)
-    , m_xDataSeries(nullptr)
 {
     //need initialize call afterwards
 }
 
 void SAL_CALL DataSeriesPointWrapper::initialize( const uno::Sequence< uno::Any >& aArguments )
 {
-    OSL_PRECOND(aArguments.getLength() >= 1,"need at least 1 argument to initialize the DataSeriesPointWrapper: series reference + optional datapoint index");
+    OSL_PRECOND(aArguments.hasElements(),"need at least 1 argument to initialize the DataSeriesPointWrapper: series reference + optional datapoint index");
 
     m_nSeriesIndexInNewAPI = -1;//ignored in this case
     m_nPointIndex = -1;
-    if( aArguments.getLength() >= 1 )
+    if( aArguments.hasElements() )
     {
         aArguments[0] >>= m_xDataSeries;
         if( aArguments.getLength() >= 2 )
@@ -500,7 +494,6 @@ DataSeriesPointWrapper::DataSeriesPointWrapper(eType _eType,
     , m_nSeriesIndexInNewAPI( nSeriesIndexInNewAPI )
     , m_nPointIndex( (_eType == DATA_POINT) ? nPointIndex : -1 )
     , m_bLinesAllowed( false )
-    , m_xDataSeries(nullptr)
 {
 }
 
@@ -537,7 +530,7 @@ void SAL_CALL DataSeriesPointWrapper::disposing( const lang::EventObject& /*Sour
 
 bool DataSeriesPointWrapper::isSupportingAreaProperties()
 {
-    Reference< chart2::XDataSeries > xSeries( this->getDataSeries() );
+    Reference< chart2::XDataSeries > xSeries( getDataSeries() );
     Reference< chart2::XDiagram > xDiagram( m_spChart2ModelContact->getChart2Diagram() );
     Reference< chart2::XChartType > xChartType( DiagramHelper::getChartTypeOfSeries( xDiagram, xSeries ) );
     sal_Int32 nDimensionCount = DiagramHelper::getDimension( xDiagram );
@@ -565,7 +558,7 @@ Reference< beans::XPropertySet > DataSeriesPointWrapper::getDataPointProperties(
 {
     Reference< beans::XPropertySet > xPointProp;
 
-    Reference< chart2::XDataSeries > xSeries( this->getDataSeries() );
+    Reference< chart2::XDataSeries > xSeries( getDataSeries() );
 
     // may throw an IllegalArgumentException
     if( xSeries.is() )
@@ -577,7 +570,7 @@ Reference< beans::XPropertySet > DataSeriesPointWrapper::getDataPointProperties(
 //ReferenceSizePropertyProvider
 void DataSeriesPointWrapper::updateReferenceSize()
 {
-    Reference< beans::XPropertySet > xProp( this->getInnerPropertySet(), uno::UNO_QUERY );
+    Reference< beans::XPropertySet > xProp = getInnerPropertySet();
     if( xProp.is() )
     {
         if( xProp->getPropertyValue("ReferencePageSize").hasValue() )
@@ -588,7 +581,7 @@ void DataSeriesPointWrapper::updateReferenceSize()
 Any DataSeriesPointWrapper::getReferenceSize()
 {
     Any aRet;
-    Reference< beans::XPropertySet > xProp( this->getInnerPropertySet(), uno::UNO_QUERY );
+    Reference< beans::XPropertySet > xProp = getInnerPropertySet();
     if( xProp.is() )
         aRet = xProp->getPropertyValue("ReferencePageSize");
     return aRet;
@@ -606,7 +599,7 @@ beans::PropertyState SAL_CALL DataSeriesPointWrapper::getPropertyState( const OU
     beans::PropertyState aState( beans::PropertyState_DIRECT_VALUE );
     try
     {
-        if (rPropertyName == "SymbolBitmapURL")
+        if (rPropertyName == "SymbolBitmap" || rPropertyName == "SymbolBitmapURL")
         {
             uno::Any aAny = WrappedPropertySet::getPropertyValue("SymbolType");
             sal_Int32 nVal = css::chart::ChartSymbolType::NONE;
@@ -717,19 +710,19 @@ const Sequence< beans::Property >& DataSeriesPointWrapper::getPropertySequence()
         return *StaticPointWrapperPropertyArray::get();
 }
 
-const std::vector< WrappedProperty* > DataSeriesPointWrapper::createWrappedProperties()
+std::vector< std::unique_ptr<WrappedProperty> > DataSeriesPointWrapper::createWrappedProperties()
 {
-    std::vector< ::chart::WrappedProperty* > aWrappedProperties;
+    std::vector< std::unique_ptr<WrappedProperty> > aWrappedProperties;
 
     WrappedCharacterHeightProperty::addWrappedProperties( aWrappedProperties, this );
 
     if( m_eType == DATA_SERIES )
     {
         WrappedStatisticProperties::addWrappedPropertiesForSeries( aWrappedProperties, m_spChart2ModelContact );
-        aWrappedProperties.push_back( new WrappedAttachedAxisProperty( m_spChart2ModelContact ) );
+        aWrappedProperties.emplace_back( new WrappedAttachedAxisProperty( m_spChart2ModelContact ) );
 
-        aWrappedProperties.push_back( new WrappedNumberFormatProperty(m_spChart2ModelContact) );
-        aWrappedProperties.push_back( new WrappedLinkNumberFormatProperty );
+        aWrappedProperties.emplace_back( new WrappedNumberFormatProperty(m_spChart2ModelContact) );
+        aWrappedProperties.emplace_back( new WrappedLinkNumberFormatProperty );
     }
 
     WrappedSymbolProperties::addWrappedPropertiesForSeries( aWrappedProperties, m_spChart2ModelContact );
@@ -738,39 +731,40 @@ const std::vector< WrappedProperty* > DataSeriesPointWrapper::createWrappedPrope
 
     //add unnamed line properties (different inner names here)
 
-    aWrappedProperties.push_back( new WrappedProperty("FillColor","Color") );
-    aWrappedProperties.push_back( new WrappedLineStyleProperty( this ) );
-    aWrappedProperties.push_back( new WrappedLineColorProperty( this ) );
-    aWrappedProperties.push_back( new WrappedSeriesAreaOrLineProperty("LineDashName","BorderDashName","LineDashName", this ) );
-    aWrappedProperties.push_back( new WrappedSeriesAreaOrLineProperty("LineTransparence","BorderTransparency","Transparency", this ) );
-    aWrappedProperties.push_back( new WrappedSeriesAreaOrLineProperty("LineWidth","BorderWidth","LineWidth", this ) );
-    aWrappedProperties.push_back( new WrappedProperty("FillStyle","FillStyle" ) );
-    aWrappedProperties.push_back( new WrappedProperty("FillTransparence","Transparency") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillColor","Color") );
+    aWrappedProperties.emplace_back( new WrappedLineStyleProperty( this ) );
+    aWrappedProperties.emplace_back( new WrappedLineColorProperty( this ) );
+    aWrappedProperties.emplace_back( new WrappedSeriesAreaOrLineProperty("LineDashName","BorderDashName","LineDashName", this ) );
+    aWrappedProperties.emplace_back( new WrappedSeriesAreaOrLineProperty("LineTransparence","BorderTransparency","Transparency", this ) );
+    aWrappedProperties.emplace_back( new WrappedSeriesAreaOrLineProperty("LineWidth","BorderWidth","LineWidth", this ) );
+    aWrappedProperties.emplace_back( new WrappedSeriesAreaOrLineProperty("LineCap","LineCap","LineCap", this ) );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillStyle","FillStyle" ) );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillTransparence","Transparency") );
 
-    aWrappedProperties.push_back( new WrappedIgnoreProperty("LineJoint", uno::Any( drawing::LineJoint_ROUND ) ) );
-    aWrappedProperties.push_back( new WrappedProperty("FillTransparenceGradientName","TransparencyGradientName") );
-    aWrappedProperties.push_back( new WrappedProperty("FillGradientName","GradientName") );
-    aWrappedProperties.push_back( new WrappedProperty("FillGradientStepCount","GradientStepCount") );
-    aWrappedProperties.push_back( new WrappedProperty("FillHatchName","HatchName") );
-    aWrappedProperties.push_back( new WrappedProperty("FillBitmapName","FillBitmapName") );
-    aWrappedProperties.push_back( new WrappedProperty("FillBackground","FillBackground") );
+    aWrappedProperties.emplace_back( new WrappedIgnoreProperty("LineJoint", uno::Any( drawing::LineJoint_ROUND ) ) );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillTransparenceGradientName","TransparencyGradientName") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillGradientName","GradientName") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillGradientStepCount","GradientStepCount") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillHatchName","HatchName") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillBitmapName","FillBitmapName") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillBackground","FillBackground") );
 
     //bitmap properties
-    aWrappedProperties.push_back( new WrappedProperty("FillBitmapMode","FillBitmapMode") );
-    aWrappedProperties.push_back( new WrappedProperty("FillBitmapSizeX","FillBitmapSizeX") );
-    aWrappedProperties.push_back( new WrappedProperty("FillBitmapSizeY","FillBitmapSizeY") );
-    aWrappedProperties.push_back( new WrappedProperty("FillBitmapLogicalSize","FillBitmapLogicalSize") );
-    aWrappedProperties.push_back( new WrappedProperty("FillBitmapOffsetX","FillBitmapOffsetX") );
-    aWrappedProperties.push_back( new WrappedProperty("FillBitmapOffsetY","FillBitmapOffsetY") );
-    aWrappedProperties.push_back( new WrappedProperty("FillBitmapRectanglePoint","FillBitmapRectanglePoint") );
-    aWrappedProperties.push_back( new WrappedProperty("FillBitmapPositionOffsetX","FillBitmapPositionOffsetX") );
-    aWrappedProperties.push_back( new WrappedProperty("FillBitmapPositionOffsetY","FillBitmapPositionOffsetY") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillBitmapMode","FillBitmapMode") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillBitmapSizeX","FillBitmapSizeX") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillBitmapSizeY","FillBitmapSizeY") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillBitmapLogicalSize","FillBitmapLogicalSize") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillBitmapOffsetX","FillBitmapOffsetX") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillBitmapOffsetY","FillBitmapOffsetY") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillBitmapRectanglePoint","FillBitmapRectanglePoint") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillBitmapPositionOffsetX","FillBitmapPositionOffsetX") );
+    aWrappedProperties.emplace_back( new WrappedProperty("FillBitmapPositionOffsetY","FillBitmapPositionOffsetY") );
 
-    aWrappedProperties.push_back( new WrappedProperty("SolidType","Geometry3D") );
-    aWrappedProperties.push_back( new WrappedSegmentOffsetProperty() );
-    aWrappedProperties.push_back( new WrappedProperty("D3DPercentDiagonal","PercentDiagonal") );
+    aWrappedProperties.emplace_back( new WrappedProperty("SolidType","Geometry3D") );
+    aWrappedProperties.emplace_back( new WrappedSegmentOffsetProperty() );
+    aWrappedProperties.emplace_back( new WrappedProperty("D3DPercentDiagonal","PercentDiagonal") );
 
-    aWrappedProperties.push_back( new WrappedTextRotationProperty() );
+    aWrappedProperties.emplace_back( new WrappedTextRotationProperty() );
 
     return aWrappedProperties;
 }
@@ -794,16 +788,16 @@ void SAL_CALL DataSeriesPointWrapper::setPropertyValue( const OUString& rPropert
         switch(aNewValue)
         {
             case css::chart::ChartErrorCategory_CONSTANT_VALUE:
-                aHigh = this->getPropertyValue("ConstantErrorHigh");
-                aLow = this->getPropertyValue("ConstantErrorLow");
+                aHigh = getPropertyValue("ConstantErrorHigh");
+                aLow = getPropertyValue("ConstantErrorLow");
                 bSetHighAndLowValues = true;
                 break;
             case css::chart::ChartErrorCategory_PERCENT:
-                aHigh = aLow = this->getPropertyValue("PercentageError");
+                aHigh = aLow = getPropertyValue("PercentageError");
                 bSetHighAndLowValues = true;
                 break;
             case css::chart::ChartErrorCategory_ERROR_MARGIN:
-                aHigh = aLow = this->getPropertyValue("ErrorMargin");
+                aHigh = aLow = getPropertyValue("ErrorMargin");
                 bSetHighAndLowValues = true;
                 break;
             default:
@@ -817,14 +811,14 @@ void SAL_CALL DataSeriesPointWrapper::setPropertyValue( const OUString& rPropert
             switch(aNewValue)
             {
                 case css::chart::ChartErrorCategory_CONSTANT_VALUE:
-                    this->setPropertyValue("ConstantErrorHigh",aHigh);
-                    this->setPropertyValue("ConstantErrorLow",aLow);
+                    setPropertyValue("ConstantErrorHigh",aHigh);
+                    setPropertyValue("ConstantErrorLow",aLow);
                     break;
                 case css::chart::ChartErrorCategory_PERCENT:
-                    this->setPropertyValue("PercentageError",aHigh);
+                    setPropertyValue("PercentageError",aHigh);
                     break;
                 case css::chart::ChartErrorCategory_ERROR_MARGIN:
-                    this->setPropertyValue("ErrorMargin",aHigh);
+                    setPropertyValue("ErrorMargin",aHigh);
                     break;
                 default:
                     break;
@@ -865,7 +859,7 @@ Any SAL_CALL DataSeriesPointWrapper::getPropertyValue( const OUString& rProperty
 
 OUString SAL_CALL DataSeriesPointWrapper::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.DataSeries");
+    return "com.sun.star.comp.chart.DataSeries";
 }
 
 sal_Bool SAL_CALL DataSeriesPointWrapper::supportsService( const OUString& rServiceName )
@@ -886,7 +880,6 @@ css::uno::Sequence< OUString > SAL_CALL DataSeriesPointWrapper::getSupportedServ
     };
 }
 
-} //  namespace wrapper
 } //  namespace chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

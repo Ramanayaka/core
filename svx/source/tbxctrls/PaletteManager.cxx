@@ -19,22 +19,28 @@
 
 #include <memory>
 #include <svx/PaletteManager.hxx>
+#include <tools/urlobj.hxx>
 #include <osl/file.hxx>
 #include <unotools/pathoptions.hxx>
 #include <sfx2/objsh.hxx>
 #include <svx/drawitem.hxx>
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
+#include <svx/svxids.hrc>
 #include <svx/dialmgr.hxx>
-#include <vcl/toolbox.hxx>
+#include <tbxcolorupdate.hxx>
 #include <svtools/colrdlg.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 #include <stack>
 #include <set>
-#include <cppu/unotype.hxx>
 #include <officecfg/Office/Common.hxx>
+#include <com/sun/star/frame/XDispatchProvider.hpp>
+#include <com/sun/star/frame/XDispatch.hpp>
+#include <com/sun/star/frame/Desktop.hpp>
+#include <com/sun/star/util/XURLTransformer.hpp>
+#include <com/sun/star/util/URLTransformer.hpp>
 
-#include "palettes.hxx"
+#include <palettes.hxx>
 
 PaletteManager::PaletteManager() :
     mnMaxRecentColors(Application::GetSettings().GetStyleSettings().GetColorValueSetColumnCount()),
@@ -42,7 +48,6 @@ PaletteManager::PaletteManager() :
     mnCurrentPalette(0),
     mnColorCount(0),
     mpBtnUpdater(nullptr),
-    mLastColor(COL_AUTO),
     maColorSelectFunction(PaletteManager::DispatchColorCommand),
     m_context(comphelper::getProcessComponentContext())
 {
@@ -57,6 +62,7 @@ PaletteManager::PaletteManager() :
         pColorList = XColorList::CreateStdColorList();
     LoadPalettes();
     mnNumOfPalettes += m_Palettes.size();
+
 }
 
 PaletteManager::~PaletteManager()
@@ -165,7 +171,7 @@ void PaletteManager::ReloadRecentColorSet(SvxColorValueSet& rColorSet)
     {
         Color aColor(Colorlist[i]);
         OUString sColorName = bHasColorNames ? ColorNamelist[i] : ("#" + aColor.AsRGBHexString().toAsciiUpperCase());
-        maRecentColors.push_back(std::make_pair(aColor, sColorName));
+        maRecentColors.emplace_back(aColor, sColorName);
         rColorSet.InsertItem(nIx, aColor, sColorName);
         ++nIx;
     }
@@ -205,12 +211,16 @@ void PaletteManager::SetPalette( sal_Int32 nPos )
             }
         }
     }
-    std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create(m_context));
-    officecfg::Office::Common::UserColors::PaletteName::set(GetPaletteName(), batch);
-    batch->commit();
+    OUString aPaletteName(officecfg::Office::Common::UserColors::PaletteName::get());
+    if (aPaletteName != GetPaletteName())
+    {
+        std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create(m_context));
+        officecfg::Office::Common::UserColors::PaletteName::set(GetPaletteName(), batch);
+        batch->commit();
+    }
 }
 
-sal_Int32 PaletteManager::GetPalette()
+sal_Int32 PaletteManager::GetPalette() const
 {
     return mnCurrentPalette;
 }
@@ -239,24 +249,14 @@ OUString PaletteManager::GetSelectedPalettePath()
         return OUString();
 }
 
-long PaletteManager::GetColorCount()
+long PaletteManager::GetColorCount() const
 {
     return mnColorCount;
 }
 
-long PaletteManager::GetRecentColorCount()
+long PaletteManager::GetRecentColorCount() const
 {
     return maRecentColors.size();
-}
-
-const Color& PaletteManager::GetLastColor()
-{
-    return mLastColor;
-}
-
-void PaletteManager::SetLastColor(const Color& rLastColor)
-{
-    mLastColor = rLastColor;
 }
 
 void PaletteManager::AddRecentColor(const Color& rRecentColor, const OUString& rName, bool bFront)
@@ -273,12 +273,12 @@ void PaletteManager::AddRecentColor(const Color& rRecentColor, const OUString& r
     if (bFront)
         maRecentColors.push_front(std::make_pair(rRecentColor, rName));
     else
-        maRecentColors.push_back(std::make_pair(rRecentColor, rName));
+        maRecentColors.emplace_back(rRecentColor, rName);
     css::uno::Sequence< sal_Int32 > aColorList(maRecentColors.size());
     css::uno::Sequence< OUString > aColorNameList(maRecentColors.size());
     for (size_t i = 0; i < maRecentColors.size(); ++i)
     {
-        aColorList[i] = static_cast<sal_Int32>(maRecentColors[i].first.GetColor());
+        aColorList[i] = static_cast<sal_Int32>(maRecentColors[i].first);
         aColorNameList[i] = maRecentColors[i].second;
     }
     std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create(m_context));
@@ -287,10 +287,9 @@ void PaletteManager::AddRecentColor(const Color& rRecentColor, const OUString& r
     batch->commit();
 }
 
-void PaletteManager::SetBtnUpdater(svx::ToolboxButtonColorUpdater* pBtnUpdater)
+void PaletteManager::SetBtnUpdater(svx::ToolboxButtonColorUpdaterBase* pBtnUpdater)
 {
     mpBtnUpdater = pBtnUpdater;
-    mLastColor = mpBtnUpdater->GetCurrentColor();
 }
 
 void PaletteManager::SetColorSelectFunction(const std::function<void(const OUString&, const NamedColor&)>& aColorSelectFunction)
@@ -298,21 +297,21 @@ void PaletteManager::SetColorSelectFunction(const std::function<void(const OUStr
     maColorSelectFunction = aColorSelectFunction;
 }
 
-void PaletteManager::PopupColorPicker(const OUString& aCommand)
+void PaletteManager::PopupColorPicker(weld::Window* pParent, const OUString& aCommand, const Color& rInitialColor)
 {
     // The calling object goes away during aColorDlg.Execute(), so we must copy this
     OUString aCommandCopy = aCommand;
-    SvColorDialog aColorDlg( nullptr );
-    aColorDlg.SetColor ( mLastColor );
-    aColorDlg.SetMode( svtools::ColorPickerMode_MODIFY );
-    if( aColorDlg.Execute() == RET_OK )
+    SvColorDialog aColorDlg;
+    aColorDlg.SetColor(rInitialColor);
+    aColorDlg.SetMode(svtools::ColorPickerMode::Modify);
+    if (aColorDlg.Execute(pParent) == RET_OK)
     {
+        Color aLastColor = aColorDlg.GetColor();
+        OUString sColorName = "#" + aLastColor.AsRGBHexString().toAsciiUpperCase();
+        NamedColor aNamedColor = std::make_pair(aLastColor, sColorName);
         if (mpBtnUpdater)
-            mpBtnUpdater->Update( aColorDlg.GetColor() );
-        mLastColor = aColorDlg.GetColor();
-        OUString sColorName = ("#" + mLastColor.AsRGBHexString().toAsciiUpperCase());
-        NamedColor aNamedColor = std::make_pair(mLastColor, sColorName);
-        AddRecentColor(mLastColor, sColorName);
+            mpBtnUpdater->Update(aNamedColor);
+        AddRecentColor(aLastColor, sColorName);
         maColorSelectFunction(aCommandCopy, aNamedColor);
     }
 }
@@ -326,23 +325,28 @@ void PaletteManager::DispatchColorCommand(const OUString& aCommand, const NamedC
 
     Reference<XComponentContext> xContext(comphelper::getProcessComponentContext());
     Reference<XDesktop2> xDesktop = Desktop::create(xContext);
-    Reference<XDispatchProvider> xDispatchProvider(xDesktop->getCurrentFrame(), UNO_QUERY );
-    if (xDispatchProvider.is())
+    Reference<XFrame> xFrame(xDesktop->getCurrentFrame());
+    Reference<XDispatchProvider> xDispatchProvider(xFrame, UNO_QUERY);
+    if (!xDispatchProvider.is())
+        return;
+
+    INetURLObject aObj( aCommand );
+
+    Sequence<PropertyValue> aArgs(1);
+    aArgs[0].Name = aObj.GetURLPath();
+    aArgs[0].Value <<= sal_Int32(rColor.first);
+
+    URL aTargetURL;
+    aTargetURL.Complete = aCommand;
+    Reference<XURLTransformer> xURLTransformer(URLTransformer::create(comphelper::getProcessComponentContext()));
+    xURLTransformer->parseStrict(aTargetURL);
+
+    Reference<XDispatch> xDispatch = xDispatchProvider->queryDispatch(aTargetURL, OUString(), 0);
+    if (xDispatch.is())
     {
-        INetURLObject aObj( aCommand );
-
-        Sequence<PropertyValue> aArgs(1);
-        aArgs[0].Name = aObj.GetURLPath();
-        aArgs[0].Value <<= sal_Int32(rColor.first.GetColor());
-
-        URL aTargetURL;
-        aTargetURL.Complete = aCommand;
-        Reference<XURLTransformer> xURLTransformer(URLTransformer::create(comphelper::getProcessComponentContext()));
-        xURLTransformer->parseStrict(aTargetURL);
-
-        Reference<XDispatch> xDispatch = xDispatchProvider->queryDispatch(aTargetURL, OUString(), 0);
-        if (xDispatch.is())
-            xDispatch->dispatch(aTargetURL, aArgs);
+        xDispatch->dispatch(aTargetURL, aArgs);
+        if (xFrame->getContainerWindow().is())
+            xFrame->getContainerWindow()->setFocus();
     }
 }
 

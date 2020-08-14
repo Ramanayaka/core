@@ -21,11 +21,6 @@
 #define INCLUDED_TOOLKIT_AWT_VCLXACCESSIBLECOMPONENT_HXX
 
 #include <toolkit/dllapi.h>
-#include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/accessibility/XAccessibleContext.hpp>
-#include <com/sun/star/accessibility/XAccessibleExtendedComponent.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase1.hxx>
 #include <comphelper/accimplaccess.hxx>
@@ -35,9 +30,10 @@
 #include <tools/link.hxx>
 #include <vcl/vclptr.hxx>
 
+namespace com::sun::star::accessibility { class XAccessible; }
+
 namespace vcl { class Window; }
 class VCLXWindow;
-class VclSimpleEvent;
 class VclWindowEvent;
 
 namespace utl {
@@ -46,7 +42,6 @@ class AccessibleStateSetHelper;
 }
 
 
-//  class VCLXAccessibleComponent
 
 typedef ::cppu::ImplHelper1<
     css::lang::XServiceInfo > VCLXAccessibleComponent_BASE;
@@ -103,6 +98,7 @@ public:
     sal_Int16 SAL_CALL getAccessibleRole(  ) override;
     OUString SAL_CALL getAccessibleDescription(  ) override;
     OUString SAL_CALL getAccessibleName(  ) override;
+    OUString SAL_CALL getAccessibleId(  ) override;
     css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL getAccessibleRelationSet(  ) override;
     css::uno::Reference< css::accessibility::XAccessibleStateSet > SAL_CALL getAccessibleStateSet(  ) override;
     css::lang::Locale SAL_CALL getLocale(  ) override;
@@ -142,6 +138,7 @@ private:
     sal_Int16 getAccessibleRole() => VCL Window::GetAccessibleRole()
     OUString getAccessibleDescription() => VCL Window::GetAccessibleDescription
     OUString getAccessibleName() => VCL Window::GetAccessibleText() => Most windows return Window::GetText()
+    OUString getAccessibleId() => VCL Window::get_id()
     Reference< XAccessibleRelationSet > getAccessibleRelationSet()
     Reference< XAccessibleStateSet > getAccessibleStateSet() => override FillAccessibleStateSet( ... )
 

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dndlistenercontainer.hxx"
+#include <dndlistenercontainer.hxx>
 
 using namespace ::cppu;
 using namespace ::com::sun::star::uno;
@@ -174,7 +174,7 @@ sal_uInt32 DNDListenerContainer::fireDragExitEvent()
 
                 if( xListener.is() )
                 {
-                       xListener->dragExit( aEvent );
+                    xListener->dragExit( aEvent );
                     nRet++;
                 }
             }
@@ -222,7 +222,7 @@ sal_uInt32 DNDListenerContainer::fireDragOverEvent( const Reference< XDropTarget
                 {
                     if( m_xDropTargetDragContext.is() )
                         xListener->dragOver( aEvent );
-                      nRet++;
+                    nRet++;
                 }
             }
             catch (const RuntimeException&)
@@ -345,7 +345,7 @@ sal_uInt32 DNDListenerContainer::fireDropActionChangedEvent( const Reference< XD
                 {
                     if( m_xDropTargetDragContext.is() )
                         xListener->dropActionChanged( aEvent );
-                       nRet++;
+                    nRet++;
                 }
             }
             catch (const RuntimeException&)

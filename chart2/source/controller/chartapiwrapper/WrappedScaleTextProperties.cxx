@@ -18,20 +18,24 @@
  */
 
 #include "WrappedScaleTextProperties.hxx"
-#include "FastPropertyIdRanges.hxx"
-#include "macros.hxx"
+#include "Chart2ModelContact.hxx"
+#include <FastPropertyIdRanges.hxx>
+#include <WrappedProperty.hxx>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/beans/XPropertyState.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::beans::Property;
 
-namespace chart
+namespace chart::wrapper
 {
-namespace wrapper
-{
+
+namespace {
 
 class WrappedScaleTextProperty : public WrappedProperty
 {
@@ -46,6 +50,8 @@ private:
     std::shared_ptr< Chart2ModelContact >   m_spChart2ModelContact;
 };
 
+}
+
 WrappedScaleTextProperty::WrappedScaleTextProperty(const std::shared_ptr<Chart2ModelContact>& spChart2ModelContact)
     : ::chart::WrappedProperty( "ScaleText" , OUString() )
     , m_spChart2ModelContact( spChart2ModelContact )
@@ -56,29 +62,29 @@ void WrappedScaleTextProperty::setPropertyValue( const Any& rOuterValue, const R
 {
     static const char aRefSizeName[] = "ReferencePageSize";
 
-    if( xInnerPropertySet.is() )
-    {
-        bool bNewValue = false;
-        if( ! (rOuterValue >>= bNewValue) )
-        {
-            if( rOuterValue.hasValue() )
-                throw lang::IllegalArgumentException( "Property ScaleText requires value of type boolean", nullptr, 0 );
-        }
+    if( !xInnerPropertySet.is() )
+        return;
 
-        try
+    bool bNewValue = false;
+    if( ! (rOuterValue >>= bNewValue) )
+    {
+        if( rOuterValue.hasValue() )
+            throw lang::IllegalArgumentException( "Property ScaleText requires value of type boolean", nullptr, 0 );
+    }
+
+    try
+    {
+        if( bNewValue )
         {
-            if( bNewValue )
-            {
-                awt::Size aRefSize( m_spChart2ModelContact->GetPageSize() );
-                xInnerPropertySet->setPropertyValue( aRefSizeName, uno::Any( aRefSize ) );
-            }
-            else
-                xInnerPropertySet->setPropertyValue( aRefSizeName, Any() );
+            awt::Size aRefSize( m_spChart2ModelContact->GetPageSize() );
+            xInnerPropertySet->setPropertyValue( aRefSizeName, uno::Any( aRefSize ) );
         }
-        catch( const uno::Exception & ex )
-        {
-            ASSERT_EXCEPTION( ex );
-        }
+        else
+            xInnerPropertySet->setPropertyValue( aRefSizeName, Any() );
+    }
+    catch( const uno::Exception & )
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -114,21 +120,19 @@ enum
 
 void WrappedScaleTextProperties::addProperties( std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "ScaleText",
+    rOutProperties.emplace_back( "ScaleText",
                   PROP_CHART_SCALE_TEXT,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::MAYBEVOID
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 }
 
-void WrappedScaleTextProperties::addWrappedProperties( std::vector< WrappedProperty* >& rList
+void WrappedScaleTextProperties::addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList
                                  , const std::shared_ptr< Chart2ModelContact >& spChart2ModelContact )
 {
-    rList.push_back( new WrappedScaleTextProperty( spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleTextProperty( spChart2ModelContact ) );
 }
 
-} //namespace wrapper
-} //namespace chart
+} //namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

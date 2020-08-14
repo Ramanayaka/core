@@ -16,16 +16,16 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "componenttools.hxx"
-#include "FormComponent.hxx"
-#include "frm_resource.hrc"
-#include "frm_resource.hxx"
-#include "property.hrc"
-#include "services.hxx"
+#include <componenttools.hxx>
+#include <FormComponent.hxx>
+#include <strings.hrc>
+#include <frm_resource.hxx>
+#include <property.hxx>
+#include <services.hxx>
 
 #include <com/sun/star/awt/XTextComponent.hpp>
-#include <com/sun/star/awt/XVclWindowPeer.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/form/XForm.hpp>
 #include <com/sun/star/form/XLoadable.hpp>
 #include <com/sun/star/form/binding/IncompatibleTypesException.hpp>
@@ -37,22 +37,21 @@
 #include <com/sun/star/sdb/XRowSetSupplier.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/util/VetoException.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
 
 #include <comphelper/basicio.hxx>
 #include <comphelper/guarding.hxx>
-#include <comphelper/listenernotification.hxx>
+#include <comphelper/interfacecontainer2.hxx>
 #include <comphelper/property.hxx>
 #include <connectivity/dbtools.hxx>
 #include <cppuhelper/exc_hlp.hxx>
-#include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <toolkit/helper/emptyfontdescriptor.hxx>
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
-#include <functional>
 #include <algorithm>
 
 namespace frm
@@ -88,6 +87,8 @@ void ControlModelLock::addPropertyNotification( const sal_Int32 _nHandle, const 
     m_aNewValues.push_back( _rNewValue );
 }
 
+namespace {
+
 class FieldChangeNotifier
 {
 public:
@@ -110,6 +111,8 @@ private:
     OBoundControlModel&         m_rModel;
     Reference< XPropertySet >   m_xOldField;
 };
+
+}
 
 // base class for form layer controls
 OControl::OControl( const Reference< XComponentContext >& _rxContext, const OUString& _rAggregateService, const bool _bSetDelegator )
@@ -208,7 +211,7 @@ sal_Bool SAL_CALL OControl::supportsService(const OUString& _rsServiceName)
     return cppu::supportsService(this, _rsServiceName);
 }
 
-Sequence< OUString > OControl::getAggregateServiceNames()
+Sequence< OUString > OControl::getAggregateServiceNames() const
 {
     Sequence< OUString > aAggServices;
     Reference< XServiceInfo > xInfo;
@@ -258,11 +261,11 @@ void OControl::impl_resetStateGuard_nothrow()
     try
     {
         xWindow.set( getPeer(), UNO_QUERY );
-        xModel.set( getModel(), UNO_QUERY );
+        xModel = getModel();
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.component");
     }
     m_aWindowStateGuard.attach( xWindow, xModel );
 }
@@ -460,8 +463,8 @@ void OControlModel::readHelpTextCompatibly(const css::uno::Reference< css::io::X
     }
     catch(const Exception&)
     {
+        DBG_UNHANDLED_EXCEPTION("forms.component");
         SAL_WARN("forms.component", "OControlModel::readHelpTextCompatibly: could not forward the property value to the aggregate!");
-        DBG_UNHANDLED_EXCEPTION();
     }
 }
 
@@ -475,8 +478,8 @@ void OControlModel::writeHelpTextCompatibly(const css::uno::Reference< css::io::
     }
     catch(const Exception&)
     {
+        DBG_UNHANDLED_EXCEPTION("forms.component");
         SAL_WARN("forms.component", "OControlModel::writeHelpTextCompatibly: could not retrieve the property value from the aggregate!");
-        DBG_UNHANDLED_EXCEPTION();
     }
     ::comphelper::operator<<( _rxOutStream, sHelpText);
 }
@@ -500,33 +503,32 @@ OControlModel::OControlModel(
     // the native look is ugly...
     // #i37342#
 {
-    if (!_rUnoControlModelTypeName.isEmpty())  // the is a model we have to aggregate
-    {
-        osl_atomic_increment(&m_refCount);
-        {
-            m_xAggregate.set(m_xContext->getServiceManager()->createInstanceWithContext(_rUnoControlModelTypeName, m_xContext), UNO_QUERY);
-            setAggregation(m_xAggregate);
+    if (_rUnoControlModelTypeName.isEmpty())  // the is a model we have to aggregate
+        return;
 
-            if ( m_xAggregateSet.is() )
+    osl_atomic_increment(&m_refCount);
+    {
+        m_xAggregate.set(m_xContext->getServiceManager()->createInstanceWithContext(_rUnoControlModelTypeName, m_xContext), UNO_QUERY);
+        setAggregation(m_xAggregate);
+
+        if ( m_xAggregateSet.is() )
+        {
+            try
             {
-                try
-                {
-                    if ( !rDefault.isEmpty() )
-                        m_xAggregateSet->setPropertyValue( PROPERTY_DEFAULTCONTROL, makeAny( rDefault ) );
-                }
-                catch( const Exception& )
-                {
-                    SAL_WARN("forms.component",  "OControlModel::OControlModel: caught an exception!");
-                    DBG_UNHANDLED_EXCEPTION();
-                }
+                if ( !rDefault.isEmpty() )
+                    m_xAggregateSet->setPropertyValue( PROPERTY_DEFAULTCONTROL, makeAny( rDefault ) );
+            }
+            catch( const Exception& )
+            {
+                TOOLS_WARN_EXCEPTION("forms.component",  "OControlModel::OControlModel");
             }
         }
-        if (_bSetDelegator)
-            doSetDelegator();
-
-        // Refcount is at NULL again
-        osl_atomic_decrement(&m_refCount);
     }
+    if (_bSetDelegator)
+        doSetDelegator();
+
+    // Refcount is at NULL again
+    osl_atomic_decrement(&m_refCount);
 }
 
 OControlModel::OControlModel( const OControlModel* _pOriginal, const Reference< XComponentContext>& _rxFactory, const bool _bCloneAggregate, const bool _bSetDelegator )
@@ -550,25 +552,25 @@ OControlModel::OControlModel( const OControlModel* _pOriginal, const Reference< 
     m_nControlTypeinMSO = _pOriginal->m_nControlTypeinMSO;
     m_nObjIDinMSO = _pOriginal->m_nObjIDinMSO;
 
-    if ( _bCloneAggregate )
+    if ( !_bCloneAggregate )
+        return;
+
+    // temporarily increment refcount because of temporary references to ourself in the following
+    osl_atomic_increment( &m_refCount );
     {
-        // temporarily increment refcount because of temporary references to ourself in the following
-        osl_atomic_increment( &m_refCount );
-        {
-            // transfer the (only, at the very moment!) ref count
-            m_xAggregate = createAggregateClone( _pOriginal );
+        // transfer the (only, at the very moment!) ref count
+        m_xAggregate = createAggregateClone( _pOriginal );
 
-            // set aggregation (retrieve other direct interfaces of the aggregate)
-            setAggregation( m_xAggregate );
-        }
-
-        // set the delegator, if allowed by our derived class
-        if ( _bSetDelegator )
-            doSetDelegator();
-
-        // decrement ref count
-        osl_atomic_decrement( &m_refCount );
+        // set aggregation (retrieve other direct interfaces of the aggregate)
+        setAggregation( m_xAggregate );
     }
+
+    // set the delegator, if allowed by our derived class
+    if ( _bSetDelegator )
+        doSetDelegator();
+
+    // decrement ref count
+    osl_atomic_decrement( &m_refCount );
 }
 
 OControlModel::~OControlModel()
@@ -662,7 +664,7 @@ sal_Bool SAL_CALL OControlModel::supportsService(const OUString& _rServiceName)
     return cppu::supportsService(this, _rServiceName);
 }
 
-Sequence< OUString > OControlModel::getAggregateServiceNames()
+Sequence< OUString > OControlModel::getAggregateServiceNames() const
 {
     Sequence< OUString > aAggServices;
     Reference< XServiceInfo > xInfo;
@@ -679,12 +681,9 @@ Sequence<OUString> SAL_CALL OControlModel::getSupportedServiceNames()
     );
 }
 
-Sequence< OUString > SAL_CALL OControlModel::getSupportedServiceNames_Static()
+Sequence< OUString > OControlModel::getSupportedServiceNames_Static()
 {
-    Sequence< OUString > aServiceNames( 2 );
-    aServiceNames[ 0 ] = FRM_SUN_FORMCOMPONENT;
-    aServiceNames[ 1 ] = "com.sun.star.form.FormControlModel";
-    return aServiceNames;
+    return { FRM_SUN_FORMCOMPONENT, "com.sun.star.form.FormControlModel" };
 }
 
 // XEventListener
@@ -805,7 +804,7 @@ void OControlModel::read(const Reference<css::io::XObjectInputStream>& InStream)
 
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
 
         xMark->jumpToMark(nMark);
@@ -864,10 +863,10 @@ Any OControlModel::getPropertyDefaultByHandle( sal_Int32 _nHandle ) const
             aReturn <<= OUString();
             break;
         case PROPERTY_ID_CLASSID:
-            aReturn <<= (sal_Int16)FormComponentType::CONTROL;
+            aReturn <<= sal_Int16(FormComponentType::CONTROL);
             break;
         case PROPERTY_ID_TABINDEX:
-            aReturn <<= (sal_Int16)FRM_DEFAULT_TABINDEX;
+            aReturn <<= sal_Int16(FRM_DEFAULT_TABINDEX);
             break;
         case PROPERTY_ID_NATIVE_LOOK:
             aReturn <<= true;
@@ -877,10 +876,10 @@ Any OControlModel::getPropertyDefaultByHandle( sal_Int32 _nHandle ) const
             break;
         // added for exporting OCX control
         case PROPERTY_ID_CONTROL_TYPE_IN_MSO:
-            aReturn <<= (sal_Int16)0;
+            aReturn <<= sal_Int16(0);
             break;
         case PROPERTY_ID_OBJ_ID_IN_MSO:
-            aReturn <<= (sal_uInt16)INVALID_OBJ_ID_IN_MSO;
+            aReturn <<= sal_uInt16(INVALID_OBJ_ID_IN_MSO);
             break;
         default:
             if ( m_aPropertyBagHelper.hasDynamicPropertyByHandle( _nHandle ) )
@@ -915,10 +914,10 @@ void OControlModel::getFastPropertyValue( Any& _rValue, sal_Int32 _nHandle ) con
             break;
         // added for exporting OCX control
         case PROPERTY_ID_CONTROL_TYPE_IN_MSO:
-            _rValue <<= (sal_Int16)m_nControlTypeinMSO;
+            _rValue <<= m_nControlTypeinMSO;
             break;
         case PROPERTY_ID_OBJ_ID_IN_MSO:
-            _rValue <<= (sal_uInt16)m_nObjIDinMSO;
+            _rValue <<= m_nObjIDinMSO;
             break;
         default:
             if ( m_aPropertyBagHelper.hasDynamicPropertyByHandle( _nHandle ) )
@@ -1137,7 +1136,7 @@ OBoundControlModel::OBoundControlModel(
     ,m_aResetHelper( *this, m_aMutex )
     ,m_aUpdateListeners(m_aMutex)
     ,m_aFormComponentListeners( m_aMutex )
-    ,m_bInputRequired( true )
+    ,m_bInputRequired( false )
     ,m_pAggPropMultiplexer( nullptr )
     ,m_bFormListening( false )
     ,m_bLoaded(false)
@@ -1170,7 +1169,7 @@ OBoundControlModel::OBoundControlModel(
     ,m_aUpdateListeners( m_aMutex )
     ,m_aFormComponentListeners( m_aMutex )
     ,m_xValidator( _pOriginal->m_xValidator )
-    ,m_bInputRequired( true )
+    ,m_bInputRequired( false )
     ,m_pAggPropMultiplexer( nullptr )
     ,m_bFormListening( false )
     ,m_bLoaded( false )
@@ -1225,18 +1224,17 @@ void OBoundControlModel::clonedFrom( const OControlModel* _pOriginal )
     const OBoundControlModel* pBoundOriginal = static_cast< const OBoundControlModel* >( _pOriginal );
     // the value binding can be handled as if somebody called setValueBinding here
     // By definition, bindings can be share between bindables
-    if ( pBoundOriginal && pBoundOriginal->m_xExternalBinding.is() )
+    if ( !(pBoundOriginal && pBoundOriginal->m_xExternalBinding.is()) )
+        return;
+
+    try
     {
-        try
-        {
-            setValueBinding( pBoundOriginal->m_xExternalBinding );
-        }
+        setValueBinding( pBoundOriginal->m_xExternalBinding );
+    }
 
-        catch( const Exception& )
-        {
-            DBG_UNHANDLED_EXCEPTION();
-        }
-
+    catch( const Exception& )
+    {
+        DBG_UNHANDLED_EXCEPTION("forms.component");
     }
 }
 
@@ -1307,7 +1305,7 @@ void OBoundControlModel::suspendValueListening( )
     OSL_PRECOND( !m_sValuePropertyName.isEmpty(), "OBoundControlModel::suspendValueListening: don't have a value property!" );
     OSL_PRECOND( m_pAggPropMultiplexer, "OBoundControlModel::suspendValueListening: I *am* not listening!" );
 
-if ( m_pAggPropMultiplexer )
+    if ( m_pAggPropMultiplexer )
         m_pAggPropMultiplexer->lock();
 }
 
@@ -1343,7 +1341,7 @@ void OBoundControlModel::disposing()
 {
     OControlModel::disposing();
 
-    ::osl::ClearableMutexGuard aGuard(m_aMutex);
+    osl::MutexGuard aGuard(m_aMutex);
 
     if ( m_pAggPropMultiplexer )
         m_pAggPropMultiplexer->dispose();
@@ -1370,7 +1368,7 @@ void OBoundControlModel::disposing()
     // disconnect from our external value binding
     if ( hasExternalValueBinding() )
         disconnectExternalValueBinding();
-    // dito for the validator
+    // ditto for the validator
     if ( hasValidator() )
         disconnectValidator( );
 }
@@ -1512,7 +1510,7 @@ css::uno::Sequence<OUString> SAL_CALL OBoundControlModel::getSupportedServiceNam
     );
 }
 
-Sequence< OUString > SAL_CALL OBoundControlModel::getSupportedServiceNames_Static()
+Sequence< OUString > OBoundControlModel::getSupportedServiceNames_Static()
 {
     Sequence<OUString> aOwnServiceNames { "com.sun.star.form.DataAwareControlModel" };
     return ::comphelper::concatSequences(
@@ -1676,7 +1674,7 @@ Any OBoundControlModel::getPropertyDefaultByHandle( sal_Int32 _nHandle ) const
     switch ( _nHandle )
     {
         case PROPERTY_ID_INPUT_REQUIRED:
-            aDefault <<= true;
+            aDefault <<= false;
             break;
         case PROPERTY_ID_CONTROLSOURCE:
             aDefault <<= OUString();
@@ -1806,8 +1804,8 @@ void SAL_CALL OBoundControlModel::propertyChange( const PropertyChangeEvent& evt
 
         catch( const Exception& )
         {
+            DBG_UNHANDLED_EXCEPTION("forms.component");
             SAL_WARN("forms.component",  "OBoundControlModel::propertyChange: could not adjust my binding-controlled property!");
-            DBG_UNHANDLED_EXCEPTION();
         }
 
     }
@@ -1846,7 +1844,7 @@ void SAL_CALL OBoundControlModel::removeUpdateListener(const Reference< XUpdateL
 sal_Bool SAL_CALL OBoundControlModel::commit()
 {
     ControlModelLock aLock( *this );
-    OSL_PRECOND( m_bCommitable, "OBoundControlModel::commit: invalid call (I'm not commitable !) " );
+    OSL_PRECOND( m_bCommitable, "OBoundControlModel::commit: invalid call (I'm not committable!) " );
     if ( hasExternalValueBinding() )
     {
         // in most cases, no action is required: For most derivees, we know the value property of
@@ -1908,95 +1906,93 @@ void OBoundControlModel::connectToField(const Reference<XRowSet>& rForm)
 {
     OSL_PRECOND( !hasExternalValueBinding(), "OBoundControlModel::connectToField: invalid call (have an external binding)!" );
     // if there's a connection to the database
-    if (rForm.is() && getConnection(rForm).is())
+    if (!(rForm.is() && getConnection(rForm).is()))
+        return;
+
+    // determine field and PropertyChangeListener
+    m_xCursor = rForm;
+    Reference<XPropertySet> xFieldCandidate;
+    if (m_xCursor.is())
     {
-        // determine field and PropertyChangeListener
-        m_xCursor = rForm;
-        Reference<XPropertySet> xFieldCandidate;
-        if (m_xCursor.is())
+        Reference<XColumnsSupplier> xColumnsSupplier(m_xCursor, UNO_QUERY);
+        DBG_ASSERT(xColumnsSupplier.is(), "OBoundControlModel::connectToField : the row set should support the css::sdb::ResultSet service !");
+        if (xColumnsSupplier.is())
         {
-            Reference<XColumnsSupplier> xColumnsSupplier(m_xCursor, UNO_QUERY);
-            DBG_ASSERT(xColumnsSupplier.is(), "OBoundControlModel::connectToField : the row set should support the css::sdb::ResultSet service !");
-            if (xColumnsSupplier.is())
+            Reference<XNameAccess> xColumns = xColumnsSupplier->getColumns();
+            if (xColumns.is() && xColumns->hasByName(m_aControlSource))
             {
-                Reference<XNameAccess> xColumns(xColumnsSupplier->getColumns(), UNO_QUERY);
-                if (xColumns.is() && xColumns->hasByName(m_aControlSource))
-                {
-                    OSL_VERIFY( xColumns->getByName(m_aControlSource) >>= xFieldCandidate );
-                }
-
+                OSL_VERIFY( xColumns->getByName(m_aControlSource) >>= xFieldCandidate );
             }
 
-        }
-
-        try
-        {
-            sal_Int32 nFieldType = DataType::OTHER;
-            if ( xFieldCandidate.is() )
-            {
-                xFieldCandidate->getPropertyValue( PROPERTY_FIELDTYPE ) >>= nFieldType;
-                if ( approveDbColumnType( nFieldType ) )
-                    impl_setField_noNotify( xFieldCandidate );
-            }
-
-            else
-                impl_setField_noNotify( nullptr );
-            if ( m_xField.is() )
-            {
-                if ( m_xField->getPropertySetInfo()->hasPropertyByName( PROPERTY_VALUE ) )
-                {
-                    m_nFieldType = nFieldType;
-                    // listen to changing values
-                    m_xField->addPropertyChangeListener( PROPERTY_VALUE, this );
-                    m_xColumnUpdate.set( m_xField, UNO_QUERY );
-                    m_xColumn.set( m_xField, UNO_QUERY );
-                    sal_Int32 nNullableFlag = ColumnValue::NO_NULLS;
-                    m_xField->getPropertyValue(PROPERTY_ISNULLABLE) >>= nNullableFlag;
-                    m_bRequired = (ColumnValue::NO_NULLS == nNullableFlag);
-                    // we're optimistic: in case of ColumnValue_NULLABLE_UNKNOWN we assume nullability...
-                }
-                else
-                {
-                    SAL_WARN("forms.component", "OBoundControlModel::connectToField: property " PROPERTY_VALUE " not supported!");
-                    impl_setField_noNotify( nullptr );
-                }
-
-            }
-
-        }
-
-        catch( const Exception& )
-        {
-            DBG_UNHANDLED_EXCEPTION();
-            resetField();
         }
 
     }
-    hasField();
+
+    try
+    {
+        sal_Int32 nFieldType = DataType::OTHER;
+        if ( xFieldCandidate.is() )
+        {
+            xFieldCandidate->getPropertyValue( PROPERTY_FIELDTYPE ) >>= nFieldType;
+            if ( approveDbColumnType( nFieldType ) )
+                impl_setField_noNotify( xFieldCandidate );
+        }
+
+        else
+            impl_setField_noNotify( nullptr );
+        if ( m_xField.is() )
+        {
+            if ( m_xField->getPropertySetInfo()->hasPropertyByName( PROPERTY_VALUE ) )
+            {
+                m_nFieldType = nFieldType;
+                // listen to changing values
+                m_xField->addPropertyChangeListener( PROPERTY_VALUE, this );
+                m_xColumnUpdate.set( m_xField, UNO_QUERY );
+                m_xColumn.set( m_xField, UNO_QUERY );
+                sal_Int32 nNullableFlag = ColumnValue::NO_NULLS;
+                m_xField->getPropertyValue(PROPERTY_ISNULLABLE) >>= nNullableFlag;
+                m_bRequired = (ColumnValue::NO_NULLS == nNullableFlag);
+                // we're optimistic: in case of ColumnValue_NULLABLE_UNKNOWN we assume nullability...
+            }
+            else
+            {
+                SAL_WARN("forms.component", "OBoundControlModel::connectToField: property " PROPERTY_VALUE " not supported!");
+                impl_setField_noNotify( nullptr );
+            }
+
+        }
+
+    }
+
+    catch( const Exception& )
+    {
+        DBG_UNHANDLED_EXCEPTION("forms.component");
+        resetField();
+    }
 }
 
 void OBoundControlModel::initFromField( const Reference< XRowSet >& _rxRowSet )
 {
     // but only if the rowset is positioned on a valid record
-    if ( hasField() && _rxRowSet.is() )
+    if ( !(hasField() && _rxRowSet.is()) )
+        return;
+
+    bool shouldTransfer(!_rxRowSet->isBeforeFirst() && !_rxRowSet->isAfterLast());
+    if (!shouldTransfer)
     {
-        bool shouldTransfer(!_rxRowSet->isBeforeFirst() && !_rxRowSet->isAfterLast());
-        if (!shouldTransfer)
+        const Reference< XPropertySet > xPS(_rxRowSet, UNO_QUERY);
+        if (xPS.is())
         {
-            const Reference< XPropertySet > xPS(_rxRowSet, UNO_QUERY);
-            if (xPS.is())
-            {
-                assert(!shouldTransfer);
-                xPS->getPropertyValue("IsNew") >>= shouldTransfer;
-            }
+            assert(!shouldTransfer);
+            xPS->getPropertyValue("IsNew") >>= shouldTransfer;
         }
-        if ( shouldTransfer )
-            transferDbValueToControl();
-        else
-            // reset the field if the row set is empty
-            // #i30661#
-            resetNoBroadcast();
     }
+    if ( shouldTransfer )
+        transferDbValueToControl();
+    else
+        // reset the field if the row set is empty
+        // #i30661#
+        resetNoBroadcast();
 }
 
 bool OBoundControlModel::approveDbColumnType(sal_Int32 _nColumnType)
@@ -2147,8 +2143,7 @@ void OBoundControlModel::doSetControlValue( const Any& _rValue )
 
     catch( const Exception& )
     {
-        SAL_WARN("forms.component",  "OBoundControlModel::doSetControlValue: caught an exception!");
-        DBG_UNHANDLED_EXCEPTION();
+        TOOLS_WARN_EXCEPTION("forms.component",  "OBoundControlModel::doSetControlValue");
     }
 }
 
@@ -2168,8 +2163,7 @@ void OBoundControlModel::onConnectedValidator( )
 
     catch( const Exception& )
     {
-        SAL_WARN("forms.component",  "OBoundControlModel::onConnectedValidator: caught an exception!");
-        DBG_UNHANDLED_EXCEPTION();
+        TOOLS_WARN_EXCEPTION("forms.component",  "OBoundControlModel::onConnectedValidator");
     }
 
     recheckValidity( false );
@@ -2188,8 +2182,7 @@ void OBoundControlModel::onDisconnectedValidator( )
 
     catch( const Exception& )
     {
-        SAL_WARN("forms.component",  "OBoundControlModel::onDisconnectedValidator: caught an exception!");
-        DBG_UNHANDLED_EXCEPTION();
+        TOOLS_WARN_EXCEPTION("forms.component",  "OBoundControlModel::onDisconnectedValidator");
     }
 
     recheckValidity( false );
@@ -2248,7 +2241,7 @@ void OBoundControlModel::reset()
 
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
 
     }
@@ -2266,8 +2259,8 @@ void OBoundControlModel::reset()
 
     catch( const SQLException& )
     {
+        DBG_UNHANDLED_EXCEPTION("forms.component");
         SAL_WARN("forms.component",  "OBoundControlModel::reset: caught an SQL exception!" );
-        DBG_UNHANDLED_EXCEPTION();
     }
 
     // #i24495# - don't count the insert row as "invalid"
@@ -2311,8 +2304,8 @@ void OBoundControlModel::reset()
 
         catch(const Exception&)
         {
+            DBG_UNHANDLED_EXCEPTION("forms.component");
             SAL_WARN("forms.component", "OBoundControlModel::reset: this should have succeeded in all cases!");
-            DBG_UNHANDLED_EXCEPTION();
         }
 
         bool bNeedValueTransfer = true;
@@ -2366,12 +2359,9 @@ bool OBoundControlModel::impl_approveValueBinding_nolock( const Reference< XValu
         // < SYNCHRONIZED
     }
 
-    for (   const Type* pType = aTypeCandidates.getConstArray();
-            pType != aTypeCandidates.getConstArray() + aTypeCandidates.getLength();
-            ++pType
-        )
+    for ( auto const & type : std::as_const(aTypeCandidates) )
     {
-        if ( _rxBinding->supportsType( *pType ) )
+        if ( _rxBinding->supportsType( type ) )
             return true;
     }
     return false;
@@ -2423,27 +2413,26 @@ void OBoundControlModel::connectExternalValueBinding(
 
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.component");
     }
 
     // propagate our new value
     transferExternalValueToControl( _rInstanceLock );
     // if the binding is also a validator, use it, too. This is a constraint of the
     // com.sun.star.form.binding.ValidatableBindableFormComponent service
-    if ( m_bSupportsValidation )
+    if ( !m_bSupportsValidation )
+        return;
+
+    try
     {
-        try
-        {
-            Reference< XValidator > xAsValidator( _rxBinding, UNO_QUERY );
-            if ( xAsValidator.is() )
-                setValidator( xAsValidator );
-        }
+        Reference< XValidator > xAsValidator( _rxBinding, UNO_QUERY );
+        if ( xAsValidator.is() )
+            setValidator( xAsValidator );
+    }
 
-        catch( const Exception& )
-        {
-            DBG_UNHANDLED_EXCEPTION();
-        }
-
+    catch( const Exception& )
+    {
+        DBG_UNHANDLED_EXCEPTION("forms.component");
     }
 }
 
@@ -2465,8 +2454,7 @@ void OBoundControlModel::disconnectExternalValueBinding( )
 
     catch( const Exception& )
     {
-        SAL_WARN("forms.component",  "OBoundControlModel::disconnectExternalValueBinding: caught an exception!");
-        DBG_UNHANDLED_EXCEPTION();
+        TOOLS_WARN_EXCEPTION("forms.component",  "OBoundControlModel::disconnectExternalValueBinding");
     }
 
     // if the binding also acts as our validator, disconnect the validator, too
@@ -2536,7 +2524,7 @@ void OBoundControlModel::transferDbValueToControl( )
 
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.component");
     }
 }
 
@@ -2554,7 +2542,7 @@ void OBoundControlModel::transferExternalValueToControl( ControlModelLock& _rIns
 
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
         // < UNSAFE
         _rInstanceLock.acquire();
@@ -2565,26 +2553,26 @@ void OBoundControlModel::transferControlValueToExternal( ControlModelLock& _rIns
 {
     OSL_PRECOND( m_bSupportsExternalBinding && hasExternalValueBinding(),
         "OBoundControlModel::transferControlValueToExternal: precondition not met!" );
-    if ( m_xExternalBinding.is() )
+    if ( !m_xExternalBinding.is() )
+        return;
+
+    Any aExternalValue( translateControlValueToExternalValue() );
+    m_bTransferingValue = true;
+    _rInstanceLock.release();
+     // UNSAFE >
+    try
     {
-        Any aExternalValue( translateControlValueToExternalValue() );
-        m_bTransferingValue = true;
-        _rInstanceLock.release();
-         // UNSAFE >
-        try
-        {
-            m_xExternalBinding->setValue( aExternalValue );
-        }
-
-        catch( const Exception& )
-        {
-            DBG_UNHANDLED_EXCEPTION();
-        }
-
-        // < UNSAFE
-        _rInstanceLock.acquire();
-        m_bTransferingValue = false;
+        m_xExternalBinding->setValue( aExternalValue );
     }
+
+    catch( const Exception& )
+    {
+        DBG_UNHANDLED_EXCEPTION("forms.component");
+    }
+
+    // < UNSAFE
+    _rInstanceLock.acquire();
+    m_bTransferingValue = false;
 }
 
 Sequence< Type > OBoundControlModel::getSupportedBindingTypes()
@@ -2597,15 +2585,12 @@ void OBoundControlModel::calculateExternalValueType()
     m_aExternalValueType = Type();
     if ( !m_xExternalBinding.is() )
         return;
-    Sequence< Type > aTypeCandidates( getSupportedBindingTypes() );
-    for (   const Type* pTypeCandidate = aTypeCandidates.getConstArray();
-            pTypeCandidate != aTypeCandidates.getConstArray() + aTypeCandidates.getLength();
-            ++pTypeCandidate
-        )
+    const Sequence< Type > aTypeCandidates( getSupportedBindingTypes() );
+    for ( auto const & typeCandidate : aTypeCandidates )
     {
-        if ( m_xExternalBinding->supportsType( *pTypeCandidate ) )
+        if ( m_xExternalBinding->supportsType( typeCandidate ) )
         {
-            m_aExternalValueType = *pTypeCandidate;
+            m_aExternalValueType = typeCandidate;
             break;
         }
     }
@@ -2702,7 +2687,7 @@ void OBoundControlModel::disconnectValidator( )
 
 void SAL_CALL OBoundControlModel::setValidator( const Reference< XValidator >& _rxValidator )
 {
-    ::osl::ClearableMutexGuard aGuard( m_aMutex );
+    osl::MutexGuard aGuard( m_aMutex );
     OSL_PRECOND( m_bSupportsValidation, "OBoundControlModel::setValidator: How did you reach this method?" );
     // the interface for this method should not have been exposed if we do not
     // support validation
@@ -2738,7 +2723,7 @@ Reference< XValidator > SAL_CALL OBoundControlModel::getValidator(  )
 
 void SAL_CALL OBoundControlModel::validityConstraintChanged( const EventObject& /*Source*/ )
 {
-    ::osl::ClearableMutexGuard aGuard( m_aMutex );
+    osl::MutexGuard aGuard( m_aMutex );
     OSL_PRECOND( m_bSupportsValidation, "OBoundControlModel::validityConstraintChanged: How did you reach this method?" );
     // the interface for this method should not have been exposed if we do not
     // support validation
@@ -2797,8 +2782,7 @@ void OBoundControlModel::recheckValidity( bool _bForceNotification )
 
     catch( const Exception& )
     {
-        SAL_WARN("forms.component",  "OBoundControlModel::recheckValidity: caught an exception!");
-        DBG_UNHANDLED_EXCEPTION();
+        TOOLS_WARN_EXCEPTION("forms.component",  "OBoundControlModel::recheckValidity");
     }
 }
 

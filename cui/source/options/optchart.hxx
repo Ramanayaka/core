@@ -21,11 +21,10 @@
 #define INCLUDED_CUI_SOURCE_OPTIONS_OPTCHART_HXX
 
 #include <sfx2/tabdlg.hxx>
-#include <vcl/fixed.hxx>
 #include <svtools/valueset.hxx>
-#include <svx/dlgctrl.hxx>
-#include <vcl/button.hxx>
 #include <svx/xtable.hxx>
+#include <svx/PaletteManager.hxx>
+#include <vcl/customweld.hxx>
 
 #include "cfgchart.hxx"
 
@@ -34,45 +33,48 @@ typedef std::vector<Color> ImpColorList;
 class SvxDefaultColorOptPage : public SfxTabPage
 {
 private:
-    VclPtr<ListBox>                m_pLbChartColors;
-    VclPtr<ValueSet>               m_pValSetColorBox;
-    VclPtr<PushButton>             m_pPBDefault;
-    VclPtr<PushButton>             m_pPBAdd;
-    VclPtr<PushButton>             m_pPBRemove;
+    std::unique_ptr<SvxChartOptions>        m_SvxChartOptionsUniquePtr;
+    // no reason to use a cloned SfxItem here (SvxChartColorTableItem)
+    // that just leads to non-const SfxItem and potential trouble
+    std::unique_ptr<SvxChartColorTable>     m_SvxChartColorTableUniquePtr;
 
-    SvxChartOptions*        pChartOptions;
-    SvxChartColorTableItem* pColorConfig;
-    XColorListRef           pColorList;
     ImpColorList            aColorList;
+    PaletteManager          aPaletteManager;
 
-    DECL_LINK( ResetToDefaults, Button *, void );
-    DECL_LINK( AddChartColor, Button *, void );
-    DECL_LINK( RemoveChartColor, Button *, void );
-    DECL_LINK( ListClickedHdl, ListBox&, void );
+    std::unique_ptr<weld::TreeView> m_xLbChartColors;
+    std::unique_ptr<weld::ComboBox> m_xLbPaletteSelector;
+    std::unique_ptr<weld::Button> m_xPBDefault;
+    std::unique_ptr<weld::Button> m_xPBAdd;
+    std::unique_ptr<weld::Button> m_xPBRemove;
+    std::unique_ptr<SvxColorValueSet> m_xValSetColorBox;
+    std::unique_ptr<weld::CustomWeld> m_xValSetColorBoxWin;
+
+    DECL_LINK(ResetToDefaults, weld::Button&, void);
+    DECL_LINK(AddChartColor, weld::Button&, void);
+    DECL_LINK(RemoveChartColor, weld::Button&, void);
     DECL_LINK(BoxClickedHdl, ValueSet*, void);
+    DECL_LINK(SelectPaletteLbHdl, weld::ComboBox&, void);
 
-    void FillColorBox();
-    long GetColorIndex( const Color& rCol );
+    void FillPaletteLB();
 
 private:
-    void InsertColorEntry(const XColorEntry& rEntry, sal_Int32 nPos = LISTBOX_APPEND);
+    void InsertColorEntry(const XColorEntry& rEntry, sal_Int32 nPos = -1);
     void RemoveColorEntry(sal_Int32 nPos);
     void ModifyColorEntry(const XColorEntry& rEntry, sal_Int32 nPos);
     void ClearColorEntries();
     void FillBoxChartColorLB();
-    Color GetEntryColor(sal_Int32 nPos) const;
-    Color GetSelectEntryColor() const;
 
 public:
-    SvxDefaultColorOptPage( vcl::Window* pParent, const SfxItemSet& rInAttrs );
+    SvxDefaultColorOptPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs);
     virtual ~SvxDefaultColorOptPage() override;
-    virtual void dispose() override;
 
     void    Construct();
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rInAttrs );
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rInAttrs );
     virtual bool        FillItemSet( SfxItemSet* rOutAttrs ) override;
     virtual void        Reset( const SfxItemSet* rInAttrs ) override;
+
+    void    SaveChartOptions();
 };
 
 #endif // INCLUDED_CUI_SOURCE_OPTIONS_OPTCHART_HXX

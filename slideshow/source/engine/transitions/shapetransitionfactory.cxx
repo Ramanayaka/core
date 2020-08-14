@@ -20,26 +20,20 @@
 
 #include <tools/diagnose_ex.h>
 
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
-#include <basegfx/numeric/ftools.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
+#include <sal/log.hxx>
 
 #include <com/sun/star/animations/TransitionType.hpp>
 #include <com/sun/star/animations/TransitionSubType.hpp>
 
-#include "transitionfactory.hxx"
+#include <transitionfactory.hxx>
 #include "transitionfactorytab.hxx"
-#include "transitiontools.hxx"
 #include "parametricpolypolygonfactory.hxx"
-#include "animationfactory.hxx"
+#include <animationfactory.hxx>
 #include "clippingfunctor.hxx"
 
 using namespace ::com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /***************************************************
  ***                                             ***
@@ -63,8 +57,7 @@ public:
 
     // Animation interface
 
-    virtual void prefetch( const AnimatableShapeSharedPtr&     rShape,
-                           const ShapeAttributeLayerSharedPtr& rAttrLayer ) override;
+    virtual void prefetch() override;
     virtual void start( const AnimatableShapeSharedPtr&     rShape,
                         const ShapeAttributeLayerSharedPtr& rAttrLayer ) override;
     virtual void end() override;
@@ -110,14 +103,13 @@ ClippingAnimation::~ClippingAnimation()
     {
         end_();
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
-        SAL_WARN("slideshow", "" << e.Message);
+        TOOLS_WARN_EXCEPTION("slideshow", "");
     }
 }
 
-void ClippingAnimation::prefetch( const AnimatableShapeSharedPtr&,
-                                  const ShapeAttributeLayerSharedPtr& )
+void ClippingAnimation::prefetch()
 {
 }
 
@@ -226,13 +218,12 @@ AnimationActivitySharedPtr createShapeTransitionByType(
                 // create a clip activity from that
                 pGeneratedActivity = ActivitiesFactory::createSimpleActivity(
                     rParms,
-                    NumberAnimationSharedPtr(
-                        new ClippingAnimation(
+                    std::make_shared<ClippingAnimation>(
                             pPoly,
                             rShapeManager,
                             *pTransitionInfo,
                             xTransition->getDirection(),
-                            xTransition->getMode() ) ),
+                            xTransition->getMode() ),
                     true );
             }
             break;
@@ -309,14 +300,13 @@ AnimationActivitySharedPtr createShapeTransitionByType(
                         // create a clip activity from that
                         pGeneratedActivity = ActivitiesFactory::createSimpleActivity(
                             rParms,
-                            NumberAnimationSharedPtr(
-                                new ClippingAnimation(
+                            std::make_shared<ClippingAnimation>(
                                     pPoly,
                                     rShapeManager,
                                     *getTransitionInfo( animations::TransitionType::BARWIPE,
                                                         nBarWipeSubType ),
                                     bDirectionForward,
-                                    xTransition->getMode() ) ),
+                                    xTransition->getMode() ),
                             true );
                     }
                     break;
@@ -334,7 +324,8 @@ AnimationActivitySharedPtr createShapeTransitionByType(
                                 "Opacity",
                                 rShape,
                                 rShapeManager,
-                                rSlideSize ),
+                                rSlideSize,
+                                nullptr ),
                             xTransition->getMode() );
                     }
                     break;
@@ -374,7 +365,6 @@ AnimationActivitySharedPtr TransitionFactory::createShapeTransition(
                                   xTransition->getSubtype() );
 }
 
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

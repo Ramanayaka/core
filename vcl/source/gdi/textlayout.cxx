@@ -20,13 +20,11 @@
 #include <vcl/ctrl.hxx>
 #include <vcl/outdev.hxx>
 
-#include "fontinstance.hxx"
-#include "textlayout.hxx"
+#include <textlayout.hxx>
 
-#include <com/sun/star/i18n/ScriptDirection.hpp>
-
-#include <tools/diagnose_ex.h>
+#include <osl/diagnose.h>
 #include <tools/fract.hxx>
+#include <sal/log.hxx>
 
 #if OSL_DEBUG_LEVEL > 1
 #include <rtl/strbuf.hxx>
@@ -92,8 +90,6 @@ namespace vcl
 
         OutputDevice&   m_rTargetDevice;
         OutputDevice&   m_rReferenceDevice;
-        Font            m_aUnzoomedPointFont;
-        const Fraction  m_aZoom;
         const bool      m_bRTLEnabled;
 
         tools::Rectangle       m_aCompleteTextRect;
@@ -103,10 +99,10 @@ namespace vcl
         OutputDevice& _rReferenceDevice )
         :m_rTargetDevice( _rTargetDevice )
         ,m_rReferenceDevice( _rReferenceDevice )
-        ,m_aUnzoomedPointFont( _rControl.GetUnzoomedControlPointFont() )
-        ,m_aZoom( _rControl.GetZoom() )
         ,m_bRTLEnabled( _rControl.IsRTLEnabled() )
     {
+        Font const aUnzoomedPointFont( _rControl.GetUnzoomedControlPointFont() );
+        const Fraction& aZoom( _rControl.GetZoom() );
         m_rTargetDevice.Push( PushFlags::MAPMODE | PushFlags::FONT | PushFlags::TEXTLAYOUTMODE );
 
         MapMode aTargetMapMode( m_rTargetDevice.GetMapMode() );
@@ -116,8 +112,8 @@ namespace vcl
         // between text in Writer and text in controls in Writer, though both have the same font.
         // So, if we have a zoom set at the control, then we do not scale the font, but instead modify the map mode
         // to accommodate for the zoom.
-        aTargetMapMode.SetScaleX( m_aZoom );    // TODO: shouldn't this be "current_scale * zoom"?
-        aTargetMapMode.SetScaleY( m_aZoom );
+        aTargetMapMode.SetScaleX( aZoom );    // TODO: shouldn't this be "current_scale * zoom"?
+        aTargetMapMode.SetScaleY( aZoom );
 
         // also, use a higher-resolution map unit than "pixels", which should save us some rounding errors when
         // translating coordinates between the reference device and the target device.
@@ -132,15 +128,15 @@ namespace vcl
         m_rTargetDevice.SetMapMode( aTargetMapMode );
 
         // now that the Zoom is part of the map mode, reset the target device's font to the "unzoomed" version
-        Font aDrawFont( m_aUnzoomedPointFont );
-        aDrawFont.SetFontSize( OutputDevice::LogicToLogic( aDrawFont.GetFontSize(), MapUnit::MapPoint, eTargetMapUnit ) );
+        Font aDrawFont( aUnzoomedPointFont );
+        aDrawFont.SetFontSize( OutputDevice::LogicToLogic(aDrawFont.GetFontSize(), MapMode(MapUnit::MapPoint), MapMode(eTargetMapUnit)) );
         _rTargetDevice.SetFont( aDrawFont );
 
         // transfer font to the reference device
         m_rReferenceDevice.Push( PushFlags::FONT | PushFlags::TEXTLAYOUTMODE );
-        Font aRefFont( m_aUnzoomedPointFont );
+        Font aRefFont( aUnzoomedPointFont );
         aRefFont.SetFontSize( OutputDevice::LogicToLogic(
-            aRefFont.GetFontSize(), MapUnit::MapPoint, m_rReferenceDevice.GetMapMode().GetMapUnit() ) );
+            aRefFont.GetFontSize(), MapMode(MapUnit::MapPoint), m_rReferenceDevice.GetMapMode()) );
         m_rReferenceDevice.SetFont( aRefFont );
     }
 
@@ -206,9 +202,7 @@ namespace vcl
         {
             MetricVector aGlyphBounds;
             m_rReferenceDevice.GetGlyphBoundRects( _rStartPoint, _rText, _nStartIndex, _nLength, aGlyphBounds );
-            ::std::copy(
-                aGlyphBounds.begin(), aGlyphBounds.end(),
-                ::std::insert_iterator< MetricVector > ( *_pVector, _pVector->end() ) );
+            _pVector->insert( _pVector->end(), aGlyphBounds.begin(), aGlyphBounds.end() );
             *_pDisplayText += _rText.copy( _nStartIndex, _nLength );
             return;
         }
@@ -290,12 +284,9 @@ namespace vcl
         // convert the metric vector
         if ( _pVector )
         {
-            for (   MetricVector::iterator charRect = _pVector->begin();
-                    charRect != _pVector->end();
-                    ++charRect
-                )
+            for ( auto& rCharRect : *_pVector )
             {
-                *charRect = m_rTargetDevice.LogicToPixel( *charRect );
+                rCharRect = m_rTargetDevice.LogicToPixel( rCharRect );
             }
         }
 

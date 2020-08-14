@@ -19,15 +19,16 @@
 #ifndef INCLUDED_CHART2_SOURCE_VIEW_MAIN_CHARTITEMPOOL_HXX
 #define INCLUDED_CHART2_SOURCE_VIEW_MAIN_CHARTITEMPOOL_HXX
 
-#include <svl/poolitem.hxx>
+#include <tools/mapunit.hxx>
 #include <svl/itempool.hxx>
+#include <memory>
 
 namespace chart
 {
 class ChartItemPool : public SfxItemPool
 {
 private:
-    SfxItemInfo*    pItemInfos;
+    std::unique_ptr<SfxItemInfo[]>  pItemInfos;
 
 public:
     ChartItemPool();

@@ -20,16 +20,14 @@
 #ifndef INCLUDED_DTRANS_SOURCE_WIN32_DTOBJ_DTRANSHELPER_HXX
 #define INCLUDED_DTRANS_SOURCE_WIN32_DTOBJ_DTRANSHELPER_HXX
 
-#if defined _MSC_VER
-#pragma warning(push,1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
-#include "WinClip.hxx"
+#include <objidl.h>
+#include <WinClip.hxx>
 
-#define AUTO_INIT                 TRUE
+#define AUTO_INIT                 true
 
 // a helper class to manage a global memory area, the clients can write
 // into the global memory area and extract the handle to the global mem
@@ -54,27 +52,27 @@ public:
 
     ~CStgTransferHelper( );
 
-    void SAL_CALL write( const void* lpData, ULONG cb, ULONG* cbWritten = nullptr );
-    void SAL_CALL read( LPVOID pv, ULONG cb, ULONG* pcbRead = nullptr );
+    void write( const void* lpData, ULONG cb, ULONG* cbWritten = nullptr );
+    void read( LPVOID pv, ULONG cb, ULONG* pcbRead = nullptr );
 
-    HGLOBAL SAL_CALL getHGlobal( ) const;
-    void    SAL_CALL getIStream( LPSTREAM* ppStream );
+    HGLOBAL getHGlobal( ) const;
+    void    getIStream( LPSTREAM* ppStream );
 
-    void SAL_CALL init(
+    void init(
         SIZE_T newSize,
         sal_uInt32 uiFlags = GHND,
         bool bDelStgOnRelease = false );
 
-    void SAL_CALL init(
+    void init(
         HGLOBAL hGlob,
         bool bDelStgOnRelease = false );
 
     // returns the size of the managed memory
-    sal_uInt32 SAL_CALL memSize( CLIPFORMAT cf = CF_INVALID ) const;
+    sal_uInt32 memSize( CLIPFORMAT cf = CF_INVALID ) const;
 
     // free the global memory and necessary
     // release the internal stream pointer
-    void SAL_CALL cleanup( );
+    void cleanup( );
 
 private:
     LPSTREAM m_lpStream;
@@ -97,7 +95,7 @@ public:
 
     explicit CRawHGlobalPtr( HGLOBAL hGlob ) :
         m_hGlob( hGlob ),
-        m_bIsLocked( FALSE ),
+        m_bIsLocked( false ),
         m_pGlobMem( nullptr )
     {
     }
@@ -106,7 +104,7 @@ public:
 
     explicit CRawHGlobalPtr( const CStgTransferHelper& theHGlobalHelper ) :
         m_hGlob( theHGlobalHelper.getHGlobal( ) ),
-        m_bIsLocked( FALSE ),
+        m_bIsLocked( false ),
         m_pGlobMem( nullptr )
     {
     }
@@ -139,7 +137,7 @@ public:
     BOOL Unlock( )
     {
         GlobalUnlock( m_hGlob );
-        m_bIsLocked = FALSE;
+        m_bIsLocked = false;
         m_pGlobMem = nullptr;
 
         return ( NO_ERROR == GetLastError( ) );
@@ -163,7 +161,7 @@ public:
 
 private:
     HGLOBAL m_hGlob;
-    BOOL    m_bIsLocked;
+    bool    m_bIsLocked;
     LPVOID  m_pGlobMem;
 };
 

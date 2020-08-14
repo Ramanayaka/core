@@ -20,7 +20,8 @@
 #ifndef INCLUDED_SC_INC_SEGMENTTREE_HXX
 #define INCLUDED_SC_INC_SEGMENTTREE_HXX
 
-#include "address.hxx"
+#include "types.hxx"
+#include <rtl/string.hxx>
 
 #include <memory>
 
@@ -41,6 +42,7 @@ public:
     public:
         explicit ForwardIterator(ScFlatBoolRowSegments& rSegs);
 
+        [[nodiscard]]
         bool getValue(SCROW nPos, bool& rVal);
         SCROW getLastPos() const { return mnLastPos;}
 
@@ -55,14 +57,14 @@ public:
     class RangeIterator
     {
     public:
-        explicit RangeIterator(ScFlatBoolRowSegments& rSegs);
+        explicit RangeIterator(ScFlatBoolRowSegments const & rSegs);
         bool getFirst(RangeData& rRange);
         bool getNext(RangeData& rRange);
     private:
-        ScFlatBoolRowSegments& mrSegs;
+        ScFlatBoolRowSegments const & mrSegs;
     };
 
-    ScFlatBoolRowSegments();
+    ScFlatBoolRowSegments(SCROW nMaxRow);
     ScFlatBoolRowSegments(const ScFlatBoolRowSegments& r);
     ~ScFlatBoolRowSegments();
 
@@ -74,6 +76,8 @@ public:
     void insertSegment(SCROW nRow, SCROW nSize);
 
     SCROW findLastTrue() const;
+
+    OString dumpAsString();
 
 private:
     ::std::unique_ptr<ScFlatBoolSegmentsImpl> mpImpl;
@@ -88,7 +92,7 @@ public:
         SCCOL   mnCol2;
         bool    mbValue;
     };
-    ScFlatBoolColSegments();
+    ScFlatBoolColSegments(SCCOL nMaxCol);
     ScFlatBoolColSegments(const ScFlatBoolColSegments& r);
     ~ScFlatBoolColSegments();
 
@@ -97,6 +101,8 @@ public:
     bool getRangeData(SCCOL nCol, RangeData& rData);
     void removeSegment(SCCOL nCol1, SCCOL nCol2);
     void insertSegment(SCCOL nCol, SCCOL nSize);
+
+    OString dumpAsString();
 
 private:
     ::std::unique_ptr<ScFlatBoolSegmentsImpl> mpImpl;
@@ -130,7 +136,7 @@ public:
         sal_uInt16  mnCurValue;
     };
 
-    ScFlatUInt16RowSegments(sal_uInt16 nDefault);
+    ScFlatUInt16RowSegments(SCROW nMaxRow, sal_uInt16 nDefault);
     ScFlatUInt16RowSegments(const ScFlatUInt16RowSegments& r);
     ~ScFlatUInt16RowSegments();
 
@@ -145,6 +151,8 @@ public:
     SCROW findLastTrue(sal_uInt16 nValue) const;
 
     void enableTreeSearch(bool bEnable);
+
+    OString dumpAsString();
 
 private:
     ::std::unique_ptr<ScFlatUInt16SegmentsImpl> mpImpl;

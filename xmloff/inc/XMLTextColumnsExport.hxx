@@ -19,24 +19,14 @@
 #ifndef INCLUDED_XMLOFF_INC_XMLTEXTCOLUMNSEXPORT_HXX
 #define INCLUDED_XMLOFF_INC_XMLTEXTCOLUMNSEXPORT_HXX
 
-namespace com { namespace sun { namespace star { namespace uno {
-    class Any; } } } }
+#include <sal/types.h>
+
+namespace com::sun::star::uno { class Any; }
 class SvXMLExport;
 
 class XMLTextColumnsExport
 {
     SvXMLExport&        rExport;
-
-    const OUString sSeparatorLineIsOn;
-    const OUString sSeparatorLineWidth;
-    const OUString sSeparatorLineColor;
-    const OUString sSeparatorLineRelativeHeight;
-    const OUString sSeparatorLineVerticalAlignment;
-    const OUString sIsAutomatic;
-    const OUString sAutomaticDistance;
-    const OUString sSeparatorLineStyle;
-
-protected:
 
     SvXMLExport& GetExport() { return rExport; }
 

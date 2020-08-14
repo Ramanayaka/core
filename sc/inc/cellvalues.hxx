@@ -11,10 +11,11 @@
 #define INCLUDED_SC_INC_CELLVALUES_HXX
 
 #include "address.hxx"
-#include <global.hxx>
 #include <memory>
+#include <vector>
 
 class ScColumn;
+class ScFormulaCell;
 
 namespace svl {
 
@@ -63,6 +64,7 @@ public:
     void swapNonEmpty( ScColumn& rCol );
 
     void assign( const std::vector<double>& rVals );
+    void assign( const std::vector<ScFormulaCell*>& rVals );
 
     size_t size() const;
 

@@ -18,11 +18,11 @@
  */
 
 
-#include "XMLEventImportHelper.hxx"
+#include <XMLEventImportHelper.hxx>
 #include <tools/debug.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlerror.hxx>
 
 using ::com::sun::star::xml::sax::XAttributeList;
@@ -32,58 +32,47 @@ using ::com::sun::star::uno::Sequence;
 XMLEventImportHelper::XMLEventImportHelper() :
     aFactoryMap(),
     pEventNameMap(new NameMap),
-    aEventNameMapList()
+    aEventNameMapVector()
 {
 }
-
 
 XMLEventImportHelper::~XMLEventImportHelper()
 {
     // delete factories
-    FactoryMap::iterator aEnd = aFactoryMap.end();
-    for(FactoryMap::iterator aIter = aFactoryMap.begin();
-        aIter != aEnd;
-        ++aIter)
-    {
-        delete aIter->second;
-    }
     aFactoryMap.clear();
 
     // delete name map
-    delete pEventNameMap;
+    pEventNameMap.reset();
 }
 
 void XMLEventImportHelper::RegisterFactory(
     const OUString& rLanguage,
-    XMLEventContextFactory* pFactory )
+    std::unique_ptr<XMLEventContextFactory> pFactory )
 {
-    DBG_ASSERT(pFactory != nullptr, "I need a factory.");
-    if (nullptr != pFactory)
-    {
-        aFactoryMap[rLanguage] = pFactory;
-    }
+    assert(pFactory);
+    aFactoryMap[rLanguage] = std::move(pFactory);
 }
 
 void XMLEventImportHelper::AddTranslationTable(
     const XMLEventNameTranslation* pTransTable )
 {
-    if (nullptr != pTransTable)
+    if (nullptr == pTransTable)
+        return;
+
+    // put translation table into map
+    for(const XMLEventNameTranslation* pTrans = pTransTable;
+        pTrans->sAPIName != nullptr;
+        pTrans++)
     {
-        // put translation table into map
-        for(const XMLEventNameTranslation* pTrans = pTransTable;
-            pTrans->sAPIName != nullptr;
-            pTrans++)
-        {
-            XMLEventName aName( pTrans->nPrefix, pTrans->sXMLName );
+        XMLEventName aName( pTrans->nPrefix, pTrans->sXMLName );
 
-            // check for conflicting entries
-            DBG_ASSERT(pEventNameMap->find(aName) == pEventNameMap->end(),
-                       "conflicting event translations");
+        // check for conflicting entries
+        DBG_ASSERT(pEventNameMap->find(aName) == pEventNameMap->end(),
+                   "conflicting event translations");
 
-            // assign new translation
-            (*pEventNameMap)[aName] =
-                OUString::createFromAscii(pTrans->sAPIName);
-        }
+        // assign new translation
+        (*pEventNameMap)[aName] =
+            OUString::createFromAscii(pTrans->sAPIName);
     }
     // else? ignore!
 }
@@ -91,39 +80,38 @@ void XMLEventImportHelper::AddTranslationTable(
 void XMLEventImportHelper::PushTranslationTable()
 {
     // save old map and install new one
-    aEventNameMapList.push_back(pEventNameMap);
-    pEventNameMap = new NameMap;
+    aEventNameMapVector.push_back(std::move(pEventNameMap));
+    pEventNameMap.reset( new NameMap );
 }
 
 void XMLEventImportHelper::PopTranslationTable()
 {
-    DBG_ASSERT(aEventNameMapList.size() > 0,
+    DBG_ASSERT(!aEventNameMapVector.empty(),
                "no translation tables left to pop");
-    if ( !aEventNameMapList.empty() )
+    if ( !aEventNameMapVector.empty() )
     {
         // delete current and install old map
-        delete pEventNameMap;
-        pEventNameMap = aEventNameMapList.back();
-        aEventNameMapList.pop_back();
+        pEventNameMap = std::move(aEventNameMapVector.back());
+        aEventNameMapVector.pop_back();
     }
 }
 
 
 SvXMLImportContext* XMLEventImportHelper::CreateContext(
     SvXMLImport& rImport,
-    sal_uInt16 nPrefix,
-    const OUString& rLocalName,
     const Reference<XAttributeList> & xAttrList,
     XMLEventsImportContext* rEvents,
     const OUString& rXmlEventName,
     const OUString& rLanguage)
 {
+    rImport.NotifyMacroEventRead();
+
     SvXMLImportContext* pContext = nullptr;
 
-    // translate event name form xml to api
+    // translate event name from xml to api
     OUString sMacroName;
     sal_uInt16 nMacroPrefix =
-        rImport.GetNamespaceMap().GetKeyByAttrName( rXmlEventName,
+        rImport.GetNamespaceMap().GetKeyByAttrValueQName(rXmlEventName,
                                                         &sMacroName );
     XMLEventName aEventName( nMacroPrefix, sMacroName );
     NameMap::iterator aNameIter = pEventNameMap->find(aEventName);
@@ -131,7 +119,7 @@ SvXMLImportContext* XMLEventImportHelper::CreateContext(
     {
         OUString aScriptLanguage;
         sal_uInt16 nScriptPrefix = rImport.GetNamespaceMap().
-                GetKeyByAttrName( rLanguage, &aScriptLanguage );
+                GetKeyByAttrValueQName(rLanguage, &aScriptLanguage);
         if( XML_NAMESPACE_OOO != nScriptPrefix )
             aScriptLanguage = rLanguage ;
 
@@ -142,15 +130,15 @@ SvXMLImportContext* XMLEventImportHelper::CreateContext(
         {
             // delegate to factory
             pContext = aFactoryIterator->second->CreateContext(
-                rImport, nPrefix, rLocalName, xAttrList,
-                rEvents, aNameIter->second, aScriptLanguage);
+                rImport, xAttrList,
+                rEvents, aNameIter->second);
         }
     }
 
     // default context (if no context was created above)
     if( nullptr == pContext )
     {
-        pContext = new SvXMLImportContext(rImport, nPrefix, rLocalName);
+        pContext = new SvXMLImportContext(rImport);
 
         Sequence<OUString> aMsgParams(2);
 

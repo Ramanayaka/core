@@ -19,19 +19,11 @@
 #ifndef INCLUDED_SVX_SOURCE_SIDEBAR_GRAPHIC_GRAPHICPROPERTYPANEL_HXX
 #define INCLUDED_SVX_SOURCE_SIDEBAR_GRAPHIC_GRAPHICPROPERTYPANEL_HXX
 
-#include <vcl/ctrl.hxx>
-#include <sfx2/sidebar/SidebarPanelBase.hxx>
 #include <sfx2/sidebar/ControllerItem.hxx>
-#include <svx/sidebar/PanelLayout.hxx>
-#include <vcl/fixed.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
+#include <vcl/weld.hxx>
 
-class FixedText;
-class MetricField;
-class ListBox;
-class FloatingWindow;
-
-
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
 class GraphicPropertyPanel
 :   public PanelLayout,
@@ -52,8 +44,11 @@ public:
     virtual void NotifyItemUpdate(
         const sal_uInt16 nSId,
         const SfxItemState eState,
-        const SfxPoolItem* pState,
-        const bool bIsEnabled) override;
+        const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(
+        const sal_uInt16 /*nSId*/,
+        boost::property_tree::ptree& /*rState*/) override {};
 
     SfxBindings* GetBindings() { return mpBindings;}
 
@@ -64,16 +59,6 @@ public:
         SfxBindings* pBindings);
 
 private:
-    //ui controls
-    VclPtr<MetricField>                                        mpMtrBrightness;
-    VclPtr<MetricField>                                        mpMtrContrast;
-    VclPtr<ListBox>                                            mpLBColorMode;
-    VclPtr<MetricField>                                        mpMtrTrans;
-    VclPtr<MetricField>                                        mpMtrRed;
-    VclPtr<MetricField>                                        mpMtrGreen;
-    VclPtr<MetricField>                                        mpMtrBlue;
-    VclPtr<MetricField>                                        mpMtrGamma;
-
     ::sfx2::sidebar::ControllerItem                     maBrightControl;
     ::sfx2::sidebar::ControllerItem                     maContrastControl;
     ::sfx2::sidebar::ControllerItem                     maTransparenceControl;
@@ -85,20 +70,29 @@ private:
 
     SfxBindings*                                        mpBindings;
 
-    DECL_LINK( ModifyBrightnessHdl, Edit&, void );
-    DECL_LINK( ModifyContrastHdl, Edit&, void );
-    DECL_LINK( ModifyTransHdl, Edit&, void );
-    DECL_LINK( ClickColorModeHdl, ListBox&, void );
-    DECL_LINK( RedHdl, Edit&, void );
-    DECL_LINK( GreenHdl, Edit&, void );
-    DECL_LINK( BlueHdl, Edit&, void );
-    DECL_LINK( GammaHdl, Edit&, void );
+    //ui controls
+    std::unique_ptr<weld::MetricSpinButton> mxMtrBrightness;
+    std::unique_ptr<weld::MetricSpinButton> mxMtrContrast;
+    std::unique_ptr<weld::ComboBox> mxLBColorMode;
+    std::unique_ptr<weld::MetricSpinButton> mxMtrTrans;
+    std::unique_ptr<weld::MetricSpinButton> mxMtrRed;
+    std::unique_ptr<weld::MetricSpinButton> mxMtrGreen;
+    std::unique_ptr<weld::MetricSpinButton> mxMtrBlue;
+    std::unique_ptr<weld::SpinButton> mxMtrGamma;
+
+    DECL_LINK( ModifyBrightnessHdl, weld::MetricSpinButton&, void );
+    DECL_LINK( ModifyContrastHdl, weld::MetricSpinButton&, void );
+    DECL_LINK( ModifyTransHdl, weld::MetricSpinButton&, void );
+    DECL_LINK( ClickColorModeHdl, weld::ComboBox&, void );
+    DECL_LINK( RedHdl, weld::MetricSpinButton&, void );
+    DECL_LINK( GreenHdl, weld::MetricSpinButton&, void );
+    DECL_LINK( BlueHdl, weld::MetricSpinButton&, void );
+    DECL_LINK( GammaHdl, weld::SpinButton&, void );
 
     void Initialize();
 };
 
-
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 #endif
 

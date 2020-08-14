@@ -23,6 +23,8 @@
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
+namespace {
+
 // I assume there is only one pane in Writer
 class PanesIndexAccess : public ::cppu::WeakImplHelper<container::XIndexAccess >
 {
@@ -74,6 +76,8 @@ public:
     }
 };
 
+}
+
 SwVbaPanes::SwVbaPanes( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< frame::XModel >& xModel ): SwVbaPanes_BASE( xParent, xContext, new PanesIndexAccess( xParent, xContext, xModel ) )
 {
 }
@@ -98,18 +102,16 @@ SwVbaPanes::createCollectionObject( const css::uno::Any& aSource )
 OUString
 SwVbaPanes::getServiceImplName()
 {
-    return OUString("SwVbaPanes");
+    return "SwVbaPanes";
 }
 
 css::uno::Sequence<OUString>
 SwVbaPanes::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.Panes";
-    }
+        "ooo.vba.word.Panes"
+    };
     return sNames;
 }
 

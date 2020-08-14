@@ -18,17 +18,14 @@
  */
 
 
-#if defined _MSC_VER
-#pragma warning(push, 1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 
 #include <stdio.h>
 #include <objidl.h>
-#include "stream_helper.hxx"
+#include <stream_helper.hxx>
 
 BufferStream::BufferStream(IStream *str) :
     stream(str)
@@ -56,7 +53,7 @@ unsigned long BufferStream::sread (unsigned char *buf, unsigned long size)
     if (hr == S_OK)
         return newsize;
     else
-        return (unsigned long)0;
+        return static_cast<unsigned long>(0);
 }
 
 long BufferStream::stell ()
@@ -69,7 +66,7 @@ long BufferStream::stell ()
 
     hr = stream->Seek (Move, STREAM_SEEK_CUR, &NewPosition);
     if (hr == S_OK)
-        return (long) NewPosition.QuadPart;
+        return static_cast<long>(NewPosition.QuadPart);
     else
         return -1;
 }
@@ -79,7 +76,7 @@ long BufferStream::sseek (long offset, int origin)
     HRESULT hr;
     LARGE_INTEGER Move;
     DWORD dwOrigin;
-    Move.QuadPart = (__int64)offset;
+    Move.QuadPart = static_cast<__int64>(offset);
 
     switch (origin)
     {
@@ -103,11 +100,11 @@ long BufferStream::sseek (long offset, int origin)
         return -1;
 }
 
-FileStream::FileStream(const char *filename) :
+FileStream::FileStream(const Filepath_char_t *filename) :
     file(nullptr)
 {
     // fdo#67534: avoid locking to not interfere with soffice opening the file
-    file = _fsopen(filename, "rb", _SH_DENYNO);
+    file = _wfsopen(filename, L"rb", _SH_DENYNO);
 }
 
 FileStream::~FileStream()
@@ -127,14 +124,14 @@ long FileStream::stell ()
 {
     if (file)
         return ftell(file);
-    return -1L;
+    return -1;
 }
 
 long FileStream::sseek (long offset, int origin)
 {
     if (file)
         return fseek(file, offset, origin);
-    return -1L;
+    return -1;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

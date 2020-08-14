@@ -11,8 +11,13 @@
 # Usage: update_pch.sh [<module>]
 # Invoke: make cmd cmd="./bin/update_pch.sh [..]"
 
-root=`dirname $0`
-root=`cd $root/.. && pwd`
+if test -n "$SRC_DIR"; then
+    root="$SRC_DIR"
+else
+    root=`dirname $0`
+    root=`cd $root/.. >/dev/null && pwd`
+fi
+root=`readlink -f $root`
 cd $root
 
 if test -z "$1"; then
@@ -36,11 +41,20 @@ for x in $headers; do
     if [ -d "$x" ]; then
         # We got a directory, find pch files to update.
         headers=`find $root/$x/ -type f -iname "precompiled_*.hxx"`
-        $0 "$headers"
+        if test -n "$headers"; then
+            $0 "$headers"
+        fi
     else
         header=$x
-        echo updating `echo $header | sed -e s%$root/%%`
+        update_msg=`echo $header | sed -e s%$root/%%`
         module=`readlink -f $header | sed -e s%$root/%% -e s%/.*%%`
+        if [ "$module" = "pch" ]; then
+            continue # PCH's in pch/inc/pch/ are handled manually
+        fi
+        echo updating $update_msg
+        if [ "$module" = "external" ]; then
+            module=external/`readlink -f $header | sed -e s%$root/external/%% -e s%/.*%%`
+        fi
         libname=`echo $header | sed -e s/.*precompiled_// -e s/\.hxx//`
 
         ./bin/update_pch "$module" "$libname"

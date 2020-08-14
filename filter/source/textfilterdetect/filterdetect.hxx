@@ -23,7 +23,6 @@
 #include <com/sun/star/document/XExtendedFilterDetection.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <cppuhelper/implbase.hxx>
 
@@ -55,8 +54,6 @@ public:
 };
 
 OUString PlainTextFilterDetect_getImplementationName();
-
-bool PlainTextFilterDetect_supportsService(const OUString& ServiceName);
 
 css::uno::Sequence<OUString> PlainTextFilterDetect_getSupportedServiceNames();
 

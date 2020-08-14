@@ -25,10 +25,10 @@
 #include <cppuhelper/implbase.hxx>
 
 #include "propertyset.hxx"
-#include "tablemodel.hxx"
+#include <celltypes.hxx>
 
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
 typedef ::cppu::ImplInheritanceHelper< FastPropertySet, css::table::XCellRange, css::container::XNamed > TableColumnBase;
 
@@ -76,7 +76,7 @@ private:
     OUString maName;
 };
 
-} }
+}
 
 #endif
 

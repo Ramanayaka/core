@@ -19,32 +19,27 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_INC_TABLEDESIGNHELPBAR_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_TABLEDESIGNHELPBAR_HXX
 
-#include <vcl/tabctrl.hxx>
-#include <vcl/tabpage.hxx>
+#include <vcl/weld.hxx>
 #include "IClipBoardTest.hxx"
-
-class MultiLineEdit;
 
 namespace dbaui
 {
-    // Deriving from TabPage is a trick to notice changes
-    // of the system colors
-    class OTableDesignHelpBar : public TabPage, public IClipboardTest
+    class OTableDesignHelpBar final : public IClipboardTest
     {
     private:
-        VclPtr<MultiLineEdit>  m_pTextWin;
-
-    protected:
-        virtual void Resize() override;
+        std::unique_ptr<weld::TextView> m_xTextWin;
 
     public:
-        OTableDesignHelpBar( vcl::Window* pParent );
-        virtual ~OTableDesignHelpBar() override;
-        virtual void dispose() override;
+        OTableDesignHelpBar(std::unique_ptr<weld::TextView> xTextWin);
 
         void SetHelpText( const OUString& rText );
 
-        virtual bool PreNotify( NotifyEvent& rNEvt ) override;
+        bool HasFocus() const { return m_xTextWin->has_focus(); }
+
+        void connect_focus_in(const Link<weld::Widget&, void>& rLink)
+        {
+            m_xTextWin->connect_focus_in(rLink);
+        }
 
         // IClipboardTest
         virtual bool isCutAllowed() override;

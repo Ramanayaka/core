@@ -19,14 +19,12 @@
 
 #include <dispatch/windowcommanddispatch.hxx>
 #include <targets.h>
-#include <services.h>
 
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
 
-#include <comphelper/processfactory.hxx>
 #include <vcl/window.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/commandevent.hxx>

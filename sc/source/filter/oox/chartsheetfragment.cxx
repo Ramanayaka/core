@@ -17,18 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "chartsheetfragment.hxx"
+#include <chartsheetfragment.hxx>
 
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
-#include "pagesettings.hxx"
-#include "viewsettings.hxx"
-#include "workbooksettings.hxx"
-#include "worksheetsettings.hxx"
+#include <pagesettings.hxx>
+#include <viewsettings.hxx>
+#include <worksheetsettings.hxx>
+#include <biffhelper.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::oox::core;
 
@@ -50,7 +48,7 @@ ContextHandlerRef ChartsheetFragment::onCreateContext( sal_Int32 nElement, const
             {
                 case XLS_TOKEN( sheetViews ):       return this;
 
-                case XLS_TOKEN( sheetPr ):          getWorksheetSettings().importChartSheetPr( rAttribs );              break;
+                case XLS_TOKEN( sheetPr ):          getWorksheetSettings().importChartSheetPr( rAttribs );              return this;
                 case XLS_TOKEN( sheetProtection ):  getWorksheetSettings().importChartProtection( rAttribs );           break;
                 case XLS_TOKEN( pageMargins ):      getPageSettings().importPageMargins( rAttribs );                    break;
                 case XLS_TOKEN( pageSetup ):        getPageSettings().importChartPageSetup( getRelations(), rAttribs ); break;
@@ -75,6 +73,14 @@ ContextHandlerRef ChartsheetFragment::onCreateContext( sal_Int32 nElement, const
                 case XLS_TOKEN( evenFooter ):       return this;    // collect contents in onCharacters()
             }
         break;
+
+        case XLS_TOKEN( sheetPr ):
+            switch( nElement )
+            {
+                case XLS_TOKEN( tabColor ):         getWorksheetSettings().importTabColor( rAttribs );              break;
+            }
+        break;
+
     }
     return nullptr;
 }
@@ -163,7 +169,6 @@ void ChartsheetFragment::importDrawing( SequenceInputStream& rStrm )
     setDrawingPath( getFragmentPathFromRelId( BiffHelper::readString( rStrm ) ) );
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

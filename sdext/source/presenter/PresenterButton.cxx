@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/svapp.hxx>
 #include "PresenterButton.hxx"
 #include "PresenterCanvasHelper.hxx"
 #include "PresenterController.hxx"
@@ -33,10 +32,10 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
-const static double gnHorizontalBorder (15);
-const static double gnVerticalBorder (5);
+const double gnHorizontalBorder (15);
+const double gnVerticalBorder (5);
 
 ::rtl::Reference<PresenterButton> PresenterButton::Create (
     const css::uno::Reference<css::uno::XComponentContext>& rxComponentContext,
@@ -57,11 +56,11 @@ const static double gnVerticalBorder (5);
         PresenterConfigurationAccess::GetProperty(xProperties, "Action") >>= sAction;
 
         PresenterTheme::SharedFontDescriptor pFont;
-        if (rpTheme.get() != nullptr)
+        if (rpTheme != nullptr)
             pFont = rpTheme->GetFont("ButtonFont");
 
         PresenterTheme::SharedFontDescriptor pMouseOverFont;
-        if (rpTheme.get() != nullptr)
+        if (rpTheme != nullptr)
             pMouseOverFont = rpTheme->GetFont("ButtonMouseOverFont");
 
         rtl::Reference<PresenterButton> pButton (
@@ -127,16 +126,11 @@ PresenterButton::PresenterButton (
 
         // Make the background transparent.
         Reference<awt::XWindowPeer> xPeer (mxWindow, UNO_QUERY_THROW);
-        if (xPeer.is())
-        {
-            xPeer->setBackground(0xff000000);
-        }
+        xPeer->setBackground(0xff000000);
 
         mxWindow->setVisible(true);
-        mxWindow->addWindowListener(this);
         mxWindow->addPaintListener(this);
         mxWindow->addMouseListener(this);
-        mxWindow->addMouseMotionListener(this);
     }
     catch (RuntimeException&)
     {
@@ -159,11 +153,9 @@ void SAL_CALL PresenterButton::disposing()
 
     if (mxWindow.is())
     {
-        mxWindow->removeWindowListener(this);
         mxWindow->removePaintListener(this);
         mxWindow->removeMouseListener(this);
-        mxWindow->removeMouseMotionListener(this);
-        Reference<lang::XComponent> xComponent (mxWindow, UNO_QUERY);
+        Reference<lang::XComponent> xComponent = mxWindow;
         mxWindow = nullptr;
         if (xComponent.is())
             xComponent->dispose();
@@ -205,19 +197,19 @@ void PresenterButton::SetCanvas (
             xComponent->dispose();
     }
 
-    if (mxPresenterHelper.is() && rxParentCanvas.is() && rxParentWindow.is())
+    if (!(mxPresenterHelper.is() && rxParentCanvas.is() && rxParentWindow.is()))
+        return;
+
+    mxCanvas = mxPresenterHelper->createSharedCanvas (
+        Reference<rendering::XSpriteCanvas>(rxParentCanvas, UNO_QUERY),
+        rxParentWindow,
+        rxParentCanvas,
+        rxParentWindow,
+        mxWindow);
+    if (mxCanvas.is())
     {
-        mxCanvas = mxPresenterHelper->createSharedCanvas (
-            Reference<rendering::XSpriteCanvas>(rxParentCanvas, UNO_QUERY),
-            rxParentWindow,
-            rxParentCanvas,
-            rxParentWindow,
-            mxWindow);
-        if (mxCanvas.is())
-        {
-            SetupButtonBitmaps();
-            SetCenter(maCenter);
-        }
+        SetupButtonBitmaps();
+        SetCenter(maCenter);
     }
 }
 
@@ -228,58 +220,36 @@ css::geometry::IntegerSize2D const & PresenterButton::GetSize()
     return maButtonSize;
 }
 
-//----- XWindowListener -------------------------------------------------------
-
-void SAL_CALL PresenterButton::windowResized (const css::awt::WindowEvent&)
-{
-    ThrowIfDisposed();
-}
-
-void SAL_CALL PresenterButton::windowMoved (const css::awt::WindowEvent&)
-{
-    ThrowIfDisposed();
-}
-
-void SAL_CALL PresenterButton::windowShown (const css::lang::EventObject&)
-{
-    ThrowIfDisposed();
-}
-
-void SAL_CALL PresenterButton::windowHidden (const css::lang::EventObject&)
-{
-    ThrowIfDisposed();
-}
-
 //----- XPaintListener --------------------------------------------------------
 
 void SAL_CALL PresenterButton::windowPaint (const css::awt::PaintEvent& rEvent)
 {
     ThrowIfDisposed();
-    if (mxWindow.is() && mxCanvas.is())
-    {
-        Reference<rendering::XBitmap> xBitmap;
-        if (meState == PresenterBitmapDescriptor::MouseOver)
-            xBitmap = mxMouseOverBitmap;
-        else
-            xBitmap = mxNormalBitmap;
-        if ( ! xBitmap.is())
-            return;
+    if (!(mxWindow.is() && mxCanvas.is()))
+        return;
 
-        rendering::ViewState aViewState(
-            geometry::AffineMatrix2D(1,0,0, 0,1,0),
-            nullptr);
-        rendering::RenderState aRenderState(
-            geometry::AffineMatrix2D(1,0,0, 0,1,0),
-            PresenterGeometryHelper::CreatePolygon(rEvent.UpdateRect, mxCanvas->getDevice()),
-            Sequence<double>(4),
-            rendering::CompositeOperation::SOURCE);
+    Reference<rendering::XBitmap> xBitmap;
+    if (meState == PresenterBitmapDescriptor::MouseOver)
+        xBitmap = mxMouseOverBitmap;
+    else
+        xBitmap = mxNormalBitmap;
+    if ( ! xBitmap.is())
+        return;
 
-        mxCanvas->drawBitmap(xBitmap, aViewState, aRenderState);
+    rendering::ViewState aViewState(
+        geometry::AffineMatrix2D(1,0,0, 0,1,0),
+        nullptr);
+    rendering::RenderState aRenderState(
+        geometry::AffineMatrix2D(1,0,0, 0,1,0),
+        PresenterGeometryHelper::CreatePolygon(rEvent.UpdateRect, mxCanvas->getDevice()),
+        Sequence<double>(4),
+        rendering::CompositeOperation::SOURCE);
 
-        Reference<rendering::XSpriteCanvas> xSpriteCanvas (mxCanvas, UNO_QUERY);
-        if (xSpriteCanvas.is())
-            xSpriteCanvas->updateScreen(false);
-    }
+    mxCanvas->drawBitmap(xBitmap, aViewState, aRenderState);
+
+    Reference<rendering::XSpriteCanvas> xSpriteCanvas (mxCanvas, UNO_QUERY);
+    if (xSpriteCanvas.is())
+        xSpriteCanvas->updateScreen(false);
 }
 
 //----- XMouseListener --------------------------------------------------------
@@ -296,7 +266,7 @@ void SAL_CALL PresenterButton::mouseReleased (const css::awt::MouseEvent&)
 
     if (meState == PresenterBitmapDescriptor::ButtonDown)
     {
-        OSL_ASSERT(mpPresenterController.get()!=nullptr);
+        OSL_ASSERT(mpPresenterController);
         mpPresenterController->DispatchUnoCommand(msAction);
 
         meState = PresenterBitmapDescriptor::Normal;
@@ -318,18 +288,6 @@ void SAL_CALL PresenterButton::mouseExited (const css::awt::MouseEvent&)
     Invalidate();
 }
 
-//----- XMouseMotionListener --------------------------------------------------
-
-void SAL_CALL PresenterButton::mouseMoved (const css::awt::MouseEvent&)
-{
-    ThrowIfDisposed();
-}
-
-void SAL_CALL PresenterButton::mouseDragged (const css::awt::MouseEvent&)
-{
-    ThrowIfDisposed();
-}
-
 //----- lang::XEventListener --------------------------------------------------
 
 void SAL_CALL PresenterButton::disposing (const css::lang::EventObject& rEvent)
@@ -341,9 +299,9 @@ void SAL_CALL PresenterButton::disposing (const css::lang::EventObject& rEvent)
 
 css::geometry::IntegerSize2D PresenterButton::CalculateButtonSize()
 {
-    if (mpFont.get()!=nullptr && !mpFont->mxFont.is() && mxCanvas.is())
+    if (mpFont && !mpFont->mxFont.is() && mxCanvas.is())
         mpFont->PrepareFont(mxCanvas);
-    if (mpFont.get()==nullptr || !mpFont->mxFont.is())
+    if (!mpFont || !mpFont->mxFont.is())
         return geometry::IntegerSize2D(-1,-1);
 
     geometry::RealSize2D aTextSize (PresenterCanvasHelper::GetTextSize(mpFont->mxFont,msText));
@@ -375,7 +333,7 @@ void PresenterButton::RenderButton (
         GetBitmap(rpCenter, eMode),
         GetBitmap(rpRight, eMode));
 
-    if (rpFont.get()==nullptr || ! rpFont->mxFont.is())
+    if (!rpFont || ! rpFont->mxFont.is())
         return;
 
     const rendering::StringContext aContext (msText, 0, msText.getLength());
@@ -406,11 +364,11 @@ Reference<rendering::XBitmap> PresenterButton::GetBitmap (
     const SharedBitmapDescriptor& mpIcon,
     const PresenterBitmapDescriptor::Mode eMode)
 {
-    if (mpIcon.get() != nullptr)
+    if (mpIcon)
         return mpIcon->GetBitmap(eMode);
     else
     {
-        OSL_ASSERT(mpIcon.get()!=nullptr);
+        OSL_ASSERT(mpIcon);
         return nullptr;
     }
 }
@@ -446,7 +404,7 @@ void PresenterButton::SetupButtonBitmaps()
 
     mxMouseOverBitmap = mxCanvas->getDevice()->createCompatibleAlphaBitmap(maButtonSize);
     xCanvas.set(mxMouseOverBitmap, UNO_QUERY);
-    if (mpMouseOverFont.get()!=nullptr && !mpMouseOverFont->mxFont.is() && mxCanvas.is())
+    if (mpMouseOverFont && !mpMouseOverFont->mxFont.is() && mxCanvas.is())
         mpMouseOverFont->PrepareFont(mxCanvas);
     if (xCanvas.is())
         RenderButton(
@@ -490,6 +448,6 @@ void PresenterButton::ThrowIfDisposed() const
     }
 }
 
-} } // end of namespace sdext::presenter
+} // end of namespace sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

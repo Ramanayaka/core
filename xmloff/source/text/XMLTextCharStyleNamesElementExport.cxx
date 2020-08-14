@@ -18,13 +18,13 @@
  */
 
 #include "XMLTextCharStyleNamesElementExport.hxx"
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlexp.hxx>
+#include <osl/diagnose.h>
 
-namespace com { namespace sun { namespace star {
-    namespace beans { class XPropertySet; }
-} } }
+namespace com::sun::star::beans { class XPropertySet; }
 
 using namespace ::com::sun::star::uno;
 using ::com::sun::star::beans::XPropertySet;
@@ -39,29 +39,26 @@ XMLTextCharStyleNamesElementExport::XMLTextCharStyleNamesElementExport(
     rExport( rExp ),
     nCount( 0 )
 {
-    if( bDoSth )
+    if( !bDoSth )
+        return;
+
+    Any aAny = rPropSet->getPropertyValue( rPropName );
+    Sequence < OUString > aNames;
+    if( !(aAny >>= aNames) )
+        return;
+
+    nCount = aNames.getLength();
+    OSL_ENSURE( nCount > 0, "no char style found" );
+    if ( bAllStyles ) ++nCount;
+    if( nCount > 1 )
     {
-        Any aAny = rPropSet->getPropertyValue( rPropName );
-        Sequence < OUString > aNames;
-        if( aAny >>= aNames )
+        aName = rExport.GetNamespaceMap().GetQNameByKey(
+                        XML_NAMESPACE_TEXT, GetXMLToken(XML_SPAN) );
+        for( sal_Int32 i = 1; i < nCount; ++i )
         {
-            nCount = aNames.getLength();
-            OSL_ENSURE( nCount > 0, "no char style found" );
-            if ( bAllStyles ) ++nCount;
-            if( nCount > 1 )
-            {
-                aName = rExport.GetNamespaceMap().GetQNameByKey(
-                                XML_NAMESPACE_TEXT, GetXMLToken(XML_SPAN) );
-                sal_Int32 i = nCount;
-                const OUString *pName = aNames.getConstArray();
-                while( --i )
-                {
-                    rExport.AddAttribute( XML_NAMESPACE_TEXT, XML_STYLE_NAME,
-                                          rExport.EncodeStyleName( *pName ) );
-                    rExport.StartElement( aName, false );
-                    ++pName;
-                }
-            }
+            rExport.AddAttribute( XML_NAMESPACE_TEXT, XML_STYLE_NAME,
+                                  rExport.EncodeStyleName( aNames[i - 1] ) );
+            rExport.StartElement( aName, false );
         }
     }
 }
@@ -70,8 +67,7 @@ XMLTextCharStyleNamesElementExport::~XMLTextCharStyleNamesElementExport()
 {
     if( nCount > 1 )
     {
-        sal_Int32 i = nCount;
-        while( --i )
+        for( sal_Int32 i = 1; i < nCount; ++i )
             rExport.EndElement( aName, false );
     }
 }

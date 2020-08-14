@@ -21,12 +21,10 @@
 #define INCLUDED_VCL_THREADEX_HXX
 
 #include <osl/conditn.hxx>
-#include <osl/thread.h>
 #include <tools/link.hxx>
 #include <vcl/dllapi.h>
 
-#include <cppuhelper/exc_hlp.hxx>
-#include <boost/optional.hpp>
+#include <optional>
 #include <memory>
 
 namespace vcl
@@ -53,7 +51,7 @@ namespace solarthread {
 namespace detail {
 
 template <typename FuncT, typename ResultT>
-class GenericSolarThreadExecutor : public SolarThreadExecutor
+class GenericSolarThreadExecutor final : public SolarThreadExecutor
 {
 public:
     static ResultT exec( FuncT const& func )
@@ -61,56 +59,64 @@ public:
         typedef GenericSolarThreadExecutor<FuncT, ResultT> ExecutorT;
         ::std::unique_ptr<ExecutorT> const pExecutor( new ExecutorT(func) );
         pExecutor->execute();
-        if (pExecutor->m_exc.hasValue())
-            ::cppu::throwException( pExecutor->m_exc );
+        if (pExecutor->m_exc)
+            std::rethrow_exception(pExecutor->m_exc);
         return *pExecutor->m_result;
     }
 
 private:
     explicit GenericSolarThreadExecutor( FuncT const& func )
-        : m_exc(), m_func(func), m_result() {}
+        : m_func(func), m_result() {}
 
     virtual void doIt() override
     {
         try {
-            m_result.reset( m_func() );
+            m_result = m_func();
         }
-        catch (css::uno::Exception &) {
-            // only UNO exceptions can be dispatched:
-            m_exc = ::cppu::getCaughtException();
+        catch (...) {
+            m_exc = std::current_exception();
         }
     }
 
-    css::uno::Any m_exc;
+    std::exception_ptr m_exc;
 #ifdef _MSC_VER
     FuncT m_func; // "const" and std::bind() results in Error C3848 expression would lose const-volatile qualifiers
 #else
     FuncT const m_func;
 #endif
-    // using boost::optional here omits the need that ResultT is default
+    // using std::optional here omits the need that ResultT is default
     // constructable:
-    ::boost::optional<ResultT> m_result;
+    ::std::optional<ResultT> m_result;
 };
 
 template <typename FuncT>
-class GenericSolarThreadExecutor<FuncT, void> : public SolarThreadExecutor
+class GenericSolarThreadExecutor<FuncT, void> final : public SolarThreadExecutor
 {
+public:
+    static void exec( FuncT const& func )
+    {
+        typedef GenericSolarThreadExecutor<FuncT, void> ExecutorT;
+        ::std::unique_ptr<ExecutorT> const pExecutor( new ExecutorT(func) );
+        pExecutor->execute();
+        if (pExecutor->m_exc)
+            std::rethrow_exception(pExecutor->m_exc);
+    }
+
 private:
     explicit GenericSolarThreadExecutor( FuncT const& func )
-        : m_exc(), m_func(func) {}
+        : m_func(func) {}
 
     virtual void doIt() override
     {
         try {
             m_func();
         }
-        catch (css::uno::Exception &) {
-            // only UNO exceptions can be dispatched:
-            m_exc = ::cppu::getCaughtException();
+        catch (...) {
+            m_exc = std::current_exception();
         }
     }
 
-    css::uno::Any m_exc;
+    std::exception_ptr m_exc;
     FuncT const m_func;
 };
 
@@ -120,9 +126,8 @@ private:
 /** This function will execute the passed functor synchronously in the
     solar thread, thus the calling thread will (eventually) be blocked until
     the functor has been called.
-    Any UNO exception that came up calling the functor in the solar thread
-    will be caught and rethrown in the calling thread.  Any non-UNO
-    exception needs to be handled by the called functor.
+    Any exception that came up calling the functor in the solar thread
+    will be caught and rethrown in the calling thread.
     The result type of this function needs to be default constructable.
     Please keep in mind not to pass addresses to stack variables
     (e.g. for out parameters) to foreign threads, use inout_by_ref()
@@ -155,10 +160,10 @@ private:
     @return return value of functor
 */
 template <typename FuncT>
-inline typename FuncT::result_type syncExecute( FuncT const& func )
+inline auto syncExecute(FuncT const& func) -> decltype(func())
 {
     return detail::GenericSolarThreadExecutor<
-        FuncT, typename FuncT::result_type>::exec(func);
+        FuncT, decltype(func())>::exec(func);
 }
 
 } // namespace solarthread

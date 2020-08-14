@@ -18,21 +18,20 @@
  */
 
 
-#include "rtl/uri.hxx"
-#include "osl/mutex.hxx"
+#include <rtl/uri.hxx>
+#include <osl/mutex.hxx>
 #include <cppuhelper/compbase.hxx>
-#include "cppuhelper/factory.hxx"
-#include "cppuhelper/implementationentry.hxx"
+#include <cppuhelper/factory.hxx>
+#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "ucbhelper/content.hxx"
-#include "com/sun/star/uno/XComponentContext.hpp"
-#include "com/sun/star/lang/DisposedException.hpp"
-#include "com/sun/star/lang/XServiceInfo.hpp"
-#include "com/sun/star/lang/XMultiServiceFactory.hpp"
-#include "com/sun/star/registry/XRegistryKey.hpp"
-#include "com/sun/star/util/theMacroExpander.hpp"
-#include "com/sun/star/ucb/IllegalIdentifierException.hpp"
-#include "com/sun/star/ucb/XContentProvider.hpp"
+#include <ucbhelper/content.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/lang/DisposedException.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/util/theMacroExpander.hpp>
+#include <com/sun/star/ucb/IllegalIdentifierException.hpp>
+#include <com/sun/star/ucb/XContentProvider.hpp>
+#include <tools/diagnose_ex.h>
 
 #define EXPAND_PROTOCOL "vnd.sun.star.expand"
 
@@ -59,7 +58,7 @@ class ExpandContentProviderImpl : protected MutexHolder, public t_impl_helper
         uno::Reference< ucb::XContentIdentifier > const & xIdentifier ) const;
 
 protected:
-    inline void check() const;
+    void check() const;
     virtual void SAL_CALL disposing() override;
 
 public:
@@ -84,7 +83,7 @@ public:
 };
 
 
-inline void ExpandContentProviderImpl::check() const
+void ExpandContentProviderImpl::check() const
 {
     // xxx todo guard?
 //     MutexGuard guard( m_mutex );
@@ -103,41 +102,22 @@ void ExpandContentProviderImpl::disposing()
 }
 
 
-uno::Reference< uno::XInterface > SAL_CALL create(
-    uno::Reference< uno::XComponentContext > const & xComponentContext )
-{
-    return static_cast< ::cppu::OWeakObject * >(
-        new ExpandContentProviderImpl( xComponentContext ) );
-}
-
-
-OUString SAL_CALL implName()
-{
-    return OUString("com.sun.star.comp.ucb.ExpandContentProvider");
-}
-
-
-uno::Sequence< OUString > SAL_CALL supportedServices()
-{
-    return uno::Sequence< OUString > {
-        OUString("com.sun.star.ucb.ExpandContentProvider"),
-        OUString("com.sun.star.ucb.ContentProvider")
-    };
-}
-
 // XServiceInfo
 
 OUString ExpandContentProviderImpl::getImplementationName()
 {
     check();
-    return implName();
+    return "com.sun.star.comp.ucb.ExpandContentProvider";
 }
 
 
 uno::Sequence< OUString > ExpandContentProviderImpl::getSupportedServiceNames()
 {
     check();
-    return supportedServices();
+    return {
+        "com.sun.star.ucb.ExpandContentProvider",
+        "com.sun.star.ucb.ContentProvider"
+    };
 }
 
 sal_Bool ExpandContentProviderImpl::supportsService(OUString const & serviceName )
@@ -198,39 +178,21 @@ sal_Int32 ExpandContentProviderImpl::compareContentIds(
         OUString uri2( expandUri( xId2 ) );
         return uri1.compareTo( uri2 );
     }
-    catch (const ucb::IllegalIdentifierException & exc)
+    catch (const ucb::IllegalIdentifierException &)
     {
-        SAL_WARN( "ucb", exc.Message );
+        TOOLS_WARN_EXCEPTION( "ucb", "" );
         return -1;
     }
 }
 
-static const ::cppu::ImplementationEntry s_entries [] =
-{
-    {
-        create,
-        implName,
-        supportedServices,
-        ::cppu::createSingleComponentFactory,
-        nullptr, 0
-    },
-    { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-};
 
 }
 
-extern "C"
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_expand_ExpandContentProviderImpl_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-
-SAL_DLLPUBLIC_EXPORT void * SAL_CALL ucpexpand1_component_getFactory(
-    const sal_Char * pImplName,
-    void * pServiceManager,
-    void * pRegistryKey )
-{
-    return ::cppu::component_getFactoryHelper(
-        pImplName, pServiceManager, pRegistryKey, s_entries );
-}
-
+    return cppu::acquire(new ExpandContentProviderImpl(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

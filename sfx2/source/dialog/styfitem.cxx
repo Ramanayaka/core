@@ -18,20 +18,15 @@
  */
 
 #include <sfx2/styfitem.hxx>
-#include <tools/rcid.h>
+#include <unotools/resmgr.hxx>
 
-SfxStyleFamilyItem::SfxStyleFamilyItem(SfxStyleFamily nFamily_, const OUString &rName, const Image& rImage, const ResId &rStringArrayId)
+SfxStyleFamilyItem::SfxStyleFamilyItem(SfxStyleFamily nFamily_, const OUString &rName, const OUString& rImage, const std::pair<const char*, SfxStyleSearchBits>* pStringArray, const std::locale& rResLocale)
     : nFamily(nFamily_)
     , aText(rName)
     , aImage(rImage)
 {
-    ResStringArray aResList(rStringArrayId);
-    aFilterList.resize(aResList.Count());
-    for (sal_uInt32 i = 0; i < aResList.Count(); ++i)
-    {
-        aFilterList[i].aName = aResList.GetString(i);
-        aFilterList[i].nFlags = aResList.GetValue(i);
-    }
+    for (const std::pair<const char*, SfxStyleSearchBits>* pItem = pStringArray; pItem->first; ++pItem)
+        aFilterList.emplace_back(Translate::get(pItem->first, rResLocale), pItem->second);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,27 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fuconuno.hxx"
-#include <svl/aeitem.hxx>
+#include <fuconuno.hxx>
+#include <rtl/ustring.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/request.hxx>
 #include <svl/intitem.hxx>
+#include <svx/svxids.hrc>
+#include <vcl/ptrstyle.hxx>
 
-#include <svx/fmglob.hxx>
+#include <ViewShell.hxx>
+#include <View.hxx>
+#include <Window.hxx>
+#include <ViewShellBase.hxx>
+#include <ToolBarManager.hxx>
+#include <unokywds.hxx>
 
-#include <svx/dialogs.hrc>
-
-#include "app.hrc"
-#include "glob.hrc"
-#include "ViewShell.hxx"
-#include "View.hxx"
-#include "Window.hxx"
-#include "ViewShellBase.hxx"
-#include "ToolBarManager.hxx"
-#include "drawdoc.hxx"
-#include "sdresid.hxx"
-#include "res_bmp.hrc"
 
 namespace sd {
 
@@ -70,7 +65,7 @@ void FuConstructUnoControl::DoExecute( SfxRequest& rReq )
     const SfxUInt32Item* pInventorItem = rReq.GetArg<SfxUInt32Item>(SID_FM_CONTROL_INVENTOR);
     const SfxUInt16Item* pIdentifierItem = rReq.GetArg<SfxUInt16Item>(SID_FM_CONTROL_IDENTIFIER);
     if( pInventorItem )
-        nInventor = (SdrInventor)pInventorItem->GetValue();
+        nInventor = static_cast<SdrInventor>(pInventorItem->GetValue());
     if( pIdentifierItem )
         nIdentifier = pIdentifierItem->GetValue();
 
@@ -116,12 +111,12 @@ void FuConstructUnoControl::Activate()
 {
     mpView->SetCurrentObj( nIdentifier, nInventor );
 
-    aNewPointer = Pointer(PointerStyle::DrawRect);
+    aNewPointer = PointerStyle::DrawRect;
     aOldPointer = mpWindow->GetPointer();
     mpWindow->SetPointer( aNewPointer );
 
     aOldLayer = mpView->GetActiveLayer();
-    mpView->SetActiveLayer( SdResId(STR_LAYER_CONTROLS) );
+    mpView->SetActiveLayer(sUNO_LayerName_controls);
 
     FuConstruct::Activate();
 }
@@ -133,13 +128,14 @@ void FuConstructUnoControl::Deactivate()
     mpWindow->SetPointer( aOldPointer );
 }
 
-SdrObject* FuConstructUnoControl::CreateDefaultObject(const sal_uInt16, const ::tools::Rectangle& rRectangle)
+SdrObjectUniquePtr FuConstructUnoControl::CreateDefaultObject(const sal_uInt16, const ::tools::Rectangle& rRectangle)
 {
     // case SID_FM_CREATE_CONTROL:
 
-    SdrObject* pObj = SdrObjFactory::MakeNewObject(
-        mpView->GetCurrentObjInventor(), mpView->GetCurrentObjIdentifier(),
-        nullptr, mpDoc);
+    SdrObjectUniquePtr pObj(SdrObjFactory::MakeNewObject(
+        mpView->getSdrModelFromSdrView(),
+        mpView->GetCurrentObjInventor(),
+        mpView->GetCurrentObjIdentifier()));
 
     if(pObj)
     {

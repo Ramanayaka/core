@@ -22,8 +22,7 @@
 #include <numrule.hxx>
 
 #include <comphelper/random.hxx>
-
-#include <vector>
+#include <osl/diagnose.h>
 
 
 namespace sw
@@ -56,30 +55,19 @@ SwList* DocumentListsManager::createList( const OUString& rListId,
     }
 
     SwList* pNewList = new SwList( sListId, *pDefaultNumRuleForNewList, m_rDoc.GetNodes() );
-    maLists[sListId] = pNewList;
+    maLists[sListId].reset(pNewList);
 
     return pNewList;
-}
-
-void DocumentListsManager::deleteList( const OUString& sListId )
-{
-    SwList* pList = getListByName( sListId );
-    if ( pList )
-    {
-        maLists.erase( sListId );
-        delete pList;
-    }
 }
 
 SwList* DocumentListsManager::getListByName( const OUString& sListId ) const
 {
     SwList* pList = nullptr;
 
-    std::unordered_map< OUString, SwList*, OUStringHash >::const_iterator
-                                            aListIter = maLists.find( sListId );
+    auto aListIter = maLists.find( sListId );
     if ( aListIter != maLists.end() )
     {
-        pList = (*aListIter).second;
+        pList = (*aListIter).second.get();
     }
 
     return pList;
@@ -120,7 +108,7 @@ SwList* DocumentListsManager::getListForListStyle( const OUString& sListStyleNam
 {
     SwList* pList = nullptr;
 
-    std::unordered_map< OUString, SwList*, OUStringHash >::const_iterator
+    std::unordered_map< OUString, SwList* >::const_iterator
                             aListIter = maListStyleLists.find( sListStyleName );
     if ( aListIter != maListStyleLists.end() )
     {
@@ -145,28 +133,21 @@ void DocumentListsManager::deleteListForListStyle( const OUString& sListStyleNam
     if ( !sListId.isEmpty() )
     {
         maListStyleLists.erase( sListStyleName );
-        deleteList( sListId );
+        maLists.erase( sListId );
     }
 }
 
 void DocumentListsManager::deleteListsByDefaultListStyle( const OUString& rListStyleName )
 {
-    std::vector< SwList* > aListsForDeletion;
-    tHashMapForLists::iterator aListIter = maLists.begin();
+    auto aListIter = maLists.begin();
     while ( aListIter != maLists.end() )
     {
-        SwList* pList = (*aListIter).second;
-        if ( pList->GetDefaultListStyleName() == rListStyleName )
+        if ( (*aListIter).second->GetDefaultListStyleName() == rListStyleName )
         {
-            aListsForDeletion.push_back( pList );
+            aListIter = maLists.erase(aListIter);
         }
-        ++aListIter;
-    }
-    while ( !aListsForDeletion.empty() )
-    {
-        SwList* pList = aListsForDeletion.back();
-        aListsForDeletion.pop_back();
-        deleteList( pList->GetListId() );
+        else
+            ++aListIter;
     }
 }
 
@@ -194,34 +175,23 @@ void DocumentListsManager::trackChangeOfListStyleName( const OUString& sListStyl
 
 DocumentListsManager::~DocumentListsManager()
 {
-    for ( std::unordered_map< OUString, SwList*, OUStringHash >::iterator
-                                           aListIter = maLists.begin();
-        aListIter != maLists.end();
-        ++aListIter )
-    {
-         delete (*aListIter).second;
-    }
-    maLists.clear();
-
-    maListStyleLists.clear();
 }
 
 
-const OUString DocumentListsManager::MakeListIdUnique( const OUString& aSuggestedUniqueListId )
+OUString DocumentListsManager::MakeListIdUnique( const OUString& aSuggestedUniqueListId )
 {
     long nHitCount = 0;
     OUString aTmpStr = aSuggestedUniqueListId;
     while ( getListByName( aTmpStr ) )
     {
         ++nHitCount;
-        aTmpStr = aSuggestedUniqueListId;
-        aTmpStr += OUString::number( nHitCount );
+        aTmpStr = aSuggestedUniqueListId + OUString::number( nHitCount );
     }
 
     return aTmpStr;
 }
 
-const OUString DocumentListsManager::CreateUniqueListId()
+OUString DocumentListsManager::CreateUniqueListId()
 {
     static bool bHack = (getenv("LIBO_ONEWAY_STABLE_ODF_EXPORT") != nullptr);
     if (bHack)

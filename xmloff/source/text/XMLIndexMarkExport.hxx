@@ -24,9 +24,9 @@
 #include <com/sun/star/uno/Reference.h>
 
 class SvXMLExport;
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { class XPropertySet; }
- } } }
+}
 
 
 /**
@@ -38,19 +38,18 @@ namespace com { namespace sun { namespace star {
  */
 class XMLIndexMarkExport
 {
-    OUString sLevel;
-    OUString sUserIndexName;
-    OUString sPrimaryKey;
-    OUString sSecondaryKey;
-    OUString sDocumentIndexMark;
-    OUString sIsStart;
-    OUString sIsCollapsed;
-    OUString sAlternativeText;
-    OUString sTextReading;
-    OUString sPrimaryKeyReading;
-    OUString sSecondaryKeyReading;
-    OUString sMainEntry;
-
+    static constexpr OUStringLiteral gsLevel = "Level";
+    static constexpr OUStringLiteral gsUserIndexName = "UserIndexName";
+    static constexpr OUStringLiteral gsPrimaryKey = "PrimaryKey";
+    static constexpr OUStringLiteral gsSecondaryKey = "SecondaryKey";
+    static constexpr OUStringLiteral gsDocumentIndexMark = "DocumentIndexMark";
+    static constexpr OUStringLiteral gsIsStart = "IsStart";
+    static constexpr OUStringLiteral gsIsCollapsed = "IsCollapsed";
+    static constexpr OUStringLiteral gsAlternativeText = "AlternativeText";
+    static constexpr OUStringLiteral gsTextReading = "TextReading";
+    static constexpr OUStringLiteral gsPrimaryKeyReading = "PrimaryKeyReading";
+    static constexpr OUStringLiteral gsSecondaryKeyReading = "SecondaryKeyReading";
+    static constexpr OUStringLiteral gsMainEntry = "IsMainEntry";
 
     SvXMLExport& rExport;
 
@@ -71,7 +70,7 @@ public:
         const css::uno::Reference<css::beans::XPropertySet> & rPropSet,
         bool bAutoStyles);
 
-protected:
+private:
 
     /// export attributes of table-of-content index marks
     void ExportTOCMarkAttributes(

@@ -8,12 +8,8 @@
  */
 
 #include <sal/config.h>
-#include <test/bootstrapfixture.hxx>
 #include <test/unoapi_test.hxx>
-#include <rtl/strbuf.hxx>
-#include <osl/file.hxx>
 #include <com/sun/star/sdb/XOfficeDatabaseDocument.hpp>
-#include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
@@ -23,14 +19,6 @@
 #include <com/sun/star/sdbc/XRowSet.hpp>
 #include <com/sun/star/sdb/XResultSetAccess.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-
-#include <sfx2/app.hxx>
-#include <sfx2/docfilt.hxx>
-#include <sfx2/docfile.hxx>
-#include <sfx2/objsh.hxx>
-#include <sfx2/sfxmodelfactory.hxx>
-#include <svl/intitem.hxx>
-#include <comphelper/processfactory.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -83,7 +71,7 @@ void RowSetClones::test()
     rowSetProperties->setPropertyValue("ActiveConnection", Any(xConnection));
 
     xRowSet->execute();
-    uno::Reference< XResultSet > xResultSet(xRowSet, UNO_QUERY);
+    uno::Reference< XResultSet > xResultSet = xRowSet;
     CPPUNIT_ASSERT(xResultSet.is());
     // always starts at BeforeFirst position
     CPPUNIT_ASSERT(xResultSet->isBeforeFirst());

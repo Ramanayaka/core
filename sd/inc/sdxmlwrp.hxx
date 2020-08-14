@@ -19,23 +19,26 @@
 #ifndef INCLUDED_SD_INC_SDXMLWRP_HXX
 #define INCLUDED_SD_INC_SDXMLWRP_HXX
 
-#include <vcl/errcode.hxx>
+#include <comphelper/fileformat.h>
+#include <tools/solar.h>
 #include "sdfilter.hxx"
 
+class ErrCode;
+
 // SdXMLFilter
-enum SdXMLFilterMode
+enum class SdXMLFilterMode
 {
-    SDXMLMODE_Normal,   ///< standard load and save of the complete document
-    SDXMLMODE_Organizer ///< only for import, only the styles are loaded
+    Normal,   ///< standard load and save of the complete document
+    Organizer ///< only for import, only the styles are loaded
 };
 
-class SdXMLFilter : public SdFilter
+class SdXMLFilter final : public SdFilter
 {
 public:
     SdXMLFilter(
         SfxMedium& rMedium,
         ::sd::DrawDocShell& rDocShell,
-        SdXMLFilterMode eFilterMode = SDXMLMODE_Normal,
+        SdXMLFilterMode eFilterMode = SdXMLFilterMode::Normal,
         sal_uLong nStoreVer = SOFFICE_FILEFORMAT_8 );
     virtual ~SdXMLFilter() override;
 

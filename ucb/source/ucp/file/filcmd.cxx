@@ -18,12 +18,12 @@
  */
 
 #include <sal/config.h>
+#include <cppuhelper/queryinterface.hxx>
 
 #include <com/sun/star/ucb/UnsupportedCommandException.hpp>
 
 #include "filcmd.hxx"
 #include "filtask.hxx"
-#include "prov.hxx"
 
 using namespace fileaccess;
 using namespace com::sun::star;
@@ -65,7 +65,7 @@ uno::Any SAL_CALL
 XCommandInfo_impl::queryInterface( const uno::Type& rType )
 {
     uno::Any aRet = cppu::queryInterface( rType,
-                                          (static_cast< XCommandInfo* >(this)) );
+                                          static_cast< XCommandInfo* >(this) );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
 
@@ -81,9 +81,10 @@ CommandInfo SAL_CALL
 XCommandInfo_impl::getCommandInfoByName(
     const OUString& aName )
 {
-    for( sal_Int32 i = 0; i < m_pMyShell->m_sCommandInfo.getLength(); i++ )
-        if( m_pMyShell->m_sCommandInfo[i].Name == aName )
-            return m_pMyShell->m_sCommandInfo[i];
+    auto pCommand = std::find_if(m_pMyShell->m_sCommandInfo.begin(), m_pMyShell->m_sCommandInfo.end(),
+            [&aName](const CommandInfo& rCommand) { return rCommand.Name == aName; });
+    if (pCommand != m_pMyShell->m_sCommandInfo.end())
+        return *pCommand;
 
     throw UnsupportedCommandException( THROW_WHERE );
 }
@@ -93,9 +94,10 @@ CommandInfo SAL_CALL
 XCommandInfo_impl::getCommandInfoByHandle(
     sal_Int32 Handle )
 {
-    for( sal_Int32 i = 0; i < m_pMyShell->m_sCommandInfo.getLength(); ++i )
-        if( m_pMyShell->m_sCommandInfo[i].Handle == Handle )
-            return m_pMyShell->m_sCommandInfo[i];
+    auto pCommand = std::find_if(m_pMyShell->m_sCommandInfo.begin(), m_pMyShell->m_sCommandInfo.end(),
+            [&Handle](const CommandInfo& rCommand) { return rCommand.Handle == Handle; });
+    if (pCommand != m_pMyShell->m_sCommandInfo.end())
+        return *pCommand;
 
     throw UnsupportedCommandException( THROW_WHERE );
 }
@@ -105,11 +107,8 @@ sal_Bool SAL_CALL
 XCommandInfo_impl::hasCommandByName(
     const OUString& aName )
 {
-    for( sal_Int32 i = 0; i < m_pMyShell->m_sCommandInfo.getLength(); ++i )
-        if( m_pMyShell->m_sCommandInfo[i].Name == aName )
-            return true;
-
-    return false;
+    return std::any_of(m_pMyShell->m_sCommandInfo.begin(), m_pMyShell->m_sCommandInfo.end(),
+        [&aName](const CommandInfo& rCommand) { return rCommand.Name == aName; });
 }
 
 
@@ -117,11 +116,8 @@ sal_Bool SAL_CALL
 XCommandInfo_impl::hasCommandByHandle(
     sal_Int32 Handle )
 {
-    for( sal_Int32 i = 0; i < m_pMyShell->m_sCommandInfo.getLength(); ++i )
-        if( m_pMyShell->m_sCommandInfo[i].Handle == Handle )
-            return true;
-
-    return false;
+    return std::any_of(m_pMyShell->m_sCommandInfo.begin(), m_pMyShell->m_sCommandInfo.end(),
+        [&Handle](const CommandInfo& rCommand) { return rCommand.Handle == Handle; });
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

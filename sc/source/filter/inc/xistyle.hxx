@@ -20,16 +20,16 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_XISTYLE_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_XISTYLE_HXX
 
-#include <list>
-#include <memory>
+#include <tools/solar.h>
 #include <vector>
-#include <tools/mempool.hxx>
-#include "rangelst.hxx"
-#include "patattr.hxx"
-#include "xladdress.hxx"
+#include <memory>
+#include <rangelst.hxx>
 #include "xlstyle.hxx"
 #include "xiroot.hxx"
 
+class ScPatternAttr;
+
+struct XclRange;
 struct ScAttrEntry;
 enum class SvxBoxItemLine;
 
@@ -50,23 +50,18 @@ public:
     /** Clears all buffered data, used to set up for a new sheet. */
     void                Initialize();
 
-    /** Returns the RGB color data for a (non-zero-based) Excel palette entry.
-        @descr  First looks for a color read from file, then looks for a default color.
-        @return  The color from current or default palette or COL_AUTO, if nothing else found. */
-    ColorData           GetColorData( sal_uInt16 nXclIndex ) const;
     /** Returns the color for a (non-zero-based) Excel palette entry.
         @descr  First looks for a color read from file, then looks for a default color.
         @return  The color from current or default palette or COL_AUTO, if nothing else found. */
-    Color        GetColor( sal_uInt16 nXclIndex ) const
-                            { return Color( GetColorData( nXclIndex ) ); }
+    Color           GetColor( sal_uInt16 nXclIndex ) const;
 
     /** Reads a PALETTE record. */
     void                ReadPalette( XclImpStream& rStrm );
 
 private:
     void ExportPalette();
-    typedef ::std::vector< ColorData > ColorDataVec;
-    ColorDataVec        maColorTable;       /// Colors read from file.
+    typedef ::std::vector< Color > ColorVec;
+    ColorVec                      maColorTable;       /// Colors read from file.
     const XclImpRoot&             mrRoot;
 };
 
@@ -225,7 +220,7 @@ public:
     void                CreateScFormats();
 
     /** Returns the format key with the passed Excel index or NUMBERFORMAT_ENTRY_NOT_FOUND on error. */
-    sal_uLong               GetScFormat( sal_uInt16 nXclNumFmt ) const;
+    sal_uInt32          GetScFormat( sal_uInt16 nXclNumFmt ) const;
 
     /** Fills an Excel number format to the passed item set.
         @param rItemSet  The destination item set.
@@ -239,7 +234,7 @@ public:
         @param nScNumFmt  The Calc number formatter index of the format.
         @param bSkipPoolDefs  true = Do not put items equal to pool default; false = Put all items. */
     void                FillScFmtToItemSet(
-                            SfxItemSet& rItemSet, sal_uLong nScNumFmt,
+                            SfxItemSet& rItemSet, sal_uInt32 nScNumFmt,
                             bool bSkipPoolDefs = false ) const;
 
 private:
@@ -401,8 +396,8 @@ public:
         @return  A read-only reference to the item set stored internally. */
     const ScPatternAttr& CreatePattern( bool bSkipPoolDefs = false );
 
-    void                ApplyPatternToAttrList(
-                            ::std::list<ScAttrEntry>& rAttrs, SCROW nRow1, SCROW nRow2,
+    void                ApplyPatternToAttrVector(
+                            ::std::vector<ScAttrEntry>& rAttrs, SCROW nRow1, SCROW nRow2,
                             sal_uInt32 nForceScNumFmt);
 
     /** Inserts all formatting attributes to the specified area in the Calc document.
@@ -530,8 +525,6 @@ private:
 /** Contains an (encoded) XF index for a range of rows in a single column. */
 class XclImpXFRange
 {
-    DECL_FIXEDMEMPOOL_NEWDEL( XclImpXFRange )
-
 public:
     SCROW               mnScRow1;       /// The first row of an equal-formatted range.
     SCROW               mnScRow2;       /// The last row of an equal-formatted range.
@@ -666,14 +659,12 @@ private:
     void                SetBorderLine( const ScRange& rRange, SCTAB nScTab, SvxBoxItemLine nLine );
 
 private:
-    typedef std::shared_ptr< XclImpXFRangeColumn > XclImpXFRangeColumnRef;
-    typedef ::std::vector< XclImpXFRangeColumnRef >  XclImpXFRangeColumnVec;
-    typedef ::std::pair< XclRange, OUString >        XclImpHyperlinkRange;
-    typedef ::std::list< XclImpHyperlinkRange >      XclImpHyperlinkList;
 
-    XclImpXFRangeColumnVec maColumns;       /// Array of column XF index buffers.
-    XclImpHyperlinkList maHyperlinks;       /// Maps URLs to hyperlink cells.
-    ScRangeList         maMergeList;        /// List of merged cell ranges.
+    std::vector< std::shared_ptr< XclImpXFRangeColumn > >
+                        maColumns;        /// Array of column XF index buffers.
+    std::vector< std::pair< XclRange, OUString > >
+                        maHyperlinks;     /// Maps URLs to hyperlink cells.
+    ScRangeList         maMergeList;      /// List of merged cell ranges.
 };
 
 #endif

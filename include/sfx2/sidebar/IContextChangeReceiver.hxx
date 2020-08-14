@@ -19,11 +19,12 @@
 #ifndef INCLUDED_SFX2_SIDEBAR_ICONTEXTCHANGERECEIVER_HXX
 #define INCLUDED_SFX2_SIDEBAR_ICONTEXTCHANGERECEIVER_HXX
 
-#include <vcl/EnumContext.hxx>
 #include <sfx2/dllapi.h>
 
+namespace vcl { class EnumContext; }
 
-namespace sfx2 { namespace sidebar {
+
+namespace sfx2::sidebar {
 
 
 class SFX2_DLLPUBLIC IContextChangeReceiver
@@ -34,7 +35,7 @@ public:
     virtual void HandleContextChange (const vcl::EnumContext& rContext) = 0;
 };
 
-} } // end of namespace ::sd::sidebar
+} // end of namespace ::sd::sidebar
 
 #endif
 

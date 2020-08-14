@@ -16,50 +16,49 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_TOOLS_INETSTRM_HXX
-#define INCLUDED_TOOLS_INETSTRM_HXX
+#pragma once
 
 #include <tools/toolsdllapi.h>
 #include <tools/stream.hxx>
 #include <sal/types.h>
 #include <vector>
+#include <memory>
+#include <config_options.h>
 
 class INetMIMEMessage;
-class SvStream;
 
-class TOOLS_DLLPUBLIC INetMIMEMessageStream
+class UNLESS_MERGELIBS(TOOLS_DLLPUBLIC) INetMIMEMessageStream
 {
     INetMIMEMessage *pSourceMsg;
     bool            bHeaderGenerated;
 
-    std::vector<sal_Char> mvBuffer;
-    sal_Char       *pRead;
-    sal_Char       *pWrite;
+    std::vector<char> mvBuffer;
+    char           *pRead;
+    char           *pWrite;
 
-    SvStream       *pMsgStrm;
+    std::unique_ptr<SvStream>
+                    pMsgStrm;
     SvMemoryStream  maMsgBuffer;
-    sal_Char       *pMsgRead;
-    sal_Char       *pMsgWrite;
+    char           *pMsgRead;
+    char           *pMsgWrite;
 
     bool done;
 
-    sal_uIntPtr                  nChildIndex;
-    INetMIMEMessageStream *pChildStrm;
+    sal_uInt32             nChildIndex;
+    std::unique_ptr<INetMIMEMessageStream> pChildStrm;
 
     INetMIMEMessageStream (const INetMIMEMessageStream& rStrm) = delete;
     INetMIMEMessageStream& operator= (const INetMIMEMessageStream& rStrm) = delete;
 
-    int GetHeaderLine(sal_Char *pData, sal_uIntPtr nSize);
-    int GetBodyLine(sal_Char *pData, sal_uIntPtr nSize);
-    int GetMsgLine(sal_Char *pData, sal_uIntPtr nSize);
+    int GetHeaderLine(char *pData, sal_uInt32 nSize);
+    int GetBodyLine(char *pData, sal_uInt32 nSize);
+    int GetMsgLine(char *pData, sal_uInt32 nSize);
 
 public:
     explicit INetMIMEMessageStream(INetMIMEMessage *pMsg, bool headerGenerated);
     ~INetMIMEMessageStream();
 
-    int Read (sal_Char *pData, sal_uIntPtr nSize);
+    int Read (char *pData, sal_uInt32 nSize);
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

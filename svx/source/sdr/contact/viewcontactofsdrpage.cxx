@@ -20,29 +20,27 @@
 #include <sdr/contact/viewcontactofsdrpage.hxx>
 #include <svx/sdr/contact/viewobjectcontact.hxx>
 #include <svx/svdpage.hxx>
-#include <svx/sdr/contact/displayinfo.hxx>
 #include <sdr/contact/viewobjectcontactofsdrpage.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <svx/svdpagv.hxx>
-#include <svx/svdview.hxx>
+#include <svtools/colorcfg.hxx>
+#include <tools/debug.hxx>
 #include <vcl/svapp.hxx>
 #include <svx/sdr/contact/objectcontact.hxx>
 #include <drawinglayer/primitive2d/backgroundcolorprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
+#include <drawinglayer/attribute/fillgradientattribute.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <svx/sdr/primitive2d/sdrattributecreator.hxx>
-#include <svx/sdr/primitive2d/sdrdecompositiontools.hxx>
+#include <sdr/primitive2d/sdrattributecreator.hxx>
+#include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <vcl/lazydelete.hxx>
 #include <vcl/settings.hxx>
-#include <svx/svdstr.hrc>
-#include <svdglob.hxx>
 #include <drawinglayer/primitive2d/discreteshadowprimitive2d.hxx>
 #include <drawinglayer/attribute/sdrfillattribute.hxx>
-#include "bitmaps.hlst"
+#include <bitmaps.hlst>
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 ViewContactOfPageSubObject::ViewContactOfPageSubObject(ViewContactOfSdrPage& rParentViewContactOfSdrPage)
 :   mrParentViewContactOfSdrPage(rParentViewContactOfSdrPage)
@@ -103,11 +101,11 @@ ViewObjectContact& ViewContactOfPageShadow::CreateObjectSpecificViewObjectContac
 
 drawinglayer::primitive2d::Primitive2DContainer ViewContactOfPageShadow::createViewIndependentPrimitive2DSequence() const
 {
-    static bool bUseOldPageShadow(false);
+    static bool bUseOldPageShadow(false); // loplugin:constvars:ignore
     const SdrPage& rPage = getPage();
     basegfx::B2DHomMatrix aPageMatrix;
-    aPageMatrix.set(0, 0, (double)rPage.GetWdt());
-    aPageMatrix.set(1, 1, (double)rPage.GetHgt());
+    aPageMatrix.set(0, 0, static_cast<double>(rPage.GetWidth()));
+    aPageMatrix.set(1, 1, static_cast<double>(rPage.GetHeight()));
 
     if(bUseOldPageShadow)
     {
@@ -196,7 +194,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfMasterPage::createV
 
             // #i110846# Suppress SdrPage FillStyle for MasterPages without StyleSheets,
             // else the PoolDefault (XFILL_COLOR and Blue8) will be used. Normally, all
-            // MasterPages should have a StyleSheet excactly for this reason, but historically
+            // MasterPages should have a StyleSheet exactly for this reason, but historically
             // e.g. the Notes MasterPage has no StyleSheet set (and there maybe others).
             if(rPage.getSdrPageProperties().GetStyleSheet())
             {
@@ -209,9 +207,9 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfMasterPage::createV
             {
                 // direct model data is the page size, get and use it
                 const basegfx::B2DRange aInnerRange(
-                    rPage.GetLftBorder(), rPage.GetUppBorder(),
-                    rPage.GetWdt() - rPage.GetRgtBorder(), rPage.GetHgt() - rPage.GetLwrBorder());
-                const basegfx::B2DPolygon aInnerPolgon(basegfx::tools::createPolygonFromRect(aInnerRange));
+                    rPage.GetLeftBorder(), rPage.GetUpperBorder(),
+                    rPage.GetWidth() - rPage.GetRightBorder(), rPage.GetHeight() - rPage.GetLowerBorder());
+                const basegfx::B2DPolygon aInnerPolgon(basegfx::utils::createPolygonFromRect(aInnerRange));
                 const drawinglayer::primitive2d::Primitive2DReference xReference(
                     drawinglayer::primitive2d::createPolyPolygonFillPrimitive(
                         basegfx::B2DPolyPolygon(aInnerPolgon),
@@ -246,8 +244,8 @@ ViewObjectContact& ViewContactOfPageFill::CreateObjectSpecificViewObjectContact(
 drawinglayer::primitive2d::Primitive2DContainer ViewContactOfPageFill::createViewIndependentPrimitive2DSequence() const
 {
     const SdrPage& rPage = getPage();
-    const basegfx::B2DRange aPageFillRange(0.0, 0.0, (double)rPage.GetWdt(), (double)rPage.GetHgt());
-    const basegfx::B2DPolygon aPageFillPolygon(basegfx::tools::createPolygonFromRect(aPageFillRange));
+    const basegfx::B2DRange aPageFillRange(0.0, 0.0, static_cast<double>(rPage.GetWidth()), static_cast<double>(rPage.GetHeight()));
+    const basegfx::B2DPolygon aPageFillPolygon(basegfx::utils::createPolygonFromRect(aPageFillRange));
 
     // We have only the page information, not the view information. Use the
     // svtools::DOCCOLOR color for initialisation
@@ -282,11 +280,11 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfOuterPageBorder::cr
 {
     drawinglayer::primitive2d::Primitive2DContainer xRetval;
     const SdrPage& rPage = getPage();
-    const basegfx::B2DRange aPageBorderRange(0.0, 0.0, (double)rPage.GetWdt(), (double)rPage.GetHgt());
+    const basegfx::B2DRange aPageBorderRange(0.0, 0.0, static_cast<double>(rPage.GetWidth()), static_cast<double>(rPage.GetHeight()));
 
     // Changed to 0x949599 for renaissance, before svtools::FONTCOLOR was used.
     // Added old case as fallback for HighContrast.
-    basegfx::BColor aRGBBorderColor(0x94 / (double)0xff, 0x95 / (double)0xff, 0x99 / (double)0xff);
+    basegfx::BColor aRGBBorderColor(0x94 / double(0xff), 0x95 / double(0xff), 0x99 / double(0xff));
 
     if(Application::GetSettings().GetStyleSettings().GetHighContrastMode())
     {
@@ -315,7 +313,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfOuterPageBorder::cr
     else
     {
         xRetval.resize(1);
-        const basegfx::B2DPolygon aPageBorderPolygon(basegfx::tools::createPolygonFromRect(aPageBorderRange));
+        const basegfx::B2DPolygon aPageBorderPolygon(basegfx::utils::createPolygonFromRect(aPageBorderRange));
         xRetval[0] = drawinglayer::primitive2d::Primitive2DReference(new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(aPageBorderPolygon, aRGBBorderColor));
     }
 
@@ -343,9 +341,9 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfInnerPageBorder::cr
 {
     const SdrPage& rPage = getPage();
     const basegfx::B2DRange aPageBorderRange(
-        (double)rPage.GetLftBorder(), (double)rPage.GetUppBorder(),
-        (double)(rPage.GetWdt() - rPage.GetRgtBorder()), (double)(rPage.GetHgt() - rPage.GetLwrBorder()));
-    const basegfx::B2DPolygon aPageBorderPolygon(basegfx::tools::createPolygonFromRect(aPageBorderRange));
+        static_cast<double>(rPage.GetLeftBorder()), static_cast<double>(rPage.GetUpperBorder()),
+        static_cast<double>(rPage.GetWidth() - rPage.GetRightBorder()), static_cast<double>(rPage.GetHeight() - rPage.GetLowerBorder()));
+    const basegfx::B2DPolygon aPageBorderPolygon(basegfx::utils::createPolygonFromRect(aPageBorderRange));
 
     // We have only the page information, not the view information. Use the
     // svtools::FONTCOLOR or svtools::DOCBOUNDARIES color for initialisation
@@ -397,7 +395,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfPageHierarchy::crea
     for(sal_uInt32 a(0); a < nObjectCount; a++)
     {
         const ViewContact& rCandidate(GetViewContact(a));
-        const drawinglayer::primitive2d::Primitive2DContainer aCandSeq(rCandidate.getViewIndependentPrimitive2DContainer());
+        const drawinglayer::primitive2d::Primitive2DContainer& aCandSeq(rCandidate.getViewIndependentPrimitive2DContainer());
 
         xRetval.insert(xRetval.end(), aCandSeq.begin(), aCandSeq.end());
     }
@@ -476,7 +474,7 @@ ViewContactOfHelplines::~ViewContactOfHelplines()
 {
 }
 
-// Create a Object-Specific ViewObjectContact, set ViewContact and
+// Create an Object-Specific ViewObjectContact, set ViewContact and
 // ObjectContact. Always needs to return something.
 ViewObjectContact& ViewContactOfSdrPage::CreateObjectSpecificViewObjectContact(ObjectContact& rObjectContact)
 {
@@ -621,6 +619,6 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfSdrPage::createView
     return xRetval;
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

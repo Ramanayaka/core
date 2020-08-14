@@ -20,10 +20,9 @@
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_ANIMATIONPATHMOTIONNODE_HXX
 
 #include "animationbasenode.hxx"
-#include "com/sun/star/animations/XAnimateMotion.hpp"
+#include <com/sun/star/animations/XAnimateMotion.hpp>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 class AnimationPathMotionNode : public AnimationBaseNode
 {
@@ -49,8 +48,7 @@ private:
     css::uno::Reference<css::animations::XAnimateMotion >  mxPathMotionNode;
 };
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_ANIMATIONPATHMOTIONNODE_HXX
 

@@ -19,12 +19,9 @@
 
 #include "filglob.hxx"
 #include "filerror.hxx"
-#include "filtask.hxx"
 #include "bc.hxx"
 #include <osl/file.hxx>
-#include <vector>
 #include <ucbhelper/cancelcommandexecution.hxx>
-#include <com/sun/star/ucb/CommandAbortedException.hpp>
 #include <com/sun/star/ucb/UnsupportedCommandException.hpp>
 #include <com/sun/star/ucb/UnsupportedOpenModeException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
@@ -34,16 +31,15 @@
 #include <com/sun/star/ucb/NameClashException.hpp>
 #include <com/sun/star/ucb/InteractiveBadTransferURLException.hpp>
 #include <com/sun/star/ucb/UnsupportedNameClashException.hpp>
-#include "com/sun/star/beans/PropertyState.hpp"
-#include "com/sun/star/beans/PropertyValue.hpp"
+#include <com/sun/star/beans/PropertyState.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/ucb/InteractiveAugmentedIOException.hpp>
-#include "com/sun/star/uno/Any.hxx"
-#include "com/sun/star/uno/Sequence.hxx"
-#include "osl/diagnose.h"
-#include "rtl/ustrbuf.hxx"
+#include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/uno/Sequence.hxx>
+#include <osl/diagnose.h>
 #include <rtl/uri.hxx>
 #include <rtl/ustring.hxx>
-#include "sal/types.h"
+#include <sal/types.h>
 
 using namespace ucbhelper;
 using namespace osl;
@@ -154,7 +150,7 @@ namespace fileaccess {
     bool isChild( const OUString& srcUnqPath,
                       const OUString& dstUnqPath )
     {
-        static sal_Unicode slash = '/';
+        static const sal_Unicode slash = '/';
         // Simple lexical comparison
         sal_Int32 srcL = srcUnqPath.getLength();
         sal_Int32 dstL = dstUnqPath.getLength();
@@ -178,9 +174,7 @@ namespace fileaccess {
     {
         sal_Int32 srcL = aOldPrefix.getLength();
 
-        OUString new_Name = old_Name.copy( srcL );
-        new_Name = ( aNewPrefix + new_Name );
-        return new_Name;
+        return aNewPrefix + old_Name.copy( srcL );
     }
 
 
@@ -310,6 +304,7 @@ namespace fileaccess {
                 case FileBase::E_ROFS:
                     // #i4735# handle ROFS transparently as ACCESS_DENIED
                 case FileBase::E_ACCES:
+                case FileBase::E_PERM:
                     // permission denied<P>
                     ioErrorCode = IOErrorCode_ACCESS_DENIED;
                     break;
@@ -345,7 +340,9 @@ namespace fileaccess {
                 case FileBase::E_NOLCK:  // No record locks available
                     ioErrorCode = IOErrorCode_LOCKING_VIOLATION;
                     break;
-
+                case FileBase::E_NOSYS:
+                    ioErrorCode = IOErrorCode_NOT_SUPPORTED;
+                    break;
                 case FileBase::E_FAULT: // Bad address
                 case FileBase::E_LOOP:  // Too many symbolic links encountered
                 case FileBase::E_NOSPC: // No space left on device
@@ -379,7 +376,7 @@ namespace fileaccess {
                     ioErrorCode = IOErrorCode_NOT_EXISTING;
                     break;
                 case FileBase::E_NOTDIR:
-                    // the specified path is not an directory
+                    // the specified path is not a directory
                     ioErrorCode = IOErrorCode_NO_DIRECTORY;
                     break;
                 case FileBase::E_NOMEM:
@@ -501,8 +498,8 @@ namespace fileaccess {
             Sequence< OUString > aSeq( 1 );
             aSeq[0] =
                 ( errorCode == TASKHANDLING_NONAMESET_INSERT_COMMAND )  ?
-                OUString("Title")               :
-                OUString("ContentType");
+                OUStringLiteral("Title")               :
+                OUStringLiteral("ContentType");
 
             aAny <<= MissingPropertiesException(
                 "a property is missing, necessary to create a content",
@@ -571,9 +568,7 @@ namespace fileaccess {
             excep.Message = "the name contained invalid characters";
             if(isHandled)
                 throw excep;
-            else {
-                cancelCommandExecution( Any(excep), xEnv );
-            }
+            cancelCommandExecution( Any(excep), xEnv );
 //              ioErrorCode = IOErrorCode_INVALID_CHARACTER;
 //              cancelCommandExecution(
 //                  ioErrorCode,
@@ -591,9 +586,7 @@ namespace fileaccess {
             excep.Message = "folder exists and overwrite forbidden";
             if(isHandled)
                 throw excep;
-            else {
-                cancelCommandExecution( Any(excep), xEnv );
-            }
+            cancelCommandExecution( Any(excep), xEnv );
 //              ioErrorCode = IOErrorCode_ALREADY_EXISTING;
 //              cancelCommandExecution(
 //                  ioErrorCode,
@@ -752,7 +745,7 @@ namespace fileaccess {
                     {
                         ioErrorCode = IOErrorCode_GENERAL;
                         aMsg = "a general error during transfer command";
-                    break;
+                        break;
                     }
                 default:
                     ioErrorCode = IOErrorCode_GENERAL;

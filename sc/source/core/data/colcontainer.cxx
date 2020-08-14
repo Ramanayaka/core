@@ -18,16 +18,14 @@
  */
 
 
-#include "colcontainer.hxx"
-#include "column.hxx"
-#include "document.hxx"
+#include <colcontainer.hxx>
+#include <column.hxx>
 
-ScColContainer::ScColContainer( ScDocument* pDoc, const size_t nSize )
+ScColContainer::ScColContainer( const size_t nSize )
 {
-    pDocument = pDoc;
     aCols.resize( nSize );
     for ( size_t nCol = 0; nCol < nSize; ++nCol )
-        aCols[nCol] = new ScColumn;
+        aCols[nCol].reset( new ScColumn() );
 }
 
 ScColContainer::~ScColContainer() COVERITY_NOEXCEPT_FALSE
@@ -41,7 +39,7 @@ void ScColContainer::Clear()
     for ( SCCOL nIdx = 0; nIdx < nSize; ++nIdx )
     {
         aCols[nIdx]->PrepareBroadcastersForDestruction();
-        delete aCols[nIdx];
+        aCols[nIdx].reset();
     }
     aCols.clear();
 }
@@ -51,7 +49,7 @@ void ScColContainer::resize( const size_t aNewColSize )
     size_t aOldColSize = aCols.size();
     aCols.resize( aNewColSize );
     for ( size_t nCol = aOldColSize; nCol < aNewColSize; ++nCol )
-        aCols[nCol] = new ScColumn;
+        aCols[nCol].reset(new ScColumn());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

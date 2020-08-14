@@ -17,19 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/table/tableproperties.hxx"
-#include "drawingml/table/tablestylelist.hxx"
-#include "oox/drawingml/drawingmltypes.hxx"
+#include <drawingml/table/tableproperties.hxx>
+#include <drawingml/table/tablestylelist.hxx>
+#include <drawingml/textbody.hxx>
+#include <drawingml/textparagraph.hxx>
+#include <oox/drawingml/drawingmltypes.hxx>
 #include <com/sun/star/table/XTable.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/table/XMergeableCellRange.hpp>
-#include <com/sun/star/table/BorderLine2.hpp>
 #include <rtl/instance.hxx>
-#include "oox/core/xmlfilterbase.hxx"
-#include "oox/helper/propertyset.hxx"
-#include <oox/token/tokens.hxx>
+#include <oox/core/xmlfilterbase.hxx>
+#include "predefined-table-styles.cxx"
 
 using namespace ::oox::core;
 using namespace ::com::sun::star;
@@ -37,7 +34,7 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::table;
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
 TableProperties::TableProperties()
 : mbFirstRow( false )
@@ -47,18 +44,17 @@ TableProperties::TableProperties()
 , mbBandRow( false )
 , mbBandCol( false )
 {
-}
-TableProperties::~TableProperties()
-{
+    maBgColor.setUnused();
 }
 
-void CreateTableRows( const uno::Reference< XTableRows >& xTableRows, const std::vector< TableRow >& rvTableRows )
+static void CreateTableRows( const uno::Reference< XTableRows >& xTableRows, const std::vector< TableRow >& rvTableRows )
 {
     if ( rvTableRows.size() > 1 )
         xTableRows->insertByIndex( 0, rvTableRows.size() - 1 );
     std::vector< TableRow >::const_iterator aTableRowIter( rvTableRows.begin() );
     uno::Reference< container::XIndexAccess > xIndexAccess( xTableRows, UNO_QUERY_THROW );
-    for ( sal_Int32 n = 0; n < xIndexAccess->getCount(); n++ )
+    sal_Int32 nCols = std::min<sal_Int32>(xIndexAccess->getCount(), rvTableRows.size());
+    for (sal_Int32 n = 0; n < nCols; ++n)
     {
         Reference< XPropertySet > xPropSet( xIndexAccess->getByIndex( n ), UNO_QUERY_THROW );
         xPropSet->setPropertyValue( "Height", Any( static_cast< sal_Int32 >( aTableRowIter->getHeight() / 360 ) ) );
@@ -66,20 +62,21 @@ void CreateTableRows( const uno::Reference< XTableRows >& xTableRows, const std:
     }
 }
 
-void CreateTableColumns( const Reference< XTableColumns >& xTableColumns, const std::vector< sal_Int32 >& rvTableGrid )
+static void CreateTableColumns( const Reference< XTableColumns >& xTableColumns, const std::vector< sal_Int32 >& rvTableGrid )
 {
     if ( rvTableGrid.size() > 1 )
         xTableColumns->insertByIndex( 0, rvTableGrid.size() - 1 );
     std::vector< sal_Int32 >::const_iterator aTableGridIter( rvTableGrid.begin() );
     uno::Reference< container::XIndexAccess > xIndexAccess( xTableColumns, UNO_QUERY_THROW );
-    for ( sal_Int32 n = 0; n < xIndexAccess->getCount(); n++ )
+    sal_Int32 nCols = std::min<sal_Int32>(xIndexAccess->getCount(), rvTableGrid.size());
+    for (sal_Int32 n = 0; n < nCols; ++n)
     {
         Reference< XPropertySet > xPropSet( xIndexAccess->getByIndex( n ), UNO_QUERY_THROW );
         xPropSet->setPropertyValue( "Width", Any( static_cast< sal_Int32 >( *aTableGridIter++ / 360 ) ) );
     }
 }
 
-void MergeCells( const uno::Reference< XTable >& xTable, sal_Int32 nCol, sal_Int32 nRow, sal_Int32 nColSpan, sal_Int32 nRowSpan )
+static void MergeCells( const uno::Reference< XTable >& xTable, sal_Int32 nCol, sal_Int32 nRow, sal_Int32 nColSpan, sal_Int32 nRowSpan )
 {
    if( xTable.is() ) try
    {
@@ -97,129 +94,7 @@ namespace
     struct theDefaultTableStyle : public ::rtl::Static< TableStyle, theDefaultTableStyle > {};
 }
 
-//for pptx just has table style id
-static void SetTableStyleProperties(TableStyle* &pTableStyle , sal_Int32 tblFillClr, sal_Int32 tblTextClr, sal_Int32 lineBdrClr)
-{
-    //whole table fill style and color
-    oox::drawingml::FillPropertiesPtr pWholeTabFillProperties( new oox::drawingml::FillProperties );
-    pWholeTabFillProperties->moFillType.set(XML_solidFill);
-    pWholeTabFillProperties->maFillColor.setSchemeClr(tblFillClr);
-    pWholeTabFillProperties->maFillColor.addTransformation(XML_tint,20000);
-    pTableStyle->getWholeTbl().getFillProperties() = pWholeTabFillProperties;
-    //whole table text color
-    ::oox::drawingml::Color tableTextColor;
-    tableTextColor.setSchemeClr(tblTextClr);
-    pTableStyle->getWholeTbl().getTextColor() = tableTextColor;
-    //whole table line border
-    oox::drawingml::LinePropertiesPtr pLeftBorder( new oox::drawingml::LineProperties);
-    pLeftBorder->moLineWidth = 12700;
-    pLeftBorder->moPresetDash = XML_sng;
-    pLeftBorder->maLineFill.moFillType.set(XML_solidFill);
-    pLeftBorder->maLineFill.maFillColor.setSchemeClr(lineBdrClr);
-    pTableStyle->getWholeTbl().getLineBorders().insert(std::pair<sal_Int32, ::oox::drawingml::LinePropertiesPtr>(XML_left,pLeftBorder));
-    pTableStyle->getWholeTbl().getLineBorders().insert(std::pair<sal_Int32, ::oox::drawingml::LinePropertiesPtr>(XML_right,pLeftBorder));
-    pTableStyle->getWholeTbl().getLineBorders().insert(std::pair<sal_Int32, ::oox::drawingml::LinePropertiesPtr>(XML_top,pLeftBorder));
-    pTableStyle->getWholeTbl().getLineBorders().insert(std::pair<sal_Int32, ::oox::drawingml::LinePropertiesPtr>(XML_bottom,pLeftBorder));
-    pTableStyle->getWholeTbl().getLineBorders().insert(std::pair<sal_Int32, ::oox::drawingml::LinePropertiesPtr>(XML_insideH,pLeftBorder));
-    pTableStyle->getWholeTbl().getLineBorders().insert(std::pair<sal_Int32, ::oox::drawingml::LinePropertiesPtr>(XML_insideV,pLeftBorder));
-
-    //Band1H style
-    oox::drawingml::FillPropertiesPtr pBand1HFillProperties( new oox::drawingml::FillProperties );
-    pBand1HFillProperties->moFillType.set(XML_solidFill);
-    pBand1HFillProperties->maFillColor.setSchemeClr(tblFillClr);
-    pBand1HFillProperties->maFillColor.addTransformation(XML_tint,40000);
-    pTableStyle->getBand1H().getFillProperties() = pBand1HFillProperties;
-
-    //Band1V style
-    pTableStyle->getBand1V().getFillProperties() = pBand1HFillProperties;
-
-    //tet bold for 1st row/last row/column
-    ::boost::optional< sal_Bool > textBoldStyle(true);
-    pTableStyle->getFirstRow().getTextBoldStyle() = textBoldStyle;
-    pTableStyle->getLastRow().getTextBoldStyle() = textBoldStyle;
-    pTableStyle->getFirstCol().getTextBoldStyle() = textBoldStyle;
-    pTableStyle->getLastCol().getTextBoldStyle() = textBoldStyle;
-}
-
-TableStyle* CreateTableStyle(const OUString& styleId)
-{
-    TableStyle* pTableStyle = nullptr;
-    if(styleId == "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}") {           //Medium Style 2 Accent 1
-        pTableStyle = new TableStyle();
-        //first row style
-        //fill color and type
-        oox::drawingml::FillPropertiesPtr pFstRowFillProperties( new oox::drawingml::FillProperties );
-        pFstRowFillProperties->moFillType.set(XML_solidFill);
-        pFstRowFillProperties->maFillColor.setSchemeClr(XML_accent1);
-        pTableStyle->getFirstRow().getFillProperties() = pFstRowFillProperties;
-        //text color
-        ::oox::drawingml::Color fstRowTextColor;
-        fstRowTextColor.setSchemeClr(XML_lt1);
-        pTableStyle->getFirstRow().getTextColor() = fstRowTextColor;
-        //bottom line border
-        oox::drawingml::LinePropertiesPtr pFstBottomBorder( new oox::drawingml::LineProperties);
-        pFstBottomBorder->moLineWidth = 38100;
-        pFstBottomBorder->moPresetDash = XML_sng;
-        pFstBottomBorder->maLineFill.moFillType.set(XML_solidFill);
-        pFstBottomBorder->maLineFill.maFillColor.setSchemeClr(XML_lt1);
-        pTableStyle->getFirstRow().getLineBorders().insert(std::pair<sal_Int32, ::oox::drawingml::LinePropertiesPtr>(XML_bottom,pFstBottomBorder));
-
-        //last row style
-        pTableStyle->getLastRow().getFillProperties() = pFstRowFillProperties;
-        pTableStyle->getLastRow().getTextColor() = fstRowTextColor;
-        pTableStyle->getLastRow().getLineBorders().insert(std::pair<sal_Int32, ::oox::drawingml::LinePropertiesPtr>(XML_top,pFstBottomBorder));
-
-        //first column style
-        pTableStyle->getFirstRow().getFillProperties() = pFstRowFillProperties;
-        pTableStyle->getFirstRow().getTextColor() = fstRowTextColor;
-
-        //last column style
-        pTableStyle->getLastCol().getFillProperties() = pFstRowFillProperties;
-        pTableStyle->getLastCol().getTextColor() = fstRowTextColor;
-
-        SetTableStyleProperties(pTableStyle, XML_accent1, XML_dk1, XML_lt1);
-    }
-    else if (styleId == "{21E4AEA4-8DFA-4A89-87EB-49C32662AFE0}")         //Medium Style 2 Accent 2
-    {
-        pTableStyle = new TableStyle();
-        oox::drawingml::FillPropertiesPtr pFstRowFillProperties( new oox::drawingml::FillProperties );
-        pFstRowFillProperties->moFillType.set(XML_solidFill);
-        pFstRowFillProperties->maFillColor.setSchemeClr(XML_accent2);
-        pTableStyle->getFirstRow().getFillProperties() = pFstRowFillProperties;
-
-        ::oox::drawingml::Color fstRowTextColor;
-        fstRowTextColor.setSchemeClr(XML_lt1);
-        pTableStyle->getFirstRow().getTextColor() = fstRowTextColor;
-
-        oox::drawingml::LinePropertiesPtr pFstBottomBorder( new oox::drawingml::LineProperties);
-        pFstBottomBorder->moLineWidth = 38100;
-        pFstBottomBorder->moPresetDash = XML_sng;
-        pFstBottomBorder->maLineFill.moFillType.set(XML_solidFill);
-        pFstBottomBorder->maLineFill.maFillColor.setSchemeClr(XML_lt1);
-        pTableStyle->getFirstRow().getLineBorders().insert(std::pair<sal_Int32, ::oox::drawingml::LinePropertiesPtr>(XML_bottom,pFstBottomBorder));
-
-        pTableStyle->getLastRow().getFillProperties() = pFstRowFillProperties;
-        pTableStyle->getLastRow().getTextColor() = fstRowTextColor;
-        pTableStyle->getLastRow().getLineBorders().insert(std::pair<sal_Int32, ::oox::drawingml::LinePropertiesPtr>(XML_top,pFstBottomBorder));
-
-        pTableStyle->getFirstCol().getFillProperties() = pFstRowFillProperties;
-        pTableStyle->getFirstCol().getTextColor() = fstRowTextColor;
-
-        pTableStyle->getLastCol().getFillProperties() = pFstRowFillProperties;
-        pTableStyle->getLastCol().getTextColor() = fstRowTextColor;
-
-        SetTableStyleProperties(pTableStyle, XML_accent2, XML_dk1, XML_lt1);
-    }
-    else if (styleId == "{C4B1156A-380E-4F78-BDF5-A606A8083BF9}")         //Medium Style 4 Accent 4
-    {
-        pTableStyle = new TableStyle();
-        SetTableStyleProperties(pTableStyle, XML_accent4, XML_dk1, XML_accent4);
-    }
-
-    return pTableStyle;
-}
-
-const TableStyle& TableProperties::getUsedTableStyle( const ::oox::core::XmlFilterBase& rFilterBase, TableStyle*& rTableStyleToDelete )
+const TableStyle& TableProperties::getUsedTableStyle( const ::oox::core::XmlFilterBase& rFilterBase, std::unique_ptr<TableStyle>& rTableStyleToDelete )
 {
     ::oox::core::XmlFilterBase& rBase( const_cast< ::oox::core::XmlFilterBase& >( rFilterBase ) );
 
@@ -231,21 +106,19 @@ const TableStyle& TableProperties::getUsedTableStyle( const ::oox::core::XmlFilt
         const std::vector< TableStyle >& rTableStyles( rBase.getTableStyles()->getTableStyles() );
         const OUString aStyleId( getStyleId() );
 
-        std::vector< TableStyle >::const_iterator aIter( rTableStyles.begin() );
-        while( aIter != rTableStyles.end() )
+        for (auto const& tableStyle : rTableStyles)
         {
-            if ( const_cast< TableStyle& >( *aIter ).getStyleId() == aStyleId )
+            if ( const_cast< TableStyle& >(tableStyle).getStyleId() == aStyleId )
             {
-                pTableStyle = &const_cast< TableStyle& >( *aIter );
+                pTableStyle = &const_cast< TableStyle& >(tableStyle);
                 break;  // we get the correct style
             }
-            ++aIter;
         }
         //if the pptx just has table style id, but no table style content, we will create the table style ourselves
         if (!pTableStyle)
         {
             rTableStyleToDelete = CreateTableStyle(aStyleId);
-            pTableStyle = rTableStyleToDelete;
+            pTableStyle = rTableStyleToDelete.get();
         }
     }
 
@@ -255,44 +128,143 @@ const TableStyle& TableProperties::getUsedTableStyle( const ::oox::core::XmlFilt
     return *pTableStyle;
 }
 
-void TableProperties::pushToPropSet( const ::oox::core::XmlFilterBase& rFilterBase,
-    const Reference < XPropertySet >& xPropSet, const TextListStylePtr& pMasterTextListStyle )
+void TableProperties::pushToPropSet(const ::oox::core::XmlFilterBase& rFilterBase,
+                                    const Reference<XPropertySet>& xPropSet,
+                                    const TextListStylePtr& pMasterTextListStyle)
 {
-    uno::Reference< XColumnRowRange > xColumnRowRange(
-         xPropSet->getPropertyValue("Model"), uno::UNO_QUERY_THROW );
+    uno::Reference<XColumnRowRange> xColumnRowRange(xPropSet->getPropertyValue("Model"),
+                                                    uno::UNO_QUERY_THROW);
 
-    CreateTableColumns( xColumnRowRange->getColumns(), mvTableGrid );
-    CreateTableRows( xColumnRowRange->getRows(), mvTableRows );
+    CreateTableColumns(xColumnRowRange->getColumns(), mvTableGrid);
+    CreateTableRows(xColumnRowRange->getRows(), mvTableRows);
 
-    TableStyle* pTableStyleToDelete = nullptr;
-    const TableStyle& rTableStyle( getUsedTableStyle( rFilterBase, pTableStyleToDelete ) );
+    std::unique_ptr<TableStyle> xTableStyleToDelete;
+    const TableStyle& rTableStyle(getUsedTableStyle(rFilterBase, xTableStyleToDelete));
     sal_Int32 nRow = 0;
-    const std::vector< TableRow >::const_iterator aTableRowEnd( mvTableRows.end() );
-    for (std::vector< TableRow >::iterator aTableRowIter( mvTableRows.begin() );
-         aTableRowIter != aTableRowEnd ; ++aTableRowIter, ++nRow)
+
+    for (auto& tableRow : mvTableRows)
     {
         sal_Int32 nColumn = 0;
-        const std::vector< TableCell >::const_iterator aTableCellEnd( aTableRowIter->getTableCells().end() );
-        for (std::vector< TableCell >::iterator aTableCellIter( aTableRowIter->getTableCells().begin() );
-            aTableCellIter != aTableCellEnd ; ++aTableCellIter, ++nColumn)
-        {
-            TableCell& rTableCell( *aTableCellIter );
-            if ( !rTableCell.getvMerge() && !rTableCell.gethMerge() )
-            {
-                uno::Reference< XTable > xTable( xColumnRowRange, uno::UNO_QUERY_THROW );
-                if ( ( rTableCell.getRowSpan() > 1 ) || ( rTableCell.getGridSpan() > 1 ) )
-                    MergeCells( xTable, nColumn, nRow, rTableCell.getGridSpan(), rTableCell.getRowSpan() );
+        sal_Int32 nColumnSize = mvTableGrid.size();
+        sal_Int32 nRemovedColumn = 0; //
 
-                Reference< XCellRange > xCellRange( xTable, UNO_QUERY_THROW );
-                rTableCell.pushToXCell( rFilterBase, pMasterTextListStyle, xCellRange->getCellByPosition( nColumn, nRow ), *this, rTableStyle,
-                    nColumn, aTableRowIter->getTableCells().size()-1, nRow, mvTableRows.size()-1 );
+        for (sal_Int32 nColIndex = 0; nColIndex < nColumnSize; nColIndex++)
+        {
+            TableCell& rTableCell(tableRow.getTableCells().at(nColIndex));
+
+            if (!rTableCell.getvMerge() && !rTableCell.gethMerge())
+            {
+                uno::Reference<XTable> xTable(xColumnRowRange, uno::UNO_QUERY_THROW);
+                bool bMerged = false;
+
+                if ((rTableCell.getRowSpan() > 1) || (rTableCell.getGridSpan() > 1))
+                {
+                    MergeCells(xTable, nColumn, nRow, rTableCell.getGridSpan(),
+                               rTableCell.getRowSpan());
+
+                    if (rTableCell.getGridSpan() > 1)
+                    {
+                        nRemovedColumn = (rTableCell.getGridSpan() - 1);
+                        // MergeCells removes columns. Our loop does not know about those
+                        // removed columns and we skip handling those removed columns.
+                        nColIndex += nRemovedColumn;
+                        // It will adjust new column number after push current column's
+                        // props with pushToXCell.
+                        bMerged = true;
+                    }
+                }
+
+                Reference<XCellRange> xCellRange(xTable, UNO_QUERY_THROW);
+                Reference<XCell> xCell;
+
+                if (nRemovedColumn)
+                {
+                    try
+                    {
+                        xCell = xCellRange->getCellByPosition(nColumn, nRow);
+                    }
+                    // Exception can come from TableModel::getCellByPosition when a column
+                    // is removed while merging columns. So adjust again here.
+                    catch (Exception&)
+                    {
+                        xCell = xCellRange->getCellByPosition(nColumn - nRemovedColumn, nRow);
+                    }
+                }
+                else
+                    xCell = xCellRange->getCellByPosition(nColumn, nRow);
+
+                rTableCell.pushToXCell(rFilterBase, pMasterTextListStyle, xCell, *this, rTableStyle,
+                                       nColumn, tableRow.getTableCells().size() - 1, nRow,
+                                       mvTableRows.size() - 1);
+                if (bMerged)
+                    nColumn += nRemovedColumn;
             }
+            ++nColumn;
         }
+        ++nRow;
     }
 
-    delete pTableStyleToDelete;
+    xTableStyleToDelete.reset();
 }
 
-} } }
+void TableProperties::pullFromTextBody(oox::drawingml::TextBodyPtr pTextBody, sal_Int32 nShapeWidth, bool bhasSameSubTypeIndex, bool bMaster)
+{
+    // Create table grid and a single row.
+    sal_Int32 nNumCol = pTextBody->getTextProperties().mnNumCol;
+    std::vector<sal_Int32>& rTableGrid(getTableGrid());
+    std::vector<drawingml::table::TableRow>& rTableRows(getTableRows());
+    sal_Int32 nColWidth = nShapeWidth / nNumCol;
+
+    if(!bhasSameSubTypeIndex)
+    {
+        for (sal_Int32 nCol = 0; nCol < nNumCol; ++nCol)
+            rTableGrid.push_back(nColWidth);
+
+        rTableRows.emplace_back();
+    }
+
+    if(rTableRows.empty())
+        rTableRows.emplace_back();
+
+    oox::drawingml::table::TableRow& rTableRow = rTableRows.back();
+    std::vector<oox::drawingml::table::TableCell>& rTableCells = rTableRow.getTableCells();
+
+    // Create the cells and distribute the paragraphs from pTextBody.
+    sal_Int32 nNumPara = pTextBody->getParagraphs().size();
+    sal_Int32 nParaPerCol = std::ceil(double(nNumPara) / nNumCol);
+    // Font scale of text body will be applied at a text run level.
+    sal_Int32 nFontScale = pTextBody->getTextProperties().mnFontScale;
+    size_t nPara = 0;
+    for (sal_Int32 nCol = 0; nCol < nNumCol; ++nCol)
+    {
+        rTableCells.emplace_back();
+        oox::drawingml::table::TableCell& rTableCell = rTableCells.at(nCol);
+        TextBodyPtr pCellTextBody = std::make_shared<TextBody>();
+        rTableCell.setTextBody(pCellTextBody);
+
+        // Copy properties provided by <a:lstStyle>.
+        pCellTextBody->getTextListStyle() = pTextBody->getTextListStyle();
+
+        if (bMaster)
+            continue;
+
+        for (sal_Int32 nParaInCol = 0; nParaInCol < nParaPerCol; ++nParaInCol)
+        {
+            if (nPara < pTextBody->getParagraphs().size())
+            {
+                std::shared_ptr<oox::drawingml::TextParagraph> pParagraph
+                    = pTextBody->getParagraphs()[nPara];
+                if (nFontScale != 100000)
+                {
+                    for (auto& pRun : pParagraph->getRuns())
+                        pRun->getTextCharacterProperties().moFontScale = nFontScale;
+                }
+                pCellTextBody->appendParagraph(pParagraph);
+            }
+            ++nPara;
+        }
+    }
+}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

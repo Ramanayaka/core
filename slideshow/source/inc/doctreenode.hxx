@@ -26,9 +26,7 @@
 
 /* Definition of DocTreeNode class */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
 
         /** This class represents kind of a DOM tree node for shape
@@ -49,8 +47,6 @@ namespace slideshow
             /// Type of shape entity represented by this node
             enum class NodeType
             {
-                Invalid=0,
-
                 /// This node represents a paragraph
                 LogicalParagraph=129,
                 /// This node represents a word
@@ -90,6 +86,7 @@ namespace slideshow
             bool                isEmpty() const { return mnStartIndex == mnEndIndex; }
 
             sal_Int32           getStartIndex() const { return mnStartIndex; }
+            void                setStartIndex( sal_Int32 nIndex ) { mnStartIndex = nIndex; }
             sal_Int32           getEndIndex() const { return mnEndIndex; }
             void                setEndIndex( sal_Int32 nIndex ) { mnEndIndex = nIndex; }
 
@@ -106,7 +103,7 @@ namespace slideshow
         };
 
         typedef ::std::vector< DocTreeNode > VectorOfDocTreeNodes;
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_DOCTREENODE_HXX

@@ -17,31 +17,29 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <algorithm>
+#include <string_view>
 
 #include <tools/diagnose_ex.h>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/string.hxx>
+#include <officecfg/Office/Common.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/event.hxx>
-#include <vcl/field.hxx>
+#include <vcl/toolkit/field.hxx>
 #include <vcl/unohelp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/weldutils.hxx>
 
 #include <svdata.hxx>
 
-#include <i18nlangtag/mslangid.hxx>
-
-#include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/i18n/XCharacterClassification.hpp>
-#include <com/sun/star/i18n/KCharacterType.hpp>
 
 #include <unotools/localedatawrapper.hxx>
 #include <unotools/calendarwrapper.hxx>
 #include <unotools/charclass.hxx>
-#include <unotools/misccfg.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::comphelper;
@@ -58,24 +56,21 @@ using namespace ::comphelper;
 
 uno::Reference< i18n::XCharacterClassification > const & ImplGetCharClass()
 {
-    static uno::Reference< i18n::XCharacterClassification > xCharClass;
-    if ( !xCharClass.is() )
-        xCharClass = vcl::unohelper::CreateCharacterClassification();
+    ImplSVData *const pSVData = ImplGetSVData();
+    assert(pSVData);
 
-    return xCharClass;
+    if (!pSVData->m_xCharClass.is())
+    {
+        pSVData->m_xCharClass = vcl::unohelper::CreateCharacterClassification();
+    }
+
+    return pSVData->m_xCharClass;
 }
 
 static sal_Unicode* ImplAddString( sal_Unicode* pBuf, const OUString& rStr )
 {
-    if ( rStr.getLength() == 1 )
-        *pBuf++ = rStr[0];
-    else if ( rStr.isEmpty() )
-        ;
-    else
-    {
-        memcpy( pBuf, rStr.getStr(), rStr.getLength() * sizeof(sal_Unicode) );
-        pBuf += rStr.getLength();
-    }
+    memcpy( pBuf, rStr.getStr(), rStr.getLength() * sizeof(sal_Unicode) );
+    pBuf += rStr.getLength();
     return pBuf;
 }
 
@@ -86,7 +81,7 @@ static sal_Unicode* ImplAddNum( sal_Unicode* pBuf, sal_uLong nNumber, int nMinLe
     sal_Unicode* pTempBuf = aTempBuf;
     do
     {
-        *pTempBuf = (sal_Unicode)(nNumber % 10) + '0';
+        *pTempBuf = static_cast<sal_Unicode>(nNumber % 10) + '0';
         pTempBuf++;
         nNumber /= 10;
         if ( nMinLen )
@@ -152,7 +147,7 @@ static void ImplSkipDelimiters( const sal_Unicode*& rpBuf )
     }
 }
 
-static bool ImplIsPatternChar( sal_Unicode cChar, sal_Char cEditMask )
+static bool ImplIsPatternChar( sal_Unicode cChar, char cEditMask )
 {
     sal_Int32 nType = 0;
 
@@ -164,8 +159,7 @@ static bool ImplIsPatternChar( sal_Unicode cChar, sal_Char cEditMask )
     }
     catch (const css::uno::Exception&)
     {
-        SAL_WARN( "vcl.control", "ImplIsPatternChar: Exception caught!" );
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("vcl.control");
         return false;
     }
 
@@ -200,7 +194,7 @@ static bool ImplIsPatternChar( sal_Unicode cChar, sal_Char cEditMask )
     return true;
 }
 
-static sal_Unicode ImplPatternChar( sal_Unicode cChar, sal_Char cEditMask )
+static sal_Unicode ImplPatternChar( sal_Unicode cChar, char cEditMask )
 {
     if ( ImplIsPatternChar( cChar, cEditMask ) )
     {
@@ -240,7 +234,7 @@ static OUString ImplPatternReformat( const OUString& rStr,
     sal_Unicode cTempChar;
     sal_Unicode cChar;
     sal_Unicode cLiteral;
-    sal_Char    cMask;
+    char    cMask;
     sal_Int32   nStrIndex = 0;
     sal_Int32   i = 0;
     sal_Int32   n;
@@ -263,7 +257,7 @@ static OUString ImplPatternReformat( const OUString& rStr,
                 nStrIndex++;
             else
             {
-                // Otherwise we check if it is a invalid character. This is the case if it does not
+                // Otherwise we check if it is an invalid character. This is the case if it does not
                 // fit in the pattern of the next non-literal character.
                 n = i+1;
                 while ( n < rEditMask.getLength() )
@@ -367,15 +361,15 @@ static void ImplPatternMaxPos( const OUString& rStr, const OString& rEditMask,
         rPos = nCursorPos;
 }
 
-static void ImplPatternProcessStrictModify( Edit* pEdit,
-                                            const OString& rEditMask,
-                                            const OUString& rLiteralMask,
-                                            sal_uInt16 nFormatFlags, bool bSameMask )
+static OUString ImplPatternProcessStrictModify(const OUString& rText,
+                                               const OString& rEditMask,
+                                               const OUString& rLiteralMask,
+                                               bool bSameMask)
 {
-    OUString aText = pEdit->GetText();
+    OUString aText(rText);
 
     // remove leading blanks
-    if ( bSameMask && !(nFormatFlags & PATTERN_FORMAT_EMPTYLITERALS) )
+    if (bSameMask && !rEditMask.isEmpty())
     {
         sal_Int32 i = 0;
         sal_Int32 nMaxLen = aText.getLength();
@@ -393,28 +387,78 @@ static void ImplPatternProcessStrictModify( Edit* pEdit,
         aText = aText.copy( i );
     }
 
-    OUString aNewText = ImplPatternReformat( aText, rEditMask, rLiteralMask, nFormatFlags );
-    if ( aNewText != aText )
+    return ImplPatternReformat(aText, rEditMask, rLiteralMask, 0);
+}
+
+static void ImplPatternProcessStrictModify( Edit* pEdit,
+                                            const OString& rEditMask,
+                                            const OUString& rLiteralMask,
+                                            bool bSameMask )
+{
+    OUString aText = pEdit->GetText();
+    OUString aNewText = ImplPatternProcessStrictModify(aText,
+                                                       rEditMask,
+                                                       rLiteralMask,
+                                                       bSameMask);
+
+    if ( aNewText == aText )
+        return;
+
+    // adjust selection such that it remains at the end if it was there before
+    Selection aSel = pEdit->GetSelection();
+    sal_Int64 nMaxSel = std::max( aSel.Min(), aSel.Max() );
+    if ( nMaxSel >= aText.getLength() )
     {
-        // adjust selection such that it remains at the end if it was there before
-        Selection aSel = pEdit->GetSelection();
-        sal_Int64 nMaxSel = std::max( aSel.Min(), aSel.Max() );
-        if ( nMaxSel >= aText.getLength() )
+        sal_Int32 nMaxPos = aNewText.getLength();
+        ImplPatternMaxPos(aNewText, rEditMask, 0, bSameMask, nMaxSel, nMaxPos);
+        if ( aSel.Min() == aSel.Max() )
         {
-            sal_Int32 nMaxPos = aNewText.getLength();
-            ImplPatternMaxPos( aNewText, rEditMask, nFormatFlags, bSameMask, nMaxSel, nMaxPos );
-            if ( aSel.Min() == aSel.Max() )
-            {
-                aSel.Min() = nMaxPos;
-                aSel.Max() = aSel.Min();
-            }
-            else if ( aSel.Min() > aSel.Max() )
-                aSel.Min() = nMaxPos;
-            else
-                aSel.Max() = nMaxPos;
+            aSel.Min() = nMaxPos;
+            aSel.Max() = aSel.Min();
         }
-        pEdit->SetText( aNewText, aSel );
+        else if ( aSel.Min() > aSel.Max() )
+            aSel.Min() = nMaxPos;
+        else
+            aSel.Max() = nMaxPos;
     }
+    pEdit->SetText( aNewText, aSel );
+}
+
+static void ImplPatternProcessStrictModify( weld::Entry& rEntry,
+                                            const OString& rEditMask,
+                                            const OUString& rLiteralMask,
+                                            bool bSameMask )
+{
+    OUString aText = rEntry.get_text();
+    OUString aNewText = ImplPatternProcessStrictModify(aText,
+                                                       rEditMask,
+                                                       rLiteralMask,
+                                                       bSameMask);
+
+    if (aNewText == aText)
+        return;
+
+    // adjust selection such that it remains at the end if it was there before
+    int nStartPos, nEndPos;
+    rEntry.get_selection_bounds(nStartPos, nEndPos);
+
+    int nMaxSel = std::max(nStartPos, nEndPos);
+    if (nMaxSel >= aText.getLength())
+    {
+        sal_Int32 nMaxPos = aNewText.getLength();
+        ImplPatternMaxPos(aNewText, rEditMask, 0, bSameMask, nMaxSel, nMaxPos);
+        if (nStartPos == nEndPos)
+        {
+            nStartPos = nMaxPos;
+            nEndPos = nMaxPos;
+        }
+        else if (nStartPos > nMaxPos)
+            nStartPos = nMaxPos;
+        else
+            nEndPos = nMaxPos;
+    }
+    rEntry.set_text(aNewText);
+    rEntry.select_region(nStartPos, nEndPos);
 }
 
 static sal_Int32 ImplPatternLeftPos(const OString& rEditMask, sal_Int32 nCursorPos)
@@ -453,18 +497,37 @@ static sal_Int32 ImplPatternRightPos( const OUString& rStr, const OString& rEdit
     return nNewPos;
 }
 
-static bool ImplPatternProcessKeyInput( Edit* pEdit, const KeyEvent& rKEvt,
+namespace
+{
+    class IEditImplementation
+    {
+    public:
+        virtual ~IEditImplementation() {}
+
+        virtual OUString GetText() const = 0;
+        virtual void SetText(const OUString& rStr, const Selection& rSelection) = 0;
+
+        virtual Selection GetSelection() const = 0;
+        virtual void SetSelection(const Selection& rSelection) = 0;
+
+        virtual bool IsInsertMode() const = 0;
+
+        virtual void SetModified() = 0;
+    };
+}
+
+static bool ImplPatternProcessKeyInput( IEditImplementation& rEdit, const KeyEvent& rKEvt,
                                         const OString& rEditMask,
                                         const OUString& rLiteralMask,
                                         bool bStrictFormat,
-                                        sal_uInt16 nFormatFlags,
                                         bool bSameMask,
                                         bool& rbInKeyInput )
 {
     if ( rEditMask.isEmpty() || !bStrictFormat )
         return false;
 
-    Selection   aOldSel     = pEdit->GetSelection();
+    sal_uInt16 nFormatFlags = 0;
+    Selection   aOldSel     = rEdit.GetSelection();
     vcl::KeyCode aCode      = rKEvt.GetKeyCode();
     sal_Unicode cChar       = rKEvt.GetCharCode();
     sal_uInt16      nKeyCode    = aCode.GetCode();
@@ -480,7 +543,7 @@ static bool ImplPatternProcessKeyInput( Edit* pEdit, const KeyEvent& rKEvt,
             Selection aSel( ImplPatternLeftPos( rEditMask, nCursorPos ) );
             if ( bShift )
                 aSel.Min() = aOldSel.Min();
-            pEdit->SetSelection( aSel );
+            rEdit.SetSelection( aSel );
             return true;
         }
         else if ( nKeyCode == KEY_RIGHT )
@@ -490,12 +553,12 @@ static bool ImplPatternProcessKeyInput( Edit* pEdit, const KeyEvent& rKEvt,
             Selection aSel( aOldSel );
             aSel.Justify();
             nCursorPos = aSel.Min();
-            aSel.Max() = ImplPatternRightPos( pEdit->GetText(), rEditMask, nFormatFlags, bSameMask, nCursorPos );
+            aSel.Max() = ImplPatternRightPos( rEdit.GetText(), rEditMask, nFormatFlags, bSameMask, nCursorPos );
             if ( bShift )
                 aSel.Min() = aOldSel.Min();
             else
                 aSel.Min() = aSel.Max();
-            pEdit->SetSelection( aSel );
+            rEdit.SetSelection( aSel );
             return true;
         }
         else if ( nKeyCode == KEY_HOME )
@@ -512,7 +575,7 @@ static bool ImplPatternProcessKeyInput( Edit* pEdit, const KeyEvent& rKEvt,
             Selection aSel( nNewPos );
             if ( bShift )
                 aSel.Min() = aOldSel.Min();
-            pEdit->SetSelection( aSel );
+            rEdit.SetSelection( aSel );
             return true;
         }
         else if ( nKeyCode == KEY_END )
@@ -527,18 +590,18 @@ static bool ImplPatternProcessKeyInput( Edit* pEdit, const KeyEvent& rKEvt,
             Selection aSel( aOldSel );
             aSel.Justify();
             nCursorPos = static_cast<sal_Int32>(aSel.Min());
-            ImplPatternMaxPos( pEdit->GetText(), rEditMask, nFormatFlags, bSameMask, nCursorPos, nNewPos );
+            ImplPatternMaxPos( rEdit.GetText(), rEditMask, nFormatFlags, bSameMask, nCursorPos, nNewPos );
             aSel.Max() = nNewPos;
             if ( bShift )
                 aSel.Min() = aOldSel.Min();
             else
                 aSel.Min() = aSel.Max();
-            pEdit->SetSelection( aSel );
+            rEdit.SetSelection( aSel );
             return true;
         }
         else if ( (nKeyCode == KEY_BACKSPACE) || (nKeyCode == KEY_DELETE) )
         {
-            OUString          aOldStr( pEdit->GetText() );
+            OUString          aOldStr( rEdit.GetText() );
             OUStringBuffer    aStr( aOldStr );
             Selection   aSel = aOldSel;
 
@@ -586,19 +649,18 @@ static bool ImplPatternProcessKeyInput( Edit* pEdit, const KeyEvent& rKEvt,
                 if ( bSameMask )
                     aStr = ImplPatternReformat( aStr.toString(), rEditMask, rLiteralMask, nFormatFlags );
                 rbInKeyInput = true;
-                pEdit->SetText( aStr.toString(), Selection( nNewPos ) );
-                pEdit->SetModifyFlag();
-                pEdit->Modify();
+                rEdit.SetText( aStr.toString(), Selection( nNewPos ) );
+                rEdit.SetModified();
                 rbInKeyInput = false;
             }
             else
-                pEdit->SetSelection( Selection( nNewPos ) );
+                rEdit.SetSelection( Selection( nNewPos ) );
 
             return true;
         }
         else if ( nKeyCode == KEY_INSERT )
         {
-            // you can only set InsertModus for a PatternField if the
+            // you can only set InsertMode for a PatternField if the
             // mask is equal at all input positions
             if ( !bSameMask )
             {
@@ -639,10 +701,10 @@ static bool ImplPatternProcessKeyInput( Edit* pEdit, const KeyEvent& rKEvt,
                              ImplCommaPointCharEqual( cChar, rLiteralMask[nTempPos] ) )
                         {
                             nTempPos++;
-                            ImplPatternMaxPos( pEdit->GetText(), rEditMask, nFormatFlags, bSameMask, nNewPos, nTempPos );
+                            ImplPatternMaxPos( rEdit.GetText(), rEditMask, nFormatFlags, bSameMask, nNewPos, nTempPos );
                             if ( nTempPos > nNewPos )
                             {
-                                pEdit->SetSelection( Selection( nTempPos ) );
+                                rEdit.SetSelection( Selection( nTempPos ) );
                                 return true;
                             }
                         }
@@ -659,9 +721,9 @@ static bool ImplPatternProcessKeyInput( Edit* pEdit, const KeyEvent& rKEvt,
         cChar = 0;
     if ( cChar )
     {
-        OUStringBuffer  aStr = pEdit->GetText();
+        OUStringBuffer  aStr = rEdit.GetText();
         bool        bError = false;
-        if ( bSameMask && pEdit->IsInsertMode() )
+        if ( bSameMask && rEdit.IsInsertMode() )
         {
             // crop spaces and literals at the end until current position
             sal_Int32 n = aStr.getLength();
@@ -682,7 +744,7 @@ static bool ImplPatternProcessKeyInput( Edit* pEdit, const KeyEvent& rKEvt,
             {
                 // possibly extend string until cursor position
                 if ( aStr.getLength() < nNewPos )
-                    aStr.append( rLiteralMask.copy( aStr.getLength(), nNewPos-aStr.getLength() ));
+                    aStr.append( std::u16string_view(rLiteralMask).substr(aStr.getLength(), nNewPos-aStr.getLength()) );
                 if ( nNewPos < aStr.getLength() )
                     aStr.insert( cChar, nNewPos );
                 else if ( nNewPos < rEditMask.getLength() )
@@ -712,9 +774,8 @@ static bool ImplPatternProcessKeyInput( Edit* pEdit, const KeyEvent& rKEvt,
         {
             rbInKeyInput = true;
             Selection aNewSel( ImplPatternRightPos( aStr.toString(), rEditMask, nFormatFlags, bSameMask, nNewPos ) );
-            pEdit->SetText( aStr.toString(), aNewSel );
-            pEdit->SetModifyFlag();
-            pEdit->Modify();
+            rEdit.SetText( aStr.toString(), aNewSel );
+            rEdit.SetModified();
             rbInKeyInput = false;
         }
     }
@@ -722,59 +783,63 @@ static bool ImplPatternProcessKeyInput( Edit* pEdit, const KeyEvent& rKEvt,
     return true;
 }
 
-void PatternFormatter::ImplSetMask(const OString& rEditMask, const OUString& rLiteralMask)
+namespace
 {
-    m_aEditMask     = rEditMask;
-    maLiteralMask   = rLiteralMask;
-    mbSameMask      = true;
-
-    if ( m_aEditMask.getLength() != maLiteralMask.getLength() )
+    bool ImplSetMask(OString& rEditMask, OUString& rLiteralMask)
     {
-        OUStringBuffer aBuf(maLiteralMask);
-        if (m_aEditMask.getLength() < aBuf.getLength())
-            aBuf.remove(m_aEditMask.getLength(), aBuf.getLength() - m_aEditMask.getLength());
-        else
-            comphelper::string::padToLength(aBuf, m_aEditMask.getLength(), ' ');
-        maLiteralMask = aBuf.makeStringAndClear();
-    }
+        bool bSameMask      = true;
 
-    // Strict mode allows only the input mode if only equal characters are allowed as mask and if
-    // only spaces are specified which are not allowed by the mask
-    sal_Int32   i = 0;
-    sal_Char    c = 0;
-    while ( i < rEditMask.getLength() )
-    {
-        sal_Char cTemp = rEditMask[i];
-        if ( cTemp != EDITMASK_LITERAL )
+        if (rEditMask.getLength() != rLiteralMask.getLength())
         {
-            if ( (cTemp == EDITMASK_ALLCHAR) ||
-                 (cTemp == EDITMASK_UPPERALLCHAR) ||
-                 (cTemp == EDITMASK_NUMSPACE) )
+            OUStringBuffer aBuf(rLiteralMask);
+            if (rEditMask.getLength() < aBuf.getLength())
+                aBuf.remove(rEditMask.getLength(), aBuf.getLength() - rEditMask.getLength());
+            else
+                comphelper::string::padToLength(aBuf, rEditMask.getLength(), ' ');
+            rLiteralMask = aBuf.makeStringAndClear();
+        }
+
+        // Strict mode allows only the input mode if only equal characters are allowed as mask and if
+        // only spaces are specified which are not allowed by the mask
+        sal_Int32   i = 0;
+        char    c = 0;
+        while ( i < rEditMask.getLength() )
+        {
+            char cTemp = rEditMask[i];
+            if ( cTemp != EDITMASK_LITERAL )
             {
-                mbSameMask = false;
-                break;
-            }
-            if ( i < rLiteralMask.getLength() )
-            {
-                if ( rLiteralMask[i] != ' ' )
+                if ( (cTemp == EDITMASK_ALLCHAR) ||
+                     (cTemp == EDITMASK_UPPERALLCHAR) ||
+                     (cTemp == EDITMASK_NUMSPACE) )
                 {
-                    mbSameMask = false;
+                    bSameMask = false;
+                    break;
+                }
+                if ( i < rLiteralMask.getLength() )
+                {
+                    if ( rLiteralMask[i] != ' ' )
+                    {
+                        bSameMask = false;
+                        break;
+                    }
+                }
+                if ( !c )
+                    c = cTemp;
+                if ( cTemp != c )
+                {
+                    bSameMask = false;
                     break;
                 }
             }
-            if ( !c )
-                c = cTemp;
-            if ( cTemp != c )
-            {
-                mbSameMask = false;
-                break;
-            }
+            i++;
         }
-        i++;
+
+        return bSameMask;
     }
 }
 
-PatternFormatter::PatternFormatter()
+PatternFormatter::PatternFormatter(Edit* pEdit)
+    : FormatterBase(pEdit)
 {
     mbSameMask          = true;
     mbInPattKeyInput    = false;
@@ -787,13 +852,130 @@ PatternFormatter::~PatternFormatter()
 void PatternFormatter::SetMask( const OString& rEditMask,
                                 const OUString& rLiteralMask )
 {
-    ImplSetMask( rEditMask, rLiteralMask );
+    m_aEditMask = rEditMask;
+    maLiteralMask = rLiteralMask;
+    mbSameMask = ImplSetMask(m_aEditMask, maLiteralMask);
     ReformatAll();
+}
+
+namespace
+{
+    class EntryImplementation : public IEditImplementation
+    {
+    public:
+        EntryImplementation(weld::PatternFormatter& rFormatter)
+            : m_rFormatter(rFormatter)
+            , m_rEntry(rFormatter.get_widget())
+        {
+        }
+
+        virtual OUString GetText() const override
+        {
+            return m_rEntry.get_text();
+        }
+
+        virtual void SetText(const OUString& rStr, const Selection& rSelection) override
+        {
+            m_rEntry.set_text(rStr);
+            SetSelection(rSelection);
+        }
+
+        virtual Selection GetSelection() const override
+        {
+            int nStartPos, nEndPos;
+            m_rEntry.get_selection_bounds(nStartPos, nEndPos);
+            return Selection(nStartPos, nEndPos);
+        }
+
+        virtual void SetSelection(const Selection& rSelection) override
+        {
+            auto nMin = rSelection.Min();
+            auto nMax = rSelection.Max();
+            m_rEntry.select_region(nMin < 0 ? 0 : nMin, nMax == SELECTION_MAX ? -1 : nMax);
+        }
+
+        virtual bool IsInsertMode() const override
+        {
+            return !m_rEntry.get_overwrite_mode();
+        }
+
+        virtual void SetModified() override
+        {
+            m_rFormatter.Modify();
+        }
+
+    private:
+        weld::PatternFormatter& m_rFormatter;
+        weld::Entry& m_rEntry;
+    };
+}
+
+namespace weld
+{
+    void PatternFormatter::SetStrictFormat(bool bStrict)
+    {
+        if (bStrict != m_bStrictFormat)
+        {
+            m_bStrictFormat = bStrict;
+            if (m_bStrictFormat)
+                ReformatAll();
+        }
+    }
+
+    void PatternFormatter::SetMask(const OString& rEditMask,
+                                   const OUString& rLiteralMask)
+    {
+        m_aEditMask = rEditMask;
+        m_aLiteralMask = rLiteralMask;
+        m_bSameMask = ImplSetMask(m_aEditMask, m_aLiteralMask);
+        ReformatAll();
+    }
+
+    void PatternFormatter::ReformatAll()
+    {
+        m_rEntry.set_text(ImplPatternReformat(m_rEntry.get_text(), m_aEditMask, m_aLiteralMask, 0/*nFormatFlags*/));
+        if (!m_bSameMask && m_bStrictFormat && m_rEntry.get_editable())
+            m_rEntry.set_overwrite_mode(true);
+    }
+
+    void PatternFormatter::EntryGainFocus()
+    {
+        m_bReformat = false;
+    }
+
+    void PatternFormatter::EntryLostFocus()
+    {
+        if (m_bReformat)
+            ReformatAll();
+    }
+
+    void PatternFormatter::Modify()
+    {
+        if (!m_bInPattKeyInput)
+        {
+            if (m_bStrictFormat)
+                ImplPatternProcessStrictModify(m_rEntry, m_aEditMask, m_aLiteralMask, m_bSameMask);
+            else
+                m_bReformat = true;
+        }
+        m_aModifyHdl.Call(m_rEntry);
+    }
+
+    IMPL_LINK(PatternFormatter, KeyInputHdl, const KeyEvent&, rKEvt, bool)
+    {
+        if (m_aKeyPressHdl.Call(rKEvt))
+            return true;
+        if (rKEvt.GetKeyCode().IsMod2())
+            return false;
+        EntryImplementation aAdapt(*this);
+        return ImplPatternProcessKeyInput(aAdapt, rKEvt, m_aEditMask, m_aLiteralMask,
+                                          m_bStrictFormat,
+                                          m_bSameMask, m_bInPattKeyInput);
+    }
 }
 
 void PatternFormatter::SetString( const OUString& rStr )
 {
-    maFieldString = rStr;
     if ( GetField() )
     {
         GetField()->SetText( rStr );
@@ -819,25 +1001,72 @@ void PatternFormatter::Reformat()
     }
 }
 
-PatternField::PatternField( vcl::Window* pParent, WinBits nWinStyle ) :
-    SpinField( pParent, nWinStyle )
+PatternField::PatternField(vcl::Window* pParent, WinBits nWinStyle)
+    : SpinField(pParent, nWinStyle)
+    , PatternFormatter(this)
 {
-    SetField( this );
     Reformat();
 }
 
 void PatternField::dispose()
 {
-    PatternFormatter::SetField( nullptr );
+    ClearField();
     SpinField::dispose();
+}
+
+namespace
+{
+    class EditImplementation : public IEditImplementation
+    {
+    public:
+        EditImplementation(Edit& rEdit)
+            : m_rEdit(rEdit)
+        {
+        }
+
+        virtual OUString GetText() const override
+        {
+            return m_rEdit.GetText();
+        }
+
+        virtual void SetText(const OUString& rStr, const Selection& rSelection) override
+        {
+            m_rEdit.SetText(rStr, rSelection);
+        }
+
+        virtual Selection GetSelection() const override
+        {
+            return m_rEdit.GetSelection();
+        }
+
+        virtual void SetSelection(const Selection& rSelection) override
+        {
+            m_rEdit.SetSelection(rSelection);
+        }
+
+        virtual bool IsInsertMode() const override
+        {
+            return m_rEdit.IsInsertMode();
+        }
+
+        virtual void SetModified() override
+        {
+            m_rEdit.SetModifyFlag();
+            m_rEdit.Modify();
+        }
+
+    private:
+        Edit& m_rEdit;
+    };
 }
 
 bool PatternField::PreNotify( NotifyEvent& rNEvt )
 {
     if ( (rNEvt.GetType() == MouseNotifyEvent::KEYINPUT) && !rNEvt.GetKeyEvent()->GetKeyCode().IsMod2() )
     {
-        if ( ImplPatternProcessKeyInput( GetField(), *rNEvt.GetKeyEvent(), GetEditMask(), GetLiteralMask(),
-                                         IsStrictFormat(), 0/*nFormatFlags*/,
+        EditImplementation aAdapt(*GetField());
+        if ( ImplPatternProcessKeyInput( aAdapt, *rNEvt.GetKeyEvent(), GetEditMask(), GetLiteralMask(),
+                                         IsStrictFormat(),
                                          ImplIsSameMask(), ImplGetInPattKeyInput() ) )
             return true;
     }
@@ -863,7 +1092,7 @@ void PatternField::Modify()
     if ( !ImplGetInPattKeyInput() )
     {
         if ( IsStrictFormat() )
-            ImplPatternProcessStrictModify( GetField(), GetEditMask(), GetLiteralMask(), 0/*nFormatFlags*/, ImplIsSameMask() );
+            ImplPatternProcessStrictModify( GetField(), GetEditMask(), GetLiteralMask(), ImplIsSameMask() );
         else
             MarkToBeReformatted( true );
     }
@@ -871,16 +1100,16 @@ void PatternField::Modify()
     SpinField::Modify();
 }
 
-PatternBox::PatternBox( vcl::Window* pParent, WinBits nWinStyle ) :
-    ComboBox( pParent, nWinStyle )
+PatternBox::PatternBox(vcl::Window* pParent, WinBits nWinStyle)
+    : ComboBox( pParent, nWinStyle )
+    , PatternFormatter(this)
 {
-    SetField( this );
     Reformat();
 }
 
 void PatternBox::dispose()
 {
-    PatternFormatter::SetField( nullptr );
+    ClearField();
     ComboBox::dispose();
 }
 
@@ -888,8 +1117,9 @@ bool PatternBox::PreNotify( NotifyEvent& rNEvt )
 {
     if ( (rNEvt.GetType() == MouseNotifyEvent::KEYINPUT) && !rNEvt.GetKeyEvent()->GetKeyCode().IsMod2() )
     {
-        if ( ImplPatternProcessKeyInput( GetField(), *rNEvt.GetKeyEvent(), GetEditMask(), GetLiteralMask(),
-                                         IsStrictFormat(), 0/*nFormatFlags*/,
+        EditImplementation aAdapt(*GetField());
+        if ( ImplPatternProcessKeyInput( aAdapt, *rNEvt.GetKeyEvent(), GetEditMask(), GetLiteralMask(),
+                                         IsStrictFormat(),
                                          ImplIsSameMask(), ImplGetInPattKeyInput() ) )
             return true;
     }
@@ -915,7 +1145,7 @@ void PatternBox::Modify()
     if ( !ImplGetInPattKeyInput() )
     {
         if ( IsStrictFormat() )
-            ImplPatternProcessStrictModify( GetField(), GetEditMask(), GetLiteralMask(), 0/*nFormatFlags*/, ImplIsSameMask() );
+            ImplPatternProcessStrictModify( GetField(), GetEditMask(), GetLiteralMask(), ImplIsSameMask() );
         else
             MarkToBeReformatted( true );
     }
@@ -951,7 +1181,7 @@ static ExtDateFieldFormat ImplGetExtFormat( DateOrder eOld )
 static sal_uInt16 ImplCutNumberFromString( OUString& rStr )
 {
     sal_Int32 i1 = 0;
-    while (i1 != rStr.getLength() && !(rStr[i1] >= '0' && rStr[i1] <= '9')) {
+    while (i1 != rStr.getLength() && (rStr[i1] < '0' || rStr[i1] > '9')) {
         ++i1;
     }
     sal_Int32 i2 = i1;
@@ -992,7 +1222,7 @@ static sal_uInt16 ImplCutMonthFromString( OUString& rStr, const CalendarWrapper&
 static OUString ImplGetDateSep( const LocaleDataWrapper& rLocaleDataWrapper, ExtDateFieldFormat eFormat )
 {
     if ( ( eFormat == ExtDateFieldFormat::ShortYYMMDD_DIN5008 ) || ( eFormat == ExtDateFieldFormat::ShortYYYYMMDD_DIN5008 ) )
-        return OUString("-");
+        return "-";
     else
         return rLocaleDataWrapper.getDateSep();
 }
@@ -1009,8 +1239,8 @@ static bool ImplDateProcessKeyInput( const KeyEvent& rKEvt, ExtDateFieldFormat e
              (cChar == ImplGetDateSep( rLocaleDataWrapper, eFormat )[0]));
 }
 
-static bool ImplDateGetValue( const OUString& rStr, Date& rDate, ExtDateFieldFormat eDateOrder,
-                              const LocaleDataWrapper& rLocaleDataWrapper, const CalendarWrapper& rCalendarWrapper )
+bool DateFormatter::TextToDate(const OUString& rStr, Date& rDate, ExtDateFieldFormat eDateOrder,
+                               const LocaleDataWrapper& rLocaleDataWrapper, const CalendarWrapper& rCalendarWrapper)
 {
     sal_uInt16 nDay = 0;
     sal_uInt16 nMonth = 0;
@@ -1109,7 +1339,7 @@ static bool ImplDateGetValue( const OUString& rStr, Date& rDate, ExtDateFieldFor
         return false;
 
     Date aNewDate( nDay, nMonth, nYear );
-    DateFormatter::ExpandCentury( aNewDate, utl::MiscCfg().GetYear2000() );
+    DateFormatter::ExpandCentury( aNewDate, officecfg::Office::Common::DateFormat::TwoDigitYear::get() );
     if ( aNewDate.IsValidDate() )
     {
         rDate = aNewDate;
@@ -1118,11 +1348,11 @@ static bool ImplDateGetValue( const OUString& rStr, Date& rDate, ExtDateFieldFor
     return false;
 }
 
-bool DateFormatter::ImplDateReformat( const OUString& rStr, OUString& rOutStr )
+void DateFormatter::ImplDateReformat( const OUString& rStr, OUString& rOutStr )
 {
     Date aDate( Date::EMPTY );
-    if ( !ImplDateGetValue( rStr, aDate, GetExtDateFormat(true), ImplGetLocaleDataWrapper(), GetCalendarWrapper() ) )
-        return true;
+    if (!TextToDate(rStr, aDate, GetExtDateFormat(true), ImplGetLocaleDataWrapper(), GetCalendarWrapper()))
+        return;
 
     Date aTempDate = aDate;
     if ( aTempDate > GetMax() )
@@ -1131,14 +1361,36 @@ bool DateFormatter::ImplDateReformat( const OUString& rStr, OUString& rOutStr )
         aTempDate = GetMin();
 
     rOutStr = ImplGetDateAsText( aTempDate );
-
-    return true;
 }
 
-OUString DateFormatter::ImplGetDateAsText( const Date& rDate ) const
+namespace
+{
+    ExtDateFieldFormat ResolveSystemFormat(ExtDateFieldFormat eDateFormat, const LocaleDataWrapper& rLocaleData)
+    {
+        if (eDateFormat <= ExtDateFieldFormat::SystemShortYYYY)
+        {
+            bool bShowCentury = (eDateFormat == ExtDateFieldFormat::SystemShortYYYY);
+            switch (rLocaleData.getDateOrder())
+            {
+                case DateOrder::DMY:
+                    eDateFormat = bShowCentury ? ExtDateFieldFormat::ShortDDMMYYYY : ExtDateFieldFormat::ShortDDMMYY;
+                    break;
+                case DateOrder::MDY:
+                    eDateFormat = bShowCentury ? ExtDateFieldFormat::ShortMMDDYYYY : ExtDateFieldFormat::ShortMMDDYY;
+                    break;
+                default:
+                    eDateFormat = bShowCentury ? ExtDateFieldFormat::ShortYYYYMMDD : ExtDateFieldFormat::ShortYYMMDD;
+            }
+        }
+        return eDateFormat;
+    }
+}
+
+OUString DateFormatter::FormatDate(const Date& rDate, ExtDateFieldFormat eExtFormat,
+                                   const LocaleDataWrapper& rLocaleData, CalendarWrapper& rCalendarWrapper)
 {
     bool bShowCentury = false;
-    switch ( GetExtDateFormat() )
+    switch (eExtFormat)
     {
         case ExtDateFieldFormat::SystemShortYYYY:
         case ExtDateFieldFormat::SystemLong:
@@ -1159,7 +1411,7 @@ OUString DateFormatter::ImplGetDateAsText( const Date& rDate ) const
     if ( !bShowCentury )
     {
         // Check if I have to use force showing the century
-        sal_uInt16 nTwoDigitYearStart = utl::MiscCfg().GetYear2000();
+        sal_uInt16 nTwoDigitYearStart = officecfg::Office::Common::DateFormat::TwoDigitYear::get();
         sal_uInt16 nYear = rDate.GetYearUnsigned();
 
         // If year is not in double digit range
@@ -1170,7 +1422,9 @@ OUString DateFormatter::ImplGetDateAsText( const Date& rDate ) const
     sal_Unicode aBuf[128];
     sal_Unicode* pBuf = aBuf;
 
-    OUString aDateSep = ImplGetDateSep( ImplGetLocaleDataWrapper(), GetExtDateFormat( true ) );
+    eExtFormat = ResolveSystemFormat(eExtFormat, rLocaleData);
+
+    OUString aDateSep = ImplGetDateSep( rLocaleData, eExtFormat );
     sal_uInt16 nDay = rDate.GetDay();
     sal_uInt16 nMonth = rDate.GetMonth();
     sal_Int16 nYear = rDate.GetYear();
@@ -1179,11 +1433,11 @@ OUString DateFormatter::ImplGetDateAsText( const Date& rDate ) const
     if ( !bShowCentury )
         nYear %= 100;
 
-    switch ( GetExtDateFormat( true ) )
+    switch (eExtFormat)
     {
         case ExtDateFieldFormat::SystemLong:
         {
-            return ImplGetLocaleDataWrapper().getLongDate( rDate, GetCalendarWrapper(), !bShowCentury );
+            return rLocaleData.getLongDate( rDate, rCalendarWrapper, !bShowCentury );
         }
         case ExtDateFieldFormat::ShortDDMMYY:
         case ExtDateFieldFormat::ShortDDMMYYYY:
@@ -1224,6 +1478,11 @@ OUString DateFormatter::ImplGetDateAsText( const Date& rDate ) const
     }
 
     return OUString(aBuf, pBuf-aBuf);
+}
+
+OUString DateFormatter::ImplGetDateAsText( const Date& rDate ) const
+{
+    return DateFormatter::FormatDate(rDate, GetExtDateFormat(), ImplGetLocaleDataWrapper(), GetCalendarWrapper());
 }
 
 static void ImplDateIncrementDay( Date& rDate, bool bUp )
@@ -1296,19 +1555,19 @@ static void ImplDateIncrementYear( Date& rDate, bool bUp )
         if ( nYear > SAL_MIN_INT16 )
             rDate.SetYear( rDate.GetPrevYear() );
     }
-    if (nMonth == 2)
+    if (nMonth != 2)
+        return;
+
+    // Handle February 29 from leap year to non-leap year.
+    sal_uInt16 nDay = rDate.GetDay();
+    if (nDay > 28)
     {
-        // Handle February 29 from leap year to non-leap year.
-        sal_uInt16 nDay = rDate.GetDay();
-        if (nDay > 28)
-        {
-            // The check would not be necessary if it was guaranteed that the
-            // date was valid before and actually was a leap year,
-            // de-/incrementing a leap year with 29 always results in 28.
-            sal_uInt16 nDaysInMonth = Date::GetDaysInMonth( nMonth, rDate.GetYear());
-            if (nDay > nDaysInMonth)
-                rDate.SetDay( nDaysInMonth);
-        }
+        // The check would not be necessary if it was guaranteed that the
+        // date was valid before and actually was a leap year,
+        // de-/incrementing a leap year with 29 always results in 28.
+        sal_uInt16 nDaysInMonth = Date::GetDaysInMonth( nMonth, rDate.GetYear());
+        if (nDay > nDaysInMonth)
+            rDate.SetDay( nDaysInMonth);
     }
 }
 
@@ -1317,132 +1576,128 @@ bool DateFormatter::ImplAllowMalformedInput() const
     return !IsEnforceValidValue();
 }
 
+int DateFormatter::GetDateArea(ExtDateFieldFormat eFormat, const OUString& rText, int nCursor, const LocaleDataWrapper& rLocaleDataWrapper)
+{
+    sal_Int8 nDateArea = 0;
+
+    if ( eFormat == ExtDateFieldFormat::SystemLong )
+    {
+        eFormat = ImplGetExtFormat(rLocaleDataWrapper.getLongDateOrder());
+        nDateArea = 1;
+    }
+    else
+    {
+        // search area
+        sal_Int32 nPos = 0;
+        OUString aDateSep = ImplGetDateSep(rLocaleDataWrapper, eFormat);
+        for ( sal_Int8 i = 1; i <= 3; i++ )
+        {
+            nPos = rText.indexOf( aDateSep, nPos );
+            if (nPos < 0 || nPos >= nCursor)
+            {
+                nDateArea = i;
+                break;
+            }
+            else
+                nPos++;
+        }
+    }
+
+    return nDateArea;
+}
+
 void DateField::ImplDateSpinArea( bool bUp )
 {
     // increment days if all is selected
-    if ( GetField() )
+    if ( !GetField() )
+        return;
+
+    Date aDate( GetDate() );
+    Selection aSelection = GetField()->GetSelection();
+    aSelection.Justify();
+    OUString aText( GetText() );
+    if ( static_cast<sal_Int32>(aSelection.Len()) == aText.getLength() )
+        ImplDateIncrementDay( aDate, bUp );
+    else
     {
-        Date aDate( GetDate() );
-        Selection aSelection = GetField()->GetSelection();
-        aSelection.Justify();
-        OUString aText( GetText() );
-        if ( (sal_Int32)aSelection.Len() == aText.getLength() )
-            ImplDateIncrementDay( aDate, bUp );
-        else
+        ExtDateFieldFormat eFormat = GetExtDateFormat( true );
+        sal_Int8 nDateArea = GetDateArea(eFormat, aText, aSelection.Max(), ImplGetLocaleDataWrapper());
+
+        switch( eFormat )
         {
-            sal_Int8 nDateArea = 0;
-
-            ExtDateFieldFormat eFormat = GetExtDateFormat( true );
-            if ( eFormat == ExtDateFieldFormat::SystemLong )
+            case ExtDateFieldFormat::ShortMMDDYY:
+            case ExtDateFieldFormat::ShortMMDDYYYY:
+            switch( nDateArea )
             {
-                eFormat = ImplGetExtFormat( ImplGetLocaleDataWrapper().getLongDateOrder() );
-                nDateArea = 1;
-            }
-            else
-            {
-                // search area
-                sal_Int32 nPos = 0;
-                OUString aDateSep = ImplGetDateSep( ImplGetLocaleDataWrapper(), eFormat );
-                for ( sal_Int8 i = 1; i <= 3; i++ )
-                {
-                    nPos = aText.indexOf( aDateSep, nPos );
-                    if (nPos < 0 || nPos >= (sal_Int32)aSelection.Max())
-                    {
-                        nDateArea = i;
+                case 1: ImplDateIncrementMonth( aDate, bUp );
                         break;
-                    }
-                    else
-                        nPos++;
-                }
+                case 2: ImplDateIncrementDay( aDate, bUp );
+                        break;
+                case 3: ImplDateIncrementYear( aDate, bUp );
+                        break;
             }
-
-            switch( eFormat )
+            break;
+            case ExtDateFieldFormat::ShortDDMMYY:
+            case ExtDateFieldFormat::ShortDDMMYYYY:
+            switch( nDateArea )
             {
-                case ExtDateFieldFormat::ShortMMDDYY:
-                case ExtDateFieldFormat::ShortMMDDYYYY:
-                switch( nDateArea )
-                {
-                    case 1: ImplDateIncrementMonth( aDate, bUp );
-                            break;
-                    case 2: ImplDateIncrementDay( aDate, bUp );
-                            break;
-                    case 3: ImplDateIncrementYear( aDate, bUp );
-                            break;
-                }
-                break;
-                case ExtDateFieldFormat::ShortDDMMYY:
-                case ExtDateFieldFormat::ShortDDMMYYYY:
-                switch( nDateArea )
-                {
-                    case 1: ImplDateIncrementDay( aDate, bUp );
-                            break;
-                    case 2: ImplDateIncrementMonth( aDate, bUp );
-                            break;
-                    case 3: ImplDateIncrementYear( aDate, bUp );
-                            break;
-                }
-                break;
-                case ExtDateFieldFormat::ShortYYMMDD:
-                case ExtDateFieldFormat::ShortYYYYMMDD:
-                case ExtDateFieldFormat::ShortYYMMDD_DIN5008:
-                case ExtDateFieldFormat::ShortYYYYMMDD_DIN5008:
-                switch( nDateArea )
-                {
-                    case 1: ImplDateIncrementYear( aDate, bUp );
-                            break;
-                    case 2: ImplDateIncrementMonth( aDate, bUp );
-                            break;
-                    case 3: ImplDateIncrementDay( aDate, bUp );
-                            break;
-                }
-                break;
-                default:
-                    OSL_FAIL( "invalid conversion" );
-                    break;
+                case 1: ImplDateIncrementDay( aDate, bUp );
+                        break;
+                case 2: ImplDateIncrementMonth( aDate, bUp );
+                        break;
+                case 3: ImplDateIncrementYear( aDate, bUp );
+                        break;
             }
+            break;
+            case ExtDateFieldFormat::ShortYYMMDD:
+            case ExtDateFieldFormat::ShortYYYYMMDD:
+            case ExtDateFieldFormat::ShortYYMMDD_DIN5008:
+            case ExtDateFieldFormat::ShortYYYYMMDD_DIN5008:
+            switch( nDateArea )
+            {
+                case 1: ImplDateIncrementYear( aDate, bUp );
+                        break;
+                case 2: ImplDateIncrementMonth( aDate, bUp );
+                        break;
+                case 3: ImplDateIncrementDay( aDate, bUp );
+                        break;
+            }
+            break;
+            default:
+                OSL_FAIL( "invalid conversion" );
+                break;
         }
-
-        ImplNewFieldValue( aDate );
     }
+
+    ImplNewFieldValue( aDate );
 }
 
-void DateFormatter::ImplInit()
+DateFormatter::DateFormatter(Edit* pEdit)
+    : FormatterBase(pEdit)
+    , maFieldDate(0)
+    , maLastDate(0)
+    , maMin(1, 1, 1900)
+    , maMax(31, 12, 2200)
+    , mbLongFormat(false)
+    , mbShowDateCentury(true)
+    , mnExtDateFormat(ExtDateFieldFormat::SystemShort)
+    , mbEnforceValidValue(true)
 {
-    mbLongFormat        = false;
-    mbShowDateCentury   = true;
-    mpCalendarWrapper   = nullptr;
-    mnExtDateFormat     = ExtDateFieldFormat::SystemShort;
-}
-
-DateFormatter::DateFormatter() :
-    maFieldDate( 0 ),
-    maLastDate( 0 ),
-    maMin( 1, 1, 1900 ),
-    maMax( 31, 12, 2200 ),
-    mbEnforceValidValue( true )
-{
-    ImplInit();
 }
 
 DateFormatter::~DateFormatter()
 {
 }
 
-void DateFormatter::SetLocale( const css::lang::Locale& rLocale )
-{
-    mpCalendarWrapper.reset();
-    FormatterBase::SetLocale( rLocale );
-}
-
 CalendarWrapper& DateFormatter::GetCalendarWrapper() const
 {
-    if ( !mpCalendarWrapper )
+    if (!mxCalendarWrapper)
     {
-        const_cast<DateFormatter*>(this)->mpCalendarWrapper.reset( new CalendarWrapper( comphelper::getProcessComponentContext() ) );
-        mpCalendarWrapper->loadDefaultCalendar( GetLocale() );
+        const_cast<DateFormatter*>(this)->mxCalendarWrapper.reset( new CalendarWrapper( comphelper::getProcessComponentContext() ) );
+        mxCalendarWrapper->loadDefaultCalendar( GetLocale() );
     }
 
-    return *mpCalendarWrapper;
+    return *mxCalendarWrapper;
 }
 
 void DateFormatter::SetExtDateFormat( ExtDateFieldFormat eFormat )
@@ -1453,23 +1708,10 @@ void DateFormatter::SetExtDateFormat( ExtDateFieldFormat eFormat )
 
 ExtDateFieldFormat DateFormatter::GetExtDateFormat( bool bResolveSystemFormat ) const
 {
-    ExtDateFieldFormat eDateFormat = (ExtDateFieldFormat)mnExtDateFormat;
+    ExtDateFieldFormat eDateFormat = mnExtDateFormat;
 
-    if ( bResolveSystemFormat && ( eDateFormat <= ExtDateFieldFormat::SystemShortYYYY ) )
-    {
-        bool bShowCentury = (eDateFormat == ExtDateFieldFormat::SystemShortYYYY);
-        switch ( ImplGetLocaleDataWrapper().getDateOrder() )
-        {
-            case DateOrder::DMY:
-                eDateFormat = bShowCentury ? ExtDateFieldFormat::ShortDDMMYYYY : ExtDateFieldFormat::ShortDDMMYY;
-                break;
-            case DateOrder::MDY:
-                eDateFormat = bShowCentury ? ExtDateFieldFormat::ShortMMDDYYYY : ExtDateFieldFormat::ShortMMDDYY;
-                break;
-            default:
-                eDateFormat = bShowCentury ? ExtDateFieldFormat::ShortYYYYMMDD : ExtDateFieldFormat::ShortYYMMDD;
-        }
-    }
+    if (bResolveSystemFormat)
+        eDateFormat = ResolveSystemFormat(eDateFormat, ImplGetLocaleDataWrapper());
 
     return eDateFormat;
 }
@@ -1511,49 +1753,59 @@ void DateFormatter::SetLongFormat( bool bLong )
     ReformatAll();
 }
 
+namespace
+{
+    ExtDateFieldFormat ChangeDateCentury(ExtDateFieldFormat eExtDateFormat, bool bShowDateCentury)
+    {
+        // #91913# Remove LongFormat and DateShowCentury - redundant
+        if (bShowDateCentury)
+        {
+            switch (eExtDateFormat)
+            {
+                case ExtDateFieldFormat::SystemShort:
+                case ExtDateFieldFormat::SystemShortYY:
+                    eExtDateFormat = ExtDateFieldFormat::SystemShortYYYY;  break;
+                case ExtDateFieldFormat::ShortDDMMYY:
+                    eExtDateFormat = ExtDateFieldFormat::ShortDDMMYYYY;     break;
+                case ExtDateFieldFormat::ShortMMDDYY:
+                    eExtDateFormat = ExtDateFieldFormat::ShortMMDDYYYY;     break;
+                case ExtDateFieldFormat::ShortYYMMDD:
+                    eExtDateFormat = ExtDateFieldFormat::ShortYYYYMMDD;     break;
+                case ExtDateFieldFormat::ShortYYMMDD_DIN5008:
+                    eExtDateFormat = ExtDateFieldFormat::ShortYYYYMMDD_DIN5008; break;
+                default:
+                    ;
+            }
+        }
+        else
+        {
+            switch (eExtDateFormat)
+            {
+                case ExtDateFieldFormat::SystemShort:
+                case ExtDateFieldFormat::SystemShortYYYY:
+                    eExtDateFormat = ExtDateFieldFormat::SystemShortYY;    break;
+                case ExtDateFieldFormat::ShortDDMMYYYY:
+                    eExtDateFormat = ExtDateFieldFormat::ShortDDMMYY;       break;
+                case ExtDateFieldFormat::ShortMMDDYYYY:
+                    eExtDateFormat = ExtDateFieldFormat::ShortMMDDYY;       break;
+                case ExtDateFieldFormat::ShortYYYYMMDD:
+                    eExtDateFormat = ExtDateFieldFormat::ShortYYMMDD;       break;
+                case ExtDateFieldFormat::ShortYYYYMMDD_DIN5008:
+                    eExtDateFormat = ExtDateFieldFormat::ShortYYMMDD_DIN5008;  break;
+                default:
+                    ;
+            }
+        }
+
+        return eExtDateFormat;
+    }
+}
+
 void DateFormatter::SetShowDateCentury( bool bShowDateCentury )
 {
     mbShowDateCentury = bShowDateCentury;
 
-    // #91913# Remove LongFormat and DateShowCentury - redundant
-    if ( bShowDateCentury )
-    {
-        switch ( GetExtDateFormat() )
-        {
-            case ExtDateFieldFormat::SystemShort:
-            case ExtDateFieldFormat::SystemShortYY:
-                SetExtDateFormat( ExtDateFieldFormat::SystemShortYYYY );  break;
-            case ExtDateFieldFormat::ShortDDMMYY:
-                SetExtDateFormat( ExtDateFieldFormat::ShortDDMMYYYY );     break;
-            case ExtDateFieldFormat::ShortMMDDYY:
-                SetExtDateFormat( ExtDateFieldFormat::ShortMMDDYYYY );     break;
-            case ExtDateFieldFormat::ShortYYMMDD:
-                SetExtDateFormat( ExtDateFieldFormat::ShortYYYYMMDD );     break;
-            case ExtDateFieldFormat::ShortYYMMDD_DIN5008:
-                SetExtDateFormat( ExtDateFieldFormat::ShortYYYYMMDD_DIN5008 ); break;
-            default:
-                ;
-        }
-    }
-    else
-    {
-        switch ( GetExtDateFormat() )
-        {
-            case ExtDateFieldFormat::SystemShort:
-            case ExtDateFieldFormat::SystemShortYYYY:
-                SetExtDateFormat( ExtDateFieldFormat::SystemShortYY );    break;
-            case ExtDateFieldFormat::ShortDDMMYYYY:
-                SetExtDateFormat( ExtDateFieldFormat::ShortDDMMYY );       break;
-            case ExtDateFieldFormat::ShortMMDDYYYY:
-                SetExtDateFormat( ExtDateFieldFormat::ShortMMDDYY );       break;
-            case ExtDateFieldFormat::ShortYYYYMMDD:
-                SetExtDateFormat( ExtDateFieldFormat::ShortYYMMDD );       break;
-            case ExtDateFieldFormat::ShortYYYYMMDD_DIN5008:
-                SetExtDateFormat( ExtDateFieldFormat::ShortYYMMDD_DIN5008 );  break;
-            default:
-                ;
-        }
-    }
+    SetExtDateFormat(ChangeDateCentury(GetExtDateFormat(), bShowDateCentury));
 
     ReformatAll();
 }
@@ -1565,7 +1817,7 @@ void DateFormatter::SetDate( const Date& rNewDate )
     maLastDate = GetDate();
 }
 
-void DateFormatter::ImplSetUserDate( const Date& rNewDate, Selection* pNewSelection )
+void DateFormatter::ImplSetUserDate( const Date& rNewDate, Selection const * pNewSelection )
 {
     Date aNewDate = rNewDate;
     if ( aNewDate > maMax )
@@ -1580,30 +1832,30 @@ void DateFormatter::ImplSetUserDate( const Date& rNewDate, Selection* pNewSelect
 
 void DateFormatter::ImplNewFieldValue( const Date& rDate )
 {
-    if ( GetField() )
+    if ( !GetField() )
+        return;
+
+    Selection aSelection = GetField()->GetSelection();
+    aSelection.Justify();
+    OUString aText = GetField()->GetText();
+
+    // If selected until the end then keep it that way
+    if ( static_cast<sal_Int32>(aSelection.Max()) == aText.getLength() )
     {
-        Selection aSelection = GetField()->GetSelection();
-        aSelection.Justify();
-        OUString aText = GetField()->GetText();
+        if ( !aSelection.Len() )
+            aSelection.Min() = SELECTION_MAX;
+        aSelection.Max() = SELECTION_MAX;
+    }
 
-        // If selected until the end then keep it that way
-        if ( (sal_Int32)aSelection.Max() == aText.getLength() )
-        {
-            if ( !aSelection.Len() )
-                aSelection.Min() = SELECTION_MAX;
-            aSelection.Max() = SELECTION_MAX;
-        }
+    Date aOldLastDate  = maLastDate;
+    ImplSetUserDate( rDate, &aSelection );
+    maLastDate = aOldLastDate;
 
-        Date aOldLastDate  = maLastDate;
-        ImplSetUserDate( rDate, &aSelection );
-        maLastDate = aOldLastDate;
-
-        // Modify at Edit is only set at KeyInput
-        if ( GetField()->GetText() != aText )
-        {
-            GetField()->SetModifyFlag();
-            GetField()->Modify();
-        }
+    // Modify at Edit is only set at KeyInput
+    if ( GetField()->GetText() != aText )
+    {
+        GetField()->SetModifyFlag();
+        GetField()->Modify();
     }
 }
 
@@ -1613,7 +1865,7 @@ Date DateFormatter::GetDate() const
 
     if ( GetField() )
     {
-        if ( ImplDateGetValue( GetField()->GetText(), aDate, GetExtDateFormat(true), ImplGetLocaleDataWrapper(), GetCalendarWrapper() ) )
+        if (TextToDate(GetField()->GetText(), aDate, GetExtDateFormat(true), ImplGetLocaleDataWrapper(), GetCalendarWrapper()))
         {
             if ( aDate > maMax )
                 aDate = maMax;
@@ -1658,7 +1910,7 @@ bool DateFormatter::IsEmptyDate() const
         else if ( !maLastDate.GetDate() )
         {
             Date aDate( Date::EMPTY );
-            bEmpty = !ImplDateGetValue( GetField()->GetText(), aDate, GetExtDateFormat(true), ImplGetLocaleDataWrapper(), GetCalendarWrapper() );
+            bEmpty = !TextToDate(GetField()->GetText(), aDate, GetExtDateFormat(true), ImplGetLocaleDataWrapper(), GetCalendarWrapper());
         }
     }
     return bEmpty;
@@ -1673,14 +1925,12 @@ void DateFormatter::Reformat()
         return;
 
     OUString aStr;
-    bool bOK = ImplDateReformat( GetField()->GetText(), aStr );
-    if( !bOK )
-        return;
+    ImplDateReformat( GetField()->GetText(), aStr );
 
     if ( !aStr.isEmpty() )
     {
         ImplSetText( aStr );
-        (void)ImplDateGetValue(aStr, maLastDate, GetExtDateFormat(true), ImplGetLocaleDataWrapper(), GetCalendarWrapper());
+        (void)TextToDate(aStr, maLastDate, GetExtDateFormat(true), ImplGetLocaleDataWrapper(), GetCalendarWrapper());
     }
     else
     {
@@ -1698,7 +1948,7 @@ void DateFormatter::Reformat()
 
 void DateFormatter::ExpandCentury( Date& rDate )
 {
-    ExpandCentury( rDate, utl::MiscCfg().GetYear2000() );
+    ExpandCentury(rDate, officecfg::Office::Common::DateFormat::TwoDigitYear::get());
 }
 
 void DateFormatter::ExpandCentury( Date& rDate, sal_uInt16 nTwoDigitYearStart )
@@ -1715,10 +1965,10 @@ void DateFormatter::ExpandCentury( Date& rDate, sal_uInt16 nTwoDigitYearStart )
 
 DateField::DateField( vcl::Window* pParent, WinBits nWinStyle ) :
     SpinField( pParent, nWinStyle ),
+    DateFormatter(this),
     maFirst( GetMin() ),
     maLast( GetMax() )
 {
-    SetField( this );
     SetText( ImplGetLocaleDataWrapper().getDate( ImplGetFieldDate() ) );
     Reformat();
     ResetLastDate();
@@ -1726,7 +1976,7 @@ DateField::DateField( vcl::Window* pParent, WinBits nWinStyle ) :
 
 void DateField::dispose()
 {
-    DateFormatter::SetField( nullptr );
+    ClearField();
     SpinField::dispose();
 }
 
@@ -1762,13 +2012,13 @@ bool DateField::EventNotify( NotifyEvent& rNEvt )
                 else
                 {
                     Date aDate( 0, 0, 0 );
-                    if ( ImplDateGetValue( GetText(), aDate, GetExtDateFormat(true), ImplGetLocaleDataWrapper(), GetCalendarWrapper() ) )
+                    if (TextToDate(GetText(), aDate, GetExtDateFormat(true), ImplGetLocaleDataWrapper(), GetCalendarWrapper()))
                         // even with strict text analysis, our text is a valid date -> do a complete
                         // reformat
                         Reformat();
                 }
             }
-            else if ( !bTextLen && IsEmptyFieldValueEnabled() )
+            else
             {
                 ResetLastDate();
                 SetEmptyFieldValueData( true );
@@ -1785,7 +2035,7 @@ void DateField::DataChanged( const DataChangedEvent& rDCEvt )
 
     if ( (rDCEvt.GetType() == DataChangedEventType::SETTINGS) && (rDCEvt.GetFlags() & (AllSettingsFlags::LOCALE|AllSettingsFlags::MISC)) )
     {
-        if ( IsDefaultLocale() && ( rDCEvt.GetFlags() & AllSettingsFlags::LOCALE ) )
+        if (rDCEvt.GetFlags() & AllSettingsFlags::LOCALE)
             ImplGetLocaleDataWrapper().setLanguageTag( GetSettings().GetLanguageTag() );
         ReformatAll();
     }
@@ -1821,17 +2071,17 @@ void DateField::Last()
     SpinField::Last();
 }
 
-DateBox::DateBox( vcl::Window* pParent, WinBits nWinStyle ) :
-    ComboBox( pParent, nWinStyle )
+DateBox::DateBox(vcl::Window* pParent, WinBits nWinStyle)
+    : ComboBox( pParent, nWinStyle )
+    , DateFormatter(this)
 {
-    SetField( this );
     SetText( ImplGetLocaleDataWrapper().getDate( ImplGetFieldDate() ) );
     Reformat();
 }
 
 void DateBox::dispose()
 {
-    DateFormatter::SetField( nullptr );
+    ClearField();
     ComboBox::dispose();
 }
 
@@ -1854,8 +2104,7 @@ void DateBox::DataChanged( const DataChangedEvent& rDCEvt )
 
     if ( (rDCEvt.GetType() == DataChangedEventType::SETTINGS) && (rDCEvt.GetFlags() & AllSettingsFlags::LOCALE) )
     {
-        if ( IsDefaultLocale() )
-            ImplGetLocaleDataWrapper().setLanguageTag( GetSettings().GetLanguageTag() );
+        ImplGetLocaleDataWrapper().setLanguageTag( GetSettings().GetLanguageTag() );
         ReformatAll();
     }
 }
@@ -1871,7 +2120,7 @@ bool DateBox::EventNotify( NotifyEvent& rNEvt )
             bool bTextLen = !GetText().isEmpty();
             if ( bTextLen || !IsEmptyFieldValueEnabled() )
                 Reformat();
-            else if ( !bTextLen && IsEmptyFieldValueEnabled() )
+            else
             {
                 ResetLastDate();
                 SetEmptyFieldValueData( true );
@@ -1901,6 +2150,79 @@ void DateBox::ReformatAll()
     }
     DateFormatter::Reformat();
     SetUpdateMode( true );
+}
+
+namespace weld
+{
+    CalendarWrapper& DateFormatter::GetCalendarWrapper() const
+    {
+        if (!m_xCalendarWrapper)
+        {
+            m_xCalendarWrapper.reset(new CalendarWrapper(comphelper::getProcessComponentContext()));
+            m_xCalendarWrapper->loadDefaultCalendar(Application::GetSettings().GetLanguageTag().getLocale());
+        }
+        return *m_xCalendarWrapper;
+    }
+
+    void DateFormatter::SetShowDateCentury(bool bShowDateCentury)
+    {
+        m_eFormat = ChangeDateCentury(m_eFormat, bShowDateCentury);
+
+        ReFormat();
+    }
+
+    void DateFormatter::SetDate(const Date& rDate)
+    {
+        auto nDate = rDate.GetDate();
+        bool bForceOutput = GetEntryText().isEmpty() && rDate == GetDate();
+        if (bForceOutput)
+        {
+            ImplSetValue(nDate, true);
+            return;
+        }
+        SetValue(nDate);
+    }
+
+    Date DateFormatter::GetDate()
+    {
+        return Date(GetValue());
+    }
+
+    void DateFormatter::SetMin(const Date& rNewMin)
+    {
+        SetMinValue(rNewMin.GetDate());
+    }
+
+    void DateFormatter::SetMax(const Date& rNewMax)
+    {
+        SetMaxValue(rNewMax.GetDate());
+    }
+
+    OUString DateFormatter::FormatNumber(int nValue) const
+    {
+        const LocaleDataWrapper& rLocaleData = Application::GetSettings().GetLocaleDataWrapper();
+        return ::DateFormatter::FormatDate(Date(nValue), m_eFormat, rLocaleData, GetCalendarWrapper());
+    }
+
+    IMPL_LINK_NOARG(DateFormatter, FormatOutputHdl, LinkParamNone*, bool)
+    {
+        OUString sText = FormatNumber(GetValue());
+        ImplSetTextImpl(sText, nullptr);
+        return true;
+    }
+
+    IMPL_LINK(DateFormatter, ParseInputHdl, sal_Int64*, result, TriState)
+    {
+        const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
+
+        Date aResult(Date::EMPTY);
+        bool bRet = ::DateFormatter::TextToDate(GetEntryText(), aResult, ResolveSystemFormat(m_eFormat, rLocaleDataWrapper),
+                                                rLocaleDataWrapper, GetCalendarWrapper());
+        if (bRet)
+            *result = aResult.GetDate();
+
+        return bRet ? TRISTATE_TRUE : TRISTATE_FALSE;
+    }
 }
 
 static bool ImplTimeProcessKeyInput( const KeyEvent& rKEvt,
@@ -1963,13 +2285,12 @@ static bool ImplCutTimePortion( OUStringBuffer& _rStr, sal_Int32 _nSepPos, bool 
 
     if ( !ImplIsValidTimePortion( _bSkipInvalidCharacters, sPortion ) )
         return false;
-    *_pPortion = (short)sPortion.toInt32();
+    *_pPortion = static_cast<short>(sPortion.toInt32());
     return true;
 }
 
-static bool ImplTimeGetValue( const OUString& rStr, tools::Time& rTime,
-                              TimeFieldFormat eFormat, bool bDuration,
-                              const LocaleDataWrapper& rLocaleDataWrapper, bool _bSkipInvalidCharacters = true )
+bool TimeFormatter::TextToTime(const OUString& rStr, tools::Time& rTime, TimeFieldFormat eFormat,
+    bool bDuration, const LocaleDataWrapper& rLocaleDataWrapper, bool _bSkipInvalidCharacters)
 {
     OUStringBuffer    aStr    = rStr;
     short       nHour   = 0;
@@ -2032,14 +2353,14 @@ static bool ImplTimeGetValue( const OUString& rStr, tools::Time& rTime,
                 nNanoSec = aStr.toString().toInt64();
             }
             else
-                nSecond = (short)aStr.toString().toInt32();
+                nSecond = static_cast<short>(aStr.toString().toInt32());
         }
         else
-            nMinute = (short)aStr.toString().toInt32();
+            nMinute = static_cast<short>(aStr.toString().toInt32());
     }
     else if ( nSepPos < 0 )
     {
-        nSecond = (short)aStr.toString().toInt32();
+        nSecond = static_cast<short>(aStr.toString().toInt32());
         nMinute += nSecond / 60;
         nSecond %= 60;
         nHour += nMinute / 60;
@@ -2047,7 +2368,7 @@ static bool ImplTimeGetValue( const OUString& rStr, tools::Time& rTime,
     }
     else
     {
-        nSecond = (short)aStr.copy( 0, nSepPos ).toString().toInt32();
+        nSecond = static_cast<short>(aStr.copy( 0, nSepPos ).makeStringAndClear().toInt32());
         aStr.remove( 0, nSepPos+1 );
 
         nSepPos = aStr.indexOf( rLocaleDataWrapper.getTimeSep() );
@@ -2056,7 +2377,7 @@ static bool ImplTimeGetValue( const OUString& rStr, tools::Time& rTime,
         if ( nSepPos >= 0 )
         {
             nMinute = nSecond;
-            nSecond = (short)aStr.copy( 0, nSepPos ).toString().toInt32();
+            nSecond = static_cast<short>(aStr.copy( 0, nSepPos ).makeStringAndClear().toInt32());
             aStr.remove( 0, nSepPos+1 );
 
             nSepPos = aStr.indexOf( rLocaleDataWrapper.getTimeSep() );
@@ -2066,7 +2387,7 @@ static bool ImplTimeGetValue( const OUString& rStr, tools::Time& rTime,
             {
                 nHour   = nMinute;
                 nMinute = nSecond;
-                nSecond = (short)aStr.copy( 0, nSepPos ).toString().toInt32();
+                nSecond = static_cast<short>(aStr.copy( 0, nSepPos ).makeStringAndClear().toInt32());
                 aStr.remove( 0, nSepPos+1 );
             }
             else
@@ -2132,8 +2453,8 @@ static bool ImplTimeGetValue( const OUString& rStr, tools::Time& rTime,
         if ( (nHour == 12) && ( ( aUpperCaseStr.indexOf( "AM" ) >= 0 ) || ( aUpperCaseStr.indexOf( aAMlocalised ) >= 0 ) ) )
             nHour = 0;
 
-        aTime = tools::Time( (sal_uInt16)nHour, (sal_uInt16)nMinute, (sal_uInt16)nSecond,
-                      (sal_uInt32)nNanoSec );
+        aTime = tools::Time( static_cast<sal_uInt16>(nHour), static_cast<sal_uInt16>(nMinute), static_cast<sal_uInt16>(nSecond),
+                      static_cast<sal_uInt32>(nNanoSec) );
     }
     else
     {
@@ -2150,8 +2471,8 @@ static bool ImplTimeGetValue( const OUString& rStr, tools::Time& rTime,
             nNanoSec    = nNanoSec < 0 ? -nNanoSec : nNanoSec;
         }
 
-        aTime = tools::Time( (sal_uInt16)nHour, (sal_uInt16)nMinute, (sal_uInt16)nSecond,
-                      (sal_uInt32)nNanoSec );
+        aTime = tools::Time( static_cast<sal_uInt16>(nHour), static_cast<sal_uInt16>(nMinute), static_cast<sal_uInt16>(nSecond),
+                      static_cast<sal_uInt32>(nNanoSec) );
         if ( bNegative )
             aTime = -aTime;
     }
@@ -2161,11 +2482,11 @@ static bool ImplTimeGetValue( const OUString& rStr, tools::Time& rTime,
     return true;
 }
 
-bool TimeFormatter::ImplTimeReformat( const OUString& rStr, OUString& rOutStr )
+void TimeFormatter::ImplTimeReformat( const OUString& rStr, OUString& rOutStr )
 {
     tools::Time aTime( 0, 0, 0 );
-    if ( !ImplTimeGetValue( rStr, aTime, GetFormat(), IsDuration(), ImplGetLocaleDataWrapper() ) )
-        return true;
+    if ( !TextToTime( rStr, aTime, GetFormat(), IsDuration(), ImplGetLocaleDataWrapper() ) )
+        return;
 
     tools::Time aTempTime = aTime;
     if ( aTempTime > GetMax() )
@@ -2211,102 +2532,117 @@ bool TimeFormatter::ImplTimeReformat( const OUString& rStr, OUString& rOutStr )
                 rOutStr += "PM"; // ImplGetLocaleDataWrapper().getTimePM();
         }
     }
-
-    return true;
 }
+
 bool TimeFormatter::ImplAllowMalformedInput() const
 {
     return !IsEnforceValidValue();
+}
+
+int TimeFormatter::GetTimeArea(TimeFieldFormat eFormat, const OUString& rText, int nCursor,
+                                     const LocaleDataWrapper& rLocaleDataWrapper)
+{
+    int nTimeArea = 0;
+
+    // Area search
+    if (eFormat != TimeFieldFormat::F_SEC_CS)
+    {
+        //Which area is the cursor in of HH:MM:SS.TT
+        for ( sal_Int32 i = 1, nPos = 0; i <= 4; i++ )
+        {
+            sal_Int32 nPos1 = rText.indexOf(rLocaleDataWrapper.getTimeSep(), nPos);
+            sal_Int32 nPos2 = rText.indexOf(rLocaleDataWrapper.getTime100SecSep(), nPos);
+            //which ever comes first, bearing in mind that one might not be there
+            if (nPos1 >= 0 && nPos2 >= 0)
+                nPos = std::min(nPos1, nPos2);
+            else if (nPos1 >= 0)
+                nPos = nPos1;
+            else
+                nPos = nPos2;
+            if (nPos < 0 || nPos >= nCursor)
+            {
+                nTimeArea = i;
+                break;
+            }
+            else
+                nPos++;
+        }
+    }
+    else
+    {
+        sal_Int32 nPos = rText.indexOf(rLocaleDataWrapper.getTime100SecSep());
+        if (nPos < 0 || nPos >= nCursor)
+            nTimeArea = 3;
+        else
+            nTimeArea = 4;
+    }
+
+    return nTimeArea;
+}
+
+tools::Time TimeFormatter::SpinTime(bool bUp, const tools::Time& rTime, TimeFieldFormat eFormat,
+                                    bool bDuration, const OUString& rText, int nCursor,
+                                    const LocaleDataWrapper& rLocaleDataWrapper)
+{
+    tools::Time aTime(rTime);
+
+    int nTimeArea = GetTimeArea(eFormat, rText, nCursor, rLocaleDataWrapper);
+
+    if ( nTimeArea )
+    {
+        tools::Time aAddTime( 0, 0, 0 );
+        if ( nTimeArea == 1 )
+            aAddTime = tools::Time( 1, 0 );
+        else if ( nTimeArea == 2 )
+            aAddTime = tools::Time( 0, 1 );
+        else if ( nTimeArea == 3 )
+            aAddTime = tools::Time( 0, 0, 1 );
+        else if ( nTimeArea == 4 )
+            aAddTime = tools::Time( 0, 0, 0, 1 );
+
+        if ( !bUp )
+            aAddTime = -aAddTime;
+
+        aTime += aAddTime;
+        if (!bDuration)
+        {
+            tools::Time aAbsMaxTime( 23, 59, 59, 999999999 );
+            if ( aTime > aAbsMaxTime )
+                aTime = aAbsMaxTime;
+            tools::Time aAbsMinTime( 0, 0 );
+            if ( aTime < aAbsMinTime )
+                aTime = aAbsMinTime;
+        }
+    }
+
+    return aTime;
 }
 
 void TimeField::ImplTimeSpinArea( bool bUp )
 {
     if ( GetField() )
     {
-        sal_Int32 nTimeArea = 0;
         tools::Time aTime( GetTime() );
         OUString aText( GetText() );
         Selection aSelection( GetField()->GetSelection() );
 
-        // Area search
-        if ( GetFormat() != TimeFieldFormat::F_SEC_CS )
-        {
-            //Which area is the cursor in of HH:MM:SS.TT
-            for ( sal_Int32 i = 1, nPos = 0; i <= 4; i++ )
-            {
-                sal_Int32 nPos1 = aText.indexOf( ImplGetLocaleDataWrapper().getTimeSep(), nPos );
-                sal_Int32 nPos2 = aText.indexOf( ImplGetLocaleDataWrapper().getTime100SecSep(), nPos );
-                //which ever comes first, bearing in mind that one might not be there
-                if (nPos1 >= 0 && nPos2 >= 0)
-                    nPos = nPos1 < nPos2 ? nPos1 : nPos2;
-                else if (nPos1 >= 0)
-                    nPos = nPos1;
-                else
-                    nPos = nPos2;
-                if ( nPos < 0 || nPos >= aSelection.Max() )
-                {
-                    nTimeArea = i;
-                    break;
-                }
-                else
-                    nPos++;
-            }
-        }
-        else
-        {
-            sal_Int32 nPos = aText.indexOf( ImplGetLocaleDataWrapper().getTime100SecSep() );
-            if ( nPos < 0 || nPos >= aSelection.Max() )
-                nTimeArea = 3;
-            else
-                nTimeArea = 4;
-        }
+        aTime = TimeFormatter::SpinTime(bUp, aTime, GetFormat(), IsDuration(), aText, aSelection.Max(), ImplGetLocaleDataWrapper());
 
-        if ( nTimeArea )
-        {
-            tools::Time aAddTime( 0, 0, 0 );
-            if ( nTimeArea == 1 )
-                aAddTime = tools::Time( 1, 0 );
-            else if ( nTimeArea == 2 )
-                aAddTime = tools::Time( 0, 1 );
-            else if ( nTimeArea == 3 )
-                aAddTime = tools::Time( 0, 0, 1 );
-            else if ( nTimeArea == 4 )
-                aAddTime = tools::Time( 0, 0, 0, 1 );
-
-            if ( !bUp )
-                aAddTime = -aAddTime;
-
-            aTime += aAddTime;
-            if ( !IsDuration() )
-            {
-                tools::Time aAbsMaxTime( 23, 59, 59, 999999999 );
-                if ( aTime > aAbsMaxTime )
-                    aTime = aAbsMaxTime;
-                tools::Time aAbsMinTime( 0, 0 );
-                if ( aTime < aAbsMinTime )
-                    aTime = aAbsMinTime;
-            }
-            ImplNewFieldValue( aTime );
-        }
-
+        ImplNewFieldValue( aTime );
     }
 }
 
-void TimeFormatter::ImplInit()
+TimeFormatter::TimeFormatter(Edit* pEdit)
+    : FormatterBase(pEdit)
+    , maLastTime(0, 0)
+    , maMin(0, 0)
+    , maMax(23, 59, 59, 999999999)
+    , meFormat(TimeFieldFormat::F_NONE)
+    , mnTimeFormat(TimeFormat::Hour24)  // Should become an ExtTimeFieldFormat in next implementation, merge with mbDuration and meFormat
+    , mbDuration(false)
+    , mbEnforceValidValue(true)
+    , maFieldTime(0, 0)
 {
-    meFormat        = TimeFieldFormat::F_NONE;
-    mbDuration      = false;
-    mnTimeFormat    = TimeFormat::Hour24;  // Should become a ExtTimeFieldFormat in next implementation, merge with mbDuration and meFormat
-}
-
-TimeFormatter::TimeFormatter() :
-    maLastTime( 0, 0 ),
-    maMin( 0, 0 ),
-    maMax( 23, 59, 59, 999999999 ),
-    mbEnforceValidValue( true ),
-    maFieldTime( 0, 0 )
-{
-    ImplInit();
 }
 
 TimeFormatter::~TimeFormatter()
@@ -2332,7 +2668,7 @@ void TimeFormatter::SetMax( const tools::Time& rNewMax )
         ReformatAll();
 }
 
-void TimeFormatter::SetTimeFormat( TimeFormatter::TimeFormat eNewFormat )
+void TimeFormatter::SetTimeFormat( TimeFormat eNewFormat )
 {
     mnTimeFormat = eNewFormat;
 }
@@ -2359,34 +2695,81 @@ void TimeFormatter::SetTime( const tools::Time& rNewTime )
 
 void TimeFormatter::ImplNewFieldValue( const tools::Time& rTime )
 {
-    if ( GetField() )
+    if ( !GetField() )
+        return;
+
+    Selection aSelection = GetField()->GetSelection();
+    aSelection.Justify();
+    OUString aText = GetField()->GetText();
+
+    // If selected until the end then keep it that way
+    if ( static_cast<sal_Int32>(aSelection.Max()) == aText.getLength() )
     {
-        Selection aSelection = GetField()->GetSelection();
-        aSelection.Justify();
-        OUString aText = GetField()->GetText();
+        if ( !aSelection.Len() )
+            aSelection.Min() = SELECTION_MAX;
+        aSelection.Max() = SELECTION_MAX;
+    }
 
-        // If selected until the end then keep it that way
-        if ( (sal_Int32)aSelection.Max() == aText.getLength() )
-        {
-            if ( !aSelection.Len() )
-                aSelection.Min() = SELECTION_MAX;
-            aSelection.Max() = SELECTION_MAX;
-        }
+    tools::Time aOldLastTime = maLastTime;
+    ImplSetUserTime( rTime, &aSelection );
+    maLastTime = aOldLastTime;
 
-        tools::Time aOldLastTime = maLastTime;
-        ImplSetUserTime( rTime, &aSelection );
-        maLastTime = aOldLastTime;
-
-        // Modify at Edit is only set at KeyInput
-        if ( GetField()->GetText() != aText )
-        {
-            GetField()->SetModifyFlag();
-            GetField()->Modify();
-        }
+    // Modify at Edit is only set at KeyInput
+    if ( GetField()->GetText() != aText )
+    {
+        GetField()->SetModifyFlag();
+        GetField()->Modify();
     }
 }
 
-void TimeFormatter::ImplSetUserTime( const tools::Time& rNewTime, Selection* pNewSelection )
+OUString TimeFormatter::FormatTime(const tools::Time& rNewTime, TimeFieldFormat eFormat, TimeFormat eHourFormat, bool bDuration, const LocaleDataWrapper& rLocaleData)
+{
+    OUString aStr;
+    bool bSec    = false;
+    bool b100Sec = false;
+    if ( eFormat != TimeFieldFormat::F_NONE )
+        bSec = true;
+    if ( eFormat == TimeFieldFormat::F_SEC_CS )
+        b100Sec = true;
+    if ( eFormat == TimeFieldFormat::F_SEC_CS )
+    {
+        sal_uLong n  = rNewTime.GetHour() * 3600L;
+        n       += rNewTime.GetMin()  * 60L;
+        n       += rNewTime.GetSec();
+        aStr     = OUString::number( n ) + rLocaleData.getTime100SecSep();
+        std::ostringstream ostr;
+        ostr.fill('0');
+        ostr.width(9);
+        ostr << rNewTime.GetNanoSec();
+        aStr += OUString::createFromAscii(ostr.str().c_str());
+    }
+    else if ( bDuration )
+    {
+        aStr = rLocaleData.getDuration( rNewTime, bSec, b100Sec );
+    }
+    else
+    {
+        aStr = rLocaleData.getTime( rNewTime, bSec, b100Sec );
+        if ( eHourFormat == TimeFormat::Hour12 )
+        {
+            if ( rNewTime.GetHour() > 12 )
+            {
+                tools::Time aT( rNewTime );
+                aT.SetHour( aT.GetHour() % 12 );
+                aStr = rLocaleData.getTime( aT, bSec, b100Sec );
+            }
+            // Don't use LocaleDataWrapper, we want AM/PM
+            if ( rNewTime.GetHour() < 12 )
+                aStr += "AM"; // rLocaleData.getTimeAM();
+            else
+                aStr += "PM"; // rLocaleData.getTimePM();
+        }
+    }
+
+    return aStr;
+}
+
+void TimeFormatter::ImplSetUserTime( const tools::Time& rNewTime, Selection const * pNewSelection )
 {
     tools::Time aNewTime = rNewTime;
     if ( aNewTime > GetMax() )
@@ -2397,49 +2780,7 @@ void TimeFormatter::ImplSetUserTime( const tools::Time& rNewTime, Selection* pNe
 
     if ( GetField() )
     {
-        OUString aStr;
-        bool bSec    = false;
-        bool b100Sec = false;
-        if ( meFormat != TimeFieldFormat::F_NONE )
-            bSec = true;
-        if ( meFormat == TimeFieldFormat::F_SEC_CS )
-            b100Sec = true;
-        if ( meFormat == TimeFieldFormat::F_SEC_CS )
-        {
-            sal_uLong n  = aNewTime.GetHour() * 3600L;
-            n       += aNewTime.GetMin()  * 60L;
-            n       += aNewTime.GetSec();
-            aStr     = OUString::number( n );
-            aStr    += ImplGetLocaleDataWrapper().getTime100SecSep();
-            std::ostringstream ostr;
-            ostr.fill('0');
-            ostr.width(9);
-            ostr << aNewTime.GetNanoSec();
-            aStr += OUString::createFromAscii(ostr.str().c_str());
-        }
-        else if ( mbDuration )
-        {
-            aStr = ImplGetLocaleDataWrapper().getDuration( aNewTime, bSec, b100Sec );
-        }
-        else
-        {
-            aStr = ImplGetLocaleDataWrapper().getTime( aNewTime, bSec, b100Sec );
-            if ( GetTimeFormat() == TimeFormat::Hour12 )
-            {
-                if ( aNewTime.GetHour() > 12 )
-                {
-                    tools::Time aT( aNewTime );
-                    aT.SetHour( aT.GetHour() % 12 );
-                    aStr = ImplGetLocaleDataWrapper().getTime( aT, bSec, b100Sec );
-                }
-                // Don't use LocaleDataWrapper, we want AM/PM
-                if ( aNewTime.GetHour() < 12 )
-                    aStr += "AM"; // ImplGetLocaleDataWrapper().getTimeAM();
-                else
-                    aStr += "PM"; // ImplGetLocaleDataWrapper().getTimePM();
-            }
-        }
-
+        OUString aStr = TimeFormatter::FormatTime(aNewTime, meFormat, GetTimeFormat(), mbDuration, ImplGetLocaleDataWrapper());
         ImplSetText( aStr, pNewSelection );
     }
 }
@@ -2456,7 +2797,7 @@ tools::Time TimeFormatter::GetTime() const
     if ( GetField() )
     {
         bool bAllowMailformed = ImplAllowMalformedInput();
-        if ( ImplTimeGetValue( GetField()->GetText(), aTime, GetFormat(), IsDuration(), ImplGetLocaleDataWrapper(), !bAllowMailformed ) )
+        if ( TextToTime( GetField()->GetText(), aTime, GetFormat(), IsDuration(), ImplGetLocaleDataWrapper(), !bAllowMailformed ) )
         {
             if ( aTime > GetMax() )
                 aTime = GetMax();
@@ -2484,14 +2825,12 @@ void TimeFormatter::Reformat()
         return;
 
     OUString aStr;
-    bool bOK = ImplTimeReformat( GetField()->GetText(), aStr );
-    if ( !bOK )
-        return;
+    ImplTimeReformat( GetField()->GetText(), aStr );
 
     if ( !aStr.isEmpty() )
     {
         ImplSetText( aStr );
-        ImplTimeGetValue( aStr, maLastTime, GetFormat(), IsDuration(), ImplGetLocaleDataWrapper() );
+        (void)TextToTime(aStr, maLastTime, GetFormat(), IsDuration(), ImplGetLocaleDataWrapper());
     }
     else
         SetTime( maLastTime );
@@ -2499,17 +2838,17 @@ void TimeFormatter::Reformat()
 
 TimeField::TimeField( vcl::Window* pParent, WinBits nWinStyle ) :
     SpinField( pParent, nWinStyle ),
+    TimeFormatter(this),
     maFirst( GetMin() ),
     maLast( GetMax() )
 {
-    SetField( this );
     SetText( ImplGetLocaleDataWrapper().getTime( maFieldTime, false ) );
     Reformat();
 }
 
 void TimeField::dispose()
 {
-    TimeFormatter::SetField( nullptr );
+    ClearField();
     SpinField::dispose();
 }
 
@@ -2537,7 +2876,7 @@ bool TimeField::EventNotify( NotifyEvent& rNEvt )
             else
             {
                 tools::Time aTime( 0, 0, 0 );
-                if ( ImplTimeGetValue( GetText(), aTime, GetFormat(), IsDuration(), ImplGetLocaleDataWrapper(), false ) )
+                if ( TextToTime( GetText(), aTime, GetFormat(), IsDuration(), ImplGetLocaleDataWrapper(), false ) )
                     // even with strict text analysis, our text is a valid time -> do a complete
                     // reformat
                     Reformat();
@@ -2554,8 +2893,7 @@ void TimeField::DataChanged( const DataChangedEvent& rDCEvt )
 
     if ( (rDCEvt.GetType() == DataChangedEventType::SETTINGS) && (rDCEvt.GetFlags() & AllSettingsFlags::LOCALE) )
     {
-        if ( IsDefaultLocale() )
-            ImplGetLocaleDataWrapper().setLanguageTag( GetSettings().GetLanguageTag() );
+        ImplGetLocaleDataWrapper().setLanguageTag( GetSettings().GetLanguageTag() );
         ReformatAll();
     }
 }
@@ -2608,6 +2946,32 @@ void TimeField::SetExtFormat( ExtTimeFieldFormat eFormat )
             SetFormat( TimeFieldFormat::F_SEC );
         }
         break;
+        case ExtTimeFieldFormat::Short12H:
+        {
+            SetTimeFormat( TimeFormat::Hour12 );
+            SetDuration( false );
+            SetFormat( TimeFieldFormat::F_NONE );
+        }
+        break;
+        case ExtTimeFieldFormat::Long12H:
+        {
+            SetTimeFormat( TimeFormat::Hour12 );
+            SetDuration( false );
+            SetFormat( TimeFieldFormat::F_SEC );
+        }
+        break;
+        case ExtTimeFieldFormat::ShortDuration:
+        {
+            SetDuration( true );
+            SetFormat( TimeFieldFormat::F_NONE );
+        }
+        break;
+        case ExtTimeFieldFormat::LongDuration:
+        {
+            SetDuration( true );
+            SetFormat( TimeFieldFormat::F_SEC );
+        }
+        break;
         default:    OSL_FAIL( "ExtTimeFieldFormat unknown!" );
     }
 
@@ -2616,17 +2980,17 @@ void TimeField::SetExtFormat( ExtTimeFieldFormat eFormat )
     ReformatAll();
 }
 
-TimeBox::TimeBox( vcl::Window* pParent, WinBits nWinStyle ) :
-    ComboBox( pParent, nWinStyle )
+TimeBox::TimeBox(vcl::Window* pParent, WinBits nWinStyle)
+    : ComboBox(pParent, nWinStyle)
+    , TimeFormatter(this)
 {
-    SetField( this );
     SetText( ImplGetLocaleDataWrapper().getTime( maFieldTime, false ) );
     Reformat();
 }
 
 void TimeBox::dispose()
 {
-    TimeFormatter::SetField( nullptr );
+    ClearField();
     ComboBox::dispose();
 }
 
@@ -2660,8 +3024,7 @@ void TimeBox::DataChanged( const DataChangedEvent& rDCEvt )
 
     if ( (rDCEvt.GetType() == DataChangedEventType::SETTINGS) && (rDCEvt.GetFlags() & AllSettingsFlags::LOCALE) )
     {
-        if ( IsDefaultLocale() )
-            ImplGetLocaleDataWrapper().setLanguageTag( GetSettings().GetLanguageTag() );
+        ImplGetLocaleDataWrapper().setLanguageTag( GetSettings().GetLanguageTag() );
         ReformatAll();
     }
 }
@@ -2685,6 +3048,93 @@ void TimeBox::ReformatAll()
     }
     TimeFormatter::Reformat();
     SetUpdateMode( true );
+}
+
+namespace weld
+{
+    tools::Time TimeFormatter::ConvertValue(int nValue)
+    {
+        tools::Time aTime(0);
+        aTime.MakeTimeFromMS(nValue);
+        return aTime;
+    }
+
+    int TimeFormatter::ConvertValue(const tools::Time& rTime)
+    {
+        return rTime.GetMSFromTime();
+    }
+
+    void TimeFormatter::SetTime(const tools::Time& rTime)
+    {
+        auto nTime = ConvertValue(rTime);
+        bool bForceOutput = GetEntryText().isEmpty() && rTime == GetTime();
+        if (bForceOutput)
+        {
+            ImplSetValue(nTime, true);
+            return;
+        }
+        SetValue(nTime);
+    }
+
+    tools::Time TimeFormatter::GetTime()
+    {
+        return ConvertValue(GetValue());
+    }
+
+    void TimeFormatter::SetMin(const tools::Time& rNewMin)
+    {
+        SetMinValue(ConvertValue(rNewMin));
+    }
+
+    void TimeFormatter::SetMax(const tools::Time& rNewMax)
+    {
+        SetMaxValue(ConvertValue(rNewMax));
+    }
+
+    OUString TimeFormatter::FormatNumber(int nValue) const
+    {
+        const LocaleDataWrapper& rLocaleData = Application::GetSettings().GetLocaleDataWrapper();
+        return ::TimeFormatter::FormatTime(ConvertValue(nValue), m_eFormat, m_eTimeFormat, m_bDuration, rLocaleData);
+    }
+
+    IMPL_LINK_NOARG(TimeFormatter, FormatOutputHdl, LinkParamNone*, bool)
+    {
+        OUString sText = FormatNumber(GetValue());
+        ImplSetTextImpl(sText, nullptr);
+        return true;
+    }
+
+    IMPL_LINK(TimeFormatter, ParseInputHdl, sal_Int64*, result, TriState)
+    {
+        const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
+
+        tools::Time aResult(0);
+        bool bRet = ::TimeFormatter::TextToTime(GetEntryText(), aResult, m_eFormat, m_bDuration, rLocaleDataWrapper);
+        if (bRet)
+            *result = ConvertValue(aResult);
+
+        return bRet ? TRISTATE_TRUE : TRISTATE_FALSE;
+    }
+
+    IMPL_LINK(TimeFormatter, CursorChangedHdl, weld::Entry&, rEntry, void)
+    {
+        int nStartPos, nEndPos;
+        rEntry.get_selection_bounds(nStartPos, nEndPos);
+
+        const LocaleDataWrapper& rLocaleData = Application::GetSettings().GetLocaleDataWrapper();
+        const int nTimeArea = ::TimeFormatter::GetTimeArea(m_eFormat, GetEntryText(), nEndPos, rLocaleData);
+
+        int nIncrements = 1;
+
+        if (nTimeArea == 1)
+            nIncrements = 1000 * 60 * 60;
+        else if (nTimeArea == 2)
+            nIncrements = 1000 * 60;
+        else if (nTimeArea == 3)
+            nIncrements = 1000;
+
+        SetSpinSize(nIncrements);
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

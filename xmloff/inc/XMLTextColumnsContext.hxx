@@ -20,6 +20,8 @@
 #ifndef INCLUDED_XMLOFF_INC_XMLTEXTCOLUMNSCONTEXT_HXX
 #define INCLUDED_XMLOFF_INC_XMLTEXTCOLUMNSCONTEXT_HXX
 
+#include <xmloff/xmltkmap.hxx>
+
 #include <memory>
 
 #include "XMLElementPropertyContext.hxx"
@@ -30,17 +32,8 @@ class SvXMLTokenMap;
 
 typedef std::vector<rtl::Reference<XMLTextColumnContext_Impl>> XMLTextColumnsArray_Impl;
 
-class XMLTextColumnsContext :public XMLElementPropertyContext
+class XMLTextColumnsContext final :public XMLElementPropertyContext
 {
-    const OUString sSeparatorLineIsOn;
-    const OUString sSeparatorLineWidth;
-    const OUString sSeparatorLineColor;
-    const OUString sSeparatorLineRelativeHeight;
-    const OUString sSeparatorLineVerticalAlignment;
-    const OUString sAutomaticDistance;
-    const OUString sSeparatorLineStyle;
-
-
     std::unique_ptr<XMLTextColumnsArray_Impl> pColumns;
     rtl::Reference<XMLTextColumnSepContext_Impl> mxColumnSep;
     std::unique_ptr<SvXMLTokenMap> pColumnAttrTokenMap;
@@ -58,7 +51,7 @@ public:
         const XMLPropertyState& rProp,
         ::std::vector< XMLPropertyState > &rProps );
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                                    const OUString& rLocalName,
                                    const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 

@@ -17,18 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "view/SlsInsertAnimator.hxx"
-#include "controller/SlideSorterController.hxx"
-#include "controller/SlsAnimationFunction.hxx"
-#include "view/SlideSorterView.hxx"
-#include "view/SlsLayouter.hxx"
-#include "model/SlideSorterModel.hxx"
-#include "model/SlsPageEnumerationProvider.hxx"
+#include <view/SlsInsertAnimator.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsAnimationFunction.hxx>
+#include <view/SlideSorterView.hxx>
+#include <view/SlsLayouter.hxx>
+#include <model/SlideSorterModel.hxx>
+#include <SlideSorter.hxx>
+#include <Window.hxx>
 
 #include <memory>
 #include <set>
 
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::view {
 
 namespace {
 
@@ -39,13 +40,13 @@ class AnimatorAccess
 public:
     virtual void AddRun (const std::shared_ptr<PageObjectRun>& rRun) = 0;
     virtual void RemoveRun (const std::shared_ptr<PageObjectRun>& rRun) = 0;
-    virtual model::SlideSorterModel& GetModel (void) const = 0;
-    virtual view::SlideSorterView& GetView (void) const = 0;
-    virtual std::shared_ptr<controller::Animator> GetAnimator (void) = 0;
-    virtual VclPtr<sd::Window> GetContentWindow (void) = 0;
+    virtual model::SlideSorterModel& GetModel () const = 0;
+    virtual view::SlideSorterView& GetView () const = 0;
+    virtual std::shared_ptr<controller::Animator> GetAnimator () = 0;
+    virtual VclPtr<sd::Window> GetContentWindow () = 0;
 
 protected:
-    ~AnimatorAccess() {}
+    ~AnimatorAccess() COVERITY_NOEXCEPT_FALSE {}
 };
 
 /** Controller of the position offsets of all page objects in one row or one
@@ -138,7 +139,7 @@ private:
     InsertPosition maInsertPosition;
 
     SharedPageObjectRun GetRun (
-        view::Layouter& rLayouter,
+        view::Layouter const & rLayouter,
         const InsertPosition& rInsertPosition);
     RunContainer::const_iterator FindRun (const sal_Int32 nRunIndex) const;
 };
@@ -146,7 +147,7 @@ private:
 //===== InsertAnimator ========================================================
 
 InsertAnimator::InsertAnimator (SlideSorter& rSlideSorter)
-    : mpImplementation(new Implementation(rSlideSorter))
+    : mpImplementation(std::make_shared<Implementation>(rSlideSorter))
 {
 }
 
@@ -190,11 +191,8 @@ void InsertAnimator::Implementation::SetInsertPosition (
 
     // When the new insert position is in a different run then move the page
     // objects in the old run to their default positions.
-    if (pOldRun != pCurrentRun)
-    {
-        if (pOldRun)
-            pOldRun->ResetOffsets(eMode);
-    }
+    if (pOldRun != pCurrentRun && pOldRun)
+        pOldRun->ResetOffsets(eMode);
 
     if (pCurrentRun)
     {
@@ -203,7 +201,7 @@ void InsertAnimator::Implementation::SetInsertPosition (
 }
 
 SharedPageObjectRun InsertAnimator::Implementation::GetRun (
-    view::Layouter& rLayouter,
+    view::Layouter const & rLayouter,
     const InsertPosition& rInsertPosition)
 {
     const sal_Int32 nRow (rInsertPosition.GetRow());
@@ -323,27 +321,27 @@ void PageObjectRun::UpdateOffsets(
     const sal_Int32 nLocalInsertIndex(bIsVertical
         ? rInsertPosition.GetRow()
         : rInsertPosition.GetColumn());
-    if (nLocalInsertIndex != mnLocalInsertIndex)
-    {
-        mnLocalInsertIndex = nLocalInsertIndex;
+    if (nLocalInsertIndex == mnLocalInsertIndex)
+        return;
 
-        model::SlideSorterModel& rModel (mrAnimatorAccess.GetModel());
-        const sal_Int32 nRunLength (mnEndIndex - mnStartIndex + 1);
-        for (sal_Int32 nIndex=0; nIndex<nRunLength; ++nIndex)
-        {
-            model::SharedPageDescriptor pDescriptor(rModel.GetPageDescriptor(nIndex+mnStartIndex));
-            if (pDescriptor)
-                maStartOffset[nIndex] = pDescriptor->GetVisualState().GetLocationOffset();
-            maEndOffset[nIndex] = nIndex < mnLocalInsertIndex
-                ? rInsertPosition.GetLeadingOffset()
-                : rInsertPosition.GetTrailingOffset();
-            if (bIsVertical)
-                maEndOffset[nIndex].X() = 0;
-            else
-                maEndOffset[nIndex].Y() = 0;
-        }
-        RestartAnimation();
+    mnLocalInsertIndex = nLocalInsertIndex;
+
+    model::SlideSorterModel& rModel (mrAnimatorAccess.GetModel());
+    const sal_Int32 nRunLength (mnEndIndex - mnStartIndex + 1);
+    for (sal_Int32 nIndex=0; nIndex<nRunLength; ++nIndex)
+    {
+        model::SharedPageDescriptor pDescriptor(rModel.GetPageDescriptor(nIndex+mnStartIndex));
+        if (pDescriptor)
+            maStartOffset[nIndex] = pDescriptor->GetVisualState().GetLocationOffset();
+        maEndOffset[nIndex] = nIndex < mnLocalInsertIndex
+            ? rInsertPosition.GetLeadingOffset()
+            : rInsertPosition.GetTrailingOffset();
+        if (bIsVertical)
+            maEndOffset[nIndex].setX( 0 );
+        else
+            maEndOffset[nIndex].setY( 0 );
     }
+    RestartAnimation();
 }
 
 void PageObjectRun::ResetOffsets (const controller::Animator::AnimationMode eMode)
@@ -428,6 +426,6 @@ void PageObjectRun::operator () (const double nGlobalTime)
     mrAnimatorAccess.GetContentWindow()->Flush();
 }
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -24,7 +24,7 @@
 
 #include <vector>
 
-#include "dbadllapi.hxx"
+#include <dbadllapi.hxx>
 #include <connectivity/DriversConfig.hxx>
 
 namespace dbaccess
@@ -62,6 +62,7 @@ enum DATASOURCE_TYPE
     DST_FIREBIRD            = 26,
     DST_EMBEDDED_FIREBIRD   = 27,
     DST_POSTGRES            = 28,
+    DST_WRITER              = 29,
 
     DST_USERDEFINE1,    /// first user defined driver
     DST_USERDEFINE2,
@@ -90,22 +91,19 @@ enum DATASOURCE_TYPE
 #define PAGE_DBSETUPWIZARD_JDBC                      10
 #define PAGE_DBSETUPWIZARD_ADO                       11
 #define PAGE_DBSETUPWIZARD_ODBC                      12
-#define PAGE_DBSETUPWIZARD_SPREADSHEET               13
+#define PAGE_DBSETUPWIZARD_DOCUMENT_OR_SPREADSHEET   13
 #define PAGE_DBSETUPWIZARD_AUTHENTIFICATION          14
 #define PAGE_DBSETUPWIZARD_FINAL                     16
 #define PAGE_DBSETUPWIZARD_USERDEFINED               17
 #define PAGE_DBSETUPWIZARD_MYSQL_NATIVE              18
 
 // ODsnTypeCollection
-class OOO_DLLPUBLIC_DBA ODsnTypeCollection
+class OOO_DLLPUBLIC_DBA ODsnTypeCollection final
 {
-protected:
-    typedef std::vector<OUString> StringVector;
 
-    StringVector    m_aDsnTypesDisplayNames;    /// user readable names for the datasource types
-    StringVector    m_aDsnPrefixes;             /// DSN prefixes which determine the type of a datasource
+    std::vector<OUString> m_aDsnTypesDisplayNames;    /// user readable names for the datasource types
+    std::vector<OUString> m_aDsnPrefixes;             /// DSN prefixes which determine the type of a datasource
     ::connectivity::DriversConfig m_aDriverConfig;
-    css::uno::Reference< css::uno::XComponentContext > m_xContext;
 
 #if OSL_DEBUG_LEVEL > 0
     sal_Int32       m_nLivingIterators;         /// just for debugging reasons, counts the living iterators
@@ -128,7 +126,7 @@ public:
     OUString getPrefix(const OUString& _sURL) const;
 
     /// determines whether there is a driver for the given URL prefix/pattern
-    bool    hasDriver( const sal_Char* _pAsciiPattern ) const;
+    bool    hasDriver( const char* _pAsciiPattern ) const;
 
     /// on a given string, return the Java Driver Class
     OUString getJavaDriverClass(const OUString& _sURL) const;
@@ -153,7 +151,7 @@ public:
     // check if a Create New Database button may be shown to insert connection url
     bool supportsDBCreation(const OUString& _sURL) const;
 
-    /// check if the given data source tyoe is based on the file system - i.e. the URL is a prefix plus a file URL
+    /// check if the given data source type is based on the file system - i.e. the URL is a prefix plus a file URL
     bool isFileSystemBased(const OUString& _sURL) const;
 
     bool isConnectionUrlRequired(const OUString& _sURL) const;
@@ -161,7 +159,7 @@ public:
     /// checks if the given data source type embeds its data into the database document
     static bool isEmbeddedDatabase( const OUString& _sURL );
 
-    OUString getEmbeddedDatabase() const;
+    static OUString getEmbeddedDatabase();
 
     // returns true when the properties dialog can be shown, otherwise false.
     static bool isShowPropertiesEnabled( const OUString& _sURL );
@@ -201,14 +199,14 @@ public:
     TypeIterator(const TypeIterator& _rSource);
     ~TypeIterator();
 
-    OUString getURLPrefix() const;
-    OUString          getDisplayName() const;
+    OUString const & getURLPrefix() const;
+    OUString const & getDisplayName() const;
 
     /// prefix increment
     const TypeIterator& operator++();
 
 protected:
-    TypeIterator(const ODsnTypeCollection* _pContainer, sal_Int32 _nInitialPos = 0);
+    TypeIterator(const ODsnTypeCollection* _pContainer, sal_Int32 _nInitialPos);
 };
 
 

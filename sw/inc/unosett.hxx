@@ -19,37 +19,37 @@
 #ifndef INCLUDED_SW_INC_UNOSETT_HXX
 #define INCLUDED_SW_INC_UNOSETT_HXX
 
-#include <swtypes.hxx>
-#include <calbck.hxx>
+#include "swtypes.hxx"
 #include <com/sun/star/text/XTextColumns.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/container/XIndexReplace.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/style/VerticalAlignment.hpp>
 #include <cppuhelper/implbase2.hxx>
 #include <cppuhelper/implbase4.hxx>
 #include <cppuhelper/implbase5.hxx>
-#include <svl/itemprop.hxx>
-#include <unobaseclass.hxx>
+#include <tools/color.hxx>
+#include "unobaseclass.hxx"
 
 class SwDoc;
 class SwFormatCol;
 class SwDocShell;
 class SwNumRule;
 class SwNumFormat;
+class SfxItemPropertySet;
+namespace com::sun::star::beans { struct PropertyValue; }
 
-class SwXFootnoteProperties : public cppu::WeakAggImplHelper2
+class SwXFootnoteProperties final : public cppu::WeakAggImplHelper2
 <
     css::beans::XPropertySet,
     css::lang::XServiceInfo
 >
 {
-    SwDoc*                      pDoc;
+    SwDoc*                      m_pDoc;
     const SfxItemPropertySet*   m_pPropertySet;
-protected:
+
     virtual ~SwXFootnoteProperties() override;
 public:
     SwXFootnoteProperties(SwDoc* pDoc);
@@ -68,18 +68,18 @@ public:
     virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    void            Invalidate() {pDoc = nullptr;}
+    void            Invalidate() {m_pDoc = nullptr;}
 };
 
-class SwXEndnoteProperties : public cppu::WeakAggImplHelper2
+class SwXEndnoteProperties final : public cppu::WeakAggImplHelper2
 <
     css::beans::XPropertySet,
     css::lang::XServiceInfo
 >
 {
-    SwDoc*                      pDoc;
+    SwDoc*                      m_pDoc;
     const SfxItemPropertySet*   m_pPropertySet;
-protected:
+
     virtual ~SwXEndnoteProperties() override;
 public:
     SwXEndnoteProperties(SwDoc* pDoc);
@@ -98,18 +98,18 @@ public:
     virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    void            Invalidate() {pDoc = nullptr;}
+    void            Invalidate() {m_pDoc = nullptr;}
 };
 
-class SwXLineNumberingProperties : public cppu::WeakAggImplHelper2
+class SwXLineNumberingProperties final : public cppu::WeakAggImplHelper2
 <
     css::beans::XPropertySet,
     css::lang::XServiceInfo
 >
 {
-    SwDoc*                      pDoc;
+    SwDoc*                      m_pDoc;
     const SfxItemPropertySet*   m_pPropertySet;
-protected:
+
     virtual ~SwXLineNumberingProperties() override;
 public:
     SwXLineNumberingProperties(SwDoc* pDoc);
@@ -128,7 +128,7 @@ public:
     virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    void            Invalidate() {pDoc = nullptr;}
+    void            Invalidate() {m_pDoc = nullptr;}
 };
 
 class SwXNumberingRules : public cppu::WeakAggImplHelper5
@@ -147,11 +147,11 @@ private:
     OUString                    m_sNewCharStyleNames[MAXLEVEL];
     OUString                    m_sNewBulletFontNames[MAXLEVEL];
     OUString                    m_sCreatedNumRuleName; //connects to a numbering in SwDoc
-    SwDoc*                      pDoc;
-    SwDocShell*                 pDocShell; // Only if used as chapter numbering.
-    SwNumRule*                  pNumRule;
+    SwDoc*                      m_pDoc;
+    SwDocShell*                 m_pDocShell; // Only if used as chapter numbering.
+    SwNumRule*                  m_pNumRule;
     const SfxItemPropertySet*   m_pPropertySet;
-    bool                        bOwnNumRuleCreated;
+    bool                        m_bOwnNumRuleCreated;
 protected:
     virtual ~SwXNumberingRules() override;
 
@@ -202,29 +202,29 @@ public:
 
     const OUString*         GetNewCharStyleNames() const {return m_sNewCharStyleNames;}
     const OUString*         GetBulletFontNames() const {return m_sNewBulletFontNames;}
-    const SwNumRule*        GetNumRule() {return pNumRule;}
+    const SwNumRule*        GetNumRule() const {return m_pNumRule;}
 
     static bool             isInvalidStyle(const OUString &rName);
-    void    Invalidate()    {pDocShell = nullptr;}
+    void    Invalidate()    {m_pDocShell = nullptr;}
     const OUString&   GetCreatedNumRuleName() const {return m_sCreatedNumRuleName;}
 
     static css::uno::Sequence<css::beans::PropertyValue> GetPropertiesForNumFormat(
             const SwNumFormat& rFormat, OUString const& rCharFormatName,
-            OUString const* pHeadingStyleName);
+            OUString const* pHeadingStyleName, OUString const & referer);
     static void SetPropertiesToNumFormat(
             SwNumFormat & aFormat,
             OUString & rCharStyleName,
             OUString *const pBulletFontName,
             OUString *const pHeadingStyleName,
             OUString *const pParagraphStyleName,
-            SwDoc *const pDoc, SwDocShell *const pDocShell,
+            SwDoc *const pDoc,
             css::uno::Sequence<css::beans::PropertyValue> const& rProperties);
 
 };
 
-class SwXChapterNumbering : public SwXNumberingRules
+class SwXChapterNumbering final : public SwXNumberingRules
 {
-protected:
+
     virtual ~SwXChapterNumbering() override;
 public:
     SwXChapterNumbering(SwDocShell& rDocSh);
@@ -238,7 +238,7 @@ public:
 
 };
 
-class SwXTextColumns : public cppu::WeakAggImplHelper4
+class SwXTextColumns final : public cppu::WeakAggImplHelper4
 <
 
     css::lang::XUnoTunnel,
@@ -247,22 +247,22 @@ class SwXTextColumns : public cppu::WeakAggImplHelper4
     css::lang::XServiceInfo
 >
 {
-    sal_Int32                   nReference;
-    css::uno::Sequence< css::text::TextColumn>    aTextColumns;
-    bool                        bIsAutomaticWidth;
-    sal_Int32                   nAutoDistance;
+    sal_Int32                   m_nReference;
+    css::uno::Sequence< css::text::TextColumn>    m_aTextColumns;
+    bool                        m_bIsAutomaticWidth;
+    sal_Int32                   m_nAutoDistance;
 
     const SfxItemPropertySet*   m_pPropSet;
 
     //separator line
-    sal_Int32                   nSepLineWidth;
-    sal_Int32                   nSepLineColor;
-    sal_Int8                    nSepLineHeightRelative;
-    css::style::VerticalAlignment nSepLineVertAlign;
-    bool                        bSepLineIsOn;
-    sal_Int8                    nSepLineStyle;
+    sal_Int32                   m_nSepLineWidth;
+    Color                       m_nSepLineColor;
+    sal_Int8                    m_nSepLineHeightRelative;
+    css::style::VerticalAlignment m_nSepLineVertAlign;
+    bool                        m_bSepLineIsOn;
+    sal_Int8                    m_nSepLineStyle;
 
-protected:
+
     virtual ~SwXTextColumns() override;
 public:
     SwXTextColumns();
@@ -294,14 +294,14 @@ public:
     virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    sal_Int32   GetSepLineWidth() const {return nSepLineWidth;}
-    sal_Int32   GetSepLineColor() const {return     nSepLineColor;}
-    sal_Int8    GetSepLineHeightRelative() const {return    nSepLineHeightRelative;}
-    css::style::VerticalAlignment GetSepLineVertAlign() const {return nSepLineVertAlign;}
-    bool        GetSepLineIsOn() const {return  bSepLineIsOn;}
-    sal_Int8    GetSepLineStyle() const {return nSepLineStyle;}
+    sal_Int32   GetSepLineWidth() const {return m_nSepLineWidth;}
+    Color       GetSepLineColor() const {return m_nSepLineColor;}
+    sal_Int8    GetSepLineHeightRelative() const {return    m_nSepLineHeightRelative;}
+    css::style::VerticalAlignment GetSepLineVertAlign() const {return m_nSepLineVertAlign;}
+    bool        GetSepLineIsOn() const {return  m_bSepLineIsOn;}
+    sal_Int8    GetSepLineStyle() const {return m_nSepLineStyle;}
 
-    bool        IsAutomaticWidth() const {return bIsAutomaticWidth;}
+    bool        IsAutomaticWidth() const {return m_bIsAutomaticWidth;}
 };
 #endif
 

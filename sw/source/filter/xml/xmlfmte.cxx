@@ -18,12 +18,13 @@
  */
 
 #include <com/sun/star/text/XTextDocument.hpp>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/attrlist.hxx>
 #include "xmlexpit.hxx"
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/XMLTextListAutoStylePool.hxx>
 #include <xmloff/XMLTextMasterPageExport.hxx>
+#include <xmloff/table/XMLTableExport.hxx>
 
 #include <xmloff/txtprmap.hxx>
 #include <xmloff/xmlaustp.hxx>
@@ -32,11 +33,11 @@
 #include <format.hxx>
 #include <fmtpdsc.hxx>
 #include <pagedesc.hxx>
-#include <unostyle.hxx>
 #include <cellatr.hxx>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
 #include "xmlexp.hxx"
 #include <SwStyleNameMapper.hxx>
+#include <osl/diagnose.h>
 
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
@@ -71,8 +72,8 @@ void SwXMLExport::ExportFormat( const SwFormat& rFormat, enum XMLTokenEnum eFami
     // Only adopt parent name, if it's not the default
     OSL_ENSURE( !pParent || pParent->IsDefault(), "unexpected parent" );
 
-    OSL_ENSURE( USHRT_MAX == rFormat.GetPoolFormatId(), "pool ids arent'supported" );
-    OSL_ENSURE( USHRT_MAX == rFormat.GetPoolHelpId(), "help ids arent'supported" );
+    OSL_ENSURE( USHRT_MAX == rFormat.GetPoolFormatId(), "pool ids aren't supported" );
+    OSL_ENSURE( USHRT_MAX == rFormat.GetPoolHelpId(), "help ids aren't supported" );
     OSL_ENSURE( USHRT_MAX == rFormat.GetPoolHelpId() ||
             UCHAR_MAX == rFormat.GetPoolHlpFileId(), "help file ids aren't supported" );
 #endif
@@ -91,8 +92,7 @@ void SwXMLExport::ExportFormat( const SwFormat& rFormat, enum XMLTokenEnum eFami
                 SwStyleNameMapper::FillProgName(
                                     pPageDesc->GetName(),
                                     sName,
-                                    SwGetPoolIdFromName::PageDesc,
-                                    true);
+                                    SwGetPoolIdFromName::PageDesc);
             AddAttribute( XML_NAMESPACE_STYLE, XML_MASTER_PAGE_NAME,
                           EncodeStyleName( sName ) );
         }
@@ -107,10 +107,9 @@ void SwXMLExport::ExportFormat( const SwFormat& rFormat, enum XMLTokenEnum eFami
             rFormat.GetAttrSet().GetItemState( RES_BOXATR_FORMAT,
                                             false, &pItem ) )
         {
-            sal_Int32 nFormat = (sal_Int32)
-                static_cast<const SwTableBoxNumFormat *>(pItem)->GetValue();
+            sal_Int32 nFormat = static_cast<sal_Int32>(static_cast<const SwTableBoxNumFormat *>(pItem)->GetValue());
 
-            if ( (nFormat != -1) && (nFormat != css::util::NumberFormat::TEXT) )
+            if ( (nFormat != -1) && (nFormat != static_cast<sal_Int32>(getSwDefaultTextFormat())) )
             {
                 // if we have a format, register and then export
                 // (Careful: here we assume that data styles will be
@@ -166,17 +165,23 @@ void SwXMLExport::ExportStyles_( bool bUsed )
     GetTextParagraphExport()->exportTextStyles( bUsed
                                              ,IsShowProgress()
                                               );
+    collectDataStyles(true);
+    exportDataStyles();
     GetShapeExport()->GetShapeTableExport()->exportTableStyles();
     //page defaults
     GetPageExport()->exportDefaultStyle();
 }
 
-void SwXMLExport::ExportAutoStyles_()
+void SwXMLExport::collectAutoStyles()
 {
+    SvXMLExport::collectAutoStyles();
+
+    if (mbAutoStylesCollected)
+        return;
+
     // The order in which styles are collected *MUST* be the same as
     // the order in which they are exported. Otherwise, caching will
     // fail.
-
     if( getExportFlags() & (SvXMLExportFlags::MASTERSTYLES|SvXMLExportFlags::CONTENT) )
     {
         if( !(getExportFlags() & SvXMLExportFlags::CONTENT) )
@@ -192,17 +197,10 @@ void SwXMLExport::ExportAutoStyles_()
     if( getExportFlags() & SvXMLExportFlags::MASTERSTYLES )
         GetPageExport()->collectAutoStyles( false );
 
-    // if we don't export styles (i.e. in content stream only, but not
-    // in single-stream case), then we can save ourselves a bit of
-    // work and memory by not collecting field masters
-    if( !(getExportFlags() & SvXMLExportFlags::STYLES) )
-        GetTextParagraphExport()->exportUsedDeclarations();
 
     // exported in ExportContent_
     if( getExportFlags() & SvXMLExportFlags::CONTENT )
     {
-        GetTextParagraphExport()->exportTrackedChanges( true );
-
         // collect form autostyle
         // (do this before collectTextAutoStyles, 'cause the shapes need the results of the work
         // done by examineForms)
@@ -215,6 +213,25 @@ void SwXMLExport::ExportAutoStyles_()
         }
 
         GetTextParagraphExport()->collectTextAutoStylesOptimized( m_bShowProgress );
+    }
+
+    mbAutoStylesCollected = true;
+}
+
+void SwXMLExport::ExportAutoStyles_()
+{
+    collectAutoStyles();
+
+    // if we don't export styles (i.e. in content stream only, but not
+    // in single-stream case), then we can save ourselves a bit of
+    // work and memory by not collecting field masters
+    if( !(getExportFlags() & SvXMLExportFlags::STYLES) )
+        GetTextParagraphExport()->exportUsedDeclarations();
+
+    // exported in ExportContent_
+    if( getExportFlags() & SvXMLExportFlags::CONTENT )
+    {
+        GetTextParagraphExport()->exportTrackedChanges( true );
     }
 
     GetTextParagraphExport()->exportTextAutoStyles();
@@ -242,6 +259,8 @@ void SwXMLExport::ExportMasterStyles_()
     GetPageExport()->exportMasterStyles( false );
 }
 
+namespace {
+
 class SwXMLAutoStylePoolP : public SvXMLAutoStylePoolP
 {
     SvXMLExport& rExport;
@@ -252,7 +271,7 @@ protected:
 
     virtual void exportStyleAttributes(
             SvXMLAttributeList& rAttrList,
-            sal_Int32 nFamily,
+            XmlStyleFamily nFamily,
             const std::vector< XMLPropertyState >& rProperties,
             const SvXMLExportPropertyMapper& rPropExp
             , const SvXMLUnitConverter& rUnitConverter,
@@ -263,9 +282,11 @@ public:
     explicit SwXMLAutoStylePoolP( SvXMLExport& rExport );
 };
 
+}
+
 void SwXMLAutoStylePoolP::exportStyleAttributes(
             SvXMLAttributeList& rAttrList,
-            sal_Int32 nFamily,
+            XmlStyleFamily nFamily,
             const std::vector< XMLPropertyState >& rProperties,
             const SvXMLExportPropertyMapper& rPropExp
             , const SvXMLUnitConverter& rUnitConverter,
@@ -274,44 +295,41 @@ void SwXMLAutoStylePoolP::exportStyleAttributes(
 {
     SvXMLAutoStylePoolP::exportStyleAttributes( rAttrList, nFamily, rProperties, rPropExp, rUnitConverter, rNamespaceMap);
 
-    if( XML_STYLE_FAMILY_TEXT_PARAGRAPH == nFamily )
+    if( XmlStyleFamily::TEXT_PARAGRAPH != nFamily )
+        return;
+
+    for( const auto& rProperty : rProperties )
     {
-        for( std::vector< XMLPropertyState >::const_iterator
-                    aProperty = rProperties.begin();
-             aProperty != rProperties.end();
-              ++aProperty )
+        if (rProperty.mnIndex != -1) // #i26762#
         {
-            if (aProperty->mnIndex != -1) // #i26762#
+            switch( rPropExp.getPropertySetMapper()->
+                    GetEntryContextId( rProperty.mnIndex ) )
             {
-                switch( rPropExp.getPropertySetMapper()->
-                        GetEntryContextId( aProperty->mnIndex ) )
+            case CTF_NUMBERINGSTYLENAME:
                 {
-                case CTF_NUMBERINGSTYLENAME:
+                    OUString sStyleName;
+                    rProperty.maValue >>= sStyleName;
+                    // #i70748# - export also empty list styles
+                    if( !sStyleName.isEmpty() )
                     {
-                        OUString sStyleName;
-                        aProperty->maValue >>= sStyleName;
-                        // #i70748# - export also empty list styles
-                        if( !sStyleName.isEmpty() )
-                        {
-                            OUString sTmp = rExport.GetTextParagraphExport()->GetListAutoStylePool().Find( sStyleName );
-                            if( !sTmp.isEmpty() )
-                                sStyleName = sTmp;
-                        }
-                        GetExport().AddAttribute( XML_NAMESPACE_STYLE,
-                              sListStyleName,
-                              GetExport().EncodeStyleName( sStyleName ) );
+                        OUString sTmp = rExport.GetTextParagraphExport()->GetListAutoStylePool().Find( sStyleName );
+                        if( !sTmp.isEmpty() )
+                            sStyleName = sTmp;
                     }
-                    break;
-                case CTF_PAGEDESCNAME:
-                    {
-                        OUString sStyleName;
-                        aProperty->maValue >>= sStyleName;
-                        GetExport().AddAttribute( XML_NAMESPACE_STYLE,
-                                      sMasterPageName,
-                                      GetExport().EncodeStyleName( sStyleName ) );
-                    }
-                    break;
+                    GetExport().AddAttribute( XML_NAMESPACE_STYLE,
+                          sListStyleName,
+                          GetExport().EncodeStyleName( sStyleName ) );
                 }
+                break;
+            case CTF_PAGEDESCNAME:
+                {
+                    OUString sStyleName;
+                    rProperty.maValue >>= sStyleName;
+                    GetExport().AddAttribute( XML_NAMESPACE_STYLE,
+                                  sMasterPageName,
+                                  GetExport().EncodeStyleName( sStyleName ) );
+                }
+                break;
             }
         }
     }

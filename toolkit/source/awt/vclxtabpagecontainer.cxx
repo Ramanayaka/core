@@ -17,18 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <toolkit/awt/vclxtabpagecontainer.hxx>
+#include <awt/vclxtabpagecontainer.hxx>
 #include <com/sun/star/awt/tab/XTabPageModel.hpp>
 #include <com/sun/star/awt/XControl.hpp>
+#include <sal/log.hxx>
+#include <toolkit/helper/property.hxx>
 #include <vcl/image.hxx>
 #include <vcl/tabpage.hxx>
 #include <vcl/tabctrl.hxx>
 #include <vcl/svapp.hxx>
-#include <toolkit/helper/property.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <cppuhelper/typeprovider.hxx>
 
-#include "helper/tkresmgr.hxx"
+#include <helper/tkresmgr.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -37,7 +37,6 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::view;
 
-//  class VCLXTabPageContainer
 
 void VCLXTabPageContainer::GetPropertyIds( std::vector< sal_uInt16 > &rIds )
 {
@@ -65,22 +64,12 @@ void SAL_CALL VCLXTabPageContainer::draw( sal_Int32 nX, sal_Int32 nY )
         if (pTabPage && pDev)
         {
             ::Point aPos( nX, nY );
-            ::Size  aSize = pTabPage->GetSizePixel();
-
             aPos  = pDev->PixelToLogic( aPos );
-            aSize = pDev->PixelToLogic( aSize );
-
-            pTabPage->Draw( pDev, aPos, aSize, DrawFlags::NONE );
+            pTabPage->Draw( pDev, aPos, DrawFlags::NONE );
         }
     }
 
     VCLXWindow::draw( nX, nY );
-}
-
-css::awt::DeviceInfo VCLXTabPageContainer::getInfo()
-{
-    css::awt::DeviceInfo aInfo = VCLXDevice::getInfo();
-    return aInfo;
 }
 
 void SAL_CALL VCLXTabPageContainer::setProperty(const OUString& PropertyName,   const Any& Value )
@@ -124,15 +113,13 @@ Reference< css::awt::tab::XTabPage > SAL_CALL VCLXTabPageContainer::getTabPageBy
 {
     SolarMutexGuard aGuard;
     Reference< css::awt::tab::XTabPage > xTabPage;
-    ::std::vector< Reference< css::awt::tab::XTabPage > >::iterator aIter = m_aTabPages.begin();
-    ::std::vector< Reference< css::awt::tab::XTabPage > >::iterator aEnd = m_aTabPages.end();
-    for(;aIter != aEnd;++aIter)
+    for(const auto& rTabPage : m_aTabPages)
     {
-        Reference< awt::XControl > xControl(*aIter,UNO_QUERY );
+        Reference< awt::XControl > xControl(rTabPage,UNO_QUERY );
         Reference< awt::tab::XTabPageModel > xP( xControl->getModel(), UNO_QUERY );
         if ( tabPageID == xP->getTabPageID() )
         {
-            xTabPage = *aIter;
+            xTabPage = rTabPage;
             break;
         }
     }
@@ -153,22 +140,22 @@ void VCLXTabPageContainer::ProcessWindowEvent( const VclWindowEvent& _rVclWindow
 {
     SolarMutexClearableGuard aGuard;
     VclPtr<TabControl> pTabControl = GetAs<TabControl>();
-    if ( pTabControl )
+    if ( !pTabControl )
+        return;
+
+    switch ( _rVclWindowEvent.GetId() )
     {
-        switch ( _rVclWindowEvent.GetId() )
+        case VclEventId::TabpageActivate:
         {
-            case VclEventId::TabpageActivate:
-            {
-                sal_uLong page = reinterpret_cast<sal_uLong>(_rVclWindowEvent.GetData());
-                awt::tab::TabPageActivatedEvent aEvent(nullptr,page);
-                m_aTabPageListeners.tabPageActivated(aEvent);
-                break;
-            }
-            default:
-                aGuard.clear();
-                VCLXWindow::ProcessWindowEvent( _rVclWindowEvent );
-                break;
+            sal_uLong page = reinterpret_cast<sal_uLong>(_rVclWindowEvent.GetData());
+            awt::tab::TabPageActivatedEvent aEvent(nullptr,page);
+            m_aTabPageListeners.tabPageActivated(aEvent);
+            break;
         }
+        default:
+            aGuard.clear();
+            VCLXWindow::ProcessWindowEvent( _rVclWindowEvent );
+            break;
     }
 }
 void SAL_CALL VCLXTabPageContainer::disposing( const css::lang::EventObject& /*Source*/ )
@@ -179,24 +166,27 @@ void SAL_CALL VCLXTabPageContainer::elementInserted( const css::container::Conta
     SolarMutexGuard aGuard;
     VclPtr<TabControl> pTabCtrl = GetAs<TabControl>();
     Reference< css::awt::tab::XTabPage > xTabPage(Event.Element,uno::UNO_QUERY);
-    if ( pTabCtrl && xTabPage.is() )
-    {
-        Reference< awt::XControl > xControl(xTabPage,UNO_QUERY );
-        Reference< awt::tab::XTabPageModel > xP( xControl->getModel(), UNO_QUERY );
-        sal_Int16 nPageID = xP->getTabPageID();
+    if ( !pTabCtrl || !xTabPage.is() )
+        return;
 
-        VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow(xControl->getPeer());
-        TabPage* pPage = static_cast<TabPage*>(pWindow.get());
-        pTabCtrl->InsertPage(nPageID,pPage->GetText());
+    Reference< awt::XControl > xControl(xTabPage,UNO_QUERY );
+    Reference< awt::tab::XTabPageModel > xP( xControl->getModel(), UNO_QUERY );
+    sal_Int16 nPageID = xP->getTabPageID();
 
-        pPage->Hide();
-        pTabCtrl->SetTabPage(nPageID,pPage);
-        pTabCtrl->SetHelpText(nPageID,xP->getToolTip());
-        pTabCtrl->SetPageImage(nPageID,TkResMgr::getImageFromURL(xP->getImageURL()));
-        pTabCtrl->SelectTabPage(nPageID);
-        pTabCtrl->EnablePage(nPageID,xP->getEnabled());
-        m_aTabPages.push_back(xTabPage);
-    }
+    if (!xControl->getPeer().is())
+        throw RuntimeException("No peer for tabpage container!");
+    VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow(xControl->getPeer());
+    TabPage* pPage = static_cast<TabPage*>(pWindow.get());
+    pTabCtrl->InsertPage(nPageID,pPage->GetText());
+
+    pPage->Hide();
+    pTabCtrl->SetTabPage(nPageID,pPage);
+    pTabCtrl->SetHelpText(nPageID,xP->getToolTip());
+    pTabCtrl->SetPageImage(nPageID,TkResMgr::getImageFromURL(xP->getImageURL()));
+    pTabCtrl->SelectTabPage(nPageID);
+    pTabCtrl->SetPageEnabled(nPageID,xP->getEnabled());
+    m_aTabPages.push_back(xTabPage);
+
 }
 void SAL_CALL VCLXTabPageContainer::elementRemoved( const css::container::ContainerEvent& Event )
 {
@@ -213,6 +203,28 @@ void SAL_CALL VCLXTabPageContainer::elementRemoved( const css::container::Contai
 }
 void SAL_CALL VCLXTabPageContainer::elementReplaced( const css::container::ContainerEvent& /*Event*/ )
 {
+}
+
+void VCLXTabPageContainer::propertiesChange(const::css::uno::Sequence<PropertyChangeEvent>& rEvents)
+{
+    SolarMutexGuard aGuard;
+    VclPtr<TabControl> pTabCtrl = GetAs<TabControl>();
+    if (!pTabCtrl)
+        return;
+
+    for (const beans::PropertyChangeEvent& rEvent : rEvents) {
+        // handle property changes for tab pages
+        Reference< css::awt::tab::XTabPageModel > xTabPageModel(rEvent.Source, uno::UNO_QUERY);
+        if (!xTabPageModel.is())
+            continue;
+
+        const sal_Int16 nId = xTabPageModel->getTabPageID();
+        if (rEvent.PropertyName == GetPropertyName(BASEPROPERTY_ENABLED)) {
+            pTabCtrl->SetPageEnabled(nId, xTabPageModel->getEnabled());
+        } else if (rEvent.PropertyName == GetPropertyName(BASEPROPERTY_TITLE)) {
+            pTabCtrl->SetPageText(nId, xTabPageModel->getTitle());
+        }
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

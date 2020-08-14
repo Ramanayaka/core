@@ -26,11 +26,8 @@
 #include <basegfx/range/b2drectangle.hxx>
 #include <basegfx/vector/b2isize.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <canvas/rendering/irendermodule.hxx>
-#include <canvas/rendering/icolorbuffer.hxx>
-#include <canvas/rendering/isurface.hxx>
+#include <rendering/icolorbuffer.hxx>
 
-#include "surfacerect.hxx"
 #include "pagemanager.hxx"
 
 namespace canvas
@@ -87,7 +84,7 @@ namespace canvas
         bool drawRectangularArea(
             double                         fAlpha,
             const ::basegfx::B2DPoint&     rPos,
-            const ::basegfx::B2DRange&     rArea,
+            const ::basegfx::B2DRectangle& rArea,
             const ::basegfx::B2DHomMatrix& rTransform );
 
         /** Render the surface content to screen.
@@ -134,7 +131,6 @@ namespace canvas
         bool                  mbIsDirty;
 
     private:
-        bool refresh( canvas::IColorBuffer& rBuffer ) const;
         void prepareRendering();
 
         basegfx::B2DRectangle getUVCoords() const;

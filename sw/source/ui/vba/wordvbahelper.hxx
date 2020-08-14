@@ -22,18 +22,12 @@
 #include <vbahelper/vbahelper.hxx>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/text/XTextViewCursor.hpp>
-#include <com/sun/star/text/XPageCursor.hpp>
 #include <com/sun/star/style/XStyle.hpp>
-#include <com/sun/star/text/XTextTable.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 
 class SwDocShell;
 class SwView;
-namespace ooo
-{
-    namespace vba
-    {
-    namespace word
+namespace ooo::vba::word
     {
         //css::uno::Reference< css::frame::XModel > getCurrentDocument() throw (css::uno::RuntimeException);
         SwDocShell* getDocShell( const css::uno::Reference< css::frame::XModel>& xModel );
@@ -63,9 +57,7 @@ namespace ooo
         MOVE_DOWN
     };
 
-} // word
-} // vba
-} // ooo
+} // ooo::vba::word
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

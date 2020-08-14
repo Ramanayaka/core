@@ -18,28 +18,37 @@
  */
 
 #include <memory>
-#include <sal/config.h>
-
 #include <utility>
 
-#include <osl/mutex.hxx>
 #include <comphelper/interfacecontainer2.hxx>
+#include <comphelper/processfactory.hxx>
+#include <comphelper/servicehelper.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/weak.hxx>
+#include <osl/mutex.hxx>
+#include <sal/config.h>
+#include <svl/listener.hxx>
 #include <vcl/svapp.hxx>
+#include <sal/log.hxx>
 
-#include <unomid.h>
 #include <unotextrange.hxx>
 #include <unorefmark.hxx>
 #include <unotextcursor.hxx>
 #include <unomap.hxx>
-#include <unocrsr.hxx>
 #include <unocrsrhelper.hxx>
 #include <doc.hxx>
 #include <ndtxt.hxx>
 #include <fmtrfmrk.hxx>
 #include <txtrfmrk.hxx>
-#include <hints.hxx>
-#include <comphelper/servicehelper.hxx>
+#include <unometa.hxx>
+#include <unotext.hxx>
+#include <unoport.hxx>
+#include <txtatr.hxx>
+#include <fmtmeta.hxx>
+#include <docsh.hxx>
+
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/rdf/Statement.hpp>
@@ -47,21 +56,12 @@
 #include <com/sun/star/rdf/URIs.hpp>
 #include <com/sun/star/rdf/XLiteral.hpp>
 #include <com/sun/star/rdf/XRepositorySupplier.hpp>
-#include <comphelper/processfactory.hxx>
 #include <com/sun/star/lang/DisposedException.hpp>
-#include <unometa.hxx>
-#include <unotext.hxx>
-#include <unoport.hxx>
-#include <txtatr.hxx>
-#include <fmtmeta.hxx>
-#include <docsh.hxx>
-#include <cppuhelper/weak.hxx>
-
 
 using namespace ::com::sun::star;
 
 class SwXReferenceMark::Impl
-    : public SwClient
+    : public SvtListener
 {
 private:
     ::osl::Mutex m_Mutex; // just for OInterfaceContainerHelper2
@@ -69,39 +69,35 @@ private:
 public:
     uno::WeakReference<uno::XInterface> m_wThis;
     ::comphelper::OInterfaceContainerHelper2 m_EventListeners;
-    bool                        m_bIsDescriptor;
-    SwDoc *                     m_pDoc;
-    const SwFormatRefMark *        m_pMarkFormat;
-    OUString             m_sMarkName;
+    bool m_bIsDescriptor;
+    SwDoc* m_pDoc;
+    const SwFormatRefMark* m_pMarkFormat;
+    OUString m_sMarkName;
 
-    Impl(   SwDoc *const pDoc, SwFormatRefMark *const pRefMark)
-        : SwClient(pRefMark)
-        , m_EventListeners(m_Mutex)
+    Impl(SwDoc* const pDoc, SwFormatRefMark* const pRefMark)
+        : m_EventListeners(m_Mutex)
         , m_bIsDescriptor(nullptr == pRefMark)
         , m_pDoc(pDoc)
         , m_pMarkFormat(pRefMark)
     {
         if (pRefMark)
         {
+            StartListening(pRefMark->GetNotifier());
             m_sMarkName = pRefMark->GetRefName();
         }
     }
 
-    bool    IsValid() const { return nullptr != GetRegisteredIn(); }
-    void    InsertRefMark( SwPaM & rPam, SwXTextCursor const*const pCursor );
-    void    Invalidate();
+    bool IsValid() const { return m_pMarkFormat; }
+    void InsertRefMark( SwPaM & rPam, SwXTextCursor const*const pCursor );
+    void Invalidate();
 protected:
-    // SwClient
-    virtual void    Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew) override;
+    virtual void Notify(const SfxHint&) override;
 
 };
 
 void SwXReferenceMark::Impl::Invalidate()
 {
-    if (IsValid())
-    {
-        GetRegisteredIn()->Remove(this);
-    }
+    EndListeningAll();
     m_pDoc = nullptr;
     m_pMarkFormat = nullptr;
     uno::Reference<uno::XInterface> const xThis(m_wThis);
@@ -113,14 +109,10 @@ void SwXReferenceMark::Impl::Invalidate()
     m_EventListeners.disposeAndClear(ev);
 }
 
-void SwXReferenceMark::Impl::Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew)
+void SwXReferenceMark::Impl::Notify(const SfxHint& rHint)
 {
-    ClientModify(this, pOld, pNew);
-
-    if (!GetRegisteredIn()) // removed => dispose
-    {
+    if(rHint.GetId() == SfxHintId::Dying)
         Invalidate();
-    }
 }
 
 SwXReferenceMark::SwXReferenceMark(
@@ -175,16 +167,8 @@ SwXReferenceMark::getSomething(const uno::Sequence< sal_Int8 >& rId)
 
 OUString SAL_CALL SwXReferenceMark::getImplementationName()
 {
-    return OUString("SwXReferenceMark");
+    return "SwXReferenceMark";
 }
-
-static char const*const g_ServicesReferenceMark[] =
-{
-    "com.sun.star.text.TextContent",
-    "com.sun.star.text.ReferenceMark",
-};
-
-static const size_t g_nServicesReferenceMark(SAL_N_ELEMENTS(g_ServicesReferenceMark));
 
 sal_Bool SAL_CALL
 SwXReferenceMark::supportsService(const OUString& rServiceName)
@@ -195,9 +179,13 @@ SwXReferenceMark::supportsService(const OUString& rServiceName)
 uno::Sequence< OUString > SAL_CALL
 SwXReferenceMark::getSupportedServiceNames()
 {
-    return ::sw::GetSupportedServiceNamesImpl(
-            g_nServicesReferenceMark, g_ServicesReferenceMark);
+    return {
+        "com.sun.star.text.TextContent",
+        "com.sun.star.text.ReferenceMark"
+    };
 }
+
+namespace {
 
 template<typename T> struct NotContainedIn
 {
@@ -209,6 +197,8 @@ template<typename T> struct NotContainedIn
                     == m_rVector.end();
     }
 };
+
+}
 
 void SwXReferenceMark::Impl::InsertRefMark(SwPaM& rPam,
         SwXTextCursor const*const pCursor)
@@ -223,7 +213,7 @@ void SwXReferenceMark::Impl::InsertRefMark(SwPaM& rPam,
     bool bMark = *rPam.GetPoint() != *rPam.GetMark();
 
     const bool bForceExpandHints( !bMark && pCursor && pCursor->IsAtEndOfMeta() );
-    const SetAttrMode nInsertFlags = (bForceExpandHints)
+    const SetAttrMode nInsertFlags = bForceExpandHints
         ?   ( SetAttrMode::FORCEHINTEXPAND
             | SetAttrMode::DONTEXPAND)
         : SetAttrMode::DONTEXPAND;
@@ -275,8 +265,8 @@ void SwXReferenceMark::Impl::InsertRefMark(SwPaM& rPam,
     }
 
     m_pMarkFormat = &pTextAttr->GetRefMark();
-
-    const_cast<SwFormatRefMark*>(m_pMarkFormat)->Add(this);
+    EndListeningAll();
+    StartListening(const_cast<SwFormatRefMark*>(m_pMarkFormat)->GetNotifier());
 }
 
 void SAL_CALL
@@ -298,7 +288,7 @@ SwXReferenceMark::attach(const uno::Reference< text::XTextRange > & xTextRange)
             ::sw::UnoTunnelGetImplementation<OTextCursorHelper>(xRangeTunnel);
     }
     SwDoc *const pDocument =
-        (pRange) ? &pRange->GetDoc() : ((pCursor) ? pCursor->GetDoc() : nullptr);
+        pRange ? &pRange->GetDoc() : (pCursor ? pCursor->GetDoc() : nullptr);
     if (!pDocument)
     {
         throw lang::IllegalArgumentException();
@@ -471,7 +461,7 @@ SwXReferenceMark::getPropertyValue(const OUString& rPropertyName)
     uno::Any aRet;
     if (! ::sw::GetDefaultTextContentValue(aRet, rPropertyName))
     {
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(rPropertyName);
     }
     return aRet;
 }
@@ -503,6 +493,8 @@ void SAL_CALL SwXReferenceMark::removeVetoableChangeListener(
 {
     OSL_FAIL("SwXReferenceMark::removeVetoableChangeListener(): not implemented");
 }
+
+namespace {
 
 class SwXMetaText : public cppu::OWeakObject, public SwXText
 {
@@ -542,6 +534,8 @@ public:
 
 };
 
+}
+
 SwXMetaText::SwXMetaText(SwDoc & rDoc, SwXMeta & rMeta)
     : SwXText(&rDoc, CursorType::Meta)
     , m_rMeta(rMeta)
@@ -552,7 +546,7 @@ const SwStartNode *SwXMetaText::GetStartNode() const
 {
     SwXText const * const pParent(
             dynamic_cast<SwXText*>(m_rMeta.GetParentText().get()));
-    return (pParent) ? pParent->GetStartNode() : nullptr;
+    return pParent ? pParent->GetStartNode() : nullptr;
 }
 
 void SwXMetaText::PrepareForAttach( uno::Reference<text::XTextRange> & xRange,
@@ -614,8 +608,7 @@ SwXMetaText::createTextCursorByRange(
 // the Meta has a cached list of text portions for its contents
 // this list is created by SwXTextPortionEnumeration
 // the Meta listens at the SwTextNode and throws away the cache when it changes
-class SwXMeta::Impl
-    : public SwClient
+class SwXMeta::Impl : public SvtListener
 {
 private:
     ::osl::Mutex m_Mutex; // just for OInterfaceContainerHelper2
@@ -629,48 +622,45 @@ public:
     bool m_bIsDescriptor;
     uno::Reference<text::XText> m_xParentText;
     rtl::Reference<SwXMetaText> m_xText;
+    sw::Meta* m_pMeta;
 
-    Impl(   SwXMeta & rThis, SwDoc & rDoc,
-            ::sw::Meta * const pMeta,
+    Impl(SwXMeta& rThis, SwDoc& rDoc,
+            ::sw::Meta* const pMeta,
             uno::Reference<text::XText> const& xParentText,
-            TextRangeList_t const * const pPortions)
-        : SwClient(pMeta)
-        , m_EventListeners(m_Mutex)
-        , m_pTextPortions( pPortions )
-        , m_bIsDisposed( false )
+            std::unique_ptr<TextRangeList_t const> pPortions)
+        : m_EventListeners(m_Mutex)
+        , m_pTextPortions(std::move(pPortions))
+        , m_bIsDisposed(false)
         , m_bIsDescriptor(nullptr == pMeta)
         , m_xParentText(xParentText)
         , m_xText(new SwXMetaText(rDoc, rThis))
+        , m_pMeta(pMeta)
     {
+        !m_bIsDescriptor && StartListening(m_pMeta->GetNotifier());
     }
 
-    inline const ::sw::Meta * GetMeta() const;
+    inline const ::sw::Meta* GetMeta() const;
     // only for SwXMetaField!
-    inline const ::sw::MetaField * GetMetaField() const;
+    inline const ::sw::MetaField* GetMetaField() const;
 protected:
-    // SwClient
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew) override;
+    virtual void Notify(const SfxHint& rHint) override;
 
 };
 
-inline const ::sw::Meta * SwXMeta::Impl::GetMeta() const
+inline const ::sw::Meta* SwXMeta::Impl::GetMeta() const
 {
-    return static_cast< const ::sw::Meta * >(GetRegisteredIn());
+    return m_pMeta;
 }
 
 // SwModify
-void SwXMeta::Impl::Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew )
+void SwXMeta::Impl::Notify(const SfxHint& rHint)
 {
     m_pTextPortions.reset(); // throw away cache (SwTextNode changed)
-
-    ClientModify(this, pOld, pNew);
-
-    if (GetRegisteredIn())
-    {
-        return; // core object still alive
-    }
+    if(rHint.GetId() != SfxHintId::Dying && rHint.GetId() != SfxHintId::Deinitializing)
+        return;
 
     m_bIsDisposed = true;
+    m_pMeta = nullptr;
     m_xText->Invalidate();
     uno::Reference<uno::XInterface> const xThis(m_wThis);
     if (!xThis.is())
@@ -681,15 +671,15 @@ void SwXMeta::Impl::Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew )
     m_EventListeners.disposeAndClear(ev);
 }
 
-uno::Reference<text::XText> SwXMeta::GetParentText() const
+uno::Reference<text::XText> const & SwXMeta::GetParentText() const
 {
     return m_pImpl->m_xParentText;
 }
 
 SwXMeta::SwXMeta(SwDoc *const pDoc, ::sw::Meta *const pMeta,
         uno::Reference<text::XText> const& xParentText,
-        TextRangeList_t const*const pPortions)
-    : m_pImpl( new SwXMeta::Impl(*this, *pDoc, pMeta, xParentText, pPortions) )
+        std::unique_ptr<TextRangeList_t const> pPortions)
+    : m_pImpl( new SwXMeta::Impl(*this, *pDoc, pMeta, xParentText, std::move(pPortions)) )
 {
 }
 
@@ -705,7 +695,7 @@ SwXMeta::~SwXMeta()
 uno::Reference<rdf::XMetadatable>
 SwXMeta::CreateXMeta(SwDoc & rDoc, bool const isField)
 {
-    SwXMeta *const pXMeta((isField)
+    SwXMeta *const pXMeta(isField
             ? new SwXMetaField(& rDoc) : new SwXMeta(& rDoc));
     // this is why the constructor is private: need to acquire pXMeta here
     uno::Reference<rdf::XMetadatable> const xMeta(pXMeta);
@@ -724,11 +714,10 @@ SwXMeta::CreateXMeta(::sw::Meta & rMeta,
     uno::Reference<rdf::XMetadatable> xMeta(rMeta.GetXMeta());
     if (xMeta.is())
     {
-        if (pPortions.get()) // set cache in the XMeta to the given portions
+        if (pPortions) // set cache in the XMeta to the given portions
         {
-            const uno::Reference<lang::XUnoTunnel> xUT(xMeta, uno::UNO_QUERY);
             SwXMeta *const pXMeta(
-                ::sw::UnoTunnelGetImplementation<SwXMeta>(xUT));
+                comphelper::getUnoTunnelImplementation<SwXMeta>(xMeta));
             assert(pXMeta);
             // NB: the meta must always be created with the complete content
             // if SwXTextPortionEnumeration is created for a selection,
@@ -760,9 +749,9 @@ SwXMeta::CreateXMeta(::sw::Meta & rMeta,
     if (!xParentText.is()) { return nullptr; }
     SwXMeta *const pXMeta( (RES_TXTATR_META == rMeta.GetFormatMeta()->Which())
         ? new SwXMeta     (pTextNode->GetDoc(), &rMeta, xParentText,
-                            pPortions.release()) // temporarily un-unique_ptr :-(
+                            std::move(pPortions))
         : new SwXMetaField(pTextNode->GetDoc(), &rMeta, xParentText,
-                            pPortions.release()));
+                            std::move(pPortions)));
     // this is why the constructor is private: need to acquire pXMeta here
     xMeta.set(pXMeta);
     // in order to initialize the weak pointer cache in the core object
@@ -876,16 +865,8 @@ SwXMeta::getSomething( const uno::Sequence< sal_Int8 > & i_rId )
 OUString SAL_CALL
 SwXMeta::getImplementationName()
 {
-    return OUString("SwXMeta");
+    return "SwXMeta";
 }
-
-static char const*const g_ServicesMeta[] =
-{
-    "com.sun.star.text.TextContent",
-    "com.sun.star.text.InContentMetadata",
-};
-
-static const size_t g_nServicesMeta(SAL_N_ELEMENTS(g_ServicesMeta));
 
 sal_Bool SAL_CALL
 SwXMeta::supportsService(const OUString& rServiceName)
@@ -896,7 +877,10 @@ SwXMeta::supportsService(const OUString& rServiceName)
 uno::Sequence< OUString > SAL_CALL
 SwXMeta::getSupportedServiceNames()
 {
-    return ::sw::GetSupportedServiceNamesImpl(g_nServicesMeta, g_ServicesMeta);
+    return {
+        "com.sun.star.text.TextContent",
+        "com.sun.star.text.InContentMetadata"
+    };
 }
 
 // XComponent
@@ -949,7 +933,7 @@ SwXMeta::dispose()
     }
 }
 
-void SAL_CALL
+void
 SwXMeta::AttachImpl(const uno::Reference< text::XTextRange > & i_xTextRange,
         const sal_uInt16 i_nWhich)
 {
@@ -975,7 +959,7 @@ SwXMeta::AttachImpl(const uno::Reference< text::XTextRange > & i_xTextRange,
     }
     SwXTextRange *const pRange(
             ::sw::UnoTunnelGetImplementation<SwXTextRange>(xRangeTunnel));
-    OTextCursorHelper *const pCursor( (pRange) ? nullptr :
+    OTextCursorHelper *const pCursor( pRange ? nullptr :
             ::sw::UnoTunnelGetImplementation<OTextCursorHelper>(xRangeTunnel));
     if (!pRange && !pCursor)
     {
@@ -1001,13 +985,13 @@ SwXMeta::AttachImpl(const uno::Reference< text::XTextRange > & i_xTextRange,
     SwXTextCursor const*const pTextCursor(
             dynamic_cast<SwXTextCursor*>(pCursor));
     const bool bForceExpandHints(pTextCursor && pTextCursor->IsAtEndOfMeta());
-    const SetAttrMode nInsertFlags( (bForceExpandHints)
+    const SetAttrMode nInsertFlags( bForceExpandHints
         ?   ( SetAttrMode::FORCEHINTEXPAND
             | SetAttrMode::DONTEXPAND)
         : SetAttrMode::DONTEXPAND );
 
     const std::shared_ptr< ::sw::Meta> pMeta( (RES_TXTATR_META == i_nWhich)
-        ? std::make_shared< ::sw::Meta>( )
+        ? std::make_shared< ::sw::Meta>( nullptr )
         : std::shared_ptr< ::sw::Meta>(
             pDoc->GetMetaFieldManager().makeMetaField()) );
     SwFormatMeta meta(pMeta, i_nWhich); // this is cloned by Insert!
@@ -1027,7 +1011,9 @@ SwXMeta::AttachImpl(const uno::Reference< text::XTextRange > & i_xTextRange,
             static_cast< ::cppu::OWeakObject* >(this));
     }
 
-    pMeta->Add(m_pImpl.get());
+    m_pImpl->EndListeningAll();
+    m_pImpl->m_pMeta = pMeta.get();
+    m_pImpl->StartListening(pMeta->GetNotifier());
     pMeta->SetXMeta(uno::Reference<rdf::XMetadatable>(this));
 
     m_pImpl->m_xParentText = ::sw::CreateParentXText(*pDoc, *aPam.GetPoint());
@@ -1193,12 +1179,10 @@ SwXMeta::getElementType()
     return cppu::UnoType<text::XTextRange>::get();
 }
 
-sal_Bool SAL_CALL
-SwXMeta::hasElements()
+sal_Bool SAL_CALL SwXMeta::hasElements()
 {
     SolarMutexGuard g;
-
-    return m_pImpl->GetRegisteredIn() != nullptr;
+    return m_pImpl->m_pMeta != nullptr;
 }
 
 // XEnumerationAccess
@@ -1228,7 +1212,7 @@ SwXMeta::createEnumeration()
 
     SwPaM aPam(*pTextNode, nMetaStart);
 
-    if (!m_pImpl->m_pTextPortions.get())
+    if (!m_pImpl->m_pTextPortions)
     {
         return new SwXTextPortionEnumeration(
                     aPam, GetParentText(), nMetaStart, nMetaEnd);
@@ -1254,23 +1238,23 @@ uno::Reference<frame::XModel> SwXMeta::GetModel()
         if (pTextNode)
         {
             SwDocShell const * const pShell(pTextNode->GetDoc()->GetDocShell());
-            return (pShell) ? pShell->GetModel() : nullptr;
+            return pShell ? pShell->GetModel() : nullptr;
         }
     }
     return nullptr;
 }
 
-inline const ::sw::MetaField * SwXMeta::Impl::GetMetaField() const
+inline const ::sw::MetaField* SwXMeta::Impl::GetMetaField() const
 {
-    return static_cast< const ::sw::MetaField * >(GetRegisteredIn());
+    return dynamic_cast<sw::MetaField*>(m_pMeta);
 }
 
 SwXMetaField::SwXMetaField(SwDoc *const pDoc, ::sw::Meta *const pMeta,
         uno::Reference<text::XText> const& xParentText,
-        TextRangeList_t const*const pPortions)
-    : SwXMetaField_Base(pDoc, pMeta, xParentText, pPortions)
+        std::unique_ptr<TextRangeList_t const> pPortions)
+    : SwXMetaField_Base(pDoc, pMeta, xParentText, std::move(pPortions))
 {
-    OSL_ENSURE(pMeta && dynamic_cast< ::sw::MetaField* >(pMeta),
+    OSL_ENSURE(dynamic_cast< ::sw::MetaField* >(pMeta),
         "SwXMetaField created for wrong hint!");
 }
 
@@ -1287,17 +1271,8 @@ SwXMetaField::~SwXMetaField()
 OUString SAL_CALL
 SwXMetaField::getImplementationName()
 {
-    return OUString("SwXMetaField");
+    return "SwXMetaField";
 }
-
-static char const*const g_ServicesMetaField[] =
-{
-    "com.sun.star.text.TextContent",
-    "com.sun.star.text.TextField",
-    "com.sun.star.text.textfield.MetadataField",
-};
-
-static const size_t g_nServicesMetaField(SAL_N_ELEMENTS(g_ServicesMetaField));
 
 sal_Bool SAL_CALL
 SwXMetaField::supportsService(const OUString& rServiceName)
@@ -1308,8 +1283,11 @@ SwXMetaField::supportsService(const OUString& rServiceName)
 uno::Sequence< OUString > SAL_CALL
 SwXMetaField::getSupportedServiceNames()
 {
-    return ::sw::GetSupportedServiceNamesImpl(
-            g_nServicesMetaField, g_ServicesMetaField);
+    return {
+        "com.sun.star.text.TextContent",
+        "com.sun.star.text.TextField",
+        "com.sun.star.text.textfield.MetadataField"
+    };
 }
 
 // XComponent
@@ -1387,7 +1365,7 @@ SwXMetaField::setPropertyValue(
     }
     else
     {
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(rPropertyName);
     }
 }
 
@@ -1413,7 +1391,7 @@ SwXMetaField::getPropertyValue(const OUString& rPropertyName)
     }
     else
     {
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(rPropertyName);
     }
 
     return any;
@@ -1462,7 +1440,7 @@ lcl_getURI(const bool bPrefix)
     static uno::Reference< rdf::XURI > xOdfSuffix(
         rdf::URI::createKnown(xContext, rdf::URIs::ODF_SUFFIX),
         uno::UNO_SET_THROW);
-    return (bPrefix) ? xOdfPrefix : xOdfSuffix;
+    return bPrefix ? xOdfPrefix : xOdfSuffix;
 }
 
 static OUString
@@ -1513,10 +1491,9 @@ getPrefixAndSuffix(
         }
     } catch (uno::RuntimeException &) {
         throw;
-    } catch (const uno::Exception & e) {
-        throw lang::WrappedTargetRuntimeException(
-            "getPrefixAndSuffix: exception",
-            nullptr, uno::makeAny(e));
+    } catch (const uno::Exception &) {
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw lang::WrappedTargetRuntimeException("getPrefixAndSuffix: exception", nullptr, anyEx);
     }
 }
 
@@ -1534,7 +1511,7 @@ SwXMetaField::getPresentation(sal_Bool bShowCommand)
     else
     {
         // getString should check if this is invalid
-        const OUString content( this->getString() );
+        const OUString content( getString() );
         OUString prefix;
         OUString suffix;
         getPrefixAndSuffix(GetModel(), this, &prefix, &suffix);

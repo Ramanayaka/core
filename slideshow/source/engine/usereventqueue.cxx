@@ -20,22 +20,17 @@
 
 #include <tools/diagnose_ex.h>
 
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
-
 #include <com/sun/star/awt/SystemPointer.hpp>
 #include <com/sun/star/awt/MouseButton.hpp>
 #include <com/sun/star/awt/MouseEvent.hpp>
 
-#include "delayevent.hxx"
-#include "usereventqueue.hxx"
-#include "cursormanager.hxx"
-#include "slideshowexceptions.hxx"
+#include <delayevent.hxx>
+#include <usereventqueue.hxx>
+#include <cursormanager.hxx>
 
 #include <vector>
 #include <queue>
 #include <map>
-#include <functional>
 #include <algorithm>
 
 
@@ -43,8 +38,7 @@ using namespace com::sun::star;
 
 /* Implementation of UserEventQueue class */
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 namespace {
 
@@ -158,9 +152,7 @@ public:
             maAnimationEventMap.end() )
         {
             // no entry for this animation -> create one
-            aIter = maAnimationEventMap.insert(
-                ImpAnimationEventMap::value_type( xNode,
-                                                  ImpEventVector() ) ).first;
+            aIter = maAnimationEventMap.emplace( xNode, ImpEventVector() ).first;
         }
 
         // add new event to queue
@@ -260,7 +252,7 @@ private:
                 // handler is triggered upon next effect events (multiplexer
                 // prio=-1)!  Posting a notifyNextEffect() here is only safe
                 // (we don't run into busy loop), because we assume that
-                // someone has registerered above for next effects
+                // someone has registered above for next effects
                 // (multiplexer prio=0) at the user event queue.
                 return mrEventQueue.addEventWhenQueueIsEmpty(
                     makeEvent( [this] () {
@@ -278,6 +270,8 @@ private:
     EventMultiplexer & mrEventMultiplexer;
     bool mbSkipTriggersNextEffect;
 };
+
+namespace {
 
 /** Base class to share some common code between
     ShapeClickEventHandler and MouseMoveHandler
@@ -300,9 +294,7 @@ public:
         if( (aIter=maShapeEventMap.find( rShape )) == maShapeEventMap.end() )
         {
             // no entry for this shape -> create one
-            aIter = maShapeEventMap.insert(
-                ImpShapeEventMap::value_type( rShape,
-                                              ImpEventQueue() ) ).first;
+            aIter = maShapeEventMap.emplace(rShape, ImpEventQueue()).first;
         }
 
         // add new event to queue
@@ -318,29 +310,26 @@ protected:
 
         // find matching shape (scan reversely, to coarsely match
         // paint order)
-        ImpShapeEventMap::reverse_iterator       aCurrShape(maShapeEventMap.rbegin());
-        const ImpShapeEventMap::reverse_iterator aEndShape( maShapeEventMap.rend() );
-        while( aCurrShape != aEndShape )
+        auto aCurrShape = std::find_if(maShapeEventMap.rbegin(), maShapeEventMap.rend(),
+            [&aPosition](const ImpShapeEventMap::value_type& rShape) {
+                // TODO(F2): Get proper geometry polygon from the
+                // shape, to avoid having areas outside the shape
+                // react on the mouse
+                return rShape.first->getBounds().isInside( aPosition )
+                    && rShape.first->isVisible();
+            });
+        if (aCurrShape != maShapeEventMap.rend())
         {
-            // TODO(F2): Get proper geometry polygon from the
-            // shape, to avoid having areas outside the shape
-            // react on the mouse
-            if( aCurrShape->first->getBounds().isInside( aPosition ) &&
-                aCurrShape->first->isVisible() )
-            {
-                // shape hit, and shape is visible - report a
-                // hit
-                o_rHitShape = aCurrShape;
-                return true;
-            }
-
-            ++aCurrShape;
+            // shape hit, and shape is visible - report a
+            // hit
+            o_rHitShape = aCurrShape;
+            return true;
         }
 
         return false; // nothing hit
     }
 
-    bool sendEvent( ImpShapeEventMap::reverse_iterator& io_rHitShape )
+    bool sendEvent( ImpShapeEventMap::reverse_iterator const & io_rHitShape )
     {
         // take next event from queue
         const bool bRet( fireSingleEvent( io_rHitShape->second,
@@ -379,6 +368,8 @@ private:
     EventQueue&         mrEventQueue;
     ImpShapeEventMap    maShapeEventMap;
 };
+
+}
 
 class ShapeClickEventHandler : public MouseHandlerBase
 {
@@ -503,7 +494,7 @@ void UserEventQueue::registerEvent(
 
     if( !rHandler ) {
         // create handler
-        rHandler.reset( new Handler( mrEventQueue ) );
+        rHandler = std::make_shared<Handler>( mrEventQueue );
         // register handler on EventMultiplexer
         rRegistrationFunctor( rHandler );
     }
@@ -523,7 +514,7 @@ void UserEventQueue::registerEvent(
 
     if( !rHandler ) {
         // create handler
-        rHandler.reset( new Handler( mrEventQueue ) );
+        rHandler = std::make_shared<Handler>( mrEventQueue );
 
         // register handler on EventMultiplexer
         rRegistrationFunctor( rHandler );
@@ -544,7 +535,6 @@ UserEventQueue::UserEventQueue( EventMultiplexer&   rMultiplexer,
       mpAudioStoppedEventHandler(),
       mpClickEventHandler(),
       mpSkipEffectEventHandler(),
-      mpDoubleClickEventHandler(),
       mpMouseEnterHandler(),
       mpMouseLeaveHandler(),
       mbAdvanceOnClick( true )
@@ -558,9 +548,9 @@ UserEventQueue::~UserEventQueue()
         // unregister all handlers
         clear();
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
-        SAL_WARN("slideshow", "" << e.Message);
+        TOOLS_WARN_EXCEPTION("slideshow", "");
     }
 }
 
@@ -599,10 +589,6 @@ void UserEventQueue::clear()
         mrMultiplexer.removeDoubleClickHandler( mpShapeDoubleClickEventHandler );
         mrMultiplexer.removeMouseMoveHandler( mpShapeDoubleClickEventHandler );
         mpShapeDoubleClickEventHandler.reset();
-    }
-    if( mpDoubleClickEventHandler ) {
-        mrMultiplexer.removeDoubleClickHandler( mpDoubleClickEventHandler );
-        mpDoubleClickEventHandler.reset();
     }
     if( mpMouseEnterHandler ) {
         mrMultiplexer.removeMouseMoveHandler( mpMouseEnterHandler );
@@ -667,9 +653,9 @@ void UserEventQueue::registerShapeClickEvent( const EventSharedPtr& rEvent,
     if( !mpShapeClickEventHandler )
     {
         // create handler
-        mpShapeClickEventHandler.reset(
-            new ShapeClickEventHandler(mrCursorManager,
-                                       mrEventQueue) );
+        mpShapeClickEventHandler =
+            std::make_shared<ShapeClickEventHandler>(mrCursorManager,
+                                       mrEventQueue);
 
         // register handler on EventMultiplexer
         mrMultiplexer.addClickHandler( mpShapeClickEventHandler, 1.0 );
@@ -730,8 +716,8 @@ void UserEventQueue::registerSkipEffectEvent(
 {
     if(!mpSkipEffectEventHandler)
     {
-        mpSkipEffectEventHandler.reset(
-            new SkipEffectEventHandler( mrEventQueue, mrMultiplexer ) );
+        mpSkipEffectEventHandler =
+            std::make_shared<SkipEffectEventHandler>( mrEventQueue, mrMultiplexer );
         // register the handler on _two_ sources: we want the
         // nextEffect events, e.g. space bar, to trigger clicks, as well!
         mrMultiplexer.addClickHandler( mpSkipEffectEventHandler,
@@ -758,9 +744,9 @@ void UserEventQueue::registerShapeDoubleClickEvent(
     if( !mpShapeDoubleClickEventHandler )
     {
         // create handler
-        mpShapeDoubleClickEventHandler.reset(
-            new ShapeClickEventHandler(mrCursorManager,
-                                       mrEventQueue) );
+        mpShapeDoubleClickEventHandler =
+            std::make_shared<ShapeClickEventHandler>(mrCursorManager,
+                                       mrEventQueue);
 
         // register handler on EventMultiplexer
         mrMultiplexer.addDoubleClickHandler( mpShapeDoubleClickEventHandler,
@@ -800,7 +786,6 @@ void UserEventQueue::callSkipEffectEventHandler()
         pHandler->skipEffect();
 }
 
-} // namespace internal
 } // namespace presentation
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

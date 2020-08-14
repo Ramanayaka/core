@@ -20,11 +20,11 @@
 #ifndef INCLUDED_SOT_FORMATS_HXX
 #define INCLUDED_SOT_FORMATS_HXX
 
-#include <tools/solar.h>
+#include <sal/types.h>
 
 // - predefined formats -
 // Do NOT change the order of these values as the implementation depends on them!
-enum class SotClipboardFormatId : sal_uLong
+enum class SotClipboardFormatId : sal_uInt32
 {
 // standard formats for that Copy/Paste methods exist
     STRING                 = 1,
@@ -42,7 +42,7 @@ enum class SotClipboardFormatId : sal_uLong
     SVXB                   = 12,
     SVIM                   = 13,
     XFA                    = 14,
-    EDITENGINE             = 15,
+    EDITENGINE_ODF_TEXT_FLAT = 15,
     INTERNALLINK_STATE     = 16,
     SOLK                   = 17,
     NETSCAPE_BOOKMARK      = 18,
@@ -173,16 +173,17 @@ enum class SotClipboardFormatId : sal_uLong
     MATHML                 = 143,
     JPEG                   = 144,
     RICHTEXT               = 145,
-    EDITENGINE_ODF_TEXT_FLAT = 146,
+    STRING_TSVC            = 146,
+    PDF                    = 147,
     // the point at which we start allocating "runtime" format IDs
-    USER_END  = EDITENGINE_ODF_TEXT_FLAT
+    USER_END  = PDF
 };
 
 /** Make it easier to iterate over format IDs */
-inline SotClipboardFormatId& operator++(SotClipboardFormatId& v)
+inline SotClipboardFormatId& operator++(SotClipboardFormatId& eFormat)
 {
-    v = static_cast<SotClipboardFormatId>(static_cast<sal_uLong>(v) + 1);
-    return v;
+    eFormat = static_cast<SotClipboardFormatId>(static_cast<sal_uInt32>(eFormat) + 1);
+    return eFormat;
 }
 
 #define SOT_FORMAT_SYSTEM_START   SotClipboardFormatId::NONE

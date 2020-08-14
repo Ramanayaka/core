@@ -19,130 +19,102 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_OPTLOAD_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_OPTLOAD_HXX
 
+#include <tools/globname.hxx>
 #include <sfx2/tabdlg.hxx>
 
-#include <vcl/group.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/field.hxx>
-#include <svx/strarray.hxx>
+#include <vcl/customweld.hxx>
+#include <vcl/textfilter.hxx>
+#include <vcl/weld.hxx>
 #include <sfx2/basedlgs.hxx>
-#include <svx/checklbx.hxx>
-#include <caption.hxx>
+
+#include <SwCapObjType.hxx>
 
 class SwFieldMgr;
-class SvTreeListEntry;
 class SwWrtShell;
+
+class SwFieldUnitTable
+{
+public:
+    static OUString GetString(sal_uInt32 i);
+    static sal_uInt32 Count();
+    static FieldUnit GetValue(sal_uInt32 i);
+};
+
+class TextFilterAutoConvert : public TextFilter
+{
+private:
+    OUString m_sLastGoodText;
+    OUString m_sNone;
+public:
+    TextFilterAutoConvert(const OUString &rNone)
+        : m_sNone(rNone)
+    {
+    }
+    virtual OUString filter(const OUString &rText) override;
+};
 
 class SwLoadOptPage : public SfxTabPage
 {
 private:
-    VclPtr<RadioButton>     m_pAlwaysRB;
-    VclPtr<RadioButton>     m_pRequestRB;
-    VclPtr<RadioButton>     m_pNeverRB;
-
-    VclPtr<CheckBox>        m_pAutoUpdateFields;
-    VclPtr<CheckBox>        m_pAutoUpdateCharts;
-
-    VclPtr<ListBox>         m_pMetricLB;
-    VclPtr<FixedText>       m_pTabFT;
-    VclPtr<MetricField>     m_pTabMF;
-    VclPtr<CheckBox>        m_pUseSquaredPageMode;
-    VclPtr<CheckBox>        m_pUseCharUnit;
-    VclPtr<Edit>            m_pWordCountED;
-    VclPtr<CheckBox>        m_pShowStandardizedPageCount;
-    VclPtr<NumericField>    m_pStandardizedPageSizeNF;
-
     SwWrtShell*      m_pWrtShell;
     sal_uInt16       m_nLastTab;
     sal_Int32        m_nOldLinkMode;
 
-    DECL_LINK(MetricHdl, ListBox&, void);
-    DECL_LINK(StandardizedPageCountCheckHdl, Button*, void);
+    std::unique_ptr<weld::RadioButton> m_xAlwaysRB;
+    std::unique_ptr<weld::RadioButton> m_xRequestRB;
+    std::unique_ptr<weld::RadioButton> m_xNeverRB;
+
+    std::unique_ptr<weld::CheckButton> m_xAutoUpdateFields;
+    std::unique_ptr<weld::CheckButton> m_xAutoUpdateCharts;
+
+    std::unique_ptr<weld::ComboBox> m_xMetricLB;
+    std::unique_ptr<weld::Label> m_xTabFT;
+    std::unique_ptr<weld::MetricSpinButton> m_xTabMF;
+    std::unique_ptr<weld::CheckButton> m_xUseSquaredPageMode;
+    std::unique_ptr<weld::CheckButton> m_xUseCharUnit;
+    std::unique_ptr<weld::Entry> m_xWordCountED;
+    std::unique_ptr<weld::CheckButton> m_xShowStandardizedPageCount;
+    std::unique_ptr<weld::SpinButton> m_xStandardizedPageSizeNF;
+
+    DECL_LINK(MetricHdl, weld::ComboBox&, void);
+    DECL_LINK(StandardizedPageCountCheckHdl, weld::Button&, void);
 
 public:
-    SwLoadOptPage(vcl::Window* pParent, const SfxItemSet& rSet);
+    SwLoadOptPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~SwLoadOptPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage> Create( vcl::Window* pParent,
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController,
                                       const SfxItemSet* rAttrSet);
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;
 };
 
-class SwCaptionOptDlg : public SfxSingleTabDialog
+class SwCaptionOptDlg : public SfxSingleTabDialogController
 {
 public:
-    SwCaptionOptDlg(vcl::Window* pParent, const SfxItemSet& rSet);
+    SwCaptionOptDlg(weld::Window* pParent, const SfxItemSet& rSet);
 };
 
-class CaptionComboBox : public ComboBox
-{
-    std::vector<OUString> m_EntryList;
-    std::vector<OUString> m_DelEntryList;
-    OUString              aDefault;
-
-    void InsertSorted(OUString const& rEntry);
-
-protected:
-    virtual void KeyInput( const KeyEvent& ) override;
-
-public:
-    CaptionComboBox(vcl::Window* pParent, WinBits nStyle);
-    virtual ~CaptionComboBox() override;
-
-    void                    InsertSwEntry(const OUString&);
-    virtual sal_Int32       InsertEntry(const OUString& rStr, sal_Int32 = COMBOBOX_APPEND) override;
-
-    virtual void            RemoveEntryAt(sal_Int32 nPos) override;
-
-    const OUString&         GetSwEntry(sal_Int32) const;
-};
-
-class SwCaptionPreview : public vcl::Window
+class SwCaptionPreview : public weld::CustomWidgetController
 {
 private:
     OUString maText;
     bool mbFontInitialized;
     vcl::Font maFont;
-    Point maDrawPos;
+
+    void ApplySettings(vcl::RenderContext& rRenderContext);
+
 public:
-    SwCaptionPreview(vcl::Window* pParent, WinBits nStyle);
-    virtual void ApplySettings(vcl::RenderContext& rRenderContext) override;
-    void SetPreviewText( const OUString& rText );
-    virtual void Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-    virtual Size GetOptimalSize() const override;
+    SwCaptionPreview();
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
+    void SetPreviewText(const OUString& rText);
+    virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
 };
 
 class SwCaptionOptPage : public SfxTabPage
 {
 private:
-    VclPtr<SvxCheckListBox>  m_pCheckLB;
-    VclPtr<ListBox>          m_pLbCaptionOrder;
-    VclPtr<SwCaptionPreview> m_pPreview;
-
-    VclPtr<VclContainer>     m_pSettingsGroup;
-    VclPtr<CaptionComboBox>  m_pCategoryBox;
-    VclPtr<FixedText>        m_pFormatText;
-    VclPtr<ListBox>          m_pFormatBox;
-    //#i61007# order of captions
-    VclPtr<FixedText>        m_pNumberingSeparatorFT;
-    VclPtr<Edit>             m_pNumberingSeparatorED;
-    VclPtr<FixedText>        m_pTextText;
-    VclPtr<Edit>             m_pTextEdit;
-    VclPtr<ListBox>          m_pPosBox;
-
-    VclPtr<VclContainer>     m_pNumCapt;
-    VclPtr<ListBox>          m_pLbLevel;
-    VclPtr<Edit>             m_pEdDelim;
-
-    VclPtr<VclContainer>     m_pCategory;
-    VclPtr<ListBox>          m_pCharStyleLB;
-    VclPtr<CheckBox>         m_pApplyBorderCB;
-
     OUString m_sSWTable;
     OUString m_sSWFrame;
     OUString m_sSWGraphic;
@@ -160,29 +132,59 @@ private:
 
     OUString m_sNone;
 
-    SwFieldMgr* pMgr;
+    int m_nPrevSelectedEntry;
+
+    std::unique_ptr<SwFieldMgr> pMgr;
     bool bHTMLMode;
 
-    DECL_LINK(SelectHdl, ComboBox&, void);
-    DECL_LINK(SelectListBoxHdl, ListBox&, void);
-    DECL_LINK(ModifyHdl, Edit&, void);
-    DECL_LINK( OrderHdl, ListBox&, void );
-    DECL_LINK(ShowEntryHdl, SvTreeListBox*, void);
-    DECL_LINK(SaveEntryHdl, SvTreeListBox*, void);
+    TextFilterAutoConvert m_aTextFilter;
 
+    SwCaptionPreview m_aPreview;
+    std::unique_ptr<weld::TreeView> m_xCheckLB;
+    std::unique_ptr<weld::ComboBox> m_xLbCaptionOrder;
+
+    std::unique_ptr<weld::Widget> m_xSettingsGroup;
+    std::unique_ptr<weld::ComboBox> m_xCategoryBox;
+    std::unique_ptr<weld::Label> m_xFormatText;
+    std::unique_ptr<weld::ComboBox> m_xFormatBox;
+    //#i61007# order of captions
+    std::unique_ptr<weld::Label> m_xNumberingSeparatorFT;
+    std::unique_ptr<weld::Entry> m_xNumberingSeparatorED;
+    std::unique_ptr<weld::Label> m_xTextText;
+    std::unique_ptr<weld::Entry> m_xTextEdit;
+    std::unique_ptr<weld::ComboBox> m_xPosBox;
+
+    std::unique_ptr<weld::Widget> m_xNumCapt;
+    std::unique_ptr<weld::ComboBox> m_xLbLevel;
+    std::unique_ptr<weld::Entry> m_xEdDelim;
+
+    std::unique_ptr<weld::Widget> m_xCategory;
+    std::unique_ptr<weld::ComboBox> m_xCharStyleLB;
+    std::unique_ptr<weld::CheckButton> m_xApplyBorderCB;
+    std::unique_ptr<weld::CustomWeld> m_xPreview;
+
+    DECL_LINK(SelectHdl, weld::ComboBox&, void);
+    DECL_LINK(SelectListBoxHdl, weld::ComboBox&, void);
+    DECL_LINK(ModifyEntryHdl, weld::Entry&, void);
+    DECL_LINK(ModifyComboHdl, weld::ComboBox&, void);
+    DECL_LINK(OrderHdl, weld::ComboBox&, void );
+    DECL_LINK(ShowEntryHdl, weld::TreeView&, void);
+    DECL_LINK(ToggleEntryHdl, const weld::TreeView::iter_col&, void);
+    DECL_LINK(TextFilterHdl, OUString&, bool);
+
+    void ModifyHdl();
+    void UpdateEntry(int nRow);
     void DelUserData();
     void SetOptions(const sal_uLong nPos, const SwCapObjType eType, const SvGlobalName *pOleId = nullptr);
-    void SaveEntry(SvTreeListEntry* pEntry);
+    void SaveEntry(int nEntry);
     void InvalidatePreview();
 
 public:
-                        SwCaptionOptPage( vcl::Window* pParent,
-                                         const SfxItemSet& rSet );
-                        virtual ~SwCaptionOptPage() override;
-    virtual void        dispose() override;
+    SwCaptionOptPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
+    virtual ~SwCaptionOptPage() override;
 
-    static VclPtr<SfxTabPage> Create( vcl::Window* pParent,
-                                      const SfxItemSet* rAttrSet);
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController,
+                                     const SfxItemSet* rAttrSet);
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;

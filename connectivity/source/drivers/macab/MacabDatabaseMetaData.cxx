@@ -25,8 +25,9 @@
 #include "macabutilities.hxx"
 
 #include "MacabDriver.hxx"
-#include "FDatabaseMetaDataResultSet.hxx"
-#include "OTypeInfo.hxx"
+#include <FDatabaseMetaDataResultSet.hxx>
+#include <OTypeInfo.hxx>
+#include <com/sun/star/sdbc/ColumnSearch.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
 #include <com/sun/star/sdbc/TransactionIsolation.hpp>
@@ -56,12 +57,11 @@ MacabDatabaseMetaData::~MacabDatabaseMetaData()
 
 OUString SAL_CALL MacabDatabaseMetaData::getCatalogSeparator(  )
 {
-    OUString aVal;
     if (m_bUseCatalog)
     { // do some special here for you database
     }
 
-    return aVal;
+    return OUString();
 }
 
 sal_Int32 SAL_CALL MacabDatabaseMetaData::getMaxBinaryLiteralLength(  )
@@ -183,11 +183,7 @@ sal_Bool SAL_CALL MacabDatabaseMetaData::supportsNonNullableColumns(  )
 
 OUString SAL_CALL MacabDatabaseMetaData::getCatalogTerm(  )
 {
-    OUString aVal;
-    if (m_bUseCatalog)
-    {
-    }
-    return aVal;
+    return OUString();
 }
 
 OUString SAL_CALL MacabDatabaseMetaData::getIdentifierQuoteString(  )
@@ -198,8 +194,7 @@ OUString SAL_CALL MacabDatabaseMetaData::getIdentifierQuoteString(  )
 
 OUString SAL_CALL MacabDatabaseMetaData::getExtraNameCharacters(  )
 {
-    OUString aVal;
-    return aVal;
+    return OUString();
 }
 
 sal_Bool SAL_CALL MacabDatabaseMetaData::supportsDifferentTableCorrelationNames(  )
@@ -209,9 +204,6 @@ sal_Bool SAL_CALL MacabDatabaseMetaData::supportsDifferentTableCorrelationNames(
 
 sal_Bool SAL_CALL MacabDatabaseMetaData::isCatalogAtStart(  )
 {
-    if (m_bUseCatalog)
-    {
-    }
     return false;
 }
 
@@ -540,8 +532,7 @@ OUString SAL_CALL MacabDatabaseMetaData::getURL(  )
 
 OUString SAL_CALL MacabDatabaseMetaData::getUserName(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL MacabDatabaseMetaData::getDriverName(  )
@@ -556,26 +547,22 @@ OUString SAL_CALL MacabDatabaseMetaData::getDriverVersion()
 
 OUString SAL_CALL MacabDatabaseMetaData::getDatabaseProductVersion(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL MacabDatabaseMetaData::getDatabaseProductName(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL MacabDatabaseMetaData::getProcedureTerm(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL MacabDatabaseMetaData::getSchemaTerm(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 sal_Int32 SAL_CALL MacabDatabaseMetaData::getDriverMajorVersion(  )
@@ -595,14 +582,12 @@ sal_Int32 SAL_CALL MacabDatabaseMetaData::getDriverMinorVersion(  )
 
 OUString SAL_CALL MacabDatabaseMetaData::getSQLKeywords(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL MacabDatabaseMetaData::getSearchStringEscape(  )
 {
-    OUString aValue;
-    return aValue;
+    return OUString();
 }
 
 OUString SAL_CALL MacabDatabaseMetaData::getStringFunctions(  )
@@ -752,16 +737,16 @@ Reference< XResultSet > SAL_CALL MacabDatabaseMetaData::getTableTypes(  )
     ::connectivity::ODatabaseMetaDataResultSet* pResult = new ::connectivity::ODatabaseMetaDataResultSet(ODatabaseMetaDataResultSet::eTableTypes);
     Reference< XResultSet > xRef = pResult;
 
-    static ODatabaseMetaDataResultSet::ORows aRows;
-    static const char aTable[] = "TABLE";
-
-    if (aRows.empty())
+    static ODatabaseMetaDataResultSet::ORows aRows = [&]
     {
+        static const char aTable[] = "TABLE";
+        ODatabaseMetaDataResultSet::ORows tmp;
         ODatabaseMetaDataResultSet::ORow aRow(2);
         aRow[0] = ODatabaseMetaDataResultSet::getEmptyValue();
         aRow[1] = new ORowSetValueDecorator(OUString(aTable));
-        aRows.push_back(aRow);
-    }
+        tmp.push_back(aRow);
+        return tmp;
+    }();
     pResult->setRows(aRows);
     return xRef;
 }
@@ -771,22 +756,22 @@ Reference< XResultSet > SAL_CALL MacabDatabaseMetaData::getTypeInfo(  )
     ODatabaseMetaDataResultSet* pResult = new ODatabaseMetaDataResultSet(ODatabaseMetaDataResultSet::eTypeInfo);
     Reference< XResultSet > xRef = pResult;
 
-    static ODatabaseMetaDataResultSet::ORows aRows;
-    if (aRows.empty())
+    static ODatabaseMetaDataResultSet::ORows aRows = [&]()
     {
+        ODatabaseMetaDataResultSet::ORows tmp;
         ODatabaseMetaDataResultSet::ORow aRow(19);
 
         // We support four types: char, timestamp, integer, float
         aRow[0] = ODatabaseMetaDataResultSet::getEmptyValue();
         aRow[1] = new ORowSetValueDecorator(OUString("CHAR"));
         aRow[2] = new ORowSetValueDecorator(DataType::CHAR);
-        aRow[3] = new ORowSetValueDecorator((sal_Int32) 254);
+        aRow[3] = new ORowSetValueDecorator(sal_Int32(254));
         aRow[4] = ODatabaseMetaDataResultSet::getQuoteValue();
         aRow[5] = ODatabaseMetaDataResultSet::getQuoteValue();
         aRow[6] = ODatabaseMetaDataResultSet::getEmptyValue();
-        aRow[7] = new ORowSetValueDecorator((sal_Int32) ColumnValue::NULLABLE);
+        aRow[7] = new ORowSetValueDecorator(sal_Int32(ColumnValue::NULLABLE));
         aRow[8] = ODatabaseMetaDataResultSet::get1Value();
-        aRow[9] = new ORowSetValueDecorator((sal_Int32) ColumnSearch::CHAR);
+        aRow[9] = new ORowSetValueDecorator(sal_Int32(ColumnSearch::CHAR));
         aRow[10] = ODatabaseMetaDataResultSet::get1Value();
         aRow[11] = ODatabaseMetaDataResultSet::get0Value();
         aRow[12] = ODatabaseMetaDataResultSet::get0Value();
@@ -795,29 +780,31 @@ Reference< XResultSet > SAL_CALL MacabDatabaseMetaData::getTypeInfo(  )
         aRow[15] = ODatabaseMetaDataResultSet::get0Value();
         aRow[16] = ODatabaseMetaDataResultSet::getEmptyValue();
         aRow[17] = ODatabaseMetaDataResultSet::getEmptyValue();
-        aRow[18] = new ORowSetValueDecorator((sal_Int32) 10);
+        aRow[18] = new ORowSetValueDecorator(sal_Int32(10));
 
-        aRows.push_back(aRow);
+        tmp.push_back(aRow);
 
         aRow[1] = new ORowSetValueDecorator(OUString("TIMESTAMP"));
         aRow[2] = new ORowSetValueDecorator(DataType::TIMESTAMP);
-        aRow[3] = new ORowSetValueDecorator((sal_Int32)19);
+        aRow[3] = new ORowSetValueDecorator(sal_Int32(19));
         aRow[4] = ODatabaseMetaDataResultSet::getQuoteValue();
         aRow[5] = ODatabaseMetaDataResultSet::getQuoteValue();
-        aRows.push_back(aRow);
+        tmp.push_back(aRow);
 
         aRow[1] = new ORowSetValueDecorator(OUString("INTEGER"));
         aRow[2] = new ORowSetValueDecorator(DataType::INTEGER);
-        aRow[3] = new ORowSetValueDecorator((sal_Int32)20);
-        aRow[15] = new ORowSetValueDecorator((sal_Int32)20);
-        aRows.push_back(aRow);
+        aRow[3] = new ORowSetValueDecorator(sal_Int32(20));
+        aRow[15] = new ORowSetValueDecorator(sal_Int32(20));
+        tmp.push_back(aRow);
 
         aRow[1] = new ORowSetValueDecorator(OUString("FLOAT"));
         aRow[2] = new ORowSetValueDecorator(DataType::FLOAT);
-        aRow[3] = new ORowSetValueDecorator((sal_Int32)20);
-        aRow[15] = new ORowSetValueDecorator((sal_Int32)15);
-        aRows.push_back(aRow);
-    }
+        aRow[3] = new ORowSetValueDecorator(sal_Int32(20));
+        aRow[15] = new ORowSetValueDecorator(sal_Int32(15));
+        tmp.push_back(aRow);
+
+        return tmp;
+    }();
     pResult->setRows(aRows);
     return xRef;
 }
@@ -866,13 +853,13 @@ Reference< XResultSet > SAL_CALL MacabDatabaseMetaData::getColumns(
         aRow[3] = new ORowSetValueDecorator(sTableName);
         aRow[8] = ODatabaseMetaDataResultSet::getEmptyValue();
         aRow[9] = ODatabaseMetaDataResultSet::get0Value();
-        aRow[10] = new ORowSetValueDecorator((sal_Int32) 10);
+        aRow[10] = new ORowSetValueDecorator(sal_Int32(10));
         aRow[11] = ODatabaseMetaDataResultSet::get1Value();
         aRow[12] = ODatabaseMetaDataResultSet::getEmptyValue();
         aRow[13] = ODatabaseMetaDataResultSet::getEmptyValue();
         aRow[14] = ODatabaseMetaDataResultSet::getEmptyValue();
         aRow[15] = ODatabaseMetaDataResultSet::getEmptyValue();
-        aRow[16] = new ORowSetValueDecorator((sal_Int32) 254);
+        aRow[16] = new ORowSetValueDecorator(sal_Int32(254));
         aRow[18] = new ORowSetValueDecorator(OUString("YES"));
 
         sal_Int32 nPosition = 1;
@@ -895,7 +882,7 @@ Reference< XResultSet > SAL_CALL MacabDatabaseMetaData::getColumns(
                     case kABStringProperty:
                         aRow[5] = new ORowSetValueDecorator(DataType::CHAR);
                         aRow[6] = new ORowSetValueDecorator(OUString("CHAR"));
-                        aRow[7] = new ORowSetValueDecorator((sal_Int32) 256);
+                        aRow[7] = new ORowSetValueDecorator(sal_Int32(256));
                         aRows.push_back(aRow);
                         break;
                     case kABDateProperty:
@@ -906,13 +893,13 @@ Reference< XResultSet > SAL_CALL MacabDatabaseMetaData::getColumns(
                     case kABIntegerProperty:
                         aRow[5] = new ORowSetValueDecorator(DataType::INTEGER);
                         aRow[6] = new ORowSetValueDecorator(OUString("INTEGER"));
-                        aRow[7] = new ORowSetValueDecorator((sal_Int32) 20);
+                        aRow[7] = new ORowSetValueDecorator(sal_Int32(20));
                         aRows.push_back(aRow);
                         break;
                     case kABRealProperty:
                         aRow[5] = new ORowSetValueDecorator(DataType::FLOAT);
                         aRow[6] = new ORowSetValueDecorator(OUString("FLOAT"));
-                        aRow[7] = new ORowSetValueDecorator((sal_Int32) 15);
+                        aRow[7] = new ORowSetValueDecorator(sal_Int32(15));
                         aRows.push_back(aRow);
                         break;
                     default:
@@ -959,10 +946,9 @@ Reference< XResultSet > SAL_CALL MacabDatabaseMetaData::getTables(
     if (!bTableFound)
         return xRef;
 
-    static ODatabaseMetaDataResultSet::ORows aRows;
-
-    if (aRows.empty())
+    static ODatabaseMetaDataResultSet::ORows aRows = [&]()
     {
+        ODatabaseMetaDataResultSet::ORows tmp;
         ODatabaseMetaDataResultSet::ORow aRow(6);
 
         MacabRecords *xRecords = m_xConnection->getAddressBook()->getMacabRecords();
@@ -976,14 +962,15 @@ Reference< XResultSet > SAL_CALL MacabDatabaseMetaData::getTables(
         aRow[3] = new ORowSetValueDecorator(xRecords->getName());
         aRow[4] = new ORowSetValueDecorator(OUString(aTable));
         aRow[5] = ODatabaseMetaDataResultSet::getEmptyValue();
-        aRows.push_back(aRow);
+        tmp.push_back(aRow);
 
         for(i = 0; i < nGroups; i++)
         {
             aRow[3] = new ORowSetValueDecorator(xGroups[i]->getName());
-            aRows.push_back(aRow);
+            tmp.push_back(aRow);
         }
-    }
+        return tmp;
+    }();
     pResult->setRows(aRows);
     return xRef;
 }

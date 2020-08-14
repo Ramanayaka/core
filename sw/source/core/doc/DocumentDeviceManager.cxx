@@ -22,13 +22,11 @@
 #include <memory>
 #include <utility>
 
-#include <IDocumentDeviceAccess.hxx>
 #include <doc.hxx>
 #include <DocumentSettingManager.hxx>
 #include <IDocumentDrawModelAccess.hxx>
 #include <IDocumentState.hxx>
 #include <IDocumentLayoutAccess.hxx>
-#include <o3tl/make_unique.hxx>
 #include <sfx2/printer.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/outdev.hxx>
@@ -36,7 +34,7 @@
 #include <printdata.hxx>
 #include <vcl/mapmod.hxx>
 #include <svl/itemset.hxx>
-#include <svx/svdmodel.hxx>
+#include <cfgitems.hxx>
 #include <cmdid.h>
 #include <drawdoc.hxx>
 #include <wdocsh.hxx>
@@ -52,7 +50,7 @@ class SwWait;
 
 namespace sw {
 
-DocumentDeviceManager::DocumentDeviceManager( SwDoc& i_rSwdoc ) : m_rDoc( i_rSwdoc ), mpPrt(nullptr), mpVirDev(nullptr), mpPrtData(nullptr) {}
+DocumentDeviceManager::DocumentDeviceManager( SwDoc& i_rSwdoc ) : m_rDoc( i_rSwdoc ), mpPrt(nullptr), mpVirDev(nullptr) {}
 
 SfxPrinter* DocumentDeviceManager::getPrinter(/*[in]*/ bool bCreate ) const
 {
@@ -72,7 +70,7 @@ void DocumentDeviceManager::setPrinter(/*[in]*/ SfxPrinter *pP,/*[in]*/ bool bDe
     {
         if ( bDeleteOld )
             mpPrt.disposeAndClear();
-         mpPrt = pP;
+        mpPrt = pP;
 
         // our printer should always use TWIP. Don't rely on this being set in SwViewShell::InitPrt, there
         // are situations where this isn't called. #i108712#
@@ -145,38 +143,38 @@ OutputDevice* DocumentDeviceManager::getReferenceDevice(/*[in]*/ bool bCreate ) 
 
 void DocumentDeviceManager::setReferenceDeviceType(/*[in]*/ bool bNewVirtual, /*[in]*/ bool bNewHiRes )
 {
-    if ( m_rDoc.GetDocumentSettingManager().get(DocumentSettingId::USE_VIRTUAL_DEVICE) != bNewVirtual ||
-         m_rDoc.GetDocumentSettingManager().get(DocumentSettingId::USE_HIRES_VIRTUAL_DEVICE) != bNewHiRes )
+    if ( m_rDoc.GetDocumentSettingManager().get(DocumentSettingId::USE_VIRTUAL_DEVICE) == bNewVirtual &&
+         m_rDoc.GetDocumentSettingManager().get(DocumentSettingId::USE_HIRES_VIRTUAL_DEVICE) == bNewHiRes )
+        return;
+
+    if ( bNewVirtual )
     {
-        if ( bNewVirtual )
-        {
-            VirtualDevice* pMyVirDev = getVirtualDevice( true );
-            if ( !bNewHiRes )
-                pMyVirDev->SetReferenceDevice( VirtualDevice::RefDevMode::Dpi600 );
-            else
-                pMyVirDev->SetReferenceDevice( VirtualDevice::RefDevMode::MSO1 );
-
-            if( m_rDoc.getIDocumentDrawModelAccess().GetDrawModel() )
-                m_rDoc.getIDocumentDrawModelAccess().GetDrawModel()->SetRefDevice( pMyVirDev );
-        }
+        VirtualDevice* pMyVirDev = getVirtualDevice( true );
+        if ( !bNewHiRes )
+            pMyVirDev->SetReferenceDevice( VirtualDevice::RefDevMode::Dpi600 );
         else
-        {
-            // #i41075#
-            // We have to take care that a printer exists before calling
-            // PrtDataChanged() in order to prevent that PrtDataChanged()
-            // triggers this funny situation:
-            // getReferenceDevice()->getPrinter()->CreatePrinter_()
-            // ->setPrinter()-> PrtDataChanged()
-            SfxPrinter* pPrinter = getPrinter( true );
-            if( m_rDoc.getIDocumentDrawModelAccess().GetDrawModel() )
-                m_rDoc.getIDocumentDrawModelAccess().GetDrawModel()->SetRefDevice( pPrinter );
-        }
+            pMyVirDev->SetReferenceDevice( VirtualDevice::RefDevMode::MSO1 );
 
-        m_rDoc.GetDocumentSettingManager().set(DocumentSettingId::USE_VIRTUAL_DEVICE, bNewVirtual );
-        m_rDoc.GetDocumentSettingManager().set(DocumentSettingId::USE_HIRES_VIRTUAL_DEVICE, bNewHiRes );
-        PrtDataChanged();
-        m_rDoc.getIDocumentState().SetModified();
+        if( m_rDoc.getIDocumentDrawModelAccess().GetDrawModel() )
+            m_rDoc.getIDocumentDrawModelAccess().GetDrawModel()->SetRefDevice( pMyVirDev );
     }
+    else
+    {
+        // #i41075#
+        // We have to take care that a printer exists before calling
+        // PrtDataChanged() in order to prevent that PrtDataChanged()
+        // triggers this funny situation:
+        // getReferenceDevice()->getPrinter()->CreatePrinter_()
+        // ->setPrinter()-> PrtDataChanged()
+        SfxPrinter* pPrinter = getPrinter( true );
+        if( m_rDoc.getIDocumentDrawModelAccess().GetDrawModel() )
+            m_rDoc.getIDocumentDrawModelAccess().GetDrawModel()->SetRefDevice( pPrinter );
+    }
+
+    m_rDoc.GetDocumentSettingManager().set(DocumentSettingId::USE_VIRTUAL_DEVICE, bNewVirtual );
+    m_rDoc.GetDocumentSettingManager().set(DocumentSettingId::USE_HIRES_VIRTUAL_DEVICE, bNewHiRes );
+    PrtDataChanged();
+    m_rDoc.getIDocumentState().SetModified();
 }
 
 const JobSetup* DocumentDeviceManager::getJobsetup() const
@@ -206,7 +204,7 @@ void DocumentDeviceManager::setJobsetup(/*[in]*/ const JobSetup &rJobSetup )
     if( !mpPrt )
     {
         //The ItemSet is deleted by Sfx!
-        auto pSet = o3tl::make_unique<SfxItemSet>(
+        auto pSet = std::make_unique<SfxItemSet>(
             m_rDoc.GetAttrPool(),
             svl::Items<
                 SID_PRINTER_NOTFOUND_WARN, SID_PRINTER_NOTFOUND_WARN,
@@ -231,7 +229,7 @@ const SwPrintData & DocumentDeviceManager::getPrintData() const
     if(!mpPrtData)
     {
         DocumentDeviceManager * pThis = const_cast< DocumentDeviceManager * >(this);
-        pThis->mpPrtData = new SwPrintData;
+        pThis->mpPrtData.reset(new SwPrintData);
 
         // SwPrintData should be initialized from the configuration,
         // the respective config item is implemented by SwPrintOptions which
@@ -248,13 +246,13 @@ const SwPrintData & DocumentDeviceManager::getPrintData() const
 void DocumentDeviceManager::setPrintData(/*[in]*/ const SwPrintData& rPrtData )
 {
     if(!mpPrtData)
-        mpPrtData = new SwPrintData;
+        mpPrtData.reset(new SwPrintData);
     *mpPrtData = rPrtData;
 }
 
 DocumentDeviceManager::~DocumentDeviceManager()
 {
-    delete mpPrtData;
+    mpPrtData.reset();
     mpVirDev.disposeAndClear();
     mpPrt.disposeAndClear();
 }
@@ -291,7 +289,7 @@ SfxPrinter& DocumentDeviceManager::CreatePrinter_() const
 
     // We create a default SfxPrinter.
     // The ItemSet is deleted by Sfx!
-    auto pSet = o3tl::make_unique<SfxItemSet>(
+    auto pSet = std::make_unique<SfxItemSet>(
         m_rDoc.GetAttrPool(),
         svl::Items<
             SID_PRINTER_NOTFOUND_WARN, SID_PRINTER_NOTFOUND_WARN,
@@ -300,8 +298,16 @@ SfxPrinter& DocumentDeviceManager::CreatePrinter_() const
             FN_PARAM_ADDPRINTER, FN_PARAM_ADDPRINTER>{});
 
     VclPtr<SfxPrinter> pNewPrt = VclPtr<SfxPrinter>::Create( std::move(pSet) );
+
+    // assign PrintData to newly created printer
+    const SwPrintData& rPrtData = getPrintData();
+    SwAddPrinterItem aAddPrinterItem(rPrtData);
+    SfxItemSet aOptions(pNewPrt->GetOptions());
+    aOptions.Put(aAddPrinterItem);
+    pNewPrt->SetOptions(aOptions);
+
     const_cast<DocumentDeviceManager*>(this)->setPrinter( pNewPrt, true, true );
-    return *mpPrt.get();
+    return *mpPrt;
 }
 
 void DocumentDeviceManager::PrtDataChanged()

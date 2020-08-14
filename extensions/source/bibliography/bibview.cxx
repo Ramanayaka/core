@@ -18,9 +18,7 @@
  */
 
 
-#include "bib.hrc"
-#include "bibcont.hxx"
-#include "bibbeam.hxx"
+#include <strings.hrc>
 #include "general.hxx"
 #include "bibview.hxx"
 #include "datman.hxx"
@@ -31,8 +29,7 @@
 
 #include <vcl/svapp.hxx>
 #include <com/sun/star/sdbc/XResultSetUpdate.hpp>
-#include <com/sun/star/form/XLoadable.hpp>
-#include <vcl/msgbox.hxx>
+#include <vcl/weld.hxx>
 #include <tools/debug.hxx>
 
 using namespace ::com::sun::star;
@@ -41,6 +38,21 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 
+namespace
+{
+    class MessageWithCheck : public weld::MessageDialogController
+    {
+    private:
+        std::unique_ptr<weld::CheckButton> m_xWarningOnBox;
+    public:
+        MessageWithCheck(weld::Window *pParent)
+            : MessageDialogController(pParent, "modules/sbibliography/ui/querydialog.ui", "QueryDialog", "ask")
+            , m_xWarningOnBox(m_xBuilder->weld_check_button("ask"))
+        {
+        }
+        bool get_active() const { return m_xWarningOnBox->get_active(); }
+    };
+}
 
 namespace bib
 {
@@ -99,7 +111,6 @@ namespace bib
 
         pGeneralPage->RemoveListeners();
         pGeneralPage.disposeAndClear();
-        m_xGeneralPage = nullptr;
         BibWindow::dispose();
     }
 
@@ -113,11 +124,9 @@ namespace bib
             m_pGeneralPage->Hide();
             m_pGeneralPage->RemoveListeners();
             m_pGeneralPage.disposeAndClear();
-            m_xGeneralPage = nullptr;
         }
 
         m_pGeneralPage = VclPtr<BibGeneralPage>::Create( this, m_pDatMan );
-        m_xGeneralPage = m_pGeneralPage->GetFocusListener().get();
         m_pGeneralPage->Show();
 
         if( HasFocus() )
@@ -125,33 +134,34 @@ namespace bib
             m_pGeneralPage->GrabFocus();
 
         OUString sErrorString( m_pGeneralPage->GetErrorString() );
-        if ( !sErrorString.isEmpty() )
+        if ( sErrorString.isEmpty() )
+            return;
+
+        bool bExecute = BibModul::GetConfig()->IsShowColumnAssignmentWarning();
+        if(!m_pDatMan->HasActiveConnection())
         {
-            bool bExecute = BibModul::GetConfig()->IsShowColumnAssignmentWarning();
-            if(!m_pDatMan->HasActiveConnection())
+            //no connection is available -> the data base has to be assigned
+            m_pDatMan->DispatchDBChangeDialog();
+            bExecute = false;
+        }
+        else if(bExecute)
+        {
+            sErrorString += "\n" + BibResId(RID_MAP_QUESTION);
+
+            MessageWithCheck aQueryBox(GetFrameWeld());
+            aQueryBox.set_primary_text(sErrorString);
+
+            short nResult = aQueryBox.run();
+            BibModul::GetConfig()->SetShowColumnAssignmentWarning(!aQueryBox.get_active());
+
+            if( RET_YES != nResult )
             {
-                //no connection is available -> the data base has to be assigned
-                m_pDatMan->DispatchDBChangeDialog();
                 bExecute = false;
             }
-            else if(bExecute)
-            {
-                sErrorString += "\n";
-                sErrorString += BibResId(RID_MAP_QUESTION);
-                ScopedVclPtrInstance< QueryBox > aQuery(this, WB_YES_NO, sErrorString);
-                aQuery->SetDefaultCheckBoxText();
-                short nResult = aQuery->Execute();
-                BibModul::GetConfig()->SetShowColumnAssignmentWarning(
-                    !aQuery->GetCheckBoxState());
-                if( RET_YES != nResult )
-                {
-                    bExecute = false;
-                }
-            }
-            if(bExecute)
-            {
-                Application::PostUserEvent( LINK( this, BibView, CallMappingHdl ), nullptr, true );
-            }
+        }
+        if(bExecute)
+        {
+            Application::PostUserEvent( LINK( this, BibView, CallMappingHdl ), nullptr, true );
         }
     }
 
@@ -173,7 +183,7 @@ namespace bib
 
     IMPL_LINK_NOARG( BibView, CallMappingHdl, void*, void)
     {
-        m_pDatMan->CreateMappingDialog( this );
+        m_pDatMan->CreateMappingDialog(GetFrameWeld());
     }
 
     void BibView::Resize()
@@ -191,7 +201,7 @@ namespace bib
         return mpBibView->getControlContainer();
     }
 
-    Reference< awt::XControlContainer > BibView::getControlContainer()
+    Reference< awt::XControlContainer > BibView::getControlContainer() const
     {
         Reference< awt::XControlContainer > xReturn;
         if ( m_pGeneralPage )

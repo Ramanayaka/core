@@ -19,10 +19,10 @@
 #ifndef INCLUDED_I18NPOOL_INC_TRANSLITERATION_BODY_HXX
 #define INCLUDED_I18NPOOL_INC_TRANSLITERATION_BODY_HXX
 
-#include <transliteration_commonclass.hxx>
+#include "transliteration_commonclass.hxx"
 #include <i18nutil/casefolding.hxx>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 class Transliteration_body : public transliteration_commonclass
 {
@@ -32,8 +32,8 @@ public:
     // Methods which are shared.
     sal_Int16 SAL_CALL getType() override;
 
-    OUString SAL_CALL transliterate(const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
-        css::uno::Sequence< sal_Int32 >& offset) override;
+    OUString transliterateImpl(const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
+        css::uno::Sequence< sal_Int32 >& offset, bool useOffset) override;
 
         OUString SAL_CALL
         transliterateChar2String( sal_Unicode inChar) override;
@@ -41,8 +41,8 @@ public:
         virtual sal_Unicode SAL_CALL
         transliterateChar2Char( sal_Unicode inChar) override;
 
-    OUString SAL_CALL folding(const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
-        css::uno::Sequence< sal_Int32 >& offset) override;
+    OUString foldingImpl(const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
+        css::uno::Sequence< sal_Int32 >& offset, bool useOffset) override;
 
     sal_Bool SAL_CALL equals(
         const OUString& str1, sal_Int32 pos1, sal_Int32 nCount1, sal_Int32& nMatch1,
@@ -55,48 +55,50 @@ protected:
     MappingType nMappingType;
 };
 
-class Transliteration_u2l : public Transliteration_body
+class Transliteration_u2l final : public Transliteration_body
 {
 public:
     Transliteration_u2l();
 };
 
-class Transliteration_l2u : public Transliteration_body
+class Transliteration_l2u final : public Transliteration_body
 {
 public:
     Transliteration_l2u();
 };
 
-class Transliteration_casemapping : public Transliteration_body
+class Transliteration_casemapping final : public Transliteration_body
 {
 public:
     Transliteration_casemapping();
-    void SAL_CALL setMappingType(const MappingType rMappingType, const css::lang::Locale& rLocale );
+    void setMappingType(const MappingType rMappingType, const css::lang::Locale& rLocale );
 };
 
-class Transliteration_togglecase : public Transliteration_body
+class Transliteration_togglecase final : public Transliteration_body
 {
 public:
     Transliteration_togglecase();
 };
 
-class Transliteration_titlecase : public Transliteration_body
+class Transliteration_titlecase final : public Transliteration_body
 {
 public:
     Transliteration_titlecase();
 
-    virtual OUString SAL_CALL transliterate( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 >& offset  ) override;
+    virtual OUString transliterateImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
+                                        css::uno::Sequence< sal_Int32 >& offset, bool useOffset ) override;
 };
 
-class Transliteration_sentencecase : public Transliteration_body
+class Transliteration_sentencecase final : public Transliteration_body
 {
 public:
     Transliteration_sentencecase();
 
-    virtual OUString SAL_CALL transliterate( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 >& offset  ) override;
+    virtual OUString transliterateImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
+                                        css::uno::Sequence< sal_Int32 >& offset, bool useOffset ) override;
 };
 
-} } } }
+}
 
 #endif
 

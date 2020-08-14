@@ -15,13 +15,13 @@
 This is a compile check.
 
 It checks for complex statements with conditional operators in conditional
-operators, which are errorprone, e.g.
+operators, which are error prone, e.g.
  Thing foo = IsBar() ? ( IsBaz() ? b1 : b2 ) : b3;
 
 However, it finds 556 cases in sw/source alone, thus likely needs some more
 restricting, e.g. by checking for multiline conditional operator statements or
 a certain length in characters (but that needs the Context/SourceManager, which
-I havent played with yet).
+I haven't played with yet).
 */
 
 // the value is rather arbitrary, but code above this number of stmts begins to
@@ -40,7 +40,7 @@ struct WalkCounter
 
 // Ctor, nothing special, pass the argument(s).
 CascadingAssignOp::CascadingAssignOp( const InstantiationData& data )
-    : Plugin( data )
+    : FilteringPlugin( data )
 {
 }
 

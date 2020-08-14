@@ -22,7 +22,6 @@
 
 #include <rtl/ustring.hxx>
 #include <rtl/string.hxx>
-#include <com/sun/star/ucb/IllegalIdentifierException.hpp>
 #include <com/sun/star/io/XActiveDataSink.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 
@@ -36,16 +35,16 @@ namespace chelp {
     {
     public:
 
-        explicit DbtToStringConverter( const sal_Char* ptr )
+        explicit DbtToStringConverter( const char* ptr )
             : m_ptr( ptr )
         {
         }
 
-        OUString getHash()
+        OUString getHash() const
         {
             if( m_ptr )
             {
-                sal_Int32 sizeOfFile = ( sal_Int32 ) m_ptr[0];
+                sal_Int32 sizeOfFile = static_cast<sal_Int32>(m_ptr[0]);
                 OUString Hash( m_ptr+1,sizeOfFile,RTL_TEXTENCODING_UTF8 );
                 sal_Int32 idx;
                 if( ( idx = Hash.indexOf( u'#' ) ) != -1 )
@@ -55,12 +54,12 @@ namespace chelp {
         }
 
 
-        OUString getFile()
+        OUString getFile() const
         {
             if( ! m_ptr )
                 return OUString();
 
-            sal_Int32 sizeOfFile = ( sal_Int32 ) m_ptr[0];
+            sal_Int32 sizeOfFile = static_cast<sal_Int32>(m_ptr[0]);
             OUString File( m_ptr+1,sizeOfFile,RTL_TEXTENCODING_UTF8 );
             sal_Int32 idx;
             if( ( idx = File.indexOf( u'#' ) ) != -1 )
@@ -70,28 +69,28 @@ namespace chelp {
         }
 
 
-        OUString getDatabase()
+        OUString getDatabase() const
         {
             if( ! m_ptr )
                 return OUString();
 
-            sal_Int32 sizeOfDatabase = ( int ) m_ptr[ 1+ ( sal_Int32 ) m_ptr[0] ];
-            return OUString( m_ptr + 2 + ( sal_Int32 ) m_ptr[0],sizeOfDatabase,RTL_TEXTENCODING_UTF8 );
+            sal_Int32 sizeOfDatabase = static_cast<int>(m_ptr[ 1+ static_cast<sal_Int32>(m_ptr[0]) ]);
+            return OUString( m_ptr + 2 + static_cast<sal_Int32>(m_ptr[0]),sizeOfDatabase,RTL_TEXTENCODING_UTF8 );
         }
 
 
-        OUString getTitle()
+        OUString getTitle() const
         {
             if( ! m_ptr )
                 return OUString();
 
             //fdo#82025 - use strlen instead of stored length byte to determine string len
             //There is a one byte length field at m_ptr[2 + m_ptr[0] +  m_ptr[1
-            //+ m_ptr[0]]] but by default sal_Char is signed so anything larger
+            //+ m_ptr[0]]] but by default char is signed so anything larger
             //than 127 defaults to a negative value, casting it would allow up
             //to 255 but instead make use of the null termination to avoid
             //running into a later problem with strings >= 255
-            const sal_Char* pTitle = m_ptr + 3 + m_ptr[0] +  ( sal_Int32 ) m_ptr[ 1+ ( sal_Int32 ) m_ptr[0] ];
+            const char* pTitle = m_ptr + 3 + m_ptr[0] +  static_cast<sal_Int32>(m_ptr[ 1+ static_cast<sal_Int32>(m_ptr[0]) ]);
 
             return OUString(pTitle, rtl_str_getLength(pTitle), RTL_TEXTENCODING_UTF8);
         }
@@ -99,7 +98,7 @@ namespace chelp {
 
     private:
 
-        const sal_Char* m_ptr;
+        const char* m_ptr;
 
     };
 
@@ -122,9 +121,9 @@ namespace chelp {
 
         OUString get_tag();
 
-        //  Not called for an directory
+        //  Not called for a directory
 
-        OUString get_path();
+        OUString const & get_path();
 
         const OUString& get_eid() const   { return m_aEid; }
 
@@ -144,7 +143,7 @@ namespace chelp {
                 return m_aModule;
         }
 
-        OUString const & get_language();
+        OUString const & get_language() const;
 
         OUString const & get_program();
 
@@ -181,11 +180,9 @@ namespace chelp {
         OUString  m_aEid;
         OUString  m_aDbPar;
 
-        OUString  m_aDefaultLanguage;
         OUString  m_aLanguage;
 
         OUString  m_aPrefix;
-        OUString  m_aDevice;
         OUString  m_aProgram;
         OUString  m_aSystem;
         OUString  m_aActive;

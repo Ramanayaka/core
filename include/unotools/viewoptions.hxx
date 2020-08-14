@@ -21,13 +21,12 @@
 
 #include <unotools/unotoolsdllapi.h>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/beans/NamedValue.hpp>
-#include <unotools/configmgr.hxx>
-#include <unotools/configitem.hxx>
 #include <sal/types.h>
-#include <osl/mutex.hxx>
 #include <rtl/ustring.hxx>
 #include <unotools/options.hxx>
+
+namespace com::sun::star::beans { struct NamedValue; }
+namespace osl { class Mutex; }
 
 class SvtViewOptionsBase_Impl;
 
@@ -95,7 +94,7 @@ enum class EViewType
     @devstatus      ready to use
 *//*-*************************************************************************************************************/
 
-class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtViewOptions : public utl::detail::Options
+class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtViewOptions final : public utl::detail::Options
 {
 
     //  public methods
@@ -174,8 +173,8 @@ class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtViewOptions : public utl::detail::Op
             @onerror    An assertion is thrown in debug version. Otherwise we do nothing!
         *//*-*****************************************************************************************************/
 
-        sal_Int32 GetPageID(               ) const;
-        void      SetPageID( sal_Int32 nID );
+        OString GetPageID() const;
+        void      SetPageID(const OString& rID);
 
         /*-****************************************************************************************************
             @short      use it to set/get the visual state of a window

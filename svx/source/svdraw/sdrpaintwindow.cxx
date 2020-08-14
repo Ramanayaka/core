@@ -18,7 +18,7 @@
  */
 
 #include <comphelper/lok.hxx>
-#include <comphelper/random.hxx>
+#include <osl/diagnose.h>
 #include <svx/sdrpaintwindow.hxx>
 #include <sdr/overlay/overlaymanagerbuffered.hxx>
 #include <svx/svdpntv.hxx>
@@ -27,6 +27,8 @@
 #include <vcl/settings.hxx>
 #include <set>
 #include <vector>
+
+namespace {
 
 //rhbz#1007697 do this in two loops, one to collect the candidates
 //and another to update them because updating a candidate can
@@ -38,9 +40,11 @@ class CandidateMgr
     std::set<VclPtr<vcl::Window> > m_aDeletedCandidates;
     DECL_LINK(WindowEventListener, VclWindowEvent&, void);
 public:
-    void PaintTransparentChildren(vcl::Window & rWindow, tools::Rectangle const& rPixelRect);
+    void PaintTransparentChildren(vcl::Window const & rWindow, tools::Rectangle const& rPixelRect);
     ~CandidateMgr();
 };
+
+}
 
 IMPL_LINK(CandidateMgr, WindowEventListener, VclWindowEvent&, rEvent, void)
 {
@@ -53,16 +57,15 @@ IMPL_LINK(CandidateMgr, WindowEventListener, VclWindowEvent&, rEvent, void)
 
 CandidateMgr::~CandidateMgr()
 {
-    for (auto aI = m_aCandidates.begin(); aI != m_aCandidates.end(); ++aI)
+    for (VclPtr<vcl::Window>& pCandidate : m_aCandidates)
     {
-        VclPtr<vcl::Window> pCandidate = *aI;
         if (m_aDeletedCandidates.find(pCandidate) != m_aDeletedCandidates.end())
             continue;
         pCandidate->RemoveEventListener(LINK(this, CandidateMgr, WindowEventListener));
     }
 }
 
-void PaintTransparentChildren(vcl::Window & rWindow, tools::Rectangle const& rPixelRect)
+void PaintTransparentChildren(vcl::Window const & rWindow, tools::Rectangle const& rPixelRect)
 {
     if (!rWindow.IsChildTransparentModeEnabled())
         return;
@@ -71,7 +74,7 @@ void PaintTransparentChildren(vcl::Window & rWindow, tools::Rectangle const& rPi
     aManager.PaintTransparentChildren(rWindow, rPixelRect);
 }
 
-void CandidateMgr::PaintTransparentChildren(vcl::Window & rWindow, tools::Rectangle const& rPixelRect)
+void CandidateMgr::PaintTransparentChildren(vcl::Window const & rWindow, tools::Rectangle const& rPixelRect)
 {
     vcl::Window * pCandidate = rWindow.GetWindow( GetWindowType::FirstChild );
     while (pCandidate)
@@ -84,16 +87,16 @@ void CandidateMgr::PaintTransparentChildren(vcl::Window & rWindow, tools::Rectan
 
             if (aCandidatePosSizePixel.IsOver(rPixelRect))
             {
-                m_aCandidates.push_back(pCandidate);
+                m_aCandidates.emplace_back(pCandidate);
                 pCandidate->AddEventListener(LINK(this, CandidateMgr, WindowEventListener));
             }
         }
         pCandidate = pCandidate->GetWindow( GetWindowType::Next );
     }
 
-    for (auto aI = m_aCandidates.begin(); aI != m_aCandidates.end(); ++aI)
+    for (const auto& rpCandidate : m_aCandidates)
     {
-        pCandidate = aI->get();
+        pCandidate = rpCandidate.get();
         if (m_aDeletedCandidates.find(pCandidate) != m_aDeletedCandidates.end())
             continue;
         //rhbz#1007697 this can cause the window itself to be
@@ -103,7 +106,7 @@ void CandidateMgr::PaintTransparentChildren(vcl::Window & rWindow, tools::Rectan
         // important: actually paint the child here!
         if (m_aDeletedCandidates.find(pCandidate) != m_aDeletedCandidates.end())
             continue;
-        pCandidate->Update();
+        pCandidate->PaintImmediately();
     }
 }
 
@@ -153,100 +156,93 @@ void SdrPreRenderDevice::OutputPreRenderDevice(const vcl::Region& rExpandedRegio
     RectangleVector aRectangles;
     aRegionPixel.GetRegionRectangles(aRectangles);
 
-    for(RectangleVector::const_iterator aRectIter(aRectangles.begin()); aRectIter != aRectangles.end(); ++aRectIter)
+    for(const auto& rRect : aRectangles)
     {
         // for each rectangle, copy the area
-        const Point aTopLeft(aRectIter->TopLeft());
-        const Size aSize(aRectIter->GetSize());
+        const Point aTopLeft(rRect.TopLeft());
+        const Size aSize(rRect.GetSize());
 
         mpOutputDevice->DrawOutDev(
             aTopLeft, aSize,
             aTopLeft, aSize,
-            *mpPreRenderDevice.get());
-
-#ifdef DBG_UTIL
-        // #i74769#
-        static bool bDoPaintForVisualControlRegion(false);
-
-        if(bDoPaintForVisualControlRegion)
-        {
-            int nR = comphelper::rng::uniform_int_distribution(0, 0x7F-1);
-            int nG = comphelper::rng::uniform_int_distribution(0, 0x7F-1);
-            int nB = comphelper::rng::uniform_int_distribution(0, 0x7F-1);
-            const Color aColor(((((nR|0x80)<<8L)|(nG|0x80))<<8L)|(nB|0x80));
-
-            mpOutputDevice->SetLineColor(aColor);
-            mpOutputDevice->SetFillColor();
-            mpOutputDevice->DrawRect(*aRectIter);
-        }
-#endif
+            *mpPreRenderDevice);
     }
 
     mpOutputDevice->EnableMapMode(bMapModeWasEnabledDest);
     mpPreRenderDevice->EnableMapMode(bMapModeWasEnabledSource);
 }
 
+void SdrPaintView::InitOverlayManager(rtl::Reference<sdr::overlay::OverlayManager> xOverlayManager) const
+{
+    Color aColA(getOptionsDrawinglayer().GetStripeColorA());
+    Color aColB(getOptionsDrawinglayer().GetStripeColorB());
+
+    if (Application::GetSettings().GetStyleSettings().GetHighContrastMode())
+    {
+        aColA = aColB = Application::GetSettings().GetStyleSettings().GetHighlightColor();
+        aColB.Invert();
+    }
+
+    xOverlayManager->setStripeColorA(aColA);
+    xOverlayManager->setStripeColorB(aColB);
+    xOverlayManager->setStripeLengthPixel(getOptionsDrawinglayer().GetStripeLength());
+}
+
+rtl::Reference<sdr::overlay::OverlayManager> SdrPaintView::CreateOverlayManager(OutputDevice& rOutputDevice) const
+{
+    rtl::Reference<sdr::overlay::OverlayManager> xOverlayManager;
+    // is it a window?
+    if (OUTDEV_WINDOW == rOutputDevice.GetOutDevType())
+    {
+        vcl::Window& rWindow = dynamic_cast<vcl::Window&>(rOutputDevice);
+        // decide which OverlayManager to use
+        if (IsBufferedOverlayAllowed() && !rWindow.SupportsDoubleBuffering())
+        {
+            // buffered OverlayManager, buffers its background and refreshes from there
+            // for pure overlay changes (no system redraw). The 3rd parameter specifies
+            // whether that refresh itself will use a 2nd vdev to avoid flickering.
+            // Also hand over the old OverlayManager if existent; this means to take over
+            // the registered OverlayObjects from it
+            xOverlayManager = sdr::overlay::OverlayManagerBuffered::create(rOutputDevice);
+        }
+        else
+        {
+            // unbuffered OverlayManager, just invalidates places where changes
+            // take place
+            // Also hand over the old OverlayManager if existent; this means to take over
+            // the registered OverlayObjects from it
+            xOverlayManager = sdr::overlay::OverlayManager::create(rOutputDevice);
+        }
+
+        OSL_ENSURE(xOverlayManager.is(), "SdrPaintWindow::SdrPaintWindow: Could not allocate an overlayManager (!)");
+
+        // Request a repaint so that the buffered overlay manager fills
+        // its buffer properly.  This is a workaround for missing buffer
+        // updates.
+        if (!comphelper::LibreOfficeKit::isActive())
+        {
+            rWindow.Invalidate();
+        }
+
+        InitOverlayManager(xOverlayManager);
+    }
+    return xOverlayManager;
+}
 
 void SdrPaintWindow::impCreateOverlayManager()
 {
     // not yet one created?
     if(!mxOverlayManager.is())
-    {
-        // is it a window?
-        if(OUTDEV_WINDOW == GetOutputDevice().GetOutDevType())
-        {
-            vcl::Window& rWindow = dynamic_cast<vcl::Window&>(GetOutputDevice());
-            // decide which OverlayManager to use
-            if(GetPaintView().IsBufferedOverlayAllowed() && !rWindow.SupportsDoubleBuffering())
-            {
-                // buffered OverlayManager, buffers its background and refreshes from there
-                // for pure overlay changes (no system redraw). The 3rd parameter specifies
-                // whether that refresh itself will use a 2nd vdev to avoid flickering.
-                // Also hand over the old OverlayManager if existent; this means to take over
-                // the registered OverlayObjects from it
-                mxOverlayManager = sdr::overlay::OverlayManagerBuffered::create(GetOutputDevice(), true);
-            }
-            else
-            {
-                // unbuffered OverlayManager, just invalidates places where changes
-                // take place
-                // Also hand over the old OverlayManager if existent; this means to take over
-                // the registered OverlayObjects from it
-                mxOverlayManager = sdr::overlay::OverlayManager::create(GetOutputDevice());
-            }
-
-            OSL_ENSURE(mxOverlayManager.is(), "SdrPaintWindow::SdrPaintWindow: Could not allocate an overlayManager (!)");
-
-            // Request a repaint so that the buffered overlay manager fills
-            // its buffer properly.  This is a workaround for missing buffer
-            // updates.
-            if (!comphelper::LibreOfficeKit::isActive())
-            {
-                rWindow.Invalidate();
-            }
-
-            Color aColA(GetPaintView().getOptionsDrawinglayer().GetStripeColorA());
-            Color aColB(GetPaintView().getOptionsDrawinglayer().GetStripeColorB());
-
-            if(Application::GetSettings().GetStyleSettings().GetHighContrastMode())
-            {
-                aColA = aColB = Application::GetSettings().GetStyleSettings().GetHighlightColor();
-                aColB.Invert();
-            }
-
-            mxOverlayManager->setStripeColorA(aColA);
-            mxOverlayManager->setStripeColorB(aColB);
-            mxOverlayManager->setStripeLengthPixel(GetPaintView().getOptionsDrawinglayer().GetStripeLength());
-        }
-    }
+        mxOverlayManager = mrPaintView.CreateOverlayManager(GetOutputDevice());
 }
 
 SdrPaintWindow::SdrPaintWindow(SdrPaintView& rNewPaintView, OutputDevice& rOut, vcl::Window* pWindow)
 :   mpOutputDevice(&rOut),
     mpWindow(pWindow),
     mrPaintView(rNewPaintView),
-    mpPreRenderDevice(nullptr),
-    mbTemporaryTarget(false) // #i72889#
+    mbTemporaryTarget(false), // #i72889#
+    mbOutputToWindow(OUTDEV_WINDOW == mpOutputDevice->GetOutDevType()),
+    mpPatched(nullptr)
 {
 }
 
@@ -271,7 +267,7 @@ rtl::Reference< sdr::overlay::OverlayManager > const & SdrPaintWindow::GetOverla
 tools::Rectangle SdrPaintWindow::GetVisibleArea() const
 {
     Size aVisSizePixel(GetOutputDevice().GetOutputSizePixel());
-    return tools::Rectangle(GetOutputDevice().PixelToLogic(tools::Rectangle(Point(0,0), aVisSizePixel)));
+    return GetOutputDevice().PixelToLogic(tools::Rectangle(Point(0,0), aVisSizePixel));
 }
 
 bool SdrPaintWindow::OutputToRecordingMetaFile() const
@@ -285,14 +281,14 @@ void SdrPaintWindow::PreparePreRenderDevice()
     const bool bPrepareBufferedOutput(
         mrPaintView.IsBufferedOutputAllowed()
         && !OutputToPrinter()
-        && !OutputToVirtualDevice()
+        && !mpOutputDevice->IsVirtual()
         && !OutputToRecordingMetaFile());
 
     if(bPrepareBufferedOutput)
     {
         if(!mpPreRenderDevice)
         {
-            mpPreRenderDevice = new SdrPreRenderDevice(*mpOutputDevice.get());
+            mpPreRenderDevice.reset(new SdrPreRenderDevice(*mpOutputDevice));
         }
     }
     else
@@ -308,11 +304,7 @@ void SdrPaintWindow::PreparePreRenderDevice()
 
 void SdrPaintWindow::DestroyPreRenderDevice()
 {
-    if(mpPreRenderDevice)
-    {
-        delete mpPreRenderDevice;
-        mpPreRenderDevice = nullptr;
-    }
+    mpPreRenderDevice.reset();
 }
 
 void SdrPaintWindow::OutputPreRenderDevice(const vcl::Region& rExpandedRegion)

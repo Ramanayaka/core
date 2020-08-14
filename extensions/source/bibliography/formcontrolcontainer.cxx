@@ -18,7 +18,8 @@
  */
 
 #include "formcontrolcontainer.hxx"
-#include <osl/diagnose.h>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <algorithm>
 
@@ -70,6 +71,8 @@ namespace bib
         m_xForm = _rxForm;
     }
 
+    namespace {
+
     struct ControlModeSwitch
     {
         bool bDesign;
@@ -82,6 +85,8 @@ namespace bib
         }
     };
 
+    }
+
     void FormControlContainer::implSetDesignMode( bool _bDesign )
     {
         try
@@ -92,14 +97,14 @@ namespace bib
                 aControls = xControlCont->getControls();
 
             std::for_each(
-                aControls.getConstArray(),
-                aControls.getConstArray() + aControls.getLength(),
+                aControls.begin(),
+                aControls.end(),
                 ControlModeSwitch( _bDesign )
             );
         }
         catch( const Exception&)
         {
-            OSL_FAIL( "FormControlContainer::implSetDesignMode: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.biblio", "FormControlContainer::implSetDesignMode" );
         }
     }
 
@@ -111,10 +116,6 @@ namespace bib
     void FormControlContainer::_unloading( const css::lang::EventObject& /*_rEvent*/ )
     {
         implSetDesignMode( true );
-    }
-
-    void FormControlContainer::_unloaded( const css::lang::EventObject& /*_rEvent*/ )
-    {
     }
 
     void FormControlContainer::_reloading( const css::lang::EventObject& /*_rEvent*/ )

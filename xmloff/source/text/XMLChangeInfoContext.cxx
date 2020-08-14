@@ -19,10 +19,9 @@
 
 #include "XMLChangeInfoContext.hxx"
 #include "XMLChangedRegionImportContext.hxx"
-#include "XMLStringBufferImportContext.hxx"
+#include <XMLStringBufferImportContext.hxx>
 #include <com/sun/star/uno/Reference.h>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlimp.hxx>
 
@@ -54,37 +53,31 @@ void XMLChangeInfoContext::StartElement(const Reference<XAttributeList> &)
     // no attributes
 }
 
-SvXMLImportContext* XMLChangeInfoContext::CreateChildContext(
+SvXMLImportContextRef XMLChangeInfoContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
-    const Reference<XAttributeList >& xAttrList )
+    const Reference<XAttributeList >& /*xAttrList*/ )
 {
-    SvXMLImportContext* pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     if( XML_NAMESPACE_DC == nPrefix )
     {
         if( IsXMLToken( rLocalName, XML_CREATOR ) )
-            pContext = new XMLStringBufferImportContext(GetImport(), nPrefix,
+            xContext = new XMLStringBufferImportContext(GetImport(), nPrefix,
                                             rLocalName, sAuthorBuffer);
         else if( IsXMLToken( rLocalName, XML_DATE ) )
-            pContext = new XMLStringBufferImportContext(GetImport(), nPrefix,
+            xContext = new XMLStringBufferImportContext(GetImport(), nPrefix,
                                             rLocalName, sDateTimeBuffer);
     }
     else if ( ( XML_NAMESPACE_TEXT == nPrefix ||
                 XML_NAMESPACE_LO_EXT == nPrefix ) &&
          IsXMLToken( rLocalName, XML_P )       )
     {
-        pContext = new XMLStringBufferImportContext(GetImport(), nPrefix,
+        xContext = new XMLStringBufferImportContext(GetImport(), nPrefix,
                                                    rLocalName, sCommentBuffer);
     }
 
-    if( !pContext )
-    {
-        pContext = SvXMLImportContext::CreateChildContext(nPrefix, rLocalName,
-                                                          xAttrList);
-    }
-
-    return pContext;
+    return xContext;
 }
 
 void XMLChangeInfoContext::EndElement()

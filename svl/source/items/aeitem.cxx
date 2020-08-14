@@ -20,133 +20,53 @@
 #include <rtl/ustring.hxx>
 #include <svl/aeitem.hxx>
 
+#include <climits>
 #include <cstddef>
-#include <vector>
-
-struct SfxAllEnumValue_Impl
-{
-    sal_uInt16 nValue;
-    OUString aText;
-};
-
-class SfxAllEnumValueArr : public std::vector<SfxAllEnumValue_Impl> {};
-
-
-SfxAllEnumItem::SfxAllEnumItem(sal_uInt16 which, sal_uInt16 nVal):
-    SfxAllEnumItem_Base(which, nVal),
-    pValues( nullptr )
-{
-    InsertValue( nVal );
-}
-
-SfxAllEnumItem::SfxAllEnumItem( sal_uInt16 which, SvStream &rStream ):
-    SfxAllEnumItem_Base(which, rStream)
-{
-    InsertValue( GetValue() );
-}
 
 SfxAllEnumItem::SfxAllEnumItem(sal_uInt16 which):
-    SfxAllEnumItem_Base(which, 0)
+    SfxPoolItem(which)
 {
 }
 
 SfxAllEnumItem::SfxAllEnumItem(const SfxAllEnumItem &rCopy):
-    SfxAllEnumItem_Base(rCopy)
+    SfxPoolItem(rCopy),
+    m_Values(rCopy.m_Values)
 {
-    if ( rCopy.pValues )
-        pValues.reset( new SfxAllEnumValueArr(*rCopy.pValues) );
 }
 
 SfxAllEnumItem::~SfxAllEnumItem()
 {
 }
 
-sal_uInt16 SfxAllEnumItem::GetValueCount() const
+sal_Int32 SfxAllEnumItem::GetTextCount() const
 {
-    return pValues ? pValues->size() : 0;
+    return m_Values.size();
 }
 
-OUString SfxAllEnumItem::GetValueTextByPos( sal_uInt16 nPos ) const
+OUString const & SfxAllEnumItem::GetTextByPos( sal_uInt16 nPos ) const
 {
-    assert(pValues && nPos < pValues->size());
-    return (*pValues)[nPos].aText;
+    return m_Values[nPos];
 }
 
-sal_uInt16 SfxAllEnumItem::GetValueByPos( sal_uInt16 nPos ) const
-{
-    assert(pValues && nPos < pValues->size());
-    return (*pValues)[nPos].nValue;
-}
-
-SfxPoolItem* SfxAllEnumItem::Clone( SfxItemPool * ) const
+SfxAllEnumItem* SfxAllEnumItem::Clone( SfxItemPool * ) const
 {
     return new SfxAllEnumItem(*this);
 }
 
-SfxPoolItem* SfxAllEnumItem::Create( SvStream & rStream, sal_uInt16 ) const
+void SfxAllEnumItem::SetTextByPos( sal_uInt16 nPos, const OUString &rText )
 {
-    return new SfxAllEnumItem( Which(), rStream );
+    if (nPos >= m_Values.size())
+        m_Values.resize(nPos);
+    m_Values[nPos] = rText;
 }
 
-/**
- * In contrast to @see GetPosByValue(sal_uInt16) const
- * this internal method returns the position the value would be for non-present values.
- */
-std::size_t SfxAllEnumItem::GetPosByValue_( sal_uInt16 nVal ) const
+bool SfxAllEnumItem::operator==( const SfxPoolItem& rCmp ) const
 {
-    if ( !pValues )
-        return 0;
-
-    //FIXME: Optimisation: use binary search or SortArray
-    std::size_t nPos;
-    for ( nPos = 0; nPos < pValues->size(); ++nPos )
-        if ( (*pValues)[nPos].nValue >= nVal )
-            return nPos;
-    return nPos;
+    if (!SfxPoolItem::operator==(rCmp))
+        return false;
+    const SfxAllEnumItem& rOther = static_cast<const SfxAllEnumItem&>(rCmp);
+    return m_Values == rOther.m_Values;
 }
 
-sal_uInt16 SfxAllEnumItem::GetPosByValue( sal_uInt16 nValue ) const
-{
-    if ( !pValues || pValues->empty() )
-        return nValue;
-
-    sal_uInt16 nCount = GetValueCount();
-    for (sal_uInt16 i = 0; i < nCount; ++i)
-        if (GetValueByPos(i) == nValue)
-            return i;
-    return USHRT_MAX;
-}
-
-void SfxAllEnumItem::InsertValue( sal_uInt16 nValue, const OUString &rValue )
-{
-    SfxAllEnumValue_Impl aVal;
-    aVal.nValue = nValue;
-    aVal.aText = rValue;
-    if ( !pValues )
-        pValues.reset( new SfxAllEnumValueArr );
-    else if ( GetPosByValue( nValue ) != USHRT_MAX )
-        // remove when exists
-        RemoveValue( nValue );
-    // then insert
-    pValues->insert(pValues->begin() + GetPosByValue_(nValue), aVal); // FIXME: Duplicates?
-}
-
-void SfxAllEnumItem::InsertValue( sal_uInt16 nValue )
-{
-    SfxAllEnumValue_Impl aVal;
-    aVal.nValue = nValue;
-    aVal.aText = OUString::number(nValue);
-    if ( !pValues )
-        pValues.reset( new SfxAllEnumValueArr );
-
-    pValues->insert(pValues->begin() + GetPosByValue_(nValue), aVal); // FIXME: Duplicates?
-}
-
-void SfxAllEnumItem::RemoveValue( sal_uInt16 nValue )
-{
-    sal_uInt16 nPos = GetPosByValue(nValue);
-    assert(nPos != USHRT_MAX);
-    pValues->erase( pValues->begin() + nPos );
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

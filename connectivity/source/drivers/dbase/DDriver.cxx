@@ -17,12 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbase/DDriver.hxx"
-#include "dbase/DConnection.hxx"
+#include <dbase/DDriver.hxx>
+#include <dbase/DConnection.hxx>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <connectivity/dbexception.hxx>
-#include "resource/dbase_res.hrc"
-#include <comphelper/processfactory.hxx>
+#include <strings.hrc>
 
 using namespace connectivity::dbase;
 using namespace connectivity::file;
@@ -33,24 +32,28 @@ using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::lang;
 
 
-// static ServiceInfo
-
-OUString ODriver::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.sdbc.dbase.ODriver");
-}
-
+// XServiceInfo
 
 OUString SAL_CALL ODriver::getImplementationName(  )
 {
-    return getImplementationName_Static();
+    return "com.sun.star.comp.sdbc.dbase.ODriver";
 }
 
 
-css::uno::Reference< css::uno::XInterface >  SAL_CALL connectivity::dbase::ODriver_CreateInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory)
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+connectivity_dbase_ODriver(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    return *(new ODriver( comphelper::getComponentContext(_rxFactory) ));
+    rtl::Reference<ODriver> ret;
+    try {
+        ret = new ODriver(context);
+    } catch (...) {
+    }
+    if (ret)
+        ret->acquire();
+    return static_cast<cppu::OWeakObject*>(ret.get());
 }
+
 
 Reference< XConnection > SAL_CALL ODriver::connect( const OUString& url, const Sequence< PropertyValue >& info )
 {
@@ -78,34 +81,35 @@ Sequence< DriverPropertyInfo > SAL_CALL ODriver::getPropertyInfo( const OUString
 {
     if ( acceptsURL(url) )
     {
-        std::vector< DriverPropertyInfo > aDriverInfo;
-
         Sequence< OUString > aBoolean(2);
         aBoolean[0] = "0";
         aBoolean[1] = "1";
 
-        aDriverInfo.push_back(DriverPropertyInfo(
+        DriverPropertyInfo aDriverInfo[] = {
+            {
                 "CharSet"
                 ,"CharSet of the database."
                 ,false
                 ,OUString()
-                ,Sequence< OUString >())
-                );
-        aDriverInfo.push_back(DriverPropertyInfo(
+                ,Sequence< OUString >()
+            },
+            {
                 "ShowDeleted"
                 ,"Display inactive records."
                 ,false
                 ,"0"
-                ,aBoolean)
-                );
-        aDriverInfo.push_back(DriverPropertyInfo(
+                ,aBoolean
+            },
+            {
                 "EnableSQL92Check"
                 ,"Use SQL92 naming constraints."
                 ,false
                 ,"0"
-                ,aBoolean)
-                );
-        return Sequence< DriverPropertyInfo >(&(aDriverInfo[0]),aDriverInfo.size());
+                ,aBoolean
+            }
+        };
+
+        return Sequence< DriverPropertyInfo >(aDriverInfo, std::size(aDriverInfo));
     }
 
     SharedResources aResources;

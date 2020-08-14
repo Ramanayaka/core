@@ -11,7 +11,6 @@
 #ifndef INCLUDED_SAX_TOOLS_DOCUMENTHANDLERADAPTER_HXX
 #define INCLUDED_SAX_TOOLS_DOCUMENTHANDLERADAPTER_HXX
 
-#include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
 
@@ -81,13 +80,13 @@ namespace sax
         ;
 
     protected:
-        void SAL_CALL
+        void
         setDelegate(const css::uno::Reference< css::xml::sax::XDocumentHandler >& delegate)
         {
             m_handler = delegate;
         }
-        const css::uno::Reference< css::xml::sax::XDocumentHandler >& SAL_CALL
-        getDelegate()
+        const css::uno::Reference< css::xml::sax::XDocumentHandler >&
+        getDelegate() const
         {
             return m_handler;
         }
@@ -191,13 +190,13 @@ namespace sax
         {
         }
 
-        void SAL_CALL
+        void
         setDelegate(const css::uno::Reference< css::xml::sax::XExtendedDocumentHandler >& delegate)
         {
             m_handler = delegate;
         }
-        const css::uno::Reference< css::xml::sax::XExtendedDocumentHandler >& SAL_CALL
-        getDelegate()
+        const css::uno::Reference< css::xml::sax::XExtendedDocumentHandler >&
+        getDelegate() const
         {
             return m_handler;
         }

@@ -18,26 +18,24 @@
  */
 
 
-#include "java/sql/JStatement.hxx"
-#include "java/sql/ResultSet.hxx"
-#include "java/sql/Connection.hxx"
-#include "java/sql/SQLWarning.hxx"
-#include "java/tools.hxx"
-#include "java/ContextClassLoader.hxx"
+#include <java/sql/JStatement.hxx>
+#include <java/sql/ResultSet.hxx>
+#include <java/sql/Connection.hxx>
+#include <java/sql/SQLWarning.hxx>
+#include <java/tools.hxx>
+#include <java/ContextClassLoader.hxx>
 #include <comphelper/property.hxx>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <comphelper/sequence.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 #include <comphelper/types.hxx>
 #include <tools/diagnose_ex.h>
 #include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
-#include <com/sun/star/sdbc/FetchDirection.hpp>
 
-#include "resource/conn_shared_res.hrc"
-#include "strings.hxx"
+#include <strings.hxx>
 
 #include <algorithm>
 #include <string.h>
@@ -90,7 +88,6 @@ void SAL_CALL OStatement_BASE2::disposing()
     ::comphelper::disposeComponent(m_xGeneratedStatement);
     m_pConnection.clear();
 
-    dispose_ChildImpl();
     java_sql_Statement_Base::disposing();
 }
 
@@ -107,12 +104,6 @@ void SAL_CALL java_sql_Statement_Base::disposing()
     m_aLogger.log( LogLevel::FINE, STR_LOG_CLOSING_STATEMENT );
     java_sql_Statement_BASE::disposing();
     clearObject();
-}
-
-
-void SAL_CALL OStatement_BASE2::release() throw()
-{
-    release_ChildImpl();
 }
 
 
@@ -133,9 +124,9 @@ Sequence< Type > SAL_CALL java_sql_Statement_Base::getTypes(  )
     Sequence< Type > aOldTypes = java_sql_Statement_BASE::getTypes();
     if ( m_pConnection.is() && !m_pConnection->isAutoRetrievingEnabled() )
     {
-        std::remove(aOldTypes.begin(), aOldTypes.end(),
-                    cppu::UnoType<XGeneratedResultSet>::get());
-        aOldTypes.realloc(aOldTypes.getLength() - 1);
+        auto newEnd = std::remove(aOldTypes.begin(), aOldTypes.end(),
+                                  cppu::UnoType<XGeneratedResultSet>::get());
+        aOldTypes.realloc(std::distance(aOldTypes.begin(), newEnd));
     }
 
     return ::comphelper::concatSequences(aTypes.getTypes(),aOldTypes);
@@ -221,7 +212,7 @@ sal_Bool SAL_CALL java_sql_Statement_Base::execute( const OUString& sql )
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(java_sql_Statement_BASE::rBHelper.bDisposed);
 
-    jboolean out(false);
+    bool out(false);
     SDBThreadAttach t; OSL_ENSURE(t.pEnv,"Java environment has been deleted!");
     {
         createStatement(t.pEnv);
@@ -658,7 +649,7 @@ sal_Bool java_sql_Statement_Base::convertFastPropertyValue(
     }
     catch(const css::uno::Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("connectivity.jdbc");
     }
     return false;
 }
@@ -770,33 +761,34 @@ void java_sql_Statement::createStatement(JNIEnv* _pEnv)
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(java_sql_Statement_BASE::rBHelper.bDisposed);
 
-    if( _pEnv && !object ){
-        // initialize temporary variable
-        static const char * const cMethodName = "createStatement";
-        // Java-Call
-        jobject out = nullptr;
-        static jmethodID mID(nullptr);
-        if ( !mID )
-        {
-            static const char * const cSignature = "(II)Ljava/sql/Statement;";
-            mID  = _pEnv->GetMethodID( m_pConnection->getMyClass(), cMethodName, cSignature );
-        }
-        if( mID ){
-            out = _pEnv->CallObjectMethod( m_pConnection->getJavaObject(), mID,m_nResultSetType,m_nResultSetConcurrency );
-        } //mID
-        else
-        {
-            static const char * const cSignature2 = "()Ljava/sql/Statement;";
-            static jmethodID mID2 = _pEnv->GetMethodID( m_pConnection->getMyClass(), cMethodName, cSignature2 );OSL_ENSURE(mID2,"Unknown method id!");
-            if( mID2 ){
-                out = _pEnv->CallObjectMethod( m_pConnection->getJavaObject(), mID2);
-            } //mID
-        }
-        ThrowLoggedSQLException( m_aLogger, _pEnv, *this );
+    if( !(_pEnv && !object) )
+        return;
 
-        if ( out )
-            object = _pEnv->NewGlobalRef( out );
-    } //_pEnv
+    // initialize temporary variable
+    static const char * const cMethodName = "createStatement";
+    // Java-Call
+    jobject out = nullptr;
+    static jmethodID mID(nullptr);
+    if ( !mID )
+    {
+        static const char * const cSignature = "(II)Ljava/sql/Statement;";
+        mID  = _pEnv->GetMethodID( m_pConnection->getMyClass(), cMethodName, cSignature );
+    }
+    if( mID ){
+        out = _pEnv->CallObjectMethod( m_pConnection->getJavaObject(), mID,m_nResultSetType,m_nResultSetConcurrency );
+    } //mID
+    else
+    {
+        static const char * const cSignature2 = "()Ljava/sql/Statement;";
+        static jmethodID mID2 = _pEnv->GetMethodID( m_pConnection->getMyClass(), cMethodName, cSignature2 );OSL_ENSURE(mID2,"Unknown method id!");
+        if( mID2 ){
+            out = _pEnv->CallObjectMethod( m_pConnection->getJavaObject(), mID2);
+        } //mID
+    }
+    ThrowLoggedSQLException( m_aLogger, _pEnv, *this );
+
+    if ( out )
+        object = _pEnv->NewGlobalRef( out );
 }
 
 

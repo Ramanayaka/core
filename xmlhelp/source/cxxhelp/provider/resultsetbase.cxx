@@ -17,15 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <comphelper/processfactory.hxx>
 #include <ucbhelper/contentidentifier.hxx>
 #include <com/sun/star/sdbc/SQLException.hpp>
-#include <com/sun/star/ucb/OpenMode.hpp>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/ucb/ListActionType.hpp>
-#include <com/sun/star/ucb/XSourceInitialization.hpp>
 #include <ucbhelper/resultsetmetadata.hxx>
+#include <cppuhelper/queryinterface.hxx>
 
 #include "resultsetbase.hxx"
 
@@ -39,18 +36,12 @@ ResultSetBase::ResultSetBase( const uno::Reference< uno::XComponentContext >&  r
       m_xProvider( xProvider ),
       m_nRow( -1 ),
       m_nWasNull( true ),
-      m_sProperty( seq ),
-      m_pDisposeEventListeners( nullptr ),
-      m_pRowCountListeners( nullptr ),
-      m_pIsFinalListeners( nullptr )
+      m_sProperty( seq )
 {
 }
 
 ResultSetBase::~ResultSetBase()
 {
-    delete m_pIsFinalListeners;
-    delete m_pRowCountListeners;
-    delete m_pDisposeEventListeners;
 }
 
 
@@ -76,12 +67,12 @@ uno::Any SAL_CALL
 ResultSetBase::queryInterface( const uno::Type& rType )
 {
     uno::Any aRet = cppu::queryInterface( rType,
-                                          (static_cast< lang::XComponent* >(this)),
-                                          (static_cast< sdbc::XRow* >(this)),
-                                          (static_cast< sdbc::XResultSet* >(this)),
-                                          (static_cast< sdbc::XResultSetMetaDataSupplier* >(this)),
-                                          (static_cast< beans::XPropertySet* >(this)),
-                                          (static_cast< ucb::XContentAccess* >(this)) );
+                                          static_cast< lang::XComponent* >(this),
+                                          static_cast< sdbc::XRow* >(this),
+                                          static_cast< sdbc::XResultSet* >(this),
+                                          static_cast< sdbc::XResultSetMetaDataSupplier* >(this),
+                                          static_cast< beans::XPropertySet* >(this),
+                                          static_cast< ucb::XContentAccess* >(this) );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
 
@@ -96,8 +87,8 @@ ResultSetBase::addEventListener(
     osl::MutexGuard aGuard( m_aMutex );
 
     if ( ! m_pDisposeEventListeners )
-        m_pDisposeEventListeners =
-            new comphelper::OInterfaceContainerHelper2( m_aMutex );
+        m_pDisposeEventListeners.reset(
+            new comphelper::OInterfaceContainerHelper2( m_aMutex ));
 
     m_pDisposeEventListeners->addInterface( Listener );
 }
@@ -291,8 +282,7 @@ ResultSetBase::rowDeleted()
 uno::Reference< uno::XInterface > SAL_CALL
 ResultSetBase::getStatement()
 {
-    uno::Reference< uno::XInterface > test( nullptr );
-    return test;
+    return uno::Reference< uno::XInterface >();
 }
 
 
@@ -338,6 +328,7 @@ ResultSetBase::queryContent()
         return uno::Reference< ucb::XContent >();
 }
 
+namespace {
 
 class XPropertySetInfoImpl
     : public cppu::OWeakObject,
@@ -366,7 +357,7 @@ public:
     uno::Any SAL_CALL queryInterface( const uno::Type& rType ) override
     {
         uno::Any aRet = cppu::queryInterface( rType,
-                                              (static_cast< beans::XPropertySetInfo* >(this)) );
+                                              static_cast< beans::XPropertySetInfo* >(this) );
         return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
     }
 
@@ -377,18 +368,17 @@ public:
 
     beans::Property SAL_CALL getPropertyByName( const OUString& aName ) override
     {
-        for( int i = 0; i < m_aSeq.getLength(); ++i )
-            if( aName == m_aSeq[i].Name )
-                return m_aSeq[i];
-        throw beans::UnknownPropertyException();
+        auto pProp = std::find_if(m_aSeq.begin(), m_aSeq.end(),
+            [&aName](const beans::Property& rProp) { return aName == rProp.Name; });
+        if (pProp != m_aSeq.end())
+            return *pProp;
+        throw beans::UnknownPropertyException(aName);
     }
 
     sal_Bool SAL_CALL hasPropertyByName( const OUString& Name ) override
     {
-        for( int i = 0; i < m_aSeq.getLength(); ++i )
-            if( Name == m_aSeq[i].Name )
-                return true;
-        return false;
+        return std::any_of(m_aSeq.begin(), m_aSeq.end(),
+            [&Name](const beans::Property& rProp) { return Name == rProp.Name; });
     }
 
 private:
@@ -396,6 +386,7 @@ private:
     uno::Sequence< beans::Property > m_aSeq;
 };
 
+}
 
 // XPropertySet
 uno::Reference< beans::XPropertySetInfo > SAL_CALL
@@ -424,7 +415,7 @@ void SAL_CALL ResultSetBase::setPropertyValue(
         aPropertyName == "RowCount" )
         return;
 
-    throw beans::UnknownPropertyException();
+    throw beans::UnknownPropertyException(aPropertyName);
 }
 
 
@@ -441,7 +432,7 @@ uno::Any SAL_CALL ResultSetBase::getPropertyValue(
         return uno::Any(count);
     }
     else
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(PropertyName);
 }
 
 
@@ -453,8 +444,8 @@ void SAL_CALL ResultSetBase::addPropertyChangeListener(
     {
         osl::MutexGuard aGuard( m_aMutex );
         if ( ! m_pIsFinalListeners )
-            m_pIsFinalListeners =
-                new comphelper::OInterfaceContainerHelper2( m_aMutex );
+            m_pIsFinalListeners.reset(
+                new comphelper::OInterfaceContainerHelper2( m_aMutex ));
 
         m_pIsFinalListeners->addInterface( xListener );
     }
@@ -462,12 +453,12 @@ void SAL_CALL ResultSetBase::addPropertyChangeListener(
     {
         osl::MutexGuard aGuard( m_aMutex );
         if ( ! m_pRowCountListeners )
-            m_pRowCountListeners =
-                new comphelper::OInterfaceContainerHelper2( m_aMutex );
+            m_pRowCountListeners.reset(
+                new comphelper::OInterfaceContainerHelper2( m_aMutex ));
         m_pRowCountListeners->addInterface( xListener );
     }
     else
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 }
 
 
@@ -488,7 +479,7 @@ void SAL_CALL ResultSetBase::removePropertyChangeListener(
         m_pRowCountListeners->removeInterface( aListener );
     }
     else
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 }
 
 

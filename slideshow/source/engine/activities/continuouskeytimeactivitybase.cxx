@@ -20,16 +20,12 @@
 
 #include <tools/diagnose_ex.h>
 
-#include <continuouskeytimeactivitybase.hxx>
+#include "continuouskeytimeactivitybase.hxx"
 
-#include <algorithm>
-#include <iterator>
 #include <tuple>
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         ContinuousKeyTimeActivityBase::ContinuousKeyTimeActivityBase( const ActivityParameters& rParms ) :
             SimpleContinuousActivityBase( rParms ),
             maLerper( rParms.maDiscreteTimes )
@@ -58,7 +54,6 @@ namespace slideshow
                 fAlpha,
                 nRepeatCount );
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

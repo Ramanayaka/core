@@ -20,15 +20,14 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_DRAWSHAPESUBSETTING_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_DRAWSHAPESUBSETTING_HXX
 
-#include "doctreenode.hxx"
-#include "attributableshape.hxx"
+#include <doctreenode.hxx>
+#include <attributableshape.hxx>
 
 
 class GDIMetaFile;
+typedef ::std::shared_ptr< GDIMetaFile > GDIMetaFileSharedPtr;
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** This class encapsulates the subsetting aspects of a
             DrawShape.
@@ -58,8 +57,8 @@ namespace slideshow
                 Metafile to retrieve subset info from (must have been
                 generated with verbose text comments switched on).
              */
-            DrawShapeSubsetting( const DocTreeNode&                         rShapeSubset,
-                                 const ::std::shared_ptr< GDIMetaFile >&  rMtf );
+            DrawShapeSubsetting( const DocTreeNode&     rShapeSubset,
+                                 GDIMetaFileSharedPtr   rMtf );
 
             /// Forbid copy construction
             DrawShapeSubsetting(const DrawShapeSubsetting&) = delete;
@@ -202,7 +201,7 @@ namespace slideshow
             typedef ::std::set< SubsetEntry >       ShapeSet;
 
             void ensureInitializedNodeTree() const;
-            void updateSubsetBounds( const SubsetEntry& rSubsetEntry );
+            void excludeSubset(sal_Int32 nExcludedStart, sal_Int32 nExcludedEnd);
             void updateSubsets();
             void initCurrentSubsets();
             void reset();
@@ -226,12 +225,6 @@ namespace slideshow
             /// the list of subset shapes spawned from this one.
             ShapeSet                            maSubsetShapes;
 
-            /// caches minimal subset index from maSubsetShapes
-            sal_Int32                           mnMinSubsetActionIndex;
-
-            /// caches maximal subset index from maSubsetShapes
-            sal_Int32                           mnMaxSubsetActionIndex;
-
             /** Current number of subsets to render (calculated from
                 maSubset and mnMin/MaxSubsetActionIndex).
 
@@ -244,7 +237,6 @@ namespace slideshow
             mutable bool                        mbNodeTreeInitialized;
         };
 
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_DRAWSHAPESUBSETTING_HXX

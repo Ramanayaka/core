@@ -17,29 +17,45 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <memory>
-#include "headless/svpgdi.hxx"
-#include "headless/svpbmp.hxx"
-#include "headless/svpframe.hxx"
-#include "headless/svpcairotextrender.hxx"
-#include "saldatabasic.hxx"
+#include <config_features.h>
 
+#include <memory>
+#include <numeric>
+
+#include <headless/svpgdi.hxx>
+#include <headless/svpbmp.hxx>
+#include <headless/svpframe.hxx>
+#include <headless/svpcairotextrender.hxx>
+#include <headless/CustomWidgetDraw.hxx>
+#include <saldatabasic.hxx>
+
+#include <sal/log.hxx>
+#include <tools/helpers.hxx>
+#include <o3tl/safeint.hxx>
+#include <vcl/BitmapTools.hxx>
 #include <vcl/sysdata.hxx>
+#include <vcl/gradient.hxx>
 #include <config_cairo_canvas.h>
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/range/b2ibox.hxx>
+#include <basegfx/range/b2irange.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
-
-#include <cairo.h>
+#include <basegfx/matrix/b2dhommatrix.hxx>
+#include <basegfx/utils/canvastools.hxx>
+#include <basegfx/utils/systemdependentdata.hxx>
+#include <basegfx/matrix/b2dhommatrixtools.hxx>
+#include <comphelper/lok.hxx>
+#include <unx/gendata.hxx>
+#include <dlfcn.h>
 
 #if ENABLE_CAIRO_CANVAS
-#if defined CAIRO_VERSION && CAIRO_VERSION < CAIRO_VERSION_ENCODE(1, 10, 0)
-#   define CAIRO_OPERATOR_DIFFERENCE (static_cast<cairo_operator_t>(23))
-#endif
+#   if defined CAIRO_VERSION && CAIRO_VERSION < CAIRO_VERSION_ENCODE(1, 10, 0)
+#      define CAIRO_OPERATOR_DIFFERENCE (static_cast<cairo_operator_t>(23))
+#   endif
 #endif
 
 namespace
@@ -50,16 +66,29 @@ namespace
 
         cairo_clip_extents(cr, &x1, &y1, &x2, &y2);
 
-        return basegfx::B2DRange(x1, y1, x2, y2);
+        // support B2DRange::isEmpty()
+        if(0.0 != x1 || 0.0 != y1 || 0.0 != x2 || 0.0 != y2)
+        {
+            return basegfx::B2DRange(x1, y1, x2, y2);
+        }
+
+        return basegfx::B2DRange();
     }
 
     basegfx::B2DRange getFillDamage(cairo_t* cr)
     {
         double x1, y1, x2, y2;
 
-        cairo_fill_extents(cr, &x1, &y1, &x2, &y2);
+        // this is faster than cairo_fill_extents, at the cost of some overdraw
+        cairo_path_extents(cr, &x1, &y1, &x2, &y2);
 
-        return basegfx::B2DRange(x1, y1, x2, y2);
+        // support B2DRange::isEmpty()
+        if(0.0 != x1 || 0.0 != y1 || 0.0 != x2 || 0.0 != y2)
+        {
+            return basegfx::B2DRange(x1, y1, x2, y2);
+        }
+
+        return basegfx::B2DRange();
     }
 
     basegfx::B2DRange getClippedFillDamage(cairo_t* cr)
@@ -73,9 +102,16 @@ namespace
     {
         double x1, y1, x2, y2;
 
-        cairo_stroke_extents(cr, &x1, &y1, &x2, &y2);
+        // less accurate, but much faster
+        cairo_path_extents(cr, &x1, &y1, &x2, &y2);
 
-        return basegfx::B2DRange(x1, y1, x2, y2);
+        // support B2DRange::isEmpty()
+        if(0.0 != x1 || 0.0 != y1 || 0.0 != x2 || 0.0 != y2)
+        {
+            return basegfx::B2DRange(x1, y1, x2, y2);
+        }
+
+        return basegfx::B2DRange();
     }
 
     basegfx::B2DRange getClippedStrokeDamage(cairo_t* cr)
@@ -100,68 +136,385 @@ bool SvpSalGraphics::blendAlphaBitmap( const SalTwoRect&, const SalBitmap&, cons
 
 namespace
 {
-    class SourceHelper
+    cairo_format_t getCairoFormat(const BitmapBuffer& rBuffer)
     {
+        cairo_format_t nFormat;
+#ifdef HAVE_CAIRO_FORMAT_RGB24_888
+        assert(rBuffer.mnBitCount == 32 || rBuffer.mnBitCount == 24 || rBuffer.mnBitCount == 1);
+#else
+        assert(rBuffer.mnBitCount == 32 || rBuffer.mnBitCount == 1);
+#endif
+
+        if (rBuffer.mnBitCount == 32)
+            nFormat = CAIRO_FORMAT_ARGB32;
+#ifdef HAVE_CAIRO_FORMAT_RGB24_888
+        else if (rBuffer.mnBitCount == 24)
+            nFormat = CAIRO_FORMAT_RGB24_888;
+#endif
+        else
+            nFormat = CAIRO_FORMAT_A1;
+        return nFormat;
+    }
+
+    void Toggle1BitTransparency(const BitmapBuffer& rBuf)
+    {
+        assert(rBuf.maPalette.GetBestIndex(BitmapColor(COL_BLACK)) == 0);
+        // TODO: make upper layers use standard alpha
+        if (getCairoFormat(rBuf) == CAIRO_FORMAT_A1)
+        {
+            const int nImageSize = rBuf.mnHeight * rBuf.mnScanlineSize;
+            unsigned char* pDst = rBuf.mpBits;
+            for (int i = nImageSize; --i >= 0; ++pDst)
+                *pDst = ~*pDst;
+        }
+    }
+
+    std::unique_ptr<BitmapBuffer> FastConvert24BitRgbTo32BitCairo(const BitmapBuffer* pSrc)
+    {
+        if (pSrc == nullptr)
+            return nullptr;
+
+        assert(pSrc->mnFormat == SVP_24BIT_FORMAT);
+        const long nWidth = pSrc->mnWidth;
+        const long nHeight = pSrc->mnHeight;
+        std::unique_ptr<BitmapBuffer> pDst(new BitmapBuffer);
+        pDst->mnFormat = (ScanlineFormat::N32BitTcArgb | ScanlineFormat::TopDown);
+        pDst->mnWidth = nWidth;
+        pDst->mnHeight = nHeight;
+        pDst->mnBitCount = 32;
+        pDst->maColorMask = pSrc->maColorMask;
+        pDst->maPalette = pSrc->maPalette;
+
+        long nScanlineBase;
+        const bool bFail = o3tl::checked_multiply<long>(pDst->mnBitCount, nWidth, nScanlineBase);
+        if (bFail)
+        {
+            SAL_WARN("vcl.gdi", "checked multiply failed");
+            pDst->mpBits = nullptr;
+            return nullptr;
+        }
+
+        pDst->mnScanlineSize = AlignedWidth4Bytes(nScanlineBase);
+        if (pDst->mnScanlineSize < nScanlineBase/8)
+        {
+            SAL_WARN("vcl.gdi", "scanline calculation wraparound");
+            pDst->mpBits = nullptr;
+            return nullptr;
+        }
+
+        try
+        {
+            pDst->mpBits = new sal_uInt8[ pDst->mnScanlineSize * nHeight ];
+        }
+        catch (const std::bad_alloc&)
+        {
+            // memory exception, clean up
+            pDst->mpBits = nullptr;
+            return nullptr;
+        }
+
+        for (long y = 0; y < nHeight; ++y)
+        {
+            sal_uInt8* pS = pSrc->mpBits + y * pSrc->mnScanlineSize;
+            sal_uInt8* pD = pDst->mpBits + y * pDst->mnScanlineSize;
+            for (long x = 0; x < nWidth; ++x)
+            {
+#if defined(ANDROID) && !HAVE_FEATURE_ANDROID_LOK
+                static_assert((SVP_CAIRO_FORMAT & ~ScanlineFormat::TopDown) == ScanlineFormat::N32BitTcRgba, "Expected SVP_CAIRO_FORMAT set to N32BitTcBgra");
+                static_assert((SVP_24BIT_FORMAT & ~ScanlineFormat::TopDown) == ScanlineFormat::N24BitTcRgb, "Expected SVP_24BIT_FORMAT set to N24BitTcRgb");
+                pD[0] = pS[0];
+                pD[1] = pS[1];
+                pD[2] = pS[2];
+                pD[3] = 0xff; // Alpha
+#elif defined OSL_BIGENDIAN
+                static_assert((SVP_CAIRO_FORMAT & ~ScanlineFormat::TopDown) == ScanlineFormat::N32BitTcArgb, "Expected SVP_CAIRO_FORMAT set to N32BitTcBgra");
+                static_assert((SVP_24BIT_FORMAT & ~ScanlineFormat::TopDown) == ScanlineFormat::N24BitTcRgb, "Expected SVP_24BIT_FORMAT set to N24BitTcRgb");
+                pD[0] = 0xff; // Alpha
+                pD[1] = pS[0];
+                pD[2] = pS[1];
+                pD[3] = pS[2];
+#else
+                static_assert((SVP_CAIRO_FORMAT & ~ScanlineFormat::TopDown) == ScanlineFormat::N32BitTcBgra, "Expected SVP_CAIRO_FORMAT set to N32BitTcBgra");
+                static_assert((SVP_24BIT_FORMAT & ~ScanlineFormat::TopDown) == ScanlineFormat::N24BitTcBgr, "Expected SVP_24BIT_FORMAT set to N24BitTcBgr");
+                pD[0] = pS[0];
+                pD[1] = pS[1];
+                pD[2] = pS[2];
+                pD[3] = 0xff; // Alpha
+#endif
+
+                pS += 3;
+                pD += 4;
+            }
+        }
+
+        return pDst;
+    }
+
+    // check for env var that decides for using downscale pattern
+    const char* pDisableDownScale(getenv("SAL_DISABLE_CAIRO_DOWNSCALE"));
+    bool bDisableDownScale(nullptr != pDisableDownScale);
+
+    class SurfaceHelper
+    {
+    private:
+        cairo_surface_t* pSurface;
+        std::unordered_map<unsigned long long, cairo_surface_t*> maDownscaled;
+
+        SurfaceHelper(const SurfaceHelper&) = delete;
+        SurfaceHelper& operator=(const SurfaceHelper&) = delete;
+
+        cairo_surface_t* implCreateOrReuseDownscale(
+            unsigned long nTargetWidth,
+            unsigned long nTargetHeight)
+        {
+            const unsigned long nSourceWidth(cairo_image_surface_get_width(pSurface));
+            const unsigned long nSourceHeight(cairo_image_surface_get_height(pSurface));
+
+            // zoomed in, need to stretch at paint, no pre-scale useful
+            if(nTargetWidth >= nSourceWidth || nTargetHeight >= nSourceHeight)
+            {
+                return pSurface;
+            }
+
+            // calculate downscale factor
+            unsigned long nWFactor(1);
+            unsigned long nW((nSourceWidth + 1) / 2);
+            unsigned long nHFactor(1);
+            unsigned long nH((nSourceHeight + 1) / 2);
+
+            while(nW > nTargetWidth && nW > 1)
+            {
+                nW = (nW + 1) / 2;
+                nWFactor *= 2;
+            }
+
+            while(nH > nTargetHeight && nH > 1)
+            {
+                nH = (nH + 1) / 2;
+                nHFactor *= 2;
+            }
+
+            if(1 == nWFactor && 1 == nHFactor)
+            {
+                // original size *is* best binary size, use it
+                return pSurface;
+            }
+
+            // go up one scale again - look for no change
+            nW  = (1 == nWFactor) ? nTargetWidth : nW * 2;
+            nH  = (1 == nHFactor) ? nTargetHeight : nH * 2;
+
+            // check if we have a downscaled version of required size
+            const unsigned long long key((nW * LONG_MAX) + nH);
+            auto isHit(maDownscaled.find(key));
+
+            if(isHit != maDownscaled.end())
+            {
+                return isHit->second;
+            }
+
+            // create new surface in the targeted size
+            cairo_surface_t* pSurfaceTarget = cairo_surface_create_similar(
+                pSurface,
+                cairo_surface_get_content(pSurface),
+                nW,
+                nH);
+
+            // did a version to scale self first that worked well, but wouuld've
+            // been hard to support CAIRO_FORMAT_A1 including bit shifting, so
+            // I decided to go with cairo itself - use CAIRO_FILTER_FAST or
+            // CAIRO_FILTER_GOOD though. Please modify as needed for
+            // performance/quality
+            cairo_t* cr = cairo_create(pSurfaceTarget);
+            const double fScaleX(static_cast<double>(nW)/static_cast<double>(nSourceWidth));
+            const double fScaleY(static_cast<double>(nH)/static_cast<double>(nSourceHeight));
+            cairo_scale(cr, fScaleX, fScaleY);
+            cairo_set_source_surface(cr, pSurface, 0.0, 0.0);
+            cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+            cairo_paint(cr);
+            cairo_destroy(cr);
+
+            // need to set device_scale for downscale surfaces to get
+            // them handled correctly
+            cairo_surface_set_device_scale(pSurfaceTarget, fScaleX, fScaleY);
+
+            // add entry to cached entries
+            maDownscaled[key] = pSurfaceTarget;
+
+            return pSurfaceTarget;
+        }
+
+    protected:
+        cairo_surface_t* implGetSurface() const { return pSurface; }
+        void implSetSurface(cairo_surface_t* pNew) { pSurface = pNew; }
+
+        bool isTrivial() const
+        {
+            constexpr unsigned long nMinimalSquareSizeToBuffer(64*64);
+            const unsigned long nSourceWidth(cairo_image_surface_get_width(pSurface));
+            const unsigned long nSourceHeight(cairo_image_surface_get_height(pSurface));
+
+            return nSourceWidth * nSourceHeight < nMinimalSquareSizeToBuffer;
+        }
+
     public:
-        explicit SourceHelper(const SalBitmap& rSourceBitmap)
+        explicit SurfaceHelper()
+        :   pSurface(nullptr),
+            maDownscaled()
+        {
+        }
+        ~SurfaceHelper()
+        {
+            cairo_surface_destroy(pSurface);
+            for(auto& candidate : maDownscaled)
+            {
+                cairo_surface_destroy(candidate.second);
+            }
+        }
+        cairo_surface_t* getSurface(
+            unsigned long nTargetWidth = 0,
+            unsigned long nTargetHeight = 0) const
+        {
+            if (bDisableDownScale || 0 == nTargetWidth || 0 == nTargetHeight || !pSurface || isTrivial())
+            {
+                // caller asks for original or disabled or trivial (smaller then a minimal square size)
+                // also excludes zero cases for width/height after this point if need to prescale
+                return pSurface;
+            }
+
+            return const_cast<SurfaceHelper*>(this)->implCreateOrReuseDownscale(
+                nTargetWidth,
+                nTargetHeight);
+        }
+    };
+
+    class BitmapHelper : public SurfaceHelper
+    {
+    private:
+#ifdef HAVE_CAIRO_FORMAT_RGB24_888
+        const bool m_bForceARGB32;
+#endif
+        SvpSalBitmap aTmpBmp;
+
+    public:
+        explicit BitmapHelper(
+            const SalBitmap& rSourceBitmap,
+            const bool bForceARGB32 = false)
+        :   SurfaceHelper(),
+#ifdef HAVE_CAIRO_FORMAT_RGB24_888
+            m_bForceARGB32(bForceARGB32),
+#endif
+            aTmpBmp()
         {
             const SvpSalBitmap& rSrcBmp = static_cast<const SvpSalBitmap&>(rSourceBitmap);
-
+#ifdef HAVE_CAIRO_FORMAT_RGB24_888
+            if ((rSrcBmp.GetBitCount() != 32 && rSrcBmp.GetBitCount() != 24) || bForceARGB32)
+#else
+            (void)bForceARGB32;
             if (rSrcBmp.GetBitCount() != 32)
+#endif
             {
                 //big stupid copy here
-                static bool bWarnedOnce;
-                SAL_WARN_IF(!bWarnedOnce, "vcl.gdi", "non default depth bitmap, slow convert, upscale the input");
-                bWarnedOnce = true;
-
                 const BitmapBuffer* pSrc = rSrcBmp.GetBuffer();
                 const SalTwoRect aTwoRect = { 0, 0, pSrc->mnWidth, pSrc->mnHeight,
                                               0, 0, pSrc->mnWidth, pSrc->mnHeight };
-                aTmpBmp.Create(StretchAndConvert(*pSrc, aTwoRect, SVP_CAIRO_FORMAT));
-
+                std::unique_ptr<BitmapBuffer> pTmp = (pSrc->mnFormat == SVP_24BIT_FORMAT
+                                   ? FastConvert24BitRgbTo32BitCairo(pSrc)
+                                   : StretchAndConvert(*pSrc, aTwoRect, SVP_CAIRO_FORMAT));
+                aTmpBmp.Create(std::move(pTmp));
 
                 assert(aTmpBmp.GetBitCount() == 32);
-                source = SvpSalGraphics::createCairoSurface(aTmpBmp.GetBuffer());
+                implSetSurface(SvpSalGraphics::createCairoSurface(aTmpBmp.GetBuffer()));
             }
             else
-                source = SvpSalGraphics::createCairoSurface(rSrcBmp.GetBuffer());
-        }
-        ~SourceHelper()
-        {
-            cairo_surface_destroy(source);
-        }
-        cairo_surface_t* getSurface()
-        {
-            return source;
+            {
+                implSetSurface(SvpSalGraphics::createCairoSurface(rSrcBmp.GetBuffer()));
+            }
         }
         void mark_dirty()
         {
-            cairo_surface_mark_dirty(source);
+            cairo_surface_mark_dirty(implGetSurface());
         }
         unsigned char* getBits(sal_Int32 &rStride)
         {
-            cairo_surface_flush(source);
+            cairo_surface_flush(implGetSurface());
 
-            unsigned char *mask_data = cairo_image_surface_get_data(source);
+            unsigned char *mask_data = cairo_image_surface_get_data(implGetSurface());
 
-            cairo_format_t nFormat = cairo_image_surface_get_format(source);
+            const cairo_format_t nFormat = cairo_image_surface_get_format(implGetSurface());
+#ifdef HAVE_CAIRO_FORMAT_RGB24_888
+            if (!m_bForceARGB32)
+                assert(nFormat == CAIRO_FORMAT_RGB24_888 && "Expected RGB24_888 image");
+            else
+#endif
             assert(nFormat == CAIRO_FORMAT_ARGB32 && "need to implement CAIRO_FORMAT_A1 after all here");
-            rStride = cairo_format_stride_for_width(nFormat, cairo_image_surface_get_width(source));
+
+            rStride = cairo_format_stride_for_width(nFormat, cairo_image_surface_get_width(implGetSurface()));
 
             return mask_data;
         }
-    private:
-        SvpSalBitmap aTmpBmp;
-        cairo_surface_t* source;
-
-        SourceHelper(const SourceHelper&) = delete;
-        SourceHelper& operator=(const SourceHelper&) = delete;
     };
 
-    class MaskHelper
+    sal_Int64 estimateUsageInBytesForSurfaceHelper(const SurfaceHelper* pHelper)
     {
+        sal_Int64 nRetval(0);
+
+        if(nullptr != pHelper)
+        {
+            cairo_surface_t* pSurface(pHelper->getSurface());
+
+            if(pSurface)
+            {
+                const long nStride(cairo_image_surface_get_stride(pSurface));
+                const long nHeight(cairo_image_surface_get_height(pSurface));
+
+                nRetval = nStride * nHeight;
+
+                // if we do downscale, size will grow by 1/4 + 1/16 + 1/32 + ...,
+                // rough estimation just multiplies by 1.25, should be good enough
+                // for estimation of buffer survival time
+                if(!bDisableDownScale)
+                {
+                    nRetval = (nRetval * 5) / 4;
+                }
+            }
+        }
+
+        return nRetval;
+    }
+
+    class SystemDependentData_BitmapHelper : public basegfx::SystemDependentData
+    {
+    private:
+        std::shared_ptr<BitmapHelper>       maBitmapHelper;
+
+    public:
+        SystemDependentData_BitmapHelper(
+            basegfx::SystemDependentDataManager& rSystemDependentDataManager,
+            const std::shared_ptr<BitmapHelper>& rBitmapHelper)
+        :   basegfx::SystemDependentData(rSystemDependentDataManager),
+            maBitmapHelper(rBitmapHelper)
+        {
+        }
+
+        const std::shared_ptr<BitmapHelper>& getBitmapHelper() const { return maBitmapHelper; };
+        virtual sal_Int64 estimateUsageInBytes() const override;
+    };
+
+    sal_Int64 SystemDependentData_BitmapHelper::estimateUsageInBytes() const
+    {
+        return estimateUsageInBytesForSurfaceHelper(maBitmapHelper.get());
+    }
+
+    class MaskHelper : public SurfaceHelper
+    {
+    private:
+        std::unique_ptr<unsigned char[]> pAlphaBits;
+
     public:
         explicit MaskHelper(const SalBitmap& rAlphaBitmap)
+        :   SurfaceHelper(),
+            pAlphaBits()
         {
             const SvpSalBitmap& rMask = static_cast<const SvpSalBitmap&>(rAlphaBitmap);
             const BitmapBuffer* pMaskBuf = rMask.GetBuffer();
@@ -171,55 +524,152 @@ namespace
                 // the alpha values need to be inverted for Cairo
                 // so big stupid copy and invert here
                 const int nImageSize = pMaskBuf->mnHeight * pMaskBuf->mnScanlineSize;
-                pAlphaBits = new unsigned char[nImageSize];
-                memcpy(pAlphaBits, pMaskBuf->mpBits, nImageSize);
+                pAlphaBits.reset( new unsigned char[nImageSize] );
+                memcpy(pAlphaBits.get(), pMaskBuf->mpBits, nImageSize);
 
                 // TODO: make upper layers use standard alpha
-                sal_uInt32* pLDst = reinterpret_cast<sal_uInt32*>(pAlphaBits);
+                sal_uInt32* pLDst = reinterpret_cast<sal_uInt32*>(pAlphaBits.get());
                 for( int i = nImageSize/sizeof(sal_uInt32); --i >= 0; ++pLDst )
                     *pLDst = ~*pLDst;
-                assert(reinterpret_cast<unsigned char*>(pLDst) == pAlphaBits+nImageSize);
+                assert(reinterpret_cast<unsigned char*>(pLDst) == pAlphaBits.get()+nImageSize);
 
-                mask = cairo_image_surface_create_for_data(pAlphaBits,
-                                                CAIRO_FORMAT_A8,
-                                                pMaskBuf->mnWidth, pMaskBuf->mnHeight,
-                                                pMaskBuf->mnScanlineSize);
+                implSetSurface(
+                    cairo_image_surface_create_for_data(
+                        pAlphaBits.get(),
+                        CAIRO_FORMAT_A8,
+                        pMaskBuf->mnWidth,
+                        pMaskBuf->mnHeight,
+                        pMaskBuf->mnScanlineSize));
             }
             else
             {
                 // the alpha values need to be inverted for Cairo
                 // so big stupid copy and invert here
                 const int nImageSize = pMaskBuf->mnHeight * pMaskBuf->mnScanlineSize;
-                pAlphaBits = new unsigned char[nImageSize];
-                memcpy(pAlphaBits, pMaskBuf->mpBits, nImageSize);
+                pAlphaBits.reset( new unsigned char[nImageSize] );
+                memcpy(pAlphaBits.get(), pMaskBuf->mpBits, nImageSize);
 
-                // TODO: make upper layers use standard alpha
-                unsigned char* pDst = pAlphaBits;
-                for (int i = nImageSize; --i >= 0; ++pDst)
-                    *pDst = ~*pDst;
+                const sal_Int32 nBlackIndex = pMaskBuf->maPalette.GetBestIndex(BitmapColor(COL_BLACK));
+                if (nBlackIndex == 0)
+                {
+                    // TODO: make upper layers use standard alpha
+                    unsigned char* pDst = pAlphaBits.get();
+                    for (int i = nImageSize; --i >= 0; ++pDst)
+                        *pDst = ~*pDst;
+                }
 
-                mask = cairo_image_surface_create_for_data(pAlphaBits,
-                                                CAIRO_FORMAT_A1,
-                                                pMaskBuf->mnWidth, pMaskBuf->mnHeight,
-                                                pMaskBuf->mnScanlineSize);
+                implSetSurface(
+                    cairo_image_surface_create_for_data(
+                        pAlphaBits.get(),
+                        CAIRO_FORMAT_A1,
+                        pMaskBuf->mnWidth,
+                        pMaskBuf->mnHeight,
+                        pMaskBuf->mnScanlineSize));
             }
         }
-        ~MaskHelper()
-        {
-            cairo_surface_destroy(mask);
-            delete[] pAlphaBits;
-        }
-        cairo_surface_t* getMask()
-        {
-            return mask;
-        }
-    private:
-        cairo_surface_t *mask;
-        unsigned char* pAlphaBits;
-
-        MaskHelper(const MaskHelper&) = delete;
-        MaskHelper& operator=(const MaskHelper&) = delete;
     };
+
+    class SystemDependentData_MaskHelper : public basegfx::SystemDependentData
+    {
+    private:
+        std::shared_ptr<MaskHelper>       maMaskHelper;
+
+    public:
+        SystemDependentData_MaskHelper(
+            basegfx::SystemDependentDataManager& rSystemDependentDataManager,
+            const std::shared_ptr<MaskHelper>& rMaskHelper)
+        :   basegfx::SystemDependentData(rSystemDependentDataManager),
+            maMaskHelper(rMaskHelper)
+        {
+        }
+
+        const std::shared_ptr<MaskHelper>& getMaskHelper() const { return maMaskHelper; };
+        virtual sal_Int64 estimateUsageInBytes() const override;
+    };
+
+    sal_Int64 SystemDependentData_MaskHelper::estimateUsageInBytes() const
+    {
+        return estimateUsageInBytesForSurfaceHelper(maMaskHelper.get());
+    }
+
+    // MM02 decide to use buffers or not
+    const char* pDisableMM02Goodies(getenv("SAL_DISABLE_MM02_GOODIES"));
+    bool bUseBuffer(nullptr == pDisableMM02Goodies);
+    long nMinimalSquareSizeToBuffer(64*64);
+
+    void tryToUseSourceBuffer(
+        const SalBitmap& rSourceBitmap,
+        std::shared_ptr<BitmapHelper>& rSurface)
+    {
+        // MM02 try to access buffered BitmapHelper
+        std::shared_ptr<SystemDependentData_BitmapHelper> pSystemDependentData_BitmapHelper;
+        const bool bBufferSource(bUseBuffer
+            && rSourceBitmap.GetSize().Width() * rSourceBitmap.GetSize().Height() > nMinimalSquareSizeToBuffer);
+
+        if(bBufferSource)
+        {
+            const SvpSalBitmap& rSrcBmp(static_cast<const SvpSalBitmap&>(rSourceBitmap));
+            pSystemDependentData_BitmapHelper = rSrcBmp.getSystemDependentData<SystemDependentData_BitmapHelper>();
+
+            if(pSystemDependentData_BitmapHelper)
+            {
+                // reuse buffered data
+                rSurface = pSystemDependentData_BitmapHelper->getBitmapHelper();
+            }
+        }
+
+        if(rSurface)
+            return;
+
+        // create data on-demand
+        rSurface = std::make_shared<BitmapHelper>(rSourceBitmap);
+
+        if(bBufferSource)
+        {
+            // add to buffering mechanism to potentially reuse next time
+            const SvpSalBitmap& rSrcBmp(static_cast<const SvpSalBitmap&>(rSourceBitmap));
+            rSrcBmp.addOrReplaceSystemDependentData<SystemDependentData_BitmapHelper>(
+                ImplGetSystemDependentDataManager(),
+                rSurface);
+        }
+    }
+
+    void tryToUseMaskBuffer(
+        const SalBitmap& rMaskBitmap,
+        std::shared_ptr<MaskHelper>& rMask)
+    {
+        // MM02 try to access buffered MaskHelper
+        std::shared_ptr<SystemDependentData_MaskHelper> pSystemDependentData_MaskHelper;
+        const bool bBufferMask(bUseBuffer
+            && rMaskBitmap.GetSize().Width() * rMaskBitmap.GetSize().Height() > nMinimalSquareSizeToBuffer);
+
+        if(bBufferMask)
+        {
+            const SvpSalBitmap& rSrcBmp(static_cast<const SvpSalBitmap&>(rMaskBitmap));
+            pSystemDependentData_MaskHelper = rSrcBmp.getSystemDependentData<SystemDependentData_MaskHelper>();
+
+            if(pSystemDependentData_MaskHelper)
+            {
+                // reuse buffered data
+                rMask = pSystemDependentData_MaskHelper->getMaskHelper();
+            }
+        }
+
+        if(rMask)
+            return;
+
+        // create data on-demand
+        rMask = std::make_shared<MaskHelper>(rMaskBitmap);
+
+        if(bBufferMask)
+        {
+            // add to buffering mechanism to potentially reuse next time
+            const SvpSalBitmap& rSrcBmp(static_cast<const SvpSalBitmap&>(rMaskBitmap));
+            rSrcBmp.addOrReplaceSystemDependentData<SystemDependentData_MaskHelper>(
+                ImplGetSystemDependentDataManager(),
+                rMask);
+        }
+    }
 }
 
 bool SvpSalGraphics::drawAlphaBitmap( const SalTwoRect& rTR, const SalBitmap& rSourceBitmap, const SalBitmap& rAlphaBitmap )
@@ -230,16 +680,26 @@ bool SvpSalGraphics::drawAlphaBitmap( const SalTwoRect& rTR, const SalBitmap& rS
         return false;
     }
 
-    SourceHelper aSurface(rSourceBitmap);
-    cairo_surface_t* source = aSurface.getSurface();
+    // MM02 try to access buffered BitmapHelper
+    std::shared_ptr<BitmapHelper> aSurface;
+    tryToUseSourceBuffer(rSourceBitmap, aSurface);
+    cairo_surface_t* source = aSurface->getSurface(
+        rTR.mnDestWidth,
+        rTR.mnDestHeight);
+
     if (!source)
     {
         SAL_WARN("vcl.gdi", "unsupported SvpSalGraphics::drawAlphaBitmap case");
         return false;
     }
 
-    MaskHelper aMask(rAlphaBitmap);
-    cairo_surface_t *mask = aMask.getMask();
+    // MM02 try to access buffered MaskHelper
+    std::shared_ptr<MaskHelper> aMask;
+    tryToUseMaskBuffer(rAlphaBitmap, aMask);
+    cairo_surface_t *mask = aMask->getSurface(
+        rTR.mnDestWidth,
+        rTR.mnDestHeight);
+
     if (!mask)
     {
         SAL_WARN("vcl.gdi", "unsupported SvpSalGraphics::drawAlphaBitmap case");
@@ -255,10 +715,32 @@ bool SvpSalGraphics::drawAlphaBitmap( const SalTwoRect& rTR, const SalBitmap& rS
 
     cairo_clip(cr);
 
+    cairo_pattern_t* maskpattern = cairo_pattern_create_for_surface(mask);
     cairo_translate(cr, rTR.mnDestX, rTR.mnDestY);
-    cairo_scale(cr, (double)(rTR.mnDestWidth)/rTR.mnSrcWidth, ((double)rTR.mnDestHeight)/rTR.mnSrcHeight);
+    double fXScale = static_cast<double>(rTR.mnDestWidth)/rTR.mnSrcWidth;
+    double fYScale = static_cast<double>(rTR.mnDestHeight)/rTR.mnSrcHeight;
+    cairo_scale(cr, fXScale, fYScale);
     cairo_set_source_surface(cr, source, -rTR.mnSrcX, -rTR.mnSrcY);
-    cairo_mask_surface(cr, mask, -rTR.mnSrcX, -rTR.mnSrcY);
+
+    //tdf#114117 when stretching a single pixel width/height source to fit an area
+    //set extend and filter to stretch it with simplest expected interpolation
+    if ((fXScale != 1.0 && rTR.mnSrcWidth == 1) || (fYScale != 1.0 && rTR.mnSrcHeight == 1))
+    {
+        cairo_pattern_t* sourcepattern = cairo_get_source(cr);
+        cairo_pattern_set_extend(sourcepattern, CAIRO_EXTEND_REPEAT);
+        cairo_pattern_set_filter(sourcepattern, CAIRO_FILTER_NEAREST);
+        cairo_pattern_set_extend(maskpattern, CAIRO_EXTEND_REPEAT);
+        cairo_pattern_set_filter(maskpattern, CAIRO_FILTER_NEAREST);
+    }
+
+    //this block is just "cairo_mask_surface", but we have to make it explicit
+    //because of the cairo_pattern_set_filter etc we may want applied
+    cairo_matrix_t matrix;
+    cairo_matrix_init_translate(&matrix, rTR.mnSrcX, rTR.mnSrcY);
+    cairo_pattern_set_matrix(maskpattern, &matrix);
+    cairo_mask(cr, maskpattern);
+
+    cairo_pattern_destroy(maskpattern);
 
     releaseCairoContext(cr, false, extents);
 
@@ -278,29 +760,45 @@ bool SvpSalGraphics::drawTransformedBitmap(
         return false;
     }
 
-    SourceHelper aSurface(rSourceBitmap);
-    cairo_surface_t* source = aSurface.getSurface();
-    if (!source)
+    // MM02 try to access buffered BitmapHelper
+    std::shared_ptr<BitmapHelper> aSurface;
+    tryToUseSourceBuffer(rSourceBitmap, aSurface);
+    const long nDestWidth(basegfx::fround(basegfx::B2DVector(rX - rNull).getLength()));
+    const long nDestHeight(basegfx::fround(basegfx::B2DVector(rY - rNull).getLength()));
+    cairo_surface_t* source(
+        aSurface->getSurface(
+            nDestWidth,
+            nDestHeight));
+
+    if(!source)
     {
         SAL_WARN("vcl.gdi", "unsupported SvpSalGraphics::drawTransformedBitmap case");
         return false;
     }
 
-    std::unique_ptr<MaskHelper> xMask;
-    cairo_surface_t *mask = nullptr;
-    if (pAlphaBitmap)
+    // MM02 try to access buffered MaskHelper
+    std::shared_ptr<MaskHelper> aMask;
+    if(nullptr != pAlphaBitmap)
     {
-        xMask.reset(new MaskHelper(*pAlphaBitmap));
-        mask = xMask->getMask();
-        if (!mask)
-        {
-            SAL_WARN("vcl.gdi", "unsupported SvpSalGraphics::drawTransformedBitmap case");
-            return false;
-        }
+        tryToUseMaskBuffer(*pAlphaBitmap, aMask);
+    }
+
+    // access cairo_surface_t from MaskHelper
+    cairo_surface_t* mask(nullptr);
+    if(aMask)
+    {
+        mask = aMask->getSurface(
+            nDestWidth,
+            nDestHeight);
+    }
+
+    if(nullptr != pAlphaBitmap && nullptr == mask)
+    {
+        SAL_WARN("vcl.gdi", "unsupported SvpSalGraphics::drawTransformedBitmap case");
+        return false;
     }
 
     const Size aSize = rSourceBitmap.GetSize();
-
     cairo_t* cr = getCairoContext(false);
     clipRegion(cr);
 
@@ -331,57 +829,76 @@ bool SvpSalGraphics::drawTransformedBitmap(
     return true;
 }
 
-void SvpSalGraphics::clipRegion(cairo_t* cr)
+void SvpSalGraphics::clipRegion(cairo_t* cr, const vcl::Region& rClipRegion)
 {
     RectangleVector aRectangles;
-    if (!m_aClipRegion.IsEmpty())
+    if (!rClipRegion.IsEmpty())
     {
-        m_aClipRegion.GetRegionRectangles(aRectangles);
+        rClipRegion.GetRegionRectangles(aRectangles);
     }
     if (!aRectangles.empty())
     {
-        for (RectangleVector::const_iterator aRectIter(aRectangles.begin()); aRectIter != aRectangles.end(); ++aRectIter)
+        for (auto const& rectangle : aRectangles)
         {
-            cairo_rectangle(cr, aRectIter->Left(), aRectIter->Top(), aRectIter->GetWidth(), aRectIter->GetHeight());
+            cairo_rectangle(cr, rectangle.Left(), rectangle.Top(), rectangle.GetWidth(), rectangle.GetHeight());
         }
         cairo_clip(cr);
     }
 }
 
+void SvpSalGraphics::clipRegion(cairo_t* cr)
+{
+    SvpSalGraphics::clipRegion(cr, m_aClipRegion);
+}
+
 bool SvpSalGraphics::drawAlphaRect(long nX, long nY, long nWidth, long nHeight, sal_uInt8 nTransparency)
 {
+    const bool bHasFill(m_aFillColor != SALCOLOR_NONE);
+    const bool bHasLine(m_aLineColor != SALCOLOR_NONE);
+
+    if(!(bHasFill || bHasLine))
+    {
+        return true;
+    }
+
     cairo_t* cr = getCairoContext(false);
     clipRegion(cr);
 
-    const double fTransparency = (100 - nTransparency) * (1.0/100);
+    const double fTransparency = nTransparency * (1.0/100);
 
-    basegfx::B2DRange extents(0, 0, 0, 0);
+    // To make releaseCairoContext work, use empty extents
+    basegfx::B2DRange extents;
 
-    cairo_rectangle(cr, nX, nY, nWidth, nHeight);
-
-    if (m_aFillColor != SALCOLOR_NONE)
+    if (bHasFill)
     {
-        cairo_set_source_rgba(cr, SALCOLOR_RED(m_aFillColor)/255.0,
-                                  SALCOLOR_GREEN(m_aFillColor)/255.0,
-                                  SALCOLOR_BLUE(m_aFillColor)/255.0,
-                                  fTransparency);
+        cairo_rectangle(cr, nX, nY, nWidth, nHeight);
 
-        if (m_aLineColor == SALCOLOR_NONE)
-            extents = getClippedFillDamage(cr);
+        applyColor(cr, m_aFillColor, fTransparency);
 
-        cairo_fill_preserve(cr);
+        // set FillDamage
+        extents = getClippedFillDamage(cr);
+
+        cairo_fill(cr);
     }
 
-    if (m_aLineColor != SALCOLOR_NONE)
+    if (bHasLine)
     {
-        cairo_set_source_rgba(cr, SALCOLOR_RED(m_aLineColor)/255.0,
-                                  SALCOLOR_GREEN(m_aLineColor)/255.0,
-                                  SALCOLOR_BLUE(m_aLineColor)/255.0,
-                                  fTransparency);
+        // PixelOffset used: Set PixelOffset as linear transformation
+        // Note: Was missing here - probably not by purpose (?)
+        cairo_matrix_t aMatrix;
+        cairo_matrix_init_translate(&aMatrix, 0.5, 0.5);
+        cairo_set_matrix(cr, &aMatrix);
 
-        extents = getClippedStrokeDamage(cr);
+        cairo_rectangle(cr, nX, nY, nWidth, nHeight);
 
-        cairo_stroke_preserve(cr);
+        applyColor(cr, m_aLineColor, fTransparency);
+
+        // expand with possible StrokeDamage
+        basegfx::B2DRange stroke_extents = getClippedStrokeDamage(cr);
+        stroke_extents.transform(basegfx::utils::createTranslateB2DHomMatrix(0.5, 0.5));
+        extents.expand(stroke_extents);
+
+        cairo_stroke(cr);
     }
 
     releaseCairoContext(cr, false, extents);
@@ -392,24 +909,29 @@ bool SvpSalGraphics::drawAlphaRect(long nX, long nY, long nWidth, long nHeight, 
 SvpSalGraphics::SvpSalGraphics()
     : m_pSurface(nullptr)
     , m_fScale(1.0)
-    , m_aLineColor(MAKE_SALCOLOR(0x00, 0x00, 0x00))
-    , m_aFillColor(MAKE_SALCOLOR(0xFF, 0xFF, 0XFF))
+    , m_aLineColor(Color(0x00, 0x00, 0x00))
+    , m_aFillColor(Color(0xFF, 0xFF, 0XFF))
     , m_ePaintMode(PaintMode::Over)
     , m_aTextRenderImpl(*this)
 {
+    bool bLOKActive = comphelper::LibreOfficeKit::isActive();
+    if (!initWidgetDrawBackends(bLOKActive))
+    {
+        if (bLOKActive)
+            m_pWidgetDraw.reset(new vcl::CustomWidgetDraw(*this));
+    }
 }
 
 SvpSalGraphics::~SvpSalGraphics()
 {
+    ReleaseFonts();
 }
 
 void SvpSalGraphics::setSurface(cairo_surface_t* pSurface, const basegfx::B2IVector& rSize)
 {
     m_pSurface = pSurface;
     m_aFrameSize = rSize;
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 14, 0)
-    cairo_surface_get_device_scale(pSurface, &m_fScale, nullptr);
-#endif
+    dl_cairo_surface_get_device_scale(pSurface, &m_fScale, nullptr);
     ResetClipRegion();
 }
 
@@ -446,9 +968,9 @@ void SvpSalGraphics::SetLineColor()
     m_aLineColor = SALCOLOR_NONE;
 }
 
-void SvpSalGraphics::SetLineColor( SalColor nSalColor )
+void SvpSalGraphics::SetLineColor( Color nColor )
 {
-    m_aLineColor = nSalColor;
+    m_aLineColor = nColor;
 }
 
 void SvpSalGraphics::SetFillColor()
@@ -456,12 +978,12 @@ void SvpSalGraphics::SetFillColor()
     m_aFillColor = SALCOLOR_NONE;
 }
 
-void SvpSalGraphics::SetFillColor( SalColor nSalColor )
+void SvpSalGraphics::SetFillColor( Color nColor )
 {
-    m_aFillColor = nSalColor;
+    m_aFillColor = nColor;
 }
 
-void SvpSalGraphics::SetXORMode(bool bSet )
+void SvpSalGraphics::SetXORMode(bool bSet, bool )
 {
     m_ePaintMode = bSet ? PaintMode::Xor : PaintMode::Over;
 }
@@ -471,13 +993,13 @@ void SvpSalGraphics::SetROPLineColor( SalROPColor nROPColor )
     switch( nROPColor )
     {
         case SalROPColor::N0:
-            m_aLineColor = MAKE_SALCOLOR(0, 0, 0);
+            m_aLineColor = Color(0, 0, 0);
             break;
         case SalROPColor::N1:
-            m_aLineColor = MAKE_SALCOLOR(0xff, 0xff, 0xff);
+            m_aLineColor = Color(0xff, 0xff, 0xff);
             break;
         case SalROPColor::Invert:
-            m_aLineColor = MAKE_SALCOLOR(0xff, 0xff, 0xff);
+            m_aLineColor = Color(0xff, 0xff, 0xff);
             break;
     }
 }
@@ -487,13 +1009,13 @@ void SvpSalGraphics::SetROPFillColor( SalROPColor nROPColor )
     switch( nROPColor )
     {
         case SalROPColor::N0:
-            m_aFillColor = MAKE_SALCOLOR(0, 0, 0);
+            m_aFillColor = Color(0, 0, 0);
             break;
         case SalROPColor::N1:
-            m_aFillColor = MAKE_SALCOLOR(0xff, 0xff, 0xff);
+            m_aFillColor = Color(0xff, 0xff, 0xff);
             break;
         case SalROPColor::Invert:
-            m_aFillColor = MAKE_SALCOLOR(0xff, 0xff, 0xff);
+            m_aFillColor = Color(0xff, 0xff, 0xff);
             break;
     }
 }
@@ -506,43 +1028,51 @@ void SvpSalGraphics::drawPixel( long nX, long nY )
     }
 }
 
-void SvpSalGraphics::drawPixel( long nX, long nY, SalColor nSalColor )
+void SvpSalGraphics::drawPixel( long nX, long nY, Color aColor )
 {
-    SalColor aOrigFillColor = m_aFillColor;
-    SalColor aOrigLineColor = m_aLineColor;
+    cairo_t* cr = getCairoContext(true);
+    clipRegion(cr);
 
-    basegfx::B2DPolygon aRect = basegfx::tools::createPolygonFromRect(basegfx::B2DRectangle(nX, nY, nX+1, nY+1));
-    m_aLineColor = SALCOLOR_NONE;
-    m_aFillColor = nSalColor;
+    cairo_rectangle(cr, nX, nY, 1, 1);
+    applyColor(cr, aColor, 0.0);
+    cairo_fill(cr);
 
-    drawPolyPolygon(basegfx::B2DPolyPolygon(aRect));
-
-    m_aFillColor = aOrigFillColor;
-    m_aLineColor = aOrigLineColor;
+    basegfx::B2DRange extents = getClippedFillDamage(cr);
+    releaseCairoContext(cr, true, extents);
 }
 
 void SvpSalGraphics::drawRect( long nX, long nY, long nWidth, long nHeight )
 {
     // because of the -1 hack we have to do fill and draw separately
-    SalColor aOrigFillColor = m_aFillColor;
-    SalColor aOrigLineColor = m_aLineColor;
+    Color aOrigFillColor = m_aFillColor;
+    Color aOrigLineColor = m_aLineColor;
     m_aFillColor = SALCOLOR_NONE;
     m_aLineColor = SALCOLOR_NONE;
 
     if (aOrigFillColor != SALCOLOR_NONE)
     {
-        basegfx::B2DPolygon aRect = basegfx::tools::createPolygonFromRect(basegfx::B2DRectangle(nX, nY, nX+nWidth, nY+nHeight));
+        basegfx::B2DPolygon aRect = basegfx::utils::createPolygonFromRect(basegfx::B2DRectangle(nX, nY, nX+nWidth, nY+nHeight));
         m_aFillColor = aOrigFillColor;
-        drawPolyPolygon(basegfx::B2DPolyPolygon(aRect));
+
+        drawPolyPolygon(
+            basegfx::B2DHomMatrix(),
+            basegfx::B2DPolyPolygon(aRect),
+            0.0);
+
         m_aFillColor = SALCOLOR_NONE;
     }
 
     if (aOrigLineColor != SALCOLOR_NONE)
     {
         // need same -1 hack as X11SalGraphicsImpl::drawRect
-        basegfx::B2DPolygon aRect = basegfx::tools::createPolygonFromRect(basegfx::B2DRectangle( nX, nY, nX+nWidth-1, nY+nHeight-1));
+        basegfx::B2DPolygon aRect = basegfx::utils::createPolygonFromRect(basegfx::B2DRectangle( nX, nY, nX+nWidth-1, nY+nHeight-1));
         m_aLineColor = aOrigLineColor;
-        drawPolyPolygon(basegfx::B2DPolyPolygon(aRect));
+
+        drawPolyPolygon(
+            basegfx::B2DHomMatrix(),
+            basegfx::B2DPolyPolygon(aRect),
+            0.0);
+
         m_aLineColor = SALCOLOR_NONE;
     }
 
@@ -558,8 +1088,16 @@ void SvpSalGraphics::drawPolyLine(sal_uInt32 nPoints, const SalPoint* pPtAry)
         aPoly.setB2DPoint(i, basegfx::B2DPoint(pPtAry[i].mnX, pPtAry[i].mnY));
     aPoly.setClosed(false);
 
-    drawPolyLine(aPoly, 0.0, basegfx::B2DVector(1.0, 1.0), basegfx::B2DLineJoin::Miter,
-                 css::drawing::LineCap_BUTT, 15.0 * F_PI180 /*default*/);
+    drawPolyLine(
+        basegfx::B2DHomMatrix(),
+        aPoly,
+        0.0,
+        1.0,
+        nullptr, // MM01
+        basegfx::B2DLineJoin::Miter,
+        css::drawing::LineCap_BUTT,
+        basegfx::deg2rad(15.0) /*default*/,
+        false);
 }
 
 void SvpSalGraphics::drawPolygon(sal_uInt32 nPoints, const SalPoint* pPtAry)
@@ -569,7 +1107,10 @@ void SvpSalGraphics::drawPolygon(sal_uInt32 nPoints, const SalPoint* pPtAry)
     for (sal_uInt32 i = 1; i < nPoints; ++i)
         aPoly.setB2DPoint(i, basegfx::B2DPoint(pPtAry[i].mnX, pPtAry[i].mnY));
 
-    drawPolyPolygon(basegfx::B2DPolyPolygon(aPoly));
+    drawPolyPolygon(
+        basegfx::B2DHomMatrix(),
+        basegfx::B2DPolyPolygon(aPoly),
+        0.0);
 }
 
 void SvpSalGraphics::drawPolyPolygon(sal_uInt32 nPoly,
@@ -592,25 +1133,91 @@ void SvpSalGraphics::drawPolyPolygon(sal_uInt32 nPoly,
         }
     }
 
-    drawPolyPolygon(aPolyPoly);
+    drawPolyPolygon(
+        basegfx::B2DHomMatrix(),
+        aPolyPoly,
+        0.0);
 }
 
-static const basegfx::B2DPoint aHalfPointOfs(0.5, 0.5);
-
-static void AddPolygonToPath(cairo_t* cr, const basegfx::B2DPolygon& rPolygon, bool bClosePath,
-                             bool bPixelSnap, bool bLineDraw)
+static basegfx::B2DPoint impPixelSnap(
+    const basegfx::B2DPolygon& rPolygon,
+    const basegfx::B2DHomMatrix& rObjectToDevice,
+    basegfx::B2DHomMatrix& rObjectToDeviceInv,
+    sal_uInt32 nIndex)
 {
-    // short circuit if there is nothing to do
-    const int nPointCount = rPolygon.count();
-    if( nPointCount <= 0 )
+    const sal_uInt32 nCount(rPolygon.count());
+
+    // get the data
+    const basegfx::B2ITuple aPrevTuple(basegfx::fround(rObjectToDevice * rPolygon.getB2DPoint((nIndex + nCount - 1) % nCount)));
+    const basegfx::B2DPoint aCurrPoint(rObjectToDevice * rPolygon.getB2DPoint(nIndex));
+    const basegfx::B2ITuple aCurrTuple(basegfx::fround(aCurrPoint));
+    const basegfx::B2ITuple aNextTuple(basegfx::fround(rObjectToDevice * rPolygon.getB2DPoint((nIndex + 1) % nCount)));
+
+    // get the states
+    const bool bPrevVertical(aPrevTuple.getX() == aCurrTuple.getX());
+    const bool bNextVertical(aNextTuple.getX() == aCurrTuple.getX());
+    const bool bPrevHorizontal(aPrevTuple.getY() == aCurrTuple.getY());
+    const bool bNextHorizontal(aNextTuple.getY() == aCurrTuple.getY());
+    const bool bSnapX(bPrevVertical || bNextVertical);
+    const bool bSnapY(bPrevHorizontal || bNextHorizontal);
+
+    if(bSnapX || bSnapY)
     {
-        return;
+        basegfx::B2DPoint aSnappedPoint(
+            bSnapX ? aCurrTuple.getX() : aCurrPoint.getX(),
+            bSnapY ? aCurrTuple.getY() : aCurrPoint.getY());
+
+        if(rObjectToDeviceInv.isIdentity())
+        {
+            rObjectToDeviceInv = rObjectToDevice;
+            rObjectToDeviceInv.invert();
+        }
+
+        aSnappedPoint *= rObjectToDeviceInv;
+
+        return aSnappedPoint;
     }
 
-    const bool bHasCurves = rPolygon.areControlPointsUsed();
+    return rPolygon.getB2DPoint(nIndex);
+}
+
+// Remove bClosePath: Checked that the already used mechanism for Win using
+// Gdiplus already relies on rPolygon.isClosed(), so should be safe to replace
+// this.
+// For PixelSnap we need the ObjectToDevice transformation here now. This is a
+// special case relative to the also executed LineDraw-Offset of (0.5, 0.5) in
+// DeviceCoordinates: The LineDraw-Offset is applied *after* the snap, so we
+// need the ObjectToDevice transformation *without* that offset here to do the
+// same. The LineDraw-Offset will be applied by the callers using a linear
+// transformation for Cairo now
+// For support of PixelSnapHairline we also need the ObjectToDevice transformation
+// and a method (same as in gdiimpl.cxx for Win and Gdiplus). This is needed e.g.
+// for Chart-content visualization. CAUTION: It's not the same as PixelSnap (!)
+// tdf#129845 add reply value to allow counting a point/byte/size measurement to
+// be included
+static size_t AddPolygonToPath(
+    cairo_t* cr,
+    const basegfx::B2DPolygon& rPolygon,
+    const basegfx::B2DHomMatrix& rObjectToDevice,
+    bool bPixelSnap,
+    bool bPixelSnapHairline)
+{
+    // short circuit if there is nothing to do
+    const sal_uInt32 nPointCount(rPolygon.count());
+    size_t nSizeMeasure(0);
+
+    if(0 == nPointCount)
+    {
+        return nSizeMeasure;
+    }
+
+    const bool bHasCurves(rPolygon.areControlPointsUsed());
+    const bool bClosePath(rPolygon.isClosed());
+    const bool bObjectToDeviceUsed(!rObjectToDevice.isIdentity());
+    basegfx::B2DHomMatrix aObjectToDeviceInv;
     basegfx::B2DPoint aLast;
 
-    for( int nPointIdx = 0, nPrevIdx = 0;; nPrevIdx = nPointIdx++ )
+    for( sal_uInt32 nPointIdx = 0, nPrevIdx = 0;; nPrevIdx = nPointIdx++ )
     {
         int nClosedIdx = nPointIdx;
         if( nPointIdx >= nPointCount )
@@ -626,18 +1233,39 @@ static void AddPolygonToPath(cairo_t* cr, const basegfx::B2DPolygon& rPolygon, b
             }
         }
 
-        basegfx::B2DPoint aPoint = rPolygon.getB2DPoint( nClosedIdx );
+        basegfx::B2DPoint aPoint(rPolygon.getB2DPoint(nClosedIdx));
 
-        if( bPixelSnap)
+        if(bPixelSnap)
         {
             // snap device coordinates to full pixels
+            if(bObjectToDeviceUsed)
+            {
+                // go to DeviceCoordinates
+                aPoint *= rObjectToDevice;
+            }
+
+            // snap by rounding
             aPoint.setX( basegfx::fround( aPoint.getX() ) );
             aPoint.setY( basegfx::fround( aPoint.getY() ) );
+
+            if(bObjectToDeviceUsed)
+            {
+                if(aObjectToDeviceInv.isIdentity())
+                {
+                    aObjectToDeviceInv = rObjectToDevice;
+                    aObjectToDeviceInv.invert();
+                }
+
+                // go back to ObjectCoordinates
+                aPoint *= aObjectToDeviceInv;
+            }
         }
 
-        if( bLineDraw )
+        if(bPixelSnapHairline)
         {
-            aPoint += aHalfPointOfs;
+            // snap horizontal and vertical lines (mainly used in Chart for
+            // 'nicer' AAing)
+            aPoint = impPixelSnap(rPolygon, rObjectToDevice, aObjectToDeviceInv, nClosedIdx);
         }
 
         if( !nPointIdx )
@@ -648,7 +1276,8 @@ static void AddPolygonToPath(cairo_t* cr, const basegfx::B2DPolygon& rPolygon, b
             continue;
         }
 
-        bool bPendingCurve = false;
+        bool bPendingCurve(false);
+
         if( bHasCurves )
         {
             bPendingCurve = rPolygon.isNextControlPointUsed( nPrevIdx );
@@ -658,16 +1287,12 @@ static void AddPolygonToPath(cairo_t* cr, const basegfx::B2DPolygon& rPolygon, b
         if( !bPendingCurve )    // line segment
         {
             cairo_line_to(cr, aPoint.getX(), aPoint.getY());
+            nSizeMeasure++;
         }
         else                        // cubic bezier segment
         {
             basegfx::B2DPoint aCP1 = rPolygon.getNextControlPoint( nPrevIdx );
             basegfx::B2DPoint aCP2 = rPolygon.getPrevControlPoint( nClosedIdx );
-            if( bLineDraw )
-            {
-                aCP1 += aHalfPointOfs;
-                aCP2 += aHalfPointOfs;
-            }
 
             // tdf#99165 if the control points are 'empty', create the mathematical
             // correct replacement ones to avoid problems with the graphical sub-system
@@ -685,6 +1310,10 @@ static void AddPolygonToPath(cairo_t* cr, const basegfx::B2DPolygon& rPolygon, b
 
             cairo_curve_to(cr, aCP1.getX(), aCP1.getY(), aCP2.getX(), aCP2.getY(),
                                aPoint.getX(), aPoint.getY());
+            // take some bigger measure for curve segments - too expensive to subdivide
+            // here and that precision not needed, but four (2 points, 2 control-points)
+            // would be a too low weight
+            nSizeMeasure += 10;
         }
 
         aLast = aPoint;
@@ -694,48 +1323,248 @@ static void AddPolygonToPath(cairo_t* cr, const basegfx::B2DPolygon& rPolygon, b
     {
         cairo_close_path(cr);
     }
+
+    return nSizeMeasure;
 }
 
 void SvpSalGraphics::drawLine( long nX1, long nY1, long nX2, long nY2 )
 {
     basegfx::B2DPolygon aPoly;
-    aPoly.append(basegfx::B2DPoint(nX1, nY1), 2);
-    aPoly.setB2DPoint(1, basegfx::B2DPoint(nX2, nY2));
-    aPoly.setClosed(false);
+
+    // PixelOffset used: To not mix with possible PixelSnap, cannot do
+    // directly on coordinates as tried before - despite being already 'snapped'
+    // due to being integer. If it would be directly added here, it would be
+    // 'snapped' again when !getAntiAliasB2DDraw(), losing the (0.5, 0.5) offset
+    aPoly.append(basegfx::B2DPoint(nX1, nY1));
+    aPoly.append(basegfx::B2DPoint(nX2, nY2));
 
     cairo_t* cr = getCairoContext(false);
     clipRegion(cr);
 
-    AddPolygonToPath(cr, aPoly, aPoly.isClosed(), !getAntiAliasB2DDraw(), true);
+    // PixelOffset used: Set PixelOffset as linear transformation
+    cairo_matrix_t aMatrix;
+    cairo_matrix_init_translate(&aMatrix, 0.5, 0.5);
+    cairo_set_matrix(cr, &aMatrix);
+
+    AddPolygonToPath(
+        cr,
+        aPoly,
+        basegfx::B2DHomMatrix(),
+        !getAntiAliasB2DDraw(),
+        false);
 
     applyColor(cr, m_aLineColor);
 
     basegfx::B2DRange extents = getClippedStrokeDamage(cr);
+    extents.transform(basegfx::utils::createTranslateB2DHomMatrix(0.5, 0.5));
 
     cairo_stroke(cr);
 
     releaseCairoContext(cr, false, extents);
 }
 
+namespace {
+
+class SystemDependentData_CairoPath : public basegfx::SystemDependentData
+{
+private:
+    // the path data itself
+    cairo_path_t*       mpCairoPath;
+
+    // all other values the path data  is based on and
+    // need to be compared with to check for data validity
+    bool                mbNoJoin;
+    bool                mbAntiAliasB2DDraw;
+    std::vector< double >                       maStroke;
+
+public:
+    SystemDependentData_CairoPath(
+        basegfx::SystemDependentDataManager& rSystemDependentDataManager,
+        size_t nSizeMeasure,
+        cairo_t* cr,
+        bool bNoJoin,
+        bool bAntiAliasB2DDraw,
+        const std::vector< double >* pStroke); // MM01
+    virtual ~SystemDependentData_CairoPath() override;
+
+    // read access
+    cairo_path_t* getCairoPath() { return mpCairoPath; }
+    bool getNoJoin() const { return mbNoJoin; }
+    bool getAntiAliasB2DDraw() const { return mbAntiAliasB2DDraw; }
+    const std::vector< double >& getStroke() const { return maStroke; }
+
+    virtual sal_Int64 estimateUsageInBytes() const override;
+};
+
+}
+
+SystemDependentData_CairoPath::SystemDependentData_CairoPath(
+    basegfx::SystemDependentDataManager& rSystemDependentDataManager,
+    size_t nSizeMeasure,
+    cairo_t* cr,
+    bool bNoJoin,
+    bool bAntiAliasB2DDraw,
+    const std::vector< double >* pStroke)
+:   basegfx::SystemDependentData(rSystemDependentDataManager),
+    mpCairoPath(nullptr),
+    mbNoJoin(bNoJoin),
+    mbAntiAliasB2DDraw(bAntiAliasB2DDraw),
+    maStroke()
+{
+    // tdf#129845 only create a copy of the path when nSizeMeasure is
+    // bigger than some decent threshold
+    if(nSizeMeasure > 50)
+    {
+        mpCairoPath = cairo_copy_path(cr);
+
+        if(nullptr != pStroke)
+        {
+            maStroke = *pStroke;
+        }
+    }
+}
+
+SystemDependentData_CairoPath::~SystemDependentData_CairoPath()
+{
+    if(nullptr != mpCairoPath)
+    {
+        cairo_path_destroy(mpCairoPath);
+        mpCairoPath = nullptr;
+    }
+}
+
+sal_Int64 SystemDependentData_CairoPath::estimateUsageInBytes() const
+{
+    // tdf#129845 by using the default return value of zero when no path
+    // was created, SystemDependentData::calculateCombinedHoldCyclesInSeconds
+    // will do the right thing and not buffer this entry at all
+    sal_Int64 nRetval(0);
+
+    if(nullptr != mpCairoPath)
+    {
+        // per node
+        // - num_data incarnations of
+        // - sizeof(cairo_path_data_t) which is a union of defines and point data
+        //   thus may 2 x sizeof(double)
+        nRetval = mpCairoPath->num_data * sizeof(cairo_path_data_t);
+    }
+
+    return nRetval;
+}
+
 bool SvpSalGraphics::drawPolyLine(
+    const basegfx::B2DHomMatrix& rObjectToDevice,
     const basegfx::B2DPolygon& rPolyLine,
     double fTransparency,
-    const basegfx::B2DVector& rLineWidths,
+    double fLineWidth,
+    const std::vector< double >* pStroke, // MM01
     basegfx::B2DLineJoin eLineJoin,
     css::drawing::LineCap eLineCap,
-    double fMiterMinimumAngle)
+    double fMiterMinimumAngle,
+    bool bPixelSnapHairline)
 {
     // short circuit if there is nothing to do
-    const int nPointCount = rPolyLine.count();
-    if (nPointCount <= 0)
+    if(0 == rPolyLine.count() || fTransparency < 0.0 || fTransparency >= 1.0)
     {
         return true;
     }
 
-    const bool bNoJoin = (basegfx::B2DLineJoin::NONE == eLineJoin && basegfx::fTools::more(rLineWidths.getX(), 0.0));
-
+    // Wrap call to static version of ::drawPolyLine by
+    // preparing/getting some local data and parameters
+    // due to usage in vcl/unx/generic/gdi/salgdi.cxx.
+    // This is mainly about extended handling of extents
+    // and the way destruction of CairoContext is handled
+    // due to current XOR stuff
     cairo_t* cr = getCairoContext(false);
+    basegfx::B2DRange aExtents;
     clipRegion(cr);
+
+    bool bRetval(
+        drawPolyLine(
+            cr,
+            &aExtents,
+            m_aLineColor,
+            getAntiAliasB2DDraw(),
+            rObjectToDevice,
+            rPolyLine,
+            fTransparency,
+            fLineWidth,
+            pStroke, // MM01
+            eLineJoin,
+            eLineCap,
+            fMiterMinimumAngle,
+            bPixelSnapHairline));
+
+    releaseCairoContext(cr, false, aExtents);
+
+    return bRetval;
+}
+
+bool SvpSalGraphics::drawPolyLine(
+    cairo_t* cr,
+    basegfx::B2DRange* pExtents,
+    const Color& rLineColor,
+    bool bAntiAliasB2DDraw,
+    const basegfx::B2DHomMatrix& rObjectToDevice,
+    const basegfx::B2DPolygon& rPolyLine,
+    double fTransparency,
+    double fLineWidth,
+    const std::vector< double >* pStroke, // MM01
+    basegfx::B2DLineJoin eLineJoin,
+    css::drawing::LineCap eLineCap,
+    double fMiterMinimumAngle,
+    bool bPixelSnapHairline)
+{
+    // short circuit if there is nothing to do
+    if(0 == rPolyLine.count() || fTransparency < 0.0 || fTransparency >= 1.0)
+    {
+        return true;
+    }
+
+    // need to check/handle LineWidth when ObjectToDevice transformation is used
+    const bool bObjectToDeviceIsIdentity(rObjectToDevice.isIdentity());
+
+    // tdf#124848 calculate-back logical LineWidth for a hairline
+    // since this implementation hands over the transformation to
+    // the graphic sub-system
+    if(fLineWidth == 0)
+    {
+        fLineWidth = 1.0;
+
+        if(!bObjectToDeviceIsIdentity)
+        {
+            basegfx::B2DHomMatrix aObjectToDeviceInv(rObjectToDevice);
+            aObjectToDeviceInv.invert();
+            fLineWidth = (aObjectToDeviceInv * basegfx::B2DVector(fLineWidth, 0)).getLength();
+        }
+    }
+
+    // PixelOffset used: Need to reflect in linear transformation
+    cairo_matrix_t aMatrix;
+    basegfx::B2DHomMatrix aDamageMatrix(basegfx::utils::createTranslateB2DHomMatrix(0.5, 0.5));
+
+    if (bObjectToDeviceIsIdentity)
+    {
+        // Set PixelOffset as requested
+        cairo_matrix_init_translate(&aMatrix, 0.5, 0.5);
+    }
+    else
+    {
+        // Prepare ObjectToDevice transformation. Take PixelOffset for Lines into
+        // account: Multiply from left to act in DeviceCoordinates
+        aDamageMatrix = aDamageMatrix * rObjectToDevice;
+        cairo_matrix_init(
+            &aMatrix,
+            aDamageMatrix.get( 0, 0 ),
+            aDamageMatrix.get( 1, 0 ),
+            aDamageMatrix.get( 0, 1 ),
+            aDamageMatrix.get( 1, 1 ),
+            aDamageMatrix.get( 0, 2 ),
+            aDamageMatrix.get( 1, 2 ));
+    }
+
+    // set linear transformation
+    cairo_set_matrix(cr, &aMatrix);
 
     // setup line attributes
     cairo_line_join_t eCairoLineJoin = CAIRO_LINE_JOIN_MITER;
@@ -778,54 +1607,164 @@ bool SvpSalGraphics::drawPolyLine(
         }
     }
 
-    cairo_set_source_rgba(cr, SALCOLOR_RED(m_aLineColor)/255.0,
-                              SALCOLOR_GREEN(m_aLineColor)/255.0,
-                              SALCOLOR_BLUE(m_aLineColor)/255.0,
-                              1.0-fTransparency);
+    cairo_set_source_rgba(
+        cr,
+        rLineColor.GetRed()/255.0,
+        rLineColor.GetGreen()/255.0,
+        rLineColor.GetBlue()/255.0,
+        1.0-fTransparency);
 
     cairo_set_line_join(cr, eCairoLineJoin);
     cairo_set_line_cap(cr, eCairoLineCap);
-    cairo_set_line_width(cr, rLineWidths.getX());
+    cairo_set_line_width(cr, fLineWidth);
     cairo_set_miter_limit(cr, fMiterLimit);
 
+    // try to access buffered data
+    std::shared_ptr<SystemDependentData_CairoPath> pSystemDependentData_CairoPath(
+        rPolyLine.getSystemDependentData<SystemDependentData_CairoPath>());
 
-    basegfx::B2DRange extents(0, 0, 0, 0);
+    // MM01 need to do line dashing as fallback stuff here now
+    const double fDotDashLength(nullptr != pStroke ? std::accumulate(pStroke->begin(), pStroke->end(), 0.0) : 0.0);
+    const bool bStrokeUsed(0.0 != fDotDashLength);
+    assert(!bStrokeUsed || (bStrokeUsed && pStroke));
 
-    if (!bNoJoin)
+    // MM01 decide if to stroke directly
+    static bool bDoDirectCairoStroke(true);
+
+    // MM01 activate to stroke directly
+    if(bDoDirectCairoStroke && bStrokeUsed)
     {
-        AddPolygonToPath(cr, rPolyLine, rPolyLine.isClosed(), !getAntiAliasB2DDraw(), true);
-        extents = getClippedStrokeDamage(cr);
-        cairo_stroke(cr);
+        cairo_set_dash(cr, pStroke->data(), pStroke->size(), 0.0);
+    }
+
+    if(!bDoDirectCairoStroke && pSystemDependentData_CairoPath)
+    {
+        // MM01 - check on stroke change. Used against not used, or if both used,
+        // equal or different?
+        const bool bStrokeWasUsed(!pSystemDependentData_CairoPath->getStroke().empty());
+
+        if(bStrokeWasUsed != bStrokeUsed
+        || (bStrokeUsed && *pStroke != pSystemDependentData_CairoPath->getStroke()))
+        {
+            // data invalid, forget
+            pSystemDependentData_CairoPath.reset();
+        }
+    }
+
+    // check for basegfx::B2DLineJoin::NONE to react accordingly
+    const bool bNoJoin((basegfx::B2DLineJoin::NONE == eLineJoin
+        && basegfx::fTools::more(fLineWidth, 0.0)));
+
+    if(pSystemDependentData_CairoPath)
+    {
+        // check data validity
+        if(nullptr == pSystemDependentData_CairoPath->getCairoPath()
+            || pSystemDependentData_CairoPath->getNoJoin() != bNoJoin
+            || pSystemDependentData_CairoPath->getAntiAliasB2DDraw() != bAntiAliasB2DDraw
+            || bPixelSnapHairline /*tdf#124700*/ )
+        {
+            // data invalid, forget
+            pSystemDependentData_CairoPath.reset();
+        }
+    }
+
+    if(pSystemDependentData_CairoPath)
+    {
+        // re-use data
+        cairo_append_path(cr, pSystemDependentData_CairoPath->getCairoPath());
     }
     else
     {
-        // emulate rendering::PathJoinType::NONE by painting single edges
-        const sal_uInt32 nEdgeCount(rPolyLine.isClosed() ? nPointCount : nPointCount - 1);
-        basegfx::B2DPolygon aEdge;
-        aEdge.append(rPolyLine.getB2DPoint(0));
-        aEdge.append(basegfx::B2DPoint(0.0, 0.0));
+        // create data
+        size_t nSizeMeasure(0);
 
-        for (sal_uInt32 i = 0; i < nEdgeCount; ++i)
+        // MM01 need to do line dashing as fallback stuff here now
+        basegfx::B2DPolyPolygon aPolyPolygonLine;
+
+        if(!bDoDirectCairoStroke && bStrokeUsed)
         {
-            const sal_uInt32 nNextIndex((i + 1) % nPointCount);
-            aEdge.setB2DPoint(1, rPolyLine.getB2DPoint(nNextIndex));
-            aEdge.setNextControlPoint(0, rPolyLine.getNextControlPoint(i % nPointCount));
-            aEdge.setPrevControlPoint(1, rPolyLine.getPrevControlPoint(nNextIndex));
-
-            AddPolygonToPath(cr, aEdge, false, !getAntiAliasB2DDraw(), true);
-
-            extents.expand(getStrokeDamage(cr));
-
-            cairo_stroke(cr);
-
-            // prepare next step
-            aEdge.setB2DPoint(0, aEdge.getB2DPoint(1));
+            // apply LineStyle
+            basegfx::utils::applyLineDashing(
+                rPolyLine, // source
+                *pStroke, // pattern
+                &aPolyPolygonLine, // target for lines
+                nullptr, // target for gaps
+                fDotDashLength); // full length if available
+        }
+        else
+        {
+            // no line dashing or direct stroke, just copy
+            aPolyPolygonLine.append(rPolyLine);
         }
 
-        extents.intersect(getClipBox(cr));
+        // MM01 checked/verified for Cairo
+        for(sal_uInt32 a(0); a < aPolyPolygonLine.count(); a++)
+        {
+            const basegfx::B2DPolygon aPolyLine(aPolyPolygonLine.getB2DPolygon(a));
+
+            if (!bNoJoin)
+            {
+                // PixelOffset now reflected in linear transformation used
+                nSizeMeasure += AddPolygonToPath(
+                    cr,
+                    aPolyLine,
+                    rObjectToDevice, // ObjectToDevice *without* LineDraw-Offset
+                    !bAntiAliasB2DDraw,
+                    bPixelSnapHairline);
+            }
+            else
+            {
+                const sal_uInt32 nPointCount(aPolyLine.count());
+                const sal_uInt32 nEdgeCount(aPolyLine.isClosed() ? nPointCount : nPointCount - 1);
+                basegfx::B2DPolygon aEdge;
+
+                aEdge.append(aPolyLine.getB2DPoint(0));
+                aEdge.append(basegfx::B2DPoint(0.0, 0.0));
+
+                for (sal_uInt32 i(0); i < nEdgeCount; i++)
+                {
+                    const sal_uInt32 nNextIndex((i + 1) % nPointCount);
+                    aEdge.setB2DPoint(1, aPolyLine.getB2DPoint(nNextIndex));
+                    aEdge.setNextControlPoint(0, aPolyLine.getNextControlPoint(i));
+                    aEdge.setPrevControlPoint(1, aPolyLine.getPrevControlPoint(nNextIndex));
+
+                    // PixelOffset now reflected in linear transformation used
+                    nSizeMeasure += AddPolygonToPath(
+                        cr,
+                        aEdge,
+                        rObjectToDevice, // ObjectToDevice *without* LineDraw-Offset
+                        !bAntiAliasB2DDraw,
+                        bPixelSnapHairline);
+
+                    // prepare next step
+                    aEdge.setB2DPoint(0, aEdge.getB2DPoint(1));
+                }
+            }
+        }
+
+        // copy and add to buffering mechanism
+        if (!bPixelSnapHairline /*tdf#124700*/)
+        {
+            pSystemDependentData_CairoPath = rPolyLine.addOrReplaceSystemDependentData<SystemDependentData_CairoPath>(
+                ImplGetSystemDependentDataManager(),
+                nSizeMeasure,
+                cr,
+                bNoJoin,
+                bAntiAliasB2DDraw,
+                pStroke);
+        }
     }
 
-    releaseCairoContext(cr, false, extents);
+    // extract extents
+    if (pExtents)
+    {
+        *pExtents = getClippedStrokeDamage(cr);
+        // transform also extents (ranges) of damage so they can be correctly redrawn
+        pExtents->transform(aDamageMatrix);
+    }
+
+    // draw and consume
+    cairo_stroke(cr);
 
     return true;
 }
@@ -855,93 +1794,170 @@ bool SvpSalGraphics::drawPolyPolygonBezier( sal_uInt32,
     return false;
 }
 
-void SvpSalGraphics::setupPolyPolygon(cairo_t* cr, const basegfx::B2DPolyPolygon& rPolyPoly)
+namespace
 {
-    clipRegion(cr);
+    void add_polygon_path(cairo_t* cr, const basegfx::B2DPolyPolygon& rPolyPolygon, const basegfx::B2DHomMatrix& rObjectToDevice, bool bPixelSnap)
+    {
+        // try to access buffered data
+        std::shared_ptr<SystemDependentData_CairoPath> pSystemDependentData_CairoPath(
+            rPolyPolygon.getSystemDependentData<SystemDependentData_CairoPath>());
 
-    for (const auto & rPoly : rPolyPoly)
-        AddPolygonToPath(cr, rPoly, true, !getAntiAliasB2DDraw(), m_aLineColor != SALCOLOR_NONE);
+        if(pSystemDependentData_CairoPath)
+        {
+            // re-use data
+            cairo_append_path(cr, pSystemDependentData_CairoPath->getCairoPath());
+        }
+        else
+        {
+            // create data
+            size_t nSizeMeasure(0);
+
+            for (const auto & rPoly : rPolyPolygon)
+            {
+                // PixelOffset used: Was dependent of 'm_aLineColor != SALCOLOR_NONE'
+                // Adapt setupPolyPolygon-users to set a linear transformation to achieve PixelOffset
+                nSizeMeasure += AddPolygonToPath(
+                    cr,
+                    rPoly,
+                    rObjectToDevice,
+                    bPixelSnap,
+                    false);
+            }
+
+            // copy and add to buffering mechanism
+            // for decisions how/what to buffer, see Note in WinSalGraphicsImpl::drawPolyPolygon
+            pSystemDependentData_CairoPath = rPolyPolygon.addOrReplaceSystemDependentData<SystemDependentData_CairoPath>(
+                ImplGetSystemDependentDataManager(),
+                nSizeMeasure,
+                cr,
+                false,
+                false,
+                nullptr);
+        }
+    }
 }
 
-bool SvpSalGraphics::drawPolyPolygon(const basegfx::B2DPolyPolygon& rPolyPoly, double fTransparency)
+bool SvpSalGraphics::drawPolyPolygon(
+    const basegfx::B2DHomMatrix& rObjectToDevice,
+    const basegfx::B2DPolyPolygon& rPolyPolygon,
+    double fTransparency)
+{
+    const bool bHasFill(m_aFillColor != SALCOLOR_NONE);
+    const bool bHasLine(m_aLineColor != SALCOLOR_NONE);
+
+    if(0 == rPolyPolygon.count() || !(bHasFill || bHasLine) || fTransparency < 0.0 || fTransparency >= 1.0)
+    {
+        return true;
+    }
+
+    cairo_t* cr = getCairoContext(true);
+    clipRegion(cr);
+
+    // Set full (Object-to-Device) transformation - if used
+    if(!rObjectToDevice.isIdentity())
+    {
+        cairo_matrix_t aMatrix;
+
+        cairo_matrix_init(
+            &aMatrix,
+            rObjectToDevice.get( 0, 0 ),
+            rObjectToDevice.get( 1, 0 ),
+            rObjectToDevice.get( 0, 1 ),
+            rObjectToDevice.get( 1, 1 ),
+            rObjectToDevice.get( 0, 2 ),
+            rObjectToDevice.get( 1, 2 ));
+        cairo_set_matrix(cr, &aMatrix);
+    }
+
+    // To make releaseCairoContext work, use empty extents
+    basegfx::B2DRange extents;
+
+    if (bHasFill)
+    {
+        add_polygon_path(cr, rPolyPolygon, rObjectToDevice, !getAntiAliasB2DDraw());
+
+        applyColor(cr, m_aFillColor, fTransparency);
+        // Get FillDamage (will be extended for LineDamage below)
+        extents = getClippedFillDamage(cr);
+
+        cairo_fill(cr);
+    }
+
+    if (bHasLine)
+    {
+        // PixelOffset used: Set PixelOffset as linear transformation
+        cairo_matrix_t aMatrix;
+        cairo_matrix_init_translate(&aMatrix, 0.5, 0.5);
+        cairo_set_matrix(cr, &aMatrix);
+
+        add_polygon_path(cr, rPolyPolygon, rObjectToDevice, !getAntiAliasB2DDraw());
+
+        applyColor(cr, m_aLineColor, fTransparency);
+
+        // expand with possible StrokeDamage
+        basegfx::B2DRange stroke_extents = getClippedStrokeDamage(cr);
+        stroke_extents.transform(basegfx::utils::createTranslateB2DHomMatrix(0.5, 0.5));
+        extents.expand(stroke_extents);
+
+        cairo_stroke(cr);
+    }
+
+    // if transformation has been applied, transform also extents (ranges)
+    // of damage so they can be correctly redrawn
+    extents.transform(rObjectToDevice);
+    releaseCairoContext(cr, true, extents);
+
+    return true;
+}
+
+bool SvpSalGraphics::implDrawGradient(basegfx::B2DPolyPolygon const & rPolyPolygon, SalGradient const & rGradient)
 {
     cairo_t* cr = getCairoContext(true);
+    clipRegion(cr);
 
-    setupPolyPolygon(cr, rPolyPoly);
+    basegfx::B2DHomMatrix rObjectToDevice;
 
-    basegfx::B2DRange extents(0, 0, 0, 0);
+    for (auto const & rPolygon : rPolyPolygon)
+        AddPolygonToPath(cr, rPolygon, rObjectToDevice, !getAntiAliasB2DDraw(), false);
 
-    if (m_aFillColor != SALCOLOR_NONE)
+    cairo_pattern_t* pattern;
+    pattern = cairo_pattern_create_linear(rGradient.maPoint1.getX(), rGradient.maPoint1.getY(), rGradient.maPoint2.getX(), rGradient.maPoint2.getY());
+
+    for (SalGradientStop const & rStop : rGradient.maStops)
     {
-        cairo_set_source_rgba(cr, SALCOLOR_RED(m_aFillColor)/255.0,
-                                  SALCOLOR_GREEN(m_aFillColor)/255.0,
-                                  SALCOLOR_BLUE(m_aFillColor)/255.0,
-                                  1.0-fTransparency);
+        double r = rStop.maColor.GetRed() / 255.0;
+        double g = rStop.maColor.GetGreen() / 255.0;
+        double b = rStop.maColor.GetBlue() / 255.0;
+        double a = (0xFF - rStop.maColor.GetTransparency()) / 255.0;
+        double offset = rStop.mfOffset;
 
-        if (m_aLineColor == SALCOLOR_NONE)
-            extents = getClippedFillDamage(cr);
-
-        cairo_fill_preserve(cr);
+        cairo_pattern_add_color_stop_rgba(pattern, offset, r, g, b, a);
     }
+    cairo_set_source(cr, pattern);
 
-    if (m_aLineColor != SALCOLOR_NONE)
-    {
-        cairo_set_source_rgba(cr, SALCOLOR_RED(m_aLineColor)/255.0,
-                                  SALCOLOR_GREEN(m_aLineColor)/255.0,
-                                  SALCOLOR_BLUE(m_aLineColor)/255.0,
-                                  1.0-fTransparency);
-
-        extents = getClippedStrokeDamage(cr);
-
-        cairo_stroke_preserve(cr);
-    }
+    basegfx::B2DRange extents = getClippedFillDamage(cr);
+    cairo_fill_preserve(cr);
 
     releaseCairoContext(cr, true, extents);
 
     return true;
 }
 
-void SvpSalGraphics::applyColor(cairo_t *cr, SalColor aColor)
+void SvpSalGraphics::applyColor(cairo_t *cr, Color aColor, double fTransparency)
 {
     if (cairo_surface_get_content(m_pSurface) == CAIRO_CONTENT_COLOR_ALPHA)
     {
-        cairo_set_source_rgba(cr, SALCOLOR_RED(aColor)/255.0,
-                                  SALCOLOR_GREEN(aColor)/255.0,
-                                  SALCOLOR_BLUE(aColor)/255.0,
-                                  1.0);
+        cairo_set_source_rgba(cr, aColor.GetRed()/255.0,
+                                  aColor.GetGreen()/255.0,
+                                  aColor.GetBlue()/255.0,
+                                  1.0 - fTransparency);
     }
     else
     {
-        double fSet = aColor == COL_BLACK ? 0.0 : 1.0;
+        double fSet = aColor == COL_BLACK ? 1.0 : 0.0;
         cairo_set_source_rgba(cr, 1, 1, 1, fSet);
         cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
     }
-}
-
-void SvpSalGraphics::drawPolyPolygon(const basegfx::B2DPolyPolygon& rPolyPoly)
-{
-    cairo_t* cr = getCairoContext(true);
-
-    setupPolyPolygon(cr, rPolyPoly);
-
-    basegfx::B2DRange extents(0, 0, 0, 0);
-
-    if (m_aFillColor != SALCOLOR_NONE)
-    {
-        applyColor(cr, m_aFillColor);
-        if (m_aLineColor == SALCOLOR_NONE)
-            extents = getClippedFillDamage(cr);
-        cairo_fill_preserve(cr);
-    }
-
-    if (m_aLineColor != SALCOLOR_NONE)
-    {
-        applyColor(cr, m_aLineColor);
-        extents = getClippedStrokeDamage(cr);
-        cairo_stroke_preserve(cr);
-    }
-
-    releaseCairoContext(cr, true, extents);
 }
 
 void SvpSalGraphics::copyArea( long nDestX,
@@ -956,8 +1972,8 @@ void SvpSalGraphics::copyArea( long nDestX,
     copyBits(aTR, this);
 }
 
-static basegfx::B2DRange renderSource(cairo_t* cr, const SalTwoRect& rTR,
-                                          cairo_surface_t* source)
+static basegfx::B2DRange renderWithOperator(cairo_t* cr, const SalTwoRect& rTR,
+                                          cairo_surface_t* source, cairo_operator_t eOperator = CAIRO_OPERATOR_SOURCE)
 {
     cairo_rectangle(cr, rTR.mnDestX, rTR.mnDestY, rTR.mnDestWidth, rTR.mnDestHeight);
 
@@ -966,24 +1982,49 @@ static basegfx::B2DRange renderSource(cairo_t* cr, const SalTwoRect& rTR,
     cairo_clip(cr);
 
     cairo_translate(cr, rTR.mnDestX, rTR.mnDestY);
+    double fXScale = 1.0f;
+    double fYScale = 1.0f;
     if (rTR.mnSrcWidth != 0 && rTR.mnSrcHeight != 0) {
-        cairo_scale(cr, (double)(rTR.mnDestWidth)/rTR.mnSrcWidth, ((double)rTR.mnDestHeight)/rTR.mnSrcHeight);
+        fXScale = static_cast<double>(rTR.mnDestWidth)/rTR.mnSrcWidth;
+        fYScale = static_cast<double>(rTR.mnDestHeight)/rTR.mnSrcHeight;
+        cairo_scale(cr, fXScale, fYScale);
     }
+
+    cairo_save(cr);
     cairo_set_source_surface(cr, source, -rTR.mnSrcX, -rTR.mnSrcY);
+    if ((fXScale != 1.0 && rTR.mnSrcWidth == 1) || (fYScale != 1.0 && rTR.mnSrcHeight == 1))
+    {
+        cairo_pattern_t* sourcepattern = cairo_get_source(cr);
+        cairo_pattern_set_extend(sourcepattern, CAIRO_EXTEND_REPEAT);
+        cairo_pattern_set_filter(sourcepattern, CAIRO_FILTER_NEAREST);
+    }
+    cairo_set_operator(cr, eOperator);
     cairo_paint(cr);
+    cairo_restore(cr);
 
     return extents;
 }
 
-void SvpSalGraphics::copySource( const SalTwoRect& rTR,
-                                 cairo_surface_t* source )
+static basegfx::B2DRange renderSource(cairo_t* cr, const SalTwoRect& rTR,
+                                          cairo_surface_t* source)
+{
+    return renderWithOperator(cr, rTR, source, CAIRO_OPERATOR_SOURCE);
+}
+
+void SvpSalGraphics::copyWithOperator( const SalTwoRect& rTR, cairo_surface_t* source,
+                                 cairo_operator_t eOp )
 {
     cairo_t* cr = getCairoContext(false);
     clipRegion(cr);
 
-    basegfx::B2DRange extents = renderSource(cr, rTR, source);
+    basegfx::B2DRange extents = renderWithOperator(cr, rTR, source, eOp);
 
     releaseCairoContext(cr, false, extents);
+}
+
+void SvpSalGraphics::copySource( const SalTwoRect& rTR, cairo_surface_t* source )
+{
+   copyWithOperator(rTR, source, CAIRO_OPERATOR_SOURCE);
 }
 
 void SvpSalGraphics::copyBits( const SalTwoRect& rTR,
@@ -1004,9 +2045,7 @@ void SvpSalGraphics::copyBits( const SalTwoRect& rTR,
                                             cairo_surface_get_content(m_pSurface),
                                             aTR.mnSrcWidth * m_fScale,
                                             aTR.mnSrcHeight * m_fScale);
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 14, 0)
-        cairo_surface_set_device_scale(pCopy, m_fScale, m_fScale);
-#endif
+        dl_cairo_surface_set_device_scale(pCopy, m_fScale, m_fScale);
         cairo_t* cr = cairo_create(pCopy);
         cairo_set_source_surface(cr, source, -aTR.mnSrcX, -aTR.mnSrcY);
         cairo_rectangle(cr, 0, 0, aTR.mnSrcWidth, aTR.mnSrcHeight);
@@ -1027,13 +2066,27 @@ void SvpSalGraphics::copyBits( const SalTwoRect& rTR,
 
 void SvpSalGraphics::drawBitmap(const SalTwoRect& rTR, const SalBitmap& rSourceBitmap)
 {
-    SourceHelper aSurface(rSourceBitmap);
-    cairo_surface_t* source = aSurface.getSurface();
+    // MM02 try to access buffered BitmapHelper
+    std::shared_ptr<BitmapHelper> aSurface;
+    tryToUseSourceBuffer(rSourceBitmap, aSurface);
+    cairo_surface_t* source = aSurface->getSurface(
+        rTR.mnDestWidth,
+        rTR.mnDestHeight);
+
     if (!source)
     {
-        SAL_WARN("vcl.gdi", "unsupported SvpSalGraphics::drawBitmap case");
+        SAL_WARN("vcl.gdi", "unsupported SvpSalGraphics::drawAlphaBitmap case");
+        return;
     }
-    copySource(rTR, source);
+
+    copyWithOperator(rTR, source, CAIRO_OPERATOR_OVER);
+}
+
+void SvpSalGraphics::drawBitmap(const SalTwoRect& rTR, const BitmapBuffer* pBuffer, cairo_operator_t eOp)
+{
+    cairo_surface_t* source = createCairoSurface( pBuffer );
+    copyWithOperator(rTR, source, eOp);
+    cairo_surface_destroy(source);
 }
 
 void SvpSalGraphics::drawBitmap( const SalTwoRect& rTR,
@@ -1043,39 +2096,40 @@ void SvpSalGraphics::drawBitmap( const SalTwoRect& rTR,
     drawAlphaBitmap(rTR, rSourceBitmap, rTransparentBitmap);
 }
 
-static sal_uInt8 unpremultiply(sal_uInt8 c, sal_uInt8 a)
-{
-    return (a > 0) ? (c * 255 + a / 2) / a : 0;
-}
-
-static sal_uInt8 premultiply(sal_uInt8 c, sal_uInt8 a)
-{
-    return (c * a + 127) / 255;
-}
-
 void SvpSalGraphics::drawMask( const SalTwoRect& rTR,
                                const SalBitmap& rSalBitmap,
-                               SalColor nMaskColor )
+                               Color nMaskColor )
 {
     /** creates an image from the given rectangle, replacing all black pixels
      *  with nMaskColor and make all other full transparent */
-    SourceHelper aSurface(rSalBitmap);
+    // MM02 here decided *against* using buffered BitmapHelper
+    // because the data gets somehow 'unmuliplied'. This may also be
+    // done just once, but I am not sure if this is safe to do.
+    // So for now dispense re-using data here.
+    BitmapHelper aSurface(rSalBitmap, true); // The mask is argb32
+    if (!aSurface.getSurface())
+    {
+        SAL_WARN("vcl.gdi", "unsupported SvpSalGraphics::drawMask case");
+        return;
+    }
     sal_Int32 nStride;
     unsigned char *mask_data = aSurface.getBits(nStride);
-    for (sal_Int32 y = rTR.mnSrcY ; y < rTR.mnSrcY + rTR.mnSrcHeight; ++y)
+    vcl::bitmap::lookup_table unpremultiply_table = vcl::bitmap::get_unpremultiply_table();
+    for (long y = rTR.mnSrcY ; y < rTR.mnSrcY + rTR.mnSrcHeight; ++y)
     {
         unsigned char *row = mask_data + (nStride*y);
         unsigned char *data = row + (rTR.mnSrcX * 4);
-        for (sal_Int32 x = rTR.mnSrcX; x < rTR.mnSrcX + rTR.mnSrcWidth; ++x)
+        for (long x = rTR.mnSrcX; x < rTR.mnSrcX + rTR.mnSrcWidth; ++x)
         {
-            sal_uInt8 b = unpremultiply(data[SVP_CAIRO_BLUE], data[SVP_CAIRO_ALPHA]);
-            sal_uInt8 g = unpremultiply(data[SVP_CAIRO_GREEN], data[SVP_CAIRO_ALPHA]);
-            sal_uInt8 r = unpremultiply(data[SVP_CAIRO_RED], data[SVP_CAIRO_ALPHA]);
+            sal_uInt8 a = data[SVP_CAIRO_ALPHA];
+            sal_uInt8 b = unpremultiply_table[a][data[SVP_CAIRO_BLUE]];
+            sal_uInt8 g = unpremultiply_table[a][data[SVP_CAIRO_GREEN]];
+            sal_uInt8 r = unpremultiply_table[a][data[SVP_CAIRO_RED]];
             if (r == 0 && g == 0 && b == 0)
             {
-                data[0] = SALCOLOR_BLUE(nMaskColor);
-                data[1] = SALCOLOR_GREEN(nMaskColor);
-                data[2] = SALCOLOR_RED(nMaskColor);
+                data[0] = nMaskColor.GetBlue();
+                data[1] = nMaskColor.GetGreen();
+                data[2] = nMaskColor.GetRed();
                 data[3] = 0xff;
             }
             else
@@ -1100,19 +2154,44 @@ void SvpSalGraphics::drawMask( const SalTwoRect& rTR,
     cairo_clip(cr);
 
     cairo_translate(cr, rTR.mnDestX, rTR.mnDestY);
-    cairo_scale(cr, (double)(rTR.mnDestWidth)/rTR.mnSrcWidth, ((double)rTR.mnDestHeight)/rTR.mnSrcHeight);
+    double fXScale = static_cast<double>(rTR.mnDestWidth)/rTR.mnSrcWidth;
+    double fYScale = static_cast<double>(rTR.mnDestHeight)/rTR.mnSrcHeight;
+    cairo_scale(cr, fXScale, fYScale);
     cairo_set_source_surface(cr, aSurface.getSurface(), -rTR.mnSrcX, -rTR.mnSrcY);
+    if ((fXScale != 1.0 && rTR.mnSrcWidth == 1) || (fYScale != 1.0 && rTR.mnSrcHeight == 1))
+    {
+        cairo_pattern_t* sourcepattern = cairo_get_source(cr);
+        cairo_pattern_set_extend(sourcepattern, CAIRO_EXTEND_REPEAT);
+        cairo_pattern_set_filter(sourcepattern, CAIRO_FILTER_NEAREST);
+    }
     cairo_paint(cr);
 
     releaseCairoContext(cr, false, extents);
 }
 
-SalBitmap* SvpSalGraphics::getBitmap( long nX, long nY, long nWidth, long nHeight )
+std::shared_ptr<SalBitmap> SvpSalGraphics::getBitmap( long nX, long nY, long nWidth, long nHeight )
 {
-    SvpSalBitmap* pBitmap = new SvpSalBitmap();
-    pBitmap->Create(Size(nWidth, nHeight), 32, BitmapPalette());
+    std::shared_ptr<SvpSalBitmap> pBitmap = std::make_shared<SvpSalBitmap>();
+    BitmapPalette aPal;
+    if (GetBitCount() == 1)
+    {
+        aPal.SetEntryCount(2);
+        aPal[0] = COL_BLACK;
+        aPal[1] = COL_WHITE;
+    }
+
+    if (!pBitmap->Create(Size(nWidth, nHeight), GetBitCount(), aPal))
+    {
+        SAL_WARN("vcl.gdi", "SvpSalGraphics::getBitmap, cannot create bitmap");
+        return nullptr;
+    }
 
     cairo_surface_t* target = SvpSalGraphics::createCairoSurface(pBitmap->GetBuffer());
+    if (!target)
+    {
+        SAL_WARN("vcl.gdi", "SvpSalGraphics::getBitmap, cannot create cairo surface");
+        return nullptr;
+    }
     cairo_t* cr = cairo_create(target);
 
     SalTwoRect aTR(nX, nY, nWidth, nHeight, 0, 0, nWidth, nHeight);
@@ -1121,12 +2200,19 @@ SalBitmap* SvpSalGraphics::getBitmap( long nX, long nY, long nWidth, long nHeigh
     cairo_destroy(cr);
     cairo_surface_destroy(target);
 
+    Toggle1BitTransparency(*pBitmap->GetBuffer());
+
     return pBitmap;
 }
 
-SalColor SvpSalGraphics::getPixel( long nX, long nY )
+Color SvpSalGraphics::getPixel( long nX, long nY )
 {
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
+    cairo_surface_t *target = cairo_surface_create_similar_image(m_pSurface, CAIRO_FORMAT_ARGB32, 1, 1);
+#else
     cairo_surface_t *target = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+#endif
+
     cairo_t* cr = cairo_create(target);
 
     cairo_rectangle(cr, 0, 0, 1, 1);
@@ -1135,15 +2221,16 @@ SalColor SvpSalGraphics::getPixel( long nX, long nY )
     cairo_destroy(cr);
 
     cairo_surface_flush(target);
+    vcl::bitmap::lookup_table unpremultiply_table = vcl::bitmap::get_unpremultiply_table();
     unsigned char *data = cairo_image_surface_get_data(target);
-    sal_uInt8 b = unpremultiply(data[SVP_CAIRO_BLUE], data[SVP_CAIRO_ALPHA]);
-    sal_uInt8 g = unpremultiply(data[SVP_CAIRO_GREEN], data[SVP_CAIRO_ALPHA]);
-    sal_uInt8 r = unpremultiply(data[SVP_CAIRO_RED], data[SVP_CAIRO_ALPHA]);
-    SalColor nRet = MAKE_SALCOLOR(r, g, b);
-
+    sal_uInt8 a = data[SVP_CAIRO_ALPHA];
+    sal_uInt8 b = unpremultiply_table[a][data[SVP_CAIRO_BLUE]];
+    sal_uInt8 g = unpremultiply_table[a][data[SVP_CAIRO_GREEN]];
+    sal_uInt8 r = unpremultiply_table[a][data[SVP_CAIRO_RED]];
+    Color aColor(0xFF - a, r, g, b);
     cairo_surface_destroy(target);
 
-    return nRet;
+    return aColor;
 }
 
 namespace
@@ -1168,9 +2255,15 @@ void SvpSalGraphics::invert(const basegfx::B2DPolygon &rPoly, SalInvert nFlags)
     cairo_t* cr = getCairoContext(false);
     clipRegion(cr);
 
-    basegfx::B2DRange extents(0, 0, 0, 0);
+    // To make releaseCairoContext work, use empty extents
+    basegfx::B2DRange extents;
 
-    AddPolygonToPath(cr, rPoly, true, !getAntiAliasB2DDraw(), false);
+    AddPolygonToPath(
+        cr,
+        rPoly,
+        basegfx::B2DHomMatrix(),
+        !getAntiAliasB2DDraw(),
+        false);
 
     cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
 
@@ -1193,7 +2286,10 @@ void SvpSalGraphics::invert(const basegfx::B2DPolygon &rPoly, SalInvert nFlags)
         //see tdf#106577 under wayland, some pixel droppings seen, maybe we're
         //out by one somewhere, or cairo_stroke_extents is confused by
         //dashes/line width
-        extents.grow(1);
+        if(!extents.isEmpty())
+        {
+            extents.grow(1);
+        }
 
         cairo_stroke(cr);
     }
@@ -1211,9 +2307,7 @@ void SvpSalGraphics::invert(const basegfx::B2DPolygon &rPoly, SalInvert nFlags)
                                                                     extents.getWidth() * m_fScale,
                                                                     extents.getHeight() * m_fScale);
 
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 14, 0)
-            cairo_surface_set_device_scale(surface, m_fScale, m_fScale);
-#endif
+            dl_cairo_surface_set_device_scale(surface, m_fScale, m_fScale);
             cairo_t* stipple_cr = cairo_create(surface);
             cairo_set_source_rgb(stipple_cr, 1.0, 1.0, 1.0);
             cairo_mask(stipple_cr, pattern);
@@ -1233,7 +2327,7 @@ void SvpSalGraphics::invert(const basegfx::B2DPolygon &rPoly, SalInvert nFlags)
 
 void SvpSalGraphics::invert( long nX, long nY, long nWidth, long nHeight, SalInvert nFlags )
 {
-    basegfx::B2DPolygon aRect = basegfx::tools::createPolygonFromRect(basegfx::B2DRectangle(nX, nY, nX+nWidth, nY+nHeight));
+    basegfx::B2DPolygon aRect = basegfx::utils::createPolygonFromRect(basegfx::B2DRectangle(nX, nY, nX+nWidth, nY+nHeight));
 
     invert(aRect, nFlags);
 }
@@ -1249,30 +2343,24 @@ void SvpSalGraphics::invert(sal_uInt32 nPoints, const SalPoint* pPtAry, SalInver
     invert(aPoly, nFlags);
 }
 
-bool SvpSalGraphics::drawEPS( long, long, long, long, void*, sal_uLong )
+bool SvpSalGraphics::drawEPS( long, long, long, long, void*, sal_uInt32 )
 {
     return false;
 }
 
 namespace
 {
-    cairo_format_t getCairoFormat(const BitmapBuffer& rBuffer)
-    {
-        cairo_format_t nFormat;
-        assert(rBuffer.mnBitCount == 32 || rBuffer.mnBitCount == 1);
-        if (rBuffer.mnBitCount == 32)
-            nFormat = CAIRO_FORMAT_ARGB32;
-        else
-            nFormat = CAIRO_FORMAT_A1;
-        return nFormat;
-    }
-
     bool isCairoCompatible(const BitmapBuffer* pBuffer)
     {
         if (!pBuffer)
             return false;
 
+        // We use Cairo that supports 24-bit RGB.
+#ifdef HAVE_CAIRO_FORMAT_RGB24_888
+        if (pBuffer->mnBitCount != 32 && pBuffer->mnBitCount != 24 && pBuffer->mnBitCount != 1)
+#else
         if (pBuffer->mnBitCount != 32 && pBuffer->mnBitCount != 1)
+#endif
             return false;
 
         cairo_format_t nFormat = getCairoFormat(*pBuffer);
@@ -1291,17 +2379,26 @@ cairo_surface_t* SvpSalGraphics::createCairoSurface(const BitmapBuffer *pBuffer)
                                         nFormat,
                                         pBuffer->mnWidth, pBuffer->mnHeight,
                                         pBuffer->mnScanlineSize);
+    if (cairo_surface_status(target) != CAIRO_STATUS_SUCCESS)
+    {
+        cairo_surface_destroy(target);
+        return nullptr;
+    }
     return target;
 }
 
 cairo_t* SvpSalGraphics::createTmpCompatibleCairoContext() const
 {
-    cairo_surface_t *target = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
-                                                         m_aFrameSize.getX() * m_fScale,
-                                                         m_aFrameSize.getY() * m_fScale);
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 14, 0)
-    cairo_surface_set_device_scale(target, m_fScale, m_fScale);
+#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 12, 0)
+    cairo_surface_t *target = cairo_surface_create_similar_image(m_pSurface,
+#else
+    cairo_surface_t *target = cairo_image_surface_create(
 #endif
+            CAIRO_FORMAT_ARGB32,
+            m_aFrameSize.getX() * m_fScale,
+            m_aFrameSize.getY() * m_fScale);
+
+    dl_cairo_surface_set_device_scale(target, m_fScale, m_fScale);
 
     return cairo_create(target);
 }
@@ -1317,6 +2414,11 @@ cairo_t* SvpSalGraphics::getCairoContext(bool bXorModeAllowed) const
     cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD);
     cairo_set_antialias(cr, getAntiAliasB2DDraw() ? CAIRO_ANTIALIAS_DEFAULT : CAIRO_ANTIALIAS_NONE);
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+    // ensure no linear transformation and no PathInfo in local cairo_path_t
+    cairo_identity_matrix(cr);
+    cairo_new_path(cr);
+
     return cr;
 }
 
@@ -1328,15 +2430,23 @@ cairo_user_data_key_t* SvpSalGraphics::getDamageKey()
 
 void SvpSalGraphics::releaseCairoContext(cairo_t* cr, bool bXorModeAllowed, const basegfx::B2DRange& rExtents) const
 {
+    const bool bXoring = (m_ePaintMode == PaintMode::Xor && bXorModeAllowed);
+
     if (rExtents.isEmpty())
     {
         //nothing changed, return early
+        if (bXoring)
+        {
+            cairo_surface_t* surface = cairo_get_target(cr);
+            cairo_surface_destroy(surface);
+        }
         cairo_destroy(cr);
         return;
     }
 
-    sal_Int32 nExtentsLeft(rExtents.getMinX()), nExtentsTop(rExtents.getMinY());
-    sal_Int32 nExtentsRight(rExtents.getMaxX()), nExtentsBottom(rExtents.getMaxY());
+    basegfx::B2IRange aIntExtents(basegfx::unotools::b2ISurroundingRangeFromB2DRange(rExtents));
+    sal_Int32 nExtentsLeft(aIntExtents.getMinX()), nExtentsTop(aIntExtents.getMinY());
+    sal_Int32 nExtentsRight(aIntExtents.getMaxX()), nExtentsBottom(aIntExtents.getMaxY());
     sal_Int32 nWidth = m_aFrameSize.getX();
     sal_Int32 nHeight = m_aFrameSize.getY();
     nExtentsLeft = std::max<sal_Int32>(nExtentsLeft, 0);
@@ -1350,7 +2460,7 @@ void SvpSalGraphics::releaseCairoContext(cairo_t* cr, bool bXorModeAllowed, cons
     //For the most part we avoid the use of XOR these days, but there
     //are some edge cases where legacy stuff still supports it, so
     //emulate it (slowly) here.
-    if (m_ePaintMode == PaintMode::Xor && bXorModeAllowed)
+    if (bXoring)
     {
         cairo_surface_t* target_surface = m_pSurface;
         if (cairo_surface_get_type(target_surface) != CAIRO_SURFACE_TYPE_IMAGE)
@@ -1378,6 +2488,8 @@ void SvpSalGraphics::releaseCairoContext(cairo_t* cr, bool bXorModeAllowed, cons
         sal_Int32 nUnscaledExtentsRight = nExtentsRight * m_fScale;
         sal_Int32 nUnscaledExtentsTop = nExtentsTop * m_fScale;
         sal_Int32 nUnscaledExtentsBottom = nExtentsBottom * m_fScale;
+        vcl::bitmap::lookup_table unpremultiply_table = vcl::bitmap::get_unpremultiply_table();
+        vcl::bitmap::lookup_table premultiply_table = vcl::bitmap::get_premultiply_table();
         for (sal_Int32 y = nUnscaledExtentsTop; y < nUnscaledExtentsBottom; ++y)
         {
             unsigned char *true_row = target_surface_data + (nStride*y);
@@ -1386,15 +2498,17 @@ void SvpSalGraphics::releaseCairoContext(cairo_t* cr, bool bXorModeAllowed, cons
             unsigned char *xor_data = xor_row + (nUnscaledExtentsLeft * 4);
             for (sal_Int32 x = nUnscaledExtentsLeft; x < nUnscaledExtentsRight; ++x)
             {
-                sal_uInt8 b = unpremultiply(true_data[SVP_CAIRO_BLUE], true_data[SVP_CAIRO_ALPHA]) ^
-                              unpremultiply(xor_data[SVP_CAIRO_BLUE], xor_data[SVP_CAIRO_ALPHA]);
-                sal_uInt8 g = unpremultiply(true_data[SVP_CAIRO_GREEN], true_data[SVP_CAIRO_ALPHA]) ^
-                              unpremultiply(xor_data[SVP_CAIRO_GREEN], xor_data[SVP_CAIRO_ALPHA]);
-                sal_uInt8 r = unpremultiply(true_data[SVP_CAIRO_RED], true_data[SVP_CAIRO_ALPHA]) ^
-                              unpremultiply(xor_data[SVP_CAIRO_RED], xor_data[SVP_CAIRO_ALPHA]);
-                true_data[0] = premultiply(b, true_data[SVP_CAIRO_ALPHA]);
-                true_data[1] = premultiply(g, true_data[SVP_CAIRO_ALPHA]);
-                true_data[2] = premultiply(r, true_data[SVP_CAIRO_ALPHA]);
+                sal_uInt8 a = true_data[SVP_CAIRO_ALPHA];
+                sal_uInt8 xor_a = xor_data[SVP_CAIRO_ALPHA];
+                sal_uInt8 b = unpremultiply_table[a][true_data[SVP_CAIRO_BLUE]] ^
+                              unpremultiply_table[xor_a][xor_data[SVP_CAIRO_BLUE]];
+                sal_uInt8 g = unpremultiply_table[a][true_data[SVP_CAIRO_GREEN]] ^
+                              unpremultiply_table[xor_a][xor_data[SVP_CAIRO_GREEN]];
+                sal_uInt8 r = unpremultiply_table[a][true_data[SVP_CAIRO_RED]] ^
+                              unpremultiply_table[xor_a][xor_data[SVP_CAIRO_RED]];
+                true_data[SVP_CAIRO_BLUE] = premultiply_table[a][b];
+                true_data[SVP_CAIRO_GREEN] = premultiply_table[a][g];
+                true_data[SVP_CAIRO_RED] = premultiply_table[a][r];
                 true_data+=4;
                 xor_data+=4;
             }
@@ -1472,6 +2586,37 @@ bool SvpSalGraphics::supportsOperation(OutDevSupportType eType) const
             return true;
     }
     return false;
+}
+
+void dl_cairo_surface_set_device_scale(cairo_surface_t *surface, double x_scale, double y_scale)
+{
+#ifdef ANDROID
+    cairo_surface_set_device_scale(surface, x_scale, y_scale);
+#else
+    static auto func = reinterpret_cast<void(*)(cairo_surface_t*, double, double)>(
+        dlsym(nullptr, "cairo_surface_set_device_scale"));
+    if (func)
+        func(surface, x_scale, y_scale);
+#endif
+}
+
+void dl_cairo_surface_get_device_scale(cairo_surface_t *surface, double* x_scale, double* y_scale)
+{
+#ifdef ANDROID
+    cairo_surface_get_device_scale(surface, x_scale, y_scale);
+#else
+    static auto func = reinterpret_cast<void(*)(cairo_surface_t*, double*, double*)>(
+        dlsym(nullptr, "cairo_surface_get_device_scale"));
+    if (func)
+        func(surface, x_scale, y_scale);
+    else
+    {
+        if (x_scale)
+            *x_scale = 1.0;
+        if (y_scale)
+            *y_scale = 1.0;
+    }
+#endif
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

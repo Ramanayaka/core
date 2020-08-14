@@ -18,27 +18,20 @@
  */
 
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLBASE_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLBASE_HXX
+#pragma once
 
-#include <svtools/accessibletable.hxx>
+#include <vcl/accessibletable.hxx>
 #include <rtl/ustring.hxx>
 #include <tools/gen.hxx>
-#include <vcl/svapp.hxx>
 #include <cppuhelper/compbase4.hxx>
 #include <cppuhelper/implbase1.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
-#include <toolkit/helper/convert.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <comphelper/accessibleeventnotifier.hxx>
 #include <comphelper/uno3.hxx>
 
@@ -73,8 +66,8 @@ public:
         @param eObjType  Type of accessible table control. */
     AccessibleGridControlBase(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::svt::table::IAccessibleTable& rTable,
-        ::svt::table::AccessibleTableControlObjType  eObjType );
+        ::vcl::table::IAccessibleTable& rTable,
+        ::vcl::table::AccessibleTableControlObjType  eObjType );
 
 protected:
     virtual ~AccessibleGridControlBase() override;
@@ -173,7 +166,7 @@ public:
 
     // XTypeProvider
 
-    /** @return  An unique implementation ID. */
+    /** @return  a unique implementation ID. */
     virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
 
     // XServiceInfo
@@ -181,7 +174,7 @@ public:
     /** @return  Whether the specified service is supported by this class. */
     virtual sal_Bool SAL_CALL supportsService( const OUString& rServiceName ) override;
 
-    /** @return  A list of all supported services. */
+    /** @return  a list of all supported services. */
     virtual css::uno::Sequence< OUString > SAL_CALL
     getSupportedServiceNames() override;
 
@@ -191,7 +184,7 @@ public:
     // helper methods
 
     /** @return  The GridControl object type. */
-    inline ::svt::table::AccessibleTableControlObjType getType() const;
+    inline ::vcl::table::AccessibleTableControlObjType getType() const;
 
     /** Commits an event to all listeners. */
     void commitEvent(
@@ -258,9 +251,9 @@ protected:
     /** The parent accessible object. */
     css::uno::Reference< css::accessibility::XAccessible > m_xParent;
     /** The SVT Table control. */
-    ::svt::table::IAccessibleTable& m_aTable;
+    ::vcl::table::IAccessibleTable& m_aTable;
     /** The type of this object (for names, descriptions, state sets, ...). */
-    ::svt::table::AccessibleTableControlObjType m_eObjType;
+    ::vcl::table::AccessibleTableControlObjType m_eObjType;
 
 private:
     /** Localized name. */
@@ -290,8 +283,8 @@ protected:
     */
     GridControlAccessibleElement(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::svt::table::IAccessibleTable& rTable,
-        ::svt::table::AccessibleTableControlObjType  eObjType );
+        ::vcl::table::IAccessibleTable& rTable,
+        ::vcl::table::AccessibleTableControlObjType  eObjType );
 
 public:
     // XInterface
@@ -316,7 +309,7 @@ private:
 
 // inlines
 
-inline ::svt::table::AccessibleTableControlObjType AccessibleGridControlBase::getType() const
+inline ::vcl::table::AccessibleTableControlObjType AccessibleGridControlBase::getType() const
 {
     return m_eObjType;
 }
@@ -331,6 +324,5 @@ inline void AccessibleGridControlBase::implSetName(
 } // namespace accessibility
 
 
-#endif // ACCESSIBILITY_EXT_ACCESSIBILEGRIDCONTROLBASE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

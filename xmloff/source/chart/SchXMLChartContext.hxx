@@ -22,27 +22,26 @@
 #include <xmloff/xmlictxt.hxx>
 #include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/chart/ChartDataRowSource.hpp>
-#include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/awt/Size.hpp>
 
 #include "transporttypes.hxx"
 
-#include <list>
+#include <vector>
 
 class SchXMLImportHelper;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace chart {
         class XChartDocument;
         struct ChartSeriesAddress;
     }
-    namespace xml { namespace sax {
+    namespace xml::sax {
         class XAttributeList;
-    }}
+    }
     namespace drawing {
         class XShapes;
     }
-}}}
+}
 
 struct SeriesDefaultsAndStyles
 {
@@ -69,8 +68,8 @@ struct SeriesDefaultsAndStyles
     css::uno::Any    maLinesOnProperty;
 
     //styles for series and datapoints
-    ::std::list< DataRowPointStyle > maSeriesStyleList;
-    ::std::list< RegressionStyle >   maRegressionStyleList;
+    ::std::vector< DataRowPointStyle > maSeriesStyleVector;
+    ::std::vector< RegressionStyle >   maRegressionStyleVector;
 };
 
 class SchXMLChartContext : public SvXMLImportContext
@@ -82,7 +81,7 @@ public:
 
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
     virtual void EndElement() override;
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
@@ -137,11 +136,11 @@ public:
     SchXMLTitleContext( SchXMLImportHelper& rImpHelper,
                         SvXMLImport& rImport, const OUString& rLocalName,
                         OUString& rTitle,
-                        css::uno::Reference< css::drawing::XShape >& xTitleShape );
+                        css::uno::Reference< css::drawing::XShape > const & xTitleShape );
     virtual ~SchXMLTitleContext() override;
 
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;

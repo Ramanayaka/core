@@ -22,15 +22,13 @@
 #include <com/sun/star/beans/PropertyValue.hpp>
 
 #include "animationcommandnode.hxx"
-#include "delayevent.hxx"
-#include "tools.hxx"
-#include "nodetools.hxx"
+#include <eventmultiplexer.hxx>
+#include <delayevent.hxx>
 
 
 using namespace com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 namespace EffectCommands = css::presentation::EffectCommands;
 
@@ -80,7 +78,7 @@ void AnimationCommandNode::activate_st()
         // the command toggles the pause status on a media object
     case EffectCommands::TOGGLEPAUSE:
     {
-        if( mpShape )
+        if (mpShape)
         {
             if( mpShape->isPlaying() )
                 mpShape->pause();
@@ -114,7 +112,6 @@ bool AnimationCommandNode::hasPendingAnimation() const
     return mxCommandNode->getCommand() == EffectCommands::STOPAUDIO || mpShape;
 }
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

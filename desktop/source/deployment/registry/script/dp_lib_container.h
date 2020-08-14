@@ -22,19 +22,17 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno {
         class XComponentContext;
     }
     namespace ucb {
         class XCommandEnvironment;
     }
-}}}
+}
 
 
-namespace dp_registry {
-namespace backend {
-namespace script {
+namespace dp_registry::backend::script {
 
 
 class LibraryContainer
@@ -46,8 +44,6 @@ public:
         css::uno::Reference<css::uno::XComponentContext> const & xContext );
 };
 
-}
-}
 }
 
 #endif

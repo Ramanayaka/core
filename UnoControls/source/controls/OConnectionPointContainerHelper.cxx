@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "OConnectionPointContainerHelper.hxx"
+#include <OConnectionPointContainerHelper.hxx>
 
-#include "OConnectionPointHelper.hxx"
+#include <OConnectionPointHelper.hxx>
 
 #include <cppuhelper/queryinterface.hxx>
 
@@ -30,7 +30,7 @@ using namespace ::cppu;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 
-namespace unocontrols{
+namespace unocontrols {
 
 //  construct/destruct
 
@@ -111,8 +111,7 @@ Reference< XConnectionPoint > SAL_CALL OConnectionPointContainerHelper::queryCon
         // Ready for multithreading
         MutexGuard aGuard( m_aSharedMutex );
         // If this container contains elements, build a connectionpoint-instance.
-        OConnectionPointHelper* pNewConnectionPoint = new OConnectionPointHelper( m_aSharedMutex, this, aType );
-        xConnectionPoint.set( static_cast<OWeakObject*>(pNewConnectionPoint), UNO_QUERY );
+        xConnectionPoint = new OConnectionPointHelper( m_aSharedMutex, this, aType );
     }
 
     return xConnectionPoint;

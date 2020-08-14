@@ -17,15 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "defaultobjectnamecheck.hxx"
+#include <core_resource.hxx>
+#include <defaultobjectnamecheck.hxx>
 
-#include "dbu_misc.hrc"
-
-#include "moduledbu.hxx"
+#include <strings.hrc>
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/sdb/tools/XConnectionTools.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 
 #include <connectivity/dbexception.hxx>
 #include <connectivity/dbmetadata.hxx>
@@ -36,7 +36,6 @@
 #include <cppuhelper/exc_hlp.hxx>
 
 #include <memory>
-#include <vector>
 
 namespace dbaui
 {
@@ -61,7 +60,7 @@ namespace dbaui
         void lcl_fillNameExistsError( const OUString& _rObjectName, SQLExceptionInfo& _out_rErrorToDisplay )
         {
             SQLException aError;
-            OUString sErrorMessage = ModuleRes(STR_NAMED_OBJECT_ALREADY_EXISTS);
+            OUString sErrorMessage = DBA_RES(STR_NAMED_OBJECT_ALREADY_EXISTS);
             aError.Message = sErrorMessage.replaceAll("$#$", _rObjectName);
             _out_rErrorToDisplay = aError;
         }
@@ -108,7 +107,7 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
 
         lcl_fillNameExistsError( _rObjectName, _out_rErrorToDisplay );

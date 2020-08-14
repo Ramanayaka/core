@@ -20,18 +20,9 @@
 #ifndef INCLUDED_SW_INC_SWEVENT_HXX
 #define INCLUDED_SW_INC_SWEVENT_HXX
 
-#include <tools/solar.h>
-#include <sfx2/sfx.hrc>
-#include <calbck.hxx>
-#include <frmfmt.hxx>
-
-#define     SW_EVENT_OBJECT_SELECT        ( EVENT_APP_START + 0 )
-#define     SW_EVENT_START_INS_GLOSSARY   ( EVENT_APP_START + 1 )
-#define     SW_EVENT_END_INS_GLOSSARY     ( EVENT_APP_START + 2 )
-#define     SW_EVENT_FRM_KEYINPUT_ALPHA   ( EVENT_APP_START + 4 )
-#define     SW_EVENT_FRM_KEYINPUT_NOALPHA ( EVENT_APP_START + 5 )
-#define     SW_EVENT_FRM_RESIZE           ( EVENT_APP_START + 6 )
-#define     SW_EVENT_FRM_MOVE             ( EVENT_APP_START + 7 )
+#include "calbck.hxx"
+#include "frmfmt.hxx"
+#include "hints.hxx"
 
 #define     STR_SW_EVENT_PAGE_COUNT           0
 #define     STR_SW_EVENT_MAIL_MERGE           1
@@ -47,7 +38,6 @@
 #define     STR_SW_EVENT_FRM_RESIZE           11
 #define     STR_SW_EVENT_FRM_MOVE             12
 
-class SwFrameFormat;
 class SwFormatINetFormat;
 class IMapObject;
 
@@ -63,7 +53,7 @@ enum SwCallEventObjectType
 
 // Structure for the exchange between UI/CORE.
 
-struct SwCallMouseEvent
+struct SwCallMouseEvent final
     : public SwClient
 {
     SwCallEventObjectType eType;
@@ -119,7 +109,7 @@ struct SwCallMouseEvent
                 // note: pFormat is not necessarily the same as
                 // GetRegisteredIn() here; see ~SwFormat()
                 assert(PTR.pFormat);
-                GetRegisteredInNonConst()->Remove(this);
+                EndListeningAll();
             }
             eType = EVENT_OBJECT_NONE; PTR.pFormat = nullptr; PTR.IMAP.pIMapObj = nullptr;
         }

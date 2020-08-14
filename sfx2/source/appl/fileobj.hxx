@@ -24,7 +24,10 @@
 #include <sfx2/linkmgr.hxx>
 
 class Graphic;
+struct ImplSVEvent;
 namespace sfx2 { class FileDialogHelper; }
+
+enum class SvFileObjectType;
 
 class SvFileObject : public sfx2::SvLinkSource
 {
@@ -36,20 +39,16 @@ class SvFileObject : public sfx2::SvLinkSource
     ImplSVEvent*                nPostUserEventId;
     tools::SvRef<SfxMedium>     mxDelMed;
 
-    sal_uInt8 nType;
+    SvFileObjectType nType;
 
     bool bLoadAgain : 1;
     bool bSynchron : 1;
     bool bLoadError : 1;
     bool bWaitForData : 1;
-    bool bInNewData : 1;
     bool bDataReady : 1;
-    bool bNativFormat : 1;
     bool bClearMedium : 1;
     bool bStateChangeCalled : 1;
-    bool bInCallDownload : 1;
 
-    bool GetGraphic_Impl( Graphic&, SvStream* pStream );
     bool LoadFile_Impl();
     void SendStateChg_Impl( sfx2::LinkManager::LinkState nState );
 
@@ -68,7 +67,7 @@ public:
                             bool bSynchron = false ) override;
 
     virtual bool Connect( sfx2::SvBaseLink* ) override;
-    virtual void Edit( vcl::Window *, sfx2::SvBaseLink *, const Link<const OUString&, void>& rEndEditHdl ) override;
+    virtual void Edit(weld::Window *, sfx2::SvBaseLink *, const Link<const OUString&, void>& rEndEditHdl) override;
 
     // Ask whether you can access data directly or whether it has to be triggered
     virtual bool IsPending() const override;

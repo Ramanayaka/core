@@ -17,27 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dp_misc.h"
 #include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/deployment/XPackage.hpp>
-#include <tools/resmgr.hxx>
+#include <osl/diagnose.h>
 #include <rtl/ustring.hxx>
-#include <unotools/configmgr.hxx>
-#include <i18nlangtag/languagetag.hxx>
+
+#include <vector>
 
 #define APP_NAME "unopkg"
 
 namespace unopkg {
-
-struct DeploymentResMgr :  public rtl::StaticWithInit< ResMgr *, DeploymentResMgr >
-{
-    ResMgr * operator () () {
-        return ResMgr::CreateResMgr(
-            "deployment", LanguageTag( utl::ConfigManager::getLocale() ) );
-    }
-};
 
 struct OptionInfo
 {
@@ -101,7 +92,6 @@ OUString makeAbsoluteFileUrl(
 
 css::uno::Reference<css::ucb::XCommandEnvironment> createCmdEnv(
     css::uno::Reference<css::uno::XComponentContext> const & xContext,
-    OUString const & logFile,
     bool option_force_overwrite,
     bool option_verbose,
     bool option_suppressLicense);
@@ -117,7 +107,7 @@ void printf_packages(
 
 
 css::uno::Reference<css::uno::XComponentContext> getUNO(
-    bool verbose, bool shared, bool bGui,
+    bool verbose, bool bGui, const OUString& sTempDir,
     css::uno::Reference<css::uno::XComponentContext> & out_LocalComponentContext);
 
 }

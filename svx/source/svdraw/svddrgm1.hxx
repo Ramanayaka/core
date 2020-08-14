@@ -36,12 +36,12 @@ protected:
 public:
     explicit SdrDragMovHdl(SdrDragView& rNewView);
 
-    virtual void TakeSdrDragComment(OUString& rStr) const override;
+    virtual OUString GetSdrDragComment() const override;
     virtual bool BeginSdrDrag() override;
     virtual void MoveSdrDrag(const Point& rPnt) override;
     virtual bool EndSdrDrag(bool bCopy) override;
     virtual void CancelSdrDrag() override;
-    virtual Pointer GetSdrDragPointer() const override;
+    virtual PointerStyle GetSdrDragPointer() const override;
 };
 
 class SdrDragRotate : public SdrDragMethod
@@ -56,11 +56,11 @@ private:
 public:
     explicit SdrDragRotate(SdrDragView& rNewView);
 
-    virtual void TakeSdrDragComment(OUString& rStr) const override;
+    virtual OUString GetSdrDragComment() const override;
     virtual bool BeginSdrDrag() override;
     virtual void MoveSdrDrag(const Point& rPnt) override;
     virtual bool EndSdrDrag(bool bCopy) override;
-    virtual Pointer GetSdrDragPointer() const override;
+    virtual PointerStyle GetSdrDragPointer() const override;
 
     virtual basegfx::B2DHomMatrix getCurrentTransformation() override;
     virtual void applyCurrentTransformationToSdrObject(SdrObject& rTarget) override;
@@ -81,11 +81,11 @@ private:
 public:
     SdrDragShear(SdrDragView& rNewView,bool bSlant1);
 
-    virtual void TakeSdrDragComment(OUString& rStr) const override;
+    virtual OUString GetSdrDragComment() const override;
     virtual bool BeginSdrDrag() override;
     virtual void MoveSdrDrag(const Point& rPnt) override;
     virtual bool EndSdrDrag(bool bCopy) override;
-    virtual Pointer GetSdrDragPointer() const override;
+    virtual PointerStyle GetSdrDragPointer() const override;
 
     virtual basegfx::B2DHomMatrix getCurrentTransformation() override;
     virtual void applyCurrentTransformationToSdrObject(SdrObject& rTarget) override;
@@ -104,11 +104,11 @@ private:
 public:
     explicit SdrDragMirror(SdrDragView& rNewView);
 
-    virtual void TakeSdrDragComment(OUString& rStr) const override;
+    virtual OUString GetSdrDragComment() const override;
     virtual bool BeginSdrDrag() override;
     virtual void MoveSdrDrag(const Point& rPnt) override;
     virtual bool EndSdrDrag(bool bCopy) override;
-    virtual Pointer GetSdrDragPointer() const override;
+    virtual PointerStyle GetSdrDragPointer() const override;
 
     virtual basegfx::B2DHomMatrix getCurrentTransformation() override;
     virtual void applyCurrentTransformationToSdrObject(SdrObject& rTarget) override;
@@ -128,11 +128,11 @@ public:
 
     bool IsGradient() const { return bIsGradient; }
 
-    virtual void TakeSdrDragComment(OUString& rStr) const override;
+    virtual OUString GetSdrDragComment() const override;
     virtual bool BeginSdrDrag() override;
     virtual void MoveSdrDrag(const Point& rPnt) override;
     virtual bool EndSdrDrag(bool bCopy) override;
-    virtual Pointer GetSdrDragPointer() const override;
+    virtual PointerStyle GetSdrDragPointer() const override;
     virtual void CancelSdrDrag() override;
 };
 
@@ -174,11 +174,11 @@ protected:
 public:
     explicit SdrDragCrook(SdrDragView& rNewView);
 
-    virtual void TakeSdrDragComment(OUString& rStr) const override;
+    virtual OUString GetSdrDragComment() const override;
     virtual bool BeginSdrDrag() override;
     virtual void MoveSdrDrag(const Point& rPnt) override;
     virtual bool EndSdrDrag(bool bCopy) override;
-    virtual Pointer GetSdrDragPointer() const override;
+    virtual PointerStyle GetSdrDragPointer() const override;
 
     virtual void applyCurrentTransformationToSdrObject(SdrObject& rTarget) override;
     virtual void applyCurrentTransformationToPolyPolygon(basegfx::B2DPolyPolygon& rTarget) override;
@@ -204,11 +204,11 @@ protected:
 public:
     explicit SdrDragDistort(SdrDragView& rNewView);
 
-    virtual void TakeSdrDragComment(OUString& rStr) const override;
+    virtual OUString GetSdrDragComment() const override;
     virtual bool BeginSdrDrag() override;
     virtual void MoveSdrDrag(const Point& rPnt) override;
     virtual bool EndSdrDrag(bool bCopy) override;
-    virtual Pointer GetSdrDragPointer() const override;
+    virtual PointerStyle GetSdrDragPointer() const override;
 
     virtual void applyCurrentTransformationToSdrObject(SdrObject& rTarget) override;
     virtual void applyCurrentTransformationToPolyPolygon(basegfx::B2DPolyPolygon& rTarget) override;
@@ -221,10 +221,10 @@ class SdrDragCrop : public SdrDragObjOwn
 public:
     explicit SdrDragCrop(SdrDragView& rNewView);
 
-    virtual void TakeSdrDragComment(OUString& rStr) const override;
+    virtual OUString GetSdrDragComment() const override;
     virtual bool BeginSdrDrag() override;
     virtual bool EndSdrDrag(bool bCopy) override;
-    virtual Pointer GetSdrDragPointer() const override;
+    virtual PointerStyle GetSdrDragPointer() const override;
 };
 
 #endif // INCLUDED_SVX_SOURCE_SVDRAW_SVDDRGM1_HXX

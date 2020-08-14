@@ -19,7 +19,7 @@
 
 #include <standard/vclxaccessiblebutton.hxx>
 #include <helper/accresmgr.hxx>
-#include <helper/accessiblestrings.hrc>
+#include <strings.hrc>
 
 #include <unotools/accessiblestatesethelper.hxx>
 #include <comphelper/accessiblekeybindinghelper.hxx>
@@ -27,11 +27,11 @@
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <cppuhelper/typeprovider.hxx>
-#include <comphelper/sequence.hxx>
-#include "strings.hxx"
+#include <strings.hxx>
 
-#include <vcl/button.hxx>
+#include <vcl/toolkit/button.hxx>
+#include <vcl/event.hxx>
+#include <vcl/vclevent.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -42,17 +42,6 @@ using namespace ::comphelper;
 
 
 // VCLXAccessibleButton
-
-
-VCLXAccessibleButton::VCLXAccessibleButton( VCLXWindow* pVCLWindow )
-    :VCLXAccessibleTextComponent( pVCLWindow )
-{
-}
-
-
-VCLXAccessibleButton::~VCLXAccessibleButton()
-{
-}
 
 
 void VCLXAccessibleButton::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
@@ -84,25 +73,25 @@ void VCLXAccessibleButton::FillAccessibleStateSet( utl::AccessibleStateSetHelper
     VCLXAccessibleTextComponent::FillAccessibleStateSet( rStateSet );
 
     VclPtr< PushButton > pButton = GetAs< PushButton >();
-    if ( pButton )
+    if ( !pButton )
+        return;
+
+    rStateSet.AddState( AccessibleStateType::FOCUSABLE );
+
+    if ( pButton->GetState() == TRISTATE_TRUE )
+        rStateSet.AddState( AccessibleStateType::CHECKED );
+
+    if ( pButton->IsPressed() )
+        rStateSet.AddState( AccessibleStateType::PRESSED );
+
+    // IA2 CWS: if the button has a popup menu, it should has the state EXPANDABLE
+    if( pButton->GetType() == WindowType::MENUBUTTON )
     {
-        rStateSet.AddState( AccessibleStateType::FOCUSABLE );
-
-        if ( pButton->GetState() == TRISTATE_TRUE )
-            rStateSet.AddState( AccessibleStateType::CHECKED );
-
-        if ( pButton->IsPressed() )
-            rStateSet.AddState( AccessibleStateType::PRESSED );
-
-        // IA2 CWS: if the button has a popup menu, it should has the state EXPANDABLE
-        if( pButton->GetType() == WindowType::MENUBUTTON )
-        {
-            rStateSet.AddState( AccessibleStateType::EXPANDABLE );
-        }
-        if( pButton->GetStyle() & WB_DEFBUTTON )
-        {
-            rStateSet.AddState( AccessibleStateType::DEFAULT );
-        }
+        rStateSet.AddState( AccessibleStateType::EXPANDABLE );
+    }
+    if( pButton->GetStyle() & WB_DEFBUTTON )
+    {
+        rStateSet.AddState( AccessibleStateType::DEFAULT );
     }
 }
 
@@ -124,7 +113,7 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( VCLXAccessibleButton, VCLXAccessibleTextCompon
 
 OUString VCLXAccessibleButton::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleButton" );
+    return "com.sun.star.comp.toolkit.AccessibleButton";
 }
 
 
@@ -139,8 +128,6 @@ Sequence< OUString > VCLXAccessibleButton::getSupportedServiceNames()
 
 OUString VCLXAccessibleButton::getAccessibleName(  )
 {
-    OExternalLockGuard aGuard( this );
-
     OUString aName( VCLXAccessibleTextComponent::getAccessibleName() );
     sal_Int32 nLength = aName.getLength();
 
@@ -149,7 +136,7 @@ OUString VCLXAccessibleButton::getAccessibleName(  )
         if ( nLength == 3 )
         {
             // it's a browse button
-            aName = TK_RES_STRING( RID_STR_ACC_NAME_BROWSEBUTTON );
+            aName = AccResId( RID_STR_ACC_NAME_BROWSEBUTTON );
         }
         else
         {
@@ -187,7 +174,7 @@ sal_Bool VCLXAccessibleButton::doAccessibleAction ( sal_Int32 nIndex )
 {
     OExternalLockGuard aGuard( this );
 
-    if ( nIndex < 0 || nIndex >= getAccessibleActionCount() )
+    if ( nIndex != 0 )
         throw IndexOutOfBoundsException();
 
     VclPtr< PushButton > pButton = GetAs< PushButton >();
@@ -202,10 +189,10 @@ OUString VCLXAccessibleButton::getAccessibleActionDescription ( sal_Int32 nIndex
 {
     OExternalLockGuard aGuard( this );
 
-    if ( nIndex < 0 || nIndex >= getAccessibleActionCount() )
+    if ( nIndex != 0 )
         throw IndexOutOfBoundsException();
 
-    return OUString(RID_STR_ACC_ACTION_CLICK);
+    return RID_STR_ACC_ACTION_CLICK;
 }
 
 
@@ -213,7 +200,7 @@ Reference< XAccessibleKeyBinding > VCLXAccessibleButton::getAccessibleActionKeyB
 {
     OExternalLockGuard aGuard( this );
 
-    if ( nIndex < 0 || nIndex >= getAccessibleActionCount() )
+    if ( nIndex != 0 )
         throw IndexOutOfBoundsException();
 
     OAccessibleKeyBindingHelper* pKeyBindingHelper = new OAccessibleKeyBindingHelper();
@@ -258,7 +245,7 @@ Any VCLXAccessibleButton::getCurrentValue(  )
 
     VclPtr< PushButton > pButton = GetAs< PushButton >();
     if ( pButton )
-        aValue <<= (sal_Int32) pButton->IsPressed();
+        aValue <<= static_cast<sal_Int32>(pButton->IsPressed());
 
     return aValue;
 }
@@ -294,7 +281,7 @@ Any VCLXAccessibleButton::getMaximumValue(  )
     OExternalLockGuard aGuard( this );
 
     Any aValue;
-    aValue <<= (sal_Int32) 1;
+    aValue <<= sal_Int32(1);
 
     return aValue;
 }
@@ -305,7 +292,7 @@ Any VCLXAccessibleButton::getMinimumValue(  )
     OExternalLockGuard aGuard( this );
 
     Any aValue;
-    aValue <<= (sal_Int32) 0;
+    aValue <<= sal_Int32(0);
 
     return aValue;
 }

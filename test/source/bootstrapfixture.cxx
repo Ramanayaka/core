@@ -10,41 +10,35 @@
 #include <config_features.h>
 
 #include <test/bootstrapfixture.hxx>
-#include <test/setupvcl.hxx>
 #include <vcl/errinf.hxx>
-#include <rtl/strbuf.hxx>
-#include <rtl/bootstrap.hxx>
-#include <cppuhelper/bootstrap.hxx>
+#include <sal/log.hxx>
 #include <comphelper/processfactory.hxx>
 
-#include <com/sun/star/lang/Locale.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/ucb/XContentProvider.hpp>
 #include <com/sun/star/ucb/XUniversalContentBroker.hpp>
 
-#include <i18nlangtag/mslangid.hxx>
 #include <vcl/svapp.hxx>
-#include <tools/resmgr.hxx>
 #include <tools/link.hxx>
 #include <vcl/graphicfilter.hxx>
-#include <unotools/syslocaleoptions.hxx>
 #include <osl/file.hxx>
+#include <osl/process.h>
 #include <unotools/tempfile.hxx>
-
-#include <isheadless.hxx>
+#include <vcl/scheduler.hxx>
 
 #include <memory>
 #include <cstring>
+
+#include "setupvcl.hxx"
 
 using namespace ::com::sun::star;
 
 static void aBasicErrorFunc( const OUString &rErr, const OUString &rAction )
 {
-    OStringBuffer aErr( "Unexpected dialog: " );
-    aErr.append( OUStringToOString( rAction, RTL_TEXTENCODING_ASCII_US ) );
-    aErr.append( " Error: " );
-    aErr.append( OUStringToOString( rErr, RTL_TEXTENCODING_ASCII_US ) );
+    OString aErr = "Unexpected dialog: " +
+        OUStringToOString( rAction, RTL_TEXTENCODING_ASCII_US ) +
+        " Error: " +
+        OUStringToOString( rErr, RTL_TEXTENCODING_ASCII_US );
     CPPUNIT_ASSERT_MESSAGE( aErr.getStr(), false);
 }
 
@@ -61,7 +55,7 @@ test::BootstrapFixture::BootstrapFixture( bool bAssertOnDialog, bool bNeedUCB )
 extern "C"
 {
 
-void test_init_impl(bool bAssertOnDialog, bool bNeedUCB,
+static void test_init_impl(bool bAssertOnDialog, bool bNeedUCB,
         lang::XMultiServiceFactory * pSFactory)
 {
     if (bAssertOnDialog)
@@ -91,10 +85,16 @@ SAL_DLLPUBLIC_EXPORT void test_init(lang::XMultiServiceFactory *pFactory)
     try
     {
         ::comphelper::setProcessServiceFactory(pFactory);
-        test::setUpVcl();
+        test::setUpVcl(true); // hard-code python tests to headless
         test_init_impl(false, true, pFactory);
     }
     catch (...) { abort(); }
+}
+
+// this is called from pyuno
+SAL_DLLPUBLIC_EXPORT void test_deinit()
+{
+    DeInitVCL();
 }
 
 } // extern "C"
@@ -104,6 +104,12 @@ void test::BootstrapFixture::setUp()
     test::BootstrapFixtureBase::setUp();
 
     test_init_impl(m_bAssertOnDialog, m_bNeedUCB, m_xSFactory.get());
+
+#if OSL_DEBUG_LEVEL > 0
+    Scheduler::ProcessEventsToIdle();
+#endif
+
+    mxComponentContext.set(comphelper::getComponentContext(getMultiServiceFactory()));
 }
 
 test::BootstrapFixture::~BootstrapFixture()
@@ -117,7 +123,7 @@ OString loadFile(const OUString& rURL)
 {
     osl::File aFile(rURL);
     osl::FileBase::RC eStatus = aFile.open(osl_File_OpenFlag_Read);
-    CPPUNIT_ASSERT_EQUAL(eStatus, osl::FileBase::E_None);
+    CPPUNIT_ASSERT_EQUAL(osl::FileBase::E_None, eStatus);
     sal_uInt64 nSize;
     aFile.getSize(nSize);
     std::unique_ptr<char[]> aBytes(new char[nSize]);
@@ -132,7 +138,7 @@ OString loadFile(const OUString& rURL)
 }
 #endif
 
-void test::BootstrapFixture::validate(const OUString& rPath, test::ValidationFormat eFormat )
+void test::BootstrapFixture::validate(const OUString& rPath, test::ValidationFormat eFormat) const
 {
 #if HAVE_EXPORT_VALIDATION
     OUString var;
@@ -161,17 +167,28 @@ void test::BootstrapFixture::validate(const OUString& rPath, test::ValidationFor
     CPPUNIT_ASSERT_MESSAGE(
         OUString("empty get env var " + var).toUtf8().getStr(),
         !aValidator.isEmpty());
-    aValidator += " ";
+
+    if (eFormat == test::ODF)
+    {
+        // invoke without -e so that we know when something new is written
+        // in loext namespace that isn't yet in the custom schema
+        aValidator += " -M "
+            + m_directories.getPathFromSrc("/schema/libreoffice/OpenDocument-manifest-schema-v1.3+libreoffice.rng")
+            + " -D "
+            + m_directories.getPathFromSrc("/schema/libreoffice/OpenDocument-dsig-schema-v1.3+libreoffice.rng")
+            + " -O "
+            + m_directories.getPathFromSrc("/schema/libreoffice/OpenDocument-schema-v1.3+libreoffice.rng")
+            + " -m "
+            + m_directories.getPathFromSrc("/schema/mathml2/mathml2.xsd");
+    }
 
     utl::TempFile aOutput;
     aOutput.EnableKillingFile();
     OUString aOutputFile = aOutput.GetFileName();
-    OUString aCommand = aValidator + rPath + " > " + aOutputFile;
+    OUString aCommand = aValidator + " " + rPath + " > " + aOutputFile;
 
+    SAL_INFO("test", "BootstrapFixture::validate: executing '" << aCommand << "'");
     int returnValue = system(OUStringToOString(aCommand, RTL_TEXTENCODING_UTF8).getStr());
-    CPPUNIT_ASSERT_EQUAL_MESSAGE(
-        OUStringToOString("failed to execute: " + aCommand,
-            RTL_TEXTENCODING_UTF8).getStr(), 0, returnValue);
 
     OString aContentString = loadFile(aOutput.GetURL());
     OUString aContentOUString = OStringToOUString(aContentString, RTL_TEXTENCODING_UTF8);
@@ -189,8 +206,7 @@ void test::BootstrapFixture::validate(const OUString& rPath, test::ValidationFor
             sal_Int32 nStartOfNumber = nIndex + std::strlen("Grand total of errors in submitted package: ");
             OUString aNumber = aContentOUString.copy(nStartOfNumber);
             sal_Int32 nErrors = aNumber.toInt32();
-            OString aMsg("validation error in OOXML export: Errors: ");
-            aMsg = aMsg + OString::number(nErrors);
+            OString aMsg = "validation error in OOXML export: Errors: " + OString::number(nErrors);
             if(nErrors)
             {
                 SAL_WARN("test", aContentOUString);
@@ -206,6 +222,9 @@ void test::BootstrapFixture::validate(const OUString& rPath, test::ValidationFor
             CPPUNIT_FAIL(aContentString.getStr());
         }
     }
+    CPPUNIT_ASSERT_EQUAL_MESSAGE(
+        OUStringToOString("failed to execute: " + aCommand + "\n" + aContentOUString,
+            RTL_TEXTENCODING_UTF8).getStr(), 0, returnValue);
 #else
     (void)rPath;
     (void)eFormat;

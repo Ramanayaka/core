@@ -21,18 +21,17 @@
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonHairlinePrimitive2D.hxx>
 #include <drawinglayer/primitive2d/hiddengeometryprimitive2d.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         Primitive2DReference createHiddenGeometryPrimitives2D(
             const basegfx::B2DHomMatrix& rMatrix)
         {
-            const basegfx::B2DPolygon aUnitOutline(basegfx::tools::createUnitPolygon());
+            const basegfx::B2DPolygon& aUnitOutline(basegfx::utils::createUnitPolygon());
 
             return createHiddenGeometryPrimitives2D(
                 false/*bFilled*/,
@@ -64,7 +63,7 @@ namespace drawinglayer
             const basegfx::B2DRange& rRange,
             const basegfx::B2DHomMatrix& rMatrix)
         {
-            const basegfx::B2DPolyPolygon aOutline(basegfx::tools::createPolygonFromRect(rRange));
+            const basegfx::B2DPolyPolygon aOutline(basegfx::utils::createPolygonFromRect(rRange));
 
             return createHiddenGeometryPrimitives2D(
                 bFilled,
@@ -101,7 +100,7 @@ namespace drawinglayer
             return Primitive2DReference(
                 new HiddenGeometryPrimitive2D(Primitive2DContainer { xReference }));
         }
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

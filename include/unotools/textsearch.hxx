@@ -24,20 +24,14 @@
 #include <i18nlangtag/lang.h>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/lang/Locale.hpp>
-#include <com/sun/star/util/XTextSearch2.hpp>
+
+#include <ostream>
 
 class CharClass;
 
-namespace com {
-    namespace sun {
-        namespace star {
-            namespace util {
-                struct SearchResult;
-            }
-        }
-    }
-}
+namespace com::sun::star::lang { struct Locale; }
+namespace com::sun::star::util { class XTextSearch2; }
+namespace com::sun::star::util { struct SearchResult; }
 namespace i18nutil {
     struct SearchOptions;
     struct SearchOptions2;
@@ -93,19 +87,13 @@ public:
 
 private:
     OUString sSrchStr;            // the search string
-    OUString sReplaceStr;         // the replace string
 
     SearchType m_eSrchType;       // search normal/regular/LevDist
 
     sal_uInt32 m_cWildEscChar;      // wildcard escape character
 
-    bool m_bWordOnly   : 1;        // used by normal search
-    bool m_bSrchInSel  : 1;        // search only in the selection
     bool m_bCaseSense  : 1;
     bool m_bWildMatchSel : 1;       // wildcard pattern must match entire selection
-
-    // asian flags - used for the transliteration
-    TransliterationFlags nTransliterationFlags;
 
 public:
     SearchParam( const OUString &rText,
@@ -119,19 +107,40 @@ public:
     ~SearchParam();
 
     const OUString& GetSrchStr() const          { return sSrchStr; }
-    const OUString& GetReplaceStr() const       { return sReplaceStr; }
     SearchType      GetSrchType() const         { return m_eSrchType; }
 
     bool            IsCaseSensitive() const     { return m_bCaseSense; }
-    bool            IsSrchInSelection() const   { return m_bSrchInSel; }
-    bool            IsSrchWordOnly() const      { return m_bWordOnly; }
     bool            IsWildMatchSel() const      { return m_bWildMatchSel; }
 
     // signed return for API use
     sal_Int32       GetWildEscChar() const      { return static_cast<sal_Int32>(m_cWildEscChar); }
-
-    TransliterationFlags GetTransliterationFlags() const        { return nTransliterationFlags; }
 };
+
+// For use in SAL_DEBUG etc. Output format not guaranteed to be stable.
+template<typename charT, typename traits>
+inline std::basic_ostream<charT, traits> & operator <<(std::basic_ostream<charT, traits> & stream, const SearchParam::SearchType& eType)
+{
+    switch (eType)
+    {
+    case SearchParam::SearchType::Normal:
+        stream << "N";
+        break;
+    case SearchParam::SearchType::Regexp:
+        stream << "RE";
+        break;
+    case SearchParam::SearchType::Wildcard:
+        stream << "WC";
+        break;
+    case SearchParam::SearchType::Unknown:
+        stream << "UNK";
+        break;
+    default:
+        stream << static_cast<int>(eType) << '?';
+        break;
+    }
+
+    return stream;
+}
 
 //  Utility class for searching a substring in a string.
 //  The following metrics are supported
@@ -165,7 +174,7 @@ public:
     /* search in the (selected) text the search string:
         rScrTxt - the text, in which we search
         pStart  - start position for the search
-        pEnde   - end position for the search
+        pEnd    - end position for the search
 
         RETURN values   ==  true: something is found
                         - pStart start pos of the found text,
@@ -174,7 +183,7 @@ public:
                              positions. Is only filled with more positions
                              if the regular expression handles groups.
 
-                        == false: nothing found, pStart,pEnde unchanged.
+                        == false: nothing found, pStart, pEnd unchanged.
 
         Definitions: start pos always inclusive, end pos always exclusive!
                      The position must always in the right direction!
@@ -184,6 +193,13 @@ public:
     bool SearchForward( const OUString &rStr,
                         sal_Int32* pStart, sal_Int32* pEnd,
                         css::util::SearchResult* pRes = nullptr );
+    /**
+     * @brief searchForward Search forward beginning from the start to the end
+     *        of the given text
+     * @param rStr The text in which we search
+     * @return True if the search term is found in the text
+     */
+    bool searchForward( const OUString &rStr );
     bool SearchBackward( const OUString &rStr,
                         sal_Int32* pStart, sal_Int32* pEnd,
                         css::util::SearchResult* pRes = nullptr );
@@ -192,7 +208,7 @@ public:
                     const css::lang::Locale& rLocale );
 
     /* replace back references in the replace string by the sub expressions from the search result */
-    void ReplaceBackReferences( OUString& rReplaceStr, const OUString &rStr, const css::util::SearchResult& rResult );
+    void ReplaceBackReferences( OUString& rReplaceStr, const OUString &rStr, const css::util::SearchResult& rResult ) const;
 
     /** Upgrade SearchOptions to SearchOptions2 for places that don't handle
         SearchOptions2 yet. Better fix your module if you want to support

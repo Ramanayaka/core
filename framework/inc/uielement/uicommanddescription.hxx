@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_UICOMMANDDESCRIPTION_HXX
-#define INCLUDED_FRAMEWORK_INC_UIELEMENT_UICOMMANDDESCRIPTION_HXX
+#pragma once
 
 #include <unordered_map>
-#include <stdtypes.h>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/frame/XModuleManager2.hpp>
@@ -46,7 +44,7 @@ class UICommandDescription : private cppu::BaseMutex,
 
         virtual OUString SAL_CALL getImplementationName() override
         {
-            return OUString("com.sun.star.comp.framework.UICommandDescription");
+            return "com.sun.star.comp.framework.UICommandDescription";
         }
 
         virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -74,16 +72,14 @@ private:
 
 public:
         typedef std::unordered_map< OUString,
-                                    OUString,
-                                    OUStringHash > ModuleToCommandFileMap;
+                                    OUString > ModuleToCommandFileMap;
 
         typedef std::unordered_map< OUString,
-                                    css::uno::Reference< css::container::XNameAccess >,
-                                    OUStringHash > UICommandsHashMap;
+                                    css::uno::Reference< css::container::XNameAccess > > UICommandsHashMap;
 
     protected:
         UICommandDescription( const css::uno::Reference< css::uno::XComponentContext>& rxContext, bool  );
-        void impl_fillElements(const sal_Char* _pName);
+        void impl_fillElements(const char* _pName);
 
         OUString                                                  m_aPrivateResourceURL;
         css::uno::Reference< css::uno::XComponentContext >        m_xContext;
@@ -94,7 +90,5 @@ public:
 };
 
 } // namespace framework
-
-#endif // __FRAMEWORK_SERVICES_UICOMMANDDESCRPTION_HXX_
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

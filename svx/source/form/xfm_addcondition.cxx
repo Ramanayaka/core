@@ -18,18 +18,16 @@
  */
 
 
-#include "xfm_addcondition.hxx"
+#include <xfm_addcondition.hxx>
 
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <comphelper/processfactory.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include "datanavi.hxx"
-#include "fmservs.hxx"
-#include <vcl/msgbox.hxx>
-
+#include <vcl/svapp.hxx>
+#include <datanavi.hxx>
+#include <fmservs.hxx>
 
 namespace svxform
 {
-
 
 #define PROPERTY_ID_BINDING             5724
 #define PROPERTY_ID_FORM_MODEL          5725
@@ -45,21 +43,21 @@ namespace svxform
     //= OAddConditionDialog
 
 
-    Reference< XInterface > SAL_CALL OAddConditionDialog_Create( const Reference< XMultiServiceFactory > & _rxORB )
+    Reference< XInterface > OAddConditionDialog_Create( const Reference< XMultiServiceFactory > & _rxORB )
     {
         return OAddConditionDialog::Create( _rxORB );
     }
 
 
-    Sequence< OUString > SAL_CALL OAddConditionDialog_GetSupportedServiceNames()
+    Sequence< OUString > OAddConditionDialog_GetSupportedServiceNames()
     {
         return { "com.sun.star.xforms.ui.dialogs.AddCondition" };
     }
 
 
-    OUString SAL_CALL OAddConditionDialog_GetImplementationName()
+    OUString OAddConditionDialog_GetImplementationName()
     {
-        return OUString("org.openoffice.comp.svx.OAddConditionDialog");
+        return "org.openoffice.comp.svx.OAddConditionDialog";
     }
 
     OAddConditionDialog::OAddConditionDialog( const Reference< XComponentContext >& _rxORB )
@@ -105,7 +103,7 @@ namespace svxform
     }
 
 
-    Reference< XInterface > SAL_CALL OAddConditionDialog::Create( const Reference< XMultiServiceFactory >& _rxFactory )
+    Reference< XInterface > OAddConditionDialog::Create( const Reference< XMultiServiceFactory >& _rxFactory )
     {
         return *( new OAddConditionDialog( comphelper::getComponentContext(_rxFactory) ) );
     }
@@ -128,12 +126,10 @@ namespace svxform
         return createPropertySetInfo( getInfoHelper() );
     }
 
-
     ::cppu::IPropertyArrayHelper& OAddConditionDialog::getInfoHelper()
     {
         return *getArrayHelper();
     }
-
 
     ::cppu::IPropertyArrayHelper* OAddConditionDialog::createArrayHelper( ) const
     {
@@ -142,25 +138,20 @@ namespace svxform
         return new ::cppu::OPropertyArrayHelper( aProperties );
     }
 
-
-    VclPtr<Dialog> OAddConditionDialog::createDialog(vcl::Window* _pParent)
+    std::unique_ptr<weld::DialogController> OAddConditionDialog::createDialog(const css::uno::Reference<css::awt::XWindow>& rParent)
     {
         if ( !m_xBinding.is() || m_sFacetName.isEmpty() )
             throw RuntimeException( OUString(), *this );
 
-        return VclPtr<AddConditionDialog>::Create( _pParent, m_sFacetName, m_xBinding );
+        return std::make_unique<AddConditionDialog>(Application::GetFrameWeld(rParent), m_sFacetName, m_xBinding);
     }
-
 
     void OAddConditionDialog::executedDialog( sal_Int16 _nExecutionResult )
     {
         OAddConditionDialogBase::executedDialog( _nExecutionResult );
         if ( _nExecutionResult == RET_OK )
-            m_sConditionValue = static_cast< AddConditionDialog* >( m_pDialog.get() )->GetCondition();
+            m_sConditionValue = static_cast<AddConditionDialog*>(m_xDialog.get())->GetCondition();
     }
-
-
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

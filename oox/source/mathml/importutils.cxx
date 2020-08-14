@@ -7,27 +7,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "oox/mathml/importutils.hxx"
+#include <oox/mathml/importutils.hxx>
 
 #include <assert.h>
 
 #include <com/sun/star/xml/FastAttribute.hpp>
 #include <com/sun/star/xml/sax/XFastAttributeList.hpp>
-#include <oox/token/namespacemap.hxx>
 #include <oox/token/tokenmap.hxx>
 #include <oox/token/tokens.hxx>
 #include <oox/token/namespaces.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 #define OPENING( token ) XML_STREAM_OPENING( token )
 #define CLOSING( token ) XML_STREAM_CLOSING( token )
 
 using namespace com::sun::star;
 
-namespace oox
-{
-
-namespace formulaimport
+namespace oox::formulaimport
 {
 
 namespace
@@ -43,16 +40,12 @@ public:
 
 AttributeListBuilder::AttributeListBuilder( const uno::Reference< xml::sax::XFastAttributeList >& a )
 {
-    if( a.get() == nullptr )
+    if( !a )
         return;
-    uno::Sequence< xml::FastAttribute > aFastAttrSeq = a->getFastAttributes();
-    const xml::FastAttribute* pFastAttr = aFastAttrSeq.getConstArray();
-    sal_Int32 nFastAttrLength = aFastAttrSeq.getLength();
-    for( int i = 0;
-         i < nFastAttrLength;
-         ++i )
+    const uno::Sequence< xml::FastAttribute > aFastAttrSeq = a->getFastAttributes();
+    for( const xml::FastAttribute& rFastAttr : aFastAttrSeq )
     {
-        attrs[ pFastAttr[ i ].Token ] = pFastAttr[ i ].Value;
+        attrs[ rFastAttr.Token ] = rFastAttr.Value;
     }
 }
 
@@ -320,17 +313,17 @@ void XmlStream::handleUnexpectedTag()
 
 void XmlStreamBuilder::appendOpeningTag( int token, const uno::Reference< xml::sax::XFastAttributeList >& attrs )
 {
-    tags.push_back( Tag( OPENING( token ), attrs ));
+    tags.emplace_back( OPENING( token ), attrs );
 }
 
 void XmlStreamBuilder::appendOpeningTag( int token, const AttributeList& attrs )
 {
-    tags.push_back( Tag( OPENING( token ), attrs ));
+    tags.emplace_back( OPENING( token ), attrs );
 }
 
 void XmlStreamBuilder::appendClosingTag( int token )
 {
-    tags.push_back( Tag( CLOSING( token )));
+    tags.emplace_back( CLOSING( token ));
 }
 
 void XmlStreamBuilder::appendCharacters( const OUString& chars )
@@ -339,7 +332,6 @@ void XmlStreamBuilder::appendCharacters( const OUString& chars )
     tags.back().text += chars;
 }
 
-} // namespace
 } // namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

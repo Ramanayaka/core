@@ -19,8 +19,8 @@
 
 #include <svl/urlbmk.hxx>
 
-#include "lnktrans.hxx"
-#include "scmod.hxx"
+#include <lnktrans.hxx>
+#include <scmod.hxx>
 
 using namespace com::sun::star;
 
@@ -70,7 +70,7 @@ void ScLinkTransferObj::DragFinished( sal_Int8 nDropAction )
     ScModule* pScMod = SC_MOD();
     pScMod->ResetDragObject();
 
-    TransferableHelper::DragFinished( nDropAction );
+    TransferDataContainer::DragFinished( nDropAction );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

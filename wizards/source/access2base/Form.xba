@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE script:module PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "module.dtd">
-<script:module xmlns:script="http://openoffice.org/2000/script" script:name="Form" script:language="StarBasic">REM =======================================================================================================================
+<script:module xmlns:script="http://openoffice.org/2000/script" script:name="Form" script:language="StarBasic">
+REM =======================================================================================================================
 REM ===					The Access2Base library is a part of the LibreOffice project.									===
 REM ===					Full documentation is available on http://www.access2base.com									===
 REM =======================================================================================================================
@@ -15,15 +16,20 @@ REM --- CLASS ROOT FIELDS 								        														---
 REM -----------------------------------------------------------------------------------------------------------------------
 
 Private	_Type					As String				&apos;	Must be FORM
+Private _This					As Object				&apos;	Workaround for absence of This builtin function
+Private _Parent					As Object
 Private	_Shortcut				As String
 Private	_Name					As String
 Private _DocEntry				As Integer				&apos;	Doc- and DbContainer entries in Root structure
 Private _DbEntry				As Integer
+Private _MainForms				As Variant
+Private _PersistentName			As String
 Private	_IsLoaded				As Boolean
 Private	_OpenArgs				As Variant
 Private _OrderBy				As String
 Public	Component				As Object				&apos;	com.sun.star.text.TextDocument
 Public	ContainerWindow			As Object				&apos;	(No name)
+Public	FormsCollection			As Object				&apos;	com.sun.star.form.OFormsCollection
 Public	DatabaseForm			As Object				&apos;	com.sun.star.form.component.DataForm and com.sun.star.sdb.ResultSet (a.o.)
 
 REM -----------------------------------------------------------------------------------------------------------------------
@@ -31,15 +37,20 @@ REM --- CONSTRUCTORS / DESTRUCTORS						        														---
 REM -----------------------------------------------------------------------------------------------------------------------
 Private Sub Class_Initialize()
 	_Type = OBJFORM
+	Set _This = Nothing
+	Set _Parent = Nothing
 	_Shortcut = &quot;&quot;
 	_Name = &quot;&quot;
 	_DocEntry = -1
 	_DbEntry = -1
+	_MainForms = Array()
+	_PersistentName = &quot;&quot;
 	_IsLoaded = False
 	_OpenArgs = &quot;&quot;
 	_OrderBy = &quot;&quot;
 	Set Component = Nothing
 	Set ContainerWindow = Nothing
+	Set FormsCollection = Nothing
 	Set DatabaseForm = Nothing
 End Sub		&apos;	Constructor
 
@@ -155,28 +166,23 @@ Function IsLoaded(ByVal Optional pbForce As Boolean) As Boolean
 	End If
 	IsLoaded = False
 	
-Dim oDoc As Object, oDatabase As Object, oEnum As Object, oDesk As Object, oComp As Object, bFound As Boolean
+Dim oDoc As Object, oDatabase As Object, oEnum As Object, oDesk As Object, oComp As Object, vPersistent As Variant
 Dim i As Integer
 	Set oDoc = _A2B_.CurrentDocument()
 	Select Case oDoc.DbConnect
 		Case DBCONNECTBASE
 			Set oDesk = CreateUnoService(&quot;com.sun.star.frame.Desktop&quot;)
 			Set oEnum = oDesk.Components().createEnumeration
-			bFound = False
-			Do While oEnum.hasMoreElements	And Not bFound			&apos;	Search in all open components if one corresponds with current form
+			Do While oEnum.hasMoreElements			&apos;	Search in all open components if one corresponds with current form
 				oComp = oEnum.nextElement
-				If HasUnoInterfaces(oComp, &quot;com.sun.star.frame.XModule&quot;) Then
+				If _hasUNOProperty(oComp, &quot;Identifier&quot;) Then
 					If oComp.Identifier = &quot;com.sun.star.sdb.FormDesign&quot; Then
-						For i = 0 To UBound(oComp.Args())
-							If oComp.Args(i).Name = &quot;DocumentTitle&quot; Then
-								bFound = ( oComp.Args(i).Value = _Name )
-								If bFound Then
-									_IsLoaded = True
-									Set Component = oComp
-									Exit For
-								End If
-							End If
-						Next i
+						vPersistent = Split(oComp.StringValue, &quot;/&quot;)
+						If vPersistent(UBound(vPersistent) - 1) = _PersistentName Then
+							_IsLoaded = True
+							Set Component = oComp
+							Exit Do
+						End If
 					End If
 				End If
 			Loop
@@ -225,6 +231,7 @@ End Property	&apos;	OnApproveParameter (get)
 
 Property Let OnApproveParameter(ByVal pvValue As Variant)
 	Call _PropertySet(&quot;OnApproveParameter&quot;, pvValue)
+
 End Property	&apos;	OnApproveParameter (set)
 
 REM -----------------------------------------------------------------------------------------------------------------------
@@ -377,7 +384,7 @@ Dim ogGroup As Object
 	If IsMissing(pvGroupName) Then Call _TraceArguments()
 	If _ErrorHandler() Then On Local Error Goto Error_Function
 	
-	Set ogGroup = _OptionGroup(pvGroupName, CTLPARENTISFORM, Component, DatabaseForm)
+	Set ogGroup = _OptionGroup(pvGroupName, CTLPARENTISFORM, Component, FormsCollection)
 	If Not IsNull(ogGroup) Then
 		ogGroup._DocEntry = _DocEntry
 		ogGroup._DbEntry = _DbEntry
@@ -393,6 +400,11 @@ Error_Function:
 End Function		&apos;	OptionGroup	V1.1.0
 
 REM -----------------------------------------------------------------------------------------------------------------------
+Public Function Parent() As Object
+	Parent = _Parent
+End Function		&apos;	Parent (get)	V6.4.0
+
+REM -----------------------------------------------------------------------------------------------------------------------
 Public Function Properties(ByVal Optional pvIndex As Variant) As Variant
 &apos;	Return
 &apos;		a Collection object if pvIndex absent
@@ -402,9 +414,9 @@ Dim vProperty As Variant, vPropertiesList() As Variant, sObject As String
 	vPropertiesList = _PropertiesList()
 	sObject = Utils._PCase(_Type)
 	If IsMissing(pvIndex) Then
-		vProperty = PropertiesGet._Properties(sObject, _Name, vPropertiesList)
+		vProperty = PropertiesGet._Properties(sObject, _This, vPropertiesList)
 	Else
-		vProperty = PropertiesGet._Properties(sObject, _Name, vPropertiesList, pvIndex)
+		vProperty = PropertiesGet._Properties(sObject, _This, vPropertiesList, pvIndex)
 		vProperty._Value = _PropertyGet(vPropertiesList(pvIndex))
 	End If
 	
@@ -459,7 +471,7 @@ Dim oDatabase As Object, oController As Object
 	Set oDatabase = Application._CurrentDb()
 	If oDatabase._DbConnect &lt;&gt; DBCONNECTBASE Then Goto Error_NotApplicable
 
-	Set oController = oDatabase.Document.getFormDocuments.getByName(_Name)
+	Set oController = oDatabase.Document.getFormDocuments.getByHierarchicalName(_Name)
 	oController.close()
 	Dispose()
 	mClose = True
@@ -473,7 +485,7 @@ Error_NotApplicable:
 Error_Function:
 	TraceError(TRACEABORT, Err, &quot;Form.Close&quot;, Erl)
 	GoTo Exit_Function
-End Function
+End Function	&apos;	Close
 
 REM -----------------------------------------------------------------------------------------------------------------------
 Public Function Controls(Optional ByVal pvIndex As Variant) As Variant
@@ -482,22 +494,27 @@ Public Function Controls(Optional ByVal pvIndex As Variant) As Variant
 If _ErrorHandler() Then On Local Error Goto Error_Function
 	Utils._SetCalledSub(&quot;Form.Controls&quot;)
 
-Dim ocControl As Variant, sParentShortcut As String, iControlCount As Integer
+Dim ocControl As Variant, iControlCount As Integer
 Dim oCounter As Variant, sControls() As Variant, i As Integer, bFound As Boolean, sIndex As String
-Dim j As Integer
+Dim j As Integer, iCount As Integer, sName As String, iAddCount As Integer
+Dim oDatabaseForm As Object, iCtlCount As Integer
 
 	Set ocControl = Nothing
 	If Not IsLoaded Then Goto Trace_Error_NotOpen
-	Set ocControl = New Control
-	ocControl._ParentType = CTLPARENTISFORM
-	sParentShortcut = _Shortcut
-	iControlCount = DatabaseForm.getCount()
+	&apos;Count number of controls thru the forms collection
+	iControlCount = 0
+
+	iCount = FormsCollection.Count
+	For i = 0 To iCount - 1
+		If i = 0 Then Set oDatabaseForm = DatabaseForm Else Set oDatabaseForm = FormsCollection.getByIndex(i)
+		If Not IsNull(oDatabaseForm) Then iControlCount = iControlCount + oDatabaseForm.getCount()
+	Next i
 	
 	If IsMissing(pvIndex) Then					&apos;	No argument, return Collection pseudo-object
 		Set oCounter = New Collect
+		Set oCounter._This = oCounter
 		oCounter._CollType = COLLCONTROLS
-		oCounter._ParentType = OBJFORM
-		oCounter._ParentName = _Name
+		Set oCounter._Parent = _This
 		oCounter._Count = iControlCount
 		Set Controls = oCounter
 		Goto Exit_Function
@@ -507,36 +524,64 @@ Dim j As Integer
 				
 	&apos;	Start building the ocControl object
 	&apos;	Determine exact name
-	sControls() = DatabaseForm.getElementNames()
-	
+
+	sName = &quot;&quot;
 	Select Case VarType(pvIndex)
 		Case vbInteger, vbLong, vbSingle, vbDouble, vbCurrency, vbBigint, vbDecimal
 			If pvIndex &lt; 0 Or pvIndex &gt; iControlCount - 1 Then Goto Trace_Error_Index
-			ocControl._Name = sControls(pvIndex)
-		Case vbString			&apos;	Check control name validity (non case sensitive)
-			bFound = False
-			sIndex = UCase(Utils._Trim(pvIndex))
-			For i = 0 To iControlCount - 1
-				If UCase(sControls(i)) = sIndex Then
-					bFound = True
-					Exit For
+			iAddCount = 0
+			For i = 0 To iCount - 1
+				If i = 0 Then Set oDatabaseForm = DatabaseForm Else Set oDatabaseForm = FormsCollection.getByIndex(i)
+				If Not IsNull(oDatabaseForm) Then
+					iCtlCount = oDatabaseForm.getCount()
+					If pvIndex &gt;= iAddCount And pvIndex &lt;= iAddcount + iCtlCount - 1 Then
+						sName = oDatabaseForm.ElementNames(pvIndex - iAddCount)
+						Exit For
+					End If
+					iAddCount = iAddcount +iCtlCount
 				End If
 			Next i
-			If bFound Then ocControl._Name = sControls(i) Else Goto Trace_NotFound
+		Case vbString			&apos;	Check control name validity (non case sensitive)
+			sIndex = UCase(Utils._Trim(pvIndex))
+			bFound = False
+			For i = 0 To iCount - 1
+				If i = 0 Then Set oDatabaseForm = DatabaseForm Else Set oDatabaseForm = FormsCollection.getByIndex(i)
+				If Not IsNull(oDatabaseForm) Then
+					sControls() = oDatabaseForm.getElementNames()
+					For j = 0 To UBound(sControls)
+						If UCase(sControls(j)) = sIndex Then
+							sName = sControls(j)
+							bFound = True
+							Exit For
+						End If
+					Next j
+					If bFound Then Exit For
+				End If
+			Next i
+			If Not bFound Then Goto Trace_NotFound
 	End Select
 
-	ocControl._Shortcut = sParentShortcut &amp; &quot;!&quot; &amp; Utils._Surround(ocControl._Name)
-	Set ocControl.ControlModel = DatabaseForm.getByName(ocControl._Name)
-	ocControl._ImplementationName = ocControl.ControlModel.getImplementationName()
-	ocControl._FormComponent = Component
-	If Utils._hasUNOProperty(ocControl.ControlModel, &quot;ClassId&quot;) Then ocControl._ClassId = ocControl.ControlModel.ClassId
-	If ocControl._ClassId &gt; 0 And ocControl._ClassId &lt;&gt; acHiddenControl Then
-		Set ocControl.ControlView = Component.CurrentController.getControl(ocControl.ControlModel)
-	End If
+	&apos;Initialize a new Control object
+	Set ocControl = New Control
+	With ocControl
+		Set ._This = ocControl
+		Set ._Parent = _This
+		._ParentType = CTLPARENTISFORM
+		._Name = sName
+		._Shortcut = _Shortcut &amp; &quot;!&quot; &amp; Utils._Surround(sName)
+		If IsNull(oDatabaseForm) Then ._MainForm = &quot;&quot; Else ._MainForm = oDatabaseForm.Name
+		Set .ControlModel = oDatabaseForm.getByName(sName)
+		._ImplementationName = .ControlModel.getImplementationName()
+		._FormComponent = Component
+		If Utils._hasUNOProperty(.ControlModel, &quot;ClassId&quot;) Then ._ClassId = .ControlModel.ClassId
+		If ._ClassId &gt; 0 And ._ClassId &lt;&gt; acHiddenControl Then
+			Set .ControlView = Component.CurrentController.getControl(.ControlModel)
+		End If
 
-	ocControl._Initialize()
-	ocControl._DocEntry = _DocEntry
-	ocControl._DbEntry = _DbEntry
+		._Initialize()
+		._DocEntry = _DocEntry
+		._DbEntry = _DbEntry
+	End With
 	Set Controls = ocControl
 	
 Exit_Function:
@@ -602,7 +647,6 @@ Public Function Move(	  ByVal Optional pvLeft As Variant _
 						) As Variant
 &apos;	Execute Move method
 	Utils._SetCalledSub(&quot;Form.Move&quot;)
-	If IsMissing(pvLeft) Then Call _TraceArguments()
 	If _ErrorHandler() Then On Local Error Goto Error_Function
 	Move = False
 Dim iArgNr As Integer
@@ -610,7 +654,7 @@ Dim iArgNr As Integer
 		Case UCase(&quot;Move&quot;)				:	iArgNr = 1
 		Case UCase(&quot;Form.Move&quot;)			:	iArgNr = 0
 	End Select
-	If IsMissing(pvLeft) Then Call _TraceArguments()
+	If IsMissing(pvLeft) Then pvLeft = -1
 	If IsMissing(pvTop) Then pvTop = -1
 	If IsMissing(pvWidth) Then pvWidth = -1
 	If IsMissing(pvHeight) Then pvHeight = -1
@@ -736,6 +780,7 @@ REM ----------------------------------------------------------------------------
 REM --- PRIVATE FUNCTIONS 								        														---
 REM -----------------------------------------------------------------------------------------------------------------------
 
+REM -----------------------------------------------------------------------------------------------------------------------
 Private Function _GetListener(ByVal psProperty As String) As String
 &apos;	Return the X...Listener corresponding with the property in argument
 
@@ -766,29 +811,30 @@ REM ----------------------------------------------------------------------------
 Public Sub _Initialize(psName As String)
 &apos;	Set pointers to UNO objects
 
-Dim oDoc As Object, oFormsCollection As Object, oDatabase As Object
+Dim oDoc As Object, oDatabase As Object
 	If _ErrorHandler() Then On Local Error Goto Trace_Error
 	_Name = psName
 	_Shortcut = &quot;Forms!&quot; &amp; Utils._Surround(psName)
+	Set oDoc = _A2B_.CurrentDocument()
+	If oDoc.DbConnect = DBCONNECTBASE Then _PersistentName = oDoc.Document.getFormDocuments().getByHierarchicalName(psName).PersistentName
 	If IsLoaded Then
-		Set oDoc = _A2B_.CurrentDocument()
 		Select Case oDoc.DbConnect
 			Case DBCONNECTBASE
 				If Not IsNull(Component.CurrentController) Then		&apos;	A form opened then closed afterwards keeps a Component attribute
 					Set ContainerWindow = Component.CurrentController.Frame.ContainerWindow
-					Set oFormsCollection = Component.getDrawPage.Forms
-					If oFormsCollection.hasByName(&quot;MainForm&quot;) Then
-						Set DatabaseForm = oFormsCollection.getByName(&quot;MainForm&quot;)
-					ElseIf oFormsCollection.hasByName(&quot;Form&quot;) Then
-						Set DatabaseForm = oFormsCollection.getByName(&quot;Form&quot;)
-					ElseIf oFormsCollection.hasByName(_Name) Then
-						Set DatabaseForm = oFormsCollection.getByName(_Name)
+					Set FormsCollection = Component.getDrawPage.Forms
+					If FormsCollection.Count = 0 Then
+						Set DatabaseForm = Nothing
 					Else
-						Goto Trace_Internal_Error
+						&apos;Only first member of the collection can be reached with A2B
+						&apos;Compliant with MSAccess which has 1 datasource by form, while LO might have many
+						_MainForms = FormsCollection.ElementNames()
+						Set DatabaseForm = FormsCollection.getByIndex(0)
 					End If
 				End If
 			Case DBCONNECTFORM
 				Set ContainerWindow = oDoc.Document.CurrentController.Frame.ContainerWindow
+				Set FormsCollection = oDoc.Document.getDrawPage.Forms
 				Set oDatabase = Application._CurrentDb(_DocEntry, _DbEntry)
 				With oDatabase
 					Set DatabaseForm = .Form
@@ -801,7 +847,7 @@ Dim oDoc As Object, oFormsCollection As Object, oDatabase As Object
 					End If
 				End With
 		End Select
-		_OrderBy = DatabaseForm.Order
+		If IsNull(DatabaseForm) Then _OrderBy = &quot;&quot; Else _OrderBy = DatabaseForm.Order
 	Else
 		Set Component = Nothing
 		Set ContainerWindow = Nothing
@@ -821,7 +867,7 @@ End Sub			&apos;	_Initialize		V1.1.0
 REM -----------------------------------------------------------------------------------------------------------------------
 Private Function _PropertiesList() As Variant
 
-	If IsLoaded Then
+	If _IsLoaded Then
 		_PropertiesList =  Array(&quot;AllowAdditions&quot;, &quot;AllowDeletions&quot;, &quot;AllowEdits&quot;, &quot;Bookmark&quot; _
 										, &quot;Caption&quot;, &quot;CurrentRecord&quot;, &quot;Filter&quot;, &quot;FilterOn&quot;, &quot;Height&quot;, &quot;IsLoaded&quot; _
 										, &quot;Name&quot;, &quot;ObjectType&quot;, &quot;OnApproveCursorMove&quot;, &quot;OnApproveParameter&quot; _
@@ -857,17 +903,21 @@ Dim i As Integer, oObject As Object
 
 	Select Case UCase(psProperty)
 		Case UCase(&quot;AllowAdditions&quot;)
-			_PropertyGet = DatabaseForm.AllowInserts
+			If IsNull(DatabaseForm) Then _PropertyGet = False Else _PropertyGet = DatabaseForm.AllowInserts
 		Case UCase(&quot;AllowDeletions&quot;)
-			_PropertyGet = DatabaseForm.AllowDeletes
+			If IsNull(DatabaseForm) Then _PropertyGet = False Else _PropertyGet = DatabaseForm.AllowDeletes
 		Case UCase(&quot;AllowEdits&quot;)
-			_PropertyGet = DatabaseForm.AllowUpdates
+			If IsNull(DatabaseForm) Then _PropertyGet = False Else _PropertyGet = DatabaseForm.AllowUpdates
 		Case UCase(&quot;Bookmark&quot;)
-			On Local Error Resume Next			&apos;	Disable error handler because bookmarking does not always react well in events ...
-			If DatabaseForm.IsBookmarkable Then vBookmark = DatabaseForm.getBookmark() Else vBookmark = Nothing
-			If _ErrorHandler() Then On Local Error Goto Error_Function Else On Local Error Goto 0
-			If IsNull(vBookmark) Then Goto Trace_Error
-			_PropertyGet = vBookmark
+			If IsNull(DatabaseForm) Then
+				_PropertyGet = 0
+			Else
+				On Local Error Resume Next			&apos;	Disable error handler because bookmarking does not always react well in events ...
+				If DatabaseForm.IsBookmarkable Then vBookmark = DatabaseForm.getBookmark() Else vBookmark = Nothing
+				If _ErrorHandler() Then On Local Error Goto Error_Function Else On Local Error Goto 0
+				If IsNull(vBookmark) Then Goto Trace_Error
+				_PropertyGet = vBookmark
+			End If
 		Case UCase(&quot;Caption&quot;)
 			Set odatabase = Application._CurrentDb(_DocEntry, _DbEntry)
 			Select Case oDatabase._DbConnect
@@ -875,11 +925,11 @@ Dim i As Integer, oObject As Object
 				Case DBCONNECTBASE		:	_PropertyGet = Component.CurrentController.Frame.Title
 			End Select
 		Case UCase(&quot;CurrentRecord&quot;)
-			_PropertyGet = DatabaseForm.Row
+			If IsNull(DatabaseForm) Then _PropertyGet = 0 Else _PropertyGet = DatabaseForm.Row
 		Case UCase(&quot;Filter&quot;)
-			_PropertyGet = DatabaseForm.Filter
+			If IsNull(DatabaseForm) Then _PropertyGet = &quot;&quot; Else _PropertyGet = DatabaseForm.Filter
 		Case UCase(&quot;FilterOn&quot;)
-			_PropertyGet = DatabaseForm.ApplyFilter
+			If IsNull(DatabaseForm) Then _PropertyGet = False Else _PropertyGet = DatabaseForm.ApplyFilter
 		Case UCase(&quot;Height&quot;)
 			_PropertyGet = ContainerWindow.getPosSize().Height
 		Case UCase(&quot;IsLoaded&quot;)		&apos;	Only for indirect access from property object
@@ -892,17 +942,19 @@ Dim i As Integer, oObject As Object
 					, UCase(&quot;OnApproveSubmit&quot;), UCase(&quot;OnConfirmDelete&quot;), UCase(&quot;OnCursorMoved&quot;), UCase(&quot;OnErrorOccurred&quot;) _
 					, UCase(&quot;OnLoaded&quot;), UCase(&quot;OnReloaded&quot;), UCase(&quot;OnReloading&quot;), UCase(&quot;OnResetted&quot;), UCase(&quot;OnRowChanged&quot;) _
 					, UCase(&quot;OnUnloaded&quot;), UCase(&quot;OnUnloading&quot;)
-			_PropertyGet = Utils._GetEventScriptCode(DatabaseForm, psProperty, _Name, True)
+			If IsNull(DatabaseForm) Then _PropertyGet = &quot;&quot; Else _PropertyGet = Utils._GetEventScriptCode(DatabaseForm, psProperty, _Name, True)
 		Case UCase(&quot;OpenArgs&quot;)
 			_PropertyGet = _OpenArgs
 		Case UCase(&quot;OrderBy&quot;)
 			_PropertyGet = _OrderBy
 		Case UCase(&quot;OrderByOn&quot;)
-			If DatabaseForm.Order = &quot;&quot; Then _PropertyGet = False Else _PropertyGet = True
+			If IsNull(DatabaseForm) Then _PropertyGet = False Else _PropertyGet = ( DatabaseForm.Order &lt;&gt; &quot;&quot; )
 		Case UCase(&quot;Recordset&quot;)
+			If IsNull(DatabaseForm) Then Goto Trace_Error
 			If DatabaseForm.Command = &quot;&quot; Then Goto Trace_Error		&apos;	No underlying data ??
 			Set oObject = New Recordset
 			With DatabaseForm
+				oObject._This = oObject
 				oObject._CommandType = .CommandType
 				oObject._Command = .Command
 				oObject._ParentName = _Name
@@ -923,7 +975,7 @@ Dim i As Integer, oObject As Object
 			If Not ( oObject._BOF And oObject._EOF ) Then oObject.MoveFirst()		&apos;	Do nothing if resultset empty
 			Set _PropertyGet = oObject
 		Case UCase(&quot;RecordSource&quot;)
-			_PropertyGet = DatabaseForm.Command
+			If IsNull(DatabaseForm) Then _PropertyGet = &quot;&quot; Else _PropertyGet = DatabaseForm.Command
 		Case UCase(&quot;Visible&quot;)
 			_PropertyGet = ContainerWindow.IsVisible()
 		Case UCase(&quot;Width&quot;)
@@ -966,19 +1018,23 @@ Dim oDatabase As Object
 	Select Case UCase(psProperty)
 		Case UCase(&quot;AllowAdditions&quot;)
 			If Not Utils._CheckArgument(pvValue, iArgNr, vbBoolean, , False) Then Goto Trace_Error_Value
+			If IsNull(DatabaseForm) Then Goto Trace_Error
 			DatabaseForm.AllowInserts = pvValue
 			DatabaseForm.reload()
 		Case UCase(&quot;AllowDeletions&quot;)
 			If Not Utils._CheckArgument(pvValue,iArgNr, vbBoolean, , False) Then Goto Trace_Error_Value
+			If IsNull(DatabaseForm) Then Goto Trace_Error
 			DatabaseForm.AllowDeletes = pvValue
 			DatabaseForm.reload()
 		Case UCase(&quot;AllowEdits&quot;)
 			If Not Utils._CheckArgument(pvValue, iArgNr, vbBoolean, , False) Then Goto Trace_Error_Value
+			If IsNull(DatabaseForm) Then Goto Trace_Error
 			DatabaseForm.AllowUpdates = pvValue
 			DatabaseForm.reload()
 		Case UCase(&quot;Bookmark&quot;)
 			If Not Utils._CheckArgument(pvValue, iArgNr, Utils._AddNumeric(vbObject), , False) Then Goto Trace_Error_Value
 			If IsNull(pvValue) Then Goto Trace_Error_Value
+			If IsNull(DatabaseForm) Then Goto Trace_Error
 			DatabaseForm.MoveToBookmark(pvValue)
 		Case UCase(&quot;Caption&quot;)
 			If Not Utils._CheckArgument(pvValue, iArgNr, vbString, , False) Then Goto Trace_Error_Value
@@ -990,12 +1046,15 @@ Dim oDatabase As Object
 		Case UCase(&quot;CurrentRecord&quot;)
 			If Not Utils._CheckArgument(pvValue, iArgNr, Utils._AddNumeric(), , False) Then Goto Trace_Error_Value
 			If pvValue &lt; 1 Then Goto Trace_Error_Value
+			If IsNull(DatabaseForm) Then Goto Trace_Error
 			DatabaseForm.absolute(pvValue)
 		Case UCase(&quot;Filter&quot;)
 			If Not Utils._CheckArgument(pvValue, iArgNr, vbString, , False) Then Goto Trace_Error_Value
+			If IsNull(DatabaseForm) Then Goto Trace_Error
 			DatabaseForm.Filter = Application._CurrentDb(_DocEntry, _DbEntry)._ReplaceSquareBrackets(pvValue)
 		Case UCase(&quot;FilterOn&quot;)
 			If Not Utils._CheckArgument(pvValue, iArgNr, vbBoolean, , False) Then Goto Trace_Error_Value
+			If IsNull(DatabaseForm) Then Goto Trace_Error
 			DatabaseForm.ApplyFilter = pvValue
 			DatabaseForm.reload()
 		Case UCase(&quot;Height&quot;)
@@ -1010,6 +1069,7 @@ Dim oDatabase As Object
 					, UCase(&quot;OnLoaded&quot;), UCase(&quot;OnReloaded&quot;), UCase(&quot;OnReloading&quot;), UCase(&quot;OnResetted&quot;), UCase(&quot;OnRowChanged&quot;) _
 					, UCase(&quot;OnUnloaded&quot;), UCase(&quot;OnUnloading&quot;)
 			If Not Utils._CheckArgument(pvValue, iArgNr, vbString, , False) Then Goto Trace_Error_Value
+			If IsNull(DatabaseForm) Then Goto Trace_Error
 			If Not Utils._RegisterEventScript(DatabaseForm _
 						, psProperty _
 						, _GetListener(psProperty) _
@@ -1017,13 +1077,16 @@ Dim oDatabase As Object
 						) Then GoTo Trace_Error
 		Case UCase(&quot;OrderBy&quot;)
 			If Not Utils._CheckArgument(pvValue, iArgNr, vbString, , False) Then Goto Trace_Error_Value
+			If IsNull(DatabaseForm) Then Goto Trace_Error
 			_OrderBy = Application._CurrentDb(_DocEntry, _DbEntry)._ReplaceSquareBrackets(pvValue)
 		Case UCase(&quot;OrderByOn&quot;)
 			If Not Utils._CheckArgument(pvValue, iArgNr, vbBoolean, , False) Then Goto Trace_Error_Value
+			If IsNull(DatabaseForm) Then Goto Trace_Error
 			If pvValue Then DatabaseForm.Order = _OrderBy Else DatabaseForm.Order = &quot;&quot;
 			DatabaseForm.reload()
 		Case UCase(&quot;RecordSource&quot;)
 			If Not Utils._CheckArgument(pvValue, iArgNr, vbString, , False) Then Goto Trace_Error_Value
+			If IsNull(DatabaseForm) Then Goto Trace_Error
 			DatabaseForm.Command = Application._CurrentDb(_DocEntry, _DbEntry)._ReplaceSquareBrackets(pvValue)
 			DatabaseForm.CommandType = com.sun.star.sdb.CommandType.COMMAND
 			DatabaseForm.Filter = &quot;&quot;
@@ -1062,4 +1125,5 @@ Error_Function:
 	_PropertySet = False
 	GoTo Exit_Function
 End Function		&apos;	_PropertySet
+
 </script:module>

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVTOOLS_ITEMHOLDER2_HXX_
-#define INCLUDED_SVTOOLS_ITEMHOLDER2_HXX_
+#pragma once
 
 #include <unotools/itemholderbase.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -34,7 +33,7 @@ class ItemHolder2 : private ItemHolderMutexBase
     // member
     private:
 
-        TItems m_lItems;
+        std::vector<TItemInfo> m_lItems;
 
 
     // c++ interface
@@ -57,11 +56,9 @@ class ItemHolder2 : private ItemHolderMutexBase
         void impl_addItem(EItem eItem);
         void impl_releaseAllItems();
         static void impl_newItem(TItemInfo& rItem);
-        static void impl_deleteItem(TItemInfo& rItem);
 };
 
 } // namespace svtools
 
-#endif // INCLUDED_SVTOOLS_ITEMHOLDER2_HXX_
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

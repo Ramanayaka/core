@@ -17,16 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TableDesignPanel.hxx"
+#include "PanelBase.hxx"
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 PanelBase::PanelBase (
     vcl::Window* pParentWindow,
     ViewShellBase& rViewShellBase)
     : Control(pParentWindow),
       mpWrappedControl(nullptr),
-      mxSidebar(),
       mrViewShellBase(rViewShellBase)
 {
 #ifdef DEBUG
@@ -69,10 +68,8 @@ bool PanelBase::ProvideWrappedControl()
         mpWrappedControl.reset(CreateWrappedControl(this, mrViewShellBase));
         if (mpWrappedControl)
             mpWrappedControl->Show();
-        if (mxSidebar.is())
-            mxSidebar->requestLayout();
     }
-    return mpWrappedControl.get() != nullptr;
+    return bool(mpWrappedControl);
 }
 
 ISidebarReceiver::~ISidebarReceiver()
@@ -83,6 +80,6 @@ IDisposable::~IDisposable()
 {
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

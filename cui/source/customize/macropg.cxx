@@ -17,31 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <basic/basmgr.hxx>
-
-#include "macropg.hxx"
-#include <vcl/layout.hxx>
-#include <vcl/msgbox.hxx>
-#include <svtools/svmedit.hxx>
-#include <svtools/svlbitm.hxx>
-#include "svtools/treelistentry.hxx"
+#include <macropg.hxx>
 #include <svl/eitem.hxx>
+#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
-#include <sfx2/app.hxx>
-#include <sfx2/objsh.hxx>
-#include <com/sun/star/container/NoSuchElementException.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <bitmaps.hlst>
+#include <cfgutil.hxx>
 #include <dialmgr.hxx>
-#include "cfgutil.hxx"
-#include "cfg.hxx"
-#include "helpid.hrc"
-#include <cuires.hrc>
-#include "headertablistbox.hxx"
+#include <helpids.h>
+#include <headertablistbox.hxx>
 #include "macropg_impl.hxx"
-#include <svx/dialogs.hrc>
-#include <vcl/builderfactory.hxx>
+#include <svl/macitem.hxx>
+#include <svx/svxids.hrc>
+#include <strings.hrc>
 #include <comphelper/namedvaluecollection.hxx>
-#include <o3tl/make_unique.hxx>
 
 #include <algorithm>
 #include <iterator>
@@ -50,14 +39,10 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-static const char aVndSunStarUNO[] = "vnd.sun.star.UNO:";
+const char aVndSunStarUNO[] = "vnd.sun.star.UNO:";
 
 SvxMacroTabPage_Impl::SvxMacroTabPage_Impl( const SfxItemSet& rAttrSet )
-    : pAssignPB(nullptr)
-    , pAssignComponentPB(nullptr)
-    , pDeletePB(nullptr)
-    , pEventLB(nullptr)
-    , bReadOnly(false)
+    : bReadOnly(false)
     , bIDEDialogMode(false)
 {
     const SfxPoolItem* pItem;
@@ -65,136 +50,11 @@ SvxMacroTabPage_Impl::SvxMacroTabPage_Impl( const SfxItemSet& rAttrSet )
         bIDEDialogMode = static_cast<const SfxBoolItem*>(pItem)->GetValue();
 }
 
-// attention, this array is indexed directly (0, 1, ...) in the code
-static long nTabs[] =
+MacroEventListBox::MacroEventListBox(std::unique_ptr<weld::TreeView> xTreeView)
+    : m_xTreeView(std::move(xTreeView))
 {
-    2, // Number of Tabs
-    0, 90
-};
-
-#define TAB_WIDTH_MIN        10
-
-// IDs for items in HeaderBar of EventLB
-#define    ITEMID_EVENT        1
-#define    ITMEID_ASSMACRO        2
-
-
-#define LB_MACROS_ITEMPOS    2
-
-
-IMPL_LINK( MacroEventListBox, HeaderEndDrag_Impl, HeaderBar*, pBar, void )
-{
-    DBG_ASSERT( pBar == maHeaderBar.get(), "*MacroEventListBox::HeaderEndDrag_Impl: something is wrong here..." );
-
-    if( !maHeaderBar->GetCurItemId() )
-        return;
-
-    if( !maHeaderBar->IsItemMode() )
-    {
-        Size    aSz;
-        sal_uInt16    _nTabs = maHeaderBar->GetItemCount();
-        long    nWidth = maHeaderBar->GetItemSize( ITEMID_EVENT );
-        long    nBarWidth = maHeaderBar->GetSizePixel().Width();
-
-        if( nWidth < TAB_WIDTH_MIN )
-            maHeaderBar->SetItemSize( ITEMID_EVENT, TAB_WIDTH_MIN );
-        else if( ( nBarWidth - nWidth ) < TAB_WIDTH_MIN )
-            maHeaderBar->SetItemSize( ITEMID_EVENT, nBarWidth - TAB_WIDTH_MIN );
-
-        {
-            long nTmpSz = 0;
-            for( sal_uInt16 i = 1 ; i < _nTabs ; ++i )
-            {
-                long _nWidth = maHeaderBar->GetItemSize( i );
-                aSz.Width() =  _nWidth + nTmpSz;
-                nTmpSz += _nWidth;
-                maListBox->SetTab( i, PixelToLogic( aSz, MapMode( MapUnit::MapAppFont ) ).Width() );
-            }
-        }
-    }
-}
-
-bool MacroEventListBox::EventNotify( NotifyEvent& rNEvt )
-{
-    bool bRet = Control::EventNotify(rNEvt);
-
-    if( rNEvt.GetType() == MouseNotifyEvent::GETFOCUS )
-    {
-        if ( rNEvt.GetWindow() != maListBox.get() )
-            if (maListBox)
-                maListBox->GrabFocus();
-    }
-
-    return bRet;
-}
-
-MacroEventListBox::MacroEventListBox( vcl::Window* pParent, WinBits nStyle )
-    : Control( pParent, nStyle )
-    , maHeaderBar( VclPtr<HeaderBar>::Create( this, WB_BUTTONSTYLE | WB_BOTTOMBORDER ) )
-    , maListBox( VclPtr<SvHeaderTabListBox>::Create( this, WB_HSCROLL | WB_CLIPCHILDREN | WB_TABSTOP ) )
-{
-    maListBox->SetHelpId( HID_MACRO_HEADERTABLISTBOX );
-
-    // enable the cell focus to show visible focus
-    maListBox->EnableCellFocus();
-}
-
-MacroEventListBox::~MacroEventListBox()
-{
-    disposeOnce();
-}
-
-void MacroEventListBox::dispose()
-{
-    maHeaderBar.disposeAndClear();
-    maListBox.disposeAndClear();
-    Control::dispose();
-}
-
-VCL_BUILDER_FACTORY_CONSTRUCTOR(MacroEventListBox, WB_TABSTOP)
-
-Size MacroEventListBox::GetOptimalSize() const
-{
-    return LogicToPixel(Size(192, 72), MapMode(MapUnit::MapAppFont ));
-}
-
-void MacroEventListBox::Resize()
-{
-    Control::Resize();
-
-    // calc pos and size of header bar
-    Point    aPnt( 0, 0 );
-    Size    aSize( maHeaderBar->CalcWindowSizePixel() );
-    Size    aCtrlSize( GetOutputSizePixel() );
-    aSize.Width() = aCtrlSize.Width();
-    maHeaderBar->SetPosSizePixel( aPnt, aSize );
-
-    // calc pos and size of ListBox
-    aPnt.Y() += aSize.Height();
-    aSize.Height() = aCtrlSize.Height() - aSize.Height();
-    maListBox->SetPosSizePixel( aPnt, aSize );
-}
-
-void MacroEventListBox::ConnectElements()
-{
-    Resize();
-
-    // set handler
-    maHeaderBar->SetEndDragHdl( LINK( this, MacroEventListBox, HeaderEndDrag_Impl ) );
-
-    maListBox->InitHeaderBar( maHeaderBar.get() );
-}
-
-void MacroEventListBox::Show()
-{
-    maListBox->Show();
-    maHeaderBar->Show();
-}
-
-void MacroEventListBox::Enable()
-{
-    maListBox->Enable();
-    maHeaderBar->Enable();
+    m_xTreeView->set_help_id(HID_MACRO_HEADERTABLISTBOX);
+    m_xTreeView->set_size_request(m_xTreeView->get_approximate_digit_width() * 70, m_xTreeView->get_height_rows(9));
 }
 
 // assign button ("Add Command") is enabled only if it is not read only
@@ -202,38 +62,29 @@ void MacroEventListBox::Enable()
 //     and it is not read only
 void SvxMacroTabPage_::EnableButtons()
 {
-    const SvTreeListEntry* pE = mpImpl->pEventLB->GetListBox().FirstSelected();
-    if ( pE )
+    int nEvent = mpImpl->xEventLB->get_selected_index();
+    if (nEvent != -1)
     {
-        mpImpl->pDeletePB->Enable( !mpImpl->bReadOnly );
-
-        mpImpl->pAssignPB->Enable( !mpImpl->bReadOnly );
-        if( mpImpl->pAssignComponentPB )
-            mpImpl->pAssignComponentPB->Enable( !mpImpl->bReadOnly );
+        mpImpl->xDeletePB->set_sensitive( !mpImpl->bReadOnly );
+        mpImpl->xAssignPB->set_sensitive( !mpImpl->bReadOnly );
+        if( mpImpl->xAssignComponentPB )
+            mpImpl->xAssignComponentPB->set_sensitive( !mpImpl->bReadOnly );
     }
 }
 
-SvxMacroTabPage_::SvxMacroTabPage_(vcl::Window* pParent, const OString& rID,
-    const OUString& rUIXMLDescription, const SfxItemSet& rAttrSet)
-    : SfxTabPage( pParent, rID, rUIXMLDescription, &rAttrSet ),
-    m_xAppEvents(nullptr),
-    m_xDocEvents(nullptr),
-    bDocModified(false),
-    bAppEvents(false),
-    bInitialized(false)
+SvxMacroTabPage_::SvxMacroTabPage_(weld::Container* pPage, weld::DialogController* pController, const OUString& rUIXMLDescription,
+    const OString& rID, const SfxItemSet& rAttrSet)
+    : SfxTabPage(pPage, pController, rUIXMLDescription, rID, &rAttrSet)
+    , bDocModified(false)
+    , bAppEvents(false)
+    , bInitialized(false)
 {
-    mpImpl = new SvxMacroTabPage_Impl( rAttrSet );
+    mpImpl.reset( new SvxMacroTabPage_Impl( rAttrSet ) );
 }
 
 SvxMacroTabPage_::~SvxMacroTabPage_()
 {
-    disposeOnce();
-}
-
-void SvxMacroTabPage_::dispose()
-{
-    DELETEZ( mpImpl );
-    SfxTabPage::dispose();
+    mpImpl.reset();
 }
 
 void SvxMacroTabPage_::InitResources()
@@ -241,81 +92,81 @@ void SvxMacroTabPage_::InitResources()
     // Note: the order here controls the order in which the events are displayed in the UI!
 
     // the event name to UI string mappings for App Events
-    aDisplayNames.push_back( EventDisplayName( "OnStartApp",            RID_SVXSTR_EVENT_STARTAPP ) );
-    aDisplayNames.push_back( EventDisplayName( "OnCloseApp",            RID_SVXSTR_EVENT_CLOSEAPP ) );
-    aDisplayNames.push_back( EventDisplayName( "OnCreate",              RID_SVXSTR_EVENT_CREATEDOC ) );
-    aDisplayNames.push_back( EventDisplayName( "OnNew",                 RID_SVXSTR_EVENT_NEWDOC ) );
-    aDisplayNames.push_back( EventDisplayName( "OnLoadFinished",        RID_SVXSTR_EVENT_LOADDOCFINISHED ) );
-    aDisplayNames.push_back( EventDisplayName( "OnLoad",                RID_SVXSTR_EVENT_OPENDOC ) );
-    aDisplayNames.push_back( EventDisplayName( "OnPrepareUnload",       RID_SVXSTR_EVENT_PREPARECLOSEDOC ) );
-    aDisplayNames.push_back( EventDisplayName( "OnUnload",              RID_SVXSTR_EVENT_CLOSEDOC ) ) ;
-    aDisplayNames.push_back( EventDisplayName( "OnViewCreated",         RID_SVXSTR_EVENT_VIEWCREATED ) );
-    aDisplayNames.push_back( EventDisplayName( "OnPrepareViewClosing",  RID_SVXSTR_EVENT_PREPARECLOSEVIEW ) );
-    aDisplayNames.push_back( EventDisplayName( "OnViewClosed",          RID_SVXSTR_EVENT_CLOSEVIEW ) ) ;
-    aDisplayNames.push_back( EventDisplayName( "OnFocus",               RID_SVXSTR_EVENT_ACTIVATEDOC ) );
-    aDisplayNames.push_back( EventDisplayName( "OnUnfocus",             RID_SVXSTR_EVENT_DEACTIVATEDOC ) );
-    aDisplayNames.push_back( EventDisplayName( "OnSave",                RID_SVXSTR_EVENT_SAVEDOC ) );
-    aDisplayNames.push_back( EventDisplayName( "OnSaveDone",            RID_SVXSTR_EVENT_SAVEDOCDONE ) );
-    aDisplayNames.push_back( EventDisplayName( "OnSaveFailed",          RID_SVXSTR_EVENT_SAVEDOCFAILED ) );
-    aDisplayNames.push_back( EventDisplayName( "OnSaveAs",              RID_SVXSTR_EVENT_SAVEASDOC ) );
-    aDisplayNames.push_back( EventDisplayName( "OnSaveAsDone",          RID_SVXSTR_EVENT_SAVEASDOCDONE ) );
-    aDisplayNames.push_back( EventDisplayName( "OnSaveAsFailed",        RID_SVXSTR_EVENT_SAVEASDOCFAILED ) );
-    aDisplayNames.push_back( EventDisplayName( "OnCopyTo",              RID_SVXSTR_EVENT_COPYTODOC ) );
-    aDisplayNames.push_back( EventDisplayName( "OnCopyToDone",          RID_SVXSTR_EVENT_COPYTODOCDONE ) );
-    aDisplayNames.push_back( EventDisplayName( "OnCopyToFailed",        RID_SVXSTR_EVENT_COPYTODOCFAILED ) );
-    aDisplayNames.push_back( EventDisplayName( "OnPrint",               RID_SVXSTR_EVENT_PRINTDOC ) );
-    aDisplayNames.push_back( EventDisplayName( "OnModifyChanged",       RID_SVXSTR_EVENT_MODIFYCHANGED ) );
-    aDisplayNames.push_back( EventDisplayName( "OnTitleChanged",        RID_SVXSTR_EVENT_TITLECHANGED ) );
+    aDisplayNames.emplace_back( "OnStartApp",            RID_SVXSTR_EVENT_STARTAPP );
+    aDisplayNames.emplace_back( "OnCloseApp",            RID_SVXSTR_EVENT_CLOSEAPP );
+    aDisplayNames.emplace_back( "OnCreate",              RID_SVXSTR_EVENT_CREATEDOC );
+    aDisplayNames.emplace_back( "OnNew",                 RID_SVXSTR_EVENT_NEWDOC );
+    aDisplayNames.emplace_back( "OnLoadFinished",        RID_SVXSTR_EVENT_LOADDOCFINISHED );
+    aDisplayNames.emplace_back( "OnLoad",                RID_SVXSTR_EVENT_OPENDOC );
+    aDisplayNames.emplace_back( "OnPrepareUnload",       RID_SVXSTR_EVENT_PREPARECLOSEDOC );
+    aDisplayNames.emplace_back( "OnUnload",              RID_SVXSTR_EVENT_CLOSEDOC ) ;
+    aDisplayNames.emplace_back( "OnViewCreated",         RID_SVXSTR_EVENT_VIEWCREATED );
+    aDisplayNames.emplace_back( "OnPrepareViewClosing",  RID_SVXSTR_EVENT_PREPARECLOSEVIEW );
+    aDisplayNames.emplace_back( "OnViewClosed",          RID_SVXSTR_EVENT_CLOSEVIEW ) ;
+    aDisplayNames.emplace_back( "OnFocus",               RID_SVXSTR_EVENT_ACTIVATEDOC );
+    aDisplayNames.emplace_back( "OnUnfocus",             RID_SVXSTR_EVENT_DEACTIVATEDOC );
+    aDisplayNames.emplace_back( "OnSave",                RID_SVXSTR_EVENT_SAVEDOC );
+    aDisplayNames.emplace_back( "OnSaveDone",            RID_SVXSTR_EVENT_SAVEDOCDONE );
+    aDisplayNames.emplace_back( "OnSaveFailed",          RID_SVXSTR_EVENT_SAVEDOCFAILED );
+    aDisplayNames.emplace_back( "OnSaveAs",              RID_SVXSTR_EVENT_SAVEASDOC );
+    aDisplayNames.emplace_back( "OnSaveAsDone",          RID_SVXSTR_EVENT_SAVEASDOCDONE );
+    aDisplayNames.emplace_back( "OnSaveAsFailed",        RID_SVXSTR_EVENT_SAVEASDOCFAILED );
+    aDisplayNames.emplace_back( "OnCopyTo",              RID_SVXSTR_EVENT_COPYTODOC );
+    aDisplayNames.emplace_back( "OnCopyToDone",          RID_SVXSTR_EVENT_COPYTODOCDONE );
+    aDisplayNames.emplace_back( "OnCopyToFailed",        RID_SVXSTR_EVENT_COPYTODOCFAILED );
+    aDisplayNames.emplace_back( "OnPrint",               RID_SVXSTR_EVENT_PRINTDOC );
+    aDisplayNames.emplace_back( "OnModifyChanged",       RID_SVXSTR_EVENT_MODIFYCHANGED );
+    aDisplayNames.emplace_back( "OnTitleChanged",        RID_SVXSTR_EVENT_TITLECHANGED );
 
     // application specific events
-    aDisplayNames.push_back( EventDisplayName( "OnMailMerge",           RID_SVXSTR_EVENT_MAILMERGE ) );
-    aDisplayNames.push_back( EventDisplayName( "OnMailMergeFinished",           RID_SVXSTR_EVENT_MAILMERGE_END ) );
-    aDisplayNames.push_back( EventDisplayName( "OnFieldMerge",           RID_SVXSTR_EVENT_FIELDMERGE ) );
-    aDisplayNames.push_back( EventDisplayName( "OnFieldMergeFinished",           RID_SVXSTR_EVENT_FIELDMERGE_FINISHED ) );
-    aDisplayNames.push_back( EventDisplayName( "OnPageCountChange",     RID_SVXSTR_EVENT_PAGECOUNTCHANGE ) );
-    aDisplayNames.push_back( EventDisplayName( "OnSubComponentOpened",  RID_SVXSTR_EVENT_SUBCOMPONENT_OPENED ) );
-    aDisplayNames.push_back( EventDisplayName( "OnSubComponentClosed",  RID_SVXSTR_EVENT_SUBCOMPONENT_CLOSED ) );
-    aDisplayNames.push_back( EventDisplayName( "OnSelect",              RID_SVXSTR_EVENT_SELECTIONCHANGED ) );
-    aDisplayNames.push_back( EventDisplayName( "OnDoubleClick",         RID_SVXSTR_EVENT_DOUBLECLICK ) );
-    aDisplayNames.push_back( EventDisplayName( "OnRightClick",          RID_SVXSTR_EVENT_RIGHTCLICK ) );
-    aDisplayNames.push_back( EventDisplayName( "OnCalculate",           RID_SVXSTR_EVENT_CALCULATE ) );
-    aDisplayNames.push_back( EventDisplayName( "OnChange",              RID_SVXSTR_EVENT_CONTENTCHANGED ) );
+    aDisplayNames.emplace_back( "OnMailMerge",           RID_SVXSTR_EVENT_MAILMERGE );
+    aDisplayNames.emplace_back( "OnMailMergeFinished",           RID_SVXSTR_EVENT_MAILMERGE_END );
+    aDisplayNames.emplace_back( "OnFieldMerge",           RID_SVXSTR_EVENT_FIELDMERGE );
+    aDisplayNames.emplace_back( "OnFieldMergeFinished",           RID_SVXSTR_EVENT_FIELDMERGE_FINISHED );
+    aDisplayNames.emplace_back( "OnPageCountChange",     RID_SVXSTR_EVENT_PAGECOUNTCHANGE );
+    aDisplayNames.emplace_back( "OnSubComponentOpened",  RID_SVXSTR_EVENT_SUBCOMPONENT_OPENED );
+    aDisplayNames.emplace_back( "OnSubComponentClosed",  RID_SVXSTR_EVENT_SUBCOMPONENT_CLOSED );
+    aDisplayNames.emplace_back( "OnSelect",              RID_SVXSTR_EVENT_SELECTIONCHANGED );
+    aDisplayNames.emplace_back( "OnDoubleClick",         RID_SVXSTR_EVENT_DOUBLECLICK );
+    aDisplayNames.emplace_back( "OnRightClick",          RID_SVXSTR_EVENT_RIGHTCLICK );
+    aDisplayNames.emplace_back( "OnCalculate",           RID_SVXSTR_EVENT_CALCULATE );
+    aDisplayNames.emplace_back( "OnChange",              RID_SVXSTR_EVENT_CONTENTCHANGED );
 
     // the event name to UI string mappings for forms & dialogs
 
-    aDisplayNames.push_back( EventDisplayName( "approveAction",         RID_SVXSTR_EVENT_APPROVEACTIONPERFORMED ) );
-    aDisplayNames.push_back( EventDisplayName( "actionPerformed",       RID_SVXSTR_EVENT_ACTIONPERFORMED ) );
-    aDisplayNames.push_back( EventDisplayName( "changed",               RID_SVXSTR_EVENT_CHANGED ) );
-    aDisplayNames.push_back( EventDisplayName( "textChanged",           RID_SVXSTR_EVENT_TEXTCHANGED ) );
-    aDisplayNames.push_back( EventDisplayName( "itemStateChanged",      RID_SVXSTR_EVENT_ITEMSTATECHANGED ) );
-    aDisplayNames.push_back( EventDisplayName( "focusGained",           RID_SVXSTR_EVENT_FOCUSGAINED ) );
-    aDisplayNames.push_back( EventDisplayName( "focusLost",             RID_SVXSTR_EVENT_FOCUSLOST ) );
-    aDisplayNames.push_back( EventDisplayName( "keyPressed",            RID_SVXSTR_EVENT_KEYTYPED ) );
-    aDisplayNames.push_back( EventDisplayName( "keyReleased",           RID_SVXSTR_EVENT_KEYUP ) );
-    aDisplayNames.push_back( EventDisplayName( "mouseEntered",          RID_SVXSTR_EVENT_MOUSEENTERED ) );
-    aDisplayNames.push_back( EventDisplayName( "mouseDragged",          RID_SVXSTR_EVENT_MOUSEDRAGGED ) );
-    aDisplayNames.push_back( EventDisplayName( "mouseMoved",            RID_SVXSTR_EVENT_MOUSEMOVED ) );
-    aDisplayNames.push_back( EventDisplayName( "mousePressed",          RID_SVXSTR_EVENT_MOUSEPRESSED ) );
-    aDisplayNames.push_back( EventDisplayName( "mouseReleased",         RID_SVXSTR_EVENT_MOUSERELEASED ) );
-    aDisplayNames.push_back( EventDisplayName( "mouseExited",           RID_SVXSTR_EVENT_MOUSEEXITED ) );
-    aDisplayNames.push_back( EventDisplayName( "approveReset",          RID_SVXSTR_EVENT_APPROVERESETTED ) );
-    aDisplayNames.push_back( EventDisplayName( "resetted",              RID_SVXSTR_EVENT_RESETTED ) );
-    aDisplayNames.push_back( EventDisplayName( "approveSubmit",         RID_SVXSTR_EVENT_SUBMITTED ) );
-    aDisplayNames.push_back( EventDisplayName( "approveUpdate",         RID_SVXSTR_EVENT_BEFOREUPDATE ) );
-    aDisplayNames.push_back( EventDisplayName( "updated",               RID_SVXSTR_EVENT_AFTERUPDATE ) );
-    aDisplayNames.push_back( EventDisplayName( "loaded",                RID_SVXSTR_EVENT_LOADED ) );
-    aDisplayNames.push_back( EventDisplayName( "reloading",             RID_SVXSTR_EVENT_RELOADING ) );
-    aDisplayNames.push_back( EventDisplayName( "reloaded",              RID_SVXSTR_EVENT_RELOADED ) );
-    aDisplayNames.push_back( EventDisplayName( "unloading",             RID_SVXSTR_EVENT_UNLOADING ) );
-    aDisplayNames.push_back( EventDisplayName( "unloaded",              RID_SVXSTR_EVENT_UNLOADED ) );
-    aDisplayNames.push_back( EventDisplayName( "confirmDelete",         RID_SVXSTR_EVENT_CONFIRMDELETE ) );
-    aDisplayNames.push_back( EventDisplayName( "approveRowChange",      RID_SVXSTR_EVENT_APPROVEROWCHANGE ) );
-    aDisplayNames.push_back( EventDisplayName( "rowChanged",            RID_SVXSTR_EVENT_ROWCHANGE ) );
-    aDisplayNames.push_back( EventDisplayName( "approveCursorMove",     RID_SVXSTR_EVENT_POSITIONING ) );
-    aDisplayNames.push_back( EventDisplayName( "cursorMoved",           RID_SVXSTR_EVENT_POSITIONED ) );
-    aDisplayNames.push_back( EventDisplayName( "approveParameter",      RID_SVXSTR_EVENT_APPROVEPARAMETER ) );
-    aDisplayNames.push_back( EventDisplayName( "errorOccured",          RID_SVXSTR_EVENT_ERROROCCURRED ) );
-    aDisplayNames.push_back( EventDisplayName( "adjustmentValueChanged",   RID_SVXSTR_EVENT_ADJUSTMENTVALUECHANGED ) );
+    aDisplayNames.emplace_back( "approveAction",         RID_SVXSTR_EVENT_APPROVEACTIONPERFORMED );
+    aDisplayNames.emplace_back( "actionPerformed",       RID_SVXSTR_EVENT_ACTIONPERFORMED );
+    aDisplayNames.emplace_back( "changed",               RID_SVXSTR_EVENT_CHANGED );
+    aDisplayNames.emplace_back( "textChanged",           RID_SVXSTR_EVENT_TEXTCHANGED );
+    aDisplayNames.emplace_back( "itemStateChanged",      RID_SVXSTR_EVENT_ITEMSTATECHANGED );
+    aDisplayNames.emplace_back( "focusGained",           RID_SVXSTR_EVENT_FOCUSGAINED );
+    aDisplayNames.emplace_back( "focusLost",             RID_SVXSTR_EVENT_FOCUSLOST );
+    aDisplayNames.emplace_back( "keyPressed",            RID_SVXSTR_EVENT_KEYTYPED );
+    aDisplayNames.emplace_back( "keyReleased",           RID_SVXSTR_EVENT_KEYUP );
+    aDisplayNames.emplace_back( "mouseEntered",          RID_SVXSTR_EVENT_MOUSEENTERED );
+    aDisplayNames.emplace_back( "mouseDragged",          RID_SVXSTR_EVENT_MOUSEDRAGGED );
+    aDisplayNames.emplace_back( "mouseMoved",            RID_SVXSTR_EVENT_MOUSEMOVED );
+    aDisplayNames.emplace_back( "mousePressed",          RID_SVXSTR_EVENT_MOUSEPRESSED );
+    aDisplayNames.emplace_back( "mouseReleased",         RID_SVXSTR_EVENT_MOUSERELEASED );
+    aDisplayNames.emplace_back( "mouseExited",           RID_SVXSTR_EVENT_MOUSEEXITED );
+    aDisplayNames.emplace_back( "approveReset",          RID_SVXSTR_EVENT_APPROVERESETTED );
+    aDisplayNames.emplace_back( "resetted",              RID_SVXSTR_EVENT_RESETTED );
+    aDisplayNames.emplace_back( "approveSubmit",         RID_SVXSTR_EVENT_SUBMITTED );
+    aDisplayNames.emplace_back( "approveUpdate",         RID_SVXSTR_EVENT_BEFOREUPDATE );
+    aDisplayNames.emplace_back( "updated",               RID_SVXSTR_EVENT_AFTERUPDATE );
+    aDisplayNames.emplace_back( "loaded",                RID_SVXSTR_EVENT_LOADED );
+    aDisplayNames.emplace_back( "reloading",             RID_SVXSTR_EVENT_RELOADING );
+    aDisplayNames.emplace_back( "reloaded",              RID_SVXSTR_EVENT_RELOADED );
+    aDisplayNames.emplace_back( "unloading",             RID_SVXSTR_EVENT_UNLOADING );
+    aDisplayNames.emplace_back( "unloaded",              RID_SVXSTR_EVENT_UNLOADED );
+    aDisplayNames.emplace_back( "confirmDelete",         RID_SVXSTR_EVENT_CONFIRMDELETE );
+    aDisplayNames.emplace_back( "approveRowChange",      RID_SVXSTR_EVENT_APPROVEROWCHANGE );
+    aDisplayNames.emplace_back( "rowChanged",            RID_SVXSTR_EVENT_ROWCHANGE );
+    aDisplayNames.emplace_back( "approveCursorMove",     RID_SVXSTR_EVENT_POSITIONING );
+    aDisplayNames.emplace_back( "cursorMoved",           RID_SVXSTR_EVENT_POSITIONED );
+    aDisplayNames.emplace_back( "approveParameter",      RID_SVXSTR_EVENT_APPROVEPARAMETER );
+    aDisplayNames.emplace_back( "errorOccured",          RID_SVXSTR_EVENT_ERROROCCURRED );
+    aDisplayNames.emplace_back( "adjustmentValueChanged",   RID_SVXSTR_EVENT_ADJUSTMENTVALUECHANGED );
 }
 
 // the following method is called when the user clicks OK
@@ -327,35 +178,31 @@ bool SvxMacroTabPage_::FillItemSet( SfxItemSet* /*rSet*/ )
         OUString eventName;
         if( m_xAppEvents.is() )
         {
-            EventsHash::iterator h_itEnd =  m_appEventsHash.end();
-            EventsHash::iterator h_it = m_appEventsHash.begin();
-            for ( ; h_it !=  h_itEnd; ++h_it )
+            for (auto const& appEvent : m_appEventsHash)
             {
-                eventName = h_it->first;
+                eventName = appEvent.first;
                 try
                 {
                     m_xAppEvents->replaceByName( eventName, GetPropsByName( eventName, m_appEventsHash ) );
                 }
                 catch (const Exception&)
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("cui.customize");
                 }
             }
         }
         if( m_xDocEvents.is() && bDocModified )
         {
-            EventsHash::iterator h_itEnd =  m_docEventsHash.end();
-            EventsHash::iterator h_it = m_docEventsHash.begin();
-            for ( ; h_it !=  h_itEnd; ++h_it )
+            for (auto const& docEvent : m_docEventsHash)
             {
-                eventName = h_it->first;
+                eventName = docEvent.first;
                 try
                 {
                     m_xDocEvents->replaceByName( eventName, GetPropsByName( eventName, m_docEventsHash ) );
                 }
                 catch (const Exception&)
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("cui.customize");
                 }
             }
             // if we have a valid XModifiable (in the case of doc events)
@@ -388,20 +235,16 @@ void SvxMacroTabPage_::Reset( const SfxItemSet* )
     {
             if( m_xAppEvents.is() )
             {
-                EventsHash::iterator h_itEnd =  m_appEventsHash.end();
-                EventsHash::iterator h_it = m_appEventsHash.begin();
-                for ( ; h_it !=  h_itEnd; ++h_it )
+                for (auto & appEvent : m_appEventsHash)
                 {
-                    h_it->second.second.clear();
+                    appEvent.second.second.clear();
                 }
             }
             if( m_xDocEvents.is() && bDocModified )
             {
-                EventsHash::iterator h_itEnd =  m_docEventsHash.end();
-                EventsHash::iterator h_it = m_docEventsHash.begin();
-                for ( ; h_it !=  h_itEnd; ++h_it )
+                for (auto & docEvent : m_docEventsHash)
                 {
-                    h_it->second.second.clear();
+                    docEvent.second.second.clear();
                 }
                 // if we have a valid XModifiable (in the case of doc events)
                 // call setModified(true)
@@ -427,66 +270,44 @@ bool SvxMacroTabPage_::IsReadOnly() const
     return mpImpl->bReadOnly;
 }
 
-
-class IconLBoxString : public SvLBoxString
+namespace
 {
-    Image* m_pMacroImg;
-    Image* m_pComponentImg;
-
-public:
-    IconLBoxString( const OUString& sText, Image* pMacroImg, Image* pComponentImg );
-    virtual void Paint(const Point& rPos, SvTreeListBox& rOutDev, vcl::RenderContext& rRenderContext,
-                       const SvViewDataEntry* pView, const SvTreeListEntry& rEntry) override;
-};
-
-
-IconLBoxString::IconLBoxString( const OUString& sText,
-    Image* pMacroImg, Image* pComponentImg )
-        : SvLBoxString( sText )
-        , m_pMacroImg( pMacroImg )
-        , m_pComponentImg( pComponentImg )
-{
-}
-
-
-void IconLBoxString::Paint(const Point& aPos, SvTreeListBox& /*aDevice*/, vcl::RenderContext& rRenderContext,
-                           const SvViewDataEntry* /*pView*/, const SvTreeListEntry& /*rEntry*/)
-{
-    OUString aURL(GetText());
-    if (!aURL.isEmpty())
+    OUString GetEventDisplayText(const OUString &rURL)
     {
-        sal_Int32 nIndex = aURL.indexOf(aVndSunStarUNO);
+        if (rURL.isEmpty())
+            return OUString();
+        sal_Int32 nIndex = rURL.indexOf(aVndSunStarUNO);
         bool bUNO = nIndex == 0;
-
-        const Image* pImg = bUNO ? m_pComponentImg : m_pMacroImg;
-        rRenderContext.DrawImage(aPos, *pImg);
-
         OUString aPureMethod;
         if (bUNO)
         {
-            aPureMethod = aURL.copy(strlen(aVndSunStarUNO));
+            aPureMethod = rURL.copy(strlen(aVndSunStarUNO));
         }
         else
         {
-            aPureMethod = aURL.copy(strlen("vnd.sun.star.script:"));
+            aPureMethod = rURL.copy(strlen("vnd.sun.star.script:"));
             aPureMethod = aPureMethod.copy( 0, aPureMethod.indexOf( '?' ) );
         }
+        return aPureMethod;
+    }
 
-        Point aPnt(aPos);
-        aPnt.X() += 20;
-        rRenderContext.DrawText(aPnt, aPureMethod);
+    OUString GetEventDisplayImage(const OUString &rURL)
+    {
+        if (rURL.isEmpty())
+            return OUString();
+        sal_Int32 nIndex = rURL.indexOf(aVndSunStarUNO);
+        bool bUNO = nIndex == 0;
+        return bUNO ? OUString(RID_SVXBMP_COMPONENT) : OUString(RID_SVXBMP_MACRO);
     }
 }
-
 
 // displays the app events if appEvents=true, otherwise displays the doc events
 void SvxMacroTabPage_::DisplayAppEvents( bool appEvents)
 {
     bAppEvents = appEvents;
 
-    SvHeaderTabListBox&        rListBox = mpImpl->pEventLB->GetListBox();
-    mpImpl->pEventLB->SetUpdateMode( false );
-    rListBox.Clear();
+    mpImpl->xEventLB->freeze();
+    mpImpl->xEventLB->clear();
     EventsHash* eventsHash;
     Reference< container::XNameReplace> nameReplace;
     if(bAppEvents)
@@ -504,20 +325,9 @@ void SvxMacroTabPage_::DisplayAppEvents( bool appEvents)
     if(!nameReplace.is())
         return;
 
-    Sequence< OUString > eventNames = nameReplace->getElementNames();
-    std::set< OUString > aEventNamesCache;
-    std::copy(
-        eventNames.getConstArray(),
-        eventNames.getConstArray() + eventNames.getLength(),
-        std::insert_iterator< std::set< OUString > >( aEventNamesCache, aEventNamesCache.end() )
-    );
-
-    for (   EventDisplayNames::const_iterator displayableEvent = aDisplayNames.begin();
-            displayableEvent != aDisplayNames.end();
-            ++displayableEvent
-        )
+    for (auto const& displayableEvent : aDisplayNames)
     {
-        OUString sEventName( OUString::createFromAscii( displayableEvent->pAsciiEventName ) );
+        OUString sEventName( OUString::createFromAscii( displayableEvent.pAsciiEventName ) );
         if ( !nameReplace->hasByName( sEventName ) )
             continue;
 
@@ -529,78 +339,71 @@ void SvxMacroTabPage_::DisplayAppEvents( bool appEvents)
         }
 
         OUString eventURL = h_it->second.second;
-        OUString displayName(CuiResId(displayableEvent->nEventResourceID));
+        OUString displayName(CuiResId(displayableEvent.pEventResourceID));
 
-        displayName += "\t";
-
-        SvTreeListEntry*    _pE = rListBox.InsertEntry( displayName );
-        OUString* pEventName = new OUString( sEventName );
-        _pE->SetUserData( static_cast<void*>(pEventName) );
-        OUString sNew( eventURL );
-        _pE->ReplaceItem(o3tl::make_unique<IconLBoxString>(sNew, &mpImpl->aMacroImg, &mpImpl->aComponentImg),
-            LB_MACROS_ITEMPOS );
-        rListBox.GetModel()->InvalidateEntry( _pE );
-        rListBox.Select( _pE );
-        rListBox.MakeVisible( _pE );
+        int nRow = mpImpl->xEventLB->n_children();
+        mpImpl->xEventLB->append(sEventName, displayName);
+        mpImpl->xEventLB->set_image(nRow, GetEventDisplayImage(eventURL), 1);
+        mpImpl->xEventLB->set_text(nRow, GetEventDisplayText(eventURL), 2);
     }
 
-    SvTreeListEntry* pE = rListBox.GetEntry(0);
-    if( pE )
+    mpImpl->xEventLB->thaw();
+
+    if (mpImpl->xEventLB->n_children())
     {
-        rListBox.Select( pE );
-        rListBox.MakeVisible( pE );
+        mpImpl->xEventLB->select(0);
+        mpImpl->xEventLB->scroll_to_row(0);
     }
 
-    rListBox.SetUpdateMode( true );
     EnableButtons();
 }
 
 // select event handler on the listbox
-IMPL_LINK_NOARG( SvxMacroTabPage_, SelectEvent_Impl, SvTreeListBox*, void)
+IMPL_LINK_NOARG( SvxMacroTabPage_, SelectEvent_Impl, weld::TreeView&, void)
 {
-    SvHeaderTabListBox&        rListBox = mpImpl->pEventLB->GetListBox();
-    SvTreeListEntry*           pE = rListBox.FirstSelected();
+    int nEntry = mpImpl->xEventLB->get_selected_index();
 
-    if( !pE || LISTBOX_ENTRY_NOTFOUND == rListBox.GetModel()->GetAbsPos( pE ) )
+    if (nEntry == -1)
     {
-        DBG_ASSERT( pE, "Where does the empty entry come from?" );
+        DBG_ASSERT(false, "Where does the empty entry come from?" );
         return;
     }
 
     EnableButtons();
 }
 
-IMPL_LINK( SvxMacroTabPage_, AssignDeleteHdl_Impl, Button*, pBtn, void )
+IMPL_LINK( SvxMacroTabPage_, AssignDeleteHdl_Impl, weld::Button&, rBtn, void )
 {
-    GenericHandler_Impl( this, static_cast<PushButton*>(pBtn) );
+    GenericHandler_Impl(this, &rBtn);
 }
 
-IMPL_LINK_NOARG( SvxMacroTabPage_, DoubleClickHdl_Impl, SvTreeListBox*, bool)
+IMPL_LINK_NOARG( SvxMacroTabPage_, DoubleClickHdl_Impl, weld::TreeView&, bool)
 {
-    return GenericHandler_Impl( this, nullptr );
+    GenericHandler_Impl(this, nullptr);
+    return true;
 }
 
 // handler for double click on the listbox, and for the assign/delete buttons
-long SvxMacroTabPage_::GenericHandler_Impl( SvxMacroTabPage_* pThis, PushButton* pBtn )
+void SvxMacroTabPage_::GenericHandler_Impl(SvxMacroTabPage_* pThis, const weld::Button* pBtn)
 {
-    SvxMacroTabPage_Impl*    pImpl = pThis->mpImpl;
-    SvHeaderTabListBox& rListBox = pImpl->pEventLB->GetListBox();
-    SvTreeListEntry* pE = rListBox.FirstSelected();
-    if( !pE || LISTBOX_ENTRY_NOTFOUND == rListBox.GetModel()->GetAbsPos( pE ) )
+    SvxMacroTabPage_Impl*    pImpl = pThis->mpImpl.get();
+    weld::TreeView& rListBox = *pImpl->xEventLB;
+    int nEntry = rListBox.get_selected_index();
+    if (nEntry == -1)
     {
-        DBG_ASSERT( pE, "Where does the empty entry come from?" );
-        return 0;
+        DBG_ASSERT(false, "Where does the empty entry come from?");
+        return;
     }
 
-    const bool bAssEnabled = pBtn != pImpl->pDeletePB && pImpl->pAssignPB->IsEnabled();
+    const bool bAssEnabled = pBtn != pImpl->xDeletePB.get() && pImpl->xAssignPB->get_sensitive();
 
-    OUString* pEventName = static_cast<OUString*>(pE->GetUserData());
+    OUString sEventName = rListBox.get_id(nEntry);
 
     OUString sEventURL;
     OUString sEventType;
     if(pThis->bAppEvents)
     {
-        EventsHash::iterator h_it = pThis->m_appEventsHash.find( *pEventName );
+        EventsHash::iterator h_it = pThis->m_appEventsHash.find(sEventName);
         if(h_it != pThis->m_appEventsHash.end() )
         {
             sEventType = h_it->second.first;
@@ -609,7 +412,7 @@ long SvxMacroTabPage_::GenericHandler_Impl( SvxMacroTabPage_* pThis, PushButton*
     }
     else
     {
-        EventsHash::iterator h_it = pThis->m_docEventsHash.find( *pEventName );
+        EventsHash::iterator h_it = pThis->m_docEventsHash.find(sEventName);
         if(h_it != pThis->m_docEventsHash.end() )
         {
             sEventType = h_it->second.first;
@@ -619,7 +422,7 @@ long SvxMacroTabPage_::GenericHandler_Impl( SvxMacroTabPage_* pThis, PushButton*
 
     bool bDoubleClick = (pBtn == nullptr);
     bool bUNOAssigned = sEventURL.startsWith( aVndSunStarUNO );
-    if( pBtn == pImpl->pDeletePB )
+    if( pBtn == pImpl->xDeletePB.get() )
     {
         // delete pressed
         sEventType =  "Script" ;
@@ -628,20 +431,20 @@ long SvxMacroTabPage_::GenericHandler_Impl( SvxMacroTabPage_* pThis, PushButton*
             pThis->bDocModified = true;
     }
     else if (   (   ( pBtn != nullptr )
-                &&  ( pBtn == pImpl->pAssignComponentPB )
+                &&  ( pBtn == pImpl->xAssignComponentPB.get() )
                 )
             ||  (   bDoubleClick
                 &&  bUNOAssigned
                 )
             )
     {
-        ScopedVclPtrInstance< AssignComponentDialog > pAssignDlg( pThis, sEventURL );
+        AssignComponentDialog aAssignDlg(pThis->GetFrameWeld(), sEventURL);
 
-        short ret = pAssignDlg->Execute();
+        short ret = aAssignDlg.run();
         if( ret )
         {
             sEventType = "UNO";
-            sEventURL = pAssignDlg->getURL();
+            sEventURL = aAssignDlg.getURL();
             if(!pThis->bAppEvents)
                 pThis->bDocModified = true;
         }
@@ -649,46 +452,38 @@ long SvxMacroTabPage_::GenericHandler_Impl( SvxMacroTabPage_* pThis, PushButton*
     else if( bAssEnabled )
     {
         // assign pressed
-        ScopedVclPtrInstance< SvxScriptSelectorDialog > pDlg( pThis, false, pThis->GetFrame() );
-        if( pDlg )
+        SvxScriptSelectorDialog aDlg(pThis->GetFrameWeld(), pThis->GetFrame());
+        short ret = aDlg.run();
+        if ( ret )
         {
-            short ret = pDlg->Execute();
-            if ( ret )
-            {
-                sEventType = "Script";
-                sEventURL = pDlg->GetScriptURL();
-                if(!pThis->bAppEvents)
-                    pThis->bDocModified = true;
-            }
+            sEventType = "Script";
+            sEventURL = aDlg.GetScriptURL();
+            if(!pThis->bAppEvents)
+                pThis->bDocModified = true;
         }
     }
 
     // update the hashes
     if(pThis->bAppEvents)
     {
-        EventsHash::iterator h_it = pThis->m_appEventsHash.find( *pEventName );
+        EventsHash::iterator h_it = pThis->m_appEventsHash.find(sEventName);
         h_it->second.first = sEventType;
         h_it->second.second = sEventURL;
     }
     else
     {
-        EventsHash::iterator h_it = pThis->m_docEventsHash.find( *pEventName );
+        EventsHash::iterator h_it = pThis->m_docEventsHash.find(sEventName);
         h_it->second.first = sEventType;
         h_it->second.second = sEventURL;
     }
 
-    // update the listbox entry
-    pImpl->pEventLB->SetUpdateMode( false );
-    pE->ReplaceItem(o3tl::make_unique<IconLBoxString>(sEventURL, &pImpl->aMacroImg, &pImpl->aComponentImg),
-        LB_MACROS_ITEMPOS );
+    rListBox.set_image(nEntry, GetEventDisplayImage(sEventURL), 1);
+    rListBox.set_text(nEntry, GetEventDisplayText(sEventURL), 2);
 
-    rListBox.GetModel()->InvalidateEntry( pE );
-    rListBox.Select( pE );
-    rListBox.MakeVisible( pE );
-    rListBox.SetUpdateMode( true );
+    rListBox.select(nEntry );
+    rListBox.scroll_to_row(nEntry);
 
     pThis->EnableButtons();
-    return 0;
 }
 
 // pass in the XNameReplace.
@@ -698,34 +493,21 @@ void SvxMacroTabPage_::InitAndSetHandler( const Reference< container::XNameRepla
     m_xAppEvents = xAppEvents;
     m_xDocEvents = xDocEvents;
     m_xModifiable = xModifiable;
-    SvHeaderTabListBox&    rListBox = mpImpl->pEventLB->GetListBox();
-    HeaderBar&             rHeaderBar = mpImpl->pEventLB->GetHeaderBar();
-    Link<Button*,void>     aLnk(LINK(this, SvxMacroTabPage_, AssignDeleteHdl_Impl ));
-    mpImpl->pDeletePB->SetClickHdl(    aLnk );
-    mpImpl->pAssignPB->SetClickHdl(    aLnk );
-    if( mpImpl->pAssignComponentPB )
-        mpImpl->pAssignComponentPB->SetClickHdl( aLnk );
-    rListBox.SetDoubleClickHdl( LINK(this, SvxMacroTabPage_, DoubleClickHdl_Impl ) );
+    Link<weld::Button&,void>     aLnk(LINK(this, SvxMacroTabPage_, AssignDeleteHdl_Impl ));
+    mpImpl->xDeletePB->connect_clicked(aLnk);
+    mpImpl->xAssignPB->connect_clicked(aLnk);
+    if( mpImpl->xAssignComponentPB )
+        mpImpl->xAssignComponentPB->connect_clicked( aLnk );
+    mpImpl->xEventLB->connect_row_activated( LINK(this, SvxMacroTabPage_, DoubleClickHdl_Impl ) );
+    mpImpl->xEventLB->connect_changed( LINK( this, SvxMacroTabPage_, SelectEvent_Impl ));
 
-    rListBox.SetSelectHdl( LINK( this, SvxMacroTabPage_, SelectEvent_Impl ));
+    std::vector<int> aWidths;
+    aWidths.push_back(mpImpl->xEventLB->get_approximate_digit_width() * 32);
+    aWidths.push_back(mpImpl->xEventLB->get_checkbox_column_width());
+    mpImpl->xEventLB->set_column_fixed_widths(aWidths);
 
-    rListBox.SetSelectionMode( SelectionMode::Single );
-    rListBox.SetTabs( &nTabs[0] );
-    Size aSize( nTabs[ 2 ], 0 );
-    rHeaderBar.InsertItem( ITEMID_EVENT, mpImpl->sStrEvent, LogicToPixel( aSize, MapMode( MapUnit::MapAppFont ) ).Width() );
-    aSize.Width() = 1764;        // don't know what, so 42^2 is best to use...
-    rHeaderBar.InsertItem( ITMEID_ASSMACRO, mpImpl->sAssignedMacro, LogicToPixel( aSize, MapMode( MapUnit::MapAppFont ) ).Width() );
-    rListBox.SetSpaceBetweenEntries( 0 );
-
-    mpImpl->pEventLB->Show();
-    mpImpl->pEventLB->ConnectElements();
-
-    long nMinLineHeight = mpImpl->aMacroImg.GetSizePixel().Height() + 2;
-    if( nMinLineHeight > mpImpl->pEventLB->GetListBox().GetEntryHeight() )
-        mpImpl->pEventLB->GetListBox().SetEntryHeight(
-            sal::static_int_cast< short >(nMinLineHeight) );
-
-    mpImpl->pEventLB->Enable();
+    mpImpl->xEventLB->show();
+    mpImpl->xEventLB->set_sensitive(true);
 
     if(!m_xAppEvents.is())
     {
@@ -744,19 +526,19 @@ void SvxMacroTabPage_::InitAndSetHandler( const Reference< container::XNameRepla
         {
         }
     }
-    if(m_xDocEvents.is())
+    if(!m_xDocEvents.is())
+        return;
+
+    eventNames = m_xDocEvents->getElementNames();
+    nEventCount = eventNames.getLength();
+    for(sal_Int32 nEvent = 0; nEvent < nEventCount; ++nEvent )
     {
-        eventNames = m_xDocEvents->getElementNames();
-        nEventCount = eventNames.getLength();
-        for(sal_Int32 nEvent = 0; nEvent < nEventCount; ++nEvent )
+        try
         {
-            try
-            {
-                m_docEventsHash[ eventNames[nEvent] ] = GetPairFromAny( m_xDocEvents->getByName( eventNames[nEvent] ) );
-            }
-            catch (const Exception&)
-            {
-            }
+            m_docEventsHash[ eventNames[nEvent] ] = GetPairFromAny( m_xDocEvents->getByName( eventNames[nEvent] ) );
+        }
+        catch (const Exception&)
+        {
         }
     }
 }
@@ -793,100 +575,86 @@ std::pair< OUString, OUString  > SvxMacroTabPage_::GetPairFromAny( const Any& aA
     return std::make_pair( type, url );
 }
 
-SvxMacroTabPage::SvxMacroTabPage(vcl::Window* pParent,
+SvxMacroTabPage::SvxMacroTabPage(weld::Container* pPage, weld::DialogController* pController,
     const Reference< frame::XFrame >& _rxDocumentFrame,
     const SfxItemSet& rSet,
     Reference< container::XNameReplace > const & xNameReplace,
     sal_uInt16 nSelectedIndex)
-    : SvxMacroTabPage_(pParent, "MacroAssignPage", "cui/ui/macroassignpage.ui", rSet)
+    : SvxMacroTabPage_(pPage, pController, "cui/ui/macroassignpage.ui", "MacroAssignPage", rSet)
 {
-    mpImpl->sStrEvent = get<FixedText>("eventft")->GetText();
-    mpImpl->sAssignedMacro = get<FixedText>("assignft")->GetText();
-    get(mpImpl->pEventLB, "assignments");
-    get(mpImpl->pAssignPB, "assign");
-    get(mpImpl->pDeletePB, "delete");
-    get(mpImpl->pAssignComponentPB, "component");
-    mpImpl->aMacroImg = get<FixedImage>("macroimg")->GetImage();
-    mpImpl->aComponentImg = get<FixedImage>("componentimg")->GetImage();
+    mpImpl->xEventLB = m_xBuilder->weld_tree_view("assignments");
+    mpImpl->xEventLB->set_size_request(mpImpl->xEventLB->get_approximate_digit_width() * 70,
+                                       mpImpl->xEventLB->get_height_rows(9));
+    mpImpl->xAssignPB = m_xBuilder->weld_button("assign");
+    mpImpl->xDeletePB = m_xBuilder->weld_button("delete");
+    mpImpl->xAssignComponentPB = m_xBuilder->weld_button("component");
 
     SetFrame( _rxDocumentFrame );
 
     if( !mpImpl->bIDEDialogMode )
     {
-        mpImpl->pAssignComponentPB->Hide();
-        mpImpl->pAssignComponentPB->Disable();
+        mpImpl->xAssignComponentPB->hide();
+        mpImpl->xAssignComponentPB->set_sensitive(false);
     }
 
     InitResources();
 
     InitAndSetHandler( xNameReplace, Reference< container::XNameReplace>(nullptr), Reference< util::XModifiable >(nullptr));
     DisplayAppEvents(true);
-    SvHeaderTabListBox& rListBox = mpImpl->pEventLB->GetListBox();
-    SvTreeListEntry* pE = rListBox.GetEntry( (sal_uLong)nSelectedIndex );
-    if( pE )
-        rListBox.Select(pE);
+    mpImpl->xEventLB->select(nSelectedIndex);
 }
 
-SvxMacroAssignDlg::SvxMacroAssignDlg( vcl::Window* pParent, const Reference< frame::XFrame >& _rxDocumentFrame, const SfxItemSet& rSet,
-    const Reference< container::XNameReplace >& xNameReplace, sal_uInt16 nSelectedIndex )
+SvxMacroAssignDlg::SvxMacroAssignDlg(weld::Window* pParent, const Reference< frame::XFrame >& _rxDocumentFrame, const SfxItemSet& rSet,
+    const Reference< container::XNameReplace >& xNameReplace, sal_uInt16 nSelectedIndex)
         : SvxMacroAssignSingleTabDialog(pParent, rSet)
 {
-    SetTabPage(VclPtr<SvxMacroTabPage>::Create(get_content_area(), _rxDocumentFrame, rSet, xNameReplace, nSelectedIndex));
+    SetTabPage(std::make_unique<SvxMacroTabPage>(get_content_area(), this, _rxDocumentFrame, rSet, xNameReplace, nSelectedIndex));
 }
 
-
-IMPL_LINK_NOARG(AssignComponentDialog, ButtonHandler, Button*, void)
+IMPL_LINK_NOARG(AssignComponentDialog, ButtonHandler, weld::Button&, void)
 {
-    OUString aMethodName = mpMethodEdit->GetText();
+    OUString aMethodName = mxMethodEdit->get_text();
     maURL.clear();
     if( !aMethodName.isEmpty() )
     {
         maURL = aVndSunStarUNO;
         maURL += aMethodName;
     }
-    EndDialog(1);
+    m_xDialog->response(RET_OK);
 }
 
-AssignComponentDialog::AssignComponentDialog( vcl::Window * pParent, const OUString& rURL )
-    : ModalDialog( pParent, "AssignComponent", "cui/ui/assigncomponentdialog.ui" )
+AssignComponentDialog::AssignComponentDialog(weld::Window* pParent, const OUString& rURL)
+    : GenericDialogController(pParent, "cui/ui/assigncomponentdialog.ui", "AssignComponent")
     , maURL( rURL )
+    , mxMethodEdit(m_xBuilder->weld_entry("methodEntry"))
+    , mxOKButton(m_xBuilder->weld_button("ok"))
 {
-    get(mpMethodEdit, "methodEntry");
-    get(mpOKButton, "ok");
-    mpOKButton->SetClickHdl(LINK(this, AssignComponentDialog, ButtonHandler));
+    mxOKButton->connect_clicked(LINK(this, AssignComponentDialog, ButtonHandler));
 
     OUString aMethodName;
     if( maURL.startsWith( aVndSunStarUNO ) )
     {
         aMethodName = maURL.copy( strlen(aVndSunStarUNO) );
     }
-    mpMethodEdit->SetText( aMethodName, Selection( 0, SELECTION_MAX ) );
+    mxMethodEdit->set_text(aMethodName);
+    mxMethodEdit->select_region(0, -1);
 }
 
 AssignComponentDialog::~AssignComponentDialog()
 {
-    disposeOnce();
 }
 
-void AssignComponentDialog::dispose()
+IMPL_LINK_NOARG(SvxMacroAssignSingleTabDialog, OKHdl_Impl, weld::Button&, void)
 {
-    mpMethodEdit.clear();
-    mpOKButton.clear();
-    ModalDialog::dispose();
+    m_xSfxPage->FillItemSet(nullptr);
+    m_xDialog->response(RET_OK);
 }
 
-IMPL_LINK_NOARG( SvxMacroAssignSingleTabDialog, OKHdl_Impl, Button *, void )
-{
-    GetTabPage()->FillItemSet( nullptr );
-    EndDialog( RET_OK );
-}
-
-
-SvxMacroAssignSingleTabDialog::SvxMacroAssignSingleTabDialog(vcl::Window *pParent,
+SvxMacroAssignSingleTabDialog::SvxMacroAssignSingleTabDialog(weld::Window *pParent,
     const SfxItemSet& rSet)
-    : SfxSingleTabDialog(pParent, rSet, "MacroAssignDialog", "cui/ui/macroassigndialog.ui")
+    : SfxSingleTabDialogController(pParent, &rSet, "cui/ui/macroassigndialog.ui", "MacroAssignDialog")
 {
-    GetOKButton()->SetClickHdl( LINK( this, SvxMacroAssignSingleTabDialog, OKHdl_Impl ) );
+    GetOKButton().connect_clicked(LINK(this, SvxMacroAssignSingleTabDialog, OKHdl_Impl));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

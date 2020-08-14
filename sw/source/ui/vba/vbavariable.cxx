@@ -18,7 +18,6 @@
  */
 #include "vbavariable.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 
@@ -66,11 +65,10 @@ sal_Int32 SAL_CALL
 SwVbaVariable::getIndex()
 {
     const uno::Sequence< beans::PropertyValue > props = mxUserDefined->getPropertyValues();
-    for (sal_Int32 i = 0; i < props.getLength(); ++i)
-    {
-        if( maVariableName.equals( props[i].Name ) )
-            return i+1;
-    }
+    auto pProp = std::find_if(props.begin(), props.end(),
+        [this](const beans::PropertyValue& rProp) { return rProp.Name == maVariableName; });
+    if (pProp != props.end())
+        return static_cast<sal_Int32>(std::distance(props.begin(), pProp)) + 1;
 
     return 0;
 }
@@ -78,18 +76,16 @@ SwVbaVariable::getIndex()
 OUString
 SwVbaVariable::getServiceImplName()
 {
-    return OUString("SwVbaVariable");
+    return "SwVbaVariable";
 }
 
 uno::Sequence< OUString >
 SwVbaVariable::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Variable";
-    }
+        "ooo.vba.word.Variable"
+    };
     return aServiceNames;
 }
 

@@ -32,7 +32,7 @@
 
 */
 
-class EDITENG_DLLPUBLIC SvxCharScaleWidthItem : public SfxUInt16Item
+class EDITENG_DLLPUBLIC SvxCharScaleWidthItem final : public SfxUInt16Item
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -40,26 +40,16 @@ public:
     SvxCharScaleWidthItem( sal_uInt16 nValue /*= 100*/,
                             const sal_uInt16 nId );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store( SvStream& , sal_uInt16 nItemVersion ) const override;
-    virtual sal_uInt16          GetVersion( sal_uInt16 nFileVersion ) const override;
+    virtual SvxCharScaleWidthItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper * = nullptr ) const override;
+                                  const IntlWrapper& ) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-
-    SvxCharScaleWidthItem& operator=(const SvxCharScaleWidthItem& rItem )
-    {
-        SetValue( rItem.GetValue() );
-        return *this;
-    }
-
 };
 
 #endif

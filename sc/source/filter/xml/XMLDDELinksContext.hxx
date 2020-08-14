@@ -20,22 +20,20 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_XML_XMLDDELINKSCONTEXT_HXX
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLDDELINKSCONTEXT_HXX
 
-#include <xmloff/xmlictxt.hxx>
-#include "xmlimprt.hxx"
 #include "importcontext.hxx"
-#include <list>
+#include <vector>
+
+namespace sax_fastparser { class FastAttributeList; }
 
 class ScXMLDDELinksContext : public ScXMLImportContext
 {
 public:
-    ScXMLDDELinksContext( ScXMLImport& rImport, sal_Int32 nElement,
-                        const css::uno::Reference<css::xml::sax::XFastAttributeList>& xAttrList);
+    ScXMLDDELinksContext( ScXMLImport& rImport);
 
     virtual ~ScXMLDDELinksContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 };
 
 struct ScDDELinkCell
@@ -46,7 +44,7 @@ struct ScDDELinkCell
     bool bEmpty;
 };
 
-typedef std::list<ScDDELinkCell> ScDDELinkCells;
+typedef std::vector<ScDDELinkCell> ScDDELinkCells;
 
 class ScXMLDDELinkContext : public ScXMLImportContext
 {
@@ -61,15 +59,12 @@ class ScXMLDDELinkContext : public ScXMLImportContext
     sal_uInt8       nMode;
 
 public:
-    ScXMLDDELinkContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList);
+    ScXMLDDELinkContext( ScXMLImport& rImport);
 
     virtual ~ScXMLDDELinkContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
     void SetApplication(const OUString& sValue) { sApplication = sValue; }
     void SetTopic(const OUString& sValue) { sTopic = sValue; }
@@ -81,7 +76,7 @@ public:
     void AddCellToRow(const ScDDELinkCell& aCell);
     void AddRowsToTable(const sal_Int32 nRows);
 
-    virtual void EndElement() override;
+    virtual void SAL_CALL endFastElement( sal_Int32 nElement ) override;
 };
 
 class ScXMLDDESourceContext : public ScXMLImportContext
@@ -89,18 +84,13 @@ class ScXMLDDESourceContext : public ScXMLImportContext
     ScXMLDDELinkContext* pDDELink;
 
 public:
-    ScXMLDDESourceContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+    ScXMLDDESourceContext( ScXMLImport& rImport,
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                         ScXMLDDELinkContext* pDDELink);
 
     virtual ~ScXMLDDESourceContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
-
-    virtual void EndElement() override;
+    virtual void SAL_CALL endFastElement( sal_Int32 nElement ) override;
 };
 
 class ScXMLDDETableContext : public ScXMLImportContext
@@ -108,37 +98,23 @@ class ScXMLDDETableContext : public ScXMLImportContext
     ScXMLDDELinkContext* pDDELink;
 
 public:
-    ScXMLDDETableContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+    ScXMLDDETableContext( ScXMLImport& rImport,
                         ScXMLDDELinkContext* pDDELink);
 
     virtual ~ScXMLDDETableContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
-
-    virtual void EndElement() override;
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 };
 
 class ScXMLDDEColumnContext : public ScXMLImportContext
 {
-    ScXMLDDELinkContext* pDDELink;
-
 public:
-    ScXMLDDEColumnContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+    ScXMLDDEColumnContext( ScXMLImport& rImport,
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                         ScXMLDDELinkContext* pDDELink);
 
     virtual ~ScXMLDDEColumnContext() override;
-
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
-
-    virtual void EndElement() override;
 };
 
 class ScXMLDDERowContext : public ScXMLImportContext
@@ -147,18 +123,16 @@ class ScXMLDDERowContext : public ScXMLImportContext
     sal_Int32               nRows;
 
 public:
-    ScXMLDDERowContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+    ScXMLDDERowContext( ScXMLImport& rImport,
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                         ScXMLDDELinkContext* pDDELink);
 
     virtual ~ScXMLDDERowContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
-    virtual void EndElement() override;
+    virtual void SAL_CALL endFastElement( sal_Int32 nElement ) override;
 };
 
 class ScXMLDDECellContext : public ScXMLImportContext
@@ -173,18 +147,13 @@ class ScXMLDDECellContext : public ScXMLImportContext
     ScXMLDDELinkContext* pDDELink;
 
 public:
-    ScXMLDDECellContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+    ScXMLDDECellContext( ScXMLImport& rImport,
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                         ScXMLDDELinkContext* pDDELink);
 
     virtual ~ScXMLDDECellContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
-
-    virtual void EndElement() override;
+    virtual void SAL_CALL endFastElement( sal_Int32 nElement ) override;
 };
 
 #endif

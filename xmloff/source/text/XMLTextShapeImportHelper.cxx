@@ -25,10 +25,12 @@
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/txtimp.hxx>
 #include <xmloff/xmluconv.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include "XMLAnchorTypePropHdl.hxx"
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <xmloff/XMLTextShapeImportHelper.hxx>
 
 
@@ -39,27 +41,28 @@ using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::xml::sax;
 
+const OUStringLiteral gsAnchorType("AnchorType");
+const OUStringLiteral gsAnchorPageNo("AnchorPageNo");
+const OUStringLiteral gsVertOrientPosition("VertOrientPosition");
+
 XMLTextShapeImportHelper::XMLTextShapeImportHelper(
         SvXMLImport& rImp ) :
     XMLShapeImportHelper( rImp, rImp.GetModel(),
                           XMLTextImportHelper::CreateShapeExtPropMapper(rImp) ),
-    rImport( rImp ),
-    sAnchorType("AnchorType"),
-    sAnchorPageNo("AnchorPageNo"),
-    sVertOrientPosition("VertOrientPosition")
+    rImport( rImp )
 {
     Reference < XDrawPageSupplier > xDPS( rImp.GetModel(), UNO_QUERY );
     if( xDPS.is() )
     {
-         Reference < XShapes > xShapes( xDPS->getDrawPage(), UNO_QUERY );
-        pushGroupForSorting( xShapes );
+        Reference < XShapes > xShapes = xDPS->getDrawPage();
+        pushGroupForPostProcessing( xShapes );
     }
 
 }
 
 XMLTextShapeImportHelper::~XMLTextShapeImportHelper()
 {
-    popGroupAndSort();
+    popGroupAndPostProcess();
 }
 
 void XMLTextShapeImportHelper::addShape(
@@ -109,7 +112,7 @@ void XMLTextShapeImportHelper::addShape(
             {
                 sal_Int32 nTmp;
                 if (::sax::Converter::convertNumber(nTmp, rValue, 1, SHRT_MAX))
-                    nPage = (sal_Int16)nTmp;
+                    nPage = static_cast<sal_Int16>(nTmp);
             }
             break;
         case XML_TOK_TEXT_FRAME_Y:
@@ -121,7 +124,7 @@ void XMLTextShapeImportHelper::addShape(
     Reference < XPropertySet > xPropSet( rShape, UNO_QUERY );
 
     // anchor type
-    xPropSet->setPropertyValue( sAnchorType, Any(eAnchorType) );
+    xPropSet->setPropertyValue( gsAnchorType, Any(eAnchorType) );
 
     Reference < XTextContent > xTxtCntnt( rShape, UNO_QUERY );
     xTxtImport->InsertTextContent( xTxtCntnt );
@@ -134,11 +137,11 @@ void XMLTextShapeImportHelper::addShape(
         // only set positive page numbers
         if ( nPage > 0 )
         {
-            xPropSet->setPropertyValue( sAnchorPageNo, Any(nPage) );
+            xPropSet->setPropertyValue( gsAnchorPageNo, Any(nPage) );
         }
         break;
     case TextContentAnchorType_AS_CHARACTER:
-        xPropSet->setPropertyValue( sVertOrientPosition, Any(nY) );
+        xPropSet->setPropertyValue( gsVertOrientPosition, Any(nY) );
         break;
     default:
         break;

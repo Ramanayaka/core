@@ -105,7 +105,7 @@ void SAL_CALL NeonInputStream::skipBytes( sal_Int32 nBytesToSkip )
 // Returns the number of unread bytes currently remaining on the stream
 sal_Int32 SAL_CALL NeonInputStream::available(  )
 {
-    return sal::static_int_cast<sal_Int32>(mLen - mPos);
+    return std::min<sal_Int64>(SAL_MAX_INT32, mLen - mPos);
 }
 
 void SAL_CALL NeonInputStream::closeInput()
@@ -117,10 +117,10 @@ void SAL_CALL NeonInputStream::seek( sal_Int64 location )
     if ( location < 0 )
         throw css::lang::IllegalArgumentException();
 
-    if ( location <= mLen )
-        mPos = location;
-    else
+    if ( location > mLen )
         throw css::lang::IllegalArgumentException();
+
+    mPos = location;
 }
 
 sal_Int64 SAL_CALL NeonInputStream::getPosition()

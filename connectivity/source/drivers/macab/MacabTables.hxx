@@ -23,10 +23,8 @@
 #include <connectivity/sdbcx/VCollection.hxx>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
 
-namespace connectivity
+namespace connectivity::macab
 {
-    namespace macab
-    {
         class MacabTables : public sdbcx::OCollection
         {
             css::uno::Reference< css::sdbc::XDatabaseMetaData >       m_xMetaData;
@@ -40,14 +38,13 @@ namespace connectivity
                 const css::uno::Reference< css::sdbc::XDatabaseMetaData >& _rMetaData,
                 ::cppu::OWeakObject& _rParent,
                 ::osl::Mutex& _rMutex,
-                const TStringVector &_rVector)
+                const ::std::vector< OUString> &_rVector)
                 : sdbcx::OCollection(_rParent,true,_rMutex,_rVector),
                   m_xMetaData(_rMetaData)
                 { }
 
-            virtual void SAL_CALL disposing() override;
+            virtual void disposing() override;
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABTABLES_HXX

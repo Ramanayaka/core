@@ -7,6 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#undef NDEBUG
 #include <cassert>
 
 #define CAST_N3 (void) n3
@@ -56,8 +57,8 @@ struct S1 {
         (void) n1; // expected-error {{unnecessary cast to void [loplugin:casttovoid]}}
         (void) n2; // expected-error {{unnecessary cast to void [loplugin:casttovoid]}}
     }
-    int const & n1_;
-    int const & n2_;
+    int const n1_;
+    int const n2_;
 };
 
 struct S2 { int n; };

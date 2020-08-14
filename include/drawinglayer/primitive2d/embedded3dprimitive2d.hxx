@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_EMBEDDED3DPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_EMBEDDED3DPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
@@ -30,10 +29,8 @@
 
 // Embedded3DPrimitive2D class
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** Embedded3DPrimitive2D class
 
             This is a helper primitive which allows embedding of single 3D
@@ -44,7 +41,7 @@ namespace drawinglayer
             This primitive will not be visualized and decomposes to a yellow
             2D rectangle to visualize that this should never be visualized
          */
-        class DRAWINGLAYER_DLLPUBLIC Embedded3DPrimitive2D : public BufferedDecompositionPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC Embedded3DPrimitive2D final : public BufferedDecompositionPrimitive2D
         {
         private:
             /// the sequence of 3d primitives
@@ -57,7 +54,7 @@ namespace drawinglayer
             geometry::ViewInformation3D                         maViewInformation3D;
 
             /** if the embedded 3D primitives contain shadow, these parameters are needed
-                to extract the shadow which is a sequence od 2D primitives and may expand
+                to extract the shadow which is a sequence of 2D primitives and may expand
                 the 2D range. Since every single 3D object in a scene may individually
                 have shadow or not, these values need to be provided and prepared. The shadow
                 distance itself (a 2D transformation) is part of the 3D shadow definition
@@ -72,7 +69,7 @@ namespace drawinglayer
             /// #i96669# add simple range buffering for this primitive
             basegfx::B2DRange                                   maB2DRange;
 
-            /** flag if given 3D geometry is already cheched for shadow definitions and 2d shadows
+            /** flag if given 3D geometry is already checked for shadow definitions and 2d shadows
                 are created in maShadowPrimitives
              */
             bool                                                mbShadow3DChecked : 1;
@@ -80,7 +77,6 @@ namespace drawinglayer
             /// private helpers
             bool impGetShadow3D() const;
 
-        protected:
             /// local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
@@ -109,12 +105,9 @@ namespace drawinglayer
             virtual basegfx::B2DRange getB2DRange(const geometry::ViewInformation2D& rViewInformation) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_EMBEDDED3DPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

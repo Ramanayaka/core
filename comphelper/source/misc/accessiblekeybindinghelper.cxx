@@ -27,7 +27,7 @@ namespace comphelper
 {
 
 
-    using namespace ::com::sun::star; // MT 04/2003: was ::drafts::com::sun::star - otherwise to many changes
+    using namespace ::com::sun::star; // MT 04/2003: was ::drafts::com::sun::star - otherwise too many changes
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::accessibility;
@@ -86,7 +86,7 @@ namespace comphelper
     {
         ::osl::MutexGuard aGuard( m_aMutex );
 
-        if ( nIndex < 0 || nIndex >= (sal_Int32)m_aKeyBindings.size() )
+        if ( nIndex < 0 || nIndex >= static_cast<sal_Int32>(m_aKeyBindings.size()) )
             throw IndexOutOfBoundsException();
 
         return m_aKeyBindings[nIndex];

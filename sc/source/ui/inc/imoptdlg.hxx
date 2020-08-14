@@ -20,14 +20,9 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_IMOPTDLG_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_IMOPTDLG_HXX
 
-#include <vcl/dialog.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/button.hxx>
-#include <svx/txencbox.hxx>
-#include "scdllapi.h"
-#include "global.hxx"
+#include <rtl/textenc.h>
+#include <rtl/ustring.hxx>
+#include <scdllapi.h>
 
 class SC_DLLPUBLIC ScImportOptions
 {
@@ -36,21 +31,11 @@ public:
 
         ScImportOptions( sal_Unicode nFieldSep, sal_Unicode nTextSep, rtl_TextEncoding nEnc )
             : nFieldSepCode(nFieldSep), nTextSepCode(nTextSep),
-            bFixedWidth(false), bSaveAsShown(false), bQuoteAllText(false), bSaveFormulas(false)
+            bFixedWidth(false), bSaveAsShown(false), bQuoteAllText(false),
+            bSaveNumberAsSuch(true), bSaveFormulas(false), bRemoveSpace(false)
         { SetTextEncoding( nEnc ); }
 
-    ScImportOptions& operator=( const ScImportOptions& rCpy )
-                        {
-                            nFieldSepCode   = rCpy.nFieldSepCode;
-                            nTextSepCode    = rCpy.nTextSepCode;
-                            aStrFont        = rCpy.aStrFont;
-                            eCharSet        = rCpy.eCharSet;
-                            bFixedWidth     = rCpy.bFixedWidth;
-                            bSaveAsShown    = rCpy.bSaveAsShown;
-                            bQuoteAllText   = rCpy.bQuoteAllText;
-                            bSaveFormulas   = rCpy.bSaveFormulas;
-                            return *this;
-                        }
+    ScImportOptions& operator=( const ScImportOptions& rCpy ) = default;
 
     OUString  BuildString() const;
 
@@ -63,7 +48,9 @@ public:
     bool        bFixedWidth;
     bool        bSaveAsShown;
     bool        bQuoteAllText;
+    bool        bSaveNumberAsSuch;
     bool        bSaveFormulas;
+    bool        bRemoveSpace;
 };
 
 #endif // INCLUDED_SC_SOURCE_UI_INC_IMOPTDLG_HXX

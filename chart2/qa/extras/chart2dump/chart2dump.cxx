@@ -7,21 +7,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "charttest.hxx"
+#include <charttest.hxx>
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/chart/XChartDocument.hpp>
-#include <com/sun/star/chart/XComplexDescriptionAccess.hpp>
 #include <com/sun/star/container/XNamed.hpp>
-#include <com/sun/star/text/WritingMode.hpp>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/drawing/HomogenMatrix3.hpp>
 #include <com/sun/star/drawing/LineDash.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
+#include <com/sun/star/drawing/FillStyle.hpp>
 
 #include <editeng/unoprnms.hxx>
 #include <test/xmltesttools.hxx>
-#include <rtl/strbuf.hxx>
 #include <rtl/ustring.hxx>
+#include <rtl/ustrbuf.hxx>
 
 #include <fstream>
 
@@ -34,7 +33,7 @@
 #define DECLARE_DUMP_TEST(TestName, BaseClass, DumpMode) \
     class TestName : public BaseClass { \
         protected:\
-            virtual OUString getTestName() override { return OUString(#TestName); } \
+            virtual OUString getTestName() override { return #TestName; } \
         public:\
             TestName() : BaseClass(DumpMode) {}; \
             CPPUNIT_TEST_SUITE(TestName); \
@@ -52,7 +51,7 @@
     else \
         { \
             OString sTestFileName = OUStringToOString(getTestFileName(), RTL_TEXTENCODING_UTF8); \
-            CPPUNIT_ASSERT_EQUAL_MESSAGE(OString("Failing test file is: " + sTestFileName).getStr(), readExpected(#aActual), OUString::number(aActual)); \
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(OString("Failing test file is: " + sTestFileName).getStr(), readExpected(#aActual), OUString(OUString::number(aActual))); \
         }
 
 #define CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aActual, EPS_) \
@@ -108,8 +107,8 @@ protected:
     bool isInDumpMode () const {return m_bDumpMode;}
 
     virtual OUString getTestName() { return OUString(); }
-    OUString getTestFileName() { return m_sTestFileName; }
-    OUString getTestFileDirName() { return OUString("/chart2/qa/extras/chart2dump/data/"); }
+    OUString const & getTestFileName() const { return m_sTestFileName; }
+    OUString getTestFileDirName() const { return "/chart2/qa/extras/chart2dump/data/"; }
     OUString getReferenceDirName()
     {
         return "/chart2/qa/extras/chart2dump/reference/" + getTestName().toAsciiLowerCase() + "/";
@@ -152,7 +151,7 @@ protected:
         std::string sTemp;
         getline(m_aReferenceFile, sTemp);
         OString sAssertMessage =
-            OString("The reference file does not contain the right content. Maybe it needs an update:")
+            "The reference file does not contain the right content. Maybe it needs an update:"
             + OUStringToOString(m_sTestFileName, RTL_TEXTENCODING_UTF8);
         CPPUNIT_ASSERT_EQUAL_MESSAGE(sAssertMessage.getStr(), OUString("// " + sCheck), OUString(sTemp.data(), sTemp.length(), RTL_TEXTENCODING_UTF8));
         getline(m_aReferenceFile, sTemp);
@@ -174,7 +173,7 @@ protected:
         std::string sTemp;
         getline(m_aReferenceFile, sTemp);
         OString sAssertMessage =
-            OString("The reference file does not contain the right content. Maybe it needs an update:")
+            "The reference file does not contain the right content. Maybe it needs an update:"
             + OUStringToOString(m_sTestFileName, RTL_TEXTENCODING_UTF8);
         CPPUNIT_ASSERT_EQUAL_MESSAGE(sAssertMessage.getStr(), OUString("/// " + sNote), OUString(sTemp.data(), sTemp.length(), RTL_TEXTENCODING_UTF8));
     }
@@ -197,21 +196,22 @@ protected:
         writeActual(transformationToOneLineString(rTransform), sCheck);
     }
 
-    bool readAndCheckTransformation(const drawing::HomogenMatrix3& rTransform, const OUString& sCheck, const double fEPS, OUString& rExpectedTranform)
+    bool readAndCheckTransformation(const drawing::HomogenMatrix3& rTransform, const OUString& sCheck, const double fEPS, OUString& rExpectedTransform)
     {
-        rExpectedTranform = readExpected(sCheck); // Reference transformation string
+        rExpectedTransform = readExpected(sCheck); // Reference transformation string
 
         // Convert string back to a transformation;
         drawing::HomogenMatrix3 aExpectedTransform;
-        aExpectedTransform.Line1.Column1 = rExpectedTranform.getToken(0, ';').toDouble();
-        aExpectedTransform.Line1.Column2 = rExpectedTranform.getToken(1, ';').toDouble();
-        aExpectedTransform.Line1.Column3 = rExpectedTranform.getToken(2, ';').toDouble();
-        aExpectedTransform.Line2.Column1 = rExpectedTranform.getToken(3, ';').toDouble();
-        aExpectedTransform.Line2.Column2 = rExpectedTranform.getToken(4, ';').toDouble();
-        aExpectedTransform.Line2.Column3 = rExpectedTranform.getToken(5, ';').toDouble();
-        aExpectedTransform.Line3.Column1 = rExpectedTranform.getToken(6, ';').toDouble();
-        aExpectedTransform.Line3.Column2 = rExpectedTranform.getToken(7, ';').toDouble();
-        aExpectedTransform.Line3.Column3 = rExpectedTranform.getToken(8, ';').toDouble();
+        sal_Int32 nIdx {0};
+        aExpectedTransform.Line1.Column1 = rExpectedTransform.getToken(0, ';', nIdx).toDouble();
+        aExpectedTransform.Line1.Column2 = rExpectedTransform.getToken(0, ';', nIdx).toDouble();
+        aExpectedTransform.Line1.Column3 = rExpectedTransform.getToken(0, ';', nIdx).toDouble();
+        aExpectedTransform.Line2.Column1 = rExpectedTransform.getToken(0, ';', nIdx).toDouble();
+        aExpectedTransform.Line2.Column2 = rExpectedTransform.getToken(0, ';', nIdx).toDouble();
+        aExpectedTransform.Line2.Column3 = rExpectedTransform.getToken(0, ';', nIdx).toDouble();
+        aExpectedTransform.Line3.Column1 = rExpectedTransform.getToken(0, ';', nIdx).toDouble();
+        aExpectedTransform.Line3.Column2 = rExpectedTransform.getToken(0, ';', nIdx).toDouble();
+        aExpectedTransform.Line3.Column3 = rExpectedTransform.getToken(0, ';', nIdx).toDouble();
 
         // Check the equality of the two transformation
         return (std::abs(aExpectedTransform.Line1.Column1 - rTransform.Line1.Column1) < fEPS &&
@@ -225,12 +225,12 @@ protected:
             std::abs(aExpectedTransform.Line3.Column3 - rTransform.Line3.Column3) < fEPS);
     }
 
-    OUString sequenceToOneLineString(uno::Sequence<OUString>& rSeq)
+    OUString sequenceToOneLineString(const uno::Sequence<OUString>& rSeq)
     {
         OUStringBuffer aBufer;
         for (const OUString& seqItem : rSeq)
         {
-            aBufer.append(seqItem + ";");
+            aBufer.append(seqItem).append(";");
         }
         return aBufer.makeStringAndClear();
     }
@@ -240,7 +240,7 @@ protected:
         OUStringBuffer aBufer;
         for (const double& vectorItem : rVector)
         {
-            aBufer.append(OUString::number(vectorItem) + ";");
+            aBufer.append(OUString::number(vectorItem)).append(";");
         }
         return aBufer.makeStringAndClear();
     }
@@ -254,17 +254,16 @@ protected:
 
     uno::Reference<drawing::XShape> getShapeByName(const uno::Reference<drawing::XShapes>& rShapes, const OUString& rName, bool (*pCondition)(const uno::Reference<drawing::XShape>&) = nullptr)
     {
-        uno::Reference<container::XIndexAccess> XIndexAccess(rShapes, uno::UNO_QUERY);
-        for (sal_Int32 i = 0; i < XIndexAccess->getCount(); ++i)
+        for (sal_Int32 i = 0; i < rShapes->getCount(); ++i)
         {
-            uno::Reference<drawing::XShapes> xShapes(XIndexAccess->getByIndex(i), uno::UNO_QUERY);
+            uno::Reference<drawing::XShapes> xShapes(rShapes->getByIndex(i), uno::UNO_QUERY);
             if (xShapes.is())
             {
                 uno::Reference<drawing::XShape> xRet = getShapeByName(xShapes, rName, pCondition);
                 if (xRet.is())
                     return xRet;
             }
-            uno::Reference<container::XNamed> xNamedShape(XIndexAccess->getByIndex(i), uno::UNO_QUERY);
+            uno::Reference<container::XNamed> xNamedShape(rShapes->getByIndex(i), uno::UNO_QUERY);
             if (xNamedShape->getName() == rName)
             {
                 uno::Reference<drawing::XShape> xShape(xNamedShape, uno::UNO_QUERY);
@@ -295,7 +294,6 @@ DECLARE_DUMP_TEST(ChartDataTest, Chart2DumpTest, false)
         setTestFileName(aTestFile);
         load(getTestFileDirName(), getTestFileName());
         uno::Reference< chart::XChartDocument > xChartDoc (getChartDocFromSheet(0, mxComponent), UNO_QUERY_THROW);
-        CPPUNIT_ASSERT(xChartDoc.is());
 
         // Check title
         uno::Reference< chart2::XChartDocument > xChartDoc2(xChartDoc, UNO_QUERY_THROW);
@@ -344,7 +342,6 @@ DECLARE_DUMP_TEST(ChartDataTest, Chart2DumpTest, false)
 
         // Check column labels
         uno::Reference< chart::XChartDataArray > xChartData(xChartDoc->getData(), UNO_QUERY_THROW);
-        CPPUNIT_ASSERT(xChartData.is());
         uno::Sequence < OUString > aColumnLabels = xChartData->getColumnDescriptions();
         CPPUNIT_DUMP_ASSERT_NUMBERS_EQUAL(aColumnLabels.getLength());
         OUString sColumnLabels = sequenceToOneLineString(aColumnLabels);
@@ -393,7 +390,6 @@ DECLARE_DUMP_TEST(ChartDataTest, Chart2DumpTest, false)
 
 DECLARE_DUMP_TEST(LegendTest, Chart2DumpTest, false)
 {
-    const double fLocalEPS = 700.1;
     const std::vector<OUString> aTestFiles =
     {
         "legend_on_right_side.odp",
@@ -410,8 +406,7 @@ DECLARE_DUMP_TEST(LegendTest, Chart2DumpTest, false)
     {
         setTestFileName(aTestFile);
         load(getTestFileDirName(), getTestFileName());
-        uno::Reference< chart::XChartDocument > xChartDoc(getChartDocFromDrawImpress(0, 0), UNO_QUERY_THROW);
-        CPPUNIT_ASSERT(xChartDoc.is());
+        uno::Reference< chart::XChartDocument > xChartDoc(getChartDocFromDrawImpress(0, 0), UNO_SET_THROW);
         uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(xChartDoc, uno::UNO_QUERY);
         uno::Reference<drawing::XDrawPage> xDrawPage = xDrawPageSupplier->getDrawPage();
         uno::Reference<drawing::XShapes> xShapes(xDrawPage->getByIndex(0), uno::UNO_QUERY);
@@ -421,13 +416,13 @@ DECLARE_DUMP_TEST(LegendTest, Chart2DumpTest, false)
         uno::Reference<drawing::XShape> xLegend = getShapeByName(xShapes, "CID/D=0:Legend=");
         CPPUNIT_ASSERT(xLegend.is());
 
-        // Check legend position and size
+        /* Check legend position and size
         awt::Point aLegendPosition = xLegend->getPosition();
-        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendPosition.X, std::max(fLocalEPS, INT_EPS));
-        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendPosition.Y, std::max(fLocalEPS, INT_EPS));
+        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendPosition.X, INT_EPS);
+        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendPosition.Y, INT_EPS);
         awt::Size aLegendSize = xLegend->getSize();
-        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendSize.Width, std::max(fLocalEPS, INT_EPS));
-        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendSize.Height, std::max(fLocalEPS, INT_EPS));
+        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendSize.Width, INT_EPS);
+        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendSize.Height, INT_EPS);*/
 
         // Check legend entries
         uno::Reference< chart2::XChartDocument > xChartDoc2(xChartDoc, UNO_QUERY_THROW);
@@ -442,20 +437,19 @@ DECLARE_DUMP_TEST(LegendTest, Chart2DumpTest, false)
             uno::Reference<drawing::XShape> xLegendEntry = getShapeByName(xShapes, "CID/MultiClick/D=0:CS=0:CT=0:Series=" + OUString::number(nSeriesIndex) + ":LegendEntry=0");
             CPPUNIT_ASSERT(xLegendEntry.is());
 
-            // Check position and size
+            /* Check position and size
             awt::Point aLegendEntryPosition = xLegendEntry->getPosition();
-            CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendEntryPosition.X, std::max(fLocalEPS, INT_EPS));
-            CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendEntryPosition.Y, std::max(fLocalEPS, INT_EPS));
+            CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendEntryPosition.X, INT_EPS);
+            CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendEntryPosition.Y, INT_EPS);
             awt::Size aLegendEntrySize = xLegendEntry->getSize();
-            CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendEntrySize.Height, std::max(fLocalEPS, INT_EPS));
-            CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendEntrySize.Width, std::max(fLocalEPS, INT_EPS));
+            CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendEntrySize.Height, INT_EPS);
+            CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLegendEntrySize.Width, INT_EPS);
 
             // Check transformation
             Reference< beans::XPropertySet > xLegendEntryPropSet(xLegendEntry, UNO_QUERY_THROW);
-            CPPUNIT_ASSERT(xLegendEntryPropSet.is());
             drawing::HomogenMatrix3 aLegendEntryTransformation;
             xLegendEntryPropSet->getPropertyValue("Transformation") >>= aLegendEntryTransformation;
-            CPPUNIT_DUMP_ASSERT_TRANSFORMATIONS_EQUAL(aLegendEntryTransformation, std::max(fLocalEPS, INT_EPS));
+            CPPUNIT_DUMP_ASSERT_TRANSFORMATIONS_EQUAL(aLegendEntryTransformation, INT_EPS);*/
 
             uno::Reference<container::XIndexAccess> xLegendEntryContainer(xLegendEntry, UNO_QUERY_THROW);
             CPPUNIT_DUMP_ASSERT_NUMBERS_EQUAL(xLegendEntryContainer->getCount());
@@ -470,7 +464,6 @@ DECLARE_DUMP_TEST(LegendTest, Chart2DumpTest, false)
 
                 // Check display color
                 Reference< beans::XPropertySet > xPropSet(xLegendEntryGeom, UNO_QUERY_THROW);
-                CPPUNIT_ASSERT(xPropSet.is());
                 util::Color aEntryGeomColor = 0;
                 xPropSet->getPropertyValue(UNO_NAME_FILLCOLOR) >>= aEntryGeomColor;
                 CPPUNIT_DUMP_ASSERT_NUMBERS_EQUAL(static_cast<sal_Int32>(aEntryGeomColor));
@@ -486,7 +479,7 @@ DECLARE_DUMP_TEST(LegendTest, Chart2DumpTest, false)
 
             if (sShapeType == "com.sun.star.drawing.TextShape")
             {
-                uno::Reference<text::XText> xLegendEntryText = uno::Reference<text::XTextRange>(xShape, uno::UNO_QUERY)->getText();
+                uno::Reference<text::XText> xLegendEntryText = uno::Reference<text::XTextRange>(xShape, uno::UNO_QUERY_THROW)->getText();
                 CPPUNIT_DUMP_ASSERT_STRINGS_EQUAL(xLegendEntryText->getString());
             }
         }
@@ -537,7 +530,6 @@ DECLARE_DUMP_TEST(GridTest, Chart2DumpTest, false)
 
                 // Check transformation
                 Reference< beans::XPropertySet > xPropSet(xGrid, UNO_QUERY_THROW);
-                CPPUNIT_ASSERT(xPropSet.is());
                 drawing::HomogenMatrix3 aGridTransformation;
                 xPropSet->getPropertyValue("Transformation") >>= aGridTransformation;
                 CPPUNIT_DUMP_ASSERT_TRANSFORMATIONS_EQUAL(aGridTransformation, INT_EPS);
@@ -546,7 +538,6 @@ DECLARE_DUMP_TEST(GridTest, Chart2DumpTest, false)
                 uno::Reference<container::XIndexAccess> xIndexAccess(xGrid, UNO_QUERY_THROW);
                 uno::Reference<drawing::XShape> xGridLine(xIndexAccess->getByIndex(0), UNO_QUERY_THROW);
                 Reference< beans::XPropertySet > xGridLinePropSet(xGridLine, UNO_QUERY_THROW);
-                CPPUNIT_ASSERT(xGridLinePropSet.is());
                 // Line type
                 drawing::LineDash aLineDash;
                 xGridLinePropSet->getPropertyValue("LineDash") >>= aLineDash;
@@ -581,8 +572,7 @@ DECLARE_DUMP_TEST(AxisGeometryTest, Chart2DumpTest, false)
     {
         setTestFileName(sTestFile);
         load(getTestFileDirName(), getTestFileName());
-        uno::Reference< chart::XChartDocument > xChartDoc(getChartDocFromDrawImpress(0, 0), UNO_QUERY_THROW);
-        CPPUNIT_ASSERT(xChartDoc.is());
+        uno::Reference< chart::XChartDocument > xChartDoc(getChartDocFromDrawImpress(0, 0), UNO_SET_THROW);
         uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(xChartDoc, uno::UNO_QUERY);
         uno::Reference<drawing::XDrawPage> xDrawPage = xDrawPageSupplier->getDrawPage();
         uno::Reference<drawing::XShapes> xShapes(xDrawPage->getByIndex(0), uno::UNO_QUERY);
@@ -610,7 +600,6 @@ DECLARE_DUMP_TEST(AxisGeometryTest, Chart2DumpTest, false)
 
             // Check transformation
             Reference< beans::XPropertySet > xPropSet(xXAxis, UNO_QUERY_THROW);
-            CPPUNIT_ASSERT(xPropSet.is());
             drawing::HomogenMatrix3 aAxisTransformation;
             xPropSet->getPropertyValue("Transformation") >>= aAxisTransformation;
             CPPUNIT_DUMP_ASSERT_TRANSFORMATIONS_EQUAL(aAxisTransformation, INT_EPS);
@@ -621,7 +610,6 @@ DECLARE_DUMP_TEST(AxisGeometryTest, Chart2DumpTest, false)
             CPPUNIT_DUMP_ASSERT_NUMBERS_EQUAL(nAxisGeometriesCount);
             uno::Reference<drawing::XShape> xAxisLine(xIndexAccess->getByIndex(0), UNO_QUERY_THROW);
             Reference< beans::XPropertySet > xAxisLinePropSet(xAxisLine, UNO_QUERY_THROW);
-            CPPUNIT_ASSERT(xAxisLinePropSet.is());
             // Line type
             drawing::LineDash aLineDash;
             xAxisLinePropSet->getPropertyValue("LineDash") >>= aLineDash;
@@ -643,21 +631,20 @@ DECLARE_DUMP_TEST(AxisGeometryTest, Chart2DumpTest, false)
 
 DECLARE_DUMP_TEST(AxisLabelTest, Chart2DumpTest, false)
 {
-    const double fLocalEPS = 250.1;
     const std::vector<OUString> aTestFiles =
     {
         "default_formated_axis.odp",
         "rotated_axis_labels.odp",
         "formated_axis_labels.odp",
         "percent_stacked_column_chart.odp",
+        "tdf118150.xlsx",
     };
 
     for (const OUString& sTestFile : aTestFiles)
     {
         setTestFileName(sTestFile);
         load(getTestFileDirName(), getTestFileName());
-        uno::Reference< chart::XChartDocument > xChartDoc(getChartDocFromDrawImpress(0, 0), UNO_QUERY_THROW);
-        CPPUNIT_ASSERT(xChartDoc.is());
+        uno::Reference< chart::XChartDocument > xChartDoc(getChartDocFromDrawImpress(0, 0), UNO_SET_THROW);
         uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(xChartDoc, uno::UNO_QUERY);
         uno::Reference<drawing::XDrawPage> xDrawPage = xDrawPageSupplier->getDrawPage();
         uno::Reference<drawing::XShapes> xShapes(xDrawPage->getByIndex(0), uno::UNO_QUERY);
@@ -698,19 +685,18 @@ DECLARE_DUMP_TEST(AxisLabelTest, Chart2DumpTest, false)
 
                 // Check size and position
                 uno::Reference<drawing::XShape> xLabelShape(xLabel, uno::UNO_QUERY);
-                awt::Point aLabelPosition = xLabelShape->getPosition();
-                CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLabelPosition.X, std::max(fLocalEPS, INT_EPS));
-                CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLabelPosition.Y, std::max(fLocalEPS, INT_EPS));
+                /*awt::Point aLabelPosition = xLabelShape->getPosition();
+                CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLabelPosition.X, INT_EPS);
+                CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLabelPosition.Y, INT_EPS);
                 awt::Size aLabelSize = xLabelShape->getSize();
-                CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLabelSize.Height, std::max(fLocalEPS, INT_EPS));
-                CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLabelSize.Width, std::max(fLocalEPS, INT_EPS));
+                CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLabelSize.Height, INT_EPS);
+                CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aLabelSize.Width, INT_EPS);*/
 
                 // Check transformation
                 Reference< beans::XPropertySet > xPropSet(xLabelShape, UNO_QUERY_THROW);
-                CPPUNIT_ASSERT(xPropSet.is());
-                drawing::HomogenMatrix3 aLabelTransformation;
+                /*drawing::HomogenMatrix3 aLabelTransformation;
                 xPropSet->getPropertyValue("Transformation") >>= aLabelTransformation;
-                CPPUNIT_DUMP_ASSERT_TRANSFORMATIONS_EQUAL(aLabelTransformation, std::max(fLocalEPS, INT_EPS));
+                CPPUNIT_DUMP_ASSERT_TRANSFORMATIONS_EQUAL(aLabelTransformation, INT_EPS);*/
 
                 // Check font color and height
                 util::Color aLabelFontColor = 0;
@@ -790,7 +776,6 @@ DECLARE_DUMP_TEST(ColumnBarChartTest, Chart2DumpTest, false)
 
                 // Check transformation
                 Reference< beans::XPropertySet > xPropSet(xColumnOrBar, UNO_QUERY_THROW);
-                CPPUNIT_ASSERT(xPropSet.is());
                 drawing::HomogenMatrix3 aColumnOrBarTransformation;
                 xPropSet->getPropertyValue("Transformation") >>= aColumnOrBarTransformation;
                 CPPUNIT_DUMP_ASSERT_TRANSFORMATIONS_EQUAL(aColumnOrBarTransformation, INT_EPS);
@@ -801,7 +786,6 @@ DECLARE_DUMP_TEST(ColumnBarChartTest, Chart2DumpTest, false)
 
 DECLARE_DUMP_TEST(ChartWallTest, Chart2DumpTest, false)
 {
-    const double fLocalEPS = 350.1;
     const std::vector<OUString> aTestFiles =
     {
         "chartwall_auto_adjust_with_titles.ods",
@@ -813,8 +797,7 @@ DECLARE_DUMP_TEST(ChartWallTest, Chart2DumpTest, false)
     {
         setTestFileName(sTestFile);
         load(getTestFileDirName(), getTestFileName());
-        uno::Reference< chart::XChartDocument > xChartDoc(getChartDocFromDrawImpress(0, 0), UNO_QUERY_THROW);
-        CPPUNIT_ASSERT(xChartDoc.is());
+        uno::Reference< chart::XChartDocument > xChartDoc(getChartDocFromDrawImpress(0, 0), UNO_SET_THROW);
         uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(xChartDoc, uno::UNO_QUERY);
         uno::Reference<drawing::XDrawPage> xDrawPage = xDrawPageSupplier->getDrawPage();
         uno::Reference<drawing::XShapes> xShapes(xDrawPage->getByIndex(0), uno::UNO_QUERY);
@@ -824,19 +807,18 @@ DECLARE_DUMP_TEST(ChartWallTest, Chart2DumpTest, false)
         CPPUNIT_ASSERT(xChartWall.is());
 
         // Check position and size
-        awt::Point aChartWallPosition = xChartWall->getPosition();
-        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aChartWallPosition.X, std::max(fLocalEPS, INT_EPS));
-        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aChartWallPosition.Y, std::max(fLocalEPS, INT_EPS));
+        /*awt::Point aChartWallPosition = xChartWall->getPosition();
+        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aChartWallPosition.X, INT_EPS);
+        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aChartWallPosition.Y, INT_EPS);
         awt::Size aChartWallSize = xChartWall->getSize();
-        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aChartWallSize.Height, std::max(fLocalEPS, INT_EPS));
-        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aChartWallSize.Width, std::max(fLocalEPS, INT_EPS));
+        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aChartWallSize.Height, INT_EPS);
+        CPPUNIT_DUMP_ASSERT_DOUBLES_EQUAL(aChartWallSize.Width, INT_EPS);*/
 
         // Check transformation
         Reference< beans::XPropertySet > xPropSet(xChartWall, UNO_QUERY_THROW);
-        CPPUNIT_ASSERT(xPropSet.is());
-        drawing::HomogenMatrix3 aChartWallTransformation;
+        /*drawing::HomogenMatrix3 aChartWallTransformation;
         xPropSet->getPropertyValue("Transformation") >>= aChartWallTransformation;
-        CPPUNIT_DUMP_ASSERT_TRANSFORMATIONS_EQUAL(aChartWallTransformation, std::max(fLocalEPS, INT_EPS));
+        CPPUNIT_DUMP_ASSERT_TRANSFORMATIONS_EQUAL(aChartWallTransformation, INT_EPS);*/
 
         // Check fill properties
         drawing::FillStyle aChartWallFillStyle;
@@ -874,7 +856,7 @@ DECLARE_DUMP_TEST(PieChartTest, Chart2DumpTest, false)
         "rotated_pie_chart.ods",
         "exploded_pie_chart.ods",
         "donut_chart.ods",
-        "pie_chart_many_slices.ods"
+        "pie_chart_many_slices.ods",
     };
 
     for (const OUString& sTestFile : aTestFiles)
@@ -925,7 +907,6 @@ DECLARE_DUMP_TEST(PieChartTest, Chart2DumpTest, false)
 
                 // Check transformation
                 Reference< beans::XPropertySet > xPropSet(xSlice, UNO_QUERY_THROW);
-                CPPUNIT_ASSERT(xPropSet.is());
                 drawing::HomogenMatrix3 aSliceTransformation;
                 xPropSet->getPropertyValue("Transformation") >>= aSliceTransformation;
                 CPPUNIT_DUMP_ASSERT_TRANSFORMATIONS_EQUAL(aSliceTransformation, INT_EPS);
@@ -990,7 +971,6 @@ DECLARE_DUMP_TEST(AreaChartTest, Chart2DumpTest, false)
 
             // Check transformation
             Reference< beans::XPropertySet > xPropSet(xArea, UNO_QUERY_THROW);
-            CPPUNIT_ASSERT(xPropSet.is());
             drawing::HomogenMatrix3 aAreaTransformation;
             xPropSet->getPropertyValue("Transformation") >>= aAreaTransformation;
             CPPUNIT_DUMP_ASSERT_TRANSFORMATIONS_EQUAL(aAreaTransformation, INT_EPS);
@@ -1086,7 +1066,6 @@ DECLARE_DUMP_TEST(PointLineChartTest, Chart2DumpTest, false)
                 {
                     uno::Reference<container::XIndexAccess> XPointContainer (
                         getShapeByName(xShapes, "CID/MultiClick/D=0:CS=0:CT=0:Series=" + OUString::number(nSeries) + ":Point=" + OUString::number(nPoint)), UNO_QUERY_THROW);
-                    CPPUNIT_ASSERT(XPointContainer.is());
                     uno::Reference<drawing::XShape> XPoint(XPointContainer->getByIndex(0), UNO_QUERY_THROW);
                     uno::Reference<container::XNamed> xNamedShape(XPointContainer, uno::UNO_QUERY);
                     CPPUNIT_DUMP_ASSERT_NOTE(xNamedShape->getName());
@@ -1101,7 +1080,6 @@ DECLARE_DUMP_TEST(PointLineChartTest, Chart2DumpTest, false)
 
                     // Check transformation
                     Reference< beans::XPropertySet > xPointPropSet(XPoint, UNO_QUERY_THROW);
-                    CPPUNIT_ASSERT(xPointPropSet.is());
                     drawing::HomogenMatrix3 aPointTransformation;
                     xPointPropSet->getPropertyValue("Transformation") >>= aPointTransformation;
                     CPPUNIT_DUMP_ASSERT_TRANSFORMATIONS_EQUAL(aPointTransformation, INT_EPS);
@@ -1119,6 +1097,48 @@ DECLARE_DUMP_TEST(PointLineChartTest, Chart2DumpTest, false)
     }
 }
 
+DECLARE_DUMP_TEST( PivotChartDataButtonTest, Chart2DumpTest, false )
+{
+    setTestFileName( "pivotchart_data_button.ods" );
+    load( getTestFileDirName(), getTestFileName() );
+
+    // Check that we have pivot chart in the document
+    uno::Reference<table::XTablePivotCharts> xTablePivotCharts = getTablePivotChartsFromSheet( 1, mxComponent );
+    uno::Reference<container::XIndexAccess> xIndexAccess( xTablePivotCharts, UNO_QUERY_THROW );
+    CPPUNIT_ASSERT_EQUAL( sal_Int32(1), xIndexAccess->getCount() );
+
+    // Get the pivot chart document so we ca access its data
+    uno::Reference<chart2::XChartDocument> xChartDoc;
+    xChartDoc.set( getPivotChartDocFromSheet( xTablePivotCharts, 0 ) );
+    CPPUNIT_ASSERT( xChartDoc.is() );
+
+    uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier( xChartDoc, uno::UNO_QUERY );
+    uno::Reference<drawing::XDrawPage> xDrawPage = xDrawPageSupplier->getDrawPage();
+    uno::Reference<drawing::XShapes> xShapes( xDrawPage->getByIndex(0), uno::UNO_QUERY );
+    CPPUNIT_ASSERT( xShapes.is() );
+
+    // Get the shape that represents the "Data" button.
+    uno::Reference<drawing::XShape> xButton = getShapeByName( xShapes, "FieldButton.Row.8",
+                                                              []( const uno::Reference<drawing::XShape>& xShapeNode )
+                                                              {
+                                                                  return xShapeNode->getShapeType() == "com.sun.star.drawing.TextShape";
+                                                              } );
+    CPPUNIT_ASSERT_MESSAGE( OString( "Cannot find Data button shape" ).getStr(), xButton.is() );
+
+    // Make sure that there is no arrow shape with the Data button
+    uno::Reference<drawing::XShape> xArrow = getShapeByName( xShapes, "FieldButton.Row.8",
+                                                             []( const uno::Reference<drawing::XShape>& xShapeNode )
+                                                             {
+                                                                 return xShapeNode->getShapeType() == "com.sun.star.drawing.PolyPolygonShape";
+                                                             } );
+    CPPUNIT_ASSERT_MESSAGE( OString( "Arrow shape should not be present for the Data button" ).getStr(), !xArrow.is() );
+
+    // Assert the background color of the Data button
+    util::Color aButtonFillColor = 0;
+    uno::Reference<beans::XPropertySet> xPropSet( xButton, UNO_QUERY_THROW );
+    xPropSet->getPropertyValue( UNO_NAME_FILLCOLOR ) >>= aButtonFillColor;
+    CPPUNIT_DUMP_ASSERT_NUMBERS_EQUAL( static_cast<sal_Int32>( aButtonFillColor ) );
+}
 
 CPPUNIT_PLUGIN_IMPLEMENT();
 

@@ -21,7 +21,7 @@ namespace vcl
 namespace
 {
 
-static const o3tl::enumarray<ImageType, const char*> ImageType_Prefixes =
+const o3tl::enumarray<ImageType, const char*> ImageType_Prefixes =
 {
     "cmd/sc_",
     "cmd/lc_",
@@ -34,7 +34,7 @@ OUString lclConvertToCanonicalName(const OUString& rFileName)
     sal_Int32 nLength = rFileName.getLength();
     const sal_Unicode* pString = rFileName.getStr();
 
-    OUStringBuffer aBuffer(nLength);
+    OUStringBuffer aBuffer(nLength*2);
 
     for (sal_Int32 i = 0; i < nLength; i++)
     {
@@ -60,21 +60,17 @@ OUString lclConvertToCanonicalName(const OUString& rFileName)
     return aBuffer.makeStringAndClear();
 }
 
-} // end anonymouse namespace
+} // end anonymous namespace
 
 CommandImageResolver::CommandImageResolver()
 {
-    for (ImageList*& rp : m_pImageList)
-        rp = nullptr;
 }
 
 CommandImageResolver::~CommandImageResolver()
 {
-    for (ImageList* p : m_pImageList)
-        delete p;
 }
 
-bool CommandImageResolver::registerCommands(Sequence<OUString>& aCommandSequence)
+void CommandImageResolver::registerCommands(Sequence<OUString>& aCommandSequence)
 {
     sal_Int32 nSequenceSize = aCommandSequence.getLength();
 
@@ -107,13 +103,11 @@ bool CommandImageResolver::registerCommands(Sequence<OUString>& aCommandSequence
 
         // Image names are not case-dependent. Always use lower case characters to
         // reflect this.
-        aImageName = aImageName.toAsciiLowerCase();
-        aImageName += ".png";
+        aImageName = aImageName.toAsciiLowerCase() + ".png";
 
         m_aImageNameVector[i] = aImageName;
         m_aCommandToImageNameMap[aCommandName] = aImageName;
     }
-    return true;
 }
 
 bool CommandImageResolver::hasImage(const OUString& rCommandURL)
@@ -129,20 +123,17 @@ ImageList* CommandImageResolver::getImageList(ImageType nImageType)
     if (sIconTheme != m_sIconTheme)
     {
         m_sIconTheme = sIconTheme;
-        for (ImageList*& rp : m_pImageList)
-        {
-            delete rp;
-            rp = nullptr;
-        }
+        for (auto& rp : m_pImageList)
+            rp.reset();
     }
 
     if (!m_pImageList[nImageType])
     {
         OUString sIconPath = OUString::createFromAscii(ImageType_Prefixes[nImageType]);
-        m_pImageList[nImageType] = new ImageList(m_aImageNameVector, sIconPath);
+        m_pImageList[nImageType].reset( new ImageList(m_aImageNameVector, sIconPath) );
     }
 
-    return m_pImageList[nImageType];
+    return m_pImageList[nImageType].get();
 }
 
 Image CommandImageResolver::getImageFromCommandURL(ImageType nImageType, const OUString& rCommandURL)

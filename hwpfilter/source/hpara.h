@@ -20,10 +20,12 @@
 #ifndef INCLUDED_HWPFILTER_SOURCE_HPARA_H
 #define INCLUDED_HWPFILTER_SOURCE_HPARA_H
 
-#include <hwplib.h>
-#include <hwpfile.h>
-#include <hinfo.h>
+#include "hwplib.h"
+#include "hwpfile.h"
+#include "hinfo.h"
+#include <map>
 #include <memory>
+#include <vector>
 
 struct HBox;
 
@@ -69,7 +71,7 @@ struct LineInfo
     hunit         height_sp;
     unsigned short    softbreak;                  // column, page, section
 
-    void  Read(HWPFile &hwpf, HWPPara *para);
+    void  Read(HWPFile &hwpf, HWPPara const *para);
 };
 /**
  * It represents the paragraph.
@@ -111,7 +113,7 @@ class DLLEXPORT HWPPara
 /**
  * Box object list
  */
-        std::vector<std::unique_ptr<HBox>> hhstr;
+        std::map<unsigned short, std::unique_ptr<HBox>> hhstr;
 
         HWPPara(void);
         ~HWPPara(void);

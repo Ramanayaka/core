@@ -20,22 +20,18 @@
 #ifndef INCLUDED_SVX_XLINEIT0_HXX
 #define INCLUDED_SVX_XLINEIT0_HXX
 
-#include <svx/xenum.hxx>
 #include <svl/eitem.hxx>
 
-// class LineStyleItem
 
 #include <svx/svxdllapi.h>
 #include <com/sun/star/drawing/LineStyle.hpp>
 
-class SVX_DLLPUBLIC XLineStyleItem : public SfxEnumItem<css::drawing::LineStyle>
+class SVXCORE_DLLPUBLIC XLineStyleItem final : public SfxEnumItem<css::drawing::LineStyle>
 {
 public:
                             static SfxPoolItem* CreateDefault();
                             XLineStyleItem(css::drawing::LineStyle = css::drawing::LineStyle_SOLID);
-                            XLineStyleItem(SvStream& rIn);
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual XLineStyleItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -43,7 +39,7 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
     virtual sal_uInt16          GetValueCount() const override;
 };
 

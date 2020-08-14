@@ -61,9 +61,8 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPCHARACTERSTYLE_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPCHARACTERSTYLE_HXX
 
-#include "lwpobj.hxx"
 #include "lwpdlvlist.hxx"
-#include "lwpoverride.hxx"
+#include <lwpoverride.hxx>
 #include "lwpcharborderoverride.hxx"
 
 class LwpAtomHolder;
@@ -75,7 +74,7 @@ class LwpAmikakeOverride;
 class LwpTextStyle : public LwpDLNFPVList
 {
 public:
-    LwpTextStyle(LwpObjectHeader& objHdr, LwpSvStream* pStrm);
+    LwpTextStyle(LwpObjectHeader const & objHdr, LwpSvStream* pStrm);
 
     virtual ~LwpTextStyle() override;
 
@@ -125,7 +124,7 @@ inline sal_uInt32 LwpTextStyle::GetFinalFontID() const
 class LwpCharacterStyle : public LwpTextStyle
 {
 public:
-    LwpCharacterStyle(LwpObjectHeader& objHdr, LwpSvStream* pStrm);
+    LwpCharacterStyle(LwpObjectHeader const & objHdr, LwpSvStream* pStrm);
 
     void Read() override;
 

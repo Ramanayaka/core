@@ -18,13 +18,13 @@
  */
 
 
-#include "formcontrolfactory.hxx"
-#include "fmcontrollayout.hxx"
-#include "fmprop.hrc"
-#include "svx/fmresids.hrc"
-#include "fmservs.hxx"
-#include "svx/dialmgr.hxx"
-#include "svx/svdouno.hxx"
+#include <formcontrolfactory.hxx>
+#include <fmcontrollayout.hxx>
+#include <fmprop.hxx>
+#include <svx/strings.hrc>
+#include <fmservs.hxx>
+#include <svx/dialmgr.hxx>
+#include <svx/svdouno.hxx>
 
 #include <com/sun/star/form/XFormComponent.hpp>
 #include <com/sun/star/form/FormComponentType.hpp>
@@ -35,6 +35,7 @@
 #include <com/sun/star/awt/LineEndFormat.hpp>
 #include <com/sun/star/awt/ImageScaleMode.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
+#include <com/sun/star/sdbc/XDataSource.hpp>
 #include <com/sun/star/util/XNumberFormatTypes.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
@@ -45,6 +46,7 @@
 #include <tools/gen.hxx>
 #include <tools/diagnose_ex.h>
 #include <connectivity/dbtools.hxx>
+#include <i18nlangtag/languagetag.hxx>
 
 #include <set>
 
@@ -62,7 +64,6 @@ namespace svxform
     using ::com::sun::star::uno::Any;
     using ::com::sun::star::uno::makeAny;
     using ::com::sun::star::uno::Sequence;
-    using ::com::sun::star::uno::Type;
     using ::com::sun::star::uno::XComponentContext;
     using ::com::sun::star::beans::XPropertySet;
     using ::com::sun::star::form::XFormComponent;
@@ -174,7 +175,7 @@ namespace svxform
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("svx");
             }
             return sLabel;
         }
@@ -213,13 +214,13 @@ namespace svxform
             }
             catch( const Exception& )
             {
-                OSL_FAIL( "lcl_getDataSourceIndirectProperties: caught an exception!" );
+                TOOLS_WARN_EXCEPTION( "svx", "lcl_getDataSourceIndirectProperties" );
             }
             return aInfo;
         }
 
 
-        static const sal_Char* aCharacterAndParagraphProperties[] =
+        const char* aCharacterAndParagraphProperties[] =
         {
             "CharFontName",
             "CharFontStyleName",
@@ -295,6 +296,7 @@ namespace svxform
             "ParaLineSpacing",
             "ParaBackColor",
             "ParaBackTransparent",
+            "ParaBackGraphic",
             "ParaBackGraphicURL",
             "ParaBackGraphicFilter",
             "ParaBackGraphicLocation",
@@ -361,7 +363,7 @@ namespace svxform
                 Reference< XPropertySetInfo > xDestPropInfo( _rxModel->getPropertySetInfo(), UNO_SET_THROW );
 
                 OUString sPropertyName;
-                const sal_Char** pCharacterProperty = aCharacterAndParagraphProperties;
+                const char** pCharacterProperty = aCharacterAndParagraphProperties;
                 while ( *pCharacterProperty )
                 {
                     sPropertyName = OUString::createFromAscii( *pCharacterProperty );
@@ -374,7 +376,7 @@ namespace svxform
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("svx");
             }
         }
     }
@@ -399,7 +401,7 @@ namespace svxform
             {
                 case FormComponentType::SCROLLBAR:
                     _rxControlModel->setPropertyValue("LiveScroll", makeAny( true ) );
-                    SAL_FALLTHROUGH;
+                    [[fallthrough]];
                 case FormComponentType::SPINBUTTON:
                 {
                     sal_Int32 eOrientation = ScrollBarOrientation::HORIZONTAL;
@@ -425,7 +427,7 @@ namespace svxform
                     lcl_initializeCharacterAttributes( _rxControlModel );
 
                     if  (   !_rControlBoundRect.IsEmpty()
-                        &&  !( _rControlBoundRect.GetWidth() > 4 * _rControlBoundRect.GetHeight() )
+                        &&  ( _rControlBoundRect.GetWidth() <= 4 * _rControlBoundRect.GetHeight() )
                         )
                     {
                         if ( xPSI->hasPropertyByName( FM_PROP_MULTILINE ) )
@@ -464,18 +466,18 @@ namespace svxform
                     OUString sInitialLabel;
                     OSL_VERIFY( _rxControlModel->getPropertyValue( FM_PROP_NAME ) >>= sInitialLabel );
 
-                    sal_uInt16 nTitleResId = 0;
+                    const char* pTitleResId = nullptr;
                     switch ( nClassId )
                     {
-                        case FormComponentType::COMMANDBUTTON:  nTitleResId = RID_STR_PROPTITLE_PUSHBUTTON;      break;
-                        case FormComponentType::RADIOBUTTON:    nTitleResId = RID_STR_PROPTITLE_RADIOBUTTON;     break;
-                        case FormComponentType::CHECKBOX:       nTitleResId = RID_STR_PROPTITLE_CHECKBOX;        break;
-                        case FormComponentType::GROUPBOX:       nTitleResId = RID_STR_PROPTITLE_GROUPBOX;        break;
-                        case FormComponentType::FIXEDTEXT:      nTitleResId = RID_STR_PROPTITLE_FIXEDTEXT;       break;
+                        case FormComponentType::COMMANDBUTTON:  pTitleResId = RID_STR_PROPTITLE_PUSHBUTTON;      break;
+                        case FormComponentType::RADIOBUTTON:    pTitleResId = RID_STR_PROPTITLE_RADIOBUTTON;     break;
+                        case FormComponentType::CHECKBOX:       pTitleResId = RID_STR_PROPTITLE_CHECKBOX;        break;
+                        case FormComponentType::GROUPBOX:       pTitleResId = RID_STR_PROPTITLE_GROUPBOX;        break;
+                        case FormComponentType::FIXEDTEXT:      pTitleResId = RID_STR_PROPTITLE_FIXEDTEXT;       break;
                     }
 
-                    if ( nTitleResId )
-                        sInitialLabel = SvxResId(nTitleResId);
+                    if (pTitleResId)
+                        sInitialLabel = SvxResId(pTitleResId);
 
                     _rxControlModel->setPropertyValue(
                         FM_PROP_LABEL,
@@ -501,7 +503,7 @@ namespace svxform
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
         return nClassId;
     }
@@ -523,23 +525,17 @@ namespace svxform
             // has a setting for the preferred line end format
             bool bDosLineEnds = false;
             Sequence< PropertyValue > aInfo = lcl_getDataSourceIndirectProperties( _rxModel, m_pData->m_xContext );
-            const PropertyValue* pInfo = aInfo.getConstArray();
-            const PropertyValue* pInfoEnd = pInfo + aInfo.getLength();
-            for ( ; pInfo != pInfoEnd; ++pInfo )
-            {
-                if ( pInfo->Name == "PreferDosLikeLineEnds" )
-                {
-                    pInfo->Value >>= bDosLineEnds;
-                    break;
-                }
-            }
+            const PropertyValue* pInfo = std::find_if(aInfo.begin(), aInfo.end(),
+                [](const PropertyValue& rInfo) { return rInfo.Name == "PreferDosLikeLineEnds"; });
+            if (pInfo != aInfo.end())
+                pInfo->Value >>= bDosLineEnds;
 
             sal_Int16 nLineEndFormat = bDosLineEnds ? LineEndFormat::CARRIAGE_RETURN_LINE_FEED : LineEndFormat::LINE_FEED;
             _rxModel->setPropertyValue( FM_PROP_LINEENDFORMAT, makeAny( nLineEndFormat ) );
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 
@@ -602,7 +598,7 @@ namespace svxform
                 // both the minimum and the maximum value properties can be either Long or Double
                 Property aProperty = xModelPSI->getPropertyByName( FM_PROP_VALUEMIN );
                 if ( aProperty.Type.getTypeClass() == TypeClass_DOUBLE )
-                    aValue <<= (double)nMinValue;
+                    aValue <<= static_cast<double>(nMinValue);
                 else if ( aProperty.Type.getTypeClass() == TypeClass_LONG )
                     aValue <<= nMinValue;
                 else
@@ -614,7 +610,7 @@ namespace svxform
                 // both the minimum and the maximum value properties can be either Long or Double
                 aProperty = xModelPSI->getPropertyByName( FM_PROP_VALUEMAX );
                 if ( aProperty.Type.getTypeClass() == TypeClass_DOUBLE )
-                    aValue <<= (double)nMaxValue;
+                    aValue <<= static_cast<double>(nMaxValue);
                 else if ( aProperty.Type.getTypeClass() == TypeClass_LONG )
                     aValue <<= nMaxValue;
                 else
@@ -637,49 +633,49 @@ namespace svxform
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 
 
     OUString FormControlFactory::getDefaultName( sal_Int16 _nClassId, const Reference< XServiceInfo >& _rxObject )
     {
-        sal_uInt16 nResId(0);
+        const char* pResId(nullptr);
 
         switch ( _nClassId )
         {
-            case FormComponentType::COMMANDBUTTON:  nResId = RID_STR_PROPTITLE_PUSHBUTTON;  break;
-            case FormComponentType::RADIOBUTTON:    nResId = RID_STR_PROPTITLE_RADIOBUTTON; break;
-            case FormComponentType::CHECKBOX:       nResId = RID_STR_PROPTITLE_CHECKBOX;    break;
-            case FormComponentType::LISTBOX:        nResId = RID_STR_PROPTITLE_LISTBOX;     break;
-            case FormComponentType::COMBOBOX:       nResId = RID_STR_PROPTITLE_COMBOBOX;    break;
-            case FormComponentType::GROUPBOX:       nResId = RID_STR_PROPTITLE_GROUPBOX;    break;
-            case FormComponentType::IMAGEBUTTON:    nResId = RID_STR_PROPTITLE_IMAGEBUTTON; break;
-            case FormComponentType::FIXEDTEXT:      nResId = RID_STR_PROPTITLE_FIXEDTEXT;   break;
-            case FormComponentType::GRIDCONTROL:    nResId = RID_STR_PROPTITLE_DBGRID;      break;
-            case FormComponentType::FILECONTROL:    nResId = RID_STR_PROPTITLE_FILECONTROL; break;
-            case FormComponentType::DATEFIELD:      nResId = RID_STR_PROPTITLE_DATEFIELD;   break;
-            case FormComponentType::TIMEFIELD:      nResId = RID_STR_PROPTITLE_TIMEFIELD;   break;
-            case FormComponentType::NUMERICFIELD:   nResId = RID_STR_PROPTITLE_NUMERICFIELD;    break;
-            case FormComponentType::CURRENCYFIELD:  nResId = RID_STR_PROPTITLE_CURRENCYFIELD;   break;
-            case FormComponentType::PATTERNFIELD:   nResId = RID_STR_PROPTITLE_PATTERNFIELD;    break;
-            case FormComponentType::IMAGECONTROL:   nResId = RID_STR_PROPTITLE_IMAGECONTROL;    break;
-            case FormComponentType::HIDDENCONTROL:  nResId = RID_STR_PROPTITLE_HIDDEN;      break;
-            case FormComponentType::SCROLLBAR:      nResId = RID_STR_PROPTITLE_SCROLLBAR;   break;
-            case FormComponentType::SPINBUTTON:     nResId = RID_STR_PROPTITLE_SPINBUTTON;  break;
-            case FormComponentType::NAVIGATIONBAR:  nResId = RID_STR_PROPTITLE_NAVBAR;      break;
+            case FormComponentType::COMMANDBUTTON:  pResId = RID_STR_PROPTITLE_PUSHBUTTON;  break;
+            case FormComponentType::RADIOBUTTON:    pResId = RID_STR_PROPTITLE_RADIOBUTTON; break;
+            case FormComponentType::CHECKBOX:       pResId = RID_STR_PROPTITLE_CHECKBOX;    break;
+            case FormComponentType::LISTBOX:        pResId = RID_STR_PROPTITLE_LISTBOX;     break;
+            case FormComponentType::COMBOBOX:       pResId = RID_STR_PROPTITLE_COMBOBOX;    break;
+            case FormComponentType::GROUPBOX:       pResId = RID_STR_PROPTITLE_GROUPBOX;    break;
+            case FormComponentType::IMAGEBUTTON:    pResId = RID_STR_PROPTITLE_IMAGEBUTTON; break;
+            case FormComponentType::FIXEDTEXT:      pResId = RID_STR_PROPTITLE_FIXEDTEXT;   break;
+            case FormComponentType::GRIDCONTROL:    pResId = RID_STR_PROPTITLE_DBGRID;      break;
+            case FormComponentType::FILECONTROL:    pResId = RID_STR_PROPTITLE_FILECONTROL; break;
+            case FormComponentType::DATEFIELD:      pResId = RID_STR_PROPTITLE_DATEFIELD;   break;
+            case FormComponentType::TIMEFIELD:      pResId = RID_STR_PROPTITLE_TIMEFIELD;   break;
+            case FormComponentType::NUMERICFIELD:   pResId = RID_STR_PROPTITLE_NUMERICFIELD;    break;
+            case FormComponentType::CURRENCYFIELD:  pResId = RID_STR_PROPTITLE_CURRENCYFIELD;   break;
+            case FormComponentType::PATTERNFIELD:   pResId = RID_STR_PROPTITLE_PATTERNFIELD;    break;
+            case FormComponentType::IMAGECONTROL:   pResId = RID_STR_PROPTITLE_IMAGECONTROL;    break;
+            case FormComponentType::HIDDENCONTROL:  pResId = RID_STR_PROPTITLE_HIDDEN;      break;
+            case FormComponentType::SCROLLBAR:      pResId = RID_STR_PROPTITLE_SCROLLBAR;   break;
+            case FormComponentType::SPINBUTTON:     pResId = RID_STR_PROPTITLE_SPINBUTTON;  break;
+            case FormComponentType::NAVIGATIONBAR:  pResId = RID_STR_PROPTITLE_NAVBAR;      break;
 
             case FormComponentType::TEXTFIELD:
-                nResId = RID_STR_PROPTITLE_EDIT;
+                pResId = RID_STR_PROPTITLE_EDIT;
                 if ( _rxObject.is() && _rxObject->supportsService( FM_SUN_COMPONENT_FORMATTEDFIELD ) )
-                    nResId = RID_STR_PROPTITLE_FORMATTED;
+                    pResId = RID_STR_PROPTITLE_FORMATTED;
                 break;
 
             default:
-                nResId = RID_STR_CONTROL;     break;
+                pResId = RID_STR_CONTROL;     break;
         }
 
-        return SvxResId(nResId);
+        return SvxResId(pResId);
     }
 
 

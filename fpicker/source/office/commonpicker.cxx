@@ -19,15 +19,19 @@
 
 
 #include "commonpicker.hxx"
+#include "fpdialogbase.hxx"
+#include "OfficeControlAccess.hxx"
 #include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <vcl/svapp.hxx>
+#include <vcl/window.hxx>
 #include <osl/mutex.hxx>
+#include <sal/log.hxx>
+#include <tools/debug.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <comphelper/weakeventlistener.hxx>
 #include <comphelper/types.hxx>
-#include <vcl/msgbox.hxx>
-#include "iodlg.hxx"
 
 
 namespace svt
@@ -49,7 +53,6 @@ namespace svt
     OCommonPicker::OCommonPicker()
         :OCommonPicker_Base( m_aMutex )
         ,OPropertyContainer( GetBroadcastHelper() )
-        ,m_pDlg( nullptr )
         ,m_nCancelEvent( nullptr )
         ,m_bExecuting( false )
     {
@@ -102,7 +105,7 @@ namespace svt
         {
             // set the title
             if ( !m_aTitle.isEmpty() )
-                m_pDlg->SetText( m_aTitle );
+                m_xDlg->set_title(m_aTitle);
         }
     }
 
@@ -118,11 +121,11 @@ namespace svt
 
         {
             ::osl::MutexGuard aOwnGuard( m_aMutex );
-            if ( m_bExecuting && m_pDlg )
-                m_pDlg->EndDialog();
+            if ( m_bExecuting && m_xDlg )
+                m_xDlg->response(RET_CANCEL);
         }
 
-        m_pDlg.disposeAndClear();
+        m_xDlg.reset();
         m_xWindow = nullptr;
         m_xDialogParent = nullptr;
     }
@@ -134,9 +137,7 @@ namespace svt
         disposeComponent( m_xParentListenerAdapter );
     }
 
-
     // XEventListener
-
     void SAL_CALL OCommonPicker::disposing( const EventObject& _rSource )
     {
         SolarMutexGuard aGuard;
@@ -147,11 +148,16 @@ namespace svt
         {
             stopWindowListening();
 
-            if ( !bDialogDying )    // it's the parent which is dying -> delete the dialog
-                m_pDlg.disposeAndClear();
-            else
-                m_pDlg.clear();
+            SAL_WARN_IF(bDialogDying && m_bExecuting, "fpicker.office", "unexpected disposing before response" );
 
+            // it's the parent which is dying -> delete the dialog
+            {
+                ::osl::MutexGuard aOwnGuard(m_aMutex);
+                if (m_bExecuting && m_xDlg)
+                    m_xDlg->response(RET_CANCEL);
+            }
+
+            m_xDlg.reset();
             m_xWindow = nullptr;
             m_xDialogParent = nullptr;
         }
@@ -161,9 +167,7 @@ namespace svt
         }
     }
 
-
     // property set related methods
-
     ::cppu::IPropertyArrayHelper* OCommonPicker::createArrayHelper( ) const
     {
         Sequence< Property > aProps;
@@ -171,79 +175,80 @@ namespace svt
         return new cppu::OPropertyArrayHelper( aProps );
     }
 
-
     ::cppu::IPropertyArrayHelper& SAL_CALL OCommonPicker::getInfoHelper()
     {
         return *getArrayHelper();
     }
-
 
     Reference< XPropertySetInfo > SAL_CALL OCommonPicker::getPropertySetInfo(  )
     {
         return ::cppu::OPropertySetHelper::createPropertySetInfo( getInfoHelper() );
     }
 
-
-    void SAL_CALL OCommonPicker::setFastPropertyValue_NoBroadcast( sal_Int32 _nHandle, const Any& _rValue )
+    void SAL_CALL OCommonPicker::setFastPropertyValue_NoBroadcast(sal_Int32 nHandle, const Any& rValue)
     {
-        OPropertyContainer::setFastPropertyValue_NoBroadcast( _nHandle, _rValue );
+        OPropertyContainer::setFastPropertyValue_NoBroadcast(nHandle, rValue);
 
         // if the HelpURL changed, forward this to the dialog
-        if ( PROPERTY_ID_HELPURL == _nHandle )
-            if ( m_pDlg )
-                OControlAccess::setHelpURL( m_pDlg, m_sHelpURL, false );
+        if (PROPERTY_ID_HELPURL == nHandle && m_xDlg)
+        {
+            ::svt::OControlAccess aAccess(m_xDlg.get(), m_xDlg->GetView());
+            aAccess.setHelpURL(m_xDlg->getDialog(), m_sHelpURL);
+        }
     }
-
 
     bool OCommonPicker::createPicker()
     {
-        if ( !m_pDlg )
+        if ( !m_xDlg )
         {
-            m_pDlg.reset( implCreateDialog( VCLUnoHelper::GetWindow( m_xDialogParent ) ) );
-            SAL_WARN_IF( !m_pDlg, "fpicker.office", "OCommonPicker::createPicker: invalid dialog returned!" );
+            m_xDlg = implCreateDialog(Application::GetFrameWeld(m_xDialogParent));
+            SAL_WARN_IF( !m_xDlg, "fpicker.office", "OCommonPicker::createPicker: invalid dialog returned!" );
 
-            if ( m_pDlg )
+            if ( m_xDlg )
             {
-                // synchronize the help id of the dialog with out help URL property
+                weld::Dialog* pDlg = m_xDlg->getDialog();
+
+                ::svt::OControlAccess aAccess(m_xDlg.get(), m_xDlg->GetView());
+                // synchronize the help id of the dialog without help URL property
                 if ( !m_sHelpURL.isEmpty() )
                 {   // somebody already set the help URL while we had no dialog yet
-                    OControlAccess::setHelpURL( m_pDlg, m_sHelpURL, false );
+                    aAccess.setHelpURL(pDlg, m_sHelpURL);
                 }
                 else
                 {
-                    m_sHelpURL = OControlAccess::getHelpURL( m_pDlg, false );
+                    m_sHelpURL = aAccess.getHelpURL(pDlg);
                 }
 
-                m_xWindow = VCLUnoHelper::GetInterface( m_pDlg );
+                m_xWindow = pDlg->GetXWindow();
 
                 // add as event listener to the window
-                Reference< XComponent > xWindowComp( m_xWindow, UNO_QUERY );
-                OSL_ENSURE( xWindowComp.is(), "OCommonPicker::createFileDialog: invalid window component!" );
-                if ( xWindowComp.is() )
+                OSL_ENSURE( m_xWindow.is(), "OCommonPicker::createFileDialog: invalid window component!" );
+                if ( m_xWindow.is() )
                 {
-                    m_xWindowListenerAdapter = new OWeakEventListenerAdapter( this, xWindowComp );
+                    m_xWindowListenerAdapter = new OWeakEventListenerAdapter( this, m_xWindow );
                         // the adapter will add itself as listener, and forward notifications
                 }
 
-                // _and_ add as event listener to the parent - in case the parent is destroyed
-                // before we are disposed, our disposal would access dead VCL windows then ....
-                m_xDialogParent = VCLUnoHelper::GetInterface( m_pDlg->GetParent() );
-                xWindowComp.set(m_xDialogParent, css::uno::UNO_QUERY);
-                OSL_ENSURE( xWindowComp.is() || !m_pDlg->GetParent(), "OCommonPicker::createFileDialog: invalid window component (the parent this time)!" );
-                if ( xWindowComp.is() )
+                VclPtr<vcl::Window> xVclDialog(VCLUnoHelper::GetWindow(m_xWindow));
+                if (xVclDialog) // this block is quite possibly unnecessary by now
                 {
-                    m_xParentListenerAdapter = new OWeakEventListenerAdapter( this, xWindowComp );
+                    // _and_ add as event listener to the parent - in case the parent is destroyed
+                    // before we are disposed, our disposal would access dead VCL windows then...
+                    m_xDialogParent = VCLUnoHelper::GetInterface(xVclDialog->GetParent());
+                    OSL_ENSURE(m_xDialogParent.is() || !xVclDialog->GetParent(), "OCommonPicker::createFileDialog: invalid window component (the parent this time)!");
+                }
+                if ( m_xDialogParent.is() )
+                {
+                    m_xParentListenerAdapter = new OWeakEventListenerAdapter( this, m_xDialogParent );
                         // the adapter will add itself as listener, and forward notifications
                 }
             }
         }
 
-        return nullptr != m_pDlg;
+        return nullptr != m_xDlg;
     }
 
-
     // XControlAccess functions
-
     void SAL_CALL OCommonPicker::setControlProperty( const OUString& aControlName, const OUString& aControlProperty, const Any& aValue )
     {
         checkAlive();
@@ -251,11 +256,10 @@ namespace svt
         SolarMutexGuard aGuard;
         if ( createPicker() )
         {
-            ::svt::OControlAccess aAccess( m_pDlg, m_pDlg->GetView() );
+            ::svt::OControlAccess aAccess( m_xDlg.get(), m_xDlg->GetView() );
             aAccess.setControlProperty( aControlName, aControlProperty, aValue );
         }
     }
-
 
     Any SAL_CALL OCommonPicker::getControlProperty( const OUString& aControlName, const OUString& aControlProperty )
     {
@@ -264,16 +268,14 @@ namespace svt
         SolarMutexGuard aGuard;
         if ( createPicker() )
         {
-            ::svt::OControlAccess aAccess( m_pDlg, m_pDlg->GetView() );
+            ::svt::OControlAccess aAccess( m_xDlg.get(), m_xDlg->GetView() );
             return aAccess.getControlProperty( aControlName, aControlProperty );
         }
 
         return Any();
     }
 
-
     // XControlInformation functions
-
     Sequence< OUString > SAL_CALL OCommonPicker::getSupportedControls(  )
     {
         checkAlive();
@@ -281,13 +283,12 @@ namespace svt
         SolarMutexGuard aGuard;
         if ( createPicker() )
         {
-            ::svt::OControlAccess aAccess( m_pDlg, m_pDlg->GetView() );
+            ::svt::OControlAccess aAccess( m_xDlg.get(), m_xDlg->GetView() );
             return aAccess.getSupportedControls( );
         }
 
         return Sequence< OUString >();
     }
-
 
     sal_Bool SAL_CALL OCommonPicker::isControlSupported( const OUString& aControlName )
     {
@@ -302,7 +303,6 @@ namespace svt
         return false;
     }
 
-
     Sequence< OUString > SAL_CALL OCommonPicker::getSupportedControlProperties( const OUString& aControlName )
     {
         checkAlive();
@@ -310,13 +310,12 @@ namespace svt
         SolarMutexGuard aGuard;
         if ( createPicker() )
         {
-            ::svt::OControlAccess aAccess( m_pDlg, m_pDlg->GetView() );
+            ::svt::OControlAccess aAccess( m_xDlg.get(), m_xDlg->GetView() );
             return aAccess.getSupportedControlProperties( aControlName );
         }
 
         return Sequence< OUString >();
     }
-
 
     sal_Bool SAL_CALL OCommonPicker::isControlPropertySupported( const OUString& aControlName, const OUString& aControlProperty )
     {
@@ -325,7 +324,7 @@ namespace svt
         SolarMutexGuard aGuard;
         if ( createPicker() )
         {
-            ::svt::OControlAccess aAccess( m_pDlg, m_pDlg->GetView() );
+            ::svt::OControlAccess aAccess( m_xDlg.get(), m_xDlg->GetView() );
             return aAccess.isControlPropertySupported( aControlName, aControlProperty );
         }
 
@@ -335,7 +334,7 @@ namespace svt
 
     // XExecutableDialog functions
 
-    void SAL_CALL OCommonPicker::setTitle( const OUString& _rTitle )
+    void OCommonPicker::setTitle( const OUString& _rTitle )
     {
         SolarMutexGuard aGuard;
         m_aTitle = _rTitle;
@@ -378,19 +377,18 @@ namespace svt
         // Thus we post ourself a message for cancelling the dialog. This way, the message
         // is either handled in the thread which opened the dialog (which may even be
         // this thread here), or, if no dialog is open, in the thread doing scheduling
-        // currently. Both is okay for us ....
+        // currently. Both is okay for us...
 
         // Note that we could do check if we are really executing the dialog currently.
         // but the information would be potentially obsolete at the moment our event
-        // arrives, so we need to check it there, anyway ...
+        // arrives, so we need to check it there, anyway...
         m_nCancelEvent = Application::PostUserEvent( LINK( this, OCommonPicker, OnCancelPicker ) );
     }
-
 
     IMPL_LINK_NOARG(OCommonPicker, OnCancelPicker, void*, void)
     {
         // By definition, the solar mutex is locked when we arrive here. Note that this
-        // is important, as for instance the consistency of m_pDlg depends on this mutex.
+        // is important, as for instance the consistency of m_xDlg depends on this mutex.
         ::osl::MutexGuard aGuard( m_aMutex );
         m_nCancelEvent = nullptr;
 
@@ -400,14 +398,12 @@ namespace svt
             // being executed at this time.
             return;
 
-        OSL_ENSURE( getDialog(), "OCommonPicker::OnCancelPicker: executing, but no dialog!" );
-        if ( getDialog() )
-            getDialog()->EndDialog();
+        OSL_ENSURE( m_xDlg, "OCommonPicker::OnCancelPicker: executing, but no dialog!" );
+        if (m_xDlg)
+            m_xDlg->response(RET_CANCEL);
     }
 
-
     // XInitialization functions
-
     void SAL_CALL OCommonPicker::initialize( const Sequence< Any >& _rArguments )
     {
         checkAlive();
@@ -461,7 +457,6 @@ namespace svt
         }
     }
 
-
     bool OCommonPicker::implHandleInitializationArgument( const OUString& _rName, const Any& _rValue )
     {
         bool bKnown = true;
@@ -469,15 +464,13 @@ namespace svt
         {
             m_xDialogParent.clear();
             OSL_VERIFY( _rValue >>= m_xDialogParent );
-            OSL_ENSURE( VCLUnoHelper::GetWindow( m_xDialogParent ), "OCommonPicker::implHandleInitializationArgument: invalid parent window given!" );
+            OSL_ENSURE( m_xDialogParent.is(), "OCommonPicker::implHandleInitializationArgument: invalid parent window given!" );
         }
         else
             bKnown = false;
         return bKnown;
     }
 
-
 }   // namespace svt
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

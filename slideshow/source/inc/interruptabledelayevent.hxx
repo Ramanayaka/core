@@ -22,9 +22,7 @@
 
 #include "delayevent.hxx"
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** Event, which delays calling passed Event's fire() method
             the given amount of time.
@@ -129,12 +127,12 @@ namespace slideshow
             InterruptableEventPair aRes;
 
             aRes.mpImmediateEvent = makeEvent( rFunctor, "makeInterruptableDelay");
-            aRes.mpTimeoutEvent.reset( new DelayFacade( aRes.mpImmediateEvent,
-                                                        nTimeout ) );
+            aRes.mpTimeoutEvent = std::make_shared<DelayFacade>( aRes.mpImmediateEvent,
+                                                        nTimeout );
 
             return aRes;
         }
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_INTERRUPTABLEDELAYEVENT_HXX

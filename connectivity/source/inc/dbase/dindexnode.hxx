@@ -19,21 +19,16 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DINDEXNODE_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DINDEXNODE_HXX
 
-#include "file/fcode.hxx"
-#include "file/FTable.hxx"
+#include <file/fcode.hxx>
 #include <connectivity/FValue.hxx>
-#include <rtl/ref.hxx>
 #include <memory>
-#include <vector>
 
 #define NODE_NOTFOUND 0xFFFF
 #define DINDEX_PAGE_SIZE 512
 
 class SvStream;
 
-namespace connectivity
-{
-    namespace dbase
+namespace connectivity::dbase
     {
 
         class ONDXNode;
@@ -51,8 +46,8 @@ namespace connectivity
         public:
             ONDXKey();
             ONDXKey(const ORowSetValue& rVal, sal_Int32 eType, sal_uInt32 nRec);
-            ONDXKey(const OUString& aStr, sal_uInt32 nRec = 0);
-            ONDXKey(double aVal, sal_uInt32 nRec = 0);
+            ONDXKey(const OUString& aStr, sal_uInt32 nRec);
+            ONDXKey(double aVal, sal_uInt32 nRec);
 
             inline ONDXKey(const ONDXKey& rKey);
 
@@ -92,7 +87,7 @@ namespace connectivity
 
         public:
             ONDXPagePtr();
-            ONDXPagePtr(ONDXPagePtr&& rObj);
+            ONDXPagePtr(ONDXPagePtr&& rObj) noexcept;
             ONDXPagePtr(ONDXPagePtr const & rRef);
             ONDXPagePtr(ONDXPage* pRefPage);
             ~ONDXPagePtr();
@@ -140,7 +135,7 @@ namespace connectivity
             bool    Insert(ONDXNode& rNode, sal_uInt32 nRowsLeft = 0);
             bool    Insert(sal_uInt16 nIndex, ONDXNode& rNode);
             bool    Append(ONDXNode& rNode);
-            bool    Delete(sal_uInt16);
+            void    Delete(sal_uInt16);
             void    Remove(sal_uInt16);
             void    Release(bool bSave = true);
             void    ReleaseFull();
@@ -156,15 +151,15 @@ namespace connectivity
             bool IsRoot() const;
             bool IsLeaf() const;
             bool IsModified() const;
-            bool HasParent();
+            bool HasParent() const;
 
             bool IsFull() const;
 
             sal_uInt32 GetPagePos() const {return nPagePos;}
-            ONDXPagePtr& GetChild(ODbaseIndex* pIndex = nullptr);
+            ONDXPagePtr& GetChild(ODbaseIndex const * pIndex = nullptr);
 
             // Parent does not need to be reloaded
-            const ONDXPagePtr& GetParent();
+            const ONDXPagePtr& GetParent() const;
             ODbaseIndex& GetIndex() {return rIndex;}
             const ODbaseIndex& GetIndex() const {return rIndex;}
 
@@ -174,10 +169,10 @@ namespace connectivity
 
             sal_uInt16 Search(const ONDXKey& rSearch);
             sal_uInt16 Search(const ONDXPage* pPage);
-            void   SearchAndReplace(const ONDXKey& rSearch, ONDXKey& rReplace);
+            void   SearchAndReplace(const ONDXKey& rSearch, ONDXKey const & rReplace);
 
         protected:
-            ONDXPage(ODbaseIndex& rIndex, sal_uInt32 nPos, ONDXPage* = nullptr);
+            ONDXPage(ODbaseIndex& rIndex, sal_uInt32 nPos, ONDXPage*);
             ~ONDXPage();
 
             void ReleaseRef();
@@ -212,8 +207,8 @@ namespace connectivity
         inline bool ONDXPage::IsRoot() const {return !aParent.Is();}
         inline bool ONDXPage::IsLeaf() const {return !aChild.HasPage();}
         inline bool ONDXPage::IsModified() const {return bModified;}
-        inline bool ONDXPage::HasParent() {return aParent.Is();}
-        inline const ONDXPagePtr& ONDXPage::GetParent() {return aParent;}
+        inline bool ONDXPage::HasParent() const {return aParent.Is();}
+        inline const ONDXPagePtr& ONDXPage::GetParent() const {return aParent;}
 
         inline void ONDXPage::SetParent(ONDXPagePtr aPa = ONDXPagePtr())
         {
@@ -230,9 +225,6 @@ namespace connectivity
         SvStream& WriteONDXPage(SvStream &rStream, const ONDXPage& rPage);
 
 
-        typedef std::vector<ONDXPage*>    ONDXPageList;
-
-
         // Index Node
 
         class ONDXNode
@@ -243,9 +235,8 @@ namespace connectivity
 
         public:
             ONDXNode(){}
-            ONDXNode(const ONDXKey& rKey,
-                       ONDXPagePtr aPagePtr = ONDXPagePtr())
-                       :aChild(aPagePtr),aKey(rKey) {}
+            ONDXNode(const ONDXKey& rKey)
+                       :aKey(rKey) {}
 
             // Does the node point to a page?
             bool            HasChild() const {return aChild.HasPage();}
@@ -259,7 +250,7 @@ namespace connectivity
             void            SetChild(ONDXPagePtr aCh = ONDXPagePtr(), ONDXPage* = nullptr);
 
             void Write(SvStream &rStream, const ONDXPage& rPage) const;
-            void Read(SvStream &rStream, ODbaseIndex&);
+            void Read(SvStream &rStream, ODbaseIndex const &);
         };
 
         inline ONDXKey::ONDXKey(const ONDXKey& rKey)
@@ -309,8 +300,6 @@ namespace connectivity
             if (aChild.Is())
                 aChild->SetParent(pParent);
         }
-
-    }
 
 }
 

@@ -22,39 +22,20 @@
 
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ustring.hxx>
+#include <osl/diagnose.h>
 #include <vcl/gdimtf.hxx>
 #include <vcl/metaact.hxx>
-#include <vcl/metric.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/cvtgrf.hxx>
 #include <vcl/graphictools.hxx>
 #include <xmloff/xmlexp.hxx>
-#include <xmloff/nmspmap.hxx>
 
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/container/XContentEnumerationAccess.hpp>
 #include <com/sun/star/container/XEnumeration.hpp>
-#include <com/sun/star/container/XIndexReplace.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XPropertySetInfo.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
-#include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
-#include <com/sun/star/i18n/CharacterIteratorMode.hpp>
-#include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/text/XTextContent.hpp>
 #include <com/sun/star/text/XTextRange.hpp>
-#include <com/sun/star/text/XTextField.hpp>
-#include <com/sun/star/style/NumberingType.hpp>
 #include <com/sun/star/svg/XSVGWriter.hpp>
 
 #include <memory>
@@ -66,7 +47,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::text;
-using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::style;
 using namespace ::com::sun::star::svg;
 using namespace ::com::sun::star::xml::sax;
@@ -112,7 +92,7 @@ struct PartialState
         , mnRegionClipPathId( 0 )
     {}
 
-    PartialState(PartialState&& aPartialState)
+    PartialState(PartialState&& aPartialState) noexcept
         : meFlags( aPartialState.meFlags )
         , mupFont( std::move( aPartialState.mupFont ) )
         , mnRegionClipPathId( aPartialState.mnRegionClipPathId )
@@ -190,8 +170,8 @@ struct SVGShapeDescriptor
 
 
     SVGShapeDescriptor() :
-        maShapeFillColor( Color( COL_TRANSPARENT ) ),
-        maShapeLineColor( Color( COL_TRANSPARENT ) ),
+        maShapeFillColor( COL_TRANSPARENT ),
+        maShapeLineColor( COL_TRANSPARENT ),
         mnStrokeWidth( 0 ),
         maLineJoin(basegfx::B2DLineJoin::Miter), // miter is Svg 'stroke-linejoin' default
         maLineCap(css::drawing::LineCap_BUTT) // butt is Svg 'stroke-linecap' default
@@ -217,11 +197,12 @@ struct BulletListItemInfo
 class SVGTextWriter final
 {
   public:
-    typedef std::unordered_map< OUString, BulletListItemInfo, OUStringHash >         BulletListItemInfoMap;
+    typedef std::unordered_map< OUString, BulletListItemInfo >         BulletListItemInfoMap;
 
   private:
     SVGExport&                                  mrExport;
     SVGAttributeWriter&                         mrAttributeWriter;
+    SVGActionWriter& mrActionWriter;
     VclPtr<VirtualDevice>                       mpVDev;
     bool                                        mbIsTextShapeStarted;
     Reference<XText>                            mrTextShape;
@@ -232,9 +213,10 @@ class SVGTextWriter final
     Reference<XTextRange>                       mrCurrentTextPortion;
     const GDIMetaFile*                          mpTextEmbeddedBitmapMtf;
     MapMode*                                    mpTargetMapMode;
-    SvXMLElementExport*                         mpTextShapeElem;
-    SvXMLElementExport*                         mpTextParagraphElem;
-    SvXMLElementExport*                         mpTextPositionElem;
+    std::unique_ptr<SvXMLElementExport>         mpTextShapeElem;
+    std::unique_ptr<SvXMLElementExport>         mpTextParagraphElem;
+    std::unique_ptr<SvXMLElementExport>         mpTextPositionElem;
+    OUString maTextOpacity;
     sal_Int32                                   mnLeftTextPortionLength;
     Point                                       maTextPos;
     long int                                    mnTextWidth;
@@ -254,10 +236,12 @@ class SVGTextWriter final
     vcl::Font                                   maParentFont;
 
   public:
-    explicit SVGTextWriter( SVGExport& rExport, SVGAttributeWriter& rAttributeWriter );
+    explicit SVGTextWriter(SVGExport& rExport, SVGAttributeWriter& rAttributeWriter,
+            SVGActionWriter& mrActionWriter);
     ~SVGTextWriter();
 
-    sal_Int32 setTextPosition( const GDIMetaFile& rMtf, sal_uLong& nCurAction );
+    sal_Int32 setTextPosition(const GDIMetaFile& rMtf, sal_uLong& nCurAction,
+                              sal_uInt32 nWriteFlags);
     void setTextProperties( const GDIMetaFile& rMtf, sal_uLong nCurAction );
     void addFontAttributes( bool bIsTextContainer );
 
@@ -265,13 +249,14 @@ class SVGTextWriter final
     bool nextParagraph();
     bool nextTextPortion();
 
-    bool isTextShapeStarted() { return mbIsTextShapeStarted; }
+    bool isTextShapeStarted() const { return mbIsTextShapeStarted; }
     void startTextShape();
     void endTextShape();
     void startTextParagraph();
     void endTextParagraph();
     void startTextPosition( bool bExportX = true, bool bExportY = true);
     void endTextPosition();
+    bool hasTextOpacity();
     void implExportHyperlinkIds();
     void implWriteBulletChars();
     template< typename MetaBitmapActionType >
@@ -360,12 +345,12 @@ private:
     void                    ImplWriteMask( GDIMetaFile& rMtf, const Point& rDestPt, const Size& rDestSize, const Gradient& rGradient, sal_uInt32 nWriteFlags );
     void                    ImplWriteText( const Point& rPos, const OUString& rText, const long* pDXArray, long nWidth );
     void                    ImplWriteText( const Point& rPos, const OUString& rText, const long* pDXArray, long nWidth, Color aTextColor );
-    void                    ImplWriteBmp( const BitmapEx& rBmpEx, const Point& rPt, const Size& rSz, const Point& rSrcPt, const Size& rSrcSz );
+    void                    ImplWriteBmp( const BitmapEx& rBmpEx, const Point& rPt, const Size& rSz, const Point& rSrcPt, const Size& rSrcSz, const css::uno::Reference<css::drawing::XShape>* pShape);
 
     void                    ImplWriteActions( const GDIMetaFile& rMtf,
                                               sal_uInt32 nWriteFlags,
                                               const OUString* pElementId,
-                                              const Reference< XShape >* pXShape = nullptr,
+                                              const Reference< css::drawing::XShape >* pXShape = nullptr,
                                               const GDIMetaFile* pTextEmbeddedBitmapMtf = nullptr );
 
     vcl::Font               ImplSetCorrectFontHeight() const;
@@ -384,12 +369,14 @@ public:
                                            const GDIMetaFile& rMtf,
                                            sal_uInt32 nWriteFlags,
                                            const OUString* pElementId = nullptr,
-                                           const Reference< XShape >* pXShape = nullptr,
+                                           const Reference< css::drawing::XShape >* pXShape = nullptr,
                                            const GDIMetaFile* pTextEmbeddedBitmapMtf = nullptr );
+    void StartMask(const Point& rDestPt, const Size& rDestSize, const Gradient& rGradient,
+                   sal_uInt32 nWriteFlags, OUString* pTextStyle = nullptr);
 };
 
 
-class SVGWriter : public cppu::WeakImplHelper< XSVGWriter >
+class SVGWriter : public cppu::WeakImplHelper< XSVGWriter, XServiceInfo >
 {
 private:
     Reference< XComponentContext >                      mxContext;
@@ -403,6 +390,11 @@ public:
     // XSVGWriter
     virtual void SAL_CALL write( const Reference<XDocumentHandler>& rxDocHandler,
                                  const Sequence<sal_Int8>& rMtfSeq ) override;
+
+    //  XServiceInfo
+    virtual sal_Bool SAL_CALL supportsService(const OUString& sServiceName) override;
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
 #endif // INCLUDED_FILTER_SOURCE_SVG_SVGWRITER_HXX

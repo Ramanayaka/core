@@ -21,20 +21,17 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_USERADMINDLG_HXX
 
 #include <sfx2/tabdlg.hxx>
-#include "dsntypes.hxx"
 #include "IItemSetHelper.hxx"
-#include <comphelper/uno3.hxx>
-#include "moduledbu.hxx"
 #include <memory>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace sdbc {
         class XConnection;
     }
     namespace lang {
         class XMultiServiceFactory;
     }
-}}}
+}
 
 namespace dbaui
 {
@@ -43,33 +40,31 @@ namespace dbaui
 
     /** implements the user admin dialog
     */
-    class OUserAdminDlg : public SfxTabDialog, public IItemSetHelper, public IDatabaseSettingsDialog,public dbaui::OModuleClient
+    class OUserAdminDlg : public SfxTabDialogController, public IItemSetHelper, public IDatabaseSettingsDialog
     {
-        OModuleClient m_aModuleClient;
+        weld::Window* m_pParent;
         std::unique_ptr<ODbDataSourceAdministrationHelper>  m_pImpl;
         SfxItemSet*   m_pItemSet;
         css::uno::Reference< css::sdbc::XConnection>          m_xConnection;
         bool          m_bOwnConnection;
     protected:
-        virtual void PageCreated(sal_uInt16 _nId, SfxTabPage& _rPage) override;
+        virtual void PageCreated(const OString& rId, SfxTabPage& _rPage) override;
     public:
-        OUserAdminDlg( vcl::Window* _pParent
-                            ,SfxItemSet* _pItems
-                            ,const css::uno::Reference< css::uno::XComponentContext >& _rxORB
-                            ,const css::uno::Any& _aDataSourceName
-                            ,const css::uno::Reference< css::sdbc::XConnection>& _xConnection);
+        OUserAdminDlg(weld::Window* pParent, SfxItemSet* pItems,
+                      const css::uno::Reference< css::uno::XComponentContext >& rxORB,
+                      const css::uno::Any& rDataSourceName,
+                      const css::uno::Reference< css::sdbc::XConnection>& rConnection);
 
         virtual ~OUserAdminDlg() override;
-        virtual void dispose() override;
 
         virtual const SfxItemSet* getOutputSet() const override;
         virtual SfxItemSet* getWriteOutputSet() override;
 
-        virtual short   Execute() override;
+        virtual short   run() override;
 
         // forwards to ODbDataSourceAdministrationHelper
         virtual css::uno::Reference< css::uno::XComponentContext > getORB() const override;
-        virtual std::pair< css::uno::Reference< css::sdbc::XConnection >,sal_Bool> createConnection() override;
+        virtual std::pair< css::uno::Reference< css::sdbc::XConnection >,bool> createConnection() override;
         virtual css::uno::Reference< css::sdbc::XDriver > getDriver() override;
         virtual OUString getDatasourceType(const SfxItemSet& _rSet) const override;
         virtual void clearPassword() override;

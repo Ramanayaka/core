@@ -28,10 +28,11 @@
 
 
 #include <ne_uri.h>
-#include "rtl/ustring.hxx"
-#include "osl/time.h"
-#include "osl/thread.hxx"
-#include "salhelper/thread.hxx"
+#include <rtl/ustring.hxx>
+#include <osl/time.h>
+#include <osl/thread.hxx>
+#include <sal/log.hxx>
+#include <salhelper/thread.hxx>
 #include "NeonSession.hxx"
 #include "NeonLockStore.hxx"
 
@@ -71,16 +72,13 @@ void TickerThread::execute()
     int nCount = nNth;
     while ( !m_bFinish )
     {
-        if ( nCount-- <= 0 )
+        if (--nCount < 0)
         {
             m_rLockStore.refreshLocks();
             nCount = nNth;
         }
 
-        TimeValue aTV;
-        aTV.Seconds = 0;
-        aTV.Nanosec = 1000000000 / nNth;
-        salhelper::Thread::wait( aTV );
+        salhelper::Thread::wait(TimeValue(0, 1000000000 / nNth));
     }
 
     SAL_INFO( "ucb.ucp.webdav", "TickerThread: stop." );
@@ -105,24 +103,21 @@ NeonLockStore::NeonLockStore()
 
 NeonLockStore::~NeonLockStore()
 {
-    osl::ResettableMutexGuard aGuard(m_aMutex);
-    stopTicker(aGuard);
-    aGuard.reset(); // actually no threads should even try to access members now
+    {
+        osl::ClearableMutexGuard aGuard(m_aMutex);
+        stopTicker(aGuard);
+    } // actually no threads should even try to access members now
 
     // release active locks, if any.
     SAL_WARN_IF( !m_aLockInfoMap.empty(), "ucb.ucp.webdav", "NeonLockStore::~NeonLockStore - Releasing active locks!" );
 
-    LockInfoMap::const_iterator it( m_aLockInfoMap.begin() );
-    const LockInfoMap::const_iterator end( m_aLockInfoMap.end() );
-    while ( it != end )
+    for ( auto& rLockInfo : m_aLockInfoMap )
     {
-        NeonLock * pLock = (*it).first;
-        (*it).second.xSession->UNLOCK( pLock );
+        NeonLock * pLock = rLockInfo.first;
+        rLockInfo.second.xSession->UNLOCK( pLock );
 
         ne_lockstore_remove( m_pNeonLockStore, pLock );
         ne_lock_destroy( pLock );
-
-        ++it;
     }
 
     ne_lockstore_destroy( m_pNeonLockStore );
@@ -153,7 +148,7 @@ void NeonLockStore::stopTicker(osl::ClearableMutexGuard & rGuard)
 
     rGuard.clear();
 
-    if (pTickerThread.is())
+    if (pTickerThread.is() && pTickerThread->getIdentifier() != osl::Thread::getCurrentIdentifier())
         pTickerThread->join(); // without m_aMutex locked (to prevent deadlock)
 }
 
@@ -198,15 +193,20 @@ void NeonLockStore::removeLock( NeonLock * pLock )
         stopTicker(aGuard);
 }
 
+void NeonLockStore::removeLockDeferred(NeonLock* pLock)
+{
+    osl::MutexGuard aGuard(m_aMutex);
+
+    m_aRemoveDeferred.push_back(pLock);
+}
+
 void NeonLockStore::refreshLocks()
 {
     osl::MutexGuard aGuard( m_aMutex );
 
-    LockInfoMap::iterator it( m_aLockInfoMap.begin() );
-    const LockInfoMap::const_iterator end( m_aLockInfoMap.end() );
-    while ( it != end )
+    for ( auto& rLockInfo : m_aLockInfoMap )
     {
-        LockInfo & rInfo = (*it).second;
+        LockInfo & rInfo = rLockInfo.second;
         if ( rInfo.nLastChanceToSendRefreshRequest != -1 )
         {
             // 30 seconds or less remaining until lock expires?
@@ -218,7 +218,7 @@ void NeonLockStore::refreshLocks()
                 // refresh the lock.
                 sal_Int32 nlastChanceToSendRefreshRequest = -1;
                 if ( rInfo.xSession->LOCK(
-                         (*it).first,
+                         rLockInfo.first,
                          /* out param */ nlastChanceToSendRefreshRequest ) )
                 {
                     rInfo.nLastChanceToSendRefreshRequest
@@ -231,8 +231,11 @@ void NeonLockStore::refreshLocks()
                 }
             }
         }
-        ++it;
     }
+    // removeLock will not need to actually release the lock, because this is run from TickerThread
+    for (auto pLock : m_aRemoveDeferred)
+        removeLock(pLock);
+    m_aRemoveDeferred.clear();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

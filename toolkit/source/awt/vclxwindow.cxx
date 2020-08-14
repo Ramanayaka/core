@@ -18,16 +18,13 @@
  */
 
 
+#include <stdarg.h>
 #include <memory>
 #include <com/sun/star/awt/WindowEvent.hpp>
 #include <com/sun/star/awt/KeyEvent.hpp>
-#include <com/sun/star/awt/KeyModifier.hpp>
 #include <com/sun/star/awt/MouseEvent.hpp>
-#include <com/sun/star/awt/MouseButton.hpp>
 #include <com/sun/star/awt/MouseWheelBehavior.hpp>
-#include <com/sun/star/awt/XTopWindow.hpp>
 #include <com/sun/star/awt/Style.hpp>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/awt/DockingEvent.hpp>
 #include <com/sun/star/awt/EndDockingEvent.hpp>
 #include <com/sun/star/awt/EndPopupModeEvent.hpp>
@@ -36,38 +33,38 @@
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
 #include <toolkit/awt/vclxwindow.hxx>
-#include <toolkit/awt/vclxpointer.hxx>
+#include <awt/vclxpointer.hxx>
 #include <toolkit/awt/vclxwindows.hxx>
-#include <toolkit/helper/macros.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <toolkit/helper/convert.hxx>
 #include <toolkit/helper/property.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <rtl/uuid.h>
-#include <rtl/ustrbuf.hxx>
+#include <rtl/math.hxx>
+#include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
 #include <tools/color.hxx>
 #include <tools/fract.hxx>
+#include <tools/debug.hxx>
+#include <vcl/event.hxx>
 #include <vcl/dockwin.hxx>
 #include <vcl/pdfextoutdevdata.hxx>
 #include <vcl/tabpage.hxx>
-#include <vcl/button.hxx>
+#include <vcl/ctrl.hxx>
 #include <vcl/settings.hxx>
-#include <comphelper/asyncnotification.hxx>
+#include <vcl/commandevent.hxx>
 #include <comphelper/flagguard.hxx>
+#include <comphelper/interfacecontainer2.hxx>
 #include <comphelper/profilezone.hxx>
 #include "stylesettings.hxx"
 #include <tools/urlobj.hxx>
 
-#include "helper/accessibilityclient.hxx"
-#include "helper/unopropertyarrayhelper.hxx"
+#include <helper/accessibilityclient.hxx>
+#include <helper/unopropertyarrayhelper.hxx>
 
 using namespace ::com::sun::star;
 
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::UNO_QUERY;
-using ::com::sun::star::uno::RuntimeException;
 using ::com::sun::star::lang::EventObject;
 using ::com::sun::star::awt::XWindowListener2;
 using ::com::sun::star::awt::XDockableWindowListener;
@@ -126,8 +123,6 @@ public:
     std::unique_ptr<UnoPropertyArrayHelper>
                                         mpPropHelper;
 
-    css::uno::Reference< css::awt::XPointer >
-                                        mxPointer;
     css::uno::Reference< css::accessibility::XAccessibleContext >
                                         mxAccessibleContext;
     css::uno::Reference< css::awt::XGraphics >
@@ -152,11 +147,11 @@ public:
     /** synchronously mbEnableVisible
     */
     void    setEnableVisible( bool bEnableVisible ) { mbEnableVisible = bEnableVisible; }
-    bool    isEnableVisible() { return mbEnableVisible; }
+    bool    isEnableVisible() const { return mbEnableVisible; }
     /** synchronously mbDirectVisible;
     */
     void    setDirectVisible( bool bDirectVisible ) { mbDirectVisible = bDirectVisible; }
-    bool    isDirectVisible() { return mbDirectVisible; }
+    bool    isDirectVisible() const { return mbDirectVisible; }
 
     /** impl-version of VCLXWindow::ImplExecuteAsyncWithoutSolarLock
     */
@@ -218,7 +213,6 @@ VCLXWindowImpl::VCLXWindowImpl( VCLXWindow& _rAntiImpl, bool _bWithDefaultProps 
     ,mnListenerLockLevel( 0 )
     ,mnWritingMode( WritingMode2::CONTEXT )
     ,mnContextWritingMode( WritingMode2::CONTEXT )
-    ,mpPropHelper( nullptr )
 {
 }
 
@@ -269,12 +263,13 @@ IMPL_LINK_NOARG(VCLXWindowImpl, OnProcessCallbacks, void*, void)
 {
     const Reference< uno::XInterface > xKeepAlive( mrAntiImpl );
 
+    SAL_INFO("toolkit.controls", "OnProcessCallbacks grabbing solarmutex");
+
     // work on a copy of the callback array
     CallbackArray aCallbacksCopy;
     {
         SolarMutexGuard aGuard;
-        aCallbacksCopy = maCallbackEvents;
-        maCallbackEvents.clear();
+        aCallbacksCopy.swap(maCallbackEvents);
 
         // we acquired our VCLXWindow once before posting the event, release this one ref now
         mrAntiImpl.release();
@@ -287,13 +282,11 @@ IMPL_LINK_NOARG(VCLXWindowImpl, OnProcessCallbacks, void*, void)
     }
 
     {
+        SAL_INFO("toolkit.controls", "OnProcessCallbacks relinquished solarmutex");
         SolarMutexReleaser aReleaseSolar;
-        for (   CallbackArray::const_iterator loop = aCallbacksCopy.begin();
-                loop != aCallbacksCopy.end();
-                ++loop
-            )
+        for (const auto& rCallback : aCallbacksCopy)
         {
-            (*loop)();
+            rCallback();
         }
     }
 }
@@ -311,7 +304,7 @@ Reference< XStyleSettings > VCLXWindowImpl::getStyleSettings()
 
 // Uses an out-parameter instead of return value, due to the object reference
 
-void ImplInitWindowEvent( css::awt::WindowEvent& rEvent, vcl::Window* pWindow )
+static void ImplInitWindowEvent( css::awt::WindowEvent& rEvent, vcl::Window const * pWindow )
 {
     Point aPos = pWindow->GetPosPixel();
     Size aSz = pWindow->GetSizePixel();
@@ -326,14 +319,13 @@ void ImplInitWindowEvent( css::awt::WindowEvent& rEvent, vcl::Window* pWindow )
 }
 
 VCLXWindow::VCLXWindow( bool _bWithDefaultProps )
-    :mpImpl( nullptr )
 {
-    mpImpl = new VCLXWindowImpl( *this, _bWithDefaultProps );
+    mpImpl.reset( new VCLXWindowImpl( *this, _bWithDefaultProps ) );
 }
 
 VCLXWindow::~VCLXWindow()
 {
-    delete mpImpl;
+    mpImpl.reset();
 
     if ( GetWindow() )
     {
@@ -384,7 +376,7 @@ void VCLXWindow::resumeVclEventListening( )
     --mpImpl->mnListenerLockLevel;
 }
 
-void VCLXWindow::notifyWindowRemoved( vcl::Window& _rWindow )
+void VCLXWindow::notifyWindowRemoved( vcl::Window const & _rWindow )
 {
     if ( mpImpl->getContainerListeners().getLength() )
     {
@@ -517,23 +509,43 @@ void VCLXWindow::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
         }
         break;
         case VclEventId::WindowActivate:
-        {
-            if ( mpImpl->getTopWindowListeners().getLength() )
-            {
-                css::lang::EventObject aEvent;
-                aEvent.Source = static_cast<cppu::OWeakObject*>(this);
-                mpImpl->getTopWindowListeners().windowActivated( aEvent );
-            }
-        }
-        break;
         case VclEventId::WindowDeactivate:
         {
-            if ( mpImpl->getTopWindowListeners().getLength() )
+            if (!mpImpl->getTopWindowListeners().getLength())
+                return;
+
+            // Suppress events which are unlikely to be interesting to our listeners.
+            vcl::Window* pWin = static_cast<vcl::Window*>(rVclWindowEvent.GetData());
+            bool bSuppress = false;
+
+            while (pWin)
             {
-                css::lang::EventObject aEvent;
-                aEvent.Source = static_cast<cppu::OWeakObject*>(this);
-                mpImpl->getTopWindowListeners().windowDeactivated( aEvent );
+                // Either the event came from the same window, from its
+                // child, or from a child of its border window (e.g.
+                // menubar or notebookbar).
+                if (pWin->GetWindow(GetWindowType::Client) == GetWindow())
+                    return;
+
+                if (pWin->IsMenuFloatingWindow())
+                    bSuppress = true;
+
+                if (pWin->GetType() == WindowType::FLOATINGWINDOW &&
+                    static_cast<FloatingWindow*>(pWin)->IsInPopupMode())
+                    bSuppress = true;
+
+                // Otherwise, don't suppress if the event came from a different frame.
+                if (!bSuppress && pWin->GetWindow(GetWindowType::Frame) == pWin)
+                    break;
+
+                pWin = pWin->GetWindow(GetWindowType::RealParent);
             }
+
+            css::lang::EventObject aEvent;
+            aEvent.Source = static_cast<cppu::OWeakObject*>(this);
+            if (rVclWindowEvent.GetId() == VclEventId::WindowActivate)
+                mpImpl->getTopWindowListeners().windowActivated( aEvent );
+            else
+                mpImpl->getTopWindowListeners().windowDeactivated( aEvent );
         }
         break;
         case VclEventId::WindowClose:
@@ -657,7 +669,7 @@ void VCLXWindow::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
             CommandEvent* pCmdEvt = static_cast<CommandEvent*>(rVclWindowEvent.GetData());
             if ( mpImpl->getMouseListeners().getLength() && ( pCmdEvt->GetCommand() == CommandEventId::ContextMenu ) )
             {
-                // CommandEventId::ContextMenu als mousePressed mit PopupTrigger = sal_True versenden...
+                // CommandEventId::ContextMenu: send as mousePressed with PopupTrigger = true ...
                 Point aWhere = static_cast< CommandEvent* >( rVclWindowEvent.GetData() )->GetMousePosPixel();
                 if ( !pCmdEvt->IsMouseEvent() )
                 {   // for keyboard events, we set the coordinates to -1,-1. This is a slight HACK, but the current API
@@ -687,7 +699,7 @@ void VCLXWindow::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
                 bool const isEnter(pMouseEvt->IsEnterWindow());
                 Callback aCallback = [ this, isEnter, aEvent ]()
                      { MouseListenerMultiplexer& rMouseListeners = this->mpImpl->getMouseListeners();
-                       (isEnter)
+                       isEnter
                            ? rMouseListeners.mouseEntered(aEvent)
                            : rMouseListeners.mouseExited(aEvent); };
 
@@ -826,7 +838,7 @@ void VCLXWindow::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
                 aEvent.Source = static_cast<cppu::OWeakObject*>(this);
                 mpImpl->getDockableWindowListeners().notifyEach( &XDockableWindowListener::toggleFloatingMode, aEvent );
             }
-       }
+        }
         break;
         case VclEventId::WindowEndPopupMode:
         {
@@ -875,35 +887,15 @@ Size VCLXWindow::ImplCalcWindowSize( const Size& rOutSz ) const
     {
         sal_Int32 nLeft, nTop, nRight, nBottom;
         pWindow->GetBorder( nLeft, nTop, nRight, nBottom );
-        aSz.Width() += nLeft+nRight;
-        aSz.Height() += nTop+nBottom;
+        aSz.AdjustWidth(nLeft+nRight );
+        aSz.AdjustHeight(nTop+nBottom );
     }
     return aSz;
 }
 
 
 // css::lang::XUnoTunnel
-sal_Int64 VCLXWindow::getSomething( const css::uno::Sequence< sal_Int8 >& rIdentifier )
-{
-    if( ( rIdentifier.getLength() == 16 ) && ( 0 == memcmp( VCLXWindow::GetUnoTunnelId().getConstArray(), rIdentifier.getConstArray(), 16 ) ) )
-    {
-        return sal::static_int_cast< sal_Int64 >(reinterpret_cast< sal_IntPtr >(this));
-    }
-    return VCLXDevice::getSomething( rIdentifier );
-}
-namespace
-{
-    class theVCLXWindowUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theVCLXWindowUnoTunnelId> {};
-}
-const css::uno::Sequence< sal_Int8 >& VCLXWindow::GetUnoTunnelId() throw()
-{
-    return theVCLXWindowUnoTunnelId::get().getSeq();
-}
-VCLXWindow* VCLXWindow::GetImplementation( const css::uno::Reference< css::uno::XInterface >& rxIFace )
-{
-    css::uno::Reference< css::lang::XUnoTunnel > xUT( rxIFace, css::uno::UNO_QUERY );
-    return xUT.is() ? reinterpret_cast<VCLXWindow*>(sal::static_int_cast<sal_IntPtr>(xUT->getSomething( VCLXWindow::GetUnoTunnelId() ))) : nullptr;
-}
+UNO3_GETIMPLEMENTATION2_IMPL(VCLXWindow, VCLXDevice);
 
 
 // css::lang::Component
@@ -913,37 +905,37 @@ void VCLXWindow::dispose(  )
 
     mpImpl->mxViewGraphics = nullptr;
 
-    if ( !mpImpl->mbDisposing )
+    if ( mpImpl->mbDisposing )
+        return;
+
+    mpImpl->mbDisposing = true;
+
+    mpImpl->disposing();
+
+    if ( GetWindow() )
     {
-        mpImpl->mbDisposing = true;
-
-        mpImpl->disposing();
-
-        if ( GetWindow() )
-        {
-            VclPtr<OutputDevice> pOutDev = GetOutputDevice();
-            SetWindow( nullptr );  // so that handlers are logged off, if necessary (virtual)
-            SetOutputDevice( nullptr );
-            pOutDev.disposeAndClear();
-        }
-
-        // #i14103# dispose the accessible context after the window has been destroyed,
-        // otherwise the old value in the child event fired in VCLXAccessibleComponent::ProcessWindowEvent()
-        // for VclEventId::WindowChildDestroyed contains a reference to an already disposed accessible object
-        try
-        {
-            css::uno::Reference< css::lang::XComponent > xComponent( mpImpl->mxAccessibleContext, css::uno::UNO_QUERY );
-            if ( xComponent.is() )
-                xComponent->dispose();
-        }
-        catch ( const css::uno::Exception& )
-        {
-            OSL_FAIL( "VCLXWindow::dispose: could not dispose the accessible context!" );
-        }
-        mpImpl->mxAccessibleContext.clear();
-
-        mpImpl->mbDisposing = false;
+        VclPtr<OutputDevice> pOutDev = GetOutputDevice();
+        SetWindow( nullptr );  // so that handlers are logged off, if necessary (virtual)
+        SetOutputDevice( nullptr );
+        pOutDev.disposeAndClear();
     }
+
+    // #i14103# dispose the accessible context after the window has been destroyed,
+    // otherwise the old value in the child event fired in VCLXAccessibleComponent::ProcessWindowEvent()
+    // for VclEventId::WindowChildDestroyed contains a reference to an already disposed accessible object
+    try
+    {
+        css::uno::Reference< css::lang::XComponent > xComponent( mpImpl->mxAccessibleContext, css::uno::UNO_QUERY );
+        if ( xComponent.is() )
+            xComponent->dispose();
+    }
+    catch ( const css::uno::Exception& )
+    {
+        OSL_FAIL( "VCLXWindow::dispose: could not dispose the accessible context!" );
+    }
+    mpImpl->mxAccessibleContext.clear();
+
+    mpImpl->mbDisposing = false;
 }
 
 void VCLXWindow::addEventListener( const css::uno::Reference< css::lang::XEventListener >& rxListener )
@@ -965,7 +957,7 @@ void VCLXWindow::removeEventListener( const css::uno::Reference< css::lang::XEve
 void VCLXWindow::setPosSize( sal_Int32 X, sal_Int32 Y, sal_Int32 Width, sal_Int32 Height, sal_Int16 Flags )
 {
     SolarMutexGuard aGuard;
-    ::comphelper::ProfileZone aZone("setPosSize");
+    comphelper::ProfileZone aZone("setPosSize");
 
     if ( GetWindow() )
     {
@@ -1122,32 +1114,28 @@ void VCLXWindow::setPointer( const css::uno::Reference< css::awt::XPointer >& rx
 {
     SolarMutexGuard aGuard;
 
-    VCLXPointer* pPointer = VCLXPointer::GetImplementation( rxPointer );
-    if ( pPointer )
-    {
-        mpImpl->mxPointer = rxPointer;
-        if ( GetWindow() )
-            GetWindow()->SetPointer( pPointer->GetPointer() );
-    }
+    VCLXPointer* pPointer = comphelper::getUnoTunnelImplementation<VCLXPointer>( rxPointer );
+    if ( pPointer && GetWindow() )
+        GetWindow()->SetPointer( pPointer->GetPointer() );
 }
 
 void VCLXWindow::setBackground( sal_Int32 nColor )
 {
     SolarMutexGuard aGuard;
 
-    if ( GetWindow() )
-    {
-        Color aColor( (sal_uInt32)nColor );
-        GetWindow()->SetBackground( aColor );
-        GetWindow()->SetControlBackground( aColor );
+    if ( !GetWindow() )
+        return;
 
-        WindowType eWinType = GetWindow()->GetType();
-        if ( ( eWinType == WindowType::WINDOW ) ||
-             ( eWinType == WindowType::WORKWINDOW ) ||
-             ( eWinType == WindowType::FLOATINGWINDOW ) )
-        {
-            GetWindow()->Invalidate();
-        }
+    Color aColor(nColor);
+    GetWindow()->SetBackground( aColor );
+    GetWindow()->SetControlBackground( aColor );
+
+    WindowType eWinType = GetWindow()->GetType();
+    if ( ( eWinType == WindowType::WINDOW ) ||
+         ( eWinType == WindowType::WORKWINDOW ) ||
+         ( eWinType == WindowType::FLOATINGWINDOW ) )
+    {
+        GetWindow()->Invalidate();
     }
 }
 
@@ -1211,8 +1199,7 @@ void VCLXWindow::setForeground( sal_Int32 nColor )
 
     if ( GetWindow() )
     {
-        Color aColor( (sal_uInt32)nColor );
-        GetWindow()->SetControlForeground( aColor );
+        GetWindow()->SetControlForeground( Color(nColor) );
     }
 }
 
@@ -1228,29 +1215,28 @@ void VCLXWindow::getStyles( sal_Int16 nType, css::awt::FontDescriptor& Font, sal
 {
     SolarMutexGuard aGuard;
 
-    if ( GetWindow() )
+    if ( !GetWindow() )
+        return;
+
+    const StyleSettings& rStyleSettings = GetWindow()->GetSettings().GetStyleSettings();
+
+    switch ( nType )
     {
-        const StyleSettings& rStyleSettings = GetWindow()->GetSettings().GetStyleSettings();
-
-        switch ( nType )
+        case css::awt::Style::FRAME:
         {
-            case css::awt::Style::FRAME:
-            {
-                Font = VCLUnoHelper::CreateFontDescriptor( rStyleSettings.GetAppFont() );
-                ForegroundColor = rStyleSettings.GetWindowTextColor().GetColor();
-                BackgroundColor = rStyleSettings.GetWindowColor().GetColor();
-            }
-            break;
-            case css::awt::Style::DIALOG:
-            {
-                Font = VCLUnoHelper::CreateFontDescriptor( rStyleSettings.GetAppFont() );
-                ForegroundColor = rStyleSettings.GetDialogTextColor().GetColor();
-                BackgroundColor = rStyleSettings.GetDialogColor().GetColor();
-            }
-            break;
-            default: OSL_FAIL( "VCLWindow::getStyles() - unknown Type" );
+            Font = VCLUnoHelper::CreateFontDescriptor( rStyleSettings.GetAppFont() );
+            ForegroundColor = sal_Int32(rStyleSettings.GetWindowTextColor());
+            BackgroundColor = sal_Int32(rStyleSettings.GetWindowColor());
         }
-
+        break;
+        case css::awt::Style::DIALOG:
+        {
+            Font = VCLUnoHelper::CreateFontDescriptor( rStyleSettings.GetAppFont() );
+            ForegroundColor = sal_Int32(rStyleSettings.GetDialogTextColor());
+            BackgroundColor = sal_Int32(rStyleSettings.GetDialogColor());
+        }
+        break;
+        default: OSL_FAIL( "VCLWindow::getStyles() - unknown Type" );
     }
 }
 
@@ -1261,7 +1247,7 @@ namespace toolkit
     {
         sal_Int32 nColor = 0;
         if ( !( _rValue >>= nColor ) )
-            nColor = (Application::GetSettings().GetStyleSettings().*pGetter)().GetColor();
+            nColor = sal_Int32((Application::GetSettings().GetStyleSettings().*pGetter)());
 
         AllSettings aSettings = _pWindow->GetSettings();
         StyleSettings aStyleSettings = aSettings.GetStyleSettings();
@@ -1282,7 +1268,7 @@ void VCLXWindow::PushPropertyIds( std::vector< sal_uInt16 > &rIds,
 
     for ( int nId = nFirstId; nId != BASEPROPERTY_NOTFOUND;
           nId = va_arg( pVarArgs, int ) )
-        rIds.push_back( (sal_uInt16) nId );
+        rIds.push_back( static_cast<sal_uInt16>(nId) );
 
     va_end( pVarArgs );
 }
@@ -1309,20 +1295,16 @@ void VCLXWindow::ImplGetPropertyIds( std::vector< sal_uInt16 > &rIds, bool bWith
 
     // lovely hack from:
     // void UnoControlModel::ImplRegisterProperty( sal_uInt16 nPropId )
-    std::vector< sal_uInt16 >::const_iterator iter;
-    for( iter = rIds.begin(); iter != rIds.end(); ++iter) {
-        if( *iter == BASEPROPERTY_FONTDESCRIPTOR )
-        {
-            // some properties are not included in the FontDescriptor, but every time
-            // when we have a FontDescriptor we want to have these properties too.
-            // => Easier to register the here, instead everywhere where I register the FontDescriptor...
+    if( std::find(rIds.begin(), rIds.end(), BASEPROPERTY_FONTDESCRIPTOR) != rIds.end() )
+    {
+        // some properties are not included in the FontDescriptor, but every time
+        // when we have a FontDescriptor we want to have these properties too.
+        // => Easier to register the here, instead everywhere where I register the FontDescriptor...
 
-            rIds.push_back( BASEPROPERTY_TEXTCOLOR );
-            rIds.push_back( BASEPROPERTY_TEXTLINECOLOR );
-            rIds.push_back( BASEPROPERTY_FONTRELIEF );
-            rIds.push_back( BASEPROPERTY_FONTEMPHASISMARK );
-            break;
-        }
+        rIds.push_back( BASEPROPERTY_TEXTCOLOR );
+        rIds.push_back( BASEPROPERTY_TEXTLINECOLOR );
+        rIds.push_back( BASEPROPERTY_FONTRELIEF );
+        rIds.push_back( BASEPROPERTY_FONTEMPHASISMARK );
     }
 }
 
@@ -1551,7 +1533,7 @@ void VCLXWindow::setProperty( const OUString& PropertyName, const css::uno::Any&
             if ( Value >>= n )
             {
                 vcl::Font aFont = pWindow->GetControlFont();
-                aFont.SetRelief( (FontRelief)n );
+                aFont.SetRelief( static_cast<FontRelief>(n) );
                 pWindow->SetControlFont( aFont );
             }
         }
@@ -1562,7 +1544,7 @@ void VCLXWindow::setProperty( const OUString& PropertyName, const css::uno::Any&
             if ( Value >>= n )
             {
                 vcl::Font aFont = pWindow->GetControlFont();
-                aFont.SetEmphasisMark( (FontEmphasisMark)n );
+                aFont.SetEmphasisMark( static_cast<FontEmphasisMark>(n) );
                 pWindow->SetControlFont( aFont );
             }
         }
@@ -1700,6 +1682,8 @@ void VCLXWindow::setProperty( const OUString& PropertyName, const css::uno::Any&
             WinBits nStyle = pWindow->GetStyle();
             sal_uInt16 nTmp = 0;
             Value >>= nTmp;
+            // clear any dodgy bits passed in, can come from dodgy extensions
+            nTmp &= o3tl::typed_flags<WindowBorderStyle>::mask;
             WindowBorderStyle nBorder = static_cast<WindowBorderStyle>(nTmp);
             if ( !bool(nBorder) )
             {
@@ -1761,7 +1745,7 @@ void VCLXWindow::setProperty( const OUString& PropertyName, const css::uno::Any&
                 case WindowType::CANCELBUTTON:
                 case WindowType::HELPBUTTON:
                     nAlign = PROPERTY_ALIGN_CENTER;
-                    SAL_FALLTHROUGH;
+                    [[fallthrough]];
                 case WindowType::FIXEDTEXT:
                 case WindowType::EDIT:
                 case WindowType::MULTILINEEDIT:
@@ -1894,12 +1878,6 @@ void VCLXWindow::setProperty( const OUString& PropertyName, const css::uno::Any&
         case BASEPROPERTY_BORDERCOLOR:
             ::toolkit::setColorSettings( pWindow, Value, &StyleSettings::SetMonoColor, &StyleSettings::GetMonoColor);
             break;
-        case BASEPROPERTY_DEFAULTCONTROL:
-        {
-            OUString aName;
-            Value >>= aName;
-            break;
-        }
     }
 }
 
@@ -2001,28 +1979,28 @@ css::uno::Any VCLXWindow::getProperty( const OUString& PropertyName )
             }
             break;
             case BASEPROPERTY_BACKGROUNDCOLOR:
-                aProp <<= (sal_Int32) GetWindow()->GetControlBackground().GetColor();
+                aProp <<= GetWindow()->GetControlBackground();
             break;
             case BASEPROPERTY_DISPLAYBACKGROUNDCOLOR:
-                aProp <<= (sal_Int32) GetWindow()->GetDisplayBackground().GetColor().GetColor();
+                aProp <<= GetWindow()->GetBackgroundColor();
             break;
             case BASEPROPERTY_FONTRELIEF:
-                aProp <<= (sal_Int16) GetWindow()->GetControlFont().GetRelief();
+                aProp <<= static_cast<sal_Int16>(GetWindow()->GetControlFont().GetRelief());
             break;
             case BASEPROPERTY_FONTEMPHASISMARK:
-                aProp <<= (sal_Int16) GetWindow()->GetControlFont().GetEmphasisMark();
+                aProp <<= static_cast<sal_Int16>(GetWindow()->GetControlFont().GetEmphasisMark());
             break;
             case BASEPROPERTY_TEXTCOLOR:
-                aProp <<= (sal_Int32) GetWindow()->GetControlForeground().GetColor();
+                aProp <<= GetWindow()->GetControlForeground();
             break;
             case BASEPROPERTY_TEXTLINECOLOR:
-                aProp <<= (sal_Int32) GetWindow()->GetTextLineColor().GetColor();
+                aProp <<= GetWindow()->GetTextLineColor();
             break;
             case BASEPROPERTY_FILLCOLOR:
-                aProp <<= (sal_Int32) GetWindow()->GetFillColor().GetColor();
+                aProp <<= GetWindow()->GetFillColor();
             break;
             case BASEPROPERTY_LINECOLOR:
-                aProp <<= (sal_Int32) GetWindow()->GetLineColor().GetColor();
+                aProp <<= GetWindow()->GetLineColor();
             break;
             case BASEPROPERTY_BORDER:
             {
@@ -2064,11 +2042,11 @@ css::uno::Any VCLXWindow::getProperty( const OUString& PropertyName )
                     {
                         WinBits nStyle = GetWindow()->GetStyle();
                         if ( nStyle & WB_LEFT )
-                            aProp <<= (sal_Int16) PROPERTY_ALIGN_LEFT;
+                            aProp <<= sal_Int16(PROPERTY_ALIGN_LEFT);
                         else if ( nStyle & WB_CENTER )
-                            aProp <<= (sal_Int16) PROPERTY_ALIGN_CENTER;
+                            aProp <<= sal_Int16(PROPERTY_ALIGN_CENTER);
                         else if ( nStyle & WB_RIGHT )
-                            aProp <<= (sal_Int16) PROPERTY_ALIGN_RIGHT;
+                            aProp <<= sal_Int16(PROPERTY_ALIGN_RIGHT);
                     }
                     break;
                     default: break;
@@ -2119,11 +2097,11 @@ css::uno::Any VCLXWindow::getProperty( const OUString& PropertyName )
             break;
 
             case BASEPROPERTY_SYMBOL_COLOR:
-                aProp <<= (sal_Int32)GetWindow()->GetSettings().GetStyleSettings().GetButtonTextColor().GetColor();
+                aProp <<= GetWindow()->GetSettings().GetStyleSettings().GetButtonTextColor();
                 break;
 
             case BASEPROPERTY_BORDERCOLOR:
-                aProp <<= (sal_Int32)GetWindow()->GetSettings().GetStyleSettings().GetMonoColor().GetColor();
+                aProp <<= GetWindow()->GetSettings().GetStyleSettings().GetMonoColor();
                 break;
         }
     }
@@ -2146,8 +2124,8 @@ css::awt::Size VCLXWindow::getMinimumSize(  )
         switch ( nWinType )
         {
             case WindowType::CONTROL:
-                aSz.Width() = GetWindow()->GetTextWidth( GetWindow()->GetText() )+2*12;
-                aSz.Height() = GetWindow()->GetTextHeight()+2*6;
+                aSz.setWidth( GetWindow()->GetTextWidth( GetWindow()->GetText() )+2*12 );
+                aSz.setHeight( GetWindow()->GetTextHeight()+2*6 );
             break;
 
             case WindowType::PATTERNBOX:
@@ -2157,8 +2135,8 @@ css::awt::Size VCLXWindow::getMinimumSize(  )
             case WindowType::DATEBOX:
             case WindowType::TIMEBOX:
             case WindowType::LONGCURRENCYBOX:
-                aSz.Width() = GetWindow()->GetTextWidth( GetWindow()->GetText() )+2*2;
-                aSz.Height() = GetWindow()->GetTextHeight()+2*2;
+                aSz.setWidth( GetWindow()->GetTextWidth( GetWindow()->GetText() )+2*2 );
+                aSz.setHeight( GetWindow()->GetTextHeight()+2*2 );
             break;
             case WindowType::SCROLLBARBOX:
                 return VCLXScrollBar::implGetMinimumSize( GetWindow() );
@@ -2229,88 +2207,82 @@ void VCLXWindow::draw( sal_Int32 nX, sal_Int32 nY )
     if ( !pWindow )
         return;
 
-    if ( isDesignMode() || mpImpl->isEnableVisible() )
+    if ( !(isDesignMode() || mpImpl->isEnableVisible()) )
+        return;
+
+    OutputDevice* pDev = VCLUnoHelper::GetOutputDevice( mpImpl->mxViewGraphics );
+    if (!pDev)
+        pDev = pWindow->GetParent();
+    TabPage* pTabPage = dynamic_cast< TabPage* >( pWindow.get() );
+    if ( pTabPage )
     {
-        OutputDevice* pDev = VCLUnoHelper::GetOutputDevice( mpImpl->mxViewGraphics );
-        if (!pDev)
-            pDev = pWindow->GetParent();
-        TabPage* pTabPage = dynamic_cast< TabPage* >( pWindow.get() );
-        if ( pTabPage )
-        {
-            Point aPos( nX, nY );
-            Size  aSize = pWindow->GetSizePixel();
-
-            aPos  = pDev->PixelToLogic( aPos );
-            aSize = pDev->PixelToLogic( aSize );
-
-            pTabPage->Draw( pDev, aPos, aSize, DrawFlags::NONE );
-            return;
-        }
-
         Point aPos( nX, nY );
+        aPos = pDev->PixelToLogic( aPos );
+        pTabPage->Draw( pDev, aPos, DrawFlags::NONE );
+        return;
+    }
 
-        if ( pWindow->GetParent() && !pWindow->IsSystemWindow() && ( pWindow->GetParent() == pDev ) )
+    Point aPos( nX, nY );
+
+    if ( pWindow->GetParent() && !pWindow->IsSystemWindow() && ( pWindow->GetParent() == pDev ) )
+    {
+        // #i40647# don't draw here if this is a recursive call
+        // sometimes this is called recursively, because the Update call on the parent
+        // (strangely) triggers another paint. Prevent a stack overflow here
+        // Yes, this is only fixing symptoms for the moment...
+        // #i40647# / 2005-01-18 / frank.schoenheit@sun.com
+        if ( !mpImpl->getDrawingOntoParent_ref() )
         {
-            // #i40647# don't draw here if this is a recursive call
-            // sometimes this is called recursively, because the Update call on the parent
-            // (strangely) triggers another paint. Prevent a stack overflow here
-            // Yes, this is only fixing symptoms for the moment ....
-            // #i40647# / 2005-01-18 / frank.schoenheit@sun.com
-            if ( !mpImpl->getDrawingOntoParent_ref() )
+            ::comphelper::FlagGuard aDrawingflagGuard( mpImpl->getDrawingOntoParent_ref() );
+
+            bool bWasVisible = pWindow->IsVisible();
+            Point aOldPos( pWindow->GetPosPixel() );
+
+            if ( bWasVisible && aOldPos == aPos )
             {
-                ::comphelper::FlagGuard aDrawingflagGuard( mpImpl->getDrawingOntoParent_ref() );
+                pWindow->PaintImmediately();
+                return;
+            }
 
-                bool bWasVisible = pWindow->IsVisible();
-                Point aOldPos( pWindow->GetPosPixel() );
+            pWindow->SetPosPixel( aPos );
 
-                if ( bWasVisible && aOldPos == aPos )
-                {
-                    pWindow->Update();
-                    return;
-                }
+            // Update parent first to avoid painting the parent upon the update
+            // of this window, as it may otherwise cause the parent
+            // to hide this window again
+            if( pWindow->GetParent() )
+                pWindow->GetParent()->PaintImmediately();
 
-                pWindow->SetPosPixel( aPos );
+            pWindow->Show();
+            pWindow->PaintImmediately();
+            pWindow->SetParentUpdateMode( false );
+            pWindow->Hide();
+            pWindow->SetParentUpdateMode( true );
 
-                // Update parent first to avoid painting the parent upon the update
-                // of this window, as it may otherwise cause the parent
-                // to hide this window again
-                if( pWindow->GetParent() )
-                    pWindow->GetParent()->Update();
-
+            pWindow->SetPosPixel( aOldPos );
+            if ( bWasVisible )
                 pWindow->Show();
-                pWindow->Update();
-                pWindow->SetParentUpdateMode( false );
-                pWindow->Hide();
-                pWindow->SetParentUpdateMode( true );
-
-                pWindow->SetPosPixel( aOldPos );
-                if ( bWasVisible )
-                    pWindow->Show();
-            }
         }
-        else if ( pDev )
-        {
-            Size aSz = pWindow->GetSizePixel();
-            aSz = pDev->PixelToLogic( aSz );
-            Point aP = pDev->PixelToLogic( aPos );
+    }
+    else if ( pDev )
+    {
+        Point aP = pDev->PixelToLogic( aPos );
 
-            vcl::PDFExtOutDevData* pPDFExport   = dynamic_cast<vcl::PDFExtOutDevData*>(pDev->GetExtOutDevData());
-            bool bDrawSimple =    ( pDev->GetOutDevType() == OUTDEV_PRINTER )
-                               || ( pDev->GetOutDevViewType() == OutDevViewType::PrintPreview )
-                               || ( pPDFExport != nullptr );
-            if ( bDrawSimple )
-            {
-                pWindow->Draw( pDev, aP, aSz, DrawFlags::NoControls );
-            }
-            else
-            {
-                bool bOldNW =pWindow->IsNativeWidgetEnabled();
-                if( bOldNW )
-                    pWindow->EnableNativeWidget(false);
-                pWindow->PaintToDevice( pDev, aP, aSz );
-                if( bOldNW )
-                    pWindow->EnableNativeWidget();
-            }
+        vcl::PDFExtOutDevData* pPDFExport   = dynamic_cast<vcl::PDFExtOutDevData*>(pDev->GetExtOutDevData());
+        bool bDrawSimple =    ( pDev->GetOutDevType() == OUTDEV_PRINTER )
+                           || ( pDev->GetOutDevViewType() == OutDevViewType::PrintPreview )
+                           || ( pPDFExport != nullptr );
+        if ( bDrawSimple )
+        {
+            pWindow->Draw( pDev, aP, DrawFlags::NoControls );
+        }
+        else
+        {
+            bool bOldNW =pWindow->IsNativeWidgetEnabled();
+            if( bOldNW )
+                pWindow->EnableNativeWidget(false);
+            pWindow->PaintToDevice( pDev, aP );
+            if( bOldNW )
+                pWindow->EnableNativeWidget();
         }
     }
 }
@@ -2462,29 +2434,15 @@ sal_Bool SAL_CALL VCLXWindow::isInPopupMode(  )
 void SAL_CALL VCLXWindow::setOutputSize( const css::awt::Size& aSize )
 {
     SolarMutexGuard aGuard;
-    VclPtr<vcl::Window> pWindow;
-    if( (pWindow = GetWindow()) != nullptr )
-    {
-        DockingWindow *pDockingWindow = dynamic_cast< DockingWindow* >(pWindow.get());
-        if( pDockingWindow )
-            pDockingWindow->SetOutputSizePixel( VCLSize( aSize ) );
-        else
-            pWindow->SetOutputSizePixel( VCLSize( aSize ) );
-    }
+    if( VclPtr<vcl::Window> pWindow = GetWindow() )
+        pWindow->SetOutputSizePixel( VCLSize( aSize ) );
 }
 
 css::awt::Size SAL_CALL VCLXWindow::getOutputSize(  )
 {
     SolarMutexGuard aGuard;
-    VclPtr<vcl::Window> pWindow;
-    if( (pWindow = GetWindow()) != nullptr )
-    {
-        DockingWindow *pDockingWindow = dynamic_cast< DockingWindow* >(pWindow.get());
-        if( pDockingWindow )
-            return AWTSize( pDockingWindow->GetOutputSizePixel() );
-        else
-            return AWTSize( pWindow->GetOutputSizePixel() );
-    }
+    if( VclPtr<vcl::Window> pWindow = GetWindow() )
+        return AWTSize( pWindow->GetOutputSizePixel() );
     else
         return css::awt::Size();
 }

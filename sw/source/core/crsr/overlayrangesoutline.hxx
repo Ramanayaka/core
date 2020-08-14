@@ -24,13 +24,10 @@
 
 #include <vector>
 
-namespace sw
-{
-    namespace overlay
+namespace sw::overlay
     {
         class OverlayRangesOutline : public sdr::overlay::OverlayObject
         {
-        protected:
             // geometry of overlay
             std::vector< basegfx::B2DRange > maRanges;
 
@@ -53,8 +50,8 @@ namespace sw
             // data write access
             void setRanges(const std::vector< basegfx::B2DRange >& rNew);
         };
-    } // end of namespace overlay
-} // end of namespace sw
+
+} // end of namespace sw::overlay
 
 #endif // INCLUDED_SW_SOURCE_CORE_CRSR_OVERLAYRANGESOUTLINE_HXX
 

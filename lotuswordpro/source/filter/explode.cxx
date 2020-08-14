@@ -56,10 +56,12 @@
 
 #include "explode.hxx"
 #include <tools/stream.hxx>
+
+#include <algorithm>
 #include <assert.h>
 #include <math.h>
 
-    const static char Tree1String[][32] = {
+    const char Tree1String[][32] = {
         "101",
         "11",
            "100",
@@ -78,7 +80,7 @@
         "0000000",
     };
 
-    const static char Tree2String[][32] = {
+    const char Tree2String[][32] = {
         "11"    ,
         "1011"  ,
            "1010"  ,
@@ -175,10 +177,8 @@ sal_uInt32 Decompression::ReadBits(sal_uInt16 iCount, sal_uInt32 & nBits)
         return 1;
     }
 
-    sal_uInt32 val = 0;     /* bit accumulator */
-
     /* load at least need bits into val */
-    val = m_nCurrent4Byte;
+    sal_uInt32 val = m_nCurrent4Byte; /* bit accumulator */
     while (m_nBitsLeft < iCount)
     {
         if (m_nBytesLeft == 0)
@@ -186,8 +186,8 @@ sal_uInt32 Decompression::ReadBits(sal_uInt16 iCount, sal_uInt32 & nBits)
             m_nBytesLeft = m_pInStream->ReadBytes(m_Buffer, CHUNK);
             m_pBuffer = m_Buffer;
             if (m_nBytesLeft == 0)  return 1;
-            }
-        val |= (sal_uInt32)(*m_pBuffer++) << m_nBitsLeft;       /* load eight bits */
+        }
+        val |= static_cast<sal_uInt32>(*m_pBuffer++) << m_nBitsLeft;       /* load eight bits */
         m_nBytesLeft --;
         m_nBitsLeft += 8;
     }
@@ -239,7 +239,7 @@ sal_Int32 Decompression::explode()
             sal_uInt32 symbol;
             if (0 != ReadBits(8, symbol))
                 break;
-            m_Output[m_nOutputBufferPos++] = (sal_uInt8)symbol;
+            m_Output[m_nOutputBufferPos++] = static_cast<sal_uInt8>(symbol);
             if (m_nOutputBufferPos == MAXWIN)
             {
                 m_pOutStream->WriteBytes(m_Output, m_nOutputBufferPos);
@@ -249,7 +249,7 @@ sal_Int32 Decompression::explode()
         }
         // if the bit is 1 we have here a length/distance pair:
         // -decode a number with Hufmman Tree #1; variable bit length, result is 0x00 .. 0x0F -> L1
-        sal_uInt32 L1 = Decode(m_Tree1);
+        sal_uInt32 L1 = Decode(m_Tree1.get());
         sal_uInt32 Length;
         if (L1 <= 7)
         {
@@ -263,7 +263,7 @@ sal_Int32 Decompression::explode()
             //            read more (L1-7) bits -> L2
             //             LENGTH = L2 + M[L1-7] + 2
             sal_uInt32 L2;
-            if (0 != ReadBits((sal_uInt16)(L1 - 7), L2))
+            if (0 != ReadBits(static_cast<sal_uInt16>(L1 - 7), L2))
                 break;
             Length = L2 + 2 + m_iArrayOfM[L1 -7];
         }
@@ -274,7 +274,7 @@ sal_Int32 Decompression::explode()
         }
 
         // - decode another number with Hufmann Tree #2 giving result 0x00..0x3F -> D1
-        sal_uInt32 D1 = Decode(m_Tree2);
+        sal_uInt32 D1 = Decode(m_Tree2.get());
         sal_uInt32 D2;
         if (Length == 2)
         {
@@ -291,7 +291,7 @@ sal_Int32 Decompression::explode()
             //               D1 = D1 << P2  // the parameter 2
             //               read P2 bits -> D2
             D1 = D1 << P2;
-            if (0 != ReadBits((sal_uInt16)P2, D2))
+            if (0 != ReadBits(static_cast<sal_uInt16>(P2), D2))
                 break;
         }
         // DISTANCE = (D1 | D2) + 1
@@ -309,13 +309,13 @@ sal_Int32 Decompression::explode()
 
         m_pOutStream->Flush();
         // point back to copy position and read bytes
-        m_pOutStream->SeekRel(-(long)distance);
+        m_pOutStream->SeekRel(-static_cast<long>(distance));
         sal_uInt8 sTemp[MAXWIN];
-        sal_uInt32 nRead = distance > Length? Length:distance;
+        sal_uInt32 nRead = std::min(distance, Length);
         m_pOutStream->ReadBytes(sTemp, nRead);
         if (nRead != Length)
         {
-            // fill the buffer with read content repeatly until full
+            // fill the buffer with read content repeatedly until full
             for (sal_uInt32 i=nRead; i<Length; i++)
             {
                 sTemp[i] = sTemp[i-nRead];
@@ -334,7 +334,7 @@ sal_Int32 Decompression::explode()
  * @descr   bits to string
  * @return
  */
-void Decompression::ToString(sal_uInt32 nBits, sal_Char *pChar, sal_uInt32 nLen)
+void Decompression::ToString(sal_uInt32 nBits, char *pChar, sal_uInt32 nLen)
 {
     sal_uInt32 nBit;
     for (sal_uInt32 i=nLen; i > 0; i--)
@@ -364,7 +364,7 @@ sal_uInt32 Decompression::Decode(HuffmanTreeNode * pRoot)
 
         nReadAlready  = (nReadAlready << 1) | (nRead & 0x01);
 
-        sal_Char sCode[16];
+        char sCode[16];
         ToString(nReadAlready, sCode, i);
         nRet = pRoot->QueryValue(sCode);
         if (nRet != 0xffffffff)
@@ -398,7 +398,7 @@ void Decompression::ConstructTree1()
     // d    0000 01
     // e    0000 001
     // f    0000 000
-    m_Tree1 = new HuffmanTreeNode();
+    m_Tree1.reset( new HuffmanTreeNode());
     for (sal_uInt32 i=0; i< 16; i++)
     {
         m_Tree1->InsertNode(i, Tree1String[i]);
@@ -429,7 +429,7 @@ void Decompression::ConstructTree1()
 void Decompression::ConstructTree2()
 {
 
-    m_Tree2 = new HuffmanTreeNode();
+    m_Tree2.reset(new HuffmanTreeNode());
     for (sal_uInt32 i=0; i< 64; i++)
     {
         m_Tree2->InsertNode(i, Tree2String[i]);
@@ -445,37 +445,24 @@ void Decompression::fillArray()
     m_iArrayOfM[0] = 7;
     for (int i=1; i < 16; i++)
     {
-        m_iArrayOfM[i]  = m_iArrayOfM[i - 1]+ (sal_uInt32)pow(2.0, i-1);//2
+        m_iArrayOfM[i]  = m_iArrayOfM[i - 1]+ static_cast<sal_uInt32>(pow(2.0, i-1));//2
     }
 }
 
-HuffmanTreeNode::HuffmanTreeNode(sal_uInt32 nValue )
+HuffmanTreeNode::HuffmanTreeNode(sal_uInt32 nValue):value(nValue)
 {
-    value = nValue;
-    left = nullptr;
-    right = nullptr;
 }
 HuffmanTreeNode::~HuffmanTreeNode()
 {
-    if (left)
-    {
-        delete left;
-        left = nullptr;
-    }
-    if (right)
-    {
-        delete right;
-        right = nullptr;
-    }
 }
 
-HuffmanTreeNode * HuffmanTreeNode::InsertNode(sal_uInt32 nValue, const sal_Char * pInCode)
+HuffmanTreeNode * HuffmanTreeNode::InsertNode(sal_uInt32 nValue, const char * pInCode)
 {
     HuffmanTreeNode *pNew = new HuffmanTreeNode(nValue);
     std::string aCode(pInCode);
 
     // query its parents
-    const sal_Char cLast = aCode.back();
+    const char cLast = aCode.back();
     aCode.pop_back();
     HuffmanTreeNode * pParent = QueryNode(aCode.c_str());
     if (!pParent)
@@ -483,34 +470,34 @@ HuffmanTreeNode * HuffmanTreeNode::InsertNode(sal_uInt32 nValue, const sal_Char 
         pParent = InsertNode(0xffffffff, aCode.c_str());
     }
     if (cLast == '0')
-        pParent->left = pNew;
+        pParent->left.reset(pNew);
     else // (cChar == '1')
-        pParent->right = pNew;
+        pParent->right.reset(pNew);
 
     return pNew;
 }
 
-HuffmanTreeNode * HuffmanTreeNode::QueryNode(const sal_Char * pCode)
+HuffmanTreeNode * HuffmanTreeNode::QueryNode(const char * pCode)
 {
     sal_uInt32 nLen = strlen(pCode);
 
     HuffmanTreeNode * pNode = this; // this is the root
     for(sal_uInt32 i=0; i<nLen && pNode; i++)
     {
-        sal_Char cChar= pCode[i];
+        char cChar= pCode[i];
         if (cChar == '0')
         {
-            pNode = pNode->left;
+            pNode = pNode->left.get();
         }
         else // (cChar == '1')
         {
-            pNode = pNode->right;
+            pNode = pNode->right.get();
         }
     }
     return pNode;
 }
 
-sal_uInt32 HuffmanTreeNode::QueryValue(const sal_Char * pCode)
+sal_uInt32 HuffmanTreeNode::QueryValue(const char * pCode)
 {
     HuffmanTreeNode * pNode =QueryNode(pCode);
     if (pNode)

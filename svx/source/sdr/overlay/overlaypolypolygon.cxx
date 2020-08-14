@@ -18,17 +18,13 @@
  */
 
 #include <svx/sdr/overlay/overlaypolypolygon.hxx>
-#include <vcl/outdev.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <svx/sdr/overlay/overlaymanager.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonMarkerPrimitive2D.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonSelectionPrimitive2D.hxx>
 
 
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         drawinglayer::primitive2d::Primitive2DContainer OverlayPolyPolygonStripedAndFilled::createOverlayObjectPrimitive2DSequence()
         {
             drawinglayer::primitive2d::Primitive2DContainer aRetval;
@@ -73,7 +69,7 @@ namespace sdr
 
         OverlayPolyPolygonStripedAndFilled::OverlayPolyPolygonStripedAndFilled(
             const basegfx::B2DPolyPolygon& rLinePolyPolygon)
-        :   OverlayObject(Color(COL_BLACK)),
+        :   OverlayObject(COL_BLACK),
             maLinePolyPolygon(rLinePolyPolygon)
         {
         }
@@ -81,7 +77,7 @@ namespace sdr
         OverlayPolyPolygonStripedAndFilled::~OverlayPolyPolygonStripedAndFilled()
         {
         }
-    } // end of namespace overlay
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

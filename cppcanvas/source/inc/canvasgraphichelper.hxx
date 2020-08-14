@@ -17,28 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CPPCANVAS_SOURCE_INC_CANVASGRAPHICHELPER_HXX
-#define INCLUDED_CPPCANVAS_SOURCE_INC_CANVASGRAPHICHELPER_HXX
+#pragma once
 
 #include <com/sun/star/rendering/RenderState.hpp>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 
 #include <cppcanvas/canvasgraphic.hxx>
+#include <cppcanvas/canvas.hxx>
 
-#include <boost/optional.hpp>
+#include <optional>
 
-namespace com { namespace sun { namespace star { namespace rendering
+namespace com::sun::star::rendering
 {
     class  XGraphicDevice;
-} } } }
+}
 
 
 /* Definition of CanvasGraphicHelper class */
 
-namespace cppcanvas
-{
-
-    namespace internal
+namespace cppcanvas::internal
     {
 
         class CanvasGraphicHelper : public virtual CanvasGraphic
@@ -56,20 +53,15 @@ namespace cppcanvas
             // for our clients
             // ===============
             const CanvasSharedPtr&                                               getCanvas() const {  return mpCanvas; }
-            const css::uno::Reference< css::rendering::XGraphicDevice >&         getGraphicDevice() const {  return mxGraphicDevice; }
             const css::rendering::RenderState&                                   getRenderState() const;
 
         private:
             mutable css::rendering::RenderState                                   maRenderState;
 
-            boost::optional<basegfx::B2DPolyPolygon>                              maClipPolyPolygon;
+            std::optional<basegfx::B2DPolyPolygon>                              maClipPolyPolygon;
             CanvasSharedPtr                                                       mpCanvas;
-            css::uno::Reference< css::rendering::XGraphicDevice >                 mxGraphicDevice;
         };
 
-    }
 }
-
-#endif // INCLUDED_CPPCANVAS_SOURCE_INC_CANVASGRAPHICHELPER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,12 +20,9 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_XML_XMLTRACKEDCHANGESCONTEXT_HXX
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLTRACKEDCHANGESCONTEXT_HXX
 
-#include "XMLChangeTrackingImportHelper.hxx"
-#include "chgtrack.hxx"
-#include "xmlimprt.hxx"
 #include "importcontext.hxx"
-#include <xmloff/xmlictxt.hxx>
-#include <rtl/ustrbuf.hxx>
+
+namespace sax_fastparser { class FastAttributeList; }
 
 class ScXMLChangeTrackingImportHelper;
 
@@ -34,14 +31,13 @@ class ScXMLTrackedChangesContext : public ScXMLImportContext
     ScXMLChangeTrackingImportHelper*    pChangeTrackingImportHelper;
 
 public:
-    ScXMLTrackedChangesContext( ScXMLImport& rImport, sal_Int32 nElement,
-                                      const css::uno::Reference<css::xml::sax::XFastAttributeList>& xAttrList,
+    ScXMLTrackedChangesContext( ScXMLImport& rImport,
+                                      const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                                       ScXMLChangeTrackingImportHelper* pChangeTrackingImportHelper);
     virtual ~ScXMLTrackedChangesContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                                    const OUString& rLocalName,
-                                                    const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 };
 
 #endif

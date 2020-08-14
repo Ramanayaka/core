@@ -22,9 +22,8 @@
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <xmlscript/xml_helper.hxx>
 #include <ucbhelper/content.hxx>
-#include <list>
 
-#include "dp_ucb.h"
+#include <dp_ucb.h>
 #include <rtl/ustrbuf.hxx>
 #include "dp_properties.hxx"
 
@@ -49,18 +48,17 @@ ExtensionProperties::ExtensionProperties(
 {
     m_propFileUrl = urlExtension + "properties";
 
-    std::list< std::pair< OUString, OUString> > props;
+    std::vector< std::pair< OUString, OUString> > props;
     if (! dp_misc::create_ucb_content(nullptr, m_propFileUrl, nullptr, false))
         return;
 
     ::ucbhelper::Content contentProps(m_propFileUrl, m_xCmdEnv, m_xContext);
     dp_misc::readProperties(props, contentProps);
 
-    typedef std::list< std::pair< OUString, OUString> >::const_iterator CI;
-    for (CI i = props.begin(); i != props.end(); ++i)
+    for (auto const& prop : props)
     {
-        if (i->first == PROP_SUPPRESS_LICENSE)
-            m_prop_suppress_license = i->second;
+        if (prop.first == PROP_SUPPRESS_LICENSE)
+            m_prop_suppress_license = prop.second;
     }
 }
 
@@ -74,9 +72,8 @@ ExtensionProperties::ExtensionProperties(
 {
     m_propFileUrl = urlExtension + "properties";
 
-    for (sal_Int32 i = 0; i < properties.getLength(); i++)
+    for (css::beans::NamedValue const & v : properties)
     {
-        css::beans::NamedValue const & v = properties[i];
         if (v.Name == PROP_SUPPRESS_LICENSE)
         {
             m_prop_suppress_license = getPropertyValue(v);
@@ -124,7 +121,7 @@ void ExtensionProperties::write()
     contentProps.writeStream( xData, true /* replace existing */ );
 }
 
-bool ExtensionProperties::isSuppressedLicense()
+bool ExtensionProperties::isSuppressedLicense() const
 {
     bool ret = false;
     if (m_prop_suppress_license)
@@ -135,7 +132,7 @@ bool ExtensionProperties::isSuppressedLicense()
     return ret;
 }
 
-bool ExtensionProperties::isExtensionUpdate()
+bool ExtensionProperties::isExtensionUpdate() const
 {
     bool ret = false;
     if (m_prop_extension_update)

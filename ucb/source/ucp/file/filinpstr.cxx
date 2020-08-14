@@ -20,15 +20,13 @@
 #include <sal/config.h>
 
 #include <com/sun/star/io/IOException.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 
 #include "filinpstr.hxx"
 #include "filerror.hxx"
-#include "filtask.hxx"
-#include "prov.hxx"
 
 using namespace fileaccess;
 using namespace com::sun::star;
-using namespace com::sun::star::ucb;
 
 #if OSL_DEBUG_LEVEL > 0
 #define THROW_WHERE SAL_WHERE
@@ -75,43 +73,6 @@ XInputStream_impl::~XInputStream_impl()
     }
 }
 
-
-//  XTypeProvider
-
-
-XTYPEPROVIDER_IMPL_3( XInputStream_impl,
-                      lang::XTypeProvider,
-                      io::XSeekable,
-                      io::XInputStream )
-
-
-uno::Any SAL_CALL
-XInputStream_impl::queryInterface( const uno::Type& rType )
-{
-    uno::Any aRet = cppu::queryInterface( rType,
-                                          (static_cast< io::XInputStream* >(this)),
-                                          (static_cast< lang::XTypeProvider* >(this)),
-                                          (static_cast< io::XSeekable* >(this)) );
-    return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
-}
-
-
-void SAL_CALL
-XInputStream_impl::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-
-void SAL_CALL
-XInputStream_impl::release()
-    throw()
-{
-    OWeakObject::release();
-}
-
-
 sal_Int32 SAL_CALL
 XInputStream_impl::readBytes(
                  uno::Sequence< sal_Int8 >& aData,
@@ -133,7 +94,7 @@ XInputStream_impl::readBytes(
     // if any code relies on this, so be conservative---SB):
     if (sal::static_int_cast<sal_Int32>(nrc) != nBytesToRead)
         aData.realloc(sal_Int32(nrc));
-    return ( sal_Int32 ) nrc;
+    return static_cast<sal_Int32>(nrc);
 }
 
 sal_Int32 SAL_CALL
@@ -155,7 +116,8 @@ XInputStream_impl::skipBytes( sal_Int32 nBytesToSkip )
 sal_Int32 SAL_CALL
 XInputStream_impl::available()
 {
-    return 0;
+    sal_Int64 avail = getLength() - getPosition();
+    return std::min<sal_Int64>(avail, SAL_MAX_INT32);
 }
 
 
@@ -197,8 +159,7 @@ XInputStream_impl::getLength()
     sal_uInt64 uEndPos;
     if ( m_aFile.getSize(uEndPos) != osl::FileBase::E_None )
         throw io::IOException( THROW_WHERE );
-    else
-        return sal_Int64( uEndPos );
+    return sal_Int64( uEndPos );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

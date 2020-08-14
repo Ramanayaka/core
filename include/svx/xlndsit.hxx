@@ -20,6 +20,7 @@
 #ifndef INCLUDED_SVX_XLNDSIT_HXX
 #define INCLUDED_SVX_XLNDSIT_HXX
 
+#include <svx/xdef.hxx>
 #include <svx/xit.hxx>
 
 #include <svx/xdash.hxx>
@@ -28,9 +29,8 @@
 class SdrModel;
 
 
-// class XLineDashItem
 
-class SVX_DLLPUBLIC XLineDashItem : public NameOrIndex
+class SVXCORE_DLLPUBLIC XLineDashItem : public NameOrIndex
 {
     XDash   aDash;
 
@@ -40,12 +40,9 @@ public:
                             XLineDashItem(const OUString& rName, const XDash& rTheDash);
                             XLineDashItem(const XDash& rTheDash);
                             XLineDashItem(const XLineDashItem& rItem);
-                            XLineDashItem(SvStream& rIn);
 
     virtual bool            operator==(const SfxPoolItem& rItem) const override;
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
-    virtual SvStream&       Store(SvStream& rOut, sal_uInt16 nItemVersion ) const override;
+    virtual XLineDashItem*  Clone(SfxItemPool* pPool = nullptr) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -53,7 +50,7 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
     virtual bool            HasMetrics() const override;
     virtual void            ScaleMetrics(long nMul, long nDiv) override;
 
@@ -61,7 +58,7 @@ public:
     void                    SetDashValue(const XDash& rNew)   { aDash = rNew; Detach(); } // SetValue -> SetDashValue
 
     static bool CompareValueFunc( const NameOrIndex* p1, const NameOrIndex* p2 );
-    XLineDashItem* checkForUniqueItem( SdrModel* pModel ) const;
+    std::unique_ptr<XLineDashItem> checkForUniqueItem( SdrModel* pModel ) const;
 };
 
 #endif

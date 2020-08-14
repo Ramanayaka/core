@@ -26,11 +26,50 @@
 
 #include <rtl/ustring.hxx>
 #include <vcl/builder.hxx>
-#include <vcl/image.hxx>
 #include <vcl/menu.hxx>
 
 #include <map>
 #include <vector>
+
+#include <swdllapi.h>
+
+//! Don't change these values. You may break context menu modifying extensions!
+#define MN_IGNORE_SELECTION             201
+#define MN_SHORT_COMMENT                208
+#define MN_EXPLANATION_LINK             209
+
+// id range for dictionaries sub menu
+#define MN_DICTIONARIES_START               300
+#define MN_DICTIONARIES_END                 (MN_DICTIONARIES_START + 99)
+
+// id range for suggestions from spell and grammar checker
+#define MN_SUGGESTION_START                 500
+#define MN_SUGGESTION_END                   (MN_SUGGESTION_START + MN_MAX_NUM_LANG)
+
+// id range for auto correction sub menu entries
+#define MN_AUTOCORR_START                   700
+#define MN_AUTOCORR_END                     (MN_AUTOCORR_START + MN_MAX_NUM_LANG)
+
+// max number of language entries sub menus
+#define MN_MAX_NUM_LANG                 99
+
+#define MN_NONE_OFFSET                  (MN_MAX_NUM_LANG + 1)
+#define MN_RESET_OFFSET                 (MN_MAX_NUM_LANG + 2)
+#define MN_MORE_OFFSET                  (MN_MAX_NUM_LANG + 3)
+
+// id range for 'set language for selection' sub menu entries
+#define MN_SET_LANGUAGE_SELECTION_START     900
+#define MN_SET_LANGUAGE_SELECTION_END       (MN_SET_LANGUAGE_SELECTION_START + MN_MAX_NUM_LANG)
+#define MN_SET_SELECTION_NONE       (MN_SET_LANGUAGE_SELECTION_START + MN_NONE_OFFSET)
+#define MN_SET_SELECTION_RESET      (MN_SET_LANGUAGE_SELECTION_START + MN_RESET_OFFSET)
+#define MN_SET_SELECTION_MORE       (MN_SET_LANGUAGE_SELECTION_START + MN_MORE_OFFSET)
+
+// id range for 'set language for paragraph' sub menu entries
+#define MN_SET_LANGUAGE_PARAGRAPH_START     1100
+#define MN_SET_LANGUAGE_PARAGRAPH_END       (MN_SET_LANGUAGE_PARAGRAPH_START + MN_MAX_NUM_LANG)
+#define MN_SET_PARA_NONE            (MN_SET_LANGUAGE_PARAGRAPH_START + MN_NONE_OFFSET)
+#define MN_SET_PARA_RESET           (MN_SET_LANGUAGE_PARAGRAPH_START + MN_RESET_OFFSET)
+#define MN_SET_PARA_MORE            (MN_SET_LANGUAGE_PARAGRAPH_START + MN_MORE_OFFSET)
 
 class SwWrtShell;
 
@@ -54,15 +93,9 @@ class SW_DLLPUBLIC SwSpellPopup
     css::uno::Sequence< css::uno::Reference< css::linguistic2::XDictionary >  >     m_aDics;
     css::uno::Reference< css::linguistic2::XSpellAlternatives > m_xSpellAlt;
 
-    css::linguistic2::ProofreadingResult m_xGrammarResult;
-    sal_Int32 m_nGrammarError;
-
-    css::uno::Sequence< OUString >  m_aSuggestions;
     OUString m_sExplanationLink;
 
     LanguageType                m_nCheckedLanguage;
-    LanguageType                m_nGuessLangWord;
-    LanguageType                m_nGuessLangPara;
 
     std::map< sal_Int16, OUString > m_aLangTable_Text;
     std::map< sal_Int16, OUString > m_aLangTable_Paragraph;
@@ -90,14 +123,15 @@ public:
 
     ~SwSpellPopup();
 
-    Menu&   GetMenu()
+    void InitItemCommands(const css::uno::Sequence< OUString >& aSuggestions);
+
+    PopupMenu& GetMenu()
     {
-        return *m_xPopupMenu.get();
+        return *m_xPopupMenu;
     }
 
     void Execute( const tools::Rectangle& rPopupPos, vcl::Window* pWin );
     void Execute( sal_uInt16 nId );
-
 };
 
 #endif

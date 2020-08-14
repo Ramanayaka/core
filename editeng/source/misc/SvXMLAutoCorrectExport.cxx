@@ -17,9 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <SvXMLAutoCorrectExport.hxx>
+#include "SvXMLAutoCorrectExport.hxx"
 
 #include <com/sun/star/util/MeasureUnit.hpp>
+#include <com/sun/star/xml/sax/XDocumentHandler.hpp>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 
 using namespace ::com::sun::star::uno;
@@ -30,7 +33,7 @@ SvXMLAutoCorrectExport::SvXMLAutoCorrectExport(
     const css::uno::Reference< css::uno::XComponentContext > & xContext,
     const SvxAutocorrWordList *  pNewAutocorr_List,
     const OUString &rFileName,
-    css::uno::Reference< css::xml::sax::XDocumentHandler> &rHandler)
+    css::uno::Reference< css::xml::sax::XDocumentHandler> const &rHandler)
 :   SvXMLExport( xContext, "", rFileName, util::MeasureUnit::CM, rHandler ),
     pAutocorr_List( pNewAutocorr_List )
 {
@@ -50,18 +53,15 @@ ErrCode SvXMLAutoCorrectExport::exportDoc(enum XMLTokenEnum /*eClass*/)
                    GetNamespaceMap_().GetNameByKey ( XML_NAMESPACE_BLOCKLIST ) );
     {
         SvXMLElementExport aRoot (*this, XML_NAMESPACE_BLOCKLIST, XML_BLOCK_LIST, true, true);
-        SvxAutocorrWordList::Content aContent = pAutocorr_List->getSortedContent();
-        for( SvxAutocorrWordList::Content::iterator it = aContent.begin();
-             it != aContent.end(); ++it )
+        const SvxAutocorrWordList::AutocorrWordSetType& rContent = pAutocorr_List->getSortedContent();
+        for (auto const& content : rContent)
         {
-            const SvxAutocorrWord* p = *it;
-
             AddAttribute( XML_NAMESPACE_BLOCKLIST,
                           XML_ABBREVIATED_NAME,
-                          p->GetShort());
+                          content.GetShort());
             AddAttribute( XML_NAMESPACE_BLOCKLIST,
                           XML_NAME,
-                          p->IsTextOnly() ? p->GetLong() : p->GetShort());
+                          content.IsTextOnly() ? content.GetLong() : content.GetShort());
 
             SvXMLElementExport aBlock( *this, XML_NAMESPACE_BLOCKLIST, XML_BLOCK, true, true);
         }
@@ -74,7 +74,7 @@ SvXMLExceptionListExport::SvXMLExceptionListExport(
     const css::uno::Reference< css::uno::XComponentContext > & xContext,
     const SvStringsISortDtor &rNewList,
     const OUString &rFileName,
-    css::uno::Reference< css::xml::sax::XDocumentHandler> &rHandler)
+    css::uno::Reference< css::xml::sax::XDocumentHandler> const &rHandler)
 :   SvXMLExport( xContext, "", rFileName, util::MeasureUnit::CM, rHandler ),
     rList( rNewList )
 {

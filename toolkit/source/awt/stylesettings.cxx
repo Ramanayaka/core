@@ -24,8 +24,10 @@
 
 #include <com/sun/star/lang/DisposedException.hpp>
 
-#include <cppuhelper/interfacecontainer.hxx>
+#include <comphelper/interfacecontainer2.hxx>
+#include <osl/diagnose.h>
 #include <osl/mutex.hxx>
+#include <vcl/event.hxx>
 #include <vcl/window.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
@@ -77,10 +79,12 @@ namespace toolkit
 
     //= StyleMethodGuard
 
+    namespace {
+
     class StyleMethodGuard
     {
     public:
-        explicit StyleMethodGuard( WindowStyleSettings_Data& i_rData )
+        explicit StyleMethodGuard( WindowStyleSettings_Data const & i_rData )
         {
             if ( i_rData.pOwningWindow == nullptr )
                 throw DisposedException();
@@ -90,6 +94,7 @@ namespace toolkit
         SolarMutexGuard  m_aGuard;
     };
 
+    }
 
     //= WindowStyleSettings
 
@@ -127,25 +132,25 @@ namespace toolkit
 
     namespace
     {
-        sal_Int32 lcl_getStyleColor( WindowStyleSettings_Data& i_rData, Color const & (StyleSettings::*i_pGetter)() const )
+        sal_Int32 lcl_getStyleColor( WindowStyleSettings_Data const & i_rData, Color const & (StyleSettings::*i_pGetter)() const )
         {
             const VclPtr<vcl::Window>& pWindow = i_rData.pOwningWindow->GetWindow();
             const AllSettings aAllSettings = pWindow->GetSettings();
             const StyleSettings& aStyleSettings = aAllSettings.GetStyleSettings();
-            return (aStyleSettings.*i_pGetter)().GetColor();
+            return sal_Int32((aStyleSettings.*i_pGetter)());
         }
 
-        void lcl_setStyleColor( WindowStyleSettings_Data& i_rData, void (StyleSettings::*i_pSetter)( Color const & ), const sal_Int32 i_nColor )
+        void lcl_setStyleColor( WindowStyleSettings_Data const & i_rData, void (StyleSettings::*i_pSetter)( Color const & ), sal_Int32 i_nColor )
         {
             VclPtr<vcl::Window> pWindow = i_rData.pOwningWindow->GetWindow();
             AllSettings aAllSettings = pWindow->GetSettings();
             StyleSettings aStyleSettings = aAllSettings.GetStyleSettings();
-            (aStyleSettings.*i_pSetter)( Color( i_nColor ) );
+            (aStyleSettings.*i_pSetter)( Color(i_nColor) );
             aAllSettings.SetStyleSettings( aStyleSettings );
             pWindow->SetSettings( aAllSettings );
         }
 
-        FontDescriptor lcl_getStyleFont( WindowStyleSettings_Data& i_rData, vcl::Font const & (StyleSettings::*i_pGetter)() const )
+        FontDescriptor lcl_getStyleFont( WindowStyleSettings_Data const & i_rData, vcl::Font const & (StyleSettings::*i_pGetter)() const )
         {
             const VclPtr<vcl::Window>& pWindow = i_rData.pOwningWindow->GetWindow();
             const AllSettings aAllSettings = pWindow->GetSettings();
@@ -153,7 +158,7 @@ namespace toolkit
             return VCLUnoHelper::CreateFontDescriptor( (aStyleSettings.*i_pGetter)() );
         }
 
-        void lcl_setStyleFont( WindowStyleSettings_Data& i_rData, void (StyleSettings::*i_pSetter)( vcl::Font const &),
+        void lcl_setStyleFont( WindowStyleSettings_Data const & i_rData, void (StyleSettings::*i_pSetter)( vcl::Font const &),
             vcl::Font const & (StyleSettings::*i_pGetter)() const, const FontDescriptor& i_rFont )
         {
             VclPtr<vcl::Window> pWindow = i_rData.pOwningWindow->GetWindow();
@@ -234,6 +239,12 @@ namespace toolkit
     {
         StyleMethodGuard aGuard( *m_pData );
         lcl_setStyleColor( *m_pData, &StyleSettings::SetButtonRolloverTextColor, _buttonrollovertextcolor );
+        // Also need to set ActionButtonRolloverTextColor as this setting can't be
+        // set through the UNO interface otherwise.
+        // Previously this setting was used to set colors for both scenarios,
+        // but action button setting was added to differentiate the buttons from
+        // "normal" buttons in some themes.
+        lcl_setStyleColor( *m_pData, &StyleSettings::SetActionButtonRolloverTextColor, _buttonrollovertextcolor );
     }
 
 
@@ -248,6 +259,13 @@ namespace toolkit
     {
         StyleMethodGuard aGuard( *m_pData );
         lcl_setStyleColor( *m_pData, &StyleSettings::SetButtonTextColor, _buttontextcolor );
+        // Also need to set ActionButtonTextColor and DefaultActionButtonTextColor
+        // as this two settings can't be set through the UNO interface otherwise.
+        // Previously this setting was used to set colors for all three scenarios,
+        // but action button setting was added to differentiate the buttons from
+        // "normal" buttons in some themes.
+        lcl_setStyleColor( *m_pData, &StyleSettings::SetActionButtonTextColor, _buttontextcolor );
+        lcl_setStyleColor( *m_pData, &StyleSettings::SetDefaultActionButtonTextColor, _buttontextcolor );
     }
 
 
@@ -383,7 +401,7 @@ namespace toolkit
         const VclPtr<vcl::Window>& pWindow = m_pData->pOwningWindow->GetWindow();
         const AllSettings aAllSettings = pWindow->GetSettings();
         const StyleSettings& aStyleSettings = aAllSettings.GetStyleSettings();
-        return aStyleSettings.GetFaceGradientColor().GetColor();
+        return sal_Int32(aStyleSettings.GetFaceGradientColor());
     }
 
 
@@ -673,7 +691,7 @@ namespace toolkit
         const VclPtr<vcl::Window>& pWindow = m_pData->pOwningWindow->GetWindow();
         const AllSettings aAllSettings = pWindow->GetSettings();
         const StyleSettings& aStyleSettings = aAllSettings.GetStyleSettings();
-        return aStyleSettings.GetSeparatorColor().GetColor();
+        return sal_Int32(aStyleSettings.GetSeparatorColor());
     }
 
 

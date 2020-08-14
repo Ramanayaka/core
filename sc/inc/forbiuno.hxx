@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SC_INC_FORBIUNO_HXX
-#define INCLUDED_SC_INC_FORBIUNO_HXX
+#pragma once
 
 #include <editeng/UnoForbiddenCharsTable.hxx>
 #include <svl/lstner.hxx>
@@ -27,11 +26,10 @@ class ScDocShell;
 
 //  object to set forbidden characters to document
 
-class ScForbiddenCharsObj : public SvxUnoForbiddenCharsTable, public SfxListener
+class ScForbiddenCharsObj final : public SvxUnoForbiddenCharsTable, public SfxListener
 {
     ScDocShell*     pDocShell;
 
-protected:
     virtual void    onChange() override;
 
 public:
@@ -40,7 +38,5 @@ public:
 
     virtual void    Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

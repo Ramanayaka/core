@@ -20,6 +20,7 @@
 
 #include <svtools/asynclink.hxx>
 #include <osl/mutex.hxx>
+#include <sal/log.hxx>
 #include <tools/debug.hxx>
 #include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
@@ -30,7 +31,7 @@ namespace svtools {
 
 void AsynchronLink::CreateMutex()
 {
-    if( !_pMutex ) _pMutex = new osl::Mutex;
+    if( !_pMutex ) _pMutex.reset( new osl::Mutex );
 }
 
 void AsynchronLink::Call( void* pObj, bool bAllowDoubles )
@@ -39,9 +40,7 @@ void AsynchronLink::Call( void* pObj, bool bAllowDoubles )
     if( _aLink.IsSet() )
     {
         _pArg = pObj;
-        DBG_ASSERT( bAllowDoubles ||
-                    ( !_nEventId && ( !_pIdle || !_pIdle->IsActive() ) ),
-                    "Already made a call" );
+        DBG_ASSERT( bAllowDoubles ||  !_nEventId, "Already made a call" );
         ClearPendingCall();
         if( _pMutex ) _pMutex->acquire();
         _nEventId = Application::PostUserEvent( LINK( this, AsynchronLink, HandleCall_PostUserEvent) );
@@ -55,9 +54,8 @@ AsynchronLink::~AsynchronLink()
     {
         Application::RemoveUserEvent( _nEventId );
     }
-    delete _pIdle;
     if( _pDeleted ) *_pDeleted = true;
-    delete _pMutex;
+    _pMutex.reset();
 }
 
 IMPL_LINK_NOARG( AsynchronLink, HandleCall_Idle, Timer*, void )
@@ -82,7 +80,6 @@ void AsynchronLink::ClearPendingCall()
         _nEventId = nullptr;
     }
     if( _pMutex ) _pMutex->release();
-    if( _pIdle ) _pIdle->Stop();
 }
 
 void AsynchronLink::Call_Impl( void* pArg )

@@ -17,22 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_VIEWER_MEDIAWINDOW_IMPL_HXX
-#define INCLUDED_AVMEDIA_SOURCE_VIEWER_MEDIAWINDOW_IMPL_HXX
+#pragma once
 
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include <vcl/syschild.hxx>
 
-#include "mediacontrol.hxx"
+#include <mediacontrol.hxx>
 
-namespace com { namespace sun { namespace star { namespace media {
+namespace com::sun::star::media {
     class XPlayer;
     class XPlayerWindow;
-}}}}
+}
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class XComponentContext;
-}}}}
+}
 
 class BitmapEx;
 
@@ -61,7 +60,6 @@ class MediaChildWindow : public SystemChildWindow
 public:
 
     explicit MediaChildWindow( vcl::Window* pParent );
-    MediaChildWindow( vcl::Window* pParent, SystemWindowData* pData );
 
 protected:
 
@@ -100,7 +98,7 @@ public:
 
     void setPosSize( const tools::Rectangle& rRect );
 
-    void setPointer( const Pointer& rPointer );
+    void setPointer( PointerStyle nPointer );
 
 private:
 
@@ -148,15 +146,12 @@ private:
     MediaWindow* mpMediaWindow;
 
     rtl::Reference<MediaEventListenersImpl> mxEvents;
-    bool mbEventTransparent;
     VclPtr<MediaChildWindow> mpChildWindow;
     VclPtr<MediaWindowControl> mpMediaWindowControl;
-    BitmapEx* mpEmptyBmpEx;
-    BitmapEx* mpAudioBmpEx;
+    std::unique_ptr<BitmapEx> mpEmptyBmpEx;
+    std::unique_ptr<BitmapEx> mpAudioBmpEx;
 };
 
 }} // end namespace avmedia::priv
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

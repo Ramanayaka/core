@@ -19,17 +19,17 @@
 
 #include <com/sun/star/awt/XLayoutConstrains.hpp>
 #include <com/sun/star/awt/XTextLayoutConstrains.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/beans/XMultiPropertySet.hpp>
 
 #include <toolkit/controls/unocontrolbase.hxx>
 #include <toolkit/helper/property.hxx>
-#include <comphelper/processfactory.hxx>
 
 #include <tools/debug.hxx>
 
 using namespace com::sun::star;
 
 
-//  class UnoControlBase
 
 
 bool UnoControlBase::ImplHasProperty( sal_uInt16 nPropId )
@@ -57,47 +57,47 @@ void UnoControlBase::ImplSetPropertyValues( const css::uno::Sequence< OUString >
         return;
 
     DBG_ASSERT( xMPS.is(), "UnoControlBase::ImplSetPropertyValues: no multi property set interface!" );
-    if ( xMPS.is() )
-    {
-        if ( !bUpdateThis )
-            ImplLockPropertyChangeNotifications( aPropertyNames, true );
+    if ( !xMPS.is() )
+        return;
 
-        try
-        {
-            xMPS->setPropertyValues( aPropertyNames, aValues );
-        }
-        catch( const css::uno::Exception& )
-        {
-            if ( !bUpdateThis )
-                ImplLockPropertyChangeNotifications( aPropertyNames, false );
-        }
+    if ( !bUpdateThis )
+        ImplLockPropertyChangeNotifications( aPropertyNames, true );
+
+    try
+    {
+        xMPS->setPropertyValues( aPropertyNames, aValues );
+    }
+    catch( const css::uno::Exception& )
+    {
         if ( !bUpdateThis )
             ImplLockPropertyChangeNotifications( aPropertyNames, false );
     }
+    if ( !bUpdateThis )
+        ImplLockPropertyChangeNotifications( aPropertyNames, false );
 }
 
 void UnoControlBase::ImplSetPropertyValue( const OUString& aPropertyName, const css::uno::Any& aValue, bool bUpdateThis )
 {
     // Model might be logged off already but an event still fires
-    if ( mxModel.is() )
-    {
-        css::uno::Reference< css::beans::XPropertySet >  xPSet( mxModel, css::uno::UNO_QUERY );
-        if ( !bUpdateThis )
-            ImplLockPropertyChangeNotification( aPropertyName, true );
+    if ( !mxModel.is() )
+        return;
 
-        try
-        {
-            xPSet->setPropertyValue( aPropertyName, aValue );
-        }
-        catch( const css::uno::Exception& )
-        {
-            if ( !bUpdateThis )
-                ImplLockPropertyChangeNotification( aPropertyName, false );
-            throw;
-        }
+    css::uno::Reference< css::beans::XPropertySet >  xPSet( mxModel, css::uno::UNO_QUERY );
+    if ( !bUpdateThis )
+        ImplLockPropertyChangeNotification( aPropertyName, true );
+
+    try
+    {
+        xPSet->setPropertyValue( aPropertyName, aValue );
+    }
+    catch( const css::uno::Exception& )
+    {
         if ( !bUpdateThis )
             ImplLockPropertyChangeNotification( aPropertyName, false );
+        throw;
     }
+    if ( !bUpdateThis )
+        ImplLockPropertyChangeNotification( aPropertyName, false );
 }
 
 css::uno::Any UnoControlBase::ImplGetPropertyValue( const OUString& aPropertyName )

@@ -20,11 +20,11 @@
 #include <sal/config.h>
 
 #include <cstdlib>
+#include <string_view>
 
 #include <i18nlangtag/languagetag.hxx>
 #include <i18nutil/searchopt.hxx>
 #include <i18nutil/transliteration.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/util/TextSearch2.hpp>
 #include <com/sun/star/util/SearchAlgorithms2.hpp>
 #include <com/sun/star/util/SearchFlags.hpp>
@@ -53,28 +53,19 @@ SearchParam::SearchParam( const OUString &rText,
 
     m_cWildEscChar  = cWildEscChar;
 
-    m_bWordOnly     = false;
-    m_bSrchInSel    = false;
     m_bCaseSense    = bCaseSensitive;
     m_bWildMatchSel = bWildMatchSel;
-
-    nTransliterationFlags = TransliterationFlags::NONE;
 }
 
 SearchParam::SearchParam( const SearchParam& rParam )
 {
     sSrchStr        = rParam.sSrchStr;
-    sReplaceStr     = rParam.sReplaceStr;
     m_eSrchType     = rParam.m_eSrchType;
 
     m_cWildEscChar  = rParam.m_cWildEscChar;
 
-    m_bWordOnly     = rParam.m_bWordOnly;
-    m_bSrchInSel    = rParam.m_bSrchInSel;
     m_bCaseSense    = rParam.m_bCaseSense;
     m_bWildMatchSel = rParam.m_bWildMatchSel;
-
-    nTransliterationFlags = rParam.nTransliterationFlags;
 }
 
 SearchParam::~SearchParam() {}
@@ -86,8 +77,8 @@ static bool lcl_Equals( const i18nutil::SearchOptions2& rSO1, const i18nutil::Se
         rSO1.WildcardEscapeCharacter == rSO2.WildcardEscapeCharacter &&
         rSO1.algorithmType == rSO2.algorithmType &&
         rSO1.searchFlag == rSO2.searchFlag &&
-        rSO1.searchString.equals(rSO2.searchString) &&
-        rSO1.replaceString.equals(rSO2.replaceString) &&
+        rSO1.searchString == rSO2.searchString &&
+        rSO1.replaceString == rSO2.replaceString &&
         rSO1.changedChars == rSO2.changedChars &&
         rSO1.deletedChars == rSO2.deletedChars &&
         rSO1.insertedChars == rSO2.insertedChars &&
@@ -164,7 +155,7 @@ i18nutil::SearchOptions2 TextSearch::UpgradeToSearchOptions2( const i18nutil::Se
             for (;;) std::abort();
     }
     // It would be nice if an inherited struct had a ctor that takes an
-    // instance of the object the struct derived from..
+    // instance of the object the struct derived from...
     i18nutil::SearchOptions2 aOptions2(
             rOptions.algorithmType,
             rOptions.searchFlag,
@@ -176,7 +167,7 @@ i18nutil::SearchOptions2 TextSearch::UpgradeToSearchOptions2( const i18nutil::Se
             rOptions.insertedChars,
             rOptions.transliterateFlags,
             nAlgorithmType2,
-            0       // no wildcard search, no escape character..
+            0       // no wildcard search, no escape character...
             );
     return aOptions2;
 }
@@ -200,25 +191,20 @@ void TextSearch::Init( const SearchParam & rParam,
     case SearchParam::SearchType::Regexp:
         aSOpt.AlgorithmType2 = SearchAlgorithms2::REGEXP;
         aSOpt.algorithmType = SearchAlgorithms_REGEXP;
-        if( rParam.IsSrchInSelection() )
-            aSOpt.searchFlag |= SearchFlags::REG_NOT_BEGINOFLINE |
-                                SearchFlags::REG_NOT_ENDOFLINE;
         break;
 
     case SearchParam::SearchType::Normal:
         aSOpt.AlgorithmType2 = SearchAlgorithms2::ABSOLUTE;
         aSOpt.algorithmType = SearchAlgorithms_ABSOLUTE;
-        if( rParam.IsSrchWordOnly() )
-            aSOpt.searchFlag |= SearchFlags::NORM_WORD_ONLY;
         break;
 
     default:
         for (;;) std::abort();
     }
     aSOpt.searchString = rParam.GetSrchStr();
-    aSOpt.replaceString = rParam.GetReplaceStr();
+    aSOpt.replaceString = "";
     aSOpt.Locale = rLocale;
-    aSOpt.transliterateFlags = rParam.GetTransliterationFlags();
+    aSOpt.transliterateFlags = TransliterationFlags::NONE;
     if( !rParam.IsCaseSensitive() )
     {
         aSOpt.searchFlag |= SearchFlags::ALL_IGNORE_CASE;
@@ -277,15 +263,25 @@ bool TextSearch::SearchForward( const OUString &rStr,
     return bRet;
 }
 
+bool TextSearch::searchForward( const OUString &rStr )
+{
+    sal_Int32 pStart = 0;
+    sal_Int32 pEnd = rStr.getLength();
+
+    bool bResult = SearchForward(rStr, &pStart, &pEnd);
+
+    return bResult;
+}
+
 bool TextSearch::SearchBackward( const OUString & rStr, sal_Int32* pStart,
-                                sal_Int32* pEnde, SearchResult* pRes )
+                                sal_Int32* pEnd, SearchResult* pRes )
 {
     bool bRet = false;
     try
     {
         if( xTextSearch.is() )
         {
-            SearchResult aRet( xTextSearch->searchBackward( rStr, *pStart, *pEnde ));
+            SearchResult aRet( xTextSearch->searchBackward( rStr, *pStart, *pEnd ));
             if( aRet.subRegExpressions )
             {
                 bRet = true;
@@ -293,7 +289,7 @@ bool TextSearch::SearchBackward( const OUString & rStr, sal_Int32* pStart,
                 // and the endposition is always exclusive.
                 // The caller of this function will have in startPos the
                 // lower pos. and end
-                *pEnde = aRet.startOffset[ 0 ];
+                *pEnd = aRet.startOffset[ 0 ];
                 *pStart = aRet.endOffset[ 0 ];
                 if( pRes )
                     *pRes = aRet;
@@ -307,93 +303,97 @@ bool TextSearch::SearchBackward( const OUString & rStr, sal_Int32* pStart,
     return bRet;
 }
 
-void TextSearch::ReplaceBackReferences( OUString& rReplaceStr, const OUString &rStr, const SearchResult& rResult )
+void TextSearch::ReplaceBackReferences( OUString& rReplaceStr, const OUString &rStr, const SearchResult& rResult ) const
 {
-    if( rResult.subRegExpressions > 0 )
+    if( rResult.subRegExpressions <= 0 )
+        return;
+
+    sal_Unicode sFndChar;
+    sal_Int32 i;
+    OUStringBuffer sBuff(rReplaceStr.getLength()*4);
+    for(i = 0; i < rReplaceStr.getLength(); i++)
     {
-        sal_Unicode sFndChar;
-        sal_Int32 i;
-        OUStringBuffer sBuff(rReplaceStr.getLength()*4);
-        for(i = 0; i < rReplaceStr.getLength(); i++)
+        if( rReplaceStr[i] == '&')
         {
-            if( rReplaceStr[i] == '&')
-            {
-                sal_Int32 nStart = rResult.startOffset[0];
-                sal_Int32 nLength = rResult.endOffset[0] - rResult.startOffset[0];
-                sBuff.append(rStr.getStr() + nStart, nLength);
-            }
-            else if((i < rReplaceStr.getLength() - 1) && rReplaceStr[i] == '$')
-            {
-                sFndChar = rReplaceStr[ i + 1 ];
-                switch(sFndChar)
-                {   // placeholder for a backward reference?
-                case '0':
-                case '1':
-                case '2':
-                case '3':
-                case '4':
-                case '5':
-                case '6':
-                case '7':
-                case '8':
-                case '9':
-                    {
-                        int j = sFndChar - '0'; // index
-                        if(j < rResult.subRegExpressions)
-                        {
-                            sal_Int32 nSttReg = rResult.startOffset[j];
-                            sal_Int32 nRegLen = rResult.endOffset[j];
-                            if( nRegLen > nSttReg )
-                            {
-                                nRegLen = nRegLen - nSttReg;
-                            }
-                            else
-                            {
-                                nRegLen = nSttReg - nRegLen;
-                                nSttReg = rResult.endOffset[j];
-                            }
-                            // Copy reference from found string
-                            sBuff.append(rStr.getStr() + nSttReg, nRegLen);
-                        }
-                        i += 1;
-                    }
-                    break;
-                default:
-                    sBuff.append(rReplaceStr[i]);
-                    sBuff.append(rReplaceStr[i+1]);
-                    i += 1;
-                    break;
-                }
-            }
-            else if((i < rReplaceStr.getLength() - 1) && rReplaceStr[i] == '\\')
-            {
-                sFndChar = rReplaceStr[ i+1 ];
-                switch(sFndChar)
+            sal_Int32 nStart = rResult.startOffset[0];
+            sal_Int32 nLength = rResult.endOffset[0] - rResult.startOffset[0];
+            sBuff.append(std::u16string_view(rStr).substr(nStart, nLength));
+        }
+        else if((i < rReplaceStr.getLength() - 1) && rReplaceStr[i] == '$')
+        {
+            sFndChar = rReplaceStr[ i + 1 ];
+            switch(sFndChar)
+            {   // placeholder for a backward reference?
+            case '0':
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
                 {
-                case '\\':
-                case '&':
-                case '$':
-                    sBuff.append(sFndChar);
-                    i+=1;
-                    break;
-                case 't':
-                    sBuff.append('\t');
+                    int j = sFndChar - '0'; // index
+                    if(j < rResult.subRegExpressions)
+                    {
+                        sal_Int32 nSttReg = rResult.startOffset[j];
+                        sal_Int32 nRegLen = rResult.endOffset[j];
+                        if (nSttReg < 0 || nRegLen < 0) // A "not found" optional capture
+                        {
+                            nSttReg = nRegLen = 0; // Copy empty string
+                        }
+                        else if (nRegLen >= nSttReg)
+                        {
+                            nRegLen = nRegLen - nSttReg;
+                        }
+                        else
+                        {
+                            nRegLen = nSttReg - nRegLen;
+                            nSttReg = rResult.endOffset[j];
+                        }
+                        // Copy reference from found string
+                        sBuff.append(std::u16string_view(rStr).substr(nSttReg, nRegLen));
+                    }
                     i += 1;
-                    break;
-                default:
-                    sBuff.append(rReplaceStr[i]);
-                    sBuff.append(rReplaceStr[i+1]);
-                    i += 1;
-                    break;
                 }
-            }
-            else
-            {
+                break;
+            default:
                 sBuff.append(rReplaceStr[i]);
+                sBuff.append(rReplaceStr[i+1]);
+                i += 1;
+                break;
             }
         }
-        rReplaceStr = sBuff.makeStringAndClear();
+        else if((i < rReplaceStr.getLength() - 1) && rReplaceStr[i] == '\\')
+        {
+            sFndChar = rReplaceStr[ i+1 ];
+            switch(sFndChar)
+            {
+            case '\\':
+            case '&':
+            case '$':
+                sBuff.append(sFndChar);
+                i+=1;
+                break;
+            case 't':
+                sBuff.append('\t');
+                i += 1;
+                break;
+            default:
+                sBuff.append(rReplaceStr[i]);
+                sBuff.append(rReplaceStr[i+1]);
+                i += 1;
+                break;
+            }
+        }
+        else
+        {
+            sBuff.append(rReplaceStr[i]);
+        }
     }
+    rReplaceStr = sBuff.makeStringAndClear();
 }
 
 }   // namespace utl

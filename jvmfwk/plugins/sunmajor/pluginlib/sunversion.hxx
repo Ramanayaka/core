@@ -20,7 +20,7 @@
 #ifndef INCLUDED_JVMFWK_PLUGINS_SUNMAJOR_PLUGINLIB_SUNVERSION_HXX
 #define INCLUDED_JVMFWK_PLUGINS_SUNMAJOR_PLUGINLIB_SUNVERSION_HXX
 
-#include "rtl/ustring.hxx"
+#include <rtl/ustring.hxx>
 
 namespace jfw_plugin {
 // Define OSL_DEBUG_LEVEL >= 2 to run a test when this lib is loaded
@@ -49,10 +49,8 @@ namespace jfw_plugin {
    To test if the version is ok, that is this object can be compared to others,
    use the bool conversion operator.
  */
-class SunVersion
+class SunVersion final
 {
-protected:
-
     enum PreRelease
     {
         Rel_NONE,
@@ -76,7 +74,7 @@ protected:
     };
 
     //contains major,minor,micro,update
-    int m_arVersionParts[4];
+    int m_arVersionParts[4] = {};
     // The update can be followed by a char, e.g. 1.4.1_01a
     char m_nUpdateSpecial;
 
@@ -98,12 +96,7 @@ public:
      */
     operator bool () { return m_bValid;}
 
-    /** Will always contain a value if the object has been constructed with
-        a version string.
-     */
-    OUString usVersion;
-
-protected:
+private:
     bool init(const char * szVer);
 
     bool m_bValid;

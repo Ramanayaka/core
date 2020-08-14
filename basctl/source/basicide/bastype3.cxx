@@ -19,15 +19,15 @@
 
 #include <basic/basmgr.hxx>
 #include <basic/sbmod.hxx>
+#include <basobj.hxx>
 #include <bastype2.hxx>
-#include <basidesh.hrc>
-#include "bitmaps.hlst"
+#include <bitmaps.hlst>
 #include <bastypes.hxx>
 #include <com/sun/star/script/XLibraryContainer.hpp>
 #include <com/sun/star/script/XLibraryContainerPassword.hpp>
 #include <deque>
-#include <sfx2/docfac.hxx>
-#include <svtools/treelistentry.hxx>
+#include <osl/diagnose.h>
+#include <tools/debug.hxx>
 
 namespace basctl
 {
@@ -35,28 +35,24 @@ namespace basctl
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
 
-
-typedef std::deque< SvTreeListEntry* > EntryArray;
-
-
-void TreeListBox::RequestingChildren( SvTreeListEntry* pEntry )
+IMPL_LINK(SbTreeListBox, RequestingChildrenHdl, const weld::TreeIter&, rEntry, bool)
 {
-    EntryDescriptor aDesc = GetEntryDescriptor(pEntry);
-    ScriptDocument aDocument = aDesc.GetDocument();
+    EntryDescriptor aDesc = GetEntryDescriptor(&rEntry);
+    const ScriptDocument& aDocument = aDesc.GetDocument();
     OSL_ENSURE( aDocument.isAlive(), "basctl::TreeListBox::RequestingChildren: invalid document!" );
-    if ( !aDocument.isAlive() )
-        return;
+    if (!aDocument.isAlive())
+        return false;
 
     LibraryLocation eLocation = aDesc.GetLocation();
     EntryType eType = aDesc.GetType();
 
     if ( eType == OBJ_TYPE_DOCUMENT )
     {
-        ImpCreateLibEntries( pEntry, aDocument, eLocation );
+        ImpCreateLibEntries( rEntry, aDocument, eLocation );
     }
     else if ( eType == OBJ_TYPE_LIBRARY )
     {
-        OUString aOULibName( aDesc.GetLibName() );
+        const OUString& aOULibName( aDesc.GetLibName() );
 
         // check password
         bool bOK = true;
@@ -67,7 +63,7 @@ void TreeListBox::RequestingChildren( SvTreeListEntry* pEntry )
             if ( xPasswd.is() && xPasswd->isLibraryPasswordProtected( aOULibName ) && !xPasswd->isLibraryPasswordVerified( aOULibName ) )
             {
                 OUString aPassword;
-                bOK = QueryPassword( xModLibContainer, aOULibName, aPassword );
+                bOK = QueryPassword(m_pTopLevel, xModLibContainer, aOULibName, aPassword);
             }
         }
 
@@ -79,23 +75,21 @@ void TreeListBox::RequestingChildren( SvTreeListEntry* pEntry )
             {
                 if ( !xModLibContainer->isLibraryLoaded( aOULibName ) )
                 {
-                    EnterWait();
+                    weld::WaitObject aWait(m_pTopLevel);
                     xModLibContainer->loadLibrary( aOULibName );
-                    LeaveWait();
                 }
                 bModLibLoaded = xModLibContainer->isLibraryLoaded( aOULibName );
             }
 
             // load dialog library
             bool bDlgLibLoaded = false;
-            Reference< script::XLibraryContainer > xDlgLibContainer( aDocument.getLibraryContainer( E_DIALOGS ), UNO_QUERY );
+            Reference< script::XLibraryContainer > xDlgLibContainer = aDocument.getLibraryContainer( E_DIALOGS );
             if ( xDlgLibContainer.is() && xDlgLibContainer->hasByName( aOULibName ) )
             {
                 if ( !xDlgLibContainer->isLibraryLoaded( aOULibName ) )
                 {
-                    EnterWait();
+                    weld::WaitObject aWait(m_pTopLevel);
                     xDlgLibContainer->loadLibrary( aOULibName );
-                    LeaveWait();
                 }
                 bDlgLibLoaded = xDlgLibContainer->isLibraryLoaded( aOULibName );
             }
@@ -103,12 +97,12 @@ void TreeListBox::RequestingChildren( SvTreeListEntry* pEntry )
             if ( bModLibLoaded || bDlgLibLoaded )
             {
                 // create the sub entries
-                ImpCreateLibSubEntries( pEntry, aDocument, aOULibName );
+                ImpCreateLibSubEntries( rEntry, aDocument, aOULibName );
 
                 // exchange image
                 const bool bDlgMode = (nMode & BrowseMode::Dialogs) && !(nMode & BrowseMode::Modules);
-                Image aImage(BitmapEx(bDlgMode ? OUStringLiteral(RID_BMP_DLGLIB) : OUStringLiteral(RID_BMP_MODLIB)));
-                SetEntryBitmaps( pEntry, aImage );
+                auto const aImage(bDlgMode ? OUStringLiteral(RID_BMP_DLGLIB) : OUStringLiteral(RID_BMP_MODLIB));
+                SetEntryBitmaps(rEntry, aImage);
             }
             else
             {
@@ -121,85 +115,77 @@ void TreeListBox::RequestingChildren( SvTreeListEntry* pEntry )
             || eType == OBJ_TYPE_NORMAL_MODULES
             || eType == OBJ_TYPE_CLASS_MODULES )
     {
-        OUString aLibName( aDesc.GetLibName() );
-        ImpCreateLibSubSubEntriesInVBAMode( pEntry, aDocument, aLibName );
+        const OUString& aLibName( aDesc.GetLibName() );
+        ImpCreateLibSubSubEntriesInVBAMode( rEntry, aDocument, aLibName );
     }
-    else {
-        OSL_FAIL( "basctl::TreeListBox::RequestingChildren: Unknown Type!" );
-    }
+
+    return true;
 }
 
-void TreeListBox::ExpandedHdl()
+void SbTreeListBox::ScanAllEntries()
 {
-    SvTreeListEntry* pEntry = GetHdlEntry();
-    assert(pEntry && "What was collapsed?");
-    if ( !IsExpanded( pEntry ) && pEntry->HasChildrenOnDemand() )
-    {
-        SvTreeListEntry* pChild = FirstChild( pEntry );
-        while ( pChild )
-        {
-            GetModel()->Remove( pChild );   // does also call the DTOR
-            pChild = FirstChild( pEntry );
-        }
-    }
-}
+    // instead of always freezing, freeze on the first add/remove, which keeps gtk
+    // from relayouting the tree if it's not necessary
+    m_bFreezeOnFirstAddRemove = true;
 
-void TreeListBox::ScanAllEntries()
-{
     ScanEntry( ScriptDocument::getApplicationScriptDocument(), LIBRARY_LOCATION_USER );
     ScanEntry( ScriptDocument::getApplicationScriptDocument(), LIBRARY_LOCATION_SHARE );
 
     ScriptDocuments aDocuments( ScriptDocument::getAllScriptDocuments( ScriptDocument::DocumentsSorted ) );
-    for (   ScriptDocuments::const_iterator doc = aDocuments.begin();
-            doc != aDocuments.end();
-            ++doc
-        )
+    for (auto const& doc : aDocuments)
     {
-        if ( doc->isAlive() )
-            ScanEntry( *doc, LIBRARY_LOCATION_DOCUMENT );
+        if ( doc.isAlive() )
+            ScanEntry(doc, LIBRARY_LOCATION_DOCUMENT);
     }
+
+    if (!m_bFreezeOnFirstAddRemove)
+        m_xControl->thaw(); // m_bFreezeOnFirstAddRemove was changed, so control was frozen
+    else
+        m_bFreezeOnFirstAddRemove = false;
 }
 
-SbxVariable* TreeListBox::FindVariable( SvTreeListEntry* pEntry )
+SbxVariable* SbTreeListBox::FindVariable(const weld::TreeIter* pEntry)
 {
     if ( !pEntry )
         return nullptr;
 
     ScriptDocument aDocument( ScriptDocument::getApplicationScriptDocument() );
-    EntryArray aEntries;
-
-    while ( pEntry )
+    std::unique_ptr<weld::TreeIter> xIter(m_xControl->make_iterator(pEntry));
+    std::vector<std::pair<Entry*, OUString>> aEntries;
+    bool bValidIter = true;
+    do
     {
-        sal_uInt16 nDepth = GetModel()->GetDepth( pEntry );
-        switch ( nDepth )
+        sal_uInt16 nDepth = m_xControl->get_iter_depth(*xIter);
+        Entry* pBE = reinterpret_cast<Entry*>(m_xControl->get_id(*xIter).toInt64());
+        switch (nDepth)
         {
             case 4:
             case 3:
             case 2:
             case 1:
             {
-                aEntries.push_front( pEntry );
+                aEntries.emplace_back(pBE, m_xControl->get_text(*xIter));
             }
             break;
             case 0:
             {
-                aDocument = static_cast<DocumentEntry*>(pEntry->GetUserData())->GetDocument();
+                aDocument = static_cast<DocumentEntry*>(pBE)->GetDocument();
             }
             break;
         }
-        pEntry = GetParent( pEntry );
-    }
+        bValidIter = m_xControl->iter_parent(*xIter);
+    } while (bValidIter);
 
     SbxVariable* pVar = nullptr;
-    if ( !aEntries.empty() )
+    if (!aEntries.empty())
     {
+        std::reverse(aEntries.begin(), aEntries.end());
         bool bDocumentObjects = false;
-        for (SvTreeListEntry* pLE : aEntries)
+        for (const auto& pair : aEntries)
         {
-            assert(pLE && "Can not find entry in array");
-            Entry* pBE = static_cast<Entry*>(pLE->GetUserData());
-            assert(pBE && "The data in the entry not found!");
-            OUString aName( GetEntryText( pLE ) );
+            Entry* pBE = pair.first;
+            assert(pBE && "No data found in entry!");
+            OUString aName(pair.second);
 
             switch ( pBE->GetType() )
             {
@@ -216,8 +202,7 @@ SbxVariable* TreeListBox::FindVariable( SvTreeListEntry* pEntry )
                 // extract the module name from the string like "Sheet1 (Example1)"
                 if( bDocumentObjects )
                 {
-                    sal_Int32 nIndex = 0;
-                    aName = aName.getToken( 0, ' ', nIndex );
+                    aName = aName.getToken( 0, ' ' );
                 }
                 pVar = static_cast<StarBASIC*>(pVar)->FindModule( aName );
                 break;
@@ -234,7 +219,7 @@ SbxVariable* TreeListBox::FindVariable( SvTreeListEntry* pEntry )
                 break;
             case OBJ_TYPE_DOCUMENT_OBJECTS:
                 bDocumentObjects = true;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case OBJ_TYPE_USERFORMS:
             case OBJ_TYPE_NORMAL_MODULES:
             case OBJ_TYPE_CLASS_MODULES:
@@ -249,11 +234,10 @@ SbxVariable* TreeListBox::FindVariable( SvTreeListEntry* pEntry )
                 break;
         }
     }
-
     return pVar;
 }
 
-EntryDescriptor TreeListBox::GetEntryDescriptor( SvTreeListEntry* pEntry )
+EntryDescriptor SbTreeListBox::GetEntryDescriptor(const weld::TreeIter* pEntry)
 {
     ScriptDocument aDocument( ScriptDocument::getApplicationScriptDocument() );
     LibraryLocation eLocation = LIBRARY_LOCATION_UNKNOWN;
@@ -266,24 +250,27 @@ EntryDescriptor TreeListBox::GetEntryDescriptor( SvTreeListEntry* pEntry )
     if ( !pEntry )
         return EntryDescriptor( aDocument, eLocation, aLibName, aLibSubName, aName, aMethodName, eType );
 
-    EntryArray aEntries;
+    std::vector<std::pair<Entry*, OUString>> aEntries;
 
-    while ( pEntry )
+    std::unique_ptr<weld::TreeIter> xIter(m_xControl->make_iterator(pEntry));
+    bool bValidIter = true;
+    do
     {
-        sal_uInt16 nDepth = GetModel()->GetDepth( pEntry );
-        switch ( nDepth )
+        sal_uInt16 nDepth = m_xControl->get_iter_depth(*xIter);
+        Entry* pBE = reinterpret_cast<Entry*>(m_xControl->get_id(*xIter).toInt64());
+        switch (nDepth)
         {
             case 4:
             case 3:
             case 2:
             case 1:
             {
-                aEntries.push_front( pEntry );
+                aEntries.emplace_back(pBE, m_xControl->get_text(*xIter));
             }
             break;
             case 0:
             {
-                if (DocumentEntry* pDocumentEntry = static_cast<DocumentEntry*>(pEntry->GetUserData()))
+                if (DocumentEntry* pDocumentEntry = static_cast<DocumentEntry*>(pBE))
                 {
                     aDocument = pDocumentEntry->GetDocument();
                     eLocation = pDocumentEntry->GetLocation();
@@ -292,40 +279,40 @@ EntryDescriptor TreeListBox::GetEntryDescriptor( SvTreeListEntry* pEntry )
             }
             break;
         }
-        pEntry = GetParent( pEntry );
-    }
+        bValidIter = m_xControl->iter_parent(*xIter);
+    } while (bValidIter);
 
     if ( !aEntries.empty() )
     {
-        for (SvTreeListEntry* pLE : aEntries)
+        std::reverse(aEntries.begin(), aEntries.end());
+        for (const auto& pair : aEntries)
         {
-            assert(pLE && "Entry not found in array");
-            Entry* pBE = static_cast<Entry*>(pLE->GetUserData());
+            Entry* pBE = pair.first;
             assert(pBE && "No data found in entry!");
 
             switch ( pBE->GetType() )
             {
                 case OBJ_TYPE_LIBRARY:
                 {
-                    aLibName = GetEntryText( pLE );
+                    aLibName = pair.second;
                     eType = pBE->GetType();
                 }
                 break;
                 case OBJ_TYPE_MODULE:
                 {
-                    aName = GetEntryText( pLE );
+                    aName = pair.second;
                     eType = pBE->GetType();
                 }
                 break;
                 case OBJ_TYPE_METHOD:
                 {
-                    aMethodName = GetEntryText( pLE );
+                    aMethodName = pair.second;
                     eType = pBE->GetType();
                 }
                 break;
                 case OBJ_TYPE_DIALOG:
                 {
-                    aName = GetEntryText( pLE );
+                    aName = pair.second;
                     eType = pBE->GetType();
                 }
                 break;
@@ -334,7 +321,7 @@ EntryDescriptor TreeListBox::GetEntryDescriptor( SvTreeListEntry* pEntry )
                 case OBJ_TYPE_NORMAL_MODULES:
                 case OBJ_TYPE_CLASS_MODULES:
                 {
-                    aLibSubName = GetEntryText( pLE );
+                    aLibSubName = pair.second;
                     eType = pBE->GetType();
                 }
                 break;
@@ -354,7 +341,7 @@ EntryDescriptor TreeListBox::GetEntryDescriptor( SvTreeListEntry* pEntry )
     return EntryDescriptor( aDocument, eLocation, aLibName, aLibSubName, aName, aMethodName, eType );
 }
 
-ItemType TreeListBox::ConvertType (EntryType eType)
+ItemType SbTreeListBox::ConvertType (EntryType eType)
 {
     switch (eType)
     {
@@ -368,16 +355,16 @@ ItemType TreeListBox::ConvertType (EntryType eType)
     }
 }
 
-bool TreeListBox::IsValidEntry( SvTreeListEntry* pEntry )
+bool SbTreeListBox::IsValidEntry(weld::TreeIter& rEntry)
 {
     bool bIsValid = false;
 
-    EntryDescriptor aDesc( GetEntryDescriptor( pEntry ) );
-    ScriptDocument aDocument( aDesc.GetDocument() );
+    EntryDescriptor aDesc(GetEntryDescriptor(&rEntry));
+    const ScriptDocument& aDocument( aDesc.GetDocument() );
     LibraryLocation eLocation( aDesc.GetLocation() );
-    OUString aLibName( aDesc.GetLibName() );
-    OUString aName( aDesc.GetName() );
-    OUString aMethodName( aDesc.GetMethodName() );
+    const OUString& aLibName( aDesc.GetLibName() );
+    const OUString& aName( aDesc.GetName() );
+    const OUString& aMethodName( aDesc.GetMethodName() );
     EntryType eType( aDesc.GetType() );
 
     switch ( eType )
@@ -386,7 +373,7 @@ bool TreeListBox::IsValidEntry( SvTreeListEntry* pEntry )
         {
             bIsValid = aDocument.isAlive()
                 && (aDocument.isApplication()
-                    || GetRootEntryName(aDocument, eLocation).equals(GetEntryText(pEntry)));
+                    || GetRootEntryName(aDocument, eLocation) == m_xControl->get_text(rEntry));
         }
         break;
         case OBJ_TYPE_LIBRARY:
@@ -423,25 +410,23 @@ bool TreeListBox::IsValidEntry( SvTreeListEntry* pEntry )
     return bIsValid;
 }
 
-SbModule* TreeListBox::FindModule( SvTreeListEntry* pEntry )
+SbModule* SbTreeListBox::FindModule(const weld::TreeIter* pEntry)
 {
     return dynamic_cast<SbModule*>(FindVariable(pEntry));
 }
 
-SvTreeListEntry* TreeListBox::FindRootEntry( const ScriptDocument& rDocument, LibraryLocation eLocation )
+bool SbTreeListBox::FindRootEntry( const ScriptDocument& rDocument, LibraryLocation eLocation, weld::TreeIter& rIter)
 {
     OSL_ENSURE( rDocument.isValid(), "basctl::TreeListBox::FindRootEntry: invalid document!" );
-    sal_uLong nRootPos = 0;
-    SvTreeListEntry* pRootEntry = GetEntry( nRootPos );
-    while ( pRootEntry )
+    bool bValidIter = m_xControl->get_iter_first(rIter);
+    while (bValidIter)
     {
-        DBG_ASSERT( static_cast<Entry*>(pRootEntry->GetUserData())->GetType() == OBJ_TYPE_DOCUMENT, "No shell entry?" );
-        DocumentEntry* pBDEntry = static_cast<DocumentEntry*>(pRootEntry->GetUserData());
+        DocumentEntry* pBDEntry = reinterpret_cast<DocumentEntry*>(m_xControl->get_id(rIter).toInt64());
         if (pBDEntry && pBDEntry->GetDocument() == rDocument && pBDEntry->GetLocation() == eLocation)
-            return pRootEntry;
-        pRootEntry = GetEntry( ++nRootPos );
+            return true;
+        bValidIter = m_xControl->iter_next_sibling(rIter);
     }
-    return nullptr;
+    return false;
 }
 
 OUString CreateMgrAndLibStr( const OUString& rMgrName, const OUString& rLibName )

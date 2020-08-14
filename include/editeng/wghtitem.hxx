@@ -19,11 +19,9 @@
 #ifndef INCLUDED_EDITENG_WGHTITEM_HXX
 #define INCLUDED_EDITENG_WGHTITEM_HXX
 
-#include <vcl/vclenum.hxx>
+#include <tools/fontenum.hxx>
 #include <svl/eitem.hxx>
 #include <editeng/editengdllapi.h>
-
-class SvXMLUnitConverter;
 
 // class SvxWeightItem ---------------------------------------------------
 
@@ -32,7 +30,7 @@ class SvXMLUnitConverter;
     This item describes the font weight.
 */
 
-class EDITENG_DLLPUBLIC SvxWeightItem : public SfxEnumItem<FontWeight>
+class EDITENG_DLLPUBLIC SvxWeightItem final : public SfxEnumItem<FontWeight>
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -44,12 +42,10 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion) const override;
-    virtual OUString   GetValueTextByPos( sal_uInt16 nPos ) const override;
+    virtual SvxWeightItem*  Clone( SfxItemPool *pPool = nullptr ) const override;
+    static OUString         GetValueTextByPos( sal_uInt16 nPos );
     virtual sal_uInt16      GetValueCount() const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
@@ -59,15 +55,18 @@ public:
     virtual bool            GetBoolValue() const override;
     virtual void            SetBoolValue( bool bVal ) override;
 
-    SvxWeightItem& operator=(const SvxWeightItem& rWeight) {
-            SetValue( rWeight.GetValue() );
-            return *this;
-        }
-
     // enum cast
     FontWeight              GetWeight() const { return GetValue(); }
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
+
+    virtual bool IsSortable() const override { return true; }
+
+    virtual bool operator<(const SfxPoolItem& rCmp) const override
+    {
+        auto const & other = static_cast<const SvxWeightItem&>(rCmp);
+        return GetValue() < other.GetValue();
+    }
 };
 
 #endif // INCLUDED_EDITENG_WGHTITEM_HXX

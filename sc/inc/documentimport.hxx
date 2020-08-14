@@ -12,16 +12,16 @@
 
 #include "scdllapi.h"
 #include "address.hxx"
+#include "attarray.hxx"
 
 #include <rtl/ustring.hxx>
 
 #include <memory>
+#include <vector>
 
 class EditTextObject;
 class ScDocument;
 class ScColumn;
-class ScAddress;
-struct ScAttrEntry;
 class ScTokenArray;
 class ScFormulaCell;
 class ScStyleSheet;
@@ -45,12 +45,14 @@ public:
 
     struct SC_DLLPUBLIC Attrs
     {
-        ScAttrEntry* mpData;
-        size_t mnSize;
+        std::vector<ScAttrEntry> mvData;
 
         bool mbLatinNumFmtOnly;
 
         Attrs();
+        ~Attrs();
+        Attrs& operator=( Attrs const & ) = delete; // MSVC2015 workaround
+        Attrs( Attrs const & ) = delete; // MSVC2015 workaround
     };
 
     ScDocumentImport() = delete;
@@ -84,16 +86,25 @@ public:
     SCTAB getSheetIndex(const OUString& rName) const;
     SCTAB getSheetCount() const;
     bool appendSheet(const OUString& rName);
+    void setSheetName(SCTAB nTab, const OUString& rName);
 
     void setOriginDate(sal_uInt16 nYear, sal_uInt16 nMonth, sal_uInt16 nDay);
 
     void setAutoInput(const ScAddress& rPos, const OUString& rStr,
-            ScSetStringParam* pStringParam = nullptr);
+            const ScSetStringParam* pStringParam = nullptr);
     void setNumericCell(const ScAddress& rPos, double fVal);
     void setStringCell(const ScAddress& rPos, const OUString& rStr);
-    void setEditCell(const ScAddress& rPos, EditTextObject* pEditText);
-    void setFormulaCell(const ScAddress& rPos, const OUString& rFormula, formula::FormulaGrammar::Grammar eGrammar);
-    void setFormulaCell(const ScAddress& rPos, ScTokenArray* pArray);
+    void setEditCell(const ScAddress& rPos, std::unique_ptr<EditTextObject> pEditText);
+
+    void setFormulaCell(
+        const ScAddress& rPos, const OUString& rFormula, formula::FormulaGrammar::Grammar eGrammar,
+        const double* pResult = nullptr );
+
+    void setFormulaCell(
+        const ScAddress& rPos, const OUString& rFormula, formula::FormulaGrammar::Grammar eGrammar,
+        const OUString& rResult );
+
+    void setFormulaCell(const ScAddress& rPos, std::unique_ptr<ScTokenArray> pArray);
     void setFormulaCell(const ScAddress& rPos, ScFormulaCell* pCell);
 
     void setMatrixCells(
@@ -101,19 +112,30 @@ public:
 
     void setTableOpCells(const ScRange& rRange, const ScTabOpParam& rParam);
 
+    void fillDownCells(const ScAddress& rPos, SCROW nFillSize);
+
     /**
      * Set an array of cell attributes to specified column.  This call
      * transfers the ownership of the ScAttrEntry array from the caller to the
      * column.
      */
-    void setAttrEntries( SCTAB nTab, SCCOL nCol, Attrs& rAttrs );
+    void setAttrEntries( SCTAB nTab, SCCOL nCol, Attrs&& rAttrs );
 
     void setRowsVisible(SCTAB nTab, SCROW nRowStart, SCROW nRowEnd, bool bVisible);
 
+    void setMergedCells(SCTAB nTab, SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2);
+
     void finalize();
+
+    /** Broadcast all formula cells that are marked with
+        FormulaTokenArray::IsRecalcModeMustAfterImport() for a subsequent
+        ScDocument::CalcFormulaTree().
+     */
+    void broadcastRecalcAfterImport();
 
 private:
     void initColumn(ScColumn& rCol);
+    static void broadcastRecalcAfterImportColumn(ScColumn& rCol);
 };
 
 #endif

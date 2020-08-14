@@ -17,17 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "tabprotection.hxx"
+#include <tabprotection.hxx>
 #include <svl/PasswordHelper.hxx>
 #include <comphelper/docpasswordhelper.hxx>
+#include <comphelper/hash.hxx>
+#include <comphelper/sequence.hxx>
 #include <osl/diagnose.h>
-#include "document.hxx"
+#include <document.hxx>
 
 #include <vector>
 
 #define DEBUG_TAB_PROTECTION 0
 
 #define URI_SHA1 "http://www.w3.org/2000/09/xmldsig#sha1"
+#define URI_SHA256_ODF12 "http://www.w3.org/2000/09/xmldsig#sha256"
+#define URI_SHA256_W3C "http://www.w3.org/2001/04/xmlenc#sha256"
 #define URI_XLS_LEGACY "http://docs.oasis-open.org/office/ns/table/legacy-hash-excel"
 
 using namespace ::com::sun::star;
@@ -62,10 +66,12 @@ OUString ScPassHashHelper::getHashURI(ScPasswordHash eHash)
 {
     switch (eHash)
     {
+        case PASSHASH_SHA256:
+            return URI_SHA256_ODF12;
         case PASSHASH_SHA1:
-            return OUString(URI_SHA1);
+            return URI_SHA1;
         case PASSHASH_XL:
-            return OUString(URI_XLS_LEGACY);
+            return URI_XLS_LEGACY;
         case PASSHASH_UNSPECIFIED:
         default:
             ;
@@ -75,11 +81,27 @@ OUString ScPassHashHelper::getHashURI(ScPasswordHash eHash)
 
 ScPasswordHash ScPassHashHelper::getHashTypeFromURI(const OUString& rURI)
 {
+    if (rURI == URI_SHA256_ODF12 || rURI == URI_SHA256_W3C)
+        return PASSHASH_SHA256;
     if ( rURI == URI_SHA1 )
         return PASSHASH_SHA1;
     else if ( rURI == URI_XLS_LEGACY )
         return PASSHASH_XL;
     return PASSHASH_UNSPECIFIED;
+}
+
+bool ScOoxPasswordHash::verifyPassword( const OUString& aPassText ) const
+{
+    if (!hasPassword())
+        return false;
+
+    const OUString aHash( comphelper::DocPasswordHelper::GetOoxHashAsBase64(
+                aPassText, maSaltValue, mnSpinCount, comphelper::Hash::IterCount::APPEND, maAlgorithmName));
+    if (aHash.isEmpty())
+        // unsupported algorithm
+        return false;
+
+    return aHash == maHashValue;
 }
 
 ScPassHashProtectable::~ScPassHashProtectable()
@@ -104,9 +126,12 @@ public:
     void setPassword(const OUString& aPassText);
     css::uno::Sequence<sal_Int8> getPasswordHash(
         ScPasswordHash eHash, ScPasswordHash eHash2) const;
+    const ScOoxPasswordHash& getPasswordHash() const;
     void setPasswordHash(
         const css::uno::Sequence<sal_Int8>& aPassword,
         ScPasswordHash eHash, ScPasswordHash eHash2);
+    void setPasswordHash( const OUString& rAlgorithmName, const OUString& rHashValue,
+            const OUString& rSaltValue, sal_uInt32 nSpinCount );
     bool verifyPassword(const OUString& aPassText) const;
 
     bool isOptionEnabled(SCSIZE nOptId) const;
@@ -114,7 +139,7 @@ public:
 
     void setEnhancedProtection( const ::std::vector< ScEnhancedProtection > & rProt );
     const ::std::vector< ScEnhancedProtection > & getEnhancedProtection() const { return maEnhancedProtection;}
-    bool updateReference( UpdateRefMode, ScDocument*, const ScRange& rWhere, SCCOL nDx, SCROW nDy, SCTAB nDz );
+    bool updateReference( UpdateRefMode, const ScDocument*, const ScRange& rWhere, SCCOL nDx, SCROW nDy, SCTAB nDz );
     bool isBlockEditable( const ScRange& rRange ) const;
     bool isSelectionEditable( const ScRangeList& rRangeList ) const;
 
@@ -126,6 +151,7 @@ private:
     bool mbProtected;
     ScPasswordHash meHash1;
     ScPasswordHash meHash2;
+    ScOoxPasswordHash maPasswordHash;
     ::std::vector< ScEnhancedProtection > maEnhancedProtection;
 };
 
@@ -140,6 +166,12 @@ Sequence<sal_Int8> ScTableProtectionImpl::hashPassword(const OUString& aPassText
         case PASSHASH_SHA1:
             SvPasswordHelper::GetHashPassword(aHash, aPassText);
         break;
+        case PASSHASH_SHA1_UTF8:
+            SvPasswordHelper::GetHashPasswordSHA1UTF8(aHash, aPassText);
+        break;
+        case PASSHASH_SHA256:
+            SvPasswordHelper::GetHashPasswordSHA256(aHash, aPassText);
+        break;
         default:
             ;
     }
@@ -149,20 +181,16 @@ Sequence<sal_Int8> ScTableProtectionImpl::hashPassword(const OUString& aPassText
 Sequence<sal_Int8> ScTableProtectionImpl::hashPassword(
     const Sequence<sal_Int8>& rPassHash, ScPasswordHash eHash)
 {
-    if (!rPassHash.getLength() || eHash == PASSHASH_UNSPECIFIED)
+    if (!rPassHash.hasElements() || eHash == PASSHASH_UNSPECIFIED)
         return rPassHash;
 
     // TODO: Right now, we only support double-hash by SHA1.
     if (eHash == PASSHASH_SHA1)
     {
-        vector<sal_Char> aChars;
-        sal_Int32 n = rPassHash.getLength();
-        aChars.reserve(n);
-        for (sal_Int32 i = 0; i < n; ++i)
-            aChars.push_back(static_cast<sal_Char>(rPassHash[i]));
+        auto aChars = comphelper::sequenceToContainer<vector<char>>(rPassHash);
 
         Sequence<sal_Int8> aNewHash;
-        SvPasswordHelper::GetHashPassword(aNewHash, &aChars[0], aChars.size());
+        SvPasswordHelper::GetHashPassword(aNewHash, aChars.data(), aChars.size());
         return aNewHash;
     }
 
@@ -186,6 +214,7 @@ ScTableProtectionImpl::ScTableProtectionImpl(const ScTableProtectionImpl& r) :
     mbProtected(r.mbProtected),
     meHash1(r.meHash1),
     meHash2(r.meHash2),
+    maPasswordHash(r.maPasswordHash),
     maEnhancedProtection(r.maEnhancedProtection)
 {
 }
@@ -195,7 +224,7 @@ bool ScTableProtectionImpl::isProtectedWithPass() const
     if (!mbProtected)
         return false;
 
-    return !maPassText.isEmpty() || maPassHash.getLength();
+    return !maPassText.isEmpty() || maPassHash.hasElements() || maPasswordHash.hasPassword();
 }
 
 void ScTableProtectionImpl::setProtected(bool bProtected)
@@ -218,6 +247,7 @@ void ScTableProtectionImpl::setPassword(const OUString& aPassText)
     {
         maPassHash = Sequence<sal_Int8>();
     }
+    maPasswordHash.clear();
 }
 
 bool ScTableProtectionImpl::hasPasswordHash(ScPasswordHash eHash, ScPasswordHash eHash2) const
@@ -280,6 +310,11 @@ Sequence<sal_Int8> ScTableProtectionImpl::getPasswordHash(
     return Sequence<sal_Int8>();
 }
 
+const ScOoxPasswordHash& ScTableProtectionImpl::getPasswordHash() const
+{
+    return maPasswordHash;
+}
+
 void ScTableProtectionImpl::setPasswordHash(
     const uno::Sequence<sal_Int8>& aPassword, ScPasswordHash eHash, ScPasswordHash eHash2)
 {
@@ -290,10 +325,33 @@ void ScTableProtectionImpl::setPasswordHash(
     maPassHash = aPassword;
 
 #if DEBUG_TAB_PROTECTION
-    for (sal_Int32 i = 0; i < nLen; ++i)
-        printf("%2.2X ", static_cast<sal_uInt8>(aPassword[i]));
+    for (sal_Int8 n : aPassword)
+        printf("%2.2X ", static_cast<sal_uInt8>(n));
     printf("\n");
 #endif
+}
+
+void ScTableProtectionImpl::setPasswordHash( const OUString& rAlgorithmName, const OUString& rHashValue,
+        const OUString& rSaltValue, sal_uInt32 nSpinCount )
+{
+    if (!rHashValue.isEmpty())
+    {
+        // Invalidate the other hashes.
+        setPasswordHash( uno::Sequence<sal_Int8>(), PASSHASH_UNSPECIFIED, PASSHASH_UNSPECIFIED);
+
+        // We don't know whether this is an empty password (or would
+        // unnecessarily have to try to verify an empty password), assume it is
+        // not. A later verifyPassword() with an empty password will determine.
+        // If this was not set to false then a verifyPassword() with an empty
+        // password would unlock even if this hash here wasn't for an empty
+        // password. Ugly stuff.
+        mbEmptyPass = false;
+    }
+
+    maPasswordHash.maAlgorithmName  = rAlgorithmName;
+    maPasswordHash.maHashValue      = rHashValue;
+    maPasswordHash.maSaltValue      = rSaltValue;
+    maPasswordHash.mnSpinCount      = nSpinCount;
 }
 
 bool ScTableProtectionImpl::verifyPassword(const OUString& aPassText) const
@@ -310,17 +368,37 @@ bool ScTableProtectionImpl::verifyPassword(const OUString& aPassText) const
         // Clear text password exists, and this one takes precedence.
         return aPassText == maPassText;
 
-    Sequence<sal_Int8> aHash = hashPassword(aPassText, meHash1);
-    aHash = hashPassword(aHash, meHash2);
+    // For PASSHASH_UNSPECIFIED also maPassHash is empty and any aPassText
+    // would yield an empty hash as well and thus compare true. Don't.
+    if (meHash1 != PASSHASH_UNSPECIFIED)
+    {
+        Sequence<sal_Int8> aHash = hashPassword(aPassText, meHash1);
+        aHash = hashPassword(aHash, meHash2);
 
 #if DEBUG_TAB_PROTECTION
-    fprintf(stdout, "ScTableProtectionImpl::verifyPassword: hash = ");
-    for (sal_Int32 i = 0; i < aHash.getLength(); ++i)
-        printf("%2.2X ", static_cast<sal_uInt8>(aHash[i]));
-    printf("\n");
+        fprintf(stdout, "ScTableProtectionImpl::verifyPassword: hash = ");
+        for (sal_Int32 i = 0; i < aHash.getLength(); ++i)
+            printf("%2.2X ", static_cast<sal_uInt8>(aHash[i]));
+        printf("\n");
 #endif
 
-    return aHash == maPassHash;
+        if (aHash == maPassHash)
+        {
+            return true;
+        }
+    }
+
+    // tdf#115483 compat hack for ODF 1.2; for now UTF8-SHA1 passwords are only
+    // verified, not generated
+    if (meHash1 == PASSHASH_SHA1 && meHash2 == PASSHASH_UNSPECIFIED)
+    {
+        Sequence<sal_Int8> const aHash2 = hashPassword(aPassText, PASSHASH_SHA1_UTF8);
+        return aHash2 == maPassHash;
+    }
+
+    // Not yet generated or tracked with meHash1 or meHash2, but can be read
+    // from OOXML.
+    return maPasswordHash.verifyPassword( aPassText);
 }
 
 bool ScTableProtectionImpl::isOptionEnabled(SCSIZE nOptId) const
@@ -350,15 +428,14 @@ void ScTableProtectionImpl::setEnhancedProtection( const ::std::vector< ScEnhanc
     maEnhancedProtection = rProt;
 }
 
-bool ScTableProtectionImpl::updateReference( UpdateRefMode eMode, ScDocument* pDoc,
+bool ScTableProtectionImpl::updateReference( UpdateRefMode eMode, const ScDocument* pDoc,
         const ScRange& rWhere, SCCOL nDx, SCROW nDy, SCTAB nDz )
 {
     bool bChanged = false;
-    for (::std::vector<ScEnhancedProtection>::iterator it(maEnhancedProtection.begin());
-            it != maEnhancedProtection.end(); ++it)
+    for (auto& rEnhancedProtection : maEnhancedProtection)
     {
-        if ((*it).maRangeList.is())
-            bChanged |= (*it).maRangeList->UpdateReference( eMode, pDoc, rWhere, nDx, nDy, nDz);
+        if (rEnhancedProtection.maRangeList.is())
+            bChanged |= rEnhancedProtection.maRangeList->UpdateReference( eMode, pDoc, rWhere, nDx, nDy, nDz);
     }
     return bChanged;
 }
@@ -377,21 +454,15 @@ bool ScTableProtectionImpl::isBlockEditable( const ScRange& rRange ) const
     // No security descriptor in an enhanced protection means the ranges of
     // that protection are editable. If there is any security descriptor
     // present we assume the permission to edit is not granted. Until we
-    // actually can evaluate the descriptors..
+    // actually can evaluate the descriptors...
 
-    for (::std::vector<ScEnhancedProtection>::const_iterator it(maEnhancedProtection.begin()),
-            itEnd(maEnhancedProtection.end()); it != itEnd; ++it)
-    {
-        if (!(*it).hasSecurityDescriptor() && (*it).maRangeList.is())
-        {
-            if ((*it).maRangeList->In( rRange))
-            {
-                // Range is editable if no password is assigned.
-                if (!(*it).hasPassword())
-                    return true;
-            }
-        }
-    }
+    auto lIsEditable = [rRange](const ScEnhancedProtection& rEnhancedProtection) {
+        return !rEnhancedProtection.hasSecurityDescriptor()
+            && rEnhancedProtection.maRangeList.is() && rEnhancedProtection.maRangeList->In( rRange)
+            && !rEnhancedProtection.hasPassword(); // Range is editable if no password is assigned.
+    };
+    if (std::any_of(maEnhancedProtection.begin(), maEnhancedProtection.end(), lIsEditable))
+        return true;
 
     // For a single address, a simple check with single ranges was sufficient.
     if (rRange.aStart == rRange.aEnd)
@@ -399,16 +470,15 @@ bool ScTableProtectionImpl::isBlockEditable( const ScRange& rRange ) const
 
     // Test also for cases where rRange is encompassed by a union of two or
     // more ranges of the list. The original ranges are not necessarily joined.
-    for (::std::vector<ScEnhancedProtection>::const_iterator it(maEnhancedProtection.begin()),
-            itEnd(maEnhancedProtection.end()); it != itEnd; ++it)
+    for (const auto& rEnhancedProtection : maEnhancedProtection)
     {
-        if (!(*it).hasSecurityDescriptor() && (*it).maRangeList.is())
+        if (!rEnhancedProtection.hasSecurityDescriptor() && rEnhancedProtection.maRangeList.is())
         {
-            ScRangeList aList( (*it).maRangeList->GetIntersectedRange( rRange));
-            if (aList.size() == 1 && *aList[0] == rRange)
+            ScRangeList aList( rEnhancedProtection.maRangeList->GetIntersectedRange( rRange));
+            if (aList.size() == 1 && aList[0] == rRange)
             {
                 // Range is editable if no password is assigned.
-                if (!(*it).hasPassword())
+                if (!rEnhancedProtection.hasPassword())
                     return true;
             }
         }
@@ -420,25 +490,24 @@ bool ScTableProtectionImpl::isBlockEditable( const ScRange& rRange ) const
     /* TODO: once we handle passwords, remember a successful unlock at
      * ScEnhancedProtection so we can use that here. */
     ScRangeList aRangeList;
-    for (::std::vector<ScEnhancedProtection>::const_iterator it(maEnhancedProtection.begin()),
-            itEnd(maEnhancedProtection.end()); it != itEnd; ++it)
+    for (const auto& rEnhancedProtection : maEnhancedProtection)
     {
-        if (!(*it).hasSecurityDescriptor() && (*it).maRangeList.is())
+        if (!rEnhancedProtection.hasSecurityDescriptor() && rEnhancedProtection.maRangeList.is())
         {
             // Ranges are editable if no password is assigned.
-            if (!(*it).hasPassword())
+            if (!rEnhancedProtection.hasPassword())
             {
-                const ScRangeList& rRanges = *(*it).maRangeList;
+                const ScRangeList& rRanges = *rEnhancedProtection.maRangeList;
                 size_t nRanges = rRanges.size();
                 for (size_t i=0; i < nRanges; ++i)
                 {
-                    aRangeList.Append( *rRanges[i]);
+                    aRangeList.push_back( rRanges[i]);
                 }
             }
         }
     }
     ScRangeList aResultList( aRangeList.GetIntersectedRange( rRange));
-    return aResultList.size() == 1 && *aResultList[0] == rRange;
+    return aResultList.size() == 1 && aResultList[0] == rRange;
 }
 
 bool ScTableProtectionImpl::isSelectionEditable( const ScRangeList& rRangeList ) const
@@ -448,7 +517,7 @@ bool ScTableProtectionImpl::isSelectionEditable( const ScRangeList& rRangeList )
 
     for (size_t i=0, nRanges = rRangeList.size(); i < nRanges; ++i)
     {
-        if (!isBlockEditable( *rRangeList[i]))
+        if (!isBlockEditable( rRangeList[i]))
             return false;
     }
     return true;
@@ -509,10 +578,21 @@ uno::Sequence<sal_Int8> ScDocProtection::getPasswordHash(ScPasswordHash eHash, S
     return mpImpl->getPasswordHash(eHash, eHash2);
 }
 
+const ScOoxPasswordHash& ScDocProtection::getPasswordHash() const
+{
+    return mpImpl->getPasswordHash();
+}
+
 void ScDocProtection::setPasswordHash(
     const uno::Sequence<sal_Int8>& aPassword, ScPasswordHash eHash, ScPasswordHash eHash2)
 {
     mpImpl->setPasswordHash(aPassword, eHash, eHash2);
+}
+
+void ScDocProtection::setPasswordHash( const OUString& rAlgorithmName, const OUString& rHashValue,
+        const OUString& rSaltValue, sal_uInt32 nSpinCount )
+{
+    mpImpl->setPasswordHash( rAlgorithmName, rHashValue, rSaltValue, nSpinCount);
 }
 
 bool ScDocProtection::verifyPassword(const OUString& aPassText) const
@@ -583,10 +663,21 @@ Sequence<sal_Int8> ScTableProtection::getPasswordHash(ScPasswordHash eHash, ScPa
     return mpImpl->getPasswordHash(eHash, eHash2);
 }
 
+const ScOoxPasswordHash& ScTableProtection::getPasswordHash() const
+{
+    return mpImpl->getPasswordHash();
+}
+
 void ScTableProtection::setPasswordHash(
     const uno::Sequence<sal_Int8>& aPassword, ScPasswordHash eHash, ScPasswordHash eHash2)
 {
     mpImpl->setPasswordHash(aPassword, eHash, eHash2);
+}
+
+void ScTableProtection::setPasswordHash( const OUString& rAlgorithmName, const OUString& rHashValue,
+        const OUString& rSaltValue, sal_uInt32 nSpinCount )
+{
+    mpImpl->setPasswordHash( rAlgorithmName, rHashValue, rSaltValue, nSpinCount);
 }
 
 bool ScTableProtection::verifyPassword(const OUString& aPassText) const
@@ -614,7 +705,7 @@ const ::std::vector< ScEnhancedProtection > & ScTableProtection::getEnhancedProt
     return mpImpl->getEnhancedProtection();
 }
 
-bool ScTableProtection::updateReference( UpdateRefMode eMode, ScDocument* pDoc, const ScRange& rWhere,
+bool ScTableProtection::updateReference( UpdateRefMode eMode, const ScDocument* pDoc, const ScRange& rWhere,
         SCCOL nDx, SCROW nDy, SCTAB nDz )
 {
     return mpImpl->updateReference( eMode, pDoc, rWhere, nDx, nDy, nDz);

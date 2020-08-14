@@ -20,6 +20,8 @@
 #define INCLUDED_SVX_INC_PALETTE_HXX
 
 #include <svx/Palette.hxx>
+#include <svx/SvxColorValueSet.hxx>
+#include <svx/xtable.hxx>
 
 class SvFileStream;
 
@@ -27,7 +29,7 @@ typedef std::vector< NamedColor > ColorList;
 
 // ASE = Adobe Swatch Exchange
 
-class SVX_DLLPUBLIC PaletteASE : public Palette
+class PaletteASE final : public Palette
 {
     bool        mbValidPalette;
     OUString    maFPath;
@@ -41,14 +43,14 @@ public:
 
     virtual const OUString&     GetName() override;
     virtual const OUString&     GetPath() override;
-    virtual void                LoadColorSet( SvxColorValueSet& rColorSet ) override;
+    virtual void                LoadColorSet(SvxColorValueSet& rColorSet) override;
 
     virtual bool                IsValid() override;
 };
 
 // GPL - this is *not* GNU Public License, but is the Gimp PaLette
 
-class SVX_DLLPUBLIC PaletteGPL : public Palette
+class PaletteGPL final : public Palette
 {
     bool        mbLoadedPalette;
     bool        mbValidPalette;
@@ -66,14 +68,14 @@ public:
 
     virtual const OUString&     GetName() override;
     virtual const OUString&     GetPath() override;
-    virtual void                LoadColorSet( SvxColorValueSet& rColorSet ) override;
+    virtual void                LoadColorSet(SvxColorValueSet& rColorSet) override;
 
     virtual bool                IsValid() override;
 };
 
 // SOC - Star Office Color-table
 
-class SVX_DLLPUBLIC PaletteSOC : public Palette
+class PaletteSOC final : public Palette
 {
     bool            mbLoadedPalette;
     OUString        maFPath;
@@ -85,7 +87,7 @@ public:
 
     virtual const OUString&     GetName() override;
     virtual const OUString&     GetPath() override;
-    virtual void                LoadColorSet( SvxColorValueSet& rColorSet ) override;
+    virtual void                LoadColorSet(SvxColorValueSet& rColorSet) override;
 
     virtual bool                IsValid() override;
 };

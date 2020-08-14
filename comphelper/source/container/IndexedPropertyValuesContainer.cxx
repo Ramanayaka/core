@@ -19,7 +19,6 @@
 
 #include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/uno/Sequence.h>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
@@ -29,9 +28,13 @@
 
 #include <vector>
 
+namespace com::sun::star::uno { class XComponentContext; }
+
 using namespace com::sun::star;
 
 typedef std::vector < uno::Sequence< beans::PropertyValue > > IndexedPropertyValues;
+
+namespace {
 
 class IndexedPropertyValuesContainer : public cppu::WeakImplHelper< container::XIndexContainer, lang::XServiceInfo >
 {
@@ -62,6 +65,8 @@ private:
     IndexedPropertyValues maProperties;
 };
 
+}
+
 IndexedPropertyValuesContainer::IndexedPropertyValuesContainer() throw()
 {
 }
@@ -70,88 +75,37 @@ IndexedPropertyValuesContainer::IndexedPropertyValuesContainer() throw()
 void SAL_CALL IndexedPropertyValuesContainer::insertByIndex( sal_Int32 nIndex, const css::uno::Any& aElement )
 {
     sal_Int32 nSize(maProperties.size());
-    if ((nSize >= nIndex) && (nIndex >= 0))
-    {
-        uno::Sequence<beans::PropertyValue> aProps;
-        if (!(aElement >>= aProps))
-            throw lang::IllegalArgumentException();
-        if (nSize == nIndex)
-            maProperties.push_back(aProps);
-        else
-        {
-            IndexedPropertyValues::iterator aItr;
-            if ((nIndex * 2) < nSize)
-            {
-                aItr = maProperties.begin();
-                sal_Int32 i(0);
-                while(i < nIndex)
-                {
-                    ++i;
-                    ++aItr;
-                }
-            }
-            else
-            {
-                aItr = maProperties.end();
-                sal_Int32 i(nSize);
-                while(i > nIndex)
-                {
-                    --i;
-                    --aItr;
-                }
-            }
-            maProperties.insert(aItr, aProps);
-        }
-    }
-    else
+    if ((nSize < nIndex) || (nIndex < 0))
         throw lang::IndexOutOfBoundsException();
+
+    uno::Sequence<beans::PropertyValue> aProps;
+    if (!(aElement >>= aProps))
+        throw lang::IllegalArgumentException();
+    if (nSize == nIndex)
+        maProperties.push_back(aProps);
+    else
+        maProperties.insert(maProperties.begin() + nIndex, aProps);
 }
 
 void SAL_CALL IndexedPropertyValuesContainer::removeByIndex( sal_Int32 nIndex )
 {
-    sal_Int32 nSize(maProperties.size());
-    if ((nIndex < nSize) && (nIndex >= 0))
-    {
-        IndexedPropertyValues::iterator aItr;
-        if ((nIndex * 2) < nSize)
-        {
-            aItr = maProperties.begin();
-            sal_Int32 i(0);
-            while(i < nIndex)
-            {
-                ++i;
-                ++aItr;
-            }
-        }
-        else
-        {
-            aItr = maProperties.end();
-            sal_Int32 i(nSize);
-            while(i > nIndex)
-            {
-                --i;
-                --aItr;
-            }
-        }
-        maProperties.erase(aItr);
-    }
-    else
+    if ((nIndex >= sal_Int32(maProperties.size())) || (nIndex < 0))
         throw lang::IndexOutOfBoundsException();
+
+    maProperties.erase(maProperties.begin() + nIndex);
 }
 
 // XIndexReplace
 void SAL_CALL IndexedPropertyValuesContainer::replaceByIndex( sal_Int32 nIndex, const css::uno::Any& aElement )
 {
     sal_Int32 nSize(maProperties.size());
-    if ((nIndex < nSize) && (nIndex >= 0))
-    {
-        uno::Sequence<beans::PropertyValue> aProps;
-        if (!(aElement >>= aProps))
-            throw lang::IllegalArgumentException();
-        maProperties[nIndex] = aProps;
-    }
-    else
+    if ((nIndex >= nSize) || (nIndex < 0))
         throw lang::IndexOutOfBoundsException();
+
+    uno::Sequence<beans::PropertyValue> aProps;
+    if (!(aElement >>= aProps))
+        throw lang::IllegalArgumentException();
+    maProperties[nIndex] = aProps;
 }
 
 // XIndexAccess
@@ -163,7 +117,7 @@ sal_Int32 SAL_CALL IndexedPropertyValuesContainer::getCount(  )
 css::uno::Any SAL_CALL IndexedPropertyValuesContainer::getByIndex( sal_Int32 nIndex )
 {
     sal_Int32 nSize(maProperties.size());
-    if (!((nIndex < nSize) && (nIndex >= 0)))
+    if ((nIndex >= nSize) || (nIndex < 0))
         throw lang::IndexOutOfBoundsException();
 
     return uno::Any( maProperties[nIndex] );
@@ -183,7 +137,7 @@ sal_Bool SAL_CALL IndexedPropertyValuesContainer::hasElements(  )
 //XServiceInfo
 OUString SAL_CALL IndexedPropertyValuesContainer::getImplementationName(  )
 {
-    return OUString( "IndexedPropertyValuesContainer" );
+    return "IndexedPropertyValuesContainer";
 }
 
 sal_Bool SAL_CALL IndexedPropertyValuesContainer::supportsService( const OUString& ServiceName )
@@ -193,12 +147,10 @@ sal_Bool SAL_CALL IndexedPropertyValuesContainer::supportsService( const OUStrin
 
 css::uno::Sequence< OUString > SAL_CALL IndexedPropertyValuesContainer::getSupportedServiceNames(  )
 {
-    const OUString aServiceName( "com.sun.star.document.IndexedPropertyValues" );
-    const uno::Sequence< OUString > aSeq( &aServiceName, 1 );
-    return aSeq;
+    return { "com.sun.star.document.IndexedPropertyValues" };
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 IndexedPropertyValuesContainer_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

@@ -19,12 +19,11 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDADDINPROPERTY_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDADDINPROPERTY_HXX
 
-#include "WrappedProperty.hxx"
-#include "ChartDocumentWrapper.hxx"
+#include <WrappedProperty.hxx>
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper { class ChartDocumentWrapper; }
+
+namespace chart::wrapper
 {
 
 class WrappedAddInProperty : public WrappedProperty
@@ -83,9 +82,8 @@ private:
     ChartDocumentWrapper& m_rChartDocumentWrapper;
 };
 
-} //namespace wrapper
 
-} //namespace chart
+} //namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDADDINPROPERTY_HXX
 #endif

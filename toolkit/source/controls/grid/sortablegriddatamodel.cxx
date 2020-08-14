@@ -36,8 +36,9 @@
 #include <comphelper/anycompare.hxx>
 #include <comphelper/componentguard.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <tools/diagnose_ex.h>
+#include <i18nlangtag/languagetag.hxx>
+#include <o3tl/safeint.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
@@ -205,19 +206,16 @@ public:
         :comphelper::ComponentGuard( i_component, i_broadcastHelper )
     {
         if ( !i_component.isInitialized() )
-            throw css::lang::NotInitializedException( OUString(), *&i_component );
+            throw css::lang::NotInitializedException( OUString(), i_component );
     }
 };
 
-    namespace
-    {
-        template< class STLCONTAINER >
-        void lcl_clear( STLCONTAINER& i_container )
-        {
-            STLCONTAINER empty;
-            empty.swap( i_container );
-        }
-    }
+template< class STLCONTAINER >
+void lcl_clear( STLCONTAINER& i_container )
+{
+    STLCONTAINER empty;
+    empty.swap( i_container );
+}
 
     SortableGridDataModel::SortableGridDataModel( Reference< XComponentContext > const & rxContext )
         :SortableGridDataModel_Base( m_aMutex )
@@ -296,17 +294,12 @@ public:
         return css::uno::Sequence<sal_Int8>();
     }
 
-
-    namespace
+    Reference< XCollator > lcl_loadDefaultCollator_throw( const Reference<XComponentContext> & rxContext )
     {
-        Reference< XCollator > lcl_loadDefaultCollator_throw( const Reference<XComponentContext> & rxContext )
-        {
-            Reference< XCollator > const xCollator = Collator::create( rxContext );
-            xCollator->loadDefaultCollator( Application::GetSettings().GetLanguageTag().getLocale(), 0 );
-            return xCollator;
-        }
+        Reference< XCollator > const xCollator = Collator::create( rxContext );
+        xCollator->loadDefaultCollator( Application::GetSettings().GetLanguageTag().getLocale(), 0 );
+        return xCollator;
     }
-
 
     void SAL_CALL SortableGridDataModel::initialize( const Sequence< Any >& i_arguments )
     {
@@ -381,22 +374,14 @@ public:
         impl_broadcast( &XGridDataListener::rowsInserted, aEvent, aGuard );
     }
 
-
-    namespace
+    void lcl_decrementValuesGreaterThan( ::std::vector< ::sal_Int32 > & io_indexMap, sal_Int32 const i_threshold )
     {
-        void lcl_decrementValuesGreaterThan( ::std::vector< ::sal_Int32 > & io_indexMap, sal_Int32 const i_threshold )
+        for ( auto& rIndex : io_indexMap )
         {
-            for (   ::std::vector< ::sal_Int32 >::iterator loop = io_indexMap.begin();
-                    loop != io_indexMap.end();
-                    ++loop
-                )
-            {
-                if ( *loop >= i_threshold )
-                    --*loop;
-            }
+            if ( rIndex >= i_threshold )
+                --rIndex;
         }
     }
-
 
     void SortableGridDataModel::impl_rebuildIndexesAndNotify( MethodGuard& i_instanceLock )
     {
@@ -453,7 +438,7 @@ public:
             OSL_ENSURE( false, "SortableGridDataModel::rowsRemoved: missing implementation - removal of multiple rows!" );
             needReIndex = true;
         }
-        else if ( size_t( i_event.FirstRow ) >= m_privateToPublicRowIndex.size() )
+        else if ( o3tl::make_unsigned( i_event.FirstRow ) >= m_privateToPublicRowIndex.size() )
         {
             OSL_ENSURE( false, "SortableGridDataModel::rowsRemoved: inconsistent/wrong data!" );
             needReIndex = true;
@@ -506,47 +491,42 @@ public:
     {
     }
 
-
-    namespace
+    class CellDataLessComparison
     {
-        class CellDataLessComparison : public ::std::binary_function< sal_Int32, sal_Int32, bool >
+    public:
+        CellDataLessComparison(
+            ::std::vector< Any > const & i_data,
+            ::comphelper::IKeyPredicateLess const & i_predicate,
+            bool const i_sortAscending
+        )
+            :m_data( i_data )
+            ,m_predicate( i_predicate )
+            ,m_sortAscending( i_sortAscending )
         {
-        public:
-            CellDataLessComparison(
-                ::std::vector< Any > const & i_data,
-                ::comphelper::IKeyPredicateLess& i_predicate,
-                bool const i_sortAscending
-            )
-                :m_data( i_data )
-                ,m_predicate( i_predicate )
-                ,m_sortAscending( i_sortAscending )
-            {
-            }
+        }
 
-            bool operator()( sal_Int32 const i_lhs, sal_Int32 const i_rhs ) const
-            {
-                Any const & lhs = m_data[ i_lhs ];
-                Any const & rhs = m_data[ i_rhs ];
-                // <VOID/> is less than everything else
-                if ( !lhs.hasValue() )
-                    return m_sortAscending;
-                if ( !rhs.hasValue() )
-                    return !m_sortAscending;
+        bool operator()( sal_Int32 const i_lhs, sal_Int32 const i_rhs ) const
+        {
+            Any const & lhs = m_data[ i_lhs ];
+            Any const & rhs = m_data[ i_rhs ];
+            // <VOID/> is less than everything else
+            if ( !lhs.hasValue() )
+                return m_sortAscending;
+            if ( !rhs.hasValue() )
+                return !m_sortAscending;
 
-                // actually compare
-                if ( m_sortAscending )
-                    return m_predicate.isLess( lhs, rhs );
-                else
-                    return m_predicate.isLess( rhs, lhs );
-            }
+            // actually compare
+            if ( m_sortAscending )
+                return m_predicate.isLess( lhs, rhs );
+            else
+                return m_predicate.isLess( rhs, lhs );
+        }
 
-        private:
-            ::std::vector< Any > const &            m_data;
-            ::comphelper::IKeyPredicateLess const & m_predicate;
-            bool const                          m_sortAscending;
-        };
-    }
-
+    private:
+        ::std::vector< Any > const &            m_data;
+        ::comphelper::IKeyPredicateLess const & m_predicate;
+        bool const                          m_sortAscending;
+    };
 
     bool SortableGridDataModel::impl_reIndex_nothrow( ::sal_Int32 const i_columnIndex, bool const i_sortAscending )
     {
@@ -570,7 +550,8 @@ public:
 
             // get predicate object
             ::std::unique_ptr< ::comphelper::IKeyPredicateLess > const pPredicate( ::comphelper::getStandardLessPredicate( dataType, m_collator ) );
-            ENSURE_OR_RETURN_FALSE( pPredicate.get(), "SortableGridDataModel::impl_reIndex_nothrow: no sortable data found!" );
+            ENSURE_OR_RETURN_FALSE(
+                pPredicate, "SortableGridDataModel::impl_reIndex_nothrow: no sortable data found!");
 
             // then sort
             CellDataLessComparison const aComparator( aColumnData, *pPredicate, i_sortAscending );
@@ -578,7 +559,7 @@ public:
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("toolkit.controls");
             return false;
         }
 
@@ -888,7 +869,7 @@ public:
 
     OUString SAL_CALL SortableGridDataModel::getImplementationName(  )
     {
-        return OUString( "org.openoffice.comp.toolkit.SortableGridDataModel" );
+        return "org.openoffice.comp.toolkit.SortableGridDataModel";
     }
 
     sal_Bool SAL_CALL SortableGridDataModel::supportsService( const OUString& i_serviceName )
@@ -898,8 +879,7 @@ public:
 
     Sequence< OUString > SAL_CALL SortableGridDataModel::getSupportedServiceNames(  )
     {
-        Sequence< OUString > aServiceNames { "com.sun.star.awt.grid.SortableGridDataModel" };
-        return aServiceNames;
+        return { "com.sun.star.awt.grid.SortableGridDataModel" };
     }
 
 
@@ -912,7 +892,7 @@ public:
             // no need to translate anything
             return i_publicRowIndex;
 
-        ENSURE_OR_RETURN( size_t( i_publicRowIndex ) < m_publicToPrivateRowIndex.size(),
+        ENSURE_OR_RETURN( o3tl::make_unsigned( i_publicRowIndex ) < m_publicToPrivateRowIndex.size(),
             "SortableGridDataModel::impl_getPrivateRowIndex_throw: inconsistency!", i_publicRowIndex );
                 // obviously the translation table contains too few elements - it should have exactly |getRowCount()|
                 // elements
@@ -930,7 +910,7 @@ public:
         if ( i_privateRowIndex < 0 )
             return i_privateRowIndex;
 
-        ENSURE_OR_RETURN( size_t( i_privateRowIndex ) < m_privateToPublicRowIndex.size(),
+        ENSURE_OR_RETURN( o3tl::make_unsigned( i_privateRowIndex ) < m_privateToPublicRowIndex.size(),
             "SortableGridDataModel::impl_getPublicRowIndex_nothrow: invalid index!", i_privateRowIndex );
 
         return m_privateToPublicRowIndex[ i_privateRowIndex ];
@@ -938,7 +918,7 @@ public:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 org_openoffice_comp_toolkit_SortableGridDataModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

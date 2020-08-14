@@ -11,10 +11,6 @@ $(eval $(call gb_Executable_Executable,sbase))
 
 $(eval $(call gb_Executable_set_targettype_gui,sbase,YES))
 
-$(eval $(call gb_Executable_add_defs,sbase,\
-    -DUNICODE \
-))
-
 $(eval $(call gb_Executable_add_ldflags,sbase,\
     /ENTRY:wWinMainCRTStartup \
 ))
@@ -28,5 +24,7 @@ $(eval $(call gb_Executable_add_exception_objects,sbase,\
 ))
 
 $(eval $(call gb_Executable_add_nativeres,sbase,sbase/launcher))
+
+$(eval $(call gb_Executable_add_default_nativeres,sbase,$(PRODUCTNAME) Base))
 
 # vim: set ts=4 sw=4 et:

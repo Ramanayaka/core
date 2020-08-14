@@ -17,12 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <cmath>
+
 #include <drawinglayer/primitive3d/sdrextrudeprimitive3d.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b3dpolypolygontools.hxx>
-#include <drawinglayer/primitive3d/sdrdecompositiontools3d.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <primitive3d/sdrdecompositiontools3d.hxx>
 #include <drawinglayer/primitive3d/drawinglayer_primitivetypes3d.hxx>
 #include <drawinglayer/geometry/viewinformation3d.hxx>
 #include <drawinglayer/attribute/sdrfillattribute.hxx>
@@ -33,10 +35,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         Primitive3DContainer SdrExtrudePrimitive3D::create3DDecomposition(const geometry::ViewInformation3D& rViewInformation) const
         {
             Primitive3DContainer aRetval;
@@ -57,12 +57,12 @@ namespace drawinglayer
 
                 if(!getSdrLFSAttribute().getFill().isDefault() && (bCreateTextureCoordinatesX || bCreateTextureCoordinatesY))
                 {
-                    const basegfx::B2DPolygon aFirstPolygon(maCorrectedPolyPolygon.getB2DPolygon(0L));
-                    const double fFrontLength(basegfx::tools::getLength(aFirstPolygon));
-                    const double fFrontArea(basegfx::tools::getArea(aFirstPolygon));
+                    const basegfx::B2DPolygon aFirstPolygon(maCorrectedPolyPolygon.getB2DPolygon(0));
+                    const double fFrontLength(basegfx::utils::getLength(aFirstPolygon));
+                    const double fFrontArea(basegfx::utils::getArea(aFirstPolygon));
                     const double fSqrtFrontArea(sqrt(fFrontArea));
                     double fRelativeTextureWidth = basegfx::fTools::equalZero(fSqrtFrontArea) ? 1.0 : fFrontLength / fSqrtFrontArea;
-                    fRelativeTextureWidth = (double)((sal_uInt32)(fRelativeTextureWidth - 0.5));
+                    fRelativeTextureWidth = std::trunc(fRelativeTextureWidth - 0.5);
 
                     if(fRelativeTextureWidth < 1.0)
                     {
@@ -78,7 +78,7 @@ namespace drawinglayer
                 // create geometry
                 std::vector< basegfx::B3DPolyPolygon > aFill;
                 extractPlanesFromSlice(aFill, rSliceVector,
-                    bCreateNormals, true/*smoothHorizontalNormals*/, getSmoothNormals(), getSmoothLids(), false,
+                    bCreateNormals, getSmoothNormals(), getSmoothLids(), false,
                     0.5, 0.6, bCreateTextureCoordinatesX || bCreateTextureCoordinatesY, aTexTransform);
 
                 // get full range
@@ -150,7 +150,7 @@ namespace drawinglayer
                         for(a = 0; a < nCount; a++)
                         {
                             const sal_uInt32 nReducedCount(aReducedLoops.count());
-                            const basegfx::B3DPolygon aCandidate(aVerLine.getB3DPolygon(a));
+                            const basegfx::B3DPolygon& aCandidate(aVerLine.getB3DPolygon(a));
                             bool bAdd(true);
 
                             if(nReducedCount)
@@ -178,8 +178,8 @@ namespace drawinglayer
                             for(sal_uInt32 b(1); b < nReducedCount; b++)
                             {
                                 // get loop pair
-                                const basegfx::B3DPolygon aCandA(aReducedLoops.getB3DPolygon(b - 1));
-                                const basegfx::B3DPolygon aCandB(aReducedLoops.getB3DPolygon(b));
+                                const basegfx::B3DPolygon& aCandA(aReducedLoops.getB3DPolygon(b - 1));
+                                const basegfx::B3DPolygon& aCandB(aReducedLoops.getB3DPolygon(b));
 
                                 // for each loop pair create the connection edges
                                 createReducedOutlines(
@@ -360,10 +360,10 @@ namespace drawinglayer
             // prepare the polygon. No double points, correct orientations and a correct
             // outmost polygon are needed
             // Also important: subdivide here to ensure equal point count for all slices (!)
-            maCorrectedPolyPolygon = basegfx::tools::adaptiveSubdivideByAngle(getPolyPolygon());
+            maCorrectedPolyPolygon = basegfx::utils::adaptiveSubdivideByAngle(getPolyPolygon());
             maCorrectedPolyPolygon.removeDoublePoints();
-            maCorrectedPolyPolygon = basegfx::tools::correctOrientations(maCorrectedPolyPolygon);
-            maCorrectedPolyPolygon = basegfx::tools::correctOutmostPolygon(maCorrectedPolyPolygon);
+            maCorrectedPolyPolygon = basegfx::utils::correctOrientations(maCorrectedPolyPolygon);
+            maCorrectedPolyPolygon = basegfx::utils::correctOutmostPolygon(maCorrectedPolyPolygon);
 
             // prepare slices as geometry
             createExtrudeSlices(maSlices, maCorrectedPolyPolygon, getBackScale(), getDiagonal(), getDepth(), getCharacterMode(), getCloseFront(), getCloseBack());
@@ -373,7 +373,7 @@ namespace drawinglayer
         {
             // This can be made dependent of  getSdrLFSAttribute().getFill() and getSdrLFSAttribute().getLine()
             // again when no longer geometry is needed for non-visible 3D objects as it is now for chart
-            if(getPolyPolygon().count() && !maSlices.size())
+            if(getPolyPolygon().count() && maSlices.empty())
             {
                 ::osl::MutexGuard aGuard( m_aMutex );
 
@@ -404,7 +404,6 @@ namespace drawinglayer
             mfDepth(fDepth),
             mfDiagonal(fDiagonal),
             mfBackScale(fBackScale),
-            mpLastRLGViewInformation(nullptr),
             mbSmoothNormals(bSmoothNormals),
             mbSmoothLids(bSmoothLids),
             mbCharacterMode(bCharacterMode),
@@ -428,7 +427,7 @@ namespace drawinglayer
             }
 
             // no close front/back when polygon is not closed
-            if(getPolyPolygon().count() && !getPolyPolygon().getB2DPolygon(0L).isClosed())
+            if(getPolyPolygon().count() && !getPolyPolygon().getB2DPolygon(0).isClosed())
             {
                 mbCloseFront = mbCloseBack = false;
             }
@@ -500,7 +499,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive3DIDBlock(SdrExtrudePrimitive3D, PRIMITIVE3D_ID_SDREXTRUDEPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

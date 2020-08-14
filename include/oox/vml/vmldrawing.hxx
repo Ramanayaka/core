@@ -30,12 +30,12 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt { struct Rectangle; }
     namespace drawing { class XDrawPage; }
     namespace drawing { class XShape; }
     namespace drawing { class XShapes; }
-} } }
+}
 
 namespace oox {
     namespace core { class XmlFilterBase; }
@@ -44,8 +44,7 @@ namespace oox {
     namespace vml { class ShapeContainer; }
 }
 
-namespace oox {
-namespace vml {
+namespace oox::vml {
 
 class ShapeBase;
 
@@ -81,6 +80,7 @@ struct OOX_DLLPUBLIC ControlInfo
     OUString     maShapeId;          ///< Shape identifier for shape lookup.
     OUString     maFragmentPath;     ///< Path to the fragment describing the form control properties.
     OUString     maName;             ///< Programmatical name of the form control.
+    bool         mbTextContentShape; ///< Whether this control shape will be imported to Writer or not (has AnchorType property or not).
 
     explicit            ControlInfo();
 
@@ -199,8 +199,7 @@ private:
 };
 
 
-} // namespace vml
-} // namespace oox
+} // namespace oox::vml
 
 #endif
 

@@ -27,7 +27,6 @@ $(eval $(call gb_Rdb_add_components,services,\
 	embeddedobj/util/embobj \
 	eventattacher/source/evtatt \
 	filter/source/config/cache/filterconfig1 \
-	filter/source/flash/flash \
 	filter/source/graphic/graphicfilter \
 	filter/source/msfilter/msfilter \
 	filter/source/odfflatxml/odfflatxml \
@@ -43,15 +42,16 @@ $(eval $(call gb_Rdb_add_components,services,\
 	formula/util/for \
 	$(call gb_Helper_optional,DESKTOP,fpicker/source/office/fps_office) \
 	framework/util/fwk \
-	framework/util/fwl \
-	framework/util/fwm \
 	hwpfilter/source/hwp \
 	i18npool/source/search/i18nsearch \
 	i18npool/util/i18npool \
 	lingucomponent/source/hyphenator/hyphen/hyphen \
 	lingucomponent/source/languageguessing/guesslang \
-	lingucomponent/source/spellcheck/spell/spell \
-	lingucomponent/source/thesaurus/libnth/lnth \
+	$(if $(filter-out iOS,$(OS)), \
+		lingucomponent/source/spellcheck/spell/spell \
+		lingucomponent/source/thesaurus/libnth/lnth \
+	) \
+	lingucomponent/source/numbertext/numbertext \
 	linguistic/source/lng \
 	$(if $(ENABLE_LWP), \
 	    lotuswordpro/util/lwpfilter \
@@ -81,6 +81,7 @@ $(eval $(call gb_Rdb_add_components,services,\
 	svl/util/svl \
 	svtools/util/svt \
 	svgio/svgio \
+	emfio/emfio \
 	svx/util/svx \
 	svx/util/svxcore \
 	svx/util/textconversiondlgs \
@@ -91,7 +92,7 @@ $(eval $(call gb_Rdb_add_components,services,\
 	ucb/source/sorter/srtrs1 \
 	ucb/source/core/ucb1 \
 	ucb/source/cacher/cached1 \
-	$(if $(ENABLE_CMIS),ucb/source/ucp/cmis/ucpcmis1) \
+	$(if $(ENABLE_LIBCMIS),ucb/source/ucp/cmis/ucpcmis1) \
 	ucb/source/ucp/expand/ucpexpand1 \
 	ucb/source/ucp/ext/ucpext \
 	ucb/source/ucp/file/ucpfile1 \
@@ -105,18 +106,20 @@ $(eval $(call gb_Rdb_add_components,services,\
 	unoxml/source/rdf/unordf \
 	unoxml/source/service/unoxml \
 	uui/util/uui \
+	vcl/vcl.common \
 	xmloff/source/transform/xof \
 	xmloff/util/xo \
 	xmlscript/util/xmlscript \
 	$(if $(ENABLE_NSS), \
 		xmlsecurity/util/xmlsecurity \
-		xmlsecurity/util/xsec_xmlsec$(if $(filter WNT,$(OS)),.windows)) \
+		xmlsecurity/util/xsec_xmlsec) \
 	$(if $(ENABLE_COINMP), \
 		sccomp/source/solver/coinmpsolver \
 	) \
 	$(if $(ENABLE_LPSOLVE), \
 		sccomp/source/solver/lpsolvesolver \
 	) \
+	sccomp/source/solver/swarmsolver \
 	writerfilter/util/writerfilter \
 	writerperfect/source/draw/wpftdraw \
 	writerperfect/source/impress/wpftimpress \
@@ -124,15 +127,15 @@ $(eval $(call gb_Rdb_add_components,services,\
 	writerperfect/source/calc/wpftcalc \
 	$(if $(filter MACOSX,$(OS)), \
 		$(call gb_Helper_optional,AVMEDIA,avmedia/source/macavf/avmediaMacAVF) \
-		$(if $(filter TRUE,$(ENABLE_MACOSX_SANDBOX)),, \
-			$(if $(shell test $(MACOSX_SDK_VERSION) -ge 101200 || echo nope), \
-				$(call gb_Helper_optional,AVMEDIA,avmedia/source/quicktime/avmediaQuickTime) \
-			) \
-		) \
-		lingucomponent/source/spellcheck/macosxspell/MacOSXSpell \
 		fpicker/source/aqua/fps_aqua \
 		shell/source/backends/macbe/macbe1 \
 		vcl/vcl.macosx \
+	) \
+	$(if $(filter iOS MACOSX,$(OS)), \
+		lingucomponent/source/spellcheck/macosxspell/MacOSXSpell \
+	) \
+	$(if $(filter iOS,$(OS)), \
+		vcl/vcl.ios \
 	) \
 	$(if $(filter WNT,$(OS)), \
 		avmedia/source/win/avmediawin \
@@ -146,7 +149,7 @@ $(eval $(call gb_Rdb_add_components,services,\
 		shell/source/win32/syssh \
 		vcl/vcl.windows \
 	) \
-	$(if $(ENABLE_HEADLESS), \
+	$(if $(DISABLE_GUI), \
 		vcl/vcl.headless \
 	) \
 	$(if $(filter ANDROID,$(OS)), \
@@ -155,13 +158,11 @@ $(eval $(call gb_Rdb_add_components,services,\
 	$(if $(filter-out WNT,$(OS)), \
 		embeddedobj/source/msole/emboleobj \
 	) \
-	$(if $(DISABLE_ATL),, \
-		$(if $(filter WNT,$(OS)), \
-			embeddedobj/source/msole/emboleobj.windows \
-			embedserv/util/emser \
-			extensions/source/ole/oleautobridge \
-			winaccessibility/source/service/winaccessibility \
-		) \
+	$(if $(filter WNT,$(OS)), \
+		embeddedobj/source/msole/emboleobj.windows \
+		embedserv/util/emser \
+		extensions/source/ole/oleautobridge \
+		winaccessibility/source/service/winaccessibility \
 	) \
 	$(if $(WITH_WEBDAV), \
 		ucb/source/ucp/webdav-neon/ucpdav1 \
@@ -202,14 +203,11 @@ $(eval $(call gb_Rdb_add_components,services,\
 	$(if $(ENABLE_GSTREAMER_1_0), \
 		avmedia/source/gstreamer/avmediagstreamer \
 	) \
-	$(if $(ENABLE_GSTREAMER_0_10), \
-		avmedia/source/gstreamer/avmediagstreamer_0_10 \
-	) \
 	$(if $(ENABLE_VLC), \
 		avmedia/source/vlc/avmediavlc \
 	) \
-	$(if $(ENABLE_KDE4), \
-		shell/source/backends/kde4be/kde4be1 \
+	$(if $(ENABLE_KF5), \
+		shell/source/backends/kf5be/kf5be1 \
 	) \
 	$(if $(ENABLE_ONLINE_UPDATE), \
 		extensions/source/update/check/updchk.uno \
@@ -228,15 +226,16 @@ $(eval $(call gb_Rdb_add_components,services,\
 		wizards/com/sun/star/wizards/report/report \
 		wizards/com/sun/star/wizards/table/table \
 	) \
-    $(if $(ENABLE_GLTF), \
-		$(call gb_Helper_optional,AVMEDIA,avmedia/source/opengl/avmediaogl) \
-	) \
+))
+
+$(eval $(call gb_Rdb_add_components,services,\
+	extensions/source/bibliography/bib \
+	dbaccess/util/dba \
 ))
 
 ifeq (DBCONNECTIVITY,$(filter DBCONNECTIVITY,$(BUILD_TYPE)))
 
 $(eval $(call gb_Rdb_add_components,services,\
-	extensions/source/bibliography/bib \
 	extensions/source/dbpilots/dbp \
 	extensions/source/propctrlr/pcr \
 	connectivity/source/cpool/dbpool2 \
@@ -253,7 +252,9 @@ $(eval $(call gb_Rdb_add_components,services,\
 		connectivity/source/drivers/firebird/firebird_sdbc \
 	) \
 	connectivity/source/drivers/flat/flat \
-	connectivity/source/drivers/mysql/mysql \
+	$(if $(ENABLE_MARIADBC), \
+		connectivity/source/drivers/mysqlc/mysqlc \
+	) \
 	$(if $(filter MACOSX,$(OS)), \
 		connectivity/source/drivers/macab/macab1 \
 	) \
@@ -261,10 +262,10 @@ $(eval $(call gb_Rdb_add_components,services,\
 		connectivity/source/drivers/hsqldb/hsqldb \
 		connectivity/source/drivers/jdbc/jdbc \
 	) \
+	connectivity/source/drivers/mysql_jdbc/mysql_jdbc \
 	connectivity/source/manager/sdbc2 \
-	dbaccess/source/ext/macromigration/dbmm \
+	connectivity/source/drivers/writer/writer \
 	dbaccess/source/filter/xml/dbaxml \
-	dbaccess/util/dba \
 	dbaccess/util/dbu \
 	dbaccess/util/sdbt \
 	forms/util/frm \
@@ -272,7 +273,7 @@ $(eval $(call gb_Rdb_add_components,services,\
 	reportdesign/util/rptui \
 	reportdesign/util/rptxml \
 	shell/source/backends/localebe/localebe1 \
-	$(if $(filter-out ANDROID IOS,$(OS)),\
+	$(if $(filter-out ANDROID iOS,$(OS)),\
 		connectivity/source/drivers/odbc/odbc \
 	) \
 ))
@@ -293,11 +294,13 @@ $(eval $(call gb_Rdb_add_components,services,\
 	desktop/source/migration/services/migrationoo2 \
 	desktop/source/migration/services/migrationoo3 \
 	desktop/source/offacc/offacc \
-	$(if $(ENABLE_HEADLESS),,desktop/source/splash/spl) \
+	$(if $(DISABLE_GUI),,desktop/source/splash/spl) \
 	extensions/source/abpilot/abp \
-	extensions/source/config/ldap/ldapbe2 \
+	$(if $(ENABLE_LDAP),extensions/source/config/ldap/ldapbe2) \
+	$(if $(filter WNT,$(OS)),\
+		extensions/source/config/WinUserInfo/WinUserInfoBe \
+	) \
 	extensions/source/logging/log \
-	extensions/source/resource/res \
 	extensions/source/scanner/scn \
 	extensions/source/update/feed/updatefeed \
 	xmlhelp/util/ucpchelp1 \
@@ -308,10 +311,18 @@ $(eval $(call gb_Rdb_add_components,services,\
 		shell/source/unix/exec/syssh \
 	) \
 	$(if $(filter-out MACOSX WNT,$(OS)), \
-		$(if $(ENABLE_HEADLESS),, \
+		$(if $(DISABLE_GUI),, \
 			shell/source/backends/desktopbe/desktopbe1 \
 			vcl/vcl.unx \
 		) \
+	) \
+))
+
+else # DESKTOP
+
+$(eval $(call gb_Rdb_add_components,services,\
+	$(if $(filter ANDROID,$(OS)),\
+		extensions/source/logging/log \
 	) \
 ))
 

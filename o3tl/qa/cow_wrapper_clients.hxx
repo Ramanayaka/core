@@ -20,8 +20,8 @@
 #ifndef INCLUDED_O3TL_QA_COW_WRAPPER_CLIENTS_HXX
 #define INCLUDED_O3TL_QA_COW_WRAPPER_CLIENTS_HXX
 
-#include "o3tl/cow_wrapper.hxx"
-#include "cppunit/extensions/HelperMacros.h"
+#include <o3tl/cow_wrapper.hxx>
+#include <cppunit/extensions/HelperMacros.h>
 #include <assert.h>
 
 /* Definition of Cow_Wrapper_Clients classes */
@@ -70,9 +70,9 @@ public:
     ~cow_wrapper_client2();
 
     cow_wrapper_client2( const cow_wrapper_client2& );
-    cow_wrapper_client2( cow_wrapper_client2&& );
+    cow_wrapper_client2(cow_wrapper_client2&&) noexcept;
     cow_wrapper_client2& operator=( const cow_wrapper_client2& );
-    cow_wrapper_client2& operator=( cow_wrapper_client2&& );
+    cow_wrapper_client2& operator=(cow_wrapper_client2&&) noexcept;
 
     void modify( int nVal );
     int  queryUnmodified() const;
@@ -101,9 +101,9 @@ public:
     ~cow_wrapper_client3();
 
     cow_wrapper_client3( const cow_wrapper_client3& );
-    cow_wrapper_client3( cow_wrapper_client3&& );
+    cow_wrapper_client3(cow_wrapper_client3&&) noexcept;
     cow_wrapper_client3& operator=( const cow_wrapper_client3& );
-    cow_wrapper_client3& operator=( cow_wrapper_client3&& );
+    cow_wrapper_client3& operator=(cow_wrapper_client3&&) noexcept;
 
     void modify( int nVal );
     int  queryUnmodified() const;
@@ -182,9 +182,9 @@ public:
     ~cow_wrapper_client5();
 
     cow_wrapper_client5( const cow_wrapper_client5& );
-    cow_wrapper_client5( cow_wrapper_client5&& );
+    cow_wrapper_client5(cow_wrapper_client5&&) noexcept;
     cow_wrapper_client5& operator=( const cow_wrapper_client5& );
-    cow_wrapper_client5& operator=( cow_wrapper_client5&& );
+    cow_wrapper_client5& operator=(cow_wrapper_client5&&) noexcept;
 
     int queryUnmodified() const { return *maImpl; }
     sal_uInt32 use_count() const { return maImpl.use_count(); }

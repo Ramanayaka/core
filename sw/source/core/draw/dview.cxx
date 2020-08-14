@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hintids.hxx"
-#include <editeng/protitem.hxx>
+#include <hintids.hxx>
+#include <svx/svdpage.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/fmmodel.hxx>
 #include <sot/exchange.hxx>
@@ -26,26 +26,25 @@
 #include <tools/globname.hxx>
 #include <editeng/outliner.hxx>
 #include <com/sun/star/embed/EmbedMisc.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 
-#include "swtypes.hxx"
-#include "pagefrm.hxx"
-#include "rootfrm.hxx"
-#include "cntfrm.hxx"
-#include "flyfrm.hxx"
-#include "frmfmt.hxx"
-#include "dflyobj.hxx"
-#include "dcontact.hxx"
-#include "textboxhelper.hxx"
-#include "frmatr.hxx"
-#include "viewsh.hxx"
-#include "viewimp.hxx"
-#include "dview.hxx"
-#include "dpage.hxx"
-#include "doc.hxx"
-#include "mdiexp.hxx"
+#include <pagefrm.hxx>
+#include <rootfrm.hxx>
+#include <cntfrm.hxx>
+#include <notxtfrm.hxx>
+#include <flyfrm.hxx>
+#include <frmfmt.hxx>
+#include <dflyobj.hxx>
+#include <dcontact.hxx>
+#include <textboxhelper.hxx>
+#include <viewsh.hxx>
+#include <viewimp.hxx>
+#include <dview.hxx>
+#include <doc.hxx>
+#include <mdiexp.hxx>
 #include <ndole.hxx>
+#include <ndgrf.hxx>
 #include <fmtanchr.hxx>
-#include "shellres.hxx"
 #include <IDocumentUndoRedo.hxx>
 #include <DocumentSettingManager.hxx>
 #include <IDocumentLayoutAccess.hxx>
@@ -55,10 +54,11 @@
 #include <vector>
 
 #include <sortedobjs.hxx>
-#include <flyfrms.hxx>
 #include <UndoManager.hxx>
 
 using namespace com::sun::star;
+
+namespace {
 
 class SwSdrHdl : public SdrHdl
 {
@@ -67,6 +67,8 @@ public:
         SdrHdl( rPnt, bTopRight ? SdrHdlKind::Anchor_TR : SdrHdlKind::Anchor ) {}
     virtual bool IsFocusHdl() const override;
 };
+
+}
 
 bool SwSdrHdl::IsFocusHdl() const
 {
@@ -93,9 +95,12 @@ static const SwFrame *lcl_FindAnchor( const SdrObject *pObj, bool bAll )
     return nullptr;
 }
 
-SwDrawView::SwDrawView( SwViewShellImp &rI, SdrModel *pMd, OutputDevice *pOutDev) :
-    FmFormView( static_cast<FmFormModel*>(pMd), pOutDev ),
-    rImp( rI )
+SwDrawView::SwDrawView(
+    SwViewShellImp& rI,
+    FmFormModel& rFmFormModel,
+    OutputDevice* pOutDev)
+:   FmFormView(rFmFormModel, pOutDev),
+    m_rImp( rI )
 {
     SetPageVisible( false );
     SetBordVisible( false );
@@ -125,7 +130,7 @@ bool SwDrawView::IsAntiAliasing() const
     return getOptionsDrawinglayer().IsAntiAliasing();
 }
 
-SdrObject* impLocalHitCorrection(SdrObject* pRetval, const Point& rPnt, sal_uInt16 nTol, const SdrMarkList &rMrkList)
+static SdrObject* impLocalHitCorrection(SdrObject* pRetval, const Point& rPnt, sal_uInt16 nTol, const SdrMarkList &rMrkList)
 {
     if(!nTol)
     {
@@ -219,11 +224,11 @@ void SwDrawView::AddCustomHdl()
     if (RndStdIds::FLY_AS_CHAR == rAnchor.GetAnchorId())
         return;
 
-    const SwFrame* pAnch;
-    if(nullptr == (pAnch = CalcAnchor()))
+    const SwFrame* pAnch = CalcAnchor();
+    if(nullptr == pAnch)
         return;
 
-    Point aPos(aAnchorPoint);
+    Point aPos(m_aAnchorPoint);
 
     if ( RndStdIds::FLY_AT_CHAR == rAnchor.GetAnchorId() )
     {
@@ -238,7 +243,7 @@ void SwDrawView::AddCustomHdl()
     }
 
     // add anchor handle:
-    maHdlList.AddHdl( new SwSdrHdl( aPos, ( pAnch->IsVertical() && !pAnch->IsVertLR() ) ||
+    maHdlList.AddHdl( std::make_unique<SwSdrHdl>( aPos, ( pAnch->IsVertical() && !pAnch->IsVertLR() ) ||
                                      pAnch->IsRightToLeft() ) );
 }
 
@@ -311,7 +316,7 @@ sal_uInt32 SwDrawView::GetMaxChildOrdNum( const SwFlyFrame& _rParentObj,
 {
     sal_uInt32 nMaxChildOrdNum = _rParentObj.GetDrawObj()->GetOrdNum();
 
-    const SdrPage* pDrawPage = _rParentObj.GetDrawObj()->GetPage();
+    const SdrPage* pDrawPage = _rParentObj.GetDrawObj()->getSdrPageFromSdrObject();
     OSL_ENSURE( pDrawPage,
             "<SwDrawView::GetMaxChildOrdNum(..) - missing drawing page at parent object - crash!" );
 
@@ -342,7 +347,7 @@ void SwDrawView::MoveRepeatedObjs( const SwAnchoredObject& _rMovedAnchoredObj,
                                     const std::vector<SdrObject*>& _rMovedChildObjs ) const
 {
     // determine 'repeated' objects of already moved object <_rMovedAnchoredObj>
-    std::list<SwAnchoredObject*> aAnchoredObjs;
+    std::vector<SwAnchoredObject*> aAnchoredObjs;
     {
         const SwContact* pContact = ::GetUserCall( _rMovedAnchoredObj.GetDrawObj() );
         assert(pContact && "SwDrawView::MoveRepeatedObjs(..) - missing contact object -> crash.");
@@ -350,81 +355,79 @@ void SwDrawView::MoveRepeatedObjs( const SwAnchoredObject& _rMovedAnchoredObj,
     }
 
     // check, if 'repeated' objects exists.
-    if ( aAnchoredObjs.size() > 1 )
-    {
-        SdrPage* pDrawPage = GetModel()->GetPage( 0 );
+    if ( aAnchoredObjs.size() <= 1 )
+        return;
 
+    SdrPage* pDrawPage = GetModel()->GetPage( 0 );
+
+    // move 'repeated' ones to the same order number as the already moved one.
+    const size_t nNewPos = _rMovedAnchoredObj.GetDrawObj()->GetOrdNum();
+    while ( !aAnchoredObjs.empty() )
+    {
+        SwAnchoredObject* pAnchoredObj = aAnchoredObjs.back();
+        if ( pAnchoredObj != &_rMovedAnchoredObj )
+        {
+            pDrawPage->SetObjectOrdNum( pAnchoredObj->GetDrawObj()->GetOrdNum(),
+                                        nNewPos );
+            pDrawPage->RecalcObjOrdNums();
+            // adjustments for accessibility API
+            if ( dynamic_cast< const SwFlyFrame *>( pAnchoredObj ) !=  nullptr )
+            {
+                const SwFlyFrame *pTmpFlyFrame = static_cast<SwFlyFrame*>(pAnchoredObj);
+                m_rImp.DisposeAccessibleFrame( pTmpFlyFrame );
+                m_rImp.AddAccessibleFrame( pTmpFlyFrame );
+            }
+            else
+            {
+                m_rImp.DisposeAccessibleObj(pAnchoredObj->GetDrawObj(), true);
+                m_rImp.AddAccessibleObj( pAnchoredObj->GetDrawObj() );
+            }
+        }
+        aAnchoredObjs.pop_back();
+    }
+
+    // move 'repeated' ones of 'child' objects
+    for ( SdrObject* pChildObj : _rMovedChildObjs )
+    {
+        {
+            const SwContact* pContact = ::GetUserCall( pChildObj );
+            assert(pContact && "SwDrawView::MoveRepeatedObjs(..) - missing contact object -> crash.");
+            pContact->GetAnchoredObjs( aAnchoredObjs );
+        }
         // move 'repeated' ones to the same order number as the already moved one.
-        const size_t nNewPos = _rMovedAnchoredObj.GetDrawObj()->GetOrdNum();
+        const size_t nTmpNewPos = pChildObj->GetOrdNum();
         while ( !aAnchoredObjs.empty() )
         {
             SwAnchoredObject* pAnchoredObj = aAnchoredObjs.back();
-            if ( pAnchoredObj != &_rMovedAnchoredObj )
+            if ( pAnchoredObj->GetDrawObj() != pChildObj )
             {
                 pDrawPage->SetObjectOrdNum( pAnchoredObj->GetDrawObj()->GetOrdNum(),
-                                            nNewPos );
+                                            nTmpNewPos );
                 pDrawPage->RecalcObjOrdNums();
                 // adjustments for accessibility API
                 if ( dynamic_cast< const SwFlyFrame *>( pAnchoredObj ) !=  nullptr )
                 {
                     const SwFlyFrame *pTmpFlyFrame = static_cast<SwFlyFrame*>(pAnchoredObj);
-                    rImp.DisposeAccessibleFrame( pTmpFlyFrame );
-                    rImp.AddAccessibleFrame( pTmpFlyFrame );
+                    m_rImp.DisposeAccessibleFrame( pTmpFlyFrame );
+                    m_rImp.AddAccessibleFrame( pTmpFlyFrame );
                 }
                 else
                 {
-                    rImp.DisposeAccessibleObj(pAnchoredObj->GetDrawObj(), true);
-                    rImp.AddAccessibleObj( pAnchoredObj->GetDrawObj() );
+                    m_rImp.DisposeAccessibleObj(pAnchoredObj->GetDrawObj(), true);
+                    m_rImp.AddAccessibleObj( pAnchoredObj->GetDrawObj() );
                 }
             }
             aAnchoredObjs.pop_back();
-        }
-
-        // move 'repeated' ones of 'child' objects
-        for ( std::vector<SdrObject*>::const_iterator aObjIter = _rMovedChildObjs.begin();
-              aObjIter != _rMovedChildObjs.end(); ++aObjIter )
-        {
-            SdrObject* pChildObj = (*aObjIter);
-            {
-                const SwContact* pContact = ::GetUserCall( pChildObj );
-                assert(pContact && "SwDrawView::MoveRepeatedObjs(..) - missing contact object -> crash.");
-                pContact->GetAnchoredObjs( aAnchoredObjs );
-            }
-            // move 'repeated' ones to the same order number as the already moved one.
-            const size_t nTmpNewPos = pChildObj->GetOrdNum();
-            while ( !aAnchoredObjs.empty() )
-            {
-                SwAnchoredObject* pAnchoredObj = aAnchoredObjs.back();
-                if ( pAnchoredObj->GetDrawObj() != pChildObj )
-                {
-                    pDrawPage->SetObjectOrdNum( pAnchoredObj->GetDrawObj()->GetOrdNum(),
-                                                nTmpNewPos );
-                    pDrawPage->RecalcObjOrdNums();
-                    // adjustments for accessibility API
-                    if ( dynamic_cast< const SwFlyFrame *>( pAnchoredObj ) !=  nullptr )
-                    {
-                        const SwFlyFrame *pTmpFlyFrame = static_cast<SwFlyFrame*>(pAnchoredObj);
-                        rImp.DisposeAccessibleFrame( pTmpFlyFrame );
-                        rImp.AddAccessibleFrame( pTmpFlyFrame );
-                    }
-                    else
-                    {
-                        rImp.DisposeAccessibleObj(pAnchoredObj->GetDrawObj(), true);
-                        rImp.AddAccessibleObj( pAnchoredObj->GetDrawObj() );
-                    }
-                }
-                aAnchoredObjs.pop_back();
-            }
         }
     }
 }
 
 // --> adjustment and re-factoring of method
-void SwDrawView::ObjOrderChanged( SdrObject* pObj, sal_uLong nOldPos,
-                                          sal_uLong nNewPos )
+void SwDrawView::ObjOrderChanged( SdrObject* pObj, size_t nOldPos,
+                                          size_t nNewPos )
 {
     // nothing to do for group members
-    if ( pObj->GetUpGroup() )
+    if ( pObj->getParentSdrObjectFromSdrObject() )
     {
         return;
     }
@@ -510,7 +513,7 @@ void SwDrawView::ObjOrderChanged( SdrObject* pObj, sal_uLong nOldPos,
          bMovedForward && nNewPos < nObjCount - 1 )
     {
         sal_uInt32 nMaxChildOrdNum =
-                    GetMaxChildOrdNum( *(static_cast<const SwFlyFrame*>(pMovedAnchoredObj)) );
+                    GetMaxChildOrdNum( *static_cast<const SwFlyFrame*>(pMovedAnchoredObj) );
         if ( nNewPos < nMaxChildOrdNum )
         {
             // determine position before the object before its top 'child' object
@@ -541,7 +544,7 @@ void SwDrawView::ObjOrderChanged( SdrObject* pObj, sal_uLong nOldPos,
         while ( pTmpObj )
         {
             // #i38563# - assure, that anchor frame exists.
-            // If object is anchored inside a invisible part of the document
+            // If object is anchored inside an invisible part of the document
             // (e.g. page header, whose page style isn't applied, or hidden
             // section), no anchor frame exists.
             const SwFrame* pTmpAnchorFrame = lcl_FindAnchor( pTmpObj, true );
@@ -582,8 +585,8 @@ void SwDrawView::ObjOrderChanged( SdrObject* pObj, sal_uLong nOldPos,
         const SwFlyFrame* pFlyFrame = static_cast<SwFlyFrame*>(pMovedAnchoredObj);
 
         // adjustments for accessibility API
-        rImp.DisposeAccessibleFrame( pFlyFrame );
-        rImp.AddAccessibleFrame( pFlyFrame );
+        m_rImp.DisposeAccessibleFrame( pFlyFrame );
+        m_rImp.AddAccessibleFrame( pFlyFrame );
 
         const sal_uInt32 nChildNewPos = bMovedForward ? nNewPos : nNewPos+1;
         size_t i = bMovedForward ? nOldPos : nObjCount-1;
@@ -594,7 +597,7 @@ void SwDrawView::ObjOrderChanged( SdrObject* pObj, sal_uLong nOldPos,
                 break;
 
             // #i38563# - assure, that anchor frame exists.
-            // If object is anchored inside a invisible part of the document
+            // If object is anchored inside an invisible part of the document
             // (e.g. page header, whose page style isn't applied, or hidden
             // section), no anchor frame exists.
             const SwFrame* pTmpAnchorFrame = lcl_FindAnchor( pTmpObj, true );
@@ -614,13 +617,13 @@ void SwDrawView::ObjOrderChanged( SdrObject* pObj, sal_uLong nOldPos,
                 {
                     const SwFlyFrame *pTmpFlyFrame =
                         static_cast<SwVirtFlyDrawObj*>(pTmpObj)->GetFlyFrame();
-                    rImp.DisposeAccessibleFrame( pTmpFlyFrame );
-                    rImp.AddAccessibleFrame( pTmpFlyFrame );
+                    m_rImp.DisposeAccessibleFrame( pTmpFlyFrame );
+                    m_rImp.AddAccessibleFrame( pTmpFlyFrame );
                 }
                 else
                 {
-                    rImp.DisposeAccessibleObj(pTmpObj, true);
-                    rImp.AddAccessibleObj( pTmpObj );
+                    m_rImp.DisposeAccessibleObj(pTmpObj, true);
+                    m_rImp.AddAccessibleObj( pTmpObj );
                 }
             }
             else
@@ -628,7 +631,7 @@ void SwDrawView::ObjOrderChanged( SdrObject* pObj, sal_uLong nOldPos,
                 // adjust loop counter
                 if ( bMovedForward )
                     ++i;
-                else if ( !bMovedForward && i > 0 )
+                else if (i > 0)
                     --i;
             }
 
@@ -638,8 +641,8 @@ void SwDrawView::ObjOrderChanged( SdrObject* pObj, sal_uLong nOldPos,
     else
     {
         // adjustments for accessibility API
-        rImp.DisposeAccessibleObj(pObj, true);
-        rImp.AddAccessibleObj( pObj );
+        m_rImp.DisposeAccessibleObj(pObj, true);
+        m_rImp.AddAccessibleObj( pObj );
     }
 
     MoveRepeatedObjs( *pMovedAnchoredObj, aMovedChildObjs );
@@ -679,7 +682,7 @@ const SwFrame* SwDrawView::CalcAnchor()
     if ( bFly )
     {
         pAnch = static_cast<SwVirtFlyDrawObj*>(pObj)->GetFlyFrame()->GetAnchorFrame();
-        aMyRect = static_cast<SwVirtFlyDrawObj*>(pObj)->GetFlyFrame()->Frame().SVRect();
+        aMyRect = static_cast<SwVirtFlyDrawObj*>(pObj)->GetFlyFrame()->getFrameArea().SVRect();
     }
     else
     {
@@ -736,7 +739,7 @@ const SwFrame* SwDrawView::CalcAnchor()
         }
     }
     if( pAnch && !pAnch->IsProtected() )
-        aAnchorPoint = pAnch->GetFrameAnchorPos( ::HasWrap( pObj ) );
+        m_aAnchorPoint = pAnch->GetFrameAnchorPos( ::HasWrap( pObj ) );
     else
         pAnch = nullptr;
     return pAnch;
@@ -751,7 +754,7 @@ void SwDrawView::ShowDragAnchor()
     if(pHdl)
     {
         CalcAnchor();
-        pHdl->SetPos(aAnchorPoint);
+        pHdl->SetPos(m_aAnchorPoint);
     }
 }
 
@@ -765,9 +768,9 @@ void SwDrawView::MarkListHasChanged()
 void SwDrawView::ModelHasChanged()
 {
     // The ModelHasChanged() call in DrawingLayer also updates
-    // a eventually active text edit view (OutlinerView). This also leads
+    // an eventually active text edit view (OutlinerView). This also leads
     // to newly setting the background color for that edit view. Thus,
-    // this method rescues the current background color if a OutlinerView
+    // this method rescues the current background color if an OutlinerView
     // exists and re-establishes it then. To be more safe, the OutlinerView
     // will be fetched again (maybe textedit has ended).
     OutlinerView* pView = GetTextEditOutlinerView();
@@ -796,8 +799,8 @@ void SwDrawView::ModelHasChanged()
 
 void SwDrawView::MakeVisible( const tools::Rectangle &rRect, vcl::Window & )
 {
-    OSL_ENSURE( rImp.GetShell()->GetWin(), "MakeVisible, unknown Window");
-    rImp.GetShell()->MakeVisible( SwRect( rRect ) );
+    OSL_ENSURE( m_rImp.GetShell()->GetWin(), "MakeVisible, unknown Window");
+    m_rImp.GetShell()->MakeVisible( SwRect( rRect ) );
 }
 
 void SwDrawView::CheckPossibilities()
@@ -814,22 +817,28 @@ void SwDrawView::CheckPossibilities()
     const SdrMarkList &rMrkList = GetMarkedObjectList();
     bool bProtect = false;
     bool bSzProtect = false;
+    bool bRotate(false);
+
     for ( size_t i = 0; !bProtect && i < rMrkList.GetMarkCount(); ++i )
     {
         const SdrObject *pObj = rMrkList.GetMark( i )->GetMarkedSdrObj();
         const SwFrame *pFrame = nullptr;
-        if ( dynamic_cast< const SwVirtFlyDrawObj *>( pObj ) !=  nullptr )
+        if ( auto pVirtFlyDrawObj = dynamic_cast< const SwVirtFlyDrawObj *>( pObj ) )
         {
-            const SwFlyFrame *pFly = static_cast<const SwVirtFlyDrawObj*>(pObj)->GetFlyFrame();
+            const SwFlyFrame *pFly = pVirtFlyDrawObj->GetFlyFrame();
             if ( pFly  )
             {
                 pFrame = pFly->GetAnchorFrame();
                 if ( pFly->Lower() && pFly->Lower()->IsNoTextFrame() )
                 {
-                    SwOLENode *pNd = const_cast<SwContentFrame*>(static_cast<const SwContentFrame*>(pFly->Lower()))->GetNode()->GetOLENode();
-                    if ( pNd )
+                    const SwNoTextFrame *const pNTF(static_cast<const SwNoTextFrame*>(pFly->Lower()));
+                    const SwOLENode *const pOLENd = pNTF->GetNode()->GetOLENode();
+                    const SwGrfNode *const pGrfNd = pNTF->GetNode()->GetGrfNode();
+
+                    if ( pOLENd )
                     {
-                        uno::Reference < embed::XEmbeddedObject > xObj = pNd->GetOLEObj().GetOleRef();
+                        const uno::Reference < embed::XEmbeddedObject > xObj = const_cast< SwOLEObj& >(pOLENd->GetOLEObj()).GetOleRef();
+
                         if ( xObj.is() )
                         {
                             // --> improvement for the future, when more
@@ -844,8 +853,15 @@ void SwDrawView::CheckPossibilities()
                                     && RndStdIds::FLY_AS_CHAR == pFly->GetFormat()->GetAnchor().GetAnchorId()
                                     && pDoc->GetDocumentSettingManager().get( DocumentSettingId::MATH_BASELINE_ALIGNMENT );
                             if (bProtectMathPos)
-                                bMoveProtect = true;
+                                m_bMoveProtect = true;
                         }
+                    }
+                    else if(pGrfNd)
+                    {
+                        // RotGrfFlyFrame: GraphicNode allows rotation(s). The loop ew are in stops
+                        // as soon as bMoveProtect is set, but since rotation is valid only with
+                        // a single object selected this makes no difference
+                        bRotate = true;
                     }
                 }
             }
@@ -872,8 +888,12 @@ void SwDrawView::CheckPossibilities()
             }
         }
     }
-    bMoveProtect    |= bProtect;
-    bResizeProtect  |= bProtect || bSzProtect;
+    m_bMoveProtect    |= bProtect;
+    m_bResizeProtect  |= bProtect || bSzProtect;
+
+    // RotGrfFlyFrame: allow rotation when SwGrfNode is selected and not size protected
+    m_bRotateFreeAllowed |= bRotate && !bProtect;
+    m_bRotate90Allowed |= m_bRotateFreeAllowed;
 }
 
 /// replace marked <SwDrawVirtObj>-objects by its reference object for delete marked objects.
@@ -882,45 +902,45 @@ void SwDrawView::ReplaceMarkedDrawVirtObjs( SdrMarkView& _rMarkView )
     SdrPageView* pDrawPageView = _rMarkView.GetSdrPageView();
     const SdrMarkList& rMarkList = _rMarkView.GetMarkedObjectList();
 
-    if( rMarkList.GetMarkCount() )
-    {
-        // collect marked objects in a local data structure
-        std::vector<SdrObject*> aMarkedObjs;
-        for( size_t i = 0; i < rMarkList.GetMarkCount(); ++i )
-        {
-            SdrObject* pMarkedObj = rMarkList.GetMark( i )->GetMarkedSdrObj();
-            aMarkedObjs.push_back( pMarkedObj );
-        }
-        // unmark all objects
-        _rMarkView.UnmarkAllObj();
-        // re-mark objects, but for marked <SwDrawVirtObj>-objects marked its
-        // reference object.
-        while ( !aMarkedObjs.empty() )
-        {
-            SdrObject* pMarkObj = aMarkedObjs.back();
-            if ( dynamic_cast< const SwDrawVirtObj *>( pMarkObj ) !=  nullptr )
-            {
-                SdrObject* pRefObj = &(static_cast<SwDrawVirtObj*>(pMarkObj)->ReferencedObj());
-                if ( !_rMarkView.IsObjMarked( pRefObj )  )
-                {
-                    _rMarkView.MarkObj( pRefObj, pDrawPageView );
-                }
-            }
-            else
-            {
-                _rMarkView.MarkObj( pMarkObj, pDrawPageView );
-            }
+    if( !rMarkList.GetMarkCount() )
+        return;
 
-            aMarkedObjs.pop_back();
-        }
-        // sort marked list in order to assure consistent state in drawing layer
-        _rMarkView.SortMarkedObjects();
+    // collect marked objects in a local data structure
+    std::vector<SdrObject*> aMarkedObjs;
+    for( size_t i = 0; i < rMarkList.GetMarkCount(); ++i )
+    {
+        SdrObject* pMarkedObj = rMarkList.GetMark( i )->GetMarkedSdrObj();
+        aMarkedObjs.push_back( pMarkedObj );
     }
+    // unmark all objects
+    _rMarkView.UnmarkAllObj();
+    // re-mark objects, but for marked <SwDrawVirtObj>-objects marked its
+    // reference object.
+    while ( !aMarkedObjs.empty() )
+    {
+        SdrObject* pMarkObj = aMarkedObjs.back();
+        if ( dynamic_cast< const SwDrawVirtObj *>( pMarkObj ) !=  nullptr )
+        {
+            SdrObject* pRefObj = &(static_cast<SwDrawVirtObj*>(pMarkObj)->ReferencedObj());
+            if ( !_rMarkView.IsObjMarked( pRefObj )  )
+            {
+                _rMarkView.MarkObj( pRefObj, pDrawPageView );
+            }
+        }
+        else
+        {
+            _rMarkView.MarkObj( pMarkObj, pDrawPageView );
+        }
+
+        aMarkedObjs.pop_back();
+    }
+    // sort marked list in order to assure consistent state in drawing layer
+    _rMarkView.SortMarkedObjects();
 }
 
 SfxViewShell* SwDrawView::GetSfxViewShell() const
 {
-    return rImp.GetShell()->GetSfxViewShell();
+    return m_rImp.GetShell()->GetSfxViewShell();
 }
 
 void SwDrawView::DeleteMarked()
@@ -931,16 +951,9 @@ void SwDrawView::DeleteMarked()
         pTmpRoot->StartAllAction();
     pDoc->GetIDocumentUndoRedo().StartUndo(SwUndoId::EMPTY, nullptr);
     // replace marked <SwDrawVirtObj>-objects by its reference objects.
+    if (SdrPageView* pDrawPageView = m_rImp.GetPageView())
     {
-        SdrPageView* pDrawPageView = rImp.GetPageView();
-        if ( pDrawPageView )
-        {
-            SdrMarkView* pMarkView = &(pDrawPageView->GetView());
-            if ( pMarkView )
-            {
-                ReplaceMarkedDrawVirtObjs( *pMarkView );
-            }
-        }
+        ReplaceMarkedDrawVirtObjs(pDrawPageView->GetView());
     }
 
     // Check what textboxes have to be deleted afterwards.
@@ -949,8 +962,8 @@ void SwDrawView::DeleteMarked()
     for (size_t i = 0; i < rMarkList.GetMarkCount(); ++i)
     {
         SdrObject *pObject = rMarkList.GetMark(i)->GetMarkedSdrObj();
-        SwDrawContact* pDrawContact = static_cast<SwDrawContact*>(GetUserCall(pObject));
-        SwFrameFormat* pFormat = pDrawContact->GetFormat();
+        SwContact* pContact = GetUserCall(pObject);
+        SwFrameFormat* pFormat = pContact->GetFormat();
         if (SwFrameFormat* pTextBox = SwTextBoxHelper::getOtherTextBoxFormat(pFormat, RES_DRAWFRMFMT))
             aTextBoxesToDelete.push_back(pTextBox);
     }
@@ -961,8 +974,12 @@ void SwDrawView::DeleteMarked()
         ::FrameNotify( Imp().GetShell(), FLY_DRAG_END );
 
         // Only delete these now: earlier deletion would clear the mark list as well.
-        for (std::vector<SwFrameFormat*>::iterator i = aTextBoxesToDelete.begin(); i != aTextBoxesToDelete.end(); ++i)
-            pDoc->getIDocumentLayoutAccess().DelLayoutFormat(*i);
+        // Delete in reverse order, assuming that the container is sorted by anchor positions.
+        for (int i = aTextBoxesToDelete.size() - 1; i >= 0; --i)
+        {
+            SwFrameFormat*& rpTextBox = aTextBoxesToDelete[i];
+            pDoc->getIDocumentLayoutAccess().DelLayoutFormat(rpTextBox);
+        }
     }
     pDoc->GetIDocumentUndoRedo().EndUndo(SwUndoId::EMPTY, nullptr);
     if( pTmpRoot )

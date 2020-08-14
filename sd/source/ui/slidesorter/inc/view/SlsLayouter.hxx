@@ -20,19 +20,17 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSLAYOUTER_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSLAYOUTER_HXX
 
-#include "SlideSorter.hxx"
-#include "view/SlsPageObjectLayouter.hxx"
-#include "view/SlsTheme.hxx"
+#include <vcl/vclptr.hxx>
+#include <tools/gen.hxx>
 #include <sal/types.h>
-#include <tools/fract.hxx>
-#include <vcl/mapmod.hxx>
 #include <memory>
-#include <vector>
-#include <utility>
 
-class Size;
+namespace sd { class Window; }
+namespace sd::slidesorter::model { class SlideSorterModel; }
+namespace sd::slidesorter::view { class PageObjectLayouter; }
+namespace sd::slidesorter::view { class Theme; }
 
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::view {
 
 class InsertPosition;
 
@@ -45,7 +43,7 @@ class InsertPosition;
     5.) Borders around every page object.
     6.) Vertical and horizontal borders between enclosing page and outer
         page objects.
-    From these it calculates various output values:
+    From these, it calculates various output values:
     1.) The width of page objects.
     2.) The number of columns.
     3.) The size of the enclosing page.
@@ -69,7 +67,7 @@ public:
         const std::shared_ptr<Theme>& rpTheme);
     ~Layouter();
 
-    std::shared_ptr<PageObjectLayouter> GetPageObjectLayouter() const;
+    std::shared_ptr<PageObjectLayouter> const & GetPageObjectLayouter() const;
     /** Set the interval of valid column counts.  When nMinimalColumnCount
         <= nMaximalColumnCount is not fulfilled then the call is ignored.
         @param nMinimalColumnCount
@@ -112,7 +110,7 @@ public:
 
     sal_Int32 GetIndex (const sal_Int32 nRow, const sal_Int32 nColumn) const;
 
-    Size GetPageObjectSize() const;
+    Size const & GetPageObjectSize() const;
 
     /** Return the bounding box in window coordinates of the nIndex-th page
         object.
@@ -179,7 +177,7 @@ public:
     InsertPosition GetInsertPosition (
         const Point& rModelPosition,
         const Size& rIndicatorSize,
-        model::SlideSorterModel& rModel) const;
+        model::SlideSorterModel const & rModel) const;
 
     Range GetValidHorizontalSizeRange() const;
     Range GetValidVerticalSizeRange() const;
@@ -198,7 +196,6 @@ class InsertPosition
 {
 public:
     InsertPosition();
-    InsertPosition& operator= (const InsertPosition& rInsertPosition);
     bool operator== (const InsertPosition& rInsertPosition) const;
     bool operator!= (const InsertPosition& rInsertPosition) const;
 
@@ -236,7 +233,7 @@ private:
     Point maTrailingOffset;
 };
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 #endif
 

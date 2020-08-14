@@ -20,18 +20,21 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_CONFIGURATIONUPDATER_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_CONFIGURATIONUPDATER_HXX
 
-#include "ConfigurationControllerResourceManager.hxx"
-#include <com/sun/star/drawing/framework/XResourceId.hpp>
-#include <com/sun/star/drawing/framework/XConfiguration.hpp>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 #include <vcl/timer.hxx>
 #include <memory>
 #include <vector>
 
-namespace sd { namespace framework {
+namespace com::sun::star::drawing::framework { class XConfiguration; }
+namespace com::sun::star::drawing::framework { class XControllerManager; }
+namespace com::sun::star::drawing::framework { class XResourceId; }
+
+namespace sd::framework {
 
 class ConfigurationClassifier;
 class ConfigurationUpdaterLock;
+class ConfigurationControllerResourceManager;
+class ConfigurationControllerBroadcaster;
 
 /** This is a helper class for the ConfigurationController.  It handles the
     update of the current configuration so that it looks like a requested
@@ -99,7 +102,7 @@ private:
         css::drawing::framework::XConfiguration> mxRequestedConfiguration;
 
     /** This flag is set to </sal_True> when an update of the current
-        configurtion was requested (because the last request in the queue
+        configuration was requested (because the last request in the queue
         was processed) but could not be executed because the
         ConfigurationController was locked.  A call to UpdateConfiguration()
         resets the flag to </sal_False>.
@@ -178,7 +181,7 @@ private:
         executed, the lock count, and whether the configuration controller
         is still valid.
     */
-    bool IsUpdatePossible();
+    bool IsUpdatePossible() const;
 
     /** Lock updates of the current configuration.  For intermediate requests
         for updates mbUpdatePending is set to <TRUE/>.
@@ -193,7 +196,7 @@ private:
     DECL_LINK(TimeoutHandler, Timer *, void);
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "osl/file.h"
+#include <osl/file.h>
 
 #include "system.hxx"
 #include <sys/types.h>
@@ -27,6 +27,7 @@
 #include <unistd.h>
 
 #include <osl/diagnose.h>
+#include <osl/thread.h>
 
 #include "file_impl.hxx"
 #include "file_error_transl.hxx"
@@ -36,7 +37,7 @@
 
 namespace
 {
-    inline void set_file_type(const struct stat& file_stat, oslFileStatus* pStat)
+    void set_file_type(const struct stat& file_stat, oslFileStatus* pStat)
     {
         /* links to directories state also to be a directory */
        if (S_ISLNK(file_stat.st_mode))
@@ -57,7 +58,7 @@ namespace
        pStat->uValidFields |= osl_FileStatus_Mask_Type;
     }
 
-    inline void set_file_access_mask(const struct stat& file_stat, oslFileStatus* pStat)
+    void set_file_access_mask(const struct stat& file_stat, oslFileStatus* pStat)
     {
         // user permissions
         if (S_IRUSR & file_stat.st_mode)
@@ -99,18 +100,18 @@ namespace
        required on network file systems not using unix semantics (AFS, see
        fdo#43095).
     */
-    inline void set_file_access_rights(const rtl::OUString& file_path, oslFileStatus* pStat)
+    void set_file_access_rights(const OString& file_path, oslFileStatus* pStat)
     {
         pStat->uValidFields |= osl_FileStatus_Mask_Attributes;
 
-        if (access_u(file_path.pData, W_OK) < 0)
+        if (osl::access(file_path, W_OK) < 0)
             pStat->uAttributes |= osl_File_Attribute_ReadOnly;
 
-        if (access_u(file_path.pData, X_OK) == 0)
+        if (osl::access(file_path, X_OK) == 0)
             pStat->uAttributes |= osl_File_Attribute_Executable;
     }
 
-    inline void set_file_hidden_status(const rtl::OUString& file_path, oslFileStatus* pStat)
+    void set_file_hidden_status(const OString& file_path, oslFileStatus* pStat)
     {
         pStat->uAttributes   = osl::systemPathIsHiddenFileOrDirectoryEntry(file_path) ? osl_File_Attribute_Hidden : 0;
         pStat->uValidFields |= osl_FileStatus_Mask_Attributes;
@@ -118,8 +119,8 @@ namespace
 
     /* the set_file_access_rights must be called after set_file_hidden_status(...) and
        set_file_access_mask(...) because of the hack in set_file_access_rights(...) */
-    inline void set_file_attributes(
-        const rtl::OUString& file_path, const struct stat& file_stat, const sal_uInt32 uFieldMask, oslFileStatus* pStat)
+    void set_file_attributes(
+        const OString& file_path, const struct stat& file_stat, const sal_uInt32 uFieldMask, oslFileStatus* pStat)
     {
         set_file_hidden_status(file_path, pStat);
         set_file_access_mask(file_stat, pStat);
@@ -130,32 +131,32 @@ namespace
             set_file_access_rights(file_path, pStat);
     }
 
-    inline void set_file_access_time(const struct stat& file_stat, oslFileStatus* pStat)
+    void set_file_access_time(const struct stat& file_stat, oslFileStatus* pStat)
     {
         pStat->aAccessTime.Seconds  = file_stat.st_atime;
         pStat->aAccessTime.Nanosec  = 0;
-           pStat->uValidFields        |= osl_FileStatus_Mask_AccessTime;
+        pStat->uValidFields        |= osl_FileStatus_Mask_AccessTime;
     }
 
-    inline void set_file_modify_time(const struct stat& file_stat, oslFileStatus* pStat)
+    void set_file_modify_time(const struct stat& file_stat, oslFileStatus* pStat)
     {
         pStat->aModifyTime.Seconds  = file_stat.st_mtime;
         pStat->aModifyTime.Nanosec  = 0;
         pStat->uValidFields        |= osl_FileStatus_Mask_ModifyTime;
     }
 
-    inline void set_file_size(const struct stat& file_stat, oslFileStatus* pStat)
+    void set_file_size(const struct stat& file_stat, oslFileStatus* pStat)
     {
         if (S_ISREG(file_stat.st_mode))
            {
-            pStat->uFileSize     = file_stat.st_size;
+               pStat->uFileSize     = file_stat.st_size;
                pStat->uValidFields |= osl_FileStatus_Mask_FileSize;
            }
     }
 
     /* we only need to call stat or lstat if one of the
        following flags is set */
-    inline bool is_stat_call_necessary(sal_uInt32 field_mask, oslFileType file_type)
+    bool is_stat_call_necessary(sal_uInt32 field_mask, oslFileType file_type)
     {
         return (
                 ((field_mask & osl_FileStatus_Mask_Type) && (file_type == osl_File_Type_Unknown)) ||
@@ -168,27 +169,29 @@ namespace
                 (field_mask & osl_FileStatus_Mask_Validate));
     }
 
-    inline oslFileError set_link_target_url(const rtl::OUString& file_path, oslFileStatus* pStat)
+    oslFileError set_link_target_url(const OString& file_path, oslFileStatus* pStat)
     {
-        rtl::OUString link_target;
+        OString link_target;
         if (!osl::realpath(file_path, link_target))
-            return oslTranslateFileError(OSL_FET_ERROR, errno);
+            return oslTranslateFileError(errno);
 
-        oslFileError osl_error = osl_getFileURLFromSystemPath(link_target.pData, &pStat->ustrLinkTargetURL);
+        OUString url;
+        oslFileError osl_error = osl::detail::convertPathnameToUrl(link_target, &url);
         if (osl_error != osl_File_E_None)
             return osl_error;
+        rtl_uString_assign(&pStat->ustrLinkTargetURL, url.pData);
 
         pStat->uValidFields |= osl_FileStatus_Mask_LinkTargetURL;
         return osl_File_E_None;
     }
 
-    inline oslFileError setup_osl_getFileStatus(
-        DirectoryItem_Impl * pImpl, oslFileStatus* pStat, rtl::OUString& file_path)
+    oslFileError setup_osl_getFileStatus(
+        DirectoryItem_Impl * pImpl, oslFileStatus* pStat, OString& file_path)
     {
         if ((pImpl == nullptr) || (pStat == nullptr))
             return osl_File_E_INVAL;
 
-        file_path = rtl::OUString(pImpl->m_ustrFilePath);
+        file_path = OString(pImpl->m_strFilePath);
         OSL_ASSERT(!file_path.isEmpty());
         if (file_path.isEmpty())
             return osl_File_E_INVAL;
@@ -203,7 +206,7 @@ oslFileError SAL_CALL osl_getFileStatus(oslDirectoryItem Item, oslFileStatus* pS
 {
     DirectoryItem_Impl * pImpl = static_cast< DirectoryItem_Impl* >(Item);
 
-    rtl::OUString file_path;
+    OString file_path;
     oslFileError  osl_error = setup_osl_getFileStatus(pImpl, pStat, file_path);
     if (osl_error != osl_File_E_None)
         return osl_error;
@@ -212,7 +215,7 @@ oslFileError SAL_CALL osl_getFileStatus(oslDirectoryItem Item, oslFileStatus* pS
 
     bool bStatNeeded = is_stat_call_necessary(uFieldMask, pImpl->getFileType());
     if (bStatNeeded && (osl::lstat(file_path, file_stat) != 0))
-        return oslTranslateFileError(OSL_FET_ERROR, errno);
+        return oslTranslateFileError(errno);
 
     if (bStatNeeded)
     {
@@ -241,26 +244,34 @@ oslFileError SAL_CALL osl_getFileStatus(oslDirectoryItem Item, oslFileStatus* pS
 
     if (uFieldMask & osl_FileStatus_Mask_FileURL)
     {
-        if ((osl_error = osl_getFileURLFromSystemPath(file_path.pData, &pStat->ustrFileURL)) != osl_File_E_None)
+        OUString url;
+        if ((osl_error = osl::detail::convertPathnameToUrl(file_path, &url)) != osl_File_E_None)
             return osl_error;
+        rtl_uString_assign(&pStat->ustrFileURL, url.pData);
 
         pStat->uValidFields |= osl_FileStatus_Mask_FileURL;
     }
 
     if (uFieldMask & osl_FileStatus_Mask_FileName)
     {
-        osl_systemPathGetFileNameOrLastDirectoryPart(file_path.pData, &pStat->ustrFileName);
+        OString name;
+        osl_systemPathGetFileNameOrLastDirectoryPart(file_path.pData, &name.pData);
+        bool ok = rtl_convertStringToUString(
+            &pStat->ustrFileName, name.getStr(), name.getLength(), osl_getThreadTextEncoding(),
+            (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_DEFAULT | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_DEFAULT
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT));
+        assert(ok); (void)ok;
         pStat->uValidFields |= osl_FileStatus_Mask_FileName;
        }
     return osl_File_E_None;
 }
 
-static oslFileError osl_psz_setFileAttributes( const sal_Char* pszFilePath, sal_uInt64 uAttributes )
+static oslFileError osl_psz_setFileAttributes( const char* pszFilePath, sal_uInt64 uAttributes )
 {
     oslFileError osl_error = osl_File_E_None;
     mode_t       nNewMode  = 0;
 
-     OSL_ENSURE(!(osl_File_Attribute_Hidden & uAttributes), "osl_File_Attribute_Hidden doesn't work under Unix");
+    OSL_ENSURE(!(osl_File_Attribute_Hidden & uAttributes), "osl_File_Attribute_Hidden doesn't work under Unix");
 
     if (uAttributes & osl_File_Attribute_OwnRead)
         nNewMode |= S_IRUSR;
@@ -290,7 +301,7 @@ static oslFileError osl_psz_setFileAttributes( const sal_Char* pszFilePath, sal_
         nNewMode|=S_IXOTH;
 
     if (chmod(pszFilePath, nNewMode) < 0)
-        osl_error = oslTranslateFileError(OSL_FET_ERROR, errno);
+        osl_error = oslTranslateFileError(errno);
 
     return osl_error;
 }
@@ -309,14 +320,14 @@ oslFileError SAL_CALL osl_setFileAttributes( rtl_uString* ustrFileURL, sal_uInt6
 
 #ifdef MACOSX
     if ( macxp_resolveAlias( path, PATH_MAX ) != 0 )
-      return oslTranslateFileError( OSL_FET_ERROR, errno );
+      return oslTranslateFileError( errno );
 #endif/* MACOSX */
 
     return osl_psz_setFileAttributes( path, uAttributes );
 }
 
 static oslFileError osl_psz_setFileTime (
-    const sal_Char* pszFilePath,
+    const char* pszFilePath,
     const TimeValue* pLastAccessTime,
     const TimeValue* pLastWriteTime )
 {
@@ -332,7 +343,7 @@ static oslFileError osl_psz_setFileTime (
     if ( nRet < 0 )
     {
         nRet=errno;
-        return oslTranslateFileError(OSL_FET_ERROR, nRet);
+        return oslTranslateFileError(nRet);
     }
 
 #ifdef DEBUG_OSL_FILE
@@ -389,7 +400,7 @@ static oslFileError osl_psz_setFileTime (
     if ( nRet < 0 )
     {
         nRet=errno;
-        return oslTranslateFileError(OSL_FET_ERROR, nRet);
+        return oslTranslateFileError(nRet);
     }
 
     return osl_File_E_None;
@@ -413,7 +424,7 @@ oslFileError SAL_CALL osl_setFileTime (
 
 #ifdef MACOSX
     if ( macxp_resolveAlias( path, PATH_MAX ) != 0 )
-      return oslTranslateFileError( OSL_FET_ERROR, errno );
+      return oslTranslateFileError( errno );
 #endif/* MACOSX */
 
     return osl_psz_setFileTime( path, pLastAccessTime, pLastWriteTime );
@@ -427,13 +438,13 @@ SAL_CALL osl_identicalDirectoryItem( oslDirectoryItem a, oslDirectoryItem b)
     if (a == b)
         return true;
     /* same name => same item, unless renaming / moving madness has occurred */
-    if (pA->m_ustrFilePath == pB->m_ustrFilePath)
+    if (pA->m_strFilePath == pB->m_strFilePath)
         return true;
 
     struct stat a_stat, b_stat;
 
-    if (osl::lstat(rtl::OUString(pA->m_ustrFilePath), a_stat) != 0 ||
-        osl::lstat(rtl::OUString(pB->m_ustrFilePath), b_stat) != 0)
+    if (osl::lstat(OString(pA->m_strFilePath), a_stat) != 0 ||
+        osl::lstat(OString(pB->m_strFilePath), b_stat) != 0)
         return false;
 
     return (a_stat.st_ino == b_stat.st_ino);

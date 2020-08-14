@@ -19,16 +19,13 @@
 #ifndef INCLUDED_SW_INC_ANCHOREDDRAWOBJECT_HXX
 #define INCLUDED_SW_INC_ANCHOREDDRAWOBJECT_HXX
 
-#include <memory>
-#include <anchoredobject.hxx>
+#include "anchoredobject.hxx"
+#include <optional>
 
 namespace tools { class Rectangle; }
 
-/** class for the positioning of drawing objects
-
-    @author OD
-*/
-class SW_DLLPUBLIC SwAnchoredDrawObject : public SwAnchoredObject
+/** class for the positioning of drawing objects */
+class SwAnchoredDrawObject final : public SwAnchoredObject
 {
     private:
         // boolean, indicating that the object position has been invalidated
@@ -36,10 +33,10 @@ class SW_DLLPUBLIC SwAnchoredDrawObject : public SwAnchoredObject
         bool mbValidPos;
 
         // rectangle, keeping the last object rectangle after the positioning
-        std::unique_ptr<tools::Rectangle> mpLastObjRect;
+        std::optional<tools::Rectangle> maLastObjRect;
 
         // boolean, indicating that anchored drawing object hasn't been attached
-        // to a anchor frame yet. Once, it is attached to a anchor frame the
+        // to an anchor frame yet. Once, it is attached to an anchor frame the
         // boolean changes its state.
         bool mbNotYetAttachedToAnchorFrame;
 
@@ -54,22 +51,16 @@ class SW_DLLPUBLIC SwAnchoredDrawObject : public SwAnchoredObject
         // Needed for compatibility option <DoNotCaptureDrawObjsOnPage>
         bool mbCaptureAfterLayoutDirChange;
 
-        /** method for the intrinsic positioning of a at-paragraph|at-character
+        /** method for the intrinsic positioning of an at-paragraph|at-character
             anchored drawing object
 
-            helper method for method <MakeObjPos>
-
-            @author OD
-        */
+            helper method for method <MakeObjPos> */
         void MakeObjPosAnchoredAtPara();
 
-        /** method for the intrinsic positioning of a at-page|at-frame anchored
+        /** method for the intrinsic positioning of an at-page|at-frame anchored
             drawing object
 
-            helper method for method <MakeObjPos>
-
-            @author OD
-        */
+            helper method for method <MakeObjPos> */
         void MakeObjPosAnchoredAtLayout();
 
             /** method to set positioning attributes (not for as-character anchored)
@@ -78,10 +69,7 @@ class SW_DLLPUBLIC SwAnchoredDrawObject : public SwAnchoredObject
             Thus, the positioning attributes are set by the current object geometry.
             This method is also used for the conversion for drawing objects
             (not anchored as-character) imported from OpenOffice.org file format
-            once and directly before the first positioning.
-
-            @author OD
-        */
+            once and directly before the first positioning. */
         void SetPositioningAttr();
 
         /** method to set internal anchor position of <SdrObject> instance
@@ -94,32 +82,23 @@ class SW_DLLPUBLIC SwAnchoredDrawObject : public SwAnchoredObject
             #i31698# - API for drawing objects in Writer has
             been adjusted. Thus, this method will only set the internal anchor
             position of the <SdrObject> instance to the anchor position given
-            by its anchor frame.
-
-            @author OD
-        */
+            by its anchor frame.  */
         void SetDrawObjAnchor();
 
-        /** method to invalidate the given page frame
-
-            @author OD
-        */
+        /** method to invalidate the given page frame */
         void InvalidatePage_( SwPageFrame* _pPageFrame );
 
-    protected:
         virtual void ObjectAttachedToAnchorFrame() override;
 
         /** method to assure that anchored object is registered at the correct
             page frame
-
-            @author OD
         */
         virtual void RegisterAtCorrectPage() override;
 
         virtual bool SetObjTop_( const SwTwips _nTop) override;
         virtual bool SetObjLeft_( const SwTwips _nLeft) override;
 
-        virtual const SwRect GetObjBoundRect() const override;
+        virtual SwRect GetObjBoundRect() const override;
 
     public:
 
@@ -139,10 +118,9 @@ class SW_DLLPUBLIC SwAnchoredDrawObject : public SwAnchoredObject
         virtual const SwFrameFormat& GetFrameFormat() const override;
 
         // accessors to the object area and its position
-        virtual const SwRect GetObjRect() const override;
-        // Return value can be NULL.
-        const tools::Rectangle* GetLastObjRect() const { return mpLastObjRect.get();}
+        virtual SwRect GetObjRect() const override;
 
+        std::optional<tools::Rectangle> const & GetLastObjRect() const { return maLastObjRect;}
         void SetLastObjRect( const tools::Rectangle& _rNewObjRect );
 
         /** adjust positioning and alignment attributes for new anchor frame
@@ -152,8 +130,6 @@ class SW_DLLPUBLIC SwAnchoredDrawObject : public SwAnchoredObject
             new anchor frame and the current absolute drawing object position.
             Note: For correct Undo/Redo method should only be called inside a
             Undo-/Redo-action.
-
-            @author OD
 
             @param <_pNewAnchorFrame>
             input parameter - new anchor frame for the anchored object.
@@ -165,10 +141,7 @@ class SW_DLLPUBLIC SwAnchoredDrawObject : public SwAnchoredObject
         void AdjustPositioningAttr( const SwFrame* _pNewAnchorFrame,
                                     const SwRect* _pNewObjRect = nullptr );
 
-        /** method to notify background of drawing object
-
-            @author OD
-        */
+        /** method to notify background of drawing object */
         virtual void NotifyBackground( SwPageFrame* _pPageFrame,
                                        const SwRect& _rRect,
                                        PrepareHint _eHint ) override;
@@ -186,8 +159,7 @@ class SW_DLLPUBLIC SwAnchoredDrawObject : public SwAnchoredObject
         // new Loop control
         void ValidateThis() { mbValidPos = true; }
 
-        /** The element name to show in the XML dump.
-          */
+        /** The element name to show in the XML dump.  */
         virtual const char* getElementName( ) const override { return "SwAnchoredDrawObject"; }
 };
 

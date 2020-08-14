@@ -17,12 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "unx/geninst.h"
-#include "unx/genpspgraphics.h"
-#include "outdev.h"
-#include "PhysicalFontCollection.hxx"
+#include <unx/geninst.h>
+#include <outdev.h>
+#include <unx/fontmanager.hxx>
+#include <PhysicalFontCollection.hxx>
 
 // platform specific font substitution hooks
+
+namespace {
 
 class FcPreMatchSubstitution
 :   public ImplPreMatchFontSubstitution
@@ -40,8 +42,10 @@ class FcGlyphFallbackSubstitution
 {
     // TODO: add a cache
 public:
-    bool FindFontSubstitute( FontSelectPattern&, OUString& rMissingCodes ) const override;
+    bool FindFontSubstitute(FontSelectPattern&, LogicalFontInstance* pLogicalFont, OUString& rMissingCodes) const override;
 };
+
+}
 
 void SalGenericInstance::RegisterFontSubstitutors( PhysicalFontCollection* pFontCollection )
 {
@@ -54,7 +58,7 @@ void SalGenericInstance::RegisterFontSubstitutors( PhysicalFontCollection* pFont
     pFontCollection->SetFallbackHook( &aSubstFallback );
 }
 
-static FontSelectPattern GetFcSubstitute(const FontSelectPattern &rFontSelData, OUString& rMissingCodes )
+static FontSelectPattern GetFcSubstitute(const FontSelectPattern &rFontSelData, OUString& rMissingCodes)
 {
     FontSelectPattern aSubstituted(rFontSelData);
     psp::PrintFontManager& rMgr = psp::PrintFontManager::get();
@@ -90,7 +94,7 @@ namespace
     };
 }
 
-bool FcPreMatchSubstitution::FindFontSubstitute( FontSelectPattern &rFontSelData ) const
+bool FcPreMatchSubstitution::FindFontSubstitute(FontSelectPattern &rFontSelData) const
 {
     // We don't actually want to talk to Fontconfig at all for symbol fonts
     if( rFontSelData.IsSymbolFont() )
@@ -110,7 +114,7 @@ bool FcPreMatchSubstitution::FindFontSubstitute( FontSelectPattern &rFontSelData
     if (itr != rCachedFontMap.end())
     {
         // Cached substitution
-        rFontSelData.copyAttributes(itr->second);
+        rFontSelData = itr->second;
         if (itr != rCachedFontMap.begin())
         {
             // MRU, move it to the front
@@ -128,26 +132,35 @@ bool FcPreMatchSubstitution::FindFontSubstitute( FontSelectPattern &rFontSelData
     const bool bHaveSubstitute = !uselessmatch( rFontSelData, aOut );
 
 #ifdef DEBUG
-    const OString aOrigName(OUStringToOString(rFontSelData.maTargetName,
-        RTL_TEXTENCODING_UTF8));
-    const OString aSubstName(OUStringToOString(aOut.maSearchName,
-        RTL_TEXTENCODING_UTF8));
-    printf( "FcPreMatchSubstitution \"%s\" bipw=%d%d%d%d -> ",
-        aOrigName.getStr(), rFontSelData.GetWeight(), rFontSelData.GetItalic(),
-        rFontSelData.GetPitch(), rFontSelData.GetWidthType() );
+    std::ostringstream oss;
+    oss << "FcPreMatchSubstitution \""
+        << rFontSelData.maTargetName
+        << "\" bipw="
+        << rFontSelData.GetWeight()
+        << rFontSelData.GetItalic()
+        << rFontSelData.GetPitch()
+        << rFontSelData.GetWidthType()
+        << " -> ";
     if( !bHaveSubstitute )
-        printf( "no substitute available\n" );
+        oss << "no substitute available.";
     else
-        printf( "\"%s\" bipw=%d%d%d%d\n", aSubstName.getStr(),
-        aOut.GetWeight(), aOut.GetItalic(), aOut.GetPitch(), aOut.GetWidthType() );
+        oss << "\""
+            << aOut.maSearchName
+            << "\" bipw="
+            << aOut.GetWeight()
+            << aOut.GetItalic()
+            << aOut.GetPitch()
+            << aOut.GetWidthType();
+    SAL_INFO("vcl.fonts", oss.str());
 #endif
 
     if( bHaveSubstitute )
     {
         rCachedFontMap.push_front(value_type(rFontSelData, aOut));
-        //fairly arbitrary limit in this case, but I recall measuring max 8
-        //fonts as the typical max amount of fonts in medium sized documents
-        if (rCachedFontMap.size() > 8)
+        // Fairly arbitrary limit in this case, but I recall measuring max 8
+        // fonts as the typical max amount of fonts in medium sized documents, so make it
+        // a fair chunk larger to accommodate weird documents./
+        if (rCachedFontMap.size() > 256)
             rCachedFontMap.pop_back();
         rFontSelData = aOut;
     }
@@ -155,7 +168,8 @@ bool FcPreMatchSubstitution::FindFontSubstitute( FontSelectPattern &rFontSelData
     return bHaveSubstitute;
 }
 
-bool FcGlyphFallbackSubstitution::FindFontSubstitute( FontSelectPattern& rFontSelData,
+bool FcGlyphFallbackSubstitution::FindFontSubstitute(FontSelectPattern& rFontSelData,
+    LogicalFontInstance* /*pLogicalFont*/,
     OUString& rMissingCodes ) const
 {
     // We don't actually want to talk to Fontconfig at all for symbol fonts
@@ -176,18 +190,26 @@ bool FcGlyphFallbackSubstitution::FindFontSubstitute( FontSelectPattern& rFontSe
     const bool bHaveSubstitute = !uselessmatch( rFontSelData, aOut );
 
 #ifdef DEBUG
-    const OString aOrigName(OUStringToOString(rFontSelData.maTargetName,
-        RTL_TEXTENCODING_UTF8));
-    const OString aSubstName(OUStringToOString(aOut.maSearchName,
-        RTL_TEXTENCODING_UTF8));
-    printf( "FcGFSubstitution \"%s\" bipw=%d%d%d%d ->",
-        aOrigName.getStr(), rFontSelData.GetWeight(), rFontSelData.GetItalic(),
-        rFontSelData.GetPitch(), rFontSelData.GetWidthType() );
+    std::ostringstream oss;
+    oss << "FcGFSubstitution \""
+        << rFontSelData.maTargetName
+        << "\" bipw="
+        << rFontSelData.GetWeight()
+        << rFontSelData.GetItalic()
+        << rFontSelData.GetPitch()
+        << rFontSelData.GetWidthType()
+        << " -> ";
     if( !bHaveSubstitute )
-        printf( "no substitute available\n" );
+        oss << "no substitute available.";
     else
-        printf( "\"%s\" bipw=%d%d%d%d\n", aSubstName.getStr(),
-        aOut.GetWeight(), aOut.GetItalic(), aOut.GetPitch(), aOut.GetWidthType() );
+        oss << "\""
+            << aOut.maSearchName
+            << "\" bipw="
+            << aOut.GetWeight()
+            << aOut.GetItalic()
+            << aOut.GetPitch()
+            << aOut.GetWidthType();
+    SAL_INFO("vcl.fonts", oss.str());
 #endif
 
     if( bHaveSubstitute )

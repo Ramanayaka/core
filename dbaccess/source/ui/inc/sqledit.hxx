@@ -19,21 +19,18 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_INC_SQLEDIT_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_SQLEDIT_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <rtl/ref.hxx>
 #include <svtools/editsyntaxhighlighter.hxx>
-#include <svl/lstner.hxx>
 #include <svtools/colorcfg.hxx>
 
-namespace com { namespace sun { namespace star { namespace beans {
-    class XMultiPropertySet;
-} } } }
+namespace com::sun::star::beans { class XMultiPropertySet; }
 
 namespace dbaui
 {
     class OQueryTextView;
-    class OSqlEdit : public MultiLineEditSyntaxHighlight, public utl::ConfigurationListener
+    class OSqlEdit final : public MultiLineEditSyntaxHighlight, public utl::ConfigurationListener
     {
     private:
         class ChangesListener;
@@ -54,10 +51,8 @@ namespace dbaui
         DECL_LINK(OnUndoActionTimer, Timer*, void);
         DECL_LINK(OnInvalidateTimer, Timer*, void);
 
-    private:
         void            ImplSetFont();
 
-    protected:
         virtual void KeyInput( const KeyEvent& rKEvt ) override;
         virtual void GetFocus() override;
 
@@ -76,7 +71,7 @@ namespace dbaui
         // Cut, Copy, Paste by Accel. runs the action in the Edit but also the
         // corresponding slot in the View. Therefore, the action occurs twice.
        // To prevent this, SlotExec in View can call this function.
-        bool IsInAccelAct() { return m_bAccelAction; }
+        bool IsInAccelAct() const { return m_bAccelAction; }
 
         void stopTimer();
         void startTimer();

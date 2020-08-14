@@ -11,15 +11,33 @@
 #ifndef INCLUDED_XMLSECURITY_INC_PDFSIGNATUREHELPER_HXX
 #define INCLUDED_XMLSECURITY_INC_PDFSIGNATUREHELPER_HXX
 
-#include <xmlsecurity/xmlsecuritydllapi.h>
+#include "xmlsecuritydllapi.h"
 
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/security/DocumentSignatureInformation.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/xml/crypto/XSEInitializer.hpp>
-#include <com/sun/star/xml/crypto/XXMLSecurityContext.hpp>
+#include <svl/sigstruct.hxx>
 
-#include <sigstruct.hxx>
+namespace com::sun::star
+{
+namespace frame
+{
+class XModel;
+}
+namespace io
+{
+class XInputStream;
+}
+namespace security
+{
+class XCertificate;
+}
+namespace security
+{
+struct DocumentSignatureInformation;
+}
+namespace xml::crypto
+{
+class XSecurityEnvironment;
+}
+}
 
 /// Handles signatures of a PDF file.
 class XMLSECURITY_DLLPUBLIC PDFSignatureHelper
@@ -32,8 +50,10 @@ class XMLSECURITY_DLLPUBLIC PDFSignatureHelper
 public:
     PDFSignatureHelper();
     bool ReadAndVerifySignature(const css::uno::Reference<css::io::XInputStream>& xInputStream);
-    css::uno::Sequence<css::security::DocumentSignatureInformation> GetDocumentSignatureInformations(const css::uno::Reference<css::xml::crypto::XSecurityEnvironment>& xSecEnv) const;
-    SignatureInformations GetSignatureInformations() const;
+    css::uno::Sequence<css::security::DocumentSignatureInformation>
+    GetDocumentSignatureInformations(
+        const css::uno::Reference<css::xml::crypto::XSecurityEnvironment>& xSecEnv) const;
+    SignatureInformations const& GetSignatureInformations() const;
 
     /// Return the ID of the next created signature.
     sal_Int32 GetNewSecurityId() const;
@@ -42,9 +62,11 @@ public:
     /// Comment / reason to be used next time signing is performed.
     void SetDescription(const OUString& rDescription);
     /// Append a new signature at the end of xInputStream.
-    bool Sign(const css::uno::Reference<css::io::XInputStream>& xInputStream, bool bAdES);
+    bool Sign(const css::uno::Reference<css::frame::XModel>& xModel,
+              const css::uno::Reference<css::io::XInputStream>& xInputStream, bool bAdES);
     /// Remove the signature at nPosition (and all dependent signatures) from xInputStream.
-    static bool RemoveSignature(const css::uno::Reference<css::io::XInputStream>& xInputStream, sal_uInt16 nPosition);
+    static bool RemoveSignature(const css::uno::Reference<css::io::XInputStream>& xInputStream,
+                                sal_uInt16 nPosition);
 };
 
 #endif // INCLUDED_XMLSECURITY_INC_PDFSIGNATUREHELPER_HXX

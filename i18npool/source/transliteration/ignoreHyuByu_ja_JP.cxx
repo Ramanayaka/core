@@ -22,9 +22,9 @@
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
-static const transliteration_Ignore::Mapping HyuByu[] = {
+const transliteration_Ignore::Mapping HyuByu[] = {
     { 0x30D5, 0x30E5, 0x30D2, false },
     { 0x3075, 0x3085, 0x3072, false },
     { 0x30F4, 0x30E5, 0x30D3, false },
@@ -41,6 +41,6 @@ ignoreHyuByu_ja_JP::ignoreHyuByu_ja_JP()
     implementationName = "com.sun.star.i18n.Transliteration.ignoreHyuByu_ja_JP";
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

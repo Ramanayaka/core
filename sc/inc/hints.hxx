@@ -22,9 +22,10 @@
 
 #include "global.hxx"
 #include "address.hxx"
+#include <tools/solar.h>
 #include <svl/hint.hxx>
 
-class ScPaintHint : public SfxHint
+class SC_DLLPUBLIC ScPaintHint final : public SfxHint
 {
     ScRange         aRange;
     PaintPartFlags  nParts;
@@ -46,7 +47,7 @@ public:
     bool            GetPrintFlag() const    { return bPrint; }
 };
 
-class ScUpdateRefHint : public SfxHint
+class ScUpdateRefHint final : public SfxHint
 {
     UpdateRefMode   eUpdateRefMode;
     ScRange         aRange;
@@ -71,14 +72,13 @@ enum class ScLinkRefType {
     NONE, SHEET, AREA, DDE
 };
 
-class ScLinkRefreshedHint : public SfxHint
+class ScLinkRefreshedHint final : public SfxHint
 {
     ScLinkRefType nLinkType;
     OUString    aUrl;       // used for sheet links
     OUString    aDdeAppl;   // used for dde links:
     OUString    aDdeTopic;
     OUString    aDdeItem;
-    sal_uInt8   nDdeMode;
     ScAddress   aDestPos;   // used to identify area links
                             //! also use source data for area links?
 
@@ -87,7 +87,7 @@ public:
                     virtual ~ScLinkRefreshedHint() override;
 
     void            SetSheetLink( const OUString& rSourceUrl );
-    void            SetDdeLink( const OUString& rA, const OUString& rT, const OUString& rI, sal_uInt8 nM );
+    void            SetDdeLink( const OUString& rA, const OUString& rT, const OUString& rI );
     void            SetAreaLink( const ScAddress& rPos );
 
     ScLinkRefType       GetLinkType() const { return nLinkType; }
@@ -100,7 +100,7 @@ public:
 
 //! move ScAutoStyleHint to a different file?
 
-class ScAutoStyleHint : public SfxHint
+class ScAutoStyleHint final : public SfxHint
 {
     ScRange     aRange;
     OUString    aStyle1;
@@ -118,7 +118,7 @@ public:
     const OUString& GetStyle2() const   { return aStyle2; }
 };
 
-class ScDBRangeRefreshedHint : public SfxHint
+class ScDBRangeRefreshedHint final : public SfxHint
 {
     ScImportParam   aParam;
 
@@ -129,7 +129,7 @@ public:
     const ScImportParam&  GetImportParam() const    { return aParam; }
 };
 
-class ScDataPilotModifiedHint : public SfxHint
+class ScDataPilotModifiedHint final : public SfxHint
 {
     OUString        maName;
 

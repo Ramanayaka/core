@@ -39,7 +39,6 @@
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
 
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 
 #include "pq_xtable.hxx"
@@ -52,11 +51,9 @@
 #include "pq_statics.hxx"
 
 using osl::MutexGuard;
-using osl::Mutex;
 
 using com::sun::star::container::XNameAccess;
 using com::sun::star::container::XIndexAccess;
-using com::sun::star::container::NoSuchElementException;
 
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::UNO_QUERY;
@@ -64,7 +61,6 @@ using com::sun::star::uno::Sequence;
 using com::sun::star::uno::Any;
 using com::sun::star::uno::makeAny;
 using com::sun::star::uno::Type;
-using com::sun::star::uno::RuntimeException;
 
 using com::sun::star::beans::XPropertySet;
 
@@ -163,7 +159,7 @@ void Table::rename( const OUString& newName )
     }
     OUString fullNewName = concatQualified( newSchemaName, newTableName );
 
-    if( extractStringProperty( this, st.TYPE ).equals( st.VIEW ) && m_pSettings->views.is() )
+    if( extractStringProperty( this, st.TYPE ) == st.VIEW && m_pSettings->views.is() )
     {
         // maintain view list (really strange API !)
         Any a = m_pSettings->pViewsImpl->getByName( fullOldName );
@@ -177,7 +173,7 @@ void Table::rename( const OUString& newName )
     }
     else
     {
-        if( ! newSchemaName.equals(schema) )
+        if( newSchemaName != schema )
         {
             // try new schema name first
             try
@@ -201,7 +197,7 @@ void Table::rename( const OUString& newName )
             }
 
         }
-        if( ! newTableName.equals( oldName ) ) // might also be just the change of a schema name
+        if( newTableName != oldName ) // might also be just the change of a schema name
         {
             OUStringBuffer buf(128);
             buf.append( "ALTER TABLE" );
@@ -225,8 +221,7 @@ void Table::alterColumnByName(
     const OUString& colName,
     const Reference< XPropertySet >& descriptor )
 {
-    Reference< css::container::XNameAccess > columns =
-        Reference< css::container::XNameAccess > ( getColumns(), UNO_QUERY );
+    Reference< css::container::XNameAccess > columns = getColumns();
 
     OUString newName = extractStringProperty(descriptor, getStatics().NAME );
     ::pq_sdbc_driver::alterColumnByDescriptor(
@@ -248,8 +243,7 @@ void Table::alterColumnByIndex(
     sal_Int32 index,
     const css::uno::Reference< css::beans::XPropertySet >& descriptor )
 {
-    Reference< css::container::XIndexAccess > columns =
-        Reference< css::container::XIndexAccess>( getColumns(), UNO_QUERY );
+    Reference< css::container::XIndexAccess > columns( getColumns(), UNO_QUERY );
     Reference< css::beans::XPropertySet> column(columns->getByIndex( index ), UNO_QUERY );
     ::pq_sdbc_driver::alterColumnByDescriptor(
         extractStringProperty( this, getStatics().SCHEMA_NAME ),
@@ -263,23 +257,15 @@ void Table::alterColumnByIndex(
 
 Sequence<Type > Table::getTypes()
 {
-    static cppu::OTypeCollection *pCollection;
-    if( ! pCollection )
-    {
-        MutexGuard guard( osl::Mutex::getGlobalMutex() );
-        if( !pCollection )
-        {
-            static cppu::OTypeCollection collection(
-                cppu::UnoType<css::sdbcx::XIndexesSupplier>::get(),
-                cppu::UnoType<css::sdbcx::XKeysSupplier>::get(),
-                cppu::UnoType<css::sdbcx::XColumnsSupplier>::get(),
-                cppu::UnoType<css::sdbcx::XRename>::get(),
-                cppu::UnoType<css::sdbcx::XAlterTable>::get(),
-                ReflectionBase::getTypes());
-            pCollection = &collection;
-        }
-    }
-    return pCollection->getTypes();
+    static cppu::OTypeCollection collection(
+        cppu::UnoType<css::sdbcx::XIndexesSupplier>::get(),
+        cppu::UnoType<css::sdbcx::XKeysSupplier>::get(),
+        cppu::UnoType<css::sdbcx::XColumnsSupplier>::get(),
+        cppu::UnoType<css::sdbcx::XRename>::get(),
+        cppu::UnoType<css::sdbcx::XAlterTable>::get(),
+        ReflectionBase::getTypes());
+
+    return collection.getTypes();
 }
 
 Sequence< sal_Int8> Table::getImplementationId()
@@ -289,9 +275,7 @@ Sequence< sal_Int8> Table::getImplementationId()
 
 Any Table::queryInterface( const Type & reqType )
 {
-    Any ret;
-
-    ret = ReflectionBase::queryInterface( reqType );
+    Any ret = ReflectionBase::queryInterface( reqType );
     if( ! ret.hasValue() )
         ret = ::cppu::queryInterface(
             reqType,
@@ -368,21 +352,13 @@ Reference< XIndexAccess > TableDescriptor::getKeys(  )
 
 Sequence<Type > TableDescriptor::getTypes()
 {
-    static cppu::OTypeCollection *pCollection;
-    if( ! pCollection )
-    {
-        MutexGuard guard( osl::Mutex::getGlobalMutex() );
-        if( !pCollection )
-        {
-            static cppu::OTypeCollection collection(
-                cppu::UnoType<css::sdbcx::XIndexesSupplier>::get(),
-                cppu::UnoType<css::sdbcx::XKeysSupplier>::get(),
-                cppu::UnoType<css::sdbcx::XColumnsSupplier>::get(),
-                ReflectionBase::getTypes());
-            pCollection = &collection;
-        }
-    }
-    return pCollection->getTypes();
+    static cppu::OTypeCollection collection(
+        cppu::UnoType<css::sdbcx::XIndexesSupplier>::get(),
+        cppu::UnoType<css::sdbcx::XKeysSupplier>::get(),
+        cppu::UnoType<css::sdbcx::XColumnsSupplier>::get(),
+        ReflectionBase::getTypes());
+
+    return collection.getTypes();
 }
 
 Sequence< sal_Int8> TableDescriptor::getImplementationId()
@@ -392,9 +368,7 @@ Sequence< sal_Int8> TableDescriptor::getImplementationId()
 
 Any TableDescriptor::queryInterface( const Type & reqType )
 {
-    Any ret;
-
-    ret = ReflectionBase::queryInterface( reqType );
+    Any ret = ReflectionBase::queryInterface( reqType );
     if( ! ret.hasValue() )
         ret = ::cppu::queryInterface(
             reqType,

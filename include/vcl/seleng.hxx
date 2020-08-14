@@ -23,9 +23,9 @@
 #include <vcl/dllapi.h>
 #include <vcl/timer.hxx>
 #include <vcl/event.hxx>
+#include <vcl/vclenum.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
-namespace vcl { class Window; }
 class CommandEvent;
 
 // Timerticks
@@ -33,9 +33,6 @@ class CommandEvent;
 #define SELENG_AUTOREPEAT_INTERVAL  50
 #define SELENG_AUTOREPEAT_INTERVAL_MIN 25
 #define SELENG_AUTOREPEAT_INTERVAL_MAX 300
-
-enum class SelectionMode { NONE, Single, Range, Multiple };
-
 
 class VCL_DLLPUBLIC FunctionSet
 {
@@ -49,7 +46,7 @@ public:
 
     // move cursor, at the same time match cursor position to the selection
     // starting at anchor. true == Ok
-    virtual bool    SetCursorAtPoint( const Point& rPointPixel,
+    virtual void    SetCursorAtPoint( const Point& rPointPixel,
                                           bool bDontSelectAtCursor = false ) = 0;
 
     virtual bool    IsSelectionAtPoint( const Point& rPointPixel ) = 0;
@@ -71,7 +68,7 @@ enum class SelectionEngineFlags {
 };
 namespace o3tl
 {
-    template<> struct typed_flags<SelectionEngineFlags> : is_typed_flags<SelectionEngineFlags, 0x01ff> {};
+    template<> struct typed_flags<SelectionEngineFlags> : is_typed_flags<SelectionEngineFlags, 0x01ef> {};
 }
 
 class VCL_DLLPUBLIC SelectionEngine
@@ -107,6 +104,7 @@ public:
     //context menu via "Command" which is delivered after
     //mouse down but before mouse up, then use this
     void                ReleaseMouse();
+    void                CaptureMouse();
 
     // Keyboard
     void                CursorPosChanging( bool bShift, bool bMod1 );
@@ -175,7 +173,7 @@ inline void SelectionEngine::SetAddMode( bool bNewMode )
     if ( bNewMode )
         nFlags |= SelectionEngineFlags::IN_ADD;
     else
-        nFlags &= (~SelectionEngineFlags::IN_ADD);
+        nFlags &= ~SelectionEngineFlags::IN_ADD;
 }
 
 inline void SelectionEngine::EnableDrag( bool bOn )
@@ -183,7 +181,7 @@ inline void SelectionEngine::EnableDrag( bool bOn )
     if ( bOn )
         nFlags |= SelectionEngineFlags::DRG_ENAB;
     else
-        nFlags &= (~SelectionEngineFlags::DRG_ENAB);
+        nFlags &= ~SelectionEngineFlags::DRG_ENAB;
 }
 
 inline void SelectionEngine::AddAlways( bool bOn )
@@ -191,7 +189,7 @@ inline void SelectionEngine::AddAlways( bool bOn )
     if( bOn )
         nFlags |= SelectionEngineFlags::ADD_ALW;
     else
-        nFlags &= (~SelectionEngineFlags::ADD_ALW);
+        nFlags &= ~SelectionEngineFlags::ADD_ALW;
 }
 
 inline bool SelectionEngine::IsAlwaysAdding() const
@@ -223,7 +221,7 @@ inline void SelectionEngine::SetAnchor( bool bAnchor )
     if ( bAnchor )
         nFlags |= SelectionEngineFlags::HAS_ANCH;
     else
-        nFlags &= (~SelectionEngineFlags::HAS_ANCH);
+        nFlags &= ~SelectionEngineFlags::HAS_ANCH;
 }
 
 #endif // INCLUDED_VCL_SELENG_HXX

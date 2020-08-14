@@ -19,7 +19,8 @@
 
 #include <stdio.h>
 
-#include "sal/main.h"
+#include <sal/main.h>
+#include <sal/log.hxx>
 #include <osl/diagnose.h>
 #include <osl/mutex.hxx>
 #include <osl/conditn.hxx>
@@ -61,13 +62,13 @@ namespace unoexe
 
 static bool s_quiet = false;
 
-static inline void out( const sal_Char * pText )
+static void out( const char * pText )
 {
     if (! s_quiet)
         fprintf( stderr, "%s", pText );
 }
 
-static inline void out( const OUString & rText )
+static void out( const OUString & rText )
 {
     if (! s_quiet)
     {
@@ -76,7 +77,7 @@ static inline void out( const OUString & rText )
     }
 }
 
-static const char arUsingText[] =
+const char arUsingText[] =
 "\nusing:\n\n"
 "uno [-c ComponentImplementationName -l LocationUrl | -s ServiceName]\n"
 "    [-u uno:(socket[,host=HostName][,port=nnn]|pipe[,name=PipeName]);<protocol>;Name\n"
@@ -85,7 +86,7 @@ static const char arUsingText[] =
 "    [-- Argument1 Argument2 ...]\n";
 
 /// @throws RuntimeException
-static bool readOption( OUString * pValue, const sal_Char * pOpt,
+static bool readOption( OUString * pValue, const char * pOpt,
                         sal_uInt32 * pnIndex, const OUString & aArg)
 {
     const OUString dash("-");
@@ -103,18 +104,15 @@ static bool readOption( OUString * pValue, const sal_Char * pOpt,
         ++(*pnIndex);
 
         rtl_getAppCommandArg(*pnIndex, &pValue->pData);
-        if (*pnIndex >= rtl_getAppCommandArgCount() || pValue->copy(1).equals(dash))
+        if (*pnIndex >= rtl_getAppCommandArgCount() || pValue->copy(1) == dash)
         {
             throw RuntimeException( "incomplete option \"-" + aOpt + "\" given!" );
         }
-        else
-        {
-            SAL_INFO("cpputools.unoexe", "> identified option -" << pOpt << " = " << aArg);
-            ++(*pnIndex);
-            return true;
-        }
+        SAL_INFO("cpputools.unoexe", "> identified option -" << pOpt << " = " << aArg);
+        ++(*pnIndex);
+        return true;
     }
-      else if (aArg.indexOf(aOpt) == 1)
+    else if (aArg.indexOf(aOpt) == 1)
     {
         *pValue = aArg.copy(1 + aOpt.getLength());
         SAL_INFO("cpputools.unoexe", "> identified option -" << pOpt << " = " << aArg);
@@ -125,12 +123,12 @@ static bool readOption( OUString * pValue, const sal_Char * pOpt,
     return false;
 }
 
-static bool readOption( bool * pbOpt, const sal_Char * pOpt,
+static bool readOption( bool * pbOpt, const char * pOpt,
                         sal_uInt32 * pnIndex, const OUString & aArg)
 {
     OUString aOpt = OUString::createFromAscii(pOpt);
 
-    if(aArg.startsWith("--") && aOpt.equals(aArg.copy(2)))
+    if(aArg.startsWith("--") && aOpt == aArg.copy(2))
     {
         ++(*pnIndex);
         *pbOpt = true;
@@ -142,7 +140,7 @@ static bool readOption( bool * pbOpt, const sal_Char * pOpt,
 
 /// @throws Exception
 template< class T >
-void createInstance(
+static void createInstance(
     Reference< T > & rxOut,
     const Reference< XComponentContext > & xContext,
     const OUString & rServiceName )
@@ -155,7 +153,7 @@ void createInstance(
         throw RuntimeException( "cannot get service instance \"" + rServiceName + "\"!" );
     }
 
-    rxOut.set( x, UNO_QUERY_THROW );
+    rxOut.set( x.get(), UNO_QUERY_THROW );
 }
 
 /// @throws Exception
@@ -165,67 +163,67 @@ static Reference< XInterface > loadComponent(
 {
     // determine loader to be used
     sal_Int32 nDot = rLocation.lastIndexOf( '.' );
-    if (nDot > 0 && nDot < rLocation.getLength())
-    {
-        Reference< XImplementationLoader > xLoader;
-
-        OUString aExt( rLocation.copy( nDot +1 ) );
-
-        if (aExt == "dll" || aExt == "exe" || aExt == "dylib" || aExt == "so")
-        {
-            createInstance(
-                xLoader, xContext, "com.sun.star.loader.SharedLibrary" );
-        }
-        else if (aExt == "jar" || aExt == "class")
-        {
-            createInstance(
-                xLoader, xContext, "com.sun.star.loader.Java" );
-        }
-        else
-        {
-            throw RuntimeException(
-                "unknown extension of \"" + rLocation + "\"!  No loader available!" );
-        }
-
-        Reference< XInterface > xInstance;
-
-        // activate
-        Reference< XInterface > xFactory( xLoader->activate(
-            rImplName, OUString(), rLocation, Reference< XRegistryKey >() ) );
-        if (xFactory.is())
-        {
-            Reference< XSingleComponentFactory > xCFac( xFactory, UNO_QUERY );
-            if (xCFac.is())
-            {
-                xInstance = xCFac->createInstanceWithContext( xContext );
-            }
-            else
-            {
-                Reference< XSingleServiceFactory > xSFac( xFactory, UNO_QUERY );
-                if (xSFac.is())
-                {
-                    out( "\n> warning: ignoring context for implementation \"" );
-                    out( rImplName );
-                    out( "\"!" );
-                    xInstance = xSFac->createInstance();
-                }
-            }
-        }
-
-        if (! xInstance.is())
-        {
-            throw RuntimeException(
-                "activating component \"" + rImplName + "\" from location \"" + rLocation + "\" failed!" );
-        }
-
-        return xInstance;
-    }
-    else
+    if (nDot <= 0 || nDot >= rLocation.getLength())
     {
         throw RuntimeException(
             "location \"" + rLocation + "\" has no extension!  Cannot determine loader to be used!" );
     }
+
+    Reference< XImplementationLoader > xLoader;
+
+    OUString aExt( rLocation.copy( nDot +1 ) );
+
+    if (aExt == "dll" || aExt == "exe" || aExt == "dylib" || aExt == "so")
+    {
+        createInstance(
+            xLoader, xContext, "com.sun.star.loader.SharedLibrary" );
+    }
+    else if (aExt == "jar" || aExt == "class")
+    {
+        createInstance(
+            xLoader, xContext, "com.sun.star.loader.Java" );
+    }
+    else
+    {
+        throw RuntimeException(
+            "unknown extension of \"" + rLocation + "\"!  No loader available!" );
+    }
+
+    Reference< XInterface > xInstance;
+
+    // activate
+    Reference< XInterface > xFactory( xLoader->activate(
+        rImplName, OUString(), rLocation, Reference< XRegistryKey >() ) );
+    if (xFactory.is())
+    {
+        Reference< XSingleComponentFactory > xCFac( xFactory, UNO_QUERY );
+        if (xCFac.is())
+        {
+            xInstance = xCFac->createInstanceWithContext( xContext );
+        }
+        else
+        {
+            Reference< XSingleServiceFactory > xSFac( xFactory, UNO_QUERY );
+            if (xSFac.is())
+            {
+                out( "\n> warning: ignoring context for implementation \"" );
+                out( rImplName );
+                out( "\"!" );
+                xInstance = xSFac->createInstance();
+            }
+        }
+    }
+
+    if (! xInstance.is())
+    {
+        throw RuntimeException(
+            "activating component \"" + rImplName + "\" from location \"" + rLocation + "\" failed!" );
+    }
+
+    return xInstance;
 }
+
+namespace {
 
 class OInstanceProvider
     : public WeakImplHelper< XInstanceProvider >
@@ -263,6 +261,8 @@ public:
     // XInstanceProvider
     virtual Reference< XInterface > SAL_CALL getInstance( const OUString & rName ) override;
 };
+
+}
 
 inline Reference< XInterface > OInstanceProvider::createInstance()
 {
@@ -322,6 +322,8 @@ Reference< XInterface > OInstanceProvider::getInstance( const OUString & rName )
         "no such element \"" + rName + "\"!" );
 }
 
+namespace {
+
 struct ODisposingListener : public WeakImplHelper< XEventListener >
 {
     Condition cDisposed;
@@ -331,6 +333,8 @@ struct ODisposingListener : public WeakImplHelper< XEventListener >
 
     static void waitFor( const Reference< XComponent > & xComp );
 };
+
+}
 
 void ODisposingListener::disposing( const EventObject & )
 {
@@ -431,16 +435,24 @@ SAL_IMPLEMENT_MAIN()
 
         if (!aUnoUrl.isEmpty()) // accepting connections
         {
-            sal_Int32 nIndex = 0, nTokens = 0;
-            do { aUnoUrl.getToken( 0, ';', nIndex ); nTokens++; } while( nIndex != -1 );
-            if (nTokens != 3 || aUnoUrl.getLength() < 10 ||
-                !aUnoUrl.copy( 0, 4 ).equalsIgnoreAsciiCase( "uno:" ))
+            if (aUnoUrl.getLength() < 10 || !aUnoUrl.startsWithIgnoreAsciiCase( "uno:" ))
             {
                 throw RuntimeException("illegal uno url given!" );
             }
-            nIndex = 0;
-            OUString aConnectDescr( aUnoUrl.getToken( 0, ';', nIndex ).copy( 4 ) ); // uno:CONNECTDESCR;iiop;InstanceName
-            OUString aInstanceName( aUnoUrl.getToken( 1, ';', nIndex ) );
+
+            sal_Int32 nIndex = 4; // skip initial "uno:"
+            bool bTooFewTokens {false};
+            const OUString aConnectDescr{ aUnoUrl.getToken( 0, ';', nIndex ) }; // uno:CONNECTDESCR;iiop;InstanceName
+            if (nIndex<0) bTooFewTokens = true;
+            const OUString aUnoUrlToken{ aUnoUrl.getToken( 0, ';', nIndex ) };
+            if (nIndex<0) bTooFewTokens = true;
+            const OUString aInstanceName{ aUnoUrl.getToken( 0, ';', nIndex ) };
+
+            // Exactly 3 tokens are required
+            if (bTooFewTokens || nIndex>0)
+            {
+                throw RuntimeException("illegal uno url given!" );
+            }
 
             Reference< XAcceptor > xAcceptor = Acceptor::create(xContext);
 
@@ -458,8 +470,6 @@ SAL_IMPLEMENT_MAIN()
                 xContext, aImplName, aLocation, aServiceName, aInitParams,
                 bSingleInstance, aInstanceName ) );
 
-            nIndex = 0;
-            OUString aUnoUrlToken( aUnoUrl.getToken( 1, ';', nIndex ) );
             // coverity[loop_top] - not really an infinite loop, we can be instructed to exit via the connection
             for (;;)
             {

@@ -10,8 +10,7 @@
 #ifndef INCLUDED_SC_INC_UNDORANGENAME_HXX
 #define INCLUDED_SC_INC_UNDORANGENAME_HXX
 
-#include "undobase.hxx"
-#include "rangenam.hxx"
+#include <undobase.hxx>
 
 #include <memory>
 #include <map>
@@ -21,12 +20,11 @@ class ScDocShell;
 /**
  * Undo object for named ranges, both in global and sheet-local scopes.
  */
-class ScUndoAllRangeNames : public ScSimpleUndo
+class ScUndoAllRangeNames final : public ScSimpleUndo
 {
 public:
-    ScUndoAllRangeNames(ScDocShell* pDocSh,
-        const std::map<OUString, ScRangeName*>& rOldNames,
-        const std::map<OUString, std::unique_ptr<ScRangeName>>& rNewNames);
+    ScUndoAllRangeNames(ScDocShell* pDocSh, const std::map<OUString, ScRangeName*>& rOldNames,
+                        const std::map<OUString, std::unique_ptr<ScRangeName>>& rNewNames);
 
     virtual ~ScUndoAllRangeNames() override;
 
@@ -44,11 +42,11 @@ private:
     std::map<OUString, std::unique_ptr<ScRangeName>> m_NewNames;
 };
 
-class ScUndoAddRangeData : public ScSimpleUndo
+class ScUndoAddRangeData final : public ScSimpleUndo
 {
 public:
     // nTab = -1 for global range names
-    ScUndoAddRangeData(ScDocShell* pDocSh, ScRangeData* pRangeData, SCTAB nTab);
+    ScUndoAddRangeData(ScDocShell* pDocSh, const ScRangeData* pRangeData, SCTAB nTab);
 
     virtual ~ScUndoAddRangeData() override;
 

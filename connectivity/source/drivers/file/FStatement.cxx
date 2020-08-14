@@ -17,30 +17,29 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
-#include "file/FStatement.hxx"
-#include "file/FConnection.hxx"
-#include "sqlbison.hxx"
-#include "file/FDriver.hxx"
-#include "file/FResultSet.hxx"
-#include <comphelper/property.hxx>
-#include <comphelper/uno3.hxx>
-#include <osl/thread.h>
+#include <file/FStatement.hxx>
+#include <file/FConnection.hxx>
+#include <sqlbison.hxx>
+#include <file/FDriver.hxx>
+#include <file/FResultSet.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
 #include <com/sun/star/sdbc/FetchDirection.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/typeprovider.hxx>
+#include <comphelper/types.hxx>
 #include <connectivity/dbexception.hxx>
-#include "resource/file_res.hrc"
+#include <strings.hrc>
 #include <algorithm>
 
-namespace connectivity
+namespace connectivity::file
 {
-    namespace file
-    {
 
 
 using namespace dbtools;
@@ -59,7 +58,6 @@ OStatement_Base::OStatement_Base(OConnection* _pConnection )
     ,m_aSQLIterator( _pConnection, _pConnection->createCatalog()->getTables(), m_aParser )
     ,m_pConnection(_pConnection)
     ,m_pParseTree(nullptr)
-    ,m_pSQLAnalyzer(nullptr)
     ,m_nMaxFieldSize(0)
     ,m_nMaxRows(0)
     ,m_nQueryTimeOut(0)
@@ -87,7 +85,6 @@ OStatement_Base::~OStatement_Base()
 {
     osl_atomic_increment( &m_refCount );
     disposing();
-    delete m_pSQLAnalyzer;
 }
 
 void OStatement_Base::disposeResultSet()
@@ -112,7 +109,7 @@ void OStatement_BASE2::disposing()
 
     if(m_aRow.is())
     {
-        m_aRow->get().clear();
+        m_aRow->clear();
         m_aRow = nullptr;
     }
 
@@ -121,8 +118,6 @@ void OStatement_BASE2::disposing()
     m_pTable.clear();
 
     m_pConnection.clear();
-
-    dispose_ChildImpl();
 
     if ( m_pParseTree )
     {
@@ -140,7 +135,7 @@ void SAL_CALL OStatement_Base::acquire() throw()
 
 void SAL_CALL OStatement_BASE2::release() throw()
 {
-    release_ChildImpl();
+    OStatement_BASE::release();
 }
 
 Any SAL_CALL OStatement_Base::queryInterface( const Type & rType )
@@ -290,7 +285,7 @@ void SAL_CALL OStatement_Base::disposing()
 {
     if(m_aEvaluateRow.is())
     {
-        m_aEvaluateRow->get().clear();
+        m_aEvaluateRow->clear();
         m_aEvaluateRow = nullptr;
     }
     OStatement_BASE::disposing();
@@ -315,30 +310,30 @@ void OStatement_Base::anylizeSQL()
     m_pSQLAnalyzer->start(m_pParseTree);
 
     const OSQLParseNode* pOrderbyClause = m_aSQLIterator.getOrderTree();
-    if(pOrderbyClause)
+    if(!pOrderbyClause)
+        return;
+
+    OSQLParseNode * pOrderingSpecCommalist = pOrderbyClause->getChild(2);
+    OSL_ENSURE(SQL_ISRULE(pOrderingSpecCommalist,ordering_spec_commalist),"OResultSet: Error in Parse Tree");
+
+    for (size_t m = 0; m < pOrderingSpecCommalist->count(); m++)
     {
-        OSQLParseNode * pOrderingSpecCommalist = pOrderbyClause->getChild(2);
-        OSL_ENSURE(SQL_ISRULE(pOrderingSpecCommalist,ordering_spec_commalist),"OResultSet: Error in Parse Tree");
+        OSQLParseNode * pOrderingSpec = pOrderingSpecCommalist->getChild(m);
+        OSL_ENSURE(SQL_ISRULE(pOrderingSpec,ordering_spec),"OResultSet: Error in Parse Tree");
+        OSL_ENSURE(pOrderingSpec->count() == 2,"OResultSet: Error in Parse Tree");
 
-        for (size_t m = 0; m < pOrderingSpecCommalist->count(); m++)
+        OSQLParseNode * pColumnRef = pOrderingSpec->getChild(0);
+        if(!SQL_ISRULE(pColumnRef,column_ref))
         {
-            OSQLParseNode * pOrderingSpec = pOrderingSpecCommalist->getChild(m);
-            OSL_ENSURE(SQL_ISRULE(pOrderingSpec,ordering_spec),"OResultSet: Error in Parse Tree");
-            OSL_ENSURE(pOrderingSpec->count() == 2,"OResultSet: Error in Parse Tree");
-
-            OSQLParseNode * pColumnRef = pOrderingSpec->getChild(0);
-            if(!SQL_ISRULE(pColumnRef,column_ref))
-            {
-                throw SQLException();
-            }
-            OSQLParseNode * pAscendingDescending = pOrderingSpec->getChild(1);
-            setOrderbyColumn(pColumnRef,pAscendingDescending);
+            throw SQLException();
         }
+        OSQLParseNode * pAscendingDescending = pOrderingSpec->getChild(1);
+        setOrderbyColumn(pColumnRef,pAscendingDescending);
     }
 }
 
-void OStatement_Base::setOrderbyColumn( OSQLParseNode* pColumnRef,
-                                        OSQLParseNode* pAscendingDescending)
+void OStatement_Base::setOrderbyColumn( OSQLParseNode const * pColumnRef,
+                                        OSQLParseNode const * pAscendingDescending)
 {
     OUString aColumnName;
     if (pColumnRef->count() == 1)
@@ -359,95 +354,89 @@ void OStatement_Base::setOrderbyColumn( OSQLParseNode* pColumnRef,
     // What number is the Column?
     ::rtl::Reference<OSQLColumns> aSelectColumns = m_aSQLIterator.getSelectColumns();
     ::comphelper::UStringMixEqual aCase;
-    OSQLColumns::Vector::const_iterator aFind = ::connectivity::find(aSelectColumns->get().begin(),aSelectColumns->get().end(),aColumnName,aCase);
-    if ( aFind == aSelectColumns->get().end() )
+    OSQLColumns::const_iterator aFind = ::connectivity::find(aSelectColumns->begin(),aSelectColumns->end(),aColumnName,aCase);
+    if ( aFind == aSelectColumns->end() )
         throw SQLException();
-    m_aOrderbyColumnNumber.push_back((aFind - aSelectColumns->get().begin()) + 1);
+    m_aOrderbyColumnNumber.push_back((aFind - aSelectColumns->begin()) + 1);
 
     // Ascending or Descending?
-    m_aOrderbyAscending.push_back((SQL_ISTOKEN(pAscendingDescending,DESC)) ? TAscendingOrder::DESC : TAscendingOrder::ASC);
+    m_aOrderbyAscending.push_back(SQL_ISTOKEN(pAscendingDescending,DESC) ? TAscendingOrder::DESC : TAscendingOrder::ASC);
 }
 
 void OStatement_Base::construct(const OUString& sql)
 {
     OUString aErr;
-    m_pParseTree = m_aParser.parseTree(aErr,sql);
-    if(m_pParseTree)
-    {
-        m_aSQLIterator.setParseTree(m_pParseTree);
-        m_aSQLIterator.traverseAll();
-        const OSQLTables& rTabs = m_aSQLIterator.getTables();
-
-        // sanity checks
-        if ( rTabs.empty() )
-            // no tables -> nothing to operate on -> error
-            m_pConnection->throwGenericSQLException(STR_QUERY_NO_TABLE,*this);
-
-        if ( rTabs.size() > 1 || m_aSQLIterator.hasErrors() )
-            // more than one table -> can't operate on them -> error
-            m_pConnection->throwGenericSQLException(STR_QUERY_MORE_TABLES,*this);
-
-        if ( (m_aSQLIterator.getStatementType() == OSQLStatementType::Select) && m_aSQLIterator.getSelectColumns()->get().empty() )
-            // SELECT statement without columns -> error
-            m_pConnection->throwGenericSQLException(STR_QUERY_NO_COLUMN,*this);
-
-        switch(m_aSQLIterator.getStatementType())
-        {
-            case OSQLStatementType::CreateTable:
-            case OSQLStatementType::OdbcCall:
-            case OSQLStatementType::Unknown:
-                m_pConnection->throwGenericSQLException(STR_QUERY_TOO_COMPLEX,*this);
-                break;
-            default:
-                break;
-        }
-
-        // at this moment we support only one table per select statement
-        Reference< css::lang::XUnoTunnel> xTunnel(rTabs.begin()->second,UNO_QUERY);
-        if(xTunnel.is())
-        {
-            m_pTable = reinterpret_cast<OFileTable*>(xTunnel->getSomething(OFileTable::getUnoTunnelImplementationId()));
-        }
-        OSL_ENSURE(m_pTable.is(),"No table!");
-        if ( m_pTable.is() )
-            m_xColNames     = m_pTable->getColumns();
-        Reference<XIndexAccess> xNames(m_xColNames,UNO_QUERY);
-        // set the binding of the resultrow
-        m_aRow          = new OValueRefVector(xNames->getCount());
-        (m_aRow->get())[0]->setBound(true);
-        std::for_each(m_aRow->get().begin()+1,m_aRow->get().end(),TSetRefBound(false));
-
-        // set the binding of the resultrow
-        m_aEvaluateRow  = new OValueRefVector(xNames->getCount());
-
-        (m_aEvaluateRow->get())[0]->setBound(true);
-        std::for_each(m_aEvaluateRow->get().begin()+1,m_aEvaluateRow->get().end(),TSetRefBound(false));
-
-        // set the select row
-        m_aSelectRow = new OValueRefVector(m_aSQLIterator.getSelectColumns()->get().size());
-        std::for_each(m_aSelectRow->get().begin(),m_aSelectRow->get().end(),TSetRefBound(true));
-
-        // create the column mapping
-        createColumnMapping();
-
-        m_pSQLAnalyzer = new OSQLAnalyzer(m_pConnection.get());
-
-        Reference<XIndexesSupplier> xIndexSup(xTunnel,UNO_QUERY);
-        if(xIndexSup.is())
-            m_pSQLAnalyzer->setIndexes(xIndexSup->getIndexes());
-
-        anylizeSQL();
-    }
-    else
+    m_pParseTree = m_aParser.parseTree(aErr,sql).release();
+    if(!m_pParseTree)
         throw SQLException(aErr,*this,OUString(),0,Any());
+
+    m_aSQLIterator.setParseTree(m_pParseTree);
+    m_aSQLIterator.traverseAll();
+    const OSQLTables& rTabs = m_aSQLIterator.getTables();
+
+    // sanity checks
+    if ( rTabs.empty() )
+        // no tables -> nothing to operate on -> error
+        m_pConnection->throwGenericSQLException(STR_QUERY_NO_TABLE,*this);
+
+    if ( rTabs.size() > 1 || m_aSQLIterator.hasErrors() )
+        // more than one table -> can't operate on them -> error
+        m_pConnection->throwGenericSQLException(STR_QUERY_MORE_TABLES,*this);
+
+    if ( (m_aSQLIterator.getStatementType() == OSQLStatementType::Select) && m_aSQLIterator.getSelectColumns()->empty() )
+        // SELECT statement without columns -> error
+        m_pConnection->throwGenericSQLException(STR_QUERY_NO_COLUMN,*this);
+
+    switch(m_aSQLIterator.getStatementType())
+    {
+        case OSQLStatementType::CreateTable:
+        case OSQLStatementType::OdbcCall:
+        case OSQLStatementType::Unknown:
+            m_pConnection->throwGenericSQLException(STR_QUERY_TOO_COMPLEX,*this);
+            break;
+        default:
+            break;
+    }
+
+    // at this moment we support only one table per select statement
+    Reference< css::lang::XUnoTunnel> xTunnel(rTabs.begin()->second,UNO_QUERY);
+    if(xTunnel.is())
+    {
+        m_pTable = reinterpret_cast<OFileTable*>(xTunnel->getSomething(OFileTable::getUnoTunnelId()));
+    }
+    OSL_ENSURE(m_pTable.is(),"No table!");
+    if ( m_pTable.is() )
+        m_xColNames     = m_pTable->getColumns();
+    Reference<XIndexAccess> xNames(m_xColNames,UNO_QUERY);
+    // set the binding of the resultrow
+    m_aRow          = new OValueRefVector(xNames->getCount());
+    (*m_aRow)[0]->setBound(true);
+    std::for_each(m_aRow->begin()+1,m_aRow->end(),TSetRefBound(false));
+
+    // set the binding of the resultrow
+    m_aEvaluateRow  = new OValueRefVector(xNames->getCount());
+
+    (*m_aEvaluateRow)[0]->setBound(true);
+    std::for_each(m_aEvaluateRow->begin()+1,m_aEvaluateRow->end(),TSetRefBound(false));
+
+    // set the select row
+    m_aSelectRow = new OValueRefVector(m_aSQLIterator.getSelectColumns()->size());
+    std::for_each(m_aSelectRow->begin(),m_aSelectRow->end(),TSetRefBound(true));
+
+    // create the column mapping
+    createColumnMapping();
+
+    m_pSQLAnalyzer.reset( new OSQLAnalyzer(m_pConnection.get()) );
+
+    anylizeSQL();
 }
 
 void OStatement_Base::createColumnMapping()
 {
     // initialize the column index map (mapping select columns to table columns)
     ::rtl::Reference<connectivity::OSQLColumns> xColumns = m_aSQLIterator.getSelectColumns();
-    m_aColMapping.resize(xColumns->get().size() + 1);
-    for (sal_Int32 i=0; i<(sal_Int32)m_aColMapping.size(); ++i)
+    m_aColMapping.resize(xColumns->size() + 1);
+    for (sal_Int32 i=0; i<static_cast<sal_Int32>(m_aColMapping.size()); ++i)
         m_aColMapping[i] = i;
 
     Reference<XIndexAccess> xNames(m_xColNames,UNO_QUERY);
@@ -459,7 +448,7 @@ void OStatement_Base::initializeResultSet(OResultSet* _pResult)
 {
     GetAssignValues();
 
-    _pResult->setSqlAnalyzer(m_pSQLAnalyzer);
+    _pResult->setSqlAnalyzer(m_pSQLAnalyzer.get());
     _pResult->setOrderByColumns(m_aOrderbyColumnNumber);
     _pResult->setOrderByAscending(m_aOrderbyAscending);
     _pResult->setBindingRow(m_aRow);
@@ -487,11 +476,11 @@ void OStatement_Base::GetAssignValues()
     {
         // Create Row for the values to be set (Reference through new)
         if(m_aAssignValues.is())
-            m_aAssignValues->get().clear();
-        sal_Int32 nCount = Reference<XIndexAccess>(m_xColNames,UNO_QUERY)->getCount();
+            m_aAssignValues->clear();
+        sal_Int32 nCount = Reference<XIndexAccess>(m_xColNames,UNO_QUERY_THROW)->getCount();
         m_aAssignValues = new OAssignValues(nCount);
         // unbound all
-        std::for_each(m_aAssignValues->get().begin()+1,m_aAssignValues->get().end(),TSetRefBound(false));
+        std::for_each(m_aAssignValues->begin()+1,m_aAssignValues->end(),TSetRefBound(false));
 
         m_aParameterIndexes.resize(nCount+1,SQL_NO_PARAMETER);
 
@@ -574,11 +563,11 @@ void OStatement_Base::GetAssignValues()
     else if (SQL_ISRULE(m_pParseTree,update_statement_searched))
     {
         if(m_aAssignValues.is())
-            m_aAssignValues->get().clear();
-        sal_Int32 nCount = Reference<XIndexAccess>(m_xColNames,UNO_QUERY)->getCount();
+            m_aAssignValues->clear();
+        sal_Int32 nCount = Reference<XIndexAccess>(m_xColNames,UNO_QUERY_THROW)->getCount();
         m_aAssignValues = new OAssignValues(nCount);
         // unbound all
-        std::for_each(m_aAssignValues->get().begin()+1,m_aAssignValues->get().end(),TSetRefBound(false));
+        std::for_each(m_aAssignValues->begin()+1,m_aAssignValues->end(),TSetRefBound(false));
 
         m_aParameterIndexes.resize(nCount+1,SQL_NO_PARAMETER);
 
@@ -620,7 +609,7 @@ void OStatement_Base::GetAssignValues()
 
 void OStatement_Base::ParseAssignValues(const std::vector< OUString>& aColumnNameList,OSQLParseNode* pRow_Value_Constructor_Elem, sal_Int32 nIndex)
 {
-    OSL_ENSURE(size_t(nIndex) <= aColumnNameList.size(),"SdbFileCursor::ParseAssignValues: nIndex > aColumnNameList.GetTokenCount()");
+    OSL_ENSURE(o3tl::make_unsigned(nIndex) <= aColumnNameList.size(),"SdbFileCursor::ParseAssignValues: nIndex > aColumnNameList.GetTokenCount()");
     OUString aColumnName(aColumnNameList[nIndex]);
     OSL_ENSURE(aColumnName.getLength() > 0,"OResultSet: Column-Name not found");
     OSL_ENSURE(pRow_Value_Constructor_Elem != nullptr,"OResultSet: pRow_Value_Constructor_Elem must not be NULL!");
@@ -652,7 +641,7 @@ void OStatement_Base::SetAssignValue(const OUString& aColumnName,
 {
     Reference<XPropertySet> xCol;
     m_xColNames->getByName(aColumnName) >>= xCol;
-    sal_Int32 nId = Reference<XColumnLocate>(m_xColNames,UNO_QUERY)->findColumn(aColumnName);
+    sal_Int32 nId = Reference<XColumnLocate>(m_xColNames,UNO_QUERY_THROW)->findColumn(aColumnName);
     // does this column actually exist in the file?
 
     if (!xCol.is())
@@ -665,7 +654,7 @@ void OStatement_Base::SetAssignValue(const OUString& aColumnName,
     // Everything tested and we have the names of the Column.
     // Now allocate one Value, set the value and tie the value to the Row.
     if (bSetNull)
-        (m_aAssignValues->get())[nId]->setNull();
+        (*m_aAssignValues)[nId]->setNull();
     else
     {
         switch (::comphelper::getINT32(xCol->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_TYPE))))
@@ -674,15 +663,15 @@ void OStatement_Base::SetAssignValue(const OUString& aColumnName,
         case DataType::CHAR:
         case DataType::VARCHAR:
         case DataType::LONGVARCHAR:
-            *(m_aAssignValues->get())[nId] = ORowSetValue(aValue);
+            *(*m_aAssignValues)[nId] = ORowSetValue(aValue);
             //Characterset is already converted, since the entire statement was converted
             break;
 
         case DataType::BIT:
             if (aValue.equalsIgnoreAsciiCase("TRUE")  || aValue[0] == '1')
-                *(m_aAssignValues->get())[nId] = true;
+                *(*m_aAssignValues)[nId] = true;
             else if (aValue.equalsIgnoreAsciiCase("FALSE") || aValue[0] == '0')
-                *(m_aAssignValues->get())[nId] = false;
+                *(*m_aAssignValues)[nId] = false;
             else
                 throwFunctionSequenceException(*this);
             break;
@@ -696,7 +685,7 @@ void OStatement_Base::SetAssignValue(const OUString& aColumnName,
         case DataType::DATE:
         case DataType::TIME:
         case DataType::TIMESTAMP:
-            *(m_aAssignValues->get())[nId] = ORowSetValue(aValue);
+            *(*m_aAssignValues)[nId] = ORowSetValue(aValue);
             break;
         default:
             throwFunctionSequenceException(*this);
@@ -715,9 +704,7 @@ void OStatement_Base::parseParamterElem(const OUString& /*_sColumnName*/,OSQLPar
     // do nothing here
 }
 
-    } // namespace file
-
-}// namespace connectivity
+}// namespace
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -23,16 +23,16 @@ $(eval $(call gb_Module_add_targets,svx,\
     Library_svx \
     Library_svxcore \
     Library_textconversiondlgs \
+    UIConfig_svx \
 ))
 
 $(eval $(call gb_Module_add_l10n_targets,svx,\
-    AllLangResTarget_svx \
-    AllLangResTarget_gal \
-    UIConfig_svx \
+    AllLangMoTarget_svx \
 ))
 
 $(eval $(call gb_Module_add_check_targets,svx,\
 	CppunitTest_svx_unit \
+	CppunitTest_svx_gallery_test \
 ))
 
 # screenshots
@@ -45,19 +45,14 @@ $(eval $(call gb_Module_add_targets,svx,\
     Executable_gengal \
     $(if $(filter-out MACOSX WNT,$(OS)), \
 		Package_gengal) \
-    $(if $(filter-out WNT,$(OS)), \
-        Executable_pixelctl) \
 ))
 endif
 
-ifneq ($(OOO_JUNIT_JAR),)
 $(eval $(call gb_Module_add_subsequentcheck_targets,svx,\
     JunitTest_svx_unoapi \
 ))
-endif
 
 #todo: noopt for EnhanceCustomShapesFunctionParser.cxx on Solaris Sparc and MacOSX
-#todo: -DBOOST_SPIRIT_USE_OLD_NAMESPACE only in CustomShapes ?
 #todo: -DUNICODE and -D_UNICODE on WNT for source/dialog
 #todo: component file
 # vim: set noet sw=4 ts=4:

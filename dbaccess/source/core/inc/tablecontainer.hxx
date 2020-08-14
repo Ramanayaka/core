@@ -20,30 +20,27 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_CORE_INC_TABLECONTAINER_HXX
 #define INCLUDED_DBACCESS_SOURCE_CORE_INC_TABLECONTAINER_HXX
 
+#include <sal/config.h>
+
+#include <atomic>
+#include <cstddef>
+
 #include <cppuhelper/implbase1.hxx>
-#include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/util/XRefreshable.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <rtl/ref.hxx>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include "FilteredContainer.hxx"
-#include <connectivity/warningscontainer.hxx>
 #include "RefreshListener.hxx"
-#include "apitools.hxx"
 
 namespace dbaccess
 {
-    typedef ::cppu::ImplHelper1< css::container::XContainerListener> OTableContainer_Base;
-
     // OTableContainer
     class OContainerMediator;
 
     class OTableContainer :  public OFilteredContainer,
-                             public OTableContainer_Base
+                             public ::cppu::ImplHelper1< css::container::XContainerListener>
     {
         css::uno::Reference< css::container::XNameContainer > m_xTableDefinitions;
         ::rtl::Reference< OContainerMediator >                m_pTableMediator;
@@ -59,10 +56,8 @@ namespace dbaccess
         virtual connectivity::sdbcx::ObjectType appendObject( const OUString& _rForName, const css::uno::Reference< css::beans::XPropertySet >& descriptor ) override;
         virtual void dropObject(sal_Int32 _nPos, const OUString& _sElementName) override;
 
-        virtual void SAL_CALL disposing() override;
+        virtual void disposing() override;
 
-        virtual void SAL_CALL acquire() throw() override { OFilteredContainer::acquire();}
-        virtual void SAL_CALL release() throw() override { OFilteredContainer::release();}
     // css::lang::XServiceInfo
         DECLARE_SERVICE_INFO();
 
@@ -74,6 +69,9 @@ namespace dbaccess
         virtual void SAL_CALL elementReplaced( const css::container::ContainerEvent& Event ) override;
 
     public:
+        virtual void SAL_CALL acquire() throw() override { OFilteredContainer::acquire();}
+        virtual void SAL_CALL release() throw() override { OFilteredContainer::release();}
+
         /** ctor of the container. The parent has to support the <type scope="css::sdbc">XConnection</type>
             interface.<BR>
             @param          _rParent            the object which acts as parent for the container.
@@ -89,7 +87,7 @@ namespace dbaccess
             bool _bCase,
             const css::uno::Reference< css::container::XNameContainer >&  _xTableDefinitions,
             IRefreshListener*   _pRefreshListener,
-            oslInterlockedCount& _nInAppend
+            std::atomic<std::size_t>& _nInAppend
             );
 
         virtual ~OTableContainer() override;

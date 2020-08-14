@@ -20,21 +20,23 @@
 #ifndef INCLUDED_EDITENG_EDITENG_HXX
 #define INCLUDED_EDITENG_EDITENG_HXX
 
-#include <rtl/ref.hxx>
 #include <memory>
 #include <vector>
+
+#include <optional>
+
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/i18n/WordType.hpp>
 #include <com/sun/star/i18n/CharacterIteratorMode.hpp>
 
-#include <rsc/rscsfx.hxx>
+#include <svl/typedwhich.hxx>
 #include <editeng/editdata.hxx>
 #include <editeng/editstat.hxx>
+#include <editeng/editobj.hxx>
 #include <editeng/editengdllapi.h>
 #include <i18nlangtag/lang.h>
 
 #include <tools/lineend.hxx>
-#include <tools/link.hxx>
 
 #include <editeng/eedata.hxx>
 #include <o3tl/typed_flags_set.hxx>
@@ -42,7 +44,9 @@
 #include <vcl/errcode.hxx>
 #include <functional>
 
-namespace com { namespace sun { namespace star {
+template <typename Arg, typename Ret> class Link;
+
+namespace com::sun::star {
   namespace linguistic2 {
     class XSpellChecker1;
     class XHyphenator;
@@ -53,14 +57,14 @@ namespace com { namespace sun { namespace star {
   namespace lang {
     struct Locale;
   }
-}}}
+}
 
 namespace svx {
 struct SpellPortion;
 typedef std::vector<SpellPortion> SpellPortions;
 }
 
-namespace svl { class IUndoManager; }
+class SfxUndoManager;
 namespace basegfx { class B2DPolyPolygon; }
 namespace editeng {
     struct MisspellRanges;
@@ -83,9 +87,7 @@ class Size;
 class Point;
 namespace tools { class Rectangle; }
 class SvStream;
-class OutputDevice;
 namespace vcl { class Window; }
-class SfxPoolItem;
 class SvKeyValueIterator;
 class SvxForbiddenCharactersTable;
 class SvxNumberFormat;
@@ -98,13 +100,13 @@ class EditLine;
 class InternalEditStatus;
 class EditSelectionEngine;
 class EditDoc;
-struct PasteOrDropInfos;
 class Range;
 struct EPaM;
 class DeletedNodeInfo;
 class ParaPortionList;
 enum class CharCompressType;
 enum class TransliterationFlags;
+class LinkParamNone;
 
 /** values for:
        SfxItemSet GetAttribs( const ESelection& rSel, EditEngineAttribs nOnlyHardAttrib = EditEngineAttribs::All );
@@ -129,21 +131,15 @@ namespace o3tl
 {
     template<> struct typed_flags<GetAttribsFlags> : is_typed_flags<GetAttribsFlags, 0x07> {};
 }
-template<class T> bool checkSvxFieldData(const SvxFieldData* pData)
-{
-    return dynamic_cast<const T*>(pData) != nullptr;
-}
 
 enum class SetAttribsMode {
     NONE, WholeWord, Edge
 };
 
-class SdrObject;
 class EDITENG_DLLPUBLIC EditEngine
 {
     friend class EditView;
     friend class ImpEditView;
-    friend class EditDbg;
     friend class Outliner;
     friend class TextChainingUtils;
 
@@ -160,13 +156,13 @@ private:
 
                                        EditEngine( const EditEngine& ) = delete;
                        EditEngine&     operator=( const EditEngine& ) = delete;
-    EDITENG_DLLPRIVATE bool            PostKeyEvent( const KeyEvent& rKeyEvent, EditView* pView, vcl::Window* pFrameWin );
+    EDITENG_DLLPRIVATE bool            PostKeyEvent( const KeyEvent& rKeyEvent, EditView* pView, vcl::Window const * pFrameWin );
 
-    EDITENG_DLLPRIVATE void CursorMoved(ContentNode* pPrevNode);
+    EDITENG_DLLPRIVATE void CursorMoved(const ContentNode* pPrevNode);
     EDITENG_DLLPRIVATE void CheckIdleFormatter();
     EDITENG_DLLPRIVATE bool IsIdleFormatterActive() const;
-    EDITENG_DLLPRIVATE ParaPortion* FindParaPortion(ContentNode* pNode);
-    EDITENG_DLLPRIVATE const ParaPortion* FindParaPortion(ContentNode* pNode) const;
+    EDITENG_DLLPRIVATE ParaPortion* FindParaPortion(ContentNode const * pNode);
+    EDITENG_DLLPRIVATE const ParaPortion* FindParaPortion(ContentNode const * pNode) const;
     EDITENG_DLLPRIVATE const ParaPortion* GetPrevVisPortion(const ParaPortion* pCurPortion) const;
 
     EDITENG_DLLPRIVATE css::uno::Reference<
@@ -187,7 +183,6 @@ private:
     EDITENG_DLLPRIVATE Range GetLineXPosStartEnd(
         const ParaPortion* pParaPortion, const EditLine* pLine) const;
 
-    EDITENG_DLLPRIVATE sal_uInt16 GetOnePixelInRef() const;
     EDITENG_DLLPRIVATE InternalEditStatus& GetInternalEditStatus();
 
     EDITENG_DLLPRIVATE void HandleBeginPasteOrDrop(PasteOrDropInfos& rInfos);
@@ -203,7 +198,7 @@ public:
                     EditEngine( SfxItemPool* pItemPool );
     virtual         ~EditEngine();
 
-    const SfxItemSet&   GetEmptyItemSet();
+    const SfxItemSet& GetEmptyItemSet() const;
 
     void            SetDefTab( sal_uInt16 nDefTab );
 
@@ -211,13 +206,17 @@ public:
     OutputDevice*   GetRefDevice() const;
 
     void            SetRefMapMode( const MapMode& rMapMode );
-    MapMode         GetRefMapMode();
+    MapMode const & GetRefMapMode() const;
 
-    void            SetUpdateMode( bool bUpdate );
+    /// Change the update mode per bUpdate and potentially trigger FormatAndUpdate.
+    /// bRestoring is used for LOK to update cursor visibility, specifically,
+    /// when true, it means we are restoring the update mode after internally
+    /// disabling it (f.e. during SetText to set/delete default text in Impress).
+    void            SetUpdateMode(bool bUpdate, bool bRestoring = false);
     bool            GetUpdateMode() const;
 
     void            SetBackgroundColor( const Color& rColor );
-    Color           GetBackgroundColor() const;
+    Color const &   GetBackgroundColor() const;
     Color           GetAutoColor() const;
     void            EnableAutoColor( bool b );
     void            ForceAutoColor( bool b );
@@ -235,9 +234,12 @@ public:
     void            SetPaperSize( const Size& rSize );
     const Size&     GetPaperSize() const;
 
-    void            SetVertical( bool bVertical, bool bTopToBottom = true );
+    void            SetVertical( bool bVertical );
     bool            IsVertical() const;
     bool            IsTopToBottom() const;
+    bool            GetDirectVertical() const;
+    void            SetRotation(TextRotation nRotation);
+    TextRotation    GetRotation() const;
 
     void            SetFixedCellHeight( bool bUseFixedCellHeight );
 
@@ -285,6 +287,7 @@ public:
     void            GetLineBoundaries( /*out*/sal_Int32& rStart, /*out*/sal_Int32& rEnd, sal_Int32 nParagraph, sal_Int32 nLine ) const;
     sal_Int32       GetLineNumberAtIndex( sal_Int32 nPara, sal_Int32 nIndex ) const;
     sal_uInt32      GetLineHeight( sal_Int32 nParagraph );
+    tools::Rectangle GetParaBounds( sal_Int32 nPara );
     ParagraphInfos  GetParagraphInfos( sal_Int32 nPara );
     sal_Int32       FindParagraph( long nDocPosY );
     EPosition       FindDocPosition( const Point& rDocPos ) const;
@@ -297,14 +300,14 @@ public:
     void            Clear();
     void            SetText( const OUString& rStr );
 
-    EditTextObject* CreateTextObject();
-    EditTextObject* GetEmptyTextObject() const;
-    EditTextObject* CreateTextObject( sal_Int32 nPara, sal_Int32 nParas = 1 );
-    EditTextObject* CreateTextObject( const ESelection& rESelection );
+    std::unique_ptr<EditTextObject> CreateTextObject();
+    std::unique_ptr<EditTextObject> GetEmptyTextObject() const;
+    std::unique_ptr<EditTextObject> CreateTextObject( sal_Int32 nPara, sal_Int32 nParas = 1 );
+    std::unique_ptr<EditTextObject> CreateTextObject( const ESelection& rESelection );
     void            SetText( const EditTextObject& rTextObject );
 
     void            RemoveParagraph(sal_Int32 nPara);
-    void            InsertParagraph(sal_Int32 nPara, const EditTextObject& rTxtObj);
+    void            InsertParagraph(sal_Int32 nPara, const EditTextObject& rTxtObj, const bool bAppend = false);
     void            InsertParagraph(sal_Int32 nPara, const OUString& rText);
 
     void            SetText(sal_Int32 nPara, const OUString& rText);
@@ -312,6 +315,8 @@ public:
     virtual void        SetParaAttribs( sal_Int32 nPara, const SfxItemSet& rSet );
     const SfxItemSet&   GetParaAttribs( sal_Int32 nPara ) const;
 
+    /// Set attributes from rSet an all characters of nPara.
+    void SetCharAttribs(sal_Int32 nPara, const SfxItemSet& rSet);
     void            GetCharAttribs( sal_Int32 nPara, std::vector<EECharAttrib>& rLst ) const;
 
     SfxItemSet      GetAttribs( sal_Int32 nPara, sal_Int32 nStart, sal_Int32 nEnd, GetAttribsFlags nFlags = GetAttribsFlags::ALL ) const;
@@ -319,6 +324,11 @@ public:
 
     bool            HasParaAttrib( sal_Int32 nPara, sal_uInt16 nWhich ) const;
     const SfxPoolItem&  GetParaAttrib( sal_Int32 nPara, sal_uInt16 nWhich );
+    template<class T>
+    const T&            GetParaAttrib( sal_Int32 nPara, TypedWhichId<T> nWhich )
+    {
+        return static_cast<const T&>(GetParaAttrib(nPara, sal_uInt16(nWhich)));
+    }
 
     vcl::Font       GetStandardFont( sal_Int32 nPara );
     SvxFont         GetStandardSvxFont( sal_Int32 nPara );
@@ -327,15 +337,15 @@ public:
 
     void            ShowParagraph( sal_Int32 nParagraph, bool bShow );
 
-    ::svl::IUndoManager& GetUndoManager();
-    ::svl::IUndoManager* SetUndoManager(::svl::IUndoManager* pNew);
+    SfxUndoManager& GetUndoManager();
+    SfxUndoManager* SetUndoManager(SfxUndoManager* pNew);
     void            UndoActionStart( sal_uInt16 nId );
     void            UndoActionStart(sal_uInt16 nId, const ESelection& rSel);
     void            UndoActionEnd();
-    bool            IsInUndo();
+    bool            IsInUndo() const;
 
     void            EnableUndo( bool bEnable );
-    bool            IsUndoEnabled();
+    bool            IsUndoEnabled() const;
 
     /** returns the value last used for bTryMerge while calling ImpEditEngine::InsertUndo
         This is currently used in a bad but needed hack to get undo actions merged in the
@@ -347,7 +357,7 @@ public:
     bool            IsModified() const;
 
     void            SetModifyHdl( const Link<LinkParamNone*,void>& rLink );
-    Link<LinkParamNone*,void> GetModifyHdl() const;
+    Link<LinkParamNone*,void> const & GetModifyHdl() const;
 
     bool            IsInSelectionMode() const;
 
@@ -369,10 +379,10 @@ public:
     void            Write( SvStream& rOutput, EETextFormat );
 
     void            SetStatusEventHdl( const Link<EditStatus&,void>& rLink );
-    Link<EditStatus&,void> GetStatusEventHdl() const;
+    Link<EditStatus&,void> const & GetStatusEventHdl() const;
 
     void            SetNotifyHdl( const Link<EENotify&,void>& rLink );
-    Link<EENotify&,void>  GetNotifyHdl() const;
+    Link<EENotify&,void> const & GetNotifyHdl() const;
 
     void            SetRtfImportHdl( const Link<RtfImportInfo&,void>& rLink );
     const Link<RtfImportInfo&,void>& GetRtfImportHdl() const;
@@ -418,15 +428,15 @@ public:
     void            SetSpeller( css::uno::Reference<
                             css::linguistic2::XSpellChecker1 > const &xSpeller );
     css::uno::Reference<
-        css::linguistic2::XSpellChecker1 >
+        css::linguistic2::XSpellChecker1 > const &
                     GetSpeller();
     void            SetHyphenator( css::uno::Reference<
-                            css::linguistic2::XHyphenator >& xHyph );
+                            css::linguistic2::XHyphenator > const & xHyph );
 
     void GetAllMisspellRanges( std::vector<editeng::MisspellRanges>& rRanges ) const;
     void SetAllMisspellRanges( const std::vector<editeng::MisspellRanges>& rRanges );
 
-    static void     SetForbiddenCharsTable( const rtl::Reference<SvxForbiddenCharactersTable>& xForbiddenChars );
+    static void     SetForbiddenCharsTable(const std::shared_ptr<SvxForbiddenCharactersTable>& xForbiddenChars);
 
     void            SetDefaultLanguage( LanguageType eLang );
     LanguageType    GetDefaultLanguage() const;
@@ -442,11 +452,11 @@ public:
     bool            HasText( const SvxSearchItem& rSearchItem );
 
     //spell and return a sentence
-    bool            SpellSentence(EditView& rEditView, svx::SpellPortions& rToFill );
+    bool            SpellSentence(EditView const & rEditView, svx::SpellPortions& rToFill );
     // put spell position to start of current sentence
-    void            PutSpellingToSentenceStart( EditView& rEditView );
+    void            PutSpellingToSentenceStart( EditView const & rEditView );
     //applies a changed sentence
-    void            ApplyChangedSentence(EditView& rEditView, const svx::SpellPortions& rNewPortions, bool bRecheck );
+    void            ApplyChangedSentence(EditView const & rEditView, const svx::SpellPortions& rNewPortions, bool bRecheck );
 
     // for text conversion (see also HasSpellErrors)
     bool            HasConvertibleTextPortion( LanguageType nLang );
@@ -498,15 +508,15 @@ public:
                              const Color& rTextLineColor);
     virtual OUString  GetUndoComment( sal_uInt16 nUndoId ) const;
     virtual bool    SpellNextDocument();
-    virtual void    FieldClicked( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos );
-    virtual OUString CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, Color*& rTxtColor, Color*& rFldColor );
+    virtual void    FieldClicked( const SvxFieldItem& rField );
+    virtual OUString CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rTxtColor, std::optional<Color>& rFldColor );
 
     // override this if access to bullet information needs to be provided
     virtual const SvxNumberFormat * GetNumberFormat( sal_Int32 nPara ) const;
 
     virtual tools::Rectangle GetBulletArea( sal_Int32 nPara );
 
-    static SfxItemPool* CreatePool( bool bLoadRefCounts = true );
+    static SfxItemPool* CreatePool();
     static SfxItemPool& GetGlobalItemPool();
     static bool     DoesKeyChangeText( const KeyEvent& rKeyEvent );
     static bool     DoesKeyMoveCursor( const KeyEvent& rKeyEvent );
@@ -519,11 +529,11 @@ public:
     static bool     HasValidData( const css::uno::Reference< css::datatransfer::XTransferable >& rTransferable );
     /** sets a link that is called at the beginning of a drag operation at an edit view */
     void            SetBeginDropHdl( const Link<EditView*,void>& rLink );
-    Link<EditView*,void> GetBeginDropHdl() const;
+    Link<EditView*,void> const & GetBeginDropHdl() const;
 
     /** sets a link that is called at the end of a drag operation at an edit view */
     void            SetEndDropHdl( const Link<EditView*,void>& rLink );
-    Link<EditView*,void> GetEndDropHdl() const;
+    Link<EditView*,void> const & GetEndDropHdl() const;
 
     /// specifies if auto-correction should capitalize the first word or not (default is on)
     void            SetFirstWordCapitalization( bool bCapitalize );
@@ -534,7 +544,7 @@ public:
 
     EditDoc& GetEditDoc();
     const EditDoc& GetEditDoc() const;
-    void dumpAsXmlEditDoc(struct _xmlTextWriter* pWriter) const;
+    void dumpAsXmlEditDoc(xmlTextWriterPtr pWriter) const;
 
     ParaPortionList& GetParaPortions();
     const ParaPortionList& GetParaPortions() const;
@@ -612,6 +622,18 @@ public:
     sal_Int32 GetOverflowingLineNum() const;
     void ClearOverflowingParaNum();
     bool IsPageOverflow();
+
+    // tdf#132288  By default inserting an attribute beside another that is of
+    // the same type expands the original instead of inserting another. But the
+    // spell check dialog doesn't want that behaviour
+    void DisableAttributeExpanding();
+
+    void SetLOKSpecialPaperSize(const Size& rSize);
+    const Size& GetLOKSpecialPaperSize() const;
+
+#ifdef DBG_UTIL
+    static void DumpData(const EditEngine* pEE, bool bInfoBox);
+#endif
 };
 
 #endif // INCLUDED_EDITENG_EDITENG_HXX

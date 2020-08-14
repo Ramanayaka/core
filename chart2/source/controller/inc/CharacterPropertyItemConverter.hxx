@@ -20,14 +20,13 @@
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_CHARACTERPROPERTYITEMCONVERTER_HXX
 
 #include "ItemConverter.hxx"
-#include <com/sun/star/beans/PropertyState.hpp>
 #include <com/sun/star/awt/Size.hpp>
 
-#include <boost/optional.hpp>
+#include <optional>
 
-namespace chart { namespace wrapper {
+namespace chart::wrapper {
 
-class CharacterPropertyItemConverter : public ItemConverter
+class CharacterPropertyItemConverter final : public ItemConverter
 {
 public:
     CharacterPropertyItemConverter(
@@ -43,7 +42,7 @@ public:
 
     virtual ~CharacterPropertyItemConverter() override;
 
-protected:
+private:
     virtual const sal_uInt16* GetWhichPairs() const override;
     virtual bool GetItemProperty( tWhichIdType nWhichId, tPropertyNameWithMemberId & rOutProperty ) const override;
     virtual void FillSpecialItem( sal_uInt16 nWhichId, SfxItemSet & rOutItemSet ) const override;
@@ -51,13 +50,12 @@ protected:
 
     const css::uno::Reference<css::beans::XPropertySet>& GetRefSizePropertySet() const;
 
-private:
     OUString m_aRefSizePropertyName;
     css::uno::Reference<css::beans::XPropertySet> m_xRefSizePropSet;
-    boost::optional<css::awt::Size> m_pRefSize;
+    std::optional<css::awt::Size> m_pRefSize;
 };
 
-}}
+}
 
 #endif
 

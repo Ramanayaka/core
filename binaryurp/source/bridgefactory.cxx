@@ -17,46 +17,31 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <algorithm>
 #include <cassert>
-#include <exception>
 
-#include "com/sun/star/bridge/BridgeExistsException.hpp"
-#include "com/sun/star/connection/XConnection.hpp"
-#include "com/sun/star/lang/IllegalArgumentException.hpp"
-#include "com/sun/star/uno/Exception.hpp"
-#include "com/sun/star/uno/Reference.hxx"
-#include "com/sun/star/uno/RuntimeException.hpp"
-#include "com/sun/star/uno/XComponentContext.hpp"
-#include "com/sun/star/uno/XInterface.hpp"
-#include "cppuhelper/factory.hxx"
-#include "cppuhelper/implementationentry.hxx"
+#include <com/sun/star/bridge/BridgeExistsException.hpp>
+#include <com/sun/star/connection/XConnection.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/uno/Exception.hpp>
+#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/uno/RuntimeException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/uno/XInterface.hpp>
+#include <cppuhelper/factory.hxx>
+#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "rtl/ref.hxx"
-#include "sal/log.hxx"
-#include "sal/types.h"
+#include <o3tl/safeint.hxx>
+#include <rtl/ref.hxx>
+#include <sal/log.hxx>
+#include <sal/types.h>
 
 #include "bridge.hxx"
 #include "bridgefactory.hxx"
 
 namespace binaryurp {
-
-css::uno::Reference< css::uno::XInterface > BridgeFactory::static_create(
-    css::uno::Reference< css::uno::XComponentContext > const & /*xContext*/)
-{
-    return static_cast< cppu::OWeakObject * >(new BridgeFactory);
-}
-
-OUString BridgeFactory::static_getImplementationName() {
-    return OUString("com.sun.star.comp.bridge.BridgeFactory");
-}
-
-css::uno::Sequence< OUString >
-BridgeFactory::static_getSupportedServiceNames() {
-    return css::uno::Sequence<OUString>{ "com.sun.star.bridge.BridgeFactory" };
-}
 
 void BridgeFactory::removeBridge(
     css::uno::Reference< css::bridge::XBridge > const & bridge)
@@ -64,17 +49,15 @@ void BridgeFactory::removeBridge(
     assert(bridge.is());
     OUString n(bridge->getName());
     osl::MutexGuard g(m_aMutex);
-    if (n.isEmpty()) {
-        BridgeList::iterator i(
-            std::find(unnamed_.begin(), unnamed_.end(), bridge));
-        if (i != unnamed_.end()) {
-            unnamed_.erase(i);
-        }
-    } else {
+    if (n.isEmpty())
+    {
+        unnamed_.erase(std::remove(unnamed_.begin(), unnamed_.end(), bridge), unnamed_.end());
+    }
+    else
+    {
         BridgeMap::iterator i(named_.find(n));
-        if (i != named_.end() && i->second == bridge) {
+        if (i != named_.end() && i->second == bridge)
             named_.erase(i);
-        }
     }
 }
 
@@ -87,7 +70,7 @@ BridgeFactory::~BridgeFactory() {}
 
 OUString BridgeFactory::getImplementationName()
 {
-    return static_getImplementationName();
+    return "com.sun.star.comp.bridge.BridgeFactory";
 }
 
 sal_Bool BridgeFactory::supportsService(OUString const & ServiceName)
@@ -97,7 +80,7 @@ sal_Bool BridgeFactory::supportsService(OUString const & ServiceName)
 
 css::uno::Sequence< OUString > BridgeFactory::getSupportedServiceNames()
 {
-    return static_getSupportedServiceNames();
+    return { "com.sun.star.bridge.BridgeFactory" };
 }
 
 css::uno::Reference< css::bridge::XBridge > BridgeFactory::createBridge(
@@ -126,8 +109,7 @@ css::uno::Reference< css::bridge::XBridge > BridgeFactory::createBridge(
         }
         b.set(new Bridge(this, sName, aConnection, anInstanceProvider));
         if (sName.isEmpty()) {
-            unnamed_.push_back(
-                css::uno::Reference< css::bridge::XBridge >(b.get()));
+            unnamed_.emplace_back(b.get());
         } else {
             named_[sName] = b.get();
         }
@@ -154,7 +136,7 @@ BridgeFactory::getExistingBridges() {
             static_cast< cppu::OWeakObject * >(this));
     }
     sal_Int32 n = static_cast< sal_Int32 >(unnamed_.size());
-    if (named_.size() > static_cast< sal_uInt32 >(SAL_MAX_INT32 - n)) {
+    if (named_.size() > o3tl::make_unsigned(SAL_MAX_INT32 - n)) {
         throw css::uno::RuntimeException(
             "BridgeFactory::getExistingBridges: too many",
             static_cast< cppu::OWeakObject * >(this));
@@ -162,60 +144,50 @@ BridgeFactory::getExistingBridges() {
     n = static_cast< sal_Int32 >(n + named_.size());
     css::uno::Sequence< css::uno::Reference< css::bridge::XBridge > > s(n);
     sal_Int32 i = 0;
-    for (BridgeList::iterator j(unnamed_.begin()); j != unnamed_.end(); ++j) {
-        s[i++] = *j;
-    }
-    for (BridgeMap::iterator j(named_.begin()); j != named_.end(); ++j) {
-        s[i++] = j->second;
-    }
+    for (auto const& item : unnamed_)
+        s[i++] = item;
+
+    for (auto const& item : named_)
+        s[i++] = item.second;
+
     return s;
 }
 
 void BridgeFactory::disposing() {
-    BridgeList l1;
+    BridgeVector l1;
     BridgeMap l2;
     {
         osl::MutexGuard g(m_aMutex);
         l1.swap(unnamed_);
         l2.swap(named_);
     }
-    for (BridgeList::iterator i(l1.begin()); i != l1.end(); ++i) {
+    for (auto const& item : l1)
+    {
         try {
             css::uno::Reference<css::lang::XComponent>(
-                *i, css::uno::UNO_QUERY_THROW)->dispose();
+                item, css::uno::UNO_QUERY_THROW)->dispose();
         } catch (css::uno::Exception & e) {
-            SAL_WARN("binaryurp", "ignoring Exception " << e.Message);
+            SAL_WARN("binaryurp", "ignoring " << e);
         }
     }
-    for (BridgeMap::iterator i(l2.begin()); i != l2.end(); ++i) {
+    for (auto const& item : l2)
+    {
         try {
             css::uno::Reference<css::lang::XComponent>(
-                i->second, css::uno::UNO_QUERY_THROW)->dispose();
+                item.second, css::uno::UNO_QUERY_THROW)->dispose();
         } catch (css::uno::Exception & e) {
-            SAL_WARN("binaryurp", "ignoring Exception " << e.Message);
+            SAL_WARN("binaryurp", "ignoring " << e);
         }
     }
 }
 
 }
 
-namespace {
-
-static cppu::ImplementationEntry const services[] = {
-    { &binaryurp::BridgeFactory::static_create,
-      &binaryurp::BridgeFactory::static_getImplementationName,
-      &binaryurp::BridgeFactory::static_getSupportedServiceNames,
-      &cppu::createOneInstanceComponentFactory, nullptr, 0 },
-    { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-};
-
-}
-
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL binaryurp_component_getFactory(
-    char const * pImplName, void * pServiceManager, void * pRegistryKey)
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_bridge_BridgeFactory_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    return cppu::component_getFactoryHelper(
-        pImplName, pServiceManager, pRegistryKey, services);
+    return cppu::acquire(static_cast< cppu::OWeakObject * >(new binaryurp::BridgeFactory));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

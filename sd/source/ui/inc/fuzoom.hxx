@@ -20,14 +20,13 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_FUZOOM_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_FUZOOM_HXX
 
-#include <vcl/pointr.hxx>
 #include "fupoor.hxx"
 
 namespace sd {
 
 extern const sal_uInt16 SidArrayZoom[];
 
-class FuZoom
+class FuZoom final
     : public FuPoor
 {
 public:
@@ -42,7 +41,7 @@ public:
     virtual void Activate() override;        ///< activates the function
     virtual void Deactivate() override;      ///< deactivates the function
 
-protected:
+private:
     virtual ~FuZoom() override;
 
     Point       aBeginPosPix;
@@ -51,9 +50,8 @@ protected:
     ::tools::Rectangle   aZoomRect;
     bool        bVisible;
     bool        bStartDrag;
-    Pointer     aPtr;
+    PointerStyle aPtr;
 
-private:
     FuZoom (
         ViewShell* pViewSh,
         ::sd::Window* pWin,

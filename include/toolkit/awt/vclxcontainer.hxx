@@ -23,16 +23,14 @@
 
 #include <com/sun/star/awt/XVclContainer.hpp>
 #include <com/sun/star/awt/XVclContainerPeer.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <cppuhelper/weak.hxx>
 
 #include <toolkit/awt/vclxwindow.hxx>
 
 
-//  class VCLXContainer
 
 
-class TOOLKIT_DLLPUBLIC VCLXContainer : public css::awt::XVclContainer,
+class VCLXContainer : public css::awt::XVclContainer,
                         public css::awt::XVclContainerPeer,
                         public VCLXWindow
 {

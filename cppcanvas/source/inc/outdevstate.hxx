@@ -17,27 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CPPCANVAS_SOURCE_INC_OUTDEVSTATE_HXX
-#define INCLUDED_CPPCANVAS_SOURCE_INC_OUTDEVSTATE_HXX
+#pragma once
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 
-#include <com/sun/star/rendering/StringContext.hpp>
-#include <com/sun/star/rendering/RenderState.hpp>
 #include <com/sun/star/rendering/XPolyPolygon2D.hpp>
 #include <com/sun/star/rendering/XCanvasFont.hpp>
 #include <com/sun/star/rendering/TextDirection.hpp>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <tools/fontenum.hxx>
+#include <tools/gen.hxx>
 #include <vcl/fntstyle.hxx>
-#include <vcl/vclenum.hxx>
-#include <vcl/outdev.hxx>
+#include <vcl/outdevstate.hxx>
 
 
-namespace cppcanvas
-{
-    namespace internal
+namespace cppcanvas::internal
     {
         struct OutDevState
         {
@@ -50,6 +46,7 @@ namespace cppcanvas
                 fillColor(),
                 textColor(),
                 textFillColor(),
+                textOverlineColor(),
                 textLineColor(),
 
                 xFont(),
@@ -57,7 +54,7 @@ namespace cppcanvas
                 mapModeTransform(),
                 fontRotation(0.0),
 
-                textEmphasisMarkStyle(FontEmphasisMark::NONE),
+                textEmphasisMark(FontEmphasisMark::NONE),
                 pushFlags(PushFlags::ALL),
                 textDirection(css::rendering::TextDirection::WEAK_LEFT_TO_RIGHT),
                 textAlignment(0), // TODO(Q2): Synchronize with implrenderer
@@ -75,6 +72,7 @@ namespace cppcanvas
                 isLineColorSet( false ),
                 isFillColorSet( false ),
                 isTextFillColorSet( false ),
+                isTextOverlineColorSet( false ),
                 isTextLineColorSet( false )
             {
             }
@@ -87,6 +85,7 @@ namespace cppcanvas
             css::uno::Sequence< double >                                             fillColor;
             css::uno::Sequence< double >                                             textColor;
             css::uno::Sequence< double >                                             textFillColor;
+            css::uno::Sequence< double >                                             textOverlineColor;
             css::uno::Sequence< double >                                             textLineColor;
 
             /** Current font.
@@ -99,7 +98,7 @@ namespace cppcanvas
             ::basegfx::B2DHomMatrix                                                  mapModeTransform;
             double                                                                   fontRotation;
 
-            FontEmphasisMark                                                         textEmphasisMarkStyle;
+            FontEmphasisMark                                                         textEmphasisMark;
             PushFlags                                                                pushFlags;
             sal_Int8                                                                 textDirection;
             sal_Int8                                                                 textAlignment;
@@ -116,11 +115,10 @@ namespace cppcanvas
             bool                                                                     isLineColorSet;
             bool                                                                     isFillColorSet;
             bool                                                                     isTextFillColorSet;
+            bool                                                                     isTextOverlineColorSet;
             bool                                                                     isTextLineColorSet;
         };
-    }
-}
 
-#endif // INCLUDED_CPPCANVAS_SOURCE_INC_OUTDEVSTATE_HXX
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

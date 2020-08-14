@@ -21,10 +21,6 @@
 #include <stdio.h>
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/ucb/XSimpleFileAccess.hpp>
-#include <com/sun/star/ucb/XCommandEnvironment.hpp>
-#include <com/sun/star/ucb/InsertCommandArgument.hpp>
-#include <com/sun/star/ucb/NameClashException.hpp>
 #include <com/sun/star/io/WrongFormatException.hpp>
 
 #include <osl/time.h>
@@ -33,17 +29,12 @@
 #include <osl/file.hxx>
 #include <o3tl/enumrange.hxx>
 
-#include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/strbuf.hxx>
 #include <rtl/ustrbuf.hxx>
 
-#include <comphelper/processfactory.hxx>
-
 #include <tools/urlobj.hxx>
 #include <unotools/bootstrap.hxx>
-
-#include <ucbhelper/content.hxx>
 
 #include <unotools/useroptions.hxx>
 
@@ -56,20 +47,33 @@ using namespace ::com::sun::star;
 namespace svt {
 
 
-LockFileCommon::LockFileCommon( const OUString& aOrigURL, const OUString& aPrefix )
+LockFileCommon::LockFileCommon(const OUString& aLockFileURL)
+    : m_aURL(aLockFileURL)
 {
-    INetURLObject aDocURL = ResolveLinks( INetURLObject( aOrigURL ) );
-
-    OUString aShareURLString = aDocURL.GetPartBeforeLastName();
-    aShareURLString += aPrefix;
-    aShareURLString += aDocURL.GetName();
-    aShareURLString += "%23"; // '#'
-    m_aURL = INetURLObject( aShareURLString ).GetMainURL( INetURLObject::DecodeMechanism::NONE );
 }
-
 
 LockFileCommon::~LockFileCommon()
 {
+}
+
+
+const OUString& LockFileCommon::GetURL() const
+{
+    return m_aURL;
+}
+
+
+void LockFileCommon::SetURL(const OUString& aURL)
+{
+    m_aURL = aURL;
+}
+
+
+OUString LockFileCommon::GenerateOwnLockFileURL(const OUString& aOrigURL, const OUString& aPrefix)
+{
+    INetURLObject aURL = ResolveLinks(INetURLObject(aOrigURL));
+    aURL.setName(aPrefix + aURL.GetLastName() + "%23" /*'#'*/);
+    return aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE);
 }
 
 
@@ -126,7 +130,7 @@ LockFileEntry LockFileCommon::ParseEntry( const uno::Sequence< sal_Int8 >& aBuff
 
 OUString LockFileCommon::ParseName( const uno::Sequence< sal_Int8 >& aBuffer, sal_Int32& io_nCurPos )
 {
-    OStringBuffer aResult;
+    OStringBuffer aResult(128);
     bool bHaveName = false;
     bool bEscape = false;
 
@@ -137,10 +141,10 @@ OUString LockFileCommon::ParseName( const uno::Sequence< sal_Int8 >& aBuffer, sa
 
         if ( bEscape )
         {
-            if ( aBuffer[io_nCurPos] == ',' || aBuffer[io_nCurPos] == ';' || aBuffer[io_nCurPos] == '\\' )
-                aResult.append( (sal_Char)aBuffer[io_nCurPos] );
-            else
+            if ( aBuffer[io_nCurPos] != ',' && aBuffer[io_nCurPos] != ';' && aBuffer[io_nCurPos] != '\\' )
                 throw io::WrongFormatException();
+
+            aResult.append( static_cast<char>(aBuffer[io_nCurPos]) );
 
             bEscape = false;
             io_nCurPos++;
@@ -152,7 +156,7 @@ OUString LockFileCommon::ParseName( const uno::Sequence< sal_Int8 >& aBuffer, sa
             if ( aBuffer[io_nCurPos] == '\\' )
                 bEscape = true;
             else
-                aResult.append( (sal_Char)aBuffer[io_nCurPos] );
+                aResult.append( static_cast<char>(aBuffer[io_nCurPos]) );
 
             io_nCurPos++;
         }
@@ -164,7 +168,7 @@ OUString LockFileCommon::ParseName( const uno::Sequence< sal_Int8 >& aBuffer, sa
 
 OUString LockFileCommon::EscapeCharacters( const OUString& aSource )
 {
-    OUStringBuffer aBuffer;
+    OUStringBuffer aBuffer(aSource.getLength()*2);
     const sal_Unicode* pStr = aSource.getStr();
     for ( sal_Int32 nInd = 0; nInd < aSource.getLength() && pStr[nInd] != 0; nInd++ )
     {
@@ -202,8 +206,9 @@ OUString LockFileCommon::GetCurrentLocalTime()
             oslDateTime aDateTime;
             if ( osl_getDateTimeFromTimeValue( &aLocTime, &aDateTime ) )
             {
-                char pDateTime[20];
-                sprintf( pDateTime, "%02d.%02d.%4d %02d:%02d", aDateTime.Day, aDateTime.Month, aDateTime.Year, aDateTime.Hours, aDateTime.Minutes );
+                char pDateTime[sizeof("65535.65535.-32768 65535:65535")];
+                    // reserve enough space for hypothetical max length
+                sprintf( pDateTime, "%02" SAL_PRIuUINT32 ".%02" SAL_PRIuUINT32 ".%4" SAL_PRIdINT32 " %02" SAL_PRIuUINT32 ":%02" SAL_PRIuUINT32, sal_uInt32(aDateTime.Day), sal_uInt32(aDateTime.Month), sal_Int32(aDateTime.Year), sal_uInt32(aDateTime.Hours), sal_uInt32(aDateTime.Minutes) );
                 aTime = OUString::createFromAscii( pDateTime );
             }
         }

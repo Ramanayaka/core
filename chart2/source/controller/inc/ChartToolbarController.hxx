@@ -18,8 +18,9 @@
 #include <com/sun/star/util/XUpdatable.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/frame/XFramesSupplier.hpp>
+
+namespace com::sun::star::awt { class XWindow; }
+namespace com::sun::star::frame { class XFramesSupplier; }
 
 namespace chart {
 
@@ -38,7 +39,7 @@ public:
     ChartToolbarController(const ChartToolbarController&) = delete;
     const ChartToolbarController& operator=(const ChartToolbarController&) = delete;
 
-    // XToolbarContoller
+    // XToolbarController
     virtual void SAL_CALL execute(sal_Int16 nKeyModifier) override;
 
     virtual void SAL_CALL click() override;

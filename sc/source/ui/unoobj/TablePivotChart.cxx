@@ -8,14 +8,17 @@
  */
 
 #include <com/sun/star/chart2/data/XPivotTableDataProvider.hpp>
-#include <svx/charthelper.hxx>
+#include <com/sun/star/chart2/XChartDocument.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
+#include <svx/svdoole2.hxx>
 #include <svtools/embedhlp.hxx>
+#include <vcl/svapp.hxx>
 
-#include "miscuno.hxx"
-#include "docsh.hxx"
+#include <miscuno.hxx>
+#include <docsh.hxx>
 
-#include "TablePivotChart.hxx"
-#include "ChartTools.hxx"
+#include <TablePivotChart.hxx>
+#include <ChartTools.hxx>
 
 using namespace css;
 

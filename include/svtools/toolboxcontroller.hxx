@@ -21,27 +21,35 @@
 #define INCLUDED_SVTOOLS_TOOLBOXCONTROLLER_HXX
 
 #include <svtools/svtdllapi.h>
-#include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/frame/XDispatch.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/frame/XStatusListener.hpp>
 #include <com/sun/star/frame/XToolbarController.hpp>
-#include <com/sun/star/frame/XLayoutManager.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XUpdatable.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/interfacecontainer.hxx>
 #include <comphelper/broadcasthelper.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include <comphelper/property.hxx>
 #include <comphelper/propertycontainer.hxx>
 #include <cppuhelper/propshlp.hxx>
 #include <tools/link.hxx>
 
 #include <unordered_map>
 
+namespace com :: sun :: star :: frame { class XDispatch; }
+namespace com :: sun :: star :: frame { class XFrame; }
+namespace com :: sun :: star :: frame { class XLayoutManager; }
+namespace com :: sun :: star :: uno { class XComponentContext; }
+namespace com :: sun :: star :: util { class XURLTransformer; }
+
 class ToolBox;
+
+namespace weld
+{
+    class Builder;
+    class Toolbar;
+}
 
 namespace svt
 {
@@ -121,6 +129,8 @@ class SVT_DLLPUBLIC ToolboxController :
 
         void enable( bool bEnable );
 
+        bool IsInSidebar() const { return m_bSidebar; }
+
     protected:
         bool getToolboxId( sal_uInt16& rItemId, ToolBox** ppToolBox );
         struct Listener
@@ -150,22 +160,22 @@ class SVT_DLLPUBLIC ToolboxController :
         DECL_STATIC_LINK( ToolboxController, ExecuteHdl_Impl, void*, void );
 
         typedef std::unordered_map< OUString,
-                                    css::uno::Reference< css::frame::XDispatch >,
-                                    OUStringHash > URLToDispatchMap;
+                                    css::uno::Reference< css::frame::XDispatch > > URLToDispatchMap;
 
         // methods to support status forwarder, known by the old sfx2 toolbox controller implementation
         void addStatusListener( const OUString& aCommandURL );
         void removeStatusListener( const OUString& aCommandURL );
         void bindListener();
         void unbindListener();
-        bool isBound() const;
+
         // TODO remove
         const css::uno::Reference< css::util::XURLTransformer >& getURLTransformer() const { return m_xUrlTransformer;}
         // TODO remove
         const css::uno::Reference< css::awt::XWindow >& getParent() const { return m_xParentWindow;}
 
-        bool                                                      m_bInitialized : 1,
-                                                                  m_bDisposed : 1;
+        bool                                                      m_bInitialized,
+                                                                  m_bDisposed,
+                                                                  m_bSidebar;
         sal_uInt16                                                m_nToolBoxId;
         css::uno::Reference< css::frame::XFrame >                 m_xFrame;
         css::uno::Reference< css::uno::XComponentContext >        m_xContext;
@@ -176,6 +186,8 @@ class SVT_DLLPUBLIC ToolboxController :
         css::uno::Reference< css::awt::XWindow >                  m_xParentWindow;
         css::uno::Reference< css::util::XURLTransformer >         m_xUrlTransformer;
         OUString                                                  m_sModuleName;
+        weld::Toolbar*                                            m_pToolbar;
+        weld::Builder*                                            m_pBuilder;
 };
 
 }

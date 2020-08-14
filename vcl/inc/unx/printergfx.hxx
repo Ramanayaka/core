@@ -20,11 +20,12 @@
 #ifndef INCLUDED_VCL_INC_GENERIC_PRINTERGFX_HXX
 #define INCLUDED_VCL_INC_GENERIC_PRINTERGFX_HXX
 
-#include <unx/helper.hxx>
-#include "sallayout.hxx"
-#include "osl/file.hxx"
-#include "tools/gen.hxx"
-#include "vclpluginapi.h"
+#include <osl/file.hxx>
+#include <tools/gen.hxx>
+#include <vcl/dllapi.h>
+#include <vcl/glyphitem.hxx>
+
+#include <impglyphitem.hxx>
 
 #include <list>
 #include <vector>
@@ -85,7 +86,7 @@ public:
     { return mnBlue; }
     bool        operator== (const PrinterColor& aColor) const
     {
-        return aColor.Is() && this->Is()
+        return aColor.Is() && Is()
             && mnRed   == aColor.mnRed
             && mnGreen == aColor.mnGreen
             && mnBlue  == aColor.mnBlue;
@@ -116,7 +117,7 @@ struct CharacterMetric;
  *      vcl/unx/source/gdi/salgdi2.cxx
  */
 
-class VCL_DLLPUBLIC PrinterBmp
+class PrinterBmp
 {
 public:
 
@@ -154,7 +155,7 @@ struct GraphicsStatus
     GraphicsStatus();
 };
 
-class VCL_DLLPUBLIC PrinterGfx
+class PrinterGfx
 {
 private:
 
@@ -179,7 +180,7 @@ private:
        glyph in one of the subfonts, the mapping from unicode to the
        glyph has to be remembered */
 
-    std::list< GlyphSet > maPS3Font;
+    std::vector< GlyphSet > maPS3Font;
 
     sal_Int32       mnFontID;
     sal_Int32       mnTextAngle;
@@ -247,17 +248,16 @@ public:
     void            PSMoveTo (const Point& rPoint);
     void            PSScale (double fScaleX, double fScaleY);
     void            PSLineTo(const Point& rPoint );
-    void            PSPointOp (const Point& rPoint, const sal_Char* pOperator);
+    void            PSPointOp (const Point& rPoint, const char* pOperator);
     void            PSHexString (const unsigned char* pString, sal_Int16 nLen);
     void            PSShowGlyph (const unsigned char nGlyphId);
 
     void            OnEndJob ();
-    void            writeResources( osl::File* pFile, std::list< OString >& rSuppliedFonts );
+    void            writeResources( osl::File* pFile, std::vector< OString >& rSuppliedFonts );
     PrintFontManager& GetFontMgr () { return mrFontMgr; }
 
     void            drawGlyph(const Point& rPoint,
-                              sal_GlyphId aGlyphId,
-                              sal_Int32 nDelta);
+                              sal_GlyphId aGlyphId);
 public:
     PrinterGfx();
     ~PrinterGfx();
@@ -266,7 +266,7 @@ public:
     void            Clear();
 
     // query depth
-    sal_uInt16      GetBitCount () { return mnDepth;}
+    sal_uInt16      GetBitCount () const { return mnDepth;}
 
     // clip region
     void            ResetClipRegion ();
@@ -332,12 +332,11 @@ public:
     { return maVirtualStatus.mbArtItalic; }
     bool            GetArtificialBold() const
     { return maVirtualStatus.mbArtBold; }
-    void            SetTextColor (PrinterColor& rTextColor)
+    void            SetTextColor (PrinterColor const & rTextColor)
     { maTextColor = rTextColor; }
 
     void            DrawGlyph(const Point& rPoint,
-                              const GlyphItem& rGlyph,
-                              sal_Int32 nDelta);
+                              const GlyphItem& rGlyph);
 
 };
 

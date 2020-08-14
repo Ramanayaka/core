@@ -18,15 +18,12 @@
  */
 #include <svx/TextUnderlinePopup.hxx>
 #include "TextUnderlineControl.hxx"
-#include <editeng/udlnitem.hxx>
 #include <vcl/toolbox.hxx>
 
 using namespace svx;
 
-SFX_IMPL_TOOLBOX_CONTROL(TextUnderlinePopup, SvxTextLineItem);
-
-TextUnderlinePopup::TextUnderlinePopup(sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx)
-    : SfxToolBoxControl(nSlotId, nId, rTbx)
+TextUnderlinePopup::TextUnderlinePopup(const css::uno::Reference<css::uno::XComponentContext>& rContext)
+    : PopupWindowController(rContext, nullptr, OUString())
 {
 }
 
@@ -34,21 +31,53 @@ TextUnderlinePopup::~TextUnderlinePopup()
 {
 }
 
-void TextUnderlinePopup::initialize( const css::uno::Sequence< css::uno::Any >& aArguments )
+void TextUnderlinePopup::initialize( const css::uno::Sequence< css::uno::Any >& rArguments )
 {
-    SfxToolBoxControl::initialize(aArguments);
-    if (GetToolBox().GetItemCommand(GetId()) == m_aCommandURL)
-        GetToolBox().SetItemBits(GetId(), ToolBoxItemBits::DROPDOWN | GetToolBox().GetItemBits(GetId()));
+    PopupWindowController::initialize(rArguments);
+
+    if (m_pToolbar)
+    {
+        mxPopoverContainer.reset(new ToolbarPopupContainer(m_pToolbar));
+        m_pToolbar->set_item_popover(m_aCommandURL.toUtf8(), mxPopoverContainer->getTopLevel());
+    }
+
+    ToolBox* pToolBox = nullptr;
+    sal_uInt16 nId = 0;
+    if (getToolboxId(nId, &pToolBox) && pToolBox->GetItemCommand(nId) == m_aCommandURL)
+        pToolBox->SetItemBits(nId, ToolBoxItemBits::DROPDOWN | pToolBox->GetItemBits(nId));
 }
 
-VclPtr<SfxPopupWindow> TextUnderlinePopup::CreatePopupWindow()
+std::unique_ptr<WeldToolbarPopup> TextUnderlinePopup::weldPopupWindow()
 {
-    VclPtr<TextUnderlineControl> pControl = VclPtr<TextUnderlineControl>::Create(GetSlotId());
-    pControl->StartPopupMode(&GetToolBox(), FloatWinPopupFlags::GrabFocus);
-    SetPopupWindow(pControl);
-
-    return pControl;
+    return std::make_unique<TextUnderlineControl>(this, m_pToolbar);
 }
 
+VclPtr<vcl::Window> TextUnderlinePopup::createVclPopupWindow( vcl::Window* pParent )
+{
+    mxInterimPopover = VclPtr<InterimToolbarPopup>::Create(getFrameInterface(), pParent,
+        std::make_unique<TextUnderlineControl>(this, pParent->GetFrameWeld()));
+
+    mxInterimPopover->Show();
+
+    return mxInterimPopover;
+}
+
+OUString TextUnderlinePopup::getImplementationName()
+{
+    return "com.sun.star.comp.svx.UnderlineToolBoxControl";
+}
+
+css::uno::Sequence<OUString> TextUnderlinePopup::getSupportedServiceNames()
+{
+    return { "com.sun.star.frame.ToolbarController" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_svx_UnderlineToolBoxControl_get_implementation(
+    css::uno::XComponentContext* rContext,
+    css::uno::Sequence<css::uno::Any> const & )
+{
+    return cppu::acquire(new TextUnderlinePopup(rContext));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

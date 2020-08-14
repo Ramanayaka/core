@@ -21,11 +21,7 @@
 #define INCLUDED_EXTENSIONS_SOURCE_BIBLIOGRAPHY_BIBBEAM_HXX
 
 #include <com/sun/star/awt/XControlContainer.hpp>
-#include <com/sun/star/awt/XControl.hpp>
-#include <com/sun/star/awt/XControlModel.hpp>
-#include <com/sun/star/form/XForm.hpp>
 #include <com/sun/star/frame/XDispatchProviderInterception.hpp>
-#include <vcl/splitwin.hxx>
 #include "toolbar.hxx"
 #include "formcontrolcontainer.hxx"
 #include "bibshortcuthandler.hxx"
@@ -38,22 +34,17 @@ namespace bib
 
 
     class BibGridwin;
-    class BibBeamer
+    class BibBeamer final
             :public BibSplitWindow
             ,public FormControlContainer
     {
-        private:
-
             css::uno::Reference< css::frame::XController >            m_xController;
-            css::uno::Reference< css::frame::XFrame >                 m_xToolBarRef;
 
             BibDataManager*         pDatMan;
             VclPtr<BibToolBar>      pToolBar;
             VclPtr<BibGridwin>      pGridWin;
 
             DECL_LINK( RecalcLayout_Impl, void*, void );
-
-        protected:
 
             void                    createToolBar();
             void                    createGridWin();
@@ -63,7 +54,7 @@ namespace bib
                     getControlContainer() override;
         public:
             css::uno::Reference< css::frame::XDispatchProviderInterception >
-                    getDispatchProviderInterception();
+                    getDispatchProviderInterception() const;
 
             BibBeamer(vcl::Window* pParent,BibDataManager* pDatMan );
             virtual ~BibBeamer() override;

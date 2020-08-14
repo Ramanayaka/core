@@ -21,10 +21,9 @@
 #define INCLUDED_VCL_INC_UNX_X11_X11SYS_HXX
 
 #include <unx/gensys.h>
-#include <osl/thread.hxx>
 #include <vclpluginapi.h>
 
-class VCLPLUG_GEN_PUBLIC X11SalSystem : public SalGenericSystem
+class X11SalSystem final : public SalGenericSystem
 {
 public:
     X11SalSystem() {}
@@ -37,8 +36,7 @@ public:
     virtual tools::Rectangle    GetDisplayScreenPosSizePixel( unsigned int nScreen ) override;
     virtual int ShowNativeDialog( const OUString& rTitle,
                                   const OUString& rMessage,
-                                  const std::list< OUString >& rButtons,
-                                  int nDefButton ) override;
+                                  const std::vector< OUString >& rButtons ) override;
 };
 
 #endif // INCLUDED_VCL_INC_UNX_X11_X11SYS_HXX

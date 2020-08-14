@@ -22,13 +22,12 @@
 
 #include <rtl/ustring.hxx>
 #include <sal/config.h>
-#include "filter.hxx"
-
-#include "flttypes.hxx"
-#include "ftools.hxx"
-#include "qprostyle.hxx"
+#include <vcl/errcode.hxx>
+#include <types.hxx>
 
 class ScDocument;
+class SvStream;
+class ScQProStyle;
 
 // Stream wrapper class
 class ScQProReader
@@ -38,6 +37,7 @@ class ScQProReader
     sal_uInt32 mnOffset;
     SvStream *mpStream;
     bool mbEndOfFile;
+    const SCTAB mnMaxTab;
 
 public:
     ScQProReader(SvStream* pStream);
@@ -46,11 +46,12 @@ public:
     bool recordsLeft();
     void SetEof( bool bValue ){ mbEndOfFile = bValue; }
     bool nextRecord();
-    sal_uInt16 getId() { return mnId; }
-    sal_uInt16 getLength() { return mnLength; }
-    void readString( OUString &rString, sal_uInt16 nLength );
+    sal_uInt16 getId() const { return mnId; }
+    sal_uInt16 getLength() const { return mnLength; }
+    OUString readString(sal_uInt16 nLength);
 
-    ErrCode import( ScDocument *pDoc );
+    ErrCode parse( ScDocument *pDoc );
+    ErrCode import( ScDocument *pDoc ); //parse + CalcAfterLoad
     ErrCode readSheet( SCTAB nTab, ScDocument* pDoc, ScQProStyle *pStyle );
 };
 #endif

@@ -27,7 +27,6 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <osl/mutex.hxx>
-#include <osl/file.hxx>
 
 
 class INetURLObject;
@@ -35,17 +34,6 @@ class INetURLObject;
 
 namespace migration
 {
-
-
-    OUString SAL_CALL BasicMigration_getImplementationName();
-    css::uno::Sequence< OUString > SAL_CALL BasicMigration_getSupportedServiceNames();
-    css::uno::Reference< css::uno::XInterface > SAL_CALL BasicMigration_create(
-        css::uno::Reference< css::uno::XComponentContext > const & xContext );
-
-
-    // class BasicMigration
-
-
     typedef ::cppu::WeakImplHelper<
         css::lang::XServiceInfo,
         css::lang::XInitialization,
@@ -58,7 +46,7 @@ namespace migration
         OUString         m_sSourceDir;
 
         TStringVectorPtr        getFiles( const OUString& rBaseURL ) const;
-        void                    checkAndCreateDirectory( INetURLObject& rDirURL );
+        void                    checkAndCreateDirectory( INetURLObject const & rDirURL );
         void                    copyFiles();
 
     public:

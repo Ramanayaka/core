@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SC_INC_DRWLAYER_HXX
 #define INCLUDED_SC_INC_DRWLAYER_HXX
 
-#include <vcl/graph.hxx>
 #include <svx/fmmodel.hxx>
 #include <svx/svdundo.hxx>
 #include "global.hxx"
@@ -28,14 +27,10 @@
 class ScDocument;
 class SfxObjectShell;
 class ScDrawObjData;
-class ScIMapInfo;
 class ScMacroInfo;
-class IMapObject;
 class ScMarkData;
-class ScRange;
-class ScAddress;
 
-class ScTabDeletedHint : public SfxHint
+class ScTabDeletedHint final : public SfxHint
 {
 private:
     SCTAB   nTab;
@@ -46,7 +41,7 @@ public:
     SCTAB   GetTab() const { return nTab; }
 };
 
-class ScTabSizeChangedHint : public SfxHint
+class ScTabSizeChangedHint final : public SfxHint
 {
 private:
     SCTAB   nTab;
@@ -60,7 +55,7 @@ public:
 //  Adjusting of detective UserData and draw undo's both have to be in SdrUndoGroup;
 //  therefore derived from SdrUndoAction
 
-class ScUndoObjData : public SdrUndoObj
+class ScUndoObjData final : public SdrUndoObj
 {
 private:
     ScAddress   aOldStt;
@@ -76,10 +71,11 @@ public:
     virtual void     Redo() override;
 };
 
-class ScUndoAnchorData : public SdrUndoObj
+class ScUndoAnchorData final : public SdrUndoObj
 {
 private:
     bool                    mbWasCellAnchored;
+    bool                    mbWasResizeWithCell;
     ScDocument*             mpDoc;
     SCTAB                   mnTab;
 public:
@@ -90,12 +86,12 @@ public:
     virtual void     Redo() override;
 };
 
-class SC_DLLPUBLIC ScDrawLayer : public FmFormModel
+class SC_DLLPUBLIC ScDrawLayer final : public FmFormModel
 {
 private:
     OUString        aName;
     ScDocument*     pDoc;
-    SdrUndoGroup*   pUndoGroup;
+    std::unique_ptr<SdrUndoGroup> pUndoGroup;
     bool            bRecording;
     bool            bAdjustEnabled;
     bool            bHyphenatorSet;
@@ -104,8 +100,7 @@ private:
     void            MoveCells( SCTAB nTab, SCCOL nCol1,SCROW nRow1, SCCOL nCol2,SCROW nRow2,
                                 SCCOL nDx,SCROW nDy, bool bUpdateNoteCaptionPos );
 
-    void            RecalcPos( SdrObject* pObj, ScDrawObjData& rData, bool bNegativePage, bool bUpdateNoteCaptionPos );
-    void            ResizeLastRectFromAnchor( SdrObject* pObj, ScDrawObjData& rData, bool bUseLogicRect, bool bNegativePage, bool bCanResize, bool bHiddenAsZero = true );
+    void            ResizeLastRectFromAnchor( const SdrObject* pObj, ScDrawObjData& rData, bool bUseLogicRect, bool bNegativePage, bool bCanResize, bool bHiddenAsZero = true );
 
 public:
                     ScDrawLayer( ScDocument* pDocument, const OUString& rName );
@@ -135,17 +130,18 @@ public:
     void            EnableAdjust( bool bSet )    { bAdjustEnabled = bSet; }
 
     void            BeginCalcUndo(bool bDisableTextEditUsesCommonUndoManager);
-    SdrUndoGroup*   GetCalcUndo();
+    std::unique_ptr<SdrUndoGroup> GetCalcUndo();
     bool            IsRecording() const         { return bRecording; }
-    void            AddCalcUndo( SdrUndoAction* pUndo );
+    void            AddCalcUndo( std::unique_ptr<SdrUndoAction> pUndo );
 
     void            MoveArea( SCTAB nTab, SCCOL nCol1,SCROW nRow1, SCCOL nCol2,SCROW nRow2,
                                 SCCOL nDx,SCROW nDy, bool bInsDel, bool bUpdateNoteCaptionPos );
+    void            RecalcPos( SdrObject* pObj, ScDrawObjData& rData, bool bNegativePage, bool bUpdateNoteCaptionPos );
 
     bool            HasObjectsInRows( SCTAB nTab, SCROW nStartRow, SCROW nEndRow );
 
     void            DeleteObjectsInArea( SCTAB nTab, SCCOL nCol1,SCROW nRow1,
-                                            SCCOL nCol2,SCROW nRow2 );
+                                            SCCOL nCol2,SCROW nRow2, bool bAnchored = false );
     void            DeleteObjectsInSelection( const ScMarkData& rMark );
 
     void            CopyToClip( ScDocument* pClipDoc, SCTAB nTab, const tools::Rectangle& rRange );
@@ -161,11 +157,11 @@ public:
 
     /** Returns the rectangle for the passed cell address in 1/100 mm.
         @param bMergedCell  True = regards merged cells. False = use single column/row size. */
-    static tools::Rectangle GetCellRect( ScDocument& rDoc, const ScAddress& rPos, bool bMergedCell );
+    static tools::Rectangle GetCellRect( const ScDocument& rDoc, const ScAddress& rPos, bool bMergedCell );
 
                     //  GetVisibleName: name for navigator etc: GetPersistName or GetName
                     //  (ChartListenerCollection etc. must use GetPersistName directly)
-    static OUString GetVisibleName( SdrObject* pObj );
+    static OUString GetVisibleName( const SdrObject* pObj );
 
     SdrObject*      GetNamedObject( const OUString& rName, sal_uInt16 nId, SCTAB& rFoundTab ) const;
                     // if pnCounter != NULL, the search for a name starts with this index + 1,
@@ -174,16 +170,28 @@ public:
     void            EnsureGraphicNames();
 
     static bool IsCellAnchored( const SdrObject& rObj );
+    static bool IsResizeWithCell( const SdrObject& rObj );
     static void             SetPageAnchored( SdrObject& );
     static void             SetCellAnchored( SdrObject&, const ScDrawObjData &rAnchor );
     static void             SetVisualCellAnchored( SdrObject&, const ScDrawObjData &rAnchor );
-    // Updates rAnchor based on position of rObj
-    static void             GetCellAnchorFromPosition( SdrObject &rObj, ScDrawObjData &rAnchor, const ScDocument &rDoc, SCTAB nTab, bool bUseLogicRect = true, bool bHiddenAsZero = true );
-    static void             SetCellAnchoredFromPosition( SdrObject &rObj, const ScDocument &rDoc, SCTAB nTab );
-    static void             UpdateCellAnchorFromPositionEnd( SdrObject &rObj, ScDrawObjData &rAnchor, const ScDocument &rDoc, SCTAB nTab, bool bUseLogicRect = true );
-    static ScAnchorType     GetAnchorType( const SdrObject& );
 
-    // positions for detektive lines
+    // Updates rAnchor based on position of rObj
+    static void GetCellAnchorFromPosition(
+        const tools::Rectangle &rRectangle,
+        ScDrawObjData &rAnchor,
+        const ScDocument &rDoc,
+        SCTAB nTab,
+        bool bHiddenAsZero = true);
+
+    static void             SetCellAnchoredFromPosition( SdrObject &rObj, const ScDocument &rDoc, SCTAB nTab, bool bResizeWithCell );
+    static void             UpdateCellAnchorFromPositionEnd( const SdrObject &rObj, ScDrawObjData &rAnchor, const ScDocument &rDoc, SCTAB nTab, bool bUseLogicRect = true );
+    static ScAnchorType     GetAnchorType( const SdrObject& );
+    std::vector<SdrObject*> GetObjectsAnchoredToRows(SCTAB nTab, SCROW nStartRow, SCROW nEndRow);
+    std::map<SCROW, std::vector<SdrObject*>> GetObjectsAnchoredToRange(SCTAB nTab, SCCOL nCol, SCROW nStartRow, SCROW nEndRow);
+    bool HasObjectsAnchoredInRange(const ScRange& rRange);
+    void MoveObject(SdrObject* pObj, const ScAddress& rNewPosition);
+
+    // positions for detective lines
     static ScDrawObjData* GetObjData( SdrObject* pObj, bool bCreate=false );
     static ScDrawObjData* GetNonRotatedObjData( SdrObject* pObj, bool bCreate=false );
 
@@ -198,21 +206,13 @@ public:
     /** Returns the object data, if the passed object is a cell note caption. */
     static ScDrawObjData* GetNoteCaptionData( SdrObject* pObj, SCTAB nTab );
 
-    // Image-Map
-    static ScIMapInfo* GetIMapInfo( SdrObject* pObj );
-
-    static IMapObject* GetHitIMapObject( SdrObject* pObject,
-                            const Point& rWinPoint, const vcl::Window& rCmpWnd );
-
     static ScMacroInfo* GetMacroInfo( SdrObject* pObj, bool bCreate = false );
-
-    virtual ImageMap* GetImageMapForObject(SdrObject* pObj) override;
 
 private:
     static SfxObjectShell* pGlobalDrawPersist;          // for AllocModel
 public:
     static void     SetGlobalDrawPersist(SfxObjectShell* pPersist);
-protected:
+private:
     virtual css::uno::Reference< css::uno::XInterface > createUnoModel() override;
 };
 

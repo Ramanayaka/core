@@ -37,11 +37,11 @@ public:
     DocumentContentOperationsManager( SwDoc& i_rSwdoc );
 
     //Interface methods:
-    bool CopyRange(SwPaM&, SwPosition&, const bool bCopyAll, bool bCheckPos ) const override;
+    bool CopyRange(SwPaM&, SwPosition&, SwCopyFlags) const override;
 
     void DeleteSection(SwNode* pNode) override;
 
-    bool DeleteRange(SwPaM&) override;
+    void DeleteRange(SwPaM&) override;
 
     bool DelFullPara(SwPaM&) override;
 
@@ -67,13 +67,13 @@ public:
                         const SfxItemSet* pFlyAttrSet, const SfxItemSet* pGrfAttrSet, SwFrameFormat*) override;
 
     SwFlyFrameFormat* InsertGraphicObject(const SwPaM& rRg, const GraphicObject& rGrfObj, const SfxItemSet* pFlyAttrSet,
-        const SfxItemSet* pGrfAttrSet, SwFrameFormat*) override;
+        const SfxItemSet* pGrfAttrSet) override;
 
-    void ReRead(SwPaM&, const OUString& rGrfName, const OUString& rFltName, const Graphic* pGraphic, const GraphicObject* pGrfObj) override;
+    void ReRead(SwPaM&, const OUString& rGrfName, const OUString& rFltName, const Graphic* pGraphic) override;
 
     SwDrawFrameFormat* InsertDrawObj( const SwPaM &rRg, SdrObject& rDrawObj, const SfxItemSet& rFlyAttrSet ) override;
 
-    SwFlyFrameFormat* InsertEmbObject(const SwPaM &rRg, const svt::EmbeddedObjectRef& xObj, const SfxItemSet* pFlyAttrSet) override;
+    SwFlyFrameFormat* InsertEmbObject(const SwPaM &rRg, const svt::EmbeddedObjectRef& xObj, SfxItemSet* pFlyAttrSet) override;
 
     SwFlyFrameFormat* InsertOLE(const SwPaM &rRg, const OUString& rObjName, sal_Int64 nAspect, const SfxItemSet* pFlyAttrSet,
                            const SfxItemSet* pGrfAttrSet) override;
@@ -87,27 +87,34 @@ public:
 
     // Add a para for the char attribute exp...
     bool InsertPoolItem(const SwPaM &rRg, const SfxPoolItem&,
-                                const SetAttrMode nFlags = SetAttrMode::DEFAULT, bool bExpandCharToPara=false) override;
+                        const SetAttrMode nFlags = SetAttrMode::DEFAULT,
+                        SwRootFrame const* pLayout = nullptr,
+                        bool bExpandCharToPara = false,
+                        SwTextAttr **ppNewTextAttr = nullptr) override;
 
-    bool InsertItemSet (const SwPaM &rRg, const SfxItemSet&,
-        const SetAttrMode nFlags = SetAttrMode::DEFAULT) override;
+    void InsertItemSet (const SwPaM &rRg, const SfxItemSet&,
+        const SetAttrMode nFlags = SetAttrMode::DEFAULT,
+        SwRootFrame const* pLayout = nullptr) override;
 
     void RemoveLeadingWhiteSpace(const SwPosition & rPos ) override;
 
 
     //Non-Interface methods
 
+    void DeleteDummyChar(SwPosition const& rPos, sal_Unicode cDummy);
+
     void CopyWithFlyInFly( const SwNodeRange& rRg,
-                            const sal_Int32 nEndContentIndex,
                             const SwNodeIndex& rInsPos,
                             const std::pair<const SwPaM&, const SwPosition&> * pCopiedPaM = nullptr,
                             bool bMakeNewFrames = true,
                             bool bDelRedlines = true,
-                            bool bCopyFlyAtFly = false ) const;
+                            bool bCopyFlyAtFly = false,
+                            SwCopyFlags flags = SwCopyFlags::Default) const;
     void CopyFlyInFlyImpl(  const SwNodeRange& rRg,
-                            const sal_Int32 nEndContentIndex,
+                            SwPaM const*const pCopiedPaM,
                             const SwNodeIndex& rStartIdx,
-                            const bool bCopyFlyAtFly = false ) const;
+                            const bool bCopyFlyAtFly = false,
+                            SwCopyFlags flags = SwCopyFlags::Default) const;
 
     /// Parameters for _Rst and lcl_SetTextFormatColl
     //originallyfrom docfmt.cxx
@@ -117,6 +124,7 @@ public:
         SwHistory* pHistory;
         const SwPosition *pSttNd, *pEndNd;
         const SfxItemSet* pDelSet;
+        SwRootFrame const*const pLayout;
         sal_uInt16 nWhich;
         bool bReset;
         bool bResetListAttrs; // #i62575#
@@ -126,12 +134,14 @@ public:
         bool bExactRange;
 
         ParaRstFormat(const SwPosition* pStt, const SwPosition* pEnd,
-                   SwHistory* pHst, const SfxItemSet* pSet = nullptr)
+                   SwHistory* pHst, const SfxItemSet* pSet = nullptr,
+                   SwRootFrame const*const pLay = nullptr)
             : pFormatColl(nullptr)
             , pHistory(pHst)
             , pSttNd(pStt)
             , pEndNd(pEnd)
             , pDelSet(pSet)
+            , pLayout(pLay)
             , nWhich(0)
             , bReset(false) // #i62675#
             , bResetListAttrs(false)
@@ -160,12 +170,20 @@ private:
                                 SwFrameFormat* );
     /* Copy a range within the same or to another document.
      Position may not lie within range! */
-    bool CopyImpl( SwPaM&, SwPosition&, const bool MakeNewFrames /*= true */,
-            const bool bCopyAll, SwPaM *const pCpyRng /*= 0*/ ) const;
+    bool CopyImpl( SwPaM&, SwPosition&,
+            SwCopyFlags flags, SwPaM *const pCpyRng /*= 0*/) const;
+    bool CopyImplImpl(SwPaM&, SwPosition&,
+            SwCopyFlags flags, SwPaM *const pCpyRng /*= 0*/) const;
 
     DocumentContentOperationsManager(DocumentContentOperationsManager const&) = delete;
     DocumentContentOperationsManager& operator=(DocumentContentOperationsManager const&) = delete;
 };
+
+
+void CopyBookmarks(const SwPaM& rPam, SwPosition& rTarget);
+
+void CalcBreaks(std::vector<std::pair<sal_uLong, sal_Int32>> & rBreaks,
+        SwPaM const & rPam, bool const isOnlyFieldmarks = false);
 
 }
 

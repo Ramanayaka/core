@@ -18,10 +18,9 @@
  */
 
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLTABLE_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLTABLE_HXX
+#pragma once
 
-#include "extended/AccessibleGridControlTableBase.hxx"
+#include <extended/AccessibleGridControlTableBase.hxx>
 #include <cppuhelper/implbase1.hxx>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <extended/AccessibleGridControlTableCell.hxx>
@@ -34,17 +33,16 @@ typedef ::cppu::ImplHelper1 < css::accessibility::XAccessibleSelection >
         AccessibleGridControlTableSelectionImplHelper;
 /** This class represents the accessible object of the data table of a
     Grid control. */
-class AccessibleGridControlTable : public AccessibleGridControlTableBase,
+class AccessibleGridControlTable final : public AccessibleGridControlTableBase,
                                 public AccessibleGridControlTableSelectionImplHelper
 {
 public:
     AccessibleGridControlTable(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-            ::svt::table::IAccessibleTable& rTable);
+            ::vcl::table::IAccessibleTable& rTable);
 
-protected:
-    virtual ~AccessibleGridControlTable() override;
 private:
+    virtual ~AccessibleGridControlTable() override = default;
     std::vector< AccessibleGridControlTableCell* > m_pCellVector;
     std::vector< css::uno::Reference< css::accessibility::XAccessible> > m_pAccessCellVector;
 public:
@@ -132,7 +130,7 @@ public:
     /** Queries for a new interface. */
     css::uno::Any SAL_CALL queryInterface( const css::uno::Type& rType ) override;
 
-    /** Aquires the object (calls acquire() on base class). */
+    /** Acquires the object (calls acquire() on base class). */
     virtual void SAL_CALL acquire() throw () override;
 
     /** Releases the object (calls release() on base class). */
@@ -147,7 +145,7 @@ public:
     /**@return m_xAccessCellVector*/
     std::vector< css::uno::Reference< css::accessibility::XAccessible > >& getAccessibleCellVector() { return m_pAccessCellVector;}
 
-protected:
+private:
     // internal virtual methods
 
     /** @attention  This method requires locked mutex's and a living object.
@@ -170,6 +168,5 @@ protected:
 } // namespace accessibility
 
 
-#endif // ACCESSIBILITY_EXT_ACCESSIBILEGRIDCONTROLTABLE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

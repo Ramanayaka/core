@@ -19,14 +19,13 @@
 #ifndef INCLUDED_CONNECTIVITY_FILTERMANAGER_HXX
 #define INCLUDED_CONNECTIVITY_FILTERMANAGER_HXX
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/sdb/XSQLQueryComposer.hpp>
-#include <com/sun/star/sdbc/XConnection.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 
 #include <rtl/ustrbuf.hxx>
 
-#include <vector>
 #include <connectivity/dbtoolsdllapi.hxx>
+
+namespace com::sun::star::beans { class XPropertySet; }
 
 
 namespace dbtools
@@ -61,14 +60,18 @@ namespace dbtools
         enum class FilterComponent
         {
             PublicFilter,     // The filter which is to be published as "Filter" property of the database component.
-            LinkFilter        // The filter part which is implicitly created for a database component when connecting
+            LinkFilter,       // The filter part which is implicitly created for a database component when connecting
                               // master and detail database components via column names.
+            PublicHaving,     // the same, but should go in HAVING clause instead of WHERE clause
+            LinkHaving
         };
 
     private:
         css::uno::Reference< css::beans::XPropertySet >   m_xComponentAggregate;
         OUString                                          m_aPublicFilterComponent;
+        OUString                                          m_aPublicHavingComponent;
         OUString                                          m_aLinkFilterComponent;
+        OUString                                          m_aLinkHavingComponent;
         bool                                              m_bApplyPublicFilter;
 
     public:
@@ -85,19 +88,21 @@ namespace dbtools
         void             setFilterComponent( FilterComponent _eWhich, const OUString& _rComponent );
 
         bool     isApplyPublicFilter( ) const { return m_bApplyPublicFilter; }
-               void     setApplyPublicFilter( bool _bApply );
+        void     setApplyPublicFilter( bool _bApply );
 
     private:
         /** retrieves a filter which is a conjunction of all single filter components
         */
         OUString         getComposedFilter( ) const;
+        OUString         getComposedHaving( ) const;
 
         /** appends one filter component to the statement in our composer
         */
         static void      appendFilterComponent( OUStringBuffer& io_appendTo, const OUString& i_component );
 
         /// checks whether there is only one (or even no) non-empty filter component
-        bool    isThereAtMostOneComponent( OUString& o_singleComponent ) const;
+        bool    isThereAtMostOneFilterComponent( OUString& o_singleComponent ) const;
+        bool    isThereAtMostOneHavingComponent( OUString& o_singleComponent ) const;
     };
 
 

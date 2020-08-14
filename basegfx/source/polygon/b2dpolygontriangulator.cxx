@@ -20,6 +20,7 @@
 #include <basegfx/polygon/b2dpolygontriangulator.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/vector/b2dvector.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
@@ -104,24 +105,22 @@ namespace basegfx
         };
 
         typedef std::vector< EdgeEntry > EdgeEntries;
-        typedef std::vector< EdgeEntry* > EdgeEntryPointers;
 
         class Triangulator
         {
             EdgeEntry*                                      mpList;
             EdgeEntries                                     maStartEntries;
-            EdgeEntryPointers                               maNewEdgeEntries;
-            B2DPolygon                                      maResult;
+            std::vector< std::unique_ptr<EdgeEntry> >       maNewEdgeEntries;
+            triangulator::B2DTriangleVector                 maResult;
 
             void handleClosingEdge(const B2DPoint& rStart, const B2DPoint& rEnd);
-            bool CheckPointInTriangle(EdgeEntry* pEdgeA, EdgeEntry* pEdgeB, const B2DPoint& rTestPoint);
+            bool CheckPointInTriangle(EdgeEntry* pEdgeA, EdgeEntry const * pEdgeB, const B2DPoint& rTestPoint);
             void createTriangle(const B2DPoint& rA, const B2DPoint& rB, const B2DPoint& rC);
 
         public:
             explicit Triangulator(const B2DPolyPolygon& rCandidate);
-            ~Triangulator();
 
-            const B2DPolygon& getResult() const { return maResult; }
+            const triangulator::B2DTriangleVector& getResult() const { return maResult; }
         };
 
         void Triangulator::handleClosingEdge(const B2DPoint& rStart, const B2DPoint& rEnd)
@@ -155,7 +154,7 @@ namespace basegfx
             {
                 // insert closing edge
                 EdgeEntry* pNew = new EdgeEntry(aNew);
-                maNewEdgeEntries.push_back(pNew);
+                maNewEdgeEntries.emplace_back(pNew);
                 pCurr = mpList;
                 pPrev = nullptr;
 
@@ -178,10 +177,10 @@ namespace basegfx
             }
         }
 
-        bool Triangulator::CheckPointInTriangle(EdgeEntry* pEdgeA, EdgeEntry* pEdgeB, const B2DPoint& rTestPoint)
+        bool Triangulator::CheckPointInTriangle(EdgeEntry* pEdgeA, EdgeEntry const * pEdgeB, const B2DPoint& rTestPoint)
         {
             // inside triangle or on edge?
-            if(tools::isPointInTriangle(pEdgeA->getStart(), pEdgeA->getEnd(), pEdgeB->getEnd(), rTestPoint, true))
+            if(utils::isPointInTriangle(pEdgeA->getStart(), pEdgeA->getEnd(), pEdgeB->getEnd(), rTestPoint, true))
             {
                 // but not on point
                 if(!rTestPoint.equal(pEdgeA->getEnd()) && !rTestPoint.equal(pEdgeB->getEnd()))
@@ -189,8 +188,8 @@ namespace basegfx
                     // found point in triangle -> split triangle inserting two edges
                     EdgeEntry* pStart = new EdgeEntry(pEdgeA->getStart(), rTestPoint);
                     EdgeEntry* pEnd = new EdgeEntry(*pStart);
-                    maNewEdgeEntries.push_back(pStart);
-                    maNewEdgeEntries.push_back(pEnd);
+                    maNewEdgeEntries.emplace_back(pStart);
+                    maNewEdgeEntries.emplace_back(pEnd);
 
                     pStart->setNext(pEnd);
                     pEnd->setNext(pEdgeA->getNext());
@@ -205,9 +204,10 @@ namespace basegfx
 
         void Triangulator::createTriangle(const B2DPoint& rA, const B2DPoint& rB, const B2DPoint& rC)
         {
-            maResult.append(rA);
-            maResult.append(rB);
-            maResult.append(rC);
+            maResult.emplace_back(
+                rA,
+                rB,
+                rC);
         }
 
         // consume as long as there are edges
@@ -220,7 +220,7 @@ namespace basegfx
             {
                 for(sal_uInt32 a(0); a < rCandidate.count(); a++)
                 {
-                    const B2DPolygon aPolygonCandidate(rCandidate.getB2DPolygon(a));
+                    const B2DPolygon& aPolygonCandidate(rCandidate.getB2DPolygon(a));
                     const sal_uInt32 nCount(aPolygonCandidate.count());
 
                     if(nCount > 2)
@@ -233,7 +233,7 @@ namespace basegfx
 
                             if( !aPrevPnt.equal(aNextPnt) )
                             {
-                                maStartEntries.push_back(EdgeEntry(aPrevPnt, aNextPnt));
+                                maStartEntries.emplace_back(aPrevPnt, aNextPnt);
                             }
 
                             aPrevPnt = aNextPnt;
@@ -365,49 +365,41 @@ namespace basegfx
             }
         }
 
-        Triangulator::~Triangulator()
-        {
-            EdgeEntryPointers::iterator aIter(maNewEdgeEntries.begin());
-
-            while(aIter != maNewEdgeEntries.end())
-            {
-                delete (*aIter++);
-            }
-        }
-
     } // end of anonymous namespace
 } // end of namespace basegfx
 
-namespace basegfx
+namespace basegfx::triangulator
 {
-    namespace triangulator
-    {
-        B2DPolygon triangulate(const B2DPolygon& rCandidate)
+        B2DTriangleVector triangulate(const B2DPolygon& rCandidate)
         {
-            B2DPolygon aRetval;
+            B2DTriangleVector aRetval;
 
             // subdivide locally (triangulate does not work with beziers), remove double and neutral points
-            B2DPolygon aCandidate(rCandidate.areControlPointsUsed() ? tools::adaptiveSubdivideByAngle(rCandidate) : rCandidate);
+            B2DPolygon aCandidate(rCandidate.areControlPointsUsed() ? utils::adaptiveSubdivideByAngle(rCandidate) : rCandidate);
             aCandidate.removeDoublePoints();
-            aCandidate = tools::removeNeutralPoints(aCandidate);
+            aCandidate = utils::removeNeutralPoints(aCandidate);
 
             if(aCandidate.count() == 2)
             {
                 // candidate IS a triangle, just append
-                aRetval.append(aCandidate);
+                aRetval.emplace_back(
+                    aCandidate.getB2DPoint(0),
+                    aCandidate.getB2DPoint(1),
+                    aCandidate.getB2DPoint(2));
             }
             else if(aCandidate.count() > 2)
             {
-                if(tools::isConvex(aCandidate))
+                if(utils::isConvex(aCandidate))
                 {
                     // polygon is convex, just use a triangle fan
-                    tools::addTriangleFan(aCandidate, aRetval);
+                    utils::addTriangleFan(aCandidate, aRetval);
                 }
                 else
                 {
                     // polygon is concave.
                     const B2DPolyPolygon aCandPolyPoly(aCandidate);
                     Triangulator aTriangulator(aCandPolyPoly);
+
                     aRetval = aTriangulator.getResult();
                 }
             }
@@ -415,28 +407,29 @@ namespace basegfx
             return aRetval;
         }
 
-        B2DPolygon triangulate(const B2DPolyPolygon& rCandidate)
+        B2DTriangleVector triangulate(const B2DPolyPolygon& rCandidate)
         {
-            B2DPolygon aRetval;
+            B2DTriangleVector aRetval;
 
             // subdivide locally (triangulate does not work with beziers)
-            B2DPolyPolygon aCandidate(rCandidate.areControlPointsUsed() ? tools::adaptiveSubdivideByAngle(rCandidate) : rCandidate);
+            B2DPolyPolygon aCandidate(rCandidate.areControlPointsUsed() ? utils::adaptiveSubdivideByAngle(rCandidate) : rCandidate);
 
             if(aCandidate.count() == 1)
             {
                 // single polygon -> single polygon triangulation
-                const B2DPolygon aSinglePolygon(aCandidate.getB2DPolygon(0));
+                const B2DPolygon& aSinglePolygon(aCandidate.getB2DPolygon(0));
+
                 aRetval = triangulate(aSinglePolygon);
             }
             else
             {
                 Triangulator aTriangulator(aCandidate);
+
                 aRetval = aTriangulator.getResult();
             }
 
             return aRetval;
         }
-    } // end of namespace triangulator
-} // end of namespace basegfx
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

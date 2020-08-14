@@ -20,8 +20,6 @@
 #ifndef INCLUDED_FRAMEWORK_SOURCE_INC_PATTERN_FRAME_HXX
 #define INCLUDED_FRAMEWORK_SOURCE_INC_PATTERN_FRAME_HXX
 
-#include <general.h>
-
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/util/CloseVetoException.hpp>
@@ -29,9 +27,7 @@
 
 // namespaces
 
-namespace framework{
-    namespace pattern{
-        namespace frame{
+namespace framework::pattern::frame{
 
 /** @short  close (or dispose) the given resource.
 
@@ -39,7 +35,7 @@ namespace framework{
             Delegating of the ownership can be influenced from
             outside. If closing isn't possible (because the
             needed interface isn't available) dispose() is tried instead.
-            Al possible exception are handled inside.
+            All possible exceptions are handled inside.
             So the user of this method has to look for the return value only.
 
     @attention  The given resource will not be cleared.
@@ -48,15 +44,10 @@ namespace framework{
     @param  xResource
             the object, which should be closed here.
 
-    @param  bDelegateOwnership
-            used at the XCloseable->close() method to define
-            the right owner in case closing failed.
-
     @return [bool]
             sal_True if closing failed.
  */
-inline bool closeIt(const css::uno::Reference< css::uno::XInterface >& xResource         ,
-                       bool                                     bDelegateOwnership)
+inline bool closeIt(const css::uno::Reference< css::uno::XInterface >& xResource)
 {
     css::uno::Reference< css::util::XCloseable > xClose  (xResource, css::uno::UNO_QUERY);
     css::uno::Reference< css::lang::XComponent > xDispose(xResource, css::uno::UNO_QUERY);
@@ -64,7 +55,7 @@ inline bool closeIt(const css::uno::Reference< css::uno::XInterface >& xResource
     try
     {
         if (xClose.is())
-            xClose->close(bDelegateOwnership);
+            xClose->close(false/*bDelegateOwnership*/);
         else
         if (xDispose.is())
             xDispose->dispose();
@@ -84,9 +75,7 @@ inline bool closeIt(const css::uno::Reference< css::uno::XInterface >& xResource
     return true;
 }
 
-        } // namespace frame
-    } // namespace pattern
-} // namespace framework
+} // namespace framework::pattern::frame
 
 #endif // INCLUDED_FRAMEWORK_SOURCE_INC_PATTERN_FRAME_HXX
 

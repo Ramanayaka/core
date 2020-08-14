@@ -28,8 +28,7 @@ class SVL_DLLPUBLIC SfxEnumItemInterface: public SfxPoolItem
 protected:
     explicit SfxEnumItemInterface(sal_uInt16 which): SfxPoolItem(which) {}
 
-    SfxEnumItemInterface(const SfxEnumItemInterface & rItem):
-        SfxPoolItem(rItem) {}
+    SfxEnumItemInterface(const SfxEnumItemInterface &) = default;
 
 public:
 
@@ -37,17 +36,13 @@ public:
 
     virtual bool GetPresentation(SfxItemPresentation, MapUnit, MapUnit,
                                  OUString & rText,
-                                 const IntlWrapper * = nullptr) const override;
+                                 const IntlWrapper&) const override;
 
     virtual bool QueryValue(css::uno::Any & rVal, sal_uInt8 = 0) const override;
 
     virtual bool PutValue(const css::uno::Any & rVal, sal_uInt8 ) override;
 
     virtual sal_uInt16 GetValueCount() const = 0;
-
-    virtual OUString GetValueTextByPos(sal_uInt16 nPos) const;
-
-    virtual sal_uInt16 GetValueByPos(sal_uInt16 nPos) const;
 
     virtual sal_uInt16 GetEnumValue() const = 0;
 

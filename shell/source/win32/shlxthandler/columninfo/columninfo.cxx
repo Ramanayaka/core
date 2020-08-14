@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "global.hxx"
-#include "columninfo.hxx"
-#include "fileextensions.hxx"
-#include "metainforeader.hxx"
-#include "utilities.hxx"
-#include "config.hxx"
+#include <global.hxx>
+#include <columninfo.hxx>
+#include <fileextensions.hxx>
+#include <metainforeader.hxx>
+#include <utilities.hxx>
+#include <config.hxx>
 
 #include <sal/macros.h>
 #include <malloc.h>
@@ -41,11 +41,11 @@ namespace /* private */
 
     size_t ColumnInfoTableSize = SAL_N_ELEMENTS(ColumnInfoTable);
 
-bool IsOOFileExtension(wchar_t* Extension)
+bool IsOOFileExtension(wchar_t const * Extension)
 {
     for (size_t i = 0; i < OOFileExtensionTableSize; i++)
     {
-        if (0 == _wcsicmp(Extension, OOFileExtensionTable[i].ExtensionUnicode))
+        if (0 == _wcsicmp(Extension, OOFileExtensionTable[i].ExtensionU))
             return true;
     }
 
@@ -71,7 +71,7 @@ CColumnInfo::~CColumnInfo()
 // IUnknown methods
 
 
-HRESULT STDMETHODCALLTYPE CColumnInfo::QueryInterface(REFIID riid, void __RPC_FAR *__RPC_FAR *ppvObject)
+COM_DECLSPEC_NOTHROW HRESULT STDMETHODCALLTYPE CColumnInfo::QueryInterface(REFIID riid, void __RPC_FAR *__RPC_FAR *ppvObject)
 {
     *ppvObject = nullptr;
 
@@ -87,13 +87,13 @@ HRESULT STDMETHODCALLTYPE CColumnInfo::QueryInterface(REFIID riid, void __RPC_FA
 }
 
 
-ULONG STDMETHODCALLTYPE CColumnInfo::AddRef()
+COM_DECLSPEC_NOTHROW ULONG STDMETHODCALLTYPE CColumnInfo::AddRef()
 {
     return InterlockedIncrement(&m_RefCnt);
 }
 
 
-ULONG STDMETHODCALLTYPE CColumnInfo::Release()
+COM_DECLSPEC_NOTHROW ULONG STDMETHODCALLTYPE CColumnInfo::Release()
 {
     long refcnt = InterlockedDecrement(&m_RefCnt);
 
@@ -107,13 +107,13 @@ ULONG STDMETHODCALLTYPE CColumnInfo::Release()
 // IColumnProvider
 
 
-HRESULT STDMETHODCALLTYPE CColumnInfo::Initialize(LPCSHCOLUMNINIT /*psci*/)
+COM_DECLSPEC_NOTHROW HRESULT STDMETHODCALLTYPE CColumnInfo::Initialize(LPCSHCOLUMNINIT /*psci*/)
 {
     return S_OK;
 }
 
 // Register all columns we support
-HRESULT STDMETHODCALLTYPE CColumnInfo::GetColumnInfo(DWORD dwIndex, SHCOLUMNINFO *psci)
+COM_DECLSPEC_NOTHROW HRESULT STDMETHODCALLTYPE CColumnInfo::GetColumnInfo(DWORD dwIndex, SHCOLUMNINFO *psci)
 {
     if (dwIndex >= ColumnInfoTableSize)
         return S_FALSE;
@@ -131,7 +131,7 @@ HRESULT STDMETHODCALLTYPE CColumnInfo::GetColumnInfo(DWORD dwIndex, SHCOLUMNINFO
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE CColumnInfo::GetItemData(LPCSHCOLUMNID pscid, LPCSHCOLUMNDATA pscd, VARIANT *pvarData)
+COM_DECLSPEC_NOTHROW HRESULT STDMETHODCALLTYPE CColumnInfo::GetItemData(LPCSHCOLUMNID pscid, LPCSHCOLUMNDATA pscd, VARIANT *pvarData)
 {
     if (IsOOFileExtension(pscd->pwszExt))
     {
@@ -139,7 +139,7 @@ HRESULT STDMETHODCALLTYPE CColumnInfo::GetItemData(LPCSHCOLUMNID pscid, LPCSHCOL
         {
             std::wstring fname = getShortPathName( std::wstring( pscd->wszFile ) );
 
-            CMetaInfoReader meta_info_accessor(WStringToString(fname));
+            CMetaInfoReader meta_info_accessor(fname);
 
             VariantClear(pvarData);
 

@@ -20,11 +20,13 @@
 #include <comphelper/string.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/i18n/CharType.hpp>
+#include <com/sun/star/i18n/XBreakIterator.hpp>
+#include <com/sun/star/i18n/XCollator.hpp>
 
-#include "cppunit/TestAssert.h"
-#include "cppunit/TestFixture.h"
-#include "cppunit/extensions/HelperMacros.h"
-#include "cppunit/plugin/TestPlugIn.h"
+#include <cppunit/TestAssert.h>
+#include <cppunit/TestFixture.h>
+#include <cppunit/extensions/HelperMacros.h>
+#include <cppunit/plugin/TestPlugIn.h>
 #include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
 
@@ -63,25 +65,25 @@ public:
 void TestString::testDecimalStringToNumber()
 {
     OUString s1("1234");
-    CPPUNIT_ASSERT_EQUAL((sal_uInt32)1234, comphelper::string::decimalStringToNumber(s1));
-    s1 += OUStringLiteral1(0x07C6);
-    CPPUNIT_ASSERT_EQUAL((sal_uInt32)12346, comphelper::string::decimalStringToNumber(s1));
+    CPPUNIT_ASSERT_EQUAL(sal_uInt32(1234), comphelper::string::decimalStringToNumber(s1));
+    s1 += u"\u07C6";
+    CPPUNIT_ASSERT_EQUAL(sal_uInt32(12346), comphelper::string::decimalStringToNumber(s1));
     // Codepoints on 2 16bits words
     sal_uInt32 utf16String[] = { 0x1D7FE /* 8 */, 0x1D7F7 /* 1 */};
     s1 = OUString(utf16String, 2);
-    CPPUNIT_ASSERT_EQUAL((sal_uInt32)81, comphelper::string::decimalStringToNumber(s1));
+    CPPUNIT_ASSERT_EQUAL(sal_uInt32(81), comphelper::string::decimalStringToNumber(s1));
 }
 
 void TestString::testIsdigitAsciiString()
 {
     OString s1("1234");
-    CPPUNIT_ASSERT_EQUAL(comphelper::string::isdigitAsciiString(s1), true);
+    CPPUNIT_ASSERT_EQUAL(true, comphelper::string::isdigitAsciiString(s1));
 
     OString s2("1A34");
-    CPPUNIT_ASSERT_EQUAL(comphelper::string::isdigitAsciiString(s2), false);
+    CPPUNIT_ASSERT_EQUAL(false, comphelper::string::isdigitAsciiString(s2));
 
     OString s3;
-    CPPUNIT_ASSERT_EQUAL(comphelper::string::isdigitAsciiString(s3), true);
+    CPPUNIT_ASSERT_EQUAL(true, comphelper::string::isdigitAsciiString(s3));
 }
 
 using namespace ::com::sun::star;
@@ -376,8 +378,7 @@ void TestString::testReverseString()
 
 void TestString::testSplit()
 {
-    OUString aIn("CTRL+ALT+F1");
-    std::vector<OUString> aRet = ::comphelper::string::split(aIn, '+');
+    std::vector<OUString> aRet = ::comphelper::string::split("CTRL+ALT+F1", '+');
     CPPUNIT_ASSERT_EQUAL(size_t(3), aRet.size());
     CPPUNIT_ASSERT_EQUAL(OUString("CTRL"), aRet[0]);
     CPPUNIT_ASSERT_EQUAL(OUString("ALT"), aRet[1]);

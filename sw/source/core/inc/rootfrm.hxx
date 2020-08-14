@@ -24,11 +24,11 @@
 #include <doc.hxx>
 #include <IDocumentTimerAccess.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <tools/UnitConversion.hxx>
 #include <set>
 #include <vector>
 
 class SwContentFrame;
-class SwViewShell;
 class SdrPage;
 class SwFrameFormat;
 class SwPaM;
@@ -40,6 +40,13 @@ class SwViewOption;
 class SwSelectionList;
 struct SwPosition;
 struct SwCursorMoveState;
+
+namespace sw {
+    enum class RedlineMode
+    {
+        Shown, Hidden
+    };
+};
 
 enum class SwInvalidateFlags
 {
@@ -66,10 +73,11 @@ enum class SwRemoveResult
 using SwCurrShells = std::set<CurrShell*>;
 
 class SwSectionFrame;
-using SwDestroyList = std::set<SwSectionFrame*>;
+using SwDestroyList = o3tl::sorted_vector<SwSectionFrame*>;
 
-/// The root element of a Writer document layout.
-class SwRootFrame: public SwLayoutFrame
+/// The root element of a Writer document layout. Lower frames are expected to
+/// be SwPageFrame instances.
+class SAL_DLLPUBLIC_RTTI SwRootFrame: public SwLayoutFrame
 {
     // Needs to disable the Superfluous temporarily
     friend void AdjustSizeChgNotify( SwRootFrame *pRoot );
@@ -109,6 +117,7 @@ class SwRootFrame: public SwLayoutFrame
     bool    mbCallbackActionEnabled:1; // No Action in Notification desired
                                       // @see dcontact.cxx, ::Changed()
     bool    mbLayoutFreezed;
+    bool    mbHideRedlines;
 
     /**
      * For BrowseMode
@@ -133,8 +142,8 @@ class SwRootFrame: public SwLayoutFrame
      * know the active shell.
      * this is approximated by setting the pointer mpCurrShell when a
      * shell gets the focus (FEShell). Additionally the pointer will be
-     * set temporarily by SwCurrShell typically via  SET_CURR_SHELL
-     * The macro and class can be found in the SwViewShell. These object can
+     * set temporarily by SwCurrShell typically via  CurrShell
+     * The class can be found in the SwViewShell. These object can
      * be created nested (also for different kinds of Shells). They are
      * collected into the Array mpCurrShells.
      * Furthermore it can happen that a shell is activated while a curshell
@@ -150,12 +159,12 @@ class SwRootFrame: public SwLayoutFrame
     friend void InitCurrShells( SwRootFrame *pRoot );
     SwViewShell *mpCurrShell;
     SwViewShell *mpWaitingCurrShell;
-    SwCurrShells *mpCurrShells;
+    std::unique_ptr<SwCurrShells> mpCurrShells;
 
     /// One Page per DrawModel per Document; is always the size of the Root
     SdrPage *mpDrawPage;
 
-    SwDestroyList* mpDestroy;
+    std::unique_ptr<SwDestroyList> mpDestroy;
 
     sal_uInt16  mnPhyPageNums; /// Page count
     sal_uInt16 mnAccessibleShells; // Number of accessible shells
@@ -197,7 +206,7 @@ public:
     void DeRegisterShell( SwViewShell *pSh );
 
     /**
-     * Set up Start-/EndAction for all Shells on a as high as possible
+     * Set up Start-/EndAction for all Shells on an as high as possible
      * (Shell section) level.
      * For the StarONE binding, which does not know the Shells directly.
      * The ChangeLinkd of the CursorShell (UI notifications) is called
@@ -217,10 +226,10 @@ public:
           SdrPage* GetDrawPage()       { return mpDrawPage; }
           void     SetDrawPage( SdrPage* pNew ){ mpDrawPage = pNew; }
 
-    virtual bool  GetCursorOfst( SwPosition *, Point&,
+    virtual bool  GetModelPositionForViewPoint( SwPosition *, Point&,
                                SwCursorMoveState* = nullptr, bool bTestBackground = false ) const override;
 
-    virtual void Paint( vcl::RenderContext& rRenderContext, SwRect const&,
+    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const&,
                         SwPrintData const*const pPrintData = nullptr ) const override;
     virtual SwTwips ShrinkFrame( SwTwips, bool bTst = false, bool bInfo = false ) override;
     virtual SwTwips GrowFrame  ( SwTwips, bool bTst = false, bool bInfo = false ) override;
@@ -243,7 +252,7 @@ public:
         // May be NULL if called from SfxBaseModel::dispose
         // (this happens in the build test 'rtfexport').
         if (pCurrShell != nullptr)
-            pCurrShell->GetDoc()->getIDocumentTimerAccess().StartBackgroundJobs();
+            pCurrShell->GetDoc()->getIDocumentTimerAccess().StartIdling();
     }
     bool IsIdleFormat()  const { return mbIdleFormat; }
     void ResetIdleFormat()     { mbIdleFormat = false; }
@@ -259,14 +268,14 @@ public:
             // May be NULL if called from SfxBaseModel::dispose
             // (this happens in the build test 'rtfexport').
             if (pCurrShell != nullptr)
-                pCurrShell->GetDoc()->getIDocumentTimerAccess().StartBackgroundJobs();
+                pCurrShell->GetDoc()->getIDocumentTimerAccess().StartIdling();
         }
     }
 
     /// Makes sure that all requested page-bound Flys find a Page
     void SetAssertFlyPages() { mbAssertFlyPages = true; }
     void AssertFlyPages();
-    bool IsAssertFlyPages()  { return mbAssertFlyPages; }
+    bool IsAssertFlyPages() const { return mbAssertFlyPages; }
 
     /**
      * Makes sure that, starting from the passed Page, all page-bound Frames
@@ -307,7 +316,7 @@ public:
      * Point rPt: The point that should be used to find the page
      * Size pSize: If given, we return the (first) page that overlaps with the
      * rectangle defined by rPt and pSize
-     * bool bExtend: Extend each page to the left/right/top/botton up to the
+     * bool bExtend: Extend each page to the left/right/top/bottom up to the
      * next page margin
      */
     const SwPageFrame* GetPageAtPos( const Point& rPt, const Size* pSize = nullptr, bool bExtend = false ) const;
@@ -336,10 +345,10 @@ public:
     bool IsTurboAllowed() const { return mbTurboAllowed; }
     void SetTurbo( const SwContentFrame *pContent ) { mpTurbo = pContent; }
     void ResetTurbo() { mpTurbo = nullptr; }
-    const SwContentFrame *GetTurbo() { return mpTurbo; }
+    const SwContentFrame *GetTurbo() const { return mpTurbo; }
 
-    /// Update the footernumbers of all Pages
-    void UpdateFootnoteNums(); // Only for page by page numnbering!
+    /// Update the footnote numbers of all Pages
+    void UpdateFootnoteNums(); // Only for page by page numbering!
 
     /// Remove all footnotes (but no references)
     void RemoveFootnotes( SwPageFrame *pPage = nullptr, bool bPageOnly = false,
@@ -378,7 +387,7 @@ public:
     void RemoveAccessibleShell() { --mnAccessibleShells; }
 
     /**
-     * Get page frame by phyiscal page number
+     * Get page frame by physical page number
      * looping through the lowers, which are page frame, in order to find the
      * page frame with the given physical page number.
      * if no page frame is found, 0 is returned.
@@ -400,6 +409,13 @@ public:
     void FreezeLayout( bool freeze ) { mbLayoutFreezed = freeze; }
 
     void RemovePage( SwPageFrame **pDel, SwRemoveResult eResult );
+
+    /**
+     * Replacement for sw::DocumentRedlineManager::GetRedlineFlags()
+     * (this is layout-level redline hiding).
+     */
+    bool IsHideRedlines() const { return mbHideRedlines; }
+    void SetHideRedlines(bool);
 };
 
 inline long SwRootFrame::GetBrowseWidth() const

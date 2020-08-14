@@ -20,12 +20,9 @@
 $(eval $(call gb_Module_Module,framework))
 
 $(eval $(call gb_Module_add_targets,framework,\
-    Library_fwe \
-    Library_fwi \
     Library_fwk \
-    Library_fwl \
-    Library_fwm \
     Package_dtd \
+    UIConfig_startmodule \
 ))
 
 $(eval $(call gb_Module_add_slowcheck_targets,framework,\
@@ -33,15 +30,12 @@ $(eval $(call gb_Module_add_slowcheck_targets,framework,\
 ))
 
 $(eval $(call gb_Module_add_l10n_targets,framework,\
-    AllLangResTarget_fwe \
-    UIConfig_startmodule \
+    AllLangMoTarget_fwk \
 ))
 
-ifneq ($(OOO_JUNIT_JAR),)
 $(eval $(call gb_Module_add_subsequentcheck_targets,framework,\
     JunitTest_framework_complex \
     JunitTest_framework_unoapi \
 ))
-endif
 
 # vim: set noet sw=4 ts=4:

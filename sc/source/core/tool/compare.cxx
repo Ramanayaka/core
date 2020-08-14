@@ -17,12 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "compare.hxx"
+#include <compare.hxx>
 
-#include "document.hxx"
-#include "docoptio.hxx"
+#include <document.hxx>
+#include <docoptio.hxx>
 
+#include <unotools/collatorwrapper.hxx>
 #include <unotools/textsearch.hxx>
+#include <rtl/math.hxx>
+#include <osl/diagnose.h>
 
 namespace sc {
 
@@ -32,14 +35,14 @@ Compare::Cell::Cell() :
 Compare::Compare() :
     meOp(SC_EQUAL), mbIgnoreCase(true) {}
 
-CompareOptions::CompareOptions( ScDocument* pDoc, const ScQueryEntry& rEntry, utl::SearchParam::SearchType eSrchTyp ) :
+CompareOptions::CompareOptions( const ScDocument* pDoc, const ScQueryEntry& rEntry, utl::SearchParam::SearchType eSrchTyp ) :
     aQueryEntry(rEntry),
     eSearchType(eSrchTyp),
     bMatchWholeCell(pDoc->GetDocOptions().IsMatchWholeCell())
 {
     // Wildcard and Regex search work only with equal or not equal.
     if (eSearchType != utl::SearchParam::SearchType::Normal &&
-            !(aQueryEntry.eOp == SC_EQUAL || aQueryEntry.eOp == SC_NOT_EQUAL))
+            aQueryEntry.eOp != SC_EQUAL && aQueryEntry.eOp != SC_NOT_EQUAL)
         eSearchType = utl::SearchParam::SearchType::Normal;
 
     // Interpreter functions usually are case insensitive, except the simple
@@ -54,9 +57,9 @@ double CompareFunc( const Compare& rComp, CompareOptions* pOptions )
 
     // Keep DoubleError if encountered
     // #i40539# if bEmpty is set, bVal/nVal are uninitialized
-    if (!rCell1.mbEmpty && rCell1.mbValue && !rtl::math::isFinite(rCell1.mfValue))
+    if (!rCell1.mbEmpty && rCell1.mbValue && !std::isfinite(rCell1.mfValue))
         return rCell1.mfValue;
-    if (!rCell2.mbEmpty && rCell2.mbValue && !rtl::math::isFinite(rCell2.mfValue))
+    if (!rCell2.mbEmpty && rCell2.mbValue && !std::isfinite(rCell2.mfValue))
         return rCell2.mfValue;
 
     size_t nStringQuery = 0;    // 0:=no, 1:=0, 2:=1
@@ -161,7 +164,7 @@ double CompareFunc( const Compare& rComp, CompareOptions* pOptions )
                 }
                 else
                 {
-                    const LanguageType nLang = ScGlobal::pSysLocale->GetLanguageTag().getLanguageType();
+                    const LanguageType nLang = ScGlobal::xSysLocale->GetLanguageTag().getLanguageType();
                     OUString aCell( pTransliteration->transliterate(
                                 rCell1.maStr.getString(), nLang, 0,
                                 rCell1.maStr.getLength(), nullptr));
@@ -173,11 +176,11 @@ double CompareFunc( const Compare& rComp, CompareOptions* pOptions )
                 fRes = (bMatch ? 0 : 1);
             }
             else if (rComp.mbIgnoreCase)
-                fRes = (double) ScGlobal::GetCollator()->compareString(
-                        rCell1.maStr.getString(), rCell2.maStr.getString());
+                fRes = static_cast<double>(ScGlobal::GetCollator()->compareString(
+                        rCell1.maStr.getString(), rCell2.maStr.getString()));
             else
-                fRes = (double) ScGlobal::GetCaseCollator()->compareString(
-                        rCell1.maStr.getString(), rCell2.maStr.getString());
+                fRes = static_cast<double>(ScGlobal::GetCaseCollator()->compareString(
+                        rCell1.maStr.getString(), rCell2.maStr.getString()));
         }
         else if (rComp.meOp == SC_EQUAL || rComp.meOp == SC_NOT_EQUAL)
         {
@@ -187,11 +190,11 @@ double CompareFunc( const Compare& rComp, CompareOptions* pOptions )
                 fRes = (rCell1.maStr.getData() == rCell2.maStr.getData()) ? 0 : 1;
         }
         else if (rComp.mbIgnoreCase)
-            fRes = (double) ScGlobal::GetCollator()->compareString(
-                rCell1.maStr.getString(), rCell2.maStr.getString());
+            fRes = static_cast<double>(ScGlobal::GetCollator()->compareString(
+                rCell1.maStr.getString(), rCell2.maStr.getString()));
         else
-            fRes = (double) ScGlobal::GetCaseCollator()->compareString(
-                rCell1.maStr.getString(), rCell2.maStr.getString());
+            fRes = static_cast<double>(ScGlobal::GetCaseCollator()->compareString(
+                rCell1.maStr.getString(), rCell2.maStr.getString()));
     }
 
     if (nStringQuery && pOptions)
@@ -222,13 +225,13 @@ double CompareFunc( const Compare& rComp, CompareOptions* pOptions )
     return fRes;
 }
 
-double CompareFunc( const Compare::Cell& rCell1, double fCell2, CompareOptions* pOptions )
+double CompareFunc( const Compare::Cell& rCell1, double fCell2, const CompareOptions* pOptions )
 {
     // Keep DoubleError if encountered
     // #i40539# if bEmpty is set, bVal/nVal are uninitialized
-    if (!rCell1.mbEmpty && rCell1.mbValue && !rtl::math::isFinite(rCell1.mfValue))
+    if (!rCell1.mbEmpty && rCell1.mbValue && !std::isfinite(rCell1.mfValue))
         return rCell1.mfValue;
-    if (!rtl::math::isFinite(fCell2))
+    if (!std::isfinite(fCell2))
         return fCell2;
 
     bool bStringQuery = false;
@@ -288,9 +291,9 @@ double CompareFunc( double fCell1, double fCell2 )
 {
     // Keep DoubleError if encountered
     // #i40539# if bEmpty is set, bVal/nVal are uninitialized
-    if (!rtl::math::isFinite(fCell1))
+    if (!std::isfinite(fCell1))
         return fCell1;
-    if (!rtl::math::isFinite(fCell2))
+    if (!std::isfinite(fCell2))
         return fCell2;
 
     double fRes = 0.0;
@@ -310,7 +313,7 @@ double CompareEmptyToNumericFunc( double fCell2 )
 {
     // Keep DoubleError if encountered
     // #i40539# if bEmpty is set, bVal/nVal are uninitialized
-    if (!rtl::math::isFinite(fCell2))
+    if (!std::isfinite(fCell2))
         return fCell2;
 
     double fRes = 0;

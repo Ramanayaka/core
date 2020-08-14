@@ -18,20 +18,20 @@
  */
 
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
-#include <comphelper/servicehelper.hxx>
+#include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <vcl/svapp.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleRelation.hpp>
 #include <com/sun/star/accessibility/AccessibleRelationType.hpp>
 #include <com/sun/star/accessibility/XAccessibleRelationSet.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include <unotools/accessiblestatesethelper.hxx>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <frmfmt.hxx>
 #include <flyfrm.hxx>
 #include <accmap.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
-#include <doc.hxx>
 #include <hints.hxx>
 #include "acctextframe.hxx"
 
@@ -48,8 +48,7 @@ SwAccessibleTextFrame::SwAccessibleTextFrame(
     msTitle(),
     msDesc()
 {
-    const SwFlyFrameFormat* pFlyFrameFormat =
-                    dynamic_cast<const SwFlyFrameFormat*>( rFlyFrame.GetFormat() );
+    const SwFlyFrameFormat* pFlyFrameFormat = rFlyFrame.GetFormat();
     msTitle = pFlyFrameFormat->GetObjTitle();
 
     msDesc = pFlyFrameFormat->GetObjDescription();
@@ -64,76 +63,63 @@ SwAccessibleTextFrame::~SwAccessibleTextFrame()
 {
 }
 
-void SwAccessibleTextFrame::Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew)
+void SwAccessibleTextFrame::Notify(const SfxHint& rHint)
 {
-    const sal_uInt16 nWhich = pOld ? pOld->Which() : pNew ? pNew->Which() : 0 ;
-    // #i73249# - suppress handling of RES_NAME_CHANGED
-    // in case that attribute Title is used as the accessible name.
-    if ( nWhich != RES_NAME_CHANGED ||
-         msTitle.isEmpty() )
+    if(rHint.GetId() == SfxHintId::Dying)
+        EndListeningAll();
+    else if(auto pLegacyModifyHint = dynamic_cast<const sw::LegacyModifyHint*>(&rHint))
     {
-        SwAccessibleFrameBase::Modify( pOld, pNew );
-    }
-
-    const SwFlyFrame *pFlyFrame = static_cast< const SwFlyFrame * >( GetFrame() );
-    switch( nWhich )
-    {
-        // #i73249#
-        case RES_TITLE_CHANGED:
+        const sal_uInt16 nWhich = pLegacyModifyHint->m_pOld ? pLegacyModifyHint->m_pOld->Which() : pLegacyModifyHint->m_pNew ? pLegacyModifyHint->m_pNew->Which() : 0;
+        const SwFlyFrame* pFlyFrame = static_cast<const SwFlyFrame*>(GetFrame());
+        switch(nWhich)
         {
-            OUString sOldTitle, sNewTitle;
-            const SwStringMsgPoolItem *pOldItem = dynamic_cast<const SwStringMsgPoolItem*>(pOld);
-            if (pOldItem)
-                sOldTitle = pOldItem->GetString();
-            const SwStringMsgPoolItem *pNewItem = dynamic_cast<const SwStringMsgPoolItem*>(pNew);
-            if (pNewItem)
-                sNewTitle = pNewItem->GetString();
-            if (sOldTitle == sNewTitle)
+            // #i73249#
+            case RES_TITLE_CHANGED:
             {
-                break;
+                OUString sOldTitle, sNewTitle;
+                const SwStringMsgPoolItem *pOldItem = dynamic_cast<const SwStringMsgPoolItem*>(pLegacyModifyHint->m_pOld);
+                if(pOldItem)
+                    sOldTitle = pOldItem->GetString();
+                const SwStringMsgPoolItem *pNewItem = dynamic_cast<const SwStringMsgPoolItem*>(pLegacyModifyHint->m_pNew);
+                if(pNewItem)
+                    sNewTitle = pNewItem->GetString();
+                if(sOldTitle == sNewTitle)
+                    break;
+                msTitle = sNewTitle;
+                AccessibleEventObject aEvent;
+                aEvent.EventId = AccessibleEventId::NAME_CHANGED;
+                aEvent.OldValue <<= sOldTitle;
+                aEvent.NewValue <<= msTitle;
+                FireAccessibleEvent( aEvent );
+
+                const SwFlyFrameFormat* pFlyFrameFormat = pFlyFrame->GetFormat();
+                if(!pFlyFrameFormat || !pFlyFrameFormat->GetObjDescription().isEmpty())
+                    break;
+                [[fallthrough]];
             }
-            msTitle = sNewTitle;
-            AccessibleEventObject aEvent;
-            aEvent.EventId = AccessibleEventId::NAME_CHANGED;
-            aEvent.OldValue <<= sOldTitle;
-            aEvent.NewValue <<= msTitle;
-            FireAccessibleEvent( aEvent );
-
-            const SwFlyFrameFormat* pFlyFrameFormat =
-                            dynamic_cast<const SwFlyFrameFormat*>( pFlyFrame->GetFormat() );
-            if (!pFlyFrameFormat || !pFlyFrameFormat->GetObjDescription().isEmpty())
+            case RES_DESCRIPTION_CHANGED:
             {
-                break;
-            }
-            SAL_FALLTHROUGH;
-        }
-        case RES_DESCRIPTION_CHANGED:
-        {
-            if ( pFlyFrame )
-            {
-                const OUString sOldDesc( msDesc );
-
-                const SwFlyFrameFormat* pFlyFrameFormat =
-                                dynamic_cast<const SwFlyFrameFormat*>( pFlyFrame->GetFormat() );
-                const OUString& rDesc = pFlyFrameFormat->GetObjDescription();
-                msDesc = rDesc;
-                if ( msDesc.isEmpty() &&
-                     msTitle != GetName() )
+                if(pFlyFrame)
                 {
-                    msDesc = msTitle;
-                }
+                    const OUString sOldDesc(msDesc);
 
-                if ( msDesc != sOldDesc )
-                {
-                    AccessibleEventObject aEvent;
-                    aEvent.EventId = AccessibleEventId::DESCRIPTION_CHANGED;
-                    aEvent.OldValue <<= sOldDesc;
-                    aEvent.NewValue <<= msDesc;
-                    FireAccessibleEvent( aEvent );
+                    const SwFlyFrameFormat* pFlyFrameFormat = pFlyFrame->GetFormat();
+                    const OUString& rDesc = pFlyFrameFormat->GetObjDescription();
+                    msDesc = rDesc;
+                    if(msDesc.isEmpty() && msTitle != GetName())
+                        msDesc = msTitle;
+
+                    if(msDesc != sOldDesc)
+                    {
+                        AccessibleEventObject aEvent;
+                        aEvent.EventId = AccessibleEventId::DESCRIPTION_CHANGED;
+                        aEvent.OldValue <<= sOldDesc;
+                        aEvent.NewValue <<= msDesc;
+                        FireAccessibleEvent(aEvent);
+                    }
                 }
             }
         }
-        break;
     }
 }
 
@@ -265,7 +251,7 @@ OUString SAL_CALL SwAccessibleTextFrame::getAccessibleDescription()
 
 OUString SAL_CALL SwAccessibleTextFrame::getImplementationName()
 {
-    return OUString("com.sun.star.comp.Writer.SwAccessibleTextFrameView");
+    return "com.sun.star.comp.Writer.SwAccessibleTextFrameView";
 }
 
 sal_Bool SAL_CALL SwAccessibleTextFrame::supportsService(const OUString& sTestServiceName)
@@ -275,11 +261,7 @@ sal_Bool SAL_CALL SwAccessibleTextFrame::supportsService(const OUString& sTestSe
 
 uno::Sequence< OUString > SAL_CALL SwAccessibleTextFrame::getSupportedServiceNames()
 {
-    uno::Sequence< OUString > aRet(2);
-    OUString* pArray = aRet.getArray();
-    pArray[0] = "com.sun.star.text.AccessibleTextFrameView";
-    pArray[1] = sAccessibleServiceName;
-    return aRet;
+    return { "com.sun.star.text.AccessibleTextFrameView", sAccessibleServiceName };
 }
 
 uno::Sequence< sal_Int8 > SAL_CALL SwAccessibleTextFrame::getImplementationId()

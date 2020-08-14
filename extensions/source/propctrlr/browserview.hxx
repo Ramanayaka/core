@@ -20,52 +20,39 @@
 #ifndef INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_BROWSERVIEW_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_BROWSERVIEW_HXX
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <vcl/window.hxx>
-#include <tools/resid.hxx>
 #include <com/sun/star/awt/Size.hpp>
-
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <o3tl/deleter.hxx>
+#include <vcl/weld.hxx>
 
 namespace pcr
 {
-
-
     class OPropertyEditor;
-
-    class OPropertyBrowserView : public vcl::Window
+    class OPropertyBrowserView final
     {
-        VclPtr<OPropertyEditor>     m_pPropBox;
+        std::unique_ptr<OPropertyEditor, o3tl::default_delete<OPropertyEditor>> m_xPropBox;
         sal_uInt16                  m_nActivePage;
         Link<LinkParamNone*,void>   m_aPageActivationHandler;
 
-    protected:
-        virtual void Resize() override;
-        virtual void GetFocus() override;
-        virtual bool EventNotify( NotifyEvent& _rNEvt ) override;
-
     public:
-        explicit OPropertyBrowserView( vcl::Window* pParent);
+        explicit OPropertyBrowserView(css::uno::Reference<css::uno::XComponentContext>& rContext, weld::Builder& rBuilder);
+        ~OPropertyBrowserView();
 
-        virtual ~OPropertyBrowserView() override;
-        virtual void dispose() override;
-
-        OPropertyEditor&    getPropertyBox() { return *m_pPropBox; }
+        OPropertyEditor&    getPropertyBox() { return *m_xPropBox; }
 
         // page handling
-        sal_uInt16  getActivaPage() const { return m_nActivePage; }
+        sal_uInt16  getActivePage() const { return m_nActivePage; }
         void        activatePage(sal_uInt16 _nPage);
 
         void    setPageActivationHandler(const Link<LinkParamNone*,void>& _rHdl) { m_aPageActivationHandler = _rHdl; }
 
-        css::awt::Size getMinimumSize();
+        css::awt::Size getMinimumSize() const;
 
-    protected:
+    private:
         DECL_LINK(OnPageActivation, LinkParamNone*, void);
     };
 
-
 } // namespace pcr
-
 
 #endif // INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_BROWSERVIEW_HXX
 

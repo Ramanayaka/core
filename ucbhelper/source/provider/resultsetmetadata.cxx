@@ -24,11 +24,11 @@
 
  *************************************************************************/
 
-#include "osl/diagnose.h"
+#include <osl/diagnose.h>
 #include <com/sun/star/beans/Property.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/XArray.hpp>
 #include <com/sun/star/sdbc/XBlob.hpp>
@@ -38,7 +38,9 @@
 #include <com/sun/star/util/Time.hpp>
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/ucb/PropertiesManager.hpp>
+#include <ucbhelper/macros.hxx>
 #include <ucbhelper/resultsetmetadata.hxx>
+#include <cppuhelper/queryinterface.hxx>
 
 using namespace com::sun::star::beans;
 using namespace com::sun::star::io;
@@ -104,37 +106,6 @@ ResultSetMetaData::~ResultSetMetaData()
 }
 
 
-// XInterface methods.
-
-void SAL_CALL ResultSetMetaData::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-void SAL_CALL ResultSetMetaData::release()
-    throw()
-{
-    OWeakObject::release();
-}
-
-css::uno::Any SAL_CALL ResultSetMetaData::queryInterface( const css::uno::Type & rType )
-{
-    css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< XTypeProvider* >(this)),
-                                               (static_cast< XResultSetMetaData* >(this))
-                                               );
-    return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
-}
-
-// XTypeProvider methods.
-
-
-XTYPEPROVIDER_IMPL_2( ResultSetMetaData,
-                      XTypeProvider,
-                      XResultSetMetaData );
-
-
 // XResultSetMetaData methods.
 
 
@@ -195,16 +166,12 @@ sal_Bool SAL_CALL ResultSetMetaData::isSigned( sal_Int32 /*column*/ )
 
 
 // virtual
-sal_Int32 SAL_CALL ResultSetMetaData::getColumnDisplaySize( sal_Int32 column )
+sal_Int32 SAL_CALL ResultSetMetaData::getColumnDisplaySize( sal_Int32 /*column*/ )
 {
     /*
         Gets the normal maximum width in characters for column.
      */
-
-    if ( ( column < 1 ) || ( column > m_aProps.getLength() ) )
-        return 16;
-
-    return m_pImpl->m_aColumnData[ column - 1 ].columnDisplaySize;
+    return 16;
 }
 
 
@@ -218,10 +185,6 @@ OUString SAL_CALL ResultSetMetaData::getColumnLabel( sal_Int32 column )
 
     if ( ( column < 1 ) || ( column > m_aProps.getLength() ) )
         return OUString();
-
-    OUString aLabel = m_pImpl->m_aColumnData[ column - 1 ].columnLabel;
-    if ( !aLabel.isEmpty() )
-        return aLabel;
 
     return m_aProps.getConstArray()[ column - 1 ].Name;
 }
@@ -242,7 +205,7 @@ OUString SAL_CALL ResultSetMetaData::getColumnName( sal_Int32 column )
 
 
 // virtual
-OUString SAL_CALL ResultSetMetaData::getSchemaName( sal_Int32 column )
+OUString SAL_CALL ResultSetMetaData::getSchemaName( sal_Int32 /*column*/ )
 {
     /*
         Gets the schema name for the table from which column of this
@@ -250,11 +213,7 @@ OUString SAL_CALL ResultSetMetaData::getSchemaName( sal_Int32 column )
         Because this feature is not widely supported, the return value
         for many DBMSs will be an empty string.
      */
-
-    if ( ( column < 1 ) || ( column > m_aProps.getLength() ) )
-        return OUString();
-
-    return m_pImpl->m_aColumnData[ column - 1 ].schemaName;
+    return OUString();
 }
 
 
@@ -273,7 +232,7 @@ sal_Int32 SAL_CALL ResultSetMetaData::getScale( sal_Int32 /*column*/ )
 
 
 // virtual
-OUString SAL_CALL ResultSetMetaData::getTableName( sal_Int32 column )
+OUString SAL_CALL ResultSetMetaData::getTableName( sal_Int32 /*column*/ )
 {
     /*
         Gets the name of the table from which column of this result set
@@ -281,16 +240,12 @@ OUString SAL_CALL ResultSetMetaData::getTableName( sal_Int32 column )
         Because this feature is not widely supported, the return value
         for many DBMSs will be an empty string.
      */
-
-    if ( ( column < 1 ) || ( column > m_aProps.getLength() ) )
-        return OUString();
-
-    return m_pImpl->m_aColumnData[ column - 1 ].tableName;
+    return OUString();
 }
 
 
 // virtual
-OUString SAL_CALL ResultSetMetaData::getCatalogName( sal_Int32 column )
+OUString SAL_CALL ResultSetMetaData::getCatalogName( sal_Int32 /*column*/ )
 {
     /*
         Gets the catalog name for the table from which column of this
@@ -298,11 +253,7 @@ OUString SAL_CALL ResultSetMetaData::getCatalogName( sal_Int32 column )
         Because this feature is not widely supported, the return value
         for many DBMSs will be an empty string.
      */
-
-    if ( ( column < 1 ) || ( column > m_aProps.getLength() ) )
-        return OUString();
-
-    return m_pImpl->m_aColumnData[ column - 1 ].catalogName;
+    return OUString();
 }
 
 
@@ -334,24 +285,15 @@ sal_Int32 SAL_CALL ResultSetMetaData::getColumnType( sal_Int32 column )
     // Less (remote) calls...
 
                 Sequence< Property > aProps = xInfo->getProperties();
-                const Property* pProps1 = aProps.getConstArray();
-                sal_Int32 nCount1 = aProps.getLength();
 
-                sal_Int32 nCount = m_aProps.getLength();
-                Property* pProps = m_aProps.getArray();
-                for ( sal_Int32 n = 0; n < nCount; ++n )
+                for ( Property& rProp : m_aProps )
                 {
-                    Property& rProp = pProps[ n ];
-
-                    for ( sal_Int32 m = 0; m < nCount1; ++m )
+                    auto pProp = std::find_if(aProps.begin(), aProps.end(),
+                        [&rProp](const Property& rProp1) { return rProp.Name == rProp1.Name; });
+                    if (pProp != aProps.end())
                     {
-                        const Property& rProp1 = pProps1[ m ];
-                        if ( rProp.Name == rProp1.Name )
-                        {
-                            // Found...
-                            rProp.Type = rProp1.Type;
-                            break;
-                        }
+                        // Found...
+                        rProp.Type = pProp->Type;
                     }
                 }
             }
@@ -414,7 +356,7 @@ sal_Int32 SAL_CALL ResultSetMetaData::getColumnType( sal_Int32 column )
 
 
 // virtual
-OUString SAL_CALL ResultSetMetaData::getColumnTypeName( sal_Int32 column )
+OUString SAL_CALL ResultSetMetaData::getColumnTypeName( sal_Int32 /*column*/ )
 {
     /*
         Gets the type name used by this particular data source for the
@@ -422,11 +364,7 @@ OUString SAL_CALL ResultSetMetaData::getColumnTypeName( sal_Int32 column )
         stored in column is STRUCT, DISTINCT or JAVA_OBJECT, this method
         returns a fully-qualified SQL type name.
      */
-
-    if ( ( column < 1 ) || ( column > m_aProps.getLength() ) )
-        return OUString();
-
-    return m_pImpl->m_aColumnData[ column - 1 ].columnTypeName;
+    return OUString();
 }
 
 
@@ -452,18 +390,14 @@ sal_Bool SAL_CALL ResultSetMetaData::isDefinitelyWritable( sal_Int32 /*column*/ 
 
 
 // virtual
-OUString SAL_CALL ResultSetMetaData::getColumnServiceName( sal_Int32 column )
+OUString SAL_CALL ResultSetMetaData::getColumnServiceName( sal_Int32 /*column*/ )
 {
     /*
           Returns the fully-qualified name of the service whose instances
          are manufactured if XResultSet::getObject is called to retrieve
         a value from the column.
      */
-
-    if ( ( column < 1 ) || ( column > m_aProps.getLength() ) )
-        return OUString();
-
-    return m_pImpl->m_aColumnData[ column - 1 ].columnServiceName;
+    return OUString();
 }
 
 } // namespace ucbhelper

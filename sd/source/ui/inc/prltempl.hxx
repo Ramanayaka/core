@@ -20,11 +20,10 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_PRLTEMPL_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_PRLTEMPL_HXX
 
-#include "sdresid.hxx"
 #include <sfx2/tabdlg.hxx>
-#include <svx/tabarea.hxx>
+#include <svx/xtable.hxx>
 
-#include "prlayout.hxx"
+#include <prlayout.hxx>
 
 class SfxObjectShell;
 class SfxStyleSheetBase;
@@ -33,7 +32,7 @@ class SfxStyleSheetBasePool;
 /**
  * Template-Tab-Dialog
  */
-class SdPresLayoutTemplateDlg : public SfxTabDialog
+class SdPresLayoutTemplateDlg : public SfxTabDialogController
 {
 private:
     const SfxObjectShell*   mpDocShell;
@@ -46,32 +45,19 @@ private:
     XDashListRef          pDashList;
     XLineEndListRef       pLineEndList;
 
-    sal_uInt16            mnLine;
-    sal_uInt16            mnArea;
-    sal_uInt16            mnShadow;
-    sal_uInt16            mnTransparency;
-    sal_uInt16            mnFont;
-    sal_uInt16            mnEffects;
-    sal_uInt16            mnTextAtt;
-    sal_uInt16            mnBackground;
+    PresentationObjects   ePO;
 
-    PresentationObjects ePO;
-
-    virtual void        PageCreated( sal_uInt16 nId, SfxTabPage &rPage ) override;
+    virtual void        PageCreated(const OString& rId, SfxTabPage &rPage) override;
 
     // for mapping with the new SvxNumBulletItem
     SfxItemSet aInputSet;
-    SfxItemSet* pOutSet;
-    const SfxItemSet* pOrgSet;
+    std::unique_ptr<SfxItemSet> pOutSet;
 
     sal_uInt16 GetOutlineLevel() const;
 
-    using SfxTabDialog::GetOutputItemSet;
-
 public:
-    SdPresLayoutTemplateDlg( SfxObjectShell* pDocSh, vcl::Window* pParent, sal_uInt16 nDlgId, SfxStyleSheetBase& rStyleBase, PresentationObjects ePO, SfxStyleSheetBasePool* pSSPool );
+    SdPresLayoutTemplateDlg(SfxObjectShell const * pDocSh, weld::Window* pParent, bool bBackground, SfxStyleSheetBase& rStyleBase, PresentationObjects ePO, SfxStyleSheetBasePool* pSSPool);
     virtual ~SdPresLayoutTemplateDlg() override;
-    virtual void dispose() override;
 
     const SfxItemSet* GetOutputItemSet() const;
 };

@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "reftokenhelper.hxx"
-#include "document.hxx"
-#include "rangeutl.hxx"
-#include "compiler.hxx"
-#include "tokenarray.hxx"
+#include <reftokenhelper.hxx>
+#include <document.hxx>
+#include <rangeutl.hxx>
+#include <compiler.hxx>
+#include <tokenarray.hxx>
 
 #include <rtl/ustring.hxx>
 #include <formula/grammar.hxx>
@@ -77,7 +77,7 @@ void ScRefTokenHelper::compileRangeRepresentation(
             case svSingleRef:
                 {
                     const ScSingleRefData& rRef = *p->GetSingleRef();
-                    if (!rRef.Valid())
+                    if (!rRef.Valid(pDoc))
                         bFailure = true;
                     else if (bOnly3DRef && !rRef.IsFlag3D())
                         bFailure = true;
@@ -86,7 +86,7 @@ void ScRefTokenHelper::compileRangeRepresentation(
             case svDoubleRef:
                 {
                     const ScComplexRefData& rRef = *p->GetDoubleRef();
-                    if (!rRef.Valid())
+                    if (!rRef.Valid(pDoc))
                         bFailure = true;
                     else if (bOnly3DRef && !rRef.Ref1.IsFlag3D())
                         bFailure = true;
@@ -94,13 +94,13 @@ void ScRefTokenHelper::compileRangeRepresentation(
                 break;
             case svExternalSingleRef:
                 {
-                    if (!p->GetSingleRef()->ValidExternal())
+                    if (!p->GetSingleRef()->ValidExternal(pDoc))
                         bFailure = true;
                 }
                 break;
             case svExternalDoubleRef:
                 {
-                    if (!p->GetDoubleRef()->ValidExternal())
+                    if (!p->GetDoubleRef()->ValidExternal(pDoc))
                         bFailure = true;
                 }
                 break;
@@ -113,7 +113,7 @@ void ScRefTokenHelper::compileRangeRepresentation(
                 break;
         }
         if (!bFailure)
-            rRefTokens.push_back(ScTokenRef(p->Clone()));
+            rRefTokens.emplace_back(p->Clone());
 
     }
     if (bFailure)
@@ -121,6 +121,7 @@ void ScRefTokenHelper::compileRangeRepresentation(
 }
 
 bool ScRefTokenHelper::getRangeFromToken(
+    const ScDocument* pDoc,
     ScRange& rRange, const ScTokenRef& pToken, const ScAddress& rPos, bool bExternal)
 {
     StackVar eType = pToken->GetType();
@@ -134,7 +135,7 @@ bool ScRefTokenHelper::getRangeFromToken(
                 return false;
 
             const ScSingleRefData& rRefData = *pToken->GetSingleRef();
-            rRange.aStart = rRefData.toAbs(rPos);
+            rRange.aStart = rRefData.toAbs(pDoc, rPos);
             rRange.aEnd = rRange.aStart;
             return true;
         }
@@ -146,7 +147,7 @@ bool ScRefTokenHelper::getRangeFromToken(
                 return false;
 
             const ScComplexRefData& rRefData = *pToken->GetDoubleRef();
-            rRange = rRefData.toAbs(rPos);
+            rRange = rRefData.toAbs(pDoc, rPos);
             return true;
         }
         default:
@@ -156,18 +157,17 @@ bool ScRefTokenHelper::getRangeFromToken(
 }
 
 void ScRefTokenHelper::getRangeListFromTokens(
-    ScRangeList& rRangeList, const vector<ScTokenRef>& rTokens, const ScAddress& rPos)
+    const ScDocument* pDoc, ScRangeList& rRangeList, const vector<ScTokenRef>& rTokens, const ScAddress& rPos)
 {
-    vector<ScTokenRef>::const_iterator itr = rTokens.begin(), itrEnd = rTokens.end();
-    for (; itr != itrEnd; ++itr)
+    for (const auto& rToken : rTokens)
     {
         ScRange aRange;
-        getRangeFromToken(aRange, *itr, rPos);
-        rRangeList.Append(aRange);
+        getRangeFromToken(pDoc, aRange, rToken, rPos);
+        rRangeList.push_back(aRange);
     }
 }
 
-void ScRefTokenHelper::getTokenFromRange(ScTokenRef& pToken, const ScRange& rRange)
+void ScRefTokenHelper::getTokenFromRange(const ScDocument* pDoc, ScTokenRef& pToken, const ScRange& rRange)
 {
     ScComplexRefData aData;
     aData.InitRange(rRange);
@@ -177,23 +177,19 @@ void ScRefTokenHelper::getTokenFromRange(ScTokenRef& pToken, const ScRange& rRan
     // different sheets.
     aData.Ref2.SetFlag3D(rRange.aStart.Tab() != rRange.aEnd.Tab());
 
-    pToken.reset(new ScDoubleRefToken(aData));
+    pToken.reset(new ScDoubleRefToken(pDoc->GetSheetLimits(), aData));
 }
 
-void ScRefTokenHelper::getTokensFromRangeList(vector<ScTokenRef>& pTokens, const ScRangeList& rRanges)
+void ScRefTokenHelper::getTokensFromRangeList(const ScDocument* pDoc, vector<ScTokenRef>& pTokens, const ScRangeList& rRanges)
 {
     vector<ScTokenRef> aTokens;
     size_t nCount = rRanges.size();
     aTokens.reserve(nCount);
     for (size_t i = 0; i < nCount; ++i)
     {
-        const ScRange* pRange = rRanges[i];
-        if (!pRange)
-            // failed.
-            return;
-
+        const ScRange & rRange = rRanges[i];
         ScTokenRef pToken;
-        ScRefTokenHelper::getTokenFromRange(pToken,* pRange);
+        ScRefTokenHelper::getTokenFromRange(pDoc, pToken, rRange);
         aTokens.push_back(pToken);
     }
     pTokens.swap(aTokens);
@@ -228,6 +224,7 @@ bool ScRefTokenHelper::isExternalRef(const ScTokenRef& pToken)
 }
 
 bool ScRefTokenHelper::intersects(
+    const ScDocument* pDoc,
     const vector<ScTokenRef>& rTokens, const ScTokenRef& pToken, const ScAddress& rPos)
 {
     if (!isRef(pToken))
@@ -237,12 +234,10 @@ bool ScRefTokenHelper::intersects(
     sal_uInt16 nFileId = bExternal ? pToken->GetIndex() : 0;
 
     ScRange aRange;
-    getRangeFromToken(aRange, pToken, rPos, bExternal);
+    getRangeFromToken(pDoc, aRange, pToken, rPos, bExternal);
 
-    vector<ScTokenRef>::const_iterator itr = rTokens.begin(), itrEnd = rTokens.end();
-    for (; itr != itrEnd; ++itr)
+    for (const ScTokenRef& p : rTokens)
     {
-        const ScTokenRef& p = *itr;
         if (!isRef(p))
             continue;
 
@@ -250,7 +245,7 @@ bool ScRefTokenHelper::intersects(
             continue;
 
         ScRange aRange2;
-        getRangeFromToken(aRange2, p, rPos, bExternal);
+        getRangeFromToken(pDoc, aRange2, p, rPos, bExternal);
 
         if (bExternal && nFileId != p->GetIndex())
             // different external file
@@ -274,9 +269,9 @@ public:
      * @param rTokens existing list of reference tokens
      * @param rToken new token
      */
-    void operator() (vector<ScTokenRef>& rTokens, const ScTokenRef& pToken, const ScAddress& rPos)
+    void operator() (const ScDocument* pDoc, vector<ScTokenRef>& rTokens, const ScTokenRef& pToken, const ScAddress& rPos)
     {
-        join(rTokens, pToken, rPos);
+        join(pDoc, rTokens, pToken, rPos);
     }
 
 private:
@@ -300,8 +295,8 @@ private:
             // These two ranges cannot be joined.  Move on.
             return false;
 
-        T nMin = nMin1 < nMin2 ? nMin1 : nMin2;
-        T nMax = nMax1 > nMax2 ? nMax1 : nMax2;
+        T nMin = std::min(nMin1, nMin2);
+        T nMax = std::max(nMax1, nMax2);
 
         rNewMin = nMin;
         rNewMax = nMax;
@@ -309,7 +304,7 @@ private:
         return true;
     }
 
-    void join(vector<ScTokenRef>& rTokens, const ScTokenRef& pToken, const ScAddress& rPos)
+    void join(const ScDocument* pDoc, vector<ScTokenRef>& rTokens, const ScTokenRef& pToken, const ScAddress& rPos)
     {
         // Normalize the token to a double reference.
         ScComplexRefData aData;
@@ -322,11 +317,8 @@ private:
         svl::SharedString aTabName = bExternal ? pToken->GetString() : svl::SharedString::getEmptyString();
 
         bool bJoined = false;
-        vector<ScTokenRef>::iterator itr = rTokens.begin(), itrEnd = rTokens.end();
-        for (; itr != itrEnd; ++itr)
+        for (ScTokenRef& pOldToken : rTokens)
         {
-            ScTokenRef& pOldToken = *itr;
-
             if (!ScRefTokenHelper::isRef(pOldToken))
                 // A non-ref token should not have been added here in the first
                 // place!
@@ -351,7 +343,7 @@ private:
             if (!ScRefTokenHelper::getDoubleRefDataFromToken(aOldData, pOldToken))
                 continue;
 
-            ScRange aOld = aOldData.toAbs(rPos), aNew = aData.toAbs(rPos);
+            ScRange aOld = aOldData.toAbs(pDoc, rPos), aNew = aData.toAbs(pDoc, rPos);
 
             if (aNew.aStart.Tab() != aOld.aStart.Tab() || aNew.aEnd.Tab() != aOld.aEnd.Tab())
                 // Sheet ranges differ.
@@ -376,7 +368,7 @@ private:
                 {
                     aNew.aStart.SetCol(nNewMin);
                     aNew.aEnd.SetCol(nNewMax);
-                    aNewData.SetRange(aNew, rPos);
+                    aNewData.SetRange(pDoc->GetSheetLimits(), aNew, rPos);
                 }
             }
             else if (bSameCols)
@@ -390,7 +382,7 @@ private:
                 {
                     aNew.aStart.SetRow(nNewMin);
                     aNew.aEnd.SetRow(nNewMax);
-                    aNewData.SetRange(aNew, rPos);
+                    aNewData.SetRange(pDoc->GetSheetLimits(), aNew, rPos);
                 }
             }
 
@@ -399,7 +391,7 @@ private:
                 if (bExternal)
                     pOldToken.reset(new ScExternalDoubleRefToken(nFileId, aTabName, aNewData));
                 else
-                    pOldToken.reset(new ScDoubleRefToken(aNewData));
+                    pOldToken.reset(new ScDoubleRefToken(pDoc->GetSheetLimits(), aNewData));
 
                 bJoined = true;
                 break;
@@ -415,7 +407,7 @@ private:
             // Pop the last token from the list, and keep joining recursively.
             ScTokenRef p = rTokens.back();
             rTokens.pop_back();
-            join(rTokens, p, rPos);
+            join(pDoc, rTokens, p, rPos);
         }
         else
             rTokens.push_back(pToken);
@@ -424,10 +416,10 @@ private:
 
 }
 
-void ScRefTokenHelper::join(vector<ScTokenRef>& rTokens, const ScTokenRef& pToken, const ScAddress& rPos)
+void ScRefTokenHelper::join(const ScDocument* pDoc, vector<ScTokenRef>& rTokens, const ScTokenRef& pToken, const ScAddress& rPos)
 {
     JoinRefTokenRanges join;
-    join(rTokens, pToken, rPos);
+    join(pDoc, rTokens, pToken, rPos);
 }
 
 bool ScRefTokenHelper::getDoubleRefDataFromToken(ScComplexRefData& rData, const ScTokenRef& pToken)
@@ -455,19 +447,19 @@ bool ScRefTokenHelper::getDoubleRefDataFromToken(ScComplexRefData& rData, const 
     return true;
 }
 
-ScTokenRef ScRefTokenHelper::createRefToken(const ScAddress& rAddr)
+ScTokenRef ScRefTokenHelper::createRefToken(const ScDocument* pDoc, const ScAddress& rAddr)
 {
     ScSingleRefData aRefData;
     aRefData.InitAddress(rAddr);
-    ScTokenRef pRef(new ScSingleRefToken(aRefData));
+    ScTokenRef pRef(new ScSingleRefToken(pDoc->GetSheetLimits(), aRefData));
     return pRef;
 }
 
-ScTokenRef ScRefTokenHelper::createRefToken(const ScRange& rRange)
+ScTokenRef ScRefTokenHelper::createRefToken(const ScDocument* pDoc, const ScRange& rRange)
 {
     ScComplexRefData aRefData;
     aRefData.InitRange(rRange);
-    ScTokenRef pRef(new ScDoubleRefToken(aRefData));
+    ScTokenRef pRef(new ScDoubleRefToken(pDoc->GetSheetLimits(), aRefData));
     return pRef;
 }
 

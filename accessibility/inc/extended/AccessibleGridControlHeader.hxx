@@ -18,10 +18,8 @@
  */
 
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLHEADER_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEGRIDCONTROLHEADER_HXX
+#pragma once
 
-#include <extended/AccessibleGridControlHeaderCell.hxx>
 #include <extended/AccessibleGridControlTableBase.hxx>
 
 namespace accessibility {
@@ -30,7 +28,7 @@ namespace accessibility {
    (row or column header bar). This object supports the
     XAccessibleSelection interface. Selecting a child of this object selects
     complete rows or columns of the data table. */
-class AccessibleGridControlHeader : public AccessibleGridControlTableBase
+class AccessibleGridControlHeader final : public AccessibleGridControlTableBase
 {
 public:
     /**  @param rxParent  accessible parent control
@@ -40,11 +38,11 @@ public:
     AccessibleGridControlHeader(
         const css::uno::Reference<
             css::accessibility::XAccessible >& rxParent,
-            ::svt::table::IAccessibleTable& rTable,
-            ::svt::table::AccessibleTableControlObjType  eObjType );
+            ::vcl::table::IAccessibleTable& rTable,
+            ::vcl::table::AccessibleTableControlObjType  eObjType );
 
-protected:
-    virtual ~AccessibleGridControlHeader() override;
+private:
+    virtual ~AccessibleGridControlHeader() override = default;
 
 public:
     // XAccessibleContext
@@ -112,10 +110,10 @@ public:
     /** @return  The name of this class. */
     virtual OUString SAL_CALL getImplementationName() override;
 
-    /** @return  An unique implementation ID. */
+    /** @return  a unique implementation ID. */
     virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
 
-protected:
+private:
     /** Returns the specified row or column. Uses one of the parameters,
         depending on object type.
         @attention  This method requires locked mutex's and a living object.
@@ -141,18 +139,17 @@ protected:
 
 inline bool AccessibleGridControlHeader::isRowBar() const
 {
-    return getType() == ::svt::table::TCTYPE_ROWHEADERBAR;
+    return getType() == ::vcl::table::TCTYPE_ROWHEADERBAR;
 }
 
 inline bool AccessibleGridControlHeader::isColumnBar() const
 {
-    return getType() == ::svt::table::TCTYPE_COLUMNHEADERBAR;
+    return getType() == ::vcl::table::TCTYPE_COLUMNHEADERBAR;
 }
 
 
 } // namespace accessibility
 
 
-#endif // ACCESSIBILITY_EXT_ACCESSIBILEGRIDCONTROLHEADER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

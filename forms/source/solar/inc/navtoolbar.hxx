@@ -20,23 +20,18 @@
 #ifndef INCLUDED_FORMS_SOURCE_SOLAR_INC_NAVTOOLBAR_HXX
 #define INCLUDED_FORMS_SOURCE_SOLAR_INC_NAVTOOLBAR_HXX
 
-#include <vcl/toolbox.hxx>
-#include <vcl/field.hxx>
-
+#include <svtools/recorditemwindow.hxx>
 #include <memory>
-
 
 namespace frm
 {
-
-
     class IFeatureDispatcher;
-    class ICommandImageProvider;
+    class DocumentCommandImageProvider;
     class ICommandDescriptionProvider;
-
     class ImplNavToolBar;
+    typedef std::shared_ptr< const DocumentCommandImageProvider >  PCommandImageProvider;
 
-    class NavigationToolBar : public vcl::Window
+    class NavigationToolBar final : public vcl::Window
     {
     public:
         enum ImageSize
@@ -55,7 +50,7 @@ namespace frm
 
     private:
         const IFeatureDispatcher*       m_pDispatcher;
-        const std::shared_ptr< const ICommandImageProvider >
+        const std::shared_ptr< const DocumentCommandImageProvider >
                                         m_pImageProvider;
         ImageSize                       m_eImageSize;
         VclPtr<ImplNavToolBar>          m_pToolbar;
@@ -66,7 +61,7 @@ namespace frm
         NavigationToolBar(
             vcl::Window* _pParent,
             WinBits _nStyle,
-            const std::shared_ptr< const ICommandImageProvider >& _pImageProvider,
+            const PCommandImageProvider& _pImageProvider,
             const OUString & sModuleId
         );
         virtual ~NavigationToolBar( ) override;
@@ -115,7 +110,7 @@ namespace frm
         void                SetTextLineColor( );
         void                SetTextLineColor( const Color& rColor );
 
-    protected:
+    private:
         // Window overridables
         virtual void        Resize() override;
         virtual void        StateChanged( StateChangedType nType ) override;
@@ -149,7 +144,7 @@ namespace frm
         static void enableItemRTL( sal_uInt16 /*_nItemId*/, vcl::Window* _pItemWindow, const void* _pIsRTLEnabled );
     };
 
-    class RecordPositionInput : public NumericField
+    class RecordPositionInput final : public RecordItemWindow
     {
     private:
         const IFeatureDispatcher*   m_pDispatcher;
@@ -161,18 +156,11 @@ namespace frm
         */
         void    setDispatcher( const IFeatureDispatcher* _pDispatcher );
 
-    protected:
-        // Window overridables
-        virtual void LoseFocus() override;
-        virtual void KeyInput( const KeyEvent& rKeyEvent ) override;
-
     private:
-        void FirePosition( bool _bForce );
+        virtual void PositionFired(sal_Int64 nRecord) override;
     };
 
-
 }   // namespace frm
-
 
 #endif // INCLUDED_FORMS_SOURCE_SOLAR_INC_NAVTOOLBAR_HXX
 

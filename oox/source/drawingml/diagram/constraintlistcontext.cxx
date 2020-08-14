@@ -18,24 +18,23 @@
  */
 
 #include "constraintlistcontext.hxx"
-#include "oox/helper/attributelist.hxx"
+#include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
-#include <osl/diagnose.h>
 
 using namespace ::oox::core;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 // CT_ConstraintLists
-ConstraintListContext::ConstraintListContext( ContextHandler2Helper& rParent,
+ConstraintListContext::ConstraintListContext( ContextHandler2Helper const & rParent,
                                               const LayoutAtomPtr &pNode )
     : ContextHandler2( rParent )
     , mpNode( pNode )
 {
-    OSL_ENSURE( pNode, "Node must NOT be NULL" );
+    assert( pNode && "Node must NOT be NULL" );
 }
 
 ConstraintListContext::~ConstraintListContext()
@@ -50,20 +49,21 @@ ConstraintListContext::onCreateContext( ::sal_Int32 aElement,
     {
     case DGM_TOKEN( constr ):
     {
-        std::shared_ptr< ConstraintAtom > pNode( new ConstraintAtom() );
-        mpNode->addChild( pNode );
+        auto pNode = std::make_shared<ConstraintAtom>(mpNode->getLayoutNode());
+        LayoutAtom::connect(mpNode, pNode);
 
-        pNode->setFor( rAttribs.getToken( XML_for, XML_none ) );
-        pNode->setForName( rAttribs.getString( XML_forName, "" ) );
-        pNode->setPointType( rAttribs.getToken( XML_ptType, XML_none ) );
-        pNode->setType( rAttribs.getToken( XML_type, XML_none ) );
-        pNode->setRefFor( rAttribs.getToken( XML_refFor, XML_none ) );
-        pNode->setRefForName( rAttribs.getString( XML_refForName, "" ) );
-        pNode->setRefType( rAttribs.getToken( XML_refType, XML_none ) );
-        pNode->setRefPointType( rAttribs.getToken( XML_refPtType, XML_none ) );
-        pNode->setFactor( rAttribs.getDouble( XML_fact, 1.0 ) );
-        pNode->setValue( rAttribs.getDouble( XML_val, 0.0 ) );
-        pNode->setOperator( rAttribs.getToken( XML_op, XML_none ) );
+        Constraint& rConstraint = pNode->getConstraint();
+        rConstraint.mnFor = rAttribs.getToken( XML_for, XML_none );
+        rConstraint.msForName = rAttribs.getString( XML_forName, "" );
+        rConstraint.mnPointType = rAttribs.getToken( XML_ptType, XML_none );
+        rConstraint.mnType = rAttribs.getToken( XML_type, XML_none );
+        rConstraint.mnRefFor = rAttribs.getToken( XML_refFor, XML_none );
+        rConstraint.msRefForName = rAttribs.getString( XML_refForName, "" );
+        rConstraint.mnRefType = rAttribs.getToken( XML_refType, XML_none );
+        rConstraint.mnRefPointType = rAttribs.getToken( XML_refPtType, XML_none );
+        rConstraint.mfFactor = rAttribs.getDouble( XML_fact, 1.0 );
+        rConstraint.mfValue = rAttribs.getDouble( XML_val, 0.0 );
+        rConstraint.mnOperator = rAttribs.getToken( XML_op, XML_none );
         break;
     }
     default:
@@ -73,6 +73,6 @@ ConstraintListContext::onCreateContext( ::sal_Int32 aElement,
     return this;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

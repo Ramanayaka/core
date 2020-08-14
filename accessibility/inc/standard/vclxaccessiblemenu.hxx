@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEMENU_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEMENU_HXX
+#pragma once
 
 #include <standard/vclxaccessiblemenuitem.hxx>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
@@ -26,7 +25,6 @@
 #include <cppuhelper/implbase1.hxx>
 
 
-//  class VCLXAccessibleMenu
 
 
 typedef ::cppu::ImplHelper1 <
@@ -38,10 +36,10 @@ class VCLXAccessibleMenu :  public VCLXAccessibleMenuItem,
 protected:
     virtual bool        IsFocused() override;
     virtual bool        IsPopupMenuOpen() override;
+    sal_Int32           implGetSelectedAccessibleChildCount();
 
 public:
-    VCLXAccessibleMenu( Menu* pParent, sal_uInt16 nItemPos, Menu* pMenu );
-    virtual ~VCLXAccessibleMenu() override;
+    using VCLXAccessibleMenuItem::VCLXAccessibleMenuItem;
 
     // XInterface
     DECLARE_XINTERFACE()
@@ -71,9 +69,8 @@ public:
     virtual void SAL_CALL deselectAccessibleChild( sal_Int32 nChildIndex ) override;
 
     // XAccessibleAction
-    virtual ::rtl::OUString SAL_CALL getAccessibleActionDescription ( sal_Int32 nIndex ) override;
+    virtual OUString SAL_CALL getAccessibleActionDescription ( sal_Int32 nIndex ) override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEMENU_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

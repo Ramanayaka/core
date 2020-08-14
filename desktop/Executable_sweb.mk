@@ -11,10 +11,6 @@ $(eval $(call gb_Executable_Executable,sweb))
 
 $(eval $(call gb_Executable_set_targettype_gui,sweb,YES))
 
-$(eval $(call gb_Executable_add_defs,sweb,\
-    -DUNICODE \
-))
-
 $(eval $(call gb_Executable_add_ldflags,sweb,\
     /ENTRY:wWinMainCRTStartup \
 ))
@@ -28,5 +24,7 @@ $(eval $(call gb_Executable_add_exception_objects,sweb,\
 ))
 
 $(eval $(call gb_Executable_add_nativeres,sweb,sweb/launcher))
+
+$(eval $(call gb_Executable_add_default_nativeres,sweb,$(PRODUCTNAME) Writer (Web)))
 
 # vim: set ts=4 sw=4 et:

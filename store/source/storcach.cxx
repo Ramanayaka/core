@@ -17,22 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include "storcach.hxx"
 
-#include "sal/log.hxx"
-#include "sal/types.h"
-#include "sal/macros.h"
-#include "rtl/alloc.h"
-#include "osl/diagnose.h"
+#include <sal/log.hxx>
+#include <sal/types.h>
+#include <sal/macros.h>
+#include <rtl/alloc.h>
+#include <osl/diagnose.h>
 
-#include "store/types.h"
-#include "object.hxx"
+#include <store/types.h>
 #include "storbase.hxx"
 
 #include <memory>
-#include <stddef.h>
+#include <string.h>
 
 using namespace store;
 
@@ -182,7 +181,6 @@ PageCache::PageCache (sal_uInt16 nPageSize)
 {
     static size_t const theSize = SAL_N_ELEMENTS(m_hash_table_0);
     static_assert(theSize == theTableSize, "must be equal");
-    memset(m_hash_table_0, 0, sizeof(m_hash_table_0));
 }
 
 PageCache::~PageCache()
@@ -208,7 +206,7 @@ PageCache::~PageCache()
 
     if (m_hash_table != m_hash_table_0)
     {
-        rtl_freeMemory (m_hash_table);
+        std::free (m_hash_table);
         m_hash_table = m_hash_table_0;
         m_hash_size  = theTableSize;
         m_hash_shift = highbit(m_hash_size) - 1;
@@ -219,44 +217,44 @@ PageCache::~PageCache()
 void PageCache::rescale_Impl (std::size_t new_size)
 {
     std::size_t new_bytes = new_size * sizeof(Entry*);
-    Entry ** new_table = static_cast<Entry**>(rtl_allocateMemory(new_bytes));
+    Entry ** new_table = static_cast<Entry**>(std::malloc(new_bytes));
 
-    if (new_table != nullptr)
+    if (new_table == nullptr)
+        return;
+
+    Entry ** old_table = m_hash_table;
+    std::size_t old_size  = m_hash_size;
+
+    SAL_INFO(
+        "store",
+        "ave chain length: " << (m_hash_entries >> m_hash_shift)
+            << ", total entries: " << m_hash_entries << " [old_size: "
+            << old_size << " new_size: " << new_size << "]");
+
+    memset (new_table, 0, new_bytes);
+
+    m_hash_table = new_table;
+    m_hash_size  = new_size;
+    m_hash_shift = highbit(m_hash_size) - 1;
+
+    std::size_t i;
+    for (i = 0; i < old_size; i++)
     {
-        Entry ** old_table = m_hash_table;
-        std::size_t old_size  = m_hash_size;
-
-        SAL_INFO(
-            "store",
-            "ave chain length: " << (m_hash_entries >> m_hash_shift)
-                << ", total entries: " << m_hash_entries << " [old_size: "
-                << old_size << " new_size: " << new_size << "]");
-
-        memset (new_table, 0, new_bytes);
-
-        m_hash_table = new_table;
-        m_hash_size  = new_size;
-        m_hash_shift = highbit(m_hash_size) - 1;
-
-        std::size_t i;
-        for (i = 0; i < old_size; i++)
+        Entry * curr = old_table[i];
+        while (curr != nullptr)
         {
-            Entry * curr = old_table[i];
-            while (curr != nullptr)
-            {
-                Entry * next = curr->m_pNext;
-                int index = hash_index_Impl(curr->m_nOffset);
-                curr->m_pNext = m_hash_table[index];
-                m_hash_table[index] = curr;
-                curr = next;
-            }
-            old_table[i] = nullptr;
+            Entry * next = curr->m_pNext;
+            int index = hash_index_Impl(curr->m_nOffset);
+            curr->m_pNext = m_hash_table[index];
+            m_hash_table[index] = curr;
+            curr = next;
         }
-        if (old_table != m_hash_table_0)
-        {
+        old_table[i] = nullptr;
+    }
+    if (old_table != m_hash_table_0)
+    {
 
-            rtl_freeMemory (old_table);
-        }
+        std::free (old_table);
     }
 }
 
@@ -379,7 +377,7 @@ storeError PageCache::removePageAt (sal_uInt32 nOffset)
         if ((*ppEntry)->m_nOffset == nOffset)
         {
             // Existing entry.
-            Entry * entry = (*ppEntry);
+            Entry * entry = *ppEntry;
 
             // Dequeue and destroy entry.
             (*ppEntry) = entry->m_pNext;

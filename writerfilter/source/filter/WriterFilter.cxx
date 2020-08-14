@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
 #include <iostream>
 #endif
 
@@ -35,12 +35,16 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <dmapper/DomainMapperFactory.hxx>
 #include <oox/core/filterdetect.hxx>
+#include <oox/core/xmlfilterbase.hxx>
 #include <oox/helper/graphichelper.hxx>
 #include <oox/ole/olestorage.hxx>
 #include <oox/ole/vbaproject.hxx>
 #include <ooxml/OOXMLDocument.hxx>
 #include <unotools/mediadescriptor.hxx>
 #include <rtl/ref.hxx>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
+#include <comphelper/scopeguard.hxx>
 
 using namespace ::com::sun::star;
 
@@ -54,8 +58,9 @@ static OUString lcl_GetExceptionMessage(xml::sax::SAXException const& e)
 }
 static OUString lcl_GetExceptionMessage(xml::sax::SAXParseException const& e)
 {
-    OUString const thisMessage("SAXParseException: '" + e.Message + "', Stream '" + e.SystemId + "', Line " + OUString::number(e.LineNumber)
-                               + ", Column " + OUString::number(e.ColumnNumber));
+    OUString const thisMessage("SAXParseException: '" + e.Message + "', Stream '" + e.SystemId
+                               + "', Line " + OUString::number(e.LineNumber) + ", Column "
+                               + OUString::number(e.ColumnNumber));
     OUString const restMessage(lcl_GetExceptionMessageRec(e));
     return restMessage + "\n" + thisMessage;
 }
@@ -80,25 +85,22 @@ static OUString lcl_GetExceptionMessageRec(xml::sax::SAXException const& e)
     return OUString();
 }
 
-/// Common DOCX filter, calls DocxExportFilter via UNO or does the DOCX import.
-class WriterFilter : public cppu::WeakImplHelper
-    <
-    document::XFilter,
-    document::XImporter,
-    document::XExporter,
-    lang::XInitialization,
-    lang::XServiceInfo
-    >
+namespace
 {
-
-protected:
+/// Common DOCX filter, calls DocxExportFilter via UNO or does the DOCX import.
+class WriterFilter
+    : public cppu::WeakImplHelper<document::XFilter, document::XImporter, document::XExporter,
+                                  lang::XInitialization, lang::XServiceInfo>
+{
     uno::Reference<uno::XComponentContext> m_xContext;
     uno::Reference<lang::XComponent> m_xSrcDoc, m_xDstDoc;
+    uno::Sequence<uno::Any> m_xInitializationArguments;
 
 public:
     explicit WriterFilter(uno::Reference<uno::XComponentContext> xContext)
         : m_xContext(std::move(xContext))
-    {}
+    {
+    }
 
     // XFilter
     sal_Bool SAL_CALL filter(const uno::Sequence<beans::PropertyValue>& rDescriptor) override;
@@ -117,21 +119,20 @@ public:
     OUString SAL_CALL getImplementationName() override;
     sal_Bool SAL_CALL supportsService(const OUString& rServiceName) override;
     uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
-
-private:
-    void putPropertiesToDocumentGrabBag(const comphelper::SequenceAsHashMap& rProperties);
-
 };
+}
 
-sal_Bool WriterFilter::filter(const uno::Sequence< beans::PropertyValue >& aDescriptor)
+sal_Bool WriterFilter::filter(const uno::Sequence<beans::PropertyValue>& rDescriptor)
 {
     if (m_xSrcDoc.is())
     {
-        uno::Reference< lang::XMultiServiceFactory > xMSF(m_xContext->getServiceManager(), uno::UNO_QUERY_THROW);
-        uno::Reference< uno::XInterface > xIfc;
+        uno::Reference<lang::XMultiServiceFactory> xMSF(m_xContext->getServiceManager(),
+                                                        uno::UNO_QUERY_THROW);
+        uno::Reference<uno::XInterface> xIfc;
         try
         {
-            xIfc.set(xMSF->createInstance("com.sun.star.comp.Writer.DocxExport"), uno::UNO_QUERY_THROW);
+            xIfc.set(xMSF->createInstance("com.sun.star.comp.Writer.DocxExport"),
+                     uno::UNO_SET_THROW);
         }
         catch (uno::RuntimeException&)
         {
@@ -140,26 +141,37 @@ sal_Bool WriterFilter::filter(const uno::Sequence< beans::PropertyValue >& aDesc
         catch (uno::Exception& e)
         {
             uno::Any a(cppu::getCaughtException());
-            throw lang::WrappedTargetRuntimeException("wrapped " + a.getValueTypeName() + ": " + e.Message, uno::Reference<uno::XInterface>(), a);
+            throw lang::WrappedTargetRuntimeException("wrapped " + a.getValueTypeName() + ": "
+                                                          + e.Message,
+                                                      uno::Reference<uno::XInterface>(), a);
         }
-        uno::Reference< document::XExporter > xExprtr(xIfc, uno::UNO_QUERY_THROW);
-        uno::Reference< document::XFilter > xFltr(xIfc, uno::UNO_QUERY_THROW);
-        if (!xExprtr.is() || !xFltr.is())
-            return false;
-        xExprtr->setSourceDocument(m_xSrcDoc);
-        return xFltr->filter(aDescriptor);
-    }
-    else if (m_xDstDoc.is())
-    {
-        utl::MediaDescriptor aMediaDesc(aDescriptor);
-        bool bRepairStorage = aMediaDesc.getUnpackedValueOrDefault("RepairPackage", false);
-        bool bSkipImages = aMediaDesc.getUnpackedValueOrDefault("FilterOptions", OUString()) == "SkipImages";
 
-        uno::Reference< io::XInputStream > xInputStream;
+        uno::Reference<lang::XInitialization> xInit(xIfc, uno::UNO_QUERY_THROW);
+        xInit->initialize(m_xInitializationArguments);
+
+        uno::Reference<document::XExporter> xExprtr(xIfc, uno::UNO_QUERY_THROW);
+        uno::Reference<document::XFilter> xFltr(xIfc, uno::UNO_QUERY_THROW);
+        xExprtr->setSourceDocument(m_xSrcDoc);
+        return xFltr->filter(rDescriptor);
+    }
+    if (m_xDstDoc.is())
+    {
+        uno::Reference<beans::XPropertySet> const xDocProps(m_xDstDoc, uno::UNO_QUERY);
+        xDocProps->setPropertyValue("UndocumentedWriterfilterHack", uno::makeAny(true));
+        comphelper::ScopeGuard g([xDocProps] {
+            xDocProps->setPropertyValue("UndocumentedWriterfilterHack", uno::makeAny(false));
+        });
+        utl::MediaDescriptor aMediaDesc(rDescriptor);
+        bool bRepairStorage = aMediaDesc.getUnpackedValueOrDefault("RepairPackage", false);
+        bool bSkipImages
+            = aMediaDesc.getUnpackedValueOrDefault("FilterOptions", OUString()) == "SkipImages";
+
+        uno::Reference<io::XInputStream> xInputStream;
         try
         {
             // use the oox.core.FilterDetect implementation to extract the decrypted ZIP package
-            rtl::Reference<::oox::core::FilterDetect> xDetector(new ::oox::core::FilterDetect(m_xContext));
+            rtl::Reference<::oox::core::FilterDetect> xDetector(
+                new ::oox::core::FilterDetect(m_xContext));
             xInputStream = xDetector->extractUnencryptedPackage(aMediaDesc);
         }
         catch (uno::Exception&)
@@ -174,17 +186,21 @@ sal_Bool WriterFilter::filter(const uno::Sequence< beans::PropertyValue >& aDesc
                 m_xContext, xInputStream, m_xDstDoc, bRepairStorage,
                 writerfilter::dmapper::SourceDocumentType::OOXML, aMediaDesc));
         //create the tokenizer and domain mapper
-        writerfilter::ooxml::OOXMLStream::Pointer_t pDocStream = writerfilter::ooxml::OOXMLDocumentFactory::createStream(m_xContext, xInputStream, bRepairStorage);
-        uno::Reference<task::XStatusIndicator> xStatusIndicator = aMediaDesc.getUnpackedValueOrDefault(utl::MediaDescriptor::PROP_STATUSINDICATOR(), uno::Reference<task::XStatusIndicator>());
-        writerfilter::ooxml::OOXMLDocument::Pointer_t pDocument(writerfilter::ooxml::OOXMLDocumentFactory::createDocument(pDocStream, xStatusIndicator, bSkipImages, aDescriptor));
+        writerfilter::ooxml::OOXMLStream::Pointer_t pDocStream
+            = writerfilter::ooxml::OOXMLDocumentFactory::createStream(m_xContext, xInputStream,
+                                                                      bRepairStorage);
+        uno::Reference<task::XStatusIndicator> xStatusIndicator
+            = aMediaDesc.getUnpackedValueOrDefault(utl::MediaDescriptor::PROP_STATUSINDICATOR(),
+                                                   uno::Reference<task::XStatusIndicator>());
+        writerfilter::ooxml::OOXMLDocument::Pointer_t pDocument(
+            writerfilter::ooxml::OOXMLDocumentFactory::createDocument(pDocStream, xStatusIndicator,
+                                                                      bSkipImages, rDescriptor));
 
         uno::Reference<frame::XModel> xModel(m_xDstDoc, uno::UNO_QUERY_THROW);
         pDocument->setModel(xModel);
 
-        uno::Reference<drawing::XDrawPageSupplier> xDrawings
-        (m_xDstDoc, uno::UNO_QUERY_THROW);
-        uno::Reference<drawing::XDrawPage> xDrawPage
-        (xDrawings->getDrawPage(), uno::UNO_SET_THROW);
+        uno::Reference<drawing::XDrawPageSupplier> xDrawings(m_xDstDoc, uno::UNO_QUERY_THROW);
+        uno::Reference<drawing::XDrawPage> xDrawPage(xDrawings->getDrawPage(), uno::UNO_SET_THROW);
         pDocument->setDrawPage(xDrawPage);
 
         try
@@ -195,26 +211,26 @@ sal_Bool WriterFilter::filter(const uno::Sequence< beans::PropertyValue >& aDesc
         {
             // note: SfxObjectShell checks for WrongFormatException
             io::WrongFormatException wfe(lcl_GetExceptionMessage(e));
-            throw lang::WrappedTargetRuntimeException("",
-                    static_cast<OWeakObject*>(this), uno::makeAny(wfe));
+            throw lang::WrappedTargetRuntimeException("", static_cast<OWeakObject*>(this),
+                                                      uno::makeAny(wfe));
         }
         catch (xml::sax::SAXException const& e)
         {
             // note: SfxObjectShell checks for WrongFormatException
             io::WrongFormatException wfe(lcl_GetExceptionMessage(e));
-            throw lang::WrappedTargetRuntimeException("",
-                    static_cast<OWeakObject*>(this), uno::makeAny(wfe));
+            throw lang::WrappedTargetRuntimeException("", static_cast<OWeakObject*>(this),
+                                                      uno::makeAny(wfe));
         }
         catch (uno::RuntimeException const&)
         {
             throw;
         }
-        catch (uno::Exception const& e)
+        catch (uno::Exception const&)
         {
-            SAL_WARN("writerfilter", "WriterFilter::filter(): "
-                     "failed with exception " << e.Message);
-            throw lang::WrappedTargetRuntimeException("",
-                    static_cast<OWeakObject*>(this), uno::makeAny(e));
+            css::uno::Any anyEx = cppu::getCaughtException();
+            SAL_WARN("writerfilter",
+                     "WriterFilter::filter(): failed with " << exceptionToString(anyEx));
+            throw lang::WrappedTargetRuntimeException("", static_cast<OWeakObject*>(this), anyEx);
         }
 
         // Adding some properties to the document's grab bag for interoperability purposes:
@@ -227,37 +243,39 @@ sal_Bool WriterFilter::filter(const uno::Sequence< beans::PropertyValue >& aDesc
         aGrabBagProperties["OOXCustomXml"] <<= pDocument->getCustomXmlDomList();
         aGrabBagProperties["OOXCustomXmlProps"] <<= pDocument->getCustomXmlDomPropsList();
 
-        // Adding the saved ActiveX DOM
-        aGrabBagProperties["OOXActiveX"] <<= pDocument->getActiveXDomList();
-        aGrabBagProperties["OOXActiveXBin"] <<= pDocument->getActiveXBinList();
-
-        // Adding the saved Glossary Documnet DOM to the document's grab bag
+        // Adding the saved Glossary Document DOM to the document's grab bag
         aGrabBagProperties["OOXGlossary"] <<= pDocument->getGlossaryDocDom();
         aGrabBagProperties["OOXGlossaryDom"] <<= pDocument->getGlossaryDomList();
 
         // Adding the saved embedding document to document's grab bag
         aGrabBagProperties["OOXEmbeddings"] <<= pDocument->getEmbeddingsList();
 
-        putPropertiesToDocumentGrabBag(aGrabBagProperties);
+        oox::core::XmlFilterBase::putPropertiesToDocumentGrabBag(m_xDstDoc, aGrabBagProperties);
 
-        writerfilter::ooxml::OOXMLStream::Pointer_t  pVBAProjectStream(writerfilter::ooxml::OOXMLDocumentFactory::createStream(pDocStream, writerfilter::ooxml::OOXMLStream::VBAPROJECT));
-        oox::StorageRef xVbaPrjStrg(new ::oox::ole::OleStorage(m_xContext, pVBAProjectStream->getDocumentStream(), false));
-        if (xVbaPrjStrg.get() && xVbaPrjStrg->isStorage())
+        writerfilter::ooxml::OOXMLStream::Pointer_t pVBAProjectStream(
+            writerfilter::ooxml::OOXMLDocumentFactory::createStream(
+                pDocStream, writerfilter::ooxml::OOXMLStream::VBAPROJECT));
+        oox::StorageRef xVbaPrjStrg = std::make_shared<::oox::ole::OleStorage>(
+            m_xContext, pVBAProjectStream->getDocumentStream(), false);
+        if (xVbaPrjStrg && xVbaPrjStrg->isStorage())
         {
             ::oox::ole::VbaProject aVbaProject(m_xContext, xModel, "Writer");
-            uno::Reference< frame::XFrame > xFrame = aMediaDesc.getUnpackedValueOrDefault(utl::MediaDescriptor::PROP_FRAME(), uno::Reference< frame::XFrame > ());
+            uno::Reference<frame::XFrame> xFrame = aMediaDesc.getUnpackedValueOrDefault(
+                utl::MediaDescriptor::PROP_FRAME(), uno::Reference<frame::XFrame>());
 
             // if no XFrame try fallback to what we can glean from the Model
             if (!xFrame.is())
             {
-                uno::Reference< frame::XController > xController =  xModel->getCurrentController();
-                xFrame =  xController.is() ? xController->getFrame() : nullptr;
+                uno::Reference<frame::XController> xController = xModel->getCurrentController();
+                xFrame = xController.is() ? xController->getFrame() : nullptr;
             }
 
             oox::GraphicHelper gHelper(m_xContext, xFrame, xVbaPrjStrg);
             aVbaProject.importVbaProject(*xVbaPrjStrg, gHelper);
 
-            writerfilter::ooxml::OOXMLStream::Pointer_t pVBADataStream(writerfilter::ooxml::OOXMLDocumentFactory::createStream(pDocStream, writerfilter::ooxml::OOXMLStream::VBADATA));
+            writerfilter::ooxml::OOXMLStream::Pointer_t pVBADataStream(
+                writerfilter::ooxml::OOXMLDocumentFactory::createStream(
+                    pDocStream, writerfilter::ooxml::OOXMLStream::VBADATA));
             if (pVBADataStream)
             {
                 uno::Reference<io::XInputStream> xDataStream = pVBADataStream->getDocumentStream();
@@ -266,25 +284,25 @@ sal_Bool WriterFilter::filter(const uno::Sequence< beans::PropertyValue >& aDesc
             }
         }
 
-        pStream.reset();
+        pStream.clear();
+
+        // note: pStream.clear calls RemoveLastParagraph()
 
         return true;
     }
     return false;
 }
 
+void WriterFilter::cancel() {}
 
-void WriterFilter::cancel()
-{
-}
-
-void WriterFilter::setTargetDocument(const uno::Reference< lang::XComponent >& xDoc)
+void WriterFilter::setTargetDocument(const uno::Reference<lang::XComponent>& xDoc)
 {
     m_xDstDoc = xDoc;
 
     // Set some compatibility options that are valid for all the formats
-    uno::Reference< lang::XMultiServiceFactory > xFactory(xDoc, uno::UNO_QUERY);
-    uno::Reference< beans::XPropertySet > xSettings(xFactory->createInstance("com.sun.star.document.Settings"), uno::UNO_QUERY);
+    uno::Reference<lang::XMultiServiceFactory> xFactory(xDoc, uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xSettings(
+        xFactory->createInstance("com.sun.star.document.Settings"), uno::UNO_QUERY);
 
     xSettings->setPropertyValue("AddFrameOffsets", uno::makeAny(true));
     xSettings->setPropertyValue("AddVerticalFrameOffsets", uno::makeAny(true));
@@ -310,69 +328,36 @@ void WriterFilter::setTargetDocument(const uno::Reference< lang::XComponent >& x
     xSettings->setPropertyValue("TreatSingleColumnBreakAsPageBreak", uno::makeAny(true));
     xSettings->setPropertyValue("PropLineSpacingShrinksFirstLine", uno::makeAny(true));
     xSettings->setPropertyValue("DoNotCaptureDrawObjsOnPage", uno::makeAny(true));
+    xSettings->setPropertyValue("DisableOffPagePositioning", uno::makeAny(true));
 }
 
-void WriterFilter::setSourceDocument(const uno::Reference< lang::XComponent >& xDoc)
+void WriterFilter::setSourceDocument(const uno::Reference<lang::XComponent>& xDoc)
 {
     m_xSrcDoc = xDoc;
 }
 
-void WriterFilter::initialize(const uno::Sequence< uno::Any >& /*rArguments*/)
+void WriterFilter::initialize(const uno::Sequence<uno::Any>& rArguments)
 {
+    m_xInitializationArguments = rArguments;
 }
 
-OUString WriterFilter::getImplementationName()
-{
-    return OUString("com.sun.star.comp.Writer.WriterFilter");
-}
-
+OUString WriterFilter::getImplementationName() { return "com.sun.star.comp.Writer.WriterFilter"; }
 
 sal_Bool WriterFilter::supportsService(const OUString& rServiceName)
 {
     return cppu::supportsService(this, rServiceName);
 }
 
-
 uno::Sequence<OUString> WriterFilter::getSupportedServiceNames()
 {
-    uno::Sequence<OUString> aRet =
-    {
-        OUString("com.sun.star.document.ImportFilter"),
-        OUString("com.sun.star.document.ExportFilter")
-    };
+    uno::Sequence<OUString> aRet = { OUString("com.sun.star.document.ImportFilter"),
+                                     OUString("com.sun.star.document.ExportFilter") };
     return aRet;
 }
 
-void WriterFilter::putPropertiesToDocumentGrabBag(const comphelper::SequenceAsHashMap& rProperties)
-{
-    try
-    {
-        uno::Reference<beans::XPropertySet> xDocProps(m_xDstDoc, uno::UNO_QUERY);
-        if (xDocProps.is())
-        {
-            uno::Reference<beans::XPropertySetInfo> xPropsInfo = xDocProps->getPropertySetInfo();
-
-            const OUString aGrabBagPropName = "InteropGrabBag";
-            if (xPropsInfo.is() && xPropsInfo->hasPropertyByName(aGrabBagPropName))
-            {
-                // get existing grab bag
-                comphelper::SequenceAsHashMap aGrabBag(xDocProps->getPropertyValue(aGrabBagPropName));
-
-                // put the new items
-                aGrabBag.update(rProperties);
-
-                // put it back to the document
-                xDocProps->setPropertyValue(aGrabBagPropName, uno::Any(aGrabBag.getAsConstPropertyValueList()));
-            }
-        }
-    }
-    catch (const uno::Exception&)
-    {
-        SAL_WARN("writerfilter","Failed to save documents grab bag");
-    }
-}
-
-extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface* SAL_CALL com_sun_star_comp_Writer_WriterFilter_get_implementation(uno::XComponentContext* component, uno::Sequence<uno::Any> const&)
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_comp_Writer_WriterFilter_get_implementation(
+    uno::XComponentContext* component, uno::Sequence<uno::Any> const& /*rSequence*/)
 {
     return cppu::acquire(new WriterFilter(component));
 }

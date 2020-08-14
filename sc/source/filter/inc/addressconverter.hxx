@@ -17,13 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SC_SOURCE_FILTER_INC_ADDRESSCONVERTER_HXX
-#define INCLUDED_SC_SOURCE_FILTER_INC_ADDRESSCONVERTER_HXX
+#pragma once
 
 #include <vector>
-#include <com/sun/star/table/CellRangeAddress.hpp>
 #include <rangelst.hxx>
 #include "workbookhelper.hxx"
+#include <com/sun/star/uno/Sequence.h>
+
+namespace com::sun::star::table { struct CellRangeAddress; }
+namespace oox { class SequenceInputStream; }
 
 namespace oox {
 namespace xls {
@@ -479,30 +481,18 @@ public:
     static css::uno::Sequence<css::table::CellRangeAddress>
                         toApiSequence(const ScRangeList& orRanges);
 
+    bool                isColOverflow() const { return mbColOverflow; }
+    bool                isRowOverflow() const { return mbRowOverflow; }
+    bool                isTabOverflow() const { return mbTabOverflow; }
+
 private:
     void                initializeMaxPos(
                             sal_Int16 nMaxXlsTab, sal_Int32 nMaxXlsCol, sal_Int32 nMaxXlsRow );
 
 private:
-    struct ControlCharacters
-    {
-        sal_Unicode         mcThisWorkbook;             /// Control character: Link to current workbook.
-        sal_Unicode         mcExternal;                 /// Control character: Link to external workbook/sheet.
-        sal_Unicode         mcThisSheet;                /// Control character: Link to current sheet.
-        sal_Unicode         mcInternal;                 /// Control character: Link to internal sheet.
-        sal_Unicode         mcSameSheet;                /// Control character: Link to same sheet (special '!A1' syntax).
-
-        void                set(
-                                sal_Unicode cThisWorkbook, sal_Unicode cExternal,
-                                sal_Unicode cThisSheet, sal_Unicode cInternal,
-                                sal_Unicode cSameSheet );
-    };
-
     ScAddress maMaxApiPos;     /// Maximum valid cell address in Calc.
     ScAddress maMaxXlsPos;     /// Maximum valid cell address in Excel.
     ScAddress maMaxPos;        /// Maximum valid cell address in Calc/Excel.
-    ControlCharacters       maLinkChars;     /// Control characters for external link import (BIFF).
-    ControlCharacters       maDConChars;     /// Control characters for DCON* record import (BIFF).
     bool                    mbColOverflow;   /// Flag for "columns overflow".
     bool                    mbRowOverflow;   /// Flag for "rows overflow".
     bool                    mbTabOverflow;   /// Flag for "tables overflow".
@@ -511,6 +501,5 @@ private:
 } // namespace xls
 } // namespace oox
 
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

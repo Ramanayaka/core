@@ -19,38 +19,56 @@
 #ifndef INCLUDED_SFX2_GROUPID_HXX
 #define INCLUDED_SFX2_GROUPID_HXX
 
-#ifdef __RSC
-#define SfxGroupId(x)  (x)
-#else
-
-#include <o3tl/strong_int.hxx>
 #include <sal/types.h>
+
 #include <functional>
 
-struct SfxGroupIdTag {};
-typedef o3tl::strong_int<sal_uInt16, SfxGroupIdTag> SfxGroupId;
+// !! If you add a new group, please change sfxbasecontroller.cxx and
+// !! com.sun.star.frame.CommandGroup accordingly!
+
+enum class SfxGroupId {
+    NONE = 0,
+    Intern = 32700,
+    Application,
+    Document,
+    View,
+    Edit,
+    Macro,
+    Options,
+    Math,
+    Navigator,
+    Insert,
+    Format,
+    Template,
+    Text,
+    Frame,
+    Graphic,
+    Table,
+    Enumeration,
+    Data,
+    Special,
+    Image,
+    Chart,
+    Explorer,
+    Connector,
+    Modify,
+    Drawing,
+    Controls
+};
 
 // make it hashable for storing in maps
-namespace std {
-
+namespace std
+{
   template <>
   struct hash<SfxGroupId>
   {
     std::size_t operator()(const SfxGroupId& k) const
     {
-      return std::hash<sal_uInt16>()((sal_uInt16)k);
+      return std::hash<sal_uInt16>()(static_cast<sal_uInt16>(k));
     }
   };
-
 }
 
-// Make it easier to declare the constants in the .hrc files.
-// This way, we only have to mark the START constant as being SfxGroupId.
-inline SfxGroupId operator+(SfxGroupId lhs, sal_uInt16 rhs)
-{
-    return SfxGroupId((sal_uInt16)lhs + rhs);
-}
-#endif
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

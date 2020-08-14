@@ -32,11 +32,10 @@
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 
-#include "unomodel.hxx"
-#include "drawdoc.hxx"
+#include <unomodel.hxx>
+#include <drawdoc.hxx>
 
 
-class SdXImpressDocument;
 class SdCustomShow;
 
 class SdXCustomPresentation :   public ::cppu::WeakImplHelper< css::container::XIndexContainer,
@@ -96,8 +95,6 @@ public:
     virtual void SAL_CALL addEventListener( const css::uno::Reference< css::lang::XEventListener >& xListener ) override;
     virtual void SAL_CALL removeEventListener( const css::uno::Reference< css::lang::XEventListener >& aListener ) override;
 };
-
-class List;
 
 class SdXCustomPresentationAccess : public ::cppu::WeakImplHelper< css::container::XNameContainer,
                                                                     css::lang::XSingleServiceFactory,

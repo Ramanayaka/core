@@ -7,6 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <cassert>
 #include <string>
 #include <iostream>
 #include <unordered_map>
@@ -15,6 +16,7 @@
 #include "plugin.hxx"
 #include "check.hxx"
 #include "clang/AST/CXXInheritance.h"
+#include "clang/AST/StmtVisitor.h"
 
 // Original idea from tml.
 // Look for variables that are (a) initialised from zero or one constants. (b) only used in one spot.
@@ -23,21 +25,62 @@
 namespace
 {
 
-bool startsWith(const std::string& rStr, const char* pSubStr) {
-    return rStr.compare(0, strlen(pSubStr), pSubStr) == 0;
+Expr const * lookThroughInitListExpr(Expr const * expr) {
+    if (auto const ile = dyn_cast<InitListExpr>(expr->IgnoreParenImpCasts())) {
+        if (ile->getNumInits() == 1) {
+            return ile->getInit(0);
+        }
+    }
+    return expr;
 }
 
+class ConstantValueDependentExpressionVisitor:
+    public ConstStmtVisitor<ConstantValueDependentExpressionVisitor, bool>
+{
+    ASTContext const & context_;
+
+public:
+    ConstantValueDependentExpressionVisitor(ASTContext const & context):
+        context_(context) {}
+
+    bool Visit(Stmt const * stmt) {
+        assert(isa<Expr>(stmt));
+        auto const expr = cast<Expr>(stmt);
+        if (!expr->isValueDependent()) {
+            return expr->isEvaluatable(context_);
+        }
+        return ConstStmtVisitor::Visit(stmt);
+    }
+
+    bool VisitParenExpr(ParenExpr const * expr)
+    { return Visit(expr->getSubExpr()); }
+
+    bool VisitCastExpr(CastExpr const * expr) {
+        return Visit(expr->getSubExpr());
+    }
+
+    bool VisitUnaryOperator(UnaryOperator const * expr)
+    { return Visit(expr->getSubExpr()); }
+
+    bool VisitBinaryOperator(BinaryOperator const * expr) {
+        return Visit(expr->getLHS()) && Visit(expr->getRHS());
+    }
+
+    bool VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr const *) {
+        return true;
+    }
+};
+
 class OnceVar:
-    public RecursiveASTVisitor<OnceVar>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<OnceVar>
 {
 public:
-    explicit OnceVar(InstantiationData const & data): Plugin(data) {}
+    explicit OnceVar(loplugin::InstantiationData const & data): FilteringPlugin(data) {}
 
     virtual void run() override {
         // ignore some files with problematic macros
-        std::string fn( compiler.getSourceManager().getFileEntryForID(
-                        compiler.getSourceManager().getMainFileID())->getName() );
-        normalizeDotDotInFilePath(fn);
+        std::string fn(handler.getMainFileName());
+        loplugin::normalizeDotDotInFilePath(fn);
         // platform-specific stuff
         if (fn == SRCDIR "/sal/osl/unx/thread.cxx"
             || fn == SRCDIR "/sot/source/base/formats.cxx"
@@ -47,9 +90,9 @@ public:
             || fn == SRCDIR "/embeddedobj/source/msole/oleembed.cxx")
              return;
         // some of this is necessary
-        if (startsWith( fn, SRCDIR "/sal/qa/"))
+        if (loplugin::hasPathnamePrefix( fn, SRCDIR "/sal/qa/"))
              return;
-        if (startsWith( fn, SRCDIR "/comphelper/qa/"))
+        if (loplugin::hasPathnamePrefix( fn, SRCDIR "/comphelper/qa/"))
              return;
         // TODO need to check calls via function pointer
         if (fn == SRCDIR "/i18npool/source/textconversion/textconversion_zh.cxx"
@@ -66,6 +109,9 @@ public:
         // macros managing to generate to a valid warning
         if (fn == SRCDIR "/solenv/bin/concat-deps.c")
              return;
+        // TODO bug in the plugin
+        if (fn == SRCDIR "/vcl/unx/generic/app/saldisp.cxx")
+            return;
 
         TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
 
@@ -91,20 +137,178 @@ public:
         }
     }
 
+    bool VisitMemberExpr(MemberExpr const * expr) {
+        // ignore cases like:
+        //     const OUString("xxx") xxx;
+        //     rtl_something(xxx.pData);
+        // where we cannot inline the declaration.
+        if (isa<FieldDecl>(expr->getMemberDecl())) {
+            recordIgnore(expr);
+        }
+        return true;
+    }
+
+    bool VisitUnaryOperator(UnaryOperator const * expr) {
+        // if we take the address of it, or we modify it, ignore it
+        UnaryOperator::Opcode op = expr->getOpcode();
+        if (op == UO_AddrOf || op == UO_PreInc || op == UO_PostInc
+            || op == UO_PreDec || op == UO_PostDec)
+        {
+            recordIgnore(expr->getSubExpr());
+        }
+        return true;
+    }
+
+    bool VisitBinaryOperator(BinaryOperator const * expr) {
+        // if we assign it another value, or modify it, ignore it
+        BinaryOperator::Opcode op = expr->getOpcode();
+        if (op == BO_Assign || op == BO_PtrMemD || op == BO_PtrMemI || op == BO_MulAssign
+            || op == BO_DivAssign || op == BO_RemAssign || op == BO_AddAssign
+            || op == BO_SubAssign || op == BO_ShlAssign || op == BO_ShrAssign
+            || op == BO_AndAssign || op == BO_XorAssign || op == BO_OrAssign)
+        {
+            recordIgnore(expr->getLHS());
+        }
+        return true;
+    }
+
+    bool VisitCallExpr(CallExpr const * expr) {
+        unsigned firstArg = 0;
+        if (auto const cmce = dyn_cast<CXXMemberCallExpr>(expr)) {
+            if (auto const e1 = cmce->getMethodDecl()) {
+                if (!(e1->isConst() || e1->isStatic())) {
+                    recordIgnore(cmce->getImplicitObjectArgument());
+                }
+            } else if (auto const e2 = dyn_cast<BinaryOperator>(
+                           cmce->getCallee()->IgnoreParenImpCasts()))
+            {
+                switch (e2->getOpcode()) {
+                case BO_PtrMemD:
+                case BO_PtrMemI:
+                    if (!e2->getRHS()->getType()->getAs<MemberPointerType>()
+                        ->getPointeeType()->getAs<FunctionProtoType>()
+                        ->isConst())
+                    {
+                        recordIgnore(e2->getLHS());
+                    }
+                    break;
+                default:
+                    break;
+                }
+            }
+        } else if (auto const coce = dyn_cast<CXXOperatorCallExpr>(expr)) {
+            if (auto const cmd = dyn_cast_or_null<CXXMethodDecl>(
+                    coce->getDirectCallee()))
+            {
+                if (!cmd->isStatic()) {
+                    assert(coce->getNumArgs() != 0);
+                    if (!cmd->isConst()) {
+                        recordIgnore(coce->getArg(0));
+                    }
+                    firstArg = 1;
+                }
+            }
+        }
+        // ignore those ones we are passing by reference
+        const FunctionDecl* calleeFunctionDecl = expr->getDirectCallee();
+        if (calleeFunctionDecl) {
+            for (unsigned i = firstArg; i < expr->getNumArgs(); ++i) {
+                if (i < calleeFunctionDecl->getNumParams()) {
+                    QualType qt { calleeFunctionDecl->getParamDecl(i)->getType() };
+                    if (loplugin::TypeCheck(qt).LvalueReference().NonConst()) {
+                        recordIgnore(expr->getArg(i));
+                    }
+                    if (loplugin::TypeCheck(qt).Pointer().NonConst()) {
+                        recordIgnore(expr->getArg(i));
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    bool VisitCXXConstructExpr(CXXConstructExpr const * expr) {
+        // ignore those ones we are passing by reference
+        const CXXConstructorDecl* cxxConstructorDecl = expr->getConstructor();
+        for (unsigned i = 0; i < expr->getNumArgs(); ++i) {
+            if (i < cxxConstructorDecl->getNumParams()) {
+                QualType qt { cxxConstructorDecl->getParamDecl(i)->getType() };
+                if (loplugin::TypeCheck(qt).LvalueReference().NonConst()) {
+                    recordIgnore(expr->getArg(i));
+                }
+                if (loplugin::TypeCheck(qt).Pointer().NonConst()) {
+                    recordIgnore(expr->getArg(i));
+                }
+            }
+        }
+        return true;
+    }
+
     bool VisitDeclRefExpr( const DeclRefExpr* );
     bool VisitVarDecl( const VarDecl* );
+    bool TraverseFunctionDecl( FunctionDecl* functionDecl );
 
 private:
     std::unordered_set<VarDecl const *> maVarDeclSet;
     std::unordered_set<VarDecl const *> maVarDeclToIgnoreSet;
     std::unordered_map<VarDecl const *, int> maVarUsesMap;
     std::unordered_map<VarDecl const *, SourceRange> maVarUseSourceRangeMap;
+
+    bool isConstantValueDependentExpression(Expr const * expr) {
+        return ConstantValueDependentExpressionVisitor(compiler.getASTContext())
+            .Visit(expr);
+    }
+
+    void recordIgnore(Expr const * expr) {
+        for (;;) {
+            expr = expr->IgnoreParenImpCasts();
+            if (auto const e = dyn_cast<MemberExpr>(expr)) {
+                if (isa<FieldDecl>(e->getMemberDecl())) {
+                    expr = e->getBase();
+                    continue;
+                }
+            }
+            if (auto const e = dyn_cast<ArraySubscriptExpr>(expr)) {
+                expr = e->getBase();
+                continue;
+            }
+            if (auto const e = dyn_cast<BinaryOperator>(expr)) {
+                if (e->getOpcode() == BO_PtrMemD) {
+                    expr = e->getLHS();
+                    continue;
+                }
+            }
+            break;
+        }
+        auto const dre = dyn_cast<DeclRefExpr>(expr);
+        if (dre == nullptr) {
+            return;
+        }
+        auto const var = dyn_cast<VarDecl>(dre->getDecl());
+        if (var == nullptr) {
+            return;
+        }
+        maVarDeclToIgnoreSet.insert(var);
+    }
 };
+
+bool OnceVar::TraverseFunctionDecl( FunctionDecl* functionDecl )
+{
+    // Ignore functions that contains #ifdef-ery, can be quite tricky
+    // to make useful changes when this plugin fires in such functions
+    if (containsPreprocessingConditionalInclusion(
+            functionDecl->getSourceRange()))
+        return true;
+    return RecursiveASTVisitor::TraverseFunctionDecl(functionDecl);
+}
 
 bool OnceVar::VisitVarDecl( const VarDecl* varDecl )
 {
     if (ignoreLocation(varDecl)) {
         return true;
+    }
+    if (auto const init = varDecl->getInit()) {
+        recordIgnore(lookThroughInitListExpr(init));
     }
     if (varDecl->isExceptionVariable() || isa<ParmVarDecl>(varDecl)) {
         return true;
@@ -114,20 +318,25 @@ bool OnceVar::VisitVarDecl( const VarDecl* varDecl )
         return true;
     }
     // Ignore macros like FD_ZERO
-    if (compiler.getSourceManager().isMacroBodyExpansion(varDecl->getLocStart())) {
+    if (compiler.getSourceManager().isMacroBodyExpansion(compat::getBeginLoc(varDecl))) {
         return true;
     }
     if (varDecl->hasGlobalStorage()) {
         return true;
     }
     auto const tc = loplugin::TypeCheck(varDecl->getType());
-    if (!varDecl->getType()->isScalarType()
-        && !varDecl->getType()->isBooleanType()
-        && !varDecl->getType()->isEnumeralType()
+    if (!varDecl->getType().isCXX11PODType(compiler.getASTContext())
         && !tc.Class("OString").Namespace("rtl").GlobalNamespace()
         && !tc.Class("OUString").Namespace("rtl").GlobalNamespace()
         && !tc.Class("OStringBuffer").Namespace("rtl").GlobalNamespace()
-        && !tc.Class("OUStringBuffer").Namespace("rtl").GlobalNamespace())
+        && !tc.Class("OUStringBuffer").Namespace("rtl").GlobalNamespace()
+        && !tc.Class("Color").GlobalNamespace()
+        && !tc.Class("Pair").GlobalNamespace()
+        && !tc.Class("Point").GlobalNamespace()
+        && !tc.Class("Size").GlobalNamespace()
+        && !tc.Class("Range").GlobalNamespace()
+        && !tc.Class("Selection").GlobalNamespace()
+        && !tc.Class("Rectangle").Namespace("tools").GlobalNamespace())
     {
         return true;
     }
@@ -146,39 +355,22 @@ bool OnceVar::VisitVarDecl( const VarDecl* varDecl )
     if (auto e = dyn_cast<ExprWithCleanups>(initExpr)) {
         initExpr = e->getSubExpr();
     }
-    if (auto stringLit = dyn_cast<clang::StringLiteral>(initExpr)) {
+    if (isa<clang::StringLiteral>(initExpr)) {
         foundStringLiteral = true;
-        // ignore long literals, helps to make the code more legible
-        if (stringLit->getLength() > 40) {
-            return true;
-        }
     } else if (auto constructExpr = dyn_cast<CXXConstructExpr>(initExpr)) {
-        if (constructExpr->getNumArgs() > 0) {
+        if (constructExpr->getNumArgs() == 0) {
+            foundStringLiteral = true; // i.e., empty string
+        } else {
             auto stringLit2 = dyn_cast<clang::StringLiteral>(constructExpr->getArg(0));
             foundStringLiteral = stringLit2 != nullptr;
-            // ignore long literals, helps to make the code more legible
-            if (stringLit2 && stringLit2->getLength() > 40) {
-                return true;
-            }
         }
     }
     if (!foundStringLiteral) {
         auto const init = varDecl->getInit();
-#if CLANG_VERSION < 30900
-        // Work around missing Clang 3.9 fix <https://reviews.llvm.org/rL271762>
-        // "Sema: do not attempt to sizeof a dependent type" (while an
-        // initializer expression of the form
-        //
-        //   sizeof (T)
-        //
-        // with dependent type T /is/ constant, keep consistent here with the
-        // (arguably broken) behavior of isConstantInitalizer returning false in
-        // Clang >= 3.9):
-        if (init->isValueDependent()) {
-            return true;
-        }
-#endif
-        if (!init->isConstantInitializer(compiler.getASTContext(), false/*ForRef*/))
+        if (!(init->isValueDependent()
+              ? isConstantValueDependentExpression(init)
+              : init->isConstantInitializer(
+                  compiler.getASTContext(), false/*ForRef*/)))
         {
             return true;
         }
@@ -204,84 +396,6 @@ bool OnceVar::VisitDeclRefExpr( const DeclRefExpr* declRefExpr )
         return true;
     }
 
-    Stmt const * parent = parentStmt(declRefExpr);
-    // ignore cases like:
-    //     const OUString("xxx") xxx;
-    //     rtl_something(xxx.pData);
-    // and
-    //      foo(&xxx);
-    // where we cannot inline the declaration.
-    auto const tc = loplugin::TypeCheck(varDecl->getType());
-    if (tc.Class("OUString").Namespace("rtl").GlobalNamespace()
-        && parent && (isa<MemberExpr>(parent) || isa<UnaryOperator>(parent)))
-    {
-        maVarDeclToIgnoreSet.insert(varDecl);
-        return true;
-    }
-
-    // if we take the address of it, or we modify it, ignore it
-    if (auto unaryOp = dyn_cast_or_null<UnaryOperator>(parent)) {
-        UnaryOperator::Opcode op = unaryOp->getOpcode();
-        if (op == UO_AddrOf || op == UO_PreInc || op == UO_PostInc
-            || op == UO_PreDec || op == UO_PostDec)
-        {
-            maVarDeclToIgnoreSet.insert(varDecl);
-            return true;
-        }
-    }
-
-    // if we assign it another value, or modify it, ignore it
-    if (auto binaryOp = dyn_cast_or_null<BinaryOperator>(parent)) {
-        if (binaryOp->getLHS() == declRefExpr)
-        {
-            BinaryOperator::Opcode op = binaryOp->getOpcode();
-            if (op == BO_Assign || op == BO_PtrMemD || op == BO_PtrMemI || op == BO_MulAssign
-                || op == BO_DivAssign || op == BO_RemAssign || op == BO_AddAssign
-                || op == BO_SubAssign || op == BO_ShlAssign || op == BO_ShrAssign
-                || op == BO_AndAssign || op == BO_XorAssign || op == BO_OrAssign)
-            {
-                maVarDeclToIgnoreSet.insert(varDecl);
-                return true;
-            }
-        }
-    }
-
-    // ignore those ones we are passing by reference
-    if (auto callExpr = dyn_cast_or_null<CallExpr>(parent)) {
-        const FunctionDecl* calleeFunctionDecl = callExpr->getDirectCallee();
-        if (calleeFunctionDecl) {
-            for (unsigned i = 0; i < callExpr->getNumArgs(); ++i) {
-                if (callExpr->getArg(i) == declRefExpr) {
-                    if (i < calleeFunctionDecl->getNumParams()) {
-                        QualType qt { calleeFunctionDecl->getParamDecl(i)->getType() };
-                        if (loplugin::TypeCheck(qt).LvalueReference()) {
-                            maVarDeclToIgnoreSet.insert(varDecl);
-                            return true;
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-    }
-    // ignore those ones we are passing by reference
-    if (auto cxxConstructExpr = dyn_cast_or_null<CXXConstructExpr>(parent)) {
-        const CXXConstructorDecl* cxxConstructorDecl = cxxConstructExpr->getConstructor();
-        for (unsigned i = 0; i < cxxConstructExpr->getNumArgs(); ++i) {
-            if (cxxConstructExpr->getArg(i) == declRefExpr) {
-                if (i < cxxConstructorDecl->getNumParams()) {
-                    QualType qt { cxxConstructorDecl->getParamDecl(i)->getType() };
-                    if (loplugin::TypeCheck(qt).LvalueReference()) {
-                        maVarDeclToIgnoreSet.insert(varDecl);
-                        return true;
-                    }
-                }
-                break;
-            }
-        }
-        return true;
-    }
-
     if (maVarUsesMap.find(varDecl) == maVarUsesMap.end()) {
         maVarUsesMap[varDecl] = 1;
         maVarUseSourceRangeMap[varDecl] = declRefExpr->getSourceRange();
@@ -292,7 +406,7 @@ bool OnceVar::VisitDeclRefExpr( const DeclRefExpr* declRefExpr )
     return true;
 }
 
-loplugin::Plugin::Registration< OnceVar > X("oncevar", true);
+loplugin::Plugin::Registration< OnceVar > X("oncevar", false);
 
 }
 

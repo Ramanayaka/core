@@ -11,10 +11,21 @@ $(eval $(call gb_Executable_Executable,odbcconfig))
 
 $(eval $(call gb_Executable_set_targettype_gui,odbcconfig,YES))
 
+$(eval $(call gb_Executable_use_libraries,odbcconfig,\
+    comphelper \
+))
+
+$(eval $(call gb_Executable_use_system_win32_libs,odbcconfig,\
+	legacy_stdio_definitions \
+	odbccp32 \
+))
+
 $(eval $(call gb_Library_use_sdk_api,odbcconfig))
 
 $(eval $(call gb_Executable_add_exception_objects,odbcconfig,\
     dbaccess/win32/source/odbcconfig/odbcconfig \
 ))
+
+$(eval $(call gb_Executable_add_default_nativeres,odbcconfig))
 
 # vim: set noet sw=4 ts=4:

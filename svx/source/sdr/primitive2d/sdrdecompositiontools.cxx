@@ -17,9 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/sdr/primitive2d/sdrdecompositiontools.hxx>
+#include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonGradientPrimitive2D.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonHatchPrimitive2D.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonGraphicPrimitive2D.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
+#include <drawinglayer/primitive2d/softedgeprimitive2d.hxx>
 #include <drawinglayer/primitive2d/unifiedtransparenceprimitive2d.hxx>
 #include <drawinglayer/primitive2d/transparenceprimitive2d.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
@@ -30,29 +34,29 @@
 #include <drawinglayer/attribute/sdrfillgraphicattribute.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <drawinglayer/primitive2d/shadowprimitive2d.hxx>
-#include <svx/sdr/attribute/sdrtextattribute.hxx>
+#include <sdr/attribute/sdrtextattribute.hxx>
+#include <drawinglayer/primitive2d/glowprimitive2d.hxx>
 #include <sdr/primitive2d/sdrtextprimitive2d.hxx>
 #include <svx/svdotext.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <drawinglayer/primitive2d/animatedprimitive2d.hxx>
 #include <drawinglayer/animation/animationtiming.hxx>
 #include <drawinglayer/primitive2d/maskprimitive2d.hxx>
-#include <basegfx/tools/canvastools.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
 #include <drawinglayer/primitive2d/texthierarchyprimitive2d.hxx>
 #include <drawinglayer/attribute/sdrfillattribute.hxx>
 #include <drawinglayer/attribute/sdrlineattribute.hxx>
 #include <drawinglayer/attribute/sdrlinestartendattribute.hxx>
 #include <drawinglayer/attribute/sdrshadowattribute.hxx>
+#include <drawinglayer/attribute/sdrglowattribute.hxx>
+#include <sal/log.hxx>
 
 
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
 
         class TransparencePrimitive2D;
 
@@ -63,7 +67,7 @@ namespace drawinglayer
         {
             // when we have no given definition range, use the range of the given geometry
             // also for definition (simplest case)
-            const basegfx::B2DRange aRange(basegfx::tools::getRange(rPolyPolygon));
+            const basegfx::B2DRange aRange(basegfx::utils::getRange(rPolyPolygon));
 
             return createPolyPolygonFillPrimitive(
                 rPolyPolygon,
@@ -130,7 +134,7 @@ namespace drawinglayer
 
                 // create FillGradientPrimitive2D for transparence and add to new sequence
                 // fillGradientPrimitive is enough here (compared to PolyPolygonGradientPrimitive2D) since float transparence will be masked anyways
-                const basegfx::B2DRange aRange(basegfx::tools::getRange(rPolyPolygon));
+                const basegfx::B2DRange aRange(basegfx::utils::getRange(rPolyPolygon));
                 const Primitive2DReference xRefB(
                     new FillGradientPrimitive2D(
                         aRange,
@@ -192,11 +196,10 @@ namespace drawinglayer
             const attribute::SdrTextAttribute& rText,
             const attribute::SdrLineAttribute& rStroke,
             bool bCellText,
-            bool bWordWrap,
-            bool bClipOnBounds)
+            bool bWordWrap)
         {
             basegfx::B2DHomMatrix aAnchorTransform(rObjectTransform);
-            SdrTextPrimitive2D* pNew = nullptr;
+            std::unique_ptr<SdrTextPrimitive2D> pNew;
 
             if(rText.isContour())
             {
@@ -212,32 +215,32 @@ namespace drawinglayer
                     // scale outline to object's size to allow growing with value relative to that size
                     // and also to keep aspect ratio
                     basegfx::B2DPolyPolygon aScaledUnitPolyPolygon(rUnitPolyPolygon);
-                    aScaledUnitPolyPolygon.transform(basegfx::tools::createScaleB2DHomMatrix(
+                    aScaledUnitPolyPolygon.transform(basegfx::utils::createScaleB2DHomMatrix(
                         fabs(aScale.getX()), fabs(aScale.getY())));
 
                     // grow the polygon. To shrink, use negative value (half width)
-                    aScaledUnitPolyPolygon = basegfx::tools::growInNormalDirection(aScaledUnitPolyPolygon, -(rStroke.getWidth() * 0.5));
+                    aScaledUnitPolyPolygon = basegfx::utils::growInNormalDirection(aScaledUnitPolyPolygon, -(rStroke.getWidth() * 0.5));
 
                     // scale back to unit polygon
-                    aScaledUnitPolyPolygon.transform(basegfx::tools::createScaleB2DHomMatrix(
+                    aScaledUnitPolyPolygon.transform(basegfx::utils::createScaleB2DHomMatrix(
                         0.0 != aScale.getX() ? 1.0 / aScale.getX() : 1.0,
                         0.0 != aScale.getY() ? 1.0 / aScale.getY() : 1.0));
 
                     // create with unit polygon
-                    pNew = new SdrContourTextPrimitive2D(
+                    pNew.reset(new SdrContourTextPrimitive2D(
                         &rText.getSdrText(),
                         rText.getOutlinerParaObject(),
                         aScaledUnitPolyPolygon,
-                        rObjectTransform);
+                        rObjectTransform));
                 }
                 else
                 {
                     // create with unit polygon
-                    pNew = new SdrContourTextPrimitive2D(
+                    pNew.reset(new SdrContourTextPrimitive2D(
                         &rText.getSdrText(),
                         rText.getOutlinerParaObject(),
                         rUnitPolyPolygon,
-                        rObjectTransform);
+                        rObjectTransform));
                 }
             }
             else if(!rText.getSdrFormTextAttribute().isDefault())
@@ -245,11 +248,11 @@ namespace drawinglayer
                 // text on path, use scaled polygon
                 basegfx::B2DPolyPolygon aScaledPolyPolygon(rUnitPolyPolygon);
                 aScaledPolyPolygon.transform(rObjectTransform);
-                pNew = new SdrPathTextPrimitive2D(
+                pNew.reset(new SdrPathTextPrimitive2D(
                     &rText.getSdrText(),
                     rText.getOutlinerParaObject(),
                     aScaledPolyPolygon,
-                    rText.getSdrFormTextAttribute());
+                    rText.getSdrFormTextAttribute()));
             }
             else
             {
@@ -264,14 +267,14 @@ namespace drawinglayer
                 const bool bMirrorY(basegfx::fTools::less(aScale.getY(), 0.0));
                 aScale = basegfx::absolute(aScale);
 
-                // Get the real size, since polygon ountline and scale
+                // Get the real size, since polygon outline and scale
                 // from the object transformation may vary (e.g. ellipse segments)
                 basegfx::B2DHomMatrix aJustScaleTransform;
                 aJustScaleTransform.set(0, 0, aScale.getX());
                 aJustScaleTransform.set(1, 1, aScale.getY());
                 basegfx::B2DPolyPolygon aScaledUnitPolyPolygon(rUnitPolyPolygon);
                 aScaledUnitPolyPolygon.transform(aJustScaleTransform);
-                const basegfx::B2DRange aSnapRange(basegfx::tools::getRange(aScaledUnitPolyPolygon));
+                const basegfx::B2DRange aSnapRange(basegfx::utils::getRange(aScaledUnitPolyPolygon));
 
                 // create a range describing the wanted text position and size (aTextAnchorRange). This
                 // means to use the text distance values here
@@ -284,7 +287,7 @@ namespace drawinglayer
                 // now create a transformation from this basic range (aTextAnchorRange)
                 // #i121494# if we have no scale use at least 1.0 to have a carrier e.g. for
                 // mirror values, else these will get lost
-                aAnchorTransform = basegfx::tools::createScaleTranslateB2DHomMatrix(
+                aAnchorTransform = basegfx::utils::createScaleTranslateB2DHomMatrix(
                     basegfx::fTools::equalZero(aTextAnchorRange.getWidth()) ? 1.0 : aTextAnchorRange.getWidth(),
                     basegfx::fTools::equalZero(aTextAnchorRange.getHeight()) ? 1.0 : aTextAnchorRange.getHeight(),
                     aTextAnchorRange.getMinX(), aTextAnchorRange.getMinY());
@@ -293,38 +296,38 @@ namespace drawinglayer
                 aAnchorTransform.scale(bMirrorX ? -1.0 : 1.0, bMirrorY ? -1.0 : 1.0);
 
                 // apply object's other transforms
-                aAnchorTransform = basegfx::tools::createShearXRotateTranslateB2DHomMatrix(fShearX, fRotate, aTranslate)
+                aAnchorTransform = basegfx::utils::createShearXRotateTranslateB2DHomMatrix(fShearX, fRotate, aTranslate)
                     * aAnchorTransform;
 
                 if(rText.isFitToSize())
                 {
                     // stretched text in range
-                    pNew = new SdrStretchTextPrimitive2D(
+                    pNew.reset(new SdrStretchTextPrimitive2D(
                         &rText.getSdrText(),
                         rText.getOutlinerParaObject(),
                         aAnchorTransform,
-                        rText.isFixedCellHeight());
+                        rText.isFixedCellHeight()));
                 }
                 else if(rText.isAutoFit())
                 {
-                    // isotrophically scaled text in range
-                    pNew = new SdrAutoFitTextPrimitive2D(
+                    // isotropically scaled text in range
+                    pNew.reset(new SdrAutoFitTextPrimitive2D(
                                     &rText.getSdrText(),
                                     rText.getOutlinerParaObject(),
                                     aAnchorTransform,
-                                    bWordWrap);
+                                    bWordWrap));
                 }
                 else if( rText.isChainable() && !rText.isInEditMode() )
                 {
-                    pNew = new SdrChainedTextPrimitive2D(
+                    pNew.reset(new SdrChainedTextPrimitive2D(
                                     &rText.getSdrText(),
                                     rText.getOutlinerParaObject(),
-                                    aAnchorTransform );
+                                    aAnchorTransform ));
                 }
                 else // text in range
                 {
                     // build new primitive
-                    pNew = new SdrBlockTextPrimitive2D(
+                    pNew.reset(new SdrBlockTextPrimitive2D(
                         &rText.getSdrText(),
                         rText.getOutlinerParaObject(),
                         aAnchorTransform,
@@ -333,8 +336,7 @@ namespace drawinglayer
                         rText.isFixedCellHeight(),
                         rText.isScroll(),
                         bCellText,
-                        bWordWrap,
-                        bClipOnBounds);
+                        bWordWrap));
                 }
             }
 
@@ -349,7 +351,7 @@ namespace drawinglayer
                 if(0.0 != aAnimationList.getDuration())
                 {
                     // create content sequence
-                    const Primitive2DReference xRefA(pNew);
+                    const Primitive2DReference xRefA(pNew.release());
                     const Primitive2DContainer aContent { xRefA };
 
                     // create and add animated switch primitive
@@ -358,7 +360,7 @@ namespace drawinglayer
                 else
                 {
                     // add to decomposition
-                    return Primitive2DReference(pNew);
+                    return Primitive2DReference(pNew.release());
                 }
             }
 
@@ -377,16 +379,15 @@ namespace drawinglayer
                     aAnchorTransform.decompose(aScale, aTranslate, fRotate, fShearX);
 
                     // build transform from scaled only to full AnchorTransform and inverse
-                    const basegfx::B2DHomMatrix aSRT(basegfx::tools::createShearXRotateTranslateB2DHomMatrix(
+                    const basegfx::B2DHomMatrix aSRT(basegfx::utils::createShearXRotateTranslateB2DHomMatrix(
                         fShearX, fRotate, aTranslate));
                     basegfx::B2DHomMatrix aISRT(aSRT);
                     aISRT.invert();
 
                     // bring the primitive back to scaled only and get scaled range, create new clone for this
-                    SdrTextPrimitive2D* pNew2 = pNew->createTransformedClone(aISRT);
+                    std::unique_ptr<SdrTextPrimitive2D> pNew2 = pNew->createTransformedClone(aISRT);
                     OSL_ENSURE(pNew2, "createTextPrimitive: Could not create transformed clone of text primitive (!)");
-                    delete pNew;
-                    pNew = pNew2;
+                    pNew = std::move(pNew2);
 
                     // create neutral geometry::ViewInformation2D for local range and decompose calls. This is okay
                     // since the decompose is view-independent
@@ -440,7 +441,7 @@ namespace drawinglayer
                         // pNew to aNewPrimitiveSequence)
                         Primitive2DContainer aAnimSequence;
                         pNew->get2DDecomposition(aAnimSequence, aViewInformation2D);
-                        delete pNew;
+                        pNew.reset();
 
                         // create a new animatedInterpolatePrimitive and add it
                         std::vector< basegfx::B2DHomMatrix > aMatrixStack;
@@ -451,14 +452,14 @@ namespace drawinglayer
 
                         // scrolling needs an encapsulating clipping primitive
                         const basegfx::B2DRange aClipRange(aClipTopLeft, aClipBottomRight);
-                        basegfx::B2DPolygon aClipPolygon(basegfx::tools::createPolygonFromRect(aClipRange));
+                        basegfx::B2DPolygon aClipPolygon(basegfx::utils::createPolygonFromRect(aClipRange));
                         aClipPolygon.transform(aSRT);
                         return Primitive2DReference(new MaskPrimitive2D(basegfx::B2DPolyPolygon(aClipPolygon), aContent));
                     }
                     else
                     {
                         // add to decomposition
-                        return Primitive2DReference(pNew);
+                        return Primitive2DReference(pNew.release());
                     }
                 }
             }
@@ -468,7 +469,7 @@ namespace drawinglayer
                 // #i97628#
                 // encapsulate with TextHierarchyEditPrimitive2D to allow renderers
                 // to suppress actively edited content if needed
-                const Primitive2DReference xRefA(pNew);
+                const Primitive2DReference xRefA(pNew.release());
                 const Primitive2DContainer aContent { xRefA };
 
                 // create and add TextHierarchyEditPrimitive2D primitive
@@ -477,28 +478,53 @@ namespace drawinglayer
             else
             {
                 // add to decomposition
-                return Primitive2DReference(pNew);
+                return Primitive2DReference(pNew.release());
             }
         }
 
         Primitive2DContainer createEmbeddedShadowPrimitive(
             const Primitive2DContainer& rContent,
-            const attribute::SdrShadowAttribute& rShadow)
+            const attribute::SdrShadowAttribute& rShadow,
+            const basegfx::B2DHomMatrix& rObjectMatrix)
         {
             if(!rContent.empty())
             {
                 Primitive2DContainer aRetval(2);
                 basegfx::B2DHomMatrix aShadowOffset;
 
-                // prepare shadow offset
-                aShadowOffset.set(0, 2, rShadow.getOffset().getX());
-                aShadowOffset.set(1, 2, rShadow.getOffset().getY());
+                {
+                    if(rShadow.getSize().getX() != 100000)
+                    {
+                        basegfx::B2DTuple aScale;
+                        basegfx::B2DTuple aTranslate;
+                        double fRotate = 0;
+                        double fShearX = 0;
+                        rObjectMatrix.decompose(aScale, aTranslate, fRotate, fShearX);
+                        // Scale the shadow
+                        double nTranslateX = aTranslate.getX();
+                        double nTranslateY = aTranslate.getY();
+
+                        // The origin for scaling is the top left corner by default. A negative
+                        // shadow offset changes the origin.
+                        if (rShadow.getOffset().getX() < 0)
+                            nTranslateX += aScale.getX();
+                        if (rShadow.getOffset().getY() < 0)
+                            nTranslateY += aScale.getY();
+
+                        aShadowOffset.translate(-nTranslateX, -nTranslateY);
+                        aShadowOffset.scale(rShadow.getSize().getX() * 0.00001, rShadow.getSize().getY() * 0.00001);
+                        aShadowOffset.translate(nTranslateX, nTranslateY);
+                    }
+
+                    aShadowOffset.translate(rShadow.getOffset().getX(), rShadow.getOffset().getY());
+                }
 
                 // create shadow primitive and add content
                 aRetval[0] = Primitive2DReference(
                     new ShadowPrimitive2D(
                         aShadowOffset,
                         rShadow.getColor(),
+                        rShadow.getBlur(),
                         rContent));
 
                 if(0.0 != rShadow.getTransparence())
@@ -520,7 +546,30 @@ namespace drawinglayer
                 return rContent;
             }
         }
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+
+        Primitive2DContainer createEmbeddedGlowPrimitive(
+            const Primitive2DContainer& rContent,
+            const attribute::SdrGlowAttribute& rGlow)
+        {
+            if(rContent.empty())
+                return rContent;
+            Primitive2DContainer aRetval(2);
+            aRetval[0] = Primitive2DReference(
+                new GlowPrimitive2D(rGlow.getColor(), rGlow.getRadius(), rContent));
+            aRetval[1] = Primitive2DReference(new GroupPrimitive2D(rContent));
+            return aRetval;
+        }
+
+        Primitive2DContainer createEmbeddedSoftEdgePrimitive(const Primitive2DContainer& rContent,
+                                                             sal_Int32 nRadius)
+        {
+            if (rContent.empty() || !nRadius)
+                return rContent;
+            Primitive2DContainer aRetval(1);
+            aRetval[0] = Primitive2DReference(new SoftEdgePrimitive2D(nRadius, rContent));
+            return aRetval;
+        }
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

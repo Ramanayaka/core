@@ -19,12 +19,11 @@
 
 #include <avmedia/mediatoolbox.hxx>
 #include <avmedia/mediaitem.hxx>
-#include "mediacontrol.hxx"
+#include <mediacontrol.hxx>
 
-#include <sfx2/app.hxx>
-#include <sfx2/bindings.hxx>
-#include <sfx2/dispatch.hxx>
+#include <tools/debug.hxx>
 #include <sfx2/sfxsids.hrc>
+#include <vcl/toolbox.hxx>
 
 #include <comphelper/propertysequence.hxx>
 
@@ -47,14 +46,12 @@ private:
     MediaToolBoxControl*    mpToolBoxControl;
 };
 
-
 MediaToolBoxControl_Impl::MediaToolBoxControl_Impl( vcl::Window& rParent, MediaToolBoxControl& rControl ) :
     MediaControl( &rParent, MEDIACONTROLSTYLE_SINGLELINE ),
     mpToolBoxControl( &rControl )
 {
-    SetSizePixel( getMinSizePixel() );
+    SetSizePixel(m_xContainer->get_preferred_size());
 }
-
 
 void MediaToolBoxControl_Impl::update()
 {
@@ -108,18 +105,15 @@ void MediaToolBoxControl::StateChanged( sal_uInt16, SfxItemState eState, const S
     }
 }
 
-
-VclPtr<vcl::Window> MediaToolBoxControl::CreateItemWindow( vcl::Window *pParent )
+VclPtr<InterimItemWindow> MediaToolBoxControl::CreateItemWindow( vcl::Window *pParent )
 {
     return ( pParent ? VclPtr<MediaToolBoxControl_Impl>::Create( *pParent, *this ) : nullptr );
 }
-
 
 void MediaToolBoxControl::implUpdateMediaControl()
 {
     updateStatus( ".uno:AVMediaToolBox" );
 }
-
 
 void MediaToolBoxControl::implExecuteMediaControl( const MediaItem& rItem )
 {

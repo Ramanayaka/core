@@ -39,7 +39,7 @@ namespace cppu_threadpool {
 
     ThreadAdmin::~ThreadAdmin()
     {
-        SAL_WARN_IF(m_lst.size(), "cppu.threadpool", m_lst.size() << "Threads left");
+        SAL_WARN_IF(m_deque.size(), "cppu.threadpool", m_deque.size() << "Threads left");
     }
 
     bool ThreadAdmin::add( rtl::Reference< ORequestThread > const & p )
@@ -49,17 +49,13 @@ namespace cppu_threadpool {
         {
             return false;
         }
-        m_lst.push_back( p );
+        m_deque.push_back( p );
         return true;
     }
 
     void ThreadAdmin::remove_locked( rtl::Reference< ORequestThread > const & p )
     {
-        std::list< rtl::Reference< ORequestThread > >::iterator ii = std::find( m_lst.begin(), m_lst.end(), p );
-        if( ii != m_lst.end() )
-        {
-            m_lst.erase( ii );
-        }
+        m_deque.erase(std::find( m_deque.begin(), m_deque.end(), p ), m_deque.end());
     }
 
     void ThreadAdmin::remove( rtl::Reference< ORequestThread > const & p )
@@ -79,12 +75,12 @@ namespace cppu_threadpool {
             rtl::Reference< ORequestThread > pCurrent;
             {
                 MutexGuard aGuard( m_mutex );
-                if( m_lst.empty() )
+                if( m_deque.empty() )
                 {
                     break;
                 }
-                pCurrent = m_lst.front();
-                m_lst.pop_front();
+                pCurrent = m_deque.front();
+                m_deque.pop_front();
             }
             if (pCurrent->getIdentifier()
                 != osl::Thread::getCurrentIdentifier())
@@ -165,10 +161,9 @@ namespace cppu_threadpool {
                 {
                     // Note : Oneways should not get a disposable disposeid,
                     //        It does not make sense to dispose a call in this state.
-                    //        That's way we put it an disposeid, that can't be used otherwise.
+                    //        That's way we put it a disposeid, that can't be used otherwise.
                     m_pQueue->enter(
-                        sal::static_int_cast< sal_Int64 >(
-                            reinterpret_cast< sal_IntPtr >(this)),
+                        this,
                         true );
 
                     if( m_pQueue->isEmpty() )

@@ -21,20 +21,12 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_SBAMULTIPLEX_HXX
 
 #include <com/sun/star/beans/XVetoableChangeListener.hpp>
-#include <com/sun/star/form/XUpdateListener.hpp>
-#include <com/sun/star/form/XErrorListener.hpp>
-#include <com/sun/star/form/XRestoreListener.hpp>
-#include <com/sun/star/form/XInsertListener.hpp>
-#include <com/sun/star/form/XDeleteListener.hpp>
-#include <com/sun/star/form/XPositioningListener.hpp>
 #include <com/sun/star/form/XDatabaseParameterListener.hpp>
 #include <com/sun/star/form/XLoadListener.hpp>
-#include <com/sun/star/beans/XPropertyStateChangeListener.hpp>
 #include <com/sun/star/beans/XPropertiesChangeListener.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/form/XSubmitListener.hpp>
 #include <com/sun/star/form/XResetListener.hpp>
-#include <com/sun/star/util/XRefreshListener.hpp>
 #include <com/sun/star/sdb/XSQLErrorListener.hpp>
 #include <com/sun/star/sdb/XRowSetApproveListener.hpp>
 #include <com/sun/star/sdbc/XRowSetListener.hpp>
@@ -47,7 +39,7 @@
 
 namespace dbaui
 {
-    // TODO : replace this class if MM provides an WeakSubObject in cppu
+    // TODO : replace this class if MM provides a WeakSubObject in cppu
     class OSbaWeakSubObject : public ::cppu::OWeakObject
     {
     protected:
@@ -83,10 +75,10 @@ namespace dbaui
     #define DECLARE_MULTIPLEXER_BOOL_METHOD(methodname, eventtype)                          \
         virtual sal_Bool SAL_CALL methodname(const eventtype& e) override;   \
 
-    #define END_DECLARE_LISTENER_MULTIPLEXER()                                              \
-    /* resolve ambiguity : both OWeakObject and OInterfaceContainerHelper2 have these memory operators */    \
-        void * SAL_CALL operator new( size_t size ) throw() { return OSbaWeakSubObject::operator new(size); }   \
-        void SAL_CALL operator delete( void * p ) throw() { OSbaWeakSubObject::operator delete(p); }    \
+    #define END_DECLARE_LISTENER_MULTIPLEXER()                                               \
+        /* resolve ambiguity : both OWeakObject and OInterfaceContainerHelper2 have these memory operators */    \
+        using OSbaWeakSubObject::operator new;   \
+        using OSbaWeakSubObject::operator delete;    \
     };                                                                                      \
 
     // implementation of a listener multiplexer class
@@ -139,13 +131,13 @@ namespace dbaui
     }                                                                                       \
 
     // helper for classes which do event multiplexing
-    #define IMPLEMENT_LISTENER_ADMINISTRATION(classname, listenernamespace, listenerdesc, multiplexer, braodcasterclass, broadcaster) \
+    #define IMPLEMENT_LISTENER_ADMINISTRATION(classname, listenernamespace, listenerdesc, multiplexer, broadcasterclass, broadcaster) \
     void SAL_CALL classname::add##listenerdesc(const css::uno::Reference< css::listenernamespace::X##listenerdesc >& l)\
     {                                                                                       \
         multiplexer.addInterface(l);                                                            \
         if (multiplexer.getLength() == 1)                                                   \
         {                                                                                   \
-            css::uno::Reference< braodcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
+            css::uno::Reference< broadcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
             if (xBroadcaster.is())                                                          \
                 xBroadcaster->add##listenerdesc(&multiplexer);                              \
         }                                                                                   \
@@ -154,25 +146,25 @@ namespace dbaui
     {                                                                                       \
         if (multiplexer.getLength() == 1)                                                   \
         {                                                                                   \
-            css::uno::Reference< braodcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
+            css::uno::Reference< broadcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
             if (xBroadcaster.is())                                                          \
                 xBroadcaster->remove##listenerdesc(&multiplexer);                           \
         }                                                                                   \
         multiplexer.removeInterface(l);                                                     \
     }                                                                                       \
 
-    #define STOP_MULTIPLEXER_LISTENING(listenerdesc, multiplexer, braodcasterclass, broadcaster) \
+    #define STOP_MULTIPLEXER_LISTENING(listenerdesc, multiplexer, broadcasterclass, broadcaster) \
     if (multiplexer.getLength())                                                            \
     {                                                                                   \
-        css::uno::Reference< braodcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
+        css::uno::Reference< broadcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
         if (xBroadcaster.is())                                                          \
             xBroadcaster->remove##listenerdesc(&multiplexer);                           \
     }                                                                                   \
 
-    #define START_MULTIPLEXER_LISTENING(listenerdesc, multiplexer, braodcasterclass, broadcaster) \
+    #define START_MULTIPLEXER_LISTENING(listenerdesc, multiplexer, broadcasterclass, broadcaster) \
     if (multiplexer.getLength())                                                        \
     {                                                                                   \
-        css::uno::Reference< braodcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
+        css::uno::Reference< broadcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
         if (xBroadcaster.is())                                                          \
             xBroadcaster->add##listenerdesc(&multiplexer);                              \
     }                                                                                   \
@@ -181,7 +173,7 @@ namespace dbaui
     // (with support for specialized and unspecialized property listeners)
 
     #define DECLARE_PROPERTY_MULTIPLEXER(classname, listenerclass, methodname, eventtype)   \
-    class classname                                                                         \
+    class classname final                                                                   \
             :public OSbaWeakSubObject                                                           \
             ,public listenerclass                                                           \
     {                                                                                       \
@@ -200,7 +192,6 @@ namespace dbaui
                                                                                             \
         virtual void SAL_CALL methodname(const eventtype& e) override;             \
                                                                                             \
-    public:                                                                                 \
         void addInterface(const OUString& rName, const css::uno::Reference< css::uno::XInterface >& rListener);    \
         void removeInterface(const OUString& rName, const css::uno::Reference< css::uno::XInterface >& rListener); \
                                                                                             \
@@ -211,7 +202,7 @@ namespace dbaui
         ::cppu::OInterfaceContainerHelper* getContainer(const OUString& rName)       \
             { return m_aListeners.getContainer(rName); }                                    \
                                                                                             \
-    protected:                                                                              \
+    private:                                                                                \
         void Notify(::cppu::OInterfaceContainerHelper& rListeners, const eventtype& e);     \
     };                                                                                      \
 
@@ -273,11 +264,10 @@ namespace dbaui
     sal_Int32 classname::getOverallLen() const                                              \
     {                                                                                       \
         sal_Int32 nLen = 0;                                                                 \
-        css::uno::Sequence< OUString > aContained = m_aListeners.getContainedTypes();   \
-        const OUString* pContained = aContained.getConstArray();                            \
-        for (   sal_Int32 i=0; i<aContained.getLength(); ++i, ++pContained)                 \
+        const css::uno::Sequence< OUString > aContained = m_aListeners.getContainedTypes(); \
+        for ( OUString const & s : aContained)                 \
         {                                                                                   \
-            ::cppu::OInterfaceContainerHelper* pListeners = m_aListeners.getContainer(*pContained);  \
+            ::cppu::OInterfaceContainerHelper* pListeners = m_aListeners.getContainer(s);  \
             if (!pListeners)                                                                \
                 continue;                                                                   \
             nLen += pListeners->getLength();                                                \
@@ -295,13 +285,13 @@ namespace dbaui
     }                                                                                       \
 
     // helper for classes which do property event multiplexing
-    #define IMPLEMENT_PROPERTY_LISTENER_ADMINISTRATION(classname, listenerdesc, multiplexer, braodcasterclass, broadcaster) \
+    #define IMPLEMENT_PROPERTY_LISTENER_ADMINISTRATION(classname, listenerdesc, multiplexer, broadcasterclass, broadcaster) \
     void SAL_CALL classname::add##listenerdesc(const OUString& rName, const css::uno::Reference< css::beans::X##listenerdesc >& l )\
     {                                                                                       \
         multiplexer.addInterface(rName, l);                                                 \
         if (multiplexer.getOverallLen() == 1)                                               \
         {                                                                                   \
-            css::uno::Reference< braodcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
+            css::uno::Reference< broadcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
             if (xBroadcaster.is())                                                          \
                 xBroadcaster->add##listenerdesc(OUString(), &multiplexer);                           \
         }                                                                                   \
@@ -310,25 +300,25 @@ namespace dbaui
     {                                                                                       \
         if (multiplexer.getOverallLen() == 1)                                               \
         {                                                                                   \
-            css::uno::Reference< braodcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
+            css::uno::Reference< broadcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
             if (xBroadcaster.is())                                                          \
                 xBroadcaster->remove##listenerdesc(OUString(), &multiplexer);                        \
         }                                                                                   \
         multiplexer.removeInterface(rName, l);                                              \
     }                                                                                       \
 
-    #define STOP_PROPERTY_MULTIPLEXER_LISTENING(listenerdesc, multiplexer, braodcasterclass, broadcaster) \
+    #define STOP_PROPERTY_MULTIPLEXER_LISTENING(listenerdesc, multiplexer, broadcasterclass, broadcaster) \
     if (multiplexer.getOverallLen())                                                        \
     {                                                                                       \
-        css::uno::Reference< braodcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
+        css::uno::Reference< broadcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
         if (xBroadcaster.is())                                                              \
             xBroadcaster->remove##listenerdesc(OUString(), &multiplexer);                            \
     }                                                                                       \
 
-    #define START_PROPERTY_MULTIPLEXER_LISTENING(listenerdesc, multiplexer, braodcasterclass, broadcaster) \
+    #define START_PROPERTY_MULTIPLEXER_LISTENING(listenerdesc, multiplexer, broadcasterclass, broadcaster) \
     if (multiplexer.getOverallLen())                                                        \
     {                                                                                       \
-        css::uno::Reference< braodcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
+        css::uno::Reference< broadcasterclass > xBroadcaster(broadcaster, css::uno::UNO_QUERY);   \
         if (xBroadcaster.is())                                                              \
             xBroadcaster->add##listenerdesc(OUString(), &multiplexer);                               \
     }                                                                                       \

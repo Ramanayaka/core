@@ -23,18 +23,17 @@
 #include <utility>
 #include <vector>
 
+#include <com/sun/star/drawing/LineCap.hpp>
 #include <com/sun/star/drawing/LineJoint.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
-#include <oox/dllapi.h>
 #include <oox/helper/helper.hxx>
 #include <sal/types.h>
 
-#include "drawingml/fillproperties.hxx"
+#include <drawingml/fillproperties.hxx>
 
 namespace oox { class GraphicHelper; }
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 class ShapePropertyMap;
 
@@ -48,7 +47,7 @@ struct LineArrowProperties
     void                assignUsed( const LineArrowProperties& rSourceProps );
 };
 
-struct OOX_DLLPUBLIC LineProperties
+struct LineProperties
 {
     typedef ::std::pair< sal_Int32, sal_Int32 > DashStop;
     typedef ::std::vector< DashStop >           DashStopVector;
@@ -70,18 +69,19 @@ struct OOX_DLLPUBLIC LineProperties
     void                pushToPropMap(
                             ShapePropertyMap& rPropMap,
                             const GraphicHelper& rGraphicHelper,
-                            sal_Int32 nPhClr = API_RGB_TRANSPARENT ) const;
+                            ::Color nPhClr = API_RGB_TRANSPARENT ) const;
 
     /** Calculates the line style attribute from the internal state of the object */
     css::drawing::LineStyle  getLineStyle() const;
+    /** Calculates the line cap attribute from the internal state of the object */
+    css::drawing::LineCap  getLineCap() const;
     /** Calculates the line joint attribute from the internal state of the object */
     css::drawing::LineJoint  getLineJoint() const;
     /** Calculates the line width attribute from the internal state of the object */
     sal_Int32           getLineWidth() const;
 };
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 #endif
 

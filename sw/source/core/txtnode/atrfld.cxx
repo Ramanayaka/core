@@ -21,55 +21,65 @@
 
 #include <libxml/xmlwriter.h>
 
-#include "fldbas.hxx"
+#include <fldbas.hxx>
 #include <txtfld.hxx>
 #include <txtannotationfld.hxx>
 #include <docfld.hxx>
 #include <docufld.hxx>
 #include <doc.hxx>
 
-#include "pam.hxx"
-#include "reffld.hxx"
-#include "ddefld.hxx"
-#include "usrfld.hxx"
-#include "expfld.hxx"
-#include "swfont.hxx"
-#include "ndtxt.hxx"
-#include "calc.hxx"
-#include "hints.hxx"
+#include <pam.hxx>
+#include <reffld.hxx>
+#include <ddefld.hxx>
+#include <usrfld.hxx>
+#include <expfld.hxx>
+#include <ndtxt.hxx>
+#include <calc.hxx>
+#include <hints.hxx>
 #include <IDocumentFieldsAccess.hxx>
+#include <IDocumentMarkAccess.hxx>
+#include <IDocumentLayoutAccess.hxx>
 #include <fieldhint.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 
 // constructor for default item in attribute-pool
 SwFormatField::SwFormatField( sal_uInt16 nWhich )
     : SfxPoolItem( nWhich )
-    , SwModify(nullptr)
     , SfxBroadcaster()
-    , mpField( nullptr )
     , mpTextField( nullptr )
 {
 }
 
 SwFormatField::SwFormatField( const SwField &rField )
     : SfxPoolItem( RES_TXTATR_FIELD )
-    , SwModify( rField.GetTyp() )
     , SfxBroadcaster()
     , mpField( rField.CopyField() )
     , mpTextField( nullptr )
 {
-    if ( GetField()->GetTyp()->Which() == SwFieldIds::Input )
+    rField.GetTyp()->Add(this);
+    if ( mpField->GetTyp()->Which() == SwFieldIds::Input )
     {
         // input field in-place editing
         SetWhich( RES_TXTATR_INPUTFIELD );
-        static_cast<SwInputField*>(GetField())->SetFormatField( *this );
+        static_cast<SwInputField*>(mpField.get())->SetFormatField( *this );
     }
-    else if (GetField()->GetTyp()->Which() == SwFieldIds::SetExp)
+    else if (mpField->GetTyp()->Which() == SwFieldIds::SetExp)
     {
         // see SwWrtShell::StartInputFieldDlg
-        static_cast<SwSetExpField *>(GetField())->SetFormatField(*this);
+        SwSetExpField *const pSetField(static_cast<SwSetExpField *>(mpField.get()));
+        if (pSetField->GetInputFlag()
+            // only for string fields for now - inline editing of number fields
+            // tends to produce error messages...
+            && (static_cast<SwSetExpFieldType*>(pSetField->GetTyp())->GetType()
+                & nsSwGetSetExpType::GSE_STRING))
+        {
+            SetWhich( RES_TXTATR_INPUTFIELD );
+        }
+        pSetField->SetFormatField(*this);
     }
-    else if ( GetField()->GetTyp()->Which() == SwFieldIds::Postit )
+    else if ( mpField->GetTyp()->Which() == SwFieldIds::Postit )
     {
         // text annotation field
         SetWhich( RES_TXTATR_ANNOTATION );
@@ -81,35 +91,40 @@ SwFormatField::SwFormatField( const SwField &rField )
 // full pool range, all items need to be clonable. Thus, this one needed to be
 // corrected
 SwFormatField::SwFormatField( const SwFormatField& rAttr )
-    : SfxPoolItem( RES_TXTATR_FIELD )
-    , SwModify(nullptr)
+    : SfxPoolItem( rAttr )
     , SfxBroadcaster()
-    , mpField( nullptr )
     , mpTextField( nullptr )
 {
-    if ( rAttr.GetField() )
+    if ( !rAttr.mpField )
+        return;
+
+    rAttr.mpField->GetTyp()->Add(this);
+    mpField = rAttr.mpField->CopyField();
+    if ( mpField->GetTyp()->Which() == SwFieldIds::Input )
     {
-        rAttr.GetField()->GetTyp()->Add(this);
-        mpField = rAttr.GetField()->CopyField();
-        if ( GetField()->GetTyp()->Which() == SwFieldIds::Input )
+        // input field in-place editing
+        SetWhich( RES_TXTATR_INPUTFIELD );
+        SwInputField *pField = dynamic_cast<SwInputField*>(mpField.get());
+        assert(pField);
+        if (pField)
+            pField->SetFormatField( *this );
+    }
+    else if (mpField->GetTyp()->Which() == SwFieldIds::SetExp)
+    {
+        SwSetExpField *const pSetField(static_cast<SwSetExpField *>(mpField.get()));
+        if (pSetField->GetInputFlag()
+            && (static_cast<SwSetExpFieldType*>(pSetField->GetTyp())->GetType()
+                & nsSwGetSetExpType::GSE_STRING))
         {
-            // input field in-place editing
             SetWhich( RES_TXTATR_INPUTFIELD );
-            SwInputField *pField = dynamic_cast<SwInputField*>(GetField());
-            assert(pField);
-            if (pField)
-                pField->SetFormatField( *this );
         }
-        else if (GetField()->GetTyp()->Which() == SwFieldIds::SetExp)
-        {
-            // see SwWrtShell::StartInputFieldDlg
-            static_cast<SwSetExpField *>(GetField())->SetFormatField(*this);
-        }
-        else if ( GetField()->GetTyp()->Which() == SwFieldIds::Postit )
-        {
-            // text annotation field
-            SetWhich( RES_TXTATR_ANNOTATION );
-        }
+        // see SwWrtShell::StartInputFieldDlg
+        pSetField->SetFormatField(*this);
+    }
+    else if ( mpField->GetTyp()->Which() == SwFieldIds::Postit )
+    {
+        // text annotation field
+        SetWhich( RES_TXTATR_ANNOTATION );
     }
 }
 
@@ -121,34 +136,34 @@ SwFormatField::~SwFormatField()
         pType = nullptr;  // DB field types destroy themselves
 
     Broadcast( SwFormatFieldHint( this, SwFormatFieldHintWhich::REMOVED ) );
-    delete mpField;
+    mpField.reset();
 
     // some fields need to delete their field type
-    if( pType && pType->HasOnlyOneListener() )
+    if( !(pType && pType->HasOnlyOneListener()) )
+        return;
+
+    bool bDel = false;
+    switch( pType->Which() )
     {
-        bool bDel = false;
-        switch( pType->Which() )
-        {
-        case SwFieldIds::User:
-            bDel = static_cast<SwUserFieldType*>(pType)->IsDeleted();
-            break;
+    case SwFieldIds::User:
+        bDel = static_cast<SwUserFieldType*>(pType)->IsDeleted();
+        break;
 
-        case SwFieldIds::SetExp:
-            bDel = static_cast<SwSetExpFieldType*>(pType)->IsDeleted();
-            break;
+    case SwFieldIds::SetExp:
+        bDel = static_cast<SwSetExpFieldType*>(pType)->IsDeleted();
+        break;
 
-        case SwFieldIds::Dde:
-            bDel = static_cast<SwDDEFieldType*>(pType)->IsDeleted();
-            break;
-        default: break;
-        }
+    case SwFieldIds::Dde:
+        bDel = static_cast<SwDDEFieldType*>(pType)->IsDeleted();
+        break;
+    default: break;
+    }
 
-        if( bDel )
-        {
-            // unregister before deleting
-            pType->Remove( this );
-            delete pType;
-        }
+    if( bDel )
+    {
+        // unregister before deleting
+        pType->Remove( this );
+        delete pType;
     }
 }
 
@@ -157,19 +172,17 @@ void SwFormatField::RegisterToFieldType( SwFieldType& rType )
     rType.Add(this);
 }
 
-void SwFormatField::SetField(SwField * _pField)
+void SwFormatField::SetField(std::unique_ptr<SwField> _pField)
 {
-    delete mpField;
-
-    mpField = _pField;
-    if ( GetField()->GetTyp()->Which() == SwFieldIds::Input )
+    mpField = std::move(_pField);
+    if ( mpField->GetTyp()->Which() == SwFieldIds::Input )
     {
-        static_cast<SwInputField* >(GetField())->SetFormatField( *this );
+        static_cast<SwInputField* >(mpField.get())->SetFormatField( *this );
     }
-    else if (GetField()->GetTyp()->Which() == SwFieldIds::SetExp)
+    else if (mpField->GetTyp()->Which() == SwFieldIds::SetExp)
     {
         // see SwWrtShell::StartInputFieldDlg
-        static_cast<SwSetExpField *>(GetField())->SetFormatField(*this);
+        static_cast<SwSetExpField *>(mpField.get())->SetFormatField(*this);
     }
     Broadcast( SwFormatFieldHint( this, SwFormatFieldHintWhich::CHANGED ) );
 }
@@ -187,13 +200,15 @@ void SwFormatField::ClearTextField()
 bool SwFormatField::operator==( const SfxPoolItem& rAttr ) const
 {
     assert(SfxPoolItem::operator==(rAttr));
-    return ( ( mpField && static_cast<const SwFormatField&>(rAttr).GetField()
-               && mpField->GetTyp() == static_cast<const SwFormatField&>(rAttr).GetField()->GetTyp()
-               && mpField->GetFormat() == static_cast<const SwFormatField&>(rAttr).GetField()->GetFormat() ) )
-             || ( !mpField && !static_cast<const SwFormatField&>(rAttr).GetField() );
+    return ( mpField
+             && static_cast<const SwFormatField&>(rAttr).mpField
+             && mpField->GetTyp() == static_cast<const SwFormatField&>(rAttr).mpField->GetTyp()
+             && mpField->GetFormat() == static_cast<const SwFormatField&>(rAttr).mpField->GetFormat() )
+           ||
+           ( !mpField && !static_cast<const SwFormatField&>(rAttr).mpField );
 }
 
-SfxPoolItem* SwFormatField::Clone( SfxItemPool* ) const
+SwFormatField* SwFormatField::Clone( SfxItemPool* ) const
 {
     return new SwFormatField( *this );
 }
@@ -208,32 +223,75 @@ void SwFormatField::InvalidateField()
 void SwFormatField::SwClientNotify( const SwModify& rModify, const SfxHint& rHint )
 {
     SwClient::SwClientNotify(rModify, rHint);
-    if( !mpTextField )
-        return;
-
-    const SwFieldHint* pHint = dynamic_cast<const SwFieldHint*>( &rHint );
-    if ( pHint )
+    if (const auto pFieldHint = dynamic_cast<const SwFieldHint*>( &rHint ))
     {
+        if( !mpTextField )
+            return;
+
         // replace field content by text
-        SwPaM* pPaM = pHint->GetPaM();
+        SwPaM* pPaM = pFieldHint->m_pPaM;
         SwDoc* pDoc = pPaM->GetDoc();
         const SwTextNode& rTextNode = mpTextField->GetTextNode();
         pPaM->GetPoint()->nNode = rTextNode;
         pPaM->GetPoint()->nContent.Assign( const_cast<SwTextNode*>(&rTextNode), mpTextField->GetStart() );
 
-        OUString const aEntry( GetField()->ExpandField( pDoc->IsClipBoard() ) );
+        OUString const aEntry(mpField->ExpandField(pDoc->IsClipBoard(), pFieldHint->m_pLayout));
         pPaM->SetMark();
         pPaM->Move( fnMoveForward );
         pDoc->getIDocumentContentOperations().DeleteRange( *pPaM );
         pDoc->getIDocumentContentOperations().InsertString( *pPaM, aEntry );
+    } else if (const auto pLegacyHint = dynamic_cast<const sw::LegacyModifyHint*>( &rHint ))
+    {
+        if( !mpTextField )
+            return;
+        UpdateTextNode(pLegacyHint->m_pOld, pLegacyHint->m_pNew);
+    } else if (const auto pFindForFieldHint = dynamic_cast<const sw::FindFormatForFieldHint*>( &rHint ))
+    {
+        if(pFindForFieldHint->m_rpFormat == nullptr && pFindForFieldHint->m_pField == GetField())
+            pFindForFieldHint->m_rpFormat = this;
+    } else if (const auto pFindForPostItIdHint = dynamic_cast<const sw::FindFormatForPostItIdHint*>( &rHint ))
+    {
+        auto pPostItField = dynamic_cast<SwPostItField*>(mpField.get());
+        if(pPostItField && pFindForPostItIdHint->m_rpFormat == nullptr && pFindForPostItIdHint->m_nPostItId == pPostItField->GetPostItId())
+            pFindForPostItIdHint->m_rpFormat = this;
+    } else if (const auto pCollectPostItsHint = dynamic_cast<const sw::CollectPostItsHint*>( &rHint ))
+    {
+        if(GetTextField() && IsFieldInDoc() && (!pCollectPostItsHint->m_bHideRedlines || !sw::IsFieldDeletedInModel(pCollectPostItsHint->m_rIDRA, *GetTextField())))
+            pCollectPostItsHint->m_rvFormatFields.push_back(this);
+    } else if (const auto pHasHiddenInfoHint = dynamic_cast<const sw::HasHiddenInformationNotesHint*>( &rHint ))
+    {
+        if(!pHasHiddenInfoHint->m_rbHasHiddenInformationNotes && GetTextField() && IsFieldInDoc())
+            pHasHiddenInfoHint->m_rbHasHiddenInformationNotes = true;
+    } else if (const auto pGatherNodeIndexHint = dynamic_cast<const sw::GatherNodeIndexHint*>( &rHint ))
+    {
+        if(auto pTextField = GetTextField())
+            pGatherNodeIndexHint->m_rvNodeIndex.push_back(pTextField->GetTextNode().GetIndex());
+    } else if (const auto pGatherRefFieldsHint = dynamic_cast<const sw::GatherRefFieldsHint*>( &rHint ))
+    {
+        if(!GetTextField() || pGatherRefFieldsHint->m_nType != GetField()->GetSubType())
+            return;
+        SwTextNode* pNd = GetTextField()->GetpTextNode();
+        if(pNd && pNd->GetNodes().IsDocNodes())
+            pGatherRefFieldsHint->m_rvRFields.push_back(static_cast<SwGetRefField*>(GetField()));
+    } else if (const auto pGatherFieldsHint = dynamic_cast<const sw::GatherFieldsHint*>( &rHint ))
+    {
+        if(pGatherFieldsHint->m_bCollectOnlyInDocNodes)
+        {
+            if(!GetTextField())
+                return;
+            SwTextNode* pNd = GetTextField()->GetpTextNode();
+            if(!pNd || !pNd->GetNodes().IsDocNodes())
+                return;
+        }
+        pGatherFieldsHint->m_rvFields.push_back(this);
     }
 }
 
-void SwFormatField::Modify( const SfxPoolItem* pOld, const SfxPoolItem* pNew )
+void SwFormatField::UpdateTextNode(const SfxPoolItem* pOld, const SfxPoolItem* pNew)
 {
     if (pOld && (RES_REMOVE_UNO_OBJECT == pOld->Which()))
     {   // invalidate cached UNO object
-        SetXTextField(css::uno::Reference<css::text::XTextField>(nullptr));
+        m_wXTextField = nullptr;
         // ??? why does this Modify method not already do this?
         NotifyClients(pOld, pNew);
         return;
@@ -248,70 +306,89 @@ void SwFormatField::Modify( const SfxPoolItem* pOld, const SfxPoolItem* pNew )
 
     SwTextNode* pTextNd = &mpTextField->GetTextNode();
     OSL_ENSURE( pTextNd, "Where is my Node?" );
-    if( pNew )
+
+    bool bTriggerNode = false;
+    bool bExpand = false;
+    const SfxPoolItem* pNodeOld = nullptr;
+    const SfxPoolItem* pNodeNew = nullptr;
+    if(pNew)
     {
-        switch( pNew->Which() )
+        switch(pNew->Which())
         {
         case RES_REFMARKFLD_UPDATE:
-                // update GetRef fields
-                if( SwFieldIds::GetRef == GetField()->GetTyp()->Which() )
-                {
-                    // #i81002#
-                    static_cast<SwGetRefField*>(GetField())->UpdateField( mpTextField );
-                }
-                break;
+            // update GetRef fields
+            if( SwFieldIds::GetRef == mpField->GetTyp()->Which() )
+            {
+                // #i81002#
+                static_cast<SwGetRefField*>(mpField.get())->UpdateField( mpTextField );
+            }
+            break;
         case RES_DOCPOS_UPDATE:
-                // handled in SwTextFrame::Modify()
-                pTextNd->ModifyNotification( pNew, this );
-                return;
-
+            // handled in SwTextFrame::Modify()
+            bTriggerNode = true;
+            pNodeOld = pNew;
+            pNodeNew = this;
+            break;
         case RES_ATTRSET_CHG:
         case RES_FMT_CHG:
-                pTextNd->ModifyNotification( pOld, pNew );
-                return;
+            bTriggerNode = true;
+            pNodeOld = pOld;
+            pNodeNew = pNew;
+            break;
         default:
-                break;
+            break;
         }
     }
-
-    switch (GetField()->GetTyp()->Which())
+    if(!bTriggerNode)
     {
-        case SwFieldIds::HiddenPara:
-            if( !pOld || RES_HIDDENPARA_PRINT != pOld->Which() )
-                break;
-            SAL_FALLTHROUGH;
-        case SwFieldIds::DbSetNumber:
-        case SwFieldIds::DbNumSet:
-        case SwFieldIds::DbNextSet:
-        case SwFieldIds::DatabaseName:
-            pTextNd->ModifyNotification( nullptr, pNew);
-            return;
-        default: break;
-    }
-
-    if( SwFieldIds::User == GetField()->GetTyp()->Which() )
-    {
-        SwUserFieldType* pType = static_cast<SwUserFieldType*>(GetField()->GetTyp());
-        if(!pType->IsValid())
+        switch (mpField->GetTyp()->Which())
         {
-            SwCalc aCalc( *pTextNd->GetDoc() );
-            pType->GetValue( aCalc );
+            case SwFieldIds::HiddenPara:
+                if( !pOld || pOld->Which() != RES_HIDDENPARA_PRINT ) {
+                    bExpand =true;
+                    break;
+                }
+                [[fallthrough]];
+            case SwFieldIds::DbSetNumber:
+            case SwFieldIds::DbNumSet:
+            case SwFieldIds::DbNextSet:
+            case SwFieldIds::DatabaseName:
+                bTriggerNode = true;
+                pNodeNew = pNew;
+                break;
+            case SwFieldIds::User:
+            {
+                SwUserFieldType* pType = static_cast<SwUserFieldType*>(mpField->GetTyp());
+                if(!pType->IsValid())
+                {
+                    SwCalc aCalc( *pTextNd->GetDoc() );
+                    pType->GetValue( aCalc );
+                }
+                bExpand = true;
+            }
+            break;
+            default:
+                bExpand = true;
+                break;
         }
     }
-
-    const bool bForceNotify = (pOld == nullptr) && (pNew == nullptr);
-    mpTextField->ExpandTextField( bForceNotify );
+    if(bTriggerNode)
+    {
+        pTextNd->ModifyNotification(pNodeOld, pNodeNew);
+    }
+    if(bExpand)
+    {
+        mpTextField->ExpandTextField( pOld == nullptr && pNew == nullptr );
+    }
 }
 
 bool SwFormatField::GetInfo( SfxPoolItem& rInfo ) const
 {
-    const SwTextNode* pTextNd;
-    if( RES_AUTOFMT_DOCNODE != rInfo.Which() ||
-        !mpTextField || nullptr == ( pTextNd = mpTextField->GetpTextNode() ) ||
-        &pTextNd->GetNodes() != static_cast<SwAutoFormatGetDocNode&>(rInfo).pNodes )
+    if( RES_AUTOFMT_DOCNODE != rInfo.Which() || !mpTextField )
         return true;
-
-    return false;
+    const SwTextNode* pTextNd = mpTextField->GetpTextNode();
+    return nullptr == pTextNd ||
+        &pTextNd->GetNodes() != static_cast<SwAutoFormatGetDocNode&>(rInfo).pNodes;
 }
 
 bool SwFormatField::IsFieldInDoc() const
@@ -334,7 +411,7 @@ void SwFormatField::dumpAsXml(xmlTextWriterPtr pWriter) const
     xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("mpTextField"), "%p", mpTextField);
 
     SfxPoolItem::dumpAsXml(pWriter);
-    GetField()->dumpAsXml(pWriter);
+    mpField->dumpAsXml(pWriter);
 
     xmlTextWriterEndElement(pWriter);
 }
@@ -348,7 +425,7 @@ SwTextField::SwTextField(
     : SwTextAttr( rAttr, nStartPos )
 // fdo#39694 the ExpandField here may not give the correct result in all cases,
 // but is better than nothing
-    , m_aExpand( rAttr.GetField()->ExpandField(bInClipboard) )
+    , m_aExpand( rAttr.GetField()->ExpandField(bInClipboard, nullptr) )
     , m_pTextNode( nullptr )
 {
     rAttr.SetTextField( *this );
@@ -375,20 +452,30 @@ void SwTextField::ExpandTextField(const bool bForceNotify) const
     OSL_ENSURE( m_pTextNode, "SwTextField: where is my TextNode?" );
 
     const SwField* pField = GetFormatField().GetField();
-    const OUString aNewExpand( pField->ExpandField(m_pTextNode->GetDoc()->IsClipBoard()) );
+    const OUString aNewExpand( pField->ExpandField(m_pTextNode->GetDoc()->IsClipBoard(),
+        // can't do any better than this here...
+        m_pTextNode->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout()) );
+
+    const SwFieldIds nWhich = pField->GetTyp()->Which();
+    const bool bSameExpandSimpleNotification
+        = SwFieldIds::Chapter != nWhich && SwFieldIds::PageNumber != nWhich
+          && SwFieldIds::RefPageGet != nWhich
+          // Page count fields to not use aExpand during formatting,
+          // therefore an invalidation of the text frame has to be triggered even if aNewExpand == aExpand:
+          && (SwFieldIds::DocStat != nWhich
+              || DS_PAGE != static_cast<const SwDocStatField*>(pField)->GetSubType())
+          && (SwFieldIds::GetExp != nWhich
+              || static_cast<const SwGetExpField*>(pField)->IsInBodyText());
+
+    bool bHiddenParaChanged = false;
+    if (aNewExpand != m_aExpand || bSameExpandSimpleNotification)
+        bHiddenParaChanged = m_pTextNode->CalcHiddenParaField();
 
     if (aNewExpand == m_aExpand)
     {
-        const SwFieldIds nWhich = pField->GetTyp()->Which();
-        if ( SwFieldIds::Chapter != nWhich
-             && SwFieldIds::PageNumber != nWhich
-             && SwFieldIds::RefPageGet != nWhich
-             // Page count fields to not use aExpand during formatting,
-             // therefore an invalidation of the text frame has to be triggered even if aNewExpand == aExpand:
-             && ( SwFieldIds::DocStat != nWhich || DS_PAGE != static_cast<const SwDocStatField*>(pField)->GetSubType() )
-             && ( SwFieldIds::GetExp != nWhich || static_cast<const SwGetExpField*>(pField)->IsInBodyText() ) )
+        if ( bSameExpandSimpleNotification )
         {
-            if( m_pTextNode->CalcHiddenParaField() )
+            if( bHiddenParaChanged )
             {
                 m_pTextNode->ModifyNotification( nullptr, nullptr );
             }
@@ -399,8 +486,8 @@ void SwTextField::ExpandTextField(const bool bForceNotify) const
             }
         }
     }
-
-    m_aExpand = aNewExpand;
+    else
+        m_aExpand = aNewExpand;
 
     const_cast<SwTextField*>(this)->NotifyContentChange( const_cast<SwFormatField&>(GetFormatField()) );
 }
@@ -490,10 +577,10 @@ void SwTextField::GetPamForTextField(
 
     const SwTextNode& rTextNode = rTextField.GetTextNode();
 
-    rPamForTextField.reset( new SwPaM( rTextNode,
+    rPamForTextField = std::make_shared<SwPaM>( rTextNode,
                                     (rTextField.End() != nullptr) ? *(rTextField.End()) : ( rTextField.GetStart() + 1 ),
                                     rTextNode,
-                                    rTextField.GetStart() ) );
+                                    rTextField.GetStart() );
 
 }
 
@@ -504,7 +591,7 @@ void SwTextField::DeleteTextField( const SwTextField& rTextField )
     {
         std::shared_ptr< SwPaM > pPamForTextField;
         GetPamForTextField(rTextField, pPamForTextField);
-        if (pPamForTextField.get() != nullptr)
+        if (pPamForTextField != nullptr)
         {
             rTextField.GetTextNode().GetDoc()->getIDocumentContentOperations().DeleteAndJoin(*pPamForTextField);
         }
@@ -533,9 +620,14 @@ SwTextInputField::~SwTextInputField()
 {
 }
 
-void SwTextInputField::LockNotifyContentChange()
+bool SwTextInputField::LockNotifyContentChange()
 {
+    if (m_bLockNotifyContentChange)
+    {
+        return false;
+    }
     m_bLockNotifyContentChange = true;
+    return true;
 }
 
 void SwTextInputField::UnlockNotifyContentChange()
@@ -556,45 +648,48 @@ void SwTextInputField::NotifyContentChange( SwFormatField& rFormatField )
     }
 }
 
-const OUString SwTextInputField::GetFieldContent() const
+OUString SwTextInputField::GetFieldContent() const
 {
-    return GetFormatField().GetField()->ExpandField(false);
+    return GetFormatField().GetField()->ExpandField(false, nullptr/*ignored anyway*/);
 }
 
 void SwTextInputField::UpdateFieldContent()
 {
-    if ( IsFieldInDoc()
-         && GetStart() != (*End()) )
-    {
-        OSL_ENSURE( (*End()) - GetStart() >= 2,
-                "<SwTextInputField::UpdateFieldContent()> - Are CH_TXT_ATR_INPUTFIELDSTART and/or CH_TXT_ATR_INPUTFIELDEND missing?" );
-        // skip CH_TXT_ATR_INPUTFIELDSTART character
-        const sal_Int32 nIdx = GetStart() + 1;
-        // skip CH_TXT_ATR_INPUTFIELDEND character
-        const sal_Int32 nLen = static_cast<sal_Int32>(std::max<sal_Int32>( 0, ( (*End()) - 1 - nIdx ) ));
-        const OUString aNewFieldContent = GetTextNode().GetExpandText( nIdx, nLen );
+    if ( !(IsFieldInDoc()
+         && GetStart() != (*End())) )
+        return;
 
-        const SwInputField* pInputField = dynamic_cast<const SwInputField*>(GetFormatField().GetField());
-        OSL_ENSURE( pInputField != nullptr,
-                "<SwTextInputField::GetContent()> - Missing <SwInputField> instance!" );
-        if ( pInputField != nullptr )
-        {
-            const_cast<SwInputField*>(pInputField)->applyFieldContent( aNewFieldContent );
-            // trigger update of fields for scenarios in which the Input Field's content is part of e.g. a table formula
-            GetTextNode().GetDoc()->getIDocumentFieldsAccess().GetUpdateFields().SetFieldsDirty(true);
-        }
+    assert( (*End()) - GetStart() >= 2 &&
+            "<SwTextInputField::UpdateFieldContent()> - Are CH_TXT_ATR_INPUTFIELDSTART and/or CH_TXT_ATR_INPUTFIELDEND missing?" );
+    // skip CH_TXT_ATR_INPUTFIELDSTART character
+    const sal_Int32 nIdx = GetStart() + 1;
+    // skip CH_TXT_ATR_INPUTFIELDEND character
+    const sal_Int32 nLen = static_cast<sal_Int32>(std::max<sal_Int32>( 0, ( (*End()) - 1 - nIdx ) ));
+    const OUString aNewFieldContent = GetTextNode().GetExpandText(nullptr, nIdx, nLen);
+
+    const SwField* pField = GetFormatField().GetField();
+    const SwInputField* pInputField = dynamic_cast<const SwInputField*>(pField);
+    if (pInputField)
+        const_cast<SwInputField*>(pInputField)->applyFieldContent( aNewFieldContent );
+
+    const SwSetExpField* pExpField = dynamic_cast<const SwSetExpField*>(pField);
+    if (pExpField)
+    {
+        assert(pExpField->GetInputFlag());
+        const_cast<SwSetExpField*>(pExpField)->SetPar2(aNewFieldContent);
     }
+    assert(pInputField || pExpField);
+
+    // trigger update of fields for scenarios in which the Input Field's content is part of e.g. a table formula
+    GetTextNode().GetDoc()->getIDocumentFieldsAccess().GetUpdateFields().SetFieldsDirty(true);
 }
 
 void SwTextInputField::UpdateTextNodeContent( const OUString& rNewContent )
 {
-    if ( !IsFieldInDoc() )
-    {
-        OSL_ENSURE( false, "<SwTextInputField::UpdateTextNodeContent(..)> - misusage as Input Field is not in document content." );
-        return;
-    }
+    assert(IsFieldInDoc() &&
+        "<SwTextInputField::UpdateTextNodeContent(..)> - misusage as Input Field is not in document content.");
 
-    OSL_ENSURE( (*End()) - GetStart() >= 2,
+    assert( (*End()) - GetStart() >= 2 &&
             "<SwTextInputField::UpdateTextNodeContent(..)> - Are CH_TXT_ATR_INPUTFIELDSTART and/or CH_TXT_ATR_INPUTFIELDEND missing?" );
     // skip CH_TXT_ATR_INPUTFIELDSTART character
     const sal_Int32 nIdx = GetStart() + 1;
@@ -622,24 +717,16 @@ SwTextAnnotationField::~SwTextAnnotationField()
 
 ::sw::mark::IMark* SwTextAnnotationField::GetAnnotationMark() const
 {
-    const SwPostItField* pPostItField = dynamic_cast<const SwPostItField*>(GetFormatField().GetField());
-    OSL_ENSURE( pPostItField != nullptr, "<SwTextAnnotationField::GetAnnotationMark()> - field missing" );
-    if ( pPostItField == nullptr )
-    {
-        return nullptr;
-    }
+    auto pPostItField = dynamic_cast<const SwPostItField*>(GetFormatField().GetField());
+    assert(pPostItField);
 
     SwDoc* pDoc = static_cast<const SwPostItFieldType*>(pPostItField->GetTyp())->GetDoc();
-    OSL_ENSURE( pDoc != nullptr, "<SwTextAnnotationField::GetAnnotationMark()> - missing document" );
-    if ( pDoc == nullptr )
-    {
-        return nullptr;
-    }
+    assert(pDoc != nullptr);
 
     IDocumentMarkAccess* pMarksAccess = pDoc->getIDocumentMarkAccess();
     IDocumentMarkAccess::const_iterator_t pMark = pMarksAccess->findAnnotationMark( pPostItField->GetName() );
     return pMark != pMarksAccess->getAnnotationMarksEnd()
-           ? pMark->get()
+           ? *pMark
            : nullptr;
 }
 

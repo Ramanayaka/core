@@ -18,16 +18,14 @@
  */
 
 #include "EditBase.hxx"
-#include "property.hxx"
-#include "property.hrc"
-#include "services.hxx"
+#include <property.hxx>
 #include <tools/debug.hxx>
 #include <comphelper/basicio.hxx>
-#include <cppuhelper/queryinterface.hxx>
-#include "frm_resource.hxx"
-#include "frm_resource.hrc"
+#include <comphelper/property.hxx>
+#include <comphelper/types.hxx>
 #include <tools/time.hxx>
 #include <tools/date.hxx>
+#include <com/sun/star/io/XMarkableStream.hpp>
 #include <com/sun/star/util/Time.hpp>
 #include <com/sun/star/util/Date.hpp>
 
@@ -38,7 +36,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -140,7 +137,7 @@ void OEditBaseModel::write(const Reference<XObjectOutputStream>& _rxOutStream)
     writeHelpTextCompatibly(_rxOutStream);
     // (that's potentially bad : at the time I added the above line we had two derived classes : OEditModel and
     // OFormattedModel. The first one does not have an own version handling, so it can't write the help text itself,
-    // the second one does it's own writing (reading) after calling our method, so normally we shouldn't write any
+    // the second one does its own writing (reading) after calling our method, so normally we shouldn't write any
     // additional members as this is not compatible to older office versions.
     // We decided to place the writing of the help text here as it seems the less worse alternative. There is no delivered
     // office version including formatted controls (and thus the OFormattedModel), and the OFormattedModel::read seems

@@ -22,7 +22,7 @@
 
 #include "ViewShell.hxx"
 #include <svx/svdview.hxx>
-#include "pres.hxx"
+#include <pres.hxx>
 
 class SdDrawDocument;
 class SdOptions;
@@ -43,29 +43,29 @@ public:
     void Connect();
     void Disconnect();
 
-    void Update(SdOptions* pOptions);
+    void Update(SdOptions const * pOptions);
 
     void  SetStandardHelpLines(const SdrHelpLineList& rHelpLines)
                              { maStandardHelpLines = rHelpLines; }
-    const SdrHelpLineList& GetStandardHelpLines() { return maStandardHelpLines; }
+    const SdrHelpLineList& GetStandardHelpLines() const { return maStandardHelpLines; }
     void  SetNotesHelpLines(const SdrHelpLineList& rHelpLines)
                              { maNotesHelpLines = rHelpLines; }
-    const SdrHelpLineList& GetNotesHelpLines() { return maNotesHelpLines; }
+    const SdrHelpLineList& GetNotesHelpLines() const { return maNotesHelpLines; }
     void  SetHandoutHelpLines(const SdrHelpLineList& rHelpLines)
                              { maHandoutHelpLines = rHelpLines; }
-    const SdrHelpLineList& GetHandoutHelpLines() { return maHandoutHelpLines; }
+    const SdrHelpLineList& GetHandoutHelpLines() const { return maHandoutHelpLines; }
 
     void SetVisibleLayers(const SdrLayerIDSet& rVisibleLayers)
                          { maVisibleLayers = rVisibleLayers; }
-    const SdrLayerIDSet& GetVisibleLayers() { return maVisibleLayers; }
+    const SdrLayerIDSet& GetVisibleLayers() const { return maVisibleLayers; }
 
     void SetLockedLayers(const SdrLayerIDSet& rLockedLayers)
                         { maLockedLayers = rLockedLayers; }
-    const SdrLayerIDSet& GetLockedLayers() { return maLockedLayers; }
+    const SdrLayerIDSet& GetLockedLayers() const { return maLockedLayers; }
 
     void SetPrintableLayers(const SdrLayerIDSet& rPrintableLayers)
                          { maPrintableLayers = rPrintableLayers; }
-    const SdrLayerIDSet& GetPrintableLayers() { return maPrintableLayers; }
+    const SdrLayerIDSet& GetPrintableLayers() const { return maPrintableLayers; }
 
     void SetRuler(const bool bRulerOn)
                  { mbRuler = bRulerOn; }
@@ -81,7 +81,7 @@ public:
 
     void SetVisArea(const ::tools::Rectangle& rVisArea)
                  { maVisArea = rVisArea; }
-    const ::tools::Rectangle& GetVisArea() { return maVisArea; }
+    const ::tools::Rectangle& GetVisArea() const { return maVisArea; }
 
     void SetPageKind(PageKind eKind) { mePageKind = eKind; }
     PageKind GetPageKind() const { return mePageKind; }
@@ -104,7 +104,7 @@ public:
     sal_uInt16 GetSelectedPageOnLoad () const { return mnSelectedPageOnLoad; }
 
     void SetViewShEditMode(EditMode eMode);
-    EditMode GetViewShEditMode ();
+    EditMode GetViewShEditMode () const;
 
     /** Remember the edit mode of the main view shell at the time when the
         document is loaded.
@@ -182,7 +182,7 @@ private:
     sal_uInt16          mnSelectedPage;
     PageKind            mePageKindOnLoad;
     sal_uInt16          mnSelectedPageOnLoad;
-    EditMode            meEditMode; ///< edit mode in drawing mode (Page/MasterPage)
+    EditMode            mePageEditMode; ///< edit mode in drawing mode (Page/MasterPage)
     // EditMode            meStandardEditMode; ///< edit mode in drawing mode (Page/MasterPage)
     // EditMode            meNotesEditMode;    ///< edit mode in notes mode (Page/MasterPage)
     // EditMode            meHandoutEditMode;  ///< edit mode in handout mode (Page/MasterPage)

@@ -22,10 +22,8 @@
 #include <rtl/instance.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpLineAttribute
         {
         public:
@@ -55,7 +53,7 @@ namespace drawinglayer
                 mfWidth(0.0),
                 meLineJoin(basegfx::B2DLineJoin::Round),
                 meLineCap(css::drawing::LineCap_BUTT),
-                mfMiterMinimumAngle(15.0 * F_PI180)
+                mfMiterMinimumAngle(basegfx::deg2rad(15.0))
             {
             }
 
@@ -103,25 +101,16 @@ namespace drawinglayer
         {
         }
 
-        LineAttribute::LineAttribute(const LineAttribute& rCandidate)
-        :   mpLineAttribute(rCandidate.mpLineAttribute)
-        {
-        }
+        LineAttribute::LineAttribute(const LineAttribute&) = default;
 
-        LineAttribute::~LineAttribute()
-        {
-        }
+        LineAttribute::~LineAttribute() = default;
 
         bool LineAttribute::isDefault() const
         {
             return mpLineAttribute.same_object(theGlobalDefault::get());
         }
 
-        LineAttribute& LineAttribute::operator=(const LineAttribute& rCandidate)
-        {
-            mpLineAttribute = rCandidate.mpLineAttribute;
-            return *this;
-        }
+        LineAttribute& LineAttribute::operator=(const LineAttribute&) = default;
 
         bool LineAttribute::operator==(const LineAttribute& rCandidate) const
         {
@@ -157,7 +146,6 @@ namespace drawinglayer
             return mpLineAttribute->getMiterMinimumAngle();
         }
 
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

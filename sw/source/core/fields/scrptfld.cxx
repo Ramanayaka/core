@@ -19,25 +19,25 @@
 
 #include <docufld.hxx>
 #include <unofldmid.h>
-#include <comcore.hrc>
+#include <strings.hrc>
 #include <o3tl/any.hxx>
-#include <tools/resid.hxx>
+#include <swtypes.hxx>
 
 using namespace ::com::sun::star;
 
 SwScriptFieldType::SwScriptFieldType( SwDoc* pD )
-    : SwFieldType( SwFieldIds::Script ), pDoc( pD )
+    : SwFieldType( SwFieldIds::Script ), m_pDoc( pD )
 {}
 
-SwFieldType* SwScriptFieldType::Copy() const
+std::unique_ptr<SwFieldType> SwScriptFieldType::Copy() const
 {
-    return new SwScriptFieldType( pDoc );
+    return std::make_unique<SwScriptFieldType>( m_pDoc );
 }
 
 SwScriptField::SwScriptField( SwScriptFieldType* pInitType,
                                 const OUString& rType, const OUString& rCode,
                                 bool bURL )
-    : SwField( pInitType ), sType( rType ), sCode( rCode ), bCodeURL( bURL )
+    : SwField( pInitType ), m_sType( rType ), m_sCode( rCode ), m_bCodeURL( bURL )
 {
 }
 
@@ -46,36 +46,36 @@ OUString SwScriptField::GetDescription() const
     return SwResId(STR_SCRIPT);
 }
 
-OUString SwScriptField::Expand() const
+OUString SwScriptField::ExpandImpl(SwRootFrame const*const) const
 {
     return OUString();
 }
 
-SwField* SwScriptField::Copy() const
+std::unique_ptr<SwField> SwScriptField::Copy() const
 {
-    return new SwScriptField( static_cast<SwScriptFieldType*>(GetTyp()), sType, sCode, bCodeURL );
+    return std::make_unique<SwScriptField>( static_cast<SwScriptFieldType*>(GetTyp()), m_sType, m_sCode, m_bCodeURL );
 }
 
 /// set type
 void SwScriptField::SetPar1( const OUString& rStr )
 {
-    sType = rStr;
+    m_sType = rStr;
 }
 
 OUString SwScriptField::GetPar1() const
 {
-    return sType;
+    return m_sType;
 }
 
 /// set code
 void SwScriptField::SetPar2( const OUString& rStr )
 {
-    sCode = rStr;
+    m_sCode = rStr;
 }
 
 OUString SwScriptField::GetPar2() const
 {
-    return sCode;
+    return m_sCode;
 }
 
 bool SwScriptField::QueryValue( uno::Any& rAny, sal_uInt16 nWhichId ) const
@@ -83,13 +83,13 @@ bool SwScriptField::QueryValue( uno::Any& rAny, sal_uInt16 nWhichId ) const
     switch( nWhichId )
     {
     case FIELD_PROP_PAR1:
-        rAny <<= sType;
+        rAny <<= m_sType;
         break;
     case FIELD_PROP_PAR2:
-        rAny <<= sCode;
+        rAny <<= m_sCode;
         break;
     case FIELD_PROP_BOOL1:
-        rAny <<= bCodeURL;
+        rAny <<= m_bCodeURL;
         break;
     default:
         assert(false);
@@ -102,13 +102,13 @@ bool SwScriptField::PutValue( const uno::Any& rAny, sal_uInt16 nWhichId )
     switch( nWhichId )
     {
     case FIELD_PROP_PAR1:
-        rAny >>= sType;
+        rAny >>= m_sType;
         break;
     case FIELD_PROP_PAR2:
-        rAny >>= sCode;
+        rAny >>= m_sCode;
         break;
     case FIELD_PROP_BOOL1:
-        bCodeURL = *o3tl::doAccess<bool>(rAny);
+        m_bCodeURL = *o3tl::doAccess<bool>(rAny);
         break;
     default:
         assert(false);

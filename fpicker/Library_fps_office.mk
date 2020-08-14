@@ -43,10 +43,14 @@ $(eval $(call gb_Library_use_libraries,fps_office,\
 
 $(eval $(call gb_Library_add_exception_objects,fps_office,\
 	fpicker/source/office/asyncfilepicker \
+	fpicker/source/office/autocmpledit \
+	fpicker/source/office/breadcrumb \
 	fpicker/source/office/commonpicker \
+    fpicker/source/office/contentenumeration \
+	fpicker/source/office/fileview \
+    fpicker/source/office/foldertree \
 	fpicker/source/office/fpinteraction \
 	fpicker/source/office/fpsmartcontent \
-	fpicker/source/office/fps_office \
 	fpicker/source/office/iodlg \
 	fpicker/source/office/iodlgimp \
 	fpicker/source/office/OfficeControlAccess \

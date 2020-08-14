@@ -60,11 +60,10 @@
 
 #include <sal/config.h>
 
-#include "ixfattrlist.hxx"
-#include "ixfstream.hxx"
-#include "xfrow.hxx"
-#include "xfcell.hxx"
-#include "xftable.hxx"
+#include <xfilter/ixfattrlist.hxx>
+#include <xfilter/ixfstream.hxx>
+#include <xfilter/xfrow.hxx>
+#include <xfilter/xfcell.hxx>
 
 XFRow::XFRow()
     : m_pOwnerTable(nullptr)
@@ -77,7 +76,7 @@ XFRow::~XFRow()
 {
 }
 
-void XFRow::AddCell(rtl::Reference<XFCell>& rCell)
+void XFRow::AddCell(rtl::Reference<XFCell> const & rCell)
 {
     if (!rCell)
         return;
@@ -112,11 +111,10 @@ void    XFRow::ToXml(IXFStream *pStrm)
         pAttrList->AddAttribute( "table:number-rows-repeated", OUString::number(m_nRepeat) );
     pStrm->StartElement( "table:table-row" );
 
-    auto it = m_aCells.begin();
-    for( ; it!=m_aCells.end(); ++it )
+    for (auto const& cell : m_aCells)
     {
-        int col = (*it).first;
-        XFCell *pCell = (*it).second.get();
+        int col = cell.first;
+        XFCell *pCell = cell.second.get();
         if( !pCell )
             continue;
         if( col>lastCol+1 )

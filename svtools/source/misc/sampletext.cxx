@@ -10,9 +10,10 @@
 #include <vcl/font.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/metric.hxx>
 #include <vcl/fontcharmap.hxx>
 #include <i18nutil/unicode.hxx>
+#include <sal/log.hxx>
+#include <com/sun/star/i18n/ScriptType.hpp>
 
 // This should only be used when a commonly used font incorrectly declares its
 // coverage. If you add a font here, please leave a note explaining the issue
@@ -91,15 +92,26 @@ static UScriptCode lcl_getHardCodedScriptNameForFont (const OutputDevice &rDevic
     }
     else if (rName == "Hannotate TC" || rName == "HanziPen TC" || rName == "Heiti TC" || rName == "Weibei TC")
     {
-        // These fonts claim support for ARMENIAN and a bunch of other stuff they doesn't support
+        // These fonts claim support for ARMENIAN and a bunch of other stuff they don't support
         return USCRIPT_TRADITIONAL_HAN;
     }
     else if (rName == "Hannotate SC" || rName == "HanziPen SC" || rName == "Heiti SC" || rName == "Weibei SC")
     {
-        // These fonts claim support for ARMENIAN and a bunch of other stuff they doesn't support
+        // These fonts claim support for ARMENIAN and a bunch of other stuff they don't support
         return USCRIPT_SIMPLIFIED_HAN;
     }
-
+    else if (rName.startsWith("Noto")) {
+        // These fonts claim support for CJK(Chinese-Japanese-Korean) languages.
+        if (rName.indexOf(" KR") > 0 || rName.indexOf("Korean") > 0) {
+            return USCRIPT_KOREAN;
+        } else if (rName.indexOf(" JP") > 0 || rName.indexOf("Japanese") > 0) {
+            return USCRIPT_JAPANESE;
+        } else if (rName.indexOf(" SC") > 0 || rName.indexOf("S Chinese") > 0) {
+            return USCRIPT_SIMPLIFIED_HAN;
+        } else if (rName.indexOf(" TC") > 0 || rName.indexOf(" HK") > 0 || rName.indexOf("T Chinese") > 0) {
+            return USCRIPT_TRADITIONAL_HAN;
+        }
+    }
     return USCRIPT_INVALID_CODE;
 }
 
@@ -138,13 +150,13 @@ bool isSymbolFont(const vcl::Font &rFont)
             IsStarSymbol(rFont.GetFamilyName());
 }
 
-bool canRenderNameOfSelectedFont(OutputDevice &rDevice)
+bool canRenderNameOfSelectedFont(OutputDevice const &rDevice)
 {
     const vcl::Font &rFont = rDevice.GetFont();
     return !isSymbolFont(rFont) && ( -1 == rDevice.HasGlyphs(rFont, rFont.GetFamilyName()) );
 }
 
-OUString makeShortRepresentativeSymbolTextForSelectedFont(OutputDevice &rDevice)
+OUString makeShortRepresentativeSymbolTextForSelectedFont(OutputDevice const &rDevice)
 {
     if (rDevice.GetFont().GetFamilyName() == "Symbol")
     {
@@ -360,6 +372,7 @@ OUString makeShortRepresentativeTextForScript(UScriptCode eScript)
             sSampleText = OUString(aGeorgian, SAL_N_ELEMENTS(aGeorgian));
             break;
         }
+        case USCRIPT_JAMO:
         case USCRIPT_HANGUL:
         case USCRIPT_KOREAN:
         {
@@ -529,7 +542,7 @@ OUString makeShortRepresentativeTextForScript(UScriptCode eScript)
     return sSampleText;
 }
 
-OUString makeRepresentativeTextForScript(UScriptCode eScript)
+static OUString makeRepresentativeTextForScript(UScriptCode eScript)
 {
     OUString sSampleText;
     switch (eScript)
@@ -554,6 +567,7 @@ OUString makeRepresentativeTextForScript(UScriptCode eScript)
             sSampleText = OUString(aJa, SAL_N_ELEMENTS(aJa));
             break;
         }
+        case USCRIPT_JAMO:
         case USCRIPT_KOREAN:
         case USCRIPT_HANGUL:
         {
@@ -601,7 +615,7 @@ OUString makeShortMinimalTextForScript(UScriptCode eScript)
     return sSampleText;
 }
 
-OUString makeMinimalTextForScript(UScriptCode eScript)
+static OUString makeMinimalTextForScript(UScriptCode eScript)
 {
     return makeShortMinimalTextForScript(eScript);
 }
@@ -614,7 +628,7 @@ OUString makeMinimalTextForScript(UScriptCode eScript)
 
 //Currently we fall back to makeShortRepresentativeTextForScript when we don't
 //have suitable strings
-OUString makeRepresentativeTextForLanguage(LanguageType eLang)
+static OUString makeRepresentativeTextForLanguage(LanguageType eLang)
 {
     OUString sRet;
     LanguageType pri = primary(eLang);
@@ -704,7 +718,7 @@ OUString makeRepresentativeTextForLanguage(LanguageType eLang)
 namespace
 {
 #if OSL_DEBUG_LEVEL > 0
-    void lcl_dump_unicode_coverage(const boost::optional<std::bitset<vcl::UnicodeCoverage::MAX_UC_ENUM>> &roIn)
+    void lcl_dump_unicode_coverage(const std::optional<std::bitset<vcl::UnicodeCoverage::MAX_UC_ENUM>> &roIn)
     {
         if (!roIn)
         {
@@ -975,7 +989,7 @@ namespace
             SAL_INFO("svtools", "RESERVED5");
     }
 
-    void lcl_dump_codepage_coverage(const boost::optional<std::bitset<vcl::CodePageCoverage::MAX_CP_ENUM>> &roIn)
+    void lcl_dump_codepage_coverage(const std::optional<std::bitset<vcl::CodePageCoverage::MAX_CP_ENUM>> &roIn)
     {
         if (!roIn)
         {
@@ -1214,7 +1228,7 @@ namespace
 
 namespace
 {
-    UScriptCode attemptToDisambiguateHan(UScriptCode eScript, OutputDevice &rDevice)
+    UScriptCode attemptToDisambiguateHan(UScriptCode eScript, OutputDevice const &rDevice)
     {
         //If we're a CJK font, see if we seem to be tuned for C, J or K
         if (eScript == USCRIPT_HAN)
@@ -1257,7 +1271,7 @@ namespace
     }
 }
 
-OUString makeShortRepresentativeTextForSelectedFont(OutputDevice &rDevice)
+OUString makeShortRepresentativeTextForSelectedFont(OutputDevice const &rDevice)
 {
     UScriptCode eScript = lcl_getHardCodedScriptNameForFont(rDevice);
     if (eScript == USCRIPT_INVALID_CODE)
@@ -1649,7 +1663,7 @@ OUString makeRepresentativeTextForFont(sal_Int16 nScriptType, const vcl::Font &r
             UScriptCode eScript = getScript(aFontCapabilities);
 
             if (nScriptType == css::i18n::ScriptType::ASIAN)
-                eScript = attemptToDisambiguateHan(eScript, *aDevice.get());
+                eScript = attemptToDisambiguateHan(eScript, *aDevice);
 
             sRet = makeRepresentativeTextForScript(eScript);
         }

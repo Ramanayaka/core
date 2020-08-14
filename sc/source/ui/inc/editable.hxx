@@ -20,12 +20,11 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_EDITABLE_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_EDITABLE_HXX
 
-#include "address.hxx"
+#include <address.hxx>
 
 class ScDocument;
 class ScViewFunc;
 class ScMarkData;
-class ScRange;
 
 namespace sc {
 
@@ -42,19 +41,23 @@ public:
             ScEditableTester();
 
             // calls TestBlock
-            ScEditableTester( ScDocument* pDoc, SCTAB nTab,
-                        SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow );
+            /** @param  bNoMatrixAtAll
+                        TRUE if there must not be any matrix, not even entirely
+                        contained; for example in sorting. */
+            ScEditableTester( const ScDocument* pDoc, SCTAB nTab,
+                        SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow,
+                        bool bNoMatrixAtAll = false );
 
             // calls TestSelectedBlock
-            ScEditableTester( ScDocument* pDoc,
+            ScEditableTester( const ScDocument* pDoc,
                         SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow,
                         const ScMarkData& rMark );
 
             // calls TestRange
-            ScEditableTester( ScDocument* pDoc, const ScRange& rRange );
+            ScEditableTester( const ScDocument* pDoc, const ScRange& rRange );
 
             // calls TestSelection
-            ScEditableTester( ScDocument* pDoc, const ScMarkData& rMark );
+            ScEditableTester( const ScDocument* pDoc, const ScMarkData& rMark );
 
             // calls TestView
             ScEditableTester( ScViewFunc* pView );
@@ -65,13 +68,14 @@ public:
 
             // Several calls to the Test... methods check if *all* of the ranges
             // are editable. For several independent checks, Reset() has to be used.
-    void    TestBlock( ScDocument* pDoc, SCTAB nTab,
-                        SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow );
-    void    TestSelectedBlock( ScDocument* pDoc,
+    void    TestBlock( const ScDocument* pDoc, SCTAB nTab,
+                        SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow,
+                        bool bNoMatrixAtAll = false );
+    void    TestSelectedBlock( const ScDocument* pDoc,
                         SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow,
                         const ScMarkData& rMark );
-    void    TestRange( ScDocument* pDoc, const ScRange& rRange );
-    void    TestSelection( ScDocument* pDoc, const ScMarkData& rMark );
+    void    TestRange( const ScDocument* pDoc, const ScRange& rRange );
+    void    TestSelection( const ScDocument* pDoc, const ScMarkData& rMark );
 
     void TestBlockForAction(
         const ScDocument& rDoc, sc::ColRowEditAction eAction, SCCOLROW nStart, SCCOLROW nEnd,
@@ -79,7 +83,7 @@ public:
 
     bool IsEditable() const { return mbIsEditable; }
     bool IsFormatEditable() const { return mbIsEditable || mbOnlyMatrix; }
-    sal_uInt16  GetMessageId() const;
+    const char* GetMessageId() const;
 };
 
 #endif

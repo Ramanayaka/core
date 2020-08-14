@@ -28,7 +28,7 @@
  * If you access it by index, managing the index is the responsibility of
  * the cache user.
  *
- * The cached objects are derrived from the base class SwCacheObj.
+ * The cached objects are derived from the base class SwCacheObj.
  * In it, the cache objects are doubly-linked which allows for the use of
  * an LRU algorithm.
  *
@@ -43,16 +43,16 @@
  * when destroying them.
  */
 
+#include <memory>
 #include <vector>
 
-#include <rtl/ustring.hxx>
+#include <rtl/string.hxx>
 
 class SwCacheObj;
 
-typedef std::vector<SwCacheObj*> SwCacheObjArr;
 class SwCache
 {
-    SwCacheObjArr m_aCacheObjects;
+    std::vector<std::unique_ptr<SwCacheObj>> m_aCacheObjects;
     std::vector<sal_uInt16> m_aFreePositions; /// Free positions for the Insert if the maximum has not been reached
                                             /// Every time an object is deregistered, its position is added here
     SwCacheObj *m_pRealFirst;                 /// _ALWAYS_ the real first LRU
@@ -101,35 +101,33 @@ public:
                      const bool bToTop = true );
     void ToTop( SwCacheObj *pObj );
 
-    bool Insert( SwCacheObj *pNew );
+    bool Insert(SwCacheObj *pNew, bool isDuplicateOwnerAllowed);
+    void Delete(const void * pOwner, sal_uInt16 nIndex);
     void Delete( const void *pOwner );
 
     void SetLRUOfst( const sal_uInt16 nOfst );  /// nOfst determines how many are not to be touched
     void ResetLRUOfst() { m_pFirst = m_pRealFirst; }
 
-    inline void IncreaseMax( const sal_uInt16 nAdd );
-    inline void DecreaseMax( const sal_uInt16 nSub );
+    void IncreaseMax( const sal_uInt16 nAdd );
+    void DecreaseMax( const sal_uInt16 nSub );
     sal_uInt16 GetCurMax() const { return m_nCurMax; }
     SwCacheObj *First() { return m_pRealFirst; }
     static inline SwCacheObj *Next( SwCacheObj *pCacheObj);
-    SwCacheObj* operator[](sal_uInt16 nIndex) { return m_aCacheObjects[nIndex]; }
+    SwCacheObj* operator[](sal_uInt16 nIndex) { return m_aCacheObjects[nIndex].get(); }
     sal_uInt16 size() { return m_aCacheObjects.size(); }
 };
 
-/// Safely manipulate the cache
+/// Try to prevent visible SwParaPortions from being deleted.
 class SwSaveSetLRUOfst
 {
-    SwCache &rCache;
 public:
-    SwSaveSetLRUOfst( SwCache &rC, const sal_uInt16 nOfst )
-        : rCache( rC )          { rCache.SetLRUOfst( nOfst );  }
-
-    ~SwSaveSetLRUOfst()         { rCache.ResetLRUOfst(); }
+    SwSaveSetLRUOfst();
+    ~SwSaveSetLRUOfst();
 };
 
 /**
  * The Cache object base class
- * Users of the Cache must derrive a class from the SwCacheObj and store
+ * Users of the Cache must derive a class from the SwCacheObj and store
  * their payload there
  */
 class SwCacheObj
@@ -148,7 +146,15 @@ class SwCacheObj
     void SetNext( SwCacheObj *pNew )  { m_pNext = pNew; }
     void SetPrev( SwCacheObj *pNew )  { m_pPrev = pNew; }
 
-    void   SetCachePos( const sal_uInt16 nNew ) { m_nCachePos = nNew; }
+    void SetCachePos(const sal_uInt16 nNew)
+    {
+        if (m_nCachePos != nNew)
+        {
+            m_nCachePos = nNew;
+            UpdateCachePos();
+        }
+    }
+    virtual void UpdateCachePos() { }
 
 protected:
     const void *m_pOwner;
@@ -180,16 +186,16 @@ public:
  * The Cache object is created in the ctor.
  * If the Cache does not return one, the member is set to 0 and one is
  * created on the Get() and added to the Cache (if possible).
- * Cache users must derrive a class from SwCacheAccess in order to
+ * Cache users must derive a class from SwCacheAccess in order to
  * guarantee type safety. The base class should always be called for the
- * Get(). A derrived Get() should only ever guarantee type safety.
+ * Get(). A derived Get() should only ever guarantee type safety.
  * Cache objects are always locked for the instance's life time.
  */
 class SwCacheAccess
 {
     SwCache &m_rCache;
 
-    void Get_();
+    void Get_(bool isDuplicateOwnerAllowed);
 
 protected:
     SwCacheObj *m_pObj;
@@ -197,36 +203,15 @@ protected:
 
     virtual SwCacheObj *NewObj() = 0;
 
-    inline SwCacheObj *Get();
+    inline SwCacheObj *Get(bool isDuplicateOwnerAllowed);
 
     inline SwCacheAccess( SwCache &rCache, const void *pOwner, bool bSeek );
-    inline SwCacheAccess( SwCache &rCache, const void *pOwner, const sal_uInt16 nIndex );
+    inline SwCacheAccess( SwCache &rCache, const void* nCacheId, const sal_uInt16 nIndex );
 
 public:
     virtual ~SwCacheAccess();
-
-    virtual bool IsAvailable() const;
-
-    /// Shorthand for those who know that they did not override isAvailable()
-    /// FIXME: wtf?
-    bool IsAvail() const { return m_pObj != nullptr; }
 };
 
-inline void SwCache::IncreaseMax( const sal_uInt16 nAdd )
-{
-    m_nCurMax = m_nCurMax + sal::static_int_cast< sal_uInt16 >(nAdd);
-#ifdef DBG_UTIL
-    ++m_nIncreaseMax;
-#endif
-}
-inline void SwCache::DecreaseMax( const sal_uInt16 nSub )
-{
-    if ( m_nCurMax > nSub )
-        m_nCurMax = m_nCurMax - sal::static_int_cast< sal_uInt16 >(nSub);
-#ifdef DBG_UTIL
-    ++m_nDecreaseMax;
-#endif
-}
 
 inline bool SwCacheObj::IsOwner( const void *pNew ) const
 {
@@ -246,24 +231,32 @@ inline SwCacheAccess::SwCacheAccess( SwCache &rC, const void *pOwn, bool bSeek )
     m_pObj( nullptr ),
     m_pOwner( pOwn )
 {
-    if ( bSeek && m_pOwner && nullptr != (m_pObj = m_rCache.Get( m_pOwner )) )
-        m_pObj->Lock();
+    if ( bSeek && m_pOwner )
+    {
+        m_pObj = m_rCache.Get( m_pOwner );
+        if (m_pObj)
+            m_pObj->Lock();
+    }
 }
 
-inline SwCacheAccess::SwCacheAccess( SwCache &rC, const void *pOwn,
+inline SwCacheAccess::SwCacheAccess( SwCache &rC, const void* nCacheId,
                               const sal_uInt16 nIndex ) :
     m_rCache( rC ),
     m_pObj( nullptr ),
-    m_pOwner( pOwn )
+    m_pOwner( nCacheId )
 {
-    if ( m_pOwner && nullptr != (m_pObj = m_rCache.Get( m_pOwner, nIndex )) )
-        m_pObj->Lock();
+    if ( m_pOwner )
+    {
+        m_pObj = m_rCache.Get( m_pOwner, nIndex );
+        if (m_pObj)
+            m_pObj->Lock();
+    }
 }
 
-inline SwCacheObj *SwCacheAccess::Get()
+inline SwCacheObj *SwCacheAccess::Get(bool const isDuplicateOwnerAllowed = true)
 {
     if ( !m_pObj )
-        Get_();
+        Get_(isDuplicateOwnerAllowed);
     return m_pObj;
 }
 

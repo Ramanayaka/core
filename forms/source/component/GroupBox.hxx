@@ -20,7 +20,7 @@
 #ifndef INCLUDED_FORMS_SOURCE_COMPONENT_GROUPBOX_HXX
 #define INCLUDED_FORMS_SOURCE_COMPONENT_GROUPBOX_HXX
 
-#include "FormComponent.hxx"
+#include <FormComponent.hxx>
 
 
 namespace frm
@@ -34,7 +34,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OGroupBoxModel"); }
+    { return "com.sun.star.form.OGroupBoxModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -64,7 +64,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OGroupBoxControl"); }
+    { return "com.sun.star.form.OGroupBoxControl"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 };

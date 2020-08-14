@@ -19,7 +19,7 @@ See below for more details on writing the UNO code see below.
 
 In most cases you want to assert the document model, but sometimes asserting
 the layout is easier. If you want to do so, the `parseDump()` method can be
-used to.. parse the layout dump of the currently loaded document. If you want
+used to parse the layout dump of the currently loaded document. If you want
 to have a look at the XML document that can be asserted, start soffice with the
 `SW_DEBUG=1` environment variable, load a document, press F12, and have a look
 at the `layout.xml` file in the current directory. Once you find the needed
@@ -47,7 +47,7 @@ import problem in fact -- and once after the export and import.
 
 === Direct XPath assertions
 
-An other alternative is to assert the resulted export document directly.
+Another alternative is to assert the resulted export document directly.
 Currently this is only implemented for DOCX, which is a zipped XML, so it's
 possible to evaluate XPath checks. A check looks like this:
 
@@ -132,7 +132,7 @@ CPPUNIT_ASSERT_EQUAL(true, getProperty<bool>(xStyle, "IsLandscape"));
 
 === sal_Bool
 
-In case an UNO method returns sal_Bool, and the assert fails, CppUnit won't be
+In case a UNO method returns sal_Bool, and the assert fails, CppUnit won't be
 able to print a usable error message, as it will think that the value is a
 printable character. Best to use `bool` for the expected value and cast the
 actual value to `bool` as well before comparing.

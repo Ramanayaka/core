@@ -23,13 +23,10 @@
 #include <sdr/properties/e3dproperties.hxx>
 
 
-namespace sdr
-{
-    namespace properties
+namespace sdr::properties
     {
-        class E3dSceneProperties : public E3dProperties
+        class E3dSceneProperties final : public E3dProperties
         {
-        protected:
             // Called after ItemChange() is done for all items.
             virtual void PostItemChange(const sal_uInt16 nWhich) override;
 
@@ -44,7 +41,7 @@ namespace sdr
             virtual ~E3dSceneProperties() override;
 
             // Clone() operator, normally just calls the local copy constructor
-            virtual BaseProperties& Clone(SdrObject& rObj) const override;
+            virtual std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const override;
 
             // get merged ItemSet. Normally, this maps directly to GetObjectItemSet(), but may
             // be overridden e.g for group objects to return a merged ItemSet of the object.
@@ -68,14 +65,11 @@ namespace sdr
             // get the installed StyleSheet
             virtual SfxStyleSheet* GetStyleSheet() const override;
 
-            // Move properties to a new ItemPool. Default implementation does nothing.
-            virtual void MoveToItemPool(SfxItemPool* pSrcPool, SfxItemPool* pDestPool, SdrModel* pNewModel) override;
-
             // Special for scene:
             void SetSceneItemsFromCamera();
         };
-    } // end of namespace properties
-} // end of namespace sdr
+
+} // end of namespace sdr::properties
 
 
 #endif // INCLUDED_SVX_INC_SDR_PROPERTIES_E3DSCENEPROPERTIES_HXX

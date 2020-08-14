@@ -20,23 +20,20 @@
 #ifndef INCLUDED_STORE_SOURCE_STORBASE_HXX
 #define INCLUDED_STORE_SOURCE_STORBASE_HXX
 
-#include "sal/config.h"
-#include "salhelper/simplereferenceobject.hxx"
+#include <sal/config.h>
+#include <salhelper/simplereferenceobject.hxx>
 
-#include "sal/types.h"
+#include <sal/types.h>
 
-#include "rtl/alloc.h"
-#include "rtl/crc.h"
-#include "rtl/ref.hxx"
+#include <rtl/crc.h>
+#include <rtl/ref.hxx>
 
-#include "osl/diagnose.h"
-#include "osl/endian.h"
+#include <osl/diagnose.h>
+#include <osl/endian.h>
 
-#include "store/types.h"
+#include <store/types.h>
 
 #include <memory>
-#include <stddef.h>
-#include <string.h>
 #include <utility>
 
 /** @file store common internals.
@@ -114,7 +111,7 @@ struct OStorePageGuard
     }
 };
 
-#define STORE_PAGE_NULL ((sal_uInt32)(~0))
+#define STORE_PAGE_NULL (sal_uInt32(~0))
 
 struct OStorePageDescriptor
 {
@@ -179,17 +176,6 @@ struct OStorePageKey
           m_nHigh (store::htonl(nHigh))
     {}
 
-    OStorePageKey (const OStorePageKey & rhs)
-        : m_nLow (rhs.m_nLow), m_nHigh (rhs.m_nHigh)
-    {}
-
-    OStorePageKey & operator= (const OStorePageKey & rhs)
-    {
-        m_nLow  = rhs.m_nLow;
-        m_nHigh = rhs.m_nHigh;
-        return *this;
-    }
-
     /** Comparison.
      */
     bool operator== (const OStorePageKey & rhs) const
@@ -222,16 +208,6 @@ struct OStorePageLink
     void swap (OStorePageLink & rhs)
     {
         std::swap(m_nAddr, rhs.m_nAddr);
-    }
-
-    OStorePageLink (const OStorePageLink & rhs)
-        : m_nAddr (rhs.m_nAddr)
-    {}
-
-    OStorePageLink & operator= (const OStorePageLink & rhs)
-    {
-        m_nAddr = rhs.m_nAddr;
-        return *this;
     }
 
     OStorePageLink & operator= (sal_uInt32 nAddr)
@@ -308,10 +284,11 @@ struct PageData
     public:
         template< class T > T * construct()
         {
-            void * page = nullptr; sal_uInt16 size = 0;
-            if (allocate (&page, &size))
+            void * page = nullptr;
+            sal_uInt16 nSize = 0;
+            if (allocate (&page, &nSize))
             {
-                return new(page) T(size);
+                return new(page) T(nSize);
             }
             return 0;
         }
@@ -390,8 +367,7 @@ struct PageData
      */
     void guard (sal_uInt32 nAddr)
     {
-        sal_uInt32 nCRC32 = 0;
-        nCRC32 = rtl_crc32 (nCRC32, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
+        sal_uInt32 nCRC32 = rtl_crc32 (0, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
         m_aDescr.m_nAddr = store::htonl(nAddr);
         nCRC32 = rtl_crc32 (nCRC32, &m_aDescr, static_cast<sal_uInt32>(theSize - sizeof(G)));
         m_aGuard.m_nCRC32 = store::htonl(nCRC32);
@@ -401,8 +377,7 @@ struct PageData
      */
     storeError verify (sal_uInt32 nAddr) const
     {
-        sal_uInt32 nCRC32 = 0;
-        nCRC32 = rtl_crc32 (nCRC32, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
+        sal_uInt32 nCRC32 = rtl_crc32 (0, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
         nCRC32 = rtl_crc32 (nCRC32, &m_aDescr, static_cast<sal_uInt32>(theSize - sizeof(G)));
         if (m_aGuard.m_nCRC32 != store::htonl(nCRC32))
             return store_E_InvalidChecksum;
@@ -443,12 +418,12 @@ class PageHolderObject
 public:
     bool construct (rtl::Reference< PageData::Allocator > const & rxAllocator)
     {
-        if ((m_xPage.get() == 0) && rxAllocator.is())
+        if (!m_xPage && rxAllocator.is())
         {
             std::shared_ptr<PageData> tmp (rxAllocator->construct<T>(), PageData::Deallocate(rxAllocator));
             m_xPage.swap (tmp);
         }
-        return (m_xPage.get() != 0);
+        return bool(m_xPage);
     }
 
     explicit PageHolderObject (std::shared_ptr<PageData> const & rxPage = std::shared_ptr<PageData>())
@@ -473,7 +448,7 @@ public:
 
     bool is() const
     {
-        return (m_xPage.get() != 0);
+        return bool(m_xPage);
     }
 
     std::shared_ptr<PageData> & get() { return m_xPage; }
@@ -507,7 +482,7 @@ public:
         return (*pImpl);
     }
 
-    static storeError guard (std::shared_ptr<PageData> & rxPage, sal_uInt32 nAddr)
+    static storeError guard (std::shared_ptr<PageData> const & rxPage, sal_uInt32 nAddr)
     {
         PageData * pHead = rxPage.get();
         if (!pHead)
@@ -539,8 +514,6 @@ public:
     }
 };
 
-class OStorePageBIOS;
-
 class OStorePageObject
 {
     typedef PageData       page;
@@ -550,11 +523,11 @@ public:
      */
     static void * operator new (size_t n)
     {
-        return rtl_allocateMemory (sal_uInt32(n));
+        return std::malloc(sal_uInt32(n));
     }
     static void operator delete (void * p)
     {
-        rtl_freeMemory (p);
+        std::free (p);
     }
 
     /** State.
@@ -575,7 +548,7 @@ protected:
 
     /** Construction.
      */
-    explicit OStorePageObject (std::shared_ptr<PageData> const & rxPage = std::shared_ptr<PageData>())
+    explicit OStorePageObject (std::shared_ptr<PageData> const & rxPage)
         : m_xPage (rxPage), m_bDirty (false)
     {}
 
@@ -597,7 +570,7 @@ public:
             return store_E_InvalidAccess;
 
         std::shared_ptr<PageData> tmp (rxAllocator->construct<U>(), PageData::Deallocate(rxAllocator));
-        if (!tmp.get())
+        if (!tmp)
             return store_E_OutOfMemory;
 
         m_xPage.swap (tmp);

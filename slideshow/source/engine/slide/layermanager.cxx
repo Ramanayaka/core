@@ -21,9 +21,7 @@
 #include <tools/diagnose_ex.h>
 #include <basegfx/range/b1drange.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
+#include <cppcanvas/canvas.hxx>
 
 #include <functional>
 #include <algorithm>
@@ -32,20 +30,18 @@
 
 using namespace ::com::sun::star;
 
-namespace std
+namespace
 {
     // add operator!= for weak_ptr
-    inline bool operator!=( slideshow::internal::LayerWeakPtr const& rLHS,
+    bool notEqual( slideshow::internal::LayerWeakPtr const& rLHS,
                             slideshow::internal::LayerWeakPtr const& rRHS )
     {
         return rLHS.lock().get() != rRHS.lock().get();
     }
 }
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         template<typename LayerFunc,
                  typename ShapeFunc> void LayerManager::manageViews(
                      LayerFunc layerFunc,
@@ -88,7 +84,7 @@ namespace slideshow
 
             // init views
             for( const auto& rView : mrViews )
-                this->viewAdded( rView );
+                viewAdded( rView );
         }
 
         void LayerManager::activate()
@@ -102,7 +98,7 @@ namespace slideshow
             for( const auto& pLayer : maLayers )
                 pLayer->clearUpdateRanges();
 
-            updateShapeLayers( true/*bSlideBackgoundPainted*/ );
+            updateShapeLayers( true/*bSlideBackgroundPainted*/ );
         }
 
         void LayerManager::deactivate()
@@ -214,9 +210,8 @@ namespace slideshow
             ENSURE_OR_THROW( rShape, "LayerManager::addShape(): invalid Shape" );
 
             // add shape to XShape hash map
-            if( !maXShapeHash.insert(
-                    XShapeHash::value_type( rShape->getXShape(),
-                                            rShape) ).second )
+            if( !maXShapeHash.emplace(rShape->getXShape(),
+                                      rShape).second )
             {
                 // entry already present, nothing to do
                 return;
@@ -252,6 +247,19 @@ namespace slideshow
             // update shape, it's just added and not yet painted
             if( rShape->isVisible() )
                 notifyShapeUpdate( rShape );
+        }
+
+        bool LayerManager::removeShape( const ShapeSharedPtr& rShape )
+        {
+            // remove shape from XShape hash map
+            if( maXShapeHash.erase( rShape->getXShape() ) == 0 )
+                return false; // shape not in map
+
+            OSL_ASSERT( maAllShapes.find(rShape) != maAllShapes.end() );
+
+            implRemoveShape( rShape );
+
+            return true;
         }
 
         void LayerManager::implRemoveShape( const ShapeSharedPtr& rShape )
@@ -294,7 +302,7 @@ namespace slideshow
         {
             ENSURE_OR_THROW( xShape.is(), "LayerManager::lookupShape(): invalid Shape" );
 
-            const XShapeHash::const_iterator aIter( maXShapeHash.find( xShape ));
+            const XShapeToShapeMap::const_iterator aIter( maXShapeHash.find( xShape ));
             if( aIter == maXShapeHash.end() )
                 return ShapeSharedPtr(); // not found
 
@@ -331,6 +339,11 @@ namespace slideshow
             }
 
             return pSubset;
+        }
+
+        const XShapeToShapeMap& LayerManager::getXShapeToShapeMap() const
+        {
+            return maXShapeHash;
         }
 
         void LayerManager::revokeSubset( const AttributableShapeSharedPtr& rOrigShape,
@@ -533,7 +546,7 @@ namespace slideshow
                 {
                 }
 
-                virtual bool isOnView(std::shared_ptr<View> const& /*rView*/) const override
+                virtual bool isOnView(ViewSharedPtr const& /*rView*/) const override
                 {
                     return true; // visible on all views
                 }
@@ -601,7 +614,7 @@ namespace slideshow
         bool LayerManager::renderTo( const ::cppcanvas::CanvasSharedPtr& rTargetCanvas ) const
         {
             bool bRet( true );
-            ViewLayerSharedPtr pTmpLayer( new DummyLayer( rTargetCanvas ) );
+            ViewLayerSharedPtr pTmpLayer = std::make_shared<DummyLayer>( rTargetCanvas );
 
             for( const auto& rShape : maAllShapes )
             {
@@ -622,7 +635,7 @@ namespace slideshow
                 {
                     // TODO(E1): Might be superfluous. Nowadays,
                     // addViewLayer swallows all errors, anyway.
-                    SAL_WARN( "slideshow", comphelper::anyToString( cppu::getCaughtException() ) );
+                    TOOLS_WARN_EXCEPTION( "slideshow", "" );
                     // at least one shape could not be rendered
                     bRet = false;
                 }
@@ -651,27 +664,27 @@ namespace slideshow
                                                const LayerShapeMap::const_iterator&  aEndLayerShapes )
         {
             const bool bLayerExists( maLayers.size() > nCurrLayerIndex );
-            if( bLayerExists )
+            if( !bLayerExists )
+                return;
+
+            const LayerSharedPtr& rLayer( maLayers.at(nCurrLayerIndex) );
+            const bool bLayerResized( rLayer->commitBounds() );
+            rLayer->setPriority( basegfx::B1DRange(nCurrLayerIndex,
+                                                   nCurrLayerIndex+1) );
+
+            if( !bLayerResized )
+                return;
+
+            // need to re-render whole layer - start from
+            // clean state
+            rLayer->clearContent();
+
+            // render and remove from update set
+            while( aFirstLayerShape != aEndLayerShapes )
             {
-                const LayerSharedPtr& rLayer( maLayers.at(nCurrLayerIndex) );
-                const bool bLayerResized( rLayer->commitBounds() );
-                rLayer->setPriority( basegfx::B1DRange(nCurrLayerIndex,
-                                                       nCurrLayerIndex+1) );
-
-                if( bLayerResized )
-                {
-                    // need to re-render whole layer - start from
-                    // clean state
-                    rLayer->clearContent();
-
-                    // render and remove from update set
-                    while( aFirstLayerShape != aEndLayerShapes )
-                    {
-                        maUpdateShapes.erase(aFirstLayerShape->first);
-                        aFirstLayerShape->first->render();
-                        ++aFirstLayerShape;
-                    }
-                }
+                maUpdateShapes.erase(aFirstLayerShape->first);
+                aFirstLayerShape->first->render();
+                ++aFirstLayerShape;
             }
         }
 
@@ -714,8 +727,7 @@ namespace slideshow
 
             // to avoid tons of temporaries, create weak_ptr to Layers
             // beforehand
-            std::vector< LayerWeakPtr > aWeakLayers(maLayers.size());
-            std::copy(maLayers.begin(),maLayers.end(),aWeakLayers.begin());
+            std::vector< LayerWeakPtr > aWeakLayers(maLayers.begin(),maLayers.end());
 
             std::size_t                   nCurrLayerIndex(0);
             bool                          bIsBackgroundLayer(true);
@@ -723,7 +735,6 @@ namespace slideshow
             LayerShapeMap::iterator       aCurrShapeEntry( maAllShapes.begin() );
             LayerShapeMap::iterator       aCurrLayerFirstShapeEntry( maAllShapes.begin() );
             const LayerShapeMap::iterator aEndShapeEntry ( maAllShapes.end() );
-            ShapeUpdateSet                aUpdatedShapes; // shapes that need update
             while( aCurrShapeEntry != aEndShapeEntry )
             {
                 const ShapeSharedPtr pCurrShape( aCurrShapeEntry->first );
@@ -746,7 +757,7 @@ namespace slideshow
                     bIsBackgroundLayer = false;
 
                     if( aWeakLayers.size() <= nCurrLayerIndex ||
-                        aWeakLayers.at(nCurrLayerIndex) != aCurrShapeEntry->second )
+                        notEqual(aWeakLayers.at(nCurrLayerIndex), aCurrShapeEntry->second) )
                     {
                         // no more layers left, or shape was not
                         // member of this layer - create a new one
@@ -763,7 +774,7 @@ namespace slideshow
                 // above invalidates iterators
                 LayerSharedPtr& rCurrLayer( maLayers.at(nCurrLayerIndex) );
                 LayerWeakPtr& rCurrWeakLayer( aWeakLayers.at(nCurrLayerIndex) );
-                if( rCurrWeakLayer != aCurrShapeEntry->second )
+                if( notEqual(rCurrWeakLayer, aCurrShapeEntry->second) )
                 {
                     // mismatch: shape is not contained in current
                     // layer - move shape to that layer, then.
@@ -817,7 +828,6 @@ namespace slideshow
 
             mbLayerAssociationDirty = false;
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

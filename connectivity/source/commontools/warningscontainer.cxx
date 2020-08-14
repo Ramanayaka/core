@@ -21,6 +21,9 @@
 #include <connectivity/warningscontainer.hxx>
 #include <connectivity/dbexception.hxx>
 
+#include <com/sun/star/sdb/SQLContext.hpp>
+#include <com/sun/star/sdbc/XWarningsSupplier.hpp>
+
 #include <o3tl/any.hxx>
 #include <osl/diagnose.h>
 
@@ -39,8 +42,8 @@ namespace dbtools
             _rChainLeft = _rChainRight;
         else
         {
-            // to travel the chain by reference (and not by value), we need the getValue ...
-            // looks like a hack, but the meaning of getValue is documented, and it's the only chance for reference-traveling ....
+            // to travel the chain by reference (and not by value), we need the getValue...
+            // looks like a hack, but the meaning of getValue is documented, and it's the only chance for reference-traveling...
 
             OSL_ENSURE( SQLExceptionInfo( _rChainLeft ).isValid(),
                 "lcl_concatWarnings: invalid warnings chain (this will crash)!" );
@@ -74,7 +77,7 @@ namespace dbtools
     }
 
 
-    Any SAL_CALL WarningsContainer::getWarnings(  ) const
+    Any WarningsContainer::getWarnings(  ) const
     {
         Any aAllWarnings;
         if ( m_xExternalWarnings.is() )
@@ -87,7 +90,7 @@ namespace dbtools
     }
 
 
-    void SAL_CALL WarningsContainer::clearWarnings(  )
+    void WarningsContainer::clearWarnings(  )
     {
         if ( m_xExternalWarnings.is() )
             m_xExternalWarnings->clearWarnings();
@@ -95,7 +98,7 @@ namespace dbtools
     }
 
 
-    void WarningsContainer::appendWarning( const OUString& _rWarning, const sal_Char* _pAsciiSQLState, const Reference< XInterface >& _rxContext )
+    void WarningsContainer::appendWarning( const OUString& _rWarning, const char* _pAsciiSQLState, const Reference< XInterface >& _rxContext )
     {
         appendWarning( SQLWarning( _rWarning, _rxContext, OUString::createFromAscii( _pAsciiSQLState ), 0, Any() ) );
     }

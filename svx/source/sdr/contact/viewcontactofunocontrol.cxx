@@ -21,22 +21,19 @@
 
 #include <sdr/contact/viewcontactofunocontrol.hxx>
 #include <sdr/contact/viewobjectcontactofunocontrol.hxx>
-#include <sdr/contact/objectcontactofpageview.hxx>
-#include <svx/sdr/contact/displayinfo.hxx>
+#include <svx/sdr/contact/objectcontactofpageview.hxx>
 #include <svx/svdouno.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/svdview.hxx>
 #include <svx/sdrpagewindow.hxx>
 
-#include "svx/sdrpaintwindow.hxx"
-#include <tools/diagnose_ex.h>
-#include <vcl/pdfextoutdevdata.hxx>
+#include <vcl/canvastools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <drawinglayer/primitive2d/controlprimitive2d.hxx>
 #include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
 
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 
     using ::com::sun::star::awt::XControl;
@@ -94,15 +91,7 @@ namespace sdr { namespace contact {
         // create range. Use model data directly, not getBoundRect()/getSnapRect; these will use
         // the primitive data themselves in the long run. Use SdrUnoObj's (which is a SdrRectObj)
         // call to GetGeoRect() to access SdrTextObj::aRect directly and without executing anything
-        tools::Rectangle aRectangle(GetSdrUnoObj().GetGeoRect());
-        // Hack for calc, transform position of object according
-        // to current zoom so as objects relative position to grid
-        // appears stable
-        Point aGridOffset = GetSdrUnoObj().GetGridOffset();
-        aRectangle += aGridOffset;
-        const basegfx::B2DRange aRange(
-            aRectangle.Left(), aRectangle.Top(),
-            aRectangle.Right(), aRectangle.Bottom());
+        const basegfx::B2DRange aRange = vcl::unotools::b2DRectangleFromRectangle(GetSdrUnoObj().GetGeoRect());
 
         // create object transform
         basegfx::B2DHomMatrix aTransform;
@@ -137,7 +126,7 @@ namespace sdr { namespace contact {
     }
 
 
-} } // namespace sdr::contact
+} // namespace sdr::contact
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

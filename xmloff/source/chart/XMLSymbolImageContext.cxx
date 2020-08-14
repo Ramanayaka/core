@@ -20,14 +20,16 @@
 #include "XMLSymbolImageContext.hxx"
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmltkmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/XMLBase64ImportContext.hxx>
 #include <com/sun/star/io/XOutputStream.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
 
+using namespace css;
 
-using namespace ::com::sun::star;
+namespace {
 
 enum SvXMLTokenMapAttrs
 {
@@ -37,7 +39,9 @@ enum SvXMLTokenMapAttrs
     XML_TOK_SYMBOL_IMAGE_SHOW,
 };
 
-static const SvXMLTokenMapEntry aSymbolImageAttrTokenMap[] =
+}
+
+const SvXMLTokenMapEntry aSymbolImageAttrTokenMap[] =
 {
     { XML_NAMESPACE_XLINK,  ::xmloff::token::XML_HREF,     XML_TOK_SYMBOL_IMAGE_HREF    },
     { XML_NAMESPACE_XLINK,  ::xmloff::token::XML_TYPE,     XML_TOK_SYMBOL_IMAGE_TYPE    },
@@ -61,7 +65,7 @@ XMLSymbolImageContext::~XMLSymbolImageContext()
 
 void XMLSymbolImageContext::StartElement( const uno::Reference< xml::sax::XAttributeList >& xAttrList )
 {
-    SvXMLTokenMap aTokenMap( aSymbolImageAttrTokenMap );
+    static const SvXMLTokenMap aTokenMap( aSymbolImageAttrTokenMap );
     OUString aLocalName;
 
     sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
@@ -88,7 +92,7 @@ void XMLSymbolImageContext::StartElement( const uno::Reference< xml::sax::XAttri
     }
 }
 
-SvXMLImportContext* XMLSymbolImageContext::CreateChildContext(
+SvXMLImportContextRef XMLSymbolImageContext::CreateChildContext(
     sal_uInt16 nPrefix, const OUString& rLocalName,
     const uno::Reference< xml::sax::XAttributeList > & xAttrList )
 {
@@ -105,32 +109,28 @@ SvXMLImportContext* XMLSymbolImageContext::CreateChildContext(
                                                        mxBase64Stream );
         }
     }
-    if( ! pContext )
-    {
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
-    }
 
     return pContext;
 }
 
 void XMLSymbolImageContext::EndElement()
 {
-    OUString sResolvedURL;
+    uno::Reference<graphic::XGraphic> xGraphic;
 
-    if( !msURL.isEmpty() )
+    if (!msURL.isEmpty())
     {
-        sResolvedURL = GetImport().ResolveGraphicObjectURL( msURL, false );
+        xGraphic = GetImport().loadGraphicByURL(msURL);
     }
-    else if( mxBase64Stream.is() )
+    else if (mxBase64Stream.is())
     {
-        sResolvedURL = GetImport().ResolveGraphicObjectURLFromBase64( mxBase64Stream );
+        xGraphic = GetImport().loadGraphicFromBase64(mxBase64Stream);
         mxBase64Stream = nullptr;
     }
 
-    if( !sResolvedURL.isEmpty())
+    if (xGraphic.is())
     {
         // aProp is a member of XMLElementPropertyContext
-        aProp.maValue <<= sResolvedURL;
+        aProp.maValue <<= xGraphic;
         SetInsert( true );
     }
 

@@ -60,15 +60,20 @@
         2. the content of layout object
  ************************************************************************/
 
-#include "lwpglobalmgr.hxx"
+#include <lwpglobalmgr.hxx>
 #include "lwpstory.hxx"
-#include "xfilter/xfstylemanager.hxx"
+#include <xfilter/xftextstyle.hxx>
+#include <xfilter/xfstylemanager.hxx>
 #include "lwppara.hxx"
-#include "lwpobjfactory.hxx"
+#include <lwpobjfactory.hxx>
 #include "lwppagelayout.hxx"
+#include <rtl/ustrbuf.hxx>
+
+#include <algorithm>
+#include <o3tl/sorted_vector.hxx>
 
 
-LwpStory::LwpStory(LwpObjectHeader &objHdr, LwpSvStream* pStrm)
+LwpStory::LwpStory(LwpObjectHeader const &objHdr, LwpSvStream* pStrm)
     : LwpContent(objHdr, pStrm)
     , m_bPMModified(false)
     , m_pCurrentLayout(nullptr)
@@ -100,14 +105,19 @@ void LwpStory::XFConvert(XFContentContainer* pCont)
     //process para list
     XFContentContainer* pParaCont = pCont;
     rtl::Reference<LwpPara> xPara(dynamic_cast<LwpPara*>(GetFirstPara().obj().get()));
+    o3tl::sorted_vector<LwpPara*> aConverted;
     while (xPara.is())
     {
         xPara->SetFoundry(m_pFoundry);
         xPara->XFConvert(pParaCont);
+        aConverted.insert(xPara.get());
 
         //Get the xfcontainer for the next para
         pParaCont = xPara->GetXFContainer();
-        xPara.set(dynamic_cast<LwpPara*>(xPara->GetNext().obj().get()));
+        rtl::Reference<LwpPara> xNext(dynamic_cast<LwpPara*>(xPara->GetNext().obj().get()));
+        if (aConverted.find(xNext.get()) != aConverted.end())
+            throw std::runtime_error("loop in conversion");
+        xPara = xNext;
     }
 
     //process frame which anchor is to cell after converter all the para
@@ -130,13 +140,15 @@ void LwpStory::XFConvert(XFContentContainer* pCont)
 void LwpStory::RegisterStyle()
 {
     rtl::Reference<LwpPara> xPara(dynamic_cast<LwpPara*>(GetFirstPara().obj().get()));
+    o3tl::sorted_vector<LwpPara*> aSeen;
     while (xPara.is())
     {
-        if (xPara->GetFoundry())
-            throw std::runtime_error("loop in register style");
+        aSeen.insert(xPara.get());
         xPara->SetFoundry(m_pFoundry);
         xPara->DoRegisterStyle();
         xPara.set(dynamic_cast<LwpPara*>(xPara->GetNext().obj().get()));
+        if (aSeen.find(xPara.get()) != aSeen.end())
+            throw std::runtime_error("loop in register style");
     }
 }
 
@@ -168,26 +180,14 @@ void LwpStory::SetCurrentLayout(LwpPageLayout *pPageLayout)
     m_bPMModified = true;
 }
 
-void LwpStory::AddPageLayout(LwpPageLayout * pObject)
-{
-    m_LayoutList.push_back(pObject);
-}
 /**************************************************************************
  * @descr:   Get the next page layout relative to m_pCurrentLayout
 **************************************************************************/
 LwpPageLayout* LwpStory::GetNextPageLayout()
 {
-    std::vector<LwpPageLayout*>::iterator it;
-    for( it = m_LayoutList.begin(); it != m_LayoutList.end(); ++it )
-    {
-        if(m_pCurrentLayout == *it)
-        {
-            if((it+1) !=m_LayoutList.end())
-            {
-                return *(it+1);
-            }
-        }
-    }
+    std::vector<LwpPageLayout*>::iterator it = std::find(m_LayoutList.begin(), m_LayoutList.end(), m_pCurrentLayout);
+    if (it != m_LayoutList.end() && (it+1) != m_LayoutList.end())
+        return *(it+1);
     return nullptr;
 }
 /**************************************************************************
@@ -198,7 +198,7 @@ void LwpStory::SortPageLayout()
     //Get all the pagelayout and store in list
     std::vector<LwpPageLayout*>  aLayoutList;
     rtl::Reference<LwpVirtualLayout> xLayout(GetLayout(nullptr));
-    while (xLayout.get())
+    while (xLayout)
     {
         LwpPageLayout *pLayout = xLayout->IsPage()
             ? dynamic_cast<LwpPageLayout*>(xLayout.get())
@@ -216,22 +216,15 @@ void LwpStory::SortPageLayout()
         xLayout = GetLayout(xLayout.get());
     }
     // sort the pagelayout according to their position
-    std::vector<LwpPageLayout*>::iterator aIt;
     if (!aLayoutList.empty())
     {
-        for( aIt = aLayoutList.begin(); aIt != aLayoutList.end() -1; ++aIt)
+        for( std::vector<LwpPageLayout*>::iterator aIt = aLayoutList.begin(); aIt != aLayoutList.end() -1; ++aIt)
         {
             for( std::vector<LwpPageLayout*>::iterator bIt = aIt +1; bIt != aLayoutList.end(); ++bIt )
             {
-                if(**aIt < **bIt)
+                if(!(**aIt < **bIt))
                 {
-                    continue;
-                }
-                else
-                {
-                    LwpPageLayout* pTemp = *aIt;
-                    *aIt = *bIt;
-                    *bIt = pTemp;
+                    std::swap(*aIt, *bIt);
                 }
             }
         }
@@ -240,9 +233,9 @@ void LwpStory::SortPageLayout()
     //put all the sorted  layouts into list
     m_LayoutList.clear();
 
-    for( aIt = aLayoutList.begin(); aIt != aLayoutList.end(); ++aIt)
+    for (auto const& layout : aLayoutList)
     {
-        m_LayoutList.push_back(*aIt);
+        m_LayoutList.push_back(layout);
     }
 }
 
@@ -330,16 +323,20 @@ void LwpStory::XFConvertFrameInPage(XFContentContainer* pCont)
     while (xLayout.is())
     {
         rtl::Reference<LwpVirtualLayout> xFrameLayout(dynamic_cast<LwpVirtualLayout*>(xLayout->GetChildHead().obj().get()));
+        o3tl::sorted_vector<LwpVirtualLayout*> aSeen;
         while (xFrameLayout.is())
         {
-            if((xFrameLayout->IsAnchorPage()
-                &&(xFrameLayout->IsFrame()
-                      || xFrameLayout->IsSuperTable()
-                      || xFrameLayout->IsGroupHead())))
+            aSeen.insert(xFrameLayout.get());
+            if( xFrameLayout->IsAnchorPage()
+                && (xFrameLayout->IsFrame()
+                    || xFrameLayout->IsSuperTable()
+                    || xFrameLayout->IsGroupHead()) )
             {
                 xFrameLayout->DoXFConvert(pCont);
             }
             xFrameLayout.set(dynamic_cast<LwpVirtualLayout*>(xFrameLayout->GetNext().obj().get()));
+            if (aSeen.find(xFrameLayout.get()) != aSeen.end())
+                throw std::runtime_error("loop in conversion");
         }
         xLayout = GetLayout(xLayout.get());
     }
@@ -350,16 +347,20 @@ void LwpStory::XFConvertFrameInPage(XFContentContainer* pCont)
 void LwpStory::XFConvertFrameInFrame(XFContentContainer* pCont)
 {
     rtl::Reference<LwpVirtualLayout> xLayout(GetLayout(nullptr));
-    while (xLayout.get())
+    while (xLayout)
     {
         rtl::Reference<LwpVirtualLayout> xFrameLayout(dynamic_cast<LwpVirtualLayout*>(xLayout->GetChildHead().obj().get()));
+        o3tl::sorted_vector<LwpVirtualLayout*> aSeen;
         while (xFrameLayout.is())
         {
+            aSeen.insert(xFrameLayout.get());
             if (xFrameLayout->IsAnchorFrame())
             {
                 xFrameLayout->DoXFConvert(pCont);
             }
             xFrameLayout.set(dynamic_cast<LwpVirtualLayout*>(xFrameLayout->GetNext().obj().get()));
+            if (aSeen.find(xFrameLayout.get()) != aSeen.end())
+                throw std::runtime_error("loop in register style");
         }
         xLayout = GetLayout(xLayout.get());
     }
@@ -418,16 +419,16 @@ OUString LwpStory::GetContentText(bool bAllText)
 {
     if (bAllText)//convert all text fribs
     {
-        OUString sText("");
+        OUStringBuffer sText;
         //process para list
         LwpPara* pPara = dynamic_cast<LwpPara*>(GetFirstPara().obj().get());
         while (pPara)
         {
             pPara->SetFoundry(m_pFoundry);
-            sText += pPara->GetContentText(true);
+            sText.append(pPara->GetContentText(true));
             pPara = dynamic_cast<LwpPara*>(pPara->GetNext().obj().get());
         }
-        return sText;
+        return sText.makeStringAndClear();
     }
     else //only the first text frib
     {
@@ -457,27 +458,18 @@ OUString LwpStory::RegisterFirstFribStyle()
     XFTextStyle* pBaseStyle = pXFStyleManager->FindTextStyle(pFirstFrib->GetStyleName());
     if (pBaseStyle == nullptr)
         return OUString();
-    XFTextStyle* pStyle = new XFTextStyle;
+    std::unique_ptr<XFTextStyle> pStyle(new XFTextStyle);
     *pStyle = *pBaseStyle;
     OUString sName = "Ruby" + pFirstFrib->GetStyleName();
     pStyle->SetStyleName(sName);
-    pXFStyleManager->AddStyle(pStyle);
+    pXFStyleManager->AddStyle(std::move(pStyle));
     return sName;
 }
 
 bool LwpStory::IsBullStyleUsedBefore(const OUString& rStyleName, sal_uInt8 nPos)
 {
-    std::vector <NamePosPair>::reverse_iterator rIter;
-    for (rIter = m_vBulletStyleNameList.rbegin(); rIter != m_vBulletStyleNameList.rend(); ++rIter)
-    {
-        OUString aName = (*rIter).first;
-        sal_uInt8 nPosition = (*rIter).second;
-        if (aName == rStyleName && nPosition == nPos)
-        {
-            return true;
-        }
-    }
-    return false;
+    return std::any_of(m_vBulletStyleNameList.rbegin(), m_vBulletStyleNameList.rend(),
+        [&rStyleName, &nPos](const NamePosPair& rPair) { return rPair.first == rStyleName && rPair.second == nPos; });
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,22 +21,19 @@
 #define INCLUDED_SD_SOURCE_UI_INC_SLIDESORTERVIEWSHELL_HXX
 
 #include "ViewShell.hxx"
-#include "glob.hxx"
+#include <glob.hxx>
 #include <sfx2/shell.hxx>
-#include <sfx2/viewfac.hxx>
-#include "sddllapi.h"
+#include <sddllapi.h>
 #include <memory>
 #include <vector>
 
-namespace sd { namespace slidesorter { namespace controller {
-class SlotManager;
-} } }
+namespace sd::slidesorter::controller { class SlotManager; }
 
-namespace sd { namespace slidesorter {
+namespace sd::slidesorter {
 
 class SlideSorter;
 
-class SlideSorterViewShell
+class SAL_DLLPUBLIC_RTTI SlideSorterViewShell
     : public ViewShell
 {
     friend class controller::SlotManager;
@@ -199,7 +196,7 @@ protected:
     /** Override this method to handle a missing tool bar correctly.
         This is the case when the slide sorter is not the main view shell.
     */
-    virtual ::svl::IUndoManager* ImpGetUndoManager() const override;
+    virtual SfxUndoManager* ImpGetUndoManager() const override;
 
 private:
     std::shared_ptr<SlideSorter> mpSlideSorter;
@@ -232,7 +229,7 @@ private:
 
 typedef std::shared_ptr<SlideSorterViewShell::PageSelection> SharedPageSelection;
 
-} } // end of namespace ::sd::slidesorter
+} // end of namespace ::sd::slidesorter
 
 #endif
 

@@ -29,14 +29,14 @@
 
 /*
 [Description]
-This Item transports a editeng::SvxBorderLine.
+This Item transports an editeng::SvxBorderLine.
 */
 
 namespace editeng {
     class SvxBorderLine;
 }
 
-class EDITENG_DLLPUBLIC SvxLineItem : public SfxPoolItem
+class EDITENG_DLLPUBLIC SvxLineItem final : public SfxPoolItem
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -44,7 +44,6 @@ public:
     explicit SvxLineItem( const sal_uInt16 nId );
     SvxLineItem( const SvxLineItem& rCpy );
     virtual ~SvxLineItem() override;
-    SvxLineItem &operator=( const SvxLineItem& rLine );
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -52,11 +51,9 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion ) const override;
+    virtual SvxLineItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual void             ScaleMetrics( long nMult, long nDiv ) override;
     virtual bool             HasMetrics() const override;
 

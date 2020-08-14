@@ -28,8 +28,8 @@ typedef tools::SvRef<SmDocShell> SmDocShellRef;
 class ParseTest : public test::BootstrapFixture
 {
 public:
-    virtual void setUp() SAL_OVERRIDE;
-    virtual void tearDown() SAL_OVERRIDE;
+    virtual void setUp() override;
+    virtual void tearDown() override;
 
 private:
     void testMinus();
@@ -65,16 +65,16 @@ void ParseTest::tearDown()
  */
 void ParseTest::testMinus()
 {
-    std::unique_ptr<SmTableNode> pNode(SmParser().Parse("-1.2"));
-    CPPUNIT_ASSERT_EQUAL(sal_uInt16(1), pNode->GetNumSubNodes());
+    auto pNode = SmParser().Parse("-1.2");
+    CPPUNIT_ASSERT_EQUAL(size_t(1), pNode->GetNumSubNodes());
     const SmNode *pNode0 = pNode->GetSubNode(0);
     CPPUNIT_ASSERT(pNode0);
     CPPUNIT_ASSERT_EQUAL(SmNodeType::Line, pNode0->GetType());
-    CPPUNIT_ASSERT_EQUAL(sal_uInt16(1), pNode0->GetNumSubNodes());
+    CPPUNIT_ASSERT_EQUAL(size_t(1), pNode0->GetNumSubNodes());
     const SmNode *pNode00 = pNode0->GetSubNode(0);
     CPPUNIT_ASSERT(pNode00);
     CPPUNIT_ASSERT_EQUAL(SmNodeType::UnHor, pNode00->GetType());
-    CPPUNIT_ASSERT_EQUAL(sal_uInt16(2), pNode00->GetNumSubNodes());
+    CPPUNIT_ASSERT_EQUAL(size_t(2), pNode00->GetNumSubNodes());
     const SmNode *pNode000 = pNode00->GetSubNode(0);
     CPPUNIT_ASSERT(pNode000);
     CPPUNIT_ASSERT_EQUAL(SmNodeType::Math, pNode000->GetType());
@@ -98,17 +98,17 @@ void ParseTest::testMinus()
  */
 void ParseTest::testNospace()
 {
-    std::unique_ptr<SmTableNode> pNode(SmParser().Parse("nospace{ nitalic d {F(x) G(x)} }"));
-    CPPUNIT_ASSERT_EQUAL(sal_uInt16(1), pNode->GetNumSubNodes());
+    auto pNode = SmParser().Parse("nospace{ nitalic d {F(x) G(x)} }");
+    CPPUNIT_ASSERT_EQUAL(size_t(1), pNode->GetNumSubNodes());
     const SmNode *pNode0 = pNode->GetSubNode(0);
     CPPUNIT_ASSERT(pNode0);
     CPPUNIT_ASSERT_EQUAL(SmNodeType::Line, pNode0->GetType());
-    CPPUNIT_ASSERT_EQUAL(sal_uInt16(1), pNode0->GetNumSubNodes());
+    CPPUNIT_ASSERT_EQUAL(size_t(1), pNode0->GetNumSubNodes());
     const SmNode *pNode00 = pNode0->GetSubNode(0);
     CPPUNIT_ASSERT(pNode00);
     CPPUNIT_ASSERT_EQUAL(SmNodeType::Expression, pNode00->GetType());
     CPPUNIT_ASSERT(!static_cast<const SmExpressionNode *>(pNode00)->IsUseExtraSpaces());
-    CPPUNIT_ASSERT_EQUAL(sal_uInt16(2), pNode00->GetNumSubNodes());
+    CPPUNIT_ASSERT_EQUAL(size_t(2), pNode00->GetNumSubNodes());
     const SmNode *pNode000 = pNode00->GetSubNode(0);
     CPPUNIT_ASSERT(pNode000);
     CPPUNIT_ASSERT_EQUAL(SmNodeType::Font, pNode000->GetType());
@@ -118,7 +118,7 @@ void ParseTest::testNospace()
     CPPUNIT_ASSERT(pNode001);
     CPPUNIT_ASSERT_EQUAL(SmNodeType::Expression, pNode001->GetType());
     CPPUNIT_ASSERT(static_cast<const SmExpressionNode *>(pNode001)->IsUseExtraSpaces());
-    CPPUNIT_ASSERT_EQUAL(sal_uInt16(2), pNode00->GetNumSubNodes());
+    CPPUNIT_ASSERT_EQUAL(size_t(2), pNode00->GetNumSubNodes());
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ParseTest);

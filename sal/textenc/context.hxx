@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SAL_TEXTENC_CONTEXT_HXX
-#define INCLUDED_SAL_TEXTENC_CONTEXT_HXX
+#pragma once
 
-
-#include "sal/types.h"
+#include <sal/types.h>
 
 struct ImplUnicodeToTextContext
 {
@@ -33,7 +31,5 @@ void * ImplCreateUnicodeToTextContext();
 void ImplResetUnicodeToTextContext(void * pContext);
 
 void ImplDestroyUnicodeToTextContext(void * pContext);
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

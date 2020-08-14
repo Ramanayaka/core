@@ -30,12 +30,12 @@ namespace oox {
     class PropertyMap;
 }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-    class SlideTransitionContext : public ::oox::core::FragmentHandler2
+    class SlideTransitionContext final : public ::oox::core::FragmentHandler2
     {
     public:
-        SlideTransitionContext( ::oox::core::FragmentHandler2& rParent,
+        SlideTransitionContext( ::oox::core::FragmentHandler2 const & rParent,
             const AttributeList& rAttributes,
             PropertyMap & aProperties ) throw();
         virtual ~SlideTransitionContext() throw() override;
@@ -47,10 +47,11 @@ namespace oox { namespace ppt {
     private:
         PropertyMap&                    maSlideProperties;
         bool                            mbHasTransition;
+        bool                            mbHasTransitionDuration;
         SlideTransition                 maTransition;
     };
 
-} }
+}
 
 #endif // INCLUDED_OOX_PPT_SLIDETRANSITIONCONTEXT_HXX
 

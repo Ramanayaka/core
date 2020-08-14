@@ -20,11 +20,11 @@
 #include <osl/security.hxx>
 #include <osl/file.hxx>
 #include <osl/socket.h>
+#include <cppuhelper/queryinterface.hxx>
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/ucb/FileSystemNotation.hpp>
 #include <com/sun/star/ucb/IllegalIdentifierException.hpp>
-#include <com/sun/star/beans/PropertyState.hpp>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include "filglob.hxx"
@@ -48,35 +48,6 @@ using namespace com::sun::star::container;
 #endif
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL ucpfile_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * )
-{
-    void * pRet = nullptr;
-
-    Reference< XMultiServiceFactory > xSMgr(
-            static_cast< XMultiServiceFactory * >( pServiceManager ) );
-    Reference< XSingleServiceFactory > xFactory;
-
-
-    // File Content Provider.
-
-
-    if ( fileaccess::TaskManager::getImplementationName_static().
-            equalsAscii( pImplName ) )
-    {
-        xFactory = FileProvider::createServiceFactory( xSMgr );
-    }
-
-
-    if ( xFactory.is() )
-    {
-        xFactory->acquire();
-        pRet = xFactory.get();
-    }
-
-    return pRet;
-}
-
 /****************************************************************************/
 /*                                                                          */
 /*                                                                          */
@@ -87,7 +58,6 @@ extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL ucpfile_component_getFactory(
 FileProvider::FileProvider( const Reference< XComponentContext >& rxContext )
     : m_xContext(rxContext)
     , m_FileSystemNotation(FileSystemNotation::UNKNOWN_NOTATION)
-    , m_pMyShell(nullptr)
 {
 }
 
@@ -96,7 +66,7 @@ FileProvider::~FileProvider()
 }
 
 // XInitialization
-void SAL_CALL FileProvider::init()
+void FileProvider::init()
 {
     if( ! m_pMyShell )
         m_pMyShell.reset( new TaskManager( m_xContext, this, true ) );
@@ -109,7 +79,7 @@ FileProvider::initialize(
 {
     if( ! m_pMyShell ) {
         OUString config;
-        if( aArguments.getLength() > 0 &&
+        if( aArguments.hasElements() &&
             (aArguments[0] >>= config) &&
             config == "NoConfig" )
             m_pMyShell.reset( new TaskManager( m_xContext, this, false ) );
@@ -122,7 +92,7 @@ FileProvider::initialize(
 OUString SAL_CALL
 FileProvider::getImplementationName()
 {
-    return fileaccess::TaskManager::getImplementationName_static();
+    return "com.sun.star.comp.ucb.FileProvider";
 }
 
 sal_Bool SAL_CALL FileProvider::supportsService(const OUString& ServiceName )
@@ -133,28 +103,8 @@ sal_Bool SAL_CALL FileProvider::supportsService(const OUString& ServiceName )
 Sequence< OUString > SAL_CALL
 FileProvider::getSupportedServiceNames()
 {
-    return fileaccess::TaskManager::getSupportedServiceNames_static();
+    return { "com.sun.star.ucb.FileContentProvider" };
 }
-
-Reference< XSingleServiceFactory > SAL_CALL
-FileProvider::createServiceFactory(
-                   const Reference< XMultiServiceFactory >& rxServiceMgr )
-{
-    return Reference< XSingleServiceFactory > ( cppu::createSingleFactory(
-        rxServiceMgr,
-        fileaccess::TaskManager::getImplementationName_static(),
-        FileProvider::CreateInstance,
-        fileaccess::TaskManager::getSupportedServiceNames_static() ) );
-}
-
-Reference< XInterface > SAL_CALL
-FileProvider::CreateInstance(
-    const Reference< XMultiServiceFactory >& xMultiServiceFactory )
-{
-    XServiceInfo* xP = static_cast<XServiceInfo*>(new FileProvider( comphelper::getComponentContext(xMultiServiceFactory) ));
-    return Reference< XInterface >::query( xP );
-}
-
 
 // XContent
 
@@ -169,7 +119,9 @@ FileProvider::queryContent(
                                               aUnc );
 
     if(  err )
+    {
         throw IllegalIdentifierException( THROW_WHERE );
+    }
 
     return Reference< XContent >( new BaseContent( m_pMyShell.get(), xIdentifier, aUnc ) );
 }
@@ -244,6 +196,8 @@ FileProvider::createContentIdentifier(
 
 //XPropertySetInfoImpl
 
+namespace {
+
 class XPropertySetInfoImpl2
     : public cppu::OWeakObject,
       public XPropertySetInfo
@@ -278,6 +232,7 @@ private:
     Sequence< Property > m_seq;
 };
 
+}
 
 XPropertySetInfoImpl2::XPropertySetInfoImpl2()
     : m_seq( 3 )
@@ -318,7 +273,7 @@ Any SAL_CALL
 XPropertySetInfoImpl2::queryInterface( const Type& rType )
 {
     Any aRet = cppu::queryInterface( rType,
-                                          (static_cast< XPropertySetInfo* >(this)) );
+                                     static_cast< XPropertySetInfo* >(this) );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
 
@@ -326,11 +281,12 @@ XPropertySetInfoImpl2::queryInterface( const Type& rType )
 Property SAL_CALL
 XPropertySetInfoImpl2::getPropertyByName( const OUString& aName )
 {
-    for( sal_Int32 i = 0; i < m_seq.getLength(); ++i )
-        if( m_seq[i].Name == aName )
-            return m_seq[i];
+    auto pProp = std::find_if(m_seq.begin(), m_seq.end(),
+            [&aName](const Property& rProp) { return rProp.Name == aName; });
+    if (pProp != m_seq.end())
+        return *pProp;
 
-    throw UnknownPropertyException( THROW_WHERE );
+    throw UnknownPropertyException( aName );
 }
 
 
@@ -345,38 +301,36 @@ sal_Bool SAL_CALL
 XPropertySetInfoImpl2::hasPropertyByName(
     const OUString& aName )
 {
-    for( sal_Int32 i = 0; i < m_seq.getLength(); ++i )
-        if( m_seq[i].Name == aName )
-            return true;
-    return false;
+    return std::any_of(m_seq.begin(), m_seq.end(),
+        [&aName](const Property& rProp) { return rProp.Name == aName; });
 }
 
 
-void SAL_CALL FileProvider::initProperties()
+void FileProvider::initProperties()
 {
     osl::MutexGuard aGuard( m_aMutex );
-    if( ! m_xPropertySetInfo.is() )
-    {
-        osl_getLocalHostname( &m_HostName.pData );
+    if(  m_xPropertySetInfo.is() )
+        return;
+
+    osl_getLocalHostname( &m_HostName.pData );
 
 #if defined ( UNX )
-        m_FileSystemNotation = FileSystemNotation::UNIX_NOTATION;
-#elif defined( WNT )
-        m_FileSystemNotation = FileSystemNotation::DOS_NOTATION;
+    m_FileSystemNotation = FileSystemNotation::UNIX_NOTATION;
+#elif defined( _WIN32 )
+    m_FileSystemNotation = FileSystemNotation::DOS_NOTATION;
 #else
-        m_FileSystemNotation = FileSystemNotation::UNKNOWN_NOTATION;
+    m_FileSystemNotation = FileSystemNotation::UNKNOWN_NOTATION;
 #endif
-        osl::Security aSecurity;
-        aSecurity.getHomeDir( m_HomeDirectory );
+    osl::Security aSecurity;
+    aSecurity.getHomeDir( m_HomeDirectory );
 
-        // static const sal_Int32 UNKNOWN_NOTATION = (sal_Int32)0;
-        // static const sal_Int32 UNIX_NOTATION = (sal_Int32)1;
-        // static const sal_Int32 DOS_NOTATION = (sal_Int32)2;
-        // static const sal_Int32 MAC_NOTATION = (sal_Int32)3;
+    // static const sal_Int32 UNKNOWN_NOTATION = (sal_Int32)0;
+    // static const sal_Int32 UNIX_NOTATION = (sal_Int32)1;
+    // static const sal_Int32 DOS_NOTATION = (sal_Int32)2;
+    // static const sal_Int32 MAC_NOTATION = (sal_Int32)3;
 
-        XPropertySetInfoImpl2* p = new XPropertySetInfoImpl2();
-        m_xPropertySetInfo.set( p );
-    }
+    XPropertySetInfoImpl2* p = new XPropertySetInfoImpl2();
+    m_xPropertySetInfo.set( p );
 }
 
 
@@ -394,12 +348,10 @@ void SAL_CALL
 FileProvider::setPropertyValue( const OUString& aPropertyName,
                                 const Any& )
 {
-    if( aPropertyName == "FileSystemNotation" ||
+    if( !(aPropertyName == "FileSystemNotation" ||
         aPropertyName == "HomeDirectory"      ||
-        aPropertyName == "HostName" )
-        return;
-    else
-        throw UnknownPropertyException( THROW_WHERE );
+        aPropertyName == "HostName") )
+        throw UnknownPropertyException( aPropertyName );
 }
 
 
@@ -421,7 +373,7 @@ FileProvider::getPropertyValue(
         return Any(m_HostName);
     }
     else
-        throw UnknownPropertyException( THROW_WHERE );
+        throw UnknownPropertyException( aPropertyName );
 }
 
 
@@ -492,4 +444,10 @@ OUString SAL_CALL FileProvider::getSystemPathFromFileURL( const OUString& URL )
     return aSystemPath;
 }
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_file_FileProvider_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new FileProvider(context));
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

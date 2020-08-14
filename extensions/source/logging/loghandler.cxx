@@ -48,7 +48,6 @@ namespace logging
     LogHandlerHelper::LogHandlerHelper( const Reference< XComponentContext >& _rxContext, ::osl::Mutex& _rMutex, ::cppu::OBroadcastHelper& _rBHelper )
         :m_eEncoding( RTL_TEXTENCODING_UTF8 )
         ,m_nLevel( LogLevel::SEVERE )
-        ,m_xFormatter( nullptr )
         ,m_xContext( _rxContext )
         ,m_rMutex( _rMutex )
         ,m_rBHelper( _rBHelper )
@@ -86,12 +85,12 @@ namespace logging
         {
             try
             {
-                Reference< XLogFormatter > xFormatter( PlainTextFormatter::create( m_xContext ), UNO_QUERY_THROW );
+                Reference< XLogFormatter > xFormatter( PlainTextFormatter::create( m_xContext ), css::uno::UNO_SET_THROW );
                 setFormatter( xFormatter );
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("extensions.logging");
             }
         }
     }
@@ -131,14 +130,14 @@ namespace logging
 
         try
         {
-            Reference< XLogFormatter > xFormatter( getFormatter(), UNO_QUERY_THROW );
+            Reference< XLogFormatter > xFormatter( getFormatter(), css::uno::UNO_SET_THROW );
             OUString sEntry( xFormatter->format( _rRecord ) );
             _out_rEntry = OUStringToOString( sEntry, getTextEncoding() );
             return true;
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.logging");
         }
         return false;
     }
@@ -148,14 +147,14 @@ namespace logging
     {
         try
         {
-            Reference< XLogFormatter > xFormatter( getFormatter(), UNO_QUERY_THROW );
+            Reference< XLogFormatter > xFormatter( getFormatter(), css::uno::UNO_SET_THROW );
             OUString sHead( xFormatter->getHead() );
             _out_rHead = OUStringToOString( sHead, getTextEncoding() );
             return true;
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.logging");
         }
         return false;
     }
@@ -165,14 +164,14 @@ namespace logging
     {
         try
         {
-            Reference< XLogFormatter > xFormatter( getFormatter(), UNO_QUERY_THROW );
+            Reference< XLogFormatter > xFormatter( getFormatter(), css::uno::UNO_SET_THROW );
             OUString sTail( xFormatter->getTail() );
             _out_rTail = OUStringToOString( sTail, getTextEncoding() );
             return true;
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.logging");
         }
         return false;
     }

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CUI_SOURCE_OPTIONS_CFGCHART_HXX
-#define INCLUDED_CUI_SOURCE_OPTIONS_CFGCHART_HXX
+#pragma once
 
 #include <unotools/configitem.hxx>
 #include <svl/poolitem.hxx>
@@ -30,18 +29,12 @@ class SvxChartColorTable
 {
 private:
     std::vector< XColorEntry >     m_aColorEntries;
-    int                              nNextElementNumber;
-    OUString                         sDefaultNamePrefix;
-    OUString                         sDefaultNamePostfix;
 
 public:
-    SvxChartColorTable();
-    explicit SvxChartColorTable( const SvxChartColorTable & _rSource );
-
     // accessors
     size_t size() const;
     const XColorEntry & operator[]( size_t _nIndex ) const;
-    ColorData getColorData( size_t _nIndex ) const;
+    Color getColor( size_t _nIndex ) const;
 
     // mutators
     void clear();
@@ -49,7 +42,7 @@ public:
     void remove( size_t _nIndex );
     void replace( size_t _nIndex, const XColorEntry & _rEntry );
     void useDefault();
-    OUString getDefaultName(size_t _nIndex);
+    static OUString getDefaultName(size_t _nIndex);
 
     // comparison
     bool operator==( const SvxChartColorTable & _rOther ) const;
@@ -85,25 +78,23 @@ public:
 
 
 // items
-
+// Make Item read-only (no non-const access methods). Two reasons:
+// (1) Preparation for Item refactor
+// (2) Dangerous due to SfxItem may not be what you expect (e.g. when
+//     ::Set in SfxItemSet, not your instance may be used there, no control
+//     about what will happen without deep knowledge about SfxItems/SfxItemSets)
 class SvxChartColorTableItem : public SfxPoolItem
 {
 public:
     SvxChartColorTableItem( sal_uInt16 nWhich, const SvxChartColorTable& );
-    SvxChartColorTableItem( const SvxChartColorTableItem& );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxChartColorTableItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    void                    SetOptions( SvxChartOptions* pOpts ) const;
 
     const SvxChartColorTable & GetColorList() const  { return m_aColorTable;}
-    SvxChartColorTable &       GetColorList() { return m_aColorTable;}
-    void                    ReplaceColorByIndex( size_t _nIndex, const XColorEntry & _rEntry );
 
 private:
     SvxChartColorTable      m_aColorTable;
 };
-
-#endif // INCLUDED_CUI_SOURCE_OPTIONS_CFGCHART_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

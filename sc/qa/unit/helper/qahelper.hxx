@@ -10,24 +10,17 @@
 #ifndef INCLUDED_SC_QA_UNIT_HELPER_QAHELPER_HXX
 #define INCLUDED_SC_QA_UNIT_HELPER_QAHELPER_HXX
 
-#include "scdllapi.h"
-#include "debughelper.hxx"
-#include "docsh.hxx"
-#include "address.hxx"
+#include <docsh.hxx>
+#include <address.hxx>
 
 #include <cppunit/SourceLine.h>
 
 #include <test/bootstrapfixture.hxx>
 #include <comphelper/documentconstants.hxx>
 
-#include <osl/detail/android-bootstrap.h>
-
-#include <unotools/tempfile.hxx>
-#include <comphelper/storagehelper.hxx>
-#include <sfx2/docfilt.hxx>
-#include <sfx2/docfile.hxx>
-#include <svl/stritem.hxx>
+#include <comphelper/fileformat.h>
 #include <formula/grammar.hxx>
+#include "scqahelperdllapi.h"
 
 #include <string>
 #include <sstream>
@@ -36,11 +29,7 @@
 
 #include <memory>
 
-#if defined(SCQAHELPER_DLLIMPLEMENTATION)
-#define SCQAHELPER_DLLPUBLIC  SAL_DLLPUBLIC_EXPORT
-#else
-#define SCQAHELPER_DLLPUBLIC  SAL_DLLPUBLIC_IMPORT
-#endif
+namespace utl { class TempFile; }
 
 #define ODS_FORMAT_TYPE      (SfxFilterFlags::IMPORT | SfxFilterFlags::EXPORT | SfxFilterFlags::TEMPLATE | SfxFilterFlags::OWN | SfxFilterFlags::DEFAULT | SfxFilterFlags::ENCRYPTION | SfxFilterFlags::PASSWORDTOMODIFY)
 #define XLS_FORMAT_TYPE      (SfxFilterFlags::IMPORT | SfxFilterFlags::EXPORT | SfxFilterFlags::ALIEN | SfxFilterFlags::ENCRYPTION | SfxFilterFlags::PASSWORDTOMODIFY | SfxFilterFlags::PREFERED)
@@ -49,10 +38,11 @@
 #define CSV_FORMAT_TYPE      (SfxFilterFlags::IMPORT | SfxFilterFlags::EXPORT | SfxFilterFlags::ALIEN )
 #define HTML_FORMAT_TYPE     (SfxFilterFlags::IMPORT | SfxFilterFlags::EXPORT | SfxFilterFlags::ALIEN )
 #define DIF_FORMAT_TYPE      (SfxFilterFlags::IMPORT | SfxFilterFlags::EXPORT | SfxFilterFlags::ALIEN )
-#define XLS_XML_FORMAT_TYPE  (SfxFilterFlags::IMPORT | SfxFilterFlags::EXPORT | SfxFilterFlags::ALIEN | SfxFilterFlags::STARONEFILTER)
+#define XLS_XML_FORMAT_TYPE  (SfxFilterFlags::IMPORT | SfxFilterFlags::ALIEN | SfxFilterFlags::PREFERED)
 #define XLSB_XML_FORMAT_TYPE (SfxFilterFlags::IMPORT |                          SfxFilterFlags::ALIEN | SfxFilterFlags::STARONEFILTER | SfxFilterFlags::PREFERED)
 #define FODS_FORMAT_TYPE     (SfxFilterFlags::IMPORT | SfxFilterFlags::EXPORT | SfxFilterFlags::OWN | SfxFilterFlags::STARONEFILTER )
 #define GNUMERIC_FORMAT_TYPE (SfxFilterFlags::IMPORT | SfxFilterFlags::ALIEN | SfxFilterFlags::PREFERED )
+#define XLTX_FORMAT_TYPE     (SfxFilterFlags::IMPORT | SfxFilterFlags::EXPORT | SfxFilterFlags::TEMPLATE |SfxFilterFlags::ALIEN | SfxFilterFlags::STARONEFILTER | SfxFilterFlags::PREFERED)
 
 #define FORMAT_ODS      0
 #define FORMAT_XLS      1
@@ -66,6 +56,7 @@
 #define FORMAT_XLSB     9
 #define FORMAT_FODS     10
 #define FORMAT_GNUMERIC 11
+#define FORMAT_XLTX     12
 
 enum class StringType { PureString, StringValue };
 
@@ -93,7 +84,7 @@ struct TestParam
     int nImportType;
     int nExportType; // -1 for import test, otherwise this is an export test
     int nRowData;
-    RowData* pData;
+    RowData const * pData;
 };
 
 struct FileFormat {
@@ -119,71 +110,34 @@ SCQAHELPER_DLLPUBLIC std::ostream& operator<<(std::ostream& rStrm, const OpCode&
 // eventually perhaps iOS) special cases here, too)?  Please move this to osl,
 // it sure looks generally useful. Or am I missing something?
 
-SCQAHELPER_DLLPUBLIC void loadFile(const OUString& aFileName, std::string& aContent);
+void loadFile(const OUString& aFileName, std::string& aContent);
 
-SCQAHELPER_DLLPUBLIC void testFile(OUString& aFileName, ScDocument& rDoc, SCTAB nTab, StringType aStringFormat = StringType::StringValue);
+SCQAHELPER_DLLPUBLIC void testFile(const OUString& aFileName, ScDocument& rDoc, SCTAB nTab, StringType aStringFormat = StringType::StringValue);
 
 //need own handler because conditional formatting strings must be generated
-SCQAHELPER_DLLPUBLIC void testCondFile(OUString& aFileName, ScDocument* pDoc, SCTAB nTab);
+SCQAHELPER_DLLPUBLIC void testCondFile(const OUString& aFileName, ScDocument* pDoc, SCTAB nTab);
+
+SCQAHELPER_DLLPUBLIC const SdrOle2Obj* getSingleOleObject(ScDocument& rDoc, sal_uInt16 nPage);
 
 SCQAHELPER_DLLPUBLIC const SdrOle2Obj* getSingleChartObject(ScDocument& rDoc, sal_uInt16 nPage);
 
-SCQAHELPER_DLLPUBLIC std::vector<OUString> getChartRangeRepresentations(const SdrOle2Obj& rChartObj);
-
 SCQAHELPER_DLLPUBLIC ScRangeList getChartRanges(ScDocument& rDoc, const SdrOle2Obj& rChartObj);
 
-SCQAHELPER_DLLPUBLIC bool checkFormula(ScDocument& rDoc, const ScAddress& rPos, const char* pExpected);
+bool checkFormula(ScDocument& rDoc, const ScAddress& rPos, const char* pExpected);
 
-SCQAHELPER_DLLPUBLIC bool checkFormulaPosition(ScDocument& rDoc, const ScAddress& rPos);
-SCQAHELPER_DLLPUBLIC bool checkFormulaPositions(
+bool checkFormulaPosition(ScDocument& rDoc, const ScAddress& rPos);
+bool checkFormulaPositions(
     ScDocument& rDoc, SCTAB nTab, SCCOL nCol, const SCROW* pRows, size_t nRowCount);
 
-SCQAHELPER_DLLPUBLIC ScTokenArray* compileFormula(
-    ScDocument* pDoc, const OUString& rFormula, const ScAddress* pPos = nullptr,
+std::unique_ptr<ScTokenArray> compileFormula(
+    ScDocument* pDoc, const OUString& rFormula,
     formula::FormulaGrammar::Grammar eGram = formula::FormulaGrammar::GRAM_NATIVE );
 
 SCQAHELPER_DLLPUBLIC bool checkOutput(
-    ScDocument* pDoc, const ScRange& aOutRange,
+    const ScDocument* pDoc, const ScRange& aOutRange,
     const std::vector<std::vector<const char*>>& aCheck, const char* pCaption );
 
-template<size_t Size>
-bool checkOutput(ScDocument* pDoc, const ScRange& aOutRange, const char* aOutputCheck[][Size], const char* pCaption)
-{
-    bool bResult = true;
-    const ScAddress& s = aOutRange.aStart;
-    const ScAddress& e = aOutRange.aEnd;
-    svl::GridPrinter printer(e.Row() - s.Row() + 1, e.Col() - s.Col() + 1, CALC_DEBUG_OUTPUT != 0);
-    SCROW nOutRowSize = e.Row() - s.Row() + 1;
-    SCCOL nOutColSize = e.Col() - s.Col() + 1;
-    for (SCROW nRow = 0; nRow < nOutRowSize; ++nRow)
-    {
-        for (SCCOL nCol = 0; nCol < nOutColSize; ++nCol)
-        {
-            OUString aVal = pDoc->GetString(nCol + s.Col(), nRow + s.Row(), s.Tab());
-            printer.set(nRow, nCol, aVal);
-            const char* p = aOutputCheck[nRow][nCol];
-            if (p)
-            {
-                OUString aCheckVal = OUString::createFromAscii(p);
-                bool bEqual = aCheckVal.equals(aVal);
-                if (!bEqual)
-                {
-                    cout << "Expected: " << aCheckVal << "  Actual: " << aVal << endl;
-                    bResult = false;
-                }
-            }
-            else if (!aVal.isEmpty())
-            {
-                cout << "Empty cell expected" << endl;
-                bResult = false;
-            }
-        }
-    }
-    printer.print(pCaption);
-    return bResult;
-}
-
-SCQAHELPER_DLLPUBLIC void clearFormulaCellChangedFlag( ScDocument& rDoc, const ScRange& rRange );
+void clearFormulaCellChangedFlag( ScDocument& rDoc, const ScRange& rRange );
 
 /**
  * Check if the cell at specified position is a formula cell that doesn't
@@ -240,9 +194,10 @@ public:
 
     ScDocShellRef saveAndReload( ScDocShell* pShell, sal_Int32 nFormat );
 
-    static std::shared_ptr<utl::TempFile> exportTo( ScDocShell* pShell, sal_Int32 nFormat );
+    std::shared_ptr<utl::TempFile> saveAs(ScDocShell* pShell, sal_Int32 nFormat);
+    std::shared_ptr<utl::TempFile> exportTo(ScDocShell* pShell, sal_Int32 nFormat);
 
-    void miscRowHeightsTest( TestParam* aTestValues, unsigned int numElems );
+    void miscRowHeightsTest( TestParam const * aTestValues, unsigned int numElems );
 };
 
 #define ASSERT_DOUBLES_EQUAL( expected, result )    \
@@ -258,6 +213,10 @@ SCQAHELPER_DLLPUBLIC void checkFormula(ScDocument& rDoc, const ScAddress& rPos,
     checkFormula(doc, pos, expected, msg, CPPUNIT_SOURCELINE())
 
 SCQAHELPER_DLLPUBLIC void testFormats(ScBootstrapFixture* pTest, ScDocument* pDoc, sal_Int32 nFormat);
+
+SCQAHELPER_DLLPUBLIC ScTokenArray* getTokens(ScDocument& rDoc, const ScAddress& rPos);
+
+SCQAHELPER_DLLPUBLIC std::string to_std_string(const OUString& rStr);
 
 #endif
 

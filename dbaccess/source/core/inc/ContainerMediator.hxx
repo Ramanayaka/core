@@ -21,7 +21,7 @@
 
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <com/sun/star/container/XContainer.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 
 #include <cppuhelper/basemutex.hxx>
@@ -39,8 +39,7 @@ namespace dbaccess
                                 ,public ::cppu::WeakImplHelper< css::container::XContainerListener >
     {
     private:
-        typedef ::rtl::Reference< OPropertyForward >          TPropertyForward;
-        typedef std::map< OUString, TPropertyForward >      PropertyForwardList;
+        typedef std::map< OUString, ::rtl::Reference< OPropertyForward > >  PropertyForwardList;
         PropertyForwardList                                   m_aForwardList;
         css::uno::Reference< css::container::XNameAccess >    m_xSettings;    // can not be weak
         css::uno::Reference< css::container::XContainer >     m_xContainer;   // can not be weak

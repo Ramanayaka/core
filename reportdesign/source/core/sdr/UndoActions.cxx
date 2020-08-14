@@ -17,28 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "UndoActions.hxx"
-#include "UndoEnv.hxx"
-#include "formatnormalizer.hxx"
-#include "conditionupdater.hxx"
-#include "corestrings.hrc"
-#include "rptui_slotid.hrc"
-#include "RptDef.hxx"
-#include "ModuleHelper.hxx"
-#include "RptObject.hxx"
-#include "RptPage.hxx"
-#include "RptResId.hrc"
-#include "RptModel.hxx"
+#include <UndoActions.hxx>
+#include <UndoEnv.hxx>
+#include <core_resource.hxx>
+#include <strings.hrc>
+#include <RptModel.hxx>
 
 #include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/util/XModifyBroadcaster.hpp>
 
-#include <connectivity/dbtools.hxx>
+#include <comphelper/types.hxx>
 #include <tools/diagnose_ex.h>
-#include <comphelper/stl_types.hxx>
-#include <vcl/svapp.hxx>
+#include <utility>
 #include <dbaccess/dbsubcomponentcontroller.hxx>
 #include <svx/unoshape.hxx>
 
@@ -54,37 +43,37 @@ namespace rptui
     using namespace container;
     using namespace report;
 
-::std::mem_fun_t<uno::Reference<report::XSection> , OGroupHelper> OGroupHelper::getMemberFunction(const Reference< XSection >& _xSection)
+::std::function<uno::Reference<report::XSection>(OGroupHelper *)> OGroupHelper::getMemberFunction(const Reference< XSection >& _xSection)
 {
-    ::std::mem_fun_t<uno::Reference<report::XSection> , OGroupHelper> pMemFunSection = ::std::mem_fun(&OGroupHelper::getFooter);
+    ::std::function<uno::Reference<report::XSection>(OGroupHelper *)> pMemFunSection = ::std::mem_fn(&OGroupHelper::getFooter);
     uno::Reference< report::XGroup> xGroup = _xSection->getGroup();
     if ( xGroup->getHeaderOn() && xGroup->getHeader() == _xSection )
-        pMemFunSection = ::std::mem_fun(&OGroupHelper::getHeader);
+        pMemFunSection = ::std::mem_fn(&OGroupHelper::getHeader);
     return pMemFunSection;
 }
 
-::std::mem_fun_t<uno::Reference<report::XSection> , OReportHelper> OReportHelper::getMemberFunction(const Reference< XSection >& _xSection)
+::std::function<uno::Reference<report::XSection>(OReportHelper *)> OReportHelper::getMemberFunction(const Reference< XSection >& _xSection)
 {
     uno::Reference< report::XReportDefinition> xReportDefinition(_xSection->getReportDefinition());
-    ::std::mem_fun_t<uno::Reference<report::XSection> , OReportHelper> pMemFunSection = ::std::mem_fun(&OReportHelper::getReportFooter);
+    ::std::function<uno::Reference<report::XSection>(OReportHelper *)> pMemFunSection = ::std::mem_fn(&OReportHelper::getReportFooter);
     if ( xReportDefinition->getReportHeaderOn() && xReportDefinition->getReportHeader() == _xSection )
-        pMemFunSection = ::std::mem_fun(&OReportHelper::getReportHeader);
+        pMemFunSection = ::std::mem_fn(&OReportHelper::getReportHeader);
     else if ( xReportDefinition->getPageHeaderOn() && xReportDefinition->getPageHeader() == _xSection )
-        pMemFunSection = ::std::mem_fun(&OReportHelper::getPageHeader);
+        pMemFunSection = ::std::mem_fn(&OReportHelper::getPageHeader);
     else if ( xReportDefinition->getPageFooterOn() && xReportDefinition->getPageFooter() == _xSection )
-        pMemFunSection = ::std::mem_fun(&OReportHelper::getPageFooter);
+        pMemFunSection = ::std::mem_fn(&OReportHelper::getPageFooter);
     else if ( xReportDefinition->getDetail() == _xSection )
-        pMemFunSection = ::std::mem_fun(&OReportHelper::getDetail);
+        pMemFunSection = ::std::mem_fn(&OReportHelper::getDetail);
     return pMemFunSection;
 }
 
 
-OCommentUndoAction::OCommentUndoAction(SdrModel& _rMod,sal_uInt16 nCommentID)
+OCommentUndoAction::OCommentUndoAction(SdrModel& _rMod,const char* pCommentID)
     :SdrUndoAction(_rMod)
 {
     m_pController = static_cast< OReportModel& >( _rMod ).getController();
-    if ( nCommentID )
-        m_strComment = ModuleRes(nCommentID);
+    if (pCommentID)
+        m_strComment = RptResId(pCommentID);
 }
 OCommentUndoAction::~OCommentUndoAction()
 {
@@ -102,8 +91,8 @@ OUndoContainerAction::OUndoContainerAction(SdrModel& _rMod
                                              ,Action _eAction
                                              ,const uno::Reference< container::XIndexContainer >& rContainer
                                              ,const Reference< XInterface > & xElem
-                                             ,sal_uInt16 _nCommentId)
-                      :OCommentUndoAction(_rMod,_nCommentId)
+                                             ,const char* pCommentId)
+                      :OCommentUndoAction(_rMod, pCommentId)
                       ,m_xElement(xElem)
                       ,m_xContainer(rContainer)
                          ,m_eAction( _eAction )
@@ -116,33 +105,33 @@ OUndoContainerAction::OUndoContainerAction(SdrModel& _rMod
 
 OUndoContainerAction::~OUndoContainerAction()
 {
-    // if we own the object ....
+    // if we own the object...
     Reference< XComponent > xComp( m_xOwnElement, UNO_QUERY );
-    if ( xComp.is() )
-    {
-        // and the object does not have a parent
-        Reference< XChild >  xChild( m_xOwnElement, UNO_QUERY );
-        if ( xChild.is() && !xChild->getParent().is() )
-        {
-            OXUndoEnvironment& rEnv = static_cast< OReportModel& >( rMod ).GetUndoEnv();
-            rEnv.RemoveElement( m_xOwnElement );
+    if ( !xComp.is() )
+        return;
+
+    // and the object does not have a parent
+    Reference< XChild >  xChild( m_xOwnElement, UNO_QUERY );
+    if ( !(xChild.is() && !xChild->getParent().is()) )
+        return;
+
+    OXUndoEnvironment& rEnv = static_cast< OReportModel& >( rMod ).GetUndoEnv();
+    rEnv.RemoveElement( m_xOwnElement );
 
 #if OSL_DEBUG_LEVEL > 0
-            SvxShape* pShape = SvxShape::getImplementation( xChild );
-            SdrObject* pObject = pShape ? pShape->GetSdrObject() : nullptr;
-            OSL_ENSURE( pObject == nullptr || (pShape->HasSdrObjectOwnership() && !pObject->IsInserted()),
-                "OUndoContainerAction::~OUndoContainerAction: inconsistency in the shape/object ownership!" );
+    SvxShape* pShape = comphelper::getUnoTunnelImplementation<SvxShape>( xChild );
+    SdrObject* pObject = pShape ? pShape->GetSdrObject() : nullptr;
+    OSL_ENSURE( pObject == nullptr || (pShape->HasSdrObjectOwnership() && !pObject->IsInserted()),
+        "OUndoContainerAction::~OUndoContainerAction: inconsistency in the shape/object ownership!" );
 #endif
-            // -> dispose it
-            try
-            {
-                comphelper::disposeComponent( xComp );
-            }
-            catch ( const uno::Exception& )
-            {
-                DBG_UNHANDLED_EXCEPTION();
-            }
-        }
+    // -> dispose it
+    try
+    {
+        comphelper::disposeComponent( xComp );
+    }
+    catch ( const uno::Exception& )
+    {
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
     }
 }
 
@@ -186,70 +175,68 @@ void OUndoContainerAction::implReRemove( )
 
 void OUndoContainerAction::Undo()
 {
-    if ( m_xElement.is() )
-    {
-        // prevents that an undo action will be created for elementInserted
-        try
-        {
-            switch ( m_eAction )
-            {
-            case Inserted:
-                implReRemove();
-                break;
+    if ( !m_xElement.is() )
+        return;
 
-            case Removed:
-                implReInsert();
-                break;
-            default:
-                OSL_FAIL("Illegal case value");
-                break;
-            }
-        }
-        catch( const Exception& )
+    // prevents that an undo action will be created for elementInserted
+    try
+    {
+        switch ( m_eAction )
         {
-            OSL_FAIL( "OUndoContainerAction::Undo: caught an exception!" );
+        case Inserted:
+            implReRemove();
+            break;
+
+        case Removed:
+            implReInsert();
+            break;
+        default:
+            OSL_FAIL("Illegal case value");
+            break;
         }
+    }
+    catch( const Exception& )
+    {
+        TOOLS_WARN_EXCEPTION( "reportdesign", "OUndoContainerAction::Undo" );
     }
 }
 
 
 void OUndoContainerAction::Redo()
 {
-    if ( m_xElement.is() )
-    {
-        try
-        {
-            switch ( m_eAction )
-            {
-            case Inserted:
-                implReInsert();
-                break;
+    if ( !m_xElement.is() )
+        return;
 
-            case Removed:
-                implReRemove();
-                break;
-            default:
-                OSL_FAIL("Illegal case value");
-                break;
-            }
-        }
-        catch( const Exception& )
+    try
+    {
+        switch ( m_eAction )
         {
-            OSL_FAIL( "OUndoContainerAction::Redo: caught an exception!" );
+        case Inserted:
+            implReInsert();
+            break;
+
+        case Removed:
+            implReRemove();
+            break;
+        default:
+            OSL_FAIL("Illegal case value");
+            break;
         }
+    }
+    catch( const Exception& )
+    {
+        TOOLS_WARN_EXCEPTION( "reportdesign", "OUndoContainerAction::Redo" );
     }
 }
 
-OUndoGroupSectionAction::OUndoGroupSectionAction(SdrModel& _rMod
-                                             ,Action _eAction
-                                             ,::std::mem_fun_t< uno::Reference< report::XSection >
-                                                    ,OGroupHelper> _pMemberFunction
-                                             ,const uno::Reference< report::XGroup >& _xGroup
-                                             ,const Reference< XInterface > & xElem
-                                             ,sal_uInt16 _nCommentId)
-:OUndoContainerAction(_rMod,_eAction,nullptr,xElem,_nCommentId)
-,m_aGroupHelper(_xGroup)
-,m_pMemberFunction(_pMemberFunction)
+OUndoGroupSectionAction::OUndoGroupSectionAction(
+    SdrModel& _rMod, Action _eAction,
+    ::std::function<uno::Reference<report::XSection>(OGroupHelper*)> _pMemberFunction,
+    const uno::Reference<report::XGroup>& _xGroup, const Reference<XInterface>& xElem,
+    const char* pCommentId)
+    : OUndoContainerAction(_rMod, _eAction, nullptr, xElem, pCommentId)
+    , m_aGroupHelper(_xGroup)
+    , m_pMemberFunction(std::move(_pMemberFunction))
 {
 }
 
@@ -272,7 +259,7 @@ void OUndoGroupSectionAction::implReInsert( )
 
 void OUndoGroupSectionAction::implReRemove( )
 {
-        OXUndoEnvironment& rEnv = static_cast< OReportModel& >( rMod ).GetUndoEnv();
+    OXUndoEnvironment& rEnv = static_cast< OReportModel& >( rMod ).GetUndoEnv();
     try
     {
         OXUndoEnvironment::OUndoEnvLock aLock(rEnv);
@@ -286,16 +273,14 @@ void OUndoGroupSectionAction::implReRemove( )
     m_xOwnElement = m_xElement;
 }
 
-OUndoReportSectionAction::OUndoReportSectionAction(SdrModel& _rMod
-                                             ,Action _eAction
-                                             ,::std::mem_fun_t< uno::Reference< report::XSection >
-                                                ,OReportHelper> _pMemberFunction
-                                             ,const uno::Reference< report::XReportDefinition >& _xReport
-                                             ,const Reference< XInterface > & xElem
-                                             ,sal_uInt16 _nCommentId)
-:OUndoContainerAction(_rMod,_eAction,nullptr,xElem,_nCommentId)
-,m_aReportHelper(_xReport)
-,m_pMemberFunction(_pMemberFunction)
+OUndoReportSectionAction::OUndoReportSectionAction(
+    SdrModel& _rMod, Action _eAction,
+    ::std::function<uno::Reference<report::XSection>(OReportHelper*)> _pMemberFunction,
+    const uno::Reference<report::XReportDefinition>& _xReport, const Reference<XInterface>& xElem,
+    const char* pCommentId)
+    : OUndoContainerAction(_rMod, _eAction, nullptr, xElem, pCommentId)
+    , m_aReportHelper(_xReport)
+    , m_pMemberFunction(std::move(_pMemberFunction))
 {
 }
 
@@ -338,7 +323,7 @@ void OUndoReportSectionAction::implReRemove( )
 }
 
 ORptUndoPropertyAction::ORptUndoPropertyAction(SdrModel& rNewMod, const PropertyChangeEvent& evt)
-                     :OCommentUndoAction(rNewMod,0)
+                     :OCommentUndoAction(rNewMod,nullptr)
                      ,m_xObj(evt.Source, UNO_QUERY)
                      ,m_aPropertyName(evt.PropertyName)
                      ,m_aNewValue(evt.NewValue)
@@ -374,27 +359,25 @@ void ORptUndoPropertyAction::setProperty(bool _bOld)
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "ORptUndoPropertyAction::Redo: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "reportdesign", "ORptUndoPropertyAction::Redo" );
         }
     }
 }
 
 OUString ORptUndoPropertyAction::GetComment() const
 {
-    OUString aStr( ModuleRes(RID_STR_UNDO_PROPERTY) );
+    OUString aStr( RptResId(RID_STR_UNDO_PROPERTY) );
 
     return aStr.replaceFirst("#", m_aPropertyName);
 }
 
-OUndoPropertyGroupSectionAction::OUndoPropertyGroupSectionAction(SdrModel& _rMod
-                                             ,const PropertyChangeEvent& evt
-                                             ,::std::mem_fun_t< uno::Reference< report::XSection >
-                                                    ,OGroupHelper> _pMemberFunction
-                                             ,const uno::Reference< report::XGroup >& _xGroup
-                                             )
-:ORptUndoPropertyAction(_rMod,evt)
-,m_aGroupHelper(_xGroup)
-,m_pMemberFunction(_pMemberFunction)
+OUndoPropertyGroupSectionAction::OUndoPropertyGroupSectionAction(
+    SdrModel& _rMod, const PropertyChangeEvent& evt,
+    ::std::function<uno::Reference<report::XSection>(OGroupHelper*)> _pMemberFunction,
+    const uno::Reference<report::XGroup>& _xGroup)
+    : ORptUndoPropertyAction(_rMod, evt)
+    , m_aGroupHelper(_xGroup)
+    , m_pMemberFunction(std::move(_pMemberFunction))
 {
 }
 
@@ -403,15 +386,13 @@ Reference< XPropertySet> OUndoPropertyGroupSectionAction::getObject()
     return m_pMemberFunction(&m_aGroupHelper).get();
 }
 
-OUndoPropertyReportSectionAction::OUndoPropertyReportSectionAction(SdrModel& _rMod
-                                             ,const PropertyChangeEvent& evt
-                                             ,::std::mem_fun_t< uno::Reference< report::XSection >
-                                                ,OReportHelper> _pMemberFunction
-                                             ,const uno::Reference< report::XReportDefinition >& _xReport
-                                             )
-:ORptUndoPropertyAction(_rMod,evt)
-,m_aReportHelper(_xReport)
-,m_pMemberFunction(_pMemberFunction)
+OUndoPropertyReportSectionAction::OUndoPropertyReportSectionAction(
+    SdrModel& _rMod, const PropertyChangeEvent& evt,
+    ::std::function<uno::Reference<report::XSection>(OReportHelper*)> _pMemberFunction,
+    const uno::Reference<report::XReportDefinition>& _xReport)
+    : ORptUndoPropertyAction(_rMod, evt)
+    , m_aReportHelper(_xReport)
+    , m_pMemberFunction(std::move(_pMemberFunction))
 {
 }
 

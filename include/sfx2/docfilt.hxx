@@ -19,10 +19,6 @@
 #ifndef INCLUDED_SFX2_DOCFILT_HXX
 #define INCLUDED_SFX2_DOCFILT_HXX
 
-#include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/beans/UnknownPropertyException.hpp>
-#include <com/sun/star/lang/WrappedTargetException.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <comphelper/documentconstants.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/config.h>
@@ -33,7 +29,9 @@
 
 #include <memory>
 
-class SfxFilterContainer;
+namespace com::sun::star::embed { class XStorage; }
+namespace com::sun::star::uno { template <typename > class Reference; }
+
 class SotStorage;
 
 class SFX2_DLLPUBLIC SfxFilter
@@ -47,7 +45,6 @@ class SFX2_DLLPUBLIC SfxFilter
     OUString aServiceName;
     OUString aMimeType;
     OUString maFilterName;
-    OUString aPattern;
     OUString aUIName;
     OUString aDefaultTemplate;
 
@@ -55,11 +52,12 @@ class SFX2_DLLPUBLIC SfxFilter
      * Custom provider name in case the filter is provided via external
      * libraries.  Empty for conventional filter types.
      */
-    OUString maProvider;
+    OUString        maProvider;
 
     SfxFilterFlags  nFormatType;
-    sal_uIntPtr     nVersion;
+    sal_Int32       nVersion;
     SotClipboardFormatId lFormat;
+    bool mbEnabled;
 
 public:
     SfxFilter( const OUString& rProvider, const OUString& rFilterName );
@@ -71,15 +69,20 @@ public:
                const OUString &rTypeName,
                const OUString &rMimeType,
                const OUString &rUserData,
-               const OUString& rServiceName );
+               const OUString& rServiceName,
+               bool bEnabled = true );
     ~SfxFilter();
 
     bool IsAllowedAsTemplate() const { return bool(nFormatType & SfxFilterFlags::TEMPLATE); }
     bool IsOwnFormat() const { return bool(nFormatType & SfxFilterFlags::OWN); }
     /// If the filter supports digital signatures.
     bool GetSupportsSigning() const { return bool(nFormatType & SfxFilterFlags::SUPPORTSSIGNING); }
+    bool GetGpgEncryption() const { return bool(nFormatType & SfxFilterFlags::GPGENCRYPTION); }
     bool IsOwnTemplateFormat() const { return bool(nFormatType & SfxFilterFlags::TEMPLATEPATH); }
+    /// not our built-in format
     bool IsAlienFormat() const { return bool(nFormatType & SfxFilterFlags::ALIEN); }
+    /// an unusual/legacy file to be loading
+    bool IsExoticFormat() const { return bool(nFormatType & SfxFilterFlags::EXOTIC); }
     bool CanImport() const { return bool(nFormatType & SfxFilterFlags::IMPORT); }
     bool CanExport() const { return bool(nFormatType & SfxFilterFlags::EXPORT); }
     SfxFilterFlags  GetFilterFlags() const  { return nFormatType; }
@@ -95,10 +98,9 @@ public:
     const OUString& GetDefaultTemplate() const { return aDefaultTemplate; }
     void            SetDefaultTemplate( const OUString& rStr ) { aDefaultTemplate = rStr; }
     bool            UsesStorage() const { return GetFormat() != SotClipboardFormatId::NONE; }
-    void SetURLPattern( const OUString& rStr );
     void            SetUIName( const OUString& rName ) { aUIName = rName; }
-    void            SetVersion( sal_uIntPtr nVersionP ) { nVersion = nVersionP; }
-    sal_uIntPtr           GetVersion() const { return nVersion; }
+    void            SetVersion( sal_Int32 nVersionP ) { nVersion = nVersionP; }
+    sal_Int32       GetVersion() const { return nVersion; }
     OUString GetSuffixes() const;
     OUString GetDefaultExtension() const;
     const OUString& GetServiceName() const { return aServiceName; }
@@ -113,8 +115,8 @@ public:
     /// @throws css::lang::WrappedTargetException
     /// @throws css::uno::RuntimeException
     static OUString GetTypeFromStorage(
-        const css::uno::Reference<css::embed::XStorage>& xStorage,
-        bool bTemplate = false );
+        const css::uno::Reference<css::embed::XStorage>& xStorage );
+    bool IsEnabled() const  { return mbEnabled; }
 };
 
 #endif

@@ -21,7 +21,11 @@
 #include "richtextengine.hxx"
 #include "richtextunowrapper.hxx"
 
+#include <property.hxx>
+#include <services.hxx>
+
 #include <com/sun/star/awt/LineEndFormat.hpp>
+#include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
 #include <com/sun/star/style/VerticalAlignment.hpp>
 
@@ -30,6 +34,7 @@
 #include <svl/itempool.hxx>
 #include <toolkit/awt/vclxdevice.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
+#include <tools/diagnose_ex.h>
 #include <editeng/editstat.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/svapp.hxx>
@@ -122,8 +127,8 @@ namespace frm
 
     void ORichTextModel::implInit()
     {
-        OSL_ENSURE( m_pEngine.get(), "ORichTextModel::implInit: where's the engine?" );
-        if ( m_pEngine.get() )
+        OSL_ENSURE(m_pEngine, "ORichTextModel::implInit: where's the engine?");
+        if (m_pEngine)
         {
             m_pEngine->SetModifyHdl( LINK( this, ORichTextModel, OnEngineContentModified ) );
 
@@ -201,7 +206,7 @@ namespace frm
             acquire();
             dispose();
         }
-        if ( m_pEngine.get() )
+        if (m_pEngine)
         {
             SolarMutexGuard g;
             SfxItemPool* pPool = m_pEngine->getPool();
@@ -228,20 +233,20 @@ namespace frm
 
     OUString SAL_CALL ORichTextModel::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.forms.ORichTextModel" );
+        return "com.sun.star.comp.forms.ORichTextModel";
     }
 
     Sequence< OUString > SAL_CALL ORichTextModel::getSupportedServiceNames()
     {
-        Sequence< OUString > aOwnNames( 8 );
-        aOwnNames[ 0 ] = FRM_SUN_COMPONENT_RICHTEXTCONTROL;
-        aOwnNames[ 1 ] = "com.sun.star.text.TextRange";
-        aOwnNames[ 2 ] = "com.sun.star.style.CharacterProperties";
-        aOwnNames[ 3 ] = "com.sun.star.style.ParagraphProperties";
-        aOwnNames[ 4 ] = "com.sun.star.style.CharacterPropertiesAsian";
-        aOwnNames[ 5 ] = "com.sun.star.style.CharacterPropertiesComplex";
-        aOwnNames[ 6 ] = "com.sun.star.style.ParagraphPropertiesAsian";
-        aOwnNames[ 7 ] = "com.sun.star.style.ParagraphPropertiesComplex";
+        Sequence< OUString > aOwnNames {
+            FRM_SUN_COMPONENT_RICHTEXTCONTROL,
+            "com.sun.star.text.TextRange",
+            "com.sun.star.style.CharacterProperties",
+            "com.sun.star.style.ParagraphProperties",
+            "com.sun.star.style.CharacterPropertiesAsian",
+            "com.sun.star.style.CharacterPropertiesComplex",
+            "com.sun.star.style.ParagraphPropertiesAsian",
+            "com.sun.star.style.ParagraphPropertiesComplex" };
 
         return ::comphelper::combineSequences(
             getAggregateServiceNames(),
@@ -426,13 +431,13 @@ namespace frm
             break;
 
         case PROPERTY_ID_LINEEND_FORMAT:
-            aDefault <<= (sal_Int16)LineEndFormat::LINE_FEED;
+            aDefault <<= sal_Int16(LineEndFormat::LINE_FEED);
             break;
 
         case PROPERTY_ID_ECHO_CHAR:
         case PROPERTY_ID_ALIGN:
         case PROPERTY_ID_MAXTEXTLEN:
-            aDefault <<= (sal_Int16)0;
+            aDefault <<= sal_Int16(0);
             break;
 
         case PROPERTY_ID_TABSTOP:
@@ -469,7 +474,7 @@ namespace frm
             break;
 
         case PROPERTY_ID_BORDER:
-            aDefault <<= (sal_Int16)1;
+            aDefault <<= sal_Int16(1);
             break;
 
         default:
@@ -485,7 +490,7 @@ namespace frm
 
     void ORichTextModel::impl_smlock_setEngineText( const OUString& _rText )
     {
-        if ( m_pEngine.get() )
+        if (m_pEngine)
         {
             SolarMutexGuard aSolarGuard;
             m_bSettingEngineText = true;
@@ -497,7 +502,7 @@ namespace frm
 
     OUString SAL_CALL ORichTextModel::getServiceName()
     {
-        return OUString(FRM_SUN_COMPONENT_RICHTEXTCONTROL);
+        return FRM_SUN_COMPONENT_RICHTEXTCONTROL;
     }
 
 
@@ -515,7 +520,7 @@ namespace frm
             }
             catch( const Exception& )
             {
-                OSL_FAIL( "ORichTextModel::getEditEngine: caught an exception!" );
+                TOOLS_WARN_EXCEPTION( "forms.richtext", "ORichTextModel::getEditEngine" );
             }
         }
         return pEngine;
@@ -524,17 +529,8 @@ namespace frm
 
     Sequence< sal_Int8 > ORichTextModel::getEditEngineTunnelId()
     {
-        static ::cppu::OImplementationId * pId = nullptr;
-        if (! pId)
-        {
-            ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
-            if (! pId)
-            {
-                static ::cppu::OImplementationId aId;
-                pId = &aId;
-            }
-        }
-        return pId->getImplementationId();
+        static cppu::OImplementationId aId;
+        return aId.getImplementationId();
     }
 
 
@@ -584,7 +580,7 @@ namespace frm
     void ORichTextModel::potentialTextChange( )
     {
         OUString sCurrentEngineText;
-        if ( m_pEngine.get() )
+        if (m_pEngine)
             sCurrentEngineText = m_pEngine->GetText();
 
         if ( sCurrentEngineText != m_sLastKnownEngineText )
@@ -602,7 +598,7 @@ namespace frm
 } // namespace frm
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_forms_ORichTextModel_get_implementation(css::uno::XComponentContext* context,
                                                           css::uno::Sequence<css::uno::Any> const &)
 {

@@ -17,23 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
+#include <osl/diagnose.h>
 
 #include <algorithm>
 
 #include "wmfwr.hxx"
-#include <unotools/fontcvt.hxx>
 #include "emfwr.hxx"
 #include <rtl/crc.h>
-#include <rtl/strbuf.hxx>
 #include <rtl/tencinfo.h>
 #include <tools/bigint.hxx>
 #include <tools/helpers.hxx>
 #include <tools/tenccvt.hxx>
 #include <tools/fract.hxx>
-#include <osl/endian.h>
+#include <tools/stream.hxx>
 #include <vcl/dibtools.hxx>
-#include <vcl/metric.hxx>
+#include <vcl/metaact.hxx>
+#include <vcl/FilterConfigItem.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <memory>
@@ -144,13 +144,11 @@ WMFWriter::WMFWriter()
     , nActRecordPos(0)
     , eSrcRasterOp(RasterOp::OverPaint)
     , eSrcTextAlign(ALIGN_BASELINE)
-    , bSrcIsClipping(false)
     , pAttrStack(nullptr)
     , eSrcHorTextAlign(W_TA_LEFT)
     , eDstROP2(RasterOp::OverPaint)
     , eDstTextAlign(ALIGN_BASELINE)
     , eDstHorTextAlign(W_TA_LEFT)
-    , bDstIsClipping(false)
     , bHandleAllocated{}
     , nDstPenHandle(0)
     , nDstFontHandle(0)
@@ -166,24 +164,24 @@ WMFWriter::WMFWriter()
 
 void WMFWriter::MayCallback()
 {
-    if ( xStatusIndicator.is() )
+    if ( !xStatusIndicator.is() )
+        return;
+
+    sal_uLong nPercent;
+
+    // we simply assume that 16386 actions match to a bitmap
+    // (normally a metafile either contains only actions or some bitmaps and
+    // almost no actions. In which case the ratio is less important)
+
+    nPercent=((nWrittenBitmaps<<14)+(nActBitmapPercent<<14)/100+nWrittenActions)
+            *100
+            /((nNumberOfBitmaps<<14)+nNumberOfActions);
+
+    if ( nPercent >= nLastPercent + 3 )
     {
-        sal_uLong nPercent;
-
-        // we simply assume that 16386 actions match to a bitmap
-        // (normally a metafile either contains only actions or some bitmaps and
-        // almost no actions. In which case the ratio is less important)
-
-        nPercent=((nWrittenBitmaps<<14)+(nActBitmapPercent<<14)/100+nWrittenActions)
-                *100
-                /((nNumberOfBitmaps<<14)+nNumberOfActions);
-
-        if ( nPercent >= nLastPercent + 3 )
-        {
-            nLastPercent = nPercent;
-            if( nPercent <= 100 )
-                xStatusIndicator->setValue( nPercent );
-        }
+        nLastPercent = nPercent;
+        if( nPercent <= 100 )
+            xStatusIndicator->setValue( nPercent );
     }
 }
 
@@ -298,7 +296,7 @@ void WMFWriter::WMFRecord_CreateBrushIndirect(const Color& rColor)
 {
     WriteRecordHeader(0x00000007,W_META_CREATEBRUSHINDIRECT);
 
-    if( rColor==Color(COL_TRANSPARENT) )
+    if( rColor==COL_TRANSPARENT )
         pWMF->WriteUInt16( W_BS_HOLLOW );
     else
         pWMF->WriteUInt16( W_BS_SOLID );
@@ -363,7 +361,7 @@ void WMFWriter::WMFRecord_CreateFontIndirect(const vcl::Font & rFont)
     OString aFontName(OUStringToOString(rFont.GetFamilyName(), eFontNameEncoding));
     for ( i = 0; i < W_LF_FACESIZE; i++ )
     {
-        sal_Char nChar = ( i < aFontName.getLength() ) ? aFontName[i] : 0;
+        char nChar = ( i < aFontName.getLength() ) ? aFontName[i] : 0;
         pWMF->WriteChar( nChar );
     }
     UpdateRecordHeader();
@@ -372,7 +370,7 @@ void WMFWriter::WMFRecord_CreateFontIndirect(const vcl::Font & rFont)
 void WMFWriter::WMFRecord_CreatePenIndirect(const Color& rColor, const LineInfo& rLineInfo )
 {
     WriteRecordHeader(0x00000008,W_META_CREATEPENINDIRECT);
-    sal_uInt16 nStyle = rColor == Color( COL_TRANSPARENT ) ? W_PS_NULL : W_PS_SOLID;
+    sal_uInt16 nStyle = rColor == COL_TRANSPARENT ? W_PS_NULL : W_PS_SOLID;
     switch( rLineInfo.GetStyle() )
     {
         case LineStyle::Dash :
@@ -469,12 +467,18 @@ bool WMFWriter::WMFRecord_Escape_Unicode( const Point& rPoint, const OUString& r
                 pBuf = rUniStr.getStr();
                 const sal_Unicode* pCheckChar = pBuf;
                 rtl_TextEncoding aTextEncoding = getBestMSEncodingByChar(*pCheckChar); // try the first character
+                if (aTextEncoding == RTL_TEXTENCODING_DONTKNOW) {
+                    aTextEncoding = aTextEncodingOrg;
+                }
                 for ( i = 1; i < nStringLen; i++)
                 {
                     if (aTextEncoding != aTextEncodingOrg) // found something
                         break;
                     pCheckChar++;
                     aTextEncoding = getBestMSEncodingByChar(*pCheckChar); // try the next character
+                    if (aTextEncoding == RTL_TEXTENCODING_DONTKNOW) {
+                        aTextEncoding = aTextEncodingOrg;
+                    }
                 }
 
                 aByteStr = OUStringToOString(rUniStr,  aTextEncoding);
@@ -498,7 +502,7 @@ bool WMFWriter::WMFRecord_Escape_Unicode( const Point& rPoint, const OUString& r
                 Color aOldLineColor( aSrcLineColor );
                 aSrcLineInfo  = LineInfo();
                 aSrcFillColor = aSrcTextColor;
-                aSrcLineColor = Color( COL_TRANSPARENT );
+                aSrcLineColor = COL_TRANSPARENT;
                 SetLineAndFillAttr();
                 pVirDev->SetFont( aSrcFont );
                 std::vector<tools::PolyPolygon> aPolyPolyVec;
@@ -524,10 +528,9 @@ bool WMFWriter::WMFRecord_Escape_Unicode( const Point& rPoint, const OUString& r
                     aMemoryStream.WriteUInt32( nSkipActions );
                     WMFRecord_Escape( PRIVATE_ESCAPE_UNICODE, nStrmLen, static_cast<const sal_Int8*>(aMemoryStream.GetData()) );
 
-                    std::vector<tools::PolyPolygon>::iterator aIter( aPolyPolyVec.begin() );
-                    while ( aIter != aPolyPolyVec.end() )
+                    for ( const auto& rPolyPoly : aPolyPolyVec )
                     {
-                        tools::PolyPolygon aPolyPoly( *aIter++ );
+                        tools::PolyPolygon aPolyPoly( rPolyPoly );
                         aPolyPoly.Move( rPoint.X(), rPoint.Y() );
                         WMFRecord_PolyPolygon( aPolyPoly );
                     }
@@ -571,10 +574,10 @@ void WMFWriter::TrueExtTextOut( const Point& rPoint, const OUString& rString,
     sal_Int32 nOriginalTextLen = rString.getLength();
     std::unique_ptr<sal_Int16[]> pConvertedDXAry(new sal_Int16[ nOriginalTextLen ]);
     sal_Int32 j = 0;
-    pConvertedDXAry[ j++ ] = (sal_Int16)ScaleWidth( pDXAry[ 0 ] );
+    pConvertedDXAry[ j++ ] = static_cast<sal_Int16>(ScaleWidth( pDXAry[ 0 ] ));
     for (sal_Int32 i = 1; i < ( nOriginalTextLen - 1 ); ++i)
-        pConvertedDXAry[ j++ ] = (sal_Int16)ScaleWidth( pDXAry[ i ] - pDXAry[ i - 1 ] );
-    pConvertedDXAry[ j ] = (sal_Int16)ScaleWidth( pDXAry[ nOriginalTextLen - 2 ] / ( nOriginalTextLen - 1 ) );
+        pConvertedDXAry[ j++ ] = static_cast<sal_Int16>(ScaleWidth( pDXAry[ i ] - pDXAry[ i - 1 ] ));
+    pConvertedDXAry[ j ] = static_cast<sal_Int16>(ScaleWidth( pDXAry[ nOriginalTextLen - 2 ] / ( nOriginalTextLen - 1 ) ));
 
     for (sal_Int32 i = 0; i < nOriginalTextLen; ++i)
     {
@@ -659,7 +662,7 @@ void WMFWriter::WMFRecord_PolyPolygon(const tools::PolyPolygon & rPolyPoly)
     }
     WriteRecordHeader(0,W_META_POLYPOLYGON);
     pWMF->WriteUInt16( nCount );
-    for (i=0; i<nCount; i++) pWMF->WriteUInt16( (aSimplePolyPoly.GetObject(i).GetSize()) );
+    for (i=0; i<nCount; i++) pWMF->WriteUInt16( aSimplePolyPoly.GetObject(i).GetSize() );
     for (i=0; i<nCount; i++) {
         pPoly=&(aSimplePolyPoly.GetObject(i));
         nSize=pPoly->GetSize();
@@ -923,11 +926,6 @@ void WMFWriter::SetLineAndFillAttr()
         aDstFillColor = aSrcFillColor;
         CreateSelectDeleteBrush( aDstFillColor );
     }
-    if ( bDstIsClipping != bSrcIsClipping ||
-        (bSrcIsClipping && aDstClipRegion!=aSrcClipRegion)) {
-        bDstIsClipping=bSrcIsClipping;
-        aDstClipRegion=aSrcClipRegion;
-    }
 }
 
 void WMFWriter::SetAllAttr()
@@ -944,686 +942,684 @@ void WMFWriter::SetAllAttr()
         eDstHorTextAlign = eSrcHorTextAlign;
         WMFRecord_SetTextAlign( eDstTextAlign, eDstHorTextAlign );
     }
-    if ( aDstFont != aSrcFont )
-    {
-        pVirDev->SetFont(aSrcFont);
-        if ( aDstFont.GetFamilyName() != aSrcFont.GetFamilyName() )
-        {
-            FontCharMapRef xFontCharMap;
-            if ( pVirDev->GetFontCharMap( xFontCharMap ) )
-            {
-                if ( ( xFontCharMap->GetFirstChar() & 0xff00 ) == 0xf000 )
-                    aSrcFont.SetCharSet( RTL_TEXTENCODING_SYMBOL );
-                else if ( aSrcFont.GetCharSet() == RTL_TEXTENCODING_SYMBOL )
-                    aSrcFont.SetCharSet( RTL_TEXTENCODING_MS_1252 );
-            }
-        }
+    if ( aDstFont == aSrcFont )
+        return;
 
-        aDstFont = aSrcFont;
-        CreateSelectDeleteFont(aDstFont);
+    pVirDev->SetFont(aSrcFont);
+    if ( aDstFont.GetFamilyName() != aSrcFont.GetFamilyName() )
+    {
+        FontCharMapRef xFontCharMap;
+        if ( pVirDev->GetFontCharMap( xFontCharMap ) )
+        {
+            if ( ( xFontCharMap->GetFirstChar() & 0xff00 ) == 0xf000 )
+                aSrcFont.SetCharSet( RTL_TEXTENCODING_SYMBOL );
+            else if ( aSrcFont.GetCharSet() == RTL_TEXTENCODING_SYMBOL )
+                aSrcFont.SetCharSet( RTL_TEXTENCODING_MS_1252 );
+        }
     }
+
+    aDstFont = aSrcFont;
+    CreateSelectDeleteFont(aDstFont);
 }
 
 void WMFWriter::HandleLineInfoPolyPolygons(const LineInfo& rInfo, const basegfx::B2DPolygon& rLinePolygon)
 {
-    if(rLinePolygon.count())
+    if(!rLinePolygon.count())
+        return;
+
+    basegfx::B2DPolyPolygon aLinePolyPolygon(rLinePolygon);
+    basegfx::B2DPolyPolygon aFillPolyPolygon;
+
+    rInfo.applyToB2DPolyPolygon(aLinePolyPolygon, aFillPolyPolygon);
+
+    if(aLinePolyPolygon.count())
     {
-        basegfx::B2DPolyPolygon aLinePolyPolygon(rLinePolygon);
-        basegfx::B2DPolyPolygon aFillPolyPolygon;
+        aSrcLineInfo = rInfo;
+        SetLineAndFillAttr();
 
-        rInfo.applyToB2DPolyPolygon(aLinePolyPolygon, aFillPolyPolygon);
-
-        if(aLinePolyPolygon.count())
+        for(auto const& rB2DPolygon : aLinePolyPolygon)
         {
-            aSrcLineInfo = rInfo;
-            SetLineAndFillAttr();
-
-            for(sal_uInt32 a(0); a < aLinePolyPolygon.count(); a++)
-            {
-                const basegfx::B2DPolygon aCandidate(aLinePolyPolygon.getB2DPolygon(a));
-                WMFRecord_PolyLine( tools::Polygon(aCandidate) );
-            }
-        }
-
-        if(aFillPolyPolygon.count())
-        {
-            const Color aOldLineColor(aSrcLineColor);
-            const Color aOldFillColor(aSrcFillColor);
-
-            aSrcLineColor = Color( COL_TRANSPARENT );
-            aSrcFillColor = aOldLineColor;
-            SetLineAndFillAttr();
-
-            for(sal_uInt32 a(0); a < aFillPolyPolygon.count(); a++)
-            {
-                const tools::Polygon aPolygon(aFillPolyPolygon.getB2DPolygon(a));
-                WMFRecord_Polygon( tools::Polygon(aPolygon) );
-            }
-
-            aSrcLineColor = aOldLineColor;
-            aSrcFillColor = aOldFillColor;
-            SetLineAndFillAttr();
+            WMFRecord_PolyLine( tools::Polygon(rB2DPolygon) );
         }
     }
+
+    if(!aFillPolyPolygon.count())
+        return;
+
+    const Color aOldLineColor(aSrcLineColor);
+    const Color aOldFillColor(aSrcFillColor);
+
+    aSrcLineColor = COL_TRANSPARENT;
+    aSrcFillColor = aOldLineColor;
+    SetLineAndFillAttr();
+
+    for(auto const& rB2DPolygon : aFillPolyPolygon)
+    {
+        WMFRecord_Polygon( tools::Polygon(rB2DPolygon) );
+    }
+
+    aSrcLineColor = aOldLineColor;
+    aSrcFillColor = aOldFillColor;
+    SetLineAndFillAttr();
 }
 
 void WMFWriter::WriteRecords( const GDIMetaFile & rMTF )
 {
-    if( bStatus )
+    if( !bStatus )
+        return;
+
+    size_t nACount = rMTF.GetActionSize();
+
+    WMFRecord_SetStretchBltMode();
+
+    for( size_t nA = 0; nA < nACount; nA++ )
     {
-        size_t nACount = rMTF.GetActionSize();
+        MetaAction* pMA = rMTF.GetAction( nA );
 
-        WMFRecord_SetStretchBltMode();
-
-        for( size_t nA = 0; nA < nACount; nA++ )
+        switch( pMA->GetType() )
         {
-            MetaAction* pMA = rMTF.GetAction( nA );
-
-            switch( pMA->GetType() )
+            case MetaActionType::PIXEL:
             {
-                case MetaActionType::PIXEL:
-                {
-                    const MetaPixelAction* pA = static_cast<const MetaPixelAction *>(pMA);
-                    aSrcLineInfo = LineInfo();
-                    SetLineAndFillAttr();
-                    WMFRecord_SetPixel( pA->GetPoint(), pA->GetColor() );
-                }
-                break;
+                const MetaPixelAction* pA = static_cast<const MetaPixelAction *>(pMA);
+                aSrcLineInfo = LineInfo();
+                SetLineAndFillAttr();
+                WMFRecord_SetPixel( pA->GetPoint(), pA->GetColor() );
+            }
+            break;
 
-                case MetaActionType::POINT:
-                {
-                    const MetaPointAction*  pA = static_cast<const MetaPointAction*>(pMA);
-                    const Point&            rPt = pA->GetPoint();
-                    aSrcLineInfo = LineInfo();
-                    SetLineAndFillAttr();
-                    WMFRecord_MoveTo( rPt);
-                    WMFRecord_LineTo( rPt );
-                }
-                break;
+            case MetaActionType::POINT:
+            {
+                const MetaPointAction*  pA = static_cast<const MetaPointAction*>(pMA);
+                const Point&            rPt = pA->GetPoint();
+                aSrcLineInfo = LineInfo();
+                SetLineAndFillAttr();
+                WMFRecord_MoveTo( rPt);
+                WMFRecord_LineTo( rPt );
+            }
+            break;
 
-                case MetaActionType::LINE:
+            case MetaActionType::LINE:
+            {
+                const MetaLineAction* pA = static_cast<const MetaLineAction *>(pMA);
+                if(pA->GetLineInfo().IsDefault())
                 {
-                    const MetaLineAction* pA = static_cast<const MetaLineAction *>(pMA);
+                    aSrcLineInfo = pA->GetLineInfo();
+                    SetLineAndFillAttr();
+                    WMFRecord_MoveTo( pA->GetStartPoint() );
+                    WMFRecord_LineTo( pA->GetEndPoint() );
+                }
+                else
+                {
+                    // LineInfo used; handle Dash/Dot and fat lines
+                    basegfx::B2DPolygon aPolygon;
+                    aPolygon.append(basegfx::B2DPoint(pA->GetStartPoint().X(), pA->GetStartPoint().Y()));
+                    aPolygon.append(basegfx::B2DPoint(pA->GetEndPoint().X(), pA->GetEndPoint().Y()));
+                    HandleLineInfoPolyPolygons(pA->GetLineInfo(), aPolygon);
+                }
+            }
+            break;
+
+            case MetaActionType::RECT:
+            {
+                const MetaRectAction* pA = static_cast<const MetaRectAction*>(pMA);
+                aSrcLineInfo = LineInfo();
+                SetLineAndFillAttr();
+                WMFRecord_Rectangle( pA->GetRect() );
+            }
+            break;
+
+            case MetaActionType::ROUNDRECT:
+            {
+                const MetaRoundRectAction* pA = static_cast<const MetaRoundRectAction*>(pMA);
+                aSrcLineInfo = LineInfo();
+                SetLineAndFillAttr();
+                WMFRecord_RoundRect( pA->GetRect(), pA->GetHorzRound(), pA->GetVertRound() );
+            }
+            break;
+
+            case MetaActionType::ELLIPSE:
+            {
+                const MetaEllipseAction* pA = static_cast<const MetaEllipseAction*>(pMA);
+                aSrcLineInfo = LineInfo();
+                SetLineAndFillAttr();
+                WMFRecord_Ellipse( pA->GetRect() );
+            }
+            break;
+
+            case MetaActionType::ARC:
+            {
+                const MetaArcAction* pA = static_cast<const MetaArcAction*>(pMA);
+                aSrcLineInfo = LineInfo();
+                SetLineAndFillAttr();
+                WMFRecord_Arc( pA->GetRect(),pA->GetStartPoint(),pA->GetEndPoint() );
+            }
+            break;
+
+            case MetaActionType::PIE:
+            {
+                const MetaPieAction* pA = static_cast<const MetaPieAction*>(pMA);
+                aSrcLineInfo = LineInfo();
+                SetLineAndFillAttr();
+                WMFRecord_Pie( pA->GetRect(), pA->GetStartPoint(), pA->GetEndPoint() );
+            }
+            break;
+
+            case MetaActionType::CHORD:
+            {
+                const MetaChordAction* pA = static_cast<const MetaChordAction*>(pMA);
+                aSrcLineInfo = LineInfo();
+                SetLineAndFillAttr();
+                WMFRecord_Chord( pA->GetRect(), pA->GetStartPoint(), pA->GetEndPoint() );
+            }
+            break;
+
+            case MetaActionType::POLYLINE:
+            {
+                const MetaPolyLineAction* pA = static_cast<const MetaPolyLineAction*>(pMA);
+                const tools::Polygon& rPoly = pA->GetPolygon();
+
+                if( rPoly.GetSize() )
+                {
                     if(pA->GetLineInfo().IsDefault())
                     {
                         aSrcLineInfo = pA->GetLineInfo();
                         SetLineAndFillAttr();
-                        WMFRecord_MoveTo( pA->GetStartPoint() );
-                        WMFRecord_LineTo( pA->GetEndPoint() );
+                        WMFRecord_PolyLine( rPoly );
                     }
                     else
                     {
                         // LineInfo used; handle Dash/Dot and fat lines
-                        basegfx::B2DPolygon aPolygon;
-                        aPolygon.append(basegfx::B2DPoint(pA->GetStartPoint().X(), pA->GetStartPoint().Y()));
-                        aPolygon.append(basegfx::B2DPoint(pA->GetEndPoint().X(), pA->GetEndPoint().Y()));
-                        HandleLineInfoPolyPolygons(pA->GetLineInfo(), aPolygon);
+                        HandleLineInfoPolyPolygons(pA->GetLineInfo(), rPoly.getB2DPolygon());
                     }
                 }
-                break;
+            }
+            break;
 
-                case MetaActionType::RECT:
+            case MetaActionType::POLYGON:
+            {
+                const MetaPolygonAction* pA = static_cast<const MetaPolygonAction*>(pMA);
+                aSrcLineInfo = LineInfo();
+                SetLineAndFillAttr();
+                WMFRecord_Polygon( pA->GetPolygon() );
+            }
+            break;
+
+            case MetaActionType::POLYPOLYGON:
+            {
+                const MetaPolyPolygonAction* pA = static_cast<const MetaPolyPolygonAction*>(pMA);
+                aSrcLineInfo = LineInfo();
+                SetLineAndFillAttr();
+                WMFRecord_PolyPolygon( pA->GetPolyPolygon() );
+            }
+            break;
+
+            case MetaActionType::TEXTRECT:
+            {
+                const MetaTextRectAction * pA = static_cast<const MetaTextRectAction*>(pMA);
+                OUString aTemp( pA->GetText() );
+                aSrcLineInfo = LineInfo();
+                SetAllAttr();
+
+                Point aPos( pA->GetRect().TopLeft() );
+                if ( !WMFRecord_Escape_Unicode( aPos, aTemp, nullptr ) )
+                    WMFRecord_TextOut( aPos, aTemp );
+            }
+            break;
+
+            case MetaActionType::TEXT:
+            {
+                const MetaTextAction * pA = static_cast<const MetaTextAction*>(pMA);
+                OUString aTemp = pA->GetText().copy( pA->GetIndex(), std::min<sal_Int32>(pA->GetText().getLength() - pA->GetIndex(), pA->GetLen()) );
+                aSrcLineInfo = LineInfo();
+                SetAllAttr();
+                if ( !WMFRecord_Escape_Unicode( pA->GetPoint(), aTemp, nullptr ) )
+                    WMFRecord_TextOut( pA->GetPoint(), aTemp );
+            }
+            break;
+
+            case MetaActionType::TEXTARRAY:
+            {
+                const MetaTextArrayAction* pA = static_cast<const MetaTextArrayAction*>(pMA);
+
+                OUString aTemp = pA->GetText().copy( pA->GetIndex(), std::min<sal_Int32>(pA->GetText().getLength() - pA->GetIndex(), pA->GetLen()) );
+                aSrcLineInfo = LineInfo();
+                SetAllAttr();
+                if ( !WMFRecord_Escape_Unicode( pA->GetPoint(), aTemp, pA->GetDXArray() ) )
+                    WMFRecord_ExtTextOut( pA->GetPoint(), aTemp, pA->GetDXArray() );
+            }
+            break;
+
+            case MetaActionType::STRETCHTEXT:
+            {
+                const MetaStretchTextAction* pA = static_cast<const MetaStretchTextAction *>(pMA);
+                OUString aTemp = pA->GetText().copy( pA->GetIndex(), std::min<sal_Int32>(pA->GetText().getLength() - pA->GetIndex(), pA->GetLen()) );
+
+                pVirDev->SetFont( aSrcFont );
+                const sal_Int32 nLen = aTemp.getLength();
+                std::unique_ptr<long[]> pDXAry(nLen ? new long[ nLen ] : nullptr);
+                const sal_Int32 nNormSize = pVirDev->GetTextArray( aTemp, pDXAry.get() );
+                if (nLen && nNormSize == 0)
                 {
-                    const MetaRectAction* pA = static_cast<const MetaRectAction*>(pMA);
-                    aSrcLineInfo = LineInfo();
-                    SetLineAndFillAttr();
-                    WMFRecord_Rectangle( pA->GetRect() );
+                    OSL_FAIL("Impossible div by 0 action: MetaStretchTextAction!");
                 }
-                break;
-
-                case MetaActionType::ROUNDRECT:
+                else
                 {
-                    const MetaRoundRectAction* pA = static_cast<const MetaRoundRectAction*>(pMA);
-                    aSrcLineInfo = LineInfo();
-                    SetLineAndFillAttr();
-                    WMFRecord_RoundRect( pA->GetRect(), pA->GetHorzRound(), pA->GetVertRound() );
-                }
-                break;
-
-                case MetaActionType::ELLIPSE:
-                {
-                    const MetaEllipseAction* pA = static_cast<const MetaEllipseAction*>(pMA);
-                    aSrcLineInfo = LineInfo();
-                    SetLineAndFillAttr();
-                    WMFRecord_Ellipse( pA->GetRect() );
-                }
-                break;
-
-                case MetaActionType::ARC:
-                {
-                    const MetaArcAction* pA = static_cast<const MetaArcAction*>(pMA);
-                    aSrcLineInfo = LineInfo();
-                    SetLineAndFillAttr();
-                    WMFRecord_Arc( pA->GetRect(),pA->GetStartPoint(),pA->GetEndPoint() );
-                }
-                break;
-
-                case MetaActionType::PIE:
-                {
-                    const MetaPieAction* pA = static_cast<const MetaPieAction*>(pMA);
-                    aSrcLineInfo = LineInfo();
-                    SetLineAndFillAttr();
-                    WMFRecord_Pie( pA->GetRect(), pA->GetStartPoint(), pA->GetEndPoint() );
-                }
-                break;
-
-                case MetaActionType::CHORD:
-                {
-                    const MetaChordAction* pA = static_cast<const MetaChordAction*>(pMA);
-                    aSrcLineInfo = LineInfo();
-                    SetLineAndFillAttr();
-                    WMFRecord_Chord( pA->GetRect(), pA->GetStartPoint(), pA->GetEndPoint() );
-                }
-                break;
-
-                case MetaActionType::POLYLINE:
-                {
-                    const MetaPolyLineAction* pA = static_cast<const MetaPolyLineAction*>(pMA);
-                    const tools::Polygon& rPoly = pA->GetPolygon();
-
-                    if( rPoly.GetSize() )
-                    {
-                        if(pA->GetLineInfo().IsDefault())
-                        {
-                            aSrcLineInfo = pA->GetLineInfo();
-                            SetLineAndFillAttr();
-                            WMFRecord_PolyLine( rPoly );
-                        }
-                        else
-                        {
-                            // LineInfo used; handle Dash/Dot and fat lines
-                            HandleLineInfoPolyPolygons(pA->GetLineInfo(), rPoly.getB2DPolygon());
-                        }
-                    }
-                }
-                break;
-
-                case MetaActionType::POLYGON:
-                {
-                    const MetaPolygonAction* pA = static_cast<const MetaPolygonAction*>(pMA);
-                    aSrcLineInfo = LineInfo();
-                    SetLineAndFillAttr();
-                    WMFRecord_Polygon( pA->GetPolygon() );
-                }
-                break;
-
-                case MetaActionType::POLYPOLYGON:
-                {
-                    const MetaPolyPolygonAction* pA = static_cast<const MetaPolyPolygonAction*>(pMA);
-                    aSrcLineInfo = LineInfo();
-                    SetLineAndFillAttr();
-                    WMFRecord_PolyPolygon( pA->GetPolyPolygon() );
-                }
-                break;
-
-                case MetaActionType::TEXTRECT:
-                {
-                    const MetaTextRectAction * pA = static_cast<const MetaTextRectAction*>(pMA);
-                    OUString aTemp( pA->GetText() );
+                    for ( sal_Int32 i = 0; i < ( nLen - 1 ); i++ )
+                        pDXAry[ i ] = pDXAry[ i ] * static_cast<sal_Int32>(pA->GetWidth()) / nNormSize;
+                    if ( ( nLen <= 1 ) || ( static_cast<sal_Int32>(pA->GetWidth()) == nNormSize ) )
+                        pDXAry.reset();
                     aSrcLineInfo = LineInfo();
                     SetAllAttr();
-
-                    Point aPos( pA->GetRect().TopLeft() );
-                    if ( !WMFRecord_Escape_Unicode( aPos, aTemp, nullptr ) )
-                        WMFRecord_TextOut( aPos, aTemp );
+                    if ( !WMFRecord_Escape_Unicode( pA->GetPoint(), aTemp, pDXAry.get() ) )
+                        WMFRecord_ExtTextOut( pA->GetPoint(), aTemp, pDXAry.get() );
                 }
-                break;
+            }
+            break;
 
-                case MetaActionType::TEXT:
+            case MetaActionType::BMP:
+            {
+                const MetaBmpAction* pA = static_cast<const MetaBmpAction *>(pMA);
+                WMFRecord_StretchDIB( pA->GetPoint(), pA->GetBitmap().GetSizePixel(), pA->GetBitmap() );
+            }
+            break;
+
+            case MetaActionType::BMPSCALE:
+            {
+                const MetaBmpScaleAction* pA = static_cast<const MetaBmpScaleAction*>(pMA);
+                WMFRecord_StretchDIB( pA->GetPoint(), pA->GetSize(), pA->GetBitmap() );
+            }
+            break;
+
+            case MetaActionType::BMPSCALEPART:
+            {
+                const MetaBmpScalePartAction*   pA = static_cast<const MetaBmpScalePartAction*>(pMA);
+                Bitmap                          aTmp( pA->GetBitmap() );
+
+                if( aTmp.Crop( tools::Rectangle( pA->GetSrcPoint(), pA->GetSrcSize() ) ) )
+                    WMFRecord_StretchDIB( pA->GetDestPoint(), pA->GetDestSize(), aTmp );
+            }
+            break;
+
+            case MetaActionType::BMPEX:
+            {
+                const MetaBmpExAction*  pA = static_cast<const MetaBmpExAction *>(pMA);
+                Bitmap                  aBmp( pA->GetBitmapEx().GetBitmap() );
+                Bitmap                  aMsk( pA->GetBitmapEx().GetMask() );
+
+                if( !!aMsk )
                 {
-                    const MetaTextAction * pA = static_cast<const MetaTextAction*>(pMA);
-                    OUString aTemp = pA->GetText().copy( pA->GetIndex(), std::min<sal_Int32>(pA->GetText().getLength() - pA->GetIndex(), pA->GetLen()) );
-                    aSrcLineInfo = LineInfo();
-                    SetAllAttr();
-                    if ( !WMFRecord_Escape_Unicode( pA->GetPoint(), aTemp, nullptr ) )
-                        WMFRecord_TextOut( pA->GetPoint(), aTemp );
+                    aBmp.Replace( aMsk, COL_WHITE );
+                    aMsk.Invert();
+                    WMFRecord_StretchDIB( pA->GetPoint(), aMsk.GetSizePixel(), aBmp, W_SRCPAINT );
+                    WMFRecord_StretchDIB( pA->GetPoint(), aBmp.GetSizePixel(), aBmp, W_SRCAND );
                 }
-                break;
+                else
+                    WMFRecord_StretchDIB( pA->GetPoint(), aBmp.GetSizePixel(), aBmp );
+            }
+            break;
 
-                case MetaActionType::TEXTARRAY:
+            case MetaActionType::BMPEXSCALE:
+            {
+                const MetaBmpExScaleAction* pA = static_cast<const MetaBmpExScaleAction*>(pMA);
+                Bitmap                      aBmp( pA->GetBitmapEx().GetBitmap() );
+                Bitmap                      aMsk( pA->GetBitmapEx().GetMask() );
+
+                if( !!aMsk )
                 {
-                    const MetaTextArrayAction* pA = static_cast<const MetaTextArrayAction*>(pMA);
-
-                    OUString aTemp = pA->GetText().copy( pA->GetIndex(), std::min<sal_Int32>(pA->GetText().getLength() - pA->GetIndex(), pA->GetLen()) );
-                    aSrcLineInfo = LineInfo();
-                    SetAllAttr();
-                    if ( !WMFRecord_Escape_Unicode( pA->GetPoint(), aTemp, pA->GetDXArray() ) )
-                        WMFRecord_ExtTextOut( pA->GetPoint(), aTemp, pA->GetDXArray() );
+                    aBmp.Replace( aMsk, COL_WHITE );
+                    aMsk.Invert();
+                    WMFRecord_StretchDIB( pA->GetPoint(), pA->GetSize(), aMsk, W_SRCPAINT );
+                    WMFRecord_StretchDIB( pA->GetPoint(), pA->GetSize(), aBmp, W_SRCAND );
                 }
-                break;
+                else
+                    WMFRecord_StretchDIB( pA->GetPoint(), pA->GetSize(), aBmp );
+            }
+            break;
 
-                case MetaActionType::STRETCHTEXT:
+            case MetaActionType::BMPEXSCALEPART:
+            {
+                const MetaBmpExScalePartAction* pA = static_cast<const MetaBmpExScalePartAction*>(pMA);
+                BitmapEx                        aBmpEx( pA->GetBitmapEx() );
+                aBmpEx.Crop( tools::Rectangle( pA->GetSrcPoint(), pA->GetSrcSize() ) );
+                Bitmap                          aBmp( aBmpEx.GetBitmap() );
+                Bitmap                          aMsk( aBmpEx.GetMask() );
+
+                if( !!aMsk )
                 {
-                    const MetaStretchTextAction* pA = static_cast<const MetaStretchTextAction *>(pMA);
-                    OUString aTemp = pA->GetText().copy( pA->GetIndex(), std::min<sal_Int32>(pA->GetText().getLength() - pA->GetIndex(), pA->GetLen()) );
+                    aBmp.Replace( aMsk, COL_WHITE );
+                    aMsk.Invert();
+                    WMFRecord_StretchDIB( pA->GetDestPoint(), pA->GetDestSize(), aMsk, W_SRCPAINT );
+                    WMFRecord_StretchDIB( pA->GetDestPoint(), pA->GetDestSize(), aBmp, W_SRCAND );
+                }
+                else
+                    WMFRecord_StretchDIB( pA->GetDestPoint(), pA->GetDestSize(), aBmp );
+            }
+            break;
 
-                    pVirDev->SetFont( aSrcFont );
-                    const sal_Int32 nLen = aTemp.getLength();
-                    std::unique_ptr<long[]> pDXAry(nLen ? new long[ nLen ] : nullptr);
-                    const sal_Int32 nNormSize = pVirDev->GetTextArray( aTemp, pDXAry.get() );
-                    if (nLen && nNormSize == 0)
+            case MetaActionType::GRADIENT:
+            {
+                const MetaGradientAction*   pA = static_cast<const MetaGradientAction*>(pMA);
+                GDIMetaFile                 aTmpMtf;
+
+                pVirDev->AddGradientActions( pA->GetRect(), pA->GetGradient(), aTmpMtf );
+                WriteRecords( aTmpMtf );
+            }
+            break;
+
+            case MetaActionType::HATCH:
+            {
+                const MetaHatchAction*  pA = static_cast<const MetaHatchAction*>(pMA);
+                GDIMetaFile             aTmpMtf;
+
+                pVirDev->AddHatchActions( pA->GetPolyPolygon(), pA->GetHatch(), aTmpMtf );
+                WriteRecords( aTmpMtf );
+            }
+            break;
+
+            case MetaActionType::WALLPAPER:
+            {
+                const MetaWallpaperAction*  pA = static_cast<const MetaWallpaperAction*>(pMA);
+                const Color&                rColor = pA->GetWallpaper().GetColor();
+                const Color                 aOldLineColor( aSrcLineColor );
+                const Color                 aOldFillColor( aSrcFillColor );
+
+                aSrcLineColor = rColor;
+                aSrcFillColor = rColor;
+                aSrcLineInfo = LineInfo();
+                SetLineAndFillAttr();
+                WMFRecord_Rectangle( pA->GetRect() );
+                aSrcLineColor = aOldLineColor;
+                aSrcFillColor = aOldFillColor;
+            }
+            break;
+
+            case MetaActionType::ISECTRECTCLIPREGION:
+            {
+                const MetaISectRectClipRegionAction* pA = static_cast<const MetaISectRectClipRegionAction*>(pMA);
+                WMFRecord_IntersectClipRect( pA->GetRect() );
+            }
+            break;
+
+            case MetaActionType::LINECOLOR:
+            {
+                const MetaLineColorAction* pA = static_cast<const MetaLineColorAction*>(pMA);
+
+                if( pA->IsSetting() )
+                    aSrcLineColor = pA->GetColor();
+                else
+                    aSrcLineColor = COL_TRANSPARENT;
+            }
+            break;
+
+            case MetaActionType::FILLCOLOR:
+            {
+                const MetaFillColorAction* pA = static_cast<const MetaFillColorAction*>(pMA);
+
+                if( pA->IsSetting() )
+                    aSrcFillColor = pA->GetColor();
+                else
+                    aSrcFillColor = COL_TRANSPARENT;
+            }
+            break;
+
+            case MetaActionType::TEXTCOLOR:
+            {
+                const MetaTextColorAction* pA = static_cast<const MetaTextColorAction*>(pMA);
+                aSrcTextColor = pA->GetColor();
+            }
+            break;
+
+            case MetaActionType::TEXTFILLCOLOR:
+            {
+                const MetaTextFillColorAction* pA = static_cast<const MetaTextFillColorAction*>(pMA);
+                if( pA->IsSetting() )
+                    aSrcFont.SetFillColor( pA->GetColor() );
+                else
+                    aSrcFont.SetFillColor( COL_TRANSPARENT );
+            }
+            break;
+
+            case MetaActionType::TEXTALIGN:
+            {
+                const MetaTextAlignAction* pA = static_cast<const MetaTextAlignAction*>(pMA);
+                eSrcTextAlign = pA->GetTextAlign();
+            }
+            break;
+
+            case MetaActionType::MAPMODE:
+            {
+                const MetaMapModeAction* pA = static_cast<const MetaMapModeAction*>(pMA);
+
+                if (aSrcMapMode!=pA->GetMapMode())
+                {
+                    if( pA->GetMapMode().GetMapUnit() == MapUnit::MapRelative )
                     {
-                        OSL_FAIL("Impossible div by 0 action: MetaStretchTextAction!");
-                    }
-                    else
-                    {
-                        for ( sal_Int32 i = 0; i < ( nLen - 1 ); i++ )
-                            pDXAry[ i ] = pDXAry[ i ] * (sal_Int32)pA->GetWidth() / nNormSize;
-                        if ( ( nLen <= 1 ) || ( (sal_Int32)pA->GetWidth() == nNormSize ) )
-                            pDXAry.reset();
-                        aSrcLineInfo = LineInfo();
-                        SetAllAttr();
-                        if ( !WMFRecord_Escape_Unicode( pA->GetPoint(), aTemp, pDXAry.get() ) )
-                            WMFRecord_ExtTextOut( pA->GetPoint(), aTemp, pDXAry.get() );
-                    }
-                }
-                break;
+                        const MapMode& aMM = pA->GetMapMode();
+                        Fraction aScaleX = aMM.GetScaleX();
+                        Fraction aScaleY = aMM.GetScaleY();
 
-                case MetaActionType::BMP:
-                {
-                    const MetaBmpAction* pA = static_cast<const MetaBmpAction *>(pMA);
-                    WMFRecord_StretchDIB( pA->GetPoint(), pA->GetBitmap().GetSizePixel(), pA->GetBitmap() );
-                }
-                break;
-
-                case MetaActionType::BMPSCALE:
-                {
-                    const MetaBmpScaleAction* pA = static_cast<const MetaBmpScaleAction*>(pMA);
-                    WMFRecord_StretchDIB( pA->GetPoint(), pA->GetSize(), pA->GetBitmap() );
-                }
-                break;
-
-                case MetaActionType::BMPSCALEPART:
-                {
-                    const MetaBmpScalePartAction*   pA = static_cast<const MetaBmpScalePartAction*>(pMA);
-                    Bitmap                          aTmp( pA->GetBitmap() );
-
-                    if( aTmp.Crop( tools::Rectangle( pA->GetSrcPoint(), pA->GetSrcSize() ) ) )
-                        WMFRecord_StretchDIB( pA->GetDestPoint(), pA->GetDestSize(), aTmp );
-                }
-                break;
-
-                case MetaActionType::BMPEX:
-                {
-                    const MetaBmpExAction*  pA = static_cast<const MetaBmpExAction *>(pMA);
-                    Bitmap                  aBmp( pA->GetBitmapEx().GetBitmap() );
-                    Bitmap                  aMsk( pA->GetBitmapEx().GetMask() );
-
-                    if( !!aMsk )
-                    {
-                        aBmp.Replace( aMsk, COL_WHITE );
-                        aMsk.Invert();
-                        WMFRecord_StretchDIB( pA->GetPoint(), aMsk.GetSizePixel(), aBmp, W_SRCPAINT );
-                        WMFRecord_StretchDIB( pA->GetPoint(), aBmp.GetSizePixel(), aBmp, W_SRCAND );
-                    }
-                    else
-                        WMFRecord_StretchDIB( pA->GetPoint(), aBmp.GetSizePixel(), aBmp );
-                }
-                break;
-
-                case MetaActionType::BMPEXSCALE:
-                {
-                    const MetaBmpExScaleAction* pA = static_cast<const MetaBmpExScaleAction*>(pMA);
-                    Bitmap                      aBmp( pA->GetBitmapEx().GetBitmap() );
-                    Bitmap                      aMsk( pA->GetBitmapEx().GetMask() );
-
-                    if( !!aMsk )
-                    {
-                        aBmp.Replace( aMsk, COL_WHITE );
-                        aMsk.Invert();
-                        WMFRecord_StretchDIB( pA->GetPoint(), pA->GetSize(), aMsk, W_SRCPAINT );
-                        WMFRecord_StretchDIB( pA->GetPoint(), pA->GetSize(), aBmp, W_SRCAND );
-                    }
-                    else
-                        WMFRecord_StretchDIB( pA->GetPoint(), pA->GetSize(), aBmp );
-                }
-                break;
-
-                case MetaActionType::BMPEXSCALEPART:
-                {
-                    const MetaBmpExScalePartAction* pA = static_cast<const MetaBmpExScalePartAction*>(pMA);
-                    BitmapEx                        aBmpEx( pA->GetBitmapEx() );
-                    aBmpEx.Crop( tools::Rectangle( pA->GetSrcPoint(), pA->GetSrcSize() ) );
-                    Bitmap                          aBmp( aBmpEx.GetBitmap() );
-                    Bitmap                          aMsk( aBmpEx.GetMask() );
-
-                    if( !!aMsk )
-                    {
-                        aBmp.Replace( aMsk, COL_WHITE );
-                        aMsk.Invert();
-                        WMFRecord_StretchDIB( pA->GetDestPoint(), pA->GetDestSize(), aMsk, W_SRCPAINT );
-                        WMFRecord_StretchDIB( pA->GetDestPoint(), pA->GetDestSize(), aBmp, W_SRCAND );
-                    }
-                    else
-                        WMFRecord_StretchDIB( pA->GetDestPoint(), pA->GetDestSize(), aBmp );
-                }
-                break;
-
-                case MetaActionType::GRADIENT:
-                {
-                    const MetaGradientAction*   pA = static_cast<const MetaGradientAction*>(pMA);
-                    GDIMetaFile                 aTmpMtf;
-
-                    pVirDev->AddGradientActions( pA->GetRect(), pA->GetGradient(), aTmpMtf );
-                    WriteRecords( aTmpMtf );
-                }
-                break;
-
-                case MetaActionType::HATCH:
-                {
-                    const MetaHatchAction*  pA = static_cast<const MetaHatchAction*>(pMA);
-                    GDIMetaFile             aTmpMtf;
-
-                    pVirDev->AddHatchActions( pA->GetPolyPolygon(), pA->GetHatch(), aTmpMtf );
-                    WriteRecords( aTmpMtf );
-                }
-                break;
-
-                case MetaActionType::WALLPAPER:
-                {
-                    const MetaWallpaperAction*  pA = static_cast<const MetaWallpaperAction*>(pMA);
-                    const Color&                rColor = pA->GetWallpaper().GetColor();
-                    const Color                 aOldLineColor( aSrcLineColor );
-                    const Color                 aOldFillColor( aSrcFillColor );
-
-                    aSrcLineColor = rColor;
-                    aSrcFillColor = rColor;
-                    aSrcLineInfo = LineInfo();
-                    SetLineAndFillAttr();
-                    WMFRecord_Rectangle( pA->GetRect() );
-                    aSrcLineColor = aOldLineColor;
-                    aSrcFillColor = aOldFillColor;
-                }
-                break;
-
-                case MetaActionType::ISECTRECTCLIPREGION:
-                {
-                    const MetaISectRectClipRegionAction* pA = static_cast<const MetaISectRectClipRegionAction*>(pMA);
-                    WMFRecord_IntersectClipRect( pA->GetRect() );
-                }
-                break;
-
-                case MetaActionType::LINECOLOR:
-                {
-                    const MetaLineColorAction* pA = static_cast<const MetaLineColorAction*>(pMA);
-
-                    if( pA->IsSetting() )
-                        aSrcLineColor = pA->GetColor();
-                    else
-                        aSrcLineColor = Color( COL_TRANSPARENT );
-                }
-                break;
-
-                case MetaActionType::FILLCOLOR:
-                {
-                    const MetaFillColorAction* pA = static_cast<const MetaFillColorAction*>(pMA);
-
-                    if( pA->IsSetting() )
-                        aSrcFillColor = pA->GetColor();
-                    else
-                        aSrcFillColor = Color( COL_TRANSPARENT );
-                }
-                break;
-
-                case MetaActionType::TEXTCOLOR:
-                {
-                    const MetaTextColorAction* pA = static_cast<const MetaTextColorAction*>(pMA);
-                    aSrcTextColor = pA->GetColor();
-                }
-                break;
-
-                case MetaActionType::TEXTFILLCOLOR:
-                {
-                    const MetaTextFillColorAction* pA = static_cast<const MetaTextFillColorAction*>(pMA);
-                    if( pA->IsSetting() )
-                        aSrcFont.SetFillColor( pA->GetColor() );
-                    else
-                        aSrcFont.SetFillColor( Color( COL_TRANSPARENT ) );
-                }
-                break;
-
-                case MetaActionType::TEXTALIGN:
-                {
-                    const MetaTextAlignAction* pA = static_cast<const MetaTextAlignAction*>(pMA);
-                    eSrcTextAlign = pA->GetTextAlign();
-                }
-                break;
-
-                case MetaActionType::MAPMODE:
-                {
-                    const MetaMapModeAction* pA = static_cast<const MetaMapModeAction*>(pMA);
-
-                    if (aSrcMapMode!=pA->GetMapMode())
-                    {
-                        if( pA->GetMapMode().GetMapUnit() == MapUnit::MapRelative )
-                        {
-                            MapMode aMM = pA->GetMapMode();
-                            Fraction aScaleX = aMM.GetScaleX();
-                            Fraction aScaleY = aMM.GetScaleY();
-
-                            Point aOrigin = aSrcMapMode.GetOrigin();
-                            BigInt aX( aOrigin.X() );
-                            aX *= BigInt( aScaleX.GetDenominator() );
-                            if( aOrigin.X() >= 0 )
-                                if( aScaleX.GetNumerator() >= 0 )
-                                    aX += BigInt( aScaleX.GetNumerator()/2 );
-                                else
-                                    aX -= BigInt( (aScaleX.GetNumerator()+1)/2 );
+                        Point aOrigin = aSrcMapMode.GetOrigin();
+                        BigInt aX( aOrigin.X() );
+                        aX *= BigInt( aScaleX.GetDenominator() );
+                        if( aOrigin.X() >= 0 )
+                            if( aScaleX.GetNumerator() >= 0 )
+                                aX += BigInt( aScaleX.GetNumerator()/2 );
                             else
-                                if( aScaleX.GetNumerator() >= 0 )
-                                    aX -= BigInt( (aScaleX.GetNumerator()-1)/2 );
-                                else
-                                    aX += BigInt( aScaleX.GetNumerator()/2 );
-                            aX /= BigInt( aScaleX.GetNumerator() );
-                            aOrigin.X() = (long)aX + aMM.GetOrigin().X();
-                            BigInt aY( aOrigin.Y() );
-                            aY *= BigInt( aScaleY.GetDenominator() );
-                            if( aOrigin.Y() >= 0 )
-                                if( aScaleY.GetNumerator() >= 0 )
-                                    aY += BigInt( aScaleY.GetNumerator()/2 );
-                                else
-                                    aY -= BigInt( (aScaleY.GetNumerator()+1)/2 );
-                            else
-                                if( aScaleY.GetNumerator() >= 0 )
-                                    aY -= BigInt( (aScaleY.GetNumerator()-1)/2 );
-                                else
-                                    aY += BigInt( aScaleY.GetNumerator()/2 );
-                            aY /= BigInt( aScaleY.GetNumerator() );
-                            aOrigin.Y() = (long)aY + aMM.GetOrigin().Y();
-                            aSrcMapMode.SetOrigin( aOrigin );
-
-                            aScaleX *= aSrcMapMode.GetScaleX();
-                            aScaleY *= aSrcMapMode.GetScaleY();
-                            aSrcMapMode.SetScaleX( aScaleX );
-                            aSrcMapMode.SetScaleY( aScaleY );
-                        }
+                                aX -= BigInt( (aScaleX.GetNumerator()+1)/2 );
                         else
-                            aSrcMapMode=pA->GetMapMode();
+                            if( aScaleX.GetNumerator() >= 0 )
+                                aX -= BigInt( (aScaleX.GetNumerator()-1)/2 );
+                            else
+                                aX += BigInt( aScaleX.GetNumerator()/2 );
+                        aX /= BigInt( aScaleX.GetNumerator() );
+                        aOrigin.setX( static_cast<long>(aX) + aMM.GetOrigin().X() );
+                        BigInt aY( aOrigin.Y() );
+                        aY *= BigInt( aScaleY.GetDenominator() );
+                        if( aOrigin.Y() >= 0 )
+                            if( aScaleY.GetNumerator() >= 0 )
+                                aY += BigInt( aScaleY.GetNumerator()/2 );
+                            else
+                                aY -= BigInt( (aScaleY.GetNumerator()+1)/2 );
+                        else
+                            if( aScaleY.GetNumerator() >= 0 )
+                                aY -= BigInt( (aScaleY.GetNumerator()-1)/2 );
+                            else
+                                aY += BigInt( aScaleY.GetNumerator()/2 );
+                        aY /= BigInt( aScaleY.GetNumerator() );
+                        aOrigin.setY( static_cast<long>(aY) + aMM.GetOrigin().Y() );
+                        aSrcMapMode.SetOrigin( aOrigin );
+
+                        aScaleX *= aSrcMapMode.GetScaleX();
+                        aScaleY *= aSrcMapMode.GetScaleY();
+                        aSrcMapMode.SetScaleX( aScaleX );
+                        aSrcMapMode.SetScaleY( aScaleY );
                     }
+                    else
+                        aSrcMapMode=pA->GetMapMode();
                 }
-                break;
+            }
+            break;
 
-                case MetaActionType::FONT:
+            case MetaActionType::FONT:
+            {
+                const MetaFontAction* pA = static_cast<const MetaFontAction*>(pMA);
+                aSrcFont = pA->GetFont();
+
+                if ( (aSrcFont.GetCharSet() == RTL_TEXTENCODING_DONTKNOW)
+                     || (aSrcFont.GetCharSet() == RTL_TEXTENCODING_UNICODE) )
                 {
-                    const MetaFontAction* pA = static_cast<const MetaFontAction*>(pMA);
-                    aSrcFont = pA->GetFont();
+                    aSrcFont.SetCharSet( RTL_TEXTENCODING_MS_1252 );
+                }
+                eSrcTextAlign = aSrcFont.GetAlignment();
+                aSrcTextColor = aSrcFont.GetColor();
+                aSrcFont.SetAlignment( ALIGN_BASELINE );
+                aSrcFont.SetColor( COL_WHITE );
+            }
+            break;
 
-                    if ( (aSrcFont.GetCharSet() == RTL_TEXTENCODING_DONTKNOW)
-                         || (aSrcFont.GetCharSet() == RTL_TEXTENCODING_UNICODE) )
+            case MetaActionType::PUSH:
+            {
+                const MetaPushAction* pA = static_cast<const MetaPushAction*>(pMA);
+
+                WMFWriterAttrStackMember* pAt = new WMFWriterAttrStackMember;
+                pAt->nFlags = pA->GetFlags();
+                pAt->aClipRegion = aSrcClipRegion;
+                pAt->aLineColor=aSrcLineColor;
+                pAt->aFillColor=aSrcFillColor;
+                pAt->eRasterOp=eSrcRasterOp;
+                pAt->aFont=aSrcFont;
+                pAt->eTextAlign=eSrcTextAlign;
+                pAt->aTextColor=aSrcTextColor;
+                pAt->aMapMode=aSrcMapMode;
+                pAt->aLineInfo=aDstLineInfo;
+                pAt->pSucc=pAttrStack;
+                pAttrStack=pAt;
+
+                SetAllAttr();           // update ( now all source attributes are equal to the destination attributes )
+                WMFRecord_SaveDC();
+
+            }
+            break;
+
+            case MetaActionType::POP:
+            {
+                WMFWriterAttrStackMember * pAt=pAttrStack;
+
+                if( pAt )
+                {
+                    aDstLineInfo = pAt->aLineInfo;
+                    aDstLineColor = pAt->aLineColor;
+                    if ( pAt->nFlags & PushFlags::LINECOLOR )
+                        aSrcLineColor = pAt->aLineColor;
+                    aDstFillColor = pAt->aFillColor;
+                    if ( pAt->nFlags & PushFlags::FILLCOLOR )
+                        aSrcFillColor = pAt->aFillColor;
+                    eDstROP2 = pAt->eRasterOp;
+                    if ( pAt->nFlags & PushFlags::RASTEROP )
+                        eSrcRasterOp = pAt->eRasterOp;
+                    aDstFont = pAt->aFont;
+                    if ( pAt->nFlags & PushFlags::FONT )
+                        aSrcFont = pAt->aFont;
+                    eDstTextAlign = pAt->eTextAlign;
+                    if ( pAt->nFlags & ( PushFlags::FONT | PushFlags::TEXTALIGN ) )
+                        eSrcTextAlign = pAt->eTextAlign;
+                    aDstTextColor = pAt->aTextColor;
+                    if ( pAt->nFlags & ( PushFlags::FONT | PushFlags::TEXTCOLOR ) )
+                        aSrcTextColor = pAt->aTextColor;
+                    if ( pAt->nFlags & PushFlags::MAPMODE )
+                        aSrcMapMode = pAt->aMapMode;
+                    aDstClipRegion = pAt->aClipRegion;
+                    if ( pAt->nFlags & PushFlags::CLIPREGION )
+                        aSrcClipRegion = pAt->aClipRegion;
+
+                    WMFRecord_RestoreDC();
+                    pAttrStack = pAt->pSucc;
+                    delete pAt;
+                }
+            }
+            break;
+
+            case MetaActionType::EPS :
+            {
+                const MetaEPSAction* pA = static_cast<const MetaEPSAction*>(pMA);
+                const GDIMetaFile& aGDIMetaFile( pA->GetSubstitute() );
+
+                size_t nCount = aGDIMetaFile.GetActionSize();
+                for ( size_t i = 0; i < nCount; i++ )
+                {
+                    const MetaAction* pMetaAct = aGDIMetaFile.GetAction( i );
+                    if ( pMetaAct->GetType() == MetaActionType::BMPSCALE )
                     {
-                        aSrcFont.SetCharSet( RTL_TEXTENCODING_MS_1252 );
-                    }
-                    eSrcTextAlign = aSrcFont.GetAlignment();
-                    aSrcTextColor = aSrcFont.GetColor();
-                    aSrcFont.SetAlignment( ALIGN_BASELINE );
-                    aSrcFont.SetColor( COL_WHITE );
-                }
-                break;
-
-                case MetaActionType::PUSH:
-                {
-                    const MetaPushAction* pA = static_cast<const MetaPushAction*>(pMA);
-
-                    WMFWriterAttrStackMember* pAt = new WMFWriterAttrStackMember;
-                    pAt->nFlags = pA->GetFlags();
-                    pAt->aClipRegion = aSrcClipRegion;
-                    pAt->aLineColor=aSrcLineColor;
-                    pAt->aFillColor=aSrcFillColor;
-                    pAt->eRasterOp=eSrcRasterOp;
-                    pAt->aFont=aSrcFont;
-                    pAt->eTextAlign=eSrcTextAlign;
-                    pAt->aTextColor=aSrcTextColor;
-                    pAt->aMapMode=aSrcMapMode;
-                    pAt->aLineInfo=aDstLineInfo;
-                    pAt->pSucc=pAttrStack;
-                    pAttrStack=pAt;
-
-                    SetAllAttr();           // update ( now all source attributes are equal to the destination attributes )
-                    WMFRecord_SaveDC();
-
-                }
-                break;
-
-                case MetaActionType::POP:
-                {
-                    WMFWriterAttrStackMember * pAt=pAttrStack;
-
-                    if( pAt )
-                    {
-                        aDstLineInfo = pAt->aLineInfo;
-                        aDstLineColor = pAt->aLineColor;
-                        if ( pAt->nFlags & PushFlags::LINECOLOR )
-                            aSrcLineColor = pAt->aLineColor;
-                        aDstFillColor = pAt->aFillColor;
-                        if ( pAt->nFlags & PushFlags::FILLCOLOR )
-                            aSrcFillColor = pAt->aFillColor;
-                        eDstROP2 = pAt->eRasterOp;
-                        if ( pAt->nFlags & PushFlags::RASTEROP )
-                            eSrcRasterOp = pAt->eRasterOp;
-                        aDstFont = pAt->aFont;
-                        if ( pAt->nFlags & PushFlags::FONT )
-                            aSrcFont = pAt->aFont;
-                        eDstTextAlign = pAt->eTextAlign;
-                        if ( pAt->nFlags & ( PushFlags::FONT | PushFlags::TEXTALIGN ) )
-                            eSrcTextAlign = pAt->eTextAlign;
-                        aDstTextColor = pAt->aTextColor;
-                        if ( pAt->nFlags & ( PushFlags::FONT | PushFlags::TEXTCOLOR ) )
-                            aSrcTextColor = pAt->aTextColor;
-                        if ( pAt->nFlags & PushFlags::MAPMODE )
-                            aSrcMapMode = pAt->aMapMode;
-                        aDstClipRegion = pAt->aClipRegion;
-                        if ( pAt->nFlags & PushFlags::CLIPREGION )
-                            aSrcClipRegion = pAt->aClipRegion;
-
-                        WMFRecord_RestoreDC();
-                        pAttrStack = pAt->pSucc;
-                        delete pAt;
+                        const MetaBmpScaleAction* pBmpScaleAction = static_cast<const MetaBmpScaleAction*>(pMetaAct);
+                        WMFRecord_StretchDIB( pA->GetPoint(), pA->GetSize(), pBmpScaleAction->GetBitmap() );
+                        break;
                     }
                 }
-                break;
+            }
+            break;
 
-                case MetaActionType::EPS :
+            case MetaActionType::RASTEROP:
+            {
+                const MetaRasterOpAction* pA = static_cast<const MetaRasterOpAction*>(pMA);
+                eSrcRasterOp=pA->GetRasterOp();
+            }
+            break;
+
+            case MetaActionType::Transparent:
+            {
+                aSrcLineInfo = LineInfo();
+                SetLineAndFillAttr();
+                WMFRecord_PolyPolygon( static_cast<const MetaTransparentAction*>(pMA)->GetPolyPolygon() );
+            }
+            break;
+
+            case MetaActionType::FLOATTRANSPARENT:
+            {
+                const MetaFloatTransparentAction* pA = static_cast<const MetaFloatTransparentAction*>(pMA);
+
+                GDIMetaFile     aTmpMtf( pA->GetGDIMetaFile() );
+                Point           aSrcPt( aTmpMtf.GetPrefMapMode().GetOrigin() );
+                const Size      aSrcSize( aTmpMtf.GetPrefSize() );
+                const Point     aDestPt( pA->GetPoint() );
+                const Size      aDestSize( pA->GetSize() );
+                const double    fScaleX = aSrcSize.Width() ? static_cast<double>(aDestSize.Width()) / aSrcSize.Width() : 1.0;
+                const double    fScaleY = aSrcSize.Height() ? static_cast<double>(aDestSize.Height()) / aSrcSize.Height() : 1.0;
+                long            nMoveX, nMoveY;
+
+                aSrcLineInfo = LineInfo();
+                SetAllAttr();
+
+                if( fScaleX != 1.0 || fScaleY != 1.0 )
                 {
-                    const MetaEPSAction* pA = static_cast<const MetaEPSAction*>(pMA);
-                    const GDIMetaFile aGDIMetaFile( pA->GetSubstitute() );
-
-                    size_t nCount = aGDIMetaFile.GetActionSize();
-                    for ( size_t i = 0; i < nCount; i++ )
-                    {
-                        const MetaAction* pMetaAct = aGDIMetaFile.GetAction( i );
-                        if ( pMetaAct->GetType() == MetaActionType::BMPSCALE )
-                        {
-                            const MetaBmpScaleAction* pBmpScaleAction = static_cast<const MetaBmpScaleAction*>(pMetaAct);
-                            WMFRecord_StretchDIB( pA->GetPoint(), pA->GetSize(), pBmpScaleAction->GetBitmap() );
-                            break;
-                        }
-                    }
-                }
-                break;
-
-                case MetaActionType::RASTEROP:
-                {
-                    const MetaRasterOpAction* pA = static_cast<const MetaRasterOpAction*>(pMA);
-                    eSrcRasterOp=pA->GetRasterOp();
-                }
-                break;
-
-                case MetaActionType::Transparent:
-                {
-                    aSrcLineInfo = LineInfo();
-                    SetLineAndFillAttr();
-                    WMFRecord_PolyPolygon( static_cast<const MetaTransparentAction*>(pMA)->GetPolyPolygon() );
-                }
-                break;
-
-                case MetaActionType::FLOATTRANSPARENT:
-                {
-                    const MetaFloatTransparentAction* pA = static_cast<const MetaFloatTransparentAction*>(pMA);
-
-                    GDIMetaFile     aTmpMtf( pA->GetGDIMetaFile() );
-                    Point           aSrcPt( aTmpMtf.GetPrefMapMode().GetOrigin() );
-                    const Size      aSrcSize( aTmpMtf.GetPrefSize() );
-                    const Point     aDestPt( pA->GetPoint() );
-                    const Size      aDestSize( pA->GetSize() );
-                    const double    fScaleX = aSrcSize.Width() ? (double) aDestSize.Width() / aSrcSize.Width() : 1.0;
-                    const double    fScaleY = aSrcSize.Height() ? (double) aDestSize.Height() / aSrcSize.Height() : 1.0;
-                    long            nMoveX, nMoveY;
-
-                    aSrcLineInfo = LineInfo();
-                    SetAllAttr();
-
-                    if( fScaleX != 1.0 || fScaleY != 1.0 )
-                    {
-                        aTmpMtf.Scale( fScaleX, fScaleY );
-                        aSrcPt.X() = FRound( aSrcPt.X() * fScaleX );
-                        aSrcPt.Y() = FRound( aSrcPt.Y() * fScaleY );
-                    }
-
-                    nMoveX = aDestPt.X() - aSrcPt.X();
-                    nMoveY = aDestPt.Y() - aSrcPt.Y();
-
-                    if( nMoveX || nMoveY )
-                        aTmpMtf.Move( nMoveX, nMoveY );
-
-                    WriteRecords( aTmpMtf );
-                }
-                break;
-
-                case( MetaActionType::LAYOUTMODE ):
-                {
-                    ComplexTextLayoutFlags nLayoutMode = static_cast<const MetaLayoutModeAction*>(pMA)->GetLayoutMode();
-                    eSrcHorTextAlign = 0; // TA_LEFT
-                    if ((nLayoutMode & ComplexTextLayoutFlags::BiDiRtl) != ComplexTextLayoutFlags::Default)
-                    {
-                        eSrcHorTextAlign = W_TA_RIGHT | W_TA_RTLREADING;
-                    }
-                    if ((nLayoutMode & ComplexTextLayoutFlags::TextOriginRight) != ComplexTextLayoutFlags::Default)
-                        eSrcHorTextAlign |= W_TA_RIGHT;
-                    else if ((nLayoutMode & ComplexTextLayoutFlags::TextOriginLeft) != ComplexTextLayoutFlags::Default)
-                        eSrcHorTextAlign &= ~W_TA_RIGHT;
-                    break;
+                    aTmpMtf.Scale( fScaleX, fScaleY );
+                    aSrcPt.setX( FRound( aSrcPt.X() * fScaleX ) );
+                    aSrcPt.setY( FRound( aSrcPt.Y() * fScaleY ) );
                 }
 
-                case MetaActionType::CLIPREGION:
-                case MetaActionType::TEXTLANGUAGE:
-                case MetaActionType::COMMENT:
-                    // Explicitly ignored cases
+                nMoveX = aDestPt.X() - aSrcPt.X();
+                nMoveY = aDestPt.Y() - aSrcPt.Y();
+
+                if( nMoveX || nMoveY )
+                    aTmpMtf.Move( nMoveX, nMoveY );
+
+                WriteRecords( aTmpMtf );
+            }
+            break;
+
+            case MetaActionType::LAYOUTMODE:
+            {
+                ComplexTextLayoutFlags nLayoutMode = static_cast<const MetaLayoutModeAction*>(pMA)->GetLayoutMode();
+                eSrcHorTextAlign = 0; // TA_LEFT
+                if ((nLayoutMode & ComplexTextLayoutFlags::BiDiRtl) != ComplexTextLayoutFlags::Default)
+                {
+                    eSrcHorTextAlign = W_TA_RIGHT | W_TA_RTLREADING;
+                }
+                if ((nLayoutMode & ComplexTextLayoutFlags::TextOriginRight) != ComplexTextLayoutFlags::Default)
+                    eSrcHorTextAlign |= W_TA_RIGHT;
+                else if ((nLayoutMode & ComplexTextLayoutFlags::TextOriginLeft) != ComplexTextLayoutFlags::Default)
+                    eSrcHorTextAlign &= ~W_TA_RIGHT;
                 break;
+            }
 
-                default:
-                    // TODO: Implement more cases as necessary. Let's not bother with a warning.
-                break;
-          }
+            case MetaActionType::CLIPREGION:
+            case MetaActionType::TEXTLANGUAGE:
+            case MetaActionType::COMMENT:
+                // Explicitly ignored cases
+            break;
 
-          nWrittenActions++;
-          MayCallback();
-
-          if (pWMF->GetError())
-            bStatus=false;
-
-          if(!bStatus)
+            default:
+                // TODO: Implement more cases as necessary. Let's not bother with a warning.
             break;
         }
+
+        nWrittenActions++;
+        MayCallback();
+
+        if (pWMF->GetError())
+            bStatus=false;
+
+        if(!bStatus)
+            break;
     }
 }
 
@@ -1633,7 +1629,7 @@ void WMFWriter::WriteHeader( bool bPlaceable )
     {
         sal_uInt16  nCheckSum, nValue;
         Size    aSize( OutputDevice::LogicToLogic(Size(1,1),MapMode(MapUnit::MapInch), aTargetMapMode) );
-        sal_uInt16  nUnitsPerInch = (sal_uInt16) ( ( aSize.Width() + aSize.Height() ) >> 1 );
+        sal_uInt16  nUnitsPerInch = static_cast<sal_uInt16>( ( aSize.Width() + aSize.Height() ) >> 1 );
 
         nCheckSum=0;
         nValue=0xcdd7;                              nCheckSum^=nValue; pWMF->WriteUInt16( nValue );
@@ -1641,8 +1637,8 @@ void WMFWriter::WriteHeader( bool bPlaceable )
         nValue=0x0000;                              nCheckSum^=nValue; pWMF->WriteUInt16( nValue );
         nValue=0x0000;                              nCheckSum^=nValue; pWMF->WriteUInt16( nValue );
         nValue=0x0000;                              nCheckSum^=nValue; pWMF->WriteUInt16( nValue );
-        nValue=(sal_uInt16) aTargetSize.Width();        nCheckSum^=nValue; pWMF->WriteUInt16( nValue );
-        nValue=(sal_uInt16) aTargetSize.Height();       nCheckSum^=nValue; pWMF->WriteUInt16( nValue );
+        nValue=static_cast<sal_uInt16>(aTargetSize.Width());        nCheckSum^=nValue; pWMF->WriteUInt16( nValue );
+        nValue=static_cast<sal_uInt16>(aTargetSize.Height());       nCheckSum^=nValue; pWMF->WriteUInt16( nValue );
         nValue=nUnitsPerInch;                       nCheckSum^=nValue; pWMF->WriteUInt16( nValue );
         nValue=0x0000;                              nCheckSum^=nValue; pWMF->WriteUInt16( nValue );
         nValue=0x0000;                              nCheckSum^=nValue; pWMF->WriteUInt16( nValue );
@@ -1654,7 +1650,7 @@ void WMFWriter::WriteHeader( bool bPlaceable )
          .WriteUInt16( 0x0009 )           // header length in words
          .WriteUInt16( 0x0300 )           // Version as BCD number
          .WriteUInt32( 0x00000000 )      // file length (without 1st header), is later corrected by UpdateHeader()
-         .WriteUInt16( MAXOBJECTHANDLES ) // maxmimum number of simultaneous objects
+         .WriteUInt16( MAXOBJECTHANDLES ) // maximum number of simultaneous objects
          .WriteUInt32( 0x00000000 )      // maximum record length, is later corrected by UpdateHeader()
          .WriteUInt16( 0x0000 );          // reserved
 }
@@ -1680,7 +1676,7 @@ void WMFWriter::UpdateHeader()
 }
 
 bool WMFWriter::WriteWMF( const GDIMetaFile& rMTF, SvStream& rTargetStream,
-                            FilterConfigItem* pFConfigItem, bool bPlaceable )
+                            FilterConfigItem const * pFConfigItem, bool bPlaceable )
 {
     WMFWriterAttrStackMember * pAt;
 
@@ -1693,8 +1689,7 @@ bool WMFWriter::WriteWMF( const GDIMetaFile& rMTF, SvStream& rTargetStream,
         xStatusIndicator = pFConfigItem->GetStatusIndicator();
         if ( xStatusIndicator.is() )
         {
-            OUString aMsg;
-            xStatusIndicator->start( aMsg, 100 );
+            xStatusIndicator->start( OUString(), 100 );
         }
     }
     nLastPercent=0;
@@ -1711,8 +1706,8 @@ bool WMFWriter::WriteWMF( const GDIMetaFile& rMTF, SvStream& rTargetStream,
         aTargetMapMode = aSrcMapMode;
         aTargetSize = rMTF.GetPrefSize();
         sal_uInt16 nTargetDivisor = CalcSaveTargetMapMode(aTargetMapMode, aTargetSize);
-        aTargetSize.Width() /= nTargetDivisor;
-        aTargetSize.Height() /= nTargetDivisor;
+        aTargetSize.setWidth( aTargetSize.Width() / nTargetDivisor );
+        aTargetSize.setHeight( aTargetSize.Height() / nTargetDivisor );
     }
     else
     {
@@ -1756,18 +1751,17 @@ bool WMFWriter::WriteWMF( const GDIMetaFile& rMTF, SvStream& rTargetStream,
     WMFRecord_SetROP2(eDstROP2);
 
     aDstLineInfo = LineInfo();
-    aDstLineColor = aSrcLineColor = Color( COL_BLACK );
+    aDstLineColor = aSrcLineColor = COL_BLACK;
     CreateSelectDeletePen( aDstLineColor, aDstLineInfo );
 
-    aDstFillColor = aSrcFillColor = Color( COL_WHITE );
+    aDstFillColor = aSrcFillColor = COL_WHITE;
     CreateSelectDeleteBrush( aDstFillColor );
 
     aDstClipRegion = aSrcClipRegion = vcl::Region();
-    bDstIsClipping = bSrcIsClipping = false;
 
     vcl::Font aFont;
     aFont.SetCharSet( GetExtendedTextEncoding( RTL_TEXTENCODING_MS_1252 ) );
-    aFont.SetColor( Color( COL_WHITE ) );
+    aFont.SetColor( COL_WHITE );
     aFont.SetAlignment( ALIGN_BASELINE );
     aDstFont = aSrcFont = aFont;
     CreateSelectDeleteFont(aDstFont);
@@ -1776,7 +1770,7 @@ bool WMFWriter::WriteWMF( const GDIMetaFile& rMTF, SvStream& rTargetStream,
     eDstHorTextAlign = eSrcHorTextAlign = W_TA_LEFT;
     WMFRecord_SetTextAlign( eDstTextAlign, eDstHorTextAlign );
 
-    aDstTextColor = aSrcTextColor = Color( COL_WHITE );
+    aDstTextColor = aSrcTextColor = COL_WHITE;
     WMFRecord_SetTextColor(aDstTextColor);
 
     // Write records
@@ -1829,50 +1823,51 @@ void WMFWriter::WriteEmbeddedEMF( const GDIMetaFile& rMTF )
     SvMemoryStream aStream;
     EMFWriter aEMFWriter(aStream);
 
-    if( aEMFWriter.WriteEMF( rMTF ) )
+    if( !aEMFWriter.WriteEMF( rMTF ) )
+        return;
+
+    sal_uInt64 const nTotalSize = aStream.Tell();
+    if( nTotalSize > SAL_MAX_UINT32 )
+        return;
+    aStream.Seek( 0 );
+    sal_uInt32 nRemainingSize = static_cast< sal_uInt32 >( nTotalSize );
+    sal_uInt32 nRecCounts = ( (nTotalSize - 1) / 0x2000 ) + 1;
+    sal_uInt16 nCheckSum = 0, nWord;
+
+    sal_uInt32 nPos = 0;
+
+    while( nPos + 1 < nTotalSize )
     {
-        sal_uInt64 const nTotalSize = aStream.Tell();
-        if( nTotalSize > SAL_MAX_UINT32 )
-            return;
-        aStream.Seek( 0 );
-        sal_uInt32 nRemainingSize = static_cast< sal_uInt32 >( nTotalSize );
-        sal_uInt32 nRecCounts = ( (nTotalSize - 1) / 0x2000 ) + 1;
-        sal_uInt16 nCheckSum = 0, nWord;
-
-        sal_uInt32 nPos = 0;
-
-        while( nPos + 1 < nTotalSize )
-        {
-            aStream.ReadUInt16( nWord );
-            nCheckSum ^= nWord;
-            nPos += 2;
-        }
-
-        nCheckSum = static_cast< sal_uInt16 >( nCheckSum * -1 );
-
-        aStream.Seek( 0 );
-        while( nRemainingSize > 0 )
-        {
-            sal_uInt32 nCurSize;
-            if( nRemainingSize > 0x2000 )
-            {
-                nCurSize = 0x2000;
-                nRemainingSize -= 0x2000;
-            }
-            else
-            {
-                nCurSize = nRemainingSize;
-                nRemainingSize = 0;
-            }
-            WriteEMFRecord( aStream,
-                            nCurSize,
-                            nRemainingSize,
-                            nTotalSize,
-                            nRecCounts,
-                            nCheckSum );
-            nCheckSum = 0;
-        }
+        aStream.ReadUInt16( nWord );
+        nCheckSum ^= nWord;
+        nPos += 2;
     }
+
+    nCheckSum = static_cast< sal_uInt16 >( nCheckSum * -1 );
+
+    aStream.Seek( 0 );
+    while( nRemainingSize > 0 )
+    {
+        sal_uInt32 nCurSize;
+        if( nRemainingSize > 0x2000 )
+        {
+            nCurSize = 0x2000;
+            nRemainingSize -= 0x2000;
+        }
+        else
+        {
+            nCurSize = nRemainingSize;
+            nRemainingSize = 0;
+        }
+        WriteEMFRecord( aStream,
+                        nCurSize,
+                        nRemainingSize,
+                        nTotalSize,
+                        nRecCounts,
+                        nCheckSum );
+        nCheckSum = 0;
+    }
+
 }
 
 void WMFWriter::WriteEMFRecord( SvMemoryStream& rStream, sal_uInt32 nCurSize, sal_uInt32 nRemainingSize,
@@ -1892,7 +1887,7 @@ void WMFWriter::WriteEMFRecord( SvMemoryStream& rStream, sal_uInt32 nCurSize, sa
          .WriteUInt32( nRemainingSize )                 // remaining size of data in following records, missing in MSDN documentation
          .WriteUInt32( nTotalSize );                    // total size of EMF stream
 
-   pWMF->WriteBytes(static_cast<const sal_Char*>(rStream.GetData()) + rStream.Tell(), nCurSize);
+   pWMF->WriteBytes(static_cast<const char*>(rStream.GetData()) + rStream.Tell(), nCurSize);
    rStream.SeekRel( nCurSize );
    UpdateRecordHeader();
 }

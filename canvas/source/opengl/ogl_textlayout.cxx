@@ -8,9 +8,8 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/numeric/ftools.hxx>
 #include <tools/diagnose_ex.h>
 
 #include "ogl_textlayout.hxx"
@@ -79,7 +78,7 @@ namespace oglcanvas
     {
         ::osl::MutexGuard aGuard( m_aMutex );
 
-        ENSURE_OR_THROW( mpFont.get(),
+        ENSURE_OR_THROW( mpFont,
                          "TextLayout::queryTextBounds(): invalid font" );
 
         // fake text bounds by either taking the advancement values,
@@ -87,7 +86,7 @@ namespace oglcanvas
         const rendering::FontRequest& rFontRequest( mpFont->getFontRequest() );
         const double nFontSize( std::max( rFontRequest.CellSize,
                                             rFontRequest.ReferenceAdvancement ) );
-        if( maLogicalAdvancements.getLength() )
+        if( maLogicalAdvancements.hasElements() )
         {
             return geometry::RealRectangle2D( 0, -nFontSize/2,
                                               maLogicalAdvancements[ maLogicalAdvancements.getLength()-1 ],
@@ -176,14 +175,6 @@ namespace oglcanvas
         return maText;
     }
 
-    bool TextLayout::draw( const rendering::ViewState&                          /*rViewState*/,
-                           const rendering::RenderState&                        /*rRenderState*/,
-                           const uno::Reference< rendering::XGraphicDevice >&   /*xGraphicDevice*/ ) const
-    {
-        // TODO
-
-        return true;
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

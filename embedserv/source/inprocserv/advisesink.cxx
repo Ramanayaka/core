@@ -19,13 +19,7 @@
 
 #include <sal/config.h>
 
-#include <o3tl/make_unique.hxx>
-
-#if defined _MSC_VER
-#pragma warning(disable : 4668)
-#endif
-
-#include <advisesink.hxx>
+#include "advisesink.hxx"
 
 namespace inprocserv
 {
@@ -68,7 +62,7 @@ OleWrapperAdviseSink::OleWrapperAdviseSink( const ComSmart< IAdviseSink >& pList
 {
     if ( pFormatEtc )
     {
-        m_pFormatEtc = o3tl::make_unique<FORMATETC>();
+        m_pFormatEtc = std::make_unique<FORMATETC>();
         m_pFormatEtc->cfFormat = pFormatEtc->cfFormat;
         m_pFormatEtc->ptd = nullptr;
         m_pFormatEtc->dwAspect = pFormatEtc->dwAspect;
@@ -126,7 +120,7 @@ STDMETHODIMP_(ULONG) OleWrapperAdviseSink::Release()
     return nReturn;
 }
 
-STDMETHODIMP_(void) OleWrapperAdviseSink::OnDataChange( LPFORMATETC pFetc, LPSTGMEDIUM pMedium )
+STDMETHODIMP_(void) OleWrapperAdviseSink::OnDataChange( FORMATETC * pFetc, STGMEDIUM * pMedium )
 {
     if ( m_pListener )
     {
@@ -142,7 +136,7 @@ STDMETHODIMP_(void) OleWrapperAdviseSink::OnViewChange( DWORD dwAspect, LONG lin
     }
 }
 
-STDMETHODIMP_(void) OleWrapperAdviseSink::OnRename( LPMONIKER pMoniker )
+STDMETHODIMP_(void) OleWrapperAdviseSink::OnRename( IMoniker * pMoniker )
 {
     if ( m_pListener )
     {

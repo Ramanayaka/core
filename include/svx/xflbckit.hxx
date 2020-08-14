@@ -29,20 +29,17 @@
 |*
 \************************************************************************/
 
-class SVX_DLLPUBLIC XFillBackgroundItem : public SfxBoolItem
+class SVXCORE_DLLPUBLIC XFillBackgroundItem final : public SfxBoolItem
 {
 public:
                             XFillBackgroundItem( bool bFill = false );
-                            SVX_DLLPRIVATE XFillBackgroundItem( SvStream& rIn );
 
-
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
-    SVX_DLLPRIVATE virtual SfxPoolItem*    Create( SvStream& rIn, sal_uInt16 nVer ) const override;
+    SVX_DLLPRIVATE virtual XFillBackgroundItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     SVX_DLLPRIVATE virtual bool GetPresentation( SfxItemPresentation ePres,
                                                  MapUnit eCoreMetric,
                                                  MapUnit ePresMetric,
-                                                 OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                                 OUString &rText, const IntlWrapper& ) const override;
 };
 
 #endif

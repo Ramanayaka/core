@@ -18,22 +18,19 @@
  */
 
 #include <osl/mutex.hxx>
-#include <cppuhelper/queryinterface.hxx>
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/weak.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/implbase4.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <registry/registry.hxx>
 #include <rtl/ref.hxx>
 
 #include <com/sun/star/registry/XSimpleRegistry.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace css::uno;
 using namespace css::registry;
@@ -43,8 +40,6 @@ using namespace cppu;
 using namespace osl;
 
 namespace {
-
-class NestedKeyImpl;
 
 class NestedRegistryImpl    : public WeakAggImplHelper4 < XSimpleRegistry, XInitialization, XServiceInfo, XEnumerationAccess >
 {
@@ -142,11 +137,8 @@ protected:
 NestedKeyImpl::NestedKeyImpl( NestedRegistryImpl* pDefaultRegistry,
                               Reference<XRegistryKey>& localKey,
                               Reference<XRegistryKey>& defaultKey )
-    : m_xRegistry(pDefaultRegistry)
+    : m_state(pDefaultRegistry->m_state), m_xRegistry(pDefaultRegistry), m_localKey(localKey), m_defaultKey(defaultKey)
 {
-    m_localKey = localKey;
-    m_defaultKey = defaultKey;
-
     if (m_localKey.is())
     {
         m_name = m_localKey->getKeyName();
@@ -155,8 +147,6 @@ NestedKeyImpl::NestedKeyImpl( NestedRegistryImpl* pDefaultRegistry,
     {
         m_name = m_defaultKey->getKeyName();
     }
-
-    m_state = m_xRegistry->m_state;
 }
 
 
@@ -188,19 +178,19 @@ NestedKeyImpl::NestedKeyImpl( const OUString& rKeyName,
 void NestedKeyImpl::computeChanges()
 {
     Guard< Mutex > aGuard( m_xRegistry->m_mutex );
-    if ( m_state != m_xRegistry->m_state )
+    if ( m_state == m_xRegistry->m_state )
+        return;
+
+    Reference<XRegistryKey> rootKey(m_xRegistry->m_localReg->getRootKey());
+
+    Reference<XRegistryKey> tmpKey = rootKey->openKey(m_name);
+
+    if ( tmpKey.is() )
     {
-        Reference<XRegistryKey> rootKey(m_xRegistry->m_localReg->getRootKey());
-
-        Reference<XRegistryKey> tmpKey = rootKey->openKey(m_name);
-
-        if ( tmpKey.is() )
-        {
-            m_localKey = rootKey->openKey(m_name);
-        }
-
-        m_state = m_xRegistry->m_state;
+        m_localKey = rootKey->openKey(m_name);
     }
+
+    m_state = m_xRegistry->m_state;
 }
 
 
@@ -263,10 +253,10 @@ sal_Bool SAL_CALL NestedKeyImpl::isReadOnly(  )
     Guard< Mutex > aGuard( m_xRegistry->m_mutex );
     computeChanges();
 
-    if ( m_localKey.is() && m_localKey->isValid() )
-           return m_localKey->isReadOnly();
-    else
+    if ( !m_localKey.is() || !m_localKey->isValid() )
         throw InvalidRegistryException();
+
+    return m_localKey->isReadOnly();
 }
 
 
@@ -641,7 +631,7 @@ Reference< XRegistryKey > SAL_CALL NestedKeyImpl::openKey( const OUString& aKeyN
 
     if ( localKey.is() || defaultKey.is() )
     {
-        return static_cast<XRegistryKey*>(new NestedKeyImpl(m_xRegistry.get(), localKey, defaultKey));
+        return new NestedKeyImpl(m_xRegistry.get(), localKey, defaultKey);
     }
     else
     {
@@ -678,7 +668,7 @@ Reference< XRegistryKey > SAL_CALL NestedKeyImpl::createKey( const OUString& aKe
 
             m_state = m_xRegistry->m_state++;
 
-            return (static_cast<XRegistryKey*>(new NestedKeyImpl(m_xRegistry.get(), localKey, defaultKey)));
+            return new NestedKeyImpl(m_xRegistry.get(), localKey, defaultKey);
         }
     }
     else
@@ -698,7 +688,7 @@ Reference< XRegistryKey > SAL_CALL NestedKeyImpl::createKey( const OUString& aKe
 
                 m_state = m_xRegistry->m_state++;
 
-                return (static_cast<XRegistryKey*>(new NestedKeyImpl(m_xRegistry.get(), localKey, defaultKey)));
+                return new NestedKeyImpl(m_xRegistry.get(), localKey, defaultKey);
             }
         }
     }
@@ -724,22 +714,20 @@ void SAL_CALL NestedKeyImpl::closeKey(  )
 void SAL_CALL NestedKeyImpl::deleteKey( const OUString& rKeyName )
 {
     Guard< Mutex > aGuard( m_xRegistry->m_mutex );
-    if ( m_localKey.is() && m_localKey->isValid() &&
-         !m_localKey->isReadOnly() )
-    {
-        OUString resolvedName = computeName(rKeyName);
-
-        if ( resolvedName.isEmpty() )
-        {
-            throw InvalidRegistryException();
-        }
-
-        m_xRegistry->m_localReg->getRootKey()->deleteKey(resolvedName);
-    }
-    else
+    if ( !m_localKey.is() || !m_localKey->isValid() ||
+         m_localKey->isReadOnly() )
     {
         throw InvalidRegistryException();
     }
+
+    OUString resolvedName = computeName(rKeyName);
+
+    if ( resolvedName.isEmpty() )
+    {
+        throw InvalidRegistryException();
+    }
+
+    m_xRegistry->m_localReg->getRootKey()->deleteKey(resolvedName);
 }
 
 
@@ -762,62 +750,27 @@ Sequence< Reference< XRegistryKey > > SAL_CALL NestedKeyImpl::openKeys(  )
         defaultSeq = m_defaultKey->getKeyNames();
     }
 
-    sal_uInt32 local = localSeq.getLength();
-    sal_uInt32 def = defaultSeq.getLength();
-    sal_uInt32 len = 0;
+    std::vector< Reference<XRegistryKey> > retVec;
+    retVec.reserve(localSeq.getLength() + defaultSeq.getLength());
 
-    sal_uInt32 i, j;
-    for (i=0; i < local; i++)
+    auto lKeyNameToRegKey = [this](const OUString& rName) -> Reference<XRegistryKey> {
+        sal_Int32 lastIndex = rName.lastIndexOf('/');
+        OUString name = rName.copy(lastIndex);
+        return new NestedKeyImpl(name, this);
+    };
+
+    for (const auto& rKeyName : std::as_const(localSeq))
+        retVec.push_back(lKeyNameToRegKey(rKeyName));
+
+    for (const auto& rKeyName : std::as_const(defaultSeq))
     {
-        for (j=0 ; j < def; j++)
+        if ( comphelper::findValue(localSeq, rKeyName) == -1 )
         {
-            if ( localSeq.getConstArray()[i] == defaultSeq.getConstArray()[j] )
-            {
-                len++;
-                break;
-            }
+            retVec.push_back(lKeyNameToRegKey(rKeyName));
         }
     }
 
-    Sequence< Reference<XRegistryKey> > retSeq(local + def - len);
-    OUString                            name;
-    sal_Int32                           lastIndex;
-
-    for (i=0; i < local; i++)
-    {
-        name = localSeq.getConstArray()[i];
-        lastIndex = name.lastIndexOf('/');
-        name = name.copy(lastIndex);
-        retSeq.getArray()[i] =
-            static_cast<XRegistryKey*>(new NestedKeyImpl(name, this));
-    }
-
-    sal_uInt32 k = local;
-    for (i=0; i < def; i++)
-    {
-        bool insert = true;
-
-        for (j=0 ; j < local; j++)
-        {
-            if ( retSeq.getConstArray()[j]->getKeyName()
-                    == defaultSeq.getConstArray()[i] )
-            {
-                insert = false;
-                break;
-            }
-        }
-
-        if ( insert )
-        {
-            name = defaultSeq.getConstArray()[i];
-            lastIndex = name.lastIndexOf('/');
-            name = name.copy(lastIndex);
-            retSeq.getArray()[k++] =
-                static_cast<XRegistryKey*>(new NestedKeyImpl(name, this));
-        }
-    }
-
-    return retSeq;
+    return comphelper::containerToSequence(retVec);
 }
 
 
@@ -840,49 +793,7 @@ Sequence< OUString > SAL_CALL NestedKeyImpl::getKeyNames(  )
         defaultSeq = m_defaultKey->getKeyNames();
     }
 
-    sal_uInt32 local = localSeq.getLength();
-    sal_uInt32 def = defaultSeq.getLength();
-    sal_uInt32 len = 0;
-
-    sal_uInt32 i, j;
-    for (i=0; i < local; i++)
-    {
-        for (j=0 ; j < def; j++)
-        {
-            if ( localSeq.getConstArray()[i] == defaultSeq.getConstArray()[j] )
-            {
-                len++;
-                break;
-            }
-        }
-    }
-
-    Sequence<OUString>  retSeq(local + def - len);
-
-    for (i=0; i < local; i++)
-    {
-        retSeq.getArray()[i] = localSeq.getConstArray()[i];
-    }
-
-    sal_uInt32 k = local;
-    for (i=0; i < def; i++)
-    {
-        bool insert = true;
-
-        for (j=0 ; j < local; j++)
-        {
-            if ( retSeq.getConstArray()[j] == defaultSeq.getConstArray()[i] )
-            {
-                insert = false;
-                break;
-            }
-        }
-
-        if ( insert )
-            retSeq.getArray()[k++] = defaultSeq.getConstArray()[i];
-    }
-
-    return retSeq;
+    return comphelper::combineSequences(localSeq, defaultSeq);
 }
 
 
@@ -911,7 +822,7 @@ sal_Bool SAL_CALL NestedKeyImpl::createLink( const OUString& aLinkName, const OU
             throw InvalidRegistryException();
         }
 
-        resolvedName = resolvedName + aLinkName.copy(lastIndex);
+        resolvedName += aLinkName.copy(lastIndex);
     }
     else
     {
@@ -966,7 +877,7 @@ void SAL_CALL NestedKeyImpl::deleteLink( const OUString& rLinkName )
             throw InvalidRegistryException();
         }
 
-        resolvedName = resolvedName + rLinkName.copy(lastIndex);
+        resolvedName += rLinkName.copy(lastIndex);
     }
     else
     {
@@ -976,15 +887,13 @@ void SAL_CALL NestedKeyImpl::deleteLink( const OUString& rLinkName )
             resolvedName = m_name + "/" + rLinkName;
     }
 
-    if ( m_localKey.is() && m_localKey->isValid() &&
-         !m_localKey->isReadOnly() )
-    {
-        m_xRegistry->m_localReg->getRootKey()->deleteLink(resolvedName);
-    }
-    else
+    if ( !m_localKey.is() || !m_localKey->isValid() ||
+         m_localKey->isReadOnly() )
     {
         throw InvalidRegistryException();
     }
+
+    m_xRegistry->m_localReg->getRootKey()->deleteLink(resolvedName);
 }
 
 
@@ -1011,7 +920,7 @@ OUString SAL_CALL NestedKeyImpl::getLinkTarget( const OUString& rLinkName )
             throw InvalidRegistryException();
         }
 
-        resolvedName = resolvedName + rLinkName.copy(lastIndex);
+        resolvedName += rLinkName.copy(lastIndex);
     }
     else
     {
@@ -1130,7 +1039,7 @@ sal_Bool SAL_CALL NestedRegistryImpl::hasElements(  )
 
 OUString SAL_CALL NestedRegistryImpl::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.stoc.NestedRegistry");
+    return "com.sun.star.comp.stoc.NestedRegistry";
 }
 
 sal_Bool SAL_CALL NestedRegistryImpl::supportsService( const OUString& ServiceName )
@@ -1224,25 +1133,23 @@ void SAL_CALL NestedRegistryImpl::destroy(  )
 Reference< XRegistryKey > SAL_CALL NestedRegistryImpl::getRootKey(  )
 {
     Guard< Mutex > aGuard( m_mutex );
-    if ( m_localReg.is() && m_localReg->isValid() )
-    {
-        Reference<XRegistryKey> localKey, defaultKey;
-
-        localKey = m_localReg->getRootKey();
-
-        if ( localKey.is() )
-        {
-            if ( m_defaultReg.is() && m_defaultReg->isValid() )
-            {
-                defaultKey = m_defaultReg->getRootKey();
-            }
-
-            return (static_cast<XRegistryKey*>(new NestedKeyImpl(this, localKey, defaultKey)));
-        }
-    }
-    else
+    if ( !m_localReg.is() || !m_localReg->isValid() )
     {
         throw InvalidRegistryException();
+    }
+
+    Reference<XRegistryKey> localKey, defaultKey;
+
+    localKey = m_localReg->getRootKey();
+
+    if ( localKey.is() )
+    {
+        if ( m_defaultReg.is() && m_defaultReg->isValid() )
+        {
+            defaultKey = m_defaultReg->getRootKey();
+        }
+
+        return new NestedKeyImpl(this, localKey, defaultKey);
     }
 
     return Reference<XRegistryKey>();
@@ -1278,7 +1185,7 @@ void SAL_CALL NestedRegistryImpl::mergeKey( const OUString& aKeyName, const OUSt
 
 } // namespace
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_stoc_NestedRegistry_get_implementation(
     SAL_UNUSED_PARAMETER css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

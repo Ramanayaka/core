@@ -7,6 +7,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#ifndef LO_CLANG_SHARED_PLUGINS
+
 #include <stack>
 
 #include "check.hxx"
@@ -17,30 +19,55 @@
 
 namespace {
 
-class Visitor final:
-    public RecursiveASTVisitor<Visitor>, public loplugin::Plugin
+class UnicodeToChar final:
+    public loplugin::FilteringPlugin<UnicodeToChar>
 {
 public:
-    explicit Visitor(InstantiationData const & data): Plugin(data) {}
+    explicit UnicodeToChar(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
 
+    bool PreTraverseCStyleCastExpr(CStyleCastExpr * expr) {
+        subExprs_.push(expr->getSubExpr());
+        return true;
+    }
+    bool PostTraverseCStyleCastExpr(CStyleCastExpr *, bool ) {
+        subExprs_.pop();
+        return true;
+    }
     bool TraverseCStyleCastExpr(CStyleCastExpr * expr) {
-        subExprs_.push(expr->getSubExpr());
+        PreTraverseCStyleCastExpr(expr);
         bool ret = RecursiveASTVisitor::TraverseCStyleCastExpr(expr);
-        subExprs_.pop();
+        PostTraverseCStyleCastExpr(expr, ret);
         return ret;
     }
 
+    bool PreTraverseCXXStaticCastExpr(CXXStaticCastExpr * expr) {
+        subExprs_.push(expr->getSubExpr());
+        return true;
+    }
+    bool PostTraverseCXXStaticCastExpr(CXXStaticCastExpr *, bool) {
+        subExprs_.pop();
+        return true;
+    }
     bool TraverseCXXStaticCastExpr(CXXStaticCastExpr * expr) {
-        subExprs_.push(expr->getSubExpr());
+        PreTraverseCXXStaticCastExpr(expr);
         bool ret = RecursiveASTVisitor::TraverseCXXStaticCastExpr(expr);
-        subExprs_.pop();
+        PostTraverseCXXStaticCastExpr(expr, ret);
         return ret;
     }
 
-    bool TraverseCXXFunctionalCastExpr(CXXFunctionalCastExpr * expr) {
+    bool PreTraverseCXXFunctionalCastExpr(CXXFunctionalCastExpr * expr) {
         subExprs_.push(expr->getSubExpr());
-        bool ret = RecursiveASTVisitor::TraverseCXXFunctionalCastExpr(expr);
+        return true;
+    }
+    bool PostTraverseCXXFunctionalCastExpr(CXXFunctionalCastExpr *, bool) {
         subExprs_.pop();
+        return true;
+    }
+    bool TraverseCXXFunctionalCastExpr(CXXFunctionalCastExpr * expr) {
+        PreTraverseCXXFunctionalCastExpr(expr);
+        bool ret = RecursiveASTVisitor::TraverseCXXFunctionalCastExpr(expr);
+        PostTraverseCXXFunctionalCastExpr(expr, ret);
         return ret;
     }
 
@@ -57,7 +84,7 @@ public:
             return true;
         }
         APSInt res;
-        if (expr->getSubExpr()->EvaluateAsInt(res, compiler.getASTContext())
+        if (compat::EvaluateAsInt(expr->getSubExpr(), res, compiler.getASTContext())
             && res >= 0 && res <= 0x7F)
         {
             return true;
@@ -71,18 +98,24 @@ public:
         return true;
     }
 
-private:
+    bool preRun() override {
+        return compiler.getLangOpts().CPlusPlus;
+    }
+
     void run() override {
-        if (compiler.getLangOpts().CPlusPlus) {
+        if (preRun()) {
             TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
         }
     }
 
+private:
     std::stack<Expr const *> subExprs_;
 };
 
-static loplugin::Plugin::Registration<Visitor> reg("unicodetochar");
+static loplugin::Plugin::Registration<UnicodeToChar> unicodetochar("unicodetochar");
 
-}
+} // namespace
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

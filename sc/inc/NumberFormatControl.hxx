@@ -16,17 +16,16 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SC_NUMBERFORMATCONTROL_HXX
-#define INCLUDED_SC_NUMBERFORMATCONTROL_HXX
 
-#include <scdllapi.h>
+#pragma once
+
+#include "scdllapi.h"
 #include <sfx2/tbxctrl.hxx>
 
-#include <functional>
 
 namespace sc {
 
-class SC_DLLPUBLIC ScNumberFormatControl : public SfxToolBoxControl
+class ScNumberFormatControl final : public SfxToolBoxControl
 {
 public:
     SFX_DECL_TOOLBOX_CONTROL();
@@ -36,11 +35,9 @@ public:
 
     virtual void StateChanged(sal_uInt16 nSID, SfxItemState eState,
                               const SfxPoolItem* pState) override;
-    virtual VclPtr<vcl::Window> CreateItemWindow( vcl::Window *pParent ) override;
+    virtual VclPtr<InterimItemWindow> CreateItemWindow( vcl::Window *pParent ) override;
 };
 
 } // end of namespace sc
-
-#endif // INCLUDED_SC_NUMBERFORMATCONTROL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,7 +21,6 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_UNDOOVERWRITE_HXX
 
 #include <memory>
-#include <com/sun/star/uno/Sequence.h>
 #include <rtl/ustring.hxx>
 #include <undobj.hxx>
 
@@ -34,12 +33,12 @@ namespace utl {
 
 class SwUndoOverwrite: public SwUndo, private SwUndoSaveContent
 {
-    OUString aDelStr, aInsStr;
-    std::unique_ptr<SwRedlineSaveDatas> pRedlSaveData;
-    sal_uLong nSttNode;
-    sal_Int32 nSttContent;
-    bool bInsChar : 1;  // no Overwrite, but Insert
-    bool bGroup : 1;    // TRUE: is already grouped; evaluated in CanGrouping()
+    OUString m_aDelStr, m_aInsStr;
+    std::unique_ptr<SwRedlineSaveDatas> m_pRedlSaveData;
+    sal_uLong m_nStartNode;
+    sal_Int32 m_nStartContent;
+    bool m_bInsChar : 1;  // no Overwrite, but Insert
+    bool m_bGroup : 1;    // TRUE: is already grouped; evaluated in CanGrouping()
 
 public:
     SwUndoOverwrite( SwDoc*, SwPosition&, sal_Unicode cIns );
@@ -69,10 +68,10 @@ public:
 struct UndoTransliterate_Data;
 class SwUndoTransliterate : public SwUndo, public SwUndRng
 {
-    std::vector< UndoTransliterate_Data * >    aChanges;
-    TransliterationFlags nType;
+    std::vector< std::unique_ptr<UndoTransliterate_Data> >    m_aChanges;
+    TransliterationFlags m_nType;
 
-    void DoTransliterate(SwDoc & rDoc, SwPaM & rPam);
+    void DoTransliterate(SwDoc & rDoc, SwPaM const & rPam);
 
 public:
     SwUndoTransliterate( const SwPaM& rPam,
@@ -85,8 +84,8 @@ public:
     virtual void RepeatImpl( ::sw::RepeatContext & ) override;
 
     void AddChanges( SwTextNode& rTNd, sal_Int32 nStart, sal_Int32 nLen,
-                     css::uno::Sequence <sal_Int32>& rOffsets );
-    bool HasData() const { return aChanges.size() > 0; }
+                     css::uno::Sequence <sal_Int32> const & rOffsets );
+    bool HasData() const { return m_aChanges.size() > 0; }
 };
 
 #endif // INCLUDED_SW_SOURCE_CORE_INC_UNDOOVERWRITE_HXX

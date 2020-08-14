@@ -17,12 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hintids.hxx"
-#include <editeng/lrspitem.hxx>
+#include <sal/config.h>
 
-#include "frmmgr.hxx"
-#include "frmfmt.hxx"
-#include "colmgr.hxx"
+#include <algorithm>
+
+#include <hintids.hxx>
+#include <editeng/lrspitem.hxx>
+#include <osl/diagnose.h>
+
+#include <colmgr.hxx>
+#include <fmtfsize.hxx>
+#include <swtypes.hxx>
 
 // private methods
 
@@ -33,7 +38,28 @@ void FitToActualSize(SwFormatCol& rCol, sal_uInt16 nWidth)
     for(sal_uInt16 i = 0; i < nCount; ++i)
     {
         const sal_uInt16 nTmp = rCol.CalcColWidth(i, nWidth);
-        rCol.GetColumns()[i].SetWishWidth(nTmp);
+        auto & col = rCol.GetColumns()[i];
+        col.SetWishWidth(nTmp);
+        // If necessary, shrink borders (as equally as possible) to keep up the invariant that
+        // GetWishWidth() >= GetLeft() + GetRight():
+        sal_uInt32 const borders = col.GetLeft() + col.GetRight();
+        if (borders > nTmp)
+        {
+            auto const shrink =  borders - nTmp;
+            auto const half = shrink / 2; // rounds down
+            if (col.GetLeft() < col.GetRight())
+            {
+                auto const shrinkLeft = std::min(sal_uInt32(col.GetLeft()), half);
+                col.SetLeft(col.GetLeft() - shrinkLeft);
+                col.SetRight(col.GetRight() - (shrink - shrinkLeft));
+            }
+            else
+            {
+                auto const shrinkRight = std::min(sal_uInt32(col.GetRight()), half);
+                col.SetLeft(col.GetLeft() - (shrink - shrinkRight));
+                col.SetRight(col.GetRight() - shrinkRight);
+            }
+        }
     }
     rCol.SetWishWidth(nWidth);
 }
@@ -55,7 +81,7 @@ sal_uInt16 SwColMgr::GetGutterWidth( sal_uInt16 nPos ) const
         nRet = GetCount() > 1 ? aFormatCol.GetGutterWidth() : DEF_GUTTER_WIDTH;
     else
     {
-        OSL_ENSURE(nPos < GetCount() - 1, "Spalte ueberindiziert" );
+        OSL_ENSURE(nPos < GetCount() - 1, "column overindexed" );
         const SwColumns& rCols = aFormatCol.GetColumns();
         nRet = rCols[nPos].GetRight() + rCols[nPos + 1].GetLeft();
     }
@@ -68,7 +94,7 @@ void SwColMgr::SetGutterWidth(sal_uInt16 nGutterWidth, sal_uInt16 nPos )
         aFormatCol.SetGutterWidth(nGutterWidth, nWidth);
     else
     {
-        OSL_ENSURE(nPos < GetCount() - 1, "Spalte ueberindiziert" );
+        OSL_ENSURE(nPos < GetCount() - 1, "column overindexed" );
         SwColumns& rCols = aFormatCol.GetColumns();
         sal_uInt16 nGutterWidth2 = nGutterWidth / 2;
         rCols[nPos].SetRight(nGutterWidth2);
@@ -79,24 +105,24 @@ void SwColMgr::SetGutterWidth(sal_uInt16 nGutterWidth, sal_uInt16 nPos )
 // height separation line
 short SwColMgr::GetLineHeightPercent() const
 {
-    return (short)aFormatCol.GetLineHeight();
+    return static_cast<short>(aFormatCol.GetLineHeight());
 }
 void SwColMgr::SetLineHeightPercent(short nPercent)
 {
     OSL_ENSURE(nPercent <= 100, "line height may be at most 100%");
-    aFormatCol.SetLineHeight((sal_uInt8)nPercent);
+    aFormatCol.SetLineHeight(static_cast<sal_uInt8>(nPercent));
 }
 
 // column width
 sal_uInt16 SwColMgr::GetColWidth(sal_uInt16 nIdx) const
 {
-    OSL_ENSURE(nIdx < GetCount(), "Spaltenarray ueberindiziert.");
+    OSL_ENSURE(nIdx < GetCount(), "Column array overindexed.");
     return aFormatCol.CalcPrtColWidth(nIdx, nWidth);
 }
 
 void SwColMgr::SetColWidth(sal_uInt16 nIdx, sal_uInt16 nWd)
 {
-    OSL_ENSURE(nIdx < GetCount(), "Spaltenarray ueberindiziert.");
+    OSL_ENSURE(nIdx < GetCount(), "Column array overindexed.");
     aFormatCol.GetColumns()[nIdx].SetWishWidth(nWd);
 
 }
@@ -110,14 +136,14 @@ void SwColMgr::SetActualWidth(sal_uInt16 nW)
 
 // ctor
 SwColMgr::SwColMgr(const SfxItemSet& rSet) :
-    aFormatCol(static_cast<const SwFormatCol&>(rSet.Get(RES_COL)))
+    aFormatCol(rSet.Get(RES_COL))
 {
-    nWidth = (sal_uInt16)static_cast<const SwFormatFrameSize&>(rSet.Get(RES_FRM_SIZE)).GetWidth();
+    nWidth = static_cast<sal_uInt16>(rSet.Get(RES_FRM_SIZE).GetWidth());
     if (nWidth < MINLAY)
         nWidth = USHRT_MAX;
-    const SvxLRSpaceItem &rLR = static_cast<const SvxLRSpaceItem&>(rSet.Get(RES_LR_SPACE));
-    nWidth = nWidth - (sal_uInt16)rLR.GetLeft();
-    nWidth = nWidth - (sal_uInt16)rLR.GetRight();
+    const SvxLRSpaceItem &rLR = rSet.Get(RES_LR_SPACE);
+    nWidth = nWidth - static_cast<sal_uInt16>(rLR.GetLeft());
+    nWidth = nWidth - static_cast<sal_uInt16>(rLR.GetRight());
     ::FitToActualSize(aFormatCol, nWidth);
 }
 

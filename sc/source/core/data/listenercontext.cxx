@@ -7,14 +7,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "listenercontext.hxx"
-#include "document.hxx"
-#include "mtvelements.hxx"
+#include <listenercontext.hxx>
+#include <document.hxx>
+#include <mtvelements.hxx>
 
 namespace sc {
 
 StartListeningContext::StartListeningContext(ScDocument& rDoc) :
-    mrDoc(rDoc), mpSet(new ColumnBlockPositionSet(rDoc)) {}
+    mrDoc(rDoc), mpSet(std::make_shared<ColumnBlockPositionSet>(rDoc)) {}
 
 StartListeningContext::StartListeningContext(
     ScDocument& rDoc, const std::shared_ptr<ColumnBlockPositionSet>& pSet) :
@@ -36,12 +36,12 @@ ColumnBlockPosition* StartListeningContext::getBlockPosition(SCTAB nTab, SCCOL n
 }
 
 EndListeningContext::EndListeningContext(ScDocument& rDoc, ScTokenArray* pOldCode) :
-    mrDoc(rDoc), maSet(false), mpPosSet(new ColumnBlockPositionSet(rDoc)),
+    mrDoc(rDoc), maSet(), mpPosSet(std::make_shared<ColumnBlockPositionSet>(rDoc)),
     mpOldCode(pOldCode), maPosDelta(0,0,0) {}
 
 EndListeningContext::EndListeningContext(
     ScDocument& rDoc, const std::shared_ptr<ColumnBlockPositionSet>& pSet, ScTokenArray* pOldCode) :
-    mrDoc(rDoc), maSet(false), mpPosSet(pSet),
+    mrDoc(rDoc), maSet(), mpPosSet(pSet),
     mpOldCode(pOldCode), maPosDelta(0,0,0) {}
 
 void EndListeningContext::setPositionDelta( const ScAddress& rDelta )
@@ -65,7 +65,7 @@ ColumnBlockPosition* EndListeningContext::getBlockPosition(SCTAB nTab, SCCOL nCo
 
 void EndListeningContext::addEmptyBroadcasterPosition(SCTAB nTab, SCCOL nCol, SCROW nRow)
 {
-    maSet.set(nTab, nCol, nRow, true);
+    maSet.set(mrDoc, nTab, nCol, nRow, true);
 }
 
 void EndListeningContext::purgeEmptyBroadcasters()

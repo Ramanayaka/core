@@ -24,22 +24,36 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         StructureTagPrimitive2D::StructureTagPrimitive2D(
             const vcl::PDFWriter::StructElement& rStructureElement,
+            bool bBackground,
+            bool bIsImage,
             const Primitive2DContainer& rChildren)
         :   GroupPrimitive2D(rChildren),
-            maStructureElement(rStructureElement)
+            maStructureElement(rStructureElement),
+            mbBackground(bBackground),
+            mbIsImage(bIsImage)
         {
+        }
+
+        bool StructureTagPrimitive2D::operator==(const BasePrimitive2D& rPrimitive) const
+        {
+            if(GroupPrimitive2D::operator==(rPrimitive))
+            {
+                const StructureTagPrimitive2D& rCompare = static_cast<const StructureTagPrimitive2D&>(rPrimitive);
+
+                return (isBackground() == rCompare.isBackground() &&
+                        isImage() == rCompare.isImage());
+            }
+
+            return false;
         }
 
         // provide unique ID
         ImplPrimitive2DIDBlock(StructureTagPrimitive2D, PRIMITIVE2D_ID_STRUCTURETAGPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

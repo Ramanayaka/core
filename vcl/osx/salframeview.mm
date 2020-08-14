@@ -22,16 +22,19 @@
 #include <sal/macros.h>
 #include <tools/helpers.hxx>
 
+#include <vcl/event.hxx>
+#include <vcl/inputctx.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
+#include <vcl/commandevent.hxx>
 
-#include "osx/a11yfactory.h"
-#include "osx/salframe.h"
-#include "osx/salframeview.h"
-#include "osx/salinst.h"
-#include "quartz/salgdi.h"
-#include "quartz/utils.h"
+#include <osx/a11yfactory.h>
+#include <osx/salframe.h>
+#include <osx/salframeview.h>
+#include <osx/salinst.h>
+#include <quartz/salgdi.h>
+#include <quartz/utils.h>
 
 #define WHEEL_EVENT_FACTOR 1.5
 
@@ -151,23 +154,6 @@ static AquaSalFrame* s_pMouseFrame = nullptr;
 // which lack that information
 static sal_uInt16 s_nLastButton = 0;
 
-// combinations of keys we need to handle ourselves
-static const struct ExceptionalKey
-{
-    const sal_uInt16        nKeyCode;
-    const unsigned int  nModifierMask;
-} aExceptionalKeys[] =
-{
-SAL_WNODEPRECATED_DECLARATIONS_PUSH
-        // 'NSAlternateKeyMask' is deprecated: first deprecated in macOS 10.12
-        // 'NSCommandKeyMask' is deprecated: first deprecated in macOS 10.12
-        // 'NSControlKeyMask' is deprecated: first deprecated in macOS 10.12
-        // 'NSShiftKeyMask' is deprecated: first deprecated in macOS 10.12
-    { KEY_D, NSControlKeyMask | NSShiftKeyMask | NSAlternateKeyMask },
-    { KEY_D, NSCommandKeyMask | NSShiftKeyMask | NSAlternateKeyMask }
-SAL_WNODEPRECATED_DECLARATIONS_POP
-};
-
 static AquaSalFrame* getMouseContainerFrame()
 {
     AquaSalFrame* pDispatchFrame = nullptr;
@@ -175,8 +161,8 @@ static AquaSalFrame* getMouseContainerFrame()
     for(NSUInteger i = 0; i < [aWindows count] && ! pDispatchFrame; i++ )
     {
         NSWindow* pWin = [NSApp windowWithWindowNumber:[[aWindows objectAtIndex:i] integerValue]];
-        if( pWin && [pWin isMemberOfClass: [SalFrameWindow class]] && [(SalFrameWindow*)pWin containsMouse] )
-            pDispatchFrame = [(SalFrameWindow*)pWin getSalFrame];
+        if( pWin && [pWin isMemberOfClass: [SalFrameWindow class]] && [static_cast<SalFrameWindow*>(pWin) containsMouse] )
+            pDispatchFrame = [static_cast<SalFrameWindow*>(pWin) getSalFrame];
     }
     return pDispatchFrame;
 }
@@ -189,29 +175,35 @@ static AquaSalFrame* getMouseContainerFrame()
     NSRect aRect = { { static_cast<CGFloat>(pFrame->maGeometry.nX), static_cast<CGFloat>(pFrame->maGeometry.nY) },
                      { static_cast<CGFloat>(pFrame->maGeometry.nWidth), static_cast<CGFloat>(pFrame->maGeometry.nHeight) } };
     pFrame->VCLToCocoa( aRect );
-    NSWindow* pNSWindow = [super initWithContentRect: aRect styleMask: mpFrame->getStyleMask() backing: NSBackingStoreBuffered defer: NO ];
-#if MACOSX_SDK_VERSION < 101000
-    [pNSWindow useOptimizedDrawing: YES]; // OSX recommendation when there are no overlapping subviews within the receiver
-#endif
+    NSWindow* pNSWindow = [super initWithContentRect: aRect
+                                 styleMask: mpFrame->getStyleMask()
+                                 backing: NSBackingStoreBuffered
+                                 defer: Application::IsHeadlessModeEnabled()];
 
-    // enable OSX>=10.7 fullscreen options if available and useful
-    bool bAllowFullScreen = (SalFrameStyleFlags::NONE == (mpFrame->mnStyle & (SalFrameStyleFlags::DIALOG | SalFrameStyleFlags::TOOLTIP | SalFrameStyleFlags::SYSTEMCHILD | SalFrameStyleFlags::FLOAT | SalFrameStyleFlags::TOOLWINDOW | SalFrameStyleFlags::INTRO)));
-    bAllowFullScreen &= (SalFrameStyleFlags::NONE == (~mpFrame->mnStyle & (SalFrameStyleFlags::SIZEABLE)));
-    bAllowFullScreen &= (mpFrame->mpParent == nullptr);
-    const SEL setCollectionBehavior = @selector(setCollectionBehavior:);
-    if( bAllowFullScreen && [pNSWindow respondsToSelector: setCollectionBehavior])
-    {
-        const int bMode= (bAllowFullScreen ? NSWindowCollectionBehaviorFullScreenPrimary : NSWindowCollectionBehaviorFullScreenAuxiliary);
-        [pNSWindow performSelector:setCollectionBehavior withObject:reinterpret_cast<id>(static_cast<intptr_t>(bMode))];
-    }
+    // Disallow full-screen mode on macOS >= 10.11 where it is enabled by default. We don't want it
+    // for now as it will just be confused with LibreOffice's home-grown full-screen concept, with
+    // which it has nothing to do, and one can get into all kinds of weird states by using them
+    // intermixedly.
 
-    // disable OSX>=10.7 window restoration until we support it directly
-    const SEL setRestorable = @selector(setRestorable:);
-    if( [pNSWindow respondsToSelector: setRestorable]) {
-        [pNSWindow performSelector:setRestorable withObject:reinterpret_cast<id>(NO)];
-    }
+    // Ideally we should use the system full-screen mode and adapt the code for the home-grown thing
+    // to be in sync with that instead. (And we would then not need the button to get out of
+    // full-screen mode, as the normal way to get out of it is to either click on the green bubble
+    // again, or invoke the keyboard command again.)
 
-    return (SalFrameWindow *)pNSWindow;
+    // (Confusingly, at the moment the home-grown full-screen mode is bound to Cmd+Shift+F, which is
+    // the keyboard command normally used in apps to get in and out of the system full-screen mode.)
+
+    // Disabling system full-screen mode makes the green button on the title bar (on macOS >= 10.11)
+    // show a plus sign instead, and clicking it becomes identical to double-clicking the title bar,
+    // i.e. it maximizes / unmaximises the window. Sure, that state can also be confused with LO's
+    // home-grown full-screen mode. Oh well.
+
+    [pNSWindow setCollectionBehavior: NSWindowCollectionBehaviorFullScreenNone];
+
+    // Disable window restoration until we support it directly
+    [pNSWindow setRestorable: NO];
+
+    return static_cast<SalFrameWindow *>(pNSWindow);
 }
 
 -(AquaSalFrame*)getSalFrame
@@ -221,15 +213,10 @@ static AquaSalFrame* getMouseContainerFrame()
 
 -(void)displayIfNeeded
 {
-    if( GetSalData() && GetSalData()->mpFirstInstance )
+    if( GetSalData() && GetSalData()->mpInstance )
     {
-        comphelper::SolarMutex* pMutex = GetSalData()->mpFirstInstance->GetYieldMutex();
-        if( pMutex )
-        {
-            pMutex->acquire();
-            [super displayIfNeeded];
-            pMutex->release();
-        }
+        SolarMutexGuard aGuard;
+        [super displayIfNeeded];
     }
 }
 
@@ -238,7 +225,7 @@ static AquaSalFrame* getMouseContainerFrame()
     // is this event actually inside that NSWindow ?
     NSPoint aPt = [NSEvent mouseLocation];
     NSRect aFrameRect = [self frame];
-    BOOL bInRect = NSPointInRect( aPt, aFrameRect );
+    bool bInRect = NSPointInRect( aPt, aFrameRect );
     return bInRect;
 }
 
@@ -272,7 +259,7 @@ static AquaSalFrame* getMouseContainerFrame()
             mpFrame->mpMenu->setMainMenu();
         else if( ! mpFrame->mpParent &&
                  ( (mpFrame->mnStyle & nGuessDocument) == nGuessDocument || // set default menu for e.g. help
-                    mpFrame->mbFullScreen ) )                               // ser default menu for e.g. presentation
+                    mpFrame->mbFullScreen ) )                               // set default menu for e.g. presentation
         {
             AquaSalMenu::setDefaultMenu();
         }
@@ -365,7 +352,7 @@ static AquaSalFrame* getMouseContainerFrame()
     (void)pNotification;
     SolarMutexGuard aGuard;
 
-    BOOL bRet = YES;
+    bool bRet = true;
     if( mpFrame && AquaSalFrame::isAlive( mpFrame ) )
     {
         // #i84461# end possible input
@@ -373,7 +360,10 @@ static AquaSalFrame* getMouseContainerFrame()
         if( AquaSalFrame::isAlive( mpFrame ) )
         {
             mpFrame->CallCallback( SalEvent::Close, nullptr );
-            bRet = NO; // application will close the window or not, AppKit shouldn't
+            bRet = false; // application will close the window or not, AppKit shouldn't
+            AquaSalTimer *pTimer = static_cast<AquaSalTimer*>( ImplGetSVData()->maSchedCtx.mpSalTimer );
+            assert( pTimer );
+            pTimer->handleWindowShouldClose();
         }
     }
 
@@ -518,46 +508,31 @@ static AquaSalFrame* getMouseContainerFrame()
     return NO;
 }
 
-// helper class similar to a osl::Guard< comphelper::SolarMutex > for the
-// SalYieldMutex; the difference is that it only does tryToAcquire instead of
-// acquire so dreaded deadlocks like #i93512# are prevented
-class TryGuard
-{
-public:
-            TryGuard()  { mbGuarded = ImplSalYieldMutexTryToAcquire(); }
-            ~TryGuard() { if( mbGuarded ) ImplSalYieldMutexRelease(); }
-    bool    IsGuarded() { return mbGuarded; }
-private:
-    bool    mbGuarded;
-};
-
 -(void)drawRect: (NSRect)aRect
 {
-    // HOTFIX: #i93512# prevent deadlocks if any other thread already has the SalYieldMutex
-    TryGuard aTryGuard;
-    if( !aTryGuard.IsGuarded() )
-    {
-        // NOTE: the mpFrame access below is not guarded yet!
-        // TODO: mpFrame et al need to be guarded by an independent mutex
-        AquaSalGraphics* pGraphics = (mpFrame && AquaSalFrame::isAlive(mpFrame)) ? mpFrame->mpGraphics : nullptr;
-        if( pGraphics )
-        {
-            // we did not get the mutex so we cannot draw now => request to redraw later
-            // convert the NSRect to a CGRect for Refreshrect()
-            const CGRect aCGRect = {{aRect.origin.x,aRect.origin.y},{aRect.size.width,aRect.size.height}};
-            pGraphics->RefreshRect( aCGRect );
-        }
+    AquaSalInstance *pInstance = GetSalData()->mpInstance;
+    assert(pInstance);
+    if (!pInstance)
         return;
+
+    SolarMutexGuard aGuard;
+    if (!mpFrame || !AquaSalFrame::isAlive(mpFrame))
+        return;
+
+    const bool bIsLiveResize = [self inLiveResize];
+    const bool bWasLiveResize = pInstance->mbIsLiveResize;
+    if (bWasLiveResize != bIsLiveResize)
+    {
+        pInstance->mbIsLiveResize = bIsLiveResize;
+        Scheduler::ProcessTaskScheduling();
     }
 
-    if( mpFrame && AquaSalFrame::isAlive( mpFrame ) )
+    AquaSalGraphics* pGraphics = mpFrame->mpGraphics;
+    if (pGraphics)
     {
-        if( mpFrame->mpGraphics )
-        {
-            mpFrame->mpGraphics->UpdateWindow( aRect );
-            if( mpFrame->getClipPath() )
-                [mpFrame->getNSWindow() invalidateShadow];
-        }
+        pGraphics->UpdateWindow(aRect);
+        if (mpFrame->getClipPath())
+            [mpFrame->getNSWindow() invalidateShadow];
     }
 }
 
@@ -591,7 +566,7 @@ private:
         NSPoint aPt = [NSEvent mouseLocation];
         NSRect aFrameRect = [pDispatchFrame->getNSWindow() frame];
 
-	if ( ! NSPointInRect( aPt, aFrameRect ) )
+        if ( ! NSPointInRect( aPt, aFrameRect ) )
         {
             // no, it is not
             // now we need to find the one it may be in
@@ -797,7 +772,7 @@ private:
         aEvent.mnY              = static_cast<long>(aPt.y) - mpFrame->maGeometry.nY;
         aEvent.mnCode           = ImplGetModifierMask( mpFrame->mnLastModifierFlags );
         aEvent.mnCode           |= KEY_MOD1; // we want zooming, no scrolling
-        aEvent.mbDeltaIsPixel   = TRUE;
+        aEvent.mbDeltaIsPixel   = true;
 
         if( AllSettings::GetLayoutRTL() )
             aEvent.mnX = mpFrame->maGeometry.nWidth-1-aEvent.mnX;
@@ -806,10 +781,11 @@ private:
         aEvent.mnNotchDelta = (nDeltaZ >= 0) ? +1 : -1;
         if( aEvent.mnDelta == 0 )
             aEvent.mnDelta = aEvent.mnNotchDelta;
-        aEvent.mbHorz = FALSE;
-        aEvent.mnScrollLines = nDeltaZ;
-        if( aEvent.mnScrollLines == 0 )
-            aEvent.mnScrollLines = 1;
+        aEvent.mbHorz = false;
+        sal_uInt32 nScrollLines = nDeltaZ;
+        if (nScrollLines == 0)
+            nScrollLines = 1;
+        aEvent.mnScrollLines = nScrollLines;
         mpFrame->CallCallback( SalEvent::WheelMouse, &aEvent );
     }
 }
@@ -855,7 +831,7 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
         aEvent.mnX              = static_cast<long>(aPt.x) - mpFrame->maGeometry.nX;
         aEvent.mnY              = static_cast<long>(aPt.y) - mpFrame->maGeometry.nY;
         aEvent.mnCode           = ImplGetModifierMask( mpFrame->mnLastModifierFlags );
-        aEvent.mbDeltaIsPixel   = TRUE;
+        aEvent.mbDeltaIsPixel   = true;
 
         if( AllSettings::GetLayoutRTL() )
             aEvent.mnX = mpFrame->maGeometry.nWidth-1-aEvent.mnX;
@@ -866,7 +842,7 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
             aEvent.mnNotchDelta = (dX < 0) ? -1 : +1;
             if( aEvent.mnDelta == 0 )
                 aEvent.mnDelta = aEvent.mnNotchDelta;
-            aEvent.mbHorz = TRUE;
+            aEvent.mbHorz = true;
             aEvent.mnScrollLines = SAL_WHEELMOUSE_EVENT_PAGESCROLL;
             mpFrame->CallCallback( SalEvent::WheelMouse, &aEvent );
         }
@@ -876,7 +852,7 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
             aEvent.mnNotchDelta = (dY < 0) ? -1 : +1;
             if( aEvent.mnDelta == 0 )
                 aEvent.mnDelta = aEvent.mnNotchDelta;
-            aEvent.mbHorz = FALSE;
+            aEvent.mbHorz = false;
             aEvent.mnScrollLines = SAL_WHEELMOUSE_EVENT_PAGESCROLL;
             mpFrame->CallCallback( SalEvent::WheelMouse, &aEvent );
         }
@@ -917,7 +893,7 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
         aEvent.mnX            = static_cast<long>(aPt.x) - mpFrame->maGeometry.nX;
         aEvent.mnY            = static_cast<long>(aPt.y) - mpFrame->maGeometry.nY;
         aEvent.mnCode         = ImplGetModifierMask( mpFrame->mnLastModifierFlags );
-        aEvent.mbDeltaIsPixel = FALSE;
+        aEvent.mbDeltaIsPixel = false;
 
         if( AllSettings::GetLayoutRTL() )
             aEvent.mnX = mpFrame->maGeometry.nWidth-1-aEvent.mnX;
@@ -928,10 +904,11 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
             aEvent.mnNotchDelta = (dX < 0) ? -1 : +1;
             if( aEvent.mnDelta == 0 )
                 aEvent.mnDelta = aEvent.mnNotchDelta;
-            aEvent.mbHorz = TRUE;
-            aEvent.mnScrollLines = fabs(dX) / WHEEL_EVENT_FACTOR;
-            if( aEvent.mnScrollLines == 0 )
-                aEvent.mnScrollLines = 1;
+            aEvent.mbHorz = true;
+            sal_uInt32 nScrollLines = fabs(dX) / WHEEL_EVENT_FACTOR;
+            if (nScrollLines == 0)
+                nScrollLines = 1;
+            aEvent.mnScrollLines = nScrollLines;
 
             mpFrame->CallCallback( SalEvent::WheelMouse, &aEvent );
         }
@@ -941,10 +918,11 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
             aEvent.mnNotchDelta = (dY < 0) ? -1 : +1;
             if( aEvent.mnDelta == 0 )
                 aEvent.mnDelta = aEvent.mnNotchDelta;
-            aEvent.mbHorz = FALSE;
-            aEvent.mnScrollLines = fabs(dY) / WHEEL_EVENT_FACTOR;
-            if( aEvent.mnScrollLines == 0 )
-                aEvent.mnScrollLines = 1;
+            aEvent.mbHorz = false;
+            sal_uInt32 nScrollLines = fabs(dY) / WHEEL_EVENT_FACTOR;
+            if (nScrollLines == 0)
+                nScrollLines = 1;
+            aEvent.mnScrollLines = nScrollLines;
 
             mpFrame->CallCallback( SalEvent::WheelMouse, &aEvent );
         }
@@ -996,23 +974,6 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
         {
             if( [self sendSingleCharacter: mpLastEvent] )
                 return YES;
-        }
-        unichar keyChar = [pUnmodifiedString characterAtIndex: 0];
-        sal_uInt16 nKeyCode = ImplMapCharCode( keyChar );
-
-        // Caution: should the table grow to more than 5 or 6 entries,
-        // we must consider moving it to a kind of hash map
-        const unsigned int nExceptions = SAL_N_ELEMENTS( aExceptionalKeys );
-        for( unsigned int i = 0; i < nExceptions; i++ )
-        {
-            if( nKeyCode == aExceptionalKeys[i].nKeyCode &&
-                (mpFrame->mnLastModifierFlags & aExceptionalKeys[i].nModifierMask)
-                == aExceptionalKeys[i].nModifierMask )
-            {
-                [self sendKeyInputAndReleaseToFrame: nKeyCode character: 0];
-
-                return YES;
-            }
         }
     }
     return NO;
@@ -1512,7 +1473,7 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
 {
     SolarMutexGuard aGuard;
 
-    long nRet = 0;
+    bool nRet = false;
     if( AquaSalFrame::isAlive( mpFrame ) )
     {
         SalKeyEvent aEvent;
@@ -1522,11 +1483,11 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
         nRet = mpFrame->CallCallback( SalEvent::KeyInput, &aEvent );
         std::map< NSEvent*, bool >::iterator it = GetSalData()->maKeyEventAnswer.find( mpLastEvent );
         if( it != GetSalData()->maKeyEventAnswer.end() )
-            it->second = nRet != 0;
+            it->second = nRet;
         if( AquaSalFrame::isAlive( mpFrame ) )
             mpFrame->CallCallback( SalEvent::KeyUp, &aEvent );
     }
-    return nRet ? YES : NO;
+    return nRet;
 }
 
 
@@ -1548,7 +1509,7 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
             // don't send code points in the private use area
             if( keyChar >= 0xf700 && keyChar < 0xf780 )
                 keyChar = 0;
-            BOOL bRet = [self sendKeyToFrameDirect: nKeyCode character: keyChar modifiers: mpFrame->mnLastModifierFlags];
+            bool bRet = [self sendKeyToFrameDirect: nKeyCode character: keyChar modifiers: mpFrame->mnLastModifierFlags];
             mbInKeyInput = false;
 
             return bRet;
@@ -1566,7 +1527,7 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
 
 - (BOOL)hasMarkedText
 {
-    BOOL bHasMarkedText;
+    bool bHasMarkedText;
 
     bHasMarkedText = ( mMarkedRange.location != NSNotFound ) &&
                      ( mMarkedRange.length != 0 );
@@ -1584,7 +1545,7 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
     // This is a hack, since it is not understood what a) causes that crash
     // and b) why we should have a marked range at this point.
     if( ! mbInKeyInput )
-        bHasMarkedText = YES;
+        bHasMarkedText = true;
 
     return bHasMarkedText;
 }
@@ -1634,7 +1595,7 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
     if( len > 0 ) {
         NSString *pString = [aString string];
         OUString aInsertString( GetOUString( pString ) );
-        std::vector<ExtTextInputAttr> aInputFlags = std::vector<ExtTextInputAttr>( std::max( 1, len ), ExtTextInputAttr::NONE );
+        std::vector<ExtTextInputAttr> aInputFlags( std::max( 1, len ), ExtTextInputAttr::NONE );
         for ( int i = 0; i < len; i++ )
         {
             unsigned int nUnderlineValue;
@@ -1661,7 +1622,7 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
 
         aInputEvent.maText = aInsertString;
         aInputEvent.mnCursorPos = selRange.location;
-        aInputEvent.mpTextAttr = &aInputFlags[0];
+        aInputEvent.mpTextAttr = aInputFlags.data();
         mpFrame->CallCallback( SalEvent::ExtTextInput, static_cast<void *>(&aInputEvent) );
     } else {
         aInputEvent.maText.clear();

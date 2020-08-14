@@ -75,13 +75,12 @@ static bool makeCanonicalFileURL( OUString & rURL )
 
 namespace comphelper {
 
+OUStringLiteral const g_aOfficeBrandDirMacro("$(brandbaseurl)");
+OUStringLiteral const g_aUserDirMacro("$(userdataurl)");
+
 OfficeInstallationDirectories::OfficeInstallationDirectories(
         const uno::Reference< uno::XComponentContext > & xCtx )
-: m_aOfficeBrandDirMacro( "$(brandbaseurl)" ),
-  m_aUserDirMacro( "$(userdataurl)" ),
-  m_xCtx( xCtx ),
-  m_pOfficeBrandDir( nullptr ),
-  m_pUserDir( nullptr )
+: m_xCtx( xCtx )
 {
 }
 
@@ -89,8 +88,6 @@ OfficeInstallationDirectories::OfficeInstallationDirectories(
 // virtual
 OfficeInstallationDirectories::~OfficeInstallationDirectories()
 {
-    delete m_pOfficeBrandDir;
-    delete m_pUserDir;
 }
 
 
@@ -102,7 +99,7 @@ OUString SAL_CALL
 OfficeInstallationDirectories::getOfficeInstallationDirectoryURL()
 {
     initDirs();
-    return *m_pOfficeBrandDir;
+    return *m_xOfficeBrandDir;
 }
 
 
@@ -111,7 +108,7 @@ OUString SAL_CALL
 OfficeInstallationDirectories::getOfficeUserDataDirectoryURL()
 {
     initDirs();
-    return *m_pUserDir;
+    return *m_xUserDir;
 }
 
 
@@ -127,23 +124,23 @@ OfficeInstallationDirectories::makeRelocatableURL( const OUString& URL )
         OUString aCanonicalURL( URL );
         makeCanonicalFileURL( aCanonicalURL );
 
-        sal_Int32 nIndex = aCanonicalURL.indexOf( *m_pOfficeBrandDir );
+        sal_Int32 nIndex = aCanonicalURL.indexOf( *m_xOfficeBrandDir );
         if ( nIndex  != -1 )
         {
             return
                 aCanonicalURL.replaceAt( nIndex,
-                                         m_pOfficeBrandDir->getLength(),
-                                         m_aOfficeBrandDirMacro );
+                                         m_xOfficeBrandDir->getLength(),
+                                         g_aOfficeBrandDirMacro );
         }
         else
         {
-            nIndex = aCanonicalURL.indexOf( *m_pUserDir );
+            nIndex = aCanonicalURL.indexOf( *m_xUserDir );
             if ( nIndex  != -1 )
             {
                 return
                     aCanonicalURL.replaceAt( nIndex,
-                                             m_pUserDir->getLength(),
-                                             m_aUserDirMacro );
+                                             m_xUserDir->getLength(),
+                                             g_aUserDirMacro );
             }
         }
     }
@@ -157,27 +154,27 @@ OfficeInstallationDirectories::makeAbsoluteURL( const OUString& URL )
 {
     if ( !URL.isEmpty() )
     {
-        sal_Int32 nIndex = URL.indexOf( m_aOfficeBrandDirMacro );
+        sal_Int32 nIndex = URL.indexOf( g_aOfficeBrandDirMacro );
         if ( nIndex != -1 )
         {
             initDirs();
 
             return
                 URL.replaceAt( nIndex,
-                               m_aOfficeBrandDirMacro.getLength(),
-                               *m_pOfficeBrandDir );
+                               g_aOfficeBrandDirMacro.getLength(),
+                               *m_xOfficeBrandDir );
         }
         else
         {
-            nIndex = URL.indexOf( m_aUserDirMacro );
+            nIndex = URL.indexOf( g_aUserDirMacro );
             if ( nIndex != -1 )
             {
                 initDirs();
 
                 return
                     URL.replaceAt( nIndex,
-                                   m_aUserDirMacro.getLength(),
-                                   *m_pUserDir );
+                                   g_aUserDirMacro.getLength(),
+                                   *m_xUserDir );
             }
         }
     }
@@ -192,7 +189,7 @@ OfficeInstallationDirectories::makeAbsoluteURL( const OUString& URL )
 OUString SAL_CALL
 OfficeInstallationDirectories::getImplementationName()
 {
-    return OUString("com.sun.star.comp.util.OfficeInstallationDirectories");
+    return "com.sun.star.comp.util.OfficeInstallationDirectories";
 }
 
 // virtual
@@ -211,33 +208,30 @@ OfficeInstallationDirectories::getSupportedServiceNames()
 
 void OfficeInstallationDirectories::initDirs()
 {
-    if ( m_pOfficeBrandDir == nullptr )
-    {
-        osl::MutexGuard aGuard( m_aMutex );
-        if ( m_pOfficeBrandDir == nullptr )
-        {
-            m_pOfficeBrandDir = new OUString;
-            m_pUserDir        = new OUString;
+    if ( m_xOfficeBrandDir)
+        return;
 
-            uno::Reference< util::XMacroExpander > xExpander = util::theMacroExpander::get(m_xCtx);
+    osl::MutexGuard aGuard( m_aMutex );
+    if ( m_xOfficeBrandDir )
+        return;
 
-            *m_pOfficeBrandDir = xExpander->expandMacros( "$BRAND_BASE_DIR" );
+    uno::Reference< util::XMacroExpander > xExpander = util::theMacroExpander::get(m_xCtx);
 
-            OSL_ENSURE( !m_pOfficeBrandDir->isEmpty(),
-                        "Unable to obtain office brand installation directory!" );
+    m_xOfficeBrandDir = xExpander->expandMacros( "$BRAND_BASE_DIR" );
 
-            makeCanonicalFileURL( *m_pOfficeBrandDir );
+    OSL_ENSURE( !m_xOfficeBrandDir->isEmpty(),
+                "Unable to obtain office brand installation directory!" );
 
-            *m_pUserDir =
-                xExpander->expandMacros(
-                    "${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE( "bootstrap" ) ":UserInstallation}" );
+    makeCanonicalFileURL( *m_xOfficeBrandDir );
 
-            OSL_ENSURE( !m_pUserDir->isEmpty(),
-                        "Unable to obtain office user data directory!" );
+    m_xUserDir =
+        xExpander->expandMacros(
+            "${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE( "bootstrap" ) ":UserInstallation}" );
 
-            makeCanonicalFileURL( *m_pUserDir );
-        }
-    }
+    OSL_ENSURE( !m_xUserDir->isEmpty(),
+                "Unable to obtain office user data directory!" );
+
+    makeCanonicalFileURL( *m_xUserDir );
 }
 
 }
@@ -261,7 +255,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_util_OfficeInstallationDirectories(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

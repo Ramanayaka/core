@@ -59,7 +59,7 @@ constants DatabaseObjectContainer
     */
     const long FORMS = 1002;
 
-    /** denotes the virtual folder containing all reports of a database database, in a context where such a
+    /** denotes the virtual folder containing all reports of a database, in a context where such a
         folder is displayed to the user.
     */
     const long REPORTS = 1003;
@@ -73,7 +73,7 @@ constants DatabaseObjectContainer
     */
     const long CATALOG = 1005;
 
-    /** denotes a schema in a database which supports catalogs
+    /** denotes a schema in a database which supports schemas
     */
     const long SCHEMA = 1006;
 

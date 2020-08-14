@@ -19,107 +19,152 @@
 
 #include "GraphicExportFilter.hxx"
 
+#include <com/sun/star/drawing/GraphicExportFilter.hpp>
+#include <com/sun/star/drawing/XShape.hpp>
+#include <com/sun/star/drawing/XShapes.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+
+#include <cppuhelper/supportsservice.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <svl/outstrm.hxx>
 #include <svtools/DocumentToGraphicRenderer.hxx>
 
-GraphicExportFilter::GraphicExportFilter( const Reference<XComponentContext>&  )
-    : mTargetWidth(0)
-    , mTargetHeight(0)
+using namespace css;
+
+GraphicExportFilter::GraphicExportFilter( const uno::Reference< uno::XComponentContext > & rxContext  )
+    : mxContext(rxContext)
+    , mnTargetWidth(0)
+    , mnTargetHeight(0)
+    , mbSelectionOnly(false)
 {}
 
 GraphicExportFilter::~GraphicExportFilter()
 {}
 
-void GraphicExportFilter::gatherProperties( const Sequence<PropertyValue>& rProperties )
+//  XServiceInfo
+sal_Bool GraphicExportFilter::supportsService(const OUString& sServiceName)
+{
+    return cppu::supportsService(this, sServiceName);
+}
+OUString GraphicExportFilter::getImplementationName()
+{
+    return "com.sun.star.comp.GraphicExportFilter";
+}
+css::uno::Sequence< OUString > GraphicExportFilter::getSupportedServiceNames()
+{
+    return { "com.sun.star.document.ExportFilter" };
+}
+
+void GraphicExportFilter::gatherProperties( const uno::Sequence< beans::PropertyValue > & rProperties )
 {
     OUString aInternalFilterName;
 
-    for ( sal_Int32 i = 0; i < rProperties.getLength(); i++ )
+    for ( const beans::PropertyValue& rProperty : rProperties )
     {
-        PropertyValue aProperty = rProperties[i];
-
-        if ( aProperty.Name == "FilterName" )
+        if ( rProperty.Name == "FilterName" )
         {
-            aProperty.Value >>= aInternalFilterName;
-            aInternalFilterName = aInternalFilterName.replaceFirst("draw_", "");
-            aInternalFilterName = aInternalFilterName.replaceFirst("impress_", "");
+            rProperty.Value >>= aInternalFilterName;
+            const sal_Int32 nLen = aInternalFilterName.getLength();
             aInternalFilterName = aInternalFilterName.replaceFirst("calc_", "");
-            aInternalFilterName = aInternalFilterName.replaceFirst("writer_", "");
-            aInternalFilterName = aInternalFilterName.replaceFirst("web_", "");
+            if (aInternalFilterName.getLength() == nLen)
+                aInternalFilterName = aInternalFilterName.replaceFirst("writer_", "");
+            if (aInternalFilterName.getLength() == nLen)
+                aInternalFilterName = aInternalFilterName.replaceFirst("web_", "");
+            if (aInternalFilterName.getLength() == nLen)
+                aInternalFilterName = aInternalFilterName.replaceFirst("draw_", "");
+            if (aInternalFilterName.getLength() == nLen)
+                aInternalFilterName = aInternalFilterName.replaceFirst("impress_", "");
         }
-        else if ( aProperty.Name == "FilterData" )
+        else if ( rProperty.Name == "FilterData" )
         {
-            aProperty.Value >>= mFilterDataSequence;
+            rProperty.Value >>= maFilterDataSequence;
         }
-        else if ( aProperty.Name == "OutputStream" )
+        else if ( rProperty.Name == "OutputStream" )
         {
-            aProperty.Value >>= mxOutputStream;
+            rProperty.Value >>= mxOutputStream;
+        }
+        else if ( rProperty.Name == "SelectionOnly" )
+        {
+            rProperty.Value >>= mbSelectionOnly;
         }
     }
 
-    for ( sal_Int32 i = 0; i < mFilterDataSequence.getLength(); i++ )
+    for ( const beans::PropertyValue& rProp : std::as_const(maFilterDataSequence) )
     {
-        if ( mFilterDataSequence[i].Name == "PixelWidth" )
+        if ( rProp.Name == "PixelWidth" )
         {
-            mFilterDataSequence[i].Value >>= mTargetWidth;
+            rProp.Value >>= mnTargetWidth;
         }
-        else if ( mFilterDataSequence[i].Name == "PixelHeight" )
+        else if ( rProp.Name == "PixelHeight" )
         {
-            mFilterDataSequence[i].Value >>= mTargetHeight;
+            rProp.Value >>= mnTargetHeight;
         }
     }
 
-    if ( !aInternalFilterName.isEmpty() )
+    if ( aInternalFilterName.isEmpty() )
+        return;
+
+    GraphicFilter aGraphicFilter( true );
+
+    sal_uInt16 nFilterCount = aGraphicFilter.GetExportFormatCount();
+    sal_uInt16 nFormat;
+
+    for ( nFormat = 0; nFormat < nFilterCount; nFormat++ )
     {
-        GraphicFilter aGraphicFilter( true );
-
-        sal_uInt16 nFilterCount = aGraphicFilter.GetExportFormatCount();
-        sal_uInt16 nFormat;
-
-        for ( nFormat = 0; nFormat < nFilterCount; nFormat++ )
-        {
-            if ( aGraphicFilter.GetExportInternalFilterName( nFormat ) == aInternalFilterName )
-                break;
-        }
-        if ( nFormat < nFilterCount )
-        {
-            mFilterExtension = aGraphicFilter.GetExportFormatShortName( nFormat );
-        }
+        if ( aGraphicFilter.GetExportInternalFilterName( nFormat ) == aInternalFilterName )
+            break;
+    }
+    if ( nFormat < nFilterCount )
+    {
+        maFilterExtension = aGraphicFilter.GetExportFormatShortName( nFormat );
     }
 }
 
-sal_Bool SAL_CALL GraphicExportFilter::filter( const Sequence<PropertyValue>& rDescriptor )
+sal_Bool SAL_CALL GraphicExportFilter::filter( const uno::Sequence< beans::PropertyValue > & rDescriptor )
 {
     gatherProperties(rDescriptor);
 
-    DocumentToGraphicRenderer aRenderer( mxDocument );
-    sal_Int32 aCurrentPage = aRenderer.getCurrentPageWriter();
-    Size aDocumentSizePixel = aRenderer.getDocumentSizeInPixels(aCurrentPage);
+    if (mbSelectionOnly && mxDocument.is())
+    {
+        uno::Reference< frame::XModel > xModel( mxDocument, uno::UNO_QUERY);
+        if (xModel.is())
+        {
+            uno::Reference< frame::XController > xController( xModel->getCurrentController());
+            if (xController.is())
+            {
+                uno::Reference< drawing::XShapes > xShapes;
+                uno::Reference< drawing::XShape > xShape;
+                if (DocumentToGraphicRenderer::isShapeSelected( xShapes, xShape, xController))
+                    return filterExportShape( rDescriptor, xShapes, xShape);
+            }
+        }
+    }
 
-    Size aTargetSizePixel(mTargetWidth, mTargetHeight);
+    return filterRenderDocument();
+}
 
-    if (mTargetWidth == 0 || mTargetHeight == 0)
+bool GraphicExportFilter::filterRenderDocument() const
+{
+    DocumentToGraphicRenderer aRenderer( mxDocument, mbSelectionOnly );
+    sal_Int32 nCurrentPage = aRenderer.getCurrentPage();
+    Size aDocumentSizePixel = aRenderer.getDocumentSizeInPixels(nCurrentPage);
+
+    Size aTargetSizePixel(mnTargetWidth, mnTargetHeight);
+
+    if (mnTargetWidth == 0 || mnTargetHeight == 0)
         aTargetSizePixel = aDocumentSizePixel;
 
-    Graphic aGraphic = aRenderer.renderToGraphic(aCurrentPage, aDocumentSizePixel, aTargetSizePixel, COL_WHITE);
+    Graphic aGraphic = aRenderer.renderToGraphic(nCurrentPage, aDocumentSizePixel, aTargetSizePixel, COL_WHITE, /*bExtOutDevData=*/false);
 
     GraphicFilter& rFilter = GraphicFilter::GetGraphicFilter();
 
-    Sequence< PropertyValue > aFilterData( 3 );
-    aFilterData[ 0 ].Name = "Interlaced";
-    aFilterData[ 0 ].Value <<= (sal_Int32) 0;
-    aFilterData[ 1 ].Name = "Compression";
-    aFilterData[ 1 ].Value <<= (sal_Int32) 9;
-    aFilterData[ 2 ].Name = "Quality";
-    aFilterData[ 2 ].Value <<= (sal_Int32) 99;
-
-    sal_uInt16 nFilterFormat = rFilter.GetExportFormatNumberForShortName( mFilterExtension );
+    sal_uInt16 nFilterFormat = rFilter.GetExportFormatNumberForShortName( maFilterExtension );
 
     SvMemoryStream aMemStream;
     const GraphicConversionParameters aParameters(aTargetSizePixel, true, true);
 
-    const ErrCode nResult = rFilter.ExportGraphic( aGraphic.GetBitmapEx(aParameters), OUString(), aMemStream, nFilterFormat, &aFilterData );
+    const ErrCode nResult = rFilter.ExportGraphic( aGraphic.GetBitmapEx(aParameters), OUString(), aMemStream,
+            nFilterFormat, &maFilterDataSequence );
 
     if ( nResult == ERRCODE_NONE )
     {
@@ -133,17 +178,57 @@ sal_Bool SAL_CALL GraphicExportFilter::filter( const Sequence<PropertyValue>& rD
     return false;
 }
 
+bool GraphicExportFilter::filterExportShape(
+        const css::uno::Sequence< css::beans::PropertyValue > & rDescriptor,
+        const css::uno::Reference< css::drawing::XShapes > & rxShapes,
+        const css::uno::Reference< css::drawing::XShape > & rxShape ) const
+{
+    uno::Reference< lang::XComponent > xSourceDoc;
+    if (rxShapes.is())
+        xSourceDoc.set( rxShapes, uno::UNO_QUERY_THROW );
+    else if (rxShape.is())
+        xSourceDoc.set( rxShape, uno::UNO_QUERY_THROW );
+    if (!xSourceDoc.is())
+        return false;
+
+    uno::Reference< drawing::XGraphicExportFilter > xGraphicExporter =
+        drawing::GraphicExportFilter::create( mxContext );
+    if (!xGraphicExporter.is())
+        return false;
+
+    // Need to replace the internal filter name with the short name
+    // (extension).
+    uno::Sequence< beans::PropertyValue > aDescriptor( rDescriptor);
+    for (sal_Int32 i = 0; i < aDescriptor.getLength(); ++i)
+    {
+        if (aDescriptor[i].Name == "FilterName")
+        {
+            aDescriptor[i].Value <<= maFilterExtension;
+            break;
+        }
+    }
+
+    xGraphicExporter->setSourceDocument( xSourceDoc );
+    return xGraphicExporter->filter( aDescriptor );
+}
+
 void SAL_CALL GraphicExportFilter::cancel( )
 {
 }
 
-void SAL_CALL GraphicExportFilter::setSourceDocument( const Reference<XComponent>& xDocument )
+void SAL_CALL GraphicExportFilter::setSourceDocument( const uno::Reference< lang::XComponent > & xDocument )
 {
     mxDocument = xDocument;
 }
 
-void SAL_CALL GraphicExportFilter::initialize( const Sequence<Any>& )
+void SAL_CALL GraphicExportFilter::initialize( const uno::Sequence< uno::Any > & )
 {
 }
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_GraphicExportFilter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new GraphicExportFilter(context));
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

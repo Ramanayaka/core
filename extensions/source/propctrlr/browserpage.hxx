@@ -20,39 +20,45 @@
 #ifndef INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_BROWSERPAGE_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_BROWSERPAGE_HXX
 
-#include <vcl/tabpage.hxx>
+#include <o3tl/deleter.hxx>
 #include "browserlistbox.hxx"
-
 
 namespace pcr
 {
-
-    class OBrowserPage : public TabPage
+    class OBrowserPage
     {
     private:
-        VclPtr<OBrowserListBox>     m_aListBox;
-
-    protected:
-        virtual void Resize() override;
-        virtual void StateChanged(StateChangedType nType) override;
+        weld::Container* m_pParent;
+        std::unique_ptr<weld::Builder> m_xBuilder;
+        std::unique_ptr<weld::Container> m_xContainer;
+        std::unique_ptr<OBrowserListBox, o3tl::default_delete<OBrowserListBox>> m_xListBox;
 
     public:
-        explicit OBrowserPage(vcl::Window* pParent);
-        virtual ~OBrowserPage() override;
-        virtual void dispose() override;
+        // TODO inherit from BuilderPage
+        explicit OBrowserPage(weld::Container* pParent, weld::Container* pContainer);
+        ~OBrowserPage();
 
-        sal_Int32 getMinimumWidth();
-        sal_Int32 getMinimumHeight();
+        void SetHelpId(const OString& rHelpId) { m_xContainer->set_help_id(rHelpId); }
 
-              OBrowserListBox& getListBox() { return *m_aListBox.get(); }
-        const OBrowserListBox& getListBox() const { return *m_aListBox.get(); }
+        OBrowserListBox& getListBox() { return *m_xListBox; }
+        const OBrowserListBox& getListBox() const { return *m_xListBox; }
+
+        void detach()
+        {
+            assert(m_pParent && "already attached");
+            m_pParent->move(m_xContainer.get(), nullptr);
+            m_pParent = nullptr;
+        }
+
+        void reattach(weld::Container* pNewParent)
+        {
+            assert(!m_pParent && "already attached");
+            m_pParent = pNewParent;
+            m_pParent->move(m_xContainer.get(), pNewParent);
+        }
     };
-
-
 } // namespace pcr
 
-
 #endif // INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_BROWSERPAGE_HXX
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

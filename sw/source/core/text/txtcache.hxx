@@ -19,28 +19,31 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_TEXT_TXTCACHE_HXX
 #define INCLUDED_SW_SOURCE_CORE_TEXT_TXTCACHE_HXX
 
-#include <sal/types.h>
-#include <tools/mempool.hxx>
-#include "swcache.hxx"
+#include <swcache.hxx>
+#include "porlay.hxx"
 #include <memory>
 
-class SwParaPortion;
 class SwTextFrame;
 
 class SwTextLine : public SwCacheObj
 {
     std::unique_ptr<SwParaPortion> pLine;
 
-public:
-    DECL_FIXEDMEMPOOL_NEWDEL(SwTextLine)
+    virtual void UpdateCachePos() override;
 
-    SwTextLine( SwTextFrame *pFrame, SwParaPortion *pNew = nullptr );
+public:
+    SwTextLine( SwTextFrame const *pFrame, std::unique_ptr<SwParaPortion> pNew = nullptr );
     virtual ~SwTextLine() override;
 
     SwParaPortion *GetPara()       { return pLine.get(); }
     const SwParaPortion *GetPara() const { return pLine.get(); }
 
-    void SetPara( SwParaPortion *pNew, bool bDelete ) { if (!bDelete) pLine.release(); pLine.reset( pNew ); }
+    void SetPara(SwParaPortion* pNew, bool bDelete)
+    {
+        if (!bDelete)
+            (void)pLine.release();
+        pLine.reset(pNew);
+    }
 };
 
 class SwTextLineAccess : public SwCacheAccess
@@ -54,7 +57,7 @@ public:
 
     SwParaPortion *GetPara();
 
-    virtual bool IsAvailable() const override;
+    bool IsAvailable() const;
 };
 
 #endif

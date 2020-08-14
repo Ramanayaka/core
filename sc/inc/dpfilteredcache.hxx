@@ -21,21 +21,20 @@
 #define INCLUDED_SC_INC_DPFILTEREDCACHE_HXX
 
 #include <sal/types.h>
-#include <osl/mutex.hxx>
-#include "global.hxx"
 #include "dpitemdata.hxx"
 #include "calcmacros.hxx"
+#include "scdllapi.h"
+#include "types.hxx"
 
-#include <memory>
 #include <unordered_set>
 #include <vector>
 
 #include <mdds/flat_segment_tree.hpp>
 
-class ScDPItemData;
+namespace com::sun::star::uno { class Any; }
+namespace com::sun::star::uno { template <typename > class Sequence; }
+
 class ScDPCache;
-class ScDocument;
-class ScRange;
 struct ScDPValue;
 struct ScQueryParam;
 
@@ -43,7 +42,7 @@ struct ScQueryParam;
  * This class is only a wrapper to the actual cache, to provide filtering on
  * the raw data based on the query filter and/or page field filters.
  */
-class SC_DLLPUBLIC ScDPFilteredCache
+class ScDPFilteredCache
 {
     typedef mdds::flat_segment_tree<SCROW, bool> RowFlagType;
 
@@ -61,7 +60,7 @@ public:
     };
 
     /** ordinary single-item filter. */
-    class SingleFilter : public FilterBase
+    class SingleFilter final : public FilterBase
     {
     public:
         explicit SingleFilter(const ScDPItemData &rItem);
@@ -74,7 +73,7 @@ public:
     };
 
     /** multi-item (group) filter. */
-    class GroupFilter : public FilterBase
+    class GroupFilter final : public FilterBase
     {
     public:
         GroupFilter();
@@ -157,7 +156,7 @@ private:
 
 private:
 
-    /** unique field entires for each field (column). */
+    /** unique field entries for each field (column). */
     ::std::vector< ::std::vector<SCROW> > maFieldEntries;
 
     /** Rows visible by standard filter query. */

@@ -19,42 +19,28 @@
 
 #include <com/sun/star/util/CellProtection.hpp>
 
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
+#include <scitems.hxx>
 
-#include <editeng/boxitem.hxx>
-#include <editeng/editdata.hxx>
 #include <editeng/editeng.hxx>
 #include <editeng/editobj.hxx>
-#include <editeng/flditem.hxx>
+#include <editeng/eerdll.hxx>
+#include <editeng/borderline.hxx>
+#include <editeng/itemtype.hxx>
 
 #include <libxml/xmlwriter.h>
 
-#include "attrib.hxx"
-#include "global.hxx"
-#include "editutil.hxx"
-#include "sc.hrc"
-#include "mid.hrc"
-#include "globstr.hrc"
-
-#include "textuno.hxx"
+#include <attrib.hxx>
+#include <global.hxx>
+#include <editutil.hxx>
+#include <mid.h>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <textuno.hxx>
 
 using namespace com::sun::star;
 
-#ifdef ANDROID
-namespace std
-{
-template <typename T> std::string to_string(const T& rNumber)
-{
-    std::ostringstream aStream;
-    aStream << rNumber;
-    return aStream.str();
-}
-}
-#endif
 
 SfxPoolItem* ScProtectionAttr::CreateDefault() { return new ScProtectionAttr; }
-SfxPoolItem* ScDoubleItem::CreateDefault() { SAL_WARN( "sc", "No ScDoubleItem factory available"); return nullptr; }
 
 /**
  * General Help Function
@@ -117,24 +103,14 @@ ScMergeAttr::~ScMergeAttr()
 
 bool ScMergeAttr::operator==( const SfxPoolItem& rItem ) const
 {
-    OSL_ENSURE( Which() != rItem.Which() || typeid(*this) == typeid(rItem), "which ==, type !=" );
-    return (Which() == rItem.Which())
+    return SfxPoolItem::operator==(rItem)
              && (nColMerge == static_cast<const ScMergeAttr&>(rItem).nColMerge)
              && (nRowMerge == static_cast<const ScMergeAttr&>(rItem).nRowMerge);
 }
 
-SfxPoolItem* ScMergeAttr::Clone( SfxItemPool * ) const
+ScMergeAttr* ScMergeAttr::Clone( SfxItemPool * ) const
 {
     return new ScMergeAttr(*this);
-}
-
-SfxPoolItem* ScMergeAttr::Create( SvStream& rStream, sal_uInt16 /* nVer */ ) const
-{
-    sal_Int16   nCol;
-    sal_Int16   nRow;
-    rStream.ReadInt16( nCol );
-    rStream.ReadInt16( nRow );
-    return new ScMergeAttr(static_cast<SCCOL>(nCol),static_cast<SCROW>(nRow));
 }
 
 void ScMergeAttr::dumpAsXml(xmlTextWriterPtr pWriter) const
@@ -163,7 +139,7 @@ ScMergeFlagAttr::~ScMergeFlagAttr()
 {
 }
 
-SfxPoolItem * ScMergeFlagAttr::Clone(SfxItemPool *) const
+ScMergeFlagAttr* ScMergeFlagAttr::Clone(SfxItemPool *) const
 {
     return new ScMergeFlagAttr(*this);
 }
@@ -298,8 +274,8 @@ bool ScProtectionAttr::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 
 OUString ScProtectionAttr::GetValueText() const
 {
-    const OUString aStrYes ( ScGlobal::GetRscString(STR_YES) );
-    const OUString aStrNo  ( ScGlobal::GetRscString(STR_NO) );
+    const OUString aStrYes ( ScResId(STR_YES) );
+    const OUString aStrNo  ( ScResId(STR_NO) );
 
     const OUString aValue  = "("
         + (bProtection ? aStrYes : aStrNo)
@@ -320,11 +296,11 @@ bool ScProtectionAttr::GetPresentation
         MapUnit /* eCoreMetric */,
         MapUnit /* ePresMetric */,
         OUString& rText,
-        const IntlWrapper* /* pIntl */
+        const IntlWrapper& /* rIntl */
     ) const
 {
-    const OUString aStrYes ( ScGlobal::GetRscString(STR_YES) );
-    const OUString aStrNo  ( ScGlobal::GetRscString(STR_NO) );
+    const OUString aStrYes ( ScResId(STR_YES) );
+    const OUString aStrNo  ( ScResId(STR_NO) );
 
     switch ( ePres )
     {
@@ -333,19 +309,19 @@ bool ScProtectionAttr::GetPresentation
             break;
 
         case SfxItemPresentation::Complete:
-            rText  = ScGlobal::GetRscString(STR_PROTECTION)
+            rText  = ScResId(STR_PROTECTION)
                 + ": "
                 + (bProtection ? aStrYes : aStrNo)
                 + ", "
-                + ScGlobal::GetRscString(STR_FORMULAS)
+                + ScResId(STR_FORMULAS)
                 + ": "
                 + (!bHideFormula ? aStrYes : aStrNo)
                 + ", "
-                + ScGlobal::GetRscString(STR_HIDE)
+                + ScResId(STR_HIDE)
                 + ": "
                 + (bHideCell ? aStrYes : aStrNo)
                 + ", "
-                + ScGlobal::GetRscString(STR_PRINT)
+                + ScResId(STR_PRINT)
                 + ": "
                 + (!bHidePrint ? aStrYes : aStrNo);
             break;
@@ -358,32 +334,16 @@ bool ScProtectionAttr::GetPresentation
 
 bool ScProtectionAttr::operator==( const SfxPoolItem& rItem ) const
 {
-    OSL_ENSURE( Which() != rItem.Which() || typeid(*this) == typeid(rItem), "which ==, type !=" );
-    return (Which() == rItem.Which())
+    return SfxPoolItem::operator==(rItem)
              && (bProtection == static_cast<const ScProtectionAttr&>(rItem).bProtection)
              && (bHideFormula == static_cast<const ScProtectionAttr&>(rItem).bHideFormula)
              && (bHideCell == static_cast<const ScProtectionAttr&>(rItem).bHideCell)
              && (bHidePrint == static_cast<const ScProtectionAttr&>(rItem).bHidePrint);
 }
 
-SfxPoolItem* ScProtectionAttr::Clone( SfxItemPool * ) const
+ScProtectionAttr* ScProtectionAttr::Clone( SfxItemPool * ) const
 {
     return new ScProtectionAttr(*this);
-}
-
-SfxPoolItem* ScProtectionAttr::Create( SvStream& rStream, sal_uInt16 /* n */ ) const
-{
-    bool bProtect;
-    bool bHFormula;
-    bool bHCell;
-    bool bHPrint;
-
-    rStream.ReadCharAsBool( bProtect );
-    rStream.ReadCharAsBool( bHFormula );
-    rStream.ReadCharAsBool( bHCell );
-    rStream.ReadCharAsBool( bHPrint );
-
-    return new ScProtectionAttr(bProtect,bHFormula,bHCell,bHPrint);
 }
 
 void ScProtectionAttr::SetProtection( bool bProtect)
@@ -407,170 +367,15 @@ void ScProtectionAttr::SetHidePrint( bool bHPrint)
 }
 
 /**
- * ScRangeItem - Table range
- */
-bool ScRangeItem::operator==( const SfxPoolItem& rAttr ) const
-{
-    assert(SfxPoolItem::operator==(rAttr));
-
-    return aRange == static_cast<const ScRangeItem&>(rAttr).aRange;
-}
-
-SfxPoolItem* ScRangeItem::Clone( SfxItemPool* ) const
-{
-    return new ScRangeItem( *this );
-}
-
-bool ScRangeItem::GetPresentation
-    (
-        SfxItemPresentation ePres,
-        MapUnit             /* eCoreUnit */,
-        MapUnit             /* ePresUnit */,
-        OUString&           rText,
-        const IntlWrapper*  /* pIntl */
-    ) const
-{
-    rText.clear();
-
-    switch ( ePres )
-    {
-        case SfxItemPresentation::Complete:
-        rText = ScGlobal::GetRscString(STR_AREA) + ": ";
-        SAL_FALLTHROUGH;
-
-        case SfxItemPresentation::Nameless:
-        {
-            /* Always use OOo:A1 format */
-            rText += aRange.Format();
-        }
-        break;
-
-        default:
-        {
-            // added to avoid warnings
-        }
-    }
-
-    return true;
-}
-
-/**
- * ScTableListItem - List from Tables (-numbers)
- */
-ScTableListItem::ScTableListItem( const ScTableListItem& rCpy )
-    :   SfxPoolItem ( rCpy.Which() ),
-        nCount      ( rCpy.nCount )
-{
-    if ( nCount > 0 )
-    {
-        pTabArr.reset( new SCTAB [nCount] );
-
-        for ( sal_uInt16 i=0; i<nCount; i++ )
-            pTabArr[i] = rCpy.pTabArr[i];
-    }
-}
-
-ScTableListItem::~ScTableListItem()
-{
-}
-
-ScTableListItem& ScTableListItem::operator=( const ScTableListItem& rCpy )
-{
-    if ( rCpy.nCount > 0 )
-    {
-        pTabArr.reset( new SCTAB [rCpy.nCount] );
-        for ( sal_uInt16 i=0; i<rCpy.nCount; i++ )
-            pTabArr[i] = rCpy.pTabArr[i];
-    }
-    else
-        pTabArr.reset();
-
-    nCount = rCpy.nCount;
-
-    return *this;
-}
-
-bool ScTableListItem::operator==( const SfxPoolItem& rAttr ) const
-{
-    assert(SfxPoolItem::operator==(rAttr));
-
-    const ScTableListItem& rCmp   = static_cast<const ScTableListItem&>(rAttr);
-    bool                   bEqual = (nCount == rCmp.nCount);
-
-    if ( nCount > 0 )
-    {
-        sal_uInt16  i=0;
-
-        bEqual = ( pTabArr && rCmp.pTabArr );
-
-        while ( bEqual && i<nCount )
-        {
-            bEqual = ( pTabArr[i] == rCmp.pTabArr[i] );
-            i++;
-        }
-    }
-    return bEqual;
-}
-
-SfxPoolItem* ScTableListItem::Clone( SfxItemPool* ) const
-{
-    return new ScTableListItem( *this );
-}
-
-bool ScTableListItem::GetPresentation
-    (
-        SfxItemPresentation ePres,
-        MapUnit             /* eCoreUnit */,
-        MapUnit             /* ePresUnit */,
-        OUString&           rText,
-        const IntlWrapper* /* pIntl */
-    ) const
-{
-    switch ( ePres )
-    {
-        case SfxItemPresentation::Nameless:
-            {
-            rText  = "(";
-            if ( nCount>0 && pTabArr )
-                for ( sal_uInt16 i=0; i<nCount; i++ )
-                {
-                    rText += OUString::number( pTabArr[i] );
-                    if ( i<(nCount-1) )
-                        rText += ",";
-                }
-            rText += ")";
-            }
-            return true;
-
-        case SfxItemPresentation::Complete:
-            rText.clear();
-            return false;
-
-        default:
-        {
-            // added to avoid warnings
-        }
-    }
-
-    return false;
-}
-
-/**
  * ScPageHFItem - Dates from the Head and Foot lines
  */
 ScPageHFItem::ScPageHFItem( sal_uInt16 nWhichP )
-    :   SfxPoolItem ( nWhichP ),
-        pLeftArea   ( nullptr ),
-        pCenterArea ( nullptr ),
-        pRightArea  ( nullptr )
+    :   SfxPoolItem ( nWhichP )
 {
 }
 
 ScPageHFItem::ScPageHFItem( const ScPageHFItem& rItem )
-    :   SfxPoolItem ( rItem ),
-        pLeftArea   ( nullptr ),
-        pCenterArea ( nullptr ),
-        pRightArea  ( nullptr )
+    :   SfxPoolItem ( rItem )
 {
     if ( rItem.pLeftArea )
         pLeftArea = rItem.pLeftArea->Clone();
@@ -582,16 +387,13 @@ ScPageHFItem::ScPageHFItem( const ScPageHFItem& rItem )
 
 ScPageHFItem::~ScPageHFItem()
 {
-    delete pLeftArea;
-    delete pCenterArea;
-    delete pRightArea;
 }
 
 bool ScPageHFItem::QueryValue( uno::Any& rVal, sal_uInt8 /* nMemberId */ ) const
 {
     rtl::Reference<ScHeaderFooterContentObj> xContent =
         new ScHeaderFooterContentObj();
-    xContent->Init(pLeftArea, pCenterArea, pRightArea);
+    xContent->Init(pLeftArea.get(), pCenterArea.get(), pRightArea.get());
 
     uno::Reference<sheet::XHeaderFooterContent> xCont(xContent.get());
 
@@ -612,16 +414,19 @@ bool ScPageHFItem::PutValue( const uno::Any& rVal, sal_uInt8 /* nMemberId */ )
             if (pImp.is())
             {
                 const EditTextObject* pImpLeft = pImp->GetLeftEditObject();
-                delete pLeftArea;
-                pLeftArea = pImpLeft ? pImpLeft->Clone() : nullptr;
+                pLeftArea.reset();
+                if (pImpLeft)
+                    pLeftArea = pImpLeft->Clone();
 
                 const EditTextObject* pImpCenter = pImp->GetCenterEditObject();
-                delete pCenterArea;
-                pCenterArea = pImpCenter ? pImpCenter->Clone() : nullptr;
+                pCenterArea.reset();
+                if (pImpCenter)
+                    pCenterArea = pImpCenter->Clone();
 
                 const EditTextObject* pImpRight = pImp->GetRightEditObject();
-                delete pRightArea;
-                pRightArea = pImpRight ? pImpRight->Clone() : nullptr;
+                pRightArea.reset();
+                if (pImpRight)
+                    pRightArea = pImpRight->Clone();
 
                 if ( !pLeftArea || !pCenterArea || !pRightArea )
                 {
@@ -654,181 +459,29 @@ bool ScPageHFItem::operator==( const SfxPoolItem& rItem ) const
 
     const ScPageHFItem& r = static_cast<const ScPageHFItem&>(rItem);
 
-    return    ScGlobal::EETextObjEqual(pLeftArea,   r.pLeftArea)
-           && ScGlobal::EETextObjEqual(pCenterArea, r.pCenterArea)
-           && ScGlobal::EETextObjEqual(pRightArea,  r.pRightArea);
+    return    ScGlobal::EETextObjEqual(pLeftArea.get(),   r.pLeftArea.get())
+           && ScGlobal::EETextObjEqual(pCenterArea.get(), r.pCenterArea.get())
+           && ScGlobal::EETextObjEqual(pRightArea.get(),  r.pRightArea.get());
 }
 
-SfxPoolItem* ScPageHFItem::Clone( SfxItemPool* ) const
+ScPageHFItem* ScPageHFItem::Clone( SfxItemPool* ) const
 {
     return new ScPageHFItem( *this );
 }
 
-static void lcl_SetSpace( OUString& rStr, const ESelection& rSel )
-{
-    // Text replaced by a space to ensure they are positions:
-    sal_Int32 nLen = rSel.nEndPos-rSel.nStartPos;
-    rStr = rStr.replaceAt( rSel.nStartPos, nLen, " " );
-}
-
-static bool lcl_ConvertFields(EditEngine& rEng, const OUString* pCommands)
-{
-    bool bChange = false;
-    sal_Int32 nParCnt = rEng.GetParagraphCount();
-    for (sal_Int32 nPar = 0; nPar<nParCnt; nPar++)
-    {
-        OUString aStr = rEng.GetText( nPar );
-        sal_Int32 nPos;
-
-        while ((nPos = aStr.indexOf(pCommands[0])) != -1)
-        {
-            ESelection aSel( nPar,nPos, nPar,nPos+pCommands[0].getLength() );
-            rEng.QuickInsertField( SvxFieldItem(SvxPageField(), EE_FEATURE_FIELD), aSel );
-            lcl_SetSpace(aStr, aSel ); bChange = true;
-        }
-        while ((nPos = aStr.indexOf(pCommands[1])) != -1)
-        {
-            ESelection aSel( nPar,nPos, nPar,nPos+pCommands[1].getLength() );
-            rEng.QuickInsertField( SvxFieldItem(SvxPagesField(), EE_FEATURE_FIELD), aSel );
-            lcl_SetSpace(aStr, aSel ); bChange = true;
-        }
-        while ((nPos = aStr.indexOf(pCommands[2])) != -1)
-        {
-            ESelection aSel( nPar,nPos, nPar,nPos+pCommands[2].getLength() );
-            rEng.QuickInsertField( SvxFieldItem(SvxDateField(Date( Date::SYSTEM ),SvxDateType::Var), EE_FEATURE_FIELD), aSel );
-            lcl_SetSpace(aStr, aSel ); bChange = true;
-        }
-        while ((nPos = aStr.indexOf(pCommands[3])) != -1)
-        {
-            ESelection aSel( nPar,nPos, nPar,nPos+pCommands[3].getLength() );
-            rEng.QuickInsertField( SvxFieldItem(SvxTimeField(), EE_FEATURE_FIELD ), aSel );
-            lcl_SetSpace(aStr, aSel ); bChange = true;
-        }
-        while ((nPos = aStr.indexOf(pCommands[4])) != -1)
-        {
-            ESelection aSel( nPar,nPos, nPar,nPos+pCommands[4].getLength() );
-            rEng.QuickInsertField( SvxFieldItem(SvxFileField(), EE_FEATURE_FIELD), aSel );
-            lcl_SetSpace(aStr, aSel ); bChange = true;
-        }
-        while ((nPos = aStr.indexOf(pCommands[5])) != -1)
-        {
-            ESelection aSel( nPar,nPos, nPar,nPos+pCommands[5].getLength() );
-            rEng.QuickInsertField( SvxFieldItem(SvxTableField(), EE_FEATURE_FIELD), aSel );
-            lcl_SetSpace(aStr, aSel ); bChange = true;
-        }
-    }
-    return bChange;
-}
-
-#define SC_FIELD_COUNT  6
-
-SfxPoolItem* ScPageHFItem::Create( SvStream& rStream, sal_uInt16 nVer ) const
-{
-    EditTextObject* pLeft   = EditTextObject::Create(rStream);
-    EditTextObject* pCenter = EditTextObject::Create(rStream);
-    EditTextObject* pRight  = EditTextObject::Create(rStream);
-
-    OSL_ENSURE( pLeft && pCenter && pRight, "Error reading ScPageHFItem" );
-
-    if ( pLeft == nullptr   || pLeft->GetParagraphCount() == 0 ||
-         pCenter == nullptr || pCenter->GetParagraphCount() == 0 ||
-         pRight == nullptr  || pRight->GetParagraphCount() == 0 )
-    {
-        // If successfully loaded, each object contains at least one paragraph.
-        // Excel import in 5.1 created broken TextObjects (#67442#) that are
-        // corrected here to avoid saving wrong files again (#90487#).
-        ScEditEngineDefaulter aEngine( EditEngine::CreatePool(), true );
-        if ( pLeft == nullptr || pLeft->GetParagraphCount() == 0 )
-        {
-            delete pLeft;
-            pLeft = aEngine.CreateTextObject();
-        }
-        if ( pCenter == nullptr || pCenter->GetParagraphCount() == 0 )
-        {
-            delete pCenter;
-            pCenter = aEngine.CreateTextObject();
-        }
-        if ( pRight == nullptr || pRight->GetParagraphCount() == 0 )
-        {
-            delete pRight;
-            pRight = aEngine.CreateTextObject();
-        }
-    }
-
-    if ( nVer < 1 ) // old field command conversions
-    {
-        sal_uInt16 i;
-        const OUString& rDel = ScGlobal::GetRscString( STR_HFCMD_DELIMITER );
-        OUString aCommands[SC_FIELD_COUNT];
-        for (i=0; i<SC_FIELD_COUNT; i++)
-            aCommands[i] = rDel;
-        aCommands[0] += ScGlobal::GetRscString(STR_HFCMD_PAGE);
-        aCommands[1] += ScGlobal::GetRscString(STR_HFCMD_PAGES);
-        aCommands[2] += ScGlobal::GetRscString(STR_HFCMD_DATE);
-        aCommands[3] += ScGlobal::GetRscString(STR_HFCMD_TIME);
-        aCommands[4] += ScGlobal::GetRscString(STR_HFCMD_FILE);
-        aCommands[5] += ScGlobal::GetRscString(STR_HFCMD_TABLE);
-        for (i=0; i<SC_FIELD_COUNT; i++)
-            aCommands[i] += rDel;
-
-        ScEditEngineDefaulter aEngine( EditEngine::CreatePool(), true );
-        aEngine.SetText(*pLeft);
-        if (lcl_ConvertFields(aEngine,aCommands))
-        {
-            delete pLeft;
-            pLeft = aEngine.CreateTextObject();
-        }
-        aEngine.SetText(*pCenter);
-        if (lcl_ConvertFields(aEngine,aCommands))
-        {
-            delete pCenter;
-            pCenter = aEngine.CreateTextObject();
-        }
-        aEngine.SetText(*pRight);
-        if (lcl_ConvertFields(aEngine,aCommands))
-        {
-            delete pRight;
-            pRight = aEngine.CreateTextObject();
-        }
-    }
-    else if ( nVer < 2 ) {} // nothing to do: SvxFileField is not exchanged for SvxExtFileField
-
-    ScPageHFItem* pItem = new ScPageHFItem( Which() );
-    pItem->SetArea( pLeft,    SC_HF_LEFTAREA   );
-    pItem->SetArea( pCenter, SC_HF_CENTERAREA );
-    pItem->SetArea( pRight,  SC_HF_RIGHTAREA  );
-
-    return pItem;
-}
-
 void ScPageHFItem::SetLeftArea( const EditTextObject& rNew )
 {
-    delete pLeftArea;
     pLeftArea = rNew.Clone();
 }
 
 void ScPageHFItem::SetCenterArea( const EditTextObject& rNew )
 {
-    delete pCenterArea;
     pCenterArea = rNew.Clone();
 }
 
 void ScPageHFItem::SetRightArea( const EditTextObject& rNew )
 {
-    delete pRightArea;
     pRightArea = rNew.Clone();
-}
-
-void ScPageHFItem::SetArea( EditTextObject *pNew, int nArea )
-{
-    switch ( nArea )
-    {
-        case SC_HF_LEFTAREA:    delete pLeftArea;   pLeftArea   = pNew; break;
-        case SC_HF_CENTERAREA:  delete pCenterArea; pCenterArea = pNew; break;
-        case SC_HF_RIGHTAREA:   delete pRightArea;  pRightArea  = pNew; break;
-        default:
-            OSL_FAIL( "New Area?" );
-    }
 }
 
 /**
@@ -854,7 +507,7 @@ bool ScViewObjectModeItem::GetPresentation
     MapUnit             /* eCoreUnit */,
     MapUnit             /* ePresUnit */,
     OUString&           rText,
-    const IntlWrapper* /* pIntl */
+    const IntlWrapper& /* rIntl */
 )   const
 {
     OUString aDel(": ");
@@ -866,22 +519,25 @@ bool ScViewObjectModeItem::GetPresentation
             switch( Which() )
             {
                 case SID_SCATTR_PAGE_CHARTS:
-                rText = ScGlobal::GetRscString(STR_VOBJ_CHART) + aDel;
+                rText = ScResId(STR_VOBJ_CHART) + aDel;
                 break;
 
                 case SID_SCATTR_PAGE_OBJECTS:
-                rText = ScGlobal::GetRscString(STR_VOBJ_OBJECT) + aDel;
+                rText = ScResId(STR_VOBJ_OBJECT) + aDel;
                 break;
 
                 case SID_SCATTR_PAGE_DRAWINGS:
-                rText = ScGlobal::GetRscString(STR_VOBJ_DRAWINGS) + aDel;
+                rText = ScResId(STR_VOBJ_DRAWINGS) + aDel;
                 break;
 
                 default: break;
             }
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case SfxItemPresentation::Nameless:
-            rText += ScGlobal::GetRscString(STR_VOBJ_MODE_SHOW+GetValue());
+            if (GetValue() == VOBJ_MODE_SHOW)
+                rText += ScResId(STR_VOBJ_MODE_SHOW);
+            else
+                rText += ScResId(STR_VOBJ_MODE_HIDE);
             return true;
             break;
 
@@ -897,76 +553,9 @@ sal_uInt16 ScViewObjectModeItem::GetValueCount() const
     return 2;
 }
 
-SfxPoolItem* ScViewObjectModeItem::Clone( SfxItemPool* ) const
+ScViewObjectModeItem* ScViewObjectModeItem::Clone( SfxItemPool* ) const
 {
     return new ScViewObjectModeItem( *this );
-}
-
-sal_uInt16 ScViewObjectModeItem::GetVersion( sal_uInt16 /* nFileVersion */ ) const
-{
-    return 1;
-}
-
-SfxPoolItem* ScViewObjectModeItem::Create(
-                                    SvStream&   rStream,
-                                    sal_uInt16      nVersion ) const
-{
-    if ( nVersion == 0 )
-    {
-        // Old Version with AllEnuItem -> produce with Mode "Show"
-        return new ScViewObjectModeItem( Which() );
-    }
-    else
-    {
-        sal_uInt16 nVal;
-        rStream.ReadUInt16( nVal );
-
-        //#i80528# adapt to new range eventually
-        if((sal_uInt16)VOBJ_MODE_HIDE < nVal) nVal = (sal_uInt16)VOBJ_MODE_SHOW;
-
-        return new ScViewObjectModeItem( Which(), (ScVObjMode)nVal);
-    }
-}
-
-/**
- * Double
- */
-ScDoubleItem::ScDoubleItem( sal_uInt16 nWhichP, double nVal )
-    :   SfxPoolItem ( nWhichP ),
-        nValue  ( nVal )
-{
-}
-
-ScDoubleItem::ScDoubleItem( const ScDoubleItem& rItem )
-    :   SfxPoolItem ( rItem )
-{
-        nValue = rItem.nValue;
-}
-
-bool ScDoubleItem::operator==( const SfxPoolItem& rItem ) const
-{
-    assert(SfxPoolItem::operator==(rItem));
-    const ScDoubleItem& _rItem = static_cast<const ScDoubleItem&>(rItem);
-    return nValue == _rItem.nValue;
-}
-
-SfxPoolItem* ScDoubleItem::Clone( SfxItemPool* ) const
-{
-    return new ScDoubleItem( *this );
-}
-
-SfxPoolItem* ScDoubleItem::Create( SvStream& rStream, sal_uInt16 /* nVer */ ) const
-{
-    double nTmp=0;
-    rStream.ReadDouble( nTmp );
-
-    ScDoubleItem* pItem = new ScDoubleItem( Which(), nTmp );
-
-    return pItem;
-}
-
-ScDoubleItem::~ScDoubleItem()
-{
 }
 
 ScPageScaleToItem::ScPageScaleToItem() :
@@ -1005,25 +594,25 @@ void lclAppendScalePageCount( OUString& rText, sal_uInt16 nPages )
     rText += ": ";
     if( nPages )
     {
-        OUString aPages( ScGlobal::GetRscString( STR_SCATTR_PAGE_SCALE_PAGES ) );
+        OUString aPages(ScResId(STR_SCATTR_PAGE_SCALE_PAGES, nPages));
         rText += aPages.replaceFirst( "%1", OUString::number( nPages ) );
     }
     else
-        rText += ScGlobal::GetRscString( STR_SCATTR_PAGE_SCALE_AUTO );
+        rText += ScResId( STR_SCATTR_PAGE_SCALE_AUTO );
 }
 } // namespace
 
 bool ScPageScaleToItem::GetPresentation(
-        SfxItemPresentation ePres, MapUnit, MapUnit, OUString& rText, const IntlWrapper* ) const
+        SfxItemPresentation ePres, MapUnit, MapUnit, OUString& rText, const IntlWrapper& ) const
 {
     rText.clear();
     if( !IsValid())
         return false;
 
-    OUString aName( ScGlobal::GetRscString( STR_SCATTR_PAGE_SCALETO ) );
-    OUString aValue( ScGlobal::GetRscString( STR_SCATTR_PAGE_SCALE_WIDTH ) );
+    OUString aName( ScResId( STR_SCATTR_PAGE_SCALETO ) );
+    OUString aValue( ScResId( STR_SCATTR_PAGE_SCALE_WIDTH ) );
     lclAppendScalePageCount( aValue, mnWidth );
-    aValue = aValue + ", " + ScGlobal::GetRscString( STR_SCATTR_PAGE_SCALE_HEIGHT );
+    aValue += ", " + ScResId( STR_SCATTR_PAGE_SCALE_HEIGHT );
     lclAppendScalePageCount( aValue, mnHeight );
 
     switch( ePres )
@@ -1076,9 +665,21 @@ ScCondFormatItem::ScCondFormatItem():
 {
 }
 
-ScCondFormatItem::ScCondFormatItem( const std::vector<sal_uInt32>& rIndex ):
+ScCondFormatItem::ScCondFormatItem( sal_uInt32 nIndex ):
+    SfxPoolItem( ATTR_CONDITIONAL )
+{
+    maIndex.insert(nIndex);
+}
+
+ScCondFormatItem::ScCondFormatItem( const ScCondFormatIndexes& rIndex ):
     SfxPoolItem( ATTR_CONDITIONAL ),
     maIndex( rIndex )
+{
+}
+
+ScCondFormatItem::ScCondFormatItem( ScCondFormatIndexes&& aIndex ) noexcept:
+    SfxPoolItem( ATTR_CONDITIONAL ),
+    maIndex( std::move(aIndex) )
 {
 }
 
@@ -1088,22 +689,32 @@ ScCondFormatItem::~ScCondFormatItem()
 
 bool ScCondFormatItem::operator==( const SfxPoolItem& rCmp ) const
 {
-    return maIndex == static_cast<const ScCondFormatItem&>(rCmp).maIndex;
+    if (!SfxPoolItem::operator==(rCmp))
+        return false;
+    auto const & other = static_cast<const ScCondFormatItem&>(rCmp);
+    if (maIndex.empty() && other.maIndex.empty())
+        return true;
+    // memcmp is faster than operator< on std::vector
+    return maIndex.size() == other.maIndex.size()
+        && memcmp(&maIndex.front(), &other.maIndex.front(), maIndex.size() * sizeof(sal_uInt32)) == 0;
+}
+
+bool ScCondFormatItem::operator<( const SfxPoolItem& rCmp ) const
+{
+    auto const & other = static_cast<const ScCondFormatItem&>(rCmp);
+    if ( maIndex.size() < other.maIndex.size() )
+        return true;
+    if ( maIndex.size() > other.maIndex.size() )
+        return false;
+    if (maIndex.empty() && other.maIndex.empty())
+        return false;
+    // memcmp is faster than operator< on std::vector
+    return memcmp(&maIndex.front(), &other.maIndex.front(), maIndex.size() * sizeof(sal_uInt32)) < 0;
 }
 
 ScCondFormatItem* ScCondFormatItem::Clone(SfxItemPool*) const
 {
     return new ScCondFormatItem(maIndex);
-}
-
-void ScCondFormatItem::AddCondFormatData( sal_uInt32 nIndex )
-{
-    maIndex.push_back(nIndex);
-}
-
-void ScCondFormatItem::SetCondFormatData( const std::vector<sal_uInt32>& rIndex )
-{
-    maIndex = rIndex;
 }
 
 void ScCondFormatItem::dumpAsXml(xmlTextWriterPtr pWriter) const
@@ -1116,6 +727,138 @@ void ScCondFormatItem::dumpAsXml(xmlTextWriterPtr pWriter) const
         xmlTextWriterEndElement(pWriter);
     }
     xmlTextWriterEndElement(pWriter);
+}
+
+ScRotateValueItem::ScRotateValueItem(sal_Int32 nAngle)
+    : SdrAngleItem(ATTR_ROTATE_VALUE, nAngle)
+{
+}
+
+ScRotateValueItem* ScRotateValueItem::Clone(SfxItemPool*) const
+{
+    return new ScRotateValueItem(GetValue());
+}
+
+bool ScRotateValueItem::GetPresentation(SfxItemPresentation ePresentation,
+                                        MapUnit eCoreMetric, MapUnit ePresMetric,
+                                        OUString& rText,
+                                        const IntlWrapper& rWrapper) const
+{
+    bool bRet = SdrAngleItem::GetPresentation(SfxItemPresentation::Nameless, eCoreMetric, ePresMetric, rText, rWrapper);
+    if (bRet && ePresentation == SfxItemPresentation::Complete)
+        rText = ScResId(STR_TEXTORIENTANGLE) + " " + rText;
+    return bRet;
+}
+
+ScShrinkToFitCell::ScShrinkToFitCell(bool bShrink)
+    : SfxBoolItem(ATTR_SHRINKTOFIT, bShrink)
+{
+}
+
+ScShrinkToFitCell* ScShrinkToFitCell::Clone(SfxItemPool*) const
+{
+    return new ScShrinkToFitCell(GetValue());
+}
+
+bool ScShrinkToFitCell::GetPresentation(SfxItemPresentation,
+                                        MapUnit, MapUnit,
+                                        OUString& rText,
+                                        const IntlWrapper&) const
+{
+    const char* pId = GetValue() ? STR_SHRINKTOFITCELL_ON : STR_SHRINKTOFITCELL_OFF;
+    rText = ScResId(pId);
+    return true;
+}
+
+ScVerticalStackCell::ScVerticalStackCell(bool bStack)
+    : SfxBoolItem(ATTR_STACKED, bStack)
+{
+}
+
+ScVerticalStackCell* ScVerticalStackCell::Clone(SfxItemPool*) const
+{
+    return new ScVerticalStackCell(GetValue());
+}
+
+bool ScVerticalStackCell::GetPresentation(SfxItemPresentation,
+                                          MapUnit, MapUnit,
+                                          OUString& rText,
+                                          const IntlWrapper&) const
+{
+    const char* pId = GetValue() ? STR_VERTICALSTACKCELL_ON : STR_VERTICALSTACKCELL_OFF;
+    rText = ScResId(pId);
+    return true;
+}
+
+ScLineBreakCell::ScLineBreakCell(bool bStack)
+    : SfxBoolItem(ATTR_LINEBREAK, bStack)
+{
+}
+
+ScLineBreakCell* ScLineBreakCell::Clone(SfxItemPool*) const
+{
+    return new ScLineBreakCell(GetValue());
+}
+
+bool ScLineBreakCell::GetPresentation(SfxItemPresentation,
+                                      MapUnit, MapUnit,
+                                      OUString& rText,
+                                      const IntlWrapper&) const
+{
+    const char* pId = GetValue() ? STR_LINEBREAKCELL_ON : STR_LINEBREAKCELL_OFF;
+    rText = ScResId(pId);
+    return true;
+}
+
+ScHyphenateCell::ScHyphenateCell(bool bHyphenate)
+    : SfxBoolItem(ATTR_HYPHENATE, bHyphenate)
+{
+}
+
+ScHyphenateCell* ScHyphenateCell::Clone(SfxItemPool*) const
+{
+    return new ScHyphenateCell(GetValue());
+}
+
+bool ScHyphenateCell::GetPresentation(SfxItemPresentation,
+                                      MapUnit, MapUnit,
+                                      OUString& rText,
+                                      const IntlWrapper&) const
+{
+    const char* pId = GetValue() ? STR_HYPHENATECELL_ON : STR_HYPHENATECELL_OFF;
+    rText = ScResId(pId);
+    return true;
+}
+
+ScIndentItem::ScIndentItem(sal_uInt16 nIndent)
+    : SfxUInt16Item(ATTR_INDENT, nIndent)
+{
+}
+
+ScIndentItem* ScIndentItem::Clone(SfxItemPool*) const
+{
+    return new ScIndentItem(GetValue());
+}
+
+bool ScIndentItem::GetPresentation(SfxItemPresentation ePres,
+                                   MapUnit eCoreUnit, MapUnit,
+                                   OUString& rText,
+                                   const IntlWrapper& rIntl) const
+{
+    auto nValue = GetValue();
+
+    switch (ePres)
+    {
+        case SfxItemPresentation::Complete:
+            rText = ScResId(STR_INDENTCELL);
+            [[fallthrough]];
+        case SfxItemPresentation::Nameless:
+            rText += GetMetricText( nValue, eCoreUnit, MapUnit::MapPoint, &rIntl ) +
+                  " " + EditResId(GetMetricId(MapUnit::MapPoint));
+            return true;
+        default: ; //prevent warning
+    }
+    return false;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

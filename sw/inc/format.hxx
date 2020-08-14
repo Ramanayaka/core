@@ -19,11 +19,9 @@
 #ifndef INCLUDED_SW_INC_FORMAT_HXX
 #define INCLUDED_SW_INC_FORMAT_HXX
 
-#include <tools/solar.h>
 #include "swdllapi.h"
-#include <swatrset.hxx>
-#include <calbck.hxx>
-#include <hintids.hxx>
+#include "swatrset.hxx"
+#include "calbck.hxx"
 #include <memory>
 
 class IDocumentSettingAccess;
@@ -34,14 +32,15 @@ class IDocumentFieldsAccess;
 class IDocumentChartDataProviderAccess;
 class SwDoc;
 class SfxGrabBagItem;
+class SwTextGridItem;
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class SdrAllFillAttributesHelper;
     typedef std::shared_ptr< SdrAllFillAttributesHelper > SdrAllFillAttributesHelperPtr;
-}}
+}
 
 /// Base class for various Writer styles.
-class SW_DLLPUBLIC SwFormat : public SwModify
+class SW_DLLPUBLIC SwFormat : public sw::BroadcastingModify
 {
     friend class SwFrameFormat;
 
@@ -63,7 +62,7 @@ class SW_DLLPUBLIC SwFormat : public SwModify
     std::shared_ptr<SfxGrabBagItem> m_pGrabBagItem; ///< Style InteropGrabBag.
 
 protected:
-    SwFormat( SwAttrPool& rPool, const sal_Char* pFormatNm,
+    SwFormat( SwAttrPool& rPool, const char* pFormatNm,
             const sal_uInt16* pWhichRanges, SwFormat *pDrvdFrame, sal_uInt16 nFormatWhich );
     SwFormat( SwAttrPool& rPool, const OUString &rFormatNm, const sal_uInt16* pWhichRanges,
             SwFormat *pDrvdFrame, sal_uInt16 nFormatWhich );
@@ -91,9 +90,13 @@ public:
     /// If bInParents is FALSE, search only in this format for attribute.
     const SfxPoolItem& GetFormatAttr( sal_uInt16 nWhich,
                                    bool bInParents = true ) const;
+    template<class T> const T& GetFormatAttr( TypedWhichId<T> nWhich, bool bInParents = true ) const
+    {
+        return static_cast<const T&>(GetFormatAttr(sal_uInt16(nWhich), bInParents));
+    }
     SfxItemState GetItemState( sal_uInt16 nWhich, bool bSrchInParent = true,
                                     const SfxPoolItem **ppItem = nullptr ) const;
-    SfxItemState GetBackgroundState(SvxBrushItem &rItem) const;
+    SfxItemState GetBackgroundState(std::unique_ptr<SvxBrushItem>& rItem) const;
     virtual bool SetFormatAttr( const SfxPoolItem& rAttr );
     virtual bool SetFormatAttr( const SfxItemSet& rSet );
     virtual bool ResetFormatAttr( sal_uInt16 nWhich1, sal_uInt16 nWhich2 = 0 );
@@ -200,7 +203,7 @@ public:
     inline const SvxFormatKeepItem         &GetKeep( bool = true ) const;
 
     // Create SvxBrushItem for Background fill (partially for backwards compatibility)
-    SvxBrushItem makeBackgroundBrushItem( bool = true ) const;
+    std::unique_ptr<SvxBrushItem> makeBackgroundBrushItem( bool = true ) const;
 
     inline const SvxShadowItem            &GetShadow( bool = true ) const;
     inline const SwFormatPageDesc            &GetPageDesc( bool = true ) const;
@@ -239,8 +242,6 @@ public:
         Virtual method to determine, if background of format is transparent.
         Default implementation returns false. Thus, subclasses have to override
         method, if the specific subclass can have a transparent background.
-
-        @author OD
 
         @return false, default implementation
     */

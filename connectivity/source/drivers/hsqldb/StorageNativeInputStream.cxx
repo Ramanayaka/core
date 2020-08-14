@@ -22,16 +22,10 @@
 #include <config.h>
 #endif
 #include <com/sun/star/io/XStream.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/document/XDocumentSubStorageSupplier.hpp>
-#include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/embed/ElementModes.hpp>
-#include <comphelper/types.hxx>
-#include "hsqldb/HStorageAccess.hxx"
-#include "hsqldb/HStorageMap.hxx"
+#include <hsqldb/HStorageAccess.hxx>
+#include <hsqldb/HStorageMap.hxx>
 
-#include <jvmaccess/virtualmachine.hxx>
-#include <com/sun/star/lang/XSingleComponentFactory.hpp>
 #include <osl/diagnose.h>
 #include "accesslog.hxx"
 
@@ -75,7 +69,7 @@ extern "C" SAL_JNI_EXPORT void JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stora
  * Signature: (Ljava/lang/String;Ljava/lang/String;)I
  */
 extern "C" SAL_JNI_EXPORT jint JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_StorageNativeInputStream_read__Ljava_lang_String_2Ljava_lang_String_2
-  (JNIEnv * env, jobject obj_this,jstring key, jstring name)
+  (JNIEnv * env, jobject /*obj_this*/, jstring key, jstring name)
 {
 #ifdef HSQLDB_DBG
     OperationLogFile( env, name, "input" ).logOperation( "read()" );
@@ -83,7 +77,7 @@ extern "C" SAL_JNI_EXPORT jint JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stora
     DataLogFile aDataLog( env, name, "input" );
     return read_from_storage_stream( env, obj_this, name, key, &aDataLog );
 #else
-    return read_from_storage_stream( env, obj_this, name, key );
+    return read_from_storage_stream( env, name, key );
 #endif
 }
 
@@ -94,7 +88,7 @@ extern "C" SAL_JNI_EXPORT jint JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stora
  * Signature: (Ljava/lang/String;Ljava/lang/String;[BII)I
  */
 extern "C" SAL_JNI_EXPORT jint JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_StorageNativeInputStream_read__Ljava_lang_String_2Ljava_lang_String_2_3BII
-  (JNIEnv * env, jobject obj_this,jstring key, jstring name, jbyteArray buffer, jint off, jint len)
+  (JNIEnv * env, jobject obj_this, jstring key, jstring name, jbyteArray buffer, jint off, jint len)
 {
 #ifdef HSQLDB_DBG
     OperationLogFile( env, name, "input" ).logOperation( "read( byte[], int, int )" );
@@ -102,7 +96,8 @@ extern "C" SAL_JNI_EXPORT jint JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stora
     DataLogFile aDataLog( env, name, "input" );
     return read_from_storage_stream_into_buffer( env, obj_this, name, key, buffer, off, len, &aDataLog );
 #else
-    return read_from_storage_stream_into_buffer(env,obj_this,name,key,buffer,off,len);
+    (void)obj_this;
+    return read_from_storage_stream_into_buffer(env, name,key,buffer,off,len);
 #endif
 }
 
@@ -145,8 +140,8 @@ extern "C" SAL_JNI_EXPORT jlong JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stor
                         "n < 0");
 
     std::shared_ptr<StreamHelper> pHelper = StorageContainer::getRegisteredStream(env,name,key);
-    OSL_ENSURE(pHelper.get(),"No stream helper!");
-    if ( pHelper.get() )
+    OSL_ENSURE(pHelper,"No stream helper!");
+    if ( pHelper )
     {
         Reference<XInputStream> xIn = pHelper->getInputStream();
         if ( xIn.is() )
@@ -207,8 +202,8 @@ extern "C" SAL_JNI_EXPORT jint JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stora
 #endif
 
     std::shared_ptr<StreamHelper> pHelper = StorageContainer::getRegisteredStream(env,name,key);
-    OSL_ENSURE(pHelper.get(),"No stream helper!");
-    Reference<XInputStream> xIn = pHelper.get() ? pHelper->getInputStream() : Reference<XInputStream>();
+    OSL_ENSURE(pHelper,"No stream helper!");
+    Reference<XInputStream> xIn = pHelper ? pHelper->getInputStream() : Reference<XInputStream>();
     if ( xIn.is() )
     {
         try
@@ -251,7 +246,7 @@ extern "C" SAL_JNI_EXPORT jint JNICALL Java_com_sun_star_sdbcx_comp_hsqldb_Stora
 #endif
 
     std::shared_ptr<StreamHelper> pHelper = StorageContainer::getRegisteredStream(env,name,key);
-    Reference< XInputStream> xIn = pHelper.get() ? pHelper->getInputStream() : Reference< XInputStream>();
+    Reference< XInputStream> xIn = pHelper ? pHelper->getInputStream() : Reference< XInputStream>();
     OSL_ENSURE(xIn.is(),"Input stream is NULL!");
     jint nBytesRead = 0;
     if ( xIn.is() )

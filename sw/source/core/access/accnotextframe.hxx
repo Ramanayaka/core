@@ -21,25 +21,19 @@
 #define INCLUDED_SW_SOURCE_CORE_ACCESS_ACCNOTEXTFRAME_HXX
 
 #include "accframebase.hxx"
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessibleImage.hpp>
 #include <com/sun/star/accessibility/XAccessibleHypertext.hpp>
 
-namespace utl { class AccessibleRelationSetHelper; }
-namespace com { namespace star {
-    namespace accessibility { struct AccessibleRelation; }
-} }
-
 class SwFlyFrame;
 class SwNoTextNode;
-class SwAccessibleNoTextHyperlink;
 
 class SwAccessibleNoTextFrame : public  SwAccessibleFrameBase,
                                 public css::accessibility::XAccessibleImage,
                                 public css::accessibility::XAccessibleHypertext//Added by yangzhh for HyperLink
 {
     friend class SwAccessibleNoTextHyperlink;
-    css::uno::Reference< css::accessibility::XAccessibleHyperlink > alink;
-    SwDepend        aDepend;
+    css::uno::Reference< css::accessibility::XAccessibleHyperlink > m_xHyperlink;
     OUString msTitle;
     OUString msDesc;
 
@@ -48,7 +42,7 @@ protected:
 
     const SwNoTextNode *GetNoTextNode() const;
 
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew) override;
+    virtual void Notify(const SfxHint&) override;
 
 public:
     SwAccessibleNoTextFrame( std::shared_ptr<SwAccessibleMap> const& pInitMap,
@@ -91,7 +85,7 @@ public:
     virtual sal_Int32 SAL_CALL
         getAccessibleImageWidth(  ) override;
 
-    // The object is not visible an longer and should be destroyed
+    // The object is not visible any longer and should be destroyed
     virtual void Dispose(bool bRecursive, bool bCanSkipInvisible = true) override;
 
     virtual sal_Int32 SAL_CALL getCaretPosition(  ) override;
@@ -111,6 +105,7 @@ public:
     virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+    virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 
     // XAccessibleHypertext
     virtual sal_Int32 SAL_CALL getHyperLinkCount() override;

@@ -22,27 +22,26 @@
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/uno/RuntimeException.hpp>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XInputStream; }
-} } }
-class CRC32
+}
+class CRC32 final
 {
-protected:
     sal_uInt32 nCRC;
 public:
     CRC32();
     ~CRC32();
 
     /// @throws css::uno::RuntimeException
-    sal_Int64 SAL_CALL updateStream (css::uno::Reference < css::io::XInputStream > & xStream);
+    sal_Int64 updateStream (css::uno::Reference < css::io::XInputStream > const & xStream);
     /// @throws css::uno::RuntimeException
-    void SAL_CALL updateSegment(const css::uno::Sequence< sal_Int8 > &b, sal_Int32 len);
+    void updateSegment(const css::uno::Sequence< sal_Int8 > &b, sal_Int32 len);
     /// @throws css::uno::RuntimeException
-    void SAL_CALL update(const css::uno::Sequence< sal_Int8 > &b);
+    void update(const css::uno::Sequence< sal_Int8 > &b);
     /// @throws css::uno::RuntimeException
-    sal_Int32 SAL_CALL getValue();
+    sal_Int32 getValue() const;
     /// @throws css::uno::RuntimeException
-    void SAL_CALL reset();
+    void reset();
 };
 
 #endif

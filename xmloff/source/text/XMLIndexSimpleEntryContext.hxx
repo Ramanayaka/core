@@ -26,9 +26,9 @@
 #include <com/sun/star/beans/PropertyValue.hpp>
 
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
-} } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
+}
 class XMLIndexTemplateContext;
 
 /**
@@ -38,18 +38,18 @@ class XMLIndexSimpleEntryContext : public SvXMLImportContext
 {
 
     // entry type
-    const OUString rEntryType;
+    const OUString m_rEntryType;
 
 protected:
     // character style
-    OUString sCharStyleName;
-    bool bCharStyleNameOK;
+    OUString m_sCharStyleName;
+    bool m_bCharStyleNameOK;
 
     // surrounding template
-    XMLIndexTemplateContext& rTemplateContext;
+    XMLIndexTemplateContext& m_rTemplateContext;
 
     // number of values for PropertyValues
-    sal_Int32 nValues;
+    sal_Int32 m_nValues;
 
 public:
 

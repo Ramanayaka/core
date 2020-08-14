@@ -19,16 +19,14 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_XML_XMLNEXPI_HXX
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLNEXPI_HXX
 
-#include <xmloff/xmlictxt.hxx>
-#include <xmloff/xmlimp.hxx>
-#include "address.hxx"
-#include "xmlimprt.hxx"
+#include <types.hxx>
 #include "importcontext.hxx"
 
 #include <memory>
 
+namespace sax_fastparser { class FastAttributeList; }
+
 struct ScMyNamedExpression;
-class ScRangeName;
 
 class ScXMLNamedExpressionsContext : public ScXMLImportContext
 {
@@ -70,15 +68,13 @@ public:
     };
 
     ScXMLNamedExpressionsContext(
-        ScXMLImport& rImport, sal_Int32 nElement,
-        const css::uno::Reference<css::xml::sax::XFastAttributeList>& xAttrList,
-        Inserter* pInserter );
+        ScXMLImport& rImport,
+        std::shared_ptr<Inserter> pInserter );
 
     virtual ~ScXMLNamedExpressionsContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
 private:
     std::shared_ptr<Inserter> mpInserter;
@@ -89,20 +85,11 @@ class ScXMLNamedRangeContext : public ScXMLImportContext
 public:
 
     ScXMLNamedRangeContext(
-        ScXMLImport& rImport, sal_uInt16 nPrfx, const OUString& rLName,
-        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+        ScXMLImport& rImport,
+        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
         ScXMLNamedExpressionsContext::Inserter* pInserter );
 
     virtual ~ScXMLNamedRangeContext() override;
-
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
-
-    virtual void EndElement() override;
-
-private:
-    ScXMLNamedExpressionsContext::Inserter* mpInserter;
 };
 
 class ScXMLNamedExpressionContext : public ScXMLImportContext
@@ -110,20 +97,11 @@ class ScXMLNamedExpressionContext : public ScXMLImportContext
 public:
 
     ScXMLNamedExpressionContext(
-        ScXMLImport& rImport, sal_uInt16 nPrfx, const OUString& rLName,
-        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+        ScXMLImport& rImport,
+        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
         ScXMLNamedExpressionsContext::Inserter* pInserter );
 
     virtual ~ScXMLNamedExpressionContext() override;
-
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
-
-    virtual void EndElement() override;
-
-private:
-    ScXMLNamedExpressionsContext::Inserter* mpInserter;
 };
 
 #endif

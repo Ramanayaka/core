@@ -19,9 +19,8 @@
 #ifndef INCLUDED_EDITENG_BRUSHITEM_HXX
 #define INCLUDED_EDITENG_BRUSHITEM_HXX
 
+#include <tools/color.hxx>
 #include <svl/poolitem.hxx>
-#include <vcl/wall.hxx>
-#include <tools/link.hxx>
 #include <unotools/securityoptions.hxx>
 #include <editeng/editengdllapi.h>
 #include <memory>
@@ -30,9 +29,8 @@
 
 class Graphic;
 class GraphicObject;
-class CntWallpaperItem;
 
-#define BRUSH_GRAPHIC_VERSION   ((sal_uInt16)0x0001)
+constexpr sal_uInt16 BRUSH_GRAPHIC_VERSION = 0x0001;
 
 enum SvxGraphicPosition
 {
@@ -43,7 +41,7 @@ enum SvxGraphicPosition
     GPOS_AREA, GPOS_TILED
 };
 
-class EDITENG_DLLPUBLIC SvxBrushItem : public SfxPoolItem
+class EDITENG_DLLPUBLIC SvxBrushItem final : public SfxPoolItem
 {
     Color               aColor;
     sal_Int32           nShadingValue;
@@ -57,9 +55,6 @@ class EDITENG_DLLPUBLIC SvxBrushItem : public SfxPoolItem
     mutable bool        bLoadAgain;
 
     void        ApplyGraphicTransparency_Impl();
-    // only used by Create
-    SvxBrushItem( SvStream& rStrm,
-                  sal_uInt16 nVersion, sal_uInt16 nWhich  );
 
 public:
     static SfxPoolItem* CreateDefault();
@@ -74,26 +69,24 @@ public:
     SvxBrushItem( const OUString& rLink, const OUString& rFilter,
                   SvxGraphicPosition ePos, sal_uInt16 nWhich );
     SvxBrushItem( const SvxBrushItem& );
-    SvxBrushItem( SvxBrushItem&& );
-    SvxBrushItem( const CntWallpaperItem&, sal_uInt16 nWhich );
+    SvxBrushItem(SvxBrushItem&&);
 
     virtual ~SvxBrushItem() override;
 
 public:
+    // check if it's used
+    bool isUsed() const;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool             operator==( const SfxPoolItem& ) const override;
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create( SvStream&, sal_uInt16 nVersion ) const override;
-    virtual SvStream&        Store( SvStream& , sal_uInt16 nItemVersion ) const override;
-    virtual sal_uInt16           GetVersion( sal_uInt16 nFileVersion ) const override;
+    virtual SvxBrushItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const Color&    GetColor() const                { return aColor; }
     Color&          GetColor()                      { return aColor; }
@@ -117,14 +110,9 @@ public:
     void                SetGraphicLink( const OUString& rNew );
     void                SetGraphicFilter( const OUString& rNew );
 
-    SvxBrushItem&       operator=(const SvxBrushItem& rItem);
-    SvxBrushItem&       operator=(SvxBrushItem&& rItem);
-
-    static SvxGraphicPosition   WallpaperStyle2GraphicPos( WallpaperStyle eStyle );
-    static WallpaperStyle       GraphicPos2WallpaperStyle( SvxGraphicPosition ePos );
     static sal_Int8             TransparencyToPercent(sal_Int32 nTrans);
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 #endif // INCLUDED_EDITENG_BRUSHITEM_HXX

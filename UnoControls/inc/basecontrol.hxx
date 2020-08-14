@@ -17,88 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_UNOCONTROLS_INC_BASECONTROL_HXX
-#define INCLUDED_UNOCONTROLS_INC_BASECONTROL_HXX
+#pragma once
 
-#include <com/sun/star/awt/XKeyListener.hpp>
 #include <com/sun/star/awt/XPaintListener.hpp>
-#include <com/sun/star/awt/KeyEvent.hpp>
-#include <com/sun/star/awt/KeyModifier.hpp>
-#include <com/sun/star/awt/XMouseMotionListener.hpp>
-#include <com/sun/star/awt/FocusEvent.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/awt/XActivateListener.hpp>
-#include <com/sun/star/awt/MouseEvent.hpp>
-#include <com/sun/star/awt/XTopWindowListener.hpp>
-#include <com/sun/star/awt/PaintEvent.hpp>
-#include <com/sun/star/awt/InputEvent.hpp>
-#include <com/sun/star/awt/KeyGroup.hpp>
-#include <com/sun/star/awt/Key.hpp>
-#include <com/sun/star/awt/WindowEvent.hpp>
-#include <com/sun/star/awt/XMouseListener.hpp>
-#include <com/sun/star/awt/KeyFunction.hpp>
-#include <com/sun/star/awt/FocusChangeReason.hpp>
-#include <com/sun/star/awt/MouseButton.hpp>
-#include <com/sun/star/awt/XFocusListener.hpp>
-#include <com/sun/star/awt/XFileDialog.hpp>
-#include <com/sun/star/awt/XTextComponent.hpp>
-#include <com/sun/star/awt/XListBox.hpp>
-#include <com/sun/star/awt/XProgressMonitor.hpp>
-#include <com/sun/star/awt/TextAlign.hpp>
-#include <com/sun/star/awt/XScrollBar.hpp>
-#include <com/sun/star/awt/XVclContainerPeer.hpp>
-#include <com/sun/star/awt/XTabControllerModel.hpp>
-#include <com/sun/star/awt/XMessageBox.hpp>
-#include <com/sun/star/awt/XTextEditField.hpp>
-#include <com/sun/star/awt/Style.hpp>
-#include <com/sun/star/awt/XTimeField.hpp>
-#include <com/sun/star/awt/XVclWindowPeer.hpp>
-#include <com/sun/star/awt/XControlModel.hpp>
-#include <com/sun/star/awt/XSpinField.hpp>
-#include <com/sun/star/awt/XUnoControlContainer.hpp>
-#include <com/sun/star/awt/XTextLayoutConstrains.hpp>
-#include <com/sun/star/awt/XNumericField.hpp>
-#include <com/sun/star/awt/XButton.hpp>
-#include <com/sun/star/awt/XTextArea.hpp>
-#include <com/sun/star/awt/XImageButton.hpp>
-#include <com/sun/star/awt/XFixedText.hpp>
-#include <com/sun/star/awt/XControlContainer.hpp>
-#include <com/sun/star/awt/XDialog.hpp>
-#include <com/sun/star/awt/ScrollBarOrientation.hpp>
-#include <com/sun/star/awt/XRadioButton.hpp>
-#include <com/sun/star/awt/XCurrencyField.hpp>
-#include <com/sun/star/awt/XPatternField.hpp>
-#include <com/sun/star/awt/VclWindowPeerAttribute.hpp>
-#include <com/sun/star/awt/XTabController.hpp>
-#include <com/sun/star/awt/XVclContainer.hpp>
-#include <com/sun/star/awt/XDateField.hpp>
-#include <com/sun/star/awt/XComboBox.hpp>
 #include <com/sun/star/awt/XControl.hpp>
-#include <com/sun/star/awt/XCheckBox.hpp>
-#include <com/sun/star/awt/XLayoutConstrains.hpp>
-#include <com/sun/star/awt/XProgressBar.hpp>
-#include <com/sun/star/awt/XTopWindow.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/awt/XView.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <osl/mutex.hxx>
-#include <tools/colordata.hxx>
-#include <cppuhelper/weak.hxx>
 #include <cppuhelper/component.hxx>
 #include <rtl/ref.hxx>
 
-#include "multiplexer.hxx"
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::awt { class XFocusListener; }
+namespace com::sun::star::awt { class XMouseListener; }
+namespace com::sun::star::awt { class XMouseMotionListener; }
+namespace com::sun::star::awt { struct PaintEvent; }
+namespace com::sun::star::awt { struct WindowEvent; }
+namespace unocontrols { class OMRCListenerMultiplexerHelper; }
 
-namespace com { namespace sun { namespace star { namespace uno {
-    class XComponentContext;
-} } } }
-
-//  "namespaces"
-
-namespace unocontrols{
-
-//  structs
+namespace unocontrols {
 
 struct IMPL_MutexContainer
 {
@@ -115,16 +54,14 @@ class BaseControl   : public css::lang::XServiceInfo
                     , public IMPL_MutexContainer
                     , public ::cppu::OComponentHelper
 {
-
 public:
-
     BaseControl( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
 
     virtual ~BaseControl() override;
 
     //  XInterface
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      give answer, if interface is supported
         @descr      The interfaces are searched by type.
 
@@ -141,7 +78,7 @@ public:
         const css::uno::Type& aType
     ) override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      increment refcount
         @seealso    XInterface
         @seealso    release()
@@ -150,7 +87,7 @@ public:
 
     virtual void SAL_CALL acquire() throw() override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      decrement refcount
         @seealso    XInterface
         @seealso    acquire()
@@ -161,7 +98,7 @@ public:
 
     //  XTypeProvider
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      get information about supported interfaces
         @seealso    XTypeProvider
         @return     Sequence of types of all supported interfaces
@@ -171,7 +108,7 @@ public:
 
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      get implementation id
         @descr      This ID is necessary for UNO-caching. If there no ID, cache is disabled.
                     Another way, cache is enabled.
@@ -346,17 +283,17 @@ public:
 protected:
     using OComponentHelper::disposing;
 
-    const css::uno::Reference< css::uno::XComponentContext >& impl_getComponentContext() { return m_xComponentContext;}
+    const css::uno::Reference< css::uno::XComponentContext >& impl_getComponentContext() const { return m_xComponentContext;}
 
-    const css::uno::Reference< css::awt::XWindow >& impl_getPeerWindow() { return m_xPeerWindow;}
+    const css::uno::Reference< css::awt::XWindow >& impl_getPeerWindow() const { return m_xPeerWindow;}
 
-    const css::uno::Reference< css::awt::XGraphics >& impl_getGraphicsPeer() { return m_xGraphicsPeer;}
+    const css::uno::Reference< css::awt::XGraphics >& impl_getGraphicsPeer() const { return m_xGraphicsPeer;}
 
-    const sal_Int32& impl_getWidth() { return m_nWidth;}
+    sal_Int32 impl_getWidth() const { return m_nWidth;}
 
-    const sal_Int32& impl_getHeight() { return m_nHeight;}
+    sal_Int32 impl_getHeight() const { return m_nHeight;}
 
-    virtual css::awt::WindowDescriptor* impl_getWindowDescriptor(
+    virtual css::awt::WindowDescriptor impl_getWindowDescriptor(
         const css::uno::Reference< css::awt::XWindowPeer >& xParentPeer
     );
 
@@ -366,10 +303,9 @@ protected:
 
     virtual void impl_recalcLayout( const css::awt::WindowEvent& aEvent );
 
-    const css::uno::Reference< css::uno::XInterface >& impl_getDelegator() { return m_xDelegator;}
+    const css::uno::Reference< css::uno::XInterface >& impl_getDelegator() const { return m_xDelegator;}
 
 private:
-
     OMRCListenerMultiplexerHelper* impl_getMultiplexer();
 
     css::uno::Reference< css::uno::XComponentContext >        m_xComponentContext;
@@ -387,11 +323,9 @@ private:
     bool                                        m_bVisible;   // Some state flags
     bool                                        m_bInDesignMode;
     bool                                        m_bEnable;
+};
 
-};  // class BaseControl
+}
 
-}   // namespace unocontrols
-
-#endif // INCLUDED_UNOCONTROLS_INC_BASECONTROL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

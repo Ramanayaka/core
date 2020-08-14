@@ -20,17 +20,14 @@
 #ifndef INCLUDED_FRAMEWORK_SOURCE_INC_LOADENV_LOADENVEXCEPTION_HXX
 #define INCLUDED_FRAMEWORK_SOURCE_INC_LOADENV_LOADENVEXCEPTION_HXX
 
-#include <com/sun/star/uno/Any.h>
-#include <com/sun/star/uno/Exception.hpp>
-
-#include <rtl/string.hxx>
+#include <com/sun/star/uno/Any.hxx>
 
 namespace framework{
 
 /** @short  specify an exception, which can be used inside the
             load environment only.
 
-    @descr  Of course outside code must wrapp it, to transport
+    @descr  Of course outside code must wrap it, to transport
             the occurred information to its caller.
  */
 class LoadEnvException
@@ -38,7 +35,7 @@ class LoadEnvException
     public:
         /** @short  Can be used as an ID for an instance of a LoadEnvException.
             @descr  To prevent errors on adding/removing/changing such IDs here,
-                    an enum field is used. Its int values are self organized ...
+                    an enum field is used. Its int values are self organized...
          */
         enum EIDs
         {
@@ -50,7 +47,7 @@ class LoadEnvException
                         should be thrown, if a required item does not exists. */
             ID_INVALID_MEDIADESCRIPTOR,
 
-            /** @short  Its similar to an uno::RuntimeException ....
+            /** @short  Its similar to a uno::RuntimeException...
                 @descr  But such runtime exception can break the whole office code.
                         So its capsulated to this specialized load environment only.
                         Mostly it indicates a missing but needed resource ... e.g the
@@ -69,7 +66,7 @@ class LoadEnvException
             ID_STILL_RUNNING,
 
             /** @short  sometimes we can't specify the reason for an error, because we
-                        was interrupted by an called code in an unexpected way ...
+                        was interrupted by a called code in an unexpected way ...
              */
             ID_GENERAL_ERROR
         };

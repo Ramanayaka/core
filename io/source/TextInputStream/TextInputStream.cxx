@@ -19,11 +19,8 @@
 
 #include <string.h>
 
-#include <uno/mapping.hxx>
-
-#include <cppuhelper/factory.hxx>
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <rtl/textenc.h>
@@ -35,9 +32,9 @@
 #include <com/sun/star/io/XTextInputStream2.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-#include "services.hxx"
-
 #include <vector>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 #define IMPLEMENTATION_NAME "com.sun.star.comp.io.TextInputStream"
 #define SERVICE_NAME "com.sun.star.io.TextInputStream"
@@ -47,22 +44,20 @@ using namespace ::cppu;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::io;
-using namespace ::com::sun::star::registry;
 
-namespace io_TextInputStream
-{
 
 // Implementation XTextInputStream
 
 #define INITIAL_UNICODE_BUFFER_CAPACITY     0x100
 #define READ_BYTE_COUNT                     0x100
 
+namespace {
+
 class OTextInputStream : public WeakImplHelper< XTextInputStream2, XServiceInfo >
 {
     Reference< XInputStream > mxStream;
 
     // Encoding
-    OUString mEncoding;
     bool mbEncodingInitialized;
     rtl_TextToUnicodeConverter  mConvText2Unicode;
     rtl_TextToUnicodeContext    mContextText2Unicode;
@@ -107,6 +102,8 @@ public:
         virtual Sequence< OUString >  SAL_CALL getSupportedServiceNames() override;
         virtual sal_Bool              SAL_CALL supportsService(const OUString& ServiceName) override;
 };
+
+}
 
 OTextInputStream::OTextInputStream()
     : mbEncodingInitialized(false)
@@ -171,8 +168,6 @@ OUString OTextInputStream::implReadString( const Sequence< sal_Unicode >& Delimi
     bool bFound = false;
     bool bFoundFirstLineEndChar = false;
     sal_Unicode cFirstLineEndChar = 0;
-    const sal_Unicode* pDelims = Delimiters.getConstArray();
-    const sal_Int32 nDelimCount = Delimiters.getLength();
     while( !bFound )
     {
         // Still characters available?
@@ -188,7 +183,7 @@ OUString OTextInputStream::implReadString( const Sequence< sal_Unicode >& Delimi
         }
 
         // Now there should be characters available
-        // (otherwise the loop should have been breaked before)
+        // (otherwise the loop should have been broken before)
         sal_Unicode c = mvBuffer[ nBufferReadPos++ ];
 
         if( bFindLineEnd )
@@ -217,18 +212,12 @@ OUString OTextInputStream::implReadString( const Sequence< sal_Unicode >& Delimi
                 cFirstLineEndChar = c;
             }
         }
-        else
+        else if( comphelper::findValue(Delimiters, c) != -1 )
         {
-            for( sal_Int32 i = 0 ; i < nDelimCount ; i++ )
-            {
-                if( c == pDelims[ i ] )
-                {
-                    bFound = true;
-                    nCopyLen = nBufferReadPos;
-                    if( bRemoveDelimiter )
-                        nCopyLen--;
-                }
-            }
+            bFound = true;
+            nCopyLen = nBufferReadPos;
+            if( bRemoveDelimiter )
+                nCopyLen--;
         }
     }
 
@@ -288,13 +277,13 @@ sal_Int32 OTextInputStream::implReadNext()
             nSourceCount += nSrcCvtBytes;
 
             bool bCont = false;
-            if( uiInfo & RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOSMALL )
+            if( uiInfo & RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL )
             {
                 mvBuffer.resize(mvBuffer.size() * 2);
                 bCont = true;
             }
 
-            if( uiInfo & RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOSMALL )
+            if( uiInfo & RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL )
             {
                 // read next byte
                 static Sequence< sal_Int8 > aOneByteSeq( 1 );
@@ -344,7 +333,6 @@ void OTextInputStream::setEncoding( const OUString& Encoding )
     mbEncodingInitialized = true;
     mConvText2Unicode = rtl_createTextToUnicodeConverter( encoding );
     mContextText2Unicode = rtl_createTextToUnicodeContext( mConvText2Unicode );
-    mEncoding = Encoding;
 }
 
 
@@ -388,27 +376,9 @@ Reference< XInputStream > OTextInputStream::getInputStream()
     return mxStream;
 }
 
-
-Reference< XInterface > SAL_CALL TextInputStream_CreateInstance(
-    SAL_UNUSED_PARAMETER const Reference< XComponentContext > &)
-{
-    return Reference < XInterface >( static_cast<OWeakObject *>(new OTextInputStream()) );
-}
-
-OUString TextInputStream_getImplementationName()
-{
-    return OUString ( IMPLEMENTATION_NAME );
-}
-
-Sequence< OUString > TextInputStream_getSupportedServiceNames()
-{
-    Sequence< OUString > seqNames { SERVICE_NAME };
-    return seqNames;
-}
-
 OUString OTextInputStream::getImplementationName()
 {
-    return TextInputStream_getImplementationName();
+    return IMPLEMENTATION_NAME;
 }
 
 sal_Bool OTextInputStream::supportsService(const OUString& ServiceName)
@@ -418,9 +388,15 @@ sal_Bool OTextInputStream::supportsService(const OUString& ServiceName)
 
 Sequence< OUString > OTextInputStream::getSupportedServiceNames()
 {
-    return TextInputStream_getSupportedServiceNames();
+    return { SERVICE_NAME };
 }
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+io_OTextInputStream_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new OTextInputStream());
 }
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

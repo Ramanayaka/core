@@ -131,7 +131,7 @@ void SAL_CALL OOfficeRestartManager::notify( const uno::Any& /* aData */ )
 
 OUString SAL_CALL OOfficeRestartManager::getImplementationName()
 {
-    return OUString("com.sun.star.comp.task.OfficeRestartManager");
+    return "com.sun.star.comp.task.OfficeRestartManager";
 }
 
 sal_Bool SAL_CALL OOfficeRestartManager::supportsService( const OUString& aServiceName )
@@ -164,7 +164,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_task_OfficeRestartManager(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

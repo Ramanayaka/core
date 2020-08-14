@@ -33,7 +33,6 @@
 #include <com/sun/star/frame/XTitleChangeBroadcaster.hpp>
 #include <com/sun/star/frame/XUntitledNumbers.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/report/XReportDefinition.hpp>
 #include <com/sun/star/util/XNumberFormatsSupplier.hpp>
@@ -83,16 +82,14 @@ namespace reportdesign
      * \ingroup reportdesign_api
      *
      */
-    class REPORTDESIGN_DLLPUBLIC OReportDefinition  :public ::cppu::BaseMutex
+    class REPORTDESIGN_DLLPUBLIC OReportDefinition  final :public ::cppu::BaseMutex
                                                     ,public ReportDefinitionBase
                                                     ,public ReportDefinitionPropertySet
                                                     ,public ::comphelper::IEmbeddedHelper
     {
-    private:
         std::shared_ptr<OReportComponentProperties>                             m_aProps;
         std::shared_ptr<OReportDefinitionImpl>                                  m_pImpl;
 
-    private:
         OReportDefinition(const OReportDefinition&) = delete;
         OReportDefinition& operator=(const OReportDefinition&) = delete;
 
@@ -131,8 +128,8 @@ namespace reportdesign
         bool WriteThroughComponent(
             /// the component we export
             const css::uno::Reference< css::lang::XComponent> & xComponent,
-            const sal_Char* pStreamName,        /// the stream name
-            const sal_Char* pServiceName,       /// service name of the component
+            const char* pStreamName,        /// the stream name
+            const char* pServiceName,       /// service name of the component
             /// the argument (XInitialization)
             const css::uno::Sequence< css::uno::Any> & rArguments,
             /// output descriptor
@@ -144,7 +141,7 @@ namespace reportdesign
         bool WriteThroughComponent(
             const css::uno::Reference< css::io::XOutputStream> & xOutputStream,
             const css::uno::Reference< css::lang::XComponent> & xComponent,
-            const sal_Char* pServiceName,
+            const char* pServiceName,
             const css::uno::Sequence< css::uno::Any> & rArguments,
             const css::uno::Sequence< css::beans::PropertyValue> & rMediaDesc);
 
@@ -165,7 +162,6 @@ namespace reportdesign
             const css::uno::Sequence< css::beans::PropertyValue >& _rArguments
         );
 
-    protected:
         virtual ~OReportDefinition() override;
 
         /** this function is called upon disposing the component
@@ -177,16 +173,17 @@ namespace reportdesign
                                   ,const css::uno::Reference< css::lang::XMultiServiceFactory > & _xFactory
                                   ,css::uno::Reference< css::drawing::XShape >& _xShape);
 
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static();
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL
-            create(css::uno::Reference< css::uno::XComponentContext > const & xContext);
-
         css::uno::Reference< css::uno::XComponentContext > getContext();
 
+    private:
+        /** abstract SdrModel provider */
+        virtual SdrModel& getSdrModelFromUnoModel() const override;
+
+    public:
+        //TTTT Needed? Or same as above?
+        static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
         static std::shared_ptr<rptui::OReportModel> getSdrModel(const css::uno::Reference< css::report::XReportDefinition >& _xReportDefinition);
+
     private:
         DECLARE_XINTERFACE( )
         DECLARE_XTYPEPROVIDER( )
@@ -347,7 +344,6 @@ namespace reportdesign
 
         // css::lang::XUnoTunnel
         virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-        static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
 
         // SvxUnoDrawMSFactory
         virtual css::uno::Reference< css::uno::XInterface > SAL_CALL createInstance( const OUString& aServiceSpecifier ) override;

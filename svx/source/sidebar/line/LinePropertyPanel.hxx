@@ -19,19 +19,10 @@
 #ifndef INCLUDED_SVX_SOURCE_SIDEBAR_LINE_LINEPROPERTYPANEL_HXX
 #define INCLUDED_SVX_SOURCE_SIDEBAR_LINE_LINEPROPERTYPANEL_HXX
 
-#include <svx/xdash.hxx>
-#include <vcl/ctrl.hxx>
-#include <sfx2/sidebar/SidebarPanelBase.hxx>
 #include <sfx2/sidebar/ControllerItem.hxx>
 #include <sfx2/sidebar/IContextChangeReceiver.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/field.hxx>
-#include <vcl/layout.hxx>
-#include <memory>
-#include <svx/sidebar/PanelLayout.hxx>
-#include <svx/xtable.hxx>
 #include <svx/sidebar/LinePropertyPanelBase.hxx>
-
+#include <vcl/EnumContext.hxx>
 
 class XLineStyleItem;
 class XLineDashItem;
@@ -43,11 +34,7 @@ class ListBox;
 class ToolBox;
 class FloatingWindow;
 
-#define SIDEBAR_LINE_WIDTH_GLOBAL_VALUE "PopupPanel_LineWidth"
-
-namespace svx
-{
-namespace sidebar
+namespace svx::sidebar
 {
 
 class LinePropertyPanel : public LinePropertyPanelBase,
@@ -69,8 +56,11 @@ public:
     virtual void NotifyItemUpdate(
         const sal_uInt16 nSId,
         const SfxItemState eState,
-        const SfxPoolItem* pState,
-        const bool bIsEnabled) override;
+        const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(
+        const sal_uInt16 /*nSId*/,
+        boost::property_tree::ptree& /*rState*/) override {};
 
     SfxBindings* GetBindings() { return mpBindings;}
 
@@ -84,10 +74,6 @@ public:
 
 protected:
 
-    virtual void setLineStyle(const XLineStyleItem& rItem) override;
-    virtual void setLineDash(const XLineDashItem& rItem) override;
-    virtual void setLineEndStyle(const XLineEndItem* pItem) override;
-    virtual void setLineStartStyle(const XLineStartItem* pItem) override;
     virtual void setLineTransparency(const XLineTransparenceItem& rItem) override;
     virtual void setLineJoint(const XLineJointItem* pItem) override;
     virtual void setLineCap(const XLineCapItem* pItem) override;
@@ -97,10 +83,6 @@ private:
     sfx2::sidebar::ControllerItem maStyleControl;
     sfx2::sidebar::ControllerItem maDashControl;
     sfx2::sidebar::ControllerItem maWidthControl;
-    sfx2::sidebar::ControllerItem maStartControl;
-    sfx2::sidebar::ControllerItem maEndControl;
-    sfx2::sidebar::ControllerItem maLineEndListControl;
-    sfx2::sidebar::ControllerItem maLineStyleListControl;
     sfx2::sidebar::ControllerItem maTransControl;
     sfx2::sidebar::ControllerItem maEdgeStyle;
     sfx2::sidebar::ControllerItem maCapStyle;
@@ -109,7 +91,7 @@ private:
     vcl::EnumContext maContext;
 };
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 #endif
 

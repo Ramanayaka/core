@@ -8,16 +8,53 @@
  * License. See LICENSE.TXT for details.
  *
  */
+#ifndef LO_CLANG_SHARED_PLUGINS
 
-#include "sallogareas.hxx"
+#include "plugin.hxx"
 #include "check.hxx"
+#include "compat.hxx"
 
 #include <clang/Lex/Lexer.h>
 
 #include <fstream>
+#include <set>
 
-namespace loplugin
+namespace
 {
+
+class SalLogAreas
+    : public loplugin::FilteringPlugin< SalLogAreas >
+    {
+    public:
+        explicit SalLogAreas( const loplugin::InstantiationData& data )
+            : FilteringPlugin(data), inFunction(nullptr) {}
+
+        bool preRun() override {
+            return true;
+        }
+
+        void run() override {
+            if (preRun())
+                {
+                lastSalDetailLogStreamMacro = SourceLocation();
+                TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
+                }
+        }
+
+        bool VisitFunctionDecl( const FunctionDecl* function );
+        bool VisitCallExpr( const CallExpr* call );
+    private:
+        void checkArea( StringRef area, SourceLocation location );
+        void checkAreaSyntax(StringRef area, SourceLocation location);
+        void readLogAreas();
+        const FunctionDecl* inFunction;
+        SourceLocation lastSalDetailLogStreamMacro;
+        std::set< std::string > logAreas;
+#if 0
+        std::string firstSeenLogArea;
+        SourceLocation firstSeenLocation;
+#endif
+    };
 
 /*
 This is a compile check.
@@ -26,18 +63,6 @@ Check area used in SAL_INFO/SAL_WARN macros against the list in include/sal/log-
 report if the area is not listed there. The fix is either use a proper area or add it to the list
 if appropriate.
 */
-
-SalLogAreas::SalLogAreas( const InstantiationData& data )
-    : Plugin(data), inFunction(nullptr)
-    {
-    }
-
-void SalLogAreas::run()
-    {
-    inFunction = NULL;
-    lastSalDetailLogStreamMacro = SourceLocation();
-    TraverseDecl( compiler.getASTContext().getTranslationUnitDecl());
-    }
 
 bool SalLogAreas::VisitFunctionDecl( const FunctionDecl* function )
     {
@@ -49,54 +74,71 @@ bool SalLogAreas::VisitCallExpr( const CallExpr* call )
     {
     if( ignoreLocation( call ))
         return true;
-    if( const FunctionDecl* func = call->getDirectCallee())
+    const FunctionDecl* func = call->getDirectCallee();
+    if( !func )
+        return true;
+
+    if( !( func->getNumParams() == 5 && func->getIdentifier() != NULL
+          && ( func->getName() == "sal_detail_log" || func->getName() == "log" || func->getName() == "DbgUnhandledException")) )
+        return true;
+
+    auto tc = loplugin::DeclCheck(func);
+    enum class LogCallKind { Sal, DbgUnhandledException};
+    LogCallKind kind;
+    int areaArgIndex;
+    if( tc.Function("sal_detail_log") || tc.Function("log").Namespace("detail").Namespace("sal").GlobalNamespace() )
         {
-        if( func->getNumParams() == 5 && func->getIdentifier() != NULL
-            && ( func->getName() == "sal_detail_log" || func->getName() == "log" ))
-            {
-            auto tc = loplugin::DeclCheck(func);
-            if( tc.Function("sal_detail_log") || tc.Function("log").Namespace("detail").Namespace("sal").GlobalNamespace() )
-                {
-                // The SAL_DETAIL_LOG_STREAM macro expands to two calls to sal::detail::log(),
-                // so do not warn repeatedly about the same macro (the area->getLocStart() of all the calls
-                // from the same macro should be the same).
-                SourceLocation expansionLocation = compiler.getSourceManager().getExpansionLoc( call->getLocStart());
-                if( expansionLocation == lastSalDetailLogStreamMacro )
-                    return true;
-                lastSalDetailLogStreamMacro = expansionLocation;
-                if( const clang::StringLiteral* area = dyn_cast< clang::StringLiteral >( call->getArg( 1 )->IgnoreParenImpCasts()))
-                    {
-                    if( area->getKind() == clang::StringLiteral::Ascii )
-                        checkArea( area->getBytes(), area->getExprLoc());
-                    else
-                        report( DiagnosticsEngine::Warning, "unsupported string literal kind (plugin needs fixing?)",
-                            area->getLocStart());
-                    return true;
-                    }
-                if( loplugin::DeclCheck(inFunction).Function("log").Namespace("detail").Namespace("sal").GlobalNamespace()
-                    || loplugin::DeclCheck(inFunction).Function("sal_detail_logFormat").GlobalNamespace() )
-                    return true; // These functions only forward to sal_detail_log, so ok.
-                if( call->getArg( 1 )->isNullPointerConstant( compiler.getASTContext(),
-                    Expr::NPC_ValueDependentIsNotNull ) != Expr::NPCK_NotNull )
-                    { // If the area argument is a null pointer, that is allowed only for SAL_DEBUG.
-                    const SourceManager& source = compiler.getSourceManager();
-                    for( SourceLocation loc = call->getLocStart();
-                         loc.isMacroID();
-                         loc = source.getImmediateExpansionRange( loc ).first )
-                        {
-                        StringRef inMacro = Lexer::getImmediateMacroName( loc, source, compiler.getLangOpts());
-                        if( inMacro == "SAL_DEBUG" || inMacro == "SAL_DEBUG_BACKTRACE" )
-                            return true; // ok
-                        }
-                    report( DiagnosticsEngine::Warning, "missing log area",
-                        call->getArg( 1 )->IgnoreParenImpCasts()->getLocStart());
-                    return true;
-                    }
-                report( DiagnosticsEngine::Warning, "cannot analyse log area argument (plugin needs fixing?)",
-                    call->getLocStart());
-                }
-            }
+        kind = LogCallKind::Sal; // fine
+        areaArgIndex = 1;
         }
+    else if( tc.Function("DbgUnhandledException").GlobalNamespace() )
+        {
+        kind = LogCallKind::DbgUnhandledException; // ok
+        areaArgIndex = 3;
+        }
+    else
+        return true;
+
+    // The SAL_DETAIL_LOG_STREAM macro expands to two calls to sal::detail::log(),
+    // so do not warn repeatedly about the same macro (the area->getLocStart() of all the calls
+    // from the same macro should be the same).
+    if( kind == LogCallKind::Sal )
+        {
+        SourceLocation expansionLocation = compiler.getSourceManager().getExpansionLoc( compat::getBeginLoc(call));
+        if( expansionLocation == lastSalDetailLogStreamMacro )
+            return true;
+        lastSalDetailLogStreamMacro = expansionLocation;
+        };
+    if( const clang::StringLiteral* area = dyn_cast< clang::StringLiteral >( call->getArg( areaArgIndex )->IgnoreParenImpCasts()))
+        {
+        if( area->getKind() == clang::StringLiteral::Ascii )
+            checkArea( area->getBytes(), area->getExprLoc());
+        else
+            report( DiagnosticsEngine::Warning, "unsupported string literal kind (plugin needs fixing?)",
+                compat::getBeginLoc(area));
+        return true;
+        }
+    if( loplugin::DeclCheck(inFunction).Function("log").Namespace("detail").Namespace("sal").GlobalNamespace()
+        || loplugin::DeclCheck(inFunction).Function("sal_detail_logFormat").GlobalNamespace() )
+        return true; // These functions only forward to sal_detail_log, so ok.
+    if( call->getArg( areaArgIndex )->isNullPointerConstant( compiler.getASTContext(),
+        Expr::NPC_ValueDependentIsNotNull ) != Expr::NPCK_NotNull )
+        { // If the area argument is a null pointer, that is allowed only for SAL_DEBUG.
+        const SourceManager& source = compiler.getSourceManager();
+        for( SourceLocation loc = compat::getBeginLoc(call);
+             loc.isMacroID();
+             loc = compat::getImmediateExpansionRange(source, loc ).first )
+            {
+            StringRef inMacro = Lexer::getImmediateMacroName( loc, source, compiler.getLangOpts());
+            if( inMacro == "SAL_DEBUG" || inMacro == "SAL_DEBUG_BACKTRACE" )
+                return true; // ok
+            }
+        report( DiagnosticsEngine::Warning, "missing log area",
+            compat::getBeginLoc(call->getArg( 1 )->IgnoreParenImpCasts()));
+        return true;
+        }
+    report( DiagnosticsEngine::Warning, "cannot analyse log area argument (plugin needs fixing?)",
+        compat::getBeginLoc(call));
     return true;
     }
 
@@ -104,7 +146,7 @@ void SalLogAreas::checkArea( StringRef area, SourceLocation location )
     {
     if( logAreas.empty())
         readLogAreas();
-    if( !logAreas.count( area ))
+    if( !logAreas.count( area.str() ))
         {
         report( DiagnosticsEngine::Warning, "unknown log area '%0' (check or extend include/sal/log-areas.dox)",
             location ) << area;
@@ -226,8 +268,10 @@ void SalLogAreas::readLogAreas()
         report( DiagnosticsEngine::Warning, "error reading log areas" );
     }
 
-static Plugin::Registration< SalLogAreas > X( "sallogareas" );
+static loplugin::Plugin::Registration< SalLogAreas > sallogareas( "sallogareas" );
 
 } // namespace
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

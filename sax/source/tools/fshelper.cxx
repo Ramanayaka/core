@@ -20,7 +20,6 @@
 #include <sax/fshelper.hxx>
 #include "fastserializer.hxx"
 #include <com/sun/star/xml/sax/XFastTokenHandler.hpp>
-#include <rtl/ustrbuf.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -40,19 +39,19 @@ FastSerializerHelper::~FastSerializerHelper()
     delete mpSerializer;
 }
 
-void FastSerializerHelper::startElement(sal_Int32 elementTokenId, FSEND_t)
+void FastSerializerHelper::startElement(sal_Int32 elementTokenId)
 {
     mpSerializer->startFastElement(elementTokenId);
 }
 void FastSerializerHelper::pushAttributeValue(sal_Int32 attribute, const char* value)
 {
-    mpSerializer->getTokenValueList().push_back(TokenValue(attribute, value));
+    mpSerializer->getTokenValueList().emplace_back(attribute, value);
 }
 void FastSerializerHelper::pushAttributeValue(sal_Int32 attribute, const OString& value)
 {
-    mpSerializer->getTokenValueList().push_back(TokenValue(attribute, value.getStr()));
+    mpSerializer->getTokenValueList().emplace_back(attribute, value.getStr());
 }
-void FastSerializerHelper::singleElement(sal_Int32 elementTokenId, FSEND_t)
+void FastSerializerHelper::singleElement(sal_Int32 elementTokenId)
 {
     mpSerializer->singleFastElement(elementTokenId);
 }
@@ -79,6 +78,12 @@ void FastSerializerHelper::singleElement(sal_Int32 elementTokenId, const XFastAt
 FastSerializerHelper* FastSerializerHelper::write(const char* value)
 {
     mpSerializer->write(value, -1);
+    return this;
+}
+
+FastSerializerHelper* FastSerializerHelper::write(const OString& value)
+{
+    mpSerializer->write(value);
     return this;
 }
 
@@ -125,7 +130,7 @@ FastSerializerHelper* FastSerializerHelper::writeId(sal_Int32 tokenId)
     return this;
 }
 
-css::uno::Reference< css::io::XOutputStream > FastSerializerHelper::getOutputStream()
+css::uno::Reference< css::io::XOutputStream > const & FastSerializerHelper::getOutputStream() const
 {
     return mpSerializer->getOutputStream();
 }
@@ -144,7 +149,7 @@ void FastSerializerHelper::mergeTopMarks(
 
 FastAttributeList * FastSerializerHelper::createAttrList()
 {
-    return new FastAttributeList( Reference< xml::sax::XFastTokenHandler >() );
+    return new FastAttributeList( nullptr );
 }
 
 

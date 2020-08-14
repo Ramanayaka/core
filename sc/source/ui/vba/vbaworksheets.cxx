@@ -18,38 +18,27 @@
  */
 #include "vbaworksheets.hxx"
 
-#include <sfx2/dispatch.hxx>
-#include <sfx2/app.hxx>
-#include <sfx2/bindings.hxx>
-#include <sfx2/request.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <sfx2/itemwrapper.hxx>
-#include <svl/itemset.hxx>
-#include <svl/eitem.hxx>
 
-#include <comphelper/processfactory.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/sheet/XSpreadsheetView.hpp>
+#include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/script/XTypeConverter.hpp>
 
 #include <ooo/vba/excel/XApplication.hpp>
-#include "tabvwsh.hxx"
+#include <tabvwsh.hxx>
 
-#include "vbaglobals.hxx"
+#include "excelvbahelper.hxx"
 #include "vbaworksheet.hxx"
-#include "vbaworkbook.hxx"
-#include "unonames.hxx"
-#include "markdata.hxx"
+#include <markdata.hxx>
 
 #include <vector>
-#include "prevwsh.hxx"
-#include "preview.hxx"
+#include <prevwsh.hxx>
+#include <preview.hxx>
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
@@ -59,6 +48,8 @@ typedef std::vector< uno::Reference< sheet::XSpreadsheet > >  SheetMap;
 
 // #FIXME #TODO the implementation of the Sheets collections sucks,
 // e.g. there is no support for tracking sheets added/removed from the collection
+
+namespace {
 
 class WorkSheetsEnumeration : public ::cppu::WeakImplHelper< container::XEnumeration >
 {
@@ -101,13 +92,12 @@ public:
     {
         uno::Sequence< OUString > sNames( mSheetMap.size() );
         OUString* pString = sNames.getArray();
-        SheetMap::iterator it = mSheetMap.begin();
-        SheetMap::iterator it_end = mSheetMap.end();
 
-        for ( ; it != it_end; ++it, ++pString )
+        for ( const auto& rItem : mSheetMap )
         {
-            uno::Reference< container::XNamed > xName( *it, uno::UNO_QUERY_THROW );
+            uno::Reference< container::XNamed > xName( rItem, uno::UNO_QUERY_THROW );
             *pString = xName->getName();
+            ++pString;
         }
         return sNames;
     }
@@ -118,7 +108,7 @@ public:
         for ( ; cachePos != it_end; ++cachePos )
         {
             uno::Reference< container::XNamed > xName( *cachePos, uno::UNO_QUERY_THROW );
-            if ( aName.equals( xName->getName() ) )
+            if ( aName == xName->getName() )
                 break;
         }
         return ( cachePos != it_end );
@@ -166,6 +156,8 @@ public:
     }
 
 };
+
+}
 
 ScVbaWorksheets::ScVbaWorksheets( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< css::uno::XComponentContext > & xContext, const uno::Reference< container::XIndexAccess >& xSheets, const uno::Reference< frame::XModel >& xModel ): ScVbaWorksheets_BASE( xParent, xContext,  xSheets ), mxModel( xModel ), m_xSheets( uno::Reference< sheet::XSpreadsheets >( xSheets, uno::UNO_QUERY ) )
 {
@@ -232,7 +224,7 @@ ScVbaWorksheets::Add( const uno::Any& Before, const uno::Any& After,
 
     if ( Before.hasValue() )
     {
-            if ( Before >>= xBeforeAfterSheet )
+        if ( Before >>= xBeforeAfterSheet )
             aStringSheet = xBeforeAfterSheet->getName();
         else
             Before >>= aStringSheet;
@@ -240,7 +232,7 @@ ScVbaWorksheets::Add( const uno::Any& Before, const uno::Any& After,
 
     if (aStringSheet.isEmpty() && After.hasValue() )
     {
-            if ( After >>= xBeforeAfterSheet )
+        if ( After >>= xBeforeAfterSheet )
             aStringSheet = xBeforeAfterSheet->getName();
         else
             After >>= aStringSheet;
@@ -252,9 +244,9 @@ ScVbaWorksheets::Add( const uno::Any& Before, const uno::Any& After,
         aStringSheet = xApplication->getActiveWorkbook()->getActiveSheet()->getName();
         bBefore = true;
     }
-        nCount = static_cast< SCTAB >( m_xIndexAccess->getCount() );
-        for (SCTAB i=0; i < nCount; i++)
-        {
+    nCount = static_cast< SCTAB >( m_xIndexAccess->getCount() );
+    for (SCTAB i=0; i < nCount; i++)
+    {
             uno::Reference< sheet::XSpreadsheet > xSheet(m_xIndexAccess->getByIndex(i), uno::UNO_QUERY);
             uno::Reference< container::XNamed > xNamed( xSheet, uno::UNO_QUERY_THROW );
             if (xNamed->getName() == aStringSheet)
@@ -262,7 +254,7 @@ ScVbaWorksheets::Add( const uno::Any& Before, const uno::Any& After,
                 nSheetIndex = i;
                 break;
             }
-        }
+    }
 
     if(!bBefore)
         nSheetIndex++;
@@ -303,7 +295,7 @@ ScVbaWorksheets::Delete()
 }
 
 bool
-ScVbaWorksheets::isSelectedSheets()
+ScVbaWorksheets::isSelectedSheets() const
 {
     return !m_xSheets.is();
 }
@@ -313,14 +305,9 @@ ScVbaWorksheets::PrintOut( const uno::Any& From, const uno::Any& To, const uno::
 {
     sal_Int32 nTo = 0;
     sal_Int32 nFrom = 0;
-    sal_Int16 nCopies = 1;
-    bool bCollate = false;
     bool bSelection = false;
     From >>= nFrom;
     To >>= nTo;
-    Copies >>= nCopies;
-    if ( nCopies > 1 ) // Collate only useful when more that 1 copy
-        Collate >>= bCollate;
 
     if ( !( nFrom || nTo ) )
         if ( isSelectedSheets() )
@@ -333,7 +320,7 @@ uno::Any SAL_CALL
 ScVbaWorksheets::getVisible()
 {
     bool bVisible = true;
-    uno::Reference< container::XEnumeration > xEnum( createEnumeration(), uno::UNO_QUERY_THROW );
+    uno::Reference< container::XEnumeration > xEnum( createEnumeration(), uno::UNO_SET_THROW );
     while ( xEnum->hasMoreElements() )
     {
         uno::Reference< excel::XWorksheet > xSheet( xEnum->nextElement(), uno::UNO_QUERY_THROW );
@@ -350,17 +337,16 @@ void SAL_CALL
 ScVbaWorksheets::setVisible( const uno::Any& _visible )
 {
     bool bState = false;
-    if ( _visible >>= bState )
-    {
-        uno::Reference< container::XEnumeration > xEnum( createEnumeration(), uno::UNO_QUERY_THROW );
-        while ( xEnum->hasMoreElements() )
-        {
-            uno::Reference< excel::XWorksheet > xSheet( xEnum->nextElement(), uno::UNO_QUERY_THROW );
-            xSheet->setVisible( bState ? 1 : 0 );
-        }
-    }
-    else
+    if ( !(_visible >>= bState) )
         throw uno::RuntimeException("Visible property doesn't support non boolean #FIXME" );
+
+    uno::Reference< container::XEnumeration > xEnum( createEnumeration(), uno::UNO_SET_THROW );
+    while ( xEnum->hasMoreElements() )
+    {
+        uno::Reference< excel::XWorksheet > xSheet( xEnum->nextElement(), uno::UNO_QUERY_THROW );
+        xSheet->setVisible( bState ? 1 : 0 );
+    }
+
 }
 
 void SAL_CALL
@@ -440,23 +426,21 @@ ScVbaWorksheets::Item(const uno::Any& Index, const uno::Any& Index2)
 {
     if ( Index.getValueTypeClass() == uno::TypeClass_SEQUENCE )
     {
-        uno::Reference< script::XTypeConverter > xConverter = getTypeConverter(mxContext);
-        uno::Any aConverted;
-        aConverted = xConverter->convertTo( Index, cppu::UnoType<uno::Sequence< uno::Any >>::get() );
+        const uno::Reference< script::XTypeConverter >& xConverter = getTypeConverter(mxContext);
+        uno::Any aConverted = xConverter->convertTo( Index, cppu::UnoType<uno::Sequence< uno::Any >>::get() );
         SheetMap aSheets;
         uno::Sequence< uno::Any > sIndices;
         aConverted >>= sIndices;
-        sal_Int32 nElems = sIndices.getLength();
-        for( sal_Int32 index = 0; index < nElems; ++index )
+        for( const auto& rIndex : std::as_const(sIndices) )
         {
-            uno::Reference< excel::XWorksheet > xWorkSheet( ScVbaWorksheets_BASE::Item( sIndices[ index ], Index2 ), uno::UNO_QUERY_THROW );
+            uno::Reference< excel::XWorksheet > xWorkSheet( ScVbaWorksheets_BASE::Item( rIndex, Index2 ), uno::UNO_QUERY_THROW );
             ScVbaWorksheet* pWorkSheet = excel::getImplFromDocModuleWrapper<ScVbaWorksheet>( xWorkSheet );
-            uno::Reference< sheet::XSpreadsheet > xSheet( pWorkSheet->getSheet() , uno::UNO_QUERY_THROW );
+            uno::Reference< sheet::XSpreadsheet > xSheet( pWorkSheet->getSheet() , uno::UNO_SET_THROW );
             uno::Reference< container::XNamed > xName( xSheet, uno::UNO_QUERY_THROW );
             aSheets.push_back( xSheet );
         }
         uno::Reference< container::XIndexAccess > xIndexAccess = new SheetCollectionHelper( aSheets );
-        uno::Reference< XCollection > xSelectedSheets(  new ScVbaWorksheets( this->getParent(), mxContext, xIndexAccess, mxModel ) );
+        uno::Reference< XCollection > xSelectedSheets(  new ScVbaWorksheets( getParent(), mxContext, xIndexAccess, mxModel ) );
         return uno::makeAny( xSelectedSheets );
     }
     return  ScVbaWorksheets_BASE::Item( Index, Index2 );
@@ -465,22 +449,20 @@ ScVbaWorksheets::Item(const uno::Any& Index, const uno::Any& Index2)
 OUString
 ScVbaWorksheets::getServiceImplName()
 {
-    return OUString("ScVbaWorksheets");
+    return "ScVbaWorksheets";
 }
 
 css::uno::Sequence<OUString>
 ScVbaWorksheets::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.excel.Worksheets";
-    }
+        "ooo.vba.excel.Worksheets"
+    };
     return sNames;
 }
 
-bool ScVbaWorksheets::nameExists( uno::Reference <sheet::XSpreadsheetDocument>& xSpreadDoc, const OUString & name, SCTAB& nTab )
+bool ScVbaWorksheets::nameExists( const uno::Reference <sheet::XSpreadsheetDocument>& xSpreadDoc, const OUString & name, SCTAB& nTab )
 {
     if (!xSpreadDoc.is())
         throw lang::IllegalArgumentException( "nameExists() xSpreadDoc is null", uno::Reference< uno::XInterface  >(), 1 );
@@ -509,43 +491,44 @@ void ScVbaWorksheets::PrintPreview( const css::uno::Any& /*EnableChanges*/ )
     SfxViewFrame* pViewFrame = nullptr;
     if ( pViewShell )
         pViewFrame = pViewShell->GetViewFrame();
-    if ( pViewFrame )
-    {
-        if ( !pViewFrame->GetFrame().IsInPlace() )
-        {
-            dispatchExecute( pViewShell, SID_VIEWSHELL1 );
-            SfxViewShell*  pShell = SfxViewShell::Get( pViewFrame->GetFrame().GetFrameInterface()->getController() );
+    if ( !pViewFrame )
+        return;
 
-            if (  dynamic_cast<const ScPreviewShell*>( pShell) !=  nullptr )
-            {
-                ScPreviewShell* pPrvShell = static_cast<  ScPreviewShell* >( pShell );
-                ScPreview* pPrvView = pPrvShell->GetPreview();
-                ScMarkData aMarkData;
-                sal_Int32 nElems = getCount();
-                for ( sal_Int32 nItem = 1; nItem <= nElems; ++nItem )
-                {
-                    uno::Reference< excel::XWorksheet > xSheet( Item( uno::makeAny( nItem ), uno::Any() ), uno::UNO_QUERY_THROW );
-                    ScVbaWorksheet* pSheet = excel::getImplFromDocModuleWrapper<ScVbaWorksheet>( xSheet );
-                    if ( pSheet )
-                        aMarkData.SelectTable(static_cast< SCTAB >( pSheet->getSheetID() ), true );
-                }
-                // save old selection, setting the selectedtabs in the preview
-                // can affect the current selection when preview has been
-                // closed
-                ScMarkData::MarkedTabsType aOldTabs = pPrvView->GetSelectedTabs();
-                pPrvView->SetSelectedTabs( aMarkData );
-                // force update
-                pPrvView->DataChanged(false);
-                // set sensible first page
-                long nPage = pPrvView->GetFirstPage( 1 );
-                pPrvView->SetPageNo( nPage );
-                WaitUntilPreviewIsClosed( pViewFrame );
-                // restore old tab selection
-                pViewShell = excel::getBestViewShell( mxModel );
-                pViewShell->GetViewData().GetMarkData().SetSelectedTabs(aOldTabs);
-            }
-        }
+    if ( pViewFrame->GetFrame().IsInPlace() )
+        return;
+
+    dispatchExecute( pViewShell, SID_VIEWSHELL1 );
+    SfxViewShell*  pShell = SfxViewShell::Get( pViewFrame->GetFrame().GetFrameInterface()->getController() );
+
+    if (  dynamic_cast<const ScPreviewShell*>( pShell) ==  nullptr )
+        return;
+
+    ScPreviewShell* pPrvShell = static_cast<  ScPreviewShell* >( pShell );
+    ScPreview* pPrvView = pPrvShell->GetPreview();
+    const ScDocument& rDoc = *pViewShell->GetViewData().GetDocument();
+    ScMarkData aMarkData(rDoc.GetSheetLimits());
+    sal_Int32 nElems = getCount();
+    for ( sal_Int32 nItem = 1; nItem <= nElems; ++nItem )
+    {
+        uno::Reference< excel::XWorksheet > xSheet( Item( uno::makeAny( nItem ), uno::Any() ), uno::UNO_QUERY_THROW );
+        ScVbaWorksheet* pSheet = excel::getImplFromDocModuleWrapper<ScVbaWorksheet>( xSheet );
+        if ( pSheet )
+            aMarkData.SelectTable(static_cast< SCTAB >( pSheet->getSheetID() ), true );
     }
+    // save old selection, setting the selectedtabs in the preview
+    // can affect the current selection when preview has been
+    // closed
+    ScMarkData::MarkedTabsType aOldTabs = pPrvView->GetSelectedTabs();
+    pPrvView->SetSelectedTabs( aMarkData );
+    // force update
+    pPrvView->DataChanged(false);
+    // set sensible first page
+    long nPage = pPrvView->GetFirstPage( 1 );
+    pPrvView->SetPageNo( nPage );
+    WaitUntilPreviewIsClosed( pViewFrame );
+    // restore old tab selection
+    pViewShell = excel::getBestViewShell( mxModel );
+    pViewShell->GetViewData().GetMarkData().SetSelectedTabs(aOldTabs);
 
 }
 

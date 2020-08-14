@@ -22,7 +22,7 @@
 #include <wtt.h>
 
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 InputSequenceChecker_th::InputSequenceChecker_th()
     : InputSequenceCheckerImpl("com.sun.star.i18n.InputSequenceChecker_th")
@@ -34,7 +34,7 @@ InputSequenceChecker_th::~InputSequenceChecker_th()
 }
 
 /* Table for Thai Cell Manipulation */
-sal_Char const TAC_celltype_inputcheck[17][17] = {
+char const TAC_celltype_inputcheck[17][17] = {
 /* Cn */ /*  0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   A,   B,   C,   D,   E,   F       */
 /* Cn-1 00 */{  'X', 'A', 'A', 'A', 'A', 'A', 'A', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R' },
      /* 10 */{  'X', 'A', 'A', 'A', 'S', 'S', 'A', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R' },
@@ -62,7 +62,7 @@ bool const TAC_Composible[3][5] = {
 /* Mode 2 */    {true,  true,   false,      false,      true}  // STRICT = 2
 };
 
-static bool SAL_CALL check(sal_Unicode ch1, sal_Unicode ch2, sal_Int16 inputCheckMode)
+static bool check(sal_Unicode ch1, sal_Unicode ch2, sal_Int16 inputCheckMode)
 {
     sal_Int16  composible_class;
     switch (TAC_celltype_inputcheck[getCharType(ch1)][getCharType(ch2)]) {
@@ -91,7 +91,7 @@ InputSequenceChecker_th::correctInputSequence(OUString& Text,
 {
 /* 9 rules for input sequence correction, see issue i42661 for detail,
 
-http://www.openoffice.org/issues/show_bug.cgi?id=42661
+https://bz.apache.org/ooo/show_bug.cgi?id=42661
 
 <abv> = <av1>|<av2>|<av3>|<bv1>|<bv2>
 <abv1> = <av1>|<bv1>
@@ -139,6 +139,6 @@ http://www.openoffice.org/issues/show_bug.cgi?id=42661
     return nStartPos;
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

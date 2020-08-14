@@ -19,37 +19,33 @@
 #ifndef INCLUDED_SFX2_SOURCE_SIDEBAR_TABBAR_HXX
 #define INCLUDED_SFX2_SOURCE_SIDEBAR_TABBAR_HXX
 
+#include <config_options.h>
 #include <sfx2//dllapi.h>
-#include "DeckDescriptor.hxx"
 #include <sfx2/sidebar/ResourceManager.hxx>
 
-
+#include <vcl/button.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/window.hxx>
 
-#include <com/sun/star/frame/XFrame.hpp>
-
 #include <functional>
-
 
 class Button;
 class CheckBox;
 class RadioButton;
 
-namespace sfx2 { namespace sidebar {
+namespace svt { class AcceleratorExecute; }
+
+namespace sfx2::sidebar {
 
 class FocusManager;
-class TabBarConfiguration;
-class TabItem;
 class SidebarController;
 
 /** The tab bar is the container for the individual tabs.
 */
-class SFX2_DLLPUBLIC TabBar
-    : public vcl::Window
+class TabBar final : public vcl::Window
 {
 public:
-    /** DeckMenuData has entries for display name, deck id, and a flag:
+    /** DeckMenuData has entries for display name, and a flag:
          - isCurrentDeck for the deck selection data
          - isEnabled     for the show/hide menu
     */
@@ -57,7 +53,6 @@ public:
     {
     public:
         OUString msDisplayName;
-        OUString msDeckId;
         bool mbIsCurrentDeck;
         bool mbIsActive;
         bool mbIsEnabled;
@@ -85,15 +80,18 @@ public:
         const ResourceManager::DeckContextDescriptorContainer& rDecks);
     void HighlightDeck (const OUString& rsDeckId);
     void RemoveDeckHighlight ();
-    const OUString GetDeckIdForIndex (const sal_Int32 nIndex) const;
+    OUString const & GetDeckIdForIndex (const sal_Int32 nIndex) const;
     void ToggleHideFlag (const sal_Int32 nIndex);
     void RestoreHideFlags();
 
     void UpdateFocusManager (FocusManager& rFocusManager);
 
+    /// Enables/Disables the menu button. Used by LoKit.
+    void EnableMenuButton(const bool bEnable);
+
 private:
     css::uno::Reference<css::frame::XFrame> mxFrame;
-    VclPtr<CheckBox> mpMenuButton;
+    VclPtr<RadioButton> mpMenuButton;
     class Item
     {
     public:
@@ -118,11 +116,12 @@ private:
     DECL_LINK(OnToolboxClicked, Button*, void);
 
     SidebarController* pParentSidebarController;
+    std::unique_ptr<svt::AcceleratorExecute> mpAccel;
 
 };
 
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 #endif
 

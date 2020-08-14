@@ -17,37 +17,39 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "xipivot.hxx"
+#include <xipivot.hxx>
 
 #include <com/sun/star/sheet/DataPilotFieldSortInfo.hpp>
 #include <com/sun/star/sheet/DataPilotFieldAutoShowInfo.hpp>
 #include <com/sun/star/sheet/DataPilotFieldLayoutInfo.hpp>
 #include <com/sun/star/sheet/DataPilotFieldReference.hpp>
+#include <com/sun/star/sheet/DataPilotFieldReferenceItemType.hpp>
 
 #include <tools/datetime.hxx>
-#include <svl/zformat.hxx>
 #include <svl/intitem.hxx>
+#include <sal/log.hxx>
+#include <sot/storage.hxx>
+#include <unotools/configmgr.hxx>
 
-#include "document.hxx"
-#include "formulacell.hxx"
-#include "dpsave.hxx"
-#include "dpdimsave.hxx"
-#include "dpobject.hxx"
-#include "dpshttab.hxx"
-#include "dpoutputgeometry.hxx"
-#include "scitems.hxx"
-#include "attrib.hxx"
+#include <document.hxx>
+#include <formulacell.hxx>
+#include <dpsave.hxx>
+#include <dpdimsave.hxx>
+#include <dpobject.hxx>
+#include <dpshttab.hxx>
+#include <dpoutputgeometry.hxx>
+#include <scitems.hxx>
+#include <attrib.hxx>
 
-#include "xltracer.hxx"
-#include "xistream.hxx"
-#include "xihelper.hxx"
-#include "xilink.hxx"
-#include "xiescher.hxx"
+#include <xltracer.hxx>
+#include <xistream.hxx>
+#include <xihelper.hxx>
+#include <xilink.hxx>
+#include <xiescher.hxx>
 
 //TODO ExcelToSc usage
-#include "excform.hxx"
-#include "xltable.hxx"
-#include "documentimport.hxx"
+#include <excform.hxx>
+#include <documentimport.hxx>
 
 #include <vector>
 
@@ -79,7 +81,7 @@ XclImpPCItem::XclImpPCItem( XclImpStream& rStrm )
 
 namespace {
 
-void lclSetValue( XclImpRoot& rRoot, const ScAddress& rScPos, double fValue, short nFormatType )
+void lclSetValue( XclImpRoot& rRoot, const ScAddress& rScPos, double fValue, SvNumFormatType nFormatType )
 {
     ScDocumentImport& rDoc = rRoot.GetDocImport();
     rDoc.setNumericCell(rScPos, fValue);
@@ -100,24 +102,26 @@ void XclImpPCItem::WriteToSource( XclImpRoot& rRoot, const ScAddress& rScPos ) c
     else if( const sal_Int16* pnValue = GetInteger() )
         rDoc.setNumericCell(rScPos, *pnValue);
     else if( const bool* pbValue = GetBool() )
-        lclSetValue( rRoot, rScPos, *pbValue ? 1.0 : 0.0, css::util::NumberFormat::LOGICAL );
+        lclSetValue( rRoot, rScPos, *pbValue ? 1.0 : 0.0, SvNumFormatType::LOGICAL );
     else if( const DateTime* pDateTime = GetDateTime() )
     {
         // set number format date, time, or date/time, depending on the value
         double fValue = rRoot.GetDoubleFromDateTime( *pDateTime );
         double fInt = 0.0;
         double fFrac = modf( fValue, &fInt );
-        short nFormatType = ((fFrac == 0.0) && (fInt != 0.0)) ? css::util::NumberFormat::DATE :
-            ((fInt == 0.0) ? css::util::NumberFormat::TIME : css::util::NumberFormat::DATETIME);
+        SvNumFormatType nFormatType = ((fFrac == 0.0) && (fInt != 0.0)) ? SvNumFormatType::DATE :
+            ((fInt == 0.0) ? SvNumFormatType::TIME : SvNumFormatType::DATETIME);
         lclSetValue( rRoot, rScPos, fValue, nFormatType );
     }
     else if( const sal_uInt16* pnError = GetError() )
     {
         double fValue;
         sal_uInt8 nErrCode = static_cast< sal_uInt8 >( *pnError );
-        const ScTokenArray* pScTokArr = rRoot.GetOldFmlaConverter().GetBoolErr(
+        std::unique_ptr<ScTokenArray> pScTokArr = rRoot.GetOldFmlaConverter().GetBoolErr(
             XclTools::ErrorToEnum( fValue, true, nErrCode ) );
-        ScFormulaCell* pCell = pScTokArr ? new ScFormulaCell(&rDoc.getDoc(), rScPos, *pScTokArr) : new ScFormulaCell(&rDoc.getDoc(), rScPos);
+        ScFormulaCell* pCell = pScTokArr
+            ? new ScFormulaCell(&rDoc.getDoc(), rScPos, std::move(pScTokArr))
+            : new ScFormulaCell(&rDoc.getDoc(), rScPos);
         pCell->SetHybridDouble( fValue );
         rDoc.setFormulaCell(rScPos, pCell);
     }
@@ -274,65 +278,65 @@ void XclImpPCField::ReadSxfield( XclImpStream& rStrm )
     // for now, ignore data type of calculated fields
     OSL_ENSURE( bCalced || bType || bTypeNone, "XclImpPCField::ReadSxfield - unknown item data type" );
 
-    if( nVisC > 0 || bPostp )
+    if( !(nVisC > 0 || bPostp) )
+        return;
+
+    if( bItems && !bPostp )
     {
-        if( bItems && !bPostp )
+        if( !bCalced )
         {
-            if( !bCalced )
+            // 1) standard fields and standard grouping fields
+            if( !bNum )
             {
-                // 1) standard fields and standard grouping fields
-                if( !bNum )
-                {
-                    // 1a) standard field without grouping
-                    if( bType && (nGroupC == 0) && (nBaseC == 0) && (nOrigC == nVisC) )
-                        meFieldType = EXC_PCFIELD_STANDARD;
+                // 1a) standard field without grouping
+                if( bType && (nGroupC == 0) && (nBaseC == 0) && (nOrigC == nVisC) )
+                    meFieldType = EXC_PCFIELD_STANDARD;
 
-                    // 1b) standard grouping field
-                    else if( bTypeNone && (nGroupC == nVisC) && (nBaseC > 0) && (nOrigC == 0) )
-                        meFieldType = EXC_PCFIELD_STDGROUP;
-                }
-                // 2) numerical grouping fields
-                else if( (nGroupC == nVisC) && (nBaseC == 0) )
+                // 1b) standard grouping field
+                else if( bTypeNone && (nGroupC == nVisC) && (nBaseC > 0) && (nOrigC == 0) )
+                    meFieldType = EXC_PCFIELD_STDGROUP;
+            }
+            // 2) numerical grouping fields
+            else if( (nGroupC == nVisC) && (nBaseC == 0) )
+            {
+                // 2a) single num/date grouping field without child grouping field
+                if( !bChild && bType && (nOrigC > 0) )
                 {
-                    // 2a) single num/date grouping field without child grouping field
-                    if( !bChild && bType && (nOrigC > 0) )
+                    switch( nType )
                     {
-                        switch( nType )
-                        {
-                            case EXC_SXFIELD_DATA_INT:
-                            case EXC_SXFIELD_DATA_DBL:  meFieldType = EXC_PCFIELD_NUMGROUP;     break;
-                            case EXC_SXFIELD_DATA_DATE: meFieldType = EXC_PCFIELD_DATEGROUP;    break;
-                            default:    OSL_FAIL( "XclImpPCField::ReadSxfield - numeric group with wrong data type" );
-                        }
+                        case EXC_SXFIELD_DATA_INT:
+                        case EXC_SXFIELD_DATA_DBL:  meFieldType = EXC_PCFIELD_NUMGROUP;     break;
+                        case EXC_SXFIELD_DATA_DATE: meFieldType = EXC_PCFIELD_DATEGROUP;    break;
+                        default:    OSL_FAIL( "XclImpPCField::ReadSxfield - numeric group with wrong data type" );
                     }
-
-                    // 2b) first date grouping field with child grouping field
-                    else if( bChild && (nType == EXC_SXFIELD_DATA_DATE) && (nOrigC > 0) )
-                        meFieldType = EXC_PCFIELD_DATEGROUP;
-
-                    // 2c) additional date grouping field
-                    else if( bTypeNone && (nOrigC == 0) )
-                        meFieldType = EXC_PCFIELD_DATECHILD;
                 }
-                OSL_ENSURE( meFieldType != EXC_PCFIELD_UNKNOWN, "XclImpPCField::ReadSxfield - invalid standard or grouped field" );
-            }
 
-            // 3) calculated field
-            else
-            {
-                if( !bChild && !bNum && (nGroupC == 0) && (nBaseC == 0) && (nOrigC == 0) )
-                    meFieldType = EXC_PCFIELD_CALCED;
-                OSL_ENSURE( meFieldType == EXC_PCFIELD_CALCED, "XclImpPCField::ReadSxfield - invalid calculated field" );
+                // 2b) first date grouping field with child grouping field
+                else if( bChild && (nType == EXC_SXFIELD_DATA_DATE) && (nOrigC > 0) )
+                    meFieldType = EXC_PCFIELD_DATEGROUP;
+
+                // 2c) additional date grouping field
+                else if( bTypeNone && (nOrigC == 0) )
+                    meFieldType = EXC_PCFIELD_DATECHILD;
             }
+            OSL_ENSURE( meFieldType != EXC_PCFIELD_UNKNOWN, "XclImpPCField::ReadSxfield - invalid standard or grouped field" );
         }
 
-        else if( !bItems && bPostp )
+        // 3) calculated field
+        else
         {
-            // 4) standard field with postponed items
-            if( !bCalced && !bChild && !bNum && bType && (nGroupC == 0) && (nBaseC == 0) && (nOrigC == 0) )
-                meFieldType = EXC_PCFIELD_STANDARD;
-            OSL_ENSURE( meFieldType == EXC_PCFIELD_STANDARD, "XclImpPCField::ReadSxfield - invalid postponed field" );
+            if( !bChild && !bNum && (nGroupC == 0) && (nBaseC == 0) && (nOrigC == 0) )
+                meFieldType = EXC_PCFIELD_CALCED;
+            OSL_ENSURE( meFieldType == EXC_PCFIELD_CALCED, "XclImpPCField::ReadSxfield - invalid calculated field" );
         }
+    }
+
+    else if( !bItems && bPostp )
+    {
+        // 4) standard field with postponed items
+        if( !bCalced && !bChild && !bNum && bType && (nGroupC == 0) && (nBaseC == 0) && (nOrigC == 0) )
+            meFieldType = EXC_PCFIELD_STANDARD;
+        OSL_ENSURE( meFieldType == EXC_PCFIELD_STANDARD, "XclImpPCField::ReadSxfield - invalid postponed field" );
     }
 }
 
@@ -341,7 +345,7 @@ void XclImpPCField::ReadItem( XclImpStream& rStrm )
     OSL_ENSURE( HasInlineItems() || HasPostponedItems(), "XclImpPCField::ReadItem - field does not expect items" );
 
     // read the item
-    XclImpPCItemRef xItem( new XclImpPCItem( rStrm ) );
+    XclImpPCItemRef xItem = std::make_shared<XclImpPCItem>( rStrm );
 
     // try to insert into an item list
     if( mbNumGroupInfoRead )
@@ -402,34 +406,35 @@ void XclImpPCField::ConvertGroupField( ScDPSaveData& rSaveData, const ScfStringV
 
 void XclImpPCField::ConvertStdGroupField( ScDPSaveData& rSaveData, const ScfStringVec& rVisNames ) const
 {
-    if( const XclImpPCField* pBaseField = GetGroupBaseField() )
-    {
-        const OUString& rBaseFieldName = pBaseField->GetFieldName( rVisNames );
-        if( !rBaseFieldName.isEmpty() )
-        {
-            // *** create a ScDPSaveGroupItem for each own item, they collect base item names ***
-            ScDPSaveGroupItemVec aGroupItems;
-            aGroupItems.reserve( maItems.size() );
-            // initialize with own item names
-            for( XclImpPCItemVec::const_iterator aIt = maItems.begin(), aEnd = maItems.end(); aIt != aEnd; ++aIt )
-                aGroupItems.push_back( ScDPSaveGroupItem( (*aIt)->ConvertToText() ) );
+    const XclImpPCField* pBaseField = GetGroupBaseField();
+    if(!pBaseField)
+        return;
 
-            // *** iterate over all base items, set their names at corresponding own items ***
-            for( sal_uInt16 nItemIdx = 0, nItemCount = static_cast< sal_uInt16 >( maGroupOrder.size() ); nItemIdx < nItemCount; ++nItemIdx )
-                if( maGroupOrder[ nItemIdx ] < aGroupItems.size() )
-                    if( const XclImpPCItem* pBaseItem = pBaseField->GetItem( nItemIdx ) )
-                        if( const XclImpPCItem* pGroupItem = GetItem( maGroupOrder[ nItemIdx ] ) )
-                            if( *pBaseItem != *pGroupItem )
-                                aGroupItems[ maGroupOrder[ nItemIdx ] ].AddElement( pBaseItem->ConvertToText() );
+    const OUString& rBaseFieldName = pBaseField->GetFieldName( rVisNames );
+    if( rBaseFieldName.isEmpty() )
+        return;
 
-            // *** create the ScDPSaveGroupDimension object, fill with grouping info ***
-            ScDPSaveGroupDimension aGroupDim( rBaseFieldName, GetFieldName( rVisNames ) );
-            for( ScDPSaveGroupItemVec::const_iterator aIt = aGroupItems.begin(), aEnd = aGroupItems.end(); aIt != aEnd; ++aIt )
-                if( !aIt->IsEmpty() )
-                    aGroupDim.AddGroupItem( *aIt );
-            rSaveData.GetDimensionData()->AddGroupDimension( aGroupDim );
-        }
-    }
+    // *** create a ScDPSaveGroupItem for each own item, they collect base item names ***
+    ScDPSaveGroupItemVec aGroupItems;
+    aGroupItems.reserve( maItems.size() );
+    // initialize with own item names
+    for( const auto& rxItem : maItems )
+        aGroupItems.emplace_back( rxItem->ConvertToText() );
+
+    // *** iterate over all base items, set their names at corresponding own items ***
+    for( sal_uInt16 nItemIdx = 0, nItemCount = static_cast< sal_uInt16 >( maGroupOrder.size() ); nItemIdx < nItemCount; ++nItemIdx )
+        if( maGroupOrder[ nItemIdx ] < aGroupItems.size() )
+            if( const XclImpPCItem* pBaseItem = pBaseField->GetItem( nItemIdx ) )
+                if( const XclImpPCItem* pGroupItem = GetItem( maGroupOrder[ nItemIdx ] ) )
+                    if( *pBaseItem != *pGroupItem )
+                        aGroupItems[ maGroupOrder[ nItemIdx ] ].AddElement( pBaseItem->ConvertToText() );
+
+    // *** create the ScDPSaveGroupDimension object, fill with grouping info ***
+    ScDPSaveGroupDimension aGroupDim( rBaseFieldName, GetFieldName( rVisNames ) );
+    for( const auto& rGroupItem : aGroupItems )
+        if( !rGroupItem.IsEmpty() )
+            aGroupDim.AddGroupItem( rGroupItem );
+    rSaveData.GetDimensionData()->AddGroupDimension( aGroupDim );
 }
 
 void XclImpPCField::ConvertNumGroupField( ScDPSaveData& rSaveData, const ScfStringVec& rVisNames ) const
@@ -651,7 +656,7 @@ void XclImpPivotCache::ReadDConName( XclImpStream& rStrm )
         maSrcRangeName.clear();
 }
 
-void XclImpPivotCache::ReadPivotCacheStream( XclImpStream& rStrm )
+void XclImpPivotCache::ReadPivotCacheStream( const XclImpStream& rStrm )
 {
     if( (mnSrcType != EXC_SXVS_SHEET) && (mnSrcType != EXC_SXVS_EXTERN) )
         return;
@@ -741,7 +746,7 @@ void XclImpPivotCache::ReadPivotCacheStream( XclImpStream& rStrm )
                 sal_uInt16 nNewFieldIdx = static_cast< sal_uInt16 >( maFields.size() );
                 if( nNewFieldIdx < EXC_PC_MAXFIELDCOUNT )
                 {
-                    xCurrField.reset( new XclImpPCField( GetRoot(), *this, nNewFieldIdx ) );
+                    xCurrField = std::make_shared<XclImpPCField>( GetRoot(), *this, nNewFieldIdx );
                     maFields.push_back( xCurrField );
                     xCurrField->ReadSxfield( aPCStrm );
                     if( xCurrField->HasOrigItems() )
@@ -751,7 +756,7 @@ void XclImpPivotCache::ReadPivotCacheStream( XclImpStream& rStrm )
                         else
                             aOrigFields.push_back( xCurrField );
                         // insert field name into generated source data, field remembers its column index
-                        if( bGenerateSource && (nFieldScCol <= MAXCOL) )
+                        if( bGenerateSource && (nFieldScCol <= rDoc.MaxCol()) )
                             xCurrField->WriteFieldNameToSource( nFieldScCol++, nScTab );
                     }
                     // do not read items into invalid/postponed fields
@@ -763,12 +768,12 @@ void XclImpPivotCache::ReadPivotCacheStream( XclImpStream& rStrm )
 
             case EXC_ID_SXINDEXLIST:
                 // read index list and insert all items into generated source data
-                if( bGenerateSource && (nItemScRow <= MAXROW) && (++nItemScRow <= MAXROW) )
+                if( bGenerateSource && (nItemScRow <= rDoc.MaxRow()) && (++nItemScRow <= rDoc.MaxRow()) )
                 {
-                    for( XclImpPCFieldVec::const_iterator aIt = aOrigFields.begin(), aEnd = aOrigFields.end(); aIt != aEnd; ++aIt )
+                    for( const auto& rxOrigField : aOrigFields )
                     {
-                        sal_uInt16 nItemIdx = (*aIt)->Has16BitIndexes() ? aPCStrm.ReaduInt16() : aPCStrm.ReaduInt8();
-                        (*aIt)->WriteOrigItemToSource( nItemScRow, nScTab, nItemIdx );
+                        sal_uInt16 nItemIdx = rxOrigField->Has16BitIndexes() ? aPCStrm.ReaduInt16() : aPCStrm.ReaduInt8();
+                        rxOrigField->WriteOrigItemToSource( nItemScRow, nScTab, nItemIdx );
                     }
                 }
                 xCurrField.reset();
@@ -790,12 +795,12 @@ void XclImpPivotCache::ReadPivotCacheStream( XclImpStream& rStrm )
                     // read postponed item
                     aPostpFields[ nPostpIdx ]->ReadItem( aPCStrm );
                     // write item to source
-                    if( bGenerateSource && (nItemScRow <= MAXROW) )
+                    if( bGenerateSource && (nItemScRow <= rDoc.MaxRow()) )
                     {
                         // start new row, if there are only postponed fields
                         if( aOrigFields.empty() && (nPostpIdx == 0) )
                             ++nItemScRow;
-                        if( nItemScRow <= MAXROW )
+                        if( nItemScRow <= rDoc.MaxRow() )
                             aPostpFields[ nPostpIdx ]->WriteLastOrigItemToSource( nItemScRow, nScTab );
                     }
                     // get index of next postponed field
@@ -882,20 +887,68 @@ const OUString* XclImpPTItem::GetItemName() const
     return nullptr;
 }
 
+std::pair<bool, OUString> XclImpPTItem::GetItemName(const ScDPSaveDimension& rSaveDim, ScDPObject* pObj, const XclImpRoot& rRoot) const
+{
+    if(!mpCacheField)
+        return std::pair<bool, OUString>(false, OUString());
+
+    const XclImpPCItem* pCacheItem = mpCacheField->GetItem( maItemInfo.mnCacheIdx );
+    if(!pCacheItem)
+        return std::pair<bool, OUString>(false, OUString());
+
+    OUString sItemName;
+    if(pCacheItem->GetType() == EXC_PCITEM_TEXT || pCacheItem->GetType() == EXC_PCITEM_ERROR)
+    {
+        const OUString* pItemName = pCacheItem->GetText();
+        if(!pItemName)
+            return std::pair<bool, OUString>(false, OUString());
+        sItemName = *pItemName;
+    }
+    else if (pCacheItem->GetType() == EXC_PCITEM_DOUBLE)
+    {
+        sItemName = pObj->GetFormattedString(rSaveDim.GetName(), *pCacheItem->GetDouble());
+    }
+    else if (pCacheItem->GetType() == EXC_PCITEM_INTEGER)
+    {
+        sItemName = pObj->GetFormattedString(rSaveDim.GetName(), static_cast<double>(*pCacheItem->GetInteger()));
+    }
+    else if (pCacheItem->GetType() == EXC_PCITEM_BOOL)
+    {
+        sItemName = pObj->GetFormattedString(rSaveDim.GetName(), static_cast<double>(*pCacheItem->GetBool()));
+    }
+    else if (pCacheItem->GetType() == EXC_PCITEM_DATETIME)
+    {
+        sItemName = pObj->GetFormattedString(rSaveDim.GetName(), rRoot.GetDoubleFromDateTime(*pCacheItem->GetDateTime()));
+    }
+    else if (pCacheItem->GetType() == EXC_PCITEM_EMPTY)
+    {
+        // sItemName is an empty string
+    }
+    else // EXC_PCITEM_INVALID
+        return std::pair<bool, OUString>(false, OUString());
+
+    return std::pair<bool, OUString>(true, sItemName);
+}
+
 void XclImpPTItem::ReadSxvi( XclImpStream& rStrm )
 {
     rStrm >> maItemInfo;
 }
 
-void XclImpPTItem::ConvertItem( ScDPSaveDimension& rSaveDim ) const
+void XclImpPTItem::ConvertItem( ScDPSaveDimension& rSaveDim, ScDPObject* pObj, const XclImpRoot& rRoot ) const
 {
-    if (const OUString* pItemName = GetItemName())
+    // Find member and set properties
+    std::pair<bool, OUString> aReturnedName = GetItemName(rSaveDim, pObj, rRoot);
+    if(aReturnedName.first)
     {
-        ScDPSaveMember& rMember = *rSaveDim.GetMemberByName( *pItemName );
-        rMember.SetIsVisible( !::get_flag( maItemInfo.mnFlags, EXC_SXVI_HIDDEN ) );
-        rMember.SetShowDetails( !::get_flag( maItemInfo.mnFlags, EXC_SXVI_HIDEDETAIL ) );
-        if (maItemInfo.HasVisName())
-            rMember.SetLayoutName(*maItemInfo.GetVisName());
+        ScDPSaveMember* pMember = rSaveDim.GetExistingMemberByName(aReturnedName.second);
+        if(pMember)
+        {
+            pMember->SetIsVisible( !::get_flag( maItemInfo.mnFlags, EXC_SXVI_HIDDEN ) );
+            pMember->SetShowDetails( !::get_flag( maItemInfo.mnFlags, EXC_SXVI_HIDEDETAIL ) );
+            if (maItemInfo.HasVisName())
+                pMember->SetLayoutName(*maItemInfo.GetVisName());
+        }
     }
 }
 
@@ -950,7 +1003,7 @@ void XclImpPTField::ReadSxvdex( XclImpStream& rStrm )
 
 void XclImpPTField::ReadSxvi( XclImpStream& rStrm )
 {
-    XclImpPTItemRef xItem( new XclImpPTItem( GetCacheField() ) );
+    XclImpPTItemRef xItem = std::make_shared<XclImpPTItem>( GetCacheField() );
     maItems.push_back( xItem );
     xItem->ReadSxvi( rStrm );
 }
@@ -977,12 +1030,7 @@ void XclImpPTField::SetPageFieldInfo( const XclPTPageFieldInfo& rPageInfo )
 void XclImpPTField::ConvertPageField( ScDPSaveData& rSaveData ) const
 {
     OSL_ENSURE( maFieldInfo.mnAxes & EXC_SXVD_AXIS_PAGE, "XclImpPTField::ConvertPageField - no page field" );
-    if( ScDPSaveDimension* pSaveDim = ConvertRCPField( rSaveData ) )
-    {
-        const OUString* pName = GetItemName( maPageInfo.mnSelItem );
-        if (pName)
-            pSaveDim->SetCurrentPage(pName);
-    }
+    ConvertRCPField( rSaveData );
 }
 
 // hidden fields --------------------------------------------------------------
@@ -997,20 +1045,20 @@ void XclImpPTField::ConvertHiddenField( ScDPSaveData& rSaveData ) const
 
 bool XclImpPTField::HasDataFieldInfo() const
 {
-    return !maDataInfoList.empty();
+    return !maDataInfoVector.empty();
 }
 
 void XclImpPTField::AddDataFieldInfo( const XclPTDataFieldInfo& rDataInfo )
 {
     OSL_ENSURE( maFieldInfo.mnAxes & EXC_SXVD_AXIS_DATA, "XclImpPTField::AddDataFieldInfo - no data field" );
-    maDataInfoList.push_back( rDataInfo );
+    maDataInfoVector.push_back( rDataInfo );
 }
 
 void XclImpPTField::ConvertDataField( ScDPSaveData& rSaveData ) const
 {
     OSL_ENSURE( maFieldInfo.mnAxes & EXC_SXVD_AXIS_DATA, "XclImpPTField::ConvertDataField - no data field" );
-    OSL_ENSURE( !maDataInfoList.empty(), "XclImpPTField::ConvertDataField - no data field info" );
-    if (maDataInfoList.empty())
+    OSL_ENSURE( !maDataInfoVector.empty(), "XclImpPTField::ConvertDataField - no data field info" );
+    if (maDataInfoVector.empty())
         return;
 
     OUString aFieldName = GetFieldName();
@@ -1024,7 +1072,7 @@ void XclImpPTField::ConvertDataField( ScDPSaveData& rSaveData ) const
         return;
     }
 
-    XclPTDataFieldInfoList::const_iterator aIt = maDataInfoList.begin(), aEnd = maDataInfoList.end();
+    auto aIt = maDataInfoVector.begin(), aEnd = maDataInfoVector.end();
 
     ConvertDataField( *pSaveDim, *aIt );
 
@@ -1060,27 +1108,24 @@ static OUString lcl_convertExcelSubtotalName(const OUString& rName)
     return aBuf.makeStringAndClear();
 }
 
-ScDPSaveDimension* XclImpPTField::ConvertRCPField( ScDPSaveData& rSaveData ) const
+void XclImpPTField::ConvertRCPField( ScDPSaveData& rSaveData ) const
 {
     const OUString& rFieldName = GetFieldName();
     if( rFieldName.isEmpty() )
-        return nullptr;
+        return;
 
     const XclImpPCField* pCacheField = GetCacheField();
     if( !pCacheField || !pCacheField->IsSupportedField() )
-        return nullptr;
+        return;
 
     ScDPSaveDimension* pTest = rSaveData.GetNewDimensionByName(rFieldName);
     if (!pTest)
-        return nullptr;
+        return;
 
     ScDPSaveDimension& rSaveDim = *pTest;
 
     // orientation
     rSaveDim.SetOrientation( maFieldInfo.GetApiOrient( EXC_SXVD_AXIS_ROWCOLPAGE ) );
-
-    // general field info
-    ConvertFieldInfo( rSaveDim );
 
     // visible name
     if (const OUString* pVisName = maFieldInfo.GetVisName())
@@ -1118,28 +1163,47 @@ ScDPSaveDimension* XclImpPTField::ConvertRCPField( ScDPSaveData& rSaveData ) con
     pCacheField->ConvertGroupField( rSaveData, mrPTable.GetVisFieldNames() );
 
     // custom subtotal name
-    if (maFieldExtInfo.mpFieldTotalName.get())
+    if (maFieldExtInfo.mpFieldTotalName)
     {
         OUString aSubName = lcl_convertExcelSubtotalName(*maFieldExtInfo.mpFieldTotalName);
         rSaveDim.SetSubtotalName(aSubName);
     }
-
-    return &rSaveDim;
 }
 
-void XclImpPTField::ConvertFieldInfo( ScDPSaveDimension& rSaveDim ) const
+void XclImpPTField::ConvertFieldInfo( const ScDPSaveData& rSaveData, ScDPObject* pObj, const XclImpRoot& rRoot, bool bPageField ) const
 {
-    rSaveDim.SetShowEmpty( ::get_flag( maFieldExtInfo.mnFlags, EXC_SXVDEX_SHOWALL ) );
-    for( XclImpPTItemVec::const_iterator aIt = maItems.begin(), aEnd = maItems.end(); aIt != aEnd; ++aIt )
-        (*aIt)->ConvertItem( rSaveDim );
+    const OUString& rFieldName = GetFieldName();
+    if( rFieldName.isEmpty() )
+        return;
+
+    const XclImpPCField* pCacheField = GetCacheField();
+    if( !pCacheField || !pCacheField->IsSupportedField() )
+        return;
+
+    ScDPSaveDimension* pSaveDim = rSaveData.GetExistingDimensionByName(rFieldName);
+    if (!pSaveDim)
+        return;
+
+    pSaveDim->SetShowEmpty( ::get_flag( maFieldExtInfo.mnFlags, EXC_SXVDEX_SHOWALL ) );
+    for( const auto& rxItem : maItems )
+        rxItem->ConvertItem( *pSaveDim, pObj, rRoot );
+
+    if(bPageField && maPageInfo.mnSelItem != EXC_SXPI_ALLITEMS)
+    {
+        const XclImpPTItem* pItem = GetItem( maPageInfo.mnSelItem );
+        if(pItem)
+        {
+            std::pair<bool, OUString> aReturnedName = pItem->GetItemName(*pSaveDim, pObj, rRoot);
+            if(aReturnedName.first)
+                pSaveDim->SetCurrentPage(&aReturnedName.second);
+        }
+    }
 }
 
 void XclImpPTField::ConvertDataField( ScDPSaveDimension& rSaveDim, const XclPTDataFieldInfo& rDataInfo ) const
 {
     // orientation
     rSaveDim.SetOrientation( DataPilotFieldOrientation_DATA );
-    // general field info
-    ConvertFieldInfo( rSaveDim );
     // extended data field info
     ConvertDataFieldInfo( rSaveDim, rDataInfo );
 }
@@ -1237,7 +1301,7 @@ void XclImpPivotTable::ReadSxvd( XclImpStream& rStrm )
     if( nFieldCount < EXC_PT_MAXFIELDCOUNT )
     {
         // cache index for the field is equal to the SXVD record index
-        mxCurrField.reset( new XclImpPTField( *this, nFieldCount ) );
+        mxCurrField = std::make_shared<XclImpPTField>( *this, nFieldCount );
         maFields.push_back( mxCurrField );
         mxCurrField->ReadSxvd( rStrm );
         // add visible name of new field to list of visible names
@@ -1273,22 +1337,22 @@ void XclImpPivotTable::ReadSxivd( XclImpStream& rStrm )
         pFieldVec = &maColFields;
 
     // fill the vector from record data
-    if( pFieldVec )
-    {
-        sal_uInt16 nSize = ulimit_cast< sal_uInt16 >( rStrm.GetRecSize() / 2, EXC_PT_MAXROWCOLCOUNT );
-        pFieldVec->reserve( nSize );
-        for( sal_uInt16 nIdx = 0; nIdx < nSize; ++nIdx )
-        {
-            sal_uInt16 nFieldIdx;
-            nFieldIdx = rStrm.ReaduInt16();
-            pFieldVec->push_back( nFieldIdx );
+    if( !pFieldVec )
+        return;
 
-            // set orientation at special data orientation field
-            if( nFieldIdx == EXC_SXIVD_DATA )
-            {
-                sal_uInt16 nAxis = (pFieldVec == &maRowFields) ? EXC_SXVD_AXIS_ROW : EXC_SXVD_AXIS_COL;
-                maDataOrientField.SetAxes( nAxis );
-            }
+    sal_uInt16 nSize = ulimit_cast< sal_uInt16 >( rStrm.GetRecSize() / 2, EXC_PT_MAXROWCOLCOUNT );
+    pFieldVec->reserve( nSize );
+    for( sal_uInt16 nIdx = 0; nIdx < nSize; ++nIdx )
+    {
+        sal_uInt16 nFieldIdx;
+        nFieldIdx = rStrm.ReaduInt16();
+        pFieldVec->push_back( nFieldIdx );
+
+        // set orientation at special data orientation field
+        if( nFieldIdx == EXC_SXIVD_DATA )
+        {
+            sal_uInt16 nAxis = (pFieldVec == &maRowFields) ? EXC_SXVD_AXIS_ROW : EXC_SXVD_AXIS_COL;
+            maDataOrientField.SetAxes( nAxis );
         }
     }
 }
@@ -1337,9 +1401,17 @@ void XclImpPivotTable::ReadSxViewEx9( XclImpStream& rStrm )
     rStrm >> maPTViewEx9Info;
 }
 
+void XclImpPivotTable::ReadSxAddl( XclImpStream& rStrm )
+{
+    rStrm >> maPTAddlInfo;
+}
+
 void XclImpPivotTable::Convert()
 {
     if( !mxPCache || !mxPCache->IsValid() )
+        return;
+
+    if (utl::ConfigManager::IsFuzzing()) //just too slow
         return;
 
     ScDPSaveData aSaveData;
@@ -1350,24 +1422,24 @@ void XclImpPivotTable::Convert()
     aSaveData.SetColumnGrand( ::get_flag( maPTInfo.mnFlags, EXC_SXVIEW_COLGRAND ) );
     aSaveData.SetFilterButton( false );
     aSaveData.SetDrillDown( ::get_flag( maPTExtInfo.mnFlags, EXC_SXEX_DRILLDOWN ) );
+    aSaveData.SetIgnoreEmptyRows( false );
+    aSaveData.SetRepeatIfEmpty( false );
 
     // *** fields ***
 
-    ScfUInt16Vec::const_iterator aIt, aEnd;
-
     // row fields
-    for( aIt = maRowFields.begin(), aEnd = maRowFields.end(); aIt != aEnd; ++aIt )
-        if( const XclImpPTField* pField = GetField( *aIt ) )
+    for( const auto& rRowField : maRowFields )
+        if( const XclImpPTField* pField = GetField( rRowField ) )
             pField->ConvertRowColField( aSaveData );
 
     // column fields
-    for( aIt = maColFields.begin(), aEnd = maColFields.end(); aIt != aEnd; ++aIt )
-        if( const XclImpPTField* pField = GetField( *aIt ) )
+    for( const auto& rColField : maColFields )
+        if( const XclImpPTField* pField = GetField( rColField ) )
             pField->ConvertRowColField( aSaveData );
 
     // page fields
-    for( aIt = maPageFields.begin(), aEnd = maPageFields.end(); aIt != aEnd; ++aIt )
-        if( const XclImpPTField* pField = GetField( *aIt ) )
+    for( const auto& rPageField : maPageFields )
+        if( const XclImpPTField* pField = GetField( rPageField ) )
             pField->ConvertPageField( aSaveData );
 
     // We need to import hidden fields because hidden fields may contain
@@ -1381,14 +1453,14 @@ void XclImpPivotTable::Convert()
                 pField->ConvertHiddenField( aSaveData );
 
     // data fields
-    for( aIt = maFiltDataFields.begin(), aEnd = maFiltDataFields.end(); aIt != aEnd; ++aIt )
-        if( const XclImpPTField* pField = GetField( *aIt ) )
+    for( const auto& rFiltDataField : maFiltDataFields )
+        if( const XclImpPTField* pField = GetField( rFiltDataField ) )
             pField->ConvertDataField( aSaveData );
 
     // *** insert into Calc document ***
 
     // create source descriptor
-    ScSheetSourceDesc aDesc(&GetDocRef());
+    ScSheetSourceDesc aDesc(&GetDoc());
     const OUString& rSrcName = mxPCache->GetSourceRangeName();
     if (!rSrcName.isEmpty())
         // Range name is the data source.
@@ -1406,7 +1478,7 @@ void XclImpPivotTable::Convert()
     }
 
     // create the DataPilot
-    ScDPObject* pDPObj = new ScDPObject( &GetDocRef() );
+    std::unique_ptr<ScDPObject> pDPObj(new ScDPObject( &GetDoc() ));
     pDPObj->SetName( maPTInfo.maTableName );
     if (!maPTInfo.maDataName.isEmpty())
         aSaveData.GetDataLayoutDimension()->SetLayoutName(maPTInfo.maDataName);
@@ -1419,9 +1491,9 @@ void XclImpPivotTable::Convert()
     pDPObj->SetOutRange( aOutRange );
     pDPObj->SetHeaderLayout( maPTViewEx9Info.mnGridLayout == 0 );
 
-    GetDoc().GetDPCollection()->InsertNewTable(pDPObj);
-    mpDPObj = pDPObj;
+    mpDPObj = GetDoc().GetDPCollection()->InsertNewTable(std::move(pDPObj));
 
+    ApplyFieldInfo();
     ApplyMergeFlags(aOutRange, aSaveData);
 }
 
@@ -1446,33 +1518,38 @@ void XclImpPivotTable::ApplyMergeFlags(const ScRange& rOutRange, const ScDPSaveD
     aGeometry.setDataFieldCount(maPTInfo.mnDataFields);
     aGeometry.setRowFieldCount(maPTInfo.mnRowFields);
 
+    // Make sure we set headerlayout when input file has additional raw header
+    if(maPTInfo.mnColFields == 0)
+    {
+        mpDPObj->SetHeaderLayout( maPTInfo.mnFirstHeadRow - 2 == static_cast<sal_uInt16>(aGeometry.getRowFieldHeaderRow()) );
+    }
+    aGeometry.setHeaderLayout(mpDPObj->GetHeaderLayout());
+    aGeometry.setCompactMode(maPTAddlInfo.mbCompactMode);
+
     ScDocument& rDoc = GetDoc();
 
     vector<const ScDPSaveDimension*> aFieldDims;
     vector<ScAddress> aFieldBtns;
 
     aGeometry.getPageFieldPositions(aFieldBtns);
-    vector<ScAddress>::const_iterator itr = aFieldBtns.begin(), itrEnd = aFieldBtns.end();
-    for (; itr != itrEnd; ++itr)
+    for (const auto& rFieldBtn : aFieldBtns)
     {
-        rDoc.ApplyFlagsTab(itr->Col(), itr->Row(), itr->Col(), itr->Row(), itr->Tab(), ScMF::Button);
+        rDoc.ApplyFlagsTab(rFieldBtn.Col(), rFieldBtn.Row(), rFieldBtn.Col(), rFieldBtn.Row(), rFieldBtn.Tab(), ScMF::Button);
 
         ScMF nMFlag = ScMF::ButtonPopup;
-        OUString aName = rDoc.GetString(itr->Col(), itr->Row(), itr->Tab());
+        OUString aName = rDoc.GetString(rFieldBtn.Col(), rFieldBtn.Row(), rFieldBtn.Tab());
         if (rSaveData.HasInvisibleMember(aName))
             nMFlag |= ScMF::HiddenMember;
 
-        rDoc.ApplyFlagsTab(itr->Col()+1, itr->Row(), itr->Col()+1, itr->Row(), itr->Tab(), nMFlag);
+        rDoc.ApplyFlagsTab(rFieldBtn.Col()+1, rFieldBtn.Row(), rFieldBtn.Col()+1, rFieldBtn.Row(), rFieldBtn.Tab(), nMFlag);
     }
 
     aGeometry.getColumnFieldPositions(aFieldBtns);
     rSaveData.GetAllDimensionsByOrientation(sheet::DataPilotFieldOrientation_COLUMN, aFieldDims);
     if (aFieldBtns.size() == aFieldDims.size())
     {
-        itr    = aFieldBtns.begin();
-        itrEnd = aFieldBtns.end();
         vector<const ScDPSaveDimension*>::const_iterator itDim = aFieldDims.begin();
-        for (; itr != itrEnd; ++itr, ++itDim)
+        for (const auto& rFieldBtn : aFieldBtns)
         {
             ScMF nMFlag = ScMF::Button;
             const ScDPSaveDimension* pDim = *itDim;
@@ -1480,28 +1557,55 @@ void XclImpPivotTable::ApplyMergeFlags(const ScRange& rOutRange, const ScDPSaveD
                 nMFlag |= ScMF::HiddenMember;
             if (!pDim->IsDataLayout())
                 nMFlag |= ScMF::ButtonPopup;
-            rDoc.ApplyFlagsTab(itr->Col(), itr->Row(), itr->Col(), itr->Row(), itr->Tab(), nMFlag);
+            rDoc.ApplyFlagsTab(rFieldBtn.Col(), rFieldBtn.Row(), rFieldBtn.Col(), rFieldBtn.Row(), rFieldBtn.Tab(), nMFlag);
+            ++itDim;
         }
     }
 
     aGeometry.getRowFieldPositions(aFieldBtns);
     rSaveData.GetAllDimensionsByOrientation(sheet::DataPilotFieldOrientation_ROW, aFieldDims);
-    if (aFieldBtns.size() == aFieldDims.size())
+    if (!((aFieldBtns.size() == aFieldDims.size()) || (maPTAddlInfo.mbCompactMode && aFieldBtns.size() == 1)))
+        return;
+
+    vector<const ScDPSaveDimension*>::const_iterator itDim = aFieldDims.begin();
+    for (const auto& rFieldBtn : aFieldBtns)
     {
-        itr    = aFieldBtns.begin();
-        itrEnd = aFieldBtns.end();
-        vector<const ScDPSaveDimension*>::const_iterator itDim = aFieldDims.begin();
-        for (; itr != itrEnd; ++itr, ++itDim)
-        {
-            ScMF nMFlag = ScMF::Button;
-            const ScDPSaveDimension* pDim = *itDim;
-            if (pDim->HasInvisibleMember())
-                nMFlag |= ScMF::HiddenMember;
-            if (!pDim->IsDataLayout())
-                nMFlag |= ScMF::ButtonPopup;
-            rDoc.ApplyFlagsTab(itr->Col(), itr->Row(), itr->Col(), itr->Row(), itr->Tab(), nMFlag);
-        }
+        ScMF nMFlag = ScMF::Button;
+        const ScDPSaveDimension* pDim = itDim != aFieldDims.end() ? *itDim++ : nullptr;
+        if (pDim && pDim->HasInvisibleMember())
+            nMFlag |= ScMF::HiddenMember;
+        if (!pDim || !pDim->IsDataLayout())
+            nMFlag |= ScMF::ButtonPopup;
+        rDoc.ApplyFlagsTab(rFieldBtn.Col(), rFieldBtn.Row(), rFieldBtn.Col(), rFieldBtn.Row(), rFieldBtn.Tab(), nMFlag);
     }
+}
+
+
+void XclImpPivotTable::ApplyFieldInfo()
+{
+    mpDPObj->BuildAllDimensionMembers();
+    ScDPSaveData& rSaveData = *mpDPObj->GetSaveData();
+
+    // row fields
+    for( const auto& rRowField : maRowFields )
+        if( const XclImpPTField* pField = GetField( rRowField ) )
+            pField->ConvertFieldInfo( rSaveData, mpDPObj, *this );
+
+    // column fields
+    for( const auto& rColField : maColFields )
+        if( const XclImpPTField* pField = GetField( rColField ) )
+            pField->ConvertFieldInfo( rSaveData, mpDPObj, *this );
+
+    // page fields
+    for( const auto& rPageField : maPageFields )
+        if( const XclImpPTField* pField = GetField( rPageField ) )
+            pField->ConvertFieldInfo( rSaveData, mpDPObj, *this, true );
+
+    // hidden fields
+    for( sal_uInt16 nField = 0, nCount = GetFieldCount(); nField < nCount; ++nField )
+        if( const XclImpPTField* pField = GetField( nField ) )
+            if (!pField->GetAxes())
+                pField->ConvertFieldInfo( rSaveData, mpDPObj, *this );
 }
 
 XclImpPivotTableManager::XclImpPivotTableManager( const XclImpRoot& rRoot ) :
@@ -1525,7 +1629,7 @@ XclImpPivotCacheRef XclImpPivotTableManager::GetPivotCache( sal_uInt16 nCacheIdx
 
 void XclImpPivotTableManager::ReadSxidstm( XclImpStream& rStrm )
 {
-    XclImpPivotCacheRef xPCache( new XclImpPivotCache( GetRoot() ) );
+    XclImpPivotCacheRef xPCache = std::make_shared<XclImpPivotCache>( GetRoot() );
     maPCaches.push_back( xPCache );
     xPCache->ReadSxidstm( rStrm );
 }
@@ -1552,7 +1656,7 @@ void XclImpPivotTableManager::ReadDConName( XclImpStream& rStrm )
 
 void XclImpPivotTableManager::ReadSxview( XclImpStream& rStrm )
 {
-    XclImpPivotTableRef xPTable( new XclImpPivotTable( GetRoot() ) );
+    XclImpPivotTableRef xPTable = std::make_shared<XclImpPivotTable>( GetRoot() );
     maPTables.push_back( xPTable );
     xPTable->ReadSxview( rStrm );
 }
@@ -1605,22 +1709,28 @@ void XclImpPivotTableManager::ReadSxViewEx9( XclImpStream& rStrm )
         maPTables.back()->ReadSxViewEx9( rStrm );
 }
 
-void XclImpPivotTableManager::ReadPivotCaches( XclImpStream& rStrm )
+void XclImpPivotTableManager::ReadSxAddl( XclImpStream& rStrm )
 {
-    for( XclImpPivotCacheVec::iterator aIt = maPCaches.begin(), aEnd = maPCaches.end(); aIt != aEnd; ++aIt )
-        (*aIt)->ReadPivotCacheStream( rStrm );
+    if( !maPTables.empty() )
+        maPTables.back()->ReadSxAddl( rStrm );
+}
+
+void XclImpPivotTableManager::ReadPivotCaches( const XclImpStream& rStrm )
+{
+    for( auto& rxPCache : maPCaches )
+        rxPCache->ReadPivotCacheStream( rStrm );
 }
 
 void XclImpPivotTableManager::ConvertPivotTables()
 {
-    for( XclImpPivotTableVec::iterator aIt = maPTables.begin(), aEnd = maPTables.end(); aIt != aEnd; ++aIt )
-        (*aIt)->Convert();
+    for( auto& rxPTable : maPTables )
+        rxPTable->Convert();
 }
 
 void XclImpPivotTableManager::MaybeRefreshPivotTables()
 {
-    for( XclImpPivotTableVec::iterator aIt = maPTables.begin(), aEnd = maPTables.end(); aIt != aEnd; ++aIt )
-        (*aIt)->MaybeRefresh();
+    for( auto& rxPTable : maPTables )
+        rxPTable->MaybeRefresh();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

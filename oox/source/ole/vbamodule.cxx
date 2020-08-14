@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ole/vbamodule.hxx"
+#include <oox/ole/vbamodule.hxx>
 #include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/script/ModuleInfo.hpp>
 #include <com/sun/star/script/ModuleType.hpp>
 #include <com/sun/star/script/vba/XVBAModuleInfo.hpp>
@@ -27,14 +26,13 @@
 #include <osl/diagnose.h>
 #include <rtl/character.hxx>
 #include <filter/msfilter/msvbahelper.hxx>
-#include "oox/helper/binaryinputstream.hxx"
-#include "oox/helper/storagebase.hxx"
-#include "oox/helper/textinputstream.hxx"
-#include "oox/ole/vbahelper.hxx"
-#include "oox/ole/vbainputstream.hxx"
+#include <oox/helper/binaryinputstream.hxx>
+#include <oox/helper/storagebase.hxx>
+#include <oox/helper/textinputstream.hxx>
+#include <oox/ole/vbahelper.hxx>
+#include <oox/ole/vbainputstream.hxx>
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::script::vba;
@@ -143,7 +141,7 @@ void VbaModule::createEmptyModule( const Reference< container::XNameContainer >&
 
 OUString VbaModule::readSourceCode( StorageBase& rVbaStrg ) const
 {
-    OUStringBuffer aSourceCode;
+    OUStringBuffer aSourceCode(512);
     static const char sUnmatchedRemovedTag[] = "Rem removed unmatched Sub/End: ";
     if( !maStreamName.isEmpty() && (mnOffset != SAL_MAX_UINT32) )
     {
@@ -190,8 +188,7 @@ OUString VbaModule::readSourceCode( StorageBase& rVbaStrg ) const
                         {
                             // cntrl modifier is explicit ( but could be cntrl+shift ), parseKeyEvent
                             // will handle and uppercase letter appropriately
-                            OUString sApiKey = "^";
-                            sApiKey += sKey;
+                            OUString sApiKey = "^" + sKey;
                             try
                             {
                                 KeyEvent aKeyEvent = ooo::vba::parseKeyEvent( sApiKey );
@@ -265,7 +262,7 @@ void VbaModule::createModule( const OUString& rVBASourceCode,
     // prepare the Basic module
     script::ModuleInfo aModuleInfo;
     aModuleInfo.ModuleType = mnType;
-    OUStringBuffer aSourceCode;
+    OUStringBuffer aSourceCode(512);
     aSourceCode.append( "Rem Attribute VBA_ModuleType=" );
     switch( mnType )
     {
@@ -336,7 +333,6 @@ void VbaModule::createModule( const OUString& rVBASourceCode,
     }
 }
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

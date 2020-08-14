@@ -18,30 +18,27 @@
  */
 
 #include "LegendWrapper.hxx"
-#include "macros.hxx"
 #include "Chart2ModelContact.hxx"
-#include "LegendHelper.hxx"
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/chart2/XTitled.hpp>
 #include <com/sun/star/chart/ChartLegendPosition.hpp>
 #include <com/sun/star/chart2/LegendPosition.hpp>
 #include <com/sun/star/chart/ChartLegendExpansion.hpp>
 #include <com/sun/star/chart2/RelativePosition.hpp>
-#include <com/sun/star/drawing/FillStyle.hpp>
+#include <com/sun/star/chart2/XDiagram.hpp>
 
-#include "CharacterProperties.hxx"
-#include "LinePropertiesHelper.hxx"
-#include "FillProperties.hxx"
-#include "UserDefinedProperties.hxx"
+#include <CharacterProperties.hxx>
+#include <LinePropertiesHelper.hxx>
+#include <FillProperties.hxx>
+#include <UserDefinedProperties.hxx>
 #include "WrappedCharacterHeightProperty.hxx"
-#include "PositionAndSizeHelper.hxx"
-#include "WrappedDirectStateProperty.hxx"
+#include <PositionAndSizeHelper.hxx>
+#include <WrappedDirectStateProperty.hxx>
 #include "WrappedAutomaticPositionProperties.hxx"
 #include "WrappedScaleTextProperties.hxx"
 
 #include <algorithm>
-#include <rtl/ustrbuf.hxx>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::beans::Property;
@@ -52,6 +49,8 @@ using ::com::sun::star::uno::Sequence;
 
 namespace chart
 {
+namespace {
+
 class WrappedLegendAlignmentProperty : public WrappedProperty
 {
 public:
@@ -64,6 +63,8 @@ protected:
     virtual Any convertInnerToOuterValue( const Any& rInnerValue ) const override;
     virtual Any convertOuterToInnerValue( const Any& rOuterValue ) const override;
 };
+
+}
 
 WrappedLegendAlignmentProperty::WrappedLegendAlignmentProperty()
     : ::chart::WrappedProperty( "Alignment", "AnchorPosition" )
@@ -84,7 +85,7 @@ Any WrappedLegendAlignmentProperty::getPropertyValue( const Reference< beans::XP
         else
         {
             aRet = xInnerPropertySet->getPropertyValue( m_aInnerName );
-            aRet = this->convertInnerToOuterValue( aRet );
+            aRet = convertInnerToOuterValue( aRet );
         }
     }
     return aRet;
@@ -92,51 +93,51 @@ Any WrappedLegendAlignmentProperty::getPropertyValue( const Reference< beans::XP
 
 void WrappedLegendAlignmentProperty::setPropertyValue( const Any& rOuterValue, const Reference< beans::XPropertySet >& xInnerPropertySet ) const
 {
-    if(xInnerPropertySet.is())
+    if(!xInnerPropertySet.is())
+        return;
+
+    bool bNewShowLegend = true;
+    bool bOldShowLegend = true;
     {
-        bool bNewShowLegend = true;
-        bool bOldShowLegend = true;
-        {
-            css::chart::ChartLegendPosition eOuterPos(css::chart::ChartLegendPosition_NONE);
-            if( (rOuterValue >>= eOuterPos)  && eOuterPos == css::chart::ChartLegendPosition_NONE )
-                bNewShowLegend = false;
-            xInnerPropertySet->getPropertyValue( "Show" ) >>= bOldShowLegend;
-        }
-        if(bNewShowLegend!=bOldShowLegend)
-        {
-            xInnerPropertySet->setPropertyValue( "Show", uno::Any(bNewShowLegend) );
-        }
-        if(!bNewShowLegend)
-            return;
+        css::chart::ChartLegendPosition eOuterPos(css::chart::ChartLegendPosition_NONE);
+        if( (rOuterValue >>= eOuterPos)  && eOuterPos == css::chart::ChartLegendPosition_NONE )
+            bNewShowLegend = false;
+        xInnerPropertySet->getPropertyValue( "Show" ) >>= bOldShowLegend;
+    }
+    if(bNewShowLegend!=bOldShowLegend)
+    {
+        xInnerPropertySet->setPropertyValue( "Show", uno::Any(bNewShowLegend) );
+    }
+    if(!bNewShowLegend)
+        return;
 
-        //set corresponding LegendPosition
-        Any aInnerValue = this->convertOuterToInnerValue( rOuterValue );
-        xInnerPropertySet->setPropertyValue( m_aInnerName, aInnerValue );
+    //set corresponding LegendPosition
+    Any aInnerValue = convertOuterToInnerValue( rOuterValue );
+    xInnerPropertySet->setPropertyValue( m_aInnerName, aInnerValue );
 
-        //correct LegendExpansion
-        chart2::LegendPosition eNewInnerPos(chart2::LegendPosition_LINE_END);
-        if( aInnerValue >>= eNewInnerPos )
-        {
-            css::chart::ChartLegendExpansion eNewExpansion =
-                ( eNewInnerPos == chart2::LegendPosition_LINE_END ||
-                  eNewInnerPos == chart2::LegendPosition_LINE_START )
-                ? css::chart::ChartLegendExpansion_HIGH
-                : css::chart::ChartLegendExpansion_WIDE;
+    //correct LegendExpansion
+    chart2::LegendPosition eNewInnerPos(chart2::LegendPosition_LINE_END);
+    if( aInnerValue >>= eNewInnerPos )
+    {
+        css::chart::ChartLegendExpansion eNewExpansion =
+            ( eNewInnerPos == chart2::LegendPosition_LINE_END ||
+              eNewInnerPos == chart2::LegendPosition_LINE_START )
+            ? css::chart::ChartLegendExpansion_HIGH
+            : css::chart::ChartLegendExpansion_WIDE;
 
-            css::chart::ChartLegendExpansion eOldExpansion( css::chart::ChartLegendExpansion_HIGH );
-            bool bExpansionWasSet(
-                xInnerPropertySet->getPropertyValue( "Expansion" ) >>= eOldExpansion );
+        css::chart::ChartLegendExpansion eOldExpansion( css::chart::ChartLegendExpansion_HIGH );
+        bool bExpansionWasSet(
+            xInnerPropertySet->getPropertyValue( "Expansion" ) >>= eOldExpansion );
 
-            if( !bExpansionWasSet || (eOldExpansion != eNewExpansion))
-                xInnerPropertySet->setPropertyValue( "Expansion", uno::Any( eNewExpansion ));
-        }
+        if( !bExpansionWasSet || (eOldExpansion != eNewExpansion))
+            xInnerPropertySet->setPropertyValue( "Expansion", uno::Any( eNewExpansion ));
+    }
 
-        //correct RelativePosition
-        Any aRelativePosition( xInnerPropertySet->getPropertyValue("RelativePosition") );
-        if(aRelativePosition.hasValue())
-        {
-            xInnerPropertySet->setPropertyValue( "RelativePosition", Any() );
-        }
+    //correct RelativePosition
+    Any aRelativePosition( xInnerPropertySet->getPropertyValue("RelativePosition") );
+    if(aRelativePosition.hasValue())
+    {
+        xInnerPropertySet->setPropertyValue( "RelativePosition", Any() );
     }
 }
 
@@ -211,19 +212,17 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "Alignment",
+    rOutProperties.emplace_back( "Alignment",
                   PROP_LEGEND_ALIGNMENT,
                   cppu::UnoType<css::chart::ChartLegendPosition>::get(),
                   //#i111967# no PropertyChangeEvent is fired on change so far
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "Expansion",
+    rOutProperties.emplace_back( "Expansion",
                   PROP_LEGEND_EXPANSION,
                   cppu::UnoType<css::chart::ChartLegendExpansion>::get(),
                   //#i111967# no PropertyChangeEvent is fired on change so far
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 }
 
 struct StaticLegendWrapperPropertyArray_Initializer
@@ -259,9 +258,7 @@ struct StaticLegendWrapperPropertyArray : public rtl::StaticAggregate< Sequence<
 
 } // anonymous namespace
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 LegendWrapper::LegendWrapper(const std::shared_ptr<Chart2ModelContact>& spChart2ModelContact)
@@ -282,7 +279,7 @@ awt::Point SAL_CALL LegendWrapper::getPosition()
 
 void SAL_CALL LegendWrapper::setPosition( const awt::Point& aPosition )
 {
-    Reference< beans::XPropertySet > xProp( this->getInnerPropertySet() );
+    Reference< beans::XPropertySet > xProp( getInnerPropertySet() );
     if( xProp.is() )
     {
         awt::Size aPageSize( m_spChart2ModelContact->GetPageSize() );
@@ -302,24 +299,24 @@ awt::Size SAL_CALL LegendWrapper::getSize()
 
 void SAL_CALL LegendWrapper::setSize( const awt::Size& aSize )
 {
-    Reference< beans::XPropertySet > xProp( this->getInnerPropertySet() );
+    Reference< beans::XPropertySet > xProp( getInnerPropertySet() );
     if( xProp.is() )
     {
         awt::Size aPageSize( m_spChart2ModelContact->GetPageSize() );
         awt::Rectangle aPageRectangle( 0,0,aPageSize.Width,aPageSize.Height);
 
-        awt::Point aPos( this->getPosition() );
+        awt::Point aPos( getPosition() );
         awt::Rectangle aNewPositionAndSize(aPos.X,aPos.Y,aSize.Width,aSize.Height);
 
         PositionAndSizeHelper::moveObject( OBJECTTYPE_LEGEND
-                , xProp, aNewPositionAndSize, aPageRectangle );
+                , xProp, aNewPositionAndSize, awt::Rectangle(), aPageRectangle );
     }
 }
 
 // ____ XShapeDescriptor (base of XShape) ____
 OUString SAL_CALL LegendWrapper::getShapeType()
 {
-    return OUString( "com.sun.star.chart.ChartLegend" );
+    return "com.sun.star.chart.ChartLegend";
 }
 
 // ____ XComponent ____
@@ -328,7 +325,7 @@ void SAL_CALL LegendWrapper::dispose()
     Reference< uno::XInterface > xSource( static_cast< ::cppu::OWeakObject* >( this ) );
     m_aEventListenerContainer.disposeAndClear( lang::EventObject( xSource ) );
 
-    MutexGuard aGuard( GetMutex());
+    MutexGuard aGuard( m_aMutex);
     clearWrappedPropertySet();
 }
 
@@ -347,7 +344,7 @@ void SAL_CALL LegendWrapper::removeEventListener(
 //ReferenceSizePropertyProvider
 void LegendWrapper::updateReferenceSize()
 {
-    Reference< beans::XPropertySet > xProp( this->getInnerPropertySet(), uno::UNO_QUERY );
+    Reference< beans::XPropertySet > xProp = getInnerPropertySet();
     if( xProp.is() )
     {
         if( xProp->getPropertyValue( "ReferencePageSize" ).hasValue() )
@@ -358,7 +355,7 @@ void LegendWrapper::updateReferenceSize()
 Any LegendWrapper::getReferenceSize()
 {
     Any aRet;
-    Reference< beans::XPropertySet > xProp( this->getInnerPropertySet(), uno::UNO_QUERY );
+    Reference< beans::XPropertySet > xProp = getInnerPropertySet();
     if( xProp.is() )
         aRet = xProp->getPropertyValue( "ReferencePageSize" );
 
@@ -385,16 +382,16 @@ const Sequence< beans::Property >& LegendWrapper::getPropertySequence()
     return *StaticLegendWrapperPropertyArray::get();
 }
 
-const std::vector< WrappedProperty* > LegendWrapper::createWrappedProperties()
+std::vector< std::unique_ptr<WrappedProperty> > LegendWrapper::createWrappedProperties()
 {
-    std::vector< ::chart::WrappedProperty* > aWrappedProperties;
+    std::vector< std::unique_ptr<WrappedProperty> > aWrappedProperties;
 
-    aWrappedProperties.push_back( new WrappedLegendAlignmentProperty() );
-    aWrappedProperties.push_back( new WrappedProperty( "Expansion", "Expansion"));
+    aWrappedProperties.emplace_back( new WrappedLegendAlignmentProperty() );
+    aWrappedProperties.emplace_back( new WrappedProperty( "Expansion", "Expansion"));
     WrappedCharacterHeightProperty::addWrappedProperties( aWrappedProperties, this );
     //same problem as for wall: the defaults in the old chart are different for different charttypes, so we need to export explicitly
-    aWrappedProperties.push_back( new WrappedDirectStateProperty("FillStyle", "FillStyle"));
-    aWrappedProperties.push_back( new WrappedDirectStateProperty("FillColor", "FillColor"));
+    aWrappedProperties.emplace_back( new WrappedDirectStateProperty("FillStyle", "FillStyle"));
+    aWrappedProperties.emplace_back( new WrappedDirectStateProperty("FillColor", "FillColor"));
     WrappedAutomaticPositionProperties::addWrappedProperties( aWrappedProperties );
     WrappedScaleTextProperties::addWrappedProperties( aWrappedProperties, m_spChart2ModelContact );
 
@@ -403,7 +400,7 @@ const std::vector< WrappedProperty* > LegendWrapper::createWrappedProperties()
 
 OUString SAL_CALL LegendWrapper::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.Legend");
+    return "com.sun.star.comp.chart.Legend";
 }
 
 sal_Bool SAL_CALL LegendWrapper::supportsService( const OUString& rServiceName )
@@ -421,7 +418,6 @@ css::uno::Sequence< OUString > SAL_CALL LegendWrapper::getSupportedServiceNames(
     };
 }
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

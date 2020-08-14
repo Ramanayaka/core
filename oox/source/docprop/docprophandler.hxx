@@ -26,11 +26,9 @@
 
 #include <cppuhelper/implbase.hxx>
 
-#include "oox/token/namespaces.hxx"
-#include "oox/token/tokens.hxx"
+#include <oox/token/namespaces.hxx>
 
-namespace oox {
-namespace docprop {
+namespace oox::docprop {
 
 #define COREPR_TOKEN( token )   (::oox::NMSP_packageMetaCorePr | XML_##token)
 #define CUSTPR_TOKEN( token )   (::oox::NMSP_officeCustomPr | XML_##token)
@@ -83,8 +81,7 @@ public:
 
 };
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 #endif
 

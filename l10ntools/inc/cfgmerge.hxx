@@ -20,7 +20,7 @@
 #ifndef INCLUDED_L10NTOOLS_INC_CFGMERGE_HXX
 #define INCLUDED_L10NTOOLS_INC_CFGMERGE_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <fstream>
 #include <unordered_map>
@@ -28,10 +28,9 @@
 #include <vector>
 #include "po.hxx"
 
-typedef std::unordered_map<OString, OString, OStringHash> OStringHashMap;
+typedef std::unordered_map<OString, OString> OStringHashMap;
 
 
-// class CfgStackData
 
 
 class CfgStackData
@@ -54,13 +53,12 @@ public:
         : sTagType( rTag ), sIdentifier( rId )
     {}
 
-    const OString &GetTagType() { return sTagType; }
-    const OString &GetIdentifier() { return sIdentifier; }
+    const OString &GetTagType() const { return sTagType; }
+    const OString &GetIdentifier() const { return sIdentifier; }
 
 };
 
 
-// class CfgStack
 
 
 class CfgStack
@@ -155,7 +153,7 @@ public:
 class CfgMerge : public CfgParser
 {
 private:
-    MergeDataFile *pMergeDataFile;
+    std::unique_ptr<MergeDataFile> pMergeDataFile;
     std::vector<OString> aLanguages;
     std::unique_ptr<ResData> pResData;
 

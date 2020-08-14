@@ -26,8 +26,8 @@
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <editeng/outlobj.hxx>
 #include <tools/color.hxx>
-#include <svx/sdr/attribute/sdrformtextattribute.hxx>
-#include <tools/weakbase.hxx>
+#include <sdr/attribute/sdrformtextattribute.hxx>
+#include <tools/weakbase.h>
 #include <svx/sdtaitm.hxx>
 
 
@@ -35,9 +35,7 @@
 class SdrText;
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
         class SdrTextPrimitive2D : public BufferedDecompositionPrimitive2D
         {
@@ -84,7 +82,7 @@ namespace drawinglayer
                 const OutlinerParaObject& rOutlinerParaObjectPtr);
 
             // get data
-            const SdrText* getSdrText() const { return mrSdrText.get(); }
+            const SdrText* getSdrText() const;
             const OutlinerParaObject& getOutlinerParaObject() const { return maOutlinerParaObject; }
 
             // compare operator
@@ -95,17 +93,14 @@ namespace drawinglayer
             virtual void get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& rViewInformation) const override;
 
             // transformed clone operator
-            virtual SdrTextPrimitive2D* createTransformedClone(const basegfx::B2DHomMatrix& rTransform) const = 0;
+            virtual std::unique_ptr<SdrTextPrimitive2D> createTransformedClone(const basegfx::B2DHomMatrix& rTransform) const = 0;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class SdrContourTextPrimitive2D : public SdrTextPrimitive2D
+        class SdrContourTextPrimitive2D final : public SdrTextPrimitive2D
         {
         private:
             // unit contour polygon (scaled to [0.0 .. 1.0])
@@ -114,7 +109,6 @@ namespace drawinglayer
             // complete contour polygon transform (scale, rotate, shear, translate)
             basegfx::B2DHomMatrix               maObjectTransform;
 
-        protected:
             // local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
 
@@ -133,20 +127,17 @@ namespace drawinglayer
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             // transformed clone operator
-            virtual SdrTextPrimitive2D* createTransformedClone(const basegfx::B2DHomMatrix& rTransform) const override;
+            virtual std::unique_ptr<SdrTextPrimitive2D> createTransformedClone(const basegfx::B2DHomMatrix& rTransform) const override;
 
             // provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class SdrPathTextPrimitive2D : public SdrTextPrimitive2D
+        class SdrPathTextPrimitive2D final : public SdrTextPrimitive2D
         {
         private:
             // the path to use. Each paragraph will use one Polygon.
@@ -155,7 +146,6 @@ namespace drawinglayer
             // the Fontwork parameters
             attribute::SdrFormTextAttribute     maSdrFormTextAttribute;
 
-        protected:
             // local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
 
@@ -174,20 +164,17 @@ namespace drawinglayer
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             // transformed clone operator
-            virtual SdrTextPrimitive2D* createTransformedClone(const basegfx::B2DHomMatrix& rTransform) const override;
+            virtual std::unique_ptr<SdrTextPrimitive2D> createTransformedClone(const basegfx::B2DHomMatrix& rTransform) const override;
 
             // provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class SdrBlockTextPrimitive2D : public SdrTextPrimitive2D
+        class SdrBlockTextPrimitive2D final : public SdrTextPrimitive2D
         {
         private:
             // text range transformation from unit range ([0.0 .. 1.0]) to text range
@@ -201,9 +188,7 @@ namespace drawinglayer
             bool                                    mbUnlimitedPage : 1;    // force layout with no text break
             bool                                    mbCellText : 1;         // this is a cell text as block text
             bool                                    mbWordWrap : 1;         // for CustomShapes text layout
-            bool                                    mbClipOnBounds : 1;     // for CustomShapes text layout
 
-        protected:
             // local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
 
@@ -217,8 +202,7 @@ namespace drawinglayer
                 bool bFixedCellHeight,
                 bool bUnlimitedPage,
                 bool bCellText,
-                bool bWordWrap,
-                bool bClipOnBounds);
+                bool bWordWrap);
 
             // get data
             const basegfx::B2DHomMatrix& getTextRangeTransform() const { return maTextRangeTransform; }
@@ -228,26 +212,22 @@ namespace drawinglayer
             bool getUnlimitedPage() const { return mbUnlimitedPage; }
             bool getCellText() const { return mbCellText; }
             bool getWordWrap() const { return mbWordWrap; }
-            bool getClipOnBounds() const { return mbClipOnBounds; }
 
             // compare operator
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             // transformed clone operator
-            virtual SdrTextPrimitive2D* createTransformedClone(const basegfx::B2DHomMatrix& rTransform) const override;
+            virtual std::unique_ptr<SdrTextPrimitive2D> createTransformedClone(const basegfx::B2DHomMatrix& rTransform) const override;
 
             // provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class SdrStretchTextPrimitive2D : public SdrTextPrimitive2D
+        class SdrStretchTextPrimitive2D final : public SdrTextPrimitive2D
         {
         private:
             // text range transformation from unit range ([0.0 .. 1.0]) to text range
@@ -255,7 +235,6 @@ namespace drawinglayer
 
             bool                                    mbFixedCellHeight : 1;
 
-        protected:
             // local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
 
@@ -274,27 +253,23 @@ namespace drawinglayer
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             // transformed clone operator
-            virtual SdrTextPrimitive2D* createTransformedClone(const basegfx::B2DHomMatrix& rTransform) const override;
+            virtual std::unique_ptr<SdrTextPrimitive2D> createTransformedClone(const basegfx::B2DHomMatrix& rTransform) const override;
 
             // provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class SdrAutoFitTextPrimitive2D : public SdrTextPrimitive2D
+        class SdrAutoFitTextPrimitive2D final : public SdrTextPrimitive2D
         {
         private:
             ::basegfx::B2DHomMatrix                 maTextRangeTransform;   // text range transformation from unit range ([0.0 .. 1.0]) to text range
 
             bool                                    mbWordWrap : 1;         // for CustomShapes text layout
 
-        protected:
             // local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
 
@@ -313,25 +288,22 @@ namespace drawinglayer
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             // transformed clone operator
-            virtual SdrTextPrimitive2D* createTransformedClone(const ::basegfx::B2DHomMatrix& rTransform) const override;
+            virtual std::unique_ptr<SdrTextPrimitive2D> createTransformedClone(const ::basegfx::B2DHomMatrix& rTransform) const override;
 
             // provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class SdrChainedTextPrimitive2D : public SdrTextPrimitive2D
+        class SdrChainedTextPrimitive2D final : public SdrTextPrimitive2D
         {
         private:
             // XXX: might have position of overflowing text
 
             ::basegfx::B2DHomMatrix maTextRangeTransform;   // text range transformation from unit range ([0.0 .. 1.0]) to text range
-        protected:
+
             // local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
 
@@ -349,13 +321,12 @@ namespace drawinglayer
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             // transformed clone operator
-            virtual SdrTextPrimitive2D* createTransformedClone(const basegfx::B2DHomMatrix& rTransform) const override;
+            virtual std::unique_ptr<SdrTextPrimitive2D> createTransformedClone(const basegfx::B2DHomMatrix& rTransform) const override;
 
             // provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
 #endif // INCLUDED_SVX_INC_SDR_PRIMITIVE2D_SDRTEXTPRIMITIVE2D_HXX

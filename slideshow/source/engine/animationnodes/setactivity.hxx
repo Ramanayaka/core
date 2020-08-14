@@ -21,14 +21,12 @@
 
 #include <tools/diagnose_ex.h>
 
-#include "animationactivity.hxx"
-#include "animation.hxx"
-#include "animatableshape.hxx"
-#include "shapeattributelayer.hxx"
-#include "activitiesfactory.hxx"
+#include <animationactivity.hxx>
+#include <animatableshape.hxx>
+#include <shapeattributelayer.hxx>
+#include <activitiesfactory.hxx>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /** Templated setter for animation values
 
@@ -134,12 +132,10 @@ template <class AnimationT> AnimationActivitySharedPtr makeSetActivity(
     const ::std::shared_ptr< AnimationT >&   rAnimation,
     const typename AnimationT::ValueType&      rToValue )
 {
-    return AnimationActivitySharedPtr(
-        new SetActivity<AnimationT>(rParms,rAnimation,rToValue) );
+    return std::make_shared<SetActivity<AnimationT>>(rParms,rAnimation,rToValue);
 }
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_SETACTIVITY_HXX
 

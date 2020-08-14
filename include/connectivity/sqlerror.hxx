@@ -21,9 +21,8 @@
 #define INCLUDED_CONNECTIVITY_SQLERROR_HXX
 
 #include <com/sun/star/sdbc/SQLException.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <connectivity/dbtoolsdllapi.hxx>
-#include <boost/optional.hpp>
+#include <optional>
 #include <memory>
 
 namespace connectivity
@@ -59,26 +58,7 @@ namespace connectivity
     class OOO_DLLPUBLIC_DBTOOLS SQLError
     {
     public:
-
-        // - optional
-
-        /** convenience wrapper around boost::optional, allowing implicit construction
-        */
-        class ParamValue : public ::boost::optional< OUString >
-        {
-            typedef ::boost::optional< OUString >  base_type;
-
-        public:
-            ParamValue( ) : base_type( ) { }
-            ParamValue( OUString const& val ) : base_type( val ) { }
-            ParamValue( ParamValue const& rhs ) : base_type( rhs ) { }
-
-            bool    is() const { return !base_type::operator!(); }
-        };
-
-
-    public:
-        explicit        SQLError( const css::uno::Reference< css::uno::XComponentContext > & _rxContext );
+                        SQLError();
                         ~SQLError();
 
         /** returns the message associated with a given error condition, after (optionally) replacing
@@ -158,9 +138,9 @@ namespace connectivity
         void            raiseException(
                             const ErrorCondition _eCondition,
                             const css::uno::Reference< css::uno::XInterface >& _rxContext,
-                            const ParamValue& _rParamValue1 = ParamValue(),
-                            const ParamValue& _rParamValue2 = ParamValue(),
-                            const ParamValue& _rParamValue3 = ParamValue()
+                            const std::optional<OUString>& _rParamValue1 = std::nullopt,
+                            const std::optional<OUString>& _rParamValue2 = std::nullopt,
+                            const std::optional<OUString>& _rParamValue3 = std::nullopt
                         ) const;
 
         /** throws an SQLException describing the given error condition
@@ -241,9 +221,9 @@ namespace connectivity
                         getSQLException(
                             const ErrorCondition _eCondition,
                             const css::uno::Reference< css::uno::XInterface >& _rxContext,
-                            const ParamValue& _rParamValue1 = ParamValue(),
-                            const ParamValue& _rParamValue2 = ParamValue(),
-                            const ParamValue& _rParamValue3 = ParamValue()
+                            const std::optional<OUString>& _rParamValue1 = std::nullopt,
+                            const std::optional<OUString>& _rParamValue2 = std::nullopt,
+                            const std::optional<OUString>& _rParamValue3 = std::nullopt
                         ) const;
 
     private:

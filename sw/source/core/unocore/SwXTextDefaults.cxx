@@ -20,6 +20,8 @@
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 
 #include <vcl/svapp.hxx>
+#include <osl/diagnose.h>
+#include <svl/itemprop.hxx>
 
 #include <SwXTextDefaults.hxx>
 #include <SwStyleNameMapper.hxx>
@@ -32,9 +34,9 @@
 #include <unomap.hxx>
 #include <unomid.h>
 #include <paratr.hxx>
-#include <unoprnms.hxx>
 #include <unocrsrhelper.hxx>
 #include <hintids.hxx>
+#include <fmtpdsc.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -80,47 +82,40 @@ void SAL_CALL SwXTextDefaults::setPropertyValue( const OUString& rPropertyName, 
              (RES_TXTATR_CHARFMT == pMap->nWID))
     {
         OUString uStyle;
-        if(aValue >>= uStyle)
-        {
-            OUString sStyle;
-            SwStyleNameMapper::FillUIName(uStyle, sStyle, SwGetPoolIdFromName::ChrFmt, true );
-            SwDocStyleSheet* pStyle =
-                static_cast<SwDocStyleSheet*>(m_pDoc->GetDocShell()->GetStyleSheetPool()->Find(sStyle, SfxStyleFamily::Char));
-            SwFormatDrop* pDrop = nullptr;
-            SwFormatCharFormat *pCharFormat = nullptr;
-            if(pStyle)
-            {
-                rtl::Reference< SwDocStyleSheet > xStyle( new SwDocStyleSheet( *pStyle ) );
-                if (xStyle->GetCharFormat() == m_pDoc->GetDfltCharFormat())
-                    return; // don't SetCharFormat with formats from mpDfltCharFormat
-
-                if (RES_PARATR_DROP == pMap->nWID)
-                {
-                    pDrop = static_cast<SwFormatDrop*>(rItem.Clone());   // because rItem is const...
-                    pDrop->SetCharFormat(xStyle->GetCharFormat());
-                    m_pDoc->SetDefault(*pDrop);
-                }
-                else // RES_TXTATR_CHARFMT == pMap->nWID
-                {
-                    pCharFormat = static_cast<SwFormatCharFormat*>(rItem.Clone());   // because rItem is const...
-                    pCharFormat->SetCharFormat(xStyle->GetCharFormat());
-                    m_pDoc->SetDefault(*pCharFormat);
-                }
-            }
-            else
-                throw lang::IllegalArgumentException();
-            delete pDrop;
-            delete pCharFormat;
-        }
-        else
+        if(!(aValue >>= uStyle))
             throw lang::IllegalArgumentException();
+
+        OUString sStyle;
+        SwStyleNameMapper::FillUIName(uStyle, sStyle, SwGetPoolIdFromName::ChrFmt );
+        SwDocStyleSheet* pStyle =
+            static_cast<SwDocStyleSheet*>(m_pDoc->GetDocShell()->GetStyleSheetPool()->Find(sStyle, SfxStyleFamily::Char));
+        std::unique_ptr<SwFormatDrop> pDrop;
+        std::unique_ptr<SwFormatCharFormat> pCharFormat;
+        if(!pStyle)
+            throw lang::IllegalArgumentException();
+
+        rtl::Reference< SwDocStyleSheet > xStyle( new SwDocStyleSheet( *pStyle ) );
+        if (xStyle->GetCharFormat() == m_pDoc->GetDfltCharFormat())
+            return; // don't SetCharFormat with formats from mpDfltCharFormat
+
+        if (RES_PARATR_DROP == pMap->nWID)
+        {
+            pDrop.reset(static_cast<SwFormatDrop*>(rItem.Clone()));   // because rItem is const...
+            pDrop->SetCharFormat(xStyle->GetCharFormat());
+            m_pDoc->SetDefault(*pDrop);
+        }
+        else // RES_TXTATR_CHARFMT == pMap->nWID
+        {
+            pCharFormat.reset(static_cast<SwFormatCharFormat*>(rItem.Clone()));   // because rItem is const...
+            pCharFormat->SetCharFormat(xStyle->GetCharFormat());
+            m_pDoc->SetDefault(*pCharFormat);
+        }
     }
     else
     {
-        SfxPoolItem * pNewItem = rItem.Clone();
+        std::unique_ptr<SfxPoolItem> pNewItem(rItem.Clone());
         pNewItem->PutValue( aValue, pMap->nMemberId);
         m_pDoc->SetDefault(*pNewItem);
-        delete pNewItem;
     }
 }
 
@@ -178,12 +173,10 @@ PropertyState SAL_CALL SwXTextDefaults::getPropertyState( const OUString& rPrope
 Sequence< PropertyState > SAL_CALL SwXTextDefaults::getPropertyStates( const Sequence< OUString >& rPropertyNames )
 {
     const sal_Int32 nCount = rPropertyNames.getLength();
-    const OUString * pNames = rPropertyNames.getConstArray();
     Sequence < PropertyState > aRet ( nCount );
-    PropertyState *pState = aRet.getArray();
 
-    for ( sal_Int32 nIndex = 0; nIndex < nCount; nIndex++)
-        pState[nIndex] = getPropertyState( pNames[nIndex] );
+    std::transform(rPropertyNames.begin(), rPropertyNames.end(), aRet.begin(),
+        [this](const OUString& rName) -> PropertyState { return getPropertyState(rName); });
 
     return aRet;
 }
@@ -220,7 +213,7 @@ Any SAL_CALL SwXTextDefaults::getPropertyDefault( const OUString& rPropertyName 
 
 OUString SAL_CALL SwXTextDefaults::getImplementationName(  )
 {
-    return OUString("SwXTextDefaults");
+    return "SwXTextDefaults";
 }
 
 sal_Bool SAL_CALL SwXTextDefaults::supportsService( const OUString& rServiceName )
@@ -230,16 +223,13 @@ sal_Bool SAL_CALL SwXTextDefaults::supportsService( const OUString& rServiceName
 
 uno::Sequence< OUString > SAL_CALL SwXTextDefaults::getSupportedServiceNames(  )
 {
-    uno::Sequence< OUString > aRet(7);
-    OUString* pArr = aRet.getArray();
-    *pArr++ = "com.sun.star.text.Defaults";
-    *pArr++ = "com.sun.star.style.CharacterProperties";
-    *pArr++ = "com.sun.star.style.CharacterPropertiesAsian";
-    *pArr++ = "com.sun.star.style.CharacterPropertiesComplex";
-    *pArr++ = "com.sun.star.style.ParagraphProperties";
-    *pArr++ = "com.sun.star.style.ParagraphPropertiesAsian";
-    *pArr++ = "com.sun.star.style.ParagraphPropertiesComplex";
-    return aRet;
+    return { "com.sun.star.text.Defaults",
+             "com.sun.star.style.CharacterProperties",
+             "com.sun.star.style.CharacterPropertiesAsian",
+             "com.sun.star.style.CharacterPropertiesComplex",
+             "com.sun.star.style.ParagraphProperties",
+             "com.sun.star.style.ParagraphPropertiesAsian",
+             "com.sun.star.style.ParagraphPropertiesComplex" };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,36 +21,34 @@
 
 #include <svtools/valueset.hxx>
 #include <vcl/image.hxx>
+#include <array>
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
-class LineWidthValueSet
-    : public ValueSet
+class LineWidthValueSet final : public ValueSet
 {
 public:
-    explicit LineWidthValueSet(vcl::Window* pParent);
+    explicit LineWidthValueSet();
     virtual ~LineWidthValueSet() override;
-    virtual void dispose() override;
 
-    void SetUnit(OUString* str);
+    void SetUnit(std::array<OUString,9> const & strUnits);
     void SetSelItem(sal_uInt16 nSel);
-    sal_uInt16 GetSelItem() { return nSelItem;}
+    sal_uInt16 GetSelItem() const { return nSelItem;}
     void SetImage(const Image& img);
     void SetCusEnable(bool bEnable);
 
     virtual void    UserDraw( const UserDrawEvent& rUDEvt ) override;
     virtual void    Resize() override;
-    virtual Size    GetOptimalSize() const override;
+    virtual void    SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
 
-protected:
-    VclPtr<VirtualDevice> pVDev;
+private:
     sal_uInt16          nSelItem;
-    OUString*      strUnit;
+    std::array<OUString,9> maStrUnits;
     Image           imgCus;
     bool            bCusEnable;
 };
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 #endif // INCLUDED_SVX_SOURCE_SIDEBAR_LINE_LINEWIDTHVALUESET_HXX
 

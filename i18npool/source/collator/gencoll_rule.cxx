@@ -19,6 +19,7 @@
 
 #include <sal/config.h>
 
+#include <memory>
 #include <vector>
 #include <stdio.h>
 #include <string.h>
@@ -27,13 +28,12 @@
 #include <sal/main.h>
 #include <sal/types.h>
 #include <rtl/ustrbuf.hxx>
-#include <o3tl/make_unique.hxx>
 
 #include <unicode/tblcoll.h>
 
 /* Main Procedure */
 
-void data_write(char* file, char* name, sal_uInt8 *data, sal_Int32 len)
+static void data_write(char* file, char* name, sal_uInt8 *data, sal_Int32 len)
 {
     FILE *fp = fopen(file, "wb");
     if (fp == nullptr) {
@@ -45,12 +45,12 @@ void data_write(char* file, char* name, sal_uInt8 *data, sal_Int32 len)
     fprintf(fp, " * Copyright(c) 1999 - 2000, Sun Microsystems, Inc.\n");
     fprintf(fp, " * All Rights Reserved.\n");
     fprintf(fp, " */\n\n");
-    fprintf(fp, "/* !!!The file is generated automatically. DONOT edit the file manually!!! */\n\n");
+    fprintf(fp, "/* !!!The file is generated automatically. DO NOT edit the file manually!!! */\n\n");
     fprintf(fp, "#include <sal/types.h>\n");
     fprintf(fp, "\nextern \"C\" {\n");
 
     // generate main dict. data array
-    fprintf(fp, "\nstatic const sal_uInt8 %s[] = {", name);
+    fprintf(fp, "\nalignas(4) static const sal_uInt8 %s[] = {", name);
 
     sal_Int32 count = 0;
     for (sal_Int32 i = 0; i < len; i++) {
@@ -88,8 +88,12 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
         exit(1);
     }
 
-    sal_Char str[1024];
-    OUStringBuffer Obuf;
+    fseek(fp, 0, SEEK_END);
+    int fileSize = ftell(fp);
+    rewind(fp);
+
+    char str[1024];
+    OUStringBuffer Obuf(fileSize);
     while (fgets(str, 1024, fp)) {
         // don't convert last new line character to Ostr.
         sal_Int32 len = strlen(str) - 1;
@@ -113,7 +117,7 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
     //UCollator *coll = ucol_openRules(Obuf.getStr(), Obuf.getLength(), UCOL_OFF,
     //        UCOL_DEFAULT_STRENGTH, &parseError, &status);
 
-    auto coll = o3tl::make_unique<RuleBasedCollator>(reinterpret_cast<const UChar *>(Obuf.getStr()), status);
+    auto coll = std::make_unique<icu::RuleBasedCollator>(reinterpret_cast<const UChar *>(Obuf.getStr()), status);
 
     if (U_SUCCESS(status)) {
         std::vector<uint8_t> data;

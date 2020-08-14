@@ -19,14 +19,11 @@
 
 #include "options.hxx"
 
-#include "osl/diagnose.h"
+#include <osl/diagnose.h>
 
 #include <stdio.h>
-#include <string.h>
 
-namespace registry
-{
-namespace tools
+namespace registry::tools
 {
 
 Options::Options (char const * program)
@@ -116,7 +113,7 @@ bool Options::checkCommandFile(std::vector< std::string > & rArgs, char const * 
                 }
                 break;
             }
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         default:
             buffer.push_back(sal::static_int_cast<char>(c));
             break;
@@ -142,7 +139,6 @@ bool Options::printUsage() const
     return false;
 }
 
-} // namespace tools
-} // namespace registry
+} // namespace registry::tools
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

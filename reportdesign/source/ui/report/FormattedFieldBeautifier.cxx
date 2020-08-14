@@ -26,18 +26,13 @@
 #include <RptObject.hxx>
 #include <RptModel.hxx>
 #include <RptPage.hxx>
-#include <ViewsWindow.hxx>
 #include <ReportSection.hxx>
 #include <ReportController.hxx>
-#include <uistrings.hrc>
+#include <strings.hxx>
 #include <reportformula.hxx>
-#include <toolkit/helper/property.hxx>
 
 #include <svtools/extcolorcfg.hxx>
-#include <unotools/confignode.hxx>
 
-// DBG_*
-#include <tools/debug.hxx>
 // DBG_UNHANDLED_EXCEPTION
 #include <tools/diagnose_ex.h>
 
@@ -48,14 +43,14 @@ namespace rptui
 
     FormattedFieldBeautifier::FormattedFieldBeautifier(const OReportController& _aController)
         :m_rReportController(_aController)
-        ,m_nTextColor(-1)
+        ,m_nTextColor(0xffffffff)
     {
     }
 
 
-    sal_Int32 FormattedFieldBeautifier::getTextColor()
+    Color FormattedFieldBeautifier::getTextColor()
     {
-        if (m_nTextColor == -1)
+        if (m_nTextColor == Color(0xffffffff))
         {
             svtools::ExtendedColorConfig aConfig;
             m_nTextColor = aConfig.GetColorValue(CFG_REPORTDESIGNER, DBTEXTBOXBOUNDCONTENT).getColor();
@@ -86,28 +81,24 @@ namespace rptui
                     bool bSet = true;
                     if ( aFormula.getType() == ReportFormula::Field )
                     {
-                        const OUString sColumnName = aFormula.getFieldName();
+                        const OUString& sColumnName = aFormula.getFieldName();
                         OUString sLabel = m_rReportController.getColumnLabel_throw(sColumnName);
                         if ( !sLabel.isEmpty() )
                         {
-                            OUStringBuffer aBuffer;
-                            aBuffer.append( "=" );
-                            aBuffer.append( sLabel );
-                            sDataField = aBuffer.makeStringAndClear();
+                            sDataField = "=" + sLabel;
                             bSet = false;
                         }
                     }
                     if ( bSet )
                         sDataField = aFormula.getEqualUndecoratedContent();
                 }
-            }
 
-            if ( xControlModel.is() )
                 setPlaceholderText( getVclWindowPeer( xControlModel.get() ), sDataField );
+            }
         }
         catch (const uno::Exception &)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("reportdesign");
         }
     }
 

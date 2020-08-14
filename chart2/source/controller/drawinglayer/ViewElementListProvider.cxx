@@ -18,30 +18,22 @@
  */
 
 #include <memory>
-#include "ViewElementListProvider.hxx"
-#include "chartview/DrawModelWrapper.hxx"
-#include "chartview/DataPointSymbolSupplier.hxx"
-#include "macros.hxx"
-#include "DrawViewWrapper.hxx"
+#include <ViewElementListProvider.hxx>
+#include <chartview/DrawModelWrapper.hxx>
+#include <chartview/DataPointSymbolSupplier.hxx>
+#include <DrawViewWrapper.hxx>
 
+#include <com/sun/star/drawing/Direction3D.hpp>
+#include <o3tl/safeint.hxx>
 #include <svx/xtable.hxx>
-#include <svx/XPropertyTable.hxx>
-#include <svx/unofill.hxx>
-#include <svx/unoapi.hxx>
-#include <svx/xit.hxx>
-#include <svx/xbtmpit.hxx>
-#include <svx/xflftrit.hxx>
-#include <svx/xlndsit.hxx>
-#include <svx/xflhtit.hxx>
-#include <svx/xflgrit.hxx>
-#include <svx/xlnstit.hxx>
-#include <svx/xlnedit.hxx>
 #include <svl/itempool.hxx>
 #include <svtools/ctrltool.hxx>
 #include <vcl/svapp.hxx>
 #include <svx/svdobj.hxx>
 #include <vcl/virdev.hxx>
 #include <svx/svdview.hxx>
+#include <svx/svdpage.hxx>
+#include <tools/diagnose_ex.h>
 
 namespace chart
 {
@@ -49,11 +41,10 @@ using namespace ::com::sun::star;
 
 ViewElementListProvider::ViewElementListProvider( DrawModelWrapper* pDrawModelWrapper )
                         : m_pDrawModelWrapper( pDrawModelWrapper )
-                        , m_pFontList(nullptr)
 {
 }
 
-ViewElementListProvider::ViewElementListProvider( ViewElementListProvider&& rOther )
+ViewElementListProvider::ViewElementListProvider(ViewElementListProvider&& rOther) noexcept
 {
     m_pDrawModelWrapper = rOther.m_pDrawModelWrapper;
     m_pFontList = std::move(rOther.m_pFontList);
@@ -115,58 +106,62 @@ XPatternListRef   ViewElementListProvider::GetPatternList() const
 SdrObjList* ViewElementListProvider::GetSymbolList() const
 {
     SdrObjList* pSymbolList = nullptr;
-    uno::Reference< drawing::XShapes > xSymbols(nullptr);//@todo this keeps the first drawinglayer alive ...
     try
     {
-        if(!pSymbolList || !pSymbolList->GetObjCount())
-        {
-            //@todo use mutex
+        //@todo use mutex
 
-            //get shape factory
-            uno::Reference< lang::XMultiServiceFactory > xShapeFactory( m_pDrawModelWrapper->getShapeFactory() );
+        //get shape factory
+        uno::Reference<lang::XMultiServiceFactory> xShapeFactory(
+            m_pDrawModelWrapper->getShapeFactory());
 
-            //get hidden draw page (target):
-            uno::Reference<drawing::XShapes> xTarget( m_pDrawModelWrapper->getHiddenDrawPage(), uno::UNO_QUERY );
+        //get hidden draw page (target):
+        uno::Reference<drawing::XShapes> xTarget = m_pDrawModelWrapper->getHiddenDrawPage();
 
-            //create symbols via uno and convert to native sdr objects
-            drawing::Direction3D aSymbolSize(220,220,0); // should be 250, but 250 -> 280 ??
-            xSymbols =  DataPointSymbolSupplier::create2DSymbolList( xShapeFactory, xTarget, aSymbolSize );
+        //create symbols via uno and convert to native sdr objects
+        drawing::Direction3D aSymbolSize(220, 220, 0); // should be 250, but 250 -> 280 ??
+        uno::Reference<drawing::XShapes> xSymbols
+            = DataPointSymbolSupplier::create2DSymbolList(xShapeFactory, xTarget, aSymbolSize);
 
-            SdrObject* pSdrObject = DrawViewWrapper::getSdrObject( uno::Reference< drawing::XShape >( xSymbols, uno::UNO_QUERY ) );
-            if(pSdrObject)
-                pSymbolList = pSdrObject->GetSubList();
-        }
+        SdrObject* pSdrObject = DrawViewWrapper::getSdrObject(
+            uno::Reference<drawing::XShape>(xSymbols, uno::UNO_QUERY));
+        if (pSdrObject)
+            pSymbolList = pSdrObject->GetSubList();
     }
-    catch( const uno::Exception& e )
+    catch( const uno::Exception& )
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
     return pSymbolList;
 }
 
 Graphic ViewElementListProvider::GetSymbolGraphic( sal_Int32 nStandardSymbol, const SfxItemSet* pSymbolShapeProperties ) const
 {
-    SdrObjList* pSymbolList = this->GetSymbolList();
+    SdrObjList* pSymbolList = GetSymbolList();
     if( !pSymbolList->GetObjCount() )
         return Graphic();
     if(nStandardSymbol<0)
         nStandardSymbol*=-1;
-    if( static_cast<size_t>(nStandardSymbol) >= pSymbolList->GetObjCount() )
+    if( o3tl::make_unsigned(nStandardSymbol) >= pSymbolList->GetObjCount() )
         nStandardSymbol %= pSymbolList->GetObjCount();
     SdrObject* pObj = pSymbolList->GetObj(nStandardSymbol);
 
     ScopedVclPtrInstance< VirtualDevice > pVDev;
     pVDev->SetMapMode(MapMode(MapUnit::Map100thMM));
-    std::unique_ptr<SdrModel> pModel( new SdrModel );
+
+    std::unique_ptr<SdrModel> pModel(
+        new SdrModel());
+
     pModel->GetItemPool().FreezeIdRanges();
     SdrPage* pPage = new SdrPage( *pModel, false );
     pPage->SetSize(Size(1000,1000));
     pModel->InsertPage( pPage, 0 );
-    std::unique_ptr<SdrView> pView( new SdrView( pModel.get(), pVDev ) );
+    std::unique_ptr<SdrView> pView(new SdrView(*pModel, pVDev));
     pView->hideMarkHandles();
     SdrPageView* pPageView = pView->ShowSdrPage(pPage);
 
-    pObj=pObj->Clone();
+    // directly clone to target SdrModel
+    pObj = pObj->CloneSdrObject(*pModel);
+
     pPage->NbcInsertObject(pObj);
     pView->MarkObj(pObj,pPageView);
     if( pSymbolShapeProperties )
@@ -177,7 +172,7 @@ Graphic ViewElementListProvider::GetSymbolGraphic( sal_Int32 nStandardSymbol, co
     Graphic aGraph(aMeta);
     Size aSize = pObj->GetSnapRect().GetSize();
     aGraph.SetPrefSize(aSize);
-    aGraph.SetPrefMapMode(MapUnit::Map100thMM);
+    aGraph.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
 
     pView->UnmarkAll();
     pObj=pPage->RemoveObject(0);

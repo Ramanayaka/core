@@ -21,8 +21,7 @@
 #define INCLUDED_SC_SOURCE_UI_INC_ACCESSIBLECELLBASE_HXX
 
 #include "AccessibleContextBase.hxx"
-#include "global.hxx"
-#include "address.hxx"
+#include <address.hxx>
 #include <com/sun/star/accessibility/XAccessibleValue.hpp>
 #include <cppuhelper/implbase1.hxx>
 
@@ -44,7 +43,7 @@ protected:
     virtual ~ScAccessibleCellBase() override;
 public:
 
-    virtual bool SAL_CALL isVisible() override;
+    virtual bool isVisible() override;
 
     ///=====  XInterface  =====================================================
 
@@ -69,11 +68,11 @@ public:
 
 protected:
     /// Return this object's description.
-    virtual OUString SAL_CALL
+    virtual OUString
         createAccessibleDescription() override;
 
     /// Return the object's current name.
-    virtual OUString SAL_CALL
+    virtual OUString
         createAccessibleName() override;
 
 public:
@@ -104,7 +103,7 @@ public:
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL
         getTypes() override;
 
-    /** Returns a implementation id.
+    /** Returns an implementation id.
     */
     virtual css::uno::Sequence<sal_Int8> SAL_CALL
         getImplementationId() override;
@@ -121,14 +120,14 @@ private:
         const css::uno::Reference<css::accessibility::XAccessibleStateSet>& rxParentStates);
 protected:
     /// @throw css::uno::RuntimeException
-    OUString SAL_CALL GetNote();
+    OUString GetNote() const;
 
     /// @throw css::uno::RuntimeException
-    OUString SAL_CALL GetAllDisplayNote();
+    OUString GetAllDisplayNote() const;
     /// @throw css::uno::RuntimeException
-    OUString SAL_CALL getShadowAttrs();
+    OUString getShadowAttrs() const;
     /// @throw css::uno::RuntimeException
-    OUString SAL_CALL getBorderAttrs();
+    OUString getBorderAttrs();
 public:
     const ScAddress& GetCellAddress() const { return maCellAddress; }
 };

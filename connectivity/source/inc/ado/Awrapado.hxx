@@ -22,19 +22,15 @@
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 
 // Includes for ADO
-#include "ado_pre_sys_include.h"
 #include <oledb.h>
 #include <ocidl.h>
 #include <adoint.h>
-#include "ado_post_sys_include.h"
-#include "ado/adoimp.hxx"
-#include "ado/Aolewrap.hxx"
-#include "ado/Aolevariant.hxx"
+#include <ado/adoimp.hxx>
+#include <ado/Aolewrap.hxx>
+#include <ado/Aolevariant.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         class WpADOConnection;
         class WpADOCommand;
         class WpADORecordset;
@@ -97,7 +93,7 @@ namespace connectivity
 
              sal_Int32 get_State() const;
 
-             bool OpenSchema(SchemaEnum eNum,OLEVariant& Restrictions,OLEVariant& SchemaID,ADORecordset**pprset);
+             bool OpenSchema(SchemaEnum eNum,OLEVariant const & Restrictions,OLEVariant const & SchemaID,ADORecordset**pprset);
 
              OUString get_Version() const;
 
@@ -371,8 +367,8 @@ namespace connectivity
             */
             static OLEVariant       getValue(const WpADOProperties& _rProps,const OLEVariant &_aPosition);
         };
-    }
 }
+
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AWRAPADO_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,14 +19,12 @@
 
 #ifndef INCLUDED_SFX2_SOURCE_DOC_SYSPATH_HXX
 #define INCLUDED_SFX2_SOURCE_DOC_SYSPATH_HXX
-//#pragma warning(disable:4917)
 
-#include <sfx2/dllapi.h>
+#include <sal/types.h>
 
-class SFX2_DLLPUBLIC SystemPath
+namespace SystemPath
 {
-public:
-    static bool GetUserTemplateLocation(sal_Unicode*, int nSize);
+bool GetUserTemplateLocation(sal_Unicode*, int nSize);
 };
 
 #endif

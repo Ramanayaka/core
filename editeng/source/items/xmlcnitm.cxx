@@ -21,10 +21,10 @@
 #include <com/sun/star/xml/AttributeData.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <o3tl/any.hxx>
-#include <o3tl/make_unique.hxx>
 #include <xmloff/xmlcnimp.hxx>
 #include <xmloff/unoatrcn.hxx>
 #include <editeng/xmlcnitm.hxx>
+#include <tools/solar.h>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::container;
@@ -51,9 +51,8 @@ SvXMLAttrContainerItem::~SvXMLAttrContainerItem()
 
 bool SvXMLAttrContainerItem::operator==( const SfxPoolItem& rItem ) const
 {
-    DBG_ASSERT( dynamic_cast< const SvXMLAttrContainerItem* >(&rItem) !=  nullptr,
-               "SvXMLAttrContainerItem::operator ==(): Bad type");
-    return *pImpl.get() == *static_cast<const SvXMLAttrContainerItem&>(rItem).pImpl.get();
+    return SfxPoolItem::operator==(rItem) &&
+        *pImpl == *static_cast<const SvXMLAttrContainerItem&>(rItem).pImpl;
 }
 
 bool SvXMLAttrContainerItem::GetPresentation(
@@ -61,21 +60,15 @@ bool SvXMLAttrContainerItem::GetPresentation(
                     MapUnit /*eCoreMetric*/,
                     MapUnit /*ePresentationMetric*/,
                     OUString & /*rText*/,
-                    const IntlWrapper * /*pIntlWrapper*/ ) const
+                    const IntlWrapper& /*rIntlWrapper*/ ) const
 {
     return false;
 }
 
-sal_uInt16 SvXMLAttrContainerItem::GetVersion( sal_uInt16 /*nFileFormatVersion*/ ) const
-{
-    // This item should never be stored
-    return USHRT_MAX;
-}
-
 bool SvXMLAttrContainerItem::QueryValue( css::uno::Any& rVal, sal_uInt8 /*nMemberId*/ ) const
 {
-    Reference<XNameContainer> xContainer =
-        new SvUnoAttributeContainer( o3tl::make_unique<SvXMLAttrContainerData>( *pImpl.get() ) );
+    Reference<XNameContainer> xContainer
+        = new SvUnoAttributeContainer(std::make_unique<SvXMLAttrContainerData>(*pImpl));
 
     rVal <<= xContainer;
     return true;
@@ -87,7 +80,7 @@ bool SvXMLAttrContainerItem::PutValue( const css::uno::Any& rVal, sal_uInt8 /*nM
 
     Reference<XUnoTunnel> xTunnel(rVal, UNO_QUERY);
     if( xTunnel.is() )
-        pContainer = reinterpret_cast<SvUnoAttributeContainer*>((sal_uLong)xTunnel->getSomething(SvUnoAttributeContainer::getUnoTunnelId()));
+        pContainer = reinterpret_cast<SvUnoAttributeContainer*>(static_cast<sal_uLong>(xTunnel->getSomething(SvUnoAttributeContainer::getUnoTunnelId())));
 
     if( pContainer )
     {
@@ -171,7 +164,7 @@ bool SvXMLAttrContainerItem::AddAttr( const OUString& rPrefix,
 
 sal_uInt16 SvXMLAttrContainerItem::GetAttrCount() const
 {
-    return (sal_uInt16)pImpl->GetAttrCount();
+    return static_cast<sal_uInt16>(pImpl->GetAttrCount());
 }
 
 OUString SvXMLAttrContainerItem::GetAttrNamespace( sal_uInt16 i ) const

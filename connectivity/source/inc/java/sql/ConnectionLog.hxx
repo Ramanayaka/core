@@ -27,15 +27,15 @@
 // Strange enough, GCC requires the following forward declarations of the various
 // convertLogArgToString flavors to be *before* the inclusion of comphelper/logging.hxx
 
-namespace com { namespace sun { namespace star { namespace util
+namespace com::sun::star::util
 {
     struct Date;
     struct Time;
     struct DateTime;
-} } } }
+}
 
 
-namespace comphelper { namespace log { namespace convert
+namespace comphelper::log::convert
 {
 
 
@@ -45,7 +45,7 @@ namespace comphelper { namespace log { namespace convert
     OUString convertLogArgToString( const css::util::DateTime& _rDateTime );
 
 
-} } }
+}
 
 
 #include <comphelper/logging.hxx>
@@ -56,7 +56,7 @@ namespace connectivity
 }
 
 
-namespace connectivity { namespace java { namespace sql {
+namespace connectivity::java::sql {
 
     typedef ::comphelper::EventLogger ConnectionLog_Base;
     class ConnectionLog : public ConnectionLog_Base
@@ -85,44 +85,44 @@ namespace connectivity { namespace java { namespace sql {
         sal_Int32   getObjectID() const { return m_nObjectID; }
 
         /// logs a given message, without any arguments, or source class/method names
-        bool        log( const sal_Int32 _nLogLevel, const OUString& rMessage )
+        void        log( const sal_Int32 _nLogLevel, const OUString& rMessage )
         {
-            return ConnectionLog_Base::log( _nLogLevel, rMessage, m_nObjectID );
+            ConnectionLog_Base::log( _nLogLevel, rMessage, m_nObjectID );
         }
 
         template< typename ARGTYPE1 >
-        bool        log( const sal_Int32 _nLogLevel, const OUString& rMessage, ARGTYPE1 _argument1 ) const
+        void        log( const sal_Int32 _nLogLevel, const OUString& rMessage, ARGTYPE1 _argument1 ) const
         {
-            return ConnectionLog_Base::log( _nLogLevel, rMessage, m_nObjectID, _argument1 );
+            ConnectionLog_Base::log( _nLogLevel, rMessage, m_nObjectID, _argument1 );
         }
 
         template< typename ARGTYPE1, typename ARGTYPE2 >
-        bool        log( const sal_Int32 _nLogLevel, const OUString& rMessage, ARGTYPE1 _argument1, ARGTYPE2 _argument2 ) const
+        void        log( const sal_Int32 _nLogLevel, const OUString& rMessage, ARGTYPE1 _argument1, ARGTYPE2 _argument2 ) const
         {
-            return ConnectionLog_Base::log( _nLogLevel, rMessage, m_nObjectID, _argument1, _argument2 );
+            ConnectionLog_Base::log( _nLogLevel, rMessage, m_nObjectID, _argument1, _argument2 );
         }
 
         template< typename ARGTYPE1, typename ARGTYPE2, typename ARGTYPE3 >
-        bool        log( const sal_Int32 _nLogLevel, const OUString& rMessage, ARGTYPE1 _argument1, ARGTYPE2 _argument2, ARGTYPE3 _argument3 ) const
+        void        log( const sal_Int32 _nLogLevel, const OUString& rMessage, ARGTYPE1 _argument1, ARGTYPE2 _argument2, ARGTYPE3 _argument3 ) const
         {
-            return ConnectionLog_Base::log( _nLogLevel, rMessage, m_nObjectID, _argument1, _argument2, _argument3 );
+            ConnectionLog_Base::log( _nLogLevel, rMessage, m_nObjectID, _argument1, _argument2, _argument3 );
         }
 
         template< typename ARGTYPE1, typename ARGTYPE2, typename ARGTYPE3, typename ARGTYPE4 >
-        bool        log( const sal_Int32 _nLogLevel, const OUString& rMessage, ARGTYPE1 _argument1, ARGTYPE2 _argument2, ARGTYPE3 _argument3, ARGTYPE4 _argument4 ) const
+        void        log( const sal_Int32 _nLogLevel, const OUString& rMessage, ARGTYPE1 _argument1, ARGTYPE2 _argument2, ARGTYPE3 _argument3, ARGTYPE4 _argument4 ) const
         {
-            return ConnectionLog_Base::log( _nLogLevel, rMessage, m_nObjectID, _argument1, _argument2, _argument3, _argument4 );
+            ConnectionLog_Base::log( _nLogLevel, rMessage, m_nObjectID, _argument1, _argument2, _argument3, _argument4 );
         }
 
         template< typename ARGTYPE1, typename ARGTYPE2, typename ARGTYPE3, typename ARGTYPE4, typename ARGTYPE5 >
-        bool        log( const sal_Int32 _nLogLevel, const OUString& rMessage, ARGTYPE1 _argument1, ARGTYPE2 _argument2, ARGTYPE3 _argument3, ARGTYPE4 _argument4, ARGTYPE5 _argument5 ) const
+        void        log( const sal_Int32 _nLogLevel, const OUString& rMessage, ARGTYPE1 _argument1, ARGTYPE2 _argument2, ARGTYPE3 _argument3, ARGTYPE4 _argument4, ARGTYPE5 _argument5 ) const
         {
-            return ConnectionLog_Base::log( _nLogLevel, rMessage, m_nObjectID, _argument1, _argument2, _argument3, _argument4, _argument5 );
+            ConnectionLog_Base::log( _nLogLevel, rMessage, m_nObjectID, _argument1, _argument2, _argument3, _argument4, _argument5 );
         }
     };
 
 
-} } } // namespace connectivity::java::sql
+} // namespace connectivity::java::sql
 
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_SQL_CONNECTIONLOG_HXX

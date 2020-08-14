@@ -31,13 +31,9 @@
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/supportsservice.hxx>
-
-#include <string.h>
-#include <errno.h>
-#include <unistd.h>
+#include <tools/diagnose_ex.h>
 
 using com::sun::star::beans::PropertyValue;
 using com::sun::star::system::XSimpleMailClientSupplier;
@@ -52,16 +48,6 @@ using namespace com::sun::star::system::SimpleMailClientFlags;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::configuration;
-
-namespace
-{
-    Sequence< OUString > SAL_CALL Component_getSupportedServiceNames()
-    {
-        Sequence< OUString > aRet { "com.sun.star.system.SimpleCommandMail" };
-        return aRet;
-    }
-
-}
 
 CmdMailSuppl::CmdMailSuppl( const Reference< XComponentContext >& xContext ) :
     WeakImplHelper< XSimpleMailClientSupplier, XSimpleMailClient, XServiceInfo >()
@@ -145,7 +131,7 @@ void SAL_CALL CmdMailSuppl::sendSimpleMailMessage( const Reference< XSimpleMailM
     OUString aProgram;
     if ( FileBase::E_None != FileBase::getSystemPathFromFileURL(aProgramURL, aProgram))
     {
-        throw css::uno::Exception("Cound not convert executable path",
+        throw css::uno::Exception("Could not convert executable path",
             static_cast < XSimpleMailClient * > (this));
     }
 
@@ -157,17 +143,15 @@ void SAL_CALL CmdMailSuppl::sendSimpleMailMessage( const Reference< XSimpleMailM
         // Query XNameAccess interface of the org.openoffice.Office.Common/ExternalMailer
         // configuration node to retrieve the users preferred email application. This may
         // transparently by redirected to e.g. the corresponding GConf setting in GNOME.
-        OUString aConfigRoot = "org.openoffice.Office.Common/ExternalMailer";
 
         PropertyValue aProperty;
         aProperty.Name = "nodepath";
-        aProperty.Value <<= aConfigRoot;
+        aProperty.Value <<= OUString("org.openoffice.Office.Common/ExternalMailer");
 
         Sequence< Any > aArgumentList( 1 );
         aArgumentList[0] <<= aProperty;
 
-        Reference< XNameAccess > xNameAccess =
-            Reference< XNameAccess > (
+        Reference< XNameAccess > xNameAccess(
                 m_xConfigurationProvider->createInstanceWithArguments(
                     "com.sun.star.configuration.ConfigurationAccess",
                     aArgumentList ),
@@ -197,17 +181,17 @@ void SAL_CALL CmdMailSuppl::sendSimpleMailMessage( const Reference< XSimpleMailM
 
     }
 
-    catch(const RuntimeException &e )
+    catch(const RuntimeException & )
     {
+        TOOLS_WARN_EXCEPTION("shell", "RuntimeException caught accessing configuration provider" );
         m_xConfigurationProvider.clear();
-        SAL_WARN("shell", "RuntimeException caught accessing configuration provider. " << e.Message );
         throw;
     }
 
     Reference< XSimpleMailMessage2 > xMessage( xSimpleMailMessage, UNO_QUERY );
     if ( xMessage.is() )
     {
-        rtl::OUString sBody = xMessage->getBody();
+        OUString sBody = xMessage->getBody();
         if ( sBody.getLength() > 0 )
         {
             aBuffer.append(" --body ");
@@ -234,22 +218,20 @@ void SAL_CALL CmdMailSuppl::sendSimpleMailMessage( const Reference< XSimpleMailM
         appendShellWord(aBuffer, xSimpleMailMessage->getRecipient(), false);
     }
 
-    // Append carbon copy receipients set in the message
+    // Append carbon copy recipients set in the message
     Sequence< OUString > aStringList = xSimpleMailMessage->getCcRecipient();
-    sal_Int32 n, nmax = aStringList.getLength();
-    for ( n = 0; n < nmax; n++ )
+    for ( const auto& rString : std::as_const(aStringList) )
     {
         aBuffer.append(" --cc ");
-        appendShellWord(aBuffer, aStringList[n], false);
+        appendShellWord(aBuffer, rString, false);
     }
 
-    // Append blind carbon copy receipients set in the message
+    // Append blind carbon copy recipients set in the message
     aStringList = xSimpleMailMessage->getBccRecipient();
-    nmax = aStringList.getLength();
-    for ( n = 0; n < nmax; n++ )
+    for ( const auto& rString : std::as_const(aStringList) )
     {
         aBuffer.append(" --bcc ");
-        appendShellWord(aBuffer, aStringList[n], false);
+        appendShellWord(aBuffer, rString, false);
     }
 
     // Append subject if set in the message
@@ -261,11 +243,10 @@ void SAL_CALL CmdMailSuppl::sendSimpleMailMessage( const Reference< XSimpleMailM
 
     // Append attachments set in the message
     aStringList = xSimpleMailMessage->getAttachement();
-    nmax = aStringList.getLength();
-    for ( n = 0; n < nmax; n++ )
+    for ( const auto& rString : std::as_const(aStringList) )
     {
         OUString aSystemPath;
-        if ( FileBase::E_None == FileBase::getSystemPathFromFileURL(aStringList[n], aSystemPath) )
+        if ( FileBase::E_None == FileBase::getSystemPathFromFileURL(rString, aSystemPath) )
         {
             aBuffer.append(" --attach ");
             appendShellWord(aBuffer, aSystemPath, true);
@@ -285,7 +266,7 @@ void SAL_CALL CmdMailSuppl::sendSimpleMailMessage( const Reference< XSimpleMailM
 
 OUString SAL_CALL CmdMailSuppl::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.system.SimpleCommandMail");
+    return "com.sun.star.comp.system.SimpleCommandMail";
 }
 
 sal_Bool SAL_CALL CmdMailSuppl::supportsService( const OUString& ServiceName )
@@ -295,7 +276,14 @@ sal_Bool SAL_CALL CmdMailSuppl::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL CmdMailSuppl::getSupportedServiceNames(    )
 {
-    return Component_getSupportedServiceNames();
+    return { "com.sun.star.system.SimpleCommandMail" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+shell_CmdMailSuppl_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new CmdMailSuppl(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

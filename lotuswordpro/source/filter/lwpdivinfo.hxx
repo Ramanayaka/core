@@ -61,30 +61,30 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPDIVINFO_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPDIVINFO_HXX
 
-#include "lwpobj.hxx"
-#include "lwpobjid.hxx"
-#include "lwpatomholder.hxx"
-#include "lwpcolor.hxx"
-#include "lwpheader.hxx"
-#include "lwpdoc.hxx"
+#include <config_lgpl.h>
+
+#include <lwpobj.hxx>
+#include <lwpobjid.hxx>
+#include <lwpatomholder.hxx>
+#include <lwpcolor.hxx>
 
 #define STR_OleDivisionClassName    "OLEDivision"
 
 class LwpDivInfo : public LwpObject
 {
 public:
-    LwpDivInfo(LwpObjectHeader& objHdr, LwpSvStream* pStrm);
+    LwpDivInfo(LwpObjectHeader const & objHdr, LwpSvStream* pStrm);
     LwpObjectID& GetInitialLayoutID() { return m_InitialLayoutID; }
     LwpObjectID& GetFillerPageTextID() { return m_FillerPageTextID; }
-    OUString GetDivName() { return m_Name.str(); }
+    OUString const & GetDivName() const { return m_Name.str(); }
 
-    OUString GetClassName() { return m_ClassName.str(); }
-    inline bool HasContents();
-    inline bool IsOleDivision();
-    inline bool IsScrollable();
-    inline bool IsGotoable();
+    OUString const & GetClassName() const { return m_ClassName.str(); }
+    inline bool HasContents() const;
+    inline bool IsOleDivision() const;
+    inline bool IsScrollable() const;
+    inline bool IsGotoable() const;
     void GetNumberOfPages(sal_uInt16& nPageno);
-    sal_uInt16 GetMaxNumberOfPages();
+    sal_uInt16 GetMaxNumberOfPages() const;
 protected:
     void Read() override;
 private:
@@ -129,12 +129,12 @@ private:
 
 };
 
-inline bool LwpDivInfo::HasContents()
+inline bool LwpDivInfo::HasContents() const
 {
     return (m_nFlags & DI_HASCONTENTS) != 0;
 }
 
-inline bool LwpDivInfo::IsOleDivision()
+inline bool LwpDivInfo::IsOleDivision() const
 {
     OUString strClassName = GetClassName();
     if (strClassName == STR_OleDivisionClassName)
@@ -142,12 +142,12 @@ inline bool LwpDivInfo::IsOleDivision()
     return false;
 }
 
-inline bool LwpDivInfo::IsScrollable()
+inline bool LwpDivInfo::IsScrollable() const
 {
     return (m_nFlags & DI_SCROLLABLE) != 0;
 }
 
-inline bool LwpDivInfo::IsGotoable()
+inline bool LwpDivInfo::IsGotoable() const
 {
     return HasContents() && (IsScrollable() || IsOleDivision());
 }

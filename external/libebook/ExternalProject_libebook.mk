@@ -18,13 +18,14 @@ $(eval $(call gb_ExternalProject_register_targets,libebook,\
 $(eval $(call gb_ExternalProject_use_externals,libebook,\
 	boost_headers \
 	icu \
+	liblangtag \
 	libxml2 \
 	revenge \
 	zlib \
 ))
 
-# TODO: remove the generators/stream empty vars on libe-book update
 $(call gb_ExternalProject_get_state_target,libebook,build) :
+	$(call gb_Trace_StartRange,libebook,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		export PKG_CONFIG="" \
 		&& MAKE=$(MAKE) ./configure \
@@ -38,13 +39,15 @@ $(call gb_ExternalProject_get_state_target,libebook,build) :
 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
 			--disable-werror \
 			--disable-weffc \
-			CXXFLAGS="$(CXXFLAGS) $(ICU_UCHAR_TYPE) $(BOOST_CPPFLAGS) \
-				-DBOOST_ERROR_CODE_HEADER_ONLY -DBOOST_SYSTEM_NO_DEPRECATED" \
+			CXXFLAGS="$(gb_CXXFLAGS) $(if $(ENABLE_OPTIMIZED),$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS))" \
+			CPPFLAGS="$(CPPFLAGS) $(ICU_UCHAR_TYPE) $(BOOST_CPPFLAGS)" \
+			LANGTAG_CFLAGS="$(LIBLANGTAG_CFLAGS)" \
+			LANGTAG_LIBS="$(LIBLANGTAG_LIBS)" \
 			XML_CFLAGS="$(LIBXML_CFLAGS)" \
 			XML_LIBS="$(LIBXML_LIBS)" \
-			REVENGE_GENERATORS_CFLAGS=' ' REVENGE_GENERATORS_LIBS=' ' REVENGE_STREAM_CFLAGS=' ' REVENGE_STREAM_LIBS=' ' \
 			$(if $(CROSS_COMPILING),--build=$(BUILD_PLATFORM) --host=$(HOST_PLATFORM)) \
 		&& $(MAKE) \
 	)
+	$(call gb_Trace_EndRange,libebook,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

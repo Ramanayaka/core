@@ -18,18 +18,20 @@
  */
 #include "vbarows.hxx"
 #include "vbarow.hxx"
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/text/HoriOrientation.hpp>
 #include <com/sun/star/table/XCellRange.hpp>
 #include <ooo/vba/word/WdRowAlignment.hpp>
 #include <ooo/vba/word/WdConstants.hpp>
 #include <ooo/vba/word/WdRulerStyle.hpp>
 #include <basic/sberrors.hxx>
-#include "wordvbahelper.hxx"
 #include "vbacolumns.hxx"
 #include "vbatablehelper.hxx"
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
+
+namespace {
 
 class RowsEnumWrapper : public EnumerationHelper_BASE
 {
@@ -42,7 +44,7 @@ class RowsEnumWrapper : public EnumerationHelper_BASE
 public:
     RowsEnumWrapper( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< text::XTextTable >& xTextTable ) : mxParent( xParent ), mxContext( xContext ), mxTextTable( xTextTable ), nIndex( 0 )
     {
-        mxIndexAccess.set( mxTextTable->getRows(), uno::UNO_QUERY );
+        mxIndexAccess = mxTextTable->getRows();
     }
     virtual sal_Bool SAL_CALL hasMoreElements(  ) override
     {
@@ -58,6 +60,8 @@ public:
         throw container::NoSuchElementException();
     }
 };
+
+}
 
 SwVbaRows::SwVbaRows( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< text::XTextTable >& xTextTable, const uno::Reference< table::XTableRows >& xTableRows ) : SwVbaRows_BASE( xParent, xContext, uno::Reference< container::XIndexAccess >( xTableRows, uno::UNO_QUERY_THROW ) ), mxTextTable( xTextTable ), mxTableRows( xTableRows )
 {
@@ -197,7 +201,7 @@ void SAL_CALL SwVbaRows::Delete(  )
 void SAL_CALL SwVbaRows::SetLeftIndent( float LeftIndent, ::sal_Int32 RulerStyle )
 {
     uno::Reference< word::XColumns > xColumns( new SwVbaColumns( getParent(), mxContext, mxTextTable, mxTextTable->getColumns() ) );
-    sal_Int32 nIndent = (sal_Int32)( LeftIndent );
+    sal_Int32 nIndent = static_cast<sal_Int32>(LeftIndent);
     switch( RulerStyle )
     {
         case word::WdRulerStyle::wdAdjustFirstColumn:
@@ -263,7 +267,7 @@ void SwVbaRows::setIndentWithAdjustNone( sal_Int32 indent )
             "(nNewWidth <= 0) || (nWidth <= 0)"
         );
     }
-    double propFactor = (double)nNewWidth/(double)nWidth;
+    double propFactor = static_cast<double>(nNewWidth)/static_cast<double>(nWidth);
 
     // get all columns, calculate and set the new width of the columns
     uno::Reference< XCollection > xCol( xColumns, uno::UNO_QUERY_THROW );
@@ -272,7 +276,7 @@ void SwVbaRows::setIndentWithAdjustNone( sal_Int32 indent )
     {
         uno::Reference< word::XColumn > xColumn( xCol->Item( uno::makeAny( i ), uno::Any() ), uno::UNO_QUERY_THROW );
         sal_Int32 nColWidth = xColumn->getWidth();
-        sal_Int32 nNewColWidth = ( sal_Int32 )( propFactor * nColWidth );
+        sal_Int32 nNewColWidth = static_cast<sal_Int32>( propFactor * nColWidth );
         xColumn->setWidth( nNewColWidth );
     }
 
@@ -292,7 +296,7 @@ void SwVbaRows::setIndentWithAdjustNone( sal_Int32 indent )
     // get all columns, calculate and set the new width of the columns
     uno::Reference< XCollection > xCol( xColumns, uno::UNO_QUERY_THROW );
     sal_Int32 nColCount = xCol->getCount();
-    sal_Int32 nNewColWidth = (sal_Int32)( double( nNewWidth )/nColCount );
+    sal_Int32 nNewColWidth = static_cast<sal_Int32>( double( nNewWidth )/nColCount );
     for( sal_Int32 i = 0; i < nColCount; i++ )
     {
         uno::Reference< word::XColumn > xColumn( xCol->Item( uno::makeAny( i ), uno::Any() ), uno::UNO_QUERY_THROW );
@@ -317,7 +321,7 @@ void SAL_CALL SwVbaRows::Select(  )
 uno::Any SAL_CALL SwVbaRows::Item( const uno::Any& Index1, const uno::Any& /*not processed in this base class*/ )
 {
     sal_Int32 nIndex = 0;
-    if( ( Index1 >>= nIndex ) )
+    if( Index1 >>= nIndex )
     {
         if( nIndex <= 0 || nIndex > getCount() )
         {
@@ -349,18 +353,16 @@ SwVbaRows::createCollectionObject( const uno::Any& aSource )
 OUString
 SwVbaRows::getServiceImplName()
 {
-    return OUString("SwVbaRows");
+    return "SwVbaRows";
 }
 
 uno::Sequence<OUString>
 SwVbaRows::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.Rows";
-    }
+        "ooo.vba.word.Rows"
+    };
     return sNames;
 }
 

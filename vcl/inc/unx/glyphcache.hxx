@@ -21,26 +21,26 @@
 #define INCLUDED_VCL_INC_GENERIC_GLYPHCACHE_HXX
 
 #include <memory>
-#include <ft2build.h>
+#include <freetype/config/ftheader.h>
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
 
-#include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <tools/gen.hxx>
+#include <tools/solar.h>
+#include <unx/gendata.hxx>
 #include <vcl/dllapi.h>
-#include <vcl/metric.hxx>
+#include <vcl/outdev.hxx>
 
+#include <fontattributes.hxx>
 #include <fontinstance.hxx>
-#include <sallayout.hxx>
-#include "fontattributes.hxx"
-#include "impfontmetricdata.hxx"
-#include "hb-ot.h"
+#include <impfontmetricdata.hxx>
 
 #include <unordered_map>
 
-class FreetypeManager;
+class FreetypeFont;
+class FreetypeFontFile;
+class FreetypeFontInstance;
 class FreetypeFontInfo;
-class GlyphData;
 class FontConfigFontOptions;
 class PhysicalFontCollection;
 class FreetypeFont;
@@ -49,137 +49,111 @@ class SvpGcpHelper;
 namespace basegfx { class B2DPolyPolygon; }
 namespace vcl { struct FontCapabilities; }
 
-class VCL_DLLPUBLIC GlyphCache
+ /**
+  * The FreetypeManager caches various aspects of Freetype fonts
+  *
+  * It mainly consists of two std::unordered_map lists, which hold the items of the cache.
+  *
+  * They form kind of a tree, with FreetypeFontFile as the roots, referenced by multiple FreetypeFontInfo
+  * entries, which are referenced by the FreetypeFont items.
+  *
+  * All of these items have reference counters, but these don't control the items life-cycle, but that of
+  * the managed resources.
+  *
+  * The respective resources are:
+  *   FreetypeFontFile = holds the mmapped font file, as long as it's used by any FreetypeFontInfo.
+  *   FreetypeFontInfo = holds the FT_FaceRec_ object, as long as it's used by any FreetypeFont.
+  *   FreetypeFont     = holds the FT_SizeRec_ and is owned by a FreetypeFontInstance
+  *
+  * FreetypeFontInfo therefore is embedded in the Freetype subclass of PhysicalFontFace.
+  * FreetypeFont is owned by FreetypeFontInstance, the Freetype subclass of LogicalFontInstance.
+  *
+  * Nowadays there is not really a reason to have separate files for the classes, as the FreetypeManager
+  * is just about handling of Freetype based fonts, not some abstract glyphs.
+  **/
+class VCL_DLLPUBLIC FreetypeManager final
 {
 public:
-    explicit                GlyphCache();
-    virtual                 ~GlyphCache();
+    ~FreetypeManager();
 
-    static GlyphCache&      GetInstance();
+    static FreetypeManager& get();
 
-    void                    AddFontFile(
-                                const OString& rNormalizedName,
-                                int nFaceNum, sal_IntPtr nFontId,
+    void                    AddFontFile(const OString& rNormalizedName,
+                                int nFaceNum, int nVariantNum,
+                                sal_IntPtr nFontId,
                                 const FontAttributes&);
 
     void                    AnnounceFonts( PhysicalFontCollection* ) const;
 
-    FreetypeFont*           CacheFont( const FontSelectPattern& );
-    void                    UncacheFont( FreetypeFont& );
     void                    ClearFontCache();
-    void                    InvalidateAllGlyphs();
-    void                    ClearFontOptions();
+
+    FreetypeFont*           CreateFont(FreetypeFontInstance* pLogicalFont);
 
 private:
-    friend class FreetypeFont;
-    // used by FreetypeFont class only
-    void                    AddedGlyph( GlyphData& );
-    void                    RemovingGlyph();
-    void                    UsingGlyph( GlyphData& );
+    // to access the constructor (can't use InitFreetypeManager function, because it's private?!)
+    friend class GenericUnixSalData;
+    explicit FreetypeManager();
 
-private:
-    void                    GarbageCollect();
+    static void             InitFreetype();
+    FreetypeFontFile* FindFontFile(const OString& rNativeFileName);
 
-    // the GlyphCache's FontList matches a font request to a serverfont instance
-    // the FontList key's mpFontData member is reinterpreted as integer font id
-    struct IFSD_Equal{  bool operator()( const FontSelectPattern&, const FontSelectPattern& ) const; };
-    struct IFSD_Hash{ size_t operator()( const FontSelectPattern& ) const; };
-    typedef std::unordered_map<FontSelectPattern,FreetypeFont*,IFSD_Hash,IFSD_Equal > FontList;
+    typedef std::unordered_map<sal_IntPtr, std::shared_ptr<FreetypeFontInfo>> FontInfoList;
+    typedef std::unordered_map<const char*, std::unique_ptr<FreetypeFontFile>, rtl::CStringHash, rtl::CStringEqual> FontFileList;
 
-    FontList                maFontList;
-    sal_uLong               mnMaxSize;      // max overall cache size in bytes
-    mutable sal_uLong       mnBytesUsed;
-    mutable long            mnLruIndex;
-    mutable int             mnGlyphCount;
-    FreetypeFont*           mpCurrentGCFont;
+    FontInfoList            m_aFontInfoList;
+    sal_IntPtr              m_nMaxFontId;
 
-    FreetypeManager*        mpFtManager;
-};
-
-class GlyphData
-{
-public:
-                            GlyphData() : mnLruValue(0) {}
-
-    const tools::Rectangle&        GetBoundRect() const        { return maBoundRect; }
-    void                    SetBoundRect(tools::Rectangle r)   { maBoundRect = r; }
-
-    void                    SetLruValue( int n ) const  { mnLruValue = n; }
-    long                    GetLruValue() const         { return mnLruValue;}
-
-private:
-    tools::Rectangle               maBoundRect;
-
-    // used by GlyphCache for cache LRU algorithm
-    mutable long            mnLruValue;
+    FontFileList            m_aFontFileList;
 };
 
 class VCL_DLLPUBLIC FreetypeFont final
 {
 public:
-                            FreetypeFont( const FontSelectPattern&, FreetypeFontInfo* );
-                           ~FreetypeFont();
+                            ~FreetypeFont();
 
     const OString&          GetFontFileName() const;
     int                     GetFontFaceIndex() const;
+    int                     GetFontFaceVariation() const;
     bool                    TestFont() const { return mbFaceOk;}
     FT_Face                 GetFtFace() const;
-    int                     GetLoadFlags() const { return (mnLoadFlags & ~FT_LOAD_IGNORE_TRANSFORM); }
     const FontConfigFontOptions* GetFontOptions() const;
-    void                    ClearFontOptions();
     bool                    NeedsArtificialBold() const { return mbArtBold; }
     bool                    NeedsArtificialItalic() const { return mbArtItalic; }
 
-    const FontSelectPattern& GetFontSelData() const      { return maFontSelData; }
-
-    void                    GetFontMetric(ImplFontMetricDataRef&) const;
-    const unsigned char*    GetTable( const char* pName, sal_uLong* pLength );
-    const FontCharMapRef    GetFontCharMap() const;
+    void                    GetFontMetric(ImplFontMetricDataRef const &) const;
+    const unsigned char*    GetTable( const char* pName, sal_uLong* pLength ) const;
+    FontCharMapRef          GetFontCharMap() const;
     bool                    GetFontCapabilities(vcl::FontCapabilities &) const;
 
-    const tools::Rectangle&        GetGlyphBoundRect(const GlyphItem& rGlyph);
-    bool                    GetGlyphOutline(const GlyphItem& rGlyph, basegfx::B2DPolyPolygon&) const;
+    bool                    GetGlyphBoundRect(sal_GlyphId, tools::Rectangle&, bool) const;
+    bool                    GetGlyphOutline(sal_GlyphId, basegfx::B2DPolyPolygon&, bool) const;
     bool                    GetAntialiasAdvice() const;
-    hb_font_t*              GetHbFont() { return mpHbFont; }
-    void                    SetHbFont( hb_font_t* pHbFont ) { mpHbFont = pHbFont; }
+
+    void                    SetFontVariationsOnHBFont(hb_font_t* pHbFace) const;
+
+    // tdf#127189 FreeType <= 2.8 will fail to render stretched horizontal brace glyphs
+    // in starmath at a fairly low stretch ratio. This appears fixed in 2.9 with
+    // https://git.savannah.gnu.org/cgit/freetype/freetype2.git/commit/?id=91015cb41d8f56777f93394f5a60914bc0c0f330
+    // "Improve complex rendering at high ppem"
+    static bool             AlmostHorizontalDrainsRenderingPool(int nRatio, const FontSelectPattern& rFSD);
 
 private:
-    friend class GlyphCache;
     friend class FreetypeFontInstance;
-    friend class X11SalGraphics;
-    friend class CairoTextRender;
+    friend class FreetypeManager;
 
-    void                    AddRef() const      { ++mnRefCount; }
-    long                    GetRefCount() const { return mnRefCount; }
-    long                    Release() const;
-    sal_uLong               GetByteCount() const { return mnBytesUsed; }
-
-    void                    InitGlyphData(const GlyphItem&, GlyphData&) const;
-    void                    GarbageCollect( long );
-    void                    ReleaseFromGarbageCollect();
+    explicit FreetypeFont(FreetypeFontInstance&, std::shared_ptr<FreetypeFontInfo>& rFontInfo);
 
     void                    ApplyGlyphTransform(bool bVertical, FT_Glyph) const;
 
-    typedef std::unordered_map<int,GlyphData> GlyphList;
-    mutable GlyphList       maGlyphList;
-
-    const FontSelectPattern maFontSelData;
-
-    // used by GlyphCache for cache LRU algorithm
-    mutable long            mnRefCount;
-    mutable sal_uLong       mnBytesUsed;
-
-    FreetypeFont*           mpPrevGCFont;
-    FreetypeFont*           mpNextGCFont;
+    FreetypeFontInstance& mrFontInstance;
 
     // 16.16 fixed point values used for a rotated font
     long                    mnCos;
     long                    mnSin;
 
     int                     mnWidth;
-    int                     mnPrioEmbedded;
     int                     mnPrioAntiAlias;
-    FreetypeFontInfo*       mpFontInfo;
+    std::shared_ptr<FreetypeFontInfo> mxFontInfo;
     FT_Int                  mnLoadFlags;
     double                  mfStretch;
     FT_FaceRec_*            maFaceFT;
@@ -190,21 +164,6 @@ private:
     bool                    mbFaceOk;
     bool                    mbArtItalic;
     bool                    mbArtBold;
-
-    hb_font_t*              mpHbFont;
-};
-
-// a class for cache entries for physical font instances that are based on serverfonts
-class VCL_DLLPUBLIC FreetypeFontInstance : public LogicalFontInstance
-{
-public:
-                            FreetypeFontInstance( FontSelectPattern& );
-    virtual                 ~FreetypeFontInstance() override;
-
-    void                    SetFreetypeFont(FreetypeFont* p);
-
-private:
-    FreetypeFont*           mpFreetypeFont;
 };
 
 #endif // INCLUDED_VCL_INC_GENERIC_GLYPHCACHE_HXX

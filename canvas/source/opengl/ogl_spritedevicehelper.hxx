@@ -23,10 +23,9 @@
 namespace vcl { class Window; }
 class SystemChildWindow;
 namespace basegfx{ class B2IVector; class B2DHomMatrix; }
-namespace com { namespace sun { namespace star {
-    namespace awt { struct Rectangle; }
-    namespace geometry { struct AffineMatrix2D; }
-}}}
+namespace com::sun::star::awt { struct Rectangle; }
+namespace com::sun::star::geometry { struct AffineMatrix2D; }
+
 
 namespace oglcanvas
 {
@@ -112,19 +111,7 @@ namespace oglcanvas
         /// Get instance of internal texture cache
         TextureCache& getTextureCache() const;
 
-        bool activateWindowContext();
-
     private:
-        void resize( const ::basegfx::B2IVector& rNewSize );
-
-        /** Phyical output device
-
-            Deliberately not a refcounted reference, because of
-            potential circular references for canvas. Needed to
-            create bitmaps
-         */
-        css::rendering::XGraphicDevice*                    mpDevice;
-
         /// Pointer to sprite canvas (owner of this helper), needed to create bitmaps
         SpriteCanvas*                                      mpSpriteCanvas;
 

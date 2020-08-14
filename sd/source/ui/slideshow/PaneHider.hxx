@@ -20,8 +20,10 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESHOW_PANEHIDER_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESHOW_PANEHIDER_HXX
 
-#include <com/sun/star/drawing/framework/XConfiguration.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
+#include <com/sun/star/uno/Reference.hxx>
+
+namespace com::sun::star::drawing::framework { class XConfiguration; }
+namespace com::sun::star::drawing::framework { class XConfigurationController; }
 
 namespace sd {
 
@@ -45,7 +47,6 @@ public:
     ~PaneHider();
 
 private:
-    const ViewShell& mrViewShell;
     /** Remember whether the visibility states of the windows of the  panes
         has been modified and have to be restored.
     */

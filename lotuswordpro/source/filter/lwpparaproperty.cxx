@@ -59,7 +59,7 @@
  ************************************************************************/
 
 #include "lwpparaproperty.hxx"
-#include "lwpobjtags.hxx"
+#include <lwpobjtags.hxx>
 #include "lwppara.hxx"
 
 void LwpPara::ReadPropertyList(LwpObjectStream* pFile)
@@ -130,8 +130,7 @@ void LwpPara::ReadPropertyList(LwpObjectStream* pFile)
         // Stick it at the beginning of the list
         if (NewProp)
         {
-            NewProp->insert(m_pProps, nullptr);
-            m_pProps = NewProp;
+            m_vProps.emplace(m_vProps.begin(), NewProp);
         }
     }
 }

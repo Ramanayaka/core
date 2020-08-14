@@ -638,23 +638,37 @@ sub replace_setup_variables
 
     # string $buildid, which is used to replace the setup variable <buildid>
 
-    my $localminor = "flat";
-    if ( $installer::globals::minor ne "" ) { $localminor = $installer::globals::minor; }
-    else { $localminor = $installer::globals::lastminor; }
-
     my $localbuild = $installer::globals::build;
 
     if ( $localbuild =~ /^\s*(\w+?)(\d+)\s*$/ ) { $localbuild = $2; }   # using "680" instead of "src680"
 
     my $buildidstring = `cd $ENV{'SRCDIR'} 2>&1 >/dev/null && git log -n 1 --pretty=format:"%H"`;
     if ($? || !$buildidstring) {
-        $buildidstring = $localbuild . $localminor . "(Build:" . $installer::globals::buildid . ")";
+        $buildidstring = $localbuild . "(Build:" . $installer::globals::buildid . ")";
     }
-
-    if ( $localminor =~ /^\s*\w(\d+)\w*\s*$/ ) { $localminor = $1; }
 
     my $updateid = $productname . "_" . $libo_version_major . "_" . $$languagestringref;
     $updateid =~ s/ /_/g;
+
+    my $updatechannel = "";
+    if ( $ENV{'UPDATE_CONFIG'} && $ENV{'UPDATE_CONFIG'} ne "")
+    {
+        open(CONFIG, glob($ENV{'UPDATE_CONFIG'}));
+        while (<CONFIG>)
+        {
+            chomp;
+            if (/^s*(\S+)=(\S+)$/)
+            {
+                $key = $1;
+                $val = $2;
+                if ($key eq "channel")
+                {
+                    $updatechannel = $val;
+                }
+            }
+        }
+        close(CONFIG);
+    }
 
     for ( my $i = 0; $i <= $#{$itemsarrayref}; $i++ )
     {
@@ -669,11 +683,10 @@ sub replace_setup_variables
         $value =~ s/\<alllanguages\>/$languagesstring/;
         $value =~ s/\<sourceid\>/$installer::globals::build/;
         $value =~ s/\<updateid\>/$updateid/;
+        $value =~ s/\<updatechannel\>/$updatechannel/;
         $value =~ s/\<pkgformat\>/$installer::globals::packageformat/;
         $ENV{'OOO_VENDOR'} = "" if !defined $ENV{'OOO_VENDOR'};
         $value =~ s/\<vendor\>/$ENV{'OOO_VENDOR'}/;
-        $ENV{'BUILD_VER_STRING'} = "" if !defined $ENV{'BUILD_VER_STRING'};
-        $value =~ s/\<buildversion\>/$ENV{'BUILD_VER_STRING'}/;
 
         $oneitem->{'Value'} = $value;
     }
@@ -804,7 +817,7 @@ sub get_Directoryname_From_Directorygid
 }
 
 ##################################################################
-# Getting destination direcotory for links, files and profiles
+# Getting destination directory for links, files and profiles
 ##################################################################
 
 sub get_Destination_Directory_For_Item_From_Directorylist       # this is used for Files, Profiles and Links
@@ -1569,7 +1582,10 @@ sub optimize_list
 
 sub collect_directories_from_filesarray
 {
-    my ($filesarrayref) = @_;
+    my ($filesarrayref, $unixlinksarrayref) = @_;
+    my @allfiles;
+    push @allfiles, @{$filesarrayref};
+    push @allfiles, @{$unixlinksarrayref};
 
     my @alldirectories = ();
     my %alldirectoryhash = ();
@@ -1579,9 +1595,9 @@ sub collect_directories_from_filesarray
     # Preparing this already as hash, although the only needed value at the moment is the HostName
     # But also adding: "specificlanguage" and "Dir" (for instance gid_Dir_Program)
 
-    for ( my $i = 0; $i <= $#{$filesarrayref}; $i++ )
+    for ( my $i = 0; $i <= $#allfiles; $i++ )
     {
-        my $onefile = ${$filesarrayref}[$i];
+        my $onefile = $allfiles[$i];
         my $destinationpath = $onefile->{'destination'};
         installer::pathanalyzer::get_path_from_fullqualifiedname(\$destinationpath);
         $destinationpath =~ s/\Q$installer::globals::separator\E\s*$//;     # removing ending slashes or backslashes
@@ -1704,7 +1720,7 @@ sub collect_directories_with_create_flag_from_directoryarray
                         $directoryhash{'HostName'} = $directoryname;
                         $directoryhash{'specificlanguage'} = $onedir->{'specificlanguage'};
                         $directoryhash{'Dir'} = $onedir->{'gid'};
-                        if ( ! $installer::globals::iswindowsbuild ) { $directoryhash{'Styles'} = "(CREATE)"; } # Exeception for Windows?
+                        if ( ! $installer::globals::iswindowsbuild ) { $directoryhash{'Styles'} = "(CREATE)"; } # Exception for Windows?
 
                         # saving also the modules
                         $directoryhash{'modules'} = $onedir->{'modules'};

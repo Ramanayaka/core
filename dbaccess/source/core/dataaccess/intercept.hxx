@@ -45,7 +45,7 @@ public:
     explicit OInterceptor( ODocumentDefinition* _pContentHolder );
 
     /// @throws css::uno::RuntimeException
-    void SAL_CALL dispose();
+    void dispose();
 
     //XDispatch
     virtual void SAL_CALL
@@ -104,8 +104,7 @@ private:
 
     css::uno::Sequence< OUString >      m_aInterceptedURL;
 
-    comphelper::OInterfaceContainerHelper2*    m_pDisposeEventListeners;
-    PropertyChangeListenerContainer*    m_pStatCL;
+    std::unique_ptr<PropertyChangeListenerContainer>           m_pStatCL;
 };
 
 }   // namespace dbaccess

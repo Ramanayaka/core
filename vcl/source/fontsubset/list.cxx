@@ -25,10 +25,12 @@
 /*|  Author: Alexander Gelfenbain                       |*/
 /*[]---------------------------------------------------[]*/
 
-#include <rtl/alloc.h>
 #include <assert.h>
+#include <cstdlib>
 
 #include "list.h"
+
+namespace {
 
 /*- private data types */
 struct lnode {
@@ -38,6 +40,8 @@ struct lnode {
     void *value;
 
 };
+
+}
 
 struct list_ {
     lnode *head, *tail, *cptr;
@@ -49,7 +53,7 @@ struct list_ {
 
 static lnode *newNode(void *el)
 {
-    lnode *ptr = static_cast<lnode *>(rtl_allocateMemory(sizeof(lnode)));
+    lnode *ptr = static_cast<lnode *>(std::malloc(sizeof(lnode)));
     assert(ptr != nullptr);
 
     ptr->value = el;
@@ -84,7 +88,7 @@ static lnode *appendPrim(list pThis, void *el)
 /*- public methods  */
 list listNewEmpty()                           /*- default ctor */
 {
-    list pThis = static_cast<list>(rtl_allocateMemory(sizeof(struct list_)));
+    list pThis = static_cast<list>(std::malloc(sizeof(struct list_)));
     assert(pThis != nullptr);
 
     pThis->aCount = 0;
@@ -98,7 +102,7 @@ void listDispose(list pThis)                       /*- dtor */
 {
     assert(pThis != nullptr);
     listClear(pThis);
-    rtl_freeMemory(pThis);
+    std::free(pThis);
 }
 
 void listSetElementDtor(list pThis, list_destructor f)
@@ -199,7 +203,7 @@ list   listRemove(list pThis)
 
     if (pThis->eDtor) pThis->eDtor(pThis->cptr->value);        /* call the dtor callback */
 
-    rtl_freeMemory(pThis->cptr);
+    std::free(pThis->cptr);
     pThis->aCount--;
     pThis->cptr = ptr;
     return pThis;
@@ -212,7 +216,7 @@ list   listClear(list pThis)
     while (node) {
         ptr = node->next;
         if (pThis->eDtor) pThis->eDtor(node->value);           /* call the dtor callback */
-        rtl_freeMemory(node);
+        std::free(node);
         pThis->aCount--;
         node = ptr;
     }

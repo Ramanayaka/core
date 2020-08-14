@@ -17,18 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "localizationmgr.hxx"
+#include <localizationmgr.hxx>
 
-#include "basidesh.hxx"
-#include "baside3.hxx"
-#include "iderdll.hxx"
-#include "dlged.hxx"
-#include "managelang.hxx"
+#include <basidesh.hxx>
+#include <baside3.hxx>
+#include <basobj.hxx>
+#include <iderdll.hxx>
+#include <dlged.hxx>
+#include <managelang.hxx>
 
 #include <com/sun/star/frame/XLayoutManager.hpp>
 #include <com/sun/star/resource/MissingResourceException.hpp>
 #include <com/sun/star/resource/XStringResourceSupplier.hpp>
-#include <sfx2/dispatch.hxx>
+#include <sfx2/bindings.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <sfx2/viewfrm.hxx>
+#include <tools/debug.hxx>
+#include <osl/diagnose.h>
 
 namespace basctl
 {
@@ -42,9 +47,9 @@ using namespace ::com::sun::star::resource;
 namespace
 {
 
-OUString const aDot(".");
-OUString const aEsc("&");
-OUString const aSemi(";");
+OUStringLiteral const aDot(".");
+OUStringLiteral const aEsc("&");
+OUStringLiteral const aSemi(";");
 
 } // namespace
 
@@ -63,7 +68,7 @@ LocalizationMgr::LocalizationMgr(
 bool LocalizationMgr::isLibraryLocalized ()
 {
     if (m_xStringResourceManager.is())
-        return m_xStringResourceManager->getLocales().getLength() > 0;
+        return m_xStringResourceManager->getLocales().hasElements();
     return false;
 }
 
@@ -73,22 +78,22 @@ void LocalizationMgr::handleTranslationbar ()
 
     Reference< beans::XPropertySet > xFrameProps
         ( m_pShell->GetViewFrame()->GetFrame().GetFrameInterface(), uno::UNO_QUERY );
-    if ( xFrameProps.is() )
+    if ( !xFrameProps.is() )
+        return;
+
+    Reference< css::frame::XLayoutManager > xLayoutManager;
+    uno::Any a = xFrameProps->getPropertyValue( "LayoutManager" );
+    a >>= xLayoutManager;
+    if ( xLayoutManager.is() )
     {
-        Reference< css::frame::XLayoutManager > xLayoutManager;
-        uno::Any a = xFrameProps->getPropertyValue( "LayoutManager" );
-        a >>= xLayoutManager;
-        if ( xLayoutManager.is() )
+        if ( !isLibraryLocalized() )
         {
-            if ( !isLibraryLocalized() )
-            {
-                xLayoutManager->destroyElement( aToolBarResName );
-            }
-            else
-            {
-                xLayoutManager->createElement( aToolBarResName );
-                xLayoutManager->requestElement( aToolBarResName );
-            }
+            xLayoutManager->destroyElement( aToolBarResName );
+        }
+        else
+        {
+            xLayoutManager->createElement( aToolBarResName );
+            xLayoutManager->requestElement( aToolBarResName );
         }
     }
 }
@@ -97,7 +102,7 @@ void LocalizationMgr::handleTranslationbar ()
 // TODO: -> export from toolkit
 
 
-bool isLanguageDependentProperty( const OUString& aName )
+static bool isLanguageDependentProperty( const OUString& aName )
 {
     static struct Prop
     {
@@ -160,7 +165,7 @@ void LocalizationMgr::implEnableDisableResourceForAllLibraryDialogs( HandleResou
 }
 
 
-OUString implCreatePureResourceId
+static OUString implCreatePureResourceId
     ( const OUString& aDialogName, const OUString& aCtrlName,
       const OUString& aPropName,
       const Reference< XStringResourceManager >& xStringResourceManager )
@@ -172,8 +177,7 @@ OUString implCreatePureResourceId
                         + aDot;
     if( !aCtrlName.isEmpty() )
     {
-        aPureIdStr += aCtrlName;
-        aPureIdStr += aDot;
+        aPureIdStr += aCtrlName + aDot;
     }
     aPureIdStr += aPropName;
     return aPureIdStr;
@@ -460,9 +464,6 @@ sal_Int32 LocalizationMgr::implHandleControlResourceProperties
                     // Remove Id for all locales
                     else if( eMode == REMOVE_IDS_FROM_RESOURCE )
                     {
-                        Sequence< OUString > aNewPropStrings;
-                        aNewPropStrings.realloc( nPropStringCount );
-
                         const Locale* pLocales = aLocaleSeq.getConstArray();
                         sal_Int32 i;
                         for ( i = 0; i < nPropStringCount; ++i )
@@ -715,44 +716,44 @@ void LocalizationMgr::handleRemoveLocales( const Sequence< Locale >& aLocaleSeq 
 
 void LocalizationMgr::handleSetDefaultLocale(const Locale& rLocale)
 {
-    if( m_xStringResourceManager.is() )
-    {
-        try
-        {
-            m_xStringResourceManager->setDefaultLocale(rLocale);
-        }
-        catch(const IllegalArgumentException&)
-        {
-            OSL_FAIL( "LocalizationMgr::handleSetDefaultLocale: Invalid locale" );
-        }
+    if( !m_xStringResourceManager.is() )
+        return;
 
-        // update locale toolbar
-        if (SfxBindings* pBindings = GetBindingsPtr())
-            pBindings->Invalidate( SID_BASICIDE_CURRENT_LANG );
+    try
+    {
+        m_xStringResourceManager->setDefaultLocale(rLocale);
     }
+    catch(const IllegalArgumentException&)
+    {
+        OSL_FAIL( "LocalizationMgr::handleSetDefaultLocale: Invalid locale" );
+    }
+
+    // update locale toolbar
+    if (SfxBindings* pBindings = GetBindingsPtr())
+        pBindings->Invalidate( SID_BASICIDE_CURRENT_LANG );
 }
 
 void LocalizationMgr::handleSetCurrentLocale(const css::lang::Locale& rLocale)
 {
-    if( m_xStringResourceManager.is() )
+    if( !m_xStringResourceManager.is() )
+        return;
+
+    try
     {
-        try
-        {
-            m_xStringResourceManager->setCurrentLocale(rLocale, false);
-        }
-        catch(const IllegalArgumentException&)
-        {
-            OSL_FAIL( "LocalizationMgr::handleSetCurrentLocale: Invalid locale" );
-        }
-
-        // update locale toolbar
-        if (SfxBindings* pBindings = GetBindingsPtr())
-            pBindings->Invalidate( SID_BASICIDE_CURRENT_LANG );
-
-        if (DialogWindow* pDlgWin = dynamic_cast<DialogWindow*>(m_pShell->GetCurWindow()))
-            if (!pDlgWin->IsSuspended())
-                pDlgWin->GetEditor().UpdatePropertyBrowserDelayed();
+        m_xStringResourceManager->setCurrentLocale(rLocale, false);
     }
+    catch(const IllegalArgumentException&)
+    {
+        OSL_FAIL( "LocalizationMgr::handleSetCurrentLocale: Invalid locale" );
+    }
+
+    // update locale toolbar
+    if (SfxBindings* pBindings = GetBindingsPtr())
+        pBindings->Invalidate( SID_BASICIDE_CURRENT_LANG );
+
+    if (DialogWindow* pDlgWin = dynamic_cast<DialogWindow*>(m_pShell->GetCurWindow()))
+        if (!pDlgWin->IsSuspended())
+            pDlgWin->GetEditor().UpdatePropertyBrowserDelayed();
 }
 
 void LocalizationMgr::handleBasicStarted()
@@ -774,12 +775,12 @@ void LocalizationMgr::handleBasicStopped()
 }
 
 
-DialogWindow* FindDialogWindowForEditor( DlgEditor* pEditor )
+static DialogWindow* FindDialogWindowForEditor( DlgEditor const * pEditor )
 {
     Shell::WindowTable const& aWindowTable = GetShell()->GetWindowTable();
-    for (Shell::WindowTableIt it = aWindowTable.begin(); it != aWindowTable.end(); ++it )
+    for (auto const& window : aWindowTable)
     {
-        BaseWindow* pWin = it->second;
+        BaseWindow* pWin = window.second;
         if (!pWin->IsSuspended())
             if (DialogWindow* pDlgWin = dynamic_cast<DialogWindow*>(pWin))
             {
@@ -791,7 +792,7 @@ DialogWindow* FindDialogWindowForEditor( DlgEditor* pEditor )
 }
 
 
-void LocalizationMgr::setControlResourceIDsForNewEditorObject( DlgEditor* pEditor,
+void LocalizationMgr::setControlResourceIDsForNewEditorObject( DlgEditor const * pEditor,
     const Any& rControlAny, const OUString& aCtrlName )
 {
     // Get library for DlgEditor
@@ -808,7 +809,7 @@ void LocalizationMgr::setControlResourceIDsForNewEditorObject( DlgEditor* pEdito
         LocalizationMgr::getStringResourceFromDialogLibrary( xDialogLib );
 
     // Set resource property
-    if( !xStringResourceManager.is() || xStringResourceManager->getLocales().getLength() == 0 )
+    if( !xStringResourceManager.is() || !xStringResourceManager->getLocales().hasElements() )
         return;
 
     OUString aDialogName = pDlgWin->GetName();
@@ -821,7 +822,7 @@ void LocalizationMgr::setControlResourceIDsForNewEditorObject( DlgEditor* pEdito
         MarkDocumentModified( aDocument );
 }
 
-void LocalizationMgr::renameControlResourceIDsForEditorObject( DlgEditor* pEditor,
+void LocalizationMgr::renameControlResourceIDsForEditorObject( DlgEditor const * pEditor,
     const css::uno::Any& rControlAny, const OUString& aNewCtrlName )
 {
     // Get library for DlgEditor
@@ -838,7 +839,7 @@ void LocalizationMgr::renameControlResourceIDsForEditorObject( DlgEditor* pEdito
         LocalizationMgr::getStringResourceFromDialogLibrary( xDialogLib );
 
     // Set resource property
-    if( !xStringResourceManager.is() || xStringResourceManager->getLocales().getLength() == 0 )
+    if( !xStringResourceManager.is() || !xStringResourceManager->getLocales().hasElements() )
         return;
 
     OUString aDialogName = pDlgWin->GetName();
@@ -849,7 +850,7 @@ void LocalizationMgr::renameControlResourceIDsForEditorObject( DlgEditor* pEdito
 }
 
 
-void LocalizationMgr::deleteControlResourceIDsForDeletedEditorObject( DlgEditor* pEditor,
+void LocalizationMgr::deleteControlResourceIDsForDeletedEditorObject( DlgEditor const * pEditor,
     const Any& rControlAny, const OUString& aCtrlName )
 {
     // Get library for DlgEditor
@@ -884,23 +885,23 @@ void LocalizationMgr::setStringResourceAtDialog( const ScriptDocument& rDocument
         LocalizationMgr::getStringResourceFromDialogLibrary( xDialogLib );
 
     // Set resource property
-    if( xStringResourceManager.is() )
-    {
-        // Not very elegant as dialog may or may not be localized yet
-        // TODO: Find better place, where dialog is created
-        if( xStringResourceManager->getLocales().getLength() > 0 )
-        {
-            Any aDialogCtrl;
-            aDialogCtrl <<= xDialogModel;
-            Reference< XStringResourceResolver > xDummyStringResolver;
-            implHandleControlResourceProperties( aDialogCtrl, aDlgName,
-                OUString(), xStringResourceManager,
-                xDummyStringResolver, SET_IDS );
-        }
+    if( !xStringResourceManager.is() )
+        return;
 
-        Reference< beans::XPropertySet > xDlgPSet( xDialogModel, UNO_QUERY );
-        xDlgPSet->setPropertyValue( "ResourceResolver", Any(xStringResourceManager) );
+    // Not very elegant as dialog may or may not be localized yet
+    // TODO: Find better place, where dialog is created
+    if( xStringResourceManager->getLocales().hasElements() )
+    {
+        Any aDialogCtrl;
+        aDialogCtrl <<= xDialogModel;
+        Reference< XStringResourceResolver > xDummyStringResolver;
+        implHandleControlResourceProperties( aDialogCtrl, aDlgName,
+            OUString(), xStringResourceManager,
+            xDummyStringResolver, SET_IDS );
     }
+
+    Reference< beans::XPropertySet > xDlgPSet( xDialogModel, UNO_QUERY );
+    xDlgPSet->setPropertyValue( "ResourceResolver", Any(xStringResourceManager) );
 }
 
 void LocalizationMgr::renameStringResourceIDs( const ScriptDocument& rDocument, const OUString& aLibName,
@@ -1019,7 +1020,7 @@ void LocalizationMgr::setResourceIDsForDialog( const Reference< container::XName
     }
 }
 
-void LocalizationMgr::copyResourcesForPastedEditorObject( DlgEditor* pEditor,
+void LocalizationMgr::copyResourcesForPastedEditorObject( DlgEditor const * pEditor,
     const Any& rControlAny, const OUString& aCtrlName,
     const Reference< XStringResourceResolver >& xSourceStringResolver )
 {
@@ -1037,7 +1038,7 @@ void LocalizationMgr::copyResourcesForPastedEditorObject( DlgEditor* pEditor,
         LocalizationMgr::getStringResourceFromDialogLibrary( xDialogLib );
 
     // Set resource property
-    if( !xStringResourceManager.is() || xStringResourceManager->getLocales().getLength() == 0 )
+    if( !xStringResourceManager.is() || !xStringResourceManager->getLocales().hasElements() )
         return;
 
     OUString aDialogName = pDlgWin->GetName();
@@ -1054,11 +1055,10 @@ void LocalizationMgr::copyResourceForDroppedDialog( const Reference< container::
         return;
 
     // Dialog as control
-    OUString aDummyName;
     Any aDialogCtrl;
     aDialogCtrl <<= xDialogModel;
     implHandleControlResourceProperties( aDialogCtrl, aDialogName,
-        aDummyName, xStringResourceManager, xSourceStringResolver, MOVE_RESOURCES );
+        OUString(), xStringResourceManager, xSourceStringResolver, MOVE_RESOURCES );
 
     // Handle all controls
     Sequence< OUString > aNames = xDialogModel->getElementNames();

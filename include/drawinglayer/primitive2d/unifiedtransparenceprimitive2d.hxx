@@ -17,18 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_UNIFIEDTRANSPARENCEPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_UNIFIEDTRANSPARENCEPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
 #include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** UnifiedTransparencePrimitive2D class
 
             This primitive encapsulates a child hierarchy and defines
@@ -38,7 +35,7 @@ namespace drawinglayer
             regions of combined transparency, but be all rendered with the
             defined, single transparency.
          */
-        class DRAWINGLAYER_DLLPUBLIC UnifiedTransparencePrimitive2D : public GroupPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC UnifiedTransparencePrimitive2D final : public GroupPrimitive2D
         {
         private:
             /// the unified transparence
@@ -63,12 +60,9 @@ namespace drawinglayer
             virtual void get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& rViewInformation) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_UNIFIEDTRANSPARENCEPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

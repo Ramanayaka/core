@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <SidebarTxtControl.hxx>
+#include "SidebarTxtControl.hxx"
 
-#include <SidebarTxtControlAcc.hxx>
+#include "SidebarTxtControlAcc.hxx"
 #include <docsh.hxx>
 #include <doc.hxx>
 
@@ -27,38 +27,37 @@
 #include <edtwin.hxx>
 
 #include <cmdid.h>
-#include <docvw.hrc>
+#include <strings.hrc>
 
 #include <unotools/securityoptions.hxx>
 
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
+#include <sfx2/sfxhelp.hxx>
 
+#include <vcl/commandevent.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/help.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/weld.hxx>
 #include <vcl/gradient.hxx>
-#include <vcl/scrbar.hxx>
 #include <vcl/settings.hxx>
 
 #include <editeng/outliner.hxx>
 #include <editeng/editeng.hxx>
 #include <editeng/editview.hxx>
 #include <editeng/flditem.hxx>
-#include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <comphelper/lok.hxx>
 #include <sfx2/lokhelper.hxx>
 
 #include <uitool.hxx>
 #include <view.hxx>
 #include <wrtsh.hxx>
-#include <shellres.hxx>
 #include <AnnotationWin.hxx>
+#include <redline.hxx>
 #include <memory>
 
-namespace sw { namespace sidebarwindows {
+namespace sw::sidebarwindows {
 
 SidebarTextControl::SidebarTextControl( sw::annotation::SwAnnotationWin& rSidebarWin,
                                       WinBits nBits,
@@ -111,30 +110,29 @@ void SidebarTextControl::LoseFocus()
 
 void SidebarTextControl::RequestHelp(const HelpEvent &rEvt)
 {
-    sal_uInt16 nResId = 0;
+    const char* pResId = nullptr;
     switch( mrSidebarWin.GetLayoutStatus() )
     {
-        case SwPostItHelper::INSERTED:  nResId = STR_REDLINE_INSERT; break;
-        case SwPostItHelper::DELETED:   nResId = STR_REDLINE_DELETE; break;
-        default: nResId = 0;
+        case SwPostItHelper::INSERTED:  pResId = STR_REDLINE_INSERT; break;
+        case SwPostItHelper::DELETED:   pResId = STR_REDLINE_DELETE; break;
+        default: pResId = nullptr;
     }
 
     SwContentAtPos aContentAtPos( IsAttrAtPos::Redline );
-    if ( nResId &&
+    if ( pResId &&
          mrDocView.GetWrtShell().GetContentAtPos( mrSidebarWin.GetAnchorPos(), aContentAtPos ) )
     {
-        OUString sText = SwResId( nResId ) + ": " +
+        OUString sText = SwResId(pResId) + ": " +
                         aContentAtPos.aFnd.pRedl->GetAuthorString() + " - " +
                         GetAppLangDateTimeString( aContentAtPos.aFnd.pRedl->GetTimeStamp() );
         Help::ShowQuickHelp( this,PixelToLogic(tools::Rectangle(rEvt.GetMousePosPixel(),Size(50,10))),sText);
     }
 }
 
-void SidebarTextControl::Draw(OutputDevice* pDev, const Point& rPt, const Size& rSz, DrawFlags)
+void SidebarTextControl::Draw(OutputDevice* pDev, const Point& rPt, DrawFlags)
 {
     //Take the control's height, but overwrite the scrollbar area if there was one
     Size aSize(PixelToLogic(GetSizePixel()));
-    aSize.Width() = rSz.Width();
 
     if ( GetTextView() )
     {
@@ -242,12 +240,9 @@ void SidebarTextControl::KeyInput( const KeyEvent& rKeyEvt )
     {
         mrSidebarWin.SwitchToFieldPos();
     }
-    else if ( nKey == KEY_INSERT )
+    else if ( rKeyCode.GetFullCode() == KEY_INSERT )
     {
-        if ( !rKeyCode.IsMod1() && !rKeyCode.IsMod2() )
-        {
-            mrSidebarWin.ToggleInsMode();
-        }
+        mrSidebarWin.ToggleInsMode();
     }
     else
     {
@@ -271,8 +266,9 @@ void SidebarTextControl::KeyInput( const KeyEvent& rKeyEvt )
             }
             else
             {
-                ScopedVclPtrInstance<MessageDialog>(this, "InfoReadonlyDialog",
-                    "modules/swriter/ui/inforeadonlydialog.ui")->Execute();
+                std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), "modules/swriter/ui/inforeadonlydialog.ui"));
+                std::unique_ptr<weld::MessageDialog> xQuery(xBuilder->weld_message_dialog("InfoReadonlyDialog"));
+                xQuery->run();
             }
         }
         if (bDone)
@@ -292,30 +288,26 @@ void SidebarTextControl::KeyInput( const KeyEvent& rKeyEvt )
 
 void SidebarTextControl::MouseMove( const MouseEvent& rMEvt )
 {
-    if ( GetTextView() )
-    {
-        OutlinerView* pOutlinerView( GetTextView() );
-        pOutlinerView->MouseMove( rMEvt );
-        // mba: why does OutlinerView not handle the modifier setting?!
-        // this forces the postit to handle *all* pointer types
-        SetPointer( pOutlinerView->GetPointer( rMEvt.GetPosPixel() ) );
+    if ( !GetTextView() )
+        return;
 
-        const EditView& aEV = pOutlinerView->GetEditView();
-        const SvxFieldItem* pItem = aEV.GetFieldUnderMousePointer();
-        if ( pItem )
+    OutlinerView* pOutlinerView( GetTextView() );
+    pOutlinerView->MouseMove( rMEvt );
+    // mba: why does OutlinerView not handle the modifier setting?!
+    // this forces the postit to handle *all* pointer types
+    SetPointer( pOutlinerView->GetPointer( rMEvt.GetPosPixel() ) );
+
+    const EditView& aEV = pOutlinerView->GetEditView();
+    const SvxFieldItem* pItem = aEV.GetFieldUnderMousePointer();
+    if ( pItem )
+    {
+        const SvxFieldData* pField = pItem->GetField();
+        const SvxURLField* pURL = dynamic_cast<const SvxURLField*>( pField  );
+        if ( pURL )
         {
-            const SvxFieldData* pField = pItem->GetField();
-            const SvxURLField* pURL = dynamic_cast<const SvxURLField*>( pField  );
-            if ( pURL )
-            {
-                OUString sURL( pURL->GetURL() );
-                SvtSecurityOptions aSecOpts;
-                if ( aSecOpts.IsOptionSet( SvtSecurityOptions::EOption::CtrlClickHyperlink) )
-                    sURL = SwViewShell::GetShellRes()->aLinkCtrlClick + ": " + sURL;
-                else
-                    sURL = SwViewShell::GetShellRes()->aLinkClick + ": " + sURL;
-                Help::ShowQuickHelp( this,PixelToLogic(tools::Rectangle(GetPosPixel(),Size(50,10))),sURL);
-            }
+            OUString sText(SfxHelp::GetURLHelpText(pURL->GetURL()));
+            Help::ShowQuickHelp(
+                this, PixelToLogic(tools::Rectangle(GetPosPixel(), Size(50, 10))), sText);
         }
     }
 }
@@ -339,8 +331,8 @@ void SidebarTextControl::MouseButtonDown( const MouseEvent& rMEvt )
                 {
                     GetTextView()->MouseButtonDown( rMEvt );
                     SwWrtShell &rSh = mrDocView.GetWrtShell();
-                    OUString sURL( pURL->GetURL() );
-                    OUString sTarget( pURL->GetTargetFrame() );
+                    const OUString& sURL( pURL->GetURL() );
+                    const OUString& sTarget( pURL->GetTargetFrame() );
                     ::LoadURL(rSh, sURL, LoadUrlFlags::NONE, sTarget);
                     return;
                 }
@@ -449,6 +441,6 @@ css::uno::Reference< css::accessibility::XAccessible > SidebarTextControl::Creat
     return xAcc;
 }
 
-} } // end of namespace sw::sidebarwindows
+} // end of namespace sw::sidebarwindows
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

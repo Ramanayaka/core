@@ -18,22 +18,16 @@
  */
 
 #include <sal/config.h>
+
+#include <stdlib.h>
+
 #include <config_features.h>
 
 #include <signalshared.hxx>
 
-/* system headers */
-#include "system.h"
-#include <tchar.h>
-
-#include "file_url.hxx"
-#include "path_helper.hxx"
-
-#include <osl/signal.h>
-#include <DbgHelp.h>
-#include <errorrep.h>
 #include <systools/win32/uwinapi.h>
-#include <sal/macros.h>
+#include <errorrep.h>
+#include <werapi.h>
 
 namespace
 {
@@ -46,14 +40,7 @@ bool onInitSignal()
 {
     pPreviousHandler = SetUnhandledExceptionFilter(signalHandlerFunction);
 
-    HMODULE hFaultRep = LoadLibrary( "faultrep.dll" );
-    if ( hFaultRep )
-    {
-        pfn_ADDEREXCLUDEDAPPLICATIONW pfn = reinterpret_cast<pfn_ADDEREXCLUDEDAPPLICATIONW>(GetProcAddress( hFaultRep, "AddERExcludedApplicationW" ));
-        if ( pfn )
-            pfn( L"SOFFICE.EXE" );
-        FreeLibrary( hFaultRep );
-    }
+    WerAddExcludedApplication(L"SOFFICE.EXE", FALSE);
 
     return true;
 }

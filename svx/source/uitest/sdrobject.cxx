@@ -13,6 +13,10 @@
 
 #include <tools/fract.hxx>
 
+#include <memory>
+#include <svx/SvxColorValueSet.hxx>
+#include <vcl/layout.hxx>
+
 SdrUIObject::~SdrUIObject()
 {
 }
@@ -99,6 +103,8 @@ void SdrUIObject::execute(const OUString& rAction,
     }
     else if (rAction == "CROP")
     {
+        // RotateFlyFrame3: Note: Crop does nothing at SdrObject
+        // anymore, see comment at SdrObject::NbcCrop
         auto itrNX = rParameters.find("X");
         if (itrNX == rParameters.end())
             throw css::uno::RuntimeException("missing parameter X");
@@ -107,23 +113,21 @@ void SdrUIObject::execute(const OUString& rAction,
         if (itrNY == rParameters.end())
             throw css::uno::RuntimeException("missing parameter Y");
 
-        long nX = itrNX->second.toInt32();
-        long nY = itrNY->second.toInt32();
-        Point aPos(nX, nY);
+        const double fX(itrNX->second.toDouble());
+        const double fY(itrNY->second.toDouble());
+        const basegfx::B2DPoint aPos(fX, fY);
 
         auto itrFracX = rParameters.find("FRAC_X");
         if (itrFracX == rParameters.end())
             throw css::uno::RuntimeException("missing parameter FRAC_X");
-        double nFracX = itrFracX->second.toDouble();
-        Fraction aFracX(nFracX);
+        const double fFracX(itrFracX->second.toDouble());
 
         auto itrFracY = rParameters.find("FRAC_Y");
         if (itrFracY == rParameters.end())
             throw css::uno::RuntimeException("missing parameter FRAC_Y");
-        double nFracY = itrFracY->second.toDouble();
-        Fraction aFracY(nFracY);
+        const double fFracY(itrFracY->second.toDouble());
 
-        pObj->Crop(aPos, aFracX, aFracY);
+        pObj->Crop(aPos, fFracX, fFracY);
     }
     else if (rAction == "ROTATE")
     {
@@ -148,20 +152,69 @@ void SdrUIObject::execute(const OUString& rAction,
     }
     else if (rAction == "Mirror")
     {
-        Point aPos;
-        Point aPos2;
-        pObj->Mirror(aPos, aPos2);
+        pObj->Mirror(Point(), Point());
     }
     else if (rAction == "SHEAR")
     {
-        Point aPos;
-        pObj->Shear(aPos, 0.0/*nAngle*/, 0, false);
+        pObj->Shear(Point(), 0.0/*nAngle*/, 0, false);
     }
 }
 
 OUString SdrUIObject::get_type() const
 {
-    return OUString("SdrUIObject");
+    return "SdrUIObject";
+}
+
+
+SvxColorValueSetUIObject::SvxColorValueSetUIObject(vcl::Window*  xColorSetWin, SvxColorValueSet* pColorSet):
+    WindowUIObject(xColorSetWin),
+    mpColorSet(pColorSet)
+{
+}
+
+void SvxColorValueSetUIObject::execute(const OUString& rAction,
+        const StringMap& rParameters)
+{
+    if (rAction == "CHOOSE")
+    {
+        if (rParameters.find("POS") != rParameters.end())
+        {
+            OUString aIndexStr = rParameters.find("POS")->second;
+            sal_Int32 nIndex = aIndexStr.toInt32();
+            mpColorSet->SelectItem(nIndex);
+            mpColorSet->Select();
+        }
+    }
+    else
+       WindowUIObject::execute(rAction, rParameters);
+}
+
+std::unique_ptr<UIObject> SvxColorValueSetUIObject::create(vcl::Window* pWindow)
+{
+    VclDrawingArea* pColorSetWin = dynamic_cast<VclDrawingArea*>(pWindow);
+    assert(pColorSetWin);
+    return std::unique_ptr<UIObject>(new SvxColorValueSetUIObject(pColorSetWin, static_cast<SvxColorValueSet*>(pColorSetWin->GetUserData())));
+}
+
+OUString SvxColorValueSetUIObject::get_name() const
+{
+    return "SvxColorValueSetUIObject";
+}
+
+StringMap SvxColorValueSetUIObject::get_state()
+{
+    StringMap aMap = WindowUIObject::get_state();
+    aMap["CurrColorId"] = OUString::number( mpColorSet->GetSelectedItemId() );
+    aMap["CurrColorPos"] = OUString::number( mpColorSet->GetSelectItemPos() );
+    aMap["ColorsCount"] = OUString::number(mpColorSet->GetItemCount());
+    aMap["ColCount"] = OUString::number(mpColorSet->GetColCount());
+    aMap["ColorText"] = mpColorSet->GetItemText(mpColorSet->GetSelectedItemId());
+    Color currColor = mpColorSet->GetItemColor(mpColorSet->GetSelectedItemId());
+    aMap["R"] = OUString::number(currColor.GetRed());
+    aMap["G"] = OUString::number(currColor.GetGreen());
+    aMap["B"] = OUString::number(currColor.GetBlue());
+    aMap["RGB"] = "("+OUString::number(currColor.GetRed())+","+OUString::number(currColor.GetGreen())+","+OUString::number(currColor.GetBlue())+")";
+    return aMap;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

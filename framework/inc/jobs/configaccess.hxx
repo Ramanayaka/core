@@ -20,13 +20,11 @@
 #ifndef INCLUDED_FRAMEWORK_INC_JOBS_CONFIGACCESS_HXX
 #define INCLUDED_FRAMEWORK_INC_JOBS_CONFIGACCESS_HXX
 
-#include <general.h>
-
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <config_options.h>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <rtl/ustring.hxx>
-#include <fwidllapi.h>
+#include <framework/fwkdllapi.h>
 
 namespace framework{
 
@@ -34,9 +32,9 @@ namespace framework{
     @short  implements a simple configuration access
     @descr  Sometimes it's better to have direct config access
             instead of using specialized config items of the svtools
-            project. This class can wrapp such configuration access.
+            project. This class can wrap such configuration access.
  */
-class FWI_DLLPUBLIC ConfigAccess final
+class ConfigAccess final
 {
 
     public:

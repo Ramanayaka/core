@@ -24,14 +24,13 @@
 #include <cppcanvas/bitmap.hxx>
 
 #include <basegfx/range/b2drectangle.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
-#include "tools.hxx"
-#include "shapeattributelayer.hxx"
-#include "animatedsprite.hxx"
-#include "viewlayer.hxx"
-#include "doctreenode.hxx"
+#include <tools.hxx>
+#include <shapeattributelayer.hxx>
+#include <animatedsprite.hxx>
+#include <viewlayer.hxx>
+#include <doctreenode.hxx>
 
 #include <vector>
 #include <memory>
@@ -52,9 +51,7 @@ namespace o3tl {
 
 
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** This class is the viewable representation of a draw
             document's XShape, associated to a specific View
@@ -99,10 +96,8 @@ namespace slideshow
                 This method enters animation mode on the associate
                 target view. The shape can be animated in parallel on
                 different views.
-
-                @return whether the mode change finished successfully.
              */
-            bool enterAnimationMode();
+            void enterAnimationMode();
 
             /** Notify the ViewShape that it is no longer animated
 
@@ -317,7 +312,6 @@ namespace slideshow
 
         typedef ::std::shared_ptr< ViewShape > ViewShapeSharedPtr;
 
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_VIEWSHAPE_HXX

@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include "UCBDeadPropertyValue.hxx"
 
 using namespace http_dav_ucp;

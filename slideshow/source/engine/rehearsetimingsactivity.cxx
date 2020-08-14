@@ -26,22 +26,21 @@
 #include <vcl/settings.hxx>
 
 #include <cppcanvas/vclfactory.hxx>
-#include <cppcanvas/basegfxfactory.hxx>
 #include <basegfx/range/b2drange.hxx>
-
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
+#include <osl/diagnose.h>
+#include <tools/diagnose_ex.h>
 
 #include <com/sun/star/awt/MouseButton.hpp>
 #include <com/sun/star/awt/MouseEvent.hpp>
 #include <com/sun/star/rendering/XBitmap.hpp>
+#include <com/sun/star/rendering/XCanvas.hpp>
 
-#include "eventqueue.hxx"
-#include "screenupdater.hxx"
-#include "eventmultiplexer.hxx"
-#include "activitiesqueue.hxx"
-#include "slideshowcontext.hxx"
-#include "mouseeventhandler.hxx"
+#include <eventqueue.hxx>
+#include <screenupdater.hxx>
+#include <eventmultiplexer.hxx>
+#include <activitiesqueue.hxx>
+#include <slideshowcontext.hxx>
+#include <mouseeventhandler.hxx>
 #include "rehearsetimingsactivity.hxx"
 
 #include <algorithm>
@@ -49,8 +48,7 @@
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 class RehearseTimingsActivity::WakeupEvent : public Event
 {
@@ -103,7 +101,7 @@ public:
 private:
     ::canvas::tools::ElapsedTime    maTimer;
     double                          mnNextTime;
-    std::weak_ptr<Activity>       mpActivity;
+    std::weak_ptr<Activity>         mpActivity;
     ActivitiesQueue&                mrActivityQueue;
 };
 
@@ -161,7 +159,7 @@ RehearseTimingsActivity::RehearseTimingsActivity( const SlideShowContext& rConte
     ScopedVclPtrInstance< VirtualDevice > blackHole;
     blackHole->EnableOutput(false);
     blackHole->SetFont( maFont );
-    blackHole->SetMapMode( MapUnit::MapPixel );
+    blackHole->SetMapMode(MapMode(MapUnit::MapPixel));
     tools::Rectangle rect;
     const FontMetric metric( blackHole->GetFontMetric() );
     blackHole->GetTextBoundRect( rect, "XX:XX:XX" );
@@ -179,9 +177,9 @@ RehearseTimingsActivity::~RehearseTimingsActivity()
     {
         stop();
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
-        SAL_WARN("slideshow", "" << e.Message);
+        TOOLS_WARN_EXCEPTION("slideshow", "");
     }
 }
 
@@ -191,12 +189,12 @@ std::shared_ptr<RehearseTimingsActivity> RehearseTimingsActivity::create(
     std::shared_ptr<RehearseTimingsActivity> pActivity(
         new RehearseTimingsActivity( rContext ));
 
-    pActivity->mpMouseHandler.reset(
-        new MouseHandler(*pActivity.get()) );
-    pActivity->mpWakeUpEvent.reset(
-        new WakeupEvent( rContext.mrEventQueue.getTimer(),
+    pActivity->mpMouseHandler =
+        std::make_shared<MouseHandler>(*pActivity);
+    pActivity->mpWakeUpEvent =
+        std::make_shared<WakeupEvent>( rContext.mrEventQueue.getTimer(),
                          pActivity,
-                         rContext.mrActivitiesQueue ));
+                         rContext.mrActivitiesQueue );
 
     rContext.mrEventMultiplexer.addViewHandler( pActivity );
 
@@ -343,7 +341,7 @@ void RehearseTimingsActivity::viewAdded( const UnoViewSharedPtr& rView )
     if( maViews.empty() )
         maSpriteRectangle = spriteRectangle;
 
-    maViews.push_back( ViewsVecT::value_type( rView, sprite ) );
+    maViews.emplace_back( rView, sprite );
 
     if (isActive())
         sprite->show();
@@ -387,19 +385,19 @@ void RehearseTimingsActivity::viewChanged( const UnoViewSharedPtr& rView )
 
 void RehearseTimingsActivity::viewsChanged()
 {
-    if( !maViews.empty() )
-    {
-        // new sprite pos, transformation might have changed:
-        maSpriteRectangle = calcSpriteRectangle( maViews.front().first );
+    if( maViews.empty() )
+        return;
 
-        ::basegfx::B2DPoint nMin = maSpriteRectangle.getMinimum();
-        // reposition sprites
-        for_each_sprite( [nMin]( const ::cppcanvas::CustomSpriteSharedPtr& pSprite )
-                         { return pSprite->move( nMin ); } );
+    // new sprite pos, transformation might have changed:
+    maSpriteRectangle = calcSpriteRectangle( maViews.front().first );
 
-        // sprites changed, need screen update
-        mrScreenUpdater.notifyUpdate();
-    }
+    ::basegfx::B2DPoint nMin = maSpriteRectangle.getMinimum();
+    // reposition sprites
+    for_each_sprite( [nMin]( const ::cppcanvas::CustomSpriteSharedPtr& pSprite )
+                     { return pSprite->move( nMin ); } );
+
+    // sprites changed, need screen update
+    mrScreenUpdater.notifyUpdate();
 }
 
 void RehearseTimingsActivity::paintAllSprites() const
@@ -415,7 +413,7 @@ void RehearseTimingsActivity::paint( cppcanvas::CanvasSharedPtr const & canvas )
     const sal_Int32 nTimeSecs =
         static_cast<sal_Int32>(maElapsedTime.getElapsedTime());
     OUStringBuffer buf;
-    sal_Int32 n = (nTimeSecs / 3600);
+    sal_Int32 n = nTimeSecs / 3600;
     if (n < 10)
         buf.append( '0' );
     buf.append( n );
@@ -437,11 +435,11 @@ void RehearseTimingsActivity::paint( cppcanvas::CanvasSharedPtr const & canvas )
     metaFile.Record( blackHole );
     metaFile.SetPrefSize( Size( 1, 1 ) );
     blackHole->EnableOutput(false);
-    blackHole->SetMapMode( MapUnit::MapPixel );
+    blackHole->SetMapMode(MapMode(MapUnit::MapPixel));
     blackHole->SetFont( maFont );
-    tools::Rectangle rect = tools::Rectangle( 0,0,
-                                maSpriteSizePixel.getX(),
-                                maSpriteSizePixel.getY());
+    tools::Rectangle rect( 0,0,
+                           maSpriteSizePixel.getX(),
+                           maSpriteSizePixel.getY());
     if (mbDrawPressed)
     {
         blackHole->SetTextColor( COL_BLACK );
@@ -543,7 +541,6 @@ bool RehearseTimingsActivity::MouseHandler::handleMouseMoved(
     return false;
 }
 
-} // namespace internal
 } // namespace presentation
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

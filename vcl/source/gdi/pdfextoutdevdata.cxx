@@ -17,20 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <vcl/canvastools.hxx>
 #include <vcl/pdfextoutdevdata.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/gfxlink.hxx>
-#include "vcl/dllapi.h"
-#include "basegfx/polygon/b2dpolygon.hxx"
-#include "basegfx/polygon/b2dpolygontools.hxx"
+#include <vcl/metaact.hxx>
+#include <vcl/graphicfilter.hxx>
+#include <basegfx/polygon/b2dpolygon.hxx>
+#include <basegfx/polygon/b2dpolygontools.hxx>
+#include <sal/log.hxx>
+#include <o3tl/safeint.hxx>
+#include <osl/diagnose.h>
+#include <tools/stream.hxx>
 
-#include <set>
 #include <memory>
 #include <map>
 
 namespace vcl
 {
+namespace {
+
 struct PDFExtOutDevDataSync
 {
     enum Action{    CreateNamedDest,
@@ -70,6 +77,8 @@ struct PDFLinkDestination
     sal_Int32               mPageNr;
     PDFWriter::DestAreaType mAreaType;
 };
+
+}
 
 struct GlobalSyncData
 {
@@ -113,7 +122,7 @@ sal_Int32 GlobalSyncData::GetMappedId()
      */
     if( nLinkId >= 0 )
     {
-        if ( (sal_uInt32)nLinkId < mParaIds.size() )
+        if ( o3tl::make_unsigned(nLinkId) < mParaIds.size() )
             nLinkId = mParaIds[ nLinkId ];
         else
             nLinkId = -1;
@@ -126,7 +135,7 @@ sal_Int32 GlobalSyncData::GetMappedId()
 
 sal_Int32 GlobalSyncData::GetMappedStructId( sal_Int32 nStructId )
 {
-    if ( (sal_uInt32)nStructId < mStructIdMap.size() )
+    if ( o3tl::make_unsigned(nStructId) < mStructIdMap.size() )
         nStructId = mStructIdMap[ nStructId ];
     else
         nStructId = -1;
@@ -138,14 +147,13 @@ sal_Int32 GlobalSyncData::GetMappedStructId( sal_Int32 nStructId )
 
 void GlobalSyncData::PlayGlobalActions( PDFWriter& rWriter )
 {
-    for (std::deque< PDFExtOutDevDataSync::Action >::const_iterator aIter( mActions.begin() ), aEnd( mActions.end() ) ;
-         aIter != aEnd ; ++aIter)
+    for (auto const& action : mActions)
     {
-        switch( *aIter )
+        switch (action)
         {
             case PDFExtOutDevDataSync::CreateNamedDest : //i56629
             {
-                 rWriter.Push( PushFlags::MAPMODE );
+                rWriter.Push( PushFlags::MAPMODE );
                 rWriter.SetMapMode( mParaMapModes.front() );
                 mParaMapModes.pop_front();
                 mParaIds.push_back( rWriter.CreateNamedDest( mParaOUStrings.front(), mParaRects.front(), mParaInts.front(), mParaDestAreaTypes.front() ) );
@@ -301,7 +309,7 @@ struct PageSyncData
     { mpGlobalData = pGlobal; }
 
     void PushAction( const OutputDevice& rOutDev, const PDFExtOutDevDataSync::Action eAct );
-    bool PlaySyncPageAct( PDFWriter& rWriter, sal_uInt32& rCurGDIMtfAction, const PDFExtOutDevData& rOutDevData );
+    bool PlaySyncPageAct( PDFWriter& rWriter, sal_uInt32& rCurGDIMtfAction, const GDIMetaFile& rMtf, const PDFExtOutDevData& rOutDevData );
 };
 
 void PageSyncData::PushAction( const OutputDevice& rOutDev, const PDFExtOutDevDataSync::Action eAct )
@@ -317,10 +325,10 @@ void PageSyncData::PushAction( const OutputDevice& rOutDev, const PDFExtOutDevDa
         aSync.nIdx = 0x7fffffff;    // sync not possible
     mActions.push_back( aSync );
 }
-bool PageSyncData::PlaySyncPageAct( PDFWriter& rWriter, sal_uInt32& rCurGDIMtfAction, const PDFExtOutDevData& rOutDevData )
+bool PageSyncData::PlaySyncPageAct( PDFWriter& rWriter, sal_uInt32& rCurGDIMtfAction, const GDIMetaFile& rMtf, const PDFExtOutDevData& rOutDevData )
 {
     bool bRet = false;
-    if ( mActions.size() && ( mActions.front().nIdx == rCurGDIMtfAction ) )
+    if ( !mActions.empty() && ( mActions.front().nIdx == rCurGDIMtfAction ) )
     {
         bRet = true;
         PDFExtOutDevDataSync aDataSync = mActions.front();
@@ -381,8 +389,8 @@ bool PageSyncData::PlaySyncPageAct( PDFWriter& rWriter, sal_uInt32& rCurGDIMtfAc
             case PDFExtOutDevDataSync::CreateControl:
             {
                 std::shared_ptr< PDFWriter::AnyWidget > pControl( mControls.front() );
-                SAL_WARN_IF( !pControl.get(), "vcl", "PageSyncData::PlaySyncPageAct: invalid widget!" );
-                if ( pControl.get() )
+                SAL_WARN_IF( !pControl, "vcl", "PageSyncData::PlaySyncPageAct: invalid widget!" );
+                if ( pControl )
                     rWriter.CreateControl( *pControl );
                 mControls.pop_front();
             }
@@ -390,33 +398,28 @@ bool PageSyncData::PlaySyncPageAct( PDFWriter& rWriter, sal_uInt32& rCurGDIMtfAc
             case PDFExtOutDevDataSync::BeginGroup :
             {
                 /* first determining if this BeginGroup is starting a GfxLink,
-                   by searching for a EndGroup or a EndGroupGfxLink */
+                   by searching for an EndGroup or an EndGroupGfxLink */
                 mbGroupIgnoreGDIMtfActions = false;
-                std::deque< PDFExtOutDevDataSync >::iterator aBeg = mActions.begin();
-                std::deque< PDFExtOutDevDataSync >::iterator aEnd = mActions.end();
-                while ( aBeg != aEnd )
+                auto isStartingGfxLink = std::any_of(mActions.begin(), mActions.end(),
+                    [](const PDFExtOutDevDataSync& rAction) { return rAction.eAct == PDFExtOutDevDataSync::EndGroupGfxLink; });
+                if ( isStartingGfxLink )
                 {
-                    if ( aBeg->eAct == PDFExtOutDevDataSync::EndGroupGfxLink )
+                    Graphic& rGraphic = mGraphics.front();
+                    if ( rGraphic.IsGfxLink() && mParaRects.size() >= 2 )
                     {
-                        Graphic& rGraphic = mGraphics.front();
-                        if ( rGraphic.IsLink() )
+                        GfxLinkType eType = rGraphic.GetGfxLink().GetType();
+                        if ( eType == GfxLinkType::NativeJpg )
                         {
-                            GfxLinkType eType = rGraphic.GetLink().GetType();
-                            if ( eType == GfxLinkType::NativeJpg && mParaRects.size() >= 2 )
-                            {
-                                mbGroupIgnoreGDIMtfActions = rOutDevData.HasAdequateCompression(rGraphic);
-                                if ( !mbGroupIgnoreGDIMtfActions )
-                                    mCurrentGraphic = rGraphic;
-                            }
-                            else if ((eType == GfxLinkType::NativePng || eType == GfxLinkType::NativePdf) && mParaRects.size() >= 2)
-                            {
-                                if ( rOutDevData.HasAdequateCompression(rGraphic) || eType == GfxLinkType::NativePdf )
-                                    mCurrentGraphic = rGraphic;
-                            }
+                            mbGroupIgnoreGDIMtfActions = rOutDevData.HasAdequateCompression(rGraphic, mParaRects[0], mParaRects[1]);
+                            if ( !mbGroupIgnoreGDIMtfActions )
+                                mCurrentGraphic = rGraphic;
                         }
-                        break;
+                        else if ( eType == GfxLinkType::NativePng || eType == GfxLinkType::NativePdf )
+                        {
+                            if ( eType == GfxLinkType::NativePdf || rOutDevData.HasAdequateCompression(rGraphic, mParaRects[0], mParaRects[1]) )
+                                mCurrentGraphic = rGraphic;
+                        }
                     }
-                    ++aBeg;
                 }
             }
             break;
@@ -437,15 +440,14 @@ bool PageSyncData::PlaySyncPageAct( PDFWriter& rWriter, sal_uInt32& rCurGDIMtfAc
                 {
                     bool bClippingNeeded = ( aOutputRect != aVisibleOutputRect ) && !aVisibleOutputRect.IsEmpty();
 
-                    GfxLink   aGfxLink( aGraphic.GetLink() );
+                    GfxLink   aGfxLink( aGraphic.GetGfxLink() );
                     if ( aGfxLink.GetType() == GfxLinkType::NativeJpg )
                     {
                         if ( bClippingNeeded )
                         {
                             rWriter.Push();
-                            basegfx::B2DPolyPolygon aRect( basegfx::tools::createPolygonFromRect(
-                                basegfx::B2DRectangle( aVisibleOutputRect.Left(), aVisibleOutputRect.Top(),
-                                                       aVisibleOutputRect.Right(), aVisibleOutputRect.Bottom() ) ) );
+                            basegfx::B2DPolyPolygon aRect( basegfx::utils::createPolygonFromRect(
+                                vcl::unotools::b2DRectangleFromRectangle(aVisibleOutputRect) ) );
                             rWriter.SetClipRegion( aRect);
                         }
 
@@ -463,7 +465,25 @@ bool PageSyncData::PlaySyncPageAct( PDFWriter& rWriter, sal_uInt32& rCurGDIMtfAc
                         if( pData && nBytes )
                         {
                             aTmp.WriteBytes( pData, nBytes );
-                            rWriter.DrawJPGBitmap( aTmp, aGraphic.GetBitmap().GetBitCount() > 8, aGraphic.GetSizePixel(), aOutputRect, aMask, aGraphic );
+
+                            // Look up the output rectangle from the previous
+                            // bitmap scale action if possible. This has the
+                            // correct position and size for images with a
+                            // custom translation (Writer header) or scaling
+                            // (Impress notes page).
+                            if (rCurGDIMtfAction > 0)
+                            {
+                                const MetaAction* pAction = rMtf.GetAction(rCurGDIMtfAction - 1);
+                                if (pAction && pAction->GetType() == MetaActionType::BMPSCALE)
+                                {
+                                    const MetaBmpScaleAction* pA
+                                        = static_cast<const MetaBmpScaleAction*>(pAction);
+                                    aOutputRect.SetPos(pA->GetPoint());
+                                    aOutputRect.SetSize(pA->GetSize());
+                                }
+                            }
+
+                            rWriter.DrawJPGBitmap( aTmp, aGraphic.GetBitmapEx().GetBitCount() > 8, aGraphic.GetSizePixel(), aOutputRect, aMask, aGraphic );
                         }
 
                         if ( bClippingNeeded )
@@ -508,19 +528,19 @@ PDFExtOutDevData::PDFExtOutDevData( const OutputDevice& rOutDev ) :
     mbExportFormFields      ( false ),
     mbExportBookmarks       ( false ),
     mbExportHiddenSlides    ( false ),
+    mbSinglePageSheets      ( false ),
     mbExportNDests          ( false ),
     mnPage                  ( -1 ),
     mnCompressionQuality    ( 90 ),
-    mpPageSyncData          ( nullptr ),
     mpGlobalSyncData        ( new GlobalSyncData() )
 {
-    mpPageSyncData = new PageSyncData( mpGlobalSyncData );
+    mpPageSyncData.reset( new PageSyncData( mpGlobalSyncData.get() ) );
 }
 
 PDFExtOutDevData::~PDFExtOutDevData()
 {
-    delete mpPageSyncData;
-    delete mpGlobalSyncData;
+    mpPageSyncData.reset();
+    mpGlobalSyncData.reset();
 }
 
 const Graphic& PDFExtOutDevData::GetCurrentGraphic() const
@@ -576,17 +596,21 @@ void PDFExtOutDevData::SetIsExportHiddenSlides( const bool bExportHiddenSlides )
 {
     mbExportHiddenSlides = bExportHiddenSlides;
 }
+void PDFExtOutDevData::SetIsSinglePageSheets( const bool bSinglePageSheets )
+{
+    mbSinglePageSheets = bSinglePageSheets;
+}
 void PDFExtOutDevData::SetIsExportNamedDestinations( const bool bExportNDests )
 {
     mbExportNDests = bExportNDests;
 }
 void PDFExtOutDevData::ResetSyncData()
 {
-    *mpPageSyncData = PageSyncData( mpGlobalSyncData );
+    *mpPageSyncData = PageSyncData( mpGlobalSyncData.get() );
 }
-bool PDFExtOutDevData::PlaySyncPageAct( PDFWriter& rWriter, sal_uInt32& rIdx )
+bool PDFExtOutDevData::PlaySyncPageAct( PDFWriter& rWriter, sal_uInt32& rIdx, const GDIMetaFile& rMtf )
 {
-    return mpPageSyncData->PlaySyncPageAct( rWriter, rIdx, *this );
+    return mpPageSyncData->PlaySyncPageAct( rWriter, rIdx, rMtf, *this );
 }
 void PDFExtOutDevData::PlayGlobalActions( PDFWriter& rWriter )
 {
@@ -654,19 +678,17 @@ sal_Int32 PDFExtOutDevData::CreateScreen(const tools::Rectangle& rRect, sal_Int3
     return mpGlobalSyncData->mCurId++;
 }
 
-sal_Int32 PDFExtOutDevData::SetLinkDest( sal_Int32 nLinkId, sal_Int32 nDestId )
+void PDFExtOutDevData::SetLinkDest( sal_Int32 nLinkId, sal_Int32 nDestId )
 {
     mpGlobalSyncData->mActions.push_back( PDFExtOutDevDataSync::SetLinkDest );
     mpGlobalSyncData->mParaInts.push_back( nLinkId );
     mpGlobalSyncData->mParaInts.push_back( nDestId );
-    return 0;
 }
-sal_Int32 PDFExtOutDevData::SetLinkURL( sal_Int32 nLinkId, const OUString& rURL )
+void PDFExtOutDevData::SetLinkURL( sal_Int32 nLinkId, const OUString& rURL )
 {
     mpGlobalSyncData->mActions.push_back( PDFExtOutDevDataSync::SetLinkURL );
     mpGlobalSyncData->mParaInts.push_back( nLinkId );
     mpGlobalSyncData->mParaOUStrings.push_back( rURL );
-    return 0;
 }
 
 void PDFExtOutDevData::SetScreenURL(sal_Int32 nScreenId, const OUString& rURL)
@@ -685,6 +707,10 @@ void PDFExtOutDevData::SetScreenStream(sal_Int32 nScreenId, const OUString& rURL
 
 sal_Int32 PDFExtOutDevData::CreateOutlineItem( sal_Int32 nParent, const OUString& rText, sal_Int32 nDestID )
 {
+    if (nParent == -1)
+        // Has no parent, it's a chapter / heading 1.
+        maChapterNames.push_back(rText);
+
     mpGlobalSyncData->mActions.push_back( PDFExtOutDevDataSync::CreateOutlineItem );
     mpGlobalSyncData->mParaInts.push_back( nParent );
     mpGlobalSyncData->mParaOUStrings.push_back( rText );
@@ -728,7 +754,7 @@ void PDFExtOutDevData::EndStructureElement()
 bool PDFExtOutDevData::SetCurrentStructureElement( sal_Int32 nStructId )
 {
     bool bSuccess = false;
-    if( sal_uInt32(nStructId) < mpGlobalSyncData->mStructParents.size() )
+    if( o3tl::make_unsigned(nStructId) < mpGlobalSyncData->mStructParents.size() )
     {
         mpGlobalSyncData->mCurrentStructElement = nStructId;
         mpPageSyncData->PushAction( mrOutDev, PDFExtOutDevDataSync::SetCurrentStructureElement );
@@ -737,23 +763,21 @@ bool PDFExtOutDevData::SetCurrentStructureElement( sal_Int32 nStructId )
     }
     return bSuccess;
 }
-sal_Int32 PDFExtOutDevData::GetCurrentStructureElement()
+sal_Int32 PDFExtOutDevData::GetCurrentStructureElement() const
 {
     return mpGlobalSyncData->mCurrentStructElement;
 }
-bool PDFExtOutDevData::SetStructureAttribute( PDFWriter::StructAttribute eAttr, PDFWriter::StructAttributeValue eVal )
+void PDFExtOutDevData::SetStructureAttribute( PDFWriter::StructAttribute eAttr, PDFWriter::StructAttributeValue eVal )
 {
     mpPageSyncData->PushAction( mrOutDev, PDFExtOutDevDataSync::SetStructureAttribute );
     mpPageSyncData->mParaStructAttributes.push_back( eAttr );
     mpPageSyncData->mParaStructAttributeValues.push_back( eVal );
-    return true;
 }
-bool PDFExtOutDevData::SetStructureAttributeNumerical( PDFWriter::StructAttribute eAttr, sal_Int32 nValue )
+void PDFExtOutDevData::SetStructureAttributeNumerical( PDFWriter::StructAttribute eAttr, sal_Int32 nValue )
 {
     mpPageSyncData->PushAction( mrOutDev, PDFExtOutDevDataSync::SetStructureAttributeNumerical );
     mpPageSyncData->mParaStructAttributes.push_back( eAttr );
     mpPageSyncData->mParaInts.push_back( nValue );
-    return true;
 }
 void PDFExtOutDevData::SetStructureBoundingBox( const tools::Rectangle& rRect )
 {
@@ -797,51 +821,69 @@ void PDFExtOutDevData::EndGroup( const Graphic&     rGraphic,
 }
 
 // Avoids expensive de-compression and re-compression of large images.
-bool PDFExtOutDevData::HasAdequateCompression( const Graphic &rGraphic ) const
+bool PDFExtOutDevData::HasAdequateCompression( const Graphic &rGraphic,
+                                               const tools::Rectangle & rOutputRect,
+                                               const tools::Rectangle & rVisibleOutputRect ) const
 {
-    assert(rGraphic.IsLink() &&
-           (rGraphic.GetLink().GetType() == GfxLinkType::NativeJpg ||
-            rGraphic.GetLink().GetType() == GfxLinkType::NativePng ||
-            rGraphic.GetLink().GetType() == GfxLinkType::NativePdf));
+    assert(rGraphic.IsGfxLink() &&
+           (rGraphic.GetGfxLink().GetType() == GfxLinkType::NativeJpg ||
+            rGraphic.GetGfxLink().GetType() == GfxLinkType::NativePng ||
+            rGraphic.GetGfxLink().GetType() == GfxLinkType::NativePdf));
+
+    if (rOutputRect != rVisibleOutputRect)
+        // rOutputRect is the crop rectangle, re-compress cropped image.
+        return false;
+
+    if (mbReduceImageResolution)
+        // Reducing resolution was requested, implies that re-compressing is
+        // wanted.
+        return false;
+
+    if (rGraphic.GetGfxLink().GetDataSize() == 0)
+        return false;
+
+    GfxLink aLink = rGraphic.GetGfxLink();
+    SvMemoryStream aMemoryStream(const_cast<sal_uInt8*>(aLink.GetData()), aLink.GetDataSize(),
+                                 StreamMode::READ | StreamMode::WRITE);
+    GraphicDescriptor aDescriptor(aMemoryStream, nullptr);
+    if (aDescriptor.Detect(true) && aDescriptor.GetNumberOfImageComponents() == 4)
+        // 4 means CMYK, which is not handled.
+        return false;
+
+    const Size aSize = rGraphic.GetSizePixel();
 
     // small items better off as PNG anyway
-    if ( rGraphic.GetSizePixel().Width() < 32 &&
-         rGraphic.GetSizePixel().Height() < 32 )
+    if ( aSize.Width() < 32 &&
+         aSize.Height() < 32 )
         return false;
+
+    if (GetIsLosslessCompression())
+        return !GetIsReduceImageResolution();
 
     // FIXME: ideally we'd also pre-empt the DPI related scaling too.
-
-    Size aSize = rGraphic.GetSizePixel();
-    if (rGraphic.GetLink().GetDataSize() == 0)
-        return false;
     sal_Int32 nCurrentRatio = (100 * aSize.Width() * aSize.Height() * 4) /
-                               rGraphic.GetLink().GetDataSize();
+                               rGraphic.GetGfxLink().GetDataSize();
 
-    if ( GetIsLosslessCompression() )
-        return !GetIsReduceImageResolution();
-    else
+    static const struct {
+        sal_Int32 mnQuality;
+        sal_Int32 mnRatio;
+    } aRatios[] = { // minimum tolerable compression ratios
+        { 100, 400 }, { 95, 700 }, { 90, 1000 }, { 85, 1200 },
+        { 80, 1500 }, { 75, 1700 }
+    };
+    sal_Int32 nTargetRatio = 10000;
+    bool bIsTargetRatioReached = false;
+    for (auto & rRatio : aRatios)
     {
-        static const struct {
-            sal_Int32 mnQuality;
-            sal_Int32 mnRatio;
-        } aRatios[] = { // minimum tolerable compression ratios
-            { 100, 400 }, { 95, 700 }, { 90, 1000 }, { 85, 1200 },
-            { 80, 1500 }, { 75, 1700 }
-        };
-        sal_Int32 nTargetRatio = 10000;
-        bool bIsTargetRatioReached = false;
-        for (auto & rRatio : aRatios)
+        if ( mnCompressionQuality > rRatio.mnQuality )
         {
-            if ( mnCompressionQuality > rRatio.mnQuality )
-            {
-                bIsTargetRatioReached = true;
-                break;
-            }
-            nTargetRatio = rRatio.mnRatio;
+            bIsTargetRatioReached = true;
+            break;
         }
-
-        return ((nCurrentRatio > nTargetRatio) && bIsTargetRatioReached);
+        nTargetRatio = rRatio.mnRatio;
     }
+
+    return ((nCurrentRatio > nTargetRatio) && bIsTargetRatioReached);
 }
 
 }

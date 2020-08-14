@@ -23,37 +23,28 @@
 #include <sfx2/dllapi.h>
 
 #include <vcl/abstdlg.hxx>
-#include <com/sun/star/embed/XEmbeddedObject.hpp>
-#include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/frame/XFrame.hpp>
 
-#include <sot/exchange.hxx>
-#include <sfx2/lnkbase.hxx>
+#include <sot/formats.hxx>
 #include <sfx2/tabdlg.hxx>
-#include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.h>
 
-class SfxTabPage;
-class SfxViewFrame;
-class SfxBindings;
 class SfxItemSet;
 namespace vcl { class Window; }
-namespace rtl {
-   class OUString;
-};
 class SfxItemPool;
 class SvObjectServerList;
 class TransferableDataHelper;
-struct TransferableObjectDescriptor;
+class SvGlobalName;
 
 namespace sfx2
 {
     class LinkManager;
+    class SvBaseLink;
 }
 
-namespace com { namespace sun { namespace star { namespace frame {
-    class XModel;
-} } } }
+namespace com::sun::star::embed { class XEmbeddedObject; }
+namespace com::sun::star::embed { class XStorage; }
+namespace com::sun::star::io { class XInputStream; }
+namespace com::sun::star::uno { class Any; }
 
 class SfxAbstractDialog : virtual public VclAbstractDialog
 {
@@ -64,7 +55,6 @@ public:
       */
     virtual const SfxItemSet*   GetOutputItemSet() const = 0;
     virtual void                SetText( const OUString& rStr ) = 0;
-    virtual OUString            GetText() const = 0;
 };
 
 class SfxAbstractTabDialog : virtual public SfxAbstractDialog
@@ -72,7 +62,6 @@ class SfxAbstractTabDialog : virtual public SfxAbstractDialog
 protected:
     virtual ~SfxAbstractTabDialog() override = default;
 public:
-    virtual void                SetCurPageId( sal_uInt16 nId ) = 0;
     virtual void                SetCurPageId( const OString &rName ) = 0;
     virtual const sal_uInt16*   GetInputRanges( const SfxItemPool& ) = 0;
     virtual void                SetInputSet( const SfxItemSet* pInSet ) = 0;
@@ -101,8 +90,11 @@ class SfxAbstractPasteDialog : virtual public VclAbstractDialog
 protected:
     virtual ~SfxAbstractPasteDialog() override = default;
 public:
-    virtual void Insert( SotClipboardFormatId nFormat, const rtl::OUString & rFormatName ) = 0;
-    virtual void SetObjName( const SvGlobalName & rClass, const rtl::OUString & rObjName ) = 0;
+    virtual void Insert( SotClipboardFormatId nFormat, const OUString & rFormatName ) = 0;
+    virtual void InsertUno( const OUString& sCmd, const OUString& sLabel ) = 0;
+    virtual void SetObjName( const SvGlobalName & rClass, const OUString & rObjName ) = 0;
+    virtual void PreGetFormat( const TransferableDataHelper& aHelper ) = 0;
+    virtual SotClipboardFormatId GetFormatOnly() = 0;
     virtual SotClipboardFormatId GetFormat( const TransferableDataHelper& aHelper ) = 0;
 };
 
@@ -117,43 +109,44 @@ class AbstractScriptSelectorDialog : virtual public VclAbstractDialog
 protected:
     virtual ~AbstractScriptSelectorDialog() override = default;
 public:
-    virtual rtl::OUString       GetScriptURL() const = 0;
+    virtual OUString       GetScriptURL() const = 0;
     virtual void                SetRunLabel() = 0;
 };
 
-namespace com { namespace sun { namespace star { namespace frame { class XFrame; } } } }
+namespace com::sun::star::frame { class XFrame; }
 
 class SFX2_DLLPUBLIC SfxAbstractDialogFactory : virtual public VclAbstractDialogFactory
 {
 public:
                                         virtual ~SfxAbstractDialogFactory() override;    // needed for export of vtable
     static SfxAbstractDialogFactory*    Create();
-    virtual VclPtr<VclAbstractDialog>          CreateFrameDialog( const css::uno::Reference< css::frame::XFrame >& rFrame, sal_uInt32 nResId, const rtl::OUString& rParameter ) = 0;
-    virtual VclPtr<SfxAbstractTabDialog>       CreateAutoCorrTabDialog( const SfxItemSet* pAttrSet ) = 0;
-    virtual VclPtr<SfxAbstractTabDialog>       CreateCustomizeTabDialog(
+    virtual VclPtr<VclAbstractDialog>          CreateFrameDialog(weld::Window* pParent, const css::uno::Reference< css::frame::XFrame >& rFrame, sal_uInt32 nResId, const OUString& rParameter) = 0;
+    virtual VclPtr<SfxAbstractTabDialog>       CreateAutoCorrTabDialog(weld::Window* pParent, const SfxItemSet* pAttrSet) = 0;
+    virtual VclPtr<SfxAbstractTabDialog>       CreateCustomizeTabDialog(weld::Window* pParent,
                                             const SfxItemSet* pAttrSet,
                                             const css::uno::Reference< css::frame::XFrame >& xViewFrame ) = 0;
     virtual CreateTabPage               GetTabPageCreatorFunc( sal_uInt16 nId ) = 0;
     virtual GetTabPageRanges            GetTabPageRangesFunc( sal_uInt16 nId ) = 0;
-    virtual VclPtr<SfxAbstractInsertObjectDialog> CreateInsertObjectDialog( vcl::Window* pParent, const OUString& rCommand,
+    virtual VclPtr<SfxAbstractInsertObjectDialog> CreateInsertObjectDialog(weld::Window* pParent, const OUString& rCommand,
             const css::uno::Reference < css::embed::XStorage >& xStor,
             const SvObjectServerList* pList )=0;
-    virtual VclPtr<VclAbstractDialog>          CreateEditObjectDialog( const OUString& rCommand,
+    virtual VclPtr<VclAbstractDialog>          CreateEditObjectDialog(weld::Window* pParent, const OUString& rCommand,
             const css::uno::Reference < css::embed::XEmbeddedObject >& xObj )=0;
-    virtual VclPtr<SfxAbstractPasteDialog>    CreatePasteDialog( vcl::Window* pParent )=0;
-    virtual VclPtr<SfxAbstractLinksDialog>    CreateLinksDialog( vcl::Window* pParent, sfx2::LinkManager* pMgr, bool bHTML=false, sfx2::SvBaseLink* p=nullptr )=0;
-    virtual VclPtr<VclAbstractDialog>         CreateSvxScriptOrgDialog( vcl::Window* pParent,  const rtl::OUString& rLanguage ) = 0;
+    virtual VclPtr<SfxAbstractPasteDialog>    CreatePasteDialog(weld::Window* pParent) = 0;
+    virtual VclPtr<SfxAbstractLinksDialog>    CreateLinksDialog(weld::Window* pParent, sfx2::LinkManager* pMgr, bool bHTML=false, sfx2::SvBaseLink* p=nullptr) = 0;
+    virtual VclPtr<VclAbstractDialog>         CreateSvxScriptOrgDialog(weld::Window* pParent,  const OUString& rLanguage) = 0;
 
-    virtual VclPtr<AbstractScriptSelectorDialog>
-        CreateScriptSelectorDialog(
-            vcl::Window* pParent,
-            const css::uno::Reference< css::frame::XFrame >& _rxFrame
-        ) = 0;
+    virtual VclPtr<AbstractScriptSelectorDialog> CreateScriptSelectorDialog(weld::Window* pParent,
+            const css::uno::Reference< css::frame::XFrame >& rxFrame) = 0;
 
-    virtual VclPtr<VclAbstractDialog> CreateScriptErrorDialog( const css::uno::Any& rException ) = 0;
+    virtual void ShowAsyncScriptErrorDialog( weld::Window* pParent, const css::uno::Any& rException ) = 0;
 
     virtual VclPtr<VclAbstractDialog>  CreateOptionsDialog(
-        vcl::Window* pParent, const OUString& rExtensionId ) = 0;
+        weld::Window* pParent, const OUString& rExtensionId ) = 0;
+
+    virtual VclPtr<VclAbstractDialog> CreateAboutDialog(weld::Window* _pParent) = 0;
+
+    virtual VclPtr<VclAbstractDialog> CreateTipOfTheDayDialog(weld::Window* _pParent) = 0;
 };
 
 #endif

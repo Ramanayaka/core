@@ -57,10 +57,9 @@
  * @file
  * List object.
  ************************************************************************/
-#include "xflist.hxx"
-#include "xflistitem.hxx"
-#include "ixfstream.hxx"
-#include "ixfattrlist.hxx"
+#include <xfilter/xflist.hxx>
+#include <xfilter/ixfstream.hxx>
+#include <xfilter/ixfattrlist.hxx>
 
 XFList::XFList()
 {

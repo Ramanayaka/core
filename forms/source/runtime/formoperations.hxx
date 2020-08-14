@@ -22,7 +22,6 @@
 
 #include <com/sun/star/form/runtime/XFormOperations.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/form/XForm.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/form/XLoadable.hpp>
@@ -35,7 +34,7 @@
 
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
-
+#include <connectivity/dbtools.hxx>
 
 namespace frm
 {
@@ -290,11 +289,11 @@ namespace frm
 
             @param f
                 a functionoid with no arguments to do the work
-            @param _nErrorResourceId
+            @param pErrorResourceId
                 the id of the resources string to use as error message
         */
         template < typename FunctObj >
-        void        impl_doActionInSQLContext_throw( FunctObj f, sal_uInt16 _nErrorResourceId ) const;
+        void        impl_doActionInSQLContext_throw( FunctObj f, const char* pErrorResourceId ) const;
 
         // functionoid to call appendOrderByColumn
         class impl_appendOrderByColumn_throw
@@ -320,14 +319,22 @@ namespace frm
         {
         public:
             impl_appendFilterByColumn_throw(const FormOperations *pFO,
+                                            css::uno::Reference< css::sdb::XSingleSelectQueryComposer > const & xParser,
                                             css::uno::Reference< css::beans::XPropertySet > const & xField)
                 : m_pFO(pFO)
+                , m_xParser(xParser)
                 , m_xField(xField)
             {};
 
-            void operator()() { m_pFO->m_xParser->appendFilterByColumn( m_xField, true, css::sdb::SQLFilterOperator::EQUAL ); }
+            void operator()() {
+                if (dbtools::isAggregateColumn( m_xParser, m_xField ))
+                    m_pFO->m_xParser->appendHavingClauseByColumn( m_xField, true, css::sdb::SQLFilterOperator::EQUAL );
+                else
+                    m_pFO->m_xParser->appendFilterByColumn( m_xField, true, css::sdb::SQLFilterOperator::EQUAL );
+            }
         private:
             const FormOperations *m_pFO;
+            css::uno::Reference< css::sdb::XSingleSelectQueryComposer > m_xParser;
             css::uno::Reference< css::beans::XPropertySet > m_xField;
         };
 
@@ -336,6 +343,9 @@ namespace frm
         FormOperations& operator=( const FormOperations& ) = delete;
 
     public:
+
+        css::uno::Reference<css::awt::XWindow> GetDialogParent() const;
+
         class MethodGuard
         {
             FormOperations& m_rOwner;

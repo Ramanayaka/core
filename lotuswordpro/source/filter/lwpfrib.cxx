@@ -59,16 +59,13 @@
  ************************************************************************/
 
 #include <memory>
-#include "lwpfrib.hxx"
-#include "lwpcharsetmgr.hxx"
-#include "lwpsection.hxx"
+#include <lwpfrib.hxx>
 #include "lwphyperlinkmgr.hxx"
-#include "xfilter/xfhyperlink.hxx"
-#include "xfilter/xfstylemanager.hxx"
-#include "xfilter/xfsection.hxx"
-#include "xfilter/xfsectionstyle.hxx"
-#include "xfilter/xftextspan.hxx"
-#include "xfilter/xftextcontent.hxx"
+#include <xfilter/xfhyperlink.hxx>
+#include <xfilter/xfstylemanager.hxx>
+#include <xfilter/xftextspan.hxx>
+#include <xfilter/xftextstyle.hxx>
+#include <xfilter/xftextcontent.hxx>
 #include "lwpfribheader.hxx"
 #include "lwpfribtext.hxx"
 #include "lwpfribtable.hxx"
@@ -79,18 +76,16 @@
 #include "lwpfootnote.hxx"
 #include "lwpnotes.hxx"
 #include "lwpfribmark.hxx"
-#include "lwpchangemgr.hxx"
-#include "lwpdocdata.hxx"
-#include "lwpglobalmgr.hxx"
+#include <lwpglobalmgr.hxx>
 
 #include <osl/diagnose.h>
 
 
 LwpFrib::LwpFrib(LwpPara* pPara)
-    : m_pPara(pPara)
+    : m_pFribMap(nullptr)
+    , m_pPara(pPara)
     , m_pNext(nullptr)
     , m_nFribType(0)
-    , m_pModifiers(nullptr)
     , m_ModFlag(false)
     , m_nRevisionType(0)
     , m_bRevisionFlag(false)
@@ -100,6 +95,7 @@ LwpFrib::LwpFrib(LwpPara* pPara)
 
 LwpFrib::~LwpFrib()
 {
+    Deregister();
 }
 
 LwpFrib* LwpFrib::CreateFrib(LwpPara* pPara, LwpObjectStream* pObjStrm, sal_uInt8 fribtag,sal_uInt8 editID)
@@ -249,7 +245,7 @@ void LwpFrib::RegisterStyle(LwpFoundry* pFoundry)
     XFTextStyle* pNamedStyle = nullptr;
     if (m_pModifiers->HasCharStyle && pFoundry)
     {
-        pNamedStyle = static_cast<XFTextStyle*>
+        pNamedStyle = dynamic_cast<XFTextStyle*>
                                 (pFoundry->GetStyleManager()->GetStyle(m_pModifiers->CharStyleID));
     }
     if (pNamedStyle)
@@ -259,13 +255,13 @@ void LwpFrib::RegisterStyle(LwpFoundry* pFoundry)
             pCharStyle = dynamic_cast<LwpCharacterStyle*>(m_pModifiers->CharStyleID.obj().get());
         if (pCharStyle)
         {
-            pStyle = new XFTextStyle();
-            *pStyle = *pNamedStyle;
+            std::unique_ptr<XFTextStyle> pNewStyle(new XFTextStyle());
+            *pNewStyle = *pNamedStyle;
 
-            pStyle->SetStyleName("");
+            pNewStyle->SetStyleName("");
             pFont = pFoundry->GetFontManger().CreateOverrideFont(pCharStyle->GetFinalFontID(),m_pModifiers->FontID);
-            pStyle->SetFont(pFont);
-            IXFStyleRet aNewStyle = pXFStyleManager->AddStyle(pStyle);
+            pNewStyle->SetFont(pFont);
+            IXFStyleRet aNewStyle = pXFStyleManager->AddStyle(std::move(pNewStyle));
             m_StyleName = aNewStyle.m_pStyle->GetStyleName();
             pStyle = dynamic_cast<XFTextStyle*>(aNewStyle.m_pStyle);
             if (aNewStyle.m_bOrigDeleted)
@@ -278,10 +274,10 @@ void LwpFrib::RegisterStyle(LwpFoundry* pFoundry)
     {
         if (m_pModifiers->FontID && pFoundry)
         {
-            pStyle = new XFTextStyle();
+            std::unique_ptr<XFTextStyle> pNewStyle(new XFTextStyle());
             pFont = pFoundry->GetFontManger().CreateFont(m_pModifiers->FontID);
-            pStyle->SetFont(pFont);
-            IXFStyleRet aNewStyle = pXFStyleManager->AddStyle(pStyle);
+            pNewStyle->SetFont(pFont);
+            IXFStyleRet aNewStyle = pXFStyleManager->AddStyle(std::move(pNewStyle));
             m_StyleName = aNewStyle.m_pStyle->GetStyleName();
             pStyle = dynamic_cast<XFTextStyle*>(aNewStyle.m_pStyle);
             if (aNewStyle.m_bOrigDeleted)
@@ -289,29 +285,29 @@ void LwpFrib::RegisterStyle(LwpFoundry* pFoundry)
         }
     }
 
-    if (m_pModifiers->HasHighlight)
-    {
-        XFColor  aColor = GetHighlightColor();//right yellow
-        if (pStyle)//change the style directly
-            pStyle->GetFont()->SetBackColor(aColor);
-        else //register a new style
-        {
-            pStyle = new XFTextStyle();
+    if (!m_pModifiers->HasHighlight)
+        return;
 
-            if (!m_StyleName.isEmpty())
-            {
-                XFTextStyle* pOldStyle = pXFStyleManager->FindTextStyle(m_StyleName);
-                *pStyle = *pOldStyle;
-                pStyle->GetFont()->SetBackColor(aColor);
-            }
-            else
-            {
-                pFont = new XFFont;
-                pFont->SetBackColor(aColor);
-                pStyle->SetFont(pFont);
-            }
-            m_StyleName = pXFStyleManager->AddStyle(pStyle).m_pStyle->GetStyleName();
+    XFColor  aColor = GetHighlightColor();//right yellow
+    if (pStyle)//change the style directly
+        pStyle->GetFont()->SetBackColor(aColor);
+    else //register a new style
+    {
+        std::unique_ptr<XFTextStyle> pNewStyle(new XFTextStyle());
+
+        if (!m_StyleName.isEmpty())
+        {
+            XFTextStyle* pOldStyle = pXFStyleManager->FindTextStyle(m_StyleName);
+            *pNewStyle = *pOldStyle;
+            pNewStyle->GetFont()->SetBackColor(aColor);
         }
+        else
+        {
+            pFont = new XFFont;
+            pFont->SetBackColor(aColor);
+            pNewStyle->SetFont(pFont);
+        }
+        m_StyleName = pXFStyleManager->AddStyle(std::move(pNewStyle)).m_pStyle->GetStyleName();
     }
 }
 
@@ -405,7 +401,7 @@ void LwpFrib::ConvertChars(XFContentContainer* pXFPara,const OUString& text)
     }
 }
 
-void LwpFrib::ConvertHyperLink(XFContentContainer* pXFPara,LwpHyperlinkMgr* pHyperlink,const OUString& text)
+void LwpFrib::ConvertHyperLink(XFContentContainer* pXFPara, const LwpHyperlinkMgr* pHyperlink,const OUString& text)
 {
     XFHyperlink* pHyper = new XFHyperlink;
     pHyper->SetHRef(pHyperlink->GetHyperlink());
@@ -445,6 +441,22 @@ XFColor LwpFrib::GetHighlightColor()
 {
     LwpGlobalMgr* pGlobal = LwpGlobalMgr::GetInstance();
     return pGlobal->GetHighlightColor(m_nEditor);
+}
+
+void LwpFrib::Register(std::map<LwpFrib*,OUString>* pFribMap)
+{
+    if (m_pFribMap)
+        throw std::runtime_error("registered already");
+    m_pFribMap = pFribMap;
+}
+
+void LwpFrib::Deregister()
+{
+    if (m_pFribMap)
+    {
+        m_pFribMap->erase(this);
+        m_pFribMap = nullptr;
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

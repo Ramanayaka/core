@@ -24,13 +24,11 @@
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/color/bcolor.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <sdr/contact/objectcontactofpageview.hxx>
 #include <tools/debug.hxx>
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
-// Create a Object-Specific ViewObjectContact, set ViewContact and
+// Create an Object-Specific ViewObjectContact, set ViewContact and
 // ObjectContact. Always needs to return something. Default is to create
 // a standard ViewObjectContact containing the given ObjectContact and *this
 ViewObjectContact& ViewContact::CreateObjectSpecificViewObjectContact(ObjectContact& rObjectContact)
@@ -55,26 +53,20 @@ void ViewContact::deleteAllVOCs()
     // #i84257# To avoid that each 'delete pCandidate' again uses
     // the local RemoveViewObjectContact with a search and removal in the
     // vector, simply copy and clear local vector.
-    std::vector< ViewObjectContact* > aLocalVOCList(maViewObjectContactVector);
-    maViewObjectContactVector.clear();
+    std::vector< ViewObjectContact* > aLocalVOCList;
+    aLocalVOCList.swap(maViewObjectContactVector);
 
-    while(!aLocalVOCList.empty())
-    {
-        ViewObjectContact* pCandidate = aLocalVOCList.back();
-        aLocalVOCList.pop_back();
-        DBG_ASSERT(pCandidate, "Corrupted ViewObjectContactList in VC (!)");
-
+    for (const auto & pCandidate : aLocalVOCList)
         // ViewObjectContacts only make sense with View and Object contacts.
         // When the contact to the SdrObject is deleted like in this case,
         // all ViewObjectContacts can be deleted, too.
         delete pCandidate;
-    }
 
     // assert when there were new entries added during deletion
     DBG_ASSERT(maViewObjectContactVector.empty(), "Corrupted ViewObjectContactList in VC (!)");
 }
 
-// get a Object-specific ViewObjectContact for a specific
+// get an Object-specific ViewObjectContact for a specific
 // ObjectContact (->View). Always needs to return something.
 ViewObjectContact& ViewContact::GetViewObjectContact(ObjectContact& rObjectContact)
 {
@@ -177,7 +169,7 @@ ViewContact* ViewContact::GetParentContact() const
 
 void ViewContact::ActionChildInserted(ViewContact& rChild)
 {
-    // propagate change to all exsisting visualisations which
+    // propagate change to all existing visualisations which
     // will force a VOC for the new child and invalidate its range
     const sal_uInt32 nCount(maViewObjectContactVector.size());
 
@@ -225,7 +217,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContact::createViewIndepende
     // Since we have no access to any known model data here, the default implementation creates a yellow placeholder
     // hairline polygon with a default size of (1000, 1000, 5000, 3000)
     OSL_FAIL("ViewContact::createViewIndependentPrimitive2DSequence(): Never call the fallback base implementation, this is always an error (!)");
-    const basegfx::B2DPolygon aOutline(basegfx::tools::createPolygonFromRect(basegfx::B2DRange(1000.0, 1000.0, 5000.0, 3000.0)));
+    const basegfx::B2DPolygon aOutline(basegfx::utils::createPolygonFromRect(basegfx::B2DRange(1000.0, 1000.0, 5000.0, 3000.0)));
     const basegfx::BColor aYellow(1.0, 1.0, 0.0);
     const drawinglayer::primitive2d::Primitive2DReference xReference(
         new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(aOutline, aYellow));
@@ -241,13 +233,13 @@ drawinglayer::primitive2d::Primitive2DContainer const & ViewContact::getViewInde
     if(!xNew.empty())
     {
         // allow evtl. embedding in object-specific infos, e.g. Name, Title, Description
-        xNew = embedToObjectSpecificInformation(xNew);
+        xNew = embedToObjectSpecificInformation(std::move(xNew));
     }
 
     if(mxViewIndependentPrimitive2DSequence != xNew)
     {
         // has changed, copy content
-        const_cast< ViewContact* >(this)->mxViewIndependentPrimitive2DSequence = xNew;
+        const_cast< ViewContact* >(this)->mxViewIndependentPrimitive2DSequence = std::move(xNew);
     }
 
     // return current Primitive2DContainer
@@ -261,10 +253,10 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContact::createGluePointPrim
     return drawinglayer::primitive2d::Primitive2DContainer();
 }
 
-drawinglayer::primitive2d::Primitive2DContainer ViewContact::embedToObjectSpecificInformation(const drawinglayer::primitive2d::Primitive2DContainer& rSource) const
+drawinglayer::primitive2d::Primitive2DContainer ViewContact::embedToObjectSpecificInformation(drawinglayer::primitive2d::Primitive2DContainer aSource) const
 {
     // nothing to do for default
-    return rSource;
+    return aSource;
 }
 
 basegfx::B2DRange ViewContact::getRange( const drawinglayer::geometry::ViewInformation2D& /*rViewInfo2D*/ ) const
@@ -291,6 +283,6 @@ void ViewContact::flushViewObjectContacts(bool bWithHierarchy)
     deleteAllVOCs();
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

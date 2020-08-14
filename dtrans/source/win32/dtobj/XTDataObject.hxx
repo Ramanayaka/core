@@ -27,15 +27,12 @@
 
 #include "FetcList.hxx"
 
-#if defined _MSC_VER
-#pragma warning(push,1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
 #include <ole2.h>
 #include <objidl.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 
 /*--------------------------------------------------------------------------
     - the function principle of the windows clipboard:
@@ -44,10 +41,10 @@
       and decides if there is a format he can use
       if there is one, he requests the data in this format
 
-    - This class inherits from IDataObject an so can be placed on the
-      OleClipboard. The class wrapps a transferable object which is the
+    - This class inherits from IDataObject and so can be placed on the
+      OleClipboard. The class wraps a transferable object which is the
       original DataSource
-    - DataFlavors offerd by this transferable will be translated into
+    - DataFlavors offered by this transferable will be translated into
       appropriate clipboard formats
     - if the transferable contains text data always text and unicodetext
       will be offered or vice versa
@@ -69,36 +66,36 @@ public:
     // ole interface implementation
 
     //IUnknown interface methods
-    STDMETHODIMP           QueryInterface(REFIID iid, LPVOID* ppvObject) override;
+    STDMETHODIMP           QueryInterface(REFIID iid, void** ppvObject) override;
     STDMETHODIMP_( ULONG ) AddRef( ) override;
     STDMETHODIMP_( ULONG ) Release( ) override;
 
     // IDataObject interface methods
-    STDMETHODIMP GetData( LPFORMATETC pFormatetc, LPSTGMEDIUM pmedium ) override;
-    STDMETHODIMP GetDataHere( LPFORMATETC pFormatetc, LPSTGMEDIUM pmedium ) override;
-    STDMETHODIMP QueryGetData( LPFORMATETC pFormatetc ) override;
-    STDMETHODIMP GetCanonicalFormatEtc( LPFORMATETC pFormatectIn, LPFORMATETC pFormatetcOut ) override;
-    STDMETHODIMP SetData( LPFORMATETC pFormatetc, LPSTGMEDIUM pmedium, BOOL fRelease ) override;
+    STDMETHODIMP GetData( FORMATETC * pFormatetc, STGMEDIUM * pmedium ) override;
+    STDMETHODIMP GetDataHere( FORMATETC * pFormatetc, STGMEDIUM * pmedium ) override;
+    STDMETHODIMP QueryGetData( FORMATETC * pFormatetc ) override;
+    STDMETHODIMP GetCanonicalFormatEtc( FORMATETC * pFormatectIn, FORMATETC * pFormatetcOut ) override;
+    STDMETHODIMP SetData( FORMATETC * pFormatetc, STGMEDIUM * pmedium, BOOL fRelease ) override;
     STDMETHODIMP EnumFormatEtc( DWORD dwDirection, IEnumFORMATETC** ppenumFormatetc ) override;
-    STDMETHODIMP DAdvise( LPFORMATETC pFormatetc, DWORD advf, LPADVISESINK pAdvSink, DWORD* pdwConnection ) override;
+    STDMETHODIMP DAdvise( FORMATETC * pFormatetc, DWORD advf, IAdviseSink * pAdvSink, DWORD* pdwConnection ) override;
     STDMETHODIMP DUnadvise( DWORD dwConnection ) override;
-    STDMETHODIMP EnumDAdvise( LPENUMSTATDATA* ppenumAdvise ) override;
+    STDMETHODIMP EnumDAdvise( IEnumSTATDATA** ppenumAdvise ) override;
 
     operator IDataObject*( );
 
 private:
-    css::datatransfer::DataFlavor SAL_CALL formatEtcToDataFlavor( const FORMATETC& aFormatEtc ) const;
+    css::datatransfer::DataFlavor formatEtcToDataFlavor( const FORMATETC& aFormatEtc ) const;
 
-    void SAL_CALL renderLocaleAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium );
-    void SAL_CALL renderUnicodeAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium );
-    void SAL_CALL renderAnyDataAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium );
+    void renderLocaleAndSetupStgMedium( FORMATETC const & fetc, STGMEDIUM& stgmedium );
+    void renderUnicodeAndSetupStgMedium( FORMATETC const & fetc, STGMEDIUM& stgmedium );
+    void renderAnyDataAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium );
 
-    HRESULT SAL_CALL renderSynthesizedFormatAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium );
-    void    SAL_CALL renderSynthesizedUnicodeAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium );
-    void    SAL_CALL renderSynthesizedTextAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium );
-    void    SAL_CALL renderSynthesizedHtmlAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium );
+    HRESULT renderSynthesizedFormatAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium );
+    void    renderSynthesizedUnicodeAndSetupStgMedium( FORMATETC const & fetc, STGMEDIUM& stgmedium );
+    void    renderSynthesizedTextAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium );
+    void    renderSynthesizedHtmlAndSetupStgMedium( FORMATETC& fetc, STGMEDIUM& stgmedium );
 
-    inline void SAL_CALL InitializeFormatEtcContainer( );
+    inline void InitializeFormatEtcContainer( );
 
 private:
     LONG m_nRefCnt;
@@ -117,12 +114,12 @@ public:
     virtual ~CEnumFormatEtc() {}
 
     // IUnknown
-    STDMETHODIMP           QueryInterface( REFIID iid, LPVOID* ppvObject ) override;
+    STDMETHODIMP           QueryInterface( REFIID iid, void** ppvObject ) override;
     STDMETHODIMP_( ULONG ) AddRef( ) override;
     STDMETHODIMP_( ULONG ) Release( ) override;
 
     //IEnumFORMATETC
-    STDMETHODIMP Next( ULONG nRequested, LPFORMATETC lpDest, ULONG* lpFetched ) override;
+    STDMETHODIMP Next( ULONG nRequested, FORMATETC * lpDest, ULONG* lpFetched ) override;
     STDMETHODIMP Skip( ULONG celt ) override;
     STDMETHODIMP Reset( ) override;
     STDMETHODIMP Clone( IEnumFORMATETC** ppenum ) override;

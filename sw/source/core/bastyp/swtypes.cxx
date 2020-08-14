@@ -17,71 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "swtypes.hxx"
-#include <rtl/ustring.hxx>
+#include <swtypes.hxx>
 
-#include <bodyfrm.hxx>
-#include <cellfrm.hxx>
-#include <colfrm.hxx>
 #include <editeng/unolingu.hxx>
-#include <fntcache.hxx>
-#include <frmfmt.hxx>
-#include <frmtool.hxx>
-#include <hffrm.hxx>
-#include <ndtxt.hxx>
-#include <pagefrm.hxx>
-#include <rowfrm.hxx>
-#include <sectfrm.hxx>
-#include <swatrset.hxx>
-#include <swfntcch.hxx>
-#include <swtable.hxx>
-#include <swtblfmt.hxx>
-#include <tabfrm.hxx>
-#include <txtfrm.hxx>
-#include <UndoDelete.hxx>
-#include <UndoInsert.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/window.hxx>
 #include <vcl/graph.hxx>
-#include <viscrs.hxx>
 
 using namespace com::sun::star;
-
-OUString aEmptyOUStr;  // remove once aEmptyOUStr can be changed to OUString
-
-IMPL_FIXEDMEMPOOL_NEWDEL( SwAttrSet )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwStartNode )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwEndNode )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwTableBox )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwUndoDelete )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwUndoInsert )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwPaM )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwCursor )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwShellCursor )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwTextNode )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwpHints )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwFntObj )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwFontObj )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwBorderAttrs )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwCellFrame )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwRowFrame )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwColumnFrame )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwSectionFrame )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwTabFrame )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwPageFrame )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwBodyFrame )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwHeaderFrame )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwFooterFrame )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwTextFrame )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwTableFormat )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwTableLineFormat )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwTableBoxFormat )
-IMPL_FIXEDMEMPOOL_NEWDEL( SwCursor_SavePos )
 
 Size GetGraphicSizeTwip(const Graphic& rGraphic, vcl::RenderContext* pOutDev)
 {
     const MapMode aMapTwip(MapUnit::MapTwip);
     Size aSize(rGraphic.GetPrefSize());
+
+    if (!aSize.getWidth() && !aSize.getHeight())
+    {
+        const_cast<Graphic&>(rGraphic).makeAvailable();
+        aSize = rGraphic.GetPrefSize();
+    }
+
     if (MapUnit::MapPixel == rGraphic.GetPrefMapMode().GetMapUnit())
     {
         if (!pOutDev)

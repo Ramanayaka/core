@@ -21,18 +21,16 @@
 
 #include <basic/sbxobj.hxx>
 #include <basic/sbxmeth.hxx>
-#include <basic/sbxprop.hxx>
-#include <basic/sbxfac.hxx>
+#include <sbxprop.hxx>
+#include <sbxfac.hxx>
 #include <basic/sbx.hxx>
 #include <com/sun/star/beans/XMaterialHolder.hpp>
 #include <com/sun/star/beans/XExactName.hpp>
 #include <com/sun/star/beans/XIntrospectionAccess.hpp>
-#include <com/sun/star/beans/XIntrospection.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/script/XInvocation.hpp>
 #include <com/sun/star/reflection/XIdlClass.hpp>
 #include <com/sun/star/reflection/XServiceTypeDescription2.hpp>
-#include <com/sun/star/reflection/XSingletonTypeDescription.hpp>
 #include <rtl/ustring.hxx>
 #include <unordered_map>
 #include <vector>
@@ -56,7 +54,7 @@ public:
     css::uno::TypeClass getTypeClass() const;
 
     void* getInst();
-    bool isEmpty() { return (mnPos == -1); }
+    bool isEmpty() const { return (mnPos == -1); }
 
     css::uno::Any getValue();
     void setValue( const css::uno::Any& );
@@ -71,7 +69,7 @@ class SbUnoStructRefObject: public SbxObject
             return rProp.compareToIgnoreAsciiCase( rOtherProp ) < 0;
         }
     };
-    typedef std::map< OUString, StructRefInfo*, caseLessComp > StructFieldInfo;
+    typedef std::map< OUString, std::unique_ptr<StructRefInfo>, caseLessComp > StructFieldInfo;
     StructFieldInfo maFields;
     StructRefInfo maMemberInfo;
     bool mbMemberCacheInit;
@@ -79,10 +77,10 @@ class SbUnoStructRefObject: public SbxObject
     void implCreateDbgProperties();
     void initMemberCache();
     OUString Impl_DumpProperties();
-    OUString getDbgObjectName();
+    OUString getDbgObjectName() const;
 public:
     StructRefInfo getStructMember( const OUString& rMember );
-    const StructRefInfo& getStructInfo() { return maMemberInfo; }
+    const StructRefInfo& getStructInfo() const { return maMemberInfo; }
     SbUnoStructRefObject( const OUString& aName_, const StructRefInfo& rMemberInfo );
     virtual ~SbUnoStructRefObject() override;
 
@@ -117,7 +115,7 @@ class SbUnoObject: public SbxObject
     void implCreateAll();
 
 public:
-    static bool getDefaultPropName( SbUnoObject* pUnoObj, OUString& sDfltProp );
+    static bool getDefaultPropName( SbUnoObject const * pUnoObj, OUString& sDfltProp );
     SbUnoObject( const OUString& aName_, const css::uno::Any& aUnoObj_ );
     virtual ~SbUnoObject() override;
 
@@ -133,28 +131,28 @@ public:
 
     // give out value
     css::uno::Any getUnoAny();
-    const css::uno::Reference< css::beans::XIntrospectionAccess >& getIntrospectionAccess()    { return mxUnoAccess; }
-    const css::uno::Reference< css::script::XInvocation >& getInvocation()         { return mxInvocation; }
+    const css::uno::Reference< css::beans::XIntrospectionAccess >& getIntrospectionAccess() const { return mxUnoAccess; }
+    const css::uno::Reference< css::script::XInvocation >& getInvocation() const { return mxInvocation; }
 
     void Notify( SfxBroadcaster&, const SfxHint& rHint ) override;
 
-    bool isNativeCOMObject()
+    bool isNativeCOMObject() const
         { return bNativeCOMObject; }
 };
 typedef tools::SvRef<SbUnoObject> SbUnoObjectRef;
 
 // #67781 delete return values of the uno-methods
 void clearUnoMethods();
-void clearUnoMethodsForBasic( StarBASIC* pBasic );
+void clearUnoMethodsForBasic( StarBASIC const * pBasic );
 
 class SbUnoMethod : public SbxMethod
 {
     friend class SbUnoObject;
     friend void clearUnoMethods();
-    friend void clearUnoMethodsForBasic( StarBASIC* pBasic );
+    friend void clearUnoMethodsForBasic( StarBASIC const * pBasic );
 
     css::uno::Reference< css::reflection::XIdlMethod > m_xUnoMethod;
-    css::uno::Sequence< css::reflection::ParamInfo >* pParamInfoSeq;
+    std::unique_ptr<css::uno::Sequence< css::reflection::ParamInfo >> pParamInfoSeq;
 
     // #67781 reference to the previous and the next method in the method list
     SbUnoMethod* pPrev;
@@ -171,7 +169,7 @@ public:
 
     const css::uno::Sequence< css::reflection::ParamInfo >& getParamInfos();
 
-    bool isInvocationBased()
+    bool isInvocationBased() const
         { return mbInvocation; }
 };
 
@@ -195,10 +193,10 @@ public:
     SbUnoProperty( const OUString& aName_, SbxDataType eSbxType, SbxDataType eRealSbxType,
         const css::beans::Property& aUnoProp_, sal_Int32 nId_, bool bInvocation, bool bUnoStruct );
 
-    bool isUnoStruct() { return mbUnoStruct; }
-    bool isInvocationBased()
+    bool isUnoStruct() const { return mbUnoStruct; }
+    bool isInvocationBased() const
         { return mbInvocation; }
-    SbxDataType getRealType() { return mRealType; }
+    SbxDataType getRealType() const { return mRealType; }
 };
 
 // factory class to create uno-structs per DIM AS NEW
@@ -209,7 +207,7 @@ public:
     virtual SbxObject* CreateObject( const OUString& ) override;
 };
 
-// wrapper for an uno-class
+// wrapper for a uno-class
 class SbUnoClass : public SbxObject
 {
     const css::uno::Reference< css::reflection::XIdlClass >   m_xClass;
@@ -227,7 +225,7 @@ public:
     virtual SbxVariable* Find( const OUString&, SbxClassType ) override;
 
 
-    const css::uno::Reference< css::reflection::XIdlClass >& getUnoClass() { return m_xClass; }
+    const css::uno::Reference< css::reflection::XIdlClass >& getUnoClass() const { return m_xClass; }
 
 };
 
@@ -259,12 +257,9 @@ public:
 SbUnoService* findUnoService( const OUString& rName );
 
 
-void clearUnoServiceCtors();
-
 class SbUnoServiceCtor : public SbxMethod
 {
     friend class SbUnoService;
-    friend void clearUnoServiceCtors();
 
     css::uno::Reference< css::reflection::XServiceConstructorDescription > m_xServiceCtorDesc;
 
@@ -274,7 +269,7 @@ public:
     virtual ~SbUnoServiceCtor() override;
     virtual SbxInfo* GetInfo() override;
 
-    const css::uno::Reference< css::reflection::XServiceConstructorDescription >& getServiceCtorDesc()
+    const css::uno::Reference< css::reflection::XServiceConstructorDescription >& getServiceCtorDesc() const
         { return m_xServiceCtorDesc; }
 };
 
@@ -302,7 +297,7 @@ public:
         , mVal( rVal )
     {}
 
-    const css::uno::Any& getValue()
+    const css::uno::Any& getValue() const
         { return mVal; }
 
 };
@@ -337,7 +332,7 @@ void RTL_Impl_IsUnoStruct( SbxArray& rPar );
 void RTL_Impl_EqualUnoObjects( SbxArray& rPar );
 void RTL_Impl_GetDefaultContext( SbxArray& rPar );
 
-void disposeComVariablesForBasic( StarBASIC* pBasic );
+void disposeComVariablesForBasic( StarBASIC const * pBasic );
 void clearNativeObjectWrapperVector();
 
 
@@ -353,7 +348,7 @@ class BasicCollection : public SbxObject
     void Initialize();
     virtual ~BasicCollection() override;
     virtual void Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
-    sal_Int32 implGetIndex( SbxVariable* pIndexVar );
+    sal_Int32 implGetIndex( SbxVariable const * pIndexVar );
     sal_Int32 implGetIndexForName( const OUString& rName );
     void CollAdd( SbxArray* pPar_ );
     void CollItem( SbxArray* pPar_ );
@@ -364,16 +359,11 @@ public:
     virtual void Clear() override;
 };
 
-typedef std::unordered_map< OUString, css::uno::Any, OUStringHash > VBAConstantsHash;
-
-typedef std::vector< OUString > VBAConstantsVector;
-
 class VBAConstantHelper
 {
 private:
-
-    VBAConstantsVector aConstCache;
-    VBAConstantsHash aConstHash;
+    std::vector< OUString > aConstCache;
+    std::unordered_map< OUString, css::uno::Any > aConstHash;
     bool isInited;
     VBAConstantHelper():isInited( false ) {}
     VBAConstantHelper(const VBAConstantHelper&) = delete;

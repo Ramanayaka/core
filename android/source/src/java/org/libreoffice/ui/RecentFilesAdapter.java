@@ -70,7 +70,10 @@ class RecentFilesAdapter extends RecyclerView.Adapter<RecentFilesAdapter.ViewHol
                 compoundDrawableInt = R.drawable.impress;
                 break;
         }
-        holder.imageView.setImageDrawable(ContextCompat.getDrawable(mActivity, compoundDrawableInt));
+
+        // set icon if known filetype was detected
+        if (compoundDrawableInt != 0)
+            holder.imageView.setImageDrawable(ContextCompat.getDrawable(mActivity, compoundDrawableInt));
     }
 
     @Override
@@ -85,8 +88,8 @@ class RecentFilesAdapter extends RecyclerView.Adapter<RecentFilesAdapter.ViewHol
 
         ViewHolder(View itemView) {
             super(itemView);
-            this.textView = (TextView) itemView.findViewById(R.id.textView);
-            this.imageView = (ImageView) itemView.findViewById(R.id.imageView);
+            this.textView = itemView.findViewById(R.id.textView);
+            this.imageView = itemView.findViewById(R.id.imageView);
         }
     }
 }

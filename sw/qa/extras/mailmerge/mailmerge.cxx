@@ -14,27 +14,26 @@
 
 #include <swmodeltestbase.hxx>
 
-#include <com/sun/star/awt/FontWeight.hpp>
-#include <com/sun/star/style/PageStyleLayout.hpp>
-#include <com/sun/star/table/XCell.hpp>
-#include <com/sun/star/table/BorderLine.hpp>
-#include <com/sun/star/text/XTextTable.hpp>
 #include <com/sun/star/text/MailMergeType.hpp>
-#include <com/sun/star/sdb/XDocumentDataSource.hpp>
+#include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/text/TextContentAnchorType.hpp>
 #include <com/sun/star/sdbc/XRowSet.hpp>
 #include <com/sun/star/sdbcx/XRowLocate.hpp>
+#include <com/sun/star/task/XJob.hpp>
 
 #include <tools/urlobj.hxx>
+#include <unotools/localfilehelper.hxx>
+#include <comphelper/sequence.hxx>
 
 #include <wrtsh.hxx>
 #include <ndtxt.hxx>
-#include <swdtflvr.hxx>
-#include <view.hxx>
-#include <edtwin.hxx>
-#include <olmenu.hxx>
-#include <cmdid.h>
 #include <pagefrm.hxx>
+#include <unoprnms.hxx>
+#include <dbmgr.hxx>
+#include <unotxdoc.hxx>
+#include <docsh.hxx>
+#include <IDocumentLayoutAccess.hxx>
+#include <rootfrm.hxx>
 
 /**
  * Maps database URIs to the registered database names for quick lookups
@@ -104,7 +103,7 @@ public:
         DBuriMap::const_iterator pos = aDBuriMap.find( aURI );
         if (pos == aDBuriMap.end())
         {
-            aDBName = SwDBManager::LoadAndRegisterDataSource( aURI, nullptr, &aWorkDir );
+            aDBName = SwDBManager::LoadAndRegisterDataSource( aURI, &aWorkDir );
             aDBuriMap.insert( std::pair< OUString, OUString >( aURI, aDBName ) );
             std::cout << "New datasource name: '" << aDBName << "'" << std::endl;
         }
@@ -132,7 +131,7 @@ public:
             uno::Reference< sdbc::XRowSet > xRowSet( xInstance, uno::UNO_QUERY );
             if (xRowSet.is())
                 xRowSet->execute(); // build ResultSet from properties
-            xCurResultSet.set( xRowSet, uno::UNO_QUERY );
+            xCurResultSet = xRowSet;
             assert( xCurResultSet.is() && "failed to build ResultSet" );
         }
         return xCurResultSet;
@@ -147,53 +146,51 @@ public:
 
         mMMargs.reserve( 15 );
 
-        mMMargs.push_back( beans::NamedValue( UNO_NAME_OUTPUT_TYPE, uno::Any( file ? text::MailMergeType::FILE : text::MailMergeType::SHELL ) ) );
-        mMMargs.push_back( beans::NamedValue( UNO_NAME_DOCUMENT_URL, uno::Any(
-                                         ( OUString( m_directories.getURLFromSrc(mpTestDocumentPath) + OUString::createFromAscii(filename)) ) ) ) );
-        mMMargs.push_back( beans::NamedValue( UNO_NAME_DATA_SOURCE_NAME, uno::Any( aDBName ) ) );
-        mMMargs.push_back( beans::NamedValue( UNO_NAME_OUTPUT_URL, uno::Any( aWorkDir ) ) );
+        mMMargs.emplace_back( UNO_NAME_OUTPUT_TYPE, uno::Any( file ? text::MailMergeType::FILE : text::MailMergeType::SHELL ) );
+        mMMargs.emplace_back( UNO_NAME_DOCUMENT_URL, uno::Any(
+                                         ( OUString( m_directories.getURLFromSrc(mpTestDocumentPath) + OUString::createFromAscii(filename)) ) ) );
+        mMMargs.emplace_back( UNO_NAME_DATA_SOURCE_NAME, uno::Any( aDBName ) );
+        mMMargs.emplace_back( UNO_NAME_OUTPUT_URL, uno::Any( aWorkDir ) );
         if (file)
-            mMMargs.push_back( beans::NamedValue( UNO_NAME_FILE_NAME_PREFIX, uno::Any( aPrefix )) );
+            mMMargs.emplace_back( UNO_NAME_FILE_NAME_PREFIX, uno::Any( aPrefix ) );
 
         if (bPrefixIsColumn)
-            mMMargs.push_back( beans::NamedValue( UNO_NAME_FILE_NAME_FROM_COLUMN, uno::Any( true ) ) );
+            mMMargs.emplace_back( UNO_NAME_FILE_NAME_FROM_COLUMN, uno::Any( true ) );
 
         if (tablename)
         {
-            mMMargs.push_back( beans::NamedValue( UNO_NAME_DAD_COMMAND_TYPE, uno::Any( sdb::CommandType::TABLE ) ) );
-            mMMargs.push_back( beans::NamedValue( UNO_NAME_DAD_COMMAND, uno::Any( OUString::createFromAscii(tablename) ) ) );
+            mMMargs.emplace_back( UNO_NAME_DAD_COMMAND_TYPE, uno::Any( sdb::CommandType::TABLE ) );
+            mMMargs.emplace_back( UNO_NAME_DAD_COMMAND, uno::Any( OUString::createFromAscii(tablename) ) );
         }
 
         if (nDataSets > 0)
         {
             mxCurResultSet = getXResultFromDataset( tablename, aDBName );
             uno::Reference< sdbcx::XRowLocate > xCurRowLocate( mxCurResultSet, uno::UNO_QUERY );
-            mMMargs.push_back( beans::NamedValue( UNO_NAME_RESULT_SET, uno::Any( mxCurResultSet ) ) );
+            mMMargs.emplace_back( UNO_NAME_RESULT_SET, uno::Any( mxCurResultSet ) );
             std::vector< uno::Any > vResult;
             vResult.reserve( nDataSets );
             sal_Int32 i;
             for (i = 0, mxCurResultSet->first(); i < nDataSets; i++, mxCurResultSet->next())
             {
-                vResult.push_back( uno::Any( xCurRowLocate->getBookmark() ) );
+                vResult.emplace_back( xCurRowLocate->getBookmark() );
             }
-            mMMargs.push_back( beans::NamedValue( UNO_NAME_SELECTION, uno::Any( comphelper::containerToSequence(vResult) ) ) );
+            mMMargs.emplace_back( UNO_NAME_SELECTION, uno::Any( comphelper::containerToSequence(vResult) ) );
         }
 
     }
 
     void executeMailMerge( bool bDontLoadResult = false )
     {
-        uno::Sequence< beans::NamedValue > aSeqMailMergeArgs = comphelper::containerToSequence( mMMargs );
+        const uno::Sequence< beans::NamedValue > aSeqMailMergeArgs = comphelper::containerToSequence( mMMargs );
         uno::Any res = mxJob->execute( aSeqMailMergeArgs );
 
-        const beans::NamedValue *pArguments = aSeqMailMergeArgs.getConstArray();
         bool bOk = true;
         bool bMMFilenameFromColumn = false;
-        sal_Int32 nArgs = aSeqMailMergeArgs.getLength();
 
-        for (sal_Int32 i = 0; i < nArgs; ++i) {
-            const OUString &rName  = pArguments[i].Name;
-            const uno::Any &rValue = pArguments[i].Value;
+        for (const beans::NamedValue& rArgument : aSeqMailMergeArgs) {
+            const OUString &rName  = rArgument.Name;
+            const uno::Any &rValue = rArgument.Value;
 
             // all error checking was already done by the MM job execution
             if (rName == UNO_NAME_OUTPUT_URL)
@@ -232,7 +229,7 @@ public:
     /**
      * Like parseExport(), but for given mail merge document.
      */
-    xmlDocPtr parseMailMergeExport(const OUString& rStreamName)
+    xmlDocUniquePtr parseMailMergeExport(const OUString& rStreamName)
     {
         if (mnCurOutputType != text::MailMergeType::FILE)
             return nullptr;
@@ -276,6 +273,17 @@ public:
         loadMailMergeDocument( name );
     }
 
+    /**
+     Resets currently opened layout of the original template,
+     and creates the layout of the document with N mails inside
+     (result run with text::MailMergeType::SHELL)
+    */
+    void dumpMMLayout()
+    {
+        mpXmlBuffer = xmlBufferPtr();
+        dumpLayout(mxMMComponent);
+    }
+
 protected:
     // Returns page number of the first page of a MM document inside the large MM document (used in the SHELL case).
     int documentStartPageNumber( int document ) const;
@@ -294,7 +302,7 @@ protected:
 #define DECLARE_MAILMERGE_TEST(TestName, filename, datasource, tablename, file, BaseClass, selection, column) \
     class TestName : public BaseClass { \
     protected: \
-        virtual OUString getTestName() override { return OUString(#TestName); } \
+        virtual OUString getTestName() override { return #TestName; } \
     public: \
         CPPUNIT_TEST_SUITE(TestName); \
         CPPUNIT_TEST(MailMerge); \
@@ -340,7 +348,7 @@ int MMTest::documentStartPageNumber( int document ) const
     CPPUNIT_ASSERT_EQUAL(document, pos);
     sal_uInt16 page, dummy;
     shell->Push();
-    shell->GotoMark( mark->get());
+    shell->GotoMark( *mark );
     shell->GetPageNum( page, dummy );
     shell->Pop(SwCursorShell::PopMode::DeleteCurrent);
     return page;
@@ -363,7 +371,7 @@ DECLARE_SHELL_MAILMERGE_TEST(testMultiPageAnchoredDraws, "multiple-page-anchored
     CPPUNIT_ASSERT_EQUAL(sal_uInt16(8), nPhysPages);
 
     uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(mxMMComponent, uno::UNO_QUERY);
-    uno::Reference<container::XIndexAccess> xDraws(xDrawPageSupplier->getDrawPage(), uno::UNO_QUERY);
+    uno::Reference<container::XIndexAccess> xDraws = xDrawPageSupplier->getDrawPage();
     CPPUNIT_ASSERT_EQUAL(sal_Int32(8), xDraws->getCount());
 
     std::set<sal_uInt16> pages;
@@ -389,9 +397,7 @@ DECLARE_FILE_MAILMERGE_TEST(testMissingDefaultLineColor, "missing-default-line-c
     executeMailMerge();
     // The document was created by LO version which didn't write out the default value for line color
     // (see XMLGraphicsDefaultStyle::SetDefaults()).
-    uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(mxComponent, uno::UNO_QUERY);
-    uno::Reference<container::XIndexAccess> xDraws(xDrawPageSupplier->getDrawPage(), uno::UNO_QUERY);
-    uno::Reference<beans::XPropertySet> xPropertySet(xDraws->getByIndex(0), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xPropertySet(getShape(1), uno::UNO_QUERY);
     // Lines do not have a line color.
     CPPUNIT_ASSERT( !xPropertySet->getPropertySetInfo()->hasPropertyByName( "LineColor" ));
     SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument *>(mxComponent.get());
@@ -401,12 +407,12 @@ DECLARE_FILE_MAILMERGE_TEST(testMissingDefaultLineColor, "missing-default-line-c
     CPPUNIT_ASSERT( xDefaults.is());
     uno::Reference< beans::XPropertySetInfo > xInfo( xDefaults->getPropertySetInfo());
     CPPUNIT_ASSERT( xInfo->hasPropertyByName( "LineColor" ));
-    sal_uInt32 lineColor;
+    Color lineColor;
     xDefaults->getPropertyValue( "LineColor" ) >>= lineColor;
     // And the default value is black (wasn't copied properly by mailmerge).
     CPPUNIT_ASSERT_EQUAL( COL_BLACK, lineColor );
     // And check that the resulting file has the proper default.
-    xmlDocPtr pXmlDoc = parseMailMergeExport( "styles.xml" );
+    xmlDocUniquePtr pXmlDoc = parseMailMergeExport( "styles.xml" );
     CPPUNIT_ASSERT_EQUAL( OUString( "graphic" ), getXPath(pXmlDoc, "/office:document-styles/office:styles/style:default-style[1]", "family"));
     CPPUNIT_ASSERT_EQUAL( OUString( "#000000" ), getXPath(pXmlDoc, "/office:document-styles/office:styles/style:default-style[1]/style:graphic-properties", "stroke-color"));
 }
@@ -423,6 +429,36 @@ DECLARE_FILE_MAILMERGE_TEST(testSimpleMailMerge, "simple-mail-merge.odt", "10-te
         CPPUNIT_ASSERT_EQUAL( OUString( "Fixed text." ), getRun( getParagraph( 1 ), 1 )->getString());
         CPPUNIT_ASSERT_EQUAL( OUString( "lastname" + OUString::number( doc + 1 )), getRun( getParagraph( 2 ), 1 )->getString());
         CPPUNIT_ASSERT_EQUAL( OUString( "Another fixed text." ), getRun( getParagraph( 3 ), 1 )->getString());
+    }
+}
+
+DECLARE_FILE_MAILMERGE_TEST(testWriterDataSource, "writer-mail-merge.odt", "10-testing-addresses-writer.odt", "testing-addresses-writer")
+{
+    // This failed as the .odt data source was mapped to the jdbc: protocol.
+    executeMailMerge();
+    for (int doc = 0; doc < 10; ++doc)
+    {
+        loadMailMergeDocument(doc);
+        CPPUNIT_ASSERT_EQUAL(1, getPages());
+        CPPUNIT_ASSERT_EQUAL(OUString("Fixed text."), getRun(getParagraph(1), 1)->getString());
+        CPPUNIT_ASSERT_EQUAL(OUString("lastname" + OUString::number(doc + 1)), getRun(getParagraph(2), 1)->getString());
+        CPPUNIT_ASSERT_EQUAL(OUString("Another fixed text."), getRun(getParagraph(3), 1)->getString());
+    }
+}
+
+DECLARE_FILE_MAILMERGE_TEST(testWriterMergedDataSource, "writer-merged-mail-merge.odt", "10-testing-addresses-writer-merged.odt", "testing-addresses-writer-merged")
+{
+    // This failed with com.sun.star.lang.IndexOutOfBoundsException, leading to
+    // a crash, as the last row had merged cells in
+    // 10-testing-addresses-writer-merged.odt.
+    executeMailMerge();
+    for (int doc = 0; doc < 10; ++doc)
+    {
+        loadMailMergeDocument(doc);
+        CPPUNIT_ASSERT_EQUAL(1, getPages());
+        CPPUNIT_ASSERT_EQUAL(OUString("Fixed text."), getRun(getParagraph(1), 1)->getString());
+        CPPUNIT_ASSERT_EQUAL(OUString("lastname" + OUString::number(doc + 1)), getRun(getParagraph(2), 1)->getString());
+        CPPUNIT_ASSERT_EQUAL(OUString("Another fixed text."), getRun(getParagraph(3), 1)->getString());
     }
 }
 
@@ -517,8 +553,8 @@ DECLARE_SHELL_MAILMERGE_TEST(testTdf92623, "tdf92623.odt", "10-testing-addresses
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0), pIDMA->getBookmarksCount());
     IDocumentMarkAccess::const_iterator_t mark = pIDMA->getAllMarksBegin();
     // and it's a TEXT_FIELDMARK
-    CPPUNIT_ASSERT_EQUAL( sal_Int32(IDocumentMarkAccess::GetType( **mark )),
-                          sal_Int32(IDocumentMarkAccess::MarkType::TEXT_FIELDMARK ) );
+    CPPUNIT_ASSERT_EQUAL( sal_Int32(IDocumentMarkAccess::MarkType::TEXT_FIELDMARK),
+                            sal_Int32(IDocumentMarkAccess::GetType( **mark )) );
     sal_uLong src_pos = (*mark)->GetMarkPos().nNode.GetIndex();
 
     // Get the size of the document in nodes
@@ -549,7 +585,7 @@ DECLARE_SHELL_MAILMERGE_TEST(testTdf92623, "tdf92623.odt", "10-testing-addresses
             countFieldMarks++;
         }
         else // see previous TODO
-            CPPUNIT_ASSERT_EQUAL( sal_Int32(markType), sal_Int32(IDocumentMarkAccess::MarkType::UNO_BOOKMARK) );
+            CPPUNIT_ASSERT_EQUAL( sal_Int32(IDocumentMarkAccess::MarkType::UNO_BOOKMARK), sal_Int32(markType) );
     }
     CPPUNIT_ASSERT_EQUAL(sal_Int32(10), countFieldMarks);
 }
@@ -638,13 +674,596 @@ DECLARE_FILE_MAILMERGE_TEST(testTdf102010, "empty.odt", "10-testing-addresses.od
             ++aNamedValueIter;
         }
     }
-    mMMargs.push_back( beans::NamedValue( UNO_NAME_SAVE_AS_SINGLE_FILE, uno::Any( true ) ) );
+    mMMargs.emplace_back( UNO_NAME_SAVE_AS_SINGLE_FILE, uno::Any( true ) );
 
     // Generate correct mail merge result filename
     executeMailMerge();
     // Don't overwrite previous result
     executeMailMerge( true );
     loadMailMergeDocument( 1 );
+}
+
+DECLARE_SHELL_MAILMERGE_TEST(testTdf118113, "tdf118113.odt", "tdf118113.ods", "testing-addresses")
+{
+    executeMailMerge();
+
+    // The document contains a text box anchored to the page and a conditionally hidden
+    // section that is only shown for one of the 4 recipients, namely the 3rd record.
+    // In case the hidden section is shown, the page count is 3 for a single data entry, otherwise 1.
+    // Previously, the page number was calculated incorrectly which led to the
+    // text box being anchored to the wrong page.
+
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument *>(mxMMComponent.get());
+    CPPUNIT_ASSERT(pTextDoc);
+    // 3 documents with 1 page size each + 1 document with 3 pages
+    // + an additional page after each of the first 3 documents to make
+    // sure that each document starts on an odd page number
+    sal_uInt16 nPhysPages = pTextDoc->GetDocShell()->GetWrtShell()->GetPhyPageNum();
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(9), nPhysPages);
+
+    // verify that there is a text box for each data record
+    uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(mxMMComponent, uno::UNO_QUERY);
+    uno::Reference<container::XIndexAccess> xDraws = xDrawPageSupplier->getDrawPage();
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(4), xDraws->getCount());
+
+    // verify the text box for each data record is anchored to the first page of the given data record's pages
+    std::vector<sal_uInt16> expectedPageNumbers {1, 3, 5, 9};
+    uno::Reference<beans::XPropertySet> xPropertySet;
+    for (sal_Int32 i = 0; i < xDraws->getCount(); i++)
+    {
+        xPropertySet.set(xDraws->getByIndex(i), uno::UNO_QUERY);
+
+        text::TextContentAnchorType nAnchorType;
+        CPPUNIT_ASSERT(xPropertySet->getPropertyValue( UNO_NAME_ANCHOR_TYPE ) >>= nAnchorType);
+        CPPUNIT_ASSERT_EQUAL( text::TextContentAnchorType_AT_PAGE, nAnchorType );
+
+        sal_uInt16 nAnchorPageNo = {};
+        CPPUNIT_ASSERT(xPropertySet->getPropertyValue( UNO_NAME_ANCHOR_PAGE_NO ) >>= nAnchorPageNo);
+
+        CPPUNIT_ASSERT_EQUAL(expectedPageNumbers.at(i), nAnchorPageNo);
+    }
+}
+
+
+namespace
+{
+constexpr char const* const EmptyValuesLegacyData[][8]
+    = { { "Heading", "Title: ", "First Name: firstname1", "Last Name: lastname1",
+          "Title:  First Name: firstname1", "First Name: firstname1 Last Name: lastname1",
+          "Title:  First Name: firstname1 Last Name: lastname1", "Trailing text" },
+        { "Heading", "Title: title2", "First Name: ", "Last Name: lastname2",
+          "Title: title2 First Name: ", "First Name:  Last Name: lastname2",
+          "Title: title2 First Name:  Last Name: lastname2", "Trailing text" },
+        { "Heading", "Title: title3", "First Name: firstname3", "Last Name: ",
+          "Title: title3 First Name: firstname3", "First Name: firstname3 Last Name: ",
+          "Title: title3 First Name: firstname3 Last Name: ", "Trailing text" },
+        { "Heading", "Title: ", "First Name: ", "Last Name: lastname4",
+          "Title:  First Name: ", "First Name:  Last Name: lastname4",
+          "Title:  First Name:  Last Name: lastname4", "Trailing text" },
+        { "Heading", "Title: title5", "First Name: ", "Last Name: ", "Title: title5 First Name: ",
+          "First Name:  Last Name: ", "Title: title5 First Name:  Last Name: ", "Trailing text" } };
+constexpr char const* const EmptyValuesNewData[][8]
+    = { { "Heading", "First Name: firstname1", "Last Name: lastname1",
+          "Title:  First Name: firstname1", "First Name: firstname1 Last Name: lastname1",
+          "Title:  First Name: firstname1 Last Name: lastname1", "Trailing text" },
+        { "Heading", "Title: title2", "Last Name: lastname2",
+          "Title: title2 First Name: ", "First Name:  Last Name: lastname2",
+          "Title: title2 First Name:  Last Name: lastname2", "Trailing text" },
+        { "Heading", "Title: title3", "First Name: firstname3",
+          "Title: title3 First Name: firstname3", "First Name: firstname3 Last Name: ",
+          "Title: title3 First Name: firstname3 Last Name: ", "Trailing text" },
+        { "Heading", "Last Name: lastname4", "First Name:  Last Name: lastname4",
+          "Title:  First Name:  Last Name: lastname4", "Trailing text" },
+        { "Heading", "Title: title5", "Title: title5 First Name: ",
+          "Title: title5 First Name:  Last Name: ", "Trailing text" } };
+}
+
+// The following four tests (testEmptyValuesLegacyODT, testEmptyValuesNewODT, (testEmptyValuesLegacyFODT, testEmptyValuesNewFODT)
+// check that for native documents without "EmptyDbFieldHidesPara" compatibility option, all paragraphs are exported visible,
+// while for documents with the option enabled, the paragraphs with all Database fields having empty values are hidden.
+
+DECLARE_FILE_MAILMERGE_TEST(testEmptyValuesLegacyODT, "tdf35798-legacy.odt", "5-with-blanks.ods",
+                            "names")
+{
+    executeMailMerge();
+    for (int doc = 0; doc < 5; ++doc)
+    {
+        loadMailMergeDocument(doc);
+        SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
+        CPPUNIT_ASSERT(pTextDoc);
+        SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
+        pDoc->RemoveInvisibleContent();
+        CPPUNIT_ASSERT_EQUAL(1, getPages());
+        for (int i = 0; i < 8; ++i)
+        {
+            auto xPara = getParagraph(i+1);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(
+                OString("in doc " + OString::number(doc) + " paragraph " + OString::number(i + 1))
+                    .getStr(),
+                OUString::createFromAscii(EmptyValuesLegacyData[doc][i]), xPara->getString());
+        }
+        CPPUNIT_ASSERT_EQUAL(8, getParagraphs());
+    }
+}
+
+DECLARE_FILE_MAILMERGE_TEST(testEmptyValuesNewODT, "tdf35798-new.odt", "5-with-blanks.ods",
+                            "names")
+{
+    executeMailMerge();
+    for (int doc = 0; doc < 5; ++doc)
+    {
+        loadMailMergeDocument(doc);
+        SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
+        CPPUNIT_ASSERT(pTextDoc);
+        SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
+        pDoc->RemoveInvisibleContent();
+        CPPUNIT_ASSERT_EQUAL(1, getPages());
+        int i;
+        for (i = 0; i < 8; ++i)
+        {
+            const char* pExpected = EmptyValuesNewData[doc][i];
+            if (!pExpected)
+                break;
+            auto xPara = getParagraph(i + 1);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(
+                OString("in doc " + OString::number(doc) + " paragraph " + OString::number(i + 1))
+                    .getStr(),
+                OUString::createFromAscii(pExpected), xPara->getString());
+        }
+        CPPUNIT_ASSERT_EQUAL(i, getParagraphs());
+    }
+}
+
+DECLARE_FILE_MAILMERGE_TEST(testEmptyValuesLegacyFODT, "tdf35798-legacy.fodt", "5-with-blanks.ods",
+                            "names")
+{
+    executeMailMerge();
+    for (int doc = 0; doc < 5; ++doc)
+    {
+        loadMailMergeDocument(doc);
+        SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
+        CPPUNIT_ASSERT(pTextDoc);
+        SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
+        pDoc->RemoveInvisibleContent();
+        CPPUNIT_ASSERT_EQUAL(1, getPages());
+        for (int i = 0; i < 8; ++i)
+        {
+            auto xPara = getParagraph(i + 1);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(
+                OString("in doc " + OString::number(doc) + " paragraph " + OString::number(i + 1))
+                    .getStr(),
+                OUString::createFromAscii(EmptyValuesLegacyData[doc][i]), xPara->getString());
+        }
+        CPPUNIT_ASSERT_EQUAL(8, getParagraphs());
+    }
+}
+
+DECLARE_FILE_MAILMERGE_TEST(testEmptyValuesNewFODT, "tdf35798-new.fodt", "5-with-blanks.ods",
+                            "names")
+{
+    executeMailMerge();
+    for (int doc = 0; doc < 5; ++doc)
+    {
+        loadMailMergeDocument(doc);
+        SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
+        CPPUNIT_ASSERT(pTextDoc);
+        SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
+        pDoc->RemoveInvisibleContent();
+        CPPUNIT_ASSERT_EQUAL(1, getPages());
+        int i;
+        for (i = 0; i < 8; ++i)
+        {
+            const char* pExpected = EmptyValuesNewData[doc][i];
+            if (!pExpected)
+                break;
+            auto xPara = getParagraph(i + 1);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(
+                OString("in doc " + OString::number(doc) + " paragraph " + OString::number(i + 1))
+                    .getStr(),
+                OUString::createFromAscii(pExpected), xPara->getString());
+        }
+        CPPUNIT_ASSERT_EQUAL(i, getParagraphs());
+    }
+}
+
+DECLARE_SHELL_MAILMERGE_TEST(testTdf118845, "tdf118845.fodt", "4_v01.ods", "Tabelle1")
+{
+    executeMailMerge();
+
+    // Both male and female greetings were shown, thus each page had 3 paragraphs
+
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxMMComponent.get());
+    CPPUNIT_ASSERT(pTextDoc);
+    sal_uInt16 nPhysPages = pTextDoc->GetDocShell()->GetWrtShell()->GetPhyPageNum();
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(7), nPhysPages); // 4 pages, each odd, and 3 blanks
+
+    uno::Reference<text::XTextDocument> xTextDocument(mxMMComponent, uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(8, getParagraphs(xTextDocument->getText()));
+
+    uno::Reference<text::XTextRange> xParagraph(getParagraphOrTable(1, xTextDocument->getText()),
+                                                uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("Dear Mrs. Mustermann1,"), xParagraph->getString());
+
+    xParagraph.set(getParagraphOrTable(2, xTextDocument->getText()), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString(""), xParagraph->getString());
+
+    xParagraph.set(getParagraphOrTable(3, xTextDocument->getText()), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("Dear Mr. Mustermann2,"), xParagraph->getString());
+
+    xParagraph.set(getParagraphOrTable(4, xTextDocument->getText()), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString(""), xParagraph->getString());
+
+    xParagraph.set(getParagraphOrTable(5, xTextDocument->getText()), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("Dear Mrs. Mustermann3,"), xParagraph->getString());
+
+    xParagraph.set(getParagraphOrTable(6, xTextDocument->getText()), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString(""), xParagraph->getString());
+
+    xParagraph.set(getParagraphOrTable(7, xTextDocument->getText()), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("Dear Mr. Mustermann4,"), xParagraph->getString());
+
+    xParagraph.set(getParagraphOrTable(8, xTextDocument->getText()), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString(""), xParagraph->getString());
+}
+
+DECLARE_SHELL_MAILMERGE_TEST(testTdf62364, "tdf62364.odt", "10-testing-addresses.ods", "testing-addresses")
+{
+    // prepare unit test and run
+    executeMailMerge();
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument *>(mxMMComponent.get());
+    CPPUNIT_ASSERT(pTextDoc);
+    CPPUNIT_ASSERT_EQUAL( sal_uInt16( 19 ), pTextDoc->GetDocShell()->GetWrtShell()->GetPhyPageNum()); // 10 pages, but each sub-document starts on odd page number
+
+    // check: each page (one page is one sub doc) has 4 paragraphs:
+    // - 1st and 2nd are regular paragraphs
+    // - 3rd and 4th are inside list
+    const bool nodeInList[4] = { false, false, true, true };
+
+    const auto & rNodes = pTextDoc->GetDocShell()->GetDoc()->GetNodes();
+    for (int pageIndex=0; pageIndex<10; pageIndex++)
+    {
+        for (int nodeIndex = 0; nodeIndex<4; nodeIndex++)
+        {
+            const SwNodePtr aNode = rNodes[9 + pageIndex * 4 + nodeIndex];
+            CPPUNIT_ASSERT_EQUAL(true, aNode->IsTextNode());
+
+            const SwTextNode* pTextNode = aNode->GetTextNode();
+            CPPUNIT_ASSERT(pTextNode);
+            CPPUNIT_ASSERT_EQUAL(nodeInList[nodeIndex], pTextNode->GetSwAttrSet().HasItem(RES_PARATR_LIST_ID));
+        }
+    }
+}
+
+DECLARE_SHELL_MAILMERGE_TEST(tdf125522_shell, "tdf125522.odt", "10-testing-addresses.ods", "testing-addresses")
+{
+    // prepare unit test and run
+    executeMailMerge();
+
+    // reset currently opened layout of the original template,
+    // and create the layout of the document with 10 mails inside
+    dumpMMLayout();
+
+    // there should be no any text frame in output
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument *>(mxMMComponent.get());
+    CPPUNIT_ASSERT(pTextDoc);
+
+    const auto & rNodes = pTextDoc->GetDocShell()->GetDoc()->GetNodes();
+    for (sal_uLong nodeIndex = 0; nodeIndex<rNodes.Count(); nodeIndex++)
+    {
+        const SwNodePtr aNode = rNodes[nodeIndex];
+        if (aNode->StartOfSectionNode())
+        {
+            CPPUNIT_ASSERT(!aNode->StartOfSectionNode()->GetFlyFormat());
+        }
+    }
+}
+
+DECLARE_SHELL_MAILMERGE_TEST(testTd78611_shell, "tdf78611.odt", "10-testing-addresses.ods", "testing-addresses")
+{
+    // prepare unit test and run
+    executeMailMerge();
+
+    // reset currently opened layout of the original template,
+    // and create the layout of the document with 10 mails inside
+    dumpMMLayout();
+
+    // check: each page (one page is one sub doc) has different paragraphs and header paragraphs.
+    // All header paragraphs should have numbering.
+
+    // check first page
+    CPPUNIT_ASSERT_EQUAL( OUString("1"), parseDump("/root/page[1]/body/txt[6]/Special", "rText"));
+    CPPUNIT_ASSERT_EQUAL( OUString("1.1"), parseDump("/root/page[1]/body/txt[8]/Special", "rText"));
+    CPPUNIT_ASSERT_EQUAL( OUString("1.2"), parseDump("/root/page[1]/body/txt[10]/Special", "rText"));
+
+    // check some other pages
+    CPPUNIT_ASSERT_EQUAL( OUString("1"), parseDump("/root/page[3]/body/txt[6]/Special", "rText"));
+    CPPUNIT_ASSERT_EQUAL( OUString("1.1"), parseDump("/root/page[5]/body/txt[8]/Special", "rText"));
+    CPPUNIT_ASSERT_EQUAL( OUString("1.2"), parseDump("/root/page[7]/body/txt[10]/Special", "rText"));
+}
+
+DECLARE_FILE_MAILMERGE_TEST(testTd78611_file, "tdf78611.odt", "10-testing-addresses.ods", "testing-addresses")
+{
+    executeMailMerge(true);
+    for (int doc = 0; doc < 10; ++doc)
+    {
+        loadMailMergeDocument( doc );
+        CPPUNIT_ASSERT_EQUAL( OUString("1"), parseDump("/root/page[1]/body/txt[6]/Special", "rText"));
+        CPPUNIT_ASSERT_EQUAL( OUString("1.1"), parseDump("/root/page[1]/body/txt[8]/Special", "rText"));
+        CPPUNIT_ASSERT_EQUAL( OUString("1.2"), parseDump("/root/page[1]/body/txt[10]/Special", "rText"));
+    }
+}
+
+DECLARE_SHELL_MAILMERGE_TEST(testTdf122156_shell, "linked-with-condition.odt", "5-with-blanks.ods",
+                             "names")
+{
+    // A document with a linked section hidden on an "empty field" condition
+    // For combined documents, hidden sections are removed completely
+    executeMailMerge();
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxMMComponent.get());
+    CPPUNIT_ASSERT(pTextDoc);
+    // 5 documents 1 page each, starting at odd page numbers => 9
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(9), pTextDoc->GetDocShell()->GetWrtShell()->GetPhyPageNum());
+    uno::Reference<text::XTextSectionsSupplier> xSectionsSupplier(mxMMComponent,
+                                                                  uno::UNO_QUERY_THROW);
+    uno::Reference<container::XIndexAccess> xSections(xSectionsSupplier->getTextSections(),
+                                                      uno::UNO_QUERY_THROW);
+    // 2 out of 5 dataset records have empty "Title" field => no sections in respective documents
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(3), xSections->getCount());
+}
+
+DECLARE_FILE_MAILMERGE_TEST(testTdf122156_file, "linked-with-condition.odt", "5-with-blanks.ods",
+                            "names")
+{
+    // A document with a linked section hidden on an "empty field" condition
+    // For separate documents, the sections are hidden, but not removed
+    executeMailMerge();
+    {
+        loadMailMergeDocument(0);
+        uno::Reference<text::XTextSectionsSupplier> xSectionsSupplier(mxComponent,
+                                                                      uno::UNO_QUERY_THROW);
+        uno::Reference<container::XIndexAccess> xSections(xSectionsSupplier->getTextSections(),
+                                                          uno::UNO_QUERY_THROW);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), xSections->getCount());
+        uno::Reference<beans::XPropertySet> xSect(xSections->getByIndex(0), uno::UNO_QUERY_THROW);
+        // Record 1 has empty "Title" field => section is not shown
+        CPPUNIT_ASSERT_EQUAL(false, getProperty<bool>(xSect, "IsCurrentlyVisible"));
+    }
+    {
+        loadMailMergeDocument(1);
+        uno::Reference<text::XTextSectionsSupplier> xSectionsSupplier(mxComponent,
+                                                                      uno::UNO_QUERY_THROW);
+        uno::Reference<container::XIndexAccess> xSections(xSectionsSupplier->getTextSections(),
+                                                          uno::UNO_QUERY_THROW);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), xSections->getCount());
+        uno::Reference<beans::XPropertySet> xSect(xSections->getByIndex(0), uno::UNO_QUERY_THROW);
+        // Record 2 has non-empty "Title" field => section is shown
+        CPPUNIT_ASSERT_EQUAL(true, getProperty<bool>(xSect, "IsCurrentlyVisible"));
+    }
+    {
+        loadMailMergeDocument(2);
+        uno::Reference<text::XTextSectionsSupplier> xSectionsSupplier(mxComponent,
+                                                                      uno::UNO_QUERY_THROW);
+        uno::Reference<container::XIndexAccess> xSections(xSectionsSupplier->getTextSections(),
+                                                          uno::UNO_QUERY_THROW);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), xSections->getCount());
+        uno::Reference<beans::XPropertySet> xSect(xSections->getByIndex(0), uno::UNO_QUERY_THROW);
+        // Record 3 has non-empty "Title" field => section is shown
+        CPPUNIT_ASSERT_EQUAL(true, getProperty<bool>(xSect, "IsCurrentlyVisible"));
+    }
+    {
+        loadMailMergeDocument(3);
+        uno::Reference<text::XTextSectionsSupplier> xSectionsSupplier(mxComponent,
+                                                                      uno::UNO_QUERY_THROW);
+        uno::Reference<container::XIndexAccess> xSections(xSectionsSupplier->getTextSections(),
+                                                          uno::UNO_QUERY_THROW);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), xSections->getCount());
+        uno::Reference<beans::XPropertySet> xSect(xSections->getByIndex(0), uno::UNO_QUERY_THROW);
+        // Record 4 has empty "Title" field => section is not shown
+        CPPUNIT_ASSERT_EQUAL(false, getProperty<bool>(xSect, "IsCurrentlyVisible"));
+    }
+    {
+        loadMailMergeDocument(4);
+        uno::Reference<text::XTextSectionsSupplier> xSectionsSupplier(mxComponent,
+                                                                      uno::UNO_QUERY_THROW);
+        uno::Reference<container::XIndexAccess> xSections(xSectionsSupplier->getTextSections(),
+                                                          uno::UNO_QUERY_THROW);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), xSections->getCount());
+        uno::Reference<beans::XPropertySet> xSect(xSections->getByIndex(0), uno::UNO_QUERY_THROW);
+        // Record 5 has non-empty "Title" field => section is shown
+        CPPUNIT_ASSERT_EQUAL(true, getProperty<bool>(xSect, "IsCurrentlyVisible"));
+    }
+}
+
+DECLARE_SHELL_MAILMERGE_TEST(testTdf121168, "section_ps.odt", "4_v01.ods", "Tabelle1")
+{
+    // A document starting with a section on a page with non-default page style with header
+    executeMailMerge();
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxMMComponent.get());
+    CPPUNIT_ASSERT(pTextDoc);
+    // 4 documents 1 page each, starting at odd page numbers => 7
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(7), pTextDoc->GetDocShell()->GetWrtShell()->GetPhyPageNum());
+
+    SwDoc* pDocMM = pTextDoc->GetDocShell()->GetDoc();
+    sal_uLong nSizeMM = pDocMM->GetNodes().GetEndOfContent().GetIndex()
+                        - pDocMM->GetNodes().GetEndOfExtras().GetIndex() - 2;
+    CPPUNIT_ASSERT_EQUAL(sal_uLong(16), nSizeMM);
+
+    // All even pages should be empty, all sub-documents have one page
+    const SwRootFrame* pLayout = pDocMM->getIDocumentLayoutAccess().GetCurrentLayout();
+    const SwPageFrame* pPageFrm = static_cast<const SwPageFrame*>(pLayout->Lower());
+    while (pPageFrm)
+    {
+        sal_uInt16 nPageNum = pPageFrm->GetPhyPageNum();
+        bool bOdd = (1 == (nPageNum % 2));
+        CPPUNIT_ASSERT_EQUAL(!bOdd, pPageFrm->IsEmptyPage());
+        CPPUNIT_ASSERT_EQUAL(sal_uInt16(bOdd ? 1 : 2), pPageFrm->GetVirtPageNum());
+        if (bOdd)
+        {
+            const SwPageDesc* pDesc = pPageFrm->GetPageDesc();
+            CPPUNIT_ASSERT_EQUAL(OUString("Teststyle" + OUString::number(nPageNum / 2 + 1)),
+                                 pDesc->GetName());
+        }
+        pPageFrm = static_cast<const SwPageFrame*>(pPageFrm->GetNext());
+    }
+}
+
+DECLARE_FILE_MAILMERGE_TEST(testTdf81782_file, "tdf78611.odt", "10-testing-addresses.ods", "testing-addresses")
+{
+    executeMailMerge(true);
+    for (int doc = 0; doc < 10; ++doc)
+    {
+        loadMailMergeDocument( doc );
+
+        // get document properties
+        uno::Reference<document::XDocumentPropertiesSupplier> xDocumentPropertiesSupplier(mxComponent, uno::UNO_QUERY);
+        uno::Reference<document::XDocumentProperties> xDocumentProperties(xDocumentPropertiesSupplier->getDocumentProperties());
+
+        // check if properties were set
+        uno::Sequence<OUString> aKeywords(xDocumentProperties->getKeywords());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aKeywords.getLength());
+        CPPUNIT_ASSERT_EQUAL(OUString("one two"), aKeywords[0]);
+
+        // check title and subject
+        CPPUNIT_ASSERT_EQUAL(OUString("my title"), xDocumentProperties->getTitle());
+        CPPUNIT_ASSERT_EQUAL(OUString("my subject"), xDocumentProperties->getSubject());
+    }
+}
+
+// problem was: field content was duplicated & truncated
+DECLARE_SHELL_MAILMERGE_TEST(testTdf81750_shell, "tdf81750.odt", "10-testing-addresses.ods", "testing-addresses")
+{
+    // prepare unit test and run
+    executeMailMerge();
+
+    // reset currently opened layout of the original template,
+    // and create the layout of the document with 10 mails inside
+    dumpMMLayout();
+
+    // check several pages page
+    OUString aExpected("Text: Foo ");
+    CPPUNIT_ASSERT_EQUAL( aExpected, parseDump("/root/page[1]/body/txt[2]", ""));
+    CPPUNIT_ASSERT_EQUAL( aExpected, parseDump("/root/page[3]/body/txt[2]", ""));
+    CPPUNIT_ASSERT_EQUAL( aExpected, parseDump("/root/page[5]/body/txt[2]", ""));
+    CPPUNIT_ASSERT_EQUAL( aExpected, parseDump("/root/page[7]/body/txt[2]", ""));
+    CPPUNIT_ASSERT_EQUAL( aExpected, parseDump("/root/page[9]/body/txt[2]", ""));
+}
+
+
+DECLARE_FILE_MAILMERGE_TEST(testTdf123057_file, "pagecounttest.ott", "db_pagecounttest.ods", "Sheet1")
+{
+    executeMailMerge(true);
+
+    for (int doc = 0; doc < 4; ++doc)
+    {
+        loadMailMergeDocument(doc);
+
+        // get document properties
+        uno::Reference<text::XTextSectionsSupplier> xSectionsSupplier(mxComponent, uno::UNO_QUERY_THROW);
+        uno::Reference<container::XIndexAccess> xSections(xSectionsSupplier->getTextSections(), uno::UNO_QUERY_THROW);
+
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(2), xSections->getCount());
+        uno::Reference<beans::XPropertySet> xSect0(xSections->getByIndex(0), uno::UNO_QUERY_THROW);
+        uno::Reference<beans::XPropertySet> xSect1(xSections->getByIndex(1), uno::UNO_QUERY_THROW);
+
+        OUString sFieldPageCount;
+        uno::Reference<text::XTextFieldsSupplier> xTextFieldsSupplier(mxComponent, uno::UNO_QUERY);
+        uno::Reference<container::XEnumerationAccess> xFieldsAccess(xTextFieldsSupplier->getTextFields());
+        uno::Reference<container::XEnumeration> xFields(xFieldsAccess->createEnumeration());
+
+        if (xFields.is())
+        {
+            while (xFields->hasMoreElements())
+            {
+                uno::Any aField = xFields->nextElement();
+                uno::Reference<lang::XServiceInfo> xServiceInfo(aField, uno::UNO_QUERY);
+                if (xServiceInfo->supportsService("com.sun.star.text.textfield.PageCount"))
+                {
+                    uno::Reference<text::XTextContent> xField(aField, uno::UNO_QUERY);
+                    sFieldPageCount = xField->getAnchor()->getString();
+                }
+            }
+        }
+
+        switch (doc)
+        {
+        case 0:
+            // both sections visible, page num is 2
+            CPPUNIT_ASSERT_EQUAL(2, getPages());
+            CPPUNIT_ASSERT_EQUAL(true, getProperty<bool>(xSect0, "IsCurrentlyVisible"));
+            CPPUNIT_ASSERT_EQUAL(true, getProperty<bool>(xSect1, "IsCurrentlyVisible"));
+            CPPUNIT_ASSERT_EQUAL(OUString("2"), sFieldPageCount);
+            break;
+        case 1:
+            // second section hidden, page num is 1
+            CPPUNIT_ASSERT_EQUAL(1, getPages());
+            CPPUNIT_ASSERT_EQUAL(true, getProperty<bool>(xSect0, "IsCurrentlyVisible"));
+            CPPUNIT_ASSERT_EQUAL(false, getProperty<bool>(xSect1, "IsCurrentlyVisible"));
+            CPPUNIT_ASSERT_EQUAL(OUString("1"), sFieldPageCount);
+            break;
+        case 2:
+            // first section hidden, page num is 1
+            CPPUNIT_ASSERT_EQUAL(1, getPages());
+            CPPUNIT_ASSERT_EQUAL(false, getProperty<bool>(xSect0, "IsCurrentlyVisible"));
+            CPPUNIT_ASSERT_EQUAL(true, getProperty<bool>(xSect1, "IsCurrentlyVisible"));
+            CPPUNIT_ASSERT_EQUAL(OUString("1"), sFieldPageCount);
+            break;
+        case 3:
+            // both sections hidden, page num is 1
+            CPPUNIT_ASSERT_EQUAL(1, getPages());
+            CPPUNIT_ASSERT_EQUAL(false, getProperty<bool>(xSect0, "IsCurrentlyVisible"));
+            CPPUNIT_ASSERT_EQUAL(false, getProperty<bool>(xSect1, "IsCurrentlyVisible"));
+            CPPUNIT_ASSERT_EQUAL(OUString("1"), sFieldPageCount);
+            break;
+        }
+    }
+}
+
+// The document has a header with page number and total page count on page 2
+// (which uses page style "Default Style") but doesn't have a header set
+// for the first page (which uses page style "First Page").
+// Fields in the header hadn't been replaced properly.
+DECLARE_SHELL_MAILMERGE_TEST(testTdf128148, "tdf128148.odt", "4_v01.ods", "Tabelle1")
+{
+    executeMailMerge();
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxMMComponent.get());
+    CPPUNIT_ASSERT(pTextDoc);
+
+    // 4 documents with 2 pages each => 8 pages in total
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(8), pTextDoc->GetDocShell()->GetWrtShell()->GetPhyPageNum());
+
+    SwDoc* pDocMM = pTextDoc->GetDocShell()->GetDoc();
+    uno::Reference<frame::XModel> xModel = pTextDoc->GetDocShell()->GetBaseModel();
+    uno::Reference<style::XStyleFamiliesSupplier> xStyleFamiliesSupplier(xModel, uno::UNO_QUERY);
+    uno::Reference<container::XNameAccess> xStyleFamilies = xStyleFamiliesSupplier->getStyleFamilies();
+    uno::Reference<container::XNameAccess> xStyleFamily(xStyleFamilies->getByName("PageStyles"), uno::UNO_QUERY);
+
+    // All odd pages have no header, all even pages should have header with text "Page 2 of 2"
+    const SwRootFrame* pLayout = pDocMM->getIDocumentLayoutAccess().GetCurrentLayout();
+    const SwPageFrame* pPageFrm = static_cast<const SwPageFrame*>(pLayout->Lower());
+    while (pPageFrm)
+    {
+        const sal_uInt16 nPageNum = pPageFrm->GetPhyPageNum();
+        const bool bIsEvenPage = ((nPageNum % 2) == 0);
+
+        const OUString& sPageStyle = pPageFrm->GetPageDesc()->GetName();
+        uno::Reference<beans::XPropertySet> xPageStyle(xStyleFamily->getByName(sPageStyle), uno::UNO_QUERY);
+
+        bool bHeaderIsOn = false;
+        xPageStyle->getPropertyValue(UNO_NAME_HEADER_IS_ON) >>= bHeaderIsOn;
+
+        // first page for every data record shouldn't have header, second should
+        CPPUNIT_ASSERT_EQUAL(bIsEvenPage, bHeaderIsOn);
+        if (bIsEvenPage)
+        {
+            // text in header on even pages with correctly replaced fields is "Page 2 of 2"
+            uno::Reference<text::XText> xHeaderText;
+            xPageStyle->getPropertyValue(UNO_NAME_HEADER_TEXT) >>= xHeaderText;
+            const OUString sHeaderText = xHeaderText->getString();
+            CPPUNIT_ASSERT_EQUAL(OUString("Page 2 of 2"), sHeaderText);
+        }
+
+        pPageFrm = static_cast<const SwPageFrame*>(pPageFrm->GetNext());
+    }
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

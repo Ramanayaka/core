@@ -17,34 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/msgbox.hxx>
+#include <config_features.h>
+
 #include <sfx2/basedlgs.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <sfx2/request.hxx>
-#include <sfx2/app.hxx>
 #include <svx/optgenrl.hxx>
 #include <docufld.hxx>
 #include <expfld.hxx>
 #include <view.hxx>
-#include <dbfld.hxx>
 #include <wrtsh.hxx>
-#include <flddb.hxx>
-#include <flddinf.hxx>
-#include <fldvar.hxx>
-#include <flddok.hxx>
-#include <fldfunc.hxx>
-#include <fldref.hxx>
+#include "flddb.hxx"
+#include "flddinf.hxx"
+#include "fldvar.hxx"
+#include "flddok.hxx"
+#include "fldfunc.hxx"
+#include "fldref.hxx"
 #include <fldedt.hxx>
 
 #include <cmdid.h>
-#include <helpid.h>
-#include <globals.hrc>
-#include <fldui.hrc>
-#include "swabstdlg.hxx"
-#include "dialog.hrc"
+#include <swabstdlg.hxx>
 
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <memory>
 #include <swuiexp.hxx>
 
@@ -57,6 +53,19 @@ void SwFieldEditDlg::EnsureSelection(SwField *pCurField, SwFieldMgr &rMgr)
         if (pInputField && pInputField->GetFormatField())
         {
             pSh->GotoField( *(pInputField->GetFormatField()) );
+        }
+        else
+        {
+            SwSetExpField *const pSetField(dynamic_cast<SwSetExpField*>(pCurField));
+            if (pSetField)
+            {
+                assert(pSetField->GetFormatField());
+                pSh->GotoField( *(pSetField->GetFormatField()) );
+            }
+            else
+            {
+                assert(!"what input field is this");
+            }
         }
     }
 
@@ -87,22 +96,21 @@ void SwFieldEditDlg::EnsureSelection(SwField *pCurField, SwFieldMgr &rMgr)
     assert(pCurField == rMgr.GetCurField());
 }
 
-SwFieldEditDlg::SwFieldEditDlg(SwView& rVw)
-    : SfxSingleTabDialog(&rVw.GetViewFrame()->GetWindow(), nullptr,
-        "EditFieldDialog", "modules/swriter/ui/editfielddialog.ui")
+SwFieldEditDlg::SwFieldEditDlg(SwView const & rVw)
+    : SfxSingleTabDialogController(rVw.GetViewFrame()->GetWindow().GetFrameWeld(), nullptr,
+        "modules/swriter/ui/editfielddialog.ui", "EditFieldDialog")
     , pSh(rVw.GetWrtShellPtr())
+    , m_xPrevBT(m_xBuilder->weld_button("prev"))
+    , m_xNextBT(m_xBuilder->weld_button("next"))
+    , m_xAddressBT(m_xBuilder->weld_button("edit"))
 {
-    get(m_pPrevBT, "prev");
-    get(m_pNextBT, "next");
-    get(m_pAddressBT, "edit");
-
     SwFieldMgr aMgr(pSh);
 
     SwField *pCurField = aMgr.GetCurField();
     if (!pCurField)
         return;
 
-    SwViewShell::SetCareWin(this);
+    SwViewShell::SetCareDialog(m_xDialog);
 
     EnsureSelection(pCurField, aMgr);
 
@@ -110,12 +118,12 @@ SwFieldEditDlg::SwFieldEditDlg(SwView& rVw)
 
     CreatePage(nGroup);
 
-    GetOKButton()->SetClickHdl(LINK(this, SwFieldEditDlg, OKHdl));
+    GetOKButton().connect_clicked(LINK(this, SwFieldEditDlg, OKHdl));
 
-    m_pPrevBT->SetClickHdl(LINK(this, SwFieldEditDlg, NextPrevHdl));
-    m_pNextBT->SetClickHdl(LINK(this, SwFieldEditDlg, NextPrevHdl));
+    m_xPrevBT->connect_clicked(LINK(this, SwFieldEditDlg, NextPrevHdl));
+    m_xNextBT->connect_clicked(LINK(this, SwFieldEditDlg, NextPrevHdl));
 
-    m_pAddressBT->SetClickHdl(LINK(this, SwFieldEditDlg, AddressHdl));
+    m_xAddressBT->connect_clicked(LINK(this, SwFieldEditDlg, AddressHdl));
 
     Init();
 }
@@ -123,9 +131,8 @@ SwFieldEditDlg::SwFieldEditDlg(SwView& rVw)
 // initialise controls
 void SwFieldEditDlg::Init()
 {
-    VclPtr<SwFieldPage> pTabPage = static_cast<SwFieldPage*>(GetTabPage());
-
-    if( pTabPage )
+    SwFieldPage* pTabPage = static_cast<SwFieldPage*>(GetTabPage());
+    if (pTabPage)
     {
         SwFieldMgr& rMgr = pTabPage->GetFieldMgr();
 
@@ -136,44 +143,47 @@ void SwFieldEditDlg::Init()
 
         // Traveling only when more than one field
         pSh->StartAction();
+        pSh->ClearMark();
         pSh->CreateCursor();
 
         bool bMove = rMgr.GoNext();
         if( bMove )
             rMgr.GoPrev();
-        m_pNextBT->Enable(bMove);
+        m_xNextBT->set_sensitive(bMove);
 
         bMove = rMgr.GoPrev();
         if( bMove )
             rMgr.GoNext();
-        m_pPrevBT->Enable( bMove );
+        m_xPrevBT->set_sensitive( bMove );
 
-        if (pCurField->GetTypeId() == TYP_EXTUSERFLD)
-            m_pAddressBT->Show();
+        if (pCurField->GetTypeId() == SwFieldTypesEnum::ExtendedUser)
+            m_xAddressBT->set_sensitive(true);
+        else
+            m_xAddressBT->set_sensitive(false);
 
         pSh->DestroyCursor();
         pSh->EndAction();
     }
 
-    GetOKButton()->Enable( !pSh->IsReadOnlyAvailable() ||
-                           !pSh->HasReadonlySel() );
+    GetOKButton().set_sensitive(!pSh->IsReadOnlyAvailable() ||
+                                !pSh->HasReadonlySel());
 }
 
-VclPtr<SfxTabPage> SwFieldEditDlg::CreatePage(sal_uInt16 nGroup)
+SfxTabPage* SwFieldEditDlg::CreatePage(sal_uInt16 nGroup)
 {
     // create TabPage
-    VclPtr<SfxTabPage> pTabPage;
+    std::unique_ptr<SfxTabPage> xTabPage;
 
     switch (nGroup)
     {
         case GRP_DOC:
-            pTabPage = SwFieldDokPage::Create(get_content_area(), nullptr);
+            xTabPage = SwFieldDokPage::Create(get_content_area(), this, nullptr);
             break;
         case GRP_FKT:
-            pTabPage = SwFieldFuncPage::Create(get_content_area(), nullptr);
+            xTabPage = SwFieldFuncPage::Create(get_content_area(), this, nullptr);
             break;
         case GRP_REF:
-            pTabPage = SwFieldRefPage::Create(get_content_area(), nullptr);
+            xTabPage = SwFieldRefPage::Create(get_content_area(), this, nullptr);
             break;
         case GRP_REG:
             {
@@ -188,94 +198,84 @@ VclPtr<SfxTabPage> SwFieldEditDlg::CreatePage(sal_uInt16 nGroup)
                     xDocProps->getUserDefinedProperties(),
                     uno::UNO_QUERY_THROW);
                 pSet->Put( SfxUnoAnyItem( SID_DOCINFO, uno::makeAny(xUDProps) ) );
-                pTabPage = SwFieldDokInfPage::Create(get_content_area(), pSet);
+                xTabPage = SwFieldDokInfPage::Create(get_content_area(), this, pSet);
                 break;
             }
+#if HAVE_FEATURE_DBCONNECTIVITY
         case GRP_DB:
-            pTabPage = SwFieldDBPage::Create(get_content_area(), nullptr);
-            static_cast<SwFieldDBPage*>(pTabPage.get())->SetWrtShell(*pSh);
+            xTabPage = SwFieldDBPage::Create(get_content_area(), this, nullptr);
+            static_cast<SwFieldDBPage*>(xTabPage.get())->SetWrtShell(*pSh);
             break;
+#endif
         case GRP_VAR:
-            pTabPage = SwFieldVarPage::Create(get_content_area(), nullptr);
+            xTabPage = SwFieldVarPage::Create(get_content_area(), this, nullptr);
             break;
 
     }
 
-    assert(pTabPage);
+    assert(xTabPage);
 
-    if (pTabPage)
-    {
-        static_cast<SwFieldPage*>(pTabPage.get())->SetWrtShell(pSh);
-        SetTabPage(pTabPage);
-    }
+    static_cast<SwFieldPage*>(xTabPage.get())->SetWrtShell(pSh);
+    SetTabPage(std::move(xTabPage));
 
-    return pTabPage;
+    return GetTabPage();
 }
 
 SwFieldEditDlg::~SwFieldEditDlg()
 {
-    disposeOnce();
-}
-
-void SwFieldEditDlg::dispose()
-{
-    SwViewShell::SetCareWin(nullptr);
+    SwViewShell::SetCareDialog(nullptr);
     pSh->EnterStdMode();
-    m_pPrevBT.clear();
-    m_pNextBT.clear();
-    m_pAddressBT.clear();
-    SfxSingleTabDialog::dispose();
 }
 
 void SwFieldEditDlg::EnableInsert(bool bEnable)
 {
     if( bEnable && pSh->IsReadOnlyAvailable() && pSh->HasReadonlySel() )
         bEnable = false;
-    GetOKButton()->Enable( bEnable );
+    GetOKButton().set_sensitive(bEnable);
 }
 
 void SwFieldEditDlg::InsertHdl()
 {
-    GetOKButton()->Click();
+    GetOKButton().clicked();
 }
 
 // kick off changing of the field
-IMPL_LINK_NOARG(SwFieldEditDlg, OKHdl, Button*, void)
+IMPL_LINK_NOARG(SwFieldEditDlg, OKHdl, weld::Button&, void)
 {
-    if (GetOKButton()->IsEnabled())
+    if (GetOKButton().get_sensitive())
     {
-        VclPtr<SfxTabPage> pTabPage = GetTabPage();
+        SfxTabPage* pTabPage = GetTabPage();
         if (pTabPage)
             pTabPage->FillItemSet(nullptr);
-        EndDialog( RET_OK );
+        m_xDialog->response(RET_OK);
     }
 }
 
-short SwFieldEditDlg::Execute()
+short SwFieldEditDlg::run()
 {
     // without TabPage no dialog
-    return GetTabPage() ? Dialog::Execute() : static_cast<short>(RET_CANCEL);
+    return GetTabPage() ? SfxSingleTabDialogController::run() : static_cast<short>(RET_CANCEL);
 }
 
 // Traveling between fields of the same type
-IMPL_LINK( SwFieldEditDlg, NextPrevHdl, Button *, pButton, void )
+IMPL_LINK(SwFieldEditDlg, NextPrevHdl, weld::Button&, rButton, void)
 {
-    bool bNext = pButton == m_pNextBT;
+    bool bNext = &rButton == m_xNextBT.get();
 
     pSh->EnterStdMode();
 
     SwFieldType *pOldTyp = nullptr;
-    VclPtr<SwFieldPage> pTabPage = static_cast<SwFieldPage*>(GetTabPage());
+    SwFieldPage* pTabPage = static_cast<SwFieldPage*>(GetTabPage());
 
     //#112462# FillItemSet may delete the current field
     //that's why it has to be called before accessing the current field
-    if( GetOKButton()->IsEnabled() )
+    if (GetOKButton().get_sensitive())
         pTabPage->FillItemSet(nullptr);
 
     SwFieldMgr& rMgr = pTabPage->GetFieldMgr();
     SwField *pCurField = rMgr.GetCurField();
-    if (pCurField->GetTypeId() == TYP_DBFLD)
-        pOldTyp = static_cast<SwDBFieldType*>(pCurField->GetTyp());
+    if (pCurField->GetTypeId() == SwFieldTypesEnum::Database)
+        pOldTyp = pCurField->GetTyp();
 
     rMgr.GoNextPrev( bNext, pOldTyp );
     pCurField = rMgr.GetCurField();
@@ -285,14 +285,14 @@ IMPL_LINK( SwFieldEditDlg, NextPrevHdl, Button *, pButton, void )
     sal_uInt16 nGroup = SwFieldMgr::GetGroup(pCurField->GetTypeId(), pCurField->GetSubType());
 
     if (nGroup != pTabPage->GetGroup())
-        pTabPage = static_cast<SwFieldPage*>(CreatePage(nGroup).get());
+        pTabPage = static_cast<SwFieldPage*>(CreatePage(nGroup));
 
     pTabPage->EditNewField();
 
     Init();
 }
 
-IMPL_LINK_NOARG(SwFieldEditDlg, AddressHdl, Button*, void)
+IMPL_LINK_NOARG(SwFieldEditDlg, AddressHdl, weld::Button&, void)
 {
     SwFieldPage* pTabPage = static_cast<SwFieldPage*>(GetTabPage());
     SwFieldMgr& rMgr = pTabPage->GetFieldMgr();
@@ -325,16 +325,12 @@ IMPL_LINK_NOARG(SwFieldEditDlg, AddressHdl, Button*, void)
 
     }
     aSet.Put(SfxUInt16Item(SID_FIELD_GRABFOCUS, static_cast<sal_uInt16>(nEditPos)));
-    SwAbstractDialogFactory* pFact = swui::GetFactory();
-    OSL_ENSURE(pFact, "SwAbstractDialogFactory fail!");
+    SwAbstractDialogFactory& rFact = swui::GetFactory();
 
-    ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateSfxDialog( this, aSet,
-        pSh->GetView().GetViewFrame()->GetFrame().GetFrameInterface(),
-        RC_DLG_ADDR ));
-    OSL_ENSURE(pDlg, "Dialog creation failed!");
-    if(RET_OK == pDlg->Execute())
+    ScopedVclPtr<SfxAbstractDialog> pDlg(rFact.CreateSwAddressAbstractDlg(m_xDialog.get(), aSet));
+    if (RET_OK == pDlg->Execute())
     {
-        pSh->UpdateFields( *pCurField );
+        pSh->UpdateOneField(*pCurField);
     }
 }
 

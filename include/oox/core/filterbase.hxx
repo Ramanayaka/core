@@ -20,19 +20,15 @@
 #ifndef INCLUDED_OOX_CORE_FILTERBASE_HXX
 #define INCLUDED_OOX_CORE_FILTERBASE_HXX
 
-#include <exception>
 #include <memory>
 
 #include <com/sun/star/document/XExporter.hpp>
 #include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/document/XImporter.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -42,7 +38,7 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { struct PropertyValue; }
     namespace drawing { class XShape; }
     namespace frame { class XFrame; }
@@ -54,7 +50,7 @@ namespace com { namespace sun { namespace star {
     namespace lang { class XMultiServiceFactory; }
     namespace task { class XStatusIndicator; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
 namespace comphelper {
     class SequenceAsHashMap;
@@ -68,13 +64,12 @@ namespace oox {
     class ModelObjectHelper;
 }
 
-namespace oox { namespace ole {
+namespace oox::ole {
     class OleObjectHelper;
     class VbaProject;
-} }
+}
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 enum OoxmlVersion
 {
@@ -131,10 +126,6 @@ public:
     const css::uno::Reference< css::frame::XFrame >&
                         getTargetFrame() const;
 
-    /// Returns the parent shape to load into (if any)
-    const css::uno::Reference< css::drawing::XShape >&
-                        getParentShape() const;
-
     /** Returns the status indicator (may be null). */
     const css::uno::Reference< css::task::XStatusIndicator >&
                         getStatusIndicator() const;
@@ -152,7 +143,7 @@ public:
     OUString     getAbsoluteUrl( const OUString& rUrl ) const;
 
     /** Returns the base storage of the imported/exported file. */
-    StorageRef          getStorage() const;
+    StorageRef const & getStorage() const;
 
     /** Opens and returns the specified input stream from the base storage.
 
@@ -188,6 +179,9 @@ public:
         the imported document. */
     ModelObjectHelper&  getModelObjectHelper() const;
 
+    ModelObjectHelper& getModelObjectHelperForModel(
+        const css::uno::Reference<css::lang::XMultiServiceFactory>& xFactory) const;
+
     /** Returns a helper for the handling of OLE objects. */
     ::oox::ole::OleObjectHelper& getOleObjectHelper() const;
 
@@ -196,7 +190,7 @@ public:
 
     /** Imports the raw binary data from the specified stream.
         @return  True, if the data could be imported from the stream. */
-    bool                importBinaryData( StreamDataSequence& orDataSeq, const OUString& rStreamName );
+    bool                importBinaryData( StreamDataSequence & orDataSeq, const OUString& rStreamName );
 
     // com.sun.star.lang.XServiceInfo interface -------------------------------
 
@@ -240,6 +234,8 @@ public:
 
     bool exportVBA() const;
 
+    bool isExportTemplate() const;
+
 protected:
     virtual css::uno::Reference< css::io::XInputStream >
                         implGetInputStream( utl::MediaDescriptor& rMediaDesc ) const;
@@ -248,7 +244,7 @@ protected:
 
     virtual bool        implFinalizeExport( utl::MediaDescriptor& rMediaDescriptor );
 
-    css::uno::Reference< css::io::XStream >
+    css::uno::Reference< css::io::XStream > const &
                         getMainDocumentStream( ) const;
 
 private:
@@ -271,8 +267,7 @@ private:
     std::unique_ptr< FilterBaseImpl > mxImpl;
 };
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 #endif
 

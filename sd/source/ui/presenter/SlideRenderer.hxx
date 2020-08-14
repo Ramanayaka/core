@@ -20,17 +20,17 @@
 #ifndef INCLUDED_SD_SOURCE_UI_PRESENTER_SLIDERENDERER_HXX
 #define INCLUDED_SD_SOURCE_UI_PRESENTER_SLIDERENDERER_HXX
 
-#include "PreviewRenderer.hxx"
-#include <com/sun/star/drawing/XDrawPage.hpp>
+#include <PreviewRenderer.hxx>
 #include <com/sun/star/drawing/XSlideRenderer.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/rendering/XSpriteCanvas.hpp>
 
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 
-namespace sd { namespace presenter {
+namespace com::sun::star::drawing { class XDrawPage; }
+
+namespace sd::presenter {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::drawing::XSlideRenderer,
@@ -93,7 +93,7 @@ private:
     void ThrowIfDisposed();
 };
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 #endif
 

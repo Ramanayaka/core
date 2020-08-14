@@ -18,9 +18,9 @@
  */
 
 #include <comphelper/string.hxx>
+#include <comphelper/lok.hxx>
 #include <editeng/eeitem.hxx>
 
-#include "scitems.hxx"
 #include <editeng/editview.hxx>
 #include <editeng/flditem.hxx>
 #include <svx/hlnkitem.hxx>
@@ -28,25 +28,24 @@
 #include <sfx2/dispatch.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/request.hxx>
-#include <sfx2/objface.hxx>
 #include <svl/stritem.hxx>
 
-#include "tabvwsh.hxx"
-#include "sc.hrc"
-#include "scmod.hxx"
-#include "impex.hxx"
-#include "editsh.hxx"
-#include "dociter.hxx"
-#include "inputhdl.hxx"
+#include <tabvwsh.hxx>
+#include <sc.hrc>
+#include <scmod.hxx>
+#include <impex.hxx>
+#include <editsh.hxx>
+#include <dociter.hxx>
+#include <inputhdl.hxx>
 #include <svx/srchdlg.hxx>
-#include "document.hxx"
+#include <document.hxx>
 #include <gridwin.hxx>
 
 OUString ScTabViewShell::GetSelectionText( bool bWholeWord )
 {
     OUString aStrSelection;
 
-    if ( pEditShell && pEditShell == GetMySubShell() )
+    if ( pEditShell && pEditShell.get() == GetMySubShell() )
     {
         aStrSelection = pEditShell->GetSelectionText( bWholeWord );
     }
@@ -97,6 +96,7 @@ OUString ScTabViewShell::GetSelectionText( bool bWholeWord )
             ScImportExport aObj( pDoc, aRange );
             aObj.SetFormulas( GetViewData().GetOptions().GetOption( VOPT_FORMULAS ) );
             OUString aExportOUString;
+            /* TODO: STRING_TSVC under some circumstances? */
             aObj.ExportString( aExportOUString, SotClipboardFormatId::STRING );
             aStrSelection = convertLineEnd(aExportOUString, LINEEND_CR);
 
@@ -120,7 +120,7 @@ OUString ScTabViewShell::GetSelectionText( bool bWholeWord )
 void ScTabViewShell::InsertURL( const OUString& rName, const OUString& rURL, const OUString& rTarget,
                                 sal_uInt16 nMode )
 {
-    SvxLinkInsertMode eMode = (SvxLinkInsertMode) nMode;
+    SvxLinkInsertMode eMode = static_cast<SvxLinkInsertMode>(nMode);
     bool bAsText = ( eMode != HLINK_BUTTON );       // default is now text
 
     if ( bAsText )
@@ -164,7 +164,7 @@ static void lcl_SelectFieldAfterInsert( EditView& rView )
 
 void ScTabViewShell::InsertURLField( const OUString& rName, const OUString& rURL, const OUString& rTarget )
 {
-    SvxURLField aURLField( rURL, rName, SVXURLFORMAT_REPR );
+    SvxURLField aURLField( rURL, rName, SvxURLFormat::Repr );
     aURLField.SetTargetFrame( rTarget );
     SvxFieldItem aURLItem( aURLField, EE_FEATURE_FIELD );
 
@@ -173,7 +173,11 @@ void ScTabViewShell::InsertURLField( const OUString& rName, const OUString& rURL
     ScInputHandler* pHdl        = pScMod->GetInputHdl( rViewData.GetViewShell() );
 
     bool bSelectFirst = false;
-    if ( !pScMod->IsEditMode() )
+    bool bIsEditMode = pScMod->IsEditMode();
+    int nSelInd = 1;
+    OUString sSeltext(GetSelectionText());
+
+    if ( !bIsEditMode )
     {
         if ( !SelectionEditable() )
         {
@@ -190,12 +194,24 @@ void ScTabViewShell::InsertURLField( const OUString& rName, const OUString& rURL
     EditView*       pTableView  = pHdl->GetTableView();
     OSL_ENSURE( pTopView || pTableView, "No EditView" );
 
+    // Check if user selected a whole cell by single click,
+    // cell has content, and user didn't change the name/text
+    // of the link something different than the content via the hyperlink dialog.
+    // If true, assign the given hyperlink to the whole content
+    // instead of inserting a duplicate, or appending the url.
+    if (comphelper::LibreOfficeKit::isActive() && !bIsEditMode && !bSelectFirst
+            && pTableView && !sSeltext.isEmpty() && sSeltext == rName)
+    {
+        nSelInd = sSeltext.getLength();
+        bSelectFirst = true;
+    }
+
     if ( bSelectFirst )
     {
         if ( pTopView )
             pTopView->SetSelection( ESelection(0,0,0,1) );
         if ( pTableView )
-            pTableView->SetSelection( ESelection(0,0,0,1) );
+            pTableView->SetSelection( ESelection(0,0,0,nSelInd) );
     }
 
     pHdl->DataChanging();
@@ -231,26 +247,7 @@ void ScTabViewShell::ExecSearch( SfxRequest& rReq )
                     const SvxSearchItem* pSearchItem = static_cast<const SvxSearchItem*>(pItem);
 
                     ScGlobal::SetSearchItem( *pSearchItem );
-                    bool bSuccess = SearchAndReplace( pSearchItem, true, rReq.IsAPI() );
-                    const SfxChildWindow* pChildWindow = SfxViewFrame::Current()->GetChildWindow(
-                            SvxSearchDialogWrapper::GetChildWindowId());
-                    if (pChildWindow)
-                    {
-                        SvxSearchDialog* pSearchDlg = static_cast<SvxSearchDialog*>(pChildWindow->GetWindow());
-                        if( pSearchDlg )
-                        {
-                            ScTabView* pTabView = GetViewData().GetView();
-                            if( pTabView )
-                            {
-                                vcl::Window* pWin = pTabView->GetActiveWin();
-                                if( pWin )
-                                {
-                                    pSearchDlg->SetDocWin( pWin );
-                                    pSearchDlg->SetSrchFlag( bSuccess );
-                                }
-                            }
-                        }
-                    }
+                    SearchAndReplace( pSearchItem, true, rReq.IsAPI() );
                     rReq.Done();
                 }
             }
@@ -302,25 +299,6 @@ void ScTabViewShell::ExecSearch( SfxRequest& rReq )
                             rReq.IsAPI() ? SfxCallMode::API|SfxCallMode::SYNCHRON :
                                             SfxCallMode::RECORD,
                             { &aSearchItem });
-                    const SfxChildWindow* pChildWindow = SfxViewFrame::Current()->GetChildWindow(
-                            SvxSearchDialogWrapper::GetChildWindowId());
-                    if (pChildWindow)
-                    {
-                        SvxSearchDialog* pSearchDlg = static_cast<SvxSearchDialog*>(pChildWindow->GetWindow());
-                        if( pSearchDlg )
-                        {
-                            ScTabView* pTabView = GetViewData().GetView();
-                            if( pTabView )
-                            {
-                                vcl::Window* pWin = pTabView->GetActiveWin();
-                                if( pWin )
-                                {
-                                    pSearchDlg->SetDocWin( pWin );
-                                    pSearchDlg->SetSrchFlag(false);
-                                }
-                            }
-                        }
-                    }
                 }
                 else
                 {

@@ -18,15 +18,15 @@
  */
 
 
-#include "osx/salinst.h"
-#include "osx/saldata.hxx"
+#include <osx/salinst.h>
+#include <osx/saldata.hxx>
 
-#include "osx/a11ywrapper.h"
-#include "osx/a11ylistener.hxx"
-#include "osx/a11yfactory.h"
-#include "osx/a11yfocustracker.hxx"
+#include <osx/a11ywrapper.h>
+#include <osx/a11ylistener.hxx>
+#include <osx/a11yfactory.h>
+#include <osx/a11yfocustracker.hxx>
 
-#include "quartz/utils.h"
+#include <quartz/utils.h>
 
 #include "a11yfocuslistener.hxx"
 #include "a11yactionwrapper.h"
@@ -45,6 +45,9 @@
 #include <com/sun/star/accessibility/AccessibleRelationType.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
+
 using namespace ::com::sun::star::accessibility;
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::lang;
@@ -56,7 +59,7 @@ using namespace ::com::sun::star::uno;
 -(Reference<XAccessibleContext>)accessibleContext;
 @end
 
-static BOOL isPopupMenuOpen = NO;
+static bool isPopupMenuOpen = false;
 
 static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
     return s << [[obj description] UTF8String];
@@ -112,7 +115,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
 
            FIXME:
            Unfortunately this can increase memory consumption drastically until the non transient parent
-           is destroyed an finally all the transients are released.
+           is destroyed and finally all the transients are released.
         */
         if ( ! rxAccessibleContext -> getAccessibleStateSet() -> contains ( AccessibleStateType::TRANSIENT ) )
         #endif
@@ -157,7 +160,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
         if ( ! asGetter ) {
             [ methodName appendString: @"set" ];
         }
-        NSRange aRange = { 2, 1 };
+        NSRange const aRange = { 2, 1 };
         NSString * firstChar = [ attribute substringWithRange: aRange ]; // drop leading "AX" and get first char
         if ( asGetter ) {
             [ methodName appendString: [ firstChar lowercaseString ] ];
@@ -174,7 +177,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
         }
         // step 2: create selector
         selector = NSSelectorFromString ( methodName );
-    } @catch ( id exception ) {
+    } @catch ( id  ) {
         selector = static_cast<SEL>(nil);
     }
     [ pool release ];
@@ -206,7 +209,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
 
 /*
     Radiobutton grouping is done differently in NSAccessibility and the UNO-API. In UNO related radio buttons share an entry in their
-    RelationSet. In NSAccessibility the relationship is axpressed through the hierarchy. A AXRadioGroup contains two or more AXRadioButton
+    RelationSet. In NSAccessibility the relationship is expressed through the hierarchy. An AXRadioGroup contains two or more AXRadioButton
     objects. Since this group is not available in the UNO hierarchy, an extra wrapper is used for it. This wrapper shares almost all
     attributes with the first radio button of the group, except for the role, subrole, role description, parent and children attributes.
     So in this five methods there is a special treatment for radio buttons and groups.
@@ -310,10 +313,10 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
     if ( mActsAsRadioGroup ) {
         NSMutableArray * children = [ [ NSMutableArray alloc ] init ];
         Reference < XAccessibleRelationSet > rxAccessibleRelationSet = [ self accessibleContext ] -> getAccessibleRelationSet();
-        AccessibleRelation relationMemberOf = rxAccessibleRelationSet -> getRelationByType ( AccessibleRelationType::MEMBER_OF );
+        AccessibleRelation const relationMemberOf = rxAccessibleRelationSet -> getRelationByType ( AccessibleRelationType::MEMBER_OF );
         if ( relationMemberOf.RelationType == AccessibleRelationType::MEMBER_OF && relationMemberOf.TargetSet.hasElements() ) {
-            for ( int index = 0; index < relationMemberOf.TargetSet.getLength(); index++ ) {
-                Reference < XAccessible > rMateAccessible( relationMemberOf.TargetSet[index], UNO_QUERY );
+            for ( const auto& i : relationMemberOf.TargetSet ) {
+                Reference < XAccessible > rMateAccessible( i, UNO_QUERY );
                 if ( rMateAccessible.is() ) {
                     Reference< XAccessibleContext > rMateAccessibleContext( rMateAccessible -> getAccessibleContext() );
                     if ( rMateAccessibleContext.is() ) {
@@ -327,7 +330,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
         return children;
     } else if ( [ self accessibleTable ] )
     {
-        AquaA11yTableWrapper* pTable = [self isKindOfClass: [AquaA11yTableWrapper class]] ? (AquaA11yTableWrapper*)self : nil;
+        AquaA11yTableWrapper* pTable = [self isKindOfClass: [AquaA11yTableWrapper class]] ? static_cast<AquaA11yTableWrapper*>(self) : nil;
         return [ AquaA11yTableWrapper childrenAttributeForElement: pTable ];
     } else {
         try {
@@ -352,7 +355,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
             if ( ! mActsAsRadioGroup ) {
                 NSEnumerator * enumerator = [ children objectEnumerator ];
                 AquaA11yWrapper * element;
-                while ( ( element = ( (AquaA11yWrapper *) [ enumerator nextObject ] ) ) ) {
+                while ( ( element = static_cast<AquaA11yWrapper *>([ enumerator nextObject ]) ) ) {
                     if ( [ element accessibleContext ] -> getAccessibleRole() == AccessibleRole::RADIO_BUTTON ) {
                         if ( [ element isFirstRadioButtonInGroup ] ) {
                             id wrapper = [ AquaA11yFactory wrapperForAccessibleContext: [ element accessibleContext ] createIfNotExists: YES asRadioGroup: YES ];
@@ -365,7 +368,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
 
             [ children autorelease ];
             return NSAccessibilityUnignoredChildren( children );
-        } catch (const Exception &e) {
+        } catch (const Exception &) {
             // TODO: Log
             return nil;
         }
@@ -687,11 +690,11 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
             if ( [ self respondsToSelector: methodSelector ] ) {
                 value = [ self performSelector: methodSelector ];
             }
-        } catch ( const DisposedException & e ) {
+        } catch ( const DisposedException & ) {
             mIsTableCell = NO; // just to be sure
             [ AquaA11yFactory removeFromWrapperRepositoryFor: [ self accessibleContext ] ];
             return nil;
-        } catch ( const Exception & e ) {
+        } catch ( const Exception & ) {
             // empty
         }
     }
@@ -707,7 +710,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
     if ( isPopupMenuOpen ) {
         return NO;
     }
-    BOOL ignored = NO;
+    bool ignored = false;
     sal_Int16 nRole = [ self accessibleContext ] -> getAccessibleRole();
     switch ( nRole ) {
         //case AccessibleRole::PANEL:
@@ -716,7 +719,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
         case AccessibleRole::SEPARATOR:
         case AccessibleRole::FILLER:
         case AccessibleRole::DIALOG:
-            ignored = YES;
+            ignored = true;
             break;
         default:
             ignored = ! ( [ self accessibleContext ] -> getAccessibleStateSet() -> contains ( AccessibleStateType::VISIBLE ) );
@@ -746,8 +749,8 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
             NSAccessibilityTopLevelUIElementAttribute,
             NSAccessibilityRoleDescriptionAttribute,
             nil ];
-        nativeSubrole = (NSString *) [ AquaA11yRoleHelper getNativeSubroleFrom: [ self accessibleContext ] -> getAccessibleRole() ];
-        title = (NSString *) [ self titleAttribute ];
+        nativeSubrole = static_cast<NSString *>([ AquaA11yRoleHelper getNativeSubroleFrom: [ self accessibleContext ] -> getAccessibleRole() ]);
+        title = static_cast<NSString *>([ self titleAttribute ]);
         Reference < XAccessibleRelationSet > rxRelationSet = [ self accessibleContext ] -> getAccessibleRelationSet();
         // Special Attributes depending on attribute values
         if ( nativeSubrole && ! [ nativeSubrole isEqualToString: @"" ] ) {
@@ -791,7 +794,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
         [ nativeSubrole release ];
         [ title release ];
         return attributeNames;
-    } catch ( DisposedException & e ) { // Object is no longer available
+    } catch ( DisposedException & ) { // Object is no longer available
         if ( nativeSubrole ) {
             [ nativeSubrole release ];
         }
@@ -808,7 +811,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
 
 -(BOOL)accessibilityIsAttributeSettable:(NSString *)attribute {
     SAL_INFO("vcl.a11y", "[" << self << " accessibilityAttributeIsSettable:" << attribute << "]");
-    BOOL isSettable = NO;
+    bool isSettable = false;
     if ( [ self accessibleText ] ) {
         isSettable = [ AquaA11yTextWrapper isAttributeSettable: attribute forElement: self ];
     }
@@ -835,7 +838,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
 }
 
 -(id)accessibilityAttributeValue:(NSString *)attribute forParameter:(id)parameter {
-    SAL_INFO("vcl.a11y", "[" << self << " accessibilityAttributeValue:" << attribute << " forParameter:" << ((NSObject*)parameter) << "]");
+    SAL_INFO("vcl.a11y", "[" << self << " accessibilityAttributeValue:" << attribute << " forParameter:" << (static_cast<NSObject*>(parameter)) << "]");
     SEL methodSelector = [ self selectorForAttribute: attribute asGetter: YES withGetterParameter: YES ];
     if ( [ self respondsToSelector: methodSelector ] ) {
         return [ self performSelector: methodSelector withObject: parameter ];
@@ -845,14 +848,12 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
 
 -(BOOL)accessibilitySetOverrideValue:(id)value forAttribute:(NSString *)attribute
 {
-    SAL_INFO("vcl.a11y", "[" << self << " accessibilitySetOverrideValue:" << ((NSObject*)value) << " forAttribute:" << attribute << "]");
-    (void)value;
-    (void)attribute;
+    SAL_INFO("vcl.a11y", "[" << self << " accessibilitySetOverrideValue:" << (static_cast<NSObject*>(value)) << " forAttribute:" << attribute << "]");
     return NO; // TODO
 }
 
 -(void)accessibilitySetValue:(id)value forAttribute:(NSString *)attribute {
-    SAL_INFO("vcl.a11y", "[" << self << " accessibilitySetValue:" << ((NSObject*)value) << " forAttribute:" << attribute << "]");
+    SAL_INFO("vcl.a11y", "[" << self << " accessibilitySetValue:" << (static_cast<NSObject*>(value)) << " forAttribute:" << attribute << "]");
     SEL methodSelector = [ self selectorForAttribute: attribute asGetter: NO withGetterParameter: NO ];
     if ( [ AquaA11yComponentWrapper respondsToSelector: methodSelector ] ) {
         [ AquaA11yComponentWrapper performSelector: methodSelector withObject: self withObject: value ];
@@ -885,7 +886,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
       // Make sure the focused object is a descendant of self
 //    do  {
 //       if( self == ancestor )
-             return focusedUIElement;
+    return focusedUIElement;
 
 //       ancestor = [ ancestor accessibilityAttributeValue: NSAccessibilityParentAttribute ];
 //    }  while( nil != ancestor );
@@ -901,17 +902,17 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
 -(AquaA11yWrapper *)actionResponder {
     AquaA11yWrapper * wrapper = nil;
     // get some information
-    NSString * role = (NSString *) [ self accessibilityAttributeValue: NSAccessibilityRoleAttribute ];
+    NSString * role = static_cast<NSString *>([ self accessibilityAttributeValue: NSAccessibilityRoleAttribute ]);
     id enabledAttr = [ self enabledAttribute ];
-    BOOL enabled = [ enabledAttr boolValue ];
-    NSView * parent = (NSView *) [ self accessibilityAttributeValue: NSAccessibilityParentAttribute ];
+    bool enabled = [ enabledAttr boolValue ];
+    NSView * parent = static_cast<NSView *>([ self accessibilityAttributeValue: NSAccessibilityParentAttribute ]);
     AquaA11yWrapper * parentAsWrapper = nil;
     if ( [ parent isKindOfClass: [ AquaA11yWrapper class ] ] ) {
-        parentAsWrapper = (AquaA11yWrapper *) parent;
+        parentAsWrapper = static_cast<AquaA11yWrapper *>(parent);
     }
     SAL_WNODEPRECATED_DECLARATIONS_PUSH
         //TODO: 10.10 accessibilityAttributeValue:
-    NSString * parentRole = (NSString *) [ parent accessibilityAttributeValue: NSAccessibilityRoleAttribute ];
+    NSString * parentRole = static_cast<NSString *>([ parent accessibilityAttributeValue: NSAccessibilityRoleAttribute ]);
     SAL_WNODEPRECATED_DECLARATIONS_POP
     // if we are a textarea inside a combobox, then the combobox is the action responder
     if ( enabled
@@ -952,7 +953,7 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
 #pragma mark Hit Test
 
 -(BOOL)isViewElement:(NSObject *)viewElement hitByPoint:(NSPoint)point {
-    BOOL hit = NO;
+    bool hit = false;
     NSAutoreleasePool * pool = [ [ NSAutoreleasePool alloc ] init ];
     SAL_WNODEPRECATED_DECLARATIONS_PUSH
         //TODO: 10.10 accessibilityAttributeValue:
@@ -965,14 +966,14 @@ static std::ostream &operator<<(std::ostream &s, NSObject *obj) {
         float maxX = minX + [ size sizeValue ].width;
         float maxY = minY + [ size sizeValue ].height;
         if ( minX < point.x && maxX > point.x && minY < point.y && maxY > point.y ) {
-            hit = YES;
+            hit = true;
         }
     }
     [ pool release ];
     return hit;
 }
 
-Reference < XAccessibleContext > hitTestRunner ( css::awt::Point point,
+static Reference < XAccessibleContext > hitTestRunner ( css::awt::Point point,
                                                  Reference < XAccessibleContext > const & rxAccessibleContext ) {
     Reference < XAccessibleContext > hitChild;
     Reference < XAccessibleContext > emptyReference;
@@ -988,13 +989,13 @@ Reference < XAccessibleContext > hitTestRunner ( css::awt::Point point,
             }
         }
 
-        // iterate the hirerachy looking doing recursive hit testing.
+        // iterate the hierarchy looking doing recursive hit testing.
         // apparently necessary as a special treatment for e.g. comboboxes
         if ( !hitChild.is() ) {
             bool bSafeToIterate = true;
             sal_Int32 nCount = rxAccessibleContext -> getAccessibleChildCount();
 
-            if ( nCount < 0 || nCount > SAL_MAX_UINT16 /* slow enough for anyone */ )
+            if (nCount < 0 || nCount > SAL_MAX_UINT16 /* slow enough for anyone */)
                 bSafeToIterate = false;
             else { // manages descendants is an horror from the a11y standards guys.
                 Reference< XAccessibleStateSet > xStateSet;
@@ -1033,7 +1034,7 @@ Reference < XAccessibleContext > hitTestRunner ( css::awt::Point point,
     NSRect screenRect = [ [ NSScreen mainScreen ] frame ];
     css::awt::Point hitPoint ( static_cast<long>(point.x) , static_cast<long>(screenRect.size.height - point.y) );
     // check child windows first
-    NSWindow * window = (NSWindow *) [ self accessibilityAttributeValue: NSAccessibilityWindowAttribute ];
+    NSWindow * window = static_cast<NSWindow *>([ self accessibilityAttributeValue: NSAccessibilityWindowAttribute ]);
     NSArray * childWindows = [ window childWindows ];
     if ( [ childWindows count ] > 0 ) {
         NSWindow * element = nil;
@@ -1041,15 +1042,17 @@ Reference < XAccessibleContext > hitTestRunner ( css::awt::Point point,
         while ( ( element = [ enumerator nextObject ] ) && !hitChild.is() ) {
             if ( [ element isKindOfClass: [ SalFrameWindow class ] ] && [ self isViewElement: element hitByPoint: point ] ) {
                 // we have a child window that is hit
-                Reference < XAccessibleRelationSet > relationSet = [ ( ( SalFrameWindow * ) element ) accessibleContext ] -> getAccessibleRelationSet();
+                Reference < XAccessibleRelationSet > relationSet = [ static_cast<SalFrameWindow *>(element) accessibleContext ] -> getAccessibleRelationSet();
                 if ( relationSet.is() && relationSet -> containsRelation ( AccessibleRelationType::SUB_WINDOW_OF )) {
                     // we have a valid relation to the parent element
-                    AccessibleRelation relation = relationSet -> getRelationByType ( AccessibleRelationType::SUB_WINDOW_OF );
-                    for ( int i = 0; i < relation.TargetSet.getLength() && !hitChild.is(); i++ ) {
-                        Reference < XAccessible > rxAccessible ( relation.TargetSet [ i ], UNO_QUERY );
+                    AccessibleRelation const relation = relationSet -> getRelationByType ( AccessibleRelationType::SUB_WINDOW_OF );
+                    for ( const auto & i : relation.TargetSet ) {
+                        Reference < XAccessible > rxAccessible ( i, UNO_QUERY );
                         if ( rxAccessible.is() && rxAccessible -> getAccessibleContext().is() ) {
                             // hit test for children of parent
                             hitChild = hitTestRunner ( hitPoint, rxAccessible -> getAccessibleContext() );
+                            if (hitChild.is())
+                                break;
                         }
                     }
                 }

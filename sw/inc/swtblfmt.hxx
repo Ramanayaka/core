@@ -19,48 +19,37 @@
 #ifndef INCLUDED_SW_INC_SWTBLFMT_HXX
 #define INCLUDED_SW_INC_SWTBLFMT_HXX
 
-#include <frmfmt.hxx>
+#include "frmfmt.hxx"
 
-class SwDoc;
-
-class SW_DLLPUBLIC SwTableFormat : public SwFrameFormat
+class SAL_DLLPUBLIC_RTTI SwTableFormat final : public SwFrameFormat
 {
     friend class SwDoc;
 
-protected:
     SwTableFormat( SwAttrPool& rPool, const OUString &rFormatNm,
                     SwFrameFormat *pDrvdFrame )
         : SwFrameFormat( rPool, rFormatNm, pDrvdFrame, RES_FRMFMT, aTableSetRange )
     {}
 
 public:
-
-    DECL_FIXEDMEMPOOL_NEWDEL(SwTableFormat)
-
     virtual bool supportsFullDrawingLayerFillAttributeSet() const override;
 };
 
-class SwTableLineFormat : public SwFrameFormat
+class SwTableLineFormat final : public SwFrameFormat
 {
     friend class SwDoc;
 
-protected:
     SwTableLineFormat( SwAttrPool& rPool, SwFrameFormat *pDrvdFrame )
         : SwFrameFormat( rPool, OUString(), pDrvdFrame, RES_FRMFMT, aTableLineSetRange )
     {}
 
 public:
-
-    DECL_FIXEDMEMPOOL_NEWDEL(SwTableLineFormat)
-
     virtual bool supportsFullDrawingLayerFillAttributeSet() const override;
 };
 
-class SW_DLLPUBLIC SwTableBoxFormat : public SwFrameFormat
+class SAL_DLLPUBLIC_RTTI SwTableBoxFormat final : public SwFrameFormat
 {
     friend class SwDoc;
 
-protected:
     SwTableBoxFormat( SwAttrPool& rPool, SwFrameFormat *pDrvdFrame )
         : SwFrameFormat( rPool, OUString(), pDrvdFrame, RES_FRMFMT, aTableBoxSetRange )
     {}
@@ -69,9 +58,6 @@ protected:
     virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem* pNewValue ) override;
 
 public:
-
-    DECL_FIXEDMEMPOOL_NEWDEL(SwTableBoxFormat)
-
     virtual bool supportsFullDrawingLayerFillAttributeSet() const override;
 };
 

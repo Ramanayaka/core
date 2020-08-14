@@ -19,21 +19,19 @@
 
 #include <vcl/svapp.hxx>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <comphelper/servicehelper.hxx>
+#include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <flyfrm.hxx>
 #include "accembedded.hxx"
-#include "cntfrm.hxx"
-#include "ndole.hxx"
-#include <doc.hxx>
-#include <docsh.hxx>
+#include <cntfrm.hxx>
+#include <notxtfrm.hxx>
+#include <ndole.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::accessibility;
 
-const sal_Char sImplementationName[] = "com.sun.star.comp.Writer.SwAccessibleEmbeddedObject";
+const char sImplementationName[] = "com.sun.star.comp.Writer.SwAccessibleEmbeddedObject";
 
 SwAccessibleEmbeddedObject::SwAccessibleEmbeddedObject(
         std::shared_ptr<SwAccessibleMap> const& pInitMap,
@@ -73,7 +71,7 @@ void SAL_CALL
 
 OUString SAL_CALL SwAccessibleEmbeddedObject::getImplementationName()
 {
-    return OUString(sImplementationName);
+    return sImplementationName;
 }
 
 sal_Bool SAL_CALL SwAccessibleEmbeddedObject::supportsService(const OUString& sTestServiceName)
@@ -83,11 +81,7 @@ sal_Bool SAL_CALL SwAccessibleEmbeddedObject::supportsService(const OUString& sT
 
 uno::Sequence< OUString > SAL_CALL SwAccessibleEmbeddedObject::getSupportedServiceNames()
 {
-    uno::Sequence< OUString > aRet(2);
-    OUString* pArray = aRet.getArray();
-    pArray[0] = "com.sun.star.text.AccessibleTextEmbeddedObject";
-    pArray[1] = sAccessibleServiceName;
-    return aRet;
+    return { "com.sun.star.text.AccessibleTextEmbeddedObject", sAccessibleServiceName };
 }
 
 uno::Sequence< sal_Int8 > SAL_CALL SwAccessibleEmbeddedObject::getImplementationId()
@@ -111,7 +105,8 @@ css::uno::Any SAL_CALL SwAccessibleEmbeddedObject::getExtendedAttributes()
         pCFrame = pFFrame->ContainsContent();
         if( pCFrame )
         {
-            SwContentNode* pCNode = pCFrame->GetNode();
+            assert(pCFrame->IsNoTextFrame());
+            SwContentNode *const pCNode = static_cast<SwNoTextFrame*>(pCFrame)->GetNode();
             if( pCNode )
             {
                 style += static_cast<SwOLENode*>(pCNode)->GetOLEObj().GetStyleString();

@@ -21,18 +21,16 @@
 
 #include <cassert>
 
-#include <comphelper/string.hxx>
-#include <sal/log.hxx>
 #include <sal/types.h>
 #include <rtl/strbuf.hxx>
 #include <tools/inetmsg.hxx>
 #include <tools/inetstrm.hxx>
 
-int INetMIMEMessageStream::GetHeaderLine(sal_Char* pData, sal_uIntPtr nSize)
+int INetMIMEMessageStream::GetHeaderLine(char* pData, sal_uInt32 nSize)
 {
-    sal_Char* pWBuf = pData;
+    char* pWBuf = pData;
 
-    sal_uIntPtr i, n;
+    sal_uInt32 i, n;
 
     if (maMsgBuffer.Tell() == 0)
     {
@@ -44,14 +42,14 @@ int INetMIMEMessageStream::GetHeaderLine(sal_Char* pData, sal_uIntPtr nSize)
             if (aHeader.GetValue().getLength())
             {
                 // NYI: Folding long lines.
-                maMsgBuffer.WriteCharPtr( aHeader.GetName().getStr() );
+                maMsgBuffer.WriteOString( aHeader.GetName() );
                 maMsgBuffer.WriteCharPtr( ": " );
-                maMsgBuffer.WriteCharPtr( aHeader.GetValue().getStr() );
+                maMsgBuffer.WriteOString( aHeader.GetValue() );
                 maMsgBuffer.WriteCharPtr( "\r\n" );
             }
         }
 
-        pMsgWrite = const_cast<char *>(static_cast<sal_Char const *>(maMsgBuffer.GetData()));
+        pMsgWrite = const_cast<char *>(static_cast<char const *>(maMsgBuffer.GetData()));
         pMsgRead  = pMsgWrite + maMsgBuffer.Tell();
     }
 
@@ -71,24 +69,24 @@ int INetMIMEMessageStream::GetHeaderLine(sal_Char* pData, sal_uIntPtr nSize)
     return (pWBuf - pData);
 }
 
-int INetMIMEMessageStream::GetBodyLine(sal_Char* pData, sal_uIntPtr nSize)
+int INetMIMEMessageStream::GetBodyLine(char* pData, sal_uInt32 nSize)
 {
-    sal_Char* pWBuf = pData;
-    sal_Char* pWEnd = pData + nSize;
+    char* pWBuf = pData;
+    char* pWEnd = pData + nSize;
 
     if (pSourceMsg->GetDocumentLB())
     {
         if (pMsgStrm == nullptr)
-            pMsgStrm = new SvStream (pSourceMsg->GetDocumentLB());
+            pMsgStrm.reset(new SvStream (pSourceMsg->GetDocumentLB()));
 
-        sal_uIntPtr nRead = pMsgStrm->ReadBytes(pWBuf, (pWEnd - pWBuf));
+        sal_uInt32 nRead = pMsgStrm->ReadBytes(pWBuf, (pWEnd - pWBuf));
         pWBuf += nRead;
     }
 
     return (pWBuf - pData);
 }
 
-int INetMIMEMessageStream::GetMsgLine(sal_Char* pData, sal_uIntPtr nSize)
+int INetMIMEMessageStream::GetMsgLine(char* pData, sal_uInt32 nSize)
 {
     // Check for header or body.
     if (!bHeaderGenerated)
@@ -156,7 +154,7 @@ int INetMIMEMessageStream::GetMsgLine(sal_Char* pData, sal_uIntPtr nSize)
                         nChildIndex++;
 
                         // Create child stream.
-                        pChildStrm = new INetMIMEMessageStream(pChild, false);
+                        pChildStrm.reset(new INetMIMEMessageStream(pChild, false));
 
                         if (pSourceMsg->IsMultipart())
                         {
@@ -200,8 +198,7 @@ int INetMIMEMessageStream::GetMsgLine(sal_Char* pData, sal_uIntPtr nSize)
                     else
                     {
                         // Cleanup exhausted child stream.
-                        delete pChildStrm;
-                        pChildStrm = nullptr;
+                        pChildStrm.reset();
                     }
                 }
             }
@@ -234,12 +231,10 @@ INetMIMEMessageStream::INetMIMEMessageStream(
     pSourceMsg(pMsg),
     bHeaderGenerated(headerGenerated),
     mvBuffer(BUFFER_SIZE),
-    pMsgStrm(nullptr),
     pMsgRead(nullptr),
     pMsgWrite(nullptr),
     done(false),
-    nChildIndex(0),
-    pChildStrm(nullptr)
+    nChildIndex(0)
 {
     assert(pMsg != nullptr);
     maMsgBuffer.SetStreamCharSet(RTL_TEXTENCODING_ASCII_US);
@@ -248,25 +243,24 @@ INetMIMEMessageStream::INetMIMEMessageStream(
 
 INetMIMEMessageStream::~INetMIMEMessageStream()
 {
-    delete pChildStrm;
-    delete pMsgStrm;
+    pChildStrm.reset();
 }
 
-int INetMIMEMessageStream::Read(sal_Char* pData, sal_uIntPtr nSize)
+int INetMIMEMessageStream::Read(char* pData, sal_uInt32 nSize)
 {
-    sal_Char* pWBuf = pData;
-    sal_Char* pWEnd = pData + nSize;
+    char* pWBuf = pData;
+    char* pWEnd = pData + nSize;
 
     while (pWBuf < pWEnd)
     {
         // Caller's buffer not yet filled.
-        sal_uIntPtr n = pRead - pWrite;
+        sal_uInt32 n = pRead - pWrite;
         if (n > 0)
         {
             // Bytes still in buffer.
-            sal_uIntPtr m = pWEnd - pWBuf;
+            sal_uInt32 m = pWEnd - pWBuf;
             if (m < n) n = m;
-            for (sal_uIntPtr i = 0; i < n; i++) *pWBuf++ = *pWrite++;
+            for (sal_uInt32 i = 0; i < n; i++) *pWBuf++ = *pWrite++;
         }
         else
         {

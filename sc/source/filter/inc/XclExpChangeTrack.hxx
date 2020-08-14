@@ -23,12 +23,13 @@
 #include <memory>
 #include <stack>
 #include <tools/datetime.hxx>
-#include <rtl/uuid.h>
-#include "bigrange.hxx"
-#include "chgtrack.hxx"
+#include <chgtrack.hxx>
+#include <document.hxx>
 #include "xelink.hxx"
-#include "ftools.hxx"
+#include "xestring.hxx"
 #include "excrecds.hxx"
+#include "xlformula.hxx"
+#include "xeformula.hxx"
 
 class ExcXmlRecord : public ExcRecord
 {
@@ -317,16 +318,15 @@ public:
 class XclExpChTrTabId : public ExcRecord
 {
 private:
-    sal_uInt16*                 pBuffer;
+    std::unique_ptr<sal_uInt16[]> pBuffer;
     sal_uInt16                  nTabCount;
 
-    void                 Clear() { delete[] pBuffer; pBuffer = nullptr; }
+    void                 Clear() { pBuffer.reset(); }
 
     virtual void                SaveCont( XclExpStream& rStrm ) override;
 
 public:
-    XclExpChTrTabId( sal_uInt16 nCount ) :
-                                    pBuffer( nullptr ), nTabCount( nCount ) {}
+    XclExpChTrTabId( sal_uInt16 nCount ) : nTabCount( nCount ) {}
                                 XclExpChTrTabId( const XclExpChTrTabIdBuffer& rBuffer );
     virtual                     ~XclExpChTrTabId() override;
 
@@ -361,7 +361,7 @@ protected:
     void                        AddDependentContents(
                                     const ScChangeAction& rAction,
                                     const XclExpRoot& rRoot,
-                                    ScChangeTrack& rChangeTrack );
+                                    const ScChangeTrack& rChangeTrack );
 
     static inline void          Write2DAddress( XclExpStream& rStrm, const ScAddress& rAddress );
     static inline void          Write2DRange( XclExpStream& rStrm, const ScRange& rRange );
@@ -410,16 +410,16 @@ public:
 
 inline void XclExpChTrAction::Write2DAddress( XclExpStream& rStrm, const ScAddress& rAddress )
 {
-    rStrm   << (sal_uInt16) rAddress.Row()
-            << (sal_uInt16) rAddress.Col();
+    rStrm   << static_cast<sal_uInt16>(rAddress.Row())
+            << static_cast<sal_uInt16>(rAddress.Col());
 }
 
 inline void XclExpChTrAction::Write2DRange( XclExpStream& rStrm, const ScRange& rRange )
 {
-    rStrm   << (sal_uInt16) rRange.aStart.Row()
-            << (sal_uInt16) rRange.aEnd.Row()
-            << (sal_uInt16) rRange.aStart.Col()
-            << (sal_uInt16) rRange.aEnd.Col();
+    rStrm   << static_cast<sal_uInt16>(rRange.aStart.Row())
+            << static_cast<sal_uInt16>(rRange.aEnd.Row())
+            << static_cast<sal_uInt16>(rRange.aStart.Col())
+            << static_cast<sal_uInt16>(rRange.aEnd.Col());
 }
 
 inline sal_uInt16 XclExpChTrAction::GetTabId( SCTAB nTab ) const
@@ -436,7 +436,7 @@ inline void XclExpChTrAction::WriteTabId( XclExpStream& rStrm, SCTAB nTab ) cons
 
 struct XclExpChTrData
 {
-    XclExpString*               pString;
+    std::unique_ptr<XclExpString> pString;
     XclExpStringRef             mpFormattedString;
     const ScFormulaCell*        mpFormulaCell;
     XclTokenArrayRef            mxTokArr;
@@ -460,20 +460,17 @@ struct XclExpChTrData
 
 // XclExpChTrCellContent - changed cell content
 
-class XclExpChTrCellContent : public XclExpChTrAction, protected XclExpRoot
+class XclExpChTrCellContent final : public XclExpChTrAction, protected XclExpRoot
 {
-private:
-    XclExpChTrData*             pOldData;
-    XclExpChTrData*             pNewData;
+    std::unique_ptr<XclExpChTrData> pOldData;
+    std::unique_ptr<XclExpChTrData> pNewData;
     sal_uInt16                  nOldLength;     // this is not the record size
-
-    static void                 MakeEmptyChTrData( XclExpChTrData*& rpData );
-
-protected:
     ScAddress                   aPosition;
 
+    static void                 MakeEmptyChTrData( std::unique_ptr<XclExpChTrData>& rpData );
+
     void GetCellData(
-        const XclExpRoot& rRoot, const ScCellValue& rScCell, XclExpChTrData*& rpData,
+        const XclExpRoot& rRoot, const ScCellValue& rScCell, std::unique_ptr<XclExpChTrData>& rpData,
         sal_uInt32& rXclLength1, sal_uInt16& rXclLength2 );
 
     virtual void                SaveActionData( XclExpStream& rStrm ) const override;
@@ -511,7 +508,7 @@ public:
                                     const ScChangeAction& rAction,
                                     const XclExpRoot& rRoot,
                                     const XclExpChTrTabIdBuffer& rTabIdBuffer,
-                                    ScChangeTrack& rChangeTrack );
+                                    const ScChangeTrack& rChangeTrack );
     virtual                     ~XclExpChTrInsert() override;
 
     virtual sal_uInt16              GetNum() const override;
@@ -545,9 +542,8 @@ public:
 
 // XclExpChTrMoveRange - move cell range
 
-class XclExpChTrMoveRange : public XclExpChTrAction
+class XclExpChTrMoveRange final : public XclExpChTrAction
 {
-protected:
     ScRange                     aSourceRange;
     ScRange                     aDestRange;
 
@@ -560,7 +556,7 @@ public:
                                     const ScChangeActionMove& rAction,
                                     const XclExpRoot& rRoot,
                                     const XclExpChTrTabIdBuffer& rTabIdBuffer,
-                                    ScChangeTrack& rChangeTrack );
+                                    const ScChangeTrack& rChangeTrack );
     virtual                     ~XclExpChTrMoveRange() override;
 
     virtual sal_uInt16              GetNum() const override;
@@ -591,17 +587,13 @@ public:
 class XclExpChangeTrack : protected XclExpRoot
 {
     typedef std::vector<std::unique_ptr<ExcRecord>> RecListType;
-    typedef std::vector<std::unique_ptr<XclExpChTrTabIdBuffer>> TabIdBufferType;
     RecListType maRecList;           // list of "Revision Log" stream records
     std::stack<XclExpChTrAction*> aActionStack;
     XclExpChTrTabIdBuffer*        pTabIdBuffer;
-    TabIdBufferType maBuffers;
+    std::vector<std::unique_ptr<XclExpChTrTabIdBuffer>>
+                                  maBuffers;
 
-    std::unique_ptr<ScDocument> xTempDoc;           // empty document
-
-    XclExpChTrHeader*           pHeader;            // header record for last GUID
-    sal_uInt8                   aGUID[ 16 ];        // GUID for action info records
-    bool                        bValidGUID;
+    ScDocumentUniquePtr         xTempDoc;           // empty document
 
     ScChangeTrack*              CreateTempChangeTrack();
     void                        PushActionRecord( const ScChangeAction& rAction );

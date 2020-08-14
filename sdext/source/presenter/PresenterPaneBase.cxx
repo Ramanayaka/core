@@ -18,24 +18,16 @@
  */
 
 #include "PresenterPaneBase.hxx"
-#include "PresenterCanvasHelper.hxx"
 #include "PresenterController.hxx"
-#include "PresenterGeometryHelper.hxx"
 #include "PresenterPaintManager.hxx"
-#include "PresenterTextView.hxx"
 #include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/awt/XWindow2.hpp>
-#include <com/sun/star/awt/XWindowPeer.hpp>
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
-#include <com/sun/star/drawing/CanvasFeature.hpp>
-#include <com/sun/star/rendering/CompositeOperation.hpp>
-#include <com/sun/star/rendering/TexturingMode.hpp>
 
 using namespace css;
 using namespace css::uno;
 using namespace css::drawing::framework;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 //===== PresenterPaneBase =====================================================
 
@@ -53,11 +45,9 @@ PresenterPaneBase::PresenterPaneBase (
       mxBorderPainter(),
       mxPresenterHelper(),
       msTitle(),
-      mxComponentContext(rxContext),
-      mpViewBackground(),
-      maCalloutAnchor()
+      mxComponentContext(rxContext)
 {
-    if (mpPresenterController.get() != nullptr)
+    if (mpPresenterController)
         mxPresenterHelper = mpPresenterController->GetPresenterHelper();
 }
 
@@ -81,7 +71,7 @@ void PresenterPaneBase::disposing()
     }
 
     {
-        Reference<XComponent> xComponent (mxContentWindow, UNO_QUERY);
+        Reference<XComponent> xComponent = mxContentWindow;
         mxContentWindow = nullptr;
         if (xComponent.is())
             xComponent->dispose();
@@ -95,7 +85,7 @@ void PresenterPaneBase::disposing()
     }
 
     {
-        Reference<XComponent> xComponent (mxBorderWindow, UNO_QUERY);
+        Reference<XComponent> xComponent  = mxBorderWindow;
         mxBorderWindow = nullptr;
         if (xComponent.is())
             xComponent->dispose();
@@ -108,8 +98,8 @@ void PresenterPaneBase::SetTitle (const OUString& rsTitle)
 {
     msTitle = rsTitle;
 
-    OSL_ASSERT(mpPresenterController.get()!=nullptr);
-    OSL_ASSERT(mpPresenterController->GetPaintManager().get()!=nullptr);
+    OSL_ASSERT(mpPresenterController);
+    OSL_ASSERT(mpPresenterController->GetPaintManager() != nullptr);
 
     mpPresenterController->GetPaintManager()->Invalidate(mxBorderWindow);
 }
@@ -125,11 +115,6 @@ const Reference<drawing::framework::XPaneBorderPainter>&
     return mxBorderPainter;
 }
 
-const awt::Point& PresenterPaneBase::GetCalloutAnchor() const
-{
-    return maCalloutAnchor;
-}
-
 //----- XInitialization -------------------------------------------------------
 
 void SAL_CALL PresenterPaneBase::initialize (const Sequence<Any>& rArguments)
@@ -143,86 +128,84 @@ void SAL_CALL PresenterPaneBase::initialize (const Sequence<Any>& rArguments)
             static_cast<XWeak*>(this));
     }
 
-    if (rArguments.getLength() == 5 || rArguments.getLength() == 6)
-    {
-        try
-        {
-            // Get the resource id from the first argument.
-            if ( ! (rArguments[0] >>= mxPaneId))
-            {
-                throw lang::IllegalArgumentException(
-                    "PresenterPane: invalid pane id",
-                    static_cast<XWeak*>(this),
-                    0);
-            }
-
-            if ( ! (rArguments[1] >>= mxParentWindow))
-            {
-                throw lang::IllegalArgumentException(
-                    "PresenterPane: invalid parent window",
-                    static_cast<XWeak*>(this),
-                    1);
-            }
-
-            Reference<rendering::XSpriteCanvas> xParentCanvas;
-            if ( ! (rArguments[2] >>= xParentCanvas))
-            {
-                throw lang::IllegalArgumentException(
-                    "PresenterPane: invalid parent canvas",
-                    static_cast<XWeak*>(this),
-                    2);
-            }
-
-            if ( ! (rArguments[3] >>= msTitle))
-            {
-                throw lang::IllegalArgumentException(
-                    "PresenterPane: invalid title",
-                    static_cast<XWeak*>(this),
-                    3);
-            }
-
-            if ( ! (rArguments[4] >>= mxBorderPainter))
-            {
-                throw lang::IllegalArgumentException(
-                    "PresenterPane: invalid border painter",
-                    static_cast<XWeak*>(this),
-                    4);
-            }
-
-            bool bIsWindowVisibleOnCreation (true);
-            if (rArguments.getLength()>5 && ! (rArguments[5] >>= bIsWindowVisibleOnCreation))
-            {
-                throw lang::IllegalArgumentException(
-                    "PresenterPane: invalid window visibility flag",
-                    static_cast<XWeak*>(this),
-                    5);
-            }
-
-            CreateWindows(mxParentWindow, bIsWindowVisibleOnCreation);
-
-            if (mxBorderWindow.is())
-            {
-                mxBorderWindow->addWindowListener(this);
-                mxBorderWindow->addPaintListener(this);
-            }
-
-            CreateCanvases(mxParentWindow, xParentCanvas);
-
-            // Raise new windows.
-            ToTop();
-        }
-        catch (Exception&)
-        {
-            mxContentWindow = nullptr;
-            mxComponentContext = nullptr;
-            throw;
-        }
-    }
-    else
+    if (rArguments.getLength() != 5 && rArguments.getLength() != 6)
     {
         throw RuntimeException(
             "PresenterSpritePane: invalid number of arguments",
                 static_cast<XWeak*>(this));
+    }
+
+    try
+    {
+        // Get the resource id from the first argument.
+        if ( ! (rArguments[0] >>= mxPaneId))
+        {
+            throw lang::IllegalArgumentException(
+                "PresenterPane: invalid pane id",
+                static_cast<XWeak*>(this),
+                0);
+        }
+
+        if ( ! (rArguments[1] >>= mxParentWindow))
+        {
+            throw lang::IllegalArgumentException(
+                "PresenterPane: invalid parent window",
+                static_cast<XWeak*>(this),
+                1);
+        }
+
+        Reference<rendering::XSpriteCanvas> xParentCanvas;
+        if ( ! (rArguments[2] >>= xParentCanvas))
+        {
+            throw lang::IllegalArgumentException(
+                "PresenterPane: invalid parent canvas",
+                static_cast<XWeak*>(this),
+                2);
+        }
+
+        if ( ! (rArguments[3] >>= msTitle))
+        {
+            throw lang::IllegalArgumentException(
+                "PresenterPane: invalid title",
+                static_cast<XWeak*>(this),
+                3);
+        }
+
+        if ( ! (rArguments[4] >>= mxBorderPainter))
+        {
+            throw lang::IllegalArgumentException(
+                "PresenterPane: invalid border painter",
+                static_cast<XWeak*>(this),
+                4);
+        }
+
+        bool bIsWindowVisibleOnCreation (true);
+        if (rArguments.getLength()>5 && ! (rArguments[5] >>= bIsWindowVisibleOnCreation))
+        {
+            throw lang::IllegalArgumentException(
+                "PresenterPane: invalid window visibility flag",
+                static_cast<XWeak*>(this),
+                5);
+        }
+
+        CreateWindows(bIsWindowVisibleOnCreation);
+
+        if (mxBorderWindow.is())
+        {
+            mxBorderWindow->addWindowListener(this);
+            mxBorderWindow->addPaintListener(this);
+        }
+
+        CreateCanvases(xParentCanvas);
+
+        // Raise new windows.
+        ToTop();
+    }
+    catch (Exception&)
+    {
+        mxContentWindow = nullptr;
+        mxComponentContext = nullptr;
+        throw;
     }
 }
 
@@ -273,25 +256,23 @@ void SAL_CALL PresenterPaneBase::disposing (const lang::EventObject& rEvent)
 
 
 void PresenterPaneBase::CreateWindows (
-    const Reference<awt::XWindow>& rxParentWindow,
     const bool bIsWindowVisibleOnCreation)
 {
-    if (mxPresenterHelper.is() && rxParentWindow.is())
-    {
+    if (!(mxPresenterHelper.is() && mxParentWindow.is()))
+        return;
 
-        mxBorderWindow = mxPresenterHelper->createWindow(
-            rxParentWindow,
-            false,
-            bIsWindowVisibleOnCreation,
-            false,
-            false);
-        mxContentWindow = mxPresenterHelper->createWindow(
-            mxBorderWindow,
-            false,
-            bIsWindowVisibleOnCreation,
-            false,
-            false);
-    }
+    mxBorderWindow = mxPresenterHelper->createWindow(
+        mxParentWindow,
+        false,
+        bIsWindowVisibleOnCreation,
+        false,
+        false);
+    mxContentWindow = mxPresenterHelper->createWindow(
+        mxBorderWindow,
+        false,
+        bIsWindowVisibleOnCreation,
+        false,
+        false);
 }
 
 const Reference<awt::XWindow>& PresenterPaneBase::GetBorderWindow() const
@@ -305,29 +286,24 @@ void PresenterPaneBase::ToTop()
         mxPresenterHelper->toTop(mxContentWindow);
 }
 
-void PresenterPaneBase::SetBackground (const SharedBitmapDescriptor& rpBackground)
-{
-    mpViewBackground = rpBackground;
-}
-
 void PresenterPaneBase::PaintBorder (const awt::Rectangle& rUpdateBox)
 {
     OSL_ASSERT(mxPaneId.is());
 
-    if (mxBorderPainter.is() && mxBorderWindow.is() && mxBorderCanvas.is())
-    {
-        awt::Rectangle aBorderBox (mxBorderWindow->getPosSize());
-        awt::Rectangle aLocalBorderBox (0,0, aBorderBox.Width, aBorderBox.Height);
+    if (!(mxBorderPainter.is() && mxBorderWindow.is() && mxBorderCanvas.is()))
+        return;
 
-        //TODO: paint border background?
+    awt::Rectangle aBorderBox (mxBorderWindow->getPosSize());
+    awt::Rectangle aLocalBorderBox (0,0, aBorderBox.Width, aBorderBox.Height);
 
-        mxBorderPainter->paintBorder(
-                mxPaneId->getResourceURL(),
-                mxBorderCanvas,
-                aLocalBorderBox,
-                rUpdateBox,
-                msTitle);
-    }
+    //TODO: paint border background?
+
+    mxBorderPainter->paintBorder(
+            mxPaneId->getResourceURL(),
+            mxBorderCanvas,
+            aLocalBorderBox,
+            rUpdateBox,
+            msTitle);
 }
 
 void PresenterPaneBase::LayoutContextWindow()
@@ -335,20 +311,20 @@ void PresenterPaneBase::LayoutContextWindow()
     OSL_ASSERT(mxPaneId.is());
     OSL_ASSERT(mxBorderWindow.is());
     OSL_ASSERT(mxContentWindow.is());
-    if (mxBorderPainter.is() && mxPaneId.is() && mxBorderWindow.is() && mxContentWindow.is())
-    {
-        const awt::Rectangle aBorderBox (mxBorderWindow->getPosSize());
-        const awt::Rectangle aInnerBox (mxBorderPainter->removeBorder(
-            mxPaneId->getResourceURL(),
-            aBorderBox,
-            drawing::framework::BorderType_TOTAL_BORDER));
-        mxContentWindow->setPosSize(
-            aInnerBox.X - aBorderBox.X,
-            aInnerBox.Y - aBorderBox.Y,
-            aInnerBox.Width,
-            aInnerBox.Height,
-            awt::PosSize::POSSIZE);
-    }
+    if (!(mxBorderPainter.is() && mxPaneId.is() && mxBorderWindow.is() && mxContentWindow.is()))
+        return;
+
+    const awt::Rectangle aBorderBox (mxBorderWindow->getPosSize());
+    const awt::Rectangle aInnerBox (mxBorderPainter->removeBorder(
+        mxPaneId->getResourceURL(),
+        aBorderBox,
+        drawing::framework::BorderType_TOTAL_BORDER));
+    mxContentWindow->setPosSize(
+        aInnerBox.X - aBorderBox.X,
+        aInnerBox.Y - aBorderBox.Y,
+        aInnerBox.Width,
+        aInnerBox.Height,
+        awt::PosSize::POSSIZE);
 }
 
 bool PresenterPaneBase::IsVisible() const
@@ -370,6 +346,6 @@ void PresenterPaneBase::ThrowIfDisposed()
     }
 }
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

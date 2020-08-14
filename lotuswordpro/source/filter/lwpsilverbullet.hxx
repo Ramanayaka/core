@@ -61,13 +61,12 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPSILVERBULLET_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPSILVERBULLET_HXX
 
+#include <config_lgpl.h>
 #include <memory>
-#include "lwpheader.hxx"
-#include "lwpobj.hxx"
 #include "lwpdlvlist.hxx"
-#include "lwpobjid.hxx"
-#include "lwpatomholder.hxx"
-#include "unicode/utypes.h"
+#include <lwpobjid.hxx>
+#include <lwpatomholder.hxx>
+
 const sal_uInt16 MAXNUMBERPOSITIONS = 10; //max number of positions
 const sal_uInt16 NUMCHAR_none = 0x00;   //none of numberchar
 const sal_uInt16 NUMCHAR_1 = 0x01;      //index for numberchar "1"
@@ -90,7 +89,7 @@ class LwpFribParaNumber;
 class LwpSilverBullet : public LwpDLNFVList
 {
 public:
-    LwpSilverBullet(LwpObjectHeader& objHdr, LwpSvStream* pStrm);
+    LwpSilverBullet(LwpObjectHeader const & objHdr, LwpSvStream* pStrm);
 
     virtual ~LwpSilverBullet() override;
 
@@ -104,7 +103,7 @@ public:
 
     const OUString& GetBulletStyleName() const;
 
-    OUString GetBulletChar();
+    OUString const & GetBulletChar() const;
 
     static OUString GetPrefix() { return OUString(); }
 
@@ -112,11 +111,9 @@ public:
 
     bool HasName();
 
-    static OUString GetNumCharByStyleID(LwpFribParaNumber* pParaNumber);
+    static OUString GetNumCharByStyleID(LwpFribParaNumber const * pParaNumber);
 
-    ;
     inline bool IsLesserLevel(sal_uInt16 nPos);
-    ;
 
     LwpPara* GetBulletPara();
 
@@ -126,7 +123,7 @@ public:
 
     OUString GetDivisionName();
 
-    OUString GetSectionName();
+    OUString GetSectionName() const;
 
 private:
     sal_uInt16      m_nFlags;
@@ -155,7 +152,9 @@ inline const OUString& LwpSilverBullet::GetBulletStyleName() const
 }
 inline bool LwpSilverBullet::IsLesserLevel(sal_uInt16 nPos)
 {
-    return ((m_pResetPositionFlags[nPos] & LESSERLEVEL) != 0);
+    if (nPos < SAL_N_ELEMENTS(m_pResetPositionFlags))
+        return ((m_pResetPositionFlags[nPos] & LESSERLEVEL) != 0);
+    return false;
 }
 
 #endif

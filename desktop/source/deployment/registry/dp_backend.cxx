@@ -21,22 +21,19 @@
 
 #include <cassert>
 
-#include "dp_backend.h"
-#include "dp_ucb.h"
+#include <dp_backend.h>
+#include <dp_ucb.h>
 #include <rtl/ustring.hxx>
-#include <rtl/uri.hxx>
 #include <rtl/bootstrap.hxx>
 #include <sal/log.hxx>
-#include <osl/file.hxx>
 #include <cppuhelper/exc_hlp.hxx>
-#include <comphelper/servicedecl.hxx>
 #include <comphelper/unwrapargs.hxx>
 #include <ucbhelper/content.hxx>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/deployment/DeploymentException.hpp>
 #include <com/sun/star/deployment/ExtensionRemovedException.hpp>
 #include <com/sun/star/deployment/InvalidRemovedParameterException.hpp>
-#include <com/sun/star/deployment/thePackageManagerFactory.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <com/sun/star/ucb/CommandAbortedException.hpp>
 #include <com/sun/star/ucb/CommandFailedException.hpp>
 #include <com/sun/star/ucb/InteractiveAugmentedIOException.hpp>
@@ -44,16 +41,16 @@
 #include <com/sun/star/beans/StringPair.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
+#include <tools/diagnose_ex.h>
 #include <unotools/tempfile.hxx>
-
+#include <optional>
 
 using namespace ::dp_misc;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::ucb;
 
-namespace dp_registry {
-namespace backend {
+namespace dp_registry::backend {
 
 
 PackageRegistryBackend::~PackageRegistryBackend()
@@ -82,8 +79,8 @@ PackageRegistryBackend::PackageRegistryBackend(
       m_eContext( Context::Unknown )
 {
     assert(xContext.is());
-    boost::optional<OUString> cachePath;
-    boost::optional<bool> readOnly;
+    std::optional<OUString> cachePath;
+    std::optional<bool> readOnly;
     comphelper::unwrapArgs( args, m_context, cachePath, readOnly );
     if (cachePath)
         m_cachePath = *cachePath;
@@ -117,8 +114,8 @@ void PackageRegistryBackend::check()
 void PackageRegistryBackend::disposing()
 {
     try {
-        for ( t_string2ref::const_iterator i = m_bound.begin(); i != m_bound.end(); ++i)
-            i->second->removeEventListener(this);
+        for (auto const& elem : m_bound)
+            elem.second->removeEventListener(this);
         m_bound.clear();
         m_xComponentContext.clear();
         WeakComponentImplHelperBase::disposing();
@@ -188,7 +185,7 @@ Reference<deployment::XPackage> PackageRegistryBackend::bindPackage(
     guard.reset();
 
     std::pair< t_string2ref::iterator, bool > insertion(
-        m_bound.insert( t_string2ref::value_type( url, xNewPackage ) ) );
+        m_bound.emplace(  url, xNewPackage ) );
     if (insertion.second)
     { // first insertion
         SAL_WARN_IF(
@@ -218,7 +215,7 @@ OUString PackageRegistryBackend::createFolder(
 
     const OUString baseDir(sDataFolder);
     ::utl::TempFile aTemp(&baseDir, true);
-    const OUString url = aTemp.GetURL();
+    const OUString& url = aTemp.GetURL();
     return sDataFolder + url.copy(url.lastIndexOf('/'));
 }
 
@@ -248,7 +245,7 @@ void PackageRegistryBackend::deleteTempFolder(
 //then created a Folder with a same name and a trailing '_'
 //If the folderURL has no '_' then there is no corresponding tmp file.
 void PackageRegistryBackend::deleteUnusedFolders(
-    std::list< OUString> const & usedFolders)
+    std::vector< OUString> const & usedFolders)
 {
     try
     {
@@ -274,7 +271,7 @@ void PackageRegistryBackend::deleteUnusedFolders(
                     makeURLAppendSysPathSegment(sDataFolder, title));
         }
 
-        for (OUString & tempEntrie : tempEntries)
+        for (const OUString & tempEntrie : tempEntries)
         {
             if (std::find( usedFolders.begin(), usedFolders.end(), tempEntrie ) ==
                 usedFolders.end())
@@ -539,7 +536,7 @@ void Package::exportTo(
     bool bOk=true;
     try
     {
-        bOk = destFolder.transferContent(
+        destFolder.transferContent(
             sourceContent, ::ucbhelper::InsertOperation::Copy,
             newTitle, nameClashAction);
     }
@@ -556,17 +553,17 @@ void Package::fireModified()
 {
     ::cppu::OInterfaceContainerHelper * container = rBHelper.getContainer(
         cppu::UnoType<util::XModifyListener>::get() );
-    if (container != nullptr) {
-        Sequence< Reference<XInterface> > elements(
-            container->getElements() );
-        lang::EventObject evt( static_cast<OWeakObject *>(this) );
-        for ( sal_Int32 pos = 0; pos < elements.getLength(); ++pos )
-        {
-            Reference<util::XModifyListener> xListener(
-                elements[ pos ], UNO_QUERY );
-            if (xListener.is())
-                xListener->modified( evt );
-        }
+    if (container == nullptr)
+        return;
+
+    const Sequence< Reference<XInterface> > elements(
+        container->getElements() );
+    lang::EventObject evt( static_cast<OWeakObject *>(this) );
+    for ( const Reference<XInterface>& x : elements )
+    {
+        Reference<util::XModifyListener> xListener( x, UNO_QUERY );
+        if (xListener.is())
+            xListener->modified( evt );
     }
 }
 
@@ -628,8 +625,8 @@ void Package::processPackage_impl(
                 ProgressLevel progress(
                     xCmdEnv,
                     (doRegisterPackage
-                     ? PackageRegistryBackend::StrRegisteringPackage::get()
-                     : PackageRegistryBackend::StrRevokingPackage::get())
+                     ? PackageRegistryBackend::StrRegisteringPackage()
+                     : PackageRegistryBackend::StrRevokingPackage())
                     + displayName );
                 processPackage_( guard,
                                  doRegisterPackage,
@@ -642,15 +639,13 @@ void Package::processPackage_impl(
             Any e(cppu::getCaughtException());
             throw deployment::DeploymentException(
                 ((doRegisterPackage
-                  ? getResourceString(RID_STR_ERROR_WHILE_REGISTERING)
-                  : getResourceString(RID_STR_ERROR_WHILE_REVOKING))
+                  ? DpResId(RID_STR_ERROR_WHILE_REGISTERING)
+                  : DpResId(RID_STR_ERROR_WHILE_REVOKING))
                  + getDisplayName()),
                 static_cast< OWeakObject * >(this), e);
         }
-        catch (const RuntimeException &e) {
-            SAL_WARN(
-                "desktop.deployment",
-                "unexpected RuntimeException \"" << e.Message << '"');
+        catch (const RuntimeException &) {
+            TOOLS_WARN_EXCEPTION("desktop.deployment", "unexpected");
             throw;
         }
         catch (const CommandFailedException &) {
@@ -666,8 +661,8 @@ void Package::processPackage_impl(
             Any exc( ::cppu::getCaughtException() );
             throw deployment::DeploymentException(
                 (doRegisterPackage
-                 ? getResourceString(RID_STR_ERROR_WHILE_REGISTERING)
-                 : getResourceString(RID_STR_ERROR_WHILE_REVOKING))
+                 ? DpResId(RID_STR_ERROR_WHILE_REGISTERING)
+                 : DpResId(RID_STR_ERROR_WHILE_REVOKING))
                 + getDisplayName(), static_cast<OWeakObject *>(this), exc );
         }
     }
@@ -767,7 +762,6 @@ Any Package::TypeInfo::getIcon( sal_Bool /*highContrast*/, sal_Bool /*smallIcon*
     return Any();
 }
 
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

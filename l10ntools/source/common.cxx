@@ -7,12 +7,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "common.hxx"
+#include <common.hxx>
+
+namespace {
 
 //flags for handleArguments()
 enum class State {
     NONE, Input, Output, MergeSrc, Languages
 };
+
+}
 
 namespace common {
 

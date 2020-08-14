@@ -20,41 +20,15 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_SUBCOMPONENT_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_SUBCOMPONENT_HXX
 
-#include <cppuhelper/interfacecontainer.h>
 #include <cppuhelper/propshlp.hxx>
-#include <cppuhelper/weak.hxx>
 #include <osl/diagnose.h>
 #include <osl/mutex.hxx>
 
-#include <com/sun/star/lang/DisposedException.hpp>
+namespace cppu { class IPropertyArrayHelper; }
+namespace com::sun::star::lang { class XComponent; }
 
-namespace cppu {
-    class IPropertyArrayHelper;
-}
-
-namespace com
-{
-    namespace sun
+namespace connectivity::firebird
     {
-        namespace star
-        {
-            namespace lang
-            {
-                class XComponent;
-            }
-        }
-    }
-}
-namespace connectivity
-{
-
-    namespace firebird
-    {
-        void release(oslInterlockedCount& _refCount,
-                     ::cppu::OBroadcastHelper& rBHelper,
-                     css::uno::Reference< css::uno::XInterface >& _xInterface,
-                     css::lang::XComponent* _pObject);
-
         /// @throws css::lang::DisposedException
         void checkDisposed(bool _bThrow);
 
@@ -81,7 +55,7 @@ namespace connectivity
                 This method needs to be implemented in derived classes.
                 <BR>
                 The method gets called with s_aMutex acquired.
-                @return                         an pointer to the newly created array helper. Must not be NULL.
+                @return                         a pointer to the newly created array helper. Must not be NULL.
             */
             virtual ::cppu::IPropertyArrayHelper* createArrayHelper( ) const = 0;
         };
@@ -133,7 +107,6 @@ namespace connectivity
             return s_pProps;
         }
 
-    }
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_SUBCOMPONENT_HXX
 

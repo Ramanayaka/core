@@ -21,15 +21,14 @@
 #define INCLUDED_SVX_SDR_CONTACT_VIEWOBJECTCONTACTOFSDROBJ_HXX
 
 #include <svx/sdr/contact/viewobjectcontact.hxx>
-#include <boost/optional.hpp>
 
 class SdrObject;
 class SdrLayerIDSet;
 class OutputDevice;
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
-class SVX_DLLPUBLIC ViewObjectContactOfSdrObj : public ViewObjectContact
+class SVXCORE_DLLPUBLIC ViewObjectContactOfSdrObj : public ViewObjectContact
 {
     /** Test whether the primitive is visible on any layer from @c aLayers
 
@@ -56,10 +55,10 @@ public:
 
         This method cares for this, by retrieving the very original OutputDevice.
     */
-    boost::optional<const OutputDevice&> getPageViewOutputDevice() const;
+    const OutputDevice* getPageViewOutputDevice() const;
 };
 
-}}
+}
 
 #endif // INCLUDED_SVX_SDR_CONTACT_VIEWOBJECTCONTACTOFSDROBJ_HXX
 

@@ -24,23 +24,19 @@
 #include "NumberFormatPropertyPanel.hxx"
 #include <navipi.hxx>
 #include <dwfunctr.hxx>
-#include "sc.hrc"
 
 #include <sfx2/sidebar/SidebarPanelBase.hxx>
-#include <sfx2/sfxbasecontroller.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/window.hxx>
-#include <rtl/ref.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <comphelper/namedvaluecollection.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 using namespace css;
 using namespace css::uno;
-using ::rtl::OUString;
 
-namespace sc { namespace sidebar {
+namespace sc::sidebar {
 
 ScPanelFactory::ScPanelFactory()
     : PanelFactoryInterfaceBase(m_aMutex)
@@ -52,7 +48,7 @@ ScPanelFactory::~ScPanelFactory()
 }
 
 Reference<ui::XUIElement> SAL_CALL ScPanelFactory::createUIElement (
-    const ::rtl::OUString& rsResourceURL,
+    const OUString& rsResourceURL,
     const ::css::uno::Sequence<css::beans::PropertyValue>& rArguments)
 {
     Reference<ui::XUIElement> xElement;
@@ -109,11 +105,12 @@ Reference<ui::XUIElement> SAL_CALL ScPanelFactory::createUIElement (
     {
         throw;
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         throw lang::WrappedTargetRuntimeException(
             "ScPanelFactory::createUIElement exception",
-            nullptr, uno::makeAny(e));
+            nullptr, anyEx);
     }
 
     return xElement;
@@ -121,7 +118,7 @@ Reference<ui::XUIElement> SAL_CALL ScPanelFactory::createUIElement (
 
 OUString ScPanelFactory::getImplementationName()
 {
-    return OUString("org.apache.openoffice.comp.sc.sidebar.ScPanelFactory");
+    return "org.apache.openoffice.comp.sc.sidebar.ScPanelFactory";
 }
 
 sal_Bool ScPanelFactory::supportsService(OUString const & ServiceName)
@@ -131,13 +128,12 @@ sal_Bool ScPanelFactory::supportsService(OUString const & ServiceName)
 
 css::uno::Sequence<OUString> ScPanelFactory::getSupportedServiceNames()
 {
-    css::uno::Sequence<OUString> aServiceNames { "com.sun.star.ui.UIElementFactory" };
-    return aServiceNames;
+    return { "com.sun.star.ui.UIElementFactory" };
 }
 
-} } // end of namespace sc::sidebar
+} // end of namespace sc::sidebar
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 ScPanelFactory_get_implementation(css::uno::XComponentContext*, css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new sc::sidebar::ScPanelFactory());

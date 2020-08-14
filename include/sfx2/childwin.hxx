@@ -26,36 +26,33 @@
 #include <sal/types.h>
 #include <o3tl/typed_flags_set.hxx>
 #include <vcl/window.hxx>
-#include <com/sun/star/frame/XFrame.hpp>
 
-#include <sfx2/shell.hxx>
 #include <sfx2/chalign.hxx>
+#include <sfx2/basedlgs.hxx>
 
-#include <sfx2/bindings.hxx>
-    // complete SfxBindings for complete SfxChildWinCtor, SfxChildWinContextCtor
-    // under -fsanitize=function
+namespace com::sun::star::frame { class XFrame; }
 
 class SfxWorkWindow;
 class SfxModule;
-class SfxShell;
 class SfxChildWindow;
 class SfxChildWindowContext;
+class SfxBindings;
+class SfxModelessDialogController;
 
 enum class SfxChildWindowFlags
 {
-    NONE            = 0x00,
-    ZOOMIN          = 0x01, // Fully retracted Float
-    FORCEDOCK       = 0x04, // Float forbidden
-    TASK            = 0x10, // ChildWindow inside the Task
-    CANTGETFOCUS    = 0x20, // ChildWindow can not get focus
-    ALWAYSAVAILABLE = 0x40, // ChildWindow is never disabled
-    NEVERHIDE       = 0x80  // ChildWindow is can always made
-                            // visible/is visible
+    NONE            = 0x000,
+    FORCEDOCK       = 0x004, // Float forbidden
+    TASK            = 0x010, // ChildWindow inside the Task
+    CANTGETFOCUS    = 0x020, // ChildWindow can not get focus
+    ALWAYSAVAILABLE = 0x040, // ChildWindow is never disabled
+    NEVERHIDE       = 0x080, // ChildWindow is always visible
+    NEVERCLONE      = 0x100, // ChildWindow is not recreated in new view
 };
 
 namespace o3tl
 {
-    template<> struct typed_flags<SfxChildWindowFlags> : is_typed_flags<SfxChildWindowFlags, 0xf5> {};
+    template<> struct typed_flags<SfxChildWindowFlags> : is_typed_flags<SfxChildWindowFlags, 0x1f4> {};
 }
 
 
@@ -81,13 +78,13 @@ struct SAL_DLLPUBLIC_RTTI SfxChildWinInfo
 };
 
 // ChildWindow factory methods
-typedef SfxChildWindow* (*SfxChildWinCtor)( vcl::Window *pParentWindow,
+typedef std::unique_ptr<SfxChildWindow> (*SfxChildWinCtor)( vcl::Window *pParentWindow,
                                             sal_uInt16 nId,
                                             SfxBindings *pBindings,
                                             SfxChildWinInfo *pInfo);
 
 // ChildWindowsContexts factory methods
-typedef SfxChildWindowContext* (*SfxChildWinContextCtor)( vcl::Window *pParentWindow,
+typedef std::unique_ptr<SfxChildWindowContext> (*SfxChildWinContextCtor)( vcl::Window *pParentWindow,
                                             SfxBindings *pBindings,
                                             SfxChildWinInfo *pInfo);
 struct SfxChildWinContextFactory
@@ -138,17 +135,18 @@ public:
 
     static FloatingWindow* GetFloatingWindow(vcl::Window *pParent);
 
-    static void         RegisterChildWindowContext(SfxModule*, sal_uInt16, SfxChildWinContextFactory*);
+    static void         RegisterChildWindowContext(SfxModule*, sal_uInt16, std::unique_ptr<SfxChildWinContextFactory>);
 };
 
 class SFX2_DLLPUBLIC SfxChildWindow
 {
-    VclPtr<vcl::Window>        pParent;        // parent window ( Topwindow )
-    sal_uInt16                 nType;          // ChildWindow-Id
+    VclPtr<vcl::Window>        pParent;         // parent window ( Topwindow )
+    sal_uInt16                 nType;           // ChildWindow-Id
     VclPtr<vcl::Window>        pWindow;         // actual contents
+    std::shared_ptr<SfxDialogController> xController;     // actual contents
     SfxChildAlignment          eChildAlignment; // Current css::drawing::Alignment
     std::unique_ptr< SfxChildWindow_Impl>       pImpl;            // Implementation data
-    SfxChildWindowContext*     pContext;        // With context-sensitive ChildWindows:
+    std::unique_ptr<SfxChildWindowContext>      pContext;        // With context-sensitive ChildWindows:
                                                  // Another window in pWindow
     SAL_DLLPRIVATE void ClearWorkwin();
 
@@ -161,18 +159,19 @@ public:
     void                Destroy();
     vcl::Window*        GetWindow() const
                         { return pWindow; }
+    void                SetController(std::shared_ptr<SfxDialogController> controller) { xController = controller; }
+    void                ClearController() { xController.reset(); }
+    std::shared_ptr<SfxDialogController>& GetController() { return xController; }
+    const std::shared_ptr<SfxDialogController>& GetController() const { return xController; }
     vcl::Window*        GetParent() const
                         { return pParent; }
     SfxChildAlignment   GetAlignment() const
                         { return eChildAlignment; }
     void                SetAlignment(SfxChildAlignment eAlign);
-    Size                GetSizePixel() const
-                        { return pWindow->GetSizePixel(); }
     virtual void        Hide();
     virtual void        Show( ShowFlags nFlags );
-    bool                CanGetFocus() const;
-    sal_uInt16          GetPosition();
-    sal_uInt16          GetType()
+    sal_uInt16          GetPosition() const;
+    sal_uInt16          GetType() const
                         { return nType; }
 
     void                CreateContext( sal_uInt16 nContextId, SfxBindings& );
@@ -182,14 +181,14 @@ public:
     vcl::Window*        GetContextWindow() const
                         { return pContext ? pContext->GetWindow(): nullptr; }
 
-    vcl::Window*        GetContextWindow( SfxModule *pModule ) const;
+    vcl::Window*        GetContextWindow( SfxModule const *pModule ) const;
 
     virtual SfxChildWinInfo GetInfo() const;
     void                SaveStatus(const SfxChildWinInfo& rInfo);
 
-    static void         RegisterChildWindow(SfxModule*, SfxChildWinFactory*);
+    static void         RegisterChildWindow(SfxModule*, std::unique_ptr<SfxChildWinFactory>);
 
-    static SfxChildWindow* CreateChildWindow( sal_uInt16, vcl::Window*, SfxBindings*, SfxChildWinInfo&);
+    static std::unique_ptr<SfxChildWindow> CreateChildWindow( sal_uInt16, vcl::Window*, SfxBindings*, SfxChildWinInfo const &);
     void                SetHideNotDelete( bool bOn );
     bool                IsHideNotDelete() const;
     bool                IsVisible() const;
@@ -197,7 +196,7 @@ public:
     bool                WantsFocus() const;
 
     virtual bool        QueryClose();
-    const css::uno::Reference< css::frame::XFrame >&   GetFrame();
+    const css::uno::Reference< css::frame::XFrame >&   GetFrame() const;
     void                SetFrame( const css::uno::Reference< css::frame::XFrame > & );
 
     SAL_DLLPRIVATE static void InitializeChildWinFactory_Impl(sal_uInt16, SfxChildWinInfo&);
@@ -207,14 +206,14 @@ public:
 
     SAL_DLLPRIVATE SfxChildWindowContext*
                         GetContext_Impl() const
-                        { return pContext; }
+                        { return pContext.get(); }
     SAL_DLLPRIVATE void SetFactory_Impl( SfxChildWinFactory* );
 };
 
 
 //! The Macro of the future ...
 #define SFX_DECL_CHILDWINDOWCONTEXT(Class) \
-        static  SfxChildWindowContext* CreateImpl(vcl::Window *pParent, \
+        static  std::unique_ptr<SfxChildWindowContext> CreateImpl(vcl::Window *pParent, \
                     SfxBindings *pBindings, SfxChildWinInfo* pInfo ); \
         static  void RegisterChildWindowContext(sal_uInt16, SfxModule *pMod=nullptr); \
 
@@ -223,22 +222,21 @@ public:
 // factory. As long as Id is set to 0 and patched in
 // SfxChildWindow::CreateContext
 #define SFX_IMPL_CHILDWINDOWCONTEXT(Class, MyID) \
-        SfxChildWindowContext* Class::CreateImpl( vcl::Window *pParent, \
+        std::unique_ptr<SfxChildWindowContext> Class::CreateImpl( vcl::Window *pParent, \
                 SfxBindings *pBindings, SfxChildWinInfo* pInfo ) \
         {   \
-            SfxChildWindowContext *pContext = new Class(pParent,0,pBindings,pInfo);\
-            return pContext; \
+            return std::make_unique<Class>(pParent,0,pBindings,pInfo);\
         } \
         void    Class::RegisterChildWindowContext(sal_uInt16 nId, SfxModule* pMod)   \
         {   \
-            SfxChildWinContextFactory *pFact = new SfxChildWinContextFactory( \
+            auto pFact = std::make_unique<SfxChildWinContextFactory>( \
                 Class::CreateImpl, nId );   \
-            SfxChildWindowContext::RegisterChildWindowContext(pMod, MyID, pFact); \
+            SfxChildWindowContext::RegisterChildWindowContext(pMod, MyID, std::move(pFact)); \
         }
 
 #define SFX_DECL_CHILDWINDOW(Class) \
     public  :   \
-        static  SfxChildWindow* CreateImpl(vcl::Window *pParent, sal_uInt16 nId, \
+        static  std::unique_ptr<SfxChildWindow> CreateImpl(vcl::Window *pParent, sal_uInt16 nId, \
                     SfxBindings *pBindings, SfxChildWinInfo* pInfo ); \
         static  void RegisterChildWindow (bool bVisible=false, SfxModule *pMod=nullptr, SfxChildWindowFlags nFlags=SfxChildWindowFlags::NONE); \
         virtual SfxChildWinInfo GetInfo() const override
@@ -254,19 +252,18 @@ public:
         SFX_IMPL_POS_CHILDWINDOW_WITHID(Class, MyID, CHILDWIN_NOPOS)
 
 #define SFX_IMPL_POS_CHILDWINDOW(Class, MyID, Pos) \
-        SfxChildWindow* Class::CreateImpl( vcl::Window *pParent, \
+        std::unique_ptr<SfxChildWindow> Class::CreateImpl( vcl::Window *pParent, \
                 sal_uInt16 nId, SfxBindings *pBindings, SfxChildWinInfo* pInfo ) \
                 {   \
-                    SfxChildWindow *pWin = new Class(pParent, nId, pBindings, pInfo);\
-                    return pWin; \
+                    return std::make_unique<Class>(pParent, nId, pBindings, pInfo);\
                 } \
         void    Class::RegisterChildWindow (bool bVis, SfxModule *pMod, SfxChildWindowFlags nFlags)   \
                 {   \
-                    SfxChildWinFactory *pFact = new SfxChildWinFactory( \
+                    auto pFact = std::make_unique<SfxChildWinFactory>( \
                         Class::CreateImpl, MyID, Pos );   \
                     pFact->aInfo.nFlags |= nFlags;  \
                     pFact->aInfo.bVisible = bVis;         \
-                    SfxChildWindow::RegisterChildWindow(pMod, pFact); \
+                    SfxChildWindow::RegisterChildWindow(pMod, std::move(pFact)); \
                 }
 
 #define SFX_IMPL_POS_CHILDWINDOW_WITHID(Class, MyID, Pos) \
@@ -274,30 +271,21 @@ public:
         sal_uInt16 Class::GetChildWindowId () \
                 { return MyID; } \
 
-#define SFX_IMPL_FLOATINGWINDOW(Class, MyID)    \
+#define SFX_IMPL_MODELESSDIALOGCONTOLLER(Class, MyID)    \
         SFX_IMPL_CHILDWINDOW(Class, MyID)       \
         SfxChildWinInfo Class::GetInfo() const \
         {                                       \
             SfxChildWinInfo aInfo = SfxChildWindow::GetInfo();     \
-            static_cast<SfxFloatingWindow*>(GetWindow())->FillInfo( aInfo );  \
+            static_cast<const SfxModelessDialogController*>(GetController().get())->FillInfo( aInfo );  \
             return aInfo; }
 
-#define SFX_IMPL_FLOATINGWINDOW_WITHID(Class, MyID)    \
+#define SFX_IMPL_MODELESSDIALOGCONTOLLER_WITHID(Class, MyID)    \
         SFX_IMPL_CHILDWINDOW_WITHID(Class, MyID)       \
         SfxChildWinInfo Class::GetInfo() const \
         {                                       \
             SfxChildWinInfo aInfo = SfxChildWindow::GetInfo();     \
-            static_cast<SfxFloatingWindow*>(GetWindow())->FillInfo( aInfo );  \
+            static_cast<const SfxModelessDialogController*>(GetController().get())->FillInfo( aInfo );  \
             return aInfo; }
-
-#define SFX_IMPL_MODELESSDIALOG_WITHID(Class, MyID)    \
-        SFX_IMPL_CHILDWINDOW_WITHID(Class, MyID)       \
-        SfxChildWinInfo Class::GetInfo() const \
-        {                                       \
-            SfxChildWinInfo aInfo = SfxChildWindow::GetInfo();     \
-            static_cast<SfxModelessDialog*>(GetWindow())->FillInfo( aInfo );  \
-            return aInfo; }
-
 
 #define SFX_IMPL_DOCKINGWINDOW(Class, MyID) \
         SFX_IMPL_CHILDWINDOW(Class, MyID)       \

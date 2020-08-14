@@ -17,30 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/sidebar/Tools.hxx>
+#include <sidebar/Tools.hxx>
 
 #include <sfx2/sidebar/Theme.hxx>
 
 #include <comphelper/processfactory.hxx>
-#include <comphelper/namedvaluecollection.hxx>
 #include <vcl/commandinfoprovider.hxx>
 #include <vcl/gradient.hxx>
 
 #include <com/sun/star/frame/XDispatchProvider.hpp>
-#include <com/sun/star/graphic/GraphicProvider.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
-
-#include <cstring>
 
 using namespace css;
 using namespace css::uno;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 Image Tools::GetImage (
-    const ::rtl::OUString& rsImageURL,
-    const ::rtl::OUString& rsHighContrastImageURL,
+    const OUString& rsImageURL,
+    const OUString& rsHighContrastImageURL,
     const Reference<frame::XFrame>& rxFrame)
 {
     if (Theme::IsHighContrastMode())
@@ -50,29 +47,16 @@ Image Tools::GetImage (
 }
 
 Image Tools::GetImage (
-    const ::rtl::OUString& rsURL,
+    const OUString& rsURL,
     const Reference<frame::XFrame>& rxFrame)
 {
     if (rsURL.getLength() > 0)
     {
         if (rsURL.startsWith(".uno:"))
-        {
-            const Image aPanelImage(vcl::CommandInfoProvider::GetImageForCommand(rsURL, rxFrame));
-            return aPanelImage;
-        }
+            return vcl::CommandInfoProvider::GetImageForCommand(rsURL, rxFrame);
+
         else
-        {
-            const Reference<XComponentContext> xContext (::comphelper::getProcessComponentContext());
-            const Reference<graphic::XGraphicProvider> xGraphicProvider =
-                graphic::GraphicProvider::create( xContext );
-            ::comphelper::NamedValueCollection aMediaProperties;
-            aMediaProperties.put("URL", rsURL);
-            const Reference<graphic::XGraphic> xGraphic (
-                xGraphicProvider->queryGraphic(aMediaProperties.getPropertyValues()),
-                UNO_QUERY);
-            if (xGraphic.is())
-                return Image(xGraphic);
-        }
+            return Image(rsURL);
     }
     return Image();
 }
@@ -81,8 +65,8 @@ css::awt::Gradient Tools::VclToAwtGradient (const Gradient& rVclGradient)
 {
     css::awt::Gradient aAwtGradient (
         awt::GradientStyle(rVclGradient.GetStyle()),
-        rVclGradient.GetStartColor().GetRGBColor(),
-        rVclGradient.GetEndColor().GetRGBColor(),
+        sal_Int32(rVclGradient.GetStartColor().GetRGBColor()),
+        sal_Int32(rVclGradient.GetEndColor().GetRGBColor()),
         rVclGradient.GetAngle(),
         rVclGradient.GetBorder(),
         rVclGradient.GetOfsX(),
@@ -97,8 +81,8 @@ Gradient Tools::AwtToVclGradient (const css::awt::Gradient& rAwtGradient)
 {
     Gradient aVclGradient (
         GradientStyle(rAwtGradient.Style),
-        rAwtGradient.StartColor,
-        rAwtGradient.EndColor);
+        Color(rAwtGradient.StartColor),
+        Color(rAwtGradient.EndColor));
     aVclGradient.SetAngle(rAwtGradient.Angle);
     aVclGradient.SetBorder(rAwtGradient.Border);
     aVclGradient.SetOfsX(rAwtGradient.XOffset);
@@ -110,7 +94,7 @@ Gradient Tools::AwtToVclGradient (const css::awt::Gradient& rAwtGradient)
     return aVclGradient;
 }
 
-util::URL Tools::GetURL (const ::rtl::OUString& rsCommand)
+util::URL Tools::GetURL (const OUString& rsCommand)
 {
     util::URL aURL;
     aURL.Complete = rsCommand;
@@ -127,15 +111,15 @@ Reference<frame::XDispatch> Tools::GetDispatch (
     const util::URL& rURL)
 {
     Reference<frame::XDispatchProvider> xProvider (rxFrame, UNO_QUERY_THROW);
-    Reference<frame::XDispatch> xDispatch (xProvider->queryDispatch(rURL, ::rtl::OUString(), 0));
+    Reference<frame::XDispatch> xDispatch (xProvider->queryDispatch(rURL, OUString(), 0));
     return xDispatch;
 }
 
-::rtl::OUString Tools::GetModuleName (
+OUString Tools::GetModuleName (
     const css::uno::Reference<css::frame::XController>& rxController)
 {
     if (!rxController.is())
-        return ::rtl::OUString();
+        return OUString();
 
     try
     {
@@ -147,9 +131,9 @@ Reference<frame::XDispatch> Tools::GetDispatch (
     {
         // Ignored.
     }
-    return ::rtl::OUString();
+    return OUString();
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

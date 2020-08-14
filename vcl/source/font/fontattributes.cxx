@@ -17,10 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sallayout.hxx"
-#include "svdata.hxx"
-
-#include "fontattributes.hxx"
+#include <fontattributes.hxx>
 
 FontAttributes::FontAttributes()
 :   meWeight( WEIGHT_DONTKNOW ),
@@ -31,20 +28,6 @@ FontAttributes::FontAttributes()
     meCharSet( RTL_TEXTENCODING_DONTKNOW ),
     mbSymbolFlag( false ),
     mnQuality( 0 )
-{}
-
-FontAttributes::FontAttributes( const FontAttributes& rFontAttributes ) :
-    maFamilyName( rFontAttributes.maFamilyName ),
-    maStyleName( rFontAttributes.maStyleName ),
-    meWeight( rFontAttributes.meWeight ),
-    meFamily( rFontAttributes.meFamily ),
-    mePitch( rFontAttributes.mePitch ),
-    meWidthType( rFontAttributes.meWidthType ),
-    meItalic( rFontAttributes.meItalic ),
-    meCharSet( rFontAttributes.meCharSet ),
-    mbSymbolFlag( rFontAttributes.mbSymbolFlag ),
-    maMapNames( rFontAttributes.maMapNames ),
-    mnQuality( rFontAttributes.mnQuality )
 {}
 
 bool FontAttributes::CompareDeviceIndependentFontAttributes(const FontAttributes& rOther) const

@@ -24,28 +24,15 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
-    namespace uno {
-        class XComponentContext;
-        class XInterface;
-    }
-} } }
+namespace configmgr::default_provider {
 
-namespace configmgr { namespace default_provider {
+OUString getImplementationName();
 
-css::uno::Reference< css::uno::XInterface > SAL_CALL
-create(
-    css::uno::Reference< css::uno::XComponentContext >
-        const & context);
-
-OUString SAL_CALL getImplementationName();
-
-css::uno::Sequence< OUString > SAL_CALL
+css::uno::Sequence< OUString >
 getSupportedServiceNames();
 
-} }
+}
 
 #endif
 

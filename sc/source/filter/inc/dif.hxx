@@ -20,17 +20,18 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_DIF_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_DIF_HXX
 
+#include <map>
+#include <memory>
 #include <vector>
 
 #include <rtl/ustring.hxx>
+#include <rtl/ustrbuf.hxx>
 
-#include "address.hxx"
-#include "global.hxx"
+#include <types.hxx>
 
 class SvStream;
 class SvNumberFormatter;
 class ScDocument;
-class ScPatternAttr;
 
 extern const sal_Unicode pKeyTABLE[];
 extern const sal_Unicode pKeyVECTORS[];
@@ -58,12 +59,11 @@ enum DATASET { D_BOT, D_EOD, D_NUMERIC, D_STRING, D_UNKNOWN, D_SYNT_ERROR };
 class DifParser
 {
 public:
-    OUString            aData;
+    OUStringBuffer      m_aData;
     double              fVal;
     sal_uInt32          nVector;
     sal_uInt32          nVal;
     sal_uInt32          nNumFormat;
-    rtl_TextEncoding    eCharSet;
 private:
     SvNumberFormatter*  pNumFormatter;
     SvStream&           rIn;
@@ -76,7 +76,7 @@ private:
     static inline bool  IsEOD( const sal_Unicode* pRef );
     static inline bool  Is1_0( const sal_Unicode* pRef );
 public:
-                        DifParser( SvStream&, ScDocument&, rtl_TextEncoding );
+                        DifParser( SvStream&, const ScDocument&, rtl_TextEncoding );
 
     TOPIC               GetNextTopic();
 
@@ -124,7 +124,6 @@ inline bool DifParser::IsNumber( const sal_Unicode cChar )
     return ( cChar >= '0' && cChar <= '9' );
 }
 
-class DifAttrCache;
 class DifColumn
 {
     friend class DifAttrCache;
@@ -136,12 +135,12 @@ class DifColumn
         SCROW nEnd;
     };
 
-    ENTRY *mpAkt;
+    ENTRY *mpCurrent;
     std::vector<ENTRY> maEntries;
 
     DifColumn();
 
-    void SetNumFormat( SCROW nRow, const sal_uInt32 nNumFormat );
+    void SetNumFormat( const ScDocument* pDoc, SCROW nRow, const sal_uInt32 nNumFormat );
 
     void NewEntry( const SCROW nPos, const sal_uInt32 nNumFormat );
 
@@ -156,13 +155,13 @@ public:
 
     ~DifAttrCache();
 
-    void SetNumFormat( const SCCOL nCol, const SCROW nRow, const sal_uInt32 nNumFormat );
+    void SetNumFormat( const ScDocument* pDoc, const SCCOL nCol, const SCROW nRow, const sal_uInt32 nNumFormat );
 
     void Apply( ScDocument&, SCTAB nTab );
 
 private:
 
-    DifColumn**         ppCols;
+    std::map<SCCOL, std::unique_ptr<DifColumn>> maColMap;
 };
 
 #endif

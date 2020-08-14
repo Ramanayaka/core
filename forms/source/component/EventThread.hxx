@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_FORMS_SOURCE_COMPONENT_EVENTTHREAD_HXX
-#define INCLUDED_FORMS_SOURCE_COMPONENT_EVENTTHREAD_HXX
+#pragma once
 
 #include <sal/config.h>
 
@@ -26,7 +25,6 @@
 
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/EventObject.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/awt/XControl.hpp>
 #include <osl/thread.hxx>
 #include <osl/conditn.hxx>
@@ -48,15 +46,14 @@ class OComponentEventThread
             ,public css::lang::XEventListener
             ,public ::cppu::OWeakObject
 {
-    typedef std::vector<css::lang::EventObject*> ThreadEvents;
+    typedef std::vector<std::unique_ptr<css::lang::EventObject>> ThreadEvents;
     typedef std::vector< css::uno::Reference< css::uno::XAdapter> > ThreadObjects;
-    typedef std::vector<sal_Bool> ThreadBools;
 
     ::osl::Mutex                    m_aMutex;
     ::osl::Condition                m_aCond;            // Queue filled?
     ThreadEvents                    m_aEvents;          // EventQueue
     ThreadObjects                   m_aControls;        // Control for Submit
-    ThreadBools                     m_aFlags;           // Flags for Submit/Reset
+    std::vector<bool>               m_aFlags;           // Flags for Submit/Reset
 
     rtl::Reference<::cppu::OComponentHelper>      m_xComp;    // Implementation of the Control
 
@@ -67,12 +64,9 @@ protected:
 
     virtual void SAL_CALL onTerminated() override;
 
-    // The following method is called to duplicate the Event while respecting its type.
-    virtual css::lang::EventObject* cloneEvent(const css::lang::EventObject* _pEvt) const = 0;
-
     // Edit an Event:
     // The mutex is not locked, but pCompImpl stays valid in any case.
-    // pEvt can be a derrived type, namely the one that cloneEvent returns.
+    // pEvt can be a derived type, namely the one that cloneEvent returns.
     // rControl is only set, if a Control has been passed in addEvent.
     // Because the Control is only held as a WeakRef, it can disappear in the meantime.
     virtual void processEvent( ::cppu::OComponentHelper* _pCompImpl,
@@ -89,16 +83,16 @@ public:
     explicit OComponentEventThread(::cppu::OComponentHelper* pCompImpl);
     virtual ~OComponentEventThread() override;
 
-    void addEvent( const css::lang::EventObject* _pEvt );
-    void addEvent( const css::lang::EventObject* _pEvt, const css::uno::Reference< css::awt::XControl>& rControl,
+    void addEvent( std::unique_ptr<css::lang::EventObject> _pEvt );
+    void addEvent( std::unique_ptr<css::lang::EventObject> _pEvt, const css::uno::Reference< css::awt::XControl>& rControl,
                    bool bFlag = false );
 
     // css::lang::XEventListener
     virtual void SAL_CALL disposing(const css::lang::EventObject& _rSource ) override;
 
-    // Resolve ambiguity: both OWeakObject and OObject have these memory operators
-    void * SAL_CALL operator new( size_t size ) throw() { return osl::Thread::operator new(size); }
-    void SAL_CALL operator delete( void * p ) throw() { osl::Thread::operator delete(p); }
+    // Resolve ambiguity: both OWeakObject and osl::Thread have these memory operators
+    using osl::Thread::operator new;
+    using osl::Thread::operator delete;
 
 private:
     void    impl_clearEventQueue();
@@ -106,8 +100,5 @@ private:
 
 
 }   // namespace frm
-
-
-#endif // INCLUDED_FORMS_SOURCE_COMPONENT_EVENTTHREAD_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -23,6 +23,7 @@
 #include <IDocumentMarkAccess.hxx>
 #include <vector>
 #include <deque>
+#include <o3tl/typed_flags_set.hxx>
 
 namespace sfx2 {
     class MetadatableUndo;
@@ -39,7 +40,7 @@ class SwPaM;
 class SwNode;
 struct SwPosition;
 
-namespace sw { namespace mark
+namespace sw::mark
 {
     class IMark;
 
@@ -57,6 +58,8 @@ namespace sw { namespace mark
     private:
             OUString m_aName;
             OUString m_aShortName;
+            bool m_bHidden;
+            OUString m_aHideCondition;
             vcl::KeyCode m_aCode;
             IDocumentMarkAccess::MarkType m_eOrigBkmType;
             sal_uLong m_nNode1;
@@ -66,19 +69,26 @@ namespace sw { namespace mark
             std::shared_ptr< ::sfx2::MetadatableUndo > m_pMetadataUndo;
     };
 
+    enum class RestoreMode { Flys = 1, NonFlys = 2, All = 3 };
+
     /// Takes care of storing relevant attributes of an SwTextNode before split, then restore them on the new node.
     class ContentIdxStore
     {
     public:
+
             virtual void Clear() =0;
             virtual bool Empty() =0;
             virtual void Save(SwDoc* pDoc, sal_uLong nNode, sal_Int32 nContent, bool bSaveFlySplit=false) =0;
-            virtual void Restore(SwDoc* pDoc, sal_uLong nNode, sal_Int32 nOffset=0, bool bAuto = false) =0;
-            virtual void Restore(SwNode& rNd, sal_Int32 nLen, sal_Int32 nCorrLen) =0;
+            virtual void Restore(SwDoc* pDoc, sal_uLong nNode, sal_Int32 nOffset=0, bool bAuto = false, RestoreMode = RestoreMode::All) =0;
+            virtual void Restore(SwNode& rNd, sal_Int32 nLen, sal_Int32 nCorrLen, RestoreMode = RestoreMode::All) =0;
             virtual ~ContentIdxStore() {};
             static std::shared_ptr<ContentIdxStore> Create();
     };
-}}
+}
+
+namespace o3tl {
+    template<> struct typed_flags<sw::mark::RestoreMode> : is_typed_flags<sw::mark::RestoreMode, 3> {};
+}
 
 void DelBookmarks(const SwNodeIndex& rStt,
     const SwNodeIndex& rEnd,
@@ -90,39 +100,45 @@ void DelBookmarks(const SwNodeIndex& rStt,
  *  location. */
 struct SaveFly
 {
-    sal_uLong nNdDiff;      /// relative node difference
     SwFrameFormat* pFrameFormat;      /// the fly's frame format
-    bool bInsertPosition;   /// if true, anchor _at_ insert position
+    sal_uLong nNdDiff;      /// relative node difference
+    sal_Int32 nContentIndex; ///< index in node
+    bool isAtInsertNode;   ///< if true, anchor _at_ insert node index
 
-    SaveFly( sal_uLong nNodeDiff, SwFrameFormat* pFormat, bool bInsert )
-        : nNdDiff( nNodeDiff ), pFrameFormat( pFormat ), bInsertPosition( bInsert )
+    SaveFly( sal_uLong nNodeDiff, sal_Int32 const nCntntIdx, SwFrameFormat* pFormat, bool bInsert )
+        : pFrameFormat(pFormat)
+        , nNdDiff(nNodeDiff)
+        , nContentIndex(nCntntIdx)
+        , isAtInsertNode(bInsert)
     { }
 };
 
 typedef std::deque< SaveFly > SaveFlyArr;
 
-void RestFlyInRange( SaveFlyArr& rArr, const SwNodeIndex& rSttIdx,
+void RestFlyInRange( SaveFlyArr& rArr, const SwPosition& rSttIdx,
                       const SwNodeIndex* pInsPos );
 void SaveFlyInRange( const SwNodeRange& rRg, SaveFlyArr& rArr );
-void SaveFlyInRange( const SwPaM& rPam, const SwNodeIndex& rInsPos,
+void SaveFlyInRange( const SwPaM& rPam, const SwPosition& rInsPos,
                        SaveFlyArr& rArr, bool bMoveAllFlys );
 
 void DelFlyInRange( const SwNodeIndex& rMkNdIdx,
-                    const SwNodeIndex& rPtNdIdx );
+                    const SwNodeIndex& rPtNdIdx,
+                    SwIndex const* pMkIdx = nullptr,
+                    SwIndex const* pPtIdx = nullptr);
 
 class SwDataChanged
 {
-    const SwPaM* pPam;
-    const SwPosition* pPos;
-    SwDoc* pDoc;
-    sal_Int32 nContent;
+    const SwPaM* m_pPam;
+    const SwPosition* m_pPos;
+    SwDoc* m_pDoc;
+    sal_Int32 m_nContent;
 
 public:
     SwDataChanged( const SwPaM& rPam );
     SwDataChanged( SwDoc* pDoc, const SwPosition& rPos );
     ~SwDataChanged();
 
-    sal_Int32 GetContent() const { return nContent; }
+    sal_Int32 GetContent() const { return m_nContent; }
 };
 
 /**
@@ -144,27 +160,20 @@ void PaMCorrRel( const SwNodeIndex &rOldNode,
  */
 class ZSortFly
 {
-    const SwFrameFormat* pFormat;
-    const SwFormatAnchor* pAnchor;
-    sal_uInt32 nOrdNum;
+    const SwFrameFormat* m_pFormat;
+    const SwFormatAnchor* m_pAnchor;
+    sal_uInt32 m_nOrdNum;
 
 public:
     ZSortFly( const SwFrameFormat* pFrameFormat, const SwFormatAnchor* pFlyAnchor,
                 sal_uInt32 nArrOrdNum );
-    ZSortFly& operator=( const ZSortFly& rCpy )
-    {
-        pFormat = rCpy.pFormat;
-        pAnchor = rCpy.pAnchor;
-        nOrdNum = rCpy.nOrdNum;
-        return *this;
-    }
 
     bool operator==( const ZSortFly& ) const { return false; }
     bool operator<( const ZSortFly& rCmp ) const
-        { return nOrdNum < rCmp.nOrdNum; }
+        { return m_nOrdNum < rCmp.m_nOrdNum; }
 
-    const SwFrameFormat* GetFormat() const              { return pFormat; }
-    const SwFormatAnchor* GetAnchor() const        { return pAnchor; }
+    const SwFrameFormat* GetFormat() const              { return m_pFormat; }
+    const SwFormatAnchor* GetAnchor() const        { return m_pAnchor; }
 };
 
 class SwTableNumFormatMerge
@@ -177,15 +186,14 @@ public:
 
 class SaveRedlEndPosForRestore
 {
-    std::vector<SwPosition*>* pSavArr;
-    SwNodeIndex* pSavIdx;
-    sal_Int32 nSavContent;
+    std::vector<SwPosition*> mvSavArr;
+    std::unique_ptr<SwNodeIndex> mpSaveIndex;
+    sal_Int32 mnSaveContent;
 
-    void Restore_();
 public:
     SaveRedlEndPosForRestore( const SwNodeIndex& rInsIdx, sal_Int32 nContent );
     ~SaveRedlEndPosForRestore();
-    void Restore() { if( pSavArr ) Restore_(); }
+    void Restore();
 };
 
 #endif // INCLUDED_SW_SOURCE_CORE_INC_MVSAVE_HXX

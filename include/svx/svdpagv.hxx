@@ -22,14 +22,15 @@
 
 #include <com/sun/star/awt/XControlContainer.hpp>
 #include <rtl/ustring.hxx>
-#include <svl/lstner.hxx>
+#include <tools/color.hxx>
 #include <svx/svdhlpln.hxx>
 #include <svx/svdsob.hxx>
 #include <svx/svdtypes.hxx>
 #include <svx/svxdllapi.h>
 
+#include <memory>
 #include <vector>
-#include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <basegfx/range/b2irectangle.hxx>
 
 
 namespace vcl { class Region; }
@@ -54,10 +55,9 @@ namespace sdr
 
 // typedefs for a list of SdrPageWindow
 class SdrPageWindow;
-typedef ::std::vector< SdrPageWindow* > SdrPageWindowVector;
 
 
-class SVX_DLLPUBLIC SdrPageView
+class SVXCORE_DLLPUBLIC SdrPageView
 {
 private:
     SdrView&     mrView;
@@ -73,8 +73,8 @@ private:
     SdrLayerIDSet    aLayerLock;   // Set of non-editable Layers
     SdrLayerIDSet    aLayerPrn;    // Set of printable Layers
 
-    SdrObjList*  pAktList;     // Current List, usually the Page
-    SdrObject*   pAktGroup;    // Current Group; nullptr means none
+    SdrObjList*  pCurrentList;     // Current List, usually the Page
+    SdrObject*   pCurrentGroup;    // Current Group; nullptr means none
 
     SdrHelpLineList aHelpLines; // Helper lines and points
 
@@ -84,15 +84,12 @@ private:
     // #103834# Use one reserved slot (bReserveBool1) for the background color
     Color         maBackgroundColor;
 
-    SdrPageWindowVector maPageWindows;
+    std::vector< std::unique_ptr<SdrPageWindow> > maPageWindows;
 
     // #i72752# member to remember with which SdrPageWindow the BeginDrawLayer
     // was done
     SdrPageWindow* mpPreparedPageWindow;
 
-    // interface to SdrPageWindow
-    void ClearPageWindows();
-    SdrPageWindow* RemovePageWindow(SdrPageWindow& rOld);
 public:
     sal_uInt32 PageWindowCount() const { return maPageWindows.size(); }
     SdrPageWindow* FindPageWindow( SdrPaintWindow& rPaintWindow ) const;
@@ -113,14 +110,18 @@ private:
     void SetLayer(const OUString& rName, SdrLayerIDSet& rBS, bool bJa);
     bool IsLayer(const OUString& rName, const SdrLayerIDSet& rBS) const;
 
-    /// Let's see if the current Group (pAktGroup) is still inserted
-    void CheckAktGroup();
+    /// Let's see if the current Group (pCurrentGroup) is still inserted
+    void CheckCurrentGroup();
 
     void AdjHdl();
 
 public:
     SdrPageView(SdrPage* pPage1, SdrView& rNewView);
     ~SdrPageView();
+  
+    SdrPageView& operator=( SdrPageView const & ) = delete; // MSVC2017 workaround
+    SdrPageView( SdrPageView const & ) = delete; // MSVC2017 workaround
+
 
     /// Is called by PaintView, when modal changes have finished
     void ModelHasChanged();
@@ -144,7 +145,7 @@ public:
     css::uno::Reference< css::awt::XControlContainer >
         GetControlContainer( const OutputDevice& _rDevice ) const;
 
-    /// Sets all elements in the view which support a design and a alive mode into the given mode
+    /// Sets all elements in the view which support a design and an alive mode into the given mode
     void    SetDesignMode( bool _bDesignMode ) const;
 
     bool IsVisible() const { return mbVisible; }
@@ -163,20 +164,20 @@ public:
 
     void DrawLayer(SdrLayerID nID, OutputDevice* pGivenTarget, sdr::contact::ViewObjectContactRedirector* pRedirector = nullptr,
                    const tools::Rectangle& rRect = tools::Rectangle(),
-                   basegfx::B2IRange const* pPageFrame = nullptr);
-    void DrawPageViewGrid(OutputDevice& rOut, const tools::Rectangle& rRect, Color aColor = Color( COL_BLACK ) );
+                   basegfx::B2IRectangle const* pPageFrame = nullptr);
+    void DrawPageViewGrid(OutputDevice& rOut, const tools::Rectangle& rRect, Color aColor = COL_BLACK );
 
     tools::Rectangle GetPageRect() const;
     SdrPage* GetPage() const { return mpPage; }
 
     /// Return current List
-    SdrObjList* GetObjList() const { return pAktList; }
+    SdrObjList* GetObjList() const { return pCurrentList; }
 
     /// Return current Group
-    SdrObject* GetAktGroup() const { return pAktGroup; }
+    SdrObject* GetCurrentGroup() const { return pCurrentGroup; }
 
     /// Set current Group and List
-    void SetAktGroupAndList(SdrObject* pNewGroup, SdrObjList* pNewList);
+    void SetCurrentGroupAndList(SdrObject* pNewGroup, SdrObjList* pNewList);
 
     bool HasMarkedObjPageView() const { return mbHasMarked; }
     void SetHasMarkedObj(bool bOn) { mbHasMarked = bOn; }
@@ -228,7 +229,7 @@ public:
     /// it must not be locked
     /// @returns
     ///      true, if the object's layer is visible and not locked
-    bool IsObjMarkable(SdrObject* pObj) const;
+    bool IsObjMarkable(SdrObject const * pObj) const;
 
     /// Entering (editing) an object group
     /// After that, we have direct access to all member objects of the group.

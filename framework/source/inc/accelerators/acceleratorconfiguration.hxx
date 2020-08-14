@@ -22,18 +22,10 @@
 
 #include <accelerators/presethandler.hxx>
 #include <accelerators/acceleratorcache.hxx>
-#include <general.h>
-#include <stdtypes.h>
 
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/ui/XAcceleratorConfiguration.hpp>
-#include <com/sun/star/ui/XUIConfiguration.hpp>
-#include <com/sun/star/ui/XUIConfigurationPersistence.hpp>
 
-#include <com/sun/star/ui/XUIConfigurationStorage.hpp>
-#include <com/sun/star/io/XStream.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/util/XChangesListener.hpp>
@@ -41,7 +33,6 @@
 // TODO use XPresetHandler interface instead if available
 #include <com/sun/star/form/XReset.hpp>
 
-#include <cppuhelper/propshlp.hxx>
 #include <cppuhelper/implbase.hxx>
 
 // definition
@@ -82,7 +73,7 @@ class XMLBasedAcceleratorConfiguration : public    ::cppu::WeakImplHelper<
         AcceleratorCache m_aReadCache;
 
         /** used to implement the copy on write pattern! */
-        AcceleratorCache* m_pWriteCache;
+        std::unique_ptr<AcceleratorCache> m_pWriteCache;
 
         // native interface!
 
@@ -216,8 +207,8 @@ class XCUBasedAcceleratorConfiguration : public  ::cppu::WeakImplHelper<
         css::uno::Reference< css::container::XNameAccess > m_xCfg;
         AcceleratorCache m_aPrimaryReadCache;
         AcceleratorCache m_aSecondaryReadCache;
-        AcceleratorCache* m_pPrimaryWriteCache;
-        AcceleratorCache* m_pSecondaryWriteCache;
+        std::unique_ptr<AcceleratorCache> m_pPrimaryWriteCache;
+        std::unique_ptr<AcceleratorCache> m_pSecondaryWriteCache;
 
         OUString m_sGlobalOrModules;
         OUString m_sModuleCFG;
@@ -303,7 +294,7 @@ class XCUBasedAcceleratorConfiguration : public  ::cppu::WeakImplHelper<
     private:
 
         void impl_ts_load(bool bPreferred, const css::uno::Reference< css::container::XNameAccess >& xCfg);
-        void impl_ts_save(bool bPreferred, const css::uno::Reference< css::container::XNameAccess >& xCfg);
+        void impl_ts_save(bool bPreferred);
 
         void insertKeyToConfiguration(const css::awt::KeyEvent& aKeyEvent, const OUString& sCommand, const bool bPreferred);
         void removeKeyFromConfiguration(const css::awt::KeyEvent& aKeyEvent, const bool bPreferred);

@@ -27,7 +27,6 @@
 
 #include <comphelper/extract.hxx>
 
-#include <functional>
 #include <memory>
 
 
@@ -47,7 +46,7 @@ namespace comphelper
 
     //= LessPredicateAdapter
 
-    struct LessPredicateAdapter : public ::std::binary_function< css::uno::Any, css::uno::Any, bool >
+    struct LessPredicateAdapter
     {
         LessPredicateAdapter( const IKeyPredicateLess& _predicate )
             :m_predicate( _predicate )
@@ -67,7 +66,7 @@ namespace comphelper
     //= ScalarPredicateLess
 
     template< typename SCALAR >
-    class ScalarPredicateLess : public IKeyPredicateLess
+    class ScalarPredicateLess final : public IKeyPredicateLess
     {
     public:
         virtual bool isLess( css::uno::Any const & _lhs, css::uno::Any const & _rhs ) const override
@@ -84,7 +83,7 @@ namespace comphelper
 
     //= StringPredicateLess
 
-    class StringPredicateLess : public IKeyPredicateLess
+    class StringPredicateLess final : public IKeyPredicateLess
     {
     public:
         virtual bool isLess( css::uno::Any const & _lhs, css::uno::Any const & _rhs ) const override
@@ -101,7 +100,7 @@ namespace comphelper
 
     //= StringCollationPredicateLess
 
-    class StringCollationPredicateLess : public IKeyPredicateLess
+    class StringCollationPredicateLess final : public IKeyPredicateLess
     {
     public:
         StringCollationPredicateLess( css::uno::Reference< css::i18n::XCollator > const & i_collator )
@@ -126,7 +125,7 @@ namespace comphelper
 
     //= TypePredicateLess
 
-    class TypePredicateLess : public IKeyPredicateLess
+    class TypePredicateLess final : public IKeyPredicateLess
     {
     public:
         virtual bool isLess( css::uno::Any const & _lhs, css::uno::Any const & _rhs ) const override
@@ -143,7 +142,7 @@ namespace comphelper
 
     //= EnumPredicateLess
 
-    class EnumPredicateLess : public IKeyPredicateLess
+    class EnumPredicateLess final : public IKeyPredicateLess
     {
     public:
         EnumPredicateLess( css::uno::Type const & _enumType )
@@ -170,7 +169,7 @@ namespace comphelper
 
     //= InterfacePredicateLess
 
-    class InterfacePredicateLess : public IKeyPredicateLess
+    class InterfacePredicateLess final : public IKeyPredicateLess
     {
     public:
         virtual bool isLess( css::uno::Any const & _lhs, css::uno::Any const & _rhs ) const override
@@ -206,6 +205,10 @@ namespace comphelper
             css::uno::Reference< css::i18n::XCollator > const & i_collator
         );
 
+    /**
+        Compare two Anys.
+    */
+    bool COMPHELPER_DLLPUBLIC anyLess( css::uno::Any const & lhs, css::uno::Any const & rhs);
 
 } // namespace comphelper
 

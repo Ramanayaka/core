@@ -18,33 +18,31 @@
  */
 
 #include "backingwindow.hxx"
-#include <sfx2/inputdlg.hxx>
 
+#include <vcl/accel.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/syswin.hxx>
 #include <vcl/virdev.hxx>
+#include <vcl/fixed.hxx>
 
-#include <unotools/dynamicmenuoptions.hxx>
 #include <unotools/historyoptions.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <svtools/openfiledroptargetlistener.hxx>
 #include <svtools/colorcfg.hxx>
 #include <svtools/langhelp.hxx>
-#include <sfx2/filedlghelper.hxx>
-#include <sfx2/sfxresid.hxx>
-#include <sfx2/templatecontaineritem.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/toolbox.hxx>
+#include <templateviewitem.hxx>
 
 #include <vcl/menubtn.hxx>
 
 #include <comphelper/processfactory.hxx>
-#include <comphelper/sequenceashashmap.hxx>
+#include <comphelper/propertysequence.hxx>
 
-#include <toolkit/awt/vclxmenu.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
+#include <com/sun/star/datatransfer/dnd/XDropTarget.hpp>
 #include <com/sun/star/document/MacroExecMode.hpp>
 #include <com/sun/star/document/UpdateDocMode.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
@@ -53,7 +51,6 @@
 #include <com/sun/star/system/SystemShellExecuteFlags.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <com/sun/star/task/InteractionHandler.hpp>
-#include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
 
 #include <officecfg/Office/Common.hxx>
 
@@ -71,10 +68,10 @@ float const fMultiplier = 1.4f;
 BackingWindow::BackingWindow( vcl::Window* i_pParent ) :
     Window( i_pParent ),
     mbLocalViewInitialized(false),
-    maButtonsTextColor(officecfg::Office::Common::Help::StartCenter::StartCenterTextColor::get()),
+    maButtonsTextColor(Color(officecfg::Office::Common::Help::StartCenter::StartCenterTextColor::get())),
     mbInitControls( false )
 {
-    m_pUIBuilder.reset(new VclBuilder(this, getUIRootDir(), "sfx/ui/startcenter.ui", "StartCenter" ));
+    m_pUIBuilder.reset(new VclBuilder(this, AllSettings::GetUIRootDir(), "sfx/ui/startcenter.ui", "StartCenter" ));
 
     get(mpOpenButton, "open_all");
     get(mpRemoteButton, "open_remote");
@@ -122,15 +119,15 @@ BackingWindow::BackingWindow( vcl::Window* i_pParent ) :
     get(mpAllRecentThumbnails, "all_recent");
     get(mpLocalView, "local_view");
 
-    maDndWindows.push_back(mpAllRecentThumbnails);
+    maDndWindows.emplace_back(mpAllRecentThumbnails);
 
     try
     {
         mxContext.set( ::comphelper::getProcessComponentContext(), uno::UNO_SET_THROW );
     }
-    catch (const Exception& e)
+    catch (const Exception&)
     {
-        SAL_WARN( "fwk", "BackingWindow - caught an exception! " << e.Message );
+        TOOLS_WARN_EXCEPTION( "fwk", "BackingWindow" );
     }
 
     // fdo#34392: we do the layout dynamically, the layout depends on the font,
@@ -203,20 +200,6 @@ void BackingWindow::initControls()
 
     // collect the URLs of the entries in the File/New menu
     SvtModuleOptions    aModuleOptions;
-    std::set< OUString > aFileNewAppsAvailable;
-    SvtDynamicMenuOptions aOpt;
-    Sequence < Sequence < PropertyValue > > aNewMenu = aOpt.GetMenu( EDynamicMenuType::NewMenu );
-    const OUString sURLKey( "URL"  );
-
-    const Sequence< PropertyValue >* pNewMenu = aNewMenu.getConstArray();
-    const Sequence< PropertyValue >* pNewMenuEnd = aNewMenu.getConstArray() + aNewMenu.getLength();
-    for ( ; pNewMenu != pNewMenuEnd; ++pNewMenu )
-    {
-        comphelper::SequenceAsHashMap aEntryItems( *pNewMenu );
-        OUString sURL( aEntryItems.getUnpackedValueOrDefault( sURLKey, OUString() ) );
-        if ( !sURL.isEmpty() )
-            aFileNewAppsAvailable.insert( sURL );
-    }
 
     if (aModuleOptions.IsModuleInstalled(SvtModuleOptions::EModule::WRITER))
         mpAllRecentThumbnails->mnFileTypes |= sfx2::ApplicationType::TYPE_WRITER;
@@ -288,7 +271,6 @@ void BackingWindow::initControls()
     // motif image under the buttons
     Wallpaper aWallpaper(get<FixedImage>("motif")->GetImage().GetBitmapEx());
     aWallpaper.SetStyle(WallpaperStyle::BottomRight);
-    aWallpaper.SetColor(aButtonsBackground);
 
     mpButtonsBox->SetBackground(aWallpaper);
 
@@ -386,7 +368,7 @@ void BackingWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Recta
 
     rRenderContext.DrawOutDev(maStartCentButtons.TopLeft(), maStartCentButtons.GetSize(),
                               Point(0, 0), maStartCentButtons.GetSize(),
-                              *pVDev.get());
+                              *pVDev);
 }
 
 bool BackingWindow::PreNotify(NotifyEvent& rNEvt)
@@ -422,15 +404,18 @@ bool BackingWindow::PreNotify(NotifyEvent& rNEvt)
             }
             else // F6
             {
-                if(mpAllRecentThumbnails->IsVisible())
+                if( mpAllButtonsBox->HasChildPathFocus() )
                 {
-                    mpAllRecentThumbnails->GrabFocus();
-                    return true;
-                }
-                else if(mpLocalView->IsVisible())
-                {
-                    mpLocalView->GrabFocus();
-                    return true;
+                    if(mpAllRecentThumbnails->IsVisible())
+                    {
+                        mpAllRecentThumbnails->GrabFocus();
+                        return true;
+                    }
+                    else if(mpLocalView->IsVisible())
+                    {
+                        mpLocalView->GrabFocus();
+                        return true;
+                    }
                 }
             }
         }
@@ -513,35 +498,36 @@ IMPL_LINK(BackingWindow, ExtLinkClickHdl, Button*, pButton, void)
     if (pButton == mpExtensionsButton)
         aNode = "AddFeatureURL";
 
-    if (!aNode.isEmpty())
+    if (aNode.isEmpty())
+        return;
+
+    try
     {
-        try
+        uno::Sequence<uno::Any> args(comphelper::InitAnyPropertySequence(
         {
-            Sequence<Any> args(1);
-            PropertyValue val("nodepath", 0, Any(OUString("/org.openoffice.Office.Common/Help/StartCenter")), PropertyState_DIRECT_VALUE);
-            args.getArray()[0] <<= val;
+            {"nodepath", uno::Any(OUString("/org.openoffice.Office.Common/Help/StartCenter"))}
+        }));
 
-            Reference<lang::XMultiServiceFactory> xConfig = configuration::theDefaultProvider::get( comphelper::getProcessComponentContext() );
-            Reference<container::XNameAccess> xNameAccess(xConfig->createInstanceWithArguments(SERVICENAME_CFGREADACCESS, args), UNO_QUERY);
-            if (xNameAccess.is())
-            {
-                OUString sURL;
-                Any value(xNameAccess->getByName(aNode));
-
-                sURL = value.get<OUString>();
-                localizeWebserviceURI(sURL);
-
-                Reference<css::system::XSystemShellExecute> const
-                    xSystemShellExecute(
-                        css::system::SystemShellExecute::create(
-                            ::comphelper::getProcessComponentContext()));
-                xSystemShellExecute->execute(sURL, OUString(),
-                    css::system::SystemShellExecuteFlags::URIS_ONLY);
-            }
-        }
-        catch (const Exception&)
+        Reference<lang::XMultiServiceFactory> xConfig = configuration::theDefaultProvider::get( comphelper::getProcessComponentContext() );
+        Reference<container::XNameAccess> xNameAccess(xConfig->createInstanceWithArguments(SERVICENAME_CFGREADACCESS, args), UNO_QUERY);
+        if (xNameAccess.is())
         {
+            OUString sURL;
+            Any value(xNameAccess->getByName(aNode));
+
+            sURL = value.get<OUString>();
+            localizeWebserviceURI(sURL);
+
+            Reference<css::system::XSystemShellExecute> const
+                xSystemShellExecute(
+                    css::system::SystemShellExecute::create(
+                        ::comphelper::getProcessComponentContext()));
+            xSystemShellExecute->execute(sURL, OUString(),
+                css::system::SystemShellExecuteFlags::URIS_ONLY);
         }
+    }
+    catch (const Exception&)
+    {
     }
 }
 
@@ -711,6 +697,8 @@ IMPL_LINK(BackingWindow, EditTemplateHdl, ThumbnailViewItem*, pItem, void)
     }
 }
 
+namespace {
+
 struct ImplDelayedDispatch
 {
     Reference< XDispatch >      xDispatch;
@@ -726,6 +714,8 @@ struct ImplDelayedDispatch
     {
     }
 };
+
+}
 
 static void implDispatchDelayed( void*, void* pArg )
 {
@@ -754,7 +744,7 @@ void BackingWindow::dispatchURL( const OUString& i_rURL,
     if( !xProvider.is())
         return;
 
-    // get an URL transformer to clean up the URL
+    // get a URL transformer to clean up the URL
     css::util::URL aDispatchURL;
     aDispatchURL.Complete = i_rURL;
 
@@ -771,9 +761,9 @@ void BackingWindow::dispatchURL( const OUString& i_rURL,
         // dispatch the URL
         if ( xDispatch.is() )
         {
-            ImplDelayedDispatch* pDisp = new ImplDelayedDispatch( xDispatch, aDispatchURL, i_rArgs );
-            if( Application::PostUserEvent( Link<void*,void>( nullptr, implDispatchDelayed ), pDisp ) == nullptr )
-                delete pDisp; // event could not be posted for unknown reason, at least don't leak
+            std::unique_ptr<ImplDelayedDispatch> pDisp(new ImplDelayedDispatch( xDispatch, aDispatchURL, i_rArgs ));
+            if( Application::PostUserEvent( Link<void*,void>( nullptr, implDispatchDelayed ), pDisp.get() ) )
+                pDisp.release();
         }
     }
     catch (const css::uno::RuntimeException&)

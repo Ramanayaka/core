@@ -10,13 +10,11 @@
 #ifndef INCLUDED_TILEBUFFER_HXX
 #define INCLUDED_TILEBUFFER_HXX
 
-#include <gdk/gdkkeysyms.h>
-#include <gdk-pixbuf/gdk-pixbuf.h>
-#include <map>
+#include <cairo.h>
+#include <gio/gio.h>
+#include <glib.h>
 
-#include <LibreOfficeKit/LibreOfficeKit.h>
-#include <LibreOfficeKit/LibreOfficeKitEnums.h>
-#include <LibreOfficeKit/LibreOfficeKitGtk.h>
+#include <map>
 
 #define LOK_TILEBUFFER_ERROR (LOKTileBufferErrorQuark())
 
@@ -90,10 +88,10 @@ private:
 class TileBuffer
 {
  public:
- TileBuffer(int columns = 0)
+ TileBuffer(int columns = 0, int scale = 1)
      : m_nWidth(columns)
     {
-        cairo_surface_t *pSurface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, nTileSizePixels, nTileSizePixels);
+        cairo_surface_t *pSurface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, nTileSizePixels * scale, nTileSizePixels * scale);
         m_DummyTile.setSurface(pSurface);
         cairo_surface_destroy(pSurface);
     }
@@ -116,6 +114,15 @@ class TileBuffer
        @return the tile at the mentioned position (x, y)
      */
     Tile& getTile(int x, int y, GTask* task, GThreadPool* pool);
+
+    /*
+      Takes ownership of the surface and sets it on a tile at a given location
+    */
+    void  setTile(int x, int y, cairo_surface_t *surface);
+
+    /// Returns true if a valid tile exists at this location
+    bool hasValidTile(int x, int y);
+
     /// Destroys all the tiles in the tile buffer; also frees the memory allocated
     /// for all the Tile objects.
     void resetAllTiles();
@@ -133,6 +140,7 @@ class TileBuffer
      */
     void setInvalid(int x, int y, float zoom, GTask* task, GThreadPool*);
 
+private:
     /// Stores all the tiles cached by this tile buffer.
     std::map<int, Tile> m_mTiles;
     /// Width of the current tile buffer (number of columns)

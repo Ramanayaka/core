@@ -6,10 +6,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-#include <ServiceDocumenter.hxx>
-#include <unotoolsservices.hxx>
-#include <comphelper/servicedecl.hxx>
+#include "ServiceDocumenter.hxx"
+#include <com/sun/star/system/SystemShellExecuteFlags.hpp>
 #include <com/sun/star/system/XSystemShellExecute.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <cppuhelper/supportsservice.hxx>
+#include <rtl/ref.hxx>
+
 using namespace com::sun::star;
 using uno::Reference;
 using lang::XServiceInfo;
@@ -21,7 +24,9 @@ void unotools::misc::ServiceDocumenter::showCoreDocs(const Reference<XServiceInf
         return;
     auto xMSF(m_xContext->getServiceManager());
     Reference<system::XSystemShellExecute> xShell(xMSF->createInstanceWithContext("com.sun.star.system.SystemShellExecute", m_xContext), uno::UNO_QUERY);
-    xShell->execute(m_sCoreBaseUrl + xService->getImplementationName() + ".html", "", 0);
+    xShell->execute(
+        m_sCoreBaseUrl + xService->getImplementationName() + ".html", "",
+        css::system::SystemShellExecuteFlags::URIS_ONLY);
 }
 
 void unotools::misc::ServiceDocumenter::showInterfaceDocs(const Reference<XTypeProvider>& xTypeProvider)
@@ -30,13 +35,16 @@ void unotools::misc::ServiceDocumenter::showInterfaceDocs(const Reference<XTypeP
         return;
     auto xMSF(m_xContext->getServiceManager());
     Reference<system::XSystemShellExecute> xShell(xMSF->createInstanceWithContext("com.sun.star.system.SystemShellExecute", m_xContext), uno::UNO_QUERY);
-    for(const auto& aType : xTypeProvider->getTypes())
+    const css::uno::Sequence<css::uno::Type> aTypes = xTypeProvider->getTypes();
+    for(const auto& aType : aTypes)
     {
         auto sUrl = aType.getTypeName();
         sal_Int32 nIdx = 0;
         while(nIdx != -1)
             sUrl = sUrl.replaceFirst(".", "_1_1", &nIdx);
-        xShell->execute(m_sServiceBaseUrl + "/interface" + sUrl + ".html", "", 0);
+        xShell->execute(
+            m_sServiceBaseUrl + "/interface" + sUrl + ".html", "",
+            css::system::SystemShellExecuteFlags::URIS_ONLY);
     }
 }
 
@@ -46,20 +54,56 @@ void unotools::misc::ServiceDocumenter::showServiceDocs(const Reference<XService
         return;
     auto xMSF(m_xContext->getServiceManager());
     Reference<system::XSystemShellExecute> xShell(xMSF->createInstanceWithContext("com.sun.star.system.SystemShellExecute", m_xContext), uno::UNO_QUERY);
-    for(const auto& sService : xService->getSupportedServiceNames())
+    const css::uno::Sequence<OUString> aServiceNames = xService->getSupportedServiceNames();
+    for(const auto& sService : aServiceNames)
     {
         auto sUrl = sService;
         sal_Int32 nIdx = 0;
         while(nIdx != -1)
             sUrl = sUrl.replaceFirst(".", "_1_1", &nIdx);
-        xShell->execute(m_sServiceBaseUrl + "/service" + sUrl + ".html", "", 0);
+        xShell->execute(
+            m_sServiceBaseUrl + "/service" + sUrl + ".html", "",
+            css::system::SystemShellExecuteFlags::URIS_ONLY);
     }
 }
 
-namespace sdecl = ::comphelper::service_decl;
-sdecl::class_< unotools::misc::ServiceDocumenter > const ServiceDocumenterImpl;
-const sdecl::ServiceDecl ServiceDocumenterDecl(
-    ServiceDocumenterImpl,
-    "com.sun.star.comp.unotools.misc.ServiceDocumenter",
-    "");
+//  XServiceInfo
+sal_Bool unotools::misc::ServiceDocumenter::supportsService(const OUString& sServiceName)
+{
+    return cppu::supportsService(this, sServiceName);
+}
+OUString unotools::misc::ServiceDocumenter::getImplementationName()
+{
+    return "com.sun.star.comp.unotools.misc.ServiceDocumenter";
+}
+css::uno::Sequence< OUString > unotools::misc::ServiceDocumenter::getSupportedServiceNames()
+{
+    return { "com.sun.star.script.ServiceDocumenter" };
+}
 
+
+namespace {
+
+struct Instance {
+    explicit Instance(
+        css::uno::Reference<css::uno::XComponentContext> const & context):
+        instance(new unotools::misc::ServiceDocumenter(context))
+    {}
+
+    rtl::Reference<unotools::misc::ServiceDocumenter> instance;
+};
+
+struct Singleton:
+    public rtl::StaticWithArg<
+        Instance, css::uno::Reference<css::uno::XComponentContext>, Singleton>
+{};
+
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+unotools_ServiceDocument_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(static_cast<cppu::OWeakObject *>(
+                Singleton::get(context).instance.get()));
+}

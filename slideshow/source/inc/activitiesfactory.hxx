@@ -36,14 +36,11 @@
 #include "boolanimation.hxx"
 #include "pairanimation.hxx"
 
-#include <boost/optional.hpp>
+#include <optional>
 
 /* Definition of ActivitiesFactory class */
 
-namespace slideshow {
-namespace internal {
-
-namespace ActivitiesFactory
+namespace slideshow::internal::ActivitiesFactory
 {
     /// Collection of common factory parameters
     struct CommonParameters
@@ -55,7 +52,7 @@ namespace ActivitiesFactory
             double                                nMinDuration,
             sal_uInt32                            nMinNumberOfFrames,
             bool                                  bAutoReverse,
-            ::boost::optional<double> const&      aRepeats,
+            ::std::optional<double> const&      aRepeats,
             double                                nAcceleration,
             double                                nDeceleration,
             const ShapeSharedPtr&                 rShape,
@@ -110,7 +107,7 @@ namespace ActivitiesFactory
             unspecified, the activity will repeat
             indefinitely.
         */
-        ::boost::optional<double> const                 maRepeats;
+        ::std::optional<double> const                 maRepeats;
 
         /// Fraction of simple time to accelerate animation
         double                                          mnAcceleration;
@@ -303,10 +300,8 @@ namespace ActivitiesFactory
         const CommonParameters&         rParms,
         const NumberAnimationSharedPtr& rAnimator,
         bool                            bDirectionForward );
-}
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_ACTIVITIESFACTORY_HXX
 

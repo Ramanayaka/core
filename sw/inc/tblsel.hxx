@@ -19,8 +19,8 @@
 #ifndef INCLUDED_SW_INC_TBLSEL_HXX
 #define INCLUDED_SW_INC_TBLSEL_HXX
 
-#include <swtable.hxx>
-#include <swrect.hxx>
+#include "swtable.hxx"
+#include "swrect.hxx"
 #include "swdllapi.h"
 
 #include <o3tl/sorted_vector.hxx>
@@ -34,12 +34,9 @@ class SwCursor;
 class SwTableCursor;
 class SwFrame;
 class SwTabFrame;
-class SwTableBox;
-class SwTableLine;
 class SwLayoutFrame;
 class SwPaM;
 class SwNode;
-class SwTable;
 class SwUndoTableMerge;
 class SwCellFrame;
 
@@ -69,7 +66,7 @@ enum class SwTableSearchType : sal_uInt16
     NoUnionCorrect = 0x10, // Do not correct collected Union.
 };
 namespace o3tl {
-    template<> struct typed_flags<SwTableSearchType> : is_typed_flags<SwTableSearchType, 0x1f> {};
+    template<> struct typed_flags<SwTableSearchType> : is_typed_flags<SwTableSearchType, 0x1b> {};
 }
 
 SW_DLLPUBLIC void GetTableSel( const SwCursorShell& rShell, SwSelBoxes& rBoxes,
@@ -116,9 +113,9 @@ bool IsEmptyBox( const SwTableBox& rBox, SwPaM& rPam );
 
 // Check if Split or InsertCol lead to a box becoming smaller than MINLAY.
 bool CheckSplitCells( const SwCursorShell& rShell, sal_uInt16 nDiv,
-                        const SwTableSearchType = SwTableSearchType::NONE );
+                        const SwTableSearchType );
 bool CheckSplitCells( const SwCursor& rCursor, sal_uInt16 nDiv,
-                        const SwTableSearchType = SwTableSearchType::NONE );
+                        const SwTableSearchType );
 
 // For working on tab selection also for split tables.
 class SwSelUnion

@@ -21,7 +21,7 @@
 #define INCLUDED_CANVAS_SOURCE_DIRECTX_DX_CONFIG_HXX
 
 #include <unotools/configitem.hxx>
-#include <boost/optional.hpp>
+#include <optional>
 #include <set>
 
 namespace basegfx { class B2IVector; }
@@ -63,8 +63,8 @@ namespace dxcanvas
         ~DXCanvasItem() override;
 
         bool isDeviceUsable( const DeviceInfo& rDeviceInfo ) const;
-        bool isBlacklistCurrentDevice() const;
-        void blacklistDevice( const DeviceInfo& rDeviceInfo );
+        bool isDenylistCurrentDevice() const;
+        void denylistDevice( const DeviceInfo& rDeviceInfo );
         void adaptMaxTextureSize( basegfx::B2IVector& io_maxTextureSize ) const;
         virtual void               Notify( const css::uno::Sequence<OUString>& aPropertyNames) override;
 
@@ -72,8 +72,8 @@ namespace dxcanvas
         virtual void               ImplCommit() override;
         typedef std::set< DeviceInfo > ValueSet;
         ValueSet                   maValues;
-        boost::optional<sal_Int32> maMaxTextureSize;
-        bool                       mbBlacklistCurrentDevice;
+        std::optional<sal_Int32> maMaxTextureSize;
+        bool                       mbDenylistCurrentDevice;
         bool                       mbValuesDirty;
     };
 }

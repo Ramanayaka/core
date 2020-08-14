@@ -20,15 +20,13 @@
 #include "basscript.hxx"
 #include <vcl/svapp.hxx>
 #include <basic/sbx.hxx>
-#include <basic/sbstar.hxx>
 #include <basic/sbmod.hxx>
 #include <basic/sbmeth.hxx>
 #include <basic/sbuno.hxx>
 #include <basic/basmgr.hxx>
 #include <com/sun/star/script/provider/ScriptFrameworkErrorException.hpp>
 #include <com/sun/star/script/provider/ScriptFrameworkErrorType.hpp>
-#include "bcholder.hxx"
-#include <comphelper/proparrhlp.hxx>
+#include <bcholder.hxx>
 #include <comphelper/propertycontainer.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <map>
@@ -205,7 +203,7 @@ namespace basprov
                 {
                     SbxVariableRef xSbxVar = new SbxVariable( SbxVARIANT );
                     unoToSbxValue( xSbxVar.get(), pParams[i] );
-                    xSbxParams->Put( xSbxVar.get(), static_cast< sal_uInt16 >( i ) + 1 );
+                    xSbxParams->Put32( xSbxVar.get(), static_cast< sal_uInt32 >( i ) + 1 );
 
                     // Enable passing by ref
                     if ( xSbxVar->GetType() != SbxVARIANT )
@@ -224,7 +222,7 @@ namespace basprov
             if ( m_documentBasicManager && m_xDocumentScriptContext.is() )
                 aOldThisComponent = m_documentBasicManager->SetGlobalUNOConstant( "ThisComponent", makeAny( m_xDocumentScriptContext ) );
 
-            if ( m_caller.getLength() && m_caller[ 0 ].hasValue()  )
+            if ( m_caller.hasElements() && m_caller[ 0 ].hasValue()  )
             {
                 SbxVariableRef xCallerVar = new SbxVariable( SbxVARIANT );
                 unoToSbxValue( xCallerVar.get(), m_caller[ 0 ] );
@@ -248,16 +246,17 @@ namespace basprov
                 if ( pInfo_ )
                 {
                     OutParamMap aOutParamMap;
-                    for ( sal_uInt16 n = 1, nCount = xSbxParams->Count(); n < nCount; ++n )
+                    for ( sal_uInt32 n = 1, nCount = xSbxParams->Count32(); n < nCount; ++n )
                     {
-                        const SbxParamInfo* pParamInfo = pInfo_->GetParam( n );
+                        assert(nCount <= std::numeric_limits<sal_uInt16>::max());
+                        const SbxParamInfo* pParamInfo = pInfo_->GetParam( sal::static_int_cast<sal_uInt16>(n) );
                         if ( pParamInfo && ( pParamInfo->eType & SbxBYREF ) != 0 )
                         {
-                            SbxVariable* pVar = xSbxParams->Get( n );
+                            SbxVariable* pVar = xSbxParams->Get32( n );
                             if ( pVar )
                             {
                                 SbxVariableRef xVar = pVar;
-                                aOutParamMap.insert( OutParamMap::value_type( n - 1, sbxToUnoValue( xVar.get() ) ) );
+                                aOutParamMap.emplace( n - 1, sbxToUnoValue( xVar.get() ) );
                             }
                         }
                     }
@@ -266,10 +265,12 @@ namespace basprov
                     aOutParam.realloc( nOutParamCount );
                     sal_Int16* pOutParamIndex = aOutParamIndex.getArray();
                     Any* pOutParam = aOutParam.getArray();
-                    for ( OutParamMap::iterator aIt = aOutParamMap.begin(); aIt != aOutParamMap.end(); ++aIt, ++pOutParamIndex, ++pOutParam )
+                    for ( const auto& rEntry : aOutParamMap )
                     {
-                        *pOutParamIndex = aIt->first;
-                        *pOutParam = aIt->second;
+                        *pOutParamIndex = rEntry.first;
+                        ++pOutParamIndex;
+                        *pOutParam = rEntry.second;
+                        ++pOutParam;
                     }
                 }
             }

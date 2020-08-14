@@ -21,8 +21,8 @@
 #define INCLUDED_SVL_CUSTRITM_HXX
 
 #include <svl/svldllapi.h>
-#include <tools/debug.hxx>
 #include <svl/poolitem.hxx>
+#include <cassert>
 
 class SVL_DLLPUBLIC CntUnencodedStringItem: public SfxPoolItem
 {
@@ -37,23 +37,21 @@ public:
         SfxPoolItem(which), m_aValue(rTheValue)
     {}
 
-    CntUnencodedStringItem(const CntUnencodedStringItem & rItem):
-        SfxPoolItem(rItem), m_aValue(rItem.m_aValue)
-    {}
-
     virtual bool operator ==(const SfxPoolItem & rItem) const override;
+    virtual bool operator <(const SfxPoolItem & rItem) const override;
+    virtual bool IsSortable() const override { return true; }
 
     virtual bool GetPresentation(SfxItemPresentation,
                                  MapUnit, MapUnit,
                                  OUString & rText,
-                                 const IntlWrapper * = nullptr) const override;
+                                 const IntlWrapper&) const override;
 
     virtual bool QueryValue(css::uno::Any& rVal,
                             sal_uInt8 nMemberId = 0) const override;
 
     virtual bool PutValue(const css::uno::Any& rVal, sal_uInt8 nMemberId) override;
 
-    virtual SfxPoolItem * Clone(SfxItemPool * = nullptr) const override;
+    virtual CntUnencodedStringItem* Clone(SfxItemPool * = nullptr) const override;
 
     const OUString & GetValue() const { return m_aValue; }
 
@@ -62,8 +60,7 @@ public:
 
 inline void CntUnencodedStringItem::SetValue(const OUString & rTheValue)
 {
-    DBG_ASSERT(GetRefCount() == 0,
-               "CntUnencodedStringItem::SetValue(): Pooled item");
+    assert(GetRefCount() == 0 && "cannot modify name of pooled item");
     m_aValue = rTheValue;
 }
 

@@ -14,6 +14,7 @@ class ScGridWindow;
 class ScDBFunc;
 class ScDrawView;
 class ScTabViewShell;
+class ScViewFunc;
 
 class ScGridWinUIObject : public WindowUIObject
 {
@@ -43,6 +44,27 @@ private:
     ScDBFunc* getDBFunc();
     ScDrawView* getDrawView();
     ScTabViewShell* getViewShell();
+    ScViewFunc* getViewFunc();
+};
+
+class ScNavigatorDlg;
+
+class ScNavigatorDlgUIObject : public WindowUIObject
+{
+    VclPtr<ScNavigatorDlg> mxScNavigatorDlg;
+
+public:
+
+    ScNavigatorDlgUIObject(const VclPtr<ScNavigatorDlg>& xScNavigatorDlg);
+
+    virtual void execute(const OUString& rAction,
+            const StringMap& rParameters) override;
+
+    static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
+
+protected:
+
+    virtual OUString get_name() const override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

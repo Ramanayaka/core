@@ -17,40 +17,41 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <ucblockbytes.hxx>
+#include "ucblockbytes.hxx"
 
-#include <sal/macros.h>
+#include <sal/log.hxx>
 #include <comphelper/processfactory.hxx>
 #include <salhelper/condition.hxx>
 #include <osl/thread.hxx>
 #include <osl/diagnose.h>
 #include <tools/urlobj.hxx>
+#include <tools/solar.h>
 #include <ucbhelper/interactionrequest.hxx>
 #include <com/sun/star/task/XInteractionAbort.hpp>
 #include <com/sun/star/ucb/InteractiveNetworkConnectException.hpp>
 #include <com/sun/star/ucb/CommandFailedException.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
+#include <com/sun/star/ucb/CommandAbortedException.hpp>
 #include <com/sun/star/ucb/UnsupportedDataSinkException.hpp>
 #include <com/sun/star/ucb/InteractiveIOException.hpp>
+#include <com/sun/star/ucb/XContentIdentifier.hpp>
+#include <com/sun/star/ucb/XContent.hpp>
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/io/XActiveDataStreamer.hpp>
 #include <com/sun/star/io/TempFile.hpp>
-#include <com/sun/star/ucb/DocumentHeaderField.hpp>
-#include <com/sun/star/ucb/XCommandInfo.hpp>
 #include <com/sun/star/ucb/XCommandProcessor.hpp>
 #include <com/sun/star/task/XInteractionHandler.hpp>
 #include <com/sun/star/ucb/OpenCommandArgument2.hpp>
 #include <com/sun/star/ucb/PostCommandArgument2.hpp>
 #include <com/sun/star/ucb/OpenMode.hpp>
-#include <com/sun/star/beans/Property.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertiesChangeNotifier.hpp>
 #include <com/sun/star/beans/XPropertiesChangeListener.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/io/XActiveDataSink.hpp>
 #include <com/sun/star/io/XActiveDataControl.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <tools/inetmsg.hxx>
+#include <tools/debug.hxx>
 #include <com/sun/star/io/XTruncate.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 
@@ -66,6 +67,8 @@ using namespace ::com::sun::star::beans;
 
 namespace utl
 {
+
+namespace {
 
 /**
     Helper class for getting a XInputStream when opening a content
@@ -158,57 +161,20 @@ public:
     virtual void SAL_CALL   propertiesChange ( const Sequence<PropertyChangeEvent> &rEvent) override;
 };
 
+}
+
 void SAL_CALL UcbPropertiesChangeListener_Impl::propertiesChange ( const Sequence<PropertyChangeEvent> &rEvent)
 {
-    sal_Int32 i, n = rEvent.getLength();
-    for (i = 0; i < n; i++)
+    for (const auto& rPropChangeEvent : rEvent)
     {
-        PropertyChangeEvent evt (rEvent[i]);
-        if (evt.PropertyName == "DocumentHeader")
+        if (rPropChangeEvent.PropertyName == "DocumentHeader")
         {
-            Sequence<DocumentHeaderField> aHead;
-            if (evt.NewValue >>= aHead)
-            {
-                sal_Int32 k, m = aHead.getLength();
-                for (k = 0; k < m; k++)
-                {
-                    OUString aName( aHead[k].Name );
-                    OUString aValue( aHead[k].Value );
-
-                    if (aName.compareToIgnoreAsciiCaseAscii("Expires") == 0)
-                    {
-                        DateTime aExpires( DateTime::EMPTY );
-                        if (INetMIMEMessage::ParseDateField (aValue, aExpires))
-                        {
-                            aExpires.ConvertToLocalTime();
-                            m_xLockBytes->SetExpireDate_Impl( aExpires );
-                        }
-                    }
-                }
-            }
-
             m_xLockBytes->SetStreamValid_Impl();
-        }
-        else if (evt.PropertyName == "PresentationURL")
-        {
-            OUString aUrl;
-            if (evt.NewValue >>= aUrl)
-            {
-                if (!aUrl.startsWith("private:"))
-                {
-                    // URL changed (Redirection).
-                    m_xLockBytes->SetRealURL_Impl( aUrl );
-                }
-            }
-        }
-        else if (evt.PropertyName == "MediaType")
-        {
-            OUString aContentType;
-            if (evt.NewValue >>= aContentType)
-                m_xLockBytes->SetContentType_Impl( aContentType );
         }
     }
 }
+
+namespace {
 
 class Moderator
     : public osl::Thread
@@ -339,10 +305,7 @@ public:
         const Reference< XStream >& aStream
     ) override;
 
-    virtual Reference<XStream> SAL_CALL
-    getStream (
-        void
-    ) override
+    virtual Reference<XStream> SAL_CALL getStream () override
     {
         osl::MutexGuard aGuard(m_aMutex);
         return m_xStream;
@@ -368,10 +331,7 @@ public:
         const Reference<XInputStream> &rxInputStream
     ) override;
 
-    virtual Reference<XInputStream> SAL_CALL
-    getInputStream (
-        void
-    ) override
+    virtual Reference<XInputStream> SAL_CALL getInputStream() override
     {
         osl::MutexGuard aGuard(m_aMutex);
         return m_xStream;
@@ -382,6 +342,8 @@ private:
     osl::Mutex m_aMutex;
     Reference<XInputStream> m_xStream;
 };
+
+}
 
 ModeratorsActiveDataSink::ModeratorsActiveDataSink(Moderator &theModerator)
     : m_aModerator(theModerator)
@@ -417,6 +379,8 @@ ModeratorsActiveDataStreamer::setStream (
     m_xStream = rxStream;
 }
 
+namespace {
+
 class ModeratorsInteractionHandler
     : public ::cppu::WeakImplHelper<XInteractionHandler>
 {
@@ -431,6 +395,8 @@ private:
 
     Moderator& m_aModerator;
 };
+
+}
 
 ModeratorsInteractionHandler::ModeratorsInteractionHandler(
     Moderator &aModerator)
@@ -551,10 +517,10 @@ void Moderator::handle( const Reference<XInteractionRequest >& Request )
         }
 
         if(aReplyType == EXIT) {
-            Sequence<Reference<XInteractionContinuation> > aSeq(
+            const Sequence<Reference<XInteractionContinuation> > aSeq(
                 Request->getContinuations());
-            for(sal_Int32 i = 0; i < aSeq.getLength(); ++i) {
-                Reference<XInteractionAbort> aRef(aSeq[i],UNO_QUERY);
+            for(const auto& rContinuation : aSeq) {
+                Reference<XInteractionAbort> aRef(rContinuation,UNO_QUERY);
                 if(aRef.is()) {
                     aRef->select();
                 }
@@ -649,7 +615,7 @@ void SAL_CALL Moderator::onTerminated()
     {
         salhelper::ConditionWaiter aWaiter(m_aRep);
     }
-     delete this;
+    delete this;
 }
 
 /**
@@ -705,7 +671,6 @@ static bool UCBOpenContentSync(
             xListener);
     }
 
-    Any aResult;
     bool bException(false);
     bool bAborted(false);
     bool bResultAchieved(false);
@@ -725,9 +690,8 @@ static bool UCBOpenContentSync(
     sal_uInt32 nTimeout(5000); // initially 5000 milliSec
     while(!bResultAchieved) {
 
-        Moderator::Result res;
         // try to get the result for with timeout
-        res = pMod->getResult(nTimeout);
+        Moderator::Result res = pMod->getResult(nTimeout);
 
         switch(res.type) {
         case Moderator::ResultType::STREAM:
@@ -810,7 +774,6 @@ static bool UCBOpenContentSync(
         case Moderator::ResultType::RESULT:
             {
                 bResultAchieved = true;
-                aResult = res.result;
                 break;
             }
         case Moderator::ResultType::COMMANDABORTED:
@@ -909,13 +872,12 @@ static bool UCBOpenContentSync_(
     if ( xProps.is() )
         xProps->addPropertiesChangeListener( Sequence< OUString >(), xListener );
 
-    Any aResult;
     bool bException = false;
     bool bAborted = false;
 
     try
     {
-        aResult = aContent.executeCommand( rArg.Name, rArg.Argument );
+        aContent.executeCommand( rArg.Name, rArg.Argument );
     }
     catch (const CommandAbortedException&)
     {
@@ -972,9 +934,7 @@ static bool UCBOpenContentSync_(
 }
 
 UcbLockBytes::UcbLockBytes()
-    : m_aExpireDate( DateTime::EMPTY )
-    , m_xInputStream (nullptr)
-    , m_nError( ERRCODE_NONE )
+    : m_nError( ERRCODE_NONE )
     , m_bTerminated  (false)
     , m_bDontClose( false )
     , m_bStreamValid  (false)
@@ -1001,18 +961,18 @@ UcbLockBytes::~UcbLockBytes()
         }
     }
 
-    if ( !m_xInputStream.is() && m_xOutputStream.is() )
+    if ( m_xInputStream.is() || !m_xOutputStream.is() )
+        return;
+
+    try
     {
-        try
-        {
-            m_xOutputStream->closeOutput();
-        }
-        catch (const RuntimeException&)
-        {
-        }
-        catch (const IOException&)
-        {
-        }
+        m_xOutputStream->closeOutput();
+    }
+    catch (const RuntimeException&)
+    {
+    }
+    catch (const IOException&)
+    {
     }
 }
 
@@ -1226,7 +1186,7 @@ ErrCode UcbLockBytes::Flush() const
 ErrCode UcbLockBytes::SetSize (sal_uInt64 const nNewSize)
 {
     SvLockBytesStat aStat;
-    Stat( &aStat, (SvLockBytesStatFlag) 0 );
+    Stat( &aStat );
     std::size_t nSize = aStat.nSize;
 
     if ( nSize > nNewSize )
@@ -1245,10 +1205,9 @@ ErrCode UcbLockBytes::SetSize (sal_uInt64 const nNewSize)
     if ( nSize < nNewSize )
     {
         std::size_t nDiff = nNewSize-nSize, nCount=0;
-        sal_uInt8* pBuffer = new sal_uInt8[ nDiff ];
-        memset(pBuffer, 0, nDiff); // initialize for enhanced security
-        WriteAt( nSize, pBuffer, nDiff, &nCount );
-        delete[] pBuffer;
+        std::unique_ptr<sal_uInt8[]> pBuffer(new sal_uInt8[ nDiff ]);
+        memset(pBuffer.get(), 0, nDiff); // initialize for enhanced security
+        WriteAt( nSize, pBuffer.get(), nDiff, &nCount );
         if ( nCount != nDiff )
             return ERRCODE_IO_CANTWRITE;
     }
@@ -1256,7 +1215,7 @@ ErrCode UcbLockBytes::SetSize (sal_uInt64 const nNewSize)
     return ERRCODE_NONE;
 }
 
-ErrCode UcbLockBytes::Stat( SvLockBytesStat *pStat, SvLockBytesStatFlag) const
+ErrCode UcbLockBytes::Stat( SvLockBytesStat *pStat ) const
 {
     if ( IsSynchronMode() )
     {
@@ -1326,11 +1285,11 @@ UcbLockBytesRef UcbLockBytes::CreateLockBytes( const Reference < XContent >& xCo
     xLockBytes->SetSynchronMode();
     Reference< XActiveDataControl > xSink;
     if ( eOpenMode & StreamMode::WRITE )
-        xSink = static_cast<XActiveDataControl*>(new UcbStreamer_Impl( xLockBytes.get() ));
+        xSink = new UcbStreamer_Impl(xLockBytes.get());
     else
-        xSink = static_cast<XActiveDataControl*>(new UcbDataSink_Impl( xLockBytes.get() ));
+        xSink = new UcbDataSink_Impl(xLockBytes.get());
 
-    if ( rProps.getLength() )
+    if ( rProps.hasElements() )
     {
         Reference < XCommandProcessor > xProcessor( xContent, UNO_QUERY );
         Command aCommand;
@@ -1357,7 +1316,7 @@ UcbLockBytesRef UcbLockBytes::CreateLockBytes( const Reference < XContent >& xCo
     if ( xLockBytes->GetError() == ERRCODE_NONE && ( bError || !xLockBytes->getInputStream().is() ) )
     {
         OSL_FAIL("No InputStream, but no error set!" );
-           xLockBytes->SetError( ERRCODE_IO_GENERAL );
+        xLockBytes->SetError( ERRCODE_IO_GENERAL );
     }
 
     return xLockBytes;

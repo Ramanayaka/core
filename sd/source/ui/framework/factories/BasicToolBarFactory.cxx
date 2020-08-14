@@ -19,20 +19,21 @@
 
 #include "BasicToolBarFactory.hxx"
 
-#include "ViewTabBar.hxx"
-#include "facreg.hxx"
-#include "framework/FrameworkHelper.hxx"
+#include <ViewTabBar.hxx>
+#include <framework/FrameworkHelper.hxx>
 #include <unotools/mediadescriptor.hxx>
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include "DrawController.hxx"
+#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
+#include <com/sun/star/frame/XController.hpp>
+#include <com/sun/star/drawing/framework/XControllerManager.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::drawing::framework;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 //===== BasicToolBarFactory ===================================================
 
@@ -68,43 +69,43 @@ void BasicToolBarFactory::Shutdown()
 
 void SAL_CALL BasicToolBarFactory::initialize (const Sequence<Any>& aArguments)
 {
-    if (aArguments.getLength() > 0)
+    if (!aArguments.hasElements())
+        return;
+
+    try
     {
-        try
-        {
-            // Get the XController from the first argument.
-            mxController.set(aArguments[0], UNO_QUERY_THROW);
+        // Get the XController from the first argument.
+        mxController.set(aArguments[0], UNO_QUERY_THROW);
 
-            utl::MediaDescriptor aDescriptor (mxController->getModel()->getArgs());
-            if ( ! aDescriptor.getUnpackedValueOrDefault(
-                utl::MediaDescriptor::PROP_PREVIEW(),
-                false))
-            {
-                // Register the factory for its supported tool bars.
-                Reference<XControllerManager> xControllerManager(mxController, UNO_QUERY_THROW);
-                mxConfigurationController = xControllerManager->getConfigurationController();
-                if (mxConfigurationController.is())
-                {
-                    mxConfigurationController->addResourceFactory(
-                        FrameworkHelper::msViewTabBarURL, this);
-                }
-
-                Reference<lang::XComponent> xComponent (mxConfigurationController, UNO_QUERY);
-                if (xComponent.is())
-                    xComponent->addEventListener(static_cast<lang::XEventListener*>(this));
-            }
-            else
-            {
-                // The view shell is in preview mode and thus does not need
-                // the view tab bar.
-                mxConfigurationController = nullptr;
-            }
-        }
-        catch (RuntimeException&)
+        utl::MediaDescriptor aDescriptor (mxController->getModel()->getArgs());
+        if ( ! aDescriptor.getUnpackedValueOrDefault(
+            utl::MediaDescriptor::PROP_PREVIEW(),
+            false))
         {
-            Shutdown();
-            throw;
+            // Register the factory for its supported tool bars.
+            Reference<XControllerManager> xControllerManager(mxController, UNO_QUERY_THROW);
+            mxConfigurationController = xControllerManager->getConfigurationController();
+            if (mxConfigurationController.is())
+            {
+                mxConfigurationController->addResourceFactory(
+                    FrameworkHelper::msViewTabBarURL, this);
+            }
+
+            Reference<lang::XComponent> xComponent (mxConfigurationController, UNO_QUERY);
+            if (xComponent.is())
+                xComponent->addEventListener(static_cast<lang::XEventListener*>(this));
         }
+        else
+        {
+            // The view shell is in preview mode and thus does not need
+            // the view tab bar.
+            mxConfigurationController = nullptr;
+        }
+    }
+    catch (RuntimeException&)
+    {
+        Shutdown();
+        throw;
     }
 }
 
@@ -124,15 +125,10 @@ Reference<XResource> SAL_CALL BasicToolBarFactory::createResource (
 {
     ThrowIfDisposed();
 
-    Reference<XResource> xToolBar;
-
-    if (rxToolBarId->getResourceURL().equals(FrameworkHelper::msViewTabBarURL))
-    {
-        xToolBar = new ViewTabBar(rxToolBarId, mxController);
-    }
-    else
+    if (rxToolBarId->getResourceURL() != FrameworkHelper::msViewTabBarURL)
         throw lang::IllegalArgumentException();
 
+    Reference<XResource> xToolBar = new ViewTabBar(rxToolBarId, mxController);
     return xToolBar;
 }
 
@@ -155,9 +151,9 @@ void BasicToolBarFactory::ThrowIfDisposed() const
     }
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Draw_framework_BasicToolBarFactory_get_implementation(css::uno::XComponentContext*,
                                                                         css::uno::Sequence<css::uno::Any> const &)
 {

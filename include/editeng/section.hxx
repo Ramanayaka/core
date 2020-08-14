@@ -10,7 +10,7 @@
 #ifndef INCLUDED_EDITENG_SECTION_HXX
 #define INCLUDED_EDITENG_SECTION_HXX
 
-#include <editeng/editengdllapi.h>
+#include <sal/types.h>
 
 #include <vector>
 
@@ -18,7 +18,7 @@ class SfxPoolItem;
 
 namespace editeng {
 
-struct EDITENG_DLLPUBLIC Section
+struct Section
 {
     sal_Int32 mnParagraph;
     sal_Int32 mnStart;

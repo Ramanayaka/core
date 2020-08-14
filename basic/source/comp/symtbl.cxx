@@ -19,26 +19,19 @@
 
 
 #include <memory>
-#include "parser.hxx"
+#include <parser.hxx>
 
 #include <osl/diagnose.h>
 
 #include <stdio.h>
-#include <string.h>
 #include <rtl/character.hxx>
-#include <o3tl/make_unique.hxx>
+#include <basic/sberrors.hxx>
 
 // All symbol names are laid down int the symbol-pool's stringpool, so that
 // all symbols are handled in the same case. On saving the code-image, the
 // global stringpool with the respective symbols is also saved.
 // The local stringpool holds all the symbols that don't move to the image
 // (labels, constant names etc.).
-
-/***************************************************************************
-|*
-|*  SbiStringPool
-|*
-***************************************************************************/
 
 SbiStringPool::SbiStringPool( )
 {}
@@ -65,28 +58,25 @@ short SbiStringPool::Add( const OUString& rVal )
     }
 
     aData.push_back(rVal);
-    return (short) ++n;
+    return static_cast<short>(++n);
 }
 
 short SbiStringPool::Add( double n, SbxDataType t )
 {
-    char buf[ 40 ];
+    char buf[40]{};
     switch( t )
     {
-        case SbxINTEGER: snprintf( buf, sizeof(buf), "%d", (short) n ); break;
-        case SbxLONG:    snprintf( buf, sizeof(buf), "%ld", (long) n ); break;
-        case SbxSINGLE:  snprintf( buf, sizeof(buf), "%.6g", (float) n ); break;
-        case SbxDOUBLE:  snprintf( buf, sizeof(buf), "%.16g", n ); break;
-        default: break;
+        // tdf#131296 - store numeric value including its type character
+        // See GetSuffixType in basic/source/comp/scanner.cxx for type characters
+        case SbxINTEGER: snprintf( buf, sizeof(buf), "%d%%", static_cast<short>(n) ); break;
+        case SbxLONG:    snprintf( buf, sizeof(buf), "%ld&", static_cast<long>(n) ); break;
+        case SbxSINGLE:  snprintf( buf, sizeof(buf), "%.6g!", static_cast<float>(n) ); break;
+        case SbxDOUBLE:  snprintf( buf, sizeof(buf), "%.16g", n ); break; // default processing in SbiRuntime::StepLOADNC - no type character
+        case SbxCURRENCY: snprintf(buf, sizeof(buf), "%.16g@", n); break;
+        default: assert(false); break; // should not happen
     }
     return Add( OUString::createFromAscii( buf ) );
 }
-
-/***************************************************************************
-|*
-|*  SbiSymPool
-|*
-***************************************************************************/
 
 SbiSymPool::SbiSymPool( SbiStringPool& r, SbiSymScope s, SbiParser* pP ) : rStrings( r ), pParser( pP )
 {
@@ -102,7 +92,7 @@ SbiSymPool::~SbiSymPool()
 
 SbiSymDef* SbiSymPool::First()
 {
-    nCur = (sal_uInt16) -1;
+    nCur = sal_uInt16(-1);
     return Next();
 }
 
@@ -142,43 +132,43 @@ SbiProcDef* SbiSymPool::AddProc( const OUString& rName )
 
 void SbiSymPool::Add( SbiSymDef* pDef )
 {
-    if( pDef && pDef->pIn != this )
+    if( !(pDef && pDef->pIn != this) )
+        return;
+
+    if( pDef->pIn )
     {
-        if( pDef->pIn )
-        {
 #ifdef DBG_UTIL
 
-            pParser->Error( ERRCODE_BASIC_INTERNAL_ERROR, "Dbl Pool" );
+        pParser->Error( ERRCODE_BASIC_INTERNAL_ERROR, "Dbl Pool" );
 #endif
-            return;
-        }
-
-        pDef->nPos = m_Data.size();
-        if( !pDef->nId )
-        {
-            // A unique name must be created in the string pool
-            // for static variables (Form ProcName:VarName)
-            OUString aName( pDef->aName );
-            if( pDef->IsStatic() )
-            {
-                aName = pParser->aGblStrings.Find( nProcId )
-                      + ":"
-                      + pDef->aName;
-            }
-            pDef->nId = rStrings.Add( aName );
-        }
-
-        if( !pDef->GetProcDef() )
-        {
-            pDef->nProcId = nProcId;
-        }
-        pDef->pIn = this;
-        m_Data.insert( m_Data.begin() + pDef->nPos, std::unique_ptr<SbiSymDef>(pDef) );
+        return;
     }
+
+    pDef->nPos = m_Data.size();
+    if( !pDef->nId )
+    {
+        // A unique name must be created in the string pool
+        // for static variables (Form ProcName:VarName)
+        OUString aName( pDef->aName );
+        if( pDef->IsStatic() )
+        {
+            aName = pParser->aGblStrings.Find( nProcId )
+                  + ":"
+                  + pDef->aName;
+        }
+        pDef->nId = rStrings.Add( aName );
+    }
+
+    if( !pDef->GetProcDef() )
+    {
+        pDef->nProcId = nProcId;
+    }
+    pDef->pIn = this;
+    m_Data.insert( m_Data.begin() + pDef->nPos, std::unique_ptr<SbiSymDef>(pDef) );
 }
 
 
-SbiSymDef* SbiSymPool::Find( const OUString& rName )
+SbiSymDef* SbiSymPool::Find( const OUString& rName, bool bSearchInParents )
 {
     sal_uInt16 nCount = m_Data.size();
     for( sal_uInt16 i = 0; i < nCount; i++ )
@@ -190,7 +180,7 @@ SbiSymDef* SbiSymPool::Find( const OUString& rName )
             return &r;
         }
     }
-    if( pParent )
+    if( bSearchInParents && pParent )
     {
         return pParent->Find( rName );
     }
@@ -256,12 +246,6 @@ void SbiSymPool::CheckRefs()
     }
 }
 
-/***************************************************************************
-|*
-|*  symbol definitions
-|*
-***************************************************************************/
-
 SbiSymDef::SbiSymDef( const OUString& rName ) : aName( rName )
 {
     eType    = SbxEMPTY;
@@ -321,7 +305,7 @@ void SbiSymDef::SetType( SbxDataType t )
         sal_Unicode cu = aName[0];
         if( cu < 256 )
         {
-            unsigned char ch = (unsigned char)cu;
+            unsigned char ch = static_cast<unsigned char>(cu);
             if( ch == '_' )
             {
                 ch = 'Z';
@@ -370,7 +354,7 @@ SbiSymPool& SbiSymDef::GetPool()
 {
     if( !pPool )
     {
-        pPool = o3tl::make_unique<SbiSymPool>( pIn->pParser->aGblStrings, SbLOCAL, pIn->pParser );// is dumped
+        pPool = std::make_unique<SbiSymPool>( pIn->pParser->aGblStrings, SbLOCAL, pIn->pParser );// is dumped
     }
     return *pPool;
 }
@@ -396,7 +380,7 @@ SbiProcDef::SbiProcDef( SbiParser* pParser, const OUString& rName,
          , mbProcDecl( bProcDecl )
 {
     aParams.SetParent( &pParser->aPublics );
-    pPool = o3tl::make_unique<SbiSymPool>( pParser->aGblStrings, SbLOCAL, pParser );
+    pPool = std::make_unique<SbiSymPool>( pParser->aGblStrings, SbLOCAL, pParser );
     pPool->SetParent( &aParams );
     nLine1  =
     nLine2  = 0;
@@ -451,15 +435,18 @@ void SbiProcDef::Match( SbiProcDef* pOld )
         pOld->pIn->GetParser()->SetCol1( 0 );
         pOld->pIn->GetParser()->Error( ERRCODE_BASIC_BAD_DECLARATION, aName );
     }
+
     if( !pIn && pOld->pIn )
     {
         // Replace old entry with the new one
         nPos = pOld->nPos;
         nId  = pOld->nId;
         pIn  = pOld->pIn;
-        std::unique_ptr<SbiSymDef> tmp(this);
-        std::swap(pIn->m_Data[nPos], tmp);
-        tmp.release();
+
+        // don't delete pOld twice, if it's stored in m_Data
+        if (pOld == pIn->m_Data[nPos].get())
+            pOld = nullptr;
+        pIn->m_Data[nPos].reset(this);
     }
     delete pOld;
 }
@@ -467,24 +454,24 @@ void SbiProcDef::Match( SbiProcDef* pOld )
 void SbiProcDef::setPropertyMode( PropertyMode ePropMode )
 {
     mePropMode = ePropMode;
-    if( mePropMode != PropertyMode::NONE )
-    {
-        // Prop name = original scanned procedure name
-        maPropName = aName;
+    if( mePropMode == PropertyMode::NONE )
+        return;
 
-        // CompleteProcName includes "Property xxx "
-        // to avoid conflicts with other symbols
-        OUString aCompleteProcName = "Property ";
-        switch( mePropMode )
-        {
-        case PropertyMode::Get:  aCompleteProcName += "Get "; break;
-        case PropertyMode::Let:  aCompleteProcName += "Let "; break;
-        case PropertyMode::Set:  aCompleteProcName += "Set "; break;
-        case PropertyMode::NONE: OSL_FAIL( "Illegal PropertyMode PropertyMode::NONE" ); break;
-        }
-        aCompleteProcName += aName;
-        aName = aCompleteProcName;
+    // Prop name = original scanned procedure name
+    maPropName = aName;
+
+    // CompleteProcName includes "Property xxx "
+    // to avoid conflicts with other symbols
+    OUString aCompleteProcName = "Property ";
+    switch( mePropMode )
+    {
+    case PropertyMode::Get:  aCompleteProcName += "Get "; break;
+    case PropertyMode::Let:  aCompleteProcName += "Let "; break;
+    case PropertyMode::Set:  aCompleteProcName += "Set "; break;
+    case PropertyMode::NONE: OSL_FAIL( "Illegal PropertyMode PropertyMode::NONE" ); break;
     }
+    aCompleteProcName += aName;
+    aName = aCompleteProcName;
 }
 
 

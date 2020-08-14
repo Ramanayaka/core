@@ -24,7 +24,7 @@
 #include <vcl/idle.hxx>
 #include <vcl/scrbar.hxx>
 #include <vcl/vclptr.hxx>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 
 #include "callbacks.hxx"
 #include "TableConnectionData.hxx"
@@ -46,7 +46,7 @@ namespace dbaui
     class OTableWindowData;
     class OJoinDesignViewAccess;
 
-    // this class conatins only the scrollbars to avoid that
+    // this class contains only the scrollbars to avoid that
     // the tablewindows clip the scrollbars
     class OJoinTableView;
     class OScrollWindowHelper : public vcl::Window
@@ -69,8 +69,8 @@ namespace dbaui
         void resetRange(const Point& _aSize);
 
         // own methods
-        ScrollBar& GetHScrollBar() { return *m_aHScrollBar.get(); }
-        ScrollBar& GetVScrollBar() { return *m_aVScrollBar.get(); }
+        ScrollBar& GetHScrollBar() { return *m_aHScrollBar; }
+        ScrollBar& GetVScrollBar() { return *m_aVScrollBar; }
     };
 
 
@@ -101,8 +101,6 @@ namespace dbaui
         VclPtr<OTableConnection>       m_pSelectedConn;
 
 
-        bool                    m_bTrackingInitiallyMoved;
-
         DECL_LINK(OnDragScrollTimer, Timer*, void);
 
     protected:
@@ -132,7 +130,7 @@ namespace dbaui
         void InvalidateConnections();
 
         void BeginChildMove( OTableWindow* pTabWin, const Point& rMousePos );
-        void BeginChildSizing( OTableWindow* pTabWin, const Pointer& rPointer );
+        void BeginChildSizing( OTableWindow* pTabWin, PointerStyle nPointer );
 
         void NotifyTitleClicked( OTableWindow* pTabWin, const Point& rMousePos );
 
@@ -166,7 +164,7 @@ namespace dbaui
         void addConnection(OTableConnection* _pConnection,bool _bAddData = true);
 
         bool ScrollPane( long nDelta, bool bHoriz, bool bPaintScrollBars );
-        sal_uLong GetTabWinCount();
+        sal_uLong GetTabWinCount() const;
         const Point& GetScrollOffset() const { return m_aScrollOffset; }
 
         OJoinDesignView* getDesignView() const { return m_pView; }
@@ -216,10 +214,10 @@ namespace dbaui
             corresponding Wins and Conns */
         virtual void ReSync() { }
 
-        /** Hart deletion
+        /** Hard deletion
 
             That means that all Conns and Wins are deleted from their respective
-            lists and the corresponding Datas removed from the document */
+            lists and the corresponding Data removed from the document */
         virtual void ClearAll();
 
         /** @note used by AddTabDlg to see if more tables can be added */
@@ -282,7 +280,7 @@ namespace dbaui
         ///     resizing) is used, as no scrolling can take place while resizing
         virtual void Command(const CommandEvent& rEvt) override;
 
-        virtual OTableWindowData* CreateImpl(const OUString& _rComposedName
+        virtual std::shared_ptr<OTableWindowData> CreateImpl(const OUString& _rComposedName
                                             ,const OUString& _sTableName
                                             ,const OUString& _rWinName);
 
@@ -318,7 +316,7 @@ namespace dbaui
             modified
             @param _pAction a possible undo action to add at the controller
         */
-        void invalidateAndModify(SfxUndoAction *_pAction);
+        void invalidateAndModify(std::unique_ptr<SfxUndoAction> _pAction);
 
     private:
         using Window::Scroll;

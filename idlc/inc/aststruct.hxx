@@ -19,8 +19,8 @@
 #ifndef INCLUDED_IDLC_INC_ASTSTRUCT_HXX
 #define INCLUDED_IDLC_INC_ASTSTRUCT_HXX
 
-#include <asttype.hxx>
-#include <astscope.hxx>
+#include "asttype.hxx"
+#include "astscope.hxx"
 #include "idlctypes.hxx"
 
 class AstStruct;
@@ -40,7 +40,7 @@ public:
               AstScope* pScope);
     virtual ~AstStruct() override;
 
-    DeclList::size_type getTypeParameterCount() const
+    std::size_t getTypeParameterCount() const
     { return m_typeParameters.size(); }
 
     AstDeclaration const * findTypeParameter(OString const & name) const;
@@ -50,7 +50,7 @@ public:
     virtual bool dump(RegistryKey& rKey) override;
 private:
     AstStruct const* m_pBaseType;
-    DeclList m_typeParameters;
+    std::vector<std::unique_ptr<AstDeclaration>> m_typeParameters;
 };
 
 #endif // INCLUDED_IDLC_INC_ASTSTRUCT_HXX

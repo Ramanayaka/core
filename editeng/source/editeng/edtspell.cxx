@@ -18,31 +18,27 @@
  */
 
 
-#include <vcl/wrkwin.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/svapp.hxx>
-
-#include <impedit.hxx>
+#include "impedit.hxx"
+#include <sal/log.hxx>
+#include <o3tl/safeint.hxx>
+#include <osl/diagnose.h>
 #include <editeng/editview.hxx>
 #include <editeng/editeng.hxx>
 #include <edtspell.hxx>
 #include <editeng/flditem.hxx>
-#include <editeng/fontitem.hxx>
 #include <svl/intitem.hxx>
 #include <svl/eitem.hxx>
 #include <editeng/unolingu.hxx>
-#include <linguistic/lngprops.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/linguistic2/XDictionary.hpp>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::linguistic2;
 
 
-EditSpellWrapper::EditSpellWrapper( vcl::Window* _pWin,
-        bool bIsStart, EditView* pView ) :
-    SvxSpellWrapper( _pWin, bIsStart, false/*bIsAllRight*/ )
+EditSpellWrapper::EditSpellWrapper(weld::Window* pWindow,
+        bool bIsStart, EditView* pView )
+    : SvxSpellWrapper(pWindow, bIsStart, false/*bIsAllRight*/)
 {
     SAL_WARN_IF( !pView, "editeng", "One view has to be abandoned!" );
     // Keep IgnoreList, delete ReplaceList...
@@ -110,11 +106,6 @@ void EditSpellWrapper::SpellContinue()
     SetLast( pEditView->GetImpEditEngine()->ImpSpell( pEditView ) );
 }
 
-bool EditSpellWrapper::HasOtherCnt()
-{
-    return false;
-}
-
 bool EditSpellWrapper::SpellMore()
 {
     EditEngine* pEE = pEditView->GetEditEngine();
@@ -156,8 +147,6 @@ void EditSpellWrapper::CheckSpellTo()
             pSpellInfo->aSpellTo.nIndex = aPaM.GetNode()->Len();
     }
 }
-
-size_t WrongList::Valid = std::numeric_limits<size_t>::max();
 
 WrongList::WrongList() : mnInvalidStart(0), mnInvalidEnd(Valid) {}
 
@@ -282,7 +271,7 @@ void WrongList::TextDeleted( size_t nPos, size_t nLength )
         }
     }
 
-    for (WrongList::iterator i = begin(); i != end(); )
+    for (WrongList::iterator i = maRanges.begin(); i != maRanges.end(); )
     {
         bool bDelWrong = false;
         if (i->mnEnd >= nPos)
@@ -334,12 +323,12 @@ bool WrongList::NextWrong( size_t& rnStart, size_t& rnEnd ) const
         rnStart get the start position, is possibly adjusted wrt. Wrong start
         rnEnd does not have to be initialized.
     */
-    for (WrongList::const_iterator i = begin(); i != end(); ++i)
+    for (auto const& range : maRanges)
     {
-        if (i->mnEnd > rnStart)
+        if (range.mnEnd > rnStart)
         {
-            rnStart = i->mnStart;
-            rnEnd = i->mnEnd;
+            rnStart = range.mnStart;
+            rnEnd = range.mnEnd;
             return true;
         }
     }
@@ -348,11 +337,11 @@ bool WrongList::NextWrong( size_t& rnStart, size_t& rnEnd ) const
 
 bool WrongList::HasWrong( size_t nStart, size_t nEnd ) const
 {
-    for (WrongList::const_iterator i = begin(); i != end(); ++i)
+    for (auto const& range : maRanges)
     {
-        if (i->mnStart == nStart && i->mnEnd == nEnd)
+        if (range.mnStart == nStart && range.mnEnd == nEnd)
             return true;
-        else if (i->mnStart >= nStart)
+        else if (range.mnStart >= nStart)
             break;
     }
     return false;
@@ -360,11 +349,11 @@ bool WrongList::HasWrong( size_t nStart, size_t nEnd ) const
 
 bool WrongList::HasAnyWrong( size_t nStart, size_t nEnd ) const
 {
-    for (WrongList::const_iterator i = begin(); i != end(); ++i)
+    for (auto const& range : maRanges)
     {
-        if (i->mnEnd >= nStart && i->mnStart < nEnd)
+        if (range.mnEnd >= nStart && range.mnStart < nEnd)
             return true;
-        else if (i->mnStart >= nEnd)
+        else if (range.mnStart >= nEnd)
             break;
     }
     return false;
@@ -373,7 +362,7 @@ bool WrongList::HasAnyWrong( size_t nStart, size_t nEnd ) const
 void WrongList::ClearWrongs( size_t nStart, size_t nEnd,
             const ContentNode* pNode )
 {
-    for (WrongList::iterator i = begin(); i != end(); )
+    for (WrongList::iterator i = maRanges.begin(); i != maRanges.end(); )
     {
         if (i->mnEnd > nStart && i->mnStart < nEnd)
         {
@@ -381,7 +370,7 @@ void WrongList::ClearWrongs( size_t nStart, size_t nEnd,
             {
                 i->mnStart = nEnd;
                 // Blanks?
-                while (i->mnStart < (size_t)pNode->Len() &&
+                while (i->mnStart < o3tl::make_unsigned(pNode->Len()) &&
                        (pNode->GetChar(i->mnStart) == ' ' ||
                         pNode->IsFeature(i->mnStart)))
                 {
@@ -406,29 +395,24 @@ void WrongList::ClearWrongs( size_t nStart, size_t nEnd,
 
 void WrongList::InsertWrong( size_t nStart, size_t nEnd )
 {
-    WrongList::iterator nPos = end();
-    for (WrongList::iterator i = begin(); i != end(); ++i)
-    {
-        if (i->mnStart >= nStart)
-        {
-            nPos = i;
-            {
-                // It can really only happen that the Wrong starts exactly here
-                // and runs along, but not that there are several ranges ...
-                // Exactly in the range is no one allowed to be, otherwise this
-                // Method can not be called!
-                SAL_WARN_IF((i->mnStart != nStart || i->mnEnd <= nEnd) && i->mnStart <= nEnd, "editeng", "InsertWrong: RangeMismatch!");
-                if (i->mnStart == nStart && i->mnEnd > nEnd)
-                    i->mnStart = nEnd + 1;
-            }
-            break;
-        }
-    }
+    WrongList::iterator nPos = std::find_if(maRanges.begin(), maRanges.end(),
+        [&nStart](const editeng::MisspellRange& rRange) { return rRange.mnStart >= nStart; });
 
     if (nPos != maRanges.end())
+    {
+        {
+            // It can really only happen that the Wrong starts exactly here
+            // and runs along, but not that there are several ranges ...
+            // Exactly in the range is no one allowed to be, otherwise this
+            // Method can not be called!
+            SAL_WARN_IF((nPos->mnStart != nStart || nPos->mnEnd <= nEnd) && nPos->mnStart <= nEnd, "editeng", "InsertWrong: RangeMismatch!");
+            if (nPos->mnStart == nStart && nPos->mnEnd > nEnd)
+                nPos->mnStart = nEnd + 1;
+        }
         maRanges.insert(nPos, editeng::MisspellRange(nStart, nEnd));
+    }
     else
-        maRanges.push_back(editeng::MisspellRange(nStart, nEnd));
+        maRanges.emplace_back(nStart, nEnd);
 
     SAL_WARN_IF(DbgIsBuggy(), "editeng", "InsertWrong: WrongList broken!");
 }
@@ -449,20 +433,12 @@ bool WrongList::operator==(const WrongList& rCompare) const
 {
     // check direct members
     if(GetInvalidStart() != rCompare.GetInvalidStart()
-        || GetInvalidEnd() != rCompare.GetInvalidEnd()
-        || maRanges.size() != rCompare.maRanges.size())
+        || GetInvalidEnd() != rCompare.GetInvalidEnd())
         return false;
 
-    WrongList::const_iterator rCA = maRanges.begin();
-    WrongList::const_iterator rCB = rCompare.maRanges.begin();
-
-    for (; rCA != maRanges.end(); ++rCA, ++rCB)
-    {
-        if(rCA->mnStart != rCB->mnStart || rCA->mnEnd != rCB->mnEnd)
-            return false;
-    }
-
-    return true;
+    return std::equal(maRanges.begin(), maRanges.end(), rCompare.maRanges.begin(), rCompare.maRanges.end(),
+        [](const editeng::MisspellRange& a, const editeng::MisspellRange& b) {
+            return a.mnStart == b.mnStart && a.mnEnd == b.mnEnd; });
 }
 
 bool WrongList::empty() const
@@ -509,17 +485,10 @@ bool WrongList::DbgIsBuggy() const
 {
     // Check if the ranges overlap.
     bool bError = false;
-    for (WrongList::const_iterator i = begin(); !bError && (i != end()); ++i)
+    for (WrongList::const_iterator i = maRanges.begin(); !bError && (i != maRanges.end()); ++i)
     {
-        for (WrongList::const_iterator j = i + 1; !bError && (j != end()); ++j)
-        {
-            // 1) Start before, End after the second Start
-            if (i->mnStart <= j->mnStart && i->mnEnd >= j->mnStart)
-                bError = true;
-            // 2) Start after the second Start, but still before the second End
-            else if (i->mnStart >= j->mnStart && i->mnStart <= j->mnEnd)
-                bError = true;
-        }
+        bError = std::any_of(i + 1, maRanges.end(), [&i](const editeng::MisspellRange& rRange) {
+            return i->mnStart <= rRange.mnEnd && rRange.mnStart <= i->mnEnd; });
     }
     return bError;
 }
@@ -628,7 +597,7 @@ bool EdtAutoCorrDoc::SetINetAttr(sal_Int32 nStt, sal_Int32 nEnd,
     SAL_WARN_IF(nCursor < nEnd, "editeng",
             "Cursor in the heart of the action?!");
     nCursor -= ( nEnd-nStt );
-    SvxFieldItem aField( SvxURLField( rURL, aText, SVXURLFORMAT_REPR ),
+    SvxFieldItem aField( SvxURLField( rURL, aText, SvxURLFormat::Repr ),
                                       EE_FEATURE_FIELD  );
     mpEditEngine->InsertField(aSel, aField);
     nCursor++;
@@ -648,14 +617,12 @@ OUString const* EdtAutoCorrDoc::GetPrevPara(bool const)
     sal_Int32 nPos = rNodes.GetPos( pCurNode );
 
     // Special case: Bullet => Paragraph start => simply return NULL...
-    const SfxBoolItem& rBulletState = static_cast<const SfxBoolItem&>(
-            mpEditEngine->GetParaAttrib( nPos, EE_PARA_BULLETSTATE ));
+    const SfxBoolItem& rBulletState = mpEditEngine->GetParaAttrib( nPos, EE_PARA_BULLETSTATE );
     bool bBullet = rBulletState.GetValue();
     if ( !bBullet && (mpEditEngine->GetControlWord() & EEControlBits::OUTLINER) )
     {
         // The Outliner has still a Bullet at Level 0.
-        const SfxInt16Item& rLevel = static_cast<const SfxInt16Item&>(
-                mpEditEngine->GetParaAttrib( nPos, EE_PARA_OUTLLEVEL ));
+        const SfxInt16Item& rLevel = mpEditEngine->GetParaAttrib( nPos, EE_PARA_OUTLLEVEL );
         if ( rLevel.GetValue() == 0 )
             bBullet = true;
     }
@@ -712,6 +679,17 @@ bool EdtAutoCorrDoc::ChgAutoCorrWord( sal_Int32& rSttPos,
 
     return bRet;
 }
+
+bool EdtAutoCorrDoc::TransliterateRTLWord( sal_Int32& /*rSttPos*/,
+            sal_Int32 /*nEndPos*/ )
+{
+    // Paragraph-start or a blank found, search for the word
+    // shortcut in Auto
+    bool bRet = false;
+
+    return bRet;
+}
+
 
 LanguageType EdtAutoCorrDoc::GetLanguage( sal_Int32 nPos ) const
 {

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <SidebarWinAcc.hxx>
+#include "SidebarWinAcc.hxx"
 #include <AnnotationWin.hxx>
 
 #include <viewsh.hxx>
@@ -26,7 +26,9 @@
 
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 
-namespace sw { namespace sidebarwindows {
+namespace sw::sidebarwindows {
+
+namespace {
 
 // declaration and implementation of accessible context for <SidebarWinAccessible> instance
 class SidebarWinAccessibleContext : public VCLXAccessibleComponent
@@ -89,6 +91,8 @@ class SidebarWinAccessibleContext : public VCLXAccessibleComponent
         ::osl::Mutex maMutex;
 };
 
+}
+
 // implementation of accessible for <SwAnnotationWin> instance
 SidebarWinAccessible::SidebarWinAccessible( sw::annotation::SwAnnotationWin& rSidebarWin,
                                             SwViewShell& rViewShell,
@@ -108,18 +112,18 @@ SidebarWinAccessible::~SidebarWinAccessible()
 
 void SidebarWinAccessible::ChangeSidebarItem( const SwSidebarItem& rSidebarItem )
 {
-    if ( bAccContextCreated )
+    if ( !bAccContextCreated )
+        return;
+
+    css::uno::Reference< css::accessibility::XAccessibleContext > xAcc
+                                                = getAccessibleContext();
+    if ( xAcc.is() )
     {
-        css::uno::Reference< css::accessibility::XAccessibleContext > xAcc
-                                                    = getAccessibleContext();
-        if ( xAcc.is() )
+        SidebarWinAccessibleContext* pAccContext =
+                    dynamic_cast<SidebarWinAccessibleContext*>(xAcc.get());
+        if ( pAccContext )
         {
-            SidebarWinAccessibleContext* pAccContext =
-                        dynamic_cast<SidebarWinAccessibleContext*>(xAcc.get());
-            if ( pAccContext )
-            {
-                pAccContext->ChangeAnchor( rSidebarItem.maLayoutInfo.mpAnchorFrame );
-            }
+            pAccContext->ChangeAnchor( rSidebarItem.maLayoutInfo.mpAnchorFrame );
         }
     }
 }
@@ -135,6 +139,6 @@ css::uno::Reference< css::accessibility::XAccessibleContext > SidebarWinAccessib
     return xAcc;
 }
 
-} } // end of namespace sw::sidebarwindows
+} // end of namespace sw::sidebarwindows
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

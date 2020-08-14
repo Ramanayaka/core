@@ -19,19 +19,14 @@
 #ifndef INCLUDED_SVX_NUMINF_HXX
 #define INCLUDED_SVX_NUMINF_HXX
 
-#include <memory>
 #include <svl/poolitem.hxx>
 #include <svx/numfmtsh.hxx>
 #include <svx/svxdllapi.h>
 
-// class SvxNumberInfoItem -----------------------------------------------
+/** This item is used as a transport medium for a number formatter
+ */
 
-
-/*
-This item is used as a transport medium for a number formatter
-*/
-
-class SVX_DLLPUBLIC SvxNumberInfoItem : public SfxPoolItem
+class SVX_DLLPUBLIC SvxNumberInfoItem final : public SfxPoolItem
 {
 public:
 
@@ -49,25 +44,21 @@ public:
     virtual ~SvxNumberInfoItem() override;
 
     virtual bool             operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create( SvStream& rStream, sal_uInt16 nVer ) const override;
-    virtual SvStream&        Store( SvStream& , sal_uInt16 nItemVersion ) const override;
+    virtual SvxNumberInfoItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     SvNumberFormatter*      GetNumberFormatter() const { return pFormatter; }
     const OUString&         GetValueString() const { return aStringVal; }
     double                  GetValueDouble() const  { return nDoubleVal; }
 
-    const sal_uInt32*       GetDelArray() const { return pDelFormatArr.get(); }
-    void                    SetDelFormatArray( const sal_uInt32* pData,
-                                               const sal_uInt32  nCount );
+    const std::vector<sal_uInt32> & GetDelFormats() const { return mvDelFormats; }
+    void                    SetDelFormats( std::vector<sal_uInt32> const & );
 
     SvxNumberValueType      GetValueType() const { return eValueType; }
-    sal_uInt32              GetDelCount() const  { return nDelCount; }
 
 private:
     SvNumberFormatter*  pFormatter;
@@ -75,11 +66,8 @@ private:
     OUString            aStringVal;
     double              nDoubleVal;
 
-    std::unique_ptr<sal_uInt32[]>
-                        pDelFormatArr;
-    sal_uInt32          nDelCount;
+    std::vector<sal_uInt32> mvDelFormats;
 };
-
 
 #endif
 

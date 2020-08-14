@@ -22,6 +22,7 @@
 #include <com/sun/star/util/XURLTransformer.hpp>
 #include <comphelper/processfactory.hxx>
 #include <osl/diagnose.h>
+#include <tools/diagnose_ex.h>
 
 
 namespace pcr
@@ -46,14 +47,14 @@ namespace pcr
             if ( _rxORB.is() )
             {
                 xTransform.set( URLTransformer::create(comphelper::getComponentContext(_rxORB)) );
-                OSL_ENSURE( xTransform.is(), "UnoURL::UnoURL: could not create an URL transformer!" );
+                OSL_ENSURE( xTransform.is(), "UnoURL::UnoURL: could not create a URL transformer!" );
                 if ( xTransform.is() )
                     xTransform->parseStrict( m_aURL );
             }
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "UnoURL::UnoURL: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "UnoURL::UnoURL" );
         }
     }
 

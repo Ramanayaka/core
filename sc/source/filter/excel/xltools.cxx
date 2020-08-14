@@ -20,22 +20,20 @@
 #include <algorithm>
 #include <math.h>
 #include <sal/mathconf.h>
-#include <unotools/fontcvt.hxx>
-#include <sfx2/objsh.hxx>
 #include <sal/macros.h>
-#include <editeng/editstat.hxx>
+#include <sal/log.hxx>
+#include <tools/solar.h>
+#include <unotools/fontdefs.hxx>
 #include <filter/msfilter/msvbahelper.hxx>
-#include "xestream.hxx"
-#include "document.hxx"
-#include "docuno.hxx"
-#include "editutil.hxx"
+#include <xestream.hxx>
+#include <global.hxx>
 #include <formula/errorcodes.hxx>
-#include "globstr.hrc"
-#include "xlstyle.hxx"
-#include "xlname.hxx"
-#include "xistream.hxx"
-#include "xiroot.hxx"
-#include "xltools.hxx"
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <xlstyle.hxx>
+#include <xlname.hxx>
+#include <xistream.hxx>
+#include <xltools.hxx>
 
 // GUID import/export
 
@@ -314,9 +312,33 @@ sal_uInt16 XclTools::GetXclColumnWidth( sal_uInt16 nScWidth, long nScCharWidth )
     return limit_cast< sal_uInt16 >( fXclWidth );
 }
 
+// takes font height in twips (1/20 pt = 1/1440 in)
+// returns correction value in 1/256th of *digit width* of default font
 double XclTools::GetXclDefColWidthCorrection( long nXclDefFontHeight )
 {
-    return 40960.0 / ::std::max( nXclDefFontHeight - 15L, 60L ) + 50.0;
+    // Excel uses *max digit width of default font* (W) as cell width unit. Also it has 5-pixel
+    // "correction" to cell widths (ECMA-376-1:2016 18.3.1.81): each cell has 1-pixel padding, then
+    // 3 pixels for the border (which may be 1-pixel - hairline - then it will have 2 additional
+    // 1-pixel spacings from each side; or e.g. 2 hairlines with 1-pixel spacing in the middle; or
+    // thick 3-pixel). Obviously, correction size entirely depends on pixel size (and it is actually
+    // different in Excel on monitors with different resolution). Thus actual (displayed/printed)
+    // cell widths consist of X*W+5px; stored in file is the X (or X*256 if 1/256th of digit width
+    // units are used) value.
+    // This formula apparently converts this 5-pixel correction to 1/256th of digit width units.
+    // Looks like it is created from
+    //
+    //    5 * 256 * 1440 * 2.1333 / (96 * max(N-15, 60)) + 50.0
+    //
+    // where 5 - pixel correction; 256 - used to produce 1/256th of digit width; 1440 - used to
+    // convert font height N (in twips) to inches; 2.1333 - an (empirical?) quotient to convert
+    // font *height* into digit *width*; 96 - "standard" monitor resolution (DPI).
+    // Additionally the formula uses 15 (of unknown origin), 60 (minimal font height 3 pt), and
+    // 50.0 (also of unknown origin).
+    //
+    // TODO: convert this to take font digit width directly (and possibly DPI?), to avoid guessing
+    // the digit width and pixel size. Or DPI might stay 96, to not follow Excel dependency on DPI
+    // in addition to used font, and have absolute size of the correction fixed 5/96 in.
+    return 40960.0 / ::std::max( nXclDefFontHeight - 15, 60L ) + 50.0;
 }
 
 // formatting
@@ -434,10 +456,10 @@ OUString XclTools::GetXclFontName( const OUString& rFontName )
 }
 
 // built-in defined names
-static const char maDefNamePrefix[]    = "Excel_BuiltIn_"; /// Prefix for built-in defined names.
-static const char maDefNamePrefixXml[] = "_xlnm.";         /// Prefix for built-in defined names for OOX
+const char maDefNamePrefix[]    = "Excel_BuiltIn_"; /// Prefix for built-in defined names.
+const char maDefNamePrefixXml[] = "_xlnm.";         /// Prefix for built-in defined names for OOX
 
-static const sal_Char* const ppcDefNames[] =
+const char* const ppcDefNames[] =
 {
     "Consolidate_Area",
     "Auto_Open",
@@ -482,8 +504,12 @@ OUString XclTools::GetBuiltInDefNameXml( sal_Unicode cBuiltIn )
 
 sal_Unicode XclTools::GetBuiltInDefNameIndex( const OUString& rDefName )
 {
-    sal_Int32 nPrefixLen = strlen(maDefNamePrefix);
+    sal_Int32 nPrefixLen = 0;
     if( rDefName.startsWithIgnoreAsciiCase( maDefNamePrefix ) )
+        nPrefixLen = strlen(maDefNamePrefix);
+    else if( rDefName.startsWithIgnoreAsciiCase( maDefNamePrefixXml ) )
+        nPrefixLen = strlen(maDefNamePrefixXml);
+    if( nPrefixLen > 0 )
     {
         for( sal_Unicode cBuiltIn = 0; cBuiltIn < EXC_BUILTIN_UNKNOWN; ++cBuiltIn )
         {
@@ -504,10 +530,10 @@ sal_Unicode XclTools::GetBuiltInDefNameIndex( const OUString& rDefName )
 
 // built-in style names
 
-static const char maStyleNamePrefix1[] = "Excel_BuiltIn_";  /// Prefix for built-in cell style names.
-static const char maStyleNamePrefix2[] = "Excel Built-in "; /// Prefix for built-in cell style names from OOX filter.
+const char maStyleNamePrefix1[] = "Excel_BuiltIn_";  /// Prefix for built-in cell style names.
+const char maStyleNamePrefix2[] = "Excel Built-in "; /// Prefix for built-in cell style names from OOX filter.
 
-static const sal_Char* const ppcStyleNames[] =
+const char* const ppcStyleNames[] =
 {
     "",                 // "Normal" not used directly, but localized "Default"
     "RowLevel_",        // outline level will be appended
@@ -527,7 +553,7 @@ OUString XclTools::GetBuiltInStyleName( sal_uInt8 nStyleId, const OUString& rNam
 
     if( nStyleId == EXC_STYLE_NORMAL )  // "Normal" becomes "Default" style
     {
-        aStyleName = ScGlobal::GetRscString( STR_STYLENAME_STANDARD );
+        aStyleName = ScResId( STR_STYLENAME_STANDARD_CELL );
     }
     else
     {
@@ -551,7 +577,7 @@ OUString XclTools::GetBuiltInStyleName( sal_uInt8 nStyleId, const OUString& rNam
 bool XclTools::IsBuiltInStyleName( const OUString& rStyleName, sal_uInt8* pnStyleId, sal_Int32* pnNextChar )
 {
     // "Default" becomes "Normal"
-    if (rStyleName.equals(ScGlobal::GetRscString(STR_STYLENAME_STANDARD)))
+    if (rStyleName == ScResId(STR_STYLENAME_STANDARD_CELL))
     {
         if( pnStyleId ) *pnStyleId = EXC_STYLE_NORMAL;
         if( pnNextChar ) *pnNextChar = rStyleName.getLength();
@@ -628,18 +654,17 @@ bool XclTools::GetBuiltInStyleId( sal_uInt8& rnStyleId, sal_uInt8& rnLevel, cons
 
 // conditional formatting style names
 
-static const char maCFStyleNamePrefix1[] = "Excel_CondFormat_"; /// Prefix for cond. formatting style names.
-static const char maCFStyleNamePrefix2[] = "ConditionalStyle_"; /// Prefix for cond. formatting style names from OOX filter.
+const char maCFStyleNamePrefix1[] = "Excel_CondFormat_"; /// Prefix for cond. formatting style names.
+const char maCFStyleNamePrefix2[] = "ConditionalStyle_"; /// Prefix for cond. formatting style names from OOX filter.
 
 OUString XclTools::GetCondFormatStyleName( SCTAB nScTab, sal_Int32 nFormat, sal_uInt16 nCondition )
 {
-    OUStringBuffer aBuf(maCFStyleNamePrefix1);
-    aBuf.append(static_cast<sal_Int32>(nScTab+1));
-    aBuf.append('_');
-    aBuf.append(static_cast<sal_Int32>(nFormat+1));
-    aBuf.append('_');
-    aBuf.append(static_cast<sal_Int32>(nCondition+1));
-    return aBuf.makeStringAndClear();
+    return maCFStyleNamePrefix1 +
+        OUString::number(static_cast<sal_Int32>(nScTab+1)) +
+        "_" +
+        OUString::number(static_cast<sal_Int32>(nFormat+1)) +
+        "_" +
+        OUString::number(static_cast<sal_Int32>(nCondition+1));
 }
 
 bool XclTools::IsCondFormatStyleName( const OUString& rStyleName )
@@ -669,8 +694,8 @@ void XclTools::SkipSubStream( XclImpStream& rStrm )
 
 // Basic macro names
 
-static const char maSbMacroPrefix[] = "vnd.sun.star.script:";              /// Prefix for StarBasic macros.
-static const char maSbMacroSuffix[] = "?language=Basic&location=document"; /// Suffix for StarBasic macros.
+const char maSbMacroPrefix[] = "vnd.sun.star.script:";              /// Prefix for StarBasic macros.
+const char maSbMacroSuffix[] = "?language=Basic&location=document"; /// Suffix for StarBasic macros.
 
 OUString XclTools::GetSbMacroUrl( const OUString& rMacroName, SfxObjectShell* pDocShell )
 {
@@ -702,7 +727,7 @@ XclImpStream& operator>>( XclImpStream& rStrm, Color& rColor )
     sal_uInt8 nG = rStrm.ReaduInt8();
     sal_uInt8 nB = rStrm.ReaduInt8();
     rStrm.Ignore( 1 );//nD
-    rColor.SetColor( RGB_COLORDATA( nR, nG, nB ) );
+    rColor = Color( nR, nG, nB );
     return rStrm;
 }
 

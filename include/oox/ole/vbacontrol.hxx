@@ -30,12 +30,12 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt { class XControlModel; }
     namespace container { class XNameContainer; }
     namespace frame { class XModel; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
 namespace oox {
     class BinaryInputStream;
@@ -44,8 +44,7 @@ namespace oox {
     class StorageBase;
 }
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 
 /** Common properties for all controls that are part of a VBA user form or of
@@ -86,8 +85,8 @@ public:
                             const ControlConverter& rConv,
                             ApiControlType eCtrlType,
                             sal_Int32 nCtrlIndex ) const;
-    const OUString& getControlSource() { return  maControlSource; }
-    const OUString& getRowSource() { return  maRowSource; }
+    const OUString& getControlSource() const { return  maControlSource; }
+    const OUString& getRowSource() const { return  maRowSource; }
 private:
     OUString     maName;             ///< Name of the control.
     OUString     maTag;              ///< User defined tag.
@@ -184,7 +183,7 @@ private:
 };
 
 
-class VbaUserForm : public VbaFormControl
+class VbaUserForm final : public VbaFormControl
 {
 public:
     explicit            VbaUserForm(
@@ -208,8 +207,7 @@ private:
 };
 
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 #endif
 

@@ -20,19 +20,17 @@
 #ifndef INCLUDED_OOX_DRAWINGML_CUSTOMSHAPEGEOMETRY_HXX
 #define INCLUDED_OOX_DRAWINGML_CUSTOMSHAPEGEOMETRY_HXX
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <oox/helper/propertymap.hxx>
 #include <oox/core/contexthandler2.hxx>
 #include <oox/drawingml/shape.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 
 // CT_CustomGeometry2D
-class CustomShapeGeometryContext : public ::oox::core::ContextHandler2
+class CustomShapeGeometryContext final : public ::oox::core::ContextHandler2
 {
 public:
-    CustomShapeGeometryContext( ::oox::core::ContextHandler2Helper& rParent, CustomShapeProperties& rCustomShapeProperties );
+    CustomShapeGeometryContext( ::oox::core::ContextHandler2Helper const & rParent, CustomShapeProperties& rCustomShapeProperties );
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 aElementToken, const ::oox::AttributeList& rAttribs ) override;
 
 private:
@@ -41,10 +39,10 @@ private:
 
 
 // CT_PresetGeometry2D
-class PresetShapeGeometryContext : public ::oox::core::ContextHandler2
+class PresetShapeGeometryContext final : public ::oox::core::ContextHandler2
 {
 public:
-    PresetShapeGeometryContext( ::oox::core::ContextHandler2Helper& rParent, const ::oox::AttributeList& rAttributes, CustomShapeProperties& rCustomShapeProperties );
+    PresetShapeGeometryContext( ::oox::core::ContextHandler2Helper const & rParent, const ::oox::AttributeList& rAttributes, CustomShapeProperties& rCustomShapeProperties );
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 aElementToken, const ::oox::AttributeList& rAttribs ) override;
 
 private:
@@ -53,17 +51,17 @@ private:
 
 
 // CT_PresetTextShape
-class PresetTextShapeContext : public ::oox::core::ContextHandler2
+class PresetTextShapeContext final : public ::oox::core::ContextHandler2
 {
 public:
-    PresetTextShapeContext( ::oox::core::ContextHandler2Helper& rParent, const ::oox::AttributeList& rAttributes, CustomShapeProperties& rCustomShapeProperties );
+    PresetTextShapeContext( ::oox::core::ContextHandler2Helper const & rParent, const ::oox::AttributeList& rAttributes, CustomShapeProperties& rCustomShapeProperties );
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 aElementToken, const ::oox::AttributeList& rAttribs ) override;
 
 private:
     CustomShapeProperties& mrCustomShapeProperties;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_CUSTOMSHAPEGEOMETRY_HXX
 

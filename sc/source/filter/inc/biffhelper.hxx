@@ -20,12 +20,12 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_BIFFHELPER_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_BIFFHELPER_HXX
 
-#include <oox/helper/binarystreambase.hxx>
+#include <sal/types.h>
+#include <rtl/ustring.hxx>
 
 namespace oox { class SequenceInputStream; }
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 // BIFF12 record identifiers ==================================================
 
@@ -603,7 +603,7 @@ public:
     // BIFF12 import ----------------------------------------------------------
 
     /** Reads a BIFF12 string with leading 16-bit or 32-bit length field. */
-    static OUString readString( SequenceInputStream& rStrm, bool b32BitLen = true, bool bAllowNulChars = false );
+    static OUString readString( SequenceInputStream& rStrm, bool b32BitLen = true );
 
 private:
                         BiffHelper() = delete;
@@ -617,8 +617,7 @@ inline SequenceInputStream& operator>>( SequenceInputStream& rStrm, OUString& or
     return rStrm;
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

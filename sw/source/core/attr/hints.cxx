@@ -18,11 +18,13 @@
  */
 
 #include <com/sun/star/i18n/ScriptType.hpp>
-#include <editeng/scripttypeitem.hxx>
 #include <hintids.hxx>
 #include <hints.hxx>
 #include <ndtxt.hxx>
 #include <swtypes.hxx>
+#include <svl/languageoptions.hxx>
+#include <vcl/outdev.hxx>
+#include <osl/diagnose.h>
 
 SwFormatChg::SwFormatChg( SwFormat* pFormat )
     : SwMsgPoolItem( RES_FMT_CHG ), pChangedFormat( pFormat )
@@ -44,8 +46,32 @@ SwDelText::SwDelText( sal_Int32 nS, sal_Int32 nL )
 {
 }
 
+namespace sw {
+
+MoveText::MoveText(SwTextNode *const pD, sal_Int32 const nD, sal_Int32 const nS, sal_Int32 const nL)
+    : pDestNode(pD), nDestStart(nD), nSourceStart(nS), nLen(nL)
+{
+}
+
+RedlineDelText::RedlineDelText(sal_Int32 const nS, sal_Int32 const nL)
+    : nStart(nS), nLen(nL)
+{
+}
+
+RedlineUnDelText::RedlineUnDelText(sal_Int32 const nS, sal_Int32 const nL)
+    : nStart(nS), nLen(nL)
+{
+}
+
+} // namespace sw
+
 SwUpdateAttr::SwUpdateAttr( sal_Int32 nS, sal_Int32 nE, sal_uInt16 nW )
-    : SwMsgPoolItem( RES_UPDATE_ATTR ), m_nStart( nS ), m_nEnd( nE ), m_nWhichAttr( nW ), m_aWhichFormatAttr()
+    : SwMsgPoolItem( RES_UPDATE_ATTR ), m_nStart( nS ), m_nEnd( nE ), m_nWhichAttr( nW )
+{
+}
+
+SwUpdateAttr::SwUpdateAttr( sal_Int32 nS, sal_Int32 nE, sal_uInt16 nW, std::vector<sal_uInt16> aW )
+    : SwMsgPoolItem( RES_UPDATE_ATTR ), m_nStart( nS ), m_nEnd( nE ), m_nWhichAttr( nW ), m_aWhichFmtAttrs( aW )
 {
 }
 
@@ -113,11 +139,11 @@ SwMsgPoolItem::SwMsgPoolItem( sal_uInt16 nWhch )
 
 bool SwMsgPoolItem::operator==( const SfxPoolItem& ) const
 {
-    OSL_FAIL( "SwMsgPoolItem knows no ==" );
+    assert( false && "SwMsgPoolItem knows no ==" );
     return false;
 }
 
-SfxPoolItem* SwMsgPoolItem::Clone( SfxItemPool* ) const
+SwMsgPoolItem* SwMsgPoolItem::Clone( SfxItemPool* ) const
 {
     OSL_FAIL( "SwMsgPoolItem knows no Clone" );
     return nullptr;
@@ -227,10 +253,10 @@ sal_uInt16 GetWhichOfScript( sal_uInt16 nWhich, sal_uInt16 nScript )
             {
             case i18n::ScriptType::COMPLEX:
                 ++pM;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case i18n::ScriptType::ASIAN:
                 ++pM;
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             default:
                 nRet = *pM;
             }

@@ -20,31 +20,30 @@
 #ifndef INCLUDED_SVX_SDRPAGEWINDOW_HXX
 #define INCLUDED_SVX_SDRPAGEWINDOW_HXX
 
-#include <svx/sdr/overlay/overlaymanager.hxx>
+#include <basegfx/range/b2irectangle.hxx>
 #include <svx/svdtypes.hxx>
 #include <svx/svxdllapi.h>
-#include <rtl/ref.hxx>
 #include <memory>
 
-#include <com/sun/star/awt/XControlContainer.hpp>
-
+namespace com::sun::star::awt { class XControlContainer; }
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
+namespace rtl { template <class reference_type> class Reference; }
+namespace sdr::overlay { class OverlayManager; }
 namespace vcl { class Region; }
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
-        class ObjectContact;
-        class ViewObjectContactRedirector;
-    }
+    class ObjectContact;
+    class ViewObjectContactRedirector;
 }
 
-namespace basegfx { class B2DRange; class B2IRange; }
+
+namespace basegfx { class B2DRange; }
 
 class SdrPaintWindow;
 class SdrPageView;
 
-class SVX_DLLPUBLIC SdrPageWindow
+class SVXCORE_DLLPUBLIC SdrPageWindow
 {
     struct Impl;
 
@@ -61,10 +60,10 @@ public:
     SdrPageView& GetPageView() const;
     SdrPaintWindow& GetPaintWindow() const;
     const SdrPaintWindow* GetOriginalPaintWindow() const;
-    css::uno::Reference<css::awt::XControlContainer> GetControlContainer( bool _bCreateIfNecessary = true ) const;
+    css::uno::Reference<css::awt::XControlContainer> const & GetControlContainer( bool _bCreateIfNecessary = true ) const;
 
     // OVERLAYMANAGER
-    rtl::Reference< sdr::overlay::OverlayManager > GetOverlayManager() const;
+    rtl::Reference< sdr::overlay::OverlayManager > const & GetOverlayManager() const;
 
     // #i72752# allow patcing SdrPaintWindow from SdrPageView::DrawLayer if needed
     void patchPaintWindow(SdrPaintWindow& rPaintWindow);
@@ -74,7 +73,7 @@ public:
     void PrePaint();
     void PrepareRedraw(const vcl::Region& rReg);
     void RedrawAll( sdr::contact::ViewObjectContactRedirector* pRedirector );
-    void RedrawLayer( const SdrLayerID* pId, sdr::contact::ViewObjectContactRedirector* pRedirector, basegfx::B2IRange const*);
+    void RedrawLayer( const SdrLayerID* pId, sdr::contact::ViewObjectContactRedirector* pRedirector, basegfx::B2IRectangle const*);
 
     // Invalidate call, used from ObjectContact(OfPageView) in InvalidatePartOfView(...)
     void InvalidatePageWindow(const basegfx::B2DRange& rRange);
@@ -88,7 +87,7 @@ public:
     // #i26631#
     void ResetObjectContact();
 
-    /** sets all elements in the view which support a design and a alive mode into the given mode
+    /** sets all elements in the view which support a design and an alive mode into the given mode
     */
     void    SetDesignMode( bool _bDesignMode ) const;
 };

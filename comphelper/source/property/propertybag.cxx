@@ -18,6 +18,7 @@
  */
 
 #include <comphelper/propertybag.hxx>
+#include <osl/diagnose.h>
 
 #include <com/sun/star/beans/IllegalTypeException.hpp>
 #include <com/sun/star/beans/PropertyExistException.hpp>
@@ -25,6 +26,7 @@
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/NotRemoveableException.hpp>
+#include <com/sun/star/beans/UnknownPropertyException.hpp>
 
 #include <map>
 
@@ -123,7 +125,7 @@ namespace comphelper
         registerPropertyNoMember( _rName, _nHandle, _nAttributes | PropertyAttribute::MAYBEVOID, _rType, css::uno::Any() );
 
         // remember the default
-        m_pImpl->aDefaults.insert( MapInt2Any::value_type( _nHandle, Any() ) );
+        m_pImpl->aDefaults.emplace( _nHandle, Any() );
     }
 
 
@@ -146,7 +148,7 @@ namespace comphelper
             _rInitialValue );
 
         // remember the default
-        m_pImpl->aDefaults.insert( MapInt2Any::value_type( _nHandle, _rInitialValue ) );
+        m_pImpl->aDefaults.emplace( _nHandle, _rInitialValue );
     }
 
 
@@ -167,7 +169,7 @@ namespace comphelper
     void PropertyBag::getFastPropertyValue( sal_Int32 _nHandle, Any& _out_rValue ) const
     {
         if ( !hasPropertyByHandle( _nHandle ) )
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(OUString::number(_nHandle));
 
         OPropertyContainerHelper::getFastPropertyValue( _out_rValue, _nHandle );
     }
@@ -176,7 +178,7 @@ namespace comphelper
     bool PropertyBag::convertFastPropertyValue( sal_Int32 _nHandle, const Any& _rNewValue, Any& _out_rConvertedValue, Any& _out_rCurrentValue ) const
     {
         if ( !hasPropertyByHandle( _nHandle ) )
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(OUString::number(_nHandle));
 
         return const_cast< PropertyBag*  >( this )->OPropertyContainerHelper::convertFastPropertyValue(
             _out_rConvertedValue, _out_rCurrentValue, _nHandle, _rNewValue );
@@ -186,7 +188,7 @@ namespace comphelper
     void PropertyBag::setFastPropertyValue( sal_Int32 _nHandle, const Any& _rValue )
     {
         if ( !hasPropertyByHandle( _nHandle ) )
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(OUString::number(_nHandle));
 
         OPropertyContainerHelper::setFastPropertyValue( _nHandle, _rValue );
     }
@@ -195,7 +197,7 @@ namespace comphelper
     void PropertyBag::getPropertyDefaultByHandle( sal_Int32 _nHandle, Any& _out_rValue ) const
     {
         if ( !hasPropertyByHandle( _nHandle ) )
-            throw UnknownPropertyException();
+            throw UnknownPropertyException(OUString::number(_nHandle));
 
         MapInt2Any::const_iterator pos = m_pImpl->aDefaults.find( _nHandle );
         OSL_ENSURE( pos != m_pImpl->aDefaults.end(), "PropertyBag::getPropertyDefaultByHandle: inconsistency!" );

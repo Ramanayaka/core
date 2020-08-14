@@ -7,21 +7,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <rtfreferenceproperties.hxx>
+#include "rtfreferenceproperties.hxx"
 
-namespace writerfilter
+namespace writerfilter::rtftok
 {
-namespace rtftok
-{
-
-RTFReferenceProperties::RTFReferenceProperties(const RTFSprms& rAttributes, const RTFSprms& rSprms)
-    : m_aAttributes(rAttributes),
-      m_aSprms(rSprms)
+RTFReferenceProperties::RTFReferenceProperties(RTFSprms aAttributes, RTFSprms aSprms)
+    : m_aAttributes(std::move(aAttributes))
+    , m_aSprms(std::move(aSprms))
 {
 }
 
-RTFReferenceProperties::RTFReferenceProperties(const RTFSprms& rAttributes)
-    : m_aAttributes(rAttributes)
+RTFReferenceProperties::RTFReferenceProperties(RTFSprms aAttributes)
+    : m_aAttributes(std::move(aAttributes))
 {
 }
 
@@ -30,7 +27,7 @@ RTFReferenceProperties::~RTFReferenceProperties() = default;
 void RTFReferenceProperties::resolve(Properties& rHandler)
 {
     for (auto& rAttribute : m_aAttributes)
-        rHandler.attribute(rAttribute.first, *rAttribute.second.get());
+        rHandler.attribute(rAttribute.first, *rAttribute.second);
     for (auto& rSprm : m_aSprms)
     {
         RTFSprm aSprm(rSprm.first, rSprm.second);
@@ -38,7 +35,6 @@ void RTFReferenceProperties::resolve(Properties& rHandler)
     }
 }
 
-} // namespace rtftok
-} // namespace writerfilter
+} // namespace writerfilter::rtftok
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

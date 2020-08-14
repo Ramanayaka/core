@@ -22,6 +22,7 @@
 
 #include <rtl/ustring.hxx>
 #include <sfx2/progress.hxx>
+#include <tools/solar.h>
 #include "scdllapi.h"
 
 class ScDocument;
@@ -43,14 +44,12 @@ private:
     static  sal_uLong        nGlobalRange;
     static  sal_uLong       nGlobalPercent;
     static  ScProgress*     pInterpretProgress;
-    static  ScProgress*     pOldInterpretProgress;
     static  sal_uLong       nInterpretProgress;
-    static  bool            bAllowInterpretProgress;
     static  ScDocument*     pInterpretDoc;
     static  bool            bIdleWasEnabled;
             bool            bEnabled;
 
-            SfxProgress*    pProgress;
+            std::unique_ptr<SfxProgress> pProgress;
 
                             ScProgress( const ScProgress& ) = delete;
             ScProgress&     operator=( const ScProgress& ) = delete;
@@ -77,15 +76,6 @@ public:
                             /// for DummyInterpret only, never use otherwise!!!
                             ScProgress();
 #endif
-
-            void            SetStateText( sal_uLong nVal, const OUString &rVal )
-                                {
-                                    if ( pProgress )
-                                    {
-                                        CalcGlobalPercent( nVal );
-                                        pProgress->SetStateText( nVal, rVal );
-                                    }
-                                }
             void            SetState( sal_uLong nVal, sal_uLong nNewRange = 0 )
                                 {
                                     if ( pProgress )
@@ -117,7 +107,7 @@ public:
                                             nGlobalRange) > nGlobalPercent )
                                         SetStateCountDown( nVal );
                                 }
-            sal_uLong           GetState()
+            sal_uLong           GetState() const
                                 {
                                     if ( pProgress )
                                         return pProgress->GetState();

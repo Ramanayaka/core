@@ -34,17 +34,6 @@ using namespace ::comphelper;
 // VCLXAccessibleMenu
 
 
-VCLXAccessibleMenu::VCLXAccessibleMenu( Menu* pParent, sal_uInt16 nItemPos, Menu* pMenu )
-    :VCLXAccessibleMenuItem( pParent, nItemPos, pMenu )
-{
-}
-
-
-VCLXAccessibleMenu::~VCLXAccessibleMenu()
-{
-}
-
-
 bool VCLXAccessibleMenu::IsFocused()
 {
     bool bFocused = false;
@@ -88,7 +77,7 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( VCLXAccessibleMenu, VCLXAccessibleMenuItem, VC
 
 OUString VCLXAccessibleMenu::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleMenu" );
+    return "com.sun.star.comp.toolkit.AccessibleMenu";
 }
 
 
@@ -182,6 +171,11 @@ sal_Int32 VCLXAccessibleMenu::getSelectedAccessibleChildCount(  )
 {
     OExternalLockGuard aGuard( this );
 
+    return implGetSelectedAccessibleChildCount();
+}
+
+sal_Int32 VCLXAccessibleMenu::implGetSelectedAccessibleChildCount(  )
+{
     sal_Int32 nRet = 0;
 
     for ( sal_Int32 i = 0, nCount = GetChildCount(); i < nCount; i++ )
@@ -192,7 +186,6 @@ sal_Int32 VCLXAccessibleMenu::getSelectedAccessibleChildCount(  )
 
     return nRet;
 }
-
 
 Reference< XAccessible > VCLXAccessibleMenu::getSelectedAccessibleChild( sal_Int32 nSelectedChildIndex )
 {

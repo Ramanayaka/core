@@ -24,18 +24,19 @@
 #include <sfx2/dllapi.h>
 #include <sfx2/linksrc.hxx>
 #include <sfx2/lnkbase.hxx>
-#include <set>
+#include <o3tl/sorted_vector.hxx>
 #include <vector>
 
 class SfxObjectShell;
 class Graphic;
-class Size;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace lang {
         class XComponent;
     }
-}}}
+}
+
+namespace weld { class Window; }
 
 namespace sfx2
 {
@@ -46,7 +47,7 @@ namespace sfx2
 
 typedef std::vector<tools::SvRef<SvBaseLink> > SvBaseLinks;
 
-typedef std::set<SvLinkSource*> SvLinkSources;
+typedef o3tl::sorted_vector<SvLinkSource*> SvLinkSources;
 
 class SFX2_DLLPUBLIC LinkManager
 {
@@ -59,7 +60,7 @@ class SFX2_DLLPUBLIC LinkManager
 
     SfxObjectShell *pPersist; // LinkMgr must be release before SfxObjectShell
 protected:
-    bool        InsertLink( SvBaseLink* pLink, sal_uInt16 nObjType, SfxLinkUpdateMode nUpdateType,
+    bool        InsertLink( SvBaseLink* pLink, SvBaseLinkObjectType nObjType, SfxLinkUpdateMode nUpdateType,
                             const OUString* pName );
 public:
 
@@ -86,7 +87,7 @@ public:
     SfxObjectShell*    GetPersist() const              { return pPersist; }
     void        SetPersist( SfxObjectShell * p )   { pPersist = p; }
 
-    void        Remove( SvBaseLink *pLink );
+    void        Remove( SvBaseLink const *pLink );
     void        Remove( size_t nPos, size_t nCnt = 1 );
     bool        Insert( SvBaseLink* pLink );
 
@@ -100,8 +101,8 @@ public:
     void        InsertDDELink( SvBaseLink* );
 
     // Connect the links to a pseudo-object and add to the list
-    bool InsertFileLink( sfx2::SvBaseLink&,
-                        sal_uInt16 nFileType,
+    void InsertFileLink( sfx2::SvBaseLink&,
+                        SvBaseLinkObjectType nFileType,
                         const OUString& rFileNm,
                         const OUString* pFilterNm = nullptr,
                         const OUString* pRange = nullptr );
@@ -124,11 +125,11 @@ public:
                                     OUString* pLink = nullptr,
                                     OUString* pFilter = nullptr );
 
-    static SvLinkSourceRef CreateObj( SvBaseLink* );
+    static SvLinkSourceRef CreateObj( SvBaseLink const * );
 
-    void        UpdateAllLinks( bool bAskUpdate,
-                                bool bUpdateGrfLinks,
-                                vcl::Window* pParentWin );
+    void        UpdateAllLinks(bool bAskUpdate,
+                               bool bUpdateGrfLinks,
+                               weld::Window* pParentWin);
 
     // Call for list of links (eg for link-dialog)
     const       SvBaseLinks& GetLinks() const { return aLinkTbl; }
@@ -154,9 +155,10 @@ public:
 
     // if the mimetype says graphic/bitmap/gdimetafile then get the
     // graphic from the Any. Return says no errors
-    static bool GetGraphicFromAny( const OUString& rMimeType,
-                                const css::uno::Any & rValue,
-                                Graphic& rGrf );
+    bool GetGraphicFromAny(const OUString& rMimeType,
+                           const css::uno::Any & rValue,
+                           Graphic& rGrf,
+                           weld::Window* pParentWin);
 
 private:
                 LinkManager( const LinkManager& ) = delete;

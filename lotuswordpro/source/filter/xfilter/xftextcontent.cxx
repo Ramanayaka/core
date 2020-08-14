@@ -54,8 +54,9 @@
  *
  ************************************************************************/
 
-#include "xftextcontent.hxx"
-#include "ixfstream.hxx"
+#include <xfilter/xftextcontent.hxx>
+#include <xfilter/ixfattrlist.hxx>
+#include <xfilter/ixfstream.hxx>
 
 XFTextContent::XFTextContent(const OUString& text):m_strText(text)
 {
@@ -97,7 +98,7 @@ void    XFTextContent::ToXml(IXFStream *pStrm)
                 pStrm->Characters(sSubString.copy(0,nIndex));
             for (j=nIndex+1;j<nSize-i;j++)
             {
-                if (sSubString[j] != sal_Char(' '))
+                if (sSubString[j] != ' ')
                     break;
             }
             IXFAttrList *pAttrList = pStrm->GetAttrList();

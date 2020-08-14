@@ -19,120 +19,106 @@
 #ifndef INCLUDED_SW_SOURCE_UI_DBUI_MMADDRESSBLOCKPAGE_HXX
 #define INCLUDED_SW_SOURCE_UI_DBUI_MMADDRESSBLOCKPAGE_HXX
 
-#include <svtools/wizardmachine.hxx>
-#include <vcl/button.hxx>
+#include <svx/weldeditview.hxx>
+#include <vcl/wizardmachine.hxx>
 #include <mailmergehelper.hxx>
 #include <sfx2/basedlgs.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/lstbox.hxx>
-#include <svtools/svmedit.hxx>
-#include <svtools/headbar.hxx>
-#include <svtools/treelistbox.hxx>
-#include <vcl/combobox.hxx>
+#include <vcl/textfilter.hxx>
 #include <svl/lstner.hxx>
+#include <vcl/idle.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
 class SwMailMergeWizard;
 class SwMailMergeConfigItem;
 
-class SwMailMergeAddressBlockPage : public svt::OWizardPage
+class SwMailMergeAddressBlockPage : public vcl::OWizardPage
 {
-    VclPtr<PushButton>         m_pAddressListPB;
-    VclPtr<FixedText>          m_pCurrentAddressFI;
-
-    VclPtr<VclContainer>       m_pStep2;
-    VclPtr<VclContainer>       m_pStep3;
-    VclPtr<VclContainer>       m_pStep4;
-
-    VclPtr<FixedText>          m_pSettingsFI;
-    VclPtr<CheckBox>           m_pAddressCB;
-    VclPtr<SwAddressPreview>   m_pSettingsWIN;
-    VclPtr<PushButton>         m_pSettingsPB;
-    VclPtr<CheckBox>           m_pHideEmptyParagraphsCB;
-
-    VclPtr<PushButton>         m_pAssignPB;
-
-    VclPtr<SwAddressPreview>   m_pPreviewWIN;
-    VclPtr<FixedText>          m_pDocumentIndexFI;
-    VclPtr<PushButton>         m_pPrevSetIB;
-    VclPtr<PushButton>         m_pNextSetIB;
-
     OUString            m_sDocument;
     OUString            m_sCurrentAddress;
     OUString            m_sChangeAddress;
 
-    VclPtr<SwMailMergeWizard>  m_pWizard;
+    SwMailMergeWizard*  m_pWizard;
 
-    DECL_LINK(AddressListHdl_Impl, Button *, void);
-    DECL_LINK(SettingsHdl_Impl, Button*, void);
-    DECL_LINK(AssignHdl_Impl, Button*, void);
-    DECL_LINK(AddressBlockHdl_Impl, Button*, void);
-    DECL_LINK(InsertDataHdl_Impl, Button*, void);
+    std::unique_ptr<weld::Button> m_xAddressListPB;
+    std::unique_ptr<weld::Label> m_xCurrentAddressFI;
+
+    std::unique_ptr<weld::Container> m_xStep2;
+    std::unique_ptr<weld::Container> m_xStep3;
+    std::unique_ptr<weld::Container> m_xStep4;
+
+    std::unique_ptr<weld::Label> m_xSettingsFI;
+    std::unique_ptr<weld::CheckButton> m_xAddressCB;
+    std::unique_ptr<weld::Button> m_xSettingsPB;
+    std::unique_ptr<weld::CheckButton> m_xHideEmptyParagraphsCB;
+
+    std::unique_ptr<weld::Button> m_xAssignPB;
+
+    std::unique_ptr<weld::Label> m_xDocumentIndexFI;
+    std::unique_ptr<weld::Button> m_xPrevSetIB;
+    std::unique_ptr<weld::Button> m_xNextSetIB;
+
+    std::unique_ptr<weld::Button> m_xDifferentlist;
+
+    std::unique_ptr<SwAddressPreview> m_xSettings;
+    std::unique_ptr<SwAddressPreview> m_xPreview;
+    std::unique_ptr<weld::CustomWeld> m_xSettingsWIN;
+    std::unique_ptr<weld::CustomWeld> m_xPreviewWIN;
+
+    void InsertDataHdl(const weld::Button* pButton);
+
+    DECL_LINK(AddressListHdl_Impl, weld::Button&, void);
+    DECL_LINK(SettingsHdl_Impl, weld::Button&, void);
+    DECL_LINK(AssignHdl_Impl, weld::Button&, void);
+    DECL_LINK(AddressBlockHdl_Impl, weld::ToggleButton&, void);
+    DECL_LINK(InsertDataHdl_Impl, weld::Button&, void);
     DECL_LINK(AddressBlockSelectHdl_Impl, LinkParamNone*, void);
-    DECL_LINK(HideParagraphsHdl_Impl, Button*, void);
+    DECL_LINK(HideParagraphsHdl_Impl, weld::ToggleButton&, void);
 
     void                EnableAddressBlock(bool bAll, bool bSelective);
 
-    virtual void        ActivatePage() override;
-    virtual bool        commitPage( ::svt::WizardTypes::CommitPageReason _eReason ) override;
+    virtual void        Activate() override;
+    virtual bool        commitPage( ::vcl::WizardTypes::CommitPageReason _eReason ) override;
     virtual bool        canAdvance() const override;
 
 public:
-    SwMailMergeAddressBlockPage(SwMailMergeWizard* _pParent);
+    SwMailMergeAddressBlockPage(weld::Container* pPage, SwMailMergeWizard* pWizard);
     virtual ~SwMailMergeAddressBlockPage() override;
-    virtual void dispose() override;
     SwMailMergeWizard* GetWizard() { return m_pWizard; }
 };
 
-class SwSelectAddressBlockDialog : public SfxModalDialog
+class SwSelectAddressBlockDialog : public SfxDialogController
 {
-    VclPtr<SwAddressPreview>   m_pPreview;
-    VclPtr<PushButton>         m_pNewPB;
-    VclPtr<PushButton>         m_pCustomizePB;
-    VclPtr<PushButton>         m_pDeletePB;
-
-    VclPtr<RadioButton>        m_pNeverRB;
-    VclPtr<RadioButton>        m_pAlwaysRB;
-    VclPtr<RadioButton>        m_pDependentRB;
-    VclPtr<Edit>               m_pCountryED;
-
     css::uno::Sequence< OUString>    m_aAddressBlocks;
     SwMailMergeConfigItem& m_rConfig;
 
-    DECL_LINK(NewCustomizeHdl_Impl, Button*, void);
-    DECL_LINK(DeleteHdl_Impl, Button*, void);
-    DECL_LINK(IncludeHdl_Impl, Button*, void);
+    std::unique_ptr<SwAddressPreview> m_xPreview;
+    std::unique_ptr<weld::Button> m_xNewPB;
+    std::unique_ptr<weld::Button> m_xCustomizePB;
+    std::unique_ptr<weld::Button> m_xDeletePB;
+    std::unique_ptr<weld::RadioButton> m_xNeverRB;
+    std::unique_ptr<weld::RadioButton> m_xAlwaysRB;
+    std::unique_ptr<weld::RadioButton> m_xDependentRB;
+    std::unique_ptr<weld::Entry> m_xCountryED;
+    std::unique_ptr<weld::CustomWeld> m_xPreviewWin;
 
-    using Window::SetSettings;
+    DECL_LINK(NewCustomizeHdl_Impl, weld::Button&, void);
+    DECL_LINK(DeleteHdl_Impl, weld::Button&, void);
+    DECL_LINK(IncludeHdl_Impl, weld::ToggleButton&, void);
 
 public:
-    SwSelectAddressBlockDialog(vcl::Window* pParent, SwMailMergeConfigItem& rConfig);
+    SwSelectAddressBlockDialog(weld::Window* pParent, SwMailMergeConfigItem& rConfig);
     virtual ~SwSelectAddressBlockDialog() override;
-    virtual void dispose() override;
 
     void         SetAddressBlocks(const css::uno::Sequence< OUString>& rBlocks,
                                 sal_uInt16 nSelected);
     const css::uno::Sequence< OUString>&    GetAddressBlocks();
 
     void         SetSettings(bool bIsCountry, const OUString& sCountry);
-    bool         IsIncludeCountry() const {return !m_pNeverRB->IsChecked();}
+    bool         IsIncludeCountry() const {return !m_xNeverRB->get_active();}
     OUString     GetCountry() const;
 };
 
 class SwCustomizeAddressBlockDialog;
-class DDListBox : public SvTreeListBox
-{
-    VclPtr<SwCustomizeAddressBlockDialog>   m_pParentDialog;
-public:
-    DDListBox(vcl::Window* pParent, const WinBits nStyle);
-    virtual ~DDListBox() override;
-    virtual void dispose() override;
-
-    void SetAddressDialog(SwCustomizeAddressBlockDialog *pParent);
-
-    virtual void        StartDrag( sal_Int8 nAction, const Point& rPosPixel ) override;
-};
 
 enum class MoveItemFlags {
     NONE           = 0,
@@ -145,45 +131,51 @@ namespace o3tl {
     template<> struct typed_flags<MoveItemFlags> : is_typed_flags<MoveItemFlags, 0x0f> {};
 }
 
-class AddressMultiLineEdit : public VclMultiLineEdit, public SfxListener
+class AddressMultiLineEdit;
+
+class AddressMultiLineEdit : public WeldEditView
+                           , public SfxListener
 {
-    Link<AddressMultiLineEdit&,void>       m_aSelectionLink;
-    VclPtr<SwCustomizeAddressBlockDialog>  m_pParentDialog;
+    Link<bool,void> m_aSelectionLink;
+    Link<AddressMultiLineEdit&,void> m_aModifyLink;
+    SwCustomizeAddressBlockDialog*  m_pParentDialog;
 
-    using VclMultiLineEdit::SetText;
+    css::uno::Reference<css::datatransfer::dnd::XDropTarget> m_xDropTarget;
 
-protected:
-    bool            PreNotify( NotifyEvent& rNEvt ) override;
+    virtual void EditViewSelectionChange() const override;
+    virtual css::uno::Reference<css::datatransfer::dnd::XDropTarget> GetDropTarget() const override;
+
+    virtual bool KeyInput(const KeyEvent& rKEvt) override;
+    virtual bool MouseButtonDown(const MouseEvent& rMEvt) override;
+
 public:
-    AddressMultiLineEdit(vcl::Window* pParent, WinBits nWinStyle);
+    AddressMultiLineEdit(SwCustomizeAddressBlockDialog *pParent);
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
+    void EndDropTarget();
+    bool SetCursorLogicPosition(const Point& rPosition);
+    void UpdateFields();
     virtual ~AddressMultiLineEdit() override;
-    virtual void    dispose() override;
 
-    void            SetAddressDialog(SwCustomizeAddressBlockDialog *pParent);
+    void            SetSelectionChangedHdl( const Link<bool,void>& rLink ) { m_aSelectionLink = rLink; }
+    void            SetModifyHdl( const Link<AddressMultiLineEdit&,void>& rLink ) { m_aModifyLink = rLink; }
 
-    virtual void    Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
-
-    virtual Size    GetOptimalSize() const override;
-
-    void            SetSelectionChangedHdl( const Link<AddressMultiLineEdit&,void>& rLink ) {m_aSelectionLink = rLink;}
-
-    void            SetText( const OUString& rStr ) override;
-    OUString        GetAddress();
+    void            SetText( const OUString& rStr );
+    OUString        GetText() const;
+    OUString        GetAddress() const;
 
     void            InsertNewEntry( const OUString& rStr );
     void            InsertNewEntryAtPosition( const OUString& rStr, sal_uLong nPara, sal_uInt16 nIndex );
     void            RemoveCurrentEntry();
 
     void            MoveCurrentItem(MoveItemFlags nMove);
-    MoveItemFlags   IsCurrentItemMoveable();
-    bool            HasCurrentItem();
-    OUString        GetCurrentItem();
+    MoveItemFlags   IsCurrentItemMoveable() const;
+    bool            HasCurrentItem() const;
+    OUString        GetCurrentItem() const;
     void            SelectCurrentItem();
 };
 
-class SwCustomizeAddressBlockDialog : public SfxModalDialog
+class SwCustomizeAddressBlockDialog : public SfxDialogController
 {
-    friend class DDListBox;
     friend class AddressMultiLineEdit;
 public:
     enum DialogType
@@ -194,26 +186,7 @@ public:
         GREETING_MALE
     };
 private:
-    VclPtr<FixedText>              m_pAddressElementsFT;
-    VclPtr<DDListBox>              m_pAddressElementsLB;
-
-    VclPtr<PushButton>             m_pInsertFieldIB;
-    VclPtr<PushButton>             m_pRemoveFieldIB;
-
-    VclPtr<FixedText>              m_pDragFT;
-    VclPtr<AddressMultiLineEdit>   m_pDragED;
-    VclPtr<PushButton>             m_pUpIB;
-    VclPtr<PushButton>             m_pLeftIB;
-    VclPtr<PushButton>             m_pRightIB;
-    VclPtr<PushButton>             m_pDownIB;
-
-    VclPtr<FixedText>              m_pFieldFT;
-    VclPtr<ComboBox>               m_pFieldCB;
     TextFilter              m_aTextFilter;
-
-    VclPtr<SwAddressPreview>       m_pPreviewWIN;
-
-    VclPtr<OKButton>               m_pOK;
 
     std::vector<OUString>     m_aSalutations;
     std::vector<OUString>     m_aPunctuations;
@@ -225,54 +198,87 @@ private:
     SwMailMergeConfigItem&  m_rConfigItem;
     DialogType              m_eType;
 
-    DECL_LINK(OKHdl_Impl, Button*, void);
-    DECL_LINK(ListBoxSelectHdl_Impl, SvTreeListBox*, void);
-    DECL_LINK(EditModifyHdl_Impl, Edit&, void);
-    DECL_LINK(ImageButtonHdl_Impl, Button*, void);
-    DECL_LINK(SelectionChangedHdl_Impl, AddressMultiLineEdit&, void);
-    DECL_LINK(FieldChangeHdl_Impl, Edit&, void);
-    DECL_LINK(FieldChangeComboBoxHdl_Impl, ComboBox&, void);
+    Idle m_aSelectionChangedIdle;
 
-    bool            HasItem_Impl(sal_Int32 nUserData);
-    sal_Int32       GetSelectedItem_Impl();
+    std::unique_ptr<weld::Label> m_xAddressElementsFT;
+    std::unique_ptr<weld::TreeView> m_xAddressElementsLB;
+    std::unique_ptr<weld::Button> m_xInsertFieldIB;
+    std::unique_ptr<weld::Button> m_xRemoveFieldIB;
+    std::unique_ptr<weld::Label> m_xDragFT;
+    std::unique_ptr<weld::Button> m_xUpIB;
+    std::unique_ptr<weld::Button> m_xLeftIB;
+    std::unique_ptr<weld::Button> m_xRightIB;
+    std::unique_ptr<weld::Button> m_xDownIB;
+    std::unique_ptr<weld::Label> m_xFieldFT;
+    std::unique_ptr<weld::ComboBox> m_xFieldCB;
+    std::unique_ptr<weld::Button> m_xOK;
+    std::unique_ptr<SwAddressPreview> m_xPreview;
+    std::unique_ptr<weld::CustomWeld> m_xPreviewWIN;
+    std::unique_ptr<AddressMultiLineEdit> m_xDragED;
+    std::unique_ptr<weld::CustomWeld> m_xDragWIN;
+
+    DECL_LINK(OKHdl_Impl, weld::Button&, void);
+    DECL_LINK(ListBoxSelectHdl_Impl, weld::TreeView&, void);
+    DECL_LINK(EditModifyHdl_Impl, AddressMultiLineEdit&, void);
+    DECL_LINK(ImageButtonHdl_Impl, weld::Button&, void);
+    DECL_LINK(SelectionChangedHdl_Impl, bool, void);
+    DECL_LINK(FieldChangeComboBoxHdl_Impl, weld::ComboBox&, void);
+    DECL_LINK(TextFilterHdl, OUString&, bool);
+    DECL_LINK(SelectionChangedIdleHdl, Timer*, void);
+
+    sal_Int32       GetSelectedItem_Impl() const;
     void            UpdateImageButtons_Impl();
 
 public:
-    SwCustomizeAddressBlockDialog(vcl::Window* pParent, SwMailMergeConfigItem& rConfig, DialogType);
+    SwCustomizeAddressBlockDialog(weld::Widget* pParent, SwMailMergeConfigItem& rConfig, DialogType);
     virtual ~SwCustomizeAddressBlockDialog() override;
-    virtual void dispose() override;
 
-    void            SetAddress(const OUString& rAddress);
-    OUString GetAddress();
+    bool SetCursorLogicPosition(const Point& rPosition);
+    void UpdateFields();
+
+    // for dragging from the TreeViews, return the active source
+    weld::TreeView* get_drag_source() const { return m_xAddressElementsLB->get_drag_source(); }
+    bool            HasItem(sal_Int32 nUserData);
+
+    void SetAddress(const OUString& rAddress);
+    OUString GetAddress() const;
 };
 
 class SwAssignFieldsControl;
-class SwAssignFieldsDialog : public SfxModalDialog
+class SwAssignFieldsDialog : public SfxDialogController
 {
-    VclPtr<FixedText>               m_pMatchingFI;
-    VclPtr<SwAssignFieldsControl>   m_pFieldsControl;
-
-    VclPtr<FixedText>               m_pPreviewFI;
-    VclPtr<SwAddressPreview>        m_pPreviewWIN;
-
-    VclPtr<OKButton>                m_pOK;
-
     OUString                m_sNone;
     OUString                m_rPreviewString;
 
     SwMailMergeConfigItem&  m_rConfigItem;
 
+    std::unique_ptr<SwAddressPreview> m_xPreview;
+    std::unique_ptr<weld::Label> m_xMatchingFI;
+    std::unique_ptr<weld::Label> m_xAddressTitle;
+    std::unique_ptr<weld::Label> m_xMatchTitle;
+    std::unique_ptr<weld::Label> m_xPreviewTitle;
+    std::unique_ptr<weld::Label> m_xPreviewFI;
+    std::unique_ptr<weld::Button> m_xOK;
+    std::unique_ptr<weld::CustomWeld> m_xPreviewWin;
+    std::unique_ptr<SwAssignFieldsControl> m_xFieldsControl;
+
+    std::unique_ptr<weld::SizeGroup> m_xLabelGroup;
+    std::unique_ptr<weld::SizeGroup> m_xComboGroup;
+    std::unique_ptr<weld::SizeGroup> m_xPreviewGroup;
+
     css::uno::Sequence< OUString > CreateAssignments();
-    DECL_LINK(OkHdl_Impl, Button*, void);
+    DECL_LINK(OkHdl_Impl, weld::Button&, void);
     DECL_LINK(AssignmentModifyHdl_Impl, LinkParamNone*, void);
 
 public:
-    SwAssignFieldsDialog(vcl::Window* pParent,
+    SwAssignFieldsDialog(weld::Window* pParent,
                 SwMailMergeConfigItem& rConfigItem,
                 const OUString& rPreview,
                 bool bIsAddressBlock);
+
+    void ConnectSizeGroups(int nLabelWidth, int nComboBoxWidth, int nPreviewWidth);
+
     virtual ~SwAssignFieldsDialog() override;
-    virtual void dispose() override;
 };
 #endif
 

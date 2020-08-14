@@ -40,15 +40,21 @@ struct SvXMLItemMapEntry
 {
     sal_uInt16 nNameSpace;      // declares the Namespace in which this item
                                 // exists
-    enum ::xmloff::token::XMLTokenEnum eLocalName;
-                                // the local name for the item inside
-                                // the Namespace (as an XMLTokenEnum)
     sal_uInt16 nWhichId;        // the WhichId to identify the item
                                 // in the pool
+    enum ::xmloff::token::XMLTokenEnum const eLocalName;
+                                // the local name for the item inside
+                                // the Namespace (as an XMLTokenEnum)
     sal_uInt32 nMemberId;       // the memberid specifies which part
                                 // of the item should be imported or
                                 // exported with this Namespace
                                 // and localName
+    SvXMLItemMapEntry(
+        sal_uInt16 nameSpace,
+        enum ::xmloff::token::XMLTokenEnum localName,
+        sal_uInt16 whichId,
+        sal_uInt32 memberId)
+    : nNameSpace(nameSpace), nWhichId(whichId), eLocalName(localName), nMemberId(memberId) {}
 };
 
 class SvXMLItemMapEntries_impl;
@@ -56,9 +62,8 @@ class SvXMLItemMapEntries_impl;
 /** this class manages an array of SvXMLItemMapEntry. It is
     used for optimizing the static array on startup of import
     or export */
-class SvXMLItemMapEntries : public SvRefBase
+class SvXMLItemMapEntries final : public SvRefBase
 {
-protected:
     std::unique_ptr<SvXMLItemMapEntries_impl> mpImpl;
 
 public:

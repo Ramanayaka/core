@@ -18,13 +18,14 @@
  */
 
 #include <sfx2/sidebar/Panel.hxx>
-#include <sfx2/sidebar/PanelTitleBar.hxx>
-#include <sfx2/sidebar/PanelDescriptor.hxx>
+#include <sidebar/PanelTitleBar.hxx>
+#include <sidebar/PanelDescriptor.hxx>
 #include <sfx2/sidebar/Theme.hxx>
-#include <sfx2/sidebar/Paint.hxx>
+#include <sidebar/Paint.hxx>
 #include <sfx2/sidebar/ResourceManager.hxx>
 
 #include <sfx2/sidebar/SidebarController.hxx>
+#include <tools/json_writer.hxx>
 
 
 #ifdef DEBUG
@@ -32,17 +33,15 @@
 #include <sfx2/sidebar/Deck.hxx>
 #endif
 
-#include <tools/svborder.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-
-#include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/ui/XToolPanel.hpp>
+#include <com/sun/star/ui/XSidebarPanel.hpp>
+#include <com/sun/star/ui/XUIElement.hpp>
 
 using namespace css;
 using namespace css::uno;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 Panel::Panel(const PanelDescriptor& rPanelDescriptor,
              vcl::Window* pParentWindow,
@@ -58,13 +57,12 @@ Panel::Panel(const PanelDescriptor& rPanelDescriptor,
     , mxElement()
     , mxPanelComponent()
     , mbIsExpanded(bIsInitiallyExpanded)
+    , mbLurking(false)
     , maDeckLayoutTrigger(rDeckLayoutTrigger)
     , maContextAccess(rContextAccess)
     , mxFrame(rxFrame)
 {
-#ifdef DEBUG
-    SetText(OUString("Panel"));
-#endif
+    SetText(rPanelDescriptor.msTitle);
 }
 
 Panel::~Panel()
@@ -73,9 +71,24 @@ Panel::~Panel()
     assert(!mpTitleBar);
 }
 
+void Panel::SetLurkMode(bool bLurk)
+{
+    // cf. DeckLayouter
+    mbLurking = bLurk;
+}
+
 void Panel::ApplySettings(vcl::RenderContext& rRenderContext)
 {
     rRenderContext.SetBackground(Theme::GetPaint(Theme::Paint_PanelBackground).GetWallpaper());
+}
+
+void Panel::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
+{
+    if (!IsLurking())
+    {
+        vcl::Window::DumpAsPropertyTree(rJsonWriter);
+        rJsonWriter.put("type", "panel");
+    }
 }
 
 void Panel::dispose()
@@ -90,7 +103,7 @@ void Panel::dispose()
     }
 
     {
-        Reference<lang::XComponent> xComponent (GetElementWindow(), UNO_QUERY);
+        Reference<lang::XComponent> xComponent = GetElementWindow();
         if (xComponent.is())
             xComponent->dispose();
     }
@@ -100,7 +113,7 @@ void Panel::dispose()
     vcl::Window::dispose();
 }
 
-VclPtr<PanelTitleBar> Panel::GetTitleBar() const
+VclPtr<PanelTitleBar> const & Panel::GetTitleBar() const
 {
     return mpTitleBar;
 }
@@ -118,24 +131,24 @@ void Panel::SetExpanded (const bool bIsExpanded)
 {
     SidebarController* pSidebarController = SidebarController::GetSidebarControllerForFrame(mxFrame);
 
-    if (mbIsExpanded != bIsExpanded)
-    {
-        mbIsExpanded = bIsExpanded;
-        maDeckLayoutTrigger();
+    if (mbIsExpanded == bIsExpanded)
+        return;
 
-        if (maContextAccess && pSidebarController)
-        {
-            pSidebarController->GetResourceManager()->StorePanelExpansionState(
-                msPanelId,
-                bIsExpanded,
-                maContextAccess());
-        }
+    mbIsExpanded = bIsExpanded;
+    maDeckLayoutTrigger();
+
+    if (maContextAccess && pSidebarController)
+    {
+        pSidebarController->GetResourceManager()->StorePanelExpansionState(
+            msPanelId,
+            bIsExpanded,
+            maContextAccess());
     }
 }
 
 bool Panel::HasIdPredicate (const OUString& rsId) const
 {
-    return msPanelId.equals(rsId);
+    return msPanelId == rsId;
 }
 
 void Panel::Resize()
@@ -169,6 +182,6 @@ Reference<awt::XWindow> Panel::GetElementWindow()
     return nullptr;
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

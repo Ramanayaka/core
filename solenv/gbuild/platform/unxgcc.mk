@@ -42,12 +42,20 @@ gb_CFLAGS := \
 	-Wdeclaration-after-statement \
 	-Wshadow \
 
+# At least libstdc++ (which is approximated here with !HAVE_LIBCXX) needs -pthread when including
+# various C++ headers like <thread>, see <https://gcc.gnu.org/onlinedocs/gcc-8.3.0/libstdc++/manual/
+# manual/using.html#manual.intro.using.flags>:
+ifeq ($(HAVE_LIBCXX),)
+gb_CXX_LINKFLAGS := -pthread
+endif
+
 gb_CXXFLAGS := \
 	$(gb_CXXFLAGS_COMMON) \
 	-fPIC \
 	-Wshadow \
 	-Woverloaded-virtual \
 	$(CXXFLAGS_CXX11) \
+	$(gb_CXX_LINKFLAGS) \
 
 
 # enable debug STL
@@ -75,24 +83,11 @@ gb_LinkTarget_LDFLAGS += \
 endif
 
 ifneq ($(HAVE_LD_BSYMBOLIC_FUNCTIONS),)
-gb_LinkTarget_LDFLAGS += \
-	-Wl,--dynamic-list-cpp-new \
-	-Wl,--dynamic-list-cpp-typeinfo \
-	-Wl,-Bsymbolic-functions \
-
+gb_LinkTarget_LDFLAGS += -Wl,-Bsymbolic-functions
 endif
 
-ifneq ($(gb_DEBUGLEVEL),0)
-gb_LINKEROPTFLAGS :=
-else
 gb_LINKEROPTFLAGS := -Wl,-O1
-endif
-
-ifeq ($(gb_SYMBOL),$(true))
-gb_LINKERSTRIPDEBUGFLAGS :=
-else
 gb_LINKERSTRIPDEBUGFLAGS := -Wl,-S
-endif
 
 # LinkTarget class
 
@@ -120,13 +115,13 @@ gb_LinkTarget_CXXFLAGS := $(gb_CXXFLAGS)
 # contains .c sources:
 define gb_LinkTarget__command_dynamiclink
 $(call gb_Helper_abbreviate_dirs,\
-	$(if $(CXXOBJECTS)$(GENCXXOBJECTS)$(EXTRAOBJECTLISTS)$(filter-out XTRUE,X$(ENABLE_RUNTIME_OPTIMIZATIONS)),$(gb_CXX),$(gb_CC)) \
+	$(if $(CXXOBJECTS)$(GENCXXOBJECTS)$(EXTRAOBJECTLISTS)$(filter-out XTRUE,X$(ENABLE_RUNTIME_OPTIMIZATIONS)),$(or $(T_CXX),$(gb_CXX)) $(gb_CXX_LINKFLAGS),$(or $(T_CC),$(gb_CC))) \
 		$(if $(filter Library CppunitTest,$(TARGETTYPE)),$(gb_Library_TARGETTYPEFLAGS)) \
 		$(gb_LTOFLAGS) \
 		$(if $(SOVERSIONSCRIPT),-Wl$(COMMA)--soname=$(notdir $(1)) \
 			-Wl$(COMMA)--version-script=$(SOVERSIONSCRIPT)) \
 		$(subst \d,$$,$(RPATH)) \
-		$(T_LDFLAGS) \
+		$(T_USE_LD) $(T_LDFLAGS) \
 		$(foreach object,$(COBJECTS),$(call gb_CObject_get_target,$(object))) \
 		$(foreach object,$(CXXOBJECTS),$(call gb_CxxObject_get_target,$(object))) \
 		$(foreach object,$(ASMOBJECTS),$(call gb_AsmObject_get_target,$(object))) \
@@ -138,11 +133,13 @@ $(call gb_Helper_abbreviate_dirs,\
 		    $(patsubst lib%.a,-l%,$(patsubst lib%.so,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(LINKED_LIBS),$(call gb_Library_get_filename,$(lib)))))) \
 		    $(foreach lib,$(LINKED_STATIC_LIBS),$(call gb_StaticLibrary_get_target,$(lib))) \
 		    $(T_LIBS) \
+		    $(if $(CXXOBJECTS)$(GENCXXOBJECTS)$(EXTRAOBJECTLISTS)$(filter-out XTRUE,X$(ENABLE_RUNTIME_OPTIMIZATIONS)),$(T_STDLIBS_CXX)) \
 		    -Wl$(COMMA)--end-group \
 		    , \
 		    -Wl$(COMMA)--start-group \
 		    $(foreach lib,$(LINKED_STATIC_LIBS),$(call gb_StaticLibrary_get_target,$(lib))) \
 		    $(T_LIBS) \
+		    $(if $(CXXOBJECTS)$(GENCXXOBJECTS)$(EXTRAOBJECTLISTS)$(filter-out XTRUE,X$(ENABLE_RUNTIME_OPTIMIZATIONS)),$(T_STDLIBS_CXX)) \
 		    -Wl$(COMMA)--end-group \
 		    -Wl$(COMMA)--no-as-needed \
 		    $(patsubst lib%.a,-l%,$(patsubst lib%.so,-l%,$(patsubst %.$(gb_Library_UDK_MAJORVER),%,$(foreach lib,$(LINKED_LIBS),$(call gb_Library_get_filename,$(lib)))))) \
@@ -174,9 +171,11 @@ endef
 
 define gb_LinkTarget__command
 $(call gb_Output_announce,$(2),$(true),LNK,4)
+	$(call gb_Trace_StartRange,$(2),LNK)
 $(if $(filter CppunitTest Executable,$(TARGETTYPE)),$(call gb_LinkTarget__command_dynamiclink,$(1),$(2)))
 $(if $(filter Library,$(TARGETTYPE)),$(if $(filter TRUE,$(DISABLE_DYNLOADING)),$(call gb_LinkTarget__command_staticlink,$(1)),$(call gb_LinkTarget__command_dynamiclink,$(1),$(2))))
 $(if $(filter StaticLibrary,$(TARGETTYPE)),$(call gb_LinkTarget__command_staticlink,$(1)))
+	$(call gb_Trace_EndRange,$(2),LNK)
 endef
 
 
@@ -379,14 +378,16 @@ endif
 
 define gb_UIMenubarTarget__command
 $(call gb_Output_announce,$(2),$(true),UIM,1)
+$(call gb_Trace_StartRange,$(2),UIM)
 cp $(3) $(1)
+$(call gb_Trace_EndRange,$(2),UIM)
 
 endef
 
 gb_UIMenubarTarget_UIMenubarTarget_platform :=
 
 # Python
-gb_Python_PRECOMMAND := $(gb_Helper_set_ld_path) PYTHONHOME="$(INSTDIR)/program/python-core-$(PYTHON_VERSION)" PYTHONPATH="$(INSTDIR)/program/python-core-$(PYTHON_VERSION)/lib:$(INSTDIR)/program/python-core-$(PYTHON_VERSION)/lib/lib-dynload"
+gb_Python_PRECOMMAND := $(gb_Helper_set_ld_path) PYTHONHOME="$(INSTDIR)/program/python-core-$(PYTHON_VERSION)" PYTHONPATH="$${PYPATH:+$$PYPATH:}$(INSTDIR)/program/python-core-$(PYTHON_VERSION)/lib:$(INSTDIR)/program/python-core-$(PYTHON_VERSION)/lib/lib-dynload"
 gb_Python_INSTALLED_EXECUTABLE := /bin/sh $(INSTROOT)/program/python
 # this is passed to gdb as executable when running tests
 gb_Python_INSTALLED_EXECUTABLE_GDB := $(INSTROOT)/program/python.bin

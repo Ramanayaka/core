@@ -19,18 +19,16 @@
 
 #include <vcl/svapp.hxx>
 #include <svl/zforlist.hxx>
+#include <osl/diagnose.h>
 
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 
-#include "cfgids.hxx"
-#include "docoptio.hxx"
-#include "rechead.hxx"
-#include "scresid.hxx"
-#include "sc.hrc"
-#include "miscuno.hxx"
-#include "global.hxx"
-#include "globstr.hrc"
+#include <docoptio.hxx>
+#include <rechead.hxx>
+#include <sc.hrc>
+#include <miscuno.hxx>
+#include <global.hxx>
 
 using namespace utl;
 using namespace com::sun::star::uno;
@@ -52,32 +50,6 @@ static sal_uInt16 lcl_GetDefaultTabDist()
 ScDocOptions::ScDocOptions()
 {
     ResetDocOptions();
-}
-
-ScDocOptions::ScDocOptions( const ScDocOptions& rCpy )
-        :   fIterEps( rCpy.fIterEps ),
-            nIterCount( rCpy.nIterCount ),
-            nPrecStandardFormat( rCpy.nPrecStandardFormat ),
-            nDay( rCpy.nDay ),
-            nMonth( rCpy.nMonth ),
-            nYear( rCpy.nYear ),
-            nYear2000( rCpy.nYear2000 ),
-            nTabDistance( rCpy.nTabDistance ),
-            eFormulaSearchType( rCpy.eFormulaSearchType ),
-            bIsIgnoreCase( rCpy.bIsIgnoreCase ),
-            bIsIter( rCpy.bIsIter ),
-            bCalcAsShown( rCpy.bCalcAsShown ),
-            bMatchWholeCell( rCpy.bMatchWholeCell ),
-            bDoAutoSpell( rCpy.bDoAutoSpell ),
-            bLookUpColRowNames( rCpy.bLookUpColRowNames ),
-            bFormulaRegexEnabled( rCpy.bFormulaRegexEnabled ),
-            bFormulaWildcardsEnabled( rCpy.bFormulaWildcardsEnabled ),
-            bWriteCalcConfig( rCpy.bWriteCalcConfig )
-{
-}
-
-ScDocOptions::~ScDocOptions()
-{
 }
 
 void ScDocOptions::ResetDocOptions()
@@ -144,12 +116,6 @@ ScTpCalcItem::ScTpCalcItem( sal_uInt16 nWhichP, const ScDocOptions& rOpt )
 {
 }
 
-ScTpCalcItem::ScTpCalcItem( const ScTpCalcItem& rItem )
-    :   SfxPoolItem ( rItem ),
-        theOptions  ( rItem.theOptions )
-{
-}
-
 ScTpCalcItem::~ScTpCalcItem()
 {
 }
@@ -163,7 +129,7 @@ bool ScTpCalcItem::operator==( const SfxPoolItem& rItem ) const
     return ( theOptions == rPItem.theOptions );
 }
 
-SfxPoolItem* ScTpCalcItem::Clone( SfxItemPool * ) const
+ScTpCalcItem* ScTpCalcItem::Clone( SfxItemPool * ) const
 {
     return new ScTpCalcItem( *this );
 }
@@ -248,22 +214,22 @@ ScDocCfg::ScDocCfg() :
                         SetIter( ScUnoHelpFunctions::GetBoolFromAny( pValues[nProp] ) );
                         break;
                     case SCCALCOPT_ITER_STEPS:
-                        if (pValues[nProp] >>= nIntVal) SetIterCount( (sal_uInt16) nIntVal );
+                        if (pValues[nProp] >>= nIntVal) SetIterCount( static_cast<sal_uInt16>(nIntVal) );
                         break;
                     case SCCALCOPT_ITER_MINCHG:
                         if (pValues[nProp] >>= fDoubleVal) SetIterEps( fDoubleVal );
                         break;
                     case SCCALCOPT_DATE_DAY:
-                        if (pValues[nProp] >>= nIntVal) nDateDay = (sal_uInt16) nIntVal;
+                        if (pValues[nProp] >>= nIntVal) nDateDay = static_cast<sal_uInt16>(nIntVal);
                         break;
                     case SCCALCOPT_DATE_MONTH:
-                        if (pValues[nProp] >>= nIntVal) nDateMonth = (sal_uInt16) nIntVal;
+                        if (pValues[nProp] >>= nIntVal) nDateMonth = static_cast<sal_uInt16>(nIntVal);
                         break;
                     case SCCALCOPT_DATE_YEAR:
-                        if (pValues[nProp] >>= nIntVal) nDateYear = (sal_Int16) nIntVal;
+                        if (pValues[nProp] >>= nIntVal) nDateYear = static_cast<sal_Int16>(nIntVal);
                         break;
                     case SCCALCOPT_DECIMALS:
-                        if (pValues[nProp] >>= nIntVal) SetStdPrecision( (sal_uInt16) nIntVal );
+                        if (pValues[nProp] >>= nIntVal) SetStdPrecision( static_cast<sal_uInt16>(nIntVal) );
                         break;
                     case SCCALCOPT_CASESENSITIVE:
                         // content is reversed
@@ -309,7 +275,7 @@ ScDocCfg::ScDocCfg() :
                     case SCDOCLAYOUTOPT_TABSTOP:
                         // TabDistance in ScDocOptions is in twips
                         if (pValues[nProp] >>= nIntVal)
-                            SetTabDistance( (sal_uInt16) HMMToTwips( nIntVal ) );
+                            SetTabDistance( static_cast<sal_uInt16>(HMMToTwips( nIntVal )) );
                         break;
                 }
             }
@@ -336,22 +302,22 @@ IMPL_LINK_NOARG(ScDocCfg, CalcCommitHdl, ScLinkConfigItem&, void)
                 pValues[nProp] <<= IsIter();
                 break;
             case SCCALCOPT_ITER_STEPS:
-                pValues[nProp] <<= (sal_Int32) GetIterCount();
+                pValues[nProp] <<= static_cast<sal_Int32>(GetIterCount());
                 break;
             case SCCALCOPT_ITER_MINCHG:
                 pValues[nProp] <<= GetIterEps();
                 break;
             case SCCALCOPT_DATE_DAY:
-                pValues[nProp] <<= (sal_Int32) nDateDay;
+                pValues[nProp] <<= static_cast<sal_Int32>(nDateDay);
                 break;
             case SCCALCOPT_DATE_MONTH:
-                pValues[nProp] <<= (sal_Int32) nDateMonth;
+                pValues[nProp] <<= static_cast<sal_Int32>(nDateMonth);
                 break;
             case SCCALCOPT_DATE_YEAR:
-                pValues[nProp] <<= (sal_Int32) nDateYear;
+                pValues[nProp] <<= static_cast<sal_Int32>(nDateYear);
                 break;
             case SCCALCOPT_DECIMALS:
-                pValues[nProp] <<= (sal_Int32) GetStdPrecision();
+                pValues[nProp] <<= static_cast<sal_Int32>(GetStdPrecision());
                 break;
             case SCCALCOPT_CASESENSITIVE:
                 // content is reversed
@@ -391,7 +357,7 @@ IMPL_LINK_NOARG(ScDocCfg, LayoutCommitHdl, ScLinkConfigItem&, void)
                 //  TabDistance in ScDocOptions is in twips
                 //  use only even numbers, so defaults don't get changed
                 //  by modifying other settings in the same config item
-                pValues[nProp] <<= (sal_Int32) TwipsToEvenHMM( GetTabDistance() );
+                pValues[nProp] <<= static_cast<sal_Int32>(TwipsToEvenHMM( GetTabDistance() ));
                 break;
         }
     }

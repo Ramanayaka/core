@@ -20,20 +20,23 @@
 #ifndef INCLUDED_SD_INC_OUTLINER_HXX
 #define INCLUDED_SD_INC_OUTLINER_HXX
 
-#include <svx/svdobj.hxx>
 #include <svx/svdoutl.hxx>
 #include "pres.hxx"
 #include "OutlinerIterator.hxx"
 #include <editeng/SpellPortions.hxx>
 #include <memory>
 
-class Dialog;
 class SdrObject;
 class SdrTextObj;
 class SdDrawDocument;
 
-namespace sd {
+namespace weld
+{
+class Window;
+}
 
+namespace sd
+{
 class View;
 class ViewShell;
 class Window;
@@ -43,13 +46,18 @@ struct SearchSelection
 {
     /// 0-based index of the page that has the selection.
     int m_nPage;
+
     /**
      * List of selection rectangles in twips -- multiple rectangles only in
      * case the selection spans over more layout lines.
      */
     OString m_aRectangles;
 
-    SearchSelection(int nPage, const OString& rRectangles);
+    SearchSelection(int nPage, const OString& rRectangles)
+        : m_nPage(nPage)
+        , m_aRectangles(rRectangles)
+    {
+    }
 
     bool operator==(const SearchSelection& rOther) const
     {
@@ -58,7 +66,6 @@ struct SearchSelection
 };
 
 } // end of namespace sd
-
 
 /** The main purpose of this class is searching and replacing as well as
     spelling of impress documents.  The main part of both tasks lies in
@@ -112,8 +119,7 @@ struct SearchSelection
     queried.  This is only sufficient for searching the outline view.
     </p>
 */
-class SdOutliner
-    : public SdrOutliner
+class SdOutliner : public SdrOutliner
 {
 public:
     friend class ::sd::outliner::OutlinerContainer;
@@ -129,7 +135,7 @@ public:
             <const>OutlinerMode::OutlineView</const> are defined in
             editeng/outliner.hxx.
     */
-    SdOutliner( SdDrawDocument* pDoc, OutlinerMode nMode );
+    SdOutliner(SdDrawDocument* pDoc, OutlinerMode nMode);
     virtual ~SdOutliner() override;
     /// Forbid copy construction and copy assignment
     SdOutliner(const Outliner&) = delete;
@@ -154,7 +160,7 @@ public:
             indicated by user input to the search dialog).  A </sal_False> value
             indicates that another call to this method is required.
     */
-    bool StartSearchAndReplace (const SvxSearchItem* pSearchItem);
+    bool StartSearchAndReplace(const SvxSearchItem* pSearchItem);
 
     /** Iterate over the sentences in all text shapes and stop at the
         next sentence with spelling errors. While doing so the view
@@ -172,8 +178,8 @@ public:
 
     /** Starts the text conversion (hangul/hanja or Chinese simplified/traditional)
     for the current viewshell */
-    void StartConversion( LanguageType nSourceLanguage,  LanguageType nTargetLanguage,
-                const vcl::Font *pTargetFont, sal_Int32 nOptions, bool bIsInteractive );
+    void StartConversion(LanguageType nSourceLanguage, LanguageType nTargetLanguage,
+                         const vcl::Font* pTargetFont, sal_Int32 nOptions, bool bIsInteractive);
 
     /** This is called internally when text conversion is started.
         The position of current view mode/page/object/caret position
@@ -184,11 +190,9 @@ public:
     /** Release all resources that have been created during the conversion */
     void EndConversion();
 
-    enum ChangeHint { CH_VIEW_SHELL_INVALID, CH_VIEW_SHELL_VALID };
-
-    int         GetIgnoreCurrentPageChangesLevel() const     { return mnIgnoreCurrentPageChangesLevel; };
-    void        IncreIgnoreCurrentPageChangesLevel()     { mnIgnoreCurrentPageChangesLevel++; };
-    void        DecreIgnoreCurrentPageChangesLevel()     { mnIgnoreCurrentPageChangesLevel--; };
+    int GetIgnoreCurrentPageChangesLevel() const { return mnIgnoreCurrentPageChangesLevel; };
+    void IncreIgnoreCurrentPageChangesLevel() { mnIgnoreCurrentPageChangesLevel++; };
+    void DecreIgnoreCurrentPageChangesLevel() { mnIgnoreCurrentPageChangesLevel--; };
     SdDrawDocument* GetDoc() const { return mpDrawDocument; }
 
 private:
@@ -197,7 +201,12 @@ private:
 
     /// Specifies whether to search and replace, to spell check or to do a
     /// text conversion.
-    enum mode {SEARCH, SPELL, TEXT_CONVERSION} meMode;
+    enum mode
+    {
+        SEARCH,
+        SPELL,
+        TEXT_CONVERSION
+    } meMode;
 
     /// The view which displays the searched objects.
     ::sd::View* mpView;
@@ -207,7 +216,7 @@ private:
     */
     std::weak_ptr<::sd::ViewShell> mpWeakViewShell;
     /// This window contains the view.
-    VclPtr< ::sd::Window> mpWindow;
+    VclPtr<::sd::Window> mpWindow;
     /// The document on whose objects and pages this class operates.
     SdDrawDocument* mpDrawDocument;
 
@@ -260,7 +269,7 @@ private:
         selection.  This copy is necessary because during the search
         process the mark list is modified.
     */
-    ::std::vector<SdrObjectWeakRef> maMarkListCopy;
+    ::std::vector<tools::WeakReference<SdrObject>> maMarkListCopy;
 
     /** Current object that may be a text object.  The object pointer to
         corresponds to <member>mnObjIndex</member>.  While iterating over the
@@ -277,7 +286,7 @@ private:
     SdrObject* mpFirstObj;
 
     /// Candidate for being searched/spell checked.
-    SdrTextObj* mpTextObj;
+    SdrTextObj* mpSearchSpellTextObj;
 
     /// Current text to be searched/spelled inside the current text object
     sal_Int32 mnText;
@@ -335,7 +344,7 @@ private:
             objects.  If it differs from the current direction the iterator
             is reversed.
     */
-    void Initialize (bool bDirectionIsForward);
+    void Initialize(bool bDirectionIsForward);
 
     /** Do search and replace for whole document.
     */
@@ -350,6 +359,10 @@ private:
             another call to this method is required (</sal_False>).
     */
     bool SearchAndReplaceOnce(std::vector<::sd::SearchSelection>* pSelections = nullptr);
+
+    void sendLOKSearchResultCallback(std::shared_ptr<sd::ViewShell>& pViewShell,
+                                     OutlinerView* pOutlinerView,
+                                     std::vector<sd::SearchSelection>* pSelections);
 
     /** Detect changes of the document or view and react accordingly.  Such
         changes may occur because different calls to
@@ -403,13 +416,6 @@ private:
     */
     bool ShowWrapArroundDialog();
 
-    /** Check whether the object pointed to by the iterator is a valid text
-        object.
-        @param aPosition
-            The object for which to test whether it is a valid text object.
-    */
-    static bool IsValidTextObject (const ::sd::outliner::IteratorPosition& rPosition);
-
     /** Put text of current text object into outliner so that the text can
         be searched/spell checked.
     */
@@ -436,7 +442,7 @@ private:
         @param ePageKind
             Specifies the new view mode.
     */
-    void SetViewMode (PageKind ePageKind);
+    void SetViewMode(PageKind ePageKind);
 
     /** Switch to the page or master page specified by the
         <member>mnPage</member> index.  Master page mode is specified by
@@ -446,11 +452,11 @@ private:
         @param nPageIndex
             The new page index.
     */
-    void SetPage (EditMode eEditMode, sal_uInt16 nPageIndex);
+    void SetPage(EditMode eEditMode, sal_uInt16 nPageIndex);
 
     /** Switch on edit mode for the currently selected text object.
     */
-    void EnterEditMode (bool bGrabFocus);
+    void EnterEditMode(bool bGrabFocus);
 
     /** Return the position at which a new search is started with respect to
         the search direction as specified by the argument.
@@ -458,7 +464,7 @@ private:
             The position mentioned above in form of a selection with start
             equals end.
     */
-    ESelection GetSearchStartPosition();
+    ESelection GetSearchStartPosition() const;
 
     /** Detect whether there exists a previous match.  Note that only the
         absence of such a match can be detected reliably.  An existing match
@@ -491,13 +497,13 @@ private:
         @return
             Return a pointer to the <type>SdrObject</type>.
     */
-    SdrObject* SetObject (const ::sd::outliner::IteratorPosition& rPosition);
+    SdrObject* SetObject(const ::sd::outliner::IteratorPosition& rPosition);
 
     /** Use this method when the view shell in which to search has changed.
         It handles i.e. registering at the associated view as selection
         change listener.
     */
-    void SetViewShell (const std::shared_ptr<::sd::ViewShell>& rpViewShell);
+    void SetViewShell(const std::shared_ptr<::sd::ViewShell>& rpViewShell);
 
     /** Activate or deactivate the search in the current selection.  Call
         this method whenever the selection has changed.  This method creates
@@ -516,12 +522,11 @@ private:
     */
     virtual bool SpellNextDocument() override;
 
-    /** Show the given message box and make it modal.  It is assumed that
-        the parent of the given dialog is NULL, i.e. the application
-        window.  This function makes sure that the otherwise non-modal
-        search dialog, if visible, is locked, too.
+    /** Find the right parent to use for a message. This function makes sure
+        that the otherwise non-modal search or spell dialogs, if visible, are
+        locked, too.
     */
-    sal_uInt16 ShowModalMessageBox (Dialog& rMessageBox);
+    weld::Window* GetMessageBoxParent();
 };
 
 #endif

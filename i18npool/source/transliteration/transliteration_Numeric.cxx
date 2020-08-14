@@ -18,24 +18,25 @@
  */
 
 
+#include <com/sun/star/i18n/TransliterationType.hpp>
+
 #include <transliteration_Numeric.hxx>
 #include <nativenumbersupplier.hxx>
-#include <defaultnumberingprovider.hxx>
-#include <comphelper/string.hxx>
 #include <rtl/ref.hxx>
 
+using namespace com::sun::star::i18n;
 using namespace com::sun::star::uno;
 
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 sal_Int16 SAL_CALL transliteration_Numeric::getType()
 {
     return TransliterationType::NUMERIC;
 }
 
-OUString SAL_CALL
-    transliteration_Numeric::folding( const OUString& /*inStr*/, sal_Int32 /*startPos*/, sal_Int32 /*nCount*/, Sequence< sal_Int32 >& /*offset*/ )
+OUString
+    transliteration_Numeric::foldingImpl( const OUString& /*inStr*/, sal_Int32 /*startPos*/, sal_Int32 /*nCount*/, Sequence< sal_Int32 >& /*offset*/, bool )
 {
     throw RuntimeException();
 }
@@ -56,9 +57,9 @@ Sequence< OUString > SAL_CALL
 #define isNumber(c) ((c) >= 0x30 && (c) <= 0x39)
 #define NUMBER_ZERO 0x30
 
-OUString SAL_CALL
+OUString
 transliteration_Numeric::transliterateBullet( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
-        Sequence< sal_Int32 >& offset )
+        Sequence< sal_Int32 >& offset, bool useOffset )
 {
     sal_Int32 number = -1, j = 0, endPos = startPos + nCount;
 
@@ -72,7 +73,8 @@ transliteration_Numeric::transliterateBullet( const OUString& inStr, sal_Int32 s
         offset.realloc(nCount);
 
     for (sal_Int32 i = startPos; i < endPos; i++) {
-        if (i < endPos && isNumber(inStr[i])) {
+        if (isNumber(inStr[i]))
+        {
             if (number == -1) {
                 startPos = i;
                 number = (inStr[i] - NUMBER_ZERO);
@@ -84,7 +86,7 @@ transliteration_Numeric::transliterateBullet( const OUString& inStr, sal_Int32 s
                 if (useOffset)
                     offset[j] = startPos;
                 out[j++] = NUMBER_ZERO;
-            } if (number > tableSize && !recycleSymbol) {
+            } else if (number > tableSize && !recycleSymbol) {
                 for (sal_Int32 k = startPos; k < i; k++) {
                     if (useOffset)
                         offset[j] = k;
@@ -110,12 +112,12 @@ transliteration_Numeric::transliterateBullet( const OUString& inStr, sal_Int32 s
     return OUString( pStr, SAL_NO_ACQUIRE );
 }
 
-OUString SAL_CALL
-transliteration_Numeric::transliterate( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
-        Sequence< sal_Int32 >& offset )
+OUString
+transliteration_Numeric::transliterateImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
+        Sequence< sal_Int32 >& offset, bool useOffset )
 {
     if (tableSize)
-        return transliterateBullet( inStr, startPos, nCount, offset);
+        return transliterateBullet( inStr, startPos, nCount, offset, useOffset);
     else
         return rtl::Reference<NativeNumberSupplierService>(new NativeNumberSupplierService(useOffset))->getNativeNumberString( inStr.copy(startPos, nCount), aLocale, nNativeNumberMode, offset );
 }
@@ -135,6 +137,6 @@ transliteration_Numeric::transliterateChar2Char( sal_Unicode inChar )
         return rtl::Reference<NativeNumberSupplierService>(new NativeNumberSupplierService)->getNativeNumberChar( inChar, aLocale, nNativeNumberMode );
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

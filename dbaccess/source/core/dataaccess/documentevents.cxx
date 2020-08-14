@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "documentevents.hxx"
+#include <documentevents.hxx>
 
 #include <com/sun/star/beans/PropertyValue.hpp>
 
@@ -25,18 +25,12 @@
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/sequence.hxx>
 
-#include <algorithm>
-#include <functional>
-#include <o3tl/functional.hxx>
-
 namespace dbaccess
 {
 
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Any;
     using ::com::sun::star::beans::PropertyValue;
     using ::com::sun::star::container::NoSuchElementException;
-    using ::com::sun::star::lang::WrappedTargetException;
     using ::com::sun::star::lang::IllegalArgumentException;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::uno::Type;
@@ -58,22 +52,22 @@ namespace dbaccess
         const DocumentEvents_Data& operator=(const DocumentEvents_Data&) = delete;
     };
 
-    // helper
-    struct DocumentEventData
-    {
-        const sal_Char* pAsciiEventName;
-        bool            bNeedsSyncNotify;
-    };
+    namespace {
 
-    namespace
-    {
+        // helper
+        struct DocumentEventData
+        {
+            const char* pAsciiEventName;
+            bool        bNeedsSyncNotify;
+        };
+
         const DocumentEventData* lcl_getDocumentEventData()
         {
             static const DocumentEventData s_aData[] = {
                 { "OnCreate",               true  },
                 { "OnLoadFinished",         true  },
-                { "OnNew",                  false },    // compatibility, see http://www.openoffice.org/issues/show_bug.cgi?id=46484
-                { "OnLoad",                 false },    // compatibility, see http://www.openoffice.org/issues/show_bug.cgi?id=46484
+                { "OnNew",                  false },    // compatibility, see https://bz.apache.org/ooo/show_bug.cgi?id=46484
+                { "OnLoad",                 false },    // compatibility, see https://bz.apache.org/ooo/show_bug.cgi?id=46484
                 { "OnSaveAs",               true  },
                 { "OnSaveAsDone",           false },
                 { "OnSaveAsFailed",         false },
@@ -186,7 +180,7 @@ namespace dbaccess
 
         Any aReturn;
         const Sequence< PropertyValue >& rEventDesc( elementPos->second );
-        if ( rEventDesc.getLength() > 0 )
+        if ( rEventDesc.hasElements() )
             aReturn <<= rEventDesc;
         return aReturn;
     }

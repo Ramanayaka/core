@@ -22,20 +22,15 @@
 #include "MNSFolders.hxx"
 #include "MNSINIParser.hxx"
 
-namespace connectivity
+namespace connectivity::mozab
 {
-    namespace mozab
-    {
         ProfileStruct::ProfileStruct()
-            : product(css::mozilla::MozillaProductType_Default)
         {
         }
 
-        ProfileStruct::ProfileStruct(MozillaProductType aProduct,
-                                     const OUString& aProfileName,
+        ProfileStruct::ProfileStruct(const OUString& aProfileName,
                                      const OUString& aProfilePath)
-            : product(aProduct)
-            , profileName(aProfileName)
+            : profileName(aProfileName)
             , profilePath(aProfilePath)
         {
         }
@@ -70,7 +65,7 @@ namespace connectivity
         //Thunderbird and firefox profiles are saved in profiles.ini
         void ProfileAccess::LoadXPToolkitProfiles(MozillaProductType product)
         {
-            sal_Int32 index=(sal_Int32)product;
+            sal_Int32 index=static_cast<sal_Int32>(product);
             ProductStruct &rProduct = m_ProductProfileList[index];
 
             OUString regDir = getRegistryDir(product);
@@ -78,37 +73,33 @@ namespace connectivity
             IniParser parser( profilesIni );
             IniSectionMap &rAllSection = parser.getAllSection();
 
-            IniSectionMap::iterator iBegin = rAllSection.begin();
-            IniSectionMap::const_iterator iEnd = rAllSection.end();
-            for(;iBegin != iEnd;++iBegin)
+            for(auto& rSection : rAllSection)
             {
-                ini_Section *aSection = &(*iBegin).second;
+                ini_Section *aSection = &rSection.second;
                 OUString profileName;
                 OUString profilePath;
                 OUString sIsRelative;
                 OUString sIsDefault;
 
-                for(NameValueList::iterator itor=aSection->lList.begin();
-                    itor != aSection->lList.end();
-                    ++itor)
+                for(auto& rValue : aSection->vVector)
                 {
-                        struct ini_NameValue * aValue = &(*itor);
-                        if ( aValue->sName == "Name" )
-                        {
-                            profileName = aValue->sValue;
-                        }
-                        else if ( aValue->sName == "IsRelative" )
-                        {
-                            sIsRelative = aValue->sValue;
-                        }
-                        else if ( aValue->sName == "Path" )
-                        {
-                            profilePath = aValue->sValue;
-                        }
-                        else if ( aValue->sName == "Default" )
-                        {
-                            sIsDefault = aValue->sValue;
-                        }
+                    struct ini_NameValue * aValue = &rValue;
+                    if ( aValue->sName == "Name" )
+                    {
+                        profileName = aValue->sValue;
+                    }
+                    else if ( aValue->sName == "IsRelative" )
+                    {
+                        sIsRelative = aValue->sValue;
+                    }
+                    else if ( aValue->sName == "Path" )
+                    {
+                        profilePath = aValue->sValue;
+                    }
+                    else if ( aValue->sName == "Default" )
+                    {
+                        sIsDefault = aValue->sValue;
+                    }
                 }
                 if (!(profileName.isEmpty() && profilePath.isEmpty()))
                 {
@@ -128,7 +119,7 @@ namespace connectivity
                         fullProfilePath = profilePath;
                     }
 
-                    rProduct.mProfileList[profileName] = ProfileStruct(product,profileName,fullProfilePath);
+                    rProduct.mProfileList[profileName] = ProfileStruct(profileName,fullProfilePath);
 
                     sal_Int32 isDefault = 0;
                     if (!sIsDefault.isEmpty())
@@ -140,12 +131,22 @@ namespace connectivity
 
                 }
 
+                // Depending on TB versions, some generate "default" profile
+                // others "default-release" profile
+                // See https://support.mozilla.org/gl/questions/1264072
+                // for some background info (the link quotes Firefox but it seems
+                // the same for TB).
+                if (profileName == "default-release")
+                {
+                    rProduct.mCurrentProfileName = profileName;
+                    break;
+                }
             }
         }
 
         OUString ProfileAccess::getProfilePath( css::mozilla::MozillaProductType product, const OUString& profileName )
         {
-            sal_Int32 index=(sal_Int32)product;
+            sal_Int32 index=static_cast<sal_Int32>(product);
             ProductStruct &rProduct = m_ProductProfileList[index];
             if (rProduct.mProfileList.empty() || rProduct.mProfileList.find(profileName) == rProduct.mProfileList.end())
             {
@@ -158,21 +159,19 @@ namespace connectivity
 
         ::sal_Int32 ProfileAccess::getProfileCount( css::mozilla::MozillaProductType product)
         {
-            sal_Int32 index=(sal_Int32)product;
+            sal_Int32 index=static_cast<sal_Int32>(product);
             ProductStruct &rProduct = m_ProductProfileList[index];
             return static_cast< ::sal_Int32 >(rProduct.mProfileList.size());
         }
         ::sal_Int32 ProfileAccess::getProfileList( css::mozilla::MozillaProductType product, css::uno::Sequence< OUString >& list )
         {
-            sal_Int32 index=(sal_Int32)product;
+            sal_Int32 index=static_cast<sal_Int32>(product);
             ProductStruct &rProduct = m_ProductProfileList[index];
             list.realloc(static_cast<sal_Int32>(rProduct.mProfileList.size()));
             sal_Int32 i=0;
-            for(ProfileList::const_iterator itor=rProduct.mProfileList.begin();
-                itor != rProduct.mProfileList.end();
-                ++itor)
+            for(const auto& rEntry : rProduct.mProfileList)
             {
-                const ProfileStruct& rProfile = (*itor).second;
+                const ProfileStruct& rProfile = rEntry.second;
                 list[i] = rProfile.getProfileName();
                 i++;
             }
@@ -182,7 +181,7 @@ namespace connectivity
 
         OUString ProfileAccess::getDefaultProfile( css::mozilla::MozillaProductType product )
         {
-            sal_Int32 index=(sal_Int32)product;
+            sal_Int32 index=static_cast<sal_Int32>(product);
             ProductStruct &rProduct = m_ProductProfileList[index];
             if (!rProduct.mCurrentProfileName.isEmpty())
             {
@@ -197,23 +196,13 @@ namespace connectivity
             const ProfileStruct& rProfile = (*rProduct.mProfileList.begin()).second;
             return rProfile.getProfileName();
         }
-        bool ProfileAccess::isProfileLocked( css::mozilla::MozillaProductType, const OUString& )
-        {
-            return true;
-        }
 
         bool ProfileAccess::getProfileExists( css::mozilla::MozillaProductType product, const OUString& profileName )
         {
-            sal_Int32 index=(sal_Int32)product;
+            sal_Int32 index=static_cast<sal_Int32>(product);
             ProductStruct &rProduct = m_ProductProfileList[index];
-            if (rProduct.mProfileList.empty() || rProduct.mProfileList.find(profileName) == rProduct.mProfileList.end())
-            {
-                return false;
-            }
-            else
-                return true;
+            return rProduct.mProfileList.find(profileName) != rProduct.mProfileList.end();
         }
-    }
 }
 
 

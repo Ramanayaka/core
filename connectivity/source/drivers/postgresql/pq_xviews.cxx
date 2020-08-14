@@ -36,8 +36,10 @@
 
 #include <rtl/ustrbuf.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 
 #include "pq_xviews.hxx"
 #include "pq_xview.hxx"
@@ -52,7 +54,6 @@ using com::sun::star::beans::XPropertySet;
 using com::sun::star::uno::makeAny;
 using com::sun::star::uno::UNO_QUERY;
 using com::sun::star::uno::Reference;
-using com::sun::star::uno::RuntimeException;
 
 using com::sun::star::container::NoSuchElementException;
 
@@ -114,9 +115,7 @@ void Views::refresh()
 
             {
                 m_values.push_back( makeAny( prop ) );
-                OUStringBuffer buf( table.getLength() + schema.getLength() + 1);
-                buf.append( schema + "." + table );
-                map[ buf.makeStringAndClear() ] = viewIndex;
+                map[ schema + "." + table ] = viewIndex;
                 ++viewIndex;
             }
         }
@@ -124,7 +123,9 @@ void Views::refresh()
     }
     catch ( css::sdbc::SQLException & e )
     {
-        throw RuntimeException( e.Message , e.Context );
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException( e.Message,
+                        e.Context, anyEx );
     }
     fire( RefreshedBroadcaster( *this ) );
 }
@@ -147,7 +148,7 @@ void Views::appendByDescriptor(
 
     buf.append( "CREATE VIEW ");
     bufferQuoteQualifiedIdentifier( buf, schema, name, m_pSettings );
-    buf.append(" AS " + command );
+    buf.append(" AS " ).append( command );
 
     stmt->executeUpdate( buf.makeStringAndClear() );
 
@@ -173,7 +174,7 @@ void Views::dropByName( const OUString& elementName )
 void Views::dropByIndex( sal_Int32 index )
 {
     osl::MutexGuard guard( m_xMutex->GetMutex() );
-    if( index < 0 ||  index >= (sal_Int32)m_values.size() )
+    if( index < 0 ||  index >= static_cast<sal_Int32>(m_values.size()) )
     {
         throw css::lang::IndexOutOfBoundsException(
             "VIEWS: Index out of range (allowed 0 to " + OUString::number(m_values.size() -1)
@@ -188,12 +189,9 @@ void Views::dropByIndex( sal_Int32 index )
     set->getPropertyValue( st.SCHEMA_NAME ) >>= schema;
     set->getPropertyValue( st.NAME ) >>= name;
 
-    OUStringBuffer update( 128 );
-    update.append( "DROP VIEW \"" + schema + "\".\"" + name + "\"" );
-
     Reference< XStatement > stmt = m_origin->createStatement( );
 
-    stmt->executeUpdate( update.makeStringAndClear() );
+    stmt->executeUpdate( "DROP VIEW \"" + schema + "\".\"" + name + "\"" );
 }
 
 

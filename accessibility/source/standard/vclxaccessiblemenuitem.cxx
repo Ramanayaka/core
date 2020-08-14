@@ -18,8 +18,6 @@
  */
 
 #include <standard/vclxaccessiblemenuitem.hxx>
-#include <helper/accresmgr.hxx>
-#include <helper/accessiblestrings.hrc>
 #include <toolkit/helper/convert.hxx>
 #include <helper/characterattributeshelper.hxx>
 #include <comphelper/accessiblekeybindinghelper.hxx>
@@ -32,12 +30,14 @@
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <comphelper/sequence.hxx>
+#include <i18nlangtag/languagetag.hxx>
+#include <vcl/event.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/unohelp2.hxx>
 #include <vcl/settings.hxx>
-#include "strings.hxx"
+#include <strings.hxx>
 
 using namespace ::com::sun::star::accessibility;
 using namespace ::com::sun::star::uno;
@@ -47,16 +47,10 @@ using namespace ::com::sun::star;
 using namespace ::comphelper;
 
 
-// class VCLXAccessibleMenuItem
 
 
 VCLXAccessibleMenuItem::VCLXAccessibleMenuItem( Menu* pParent, sal_uInt16 nItemPos, Menu* pMenu )
     :OAccessibleMenuItemComponent( pParent, nItemPos, pMenu )
-{
-}
-
-
-VCLXAccessibleMenuItem::~VCLXAccessibleMenuItem()
 {
 }
 
@@ -157,7 +151,7 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( VCLXAccessibleMenuItem, OAccessibleMenuItemCom
 
 OUString VCLXAccessibleMenuItem::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleMenuItem" );
+    return "com.sun.star.comp.toolkit.AccessibleMenuItem";
 }
 
 
@@ -203,7 +197,7 @@ sal_Bool VCLXAccessibleMenuItem::setCaretPosition( sal_Int32 nIndex )
 
     OExternalLockGuard aGuard( this );
 
-    if ( !implIsValidRange( nIndex, nIndex, implGetText().getLength() ) )
+    if ( !implIsValidRange( nIndex, nIndex, m_sItemText.getLength() ) )
         throw IndexOutOfBoundsException();
 
     return false;
@@ -214,7 +208,7 @@ sal_Unicode VCLXAccessibleMenuItem::getCharacter( sal_Int32 nIndex )
 {
     OExternalLockGuard aGuard( this );
 
-    return OCommonAccessibleText::getCharacter( nIndex );
+    return OCommonAccessibleText::implGetCharacter( implGetText(), nIndex );
 }
 
 
@@ -222,9 +216,7 @@ Sequence< PropertyValue > VCLXAccessibleMenuItem::getCharacterAttributes( sal_In
 {
     OExternalLockGuard aGuard( this );
 
-    OUString sText( implGetText() );
-
-    if ( !implIsValidIndex( nIndex, sText.getLength() ) )
+    if ( !implIsValidIndex( nIndex, m_sItemText.getLength() ) )
         throw IndexOutOfBoundsException();
 
     vcl::Font aFont = Application::GetSettings().GetStyleSettings().GetMenuFont();
@@ -239,7 +231,7 @@ awt::Rectangle VCLXAccessibleMenuItem::getCharacterBounds( sal_Int32 nIndex )
 {
     OExternalLockGuard aGuard( this );
 
-    if ( !implIsValidIndex( nIndex, implGetText().getLength() ) )
+    if ( !implIsValidIndex( nIndex, m_sItemText.getLength() ) )
         throw IndexOutOfBoundsException();
 
     awt::Rectangle aBounds( 0, 0, 0, 0 );
@@ -260,7 +252,7 @@ sal_Int32 VCLXAccessibleMenuItem::getCharacterCount()
 {
     OExternalLockGuard aGuard( this );
 
-    return OCommonAccessibleText::getCharacterCount();
+    return m_sItemText.getLength();
 }
 
 
@@ -288,7 +280,7 @@ OUString VCLXAccessibleMenuItem::getSelectedText()
 {
     OExternalLockGuard aGuard( this );
 
-    return OCommonAccessibleText::getSelectedText();
+    return OUString();
 }
 
 
@@ -296,7 +288,7 @@ sal_Int32 VCLXAccessibleMenuItem::getSelectionStart()
 {
     OExternalLockGuard aGuard( this );
 
-    return OCommonAccessibleText::getSelectionStart();
+    return 0;
 }
 
 
@@ -304,7 +296,7 @@ sal_Int32 VCLXAccessibleMenuItem::getSelectionEnd()
 {
     OExternalLockGuard aGuard( this );
 
-    return OCommonAccessibleText::getSelectionEnd();
+    return 0;
 }
 
 
@@ -312,7 +304,7 @@ sal_Bool VCLXAccessibleMenuItem::setSelection( sal_Int32 nStartIndex, sal_Int32 
 {
     OExternalLockGuard aGuard( this );
 
-    if ( !implIsValidRange( nStartIndex, nEndIndex, implGetText().getLength() ) )
+    if ( !implIsValidRange( nStartIndex, nEndIndex, m_sItemText.getLength() ) )
         throw IndexOutOfBoundsException();
 
     return false;
@@ -323,7 +315,7 @@ OUString VCLXAccessibleMenuItem::getText()
 {
     OExternalLockGuard aGuard( this );
 
-    return OCommonAccessibleText::getText();
+    return m_sItemText;
 }
 
 
@@ -331,7 +323,7 @@ OUString VCLXAccessibleMenuItem::getTextRange( sal_Int32 nStartIndex, sal_Int32 
 {
     OExternalLockGuard aGuard( this );
 
-    return OCommonAccessibleText::getTextRange( nStartIndex, nEndIndex );
+    return OCommonAccessibleText::implGetTextRange( implGetText(), nStartIndex, nEndIndex );
 }
 
 
@@ -391,6 +383,11 @@ sal_Bool VCLXAccessibleMenuItem::copyText( sal_Int32 nStartIndex, sal_Int32 nEnd
     return bReturn;
 }
 
+sal_Bool VCLXAccessibleMenuItem::scrollSubstringTo( sal_Int32, sal_Int32, AccessibleScrollType )
+{
+    return false;
+}
+
 
 // XAccessibleAction
 
@@ -405,7 +402,7 @@ sal_Bool VCLXAccessibleMenuItem::doAccessibleAction ( sal_Int32 nIndex )
 {
     OExternalLockGuard aGuard( this );
 
-    if ( nIndex < 0 || nIndex >= getAccessibleActionCount() )
+    if ( nIndex != 0 )
         throw IndexOutOfBoundsException();
 
     Click();
@@ -418,10 +415,10 @@ OUString VCLXAccessibleMenuItem::getAccessibleActionDescription ( sal_Int32 nInd
 {
     OExternalLockGuard aGuard( this );
 
-    if ( nIndex < 0 || nIndex >= getAccessibleActionCount() )
+    if ( nIndex != 0 )
         throw IndexOutOfBoundsException();
 
-    return OUString(RID_STR_ACC_ACTION_SELECT);
+    return RID_STR_ACC_ACTION_SELECT;
 }
 
 
@@ -429,7 +426,7 @@ Reference< XAccessibleKeyBinding > VCLXAccessibleMenuItem::getAccessibleActionKe
 {
     OExternalLockGuard aGuard( this );
 
-    if ( nIndex < 0 || nIndex >= getAccessibleActionCount() )
+    if ( nIndex != 0 )
         throw IndexOutOfBoundsException();
 
     OAccessibleKeyBindingHelper* pKeyBindingHelper = new OAccessibleKeyBindingHelper();
@@ -510,9 +507,9 @@ Any VCLXAccessibleMenuItem::getCurrentValue(  )
 
     Any aValue;
     if ( IsSelected() )
-        aValue <<= (sal_Int32) 1;
+        aValue <<= sal_Int32(1);
     else
-        aValue <<= (sal_Int32) 0;
+        aValue <<= sal_Int32(0);
 
     return aValue;
 }
@@ -544,7 +541,7 @@ sal_Bool VCLXAccessibleMenuItem::setCurrentValue( const Any& aNumber )
 Any VCLXAccessibleMenuItem::getMaximumValue(  )
 {
     Any aValue;
-    aValue <<= (sal_Int32) 1;
+    aValue <<= sal_Int32(1);
 
     return aValue;
 }
@@ -553,7 +550,7 @@ Any VCLXAccessibleMenuItem::getMaximumValue(  )
 Any VCLXAccessibleMenuItem::getMinimumValue(  )
 {
     Any aValue;
-    aValue <<= (sal_Int32) 0;
+    aValue <<= sal_Int32(0);
 
     return aValue;
 }

@@ -9,16 +9,13 @@
 
 #include <stdexcept>
 
-#include <sal/types.h>
-
 #include <rtl/ustring.hxx>
-#include <vcl/IconThemeScanner.hxx>
+#include <IconThemeScanner.hxx>
 #include <vcl/IconThemeInfo.hxx>
 
 #include <cppunit/TestAssert.h>
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
-#include <cppunit/plugin/TestPlugIn.h>
 
 class IconThemeScannerTest : public CppUnit::TestFixture
 {

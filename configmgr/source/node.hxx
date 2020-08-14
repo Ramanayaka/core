@@ -23,6 +23,7 @@
 #include <sal/config.h>
 
 #include <rtl/ref.hxx>
+#include <rtl/ustring.hxx>
 #include <salhelper/simplereferenceobject.hxx>
 
 namespace configmgr {
@@ -58,7 +59,7 @@ protected:
     explicit Node(const Node & other);
 
     virtual ~Node() override;
-
+private:
     int layer_;
     int finalized_;
 };

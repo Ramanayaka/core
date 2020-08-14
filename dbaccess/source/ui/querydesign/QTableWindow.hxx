@@ -19,9 +19,9 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_QUERYDESIGN_QTABLEWINDOW_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_QUERYDESIGN_QTABLEWINDOW_HXX
 
-#include "TableWindow.hxx"
+#include <TableWindow.hxx>
 #include "QTableWindowData.hxx"
-#include "TableFieldDescription.hxx"
+#include <TableFieldDescription.hxx>
 
 namespace dbaui
 {
@@ -32,7 +32,7 @@ namespace dbaui
     public:
         OQueryTableWindow( vcl::Window* pParent, const TTableWindowData::value_type& pTabWinData );
 
-        OUString GetAliasName() const
+        OUString const & GetAliasName() const
         {
             return static_cast<OQueryTableWindowData*>(GetData().get())->GetAliasName();
         }
@@ -44,14 +44,14 @@ namespace dbaui
         // late Constructor, the base class CREATES Listbox on first call
         virtual bool         Init() override;
 
-        bool                 ExistsField(const OUString& strFieldName, OTableFieldDescRef& rInfo);
+        bool                 ExistsField(const OUString& strFieldName, OTableFieldDescRef const & rInfo);
         bool                 ExistsAVisitedConn() const;
 
         virtual OUString     GetName() const override { return GetWinName(); }
 
     protected:
 
-        virtual void    OnEntryDoubleClicked(SvTreeListEntry* pEntry) override;
+        virtual void    OnEntryDoubleClicked(weld::TreeIter& rEntry) override;
             // is called from DoubleClickHdl of the ListBox
         /** delete the user data with the equal type as created within createUserData
             @param  _pUserData

@@ -28,8 +28,10 @@
  <toolbar:toolbaritem xlink:href=".uno:SendMail" toolbar:visible="false"/>
  <toolbar:toolbarseparator/>
  <toolbar:toolbaritem xlink:href=".uno:EditDoc" toolbar:visible="false"/>
+ <toolbar:toolbaritem xlink:href=".uno:ReadOnlyDoc" toolbar:visible="false"/>
  <toolbar:toolbarseparator/>
  <toolbar:toolbaritem xlink:href=".uno:ExportDirectToPDF"/>
+ <toolbar:toolbaritem xlink:href=".uno:ExportDirectToEPUB" toolbar:visible="false"/>
  <toolbar:toolbaritem xlink:href=".uno:Print"/>
  <toolbar:toolbaritem xlink:href=".uno:PrintDefault" toolbar:visible="false"/>
  <toolbar:toolbaritem xlink:href=".uno:PrintPreview"/>
@@ -59,7 +61,8 @@
  <toolbar:toolbarseparator/>
  <toolbar:toolbaritem xlink:href=".uno:InsertPagebreak"/>
  <toolbar:toolbaritem xlink:href=".uno:InsertFieldCtrl"/>
- <toolbar:toolbaritem xlink:href=".uno:InsertSymbol"/>
+ <toolbar:toolbaritem xlink:href=".uno:InsertSymbol" toolbar:visible="false"/>
+ <toolbar:toolbaritem xlink:href=".uno:CharmapControl"/>
  <toolbar:toolbaritem xlink:href=".uno:EmojiControl" toolbar:visible="false"/>
  <toolbar:toolbarseparator/>
  <toolbar:toolbaritem xlink:href=".uno:HyperlinkDialog"/>

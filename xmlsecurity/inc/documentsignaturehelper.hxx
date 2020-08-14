@@ -21,21 +21,17 @@
 #define INCLUDED_XMLSECURITY_INC_DOCUMENTSIGNATUREHELPER_HXX
 
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <rtl/ustring.hxx>
-#include "sigstruct.hxx"
-#include "xmlsecurity/xmlsecuritydllapi.h"
+#include <svl/sigstruct.hxx>
 
 #include <vector>
 
-namespace com {
-namespace sun {
-namespace star {
-namespace io {
-    class XStream; }
-namespace embed {
-    class XStorage; }
-}}}
+namespace com::sun::star {
+    namespace io { class XStream; }
+    namespace embed { class XStorage; }
+}
+
+namespace com::sun::star::xml::sax { class XDocumentHandler; }
 
 enum class DocumentSignatureMode
 {
@@ -102,7 +98,8 @@ namespace DocumentSignatureHelper
     void writeSignedProperties(
         const css::uno::Reference<css::xml::sax::XDocumentHandler>& xDocumentHandler,
         const SignatureInformation& signatureInfo,
-        const OUString& sDate);
+        const OUString& sDate,
+        const bool bWriteSignatureLineData);
 };
 
 #endif // INCLUDED_XMLSECURITY_INC_DOCUMENTSIGNATUREHELPER_HXX

@@ -12,8 +12,9 @@
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <sal/log.hxx>
+#include <cppuhelper/queryinterface.hxx>
 
-#include <std_inputstream.hxx>
+#include "std_inputstream.hxx"
 
 using namespace std;
 using namespace com::sun::star;
@@ -24,7 +25,7 @@ namespace cmis
         m_pStream( pStream ),
         m_nLength( 0 )
     {
-        if ( m_pStream.get() )
+        if (m_pStream)
         {
             streampos nInitPos = m_pStream->tellg( );
             m_pStream->seekg( 0, ios_base::end );
@@ -42,8 +43,8 @@ namespace cmis
     uno::Any SAL_CALL StdInputStream::queryInterface( const uno::Type& rType )
     {
         uno::Any aRet = ::cppu::queryInterface( rType,
-                                          ( static_cast< XInputStream* >( this ) ),
-                                          ( static_cast< XSeekable* >( this ) ) );
+                                          static_cast< XInputStream* >( this ),
+                                          static_cast< XSeekable* >( this ) );
 
         return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
     }
@@ -65,7 +66,7 @@ namespace cmis
         if ( 0 <= nBytesToRead && aData.getLength() < nBytesToRead )
             aData.realloc( nBytesToRead );
 
-        if ( !m_pStream.get() )
+        if (!m_pStream)
             throw io::IOException( );
 
         sal_Int32 nRead = 0;
@@ -91,7 +92,7 @@ namespace cmis
         if ( 0 <= nMaxBytesToRead && aData.getLength() < nMaxBytesToRead )
             aData.realloc( nMaxBytesToRead );
 
-        if ( !m_pStream.get() )
+        if (!m_pStream)
             throw io::IOException( );
 
         sal_Int32 nRead = 0;
@@ -111,7 +112,7 @@ namespace cmis
     {
         osl::MutexGuard aGuard( m_aMutex );
 
-        if ( !m_pStream.get() )
+        if (!m_pStream)
             throw io::IOException( );
 
         try
@@ -127,7 +128,7 @@ namespace cmis
 
     sal_Int32 SAL_CALL StdInputStream::available( )
     {
-        return sal::static_int_cast< sal_Int32 >( m_nLength - getPosition() );
+        return std::min<sal_Int64>( SAL_MAX_INT32, m_nLength - getPosition() );
     }
 
     void SAL_CALL StdInputStream::closeInput( )
@@ -144,7 +145,7 @@ namespace cmis
                     "Location can't be negative or greater than the length",
                     static_cast< cppu::OWeakObject* >( this ), 0 );
 
-        if ( !m_pStream.get() )
+        if (!m_pStream)
             throw io::IOException( );
 
         try
@@ -163,7 +164,7 @@ namespace cmis
     {
         osl::MutexGuard aGuard( m_aMutex );
 
-        if ( !m_pStream.get() )
+        if (!m_pStream)
             throw io::IOException( );
 
         sal_Int64 nPos = m_pStream->tellg( );

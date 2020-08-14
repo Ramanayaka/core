@@ -18,14 +18,7 @@
  */
 
 #include <comphelper/propertycontainer.hxx>
-#include <comphelper/property.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include <uno/data.h>
-#include <com/sun/star/uno/genfunc.h>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <rtl/ustrbuf.hxx>
-
-#include <algorithm>
 
 
 namespace comphelper
@@ -57,13 +50,6 @@ Sequence< Type > OPropertyContainer::getBaseTypes()
     );
     return aTypes.getTypes();
 }
-
-
-void SAL_CALL OPropertyContainer::setFastPropertyValue( sal_Int32 nHandle, const Any& rValue )
-{
-    OPropertySetHelper::setFastPropertyValue( nHandle, rValue );
-}
-
 
 sal_Bool OPropertyContainer::convertFastPropertyValue(
     Any& _rConvertedValue, Any& _rOldValue, sal_Int32 _nHandle, const Any& _rValue )

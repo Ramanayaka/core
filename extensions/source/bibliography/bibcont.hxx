@@ -20,8 +20,6 @@
 #ifndef INCLUDED_EXTENSIONS_SOURCE_BIBLIOGRAPHY_BIBCONT_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_BIBLIOGRAPHY_BIBCONT_HXX
 
-#include <com/sun/star/frame/XFrame.hpp>
-#include <vcl/splitwin.hxx>
 #include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
 #include "bibshortcuthandler.hxx"
@@ -63,9 +61,6 @@ inline vcl::Window* BibWindowContainer::GetChild()
 class BibBookContainer: public BibSplitWindow
 {
     private:
-
-        css::uno::Reference< css::frame::XFrame >             xTopFrameRef;
-        css::uno::Reference< css::frame::XFrame >             xBottomFrameRef;
 
         VclPtr<BibWindowContainer>     pTopWin;
         VclPtr<BibWindowContainer>     pBottomWin;

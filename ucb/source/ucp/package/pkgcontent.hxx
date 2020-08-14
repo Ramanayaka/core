@@ -20,15 +20,14 @@
 #ifndef INCLUDED_UCB_SOURCE_UCP_PACKAGE_PKGCONTENT_HXX
 #define INCLUDED_UCB_SOURCE_UCP_PACKAGE_PKGCONTENT_HXX
 
-#include <list>
+#include <vector>
 #include <rtl/ref.hxx>
 
-#include <com/sun/star/ucb/InteractiveBadTransferURLException.hpp>
 #include <com/sun/star/ucb/XContentCreator.hpp>
 #include <ucbhelper/contenthelper.hxx>
 #include "pkguri.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans
     {
         struct Property;
@@ -52,7 +51,7 @@ namespace com { namespace sun { namespace star {
         struct OpenCommandArgument2;
         struct TransferInfo;
     }
-} } }
+}
 
 namespace package_ucp
 {
@@ -165,7 +164,7 @@ private:
     flushData();
 
     typedef rtl::Reference< Content > ContentRef;
-    typedef std::list< ContentRef > ContentRefList;
+    typedef std::vector< ContentRef > ContentRefList;
     void queryChildren( ContentRefList& rChildren );
 
     bool

@@ -17,22 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/XPropertyTable.hxx"
+#include <XPropertyTable.hxx>
 #include <vcl/svapp.hxx>
 
 #include <vcl/virdev.hxx>
 #include <vcl/settings.hxx>
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
 #include <svx/dialmgr.hxx>
-#include <svx/xpool.hxx>
 
 #include <drawinglayer/attribute/fillhatchattribute.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonHatchPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
+#include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processor2dtools.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <memory>
-#include <o3tl/make_unique.hxx>
 
 using namespace ::com::sun::star;
 
@@ -67,18 +67,18 @@ bool XHatchList::Create()
     aStr.append(" 1");
 
     sal_Int32 nLen = aStr.getLength() - 1;
-    Insert(o3tl::make_unique<XHatchEntry>(XHatch(RGB_Color(COL_BLACK),css::drawing::HatchStyle_SINGLE,100,  0),aStr.toString()));
+    Insert(std::make_unique<XHatchEntry>(XHatch(COL_BLACK,css::drawing::HatchStyle_SINGLE,100,  0),aStr.toString()));
     aStr[nLen] = '2';
-    Insert(o3tl::make_unique<XHatchEntry>(XHatch(RGB_Color(COL_RED  ),css::drawing::HatchStyle_DOUBLE, 80,450),aStr.toString()));
+    Insert(std::make_unique<XHatchEntry>(XHatch(COL_RED  ,css::drawing::HatchStyle_DOUBLE, 80,450),aStr.toString()));
     aStr[nLen] = '3';
-    Insert(o3tl::make_unique<XHatchEntry>(XHatch(RGB_Color(COL_BLUE ),css::drawing::HatchStyle_TRIPLE,120,  0),aStr.toString()));
+    Insert(std::make_unique<XHatchEntry>(XHatch(COL_BLUE ,css::drawing::HatchStyle_TRIPLE,120,  0),aStr.toString()));
 
     return true;
 }
 
-Bitmap XHatchList::CreateBitmap( long nIndex, const Size& rSize) const
+BitmapEx XHatchList::CreateBitmap( long nIndex, const Size& rSize) const
 {
-    Bitmap aRetval;
+    BitmapEx aRetval;
     OSL_ENSURE(nIndex < Count(), "OOps, access out of range (!)");
 
     if(nIndex < Count())
@@ -87,7 +87,7 @@ Bitmap XHatchList::CreateBitmap( long nIndex, const Size& rSize) const
 
         // prepare polygon geometry for rectangle
         const basegfx::B2DPolygon aRectangle(
-            basegfx::tools::createPolygonFromRect(
+            basegfx::utils::createPolygonFromRect(
                 basegfx::B2DRange(0.0, 0.0, rSize.Width(), rSize.Height())));
 
         const XHatch& rHatch = GetHatch(nIndex)->GetHatch();
@@ -112,14 +112,14 @@ Bitmap XHatchList::CreateBitmap( long nIndex, const Size& rSize) const
             }
         }
 
-        const basegfx::B2DHomMatrix aScaleMatrix(OutputDevice::LogicToLogic(MapUnit::Map100thMM, MapUnit::MapPixel));
+        const basegfx::B2DHomMatrix aScaleMatrix(OutputDevice::LogicToLogic(MapMode(MapUnit::Map100thMM), MapMode(MapUnit::MapPixel)));
         const basegfx::B2DVector aScaleVector(aScaleMatrix * basegfx::B2DVector(1.0, 0.0));
         const double fScaleValue(aScaleVector.getLength());
 
         const drawinglayer::attribute::FillHatchAttribute aFillHatch(
             aHatchStyle,
-            (double)rHatch.GetDistance() * fScaleValue,
-            (double)rHatch.GetAngle() * F_PI1800,
+            static_cast<double>(rHatch.GetDistance()) * fScaleValue,
+            static_cast<double>(rHatch.GetAngle()) * F_PI1800,
             rHatch.GetColor().getBColor(),
             3, // same default as VCL, a minimum of three discrete units (pixels) offset
             false);
@@ -161,7 +161,7 @@ Bitmap XHatchList::CreateBitmap( long nIndex, const Size& rSize) const
 
         // create processor and draw primitives
         std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> pProcessor2D(drawinglayer::processor2d::createPixelProcessor2DFromOutputDevice(
-            *pVirtualDevice.get(),
+            *pVirtualDevice,
             aNewViewInformation2D));
 
         if(pProcessor2D)
@@ -175,21 +175,21 @@ Bitmap XHatchList::CreateBitmap( long nIndex, const Size& rSize) const
         }
 
         // get result bitmap and scale
-        aRetval = pVirtualDevice->GetBitmap(Point(0, 0), pVirtualDevice->GetOutputSizePixel());
+        aRetval = pVirtualDevice->GetBitmapEx(Point(0, 0), pVirtualDevice->GetOutputSizePixel());
     }
 
     return aRetval;
 }
 
-Bitmap XHatchList::CreateBitmapForUI(long nIndex)
+BitmapEx XHatchList::CreateBitmapForUI(long nIndex)
 {
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
     const Size& rSize = rStyleSettings.GetListBoxPreviewDefaultPixelSize();
-    Bitmap aRetVal = CreateBitmap(nIndex, rSize);
+    BitmapEx aRetVal = CreateBitmap(nIndex, rSize);
     return aRetVal;
 }
 
-Bitmap XHatchList::GetBitmapForPreview(long nIndex, const Size& rSize)
+BitmapEx XHatchList::GetBitmapForPreview(long nIndex, const Size& rSize)
 {
     return CreateBitmap(nIndex, rSize);
 }

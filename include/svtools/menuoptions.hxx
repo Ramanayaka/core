@@ -22,10 +22,10 @@
 #include <svtools/svtdllapi.h>
 #include <sal/types.h>
 #include <tools/gen.hxx>
-#include <tools/link.hxx>
-#include <osl/mutex.hxx>
 #include <unotools/options.hxx>
 #include <memory>
+
+namespace osl { class Mutex; }
 
 /*-************************************************************************************************************
     @short          forward declaration to our private date container implementation
@@ -41,7 +41,7 @@ class SvtMenuOptions_Impl;
     @devstatus      ready to use
 *//*-*************************************************************************************************************/
 
-class SAL_WARN_UNUSED SVT_DLLPUBLIC SvtMenuOptions: public utl::detail::Options
+class SAL_WARN_UNUSED SVT_DLLPUBLIC SvtMenuOptions final : public utl::detail::Options
 {
     public:
          SvtMenuOptions();
@@ -74,7 +74,7 @@ class SAL_WARN_UNUSED SVT_DLLPUBLIC SvtMenuOptions: public utl::detail::Options
         /*-****************************************************************************************************
             @short      return a reference to a static mutex
             @descr      These class is partially threadsafe (for de-/initialization only).
-                        All access methods are'nt safe!
+                        All access methods aren't safe!
                         We create a static mutex only for one ime and use at different times.
             @return     A reference to a static mutex member.
         *//*-*****************************************************************************************************/

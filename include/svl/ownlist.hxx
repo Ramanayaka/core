@@ -21,15 +21,11 @@
 #define INCLUDED_SVL_OWNLIST_HXX
 
 #include <svl/svldllapi.h>
-#include <com/sun/star/uno/Sequence.hxx>
+#include <rtl/ustring.hxx>
 #include <vector>
 
-namespace com { namespace sun { namespace star {
-    namespace beans {
-        struct PropertyValue;
-    }
-}}}
-
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::uno { template <typename > class Sequence; }
 
 class SvCommand
 /*
@@ -64,11 +60,11 @@ public:
     void           Append( const OUString & rCommand, const OUString & rArg );
 
     void FillFromSequence( const css::uno::Sequence < css::beans::PropertyValue >& );
-    void FillSequence( css::uno::Sequence < css::beans::PropertyValue >& );
+    void FillSequence( css::uno::Sequence < css::beans::PropertyValue >& ) const;
 
     size_t          size() const { return aCommandList.size(); }
 
-    SvCommand       operator[]( size_t i) {
+    SvCommand const & operator[]( size_t i) {
                         return aCommandList[ i ];
                     }
 

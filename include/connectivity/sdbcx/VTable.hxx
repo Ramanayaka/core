@@ -26,20 +26,21 @@
 #include <com/sun/star/sdbcx/XAlterTable.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
 #include <com/sun/star/sdbcx/XKeysSupplier.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <comphelper/IdPropArrayHelper.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/implbase4.hxx>
 #include <cppuhelper/basemutex.hxx>
+#include <rtl/ref.hxx>
 #include <com/sun/star/container/XNamed.hpp>
 #include <connectivity/sdbcx/IRefreshable.hxx>
 #include <connectivity/sdbcx/VDescriptor.hxx>
 #include <connectivity/CommonTools.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
-#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
 
-namespace connectivity
-{
-    namespace sdbcx
+namespace com::sun::star::sdbc { class XDatabaseMetaData; }
+
+namespace connectivity::sdbcx
     {
 
         class OTable;
@@ -72,9 +73,9 @@ namespace connectivity
             OUString m_Description;
             OUString m_Type;
 
-            OCollection*    m_pKeys;
-            OCollection*    m_pColumns;
-            OCollection*    m_pIndexes;
+            rtl::Reference<OCollection>  m_xKeys;
+            rtl::Reference<OCollection>  m_xColumns;
+            rtl::Reference<OCollection>  m_xIndexes;
             OCollection*    m_pTables;  // must hold his own container to notify him when renaming
 
             using OTableDescriptor_BASE::rBHelper;
@@ -133,7 +134,7 @@ namespace connectivity
             // helper method
             virtual css::uno::Reference< css::sdbc::XDatabaseMetaData> getMetaData() const;
         };
-    }
+
 }
 
 #endif // INCLUDED_CONNECTIVITY_SDBCX_VTABLE_HXX

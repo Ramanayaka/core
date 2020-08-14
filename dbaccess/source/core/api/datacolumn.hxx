@@ -25,7 +25,7 @@
 #include <com/sun/star/sdbc/XResultSetMetaData.hpp>
 #include <com/sun/star/sdb/XColumn.hpp>
 #include <com/sun/star/sdb/XColumnUpdate.hpp>
-#include <resultcolumn.hxx>
+#include "resultcolumn.hxx"
 namespace dbaccess
 {
 
@@ -35,10 +35,9 @@ namespace dbaccess
                         public css::sdb::XColumn,
                         public css::sdb::XColumnUpdate
     {
-    protected:
         css::uno::Reference < css::sdbc::XRow >       m_xRow;
         css::uno::Reference < css::sdbc::XRowUpdate > m_xRowUpdate;
-
+    protected:
         virtual ~ODataColumn() override;
     public:
         ODataColumn  (const css::uno::Reference < css::sdbc::XResultSetMetaData >& _xMetaData,

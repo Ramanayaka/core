@@ -19,34 +19,27 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_DLG_USERADMIN_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_DLG_USERADMIN_HXX
 
-#include <vcl/fixed.hxx>
-#include <vcl/field.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/button.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/group.hxx>
-#include "TableGrantCtrl.hxx"
+#include <TableGrantCtrl.hxx>
 #include "adminpages.hxx"
-#include <comphelper/uno3.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace sdbc {
         class XConnection;
     }
-}}}
+}
 
 namespace dbaui
 {
 
-class OUserAdmin : public OGenericAdministrationPage
+class OUserAdmin final : public OGenericAdministrationPage
 {
-    friend class VclPtr<OUserAdmin>;
-protected:
-    VclPtr<ListBox>             m_pUSER;
-    VclPtr<PushButton>          m_pNEWUSER;
-    VclPtr<PushButton>          m_pCHANGEPWD;
-    VclPtr<PushButton>          m_pDELETEUSER;
-    VclPtr<OTableGrantControl>  m_TableCtrl; // show the grant rights of one user
+    std::unique_ptr<weld::ComboBox> m_xUSER;
+    std::unique_ptr<weld::Button> m_xNEWUSER;
+    std::unique_ptr<weld::Button> m_xCHANGEPWD;
+    std::unique_ptr<weld::Button> m_xDELETEUSER;
+    std::unique_ptr<weld::Container> m_xTable;
+    css::uno::Reference<css::awt::XWindow> m_xTableCtrlParent;
+    VclPtr<OTableGrantControl> m_xTableCtrl; // show the grant rights of one user
 
     css::uno::Reference< css::sdbc::XConnection>          m_xConnection;
     css::uno::Reference< css::container::XNameAccess >    m_xUsers;
@@ -55,28 +48,28 @@ protected:
     OUString            m_UserName;
 
     // methods
-    DECL_LINK( ListDblClickHdl, ListBox&, void );
-    DECL_LINK( UserHdl,   Button *, void );
+    DECL_LINK(ListDblClickHdl, weld::ComboBox&, void);
+    DECL_LINK(UserHdl, weld::Button&, void);
 
     void        FillUserNames();
 
-    OUserAdmin( vcl::Window* pParent, const SfxItemSet& _rCoreAttrs);
 public:
-    static  VclPtr<SfxTabPage> Create( vcl::Window* pParent, const SfxItemSet* _rAttrSet );
-
+    OUserAdmin(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& _rCoreAttrs);
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet);
     virtual ~OUserAdmin() override;
-    virtual void dispose() override;
-    OUString GetUser();
+
+    OUString GetUser() const;
 
     // subclasses must override this, but it isn't pure virtual
     virtual void implInitControls(const SfxItemSet& _rSet, bool _bSaveValue) override;
 
     // <method>OGenericAdministrationPage::fillControls</method>
-    virtual void fillControls(std::vector< ISaveValueWrapper* >& _rControlList) override;
+    virtual void fillControls(std::vector< std::unique_ptr<ISaveValueWrapper> >& _rControlList) override;
 
     // <method>OGenericAdministrationPage::fillWindows</method>
-    virtual void fillWindows(std::vector< ISaveValueWrapper* >& _rControlList) override;
+    virtual void fillWindows(std::vector< std::unique_ptr<ISaveValueWrapper> >& _rControlList) override;
 };
+
 }
 #endif // INCLUDED_DBACCESS_SOURCE_UI_DLG_USERADMIN_HXX
 

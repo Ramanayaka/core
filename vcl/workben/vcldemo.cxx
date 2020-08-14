@@ -7,10 +7,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <sal/config.h>
+
+#include <memory>
+
 #include <config_features.h>
 
 #include <math.h>
 #include <rtl/math.hxx>
+#include <sal/log.hxx>
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/random.hxx>
@@ -22,12 +27,15 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/container/XNameAccess.hpp>
-
+#include <o3tl/safeint.hxx>
 #include <osl/time.h>
+#include <vcl/gradient.hxx>
 #include <vcl/vclmain.hxx>
 #include <vcl/layout.hxx>
+#include <vcl/ptrstyle.hxx>
 #include <salhelper/thread.hxx>
 
+#include <tools/diagnose_ex.h>
 #include <tools/urlobj.hxx>
 #include <tools/stream.hxx>
 #include <vcl/svapp.hxx>
@@ -35,15 +43,17 @@
 #include <vcl/wrkwin.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/graphicfilter.hxx>
-#include <vcl/button.hxx>
+#include <vcl/toolkit/button.hxx>
+#include <vcl/toolkit/combobox.hxx>
 #include <vcl/toolbox.hxx>
 #include <vcl/pngwrite.hxx>
 #include <vcl/floatwin.hxx>
-#include <vcl/salbtype.hxx>
 #include <vcl/bitmapaccess.hxx>
 #include <vcl/help.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/ImageTree.hxx>
+#include <vcl/BitmapEmbossGreyFilter.hxx>
+#include <bitmapwriteaccess.hxx>
 
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
@@ -51,11 +61,11 @@
 
 // internal headers for OpenGLTests class.
 #if HAVE_FEATURE_OPENGL
-#include "salgdi.hxx"
-#include "salframe.hxx"
-#include "openglgdiimpl.hxx"
-#include "opengl/texture.hxx"
-#include "opengl/framebuffer.hxx"
+#include <salgdi.hxx>
+#include <salframe.hxx>
+#include <opengl/gdiimpl.hxx>
+#include <opengl/texture.hxx>
+#include <opengl/framebuffer.hxx>
 #include <vcl/opengl/OpenGLHelper.hxx>
 #endif
 
@@ -70,11 +80,13 @@ namespace {
     {
         TimeValue aValue;
         osl_getSystemTime(&aValue);
-        return (double)aValue.Seconds * 1000 +
-            (double)aValue.Nanosec / (1000*1000);
+        return static_cast<double>(aValue.Seconds) * 1000 +
+            static_cast<double>(aValue.Nanosec) / (1000*1000);
     }
 
 }
+
+namespace {
 
 enum RenderStyle {
     RENDER_THUMB,    // small view <n> to a page
@@ -110,7 +122,7 @@ class DemoRenderer
         virtual sal_uInt16 getTestRepeatCount() = 0;
 #define RENDER_DETAILS(name,key,repeat) \
         virtual OUString getName() override \
-            { return OUString(SAL_STRINGIFY(name)); } \
+            { return SAL_STRINGIFY(name); } \
         virtual sal_uInt16 getAccelerator() override \
             { return key; } \
         virtual sal_uInt16 getTestRepeatCount() override \
@@ -142,7 +154,10 @@ public:
             Application::Abort("Failed to load intro image");
 
         maIntroBW = maIntro.GetBitmap();
-        maIntroBW.Filter(BmpFilter::EmbossGrey);
+
+        BitmapEx aTmpBmpEx(maIntroBW);
+        BitmapFilter::Filter(aTmpBmpEx, BitmapEmbossGreyFilter(0, 0));
+        maIntroBW = aTmpBmpEx.GetBitmap();
 
         InitRenderers();
         mnSegmentsY = rtl::math::round(std::sqrt(maRenderers.size()), 0,
@@ -155,7 +170,7 @@ public:
     void     selectRenderer(const OUString &rName);
     int      selectNextRenderer();
     void     setIterCount(sal_Int32 iterCount);
-    sal_Int32 getIterCount();
+    sal_Int32 getIterCount() const;
     void     addTime(int i, double t);
 
     Size maSize;
@@ -179,8 +194,8 @@ public:
     static std::vector<tools::Rectangle> partition(const tools::Rectangle &rRect, int nX, int nY)
     {
         std::vector<tools::Rectangle> aRegions = partition(rRect.GetSize(), nX, nY);
-        for (auto it = aRegions.begin(); it != aRegions.end(); ++it)
-            it->Move(rRect.Left(), rRect.Top());
+        for (auto & region : aRegions)
+            region.Move(rRect.Left(), rRect.Top());
 
         return aRegions;
     }
@@ -262,19 +277,19 @@ public:
                     0.1, 0.1, 0.1, 0.1
                 };
 #endif
-                drawing::LineCap eLineCaps[] = {
+                drawing::LineCap const eLineCaps[] = {
                     drawing::LineCap_BUTT, drawing::LineCap_ROUND, drawing::LineCap_SQUARE, drawing::LineCap_BUTT,
                     drawing::LineCap_BUTT, drawing::LineCap_ROUND, drawing::LineCap_SQUARE, drawing::LineCap_BUTT,
                     drawing::LineCap_BUTT, drawing::LineCap_ROUND, drawing::LineCap_SQUARE, drawing::LineCap_BUTT,
                     drawing::LineCap_BUTT, drawing::LineCap_ROUND, drawing::LineCap_SQUARE, drawing::LineCap_BUTT
                 };
-                basegfx::B2DLineJoin eJoins[] = {
+                basegfx::B2DLineJoin const eJoins[] = {
                     basegfx::B2DLineJoin::NONE, basegfx::B2DLineJoin::Bevel, basegfx::B2DLineJoin::Miter, basegfx::B2DLineJoin::Round,
                     basegfx::B2DLineJoin::NONE, basegfx::B2DLineJoin::Bevel, basegfx::B2DLineJoin::Miter, basegfx::B2DLineJoin::Round,
                     basegfx::B2DLineJoin::NONE, basegfx::B2DLineJoin::Bevel, basegfx::B2DLineJoin::Miter, basegfx::B2DLineJoin::Round,
                     basegfx::B2DLineJoin::NONE, basegfx::B2DLineJoin::Bevel, basegfx::B2DLineJoin::Miter, basegfx::B2DLineJoin::Round
                 };
-                double aLineWidths[] = {
+                double const aLineWidths[] = {
                     10.0, 15.0, 20.0, 10.0,
                     10.0, 15.0, 20.0, 10.0,
                     10.0, 15.0, 20.0, 10.0,
@@ -291,7 +306,7 @@ public:
                     } aPoints[] = {
                         { 0.2, 0.2 }, { 0.8, 0.3 }, { 0.7, 0.8 }
                     };
-                    rDev.SetLineColor(Color(COL_BLACK));
+                    rDev.SetLineColor(COL_BLACK);
                     basegfx::B2DPolygon aPoly;
                     tools::Rectangle aSub(aRegions[i]);
                     for (size_t j = 0; j < SAL_N_ELEMENTS(aPoints); j++)
@@ -304,8 +319,8 @@ public:
             }
             else
             {
-                rDev.SetFillColor(Color(COL_LIGHTRED));
-                rDev.SetLineColor(Color(COL_BLACK));
+                rDev.SetFillColor(COL_LIGHTRED);
+                rDev.SetLineColor(COL_BLACK);
                 rDev.DrawRect(r);
 
                 for(long i=0; i<r.GetHeight(); i+=15)
@@ -343,11 +358,11 @@ public:
                 tools::Rectangle aBottom(aToplevelRegions[1].TopLeft(),
                                   aToplevelRegions[2].BottomRight());
                 DemoRenderer::clearRects(rDev,aSubRegions);
-                struct {
+                static struct {
                     bool mbClip;
                     bool mbArabicText;
                     bool mbRotate;
-                } aRenderData[] = {
+                } const aRenderData[] = {
                     { false, false, false },
                     { false, true,  false },
                     { false, true,  true },
@@ -382,8 +397,6 @@ public:
         {
             rDev.SetClipRegion( vcl::Region(r) );
 
-            OUString const aLatinText("Click any rect to zoom!!!!");
-
             const unsigned char pTextUTF8[] = {
                 0xd9, 0x88, 0xd8, 0xa7, 0xd8, 0xad, 0xd9, 0x90,
                 0xd8, 0xaf, 0xd9, 0x92, 0x20, 0xd8, 0xa5, 0xd8,
@@ -404,11 +417,11 @@ public:
             if (bArabicText)
                 aText = aArabicText;
             else
-                aText = aLatinText;
+                aText = "Click any rect to zoom!!!!";
 
             std::vector<OUString> aFontNames;
 
-            sal_uInt32 nCols[] = {
+            static Color const nCols[] = {
                 COL_BLACK, COL_BLUE, COL_GREEN, COL_CYAN, COL_RED, COL_MAGENTA,
                 COL_BROWN, COL_GRAY, COL_LIGHTGRAY, COL_LIGHTBLUE, COL_LIGHTGREEN,
                 COL_LIGHTCYAN, COL_LIGHTRED, COL_LIGHTMAGENTA, COL_YELLOW, COL_WHITE
@@ -449,7 +462,7 @@ public:
                     nFontColorIndex=(i % aFontNames.size());
                 }
 
-                rDev.SetTextColor(Color(nCols[nFontColorIndex]));
+                rDev.SetTextColor(nCols[nFontColorIndex]);
                 vcl::Font aFont( aFontNames[nFontIndex], Size(0, nFontHeight ));
 
                 if (bRotate)
@@ -459,8 +472,8 @@ public:
                     int nHeight = r.GetHeight();
 
                     // move the text to the bottom of the bounding rect before rotating
-                    aFontRect.Top() += nHeight/2;
-                    aFontRect.Bottom() += nHeight;
+                    aFontRect.AdjustTop(nHeight/2 );
+                    aFontRect.AdjustBottom(nHeight );
 
                     aFont.SetOrientation(45 * 10); // 45 degrees
 
@@ -511,14 +524,14 @@ public:
                 0xf0, 0x9f, 0x82, 0xa1, 0xc2, 0xa2, 0xc2, 0xa2, 0
             };
 
-            struct {
+            static struct {
                 const char *mpFont;
                 const char *mpString;
-            } aRuns[] = {
+            } const aRuns[] = {
 #define SET(font,string) { font, reinterpret_cast<const char *>(string) }
-                SET("sans", "a"),           // logical font - no 'sans' font.
-                SET("opensymbol", "#$%"),   // font fallback - $ is missing.
-                SET("sans", pInvalid),      // unicode invalid character character
+                {"sans", "a"},           // logical font - no 'sans' font.
+                {"opensymbol", "#$%"},   // font fallback - $ is missing.
+                SET("sans", pInvalid),      // unicode invalid character
                 // tdf#96266 - stacking diacritics
                 SET("carlito", pDiacritic1),
                 SET("carlito", pDiacritic2),
@@ -550,7 +563,7 @@ public:
             {
                 // Legend
                 vcl::Font aIndexFont("sans", Size(0,20));
-                aIndexFont.SetColor(COL_BLACK);
+                aIndexFont.SetColor( COL_BLACK);
                 tools::Rectangle aTextRect;
                 rDev.SetFont(aIndexFont);
                 OUString aText = OUString::number(i) + ".";
@@ -562,7 +575,7 @@ public:
                 FontWeight aWeights[] = { WEIGHT_NORMAL,
                                           WEIGHT_BOLD,
                                           WEIGHT_NORMAL };
-                FontItalic aItalics[] = { ITALIC_NONE,
+                FontItalic const aItalics[] = { ITALIC_NONE,
                                           ITALIC_NONE,
                                           ITALIC_NORMAL };
                 vcl::Font aFont(OUString::createFromAscii(
@@ -581,7 +594,7 @@ public:
                     long nNewX = drawStringBox(rDev, aPos, aString,
                                                nMaxTextHeight);
 
-                    aPos.X() = nNewX;
+                    aPos.setX( nNewX );
 
                     if (aPos.X() >= r.Right())
                     {
@@ -629,8 +642,8 @@ public:
                 }
 
                 // DX array rendering
-                long *pItems = new long[aText.getLength()+10];
-                rDev.GetTextArray(aText, pItems);
+                std::unique_ptr<long[]> pItems(new long[aText.getLength()+10]);
+                rDev.GetTextArray(aText, pItems.get());
                 for (long j = 0; j < aText.getLength(); ++j)
                 {
                     Point aTop = aTextRect.TopLeft();
@@ -642,7 +655,6 @@ public:
                     rDev.DrawLine(aTop,aBottom);
                     rDev.SetRasterOp(RasterOp::OverPaint);
                 }
-                delete[] pItems;
 
                 aPos.Move(aTextRect.GetWidth() + 16, 0);
             }
@@ -729,8 +741,8 @@ public:
                                  r.GetHeight()-nDy*2));
             tools::Polygon aPoly(aShrunk);
             tools::PolyPolygon aPPoly(aPoly);
-            rDev.SetLineColor(Color(COL_RED));
-            rDev.SetFillColor(Color(COL_RED));
+            rDev.SetLineColor(COL_RED);
+            rDev.SetFillColor(COL_RED);
             // This hits the optional 'drawPolyPolygon' code-path
             rDev.DrawTransparent(aPPoly, 64);
         }
@@ -752,17 +764,19 @@ public:
         virtual void RenderRegion(OutputDevice &rDev, tools::Rectangle r,
                                   const RenderContext &rCtx) override
         {
-            rDev.SetLineColor(Color(COL_RED));
-            rDev.SetFillColor(Color(COL_GREEN));
+            rDev.SetLineColor(COL_RED);
+            rDev.SetFillColor(COL_GREEN);
             rDev.DrawEllipse(r);
 
             if (rCtx.meStyle == RENDER_EXPANDED)
             {
                 auto aRegions = partition(rCtx, 2, 2);
                 doInvert(rDev, aRegions[0], InvertFlags::NONE);
+                rDev.DrawText(aRegions[0], "InvertFlags::NONE");
                 doInvert(rDev, aRegions[1], InvertFlags::N50);
-                doInvert(rDev, aRegions[2], InvertFlags::Highlight);
-                doInvert(rDev, aRegions[3], (InvertFlags)0xffff);
+                rDev.DrawText(aRegions[1], "InvertFlags::N50");
+                doInvert(rDev, aRegions[3], InvertFlags::TrackFrame);
+                rDev.DrawText(aRegions[3], "InvertFlags::TrackFrame");
             }
         }
     };
@@ -776,13 +790,13 @@ public:
             if (rCtx.meStyle == RENDER_EXPANDED)
             {
                 std::vector<tools::Rectangle> aRegions(DemoRenderer::partition(rCtx,5, 4));
-                sal_uInt32 nStartCols[] = {
+                static Color const nStartCols[] = {
                     COL_RED, COL_RED, COL_RED, COL_GREEN, COL_GREEN,
                     COL_BLUE, COL_BLUE, COL_BLUE, COL_CYAN, COL_CYAN,
                     COL_BLACK, COL_LIGHTGRAY, COL_WHITE, COL_BLUE, COL_CYAN,
                     COL_WHITE, COL_WHITE, COL_WHITE, COL_BLACK, COL_BLACK
                 };
-                sal_uInt32 nEndCols[] = {
+                static Color const nEndCols[] = {
                     COL_WHITE, COL_WHITE, COL_WHITE, COL_BLACK, COL_BLACK,
                     COL_RED, COL_RED, COL_RED, COL_GREEN, COL_GREEN,
                     COL_GRAY, COL_GRAY, COL_LIGHTGRAY, COL_LIGHTBLUE, COL_LIGHTCYAN,
@@ -817,8 +831,8 @@ public:
                 {
                     tools::Rectangle aSub = aRegions[i];
                     Gradient aGradient;
-                    aGradient.SetStartColor(Color(nStartCols[i]));
-                    aGradient.SetEndColor(Color(nEndCols[i]));
+                    aGradient.SetStartColor(nStartCols[i]);
+                    aGradient.SetEndColor(nEndCols[i]);
                     aGradient.SetStyle(eStyles[i]);
                     aGradient.SetAngle(nAngles[i]);
                     aGradient.SetBorder(nBorders[i]);
@@ -853,9 +867,9 @@ public:
             aRight.Crop(tools::Rectangle(Point((nSlice * 3) + 3, (nSlice * 2) + 1),
                                   Size(nSlice, 1)));
             AlphaMask aAlphaMask(aRight.GetBitmap());
-            Bitmap aBlockColor = Bitmap(aAlphaMask.GetSizePixel(), 24);
+            Bitmap aBlockColor(aAlphaMask.GetSizePixel(), 24);
             aBlockColor.Erase(COL_RED);
-            BitmapEx aShadowStretch = BitmapEx(aBlockColor, aAlphaMask);
+            BitmapEx aShadowStretch(aBlockColor, aAlphaMask);
 
             Point aRenderPt(r.TopLeft());
 
@@ -881,7 +895,7 @@ public:
 
             // An offset background for alpha rendering
             rDev.SetFillColor(COL_BLUE);
-            tools::Rectangle aSurround(r.Center(), Size(aPageShadowMask.GetSizePixel()));
+            tools::Rectangle aSurround(r.Center(), aPageShadowMask.GetSizePixel());
             rDev.DrawRect(aSurround);
             rDev.DrawBitmapEx(aRenderPt, aWhole);
         }
@@ -921,9 +935,9 @@ public:
         virtual void RenderRegion(OutputDevice &rDev, tools::Rectangle r,
                                   const RenderContext &) override
         {
-            struct {
+            static struct {
                 double nX, nY;
-            } aPoints[] = { { 0.1, 0.1 }, { 0.9, 0.9 },
+            } const aPoints[] = { { 0.1, 0.1 }, { 0.9, 0.9 },
 #if FIXME_SELF_INTERSECTING_WORKING
                             { 0.9, 0.1 }, { 0.1, 0.9 },
                             { 0.1, 0.1 }
@@ -951,8 +965,8 @@ public:
                                              aSubRect.GetHeight() * aPoints[v].nY),
                                        v);
                     }
-                    rDev.SetLineColor(Color(COL_YELLOW));
-                    rDev.SetFillColor(Color(COL_BLACK));
+                    rDev.SetLineColor(COL_YELLOW);
+                    rDev.SetFillColor(COL_BLACK);
                     rDev.DrawPolygon(aPoly);
 
                     // now move and add to the polypolygon
@@ -960,8 +974,8 @@ public:
                     aPolyPoly.Insert(aPoly);
                 }
             }
-            rDev.SetLineColor(Color(COL_LIGHTRED));
-            rDev.SetFillColor(Color(COL_GREEN));
+            rDev.SetLineColor(COL_LIGHTRED);
+            rDev.SetFillColor(COL_GREEN);
             rDev.DrawTransparent(aPolyPoly, 50);
         }
     };
@@ -1086,7 +1100,7 @@ public:
         {
             ScopedVclPtr<VirtualDevice> pNested;
 
-            if ((int)eType < RENDER_AS_BITMAPEX)
+            if (static_cast<int>(eType) < RENDER_AS_BITMAPEX)
                 pNested = VclPtr<VirtualDevice>::Create(rDev).get();
             else
                 pNested = VclPtr<VirtualDevice>::Create(rDev,DeviceFormat::DEFAULT,DeviceFormat::DEFAULT).get();
@@ -1127,8 +1141,8 @@ public:
                 std::vector<tools::Rectangle> aRegions(DemoRenderer::partition(rCtx,2, 2));
                 DemoRenderer::clearRects(rDev, aRegions);
 
-                RenderType eRenderTypes[] = { RENDER_AS_BITMAP, RENDER_AS_OUTDEV,
-                                              RENDER_AS_BITMAPEX, RENDER_AS_ALPHA_OUTDEV };
+                RenderType const eRenderTypes[] { RENDER_AS_BITMAP, RENDER_AS_OUTDEV,
+                                                  RENDER_AS_BITMAPEX, RENDER_AS_ALPHA_OUTDEV };
                 for (size_t i = 0; i < aRegions.size(); i++)
                     SizeAndRender(rDev, aRegions[i], eRenderTypes[i], rCtx);
             }
@@ -1199,7 +1213,7 @@ public:
             for (size_t i = 0; i < SAL_N_ELEMENTS(pNames); i++)
             {
                 maIconNames.push_back(OUString::createFromAscii(pNames[i]));
-                maIcons.push_back(BitmapEx(maIconNames[i]));
+                maIcons.emplace_back(maIconNames[i]);
             }
         }
 
@@ -1210,14 +1224,14 @@ public:
             bHasLoadedAll = true;
 
             css::uno::Reference<css::container::XNameAccess> xRef(ImageTree::get().getNameAccess());
-            css::uno::Sequence< OUString > aAllIcons = xRef->getElementNames();
+            const css::uno::Sequence< OUString > aAllIcons = xRef->getElementNames();
 
-            for (sal_Int32 i = 0; i < aAllIcons.getLength(); i++)
+            for (const auto& rIcon : aAllIcons)
             {
-                if (aAllIcons[i].endsWithIgnoreAsciiCase("svg"))
+                if (rIcon.endsWithIgnoreAsciiCase("svg"))
                     continue; // too slow to load.
-                maIconNames.push_back(aAllIcons[i]);
-                maIcons.push_back(BitmapEx(aAllIcons[i]));
+                maIconNames.push_back(rIcon);
+                maIcons.emplace_back(rIcon);
             }
         }
 
@@ -1243,16 +1257,16 @@ public:
                     switch (i % 4)
                     {
                     case 2:
-                        aTransform.shearX((double)((i >> 2) % 8) / 8);
-                        aTransform.shearY((double)((i >> 4) % 8) / 8);
+                        aTransform.shearX(static_cast<double>((i >> 2) % 8) / 8);
+                        aTransform.shearY(static_cast<double>((i >> 4) % 8) / 8);
                         break;
                     case 3:
                         aTransform.translate(-aSize.Width()/2, -aSize.Height()/2);
                         aTransform.rotate(i);
                         if (i & 0x100)
                         {
-                            aTransform.shearX((double)((i >> 2) % 8) / 8);
-                            aTransform.shearY((double)((i >> 4) % 8) / 8);
+                            aTransform.shearX(static_cast<double>((i >> 2) % 8) / 8);
+                            aTransform.shearY(static_cast<double>((i >> 4) % 8) / 8);
                         }
                         aTransform.translate(aSize.Width()/2,  aSize.Height()/2);
                         break;
@@ -1280,7 +1294,7 @@ public:
             }
         }
 
-        static BitmapEx AlphaRecovery(OutputDevice &rDev, Point aPt, BitmapEx &aSrc)
+        static BitmapEx AlphaRecovery(OutputDevice &rDev, Point aPt, BitmapEx const &aSrc)
         {
             // Compositing onto 2x colors beyond our control
             ScopedVclPtrInstance< VirtualDevice > aWhite;
@@ -1300,21 +1314,25 @@ public:
             AlphaMask aMask(aSrc.GetSizePixel());
             Bitmap aRecovered(aSrc.GetSizePixel(), 24);
             {
-                AlphaMask::ScopedWriteAccess pMaskAcc(aMask);
-                Bitmap::ScopedWriteAccess pRecAcc(aRecovered);
+                AlphaScopedWriteAccess pMaskAcc(aMask);
+                BitmapScopedWriteAccess pRecAcc(aRecovered);
                 Bitmap::ScopedReadAccess pAccW(aWhiteBmp); // a * pix + (1-a)
                 Bitmap::ScopedReadAccess pAccB(aBlackBmp); // a * pix + 0
                 int nSizeX = aSrc.GetSizePixel().Width();
                 int nSizeY = aSrc.GetSizePixel().Height();
                 for (int y = 0; y < nSizeY; y++)
                 {
+                    Scanline pScanlineMask = pMaskAcc->GetScanline( y );
+                    Scanline pScanlineRec = pRecAcc->GetScanline( y );
+                    Scanline pScanlineW = pAccW->GetScanline( y );
+                    Scanline pScanlineB = pAccB->GetScanline( y );
                     for (int x = 0; x < nSizeX; x++)
                     {
-                        BitmapColor aColW = pAccW->GetPixel(y,x);
-                        BitmapColor aColB = pAccB->GetPixel(y,x);
-                        long nAR = (long)(aColW.GetRed() - aColB.GetRed()); // (1-a)
-                        long nAG = (long)(aColW.GetGreen() - aColB.GetGreen()); // (1-a)
-                        long nAB = (long)(aColW.GetBlue() - aColB.GetBlue()); // (1-a)
+                        BitmapColor aColW = pAccW->GetPixelFromData(pScanlineW,x);
+                        BitmapColor aColB = pAccB->GetPixelFromData(pScanlineB,x);
+                        long nAR = static_cast<long>(aColW.GetRed() - aColB.GetRed()); // (1-a)
+                        long nAG = static_cast<long>(aColW.GetGreen() - aColB.GetGreen()); // (1-a)
+                        long nAB = static_cast<long>(aColW.GetBlue() - aColB.GetBlue()); // (1-a)
 
 #define CLAMP(a,b,c) (((a)<=(b))?(b):(((a)>=(c))?(c):(a)))
 
@@ -1323,7 +1341,7 @@ public:
                         nInverseAlpha = CLAMP(nInverseAlpha, 0, 255);
                         long nAlpha = 255 - nInverseAlpha;
 
-                        pMaskAcc->SetPixel(y,x,BitmapColor((sal_Int8)CLAMP(nInverseAlpha,0,255)));
+                        pMaskAcc->SetPixelOnData(pScanlineMask,x,BitmapColor(static_cast<sal_Int8>(CLAMP(nInverseAlpha,0,255))));
                         // now recover the pixels
                         long nR = (aColW.GetRed() + aColB.GetRed() - nInverseAlpha) * 128;
                         long nG = (aColW.GetGreen() + aColB.GetGreen() - nInverseAlpha) * 128;
@@ -1336,10 +1354,10 @@ public:
                         {
                             nR /= nAlpha; nG /= nAlpha; nB /= nAlpha;
                         }
-                        pRecAcc->SetPixel(y,x,BitmapColor(
-                                                (sal_uInt8)CLAMP(nR,0,255),
-                                                (sal_uInt8)CLAMP(nG,0,255),
-                                                (sal_uInt8)CLAMP(nB,0,255)));
+                        pRecAcc->SetPixelOnData(pScanlineRec,x,BitmapColor(
+                                                static_cast<sal_uInt8>(CLAMP(nR,0,255)),
+                                                static_cast<sal_uInt8>(CLAMP(nG,0,255)),
+                                                static_cast<sal_uInt8>(CLAMP(nB,0,255))));
 #undef CLAMP
                     }
                 }
@@ -1364,7 +1382,7 @@ public:
                 LoadAllImages();
 
                 Point aLocation(0,maIcons[0].GetSizePixel().Height() + 8);
-                for (size_t i = 0; i < 100; i++)
+                for (size_t i = 0; i < maIcons.size(); i++)
                 {
                     BitmapEx aSrc = maIcons[i];
 
@@ -1473,7 +1491,7 @@ public:
 
         if (!bVDev /* want everything in the vdev */ &&
             mnSelectedRenderer >= 0 &&
-            static_cast<sal_uInt32>(mnSelectedRenderer) < maRenderers.size())
+            o3tl::make_unsigned(mnSelectedRenderer) < maRenderers.size())
         {
             aCtx.meStyle = RENDER_EXPANDED;
             RegionRenderer * r = maRenderers[mnSelectedRenderer];
@@ -1491,24 +1509,21 @@ public:
             drawThumbs(rDev, aWholeWin, bVDev);
     }
     std::vector<VclPtr<vcl::Window> > maInvalidates;
-    void addInvalidate(vcl::Window *pWindow) { maInvalidates.push_back(pWindow); };
+    void addInvalidate(vcl::Window *pWindow) { maInvalidates.emplace_back(pWindow); };
     void removeInvalidate(vcl::Window *pWindow)
     {
-        for (auto aIt = maInvalidates.begin(); aIt != maInvalidates.end(); ++aIt)
-        {
-            if (*aIt == pWindow)
-            {
-                maInvalidates.erase(aIt);
-                return;
-            }
-        }
+        auto aIt = std::find(maInvalidates.begin(), maInvalidates.end(), pWindow);
+        if (aIt != maInvalidates.end())
+            maInvalidates.erase(aIt);
     }
     void Invalidate()
     {
-        for (size_t i = 0; i < maInvalidates.size(); ++i)
-            maInvalidates[i]->Invalidate();
+        for (auto const& invalidate : maInvalidates)
+            invalidate->Invalidate();
     }
 };
+
+}
 
 #if FIXME_BOUNCE_BUTTON
 IMPL_LINK_NOARG(DemoRenderer,BounceTimerCb,Timer*,void)
@@ -1648,7 +1663,7 @@ double DemoRenderer::getAndResetBenchmark(const RenderStyle style)
         double avgtime = maRenderers[i]->sumTime / maRenderers[i]->countTime;
         geomean *= avgtime;
         fprintf(stderr, "%s: %f (iteration: %d*%d*%d)\n",
-                rtl::OUStringToOString(maRenderers[i]->getName(),
+                OUStringToOString(maRenderers[i]->getName(),
                 RTL_TEXTENCODING_UTF8).getStr(), avgtime,
                 maRenderers[i]->countTime, maRenderers[i]->getTestRepeatCount(),
                 (style == RENDER_THUMB) ? THUMB_REPEAT_FACTOR : 1);
@@ -1665,7 +1680,7 @@ void DemoRenderer::setIterCount(sal_Int32 i)
     iterCount = i;
 }
 
-sal_Int32 DemoRenderer::getIterCount()
+sal_Int32 DemoRenderer::getIterCount() const
 {
     return iterCount;
 }
@@ -1692,11 +1707,13 @@ void DemoRenderer::selectRenderer(const OUString &rName )
 int DemoRenderer::selectNextRenderer()
 {
     mnSelectedRenderer++;
-    if (mnSelectedRenderer == (signed) maRenderers.size())
+    if (mnSelectedRenderer == static_cast<signed>(maRenderers.size()))
         mnSelectedRenderer = -1;
     Invalidate();
     return mnSelectedRenderer;
 }
+
+namespace {
 
 class DemoWin : public WorkWindow
 {
@@ -1704,16 +1721,15 @@ class DemoWin : public WorkWindow
     bool underTesting;
     bool testThreads;
 
-    class RenderThread : public salhelper::Thread {
+    class RenderThread final : public salhelper::Thread {
         DemoWin  &mrWin;
-        TimeValue maDelay;
+        sal_uInt32 const mnDelaySecs = 0;
     public:
         RenderThread(DemoWin &rWin, sal_uInt32 nDelaySecs)
             : Thread("vcldemo render thread")
             , mrWin(rWin)
+            , mnDelaySecs(nDelaySecs)
         {
-            maDelay.Seconds = nDelaySecs;
-            maDelay.Nanosec = 0;
             launch();
         }
         virtual ~RenderThread() override
@@ -1722,7 +1738,7 @@ class DemoWin : public WorkWindow
         }
         virtual void execute() override
         {
-            osl_waitThread(&maDelay);
+            wait(std::chrono::seconds(mnDelaySecs));
 
             SolarMutexGuard aGuard;
             fprintf (stderr, "render from a different thread\n");
@@ -1753,21 +1769,21 @@ public:
     virtual void MouseButtonDown(const MouseEvent& rMEvt) override
     {
         mrRenderer.SetSizePixel(GetSizePixel());
-        if (!mrRenderer.MouseButtonDown(rMEvt))
-        {
-            if (testThreads)
-            { // render this window asynchronously in a new thread
-                sal_uInt32 nDelaySecs = 0;
-                if (rMEvt.GetButtons() & MOUSE_RIGHT)
-                    nDelaySecs = 5;
-                mxThread = new RenderThread(*this, nDelaySecs);
-            }
-            else
-            { // spawn another window
-                VclPtrInstance<DemoWin> pNewWin(mrRenderer, testThreads);
-                pNewWin->SetText("Another interactive VCL demo window");
-                pNewWin->Show();
-            }
+        if (mrRenderer.MouseButtonDown(rMEvt))
+            return;
+
+        if (testThreads)
+        { // render this window asynchronously in a new thread
+            sal_uInt32 nDelaySecs = 0;
+            if (rMEvt.GetButtons() & MOUSE_RIGHT)
+                nDelaySecs = 5;
+            mxThread = new RenderThread(*this, nDelaySecs);
+        }
+        else
+        { // spawn another window
+            VclPtrInstance<DemoWin> pNewWin(mrRenderer, testThreads);
+            pNewWin->SetText("Another interactive VCL demo window");
+            pNewWin->Show();
         }
     }
     virtual void KeyInput(const KeyEvent& rKEvt) override
@@ -1810,6 +1826,81 @@ public:
     }
 };
 
+struct PointerData {
+    PointerStyle eStyle;
+    const char * name;
+};
+
+}
+
+const PointerData gvPointerData [] = {
+    { PointerStyle::Null, "Null" },
+    { PointerStyle::Magnify, "Magnify" },
+    { PointerStyle::Fill, "Fill" },
+    { PointerStyle::MoveData, "MoveData" },
+    { PointerStyle::CopyData, "CopyData" },
+    { PointerStyle::MoveFile, "MoveFile" },
+    { PointerStyle::CopyFile, "CopyFile" },
+    { PointerStyle::MoveFiles, "MoveFiles" },
+    { PointerStyle::CopyFiles, "CopyFiles" },
+    { PointerStyle::NotAllowed, "NotAllowed" },
+    { PointerStyle::Rotate, "Rotate" },
+    { PointerStyle::HShear, "HShear" },
+    { PointerStyle::VShear, "VShear" },
+    { PointerStyle::DrawLine, "DrawLine" },
+    { PointerStyle::DrawRect, "DrawRect" },
+    { PointerStyle::DrawPolygon, "DrawPolygon" },
+    { PointerStyle::DrawBezier, "DrawBezier" },
+    { PointerStyle::DrawArc, "DrawArc" },
+    { PointerStyle::DrawPie, "DrawPie" },
+    { PointerStyle::DrawCircleCut, "DrawCircleCut" },
+    { PointerStyle::DrawEllipse, "DrawEllipse" },
+    { PointerStyle::DrawConnect, "DrawConnect" },
+    { PointerStyle::DrawText, "DrawText" },
+    { PointerStyle::Mirror, "Mirror" },
+    { PointerStyle::Crook, "Crook" },
+    { PointerStyle::Crop, "Crop" },
+    { PointerStyle::MovePoint, "MovePoint" },
+    { PointerStyle::MoveBezierWeight, "MoveBezierWeight" },
+    { PointerStyle::DrawFreehand, "DrawFreehand" },
+    { PointerStyle::DrawCaption, "DrawCaption" },
+    { PointerStyle::LinkData, "LinkData" },
+    { PointerStyle::MoveDataLink, "MoveDataLink" },
+    { PointerStyle::CopyDataLink, "CopyDataLink" },
+    { PointerStyle::LinkFile, "LinkFile" },
+    { PointerStyle::MoveFileLink, "MoveFileLink" },
+    { PointerStyle::CopyFileLink, "CopyFileLink" },
+    { PointerStyle::Chart, "Chart" },
+    { PointerStyle::Detective, "Detective" },
+    { PointerStyle::PivotCol, "PivotCol" },
+    { PointerStyle::PivotRow, "PivotRow" },
+    { PointerStyle::PivotField, "PivotField" },
+    { PointerStyle::PivotDelete, "PivotDelete" },
+    { PointerStyle::Chain, "Chain" },
+    { PointerStyle::ChainNotAllowed, "ChainNotAllowed" },
+    { PointerStyle::AutoScrollN, "AutoScrollN" },
+    { PointerStyle::AutoScrollS, "AutoScrollS" },
+    { PointerStyle::AutoScrollW, "AutoScrollW" },
+    { PointerStyle::AutoScrollE, "AutoScrollE" },
+    { PointerStyle::AutoScrollNW, "AutoScrollNW" },
+    { PointerStyle::AutoScrollNE, "AutoScrollNE" },
+    { PointerStyle::AutoScrollSW, "AutoScrollSW" },
+    { PointerStyle::AutoScrollSE, "AutoScrollSE" },
+    { PointerStyle::AutoScrollNS, "AutoScrollNS" },
+    { PointerStyle::AutoScrollWE, "AutoScrollWE" },
+    { PointerStyle::AutoScrollNSWE, "AutoScrollNSWE" },
+    { PointerStyle::TextVertical, "TextVertical" },
+    { PointerStyle::TabSelectS, "TabSelectS" },
+    { PointerStyle::TabSelectE, "TabSelectE" },
+    { PointerStyle::TabSelectSE, "TabSelectSE" },
+    { PointerStyle::TabSelectW, "TabSelectW" },
+    { PointerStyle::TabSelectSW, "TabSelectSW" },
+    { PointerStyle::HideWhitespace, "HideWhitespace" },
+    { PointerStyle::ShowWhitespace, "ShowWhitespace" },
+};
+
+namespace {
+
 class DemoWidgets : public WorkWindow
 {
     VclPtr<MenuBar> mpBar;
@@ -1820,8 +1911,11 @@ class DemoWidgets : public WorkWindow
     VclPtr<CheckBox> mpGLCheck;
     VclPtr<ComboBox> mpGLCombo;
     VclPtr<PushButton> mpGLButton;
+    std::vector<VclPtr<VclHBox>> mvCursorBoxes;
+    std::vector<VclPtr<PushButton>> mvCursorButtons;
 
     DECL_LINK(GLTestClick, Button*, void);
+    DECL_LINK(CursorButtonClick, Button*, void);
 
 public:
     DemoWidgets() :
@@ -1865,6 +1959,25 @@ public:
         mpGLButton->Show();
         mpHBox->Show();
 
+        int i = 0;
+        VclHBox* pCurrentCursorHBox = nullptr;
+        constexpr int numButtonsPerRow = 9;
+        for (auto & rData : gvPointerData)
+        {
+            if (i % numButtonsPerRow == 0)
+            {
+                mvCursorBoxes.push_back(VclPtrInstance<VclHBox>(mpBox.get(), true, numButtonsPerRow));
+                pCurrentCursorHBox = mvCursorBoxes.back().get();
+                pCurrentCursorHBox->Show();
+            }
+            mvCursorButtons.emplace_back(VclPtrInstance<PushButton>(pCurrentCursorHBox));
+            PushButton& rButton = *mvCursorButtons.back();
+            rButton.SetText(OUString::createFromAscii(rData.name));
+            rButton.SetClickHdl(LINK(this,DemoWidgets,CursorButtonClick));
+            rButton.Show();
+            ++i;
+        }
+
         mpBar = VclPtr<MenuBar>::Create();
         mpBar->InsertItem(0,"File");
         VclPtrInstance<PopupMenu> pPopup;
@@ -1881,6 +1994,12 @@ public:
         mpGLCombo.disposeAndClear();
         mpGLCheck.disposeAndClear();
         mpHBox.disposeAndClear();
+        for (auto & p : mvCursorButtons)
+            p.disposeAndClear();
+        mvCursorButtons.clear();
+        for (auto & p : mvCursorBoxes)
+            p.disposeAndClear();
+        mvCursorBoxes.clear();
         mpToolbox.disposeAndClear();
         mpButton.disposeAndClear();
         mpBox.disposeAndClear();
@@ -1910,47 +2029,55 @@ public:
         pDev->DrawWallpaper(aSubRect, aWallpaper );
 
         rRenderContext.DrawOutDev(aExclude.TopLeft(), aExclude.GetSize(),
-                   Point( 0, 0 ), aExclude.GetSize(), *pDev.get() );
+                   Point( 0, 0 ), aExclude.GetSize(), *pDev );
     }
 };
 
-class OpenGLZoneTest {
-public:
-    static void enter() { OpenGLZone::enter(); }
-    static void leave() { OpenGLZone::leave(); }
-};
+}
 
 IMPL_LINK_NOARG(DemoWidgets, GLTestClick, Button*, void)
 {
-    sal_Int32 nSelected = mpGLCombo->GetSelectEntryPos();
+    sal_Int32 nSelected = mpGLCombo->GetSelectedEntryPos();
+    sal_uInt32 nDelaySeconds = 0;
 
-    TimeValue aDelay;
-    aDelay.Seconds = 0;
-    aDelay.Nanosec = 0;
     switch (nSelected)
     {
     case 0:
-        aDelay.Seconds = 1;
+        nDelaySeconds = 1;
         break;
     case 1:
-        aDelay.Seconds = 3;
+        nDelaySeconds = 3;
         break;
     case 2:
-        aDelay.Seconds = 7;
+        nDelaySeconds = 7;
         break;
     default:
         break;
     }
 
-    bool bEnterLeave = mpGLCheck->IsChecked();
-    if (bEnterLeave)
-        OpenGLZoneTest::enter();
+    // Only create OpenGLZone RAII object if asked for:
+    std::unique_ptr<OpenGLZone> zone;
+    if (mpGLCheck->IsChecked()) {
+        zone.reset(new OpenGLZone);
+    }
 
-    osl_waitThread(&aDelay);
-
-    if (bEnterLeave)
-        OpenGLZoneTest::leave();
+    osl::Thread::wait(std::chrono::seconds(nDelaySeconds));
 }
+
+IMPL_LINK(DemoWidgets, CursorButtonClick, Button*, pButton, void)
+{
+    for (size_t i=0; i<SAL_N_ELEMENTS(gvPointerData); ++i)
+    {
+        if (mvCursorButtons[i].get() == pButton)
+        {
+            mpBox->SetPointer( gvPointerData[i].eStyle );
+            return;
+        }
+    }
+    assert(false);
+}
+
+namespace {
 
 class DemoPopup : public FloatingWindow
 {
@@ -1963,7 +2090,7 @@ class DemoPopup : public FloatingWindow
         SetBackground(Wallpaper(COL_YELLOW));
 
         Show( true, ShowFlags::NoActivate );
-        Update();
+        PaintImmediately();
     }
 
     virtual void Paint(vcl::RenderContext& /*rRenderContext*/, const tools::Rectangle&) override
@@ -1982,10 +2109,10 @@ class DemoPopup : public FloatingWindow
         SetLineColor(COL_BLACK);
         SetFillColor();
         DrawRect( tools::Rectangle( Point(), aSize ) );
-        aSize.Width() -= 2;
-        aSize.Height() -= 2;
+        aSize.AdjustWidth( -2 );
+        aSize.AdjustHeight( -2 );
         Color aColor( GetLineColor() );
-        SetLineColor( ( COL_GRAY ) );
+        SetLineColor( COL_GRAY );
         DrawRect( tools::Rectangle( Point( 1, 1 ), aSize ) );
         SetLineColor( aColor );
     }
@@ -1996,12 +2123,12 @@ class DemoPopup : public FloatingWindow
     }
 };
 
+}
+
 class OpenGLTests
 {
     VclPtr<WorkWindow> mxWinA;
     VclPtr<WorkWindow> mxWinB;
-    OpenGLSalGraphicsImpl *mpImplA;
-    OpenGLSalGraphicsImpl *mpImplB;
     rtl::Reference<OpenGLContext> mpA;
     rtl::Reference<OpenGLContext> mpB;
 
@@ -2015,18 +2142,20 @@ public:
         mxWinA(VclPtr<WorkWindow>::Create(nullptr, WB_APP | WB_STDWORK)),
         mxWinB(VclPtr<WorkWindow>::Create(nullptr, WB_APP | WB_STDWORK))
     {
+        OpenGLSalGraphicsImpl *pImplA;
+        OpenGLSalGraphicsImpl *pImplB;
         if (!OpenGLHelper::isVCLOpenGLEnabled())
         {
-            mpImplA = mpImplB = nullptr;
+            pImplA = pImplB = nullptr;
             fprintf (stderr, "OpenGL is not enabled: try SAL_FORCEGL=1\n");
             return;
         }
 
-        mpImplA = getImpl(mxWinA);
-        mpImplB = getImpl(mxWinB);
-        assert (mpImplA && mpImplB);
-        mpA = mpImplA->GetOpenGLContext();
-        mpB = mpImplB->GetOpenGLContext();
+        pImplA = getImpl(mxWinA);
+        pImplB = getImpl(mxWinB);
+        assert (pImplA && pImplB);
+        mpA = pImplA->GetOpenGLContext();
+        mpB = pImplB->GetOpenGLContext();
 
         assert (mpA.is() && mpB.is());
         assert (mpA != mpB);
@@ -2061,9 +2190,13 @@ public:
 
         // get some other guys to leach off this context
         VclPtrInstance<VirtualDevice> xVDev;
-        rtl::Reference<OpenGLContext> pContext = getImpl(xVDev)->GetOpenGLContext();
+        OpenGLSalGraphicsImpl* pImpl = getImpl(xVDev);
+        assert(pImpl);
+        rtl::Reference<OpenGLContext> pContext = pImpl->GetOpenGLContext();
         VclPtrInstance<VirtualDevice> xVDev2;
-        rtl::Reference<OpenGLContext> pContext2 = getImpl(xVDev)->GetOpenGLContext();
+        OpenGLSalGraphicsImpl* pImpl2 = getImpl(xVDev2);
+        assert(pImpl2);
+        rtl::Reference<OpenGLContext> pContext2 = pImpl2->GetOpenGLContext();
 
         // sharing the same off-screen context.
         assert(pContext == pContext2);
@@ -2102,17 +2235,18 @@ public:
 };
 
 namespace {
-    void renderFonts(const std::vector<OUString> &aFontNames)
+    void renderFonts()
     {
         ScopedVclPtrInstance<VirtualDevice> xDevice;
         Size aSize(1024, 1024);
         xDevice->SetOutputSizePixel(aSize);
 
+#if 0
         for (auto & aFontName : aFontNames)
         {
             vcl::Font aFont(aFontName, Size(0,96));
-#if 0
-            aFont.SetColor(COL_BLACK);
+
+            aFont.Set(COL_BLACK);
             xDevice->SetFont(aFont);
             xDevice->Erase();
 
@@ -2153,11 +2287,13 @@ include/vcl/outdev.hxx:                                              DrawTextFla
                                              TextRectInfo* pInfo = nullptr,
                                              const vcl::ITextLayout* _pTextLayout = nullptr ) const;
 
-#endif
         }
+#endif
 
     }
 };
+
+namespace {
 
 class DemoApp : public Application
 {
@@ -2168,11 +2304,13 @@ class DemoApp : public Application
         fprintf(stderr,"  --show <renderer>  - start with a given renderer, options are:\n");
         OUString aRenderers(rRenderer.getRendererList());
         fprintf(stderr,"         %s\n",
-                rtl::OUStringToOString(aRenderers, RTL_TEXTENCODING_UTF8).getStr());
+                OUStringToOString(aRenderers, RTL_TEXTENCODING_UTF8).getStr());
         fprintf(stderr,"  --test <iterCount> - create benchmark data\n");
         fprintf(stderr,"  --widgets          - launch the widget test.\n");
+        fprintf(stderr,"  --popup            - launch the popup test.\n");
         fprintf(stderr,"  --threads          - render from multiple threads.\n");
         fprintf(stderr,"  --gltest           - run openGL regression tests.\n");
+        fprintf(stderr,"  --font <fontname>  - run the font render test.\n");
         fprintf(stderr, "\n");
         return 0;
     }
@@ -2222,7 +2360,7 @@ public:
                 else if (aArg.startsWith("--"))
                 {
                     fprintf(stderr,"Unknown argument '%s'\n",
-                            rtl::OUStringToOString(aArg, RTL_TEXTENCODING_UTF8).getStr());
+                            OUStringToOString(aArg, RTL_TEXTENCODING_UTF8).getStr());
                     return showHelp(aRenderer);
                 }
             }
@@ -2244,8 +2382,8 @@ public:
                 xWidgets = VclPtr< DemoWidgets >::Create ();
             else if (bPopup)
                 xPopup = VclPtrInstance< DemoPopup> ();
-            else if (aFontNames.size() > 0)
-                renderFonts(aFontNames);
+            else if (!aFontNames.empty())
+                renderFonts();
             else
                 aMainWin->Show();
 
@@ -2254,27 +2392,27 @@ public:
             xWidgets.disposeAndClear();
             xPopup.disposeAndClear();
         }
-        catch (const css::uno::Exception& e)
+        catch (const css::uno::Exception&)
         {
-            SAL_WARN("vcl.app", "Fatal exception: " << e.Message);
+            TOOLS_WARN_EXCEPTION("vcl.app", "Fatal");
             return 1;
         }
         catch (const std::exception& e)
         {
-            SAL_WARN("vcl.app", "Fatal exception: " << e.what());
+            SAL_WARN("vcl.app", "Fatal: " << e.what());
             return 1;
         }
         return 0;
     }
 
 protected:
-    uno::Reference<lang::XMultiServiceFactory> xMSF;
     void Init() override
     {
         try
         {
             uno::Reference<uno::XComponentContext> xComponentContext
                 = ::cppu::defaultBootstrap_InitialComponentContext();
+            uno::Reference<lang::XMultiServiceFactory> xMSF;
             xMSF.set(xComponentContext->getServiceManager(), uno::UNO_QUERY);
             if(!xMSF.is())
                 Application::Abort("Bootstrap failure - no service manager");
@@ -2295,8 +2433,15 @@ protected:
     }
 };
 
+}
+
 void vclmain::createApplication()
 {
+#ifdef _WIN32
+    _putenv_s("LIBO_VCL_DEMO", "1");
+#else
+    setenv("LIBO_VCL_DEMO", "1", 0);
+#endif
     static DemoApp aApp;
 }
 

@@ -21,18 +21,15 @@
 #include "XMLIndexAlphabeticalSourceContext.hxx"
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XIndexReplace.hpp>
+#include <com/sun/star/container/XNameContainer.hpp>
 
 #include <sax/tools/converter.hxx>
 
 #include "XMLIndexTemplateContext.hxx"
-#include "XMLIndexTitleTemplateContext.hxx"
-#include "XMLIndexTOCStylesContext.hxx"
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <rtl/ustring.hxx>
@@ -80,7 +77,7 @@ void XMLIndexAlphabeticalSourceContext::ProcessAttribute(
             {
                 sMainEntryStyleName = rValue;
                 OUString sDisplayStyleName = GetImport().GetStyleDisplayName(
-                    XML_STYLE_FAMILY_TEXT_TEXT, sMainEntryStyleName );
+                    XmlStyleFamily::TEXT_TEXT, sMainEntryStyleName );
                 const Reference < css::container::XNameContainer >&
                     rStyles = GetImport().GetTextImport()->GetTextStyles();
                 bMainEntryStyleNameOK = rStyles.is() && rStyles->hasByName( sDisplayStyleName );
@@ -172,7 +169,7 @@ void XMLIndexAlphabeticalSourceContext::EndElement()
     if (bMainEntryStyleNameOK)
     {
         aAny <<= GetImport().GetStyleDisplayName(
-                            XML_STYLE_FAMILY_TEXT_TEXT, sMainEntryStyleName );
+                            XmlStyleFamily::TEXT_TEXT, sMainEntryStyleName );
         rIndexPropertySet->setPropertyValue("MainEntryCharacterStyleName",aAny);
     }
 
@@ -200,7 +197,7 @@ void XMLIndexAlphabeticalSourceContext::EndElement()
     XMLIndexSourceBaseContext::EndElement();
 }
 
-SvXMLImportContext* XMLIndexAlphabeticalSourceContext::CreateChildContext(
+SvXMLImportContextRef XMLIndexAlphabeticalSourceContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList> & xAttrList )

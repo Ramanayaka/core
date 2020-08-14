@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <comphelper/processfactory.hxx>
 #include <osl/file.hxx>
@@ -31,7 +31,7 @@
 #include <sfx2/lnkbase.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <tools/urlobj.hxx>
-#include <svl/urihelper.hxx>
+#include <tools/debug.hxx>
 #include <tools/tenccvt.hxx>
 #include <memory>
 
@@ -67,8 +67,9 @@ void ImpSdrObjTextLink::Closed()
     const OUString& /*rMimeType*/, const css::uno::Any & /*rValue */)
 {
     bool bForceReload = false;
-    SdrModel* pModel = pSdrObj ? pSdrObj->GetModel() : nullptr;
-    sfx2::LinkManager* pLinkManager= pModel ? pModel->GetLinkManager() : nullptr;
+    SdrModel* pModel(pSdrObj ? &pSdrObj->getSdrModelFromSdrObject() : nullptr);
+    sfx2::LinkManager* pLinkManager(pModel ? pModel->GetLinkManager() : nullptr);
+
     if( pLinkManager )
     {
         ImpSdrObjTextLinkUserData* pData=pSdrObj->GetLinkUserData();
@@ -98,7 +99,6 @@ void ImpSdrObjTextLink::Closed()
 ImpSdrObjTextLinkUserData::ImpSdrObjTextLinkUserData():
     SdrObjUserData(SdrInventor::Default,SDRUSERDATA_OBJTEXTLINK),
     aFileDate0( DateTime::EMPTY ),
-    pLink(nullptr),
     eCharSet(RTL_TEXTENCODING_DONTKNOW)
 {
 }
@@ -107,7 +107,7 @@ ImpSdrObjTextLinkUserData::~ImpSdrObjTextLinkUserData()
 {
 }
 
-SdrObjUserData* ImpSdrObjTextLinkUserData::Clone(SdrObject* ) const
+std::unique_ptr<SdrObjUserData> ImpSdrObjTextLinkUserData::Clone(SdrObject* ) const
 {
     ImpSdrObjTextLinkUserData* pData=new ImpSdrObjTextLinkUserData;
     pData->aFileName  =aFileName;
@@ -115,7 +115,7 @@ SdrObjUserData* ImpSdrObjTextLinkUserData::Clone(SdrObject* ) const
     pData->aFileDate0 =aFileDate0;
     pData->eCharSet   =eCharSet;
     pData->pLink=nullptr;
-    return pData;
+    return std::unique_ptr<SdrObjUserData>(pData);
 }
 
 
@@ -131,7 +131,7 @@ void SdrTextObj::SetTextLink(const OUString& rFileName, const OUString& rFilterN
     pData->aFileName=rFileName;
     pData->aFilterName=rFilterName;
     pData->eCharSet=eCharSet;
-    AppendUserData(pData);
+    AppendUserData(std::unique_ptr<SdrObjUserData>(pData));
     ImpRegisterLink();
 }
 
@@ -228,7 +228,7 @@ bool SdrTextObj::LoadText(const OUString& rFileName, rtl_TextEncoding eCharSet)
 
         if( !pIStm->GetError() )
         {
-            SetText( *pIStm, aFileURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), sal::static_int_cast< sal_uInt16 >( bRTF ? EE_FORMAT_RTF : EE_FORMAT_TEXT ) );
+            SetText( *pIStm, aFileURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), bRTF ? EETextFormat::Rtf : EETextFormat::Text );
             bRet = true;
         }
     }
@@ -254,10 +254,10 @@ ImpSdrObjTextLinkUserData* SdrTextObj::GetLinkUserData() const
 void SdrTextObj::ImpRegisterLink()
 {
     ImpSdrObjTextLinkUserData* pData=GetLinkUserData();
-    sfx2::LinkManager* pLinkManager=pModel!=nullptr ? pModel->GetLinkManager() : nullptr;
+    sfx2::LinkManager* pLinkManager(getSdrModelFromSdrObject().GetLinkManager());
     if (pLinkManager!=nullptr && pData!=nullptr && pData->pLink==nullptr) { // don't register twice
         pData->pLink = new ImpSdrObjTextLink(this);
-        pLinkManager->InsertFileLink(*pData->pLink,OBJECT_CLIENT_FILE,pData->aFileName,
+        pLinkManager->InsertFileLink(*pData->pLink,sfx2::SvBaseLinkObjectType::ClientFile,pData->aFileName,
                                      !pData->aFilterName.isEmpty() ?
                                       &pData->aFilterName : nullptr);
     }
@@ -266,7 +266,7 @@ void SdrTextObj::ImpRegisterLink()
 void SdrTextObj::ImpDeregisterLink()
 {
     ImpSdrObjTextLinkUserData* pData=GetLinkUserData();
-    sfx2::LinkManager* pLinkManager=pModel!=nullptr ? pModel->GetLinkManager() : nullptr;
+    sfx2::LinkManager* pLinkManager(getSdrModelFromSdrObject().GetLinkManager());
     if (pLinkManager!=nullptr && pData!=nullptr && pData->pLink!=nullptr) { // don't register twice
         // when doing Remove, *pLink is deleted implicitly
         pLinkManager->Remove( pData->pLink.get() );

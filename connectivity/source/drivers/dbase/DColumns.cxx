@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbase/DColumns.hxx"
-#include "dbase/DTable.hxx"
+#include <dbase/DColumns.hxx>
+#include <dbase/DTable.hxx>
 #include <connectivity/sdbcx/VColumn.hxx>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <comphelper/property.hxx>
 
 using namespace connectivity::dbase;
 using namespace connectivity;
@@ -36,11 +34,11 @@ sdbcx::ObjectType ODbaseColumns::createObject(const OUString& _rName)
 {
     ODbaseTable* pTable = static_cast<ODbaseTable*>(m_pTable);
 
-    ::rtl::Reference<OSQLColumns> aCols = pTable->getTableColumns();
-    OSQLColumns::Vector::const_iterator aIter = find(aCols->get().begin(),aCols->get().end(),_rName,::comphelper::UStringMixEqual(isCaseSensitive()));
+    const ::rtl::Reference<OSQLColumns>& aCols = pTable->getTableColumns();
+    OSQLColumns::const_iterator aIter = find(aCols->begin(),aCols->end(),_rName,::comphelper::UStringMixEqual(isCaseSensitive()));
 
     sdbcx::ObjectType xRet;
-    if(aIter != aCols->get().end())
+    if(aIter != aCols->end())
         xRet = sdbcx::ObjectType(*aIter,UNO_QUERY);
     return xRet;
 }

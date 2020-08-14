@@ -17,12 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <tools/link.hxx>
 #include <tools/line.hxx>
 #include <tools/helpers.hxx>
 
-#include <cstdlib>
-#include <math.h>
+#include <cmath>
 
 namespace tools
 {
@@ -39,8 +37,8 @@ bool Line::Intersection( const Line& rLine, Point& rIntersection ) const
 
     if( Intersection( rLine, fX, fY ) )
     {
-        rIntersection.X() = FRound( fX );
-        rIntersection.Y() = FRound( fY );
+        rIntersection.setX( FRound( fX ) );
+        rIntersection.setY( FRound( fY ) );
         bRet = true;
     }
     else

@@ -20,29 +20,30 @@
 #ifndef INCLUDED_VCL_GENERIC_PRINT_PSPUTIL_HXX
 #define INCLUDED_VCL_GENERIC_PRINT_PSPUTIL_HXX
 
-#include "osl/file.hxx"
+#include <osl/file.hxx>
 
-#include "rtl/ustring.hxx"
-#include "rtl/string.hxx"
-#include "rtl/tencinfo.h"
-#include "rtl/textcvt.h"
-
-#include <map>
+#include <rtl/math.hxx>
+#include <rtl/ustring.hxx>
+#include <rtl/strbuf.hxx>
+#include <rtl/string.hxx>
 
 namespace psp {
 
 /*
  *  string convenience routines
- *  sizeof(pBuffer) must be at least 2 Bytes, 0x00 <= nValue <= 0xFF,
- *  effective buffer of get*ValueOf() is NOT NULL-terminated
  */
-sal_Int32   getHexValueOf (sal_Int32 nValue, sal_Char* pBuffer);
-sal_Int32   getAlignedHexValueOf (sal_Int32 nValue, sal_Char* pBuffer);
-sal_Int32   getValueOf    (sal_Int32 nValue, sal_Char* pBuffer);
-sal_Int32   appendStr     (const sal_Char* pSrc, sal_Char* pDst);
+sal_Int32   getHexValueOf (sal_Int32 nValue, OStringBuffer& pBuffer);
+sal_Int32   getAlignedHexValueOf (sal_Int32 nValue, OStringBuffer& pBuffer);
+sal_Int32   getValueOf    (sal_Int32 nValue, OStringBuffer& pBuffer);
+sal_Int32   appendStr     (const char* pSrc, OStringBuffer& pDst);
 
-bool    WritePS (osl::File* pFile, const sal_Char* pString);
-bool    WritePS (osl::File* pFile, const sal_Char* pString, sal_uInt64 nInLength);
+inline void getValueOfDouble( OStringBuffer& pBuffer, double f, int nPrecision = 0)
+{
+    pBuffer.append(rtl::math::doubleToString( f, rtl_math_StringFormat_G, nPrecision, '.', true ));
+}
+
+bool    WritePS (osl::File* pFile, const char* pString);
+bool    WritePS (osl::File* pFile, const char* pString, sal_uInt64 nInLength);
 bool    WritePS (osl::File* pFile, const OString &rString);
 bool    WritePS (osl::File* pFile, const OUString &rString);
 

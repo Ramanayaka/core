@@ -25,27 +25,19 @@
 
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <com/sun/star/awt/ActionEvent.hpp>
-#include <com/sun/star/awt/XActionListener.hpp>
-#include <com/sun/star/awt/XButton.hpp>
-#include <com/sun/star/awt/XControl.hpp>
-#include <com/sun/star/awt/XControlContainer.hpp>
-#include <com/sun/star/awt/XFixedText.hpp>
 #include <com/sun/star/awt/XMouseListener.hpp>
 #include <com/sun/star/awt/XMouseMotionListener.hpp>
 #include <com/sun/star/awt/XPaintListener.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/drawing/XDrawView.hpp>
-#include <com/sun/star/drawing/XPresenterHelper.hpp>
 #include <com/sun/star/drawing/framework/XView.hpp>
 #include <com/sun/star/drawing/framework/XResourceId.hpp>
 #include <com/sun/star/frame/XController.hpp>
 
 #include <functional>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 typedef cppu::WeakComponentImplHelper<
     css::awt::XWindowListener,
@@ -190,7 +182,7 @@ private:
 
     void ProcessEntry (
         const css::uno::Reference<css::beans::XPropertySet>& rProperties,
-        Context& rContext);
+        Context const & rContext);
 
     /** @throws css::lang::DisposedException when the object has already been
         disposed.
@@ -247,12 +239,11 @@ private:
     css::uno::Reference<css::awt::XWindow> mxWindow;
     css::uno::Reference<css::rendering::XCanvas> mxCanvas;
     ::rtl::Reference<PresenterController> mpPresenterController;
-    css::uno::Reference<css::presentation::XSlideShowController> mxSlideShowController;
     ::rtl::Reference<PresenterToolBar> mpToolBar;
 
 };
 
-} } // end of namespace ::sdext::presenter
+} // end of namespace ::sdext::presenter
 
 #endif
 

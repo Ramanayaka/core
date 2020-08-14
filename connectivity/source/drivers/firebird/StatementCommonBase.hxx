@@ -21,25 +21,19 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_STATEMENTCOMMONBASE_HXX
 
 #include "Connection.hxx"
+#include "SubComponent.hxx"
 
 #include <ibase.h>
 
-#include <connectivity/OSubComponent.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <list>
+#include <rtl/ref.hxx>
 
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/sdbc/SQLWarning.hpp>
-#include <com/sun/star/sdbc/XBatchExecution.hpp>
 #include <com/sun/star/sdbc/XCloseable.hpp>
 #include <com/sun/star/sdbc/XMultipleResults.hpp>
-#include <com/sun/star/sdbc/XStatement.hpp>
 #include <com/sun/star/sdbc/XWarningsSupplier.hpp>
 #include <com/sun/star/util/XCancellable.hpp>
 
-namespace connectivity
-{
-    namespace firebird
+namespace connectivity::firebird
     {
 
         typedef ::cppu::WeakComponentImplHelper<   css::sdbc::XWarningsSupplier,
@@ -133,7 +127,7 @@ namespace connectivity
             virtual void SAL_CALL close(  ) override;
 
         };
-    }
+
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_STATEMENTCOMMONBASE_HXX

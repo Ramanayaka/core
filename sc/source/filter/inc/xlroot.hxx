@@ -20,23 +20,19 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_XLROOT_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_XLROOT_HXX
 
-#include <com/sun/star/beans/NamedValue.hpp>
-
 #include <i18nlangtag/lang.h>
-#include <sot/storage.hxx>
+#include <tools/ref.hxx>
 #include "xlconst.hxx"
-#include "xltools.hxx"
-#include <documentimport.hxx>
 #include <memory>
 
+namespace com::sun::star::beans { struct NamedValue; }
 namespace comphelper { class IDocPasswordVerifier; }
 
 // Forward declarations of objects in public use ==============================
 
 class DateTime;
-
-struct XclAddress;
-struct XclRange;
+class SotStorage;
+class SotStorageStream;
 
 // Global data ================================================================
 
@@ -84,7 +80,7 @@ struct XclRootData
     OUString            maDocUrl;           /// Document URL of imported/exported file.
     OUString            maBasePath;         /// Base path of imported/exported file (path of maDocUrl).
     OUString            maUserName;         /// Current user name.
-    const OUString      maDefPassword;      /// The default password used for stream encryption.
+    static const OUStringLiteral gaDefPassword; /// The default password used for stream encryption.
     rtl_TextEncoding    meTextEnc;          /// Text encoding to import/export byte strings.
     LanguageType        meSysLang;          /// System language.
     LanguageType        meDocLang;          /// Document language (import: from file, export: from system).
@@ -178,7 +174,7 @@ public:
     const OUString& GetUserName() const { return mrData.maUserName; }
 
     /** Returns the default password used for stream encryption. */
-    const OUString& GetDefaultPassword() const { return mrData.maDefPassword; }
+    static const OUStringLiteral& GetDefaultPassword() { return XclRootData::gaDefPassword; }
     /** Requests and verifies a password from the medium or the user. */
     css::uno::Sequence< css::beans::NamedValue >
         RequestEncryptionData( ::comphelper::IDocPasswordVerifier& rVerifier ) const;
@@ -198,10 +194,8 @@ public:
     /** Tries to open a new stream in the root storage for reading or writing. */
     tools::SvRef<SotStorageStream> OpenStream( const OUString& rStrmName ) const;
 
-    /** Returns the destination document (import) or source document (export). */
+    /** Returns reference to the destination document (import) or source document (export). */
     ScDocument& GetDoc() const;
-    /** Returns pointer to the destination document (import) or source document (export). */
-    ScDocument& GetDocRef() const;
 
     /** Returns the object shell of the Calc document. May be 0 (i.e. import from clipboard). */
     SfxObjectShell*     GetDocShell() const;

@@ -19,14 +19,15 @@
 
 #include "ShellStackGuard.hxx"
 
-#include "framework/ConfigurationController.hxx"
-#include "framework/FrameworkHelper.hxx"
+#include <framework/ConfigurationController.hxx>
+#include <framework/FrameworkHelper.hxx>
 
-#include "DrawController.hxx"
-#include "ViewShellBase.hxx"
+#include <DrawController.hxx>
+#include <ViewShellBase.hxx>
 #include <sfx2/printer.hxx>
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <com/sun/star/drawing/framework/XConfigurationController.hpp>
+#include <comphelper/servicehelper.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -34,11 +35,11 @@ using namespace ::com::sun::star::drawing::framework;
 
 using ::sd::framework::FrameworkHelper;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 //===== CenterViewFocusModule ====================================================
 
-ShellStackGuard::ShellStackGuard (Reference<frame::XController>& rxController)
+ShellStackGuard::ShellStackGuard (Reference<frame::XController> const & rxController)
     : ShellStackGuardInterfaceBase(m_aMutex),
       mxConfigurationController(),
       mpBase(nullptr),
@@ -51,14 +52,9 @@ ShellStackGuard::ShellStackGuard (Reference<frame::XController>& rxController)
         mxConfigurationController = xControllerManager->getConfigurationController();
 
         // Tunnel through the controller to obtain a ViewShellBase.
-        Reference<lang::XUnoTunnel> xTunnel (rxController, UNO_QUERY);
-        if (xTunnel.is())
-        {
-            ::sd::DrawController* pController = reinterpret_cast<sd::DrawController*>(
-                xTunnel->getSomething(sd::DrawController::getUnoTunnelId()));
-            if (pController != nullptr)
-                mpBase = pController->GetViewShellBase();
-        }
+        auto pController = comphelper::getUnoTunnelImplementation<sd::DrawController>(rxController);
+        if (pController != nullptr)
+            mpBase = pController->GetViewShellBase();
     }
 
     if (mxConfigurationController.is())
@@ -72,7 +68,6 @@ ShellStackGuard::ShellStackGuard (Reference<frame::XController>& rxController)
 
         // Prepare the printer polling.
         maPrinterPollingIdle.SetInvokeHandler(LINK(this,ShellStackGuard,TimeoutHandler));
-        maPrinterPollingIdle.SetPriority(TaskPriority::LOWER);
     }
 }
 
@@ -92,9 +87,9 @@ void SAL_CALL ShellStackGuard::disposing()
 void SAL_CALL ShellStackGuard::notifyConfigurationChange (
     const ConfigurationChangeEvent& rEvent)
 {
-    if (rEvent.Type.equals(FrameworkHelper::msConfigurationUpdateStartEvent))
+    if (rEvent.Type == FrameworkHelper::msConfigurationUpdateStartEvent)
     {
-        if (mpUpdateLock.get() == nullptr && IsPrinting())
+        if (mpUpdateLock == nullptr && IsPrinting())
         {
             // Prevent configuration updates while the printer is printing.
             mpUpdateLock.reset(new ConfigurationController::Lock(mxConfigurationController));
@@ -123,18 +118,18 @@ IMPL_LINK(ShellStackGuard, TimeoutHandler, Timer*, pIdle, void)
 #else
     (void)pIdle;
 #endif
-    if (mpUpdateLock.get() != nullptr)
+    if (mpUpdateLock == nullptr)
+        return;
+
+    if ( ! IsPrinting())
     {
-        if ( ! IsPrinting())
-        {
-            // Printing finished.  Release the update lock.
-            mpUpdateLock.reset();
-        }
-        else
-        {
-            // Wait long for the printing to finish.
-            maPrinterPollingIdle.Start();
-        }
+        // Printing finished.  Release the update lock.
+        mpUpdateLock.reset();
+    }
+    else
+    {
+        // Wait long for the printing to finish.
+        maPrinterPollingIdle.Start();
     }
 }
 
@@ -153,6 +148,6 @@ bool ShellStackGuard::IsPrinting() const
     return false;
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

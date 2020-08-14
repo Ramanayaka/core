@@ -24,43 +24,38 @@
 #include <sal/config.h>
 
 #include <o3tl/any.hxx>
-#include <osl/diagnose.h>
 #include <osl/mutex.hxx>
 #include <uno/mapping.hxx>
 #include <uno/dispatcher.h>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/weak.hxx>
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/component.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/ref.hxx>
 
 #include "lrucache.hxx"
 
 #ifdef TEST_LIST_CLASSES
-#include <list>
+#include <vector>
 #include <algorithm>
 #endif
 #include <unordered_map>
 #include <memory>
 
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 
-#include <com/sun/star/reflection/XIdlClass.hpp>
 #include <com/sun/star/reflection/XIdlReflection.hpp>
-#include <com/sun/star/reflection/XIdlField.hpp>
-#include <com/sun/star/reflection/XIdlField2.hpp>
-#include <com/sun/star/reflection/XIdlMethod.hpp>
+
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::reflection { class XIdlClass; }
+namespace com::sun::star::reflection { class XIdlField; }
+namespace com::sun::star::reflection { class XIdlMethod; }
 
 namespace stoc_corefl
 {
 
 #ifdef TEST_LIST_CLASSES
-typedef std::list< OUString > ClassNameList;
-extern ClassNameList g_aClassNames;
+extern std::vector<OUString> g_aClassNames;
 #endif
 
 
@@ -74,10 +69,8 @@ inline bool td_equals( typelib_TypeDescription * pTD, typelib_TypeDescriptionRef
              rtl_ustr_compare( pTD->pTypeName->buffer, pType->pTypeName->buffer ) == 0));
 }
 
-typedef std::unordered_map< OUString, css::uno::WeakReference< css::reflection::XIdlField >,
-    OUStringHash > OUString2Field;
-typedef std::unordered_map< OUString, css::uno::WeakReference< css::reflection::XIdlMethod >,
-    OUStringHash > OUString2Method;
+typedef std::unordered_map< OUString, css::uno::WeakReference< css::reflection::XIdlField > > OUString2Field;
+typedef std::unordered_map< OUString, css::uno::WeakReference< css::reflection::XIdlMethod > > OUString2Method;
 
 
 class IdlReflectionServiceImpl
@@ -199,7 +192,7 @@ class InterfaceIdlClassImpl
 
     css::uno::Sequence< css::uno::Reference< css::reflection::XIdlClass > >      _xSuperClasses;
 
-    MemberInit *                            _pSortedMemberInit; // first methods, then attributes
+    std::unique_ptr<MemberInit[]>           _pSortedMemberInit; // first methods, then attributes
     OUString2Field                          _aName2Field;
     OUString2Method                         _aName2Method;
     sal_Int32                               _nMethods;
@@ -216,7 +209,6 @@ public:
                            const OUString & rName, typelib_TypeClass eTypeClass,
                            typelib_TypeDescription * pTypeDescr )
         : IdlClassImpl( pReflection, rName, eTypeClass, pTypeDescr )
-        , _pSortedMemberInit( nullptr )
         , _nMethods( 0 )
         , _nAttributes( 0 )
         {}
@@ -252,7 +244,6 @@ public:
                           const OUString & rName, typelib_TypeClass eTypeClass,
                           typelib_TypeDescription * pTypeDescr )
         : IdlClassImpl( pReflection, rName, eTypeClass, pTypeDescr )
-        , _pFields( nullptr )
         {}
     virtual ~CompoundIdlClassImpl() override;
 
@@ -315,7 +306,6 @@ public:
                       const OUString & rName, typelib_TypeClass eTypeClass,
                       typelib_TypeDescription * pTypeDescr )
         : IdlClassImpl( pReflection, rName, eTypeClass, pTypeDescr )
-        , _pFields( nullptr )
         {}
     virtual ~EnumIdlClassImpl() override;
 

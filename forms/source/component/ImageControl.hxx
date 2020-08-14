@@ -20,17 +20,14 @@
 #ifndef INCLUDED_FORMS_SOURCE_COMPONENT_IMAGECONTROL_HXX
 #define INCLUDED_FORMS_SOURCE_COMPONENT_IMAGECONTROL_HXX
 
-#include "FormComponent.hxx"
+#include <FormComponent.hxx>
 #include "imgprod.hxx"
 #include <com/sun/star/form/XImageProducerSupplier.hpp>
 #include <com/sun/star/awt/XMouseListener.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
 #include <com/sun/star/graphic/XGraphicObject.hpp>
-#include <comphelper/propmultiplex.hxx>
 #include <cppuhelper/implbase2.hxx>
 #include <rtl/ref.hxx>
-
-using namespace comphelper;
 
 
 namespace frm
@@ -43,7 +40,7 @@ typedef ::cppu::ImplHelper2 <   css::form::XImageProducerSupplier
                             ,   css::awt::XImageProducer
                             >   OImageControlModel_Base;
 
-class OImageControlModel
+class OImageControlModel final
                 :public OImageControlModel_Base
                 ,public OBoundControlModel
 {
@@ -55,7 +52,6 @@ class OImageControlModel
                                                       m_xGraphicObject;
     OUString                                          m_sDocumentURL;
 
-protected:
     // UNO binding
     virtual css::uno::Sequence< css::uno::Type> _getTypes() override;
 
@@ -75,7 +71,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OImageControlModel"); }
+    { return "com.sun.star.form.OImageControlModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -104,7 +100,7 @@ public:
     using OBoundControlModel::disposing;
     using OBoundControlModel::getFastPropertyValue;
 
-protected:
+private:
     // OBoundControlModel overridables
     virtual void            onConnectedDbColumn( const css::uno::Reference< css::uno::XInterface >& _rxForm ) override;
     virtual void            onDisconnectedDbColumn() override;
@@ -118,7 +114,6 @@ protected:
 
     virtual void            resetNoBroadcast() override;
 
-protected:
     virtual css::uno::Reference< css::util::XCloneable > SAL_CALL createClone(  ) override;
 
     void implConstruct();
@@ -127,7 +122,7 @@ protected:
         @precond
             our own mutex is locked
     */
-    bool    impl_handleNewImageURL_lck( ValueChangeInstigator _eInstigator );
+    void    impl_handleNewImageURL_lck( ValueChangeInstigator _eInstigator );
 
     /** updates the binary stream, created from loading the file which the given URL points to, into our
         bound field, or the control itself if there is no bound field
@@ -161,7 +156,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OImageControlControl"); }
+    { return "com.sun.star.form.OImageControlControl"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 

@@ -35,22 +35,21 @@
 #include <cppuhelper/weakref.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <com/sun/star/embed/XTransactionListener.hpp>
-#include "apitools.hxx"
-#include "bookmarkcontainer.hxx"
+#include <apitools.hxx>
+#include <bookmarkcontainer.hxx>
 #include <rtl/ref.hxx>
 #include <connectivity/CommonTools.hxx>
-#include <comphelper/broadcasthelper.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/sdb/XCompletedConnection.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
-#include "ContentHelper.hxx"
+#include <ContentHelper.hxx>
 #include <com/sun/star/document/XStorageBasedDocument.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/util/XRefreshable.hpp>
 #include <com/sun/star/sdb/XDocumentDataSource.hpp>
-#include "ModelImpl.hxx"
+#include <ModelImpl.hxx>
 
 namespace dbaccess
 {
@@ -69,6 +68,7 @@ typedef ::cppu::WeakComponentImplHelper<   css::lang::XServiceInfo
                                        ,   css::util::XFlushable
                                        ,   css::util::XFlushListener
                                        ,   css::sdb::XDocumentDataSource
+                                       ,   css::lang::XInitialization
                                        >   ODatabaseSource_Base;
 
 class ODatabaseSource   :public ModelDependentComponent // must be first
@@ -82,8 +82,9 @@ class ODatabaseSource   :public ModelDependentComponent // must be first
 
 private:
     using ODatabaseSource_Base::rBHelper;
-    rtl::Reference<OBookmarkContainer> m_xBookmarks;
-    ::comphelper::OInterfaceContainerHelper2       m_aFlushListeners;
+    // note: this thing uses the ref-count of "this", see OBookmarkContainer::acquire!
+    OBookmarkContainer m_Bookmarks;
+    ::comphelper::OInterfaceContainerHelper2 m_aFlushListeners;
 
 private:
     virtual ~ODatabaseSource() override;
@@ -183,6 +184,9 @@ public:
     // XDocumentDataSource
     virtual css::uno::Reference< css::sdb::XOfficeDatabaseDocument > SAL_CALL getDatabaseDocument() override;
 
+    // XInitialization
+    virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
+
 protected:
     // ModelDependentComponent overridables
     virtual css::uno::Reference< css::uno::XInterface > getThis() const override;
@@ -202,10 +206,10 @@ private:
 
     /// @throws css::sdbc::SQLException
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::sdbc::XConnection > SAL_CALL getConnection( const OUString& user, const OUString& password , bool _bIsolated);
+    css::uno::Reference< css::sdbc::XConnection > getConnection( const OUString& user, const OUString& password , bool _bIsolated);
     /// @throws css::sdbc::SQLException
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::sdbc::XConnection > SAL_CALL connectWithCompletion( const css::uno::Reference< css::task::XInteractionHandler >& handler , bool _bIsolated);
+    css::uno::Reference< css::sdbc::XConnection > connectWithCompletion( const css::uno::Reference< css::task::XInteractionHandler >& handler , bool _bIsolated);
 
 protected:
     using ::cppu::OPropertySetHelper::getFastPropertyValue;

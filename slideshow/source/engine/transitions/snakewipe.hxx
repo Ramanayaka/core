@@ -22,12 +22,8 @@
 
 #include "parametricpolypolygon.hxx"
 
-#include <basegfx/numeric/ftools.hxx>
-#include <basegfx/point/b2dpoint.hxx>
 
-
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /// Generates a snake wipe:
 class SnakeWipe : public ParametricPolyPolygon
@@ -62,7 +58,7 @@ private:
     const bool m_opposite;
 };
 
-}
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_TRANSITIONS_SNAKEWIPE_HXX

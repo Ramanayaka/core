@@ -43,13 +43,10 @@ public:
     void  CloseSubRecord();
 };
 
-#define SDIOCOMPAT_VERSIONDONTKNOW (sal_uInt16)0xffff
+#define SDIOCOMPAT_VERSIONDONTKNOW sal_uInt16(0xffff)
 
 class SD_DLLPUBLIC SdIOCompat : public old_SdrDownCompat
 {
-private:
-    sal_uInt16 nVersion;
-
 public:
                 // nNewMode: StreamMode::READ or StreamMode::WRITE
                 // nVer:     specify only when writing

@@ -40,16 +40,16 @@
 #include <linguistic/lngprophelp.hxx>
 
 #include <osl/file.hxx>
-#include "mythes.hxx"
+#include <mythes.hxx>
+#include <memory>
+#include <vector>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::linguistic2;
 
-namespace com { namespace sun { namespace star { namespace beans {
-        class XPropertySet;
-}}}}
+namespace com::sun::star::beans { class XPropertySet; }
 
 class Thesaurus :
     public cppu::WeakImplHelper
@@ -66,12 +66,15 @@ class Thesaurus :
     ::comphelper::OInterfaceContainerHelper2       aEvtListeners;
     linguistic::PropertyHelper_Thesaurus*       pPropHelper;
     bool                                    bDisposing;
-    CharClass **                            aCharSetInfo;
-    MyThes **                               aThes;
-    rtl_TextEncoding *                      aTEncs;
-    Locale *                                aTLocs;
-    OUString *                              aTNames;
-    sal_Int32                               numthes;
+    struct ThesInfo
+    {
+        std::unique_ptr<CharClass> aCharSetInfo;
+        std::unique_ptr<MyThes> aThes;
+        rtl_TextEncoding aEncoding;
+        Locale aLocale;
+        OUString aName;
+    };
+    std::vector<ThesInfo>                   mvThesInfo;
 
     // cache for the Thesaurus dialog
     Sequence < Reference < css::linguistic2::XMeaning > > prevMeanings;
@@ -96,7 +99,7 @@ public:
     virtual sal_Bool SAL_CALL hasLocale( const Locale& rLocale ) override;
 
     // XThesaurus
-    virtual Sequence< Reference < css::linguistic2::XMeaning > > SAL_CALL queryMeanings( const OUString& rTerm, const Locale& rLocale, const PropertyValues& rProperties ) override;
+    virtual Sequence< Reference < css::linguistic2::XMeaning > > SAL_CALL queryMeanings( const OUString& rTerm, const Locale& rLocale, const css::uno::Sequence< css::beans::PropertyValue >& rProperties ) override;
 
     // XServiceDisplayName
     virtual OUString SAL_CALL getServiceDisplayName( const Locale& rLocale ) override;
@@ -114,24 +117,11 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& rServiceName ) override;
     virtual Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    static inline OUString
-        getImplementationName_Static() throw();
-        static Sequence< OUString >
-        getSupportedServiceNames_Static() throw();
-
 private:
-    static OUString SAL_CALL makeLowerCase(const OUString&, CharClass *);
-    static OUString SAL_CALL makeUpperCase(const OUString&, CharClass *);
-    static OUString SAL_CALL makeInitCap(const OUString&, CharClass *);
+    static OUString makeLowerCase(const OUString&, CharClass const *);
+    static OUString makeUpperCase(const OUString&, CharClass const *);
+    static OUString makeInitCap(const OUString&, CharClass const *);
 };
-
-inline OUString Thesaurus::getImplementationName_Static() throw()
-{
-    return OUString( "org.openoffice.lingu.new.Thesaurus" );
-}
-
-void * SAL_CALL Thesaurus_getFactory(
-    char const * pImplName, css::lang::XMultiServiceFactory * pServiceManager);
 
 #endif
 

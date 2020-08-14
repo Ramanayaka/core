@@ -57,7 +57,8 @@
  * @file
  * Column style object.
  ************************************************************************/
-#include "xfcolstyle.hxx"
+#include <xfilter/xfcolstyle.hxx>
+#include <xfilter/ixfattrlist.hxx>
 
 XFColStyle::XFColStyle()
 {

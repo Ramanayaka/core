@@ -20,16 +20,11 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_LAYERMANAGER_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_LAYERMANAGER_HXX
 
-#include <cppcanvas/spritecanvas.hxx>
-
-#include "unoview.hxx"
-#include "unoviewcontainer.hxx"
-#include "attributableshape.hxx"
+#include <unoviewcontainer.hxx>
+#include <attributableshape.hxx>
 #include "layer.hxx"
-#include "tools.hxx"
+#include <tools.hxx>
 
-#include <algorithm>
-#include <functional>
 #include <memory>
 #include <map>
 #include <unordered_map>
@@ -39,10 +34,18 @@ namespace basegfx {
     class B2DRange;
 }
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
+        /** A hash map which maps the XShape to the corresponding Shape object.
+
+            Provides quicker lookup than ShapeSet for simple mappings
+         */
+        typedef std::unordered_map<
+              css::uno::Reference< css::drawing::XShape >,
+              ShapeSharedPtr,
+              hash< css::uno::Reference< css::drawing::XShape > >
+            > XShapeToShapeMap;
+
         /* Definition of Layermanager class */
 
         /** This class manages all of a slide's layers (and shapes)
@@ -111,6 +114,12 @@ namespace slideshow
              */
             void addShape( const ShapeSharedPtr& rShape );
 
+            /** Remove shape from this object
+
+                This method removes a shape from the shape.
+             */
+            bool removeShape( const ShapeSharedPtr& rShape );
+
             /** Lookup a Shape from an XShape model object
 
                 This method looks up the internal shape map for one
@@ -130,6 +139,13 @@ namespace slideshow
              */
             AttributableShapeSharedPtr getSubsetShape( const AttributableShapeSharedPtr&    rOrigShape,
                                                        const DocTreeNode&                   rTreeNode );
+
+            /** Get a map that maps all Shapes with their XShape reference as the key
+             *
+             * @return an unordered map that contains all shapes in the
+             * current page with their XShape reference as the key
+             */
+            const XShapeToShapeMap& getXShapeToShapeMap() const;
 
             /** Revoke a previously queried subset shape.
 
@@ -218,15 +234,6 @@ namespace slideshow
             bool renderTo( const ::cppcanvas::CanvasSharedPtr& rTargetCanvas ) const;
 
         private:
-            /** A hash map which maps the XShape to the corresponding Shape object.
-
-                Provides quicker lookup than ShapeSet for simple mappings
-             */
-            typedef std::unordered_map<
-                  css::uno::Reference< css::drawing::XShape >,
-                  ShapeSharedPtr,
-                  hash< css::uno::Reference< css::drawing::XShape > >
-                > XShapeHash;
 
             class ShapeComparator
             {
@@ -240,7 +247,6 @@ namespace slideshow
              */
         private:
             typedef ::std::map< ShapeSharedPtr, LayerWeakPtr, ShapeComparator > LayerShapeMap;
-            typedef ::std::set< ShapeSharedPtr > ShapeUpdateSet;
 
 
             /// Adds shape area to containing layer's damage area
@@ -306,11 +312,12 @@ namespace slideshow
             const UnoViewContainer&  mrViews;
 
             /// All layers of this object. Vector owns the layers
-            LayerVector              maLayers;
+            ::std::vector< LayerSharedPtr >
+                                     maLayers;
 
             /** Contains all shapes with their XShape reference as the key
              */
-            XShapeHash               maXShapeHash;
+            XShapeToShapeMap         maXShapeHash;
 
             /** Set of shapes this LayerManager own
 
@@ -328,7 +335,8 @@ namespace slideshow
                 has bNeedsUpdate set to true. We maintain this
                 redundant information for faster update processing.
              */
-            ShapeUpdateSet           maUpdateShapes;
+            ::std::set< ShapeSharedPtr >
+                                     maUpdateShapes;
 
             /// Number of shape sprites currently active on this LayerManager
             sal_Int32                mnActiveSprites;
@@ -347,7 +355,7 @@ namespace slideshow
         };
 
         typedef ::std::shared_ptr< LayerManager > LayerManagerSharedPtr;
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_LAYERMANAGER_HXX

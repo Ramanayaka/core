@@ -34,10 +34,13 @@ $(eval $(call gb_Executable_add_exception_objects,ui-previewer,\
     vcl/source/uipreviewer/previewer \
 ))
 
+$(eval $(call gb_Executable_add_defs,ui-previewer,\
+    -DVCL_INTERNALS \
+))
+
 ifeq ($(OS), $(filter LINUX %BSD SOLARIS, $(OS)))
 $(eval $(call gb_Executable_add_libs,ui-previewer,\
 	-lm $(DLOPEN_LIBS) \
-	-lpthread \
     -lX11 \
 ))
 
@@ -45,5 +48,7 @@ $(eval $(call gb_Executable_use_static_libraries,ui-previewer,\
 	glxtest \
 ))
 endif
+
+$(eval $(call gb_Executable_add_default_nativeres,ui-previewer))
 
 # vim: set noet sw=4 ts=4:

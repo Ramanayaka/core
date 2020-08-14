@@ -21,30 +21,25 @@
 // Global header
 
 
-#include <limits.h>
 #include <memory>
 #include <utility>
 #include <algorithm>
-#include <deque>
 #include <osl/mutex.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <cppuhelper/weakref.hxx>
 #include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <comphelper/accessibleeventnotifier.hxx>
-#include <unotools/accessiblestatesethelper.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/textdata.hxx>
 #include <vcl/unohelp.hxx>
-#include <sfx2/viewfrm.hxx>
-#include <sfx2/viewsh.hxx>
 
 
 // Project-local header
@@ -52,21 +47,18 @@
 
 #include "AccessibleTextEventQueue.hxx"
 #include <svx/AccessibleTextHelper.hxx>
-#include <svx/unoshape.hxx>
-#include "editeng/unolingu.hxx"
-#include <editeng/unotext.hxx>
 
-#include "editeng/unoedhlp.hxx"
-#include "editeng/unopracc.hxx"
-#include "editeng/AccessibleParaManager.hxx"
-#include "editeng/AccessibleEditableTextPara.hxx"
+#include <editeng/unoedhlp.hxx>
+#include <editeng/unoedprx.hxx>
+#include <editeng/AccessibleParaManager.hxx>
+#include <editeng/AccessibleEditableTextPara.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/svdpntv.hxx>
-#include "../table/cell.hxx"
+#include <cell.hxx>
 #include "../table/accessiblecell.hxx"
 #include <editeng/editdata.hxx>
-#include <editeng/editeng.hxx>
-#include <editeng/editview.hxx>
+#include <tools/debug.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
@@ -77,7 +69,7 @@ namespace accessibility
 // AccessibleTextHelper_Impl declaration
 
     template < typename first_type, typename second_type >
-        ::std::pair< first_type, second_type > makeSortedPair( first_type   first,
+        static ::std::pair< first_type, second_type > makeSortedPair( first_type   first,
                                                                                  second_type    second  )
     {
         if( first > second )
@@ -96,15 +88,15 @@ namespace accessibility
         virtual ~AccessibleTextHelper_Impl() override;
 
         // XAccessibleContext child handling methods
-        sal_Int32 SAL_CALL getAccessibleChildCount();
-        uno::Reference< XAccessible > SAL_CALL getAccessibleChild( sal_Int32 i );
+        sal_Int32 getAccessibleChildCount() const;
+        uno::Reference< XAccessible > getAccessibleChild( sal_Int32 i );
 
         // XAccessibleEventBroadcaster child related methods
-        void SAL_CALL addAccessibleEventListener( const uno::Reference< XAccessibleEventListener >& xListener );
-        void SAL_CALL removeAccessibleEventListener( const uno::Reference< XAccessibleEventListener >& xListener );
+        void addAccessibleEventListener( const uno::Reference< XAccessibleEventListener >& xListener );
+        void removeAccessibleEventListener( const uno::Reference< XAccessibleEventListener >& xListener );
 
         // XAccessibleComponent child related methods
-        uno::Reference< XAccessible > SAL_CALL getAccessibleAtPoint( const awt::Point& aPoint );
+        uno::Reference< XAccessible > getAccessibleAtPoint( const awt::Point& aPoint );
 
         SvxEditSourceAdapter& GetEditSource() const;
 
@@ -213,9 +205,6 @@ namespace accessibility
         // the object handling our children (guarded by solar mutex)
         ::accessibility::AccessibleParaManager maParaManager;
 
-        // number of not-yet-closed event frames (BEGIN/END sequences) (guarded by solar mutex)
-        sal_Int32 maEventOpenFrames;
-
         // Queued events from Notify() (guarded by solar mutex)
         AccessibleTextEventQueue maEventQueue;
 
@@ -238,12 +227,10 @@ namespace accessibility
     };
 
     AccessibleTextHelper_Impl::AccessibleTextHelper_Impl() :
-        mxFrontEnd( nullptr ),
         maLastSelection( EE_PARA_NOT_FOUND,EE_INDEX_NOT_FOUND,EE_PARA_NOT_FOUND,EE_INDEX_NOT_FOUND ),
         mnFirstVisibleChild( -1 ),
         mnLastVisibleChild( -2 ),
         mnStartIndex( 0 ),
-        maEventOpenFrames( 0 ),
         mbInNotify( false ),
         mbGroupHasFocus( false ),
         mbThisHasFocus( false ),
@@ -281,10 +268,10 @@ namespace accessibility
         if( !pTextForwarder )
             throw uno::RuntimeException("Unable to fetch text forwarder, model might be dead", mxFrontEnd);
 
-        if( pTextForwarder->IsValid() )
-            return *pTextForwarder;
-        else
+        if( !pTextForwarder->IsValid() )
             throw uno::RuntimeException("Text forwarder is invalid, model might be dead", mxFrontEnd);
+
+        return *pTextForwarder;
     }
 
     SvxViewForwarder& AccessibleTextHelper_Impl::GetViewForwarder() const
@@ -297,10 +284,10 @@ namespace accessibility
         if( !pViewForwarder )
             throw uno::RuntimeException("Unable to fetch view forwarder, model might be dead", mxFrontEnd);
 
-        if( pViewForwarder->IsValid() )
-            return *pViewForwarder;
-        else
+        if( !pViewForwarder->IsValid() )
             throw uno::RuntimeException("View forwarder is invalid, model might be dead", mxFrontEnd);
+
+        return *pViewForwarder;
     }
 
     SvxEditViewForwarder& AccessibleTextHelper_Impl::GetEditViewForwarder() const
@@ -315,21 +302,22 @@ namespace accessibility
             throw uno::RuntimeException("No edit view forwarder, object not in edit mode", mxFrontEnd);
         }
 
-        if( pViewForwarder->IsValid() )
-            return *pViewForwarder;
-        else
+        if( !pViewForwarder->IsValid() )
         {
             throw uno::RuntimeException("View forwarder is invalid, object not in edit mode", mxFrontEnd);
         }
+
+        return *pViewForwarder;
     }
 
     SvxEditSourceAdapter& AccessibleTextHelper_Impl::GetEditSource() const
     {
-        if( maEditSource.IsValid() )
-            return maEditSource;
-        else
+        if( !maEditSource.IsValid() )
             throw uno::RuntimeException("AccessibleTextHelper_Impl::GetEditSource: no edit source", mxFrontEnd );
+        return maEditSource;
     }
+
+    namespace {
 
     // functor for sending child events (no stand-alone function, they are maybe not inlined)
     class AccessibleTextHelper_OffsetChildIndex
@@ -344,6 +332,8 @@ namespace accessibility
     private:
         const sal_Int32 mnDifference;
     };
+
+    }
 
     void AccessibleTextHelper_Impl::SetStartIndex( sal_Int32 nOffset )
     {
@@ -408,42 +398,42 @@ namespace accessibility
 
         mbThisHasFocus = bHaveFocus;
 
-        if( bOldFocus != bHaveFocus )
+        if( bOldFocus == bHaveFocus )
+            return;
+
+        if( bHaveFocus )
         {
-            if( bHaveFocus )
+            if( mxFrontEnd.is() )
             {
-                if( mxFrontEnd.is() )
+                AccessibleCell* pAccessibleCell = dynamic_cast< AccessibleCell* > ( mxFrontEnd.get() );
+                if ( !pAccessibleCell )
+                    GotPropertyEvent( uno::makeAny(AccessibleStateType::FOCUSED), AccessibleEventId::STATE_CHANGED );
+                else    // the focus event on cell should be fired on table directly
                 {
-                    AccessibleCell* pAccessibleCell = dynamic_cast< AccessibleCell* > ( mxFrontEnd.get() );
-                    if ( !pAccessibleCell )
-                        GotPropertyEvent( uno::makeAny(AccessibleStateType::FOCUSED), AccessibleEventId::STATE_CHANGED );
-                    else    // the focus event on cell should be fired on table directly
-                    {
-                        AccessibleTableShape* pAccTable = pAccessibleCell->GetParentTable();
-                        if (pAccTable)
-                            pAccTable->SetStateDirectly(AccessibleStateType::FOCUSED);
-                    }
+                    AccessibleTableShape* pAccTable = pAccessibleCell->GetParentTable();
+                    if (pAccTable)
+                        pAccTable->SetStateDirectly(AccessibleStateType::FOCUSED);
                 }
-                SAL_INFO("svx", "Parent object received focus" );
             }
-            else
+            SAL_INFO("svx", "Parent object received focus" );
+        }
+        else
+        {
+            // The focus state should be reset directly on table.
+            //LostPropertyEvent( uno::makeAny(AccessibleStateType::FOCUSED), AccessibleEventId::STATE_CHANGED );
+            if( mxFrontEnd.is() )
             {
-                // The focus state should be reset directly on table.
-                //LostPropertyEvent( uno::makeAny(AccessibleStateType::FOCUSED), AccessibleEventId::STATE_CHANGED );
-                if( mxFrontEnd.is() )
+                AccessibleCell* pAccessibleCell = dynamic_cast< AccessibleCell* > ( mxFrontEnd.get() );
+                if ( !pAccessibleCell )
+                    FireEvent( AccessibleEventId::STATE_CHANGED, uno::Any(), uno::makeAny(AccessibleStateType::FOCUSED) );
+                else
                 {
-                    AccessibleCell* pAccessibleCell = dynamic_cast< AccessibleCell* > ( mxFrontEnd.get() );
-                    if ( !pAccessibleCell )
-                        FireEvent( AccessibleEventId::STATE_CHANGED, uno::Any(), uno::makeAny(AccessibleStateType::FOCUSED) );
-                    else
-                    {
-                        AccessibleTableShape* pAccTable = pAccessibleCell->GetParentTable();
-                        if (pAccTable)
-                            pAccTable->ResetStateDirectly(AccessibleStateType::FOCUSED);
-                    }
+                    AccessibleTableShape* pAccTable = pAccessibleCell->GetParentTable();
+                    if (pAccTable)
+                        pAccTable->ResetStateDirectly(AccessibleStateType::FOCUSED);
                 }
-                SAL_INFO("svx", "Parent object lost focus" );
             }
+            SAL_INFO("svx", "Parent object lost focus" );
         }
     }
 
@@ -507,7 +497,7 @@ namespace accessibility
             ESelection aSelection;
             if( GetEditViewForwarder().GetSelection( aSelection ) )
             {
-                if( !maLastSelection.IsEqual( aSelection ) &&
+                if( maLastSelection != aSelection &&
                     aSelection.nEndPara < maParaManager.GetNum() )
                 {
                     // #103998# Not that important, changed from assertion to trace
@@ -759,56 +749,27 @@ namespace accessibility
         try
         {
             SvxTextForwarder& rCacheTF = GetTextForwarder();
-            SvxViewForwarder& rCacheVF = GetViewForwarder();
-
-            tools::Rectangle aViewArea = rCacheVF.GetVisArea();
-
-            if( IsActive() )
-            {
-                // maybe the edit view scrolls, adapt aViewArea
-                tools::Rectangle aEditViewArea = GetEditViewForwarder().GetVisArea();
-                aViewArea += aEditViewArea.TopLeft();
-
-                // now determine intersection
-                aViewArea.Intersection( aEditViewArea );
-            }
-
-            tools::Rectangle aTmpBB, aParaBB;
-            bool bFirstChild = true;
-            sal_Int32 nCurrPara;
             sal_Int32 nParas=rCacheTF.GetParagraphCount();
 
             mnFirstVisibleChild = -1;
             mnLastVisibleChild = -2;
 
-            for( nCurrPara=0; nCurrPara<nParas; ++nCurrPara )
+            for( sal_Int32 nCurrPara=0; nCurrPara<nParas; ++nCurrPara )
             {
-                DBG_ASSERT(nCurrPara >= 0 && nCurrPara <= USHRT_MAX,
-                           "AccessibleTextHelper_Impl::UpdateVisibleChildren: index value overflow");
-
-                aTmpBB = rCacheTF.GetParaBounds( nCurrPara );
-
-                // convert to screen coordinates
-                aParaBB = ::accessibility::AccessibleEditableTextPara::LogicToPixel( aTmpBB, rCacheTF.GetMapMode(), rCacheVF );
-                // at least partially visible
-                if( bFirstChild )
-                {
-                    bFirstChild = false;
+                if (nCurrPara == 0)
                     mnFirstVisibleChild = nCurrPara;
-                }
-
                 mnLastVisibleChild = nCurrPara;
-
-                // child not yet created?
-                ::accessibility::AccessibleParaManager::WeakChild aChild( maParaManager.GetChild(nCurrPara) );
-                if( aChild.second.Width == 0 &&
-                    aChild.second.Height == 0 &&
-                    mxFrontEnd.is() &&
-                    bBroadcastEvents )
+                if (mxFrontEnd.is() && bBroadcastEvents)
                 {
-                    GotPropertyEvent( uno::makeAny( maParaManager.CreateChild( nCurrPara - mnFirstVisibleChild,
-                                                                               mxFrontEnd, GetEditSource(), nCurrPara ).first ),
-                                      AccessibleEventId::CHILD );
+                    // child not yet created?
+                    ::accessibility::AccessibleParaManager::WeakChild aChild( maParaManager.GetChild(nCurrPara) );
+                    if( aChild.second.Width == 0 &&
+                        aChild.second.Height == 0 )
+                    {
+                        GotPropertyEvent( uno::makeAny( maParaManager.CreateChild( nCurrPara - mnFirstVisibleChild,
+                                                                                   mxFrontEnd, GetEditSource(), nCurrPara ).first ),
+                                          AccessibleEventId::CHILD );
+                    }
                 }
             }
         }
@@ -826,6 +787,8 @@ namespace accessibility
                 FireEvent(AccessibleEventId::INVALIDATE_ALL_CHILDREN);
         }
     }
+
+    namespace {
 
     // functor for checking changes in paragraph bounding boxes (no stand-alone function, maybe not inlined)
     class AccessibleTextHelper_UpdateChildBounds
@@ -860,6 +823,8 @@ namespace accessibility
         }
     };
 
+    }
+
     void AccessibleTextHelper_Impl::UpdateBoundRect()
     {
         // send BOUNDRECT_CHANGED to affected children
@@ -878,6 +843,8 @@ namespace accessibility
     }
 #endif
 
+    namespace {
+
     // functor for sending child events (no stand-alone function, they are maybe not inlined)
     class AccessibleTextHelper_LostChildEvent
     {
@@ -895,6 +862,8 @@ namespace accessibility
     private:
         AccessibleTextHelper_Impl&  mrImpl;
     };
+
+    }
 
     void AccessibleTextHelper_Impl::ParagraphsMoved( sal_Int32 nFirst, sal_Int32 nMiddle, sal_Int32 nLast )
     {
@@ -945,33 +914,35 @@ namespace accessibility
             nLast = nLast + nMiddle - nFirst;
         }
 
-        if( nFirst < nParas && nMiddle < nParas && nLast < nParas )
-        {
-            // since we have no "paragraph index
-            // changed" event on UAA, remove
-            // [first,last] and insert again later (in
-            // UpdateVisibleChildren)
+        if( !(nFirst < nParas && nMiddle < nParas && nLast < nParas) )
+            return;
 
-            // maParaManager.Rotate( nFirst, nMiddle, nLast );
+        // since we have no "paragraph index
+        // changed" event on UAA, remove
+        // [first,last] and insert again later (in
+        // UpdateVisibleChildren)
 
-            // send CHILD_EVENT to affected children
-            ::accessibility::AccessibleParaManager::VectorOfChildren::const_iterator begin = maParaManager.begin();
-            ::accessibility::AccessibleParaManager::VectorOfChildren::const_iterator end = begin;
+        // maParaManager.Rotate( nFirst, nMiddle, nLast );
 
-            ::std::advance( begin, nFirst );
-            ::std::advance( end, nLast+1 );
+        // send CHILD_EVENT to affected children
+        ::accessibility::AccessibleParaManager::VectorOfChildren::const_iterator begin = maParaManager.begin();
+        ::accessibility::AccessibleParaManager::VectorOfChildren::const_iterator end = begin;
 
-            // TODO: maybe optimize here in the following way.  If the
-            // number of removed children exceeds a certain threshold,
-            // use InvalidateFlags::Children
-            AccessibleTextHelper_LostChildEvent aFunctor( *this );
+        ::std::advance( begin, nFirst );
+        ::std::advance( end, nLast+1 );
 
-            ::std::for_each( begin, end, aFunctor );
+        // TODO: maybe optimize here in the following way.  If the
+        // number of removed children exceeds a certain threshold,
+        // use InvalidateFlags::Children
+        AccessibleTextHelper_LostChildEvent aFunctor( *this );
 
-            maParaManager.Release(nFirst, nLast+1);
-            // should be no need for UpdateBoundRect, since all affected children are cleared.
-        }
+        ::std::for_each( begin, end, aFunctor );
+
+        maParaManager.Release(nFirst, nLast+1);
+        // should be no need for UpdateBoundRect, since all affected children are cleared.
     }
+
+    namespace {
 
     // functor for sending child events (no stand-alone function, they are maybe not inlined)
     class AccessibleTextHelper_ChildrenTextChanged
@@ -998,28 +969,27 @@ namespace accessibility
         {}
         void operator()( const SfxHint* pEvent )
         {
-            if( pEvent &&
-                mnParasChanged != -1 )
-            {
-                // determine hint type
-                const TextHint* pTextHint = dynamic_cast<const TextHint*>( pEvent );
-                const SvxEditSourceHint* pEditSourceHint = dynamic_cast<const SvxEditSourceHint*>( pEvent );
+            if( !pEvent || mnParasChanged == -1 )
+                return;
 
-                if( !pEditSourceHint && pTextHint &&
-                    (pTextHint->GetId() == SfxHintId::TextParaInserted ||
-                     pTextHint->GetId() == SfxHintId::TextParaRemoved ) )
-                {
-                    if( pTextHint->GetValue() == EE_PARA_ALL )
-                    {
-                        mnParasChanged = -1;
-                    }
-                    else
-                    {
-                        mnHintId = pTextHint->GetId();
-                        mnParaIndex = pTextHint->GetValue();
-                        ++mnParasChanged;
-                    }
-                }
+            // determine hint type
+            const TextHint* pTextHint = dynamic_cast<const TextHint*>( pEvent );
+            const SvxEditSourceHint* pEditSourceHint = dynamic_cast<const SvxEditSourceHint*>( pEvent );
+
+            if( !(!pEditSourceHint && pTextHint &&
+                (pTextHint->GetId() == SfxHintId::TextParaInserted ||
+                 pTextHint->GetId() == SfxHintId::TextParaRemoved )) )
+                return;
+
+            if( pTextHint->GetValue() == EE_PARA_ALL )
+            {
+                mnParasChanged = -1;
+            }
+            else
+            {
+                mnHintId = pTextHint->GetId();
+                mnParaIndex = pTextHint->GetValue();
+                ++mnParasChanged;
             }
         }
 
@@ -1028,18 +998,18 @@ namespace accessibility
             @return number of changed paragraphs, -1 for
             "every paragraph changed"
         */
-        sal_Int32 GetNumberOfParasChanged() { return mnParasChanged; }
+        sal_Int32 GetNumberOfParasChanged() const { return mnParasChanged; }
         /** Query index of last added/removed paragraph
 
             @return index of lastly added paragraphs, -1 for none
             added so far.
         */
-        sal_Int32 GetParaIndex() { return mnParaIndex; }
+        sal_Int32 GetParaIndex() const { return mnParaIndex; }
         /** Query hint id of last interesting event
 
             @return hint id of last interesting event (REMOVED/INSERTED).
         */
-        SfxHintId GetHintId() { return mnHintId; }
+        SfxHintId GetHintId() const { return mnHintId; }
 
     private:
         /** number of paragraphs changed during queue processing. -1 for
@@ -1051,6 +1021,8 @@ namespace accessibility
         /// TextHint ID (removed/inserted) of last interesting event
         SfxHintId mnHintId;
     };
+
+    }
 
     void AccessibleTextHelper_Impl::ProcessQueue()
     {
@@ -1161,21 +1133,55 @@ namespace accessibility
         while( !maEventQueue.IsEmpty() )
         {
             ::std::unique_ptr< SfxHint > pHint( maEventQueue.PopFront() );
-            if( pHint.get() )
+            if (pHint)
             {
-                const SfxHint& rHint = *(pHint.get());
+                const SfxHint& rHint = *pHint;
 
-                // determine hint type
-                const SdrHint* pSdrHint = dynamic_cast<const SdrHint*>( &rHint );
-                const TextHint* pTextHint = dynamic_cast<const TextHint*>( &rHint );
-                const SvxViewChangedHint* pViewHint = dynamic_cast<const SvxViewChangedHint*>( &rHint );
-                const SvxEditSourceHint* pEditSourceHint = dynamic_cast<const SvxEditSourceHint*>( &rHint );
+                // Note, if you add events here, you need to update the AccessibleTextEventQueue::Append
+                // code, because only the events we process here, are actually queued there.
 
                 try
                 {
-                    const sal_Int32 nParas = GetTextForwarder().GetParagraphCount();
 
-                    if( pEditSourceHint )
+                    if (rHint.GetId() == SfxHintId::ThisIsAnSdrHint)
+                    {
+                        const SdrHint* pSdrHint = static_cast< const SdrHint* >( &rHint );
+
+                        switch( pSdrHint->GetKind() )
+                        {
+                            case SdrHintKind::BeginEdit:
+                            {
+                                if(!IsActive())
+                                {
+                                    break;
+                                }
+                                // change children state
+                                maParaManager.SetActive();
+
+                                // per definition, edit mode text has the focus
+                                SetFocus( true );
+                                break;
+                            }
+
+                            case SdrHintKind::EndEdit:
+                            {
+                                // focused child now loses focus
+                                ESelection aSelection;
+                                if( GetEditViewForwarder().GetSelection( aSelection ) )
+                                    SetChildFocus( aSelection.nEndPara, false );
+
+                                // change children state
+                                maParaManager.SetActive( false );
+
+                                maLastSelection = ESelection( EE_PARA_NOT_FOUND, EE_INDEX_NOT_FOUND,
+                                                              EE_PARA_NOT_FOUND, EE_INDEX_NOT_FOUND);
+                                break;
+                            }
+                            default:
+                                break;
+                        }
+                    }
+                    else if( const SvxEditSourceHint* pEditSourceHint = dynamic_cast<const SvxEditSourceHint*>( &rHint ) )
                     {
                         switch( pEditSourceHint->GetId() )
                         {
@@ -1209,8 +1215,10 @@ namespace accessibility
                             default: break;
                         }
                     }
-                    else if( pTextHint )
+                    else if( const TextHint* pTextHint = dynamic_cast<const TextHint*>( &rHint ) )
                     {
+                        const sal_Int32 nParas = GetTextForwarder().GetParagraphCount();
+
                         switch( pTextHint->GetId() )
                         {
                             case SfxHintId::TextModified:
@@ -1259,47 +1267,11 @@ namespace accessibility
                         UpdateVisibleChildren();
                         UpdateBoundRect();
                     }
-                    else if( pViewHint )
+                    else if ( dynamic_cast<const SvxViewChangedHint*>( &rHint ) )
                     {
                         // just check visibility
                         UpdateVisibleChildren();
                         UpdateBoundRect();
-                    }
-                    else if( pSdrHint )
-                    {
-                        switch( pSdrHint->GetKind() )
-                        {
-                            case SdrHintKind::BeginEdit:
-                            {
-                                if(!IsActive())
-                                {
-                                    break;
-                                }
-                                // change children state
-                                maParaManager.SetActive();
-
-                                // per definition, edit mode text has the focus
-                                SetFocus( true );
-                                break;
-                            }
-
-                            case SdrHintKind::EndEdit:
-                            {
-                                // focused child now loses focus
-                                ESelection aSelection;
-                                if( GetEditViewForwarder().GetSelection( aSelection ) )
-                                    SetChildFocus( aSelection.nEndPara, false );
-
-                                // change children state
-                                maParaManager.SetActive( false );
-
-                                maLastSelection = ESelection( EE_PARA_NOT_FOUND, EE_INDEX_NOT_FOUND,
-                                                              EE_PARA_NOT_FOUND, EE_INDEX_NOT_FOUND);
-                                break;
-                            }
-                            default:
-                                break;
-                        }
                     }
                     // it's VITAL to keep the SfxSimpleHint last! It's the base of some classes above!
                     else if( rHint.GetId() == SfxHintId::Dying)
@@ -1316,7 +1288,7 @@ namespace accessibility
                 }
                 catch( const uno::Exception& )
                 {
-                    SAL_WARN("svx", "Unhandled exception.");
+                    DBG_UNHANDLED_EXCEPTION("svx");
                 }
             }
         }
@@ -1339,79 +1311,35 @@ namespace accessibility
             // occurrence to avoid unnecessary dynamic_cast. Note that
             // SvxEditSourceHint is derived from TextHint, so has to be checked
             // before that.
-            if( const SvxViewChangedHint* pViewHint = dynamic_cast<const SvxViewChangedHint*>( &rHint ) )
+            if (rHint.GetId() == SfxHintId::ThisIsAnSdrHint)
             {
-                maEventQueue.Append( *pViewHint );
-
-                // process visibility right away, if not within an
-                // open EE notification frame. Otherwise, event
-                // processing would be delayed until next EE
-                // notification sequence.
-                if( maEventOpenFrames == 0 )
-                    ProcessQueue();
-            }
-            else if( const SdrHint* pSdrHint = dynamic_cast<const SdrHint*>( &rHint ) )
-            {
-                maEventQueue.Append( *pSdrHint );
-
+                const SdrHint* pSdrHint = static_cast< const SdrHint* >( &rHint );
                 // process drawing layer events right away, if not
                 // within an open EE notification frame. Otherwise,
                 // event processing would be delayed until next EE
                 // notification sequence.
-                if( maEventOpenFrames == 0 )
-                    ProcessQueue();
+                maEventQueue.Append( *pSdrHint );
+            }
+            else if( const SvxViewChangedHint* pViewHint = dynamic_cast<const SvxViewChangedHint*>( &rHint ) )
+            {
+                // process visibility right away, if not within an
+                // open EE notification frame. Otherwise, event
+                // processing would be delayed until next EE
+                // notification sequence.
+                maEventQueue.Append( *pViewHint );
             }
             else if( const SvxEditSourceHint* pEditSourceHint = dynamic_cast<const SvxEditSourceHint*>( &rHint ) )
             {
-                maEventQueue.Append( *pEditSourceHint );
                 // EditEngine should emit TEXT_SELECTION_CHANGED events (#i27299#)
-                if( maEventOpenFrames == 0 )
-                    ProcessQueue();
+                maEventQueue.Append( *pEditSourceHint );
             }
             else if( const TextHint* pTextHint = dynamic_cast<const TextHint*>( &rHint ) )
             {
-                switch( pTextHint->GetId() )
-                {
-                    case SfxHintId::TextBlockNotificationEnd:
-                    case SfxHintId::TextInputEnd:
-                        --maEventOpenFrames;
-
-                        if( maEventOpenFrames == 0 )
-                        {
-                            /* All information should have arrived
-                             * now, process queue. As stated in the
-                             * above bug, we can often avoid throwing
-                             * away all paragraphs by looking forward
-                             * in the event queue (searching for
-                             * PARAINSERT/REMOVE events). Furthermore,
-                             * processing the event queue only at the
-                             * end of an interaction cycle, ensures
-                             * that the EditEngine state and the
-                             * AccessibleText state are the same
-                             * (well, mostly. If there are _multiple_
-                             * interaction cycles in the EE queues, it
-                             * can still happen that EE state is
-                             * different. That's so to say broken by
-                             * design with that delayed EE event
-                             * concept).
-                             */
-                            ProcessQueue();
-                        }
-                        break;
-
-                    case SfxHintId::TextBlockNotificationStart:
-                    case SfxHintId::TextInputStart:
-                        ++maEventOpenFrames;
-                        // no FALLTHROUGH reason: event will not be processed,
-                        // thus appending the event isn't necessary. (#i27299#)
-                        break;
-                    default:
-                        maEventQueue.Append( *pTextHint );
-                        // EditEngine should emit TEXT_SELECTION_CHANGED events (#i27299#)
-                        if( maEventOpenFrames == 0 )
-                            ProcessQueue();
-                        break;
-                }
+                // EditEngine should emit TEXT_SELECTION_CHANGED events (#i27299#)
+                if(pTextHint->GetId() == SfxHintId::TextProcessNotifications)
+                    ProcessQueue();
+                else
+                    maEventQueue.Append( *pTextHint );
             }
             // it's VITAL to keep the SfxHint last! It's the base of the classes above!
             else if( rHint.GetId() == SfxHintId::Dying )
@@ -1430,7 +1358,7 @@ namespace accessibility
         }
         catch( const uno::Exception& )
         {
-            SAL_WARN("svx", "Unhandled exception.");
+            DBG_UNHANDLED_EXCEPTION("svx");
             mbInNotify = false;
         }
 
@@ -1471,22 +1399,24 @@ namespace accessibility
     void AccessibleTextHelper_Impl::FireEvent( const sal_Int16 nEventId, const uno::Any& rNewValue, const uno::Any& rOldValue ) const
     {
         // -- object locked --
-        ::osl::ClearableMutexGuard aGuard( maMutex );
-
         AccessibleEventObject aEvent;
+        {
+            osl::MutexGuard aGuard(maMutex);
 
-        DBG_ASSERT(mxFrontEnd.is(), "AccessibleTextHelper::FireEvent: no event source set" );
+            DBG_ASSERT(mxFrontEnd.is(), "AccessibleTextHelper::FireEvent: no event source set");
 
-        if( mxFrontEnd.is() )
-            aEvent = AccessibleEventObject(mxFrontEnd->getAccessibleContext(), nEventId, rNewValue, rOldValue);
-        else
-            aEvent = AccessibleEventObject(uno::Reference< uno::XInterface >(), nEventId, rNewValue, rOldValue);
+            if (mxFrontEnd.is())
+                aEvent = AccessibleEventObject(mxFrontEnd->getAccessibleContext(), nEventId,
+                                               rNewValue, rOldValue);
+            else
+                aEvent = AccessibleEventObject(uno::Reference<uno::XInterface>(), nEventId,
+                                               rNewValue, rOldValue);
 
-        // no locking necessary, FireEvent internally copies listeners
-        // if someone removes/adds in between Further locking,
-        // actually, might lead to deadlocks, since we're calling out
-        // of this object
-        aGuard.clear();
+            // no locking necessary, FireEvent internally copies listeners
+            // if someone removes/adds in between Further locking,
+            // actually, might lead to deadlocks, since we're calling out
+            // of this object
+        }
         // -- until here --
 
         FireEvent(aEvent);
@@ -1504,12 +1434,12 @@ namespace accessibility
     }
 
     // XAccessibleContext
-    sal_Int32 SAL_CALL AccessibleTextHelper_Impl::getAccessibleChildCount()
+    sal_Int32 AccessibleTextHelper_Impl::getAccessibleChildCount() const
     {
         return mnLastVisibleChild - mnFirstVisibleChild + 1;
     }
 
-    uno::Reference< XAccessible > SAL_CALL AccessibleTextHelper_Impl::getAccessibleChild( sal_Int32 i )
+    uno::Reference< XAccessible > AccessibleTextHelper_Impl::getAccessibleChild( sal_Int32 i )
     {
         i -= GetStartIndex();
 
@@ -1527,31 +1457,31 @@ namespace accessibility
             return nullptr;
     }
 
-    void SAL_CALL AccessibleTextHelper_Impl::addAccessibleEventListener( const uno::Reference< XAccessibleEventListener >& xListener )
+    void AccessibleTextHelper_Impl::addAccessibleEventListener( const uno::Reference< XAccessibleEventListener >& xListener )
     {
         if( getNotifierClientId() != -1 )
             ::comphelper::AccessibleEventNotifier::addEventListener( getNotifierClientId(), xListener );
     }
 
-    void SAL_CALL AccessibleTextHelper_Impl::removeAccessibleEventListener( const uno::Reference< XAccessibleEventListener >& xListener )
+    void AccessibleTextHelper_Impl::removeAccessibleEventListener( const uno::Reference< XAccessibleEventListener >& xListener )
     {
-        if( getNotifierClientId() != -1 )
+        if( getNotifierClientId() == -1 )
+            return;
+
+        const sal_Int32 nListenerCount = ::comphelper::AccessibleEventNotifier::removeEventListener( getNotifierClientId(), xListener );
+        if ( !nListenerCount )
         {
-            const sal_Int32 nListenerCount = ::comphelper::AccessibleEventNotifier::removeEventListener( getNotifierClientId(), xListener );
-            if ( !nListenerCount )
-            {
-                // no listeners anymore
-                // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-                // and at least to us not firing any events anymore, in case somebody calls
-                // NotifyAccessibleEvent, again
-                ::comphelper::AccessibleEventNotifier::TClientId nId( getNotifierClientId() );
-                mnNotifierClientId = -1;
-                ::comphelper::AccessibleEventNotifier::revokeClient( nId );
-            }
+            // no listeners anymore
+            // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
+            // and at least to us not firing any events anymore, in case somebody calls
+            // NotifyAccessibleEvent, again
+            ::comphelper::AccessibleEventNotifier::TClientId nId( getNotifierClientId() );
+            mnNotifierClientId = -1;
+            ::comphelper::AccessibleEventNotifier::revokeClient( nId );
         }
     }
 
-    uno::Reference< XAccessible > SAL_CALL AccessibleTextHelper_Impl::getAccessibleAtPoint( const awt::Point& _aPoint )
+    uno::Reference< XAccessible > AccessibleTextHelper_Impl::getAccessibleAtPoint( const awt::Point& _aPoint )
     {
         // make given position relative
         if( !mxFrontEnd.is() )
@@ -1578,7 +1508,7 @@ namespace accessibility
         sal_Int32 nChild;
         for( nChild=mnFirstVisibleChild; nChild <= mnLastVisibleChild; ++nChild )
         {
-            DBG_ASSERT(nChild >= 0 && nChild <= USHRT_MAX,
+            DBG_ASSERT(nChild >= 0,
                        "AccessibleTextHelper_Impl::getAccessibleAt: index value overflow");
 
             tools::Rectangle aParaBounds( rCacheTF.GetParaBounds( nChild ) );
@@ -1771,7 +1701,7 @@ namespace accessibility
     }
 
     // XAccessibleContext
-    sal_Int32 AccessibleTextHelper::GetChildCount()
+    sal_Int32 AccessibleTextHelper::GetChildCount() const
     {
         SolarMutexGuard aGuard;
 

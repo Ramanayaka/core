@@ -25,52 +25,29 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <rtl/ustring.hxx>
-#include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace lang {
         class XMultiServiceFactory;
         class XSingleServiceFactory;
     }
     namespace uno { class XInterface; }
-} } }
-
-css::uno::Sequence<OUString> SAL_CALL vcl_session_getSupportedServiceNames();
-
-OUString SAL_CALL vcl_session_getImplementationName();
-
-css::uno::Reference<css::uno::XInterface> SAL_CALL vcl_session_createInstance(
-    css::uno::Reference<css::lang::XMultiServiceFactory > const &);
+}
 
 namespace vcl {
 
-css::uno::Sequence<OUString> SAL_CALL
-FontIdentificator_getSupportedServiceNames();
+css::uno::Sequence<OUString> DragSource_getSupportedServiceNames();
 
-OUString SAL_CALL FontIdentificator_getImplementationName();
+OUString DragSource_getImplementationName();
 
-css::uno::Reference<css::uno::XInterface> SAL_CALL
-FontIdentificator_createInstance(
+css::uno::Reference<css::uno::XInterface> DragSource_createInstance(
     css::uno::Reference<css::lang::XMultiServiceFactory > const &);
 
-OUString SAL_CALL Clipboard_getImplementationName();
+css::uno::Sequence<OUString> DropTarget_getSupportedServiceNames();
 
-css::uno::Reference<css::lang::XSingleServiceFactory> SAL_CALL
-Clipboard_createFactory(
-    css::uno::Reference<css::lang::XMultiServiceFactory > const &);
+OUString DropTarget_getImplementationName();
 
-css::uno::Sequence<OUString> SAL_CALL DragSource_getSupportedServiceNames();
-
-OUString SAL_CALL DragSource_getImplementationName();
-
-css::uno::Reference<css::uno::XInterface> SAL_CALL DragSource_createInstance(
-    css::uno::Reference<css::lang::XMultiServiceFactory > const &);
-
-css::uno::Sequence<OUString> SAL_CALL DropTarget_getSupportedServiceNames();
-
-OUString SAL_CALL DropTarget_getImplementationName();
-
-css::uno::Reference<css::uno::XInterface> SAL_CALL DropTarget_createInstance(
+css::uno::Reference<css::uno::XInterface> DropTarget_createInstance(
     css::uno::Reference<css::lang::XMultiServiceFactory > const &);
 
 }

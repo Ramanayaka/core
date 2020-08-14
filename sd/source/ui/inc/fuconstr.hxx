@@ -22,7 +22,6 @@
 
 #include "fudraw.hxx"
 
-class KeyEvent;
 class SdrObject;
 class SfxItemSet;
 
@@ -57,7 +56,7 @@ protected:
         ::sd::View* pView,
         SdDrawDocument* pDoc,
         SfxRequest& rReq);
-
+private:
     bool bSelectionChanged;
 };
 

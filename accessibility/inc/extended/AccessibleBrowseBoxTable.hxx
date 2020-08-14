@@ -18,10 +18,9 @@
  */
 
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXTABLE_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXTABLE_HXX
+#pragma once
 
-#include "extended/AccessibleBrowseBoxTableBase.hxx"
+#include <extended/AccessibleBrowseBoxTableBase.hxx>
 
 
 namespace accessibility {
@@ -35,7 +34,7 @@ class AccessibleBrowseBoxTable : public AccessibleBrowseBoxTableBase
 public:
     AccessibleBrowseBoxTable(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::svt::IAccessibleTableProvider& rBrowseBox );
+        ::vcl::IAccessibleTableProvider& rBrowseBox );
 
 protected:
     virtual ~AccessibleBrowseBoxTable() override;
@@ -126,6 +125,5 @@ protected:
 } // namespace accessibility
 
 
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

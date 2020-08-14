@@ -24,7 +24,8 @@
 #include <com/sun/star/rendering/ViewState.hpp>
 #include <cppcanvas/canvas.hxx>
 
-#include <boost/optional.hpp>
+#include <optional>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
 
 
 namespace basegfx
@@ -33,19 +34,16 @@ namespace basegfx
     class B2DPolyPolygon;
 }
 
-namespace com { namespace sun { namespace star { namespace rendering
+namespace com::sun::star::rendering
 {
     class  XCanvas;
-} } } }
+}
 
 
 /* Definition of ImplCanvas */
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-
-    namespace internal
-    {
 
         class ImplCanvas : public virtual Canvas
         {
@@ -53,14 +51,17 @@ namespace cppcanvas
             explicit ImplCanvas( const css::uno::Reference< css::rendering::XCanvas >& rCanvas );
             virtual ~ImplCanvas() override;
 
+            ImplCanvas(ImplCanvas const &) = default;
+            ImplCanvas(ImplCanvas &&) = default;
+            ImplCanvas & operator =(ImplCanvas const &) = delete; // due to const mxCanvas
+            ImplCanvas & operator =(ImplCanvas &&) = delete; // due to const mxCanvas
+
             virtual void                             setTransformation( const ::basegfx::B2DHomMatrix& rMatrix ) override;
             virtual ::basegfx::B2DHomMatrix          getTransformation() const override;
 
             virtual void                             setClip( const ::basegfx::B2DPolyPolygon& rClipPoly ) override;
             virtual void                             setClip() override;
             virtual ::basegfx::B2DPolyPolygon const* getClip() const override;
-
-            virtual ColorSharedPtr                   createColor() const override;
 
             virtual CanvasSharedPtr                  clone() const override;
 
@@ -71,18 +72,12 @@ namespace cppcanvas
 
             virtual css::rendering::ViewState        getViewState() const override;
 
-            // take compiler-provided default copy constructor
-            //ImplCanvas(const ImplCanvas&);
-
         private:
-            ImplCanvas& operator=( const ImplCanvas& ) = delete;
-
             mutable css::rendering::ViewState                    maViewState;
-            boost::optional<basegfx::B2DPolyPolygon>             maClipPolyPolygon;
+            std::optional<basegfx::B2DPolyPolygon>             maClipPolyPolygon;
             const css::uno::Reference< css::rendering::XCanvas > mxCanvas;
         };
 
-    }
 }
 
 #endif // INCLUDED_CPPCANVAS_SOURCE_WRAPPER_IMPLCANVAS_HXX

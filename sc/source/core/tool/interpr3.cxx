@@ -21,29 +21,37 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "interpre.hxx"
-#include "global.hxx"
-#include "compiler.hxx"
-#include "formulacell.hxx"
-#include "document.hxx"
-#include "dociter.hxx"
-#include "matrixoperators.hxx"
-#include "scmatrix.hxx"
-#include "globstr.hrc"
+#include <interpre.hxx>
+#include <global.hxx>
+#include <compiler.hxx>
+#include <formulacell.hxx>
+#include <document.hxx>
+#include <dociter.hxx>
+#include <matrixoperators.hxx>
+#include <scmatrix.hxx>
 
 #include <math.h>
+#include <cassert>
 #include <memory>
+#include <set>
 #include <vector>
 #include <algorithm>
 #include <comphelper/random.hxx>
+#include <o3tl/float_int_conversion.hxx>
+#include <osl/diagnose.h>
+#include <basegfx/numeric/ftools.hxx>
 
 using ::std::vector;
 using namespace formula;
 
-#define MAX_ANZ_DOUBLE_FOR_SORT 100000
+/// Two columns of data should be sortable with GetSortArray() and QuickSort()
+// This is an arbitrary limit.
+#define MAX_COUNT_DOUBLE_FOR_SORT (MAXROWCOUNT * 2)
 
 const double ScInterpreter::fMaxGammaArgument = 171.624376956302;  // found experimental
 const double fMachEps = ::std::numeric_limits<double>::epsilon();
+
+namespace {
 
 class ScDistFunc
 {
@@ -54,12 +62,14 @@ protected:
     ~ScDistFunc() {}
 };
 
+}
+
 //  iteration for inverse distributions
 
 //template< class T > double lcl_IterateInverse( const T& rFunction, double x0, double x1, bool& rConvError )
 
 /** u*w<0.0 fails for values near zero */
-static inline bool lcl_HasChangeOfSign( double u, double w )
+static bool lcl_HasChangeOfSign( double u, double w )
 {
     return (u < 0.0 && w > 0.0) || (u > 0.0 && w < 0.0);
 }
@@ -154,7 +164,7 @@ static double lcl_IterateInverse( const ScDistFunc& rFunction, double fAx, doubl
         {
             fAx = fRx; fAy = fRy;
         }
-        // if last interation brought to small advance, then do bisection next
+        // if last iteration brought too small advance, then do bisection next
         // time, for safety
         bHasToInterpolate = bHasToInterpolate && (fabs(fRy) * 2.0 <= fabs(fQy));
         ++nCount;
@@ -203,7 +213,7 @@ double ScInterpreter::gauss(double x)
 {
 
     double xAbs = fabs(x);
-    sal_uInt16 xShort = (sal_uInt16)::rtl::math::approxFloor(xAbs);
+    sal_uInt16 xShort = static_cast<sal_uInt16>(::rtl::math::approxFloor(xAbs));
     double nVal = 0.0;
     if (xShort == 0)
     {
@@ -214,7 +224,7 @@ double ScInterpreter::gauss(double x)
           0.00000000011301172,  0.00000000000511243, -0.00000000000021218 };
         nVal = taylor(t0, 11, (xAbs * xAbs)) * xAbs;
     }
-    else if ((xShort >= 1) && (xShort <= 2))
+    else if (xShort <= 2)
     {
         static const double t2[] =
         { 0.47724986805182079,  0.05399096651318805, -0.05399096651318805,
@@ -227,7 +237,7 @@ double ScInterpreter::gauss(double x)
          -0.00000000000172127, -0.00000000000008634,  0.00000000000007894 };
         nVal = taylor(t2, 23, (xAbs - 2.0));
     }
-    else if ((xShort >= 3) && (xShort <= 4))
+    else if (xShort <= 4)
     {
         static const double t4[] =
        { 0.49996832875816688,  0.00013383022576489, -0.00026766045152977,
@@ -1185,21 +1195,21 @@ void ScInterpreter::ScCombinA()
 
 void ScInterpreter::ScPermut()
 {
-    if ( MustHaveParamCount( GetByte(), 2 ) )
+    if ( !MustHaveParamCount( GetByte(), 2 ) )
+        return;
+
+    double k = ::rtl::math::approxFloor(GetDouble());
+    double n = ::rtl::math::approxFloor(GetDouble());
+    if (n < 0.0 || k < 0.0 || k > n)
+        PushIllegalArgument();
+    else if (k == 0.0)
+        PushInt(1);     // (n! / (n - 0)!) == 1
+    else
     {
-        double k = ::rtl::math::approxFloor(GetDouble());
-        double n = ::rtl::math::approxFloor(GetDouble());
-        if (n < 0.0 || k < 0.0 || k > n)
-            PushIllegalArgument();
-        else if (k == 0.0)
-            PushInt(1);     // (n! / (n - 0)!) == 1
-        else
-        {
-            double nVal = n;
-            for (sal_uLong i = (sal_uLong)k-1; i >= 1; i--)
-                nVal *= n-(double)i;
-            PushDouble(nVal);
-        }
+        double nVal = n;
+        for (sal_uLong i = static_cast<sal_uLong>(k)-1; i >= 1; i--)
+            nVal *= n-static_cast<double>(i);
+        PushDouble(nVal);
     }
 }
 
@@ -1244,7 +1254,7 @@ double ScInterpreter::GetBinomDistPMF(double x, double n, double p)
     }
 }
 
-double lcl_GetBinomDistRange(double n, double xs,double xe,
+static double lcl_GetBinomDistRange(double n, double xs,double xe,
             double fFactor /* q^n */, double p, double q)
 //preconditions: 0.0 <= xs < xe <= n; xs,xe,n integral although double
 {
@@ -1261,7 +1271,7 @@ double lcl_GetBinomDistRange(double n, double xs,double xe,
         fFactor *= (n-i+1)/i * p/q;
         fSum += fFactor;
     }
-    return (fSum>1.0) ? 1.0 : fSum;
+    return std::min(fSum,1.0);
 }
 
 void ScInterpreter::ScB()
@@ -1333,157 +1343,157 @@ void ScInterpreter::ScB()
 
 void ScInterpreter::ScBinomDist()
 {
-    if ( MustHaveParamCount( GetByte(), 4 ) )
+    if ( !MustHaveParamCount( GetByte(), 4 ) )
+        return;
+
+    bool bIsCum   = GetBool();     // false=mass function; true=cumulative
+    double p      = GetDouble();
+    double n      = ::rtl::math::approxFloor(GetDouble());
+    double x      = ::rtl::math::approxFloor(GetDouble());
+    double q = (0.5 - p) + 0.5;           // get one bit more for p near 1.0
+    if (n < 0.0 || x < 0.0 || x > n || p < 0.0 || p > 1.0)
     {
-        bool bIsCum   = GetBool();     // false=mass function; true=cumulative
-        double p      = GetDouble();
-        double n      = ::rtl::math::approxFloor(GetDouble());
-        double x      = ::rtl::math::approxFloor(GetDouble());
-        double q = (0.5 - p) + 0.5;           // get one bit more for p near 1.0
-        if (n < 0.0 || x < 0.0 || x > n || p < 0.0 || p > 1.0)
-        {
-            PushIllegalArgument();
-            return;
-        }
-        if ( p == 0.0)
-        {
-            PushDouble( (x==0.0 || bIsCum) ? 1.0 : 0.0 );
-            return;
-        }
-        if ( p == 1.0)
-        {
-            PushDouble( (x==n) ? 1.0 : 0.0);
-            return;
-        }
-        if (!bIsCum)
-            PushDouble( GetBinomDistPMF(x,n,p));
+        PushIllegalArgument();
+        return;
+    }
+    if ( p == 0.0)
+    {
+        PushDouble( (x==0.0 || bIsCum) ? 1.0 : 0.0 );
+        return;
+    }
+    if ( p == 1.0)
+    {
+        PushDouble( (x==n) ? 1.0 : 0.0);
+        return;
+    }
+    if (!bIsCum)
+        PushDouble( GetBinomDistPMF(x,n,p));
+    else
+    {
+        if (x == n)
+            PushDouble(1.0);
         else
         {
-            if (x == n)
-                PushDouble(1.0);
-            else
+            double fFactor = pow(q, n);
+            if (x == 0.0)
+                PushDouble(fFactor);
+            else if (fFactor <= ::std::numeric_limits<double>::min())
             {
-                double fFactor = pow(q, n);
-                if (x == 0.0)
-                    PushDouble(fFactor);
-                else if (fFactor <= ::std::numeric_limits<double>::min())
-                {
-                    fFactor = pow(p, n);
-                    if (fFactor <= ::std::numeric_limits<double>::min())
-                        PushDouble(GetBetaDist(q,n-x,x+1.0));
-                    else
-                    {
-                        if (fFactor > fMachEps)
-                        {
-                            double fSum = 1.0 - fFactor;
-                            sal_uInt32 max = static_cast<sal_uInt32> (n - x) - 1;
-                            for (sal_uInt32 i = 0; i < max && fFactor > 0.0; i++)
-                            {
-                                fFactor *= (n-i)/(i+1)*q/p;
-                                fSum -= fFactor;
-                            }
-                            PushDouble( (fSum < 0.0) ? 0.0 : fSum );
-                        }
-                        else
-                            PushDouble(lcl_GetBinomDistRange(n,n-x,n,fFactor,q,p));
-                    }
-                }
+                fFactor = pow(p, n);
+                if (fFactor <= ::std::numeric_limits<double>::min())
+                    PushDouble(GetBetaDist(q,n-x,x+1.0));
                 else
-                    PushDouble( lcl_GetBinomDistRange(n,0.0,x,fFactor,p,q)) ;
+                {
+                    if (fFactor > fMachEps)
+                    {
+                        double fSum = 1.0 - fFactor;
+                        sal_uInt32 max = static_cast<sal_uInt32> (n - x) - 1;
+                        for (sal_uInt32 i = 0; i < max && fFactor > 0.0; i++)
+                        {
+                            fFactor *= (n-i)/(i+1)*q/p;
+                            fSum -= fFactor;
+                        }
+                        PushDouble( (fSum < 0.0) ? 0.0 : fSum );
+                    }
+                    else
+                        PushDouble(lcl_GetBinomDistRange(n,n-x,n,fFactor,q,p));
+                }
             }
+            else
+                PushDouble( lcl_GetBinomDistRange(n,0.0,x,fFactor,p,q)) ;
         }
     }
 }
 
 void ScInterpreter::ScCritBinom()
 {
-    if ( MustHaveParamCount( GetByte(), 3 ) )
+    if ( !MustHaveParamCount( GetByte(), 3 ) )
+        return;
+
+    double alpha  = GetDouble();
+    double p      = GetDouble();
+    double n      = ::rtl::math::approxFloor(GetDouble());
+    if (n < 0.0 || alpha < 0.0 || alpha > 1.0 || p < 0.0 || p > 1.0)
+        PushIllegalArgument();
+    else if ( alpha == 0.0 )
+        PushDouble( 0.0 );
+    else if ( alpha == 1.0 )
+        PushDouble( p == 0 ? 0.0 : n );
+    else
     {
-        double alpha  = GetDouble();
-        double p      = GetDouble();
-        double n      = ::rtl::math::approxFloor(GetDouble());
-        if (n < 0.0 || alpha < 0.0 || alpha > 1.0 || p < 0.0 || p > 1.0)
-            PushIllegalArgument();
-        else if ( alpha == 0.0 )
-            PushDouble( 0.0 );
-        else if ( alpha == 1.0 )
-            PushDouble( p == 0 ? 0.0 : n );
-        else
+        double fFactor;
+        double q = (0.5 - p) + 0.5;           // get one bit more for p near 1.0
+        if ( q > p )                          // work from the side where the cumulative curve is
         {
-            double fFactor;
-            double q = (0.5 - p) + 0.5;           // get one bit more for p near 1.0
-            if ( q > p )                          // work from the side where the cumulative curve is
+            // work from 0 upwards
+            fFactor = pow(q,n);
+            if (fFactor > ::std::numeric_limits<double>::min())
             {
-                // work from 0 upwards
-                fFactor = pow(q,n);
-                if (fFactor > ::std::numeric_limits<double>::min())
+                double fSum = fFactor;
+                sal_uInt32 max = static_cast<sal_uInt32> (n), i;
+                for (i = 0; i < max && fSum < alpha; i++)
                 {
-                    double fSum = fFactor;
-                    sal_uInt32 max = static_cast<sal_uInt32> (n), i;
-                    for (i = 0; i < max && fSum < alpha; i++)
-                    {
-                        fFactor *= (n-i)/(i+1)*p/q;
-                        fSum += fFactor;
-                    }
-                    PushDouble(i);
+                    fFactor *= (n-i)/(i+1)*p/q;
+                    fSum += fFactor;
                 }
-                else
-                {
-                    // accumulate BinomDist until accumulated BinomDist reaches alpha
-                    double fSum = 0.0;
-                    sal_uInt32 max = static_cast<sal_uInt32> (n), i;
-                    for (i = 0; i < max && fSum < alpha; i++)
-                    {
-                        const double x = GetBetaDistPDF( p, ( i + 1 ), ( n - i + 1 ) )/( n + 1 );
-                        if ( nGlobalError == FormulaError::NONE )
-                        {
-                            fSum += x;
-                        }
-                        else
-                        {
-                            PushNoValue();
-                            return;
-                        }
-                    }
-                    PushDouble( i - 1 );
-                }
+                PushDouble(i);
             }
             else
             {
-                // work from n backwards
-                fFactor = pow(p, n);
-                if (fFactor > ::std::numeric_limits<double>::min())
+                // accumulate BinomDist until accumulated BinomDist reaches alpha
+                double fSum = 0.0;
+                sal_uInt32 max = static_cast<sal_uInt32> (n), i;
+                for (i = 0; i < max && fSum < alpha; i++)
                 {
-                    double fSum = 1.0 - fFactor;
-                    sal_uInt32 max = static_cast<sal_uInt32> (n), i;
-                    for (i = 0; i < max && fSum >= alpha; i++)
+                    const double x = GetBetaDistPDF( p, ( i + 1 ), ( n - i + 1 ) )/( n + 1 );
+                    if ( nGlobalError == FormulaError::NONE )
                     {
-                        fFactor *= (n-i)/(i+1)*q/p;
-                        fSum -= fFactor;
+                        fSum += x;
                     }
-                    PushDouble(n-i);
+                    else
+                    {
+                        PushNoValue();
+                        return;
+                    }
                 }
-                else
+                PushDouble( i - 1 );
+            }
+        }
+        else
+        {
+            // work from n backwards
+            fFactor = pow(p, n);
+            if (fFactor > ::std::numeric_limits<double>::min())
+            {
+                double fSum = 1.0 - fFactor;
+                sal_uInt32 max = static_cast<sal_uInt32> (n), i;
+                for (i = 0; i < max && fSum >= alpha; i++)
                 {
-                    // accumulate BinomDist until accumulated BinomDist reaches alpha
-                    double fSum = 0.0;
-                    sal_uInt32 max = static_cast<sal_uInt32> (n), i;
-                    alpha = 1 - alpha;
-                    for (i = 0; i < max && fSum < alpha; i++)
-                    {
-                        const double x = GetBetaDistPDF( q, ( i + 1 ), ( n - i + 1 ) )/( n + 1 );
-                        if ( nGlobalError == FormulaError::NONE )
-                        {
-                            fSum += x;
-                        }
-                        else
-                        {
-                            PushNoValue();
-                            return;
-                        }
-                    }
-                    PushDouble( n - i + 1 );
+                    fFactor *= (n-i)/(i+1)*q/p;
+                    fSum -= fFactor;
                 }
+                PushDouble(n-i);
+            }
+            else
+            {
+                // accumulate BinomDist until accumulated BinomDist reaches alpha
+                double fSum = 0.0;
+                sal_uInt32 max = static_cast<sal_uInt32> (n), i;
+                alpha = 1 - alpha;
+                for (i = 0; i < max && fSum < alpha; i++)
+                {
+                    const double x = GetBetaDistPDF( q, ( i + 1 ), ( n - i + 1 ) )/( n + 1 );
+                    if ( nGlobalError == FormulaError::NONE )
+                    {
+                        fSum += x;
+                    }
+                    else
+                    {
+                        PushNoValue();
+                        return;
+                    }
+                }
+                PushDouble( n - i + 1 );
             }
         }
     }
@@ -1491,46 +1501,46 @@ void ScInterpreter::ScCritBinom()
 
 void ScInterpreter::ScNegBinomDist()
 {
-    if ( MustHaveParamCount( GetByte(), 3 ) )
+    if ( !MustHaveParamCount( GetByte(), 3 ) )
+        return;
+
+    double p = GetDouble();                            // probability
+    double s = ::rtl::math::approxFloor(GetDouble());  // No of successes
+    double f = ::rtl::math::approxFloor(GetDouble());  // No of failures
+    if ((f + s) <= 1.0 || p < 0.0 || p > 1.0)
+        PushIllegalArgument();
+    else
     {
-        double p = GetDouble();                            // probability
-        double s = ::rtl::math::approxFloor(GetDouble());  // No of successes
-        double f = ::rtl::math::approxFloor(GetDouble());  // No of failures
-        if ((f + s) <= 1.0 || p < 0.0 || p > 1.0)
-            PushIllegalArgument();
-        else
-        {
-            double q = 1.0 - p;
-            double fFactor = pow(p,s);
-            for (double i = 0.0; i < f; i++)
-                fFactor *= (i+s)/(i+1.0)*q;
-            PushDouble(fFactor);
-        }
+        double q = 1.0 - p;
+        double fFactor = pow(p,s);
+        for (double i = 0.0; i < f; i++)
+            fFactor *= (i+s)/(i+1.0)*q;
+        PushDouble(fFactor);
     }
 }
 
 void ScInterpreter::ScNegBinomDist_MS()
 {
-    if ( MustHaveParamCount( GetByte(), 4 ) )
+    if ( !MustHaveParamCount( GetByte(), 4 ) )
+        return;
+
+    bool bCumulative = GetBool();
+    double p = GetDouble();                            // probability
+    double s = ::rtl::math::approxFloor(GetDouble());  // No of successes
+    double f = ::rtl::math::approxFloor(GetDouble());  // No of failures
+    if ( s < 1.0 || f < 0.0 || p < 0.0 || p > 1.0 )
+        PushIllegalArgument();
+    else
     {
-        bool bCumulative = GetBool();
-        double p = GetDouble();                            // probability
-        double s = ::rtl::math::approxFloor(GetDouble());  // No of successes
-        double f = ::rtl::math::approxFloor(GetDouble());  // No of failures
-        if ( s < 1.0 || f < 0.0 || p < 0.0 || p > 1.0 )
-            PushIllegalArgument();
+        double q = 1.0 - p;
+        if ( bCumulative )
+            PushDouble( 1.0 - GetBetaDist( q, f + 1, s ) );
         else
         {
-            double q = 1.0 - p;
-            if ( bCumulative )
-                PushDouble( 1.0 - GetBetaDist( q, f + 1, s ) );
-            else
-            {
-                double fFactor = pow( p, s );
-                for ( double i = 0.0; i < f; i++ )
-                    fFactor *= ( i + s ) / ( i + 1.0 ) * q;
-                PushDouble( fFactor );
-            }
+            double fFactor = pow( p, s );
+            for ( double i = 0.0; i < f; i++ )
+                fFactor *= ( i + s ) / ( i + 1.0 ) * q;
+            PushDouble( fFactor );
         }
     }
 }
@@ -1606,27 +1616,27 @@ void ScInterpreter::ScStdNormDist_MS()
 
 void ScInterpreter::ScExpDist()
 {
-    if ( MustHaveParamCount( GetByte(), 3 ) )
+    if ( !MustHaveParamCount( GetByte(), 3 ) )
+        return;
+
+    double kum    = GetDouble();                    // 0 or 1
+    double lambda = GetDouble();                    // lambda
+    double x      = GetDouble();                    // x
+    if (lambda <= 0.0)
+        PushIllegalArgument();
+    else if (kum == 0.0)                        // density
     {
-        double kum    = GetDouble();                    // 0 or 1
-        double lambda = GetDouble();                    // lambda
-        double x      = GetDouble();                    // x
-        if (lambda <= 0.0)
-            PushIllegalArgument();
-        else if (kum == 0.0)                        // density
-        {
-            if (x >= 0.0)
-                PushDouble(lambda * exp(-lambda*x));
-            else
-                PushInt(0);
-        }
-        else                                        // distribution
-        {
-            if (x > 0.0)
-                PushDouble(1.0 - exp(-lambda*x));
-            else
-                PushInt(0);
-        }
+        if (x >= 0.0)
+            PushDouble(lambda * exp(-lambda*x));
+        else
+            PushInt(0);
+    }
+    else                                        // distribution
+    {
+        if (x > 0.0)
+            PushDouble(1.0 - exp(-lambda*x));
+        else
+            PushInt(0);
     }
 }
 
@@ -1642,7 +1652,7 @@ void ScInterpreter::ScTDist()
         PushIllegalArgument();
         return;
     }
-    PushDouble( GetTDist( T, fDF, ( int )fFlag ) );
+    PushDouble( GetTDist( T, fDF, static_cast<int>(fFlag) ) );
 }
 
 void ScInterpreter::ScTDist_T( int nTails )
@@ -1754,68 +1764,68 @@ void ScInterpreter::ScChiDist( bool bODFF )
 
 void ScInterpreter::ScWeibull()
 {
-    if ( MustHaveParamCount( GetByte(), 4 ) )
-    {
-        double kum   = GetDouble();                 // 0 or 1
-        double beta  = GetDouble();                 // beta
-        double alpha = GetDouble();                 // alpha
-        double x     = GetDouble();                 // x
-        if (alpha <= 0.0 || beta <= 0.0 || x < 0.0)
-            PushIllegalArgument();
-        else if (kum == 0.0)                        // Density
-            PushDouble(alpha/pow(beta,alpha)*pow(x,alpha-1.0)*
-                       exp(-pow(x/beta,alpha)));
-        else                                        // Distribution
-            PushDouble(1.0 - exp(-pow(x/beta,alpha)));
-    }
+    if ( !MustHaveParamCount( GetByte(), 4 ) )
+        return;
+
+    double kum   = GetDouble();                 // 0 or 1
+    double beta  = GetDouble();                 // beta
+    double alpha = GetDouble();                 // alpha
+    double x     = GetDouble();                 // x
+    if (alpha <= 0.0 || beta <= 0.0 || x < 0.0)
+        PushIllegalArgument();
+    else if (kum == 0.0)                        // Density
+        PushDouble(alpha/pow(beta,alpha)*pow(x,alpha-1.0)*
+                   exp(-pow(x/beta,alpha)));
+    else                                        // Distribution
+        PushDouble(1.0 - exp(-pow(x/beta,alpha)));
 }
 
 void ScInterpreter::ScPoissonDist( bool bODFF )
 {
     sal_uInt8 nParamCount = GetByte();
-    if ( MustHaveParamCount( nParamCount, ( bODFF ? 2 : 3 ), 3 ) )
+    if ( !MustHaveParamCount( nParamCount, ( bODFF ? 2 : 3 ), 3 ) )
+        return;
+
+    bool bCumulative = nParamCount != 3 || GetBool();         // default cumulative
+    double lambda    = GetDouble();                           // Mean
+    double x         = ::rtl::math::approxFloor(GetDouble()); // discrete distribution
+    if (lambda <= 0.0 || x < 0.0)
+        PushIllegalArgument();
+    else if (!bCumulative)                            // Probability mass function
     {
-        bool bCumulative = nParamCount != 3 || GetBool();         // default cumulative
-        double lambda    = GetDouble();                           // Mean
-        double x         = ::rtl::math::approxFloor(GetDouble()); // discrete distribution
-        if (lambda <= 0.0 || x < 0.0)
-            PushIllegalArgument();
-        else if (!bCumulative)                            // Probability mass function
-        {
-            if (lambda >712.0)    // underflow in exp(-lambda)
-            {   // accuracy 11 Digits
-                PushDouble( exp(x*log(lambda)-lambda-GetLogGamma(x+1.0)));
-            }
-            else
-            {
-                double fPoissonVar = 1.0;
-                for ( double f = 0.0; f < x; ++f )
-                    fPoissonVar *= lambda / ( f + 1.0 );
-                PushDouble( fPoissonVar * exp( -lambda ) );
-            }
+        if (lambda >712.0)    // underflow in exp(-lambda)
+        {   // accuracy 11 Digits
+            PushDouble( exp(x*log(lambda)-lambda-GetLogGamma(x+1.0)));
         }
-        else                                // Cumulative distribution function
+        else
         {
-            if (lambda > 712.0)  // underflow in exp(-lambda)
-            {   // accuracy 12 Digits
-                PushDouble(GetUpRegIGamma(x+1.0,lambda));
-            }
+            double fPoissonVar = 1.0;
+            for ( double f = 0.0; f < x; ++f )
+                fPoissonVar *= lambda / ( f + 1.0 );
+            PushDouble( fPoissonVar * exp( -lambda ) );
+        }
+    }
+    else                                // Cumulative distribution function
+    {
+        if (lambda > 712.0)  // underflow in exp(-lambda)
+        {   // accuracy 12 Digits
+            PushDouble(GetUpRegIGamma(x+1.0,lambda));
+        }
+        else
+        {
+            if (x >= 936.0) // result is always indistinguishable from 1
+                PushDouble (1.0);
             else
             {
-                if (x >= 936.0) // result is always indistinguishable from 1
-                    PushDouble (1.0);
-                else
+                double fSummand = exp(-lambda);
+                double fSum = fSummand;
+                int nEnd = sal::static_int_cast<int>( x );
+                for (int i = 1; i <= nEnd; i++)
                 {
-                    double fSummand = exp(-lambda);
-                    double fSum = fSummand;
-                    int nEnd = sal::static_int_cast<int>( x );
-                    for (int i = 1; i <= nEnd; i++)
-                    {
-                        fSummand = (fSummand * lambda)/(double)i;
-                        fSum += fSummand;
-                    }
-                    PushDouble(fSum);
+                    fSummand = (fSummand * lambda)/static_cast<double>(i);
+                    fSum += fSummand;
                 }
+                PushDouble(fSum);
             }
         }
     }
@@ -1835,8 +1845,6 @@ static void lcl_PutFactorialElements( ::std::vector< double >& cn, double fLower
 
 /** Calculates a value of the hypergeometric distribution.
 
-    @author Kohei Yoshida <kohei@openoffice.org>
-
     @see #i47296#
 
     This function has an extra argument bCumulative,
@@ -1845,7 +1853,7 @@ static void lcl_PutFactorialElements( ::std::vector< double >& cn, double fLower
 
     @see fdo#71722
     @see tdf#102948, make Calc function ODFF1.2-compliant
-
+    @see tdf#117041, implement note at bottom of ODFF1.2 par.6.18.37
  */
 void ScInterpreter::ScHypGeomDist( int nMinParamCount )
 {
@@ -1859,23 +1867,21 @@ void ScInterpreter::ScHypGeomDist( int nMinParamCount )
     double n = ::rtl::math::approxFloor(GetDouble());
     double x = ::rtl::math::approxFloor(GetDouble());
 
-    if( (x < 0.0) || (n < x) || (M < x) || (N < n) || (N < M) || (x < n - N + M) )
+    if ( (x < 0.0) || (n < x) || (N < n) || (N < M) || (M < 0.0) )
     {
         PushIllegalArgument();
         return;
     }
 
-    if ( bCumulative )
+    double fVal = 0.0;
+
+    for ( int i = ( bCumulative ? 0 : x ); i <= x && nGlobalError == FormulaError::NONE; i++ )
     {
-        double fVal = 0.0;
-
-        for ( int i = 0; i <= x && nGlobalError == FormulaError::NONE; i++ )
-            fVal += GetHypGeomDist( i, n, M, N );
-
-        PushDouble( fVal );
+        if ( (n - i <= N - M) && (i <= M) )
+            fVal +=  GetHypGeomDist( i, n, M, N );
     }
-    else
-        PushDouble( GetHypGeomDist( x, n, M, N ) );
+
+    PushDouble( fVal );
 }
 
 /** Calculates a value of the hypergeometric distribution.
@@ -1886,17 +1892,13 @@ void ScInterpreter::ScHypGeomDist( int nMinParamCount )
     for a fast calculation for large values which would otherwise cause an overflow
     in the intermediate values.
 
-    @author Kohei Yoshida <kohei@openoffice.org>
-
     @see #i47296#
-
  */
 double ScInterpreter::GetHypGeomDist( double x, double n, double M, double N )
 {
     const size_t nMaxArraySize = 500000; // arbitrary max array size
 
-    typedef ::std::vector< double > HypContainer;
-    HypContainer cnNumer, cnDenom;
+    std::vector<double> cnNumer, cnDenom;
 
     size_t nEstContainerSize = static_cast<size_t>( x + ::std::min( n, M ) );
     size_t nMaxSize = ::std::min( cnNumer.max_size(), nMaxArraySize );
@@ -2071,8 +2073,8 @@ double ScInterpreter::GetHypGeomDist( double x, double n, double M, double N )
 
     ::std::sort( cnNumer.begin(), cnNumer.end() );
     ::std::sort( cnDenom.begin(), cnDenom.end() );
-    HypContainer::reverse_iterator it1 = cnNumer.rbegin(), it1End = cnNumer.rend();
-    HypContainer::reverse_iterator it2 = cnDenom.rbegin(), it2End = cnDenom.rend();
+    auto it1 = cnNumer.rbegin(), it1End = cnNumer.rend();
+    auto it2 = cnDenom.rbegin(), it2End = cnDenom.rend();
 
     double fFactor = 1.0;
     for ( ; it1 != it1End || it2 != it2End; )
@@ -2443,6 +2445,8 @@ void ScInterpreter::ScConfidenceT()
         double alpha = GetDouble();
         if (sigma <= 0.0 || alpha <= 0.0 || alpha >= 1.0 || n < 1.0)
             PushIllegalArgument();
+        else if (n == 1.0) // for interoperability with Excel
+            PushError(FormulaError::DivisionByZero);
         else
             PushDouble( sigma * GetTInv( alpha, n - 1, 2 ) / sqrt( n ) );
     }
@@ -2541,7 +2545,7 @@ void ScInterpreter::ScZTest()
                 else
                 {
                     for (SCSIZE i = 0; i < nCount; i++)
-                        if (!pMat->IsString(i))
+                        if (!pMat->IsStringOrEmpty(i))
                         {
                             fVal= pMat->GetDouble(i);
                             fSum += fVal;
@@ -2563,6 +2567,11 @@ void ScInterpreter::ScZTest()
         if (nParamCount != 3)
         {
             sigma = (fSumSqr - fSum*fSum/rValCount)/(rValCount-1.0);
+            if (sigma == 0.0)
+            {
+                PushError(FormulaError::DivisionByZero);
+                return;
+            }
             PushDouble(0.5 - gauss((mue-x)/sqrt(sigma/rValCount)));
         }
         else
@@ -2586,7 +2595,7 @@ bool ScInterpreter::CalculateTest(bool _bTemplin
     for (i = 0; i < nC1; i++)
         for (j = 0; j < nR1; j++)
         {
-            if (!pMat1->IsString(i,j))
+            if (!pMat1->IsStringOrEmpty(i,j))
             {
                 fVal = pMat1->GetDouble(i,j);
                 fSum1    += fVal;
@@ -2597,7 +2606,7 @@ bool ScInterpreter::CalculateTest(bool _bTemplin
     for (i = 0; i < nC2; i++)
         for (j = 0; j < nR2; j++)
         {
-            if (!pMat2->IsString(i,j))
+            if (!pMat2->IsStringOrEmpty(i,j))
             {
                 fVal = pMat2->GetDouble(i,j);
                 fSum2    += fVal;
@@ -2677,7 +2686,7 @@ void ScInterpreter::ScTTest()
         for (i = 0; i < nC1; i++)
             for (j = 0; j < nR1; j++)
             {
-                if (!pMat1->IsString(i,j) && !pMat2->IsString(i,j))
+                if (!pMat1->IsStringOrEmpty(i,j) && !pMat2->IsStringOrEmpty(i,j))
                 {
                     fVal1 = pMat1->GetDouble(i,j);
                     fVal2 = pMat2->GetDouble(i,j);
@@ -2693,7 +2702,7 @@ void ScInterpreter::ScTTest()
             return;
         }
         double fSumD = fSum1 - fSum2;
-        double fDivider = (fCount*fSumSqrD - fSumD*fSumD);
+        double fDivider = fCount*fSumSqrD - fSumD*fSumD;
         if ( fDivider == 0.0 )
         {
             PushError(FormulaError::DivisionByZero);
@@ -2704,19 +2713,20 @@ void ScInterpreter::ScTTest()
     }
     else if (fTyp == 2.0)
     {
-        CalculateTest(false,nC1, nC2,nR1, nR2,pMat1,pMat2,fT,fF);
+        if (!CalculateTest(false,nC1, nC2,nR1, nR2,pMat1,pMat2,fT,fF))
+            return;     // error was pushed
     }
     else if (fTyp == 3.0)
     {
-        CalculateTest(true,nC1, nC2,nR1, nR2,pMat1,pMat2,fT,fF);
+        if (!CalculateTest(true,nC1, nC2,nR1, nR2,pMat1,pMat2,fT,fF))
+            return;     // error was pushed
     }
-
     else
     {
         PushIllegalArgument();
         return;
     }
-    PushDouble( GetTDist( fT, fF, ( int )fTails ) );
+    PushDouble( GetTDist( fT, fF, static_cast<int>(fTails) ) );
 }
 
 void ScInterpreter::ScFTest()
@@ -2741,16 +2751,16 @@ void ScInterpreter::ScFTest()
     double fSum2    = 0.0;
     double fSumSqr2 = 0.0;
 
-    std::vector<std::unique_ptr<sc::op::Op>> aOp;
-    aOp.emplace_back(new sc::op::Op(0.0, [](double& rAccum, double fVal){rAccum += fVal;}));
-    aOp.emplace_back(new sc::op::Op(0.0, [](double& rAccum, double fVal){rAccum += fVal * fVal;}));
+    std::vector<sc::op::Op> aOp;
+    aOp.emplace_back(sc::op::Op(0.0, [](double& rAccum, double fVal){rAccum += fVal;}));
+    aOp.emplace_back(sc::op::Op(0.0, [](double& rAccum, double fVal){rAccum += fVal * fVal;}));
 
-    auto aVal1 = pMat1->Collect(false, aOp);
+    auto aVal1 = pMat1->Collect(aOp);
     fSum1 = aVal1[0].mfFirst + aVal1[0].mfRest;
     fSumSqr1 = aVal1[1].mfFirst + aVal1[1].mfRest;
     fCount1 = aVal1[2].mnCount;
 
-    auto aVal2 = pMat2->Collect(false, aOp);
+    auto aVal2 = pMat2->Collect(aOp);
     fSum2 = aVal2[0].mfFirst + aVal2[0].mfRest;
     fSumSqr2 = aVal2[1].mfFirst + aVal2[1].mfRest;
     fCount2 = aVal2[2].mnCount;
@@ -2813,7 +2823,7 @@ void ScInterpreter::ScChiTest()
             if (!(pMat1->IsEmpty(i,j) || pMat2->IsEmpty(i,j)))
             {
                 bEmpty = false;
-                if (!pMat1->IsString(i,j) && !pMat2->IsString(i,j))
+                if (!pMat1->IsStringOrEmpty(i,j) && !pMat2->IsStringOrEmpty(i,j))
                 {
                     double fValX = pMat1->GetDouble(i,j);
                     double fValE = pMat2->GetDouble(i,j);
@@ -2848,7 +2858,7 @@ void ScInterpreter::ScChiTest()
     double fDF;
     if (nC1 == 1 || nR1 == 1)
     {
-        fDF = (double)(nC1*nR1 - 1);
+        fDF = static_cast<double>(nC1*nR1 - 1);
         if (fDF == 0.0)
         {
             PushNoValue();
@@ -2856,7 +2866,7 @@ void ScInterpreter::ScChiTest()
         }
     }
     else
-        fDF = (double)(nC1-1)*(double)(nR1-1);
+        fDF = static_cast<double>(nC1-1)*static_cast<double>(nR1-1);
     PushDouble(GetChiDist(fChi, fDF));
 }
 
@@ -2867,8 +2877,10 @@ void ScInterpreter::ScKurt()
     if ( !CalculateSkew(fSum,fCount,vSum,values) )
         return;
 
-    if (fCount == 0.0)
+    // ODF 1.2 constraints: # of numbers >= 4
+    if (fCount < 4.0)
     {
+        // for interoperability with Excel
         PushError( FormulaError::DivisionByZero);
         return;
     }
@@ -2997,7 +3009,7 @@ void ScInterpreter::ScHarMean()
                     else
                     {
                         for (SCSIZE nElem = 0; nElem < nCount; nElem++)
-                            if (!pMat->IsString(nElem))
+                            if (!pMat->IsStringOrEmpty(nElem))
                             {
                                 double x = pMat->GetDouble(nElem);
                                 if (x > 0.0)
@@ -3042,6 +3054,14 @@ void ScInterpreter::ScGeoMean()
                     nVal += log(x);
                     nValCount++;
                 }
+                else if ( x == 0.0 )
+                {
+                    // value of 0 means that function result will be 0
+                    while ( nParamCount-- > 0 )
+                        PopError();
+                    PushDouble( 0.0 );
+                    return;
+                }
                 else
                     SetError( FormulaError::IllegalArgument);
                 break;
@@ -3057,6 +3077,14 @@ void ScInterpreter::ScGeoMean()
                     {
                         nVal += log(x);
                         nValCount++;
+                    }
+                    else if ( x == 0.0 )
+                    {
+                        // value of 0 means that function result will be 0
+                        while ( nParamCount-- > 0 )
+                            PopError();
+                        PushDouble( 0.0 );
+                        return;
                     }
                     else
                         SetError( FormulaError::IllegalArgument);
@@ -3077,6 +3105,14 @@ void ScInterpreter::ScGeoMean()
                         nVal += log(nCellVal);
                         nValCount++;
                     }
+                    else if ( nCellVal == 0.0 )
+                    {
+                        // value of 0 means that function result will be 0
+                        while ( nParamCount-- > 0 )
+                            PopError();
+                        PushDouble( 0.0 );
+                        return;
+                    }
                     else
                         SetError( FormulaError::IllegalArgument);
                     SetError(nErr);
@@ -3086,6 +3122,14 @@ void ScInterpreter::ScGeoMean()
                         {
                             nVal += log(nCellVal);
                             nValCount++;
+                        }
+                        else if ( nCellVal == 0.0 )
+                        {
+                            // value of 0 means that function result will be 0
+                            while ( nParamCount-- > 0 )
+                                PopError();
+                            PushDouble( 0.0 );
+                            return;
                         }
                         else
                             SetError( FormulaError::IllegalArgument);
@@ -3112,6 +3156,14 @@ void ScInterpreter::ScGeoMean()
                                 nVal += log(x);
                                 nValCount++;
                             }
+                            else if ( x == 0.0 )
+                            {
+                                // value of 0 means that function result will be 0
+                                while ( nParamCount-- > 0 )
+                                    PopError();
+                                PushDouble( 0.0 );
+                                return;
+                            }
                             else
                                 SetError( FormulaError::IllegalArgument);
                         }
@@ -3119,7 +3171,8 @@ void ScInterpreter::ScGeoMean()
                     else
                     {
                         for (SCSIZE ui = 0; ui < nCount; ui++)
-                            if (!pMat->IsString(ui))
+                        {
+                            if (!pMat->IsStringOrEmpty(ui))
                             {
                                 double x = pMat->GetDouble(ui);
                                 if (x > 0.0)
@@ -3127,9 +3180,18 @@ void ScInterpreter::ScGeoMean()
                                     nVal += log(x);
                                     nValCount++;
                                 }
+                                else if ( x == 0.0 )
+                                {
+                                    // value of 0 means that function result will be 0
+                                    while ( nParamCount-- > 0 )
+                                        PopError();
+                                    PushDouble( 0.0 );
+                                    return;
+                                }
                                 else
                                     SetError( FormulaError::IllegalArgument);
                             }
+                        }
                     }
                 }
             }
@@ -3239,7 +3301,7 @@ bool ScInterpreter::CalculateSkew(double& fSum,double& fCount,double& vSum,std::
                     else
                     {
                         for (SCSIZE nElem = 0; nElem < nCount; nElem++)
-                            if (!pMat->IsString(nElem))
+                            if (!pMat->IsStringOrEmpty(nElem))
                             {
                                 fVal = pMat->GetDouble(nElem);
                                 fSum += fVal;
@@ -3270,6 +3332,13 @@ void ScInterpreter::CalculateSkewOrSkewp( bool bSkewp )
     std::vector<double> values;
     if (!CalculateSkew( fSum, fCount, vSum, values))
         return;
+     // SKEW/SKEWP's constraints: they require at least three numbers
+    if (fCount < 3.0)
+    {
+        // for interoperability with Excel
+        PushError(FormulaError::DivisionByZero);
+        return;
+    }
 
     double fMean = fSum / fCount;
 
@@ -3326,8 +3395,7 @@ double ScInterpreter::GetMedian( vector<double> & rArray )
     {
         double fUp = *iMid;
         // Lower median.
-        iMid = rArray.begin() + nMid - 1;
-        ::std::nth_element( rArray.begin(), iMid, rArray.end());
+        iMid = ::std::max_element( rArray.begin(), rArray.begin() + nMid);
         return (fUp + *iMid) / 2;
     }
 }
@@ -3349,7 +3417,7 @@ double ScInterpreter::GetPercentile( vector<double> & rArray, double fPercentile
         return rArray[0];
     else
     {
-        size_t nIndex = (size_t)::rtl::math::approxFloor( fPercentile * (nSize-1));
+        size_t nIndex = static_cast<size_t>(::rtl::math::approxFloor( fPercentile * (nSize-1)));
         double fDiff = fPercentile * (nSize-1) - ::rtl::math::approxFloor( fPercentile * (nSize-1));
         OSL_ENSURE(nIndex < nSize, "GetPercentile: wrong index(1)");
         vector<double>::iterator iter = rArray.begin() + nIndex;
@@ -3360,8 +3428,7 @@ double ScInterpreter::GetPercentile( vector<double> & rArray, double fPercentile
         {
             OSL_ENSURE(nIndex < nSize-1, "GetPercentile: wrong index(2)");
             double fVal = *iter;
-            iter = rArray.begin() + nIndex+1;
-            ::std::nth_element( rArray.begin(), iter, rArray.end());
+            iter = ::std::min_element( rArray.begin() + nIndex + 1, rArray.end());
             return fVal + fDiff * (*iter - fVal);
         }
     }
@@ -3375,13 +3442,13 @@ double ScInterpreter::GetPercentileExclusive( vector<double> & rArray, double fP
         SetError( FormulaError::NoValue );
         return 0.0;
     }
-    if ( fPercentile * nSize1 < 1.0 || fPercentile * nSize1 > (double) ( nSize1 - 1 ) )
+    if ( fPercentile * nSize1 < 1.0 || fPercentile * nSize1 > static_cast<double>( nSize1 - 1 ) )
     {
         SetError( FormulaError::IllegalParameter );
         return 0.0;
     }
 
-    size_t nIndex = (size_t)::rtl::math::approxFloor( fPercentile * nSize1 - 1 );
+    size_t nIndex = static_cast<size_t>(::rtl::math::approxFloor( fPercentile * nSize1 - 1 ));
     double fDiff = fPercentile *  nSize1 - 1 - ::rtl::math::approxFloor( fPercentile * nSize1 - 1 );
     OSL_ENSURE(nIndex < ( nSize1 - 1 ), "GetPercentile: wrong index(1)");
     vector<double>::iterator iter = rArray.begin() + nIndex;
@@ -3392,8 +3459,7 @@ double ScInterpreter::GetPercentileExclusive( vector<double> & rArray, double fP
     {
         OSL_ENSURE(nIndex < nSize1, "GetPercentile: wrong index(2)");
         double fVal = *iter;
-        iter = rArray.begin() + nIndex + 1;
-        ::std::nth_element( rArray.begin(), iter, rArray.end());
+        iter = ::std::min_element( rArray.begin() + nIndex + 1, rArray.end());
         return fVal + fDiff * (*iter - fVal);
     }
 }
@@ -3459,7 +3525,6 @@ void ScInterpreter::ScModalValue()
         SCSIZE nMaxIndex = 0, nMax = 1, nCount = 1;
         double nOldVal = aSortArray[0];
         SCSIZE i;
-
         for ( i = 1; i < nSize; i++)
         {
             if (aSortArray[i] == nOldVal)
@@ -3489,32 +3554,169 @@ void ScInterpreter::ScModalValue()
     }
 }
 
+void ScInterpreter::ScModalValue_MS( bool bSingle )
+{
+    sal_uInt8 nParamCount = GetByte();
+    if ( !MustHaveParamCountMin( nParamCount, 1 ) )
+        return;
+    vector<double> aArray;
+    GetNumberSequenceArray( nParamCount, aArray, false );
+    vector< double > aSortArray( aArray );
+    QuickSort( aSortArray, nullptr );
+    SCSIZE nSize = aSortArray.size();
+    if ( nSize == 0 || nGlobalError != FormulaError::NONE )
+        PushNoValue();
+    else
+    {
+        SCSIZE nMax = 1, nCount = 1;
+        double nOldVal = aSortArray[ 0 ];
+        vector< double > aResultArray( 1 );
+        SCSIZE i;
+        for ( i = 1; i < nSize; i++ )
+        {
+            if ( aSortArray[ i ] == nOldVal )
+                nCount++;
+            else
+            {
+                if ( nCount >= nMax && nCount > 1 )
+                {
+                    if ( nCount > nMax )
+                    {
+                        nMax = nCount;
+                        if ( aResultArray.size() != 1 )
+                            vector< double >( 1 ).swap( aResultArray );
+                        aResultArray[ 0 ] = nOldVal;
+                    }
+                    else
+                        aResultArray.emplace_back( nOldVal );
+                }
+                nOldVal = aSortArray[ i ];
+                nCount = 1;
+            }
+        }
+        if ( nCount >= nMax && nCount > 1 )
+        {
+            if ( nCount > nMax )
+                vector< double >().swap( aResultArray );
+            aResultArray.emplace_back( nOldVal );
+        }
+        if ( nMax == 1 && nCount == 1 )
+            PushNoValue();
+        else if ( nMax == 1 )
+            PushDouble( nOldVal ); // there is only 1 result, no reordering needed
+        else
+        {
+            // sort resultArray according to ordering of aArray
+            vector< vector< double > > aOrder;
+            aOrder.resize( aResultArray.size(), vector< double >( 2 ) );
+            for ( i = 0; i < aResultArray.size(); i++ )
+            {
+                for ( SCSIZE j = 0; j < nSize; j++ )
+                {
+                    if ( aArray[ j ] == aResultArray[ i ] )
+                    {
+                        aOrder[ i ][ 0 ] = aResultArray[ i ];
+                        aOrder[ i ][ 1 ] = j;
+                        break;
+                    }
+                }
+            }
+            sort( aOrder.begin(), aOrder.end(), []( const std::vector< double >& lhs,
+                                                    const std::vector< double >& rhs )
+                                                    { return lhs[ 1 ] < rhs[ 1 ]; } );
+
+            if ( bSingle )
+                PushDouble( aOrder[ 0 ][ 0 ] );
+            else
+            {
+                // put result in correct order in aResultArray
+                for ( i = 0; i < aResultArray.size(); i++ )
+                    aResultArray[ i ] = aOrder[ i ][ 0 ];
+                ScMatrixRef pResMatrix = GetNewMat( 1, aResultArray.size(), true );
+                pResMatrix->PutDoubleVector( aResultArray, 0, 0 );
+                PushMatrix( pResMatrix );
+            }
+        }
+    }
+}
+
 void ScInterpreter::CalculateSmallLarge(bool bSmall)
 {
     if ( !MustHaveParamCount( GetByte(), 2 )  )
         return;
-    double f = ::rtl::math::approxFloor(GetDouble());
-    if (f < 1.0)
+
+    SCSIZE nCol = 0, nRow = 0;
+    auto aArray = GetTopNumberArray(nCol, nRow);
+    const auto nRankArraySize = aArray.size();
+    if (nRankArraySize == 0 || nGlobalError != FormulaError::NONE)
     {
-        PushIllegalArgument();
+        PushNoValue();
         return;
     }
-    SCSIZE k = static_cast<SCSIZE>(f);
+    assert(nRankArraySize == nCol * nRow);
+
+    std::vector<SCSIZE> aRankArray;
+    aRankArray.reserve(nRankArraySize);
+    std::transform(aArray.begin(), aArray.end(), std::back_inserter(aRankArray),
+            [](double f) {
+                f = rtl::math::approxFloor(f);
+                // Valid ranks are >= 1.
+                if (f < 1.0 || !o3tl::convertsToAtMost(f, std::numeric_limits<SCSIZE>::max()))
+                    return static_cast<SCSIZE>(0);
+                return static_cast<SCSIZE>(f);
+            });
+
     vector<double> aSortArray;
-    /* TODO: using nth_element() is best for one single value, but LARGE/SMALL
-     * actually are defined to return an array of values if an array of
-     * positions was passed, in which case, depending on the number of values,
-     * we may or will need a real sorted array again, see #i32345. */
     GetNumberSequenceArray(1, aSortArray, false );
-    SCSIZE nSize = aSortArray.size();
-    if (nSize == 0 || nGlobalError != FormulaError::NONE || nSize < k)
+    const SCSIZE nSize = aSortArray.size();
+    if (nSize == 0 || nGlobalError != FormulaError::NONE)
         PushNoValue();
+    else if (nRankArraySize == 1)
+    {
+        const SCSIZE k = aRankArray[0];
+        if (k < 1 || nSize < k)
+            PushNoValue();
+        else
+        {
+            vector<double>::iterator iPos = aSortArray.begin() + (bSmall ? k-1 : nSize-k);
+            ::std::nth_element( aSortArray.begin(), iPos, aSortArray.end());
+            PushDouble( *iPos);
+        }
+    }
     else
     {
-        // TODO: the sorted case for array: PushDouble( aSortArray[ bSmall ? k-1 : nSize-k ] );
-        vector<double>::iterator iPos = aSortArray.begin() + (bSmall ? k-1 : nSize-k);
-        ::std::nth_element( aSortArray.begin(), iPos, aSortArray.end());
-        PushDouble( *iPos);
+        std::set<SCSIZE> aIndices;
+        for (SCSIZE n : aRankArray)
+        {
+            if (1 <= n && n <= nSize)
+                aIndices.insert(bSmall ? n-1 : nSize-n);
+        }
+        // We can spare sorting when the total number of ranks is small enough.
+        // Find only the elements at given indices if, arbitrarily, the index size is
+        // smaller than 1/3 of the haystack array's size; just sort it squarely, otherwise.
+        if (aIndices.size() < nSize/3)
+        {
+            auto itBegin = aSortArray.begin();
+            for (SCSIZE i : aIndices)
+            {
+                auto it = aSortArray.begin() + i;
+                std::nth_element(itBegin, it, aSortArray.end());
+                itBegin = ++it;
+            }
+        }
+        else
+            std::sort(aSortArray.begin(), aSortArray.end());
+
+        aArray.clear();
+        for (SCSIZE n : aRankArray)
+        {
+            if (1 <= n && n <= nSize)
+                aArray.push_back( aSortArray[bSmall ? n-1 : nSize-n]);
+            else
+                aArray.push_back( CreateDoubleError( FormulaError::NoValue));
+        }
+        ScMatrixRef pResult = GetNewMat(nCol, nRow, aArray);
+        PushMatrix(pResult);
     }
 }
 
@@ -3575,7 +3777,7 @@ double ScInterpreter::GetPercentrank( ::std::vector<double> & rArray, double fVa
         if ( bInclusive )
             fRes = 0.0;
         else
-            fRes = 1.0 / ( double )( nSize + 1 );
+            fRes = 1.0 / static_cast<double>( nSize + 1 );
     }
     else
     {
@@ -3597,7 +3799,7 @@ double ScInterpreter::GetPercentrank( ::std::vector<double> & rArray, double fVa
             if ( bInclusive )
                 fRes = div( nOldCount, nSize - 1 );
             else
-                fRes = ( double )( i + 1 ) / ( double )( nSize + 1 );
+                fRes = static_cast<double>( i + 1 ) / static_cast<double>( nSize + 1 );
         }
         else
         {
@@ -3614,9 +3816,9 @@ double ScInterpreter::GetPercentrank( ::std::vector<double> & rArray, double fVa
                 double fFract = ( fVal - rArray[ nOldCount - 1 ] ) /
                     ( rArray[ nOldCount ] - rArray[ nOldCount - 1 ] );
                 if ( bInclusive )
-                    fRes = div( ( double )( nOldCount - 1 ) + fFract, nSize - 1 );
+                    fRes = div( static_cast<double>( nOldCount - 1 ) + fFract, nSize - 1 );
                 else
-                    fRes = ( ( double )nOldCount + fFract ) / ( double )( nSize + 1 );
+                    fRes = ( static_cast<double>(nOldCount) + fFract ) / static_cast<double>( nSize + 1 );
             }
         }
     }
@@ -3640,24 +3842,111 @@ void ScInterpreter::ScTrimMean()
         PushNoValue();
     else
     {
-        sal_uLong nIndex = (sal_uLong) ::rtl::math::approxFloor(alpha*(double)nSize);
+        sal_uLong nIndex = static_cast<sal_uLong>(::rtl::math::approxFloor(alpha*static_cast<double>(nSize)));
         if (nIndex % 2 != 0)
             nIndex--;
         nIndex /= 2;
-        OSL_ENSURE(nIndex < nSize, "ScTrimMean: falscher Index");
+        OSL_ENSURE(nIndex < nSize, "ScTrimMean: wrong index");
         double fSum = 0.0;
         for (SCSIZE i = nIndex; i < nSize-nIndex; i++)
             fSum += aSortArray[i];
-        PushDouble(fSum/(double)(nSize-2*nIndex));
+        PushDouble(fSum/static_cast<double>(nSize-2*nIndex));
     }
+}
+
+std::vector<double> ScInterpreter::GetTopNumberArray( SCSIZE& rCol, SCSIZE& rRow )
+{
+    std::vector<double> aArray;
+    switch (GetStackType())
+    {
+        case svDouble:
+            aArray.push_back(PopDouble());
+            rCol = rRow = 1;
+        break;
+        case svSingleRef:
+        {
+            ScAddress aAdr;
+            PopSingleRef(aAdr);
+            ScRefCellValue aCell(*pDok, aAdr);
+            if (aCell.hasNumeric())
+            {
+                aArray.push_back(GetCellValue(aAdr, aCell));
+                rCol = rRow = 1;
+            }
+        }
+        break;
+        case svDoubleRef:
+        {
+            ScRange aRange;
+            PopDoubleRef(aRange, true);
+            if (nGlobalError != FormulaError::NONE)
+                break;
+
+            // give up unless the start and end are in the same sheet
+            if (aRange.aStart.Tab() != aRange.aEnd.Tab())
+            {
+                SetError(FormulaError::IllegalParameter);
+                break;
+            }
+
+            // the range already is in order
+            assert(aRange.aStart.Col() <= aRange.aEnd.Col());
+            assert(aRange.aStart.Row() <= aRange.aEnd.Row());
+            rCol = aRange.aEnd.Col() - aRange.aStart.Col() + 1;
+            rRow = aRange.aEnd.Row() - aRange.aStart.Row() + 1;
+            aArray.reserve(rCol * rRow);
+
+            FormulaError nErr = FormulaError::NONE;
+            double fCellVal;
+            ScValueIterator aValIter(pDok, aRange, mnSubTotalFlags);
+            if (aValIter.GetFirst(fCellVal, nErr))
+            {
+                do
+                    aArray.push_back(fCellVal);
+                while (aValIter.GetNext(fCellVal, nErr) && nErr == FormulaError::NONE);
+            }
+            if (aArray.size() != rCol * rRow)
+            {
+                aArray.clear();
+                SetError(nErr);
+            }
+        }
+        break;
+        case svMatrix:
+        case svExternalSingleRef:
+        case svExternalDoubleRef:
+        {
+            ScMatrixRef pMat = GetMatrix();
+            if (!pMat)
+                break;
+
+            if (pMat->IsNumeric())
+            {
+                SCSIZE nCount = pMat->GetElementCount();
+                aArray.reserve(nCount);
+                for (SCSIZE i = 0; i < nCount; ++i)
+                    aArray.push_back(pMat->GetDouble(i));
+                pMat->GetDimensions(rCol, rRow);
+            }
+            else
+                SetError(FormulaError::IllegalParameter);
+        }
+        break;
+        default:
+            SetError(FormulaError::IllegalParameter);
+        break;
+    }
+    return aArray;
 }
 
 void ScInterpreter::GetNumberSequenceArray( sal_uInt8 nParamCount, vector<double>& rArray, bool bConvertTextInArray )
 {
     ScAddress aAdr;
     ScRange aRange;
+    const bool bIgnoreErrVal = bool(mnSubTotalFlags & SubtotalFlags::IgnoreErrVal);
     short nParam = nParamCount;
     size_t nRefInList = 0;
+    ReverseStack( nParamCount );
     while (nParam-- > 0)
     {
         const StackVar eStackType = GetStackType();
@@ -3670,7 +3959,9 @@ void ScInterpreter::GetNumberSequenceArray( sal_uInt8 nParamCount, vector<double
             {
                 PopSingleRef( aAdr );
                 ScRefCellValue aCell(*pDok, aAdr);
-                if (aCell.hasNumeric())
+                if (bIgnoreErrVal && aCell.hasError())
+                    ;   // nothing
+                else if (aCell.hasNumeric())
                     rArray.push_back(GetCellValue(aAdr, aCell));
             }
             break;
@@ -3691,11 +3982,24 @@ void ScInterpreter::GetNumberSequenceArray( sal_uInt8 nParamCount, vector<double
                 ScValueIterator aValIter( pDok, aRange, mnSubTotalFlags );
                 if (aValIter.GetFirst( fCellVal, nErr))
                 {
-                    rArray.push_back( fCellVal);
-                    SetError(nErr);
-                    while ((nErr == FormulaError::NONE) && aValIter.GetNext( fCellVal, nErr))
+                    if (bIgnoreErrVal)
+                    {
+                        if (nErr == FormulaError::NONE)
+                            rArray.push_back( fCellVal);
+                        while (aValIter.GetNext( fCellVal, nErr))
+                        {
+                            if (nErr == FormulaError::NONE)
+                                rArray.push_back( fCellVal);
+                        }
+                    }
+                    else
+                    {
                         rArray.push_back( fCellVal);
-                    SetError(nErr);
+                        SetError(nErr);
+                        while ((nErr == FormulaError::NONE) && aValIter.GetNext( fCellVal, nErr))
+                            rArray.push_back( fCellVal);
+                        SetError(nErr);
+                    }
                 }
             }
             break;
@@ -3711,15 +4015,40 @@ void ScInterpreter::GetNumberSequenceArray( sal_uInt8 nParamCount, vector<double
                 rArray.reserve( rArray.size() + nCount);
                 if (pMat->IsNumeric())
                 {
-                    for (SCSIZE i = 0; i < nCount; ++i)
-                        rArray.push_back( pMat->GetDouble(i));
+                    if (bIgnoreErrVal)
+                    {
+                        for (SCSIZE i = 0; i < nCount; ++i)
+                        {
+                            const double fVal = pMat->GetDouble(i);
+                            if (nGlobalError == FormulaError::NONE)
+                                rArray.push_back( fVal);
+                            else
+                                nGlobalError = FormulaError::NONE;
+                        }
+                    }
+                    else
+                    {
+                        for (SCSIZE i = 0; i < nCount; ++i)
+                            rArray.push_back( pMat->GetDouble(i));
+                    }
                 }
                 else if (bConvertTextInArray && eStackType == svMatrix)
                 {
                     for (SCSIZE i = 0; i < nCount; ++i)
                     {
                         if ( pMat->IsValue( i ) )
-                            rArray.push_back( pMat->GetDouble(i));
+                        {
+                            if (bIgnoreErrVal)
+                            {
+                                const double fVal = pMat->GetDouble(i);
+                                if (nGlobalError == FormulaError::NONE)
+                                    rArray.push_back( fVal);
+                                else
+                                    nGlobalError = FormulaError::NONE;
+                            }
+                            else
+                                rArray.push_back( pMat->GetDouble(i));
+                        }
                         else
                         {
                             // tdf#88547 try to convert string to (date)value
@@ -3736,13 +4065,17 @@ void ScInterpreter::GetNumberSequenceArray( sal_uInt8 nParamCount, vector<double
                                 }
                                 else
                                 {
-                                    rArray.push_back( CreateDoubleError( FormulaError::NoValue));
+                                    if (!bIgnoreErrVal)
+                                        rArray.push_back( CreateDoubleError( FormulaError::NoValue));
                                     // Propagate previous error if any, else
-                                    // the current #VALUE! error.
+                                    // the current #VALUE! error, unless
+                                    // ignoring error values.
                                     if (nErr != FormulaError::NONE)
                                         nGlobalError = nErr;
-                                    else
+                                    else if (!bIgnoreErrVal)
                                         nGlobalError = FormulaError::NoValue;
+                                    else
+                                        nGlobalError = FormulaError::NONE;
                                 }
                             }
                         }
@@ -3750,10 +4083,27 @@ void ScInterpreter::GetNumberSequenceArray( sal_uInt8 nParamCount, vector<double
                 }
                 else
                 {
-                    for (SCSIZE i = 0; i < nCount; ++i)
+                    if (bIgnoreErrVal)
                     {
-                        if ( pMat->IsValue( i ) )
-                            rArray.push_back( pMat->GetDouble(i));
+                        for (SCSIZE i = 0; i < nCount; ++i)
+                        {
+                            if (pMat->IsValue(i))
+                            {
+                                const double fVal = pMat->GetDouble(i);
+                                if (nGlobalError == FormulaError::NONE)
+                                    rArray.push_back( fVal);
+                                else
+                                    nGlobalError = FormulaError::NONE;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (SCSIZE i = 0; i < nCount; ++i)
+                        {
+                            if (pMat->IsValue(i))
+                                rArray.push_back( pMat->GetDouble(i));
+                        }
                     }
                 }
             }
@@ -3775,7 +4125,7 @@ void ScInterpreter::GetNumberSequenceArray( sal_uInt8 nParamCount, vector<double
 void ScInterpreter::GetSortArray( sal_uInt8 nParamCount, vector<double>& rSortArray, vector<long>* pIndexOrder, bool bConvertTextInArray, bool bAllowEmptyArray )
 {
     GetNumberSequenceArray( nParamCount, rSortArray, bConvertTextInArray );
-    if (rSortArray.size() > MAX_ANZ_DOUBLE_FOR_SORT)
+    if (rSortArray.size() > MAX_COUNT_DOUBLE_FOR_SORT)
         SetError( FormulaError::MatrixSize);
     else if ( rSortArray.empty() )
     {
@@ -3893,7 +4243,7 @@ void ScInterpreter::ScRank( bool bAverage )
             double fFirstPos = -1.0;
             bool bFinished = false;
             SCSIZE i;
-            for ( i = 0; i < nSize && !bFinished && nGlobalError == FormulaError::NONE; i++ )
+            for (i = 0; i < nSize && !bFinished; i++)
             {
                 if ( aSortArray[ i ] == fVal )
                 {
@@ -4001,7 +4351,7 @@ void ScInterpreter::ScAveDev()
                     else
                     {
                         for (SCSIZE nElem = 0; nElem < nCount; nElem++)
-                            if (!pMat->IsString(nElem))
+                            if (!pMat->IsStringOrEmpty(nElem))
                             {
                                 rVal += pMat->GetDouble(nElem);
                                 rValCount++;
@@ -4074,7 +4424,7 @@ void ScInterpreter::ScAveDev()
                     {
                         for (SCSIZE nElem = 0; nElem < nCount; nElem++)
                         {
-                            if (!pMat->IsString(nElem))
+                            if (!pMat->IsStringOrEmpty(nElem))
                                 rVal += fabs(pMat->GetDouble(nElem) - nMiddle);
                         }
                     }
@@ -4215,7 +4565,7 @@ void ScInterpreter::CalculatePearsonCovar( bool _bPearson, bool _bStexy, bool _b
     {
         for (SCSIZE j = 0; j < nR1; j++)
         {
-            if (!pMat1->IsString(i,j) && !pMat2->IsString(i,j))
+            if (!pMat1->IsStringOrEmpty(i,j) && !pMat2->IsStringOrEmpty(i,j))
             {
                 double fValX = pMat1->GetDouble(i,j);
                 double fValY = pMat2->GetDouble(i,j);
@@ -4238,7 +4588,7 @@ void ScInterpreter::CalculatePearsonCovar( bool _bPearson, bool _bStexy, bool _b
         {
             for (SCSIZE j = 0; j < nR1; j++)
             {
-                if (!pMat1->IsString(i,j) && !pMat2->IsString(i,j))
+                if (!pMat1->IsStringOrEmpty(i,j) && !pMat2->IsStringOrEmpty(i,j))
                 {
                     const double fValX = pMat1->GetDouble(i,j);
                     const double fValY = pMat2->GetDouble(i,j);
@@ -4275,20 +4625,20 @@ void ScInterpreter::ScRSQ()
 {
     // Same as ScPearson()*ScPearson()
     ScPearson();
-    if (nGlobalError == FormulaError::NONE)
+    if (nGlobalError != FormulaError::NONE)
+        return;
+
+    switch (GetStackType())
     {
-        switch (GetStackType())
-        {
-            case svDouble:
-                {
-                    double fVal = PopDouble();
-                    PushDouble( fVal * fVal);
-                }
-                break;
-            default:
-                PopError();
-                PushNoValue();
-        }
+        case svDouble:
+            {
+                double fVal = PopDouble();
+                PushDouble( fVal * fVal);
+            }
+            break;
+        default:
+            PopError();
+            PushNoValue();
     }
 }
 
@@ -4325,7 +4675,7 @@ void ScInterpreter::CalculateSlopeIntercept(bool bSlope)
     {
         for (SCSIZE j = 0; j < nR1; j++)
         {
-            if (!pMat1->IsString(i,j) && !pMat2->IsString(i,j))
+            if (!pMat1->IsStringOrEmpty(i,j) && !pMat2->IsStringOrEmpty(i,j))
             {
                 double fValX = pMat1->GetDouble(i,j);
                 double fValY = pMat2->GetDouble(i,j);
@@ -4347,7 +4697,7 @@ void ScInterpreter::CalculateSlopeIntercept(bool bSlope)
         {
             for (SCSIZE j = 0; j < nR1; j++)
             {
-                if (!pMat1->IsString(i,j) && !pMat2->IsString(i,j))
+                if (!pMat1->IsStringOrEmpty(i,j) && !pMat2->IsStringOrEmpty(i,j))
                 {
                     double fValX = pMat1->GetDouble(i,j);
                     double fValY = pMat2->GetDouble(i,j);
@@ -4408,7 +4758,7 @@ void ScInterpreter::ScForecast()
     {
         for (SCSIZE j = 0; j < nR1; j++)
         {
-            if (!pMat1->IsString(i,j) && !pMat2->IsString(i,j))
+            if (!pMat1->IsStringOrEmpty(i,j) && !pMat2->IsStringOrEmpty(i,j))
             {
                 double fValX = pMat1->GetDouble(i,j);
                 double fValY = pMat2->GetDouble(i,j);
@@ -4430,7 +4780,7 @@ void ScInterpreter::ScForecast()
         {
             for (SCSIZE j = 0; j < nR1; j++)
             {
-                if (!pMat1->IsString(i,j) && !pMat2->IsString(i,j))
+                if (!pMat1->IsStringOrEmpty(i,j) && !pMat2->IsStringOrEmpty(i,j))
                 {
                     double fValX = pMat1->GetDouble(i,j);
                     double fValY = pMat2->GetDouble(i,j);
@@ -4444,6 +4794,778 @@ void ScInterpreter::ScForecast()
         else
             PushDouble( fMeanY + fSumDeltaXDeltaY / fSumSqrDeltaX * (fVal - fMeanX));
     }
+}
+
+static void lcl_roundUpNearestPow2(SCSIZE& nNum, SCSIZE& nNumBits)
+{
+    // Find the least power of 2 that is less than or equal to nNum.
+    SCSIZE nPow2(1);
+    nNumBits = std::numeric_limits<SCSIZE>::digits;
+    nPow2 <<= (nNumBits - 1);
+    while (nPow2 >= 1)
+    {
+        if (nNum & nPow2)
+            break;
+
+        --nNumBits;
+        nPow2 >>= 1;
+    }
+
+    if (nPow2 != nNum)
+        nNum = nPow2 ? (nPow2 << 1) : 1;
+    else
+        --nNumBits;
+}
+
+static SCSIZE lcl_bitReverse(SCSIZE nIn, SCSIZE nBound)
+{
+    SCSIZE nOut = 0;
+    for (SCSIZE nMask = 1; nMask < nBound; nMask <<= 1)
+    {
+        nOut <<= 1;
+
+        if (nIn & nMask)
+            nOut |= 1;
+    }
+
+    return nOut;
+}
+
+namespace {
+
+// Computes and stores twiddle factors for computing DFT later.
+struct ScTwiddleFactors
+{
+    ScTwiddleFactors(SCSIZE nN, bool bInverse) :
+        mfWReal(nN),
+        mfWImag(nN),
+        mnN(nN),
+        mbInverse(bInverse)
+    {}
+
+    void Compute();
+
+    void Conjugate()
+    {
+        mbInverse = !mbInverse;
+        for (SCSIZE nIdx = 0; nIdx < mnN; ++nIdx)
+            mfWImag[nIdx] = -mfWImag[nIdx];
+    }
+
+    std::vector<double> mfWReal;
+    std::vector<double> mfWImag;
+    SCSIZE mnN;
+    bool mbInverse;
+};
+
+}
+
+void ScTwiddleFactors::Compute()
+{
+    mfWReal.resize(mnN);
+    mfWImag.resize(mnN);
+
+    double nW = (mbInverse ? 2 : -2)*F_PI/static_cast<double>(mnN);
+
+    if (mnN == 1)
+    {
+        mfWReal[0] = 1.0;
+        mfWImag[0] = 0.0;
+    }
+    else if (mnN == 2)
+    {
+        mfWReal[0] = 1;
+        mfWImag[0] = 0;
+
+        mfWReal[1] = -1;
+        mfWImag[1] = 0;
+    }
+    else if (mnN == 4)
+    {
+        mfWReal[0] = 1;
+        mfWImag[0] = 0;
+
+        mfWReal[1] = 0;
+        mfWImag[1] = (mbInverse ? 1.0 : -1.0);
+
+        mfWReal[2] = -1;
+        mfWImag[2] = 0;
+
+        mfWReal[3] = 0;
+        mfWImag[3] = (mbInverse ? -1.0 : 1.0);
+    }
+    else if ((mnN % 4) == 0)
+    {
+        const SCSIZE nQSize = mnN >> 2;
+        // Compute cos of the start quadrant.
+        // This is the first quadrant if mbInverse == true, else it is the fourth quadrant.
+        for (SCSIZE nIdx = 0; nIdx <= nQSize; ++nIdx)
+            mfWReal[nIdx] = cos(nW*static_cast<double>(nIdx));
+
+        if (mbInverse)
+        {
+            const SCSIZE nQ1End = nQSize;
+            // First quadrant
+            for (SCSIZE nIdx = 0; nIdx <= nQ1End; ++nIdx)
+                mfWImag[nIdx] = mfWReal[nQ1End-nIdx];
+
+            // Second quadrant
+            const SCSIZE nQ2End = nQ1End << 1;
+            for (SCSIZE nIdx = nQ1End+1; nIdx <= nQ2End; ++nIdx)
+            {
+                mfWReal[nIdx] = -mfWReal[nQ2End - nIdx];
+                mfWImag[nIdx] =  mfWImag[nQ2End - nIdx];
+            }
+
+            // Third quadrant
+            const SCSIZE nQ3End = nQ2End + nQ1End;
+            for (SCSIZE nIdx = nQ2End+1; nIdx <= nQ3End; ++nIdx)
+            {
+                mfWReal[nIdx] = -mfWReal[nIdx - nQ2End];
+                mfWImag[nIdx] = -mfWImag[nIdx - nQ2End];
+            }
+
+            // Fourth Quadrant
+            for (SCSIZE nIdx = nQ3End+1; nIdx < mnN; ++nIdx)
+            {
+                mfWReal[nIdx] =  mfWReal[mnN - nIdx];
+                mfWImag[nIdx] = -mfWImag[mnN - nIdx];
+            }
+        }
+        else
+        {
+            const SCSIZE nQ4End = nQSize;
+            const SCSIZE nQ3End = nQSize << 1;
+            const SCSIZE nQ2End = nQ3End + nQSize;
+
+            // Fourth quadrant.
+            for (SCSIZE nIdx = 0; nIdx <= nQ4End; ++nIdx)
+                mfWImag[nIdx] = -mfWReal[nQ4End - nIdx];
+
+            // Third quadrant.
+            for (SCSIZE nIdx = nQ4End+1; nIdx <= nQ3End; ++nIdx)
+            {
+                mfWReal[nIdx] = -mfWReal[nQ3End - nIdx];
+                mfWImag[nIdx] =  mfWImag[nQ3End - nIdx];
+            }
+
+            // Second quadrant.
+            for (SCSIZE nIdx = nQ3End+1; nIdx <= nQ2End; ++nIdx)
+            {
+                mfWReal[nIdx] = -mfWReal[nIdx - nQ3End];
+                mfWImag[nIdx] = -mfWImag[nIdx - nQ3End];
+            }
+
+            // First quadrant.
+            for (SCSIZE nIdx = nQ2End+1; nIdx < mnN; ++nIdx)
+            {
+                mfWReal[nIdx] =  mfWReal[mnN - nIdx];
+                mfWImag[nIdx] = -mfWImag[mnN - nIdx];
+            }
+        }
+    }
+    else
+    {
+        for (SCSIZE nIdx = 0; nIdx < mnN; ++nIdx)
+        {
+            double fAngle = nW*static_cast<double>(nIdx);
+            mfWReal[nIdx] = cos(fAngle);
+            mfWImag[nIdx] = sin(fAngle);
+        }
+    }
+}
+
+namespace {
+
+// A radix-2 decimation in time FFT algorithm for complex valued input.
+class ScComplexFFT2
+{
+public:
+    // rfArray.size() would always be even and a power of 2. (asserted in prepare())
+    // rfArray's first half contains the real parts and the later half contains the imaginary parts.
+    ScComplexFFT2(std::vector<double>& raArray, bool bInverse, bool bPolar, double fMinMag,
+                  ScTwiddleFactors& rTF, bool bSubSampleTFs = false, bool bDisableNormalize = false) :
+        mrArray(raArray),
+        mfWReal(rTF.mfWReal),
+        mfWImag(rTF.mfWImag),
+        mnPoints(raArray.size()/2),
+        mnStages(0),
+        mfMinMag(fMinMag),
+        mbInverse(bInverse),
+        mbPolar(bPolar),
+        mbDisableNormalize(bDisableNormalize),
+        mbSubSampleTFs(bSubSampleTFs)
+    {}
+
+    void Compute();
+
+private:
+
+    void prepare();
+
+    double getReal(SCSIZE nIdx)
+    {
+        return mrArray[nIdx];
+    }
+
+    void setReal(double fVal, SCSIZE nIdx)
+    {
+        mrArray[nIdx] = fVal;
+    }
+
+    double getImag(SCSIZE nIdx)
+    {
+        return mrArray[mnPoints + nIdx];
+    }
+
+    void setImag(double fVal, SCSIZE nIdx)
+    {
+        mrArray[mnPoints + nIdx] = fVal;
+    }
+
+    SCSIZE getTFactorIndex(SCSIZE nPtIndex, SCSIZE nTfIdxScaleBits)
+    {
+        return ( ( nPtIndex << nTfIdxScaleBits ) & ( mnPoints - 1 ) ); // (x & (N-1)) is same as (x % N) but faster.
+    }
+
+    void computeFly(SCSIZE nTopIdx, SCSIZE nBottomIdx, SCSIZE nWIdx1, SCSIZE nWIdx2)
+    {
+        if (mbSubSampleTFs)
+        {
+            nWIdx1 <<= 1;
+            nWIdx2 <<= 1;
+        }
+
+        const double x1r = getReal(nTopIdx);
+        const double x2r = getReal(nBottomIdx);
+
+        const double& w1r = mfWReal[nWIdx1];
+        const double& w1i = mfWImag[nWIdx1];
+
+        const double& w2r = mfWReal[nWIdx2];
+        const double& w2i = mfWImag[nWIdx2];
+
+        const double x1i = getImag(nTopIdx);
+        const double x2i = getImag(nBottomIdx);
+
+        setReal(x1r + x2r*w1r - x2i*w1i, nTopIdx);
+        setImag(x1i + x2i*w1r + x2r*w1i, nTopIdx);
+
+        setReal(x1r + x2r*w2r - x2i*w2i, nBottomIdx);
+        setImag(x1i + x2i*w2r + x2r*w2i, nBottomIdx);
+    }
+
+    std::vector<double>& mrArray;
+    std::vector<double>& mfWReal;
+    std::vector<double>& mfWImag;
+    SCSIZE mnPoints;
+    SCSIZE mnStages;
+    double mfMinMag;
+    bool mbInverse:1;
+    bool mbPolar:1;
+    bool mbDisableNormalize:1;
+    bool mbSubSampleTFs:1;
+};
+
+}
+
+void ScComplexFFT2::prepare()
+{
+    SCSIZE nPoints = mnPoints;
+    lcl_roundUpNearestPow2(nPoints, mnStages);
+    assert(nPoints == mnPoints);
+
+    // Reorder array by bit-reversed indices.
+    for (SCSIZE nIdx = 0; nIdx < mnPoints; ++nIdx)
+    {
+        SCSIZE nRevIdx = lcl_bitReverse(nIdx, mnPoints);
+        if (nIdx < nRevIdx)
+        {
+            double fTmp = getReal(nIdx);
+            setReal(getReal(nRevIdx), nIdx);
+            setReal(fTmp, nRevIdx);
+
+            fTmp = getImag(nIdx);
+            setImag(getImag(nRevIdx), nIdx);
+            setImag(fTmp, nRevIdx);
+        }
+    }
+}
+
+static void lcl_normalize(std::vector<double>& rCmplxArray, bool bScaleOnlyReal)
+{
+    const SCSIZE nPoints = rCmplxArray.size()/2;
+    const double fScale = 1.0/static_cast<double>(nPoints);
+
+    // Scale the real part
+    for (SCSIZE nIdx = 0; nIdx < nPoints; ++nIdx)
+        rCmplxArray[nIdx] *= fScale;
+
+    if (!bScaleOnlyReal)
+    {
+        const SCSIZE nLen = nPoints*2;
+        for (SCSIZE nIdx = nPoints; nIdx < nLen; ++nIdx)
+            rCmplxArray[nIdx] *= fScale;
+    }
+}
+
+static void lcl_convertToPolar(std::vector<double>& rCmplxArray, double fMinMag)
+{
+    const SCSIZE nPoints = rCmplxArray.size()/2;
+    double fMag, fPhase, fR, fI;
+    for (SCSIZE nIdx = 0; nIdx < nPoints; ++nIdx)
+    {
+        fR = rCmplxArray[nIdx];
+        fI = rCmplxArray[nPoints+nIdx];
+        fMag = sqrt(fR*fR + fI*fI);
+        if (fMag < fMinMag)
+        {
+            fMag = 0.0;
+            fPhase = 0.0;
+        }
+        else
+        {
+            fPhase = atan2(fI, fR);
+        }
+
+        rCmplxArray[nIdx] = fMag;
+        rCmplxArray[nPoints+nIdx] = fPhase;
+    }
+}
+
+void ScComplexFFT2::Compute()
+{
+    prepare();
+
+    const SCSIZE nFliesInStage = mnPoints/2;
+    for (SCSIZE nStage = 0; nStage < mnStages; ++nStage)
+    {
+        const SCSIZE nTFIdxScaleBits = mnStages - nStage - 1;  // Twiddle factor index's scale factor in bits.
+        const SCSIZE nFliesInGroup = SCSIZE(1) << nStage;
+        const SCSIZE nGroups = nFliesInStage/nFliesInGroup;
+        const SCSIZE nFlyWidth = nFliesInGroup;
+        for (SCSIZE nGroup = 0, nFlyTopIdx = 0; nGroup < nGroups; ++nGroup)
+        {
+            for (SCSIZE nFly = 0; nFly < nFliesInGroup; ++nFly, ++nFlyTopIdx)
+            {
+                SCSIZE nFlyBottomIdx = nFlyTopIdx + nFlyWidth;
+                SCSIZE nWIdx1 = getTFactorIndex(nFlyTopIdx, nTFIdxScaleBits);
+                SCSIZE nWIdx2 = getTFactorIndex(nFlyBottomIdx, nTFIdxScaleBits);
+
+                computeFly(nFlyTopIdx, nFlyBottomIdx, nWIdx1, nWIdx2);
+            }
+
+            nFlyTopIdx += nFlyWidth;
+        }
+    }
+
+    if (mbPolar)
+        lcl_convertToPolar(mrArray, mfMinMag);
+
+    // Normalize after converting to polar, so we have a chance to
+    // save O(mnPoints) flops.
+    if (mbInverse && !mbDisableNormalize)
+        lcl_normalize(mrArray, mbPolar);
+}
+
+namespace {
+
+// Bluestein's algorithm or chirp z-transform algorithm that can be used to
+// compute DFT of a complex valued input of any length N in O(N lgN) time.
+class ScComplexBluesteinFFT
+{
+public:
+
+    ScComplexBluesteinFFT(std::vector<double>& rArray, bool bReal, bool bInverse,
+                          bool bPolar, double fMinMag, bool bDisableNormalize = false) :
+        mrArray(rArray),
+        mnPoints(rArray.size()/2), // rArray should have space for imaginary parts even if real input.
+        mfMinMag(fMinMag),
+        mbReal(bReal),
+        mbInverse(bInverse),
+        mbPolar(bPolar),
+        mbDisableNormalize(bDisableNormalize)
+    {}
+
+    void Compute();
+
+private:
+    std::vector<double>& mrArray;
+    const SCSIZE mnPoints;
+    double mfMinMag;
+    bool mbReal:1;
+    bool mbInverse:1;
+    bool mbPolar:1;
+    bool mbDisableNormalize:1;
+};
+
+}
+
+void ScComplexBluesteinFFT::Compute()
+{
+    std::vector<double> aRealScalars(mnPoints);
+    std::vector<double> aImagScalars(mnPoints);
+    double fW = (mbInverse ? 2 : -2)*F_PI/static_cast<double>(mnPoints);
+    for (SCSIZE nIdx = 0; nIdx < mnPoints; ++nIdx)
+    {
+        double fAngle = 0.5*fW*static_cast<double>(nIdx*nIdx);
+        aRealScalars[nIdx] = cos(fAngle);
+        aImagScalars[nIdx] = sin(fAngle);
+    }
+
+    SCSIZE nMinSize = mnPoints*2 - 1;
+    SCSIZE nExtendedLength = nMinSize, nTmp = 0;
+    lcl_roundUpNearestPow2(nExtendedLength, nTmp);
+    std::vector<double> aASignal(nExtendedLength*2); // complex valued
+    std::vector<double> aBSignal(nExtendedLength*2); // complex valued
+
+    double fReal, fImag;
+    for (SCSIZE nIdx = 0; nIdx < mnPoints; ++nIdx)
+    {
+        // Real part of A signal.
+        aASignal[nIdx] = mrArray[nIdx]*aRealScalars[nIdx] + (mbReal ? 0.0 : -mrArray[mnPoints+nIdx]*aImagScalars[nIdx]);
+        // Imaginary part of A signal.
+        aASignal[nExtendedLength + nIdx] = mrArray[nIdx]*aImagScalars[nIdx] + (mbReal ? 0.0 : mrArray[mnPoints+nIdx]*aRealScalars[nIdx]);
+
+        // Real part of B signal.
+        aBSignal[nIdx] = fReal = aRealScalars[nIdx];
+        // Imaginary part of B signal.
+        aBSignal[nExtendedLength + nIdx] = fImag = -aImagScalars[nIdx]; // negative sign because B signal is the conjugation of the scalars.
+
+        if (nIdx)
+        {
+            // B signal needs a mirror of its part in 0 < n < mnPoints at the tail end.
+            aBSignal[nExtendedLength - nIdx] = fReal;
+            aBSignal[(nExtendedLength<<1) - nIdx] = fImag;
+        }
+    }
+
+    {
+        ScTwiddleFactors aTF(nExtendedLength, false /*not inverse*/);
+        aTF.Compute();
+
+        // Do complex-FFT2 of both A and B signal.
+        ScComplexFFT2 aFFT2A(aASignal, false /*not inverse*/, false /*no polar*/, 0.0 /* no clipping */,
+                             aTF, false /*no subsample*/, true /* disable normalize */);
+        aFFT2A.Compute();
+
+        ScComplexFFT2 aFFT2B(aBSignal, false /*not inverse*/, false /*no polar*/, 0.0 /* no clipping */,
+                             aTF, false /*no subsample*/, true /* disable normalize */);
+        aFFT2B.Compute();
+
+        double fAR, fAI, fBR, fBI;
+        for (SCSIZE nIdx = 0; nIdx < nExtendedLength; ++nIdx)
+        {
+            fAR = aASignal[nIdx];
+            fAI = aASignal[nExtendedLength + nIdx];
+            fBR = aBSignal[nIdx];
+            fBI = aBSignal[nExtendedLength + nIdx];
+
+            // Do point-wise product inplace in A signal.
+            aASignal[nIdx] = fAR*fBR - fAI*fBI;
+            aASignal[nExtendedLength + nIdx] = fAR*fBI + fAI*fBR;
+        }
+
+        // Do complex-inverse-FFT2 of aASignal.
+        aTF.Conjugate();
+        ScComplexFFT2 aFFT2AI(aASignal, true /*inverse*/, false /*no polar*/, 0.0 /* no clipping */, aTF); // Need normalization here.
+        aFFT2AI.Compute();
+    }
+
+    // Point-wise multiply with scalars.
+    for (SCSIZE nIdx = 0; nIdx < mnPoints; ++nIdx)
+    {
+        fReal = aASignal[nIdx];
+        fImag = aASignal[nExtendedLength + nIdx];
+        mrArray[nIdx] = fReal*aRealScalars[nIdx] - fImag*aImagScalars[nIdx]; // no conjugation needed here.
+        mrArray[mnPoints + nIdx] = fReal*aImagScalars[nIdx] + fImag*aRealScalars[nIdx];
+    }
+
+    // Normalize/Polar operations
+    if (mbPolar)
+        lcl_convertToPolar(mrArray, mfMinMag);
+
+    // Normalize after converting to polar, so we have a chance to
+    // save O(mnPoints) flops.
+    if (mbInverse && !mbDisableNormalize)
+        lcl_normalize(mrArray, mbPolar);
+}
+
+namespace {
+
+// Computes DFT of an even length(N) real-valued input by using a
+// ScComplexFFT2 if N == 2^k for some k or else by using a ScComplexBluesteinFFT
+// with a complex valued input of length = N/2.
+class ScRealFFT
+{
+public:
+
+    ScRealFFT(std::vector<double>& rInArray, std::vector<double>& rOutArray, bool bInverse,
+              bool bPolar, double fMinMag) :
+        mrInArray(rInArray),
+        mrOutArray(rOutArray),
+        mfMinMag(fMinMag),
+        mbInverse(bInverse),
+        mbPolar(bPolar)
+    {}
+
+    void Compute();
+
+private:
+    std::vector<double>& mrInArray;
+    std::vector<double>& mrOutArray;
+    double mfMinMag;
+    bool mbInverse:1;
+    bool mbPolar:1;
+};
+
+}
+
+void ScRealFFT::Compute()
+{
+    // input length has to be even to do this optimization.
+    assert(mrInArray.size() % 2 == 0);
+    assert(mrInArray.size()*2 == mrOutArray.size());
+    // nN is the number of points in the complex-fft input
+    // which will be half of the number of points in real array.
+    const SCSIZE nN = mrInArray.size()/2;
+    if (nN == 0)
+    {
+        mrOutArray[0] = mrInArray[0];
+        mrOutArray[1] = 0.0;
+        return;
+    }
+
+    // work array should be the same length as mrInArray
+    std::vector<double> aWorkArray(nN*2);
+    for (SCSIZE nIdx = 0; nIdx < nN; ++nIdx)
+    {
+        SCSIZE nDoubleIdx = 2*nIdx;
+        // Use even elements as real part
+        aWorkArray[nIdx] = mrInArray[nDoubleIdx];
+        // and odd elements as imaginary part of the contrived complex sequence.
+        aWorkArray[nN+nIdx] = mrInArray[nDoubleIdx+1];
+    }
+
+    ScTwiddleFactors aTFs(nN*2, mbInverse);
+    aTFs.Compute();
+    SCSIZE nNextPow2 = nN, nTmp = 0;
+    lcl_roundUpNearestPow2(nNextPow2, nTmp);
+
+    if (nNextPow2 == nN)
+    {
+        ScComplexFFT2 aFFT2(aWorkArray, mbInverse, false /*disable polar*/, 0.0 /* no clipping */,
+                            aTFs, true /*subsample tf*/, true /*disable normalize*/);
+        aFFT2.Compute();
+    }
+    else
+    {
+        ScComplexBluesteinFFT aFFT(aWorkArray, false /*complex input*/, mbInverse, false /*disable polar*/,
+                                   0.0 /* no clipping */, true /*disable normalize*/);
+        aFFT.Compute();
+    }
+
+    // Post process aWorkArray to populate mrOutArray
+
+    const SCSIZE nTwoN = 2*nN, nThreeN = 3*nN;
+    double fY1R, fY2R, fY1I, fY2I, fResR, fResI, fWR, fWI;
+    for (SCSIZE nIdx = 0; nIdx < nN; ++nIdx)
+    {
+        const SCSIZE nIdxRev = nIdx ? (nN - nIdx) : 0;
+        fY1R = aWorkArray[nIdx];
+        fY2R = aWorkArray[nIdxRev];
+        fY1I = aWorkArray[nN + nIdx];
+        fY2I = aWorkArray[nN + nIdxRev];
+        fWR  = aTFs.mfWReal[nIdx];
+        fWI  = aTFs.mfWImag[nIdx];
+
+        // mrOutArray has length = 4*nN
+        // Real part of the final output (only half of the symmetry around Nyquist frequency)
+        // Fills the first quarter.
+        mrOutArray[nIdx] = fResR = 0.5*(
+            fY1R + fY2R +
+            fWR * (fY1I + fY2I) +
+            fWI * (fY1R - fY2R) );
+        // Imaginary part of the final output (only half of the symmetry around Nyquist frequency)
+        // Fills the third quarter.
+        mrOutArray[nTwoN + nIdx] = fResI = 0.5*(
+            fY1I - fY2I +
+            fWI * (fY1I + fY2I) -
+            fWR * (fY1R - fY2R) );
+
+        // Fill the missing 2 quarters using symmetry argument.
+        if (nIdx)
+        {
+            // Fills the 2nd quarter.
+            mrOutArray[nN + nIdxRev] = fResR;
+            // Fills the 4th quarter.
+            mrOutArray[nThreeN + nIdxRev] = -fResI;
+        }
+        else
+        {
+            mrOutArray[nN] = fY1R - fY1I;
+            mrOutArray[nThreeN] = 0.0;
+        }
+    }
+
+    // Normalize/Polar operations
+    if (mbPolar)
+        lcl_convertToPolar(mrOutArray, mfMinMag);
+
+    // Normalize after converting to polar, so we have a chance to
+    // save O(mnPoints) flops.
+    if (mbInverse)
+        lcl_normalize(mrOutArray, mbPolar);
+}
+
+using ScMatrixGenerator = ScMatrixRef(SCSIZE, SCSIZE, std::vector<double>&);
+
+namespace {
+
+// Generic FFT class that decides which FFT implementation to use.
+class ScFFT
+{
+public:
+
+    ScFFT(ScMatrixRef& pMat, bool bReal, bool bInverse, bool bPolar, double fMinMag) :
+        mpInputMat(pMat),
+        mfMinMag(fMinMag),
+        mbReal(bReal),
+        mbInverse(bInverse),
+        mbPolar(bPolar)
+    {}
+
+    ScMatrixRef Compute(const std::function<ScMatrixGenerator>& rMatGenFunc);
+
+private:
+    ScMatrixRef& mpInputMat;
+    double mfMinMag;
+    bool mbReal:1;
+    bool mbInverse:1;
+    bool mbPolar:1;
+};
+
+}
+
+ScMatrixRef ScFFT::Compute(const std::function<ScMatrixGenerator>& rMatGenFunc)
+{
+    std::vector<double> aArray;
+    mpInputMat->GetDoubleArray(aArray);
+    SCSIZE nPoints = mbReal ? aArray.size() : (aArray.size()/2);
+    if (nPoints == 1)
+    {
+        std::vector<double> aOutArray(2);
+        aOutArray[0] = aArray[0];
+        aOutArray[1] = mbReal ? 0.0 : aArray[1];
+        if (mbPolar)
+            lcl_convertToPolar(aOutArray, mfMinMag);
+        return rMatGenFunc(2, 1, aOutArray);
+    }
+
+    if (mbReal && (nPoints % 2) == 0)
+    {
+        std::vector<double> aOutArray(nPoints*2);
+        ScRealFFT aFFT(aArray, aOutArray, mbInverse, mbPolar, mfMinMag);
+        aFFT.Compute();
+        return rMatGenFunc(2, nPoints, aOutArray);
+    }
+
+    SCSIZE nNextPow2 = nPoints, nTmp = 0;
+    lcl_roundUpNearestPow2(nNextPow2, nTmp);
+    if (nNextPow2 == nPoints && !mbReal)
+    {
+        ScTwiddleFactors aTF(nPoints, mbInverse);
+        aTF.Compute();
+        ScComplexFFT2 aFFT2(aArray, mbInverse, mbPolar, mfMinMag, aTF);
+        aFFT2.Compute();
+        return rMatGenFunc(2, nPoints, aArray);
+    }
+
+    if (mbReal)
+        aArray.resize(nPoints*2, 0.0);
+    ScComplexBluesteinFFT aFFT(aArray, mbReal, mbInverse, mbPolar, mfMinMag);
+    aFFT.Compute();
+    return rMatGenFunc(2, nPoints, aArray);
+}
+
+void ScInterpreter::ScFourier()
+{
+    sal_uInt8 nParamCount = GetByte();
+    if ( !MustHaveParamCount( nParamCount, 2, 5 ) )
+        return;
+
+    bool bInverse = false;
+    bool bPolar = false;
+    double fMinMag = 0.0;
+
+    if (nParamCount == 5)
+    {
+        if (IsMissing())
+            Pop();
+        else
+            fMinMag = GetDouble();
+    }
+
+    if (nParamCount >= 4)
+    {
+        if (IsMissing())
+            Pop();
+        else
+            bPolar = GetBool();
+    }
+
+    if (nParamCount >= 3)
+    {
+        if (IsMissing())
+            Pop();
+        else
+            bInverse = GetBool();
+    }
+
+    bool bGroupedByColumn = GetBool();
+
+    ScMatrixRef pInputMat = GetMatrix();
+    if (!pInputMat)
+    {
+        PushIllegalParameter();
+        return;
+    }
+
+    SCSIZE nC, nR;
+    pInputMat->GetDimensions(nC, nR);
+
+    if ((bGroupedByColumn && nC > 2) || (!bGroupedByColumn && nR > 2))
+    {
+        // There can be no more than 2 columns (real, imaginary) if data grouped by columns.
+        // and no more than 2 rows if data is grouped by rows.
+        PushIllegalArgument();
+        return;
+    }
+
+    if (!pInputMat->IsNumeric())
+    {
+        PushNoValue();
+        return;
+    }
+
+    bool bRealInput = true;
+    if (!bGroupedByColumn)
+    {
+        pInputMat->MatTrans(*pInputMat);
+        bRealInput = (nR == 1);
+    }
+    else
+    {
+        bRealInput = (nC == 1);
+    }
+
+    ScFFT aFFT(pInputMat, bRealInput, bInverse, bPolar, fMinMag);
+    std::function<ScMatrixGenerator> aFunc = [this](SCSIZE nCol, SCSIZE nRow, std::vector<double>& rVec) -> ScMatrixRef
+    {
+        return this->GetNewMat(nCol, nRow, rVec);
+    };
+    ScMatrixRef pOut = aFFT.Compute(aFunc);
+    PushMatrix(pOut);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

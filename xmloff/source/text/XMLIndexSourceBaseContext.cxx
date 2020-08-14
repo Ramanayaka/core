@@ -19,15 +19,12 @@
 
 #include "XMLIndexSourceBaseContext.hxx"
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XIndexReplace.hpp>
-#include "XMLIndexTemplateContext.hxx"
 #include "XMLIndexTitleTemplateContext.hxx"
 #include "XMLIndexTOCStylesContext.hxx"
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/txtimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <sax/tools/converter.hxx>
 #include <rtl/ustring.hxx>
@@ -40,7 +37,7 @@ using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::xml::sax::XAttributeList;
 
-static const SvXMLTokenMapEntry aIndexSourceTokenMap[] =
+const SvXMLTokenMapEntry aIndexSourceTokenMap[] =
 {
     { XML_NAMESPACE_TEXT,
           XML_OUTLINE_LEVEL,
@@ -162,7 +159,7 @@ XMLIndexSourceBaseContext::~XMLIndexSourceBaseContext()
 void XMLIndexSourceBaseContext::StartElement(
     const Reference<XAttributeList> & xAttrList)
 {
-    SvXMLTokenMap aTokenMap(aIndexSourceTokenMap);
+    static const SvXMLTokenMap aTokenMap(aIndexSourceTokenMap);
 
     // process attributes
     sal_Int16 nLength = xAttrList->getLength();
@@ -175,7 +172,7 @@ void XMLIndexSourceBaseContext::StartElement(
         sal_uInt16 nToken = aTokenMap.Get(nPrefix, sLocalName);
 
         // process attribute
-        ProcessAttribute((enum IndexSourceParamEnum)nToken,
+        ProcessAttribute(static_cast<enum IndexSourceParamEnum>(nToken),
                          xAttrList->getValueByIndex(i));
     }
 }
@@ -215,25 +212,25 @@ void XMLIndexSourceBaseContext::EndElement()
     rIndexPropertySet->setPropertyValue("CreateFromChapter", css::uno::Any(bChapterIndex));
 }
 
-SvXMLImportContext* XMLIndexSourceBaseContext::CreateChildContext(
+SvXMLImportContextRef XMLIndexSourceBaseContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
-    const Reference<XAttributeList> & xAttrList )
+    const Reference<XAttributeList> & /*xAttrList*/ )
 {
-    SvXMLImportContext* pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     if (XML_NAMESPACE_TEXT == nPrefix)
     {
         if ( IsXMLToken( rLocalName, XML_INDEX_TITLE_TEMPLATE ) )
         {
-            pContext = new XMLIndexTitleTemplateContext(GetImport(),
+            xContext = new XMLIndexTitleTemplateContext(GetImport(),
                                                         rIndexPropertySet,
                                                         nPrefix, rLocalName);
         }
         else if ( bUseLevelFormats &&
                   IsXMLToken( rLocalName, XML_INDEX_SOURCE_STYLES ) )
         {
-            pContext = new XMLIndexTOCStylesContext(GetImport(),
+            xContext = new XMLIndexTOCStylesContext(GetImport(),
                                                     rIndexPropertySet,
                                                     nPrefix, rLocalName);
         }
@@ -241,14 +238,7 @@ SvXMLImportContext* XMLIndexSourceBaseContext::CreateChildContext(
     }
     // else: unknown namespace -> ignore
 
-    // use default context
-    if (pContext == nullptr)
-    {
-        pContext = SvXMLImportContext::CreateChildContext(nPrefix, rLocalName,
-                                                          xAttrList);
-    }
-
-    return pContext;
+    return xContext;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

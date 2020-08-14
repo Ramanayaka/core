@@ -25,17 +25,16 @@
 #include <com/sun/star/table/BorderLine2.hpp>
 #include <com/sun/star/text/RubyAdjust.hpp>
 
-namespace com{ namespace sun{ namespace star{
+namespace com::sun::star{
     namespace lang{
         struct Locale;
     }
     namespace table{
         struct BorderLine2;
-}}}}
+    }
+}
 
-namespace writerfilter {
-namespace dmapper{
-namespace ConversionHelper{
+namespace writerfilter::dmapper::ConversionHelper{
 
     // create a border line and return the distance value
     void MakeBorderLine(sal_Int32 nLineThickness,
@@ -47,15 +46,15 @@ namespace ConversionHelper{
     OUString ConvertMSFormatStringToSO(const OUString& rFormat, css::lang::Locale& rLocale, bool bHijri);
     // export just for test
     SAL_DLLPUBLIC_EXPORT sal_Int32 convertTwipToMM100(sal_Int32 _t);
+    SAL_DLLPUBLIC_EXPORT double convertTwipToMM100Double(sal_Int32 _t);
     SAL_DLLPUBLIC_EXPORT sal_uInt32 convertTwipToMM100Unsigned(sal_Int32 _t);
     sal_Int16 convertTableJustification( sal_Int32 nIntValue );
     css::text::RubyAdjust convertRubyAlign( sal_Int32 nIntValue );
     sal_Int16 ConvertNumberingType(sal_Int32 nFmt);
+    sal_Int16 ConvertCustomNumberFormat(const OUString& rFormat);
 
     css::util::DateTime ConvertDateStringToDateTime(const OUString& rDateTime);
-} // namespace ConversionHelper
-} //namespace dmapper
-} // namespace writerfilter
+} // namespace writerfilter::dmapper::ConversionHelper
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,25 +19,20 @@
 #ifndef INCLUDED_FORMS_SOURCE_XFORMS_PROPERTYSETBASE_HXX
 #define INCLUDED_FORMS_SOURCE_XFORMS_PROPERTYSETBASE_HXX
 
-#include <cppuhelper/weak.hxx>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <comphelper/propstate.hxx>
-#include <comphelper/propertysetinfo.hxx>
-#include <comphelper/proparrhlp.hxx>
 #include <rtl/ref.hxx>
 #include <salhelper/simplereferenceobject.hxx>
 
 // include for inlined helper function below
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 
 #include <map>
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
         class Any;
         class RuntimeException;
         template<class T> class Sequence;
-} } } }
+}
 
 /** base class which encapsulates accessing (reading/writing) concrete property values
 */
@@ -182,7 +177,7 @@ private:
     typedef ::std::map< const sal_Int32, css::uno::Any >                                PropertyValueCache;
 
     PropertyArray                   m_aProperties;
-    cppu::IPropertyArrayHelper*     m_pProperties;
+    std::unique_ptr<cppu::IPropertyArrayHelper> m_pProperties;
     PropertyAccessors               m_aAccessors;
     PropertyValueCache              m_aCache;
 
@@ -241,7 +236,7 @@ protected:
         any notifications if the "current value" is also <FALSE/> - which might be wrong, since
         the guessing of the "old value" differed from the real initial value which was <TRUE/>.
 
-        Too confusing? Okay, than just call this method for every property you have.
+        Too confusing? Okay, then just call this method for every property you have.
 
         @param nHandle
             the handle of the property. Must denote a property supported by this instance, i.e.

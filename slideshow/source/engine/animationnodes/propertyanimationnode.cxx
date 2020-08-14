@@ -19,12 +19,11 @@
 
 
 #include "propertyanimationnode.hxx"
-#include "animationfactory.hxx"
+#include <animationfactory.hxx>
 
 using namespace com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 AnimationActivitySharedPtr PropertyAnimationNode::createActivity() const
 {
@@ -49,7 +48,8 @@ AnimationActivitySharedPtr PropertyAnimationNode::createActivity() const
                 attrName,
                 pShape,
                 getContext().mpSubsettableShapeManager,
-                getSlideSize() ),
+                getSlideSize(),
+                getContext().mpBox2DWorld ),
             xAnimateNode );
 
     case AnimationFactory::CLASS_ENUM_PROPERTY:
@@ -59,7 +59,8 @@ AnimationActivitySharedPtr PropertyAnimationNode::createActivity() const
                 attrName,
                 pShape,
                 getContext().mpSubsettableShapeManager,
-                getSlideSize(), 0 ),
+                getSlideSize(),
+                getContext().mpBox2DWorld, 0 ),
             xAnimateNode );
 
     case AnimationFactory::CLASS_COLOR_PROPERTY:
@@ -69,7 +70,8 @@ AnimationActivitySharedPtr PropertyAnimationNode::createActivity() const
                 attrName,
                 pShape,
                 getContext().mpSubsettableShapeManager,
-                getSlideSize() ),
+                getSlideSize(),
+                getContext().mpBox2DWorld ),
             xAnimateNode );
 
     case AnimationFactory::CLASS_STRING_PROPERTY:
@@ -79,7 +81,8 @@ AnimationActivitySharedPtr PropertyAnimationNode::createActivity() const
                 attrName,
                 pShape,
                 getContext().mpSubsettableShapeManager,
-                getSlideSize(), 0 ),
+                getSlideSize(),
+                getContext().mpBox2DWorld, 0 ),
             xAnimateNode );
 
     case AnimationFactory::CLASS_BOOL_PROPERTY:
@@ -89,14 +92,14 @@ AnimationActivitySharedPtr PropertyAnimationNode::createActivity() const
                 attrName,
                 pShape,
                 getContext().mpSubsettableShapeManager,
-                getSlideSize(), 0 ),
+                getSlideSize(),
+                getContext().mpBox2DWorld, 0 ),
             xAnimateNode );
     }
 
     return AnimationActivitySharedPtr();
 }
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,15 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <algorithm>
 #include <iostream>
-#include <dbgoutsw.hxx>
 #include "WW8Sttbf.hxx"
-#include "ww8scan.hxx"
-#include <cstdio>
 #include <osl/endian.h>
-#include <rtl/ustrbuf.hxx>
 #include <o3tl/make_shared.hxx>
 #include <tools/stream.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
+
+#ifdef OSL_BIGENDIAN
+#include <rtl/ustrbuf.hxx>
+#endif
 
 namespace ww8
 {
@@ -42,7 +47,7 @@ namespace ww8
         OSL_ENSURE(mn_size == nSize, "short read in WW8Struct::WW8Struct");
     }
 
-    WW8Struct::WW8Struct(WW8Struct * pStruct, sal_uInt32 nPos, sal_uInt32 nSize)
+    WW8Struct::WW8Struct(WW8Struct const * pStruct, sal_uInt32 nPos, sal_uInt32 nSize)
         : m_pData(pStruct->m_pData), mn_offset(pStruct->mn_offset + nPos)
         , mn_size(nSize)
     {

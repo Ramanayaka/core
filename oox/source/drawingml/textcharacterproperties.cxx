@@ -17,30 +17,32 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/textcharacterproperties.hxx"
+#include <drawingml/textcharacterproperties.hxx>
 #include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/awt/FontSlant.hpp>
 #include <com/sun/star/awt/FontWeight.hpp>
+#include <com/sun/star/i18n/ScriptType.hpp>
+#include <comphelper/sequence.hxx>
 #include <i18nlangtag/languagetag.hxx>
+#include <i18nlangtag/mslangid.hxx>
 #include <editeng/escapementitem.hxx>
-#include "oox/helper/helper.hxx"
-#include "oox/helper/propertyset.hxx"
-#include "oox/core/xmlfilterbase.hxx"
-#include "oox/drawingml/drawingmltypes.hxx"
+#include <oox/helper/helper.hxx>
+#include <oox/helper/propertyset.hxx>
+#include <oox/core/xmlfilterbase.hxx>
+#include <oox/drawingml/drawingmltypes.hxx>
 #include <oox/token/properties.hxx>
-#include "oox/token/tokens.hxx"
+#include <oox/token/tokens.hxx>
 
 using ::oox::core::XmlFilterBase;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 void TextCharacterProperties::assignUsed( const TextCharacterProperties& rSourceProps )
 {
-    // overwrite all properties exisiting in rSourceProps
+    // overwrite all properties existing in rSourceProps
     maHyperlinkPropertyMap.assignUsed( rSourceProps.maHyperlinkPropertyMap );
     maLatinFont.assignIfUsed( rSourceProps.maLatinFont );
     maLatinThemeFont.assignIfUsed( rSourceProps.maLatinThemeFont );
@@ -51,7 +53,9 @@ void TextCharacterProperties::assignUsed( const TextCharacterProperties& rSource
     maSymbolFont.assignIfUsed( rSourceProps.maSymbolFont );
     maHighlightColor.assignIfUsed( rSourceProps.maHighlightColor );
     maUnderlineColor.assignIfUsed( rSourceProps.maUnderlineColor );
+    moLang.assignIfUsed( rSourceProps.moLang );
     moHeight.assignIfUsed( rSourceProps.moHeight );
+    moFontScale.assignIfUsed(rSourceProps.moFontScale);
     moSpacing.assignIfUsed( rSourceProps.moSpacing );
     moUnderline.assignIfUsed( rSourceProps.moUnderline );
     moBaseline.assignIfUsed( rSourceProps.moBaseline );
@@ -104,25 +108,42 @@ void TextCharacterProperties::pushToPropMap( PropertyMap& rPropMap, const XmlFil
     }
 
     if ( maFillProperties.moFillType.has() )
-        rPropMap.setProperty( PROP_CharColor, maFillProperties.getBestSolidColor().getColor( rFilter.getGraphicHelper() ));
+    {
+        Color aColor = maFillProperties.getBestSolidColor();
+        rPropMap.setProperty(PROP_CharColor, aColor.getColor(rFilter.getGraphicHelper()));
+
+        if (aColor.hasTransparency())
+        {
+            rPropMap.setProperty(PROP_CharTransparence, aColor.getTransparency());
+        }
+    }
 
     if( moLang.has() && !moLang.get().isEmpty() )
     {
-        lang::Locale aLocale( LanguageTag( moLang.get()).getLocale());
-        rPropMap.setProperty( PROP_CharLocale, aLocale);
-        rPropMap.setProperty( PROP_CharLocaleAsian, aLocale);
-        rPropMap.setProperty( PROP_CharLocaleComplex, aLocale);
+        LanguageTag aTag(moLang.get());
+        lang::Locale aLocale(aTag.getLocale());
+        switch(MsLangId::getScriptType(aTag.getLanguageType()))
+        {
+            case css::i18n::ScriptType::LATIN:
+                rPropMap.setProperty( PROP_CharLocale, aLocale);break;
+            case css::i18n::ScriptType::ASIAN:
+                rPropMap.setProperty( PROP_CharLocaleAsian, aLocale);break;
+            case css::i18n::ScriptType::COMPLEX:
+                rPropMap.setProperty( PROP_CharLocaleComplex, aLocale);break;
+        }
     }
 
     if( moHeight.has() )
     {
         float fHeight = GetFontHeight( moHeight.get() );
+        if (moFontScale.has())
+            fHeight *= (moFontScale.get() / 100000);
         rPropMap.setProperty( PROP_CharHeight, fHeight);
         rPropMap.setProperty( PROP_CharHeightAsian, fHeight);
         rPropMap.setProperty( PROP_CharHeightComplex, fHeight);
     }
 
-    rPropMap.setProperty( PROP_CharKerning, (sal_Int16) GetTextSpacingPoint( moSpacing.get( 0 ) ));
+    rPropMap.setProperty( PROP_CharKerning, static_cast<sal_Int16>(GetTextSpacingPoint( moSpacing.get( 0 ) )));
 
     rPropMap.setProperty( PROP_CharUnderline, GetFontUnderline( moUnderline.get( XML_none ) ));
     rPropMap.setProperty( PROP_CharStrikeout, GetFontStrikeout( moStrikeout.get( XML_noStrike ) ));
@@ -153,26 +174,20 @@ void TextCharacterProperties::pushToPropMap( PropertyMap& rPropMap, const XmlFil
         rPropMap.setProperty( PROP_CharUnderlineColor, maUnderlineColor.getColor( rFilter.getGraphicHelper() ));
     }
     // TODO If bUnderlineFillFollowText uFillTx (CT_TextUnderlineFillFollowText) is set, fill color of the underline should be the same color as the text
+
+    if( maHighlightColor.isUsed() )
+        rPropMap.setProperty( PROP_CharBackColor, maHighlightColor.getColor( rFilter.getGraphicHelper() ));
 }
 
-void pushToGrabBag( PropertySet& rPropSet, const std::vector<PropertyValue>& aVectorOfProperyValues )
+static void pushToGrabBag( PropertySet& rPropSet, const std::vector<PropertyValue>& aVectorOfPropertyValues )
 {
-    if (!rPropSet.hasProperty(PROP_CharInteropGrabBag) || aVectorOfProperyValues.empty())
+    if (!rPropSet.hasProperty(PROP_CharInteropGrabBag) || aVectorOfPropertyValues.empty())
         return;
     Sequence<PropertyValue> aGrabBag;
     Any aAnyGrabBag = rPropSet.getAnyProperty(PROP_CharInteropGrabBag);
     aAnyGrabBag >>= aGrabBag;
 
-    sal_Int32 nLength = aGrabBag.getLength();
-    aGrabBag.realloc(nLength + aVectorOfProperyValues.size());
-
-    for (size_t i = 0; i < aVectorOfProperyValues.size(); i++)
-    {
-        PropertyValue aPropertyValue = aVectorOfProperyValues[i];
-        aGrabBag[nLength + i] = aPropertyValue;
-    }
-
-    rPropSet.setAnyProperty(PROP_CharInteropGrabBag, makeAny(aGrabBag));
+    rPropSet.setAnyProperty(PROP_CharInteropGrabBag, makeAny(comphelper::concatSequences(aGrabBag, aVectorOfPropertyValues)));
 }
 
 void TextCharacterProperties::pushToPropSet( PropertySet& rPropSet, const XmlFilterBase& rFilter ) const
@@ -188,7 +203,6 @@ float TextCharacterProperties::getCharHeightPoints( float fDefault ) const
     return moHeight.has() ? GetFontHeight( moHeight.get() ) : fDefault;
 }
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

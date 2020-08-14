@@ -32,7 +32,7 @@
 #include "cpp.h"
 
 #if defined(MACOSX) || defined(AIX) || defined(_WIN32)
-#include <_getopt.h>
+#include "_getopt.h"
 #else
 #include <getopt.h>
 #endif
@@ -87,6 +87,7 @@ void
             case 'A':
                 setsource("<cmdarg>", -1, -1, optarg, 0);
                 maketokenrow(3, &tr);
+                // coverity[overrun-buffer-arg: FALSE] - a multiple of trp->max is allocated, not trp->max itself
                 gettokens(&tr, 1);
                 doadefine(&tr, c);
                 dofree(tr.bp);
@@ -98,7 +99,11 @@ void
                 break;
 
             case 'V':
-                for (n = 0; (c = optarg[n]) != '\0'; n++)
+                for (n = 0;; n++)
+                {
+                    c = optarg[n];
+                    if (c == '\0')
+                        break;
                     switch (c)
                     {
                         case 'i':
@@ -124,10 +129,15 @@ void
                         default:
                             error(WARNING, "Unknown verbose option %c", c);
                     }
+                }
                 break;
 
             case 'X':
-                for (n = 0; (c = optarg[n]) != '\0'; n++)
+                for (n = 0;; n++)
+                {
+                    c = optarg[n];
+                    if (c == '\0')
+                        break;
                     switch (c)
                     {
                         case 'a':
@@ -166,14 +176,15 @@ void
                         default:
                             error(WARNING, "Unknown extension option %c", c);
                     }
+                }
                 break;
 
             case '+':
                 Cplusplus++;
                 break;
 
-            case 'u':                   /* -undef fuer GCC (dummy) */
-            case 'l':                   /* -lang-c++ fuer GCC (dummy) */
+            case 'u':                   /* -undef for GCC (dummy) */
+            case 'l':                   /* -lang-c++ for GCC (dummy) */
                 break;
 
             default:
@@ -204,6 +215,7 @@ void
             error(FATAL, "Can't open output file %s", argv[optind + 1]);
 
         dup2(fdo, 1);
+        // coverity[leaked_handle] - on purpose
     }
     includelist[NINCLUDE - 1].always = 0;
     includelist[NINCLUDE - 1].file = dp;

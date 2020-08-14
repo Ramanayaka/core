@@ -22,16 +22,16 @@
 
 #include <cppuhelper/basemutex.hxx>
 
-#include "framework/ConfigurationController.hxx"
+#include <framework/ConfigurationController.hxx>
 
 #include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/frame/XController.hpp>
 
-#include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <memory>
+
+namespace com::sun::star::drawing::framework { class XConfigurationController; }
+namespace com::sun::star::frame { class XController; }
 
 namespace sd {
 
@@ -39,7 +39,7 @@ class ViewShellBase;
 
 }
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::drawing::framework::XConfigurationChangeListener
@@ -60,7 +60,7 @@ class ShellStackGuard
       public ShellStackGuardInterfaceBase
 {
 public:
-    explicit ShellStackGuard (css::uno::Reference<css::frame::XController>& rxController);
+    explicit ShellStackGuard (css::uno::Reference<css::frame::XController> const & rxController);
     virtual ~ShellStackGuard() override;
 
     virtual void SAL_CALL disposing() override;
@@ -90,7 +90,7 @@ private:
     bool IsPrinting() const;
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

@@ -17,26 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <ucbhelper/contentidentifier.hxx>
+#include <sal/log.hxx>
 #include <ucbhelper/contenthelper.hxx>
+#include <ucbhelper/getcomponentcontext.hxx>
+#include <ucbhelper/macros.hxx>
+#include <cppuhelper/queryinterface.hxx>
 #include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <com/sun/star/ucb/IllegalIdentifierException.hpp>
 #include "gio_provider.hxx"
 #include "gio_content.hxx"
 
-using namespace com::sun::star;
-
 namespace gio
 {
-uno::Reference< css::ucb::XContent > SAL_CALL
+css::uno::Reference< css::ucb::XContent > SAL_CALL
 ContentProvider::queryContent(
-            const uno::Reference< css::ucb::XContentIdentifier >& Identifier )
+            const css::uno::Reference< css::ucb::XContentIdentifier >& Identifier )
 {
     SAL_INFO("ucb.ucp.gio", "QueryContent: " << Identifier->getContentIdentifier());
     osl::MutexGuard aGuard( m_aMutex );
 
     // Check, if a content with given id already exists...
-    uno::Reference< ucb::XContent > xContent = queryExistingContent( Identifier ).get();
+    css::uno::Reference< css::ucb::XContent > xContent = queryExistingContent( Identifier ).get();
     if ( xContent.is() )
         return xContent;
 
@@ -56,7 +57,7 @@ ContentProvider::queryContent(
 }
 
 ContentProvider::ContentProvider(
-    const uno::Reference< uno::XComponentContext >& rxContext )
+    const css::uno::Reference< css::uno::XComponentContext >& rxContext )
 : ::ucbhelper::ContentProviderImplHelper( rxContext )
 {
 }
@@ -81,61 +82,63 @@ void SAL_CALL ContentProvider::release()
 css::uno::Any SAL_CALL ContentProvider::queryInterface( const css::uno::Type & rType )
 {
     css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< lang::XTypeProvider* >(this)),
-                                               (static_cast< lang::XServiceInfo* >(this)),
-                                               (static_cast< css::ucb::XContentProvider* >(this))
+                                               static_cast< css::lang::XTypeProvider* >(this),
+                                               static_cast< css::lang::XServiceInfo* >(this),
+                                               static_cast< css::ucb::XContentProvider* >(this)
                                                );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
 
 XTYPEPROVIDER_IMPL_3( ContentProvider,
-                      lang::XTypeProvider,
-                      lang::XServiceInfo,
+                      css::lang::XTypeProvider,
+                      css::lang::XServiceInfo,
                       css::ucb::XContentProvider );
 
-XSERVICEINFO_COMMOM_IMPL( ContentProvider,
-                          OUString( "com.sun.star.comp.GIOContentProvider" ) )
-/// @throws css::uno::Exception
-static css::uno::Reference< css::uno::XInterface > SAL_CALL
-ContentProvider_CreateInstance( const css::uno::Reference< css::lang::XMultiServiceFactory> & rSMgr )
+css::uno::Sequence< OUString > SAL_CALL ContentProvider::getSupportedServiceNames()
 {
-    css::lang::XServiceInfo* pX =
-        static_cast<css::lang::XServiceInfo*>(new ContentProvider( ucbhelper::getComponentContext(rSMgr) ));
-    return css::uno::Reference< css::uno::XInterface >::query( pX );
+    return { "com.sun.star.ucb.GIOContentProvider" };
 }
 
-css::uno::Sequence< OUString >
-ContentProvider::getSupportedServiceNames_Static()
+OUString SAL_CALL ContentProvider::getImplementationName()
 {
-    css::uno::Sequence< OUString > aSNS { "com.sun.star.ucb.GIOContentProvider" };
-    return aSNS;
+    return "com.sun.star.comp.GIOContentProvider";
 }
 
-ONE_INSTANCE_SERVICE_FACTORY_IMPL( ContentProvider );
+sal_Bool SAL_CALL ContentProvider::supportsService(const OUString& aServiceName)
+{
+    return cppu::supportsService(this, aServiceName);
+}
+
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL ucpgio1_component_getFactory( const sal_Char *pImplName,
-    void *pServiceManager, void * )
+// gio creates threads we don't want in online's forkit
+static bool isDisabled()
 {
-    void * pRet = nullptr;
+    const char *pDisable = getenv("UNODISABLELIBRARY");
+    if (!pDisable)
+        return false;
+    OString aDisable(pDisable, strlen(pDisable));
+    return aDisable.indexOf("ucpgio1") >= 0;
+}
 
-    uno::Reference< lang::XMultiServiceFactory > xSMgr
-        (static_cast< lang::XMultiServiceFactory * >( pServiceManager ) );
-    uno::Reference< lang::XSingleServiceFactory > xFactory;
-#if !GLIB_CHECK_VERSION(2,36,0)
-    g_type_init();
-#endif
-    if ( ::gio::ContentProvider::getImplementationName_Static().equalsAscii( pImplName ) )
-        xFactory = ::gio::ContentProvider::createServiceFactory( xSMgr );
 
-    if ( xFactory.is() )
-    {
-        xFactory->acquire();
-        pRet = xFactory.get();
-    }
 
-    return pRet;
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_gio_ContentProvider_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    static bool bDisabled = isDisabled();
+    if (bDisabled)
+        return nullptr;
+    static rtl::Reference<gio::ContentProvider> g_Instance = [&]() {
+        #if !GLIB_CHECK_VERSION(2,36,0)
+            g_type_init();
+        #endif
+        return new gio::ContentProvider(context);
+    }();
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

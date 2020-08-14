@@ -8,15 +8,14 @@
  *
  */
 
-#include <sfx2/sidebar/UnoPanels.hxx>
+#include <sidebar/UnoPanels.hxx>
 
 #include <sfx2/sidebar/ResourceManager.hxx>
 #include <sfx2/sidebar/SidebarController.hxx>
 
-#include <sfx2/sidebar/UnoDecks.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/ui/XPanel.hpp>
-#include <sfx2/sidebar/UnoPanel.hxx>
+#include <sidebar/UnoPanel.hxx>
 
 #include <vcl/svapp.hxx>
 
@@ -47,17 +46,11 @@ uno::Any SAL_CALL SfxUnoPanels::getByName( const OUString& aName )
 {
     SolarMutexGuard aGuard;
 
-    uno::Any aRet;
-
-    if (hasByName(aName))
-    {
-        uno::Reference<ui::XPanel> xPanel = new SfxUnoPanel(xFrame, aName, mDeckId);
-        aRet <<= xPanel;
-    }
-    else
+    if (!hasByName(aName))
         throw container::NoSuchElementException();
 
-    return aRet;
+    uno::Reference<ui::XPanel> xPanel = new SfxUnoPanel(xFrame, aName, mDeckId);
+    return uno::Any(xPanel);
 }
 
 
@@ -82,13 +75,11 @@ uno::Sequence< OUString > SAL_CALL SfxUnoPanels::getElementNames()
 
         long n = 0;
 
-        for (ResourceManager::PanelContextDescriptorContainer::const_iterator
-            iPanel(aPanels.begin()), iEnd(aPanels.end());
-            iPanel!=iEnd; ++iPanel)
-            {
-                panelList[n] = iPanel->msId;
-                n++;
-            }
+        for (const auto& rPanel : aPanels)
+        {
+            panelList[n] = rPanel.msId;
+            n++;
+        }
     }
 
     return panelList;
@@ -110,13 +101,13 @@ sal_Bool SAL_CALL SfxUnoPanels::hasByName( const OUString& aName )
                                                       mDeckId,
                                                       xFrame->getController());
 
-        for (ResourceManager::PanelContextDescriptorContainer::const_iterator
-            iPanel(aPanels.begin()), iEnd(aPanels.end());
-            iPanel!=iEnd; ++iPanel)
-            {
-                if (iPanel->msId == aName)
-                    return true;
-            }
+        bool bIsDocumentReadOnly = pSidebarController->IsDocumentReadOnly();
+
+        return std::any_of(aPanels.begin(), aPanels.end(),
+            [&bIsDocumentReadOnly, &aName](const ResourceManager::PanelContextDescriptor& rPanel) {
+                return (!bIsDocumentReadOnly || rPanel.mbShowForReadOnlyDocuments) // Determine if the panel can be displayed.
+                    && (rPanel.msId == aName);
+            });
     }
 
     // nothing found

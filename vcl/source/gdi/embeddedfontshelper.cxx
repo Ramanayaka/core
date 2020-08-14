@@ -13,14 +13,15 @@
 
 #include <osl/file.hxx>
 #include <rtl/bootstrap.hxx>
+#include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/embeddedfontshelper.hxx>
+#include <com/sun/star/io/XInputStream.hpp>
 
-#include "fontsubset.hxx"
-#include "outdev.h"
-#include "PhysicalFontCollection.hxx"
-#include "salgdi.hxx"
-#include "sft.hxx"
+#include <outdev.h>
+#include <PhysicalFontCollection.hxx>
+#include <salgdi.hxx>
+#include <sft.hxx>
 
 
 #if ENABLE_EOT
@@ -111,7 +112,7 @@ bool EmbeddedFontsHelper::addEmbeddedFont( const uno::Reference< io::XInputStrea
         unsigned char *nakedPointerToUncompressedFont = nullptr;
         libeot::EOTMetadata eotMetadata;
         libeot::EOTError uncompressError =
-            libeot::EOT2ttf_buffer( reinterpret_cast<unsigned char *>(&fontData[0]), fontData.size(), &eotMetadata, &nakedPointerToUncompressedFont, &uncompressedFontSize );
+            libeot::EOT2ttf_buffer( reinterpret_cast<unsigned char *>(fontData.data()), fontData.size(), &eotMetadata, &nakedPointerToUncompressedFont, &uncompressedFontSize );
         std::shared_ptr<unsigned char> uncompressedFont( nakedPointerToUncompressedFont, libeot::EOTfreeBuffer );
         if( uncompressError != libeot::EOT_SUCCESS )
         {
@@ -189,13 +190,13 @@ void EmbeddedFontsHelper::activateFont( const OUString& fontName, const OUString
 bool EmbeddedFontsHelper::sufficientTTFRights( const void* data, long size, FontRights rights )
 {
     TrueTypeFont* font;
-    if( OpenTTFontBuffer( data, size, 0 /*TODO*/, &font ) == SF_OK )
+    if( OpenTTFontBuffer( data, size, 0 /*TODO*/, &font ) == SFErrCodes::Ok )
     {
         TTGlobalFontInfo info;
         GetTTGlobalFontInfo( font, &info );
         CloseTTFont( font );
-        // http://www.microsoft.com/typography/tt/ttf_spec/ttch02.doc
-        int copyright = info.typeFlags & TYPEFLAG_COPYRIGHT_MASK;
+        // https://www.microsoft.com/typography/otspec/os2.htm#fst
+        int copyright = info.typeFlags;
         switch( rights )
         {
             case FontRights::ViewingAllowed:
@@ -217,8 +218,8 @@ OUString EmbeddedFontsHelper::fontFileUrl( const OUString& familyName, FontFamil
     path += "/user/temp/embeddedfonts/fromsystem/";
     osl::Directory::createPath( path );
     OUString filename = familyName + "_" + OUString::number( family ) + "_" + OUString::number( italic )
-        + "_" + OUString::number( weight ) + "_" + OUString::number( pitch );
-    filename += ".ttf"; // TODO is it always ttf?
+        + "_" + OUString::number( weight ) + "_" + OUString::number( pitch )
+        + ".ttf"; // TODO is it always ttf?
     OUString url = path + filename;
     if( osl::File( url ).open( osl_File_OpenFlag_Read ) == osl::File::E_None ) // = exists()
     {

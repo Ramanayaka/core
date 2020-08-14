@@ -17,20 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "com/sun/star/io/BufferSizeExceededException.hpp"
-#include "com/sun/star/io/IOException.hpp"
-#include "com/sun/star/uno/RuntimeException.hpp"
-#include "osl/diagnose.h"
+#include <com/sun/star/io/BufferSizeExceededException.hpp>
+#include <com/sun/star/io/IOException.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/uno/RuntimeException.hpp>
+#include <osl/diagnose.h>
 #include "filstr.hxx"
-#include "filtask.hxx"
-#include "prov.hxx"
-#include <memory>
+#include "filerror.hxx"
 
 using namespace fileaccess;
 using namespace com::sun::star;
-using namespace css::ucb;
 
 #if OSL_DEBUG_LEVEL > 0
 #define THROW_WHERE SAL_WHERE
@@ -129,10 +127,9 @@ XStream_impl::readBytes(
     if( ! m_nIsOpen )
         throw io::IOException( THROW_WHERE );
 
-    std::unique_ptr<sal_Int8[]> buffer;
     try
     {
-        buffer.reset(new sal_Int8[nBytesToRead]);
+        aData.realloc(nBytesToRead);
     }
     catch (const std::bad_alloc&)
     {
@@ -141,13 +138,14 @@ XStream_impl::readBytes(
     }
 
     sal_uInt64 nrc(0);
-    if(m_aFile.read( buffer.get(),sal_uInt64(nBytesToRead),nrc )
+    if(m_aFile.read( aData.getArray(), sal_uInt64(nBytesToRead), nrc )
        != osl::FileBase::E_None)
     {
         throw io::IOException( THROW_WHERE );
     }
-    aData = uno::Sequence< sal_Int8 > ( buffer.get(), (sal_uInt32)nrc );
-    return ( sal_Int32 ) nrc;
+    if (nrc != static_cast<sal_uInt64>(nBytesToRead))
+        aData.realloc(nrc);
+    return static_cast<sal_Int32>(nrc);
 }
 
 
@@ -170,7 +168,8 @@ XStream_impl::skipBytes( sal_Int32 nBytesToSkip )
 sal_Int32 SAL_CALL
 XStream_impl::available()
 {
-    return 0;
+    sal_Int64 avail = getLength() - getPosition();
+    return std::min<sal_Int64>(avail, SAL_MAX_INT32);
 }
 
 
@@ -182,14 +181,14 @@ XStream_impl::writeBytes( const uno::Sequence< sal_Int8 >& aData )
     {
         sal_uInt64 nWrittenBytes(0);
         const sal_Int8* p = aData.getConstArray();
-        if(osl::FileBase::E_None != m_aFile.write((static_cast<void const *>(p)),sal_uInt64(length),nWrittenBytes) ||
+        if(osl::FileBase::E_None != m_aFile.write(static_cast<void const *>(p),sal_uInt64(length),nWrittenBytes) ||
            nWrittenBytes != length )
             throw io::IOException( THROW_WHERE );
     }
 }
 
 
-void SAL_CALL
+void
 XStream_impl::closeStream()
 {
     if( m_nIsOpen )
@@ -250,11 +249,10 @@ XStream_impl::getPosition()
 sal_Int64 SAL_CALL
 XStream_impl::getLength()
 {
-        sal_uInt64 uEndPos;
-        if ( m_aFile.getSize(uEndPos) != osl::FileBase::E_None )
-                throw io::IOException( THROW_WHERE );
-        else
-                return sal_Int64( uEndPos );
+    sal_uInt64 uEndPos;
+    if ( m_aFile.getSize(uEndPos) != osl::FileBase::E_None )
+            throw io::IOException( THROW_WHERE );
+    return sal_Int64( uEndPos );
 }
 
 void SAL_CALL

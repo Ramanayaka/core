@@ -34,37 +34,23 @@
  *
  ************************************************************************/
 
-#include <osl/thread.h>
-
-#include <rtl/ustrbuf.hxx>
-
-#include <cppuhelper/typeprovider.hxx>
-#include <cppuhelper/queryinterface.hxx>
-
 #include <comphelper/sequence.hxx>
 
 #include "pq_tools.hxx"
 #include "pq_array.hxx"
-#include "pq_statement.hxx"
 #include "pq_baseresultset.hxx"
-#include "pq_resultsetmetadata.hxx"
 
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/script/CannotConvertException.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <connectivity/dbconversion.hxx>
 
-using osl::Mutex;
 using osl::MutexGuard;
 
 
 using com::sun::star::beans::XPropertySetInfo;
 
 using com::sun::star::uno::Any;
-using com::sun::star::uno::makeAny;
 using com::sun::star::uno::Type;
-using com::sun::star::uno::RuntimeException;
-using com::sun::star::uno::Exception;
 using com::sun::star::uno::Sequence;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::XInterface;
@@ -72,8 +58,6 @@ using com::sun::star::uno::XInterface;
 using com::sun::star::lang::IllegalArgumentException;
 
 using com::sun::star::sdbc::SQLException;
-using com::sun::star::sdbc::XRow;
-using com::sun::star::sdbc::XResultSetMetaData;
 
 
 using com::sun::star::beans::Property;
@@ -84,45 +68,34 @@ namespace pq_sdbc_driver
 {
 static ::cppu::IPropertyArrayHelper & getResultSetPropertyArrayHelper()
 {
-    static ::cppu::IPropertyArrayHelper *pArrayHelper;
-    if( ! pArrayHelper )
-    {
-        MutexGuard guard( Mutex::getGlobalMutex() );
-        if( ! pArrayHelper )
-        {
-            static Property aTable[] =
-                {
-                    // LEM TODO: this needs to be kept in sync with other, e.g. pq_statics.css:508
-                    // Should really share!
-                    // At least use for the handles the #define'd values in .hxx file...
-                    Property(
-                        "CursorName", 0,
-                        ::cppu::UnoType<OUString>::get() , 0 ),
-                    Property(
-                        "EscapeProcessing", 1,
-                        cppu::UnoType<bool>::get() , 0 ),
-                    Property(
-                        "FetchDirection", 2,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "FetchSize", 3,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "IsBookmarkable", 4,
-                        cppu::UnoType<bool>::get() , 0 ),
-                    Property(
-                        "ResultSetConcurrency", 5,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 ),
-                    Property(
-                        "ResultSetType", 6,
-                        ::cppu::UnoType<sal_Int32>::get() , 0 )
-                };
-            static_assert( SAL_N_ELEMENTS(aTable) == BASERESULTSET_SIZE, "wrong number of elements" );
-            static ::cppu::OPropertyArrayHelper arrayHelper( aTable, BASERESULTSET_SIZE, true );
-            pArrayHelper = &arrayHelper;
-        }
-    }
-    return *pArrayHelper;
+    // LEM TODO: this needs to be kept in sync with other, e.g. pq_statics.css:508
+    // Should really share!
+    // At least use for the handles the #define'd values in .hxx file...
+    static ::cppu::OPropertyArrayHelper arrayHelper(
+        Sequence<Property>{
+            Property(
+                "CursorName", 0,
+                ::cppu::UnoType<OUString>::get() , 0 ),
+            Property(
+                "EscapeProcessing", 1,
+                cppu::UnoType<bool>::get() , 0 ),
+            Property(
+                "FetchDirection", 2,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "FetchSize", 3,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "IsBookmarkable", 4,
+                cppu::UnoType<bool>::get() , 0 ),
+            Property(
+                "ResultSetConcurrency", 5,
+                ::cppu::UnoType<sal_Int32>::get() , 0 ),
+            Property(
+                "ResultSetType", 6,
+                ::cppu::UnoType<sal_Int32>::get() , 0 )},
+        true );
+    return arrayHelper;
 }
 
 BaseResultSet::BaseResultSet(
@@ -141,7 +114,6 @@ BaseResultSet::BaseResultSet(
     , m_fieldCount( colCount )
     , m_wasNull(false)
 {
-    POSTGRE_TRACE( "ctor BaseResultSet" );
 }
 
 // LEM TODO: refMutex->GetMutex() should live longer than OComponentHelper,
@@ -149,7 +121,6 @@ BaseResultSet::BaseResultSet(
 // BaseResultSet::~BaseResultSet in an infinite loop :(
 BaseResultSet::~BaseResultSet()
 {
-    POSTGRE_TRACE( "dtor BaseResultSet" );
 }
 
 Any BaseResultSet::queryInterface( const Type & rType )
@@ -176,20 +147,11 @@ Any BaseResultSet::queryInterface( const Type & rType )
 
 Sequence<Type > BaseResultSet::getTypes()
 {
-    static Sequence< Type > *pCollection;
-    if( ! pCollection )
-    {
-        MutexGuard guard( osl::Mutex::getGlobalMutex() );
-        if( !pCollection )
-        {
-            static Sequence< Type > collection(
-                ::comphelper::concatSequences(
-                    OPropertySetHelper::getTypes(),
-                    BaseResultSet_BASE::getTypes()));
-            pCollection = &collection;
-        }
-    }
-    return *pCollection;
+    static Sequence< Type > collection(
+        ::comphelper::concatSequences(
+            OPropertySetHelper::getTypes(),
+            BaseResultSet_BASE::getTypes()));
+    return collection;
 }
 
 Sequence< sal_Int8> BaseResultSet::getImplementationId()

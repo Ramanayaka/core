@@ -21,11 +21,8 @@ namespace utl
 class MediaDescriptor;
 }
 
-namespace writerfilter
+namespace writerfilter::dmapper
 {
-namespace dmapper
-{
-
 enum class SourceDocumentType
 {
     OOXML,
@@ -39,17 +36,15 @@ public:
     static Stream::Pointer_t
     createMapper(css::uno::Reference<css::uno::XComponentContext> const& xContext,
                  css::uno::Reference<css::io::XInputStream> const& xInputStream,
-                 css::uno::Reference<css::lang::XComponent> const& xModel,
-                 bool bRepairStorage,
-                 SourceDocumentType eDocumentType,
-                 utl::MediaDescriptor& rMediaDesc);
+                 css::uno::Reference<css::lang::XComponent> const& xModel, bool bRepairStorage,
+                 SourceDocumentType eDocumentType, utl::MediaDescriptor const& rMediaDesc);
 };
 
 // export just for test
-SAL_DLLPUBLIC_EXPORT std::tuple<OUString, std::vector<OUString>, std::vector<OUString> > splitFieldCommand(const OUString& rCommand);
+SAL_DLLPUBLIC_EXPORT std::tuple<OUString, std::vector<OUString>, std::vector<OUString>>
+splitFieldCommand(const OUString& rCommand);
 
-} // namespace dmapper
-} // namespace writerfilter
+} // namespace writerfilter::dmapper
 
 #endif // INCLUDED_WRITERFILTER_INC_DMAPPER_DOMAINMAPPERFACTORY_HXX
 

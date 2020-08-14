@@ -22,15 +22,11 @@
 
 #include <rtl/ustring.hxx>
 #include <vector>
-#include <xmloff/xmlimp.hxx>
 #include <xmloff/xmlictxt.hxx>
-#include <xmloff/maptype.hxx>
 #include <xmloff/prstylei.hxx>
 #include <xmloff/xmlimppr.hxx>
 #include <xmloff/XMLTextMasterPageContext.hxx>
-#include <xmloff/XMLTextMasterStylesContext.hxx>
 #include <xmloff/txtstyli.hxx>
-#include <com/sun/star/sheet/ConditionOperator.hpp>
 #include "xmlimprt.hxx"
 
 class ScConditionalFormat;
@@ -93,10 +89,10 @@ public:
     XMLTableStyleContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
             const OUString& rLName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
-            SvXMLStylesContext& rStyles, sal_uInt16 nFamily, bool bDefaultStyle = false );
+            SvXMLStylesContext& rStyles, XmlStyleFamily nFamily, bool bDefaultStyle = false );
     virtual ~XMLTableStyleContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 nPrefix,
             const OUString& rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
@@ -126,10 +122,6 @@ class XMLTableStylesContext : public SvXMLStylesContext
     css::uno::Reference< css::container::XNameContainer > xColumnStyles;
     css::uno::Reference< css::container::XNameContainer > xRowStyles;
     css::uno::Reference< css::container::XNameContainer > xTableStyles;
-    const OUString sCellStyleServiceName;
-    const OUString sColumnStyleServiceName;
-    const OUString sRowStyleServiceName;
-    const OUString sTableStyleServiceName;
     sal_Int32 nNumberFormatIndex;
     sal_Int32 nConditionalFormatIndex;
     sal_Int32 nCellStyleIndex;
@@ -148,31 +140,28 @@ protected:
 
     // Create a style context.
     virtual SvXMLStyleContext *CreateStyleStyleChildContext(
-            sal_uInt16 nFamily,
+            XmlStyleFamily nFamily,
             sal_uInt16 nPrefix,
             const OUString& rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 
     virtual SvXMLStyleContext *CreateDefaultStyleStyleChildContext(
-        sal_uInt16 nFamily, sal_uInt16 nPrefix,
+        XmlStyleFamily nFamily, sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 
 public:
 
-    XMLTableStylesContext( SvXMLImport& rImport, sal_uInt16 nPrfx ,
-            const OUString& rLName ,
-            const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
-            const bool bAutoStyles );
+    XMLTableStylesContext( SvXMLImport& rImport, bool bAutoStyles );
     virtual ~XMLTableStylesContext() override;
 
-    virtual void EndElement() override;
+    virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
 
     virtual rtl::Reference < SvXMLImportPropertyMapper > GetImportPropertyMapper(
-                        sal_uInt16 nFamily ) const override;
+                        XmlStyleFamily nFamily ) const override;
     virtual css::uno::Reference< css::container::XNameContainer >
-        GetStylesContainer( sal_uInt16 nFamily ) const override;
-    virtual OUString GetServiceName( sal_uInt16 nFamily ) const override;
+        GetStylesContainer( XmlStyleFamily nFamily ) const override;
+    virtual OUString GetServiceName( XmlStyleFamily nFamily ) const override;
 
     sal_Int32 GetIndex(const sal_Int16 nContextID);
 };
@@ -184,25 +173,19 @@ protected:
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 
-    virtual SvXMLStyleContext *CreateStyleStyleChildContext( sal_uInt16 nFamily,
+    virtual SvXMLStyleContext *CreateStyleStyleChildContext( XmlStyleFamily nFamily,
         sal_uInt16 nPrefix, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 
-    virtual bool InsertStyleFamily( sal_uInt16 nFamily ) const override;
+    virtual bool InsertStyleFamily( XmlStyleFamily nFamily ) const override;
 
 public:
 
-    ScXMLMasterStylesContext( SvXMLImport& rImport, sal_uInt16 nPrfx,
-        const OUString& rLName,
-        const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList);
+    ScXMLMasterStylesContext( SvXMLImport& rImport );
 
     virtual ~ScXMLMasterStylesContext() override;
-    virtual void EndElement() override;
+    virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
 };
-
-namespace com { namespace sun { namespace star {
-    namespace style { class XStyle; }
-} } }
 
 class ScMasterPageContext : public XMLTextMasterPageContext
 {
@@ -242,7 +225,7 @@ public:
     ScCellTextStyleContext( SvXMLImport& rImport, sal_uInt16 nPrfx,
             const OUString& rLName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
-            SvXMLStylesContext& rStyles, sal_uInt16 nFamily );
+            SvXMLStylesContext& rStyles, XmlStyleFamily nFamily );
     virtual ~ScCellTextStyleContext() override;
 
     // override FillPropertySet to store style information

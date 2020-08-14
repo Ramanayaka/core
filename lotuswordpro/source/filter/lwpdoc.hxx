@@ -61,15 +61,10 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPDOC_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPDOC_HXX
 
-#include "lwpobj.hxx"
-#include "lwpsortopt.hxx"
-#include "lwpuidoc.hxx"
+#include <config_lgpl.h>
 #include "lwplnopts.hxx"
-#include "lwpusrdicts.hxx"
-#include "lwpprtinfo.hxx"
 #include "lwpdlvlist.hxx"
-#include "lwpheader.hxx"
-#include "lwpfoundry.hxx"
+#include <lwpfoundry.hxx>
 
 class IXFStream;
 class LwpVirtualLayout;
@@ -79,12 +74,14 @@ class LwpVirtualLayout;
 class LwpDocument : public LwpDLNFPVList
 {
 public:
-    LwpDocument(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpDocument(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual ~LwpDocument() override;
 
 private:
-    LwpFoundry* m_pOwnedFoundry;
+    std::unique_ptr<LwpFoundry> m_xOwnedFoundry;
     bool m_bGettingFirstDivisionWithContentsThatIsNotOLE;
+    bool m_bGettingPreviousDivisionWithContents;
+    bool m_bGettingGetLastDivisionWithContents;
 
     //Data members in file format
     LwpObjectID m_DocSockID;
@@ -96,13 +93,7 @@ private:
         DOC_CHILDDOC =  0x00000800UL
     };
 
-    //Code cleaning by change some members to local variables in Read()
-    //Reserve the comments for future use
-    //LwpSortOption* m_pDocSort;
-    //LwpUIDocument* m_pUIDoc;
-    LwpLineNumberOptions* m_pLnOpts;
-    //LwpUserDictFiles* m_pUsrDicts;
-    //LwpPrinterInfo* m_pPrtInfo;
+    std::unique_ptr<LwpLineNumberOptions> m_xLnOpts;
 
     LwpObjectID m_DivOpts;
     LwpObjectID m_FootnoteOpts;
@@ -132,8 +123,8 @@ public:
     void Parse(IXFStream* pOutputStream) override;
     void RegisterStyle() override;
 
-    inline bool IsChildDoc();
-    inline bool GetHonorProtection();
+    inline bool IsChildDoc() const;
+    inline bool GetHonorProtection() const;
     inline LwpObjectID& GetDocData();
     inline LwpObjectID& GetSocket();
 
@@ -175,18 +166,17 @@ public:
     void ParseFrameInPage(IXFStream* pOutputStream);
 
 private:
-    void MaxNumberOfPages(sal_uInt16& nNumPages);
     LwpDocument* ImplGetFirstDivisionWithContentsThatIsNotOLE();
     void XFConvertFrameInPage(XFContentContainer* pCont);
     static void ChangeStyleName();
     bool IsSkippedDivision();
 };
 
-inline bool LwpDocument::IsChildDoc()
+inline bool LwpDocument::IsChildDoc() const
 {
     return (m_nPersistentFlags & DOC_CHILDDOC) != 0;
 }
-inline bool LwpDocument::GetHonorProtection()
+inline bool LwpDocument::GetHonorProtection() const
 {
     return (m_nPersistentFlags & DOC_PROTECTED) != 0;
 }
@@ -196,7 +186,7 @@ inline LwpObjectID& LwpDocument::GetSocket()
 }
 inline LwpFoundry* LwpDocument::GetFoundry()
 {
-    return m_pFoundry;
+    return m_xOwnedFoundry.get();
 }
 inline LwpObjectID& LwpDocument::GetDivInfoID()
 {
@@ -225,7 +215,7 @@ inline LwpObjectID& LwpDocument::GetVerDoc()
 class LwpDocSock : public LwpDLNFVList
 {
 public:
-    LwpDocSock(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpDocSock(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
 private:
     LwpObjectID m_Doc;
 protected:

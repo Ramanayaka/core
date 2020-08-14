@@ -19,19 +19,21 @@
 
 #include <sal/config.h>
 
-#include <canvas/rendering/isurfaceproxy.hxx>
-#include <canvas/rendering/isurfaceproxymanager.hxx>
+#include <rendering/isurfaceproxy.hxx>
+#include <rendering/isurfaceproxymanager.hxx>
 
 #include "surfaceproxy.hxx"
 
 namespace canvas
 {
+    namespace {
+
     class SurfaceProxyManager : public ISurfaceProxyManager
     {
     public:
 
         explicit SurfaceProxyManager( const std::shared_ptr<IRenderModule>& rRenderModule ) :
-            mpPageManager( new PageManager(rRenderModule) )
+            mpPageManager( std::make_shared<PageManager>(rRenderModule) )
         {
         }
 
@@ -53,18 +55,18 @@ namespace canvas
             // not much to do for now, simply allocate a new surface
             // proxy from our internal pool and initialize this thing
             // properly. we *don't* create a hardware surface for now.
-            return std::shared_ptr<ISurfaceProxy>(new SurfaceProxy(pBuffer,mpPageManager));
+            return std::make_shared<SurfaceProxy>(pBuffer,mpPageManager);
         }
 
     private:
         PageManagerSharedPtr mpPageManager;
     };
 
+    }
+
     std::shared_ptr<ISurfaceProxyManager> createSurfaceProxyManager( const std::shared_ptr<IRenderModule>& rRenderModule )
     {
-        return std::shared_ptr<ISurfaceProxyManager>(
-            new SurfaceProxyManager(
-                rRenderModule));
+        return std::make_shared<SurfaceProxyManager>(rRenderModule);
     }
 }
 

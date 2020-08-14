@@ -21,27 +21,18 @@
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_TARGETPROPERTIESCREATOR_HXX
 
 #include <com/sun/star/animations/TargetProperties.hpp>
-
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/implementationentry.hxx>
-#include <comphelper/sequence.hxx>
+#include <com/sun/star/animations/XAnimationNode.hpp>
 
 using namespace ::com::sun::star;
 
-namespace slideshow
+namespace slideshow::internal::TargetPropertiesCreator
 {
-    namespace internal
-    {
-        namespace TargetPropertiesCreator
-        {
             /// Generate shape property list - set bInitial to true for initial slide state
-            uno::Sequence< animations::TargetProperties > SAL_CALL createTargetProperties(
+            uno::Sequence< animations::TargetProperties > createTargetProperties(
                 const uno::Reference< animations::XAnimationNode >& rootNode,
                 bool bInitial );
-        }
 
-    } // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal::TargetPropertiesCreator
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_TARGETPROPERTIESCREATOR_HXX
 

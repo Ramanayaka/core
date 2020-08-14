@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_DISCRETEBITMAPPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_DISCRETEBITMAPPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
@@ -28,10 +27,8 @@
 
 // DiscreteBitmapPrimitive2D class
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** DiscreteBitmapPrimitive2D class
 
             This class defines a view-dependent BitmapPrimitive which has a
@@ -39,7 +36,7 @@ namespace drawinglayer
             painted in 1:1 pixel resolution. It will never be sheared, rotated
             or scaled with the view.
          */
-        class DRAWINGLAYER_DLLPUBLIC DiscreteBitmapPrimitive2D : public ObjectAndViewTransformationDependentPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC DiscreteBitmapPrimitive2D final : public ObjectAndViewTransformationDependentPrimitive2D
         {
         private:
             /// the RGBA Bitmap-data
@@ -48,7 +45,6 @@ namespace drawinglayer
             /** the top-left object position */
             basegfx::B2DPoint                           maTopLeft;
 
-        protected:
             /// local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
@@ -66,12 +62,9 @@ namespace drawinglayer
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-
-#endif // INCLUDED_DRAWINGLAYER_PRIMITIVE2D_DISCRETEBITMAPPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

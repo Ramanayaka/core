@@ -17,17 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <cmath>
+
 #include "propertyimport.hxx"
 
 #include <sax/tools/converter.hxx>
 
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmluconv.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <o3tl/temporary.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <comphelper/extract.hxx>
-#include "callbacks.hxx"
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <tools/date.hxx>
 #include <tools/time.hxx>
 #include <com/sun/star/util/Date.hpp>
@@ -35,10 +40,6 @@
 #include <com/sun/star/util/DateTime.hpp>
 #include <unotools/datetime.hxx>
 #include <rtl/strbuf.hxx>
-
-#if OSL_DEBUG_LEVEL > 0
-    #include <osl/thread.h>
-#endif
 
 namespace xmloff
 {
@@ -76,7 +77,7 @@ namespace
 
     css::util::Date lcl_getDate( double _nValue )
     {
-        Date aToolsDate((sal_uInt32)_nValue);
+        Date aToolsDate(static_cast<sal_uInt32>(_nValue));
         css::util::Date aDate;
         ::utl::typeConvert(aToolsDate, aDate);
         return aDate;
@@ -114,13 +115,13 @@ Any PropertyConversion::convertString( const css::uno::Type& _rExpectedType,
                     append(OUStringToOString(_rReadCharacters, RTL_TEXTENCODING_ASCII_US)).
                     append("\" into an integer!").getStr());
                 if (TypeClass_SHORT == _rExpectedType.getTypeClass())
-                    aReturn <<= (sal_Int16)nValue;
+                    aReturn <<= static_cast<sal_Int16>(nValue);
                 else
                     aReturn <<= nValue;
                 break;
             }
             bEnumAsInt = true;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case TypeClass_ENUM:
         {
             sal_uInt16 nEnumValue(0);
@@ -129,11 +130,11 @@ Any PropertyConversion::convertString( const css::uno::Type& _rExpectedType,
 
             if (bEnumAsInt)
                 if (TypeClass_SHORT == _rExpectedType.getTypeClass())
-                    aReturn <<= (sal_Int16)nEnumValue;
+                    aReturn <<= static_cast<sal_Int16>(nEnumValue);
                 else
-                    aReturn <<= (sal_Int32)nEnumValue;
+                    aReturn <<= static_cast<sal_Int32>(nEnumValue);
             else
-                aReturn = ::cppu::int2enum((sal_Int32)nEnumValue, _rExpectedType);
+                aReturn = ::cppu::int2enum(static_cast<sal_Int32>(nEnumValue), _rExpectedType);
         }
         break;
         case TypeClass_HYPER:
@@ -182,14 +183,14 @@ Any PropertyConversion::convertString( const css::uno::Type& _rExpectedType,
                 {
                     case TYPE_DATE:
                     {
-                        OSL_ENSURE(((sal_uInt32)nValue) - nValue == 0,
+                        OSL_ENSURE(std::modf(nValue, &o3tl::temporary(double())) == 0,
                             "PropertyConversion::convertString: a Date value with a fractional part?");
                         aReturn <<= lcl_getDate(nValue);
                     }
                     break;
                     case TYPE_TIME:
                     {
-                        OSL_ENSURE(((sal_uInt32)nValue) == 0,
+                        OSL_ENSURE((static_cast<sal_uInt32>(nValue)) == 0,
                             "PropertyConversion::convertString: a tools::Time value with more than a fractional part?");
                         aReturn <<= lcl_getTime(nValue);
                     }
@@ -227,19 +228,18 @@ Type PropertyConversion::xmlTypeToUnoType( const OUString& _rType )
 {
     Type aUnoType( cppu::UnoType<void>::get() );
 
-    static std::map< OUString, css::uno::Type > s_aTypeNameMap;
-    if ( s_aTypeNameMap.empty() )
+    static std::map< OUString, css::uno::Type > s_aTypeNameMap
     {
-        s_aTypeNameMap[ token::GetXMLToken( token::XML_BOOLEAN ) ] = cppu::UnoType<bool>::get();
+        { token::GetXMLToken( token::XML_BOOLEAN ) , cppu::UnoType<bool>::get()},
         // Not a copy paste error, quotation from:
         // http://nabble.documentfoundation.org/Question-unoType-for-getXmlToken-dbaccess-reportdesign-module-tp4109071p4109116.html
         // all numeric types (including the UNO double)
         // consistently map to XML_FLOAT, so taking the extra precision from the
         // C++ type "float" to "double" makes absolute sense
-        s_aTypeNameMap[ token::GetXMLToken( token::XML_FLOAT )   ] = ::cppu::UnoType<double>::get();
-        s_aTypeNameMap[ token::GetXMLToken( token::XML_STRING )  ] = ::cppu::UnoType<OUString>::get();
-        s_aTypeNameMap[ token::GetXMLToken( token::XML_VOID )    ] = cppu::UnoType<void>::get();
-    }
+        { token::GetXMLToken( token::XML_FLOAT )   , ::cppu::UnoType<double>::get()},
+        { token::GetXMLToken( token::XML_STRING )  , ::cppu::UnoType<OUString>::get()},
+        { token::GetXMLToken( token::XML_VOID )    , cppu::UnoType<void>::get() },
+    };
 
     const std::map< OUString, css::uno::Type >::iterator aTypePos = s_aTypeNameMap.find( _rType );
     OSL_ENSURE( s_aTypeNameMap.end() != aTypePos, "PropertyConversion::xmlTypeToUnoType: invalid property name!" );
@@ -257,21 +257,15 @@ OPropertyImport::OPropertyImport(OFormLayerXMLImport_Impl& _rImport, sal_uInt16 
 {
 }
 
-SvXMLImportContext* OPropertyImport::CreateChildContext(sal_uInt16 _nPrefix, const OUString& _rLocalName,
-    const Reference< XAttributeList >& _rxAttrList)
+SvXMLImportContextRef OPropertyImport::CreateChildContext(sal_uInt16 _nPrefix, const OUString& _rLocalName,
+    const Reference< XAttributeList >& /*_rxAttrList*/)
 {
     if( token::IsXMLToken( _rLocalName, token::XML_PROPERTIES) )
     {
         return new OPropertyElementsContext( m_rContext.getGlobalContext(),
                                              _nPrefix, _rLocalName, this);
     }
-    else
-    {
-        OSL_FAIL(OStringBuffer("OPropertyImport::CreateChildContext: unknown sub element (only \"properties\" is recognized, but it is ").
-            append(OUStringToOString(_rLocalName, RTL_TEXTENCODING_ASCII_US)).
-            append(")!").getStr());
-        return SvXMLImportContext::CreateChildContext(_nPrefix, _rLocalName, _rxAttrList);
-    }
+    return nullptr;
 }
 
 void OPropertyImport::StartElement(const Reference< XAttributeList >& _rxAttrList)
@@ -308,7 +302,7 @@ bool OPropertyImport::encounteredAttribute(const OUString& _rAttributeName) cons
 
 void OPropertyImport::Characters(const OUString& _rChars )
 {
-    // ignore them (should be whitespaces only)
+    // ignore them (should be whitespace only)
     OSL_ENSURE(_rChars.trim().isEmpty(), "OPropertyImport::Characters: non-whitespace characters!");
 }
 
@@ -352,7 +346,7 @@ OPropertyElementsContext::OPropertyElementsContext(SvXMLImport& _rImport, sal_uI
 {
 }
 
-SvXMLImportContext* OPropertyElementsContext::CreateChildContext(sal_uInt16 _nPrefix, const OUString& _rLocalName,
+SvXMLImportContextRef OPropertyElementsContext::CreateChildContext(sal_uInt16 _nPrefix, const OUString& _rLocalName,
     const Reference< XAttributeList >&)
 {
     if( token::IsXMLToken( _rLocalName, token::XML_PROPERTY ) )
@@ -363,13 +357,7 @@ SvXMLImportContext* OPropertyElementsContext::CreateChildContext(sal_uInt16 _nPr
     {
         return new OListPropertyContext( GetImport(), _nPrefix, _rLocalName, m_xPropertyImporter );
     }
-    else
-    {
-        OSL_FAIL(OStringBuffer("OPropertyElementsContext::CreateChildContext: unknown child element (\"").
-            append(OUStringToOString(_rLocalName, RTL_TEXTENCODING_ASCII_US)).
-            append("\")!").getStr());
-        return new SvXMLImportContext(GetImport(), _nPrefix, _rLocalName);
-    }
+    return nullptr;
 }
 
 #if OSL_DEBUG_LEVEL > 0
@@ -395,13 +383,10 @@ OSinglePropertyContext::OSinglePropertyContext(SvXMLImport& _rImport, sal_uInt16
 {
 }
 
-SvXMLImportContext* OSinglePropertyContext::CreateChildContext(sal_uInt16 _nPrefix, const OUString& _rLocalName,
+SvXMLImportContextRef OSinglePropertyContext::CreateChildContext(sal_uInt16 /*_nPrefix*/, const OUString& /*_rLocalName*/,
         const Reference< XAttributeList >&)
 {
-    OSL_FAIL(OStringBuffer("OSinglePropertyContext::CreateChildContext: unknown child element (\"").
-        append(OUStringToOString(_rLocalName, RTL_TEXTENCODING_ASCII_US)).
-        append("\")!").getStr());
-    return new SvXMLImportContext(GetImport(), _nPrefix, _rLocalName);
+    return nullptr;
 }
 
 void OSinglePropertyContext::StartElement(const Reference< XAttributeList >& _rxAttrList)
@@ -511,12 +496,10 @@ void OListPropertyContext::EndElement()
     Sequence< Any > aListElements( m_aListValues.size() );
     Any* pListElement = aListElements.getArray();
     css::uno::Type aType = PropertyConversion::xmlTypeToUnoType( m_sPropertyType );
-    for (   ::std::vector< OUString >::const_iterator values = m_aListValues.begin();
-            values != m_aListValues.end();
-            ++values, ++pListElement
-        )
+    for ( const auto& rListValue : m_aListValues )
     {
-        *pListElement = PropertyConversion::convertString( aType, *values );
+        *pListElement = PropertyConversion::convertString( aType, rListValue );
+        ++pListElement;
     }
 
     PropertyValue aSequenceValue;
@@ -526,20 +509,14 @@ void OListPropertyContext::EndElement()
     m_xPropertyImporter->implPushBackGenericPropertyValue( aSequenceValue );
 }
 
-SvXMLImportContext* OListPropertyContext::CreateChildContext( sal_uInt16 _nPrefix, const OUString& _rLocalName, const Reference< XAttributeList >& /*_rxAttrList*/ )
+SvXMLImportContextRef OListPropertyContext::CreateChildContext( sal_uInt16 _nPrefix, const OUString& _rLocalName, const Reference< XAttributeList >& /*_rxAttrList*/ )
 {
     if ( token::IsXMLToken( _rLocalName, token::XML_LIST_VALUE ) )
     {
-        m_aListValues.resize( m_aListValues.size() + 1 );
+        m_aListValues.emplace_back();
         return new OListValueContext( GetImport(), _nPrefix, _rLocalName, *m_aListValues.rbegin() );
     }
-    else
-    {
-        OSL_FAIL( OStringBuffer("OListPropertyContext::CreateChildContext: unknown child element (\"").
-            append(OUStringToOString(_rLocalName.getStr(), RTL_TEXTENCODING_ASCII_US)).
-            append("\")!").getStr() );
-        return new SvXMLImportContext( GetImport(), _nPrefix, _rLocalName );
-    }
+    return nullptr;
 }
 
 //= OListValueContext

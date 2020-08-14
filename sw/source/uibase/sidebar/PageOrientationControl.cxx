@@ -19,17 +19,18 @@
 
 #include "PageOrientationControl.hxx"
 #include "PageMarginControl.hxx"
+#include <PageOrientationPopup.hxx>
 #include <com/sun/star/document/XUndoManager.hpp>
 #include <com/sun/star/document/XUndoManagerSupplier.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
 
-#include <swtypes.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/dispatch.hxx>
-#include <svx/svxids.hrc>
+#include <sfx2/viewfrm.hxx>
 #include <cmdid.h>
 
 namespace {
-    const css::uno::Reference< css::document::XUndoManager > getUndoManager( const css::uno::Reference< css::frame::XFrame >& rxFrame )
+    css::uno::Reference< css::document::XUndoManager > getUndoManager( const css::uno::Reference< css::frame::XFrame >& rxFrame )
     {
         const css::uno::Reference< css::frame::XController >& xController = rxFrame->getController();
         if ( xController.is() )
@@ -38,11 +39,7 @@ namespace {
             if ( xModel.is() )
             {
                 const css::uno::Reference< css::document::XUndoManagerSupplier > xSuppUndo( xModel, css::uno::UNO_QUERY_THROW );
-                if ( xSuppUndo.is() )
-                {
-                    const css::uno::Reference< css::document::XUndoManager > xUndoManager( xSuppUndo->getUndoManager(), css::uno::UNO_QUERY_THROW );
-                    return xUndoManager;
-                }
+                return css::uno::Reference< css::document::XUndoManager >( xSuppUndo->getUndoManager(), css::uno::UNO_SET_THROW );
             }
         }
 
@@ -50,38 +47,29 @@ namespace {
     }
 }
 
-namespace sw { namespace sidebar {
+namespace sw::sidebar {
 
-PageOrientationControl::PageOrientationControl( sal_uInt16 nId )
-    : SfxPopupWindow( nId, "PageOrientationControl", "modules/swriter/ui/pageorientationcontrol.ui" )
+PageOrientationControl::PageOrientationControl(PageOrientationPopup* pControl, weld::Widget* pParent)
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "modules/swriter/ui/pageorientationcontrol.ui", "PageOrientationControl")
+    , m_xPortrait(m_xBuilder->weld_button("portrait"))
+    , m_xLandscape(m_xBuilder->weld_button("landscape"))
+    , m_xControl(pControl)
     , mpPageItem( new SvxPageItem(SID_ATTR_PAGE) )
     , mpPageSizeItem( new SvxSizeItem(SID_ATTR_PAGE_SIZE) )
     , mpPageLRMarginItem( new SvxLongLRSpaceItem( 0, 0, SID_ATTR_PAGE_LRSPACE ) )
     , mpPageULMarginItem( new SvxLongULSpaceItem( 0, 0, SID_ATTR_PAGE_ULSPACE ) )
 {
-    get(m_pPortrait, "portrait");
-    get(m_pLandscape, "landscape");
+    m_xPortrait->connect_clicked( LINK( this, PageOrientationControl,ImplOrientationHdl ) );
+    m_xLandscape->connect_clicked( LINK( this, PageOrientationControl,ImplOrientationHdl ) );
+}
 
-    m_pPortrait->SetClickHdl( LINK( this, PageOrientationControl,ImplOrientationHdl ) );
-    m_pLandscape->SetClickHdl( LINK( this, PageOrientationControl,ImplOrientationHdl ) );
+void PageOrientationControl::GrabFocus()
+{
+    m_xPortrait->grab_focus();
 }
 
 PageOrientationControl::~PageOrientationControl()
 {
-    disposeOnce();
-}
-
-void PageOrientationControl::dispose()
-{
-    m_pPortrait.disposeAndClear();
-    m_pLandscape.disposeAndClear();
-
-    mpPageItem.reset();
-    mpPageLRMarginItem.reset();
-    mpPageULMarginItem.reset();
-    mpPageSizeItem.reset();
-
-    SfxPopupWindow::dispose();
 }
 
 void PageOrientationControl::ExecuteMarginLRChange(
@@ -114,19 +102,21 @@ void PageOrientationControl::ExecuteOrientationChange( const bool bLandscape )
 
     const SfxPoolItem* pItem;
     SfxViewFrame::Current()->GetBindings().GetDispatcher()->QueryState(SID_ATTR_PAGE_SIZE, pItem);
-    SvxSizeItem* pSizeItem = static_cast<SvxSizeItem*>(pItem->Clone());
-    if ( pSizeItem )
-        mpPageSizeItem.reset( pSizeItem );
+    mpPageSizeItem.reset( static_cast<SvxSizeItem*>(pItem->Clone()) );
+
+    // Prevent accidental toggling of page orientation
+    if ((mpPageSizeItem->GetWidth() > mpPageSizeItem->GetHeight()) == bLandscape)
+    {
+        if ( mxUndoManager.is() )
+            mxUndoManager->leaveUndoContext();
+        return;
+    }
 
     SfxViewFrame::Current()->GetBindings().GetDispatcher()->QueryState(SID_ATTR_PAGE_LRSPACE, pItem);
-    SvxLongLRSpaceItem* pLRItem = static_cast<SvxLongLRSpaceItem*>(pItem->Clone());
-    if ( pLRItem )
-        mpPageLRMarginItem.reset( pLRItem );
+    mpPageLRMarginItem.reset( static_cast<SvxLongLRSpaceItem*>(pItem->Clone()) );
 
     SfxViewFrame::Current()->GetBindings().GetDispatcher()->QueryState(SID_ATTR_PAGE_ULSPACE, pItem);
-    SvxLongULSpaceItem* pULItem = static_cast<SvxLongULSpaceItem*>(pItem->Clone());
-    if ( pULItem )
-        mpPageULMarginItem.reset( pULItem );
+    mpPageULMarginItem.reset( static_cast<SvxLongULSpaceItem*>(pItem->Clone()) );
 
     {
         // set new page orientation
@@ -189,16 +179,16 @@ void PageOrientationControl::ExecuteOrientationChange( const bool bLandscape )
         mxUndoManager->leaveUndoContext();
 }
 
-IMPL_LINK(PageOrientationControl, ImplOrientationHdl, Button*, pControl, void)
+IMPL_LINK(PageOrientationControl, ImplOrientationHdl, weld::Button&, rControl, void)
 {
-    if ( pControl == m_pPortrait.get() )
+    if (&rControl == m_xPortrait.get())
         ExecuteOrientationChange( false );
     else
         ExecuteOrientationChange( true );
 
-    EndPopupMode();
+    m_xControl->EndPopupMode();
 }
 
-} } // end of namespace sw::sidebar
+} // end of namespace sw::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

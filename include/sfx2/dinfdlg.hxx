@@ -19,45 +19,40 @@
 #ifndef INCLUDED_SFX2_DINFDLG_HXX
 #define INCLUDED_SFX2_DINFDLG_HXX
 
+#include <config_options.h>
 #include <sal/config.h>
 #include <sfx2/dllapi.h>
 
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/Duration.hpp>
 #include <com/sun/star/document/CmisProperty.hpp>
 
 #include <svl/stritem.hxx>
 #include <svl/zforlist.hxx>
+#include <svtools/ctrlbox.hxx>
 
-#include <svtools/headbar.hxx>
-#include <svtools/svmedit.hxx>
-
-#include <unotools/syslocale.hxx>
-
-#include <vcl/edit.hxx>
-#include <vcl/field.hxx>
 #include <vcl/idle.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/scrbar.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/ctrl.hxx>
 
 #include <sfx2/tabdlg.hxx>
 
-#include <boost/optional/optional.hpp>
+#include <optional>
+#include <memory>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star::beans { struct PropertyValue; }
+
+namespace com::sun::star {
     namespace document {
         class XDocumentProperties;
     }
-} } }
+}
 
 struct CustomProperty;
+class SvtCalendarBox;
 
 // class SfxDocumentInfoItem ---------------------------------------------
 
-class SFX2_DLLPUBLIC SfxDocumentInfoItem : public SfxStringItem
+class UNLESS_MERGELIBS(SFX2_DLLPUBLIC) SfxDocumentInfoItem final : public SfxStringItem
 {
 private:
     sal_Int32                    m_AutoloadDelay;
@@ -81,7 +76,7 @@ private:
     bool                         m_bDeleteUserData;
     bool                         m_bUseUserData;
     bool                         m_bUseThumbnailSave;
-    std::vector< CustomProperty* >    m_aCustomProperties;
+    std::vector< std::unique_ptr<CustomProperty> >    m_aCustomProperties;
     css::uno::Sequence< css::document::CmisProperty > m_aCmisProperties;
 
 public:
@@ -99,35 +94,26 @@ public:
         const css::uno::Reference< css::document::XDocumentProperties> & i_xDocProps,
         bool i_bDoNotUpdateUserDefined = false)
         const;
-    bool        isCmisDocument() const { return m_aCmisProperties.getLength() > 0;}
+    bool        isCmisDocument() const { return m_aCmisProperties.hasElements();}
 
     bool        isAutoloadEnabled() const { return m_isAutoloadEnabled; }
-    void        setAutoloadEnabled(bool i_val) { m_isAutoloadEnabled = i_val; }
     sal_Int32   getAutoloadDelay() const { return m_AutoloadDelay; }
-    void        setAutoloadDelay(sal_Int32 i_val) { m_AutoloadDelay = i_val; }
     const OUString& getAutoloadURL() const { return m_AutoloadURL; }
-    void        setAutoloadURL(const OUString& i_val) { m_AutoloadURL = i_val; }
     const OUString& getDefaultTarget() const { return m_DefaultTarget; }
-    void        setDefaultTarget(const OUString& i_val) { m_DefaultTarget = i_val; }
     const OUString& getTemplateName() const { return m_TemplateName; }
     const OUString& getAuthor() const { return m_Author; }
-    void        setAuthor(const OUString& i_val) { m_Author = i_val; }
 
     const css::util::DateTime&
                 getCreationDate() const { return m_CreationDate; }
     const OUString& getModifiedBy() const { return m_ModifiedBy; }
-    void        setModifiedBy(const OUString& i_val) { m_ModifiedBy = i_val; }
 
     const css::util::DateTime&
                 getModificationDate() const { return m_ModificationDate; }
     const OUString& getPrintedBy() const { return m_PrintedBy; }
-    void        setPrintedBy(const OUString& i_val) { m_PrintedBy = i_val; }
     const css::util::DateTime&
                 getPrintDate() const { return m_PrintDate; }
     sal_Int16   getEditingCycles() const { return m_EditingCycles; }
-    void        setEditingCycles(sal_Int16 i_val) { m_EditingCycles = i_val; }
     sal_Int32   getEditingDuration() const { return m_EditingDuration; }
-    void        setEditingDuration(sal_Int32 i_val) { m_EditingDuration = i_val; }
     const OUString& getDescription() const { return m_Description; }
     void        setDescription(const OUString& i_val) { m_Description = i_val; }
     const OUString& getKeywords() const { return m_Keywords; }
@@ -145,12 +131,11 @@ public:
     void        SetDeleteUserData( bool bSet );
     void        SetUseUserData( bool bSet );
     void        SetUseThumbnailSave( bool bSet );
-    bool        IsDeleteUserData() const { return m_bDeleteUserData;}
     bool        IsUseUserData() const { return m_bUseUserData;}
     bool        IsUseThumbnailSave() const { return m_bUseThumbnailSave;}
 
 
-    std::vector< CustomProperty* >  GetCustomProperties() const;
+    std::vector< std::unique_ptr<CustomProperty> > GetCustomProperties() const;
     void        ClearCustomProperties();
     void        AddCustomProperty(  const OUString& sName,
                                     const css::uno::Any& rValue );
@@ -159,7 +144,7 @@ public:
                         GetCmisProperties() const { return m_aCmisProperties;}
 
     void        SetCmisProperties(const css::uno::Sequence< css::document::CmisProperty >& cmisProps );
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SfxDocumentInfoItem* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
     virtual bool        QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool        PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -167,386 +152,356 @@ public:
 
 // class SfxDocumentPage -------------------------------------------------
 
-class SfxDocumentPage : public SfxTabPage
+class SfxDocumentPage final : public SfxTabPage
 {
 private:
-    VclPtr<FixedImage>            m_pBmp;
-    VclPtr<SelectableFixedText>   m_pNameED;
-    VclPtr<PushButton>            m_pChangePassBtn;
-
-    VclPtr<SelectableFixedText>   m_pShowTypeFT;
-    VclPtr<SelectableFixedText>   m_pFileValEd;
-    VclPtr<SelectableFixedText>   m_pShowSizeFT;
-
-    VclPtr<SelectableFixedText>   m_pCreateValFt;
-    VclPtr<SelectableFixedText>   m_pChangeValFt;
-    VclPtr<SelectableFixedText>   m_pSignedValFt;
-    VclPtr<PushButton>            m_pSignatureBtn;
-    VclPtr<SelectableFixedText>   m_pPrintValFt;
-    VclPtr<SelectableFixedText>   m_pTimeLogValFt;
-    VclPtr<SelectableFixedText>   m_pDocNoValFt;
-
-    VclPtr<CheckBox>              m_pUseUserDataCB;
-    VclPtr<PushButton>            m_pDeleteBtn;
-    VclPtr<CheckBox>              m_pUseThumbnailSaveCB;
-
-    VclPtr<FixedText>             m_pTemplFt;
-    VclPtr<SelectableFixedText>   m_pTemplValFt;
-
     OUString                    m_aUnknownSize;
     OUString                    m_aMultiSignedStr;
 
     bool                        bEnableUseUserData  : 1,
                                 bHandleDelete       : 1;
 
-    DECL_LINK(DeleteHdl, Button*, void);
-    DECL_LINK(SignatureHdl, Button*, void);
-    DECL_STATIC_LINK(SfxDocumentPage, ChangePassHdl, Button*, void);
+    std::unique_ptr<weld::Image> m_xBmp;
+    std::unique_ptr<weld::Label> m_xNameED;
+    std::unique_ptr<weld::Button> m_xChangePassBtn;
+
+    std::unique_ptr<weld::Label> m_xShowTypeFT;
+    std::unique_ptr<weld::Label> m_xFileValEd;
+    std::unique_ptr<weld::Label> m_xShowSizeFT;
+
+    std::unique_ptr<weld::Label> m_xCreateValFt;
+    std::unique_ptr<weld::Label> m_xChangeValFt;
+    std::unique_ptr<weld::Label> m_xSignedValFt;
+    std::unique_ptr<weld::Button> m_xSignatureBtn;
+    std::unique_ptr<weld::Label> m_xPrintValFt;
+    std::unique_ptr<weld::Label> m_xTimeLogValFt;
+    std::unique_ptr<weld::Label> m_xDocNoValFt;
+
+    std::unique_ptr<weld::CheckButton> m_xUseUserDataCB;
+    std::unique_ptr<weld::Button> m_xDeleteBtn;
+    std::unique_ptr<weld::CheckButton> m_xUseThumbnailSaveCB;
+
+    std::unique_ptr<weld::Label> m_xTemplFt;
+    std::unique_ptr<weld::Label> m_xTemplValFt;
+
+    DECL_LINK(DeleteHdl, weld::Button&, void);
+    DECL_LINK(SignatureHdl, weld::Button&, void);
+    DECL_LINK(ChangePassHdl, weld::Button&, void);
     void                ImplUpdateSignatures();
     void                ImplCheckPasswordState();
-
-protected:
-    virtual ~SfxDocumentPage() override;
-    virtual void dispose() override;
 
     virtual bool        FillItemSet( SfxItemSet* ) override;
     virtual void        Reset( const SfxItemSet* ) override;
 
 public:
-    SfxDocumentPage( vcl::Window* pParent, const SfxItemSet& );
-    static VclPtr<SfxTabPage> Create( vcl::Window* pParent, const SfxItemSet* );
+    SfxDocumentPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet&);
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* );
+    virtual ~SfxDocumentPage() override;
 
     void                EnableUseUserData();
 };
 
 // class SfxDocumentDescPage ---------------------------------------------
 
-class SfxDocumentDescPage : public SfxTabPage
+class SfxDocumentDescPage final : public SfxTabPage
 {
 private:
-    VclPtr<Edit>              m_pTitleEd;
-    VclPtr<Edit>              m_pThemaEd;
-    VclPtr<Edit>              m_pKeywordsEd;
-    VclPtr<VclMultiLineEdit>  m_pCommentEd;
-    SfxDocumentInfoItem*      m_pInfoItem;
-
-protected:
-    virtual ~SfxDocumentDescPage() override;
-    virtual void dispose() override;
+    SfxDocumentInfoItem* m_pInfoItem;
+    std::unique_ptr<weld::Entry> m_xTitleEd;
+    std::unique_ptr<weld::Entry> m_xThemaEd;
+    std::unique_ptr<weld::Entry> m_xKeywordsEd;
+    std::unique_ptr<weld::TextView> m_xCommentEd;
 
     virtual bool            FillItemSet( SfxItemSet* ) override;
     virtual void            Reset( const SfxItemSet* ) override;
 
 public:
-    SfxDocumentDescPage( vcl::Window* pParent, const SfxItemSet& );
-    static VclPtr<SfxTabPage> Create( vcl::Window* pParent, const SfxItemSet* );
+    SfxDocumentDescPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet&);
+    virtual ~SfxDocumentDescPage() override;
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* );
 };
 
 // class SfxDocumentInfoDialog -------------------------------------------
 
-class SFX2_DLLPUBLIC SfxDocumentInfoDialog : public SfxTabDialog
+class SFX2_DLLPUBLIC SfxDocumentInfoDialog final : public SfxTabDialogController
 {
-private:
-    sal_uInt16 m_nDocInfoId;
-protected:
-    virtual void    PageCreated( sal_uInt16 nId, SfxTabPage& rPage ) override;
+    virtual void PageCreated(const OString& rId, SfxTabPage& rPage) override;
 
 public:
-    SfxDocumentInfoDialog( vcl::Window* pParent, const SfxItemSet& );
+    SfxDocumentInfoDialog(weld::Window* pParent, const SfxItemSet&);
     void AddFontTabPage();
 };
 
 // class CustomPropertiesRemoveButton ------------------------------------
 struct CustomPropertyLine;
 
-class CustomPropertiesEdit : public Edit
+class CustomPropertiesDateField
 {
 private:
-    CustomPropertyLine*             m_pLine;
-
+    std::unique_ptr<SvtCalendarBox> m_xDateField;
 public:
-    CustomPropertiesEdit(vcl::Window* pParent, WinBits nStyle, CustomPropertyLine* pLine)
-        : Edit(pParent, nStyle)
-        , m_pLine(pLine)
-    {
-    }
+    ::std::optional<sal_Int16> m_TZ;
 
-    CustomPropertyLine*      GetLine() const { return m_pLine; }
+    CustomPropertiesDateField(SvtCalendarBox* pDateField);
+    void set_visible(bool bVisible);
+    Date get_date() const;
+    void set_date(const Date& rDate);
+    ~CustomPropertiesDateField();
 };
 
-class CustomPropertiesTypeBox : public ListBox
+namespace weld
 {
-private:
-    CustomPropertyLine*             m_pLine;
+    class TimeFormatter;
+}
 
-public:
-    CustomPropertiesTypeBox(vcl::Window* pParent, CustomPropertyLine* pLine);
-    CustomPropertyLine*      GetLine() const { return m_pLine; }
-};
-
-class CustomPropertiesDateField : public DateField
+class CustomPropertiesTimeField
 {
 public:
-    ::boost::optional<sal_Int16> m_TZ;
-
-    CustomPropertiesDateField(vcl::Window* pParent, WinBits nStyle)
-        : DateField(pParent, nStyle)
-    {
-    }
-};
-
-class CustomPropertiesTimeField : public TimeField
-{
-public:
+    std::unique_ptr<weld::FormattedSpinButton> m_xTimeField;
+    std::unique_ptr<weld::TimeFormatter> m_xFormatter;
     bool m_isUTC;
 
-    CustomPropertiesTimeField(vcl::Window* pParent, WinBits nStyle)
-        : TimeField(pParent, nStyle)
-        , m_isUTC(false)
-    {
-    }
+    CustomPropertiesTimeField(std::unique_ptr<weld::FormattedSpinButton> xTimeField);
+    void set_visible(bool bVisible) { m_xTimeField->set_visible(bVisible); }
+    tools::Time get_value() const;
+    void set_value(const tools::Time& rTime);
+
+    ~CustomPropertiesTimeField();
 };
 
-class CustomPropertiesDurationField : public Edit
+class CustomPropertiesDurationField
 {
-    CustomPropertyLine*             m_pLine;
     css::util::Duration             m_aDuration;
-protected:
-    virtual void    RequestHelp(const HelpEvent& rEvt) override;
+    std::unique_ptr<weld::Entry>    m_xEntry;
+    std::unique_ptr<weld::Button>   m_xEditButton;
+
+    DECL_LINK(ClickHdl, weld::Button&, void);
 public:
-    CustomPropertiesDurationField(vcl::Window* pParent, WinBits nStyle, CustomPropertyLine* pLine);
+    CustomPropertiesDurationField(std::unique_ptr<weld::Entry> xEntry,
+                                  std::unique_ptr<weld::Button> xEditButton);
 
     void SetDuration( const css::util::Duration& rDuration );
     const css::util::Duration& GetDuration() const { return m_aDuration; }
+
+    void set_visible(bool bVisible);
 };
 
-class CustomPropertiesEditButton : public PushButton
-{
-    CustomPropertyLine*             m_pLine;
-
-public:
-    CustomPropertiesEditButton(vcl::Window* pParent, WinBits nStyle, CustomPropertyLine* pLine);
-
-    DECL_LINK(ClickHdl, Button*, void);
-};
-
-class CustomPropertiesRemoveButton : public ImageButton
+class CustomPropertiesYesNoButton
 {
 private:
-    CustomPropertyLine*             m_pLine;
+    std::unique_ptr<weld::Widget> m_xTopLevel;
+    std::unique_ptr<weld::RadioButton> m_xYesButton;
+    std::unique_ptr<weld::RadioButton> m_xNoButton;
 
 public:
-    CustomPropertiesRemoveButton(vcl::Window* pParent, WinBits nStyle, CustomPropertyLine* pLine)
-        : ImageButton(pParent, nStyle)
-        , m_pLine(pLine)
-    {
-    }
+    CustomPropertiesYesNoButton(std::unique_ptr<weld::Widget>,
+                                std::unique_ptr<weld::RadioButton> xYesButton,
+                                std::unique_ptr<weld::RadioButton> xNoButton);
+    ~CustomPropertiesYesNoButton();
 
-    CustomPropertyLine*      GetLine() const { return m_pLine; }
+    void     CheckYes() { m_xYesButton->set_active(true); }
+    void     CheckNo() { m_xNoButton->set_active(true); }
+    bool     IsYesChecked() const { return m_xYesButton->get_active(); }
+    void     set_visible(bool bVisible) { m_xTopLevel->set_visible(bVisible); }
 };
 
-class CustomPropertiesYesNoButton : public Control
-{
-private:
-    VclPtr<RadioButton>             m_aYesButton;
-    VclPtr<RadioButton>             m_aNoButton;
-
-public:
-    CustomPropertiesYesNoButton(vcl::Window* pParent);
-    virtual ~CustomPropertiesYesNoButton() override;
-    virtual void dispose() override;
-
-    virtual void    Resize() override;
-
-    void     CheckYes() { m_aYesButton->Check(); }
-    void     CheckNo() { m_aNoButton->Check(); }
-    bool     IsYesChecked() const { return m_aYesButton->IsChecked(); }
-};
+class CustomPropertiesWindow;
 
 // struct CustomPropertyLine ---------------------------------------------
-
 struct CustomPropertyLine
 {
-    ScopedVclPtr<ComboBox>                      m_aNameBox;
-    ScopedVclPtr<CustomPropertiesTypeBox>       m_aTypeBox;
-    ScopedVclPtr<CustomPropertiesEdit>          m_aValueEdit;
-    ScopedVclPtr<CustomPropertiesDateField>     m_aDateField;
-    ScopedVclPtr<CustomPropertiesTimeField>     m_aTimeField;
-    const OUString                              m_sDurationFormat;
-    ScopedVclPtr<CustomPropertiesDurationField> m_aDurationField;
-    ScopedVclPtr<CustomPropertiesEditButton>    m_aEditButton;
-    ScopedVclPtr<CustomPropertiesYesNoButton>   m_aYesNoButton;
-    ScopedVclPtr<CustomPropertiesRemoveButton>  m_aRemoveButton;
+    CustomPropertiesWindow* m_pParent;
 
-    bool                            m_bIsDate;
-    bool                            m_bIsRemoved;
-    bool                            m_bTypeLostFocus;
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    std::unique_ptr<weld::Container> m_xLine;
+    std::unique_ptr<weld::ComboBox> m_xNameBox;
+    std::unique_ptr<weld::ComboBox> m_xTypeBox;
+    std::unique_ptr<weld::Entry> m_xValueEdit;
+    std::unique_ptr<weld::Widget> m_xDateTimeBox;
+    std::unique_ptr<CustomPropertiesDateField> m_xDateField;
+    std::unique_ptr<CustomPropertiesTimeField> m_xTimeField;
+    std::unique_ptr<weld::Widget> m_xDurationBox;
+    std::unique_ptr<CustomPropertiesDurationField> m_xDurationField;
+    std::unique_ptr<CustomPropertiesYesNoButton> m_xYesNoButton;
+    std::unique_ptr<weld::Button> m_xRemoveButton;
 
-    CustomPropertyLine( vcl::Window* pParent );
-    void SetRemoved();
+    bool m_bTypeLostFocus;
+
+    CustomPropertyLine(CustomPropertiesWindow* pParent, weld::Widget* pContainer);
+    DECL_LINK(TypeHdl, weld::ComboBox&, void);
+    DECL_LINK(RemoveHdl, weld::Button&, void);
+    DECL_LINK(EditLoseFocusHdl, weld::Widget&, void);
+    DECL_LINK(BoxLoseFocusHdl, weld::Widget&, void);
+
+    void DoTypeHdl(const weld::ComboBox& rBox);
+
+    void Clear();
+    void Hide();
 };
 
 // class CustomPropertiesWindow ------------------------------------------
 
-class CustomPropertiesWindow : public vcl::Window
+class CustomPropertiesWindow
 {
 private:
-    VclPtr<FixedText>                   m_pHeaderAccName;
-    VclPtr<FixedText>                   m_pHeaderAccType;
-    VclPtr<FixedText>                   m_pHeaderAccValue;
-
-    VclPtr<ComboBox>                    m_aNameBox;
-    VclPtr<ListBox>                     m_aTypeBox;
-    VclPtr<Edit>                        m_aValueEdit;
-    VclPtr<DateField>                   m_aDateField;
-    VclPtr<TimeField>                   m_aTimeField;
-    VclPtr<Edit>                        m_aDurationField;
-    VclPtr<PushButton>                  m_aEditButton;
-    VclPtr<CustomPropertiesYesNoButton> m_aYesNoButton;
-    VclPtr<ImageButton>                 m_aRemoveButton;
-
+    sal_Int32                           m_nHeight;
     sal_Int32                           m_nLineHeight;
     sal_Int32                           m_nScrollPos;
-    std::vector< CustomPropertyLine* >  m_aCustomPropertiesLines;
+    std::vector<std::unique_ptr<CustomProperty>> m_aCustomProperties;
+    std::vector<std::unique_ptr<CustomPropertyLine>> m_aCustomPropertiesLines;
     CustomPropertyLine*                 m_pCurrentLine;
     SvNumberFormatter                   m_aNumberFormatter;
     Idle                                m_aEditLoseFocusIdle;
     Idle                                m_aBoxLoseFocusIdle;
     Link<void*,void>                    m_aRemovedHdl;
 
-    DECL_STATIC_LINK( CustomPropertiesWindow, TypeHdl, ListBox&, void );
-    DECL_LINK(  RemoveHdl, Button*, void );
-    DECL_LINK(  EditLoseFocusHdl, Control&, void );
-    DECL_LINK(  BoxLoseFocusHdl, Control&, void );
-    //add lose focus handlers of Date/TimeField?
+    weld::Container& m_rBody;
+    weld::Label& m_rHeaderAccName;
+    weld::Label& m_rHeaderAccType;
+    weld::Label& m_rHeaderAccValue;
 
     DECL_LINK(EditTimeoutHdl, Timer *, void);
     DECL_LINK(BoxTimeoutHdl, Timer *, void);
 
     bool        IsLineValid( CustomPropertyLine* pLine ) const;
     void        ValidateLine( CustomPropertyLine* pLine, bool bIsFromTypeBox );
+    void        CreateNewLine();
+    void        StoreCustomProperties();
+    sal_uInt32  GetCurrentDataModelPosition() const { return -1 * m_nScrollPos / m_nLineHeight; }
 
 public:
-    CustomPropertiesWindow(vcl::Window* pParent,
-        FixedText *pHeaderAccName,
-        FixedText *pHeaderAccType,
-        FixedText *pHeaderAccValue);
-    virtual ~CustomPropertiesWindow() override;
-    virtual void dispose() override;
+    CustomPropertiesWindow(weld::Container& rParent, weld::Label& rHeaderAccName,
+                           weld::Label& rHeaderAccType, weld::Label& rHeaderAccValue);
+    ~CustomPropertiesWindow();
 
-    bool                InitControls( HeaderBar* pHeaderBar, const ScrollBar* pScrollBar );
-    sal_uInt16          GetVisibleLineCount() const;
-    sal_Int32    GetLineHeight() const { return m_nLineHeight; }
-    void                AddLine( const OUString& sName, css::uno::Any& rAny );
+    sal_uInt16          GetExistingLineCount() const { return m_aCustomPropertiesLines.size(); }
+    sal_uInt16          GetTotalLineCount() const { return m_aCustomProperties.size(); }
+    void                SetVisibleLineCount(sal_uInt32 nCount);
+    sal_Int32           GetHeight() const { return m_nHeight; }
+    void                SetHeight(int nHeight) { m_nHeight = nHeight; }
+    sal_Int32           GetLineHeight() const { return m_nLineHeight; }
+    void                SetLineHeight(sal_Int32 nLineHeight) { m_nLineHeight = nLineHeight; }
+    void                AddLine( const OUString& sName, css::uno::Any const & rAny );
     bool                AreAllLinesValid() const;
     void                ClearAllLines();
     void                DoScroll( sal_Int32 nNewPos );
+    void                ReloadLinesContent();
 
     css::uno::Sequence< css::beans::PropertyValue >
-                        GetCustomProperties() const;
+                        GetCustomProperties();
+    void                SetCustomProperties(std::vector< std::unique_ptr<CustomProperty> >&& rProperties);
     void                SetRemovedHdl( const Link<void*,void>& rLink ) { m_aRemovedHdl = rLink; }
 
-    void                updateLineWidth();
+    void                BoxLoseFocus(CustomPropertyLine* pLine);
+    void                EditLoseFocus(CustomPropertyLine* pLine);
+    void                Remove(const CustomPropertyLine* pLine);
 };
 
 // class CustomPropertiesControl -----------------------------------------
 
-class CustomPropertiesControl : public vcl::Window
+class CustomPropertiesControl
 {
 private:
-    VclPtr<VclVBox>                m_pVBox;
-    VclPtr<HeaderBar>              m_pHeaderBar;
-    VclPtr<VclHBox>                m_pBody;
-    VclPtr<CustomPropertiesWindow> m_pPropertiesWin;
-    VclPtr<ScrollBar>              m_pVertScroll;
-
     sal_Int32               m_nThumbPos;
 
-    DECL_LINK( ScrollHdl, ScrollBar*, void );
+    std::unique_ptr<weld::Widget> m_xBox;
+    std::unique_ptr<weld::Container> m_xBody;
+    std::unique_ptr<weld::ScrolledWindow> m_xVertScroll;
+    std::unique_ptr<CustomPropertiesWindow> m_xPropertiesWin;
+    std::unique_ptr<weld::Label> m_xName;
+    std::unique_ptr<weld::Label> m_xType;
+    std::unique_ptr<weld::Label> m_xValue;
+
+    DECL_LINK( ResizeHdl, const Size&, void );
+    DECL_LINK( ScrollHdl, weld::ScrolledWindow&, void );
     DECL_LINK( RemovedHdl, void*, void );
 
 public:
-    CustomPropertiesControl(vcl::Window* pParent);
-    virtual ~CustomPropertiesControl() override;
-    virtual void dispose() override;
+    CustomPropertiesControl();
+    ~CustomPropertiesControl();
 
-    void            AddLine( const OUString& sName, css::uno::Any& rAny, bool bInteractive );
+    void         AddLine(css::uno::Any const & rAny);
 
-    bool     AreAllLinesValid() const { return m_pPropertiesWin->AreAllLinesValid(); }
-    void     ClearAllLines() { m_pPropertiesWin->ClearAllLines(); }
-    css::uno::Sequence< css::beans::PropertyValue >
-                    GetCustomProperties() const
-                        { return m_pPropertiesWin->GetCustomProperties(); }
-    void    Init(VclBuilderContainer& rParent);
-    virtual void Resize() override;
+    bool         AreAllLinesValid() const { return m_xPropertiesWin->AreAllLinesValid(); }
+    void         ClearAllLines() { m_xPropertiesWin->ClearAllLines(); }
+
+    css::uno::Sequence<css::beans::PropertyValue>
+                 GetCustomProperties() const
+                        { return m_xPropertiesWin->GetCustomProperties(); }
+    void         SetCustomProperties(std::vector< std::unique_ptr<CustomProperty> >&& rProperties);
+
+    void         Init(weld::Builder& rParent);
 };
 
 // class SfxCustomPropertiesPage -----------------------------------------
 
-class SfxCustomPropertiesPage : public SfxTabPage
+class SfxCustomPropertiesPage final : public SfxTabPage
 {
 private:
-    VclPtr<CustomPropertiesControl> m_pPropertiesCtrl;
+    DECL_LINK(AddHdl, weld::Button&, void);
 
-    DECL_LINK(AddHdl, Button*, void);
-
-    using TabPage::DeactivatePage;
-
-protected:
-    virtual ~SfxCustomPropertiesPage() override;
-    virtual void dispose() override;
+    std::unique_ptr<CustomPropertiesControl> m_xPropertiesCtrl;
+    std::unique_ptr<weld::Button> m_xAdd;
 
     virtual bool        FillItemSet( SfxItemSet* ) override;
     virtual void        Reset( const SfxItemSet* ) override;
     virtual DeactivateRC DeactivatePage( SfxItemSet* pSet ) override;
 
 public:
-    SfxCustomPropertiesPage( vcl::Window* pParent, const SfxItemSet& );
-    static VclPtr<SfxTabPage> Create( vcl::Window* pParent, const SfxItemSet* );
+    SfxCustomPropertiesPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet&);
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* );
+    virtual ~SfxCustomPropertiesPage() override;
 };
 
-struct CmisValue : public VclBuilderContainer
+struct CmisValue
 {
-    VclPtr<Edit>   m_aValueEdit;
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    std::unique_ptr<weld::Frame>  m_xFrame;
+    std::unique_ptr<weld::Entry> m_xValueEdit;
 
-    CmisValue( vcl::Window* pParent, const OUString& aStr );
+    CmisValue(weld::Widget* pParent, const OUString& rStr);
 };
 
-struct CmisDateTime : public VclBuilderContainer
+struct CmisDateTime
 {
-    VclPtr<DateField>  m_aDateField;
-    VclPtr<TimeField>  m_aTimeField;
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    std::unique_ptr<weld::Frame>  m_xFrame;
+    std::unique_ptr<SvtCalendarBox>  m_xDateField;
+    std::unique_ptr<weld::FormattedSpinButton> m_xTimeField;
+    std::unique_ptr<weld::TimeFormatter> m_xFormatter;
 
-    CmisDateTime( vcl::Window* pParent, const css::util::DateTime& aDateTime );
+    CmisDateTime(weld::Widget* pParent, const css::util::DateTime& rDateTime);
 };
 
-struct CmisYesNo : public VclBuilderContainer
+struct CmisYesNo
 {
-    VclPtr<RadioButton> m_aYesButton;
-    VclPtr<RadioButton> m_aNoButton;
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    std::unique_ptr<weld::Frame>  m_xFrame;
+    std::unique_ptr<weld::RadioButton> m_xYesButton;
+    std::unique_ptr<weld::RadioButton> m_xNoButton;
 
-    CmisYesNo( vcl::Window* pParent, bool bValue);
+    CmisYesNo(weld::Widget* pParent, bool bValue);
 };
 
 // struct CmisPropertyLine ---------------------------------------------
 
-struct CmisPropertyLine : public VclBuilderContainer
+struct CmisPropertyLine
 {
-    VclPtr<VclFrame>              m_pFrame;
+    std::unique_ptr<weld::Builder> m_xBuilder;
     OUString                      m_sId;
     OUString                      m_sType;
     bool                          m_bUpdatable;
     bool                          m_bRequired;
     bool                          m_bMultiValued;
     bool                          m_bOpenChoice;
-    VclPtr<FixedText>             m_aName;
-    VclPtr<FixedText>             m_aType;
-    std::vector< CmisValue* >     m_aValues;
-    std::vector< CmisDateTime* >  m_aDateTimes;
-    std::vector< CmisYesNo* >     m_aYesNos;
-    long getItemHeight() const;
-    CmisPropertyLine( vcl::Window* pParent );
-    virtual ~CmisPropertyLine() override;
+    std::unique_ptr<weld::Frame>  m_xFrame;
+    std::unique_ptr<weld::Label>  m_xName;
+    std::unique_ptr<weld::Label>  m_xType;
+    std::vector< std::unique_ptr<CmisValue> >     m_aValues;
+    std::vector< std::unique_ptr<CmisDateTime> >  m_aDateTimes;
+    std::vector< std::unique_ptr<CmisYesNo> >     m_aYesNos;
+    CmisPropertyLine(weld::Widget* pParent);
+    ~CmisPropertyLine();
 };
 
 // class CmisPropertiesWindow ------------------------------------------
@@ -554,24 +509,20 @@ struct CmisPropertyLine : public VclBuilderContainer
 class CmisPropertiesWindow
 {
 private:
-    VclPtr<VclBox>                      m_pBox;
-    sal_Int32                           m_nItemHeight;
+    std::unique_ptr<weld::Container>    m_xBox;
     SvNumberFormatter                   m_aNumberFormatter;
-    std::vector< CmisPropertyLine* >    m_aCmisPropertiesLines;
+    std::vector< std::unique_ptr<CmisPropertyLine> > m_aCmisPropertiesLines;
 public:
-    CmisPropertiesWindow(SfxTabPage* pParent);
+    CmisPropertiesWindow(std::unique_ptr<weld::Container> xParent);
     ~CmisPropertiesWindow();
 
-    sal_Int32 GetItemHeight() const { return m_nItemHeight; }
-    long getBoxHeight() const { return VclContainer::getLayoutRequisition(*m_pBox).Height(); };
     void AddLine( const OUString& sId, const OUString& sName,
                   const OUString& sType, const bool bUpdatable,
                   const bool bRequired, const bool bMultiValued,
                   const bool bOpenChoice,
                   css::uno::Any& aChoices,
-                  css::uno::Any& rAny );
+                  css::uno::Any const & rAny );
     void ClearAllLines();
-    void DoScroll( sal_Int32 nNewPos );
 
     css::uno::Sequence< css::document::CmisProperty >
                         GetCmisProperties() const;
@@ -582,52 +533,40 @@ public:
 class CmisPropertiesControl
 {
 private:
-    CmisPropertiesWindow    m_pPropertiesWin;
-    VclScrolledWindow&      m_rScrolledWindow;
-    ScrollBar&              m_rVertScroll;
-    DECL_LINK( ScrollHdl, ScrollBar*, void );
-
-    void checkAutoVScroll();
+    CmisPropertiesWindow m_aPropertiesWin;
+    std::unique_ptr<weld::ScrolledWindow> m_xScrolledWindow;
 
 public:
-    CmisPropertiesControl(SfxTabPage* pParent);
-    void setScrollRange();
+    CmisPropertiesControl(weld::Builder& rBuilder);
 
     void AddLine( const OUString& sId, const OUString& sName,
                   const OUString& sType, const bool bUpdatable,
                   const bool bRequired, const bool bMultiValude,
                   const bool bOpenChoice,
                   css::uno::Any& aChoices,
-                  css::uno::Any& rAny );
+                  css::uno::Any const & rAny );
 
     void ClearAllLines();
     css::uno::Sequence< css::document::CmisProperty >
                     GetCmisProperties() const
-                        { return m_pPropertiesWin.GetCmisProperties(); }
+                        { return m_aPropertiesWin.GetCmisProperties(); }
 };
 
 // class SfxCmisPropertiesPage -------------------------------------------------
 
-class SfxCmisPropertiesPage : public SfxTabPage
+class SfxCmisPropertiesPage final : public SfxTabPage
 {
 private:
-    CmisPropertiesControl m_pPropertiesCtrl;
-    using TabPage::DeactivatePage;
+    std::unique_ptr<CmisPropertiesControl> m_xPropertiesCtrl;
 
-protected:
     virtual bool        FillItemSet( SfxItemSet* ) override;
     virtual void        Reset( const SfxItemSet* ) override;
     virtual DeactivateRC DeactivatePage( SfxItemSet* pSet ) override;
 
 public:
-    SfxCmisPropertiesPage( vcl::Window* pParent, const SfxItemSet& );
+    SfxCmisPropertiesPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet&);
     virtual ~SfxCmisPropertiesPage() override;
-    virtual void dispose() override;
-
-    static VclPtr<SfxTabPage> Create( vcl::Window* pParent, const SfxItemSet* );
-    virtual void SetPosSizePixel(const Point& rAllocPos, const Size& rAllocation) override;
-    virtual void SetSizePixel(const Size& rAllocation) override;
-    virtual void SetPosPixel(const Point& rAllocPos) override;
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet*);
 };
 
 #endif // #ifndef _ INCLUDED_SFX2_DINFDLG_HXX

@@ -17,29 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "charsetlistbox.hxx"
+#include <charsetlistbox.hxx>
 
-#include <vcl/builderfactory.hxx>
 #include <svl/itemset.hxx>
 #include <svl/stritem.hxx>
 #include <osl/diagnose.h>
 
 namespace dbaui
 {
-    CharSetListBox::CharSetListBox( vcl::Window* _pParent )
-        : ListBox( _pParent, WB_DROPDOWN )
+    CharSetListBox::CharSetListBox(std::unique_ptr<weld::ComboBox> xControl)
+        : m_xControl(std::move(xControl))
     {
-        SetDropDownLineCount( 20 );
-
-        OCharsetDisplay::const_iterator charSet = m_aCharSets.begin();
-        while ( charSet != m_aCharSets.end() )
+        for (auto const& charset : m_aCharSets)
         {
-            InsertEntry( (*charSet).getDisplayName() );
-            ++charSet;
+            m_xControl->append_text(charset.getDisplayName());
         }
     }
-
-    VCL_BUILDER_FACTORY(CharSetListBox)
 
     void CharSetListBox::SelectEntryByIanaName( const OUString& _rIanaName )
     {
@@ -50,32 +43,18 @@ namespace dbaui
             aFind = m_aCharSets.findEncoding( RTL_TEXTENCODING_DONTKNOW );
         }
 
-        if ( aFind == m_aCharSets.end() )
-        {
-            SelectEntry( OUString() );
-        }
+        if (aFind == m_aCharSets.end())
+            m_xControl->set_active(-1);
         else
-        {
-            OUString sDisplayName = (*aFind).getDisplayName();
-            if ( LISTBOX_ENTRY_NOTFOUND == GetEntryPos( sDisplayName ) )
-            {
-                // in our settings, there was an encoding selected which is not valid for the current
-                // data source type
-                // This is worth at least an assertion.
-                OSL_FAIL( "CharSetListBox::SelectEntryByIanaName: invalid character set!" );
-                sDisplayName.clear();
-            }
-
-            SelectEntry( sDisplayName );
-        }
+            m_xControl->set_active_text((*aFind).getDisplayName());
     }
 
     bool CharSetListBox::StoreSelectedCharSet( SfxItemSet& _rSet, const sal_uInt16 _nItemId )
     {
         bool bChangedSomething = false;
-        if ( IsValueChangedFromSaved() )
+        if (m_xControl->get_value_changed_from_saved())
         {
-            OCharsetDisplay::const_iterator aFind = m_aCharSets.findDisplayName( GetSelectEntry() );
+            OCharsetDisplay::const_iterator aFind = m_aCharSets.findDisplayName(m_xControl->get_active_text());
             OSL_ENSURE( aFind != m_aCharSets.end(), "CharSetListBox::StoreSelectedCharSet: could not translate the selected character set!" );
             if ( aFind != m_aCharSets.end() )
             {
@@ -85,7 +64,6 @@ namespace dbaui
         }
         return bChangedSomething;
     }
-
 } // namespace dbaui
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

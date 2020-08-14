@@ -18,10 +18,16 @@
  */
 
 #include <unobookmark.hxx>
-#include <osl/mutex.hxx>
+
 #include <comphelper/interfacecontainer2.hxx>
+#include <comphelper/sequence.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <osl/mutex.hxx>
+#include <svl/itemprop.hxx>
+#include <svl/listener.hxx>
 #include <vcl/svapp.hxx>
+#include <xmloff/odffields.hxx>
 
 #include <TextCursorHelper.hxx>
 #include <unotextrange.hxx>
@@ -30,83 +36,86 @@
 #include <IMark.hxx>
 #include <crossrefbookmark.hxx>
 #include <doc.hxx>
-#include <IDocumentState.hxx>
-#include <docary.hxx>
-#include <swundo.hxx>
 #include <docsh.hxx>
-#include <xmloff/odffields.hxx>
-#include <comphelper/servicehelper.hxx>
-#include <comphelper/sequence.hxx>
 
 using namespace ::sw::mark;
 using namespace ::com::sun::star;
 
 class SwXBookmark::Impl
-    : public SwClient
+    : public SvtListener
 {
 private:
     ::osl::Mutex m_Mutex; // just for OInterfaceContainerHelper2
 
 public:
     uno::WeakReference<uno::XInterface> m_wThis;
-    ::comphelper::OInterfaceContainerHelper2  m_EventListeners;
-    SwDoc *                     m_pDoc;
-    ::sw::mark::IMark *         m_pRegisteredBookmark;
-    OUString                    m_sMarkName;
+    ::comphelper::OInterfaceContainerHelper2 m_EventListeners;
+    SwDoc* m_pDoc;
+    ::sw::mark::IMark* m_pRegisteredBookmark;
+    OUString m_sMarkName;
+    bool m_bHidden;
+    OUString m_HideCondition;
 
     Impl( SwDoc *const pDoc )
-        : SwClient()
-        , m_EventListeners(m_Mutex)
+        : m_EventListeners(m_Mutex)
         , m_pDoc(pDoc)
         , m_pRegisteredBookmark(nullptr)
+        , m_bHidden(false)
     {
         // DO NOT registerInMark here! (because SetXBookmark would delete rThis)
     }
 
     void registerInMark(SwXBookmark & rThis, ::sw::mark::IMark *const pBkmk);
 protected:
-    // SwClient
-    virtual void Modify( const SfxPoolItem *pOld, const SfxPoolItem *pNew) override;
+    virtual void Notify(const SfxHint&) override;
 
 };
 
-void SwXBookmark::Impl::Modify(const SfxPoolItem *pOld, const SfxPoolItem *pNew)
+void SwXBookmark::Impl::Notify(const SfxHint& rHint)
 {
-    ClientModify(this, pOld, pNew);
-    if (GetRegisteredIn())
+    if(rHint.GetId() == SfxHintId::Dying)
     {
-        return; // core object still alive
+        m_pRegisteredBookmark = nullptr;
+        m_pDoc = nullptr;
+        uno::Reference<uno::XInterface> const xThis(m_wThis);
+        if (!xThis.is())
+        {   // fdo#72695: if UNO object is already dead, don't revive it with event
+            return;
+        }
+        lang::EventObject const ev(xThis);
+        m_EventListeners.disposeAndClear(ev);
     }
-
-    m_pRegisteredBookmark = nullptr;
-    m_pDoc = nullptr;
-    uno::Reference<uno::XInterface> const xThis(m_wThis);
-    if (!xThis.is())
-    {   // fdo#72695: if UNO object is already dead, don't revive it with event
-        return;
-    }
-    lang::EventObject const ev(xThis);
-    m_EventListeners.disposeAndClear(ev);
 }
 
-void SwXBookmark::Impl::registerInMark(SwXBookmark & rThis,
-        ::sw::mark::IMark *const pBkmk)
+void SwXBookmark::Impl::registerInMark(SwXBookmark& rThis,
+        ::sw::mark::IMark* const pBkmk)
 {
-    const uno::Reference<text::XTextContent> xBookmark(& rThis);
+    const uno::Reference<text::XTextContent> xBookmark(&rThis);
     if (pBkmk)
     {
-        pBkmk->Add(this);
+        EndListeningAll();
+        StartListening(pBkmk->GetNotifier());
         ::sw::mark::MarkBase *const pMarkBase(dynamic_cast< ::sw::mark::MarkBase * >(pBkmk));
         OSL_ENSURE(pMarkBase, "registerInMark: no MarkBase?");
         if (pMarkBase)
         {
             pMarkBase->SetXBookmark(xBookmark);
         }
+        assert(m_pDoc == nullptr || m_pDoc == pBkmk->GetMarkPos().GetDoc());
+        m_pDoc = pBkmk->GetMarkPos().GetDoc();
     }
     else if (m_pRegisteredBookmark)
     {
         m_sMarkName = m_pRegisteredBookmark->GetName();
-        m_pRegisteredBookmark->Remove(this);
+
+        // the following applies only to bookmarks (not to fieldmarks)
+        IBookmark* pBookmark = dynamic_cast<IBookmark*>(m_pRegisteredBookmark);
+        if (pBookmark)
+        {
+            m_bHidden = pBookmark->IsHidden();
+            m_HideCondition = pBookmark->GetHideCondition();
+        }
+        EndListeningAll();
     }
     m_pRegisteredBookmark = pBkmk;
     // need a permanent Reference to initialize m_wThis
@@ -119,9 +128,14 @@ void SwXBookmark::registerInMark(SwXBookmark & rThis,
     m_pImpl->registerInMark( rThis, pBkmk );
 }
 
-const ::sw::mark::IMark* SwXBookmark::GetBookmark() const
+::sw::mark::IMark* SwXBookmark::GetBookmark() const
 {
     return m_pImpl->m_pRegisteredBookmark;
+}
+
+IDocumentMarkAccess* SwXBookmark::GetIDocumentMarkAccess()
+{
+    return m_pImpl->m_pDoc->getIDocumentMarkAccess();
 }
 
 SwXBookmark::SwXBookmark(SwDoc *const pDoc)
@@ -213,7 +227,7 @@ void SwXBookmark::attachToRangeEx(
     }
 
     SwDoc *const pDoc =
-        (pRange) ? &pRange->GetDoc() : ((pCursor) ? pCursor->GetDoc() : nullptr);
+        pRange ? &pRange->GetDoc() : (pCursor ? pCursor->GetDoc() : nullptr);
     if (!pDoc)
     {
         throw lang::IllegalArgumentException();
@@ -240,7 +254,7 @@ void SwXBookmark::attachToRangeEx(
     }
     m_pImpl->registerInMark(*this,
         m_pImpl->m_pDoc->getIDocumentMarkAccess()->makeMark(
-            aPam, m_pImpl->m_sMarkName, eType));
+            aPam, m_pImpl->m_sMarkName, eType, ::sw::mark::InsertMode::New));
     // #i81002#
     // Check, if bookmark has been created.
     // E.g., the creation of a cross-reference bookmark is suppress,
@@ -327,7 +341,8 @@ void SAL_CALL SwXBookmark::setName(const OUString& rName)
         m_pImpl->m_pDoc->getIDocumentMarkAccess();
     if(pMarkAccess->findMark(rName) != pMarkAccess->getAllMarksEnd())
     {
-        throw uno::RuntimeException();
+        throw uno::RuntimeException("setName(): name already in use",
+                static_cast<::cppu::OWeakObject*>(this));
     }
 
     SwPaM aPam(m_pImpl->m_pRegisteredBookmark->GetMarkPos());
@@ -343,16 +358,8 @@ void SAL_CALL SwXBookmark::setName(const OUString& rName)
 OUString SAL_CALL
 SwXBookmark::getImplementationName()
 {
-    return OUString("SwXBookmark");
+    return "SwXBookmark";
 }
-
-static char const*const g_ServicesBookmark[] =
-{
-    "com.sun.star.text.TextContent",
-    "com.sun.star.text.Bookmark",
-    "com.sun.star.document.LinkTarget",
-};
-static const size_t g_nServicesBookmark(SAL_N_ELEMENTS(g_ServicesBookmark));
 
 sal_Bool SAL_CALL SwXBookmark::supportsService(const OUString& rServiceName)
 {
@@ -362,8 +369,11 @@ sal_Bool SAL_CALL SwXBookmark::supportsService(const OUString& rServiceName)
 uno::Sequence< OUString > SAL_CALL
 SwXBookmark::getSupportedServiceNames()
 {
-    return ::sw::GetSupportedServiceNamesImpl(
-            g_nServicesBookmark, g_ServicesBookmark);
+    return {
+        "com.sun.star.text.TextContent",
+        "com.sun.star.text.Bookmark",
+        "com.sun.star.document.LinkTarget"
+    };
 }
 
 // MetadatableMixin
@@ -377,7 +387,7 @@ uno::Reference<frame::XModel> SwXBookmark::GetModel()
     if (m_pImpl->m_pDoc)
     {
         SwDocShell const * const pShell( m_pImpl->m_pDoc->GetDocShell() );
-        return (pShell) ? pShell->GetModel() : nullptr;
+        return pShell ? pShell->GetModel() : nullptr;
     }
     return nullptr;
 }
@@ -395,8 +405,43 @@ SwXBookmark::getPropertySetInfo()
 
 void SAL_CALL
 SwXBookmark::setPropertyValue(const OUString& PropertyName,
-        const uno::Any& /*rValue*/)
+        const uno::Any& rValue)
 {
+    if (PropertyName == UNO_NAME_BOOKMARK_HIDDEN)
+    {
+        bool bNewValue = false;
+        if (!(rValue >>= bNewValue))
+            throw lang::IllegalArgumentException("Property BookmarkHidden requires value of type boolean", nullptr, 0);
+
+        IBookmark* pBookmark = dynamic_cast<IBookmark*>(m_pImpl->m_pRegisteredBookmark);
+        if (pBookmark)
+        {
+            pBookmark->Hide(bNewValue);
+        }
+        else
+        {
+            m_pImpl->m_bHidden = bNewValue;
+        }
+        return;
+    }
+    else if (PropertyName == UNO_NAME_BOOKMARK_CONDITION)
+    {
+        OUString newValue;
+        if (!(rValue >>= newValue))
+            throw lang::IllegalArgumentException("Property BookmarkCondition requires value of type string", nullptr, 0);
+
+        IBookmark* pBookmark = dynamic_cast<IBookmark*>(m_pImpl->m_pRegisteredBookmark);
+        if (pBookmark)
+        {
+            pBookmark->SetHideCondition(newValue);
+        }
+        else
+        {
+            m_pImpl->m_HideCondition = newValue;
+        }
+        return;
+    }
+
     // nothing to set here
     throw lang::IllegalArgumentException("Property is read-only: "
             + PropertyName, static_cast< cppu::OWeakObject * >(this), 0 );
@@ -412,6 +457,30 @@ uno::Any SAL_CALL SwXBookmark::getPropertyValue(const OUString& rPropertyName)
         if(rPropertyName == UNO_LINK_DISPLAY_NAME)
         {
             aRet <<= getName();
+        }
+        else if (rPropertyName == UNO_NAME_BOOKMARK_HIDDEN)
+        {
+            IBookmark* pBookmark = dynamic_cast<IBookmark*>(m_pImpl->m_pRegisteredBookmark);
+            if (pBookmark)
+            {
+                aRet <<= pBookmark->IsHidden();
+            }
+            else
+            {
+                aRet <<= m_pImpl->m_bHidden;
+            }
+        }
+        else if (rPropertyName == UNO_NAME_BOOKMARK_CONDITION)
+        {
+            IBookmark* pBookmark = dynamic_cast<IBookmark*>(m_pImpl->m_pRegisteredBookmark);
+            if (pBookmark)
+            {
+                aRet <<= pBookmark->GetHideCondition();
+            }
+            else
+            {
+                aRet <<= m_pImpl->m_HideCondition;
+            }
         }
     }
     return aRet;
@@ -451,7 +520,7 @@ SwXBookmark::removeVetoableChangeListener(
 
 SwXFieldmark::SwXFieldmark(bool _isReplacementObject, SwDoc* pDc)
     : SwXFieldmark_Base(pDc)
-    , isReplacementObject(_isReplacementObject)
+    , m_bReplacementObject(_isReplacementObject)
 { }
 
 void SwXFieldmarkParameters::insertByName(const OUString& aName, const uno::Any& aElement)
@@ -515,24 +584,24 @@ sal_Bool SwXFieldmarkParameters::hasElements()
     return !getCoreParameters()->empty();
 }
 
-void SwXFieldmarkParameters::Modify(const SfxPoolItem *pOld, const SfxPoolItem *pNew)
+void SwXFieldmarkParameters::Notify(const SfxHint& rHint)
 {
-    ClientModify(this, pOld, pNew);
+    if(rHint.GetId() == SfxHintId::Dying)
+        m_pFieldmark = nullptr;
 }
 
 IFieldmark::parameter_map_t* SwXFieldmarkParameters::getCoreParameters()
 {
-    const IFieldmark* pFieldmark = dynamic_cast< const IFieldmark* >(GetRegisteredIn());
-    if(!pFieldmark)
+    if(!m_pFieldmark)
         throw uno::RuntimeException();
-    return const_cast< IFieldmark* >(pFieldmark)->GetParameters();
+    return m_pFieldmark->GetParameters();
 }
 
 void SwXFieldmark::attachToRange( const uno::Reference < text::XTextRange >& xTextRange )
 {
 
     attachToRangeEx( xTextRange,
-                     ( isReplacementObject ? IDocumentMarkAccess::MarkType::CHECKBOX_FIELDMARK : IDocumentMarkAccess::MarkType::TEXT_FIELDMARK ) );
+                     ( m_bReplacementObject ? IDocumentMarkAccess::MarkType::CHECKBOX_FIELDMARK : IDocumentMarkAccess::MarkType::TEXT_FIELDMARK ) );
 }
 
 OUString SwXFieldmark::getFieldType()
@@ -547,18 +616,30 @@ OUString SwXFieldmark::getFieldType()
 void SwXFieldmark::setFieldType(const OUString & fieldType)
 {
     SolarMutexGuard aGuard;
-    IFieldmark *pBkm = const_cast<IFieldmark*>(
-        dynamic_cast<const IFieldmark*>(GetBookmark()));
+    IFieldmark *pBkm = dynamic_cast<IFieldmark*>(GetBookmark());
     if(!pBkm)
         throw uno::RuntimeException();
+    if(fieldType == getFieldType())
+        return;
+
+    if(fieldType == ODF_FORMDROPDOWN || fieldType == ODF_FORMCHECKBOX || fieldType == ODF_FORMDATE)
+    {
+        ::sw::mark::IFieldmark* pNewFieldmark = GetIDocumentMarkAccess()->changeFormFieldmarkType(pBkm, fieldType);
+        if (pNewFieldmark)
+        {
+            registerInMark(*this, pNewFieldmark);
+            return;
+        }
+    }
+
+    // We did not generate a new fieldmark, so set the type ID
     pBkm->SetFieldname(fieldType);
 }
 
 uno::Reference<container::XNameContainer> SwXFieldmark::getParameters()
 {
     SolarMutexGuard aGuard;
-    IFieldmark *pBkm = const_cast<IFieldmark*>(
-        dynamic_cast<const IFieldmark*>(GetBookmark()));
+    IFieldmark *pBkm = dynamic_cast<IFieldmark*>(GetBookmark());
     if(!pBkm)
         throw uno::RuntimeException();
     return uno::Reference<container::XNameContainer>(new SwXFieldmarkParameters(pBkm));
@@ -585,6 +666,10 @@ SwXFieldmark::CreateXFieldmark(SwDoc & rDoc, ::sw::mark::IMark *const pMark,
             pXBkmk = new SwXFieldmark(false, &rDoc);
         else if (dynamic_cast< ::sw::mark::CheckboxFieldmark* >(pMark))
             pXBkmk = new SwXFieldmark(true, &rDoc);
+        else if (dynamic_cast< ::sw::mark::DropDownFieldmark* >(pMark))
+            pXBkmk = new SwXFieldmark(true, &rDoc);
+        else if (dynamic_cast< ::sw::mark::DateFieldmark* >(pMark))
+            pXBkmk = new SwXFieldmark(false, &rDoc);
         else
             pXBkmk = new SwXFieldmark(isReplacementObject, &rDoc);
 
@@ -600,8 +685,7 @@ SwXFieldmark::getCheckboxFieldmark()
     ::sw::mark::ICheckboxFieldmark* pCheckboxFm = nullptr;
     if ( getFieldType() == ODF_FORMCHECKBOX )
     {
-        // evil #TODO #FIXME casting away the const-ness
-        pCheckboxFm = const_cast<sw::mark::ICheckboxFieldmark*>(dynamic_cast< const ::sw::mark::ICheckboxFieldmark* >( GetBookmark()));
+        pCheckboxFm = dynamic_cast< ::sw::mark::ICheckboxFieldmark* >( GetBookmark());
         assert( GetBookmark() == nullptr || pCheckboxFm != nullptr );
             // unclear to me whether GetBookmark() can be null here
     }
@@ -621,11 +705,10 @@ SwXFieldmark::setPropertyValue(const OUString& PropertyName,
     {
         ::sw::mark::ICheckboxFieldmark* pCheckboxFm = getCheckboxFieldmark();
         bool bChecked( false );
-        if ( pCheckboxFm && ( rValue >>= bChecked ) )
-            pCheckboxFm->SetChecked( bChecked );
-        else
+        if ( !(pCheckboxFm && ( rValue >>= bChecked )) )
             throw uno::RuntimeException();
 
+        pCheckboxFm->SetChecked( bChecked );
     }
     else
         SwXFieldmark_Base::setPropertyValue( PropertyName, rValue );
@@ -640,10 +723,10 @@ uno::Any SAL_CALL SwXFieldmark::getPropertyValue(const OUString& rPropertyName)
     if ( rPropertyName == "Checked" )
     {
         ::sw::mark::ICheckboxFieldmark* pCheckboxFm = getCheckboxFieldmark();
-        if ( pCheckboxFm )
-            return uno::makeAny( pCheckboxFm->IsChecked() );
-        else
+        if ( !pCheckboxFm )
             throw uno::RuntimeException();
+
+        return uno::makeAny( pCheckboxFm->IsChecked() );
     }
     return SwXFieldmark_Base::getPropertyValue( rPropertyName );
 }

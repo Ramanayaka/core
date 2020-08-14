@@ -74,11 +74,11 @@ void PrinterInfoManager::initialize()
     // ???
 }
 
-void PrinterInfoManager::listPrinters( ::std::list< OUString >& rList ) const
+void PrinterInfoManager::listPrinters( ::std::vector< OUString >& rVector ) const
 {
     (void) this;
 
-    rList.clear();
+    rVector.clear();
 }
 
 const PrinterInfo& PrinterInfoManager::getPrinterInfo( const OUString& /* rPrinter */ ) const
@@ -88,26 +88,6 @@ const PrinterInfo& PrinterInfoManager::getPrinterInfo( const OUString& /* rPrint
     (void) this;
 
     return aEmptyInfo;
-}
-
-bool PrinterInfoManager::writePrinterConfig()
-{
-    return false;
-}
-
-bool PrinterInfoManager::addPrinter( const OUString& /* rPrinterName */, const OUString& /* rDriverName */ )
-{
-    return false;
-}
-
-bool PrinterInfoManager::removePrinter( const OUString& /* rPrinterName */, bool /* bCheckOnly */ )
-{
-    return false;
-}
-
-bool PrinterInfoManager::setDefaultPrinter( const OUString& /* rPrinterName */ )
-{
-    return false;
 }
 
 bool PrinterInfoManager::checkFeatureToken( const OUString& /* rPrinterName */, const char* /* pToken */ ) const

@@ -18,14 +18,14 @@
  */
 
 #include <rtl/ustrbuf.hxx>
-#include "propimp0.hxx"
-#include "sdxmlexp_impl.hxx"
-#include <com/sun/star/drawing/LineDash.hpp>
+#include <sal/log.hxx>
+#include <propimp0.hxx>
 #include <com/sun/star/util/Duration.hpp>
 #include <com/sun/star/uno/Any.hxx>
 
 #include <sax/tools/converter.hxx>
 
+#include <xmloff/xmlexp.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmlimp.hxx>
 
@@ -168,7 +168,7 @@ bool XMLOpacityPropertyHdl::exportXML(
     return bRet;
 }
 
-// implementation of an text animation step amount
+// implementation of a text animation step amount
 
 XMLTextAnimationStepPropertyHdl::~XMLTextAnimationStepPropertyHdl()
 {
@@ -182,11 +182,10 @@ bool XMLTextAnimationStepPropertyHdl::importXML(
     bool bRet = false;
     sal_Int32 nValue = 0;
 
-    const OUString aPX( "px" );
-    sal_Int32 nPos = rStrImpValue.indexOf( aPX );
+    sal_Int32 nPos = rStrImpValue.indexOf( "px" );
     if( nPos != -1 )
     {
-        if (::sax::Converter::convertNumber(nValue, rStrImpValue.copy(0, nPos)))
+        if (::sax::Converter::convertNumber(nValue, std::u16string_view(rStrImpValue).substr(0, nPos)))
         {
             rValue <<= sal_Int16( -nValue );
             bRet = true;
@@ -218,7 +217,7 @@ bool XMLTextAnimationStepPropertyHdl::exportXML(
 
         if( nVal < 0 )
         {
-            aOut.append( (sal_Int32)-nVal );
+            aOut.append( static_cast<sal_Int32>(-nVal) );
             aOut.append( "px" );
         }
         else

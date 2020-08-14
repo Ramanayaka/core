@@ -17,9 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/settings.hxx>
-#include <unotools/viewoptions.hxx>
-#include "svx/hyperdlg.hxx"
+#include <svx/hyperdlg.hxx>
 #include <svx/svxdlg.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/sfxsids.hrc>
@@ -41,29 +39,31 @@ SvxHlinkDlgWrapper::SvxHlinkDlgWrapper( vcl::Window* _pParent, sal_uInt16 nId,
 
 {
     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-    DBG_ASSERT(pFact, "Dialog creation failed!");
-    mpDlg = pFact->CreateSvxHpLinkDlg(_pParent, pBindings);
-    DBG_ASSERT(mpDlg, "Dialog creation failed!");
-    SetWindow( mpDlg->GetWindow() );
+    mpDlg = pFact->CreateSvxHpLinkDlg(this, pBindings, _pParent->GetFrameWeld());
+    SetController( mpDlg->GetController() );
     SetVisible_Impl(false);
 
     vcl::Window* pTopWindow = nullptr;
-    if ( pInfo->aSize.Width() != 0 && pInfo->aSize.Height() != 0 &&
-            (nullptr != (pTopWindow = SfxGetpApp()->GetTopWindow())))
+    if ( !pInfo->aSize.IsEmpty() )
     {
-        Size aParentSize( pTopWindow->GetSizePixel() );
-        Size aDlgSize ( GetSizePixel () );
+        pTopWindow = SfxGetpApp()->GetTopWindow();
+        if (pTopWindow)
+        {
+            weld::Dialog* pDialog = GetController()->getDialog();
 
-        if( aParentSize.Width() < pInfo->aPos.X() )
-            pInfo->aPos.setX( aParentSize.Width()-aDlgSize.Width() < long(0.1*aParentSize.Width()) ?
-                              long(0.1*aParentSize.Width()) : aParentSize.Width()-aDlgSize.Width() );
-        if( aParentSize.Height() < pInfo->aPos. Y() )
-            pInfo->aPos.setY( aParentSize.Height()-aDlgSize.Height() < long(0.1*aParentSize.Height()) ?
-                              long(0.1*aParentSize.Height()) : aParentSize.Height()-aDlgSize.Height() );
+            Size aParentSize( pTopWindow->GetSizePixel() );
+            Size aDlgSize(pDialog->get_size());
 
-        GetWindow()->SetPosPixel( pInfo->aPos );
+            if( aParentSize.Width() < pInfo->aPos.X() )
+                pInfo->aPos.setX( aParentSize.Width()-aDlgSize.Width() < long(0.1*aParentSize.Width()) ?
+                                  long(0.1*aParentSize.Width()) : aParentSize.Width()-aDlgSize.Width() );
+            if( aParentSize.Height() < pInfo->aPos. Y() )
+                pInfo->aPos.setY( aParentSize.Height()-aDlgSize.Height() < long(0.1*aParentSize.Height()) ?
+                                  long(0.1*aParentSize.Height()) : aParentSize.Height()-aDlgSize.Height() );
+
+            pDialog->window_move(pInfo->aPos.X(), pInfo->aPos.Y());
+        }
     }
-
     SetHideNotDelete( true );
 }
 
@@ -75,6 +75,11 @@ SfxChildWinInfo SvxHlinkDlgWrapper::GetInfo() const
 bool SvxHlinkDlgWrapper::QueryClose()
 {
     return !mpDlg || mpDlg->QueryClose();
+}
+
+SvxHlinkDlgWrapper::~SvxHlinkDlgWrapper()
+{
+    mpDlg.disposeAndClear();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

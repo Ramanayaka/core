@@ -8,11 +8,11 @@
  */
 package org.libreoffice.overlay;
 
-import org.libreoffice.LibreOfficeMainActivity;
 import android.graphics.RectF;
 import android.util.Log;
 
 import org.libreoffice.LOKitShell;
+import org.libreoffice.LibreOfficeMainActivity;
 import org.libreoffice.R;
 import org.libreoffice.canvas.SelectionHandle;
 import org.mozilla.gecko.gfx.Layer;
@@ -67,7 +67,7 @@ public class DocumentOverlay {
     }
 
     public DocumentOverlay(LibreOfficeMainActivity context, LayerView layerView) {
-        mDocumentOverlayView = (DocumentOverlayView) context.findViewById(R.id.text_cursor_view);
+        mDocumentOverlayView = context.findViewById(R.id.text_cursor_view);
         mDocumentOverlayLayer = new DocumentOverlayLayer();
         if (mDocumentOverlayView == null) {
             Log.e(LOGTAG, "Failed to initialize TextCursorLayer - CursorView is null");
@@ -236,6 +236,35 @@ public class DocumentOverlay {
 
     public RectF getCurrentCursorPosition() {
         return mDocumentOverlayView.getCurrentCursorPosition();
+    }
+
+    public void setCalcHeadersController(CalcHeadersController calcHeadersController) {
+        mDocumentOverlayView.setCalcHeadersController(calcHeadersController);
+    }
+
+    public void showCellSelection(final RectF cellCursorRect) {
+        LOKitShell.getMainHandler().post(new Runnable() {
+            public void run() {
+                mDocumentOverlayView.showCellSelection(cellCursorRect);
+            }
+        });
+    }
+
+    public void showHeaderSelection(final RectF cellCursorRect) {
+        LOKitShell.getMainHandler().post(new Runnable() {
+            public void run() {
+                mDocumentOverlayView.showHeaderSelection(cellCursorRect);
+            }
+        });
+    }
+
+    public void showAdjustLengthLine(final boolean isRow, final CalcHeadersView view) {
+        LOKitShell.getMainHandler().post(new Runnable() {
+            @Override
+            public void run() {
+                mDocumentOverlayView.showAdjustLengthLine(isRow, view);
+            }
+        });
     }
 }
 

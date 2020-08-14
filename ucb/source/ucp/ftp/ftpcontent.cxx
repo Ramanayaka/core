@@ -32,17 +32,17 @@
 #include "ftpcontentprovider.hxx"
 #include "ftpdirp.hxx"
 #include "ftpcontentidentifier.hxx"
-#include "ftpcfunc.hxx"
 #include "ftpintreq.hxx"
 
 #include <memory>
 #include <vector>
 #include <string.h>
 #include "curl.hxx"
-#include <curl/easy.h>
-#include <comphelper/processfactory.hxx>
+#include <comphelper/propertysequence.hxx>
+#include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/typeprovider.hxx>
 #include <ucbhelper/cancelcommandexecution.hxx>
-#include <ucbhelper/contentidentifier.hxx>
 #include <ucbhelper/fd_inputstream.hxx>
 #include <ucbhelper/propertyvalueset.hxx>
 #include <ucbhelper/simpleauthenticationrequest.hxx>
@@ -53,14 +53,12 @@
 #include <com/sun/star/beans/IllegalTypeException.hpp>
 #include <com/sun/star/beans/UnknownPropertyException.hpp>
 #include <com/sun/star/beans/Property.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/ucb/XCommandInfo.hpp>
 #include <com/sun/star/io/BufferSizeExceededException.hpp>
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/io/NotConnectedException.hpp>
 #include <com/sun/star/io/XActiveDataSink.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
-#include <com/sun/star/io/XActiveDataStreamer.hpp>
 #include <com/sun/star/ucb/UnsupportedDataSinkException.hpp>
 #include <com/sun/star/ucb/OpenCommandArgument2.hpp>
 #include <com/sun/star/ucb/UnsupportedOpenModeException.hpp>
@@ -70,7 +68,6 @@
 #include <com/sun/star/ucb/MissingPropertiesException.hpp>
 #include <com/sun/star/ucb/MissingInputStreamException.hpp>
 #include <com/sun/star/ucb/UnsupportedNameClashException.hpp>
-#include <com/sun/star/ucb/NameClashException.hpp>
 #include <com/sun/star/ucb/OpenMode.hpp>
 #include <com/sun/star/ucb/IOErrorCode.hpp>
 
@@ -133,12 +130,12 @@ void SAL_CALL FTPContent::release()
 css::uno::Any SAL_CALL FTPContent::queryInterface( const css::uno::Type & rType )
 {
     css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< XTypeProvider* >(this)),
-                                               (static_cast< XServiceInfo* >(this)),
-                                               (static_cast< XContent* >(this)),
-                                               (static_cast< XCommandProcessor* >(this)),
-                                               (static_cast< XContentCreator* >(this)),
-                                               (static_cast< XChild* >(this))
+                                               static_cast< XTypeProvider* >(this),
+                                               static_cast< XServiceInfo* >(this),
+                                               static_cast< XContent* >(this),
+                                               static_cast< XCommandProcessor* >(this),
+                                               static_cast< XContentCreator* >(this),
+                                               static_cast< XChild* >(this)
                                                );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
@@ -169,7 +166,7 @@ css::uno::Sequence< css::uno::Type > SAL_CALL FTPContent::getTypes()
 
 OUString SAL_CALL FTPContent::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.FTPContent");
+    return "com.sun.star.comp.FTPContent";
 }
 
 sal_Bool SAL_CALL FTPContent::supportsService( const OUString& ServiceName )
@@ -188,7 +185,7 @@ css::uno::Sequence< OUString > SAL_CALL FTPContent::getSupportedServiceNames()
 // virtual
 OUString SAL_CALL FTPContent::getContentType()
 {
-    return OUString(FTP_CONTENT_TYPE);
+    return FTP_CONTENT_TYPE;
 }
 
 // XCommandProcessor methods.
@@ -222,6 +219,8 @@ ResultSetBase* ResultSetFactory::createResultSet()
 
 // XCommandProcessor methods.
 
+namespace {
+
 enum ACTION { NOACTION,
               THROWAUTHENTICATIONREQUEST,
               THROWACCESSDENIED,
@@ -230,6 +229,8 @@ enum ACTION { NOACTION,
               THROWQUOTE,
               THROWNOFILE,
               THROWGENERAL };
+
+}
 
 // virtual
 Any SAL_CALL FTPContent::execute( const Command& aCommand,
@@ -247,7 +248,7 @@ Any SAL_CALL FTPContent::execute( const Command& aCommand,
             if(action == THROWAUTHENTICATIONREQUEST)
             {
                 // try to get a continuation first
-                OUString aRealm,aPassword,aAccount;
+                OUString aPassword,aAccount;
                 m_pFCP->forHost(m_aFTPURL.host(),
                                 m_aFTPURL.port(),
                                 m_aFTPURL.username(),
@@ -258,7 +259,7 @@ Any SAL_CALL FTPContent::execute( const Command& aCommand,
                         m_aFTPURL.ident(false, false),
                         m_aFTPURL.host(),      // ServerName
                         ucbhelper::SimpleAuthenticationRequest::ENTITY_NA,
-                        aRealm,
+                        OUString(),
                         ucbhelper::SimpleAuthenticationRequest
                         ::ENTITY_FIXED,
                         m_aFTPURL.username(),
@@ -322,13 +323,10 @@ Any SAL_CALL FTPContent::execute( const Command& aCommand,
 
             case THROWACCESSDENIED:
                 {
-                    Sequence<Any> seq(1);
-                    PropertyValue value;
-                    value.Name = "Uri";
-                    value.Handle = -1;
-                    value.Value <<= m_aFTPURL.ident(false,false);
-                    value.State = PropertyState_DIRECT_VALUE;
-                    seq[0] <<= value;
+                    Sequence<Any> seq(comphelper::InitAnyPropertySequence(
+                    {
+                        {"Uri", Any(m_aFTPURL.ident(false,false))}
+                    }));
                     ucbhelper::cancelCommandExecution(
                         IOErrorCode_ACCESS_DENIED,
                         seq,
@@ -357,13 +355,10 @@ Any SAL_CALL FTPContent::execute( const Command& aCommand,
                 }
             case THROWNOFILE:
                 {
-                    Sequence<Any> seq(1);
-                    PropertyValue value;
-                    value.Name = "Uri";
-                    value.Handle = -1;
-                    value.Value <<= m_aFTPURL.ident(false,false);
-                    value.State = PropertyState_DIRECT_VALUE;
-                    seq[0] <<= value;
+                    Sequence<Any> seq(comphelper::InitAnyPropertySequence(
+                    {
+                        {"Uri", Any(m_aFTPURL.ident(false,false))}
+                    }));
                     ucbhelper::cancelCommandExecution(
                         IOErrorCode_NO_FILE,
                         seq,
@@ -390,7 +385,7 @@ Any SAL_CALL FTPContent::execute( const Command& aCommand,
                     ucbhelper::cancelCommandExecution(aRet,Environment);
                 }
 
-                aRet <<= getPropertyValues(Properties,Environment);
+                aRet <<= getPropertyValues(Properties);
             }
             else if(aCommand.Name == "setPropertyValues")
             {
@@ -455,10 +450,9 @@ Any SAL_CALL FTPContent::execute( const Command& aCommand,
                     else if(xOutputStream.is()) {
                         Reference<XInputStream> xStream(
                             new ucbhelper::FdInputStream(m_aFTPURL.open()));
-                        Sequence<sal_Int8> byte_seq(4096);
-                        sal_Int32 n = 1000; // value does not matter here
                         for (;;) {
-                            n = xStream->readBytes(byte_seq,4096);
+                            Sequence<sal_Int8> byte_seq(4096);
+                            sal_Int32 n = xStream->readBytes(byte_seq, 4096);
                             if (n == 0) {
                                 break;
                             }
@@ -473,19 +467,6 @@ Any SAL_CALL FTPContent::execute( const Command& aCommand,
                             } catch(const IOException&) {
 
                             }
-                        }
-                        if(n) {
-                            Sequence<Any> seq(1);
-                            PropertyValue value;
-                            value.Name = "Uri";
-                            value.Handle = -1;
-                            value.Value <<= m_aFTPURL.ident(false,false);
-                            value.State = PropertyState_DIRECT_VALUE;
-                            seq[0] <<= value;
-                            ucbhelper::cancelCommandExecution(
-                                IOErrorCode_UNKNOWN,
-                                seq,
-                                Environment);
                         }
                     }
                     else {
@@ -505,7 +486,7 @@ Any SAL_CALL FTPContent::execute( const Command& aCommand,
                         = new DynamicResultSet(
                             m_xContext,
                             aOpenCommand,
-                            new ResultSetFactory(m_xContext,
+                            std::make_unique<ResultSetFactory>(m_xContext,
                                                  m_xProvider.get(),
                                                  aOpenCommand.Properties,
                                                  resvec));
@@ -645,6 +626,7 @@ OUString FTPContent::getParentURL()
     return m_aFTPURL.parent();
 }
 
+namespace {
 
 class InsertData
     : public CurlInput {
@@ -663,13 +645,14 @@ private:
     Reference<XInputStream> m_xInputStream;
 };
 
+}
 
 sal_Int32 InsertData::read(sal_Int8 *dest,sal_Int32 nBytesRequested)
 {
     sal_Int32 m = 0;
 
     if(m_xInputStream.is()) {
-            Sequence<sal_Int8> seq(nBytesRequested);
+        Sequence<sal_Int8> seq(nBytesRequested);
         m = m_xInputStream->readBytes(seq,nBytesRequested);
         memcpy(dest,seq.getConstArray(),m);
     }
@@ -722,7 +705,7 @@ void FTPContent::insert(const InsertCommandArgument& aInsertCommand,
             }
 
             XInteractionRequestImpl request;
-            Reference<XInteractionRequest> xReq(request.getRequest());
+            const Reference<XInteractionRequest>& xReq(request.getRequest());
             xInt->handle(xReq);
             if (request.approved()) {
                 bReplace = true;
@@ -743,8 +726,7 @@ void FTPContent::insert(const InsertCommandArgument& aInsertCommand,
 
 
 Reference< XRow > FTPContent::getPropertyValues(
-    const Sequence< Property >& seqProp,
-    const Reference<XCommandEnvironment>& /*environment*/
+    const Sequence< Property >& seqProp
 )
 {
     rtl::Reference<ucbhelper::PropertyValueSet> xRow =
@@ -752,41 +734,41 @@ Reference< XRow > FTPContent::getPropertyValues(
 
     FTPDirentry aDirEntry = m_aFTPURL.direntry();
 
-    for(sal_Int32 i = 0; i < seqProp.getLength(); ++i) {
-        const OUString& Name = seqProp[i].Name;
+    for(const auto& rProp : seqProp) {
+        const OUString& Name = rProp.Name;
         if(Name == "Title")
-            xRow->appendString(seqProp[i],aDirEntry.m_aName);
+            xRow->appendString(rProp,aDirEntry.m_aName);
         else if(Name == "CreatableContentsInfo")
-            xRow->appendObject(seqProp[i],
+            xRow->appendObject(rProp,
                                makeAny(queryCreatableContentsInfo()));
         else if(aDirEntry.m_nMode != INETCOREFTP_FILEMODE_UNKNOWN) {
             if(Name == "ContentType")
-                xRow->appendString(seqProp[i],
+                xRow->appendString(rProp,
                                    (aDirEntry.m_nMode & INETCOREFTP_FILEMODE_ISDIR)
                                    ? OUString(FTP_FOLDER)
                                    : OUString(FTP_FILE) );
             else if(Name == "IsReadOnly")
-                xRow->appendBoolean(seqProp[i],
+                xRow->appendBoolean(rProp,
                                     (aDirEntry.m_nMode
                                      & INETCOREFTP_FILEMODE_WRITE) == 0 );
             else if(Name == "IsDocument")
-                xRow->appendBoolean(seqProp[i],
+                xRow->appendBoolean(rProp,
                                     (aDirEntry.m_nMode &
                                                INETCOREFTP_FILEMODE_ISDIR) != INETCOREFTP_FILEMODE_ISDIR);
             else if(Name == "IsFolder")
-                xRow->appendBoolean(seqProp[i],
+                xRow->appendBoolean(rProp,
                                     (aDirEntry.m_nMode &
                                              INETCOREFTP_FILEMODE_ISDIR) == INETCOREFTP_FILEMODE_ISDIR);
             else if(Name == "Size")
-                xRow->appendLong(seqProp[i],
+                xRow->appendLong(rProp,
                                  aDirEntry.m_nSize);
             else if(Name == "DateCreated")
-                xRow->appendTimestamp(seqProp[i],
+                xRow->appendTimestamp(rProp,
                                       aDirEntry.m_aDate);
             else
-                xRow->appendVoid(seqProp[i]);
+                xRow->appendVoid(rProp);
         } else
-            xRow->appendVoid(seqProp[i]);
+            xRow->appendVoid(rProp);
     }
 
     return Reference<XRow>(xRow.get());
@@ -838,20 +820,21 @@ Sequence<Any> FTPContent::setPropertyValues(
 
             // either unknown or read-only
             ret[i] <<= UnknownPropertyException();
-            for(sal_Int32 j = 0; j < props.getLength(); ++j)
-                if(props[j].Name == seqPropVal[i].Name) {
-                    ret[i] <<= IllegalAccessException(
-                        "Property is read-only!",
-                            //props[j].Attributes & PropertyAttribute::READONLY
-                            //    ? "Property is read-only!"
-                            //    : "Access denied!"),
-                        static_cast< cppu::OWeakObject * >( this ));
-                    break;
-                }
+            const auto& rName = seqPropVal[i].Name;
+            auto pProp = std::find_if(props.begin(), props.end(),
+                [&rName](const Property& rProp) { return rProp.Name == rName; });
+            if (pProp != props.end()) {
+                ret[i] <<= IllegalAccessException(
+                    "Property is read-only!",
+                        //props[j].Attributes & PropertyAttribute::READONLY
+                        //    ? "Property is read-only!"
+                        //    : "Access denied!"),
+                    static_cast< cppu::OWeakObject * >( this ));
+            }
         }
     }
 
-    if(evt.getLength()) {
+    if(evt.hasElements()) {
         // title has changed
         notifyPropertiesChange(evt);
         (void)exchange(new FTPContentIdentifier(m_aFTPURL.ident(false,false)));

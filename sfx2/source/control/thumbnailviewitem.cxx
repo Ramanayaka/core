@@ -17,35 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/thumbnailviewitem.hxx>
+#include <thumbnailviewitem.hxx>
 
 #include <sfx2/thumbnailview.hxx>
 #include "thumbnailviewacc.hxx"
 
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
-#include <basegfx/range/b2drectangle.hxx>
-#include <basegfx/vector/b2dsize.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <drawinglayer/attribute/fillgraphicattribute.hxx>
 #include <drawinglayer/primitive2d/fillgraphicprimitive2d.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonSelectionPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/textlayoutdevice.hxx>
 #include <drawinglayer/primitive2d/textprimitive2d.hxx>
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
-#include <vcl/button.hxx>
 #include <vcl/graph.hxx>
-#include <vcl/svapp.hxx>
 #include <vcl/texteng.hxx>
-#include <vcl/textdata.hxx>
 
 using namespace basegfx;
-using namespace basegfx::tools;
+using namespace basegfx::utils;
 using namespace ::com::sun::star;
 using namespace drawinglayer::attribute;
 using namespace drawinglayer::primitive2d;
 
-ThumbnailViewItem::ThumbnailViewItem(ThumbnailView &rView, sal_uInt16 nId)
+ThumbnailViewItem::ThumbnailViewItem(ThumbnailViewBase &rView, sal_uInt16 nId)
     : mrParent(rView)
     , mnId(nId)
     , mbVisible(true)
@@ -120,7 +115,7 @@ void ThumbnailViewItem::setDrawArea (const ::tools::Rectangle &area)
     maDrawArea = area;
 }
 
-void ThumbnailViewItem::calculateItemsPosition (const long nThumbnailHeight, const long,
+void ThumbnailViewItem::calculateItemsPosition (const long nThumbnailHeight,
                                                 const long nPadding, sal_uInt32 nMaxTextLength,
                                                 const ThumbnailItemAttributes *pAttrs)
 {
@@ -134,13 +129,13 @@ void ThumbnailViewItem::calculateItemsPosition (const long nThumbnailHeight, con
 
     // Calculate thumbnail position
     Point aPos = maDrawArea.TopLeft();
-    aPos.X() = maDrawArea.getX() + (aRectSize.Width()-aImageSize.Width())/2;
-    aPos.Y() = maDrawArea.getY() + nPadding + (nThumbnailHeight-aImageSize.Height())/2;
+    aPos.setX( maDrawArea.getX() + (aRectSize.Width()-aImageSize.Width())/2 );
+    aPos.setY( maDrawArea.getY() + nPadding + (nThumbnailHeight-aImageSize.Height())/2 );
     maPrev1Pos = aPos;
 
     // Calculate text position
-    aPos.Y() = maDrawArea.getY() + nThumbnailHeight + nPadding * 2;
-    aPos.X() = maDrawArea.Left() + (aRectSize.Width() - aTextDev.getTextWidth(maTitle,0,nMaxTextLength))/2;
+    aPos.setY( maDrawArea.getY() + nThumbnailHeight + nPadding * 2 );
+    aPos.setX( maDrawArea.Left() + (aRectSize.Width() - aTextDev.getTextWidth(maTitle,0,nMaxTextLength))/2 );
     maTextPos = aPos;
 }
 
@@ -204,7 +199,13 @@ void ThumbnailViewItem::Paint (drawinglayer::processor2d::BaseProcessor2D *pProc
 
 void ThumbnailViewItem::addTextPrimitives (const OUString& rText, const ThumbnailItemAttributes *pAttrs, Point aPos, drawinglayer::primitive2d::Primitive2DContainer& rSeq)
 {
+    // adjust text drawing position according to text font
     drawinglayer::primitive2d::TextLayouterDevice aTextDev;
+    aTextDev.setFontAttribute(
+        pAttrs->aFontAttr,
+        pAttrs->aFontSize.getX(),
+        pAttrs->aFontSize.getY(),
+        css::lang::Locale());
 
     aPos.setY(aPos.getY() + aTextDev.getTextHeight());
 
@@ -236,8 +237,7 @@ void ThumbnailViewItem::addTextPrimitives (const OUString& rText, const Thumbnai
                 --nLength;
             }
 
-            aText = aText.copy(0, nLineStart+nLength);
-            aText += "...";
+            aText = aText.copy(0, nLineStart+nLength) + "...";
             nLineLength = nLength + 3;
         }
 

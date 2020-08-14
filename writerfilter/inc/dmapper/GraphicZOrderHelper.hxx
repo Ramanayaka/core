@@ -12,22 +12,21 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <map>
 
-namespace writerfilter
-{
-namespace dmapper
+namespace writerfilter::dmapper
 {
 class GraphicZOrderHelper
 {
 public:
-    void addItem(css::uno::Reference<css::beans::XPropertySet> const& props, sal_Int32 relativeHeight);
+    void addItem(css::uno::Reference<css::beans::XPropertySet> const& props,
+                 sal_Int32 relativeHeight);
     sal_Int32 findZOrder(sal_Int32 relativeHeight, bool bOldStyle = false);
+
 private:
-    using Items = std::map< sal_Int32, css::uno::Reference<css::beans::XPropertySet> >;
+    using Items = std::map<sal_Int32, css::uno::Reference<css::beans::XPropertySet>>;
     Items items;
 };
 
-} // namespace dmapper
-} // namespace writerfilter
+} // namespace writerfilter::dmapper
 
 #endif // INCLUDED_WRITERFILTER_INC_DMAPPER_GRAPHICZORDERHELPER_HXX
 

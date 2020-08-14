@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "screenupdater.hxx"
-#include "listenercontainer.hxx"
+#include <screenupdater.hxx>
+#include <listenercontainer.hxx>
 
 #include <osl/diagnose.h>
 
@@ -40,9 +40,7 @@ namespace {
     };
 }
 
-namespace slideshow
-{
-namespace internal
+namespace slideshow::internal
 {
     typedef std::vector<
         std::pair<UnoViewSharedPtr,bool> > UpdateRequestVector;
@@ -99,8 +97,7 @@ namespace internal
     void ScreenUpdater::notifyUpdate( const UnoViewSharedPtr& rView,
                                       bool                    bViewClobbered )
     {
-        mpImpl->maViewUpdateRequests.push_back(
-            std::make_pair(rView, bViewClobbered) );
+        mpImpl->maViewUpdateRequests.emplace_back(rView, bViewClobbered );
 
         if( bViewClobbered )
             mpImpl->mbViewClobbered = true;
@@ -130,7 +127,7 @@ namespace internal
         if( bViewUpdatesNeeded )
         {
             mpImpl->maUpdaters.applyAll(
-                std::mem_fn((bool (ViewUpdate::*)())&ViewUpdate::update) );
+                std::mem_fn(&ViewUpdate::update) );
         }
 
         if( bViewUpdatesNeeded ||
@@ -214,12 +211,11 @@ namespace internal
 
     ::std::shared_ptr<ScreenUpdater::UpdateLock> ScreenUpdater::createLock()
     {
-        return ::std::shared_ptr<ScreenUpdater::UpdateLock>(new ::UpdateLock(*this));
+        return ::std::make_shared<::UpdateLock>(*this);
     }
 
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 namespace {
 

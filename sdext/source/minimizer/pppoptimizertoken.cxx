@@ -21,7 +21,6 @@
 #include "pppoptimizertoken.hxx"
 #include <osl/mutex.hxx>
 #include <sal/macros.h>
-#include <string.h>
 #include <unordered_map>
 #include <memory>
 
@@ -33,13 +32,17 @@ static ::osl::Mutex& getHashMapMutex()
     return s_aHashMapProtection;
 }
 
+namespace {
+
 struct TokenTable
 {
     const char*                         pS;
     PPPOptimizerTokenEnum               pE;
 };
 
-static const TokenTable pTokenTableArray[] =
+}
+
+const TokenTable pTokenTableArray[] =
 {
     { "rdmNavi",            TK_rdmNavi },
     { "btnNavBack",         TK_btnNavBack },
@@ -152,6 +155,9 @@ static const TokenTable pTokenTableArray[] =
     { "STR_OPTIMIZING_GRAPHICS",    STR_OPTIMIZING_GRAPHICS },
     { "STR_CREATING_OLE_REPLACEMENTS",STR_CREATING_OLE_REPLACEMENTS },
     { "STR_FileSizeSeparator",      STR_FILESIZESEPARATOR },
+    { "STR_FILENAME_SUFFIX",        STR_FILENAME_SUFFIX },
+    { "STR_WARN_UNSAVED_PRESENTATION", STR_WARN_UNSAVED_PRESENTATION },
+
 
     { "NotFound",           TK_NotFound }
 };
@@ -175,7 +181,7 @@ PPPOptimizerTokenEnum TKGet( const OUString& rToken )
     int i, nLen = rToken.getLength();
     std::unique_ptr<char[]> pBuf(new char[ nLen + 1 ]);
     for ( i = 0; i < nLen; i++ )
-        pBuf[ i ] = (char)rToken[ i ];
+        pBuf[ i ] = static_cast<char>(rToken[ i ]);
     pBuf[ i ] = 0;
     TypeNameHashMap::iterator aHashIter( pHashMap->find( pBuf.get() ) );
     if ( aHashIter != pHashMap->end() )

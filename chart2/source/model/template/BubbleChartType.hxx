@@ -20,16 +20,14 @@
 #define INCLUDED_CHART2_SOURCE_MODEL_TEMPLATE_BUBBLECHARTTYPE_HXX
 
 #include "ChartType.hxx"
-#include <com/sun/star/chart2/CurveStyle.hpp>
 
 namespace chart
 {
 
-class BubbleChartType : public ChartType
+class BubbleChartType final : public ChartType
 {
 public:
-    explicit BubbleChartType(
-        css::uno::Reference< css::uno::XComponentContext > const & xContext );
+    explicit BubbleChartType();
     virtual ~BubbleChartType() override;
 
     virtual OUString SAL_CALL
@@ -39,7 +37,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL
         getSupportedServiceNames() override;
 
-protected:
+private:
     explicit BubbleChartType( const BubbleChartType & rOther );
 
     // ____ XChartType ____

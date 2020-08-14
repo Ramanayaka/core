@@ -17,16 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "unointerfaceproxy.hxx"
+#include <unointerfaceproxy.hxx>
 
-#include "bridge.hxx"
+#include <bridge.hxx>
 
-#include "com/sun/star/uno/XInterface.hpp"
-#include "osl/interlck.h"
-#include "typelib/typedescription.h"
-#include "uno/dispatcher.h"
+#include <com/sun/star/uno/XInterface.hpp>
+#include <typelib/typedescription.h>
+#include <uno/dispatcher.h>
 
-namespace bridges { namespace cpp_uno { namespace shared {
+namespace bridges::cpp_uno::shared {
 
 void freeUnoInterfaceProxy(uno_ExtEnvironment * pEnv, void * pProxy)
 {
@@ -51,30 +50,28 @@ void freeUnoInterfaceProxy(uno_ExtEnvironment * pEnv, void * pProxy)
 
 void acquireProxy(uno_Interface * pUnoI)
 {
-    if (osl_atomic_increment(
-            & static_cast< UnoInterfaceProxy * >( pUnoI )->nRef ) == 1)
-    {
-        // rebirth of proxy zombie
-        // register at uno env
+    if (++static_cast< UnoInterfaceProxy * >( pUnoI )->nRef != 1)
+        return;
+
+    // rebirth of proxy zombie
+    // register at uno env
 #if OSL_DEBUG_LEVEL > 1
-        void * pThis = pUnoI;
+    void * pThis = pUnoI;
 #endif
-        (*static_cast< UnoInterfaceProxy * >( pUnoI )->pBridge->getUnoEnv()->
-         registerProxyInterface)(
-             static_cast< UnoInterfaceProxy * >( pUnoI )->pBridge->getUnoEnv(),
-             reinterpret_cast< void ** >( &pUnoI ), freeUnoInterfaceProxy,
-             static_cast< UnoInterfaceProxy * >( pUnoI )->oid.pData,
-             static_cast< UnoInterfaceProxy * >( pUnoI )->pTypeDescr );
+    (*static_cast< UnoInterfaceProxy * >( pUnoI )->pBridge->getUnoEnv()->
+     registerProxyInterface)(
+         static_cast< UnoInterfaceProxy * >( pUnoI )->pBridge->getUnoEnv(),
+         reinterpret_cast< void ** >( &pUnoI ), freeUnoInterfaceProxy,
+         static_cast< UnoInterfaceProxy * >( pUnoI )->oid.pData,
+         static_cast< UnoInterfaceProxy * >( pUnoI )->pTypeDescr );
 #if OSL_DEBUG_LEVEL > 1
-        assert(pThis == pUnoI);
+    assert(pThis == pUnoI);
 #endif
-    }
 }
 
 void releaseProxy(uno_Interface * pUnoI)
 {
-    if (! osl_atomic_decrement(
-            & static_cast< UnoInterfaceProxy * >( pUnoI )->nRef ))
+    if (! --static_cast< UnoInterfaceProxy * >( pUnoI )->nRef )
     {
         // revoke from uno env on last release
         (*static_cast< UnoInterfaceProxy * >( pUnoI )->pBridge->getUnoEnv()->
@@ -123,6 +120,6 @@ UnoInterfaceProxy::UnoInterfaceProxy(
 UnoInterfaceProxy::~UnoInterfaceProxy()
 {}
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

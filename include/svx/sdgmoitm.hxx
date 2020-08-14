@@ -20,35 +20,31 @@
 #ifndef INCLUDED_SVX_SDGMOITM_HXX
 #define INCLUDED_SVX_SDGMOITM_HXX
 
-#include <svtools/grfmgr.hxx>
+#include <vcl/GraphicAttributes.hxx>
 #include <svl/eitem.hxx>
 #include <svx/svddef.hxx>
 #include <svx/svxdllapi.h>
 
 // MSVC hack:
-class SdrGrafModeItem_Base: public SfxEnumItem<GraphicDrawMode> {
+class SAL_DLLPUBLIC_RTTI SdrGrafModeItem_Base: public SfxEnumItem<GraphicDrawMode> {
 protected:
     SdrGrafModeItem_Base(GraphicDrawMode eMode):
         SfxEnumItem(SDRATTR_GRAFMODE, eMode) {}
-
-    SdrGrafModeItem_Base(SvStream& rIn): SfxEnumItem(SDRATTR_GRAFMODE, rIn) {}
 };
 
-class SVX_DLLPUBLIC SdrGrafModeItem : public SdrGrafModeItem_Base
+class SVXCORE_DLLPUBLIC SdrGrafModeItem : public SdrGrafModeItem_Base
 {
 public:
                             SdrGrafModeItem( GraphicDrawMode eMode = GraphicDrawMode::Standard ) : SdrGrafModeItem_Base( eMode ) {}
-                            SdrGrafModeItem( SvStream& rIn ) : SdrGrafModeItem_Base( rIn ) {}
 
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create( SvStream& rIn, sal_uInt16 nVer ) const override;
+    virtual SdrGrafModeItem* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual sal_uInt16      GetValueCount() const override;
 
-    virtual OUString        GetValueTextByPos( sal_uInt16 nPos ) const override;
+    static OUString         GetValueTextByPos( sal_uInt16 nPos );
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString& rText, const IntlWrapper * = nullptr) const override;
+                                  OUString& rText, const IntlWrapper& ) const override;
 };
 
 #endif // INCLUDED_SVX_SDGMOITM_HXX

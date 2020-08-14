@@ -22,7 +22,7 @@ $(eval $(call gb_Library_add_defs,rpt,\
 
 $(eval $(call gb_Library_use_external,rpt,boost_headers))
 
-$(eval $(call gb_Library_set_precompiled_header,rpt,$(SRCDIR)/reportdesign/inc/pch/precompiled_rpt))
+$(eval $(call gb_Library_set_precompiled_header,rpt,reportdesign/inc/pch/precompiled_rpt))
 
 $(eval $(call gb_Library_use_sdk_api,rpt))
 
@@ -33,7 +33,7 @@ $(eval $(call gb_Library_use_libraries,rpt,\
     dbtools \
     dbu \
     editeng \
-    fwe \
+    fwk \
     i18nlangtag \
     sal \
     salhelper \
@@ -66,7 +66,6 @@ $(eval $(call gb_Library_add_exception_objects,rpt,\
     reportdesign/source/core/api/ReportEngineJFree \
     reportdesign/source/core/api/ReportVisitor \
     reportdesign/source/core/api/Section \
-    reportdesign/source/core/api/services \
     reportdesign/source/core/api/Shape \
     reportdesign/source/core/api/Tools \
     reportdesign/source/core/misc/conditionalexpression \
@@ -74,7 +73,6 @@ $(eval $(call gb_Library_add_exception_objects,rpt,\
     reportdesign/source/core/misc/reportformula \
     reportdesign/source/core/resource/core_resource \
     reportdesign/source/core/sdr/formatnormalizer \
-    reportdesign/source/core/sdr/ModuleHelper \
     reportdesign/source/core/sdr/PropertyForward \
     reportdesign/source/core/sdr/ReportDrawPage \
     reportdesign/source/core/sdr/ReportUndoFactory \

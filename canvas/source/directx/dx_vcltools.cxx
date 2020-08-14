@@ -33,10 +33,8 @@
 
 using namespace ::com::sun::star;
 
-namespace dxcanvas
+namespace dxcanvas::tools
 {
-    namespace tools
-    {
         namespace
         {
             /// Calc number of colors in given BitmapInfoHeader
@@ -155,7 +153,7 @@ namespace dxcanvas
                 RawRGBABitmap aBmpData;
                 aBmpData.mnWidth     = aBmpSize.Width();
                 aBmpData.mnHeight    = aBmpSize.Height();
-                aBmpData.mpBitmapData.reset( new sal_uInt8[ 4*aBmpData.mnWidth*aBmpData.mnHeight ] );
+                aBmpData.maBitmapData.resize(4*aBmpData.mnWidth*aBmpData.mnHeight);
 
                 Bitmap aBitmap( rBmpEx.GetBitmap() );
 
@@ -168,9 +166,9 @@ namespace dxcanvas
                                   "::dxcanvas::tools::bitmapFromVCLBitmapEx(): "
                                   "Unable to acquire read access to bitmap" );
 
-                if( rBmpEx.IsAlpha() )
+                if( rBmpEx.IsAlpha() || rBmpEx.GetMask().GetBitCount() == 8 )
                 {
-                    Bitmap aAlpha( rBmpEx.GetAlpha().GetBitmap() );
+                    Bitmap aAlpha( rBmpEx.IsAlpha() ? rBmpEx.GetAlpha().GetBitmap() : rBmpEx.GetMask());
 
                     Bitmap::ScopedReadAccess pAlphaReadAccess( aAlpha );
 
@@ -180,7 +178,6 @@ namespace dxcanvas
                     //    ScanlineFormat::N1BitMsbPal
                     //    ScanlineFormat::N4BitMsnPal
                     //    ScanlineFormat::N8BitPal
-                    //    ScanlineFormat::N16BitTcLsbMask
                     //    ScanlineFormat::N24BitTcBgr
                     //    ScanlineFormat::N32BitTcMask
 
@@ -200,7 +197,7 @@ namespace dxcanvas
                                       "Unsupported alpha scanline format" );
 
                     BitmapColor     aCol;
-                    sal_uInt8*      pCurrOutput( aBmpData.mpBitmapData.get() );
+                    sal_uInt8*      pCurrOutput(aBmpData.maBitmapData.data());
                     int             x, y;
 
                     for( y=0; y<nHeight; ++y )
@@ -223,7 +220,7 @@ namespace dxcanvas
                                     // out notion of alpha is
                                     // different from the rest
                                     // of the world's
-                                    *pCurrOutput++ = 255 - (BYTE)*pAScan++;
+                                    *pCurrOutput++ = 255 - static_cast<BYTE>(*pAScan++);
                                 }
                             }
                             break;
@@ -243,7 +240,7 @@ namespace dxcanvas
                                     // out notion of alpha is
                                     // different from the rest
                                     // of the world's
-                                    *pCurrOutput++ = 255 - (BYTE)*pAScan++;
+                                    *pCurrOutput++ = 255 - static_cast<BYTE>(*pAScan++);
                                 }
                             }
                             break;
@@ -252,11 +249,7 @@ namespace dxcanvas
                             // to hand-formulate the following
                             // formats, too.
                             case ScanlineFormat::N1BitMsbPal:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N4BitMsnPal:
-                                // FALLTHROUGH intended
-                            case ScanlineFormat::N16BitTcLsbMask:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N32BitTcMask:
                             {
                                 Scanline pAScan = pAlphaReadAccess->GetScanline( y );
@@ -275,29 +268,19 @@ namespace dxcanvas
                                     // out notion of alpha is
                                     // different from the rest
                                     // of the world's
-                                    *pCurrOutput++ = 255 - (BYTE)*pAScan++;
+                                    *pCurrOutput++ = 255 - static_cast<BYTE>(*pAScan++);
                                 }
                             }
                             break;
 
                             case ScanlineFormat::N1BitLsbPal:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N4BitLsnPal:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N8BitTcMask:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N24BitTcRgb:
-                                // FALLTHROUGH intended
-                            case ScanlineFormat::N16BitTcMsbMask:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N32BitTcAbgr:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N32BitTcArgb:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N32BitTcBgra:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N32BitTcRgba:
-                                // FALLTHROUGH intended
                             default:
                                 ENSURE_OR_THROW( false,
                                                   "::dxcanvas::tools::bitmapFromVCLBitmapEx(): "
@@ -318,7 +301,6 @@ namespace dxcanvas
                     //    ScanlineFormat::N1BitMsbPal
                     //    ScanlineFormat::N4BitMsnPal
                     //    ScanlineFormat::N8BitPal
-                    //    ScanlineFormat::N16BitTcLsbMask
                     //    ScanlineFormat::N24BitTcBgr
                     //    ScanlineFormat::N32BitTcMask
 
@@ -340,7 +322,7 @@ namespace dxcanvas
                     int             nCurrBit;
                     const int       nMask( 1 );
                     const int       nInitialBit(7);
-                    sal_uInt8*      pCurrOutput( aBmpData.mpBitmapData.get() );
+                    sal_uInt8*      pCurrOutput(aBmpData.maBitmapData.data());
                     int             x, y;
 
                     // mapping table, to get from mask index color to
@@ -403,11 +385,7 @@ namespace dxcanvas
                             // to hand-formulate the following
                             // formats, too.
                             case ScanlineFormat::N1BitMsbPal:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N4BitMsnPal:
-                                // FALLTHROUGH intended
-                            case ScanlineFormat::N16BitTcLsbMask:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N32BitTcMask:
                             {
                                 Scanline pMScan = pMaskReadAccess->GetScanline( y );
@@ -431,23 +409,13 @@ namespace dxcanvas
                             break;
 
                             case ScanlineFormat::N1BitLsbPal:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N4BitLsnPal:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N8BitTcMask:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N24BitTcRgb:
-                                // FALLTHROUGH intended
-                            case ScanlineFormat::N16BitTcMsbMask:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N32BitTcAbgr:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N32BitTcArgb:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N32BitTcBgra:
-                                // FALLTHROUGH intended
                             case ScanlineFormat::N32BitTcRgba:
-                                // FALLTHROUGH intended
                             default:
                                 ENSURE_OR_THROW( false,
                                                   "::dxcanvas::tools::bitmapFromVCLBitmapEx(): "
@@ -492,7 +460,7 @@ namespace dxcanvas
 
             return drawVCLBitmapEx( rGraphics, aBmpEx );
         }
-    }
 }
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

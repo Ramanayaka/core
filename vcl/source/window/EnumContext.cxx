@@ -27,15 +27,15 @@ namespace vcl {
 
 namespace {
 
-typedef ::std::map<rtl::OUString,EnumContext::Application> ApplicationMap;
+typedef ::std::map<OUString,EnumContext::Application> ApplicationMap;
 
-static ApplicationMap maApplicationMap;
-static o3tl::enumarray<EnumContext::Application, rtl::OUString> maApplicationVector;
+ApplicationMap maApplicationMap;
+o3tl::enumarray<EnumContext::Application, OUString> maApplicationVector;
 
-typedef ::std::map<rtl::OUString,EnumContext::Context> ContextMap;
+typedef ::std::map<OUString,EnumContext::Context> ContextMap;
 
-static ContextMap maContextMap;
-static o3tl::enumarray<EnumContext::Context, rtl::OUString> maContextVector;
+ContextMap maContextMap;
+o3tl::enumarray<EnumContext::Context, OUString> maContextVector;
 
 }
 
@@ -53,14 +53,6 @@ EnumContext::EnumContext (
     const Context eContext)
     : meApplication(eApplication),
       meContext(eContext)
-{
-}
-
-EnumContext::EnumContext (
-    const ::rtl::OUString& rsApplicationName,
-    const ::rtl::OUString& rsContextName)
-    : meApplication(GetApplicationEnum(rsApplicationName)),
-      meContext(GetContextEnum(rsContextName))
 {
 }
 
@@ -90,19 +82,19 @@ EnumContext::Application EnumContext::GetApplication_DI() const
      }
 }
 
-bool EnumContext::operator== (const EnumContext& rOther)
+bool EnumContext::operator== (const EnumContext& rOther) const
 {
     return meApplication==rOther.meApplication
         && meContext==rOther.meContext;
 }
 
-bool EnumContext::operator!= (const EnumContext& rOther)
+bool EnumContext::operator!= (const EnumContext& rOther) const
 {
     return meApplication!=rOther.meApplication
         || meContext!=rOther.meContext;
 }
 
-void EnumContext::AddEntry (const ::rtl::OUString& rsName, const Application eApplication)
+void EnumContext::AddEntry (const OUString& rsName, const Application eApplication)
 {
     maApplicationMap[rsName] = eApplication;
     OSL_ASSERT(eApplication<=Application::LAST);
@@ -111,25 +103,27 @@ void EnumContext::AddEntry (const ::rtl::OUString& rsName, const Application eAp
 
 void EnumContext::ProvideApplicationContainers()
 {
-    if (maApplicationMap.empty())
-    {
-        AddEntry("com.sun.star.text.TextDocument", EnumContext::Application::Writer);
-        AddEntry("com.sun.star.text.GlobalDocument", EnumContext::Application::WriterGlobal);
-        AddEntry("com.sun.star.text.WebDocument", EnumContext::Application::WriterWeb);
-        AddEntry("com.sun.star.xforms.XMLFormDocument", EnumContext::Application::WriterXML);
-        AddEntry("com.sun.star.sdb.FormDesign", EnumContext::Application::WriterForm);
-        AddEntry("com.sun.star.sdb.TextReportDesign", EnumContext::Application::WriterReport);
-        AddEntry("com.sun.star.sheet.SpreadsheetDocument", EnumContext::Application::Calc);
-        AddEntry("com.sun.star.chart2.ChartDocument", EnumContext::Application::Chart);
-        AddEntry("com.sun.star.drawing.DrawingDocument", EnumContext::Application::Draw);
-        AddEntry("com.sun.star.presentation.PresentationDocument", EnumContext::Application::Impress);
+    if (!maApplicationMap.empty())
+        return;
 
-        AddEntry("any", EnumContext::Application::Any);
-        AddEntry("none", EnumContext::Application::NONE);
-    }
+    AddEntry("com.sun.star.text.TextDocument", EnumContext::Application::Writer);
+    AddEntry("com.sun.star.text.GlobalDocument", EnumContext::Application::WriterGlobal);
+    AddEntry("com.sun.star.text.WebDocument", EnumContext::Application::WriterWeb);
+    AddEntry("com.sun.star.xforms.XMLFormDocument", EnumContext::Application::WriterXML);
+    AddEntry("com.sun.star.sdb.FormDesign", EnumContext::Application::WriterForm);
+    AddEntry("com.sun.star.sdb.TextReportDesign", EnumContext::Application::WriterReport);
+    AddEntry("com.sun.star.sheet.SpreadsheetDocument", EnumContext::Application::Calc);
+    AddEntry("com.sun.star.chart2.ChartDocument", EnumContext::Application::Chart);
+    AddEntry("com.sun.star.drawing.DrawingDocument", EnumContext::Application::Draw);
+    AddEntry("com.sun.star.presentation.PresentationDocument", EnumContext::Application::Impress);
+    AddEntry("com.sun.star.formula.FormulaProperties", EnumContext::Application::Formula);
+    AddEntry("com.sun.star.sdb.OfficeDatabaseDocument", EnumContext::Application::Base);
+    AddEntry("any", EnumContext::Application::Any);
+    AddEntry("none", EnumContext::Application::NONE);
+
 }
 
-EnumContext::Application EnumContext::GetApplicationEnum (const ::rtl::OUString& rsApplicationName)
+EnumContext::Application EnumContext::GetApplicationEnum (const OUString& rsApplicationName)
 {
     ProvideApplicationContainers();
 
@@ -141,13 +135,13 @@ EnumContext::Application EnumContext::GetApplicationEnum (const ::rtl::OUString&
         return EnumContext::Application::NONE;
 }
 
-const ::rtl::OUString& EnumContext::GetApplicationName (const Application eApplication)
+const OUString& EnumContext::GetApplicationName (const Application eApplication)
 {
     ProvideApplicationContainers();
     return maApplicationVector[eApplication];
 }
 
-void EnumContext::AddEntry (const ::rtl::OUString& rsName, const Context eContext)
+void EnumContext::AddEntry (const OUString& rsName, const Context eContext)
 {
     maContextMap[rsName] = eContext;
     maContextVector[eContext] = rsName;
@@ -155,46 +149,49 @@ void EnumContext::AddEntry (const ::rtl::OUString& rsName, const Context eContex
 
 void EnumContext::ProvideContextContainers()
 {
-    if (maContextMap.empty())
-    {
-        AddEntry("any", Context::Any);
-        AddEntry("default", Context::Default);
-        AddEntry("empty", Context::Empty);
-        AddEntry("3DObject", Context::ThreeDObject);
-        AddEntry("Annotation", Context::Annotation);
-        AddEntry("Auditing", Context::Auditing);
-        AddEntry("Axis", Context::Axis);
-        AddEntry("Cell", Context::Cell);
-        AddEntry("Chart", Context::Chart);
-        AddEntry("ChartElements", Context::ChartElements);
-        AddEntry("Draw", Context::Draw);
-        AddEntry("DrawLine", Context::DrawLine);
-        AddEntry("DrawPage", Context::DrawPage);
-        AddEntry("DrawText", Context::DrawText);
-        AddEntry("EditCell", Context::EditCell);
-        AddEntry("ErrorBar", Context::ErrorBar);
-        AddEntry("Form", Context::Form);
-        AddEntry("Frame", Context::Frame);
-        AddEntry("Graphic", Context::Graphic);
-        AddEntry("Grid", Context::Grid);
-        AddEntry("HandoutPage", Context::HandoutPage);
-        AddEntry("MasterPage", Context::MasterPage);
-        AddEntry("Media", Context::Media);
-        AddEntry("MultiObject", Context::MultiObject);
-        AddEntry("NotesPage", Context::NotesPage);
-        AddEntry("OLE", Context::OLE);
-        AddEntry("OutlineText", Context::OutlineText);
-        AddEntry("Pivot", Context::Pivot);
-        AddEntry("Series", Context::Series);
-        AddEntry("SlidesorterPage", Context::SlidesorterPage);
-        AddEntry("Table", Context::Table);
-        AddEntry("Text", Context::Text);
-        AddEntry("TextObject", Context::TextObject);
-        AddEntry("Trendline", Context::Trendline);
-    }
+    if (!maContextMap.empty())
+        return;
+
+    AddEntry("3DObject", Context::ThreeDObject);
+    AddEntry("Annotation", Context::Annotation);
+    AddEntry("Auditing", Context::Auditing);
+    AddEntry("Axis", Context::Axis);
+    AddEntry("Cell", Context::Cell);
+    AddEntry("Chart", Context::Chart);
+    AddEntry("ChartElements", Context::ChartElements);
+    AddEntry("Draw", Context::Draw);
+    AddEntry("DrawLine", Context::DrawLine);
+    AddEntry("DrawPage", Context::DrawPage);
+    AddEntry("DrawText", Context::DrawText);
+    AddEntry("EditCell", Context::EditCell);
+    AddEntry("ErrorBar", Context::ErrorBar);
+    AddEntry("Form", Context::Form);
+    AddEntry("Frame", Context::Frame);
+    AddEntry("Graphic", Context::Graphic);
+    AddEntry("Grid", Context::Grid);
+    AddEntry("HandoutPage", Context::HandoutPage);
+    AddEntry("MasterPage", Context::MasterPage);
+    AddEntry("Media", Context::Media);
+    AddEntry("MultiObject", Context::MultiObject);
+    AddEntry("NotesPage", Context::NotesPage);
+    AddEntry("OLE", Context::OLE);
+    AddEntry("OutlineText", Context::OutlineText);
+    AddEntry("Pivot", Context::Pivot);
+    AddEntry("Printpreview", Context::Printpreview);
+    AddEntry("Series", Context::Series);
+    AddEntry("SlidesorterPage", Context::SlidesorterPage);
+    AddEntry("Table", Context::Table);
+    AddEntry("Text", Context::Text);
+    AddEntry("TextObject", Context::TextObject);
+    AddEntry("Trendline", Context::Trendline);
+
+    // other general contexts
+    AddEntry("any", Context::Any);
+    AddEntry("default", Context::Default);
+    AddEntry("empty", Context::Empty);
 }
 
-EnumContext::Context EnumContext::GetContextEnum (const ::rtl::OUString& rsContextName)
+EnumContext::Context EnumContext::GetContextEnum (const OUString& rsContextName)
 {
     ProvideContextContainers();
 
@@ -205,7 +202,7 @@ EnumContext::Context EnumContext::GetContextEnum (const ::rtl::OUString& rsConte
         return EnumContext::Context::Unknown;
 }
 
-const ::rtl::OUString& EnumContext::GetContextName (const Context eContext)
+const OUString& EnumContext::GetContextName (const Context eContext)
 {
     ProvideContextContainers();
     return maContextVector[eContext];

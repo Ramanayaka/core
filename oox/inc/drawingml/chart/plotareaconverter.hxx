@@ -22,19 +22,17 @@
 
 #include <drawingml/chart/converterbase.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace chart2 { class XDiagram; }
-} } }
+}
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 
 struct View3DModel;
 class TypeGroupConverter;
 
-class View3DConverter : public ConverterBase< View3DModel >
+class View3DConverter final : public ConverterBase< View3DModel >
 {
 public:
     explicit            View3DConverter( const ConverterRoot& rParent, View3DModel& rModel );
@@ -43,13 +41,13 @@ public:
     /** Converts the OOXML plot area model to a chart2 diagram. */
     void                convertFromModel(
                             const css::uno::Reference< css::chart2::XDiagram >& rxDiagram,
-                            TypeGroupConverter& rTypeGroup );
+                            TypeGroupConverter const & rTypeGroup );
 };
 
 
 struct WallFloorModel;
 
-class WallFloorConverter : public ConverterBase< WallFloorModel >
+class WallFloorConverter final : public ConverterBase< WallFloorModel >
 {
 public:
     explicit            WallFloorConverter( const ConverterRoot& rParent, WallFloorModel& rModel );
@@ -64,7 +62,7 @@ public:
 
 struct DataTableModel;
 
-class DataTableConverter : public ConverterBase< DataTableModel >
+class DataTableConverter final : public ConverterBase< DataTableModel >
 {
 public:
     explicit            DataTableConverter( const ConverterRoot& rParent, DataTableModel& rModel );
@@ -78,7 +76,7 @@ public:
 
 struct PlotAreaModel;
 
-class PlotAreaConverter : public ConverterBase< PlotAreaModel >
+class PlotAreaConverter final : public ConverterBase< PlotAreaModel >
 {
 public:
     explicit            PlotAreaConverter( const ConverterRoot& rParent, PlotAreaModel& rModel );
@@ -102,9 +100,7 @@ private:
 };
 
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

@@ -23,11 +23,13 @@
 #include <basegfx/vector/b2dvector.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/curve/b2dcubicbezier.hxx>
-#include <rtl/instance.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
+#include <basegfx/utils/systemdependentdata.hxx>
 #include <algorithm>
 #include <memory>
 #include <vector>
+
+namespace {
 
 struct CoordinateData2D : public basegfx::B2DPoint
 {
@@ -137,20 +139,20 @@ public:
 
     void flip(bool bIsClosed)
     {
-        if(maVector.size() > 1)
-        {
-            // to keep the same point at index 0, just flip all points except the
-            // first one when closed
-            const sal_uInt32 nHalfSize(bIsClosed ? (maVector.size() - 1) >> 1 : maVector.size() >> 1);
-            CoordinateData2DVector::iterator aStart(bIsClosed ? maVector.begin() + 1 : maVector.begin());
-            CoordinateData2DVector::iterator aEnd(maVector.end() - 1);
+        if(maVector.size() <= 1)
+            return;
 
-            for(sal_uInt32 a(0); a < nHalfSize; a++)
-            {
-                std::swap(*aStart, *aEnd);
-                ++aStart;
-                --aEnd;
-            }
+        // to keep the same point at index 0, just flip all points except the
+        // first one when closed
+        const sal_uInt32 nHalfSize(bIsClosed ? (maVector.size() - 1) >> 1 : maVector.size() >> 1);
+        CoordinateData2DVector::iterator aStart(bIsClosed ? maVector.begin() + 1 : maVector.begin());
+        CoordinateData2DVector::iterator aEnd(maVector.end() - 1);
+
+        for(sal_uInt32 a(0); a < nHalfSize; a++)
+        {
+            std::swap(*aStart, *aEnd);
+            ++aStart;
+            --aEnd;
         }
     }
 
@@ -187,12 +189,9 @@ public:
 
     void transform(const basegfx::B2DHomMatrix& rMatrix)
     {
-        CoordinateData2DVector::iterator aStart(maVector.begin());
-        CoordinateData2DVector::iterator aEnd(maVector.end());
-
-        for(; aStart != aEnd; ++aStart)
+        for (auto & elem : maVector)
         {
-            aStart->transform(rMatrix);
+            elem.transform(rMatrix);
         }
     }
 };
@@ -360,125 +359,127 @@ public:
 
     void insert(sal_uInt32 nIndex, const ControlVectorPair2D& rValue, sal_uInt32 nCount)
     {
-        if(nCount)
-        {
-            // add nCount copies of rValue
-            ControlVectorPair2DVector::iterator aIndex(maVector.begin());
-            aIndex += nIndex;
-            maVector.insert(aIndex, nCount, rValue);
+        if(!nCount)
+            return;
 
-            if(!rValue.getPrevVector().equalZero())
-                mnUsedVectors += nCount;
+        // add nCount copies of rValue
+        ControlVectorPair2DVector::iterator aIndex(maVector.begin());
+        aIndex += nIndex;
+        maVector.insert(aIndex, nCount, rValue);
 
-            if(!rValue.getNextVector().equalZero())
-                mnUsedVectors += nCount;
-        }
+        if(!rValue.getPrevVector().equalZero())
+            mnUsedVectors += nCount;
+
+        if(!rValue.getNextVector().equalZero())
+            mnUsedVectors += nCount;
     }
 
     void insert(sal_uInt32 nIndex, const ControlVectorArray2D& rSource)
     {
         const sal_uInt32 nCount(rSource.maVector.size());
 
-        if(nCount)
+        if(!nCount)
+            return;
+
+        // insert data
+        ControlVectorPair2DVector::iterator aIndex(maVector.begin());
+        aIndex += nIndex;
+        ControlVectorPair2DVector::const_iterator aStart(rSource.maVector.begin());
+        ControlVectorPair2DVector::const_iterator aEnd(rSource.maVector.end());
+        maVector.insert(aIndex, aStart, aEnd);
+
+        for(; aStart != aEnd; ++aStart)
         {
-            // insert data
-            ControlVectorPair2DVector::iterator aIndex(maVector.begin());
-            aIndex += nIndex;
-            ControlVectorPair2DVector::const_iterator aStart(rSource.maVector.begin());
-            ControlVectorPair2DVector::const_iterator aEnd(rSource.maVector.end());
-            maVector.insert(aIndex, aStart, aEnd);
+            if(!aStart->getPrevVector().equalZero())
+                mnUsedVectors++;
 
-            for(; aStart != aEnd; ++aStart)
-            {
-                if(!aStart->getPrevVector().equalZero())
-                    mnUsedVectors++;
-
-                if(!aStart->getNextVector().equalZero())
-                    mnUsedVectors++;
-            }
+            if(!aStart->getNextVector().equalZero())
+                mnUsedVectors++;
         }
     }
 
     void remove(sal_uInt32 nIndex, sal_uInt32 nCount)
     {
-        if(nCount)
+        if(!nCount)
+            return;
+
+        const ControlVectorPair2DVector::iterator aDeleteStart(maVector.begin() + nIndex);
+        const ControlVectorPair2DVector::iterator aDeleteEnd(aDeleteStart + nCount);
+        ControlVectorPair2DVector::const_iterator aStart(aDeleteStart);
+
+        for(; mnUsedVectors && aStart != aDeleteEnd; ++aStart)
         {
-            const ControlVectorPair2DVector::iterator aDeleteStart(maVector.begin() + nIndex);
-            const ControlVectorPair2DVector::iterator aDeleteEnd(aDeleteStart + nCount);
-            ControlVectorPair2DVector::const_iterator aStart(aDeleteStart);
+            if(!aStart->getPrevVector().equalZero())
+                mnUsedVectors--;
 
-            for(; mnUsedVectors && aStart != aDeleteEnd; ++aStart)
-            {
-                if(!aStart->getPrevVector().equalZero())
-                    mnUsedVectors--;
-
-                if(mnUsedVectors && !aStart->getNextVector().equalZero())
-                    mnUsedVectors--;
-            }
-
-            // remove point data
-            maVector.erase(aDeleteStart, aDeleteEnd);
+            if(mnUsedVectors && !aStart->getNextVector().equalZero())
+                mnUsedVectors--;
         }
+
+        // remove point data
+        maVector.erase(aDeleteStart, aDeleteEnd);
     }
 
     void flip(bool bIsClosed)
     {
-        if(maVector.size() > 1)
+        if(maVector.size() <= 1)
+            return;
+
+        // to keep the same point at index 0, just flip all points except the
+        // first one when closed
+        const sal_uInt32 nHalfSize(bIsClosed ? (maVector.size() - 1) >> 1 : maVector.size() >> 1);
+        ControlVectorPair2DVector::iterator aStart(bIsClosed ? maVector.begin() + 1 : maVector.begin());
+        ControlVectorPair2DVector::iterator aEnd(maVector.end() - 1);
+
+        for(sal_uInt32 a(0); a < nHalfSize; a++)
         {
-            // to keep the same point at index 0, just flip all points except the
-            // first one when closed
-            const sal_uInt32 nHalfSize(bIsClosed ? (maVector.size() - 1) >> 1 : maVector.size() >> 1);
-            ControlVectorPair2DVector::iterator aStart(bIsClosed ? maVector.begin() + 1 : maVector.begin());
-            ControlVectorPair2DVector::iterator aEnd(maVector.end() - 1);
+            // swap Prev and Next
+            aStart->flip();
+            aEnd->flip();
 
-            for(sal_uInt32 a(0); a < nHalfSize; a++)
-            {
-                // swap Prev and Next
-                aStart->flip();
-                aEnd->flip();
+            // swap entries
+            std::swap(*aStart, *aEnd);
 
-                // swap entries
-                std::swap(*aStart, *aEnd);
+            ++aStart;
+            --aEnd;
+        }
 
-                ++aStart;
-                --aEnd;
-            }
+        if(aStart == aEnd)
+        {
+            // swap Prev and Next at middle element (if exists)
+            aStart->flip();
+        }
 
-            if(aStart == aEnd)
-            {
-                // swap Prev and Next at middle element (if exists)
-                aStart->flip();
-            }
-
-            if(bIsClosed)
-            {
-                // swap Prev and Next at start element
-                maVector.begin()->flip();
-            }
+        if(bIsClosed)
+        {
+            // swap Prev and Next at start element
+            maVector.begin()->flip();
         }
     }
 };
 
-class ImplBufferedData
+class ImplBufferedData : public basegfx::SystemDependentDataHolder
 {
 private:
     // Possibility to hold the last subdivision
-    std::unique_ptr< basegfx::B2DPolygon >        mpDefaultSubdivision;
+    std::unique_ptr< basegfx::B2DPolygon >  mpDefaultSubdivision;
 
     // Possibility to hold the last B2DRange calculation
-    std::unique_ptr< basegfx::B2DRange >          mpB2DRange;
+    std::unique_ptr< basegfx::B2DRange >    mpB2DRange;
 
 public:
     ImplBufferedData()
-    :   mpDefaultSubdivision(),
+    :   basegfx::SystemDependentDataHolder(),
+        mpDefaultSubdivision(),
         mpB2DRange()
-    {}
+    {
+    }
 
     const basegfx::B2DPolygon& getDefaultAdaptiveSubdivision(const basegfx::B2DPolygon& rSource) const
     {
         if(!mpDefaultSubdivision)
         {
-            const_cast< ImplBufferedData* >(this)->mpDefaultSubdivision.reset(new basegfx::B2DPolygon(basegfx::tools::adaptiveSubdivideByAngle(rSource)));
+            const_cast< ImplBufferedData* >(this)->mpDefaultSubdivision.reset(new basegfx::B2DPolygon(basegfx::utils::adaptiveSubdivideByAngle(rSource)));
         }
 
         return *mpDefaultSubdivision;
@@ -552,6 +553,8 @@ public:
         return *mpB2DRange;
     }
 };
+
+}
 
 class ImplB2DPolygon
 {
@@ -632,7 +635,24 @@ public:
         }
     }
 
-    ImplB2DPolygon& operator=( const ImplB2DPolygon& ) = delete;
+    ImplB2DPolygon& operator=(const ImplB2DPolygon& rOther)
+    {
+        if (this != &rOther)
+        {
+            mpControlVector.reset();
+            mpBufferedData.reset();
+            maPoints = rOther.maPoints;
+            mbIsClosed = rOther.mbIsClosed;
+            if (rOther.mpControlVector && rOther.mpControlVector->isUsed())
+            {
+                mpControlVector.reset( new ControlVectorArray2D(*rOther.mpControlVector) );
+
+                if(!mpControlVector->isUsed())
+                    mpControlVector.reset();
+            }
+        }
+        return *this;
+    }
 
     sal_uInt32 count() const
     {
@@ -838,63 +858,63 @@ public:
     {
         const sal_uInt32 nCount(rSource.maPoints.count());
 
-        if(nCount)
+        if(!nCount)
+            return;
+
+        mpBufferedData.reset();
+
+        if(rSource.mpControlVector && rSource.mpControlVector->isUsed() && !mpControlVector)
         {
-            mpBufferedData.reset();
+            mpControlVector.reset( new ControlVectorArray2D(maPoints.count()) );
+        }
 
-            if(rSource.mpControlVector && rSource.mpControlVector->isUsed() && !mpControlVector)
-            {
-                mpControlVector.reset( new ControlVectorArray2D(maPoints.count()) );
-            }
+        maPoints.insert(nIndex, rSource.maPoints);
 
-            maPoints.insert(nIndex, rSource.maPoints);
+        if(rSource.mpControlVector)
+        {
+            mpControlVector->insert(nIndex, *rSource.mpControlVector);
 
-            if(rSource.mpControlVector)
-            {
-                mpControlVector->insert(nIndex, *rSource.mpControlVector);
-
-                if(!mpControlVector->isUsed())
-                    mpControlVector.reset();
-            }
-            else if(mpControlVector)
-            {
-                ControlVectorPair2D aVectorPair;
-                mpControlVector->insert(nIndex, aVectorPair, nCount);
-            }
+            if(!mpControlVector->isUsed())
+                mpControlVector.reset();
+        }
+        else if(mpControlVector)
+        {
+            ControlVectorPair2D aVectorPair;
+            mpControlVector->insert(nIndex, aVectorPair, nCount);
         }
     }
 
     void remove(sal_uInt32 nIndex, sal_uInt32 nCount)
     {
-        if(nCount)
+        if(!nCount)
+            return;
+
+        mpBufferedData.reset();
+        maPoints.remove(nIndex, nCount);
+
+        if(mpControlVector)
         {
-            mpBufferedData.reset();
-            maPoints.remove(nIndex, nCount);
+            mpControlVector->remove(nIndex, nCount);
 
-            if(mpControlVector)
-            {
-                mpControlVector->remove(nIndex, nCount);
-
-                if(!mpControlVector->isUsed())
-                    mpControlVector.reset();
-            }
+            if(!mpControlVector->isUsed())
+                mpControlVector.reset();
         }
     }
 
     void flip()
     {
-        if(maPoints.count() > 1)
+        if(maPoints.count() <= 1)
+            return;
+
+        mpBufferedData.reset();
+
+        // flip points
+        maPoints.flip(mbIsClosed);
+
+        if(mpControlVector)
         {
-            mpBufferedData.reset();
-
-            // flip points
-            maPoints.flip(mbIsClosed);
-
-            if(mpControlVector)
-            {
-                // flip control vector
-                mpControlVector->flip(mbIsClosed);
-            }
+            // flip control vector
+            mpControlVector->flip(mbIsClosed);
         }
     }
 
@@ -946,56 +966,56 @@ public:
     void removeDoublePointsAtBeginEnd()
     {
         // Only remove DoublePoints at Begin and End when poly is closed
-        if(mbIsClosed)
+        if(!mbIsClosed)
+            return;
+
+        mpBufferedData.reset();
+
+        if(mpControlVector)
         {
-            mpBufferedData.reset();
+            bool bRemove;
 
-            if(mpControlVector)
+            do
             {
-                bool bRemove;
+                bRemove = false;
 
-                do
+                if(maPoints.count() > 1)
                 {
-                    bRemove = false;
+                    const sal_uInt32 nIndex(maPoints.count() - 1);
 
-                    if(maPoints.count() > 1)
+                    if(maPoints.getCoordinate(0) == maPoints.getCoordinate(nIndex))
                     {
-                        const sal_uInt32 nIndex(maPoints.count() - 1);
-
-                        if(maPoints.getCoordinate(0) == maPoints.getCoordinate(nIndex))
+                        if(mpControlVector)
                         {
-                            if(mpControlVector)
-                            {
-                                if(mpControlVector->getNextVector(nIndex).equalZero() && mpControlVector->getPrevVector(0).equalZero())
-                                {
-                                    bRemove = true;
-                                }
-                            }
-                            else
+                            if(mpControlVector->getNextVector(nIndex).equalZero() && mpControlVector->getPrevVector(0).equalZero())
                             {
                                 bRemove = true;
                             }
                         }
-                    }
-
-                    if(bRemove)
-                    {
-                        const sal_uInt32 nIndex(maPoints.count() - 1);
-
-                        if(mpControlVector && !mpControlVector->getPrevVector(nIndex).equalZero())
+                        else
                         {
-                            mpControlVector->setPrevVector(0, mpControlVector->getPrevVector(nIndex));
+                            bRemove = true;
                         }
-
-                        remove(nIndex, 1);
                     }
                 }
-                while(bRemove);
+
+                if(bRemove)
+                {
+                    const sal_uInt32 nIndex(maPoints.count() - 1);
+
+                    if(mpControlVector && !mpControlVector->getPrevVector(nIndex).equalZero())
+                    {
+                        mpControlVector->setPrevVector(0, mpControlVector->getPrevVector(nIndex));
+                    }
+
+                    remove(nIndex, 1);
+                }
             }
-            else
-            {
-                maPoints.removeDoublePointsAtBeginEnd();
-            }
+            while(bRemove);
+        }
+        else
+        {
+            maPoints.removeDoublePointsAtBeginEnd();
         }
     }
 
@@ -1013,14 +1033,11 @@ public:
             {
                 bool bRemove(maPoints.getCoordinate(nIndex) == maPoints.getCoordinate(nIndex + 1));
 
-                if(bRemove)
+                if(bRemove && mpControlVector)
                 {
-                    if(mpControlVector)
+                    if(!mpControlVector->getNextVector(nIndex).equalZero() || !mpControlVector->getPrevVector(nIndex + 1).equalZero())
                     {
-                        if(!mpControlVector->getNextVector(nIndex).equalZero() || !mpControlVector->getPrevVector(nIndex + 1).equalZero())
-                        {
-                            bRemove = false;
-                        }
+                        bRemove = false;
                     }
                 }
 
@@ -1087,21 +1104,34 @@ public:
             maPoints.transform(rMatrix);
         }
     }
+
+    void addOrReplaceSystemDependentData(basegfx::SystemDependentData_SharedPtr& rData)
+    {
+        if(!mpBufferedData)
+        {
+            mpBufferedData.reset(new ImplBufferedData);
+        }
+
+        mpBufferedData->addOrReplaceSystemDependentData(rData);
+    }
+
+    basegfx::SystemDependentData_SharedPtr getSystemDependentData(size_t hash_code) const
+    {
+        if(mpBufferedData)
+        {
+            return mpBufferedData->getSystemDependentData(hash_code);
+        }
+
+        return basegfx::SystemDependentData_SharedPtr();
+    }
 };
 
 namespace basegfx
 {
-    namespace
-    {
-        struct DefaultPolygon: public rtl::Static<B2DPolygon::ImplType, DefaultPolygon> {};
-    }
-
-    B2DPolygon::B2DPolygon()
-    :   mpPolygon(DefaultPolygon::get())
-    {}
+    B2DPolygon::B2DPolygon() = default;
 
     B2DPolygon::B2DPolygon(std::initializer_list<basegfx::B2DPoint> aPoints)
-        : mpPolygon(DefaultPolygon::get())
+        : mpPolygon()
     {
         for (const basegfx::B2DPoint& rPoint : aPoints)
         {
@@ -1109,13 +1139,9 @@ namespace basegfx
         }
     }
 
-    B2DPolygon::B2DPolygon(const B2DPolygon& rPolygon)
-    :   mpPolygon(rPolygon.mpPolygon)
-    {}
+    B2DPolygon::B2DPolygon(const B2DPolygon&) = default;
 
-    B2DPolygon::B2DPolygon(B2DPolygon&& rPolygon)
-    :   mpPolygon(std::move(rPolygon.mpPolygon))
-    {}
+    B2DPolygon::B2DPolygon(B2DPolygon&&) = default;
 
     B2DPolygon::B2DPolygon(const B2DPolygon& rPolygon, sal_uInt32 nIndex, sal_uInt32 nCount)
     :   mpPolygon(ImplB2DPolygon(*rPolygon.mpPolygon, nIndex, nCount))
@@ -1125,21 +1151,11 @@ namespace basegfx
         OSL_ENSURE(nIndex + nCount <= rPolygon.mpPolygon->count(), "B2DPolygon constructor outside range (!)");
     }
 
-    B2DPolygon::~B2DPolygon()
-    {
-    }
+    B2DPolygon::~B2DPolygon() = default;
 
-    B2DPolygon& B2DPolygon::operator=(const B2DPolygon& rPolygon)
-    {
-        mpPolygon = rPolygon.mpPolygon;
-        return *this;
-    }
+    B2DPolygon& B2DPolygon::operator=(const B2DPolygon&) = default;
 
-    B2DPolygon& B2DPolygon::operator=(B2DPolygon&& rPolygon)
-    {
-        mpPolygon = std::move(rPolygon.mpPolygon);
-        return *this;
-    }
+    B2DPolygon& B2DPolygon::operator=(B2DPolygon&&) = default;
 
     void B2DPolygon::makeUnique()
     {
@@ -1164,7 +1180,7 @@ namespace basegfx
         return mpPolygon->count();
     }
 
-    B2DPoint B2DPolygon::getB2DPoint(sal_uInt32 nIndex) const
+    B2DPoint const & B2DPolygon::getB2DPoint(sal_uInt32 nIndex) const
     {
         OSL_ENSURE(nIndex < mpPolygon->count(), "B2DPolygon access outside range (!)");
 
@@ -1318,6 +1334,28 @@ namespace basegfx
         }
     }
 
+    void B2DPolygon::appendQuadraticBezierSegment(const B2DPoint& rControlPoint, const B2DPoint& rPoint)
+    {
+        if (mpPolygon->count() == 0)
+        {
+            mpPolygon->append(rPoint);
+            const double nX((rControlPoint.getX() * 2.0 + rPoint.getX()) / 3.0);
+            const double nY((rControlPoint.getY() * 2.0 + rPoint.getY()) / 3.0);
+            setPrevControlPoint(0, B2DPoint(nX, nY));
+        }
+        else
+        {
+            const B2DPoint aPreviousPoint(mpPolygon->getPoint(mpPolygon->count() - 1));
+
+            const double nX1((rControlPoint.getX() * 2.0 + aPreviousPoint.getX()) / 3.0);
+            const double nY1((rControlPoint.getY() * 2.0 + aPreviousPoint.getY()) / 3.0);
+            const double nX2((rControlPoint.getX() * 2.0 + rPoint.getX()) / 3.0);
+            const double nY2((rControlPoint.getY() * 2.0 + rPoint.getY()) / 3.0);
+
+            appendBezierSegment(B2DPoint(nX1, nY1), B2DPoint(nX2, nY2), rPoint);
+        }
+    }
+
     bool B2DPolygon::areControlPointsUsed() const
     {
         return mpPolygon->areControlPointsUsed();
@@ -1388,35 +1426,35 @@ namespace basegfx
         }
     }
 
-    B2DPolygon B2DPolygon::getDefaultAdaptiveSubdivision() const
+    B2DPolygon const & B2DPolygon::getDefaultAdaptiveSubdivision() const
     {
         return mpPolygon->getDefaultAdaptiveSubdivision(*this);
     }
 
-    B2DRange B2DPolygon::getB2DRange() const
+    B2DRange const & B2DPolygon::getB2DRange() const
     {
         return mpPolygon->getB2DRange(*this);
     }
 
     void B2DPolygon::append(const B2DPolygon& rPoly, sal_uInt32 nIndex, sal_uInt32 nCount)
     {
-        if(rPoly.count())
-        {
-            if(!nCount)
-            {
-                nCount = rPoly.count();
-            }
+        if(!rPoly.count())
+            return;
 
-            if(nIndex == 0 && nCount == rPoly.count())
-            {
-                mpPolygon->insert(mpPolygon->count(), *rPoly.mpPolygon);
-            }
-            else
-            {
-                OSL_ENSURE(nIndex + nCount <= rPoly.mpPolygon->count(), "B2DPolygon Append outside range (!)");
-                ImplB2DPolygon aTempPoly(*rPoly.mpPolygon, nIndex, nCount);
-                mpPolygon->insert(mpPolygon->count(), aTempPoly);
-            }
+        if(!nCount)
+        {
+            nCount = rPoly.count();
+        }
+
+        if(nIndex == 0 && nCount == rPoly.count())
+        {
+            mpPolygon->insert(mpPolygon->count(), *rPoly.mpPolygon);
+        }
+        else
+        {
+            OSL_ENSURE(nIndex + nCount <= rPoly.mpPolygon->count(), "B2DPolygon Append outside range (!)");
+            ImplB2DPolygon aTempPoly(*rPoly.mpPolygon, nIndex, nCount);
+            mpPolygon->insert(mpPolygon->count(), aTempPoly);
         }
     }
 
@@ -1432,7 +1470,7 @@ namespace basegfx
 
     void B2DPolygon::clear()
     {
-        mpPolygon = DefaultPolygon::get();
+        *mpPolygon = ImplB2DPolygon();
     }
 
     bool B2DPolygon::isClosed() const
@@ -1476,6 +1514,23 @@ namespace basegfx
         {
             mpPolygon->transform(rMatrix);
         }
+    }
+
+    void B2DPolygon::addOrReplaceSystemDependentDataInternal(SystemDependentData_SharedPtr& rData) const
+    {
+        // Need to get ImplB2DPolygon* from cow_wrapper *without*
+        // calling make_unique() here - we do not want to
+        // 'modify' the ImplB2DPolygon, but add buffered data that
+        // is valid for all referencing instances
+        const B2DPolygon* pMe(this);
+        const ImplB2DPolygon* pMyImpl(pMe->mpPolygon.get());
+
+        const_cast<ImplB2DPolygon*>(pMyImpl)->addOrReplaceSystemDependentData(rData);
+    }
+
+    SystemDependentData_SharedPtr B2DPolygon::getSystemDependantDataInternal(size_t hash_code) const
+    {
+        return mpPolygon->getSystemDependentData(hash_code);
     }
 
 } // end of namespace basegfx

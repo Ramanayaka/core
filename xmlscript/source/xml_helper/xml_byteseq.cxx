@@ -21,6 +21,8 @@
 
 #include <cppuhelper/implbase.hxx>
 #include <xmlscript/xml_helper.hxx>
+#include <com/sun/star/io/XInputStream.hpp>
+#include <com/sun/star/io/XOutputStream.hpp>
 
 using namespace osl;
 using namespace com::sun::star;
@@ -29,6 +31,8 @@ using namespace com::sun::star::uno;
 
 namespace xmlscript
 {
+
+namespace {
 
 class BSeqInputStream
     : public ::cppu::WeakImplHelper< io::XInputStream >
@@ -53,17 +57,19 @@ public:
     virtual void SAL_CALL closeInput() override;
 };
 
+}
+
 sal_Int32 BSeqInputStream::readBytes(
     Sequence< sal_Int8 > & rData, sal_Int32 nBytesToRead )
 {
-    nBytesToRead = ((nBytesToRead > (sal_Int32)_seq.size() - _nPos)
+    nBytesToRead = ((nBytesToRead > static_cast<sal_Int32>(_seq.size()) - _nPos)
                     ? _seq.size() - _nPos
                     : nBytesToRead);
 
     if (rData.getLength() != nBytesToRead)
         rData.realloc( nBytesToRead );
     if (nBytesToRead != 0) {
-        memcpy(rData.getArray(), &_seq.data()[_nPos], nBytesToRead);
+        memcpy(rData.getArray(), &_seq[_nPos], nBytesToRead);
     }
     _nPos += nBytesToRead;
     return nBytesToRead;
@@ -89,6 +95,8 @@ void BSeqInputStream::closeInput()
 {
 }
 
+namespace {
+
 class BSeqOutputStream
     : public ::cppu::WeakImplHelper< io::XOutputStream >
 {
@@ -106,13 +114,17 @@ public:
     virtual void SAL_CALL closeOutput() override;
 };
 
+}
+
 void BSeqOutputStream::writeBytes( Sequence< sal_Int8 > const & rData )
 {
     sal_Int32 nPos = _seq->size();
     _seq->resize( nPos + rData.getLength() );
-    memcpy( _seq->data() + nPos,
-                      rData.getConstArray(),
-                      rData.getLength() );
+    if (rData.getLength() != 0) {
+        memcpy( _seq->data() + nPos,
+                rData.getConstArray(),
+                rData.getLength() );
+    }
 }
 void BSeqOutputStream::flush()
 {
@@ -122,12 +134,12 @@ void BSeqOutputStream::closeOutput()
 {
 }
 
-Reference< io::XInputStream > SAL_CALL createInputStream( std::vector<sal_Int8> const & rInData )
+Reference< io::XInputStream > createInputStream( std::vector<sal_Int8> const & rInData )
 {
     return new BSeqInputStream( rInData );
 }
 
-Reference< io::XInputStream > SAL_CALL createInputStream( const sal_Int8* pData, int len )
+Reference< io::XInputStream > createInputStream( const sal_Int8* pData, int len )
 {
     std::vector<sal_Int8> rInData(len);
     if (len != 0) {
@@ -136,7 +148,7 @@ Reference< io::XInputStream > SAL_CALL createInputStream( const sal_Int8* pData,
     return new BSeqInputStream( rInData );
 }
 
-Reference< io::XOutputStream > SAL_CALL createOutputStream( std::vector<sal_Int8> * pOutData )
+Reference< io::XOutputStream > createOutputStream( std::vector<sal_Int8> * pOutData )
 {
     return new BSeqOutputStream( pOutData );
 }

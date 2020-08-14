@@ -18,11 +18,10 @@
  */
 
 
-#include <limits.h>
-
 #include <svl/itempool.hxx>
 #include <svl/itemset.hxx>
 #include <svl/poolcach.hxx>
+#include <tools/debug.hxx>
 
 SfxItemPoolCache::SfxItemPoolCache( SfxItemPool *pItemPool,
                                     const SfxPoolItem *pPutItem ):
@@ -46,7 +45,7 @@ SfxItemPoolCache::SfxItemPoolCache( SfxItemPool *pItemPool,
 
 SfxItemPoolCache::~SfxItemPoolCache()
 {
-    for (SfxItemModifyImpl & rImpl : m_aCache) {
+    for (const SfxItemModifyImpl & rImpl : m_aCache) {
         pPool->Remove( *rImpl.pPoolItem );
         pPool->Remove( *rImpl.pOrigItem );
     }
@@ -63,7 +62,7 @@ const SfxSetItem& SfxItemPoolCache::ApplyTo( const SfxSetItem &rOrigItem )
                 "original not in pool" );
 
     // Find whether this Transformations ever occurred
-    for (SfxItemModifyImpl & rMapEntry : m_aCache)
+    for (const SfxItemModifyImpl & rMapEntry : m_aCache)
     {
         if ( rMapEntry.pOrigItem == &rOrigItem )
         {
@@ -78,7 +77,7 @@ const SfxSetItem& SfxItemPoolCache::ApplyTo( const SfxSetItem &rOrigItem )
     }
 
     // Insert the new attributes in a new Set
-    SfxSetItem *pNewItem = static_cast<SfxSetItem *>(rOrigItem.Clone());
+    std::unique_ptr<SfxSetItem> pNewItem(rOrigItem.Clone());
     if ( pItemToPut )
     {
         pNewItem->GetItemSet().PutDirect( *pItemToPut );
@@ -87,9 +86,7 @@ const SfxSetItem& SfxItemPoolCache::ApplyTo( const SfxSetItem &rOrigItem )
     }
     else
         pNewItem->GetItemSet().Put( *pSetToPut );
-    const SfxSetItem* pNewPoolItem = static_cast<const SfxSetItem*>(&pPool->Put( *pNewItem ));
-    DBG_ASSERT( pNewPoolItem != pNewItem, "Pool: same in and out?" );
-    delete pNewItem;
+    const SfxSetItem* pNewPoolItem = &pPool->Put( std::move(pNewItem) );
 
     // Adapt refcount; one each for the cache
     pNewPoolItem->AddRef( pNewPoolItem != &rOrigItem ? 2 : 1 );

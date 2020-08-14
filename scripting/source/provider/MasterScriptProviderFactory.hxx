@@ -20,14 +20,12 @@
 #ifndef INCLUDED_SCRIPTING_SOURCE_PROVIDER_MASTERSCRIPTPROVIDERFACTORY_HXX
 #define INCLUDED_SCRIPTING_SOURCE_PROVIDER_MASTERSCRIPTPROVIDERFACTORY_HXX
 
-#include "rtl/ustring.hxx"
-#include "rtl/ref.hxx"
+#include <rtl/ustring.hxx>
+#include <rtl/ref.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 
 #include <com/sun/star/script/provider/XScriptProviderFactory.hpp>
 #include <com/sun/star/script/provider/XScriptProvider.hpp>

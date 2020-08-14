@@ -17,25 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TitleItemConverter.hxx"
+#include <TitleItemConverter.hxx>
 #include "SchWhichPairs.hxx"
-#include "macros.hxx"
-#include "ItemPropertyMap.hxx"
-#include "GraphicPropertyItemConverter.hxx"
-#include "CharacterPropertyItemConverter.hxx"
-#include "MultipleItemConverter.hxx"
+#include <ItemPropertyMap.hxx>
+#include <GraphicPropertyItemConverter.hxx>
+#include <CharacterPropertyItemConverter.hxx>
+#include <MultipleItemConverter.hxx>
 #include <svl/intitem.hxx>
 #include <rtl/math.hxx>
 
-#include <com/sun/star/chart2/XTitled.hpp>
+#include <com/sun/star/chart2/XTitle.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 
-#include <functional>
-#include <algorithm>
 #include <memory>
 
 using namespace ::com::sun::star;
 
-namespace chart { namespace wrapper {
+namespace chart::wrapper {
 
 namespace {
 
@@ -45,8 +43,6 @@ ItemPropertyMapType & lcl_GetTitlePropertyMap()
         {SCHATTR_TEXT_STACKED, {"StackCharacters", 0}}};
     return aTitlePropertyMap;
 };
-
-} // anonymous namespace
 
 class FormattedStringsConverter : public MultipleItemConverter
 {
@@ -61,6 +57,8 @@ protected:
     virtual const sal_uInt16 * GetWhichPairs() const override;
 };
 
+} // anonymous namespace
+
 FormattedStringsConverter::FormattedStringsConverter(
     const uno::Sequence< uno::Reference< chart2::XFormattedString > > & aStrings,
     SfxItemPool & rItemPool,
@@ -69,17 +67,17 @@ FormattedStringsConverter::FormattedStringsConverter(
         MultipleItemConverter( rItemPool )
 {
     bool bHasRefSize = (pRefSize && xParentProp.is());
-    for( sal_Int32 i = 0; i < aStrings.getLength(); ++i )
+    for( uno::Reference< chart2::XFormattedString > const & formattedStr : aStrings )
     {
-        uno::Reference< beans::XPropertySet > xProp( aStrings[ i ], uno::UNO_QUERY );
+        uno::Reference< beans::XPropertySet > xProp( formattedStr, uno::UNO_QUERY );
         if( xProp.is())
         {
             if( bHasRefSize )
-                m_aConverters.push_back(
+                m_aConverters.emplace_back(
                     new CharacterPropertyItemConverter(
                         xProp, rItemPool, pRefSize, "ReferencePageSize", xParentProp));
             else
-                m_aConverters.push_back( new CharacterPropertyItemConverter( xProp, rItemPool ));
+                m_aConverters.emplace_back( new CharacterPropertyItemConverter( xProp, rItemPool ));
         }
     }
 }
@@ -97,7 +95,7 @@ TitleItemConverter::TitleItemConverter(
     const awt::Size* pRefSize ) :
         ItemConverter( rPropertySet, rItemPool )
 {
-    m_aConverters.push_back( new GraphicPropertyItemConverter(
+    m_aConverters.emplace_back( new GraphicPropertyItemConverter(
                                  rPropertySet, rItemPool, rDrawModel,
                                  xNamedPropertyContainerFactory,
                                  GraphicObjectType::LineAndFillProperties ));
@@ -108,9 +106,9 @@ TitleItemConverter::TitleItemConverter(
     if( xTitle.is())
     {
         uno::Sequence< uno::Reference< chart2::XFormattedString > > aStringSeq( xTitle->getText());
-        if( aStringSeq.getLength() > 0 )
+        if( aStringSeq.hasElements() )
         {
-            m_aConverters.push_back(
+            m_aConverters.emplace_back(
                 new FormattedStringsConverter( aStringSeq, rItemPool, pRefSize, rPropertySet ));
         }
     }
@@ -118,7 +116,6 @@ TitleItemConverter::TitleItemConverter(
 
 TitleItemConverter::~TitleItemConverter()
 {
-    std::for_each(m_aConverters.begin(), m_aConverters.end(), std::default_delete<ItemConverter>());
 }
 
 void TitleItemConverter::FillItemSet( SfxItemSet & rOutItemSet ) const
@@ -208,7 +205,6 @@ void TitleItemConverter::FillSpecialItem(
    }
 }
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

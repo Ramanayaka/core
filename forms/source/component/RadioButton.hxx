@@ -26,14 +26,14 @@
 namespace frm
 {
 
-class ORadioButtonModel     :public OReferenceValueComponent
+class ORadioButtonModel final : public OReferenceValueComponent
 {
 public:
     DECLARE_DEFAULT_LEAF_XTOR( ORadioButtonModel );
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.ORadioButtonModel"); }
+    { return "com.sun.star.form.ORadioButtonModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -55,18 +55,16 @@ public:
         css::uno::Sequence< css::beans::Property >& /* [out] */ _rProps
     ) const override;
 
-protected:
+private:
     // OBoundControlModel overridables
     virtual css::uno::Any   translateDbColumnToControlValue( ) override;
     virtual bool            commitControlValueToDbColumn( bool _bPostReset ) override;
     virtual css::uno::Any   translateExternalValueToControlValue( const css::uno::Any& _rExternalValue ) const override;
 
-protected:
     void SetSiblingPropsTo(const OUString& rPropName, const css::uno::Any& rValue);
 
     virtual css::uno::Reference< css::util::XCloneable > SAL_CALL createClone(  ) override;
 
-private:
     void setControlSource();
 };
 
@@ -77,7 +75,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.ORadioButtonControl"); }
+    { return "com.sun.star.form.ORadioButtonControl"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 };

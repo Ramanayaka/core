@@ -11,33 +11,28 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_MOVINGAVERAGEDIALOG_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_MOVINGAVERAGEDIALOG_HXX
 
-#include "global.hxx"
-#include "address.hxx"
-#include "anyrefdg.hxx"
-
-#include <vcl/fixed.hxx>
-#include <vcl/group.hxx>
-#include <vcl/lstbox.hxx>
+#include <address.hxx>
+#include "viewdata.hxx"
 
 #include "StatisticsInputOutputDialog.hxx"
 
 class ScMovingAverageDialog : public ScStatisticsInputOutputDialog
 {
 private:
-    VclPtr<NumericField> mpIntervalSpin;
+    std::unique_ptr<weld::CheckButton> mxTrimRangeCheck;
+    std::unique_ptr<weld::SpinButton> mxIntervalSpin;
 
 public:
     ScMovingAverageDialog(
         SfxBindings* pB, SfxChildWindow* pCW,
-        vcl::Window* pParent, ScViewData* pViewData );
+        weld::Window* pParent, ScViewData* pViewData );
 
     virtual ~ScMovingAverageDialog() override;
-    virtual void dispose() override;
 
-    virtual bool Close() override;
+    virtual void Close() override;
 
 protected:
-    virtual sal_Int16 GetUndoNameId() override;
+    virtual const char* GetUndoNameId() override;
     virtual ScRange ApplyOutput(ScDocShell* pDocShell) override;
 };
 

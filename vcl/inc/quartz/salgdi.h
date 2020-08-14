@@ -22,38 +22,38 @@
 
 #include <vector>
 
-#include "basegfx/polygon/b2dpolypolygon.hxx"
+#include <basegfx/polygon/b2dpolypolygon.hxx>
 
-#include "premac.h"
+#include <premac.h>
 #ifdef MACOSX
 #include <ApplicationServices/ApplicationServices.h>
-#include "osx/osxvcltypes.h"
-#include "osx/salframe.h"
+#include <osx/osxvcltypes.h>
+#include <osx/salframe.h>
 #else
 #include <CoreGraphics/CoreGraphics.h>
 #include <CoreText/CoreText.h>
 #endif
-#include "postmac.h"
+#include <postmac.h>
 
 #include <vcl/fontcapabilities.hxx>
 #include <vcl/metric.hxx>
 
-#include "fontinstance.hxx"
-#include "impfontmetricdata.hxx"
-#include "PhysicalFontFace.hxx"
-#include "salgdi.hxx"
 
-#include "quartz/salgdicommon.hxx"
+#include <fontinstance.hxx>
+#include <impfontmetricdata.hxx>
+#include <PhysicalFontFace.hxx>
+#include <salgdi.hxx>
+
+#include <quartz/salgdicommon.hxx>
 #include <unordered_map>
 #include <hb-ot.h>
+
+#include <quartz/CGHelpers.hxx>
 
 class AquaSalFrame;
 class FontAttributes;
 class CoreTextStyle;
 class XorEmulation;
-class CommonSalLayout;
-
-typedef sal_uInt32 sal_GlyphId;
 
 // CoreText-specific physically available font face
 class CoreTextFontFace : public PhysicalFontFace
@@ -62,18 +62,16 @@ public:
                                     CoreTextFontFace( const FontAttributes&, sal_IntPtr nFontID );
     virtual                         ~CoreTextFontFace() override;
 
-    PhysicalFontFace*               Clone() const override;
-    LogicalFontInstance*            CreateFontInstance( FontSelectPattern& ) const override;
     sal_IntPtr                      GetFontId() const override;
 
+    int                             GetFontTable( uint32_t nTagCode, unsigned char* ) const;
     int                             GetFontTable( const char pTagName[5], unsigned char* ) const;
 
-    const FontCharMapRef            GetFontCharMap() const;
+    FontCharMapRef                  GetFontCharMap() const;
     bool                            GetFontCapabilities(vcl::FontCapabilities &rFontCapabilities) const;
     bool                            HasChar( sal_uInt32 cChar ) const;
 
-protected:
-                                    CoreTextFontFace( const CoreTextFontFace& );
+    rtl::Reference<LogicalFontInstance> CreateFontInstance(const FontSelectPattern&) const override;
 
 private:
     const sal_IntPtr                mnFontId;
@@ -82,31 +80,33 @@ private:
     mutable bool                    mbFontCapabilitiesRead;
 };
 
-class CoreTextStyle
+class CoreTextStyle final : public LogicalFontInstance
 {
-public:
-    CoreTextStyle( const FontSelectPattern& );
-    ~CoreTextStyle( void );
+    friend rtl::Reference<LogicalFontInstance> CoreTextFontFace::CreateFontInstance(const FontSelectPattern&) const;
 
-    void       GetFontMetric( ImplFontMetricDataRef& ) const;
-    bool       GetGlyphBoundRect(const GlyphItem&, tools::Rectangle&) const;
-    bool       GetGlyphOutline(const GlyphItem&, basegfx::B2DPolyPolygon&) const;
-    hb_font_t* GetHbFont() const { return mpHbFont; }
-    void       SetHbFont(hb_font_t* pHbFont) const { mpHbFont = pHbFont; }
+public:
+    ~CoreTextStyle() override;
+
+    void       GetFontMetric( ImplFontMetricDataRef const & );
+    bool GetGlyphOutline(sal_GlyphId, basegfx::B2DPolyPolygon&, bool) const override;
 
     CFMutableDictionaryRef  GetStyleDict( void ) const { return mpStyleDict; }
 
-    const CoreTextFontFace*  mpFontData;
     /// <1.0: font is squeezed, >1.0 font is stretched, else 1.0
-    float               mfFontStretch;
+    float mfFontStretch;
     /// text rotation in radian
-    float               mfFontRotation;
-    FontSelectPattern   maFontSelData;
+    float mfFontRotation;
+    /// faux bold - true, if font doesn't have proper bold variants
+    bool mbFauxBold;
 
 private:
+    explicit CoreTextStyle(const PhysicalFontFace&, const FontSelectPattern&);
+
+    hb_font_t* ImplInitHbFont() override;
+    bool ImplGetGlyphBoundRect(sal_GlyphId, tools::Rectangle&, bool) const override;
+
     /// CoreText text style object
     CFMutableDictionaryRef  mpStyleDict;
-    mutable hb_font_t*      mpHbFont;
 };
 
 // TODO: move into cross-platform headers
@@ -127,19 +127,14 @@ private:
     CTFontCollectionRef mpCTFontCollection;
     CFArrayRef mpCTFontArray;
 
-    typedef std::unordered_map<sal_IntPtr,CoreTextFontFace*> CTFontContainer;
-    CTFontContainer maFontContainer;
+    std::unordered_map<sal_IntPtr, rtl::Reference<CoreTextFontFace>> maFontContainer;
 };
-
 
 class AquaSalGraphics : public SalGraphics
 {
-    CGLayerRef                              mxLayer;    // Quartz graphics layer
-    CGContextRef                            mrContext;  // Quartz drawing context
-#ifdef MACOSX
-    AquaSalFrame*                           mpFrame;
-#endif
-    int                                     mnContextStackDepth;
+    CGLayerHolder maLayer; // Quartz graphics layer
+    CGContextHolder maContextHolder;  // Quartz drawing context
+
     XorEmulation*                           mpXorEmulation;
     int                                     mnXorMode; // 0: off 1: on 2: invert only
     int                                     mnWidth;
@@ -159,11 +154,14 @@ class AquaSalGraphics : public SalGraphics
     RGBAColor                               maFillColor;
 
     // Device Font settings
-    const CoreTextFontFace*                 mpFontData[MAX_FALLBACK];
-    CoreTextStyle*                          mpTextStyle[MAX_FALLBACK];
+    rtl::Reference<CoreTextStyle>           mpTextStyle[MAX_FALLBACK];
     RGBAColor                               maTextColor;
     /// allows text to be rendered without antialiasing
     bool                                    mbNonAntialiasedText;
+
+#ifdef MACOSX
+    AquaSalFrame*                           mpFrame;
+#endif
 
     // Graphics types
 
@@ -191,7 +189,7 @@ public:
 
     void                    SetWindowGraphics( AquaSalFrame* pFrame );
     void                    SetPrinterGraphics( CGContextRef, long nRealDPIX, long nRealDPIY );
-    void                    SetVirDevGraphics( CGLayerRef, CGContextRef, int nBitDepth = 0 );
+    void                    SetVirDevGraphics(CGLayerHolder const & rLayer, CGContextRef, int nBitDepth = 0);
 #ifdef MACOSX
     void                    initResolution( NSWindow* );
     void                    copyResolution( AquaSalGraphics& );
@@ -225,23 +223,29 @@ public:
 
     // draw --> LineColor and FillColor and RasterOp and ClipRegion
     virtual void            drawPixel( long nX, long nY ) override;
-    virtual void            drawPixel( long nX, long nY, SalColor nSalColor ) override;
+    virtual void            drawPixel( long nX, long nY, Color nColor ) override;
     virtual void            drawLine( long nX1, long nY1, long nX2, long nY2 ) override;
     virtual void            drawRect( long nX, long nY, long nWidth, long nHeight ) override;
     virtual void            drawPolyLine( sal_uInt32 nPoints, const SalPoint* pPtAry ) override;
     virtual void            drawPolygon( sal_uInt32 nPoints, const SalPoint* pPtAry ) override;
     virtual void            drawPolyPolygon( sal_uInt32 nPoly, const sal_uInt32* pPoints, PCONSTSALPOINT* pPtAry ) override;
-    virtual bool            drawPolyPolygon( const basegfx::B2DPolyPolygon&, double fTransparency ) override;
+    virtual bool            drawPolyPolygon(
+                                const basegfx::B2DHomMatrix& rObjectToDevice,
+                                const basegfx::B2DPolyPolygon&,
+                                double fTransparency) override;
     virtual bool            drawPolyLineBezier( sal_uInt32 nPoints, const SalPoint* pPtAry, const PolyFlags* pFlgAry ) override;
     virtual bool            drawPolygonBezier( sal_uInt32 nPoints, const SalPoint* pPtAry, const PolyFlags* pFlgAry ) override;
     virtual bool            drawPolyPolygonBezier( sal_uInt32 nPoly, const sal_uInt32* pPoints, const SalPoint* const* pPtAry, const PolyFlags* const* pFlgAry ) override;
     virtual bool            drawPolyLine(
+                                const basegfx::B2DHomMatrix& rObjectToDevice,
                                 const basegfx::B2DPolygon&,
                                 double fTransparency,
-                                const basegfx::B2DVector& rLineWidths,
+                                double rLineWidth,
+                                const std::vector< double >* pStroke, // MM01
                                 basegfx::B2DLineJoin,
                                 css::drawing::LineCap eLineCap,
-                                double fMiterMinimumAngle) override;
+                                double fMiterMinimumAngle,
+                                bool bPixelSnapHairline) override;
     virtual bool            drawGradient( const tools::PolyPolygon&, const Gradient& ) override { return false; };
 
     // CopyArea --> No RasterOp, but ClipRegion
@@ -257,16 +261,16 @@ public:
                                         const SalBitmap& rTransparentBitmap ) override;
     virtual void            drawMask( const SalTwoRect& rPosAry,
                                       const SalBitmap& rSalBitmap,
-                                      SalColor nMaskColor ) override;
+                                      Color nMaskColor ) override;
 
-    virtual SalBitmap*      getBitmap( long nX, long nY, long nWidth, long nHeight ) override;
-    virtual SalColor        getPixel( long nX, long nY ) override;
+    virtual std::shared_ptr<SalBitmap> getBitmap( long nX, long nY, long nWidth, long nHeight ) override;
+    virtual Color           getPixel( long nX, long nY ) override;
 
     // invert --> ClipRegion (only Windows or VirDevs)
     virtual void            invert( long nX, long nY, long nWidth, long nHeight, SalInvert nFlags) override;
     virtual void            invert( sal_uInt32 nPoints, const SalPoint* pPtAry, SalInvert nFlags ) override;
 
-    virtual bool            drawEPS( long nX, long nY, long nWidth, long nHeight, void* pPtr, sal_uLong nSize ) override;
+    virtual bool            drawEPS( long nX, long nY, long nWidth, long nHeight, void* pPtr, sal_uInt32 nSize ) override;
 
     virtual bool            blendBitmap( const SalTwoRect&,
                                          const SalBitmap& rBitmap ) override;
@@ -292,6 +296,9 @@ public:
 
     // native widget rendering methods that require mirroring
 #ifdef MACOSX
+protected:
+    virtual bool            isNativeControlSupported( ControlType nType, ControlPart nPart ) override;
+
     virtual bool            hitTestNativeControl( ControlType nType, ControlPart nPart, const tools::Rectangle& rControlRegion,
                                                   const Point& aPos, bool& rIsInside ) override;
     virtual bool            drawNativeControl( ControlType nType, ControlPart nPart, const tools::Rectangle& rControlRegion,
@@ -300,6 +307,8 @@ public:
     virtual bool            getNativeControlRegion( ControlType nType, ControlPart nPart, const tools::Rectangle& rControlRegion, ControlState nState,
                                                     const ImplControlValue& aValue, const OUString& aCaption,
                                                     tools::Rectangle &rNativeBoundingRegion, tools::Rectangle &rNativeContentRegion ) override;
+
+public:
 #endif
 
     // get device resolution
@@ -315,26 +324,26 @@ public:
     // set the line color to transparent (= don't draw lines)
     virtual void            SetLineColor() override;
     // set the line color to a specific color
-    virtual void            SetLineColor( SalColor nSalColor ) override;
+    virtual void            SetLineColor( Color nColor ) override;
     // set the fill color to transparent (= don't fill)
     virtual void            SetFillColor() override;
     // set the fill color to a specific color, shapes will be
     // filled accordingly
-    virtual void            SetFillColor( SalColor nSalColor ) override;
+    virtual void            SetFillColor( Color nColor ) override;
     // enable/disable XOR drawing
-    virtual void            SetXORMode( bool bSet ) override;
+    virtual void            SetXORMode( bool bSet, bool bInvertOnly ) override;
     // set line color for raster operations
     virtual void            SetROPLineColor( SalROPColor nROPColor ) override;
     // set fill color for raster operations
     virtual void            SetROPFillColor( SalROPColor nROPColor ) override;
     // set the text color to a specific color
-    virtual void            SetTextColor( SalColor nSalColor ) override;
+    virtual void            SetTextColor( Color nColor ) override;
     // set the font
-    virtual void            SetFont( FontSelectPattern*, int nFallbackLevel ) override;
+    virtual void            SetFont( LogicalFontInstance*, int nFallbackLevel ) override;
     // get the current font's metrics
     virtual void            GetFontMetric( ImplFontMetricDataRef&, int nFallbackLevel ) override;
     // get the repertoire of the current font
-    virtual const FontCharMapRef GetFontCharMap() const override;
+    virtual FontCharMapRef  GetFontCharMap() const override;
     virtual bool            GetFontCapabilities(vcl::FontCapabilities &rFontCapabilities) const override;
     // graphics must fill supplied font list
     virtual void            GetDevFontList( PhysicalFontCollection* ) override;
@@ -344,7 +353,7 @@ public:
     // CreateFontSubset: a method to get a subset of glyhps of a font
     // inside a new valid font file
     // returns TRUE if creation of subset was successful
-    // parameters: rToFile: contains a osl file URL to write the subset to
+    // parameters: rToFile: contains an osl file URL to write the subset to
     //             pFont: describes from which font to create a subset
     //             pGlyphIDs: the glyph ids to be extracted
     //             pEncoding: the character code corresponding to each glyph
@@ -375,17 +384,11 @@ public:
                                             std::vector< sal_Int32 >& rWidths,
                                             Ucs2UIntMap& rUnicodeEnc ) override;
 
-    virtual bool            GetGlyphBoundRect(const GlyphItem&, tools::Rectangle&) override;
-    virtual bool            GetGlyphOutline(const GlyphItem&, basegfx::B2DPolyPolygon&) override;
-
-    virtual SalLayout*      GetTextLayout( ImplLayoutArgs&, int nFallbackLevel ) override;
-    virtual void            DrawTextLayout( const CommonSalLayout& ) override;
+    virtual std::unique_ptr<GenericSalLayout>
+                            GetTextLayout(int nFallbackLevel) override;
+    virtual void            DrawTextLayout( const GenericSalLayout& ) override;
     virtual bool            supportsOperation( OutDevSupportType ) const override;
-
-#ifdef MACOSX
-    // Query the platform layer for control support
-    virtual bool            IsNativeControlSupported( ControlType nType, ControlPart nPart ) override;
-#endif
+    virtual OUString getRenderBackendName() const override { return "aqua"; }
 
     virtual SystemGraphicsData
                             GetGraphicsData() const override;

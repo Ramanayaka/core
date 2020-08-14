@@ -64,7 +64,7 @@ enum class SdrTextAniKind {
 //   Direction = the starting direction.
 //   All Other Parameters: just like SdrTextAniKind::Scroll
 // - SdrTextAniKind::Slide:
-//   Text will slide in to the original position.
+//   Text will slide into the original position.
 //   -> same as SCROLL with StartInside = sal_False, StopInside = sal_True
 //   and Count = 1 (Count = 0 is interpreted as count = 1).
 //   For each count > 1, the text, will be slid out backwards
@@ -76,19 +76,17 @@ enum class SdrTextAniKind {
 //   of the text depends on the anchor of the drawing object.  This
 //   corresponds to the position of the text in normal Paint (without scrolling).
 
-class SVX_DLLPUBLIC SdrTextAniKindItem: public SfxEnumItem<SdrTextAniKind> {
+class SVXCORE_DLLPUBLIC SdrTextAniKindItem: public SfxEnumItem<SdrTextAniKind> {
 public:
     SdrTextAniKindItem(SdrTextAniKind eKind=SdrTextAniKind::NONE): SfxEnumItem(SDRATTR_TEXT_ANIKIND, eKind) {}
-    SdrTextAniKindItem(SvStream& rIn)                       : SfxEnumItem(SDRATTR_TEXT_ANIKIND, rIn)  {}
-    virtual SfxPoolItem*      Clone(SfxItemPool* pPool=nullptr) const override;
-    virtual SfxPoolItem*      Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual SdrTextAniKindItem* Clone(SfxItemPool* pPool=nullptr) const override;
     virtual sal_uInt16        GetValueCount() const override; // { return 5; }
 
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    virtual OUString GetValueTextByPos(sal_uInt16 nPos) const override;
-    virtual bool GetPresentation(SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper * = nullptr) const override;
+    static OUString GetValueTextByPos(sal_uInt16 nPos);
+    virtual bool GetPresentation(SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper&) const override;
 };
 
 #endif

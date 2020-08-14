@@ -25,12 +25,11 @@
 
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/component_context.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/lang/XSingleComponentFactory.hpp>
 #include <com/sun/star/util/XMacroExpander.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
 
 #include "macro_expander.hxx"
 #include "paths.hxx"
@@ -44,45 +43,28 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
 using rtl::Bootstrap;
-using rtl::OUString;
 
 namespace cppu
 {
 
-Bootstrap const & get_unorc()
+static Bootstrap const & get_unorc()
 {
-    static rtlBootstrapHandle s_bstrap = nullptr;
-    if (! s_bstrap)
-    {
-        OUString iniName(getUnoIniUri());
-        rtlBootstrapHandle bstrap = rtl_bootstrap_args_open( iniName.pData );
-
-        ClearableMutexGuard guard( Mutex::getGlobalMutex() );
-        if (s_bstrap)
-        {
-            guard.clear();
-            rtl_bootstrap_args_close( bstrap );
-        }
-        else
-        {
-            s_bstrap = bstrap;
-        }
-    }
+    static rtlBootstrapHandle s_bstrap = rtl_bootstrap_args_open(getUnoIniUri().pData);
     return *reinterpret_cast<Bootstrap const *>(&s_bstrap);
 }
 
 }
 
-namespace cppuhelper { namespace detail {
+namespace cppuhelper::detail {
 
-rtl::OUString expandMacros(rtl::OUString const & text) {
-    rtl::OUString t(text);
+OUString expandMacros(OUString const & text) {
+    OUString t(text);
     rtl_bootstrap_expandMacros_from_handle(
         cppu::get_unorc().getHandle(), &t.pData);
     return t;
 }
 
-} }
+}
 
 namespace
 {
@@ -102,12 +84,12 @@ public:
 
 class theImplNames : public rtl::Static<ImplNames, theImplNames> {};
 
-inline OUString s_impl_name()
+OUString s_impl_name()
 {
-    return OUString(IMPL_NAME);
+    return IMPL_NAME;
 }
 
-inline Sequence< OUString > const & s_get_service_names()
+Sequence< OUString > const & s_get_service_names()
 {
     return theImplNames::get().getNames();
 }
@@ -167,7 +149,7 @@ OUString Bootstrap_MacroExpander::expandMacros( OUString const & exp )
 }
 
 
-Reference< XInterface > SAL_CALL service_create(
+Reference< XInterface > service_create(
     SAL_UNUSED_PARAMETER Reference< XComponentContext > const & )
 {
     return static_cast< ::cppu::OWeakObject * >( new Bootstrap_MacroExpander );
@@ -175,7 +157,7 @@ Reference< XInterface > SAL_CALL service_create(
 
 }
 
-namespace cppuhelper { namespace detail {
+namespace cppuhelper::detail {
 
 Reference< lang::XSingleComponentFactory > create_bootstrap_macro_expander_factory()
 {
@@ -195,6 +177,6 @@ Reference< lang::XSingleComponentFactory > create_bootstrap_macro_expander_facto
         SAL_NO_ACQUIRE);
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

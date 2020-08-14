@@ -21,14 +21,13 @@
 
 #include <map>
 
-#include "ObjectIdentifier.hxx"
-#include "macros.hxx"
-#include "TitleHelper.hxx"
-#include "ChartModelHelper.hxx"
-#include "AxisHelper.hxx"
-#include "servicenames_charttypes.hxx"
-#include "DiagramHelper.hxx"
-#include "AxisIndexDefines.hxx"
+#include <ObjectIdentifier.hxx>
+#include <TitleHelper.hxx>
+#include <ChartModel.hxx>
+#include <ChartModelHelper.hxx>
+#include <AxisHelper.hxx>
+#include <servicenames_charttypes.hxx>
+#include <DiagramHelper.hxx>
 #include <unonames.hxx>
 
 #include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
@@ -37,8 +36,13 @@
 #include <com/sun/star/chart2/XDataSeriesContainer.hpp>
 #include <com/sun/star/chart2/XAxis.hpp>
 #include <com/sun/star/chart2/XRegressionCurveContainer.hpp>
+#include <com/sun/star/awt/Point.hpp>
+#include <com/sun/star/drawing/XShape.hpp>
 
 #include <rtl/ustrbuf.hxx>
+#include <tools/diagnose_ex.h>
+
+namespace com::sun::star::drawing { class XShape; }
 
 namespace chart
 {
@@ -48,11 +52,11 @@ using namespace ::com::sun::star::chart2;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Any;
 
-static const char m_aMultiClick[] = "MultiClick";
-static const char m_aDragMethodEquals[] = "DragMethod=";
-static const char m_aDragParameterEquals[] = "DragParameter=";
-static const char m_aProtocol[] = "CID/";
-static const OUString m_aPieSegmentDragMethodServiceName("PieSegmentDraging");
+const char m_aMultiClick[] = "MultiClick";
+const char m_aDragMethodEquals[] = "DragMethod=";
+const char m_aDragParameterEquals[] = "DragParameter=";
+const char m_aProtocol[] = "CID/";
+const OUString m_aPieSegmentDragMethodServiceName("PieSegmentDragging");
 
 namespace
 {
@@ -133,18 +137,17 @@ Reference<XChartType> lcl_getFirstStockChartType( const Reference< frame::XModel
     if( !xCooSysContainer.is())
         return nullptr;
 
-    uno::Sequence< Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
-    for( sal_Int32 nCS = 0; nCS < aCooSysList.getLength(); ++nCS )
+    const uno::Sequence< Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
+    for( Reference< XCoordinateSystem > const & coords : aCooSysList )
     {
         //iterate through all chart types in the current coordinate system
-        Reference< XChartTypeContainer > xChartTypeContainer( aCooSysList[nCS], uno::UNO_QUERY );
+        Reference< XChartTypeContainer > xChartTypeContainer( coords, uno::UNO_QUERY );
         if( !xChartTypeContainer.is() )
             continue;
 
-        uno::Sequence< Reference< XChartType > > aChartTypeList( xChartTypeContainer->getChartTypes() );
-        for( sal_Int32 nT = 0; nT < aChartTypeList.getLength(); ++nT )
+        const uno::Sequence< Reference< XChartType > > aChartTypeList( xChartTypeContainer->getChartTypes() );
+        for( Reference< XChartType > const & xChartType : aChartTypeList )
         {
-            Reference< XChartType > xChartType( aChartTypeList[nT] );
             if(!xChartType.is())
                 continue;
             OUString aChartType = xChartType->getChartType();
@@ -240,13 +243,11 @@ void lcl_getDiagramAndCooSys( const OUString& rObjectCID
 
 ObjectIdentifier::ObjectIdentifier()
     :m_aObjectCID( OUString() )
-    ,m_xAdditionalShape( nullptr )
 {
 }
 
 ObjectIdentifier::ObjectIdentifier( const OUString& rObjectCID )
     :m_aObjectCID( rObjectCID )
-    ,m_xAdditionalShape( nullptr )
 {
 }
 
@@ -258,7 +259,6 @@ ObjectIdentifier::ObjectIdentifier( const Reference< drawing::XShape >& rxShape 
 
 ObjectIdentifier::ObjectIdentifier( const Any& rAny )
     :m_aObjectCID( OUString() )
-    ,m_xAdditionalShape( nullptr )
 {
     const uno::Type& rType = rAny.getValueType();
     if ( rType == cppu::UnoType<OUString>::get() )
@@ -269,12 +269,6 @@ ObjectIdentifier::ObjectIdentifier( const Any& rAny )
     {
         rAny >>= m_xAdditionalShape;
     }
-}
-
-ObjectIdentifier::ObjectIdentifier( const ObjectIdentifier& rOID )
-    :m_aObjectCID( rOID.m_aObjectCID )
-    ,m_xAdditionalShape( rOID.m_xAdditionalShape )
-{
 }
 
 bool ObjectIdentifier::operator==( const ObjectIdentifier& rOID ) const
@@ -357,14 +351,14 @@ OUString ObjectIdentifier::createClassifiedIdentifierForObject(
         Reference< XLegend > xLegend( xObject, uno::UNO_QUERY );
         if( xLegend.is() )
         {
-            return createClassifiedIdentifierForParticle( createParticleForLegend( xLegend, rModel ) );
+            return createClassifiedIdentifierForParticle( createParticleForLegend( rModel ) );
         }
 
         //diagram
         Reference< XDiagram > xDiagram( xObject, uno::UNO_QUERY );
         if( xDiagram.is() )
         {
-            return createClassifiedIdentifierForParticle( createParticleForDiagram( xDiagram, rModel ) );
+            return createClassifiedIdentifierForParticle( createParticleForDiagram() );
         }
 
         //todo
@@ -374,9 +368,9 @@ OUString ObjectIdentifier::createClassifiedIdentifierForObject(
         //datapoint?
         //Gridproperties
     }
-    catch(const uno::Exception& ex)
+    catch(const uno::Exception&)
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     if( eObjectType != OBJECTTYPE_UNKNOWN )
@@ -439,14 +433,14 @@ OUString ObjectIdentifier::createClassifiedIdentifierForObject(
         Reference< XLegend > xLegend( xObject, uno::UNO_QUERY );
         if( xLegend.is() )
         {
-            return createClassifiedIdentifierForParticle( createParticleForLegend( xLegend, xChartModel ) );
+            return createClassifiedIdentifierForParticle( createParticleForLegend( xChartModel ) );
         }
 
         //diagram
         Reference< XDiagram > xDiagram( xObject, uno::UNO_QUERY );
         if( xDiagram.is() )
         {
-            return createClassifiedIdentifierForParticle( createParticleForDiagram( xDiagram, xChartModel ) );
+            return createClassifiedIdentifierForParticle( createParticleForDiagram() );
         }
 
         //todo
@@ -456,9 +450,9 @@ OUString ObjectIdentifier::createClassifiedIdentifierForObject(
         //datapoint?
         //Gridproperties
     }
-    catch(const uno::Exception& ex)
+    catch(const uno::Exception&)
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     if( eObjectType != OBJECTTYPE_UNKNOWN )
@@ -492,7 +486,7 @@ OUString ObjectIdentifier::createClassifiedIdentifierForParticles(
 
     OUStringBuffer aRet( m_aProtocol );
     aRet.append( lcl_createClassificationStringForType( eObjectType, rDragMethodServiceName, rDragParameterString ));
-    if(aRet.getLength() > (sal_Int32)strlen(m_aProtocol))
+    if(aRet.getLength() > static_cast<sal_Int32>(strlen(m_aProtocol)))
         aRet.append("/");
 
     if(!rParentParticle.isEmpty())
@@ -506,20 +500,10 @@ OUString ObjectIdentifier::createClassifiedIdentifierForParticles(
     return aRet.makeStringAndClear();
 }
 
-OUString ObjectIdentifier::createParticleForDiagram(
-          const Reference< XDiagram >& /*xDiagram*/
-        , ChartModel& /*xChartModel*/ )
+OUString ObjectIdentifier::createParticleForDiagram()
 {
-    //todo: if more than one diagram is implemeted, add the correct diagram index here
-    return OUString("D=0");
-}
-
-OUString ObjectIdentifier::createParticleForDiagram(
-          const Reference< XDiagram >& /*xDiagram*/
-        , const Reference< frame::XModel >& /*xChartModel*/ )
-{
-    //todo: if more than one diagram is implemeted, add the correct diagram index here
-    return OUString("D=0");
+    //TODO: if more than one diagram is implemented, add the correct diagram index here
+    return "D=0";
 }
 
 OUString ObjectIdentifier::createParticleForCoordinateSystem(
@@ -539,7 +523,7 @@ OUString ObjectIdentifier::createParticleForCoordinateSystem(
             Reference< XCoordinateSystem > xCurrentCooSys( aCooSysList[nCooSysIndex] );
             if( xCooSys == xCurrentCooSys )
             {
-                aRet = ObjectIdentifier::createParticleForDiagram( xDiagram, rModel );
+                aRet = ObjectIdentifier::createParticleForDiagram();
                 aRet.append(":CS=");
                 aRet.append( OUString::number( nCooSysIndex ) );
                 break;
@@ -567,7 +551,7 @@ OUString ObjectIdentifier::createParticleForCoordinateSystem(
             Reference< XCoordinateSystem > xCurrentCooSys( aCooSysList[nCooSysIndex] );
             if( xCooSys == xCurrentCooSys )
             {
-                aRet = ObjectIdentifier::createParticleForDiagram( xDiagram, xChartModel );
+                aRet = ObjectIdentifier::createParticleForDiagram();
                 aRet.append(":CS=");
                 aRet.append( OUString::number( nCooSysIndex ) );
                 break;
@@ -582,26 +566,20 @@ OUString ObjectIdentifier::createParticleForAxis(
             sal_Int32 nDimensionIndex
           , sal_Int32 nAxisIndex )
 {
-    OUStringBuffer aRet("Axis=");
-
-    aRet.append( OUString::number( nDimensionIndex ) );
-    aRet.append(",");
-    aRet.append( OUString::number( nAxisIndex ) );
-
-    return aRet.makeStringAndClear();
+    return "Axis=" +
+        OUString::number( nDimensionIndex ) +
+        "," +
+        OUString::number( nAxisIndex );
 }
 
 OUString ObjectIdentifier::createParticleForGrid(
             sal_Int32 nDimensionIndex
           , sal_Int32 nAxisIndex )
 {
-    OUStringBuffer aRet("Axis=");
-    aRet.append( OUString::number( nDimensionIndex ) );
-    aRet.append(",");
-    aRet.append( OUString::number( nAxisIndex ) );
-    aRet.append( ":Grid=0" );
+    OUString aRet = "Axis=" + OUString::number( nDimensionIndex )
+                  + "," + OUString::number( nAxisIndex ) + ":Grid=0";
 
-    return aRet.makeStringAndClear();
+    return aRet;
 }
 
 OUString ObjectIdentifier::createClassifiedIdentifierForGrid(
@@ -642,16 +620,13 @@ OUString ObjectIdentifier::createParticleForSeries(
     return aRet.makeStringAndClear();
 }
 
-OUString ObjectIdentifier::createParticleForLegend(
-          const Reference< XLegend >& /*xLegend*/
-        , ChartModel& rModel )
+OUString ObjectIdentifier::createParticleForLegend( ChartModel&  )
 {
     OUStringBuffer aRet;
 
-    Reference< XDiagram > xDiagram( rModel.getFirstDiagram() );
-    //todo: if more than one diagram is implemeted, find the correct diagram which is owner of the given legend
+    //todo: if more than one diagram is implemented, find the correct diagram which is owner of the given legend
 
-    aRet.append( ObjectIdentifier::createParticleForDiagram( xDiagram, rModel ) );
+    aRet.append( ObjectIdentifier::createParticleForDiagram() );
     aRet.append(":");
     aRet.append(getStringForType( OBJECTTYPE_LEGEND ));
     aRet.append("=");
@@ -660,15 +635,13 @@ OUString ObjectIdentifier::createParticleForLegend(
 }
 
 OUString ObjectIdentifier::createParticleForLegend(
-          const Reference< XLegend >& /*xLegend*/
-        , const Reference< frame::XModel >& xChartModel )
+        const Reference< frame::XModel >& )
 {
     OUStringBuffer aRet;
 
-    Reference< XDiagram > xDiagram( ChartModelHelper::findDiagram( xChartModel ) );
-    //todo: if more than one diagram is implemeted, find the correct diagram which is owner of the given legend
+    //todo: if more than one diagram is implemented, find the correct diagram which is owner of the given legend
 
-    aRet.append( ObjectIdentifier::createParticleForDiagram( xDiagram, xChartModel ) );
+    aRet.append( ObjectIdentifier::createParticleForDiagram() );
     aRet.append(":");
     aRet.append(getStringForType( OBJECTTYPE_LEGEND ));
     aRet.append("=");
@@ -697,7 +670,7 @@ OUString ObjectIdentifier::createClassifiedIdentifierWithParent(
 
     OUStringBuffer aRet( m_aProtocol );
     aRet.append( lcl_createClassificationStringForType( eObjectType, rDragMethodServiceName, rDragParameterString ));
-    if(aRet.getLength() > (sal_Int32)strlen(m_aProtocol))
+    if(aRet.getLength() > static_cast<sal_Int32>(strlen(m_aProtocol)))
         aRet.append("/");
     aRet.append(rParentPartical);
     if(!rParentPartical.isEmpty())
@@ -720,16 +693,12 @@ OUString ObjectIdentifier::createPieSegmentDragParameterString(
         , const awt::Point& rMinimumPosition
         , const awt::Point& rMaximumPosition )
 {
-    OUStringBuffer aRet( OUString::number( nOffsetPercent ) );
-    aRet.append( ',');
-    aRet.append( OUString::number( rMinimumPosition.X ) );
-    aRet.append( ',');
-    aRet.append( OUString::number( rMinimumPosition.Y ) );
-    aRet.append( ',');
-    aRet.append( OUString::number( rMaximumPosition.X ) );
-    aRet.append( ',');
-    aRet.append( OUString::number( rMaximumPosition.Y ) );
-    return aRet.makeStringAndClear();
+    OUString aRet = OUString::number( nOffsetPercent )
+                  + "," + OUString::number( rMinimumPosition.X )
+                  + "," + OUString::number( rMinimumPosition.Y )
+                  + "," + OUString::number( rMaximumPosition.X )
+                  + "," + OUString::number( rMaximumPosition.Y );
+    return aRet;
 }
 
 bool ObjectIdentifier::parsePieSegmentDragParameterString(
@@ -824,6 +793,7 @@ bool ObjectIdentifier::isDragableObject( const OUString& rClassifiedIdentifier )
         case OBJECTTYPE_TITLE:
         case OBJECTTYPE_LEGEND:
         case OBJECTTYPE_DIAGRAM:
+        case OBJECTTYPE_DATA_LABEL:
         case OBJECTTYPE_DATA_CURVE_EQUATION:
         //case OBJECTTYPE_DIAGRAM_WALL:
             bReturn = true;
@@ -836,7 +806,7 @@ bool ObjectIdentifier::isDragableObject( const OUString& rClassifiedIdentifier )
     return bReturn;
 }
 
-bool ObjectIdentifier::isDragableObject()
+bool ObjectIdentifier::isDragableObject() const
 {
     bool bReturn = false;
     if ( isAutoGeneratedObject() )
@@ -897,7 +867,7 @@ bool ObjectIdentifier::areSiblings( const OUString& rCID1, const OUString& rCID2
         if( !aParent1.isEmpty() )
         {
             OUString aParent2( ObjectIdentifier::getFullParentParticle( rCID2 ) );
-            bRet=aParent1.equals(aParent2);
+            bRet=aParent1 == aParent2;
         }
         //legend entries are special:
         if(!bRet)
@@ -912,7 +882,7 @@ bool ObjectIdentifier::areSiblings( const OUString& rCID1, const OUString& rCID2
 
 bool ObjectIdentifier::areIdenticalObjects( const OUString& rCID1, const OUString& rCID2 )
 {
-    if( rCID1.equals( rCID2 ) )
+    if( rCID1 == rCID2 )
         return true;
     //draggable pie or donut segments need special treatment, as their CIDs do change with offset
     {
@@ -922,7 +892,7 @@ bool ObjectIdentifier::areIdenticalObjects( const OUString& rCID1, const OUStrin
 
         OUString aID1( ObjectIdentifier::getObjectID( rCID1 ) );
         OUString aID2( ObjectIdentifier::getObjectID( rCID2 ) );
-        if( !aID1.isEmpty() &&  aID1.equals( aID2 ) )
+        if( !aID1.isEmpty() &&  aID1 == aID2 )
             return true;
         }
     return false;
@@ -1081,7 +1051,7 @@ ObjectType ObjectIdentifier::getObjectType( const OUString& rCID )
     return eRet;
 }
 
-ObjectType ObjectIdentifier::getObjectType()
+ObjectType ObjectIdentifier::getObjectType() const
 {
     ObjectType eObjectType( OBJECTTYPE_UNKNOWN );
     if ( isAutoGeneratedObject() )
@@ -1138,11 +1108,8 @@ OUString ObjectIdentifier::createChildParticleWithIndex( ObjectType eObjectType,
 
 sal_Int32 ObjectIdentifier::getIndexFromParticleOrCID( const OUString& rParticleOrCID )
 {
-    OUString aIndexString = lcl_getIndexStringAfterString( rParticleOrCID, "=" );
-    sal_Int32 nCharacterIndex=0;
-    sal_Int32 nRet = lcl_StringToIndex( aIndexString.getToken( 0, ',', nCharacterIndex ) );
-
-    return nRet;
+    const OUString aIndexString = lcl_getIndexStringAfterString( rParticleOrCID, "=" );
+    return lcl_StringToIndex( aIndexString.getToken( 0, ',' ) );
 }
 
 OUString ObjectIdentifier::createSeriesSubObjectStub( ObjectType eSubObjectType
@@ -1150,7 +1117,7 @@ OUString ObjectIdentifier::createSeriesSubObjectStub( ObjectType eSubObjectType
                     , const OUString& rDragMethodServiceName
                     , const OUString& rDragParameterString )
 {
-    OUString aChildParticle = getStringForType( eSubObjectType ) + ("=");
+    OUString aChildParticle = getStringForType( eSubObjectType ) + "=";
 
     return createClassifiedIdentifierForParticles(
             rSeriesParticle, aChildParticle
@@ -1159,8 +1126,7 @@ OUString ObjectIdentifier::createSeriesSubObjectStub( ObjectType eSubObjectType
 
 OUString ObjectIdentifier::createPointCID( const OUString& rPointCID_Stub, sal_Int32 nIndex  )
 {
-    OUString aRet(rPointCID_Stub);
-    return aRet+=OUString::number( nIndex );
+    return rPointCID_Stub + OUString::number( nIndex );
 }
 
 OUString ObjectIdentifier::getParticleID( const OUString& rCID )
@@ -1215,7 +1181,7 @@ Reference< beans::XPropertySet > ObjectIdentifier::getObjectPropertySet(
     const Reference< chart2::XChartDocument >& xChartDocument )
 {
     return ObjectIdentifier::getObjectPropertySet(
-        rObjectCID, Reference< frame::XModel >( xChartDocument, uno::UNO_QUERY ));
+        rObjectCID, Reference< frame::XModel >( xChartDocument ));
 }
 
 Reference< beans::XPropertySet > ObjectIdentifier::getObjectPropertySet(
@@ -1228,7 +1194,7 @@ Reference< beans::XPropertySet > ObjectIdentifier::getObjectPropertySet(
     if(!xChartModel.is())
         return nullptr;
 
-    Reference< beans::XPropertySet > xObjectProperties = nullptr;
+    Reference< beans::XPropertySet > xObjectProperties;
     try
     {
         ObjectType eObjectType = ObjectIdentifier::getObjectType( rObjectCID );
@@ -1350,7 +1316,7 @@ Reference< beans::XPropertySet > ObjectIdentifier::getObjectPropertySet(
                                 errorBar = "ErrorBarZ";
 
                             xSeriesProp->getPropertyValue( errorBar ) >>= xErrorBarProp;
-                            xObjectProperties.set( xErrorBarProp, uno::UNO_QUERY );
+                            xObjectProperties = xErrorBarProp;
                         }
                     }
                     break;
@@ -1398,9 +1364,9 @@ Reference< beans::XPropertySet > ObjectIdentifier::getObjectPropertySet(
                     break;
         }
     }
-    catch(const uno::Exception& ex)
+    catch(const uno::Exception&)
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
     return xObjectProperties;
 }
@@ -1424,7 +1390,7 @@ Reference< XDataSeries > ObjectIdentifier::getDataSeriesForCID(
                 const OUString& rObjectCID
                 , const Reference< frame::XModel >& xChartModel )
 {
-    Reference< XDataSeries > xSeries(nullptr);
+    Reference< XDataSeries > xSeries;
 
     Reference< XDiagram > xDiagram;
     Reference< XCoordinateSystem > xCooSys;
@@ -1464,15 +1430,10 @@ TitleHelper::eTitleType ObjectIdentifier::getTitleTypeForCID( const OUString& rC
 
     OUString aParentParticle = ObjectIdentifier::getFullParentParticle( rCID );
     const tTitleMap& rMap = lcl_getTitleMap();
-    tTitleMap::const_iterator aIt( rMap.begin() );
-    for( ;aIt != rMap.end(); ++aIt )
-    {
-        if( aParentParticle.equals( (*aIt).second ) )
-        {
-            eRet = (*aIt).first;
-            break;
-        }
-    }
+    tTitleMap::const_iterator aIt = std::find_if(rMap.begin(), rMap.end(),
+        [&aParentParticle](tTitleMap::const_reference rEntry) { return aParentParticle == rEntry.second; });
+    if (aIt != rMap.end())
+        eRet = (*aIt).first;
 
     return eRet;
 }

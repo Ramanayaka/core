@@ -145,6 +145,10 @@ struct RegressionStyle
     {}
 };
 
+struct CustomLabelField {
+    std::vector<OUString> sRuns;
+};
+
 struct DataRowPointStyle
 {
     enum StyleType
@@ -167,7 +171,10 @@ struct DataRowPointStyle
     sal_Int32 m_nPointIndex;
     sal_Int32 m_nPointRepeat;
     OUString msStyleName;
+    ::std::vector<OUString> mCustomLabels;
+    double mCustomLabelPos[2] = { 0.0, 0.0 };
     OUString msSeriesStyleNameForDonuts;
+
     sal_Int32 mnAttachedAxis;
     bool mbSymbolSizeForSeriesIsMissingInFile;
 
@@ -179,7 +186,6 @@ struct DataRowPointStyle
                         , sal_Int32 nAttachedAxis = 0 ) :
             meType( eType ),
             m_xSeries( xSeries ),
-            m_xOldAPISeries( nullptr ),
             m_nPointIndex( nPointIndex ),
             m_nPointRepeat( nPointRepeat ),
             msStyleName( sStyleName ),

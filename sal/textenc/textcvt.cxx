@@ -17,9 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "rtl/textcvt.h"
+#include <cassert>
+
+#include <rtl/textcvt.h>
+#include <sal/log.hxx>
 
 #include "gettextencodingdata.hxx"
 #include "tenchelp.hxx"
@@ -50,11 +53,11 @@ static sal_Size ImplDummyToUnicode( const char* pSrcBuf, sal_Size nSrcBytes,
     {
         if ( pDestBuf == pEndDestBuf )
         {
-            *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR | RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOSMALL;
+            *pInfo |= RTL_TEXTTOUNICODE_INFO_ERROR | RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL;
             break;
         }
 
-        *pDestBuf = (sal_Unicode)(unsigned char)*pSrcBuf;
+        *pDestBuf = static_cast<sal_Unicode>(static_cast<unsigned char>(*pSrcBuf));
         pDestBuf++;
         pSrcBuf++;
     }
@@ -73,7 +76,7 @@ static sal_Size ImplUnicodeToDummy( const sal_Unicode* pSrcBuf, sal_Size nSrcCha
     char*               pEndDestBuf;
     const sal_Unicode*      pEndSrcBuf;
 
-    if ( ((nFlags & RTL_UNICODETOTEXT_FLAGS_UNDEFINED_MASK) == RTL_UNICODETOTEXT_FLAGS_UNDEFINED_ERROR) )
+    if ( (nFlags & RTL_UNICODETOTEXT_FLAGS_UNDEFINED_MASK) == RTL_UNICODETOTEXT_FLAGS_UNDEFINED_ERROR )
     {
         *pInfo |= RTL_UNICODETOTEXT_INFO_ERROR |
                   RTL_UNICODETOTEXT_INFO_UNDEFINED;
@@ -91,7 +94,7 @@ static sal_Size ImplUnicodeToDummy( const sal_Unicode* pSrcBuf, sal_Size nSrcCha
             break;
         }
 
-        *pDestBuf = (char)(unsigned char)(*pSrcBuf & 0x00FF);
+        *pDestBuf = static_cast<char>(static_cast<unsigned char>(*pSrcBuf & 0x00FF));
         pDestBuf++;
         pSrcBuf++;
     }
@@ -157,12 +160,31 @@ sal_Size SAL_CALL rtl_convertTextToUnicode( rtl_TextToUnicodeConverter hConverte
                                             sal_uInt32 nFlags, sal_uInt32* pInfo,
                                             sal_Size* pSrcCvtBytes )
 {
+    assert(
+        (nFlags & RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_MASK)
+        <= RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_DEFAULT);
+    assert(
+        (nFlags & RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_MASK)
+        <= RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_DEFAULT);
+    assert(
+        (nFlags & RTL_TEXTTOUNICODE_FLAGS_INVALID_MASK)
+        <= RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT);
+    assert(
+        (nFlags
+         & ~(RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_MASK
+             | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_MASK
+             | RTL_TEXTTOUNICODE_FLAGS_INVALID_MASK
+             | RTL_TEXTTOUNICODE_FLAGS_FLUSH
+             | RTL_TEXTTOUNICODE_FLAGS_GLOBAL_SIGNATURE))
+        == 0);
+
     const ImplTextConverter* pConverter = static_cast<const ImplTextConverter*>(hConverter);
 
     /* Only temporary, because we don't want die, if we don't have a
        converter, because not all converters are implemented yet */
     if ( !pConverter )
     {
+        SAL_WARN("sal.textenc", "Missing rtl_TextToUnicodeConverter");
         return ImplDummyToUnicode( pSrcBuf, nSrcBytes,
                                    pDestBuf, nDestChars,
                                    nFlags, pInfo, pSrcCvtBytes );
@@ -233,12 +255,34 @@ sal_Size SAL_CALL rtl_convertUnicodeToText( rtl_UnicodeToTextConverter hConverte
                                             sal_uInt32 nFlags, sal_uInt32* pInfo,
                                             sal_Size* pSrcCvtChars )
 {
+    assert(
+        (nFlags & RTL_UNICODETOTEXT_FLAGS_UNDEFINED_MASK)
+        <= RTL_UNICODETOTEXT_FLAGS_UNDEFINED_DEFAULT);
+    assert(
+        (nFlags & RTL_UNICODETOTEXT_FLAGS_INVALID_MASK)
+        <= RTL_UNICODETOTEXT_FLAGS_INVALID_DEFAULT);
+    assert(
+        (nFlags
+         & ~(RTL_UNICODETOTEXT_FLAGS_UNDEFINED_MASK
+             | RTL_UNICODETOTEXT_FLAGS_INVALID_MASK
+             | RTL_UNICODETOTEXT_FLAGS_UNDEFINED_REPLACE
+             | RTL_UNICODETOTEXT_FLAGS_UNDEFINED_REPLACESTR
+             | RTL_UNICODETOTEXT_FLAGS_PRIVATE_MAPTO0
+             | RTL_UNICODETOTEXT_FLAGS_NONSPACING_IGNORE
+             | RTL_UNICODETOTEXT_FLAGS_CONTROL_IGNORE
+             | RTL_UNICODETOTEXT_FLAGS_PRIVATE_IGNORE
+             | RTL_UNICODETOTEXT_FLAGS_NOCOMPOSITE
+             | RTL_UNICODETOTEXT_FLAGS_FLUSH
+             | RTL_UNICODETOTEXT_FLAGS_GLOBAL_SIGNATURE))
+        == 0);
+
     const ImplTextConverter* pConverter = static_cast<const ImplTextConverter*>(hConverter);
 
     /* Only temporary, because we don't want die, if we don't have a
        converter, because not all converters are implemented yet */
     if ( !pConverter )
     {
+        SAL_WARN("sal.textenc", "Missing rtl_UnicodeToTextConverter");
         return ImplUnicodeToDummy( pSrcBuf, nSrcChars,
                                    pDestBuf, nDestBytes,
                                    nFlags, pInfo, pSrcCvtChars );

@@ -33,8 +33,8 @@
 
 #include <ne_locks.h>
 
-#include "osl/mutex.hxx"
-#include "rtl/ref.hxx"
+#include <osl/mutex.hxx>
+#include <rtl/ref.hxx>
 #include "NeonTypes.hxx"
 
 namespace webdav_ucp
@@ -66,6 +66,7 @@ class NeonLockStore
     ne_lock_store    * m_pNeonLockStore;
     rtl::Reference< TickerThread > m_pTickerThread;
     LockInfoMap        m_aLockInfoMap;
+    std::vector<NeonLock*> m_aRemoveDeferred;
 
 public:
     NeonLockStore();
@@ -82,6 +83,7 @@ public:
                   sal_Int32 nLastChanceToSendRefreshRequest );
 
     void removeLock( NeonLock * pLock );
+    void removeLockDeferred(NeonLock* pLock);
 
     void refreshLocks();
 

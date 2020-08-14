@@ -18,8 +18,7 @@
  */
 
 #include <jobs/job.hxx>
-#include <general.h>
-#include <services.h>
+#include <jobs/jobresult.hxx>
 
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/frame/TerminationVetoException.hpp>
@@ -30,9 +29,9 @@
 #include <com/sun/star/util/XCloseable.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 
-#include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 #include <vcl/svapp.hxx>
 
 namespace framework{
@@ -94,7 +93,7 @@ Job::Job( /*IN*/ const css::uno::Reference< css::uno::XComponentContext >& xCont
 /**
     @short  superfluous!
     @descr  Releasing of memory and reference must be done inside die() call.
-            Otherwhise it's a bug.
+            Otherwise it's a bug.
 */
 Job::~Job()
 {
@@ -175,20 +174,20 @@ void Job::execute( /*IN*/ const css::uno::Sequence< css::beans::NamedValue >& lD
     css::uno::Sequence< css::beans::NamedValue > lJobArgs = impl_generateJobArgs(lDynamicArgs);
 
     // It's necessary to hold us self alive!
-    // Otherwhise we might die by ref count ...
+    // Otherwise we might die by ref count ...
     css::uno::Reference< css::task::XJobListener > xThis(static_cast< ::cppu::OWeakObject* >(this), css::uno::UNO_QUERY);
 
     try
     {
         // create the job
         // We must check for the supported interface on demand!
-        // But we preferr the synchronous one ...
+        // But we prefer the synchronous one ...
         m_xJob = m_xContext->getServiceManager()->createInstanceWithContext(m_aJobCfg.getService(), m_xContext);
         xSJob.set(m_xJob, css::uno::UNO_QUERY);
         if (!xSJob.is())
             xAJob.set(m_xJob, css::uno::UNO_QUERY);
 
-        // execute it asynchron
+        // execute it asynchronous
         if (xAJob.is())
         {
             m_aAsyncWait.reset();
@@ -214,24 +213,24 @@ void Job::execute( /*IN*/ const css::uno::Sequence< css::beans::NamedValue >& lD
         }
     }
     #if OSL_DEBUG_LEVEL > 0
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
     {
-        SAL_INFO("fwk", "Job::execute(): Got exception during job execution. Original Message was: \"" << ex.Message << "\"");
+        TOOLS_INFO_EXCEPTION("fwk", "Job::execute(): Got exception during job execution");
     }
     #else
     catch(const css::uno::Exception&)
         {}
     #endif
 
-    // deinitialize the environment and mark this job as finished ...
+    // deinitialize the environment and mark this job as finished...
     // but don't overwrite any information about STOPPED or might DISPOSED jobs!
     impl_stopListening();
     if (m_eRunState == E_RUNNING)
         m_eRunState = E_STOPPED_OR_FINISHED;
 
-    // If we got a close request from our frame or model ...
-    // but we disagreed wit that by throwing a veto exception...
-    // and got the ownership ...
+    // If we got a close request from our frame or model...
+    // but we disagreed with that by throwing a veto exception...
+    // and got the ownership...
     // we have to close the resource frame or model now -
     // and to disable ourself!
     if (m_bPendingCloseFrame)
@@ -274,7 +273,7 @@ void Job::execute( /*IN*/ const css::uno::Sequence< css::beans::NamedValue >& lD
     @descr  It doesn't matter if this request is called from inside or
             from outside. We release our internal structures and stop
             every activity. After doing so - this instance will not be
-            useable any longer! Of course we try to handle further requests
+            usable any longer! Of course we try to handle further requests
             carefully. Maybe someone else holds a reference to us ...
 */
 void Job::die()
@@ -317,7 +316,7 @@ void Job::die()
                 b) it's specific configuration data (Different for every job.)
                 c) some environment values          (e.g. the frame, for which this job was started)
                 d) any other dynamic data           (e.g. parameters of a dispatch() request)
-            We collect all these information and generate one list which include all others.
+            We collect all this information and generate one list which include all others.
 
     @param  lDynamicArgs
                 list of dynamic arguments (given by a corresponding dispatch() call)
@@ -336,7 +335,7 @@ css::uno::Sequence< css::beans::NamedValue > Job::impl_generateJobArgs( /*IN*/ c
     JobData::EMode eMode = m_aJobCfg.getMode();
 
     // Create list of environment variables. This list must be part of the
-    // returned structure every time... but some of its members are opetional!
+    // returned structure every time... but some of its members are optional!
     css::uno::Sequence< css::beans::NamedValue > lEnvArgs(1);
     lEnvArgs[0].Name = "EnvType";
     lEnvArgs[0].Value <<= m_aJobCfg.getEnvironmentDescriptor();
@@ -378,7 +377,7 @@ css::uno::Sequence< css::beans::NamedValue > Job::impl_generateJobArgs( /*IN*/ c
     /* } SAFE */
 
     // Add all valid (not empty) lists to the return list
-    if (lConfigArgs.getLength()>0)
+    if (lConfigArgs.hasElements())
     {
         sal_Int32 nLength = lAllArgs.getLength();
         lAllArgs.realloc(nLength+1);
@@ -392,14 +391,14 @@ css::uno::Sequence< css::beans::NamedValue > Job::impl_generateJobArgs( /*IN*/ c
         lAllArgs[nLength].Name = "JobConfig";
         lAllArgs[nLength].Value <<= comphelper::containerToSequence(lJobConfigArgs);
     }
-    if (lEnvArgs.getLength()>0)
+    if (lEnvArgs.hasElements())
     {
         sal_Int32 nLength = lAllArgs.getLength();
         lAllArgs.realloc(nLength+1);
         lAllArgs[nLength].Name = "Environment";
         lAllArgs[nLength].Value <<= lEnvArgs;
     }
-    if (lDynamicArgs.getLength()>0)
+    if (lDynamicArgs.hasElements())
     {
         sal_Int32 nLength = lAllArgs.getLength();
         lAllArgs.realloc(nLength+1);
@@ -461,12 +460,11 @@ void Job::impl_reactForJobResult( /*IN*/ const css::uno::Any& aResult )
         (aAnalyzedResult.existPart(JobResult::E_DISPATCHRESULT))
        )
     {
-        m_aJobCfg.setResult(aAnalyzedResult);
         // Attention: Because the listener expect that the original object send this event ...
         // and we nor the job are the right ones ...
         // our user has set itself before. So we can fake this source address!
         css::frame::DispatchResultEvent aEvent        = aAnalyzedResult.getDispatchResult();
-                                        aEvent.Source = m_xResultSourceFake;
+        aEvent.Source = m_xResultSourceFake;
         m_xResultListener->dispatchFinished(aEvent);
     }
 }
@@ -527,22 +525,22 @@ void Job::impl_startListening()
     }
 
     // listening for model closing
-    if (m_xModel.is() && !m_bListenOnModel)
+    if (!(m_xModel.is() && !m_bListenOnModel))
+        return;
+
+    try
     {
-        try
+        css::uno::Reference< css::util::XCloseBroadcaster > xCloseable(m_xModel                                 , css::uno::UNO_QUERY);
+        css::uno::Reference< css::util::XCloseListener >    xThis     (static_cast< ::cppu::OWeakObject* >(this), css::uno::UNO_QUERY);
+        if (xCloseable.is())
         {
-            css::uno::Reference< css::util::XCloseBroadcaster > xCloseable(m_xModel                                 , css::uno::UNO_QUERY);
-            css::uno::Reference< css::util::XCloseListener >    xThis     (static_cast< ::cppu::OWeakObject* >(this), css::uno::UNO_QUERY);
-            if (xCloseable.is())
-            {
-                xCloseable->addCloseListener(xThis);
-                m_bListenOnModel = true;
-            }
+            xCloseable->addCloseListener(xThis);
+            m_bListenOnModel = true;
         }
-        catch(const css::uno::Exception&)
-        {
-            m_bListenOnModel = false;
-        }
+    }
+    catch(const css::uno::Exception&)
+    {
+        m_bListenOnModel = false;
     }
 }
 
@@ -588,21 +586,21 @@ void Job::impl_stopListening()
     }
 
     // stop listening for model closing
-    if (m_xModel.is() && m_bListenOnModel)
+    if (!(m_xModel.is() && m_bListenOnModel))
+        return;
+
+    try
     {
-        try
+        css::uno::Reference< css::util::XCloseBroadcaster > xCloseable(m_xModel                                 , css::uno::UNO_QUERY);
+        css::uno::Reference< css::util::XCloseListener >    xThis     (static_cast< ::cppu::OWeakObject* >(this), css::uno::UNO_QUERY);
+        if (xCloseable.is())
         {
-            css::uno::Reference< css::util::XCloseBroadcaster > xCloseable(m_xModel                                 , css::uno::UNO_QUERY);
-            css::uno::Reference< css::util::XCloseListener >    xThis     (static_cast< ::cppu::OWeakObject* >(this), css::uno::UNO_QUERY);
-            if (xCloseable.is())
-            {
-                xCloseable->removeCloseListener(xThis);
-                m_bListenOnModel = false;
-            }
+            xCloseable->removeCloseListener(xThis);
+            m_bListenOnModel = false;
         }
-        catch(const css::uno::Exception&)
-        {
-        }
+    }
+    catch(const css::uno::Exception&)
+    {
     }
 }
 
@@ -663,7 +661,7 @@ void SAL_CALL Job::queryTermination( /*IN*/ const css::lang::EventObject& )
 {
     SolarMutexGuard g;
 
-    // Otherwhise try to close() it
+    // Otherwise try to close() it
     css::uno::Reference< css::util::XCloseable > xClose(m_xJob, css::uno::UNO_QUERY);
     if (xClose.is())
     {
@@ -686,8 +684,8 @@ void SAL_CALL Job::queryTermination( /*IN*/ const css::lang::EventObject& )
     @short  inform us about office termination
     @descr  Instead of the method queryTermination(), here is no chance to disagree with that.
             We have to accept it and cancel all current processes inside.
-            It can occur only, if job was not already started if queryTermination() was called here ..
-            Then we had not throwed a veto exception. But now we must agree with this situation and break
+            It can occur only, if job was not already started if queryTermination() was called here.
+            Then we had not thrown a veto exception. But now we must agree with this situation and break
             all our internal processes. It's not a good idea to mark this instance as non startable any longer
             inside queryTermination() if no job was running too. Because that would disable this job and may
             the office does not really shutdown, because another listener has thrown the suitable exception.
@@ -713,7 +711,7 @@ void SAL_CALL Job::notifyTermination( /*IN*/ const css::lang::EventObject& )
                 describes the broadcaster and must be the frame instance
 
     @param  bGetsOwnership
-                If it's set to <sal_True> and we throw the right veto excepion, we have to close this frame later
+                If it's set to <sal_True> and we throw the right veto exception, we have to close this frame later
                 if our internal processes will be finished. If it's set to <FALSE/> we can ignore it.
 
     @throw  CloseVetoException
@@ -775,7 +773,7 @@ void SAL_CALL Job::queryClosing( const css::lang::EventObject& aEvent         ,
 
     // No veto ...
     // But don't call die() here or free our internal member.
-    // This must be done inside notifyClosing() only. Otherwhise the
+    // This must be done inside notifyClosing() only. Otherwise the
     // might stopped job has no chance to return its results or
     // call us back. We must give him the chance to finish it's work successfully.
 }
@@ -805,25 +803,25 @@ void SAL_CALL Job::notifyClosing( const css::lang::EventObject& )
 void SAL_CALL Job::disposing( const css::lang::EventObject& aEvent )
 {
     /* SAFE { */
-    SolarMutexClearableGuard aWriteLock;
+    {
+        SolarMutexGuard aWriteLock;
 
-    if (m_xDesktop.is() && aEvent.Source == m_xDesktop)
-    {
-        m_xDesktop.clear();
-        m_bListenOnDesktop = false;
+        if (m_xDesktop.is() && aEvent.Source == m_xDesktop)
+        {
+            m_xDesktop.clear();
+            m_bListenOnDesktop = false;
+        }
+        else if (m_xFrame.is() && aEvent.Source == m_xFrame)
+        {
+            m_xFrame.clear();
+            m_bListenOnFrame = false;
+        }
+        else if (m_xModel.is() && aEvent.Source == m_xModel)
+        {
+            m_xModel.clear();
+            m_bListenOnModel = false;
+        }
     }
-    else if (m_xFrame.is() && aEvent.Source == m_xFrame)
-    {
-        m_xFrame.clear();
-        m_bListenOnFrame = false;
-    }
-    else if (m_xModel.is() && aEvent.Source == m_xModel)
-    {
-        m_xModel.clear();
-        m_bListenOnModel = false;
-    }
-
-    aWriteLock.clear();
     /* } SAFE */
 
     die();

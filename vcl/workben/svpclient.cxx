@@ -18,23 +18,24 @@
  */
 
 #include <sal/main.h>
+#include <sal/log.hxx>
 
 #include <cppuhelper/bootstrap.hxx>
 #include <comphelper/processfactory.hxx>
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/awt/ImageScaleMode.hpp>
 
 #include <vcl/event.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/wrkwin.hxx>
 #include <vcl/button.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/imgctrl.hxx>
+#include <vcl/toolkit/fixed.hxx>
+#include <vcl/toolkit/lstbox.hxx>
 #include <vcl/bitmapex.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <vcl/graph.hxx>
+#include <tools/diagnose_ex.h>
 #include <tools/extendapplicationenvironment.hxx>
 #include <tools/stream.hxx>
 
@@ -55,7 +56,7 @@ using namespace ::com::sun::star::lang;
 using namespace cppu;
 
 // Forward declaration
-void Main();
+static void Main();
 
 SAL_IMPLEMENT_MAIN()
 {
@@ -76,25 +77,27 @@ SAL_IMPLEMENT_MAIN()
         ::Main();
         DeInitVCL();
     }
-    catch (const Exception& e)
+    catch (const Exception&)
     {
-        SAL_WARN("vcl", "Fatal exception: " << e.Message);
+        TOOLS_WARN_EXCEPTION("vcl", "Fatal");
         return 1;
     }
     catch (const std::exception& e)
     {
-        SAL_WARN("vcl", "Fatal exception: " << e.what());
+        SAL_WARN("vcl", "Fatal: " << e.what());
         return 1;
     }
 
     return 0;
 }
 
+namespace {
+
 class MyWin : public WorkWindow
 {
     VclPtr<PushButton>   m_aListButton;
     VclPtr<ListBox>      m_aSvpBitmaps;
-    VclPtr<ImageControl> m_aImage;
+    VclPtr<FixedImage> m_aImage;
     VclPtr<PushButton>   m_aQuitButton;
 public:
                  MyWin( vcl::Window* pParent, WinBits nWinStyle );
@@ -111,6 +114,8 @@ public:
     DECL_STATIC_LINK( MyWin, QuitHdl, Button*, void );
 };
 
+}
+
 void Main()
 {
     ScopedVclPtrInstance< MyWin > aMainWin( nullptr, WB_STDWORK );
@@ -124,7 +129,7 @@ MyWin::MyWin( vcl::Window* pParent, WinBits nWinStyle ) :
     WorkWindow( pParent, nWinStyle ),
     m_aListButton(VclPtr<PushButton>::Create(this, 0)),
     m_aSvpBitmaps(VclPtr<ListBox>::Create(this, WB_BORDER)),
-    m_aImage(VclPtr<ImageControl>::Create(this, WB_BORDER)),
+    m_aImage(VclPtr<FixedImage>::Create(this, WB_BORDER)),
     m_aQuitButton(VclPtr<PushButton>::Create(this, 0))
 {
     m_aListButton->SetPosSizePixel( Point( 10, 10 ), Size( 120, 25 ) );
@@ -137,7 +142,6 @@ MyWin::MyWin( vcl::Window* pParent, WinBits nWinStyle ) :
     m_aSvpBitmaps->Show();
 
     m_aImage->SetPosSizePixel( Point( 170, 10 ), Size( 400, 400 ) );
-    m_aImage->SetScaleMode( css::awt::ImageScaleMode::NONE );
     m_aImage->Show();
 
     m_aQuitButton->SetPosSizePixel( Point( 10, 300 ), Size( 120,25 ) );
@@ -178,11 +182,10 @@ void MyWin::parseList( const OString& rList )
             aElementType = OStringToOUString( aLine.copy( 13 ), RTL_TEXTENCODING_ASCII_US );
         else
         {
-            OUStringBuffer aNewElement( 64 );
-            aNewElement.append( aElementType );
-            aNewElement.append( ": " );
-            aNewElement.append( OStringToOUString( aLine, RTL_TEXTENCODING_ASCII_US ) );
-            m_aSvpBitmaps->InsertEntry( aNewElement.makeStringAndClear() );
+            OUString aNewElement =
+                aElementType + ": " +
+                OStringToOUString( aLine, RTL_TEXTENCODING_ASCII_US );
+            m_aSvpBitmaps->InsertEntry( aNewElement );
         }
     }
 }
@@ -207,8 +210,7 @@ OString MyWin::processCommand( const OString& rCommand )
         else
         {
             ssize_t nBytes = 0;
-            ssize_t fd = 0;
-            fd = write( nSocket, rCommand.getStr(), rCommand.getLength() );
+            ssize_t fd = write( nSocket, rCommand.getStr(), rCommand.getLength() );
 
             if (fd == 0)
                 SAL_WARN("vcl", "Connection closed on other end");
@@ -249,31 +251,32 @@ IMPL_STATIC_LINK_NOARG( MyWin, QuitHdl, Button*, void)
 
 IMPL_LINK_NOARG( MyWin, SelectHdl, ListBox&, void)
 {
-    OUString aEntry = m_aSvpBitmaps->GetSelectEntry();
+    OUString aEntry = m_aSvpBitmaps->GetSelectedEntry();
     sal_Int32 nPos = aEntry.indexOf( ": " );
-    if( nPos != -1 )
-    {
-        OStringBuffer aCommand( 64 );
-        aCommand.append( "get " );
-        aCommand.append( OUStringToOString( aEntry.copy( nPos+2 ), RTL_TEXTENCODING_ASCII_US ) );
-        OString aAnswer( processCommand( aCommand.makeStringAndClear() ) );
-        SvMemoryStream aStream( aAnswer.getLength() );
-        aStream.WriteBytes( aAnswer.getStr(), aAnswer.getLength() );
-        aStream.Seek( STREAM_SEEK_TO_BEGIN );
+    if( nPos == -1 )
+        return;
 
-        Graphic aGraphicResult;
-        GraphicFilter &rFilter = GraphicFilter::GetGraphicFilter();
-        rFilter.ImportGraphic( aGraphicResult, OUString("import"), aStream );
+    OString aCommand =
+        "get " +
+        OUStringToOString( aEntry.copy( nPos+2 ), RTL_TEXTENCODING_ASCII_US );
+    OString aAnswer( processCommand( aCommand ) );
+    SvMemoryStream aStream( aAnswer.getLength() );
+    aStream.WriteBytes( aAnswer.getStr(), aAnswer.getLength() );
+    aStream.Seek( STREAM_SEEK_TO_BEGIN );
 
-        Bitmap aBitmap = aGraphicResult.GetBitmap();
+    Graphic aGraphicResult;
+    GraphicFilter &rFilter = GraphicFilter::GetGraphicFilter();
+    rFilter.ImportGraphic( aGraphicResult, OUString("import"), aStream );
 
-        SAL_INFO("vcl", "got bitmap of size " << aBitmap.GetSizePixel().Width() << "x" << aBitmap.GetSizePixel().Height());
-        Size aFixedSize( aBitmap.GetSizePixel() );
-        aFixedSize.Width() += 10;
-        aFixedSize.Height() += 10;
-        m_aImage->SetSizePixel( aFixedSize );
-        m_aImage->SetImage( Image( BitmapEx( aBitmap ) ) );
-    }
+    BitmapEx aBitmap = aGraphicResult.GetBitmapEx();
+
+    SAL_INFO("vcl", "got bitmap of size " << aBitmap.GetSizePixel().Width() << "x" << aBitmap.GetSizePixel().Height());
+    Size aFixedSize( aBitmap.GetSizePixel() );
+    aFixedSize.AdjustWidth(10 );
+    aFixedSize.AdjustHeight(10 );
+    m_aImage->SetSizePixel( aFixedSize );
+    m_aImage->SetImage( Image( aBitmap ) );
+
 }
 
 

@@ -25,17 +25,16 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include "FieldTypes.hxx"
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
-class FormControlHelper
+class FormControlHelper : public virtual SvRefBase
 {
 public:
-    typedef std::shared_ptr<FormControlHelper> Pointer_t;
+    typedef tools::SvRef<FormControlHelper> Pointer_t;
     FormControlHelper(FieldId eFieldId,
                       css::uno::Reference<css::text::XTextDocument> const& rTextDocument,
                       FFDataHandler::Pointer_t const & pFFData);
-    ~FormControlHelper();
+    ~FormControlHelper() override;
 
     void insertControl(css::uno::Reference<css::text::XTextRange> const& xTextRange);
     void processField(css::uno::Reference<css::text::XFormField> const& xFormField);
@@ -43,15 +42,14 @@ public:
 private:
     FFDataHandler::Pointer_t m_pFFData;
     struct FormControlHelper_Impl;
-    typedef std::shared_ptr<FormControlHelper_Impl> ImplPointer_t;
-    ImplPointer_t m_pImpl;
+    tools::SvRef<FormControlHelper_Impl> m_pImpl;
 
     bool createCheckbox(css::uno::Reference<css::text::XTextRange> const& xTextRange,
                         const OUString & rControlName);
 };
 
 }
-}
+
 
 #endif // INCLUDED_WRITERFILTER_SOURCE_DMAPPER_FORMCONTROLHELPER_HXX
 

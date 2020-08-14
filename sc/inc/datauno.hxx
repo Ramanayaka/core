@@ -24,7 +24,6 @@
 #include "queryparam.hxx"
 #include "subtotalparam.hxx"
 
-#include <com/sun/star/sheet/TableFilterField.hpp>
 #include <com/sun/star/sheet/GeneralFunction.hpp>
 #include <com/sun/star/sheet/XCellRangeReferrer.hpp>
 #include <com/sun/star/sheet/XSheetFilterDescriptor.hpp>
@@ -43,12 +42,17 @@
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/util/XRefreshable.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ref.hxx>
 #include <svl/itemprop.hxx>
 #include <svl/lstner.hxx>
 
 #include <vector>
+
+namespace com::sun::star::sheet { struct TableFilterField2; }
+namespace com::sun::star::sheet { struct TableFilterField3; }
+namespace com::sun::star::sheet { struct TableFilterField; }
 
 class ScDBData;
 class ScDocShell;
@@ -158,10 +162,7 @@ public:
                                     const css::uno::Reference< css::beans::XVetoableChangeListener >& aListener ) override;
 
                             // XUnoTunnel
-    virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    static ScSubTotalDescriptorBase* getImplementation(const css::uno::Reference<css::sheet::XSubTotalDescriptor>& rObj);
+    UNO3_GETIMPLEMENTATION_DECL(ScSubTotalDescriptorBase)
 
                             // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
@@ -171,7 +172,7 @@ public:
 
 //  ScSubTotalDescriptor - dummy container to use with XImportTarget
 
-class ScSubTotalDescriptor : public ScSubTotalDescriptorBase
+class ScSubTotalDescriptor final : public ScSubTotalDescriptorBase
 {
 private:
     ScSubTotalParam         aStoredParam;
@@ -190,7 +191,7 @@ public:
 
 //  ScRangeSubTotalDescriptor - SubTotalDescriptor of a data base area
 
-class ScRangeSubTotalDescriptor : public ScSubTotalDescriptorBase
+class ScRangeSubTotalDescriptor final : public ScSubTotalDescriptorBase
 {
 private:
     rtl::Reference<ScDatabaseRangeObj>  mxParent;
@@ -209,7 +210,7 @@ class ScSubTotalFieldObj : public cppu::WeakImplHelper<
                                 css::lang::XServiceInfo >
 {
 private:
-    ScSubTotalDescriptorBase&       rParent;
+    rtl::Reference<ScSubTotalDescriptorBase> xParent;
     sal_uInt16                      nPos;
 
 public:
@@ -230,7 +231,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScConsolidationDescriptor : public cppu::WeakImplHelper<
+class ScConsolidationDescriptor final : public cppu::WeakImplHelper<
                                         css::sheet::XConsolidationDescriptor,
                                         css::lang::XServiceInfo >
 {
@@ -340,7 +341,7 @@ public:
 
 //  ScFilterDescriptor - dummy container to use with XFilterable
 
-class ScFilterDescriptor : public ScFilterDescriptorBase
+class ScFilterDescriptor final : public ScFilterDescriptorBase
 {
 private:
     ScQueryParam            aStoredParam;       // nField[] here within the area
@@ -360,7 +361,7 @@ public:
 
 //  ScRangeFilterDescriptor - FilterDescriptor of a data base area
 
-class ScRangeFilterDescriptor : public ScFilterDescriptorBase
+class ScRangeFilterDescriptor final : public ScFilterDescriptorBase
 {
 private:
     rtl::Reference<ScDatabaseRangeObj>  mxParent;
@@ -376,7 +377,7 @@ public:
 
 //  ScDataPilotFilterDescriptor - FilterDescriptor of a DataPilotDescriptors
 
-class ScDataPilotFilterDescriptor : public ScFilterDescriptorBase
+class ScDataPilotFilterDescriptor final : public ScFilterDescriptorBase
 {
 private:
     rtl::Reference<ScDataPilotDescriptorBase>  mxParent;
@@ -478,7 +479,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScDatabaseRangesObj : public cppu::WeakImplHelper<
+class ScDatabaseRangesObj final : public cppu::WeakImplHelper<
                                 css::sheet::XDatabaseRanges,
                                 css::container::XEnumerationAccess,
                                 css::container::XIndexAccess,
@@ -525,7 +526,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScUnnamedDatabaseRangesObj : public cppu::WeakImplHelper<
+class ScUnnamedDatabaseRangesObj final : public cppu::WeakImplHelper<
                                 css::sheet::XUnnamedDatabaseRanges>,
                             public SfxListener
 {

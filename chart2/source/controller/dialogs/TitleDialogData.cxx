@@ -17,21 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TitleDialogData.hxx"
-#include "TitleHelper.hxx"
-#include "ChartModelHelper.hxx"
-#include "AxisHelper.hxx"
+#include <sal/config.h>
+
+#include <com/sun/star/frame/XModel.hpp>
+
+#include <TitleDialogData.hxx>
+#include <TitleHelper.hxx>
+#include <ChartModelHelper.hxx>
+#include <AxisHelper.hxx>
 
 namespace chart
 {
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
 
-TitleDialogData::TitleDialogData( ReferenceSizeProvider* pRefSizeProvider )
+TitleDialogData::TitleDialogData( std::unique_ptr<ReferenceSizeProvider> pRefSizeProvider )
         : aPossibilityList(7)
         , aExistenceList(7)
         , aTextList(7)
-        , apReferenceSizeProvider( pRefSizeProvider )
+        , apReferenceSizeProvider( std::move(pRefSizeProvider) )
 {
     for (sal_Int32 i = 0; i < 7; i++)
     {
@@ -47,11 +51,11 @@ void TitleDialogData::readFromModel( const uno::Reference< frame::XModel>& xChar
     //get possibilities
     uno::Sequence< sal_Bool > aAxisPossibilityList;
     AxisHelper::getAxisOrGridPossibilities( aAxisPossibilityList, xDiagram );
-    this->aPossibilityList[2]=aAxisPossibilityList[0];//x axis title
-    this->aPossibilityList[3]=aAxisPossibilityList[1];//y axis title
-    this->aPossibilityList[4]=aAxisPossibilityList[2];//z axis title
-    this->aPossibilityList[5]=aAxisPossibilityList[3];//secondary x axis title
-    this->aPossibilityList[6]=aAxisPossibilityList[4];//secondary y axis title
+    aPossibilityList[2]=aAxisPossibilityList[0];//x axis title
+    aPossibilityList[3]=aAxisPossibilityList[1];//y axis title
+    aPossibilityList[4]=aAxisPossibilityList[2];//z axis title
+    aPossibilityList[5]=aAxisPossibilityList[3];//secondary x axis title
+    aPossibilityList[6]=aAxisPossibilityList[4];//secondary y axis title
 
     //find out which title exists and get their text
     //main title:
@@ -61,8 +65,8 @@ void TitleDialogData::readFromModel( const uno::Reference< frame::XModel>& xChar
     {
         uno::Reference< XTitle > xTitle =  TitleHelper::getTitle(
             static_cast< TitleHelper::eTitleType >( nTitleIndex ), xChartModel );
-        this->aExistenceList[nTitleIndex] = xTitle.is();
-        this->aTextList[nTitleIndex]=TitleHelper::getCompleteString( xTitle );
+        aExistenceList[nTitleIndex] = xTitle.is();
+        aTextList[nTitleIndex]=TitleHelper::getCompleteString( xTitle );
     }
 }
 
@@ -76,12 +80,12 @@ bool TitleDialogData::writeDifferenceToModel(
          nN < static_cast< sal_Int32 >( TitleHelper::NORMAL_TITLE_END );
          nN++)
     {
-        if( !pOldState || ( pOldState->aExistenceList[nN] != this->aExistenceList[nN] ) )
+        if( !pOldState || ( pOldState->aExistenceList[nN] != aExistenceList[nN] ) )
         {
-            if(this->aExistenceList[nN])
+            if(aExistenceList[nN])
             {
                 TitleHelper::createTitle(
-                    static_cast< TitleHelper::eTitleType >( nN ), this->aTextList[nN], xChartModel, xContext,
+                    static_cast< TitleHelper::eTitleType >( nN ), aTextList[nN], xChartModel, xContext,
                     apReferenceSizeProvider.get() );
                 bChanged = true;
             }
@@ -91,14 +95,14 @@ bool TitleDialogData::writeDifferenceToModel(
                 bChanged = true;
             }
         }
-        else if( !pOldState || ( pOldState->aTextList[nN] != this->aTextList[nN] ) )
+        else if( !pOldState || ( pOldState->aTextList[nN] != aTextList[nN] ) )
         {
             //change content
             uno::Reference< XTitle > xTitle(
                 TitleHelper::getTitle( static_cast< TitleHelper::eTitleType >( nN ), xChartModel ) );
             if(xTitle.is())
             {
-                TitleHelper::setCompleteString( this->aTextList[nN], xTitle, xContext );
+                TitleHelper::setCompleteString( aTextList[nN], xTitle, xContext );
                 bChanged = true;
             }
         }

@@ -16,6 +16,8 @@ $(eval $(call gb_Library_set_include,expwrap,\
 	$$(INCLUDE) \
 ))
 
+$(eval $(call gb_Library_use_common_precompiled_header,expwrap))
+
 $(eval $(call gb_Library_add_defs,expwrap,\
 	-DFASTSAX_DLLIMPLEMENTATION \
 ))
@@ -36,6 +38,7 @@ $(eval $(call gb_Library_use_libraries,expwrap,\
 	sal \
 	salhelper \
 	sax \
+	tl \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,expwrap,\

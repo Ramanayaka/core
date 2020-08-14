@@ -17,22 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/XPropertyTable.hxx"
+#include <XPropertyTable.hxx>
 #include <vcl/virdev.hxx>
 
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
 #include <svx/dialmgr.hxx>
 
 #include <svx/xtable.hxx>
 #include <drawinglayer/attribute/linestartendattribute.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
+#include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processor2dtools.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <memory>
-#include <o3tl/make_unique.hxx>
 
 using namespace com::sun::star;
 
@@ -63,7 +63,7 @@ bool XLineEndList::Create()
     aTriangle.append(basegfx::B2DPoint(0.0, 30.0));
     aTriangle.append(basegfx::B2DPoint(20.0, 30.0));
     aTriangle.setClosed(true);
-    Insert( o3tl::make_unique<XLineEndEntry>( basegfx::B2DPolyPolygon(aTriangle), SvxResId( RID_SVXSTR_ARROW ) ) );
+    Insert( std::make_unique<XLineEndEntry>( basegfx::B2DPolyPolygon(aTriangle), SvxResId( RID_SVXSTR_ARROW ) ) );
 
     basegfx::B2DPolygon aSquare;
     aSquare.append(basegfx::B2DPoint(0.0, 0.0));
@@ -71,17 +71,17 @@ bool XLineEndList::Create()
     aSquare.append(basegfx::B2DPoint(10.0, 10.0));
     aSquare.append(basegfx::B2DPoint(0.0, 10.0));
     aSquare.setClosed(true);
-    Insert( o3tl::make_unique<XLineEndEntry>( basegfx::B2DPolyPolygon(aSquare), SvxResId( RID_SVXSTR_SQUARE ) ) );
+    Insert( std::make_unique<XLineEndEntry>( basegfx::B2DPolyPolygon(aSquare), SvxResId( RID_SVXSTR_SQUARE ) ) );
 
-    basegfx::B2DPolygon aCircle(basegfx::tools::createPolygonFromCircle(basegfx::B2DPoint(0.0, 0.0), 100.0));
-    Insert( o3tl::make_unique<XLineEndEntry>( basegfx::B2DPolyPolygon(aCircle), SvxResId( RID_SVXSTR_CIRCLE ) ) );
+    basegfx::B2DPolygon aCircle(basegfx::utils::createPolygonFromCircle(basegfx::B2DPoint(0.0, 0.0), 100.0));
+    Insert( std::make_unique<XLineEndEntry>( basegfx::B2DPolyPolygon(aCircle), SvxResId( RID_SVXSTR_CIRCLE ) ) );
 
     return true;
 }
 
-Bitmap XLineEndList::CreateBitmapForUI( long nIndex )
+BitmapEx XLineEndList::CreateBitmapForUI( long nIndex )
 {
-    Bitmap aRetval;
+    BitmapEx aRetval;
     OSL_ENSURE(nIndex < Count(), "OOps, access out of range (!)");
 
     if(nIndex < Count())
@@ -100,7 +100,7 @@ Bitmap XLineEndList::CreateBitmapForUI( long nIndex )
 
         // prepare LineAttribute
         const basegfx::BColor aLineColor(rStyleSettings.GetFieldTextColor().getBColor());
-        const double fLineWidth(rStyleSettings.GetListBoxPreviewDefaultLineWidth() * 1.1);
+        const double fLineWidth(StyleSettings::GetListBoxPreviewDefaultLineWidth() * 1.1);
         const drawinglayer::attribute::LineAttribute aLineAttribute(
             aLineColor,
             fLineWidth);
@@ -145,7 +145,7 @@ Bitmap XLineEndList::CreateBitmapForUI( long nIndex )
 
         // create processor and draw primitives
         std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> pProcessor2D(drawinglayer::processor2d::createPixelProcessor2DFromOutputDevice(
-            *pVirtualDevice.get(),
+            *pVirtualDevice,
             aNewViewInformation2D));
 
         if(pProcessor2D)
@@ -157,7 +157,7 @@ Bitmap XLineEndList::CreateBitmapForUI( long nIndex )
         }
 
         // get result bitmap and scale
-        aRetval = pVirtualDevice->GetBitmap(Point(0, 0), pVirtualDevice->GetOutputSizePixel());
+        aRetval = pVirtualDevice->GetBitmapEx(Point(0, 0), pVirtualDevice->GetOutputSizePixel());
     }
 
     return aRetval;

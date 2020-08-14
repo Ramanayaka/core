@@ -30,6 +30,7 @@
 #define INCLUDED_UCB_SOURCE_UCP_WEBDAV_NEON_DAVAUTHLISTENERIMPL_HXX
 
 #include <config_lgpl.h>
+#include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include "DAVAuthListener.hxx"
 
 
@@ -37,7 +38,6 @@ namespace webdav_ucp
 {
 
 
-// class DAVAuthListenerImpl.
 
 
     class DAVAuthListener_Impl : public DAVAuthListener

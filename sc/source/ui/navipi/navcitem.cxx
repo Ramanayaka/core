@@ -19,11 +19,12 @@
 
 #include <svl/intitem.hxx>
 #include <svl/stritem.hxx>
+#include <osl/diagnose.h>
 
-#include "navcitem.hxx"
-#include "global.hxx"
-#include "navipi.hxx"
-#include "sc.hrc"
+#include <navcitem.hxx>
+#include <navipi.hxx>
+#include <viewdata.hxx>
+#include <sc.hrc>
 
 ScNavigatorControllerItem::ScNavigatorControllerItem( sal_uInt16          nIdP,
                                                       ScNavigatorDlg& rDlg,
@@ -47,9 +48,10 @@ void ScNavigatorControllerItem::StateChanged( sal_uInt16 /* nSID */, SfxItemStat
 
                 if ( pCellPosItem )
                 {
-                    OUString  aAddress( pCellPosItem->GetValue() );
+                    const OUString&  aAddress( pCellPosItem->GetValue() );
                     ScAddress aScAddress;
-                    aScAddress.Parse( aAddress );
+                    ScViewData* pViewData = rNavigatorDlg.GetViewData();
+                    aScAddress.Parse(aAddress, pViewData ? pViewData->GetDocument() : nullptr);
 
                     SCCOL nCol = aScAddress.Col()+1;
                     SCROW nRow = aScAddress.Row()+1;
@@ -86,7 +88,7 @@ void ScNavigatorControllerItem::StateChanged( sal_uInt16 /* nSID */, SfxItemStat
             break;
 
         case SID_SELECT_SCENARIO:
-            rNavigatorDlg.aWndScenarios->NotifyState( pItem );
+            rNavigatorDlg.m_xWndScenarios->NotifyState(pItem);
             break;
 
         default:

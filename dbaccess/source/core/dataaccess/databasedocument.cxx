@@ -17,41 +17,36 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "core_resource.hxx"
-#include "core_resource.hrc"
-#include "datasource.hxx"
+#include <core_resource.hxx>
+#include <strings.hrc>
 #include "databasedocument.hxx"
-#include "dbastrings.hrc"
 #include "documenteventexecutor.hxx"
-#include "databasecontext.hxx"
+#include <databasecontext.hxx>
 #include "documentcontainer.hxx"
-#include "sdbcoretools.hxx"
-#include "recovery/dbdocrecovery.hxx"
+#include <sdbcoretools.hxx>
+#include <recovery/dbdocrecovery.hxx>
 
-#include <com/sun/star/beans/Optional.hpp>
 #include <com/sun/star/document/XExporter.hpp>
 #include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/document/XImporter.hpp>
-#include <com/sun/star/document/GraphicObjectResolver.hpp>
-#include <com/sun/star/embed/EntryInitModes.hpp>
-#include <com/sun/star/embed/XEmbedPersist.hpp>
-#include <com/sun/star/embed/XTransactedObject.hpp>
-#include <com/sun/star/embed/XTransactionBroadcaster.hpp>
+#include <com/sun/star/document/XGraphicStorageHandler.hpp>
+#include <com/sun/star/document/GraphicStorageHandler.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
+#include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/io/XTruncate.hpp>
+#include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/script/provider/theMasterScriptProviderFactory.hpp>
+#include <com/sun/star/security/DocumentDigitalSignatures.hpp>
+#include <com/sun/star/security/XDocumentDigitalSignatures.hpp>
 #include <com/sun/star/sdb/DatabaseContext.hpp>
 #include <com/sun/star/sdb/application/XDatabaseDocumentUI.hpp>
 #include <com/sun/star/task/XStatusIndicator.hpp>
-#include <com/sun/star/task/XStatusIndicatorFactory.hpp>
 #include <com/sun/star/ucb/SimpleFileAccess.hpp>
 #include <com/sun/star/ui/UIConfigurationManager.hpp>
-#include <com/sun/star/ui/XUIConfigurationStorage.hpp>
 #include <com/sun/star/util/CloseVetoException.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
@@ -60,16 +55,16 @@
 #include <com/sun/star/script/XStorageBasedLibraryContainer.hpp>
 #include <com/sun/star/awt/XControl.hpp>
 #include <com/sun/star/awt/DialogProvider.hpp>
-#include <com/sun/star/document/XGraphicObjectResolver.hpp>
 
 #include <comphelper/documentconstants.hxx>
 #include <comphelper/enumhelper.hxx>
 #include <comphelper/genericpropertyset.hxx>
-#include <comphelper/interaction.hxx>
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/numberedcollection.hxx>
-#include <comphelper/property.hxx>
 #include <comphelper/storagehelper.hxx>
+#include <comphelper/processfactory.hxx>
+#include <comphelper/propertysetinfo.hxx>
+#include <comphelper/types.hxx>
 
 #include <connectivity/dbtools.hxx>
 
@@ -77,15 +72,12 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <framework/titlehelper.hxx>
 #include <unotools/saveopt.hxx>
-#include <tools/debug.hxx>
+#include <unotools/tempfile.hxx>
 #include <tools/diagnose_ex.h>
+#include <osl/file.hxx>
 #include <osl/diagnose.h>
-#include <vcl/errcode.hxx>
 
-#include <functional>
-#include <list>
-
-#include <svtools/grfmgr.hxx>
+#include <vcl/GraphicObject.hxx>
 #include <tools/urlobj.hxx>
 
 using namespace ::com::sun::star::uno;
@@ -146,7 +138,6 @@ ODatabaseDocument::ODatabaseDocument(const ::rtl::Reference<ODatabaseModelImpl>&
             ,m_aCloseListener( getMutex() )
             ,m_aStorageListeners( getMutex() )
             ,m_pEventContainer( new DocumentEvents( *this, getMutex(), _pImpl->getDocumentEvents() ) )
-            ,m_pEventExecutor( nullptr )   // initialized below, ref-count-protected
             ,m_aEventNotifier( *this, getMutex() )
             ,m_aViewMonitor( m_aEventNotifier )
             ,m_eInitState( NotInitialized )
@@ -169,20 +160,20 @@ ODatabaseDocument::ODatabaseDocument(const ::rtl::Reference<ODatabaseModelImpl>&
     // if there previously was a document instance for the same Impl which was already initialized,
     // then consider ourself initialized, too.
     // #i94840#
-    if ( m_pImpl->hadInitializedDocument() )
-    {
-        // Note we set our init-state to "Initializing", not "Initialized". We're created from inside the ModelImpl,
-        // which is expected to call attachResource in case there was a previous incarnation of the document,
-        // so we can properly finish our initialization then.
-        impl_setInitializing();
+    if ( !m_pImpl->hadInitializedDocument() )
+        return;
 
-        if ( !m_pImpl->getURL().isEmpty() )
-        {
-            // if the previous incarnation of the DatabaseDocument already had an URL, then creating this incarnation
-            // here is effectively loading the document.
-            // #i105505#
-            m_aViewMonitor.onLoadedDocument();
-        }
+    // Note we set our init-state to "Initializing", not "Initialized". We're created from inside the ModelImpl,
+    // which is expected to call attachResource in case there was a previous incarnation of the document,
+    // so we can properly finish our initialization then.
+    impl_setInitializing();
+
+    if ( !m_pImpl->getURL().isEmpty() )
+    {
+        // if the previous incarnation of the DatabaseDocument already had a URL, then creating this incarnation
+        // here is effectively loading the document.
+        // #i105505#
+        m_aViewMonitor.onLoadedDocument();
     }
 }
 
@@ -193,9 +184,6 @@ ODatabaseDocument::~ODatabaseDocument()
         acquire();
         dispose();
     }
-
-    delete m_pEventContainer;
-    m_pEventContainer = nullptr;
 }
 
 Any SAL_CALL ODatabaseDocument::queryInterface( const Type& _rType )
@@ -238,30 +226,11 @@ Sequence< Type > SAL_CALL ODatabaseDocument::getTypes(  )
     // allowed to contain macros, too.
     if ( !m_bAllowDocumentScripting )
     {
-        Sequence< Type > aStrippedTypes( aTypes.getLength() );
-        Type* pStripTo( aStrippedTypes.getArray() );
-
-        // strip XEmbeddedScripts, and immediately re-assign to aTypes
-        aTypes = Sequence< Type >(
-            pStripTo,
-            std::remove_copy_if(
-                aTypes.getConstArray(),
-                aTypes.getConstArray() + aTypes.getLength(),
-                pStripTo,
-                std::bind2nd( std::equal_to< Type >(), cppu::UnoType<XEmbeddedScripts>::get() )
-            ) - pStripTo
-        );
-
-        // strip XScriptInvocationContext, and immediately re-assign to aTypes
-        aTypes = Sequence< Type >(
-            pStripTo,
-            std::remove_copy_if(
-                aTypes.getConstArray(),
-                aTypes.getConstArray() + aTypes.getLength(),
-                pStripTo,
-                std::bind2nd( std::equal_to< Type >(), cppu::UnoType<XScriptInvocationContext>::get() )
-            ) - pStripTo
-        );
+        auto newEnd = std::remove_if( aTypes.begin(), aTypes.end(),
+                                      [](const Type& t)
+                                      { return t == cppu::UnoType<XEmbeddedScripts>::get() ||
+                                               t == cppu::UnoType<XScriptInvocationContext>::get();} );
+        aTypes.realloc( std::distance(aTypes.begin(), newEnd) );
     }
 
     return aTypes;
@@ -291,13 +260,13 @@ namespace
         try
         {
             if ( _bStart )
-                xStatusIndicator->start( OUString(), (sal_Int32)1000000 );
+                xStatusIndicator->start( OUString(), sal_Int32(1000000) );
             else
                 xStatusIndicator->end();
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
         _rGuard.reset();
             // note that |reset| can throw a DisposedException
@@ -323,7 +292,7 @@ namespace
 
         try
         {
-            _rxStatusIndicator->start( OUString(), (sal_Int32)1000000 );
+            _rxStatusIndicator->start( OUString(), sal_Int32(1000000) );
 
             sal_Int32 nLength = _rCallArgs.getLength();
             _rCallArgs.realloc( nLength + 1 );
@@ -331,7 +300,7 @@ namespace
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 
@@ -347,7 +316,7 @@ namespace
     }
 }
 
-static const char sPictures[] = "Pictures";
+const char sPictures[] = "Pictures";
 
 // base documents seem to have a different behaviour to other documents, the
 // root storage contents at least seem to be re-used over different saves, thus if there is a
@@ -373,15 +342,14 @@ static const char sPictures[] = "Pictures";
 // I could check anyway )
 
 /// @throws RuntimeException
-void lcl_uglyHackToStoreDialogeEmbedImages( const Reference< XStorageBasedLibraryContainer >& xDlgCont, const Reference< XStorage >& xStorage, const Reference< XModel >& rxModel, const Reference<XComponentContext >& rxContext )
+static void lcl_uglyHackToStoreDialogeEmbedImages( const Reference< XStorageBasedLibraryContainer >& xDlgCont, const Reference< XStorage >& xStorage, const Reference< XModel >& rxModel, const Reference<XComponentContext >& rxContext )
 {
-    Sequence< OUString > sLibraries = xDlgCont->getElementNames();
+    const Sequence< OUString > sLibraries = xDlgCont->getElementNames();
     Reference< XStorage > xTmpPic = xStorage->openStorageElement( "tempPictures", ElementModes::READWRITE  );
 
-    std::vector< OUString > vEmbedImgUrls;
-    for ( sal_Int32 i=0; i < sLibraries.getLength(); ++i )
+    std::vector<uno::Reference<graphic::XGraphic>> vxGraphicList;
+    for ( OUString const & sLibrary : sLibraries )
     {
-        OUString sLibrary( sLibraries[ i ] );
         xDlgCont->loadLibrary( sLibrary );
         Reference< XNameContainer > xLib;
         xDlgCont->getByName( sLibrary ) >>= xLib;
@@ -392,28 +360,28 @@ void lcl_uglyHackToStoreDialogeEmbedImages( const Reference< XStorageBasedLibrar
             for ( sal_Int32 j=0; j < nDialogs; ++j )
             {
                 Reference < awt::XDialogProvider > xDlgPrv = awt::DialogProvider::createWithModel(rxContext, rxModel);
-                OUString sDialogUrl = "vnd.sun.star.script:";
-                sDialogUrl = sDialogUrl.concat( sLibraries[ i ] ).concat( "." ).concat (  sDialogs[ j ]  ).concat( "?location=document" );
+                OUString sDialogUrl =
+                    "vnd.sun.star.script:" + sLibrary + "." + sDialogs[j] + "?location=document";
 
                 Reference< css::awt::XControl > xDialog( xDlgPrv->createDialog( sDialogUrl ), UNO_QUERY );
                 Reference< XInterface > xModel( xDialog->getModel() );
-                GraphicObject::InspectForGraphicObjectImageURL( xModel, vEmbedImgUrls );
+                vcl::graphic::SearchForGraphics(xModel, vxGraphicList);
             }
         }
     }
     // if we have any image urls, make sure we copy the associated images into tempPictures
-    if ( !vEmbedImgUrls.empty() )
+    if (!vxGraphicList.empty())
     {
         // Export the images to the storage
-        Reference< XGraphicObjectResolver > xGraphicResolver = GraphicObjectResolver::createWithStorage(rxContext, xTmpPic);
-        std::vector< OUString >::const_iterator it = vEmbedImgUrls.begin();
-        std::vector< OUString >::const_iterator it_end = vEmbedImgUrls.end();
-        if ( xGraphicResolver.is() )
+        uno::Reference<document::XGraphicStorageHandler> xGraphicStorageHandler;
+        xGraphicStorageHandler.set(GraphicStorageHandler::createWithStorage(rxContext, xTmpPic));
+        if (xGraphicStorageHandler.is())
         {
-            for ( sal_Int32 count = 0; it != it_end; ++it, ++count )
-                xGraphicResolver->resolveGraphicObjectURL( *it );
+            for (uno::Reference<graphic::XGraphic> const & rxGraphic : vxGraphicList)
+            {
+                xGraphicStorageHandler->saveGraphic(rxGraphic);
+            }
         }
-
         // delete old 'Pictures' storage and copy the contents of tempPictures into xStorage
         xStorage->removeElement( sPictures );
         xTmpPic->copyElementTo( sPictures, xStorage, sPictures );
@@ -453,7 +421,7 @@ void ODatabaseDocument::impl_reset_nothrow()
     }
     catch(const Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
     m_pImpl->m_bDocumentReadOnly = false;
 }
@@ -479,7 +447,7 @@ void ODatabaseDocument::impl_import_nolck_throw( const Reference< XComponentCont
     Reference< XStatusIndicator > xStatusIndicator;
     lcl_extractAndStartStatusIndicator( _rResource, xStatusIndicator, aFilterCreationArgs );
 
-     uno::Reference< beans::XPropertySet > xInfoSet( comphelper::GenericPropertySet_CreateInstance( new comphelper::PropertySetInfo( aExportInfoMap ) ) );
+    uno::Reference< beans::XPropertySet > xInfoSet( comphelper::GenericPropertySet_CreateInstance( new comphelper::PropertySetInfo( aExportInfoMap ) ) );
     OUString sBaseURI = _rResource.getOrDefault("BaseURI", OUString());
     if (sBaseURI.isEmpty())
         sBaseURI = _rResource.getOrDefault("URL",OUString());
@@ -556,7 +524,7 @@ void SAL_CALL ODatabaseDocument::load( const Sequence< PropertyValue >& Argument
         // similar ... just in case there is legacy code which expects a FileName only
         aResource.put( "FileName", aResource.get( "URL" ) );
 
-    // now that somebody (perhaps) told us an macro execution mode, remember it as
+    // now that somebody (perhaps) told us a macro execution mode, remember it as
     // ImposedMacroExecMode
     m_pImpl->setImposedMacroExecMode(
         aResource.getOrDefault( "MacroExecutionMode", m_pImpl->getImposedMacroExecMode() ) );
@@ -593,14 +561,12 @@ namespace
     {
         Reference< css::sdb::application::XDatabaseDocumentUI > xDatabaseUI( i_rController, UNO_QUERY_THROW );
 
-        Sequence< Reference< XComponent > > aComponents( xDatabaseUI->getSubComponents() );
-        const Reference< XComponent >* component = aComponents.getConstArray();
-        const Reference< XComponent >* componentsEnd = aComponents.getConstArray() + aComponents.getLength();
+        const Sequence< Reference< XComponent > > aComponents( xDatabaseUI->getSubComponents() );
 
         bool isAnyModified = false;
-        for ( ; component != componentsEnd; ++component )
+        for ( auto const & xComponent : aComponents )
         {
-            Reference< XModifiable > xModify( *component, UNO_QUERY );
+            Reference< XModifiable > xModify( xComponent, UNO_QUERY );
             if ( xModify.is() )
             {
                 isAnyModified = xModify->isModified();
@@ -637,18 +603,15 @@ sal_Bool SAL_CALL ODatabaseDocument::wasModifiedSinceLastSave()
 
     try
     {
-        for (   Controllers::const_iterator ctrl = m_aControllers.begin();
-                ctrl != m_aControllers.end();
-                ++ctrl
-            )
+        for (auto const& controller : m_aControllers)
         {
-            if ( lcl_hasAnyModifiedSubComponent_throw( *ctrl ) )
+            if ( lcl_hasAnyModifiedSubComponent_throw(controller) )
                 return true;
         }
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 
     return false;
@@ -674,18 +637,21 @@ void SAL_CALL ODatabaseDocument::storeToRecoveryFile( const OUString& i_TargetLo
         // commit the root storage
         tools::stor::commitStorageIfWriteable( xTargetStorage );
     }
+    catch( const IOException& )
+    {
+        throw;
+    }
+    catch( const RuntimeException& )
+    {
+        throw;
+    }
+    catch( const WrappedTargetException& )
+    {
+        throw;
+    }
     catch( const Exception& )
     {
         Any aError = ::cppu::getCaughtException();
-        if  (   aError.isExtractableTo( ::cppu::UnoType< IOException >::get() )
-            ||  aError.isExtractableTo( ::cppu::UnoType< RuntimeException >::get() )
-            ||  aError.isExtractableTo( ::cppu::UnoType< WrappedTargetException >::get() )
-            )
-        {
-            // allowed to leave
-            throw;
-        }
-
         throw WrappedTargetException( OUString(), *this, aError );
     }
 }
@@ -709,6 +675,7 @@ void SAL_CALL ODatabaseDocument::recoverFromFile( const OUString& i_SourceLocati
 
         aGuard.clear(); // (load has an own guarding scheme)
         load( aMediaDescriptor.getPropertyValues() );
+        aGuard.reset();
 
         // Without a controller, we are unable to recover the sub components, as they're always tied to a controller.
         // So, everything else is done when the first controller is connected.
@@ -772,15 +739,24 @@ sal_Bool SAL_CALL ODatabaseDocument::attachResource( const OUString& _rURL, cons
 bool ODatabaseDocument::impl_attachResource( const OUString& i_rLogicalDocumentURL,
             const Sequence< PropertyValue >& i_rMediaDescriptor, DocumentGuard& _rDocGuard )
 {
-    if  (   ( i_rLogicalDocumentURL == getURL() )
-        &&  ( i_rMediaDescriptor.getLength() == 1 )
-        &&  ( i_rMediaDescriptor[0].Name == "BreakMacroSignature" )
-        )
+    if  (i_rLogicalDocumentURL == getURL())
     {
-        // this is a BAD hack of the Basic importer code ... there should be a dedicated API for this,
-        // not this bad mis-using of existing interfaces
-        return false;
-            // (we do not support macro signatures, so we can ignore this call)
+        ::comphelper::NamedValueCollection aArgs(i_rMediaDescriptor);
+
+        // this misuse of attachresource is a hack of the Basic importer code
+        // repurposing existing interfaces for uses it probably wasn't intended
+        // for
+
+        // we do not support macro signatures, so we can ignore that request
+        aArgs.remove("BreakMacroSignature");
+
+        bool bMacroEventRead = false;
+        if ((aArgs.get( "MacroEventRead" ) >>= bMacroEventRead) && bMacroEventRead)
+            m_pImpl->m_bMacroCallsSeenWhileLoading = true;
+        aArgs.remove( "MacroEventRead" );
+
+        if (aArgs.empty())
+            return false;
     }
 
     // if no URL has been provided, the caller was lazy enough to not call our getURL - which is not allowed anymore,
@@ -822,17 +798,19 @@ Sequence< PropertyValue > SAL_CALL ODatabaseDocument::getArgs(  )
     return m_pImpl->getMediaDescriptor().getPropertyValues();
 }
 
+void SAL_CALL ODatabaseDocument::setArgs(const Sequence<beans::PropertyValue>& /* aArgs */)
+{
+    throw NoSupportException();
+}
+
 void SAL_CALL ODatabaseDocument::connectController( const Reference< XController >& _xController )
 {
     DocumentGuard aGuard(*this, DocumentGuard::DefaultMethod);
 
 #if OSL_DEBUG_LEVEL > 0
-    for (   Controllers::const_iterator controller = m_aControllers.begin();
-            controller != m_aControllers.end();
-            ++controller
-        )
+    for (auto const& controller : m_aControllers)
     {
-        OSL_ENSURE( *controller != _xController, "ODatabaseDocument::connectController: this controller is already connected!" );
+        OSL_ENSURE( controller != _xController, "ODatabaseDocument::connectController: this controller is already connected!" );
     }
 #endif
 
@@ -877,18 +855,18 @@ void SAL_CALL ODatabaseDocument::disconnectController( const Reference< XControl
     if ( bNotifyViewClosed )
         m_aEventNotifier.notifyDocumentEvent( "OnViewClosed", Reference< XController2 >( _xController, UNO_QUERY ) );
 
-    if ( bLastControllerGone && !bIsClosing )
+    if ( !(bLastControllerGone && !bIsClosing) )
+        return;
+
+    // if this was the last view, close the document as a whole
+    // #i51157#
+    try
     {
-        // if this was the last view, close the document as a whole
-        // #i51157#
-        try
-        {
-            close( true );
-        }
-        catch( const CloseVetoException& )
-        {
-            // okay, somebody vetoed and took ownership
-        }
+        close( true );
+    }
+    catch( const CloseVetoException& )
+    {
+        // okay, somebody vetoed and took ownership
     }
 }
 
@@ -945,7 +923,7 @@ void SAL_CALL ODatabaseDocument::setCurrentController( const Reference< XControl
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -1059,15 +1037,8 @@ void ODatabaseDocument::impl_storeAs_throw( const OUString& _rURL, const ::comph
         if ( bLocationChanged )
         {
             // create storage for target URL
-            uno::Reference<embed::XStorage> xTargetStorage;
-            _rArguments.get("TargetStorage") >>= xTargetStorage;
-            if (!xTargetStorage.is())
-                xTargetStorage = impl_createStorageFor_throw(_rURL);
-
-            // In case we got a StreamRelPath, then xTargetStorage should reference that sub-storage.
-            OUString sStreamRelPath = _rArguments.getOrDefault("StreamRelPath", OUString());
-            if (!sStreamRelPath.isEmpty())
-                xTargetStorage = xTargetStorage->openStorageElement(sStreamRelPath, embed::ElementModes::READWRITE);
+            uno::Reference<embed::XStorage> xTargetStorage(
+                impl_GetStorageOrCreateFor_throw(_rArguments, _rURL));
 
             if ( m_pImpl->isEmbeddedDatabase() )
                 m_pImpl->clearConnections();
@@ -1095,7 +1066,7 @@ void ODatabaseDocument::impl_storeAs_throw( const OUString& _rURL, const ::comph
         }
 
         // store to current storage
-        Reference< XStorage > xCurrentStorage( m_pImpl->getOrCreateRootStorage(), UNO_QUERY_THROW );
+        Reference< XStorage > xCurrentStorage( m_pImpl->getOrCreateRootStorage(), UNO_SET_THROW );
         Sequence< PropertyValue > aMediaDescriptor( lcl_appendFileNameToDescriptor( _rArguments, _rURL ) );
         impl_storeToStorage_throw( xCurrentStorage, aMediaDescriptor, _rGuard );
 
@@ -1158,6 +1129,24 @@ Reference< XStorage > ODatabaseDocument::impl_createStorageFor_throw( const OUSt
 
     Reference< XSingleServiceFactory > xStorageFactory( m_pImpl->createStorageFactory(), UNO_SET_THROW );
     return Reference< XStorage >( xStorageFactory->createInstanceWithArguments( aParam ), UNO_QUERY_THROW );
+}
+
+css::uno::Reference<css::embed::XStorage> ODatabaseDocument::impl_GetStorageOrCreateFor_throw(
+    const ::comphelper::NamedValueCollection& _rArguments, const OUString& _rURL) const
+{
+    // Try to get the storage from arguments, then create storage for target URL
+    uno::Reference<embed::XStorage> xTargetStorage;
+    _rArguments.get("TargetStorage") >>= xTargetStorage;
+    if (!xTargetStorage.is())
+        xTargetStorage = impl_createStorageFor_throw(_rURL);
+
+    // In case we got a StreamRelPath, then xTargetStorage should reference that sub-storage.
+    OUString sStreamRelPath = _rArguments.getOrDefault("StreamRelPath", OUString());
+    if (!sStreamRelPath.isEmpty())
+        xTargetStorage
+            = xTargetStorage->openStorageElement(sStreamRelPath, embed::ElementModes::READWRITE);
+
+    return xTargetStorage;
 }
 
 void SAL_CALL ODatabaseDocument::storeAsURL( const OUString& _rURL, const Sequence< PropertyValue >& _rArguments )
@@ -1239,7 +1228,7 @@ void ODatabaseDocument::impl_storeToStorage_throw( const Reference< XStorage >& 
         lcl_triggerStatusIndicator_throw( aWriteArgs, _rDocGuard, false );
 
         // commit target storage
-        OSL_VERIFY( tools::stor::commitStorageIfWriteable( _rxTargetStorage ) );
+        m_pImpl->commitStorageIfWriteable_ignoreErrors(_rxTargetStorage);
     }
     catch( const IOException& ) { throw; }
     catch( const RuntimeException& ) { throw; }
@@ -1262,11 +1251,12 @@ void SAL_CALL ODatabaseDocument::storeToURL( const OUString& _rURL, const Sequen
 
     try
     {
+        const ::comphelper::NamedValueCollection aArguments(_rArguments);
         // create storage for target URL
-        Reference< XStorage > xTargetStorage( impl_createStorageFor_throw( _rURL ) );
+        Reference<XStorage> xTargetStorage(impl_GetStorageOrCreateFor_throw(aArguments, _rURL));
 
         // extend media descriptor with URL
-        Sequence< PropertyValue > aMediaDescriptor( lcl_appendFileNameToDescriptor( _rArguments, _rURL ) );
+        Sequence<PropertyValue> aMediaDescriptor(lcl_appendFileNameToDescriptor(aArguments, _rURL));
 
         // store to this storage
         impl_storeToStorage_throw( xTargetStorage, aMediaDescriptor, aGuard );
@@ -1456,22 +1446,21 @@ void ODatabaseDocument::impl_closeControllerFrames_nolck_throw( bool _bDeliverOw
 {
     Controllers aCopy = m_aControllers;
 
-    Controllers::const_iterator aEnd = aCopy.end();
-    for ( Controllers::const_iterator aIter = aCopy.begin(); aIter != aEnd ; ++aIter )
+    for (auto const& elem : aCopy)
     {
-        if ( !aIter->is() )
+        if ( !elem.is() )
             continue;
 
         try
         {
-            Reference< XCloseable> xFrame( (*aIter)->getFrame(), UNO_QUERY );
+            Reference< XCloseable> xFrame( elem->getFrame(), UNO_QUERY );
             if ( xFrame.is() )
                 xFrame->close( _bDeliverOwnership );
         }
         catch( const CloseVetoException& ) { throw; }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 }
@@ -1492,7 +1481,7 @@ void ODatabaseDocument::impl_disposeControllerFrames_nothrow()
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 }
@@ -1529,13 +1518,13 @@ void SAL_CALL ODatabaseDocument::close(sal_Bool bDeliverOwnership)
     }
     catch ( const Exception& )
     {
-        ::osl::MutexGuard aGuard( m_aMutex );
+        SolarMutexGuard g;
         m_bClosing = false;
         throw;
     }
 
     // SYNCHRONIZED ->
-    ::osl::MutexGuard aGuard( m_aMutex );
+    SolarMutexGuard g;
     m_bClosing = false;
     // <- SYNCHRONIZED
 }
@@ -1564,8 +1553,8 @@ Reference< XNameAccess > SAL_CALL ODatabaseDocument::getReportDocuments(  )
     return impl_getDocumentContainer_throw( ODatabaseModelImpl::E_REPORT );
 }
 
-void ODatabaseDocument::WriteThroughComponent( const Reference< XComponent >& xComponent, const sal_Char* pStreamName,
-    const sal_Char* pServiceName, const Sequence< Any >& _rArguments, const Sequence< PropertyValue >& rMediaDesc,
+void ODatabaseDocument::WriteThroughComponent( const Reference< XComponent >& xComponent, const char* pStreamName,
+    const char* pServiceName, const Sequence< Any >& _rArguments, const Sequence< PropertyValue >& rMediaDesc,
     const Reference<XStorage>& _xStorageToSaveTo ) const
 {
     OSL_ENSURE( pStreamName, "Need stream name!" );
@@ -1595,7 +1584,7 @@ void ODatabaseDocument::WriteThroughComponent( const Reference< XComponent >& xC
 }
 
 void ODatabaseDocument::WriteThroughComponent( const Reference< XOutputStream >& xOutputStream,
-    const Reference< XComponent >& xComponent, const sal_Char* pServiceName, const Sequence< Any >& _rArguments,
+    const Reference< XComponent >& xComponent, const char* pServiceName, const Sequence< Any >& _rArguments,
     const Sequence< PropertyValue >& rMediaDesc ) const
 {
     OSL_ENSURE( xOutputStream.is(), "I really need an output stream!" );
@@ -1609,9 +1598,8 @@ void ODatabaseDocument::WriteThroughComponent( const Reference< XOutputStream >&
     xSaxWriter->setOutputStream( xOutputStream );
 
     // prepare arguments (prepend doc handler to given arguments)
-    Reference< XDocumentHandler > xDocHandler( xSaxWriter,UNO_QUERY);
     Sequence<Any> aArgs( 1 + _rArguments.getLength() );
-    aArgs[0] <<= xDocHandler;
+    aArgs[0] <<= xSaxWriter;
     for ( sal_Int32 i = 0; i < _rArguments.getLength(); ++i )
         aArgs[ i+1 ] = _rArguments[i];
 
@@ -1669,12 +1657,18 @@ void ODatabaseDocument::impl_writeStorage_throw( const Reference< XStorage >& _r
     xProp->setPropertyValue( INFO_MEDIATYPE, makeAny( OUString(MIMETYPE_OASIS_OPENDOCUMENT_DATABASE_ASCII) ) );
 
     OUString aVersion;
-    SvtSaveOptions::ODFDefaultVersion const nDefVersion =
-        aSaveOpt.GetODFDefaultVersion();
+    SvtSaveOptions::ODFSaneDefaultVersion const nDefVersion =
+        aSaveOpt.GetODFSaneDefaultVersion();
     // older versions can not have this property set,
     // it exists only starting from ODF1.2
-    if (nDefVersion >= SvtSaveOptions::ODFVER_012)
+    if (nDefVersion >= SvtSaveOptions::ODFSVER_013)
+    {
+        aVersion = ODFVER_013_TEXT;
+    }
+    else if (nDefVersion >= SvtSaveOptions::ODFSVER_012)
+    {
         aVersion = ODFVER_012_TEXT;
+    }
 
     if (!aVersion.isEmpty())
     {
@@ -1682,9 +1676,9 @@ void ODatabaseDocument::impl_writeStorage_throw( const Reference< XStorage >& _r
         {
             xProp->setPropertyValue("Version" , uno::makeAny(aVersion));
         }
-        catch (const uno::Exception& e)
+        catch (const uno::Exception&)
         {
-            SAL_WARN("dbaccess", "exception setting Version: " << e.Message);
+            TOOLS_WARN_EXCEPTION("dbaccess", "exception setting Version");
         }
     }
 
@@ -1716,7 +1710,7 @@ void ODatabaseDocument::impl_writeStorage_throw( const Reference< XStorage >& _r
        }
        catch ( const Exception& )
        {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
        }
     }
     m_pImpl->storeLibraryContainersTo( _rxTargetStorage );
@@ -1736,10 +1730,9 @@ Reference< XUIConfigurationManager2 > const & ODatabaseDocument::getUIConfigurat
         m_xUIConfigurationManager = UIConfigurationManager::create( m_pImpl->m_aContext );
 
         OUString aUIConfigFolderName( "Configurations2" );
-        Reference< XStorage > xConfigStorage;
 
         // First try to open with READWRITE and then READ
-        xConfigStorage = getDocumentSubStorage( aUIConfigFolderName, ElementModes::READWRITE );
+        Reference< XStorage > xConfigStorage = getDocumentSubStorage( aUIConfigFolderName, ElementModes::READWRITE );
         if ( xConfigStorage.is() )
         {
             OUString aMediaType;
@@ -1811,55 +1804,57 @@ void ODatabaseDocument::disposing()
     // case they will be deleted - if they're C++ implementations, that is :).
     // Some of those implementations are offending enough to require the SolarMutex, which
     // means we should not release the last reference while our own mutex is locked ...
-    std::list< Reference< XInterface > > aKeepAlive;
+    std::vector< Reference< XInterface > > aKeepAlive;
 
     // SYNCHRONIZED ->
-    ::osl::ClearableMutexGuard aGuard( m_aMutex );
-
-    OSL_ENSURE( m_aControllers.empty(), "ODatabaseDocument::disposing: there still are controllers!" );
-    // normally, nobody should explicitly dispose, but only XCloseable::close
-    // the document. And upon closing, our controllers are closed, too
-
     {
-        uno::Reference<uno::XInterface> xUIInterface( m_xUIConfigurationManager );
-        aKeepAlive.push_back( xUIInterface );
+        SolarMutexGuard aGuard;
+
+        OSL_ENSURE(m_aControllers.empty(),
+                   "ODatabaseDocument::disposing: there still are controllers!");
+        // normally, nobody should explicitly dispose, but only XCloseable::close
+        // the document. And upon closing, our controllers are closed, too
+
+        {
+            uno::Reference<uno::XInterface> xUIInterface(m_xUIConfigurationManager);
+            aKeepAlive.push_back(xUIInterface);
+        }
+        m_xUIConfigurationManager = nullptr;
+
+        clearObjectContainer(m_xForms);
+        clearObjectContainer(m_xReports);
+
+        // reset the macro mode: in case the our impl struct stays alive (e.g. because our DataSource
+        // object still exists), and somebody subsequently re-opens the document, we want to have
+        // the security warning, again.
+        m_pImpl->resetMacroExecutionMode();
+
+        // similar arguing for our ViewMonitor
+        m_aViewMonitor.reset();
+
+        // tell our Impl to forget us
+        m_pImpl->modelIsDisposing(impl_isInitialized(), ODatabaseModelImpl::ResetModelAccess());
+
+        // now, at the latest, the controller array should be empty. Controllers are
+        // expected to listen for our disposal, and disconnect then
+        OSL_ENSURE(m_aControllers.empty(),
+                   "ODatabaseDocument::disposing: there still are controllers!");
+        impl_disposeControllerFrames_nothrow();
+
+        {
+            uno::Reference<uno::XInterface> xModuleInterface(m_xModuleManager);
+            aKeepAlive.push_back(xModuleInterface);
+        }
+        m_xModuleManager.clear();
+
+        {
+            uno::Reference<uno::XInterface> xTitleInterface(m_xTitleHelper);
+            aKeepAlive.push_back(xTitleInterface);
+        }
+        m_xTitleHelper.clear();
+
+        m_pImpl.clear();
     }
-    m_xUIConfigurationManager = nullptr;
-
-    clearObjectContainer( m_xForms );
-    clearObjectContainer( m_xReports );
-
-    // reset the macro mode: in case the our impl struct stays alive (e.g. because our DataSource
-    // object still exists), and somebody subsequently re-opens the document, we want to have
-    // the security warning, again.
-    m_pImpl->resetMacroExecutionMode();
-
-    // similar arguing for our ViewMonitor
-    m_aViewMonitor.reset();
-
-    // tell our Impl to forget us
-    m_pImpl->modelIsDisposing( impl_isInitialized(), ODatabaseModelImpl::ResetModelAccess() );
-
-    // now, at the latest, the controller array should be empty. Controllers are
-    // expected to listen for our disposal, and disconnect then
-    OSL_ENSURE( m_aControllers.empty(), "ODatabaseDocument::disposing: there still are controllers!" );
-    impl_disposeControllerFrames_nothrow();
-
-    {
-        uno::Reference<uno::XInterface> xModuleInterface( m_xModuleManager );
-        aKeepAlive.push_back( xModuleInterface );
-    }
-    m_xModuleManager.clear();
-
-    {
-        uno::Reference<uno::XInterface> xTitleInterface( m_xTitleHelper );
-        aKeepAlive.push_back( xTitleInterface );
-    }
-    m_xTitleHelper.clear();
-
-    m_pImpl.clear();
-
-    aGuard.clear();
     // <- SYNCHRONIZED
 
     aKeepAlive.clear();
@@ -1884,7 +1879,7 @@ void SAL_CALL ODatabaseDocument::removeEventListener( const Reference< lang::XEv
 // XServiceInfo
 OUString ODatabaseDocument::getImplementationName()
 {
-    return OUString("com.sun.star.comp.dba.ODatabaseDocument");
+    return "com.sun.star.comp.dba.ODatabaseDocument";
 }
 
 Sequence< OUString > ODatabaseDocument::getSupportedServiceNames()
@@ -1962,7 +1957,7 @@ void SAL_CALL ODatabaseDocument::switchToStorage( const Reference< XStorage >& _
 
 Reference< XStorage > SAL_CALL ODatabaseDocument::getDocumentStorage(  )
 {
-    DocumentGuard aGuard(*this, DocumentGuard::DefaultMethod);
+    DocumentGuard aGuard(*this, DocumentGuard::MethodUsedDuringInit);
     return m_pImpl->getOrCreateRootStorage();
 }
 
@@ -2025,13 +2020,15 @@ Reference< provider::XScriptProvider > SAL_CALL ODatabaseDocument::getScriptProv
 Reference< XNameReplace > SAL_CALL ODatabaseDocument::getEvents(  )
 {
     DocumentGuard aGuard( *this, DocumentGuard::MethodUsedDuringInit );
-    return m_pEventContainer;
+    return m_pEventContainer.get();
 }
 
 Reference< XInterface > ODatabaseDocument::getThis() const
 {
     return *const_cast< ODatabaseDocument* >( this );
 }
+
+namespace {
 
 struct CreateAny
 {
@@ -2040,6 +2037,8 @@ struct CreateAny
         return makeAny(lhs);
     }
 };
+
+}
 
 // XModel2
 Reference< XEnumeration > SAL_CALL ODatabaseDocument::getControllers(  )
@@ -2125,7 +2124,7 @@ uno::Reference< frame::XUntitledNumbers > ODatabaseDocument::impl_getUntitledHel
 
         pHelper->setOwner          (xThis);
 
-        m_aNumberedControllers.insert(TNumberedController::value_type(sModuleId,xNumberedControllers));
+        m_aNumberedControllers.emplace( sModuleId,xNumberedControllers );
     }
     else
         xNumberedControllers = aFind->second;
@@ -2200,16 +2199,16 @@ OUString SAL_CALL ODatabaseDocument::getUntitledPrefix()
 
 }   // namespace dbaccess
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_dba_ODatabaseDocument(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
     Reference<XUnoTunnel> xDBContextTunnel(DatabaseContext::create(context), UNO_QUERY_THROW);
     dbaccess::ODatabaseContext* pContext = reinterpret_cast<dbaccess::ODatabaseContext*>(
         xDBContextTunnel->getSomething(
-            dbaccess::ODatabaseContext::getUnoTunnelImplementationId()));
+            dbaccess::ODatabaseContext::getUnoTunnelId()));
 
-    rtl::Reference<dbaccess::ODatabaseModelImpl> pImpl(
+    rtl::Reference pImpl(
             new dbaccess::ODatabaseModelImpl(context, *pContext));
     css::uno::Reference<XInterface> inst(pImpl->createNewModel_deliverOwnership());
     inst->acquire();

@@ -22,9 +22,7 @@
 #include <algorithm>
 #include <cassert>
 
-#include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/uno/XInterface.hpp>
 #include <rtl/ref.hxx>
 #include <rtl/string.h>
 #include <rtl/ustrbuf.hxx>
@@ -35,7 +33,6 @@
 
 #include "additions.hxx"
 #include "data.hxx"
-#include "groupnode.hxx"
 #include "node.hxx"
 #include "nodemap.hxx"
 #include "rootnode.hxx"
@@ -52,7 +49,7 @@ bool decode(
     assert(
         begin >= 0 && begin <= end && end <= encoded.getLength() &&
         decoded != nullptr);
-    OUStringBuffer buf;
+    OUStringBuffer buf(end - begin);
     while (begin != end) {
         sal_Unicode c = encoded[begin++];
         if (c == '&') {
@@ -85,7 +82,8 @@ OUString Data::createSegment(
     if (templateName.isEmpty()) {
         return name;
     }
-    OUStringBuffer buf(templateName);
+    OUStringBuffer buf(128);
+    buf.append(templateName);
         //TODO: verify template name contains no bad chars?
     buf.append("['");
     for (sal_Int32 i = 0; i < name.getLength(); ++i) {
@@ -157,10 +155,7 @@ OUString Data::fullTemplateName(
             "bad component/name pair containing colon " + component + "/" +
             name);
     }
-    OUStringBuffer buf(component);
-    buf.append(':');
-    buf.append(name);
-    return buf.makeStringAndClear();
+    return component + ":" + name;
 }
 
 bool Data::equalTemplateNames(
@@ -213,7 +208,7 @@ rtl::Reference< Node > Data::resolvePathRepresentation(
     }
     NodeMap const & components = getComponents();
     NodeMap::const_iterator i(components.find(seg));
-    OUStringBuffer canonic;
+    OUStringBuffer canonic(128);
     rtl::Reference< Node > parent;
     int finalized = NO_LAYER;
     for (rtl::Reference< Node > p(i == components.end() ? nullptr : i->second);;) {
@@ -300,11 +295,10 @@ NodeMap & Data::getComponents() const {
 Additions * Data::addExtensionXcuAdditions(
     OUString const & url, int layer)
 {
-    rtl::Reference< ExtensionXcu > item(new ExtensionXcu);
+    rtl::Reference item(new ExtensionXcu);
     ExtensionXcuAdditions::iterator i(
-        extensionXcuAdditions_.insert(
-            ExtensionXcuAdditions::value_type(
-                url, rtl::Reference< ExtensionXcu >())).first);
+        extensionXcuAdditions_.emplace(
+                url, rtl::Reference< ExtensionXcu >()).first);
     if (i->second.is()) {
         throw css::uno::RuntimeException(
             "already added extension xcu " + url);

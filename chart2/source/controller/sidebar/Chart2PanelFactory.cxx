@@ -20,27 +20,25 @@
 #include "Chart2PanelFactory.hxx"
 
 #include <sfx2/sidebar/SidebarPanelBase.hxx>
-#include <sfx2/sfxbasecontroller.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/window.hxx>
-#include <rtl/ref.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 #include <comphelper/namedvaluecollection.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include "ChartElementsPanel.hxx"
+#include "ChartTypePanel.hxx"
 #include "ChartSeriesPanel.hxx"
-#include "ChartController.hxx"
+#include <ChartController.hxx>
 #include "ChartAxisPanel.hxx"
 #include "ChartErrorBarPanel.hxx"
 #include "ChartAreaPanel.hxx"
 #include "ChartLinePanel.hxx"
 
 using namespace css::uno;
-using ::rtl::OUString;
 
-namespace chart { namespace sidebar {
+namespace chart::sidebar {
 
 ChartPanelFactory::ChartPanelFactory()
     : PanelFactoryInterfaceBase(m_aMutex)
@@ -52,7 +50,7 @@ ChartPanelFactory::~ChartPanelFactory()
 }
 
 Reference<css::ui::XUIElement> SAL_CALL ChartPanelFactory::createUIElement (
-    const ::rtl::OUString& rsResourceURL,
+    const OUString& rsResourceURL,
     const ::css::uno::Sequence<css::beans::PropertyValue>& rArguments)
 {
     Reference<css::ui::XUIElement> xElement;
@@ -87,6 +85,16 @@ Reference<css::ui::XUIElement> SAL_CALL ChartPanelFactory::createUIElement (
         VclPtr<vcl::Window> pPanel;
         if (rsResourceURL.endsWith("/ElementsPanel"))
             pPanel = ChartElementsPanel::Create( pParentWindow, xFrame, pController );
+        else if (rsResourceURL.endsWith("/TypePanel"))
+        {
+            //pPanel = ChartTypePanel::Create( pParentWindow, xFrame, pController );
+            VclPtrInstance<ChartTypePanel> ppPanel(pParentWindow, xFrame, pController);
+            xElement = sfx2::sidebar::SidebarPanelBase::Create(
+                rsResourceURL,
+                xFrame,
+                ppPanel,
+                css::ui::LayoutSize(-1,-1,-1));
+        }
         else if (rsResourceURL.endsWith("/SeriesPanel"))
             pPanel = ChartSeriesPanel::Create(pParentWindow, xFrame, pController);
         else if (rsResourceURL.endsWith("/AxisPanel"))
@@ -109,11 +117,12 @@ Reference<css::ui::XUIElement> SAL_CALL ChartPanelFactory::createUIElement (
     {
         throw;
     }
-    catch (const css::uno::Exception& e)
+    catch (const css::uno::Exception&)
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         throw css::lang::WrappedTargetRuntimeException(
             "ChartPanelFactory::createUIElement exception",
-            nullptr, css::uno::Any(e));
+            nullptr, anyEx );
     }
 
     return xElement;
@@ -121,7 +130,7 @@ Reference<css::ui::XUIElement> SAL_CALL ChartPanelFactory::createUIElement (
 
 OUString ChartPanelFactory::getImplementationName()
 {
-    return OUString("org.libreoffice.comp.chart2.sidebar.ChartPanelFactory");
+    return "org.libreoffice.comp.chart2.sidebar.ChartPanelFactory";
 }
 
 sal_Bool ChartPanelFactory::supportsService(OUString const & ServiceName)
@@ -134,9 +143,9 @@ css::uno::Sequence<OUString> ChartPanelFactory::getSupportedServiceNames()
     return { "com.sun.star.ui.UIElementFactory" };
 }
 
-} } // end of namespace chart::sidebar
+} // end of namespace chart::sidebar
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 org_libreoffice_comp_chart2_sidebar_ChartPanelFactory(css::uno::XComponentContext*, css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new ::chart::sidebar::ChartPanelFactory());

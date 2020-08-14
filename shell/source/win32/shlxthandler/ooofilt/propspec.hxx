@@ -24,15 +24,12 @@
 //  File:       propspec.hxx
 //  Contents:   C++ wrapper(s) for FULLPROPSPEC
 
-#if defined _MSC_VER
-#pragma warning(push, 1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
 #include <ole2.h>
 #include <ntquery.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 //+-------------------------------------------------------------------------
 //  Declare:    CLSID_SummaryInforation, GUID
 //              CLSID_Storage, GUID
@@ -77,7 +74,7 @@ public:
     inline BOOL IsPropertyName() const;
     inline BOOL IsPropertyPropid() const;
 private:
-    GUID     _guidPropSet;
+    GUID     _guidPropSet = {};
     PROPSPEC _psProperty;
 };
 // Inline methods for CFullPropSpec

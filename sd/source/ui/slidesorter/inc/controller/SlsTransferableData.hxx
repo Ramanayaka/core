@@ -20,17 +20,16 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSTRANSFERABLEDATA_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSTRANSFERABLEDATA_HXX
 
-#include "sdxfer.hxx"
+#include <sdxfer.hxx>
+
+#include <vcl/bitmapex.hxx>
 
 #include <vector>
-#include <functional>
 
 class SdDrawDocument;
-namespace sd { namespace slidesorter {
-class SlideSorterViewShell;
-} }
+namespace sd::slidesorter { class SlideSorterViewShell; }
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 /** Represent previews and other information so that they can be
     attached to an existing transferable.
@@ -43,23 +42,15 @@ public:
     class Representative
     {
     public:
-        Representative (const Bitmap& rBitmap, const bool bIsExcluded)
+        Representative (const BitmapEx& rBitmap, const bool bIsExcluded)
             : maBitmap(rBitmap), mbIsExcluded(bIsExcluded) {}
-        Representative (const Representative& rOther)
-            : maBitmap(rOther.maBitmap), mbIsExcluded(rOther.mbIsExcluded) {}
-        Representative& operator= (Representative const& rOther)
-        {   if (&rOther != this) {maBitmap = rOther.maBitmap; mbIsExcluded = rOther.mbIsExcluded; }
-            return *this;
-        }
 
-        Bitmap maBitmap;
+        BitmapEx maBitmap;
         bool mbIsExcluded;
     };
 
     static SdTransferable* CreateTransferable (
         SdDrawDocument* pSrcDoc,
-        ::sd::View* pWorkView,
-        bool bInitOnGetData,
         SlideSorterViewShell* pViewShell,
         const ::std::vector<TransferableData::Representative>& rRepresentatives);
 
@@ -79,12 +70,11 @@ public:
 private:
     SlideSorterViewShell* mpViewShell;
     const ::std::vector<Representative> maRepresentatives;
-    typedef ::std::vector<std::function<void (sal_uInt8)> > CallbackContainer;
 
     virtual void Notify (SfxBroadcaster& rBroadcaster, const SfxHint& rHint) override;
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

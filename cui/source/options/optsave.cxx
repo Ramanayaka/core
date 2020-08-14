@@ -19,29 +19,22 @@
 
 #include <svl/eitem.hxx>
 #include <svl/intitem.hxx>
-
-#include "optsave.hrc"
-#include <cuires.hrc>
-
 #include "optsave.hxx"
-#include <dialmgr.hxx>
 #include <comphelper/processfactory.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <unotools/saveopt.hxx>
-#include <comphelper/sequence.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/container/XContainerQuery.hpp>
 #include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/util/XFlushable.hpp>
+#include <sfx2/sfxsids.hrc>
 #include <sfx2/docfilt.hxx>
-#include <vcl/fixed.hxx>
-#include <unotools/configitem.hxx>
 #include <unotools/optionsdlg.hxx>
+#include <osl/diagnose.h>
+#include <tools/diagnose_ex.h>
 
-#include <vcl/msgbox.hxx>
 #include <sfx2/fcontnr.hxx>
 
 using namespace com::sun::star::uno;
@@ -57,10 +50,9 @@ using namespace comphelper;
 struct SvxSaveTabPage_Impl
 {
     Reference< XNameContainer > xFact;
-    Sequence< OUString >        aFilterArr[APP_COUNT];
-    Sequence< sal_Bool >        aAlienArr[APP_COUNT];
-    Sequence< sal_Bool >        aODFArr[APP_COUNT];
-    Sequence< OUString >        aUIFilterArr[APP_COUNT];
+    std::vector< OUString >     aFilterArr[APP_COUNT];
+    std::vector< bool >         aODFArr[APP_COUNT];
+    std::vector< OUString >     aUIFilterArr[APP_COUNT];
     OUString                    aDefaultArr[APP_COUNT];
     bool                    aDefaultReadonlyArr[APP_COUNT];
     bool                    bInitialized;
@@ -74,52 +66,49 @@ SvxSaveTabPage_Impl::SvxSaveTabPage_Impl() : bInitialized( false )
 
 // class SvxSaveTabPage --------------------------------------------------
 
-SvxSaveTabPage::SvxSaveTabPage( vcl::Window* pParent, const SfxItemSet& rCoreSet ) :
-    SfxTabPage( pParent, "OptSavePage", "cui/ui/optsavepage.ui", &rCoreSet ),
-    pImpl( new SvxSaveTabPage_Impl )
+SvxSaveTabPage::SvxSaveTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rCoreSet)
+    : SfxTabPage( pPage, pController, "cui/ui/optsavepage.ui", "OptSavePage", &rCoreSet )
+    , pImpl(new SvxSaveTabPage_Impl)
+    , m_xLoadUserSettingsCB(m_xBuilder->weld_check_button("load_settings"))
+    , m_xLoadDocPrinterCB(m_xBuilder->weld_check_button("load_docprinter"))
+    , m_xDocInfoCB(m_xBuilder->weld_check_button("docinfo"))
+    , m_xBackupCB(m_xBuilder->weld_check_button("backup"))
+    , m_xAutoSaveCB(m_xBuilder->weld_check_button("autosave"))
+    , m_xAutoSaveEdit(m_xBuilder->weld_spin_button("autosave_spin"))
+    , m_xMinuteFT(m_xBuilder->weld_label("autosave_mins"))
+    , m_xUserAutoSaveCB(m_xBuilder->weld_check_button("userautosave"))
+    , m_xRelativeFsysCB(m_xBuilder->weld_check_button("relative_fsys"))
+    , m_xRelativeInetCB(m_xBuilder->weld_check_button("relative_inet"))
+    , m_xODFVersionLB(m_xBuilder->weld_combo_box("odfversion"))
+    , m_xWarnAlienFormatCB(m_xBuilder->weld_check_button("warnalienformat"))
+    , m_xDocTypeLB(m_xBuilder->weld_combo_box("doctype"))
+    , m_xSaveAsFT(m_xBuilder->weld_label("saveas_label"))
+    , m_xSaveAsLB(m_xBuilder->weld_combo_box("saveas"))
+    , m_xODFWarningFI(m_xBuilder->weld_widget("odfwarning_image"))
+    , m_xODFWarningFT(m_xBuilder->weld_label("odfwarning_label"))
 {
-    get(aLoadUserSettingsCB, "load_settings");
-    get(aLoadDocPrinterCB,  "load_docprinter");
+    m_xODFVersionLB->set_id(0, OUString::number(SvtSaveOptions::ODFVER_011)); // 1.0/1.1
+    m_xODFVersionLB->set_id(1, OUString::number(SvtSaveOptions::ODFVER_012)); // 1.2
+    m_xODFVersionLB->set_id(2, OUString::number(SvtSaveOptions::ODFVER_012_EXT_COMPAT)); // 1.2 Extended (compatibility mode)
+    m_xODFVersionLB->set_id(3, OUString::number(SvtSaveOptions::ODFVER_012_EXTENDED)); // 1.2 Extended
+    m_xODFVersionLB->set_id(4, OUString::number(SvtSaveOptions::ODFVER_013)); // 1.3
+    m_xODFVersionLB->set_id(5, OUString::number(SvtSaveOptions::ODFVER_LATEST)); // 1.3 Extended (recommended)
 
-    get(aDocInfoCB, "docinfo");
-    get(aBackupCB, "backup");
-    get(aAutoSaveCB, "autosave");
-    get(aAutoSaveEdit, "autosave_spin");
-    get(aMinuteFT, "autosave_mins");
-    get(aUserAutoSaveCB, "userautosave");
-    get(aRelativeFsysCB, "relative_fsys");
-    get(aRelativeInetCB, "relative_inet");
+    m_xDocTypeLB->set_id(0, OUString::number(APP_WRITER)       );
+    m_xDocTypeLB->set_id(1, OUString::number(APP_WRITER_WEB)   );
+    m_xDocTypeLB->set_id(2, OUString::number(APP_WRITER_GLOBAL));
+    m_xDocTypeLB->set_id(3, OUString::number(APP_CALC)         );
+    m_xDocTypeLB->set_id(4, OUString::number(APP_IMPRESS)      );
+    m_xDocTypeLB->set_id(5, OUString::number(APP_DRAW)         );
+    m_xDocTypeLB->set_id(6, OUString::number(APP_MATH)         );
 
-    get(aODFVersionLB, "odfversion");
-    get(aWarnAlienFormatCB, "warnalienformat");
-    get(aDocTypeLB, "doctype");
-    get(aSaveAsFT, "saveas_label");
-    get(aSaveAsLB, "saveas");
-    get(aODFWarningFI, "odfwarning_image");
-    get(aODFWarningFT, "odfwarning_label");
-
-
-    aODFVersionLB->SetEntryData(0, reinterpret_cast<void*>(2         )); // 1.0/1.1
-    aODFVersionLB->SetEntryData(1, reinterpret_cast<void*>(4         )); // 1.2
-    aODFVersionLB->SetEntryData(2, reinterpret_cast<void*>(8         )); // 1.2 Extended (compatibility mode)
-    aODFVersionLB->SetEntryData(3, reinterpret_cast<void*>(0x7fffffff)); // 1.2 Extended (recommended)
-
-    aDocTypeLB->SetEntryData(0, reinterpret_cast<void*>(APP_WRITER)       );
-    aDocTypeLB->SetEntryData(1, reinterpret_cast<void*>(APP_WRITER_WEB)   );
-    aDocTypeLB->SetEntryData(2, reinterpret_cast<void*>(APP_WRITER_GLOBAL));
-    aDocTypeLB->SetEntryData(3, reinterpret_cast<void*>(APP_CALC)         );
-    aDocTypeLB->SetEntryData(4, reinterpret_cast<void*>(APP_IMPRESS)      );
-    aDocTypeLB->SetEntryData(5, reinterpret_cast<void*>(APP_DRAW)         );
-    aDocTypeLB->SetEntryData(6, reinterpret_cast<void*>(APP_MATH)         );
-
-    aAutoSaveCB->SetClickHdl( LINK( this, SvxSaveTabPage, AutoClickHdl_Impl ) );
-    aAutoSaveEdit->SetMaxTextLen( 2 );
+    m_xAutoSaveCB->connect_clicked( LINK( this, SvxSaveTabPage, AutoClickHdl_Impl ) );
 
     SvtModuleOptions aModuleOpt;
     if ( !aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::MATH ) )
     {
-        aSaveAsLB->RemoveEntry(aSaveAsLB->GetEntryPos( reinterpret_cast<void*>(APP_MATH) ));
-        aDocTypeLB->RemoveEntry(aDocTypeLB->GetEntryPos( reinterpret_cast<void*>(APP_MATH) ));
+        m_xSaveAsLB->remove_id(OUString::number(APP_MATH));
+        m_xDocTypeLB->remove_id(OUString::number(APP_MATH));
     }
     else
     {
@@ -129,8 +118,8 @@ SvxSaveTabPage::SvxSaveTabPage( vcl::Window* pParent, const SfxItemSet& rCoreSet
 
     if ( !aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::DRAW ) )
     {
-        aSaveAsLB->RemoveEntry(aSaveAsLB->GetEntryPos( reinterpret_cast<void*>(APP_DRAW) ));
-        aDocTypeLB->RemoveEntry(aDocTypeLB->GetEntryPos( reinterpret_cast<void*>(APP_DRAW) ));
+        m_xSaveAsLB->remove_id(OUString::number(APP_DRAW));
+        m_xDocTypeLB->remove_id(OUString::number(APP_DRAW));
     }
     else
     {
@@ -140,8 +129,8 @@ SvxSaveTabPage::SvxSaveTabPage( vcl::Window* pParent, const SfxItemSet& rCoreSet
 
     if ( !aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::IMPRESS ) )
     {
-        aSaveAsLB->RemoveEntry(aSaveAsLB->GetEntryPos( reinterpret_cast<void*>(APP_IMPRESS) ));
-        aDocTypeLB->RemoveEntry(aDocTypeLB->GetEntryPos( reinterpret_cast<void*>(APP_IMPRESS) ));
+        m_xSaveAsLB->remove_id(OUString::number(APP_IMPRESS));
+        m_xDocTypeLB->remove_id(OUString::number(APP_IMPRESS));
     }
     else
     {
@@ -151,8 +140,8 @@ SvxSaveTabPage::SvxSaveTabPage( vcl::Window* pParent, const SfxItemSet& rCoreSet
 
     if ( !aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::CALC ) )
     {
-        aSaveAsLB->RemoveEntry(aSaveAsLB->GetEntryPos( reinterpret_cast<void*>(APP_CALC) ));
-        aDocTypeLB->RemoveEntry(aDocTypeLB->GetEntryPos( reinterpret_cast<void*>(APP_CALC) ));
+        m_xSaveAsLB->remove_id(OUString::number(APP_CALC));
+        m_xDocTypeLB->remove_id(OUString::number(APP_CALC));
     }
     else
     {
@@ -162,12 +151,12 @@ SvxSaveTabPage::SvxSaveTabPage( vcl::Window* pParent, const SfxItemSet& rCoreSet
 
     if ( !aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::WRITER ) )
     {
-        aSaveAsLB->RemoveEntry(aSaveAsLB->GetEntryPos( reinterpret_cast<void*>(APP_WRITER) ));
-        aSaveAsLB->RemoveEntry(aSaveAsLB->GetEntryPos( reinterpret_cast<void*>(APP_WRITER_WEB) ));
-        aSaveAsLB->RemoveEntry(aSaveAsLB->GetEntryPos( reinterpret_cast<void*>(APP_WRITER_GLOBAL) ));
-        aDocTypeLB->RemoveEntry(aDocTypeLB->GetEntryPos( reinterpret_cast<void*>(APP_WRITER) ));
-        aDocTypeLB->RemoveEntry(aDocTypeLB->GetEntryPos( reinterpret_cast<void*>(APP_WRITER_WEB) ));
-        aDocTypeLB->RemoveEntry(aDocTypeLB->GetEntryPos( reinterpret_cast<void*>(APP_WRITER_GLOBAL) ));
+        m_xSaveAsLB->remove_id(OUString::number(APP_WRITER));
+        m_xSaveAsLB->remove_id(OUString::number(APP_WRITER_WEB));
+        m_xSaveAsLB->remove_id(OUString::number(APP_WRITER_GLOBAL));
+        m_xDocTypeLB->remove_id(OUString::number(APP_WRITER));
+        m_xDocTypeLB->remove_id(OUString::number(APP_WRITER_WEB));
+        m_xDocTypeLB->remove_id(OUString::number(APP_WRITER_GLOBAL));
     }
     else
     {
@@ -179,48 +168,23 @@ SvxSaveTabPage::SvxSaveTabPage( vcl::Window* pParent, const SfxItemSet& rCoreSet
         pImpl->aDefaultReadonlyArr[APP_WRITER_GLOBAL] = aModuleOpt.IsDefaultFilterReadonly(SvtModuleOptions::EFactory::WRITERGLOBAL);
     }
 
-    Link<ListBox&,void> aLink = LINK( this, SvxSaveTabPage, ODFVersionHdl_Impl );
-    aODFVersionLB->SetSelectHdl( aLink );
+    Link<weld::ComboBox&,void> aLink = LINK( this, SvxSaveTabPage, ODFVersionHdl_Impl );
+    m_xODFVersionLB->connect_changed( aLink );
     aLink = LINK( this, SvxSaveTabPage, FilterHdl_Impl );
-    aDocTypeLB->SetSelectHdl( aLink );
-    aSaveAsLB->SetSelectHdl( aLink );
+    m_xDocTypeLB->connect_changed( aLink );
+    m_xSaveAsLB->connect_changed( aLink );
 
     DetectHiddenControls();
 }
 
-
 SvxSaveTabPage::~SvxSaveTabPage()
 {
-    disposeOnce();
 }
 
-void SvxSaveTabPage::dispose()
+std::unique_ptr<SfxTabPage> SvxSaveTabPage::Create(weld::Container* pPage, weld::DialogController* pController,
+                                          const SfxItemSet* rAttrSet)
 {
-    pImpl.reset();
-    aLoadUserSettingsCB.clear();
-    aLoadDocPrinterCB.clear();
-    aDocInfoCB.clear();
-    aBackupCB.clear();
-    aAutoSaveCB.clear();
-    aAutoSaveEdit.clear();
-    aMinuteFT.clear();
-    aUserAutoSaveCB.clear();
-    aRelativeFsysCB.clear();
-    aRelativeInetCB.clear();
-    aODFVersionLB.clear();
-    aWarnAlienFormatCB.clear();
-    aDocTypeLB.clear();
-    aSaveAsFT.clear();
-    aSaveAsLB.clear();
-    aODFWarningFI.clear();
-    aODFWarningFT.clear();
-    SfxTabPage::dispose();
-}
-
-VclPtr<SfxTabPage> SvxSaveTabPage::Create( vcl::Window* pParent,
-                                           const SfxItemSet* rAttrSet )
-{
-    return VclPtr<SvxSaveTabPage>::Create( pParent, *rAttrSet );
+    return std::make_unique<SvxSaveTabPage>(pPage, pController, *rAttrSet);
 }
 
 void SvxSaveTabPage::DetectHiddenControls()
@@ -230,21 +194,21 @@ void SvxSaveTabPage::DetectHiddenControls()
     if ( aOptionsDlgOpt.IsOptionHidden( "Backup", CFG_PAGE_AND_GROUP ) )
     {
         // hide controls of "Backup"
-        aBackupCB->Hide();
+        m_xBackupCB->hide();
     }
 
     if ( aOptionsDlgOpt.IsOptionHidden( "AutoSave", CFG_PAGE_AND_GROUP ) )
     {
         // hide controls of "AutoSave"
-        aAutoSaveCB->Hide();
-        aAutoSaveEdit->Hide();
-        aMinuteFT->Hide();
+        m_xAutoSaveCB->hide();
+        m_xAutoSaveEdit->hide();
+        m_xMinuteFT->hide();
     }
 
     if ( aOptionsDlgOpt.IsOptionHidden( "UserAutoSave", CFG_PAGE_AND_GROUP ) )
     {
         // hide controls of "UserAutoSave"
-        aUserAutoSaveCB->Hide();
+        m_xUserAutoSaveCB->hide();
     }
 
 }
@@ -253,72 +217,72 @@ bool SvxSaveTabPage::FillItemSet( SfxItemSet* rSet )
 {
     bool bModified = false;
     SvtSaveOptions aSaveOpt;
-    if(aLoadUserSettingsCB->IsValueChangedFromSaved())
+    if(m_xLoadUserSettingsCB->get_state_changed_from_saved())
     {
-        aSaveOpt.SetLoadUserSettings(aLoadUserSettingsCB->IsChecked());
+        aSaveOpt.SetLoadUserSettings(m_xLoadUserSettingsCB->get_active());
     }
 
-    if ( aLoadDocPrinterCB->IsValueChangedFromSaved() )
-        aSaveOpt.SetLoadDocumentPrinter( aLoadDocPrinterCB->IsChecked() );
+    if ( m_xLoadDocPrinterCB->get_state_changed_from_saved() )
+        aSaveOpt.SetLoadDocumentPrinter( m_xLoadDocPrinterCB->get_active() );
 
-    if ( aODFVersionLB->IsValueChangedFromSaved() )
+    if ( m_xODFVersionLB->get_value_changed_from_saved() )
     {
-        sal_IntPtr nVersion = sal_IntPtr( aODFVersionLB->GetSelectEntryData() );
+        sal_Int32 nVersion = m_xODFVersionLB->get_active_id().toInt32();
         aSaveOpt.SetODFDefaultVersion( SvtSaveOptions::ODFDefaultVersion( nVersion ) );
     }
 
-    if ( aDocInfoCB->IsValueChangedFromSaved() )
+    if ( m_xDocInfoCB->get_state_changed_from_saved() )
     {
         rSet->Put( SfxBoolItem( GetWhich( SID_ATTR_DOCINFO ),
-                               aDocInfoCB->IsChecked() ) );
+                               m_xDocInfoCB->get_active() ) );
         bModified = true;
     }
 
-    if ( aBackupCB->IsEnabled() && aBackupCB->IsValueChangedFromSaved() )
+    if ( m_xBackupCB->get_sensitive() && m_xBackupCB->get_state_changed_from_saved() )
     {
         rSet->Put( SfxBoolItem( GetWhich( SID_ATTR_BACKUP ),
-                               aBackupCB->IsChecked() ) );
+                               m_xBackupCB->get_active() ) );
         bModified = true;
     }
 
-    if ( aAutoSaveCB->IsValueChangedFromSaved() )
+    if ( m_xAutoSaveCB->get_state_changed_from_saved() )
     {
         rSet->Put( SfxBoolItem( GetWhich( SID_ATTR_AUTOSAVE ),
-                               aAutoSaveCB->IsChecked() ) );
+                               m_xAutoSaveCB->get_active() ) );
         bModified = true;
     }
-    if ( aWarnAlienFormatCB->IsValueChangedFromSaved() )
+    if ( m_xWarnAlienFormatCB->get_state_changed_from_saved() )
     {
         rSet->Put( SfxBoolItem( GetWhich( SID_ATTR_WARNALIENFORMAT ),
-                               aWarnAlienFormatCB->IsChecked() ) );
+                               m_xWarnAlienFormatCB->get_active() ) );
         bModified = true;
     }
 
-    if ( aAutoSaveEdit->IsValueChangedFromSaved() )
+    if ( m_xAutoSaveEdit->get_value_changed_from_saved() )
     {
         rSet->Put( SfxUInt16Item( GetWhich( SID_ATTR_AUTOSAVEMINUTE ),
-                                 (sal_uInt16)aAutoSaveEdit->GetValue() ) );
+                                 static_cast<sal_uInt16>(m_xAutoSaveEdit->get_value()) ) );
         bModified = true;
     }
 
-    if ( aUserAutoSaveCB->IsValueChangedFromSaved() )
+    if ( m_xUserAutoSaveCB->get_state_changed_from_saved() )
     {
         rSet->Put( SfxBoolItem( GetWhich( SID_ATTR_USERAUTOSAVE ),
-                               aUserAutoSaveCB->IsChecked() ) );
+                               m_xUserAutoSaveCB->get_active() ) );
         bModified = true;
     }
     // save relatively
-    if ( aRelativeFsysCB->IsValueChangedFromSaved() )
+    if ( m_xRelativeFsysCB->get_state_changed_from_saved() )
     {
         rSet->Put( SfxBoolItem( GetWhich( SID_SAVEREL_FSYS ),
-                               aRelativeFsysCB->IsChecked() ) );
+                               m_xRelativeFsysCB->get_active() ) );
         bModified = true;
     }
 
-    if ( aRelativeInetCB->IsValueChangedFromSaved() )
+    if ( m_xRelativeInetCB->get_state_changed_from_saved() )
     {
         rSet->Put( SfxBoolItem( GetWhich( SID_SAVEREL_INET ),
-                               aRelativeInetCB->IsChecked() ) );
+                               m_xRelativeInetCB->get_active() ) );
         bModified = true;
     }
 
@@ -354,7 +318,7 @@ bool SvxSaveTabPage::FillItemSet( SfxItemSet* rSet )
     return bModified;
 }
 
-bool isODFFormat( const OUString& sFilter )
+static bool isODFFormat( const OUString& sFilter )
 {
     static const char* aODFFormats[] =
     {
@@ -391,12 +355,12 @@ bool isODFFormat( const OUString& sFilter )
 void SvxSaveTabPage::Reset( const SfxItemSet* )
 {
     SvtSaveOptions aSaveOpt;
-    aLoadUserSettingsCB->Check(aSaveOpt.IsLoadUserSettings());
-    aLoadUserSettingsCB->SaveValue();
-    aLoadUserSettingsCB->Enable(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::UseUserData));
-    aLoadDocPrinterCB->Check( aSaveOpt.IsLoadDocumentPrinter() );
-    aLoadDocPrinterCB->SaveValue();
-    aLoadDocPrinterCB->Enable(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::LoadDocPrinter));
+    m_xLoadUserSettingsCB->set_active(aSaveOpt.IsLoadUserSettings());
+    m_xLoadUserSettingsCB->save_state();
+    m_xLoadUserSettingsCB->set_sensitive(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::UseUserData));
+    m_xLoadDocPrinterCB->set_active( aSaveOpt.IsLoadDocumentPrinter() );
+    m_xLoadDocPrinterCB->save_state();
+    m_xLoadDocPrinterCB->set_sensitive(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::LoadDocPrinter));
 
     if ( !pImpl->bInitialized )
     {
@@ -409,15 +373,13 @@ void SvxSaveTabPage::Reset( const SfxItemSet* )
             Reference< XContainerQuery > xQuery(pImpl->xFact, UNO_QUERY);
             if(xQuery.is())
             {
-                for(sal_Int32 n = 0; n < aDocTypeLB->GetEntryCount(); n++)
+                for (sal_Int32 n = 0, nEntryCount = m_xDocTypeLB->get_count(); n < nEntryCount; ++n)
                 {
-                    sal_IntPtr nData = reinterpret_cast<sal_IntPtr>(aDocTypeLB->GetEntryData(n));
-                    OUString sCommand;
-                    sCommand = "matchByDocumentService=%1:iflags=" +
+                    int nData = m_xDocTypeLB->get_id(n).toInt32();
+                    OUString sCommand = "getSortedFilterList():module=%1:iflags=" +
                                OUString::number(static_cast<int>(SfxFilterFlags::IMPORT|SfxFilterFlags::EXPORT)) +
                                ":eflags=" +
-                               OUString::number(static_cast<int>(SfxFilterFlags::NOTINFILEDLG)) +
-                               ":default_first";
+                               OUString::number(static_cast<int>(SfxFilterFlags::NOTINFILEDLG));
                     OUString sReplace;
                     switch(nData)
                     {
@@ -433,98 +395,93 @@ void SvxSaveTabPage::Reset( const SfxItemSet* )
                     sCommand = sCommand.replaceFirst("%1", sReplace);
                     Reference< XEnumeration > xList = xQuery->createSubSetEnumerationByQuery(sCommand);
                     std::vector< OUString > lList;
-                    std::vector< sal_Bool > lAlienList;
-                    std::vector< sal_Bool > lODFList;
+                    std::vector<bool> lODFList;
                     while(xList->hasMoreElements())
                     {
                         SequenceAsHashMap aFilter(xList->nextElement());
                         OUString sFilter = aFilter.getUnpackedValueOrDefault("Name",OUString());
                         if (!sFilter.isEmpty())
                         {
-                            SfxFilterFlags nFlags = static_cast<SfxFilterFlags>(aFilter.getUnpackedValueOrDefault("Flags",sal_Int32()));
                             lList.push_back(sFilter);
-                            lAlienList.push_back(bool(nFlags & SfxFilterFlags::ALIEN));
                             lODFList.push_back( isODFFormat( sFilter ) );
                         }
                     }
-                    pImpl->aFilterArr[nData] = comphelper::containerToSequence(lList);
-                    pImpl->aAlienArr[nData] = comphelper::containerToSequence(lAlienList);
-                    pImpl->aODFArr[nData] = comphelper::containerToSequence(lODFList);
+                    pImpl->aFilterArr[nData] = lList;
+                    pImpl->aODFArr[nData] = lODFList;
                 }
             }
-            aDocTypeLB->SelectEntryPos(0);
-            FilterHdl_Impl(*aDocTypeLB);
+            m_xDocTypeLB->set_active(0);
+            FilterHdl_Impl(*m_xDocTypeLB);
         }
-        catch(Exception& e)
+        catch(Exception const &)
         {
-            SAL_WARN( "cui.options", "exception in FilterFactory access: " << e.Message );
+            TOOLS_WARN_EXCEPTION( "cui.options", "exception in FilterFactory access" );
         }
 
         pImpl->bInitialized = true;
     }
 
-    aDocInfoCB->Check(aSaveOpt.IsDocInfoSave());
-    aDocInfoCB->Enable(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::DocInfSave));
+    m_xDocInfoCB->set_active(aSaveOpt.IsDocInfoSave());
+    m_xDocInfoCB->set_sensitive(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::DocInfSave));
 
-    aBackupCB->Check(aSaveOpt.IsBackup());
-    aBackupCB->Enable(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::Backup));
+    m_xBackupCB->set_active(aSaveOpt.IsBackup());
+    m_xBackupCB->set_sensitive(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::Backup));
 
-    aAutoSaveCB->Check(aSaveOpt.IsAutoSave());
-    aAutoSaveCB->Enable(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::AutoSave));
+    m_xAutoSaveCB->set_active(aSaveOpt.IsAutoSave());
+    m_xAutoSaveCB->set_sensitive(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::AutoSave));
 
-    aUserAutoSaveCB->Check(aSaveOpt.IsUserAutoSave());
-    aUserAutoSaveCB->Enable(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::UserAutoSave));
+    m_xUserAutoSaveCB->set_active(aSaveOpt.IsUserAutoSave());
+    m_xUserAutoSaveCB->set_sensitive(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::UserAutoSave));
 
-    aWarnAlienFormatCB->Check(aSaveOpt.IsWarnAlienFormat());
-    aWarnAlienFormatCB->Enable(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::WarnAlienFormat));
+    m_xWarnAlienFormatCB->set_active(aSaveOpt.IsWarnAlienFormat());
+    m_xWarnAlienFormatCB->set_sensitive(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::WarnAlienFormat));
 
-    aAutoSaveEdit->SetValue(aSaveOpt.GetAutoSaveTime());
-    aAutoSaveEdit->Enable(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::AutoSaveTime));
+    m_xAutoSaveEdit->set_value(aSaveOpt.GetAutoSaveTime());
+    m_xAutoSaveEdit->set_sensitive(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::AutoSaveTime));
 
     // save relatively
-    aRelativeFsysCB->Check(aSaveOpt.IsSaveRelFSys());
-    aRelativeFsysCB->Enable(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::SaveRelFsys));
+    m_xRelativeFsysCB->set_active(aSaveOpt.IsSaveRelFSys());
+    m_xRelativeFsysCB->set_sensitive(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::SaveRelFsys));
 
-    aRelativeInetCB->Check(aSaveOpt.IsSaveRelINet());
-    aRelativeInetCB->Enable(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::SaveRelInet));
+    m_xRelativeInetCB->set_active(aSaveOpt.IsSaveRelINet());
+    m_xRelativeInetCB->set_sensitive(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::SaveRelInet));
 
-    void* pDefaultVersion = reinterpret_cast<void*>( aSaveOpt.GetODFDefaultVersion() );
-    aODFVersionLB->SelectEntryPos( aODFVersionLB->GetEntryPos( pDefaultVersion ) );
-    aODFVersionLB->Enable(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::OdfDefaultVersion));
+    sal_Int32 nDefaultVersion = aSaveOpt.GetODFDefaultVersion();
+    m_xODFVersionLB->set_active_id(OUString::number(nDefaultVersion));
+    m_xODFVersionLB->set_sensitive(!aSaveOpt.IsReadOnly(SvtSaveOptions::EOption::OdfDefaultVersion));
 
-    AutoClickHdl_Impl( aAutoSaveCB );
-    ODFVersionHdl_Impl( *aODFVersionLB );
+    AutoClickHdl_Impl(*m_xAutoSaveCB);
+    ODFVersionHdl_Impl(*m_xODFVersionLB);
 
-    aDocInfoCB->SaveValue();
-    aBackupCB->SaveValue();
-    aWarnAlienFormatCB->SaveValue();
-    aAutoSaveCB->SaveValue();
-    aAutoSaveEdit->SaveValue();
+    m_xDocInfoCB->save_state();
+    m_xBackupCB->save_state();
+    m_xWarnAlienFormatCB->save_state();
+    m_xAutoSaveCB->save_state();
+    m_xAutoSaveEdit->save_value();
 
-    aUserAutoSaveCB->SaveValue();
+    m_xUserAutoSaveCB->save_state();
 
-    aRelativeFsysCB->SaveValue();
-    aRelativeInetCB->SaveValue();
-    aODFVersionLB->SaveValue();
+    m_xRelativeFsysCB->save_state();
+    m_xRelativeInetCB->save_state();
+    m_xODFVersionLB->save_value();
 }
 
-
-IMPL_LINK( SvxSaveTabPage, AutoClickHdl_Impl, Button*, pBox, void )
+IMPL_LINK(SvxSaveTabPage, AutoClickHdl_Impl, weld::Button&, rBox, void)
 {
-    if ( pBox == aAutoSaveCB )
+    if (&rBox != m_xAutoSaveCB.get())
+        return;
+
+    if (m_xAutoSaveCB->get_active())
     {
-        if ( aAutoSaveCB->IsChecked() )
-        {
-            aAutoSaveEdit->Enable();
-            aMinuteFT->Enable();
-            aUserAutoSaveCB->Enable();
-        }
-        else
-        {
-            aAutoSaveEdit->Disable();
-            aMinuteFT->Disable();
-            aUserAutoSaveCB->Disable();
-        }
+        m_xAutoSaveEdit->set_sensitive(true);
+        m_xMinuteFT->set_sensitive(true);
+        m_xUserAutoSaveCB->set_sensitive(true);
+    }
+    else
+    {
+        m_xAutoSaveEdit->set_sensitive(false);
+        m_xMinuteFT->set_sensitive(false);
+        m_xUserAutoSaveCB->set_sensitive(false);
     }
 }
 
@@ -562,67 +519,68 @@ static OUString lcl_ExtracUIName(const Sequence<PropertyValue> &rProperties, con
     return sName;
 }
 
-IMPL_LINK( SvxSaveTabPage, FilterHdl_Impl, ListBox&, rBox, void )
+IMPL_LINK( SvxSaveTabPage, FilterHdl_Impl, weld::ComboBox&, rBox, void )
 {
-    const sal_Int32 nCurPos = aDocTypeLB->GetSelectEntryPos();
+    const int nCurPos = m_xDocTypeLB->get_active();
 
-    sal_IntPtr nData = -1;
-    if(nCurPos < APP_COUNT)
-        nData = reinterpret_cast<sal_IntPtr>( aDocTypeLB->GetEntryData(nCurPos) );
+    int nData = -1;
+    if (nCurPos < APP_COUNT)
+        nData = m_xDocTypeLB->get_id(nCurPos).toInt32();
 
     if ( nData >= 0 && nData < APP_COUNT )
     {
-        if(aDocTypeLB == &rBox)
+        if(m_xDocTypeLB.get() == &rBox)
         {
-            aSaveAsLB->Clear();
-            const OUString* pFilters = pImpl->aFilterArr[nData].getConstArray();
-            if(!pImpl->aUIFilterArr[nData].getLength())
+            m_xSaveAsLB->clear();
+            auto & rFilters = pImpl->aFilterArr[nData];
+            if(pImpl->aUIFilterArr[nData].empty())
             {
-                pImpl->aUIFilterArr[nData].realloc(pImpl->aFilterArr[nData].getLength());
-                OUString* pUIFilters = pImpl->aUIFilterArr[nData].getArray();
-                for(int nFilter = 0; nFilter < pImpl->aFilterArr[nData].getLength(); nFilter++)
+                pImpl->aUIFilterArr[nData].resize(pImpl->aFilterArr[nData].size());
+                auto & rUIFilters = pImpl->aUIFilterArr[nData];
+                for(size_t nFilter = 0; nFilter < pImpl->aFilterArr[nData].size(); nFilter++)
                 {
-                    Any aProps = pImpl->xFact->getByName(pFilters[nFilter]);
+                    Any aProps = pImpl->xFact->getByName(rFilters[nFilter]);
                     // get the extension of the filter
                     OUString extension;
                     SfxFilterMatcher matcher;
-                    std::shared_ptr<const SfxFilter> pFilter = matcher.GetFilter4FilterName(pFilters[nFilter]);
+                    std::shared_ptr<const SfxFilter> pFilter = matcher.GetFilter4FilterName(rFilters[nFilter]);
                     if (pFilter)
                     {
                         extension = pFilter->GetWildcard().getGlob().getToken(0, ';');
                     }
                     Sequence<PropertyValue> aProperties;
                     aProps >>= aProperties;
-                    pUIFilters[nFilter] = lcl_ExtracUIName(aProperties, extension);
+                    rUIFilters[nFilter] = lcl_ExtracUIName(aProperties, extension);
                 }
             }
-            const OUString* pUIFilters = pImpl->aUIFilterArr[nData].getConstArray();
+            auto const & rUIFilters = pImpl->aUIFilterArr[nData];
             OUString sSelect;
-            for(int i = 0; i < pImpl->aUIFilterArr[nData].getLength(); i++)
+            for(size_t i = 0; i < pImpl->aUIFilterArr[nData].size(); i++)
             {
-                const sal_Int32 nEntryPos = aSaveAsLB->InsertEntry(pUIFilters[i]);
-                if ( pImpl->aODFArr[nData][i] )
-                    aSaveAsLB->SetEntryData( nEntryPos, static_cast<void*>(pImpl.get()) );
-                if(pFilters[i] == pImpl->aDefaultArr[nData])
-                    sSelect = pUIFilters[i];
+                OUString sId;
+                if (pImpl->aODFArr[nData][i])
+                    sId = OUString::number(reinterpret_cast<sal_Int64>(pImpl.get()));
+                m_xSaveAsLB->append(sId, rUIFilters[i]);
+                if (rFilters[i] == pImpl->aDefaultArr[nData])
+                    sSelect = rUIFilters[i];
             }
-            if(!sSelect.isEmpty())
+            if (!sSelect.isEmpty())
             {
-                aSaveAsLB->SelectEntry(sSelect);
+                m_xSaveAsLB->set_active_text(sSelect);
             }
 
-            aSaveAsFT->Enable(!pImpl->aDefaultReadonlyArr[nData]);
-            aSaveAsLB->Enable(!pImpl->aDefaultReadonlyArr[nData]);
+            m_xSaveAsFT->set_sensitive(!pImpl->aDefaultReadonlyArr[nData]);
+            m_xSaveAsLB->set_sensitive(!pImpl->aDefaultReadonlyArr[nData]);
         }
         else
         {
-            OUString sSelect = rBox.GetSelectEntry();
-            const OUString* pFilters = pImpl->aFilterArr[nData].getConstArray();
-            OUString* pUIFilters = pImpl->aUIFilterArr[nData].getArray();
-            for(int i = 0; i < pImpl->aUIFilterArr[nData].getLength(); i++)
-                if(pUIFilters[i] == sSelect)
+            OUString sSelect = rBox.get_active_text();
+            auto const & rFilters = pImpl->aFilterArr[nData];
+            auto const & rUIFilters = pImpl->aUIFilterArr[nData];
+            for(size_t i = 0; i < pImpl->aUIFilterArr[nData].size(); i++)
+                if(rUIFilters[i] == sSelect)
                 {
-                    sSelect = pFilters[i];
+                    sSelect = rFilters[i];
                     break;
                 }
 
@@ -630,20 +588,20 @@ IMPL_LINK( SvxSaveTabPage, FilterHdl_Impl, ListBox&, rBox, void )
         }
     }
 
-    ODFVersionHdl_Impl( *aSaveAsLB );
-};
+    ODFVersionHdl_Impl( *m_xSaveAsLB );
+}
 
-IMPL_LINK_NOARG(SvxSaveTabPage, ODFVersionHdl_Impl, ListBox&, void)
+IMPL_LINK_NOARG(SvxSaveTabPage, ODFVersionHdl_Impl, weld::ComboBox&, void)
 {
-    sal_IntPtr nVersion = sal_IntPtr( aODFVersionLB->GetSelectEntryData() );
-    bool bShown = SvtSaveOptions::ODFDefaultVersion( nVersion ) != SvtSaveOptions::ODFVER_LATEST;
+    sal_Int32 nVersion = m_xODFVersionLB->get_active_id().toInt32();
+    bool bShown = SvtSaveOptions::ODFDefaultVersion(nVersion) != SvtSaveOptions::ODFVER_LATEST;
     if ( bShown )
     {
         bool bHasODFFormat = false;
-        const sal_Int32 nCount = aSaveAsLB->GetEntryCount();
-        for ( sal_Int32 i = 0; i < nCount; ++i )
+        const int nCount = m_xSaveAsLB->get_count();
+        for (int i = 0; i < nCount; ++i )
         {
-            if ( aSaveAsLB->GetEntryData(i) != nullptr )
+            if ( m_xSaveAsLB->get_id(i).toInt64() != 0 )
             {
                 bHasODFFormat = true;
                 break;
@@ -651,11 +609,11 @@ IMPL_LINK_NOARG(SvxSaveTabPage, ODFVersionHdl_Impl, ListBox&, void)
         }
 
         bShown = !bHasODFFormat
-                || ( aSaveAsLB->GetSelectEntryData() != nullptr );
+                || ( m_xSaveAsLB->get_active_id().toInt64() != 0);
     }
 
-    aODFWarningFI->Show( bShown );
-    aODFWarningFT->Show( bShown );
+    m_xODFWarningFI->set_visible(bShown);
+    m_xODFWarningFT->set_visible(bShown);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

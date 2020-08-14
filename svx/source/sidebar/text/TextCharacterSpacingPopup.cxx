@@ -18,33 +18,66 @@
  */
 #include <svx/TextCharacterSpacingPopup.hxx>
 #include "TextCharacterSpacingControl.hxx"
-#include <unotools/viewoptions.hxx>
 #include <vcl/toolbox.hxx>
-#include <editeng/kernitem.hxx>
 
 using namespace svx;
 
-SFX_IMPL_TOOLBOX_CONTROL(TextCharacterSpacingPopup, SvxKerningItem);
-
-TextCharacterSpacingPopup::TextCharacterSpacingPopup(sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx)
-    : SfxToolBoxControl(nSlotId, nId, rTbx)
+TextCharacterSpacingPopup::TextCharacterSpacingPopup(const css::uno::Reference<css::uno::XComponentContext>& rContext)
+    : PopupWindowController(rContext, nullptr, OUString())
 {
-    rTbx.SetItemBits(nId, ToolBoxItemBits::DROPDOWNONLY | rTbx.GetItemBits(nId));
+}
+
+void TextCharacterSpacingPopup::initialize( const css::uno::Sequence< css::uno::Any >& rArguments )
+{
+    PopupWindowController::initialize(rArguments);
+
+    if (m_pToolbar)
+    {
+        mxPopoverContainer.reset(new ToolbarPopupContainer(m_pToolbar));
+        m_pToolbar->set_item_popover(m_aCommandURL.toUtf8(), mxPopoverContainer->getTopLevel());
+    }
+
+    ToolBox* pToolBox = nullptr;
+    sal_uInt16 nId = 0;
+    if (getToolboxId(nId, &pToolBox))
+        pToolBox->SetItemBits(nId, ToolBoxItemBits::DROPDOWNONLY | pToolBox->GetItemBits(nId));
 }
 
 TextCharacterSpacingPopup::~TextCharacterSpacingPopup()
 {
 }
 
-VclPtr<SfxPopupWindow> TextCharacterSpacingPopup::CreatePopupWindow()
+std::unique_ptr<WeldToolbarPopup> TextCharacterSpacingPopup::weldPopupWindow()
 {
-    VclPtr<TextCharacterSpacingControl> pControl = VclPtr<TextCharacterSpacingControl>::Create(GetSlotId());
+    return std::make_unique<TextCharacterSpacingControl>(this, m_pToolbar);
+}
 
-    pControl->StartPopupMode(&GetToolBox(), FloatWinPopupFlags::GrabFocus);
+VclPtr<vcl::Window> TextCharacterSpacingPopup::createVclPopupWindow( vcl::Window* pParent )
+{
+    mxInterimPopover = VclPtr<InterimToolbarPopup>::Create(getFrameInterface(), pParent,
+        std::make_unique<TextCharacterSpacingControl>(this, pParent->GetFrameWeld()));
 
-    SetPopupWindow(pControl);
+    mxInterimPopover->Show();
 
-    return pControl;
+    return mxInterimPopover;
+}
+
+OUString TextCharacterSpacingPopup::getImplementationName()
+{
+    return "com.sun.star.comp.svx.CharacterSpacingToolBoxControl";
+}
+
+css::uno::Sequence<OUString> TextCharacterSpacingPopup::getSupportedServiceNames()
+{
+    return { "com.sun.star.frame.ToolbarController" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_svx_CharacterSpacingToolBoxControl_get_implementation(
+    css::uno::XComponentContext* rContext,
+    css::uno::Sequence<css::uno::Any> const & )
+{
+    return cppu::acquire(new TextCharacterSpacingPopup(rContext));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

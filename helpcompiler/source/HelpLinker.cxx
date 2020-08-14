@@ -20,23 +20,30 @@
 #include <HelpCompiler.hxx>
 #include <HelpLinker.hxx>
 
-#include <map>
+#include <algorithm>
+#include <fstream>
 
 #include <string.h>
-#include <limits.h>
 
-#include <libxslt/xslt.h>
-#include <libxslt/xsltutils.h>
-#include <libxslt/functions.h>
-#include <libxslt/extensions.h>
+#include <libxslt/transform.h>
 
-#include <sal/main.h>
 #include <sal/types.h>
-#include <osl/time.h>
-#include <rtl/bootstrap.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
+#include <sal/log.hxx>
 
 #include <expat.h>
 #include <memory>
+
+namespace {
+FILE* fopen_impl(const fs::path& rPath, const char* szMode)
+{
+#ifdef _WIN32     //We need _wfopen to support long file paths on Windows XP
+    return _wfopen(rPath.native_file_string_w().c_str(), o3tl::toW(OUString::createFromAscii(szMode).getStr()));
+#else
+    return fopen(rPath.native_file_string().c_str(), szMode);
+#endif
+}
+}
 
 IndexerPreProcessor::IndexerPreProcessor
     ( const fs::path& fsIndexBaseDir,
@@ -62,15 +69,15 @@ IndexerPreProcessor::~IndexerPreProcessor()
         xsltFreeStylesheet( m_xsltStylesheetPtrContent );
 }
 
-std::string getEncodedPath( const std::string& Path )
+static std::string getEncodedPath( const std::string& Path )
 {
     OString aOStr_Path( Path.c_str() );
     OUString aOUStr_Path( OStringToOUString
-        ( aOStr_Path, fs::getThreadTextEncoding() ) );
+        ( aOStr_Path, osl_getThreadTextEncoding() ) );
     OUString aPathURL;
     osl::File::getFileURLFromSystemPath( aOUStr_Path, aPathURL );
     OString aOStr_PathURL( OUStringToOString
-        ( aPathURL, fs::getThreadTextEncoding() ) );
+        ( aPathURL, osl_getThreadTextEncoding() ) );
     std::string aStdStr_PathURL( aOStr_PathURL.getStr() );
     return aStdStr_PathURL;
 }
@@ -87,13 +94,7 @@ void IndexerPreProcessor::processDocument
         if( pResNodeCaption )
         {
             fs::path fsCaptionPureTextFile_docURL = m_fsCaptionFilesDirName / aStdStr_EncodedDocPathURL;
-#ifdef _WIN32     //We need _wfopen to support long file paths on Windows XP
-            FILE* pFile_docURL = _wfopen(
-                fsCaptionPureTextFile_docURL.native_file_string_w(), L"w" );
-#else
-            FILE* pFile_docURL = fopen(
-                fsCaptionPureTextFile_docURL.native_file_string().c_str(), "w" );
-#endif
+            FILE* pFile_docURL = fopen_impl( fsCaptionPureTextFile_docURL, "w" );
             if( pFile_docURL )
             {
                 fprintf( pFile_docURL, "%s\n", pResNodeCaption->content );
@@ -103,34 +104,29 @@ void IndexerPreProcessor::processDocument
         xmlFreeDoc(resCaption);
     }
 
-    if( m_xsltStylesheetPtrContent )
+    if( !m_xsltStylesheetPtrContent )
+        return;
+
+    xmlDocPtr resContent = xsltApplyStylesheet( m_xsltStylesheetPtrContent, doc, nullptr );
+    xmlNodePtr pResNodeContent = resContent->xmlChildrenNode;
+    if( pResNodeContent )
     {
-        xmlDocPtr resContent = xsltApplyStylesheet( m_xsltStylesheetPtrContent, doc, nullptr );
-        xmlNodePtr pResNodeContent = resContent->xmlChildrenNode;
-        if( pResNodeContent )
+        fs::path fsContentPureTextFile_docURL = m_fsContentFilesDirName / aStdStr_EncodedDocPathURL;
+        FILE* pFile_docURL = fopen_impl( fsContentPureTextFile_docURL, "w" );
+        if( pFile_docURL )
         {
-            fs::path fsContentPureTextFile_docURL = m_fsContentFilesDirName / aStdStr_EncodedDocPathURL;
-#ifdef _WIN32     //We need _wfopen to support long file paths on Windows XP
-            FILE* pFile_docURL = _wfopen(
-                fsContentPureTextFile_docURL.native_file_string_w(), L"w" );
-#else
-            FILE* pFile_docURL = fopen(
-                fsContentPureTextFile_docURL.native_file_string().c_str(), "w" );
-#endif
-            if( pFile_docURL )
-            {
-                fprintf( pFile_docURL, "%s\n", pResNodeContent->content );
-                fclose( pFile_docURL );
-            }
+            fprintf( pFile_docURL, "%s\n", pResNodeContent->content );
+            fclose( pFile_docURL );
         }
-        xmlFreeDoc(resContent);
     }
+    xmlFreeDoc(resContent);
 }
+
+namespace {
 
 struct Data
 {
     std::vector<std::string> _idList;
-    typedef std::vector<std::string>::const_iterator cIter;
 
     void append(const std::string &id)
     {
@@ -140,14 +136,15 @@ struct Data
     std::string getString() const
     {
         std::string ret;
-        cIter aEnd = _idList.end();
-        for (cIter aIter = _idList.begin(); aIter != aEnd; ++aIter)
-            ret += *aIter + ";";
+        for (auto const& elem : _idList)
+            ret += elem + ";";
         return ret;
     }
 };
 
-void writeKeyValue_DBHelp( FILE* pFile, const std::string& aKeyStr, const std::string& aValueStr )
+}
+
+static void writeKeyValue_DBHelp( FILE* pFile, const std::string& aKeyStr, const std::string& aValueStr )
 {
     if( pFile == nullptr )
         return;
@@ -171,10 +168,12 @@ void writeKeyValue_DBHelp( FILE* pFile, const std::string& aKeyStr, const std::s
         fprintf(stderr, "fwrite to db failed\n");
 }
 
+namespace {
+
 class HelpKeyword
 {
 private:
-    typedef std::unordered_map<std::string, Data, pref_hash> DataHashtable;
+    typedef std::unordered_map<std::string, Data> DataHashtable;
     DataHashtable _hash;
 
 public:
@@ -186,21 +185,18 @@ public:
 
     void dump_DBHelp( const fs::path& rFileName )
     {
-#ifdef _WIN32     //We need _wfopen to support long file paths on Windows XP
-        FILE* pFile = _wfopen( rFileName.native_file_string_w(), L"wb" );
-#else
-        FILE* pFile = fopen( rFileName.native_file_string().c_str(), "wb" );
-#endif
+        FILE* pFile = fopen_impl( rFileName, "wb" );
         if( pFile == nullptr )
             return;
 
-        DataHashtable::const_iterator aEnd = _hash.end();
-        for (DataHashtable::const_iterator aIter = _hash.begin(); aIter != aEnd; ++aIter)
-            writeKeyValue_DBHelp( pFile, aIter->first, aIter->second.getString() );
+        for (auto const& elem : _hash)
+            writeKeyValue_DBHelp( pFile, elem.first, elem.second.getString() );
 
         fclose( pFile );
     }
 };
+
+}
 
 namespace URLEncoder
 {
@@ -291,34 +287,15 @@ void HelpLinker::link()
     // do the work here
     // continue with introduction of the overall process thing into the
     // here all hzip files will be worked on
-    std::string appl = mod;
-    if (appl[0] == 's')
-        appl = appl.substr(1);
-
     bool bUse_ = true;
     if( !bExtensionMode )
         bUse_ = false;
 
     fs::path helpTextFileName_DBHelp(indexDirParentName / (mod + (bUse_ ? ".ht_" : ".ht")));
-#ifdef _WIN32
-    //We need _wfopen to support long file paths on Windows XP
-    FILE* pFileHelpText_DBHelp = _wfopen
-        ( helpTextFileName_DBHelp.native_file_string_w(), L"wb" );
-#else
-
-    FILE* pFileHelpText_DBHelp = fopen
-        ( helpTextFileName_DBHelp.native_file_string().c_str(), "wb" );
-#endif
+    FILE* pFileHelpText_DBHelp = fopen_impl( helpTextFileName_DBHelp, "wb" );
 
     fs::path dbBaseFileName_DBHelp(indexDirParentName / (mod + (bUse_ ? ".db_" : ".db")));
-#ifdef _WIN32
-    //We need _wfopen to support long file paths on Windows XP
-    FILE* pFileDbBase_DBHelp = _wfopen
-        ( dbBaseFileName_DBHelp.native_file_string_w(), L"wb" );
-#else
-    FILE* pFileDbBase_DBHelp = fopen
-        ( dbBaseFileName_DBHelp.native_file_string().c_str(), "wb" );
-#endif
+    FILE* pFileDbBase_DBHelp = fopen_impl( dbBaseFileName_DBHelp, "wb" );
 
     fs::path keyWordFileName_DBHelp(indexDirParentName / (mod + (bUse_ ? ".key_" : ".key")));
 
@@ -333,13 +310,12 @@ void HelpLinker::link()
             initIndexerPreProcessor();
 
         // here we start our loop over the hzip files.
-        HashSet::iterator end = helpFiles.end();
-        for (HashSet::iterator iter = helpFiles.begin(); iter != end; ++iter)
+        for (auto const& helpFile : helpFiles)
         {
             // process one file
             // streamTable contains the streams in the hzip file
             StreamTable streamTable;
-            const std::string &xhpFileName = *iter;
+            const std::string &xhpFileName = helpFile;
 
             if (!bExtensionMode && xhpFileName.rfind(".xhp") != xhpFileName.length()-4)
             {
@@ -374,20 +350,8 @@ void HelpLinker::link()
                 compactStylesheet, embeddStylesheet, module, lang, bExtensionMode );
 
             HCDBG(std::cerr << "before compile of " << xhpFileName << std::endl);
-            bool success = hc.compile();
+            hc.compile();
             HCDBG(std::cerr << "after compile of " << xhpFileName << std::endl);
-
-            if (!success && !bExtensionMode)
-            {
-                std::stringstream aStrStream;
-                aStrStream <<
-                    "\nERROR: compiling help particle '"
-                        << xhpFileName
-                        << "' for language '"
-                        << lang
-                        << "' failed!";
-                throw HelpProcessingException( HelpProcessingErrorClass::General, aStrStream.str() );
-            }
 
             if (!m_bCreateIndex)
                 continue;
@@ -409,15 +373,13 @@ void HelpLinker::link()
             // add once this as its own id.
             addBookmark( pFileDbBase_DBHelp, documentPath, fileB, std::string(), jarfileB, titleB);
 
-            const HashSet *hidlist = streamTable.appl_hidlist;
-            if (hidlist && !hidlist->empty())
+            const std::vector<std::string> *hidlist = streamTable.appl_hidlist.get();
+            if (hidlist)
             {
                 // now iterate over all elements of the hidlist
-                HashSet::const_iterator aEnd = hidlist->end();
-                for (HashSet::const_iterator hidListIter = hidlist->begin();
-                    hidListIter != aEnd; ++hidListIter)
+                for (auto & elem : *hidlist)
                 {
-                    std::string thishid = *hidListIter;
+                    std::string thishid = elem;
 
                     std::string anchorB;
                     size_t index = thishid.rfind('#');
@@ -431,40 +393,34 @@ void HelpLinker::link()
             }
 
             // now the keywords
-            const Hashtable *anchorToLL = streamTable.appl_keywords;
+            const Hashtable *anchorToLL = streamTable.appl_keywords.get();
             if (anchorToLL && !anchorToLL->empty())
             {
                 std::string fakedHid = URLEncoder::encode(documentPath);
-                Hashtable::const_iterator aEnd = anchorToLL->end();
-                for (Hashtable::const_iterator enumer = anchorToLL->begin();
-                    enumer != aEnd; ++enumer)
+                for (auto const& elemAnchor : *anchorToLL)
                 {
-                    const std::string &anchor = enumer->first;
+                    const std::string &anchor = elemAnchor.first;
                     addBookmark(pFileDbBase_DBHelp, documentPath, fileB,
                                 anchor, jarfileB, titleB);
                     std::string totalId = fakedHid + "#" + anchor;
                     // std::cerr << hzipFileName << std::endl;
-                    const LinkedList& ll = enumer->second;
-                    LinkedList::const_iterator aOtherEnd = ll.end();
-                    for (LinkedList::const_iterator llIter = ll.begin();
-                        llIter != aOtherEnd; ++llIter)
+                    const LinkedList& ll = elemAnchor.second;
+                    for (auto const& elem : ll)
                     {
-                            helpKeyword.insert(*llIter, totalId);
+                            helpKeyword.insert(elem, totalId);
                     }
                 }
 
             }
 
             // and last the helptexts
-            const Stringtable *helpTextHash = streamTable.appl_helptexts;
-            if (helpTextHash && !helpTextHash->empty())
+            const Stringtable *helpTextHash = streamTable.appl_helptexts.get();
+            if (helpTextHash)
             {
-                Stringtable::const_iterator aEnd = helpTextHash->end();
-                for (Stringtable::const_iterator helpTextIter = helpTextHash->begin();
-                    helpTextIter != aEnd; ++helpTextIter)
+                for (auto const& elem : *helpTextHash)
                 {
-                    std::string helpTextId = helpTextIter->first;
-                    const std::string& helpTextText = helpTextIter->second;
+                    std::string helpTextId = elem.first;
+                    const std::string& helpTextText = elem.second;
 
                     helpTextId = URLEncoder::encode(helpTextId);
 
@@ -506,33 +462,31 @@ void HelpLinker::link()
 
     helpKeyword.dump_DBHelp( keyWordFileName_DBHelp);
 
-    if( !bExtensionMode )
+    if( bExtensionMode )
+        return;
+
+    // New index
+    for (auto const& additionalFile : additionalFiles)
     {
-        // New index
-        Stringtable::iterator aEnd = additionalFiles.end();
-        for (Stringtable::iterator enumer = additionalFiles.begin(); enumer != aEnd;
-            ++enumer)
-        {
-            const std::string &additionalFileName = enumer->second;
-            const std::string &additionalFileKey = enumer->first;
+        const std::string &additionalFileName = additionalFile.second;
+        const std::string &additionalFileKey = additionalFile.first;
 
-            fs::path fsAdditionalFileName( additionalFileName, fs::native );
-            HCDBG({
-                    std::string aNativeStr = fsAdditionalFileName.native_file_string();
-                    const char* pStr = aNativeStr.c_str();
-                    std::cerr << pStr << std::endl;
-            });
+        fs::path fsAdditionalFileName( additionalFileName, fs::native );
+        HCDBG({
+                std::string aNativeStr = fsAdditionalFileName.native_file_string();
+                const char* pStr = aNativeStr.c_str();
+                std::cerr << pStr << std::endl;
+        });
 
-            fs::path fsTargetName( indexDirParentName / additionalFileKey );
+        fs::path fsTargetName( indexDirParentName / additionalFileKey );
 
-            fs::copy( fsAdditionalFileName, fsTargetName );
-        }
+        fs::copy( fsAdditionalFileName, fsTargetName );
     }
 }
 
 
 void HelpLinker::main( std::vector<std::string> &args,
-                       std::string* pExtensionPath, std::string* pDestination,
+                       std::string const * pExtensionPath, std::string const * pDestination,
                        const OUString* pOfficeHelpPath )
 {
     bExtensionMode = false;
@@ -791,11 +745,10 @@ void HelpLinker::main( std::vector<std::string> &args,
     {
         //This part is used when compileExtensionHelp is called from the extensions manager.
         //If extension help is compiled using helplinker in the build process
-        OUString aIdxCaptionPathFileURL( *pOfficeHelpPath );
-        aIdxCaptionPathFileURL += "/idxcaption.xsl";
+        OUString aIdxCaptionPathFileURL = *pOfficeHelpPath + "/idxcaption.xsl";
 
         OString aOStr_IdxCaptionPathFileURL( OUStringToOString
-            ( aIdxCaptionPathFileURL, fs::getThreadTextEncoding() ) );
+            ( aIdxCaptionPathFileURL, osl_getThreadTextEncoding() ) );
         std::string aStdStr_IdxCaptionPathFileURL( aOStr_IdxCaptionPathFileURL.getStr() );
 
         idxCaptionStylesheet = fs::path( aStdStr_IdxCaptionPathFileURL );
@@ -816,11 +769,10 @@ void HelpLinker::main( std::vector<std::string> &args,
         //If extension help is compiled using helplinker in the build process
         //then  -idxcontent must be supplied
         //This part is used when compileExtensionHelp is called from the extensions manager.
-        OUString aIdxContentPathFileURL( *pOfficeHelpPath );
-        aIdxContentPathFileURL += "/idxcontent.xsl";
+        OUString aIdxContentPathFileURL = *pOfficeHelpPath + "/idxcontent.xsl";
 
         OString aOStr_IdxContentPathFileURL( OUStringToOString
-            ( aIdxContentPathFileURL, fs::getThreadTextEncoding() ) );
+            ( aIdxContentPathFileURL, osl_getThreadTextEncoding() ) );
         std::string aStdStr_IdxContentPathFileURL( aOStr_IdxContentPathFileURL.getStr() );
 
         idxContentStylesheet = fs::path( aStdStr_IdxContentPathFileURL );
@@ -861,7 +813,9 @@ void HelpLinker::main( std::vector<std::string> &args,
 // Variable to set an exception in "C" StructuredXMLErrorFunction
 static const HelpProcessingException* GpXMLParsingException = nullptr;
 
-extern "C" void StructuredXMLErrorFunction(SAL_UNUSED_PARAMETER void *, xmlErrorPtr error)
+extern "C" {
+
+static void StructuredXMLErrorFunction(SAL_UNUSED_PARAMETER void *, xmlErrorPtr error)
 {
     std::string aErrorMsg = error->message;
     std::string aXMLParsingFile;
@@ -875,13 +829,15 @@ extern "C" void StructuredXMLErrorFunction(SAL_UNUSED_PARAMETER void *, xmlError
     xmlSetStructuredErrorFunc( nullptr, nullptr );
 }
 
+}
+
 HelpProcessingErrorInfo& HelpProcessingErrorInfo::operator=( const struct HelpProcessingException& e )
 {
     m_eErrorClass = e.m_eErrorClass;
     OString tmpErrorMsg( e.m_aErrorMsg.c_str() );
-    m_aErrorMsg = OStringToOUString( tmpErrorMsg, fs::getThreadTextEncoding() );
+    m_aErrorMsg = OStringToOUString( tmpErrorMsg, osl_getThreadTextEncoding() );
     OString tmpXMLParsingFile( e.m_aXMLParsingFile.c_str() );
-    m_aXMLParsingFile = OStringToOUString( tmpXMLParsingFile, fs::getThreadTextEncoding() );
+    m_aXMLParsingFile = OStringToOUString( tmpXMLParsingFile, osl_getThreadTextEncoding() );
     m_nXMLParsingLine = e.m_nXMLParsingLine;
     return *this;
 }
@@ -903,21 +859,21 @@ bool compileExtensionHelp
     std::vector<std::string> args;
     args.reserve(nXhpFileCount + 2);
     args.push_back(std::string("-mod"));
-    OString aOExtensionName = OUStringToOString( aExtensionName, fs::getThreadTextEncoding() );
+    OString aOExtensionName = OUStringToOString( aExtensionName, osl_getThreadTextEncoding() );
     args.push_back(std::string(aOExtensionName.getStr()));
 
     for( sal_Int32 iXhp = 0 ; iXhp < nXhpFileCount ; ++iXhp )
     {
         OUString aXhpFile = pXhpFiles[iXhp];
 
-        OString aOXhpFile = OUStringToOString( aXhpFile, fs::getThreadTextEncoding() );
+        OString aOXhpFile = OUStringToOString( aXhpFile, osl_getThreadTextEncoding() );
         args.push_back(std::string(aOXhpFile.getStr()));
     }
 
-    OString aOExtensionLanguageRoot = OUStringToOString( aExtensionLanguageRoot, fs::getThreadTextEncoding() );
+    OString aOExtensionLanguageRoot = OUStringToOString( aExtensionLanguageRoot, osl_getThreadTextEncoding() );
     const char* pExtensionPath = aOExtensionLanguageRoot.getStr();
     std::string aStdStrExtensionPath = pExtensionPath;
-    OString aODestination = OUStringToOString(aDestination, fs::getThreadTextEncoding());
+    OString aODestination = OUStringToOString(aDestination, osl_getThreadTextEncoding());
     const char* pDestination = aODestination.getStr();
     std::string aStdStrDestination = pDestination;
 
@@ -960,7 +916,7 @@ bool compileExtensionHelp
         sal_uInt64 ret, len = aFileStatus.getFileSize();
         std::unique_ptr<char[]> s(new char[ int(len) ]);  // the buffer to hold the installed files
         osl::File aFile( aTreeFileURL );
-        aFile.open( osl_File_OpenFlag_Read );
+        (void)aFile.open( osl_File_OpenFlag_Read );
         aFile.read( s.get(), len, ret );
         aFile.close();
 

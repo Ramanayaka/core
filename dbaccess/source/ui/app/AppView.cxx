@@ -18,31 +18,16 @@
  */
 
 #include "AppView.hxx"
-#include "dbu_app.hrc"
-#include <tools/debug.hxx>
+#include <strings.hrc>
 #include <tools/diagnose_ex.h>
-#include "dbaccess_helpid.hrc"
-#include <vcl/toolbox.hxx>
-#include <unotools/configmgr.hxx>
-#include <vcl/waitobj.hxx>
-#include <comphelper/types.hxx>
-#include <com/sun/star/datatransfer/clipboard/XClipboard.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <vcl/event.hxx>
+#include <vcl/weld.hxx>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/sdb/XQueriesSupplier.hpp>
-#include <unotools/syslocale.hxx>
-#include "UITools.hxx"
 #include "AppDetailView.hxx"
-#include "tabletree.hxx"
 #include "AppSwapWindow.hxx"
-#include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 #include "AppTitleWindow.hxx"
-#include "dsntypes.hxx"
-#include "dbustrings.hrc"
-#include <dbaccess/IController.hxx>
-#include "browserids.hxx"
-#include <unotools/pathoptions.hxx>
 #include "AppController.hxx"
 
 using namespace ::dbaui;
@@ -57,7 +42,6 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::container;
 using ::com::sun::star::sdb::application::NamedDatabaseObject;
 
-// class OAppBorderWindow
 OAppBorderWindow::OAppBorderWindow(OApplicationView* _pParent,PreviewMode _ePreviewMode) : Window(_pParent,WB_DIALOGCONTROL)
     ,m_pPanel(nullptr)
     ,m_pDetailView(nullptr)
@@ -112,15 +96,12 @@ void OAppBorderWindow::Resize()
     long nOutputHeight  = aOutputSize.Height();
     long nX = 0;
 
-    Size aFLSize = LogicToPixel( Size( 3, 8 ), MapUnit::MapAppFont );
+    Size aFLSize = LogicToPixel(Size(3, 8), MapMode(MapUnit::MapAppFont));
     if ( m_pPanel )
     {
         OApplicationSwapWindow* pSwap = getPanel();
-        if ( pSwap )
-        {
-            if ( pSwap->GetEntryCount() != 0 )
-                nX = pSwap->GetBoundingBox( pSwap->GetEntry(0) ).GetWidth() + aFLSize.Height();
-        }
+        if ( pSwap && pSwap->GetEntryCount() != 0 )
+            nX = pSwap->GetBoundingBox( pSwap->GetEntry(0) ).GetWidth() + aFLSize.Height();
         nX = std::max(m_pPanel->GetWidthPixel() ,nX);
         m_pPanel->SetPosSizePixel(Point(0,0),Size(nX,nOutputHeight));
     }
@@ -149,8 +130,7 @@ void OAppBorderWindow::ImplInitSettings()
     // FIXME RenderContext
     const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
 
-    vcl::Font aFont;
-    aFont = rStyleSettings.GetFieldFont();
+    vcl::Font aFont = rStyleSettings.GetFieldFont();
     aFont.SetColor( rStyleSettings.GetWindowTextColor() );
     SetPointFont(*this, aFont);
 
@@ -167,7 +147,6 @@ OApplicationSwapWindow* OAppBorderWindow::getPanel() const
 }
 
 
-// class OApplicationView
 OApplicationView::OApplicationView( vcl::Window* pParent
                                     ,const Reference< XComponentContext >& _rxOrb
                                     ,OApplicationController& _rAppController
@@ -177,15 +156,6 @@ OApplicationView::OApplicationView( vcl::Window* pParent
     ,m_rAppController( _rAppController )
     ,m_eChildFocus(NONE)
 {
-
-    try
-    {
-        m_aLocale = SvtSysLocale().GetLanguageTag().getLocale();
-    }
-    catch(Exception&)
-    {
-    }
-
     m_pWin = VclPtr<OAppBorderWindow>::Create(this,_ePreviewMode);
     m_pWin->Show();
 
@@ -212,7 +182,7 @@ void OApplicationView::createIconAutoMnemonics( MnemonicGenerator& _rMnemonics )
         m_pWin->getPanel()->createIconAutoMnemonics( _rMnemonics );
 }
 
-void OApplicationView::setTaskExternalMnemonics( MnemonicGenerator& _rMnemonics )
+void OApplicationView::setTaskExternalMnemonics( MnemonicGenerator const & _rMnemonics )
 {
     if ( m_pWin && m_pWin->getDetailView() )
         m_pWin->getDetailView()->setTaskExternalMnemonics( _rMnemonics );
@@ -237,7 +207,7 @@ void OApplicationView::resizeDocumentView(tools::Rectangle& _rPlayground)
 {
     if ( m_pWin && !_rPlayground.IsEmpty() )
     {
-        Size aFLSize = LogicToPixel( Size( 3, 3 ), MapUnit::MapAppFont );
+        Size aFLSize = LogicToPixel(Size(3, 3), MapMode(MapUnit::MapAppFont));
         _rPlayground.Move( aFLSize.Width(),aFLSize.Height() );
         Size aOldSize = _rPlayground.GetSize();
         _rPlayground.SetSize( Size(aOldSize.Width() - 2*aFLSize.Width(), aOldSize.Height() - 2*aFLSize.Height()) );
@@ -267,10 +237,6 @@ bool OApplicationView::PreNotify( NotifyEvent& rNEvt )
             // give the pane the chance to intercept mnemonic accelerators
             // #i34790#
             if ( getPanel() && getPanel()->interceptKeyInput( *pKeyEvent ) )
-                return true;
-            // and ditto the detail view
-            // #i72799#
-            if ( getDetailView() && getDetailView()->interceptKeyInput( *pKeyEvent ) )
                 return true;
         }
         break;
@@ -328,16 +294,16 @@ void OApplicationView::paste()
         pTest->paste();
 }
 
-OUString OApplicationView::getQualifiedName( SvTreeListEntry* _pEntry ) const
+OUString OApplicationView::getQualifiedName(weld::TreeIter* _pEntry) const
 {
     OSL_ENSURE(m_pWin && getDetailView(),"Detail view is NULL! -> GPF");
     return getDetailView()->getQualifiedName( _pEntry );
 }
 
-bool OApplicationView::isLeaf(SvTreeListEntry* _pEntry) const
+bool OApplicationView::isLeaf(const weld::TreeView& rTreeView, const weld::TreeIter& rEntry) const
 {
     OSL_ENSURE(m_pWin && getDetailView(),"Detail view is NULL! -> GPF");
-    return OApplicationDetailView::isLeaf(_pEntry);
+    return OApplicationDetailView::isLeaf(rTreeView, rEntry);
 }
 
 bool OApplicationView::isALeafSelected() const
@@ -382,13 +348,13 @@ ElementType OApplicationView::getElementType() const
     return getDetailView()->HasChildPathFocus() ? getDetailView()->getElementType() : getPanel()->getElementType();
 }
 
-sal_Int32 OApplicationView::getSelectionCount()
+sal_Int32 OApplicationView::getSelectionCount() const
 {
     OSL_ENSURE(m_pWin && getDetailView(),"Detail view is NULL! -> GPF");
     return getDetailView()->getSelectionCount();
 }
 
-sal_Int32 OApplicationView::getElementCount()
+sal_Int32 OApplicationView::getElementCount() const
 {
     OSL_ENSURE(m_pWin && getDetailView(),"Detail view is NULL! -> GPF");
     return getDetailView()->getElementCount();
@@ -418,7 +384,7 @@ void OApplicationView::selectElements(const Sequence< OUString>& _aNames)
     getDetailView()->selectElements( _aNames );
 }
 
-SvTreeListEntry* OApplicationView::elementAdded(ElementType eType,const OUString& _rName, const Any& _rObject )
+std::unique_ptr<weld::TreeIter> OApplicationView::elementAdded(ElementType eType,const OUString& _rName, const Any& _rObject )
 {
     OSL_ENSURE(m_pWin && getDetailView(),"Detail view is NULL! -> GPF");
     return getDetailView()->elementAdded(eType,_rName,_rObject);
@@ -448,23 +414,23 @@ void OApplicationView::clearPages()
 void OApplicationView::selectContainer(ElementType _eType)
 {
     OSL_ENSURE(m_pWin && getPanel(),"Detail view is NULL! -> GPF");
-    WaitObject aWO(this);
+    weld::WaitObject aWO(GetFrameWeld());
     getPanel()->selectContainer(_eType);
 }
 
-SvTreeListEntry* OApplicationView::getEntry( const Point& _aPosPixel ) const
+std::unique_ptr<weld::TreeIter> OApplicationView::getEntry(const Point& rPosPixel) const
 {
     OSL_ENSURE(m_pWin && getDetailView(),"Detail view is NULL! -> GPF");
-    return getDetailView()->getEntry(_aPosPixel);
+    return getDetailView()->getEntry(rPosPixel);
 }
 
-PreviewMode OApplicationView::getPreviewMode()
+PreviewMode OApplicationView::getPreviewMode() const
 {
     OSL_ENSURE(m_pWin && getDetailView(),"Detail view is NULL! -> GPF");
     return getDetailView()->getPreviewMode();
 }
 
-bool OApplicationView::isPreviewEnabled()
+bool OApplicationView::isPreviewEnabled() const
 {
     OSL_ENSURE(m_pWin && getDetailView(),"Detail view is NULL! -> GPF");
     return getDetailView()->isPreviewEnabled();
@@ -490,36 +456,36 @@ void OApplicationView::showPreview( const OUString& _sDataSourceName,
                                     bool _bTable)
 {
     OSL_ENSURE(m_pWin && getDetailView(),"Detail view is NULL! -> GPF");
-    if ( isPreviewEnabled() )
+    if ( !isPreviewEnabled() )
+        return;
+
+    stopComponentListening(m_xObject);
+    m_xObject = nullptr;
+    try
     {
-        stopComponentListening(m_xObject);
-        m_xObject = nullptr;
-        try
+        Reference<XNameAccess> xNameAccess;
+        if ( _bTable )
         {
-            Reference<XNameAccess> xNameAccess;
-            if ( _bTable )
-            {
-                Reference<XTablesSupplier> xSup(_xConnection,UNO_QUERY);
-                if ( xSup.is() )
-                    xNameAccess.set(xSup->getTables(),UNO_QUERY);
-            }
-            else
-            {
-                Reference<XQueriesSupplier> xSup(_xConnection,UNO_QUERY);
-                if ( xSup.is() )
-                    xNameAccess.set(xSup->getQueries(),UNO_QUERY);
-            }
-            if ( xNameAccess.is() && xNameAccess->hasByName(_sName) )
-                m_xObject.set(xNameAccess->getByName(_sName),UNO_QUERY);
+            Reference<XTablesSupplier> xSup(_xConnection,UNO_QUERY);
+            if ( xSup.is() )
+                xNameAccess = xSup->getTables();
         }
-        catch( const Exception& )
+        else
         {
-            DBG_UNHANDLED_EXCEPTION();
+            Reference<XQueriesSupplier> xSup(_xConnection,UNO_QUERY);
+            if ( xSup.is() )
+                xNameAccess = xSup->getQueries();
         }
-        if ( m_xObject.is() )
-            startComponentListening(m_xObject);
-        getDetailView()->showPreview(_sDataSourceName,_sName,_bTable);
+        if ( xNameAccess.is() && xNameAccess->hasByName(_sName) )
+            m_xObject.set(xNameAccess->getByName(_sName),UNO_QUERY);
     }
+    catch( const Exception& )
+    {
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
+    }
+    if ( m_xObject.is() )
+        startComponentListening(m_xObject);
+    getDetailView()->showPreview(_sDataSourceName,_sName,_bTable);
 }
 
 void OApplicationView::GetFocus()
@@ -541,8 +507,7 @@ void OApplicationView::ImplInitSettings()
     // FIXME RenderContext
     const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
 
-    vcl::Font aFont;
-    aFont = rStyleSettings.GetFieldFont();
+    vcl::Font aFont = rStyleSettings.GetFieldFont();
     aFont.SetColor( rStyleSettings.GetWindowTextColor() );
     SetPointFont(*this, aFont);
 

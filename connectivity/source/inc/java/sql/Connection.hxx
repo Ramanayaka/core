@@ -19,15 +19,12 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_SQL_CONNECTION_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_SQL_CONNECTION_HXX
 
-#include "java/lang/Object.hxx"
-#include "TConnection.hxx"
+#include <java/lang/Object.hxx>
+#include <TConnection.hxx>
 #include <connectivity/CommonTools.hxx>
-#include <connectivity/OSubComponent.hxx>
-#include <cppuhelper/weakref.hxx>
-#include "AutoRetrievingBase.hxx"
-#include "java/sql/ConnectionLog.hxx"
-#include "java/LocalRef.hxx"
-#include "java/GlobalRef.hxx"
+#include <AutoRetrievingBase.hxx>
+#include <java/sql/ConnectionLog.hxx>
+#include <java/GlobalRef.hxx>
 
 #include <com/sun/star/beans/NamedValue.hpp>
 
@@ -39,10 +36,8 @@ namespace connectivity
 
     class java_sql_Connection : public java_sql_Connection_BASE,
                                 public java_lang_Object,
-                                public OSubComponent<java_sql_Connection, java_sql_Connection_BASE>,
                                 public OAutoRetrievingBase
     {
-        friend class OSubComponent<java_sql_Connection, java_sql_Connection_BASE>;
         css::uno::Reference< css::uno::XComponentContext > m_xContext;
         const java_sql_Driver*  m_pDriver;
         jobject                 m_pDriverobject;
@@ -52,7 +47,6 @@ namespace connectivity
         jclass                  m_Driver_theClass;
         java::sql::ConnectionLog
                                 m_aLogger;
-        bool                    m_bParameterSubstitution;
         bool                    m_bIgnoreDriverPrivileges;
         bool                    m_bIgnoreCurrency;
         css::uno::Any           m_aCatalogRestriction;
@@ -111,8 +105,6 @@ namespace connectivity
 
         // OComponentHelper
         virtual void SAL_CALL disposing() override;
-        // XInterface
-        virtual void SAL_CALL release() throw() override;
 
         // XConnection
         virtual css::uno::Reference< css::sdbc::XStatement > SAL_CALL createStatement(  ) override;

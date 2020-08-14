@@ -19,8 +19,6 @@
 
 #include "PresenterHelper.hxx"
 
-#include <com/sun/star/graphic/XGraphicProvider.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/presentation/XPresentationSupplier.hpp>
 #include <com/sun/star/presentation/XPresentation2.hpp>
 
@@ -28,21 +26,21 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::presentation;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
-const OUString PresenterHelper::msPaneURLPrefix( "private:resource/pane/");
+const OUStringLiteral PresenterHelper::msPaneURLPrefix( "private:resource/pane/");
 const OUString PresenterHelper::msCenterPaneURL( msPaneURLPrefix + "CenterPane");
 const OUString PresenterHelper::msFullScreenPaneURL( msPaneURLPrefix + "FullScreenPane");
 
-const OUString PresenterHelper::msViewURLPrefix( "private:resource/view/");
+const OUStringLiteral PresenterHelper::msViewURLPrefix( "private:resource/view/");
 const OUString PresenterHelper::msPresenterScreenURL( msViewURLPrefix + "PresenterScreen");
 const OUString PresenterHelper::msSlideSorterURL( msViewURLPrefix + "SlideSorter");
 
-const OUString PresenterHelper::msResourceActivationEvent( "ResourceActivation");
-const OUString PresenterHelper::msResourceDeactivationEvent( "ResourceDeactivation");
+const OUStringLiteral PresenterHelper::msResourceActivationEvent( "ResourceActivation");
+const OUStringLiteral PresenterHelper::msResourceDeactivationEvent( "ResourceDeactivation");
 
-const OUString PresenterHelper::msDefaultPaneStyle ( "DefaultPaneStyle");
-const OUString PresenterHelper::msDefaultViewStyle ( "DefaultViewStyle");
+const OUStringLiteral PresenterHelper::msDefaultPaneStyle ( "DefaultPaneStyle");
+const OUStringLiteral PresenterHelper::msDefaultViewStyle ( "DefaultViewStyle");
 
 Reference<presentation::XSlideShowController> PresenterHelper::GetSlideShowController (
     const Reference<frame::XController>& rxController)
@@ -64,6 +62,6 @@ Reference<presentation::XSlideShowController> PresenterHelper::GetSlideShowContr
     return xSlideShowController;
 }
 
-} } // end of namespace ::sdext::presenter
+} // end of namespace ::sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

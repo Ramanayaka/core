@@ -17,11 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <officecfg/Office/Common.hxx>
+#include <editsh.hxx>
 
+#include <officecfg/Office/Common.hxx>
+#include <unotools/configmgr.hxx>
 #include <vcl/window.hxx>
 
-#include <editsh.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <IDocumentState.hxx>
@@ -30,22 +31,31 @@
 #include <acorrect.hxx>
 #include <swtable.hxx>
 #include <ndtxt.hxx>
+#include <txtfrm.hxx>
 #include <swundo.hxx>
 #include <SwRewriter.hxx>
+#include <frameformats.hxx>
 
 // masqueraded copy constructor
 SwEditShell::SwEditShell( SwEditShell& rEdSH, vcl::Window *pWindow )
     : SwCursorShell( rEdSH, pWindow )
+    , m_bNbspRunNext(false)   // TODO: would copying that make sense? only if editing continues
+    , m_bDoParagraphSignatureValidation(true)
 {
 }
 
 SwEditShell::SwEditShell( SwDoc& rDoc, vcl::Window *pWindow, const SwViewOption *pOptions )
     : SwCursorShell( rDoc, pWindow, pOptions )
+    , m_bNbspRunNext(false)
+    , m_bDoParagraphSignatureValidation(true)
 {
-    if (0 < officecfg::Office::Common::Undo::Steps::get())
+    if (!utl::ConfigManager::IsFuzzing() && 0 < officecfg::Office::Common::Undo::Steps::get())
     {
         GetDoc()->GetIDocumentUndoRedo().DoUndo(true);
     }
+
+    // Restore the paragraph metadata fields and validate signatures.
+    RestoreMetadataFieldsAndValidateParagraphSignatures();
 }
 
 SwEditShell::~SwEditShell() // USED
@@ -77,8 +87,8 @@ void SwEditShell::StartAllAction()
 {
     for(SwViewShell& rCurrentShell : GetRingContainer())
     {
-        if( dynamic_cast<const SwEditShell *>(&rCurrentShell) != nullptr )
-            static_cast<SwEditShell*>(&rCurrentShell)->StartAction();
+        if (SwEditShell* pEditShell = dynamic_cast<SwEditShell*>(&rCurrentShell))
+            pEditShell->StartAction();
         else
             rCurrentShell.StartAction();
     }
@@ -179,12 +189,12 @@ SwFrameFormat *SwEditShell::GetTableFormat() // fastest test on a table
 // TODO: Why is this called 3x for a new document?
 sal_uInt16 SwEditShell::GetTOXTypeCount(TOXTypes eTyp) const
 {
-    return mpDoc->GetTOXTypeCount(eTyp);
+    return mxDoc->GetTOXTypeCount(eTyp);
 }
 
 void SwEditShell::InsertTOXType(const SwTOXType& rTyp)
 {
-    mpDoc->InsertTOXType(rTyp);
+    mxDoc->InsertTOXType(rTyp);
 }
 
 void SwEditShell::DoUndo( bool bOn )
@@ -245,7 +255,7 @@ SwUndoId SwEditShell::GetRepeatInfo(OUString *const o_pStr) const
 void SwEditShell::AutoCorrect( SvxAutoCorrect& rACorr, bool bInsert,
                                 sal_Unicode cChar )
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
 
     StartAllAction();
 
@@ -254,10 +264,12 @@ void SwEditShell::AutoCorrect( SvxAutoCorrect& rACorr, bool bInsert,
 
     SwAutoCorrDoc aSwAutoCorrDoc( *this, *pCursor, cChar );
     // FIXME: this _must_ be called with reference to the actual node text!
-    OUString const& rNodeText(pTNd->GetText());
+    SwTextFrame const*const pFrame(static_cast<SwTextFrame const*>(pTNd->getLayoutFrame(GetLayout())));
+    TextFrameIndex const nPos(pFrame->MapModelToViewPos(*pCursor->GetPoint()));
+    OUString const& rMergedText(pFrame->GetText());
     rACorr.DoAutoCorrect( aSwAutoCorrDoc,
-                    rNodeText, pCursor->GetPoint()->nContent.GetIndex(),
-                    cChar, bInsert, GetWin() );
+                    rMergedText, sal_Int32(nPos),
+                    cChar, bInsert, m_bNbspRunNext, GetWin() );
     if( cChar )
         SaveTableBoxContent( pCursor->GetPoint() );
     EndAllAction();
@@ -268,23 +280,37 @@ void SwEditShell::SetNewDoc()
     GetDoc()->getIDocumentState().SetNewDoc(true);
 }
 
-bool SwEditShell::GetPrevAutoCorrWord( SvxAutoCorrect& rACorr, OUString& rWord )
+OUString SwEditShell::GetPrevAutoCorrWord(SvxAutoCorrect& rACorr)
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
 
-    bool bRet;
+    OUString sRet;
     SwPaM* pCursor = getShellCursor( true );
-    const sal_Int32 nPos = pCursor->GetPoint()->nContent.GetIndex();
     SwTextNode* pTNd = pCursor->GetNode().GetTextNode();
-    if( pTNd && nPos )
+    if (pTNd)
     {
         SwAutoCorrDoc aSwAutoCorrDoc( *this, *pCursor, 0 );
-        bRet = rACorr.GetPrevAutoCorrWord( aSwAutoCorrDoc,
-                                            pTNd->GetText(), nPos, rWord );
+        SwTextFrame const*const pFrame(static_cast<SwTextFrame const*>(pTNd->getLayoutFrame(GetLayout())));
+        TextFrameIndex const nPos(pFrame->MapModelToViewPos(*pCursor->GetPoint()));
+        sRet = rACorr.GetPrevAutoCorrWord(aSwAutoCorrDoc, pFrame->GetText(), sal_Int32(nPos));
     }
-    else
-        bRet = false;
-    return bRet;
+    return sRet;
+}
+
+std::vector<OUString> SwEditShell::GetChunkForAutoText()
+{
+    CurrShell aCurr(this);
+
+    std::vector<OUString> aRet;
+    SwPaM* pCursor = getShellCursor(true);
+    SwTextNode* pTNd = pCursor->GetNode().GetTextNode();
+    if (pTNd)
+    {
+        const auto pFrame = static_cast<SwTextFrame const*>(pTNd->getLayoutFrame(GetLayout()));
+        TextFrameIndex const nPos(pFrame->MapModelToViewPos(*pCursor->GetPoint()));
+        aRet = SvxAutoCorrect::GetChunkForAutoText(pFrame->GetText(), sal_Int32(nPos));
+    }
+    return aRet;
 }
 
 SwAutoCompleteWord& SwEditShell::GetAutoCompleteWords()

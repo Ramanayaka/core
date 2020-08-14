@@ -36,11 +36,10 @@
  *
  ************************************************************************/
 
-#include "sal/config.h"
-#include <config_lgpl.h>
+#include <sal/config.h>
 
 #undef LANGUAGE_NONE
-#if defined SAL_W32
+#if defined _WIN32
 #define WINAPI __stdcall
 #endif
 #define LoadInverseLib FALSE
@@ -53,17 +52,19 @@
 #undef LANGUAGE_NONE
 
 #include "SolverComponent.hxx"
-#include "solver.hrc"
+#include <strings.hrc>
 
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/table/CellAddress.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <rtl/math.hxx>
-#include <cppuhelper/supportsservice.hxx>
 #include <memory>
 #include <vector>
 
+namespace com::sun::star::uno { class XComponentContext; }
+
 using namespace com::sun::star;
+
+namespace {
 
 class LpsolveSolver : public SolverComponent
 {
@@ -74,13 +75,15 @@ private:
     virtual void SAL_CALL solve() override;
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.Calc.LpsolveSolver");
+        return "com.sun.star.comp.Calc.LpsolveSolver";
     }
     virtual OUString SAL_CALL getComponentDescription() override
     {
         return SolverComponent::GetResourceString( RID_SOLVER_COMPONENT );
     }
 };
+
+}
 
 void SAL_CALL LpsolveSolver::solve()
 {
@@ -99,9 +102,7 @@ void SAL_CALL LpsolveSolver::solve()
 
     // collect variables in vector (?)
 
-    std::vector<table::CellAddress> aVariableCells;
-    for (sal_Int32 nPos=0; nPos<maVariables.getLength(); nPos++)
-        aVariableCells.push_back( maVariables[nPos] );
+    auto aVariableCells = comphelper::sequenceToContainer<std::vector<table::CellAddress>>(maVariables);
     size_t nVariables = aVariableCells.size();
     size_t nVar = 0;
 
@@ -110,52 +111,50 @@ void SAL_CALL LpsolveSolver::solve()
     ScSolverCellHashMap aCellsHash;
     aCellsHash[maObjective].reserve( nVariables + 1 );                  // objective function
 
-    for (sal_Int32 nConstrPos = 0; nConstrPos < maConstraints.getLength(); ++nConstrPos)
+    for (const auto& rConstr : std::as_const(maConstraints))
     {
-        table::CellAddress aCellAddr = maConstraints[nConstrPos].Left;
+        table::CellAddress aCellAddr = rConstr.Left;
         aCellsHash[aCellAddr].reserve( nVariables + 1 );                // constraints: left hand side
 
-        if ( maConstraints[nConstrPos].Right >>= aCellAddr )
+        if ( rConstr.Right >>= aCellAddr )
             aCellsHash[aCellAddr].reserve( nVariables + 1 );            // constraints: right hand side
     }
 
     // set all variables to zero
     //! store old values?
     //! use old values as initial values?
-    std::vector<table::CellAddress>::const_iterator aVarIter;
-    for ( aVarIter = aVariableCells.begin(); aVarIter != aVariableCells.end(); ++aVarIter )
+    for ( const auto& rVarCell : aVariableCells )
     {
-        SolverComponent::SetValue( mxDoc, *aVarIter, 0.0 );
+        SolverComponent::SetValue( mxDoc, rVarCell, 0.0 );
     }
 
     // read initial values from all dependent cells
-    ScSolverCellHashMap::iterator aCellsIter;
-    for ( aCellsIter = aCellsHash.begin(); aCellsIter != aCellsHash.end(); ++aCellsIter )
+    for ( auto& rEntry : aCellsHash )
     {
-        double fValue = SolverComponent::GetValue( mxDoc, aCellsIter->first );
-        aCellsIter->second.push_back( fValue );                         // store as first element, as-is
+        double fValue = SolverComponent::GetValue( mxDoc, rEntry.first );
+        rEntry.second.push_back( fValue );                         // store as first element, as-is
     }
 
     // loop through variables
-    for ( aVarIter = aVariableCells.begin(); aVarIter != aVariableCells.end(); ++aVarIter )
+    for ( const auto& rVarCell : aVariableCells )
     {
-        SolverComponent::SetValue( mxDoc, *aVarIter, 1.0 );      // set to 1 to examine influence
+        SolverComponent::SetValue( mxDoc, rVarCell, 1.0 );      // set to 1 to examine influence
 
         // read value change from all dependent cells
-        for ( aCellsIter = aCellsHash.begin(); aCellsIter != aCellsHash.end(); ++aCellsIter )
+        for ( auto& rEntry : aCellsHash )
         {
-            double fChanged = SolverComponent::GetValue( mxDoc, aCellsIter->first );
-            double fInitial = aCellsIter->second.front();
-            aCellsIter->second.push_back( fChanged - fInitial );
+            double fChanged = SolverComponent::GetValue( mxDoc, rEntry.first );
+            double fInitial = rEntry.second.front();
+            rEntry.second.push_back( fChanged - fInitial );
         }
 
-        SolverComponent::SetValue( mxDoc, *aVarIter, 2.0 );      // minimal test for linearity
+        SolverComponent::SetValue( mxDoc, rVarCell, 2.0 );      // minimal test for linearity
 
-        for ( aCellsIter = aCellsHash.begin(); aCellsIter != aCellsHash.end(); ++aCellsIter )
+        for ( const auto& rEntry : aCellsHash )
         {
-            double fInitial = aCellsIter->second.front();
-            double fCoeff   = aCellsIter->second.back();       // last appended: coefficient for this variable
-            double fTwo     = SolverComponent::GetValue( mxDoc, aCellsIter->first );
+            double fInitial = rEntry.second.front();
+            double fCoeff   = rEntry.second.back();       // last appended: coefficient for this variable
+            double fTwo     = SolverComponent::GetValue( mxDoc, rEntry.first );
 
             bool bLinear = rtl::math::approxEqual( fTwo, fInitial + 2.0 * fCoeff ) ||
                            rtl::math::approxEqual( fInitial, fTwo - 2.0 * fCoeff );
@@ -164,7 +163,7 @@ void SAL_CALL LpsolveSolver::solve()
                 maStatus = SolverComponent::GetResourceString( RID_ERROR_NONLINEAR );
         }
 
-        SolverComponent::SetValue( mxDoc, *aVarIter, 0.0 );      // set back to zero for examining next variable
+        SolverComponent::SetValue( mxDoc, rVarCell, 0.0 );      // set back to zero for examining next variable
     }
 
     xModel->unlockControllers();
@@ -185,22 +184,22 @@ void SAL_CALL LpsolveSolver::solve()
     // set objective function
 
     const std::vector<double>& rObjCoeff = aCellsHash[maObjective];
-    REAL* pObjVal = new REAL[nVariables+1];
+    std::unique_ptr<REAL[]> pObjVal(new REAL[nVariables+1]);
     pObjVal[0] = 0.0;                           // ignored
     for (nVar=0; nVar<nVariables; nVar++)
         pObjVal[nVar+1] = rObjCoeff[nVar+1];
-    set_obj_fn( lp, pObjVal );
-    delete[] pObjVal;
+    set_obj_fn( lp, pObjVal.get() );
+    pObjVal.reset();
     set_rh( lp, 0, rObjCoeff[0] );              // constant term of objective
 
     // add rows
 
     set_add_rowmode(lp, TRUE);
 
-    for (sal_Int32 nConstrPos = 0; nConstrPos < maConstraints.getLength(); ++nConstrPos)
+    for (const auto& rConstr : std::as_const(maConstraints))
     {
         // integer constraints are set later
-        sheet::SolverConstraintOperator eOp = maConstraints[nConstrPos].Operator;
+        sheet::SolverConstraintOperator eOp = rConstr.Operator;
         if ( eOp == sheet::SolverConstraintOperator_LESS_EQUAL ||
              eOp == sheet::SolverConstraintOperator_GREATER_EQUAL ||
              eOp == sheet::SolverConstraintOperator_EQUAL )
@@ -208,13 +207,13 @@ void SAL_CALL LpsolveSolver::solve()
             double fDirectValue = 0.0;
             bool bRightCell = false;
             table::CellAddress aRightAddr;
-            const uno::Any& rRightAny = maConstraints[nConstrPos].Right;
+            const uno::Any& rRightAny = rConstr.Right;
             if ( rRightAny >>= aRightAddr )
                 bRightCell = true;                  // cell specified as right-hand side
             else
                 rRightAny >>= fDirectValue;         // constant value
 
-            table::CellAddress aLeftAddr = maConstraints[nConstrPos].Left;
+            table::CellAddress aLeftAddr = rConstr.Left;
 
             const std::vector<double>& rLeftCoeff = aCellsHash[aLeftAddr];
             std::unique_ptr<REAL[]> pValues(new REAL[nVariables+1] );
@@ -265,13 +264,13 @@ void SAL_CALL LpsolveSolver::solve()
 
     // apply single-var integer constraints
 
-    for (sal_Int32 nConstrPos = 0; nConstrPos < maConstraints.getLength(); ++nConstrPos)
+    for (const auto& rConstr : std::as_const(maConstraints))
     {
-        sheet::SolverConstraintOperator eOp = maConstraints[nConstrPos].Operator;
+        sheet::SolverConstraintOperator eOp = rConstr.Operator;
         if ( eOp == sheet::SolverConstraintOperator_INTEGER ||
              eOp == sheet::SolverConstraintOperator_BINARY )
         {
-            table::CellAddress aLeftAddr = maConstraints[nConstrPos].Left;
+            table::CellAddress aLeftAddr = rConstr.Left;
             // find variable index for cell
             for (nVar=0; nVar<nVariables; nVar++)
                 if ( AddressEqual( aVariableCells[nVar], aLeftAddr ) )
@@ -324,7 +323,7 @@ void SAL_CALL LpsolveSolver::solve()
     delete_lp( lp );
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_Calc_LpsolveSolver_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

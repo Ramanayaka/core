@@ -21,25 +21,19 @@
 #define INCLUDED_SD_SOURCE_UI_INC_TEMPLATESCANNER_HXX
 
 #include "tools/AsynchronousTask.hxx"
-#include "sddllapi.h"
+#include <sddllapi.h>
 #include <ucbhelper/content.hxx>
-#include "com/sun/star/uno/Reference.hxx"
+#include <com/sun/star/uno/Reference.h>
 
 #include <memory>
 #include <vector>
 
-namespace com { namespace sun { namespace star { namespace ucb {
-class XContent;
-class XCommandEnvironment;
-} } } }
+namespace com::sun::star::ucb {
+    class XContent;
+    class XCommandEnvironment;
+}
 
-namespace com { namespace sun { namespace star { namespace sdbc {
-class XResultSet;
-} } } }
-
-namespace comphelper { namespace string {
-class NaturalStringSorter;
-} }
+namespace com::sun::star::sdbc { class XResultSet; }
 
 namespace sd {
 
@@ -55,37 +49,6 @@ public:
     OUString msPath;
 };
 
-/** Functor that compares two TemplateEntries based on their titles
-*/
-class TemplateEntryCompare
-{
-public:
-    TemplateEntryCompare();
-    bool operator()(TemplateEntry* pA, TemplateEntry* pB) const;
-
-private:
-    std::shared_ptr<comphelper::string::NaturalStringSorter> mpStringSorter;
-};
-
-/** Representation of a template or layout folder.
-*/
-class TemplateDir
-{
-public:
-    TemplateDir()
-        :   maEntries(),
-            mbSortingEnabled(false), mpEntryCompare(nullptr) {}
-
-    ::std::vector<TemplateEntry*> maEntries;
-
-    void EnableSorting(bool bSortingEnabled);
-    void InsertEntry(TemplateEntry* pNewEntry);
-
-private:
-    bool mbSortingEnabled;
-    std::unique_ptr<TemplateEntryCompare> mpEntryCompare;
-};
-
 /** This class scans the template folders for impress templates.  There are
     two ways to use this class.
     1. The old and deprecated way is to call Scan() to scan all templates
@@ -97,8 +60,7 @@ private:
     supported format) last.  When a step does not add a new template then
     the value of the previous step is returned.
 */
-class SD_DLLPUBLIC TemplateScanner
-    : public ::sd::tools::AsynchronousTask
+class TemplateScanner : public ::sd::tools::AsynchronousTask
 {
 public:
     /** Create a new template scanner and prepare but do not execute the scanning.
@@ -119,12 +81,12 @@ public:
     virtual bool HasNextStep() override;
 
     /** Return the TemplateDir object that was last added to
-        mpTemplateDirectory.
+        mpTemplateEntries.
         @return
             <nullptr/> is returned either before the template scanning is
             started or after it has ended.
     */
-    const TemplateEntry* GetLastAddedEntry() const { return mpLastAddedEntry;}
+    const TemplateEntry* GetLastAddedEntry() const { return mpTemplateEntries.empty()?nullptr:mpTemplateEntries.back().get();}
 
 private:
     /** The current state determines which step will be executed next by
@@ -143,17 +105,7 @@ private:
     State meState;
 
     ::ucbhelper::Content maFolderContent;
-    TemplateDir* mpTemplateDirectory;
-
-    /** The data structure that is to be filled with information about the
-        template files.
-    */
-    std::vector<TemplateDir*> maFolderList;
-
-    /** This member points into the maFolderList to the member that was most
-        recently added.
-    */
-    TemplateEntry* mpLastAddedEntry;
+    ::std::vector< std::unique_ptr<TemplateEntry> > mpTemplateEntries;
 
     /** The folders that are collected by GatherFolderList().
     */

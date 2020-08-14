@@ -20,27 +20,20 @@
 #include <standard/accessiblemenuitemcomponent.hxx>
 
 
-#include <helper/accresmgr.hxx>
-#include <helper/accessiblestrings.hrc>
-#include <toolkit/awt/vclxwindows.hxx>
 #include <toolkit/helper/convert.hxx>
 
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <com/sun/star/datatransfer/clipboard/XClipboard.hpp>
-#include <com/sun/star/datatransfer/clipboard/XFlushableClipboard.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <comphelper/sequence.hxx>
 #include <comphelper/accessibletexthelper.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
 #include <vcl/menu.hxx>
-#include <vcl/unohelp2.hxx>
 #include <vcl/settings.hxx>
+#include <i18nlangtag/languagetag.hxx>
 
 using namespace ::com::sun::star::accessibility;
 using namespace ::com::sun::star::uno;
@@ -50,7 +43,6 @@ using namespace ::com::sun::star;
 using namespace ::comphelper;
 
 
-// class OAccessibleMenuItemComponent
 
 
 OAccessibleMenuItemComponent::OAccessibleMenuItemComponent( Menu* pParent, sal_uInt16 nItemPos, Menu* pMenu )
@@ -62,11 +54,9 @@ OAccessibleMenuItemComponent::OAccessibleMenuItemComponent( Menu* pParent, sal_u
     m_sItemText = GetItemText();
 }
 
-
 OAccessibleMenuItemComponent::~OAccessibleMenuItemComponent()
 {
 }
-
 
 bool OAccessibleMenuItemComponent::IsEnabled()
 {
@@ -127,37 +117,37 @@ void OAccessibleMenuItemComponent::Click()
     }
 
     // click the menu item
-    if ( m_pParent )
+    if ( !m_pParent )
+        return;
+
+    vcl::Window* pWindow = m_pParent->GetWindow();
+    if ( !pWindow )
+        return;
+
+    // #102438# Menu items are not selectable
+    // Popup menus are executed asynchronously, triggered by a timer.
+    // As Menu::SelectItem only works, if the corresponding menu window is
+    // already created, we have to set the menu delay to 0, so
+    // that the popup menus are executed synchronously.
+    AllSettings aSettings = pWindow->GetSettings();
+    MouseSettings aMouseSettings = aSettings.GetMouseSettings();
+    sal_uLong nDelay = aMouseSettings.GetMenuDelay();
+    aMouseSettings.SetMenuDelay( 0 );
+    aSettings.SetMouseSettings( aMouseSettings );
+    pWindow->SetSettings( aSettings );
+
+    m_pParent->SelectItem( m_pParent->GetItemId( m_nItemPos ) );
+
+    // meanwhile the window pointer may be invalid
+    pWindow = m_pParent->GetWindow();
+    if ( pWindow )
     {
-        vcl::Window* pWindow = m_pParent->GetWindow();
-        if ( pWindow )
-        {
-            // #102438# Menu items are not selectable
-            // Popup menus are executed asynchronously, triggered by a timer.
-            // As Menu::SelectItem only works, if the corresponding menu window is
-            // already created, we have to set the menu delay to 0, so
-            // that the popup menus are executed synchronously.
-            AllSettings aSettings = pWindow->GetSettings();
-            MouseSettings aMouseSettings = aSettings.GetMouseSettings();
-            sal_uLong nDelay = aMouseSettings.GetMenuDelay();
-            aMouseSettings.SetMenuDelay( 0 );
-            aSettings.SetMouseSettings( aMouseSettings );
-            pWindow->SetSettings( aSettings );
-
-            m_pParent->SelectItem( m_pParent->GetItemId( m_nItemPos ) );
-
-            // meanwhile the window pointer may be invalid
-            pWindow = m_pParent->GetWindow();
-            if ( pWindow )
-            {
-                // set the menu delay back to the old value
-                aSettings = pWindow->GetSettings();
-                aMouseSettings = aSettings.GetMouseSettings();
-                aMouseSettings.SetMenuDelay( nDelay );
-                aSettings.SetMouseSettings( aMouseSettings );
-                pWindow->SetSettings( aSettings );
-            }
-        }
+        // set the menu delay back to the old value
+        aSettings = pWindow->GetSettings();
+        aMouseSettings = aSettings.GetMouseSettings();
+        aMouseSettings.SetMenuDelay( nDelay );
+        aSettings.SetMouseSettings( aMouseSettings );
+        pWindow->SetSettings( aSettings );
     }
 }
 
@@ -170,7 +160,7 @@ void OAccessibleMenuItemComponent::SetItemPos( sal_uInt16 nItemPos )
 
 void OAccessibleMenuItemComponent::SetAccessibleName( const OUString& sAccessibleName )
 {
-    if ( !m_sAccessibleName.equals( sAccessibleName ) )
+    if ( m_sAccessibleName != sAccessibleName )
     {
         Any aOldValue, aNewValue;
         aOldValue <<= m_sAccessibleName;
@@ -193,7 +183,7 @@ OUString OAccessibleMenuItemComponent::GetAccessibleName()
         sName = OutputDevice::GetNonMnemonicString( sName );
 #if defined(_WIN32)
         if ( m_pParent->GetAccelKey( nItemId ).GetName().getLength() )
-            sName = sName + "\t" + m_pParent->GetAccelKey(nItemId).GetName();
+            sName += "\t" + m_pParent->GetAccelKey(nItemId).GetName();
 #endif
     }
 

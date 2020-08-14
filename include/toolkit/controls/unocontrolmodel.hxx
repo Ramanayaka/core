@@ -25,27 +25,26 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/io/XPersistObject.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/weakagg.hxx>
 
 #include <toolkit/helper/mutexandbroadcasthelper.hxx>
 #include <toolkit/helper/listenermultiplexer.hxx>
 
 #include <cppuhelper/propshlp.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 #include <cppuhelper/implbase7.hxx>
 #include <comphelper/uno3.hxx>
+#include <rtl/ref.hxx>
 
 #include <vector>
 #include <map>
 
+namespace com::sun::star::uno { class XComponentContext; }
+
 typedef std::map<sal_uInt16, css::uno::Any> ImplPropertyTable;
 
 
-//  class UnoControlModel
 
 
 typedef ::cppu::WeakAggImplHelper7  <   css::awt::XControlModel
@@ -57,7 +56,7 @@ typedef ::cppu::WeakAggImplHelper7  <   css::awt::XControlModel
                                     ,   css::util::XCloneable
                                     >   UnoControlModel_Base;
 
-class TOOLKIT_DLLPUBLIC UnoControlModel :public UnoControlModel_Base
+class UnoControlModel :public UnoControlModel_Base
                                         ,public MutexAndBroadcastHelper
                                         ,public ::cppu::OPropertySetHelper
 {
@@ -98,6 +97,12 @@ protected:
                 sal_Int32 _nSecondHandle                /// second handle, which should supersede _nFirstHandle in the sequence
             );
 
+    template<typename T> void UNO_CONTROL_MODEL_REGISTER_PROPERTIES() {
+        std::vector< sal_uInt16 > aIds;
+        T::ImplGetPropertyIds( aIds );
+        ImplRegisterProperties( aIds );
+    }
+
 protected:
 #ifdef _MSC_VER
     UnoControlModel() //do not use! needed by MSVC at compile time to satisfy WeakAggImplHelper7
@@ -115,7 +120,7 @@ public:
                 UnoControlModel( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
                 UnoControlModel( const UnoControlModel& rModel );
 
-    virtual UnoControlModel*    Clone() const = 0;
+    virtual rtl::Reference<UnoControlModel> Clone() const = 0;
 
     // css::uno::XInterface
     css::uno::Any  SAL_CALL queryInterface( const css::uno::Type & rType ) override { return OWeakAggObject::queryInterface(rType); }
@@ -126,7 +131,7 @@ public:
     css::uno::Any  SAL_CALL queryAggregation( const css::uno::Type & rType ) override;
 
     // css::lang::XUnoTunnel
-    static const css::uno::Sequence< sal_Int8 >&   GetUnoTunnelId() throw();
+    static const css::uno::Sequence< sal_Int8 >&   getUnoTunnelId() throw();
     sal_Int64                                                   SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& rIdentifier ) override;
 
     // css::util::XCloneable
@@ -172,13 +177,6 @@ public:
     css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo(  ) override;
     void SAL_CALL setPropertyValues( const css::uno::Sequence< OUString >& PropertyNames, const css::uno::Sequence< css::uno::Any >& Values ) override;
 };
-
-#define UNO_CONTROL_MODEL_REGISTER_PROPERTIES(a) \
-    do { \
-        std::vector< sal_uInt16 > aIds; \
-        a::ImplGetPropertyIds( aIds ); \
-        ImplRegisterProperties( aIds ); \
-    } while (false)
 
 #endif // INCLUDED_TOOLKIT_CONTROLS_UNOCONTROLMODEL_HXX
 

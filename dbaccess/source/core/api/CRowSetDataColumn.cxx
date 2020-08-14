@@ -19,11 +19,9 @@
 
 
 #include "CRowSetDataColumn.hxx"
-#include "dbastrings.hrc"
-#include "apitools.hxx"
-#include <comphelper/types.hxx>
+#include <stringconstants.hxx>
+#include <apitools.hxx>
 #include <cppuhelper/exc_hlp.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
@@ -113,9 +111,10 @@ void SAL_CALL ORowSetDataColumn::getFastPropertyValue( Any& rValue, sal_Int32 nH
         }
         catch(const SQLException &e)
         {
+            css::uno::Any anyEx = cppu::getCaughtException();
             throw WrappedTargetRuntimeException("Could not retrieve column value: " + e.Message,
                                                 *const_cast<ORowSetDataColumn*>(this),
-                                                Any(e));
+                                                anyEx);
         }
     }
     else if ( PROPERTY_ID_LABEL == nHandle && !m_sLabel.isEmpty() )
@@ -135,7 +134,7 @@ void SAL_CALL ORowSetDataColumn::setFastPropertyValue_NoBroadcast(sal_Int32 nHan
             {
                 bool bVal = false;
                 rValue >>= bVal;
-                m_isReadOnly.reset(bVal);
+                m_isReadOnly = bVal;
             }
             break;
         default:
@@ -212,14 +211,14 @@ sdbcx::ObjectType ORowSetDataColumns::createObject(const OUString& _rName)
     connectivity::sdbcx::ObjectType xNamed;
 
     ::comphelper::UStringMixEqual aCase(isCaseSensitive());
-    ::connectivity::OSQLColumns::Vector::const_iterator first =  ::connectivity::find(m_aColumns->get().begin(),m_aColumns->get().end(),_rName,aCase);
-    if(first != m_aColumns->get().end())
-        xNamed.set(*first,UNO_QUERY);
+    ::connectivity::OSQLColumns::Vector::const_iterator first =  ::connectivity::find(m_aColumns->begin(),m_aColumns->end(),_rName,aCase);
+    if(first != m_aColumns->end())
+        xNamed = *first;
 
     return xNamed;
 }
 
-void SAL_CALL ORowSetDataColumns::disposing()
+void ORowSetDataColumns::disposing()
 {
     ORowSetDataColumns_BASE::disposing();
     m_aColumns = nullptr;

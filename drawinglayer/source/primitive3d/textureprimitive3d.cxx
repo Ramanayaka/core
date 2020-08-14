@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <drawinglayer/primitive3d/textureprimitive3d.hxx>
+#include <primitive3d/textureprimitive3d.hxx>
 #include <drawinglayer/primitive3d/drawinglayer_primitivetypes3d.hxx>
 #include <basegfx/color/bcolor.hxx>
 
@@ -25,10 +25,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         TexturePrimitive3D::TexturePrimitive3D(
             const Primitive3DContainer& rChildren,
             const basegfx::B2DVector& rTextureSize,
@@ -52,14 +50,9 @@ namespace drawinglayer
 
             return false;
         }
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
 
 
-namespace drawinglayer
-{
-    namespace primitive3d
-    {
+
         UnifiedTransparenceTexturePrimitive3D::UnifiedTransparenceTexturePrimitive3D(
             double fTransparence,
             const Primitive3DContainer& rChildren)
@@ -112,14 +105,8 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive3DIDBlock(UnifiedTransparenceTexturePrimitive3D, PRIMITIVE3D_ID_UNIFIEDTRANSPARENCETEXTUREPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
 
 
-namespace drawinglayer
-{
-    namespace primitive3d
-    {
         GradientTexturePrimitive3D::GradientTexturePrimitive3D(
             const attribute::FillGradientAttribute& rGradient,
             const Primitive3DContainer& rChildren,
@@ -146,14 +133,8 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive3DIDBlock(GradientTexturePrimitive3D, PRIMITIVE3D_ID_GRADIENTTEXTUREPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
 
 
-namespace drawinglayer
-{
-    namespace primitive3d
-    {
         BitmapTexturePrimitive3D::BitmapTexturePrimitive3D(
             const attribute::FillGraphicAttribute& rFillGraphicAttribute,
             const Primitive3DContainer& rChildren,
@@ -179,14 +160,8 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive3DIDBlock(BitmapTexturePrimitive3D, PRIMITIVE3D_ID_BITMAPTEXTUREPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
 
 
-namespace drawinglayer
-{
-    namespace primitive3d
-    {
         TransparenceTexturePrimitive3D::TransparenceTexturePrimitive3D(
             const attribute::FillGradientAttribute& rGradient,
             const Primitive3DContainer& rChildren,
@@ -197,13 +172,12 @@ namespace drawinglayer
 
         bool TransparenceTexturePrimitive3D::operator==(const BasePrimitive3D& rPrimitive) const
         {
-            return (GradientTexturePrimitive3D::operator==(rPrimitive));
+            return GradientTexturePrimitive3D::operator==(rPrimitive);
         }
 
         // provide unique ID
         ImplPrimitive3DIDBlock(TransparenceTexturePrimitive3D, PRIMITIVE3D_ID_TRANSPARENCETEXTUREPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

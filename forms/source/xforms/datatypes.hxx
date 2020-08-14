@@ -25,7 +25,6 @@
 #include <com/sun/star/util/Time.hpp>
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/xsd/XDataType.hpp>
-#include <com/sun/star/xsd/DataTypeClass.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/uno3.hxx>
 #include <comphelper/propertycontainer.hxx>
@@ -118,8 +117,8 @@ namespace xforms
         virtual void            initializeClone( const OXSDDataType& _rCloneSource );
 
         // helper method for validate and explainInvalid
-        virtual sal_uInt16  _validate( const OUString& value );
-        virtual OUString _explainInvalid( sal_uInt16 nReason );
+        virtual const char* _validate( const OUString& value );
+        virtual OUString _explainInvalid( const OString& rReason );
 
         // helper method for checking properties values which are to be set
         virtual bool        checkPropertySanity( sal_Int32 _nHandle, const css::uno::Any& _rNewValue, OUString& _rErrorMessage );
@@ -177,8 +176,8 @@ namespace xforms
 
         // OXSDDataType overridables
         virtual bool            _getValue( const OUString& value, double& fValue );
-        virtual sal_uInt16      _validate( const OUString& value ) override;
-        virtual OUString _explainInvalid( sal_uInt16 nReason ) override;
+        virtual const char*     _validate( const OUString& value ) override;
+        virtual OUString _explainInvalid( const OString& rReason ) override;
 
         // own overridables
         /** translate a given value into a human-readable string
@@ -231,11 +230,11 @@ namespace xforms
 
     protected:
         // OPropertyArrayUsageHelper
-        virtual ::cppu::IPropertyArrayHelper* createArrayHelper() const SAL_OVERRIDE;
+        virtual ::cppu::IPropertyArrayHelper* createArrayHelper() const override;
 
         // XPropertySet
-        virtual css::uno::Reference<css::beans::XPropertySetInfo> SAL_CALL getPropertySetInfo() SAL_OVERRIDE;
-        virtual ::cppu::IPropertyArrayHelper& SAL_CALL getInfoHelper() SAL_OVERRIDE;
+        virtual css::uno::Reference<css::beans::XPropertySetInfo> SAL_CALL getPropertySetInfo() override;
+        virtual ::cppu::IPropertyArrayHelper& SAL_CALL getInfoHelper() override;
     };
 
     class OBooleanType;
@@ -249,15 +248,14 @@ namespace xforms
         DECLARE_DEFAULT_CLONING( OBooleanType )
 
         // OXSDDataType overridables
-        virtual sal_uInt16      _validate( const OUString& value ) override;
-        virtual OUString _explainInvalid( sal_uInt16 nReason ) override;
+        virtual const char* _validate( const OUString& value ) override;
+        virtual OUString _explainInvalid( const OString& rReason ) override;
     };
 
     class OStringType;
     typedef ODerivedDataType< OStringType > OStringType_Base;
     class OStringType   :public OStringType_Base
     {
-    protected:
         // <properties>
         css::uno::Any m_aLength;
         css::uno::Any m_aMinLength;
@@ -272,8 +270,8 @@ namespace xforms
         void       initializeTypedClone( const OStringType& _rCloneSource );
 
         // OXSDDataType overridables
-        virtual sal_uInt16      _validate( const OUString& value ) override;
-        virtual OUString _explainInvalid( sal_uInt16 nReason ) override;
+        virtual const char*     _validate( const OUString& value ) override;
+        virtual OUString _explainInvalid( const OString& rReason ) override;
         virtual bool            checkPropertySanity( sal_Int32 _nHandle, const css::uno::Any& _rNewValue, OUString& _rErrorMessage ) override;
         virtual void            registerProperties() override;
     };
@@ -282,7 +280,6 @@ namespace xforms
     typedef ODerivedDataType< ODecimalType, OValueLimitedType< double > > ODecimalType_Base;
     class ODecimalType : public ODecimalType_Base
     {
-    protected:
         css::uno::Any m_aTotalDigits;
         css::uno::Any m_aFractionDigits;
 
@@ -294,8 +291,8 @@ namespace xforms
         void       initializeTypedClone( const ODecimalType& _rCloneSource );
 
         // OXSDDataType overridables
-        virtual sal_uInt16      _validate( const OUString& value ) override;
-        virtual OUString _explainInvalid( sal_uInt16 nReason ) override;
+        virtual const char*     _validate( const OUString& value ) override;
+        virtual OUString _explainInvalid( const OString& rReason ) override;
         virtual void            registerProperties() override;
 
         // OValueLimitedType overridables
@@ -321,7 +318,7 @@ namespace xforms
         DECLARE_DEFAULT_CLONING( classname )                    \
                                                                 \
         /* OXSDDataType overridables */                         \
-        virtual sal_uInt16          _validate( const OUString& value ) override;  \
+        virtual const char*         _validate( const OUString& value ) override;  \
         virtual bool                _getValue( const OUString& value, double& fValue ) override;  \
                                                                 \
         /* OValueLimitedType overridables */                    \

@@ -16,21 +16,8 @@
 #   the License at http://www.apache.org/licenses/LICENSE-2.0 .
 #
 # -o sc.ScStyleObj
--o sc.ScSubTotalDescriptorBase
--o sc.ScSubTotalFieldObj
 # # i84656 -o sc.ScTabViewObj
-# -o sc.ScTableColumnObj
--o sc.ScTableColumnsObj
--o sc.ScTableConditionalEntry
--o sc.ScTableConditionalFormat
-# -o sc.ScTableRowObj
--o sc.ScTableRowsObj
 # -o sc.ScTableSheetObj
--o sc.ScUniqueCellFormatsEnumeration
--o sc.ScUniqueCellFormatsObj
-# -o sc.ScTableSheetsObj
--o sc.ScTableValidationObj
-#-o sc.ScViewPaneObj
 # #i89411 -o sc.XMLContentExporter
 # #i89411 -o sc.XMLContentImporter
 # #i89411 -o sc.XMLExporter

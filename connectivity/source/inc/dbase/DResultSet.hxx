@@ -19,14 +19,12 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DRESULTSET_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DRESULTSET_HXX
 
-#include "file/FResultSet.hxx"
+#include <file/FResultSet.hxx>
 #include <com/sun/star/sdbcx/XRowLocate.hpp>
 #include <com/sun/star/sdbcx/XDeleteRows.hpp>
 #include <cppuhelper/implbase2.hxx>
 
-namespace connectivity
-{
-    namespace dbase
+namespace connectivity::dbase
     {
         class ODbaseResultSet;
         // these typedef's are only necessary for the compiler
@@ -75,7 +73,7 @@ namespace connectivity
             sal_Int32 getCurrentFilePos() const;
 
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_DBASE_DRESULTSET_HXX
 

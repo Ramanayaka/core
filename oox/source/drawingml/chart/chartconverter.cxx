@@ -17,22 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/drawingml/chart/chartconverter.hxx"
+#include <oox/drawingml/chart/chartconverter.hxx>
 
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/chart2/data/XDataReceiver.hpp>
 #include <com/sun/star/util/XNumberFormatsSupplier.hpp>
-#include "drawingml/chart/chartspaceconverter.hxx"
-#include "drawingml/chart/chartspacemodel.hxx"
-#include "oox/helper/containerhelper.hxx"
-#include "oox/core/xmlfilterbase.hxx"
+#include <drawingml/chart/chartspaceconverter.hxx>
+#include <drawingml/chart/chartspacemodel.hxx>
+#include <oox/helper/containerhelper.hxx>
+#include <oox/core/xmlfilterbase.hxx>
 #include <osl/diagnose.h>
 
 using ::oox::drawingml::chart::DataSequenceModel;
 using ::com::sun::star::uno::Any;
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -42,10 +40,9 @@ using namespace ::com::sun::star::uno;
 
 using ::oox::core::XmlFilterBase;
 
-static const sal_Unicode API_TOKEN_ARRAY_OPEN      = '{';
-static const sal_Unicode API_TOKEN_ARRAY_CLOSE     = '}';
-static const sal_Unicode API_TOKEN_ARRAY_ROWSEP    = '|';
-static const sal_Unicode API_TOKEN_ARRAY_COLSEP    = ';';
+const sal_Unicode API_TOKEN_ARRAY_OPEN      = '{';
+const sal_Unicode API_TOKEN_ARRAY_CLOSE     = '}';
+const sal_Unicode API_TOKEN_ARRAY_COLSEP    = ';';
 
 // Code similar to oox/source/xls/formulabase.cxx
 static OUString lclGenerateApiString( const OUString& rString )
@@ -57,28 +54,23 @@ static OUString lclGenerateApiString( const OUString& rString )
     return "\"" + aRetString + "\"";
 }
 
-static OUString lclGenerateApiArray( const Matrix< Any >& rMatrix )
+static OUString lclGenerateApiArray(const std::vector<Any>& rRow, sal_Int32 nStart, sal_Int32 nCount)
 {
-    OSL_ENSURE( !rMatrix.empty(), "ChartConverter::lclGenerateApiArray - missing matrix values" );
+    OSL_ENSURE( !rRow.empty(), "ChartConverter::lclGenerateApiArray - missing matrix values" );
     OUStringBuffer aBuffer;
     aBuffer.append( API_TOKEN_ARRAY_OPEN );
-    for( size_t nRow = 0, nHeight = rMatrix.height(); nRow < nHeight; ++nRow )
+    for (auto aBeg = rRow.begin() + nStart, aIt = aBeg, aEnd = aBeg + nCount; aIt != aEnd; ++aIt)
     {
-        if( nRow > 0 )
-            aBuffer.append( API_TOKEN_ARRAY_ROWSEP );
-        for( Matrix< Any >::const_iterator aBeg = rMatrix.row_begin( nRow ), aIt = aBeg, aEnd = rMatrix.row_end( nRow ); aIt != aEnd; ++aIt )
-        {
-            double fValue = 0.0;
-            OUString aString;
-            if( aIt != aBeg )
-                aBuffer.append( API_TOKEN_ARRAY_COLSEP );
-            if( *aIt >>= fValue )
-                aBuffer.append( fValue );
-            else if( *aIt >>= aString )
-                aBuffer.append( lclGenerateApiString( aString ) );
-            else
-                aBuffer.append( "\"\"" );
-        }
+        double fValue = 0.0;
+        OUString aString;
+        if( aIt != aBeg )
+            aBuffer.append( API_TOKEN_ARRAY_COLSEP );
+        if( *aIt >>= fValue )
+            aBuffer.append( fValue );
+        else if( *aIt >>= aString )
+            aBuffer.append( lclGenerateApiString( aString ) );
+        else
+            aBuffer.append( "\"\"" );
     }
     aBuffer.append( API_TOKEN_ARRAY_CLOSE );
     return aBuffer.makeStringAndClear();
@@ -130,21 +122,26 @@ Reference< XDataSequence > ChartConverter::createDataSequence(
     if( rxDataProvider.is() )
     {
         OUString aRangeRep;
-        if( !rDataSeq.maData.empty() )
+        if( !rDataSeq.maData.empty() || (rRole == "values-y" && rDataSeq.mnPointCount > 0) ) try
         {
             // create a single-row array from constant source data
-            Matrix< Any > aMatrix( rDataSeq.mnPointCount, 1 );
-            for( DataSequenceModel::AnyMap::const_iterator aDIt = rDataSeq.maData.begin(), aDEnd = rDataSeq.maData.end(); aDIt != aDEnd; ++aDIt )
-                *aMatrix.at(aDIt->first, 0) = aDIt->second;
+            // (multiple levels in the case of complex categories)
+            std::vector<Any> aRow(rDataSeq.mnLevelCount * rDataSeq.mnPointCount);
+            for (auto const& elem : rDataSeq.maData)
+                aRow.at(elem.first) = elem.second;
 
-            aRangeRep = lclGenerateApiArray( aMatrix );
-        }
+            for (sal_Int32 i = rDataSeq.mnLevelCount-1; i >= 0; i--)
+            {
+                aRangeRep = lclGenerateApiArray( aRow, i * rDataSeq.mnPointCount, rDataSeq.mnPointCount);
 
-        if( !aRangeRep.isEmpty() ) try
-        {
-            // create the data sequence
-            xDataSeq = rxDataProvider->createDataSequenceByValueArray(rRole, aRangeRep);
-            return xDataSeq;
+                if (!aRangeRep.isEmpty())
+                {
+                    // create or add a new level to the data sequence
+                    xDataSeq = rxDataProvider->createDataSequenceByValueArray(rRole, aRangeRep);
+                    if (i == 0)
+                        return xDataSeq;
+                }
+            }
         }
         catch( Exception& )
         {
@@ -155,8 +152,6 @@ Reference< XDataSequence > ChartConverter::createDataSequence(
     return nullptr;
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

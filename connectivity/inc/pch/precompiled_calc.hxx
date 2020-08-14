@@ -13,51 +13,64 @@
  manual changes will be rewritten by the next run of update_pch.sh (which presumably
  also fixes all possible problems, so it's usually better to use it).
 
- Generated on 2015-11-14 14:16:28 using:
+ Generated on 2020-08-12 11:04:25 using:
  ./bin/update_pch connectivity calc --cutoff=2 --exclude:system --exclude:module --exclude:local
 
  If after updating build fails, use the following command to locate conflicting headers:
- ./bin/update_pch_bisect ./connectivity/inc/pch/precompiled_calc.hxx "/opt/lo/bin/make connectivity.build" --find-conflicts
+ ./bin/update_pch_bisect ./connectivity/inc/pch/precompiled_calc.hxx "make connectivity.build" --find-conflicts
 */
 
+#if PCH_LEVEL >= 1
 #include <cassert>
 #include <cstddef>
-#include <memory>
-#include <stdlib.h>
-#include <string.h>
-#include <osl/thread.h>
+#include <cstring>
+#include <limits>
+#include <new>
+#include <string_view>
+#endif // PCH_LEVEL >= 1
+#if PCH_LEVEL >= 2
+#include <rtl/alloc.h>
+#include <rtl/instance.hxx>
 #include <rtl/math.hxx>
-#include <rtl/string.h>
+#include <rtl/stringconcat.hxx>
 #include <rtl/stringutils.hxx>
 #include <rtl/textenc.h>
-#include <rtl/unload.h>
 #include <rtl/ustrbuf.h>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
+#include <rtl/uuid.h>
 #include <sal/config.h>
+#include <sal/log.hxx>
 #include <sal/types.h>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
+#endif // PCH_LEVEL >= 2
+#if PCH_LEVEL >= 3
+#include <calc/CCatalog.hxx>
+#include <calc/CConnection.hxx>
+#include <calc/CDatabaseMetaData.hxx>
+#include <calc/CDriver.hxx>
+#include <calc/CTable.hxx>
+#include <calc/CTables.hxx>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
+#include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sheet/XCellRangeAddressable.hpp>
-#include <com/sun/star/sheet/XCellRangesQuery.hpp>
 #include <com/sun/star/sheet/XDatabaseRange.hpp>
 #include <com/sun/star/sheet/XDatabaseRanges.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
-#include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/Type.hxx>
-#include <com/sun/star/util/NumberFormat.hpp>
-#include <comphelper/processfactory.hxx>
-#include <comphelper/sequence.hxx>
-#include <comphelper/types.hxx>
+#include <com/sun/star/uno/Sequence.hxx>
+#include <cppuhelper/basemutex.hxx>
+#include <cppuhelper/compbase.hxx>
 #include <cppuhelper/cppuhelperdllapi.h>
-#include <svl/svldllapi.h>
-#include <unotools/unotoolsdllapi.h>
+#include <file/filedllapi.hxx>
+#include <resource/sharedresources.hxx>
+#include <tools/toolsdllapi.h>
+#endif // PCH_LEVEL >= 3
+#if PCH_LEVEL >= 4
+#include <connectivity/CommonTools.hxx>
 #include <connectivity/dbexception.hxx>
-#include <connectivity/sdbcx/VColumn.hxx>
+#include <connectivity/dbtoolsdllapi.hxx>
+#endif // PCH_LEVEL >= 4
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

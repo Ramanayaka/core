@@ -23,61 +23,42 @@
 #include <com/sun/star/document/DocumentProperties.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/document/UpdateDocMode.hpp>
-#include <com/sun/star/embed/ElementModes.hpp>
 #include <comphelper/fileurl.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
+#include <vcl/window.hxx>
 #include <svl/style.hxx>
-#include <vcl/wrkwin.hxx>
 
-#include <svl/stritem.hxx>
 #include <svl/intitem.hxx>
-#include <svl/rectitem.hxx>
-#include <svl/eitem.hxx>
-#include <svl/urihelper.hxx>
 #include <svl/ctloptions.hxx>
-#include <comphelper/storagehelper.hxx>
 #include <comphelper/processfactory.hxx>
 #include <unotools/securityoptions.hxx>
-#include <svtools/sfxecode.hxx>
-#include <svtools/ehdl.hxx>
 #include <tools/datetime.hxx>
+#include <tools/diagnose_ex.h>
 #include <rtl/uri.hxx>
-#include <math.h>
 
-#include <unotools/saveopt.hxx>
 #include <unotools/useroptions.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/oldprintadaptor.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/gdimtf.hxx>
 
 #include <sfx2/app.hxx>
-#include <sfx2/sfxresid.hxx>
-#include "appdata.hxx"
 #include <sfx2/dinfdlg.hxx>
-#include <sfx2/fcontnr.hxx>
+#include <sfx2/sfxresid.hxx>
+#include <appdata.hxx>
 #include <sfx2/docfac.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/objsh.hxx>
-#include "objshimp.hxx"
-#include <sfx2/evntconf.hxx>
-#include <sfx2/sfxhelp.hxx>
-#include <sfx2/dispatch.hxx>
+#include <objshimp.hxx>
 #include <sfx2/printer.hxx>
-#include <basic/basmgr.hxx>
-#include <svtools/svtools.hrc>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/doctempl.hxx>
-#include "doc.hrc"
-#include <sfx2/sfxbasemodel.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <sfx2/strings.hrc>
 #include <sfx2/docfile.hxx>
-#include <sfx2/request.hxx>
-#include "openflag.hxx"
-#include "querytemplate.hxx"
+#include <sfx2/docfilt.hxx>
 #include <memory>
-
-#include <LibreOfficeKit/LibreOfficeKitTypes.h>
-
-#include <typeinfo>
+#include <helpids.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -127,12 +108,12 @@ SfxObjectShell::CreatePreviewMetaFile_Impl( bool bFullContent ) const
          pFrame->GetViewShell()->GetPrinter()->IsPrinting() )
          return std::shared_ptr<GDIMetaFile>();
 
-    std::shared_ptr<GDIMetaFile> xFile(new GDIMetaFile);
+    auto xFile = std::make_shared<GDIMetaFile>();
 
     ScopedVclPtrInstance< VirtualDevice > pDevice;
     pDevice->EnableOutput( false );
 
-    MapMode aMode( this->GetMapUnit() );
+    MapMode aMode( GetMapUnit() );
     pDevice->SetMapMode( aMode );
     xFile->SetPrefMapMode( aMode );
 
@@ -146,11 +127,11 @@ SfxObjectShell::CreatePreviewMetaFile_Impl( bool bFullContent ) const
     else
     {
         nAspect = ASPECT_THUMBNAIL;
-        aTmpSize = const_cast<SfxObjectShell*>(this)->GetFirstPageSize();
+        aTmpSize = GetFirstPageSize();
     }
 
     xFile->SetPrefSize( aTmpSize );
-    DBG_ASSERT( aTmpSize.Height() != 0 && aTmpSize.Width() != 0,
+    DBG_ASSERT( !aTmpSize.IsEmpty(),
         "size of first page is 0, override GetFirstPageSize or set visible-area!" );
 
     xFile->Record( pDevice );
@@ -190,11 +171,11 @@ void SfxObjectShell::UpdateDocInfoForSave()
         if ( !IsUseUserData() )
         {
             // remove all data pointing to the current user
-            if (xDocProps->getAuthor().equals(aUserName)) {
+            if (xDocProps->getAuthor() == aUserName) {
                 xDocProps->setAuthor( OUString() );
             }
             xDocProps->setModifiedBy( OUString() );
-            if (xDocProps->getPrintedBy().equals(aUserName)) {
+            if (xDocProps->getPrintedBy() == aUserName) {
                 xDocProps->setPrintedBy( OUString() );
             }
         }
@@ -229,18 +210,18 @@ void SfxObjectShell::UpdateTime_Impl(
     util::Duration editDuration(false, 0, 0, 0,
             secs/3600, (secs%3600)/60, secs%60, 0);
 
-    // Initialize some local member! Its necessary for follow operations!
+    // Initialize some local member! It's necessary for follow operations!
     DateTime     aNow( DateTime::SYSTEM );   // Date and time at current moment
     tools::Time  n24Time     (24,0,0,0)  ;   // Time-value for 24 hours - see follow calculation
     sal_Int32    nDays       = 0         ;   // Count of days between now and last editing
     tools::Time  nAddTime    (0)         ;   // Value to add on aOldTime
 
     // Save impossible cases!
-    // User has changed time to the past between last editing and now ... it's not possible!!!
-    DBG_ASSERT( !(aNow.GetDate()<pImpl->nTime.GetDate()), "Timestamp of last change is in the past ?!..." );
+    // User has changed time to the past between last editing and now... it's not possible!!!
+    DBG_ASSERT( !(aNow.GetDate()<pImpl->nTime.GetDate()), "Timestamp of last change is in the past!?..." );
 
     // Do the follow only, if user has NOT changed time to the past.
-    // Else add a time of 0 to aOldTime ... !!!
+    // Else add a time of 0 to aOldTime... !!!
     if (aNow.GetDate()>=pImpl->nTime.GetDate())
     {
         // Get count of days last editing.
@@ -253,13 +234,13 @@ void SfxObjectShell::UpdateTime_Impl(
         }
         else if (nDays<=31)
         {
-            // If time of working without save greater then 1 month (!) ....
+            // If time of working without save greater than 1 month (!)...
             // we add 0 to aOldTime!
 
             // If 1 or up to 31 days between now and last editing - calculate time indirectly.
             // nAddTime = (24h - nTime) + (nDays * 24h) + aNow
             --nDays;
-             nAddTime    =  nDays*n24Time.GetTime() ;
+            nAddTime     =  tools::Time( nDays * n24Time.GetTime());
             nAddTime    +=  n24Time-static_cast<const tools::Time&>(pImpl->nTime);
             nAddTime    +=  aNow                    ;
         }
@@ -280,15 +261,11 @@ void SfxObjectShell::UpdateTime_Impl(
     }
 }
 
-
-VclPtr<SfxDocumentInfoDialog> SfxObjectShell::CreateDocumentInfoDialog
-(
-    const SfxItemSet&   rSet
-)
+std::shared_ptr<SfxDocumentInfoDialog> SfxObjectShell::CreateDocumentInfoDialog(weld::Window* pParent,
+                                                                                const SfxItemSet& rSet)
 {
-    return VclPtr<SfxDocumentInfoDialog>::Create(nullptr, rSet);
+    return std::make_shared<SfxDocumentInfoDialog>(pParent, rSet);
 }
-
 
 std::set<Color> SfxObjectShell::GetDocColors()
 {
@@ -296,16 +273,26 @@ std::set<Color> SfxObjectShell::GetDocColors()
     return empty;
 }
 
+sfx::AccessibilityIssueCollection SfxObjectShell::runAccessibilityCheck()
+{
+    sfx::AccessibilityIssueCollection aCollection;
+    return aCollection;
+}
+
 SfxStyleSheetBasePool* SfxObjectShell::GetStyleSheetPool()
 {
     return nullptr;
 }
+
+namespace {
 
 struct Styles_Impl
 {
     SfxStyleSheetBase *pSource;
     SfxStyleSheetBase *pDest;
 };
+
+}
 
 void SfxObjectShell::LoadStyles
 (
@@ -326,11 +313,11 @@ void SfxObjectShell::LoadStyles
     DBG_ASSERT(pSourcePool, "Source-DocumentShell without StyleSheetPool");
     SfxStyleSheetBasePool *pMyPool = GetStyleSheetPool();
     DBG_ASSERT(pMyPool, "Dest-DocumentShell without StyleSheetPool");
-    pSourcePool->SetSearchMask(SfxStyleFamily::All);
-    std::unique_ptr<Styles_Impl[]> pFound(new Styles_Impl[pSourcePool->Count()]);
+    auto xIter = pSourcePool->CreateIterator(SfxStyleFamily::All);
+    std::unique_ptr<Styles_Impl[]> pFound(new Styles_Impl[xIter->Count()]);
     sal_uInt16 nFound = 0;
 
-    SfxStyleSheetBase *pSource = pSourcePool->First();
+    SfxStyleSheetBase *pSource = xIter->First();
     while ( pSource )
     {
         SfxStyleSheetBase *pDest =
@@ -344,7 +331,7 @@ void SfxObjectShell::LoadStyles
         pFound[nFound].pSource = pSource;
         pFound[nFound].pDest = pDest;
         ++nFound;
-        pSource = pSourcePool->Next();
+        pSource = xIter->Next();
     }
 
     for ( sal_uInt16 i = 0; i < nFound; ++i )
@@ -360,6 +347,25 @@ void SfxObjectShell::LoadStyles
 sfx2::StyleManager* SfxObjectShell::GetStyleManager()
 {
     return nullptr;
+}
+
+namespace
+{
+    class QueryTemplateBox
+    {
+    private:
+        std::unique_ptr<weld::MessageDialog> m_xQueryBox;
+    public:
+        QueryTemplateBox(weld::Window* pParent, const OUString& rMessage)
+            : m_xQueryBox(Application::CreateMessageDialog(pParent, VclMessageType::Question, VclButtonsType::NONE, rMessage))
+        {
+            m_xQueryBox->add_button(SfxResId(STR_QRYTEMPL_UPDATE_BTN), RET_YES);
+            m_xQueryBox->add_button(SfxResId(STR_QRYTEMPL_KEEP_BTN), RET_NO);
+            m_xQueryBox->set_default_response(RET_YES);
+            m_xQueryBox->set_help_id(HID_QUERY_LOAD_TEMPLATE);
+        }
+        short run() { return m_xQueryBox->run(); }
+    };
 }
 
 void SfxObjectShell::UpdateFromTemplate_Impl(  )
@@ -382,6 +388,11 @@ void SfxObjectShell::UpdateFromTemplate_Impl(  )
     if ( !comphelper::isFileUrl( pFile->GetName() ) )
         // update only for documents loaded from the local file system
         return;
+
+    // tdf#113935 - do not remove this line - somehow, it makes the process
+    // of switching from viewing a read-only document to opening it in writable
+    // mode much faster.
+    uno::Reference< embed::XStorage > xDocStor = pFile->GetStorage(false);
 
     // only for own storage formats
     if ( !pFile->GetFilter() || !pFile->GetFilter()->IsOwnFormat() )
@@ -419,86 +430,87 @@ void SfxObjectShell::UpdateFromTemplate_Impl(  )
             aTempl.GetFull( OUString(), aTemplName, aFoundName );
     }
 
-    if ( !aFoundName.isEmpty() )
+    if ( aFoundName.isEmpty() )
+        return;
+
+    // check existence of template storage
+    aTemplURL = aFoundName;
+
+    // should the document checked against changes in the template ?
+    if ( !IsQueryLoadTemplate() )
+        return;
+
+    bool bLoad = false;
+
+    // load document properties of template
+    bool bOK = false;
+    util::DateTime aTemplDate;
+    try
     {
-        // check existence of template storage
-        aTemplURL = aFoundName;
+        Reference<document::XDocumentProperties> const
+            xTemplateDocProps( document::DocumentProperties::create(
+                    ::comphelper::getProcessComponentContext()));
+        xTemplateDocProps->loadFromMedium(aTemplURL,
+                Sequence<beans::PropertyValue>());
+        aTemplDate = xTemplateDocProps->getModificationDate();
+        bOK = true;
+    }
+    catch (const Exception&)
+    {
+        TOOLS_INFO_EXCEPTION("sfx.doc", "");
+    }
 
-        // should the document checked against changes in the template ?
-        if ( IsQueryLoadTemplate() )
+    // if modify date was read successfully
+    if ( bOK )
+    {
+        // compare modify data of template with the last check date of the document
+        const util::DateTime aInfoDate( xDocProps->getTemplateDate() );
+        if ( aTemplDate > aInfoDate )
         {
-            bool bLoad = false;
-
-            // load document properties of template
-            bool bOK = false;
-            util::DateTime aTemplDate;
-            try
+            // ask user
+            if( bCanUpdateFromTemplate == document::UpdateDocMode::QUIET_UPDATE
+            || bCanUpdateFromTemplate == document::UpdateDocMode::FULL_UPDATE )
+                bLoad = true;
+            else if ( bCanUpdateFromTemplate == document::UpdateDocMode::ACCORDING_TO_CONFIG )
             {
-                Reference<document::XDocumentProperties> const
-                    xTemplateDocProps( document::DocumentProperties::create(
-                            ::comphelper::getProcessComponentContext()));
-                xTemplateDocProps->loadFromMedium(aTemplURL,
-                        Sequence<beans::PropertyValue>());
-                aTemplDate = xTemplateDocProps->getModificationDate();
-                bOK = true;
-            }
-            catch (const Exception& e)
-            {
-                SAL_INFO("sfx.doc", "caught exception" << e.Message);
+                const OUString sMessage( SfxResId(STR_QRYTEMPL_MESSAGE).replaceAll( "$(ARG1)", aTemplName ) );
+                vcl::Window *pWin = GetDialogParent();
+                QueryTemplateBox aBox(pWin ? pWin->GetFrameWeld() : nullptr, sMessage);
+                if (RET_YES == aBox.run())
+                    bLoad = true;
             }
 
-            // if modify date was read successfully
-            if ( bOK )
+            if( !bLoad )
             {
-                // compare modify data of template with the last check date of the document
-                const util::DateTime aInfoDate( xDocProps->getTemplateDate() );
-                if ( aTemplDate > aInfoDate )
-                {
-                    // ask user
-                    if( bCanUpdateFromTemplate == document::UpdateDocMode::QUIET_UPDATE
-                    || bCanUpdateFromTemplate == document::UpdateDocMode::FULL_UPDATE )
-                        bLoad = true;
-                    else if ( bCanUpdateFromTemplate == document::UpdateDocMode::ACCORDING_TO_CONFIG )
-                    {
-                        const OUString sMessage( SfxResId(STR_QRYTEMPL_MESSAGE).replaceAll( "$(ARG1)", aTemplName ) );
-                        ScopedVclPtrInstance< sfx2::QueryTemplateBox > aBox(GetDialogParent(), sMessage);
-                        if ( RET_YES == aBox->Execute() )
-                            bLoad = true;
-                    }
-
-                    if( !bLoad )
-                    {
-                        // user refuses, so don't ask again for this document
-                        SetQueryLoadTemplate(false);
-                        SetModified();
-                    }
-                }
-            }
-
-            if ( bLoad )
-            {
-                // styles should be updated, create document in organizer mode to read in the styles
-                //TODO: testen!
-                SfxObjectShellLock xTemplDoc = CreateObjectByFactoryName( GetFactory().GetFactoryName(), SfxObjectCreateMode::ORGANIZER );
-                xTemplDoc->DoInitNew();
-
-                // TODO/MBA: do we need a BaseURL? Then LoadFrom must be extended!
-                //xTemplDoc->SetBaseURL( aFoundName );
-
-                // TODO/LATER: make sure that we don't use binary templates!
-                SfxMedium aMedium( aFoundName, StreamMode::STD_READ );
-                if ( xTemplDoc->LoadFrom( aMedium ) )
-                {
-                    // transfer styles from xTemplDoc to this document
-                    // TODO/MBA: make sure that no BaseURL is needed in *this* document
-                    LoadStyles(*xTemplDoc);
-
-                    // remember date/time of check
-                    xDocProps->setTemplateDate(aTemplDate);
-                    // TODO/LATER: new functionality to store document info is required ( didn't work for SO7 XML format )
-                }
+                // user refuses, so don't ask again for this document
+                SetQueryLoadTemplate(false);
+                SetModified();
             }
         }
+    }
+
+    if ( !bLoad )
+        return;
+
+    // styles should be updated, create document in organizer mode to read in the styles
+    //TODO: testen!
+    SfxObjectShellLock xTemplDoc = CreateObjectByFactoryName( GetFactory().GetFactoryName(), SfxObjectCreateMode::ORGANIZER );
+    xTemplDoc->DoInitNew();
+
+    // TODO/MBA: do we need a BaseURL? Then LoadFrom must be extended!
+    //xTemplDoc->SetBaseURL( aFoundName );
+
+    // TODO/LATER: make sure that we don't use binary templates!
+    SfxMedium aMedium( aFoundName, StreamMode::STD_READ );
+    if ( xTemplDoc->LoadFrom( aMedium ) )
+    {
+        // transfer styles from xTemplDoc to this document
+        // TODO/MBA: make sure that no BaseURL is needed in *this* document
+        LoadStyles(*xTemplDoc);
+
+        // remember date/time of check
+        xDocProps->setTemplateDate(aTemplDate);
+        // TODO/LATER: new functionality to store document info is required ( didn't work for SO7 XML format )
     }
 }
 
@@ -511,32 +523,32 @@ bool SfxObjectShell::IsHelpDocument() const
 void SfxObjectShell::ResetFromTemplate( const OUString& rTemplateName, const OUString& rFileName )
 {
     // only care about resetting this data for LibreOffice formats otherwise
-    if ( IsOwnStorageFormat( *GetMedium())  )
+    if ( !IsOwnStorageFormat( *GetMedium())  )
+        return;
+
+    uno::Reference<document::XDocumentProperties> xDocProps(getDocProperties());
+    xDocProps->setTemplateURL( OUString() );
+    xDocProps->setTemplateName( OUString() );
+    xDocProps->setTemplateDate( util::DateTime() );
+    xDocProps->resetUserData( OUString() );
+
+    // TODO/REFACTOR:
+    // Title?
+
+    if( !comphelper::isFileUrl( rFileName ) )
+        return;
+
+    OUString aFoundName;
+    if( SfxGetpApp()->Get_Impl()->GetDocumentTemplates()->GetFull( OUString(), rTemplateName, aFoundName ) )
     {
-        uno::Reference<document::XDocumentProperties> xDocProps(getDocProperties());
-        xDocProps->setTemplateURL( OUString() );
-        xDocProps->setTemplateName( OUString() );
-        xDocProps->setTemplateDate( util::DateTime() );
-        xDocProps->resetUserData( OUString() );
+        INetURLObject aObj( rFileName );
+        xDocProps->setTemplateURL( aObj.GetMainURL(INetURLObject::DecodeMechanism::ToIUri) );
+        xDocProps->setTemplateName( rTemplateName );
 
-        // TODO/REFACTOR:
-        // Title?
+        ::DateTime now( ::DateTime::SYSTEM );
+        xDocProps->setTemplateDate( now.GetUNODateTime() );
 
-        if( comphelper::isFileUrl( rFileName ) )
-        {
-            OUString aFoundName;
-            if( SfxGetpApp()->Get_Impl()->GetDocumentTemplates()->GetFull( OUString(), rTemplateName, aFoundName ) )
-            {
-                INetURLObject aObj( rFileName );
-                xDocProps->setTemplateURL( aObj.GetMainURL(INetURLObject::DecodeMechanism::ToIUri) );
-                xDocProps->setTemplateName( rTemplateName );
-
-                ::DateTime now( ::DateTime::SYSTEM );
-                xDocProps->setTemplateDate( now.GetUNODateTime() );
-
-                SetQueryLoadTemplate( true );
-            }
-        }
+        SetQueryLoadTemplate( true );
     }
 }
 
@@ -643,7 +655,7 @@ void SfxObjectShell::SetModifyPasswordEntered( bool bEntered )
     pImpl->m_bModifyPasswordEntered = bEntered;
 }
 
-bool SfxObjectShell::IsModifyPasswordEntered()
+bool SfxObjectShell::IsModifyPasswordEntered() const
 {
     return pImpl->m_bModifyPasswordEntered;
 }

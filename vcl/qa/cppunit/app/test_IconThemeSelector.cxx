@@ -7,9 +7,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <vcl/IconThemeSelector.hxx>
+#include <IconThemeSelector.hxx>
 
-#include <vcl/IconThemeScanner.hxx>
 #include <vcl/IconThemeInfo.hxx>
 
 #include <cppunit/TestAssert.h>
@@ -19,44 +18,26 @@
 
 class IconThemeSelectorTest : public CppUnit::TestFixture
 {
-    void
-    OxygenThemeIsReturnedForKde4Desktop();
-
-    void
-    TangoThemeIsReturnedForGtkDesktop();
-
-    void
-    ThemeIsOverriddenByPreferredTheme();
-
-    void
-    ThemeIsOverriddenByHighContrastMode();
-
-    void
-    NotInstalledThemeDoesNotOverride();
-
-    void
-    InstalledThemeIsFound();
-
-    void
-    FirstThemeIsReturnedIfRequestedThemeIsNotFound();
-
-    void
-    FallbackThemeIsReturnedForEmptyInput();
-
-    void
-    DifferentPreferredThemesAreInequal();
-
-    void
-    DifferentHighContrastModesAreInequal();
-
-    static std::vector<vcl::IconThemeInfo>
-    GetFakeInstalledThemes();
+#ifndef _WIN32 //default theme on Windows is Colibre independently from any desktop environment
+    void BreezeIsReturnedForKde5Desktop();
+    void ElementaryIsReturnedForGnomeDesktop();
+    void ThemeIsOverriddenByPreferredTheme();
+    void ThemeIsOverriddenByHighContrastMode();
+    void NotInstalledThemeDoesNotOverride();
+    void InstalledThemeIsFound();
+    void FirstThemeIsReturnedIfRequestedThemeIsNotFound();
+    void FallbackThemeIsReturnedForEmptyInput();
+    void DifferentPreferredThemesAreInequal();
+    void DifferentHighContrastModesAreInequal();
+    static std::vector<vcl::IconThemeInfo> GetFakeInstalledThemes();
+#endif
 
     // Adds code needed to register the test suite
     CPPUNIT_TEST_SUITE(IconThemeSelectorTest);
 
-    CPPUNIT_TEST(OxygenThemeIsReturnedForKde4Desktop);
-    CPPUNIT_TEST(TangoThemeIsReturnedForGtkDesktop);
+#ifndef _WIN32
+    CPPUNIT_TEST(BreezeIsReturnedForKde5Desktop);
+    CPPUNIT_TEST(ElementaryIsReturnedForGnomeDesktop);
     CPPUNIT_TEST(ThemeIsOverriddenByPreferredTheme);
     CPPUNIT_TEST(ThemeIsOverriddenByHighContrastMode);
     CPPUNIT_TEST(NotInstalledThemeDoesNotOverride);
@@ -65,53 +46,57 @@ class IconThemeSelectorTest : public CppUnit::TestFixture
     CPPUNIT_TEST(FallbackThemeIsReturnedForEmptyInput);
     CPPUNIT_TEST(DifferentPreferredThemesAreInequal);
     CPPUNIT_TEST(DifferentHighContrastModesAreInequal);
+#endif
 
     // End of test suite definition
-
     CPPUNIT_TEST_SUITE_END();
 };
+
+#ifndef _WIN32
 
 /*static*/ std::vector<vcl::IconThemeInfo>
 IconThemeSelectorTest::GetFakeInstalledThemes()
 {
     std::vector<vcl::IconThemeInfo> r;
     vcl::IconThemeInfo a;
-    a.mThemeId = "tango";
+    a.mThemeId = "breeze";
     r.push_back(a);
-    a.mThemeId = "oxygen";
+    a.mThemeId = "elementary";
     r.push_back(a);
-    a.mThemeId = "hicontrast";
+    a.mThemeId = "colibre";
+    r.push_back(a);
+    a.mThemeId = "sifr";
     r.push_back(a);
     return r;
 }
 
 void
-IconThemeSelectorTest::OxygenThemeIsReturnedForKde4Desktop()
+IconThemeSelectorTest::BreezeIsReturnedForKde5Desktop()
 {
     std::vector<vcl::IconThemeInfo> themes = GetFakeInstalledThemes();
     vcl::IconThemeSelector s;
-    OUString r = s.SelectIconThemeForDesktopEnvironment(themes, "kde4");
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("'oxygen' theme is returned for kde4 desktop", OUString("oxygen"), r);
+    OUString r = s.SelectIconThemeForDesktopEnvironment(themes, "plasma5");
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("'breeze' theme is returned for Plasma 5 desktop", OUString("breeze"), r);
 }
 
 void
-IconThemeSelectorTest::TangoThemeIsReturnedForGtkDesktop()
+IconThemeSelectorTest::ElementaryIsReturnedForGnomeDesktop()
 {
     std::vector<vcl::IconThemeInfo> themes = GetFakeInstalledThemes();
     vcl::IconThemeSelector s;
-    OUString r = s.SelectIconThemeForDesktopEnvironment(themes, "gtk");
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("'tango' theme is returned for kde4 desktop", OUString("tango"), r);
+    OUString r = s.SelectIconThemeForDesktopEnvironment(themes, "gnome");
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("'elementary' theme is returned for gnome desktop", OUString("elementary"), r);
 }
 
 void
 IconThemeSelectorTest::ThemeIsOverriddenByPreferredTheme()
 {
     vcl::IconThemeSelector s;
-    OUString preferred("oxygen");
+    OUString preferred("breeze");
     s.SetPreferredIconTheme(preferred, false);
     std::vector<vcl::IconThemeInfo> themes = GetFakeInstalledThemes();
-    OUString selected = s.SelectIconThemeForDesktopEnvironment(themes, "gtk");
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("'tango' theme is overridden by oxygen", preferred, selected);
+    OUString selected = s.SelectIconThemeForDesktopEnvironment(themes, "gnome");
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("'elementary' theme is overridden by breeze", preferred, selected);
 }
 
 void
@@ -120,23 +105,23 @@ IconThemeSelectorTest::ThemeIsOverriddenByHighContrastMode()
     vcl::IconThemeSelector s;
     s.SetUseHighContrastTheme(true);
     std::vector<vcl::IconThemeInfo> themes = GetFakeInstalledThemes();
-    OUString selected = s.SelectIconTheme(themes, "tango");
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("'tango' theme is overridden by high contrast mode",
-            OUString("hicontrast"), selected);
+    OUString selected = s.SelectIconTheme(themes, "breeze");
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("'breeze' theme is overridden by high contrast mode",
+            OUString("sifr"), selected);
     s.SetUseHighContrastTheme(false);
-    selected = s.SelectIconTheme(themes, "tango");
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("'tango' theme is no longer overridden by high contrast mode",
-            OUString("tango"), selected);
+    selected = s.SelectIconTheme(themes, "breeze");
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("'breeze' theme is no longer overridden by high contrast mode",
+            OUString("breeze"), selected);
 }
 
 void
 IconThemeSelectorTest::NotInstalledThemeDoesNotOverride()
 {
     vcl::IconThemeSelector s;
-    s.SetPreferredIconTheme("oxygen_katze", false);
+    s.SetPreferredIconTheme("breeze_foo", false);
     std::vector<vcl::IconThemeInfo> themes = GetFakeInstalledThemes();
-    OUString selected = s.SelectIconTheme(themes, "oxygen");
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("'oxygen' theme is not overridden by 'oxygen_katze'", OUString("oxygen"), selected);
+    OUString selected = s.SelectIconTheme(themes, "colibre");
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("'colibre' theme is not overridden by 'breeze_foo'", OUString("colibre"), selected);
 }
 
 void
@@ -144,8 +129,8 @@ IconThemeSelectorTest::InstalledThemeIsFound()
 {
     vcl::IconThemeSelector s;
     std::vector<vcl::IconThemeInfo> themes = GetFakeInstalledThemes();
-    OUString selected = s.SelectIconTheme(themes, "oxygen");
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("'oxygen' theme is found", OUString("oxygen"), selected);
+    OUString selected = s.SelectIconTheme(themes, "colibre");
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("'colibre' theme is found", OUString("colibre"), selected);
 }
 
 void
@@ -153,15 +138,15 @@ IconThemeSelectorTest::FirstThemeIsReturnedIfRequestedThemeIsNotFound()
 {
     vcl::IconThemeSelector s;
     std::vector<vcl::IconThemeInfo> themes = GetFakeInstalledThemes();
-    OUString selected = s.SelectIconTheme(themes, "oxygen_katze");
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("'oxygen' theme is found", themes.front().GetThemeId(), selected);
+    OUString selected = s.SelectIconTheme(themes, "breeze_foo");
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("'breeze' theme is found", themes.front().GetThemeId(), selected);
 }
 
 void
 IconThemeSelectorTest::FallbackThemeIsReturnedForEmptyInput()
 {
     vcl::IconThemeSelector s;
-    OUString selected = s.SelectIconTheme(std::vector<vcl::IconThemeInfo>(), "oxygen");
+    OUString selected = s.SelectIconTheme(std::vector<vcl::IconThemeInfo>(), "colibre");
     CPPUNIT_ASSERT_EQUAL_MESSAGE("fallback is returned for empty input",
             OUString(vcl::IconThemeSelector::FALLBACK_ICON_THEME_ID), selected);
 }
@@ -182,11 +167,13 @@ IconThemeSelectorTest::DifferentPreferredThemesAreInequal()
 {
     vcl::IconThemeSelector s1;
     vcl::IconThemeSelector s2;
-    s1.SetPreferredIconTheme("oxygen", false);
+    s1.SetPreferredIconTheme("breeze", false);
     s2.SetUseHighContrastTheme(true);
     bool equal = (s1 == s2);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Different preferred themes are detected as inequal", false, equal);
 }
+
+#endif
 
 // Put the test suite in the registry
 CPPUNIT_TEST_SUITE_REGISTRATION(IconThemeSelectorTest);

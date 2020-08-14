@@ -17,7 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <framework/addonsoptions.hxx>
+#include <o3tl/safeint.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/configitem.hxx>
 #include <unotools/ucbstreamhelper.hxx>
@@ -25,12 +27,14 @@
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <comphelper/getexpandeduri.hxx>
 #include <comphelper/processfactory.hxx>
 #include <vcl/dibtools.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <vcl/toolbox.hxx>
+#include <vcl/svapp.hxx>
 
 #include <algorithm>
 #include <unordered_map>
@@ -57,7 +61,7 @@ using namespace ::com::sun::star;
 #define PROPERTYNAME_CONTEXT                            ADDONSMENUITEM_STRING_CONTEXT
 #define PROPERTYNAME_SUBMENU                            ADDONSMENUITEM_STRING_SUBMENU
 
-#define IMAGES_NODENAME                                 OUString("UserDefinedImages" )
+#define IMAGES_NODENAME                                 "UserDefinedImages"
 
 // The following order is mandatory. Please add properties at the end!
 #define INDEX_URL               0
@@ -71,7 +75,9 @@ using namespace ::com::sun::star;
 #define INDEX_ALIGN             8
 #define INDEX_AUTOSIZE          9
 #define INDEX_OWNERDRAW         10
-#define PROPERTYCOUNT_INDEX     11
+#define INDEX_MANDATORY         11
+#define INDEX_STYLE             12
+#define PROPERTYCOUNT_INDEX     13
 
 // The following order is mandatory. Please add properties at the end!
 #define PROPERTYCOUNT_MENUITEM                          6
@@ -100,14 +106,26 @@ using namespace ::com::sun::star;
 #define OFFSET_TOOLBARITEM_WIDTH                        6
 
 // The following order is mandatory. Please add properties at the end!
-#define PROPERTYCOUNT_STATUSBARITEM                     7
+#define PROPERTYCOUNT_NOTEBOOKBARITEM                   8
+#define OFFSET_NOTEBOOKBARITEM_URL                      0
+#define OFFSET_NOTEBOOKBARITEM_TITLE                    1
+#define OFFSET_NOTEBOOKBARITEM_IMAGEIDENTIFIER          2
+#define OFFSET_NOTEBOOKBARITEM_TARGET                   3
+#define OFFSET_NOTEBOOKBARITEM_CONTEXT                  4
+#define OFFSET_NOTEBOOKBARITEM_CONTROLTYPE              5
+#define OFFSET_NOTEBOOKBARITEM_WIDTH                    6
+#define OFFSET_NOTEBOOKBARITEM_STYLE                    7
+
+// The following order is mandatory. Please add properties at the end!
+#define PROPERTYCOUNT_STATUSBARITEM                     8
 #define OFFSET_STATUSBARITEM_URL                        0
 #define OFFSET_STATUSBARITEM_TITLE                      1
 #define OFFSET_STATUSBARITEM_CONTEXT                    2
 #define OFFSET_STATUSBARITEM_ALIGN                      3
 #define OFFSET_STATUSBARITEM_AUTOSIZE                   4
 #define OFFSET_STATUSBARITEM_OWNERDRAW                  5
-#define OFFSET_STATUSBARITEM_WIDTH                      6
+#define OFFSET_STATUSBARITEM_MANDATORY                  6
+#define OFFSET_STATUSBARITEM_WIDTH                      7
 
 // The following order is mandatory. Please add properties at the end!
 #define PROPERTYCOUNT_IMAGES                            8
@@ -137,6 +155,15 @@ using namespace ::com::sun::star;
 #define OFFSET_MERGETOOLBAR_MERGEFALLBACK               4
 #define OFFSET_MERGETOOLBAR_MERGECONTEXT                5
 #define OFFSET_MERGETOOLBAR_TOOLBARITEMS                6
+
+#define PROPERTYCOUNT_MERGE_NOTEBOOKBAR                 7
+#define OFFSET_MERGENOTEBOOKBAR_NOTEBOOKBAR             0
+#define OFFSET_MERGENOTEBOOKBAR_MERGEPOINT              1
+#define OFFSET_MERGENOTEBOOKBAR_MERGECOMMAND            2
+#define OFFSET_MERGENOTEBOOKBAR_MERGECOMMANDPARAMETER   3
+#define OFFSET_MERGENOTEBOOKBAR_MERGEFALLBACK           4
+#define OFFSET_MERGENOTEBOOKBAR_MERGECONTEXT            5
+#define OFFSET_MERGENOTEBOOKBAR_NOTEBOOKBARITEMS        6
 
 #define PROPERTYCOUNT_MERGE_STATUSBAR                   6
 #define OFFSET_MERGESTATUSBAR_MERGEPOINT                0
@@ -192,14 +219,18 @@ class AddonsOptions_Impl : public ConfigItem
 
         bool                                            HasAddonsMenu        () const;
         sal_Int32                                       GetAddonsToolBarCount() const;
+        sal_Int32                                       GetAddonsNotebookBarCount() const;
         const Sequence< Sequence< PropertyValue > >&    GetAddonsMenu        () const { return m_aCachedMenuProperties;}
         const Sequence< Sequence< PropertyValue > >&    GetAddonsMenuBarPart () const { return m_aCachedMenuBarPartProperties;}
         const Sequence< Sequence< PropertyValue > >&    GetAddonsToolBarPart ( sal_uInt32 nIndex ) const;
-        const OUString                           GetAddonsToolbarResourceName( sal_uInt32 nIndex ) const;
+        const Sequence< Sequence< PropertyValue > >&    GetAddonsNotebookBarPart ( sal_uInt32 nIndex ) const;
+        OUString                                        GetAddonsToolbarResourceName( sal_uInt32 nIndex ) const;
+        OUString                                        GetAddonsNotebookBarResourceName( sal_uInt32 nIndex ) const;
         const Sequence< Sequence< PropertyValue > >&    GetAddonsHelpMenu    () const { return m_aCachedHelpMenuProperties;}
-        Image                                           GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale );
+        BitmapEx                                        GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale );
         const MergeMenuInstructionContainer&            GetMergeMenuInstructions() const { return m_aCachedMergeMenuInsContainer;}
         bool                                            GetMergeToolbarInstructions( const OUString& rToolbarName, MergeToolbarInstructionContainer& rToolbarInstructions ) const;
+        bool                                            GetMergeNotebookBarInstructions( const OUString& rNotebookBarName, MergeNotebookBarInstructionContainer& rNotebookBarInstructions ) const;
         const MergeStatusbarInstructionContainer&       GetMergeStatusbarInstructions() const { return m_aCachedStatusbarMergingInstructions;}
         void                                            ReadConfigurationData();
 
@@ -212,8 +243,8 @@ class AddonsOptions_Impl : public ConfigItem
 
         struct OneImageEntry
         {
-            Image    aScaled;   ///< cached scaled image
-            Image    aImage;    ///< original un-scaled image
+            BitmapEx aScaled;   ///< cached scaled image
+            BitmapEx aImage;    ///< original un-scaled image
             OUString aURL;      ///< URL in case it is not loaded yet
         };
 
@@ -225,13 +256,15 @@ class AddonsOptions_Impl : public ConfigItem
             // accessed in this order
             OneImageEntry aSizeEntry[2];
             ImageEntry() {}
-            void addImage(ImageSize eSize, const Image &rImage, const OUString &rURL);
+            void addImage(ImageSize eSize, const BitmapEx &rImage, const OUString &rURL);
         };
 
-        typedef std::unordered_map< OUString, ImageEntry, OUStringHash > ImageManager;
-        typedef std::unordered_map< OUString, sal_uInt32, OUStringHash > StringToIndexMap;
+        typedef std::unordered_map< OUString, ImageEntry > ImageManager;
+        typedef std::unordered_map< OUString, sal_uInt32 > StringToIndexMap;
         typedef std::vector< Sequence< Sequence< PropertyValue > > > AddonToolBars;
-        typedef std::unordered_map< OUString, MergeToolbarInstructionContainer, OUStringHash > ToolbarMergingInstructions;
+        typedef std::vector< Sequence< Sequence< PropertyValue > > > AddonNotebookBars;
+        typedef std::unordered_map< OUString, MergeToolbarInstructionContainer > ToolbarMergingInstructions;
+        typedef std::unordered_map< OUString, MergeNotebookBarInstructionContainer > NotebookBarMergingInstructions;
 
         /*-****************************************************************************************************
             @short      return list of key names of our configuration management which represent our module tree
@@ -245,23 +278,30 @@ class AddonsOptions_Impl : public ConfigItem
         void                 ReadOfficeMenuBarSet( Sequence< Sequence< PropertyValue > >& aAddonOfficeMenuBarSeq );
         void                 ReadOfficeToolBarSet( AddonToolBars& rAddonOfficeToolBars, std::vector< OUString >& rAddonOfficeToolBarResNames );
         bool                 ReadToolBarItemSet( const OUString& rToolBarItemSetNodeName, Sequence< Sequence< PropertyValue > >& aAddonOfficeToolBarSeq );
+        void                 ReadOfficeNotebookBarSet( AddonNotebookBars& rAddonOfficeNotebookBars, std::vector< OUString >& rAddonOfficeNotebookBarResNames );
+        bool                 ReadNotebookBarItemSet( const OUString& rNotebookBarItemSetNodeName, Sequence< Sequence< PropertyValue > >& aAddonOfficeNotebookBarSeq );
+
         void                 ReadOfficeHelpSet( Sequence< Sequence< PropertyValue > >& aAddonOfficeHelpMenuSeq );
         void                 ReadImages( ImageManager& aImageManager );
         void                 ReadMenuMergeInstructions( MergeMenuInstructionContainer& rContainer );
         void                 ReadToolbarMergeInstructions( ToolbarMergingInstructions& rToolbarMergeMap );
+        void                 ReadNotebookBarMergeInstructions( NotebookBarMergingInstructions& rNotebookBarMergeMap );
         void                 ReadStatusbarMergeInstructions( MergeStatusbarInstructionContainer& rContainer );
 
         void                 ReadMergeMenuData( const OUString& aMergeAddonInstructionBase, Sequence< Sequence< PropertyValue > >& rMergeMenu );
         bool                 ReadMergeToolbarData( const OUString& aMergeAddonInstructionBase, Sequence< Sequence< PropertyValue > >& rMergeToolbarItems );
+        bool                 ReadMergeNotebookBarData( const OUString& aMergeAddonInstructionBase, Sequence< Sequence< PropertyValue > >& rMergeNotebookBarItems );
         bool                 ReadMergeStatusbarData( const OUString& aMergeAddonInstructionBase, Sequence< Sequence< PropertyValue > >& rMergeStatusbar );
         bool                 ReadMenuItem( const OUString& aMenuItemNodeName, Sequence< PropertyValue >& aMenuItem, bool bIgnoreSubMenu = false );
         bool                 ReadPopupMenu( const OUString& aPopupMenuNodeName, Sequence< PropertyValue >& aPopupMenu );
         void                 AppendPopupMenu( Sequence< PropertyValue >& aTargetPopupMenu, const Sequence< PropertyValue >& rSourcePopupMenu );
         bool                 ReadToolBarItem( const OUString& aToolBarItemNodeName, Sequence< PropertyValue >& aToolBarItem );
+        bool                 ReadNotebookBarItem( const OUString& aNotebookBarItemNodeName, Sequence< PropertyValue >& aNotebookBarItem );
+
         bool                 ReadStatusBarItem( const OUString& aStatusbarItemNodeName, Sequence< PropertyValue >& aStatusbarItem );
-        ImageEntry*          ReadImageData( const OUString& aImagesNodeName );
+        std::unique_ptr<ImageEntry> ReadImageData( const OUString& aImagesNodeName );
         void                 ReadAndAssociateImages( const OUString& aURL, const OUString& aImageId );
-        Image                ReadImageFromURL( const OUString& aURL );
+        BitmapEx             ReadImageFromURL( const OUString& aURL );
         bool                 HasAssociatedImages( const OUString& aURL );
         void                 SubstituteVariables( OUString& aURL );
 
@@ -271,9 +311,11 @@ class AddonsOptions_Impl : public ConfigItem
         Sequence< OUString > GetPropertyNamesMenuItem( const OUString& aPropertyRootNode ) const;
         Sequence< OUString > GetPropertyNamesPopupMenu( const OUString& aPropertyRootNode ) const;
         Sequence< OUString > GetPropertyNamesToolBarItem( const OUString& aPropertyRootNode ) const;
-        Sequence< OUString > GetPropertyNamesStatusbarItem( const ::rtl::OUString& aPropertyRootNode ) const;
+        Sequence< OUString > GetPropertyNamesNotebookBarItem( const OUString& aPropertyRootNode ) const;
+
+        Sequence< OUString > GetPropertyNamesStatusbarItem( const OUString& aPropertyRootNode ) const;
         Sequence< OUString > GetPropertyNamesImages( const OUString& aPropertyRootNode ) const;
-        bool                 CreateImageFromSequence( Image& rImage, Sequence< sal_Int8 >& rBitmapDataSeq ) const;
+        bool                 CreateImageFromSequence( BitmapEx& rImage, Sequence< sal_Int8 >& rBitmapDataSeq ) const;
 
         DECL_LINK(NotifyEvent, void*, void);
 
@@ -287,27 +329,32 @@ class AddonsOptions_Impl : public ConfigItem
         OUString                                   m_aPropImagesNames[PROPERTYCOUNT_IMAGES];
         OUString                                   m_aPropMergeMenuNames[PROPERTYCOUNT_MERGE_MENUBAR];
         OUString                                   m_aPropMergeToolbarNames[PROPERTYCOUNT_MERGE_TOOLBAR];
+        OUString                                   m_aPropMergeNotebookBarNames[PROPERTYCOUNT_MERGE_NOTEBOOKBAR];
         OUString                                   m_aPropMergeStatusbarNames[PROPERTYCOUNT_MERGE_STATUSBAR];
         OUString                                   m_aPathDelimiter;
         OUString                                   m_aRootAddonPopupMenuURLPrexfix;
         Sequence< Sequence< PropertyValue > >             m_aCachedMenuProperties;
         Sequence< Sequence< PropertyValue > >             m_aCachedMenuBarPartProperties;
         AddonToolBars                                     m_aCachedToolBarPartProperties;
+        AddonNotebookBars                                 m_aCachedNotebookBarPartProperties;
         std::vector< OUString >                      m_aCachedToolBarPartResourceNames;
+        std::vector< OUString >                      m_aCachedNotebookBarPartResourceNames;
         Sequence< Sequence< PropertyValue > >             m_aCachedHelpMenuProperties;
         ImageManager                                      m_aImageManager;
         Sequence< Sequence< PropertyValue > >             m_aEmptyAddonToolBar;
+        Sequence< Sequence< PropertyValue > >             m_aEmptyAddonNotebookBar;
         MergeMenuInstructionContainer                     m_aCachedMergeMenuInsContainer;
         ToolbarMergingInstructions                        m_aCachedToolbarMergingInstructions;
+        NotebookBarMergingInstructions                    m_aCachedNotebookBarMergingInstructions;
         MergeStatusbarInstructionContainer                m_aCachedStatusbarMergingInstructions;
 };
 
 void AddonsOptions_Impl::ImageEntry::addImage(ImageSize eSize,
-                                              const Image &rImage,
+                                              const BitmapEx& rImage,
                                               const OUString &rURL)
 {
-    aSizeEntry[(int)eSize].aImage = rImage;
-    aSizeEntry[(int)eSize].aURL = rURL;
+    aSizeEntry[static_cast<int>(eSize)].aImage = rImage;
+    aSizeEntry[static_cast<int>(eSize)].aURL = rURL;
 }
 
 //  constructor
@@ -331,6 +378,8 @@ AddonsOptions_Impl::AddonsOptions_Impl()
     m_aPropNames[ INDEX_ALIGN           ] = "Alignment";
     m_aPropNames[ INDEX_AUTOSIZE        ] = "AutoSize";
     m_aPropNames[ INDEX_OWNERDRAW       ] = "OwnerDraw";
+    m_aPropNames[ INDEX_MANDATORY       ] = "Mandatory";
+    m_aPropNames[ INDEX_STYLE           ] = "Style";
 
     // initialize array with fixed images property names
     m_aPropImagesNames[ OFFSET_IMAGES_SMALL         ] = "ImageSmall";
@@ -357,6 +406,14 @@ AddonsOptions_Impl::AddonsOptions_Impl()
     m_aPropMergeToolbarNames[ OFFSET_MERGETOOLBAR_MERGEFALLBACK         ] = "MergeFallback";
     m_aPropMergeToolbarNames[ OFFSET_MERGETOOLBAR_MERGECONTEXT          ] = "MergeContext";
     m_aPropMergeToolbarNames[ OFFSET_MERGETOOLBAR_TOOLBARITEMS          ] = "ToolBarItems";
+
+    m_aPropMergeNotebookBarNames[ OFFSET_MERGENOTEBOOKBAR_NOTEBOOKBAR           ] = "MergeNotebookBar";
+    m_aPropMergeNotebookBarNames[ OFFSET_MERGENOTEBOOKBAR_MERGEPOINT            ] = "MergePoint";
+    m_aPropMergeNotebookBarNames[ OFFSET_MERGENOTEBOOKBAR_MERGECOMMAND          ] = "MergeCommand";
+    m_aPropMergeNotebookBarNames[ OFFSET_MERGENOTEBOOKBAR_MERGECOMMANDPARAMETER ] = "MergeCommandParameter";
+    m_aPropMergeNotebookBarNames[ OFFSET_MERGENOTEBOOKBAR_MERGEFALLBACK         ] = "MergeFallback";
+    m_aPropMergeNotebookBarNames[ OFFSET_MERGENOTEBOOKBAR_MERGECONTEXT          ] = "MergeContext";
+    m_aPropMergeNotebookBarNames[ OFFSET_MERGENOTEBOOKBAR_NOTEBOOKBARITEMS      ] = "NotebookBarItems";
 
     m_aPropMergeStatusbarNames[ OFFSET_MERGESTATUSBAR_MERGEPOINT            ] = "MergePoint";
     m_aPropMergeStatusbarNames[ OFFSET_MERGESTATUSBAR_MERGECOMMAND          ] = "MergeCommand";
@@ -386,23 +443,28 @@ void AddonsOptions_Impl::ReadConfigurationData()
     m_aCachedMenuProperties = Sequence< Sequence< PropertyValue > >();
     m_aCachedMenuBarPartProperties = Sequence< Sequence< PropertyValue > >();
     m_aCachedToolBarPartProperties = AddonToolBars();
+    m_aCachedNotebookBarPartProperties = AddonNotebookBars();
     m_aCachedHelpMenuProperties = Sequence< Sequence< PropertyValue > >();
     m_aCachedToolBarPartResourceNames.clear();
+    m_aCachedNotebookBarPartResourceNames.clear();
     m_aImageManager = ImageManager();
 
     ReadAddonMenuSet( m_aCachedMenuProperties );
     ReadOfficeMenuBarSet( m_aCachedMenuBarPartProperties );
     ReadOfficeToolBarSet( m_aCachedToolBarPartProperties, m_aCachedToolBarPartResourceNames );
+    ReadOfficeNotebookBarSet( m_aCachedNotebookBarPartProperties, m_aCachedNotebookBarPartResourceNames );
 
     ReadOfficeHelpSet( m_aCachedHelpMenuProperties );
     ReadImages( m_aImageManager );
 
     m_aCachedMergeMenuInsContainer.clear();
     m_aCachedToolbarMergingInstructions.clear();
+    m_aCachedNotebookBarMergingInstructions.clear();
     m_aCachedStatusbarMergingInstructions.clear();
 
     ReadMenuMergeInstructions( m_aCachedMergeMenuInsContainer );
     ReadToolbarMergeInstructions( m_aCachedToolbarMergingInstructions );
+    ReadNotebookBarMergeInstructions( m_aCachedNotebookBarMergingInstructions );
     ReadStatusbarMergeInstructions( m_aCachedStatusbarMergingInstructions );
 }
 
@@ -424,7 +486,7 @@ void AddonsOptions_Impl::ImplCommit()
 
 bool AddonsOptions_Impl::HasAddonsMenu() const
 {
-    return ( m_aCachedMenuProperties.getLength() > 0 );
+    return m_aCachedMenuProperties.hasElements();
 }
 
 //  public method
@@ -432,6 +494,13 @@ bool AddonsOptions_Impl::HasAddonsMenu() const
 sal_Int32 AddonsOptions_Impl::GetAddonsToolBarCount() const
 {
     return m_aCachedToolBarPartProperties.size();
+}
+
+//  public method
+
+sal_Int32 AddonsOptions_Impl::GetAddonsNotebookBarCount() const
+{
+    return m_aCachedNotebookBarPartProperties.size();
 }
 
 //  public method
@@ -446,10 +515,30 @@ const Sequence< Sequence< PropertyValue > >& AddonsOptions_Impl::GetAddonsToolBa
 
 //  public method
 
-const OUString AddonsOptions_Impl::GetAddonsToolbarResourceName( sal_uInt32 nIndex ) const
+const Sequence< Sequence< PropertyValue > >& AddonsOptions_Impl::GetAddonsNotebookBarPart( sal_uInt32 nIndex ) const
+{
+    if ( /*nIndex >= 0 &&*/ nIndex < m_aCachedNotebookBarPartProperties.size() )
+        return m_aCachedNotebookBarPartProperties[nIndex];
+    else
+        return m_aEmptyAddonNotebookBar;
+}
+
+//  public method
+
+OUString AddonsOptions_Impl::GetAddonsToolbarResourceName( sal_uInt32 nIndex ) const
 {
     if ( nIndex < m_aCachedToolBarPartResourceNames.size() )
         return m_aCachedToolBarPartResourceNames[nIndex];
+    else
+        return OUString();
+}
+
+//  public method
+
+OUString AddonsOptions_Impl::GetAddonsNotebookBarResourceName( sal_uInt32 nIndex ) const
+{
+    if ( nIndex < m_aCachedNotebookBarPartResourceNames.size() )
+        return m_aCachedNotebookBarPartResourceNames[nIndex];
     else
         return OUString();
 }
@@ -472,29 +561,45 @@ bool AddonsOptions_Impl::GetMergeToolbarInstructions(
 
 //  public method
 
-static Image ScaleImage( const Image &rImage, bool bBig )
+bool AddonsOptions_Impl::GetMergeNotebookBarInstructions(
+    const OUString& rNotebookBarName,
+    MergeNotebookBarInstructionContainer& rNotebookBarInstructions ) const
+{
+    NotebookBarMergingInstructions::const_iterator pIter = m_aCachedNotebookBarMergingInstructions.find( rNotebookBarName );
+    if ( pIter != m_aCachedNotebookBarMergingInstructions.end() )
+    {
+        rNotebookBarInstructions = pIter->second;
+        return true;
+    }
+    else
+        return false;
+}
+
+//  public method
+
+static BitmapEx ScaleImage( const BitmapEx &rImage, bool bBig )
 {
     Size aSize = ToolBox::GetDefaultImageSize(bBig ? ToolBoxButtonSize::Large : ToolBoxButtonSize::Small);
-    BitmapEx aScaleBmp(rImage.GetBitmapEx());
+    BitmapEx aScaleBmp(rImage);
     SAL_INFO("fwk", "Addons: expensive scale image from "
              << aScaleBmp.GetSizePixel() << " to " << aSize);
     aScaleBmp.Scale(aSize, BmpScaleFlag::BestQuality);
-    return Image(aScaleBmp);
+    return aScaleBmp;
 }
 
-Image AddonsOptions_Impl::GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale )
+BitmapEx AddonsOptions_Impl::GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale )
 {
-    Image aImage;
+    BitmapEx aImage;
 
     SAL_INFO("fwk", "Expensive: Addons GetImageFromURL " << aURL <<
-             " big " << (bBig?"big":"litte") <<
+             " big " << (bBig?"big":"little") <<
              " scale " << (bNoScale ? "noscale" : "scale"));
 
     ImageManager::iterator pIter = m_aImageManager.find(aURL);
     if ( pIter != m_aImageManager.end() )
     {
         ImageSize eSize = bBig ? IMGSIZE_BIG : IMGSIZE_SMALL;
-        int nIdx = (int)eSize;
+        int nIdx = static_cast<int>(eSize);
         int nOtherIdx = nIdx ? 0 : 1;
 
         OneImageEntry& rSizeEntry = pIter->second.aSizeEntry[nIdx];
@@ -644,7 +749,7 @@ void AddonsOptions_Impl::ReadOfficeMenuBarSet( Sequence< Sequence< PropertyValue
                     sal_uInt32 nMenuItemCount = rAddonOfficeMenuBarSeq.getLength() + 1;
                     rAddonOfficeMenuBarSeq.realloc( nMenuItemCount );
                     rAddonOfficeMenuBarSeq[nIndex] = aPopupMenu;
-                    aTitleToIndexMap.insert( StringToIndexMap::value_type( aPopupTitle, nIndex ));
+                    aTitleToIndexMap.emplace( aPopupTitle, nIndex );
                     ++nIndex;
                 }
             }
@@ -701,7 +806,66 @@ bool AddonsOptions_Impl::ReadToolBarItemSet( const OUString& rToolBarItemSetNode
         }
     }
 
-    return ( (sal_uInt32)rAddonOfficeToolBarSeq.getLength() > nToolBarItemCount );
+    return ( o3tl::make_unsigned(rAddonOfficeToolBarSeq.getLength()) > nToolBarItemCount );
+}
+
+void AddonsOptions_Impl::ReadOfficeNotebookBarSet(
+    AddonNotebookBars& rAddonOfficeNotebookBars,
+    std::vector<OUString>& rAddonOfficeNotebookBarResNames)
+{
+    // Read the OfficeToolBar set and fill property sequences
+    OUString aAddonNotebookBarNodeName("AddonUI/OfficeNotebookBar");
+    Sequence<OUString> aAddonNotebookBarNodeSeq = GetNodeNames(aAddonNotebookBarNodeName);
+    OUString aAddonNotebookBarNode(aAddonNotebookBarNodeName + m_aPathDelimiter);
+
+    sal_uInt32 nCount = aAddonNotebookBarNodeSeq.getLength();
+
+    for (sal_uInt32 n = 0; n < nCount; n++)
+    {
+        OUString aNotebookBarItemNode(aAddonNotebookBarNode + aAddonNotebookBarNodeSeq[n]);
+        rAddonOfficeNotebookBarResNames.push_back(aAddonNotebookBarNodeSeq[n]);
+        rAddonOfficeNotebookBars.push_back(m_aEmptyAddonNotebookBar);
+        ReadNotebookBarItemSet(aNotebookBarItemNode, rAddonOfficeNotebookBars[n]);
+    }
+}
+
+bool AddonsOptions_Impl::ReadNotebookBarItemSet(
+    const OUString& rNotebookBarItemSetNodeName,
+    Sequence<Sequence<PropertyValue>>& rAddonOfficeNotebookBarSeq)
+{
+    sal_uInt32 nNotebookBarItemCount = rAddonOfficeNotebookBarSeq.getLength();
+    OUString aAddonNotebookBarItemSetNode(rNotebookBarItemSetNodeName + m_aPathDelimiter);
+    Sequence<OUString> aAddonNotebookBarItemSetNodeSeq = GetNodeNames(rNotebookBarItemSetNodeName);
+    Sequence<PropertyValue> aNotebookBarItem(PROPERTYCOUNT_NOTEBOOKBARITEM);
+
+    // Init the property value sequence
+    aNotebookBarItem[OFFSET_NOTEBOOKBARITEM_URL].Name = m_aPropNames[INDEX_URL];
+    aNotebookBarItem[OFFSET_NOTEBOOKBARITEM_TITLE].Name = m_aPropNames[INDEX_TITLE];
+    aNotebookBarItem[OFFSET_NOTEBOOKBARITEM_IMAGEIDENTIFIER].Name
+        = m_aPropNames[INDEX_IMAGEIDENTIFIER];
+    aNotebookBarItem[OFFSET_NOTEBOOKBARITEM_TARGET].Name = m_aPropNames[INDEX_TARGET];
+    aNotebookBarItem[OFFSET_NOTEBOOKBARITEM_CONTEXT].Name = m_aPropNames[INDEX_CONTEXT];
+    aNotebookBarItem[OFFSET_NOTEBOOKBARITEM_CONTROLTYPE].Name = m_aPropNames[INDEX_CONTROLTYPE];
+    aNotebookBarItem[OFFSET_NOTEBOOKBARITEM_WIDTH].Name = m_aPropNames[INDEX_WIDTH];
+    aNotebookBarItem[OFFSET_NOTEBOOKBARITEM_STYLE].Name = m_aPropNames[INDEX_STYLE];
+
+    sal_uInt32 nCount = aAddonNotebookBarItemSetNodeSeq.getLength();
+    for (sal_uInt32 n = 0; n < nCount; n++)
+    {
+        OUString aNotebookBarItemNode(aAddonNotebookBarItemSetNode
+                                      + aAddonNotebookBarItemSetNodeSeq[n]);
+        // Read the NotebookBarItem
+        if (ReadNotebookBarItem(aNotebookBarItemNode, aNotebookBarItem))
+        {
+            // Successfully read a toolbar item, append to our list
+            sal_uInt32 nAddonCount = rAddonOfficeNotebookBarSeq.getLength();
+            rAddonOfficeNotebookBarSeq.realloc(nAddonCount + 1);
+            rAddonOfficeNotebookBarSeq[nAddonCount] = aNotebookBarItem;
+        }
+    }
+
+    return (o3tl::make_unsigned(rAddonOfficeNotebookBarSeq.getLength())
+            > nNotebookBarItemCount);
 }
 
 void AddonsOptions_Impl::ReadImages( ImageManager& aImageManager )
@@ -722,32 +886,29 @@ void AddonsOptions_Impl::ReadImages( ImageManager& aImageManager )
         OUString aImagesItemNode( aAddonImagesNode + aAddonImagesNodeSeq[n] );
 
         // Create sequence for data access
-        OUStringBuffer aBuffer( aImagesItemNode );
-        aBuffer.append( m_aPathDelimiter );
-        aBuffer.append( m_aPropNames[ OFFSET_MENUITEM_URL ] );
-        aAddonImageItemNodePropNames[0] = aBuffer.makeStringAndClear();
+        aAddonImageItemNodePropNames[0] = aImagesItemNode +
+            m_aPathDelimiter +
+            m_aPropNames[ OFFSET_MENUITEM_URL ];
 
         Sequence< Any > aAddonImageItemNodeValues = GetProperties( aAddonImageItemNodePropNames );
 
-        // An user-defined image entry must have an URL. As "ImageIdentifier" has a higher priority
+        // An user-defined image entry must have a URL. As "ImageIdentifier" has a higher priority
         // we also check if we already have an images association.
         if (( aAddonImageItemNodeValues[0] >>= aURL ) &&
             !aURL.isEmpty() &&
             !HasAssociatedImages( aURL ))
         {
-            OUStringBuffer aBuf( aImagesItemNode );
-            aBuf.append( m_aPathDelimiter );
-            aBuf.append( IMAGES_NODENAME );
-            aBuf.append( m_aPathDelimiter );
-            OUString aImagesUserDefinedItemNode = aBuf.makeStringAndClear();
+            OUString aImagesUserDefinedItemNode = aImagesItemNode +
+                m_aPathDelimiter +
+                IMAGES_NODENAME +
+                m_aPathDelimiter;
 
             // Read a user-defined images data
-            ImageEntry* pImageEntry = ReadImageData( aImagesUserDefinedItemNode );
+            std::unique_ptr<ImageEntry> pImageEntry = ReadImageData( aImagesUserDefinedItemNode );
             if ( pImageEntry )
             {
                 // Successfully read a user-defined images item, put it into our image manager
-                aImageManager.insert( ImageManager::value_type( aURL, *pImageEntry ));
-                delete pImageEntry; // We have the ownership of the pointer
+                aImageManager.emplace( aURL, std::move(*pImageEntry) );
             }
         }
     }
@@ -755,7 +916,7 @@ void AddonsOptions_Impl::ReadImages( ImageManager& aImageManager )
 
 OUString AddonsOptions_Impl::GeneratePrefixURL()
 {
-    // Create an unique prefixed Add-On popup menu URL so it can be identified later as a runtime popup menu.
+    // Create a unique prefixed Add-On popup menu URL so it can be identified later as a runtime popup menu.
     // They use a different image manager, so they must be identified by the sfx2/framework code.
     OUString aPopupMenuURL;
     OUStringBuffer aBuf( m_aRootAddonPopupMenuURLPrexfix.getLength() + 3 );
@@ -836,8 +997,8 @@ void AddonsOptions_Impl::ReadMergeMenuData( const OUString& aMergeAddonInstructi
     aMergeMenuBaseNode += m_aPathDelimiter;
 
     // extend the node names to have full path strings
-    for ( sal_uInt32 i = 0; i < (sal_uInt32)aSubMenuNodeNames.getLength(); i++ )
-        aSubMenuNodeNames[i] = aMergeMenuBaseNode + aSubMenuNodeNames[i];
+    for ( OUString& rName : aSubMenuNodeNames )
+        rName = aMergeMenuBaseNode + rName;
 
     ReadSubMenuEntries( aSubMenuNodeNames, rMergeMenu );
 }
@@ -912,39 +1073,119 @@ void AddonsOptions_Impl::ReadToolbarMergeInstructions( ToolbarMergingInstruction
 
 bool AddonsOptions_Impl::ReadMergeToolbarData( const OUString& aMergeAddonInstructionBase, Sequence< Sequence< PropertyValue > >& rMergeToolbarItems )
 {
-    OUStringBuffer aBuffer( aMergeAddonInstructionBase );
-    aBuffer.append( m_aPropMergeToolbarNames[ OFFSET_MERGETOOLBAR_TOOLBARITEMS ] );
-
-    OUString aMergeToolbarBaseNode = aBuffer.makeStringAndClear();
+    OUString aMergeToolbarBaseNode = aMergeAddonInstructionBase +
+        m_aPropMergeToolbarNames[ OFFSET_MERGETOOLBAR_TOOLBARITEMS ];
 
     return ReadToolBarItemSet( aMergeToolbarBaseNode, rMergeToolbarItems );
 }
 
+void AddonsOptions_Impl::ReadNotebookBarMergeInstructions(
+    NotebookBarMergingInstructions& rCachedNotebookBarMergingInstructions)
+{
+    const OUString aNotebookBarMergeRootName("AddonUI/OfficeNotebookBarMerging/");
+
+    Sequence<OUString> aAddonMergeNodesSeq = GetNodeNames(aNotebookBarMergeRootName);
+    sal_uInt32 nCount = aAddonMergeNodesSeq.getLength();
+
+    // Init the property value sequence
+    Sequence<OUString> aNodePropNames(6);
+
+    for (sal_uInt32 i = 0; i < nCount; i++)
+    {
+        OUString aMergeAddonInstructions(aNotebookBarMergeRootName + aAddonMergeNodesSeq[i]);
+
+        Sequence<OUString> aAddonInstMergeNodesSeq = GetNodeNames(aMergeAddonInstructions);
+        sal_uInt32 nCountAddons = aAddonInstMergeNodesSeq.getLength();
+
+        for (sal_uInt32 j = 0; j < nCountAddons; j++)
+        {
+            OUStringBuffer aMergeAddonInstructionBase(aMergeAddonInstructions);
+            aMergeAddonInstructionBase.append(m_aPathDelimiter);
+            aMergeAddonInstructionBase.append(aAddonInstMergeNodesSeq[j]);
+            aMergeAddonInstructionBase.append(m_aPathDelimiter);
+
+            // Create sequence for data access
+            OUStringBuffer aBuffer(aMergeAddonInstructionBase);
+            aBuffer.append(m_aPropMergeNotebookBarNames[OFFSET_MERGENOTEBOOKBAR_NOTEBOOKBAR]);
+            aNodePropNames[0] = aBuffer.makeStringAndClear();
+
+            aBuffer = aMergeAddonInstructionBase;
+            aBuffer.append(m_aPropMergeNotebookBarNames[OFFSET_MERGENOTEBOOKBAR_MERGEPOINT]);
+            aNodePropNames[1] = aBuffer.makeStringAndClear();
+
+            aBuffer = aMergeAddonInstructionBase;
+            aBuffer.append(m_aPropMergeNotebookBarNames[OFFSET_MERGENOTEBOOKBAR_MERGECOMMAND]);
+            aNodePropNames[2] = aBuffer.makeStringAndClear();
+
+            aBuffer = aMergeAddonInstructionBase;
+            aBuffer.append(
+                m_aPropMergeNotebookBarNames[OFFSET_MERGENOTEBOOKBAR_MERGECOMMANDPARAMETER]);
+            aNodePropNames[3] = aBuffer.makeStringAndClear();
+
+            aBuffer = aMergeAddonInstructionBase;
+            aBuffer.append(m_aPropMergeNotebookBarNames[OFFSET_MERGENOTEBOOKBAR_MERGEFALLBACK]);
+            aNodePropNames[4] = aBuffer.makeStringAndClear();
+
+            aBuffer = aMergeAddonInstructionBase;
+            aBuffer.append(m_aPropMergeNotebookBarNames[OFFSET_MERGENOTEBOOKBAR_MERGECONTEXT]);
+            aNodePropNames[5] = aBuffer.makeStringAndClear();
+
+            Sequence<Any> aNodePropValues = GetProperties(aNodePropNames);
+
+            MergeNotebookBarInstruction aMergeNotebookBarInstruction;
+            aNodePropValues[0] >>= aMergeNotebookBarInstruction.aMergeNotebookBar;
+            aNodePropValues[1] >>= aMergeNotebookBarInstruction.aMergePoint;
+            aNodePropValues[2] >>= aMergeNotebookBarInstruction.aMergeCommand;
+            aNodePropValues[3] >>= aMergeNotebookBarInstruction.aMergeCommandParameter;
+            aNodePropValues[4] >>= aMergeNotebookBarInstruction.aMergeFallback;
+            aNodePropValues[5] >>= aMergeNotebookBarInstruction.aMergeContext;
+
+            ReadMergeNotebookBarData(aMergeAddonInstructionBase.makeStringAndClear(),
+                                     aMergeNotebookBarInstruction.aMergeNotebookBarItems);
+
+            MergeNotebookBarInstructionContainer& rVector
+                = rCachedNotebookBarMergingInstructions[aMergeNotebookBarInstruction
+                                                            .aMergeNotebookBar];
+            rVector.push_back(aMergeNotebookBarInstruction);
+        }
+    }
+}
+
+bool AddonsOptions_Impl::ReadMergeNotebookBarData(
+    const OUString& aMergeAddonInstructionBase,
+    Sequence<Sequence<PropertyValue>>& rMergeNotebookBarItems)
+{
+    OUString aMergeNotebookBarBaseNode = aMergeAddonInstructionBase +
+        m_aPropMergeNotebookBarNames[OFFSET_MERGENOTEBOOKBAR_NOTEBOOKBARITEMS];
+
+    return ReadNotebookBarItemSet(aMergeNotebookBarBaseNode, rMergeNotebookBarItems);
+}
+
 void AddonsOptions_Impl::ReadStatusbarMergeInstructions( MergeStatusbarInstructionContainer& aContainer )
 {
-    const ::rtl::OUString aStatusbarMergeRootName( "AddonUI/OfficeStatusbarMerging/" );
+    const OUString aStatusbarMergeRootName( "AddonUI/OfficeStatusbarMerging/" );
 
-    Sequence< ::rtl::OUString > aAddonMergeNodesSeq = GetNodeNames( aStatusbarMergeRootName );
+    Sequence< OUString > aAddonMergeNodesSeq = GetNodeNames( aStatusbarMergeRootName );
     sal_uInt32  nCount = aAddonMergeNodesSeq.getLength();
 
-    Sequence< ::rtl::OUString > aNodePropNames( 5 );
+    Sequence< OUString > aNodePropNames( 5 );
 
     for ( sal_uInt32 i = 0; i < nCount; i++ )
     {
-        ::rtl::OUString aMergeAddonInstructions( aStatusbarMergeRootName + aAddonMergeNodesSeq[i] );
+        OUString aMergeAddonInstructions( aStatusbarMergeRootName + aAddonMergeNodesSeq[i] );
 
-        Sequence< ::rtl::OUString > aAddonInstMergeNodesSeq = GetNodeNames( aMergeAddonInstructions );
+        Sequence< OUString > aAddonInstMergeNodesSeq = GetNodeNames( aMergeAddonInstructions );
         sal_uInt32 nCountAddons = aAddonInstMergeNodesSeq.getLength();
 
         for ( sal_uInt32 j = 0; j < nCountAddons; j++ )
         {
-            ::rtl::OUStringBuffer aMergeAddonInstructionBase( aMergeAddonInstructions );
+            OUStringBuffer aMergeAddonInstructionBase( aMergeAddonInstructions );
             aMergeAddonInstructionBase.append( m_aPathDelimiter );
             aMergeAddonInstructionBase.append( aAddonInstMergeNodesSeq[j] );
             aMergeAddonInstructionBase.append( m_aPathDelimiter );
 
             // Create sequence for data access
-            ::rtl::OUStringBuffer aBuffer( aMergeAddonInstructionBase );
+            OUStringBuffer aBuffer( aMergeAddonInstructionBase );
             aBuffer.append( m_aPropMergeMenuNames[ OFFSET_MERGESTATUSBAR_MERGEPOINT ] );
             aNodePropNames[0] = aBuffer.makeStringAndClear();
 
@@ -982,17 +1223,16 @@ void AddonsOptions_Impl::ReadStatusbarMergeInstructions( MergeStatusbarInstructi
 }
 
 bool AddonsOptions_Impl::ReadMergeStatusbarData(
-    const ::rtl::OUString& aMergeAddonInstructionBase,
+    const OUString& aMergeAddonInstructionBase,
     Sequence< Sequence< PropertyValue > >& rMergeStatusbarItems )
 {
     sal_uInt32 nStatusbarItemCount = rMergeStatusbarItems.getLength();
 
-    ::rtl::OUStringBuffer aBuffer( aMergeAddonInstructionBase );
-    aBuffer.append( m_aPropMergeStatusbarNames[ OFFSET_MERGESTATUSBAR_STATUSBARITEMS ] );
-    ::rtl::OUString aMergeStatusbarBaseNode = aBuffer.makeStringAndClear();
+    OUString aMergeStatusbarBaseNode = aMergeAddonInstructionBase +
+        m_aPropMergeStatusbarNames[ OFFSET_MERGESTATUSBAR_STATUSBARITEMS ];
 
-    ::rtl::OUString aAddonStatusbarItemSetNode( aMergeStatusbarBaseNode + m_aPathDelimiter );
-    Sequence< ::rtl::OUString > aAddonStatusbarItemSetNodeSeq = GetNodeNames( aMergeStatusbarBaseNode );
+    OUString aAddonStatusbarItemSetNode( aMergeStatusbarBaseNode + m_aPathDelimiter );
+    Sequence< OUString > aAddonStatusbarItemSetNodeSeq = GetNodeNames( aMergeStatusbarBaseNode );
 
     Sequence< PropertyValue > aStatusbarItem( PROPERTYCOUNT_STATUSBARITEM );
     aStatusbarItem[ OFFSET_STATUSBARITEM_URL       ].Name = m_aPropNames[ INDEX_URL       ];
@@ -1001,12 +1241,13 @@ bool AddonsOptions_Impl::ReadMergeStatusbarData(
     aStatusbarItem[ OFFSET_STATUSBARITEM_ALIGN     ].Name = m_aPropNames[ INDEX_ALIGN     ];
     aStatusbarItem[ OFFSET_STATUSBARITEM_AUTOSIZE  ].Name = m_aPropNames[ INDEX_AUTOSIZE  ];
     aStatusbarItem[ OFFSET_STATUSBARITEM_OWNERDRAW ].Name = m_aPropNames[ INDEX_OWNERDRAW ];
+    aStatusbarItem[ OFFSET_STATUSBARITEM_MANDATORY ].Name = m_aPropNames[ INDEX_MANDATORY ];
     aStatusbarItem[ OFFSET_STATUSBARITEM_WIDTH     ].Name = m_aPropNames[ INDEX_WIDTH     ];
 
     sal_uInt32 nCount = aAddonStatusbarItemSetNodeSeq.getLength();
     for ( sal_uInt32 n = 0; n < nCount; n++ )
     {
-        ::rtl::OUString aStatusbarItemNode( aAddonStatusbarItemSetNode + aAddonStatusbarItemSetNodeSeq[n] );
+        OUString aStatusbarItemNode( aAddonStatusbarItemSetNode + aAddonStatusbarItemSetNodeSeq[n] );
 
         if ( ReadStatusBarItem( aStatusbarItemNode, aStatusbarItem ) )
         {
@@ -1016,19 +1257,18 @@ bool AddonsOptions_Impl::ReadMergeStatusbarData(
         }
     }
 
-    return ( (sal_uInt32)rMergeStatusbarItems.getLength() > nStatusbarItemCount );
+    return ( o3tl::make_unsigned(rMergeStatusbarItems.getLength()) > nStatusbarItemCount );
 }
 
 bool AddonsOptions_Impl::ReadStatusBarItem(
-    const ::rtl::OUString& aStatusarItemNodeName,
+    const OUString& aStatusarItemNodeName,
     Sequence< PropertyValue >& aStatusbarItem )
 {
     bool bResult( false );
-    ::rtl::OUString aURL;
-    ::rtl::OUString aAddonStatusbarItemTreeNode( aStatusarItemNodeName + m_aPathDelimiter );
-    Sequence< Any > aStatusbarItemNodePropValues;
+    OUString aURL;
+    OUString aAddonStatusbarItemTreeNode( aStatusarItemNodeName + m_aPathDelimiter );
 
-    aStatusbarItemNodePropValues = GetProperties( GetPropertyNamesStatusbarItem( aAddonStatusbarItemTreeNode ) );
+    Sequence< Any > aStatusbarItemNodePropValues = GetProperties( GetPropertyNamesStatusbarItem( aAddonStatusbarItemTreeNode ) );
 
     // Command URL is required
     if (( aStatusbarItemNodePropValues[ OFFSET_STATUSBARITEM_URL ] >>= aURL ) && aURL.getLength() > 0 )
@@ -1039,6 +1279,7 @@ bool AddonsOptions_Impl::ReadStatusBarItem(
         aStatusbarItem[ OFFSET_STATUSBARITEM_ALIGN      ].Value = aStatusbarItemNodePropValues[ OFFSET_STATUSBARITEM_ALIGN     ];
         aStatusbarItem[ OFFSET_STATUSBARITEM_AUTOSIZE   ].Value = aStatusbarItemNodePropValues[ OFFSET_STATUSBARITEM_AUTOSIZE  ];
         aStatusbarItem[ OFFSET_STATUSBARITEM_OWNERDRAW  ].Value = aStatusbarItemNodePropValues[ OFFSET_STATUSBARITEM_OWNERDRAW ];
+        aStatusbarItem[ OFFSET_STATUSBARITEM_MANDATORY  ].Value = aStatusbarItemNodePropValues[ OFFSET_STATUSBARITEM_MANDATORY ];
 
         // Configuration uses hyper for long. Therefore transform into sal_Int32
         sal_Int64 nValue( 0 );
@@ -1056,16 +1297,15 @@ bool AddonsOptions_Impl::ReadMenuItem( const OUString& aMenuNodeName, Sequence< 
     bool             bResult = false;
     OUString         aStrValue;
     OUString         aAddonMenuItemTreeNode( aMenuNodeName + m_aPathDelimiter );
-    Sequence< Any >     aMenuItemNodePropValues;
 
-    aMenuItemNodePropValues = GetProperties( GetPropertyNamesMenuItem( aAddonMenuItemTreeNode ) );
+    Sequence< Any >  aMenuItemNodePropValues = GetProperties( GetPropertyNamesMenuItem( aAddonMenuItemTreeNode ) );
     if (( aMenuItemNodePropValues[ OFFSET_MENUITEM_TITLE ] >>= aStrValue ) && !aStrValue.isEmpty() )
     {
         aMenuItem[ OFFSET_MENUITEM_TITLE ].Value <<= aStrValue;
 
         OUString aRootSubMenuName( aAddonMenuItemTreeNode + m_aPropNames[ INDEX_SUBMENU ] );
         Sequence< OUString > aRootSubMenuNodeNames = GetNodeNames( aRootSubMenuName );
-        if ( aRootSubMenuNodeNames.getLength() > 0 && !bIgnoreSubMenu )
+        if ( aRootSubMenuNodeNames.hasElements() && !bIgnoreSubMenu )
         {
             // Set a unique prefixed Add-On popup menu URL so it can be identified later
             OUString aPopupMenuURL     = GeneratePrefixURL();
@@ -1084,8 +1324,8 @@ bool AddonsOptions_Impl::ReadMenuItem( const OUString& aMenuNodeName, Sequence< 
             // Continue to read the sub menu nodes
             Sequence< Sequence< PropertyValue > > aSubMenuSeq;
             OUString aSubMenuRootNodeName( aRootSubMenuName + m_aPathDelimiter );
-            for ( sal_uInt32 n = 0; n < (sal_uInt32)aRootSubMenuNodeNames.getLength(); n++ )
-                aRootSubMenuNodeNames[n] = aSubMenuRootNodeName + aRootSubMenuNodeNames[n];
+            for ( OUString& rName : aRootSubMenuNodeNames )
+                rName = aSubMenuRootNodeName + rName;
             ReadSubMenuEntries( aRootSubMenuNodeNames, aSubMenuSeq );
             aMenuItem[ OFFSET_MENUITEM_SUBMENU ].Value <<= aSubMenuSeq;
             bResult = true;
@@ -1096,7 +1336,7 @@ bool AddonsOptions_Impl::ReadMenuItem( const OUString& aMenuNodeName, Sequence< 
             OUString aMenuImageId;
 
             aMenuItemNodePropValues[ OFFSET_MENUITEM_IMAGEIDENTIFIER ] >>= aMenuImageId;
-             ReadAndAssociateImages( aStrValue, aMenuImageId );
+            ReadAndAssociateImages( aStrValue, aMenuImageId );
 
             aMenuItem[ OFFSET_MENUITEM_URL              ].Value <<= aStrValue;
             aMenuItem[ OFFSET_MENUITEM_TARGET           ].Value = aMenuItemNodePropValues[ OFFSET_MENUITEM_TARGET         ];
@@ -1127,9 +1367,8 @@ bool AddonsOptions_Impl::ReadPopupMenu( const OUString& aPopupMenuNodeName, Sequ
     bool             bResult = false;
     OUString         aStrValue;
     OUString         aAddonPopupMenuTreeNode( aPopupMenuNodeName + m_aPathDelimiter );
-    Sequence< Any >     aPopupMenuNodePropValues;
 
-    aPopupMenuNodePropValues = GetProperties( GetPropertyNamesPopupMenu( aAddonPopupMenuTreeNode ) );
+    Sequence< Any >  aPopupMenuNodePropValues = GetProperties( GetPropertyNamesPopupMenu( aAddonPopupMenuTreeNode ) );
     if (( aPopupMenuNodePropValues[ OFFSET_POPUPMENU_TITLE ] >>= aStrValue ) &&
          !aStrValue.isEmpty() )
     {
@@ -1137,7 +1376,7 @@ bool AddonsOptions_Impl::ReadPopupMenu( const OUString& aPopupMenuNodeName, Sequ
 
         OUString aRootSubMenuName( aAddonPopupMenuTreeNode + m_aPropNames[ INDEX_SUBMENU ] );
         Sequence< OUString > aRootSubMenuNodeNames = GetNodeNames( aRootSubMenuName );
-        if ( aRootSubMenuNodeNames.getLength() > 0 )
+        if ( aRootSubMenuNodeNames.hasElements() )
         {
             // A top-level popup menu needs a title
             // Set a unique prefixed Add-On popup menu URL so it can be identified later
@@ -1149,8 +1388,8 @@ bool AddonsOptions_Impl::ReadPopupMenu( const OUString& aPopupMenuNodeName, Sequ
             // Continue to read the sub menu nodes
             Sequence< Sequence< PropertyValue > > aSubMenuSeq;
             OUString aSubMenuRootNodeName( aRootSubMenuName + m_aPathDelimiter );
-            for ( sal_uInt32 n = 0; n < (sal_uInt32)aRootSubMenuNodeNames.getLength(); n++ )
-                aRootSubMenuNodeNames[n] = aSubMenuRootNodeName + aRootSubMenuNodeNames[n];
+            for ( OUString& rName : aRootSubMenuNodeNames )
+                rName = aSubMenuRootNodeName + rName;
             ReadSubMenuEntries( aRootSubMenuNodeNames, aSubMenuSeq );
             aPopupMenu[ OFFSET_POPUPMENU_SUBMENU ].Value <<= aSubMenuSeq;
             bResult = true;
@@ -1170,8 +1409,8 @@ void AddonsOptions_Impl::AppendPopupMenu( Sequence< PropertyValue >& rTargetPopu
     {
         sal_uInt32 nIndex = aTargetSubMenuSeq.getLength();
         aTargetSubMenuSeq.realloc( nIndex + aSourceSubMenuSeq.getLength() );
-        for ( sal_uInt32 i = 0; i < sal_uInt32( aSourceSubMenuSeq.getLength() ); i++ )
-            aTargetSubMenuSeq[nIndex++] = aSourceSubMenuSeq[i];
+        for ( Sequence<PropertyValue> const & rSeq : std::as_const(aSourceSubMenuSeq) )
+            aTargetSubMenuSeq[nIndex++] = rSeq;
         rTargetPopupMenu[ OFFSET_POPUPMENU_SUBMENU ].Value <<= aTargetSubMenuSeq;
     }
 }
@@ -1182,9 +1421,8 @@ bool AddonsOptions_Impl::ReadToolBarItem( const OUString& aToolBarItemNodeName, 
     OUString         aTitle;
     OUString         aURL;
     OUString         aAddonToolBarItemTreeNode( aToolBarItemNodeName + m_aPathDelimiter );
-    Sequence< Any >     aToolBarItemNodePropValues;
 
-    aToolBarItemNodePropValues = GetProperties( GetPropertyNamesToolBarItem( aAddonToolBarItemTreeNode ) );
+    Sequence< Any >  aToolBarItemNodePropValues = GetProperties( GetPropertyNamesToolBarItem( aAddonToolBarItemTreeNode ) );
 
     // A toolbar item must have a command URL
     if (( aToolBarItemNodePropValues[ OFFSET_TOOLBARITEM_URL ] >>= aURL ) && !aURL.isEmpty() )
@@ -1222,6 +1460,61 @@ bool AddonsOptions_Impl::ReadToolBarItem( const OUString& aToolBarItemNodeName, 
             sal_Int64 nValue( 0 );
             aToolBarItemNodePropValues[ OFFSET_TOOLBARITEM_WIDTH ] >>= nValue;
             aToolBarItem[ OFFSET_TOOLBARITEM_WIDTH              ].Value <<= sal_Int32( nValue );
+
+            bResult = true;
+        }
+    }
+
+    return bResult;
+}
+
+bool AddonsOptions_Impl::ReadNotebookBarItem( const OUString& aNotebookBarItemNodeName, Sequence< PropertyValue >& aNotebookBarItem )
+{
+    bool             bResult = false;
+    OUString         aTitle;
+    OUString         aURL;
+    OUString         aAddonNotebookBarItemTreeNode( aNotebookBarItemNodeName + m_aPathDelimiter );
+
+    Sequence< Any >  aNotebookBarItemNodePropValues = GetProperties( GetPropertyNamesNotebookBarItem( aAddonNotebookBarItemTreeNode ) );
+
+    // A toolbar item must have a command URL
+    if (( aNotebookBarItemNodePropValues[ OFFSET_NOTEBOOKBARITEM_URL ] >>= aURL ) && !aURL.isEmpty() )
+    {
+        if ( aURL == SEPARATOR_URL )
+        {
+            // A separator toolbar item only needs a URL
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_URL                ].Value <<= aURL;
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_TITLE              ].Value <<= OUString();
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_TARGET             ].Value <<= OUString();
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_IMAGEIDENTIFIER    ].Value <<= OUString();
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_CONTEXT            ].Value <<= OUString();
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_CONTROLTYPE        ].Value <<= OUString();
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_WIDTH              ].Value <<= sal_Int32( 0 );
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_STYLE              ].Value <<= OUString();
+
+            bResult = true;
+        }
+        else if (( aNotebookBarItemNodePropValues[ OFFSET_NOTEBOOKBARITEM_TITLE ] >>= aTitle ) && !aTitle.isEmpty() )
+        {
+            // A normal toolbar item must also have title => read the other properties;
+            OUString aImageId;
+
+            // Try to map a user-defined image URL to our internal private image URL
+            aNotebookBarItemNodePropValues[ OFFSET_NOTEBOOKBARITEM_IMAGEIDENTIFIER ] >>= aImageId;
+            ReadAndAssociateImages( aURL, aImageId );
+
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_URL                ].Value <<= aURL;
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_TITLE              ].Value <<= aTitle;
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_TARGET             ].Value = aNotebookBarItemNodePropValues[ OFFSET_NOTEBOOKBARITEM_TARGET      ];
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_IMAGEIDENTIFIER    ].Value <<= aImageId;
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_CONTEXT            ].Value = aNotebookBarItemNodePropValues[ OFFSET_NOTEBOOKBARITEM_CONTEXT     ];
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_CONTROLTYPE        ].Value = aNotebookBarItemNodePropValues[ OFFSET_NOTEBOOKBARITEM_CONTROLTYPE ];
+
+            // Configuration uses hyper for long. Therefore transform into sal_Int32
+            sal_Int64 nValue( 0 );
+            aNotebookBarItemNodePropValues[ OFFSET_NOTEBOOKBARITEM_WIDTH ] >>= nValue;
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_WIDTH              ].Value <<= sal_Int32( nValue );
+            aNotebookBarItem[ OFFSET_NOTEBOOKBARITEM_STYLE              ].Value = aNotebookBarItemNodePropValues[ OFFSET_NOTEBOOKBARITEM_STYLE ];
 
             bResult = true;
         }
@@ -1268,11 +1561,11 @@ void AddonsOptions_Impl::SubstituteVariables( OUString& aURL )
         comphelper::getProcessComponentContext(), aURL);
 }
 
-Image AddonsOptions_Impl::ReadImageFromURL(const OUString& aImageURL)
+BitmapEx AddonsOptions_Impl::ReadImageFromURL(const OUString& aImageURL)
 {
-    Image aImage;
+    BitmapEx aImage;
 
-    SvStream* pStream = UcbStreamHelper::CreateStream( aImageURL, StreamMode::STD_READ );
+    std::unique_ptr<SvStream> pStream = UcbStreamHelper::CreateStream( aImageURL, StreamMode::STD_READ );
     if ( pStream && ( pStream->GetErrorCode() == ERRCODE_NONE ))
     {
         // Use graphic class to also support more graphic formats (bmp,png,...)
@@ -1284,17 +1577,15 @@ Image AddonsOptions_Impl::ReadImageFromURL(const OUString& aImageURL)
         BitmapEx aBitmapEx = aGraphic.GetBitmapEx();
 
         Size aBmpSize = aBitmapEx.GetSizePixel();
-        if ( aBmpSize.Width() > 0 && aBmpSize.Height() > 0 )
+        if ( !aBmpSize.IsEmpty() )
         {
             // Support non-transparent bitmaps to be downward compatible with OOo 1.1.x addons
             if( !aBitmapEx.IsTransparent() )
                 aBitmapEx = BitmapEx( aBitmapEx.GetBitmap(), COL_LIGHTMAGENTA );
 
-            aImage = Image(aBitmapEx);
+            aImage = aBitmapEx;
         }
     }
-
-    delete pStream;
 
     return aImage;
 }
@@ -1318,20 +1609,20 @@ void AddonsOptions_Impl::ReadAndAssociateImages( const OUString& aURL, const OUS
         aFileURL.append( ".bmp" );
 
         aImageEntry.addImage( !i ? IMGSIZE_SMALL : IMGSIZE_BIG,
-                              Image(), aFileURL.makeStringAndClear() );
+                              BitmapEx(), aFileURL.makeStringAndClear() );
     }
 
-    m_aImageManager.insert( ImageManager::value_type( aURL, aImageEntry ));
+    m_aImageManager.emplace( aURL, aImageEntry );
 }
 
-AddonsOptions_Impl::ImageEntry* AddonsOptions_Impl::ReadImageData( const OUString& aImagesNodeName )
+std::unique_ptr<AddonsOptions_Impl::ImageEntry> AddonsOptions_Impl::ReadImageData( const OUString& aImagesNodeName )
 {
     Sequence< OUString > aImageDataNodeNames = GetPropertyNamesImages( aImagesNodeName );
     Sequence< Any >      aPropertyData;
     Sequence< sal_Int8 > aImageDataSeq;
     OUString             aImageURL;
 
-    ImageEntry* pEntry = nullptr;
+    std::unique_ptr<ImageEntry> pEntry;
 
     // It is possible to use both forms (embedded image data and URLs to external bitmap files) at the
     // same time. Embedded image data has a higher priority.
@@ -1341,52 +1632,50 @@ AddonsOptions_Impl::ImageEntry* AddonsOptions_Impl::ReadImageData( const OUStrin
         if ( i < PROPERTYCOUNT_EMBEDDED_IMAGES )
         {
             // Extract image data from the embedded hex binary sequence
-            Image aImage;
+            BitmapEx aImage;
             if (( aPropertyData[i] >>= aImageDataSeq ) &&
-                aImageDataSeq.getLength() > 0 &&
+                aImageDataSeq.hasElements() &&
                 ( CreateImageFromSequence( aImage, aImageDataSeq ) ) )
             {
                 if ( !pEntry )
-                    pEntry = new ImageEntry;
+                    pEntry.reset(new ImageEntry);
                 pEntry->addImage(i == OFFSET_IMAGES_SMALL ? IMGSIZE_SMALL : IMGSIZE_BIG, aImage, "");
             }
         }
         else
         {
             if(!pEntry)
-                pEntry = new ImageEntry();
+                pEntry.reset(new ImageEntry());
 
-            // Retrieve image data from a external bitmap file. Make sure that embedded image data
+            // Retrieve image data from an external bitmap file. Make sure that embedded image data
             // has a higher priority.
             aPropertyData[i] >>= aImageURL;
 
             SubstituteVariables( aImageURL );
 
-            pEntry->addImage(IMGSIZE_BIG, Image(), aImageURL);
+            pEntry->addImage(IMGSIZE_BIG, BitmapEx(), aImageURL);
         }
     }
 
     return pEntry;
 }
 
-bool AddonsOptions_Impl::CreateImageFromSequence( Image& rImage, Sequence< sal_Int8 >& rBitmapDataSeq ) const
+bool AddonsOptions_Impl::CreateImageFromSequence( BitmapEx& rImage, Sequence< sal_Int8 >& rBitmapDataSeq ) const
 {
     bool bResult = false;
 
-    if ( rBitmapDataSeq.getLength() > 0 )
+    if ( rBitmapDataSeq.hasElements() )
     {
         SvMemoryStream  aMemStream( rBitmapDataSeq.getArray(), rBitmapDataSeq.getLength(), StreamMode::STD_READ );
-        BitmapEx        aBitmapEx;
 
-        ReadDIBBitmapEx(aBitmapEx, aMemStream);
+        ReadDIBBitmapEx(rImage, aMemStream);
 
-        if( !aBitmapEx.IsTransparent() )
+        if( !rImage.IsTransparent() )
         {
             // Support non-transparent bitmaps to be downward compatible with OOo 1.1.x addons
-            aBitmapEx = BitmapEx( aBitmapEx.GetBitmap(), COL_LIGHTMAGENTA );
+            rImage = BitmapEx( rImage.GetBitmap(), COL_LIGHTMAGENTA );
         }
 
-        rImage = Image( aBitmapEx );
         bResult = true;
     }
 
@@ -1437,18 +1726,36 @@ Sequence< OUString > AddonsOptions_Impl::GetPropertyNamesToolBarItem( const OUSt
     return lResult;
 }
 
-Sequence< ::rtl::OUString > AddonsOptions_Impl::GetPropertyNamesStatusbarItem(
-    const ::rtl::OUString& aPropertyRootNode ) const
+Sequence< OUString > AddonsOptions_Impl::GetPropertyNamesNotebookBarItem( const OUString& aPropertyRootNode ) const
 {
-    Sequence< ::rtl::OUString > lResult( PROPERTYCOUNT_STATUSBARITEM );
+    Sequence< OUString > lResult( PROPERTYCOUNT_NOTEBOOKBARITEM );
 
-    lResult[0] = ::rtl::OUString( aPropertyRootNode + m_aPropNames[ INDEX_URL       ] );
-    lResult[1] = ::rtl::OUString( aPropertyRootNode + m_aPropNames[ INDEX_TITLE     ] );
-    lResult[2] = ::rtl::OUString( aPropertyRootNode + m_aPropNames[ INDEX_CONTEXT   ] );
-    lResult[3] = ::rtl::OUString( aPropertyRootNode + m_aPropNames[ INDEX_ALIGN     ] );
-    lResult[4] = ::rtl::OUString( aPropertyRootNode + m_aPropNames[ INDEX_AUTOSIZE  ] );
-    lResult[5] = ::rtl::OUString( aPropertyRootNode + m_aPropNames[ INDEX_OWNERDRAW ] );
-    lResult[6] = ::rtl::OUString( aPropertyRootNode + m_aPropNames[ INDEX_WIDTH     ] );
+    // Create property names dependent from the root node name
+    lResult[0] = aPropertyRootNode + m_aPropNames[ INDEX_URL             ];
+    lResult[1] = aPropertyRootNode + m_aPropNames[ INDEX_TITLE       ];
+    lResult[2] = aPropertyRootNode + m_aPropNames[ INDEX_IMAGEIDENTIFIER];
+    lResult[3] = aPropertyRootNode + m_aPropNames[ INDEX_TARGET          ];
+    lResult[4] = aPropertyRootNode + m_aPropNames[ INDEX_CONTEXT         ];
+    lResult[5] = aPropertyRootNode + m_aPropNames[ INDEX_CONTROLTYPE     ];
+    lResult[6] = aPropertyRootNode + m_aPropNames[ INDEX_WIDTH       ];
+    lResult[7] = aPropertyRootNode + m_aPropNames[ INDEX_STYLE       ];
+
+    return lResult;
+}
+
+Sequence< OUString > AddonsOptions_Impl::GetPropertyNamesStatusbarItem(
+    const OUString& aPropertyRootNode ) const
+{
+    Sequence< OUString > lResult( PROPERTYCOUNT_STATUSBARITEM );
+
+    lResult[0] = OUString( aPropertyRootNode + m_aPropNames[ INDEX_URL       ] );
+    lResult[1] = OUString( aPropertyRootNode + m_aPropNames[ INDEX_TITLE     ] );
+    lResult[2] = OUString( aPropertyRootNode + m_aPropNames[ INDEX_CONTEXT   ] );
+    lResult[3] = OUString( aPropertyRootNode + m_aPropNames[ INDEX_ALIGN     ] );
+    lResult[4] = OUString( aPropertyRootNode + m_aPropNames[ INDEX_AUTOSIZE  ] );
+    lResult[5] = OUString( aPropertyRootNode + m_aPropNames[ INDEX_OWNERDRAW ] );
+    lResult[6] = OUString( aPropertyRootNode + m_aPropNames[ INDEX_MANDATORY ] );
+    lResult[7] = OUString( aPropertyRootNode + m_aPropNames[ INDEX_WIDTH     ] );
 
     return lResult;
 }
@@ -1514,6 +1821,14 @@ sal_Int32 AddonsOptions::GetAddonsToolBarCount() const
 
 //  public method
 
+sal_Int32 AddonsOptions::GetAddonsNotebookBarCount() const
+{
+    MutexGuard aGuard( GetOwnStaticMutex() );
+    return m_pImpl->GetAddonsNotebookBarCount();
+}
+
+//  public method
+
 const Sequence< Sequence< PropertyValue > >& AddonsOptions::GetAddonsMenu() const
 {
     MutexGuard aGuard( GetOwnStaticMutex() );
@@ -1538,10 +1853,26 @@ const Sequence< Sequence< PropertyValue > >& AddonsOptions::GetAddonsToolBarPart
 
 //  public method
 
-const OUString AddonsOptions::GetAddonsToolbarResourceName( sal_uInt32 nIndex ) const
+const Sequence< Sequence< PropertyValue > >& AddonsOptions::GetAddonsNotebookBarPart( sal_uInt32 nIndex ) const
+{
+    MutexGuard aGuard( GetOwnStaticMutex() );
+    return m_pImpl->GetAddonsNotebookBarPart( nIndex );
+}
+
+//  public method
+
+OUString AddonsOptions::GetAddonsToolbarResourceName( sal_uInt32 nIndex ) const
 {
     MutexGuard aGuard( GetOwnStaticMutex() );
     return m_pImpl->GetAddonsToolbarResourceName( nIndex );
+}
+
+//  public method
+
+OUString AddonsOptions::GetAddonsNotebookBarResourceName( sal_uInt32 nIndex ) const
+{
+    MutexGuard aGuard( GetOwnStaticMutex() );
+    return m_pImpl->GetAddonsNotebookBarResourceName( nIndex );
 }
 
 //  public method
@@ -1571,6 +1902,19 @@ bool AddonsOptions::GetMergeToolbarInstructions(
         rToolbarName, rToolbarInstructions );
 }
 
+//  public method
+
+bool AddonsOptions::GetMergeNotebookBarInstructions(
+    const OUString& rNotebookBarName,
+    MergeNotebookBarInstructionContainer& rNotebookBarInstructions ) const
+{
+    MutexGuard aGuard( GetOwnStaticMutex() );
+    return m_pImpl->GetMergeNotebookBarInstructions(
+        rNotebookBarName, rNotebookBarInstructions );
+}
+
+//public method
+
 const MergeStatusbarInstructionContainer& AddonsOptions::GetMergeStatusbarInstructions() const
 {
     MutexGuard aGuard( GetOwnStaticMutex() );
@@ -1579,7 +1923,7 @@ const MergeStatusbarInstructionContainer& AddonsOptions::GetMergeStatusbarInstru
 
 //  public method
 
-Image AddonsOptions::GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale ) const
+BitmapEx AddonsOptions::GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale ) const
 {
     MutexGuard aGuard( GetOwnStaticMutex() );
     return m_pImpl->GetImageFromURL( aURL, bBig, bNoScale );
@@ -1587,7 +1931,7 @@ Image AddonsOptions::GetImageFromURL( const OUString& aURL, bool bBig, bool bNoS
 
 //  public method
 
-Image AddonsOptions::GetImageFromURL( const OUString& aURL, bool bBig ) const
+BitmapEx AddonsOptions::GetImageFromURL( const OUString& aURL, bool bBig ) const
 {
     return GetImageFromURL( aURL, bBig, false );
 }

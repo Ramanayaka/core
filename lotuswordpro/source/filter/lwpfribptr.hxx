@@ -61,10 +61,10 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPFRIBPTR_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPFRIBPTR_HXX
 
-#include "lwpobjstrm.hxx"
-#include "lwpfrib.hxx"
+#include <lwpobjstrm.hxx>
+#include <lwpfrib.hxx>
 #include "lwpstory.hxx"
-#include "xfilter/xfparagraph.hxx"
+#include <xfilter/xfparagraph.hxx>
 
 class LwpPara;
 class LwpFribPtr
@@ -77,17 +77,16 @@ private:
     LwpFrib* m_pFribs;
     XFParagraph* m_pXFPara;//Current XFPara used for frib parsing
     LwpPara* m_pPara;//for get foundry
-    static void ProcessDropcap(LwpStory* pStory,LwpFrib* pFrib,sal_uInt32 nLen);
+    static void ProcessDropcap(LwpStory* pStory, const LwpFrib* pFrib,sal_uInt32 nLen);
 public:
     void XFConvert();
     void SetXFPara(XFParagraph* Para){m_pXFPara = Para;}
     XFParagraph* GetXFPara(){return m_pXFPara;}
     void SetPara(LwpPara* para){m_pPara=para;}
     void RegisterStyle();
-    void FindLayouts();// for register pagelayout
     LwpFrib* GetFribs(){return m_pFribs;}
     LwpFrib* HasFrib(sal_uInt8 nType);
-    bool ComparePagePosition(LwpVirtualLayout* pPreLayout, LwpVirtualLayout* pNextLayout);
+    bool ComparePagePosition(LwpVirtualLayout const * pPreLayout, LwpVirtualLayout const * pNextLayout);
     void GatherAllText();
 };
 

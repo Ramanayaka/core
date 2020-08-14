@@ -23,13 +23,11 @@
 #include <sal/config.h>
 
 #include <deque>
-#include <exception>
-#include <functional>
 #include <map>
 #include <memory>
 #include <vector>
 
-#include <boost/optional.hpp>
+#include <optional>
 
 #include <com/sun/star/awt/XUserInputInterception.hpp>
 #include <com/sun/star/frame/CommandGroup.hpp>
@@ -45,9 +43,7 @@
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/util/URL.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
@@ -61,13 +57,12 @@
 #include <dbaccess/dbaccessdllapi.h>
 #include <dbaccess/IController.hxx>
 #include <osl/mutex.hxx>
-#include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <tools/link.hxx>
 #include <vcl/vclptr.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt { class XKeyHandler; }
     namespace awt { class XMouseClickHandler; }
     namespace awt { class XWindow; }
@@ -88,54 +83,24 @@ namespace com { namespace sun { namespace star {
     namespace ui { class XSidebarProvider; }
     namespace uno { class XComponentContext; }
     namespace util { class XURLTransformer; }
-} } }
+}
 
 namespace vcl { class Window; }
+namespace weld { class Window; }
 class NotifyEvent;
 
 namespace dbaui
 {
     class ODataView;
 
-
-    // = optional
-
-    /** convenience wrapper around boost::optional, allowing typed assignments
-    */
-    template < typename T >
-    class optional : public ::boost::optional< T >
-    {
-        typedef ::boost::optional< T >  base_type;
-
-    public:
-                 optional ( ) : base_type( ) { }
-        explicit optional ( T const& val ) : base_type( val ) { }
-                 optional ( optional const& rhs ) : base_type( static_cast<base_type const&>(rhs) ) { }
-
-    public:
-        optional& operator= ( T const& rhs )
-        {
-            base_type::reset( rhs );
-            return *this;
-        }
-        optional& operator= ( optional< T > const& rhs )
-        {
-            if ( rhs.is_initialized() )
-                base_type::reset( rhs.get() );
-            else
-                base_type::reset();
-            return *this;
-        }
-    };
-
     template< typename T >
-    inline bool SAL_CALL operator >>= ( const css::uno::Any & _any, optional< T >& _value )
+    inline bool SAL_CALL operator >>= (const css::uno::Any& _any, std::optional< T >& _value)
     {
         _value.reset();  // de-init the optional value
 
         T directValue = T();
         if ( _any >>= directValue )
-            _value.reset( directValue );
+            _value = directValue;
 
         return !!_value;
     }
@@ -153,10 +118,10 @@ namespace dbaui
     {
         bool                        bEnabled;
 
-        optional< bool >            bChecked;
-        optional< bool >            bInvisible;
+        std::optional<bool> bChecked;
+        std::optional<bool> bInvisible;
         css::uno::Any               aValue;
-        optional< OUString >        sTitle;
+        std::optional<OUString> sTitle;
 
         FeatureState() : bEnabled(false) { }
     };
@@ -177,12 +142,16 @@ namespace dbaui
                         >   SupportedFeatures;
 
 
-    struct CompareFeatureById : ::std::binary_function< SupportedFeatures::value_type, sal_Int32, bool >
+    class CompareFeatureById
     {
+        const sal_Int32 m_nId;
+    public:
+        CompareFeatureById(sal_Int32 _nId) : m_nId(_nId)
+        {}
 
-        bool operator()( const SupportedFeatures::value_type& _aType, sal_Int32 _nId ) const
+        bool operator()( const SupportedFeatures::value_type& _aType ) const
         {
-            return !!( _nId == _aType.second.nFeatureId );
+            return m_nId == _aType.second.nFeatureId;
         }
     };
 
@@ -196,15 +165,17 @@ namespace dbaui
     };
 
 
-    typedef ::std::deque< FeatureListener > FeatureListeners;
-
-
-    struct FindFeatureListener : ::std::binary_function< FeatureListener, css::uno::Reference< css::frame::XStatusListener >, bool >
+    class FindFeatureListener
     {
+        const css::uno::Reference< css::frame::XStatusListener >& m_xListener;
+    public:
+        FindFeatureListener(const css::uno::Reference< css::frame::XStatusListener >& _xListener)
+            : m_xListener(_xListener)
+        {}
 
-        bool operator()( const FeatureListener& lhs, const css::uno::Reference< css::frame::XStatusListener >& rhs ) const
+        bool operator()( const FeatureListener& lhs ) const
         {
-            return !!( lhs.xListener == rhs );
+            return lhs.xListener == m_xListener;
         }
     };
 
@@ -258,7 +229,8 @@ namespace dbaui
         typedef std::map<sal_uInt16, FeatureState> StateCache;
         typedef std::vector<DispatchTarget> Dispatch;
 
-        FeatureListeners        m_aFeaturesToInvalidate;
+        ::std::deque< FeatureListener >
+                                m_aFeaturesToInvalidate;
 
         ::osl::Mutex            m_aFeatureMutex;        // locked when features are append to or remove from deque
         StateCache              m_aStateCache;          // save the current status of feature state
@@ -270,7 +242,7 @@ namespace dbaui
         css::uno::Reference< css::uno::XComponentContext >        m_xContext;
         ControllerFrame                                                                     m_aCurrentFrame;
         css::uno::Reference< css::frame::XDispatchProvider >      m_xSlaveDispatcher;     // for intercepting dispatches
-        css::uno::Reference< css::frame::XDispatchProvider >      m_xMasterDispatcher;    // dito
+        css::uno::Reference< css::frame::XDispatchProvider >      m_xMasterDispatcher;    // ditto
         css::uno::Reference< css::sdb::XDatabaseContext >         m_xDatabaseContext;
         css::uno::Reference< css::frame::XTitle >                 m_xTitleHelper;
 
@@ -288,6 +260,7 @@ namespace dbaui
 
         // methods
         OGenericUnoController( const css::uno::Reference< css::uno::XComponentContext >& _rM );
+        OGenericUnoController() = delete;
         const ::comphelper::NamedValueCollection&
                                     getInitParams() const   { return m_aInitParameters; }
 
@@ -326,7 +299,7 @@ namespace dbaui
                 by the user, see also <type scope="css::frame">CommandGroup</type>.
         */
         void    implDescribeSupportedFeature(
-                    const sal_Char* _pAsciiCommandURL,
+                    const char* _pAsciiCommandURL,
                     sal_uInt16 _nFeatureId,
                     sal_Int16 _nCommandGroup = css::frame::CommandGroup::INTERNAL
                 );
@@ -408,12 +381,13 @@ namespace dbaui
     public:
         const css::uno::Reference< css::uno::XComponentContext >& getORB() const { return m_xContext; }
         ODataView*  getView() const { return m_pView; }
+        weld::Window* getFrameWeld() const;
         void        setView( const VclPtr<ODataView>& i_rView );
         void        clearView();
-        // shows a error box if the SQLExceptionInfo is valid
+        // shows an error box if the SQLExceptionInfo is valid
         void showError(const ::dbtools::SQLExceptionInfo& _rInfo);
 
-        // if there is an css::util::URL translation for the id
+        // if there is a css::util::URL translation for the id
         // ('handle') then if xListener is NULL the change will be forwarded
         // to all listeners to the given css::util::URL
         // if there is a toolbar slot with the given id it is updated (the new state is determined via GetState)
@@ -441,7 +415,6 @@ namespace dbaui
         virtual void executeChecked(sal_uInt16 _nCommandId, const css::uno::Sequence< css::beans::PropertyValue>& aArgs) override;
         virtual bool isCommandEnabled(sal_uInt16 _nCommandId) const override;
         virtual bool isCommandEnabled(const OUString& _rCompleteCommandURL) const override;
-        virtual void notifyHiContrastChanged() override;
         virtual bool isDataSourceReadOnly() const override;
         virtual css::uno::Reference< css::frame::XController > getXController() override;
         virtual bool interceptUserInput( const NotifyEvent& _rEvent ) override;
@@ -524,11 +497,6 @@ namespace dbaui
         virtual void SAL_CALL removeKeyHandler( const css::uno::Reference< css::awt::XKeyHandler >& xHandler ) override;
         virtual void SAL_CALL addMouseClickHandler( const css::uno::Reference< css::awt::XMouseClickHandler >& xHandler ) override;
         virtual void SAL_CALL removeMouseClickHandler( const css::uno::Reference< css::awt::XMouseClickHandler >& xHandler ) override;
-
-    protected:
-#ifdef _MSC_VER
-        OGenericUnoController();    // never implemented
-#endif
     };
 }
 

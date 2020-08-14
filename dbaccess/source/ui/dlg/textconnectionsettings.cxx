@@ -17,62 +17,50 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "textconnectionsettings.hxx"
+#include <textconnectionsettings.hxx>
 #include "TextConnectionHelper.hxx"
-#include "dbu_resource.hrc"
-#include "moduledbu.hxx"
-#include "dsitems.hxx"
-#include "dbustrings.hrc"
-
-#include <vcl/msgbox.hxx>
+#include <dsitems.hxx>
+#include <stringconstants.hxx>
 
 namespace dbaui
 {
     // TextConnectionSettingsDialog
-    TextConnectionSettingsDialog::TextConnectionSettingsDialog( vcl::Window* _pParent, SfxItemSet& _rItems )
-        :ModalDialog( _pParent, "TextConnectionSettingsDialog", "dbaccess/ui/textconnectionsettings.ui" )
-        ,m_rItems( _rItems )
+    TextConnectionSettingsDialog::TextConnectionSettingsDialog(weld::Window* pParent, SfxItemSet& rItems)
+        : GenericDialogController(pParent, "dbaccess/ui/textconnectionsettings.ui", "TextConnectionSettingsDialog")
+        , m_rItems(rItems)
+        , m_xContainer(m_xBuilder->weld_widget("TextPageContainer"))
+        , m_xOK(m_xBuilder->weld_button("ok"))
+        , m_xTextConnectionHelper(new OTextConnectionHelper(m_xContainer.get(), TC_HEADER | TC_SEPARATORS | TC_CHARSET))
     {
-        get(m_pOK, "ok");
-        m_pTextConnectionHelper.reset( VclPtr<OTextConnectionHelper>::Create( get<VclVBox>("TextPageContainer"), TC_HEADER | TC_SEPARATORS | TC_CHARSET ) );
-
-        m_pOK->SetClickHdl( LINK( this, TextConnectionSettingsDialog, OnOK ) );
+        m_xOK->connect_clicked(LINK(this, TextConnectionSettingsDialog, OnOK));
     }
 
     TextConnectionSettingsDialog::~TextConnectionSettingsDialog()
     {
-        disposeOnce();
-    }
-
-    void TextConnectionSettingsDialog::dispose()
-    {
-        m_pOK.clear();
-        m_pTextConnectionHelper.disposeAndClear();
-        ModalDialog::dispose();
     }
 
     void TextConnectionSettingsDialog::bindItemStorages( SfxItemSet& _rSet, PropertyValues& _rValues )
     {
-        _rValues[ PROPERTY_ID_HEADER_LINE ].reset( new SetItemPropertyStorage( _rSet, DSID_TEXTFILEHEADER ) );
-        _rValues[ PROPERTY_ID_FIELD_DELIMITER ].reset( new SetItemPropertyStorage( _rSet, DSID_FIELDDELIMITER ) );
-        _rValues[ PROPERTY_ID_STRING_DELIMITER ].reset( new SetItemPropertyStorage( _rSet, DSID_TEXTDELIMITER ) );
-        _rValues[ PROPERTY_ID_DECIMAL_DELIMITER ].reset( new SetItemPropertyStorage( _rSet, DSID_DECIMALDELIMITER ) );
-        _rValues[ PROPERTY_ID_THOUSAND_DELIMITER ].reset( new SetItemPropertyStorage( _rSet, DSID_THOUSANDSDELIMITER ) );
-        _rValues[ PROPERTY_ID_ENCODING ].reset( new SetItemPropertyStorage( _rSet, DSID_CHARSET ) );
+        _rValues[ PROPERTY_ID_HEADER_LINE ] = std::make_shared<SetItemPropertyStorage>( _rSet, DSID_TEXTFILEHEADER );
+        _rValues[ PROPERTY_ID_FIELD_DELIMITER ] = std::make_shared<SetItemPropertyStorage>( _rSet, DSID_FIELDDELIMITER );
+        _rValues[ PROPERTY_ID_STRING_DELIMITER ] = std::make_shared<SetItemPropertyStorage>( _rSet, DSID_TEXTDELIMITER );
+        _rValues[ PROPERTY_ID_DECIMAL_DELIMITER ] = std::make_shared<SetItemPropertyStorage>( _rSet, DSID_DECIMALDELIMITER );
+        _rValues[ PROPERTY_ID_THOUSAND_DELIMITER ] = std::make_shared<SetItemPropertyStorage>( _rSet, DSID_THOUSANDSDELIMITER );
+        _rValues[ PROPERTY_ID_ENCODING ] = std::make_shared<SetItemPropertyStorage>( _rSet, DSID_CHARSET );
     }
 
-    short TextConnectionSettingsDialog::Execute()
+    short TextConnectionSettingsDialog::run()
     {
-        m_pTextConnectionHelper->implInitControls( m_rItems, true );
-        return ModalDialog::Execute();
+        m_xTextConnectionHelper->implInitControls(m_rItems, true);
+        return GenericDialogController::run();
     }
 
-    IMPL_LINK_NOARG( TextConnectionSettingsDialog, OnOK, Button*, void )
+    IMPL_LINK_NOARG(TextConnectionSettingsDialog, OnOK, weld::Button&, void)
     {
-        if ( m_pTextConnectionHelper->prepareLeave() )
+        if (m_xTextConnectionHelper->prepareLeave())
         {
-            m_pTextConnectionHelper->FillItemSet( m_rItems, false/*bUnused*/ );
-            EndDialog( RET_OK );
+            m_xTextConnectionHelper->FillItemSet( m_rItems, false/*bUnused*/ );
+            m_xDialog->response(RET_OK);
         }
     }
 

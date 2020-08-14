@@ -19,15 +19,14 @@
 
 #include "DataPoint.hxx"
 #include "DataPointProperties.hxx"
-#include "CharacterProperties.hxx"
-#include "UserDefinedProperties.hxx"
-#include "PropertyHelper.hxx"
-#include "macros.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/style/XStyle.hpp>
+#include <CharacterProperties.hxx>
+#include <UserDefinedProperties.hxx>
+#include <PropertyHelper.hxx>
+#include <ModifyListenerHelper.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <algorithm>
 
@@ -96,8 +95,7 @@ DataPoint::DataPoint( const uno::Reference< beans::XPropertySet > & rParentPrope
 }
 
 DataPoint::DataPoint( const DataPoint & rOther ) :
-        MutexContainer(),
-        impl::DataPoint_Base(),
+        impl::DataPoint_Base(rOther),
         ::property::OPropertySet( rOther, m_aMutex ),
         m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder()),
         m_bNoParentPropAllowed( true )
@@ -142,9 +140,9 @@ DataPoint::~DataPoint()
             && xPropertySet.is())
             ModifyListenerHelper::removeListener( xPropertySet, m_xModifyEventForwarder );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -188,7 +186,7 @@ void SAL_CALL DataPoint::setFastPropertyValue_NoBroadcast(
     {
         uno::Any aOldValue;
         Reference< util::XModifyBroadcaster > xBroadcaster;
-        this->getFastPropertyValue( aOldValue, nHandle );
+        getFastPropertyValue( aOldValue, nHandle );
         if( aOldValue.hasValue() &&
             (aOldValue >>= xBroadcaster) &&
             xBroadcaster.is())
@@ -227,9 +225,9 @@ void SAL_CALL DataPoint::addModifyListener( const uno::Reference< util::XModifyL
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -240,9 +238,9 @@ void SAL_CALL DataPoint::removeModifyListener( const uno::Reference< util::XModi
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -272,7 +270,7 @@ IMPLEMENT_FORWARD_XINTERFACE2( DataPoint, DataPoint_Base, ::property::OPropertyS
 // implement XServiceInfo methods basing upon getSupportedServiceNames_Static
 OUString SAL_CALL DataPoint::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.DataPoint") ;
+    return "com.sun.star.comp.chart.DataPoint" ;
 }
 
 sal_Bool SAL_CALL DataPoint::supportsService( const OUString& rServiceName )
@@ -282,7 +280,7 @@ sal_Bool SAL_CALL DataPoint::supportsService( const OUString& rServiceName )
 
 css::uno::Sequence< OUString > SAL_CALL DataPoint::getSupportedServiceNames()
 {
-    return Sequence< OUString >{
+    return {
         "com.sun.star.drawing.FillProperties",
         "com.sun.star.chart2.DataPoint",
         "com.sun.star.chart2.DataPointProperties",

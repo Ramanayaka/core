@@ -22,19 +22,17 @@
 #include <memory>
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/script/BasicErrorException.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
+#include <tools/color.hxx>
 #include <vbahelper/vbadllapi.h>
-#include <vcl/pointr.hxx>
 #include <vcl/ptrstyle.hxx>
 #include <vcl/errcode.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt { class XControl; }
     namespace awt { class XDevice; }
     namespace awt { class XUnitConversion; }
@@ -47,15 +45,13 @@ namespace com { namespace sun { namespace star {
     namespace script { class XTypeConverter; }
     namespace uno { class Exception; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
 class SfxObjectShell;
 class SfxViewFrame;
 class SfxViewShell;
 
-namespace ooo
-{
-    namespace vba
+namespace ooo::vba
     {
         /// @throws css::lang::IllegalArgumentException
         template < class T >
@@ -73,7 +69,7 @@ namespace ooo
 
         /** Returns the VBA document implementation object representing the passed UNO document model. */
         VBAHELPER_DLLPUBLIC css::uno::Reference< XHelperInterface > getVBADocument( const css::uno::Reference< css::frame::XModel >& xModel );
-        VBAHELPER_DLLPUBLIC css::uno::Reference< XHelperInterface > getUnoDocModule( const OUString& aModName, SfxObjectShell* pShell );
+        VBAHELPER_DLLPUBLIC css::uno::Reference< XHelperInterface > getUnoDocModule( const OUString& aModName, SfxObjectShell const * pShell );
         /// @throws css::uno::RuntimeException
         VBAHELPER_DLLPUBLIC SfxObjectShell* getSfxObjShell( const css::uno::Reference< css::frame::XModel >& xModel );
 
@@ -95,8 +91,9 @@ namespace ooo
 
         VBAHELPER_DLLPUBLIC void dispatchRequests( const css::uno::Reference< css::frame::XModel>& xModel, const OUString& aUrl );
         VBAHELPER_DLLPUBLIC void dispatchRequests (const css::uno::Reference< css::frame::XModel>& xModel, const OUString & aUrl, const css::uno::Sequence< css::beans::PropertyValue >& sProps );
-        VBAHELPER_DLLPUBLIC void dispatchExecute(SfxViewShell* pView, sal_uInt16 nSlot );
+        VBAHELPER_DLLPUBLIC void dispatchExecute(SfxViewShell const * pView, sal_uInt16 nSlot );
         VBAHELPER_DLLPUBLIC sal_Int32 OORGBToXLRGB( sal_Int32 );
+        inline sal_Int32 OORGBToXLRGB( ::Color n ) { return OORGBToXLRGB(sal_Int32(n)); }
         VBAHELPER_DLLPUBLIC sal_Int32 XLRGBToOORGB( sal_Int32 );
         VBAHELPER_DLLPUBLIC css::uno::Any OORGBToXLRGB( const css::uno::Any& );
         VBAHELPER_DLLPUBLIC css::uno::Any XLRGBToOORGB( const css::uno::Any& );
@@ -104,8 +101,8 @@ namespace ooo
         // the object when passed to IsNull will return true. aNULL
         // contains an empty object reference
         VBAHELPER_DLLPUBLIC const css::uno::Any& aNULL();
-        VBAHELPER_DLLPUBLIC void PrintOutHelper( SfxViewShell* pViewShell, const css::uno::Any& From, const css::uno::Any& To, const css::uno::Any& Copies, const css::uno::Any& Preview, const css::uno::Any& ActivePrinter, const css::uno::Any& PrintToFile, const css::uno::Any& Collate, const css::uno::Any& PrToFileName, bool bSelection  );
-        VBAHELPER_DLLPUBLIC void PrintPreviewHelper( const css::uno::Any& EnableChanges,  SfxViewShell* );
+        VBAHELPER_DLLPUBLIC void PrintOutHelper( SfxViewShell const * pViewShell, const css::uno::Any& From, const css::uno::Any& To, const css::uno::Any& Copies, const css::uno::Any& Preview, const css::uno::Any& ActivePrinter, const css::uno::Any& PrintToFile, const css::uno::Any& Collate, const css::uno::Any& PrToFileName, bool bSelection  );
+        VBAHELPER_DLLPUBLIC void PrintPreviewHelper( const css::uno::Any& EnableChanges, SfxViewShell const * );
         VBAHELPER_DLLPUBLIC void WaitUntilPreviewIsClosed( SfxViewFrame* );
 
         /** Extracts a boolean value from the passed Any, which may contain a Boolean or an integer or floating-point value.
@@ -122,14 +119,14 @@ namespace ooo
 
         /// @throws css::uno::RuntimeException
         VBAHELPER_DLLPUBLIC OUString getAnyAsString( const css::uno::Any& pvargItem );
-        VBAHELPER_DLLPUBLIC OUString VBAToRegexp(const OUString &rIn); // needs to be in an uno service ( already this code is duplicated in basic )
+        VBAHELPER_DLLPUBLIC OUString VBAToRegexp(const OUString &rIn); // needs to be in a uno service ( already this code is duplicated in basic )
         VBAHELPER_DLLPUBLIC double getPixelTo100thMillimeterConversionFactor( const css::uno::Reference< css::awt::XDevice >& xDevice, bool bVertical);
         VBAHELPER_DLLPUBLIC double PointsToPixels( const css::uno::Reference< css::awt::XDevice >& xDevice, double fPoints, bool bVertical);
         VBAHELPER_DLLPUBLIC double PixelsToPoints( const css::uno::Reference< css::awt::XDevice >& xDevice, double fPixels, bool bVertical);
         VBAHELPER_DLLPUBLIC sal_Int32 PointsToHmm( double fPoints );
         VBAHELPER_DLLPUBLIC double HmmToPoints( sal_Int32 nHmm );
         VBAHELPER_DLLPUBLIC PointerStyle getPointerStyle( const css::uno::Reference< css::frame::XModel >& );
-        VBAHELPER_DLLPUBLIC void setCursorHelper( const css::uno::Reference< css::frame::XModel >& xModel, const Pointer& rPointer, bool bOverWrite );
+        VBAHELPER_DLLPUBLIC void setCursorHelper( const css::uno::Reference< css::frame::XModel >& xModel, PointerStyle nPointer, bool bOverWrite );
         /// @throws css::uno::RuntimeException
         VBAHELPER_DLLPUBLIC void setDefaultPropByIntrospection( const css::uno::Any& aObj, const css::uno::Any& aValue  );
         VBAHELPER_DLLPUBLIC css::uno::Any getPropertyValue( const css::uno::Sequence< css::beans::PropertyValue >& aProp, const OUString& aName );
@@ -148,7 +145,7 @@ public:
     Millimeter(double mm);
 
     void setInPoints(double points) ;
-    double getInHundredthsOfOneMillimeter();
+    double getInHundredthsOfOneMillimeter() const;
     static sal_Int32 getInHundredthsOfOneMillimeter(double points);
     static double getInPoints(int _hmm);
 };
@@ -176,7 +173,6 @@ public:
 
 class VBAHELPER_DLLPUBLIC ShapeHelper
 {
-protected:
     css::uno::Reference< css::drawing::XShape > xShape;
 public:
     /// @throws css::script::BasicErrorException
@@ -193,11 +189,11 @@ public:
     void setTop(double _fTop);
 };
 
-class VBAHELPER_DLLPUBLIC ConcreteXShapeGeometryAttributes : public AbstractGeometryAttributes
+class VBAHELPER_DLLPUBLIC ConcreteXShapeGeometryAttributes final : public AbstractGeometryAttributes
 {
     std::unique_ptr< ShapeHelper > m_pShapeHelper;
 public:
-    ConcreteXShapeGeometryAttributes( const css::uno::Reference< css::uno::XComponentContext >& xContext, const css::uno::Reference< css::drawing::XShape >& xShape );
+    ConcreteXShapeGeometryAttributes( const css::uno::Reference< css::drawing::XShape >& xShape );
     virtual double getLeft() const override;
     virtual void setLeft( double nLeft ) override;
     virtual double getTop() const override;
@@ -211,11 +207,11 @@ public:
 
 #define VBA_LEFT "PositionX"
 #define VBA_TOP "PositionY"
-class VBAHELPER_DLLPUBLIC UserFormGeometryHelper : public AbstractGeometryAttributes
+
+class VBAHELPER_DLLPUBLIC UserFormGeometryHelper final : public AbstractGeometryAttributes
 {
 public:
     UserFormGeometryHelper(
-        const css::uno::Reference< css::uno::XComponentContext >& xContext,
         const css::uno::Reference< css::awt::XControl >& xControl,
         double fOffsetX, double fOffsetY );
     virtual double getLeft() const override;
@@ -275,8 +271,7 @@ public:
     static void runtimeexception( ErrCode err );
 };
 
-    } // vba
-} // ooo
+} // ooo::vba
 
 namespace ov = ooo::vba;
 

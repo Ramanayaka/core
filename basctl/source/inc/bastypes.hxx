@@ -21,11 +21,11 @@
 
 #include "scriptdocument.hxx"
 
-#include <sbxitem.hxx>
-#include <iderid.hxx>
+#include "sbxitem.hxx"
 #include <svtools/tabbar.hxx>
-#include <vcl/toolbox.hxx>
 #include <basic/sbdef.hxx>
+#include <vcl/dockwin.hxx>
+#include <vcl/weld.hxx>
 
 #include <unordered_map>
 
@@ -35,10 +35,11 @@ class SfxRequest;
 class SvxSearchItem;
 class Printer;
 enum class SearchOptionFlags;
+class SfxUndoManager;
 
-namespace svl
+namespace weld
 {
-    class IUndoManager;
+    class Widget;
 }
 
 namespace basctl
@@ -80,8 +81,8 @@ struct BasicStatus
 class DockingWindow : public ::DockingWindow
 {
 public:
-    DockingWindow (vcl::Window* pParent);
-    DockingWindow (Layout* pParent);
+    DockingWindow(vcl::Window* pParent, const OUString& rUIXMLDescription, const OString& rID);
+    DockingWindow(Layout* pParent);
     virtual ~DockingWindow() override;
     virtual void dispose() override;
     void ResizeIfDocking (Point const&, Size const&);
@@ -98,6 +99,11 @@ protected:
     virtual void     ToggleFloatingMode() override;
     virtual bool PrepareToggleFloatingMode() override;
     virtual void     StartDocking() override;
+
+protected:
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    VclPtr<vcl::Window> m_xVclContentArea;
+    std::unique_ptr<weld::Container> m_xContainer;
 
 private:
     // the position and the size of the floating window
@@ -187,7 +193,6 @@ public:
 
     virtual void    StoreData();
     virtual void    UpdateData();
-    virtual bool    CanClose();
 
     // return number of pages to be printed
     virtual sal_Int32 countPages( Printer* pPrinter ) = 0;
@@ -199,19 +204,18 @@ public:
     virtual EntryDescriptor  CreateEntryDescriptor() = 0;
 
     virtual bool    IsModified();
-    virtual bool    IsPasteAllowed();
 
     virtual bool    AllowUndo();
 
     virtual void    SetReadOnly (bool bReadOnly);
     virtual bool    IsReadOnly();
 
-    int GetStatus() { return nStatus; }
+    int GetStatus() const { return nStatus; }
     void SetStatus(int n) { nStatus = n; }
     void AddStatus(int n) { nStatus |= n; }
     void ClearStatus(int n) { nStatus &= ~n; }
 
-    virtual svl::IUndoManager* GetUndoManager ();
+    virtual SfxUndoManager* GetUndoManager ();
 
     virtual SearchOptionFlags  GetSearchOptions();
     virtual sal_uInt16  StartSearchAndReplace (SvxSearchItem const&, bool bFromStart = false);
@@ -258,7 +262,6 @@ private:
 
     public:
         Key (ScriptDocument const&, OUString const& rLibName);
-        ~Key ();
     public:
         bool operator == (Key const&) const;
         struct Hash
@@ -277,7 +280,6 @@ public:
 
     public:
         Item (OUString const& rCurrentName, ItemType eCurrentType);
-        ~Item ();
         const OUString& GetCurrentName()        const { return m_aCurrentName; }
         ItemType        GetCurrentType()        const { return m_eCurrentType; }
     };
@@ -286,16 +288,16 @@ private:
     Map m_aMap;
 };
 
-void            CutLines( OUString& rStr, sal_Int32 nStartLine, sal_Int32 nLines, bool bEraseTrailingEmptyLines );
+void            CutLines( OUString& rStr, sal_Int32 nStartLine, sal_Int32 nLines );
 OUString CreateMgrAndLibStr( const OUString& rMgrName, const OUString& rLibName );
-sal_uLong           CalcLineCount( SvStream& rStream );
+sal_uInt32           CalcLineCount( SvStream& rStream );
 
-bool QueryReplaceMacro( const OUString& rName, vcl::Window* pParent );
-bool QueryDelMacro( const OUString& rName, vcl::Window* pParent );
-bool QueryDelDialog( const OUString& rName, vcl::Window* pParent );
-bool QueryDelModule( const OUString& rName, vcl::Window* pParent );
-bool QueryDelLib( const OUString& rName, bool bRef, vcl::Window* pParent );
-bool QueryPassword( const css::uno::Reference< css::script::XLibraryContainer >& xLibContainer, const OUString& rLibName, OUString& rPassword, bool bRepeat = false, bool bNewTitle = false );
+bool QueryReplaceMacro( const OUString& rName, weld::Widget* pParent );
+bool QueryDelMacro( const OUString& rName, weld::Widget* pParent );
+bool QueryDelDialog( const OUString& rName, weld::Widget* pParent );
+bool QueryDelModule( const OUString& rName, weld::Widget* pParent );
+bool QueryDelLib( const OUString& rName, bool bRef, weld::Widget* pParent );
+bool QueryPassword(weld::Widget* pDialogParent, const css::uno::Reference< css::script::XLibraryContainer >& xLibContainer, const OUString& rLibName, OUString& rPassword, bool bRepeat = false, bool bNewTitle = false);
 
 class ModuleInfoHelper
 {

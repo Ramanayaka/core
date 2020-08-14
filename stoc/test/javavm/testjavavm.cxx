@@ -22,6 +22,7 @@
 
 #include <stdio.h>
 #include <sal/main.h>
+#include <sal/log.hxx>
 #include <rtl/process.h>
 
 #include <cppuhelper/servicefactory.hxx>
@@ -138,7 +139,7 @@ SAL_IMPLEMENT_MAIN()
     }
     catch (const Exception & rExc)
     {
-        SAL_WARN("stoc", "### exception occurred: " << rExc.Message );
+        DBG_UNHANDLED_EXCEPTION("stoc", "### exception occurred: " << rExc );
     }
 
     Reference< XComponent > xCompContext( context, UNO_QUERY );

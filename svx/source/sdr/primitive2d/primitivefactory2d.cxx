@@ -20,10 +20,9 @@
 #include <com/sun/star/graphic/XPrimitiveFactory2D.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
+#include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
-#include <rtl/ref.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/unoapi.hxx>
@@ -49,7 +48,7 @@ public:
     virtual css::uno::Sequence< css::uno::Reference< css::graphic::XPrimitive2D > > SAL_CALL createPrimitivesFromXDrawPage( const css::uno::Reference< css::drawing::XDrawPage >& xDrawPage, const css::uno::Sequence< css::beans::PropertyValue >& aParms ) override;
 
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.comp.graphic.PrimitiveFactory2D"); }
+    { return "com.sun.star.comp.graphic.PrimitiveFactory2D"; }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
@@ -104,7 +103,7 @@ css::uno::Sequence< css::uno::Reference< css::graphic::XPrimitive2D > > SAL_CALL
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_graphic_PrimitiveFactory2D_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

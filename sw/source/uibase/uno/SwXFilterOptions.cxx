@@ -20,18 +20,15 @@
 #include <SwXFilterOptions.hxx>
 #include <shellio.hxx>
 #include <swdll.hxx>
-#include <unoprnms.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/msgbox.hxx>
-#include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
+#include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <unotxdoc.hxx>
 
-#include "swabstdlg.hxx"
-#include "dialog.hrc"
+#include <swabstdlg.hxx>
 #include <memory>
 
 using namespace ::com::sun::star;
@@ -58,11 +55,8 @@ uno::Sequence< beans::PropertyValue > SwXFilterOptions::getPropertyValues()
 
 void   SwXFilterOptions::setPropertyValues( const uno::Sequence<beans::PropertyValue >& aProps )
 {
-    const beans::PropertyValue* pPropArray = aProps.getConstArray();
-    long nPropCount = aProps.getLength();
-    for (long i = 0; i < nPropCount; i++)
+    for (const beans::PropertyValue& rProp : aProps)
     {
-        const beans::PropertyValue& rProp = pPropArray[i];
         OUString aPropName = rProp.Name;
 
         if ( aPropName == FILTER_OPTIONS_NAME )
@@ -82,25 +76,17 @@ sal_Int16 SwXFilterOptions::execute()
 
     std::unique_ptr<SvStream> pInStream;
     if ( xInputStream.is() )
-        pInStream.reset(utl::UcbStreamHelper::CreateStream( xInputStream ));
+        pInStream = utl::UcbStreamHelper::CreateStream( xInputStream );
 
-    uno::Reference< XUnoTunnel > xTunnel(xModel, uno::UNO_QUERY);
     SwDocShell* pDocShell = nullptr;
-    if(xTunnel.is())
-    {
-        SwXTextDocument* pXDoc = reinterpret_cast< SwXTextDocument * >(
-                sal::static_int_cast< sal_IntPtr >(xTunnel->getSomething(SwXTextDocument::getUnoTunnelId())));
-        pDocShell = pXDoc ? pXDoc->GetDocShell() : nullptr;
-    }
+    if (auto pXDoc = comphelper::getUnoTunnelImplementation<SwXTextDocument>(xModel); pXDoc)
+        pDocShell = pXDoc->GetDocShell();
+
     if(pDocShell)
     {
-
         SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-        OSL_ENSURE(pFact, "SwAbstractDialogFactory fail!");
-
-        ScopedVclPtr<AbstractSwAsciiFilterDlg> pAsciiDlg(pFact->CreateSwAsciiFilterDlg(*pDocShell,
+        ScopedVclPtr<AbstractSwAsciiFilterDlg> pAsciiDlg(pFact->CreateSwAsciiFilterDlg(Application::GetFrameWeld(xDialogParent), *pDocShell,
             pInStream.get()));
-        OSL_ENSURE(pAsciiDlg, "Dialog creation failed!");
         if(RET_OK == pAsciiDlg->Execute())
         {
             SwAsciiOptions aOptions;
@@ -123,9 +109,16 @@ void   SwXFilterOptions::setSourceDocument( const uno::Reference<XComponent >& x
     xModel = xDoc;
 }
 
+void SAL_CALL SwXFilterOptions::initialize(const uno::Sequence<uno::Any>& rArguments)
+{
+    ::comphelper::NamedValueCollection aProperties(rArguments);
+    if (aProperties.has("ParentWindow"))
+        aProperties.get("ParentWindow") >>= xDialogParent;
+}
+
 OUString SwXFilterOptions::getImplementationName()
 {
-    return OUString("com.sun.star.comp.Writer.FilterOptionsDialog");
+    return "com.sun.star.comp.Writer.FilterOptionsDialog";
 }
 
 sal_Bool SwXFilterOptions::supportsService( const OUString& rServiceName )
@@ -135,11 +128,10 @@ sal_Bool SwXFilterOptions::supportsService( const OUString& rServiceName )
 
 uno::Sequence< OUString > SwXFilterOptions::getSupportedServiceNames()
 {
-    OUString sService("com.sun.star.ui.dialogs.FilterOptionsDialog");
-    return uno::Sequence< OUString> (&sService, 1);
+    return { "com.sun.star.ui.dialogs.FilterOptionsDialog" };
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_FilterOptionsDialog_get_implementation(css::uno::XComponentContext*,
                                 css::uno::Sequence<css::uno::Any> const &)
 {

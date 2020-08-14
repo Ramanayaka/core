@@ -17,31 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/io/XActiveDataControl.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XActiveDataSink.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/util/XChangesBatch.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 
 #include <unotools/ZipPackageHelper.hxx>
-#include <comphelper/processfactory.hxx>
-#include <comphelper/oslfile2streamwrap.hxx>
 #include <comphelper/storagehelper.hxx>
 #include <osl/file.hxx>
-#include <unotools/pathoptions.hxx>
 #include <unotools/streamwrap.hxx>
-#include <unotools/tempfile.hxx>
-#include <svl/urihelper.hxx>
 #include <tools/stream.hxx>
 #include <tools/urlobj.hxx>
 
 #include <rtl/uri.hxx>
+
+namespace com::sun::star::io { class XInputStream; }
 
 using namespace utl;
 using namespace osl;
@@ -100,7 +96,7 @@ Reference< XInterface >& ZipPackageHelper::getRootFolder()
     return mxRootFolder;
 }
 
-Reference< XInterface > ZipPackageHelper::addFolder( Reference< XInterface >& xRootFolder,
+Reference< XInterface > ZipPackageHelper::addFolder( Reference< XInterface > const & xRootFolder,
                                                      const OUString& rName )
 {
     if ( rName == ".." || rName == "." )
@@ -123,7 +119,7 @@ Reference< XInterface > ZipPackageHelper::addFolder( Reference< XInterface >& xR
     return xFolder;
 }
 
-void ZipPackageHelper::addFolderWithContent( Reference< XInterface >& xRootFolder, const OUString& rDirURL )
+void ZipPackageHelper::addFolderWithContent( Reference< XInterface > const & xRootFolder, const OUString& rDirURL )
 {
     if (rDirURL.isEmpty())
         return;
@@ -159,20 +155,13 @@ void ZipPackageHelper::addFolderWithContent( Reference< XInterface >& xRootFolde
     }
 }
 
-void ZipPackageHelper::addFile( css::uno::Reference< css::uno::XInterface >& xRootFolder,
-                                const OUString& rSourceFile )
+void ZipPackageHelper::addFile( css::uno::Reference< css::uno::XInterface > const & xRootFolder,
+                                const OUString& rSourceFileURL )
 {
-    OUString aFileURL( rSourceFile );
-
-    /*if( !aFileURL.matchIgnoreAsciiCase("file://") )
-    {
-        aFileURL = URIHelper::SmartRel2Abs( aFileURL, Link<OUString *, bool>(), false );
-    }*/
-
-    INetURLObject aURL( aFileURL );
+    INetURLObject aURL( rSourceFileURL );
     OUString aName( aURL.getName() );
 
-    SvFileStream* pStream = new SvFileStream(aFileURL, StreamMode::READ );
+    SvFileStream* pStream = new SvFileStream(rSourceFileURL, StreamMode::READ );
     Reference< XInputStream > xInput(  new utl::OSeekableInputStreamWrapper( pStream, true ) );
     Reference< XActiveDataSink > xSink( mxFactory->createInstance(), UNO_QUERY );
     Reference< XUnoTunnel > xTunnel( xSink, UNO_QUERY );

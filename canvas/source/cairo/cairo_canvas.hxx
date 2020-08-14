@@ -17,39 +17,29 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_CANVAS_HXX
-#define INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_CANVAS_HXX
-
-#include <rtl/ref.hxx>
+#pragma once
 
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XServiceName.hpp>
-#include <com/sun/star/awt/XWindowListener.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/util/XUpdatable.hpp>
-#include <com/sun/star/rendering/XSpriteCanvas.hpp>
 #include <com/sun/star/rendering/XIntegerBitmap.hpp>
 #include <com/sun/star/rendering/XGraphicDevice.hpp>
-#include <com/sun/star/rendering/XBufferController.hpp>
+#include <com/sun/star/rendering/XBitmapCanvas.hpp>
 
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/uno3.hxx>
 
-#include <canvas/base/spritecanvasbase.hxx>
-#include <canvas/base/basemutexhelper.hxx>
-#include <canvas/base/bufferedgraphicdevicebase.hxx>
+#include <base/basemutexhelper.hxx>
+#include <base/bitmapcanvasbase.hxx>
+#include <base/graphicdevicebase.hxx>
+#include <base/integerbitmapbase.hxx>
 
-#include <basegfx/vector/b2isize.hxx>
-
+#include "cairo_canvashelper.hxx"
 #include "cairo_devicehelper.hxx"
 #include "cairo_repainttarget.hxx"
 #include "cairo_surfaceprovider.hxx"
-#include "cairo_spritecanvashelper.hxx"
-
-#define CANVAS_SERVICE_NAME        "com.sun.star.rendering.Canvas.Cairo"
-#define CANVAS_IMPLEMENTATION_NAME "com.sun.star.comp.rendering.Canvas.Cairo"
 
 namespace cairocanvas
 {
@@ -59,7 +49,8 @@ namespace cairocanvas
                                              css::lang::XMultiServiceFactory,
                                              css::util::XUpdatable,
                                              css::beans::XPropertySet,
-                                             css::lang::XServiceName >  GraphicDeviceBase_Base;
+                                             css::lang::XServiceName,
+                                             css::lang::XServiceInfo >  GraphicDeviceBase_Base;
     typedef ::canvas::GraphicDeviceBase< ::canvas::BaseMutexHelper< GraphicDeviceBase_Base >,
                                                  DeviceHelper,
                                                  ::osl::MutexGuard,
@@ -126,6 +117,11 @@ namespace cairocanvas
         // XServiceName
         virtual OUString SAL_CALL getServiceName(  ) override;
 
+        //  XServiceInfo
+        virtual sal_Bool SAL_CALL supportsService(const OUString& sServiceName) override;
+        virtual OUString SAL_CALL getImplementationName() override;
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+
         // RepaintTarget
         virtual bool repaint( const ::cairo::SurfaceSharedPtr& pSurface,
                   const css::rendering::ViewState& viewState,
@@ -141,10 +137,6 @@ namespace cairocanvas
      private:
         css::uno::Sequence< css::uno::Any >                maArguments;
     };
-
-    typedef ::rtl::Reference< Canvas > CanvasRef;
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

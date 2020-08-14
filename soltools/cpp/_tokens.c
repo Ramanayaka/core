@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,8 +67,8 @@ static unsigned char toLatin1[256] =
 
 #define MASK    "\\x%x"
 
-int
-    memcpy_EBCDIC( char * pwbuf, uchar *p, int len )
+static int
+    memcpy_EBCDIC( char * pwbuf, uchar const *p, int len )
 {
     int currpos = 0;
     int processedchars = 0;
@@ -217,6 +218,7 @@ Token *
 
     trp->max = 3 * trp->max / 2 + 1;
     trp->bp = (Token *) realloc(trp->bp, trp->max * sizeof(Token));
+    assert(trp->bp); // realloc failure is OOM -> no point to handle
     trp->lp = &trp->bp[nlast];
     trp->tp = &trp->bp[ncur];
     return trp->lp;
@@ -251,7 +253,7 @@ int
  * Canonical whitespace is assured on each side.
  */
 void
-    insertrow(Tokenrow * dtr, int ntok, Tokenrow * str)
+    insertrow(Tokenrow * dtr, int ntok, Tokenrow const * str)
 {
     int nrtok = (int)rowlen(str);
 
@@ -266,7 +268,7 @@ void
  * make sure there is WS before trp->tp, if tokens might merge in the output
  */
 void
-    makespace(Tokenrow * trp, Token * ntp)
+    makespace(Tokenrow * trp, Token const * ntp)
 {
     uchar *tt;
     Token *tp = trp->tp;
@@ -289,7 +291,7 @@ void
  *  Not strictly conforming.
  */
 void
-    movetokenrow(Tokenrow * dtr, Tokenrow * str)
+    movetokenrow(Tokenrow * dtr, Tokenrow const * str)
 {
     size_t nby;
 
@@ -325,13 +327,14 @@ void
  * the space for the contents.  Return the destination.
  */
 Tokenrow *
-    copytokenrow(Tokenrow * dtr, Tokenrow * str)
+    copytokenrow(Tokenrow * dtr, Tokenrow const * str)
 {
     int len = (int)rowlen(str);
 
     maketokenrow(len, dtr);
     movetokenrow(dtr, str);
-    dtr->lp += len;
+    if (len != 0)
+        dtr->lp += len;
     return dtr;
 }
 
@@ -429,11 +432,11 @@ void
                         int nlen = (int)(ntp->len + ntp->wslen);
 
                         memcpy(wbp, "if(", 3 );
-                         wbp += 4;
+                        wbp += 4;
                         memcpy(wbp, np, nlen );
-                         wbp += nlen;
+                        wbp += nlen;
                         memcpy(wbp, ")", 1 );
-                         wbp++;
+                        wbp++;
 
                         memcpy(wbp, p, len);
                     }
@@ -510,8 +513,8 @@ void
     {
         if ( write(1, wbuf, (int)(wbp - wbuf)) != -1)
             wbp = wbuf;
-    else
-        exit(1);
+        else
+            exit(1);
     }
 }
 
@@ -543,7 +546,7 @@ char *
  * Null terminated.
  */
 uchar *
-    newstring(uchar * s, size_t l, size_t o)
+    newstring(uchar const * s, size_t l, size_t o)
 {
     uchar *ns = (uchar *) domalloc(l + o + 1);
 

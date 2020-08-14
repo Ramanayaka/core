@@ -20,11 +20,11 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_FACTORIES_FRAMEWINDOWPANE_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_FACTORIES_FRAMEWINDOWPANE_HXX
 
-#include "framework/Pane.hxx"
+#include <framework/Pane.hxx>
 
-#include <com/sun/star/drawing/framework/XResourceId.hpp>
+namespace com::sun::star::drawing::framework { class XResourceId; }
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 /** This subclass is not necessary anymore.  We can remove it if that
     remains so.
@@ -45,7 +45,7 @@ public:
     virtual sal_Bool SAL_CALL isAnchorOnly() override;
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

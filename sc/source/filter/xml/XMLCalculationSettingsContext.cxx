@@ -19,21 +19,21 @@
 
 #include "XMLCalculationSettingsContext.hxx"
 #include "xmlimprt.hxx"
-#include "unonames.hxx"
-#include "docoptio.hxx"
-#include "document.hxx"
+#include <unonames.hxx>
+#include <docoptio.hxx>
+#include <document.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <sax/tools/converter.hxx>
-#include <comphelper/extract.hxx>
+
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 
 using namespace com::sun::star;
 using namespace xmloff::token;
 
 ScXMLCalculationSettingsContext::ScXMLCalculationSettingsContext( ScXMLImport& rImport,
-                                      sal_Int32 /*nElement*/,
-                                      const css::uno::Reference< css::xml::sax::XFastAttributeList>& xAttrList) :
+                                      const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList ) :
     ScXMLImportContext( rImport ),
     fIterationEpsilon(0.001),
     nIterationCount(100),
@@ -48,46 +48,43 @@ ScXMLCalculationSettingsContext::ScXMLCalculationSettingsContext( ScXMLImport& r
     aNullDate.Day = 30;
     aNullDate.Month = 12;
     aNullDate.Year = 1899;
-    if( xAttrList.is() )
-    {
-        sax_fastparser::FastAttributeList *pAttribList =
-            static_cast< sax_fastparser::FastAttributeList *>( xAttrList.get() );
+    if ( !rAttrList.is() )
+        return;
 
-        for( auto &aIter : *pAttribList )
+    for (auto &aIter : *rAttrList)
+    {
+        switch (aIter.getToken())
         {
-            switch( aIter.getToken() )
-            {
-            case XML_ELEMENT( TABLE, XML_CASE_SENSITIVE ):
-                if( IsXMLToken( aIter.toCString(), XML_FALSE ) )
-                    bIgnoreCase = true;
-                break;
-            case XML_ELEMENT( TABLE, XML_PRECISION_AS_SHOWN ):
-                if( IsXMLToken( aIter.toCString(), XML_TRUE ) )
-                    bCalcAsShown = true;
-                break;
-            case XML_ELEMENT( TABLE, XML_SEARCH_CRITERIA_MUST_APPLY_TO_WHOLE_CELL ):
-                if( IsXMLToken( aIter.toCString(), XML_FALSE ) )
-                    bMatchWholeCell = false;
-                break;
-            case XML_ELEMENT( TABLE, XML_AUTOMATIC_FIND_LABELS ):
-                if( IsXMLToken( aIter.toCString(), XML_FALSE ) )
-                    bLookUpLabels = false;
-                break;
-            case XML_ELEMENT( TABLE, XML_NULL_YEAR ):
-                sal_Int32 nTemp;
-                ::sax::Converter::convertNumber( nTemp, aIter.toString() );
-                nYear2000 = static_cast<sal_uInt16>(nTemp);
-                break;
-            case XML_ELEMENT( TABLE, XML_USE_REGULAR_EXPRESSIONS ):
-                // Overwrite only the default (regex true) value, not wildcard.
-                if( eSearchType == utl::SearchParam::SearchType::Regexp && IsXMLToken( aIter.toCString(), XML_FALSE ) )
-                    eSearchType = utl::SearchParam::SearchType::Normal;
-                break;
-            case XML_ELEMENT( TABLE, XML_USE_WILDCARDS ):
-                if( IsXMLToken( aIter.toCString(), XML_TRUE ) )
-                    eSearchType = utl::SearchParam::SearchType::Wildcard;
-                break;
-            }
+        case XML_ELEMENT( TABLE, XML_CASE_SENSITIVE ):
+            if( IsXMLToken( aIter, XML_FALSE ) )
+                bIgnoreCase = true;
+            break;
+        case XML_ELEMENT( TABLE, XML_PRECISION_AS_SHOWN ):
+            if( IsXMLToken( aIter, XML_TRUE ) )
+                bCalcAsShown = true;
+            break;
+        case XML_ELEMENT( TABLE, XML_SEARCH_CRITERIA_MUST_APPLY_TO_WHOLE_CELL ):
+            if( IsXMLToken( aIter, XML_FALSE ) )
+                bMatchWholeCell = false;
+            break;
+        case XML_ELEMENT( TABLE, XML_AUTOMATIC_FIND_LABELS ):
+            if( IsXMLToken( aIter, XML_FALSE ) )
+                bLookUpLabels = false;
+            break;
+        case XML_ELEMENT( TABLE, XML_NULL_YEAR ):
+            sal_Int32 nTemp;
+            ::sax::Converter::convertNumber( nTemp, aIter.toString() );
+            nYear2000 = static_cast<sal_uInt16>(nTemp);
+            break;
+        case XML_ELEMENT( TABLE, XML_USE_REGULAR_EXPRESSIONS ):
+            // Overwrite only the default (regex true) value, not wildcard.
+            if( eSearchType == utl::SearchParam::SearchType::Regexp && IsXMLToken( aIter, XML_FALSE ) )
+                eSearchType = utl::SearchParam::SearchType::Normal;
+            break;
+        case XML_ELEMENT( TABLE, XML_USE_WILDCARDS ):
+            if( IsXMLToken( aIter, XML_TRUE ) )
+                eSearchType = utl::SearchParam::SearchType::Wildcard;
+            break;
         }
     }
 }
@@ -96,82 +93,69 @@ ScXMLCalculationSettingsContext::~ScXMLCalculationSettingsContext()
 {
 }
 
-SvXMLImportContext *ScXMLCalculationSettingsContext::CreateChildContext( sal_uInt16 nPrefix,
-                                            const OUString& rLName,
-                                            const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList )
+uno::Reference< xml::sax::XFastContextHandler > SAL_CALL ScXMLCalculationSettingsContext::createFastChildContext(
+    sal_Int32 nElement, const uno::Reference< xml::sax::XFastAttributeList >& xAttrList )
 {
     SvXMLImportContext *pContext = nullptr;
+    sax_fastparser::FastAttributeList *pAttribList =
+        &sax_fastparser::castToFastAttributeList( xAttrList );
 
-    if (nPrefix == XML_NAMESPACE_TABLE)
-    {
-        if (IsXMLToken(rLName, XML_NULL_DATE))
-            pContext = new ScXMLNullDateContext(GetScImport(), nPrefix, rLName, xAttrList, this);
-        else if (IsXMLToken(rLName, XML_ITERATION))
-            pContext = new ScXMLIterationContext(GetScImport(), nPrefix, rLName, xAttrList, this);
-    }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLName );
+    if (nElement == XML_ELEMENT( TABLE, XML_NULL_DATE ))
+        pContext = new ScXMLNullDateContext(GetScImport(), pAttribList, this);
+    else if (nElement == XML_ELEMENT( TABLE, XML_ITERATION ))
+        pContext = new ScXMLIterationContext(GetScImport(), pAttribList, this);
 
     return pContext;
 }
 
 void SAL_CALL ScXMLCalculationSettingsContext::endFastElement( sal_Int32 /*nElement*/ )
 {
-    if (GetScImport().GetModel().is())
+    if (!GetScImport().GetModel().is())
+        return;
+
+    uno::Reference <beans::XPropertySet> xPropertySet (GetScImport().GetModel(), uno::UNO_QUERY);
+    if (!xPropertySet.is())
+        return;
+
+    xPropertySet->setPropertyValue( SC_UNO_CALCASSHOWN, uno::makeAny(bCalcAsShown) );
+    xPropertySet->setPropertyValue( SC_UNO_IGNORECASE, uno::makeAny(bIgnoreCase) );
+    xPropertySet->setPropertyValue( SC_UNO_LOOKUPLABELS, uno::makeAny(bLookUpLabels) );
+    xPropertySet->setPropertyValue( SC_UNO_MATCHWHOLE, uno::makeAny(bMatchWholeCell) );
+    bool bWildcards, bRegex;
+    utl::SearchParam::ConvertToBool( eSearchType, bWildcards, bRegex);
+    xPropertySet->setPropertyValue( SC_UNO_REGEXENABLED, uno::makeAny(bRegex) );
+    xPropertySet->setPropertyValue( SC_UNO_WILDCARDSENABLED, uno::makeAny(bWildcards) );
+    xPropertySet->setPropertyValue( SC_UNO_ITERENABLED, uno::makeAny(bIsIterationEnabled) );
+    xPropertySet->setPropertyValue( SC_UNO_ITERCOUNT, uno::makeAny(nIterationCount) );
+    xPropertySet->setPropertyValue( SC_UNO_ITEREPSILON, uno::makeAny(fIterationEpsilon) );
+    xPropertySet->setPropertyValue( SC_UNO_NULLDATE, uno::makeAny(aNullDate) );
+    if (GetScImport().GetDocument())
     {
-        uno::Reference <beans::XPropertySet> xPropertySet (GetScImport().GetModel(), uno::UNO_QUERY);
-        if (xPropertySet.is())
-        {
-            xPropertySet->setPropertyValue( SC_UNO_CALCASSHOWN, uno::makeAny(bCalcAsShown) );
-            xPropertySet->setPropertyValue( SC_UNO_IGNORECASE, uno::makeAny(bIgnoreCase) );
-            xPropertySet->setPropertyValue( SC_UNO_LOOKUPLABELS, uno::makeAny(bLookUpLabels) );
-            xPropertySet->setPropertyValue( SC_UNO_MATCHWHOLE, uno::makeAny(bMatchWholeCell) );
-            bool bWildcards, bRegex;
-            utl::SearchParam::ConvertToBool( eSearchType, bWildcards, bRegex);
-            xPropertySet->setPropertyValue( SC_UNO_REGEXENABLED, uno::makeAny(bRegex) );
-            xPropertySet->setPropertyValue( SC_UNO_WILDCARDSENABLED, uno::makeAny(bWildcards) );
-            xPropertySet->setPropertyValue( SC_UNO_ITERENABLED, uno::makeAny(bIsIterationEnabled) );
-            xPropertySet->setPropertyValue( SC_UNO_ITERCOUNT, uno::makeAny(nIterationCount) );
-            xPropertySet->setPropertyValue( SC_UNO_ITEREPSILON, uno::makeAny(fIterationEpsilon) );
-            xPropertySet->setPropertyValue( SC_UNO_NULLDATE, uno::makeAny(aNullDate) );
-            if (GetScImport().GetDocument())
-            {
-                ScXMLImport::MutexGuard aGuard(GetScImport());
-                ScDocOptions aDocOptions (GetScImport().GetDocument()->GetDocOptions());
-                aDocOptions.SetYear2000(nYear2000);
-                GetScImport().GetDocument()->SetDocOptions(aDocOptions);
-            }
-        }
+        ScXMLImport::MutexGuard aGuard(GetScImport());
+        ScDocOptions aDocOptions (GetScImport().GetDocument()->GetDocOptions());
+        aDocOptions.SetYear2000(nYear2000);
+        GetScImport().GetDocument()->SetDocOptions(aDocOptions);
     }
 }
 
 ScXMLNullDateContext::ScXMLNullDateContext( ScXMLImport& rImport,
-                                      sal_uInt16 nPrfx,
-                                      const OUString& rLName,
-                                      const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
+                                      const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                                       ScXMLCalculationSettingsContext* pCalcSet) :
-    ScXMLImportContext( rImport, nPrfx, rLName )
+    ScXMLImportContext( rImport )
 {
-    sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
-    for( sal_Int16 i=0; i < nAttrCount; ++i )
-    {
-        const OUString& sAttrName(xAttrList->getNameByIndex( i ));
-        OUString aLocalName;
-        sal_uInt16 nPrefix = GetScImport().GetNamespaceMap().GetKeyByAttrName(
-                                            sAttrName, &aLocalName );
-        const OUString& sValue(xAttrList->getValueByIndex( i ));
+    if ( !rAttrList.is() )
+        return;
 
-        if (nPrefix == XML_NAMESPACE_TABLE && IsXMLToken(aLocalName, XML_DATE_VALUE))
-        {
-            util::DateTime aDateTime;
-            ::sax::Converter::parseDateTime(aDateTime, nullptr, sValue);
-            util::Date aDate;
-            aDate.Day = aDateTime.Day;
-            aDate.Month = aDateTime.Month;
-            aDate.Year = aDateTime.Year;
-            pCalcSet->SetNullDate(aDate);
-        }
+    auto aIter( rAttrList->find( XML_ELEMENT( TABLE, XML_DATE_VALUE ) ) );
+    if (aIter != rAttrList->end())
+    {
+        util::DateTime aDateTime;
+        ::sax::Converter::parseDateTime(aDateTime, aIter.toString());
+        util::Date aDate;
+        aDate.Day = aDateTime.Day;
+        aDate.Month = aDateTime.Month;
+        aDate.Year = aDateTime.Year;
+        pCalcSet->SetNullDate(aDate);
     }
 }
 
@@ -179,72 +163,33 @@ ScXMLNullDateContext::~ScXMLNullDateContext()
 {
 }
 
-SvXMLImportContext *ScXMLNullDateContext::CreateChildContext( sal_uInt16 nPrefix,
-                                            const OUString& rLName,
-                                            const css::uno::Reference< css::xml::sax::XAttributeList>& /* xAttrList */ )
-{
-    SvXMLImportContext *pContext = new SvXMLImportContext( GetImport(), nPrefix, rLName );
-
-    return pContext;
-}
-
-void ScXMLNullDateContext::EndElement()
-{
-}
-
 ScXMLIterationContext::ScXMLIterationContext( ScXMLImport& rImport,
-                                      sal_uInt16 nPrfx,
-                                      const OUString& rLName,
-                                      const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
+                                      const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                                       ScXMLCalculationSettingsContext* pCalcSet) :
-    ScXMLImportContext( rImport, nPrfx, rLName )
+    ScXMLImportContext( rImport )
 {
-    sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
-    for( sal_Int16 i=0; i < nAttrCount; ++i )
-    {
-        const OUString& sAttrName(xAttrList->getNameByIndex( i ));
-        OUString aLocalName;
-        sal_uInt16 nPrefix = GetScImport().GetNamespaceMap().GetKeyByAttrName(
-                                            sAttrName, &aLocalName );
-        const OUString& sValue(xAttrList->getValueByIndex( i ));
+    if ( !rAttrList.is() )
+        return;
 
-        if (nPrefix == XML_NAMESPACE_TABLE)
+    for (auto &aIter : *rAttrList)
+    {
+        switch (aIter.getToken())
         {
-            if (IsXMLToken(aLocalName, XML_STATUS))
-            {
-                if (IsXMLToken(sValue, XML_ENABLE))
-                    pCalcSet->SetIterationStatus(true);
-            }
-            else if (IsXMLToken(aLocalName, XML_STEPS))
-            {
-                sal_Int32 nSteps;
-                ::sax::Converter::convertNumber(nSteps, sValue);
-                pCalcSet->SetIterationCount(nSteps);
-            }
-            else if (IsXMLToken(aLocalName, XML_MAXIMUM_DIFFERENCE))
-            {
-                double fDif;
-                ::sax::Converter::convertDouble(fDif, sValue);
-                pCalcSet->SetIterationEpsilon(fDif);
-            }
+        case XML_ELEMENT( TABLE, XML_STATUS ):
+            if (IsXMLToken(aIter, XML_ENABLE))
+                pCalcSet->SetIterationStatus(true);
+            break;
+        case XML_ELEMENT( TABLE, XML_STEPS ):
+            pCalcSet->SetIterationCount(aIter.toInt32());
+            break;
+        case XML_ELEMENT( TABLE, XML_MAXIMUM_DIFFERENCE ):
+            pCalcSet->SetIterationEpsilon( aIter.toDouble() );
+            break;
         }
     }
 }
 
 ScXMLIterationContext::~ScXMLIterationContext()
-{
-}
-
-SvXMLImportContext *ScXMLIterationContext::CreateChildContext( sal_uInt16 nPrefix,
-                                            const OUString& rLName,
-                                            const css::uno::Reference< css::xml::sax::XAttributeList>& /* xAttrList */ )
-{
-    SvXMLImportContext *pContext = new SvXMLImportContext( GetImport(), nPrefix, rLName );
-
-    return pContext;
-}
-
-void ScXMLIterationContext::EndElement()
 {
 }
 

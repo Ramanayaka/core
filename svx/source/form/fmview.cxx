@@ -21,50 +21,31 @@
 #ifdef REFERENCE
 #undef REFERENCE
 #endif
-#include <svtools/ehdl.hxx>
-#include <unotools/moduleoptions.hxx>
 #include <com/sun/star/sdb/SQLContext.hpp>
-#include <com/sun/star/uno/XNamingService.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/form/XLoadable.hpp>
-#include <com/sun/star/form/XReset.hpp>
-#include "fmvwimp.hxx"
+#include <fmvwimp.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/bindings.hxx>
-#include <sfx2/dispatch.hxx>
-#include <basic/sbuno.hxx>
-#include <basic/sbx.hxx>
-#include "fmitems.hxx"
-#include "fmobj.hxx"
-#include "svx/svditer.hxx"
+#include <fmobj.hxx>
+#include <svx/svditer.hxx>
 #include <svx/svdpagv.hxx>
-#include <svx/svdogrp.hxx>
 #include <svx/fmview.hxx>
 #include <svx/fmmodel.hxx>
 #include <svx/fmpage.hxx>
 #include <svx/fmshell.hxx>
-#include "fmpgeimp.hxx"
-#include "svx/fmtools.hxx"
-#include "fmshimp.hxx"
-#include "fmservs.hxx"
-#include "fmprop.hrc"
-#include "fmundo.hxx"
+#include <fmshimp.hxx>
+#include <fmservs.hxx>
+#include <fmundo.hxx>
 #include <svx/dataaccessdescriptor.hxx>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/namedvaluecollection.hxx>
-#include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/PropertyState.hpp>
-#include <com/sun/star/form/FormComponentType.hpp>
-#include <vcl/svapp.hxx>
-#include <tools/diagnose_ex.h>
-#include <vcl/stdtext.hxx>
-#include <svx/fmglob.hxx>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <tools/debug.hxx>
 #include <svx/sdrpagewindow.hxx>
-#include "svx/sdrpaintwindow.hxx"
+#include <svx/sdrpaintwindow.hxx>
+#include <svx/svxids.hrc>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -78,13 +59,13 @@ using namespace ::com::sun::star::util;
 using namespace ::svxform;
 using namespace ::svx;
 
-
-FmFormView::FmFormView( FmFormModel* pModel, OutputDevice* pOut )
-    :E3dView(pModel,pOut)
+FmFormView::FmFormView(
+    SdrModel& rSdrModel,
+    OutputDevice* pOut)
+:   E3dView(rSdrModel, pOut)
 {
     Init();
 }
-
 
 void FmFormView::Init()
 {
@@ -109,7 +90,7 @@ void FmFormView::Init()
         // We _want_ to have this because it makes a lot of hacks following the original fix
         DBG_ASSERT( !bInitDesignMode, "FmFormView::Init: doesn't the model default to FALSE anymore?" );
             // if this asserts, either the on-construction default in the model has changed (then this here
-            // may not be necessary anymore), or we're not dealing with a new document ....
+            // may not be necessary anymore), or we're not dealing with a new document...
         bInitDesignMode = true;
     }
 
@@ -151,28 +132,28 @@ void FmFormView::MarkListHasChanged()
 {
     E3dView::MarkListHasChanged();
 
-    if ( pFormShell && IsDesignMode() )
-    {
-        FmFormObj* pObj = getMarkedGrid();
-        if ( pImpl->m_pMarkedGrid && pImpl->m_pMarkedGrid != pObj )
-        {
-            pImpl->m_pMarkedGrid = nullptr;
-            if ( pImpl->m_xWindow.is() )
-            {
-                pImpl->m_xWindow->removeFocusListener(pImpl.get());
-                pImpl->m_xWindow = nullptr;
-            }
-            SetMoveOutside(false);
-            //OLMRefreshAllIAOManagers();
-        }
+    if ( !(pFormShell && IsDesignMode()) )
+        return;
 
-        pFormShell->GetImpl()->SetSelectionDelayed();
+    FmFormObj* pObj = getMarkedGrid();
+    if ( pImpl->m_pMarkedGrid && pImpl->m_pMarkedGrid != pObj )
+    {
+        pImpl->m_pMarkedGrid = nullptr;
+        if ( pImpl->m_xWindow.is() )
+        {
+            pImpl->m_xWindow->removeFocusListener(pImpl.get());
+            pImpl->m_xWindow = nullptr;
+        }
+        SetMoveOutside(false);
+        //OLMRefreshAllIAOManagers();
     }
+
+    pFormShell->GetImpl()->SetSelectionDelayed_Lock();
 }
 
 namespace
 {
-    const SdrPageWindow* findPageWindow( const SdrPaintView* _pView, OutputDevice* _pWindow )
+    const SdrPageWindow* findPageWindow( const SdrPaintView* _pView, OutputDevice const * _pWindow )
     {
         SdrPageView* pPageView = _pView->GetSdrPageView();
         if(pPageView)
@@ -235,7 +216,7 @@ void FmFormView::ChangeDesignMode(bool bDesign)
 
     // --- 2. simulate a deactivation (the shell will handle some things there ...?)
     if ( pFormShell && pFormShell->GetImpl() )
-        pFormShell->GetImpl()->viewDeactivated( *this );
+        pFormShell->GetImpl()->viewDeactivated_Lock(*this);
     else
         pImpl->Deactivate();
 
@@ -248,16 +229,16 @@ void FmFormView::ChangeDesignMode(bool bDesign)
     if ( pCurPage )
     {
         if ( pFormShell && pFormShell->GetImpl() )
-            pFormShell->GetImpl()->loadForms( pCurPage, ( bDesign ? LoadFormsFlags::Unload : LoadFormsFlags::Load ) );
+            pFormShell->GetImpl()->loadForms_Lock(pCurPage, (bDesign ? LoadFormsFlags::Unload : LoadFormsFlags::Load));
     }
 
     // --- 5. base class functionality
     SetDesignMode( bDesign );
 
-    // --- 6. simulate a activation (the shell will handle some things there ...?)
+    // --- 6. simulate an activation (the shell will handle some things there ...?)
     OSL_PRECOND( pFormShell && pFormShell->GetImpl(), "FmFormView::ChangeDesignMode: is this really allowed? No shell?" );
     if ( pFormShell && pFormShell->GetImpl() )
-        pFormShell->GetImpl()->viewActivated( *this );
+        pFormShell->GetImpl()->viewActivated_Lock(*this);
     else
         pImpl->Activate();
 
@@ -274,7 +255,7 @@ void FmFormView::ChangeDesignMode(bool bDesign)
             // redraw UNO objects
             if ( GetSdrPageView() )
             {
-                SdrObjListIter aIter(*pCurPage);
+                SdrObjListIter aIter(pCurPage);
                 while( aIter.IsMore() )
                 {
                     SdrObject* pObj = aIter.Next();
@@ -326,18 +307,18 @@ SdrPageView* FmFormView::ShowSdrPage(SdrPage* pPage)
         else if ( pFormShell && pFormShell->IsDesignMode() )
         {
             FmXFormShell* pFormShellImpl = pFormShell->GetImpl();
-            pFormShellImpl->UpdateForms( true );
+            pFormShellImpl->UpdateForms_Lock(true);
 
             // so that the form navigator can react to the pagechange
             pFormShell->GetViewShell()->GetViewFrame()->GetBindings().Invalidate(SID_FM_FMEXPLORER_CONTROL, true);
 
-            pFormShellImpl->SetSelection(GetMarkedObjectList());
+            pFormShellImpl->SetSelection_Lock(GetMarkedObjectList());
         }
     }
 
     // notify our shell that we have been activated
     if ( pFormShell && pFormShell->GetImpl() )
-        pFormShell->GetImpl()->viewActivated( *this );
+        pFormShell->GetImpl()->viewActivated_Lock(*this);
     else
         pImpl->Activate();
 
@@ -353,7 +334,7 @@ void FmFormView::HideSdrPage()
 
     // --- 2. tell the shell the view is (going to be) deactivated
     if ( pFormShell && pFormShell->GetImpl() )
-        pFormShell->GetImpl()->viewDeactivated( *this );
+        pFormShell->GetImpl()->viewDeactivated_Lock(*this);
     else
         pImpl->Deactivate();
 
@@ -362,7 +343,7 @@ void FmFormView::HideSdrPage()
 }
 
 
-void FmFormView::ActivateControls(SdrPageView* pPageView)
+void FmFormView::ActivateControls(SdrPageView const * pPageView)
 {
     if (!pPageView)
         return;
@@ -375,7 +356,7 @@ void FmFormView::ActivateControls(SdrPageView* pPageView)
 }
 
 
-void FmFormView::DeactivateControls(SdrPageView* pPageView)
+void FmFormView::DeactivateControls(SdrPageView const * pPageView)
 {
     if( !pPageView )
         return;
@@ -388,24 +369,25 @@ void FmFormView::DeactivateControls(SdrPageView* pPageView)
 }
 
 
-SdrObject* FmFormView::CreateFieldControl( const ODataAccessDescriptor& _rColumnDescriptor )
+SdrObjectUniquePtr FmFormView::CreateFieldControl( const ODataAccessDescriptor& _rColumnDescriptor )
 {
     return pImpl->implCreateFieldControl( _rColumnDescriptor );
 }
 
 
-SdrObject* FmFormView::CreateXFormsControl( const OXFormsDescriptor &_rDesc )
+SdrObjectUniquePtr FmFormView::CreateXFormsControl( const OXFormsDescriptor &_rDesc )
 {
     return pImpl->implCreateXFormsControl(_rDesc);
 }
 
 
-SdrObject* FmFormView::CreateFieldControl(const OUString& rFieldDesc) const
+SdrObjectUniquePtr FmFormView::CreateFieldControl(const OUString& rFieldDesc) const
 {
-    OUString sDataSource     = rFieldDesc.getToken(0,u'\x000B');
-    OUString sObjectName     = rFieldDesc.getToken(1,u'\x000B');
-    sal_uInt16 nObjectType   = (sal_uInt16)rFieldDesc.getToken(2,u'\x000B').toInt32();
-    OUString sFieldName      = rFieldDesc.getToken(3,u'\x000B');
+    sal_Int32 nIdx{ 0 };
+    OUString sDataSource     = rFieldDesc.getToken(0, u'\x000B', nIdx);
+    OUString sObjectName     = rFieldDesc.getToken(0, u'\x000B', nIdx);
+    sal_uInt16 nObjectType   = static_cast<sal_uInt16>(rFieldDesc.getToken(0, u'\x000B', nIdx).toInt32());
+    OUString sFieldName      = rFieldDesc.getToken(0, u'\x000B', nIdx);
 
     if (sFieldName.isEmpty() || sObjectName.isEmpty() || sDataSource.isEmpty())
         return nullptr;
@@ -422,21 +404,21 @@ SdrObject* FmFormView::CreateFieldControl(const OUString& rFieldDesc) const
 
 void FmFormView::InsertControlContainer(const Reference< css::awt::XControlContainer > & xCC)
 {
-    if( !IsDesignMode() )
-    {
-        SdrPageView* pPageView = GetSdrPageView();
-        if( pPageView )
-        {
-            for( sal_uInt32 i = 0; i < pPageView->PageWindowCount(); i++ )
-            {
-                const SdrPageWindow& rPageWindow = *pPageView->GetPageWindow(i);
+    if( IsDesignMode() )
+        return;
 
-                if( rPageWindow.GetControlContainer( false ) == xCC )
-                {
-                    pImpl->addWindow(rPageWindow);
-                    break;
-                }
-            }
+    SdrPageView* pPageView = GetSdrPageView();
+    if( !pPageView )
+        return;
+
+    for( sal_uInt32 i = 0; i < pPageView->PageWindowCount(); i++ )
+    {
+        const SdrPageWindow& rPageWindow = *pPageView->GetPageWindow(i);
+
+        if( rPageWindow.GetControlContainer( false ) == xCC )
+        {
+            pImpl->addWindow(rPageWindow);
+            break;
         }
     }
 }
@@ -506,7 +488,7 @@ bool FmFormView::KeyInput(const KeyEvent& rKEvt, vcl::Window* pWin)
             &&   rKeyCode.IsMod2()
             )
         {
-            pFormShell->GetImpl()->handleShowPropertiesRequest();
+            pFormShell->GetImpl()->handleShowPropertiesRequest_Lock();
         }
 
     }
@@ -527,7 +509,7 @@ bool FmFormView::checkUnMarkAll(const Reference< XInterface >& _xSource)
 }
 
 
-bool FmFormView::MouseButtonDown( const MouseEvent& _rMEvt, vcl::Window* _pWin )
+bool FmFormView::MouseButtonDown( const MouseEvent& _rMEvt, OutputDevice* _pWin )
 {
     bool bReturn = E3dView::MouseButtonDown( _rMEvt, _pWin );
 
@@ -535,7 +517,7 @@ bool FmFormView::MouseButtonDown( const MouseEvent& _rMEvt, vcl::Window* _pWin )
     {
         SdrViewEvent aViewEvent;
         PickAnything( _rMEvt, SdrMouseEventKind::BUTTONDOWN, aViewEvent );
-        pFormShell->GetImpl()->handleMouseButtonDown( aViewEvent );
+        pFormShell->GetImpl()->handleMouseButtonDown_Lock(aViewEvent);
     }
 
     return bReturn;
@@ -564,16 +546,18 @@ FmFormObj* FmFormView::getMarkedGrid() const
 }
 
 
-void FmFormView::createControlLabelPair( OutputDevice* _pOutDev, sal_Int32 _nXOffsetMM, sal_Int32 _nYOffsetMM,
+void FmFormView::createControlLabelPair( OutputDevice const * _pOutDev, sal_Int32 _nXOffsetMM, sal_Int32 _nYOffsetMM,
     const Reference< XPropertySet >& _rxField, const Reference< XNumberFormats >& _rxNumberFormats,
-    sal_uInt16 _nControlObjectID, const OUString& _rFieldPostfix, SdrInventor _nInventor, sal_uInt16 _nLabelObjectID,
-    SdrPage* _pLabelPage, SdrPage* _pControlPage, SdrModel* _pModel, SdrUnoObj*& _rpLabel, SdrUnoObj*& _rpControl )
+    sal_uInt16 _nControlObjectID, SdrInventor _nInventor, sal_uInt16 _nLabelObjectID,
+    SdrModel& _rModel,
+    std::unique_ptr<SdrUnoObj, SdrObjectFreeOp>& _rpLabel,
+    std::unique_ptr<SdrUnoObj, SdrObjectFreeOp>& _rpControl )
 {
     FmXFormView::createControlLabelPair(
         *_pOutDev, _nXOffsetMM, _nYOffsetMM,
         _rxField, _rxNumberFormats,
-        _nControlObjectID, _rFieldPostfix, _nInventor, _nLabelObjectID,
-        _pLabelPage, _pControlPage, _pModel,
+        _nControlObjectID, "", _nInventor, _nLabelObjectID,
+        _rModel,
         _rpLabel, _rpControl
     );
 }

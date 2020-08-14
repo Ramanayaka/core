@@ -38,6 +38,8 @@
 #include <cppuhelper/factory.hxx>
 #include <osl/diagnose.h>
 #include <uno/lbnames.h>
+#include <com/sun/star/registry/XRegistryKey.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 
 using namespace connectivity::skeleton;
 using ::rtl::OUString;
@@ -86,7 +88,7 @@ struct ProviderRequest
 
     ProviderRequest(
         void* pServiceManager,
-        sal_Char const* pImplementationName
+        char const* pImplementationName
     )
     : xServiceManager(reinterpret_cast<XMultiServiceFactory*>(pServiceManager))
     , sImplementationName(OUString::createFromAscii(pImplementationName))
@@ -117,7 +119,7 @@ struct ProviderRequest
 
 
 extern "C" SAL_DLLPUBLIC_EXPORT void* SAL_CALL component_getFactory(
-                    const sal_Char* pImplementationName,
+                    const char* pImplementationName,
                     void* pServiceManager,
                     void* pRegistryKey)
 {

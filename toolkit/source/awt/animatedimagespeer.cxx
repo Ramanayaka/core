@@ -18,8 +18,8 @@
  */
 
 
-#include "toolkit/awt/animatedimagespeer.hxx"
-#include "toolkit/helper/property.hxx"
+#include <awt/animatedimagespeer.hxx>
+#include <toolkit/helper/property.hxx>
 
 #include <com/sun/star/awt/XAnimatedImages.hpp>
 #include <com/sun/star/awt/Size.hpp>
@@ -31,15 +31,16 @@
 
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/processfactory.hxx>
+#include <o3tl/safeint.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <tools/diagnose_ex.h>
 #include <tools/urlobj.hxx>
-#include <vcl/throbber.hxx>
+#include <vcl/toolkit/throbber.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
 #include <limits>
-
+#include <string_view>
 
 namespace toolkit
 {
@@ -48,10 +49,8 @@ namespace toolkit
     using ::com::sun::star::uno::XComponentContext;
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::uno::XInterface;
-    using ::com::sun::star::uno::UNO_QUERY;
     using ::com::sun::star::uno::UNO_QUERY_THROW;
     using ::com::sun::star::uno::Exception;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Any;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::lang::EventObject;
@@ -66,6 +65,8 @@ namespace toolkit
 
 
     //= AnimatedImagesPeer_Data
+
+    namespace {
 
     struct CachedImage
     {
@@ -84,6 +85,8 @@ namespace toolkit
         {
         }
     };
+
+    }
 
     struct AnimatedImagesPeer_Data
     {
@@ -108,7 +111,7 @@ namespace toolkit
             INetURLObject aURL( i_imageURL );
             if ( aURL.GetProtocol() != INetProtocol::PrivSoffice )
             {
-                OSL_VERIFY( aURL.insertName( "hicontrast", false, 0 ) );
+                OSL_VERIFY( aURL.insertName( "sifr", false, 0 ) );
                 return aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE );
             }
             // the private: scheme is not considered to be hierarchical by INetURLObject, so manually insert the
@@ -117,9 +120,9 @@ namespace toolkit
             ENSURE_OR_RETURN( separatorPos != -1, "lcl_getHighContrastURL: unsupported URL scheme - cannot automatically determine HC version!", i_imageURL );
 
             OUStringBuffer composer;
-            composer.append( i_imageURL.copy( 0, separatorPos ) );
-            composer.append( "/hicontrast" );
-            composer.append( i_imageURL.copy( separatorPos ) );
+            composer.append( std::u16string_view(i_imageURL).substr(0, separatorPos) );
+            composer.append( "/sifr" );
+            composer.append( std::u16string_view(i_imageURL).substr(separatorPos) );
             return composer.makeStringAndClear();
         }
 
@@ -133,12 +136,12 @@ namespace toolkit
                 {
                     // try (to find) the high-contrast version of the graphic first
                     aMediaProperties.put( "URL", lcl_getHighContrastURL( i_cachedImage.sImageURL ) );
-                    i_cachedImage.xGraphic.set( i_graphicProvider->queryGraphic( aMediaProperties.getPropertyValues() ), UNO_QUERY );
+                    i_cachedImage.xGraphic = i_graphicProvider->queryGraphic( aMediaProperties.getPropertyValues() );
                 }
                 if ( !i_cachedImage.xGraphic.is() )
                 {
                     aMediaProperties.put( "URL", i_cachedImage.sImageURL );
-                    i_cachedImage.xGraphic.set( i_graphicProvider->queryGraphic( aMediaProperties.getPropertyValues() ), UNO_QUERY );
+                    i_cachedImage.xGraphic = i_graphicProvider->queryGraphic( aMediaProperties.getPropertyValues() );
                 }
             }
             return i_cachedImage.xGraphic.is();
@@ -158,7 +161,7 @@ namespace toolkit
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("toolkit");
             }
             return aSizePixel;
         }
@@ -169,9 +172,9 @@ namespace toolkit
             o_images.resize(0);
             size_t count = size_t( i_imageURLs.getLength() );
             o_images.reserve( count );
-            for ( size_t i = 0; i < count; ++i )
+            for ( const auto& rImageURL : i_imageURLs )
             {
-                o_images.push_back( CachedImage( i_imageURLs[i] ) );
+                o_images.emplace_back( rImageURL );
             }
         }
 
@@ -241,26 +244,23 @@ namespace toolkit
 
                 // found a set?
                 std::vector< Image > aImages;
-                if ( ( nPreferredSet >= 0 ) && ( size_t( nPreferredSet ) < nImageSetCount ) )
+                if ( ( nPreferredSet >= 0 ) && ( o3tl::make_unsigned( nPreferredSet ) < nImageSetCount ) )
                 {
                     // => set the images
                     ::std::vector< CachedImage > const& rImageSet( i_data.aCachedImageSets[ nPreferredSet ] );
                     aImages.resize( rImageSet.size() );
                     sal_Int32 imageIndex = 0;
-                    for (   ::std::vector< CachedImage >::const_iterator cachedImage = rImageSet.begin();
-                            cachedImage != rImageSet.end();
-                            ++cachedImage, ++imageIndex
-                        )
+                    for ( const auto& rCachedImage : rImageSet )
                     {
-                        lcl_ensureImage_throw( xGraphicProvider, isHighContrast, *cachedImage );
-                        aImages[ imageIndex ] = Image(cachedImage->xGraphic);
+                        lcl_ensureImage_throw( xGraphicProvider, isHighContrast, rCachedImage );
+                        aImages[ imageIndex++ ] = Image(rCachedImage.xGraphic);
                     }
                 }
                 pThrobber->setImageList( aImages );
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("toolkit");
             }
         }
 
@@ -283,7 +283,7 @@ namespace toolkit
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("toolkit");
             }
         }
     }

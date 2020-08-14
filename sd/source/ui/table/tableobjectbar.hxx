@@ -20,9 +20,8 @@
 #ifndef INCLUDED_SD_SOURCE_UI_TABLE_TABLEOBJECTBAR_HXX
 #define INCLUDED_SD_SOURCE_UI_TABLE_TABLEOBJECTBAR_HXX
 
-#include <sfx2/module.hxx>
 #include <sfx2/shell.hxx>
-#include "glob.hxx"
+#include <glob.hxx>
 
 namespace sd {
 
@@ -31,18 +30,12 @@ class ViewShell;
 
 }
 
-namespace sd { namespace ui { namespace table {
+namespace sd::ui::table {
 
-class TableObjectBar  : public SfxShell
+class TableObjectBar final : public SfxShell
 {
 public:
     SFX_DECL_INTERFACE( SD_IF_SDDRAWTABLEOBJECTBAR )
-
-private:
-    /// SfxInterface initializer.
-    static void InitInterface_Impl();
-
-public:
 
     TableObjectBar( ::sd::ViewShell* pSdViewShell, ::sd::View* pSdView);
     virtual ~TableObjectBar() override;
@@ -51,12 +44,15 @@ public:
     void            GetAttrState( SfxItemSet& rSet );
     void            Execute( SfxRequest& rReq );
 
-protected:
+private:
+    /// SfxInterface initializer.
+    static void InitInterface_Impl();
+
     ::sd::View* mpView;
     ::sd::ViewShell* mpViewSh;
 };
 
-} } }
+}
 
 #endif
 

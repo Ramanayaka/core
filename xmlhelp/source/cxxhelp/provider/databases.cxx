@@ -21,14 +21,13 @@
 #include "db.hxx"
 #include <osl/diagnose.h>
 #include <osl/file.hxx>
-#include <osl/thread.h>
-#include <osl/process.h>
 #include <rtl/character.hxx>
 #include <rtl/uri.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/awt/Toolkit.hpp>
 #include <com/sun/star/i18n/Collator.hpp>
+#include <comphelper/propertysequence.hxx>
 #include "inputstream.hxx"
 #include <algorithm>
 #include <cassert>
@@ -39,12 +38,10 @@
 // Extensible help
 #include <com/sun/star/deployment/ExtensionManager.hpp>
 #include <com/sun/star/deployment/ExtensionRemovedException.hpp>
-#include <com/sun/star/deployment/thePackageManagerFactory.hpp>
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/beans/Optional.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/ucb/SimpleFileAccess.hpp>
@@ -53,20 +50,18 @@
 #include <com/sun/star/uri/XVndSunStarExpandUrl.hpp>
 #include <i18nlangtag/languagetag.hxx>
 
-#include <com/sun/star/awt/XToolkit.hpp>
-#include <com/sun/star/awt/XExtendedToolkit.hpp>
-#include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/awt/XVclWindowPeer.hpp>
 #include <com/sun/star/awt/XTopWindow.hpp>
 
 #include <comphelper/storagehelper.hxx>
 
-#include <vcl/svapp.hxx>
-
 #include "databases.hxx"
 #include "urlparameter.hxx"
 
 #ifdef _WIN32
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #endif
 
@@ -105,7 +100,7 @@ OUString Databases::expandURL( const OUString& aURL, const Reference< uno::XComp
         Reference< uri::XUriReference > uriRef;
         for (;;)
         {
-            uriRef.set( xFac->parse( aRetURL ), UNO_QUERY );
+            uriRef = xFac->parse( aRetURL );
             if ( uriRef.is() )
             {
                 Reference < uri::XVndSunStarExpandUrl > sxUri( uriRef, UNO_QUERY );
@@ -136,7 +131,7 @@ Databases::Databases( bool showBasic,
       vendVersion( "%VENDORVERSION" ),
       vendShort( "%VENDORSHORT" )
 {
-    m_xSMgr.set( m_xContext->getServiceManager(), UNO_QUERY );
+    m_xSMgr = m_xContext->getServiceManager();
 
     m_vAdd[0] = 12;
     m_vAdd[1] = 15;
@@ -161,50 +156,26 @@ Databases::~Databases()
 {
     // unload the databases
 
-    {
-        // DatabasesTable
-        DatabasesTable::iterator it = m_aDatabases.begin();
-        while( it != m_aDatabases.end() )
-        {
-            delete it->second;
-            ++it;
-        }
-    }
+    // DatabasesTable
+    m_aDatabases.clear();
 
-    {
-        //  ModInfoTable
+    //  ModInfoTable
+    m_aModInfo.clear();
 
-        ModInfoTable::iterator it = m_aModInfo.begin();
-        while( it != m_aModInfo.end() )
-        {
-            delete it->second;
-            ++it;
-        }
-    }
-
-    {
-        // KeywordInfoTable
-
-        KeywordInfoTable::iterator it = m_aKeywordInfo.begin();
-        while( it != m_aKeywordInfo.end() )
-        {
-            delete it->second;
-            ++it;
-        }
-    }
+    // KeywordInfoTable
+    m_aKeywordInfo.clear();
 }
 
-OString Databases::getImageTheme()
+OString Databases::getImageTheme() const
 {
     uno::Reference< lang::XMultiServiceFactory > xConfigProvider =
         configuration::theDefaultProvider::get(m_xContext);
 
     // set root path
-    uno::Sequence < uno::Any > lParams(1);
-    beans::PropertyValue                       aParam ;
-    aParam.Name    = "nodepath";
-    aParam.Value <<= OUString("org.openoffice.Office.Common");
-    lParams[0] <<= aParam;
+    uno::Sequence<uno::Any> lParams(comphelper::InitAnyPropertySequence(
+    {
+        {"nodepath", uno::Any(OUString("org.openoffice.Office.Common"))}
+    }));
 
     // open it
     uno::Reference< uno::XInterface > xCFG( xConfigProvider->createInstanceWithArguments(
@@ -218,7 +189,7 @@ OString Databases::getImageTheme()
 
     if ( aSymbolsStyleName.isEmpty() || aSymbolsStyleName == "auto" )
     {
-        aSymbolsStyleName = "tango";
+        aSymbolsStyleName = "colibre";
     }
     return aSymbolsStyleName.toUtf8();
 }
@@ -342,7 +313,7 @@ StaticModuleInformation* Databases::getStaticInformationForModule( const OUStrin
     OUString key = processLang(Language) + "/" + Module;
 
     std::pair< ModInfoTable::iterator,bool > aPair =
-        m_aModInfo.insert( ModInfoTable::value_type( key,nullptr ) );
+        m_aModInfo.emplace(key,nullptr);
 
     ModInfoTable::iterator it = aPair.first;
 
@@ -356,12 +327,12 @@ StaticModuleInformation* Databases::getStaticInformationForModule( const OUStrin
         {
             sal_uInt32 pos = 0;
             sal_uInt64 nRead;
-            sal_Char buffer[2048];
+            char buffer[2048];
             sal_Unicode lineBuffer[1028];
-            OUString fileContent;
+            OUStringBuffer fileContent;
 
             while( osl::FileBase::E_None == cfgFile.read( &buffer,2048,nRead ) && nRead )
-                fileContent += OUString( buffer,sal_Int32( nRead ),RTL_TEXTENCODING_UTF8 );
+                fileContent.append(OUString( buffer,sal_Int32( nRead ),RTL_TEXTENCODING_UTF8 ));
 
             cfgFile.close();
 
@@ -401,14 +372,14 @@ StaticModuleInformation* Databases::getStaticInformationForModule( const OUStrin
                     lineBuffer[ pos++ ] = ch;
             }
             replaceName( title );
-            it->second = new StaticModuleInformation( title,
+            it->second.reset(new StaticModuleInformation( title,
                                                       startid,
                                                       program,
-                                                      order );
+                                                      order ));
         }
     }
 
-    return it->second;
+    return it->second.get();
 }
 
 OUString Databases::processLang( const OUString& Language )
@@ -420,37 +391,29 @@ OUString Databases::processLang( const OUString& Language )
 
     if( it == m_aLangSet.end() )
     {
-        sal_Int32 idx;
-        osl::DirectoryItem aDirItem;
+        // XXX the old code looked for '-' and '_' as separator between
+        // language and country, no idea if '_' actually still can happen
+        // (probably not), but play safe and keep that and transform to proper
+        // BCP47.
+        const OUString aBcp47( Language.replaceAll( "_", "-"));
 
-        if( osl::FileBase::E_None == osl::DirectoryItem::get( getInstallPathAsURL() + Language,aDirItem ) )
+        // Try if language tag or fallbacks are installed.
+        osl::DirectoryItem aDirItem;
+        std::vector<OUString> aFallbacks( LanguageTag( aBcp47).getFallbackStrings(true));
+        for (auto const & rFB : aFallbacks)
         {
-            ret = Language;
-            m_aLangSet[ Language ] = ret;
-        }
-        else if( ( ( idx = Language.indexOf( '-' ) ) != -1 ||
-                   ( idx = Language.indexOf( '_' ) ) != -1 ) &&
-                    osl::FileBase::E_None == osl::DirectoryItem::get( getInstallPathAsURL() + Language.copy( 0,idx ),
-                                                                   aDirItem ) )
-        {
-            ret = Language.copy( 0,idx );
-            m_aLangSet[ Language ] = ret;
+            if (osl::FileBase::E_None == osl::DirectoryItem::get( getInstallPathAsURL() + rFB, aDirItem))
+            {
+                ret = rFB;
+                m_aLangSet[ Language ] = ret;
+                break;  // for
+            }
         }
     }
     else
         ret = it->second;
 
     return ret;
-}
-
-OUString Databases::country( const OUString& Language )
-{
-    sal_Int32 idx;
-    if( ( idx = Language.indexOf( '-' ) ) != -1 ||
-        ( idx = Language.indexOf( '_' ) ) != -1 )
-        return Language.copy( 1+idx );
-
-    return OUString();
 }
 
 helpdatafileproxy::Hdf* Databases::getHelpDataFile( const OUString& Database,
@@ -471,13 +434,13 @@ helpdatafileproxy::Hdf* Databases::getHelpDataFile( const OUString& Database,
         key = *pExtensionPath + Language + dbFileName;      // make unique, don't change language
 
     std::pair< DatabasesTable::iterator,bool > aPair =
-        m_aDatabases.insert( DatabasesTable::value_type( key, reinterpret_cast<helpdatafileproxy::Hdf *>(0) ) );
+        m_aDatabases.emplace( key, nullptr);
 
     DatabasesTable::iterator it = aPair.first;
 
     if( aPair.second && ! it->second )
     {
-        helpdatafileproxy::Hdf* pHdf = nullptr;
+        std::unique_ptr<helpdatafileproxy::Hdf> pHdf;
 
         OUString fileURL;
         if( pExtensionPath )
@@ -493,13 +456,13 @@ helpdatafileproxy::Hdf* Databases::getHelpDataFile( const OUString& Database,
         //fails for example when using long path names on Windows (starting with \\?\)
         if( m_xSFA->exists( fileNameHDFHelp ) )
         {
-            pHdf = new helpdatafileproxy::Hdf( fileNameHDFHelp, m_xSFA );
+            pHdf.reset(new helpdatafileproxy::Hdf( fileNameHDFHelp, m_xSFA ));
         }
 
-        it->second = pHdf;
+        it->second = std::move(pHdf);
     }
 
-    return it->second;
+    return it->second.get();
 }
 
 Reference< XCollator >
@@ -510,15 +473,16 @@ Databases::getCollator( const OUString& Language )
     osl::MutexGuard aGuard( m_aMutex );
 
     CollatorTable::iterator it =
-        m_aCollatorTable.insert( CollatorTable::value_type( key, Reference< XCollator >() ) ).first;
+        m_aCollatorTable.emplace( key, Reference< XCollator >() ).first;
 
     if( ! it->second.is() )
     {
         it->second = Collator::create(m_xContext);
-        OUString langStr = processLang(Language);
-        OUString countryStr = country(Language);
+        LanguageTag aLanguageTag( Language);
+        OUString countryStr = aLanguageTag.getCountry();
         if( countryStr.isEmpty() )
         {
+            const OUString langStr = aLanguageTag.getLanguage();
             if( langStr == "de" )
                 countryStr = "DE";
             else if( langStr == "en" )
@@ -535,13 +499,14 @@ Databases::getCollator( const OUString& Language )
                 countryStr = "JP";
             else if( langStr == "ko" )
                 countryStr = "KR";
+
+            // XXX NOTE: there are no complex language tags involved in those
+            // "add country" cases, only because of this we can use this
+            // simplified construction.
+            if (!countryStr.isEmpty())
+                aLanguageTag.reset( langStr + "-" + countryStr);
         }
-        /* FIXME-BCP47: all this does not look right for language tag context,
-         * also check processLang() and country() methods */
-        it->second->loadDefaultCollator(  Locale( langStr,
-                                                  countryStr,
-                                                  OUString() ),
-                                          0 );
+        it->second->loadDefaultCollator( aLanguageTag.getLocale(), 0);
     }
 
     return it->second;
@@ -595,34 +560,37 @@ namespace chelp {
 
 }
 
-KeywordInfo::KeywordElement::KeywordElement( Databases *pDatabases,
+KeywordInfo::KeywordElement::KeywordElement( Databases const *pDatabases,
                                              helpdatafileproxy::Hdf* pHdf,
-                                             OUString& ky,
-                                             OUString& data )
+                                             OUString const & ky,
+                                             OUString const & data )
     : key( ky )
 {
     pDatabases->replaceName( key );
     init( pDatabases,pHdf,data );
 }
 
-void KeywordInfo::KeywordElement::init( Databases *pDatabases,helpdatafileproxy::Hdf* pHdf,const OUString& ids )
+void KeywordInfo::KeywordElement::init( Databases const *pDatabases,helpdatafileproxy::Hdf* pHdf,const OUString& ids )
 {
-    const sal_Unicode* idstr = ids.getStr();
     std::vector< OUString > id,anchor;
     int idx = -1,k;
-    while( ( idx = ids.indexOf( ';',k = ++idx ) ) != -1 )
+    for (;;)
     {
+        k = ++idx;
+        idx = ids.indexOf( ';', k );
+        if( idx == -1 )
+            break;
         int h = ids.indexOf( '#', k );
         if( h < idx )
         {
             // found an anchor
-            id.push_back( OUString( &idstr[k],h-k ) );
-            anchor.push_back( OUString( &idstr[h+1],idx-h-1 ) );
+            id.push_back( ids.copy( k, h-k ) );
+            anchor.push_back( ids.copy( h+1, idx-h-1 ) );
         }
         else
         {
-            id.push_back( OUString( &idstr[k],idx-k ) );
-            anchor.push_back( OUString() );
+            id.push_back( ids.copy( k, idx-k ) );
+            anchor.emplace_back( );
         }
     }
 
@@ -636,7 +604,7 @@ void KeywordInfo::KeywordElement::init( Databases *pDatabases,helpdatafileproxy:
         listAnchor[i] = anchor[i];
 
         helpdatafileproxy::HDFData aHDFData;
-        const sal_Char* pData = nullptr;
+        const char* pData = nullptr;
 
         if( pHdf )
         {
@@ -725,7 +693,7 @@ KeywordInfo* Databases::getKeyword( const OUString& Database,
     OUString key = processLang(Language) + "/" + Database;
 
     std::pair< KeywordInfoTable::iterator,bool > aPair =
-        m_aKeywordInfo.insert( KeywordInfoTable::value_type( key,nullptr ) );
+        m_aKeywordInfo.emplace( key,nullptr );
 
     KeywordInfoTable::iterator it = aPair.first;
 
@@ -736,8 +704,11 @@ KeywordInfo* Databases::getKeyword( const OUString& Database,
         KeyDataBaseFileIterator aDbFileIt( m_xContext, *this, Database, Language );
         OUString fileURL;
         bool bExtension = false;
-        while( !(fileURL = aDbFileIt.nextDbFile( bExtension )).isEmpty() )
+        for (;;)
         {
+            fileURL = aDbFileIt.nextDbFile( bExtension );
+            if( fileURL.isEmpty() )
+                break;
             OUString fileNameHDFHelp( fileURL );
             if( bExtension )
                 fileNameHDFHelp += "_";
@@ -769,10 +740,10 @@ KeywordInfo* Databases::getKeyword( const OUString& Database,
                         if( !bBelongsToDatabase )
                             continue;
 
-                        aVector.push_back( KeywordInfo::KeywordElement( this,
+                        aVector.emplace_back( this,
                                                                         pHdf,
                                                                         keyword,
-                                                                        doclist ) );
+                                                                        doclist );
                     }
                     aHdf.stopIteration();
 
@@ -787,10 +758,10 @@ KeywordInfo* Databases::getKeyword( const OUString& Database,
         KeywordElementComparator aComparator( xCollator );
         std::sort(aVector.begin(),aVector.end(),aComparator);
 
-        it->second = new KeywordInfo( aVector );
+        it->second.reset(new KeywordInfo( aVector ));
     }
 
-    return it->second;
+    return it->second.get();
 }
 
 Reference< XHierarchicalNameAccess > Databases::jarFile( const OUString& jar,
@@ -805,7 +776,7 @@ Reference< XHierarchicalNameAccess > Databases::jarFile( const OUString& jar,
     osl::MutexGuard aGuard( m_aMutex );
 
     ZipFileTable::iterator it =
-        m_aZipFileTable.insert( ZipFileTable::value_type( key,Reference< XHierarchicalNameAccess >(nullptr) ) ).first;
+        m_aZipFileTable.emplace( key,Reference< XHierarchicalNameAccess >(nullptr) ).first;
 
     if( ! it->second.is() )
     {
@@ -829,15 +800,15 @@ Reference< XHierarchicalNameAccess > Databases::jarFile( const OUString& jar,
 
             Sequence< Any > aArguments( 2 );
 
-            XInputStream_impl* p = new XInputStream_impl( zipFile );
+            std::unique_ptr<XInputStream_impl> p(new XInputStream_impl( zipFile ));
             if( p->CtorSuccess() )
             {
-                Reference< XInputStream > xInputStream( p );
+                Reference< XInputStream > xInputStream( p.release() );
                 aArguments[ 0 ] <<= xInputStream;
             }
             else
             {
-                delete p;
+                p.reset();
                 aArguments[ 0 ] <<= zipFile;
             }
 
@@ -887,8 +858,11 @@ Reference< XHierarchicalNameAccess > Databases::findJarFileForPath
     JarFileIterator aJarFileIt( m_xContext, *this, jar, Language );
     Reference< XHierarchicalNameAccess > xTestNA;
     Reference< deployment::XPackage > xParentPackageBundle;
-    while( (xTestNA = aJarFileIt.nextJarFile( xParentPackageBundle, o_pExtensionPath, o_pExtensionRegistryPath )).is() )
+    for (;;)
     {
+        xTestNA = aJarFileIt.nextJarFile( xParentPackageBundle, o_pExtensionPath, o_pExtensionRegistryPath );
+        if( !xTestNA.is() )
+            break;
         if( xTestNA.is() && xTestNA->hasByHierarchicalName( path ) )
         {
             bool bSuccess = true;
@@ -906,7 +880,7 @@ Reference< XHierarchicalNameAccess > Databases::findJarFileForPath
                     OUString aIdentifier = rtl::Uri::encode( aUnencodedIdentifier,
                         rtl_UriCharClassPchar, rtl_UriEncodeIgnoreEscapes, RTL_TEXTENCODING_UTF8 );
 
-                    if( !aIdentifierInPath.equals( aIdentifier ) )
+                    if( aIdentifierInPath != aIdentifier )
                     {
                         // path does not start with extension identifier -> ignore
                         bSuccess = false;
@@ -964,20 +938,20 @@ void Databases::cascadingStylesheet( const OUString& Language,
                         aCSS = "highcontrastblack";
                         #ifdef _WIN32
                         HKEY hKey = nullptr;
-                        LONG lResult = RegOpenKeyExA( HKEY_CURRENT_USER, "Control Panel\\Accessibility\\HighContrast", 0, KEY_QUERY_VALUE, &hKey );
+                        LONG lResult = RegOpenKeyExW( HKEY_CURRENT_USER, L"Control Panel\\Accessibility\\HighContrast", 0, KEY_QUERY_VALUE, &hKey );
                         if ( ERROR_SUCCESS == lResult )
                         {
-                            CHAR szBuffer[1024];
+                            WCHAR szBuffer[1024];
                             DWORD nSize = sizeof( szBuffer );
-                            lResult = RegQueryValueExA( hKey, "High Contrast Scheme", nullptr, nullptr, reinterpret_cast<LPBYTE>(szBuffer), &nSize );
+                            lResult = RegQueryValueExW( hKey, L"High Contrast Scheme", nullptr, nullptr, reinterpret_cast<LPBYTE>(szBuffer), &nSize );
                             if ( ERROR_SUCCESS == lResult && nSize > 0 )
                             {
                                 szBuffer[nSize] = '\0';
-                                if ( strncmp( szBuffer, "High Contrast #1", strlen("High Contrast #1") ) == 0 )
+                                if ( wcscmp( szBuffer, L"High Contrast #1" ) == 0 )
                                     aCSS = "highcontrast1";
-                                if ( strncmp( szBuffer, "High Contrast #2", strlen("High Contrast #2") ) == 0 )
+                                if ( wcscmp( szBuffer, L"High Contrast #2" ) == 0 )
                                     aCSS = "highcontrast2";
-                                if ( strncmp( szBuffer, "High Contrast White", strlen("High Contrast White") ) == 0 )
+                                if ( wcscmp( szBuffer, L"High Contrast White" ) == 0 )
                                     aCSS = "highcontrastwhite";
                             }
                             RegCloseKey( hKey );
@@ -1056,14 +1030,16 @@ void Databases::setActiveText( const OUString& Module,
     helpdatafileproxy::HDFData aHDFData;
 
     int nSize = 0;
-    const sal_Char* pData = nullptr;
+    const char* pData = nullptr;
 
     bool bSuccess = false;
     if( !bFoundAsEmpty )
     {
-        helpdatafileproxy::Hdf* pHdf = nullptr;
-        while( !bSuccess && (pHdf = aDbIt.nextHdf()) != nullptr )
+        while( !bSuccess )
         {
+            helpdatafileproxy::Hdf* pHdf = aDbIt.nextHdf();
+            if( !pHdf )
+                break;
             bSuccess = pHdf->getValueForKey( id, aHDFData );
             nSize = aHDFData.getSize();
             pData = aHDFData.getData();
@@ -1078,7 +1054,7 @@ void Databases::setActiveText( const OUString& Module,
             if( pData[i] == '%' || pData[i] == '$' )
             {
                 // need of replacement
-                OUString temp = OUString( pData, nSize, RTL_TEXTENCODING_UTF8 );
+                OUString temp( pData, nSize, RTL_TEXTENCODING_UTF8 );
                 replaceName( temp );
                 tmp = OString( temp.getStr(),
                                     temp.getLength(),
@@ -1108,7 +1084,6 @@ void Databases::setInstallPath( const OUString& aInstDir )
         m_aInstallDirectory += "/";
 }
 
-// class ExtensionIteratorBase
 
 ExtensionHelpExistenceMap ExtensionIteratorBase::aHelpExistenceMap;
 
@@ -1181,26 +1156,23 @@ Reference< deployment::XPackage > ExtensionIteratorBase::implGetHelpPackageFromP
         {
             Sequence< Reference< deployment::XPackage > > aPkgSeq = xPackage->getBundle
                 ( Reference<task::XAbortChannel>(), Reference<ucb::XCommandEnvironment>() );
-            sal_Int32 nPkgCount = aPkgSeq.getLength();
-            const Reference< deployment::XPackage >* pSeq = aPkgSeq.getConstArray();
-            for( sal_Int32 iPkg = 0 ; iPkg < nPkgCount ; ++iPkg )
+            auto pSubPkg = std::find_if(aPkgSeq.begin(), aPkgSeq.end(),
+                [&aHelpMediaType](const Reference< deployment::XPackage >& xSubPkg) {
+                    const Reference< deployment::XPackageTypeInfo > xPackageTypeInfo = xSubPkg->getPackageType();
+                    OUString aMediaType = xPackageTypeInfo->getMediaType();
+                    return aMediaType == aHelpMediaType;
+                });
+            if (pSubPkg != aPkgSeq.end())
             {
-                const Reference< deployment::XPackage > xSubPkg = pSeq[ iPkg ];
-                const Reference< deployment::XPackageTypeInfo > xPackageTypeInfo = xSubPkg->getPackageType();
-                OUString aMediaType = xPackageTypeInfo->getMediaType();
-                if( aMediaType.equals( aHelpMediaType ) )
-                {
-                    xHelpPackage = xSubPkg;
-                    o_xParentPackageBundle = xPackage;
-                    break;
-                }
+                xHelpPackage = *pSubPkg;
+                o_xParentPackageBundle = xPackage;
             }
         }
         else
         {
             const Reference< deployment::XPackageTypeInfo > xPackageTypeInfo = xPackage->getPackageType();
             OUString aMediaType = xPackageTypeInfo->getMediaType();
-            if( aMediaType.equals( aHelpMediaType ) )
+            if( aMediaType == aHelpMediaType )
                 xHelpPackage = xPackage;
         }
     }
@@ -1328,7 +1300,7 @@ OUString ExtensionIteratorBase::implGetFileFromPackage(
     return aFile;
 }
 
-inline bool isLetter( sal_Unicode c )
+static bool isLetter( sal_Unicode c )
 {
     return rtl::isAsciiAlpha(c);
 }
@@ -1338,13 +1310,10 @@ void ExtensionIteratorBase::implGetLanguageVectorFromPackage( ::std::vector< OUS
 {
     rv.clear();
     OUString aExtensionPath = xPackage->getURL();
-    Sequence< OUString > aEntrySeq = m_xSFA->getFolderContents( aExtensionPath, true );
+    const Sequence< OUString > aEntrySeq = m_xSFA->getFolderContents( aExtensionPath, true );
 
-    const OUString* pSeq = aEntrySeq.getConstArray();
-    sal_Int32 nCount = aEntrySeq.getLength();
-    for( sal_Int32 i = 0 ; i < nCount ; ++i )
+    for( const OUString& aEntry : aEntrySeq )
     {
-        OUString aEntry = pSeq[i];
         if( m_xSFA->isFolder( aEntry ) )
         {
             sal_Int32 nLastSlash = aEntry.lastIndexOf( '/' );
@@ -1365,7 +1334,6 @@ void ExtensionIteratorBase::implGetLanguageVectorFromPackage( ::std::vector< OUS
     }
 }
 
-// class DataBaseIterator
 
 helpdatafileproxy::Hdf* DataBaseIterator::nextHdf( OUString* o_pExtensionPath, OUString* o_pExtensionRegistryPath )
 {
@@ -1474,7 +1442,6 @@ helpdatafileproxy::Hdf* DataBaseIterator::implGetHdfFromPackage( const Reference
     return pRetHdf;
 }
 
-// class KeyDataBaseFileIterator
 
 //returns a file URL
 OUString KeyDataBaseFileIterator::nextDbFile( bool& o_rbExtension )
@@ -1554,7 +1521,6 @@ OUString KeyDataBaseFileIterator::implGetDbFileFromPackage
     return aExpandedURL;
 }
 
-// class JarFileIterator
 
 Reference< XHierarchicalNameAccess > JarFileIterator::nextJarFile
     ( Reference< deployment::XPackage >& o_xParentPackageBundle,
@@ -1633,7 +1599,7 @@ Reference< XHierarchicalNameAccess > JarFileIterator::implGetJarFromPackage
         aArg.Value <<= OUString(ZIP_STORAGE_FORMAT_STRING);
         aArguments[ 1 ] <<= aArg;
 
-        Reference< XMultiComponentFactory >xSMgr( m_xContext->getServiceManager(), UNO_QUERY );
+        Reference< XMultiComponentFactory >xSMgr = m_xContext->getServiceManager();
         Reference< XInterface > xIfc
             = xSMgr->createInstanceWithArgumentsAndContext(
                 "com.sun.star.packages.comp.ZipPackage",
@@ -1673,7 +1639,6 @@ Reference< XHierarchicalNameAccess > JarFileIterator::implGetJarFromPackage
     return xNA;
 }
 
-// class IndexFolderIterator
 
 OUString IndexFolderIterator::nextIndexFolder( bool& o_rbExtension, bool& o_rbTemporary )
 {

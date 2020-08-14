@@ -21,6 +21,7 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_SHEETDATACONTEXT_HXX
 
 #include <memory>
+#include "addressconverter.hxx"
 #include "excelhandlers.hxx"
 #include "richstring.hxx"
 #include "sheetdatabuffer.hxx"
@@ -28,13 +29,14 @@
 
 #define MULTI_THREAD_SHEET_PARSING 1
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
-/** Used as base for sheet data context classes. Provides fast access to often
-    used converter objects and sheet index, to improve performance.
+/** This class implements importing the sheetData element.
+
+    The sheetData element contains all row settings and all cells in a single
+    sheet of a spreadsheet document.
  */
-struct SheetDataContextBase
+class SheetDataContext : public WorksheetContextBase
 {
     AddressConverter&   mrAddressConv;      /// The address converter.
     std::unique_ptr<FormulaParser> mxFormulaParser;    /// The formula parser, different one for each SheetDataContext
@@ -42,23 +44,11 @@ struct SheetDataContextBase
     CellModel           maCellData;         /// Position, contents, formatting of current imported cell.
     CellFormulaModel    maFmlaData;         /// Settings for a cell formula.
     sal_Int16           mnSheet;            /// Index of the current sheet.
-
-    explicit            SheetDataContextBase( const WorksheetHelper& rHelper );
-    virtual             ~SheetDataContextBase();
-};
-
-/** This class implements importing the sheetData element.
-
-    The sheetData element contains all row settings and all cells in a single
-    sheet of a spreadsheet document.
- */
-class SheetDataContext : public WorksheetContextBase, private SheetDataContextBase
-{
     // If we are doing threaded parsing, this SheetDataContext
     // forms the inner loop for bulk data parsing, and for the
     // duration of this we can drop the solar mutex.
 #if MULTI_THREAD_SHEET_PARSING
-    SolarMutexReleaser aReleaser;
+    SolarMutexReleaser  aReleaser;
 #endif
 
 public:
@@ -130,8 +120,7 @@ private:
     sal_Int32 mnCol; /// column index (0-based)
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

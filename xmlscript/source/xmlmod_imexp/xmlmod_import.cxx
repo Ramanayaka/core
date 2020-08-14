@@ -19,11 +19,12 @@
 
 #include <sal/config.h>
 
+#include <xmlscript/xmlns.h>
 #include <com/sun/star/xml/sax/SAXException.hpp>
 #include <sal/log.hxx>
 
 #include "imp_share.hxx"
-#include "xml_import.hxx"
+#include <xml_import.hxx>
 
 using namespace css;
 using namespace css::uno;
@@ -143,10 +144,9 @@ ModuleImport::~ModuleImport()
 }
 
 Reference< xml::sax::XDocumentHandler >
-SAL_CALL importScriptModule( ModuleDescriptor& rMod )
+importScriptModule( ModuleDescriptor& rMod )
 {
-    return ::xmlscript::createDocumentHandler(
-        static_cast< xml::input::XRoot * >( new ModuleImport( rMod ) ) );
+    return ::xmlscript::createDocumentHandler(new ModuleImport(rMod));
 }
 
 }

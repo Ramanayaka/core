@@ -17,18 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SD_INC_SDRESID_HXX
-#define INCLUDED_SD_INC_SDRESID_HXX
+#pragma once
 
-#include <tools/resid.hxx>
+#include <rtl/ustring.hxx>
 #include "sddllapi.h"
-#include "sdmod.hxx"
 
-inline OUString SdResId(sal_uInt16 nId)
-{
-    return ResId(nId, *SD_MOD()->GetResMgr());
-}
-
-#endif /* _SD_SDRESID_HXX */
+SD_DLLPUBLIC OUString SdResId(const char* pId);
+SD_DLLPUBLIC OUString SdResId(const char* pId, int nCardinality);
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,20 +21,22 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_FINALTHREADMANAGER_HXX
 
 #include <sal/config.h>
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/util/XJobManager.hpp>
 #include <com/sun/star/frame/XTerminateListener2.hpp>
+#include <o3tl/deleter.hxx>
 #include <osl/mutex.hxx>
 #include <list>
+#include <memory>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 class CancelJobsThread;
 class TerminateOfficeThread;
 class SwPauseThreadStarting;
 
-class FinalThreadManager : public ::cppu::WeakImplHelper< css::lang::XServiceInfo,
+class FinalThreadManager final : public ::cppu::WeakImplHelper< css::lang::XServiceInfo,
                                                            css::util::XJobManager,
                                                            css::frame::XTerminateListener2 >
 {
@@ -62,8 +64,8 @@ public:
     virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
 private:
-    FinalThreadManager(FinalThreadManager &) = delete;
-    void operator =(FinalThreadManager &) = delete;
+    FinalThreadManager(FinalThreadManager const &) = delete;
+    void operator =(FinalThreadManager const &) = delete;
 
     virtual ~FinalThreadManager() override;
 
@@ -74,9 +76,9 @@ private:
     osl::Mutex maMutex;
 
     std::list< css::uno::Reference< css::util::XCancellable > > maThreads;
-    CancelJobsThread* mpCancelJobsThread;
+    std::unique_ptr<CancelJobsThread> mpCancelJobsThread;
     TerminateOfficeThread* mpTerminateOfficeThread;
-    SwPauseThreadStarting* mpPauseThreadStarting;
+    std::unique_ptr<SwPauseThreadStarting, o3tl::default_delete<SwPauseThreadStarting>> mpPauseThreadStarting;
 
     bool mbRegisteredAtDesktop;
 };

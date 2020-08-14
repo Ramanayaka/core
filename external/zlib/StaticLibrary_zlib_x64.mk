@@ -13,7 +13,7 @@ $(eval $(call gb_StaticLibrary_set_x64,zlib_x64,YES))
 
 $(eval $(call gb_StaticLibrary_use_unpacked,zlib_x64,zlib))
 
-$(eval $(call gb_StaticLibrary_set_warnings_not_errors,zlib_x64))
+$(eval $(call gb_StaticLibrary_set_warnings_disabled,zlib_x64))
 
 $(eval $(call gb_StaticLibrary_set_include,zlib_x64,\
 	-I$(call gb_UnpackedTarball_get_dir,zlib) \
@@ -31,5 +31,9 @@ $(eval $(call gb_StaticLibrary_add_x64_generated_cobjects,zlib_x64,\
 	UnpackedTarball/zlib/x64/trees \
 	UnpackedTarball/zlib/x64/zutil \
 ))
+
+ifeq ($(ENABLE_DEBUG),TRUE)
+$(eval $(call gb_StaticLibrary_add_cflags,zlib_x64,-DZLIB_DEBUG))
+endif
 
 # vim: set noet sw=4 ts=4:

@@ -21,7 +21,7 @@
 #include "diagramdefinitioncontext.hxx"
 #include "diagramfragmenthandler.hxx"
 #include "datamodelcontext.hxx"
-#include "drawingml/colorchoicecontext.hxx"
+#include <drawingml/colorchoicecontext.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 
@@ -29,12 +29,11 @@ using namespace ::oox::core;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::uno;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 DiagramDataFragmentHandler::DiagramDataFragmentHandler( XmlFilterBase& rFilter,
                                                         const OUString& rFragmentPath,
                                                         const DiagramDataPtr& rDataPtr )
-    throw( )
     : FragmentHandler2( rFilter, rFragmentPath )
     , mpDataPtr( rDataPtr )
 {
@@ -68,7 +67,6 @@ DiagramDataFragmentHandler::onCreateContext( ::sal_Int32 aElement,
 DiagramLayoutFragmentHandler::DiagramLayoutFragmentHandler( XmlFilterBase& rFilter,
                                                         const OUString& rFragmentPath,
                                                         const DiagramLayoutPtr& rDataPtr )
-    throw( )
     : FragmentHandler2( rFilter, rFragmentPath )
     , mpDataPtr( rDataPtr )
 {
@@ -91,7 +89,7 @@ DiagramLayoutFragmentHandler::onCreateContext( ::sal_Int32 aElement,
     switch( aElement )
     {
     case DGM_TOKEN( layoutDef ):
-        return new DiagramDefinitionContext( *this, AttributeList( rAttribs ), mpDataPtr );
+        return new DiagramDefinitionContext( *this, rAttribs, mpDataPtr );
     default:
         break;
     }
@@ -113,7 +111,7 @@ DiagramQStylesFragmentHandler::DiagramQStylesFragmentHandler( XmlFilterBase& rFi
     const AttributeList& rAttribs,
     ShapeStyleRef& o_rStyle )
 {
-    o_rStyle.mnThemedIdx = (nElement == DGM_TOKEN(fontRef)) ?
+    o_rStyle.mnThemedIdx = (nElement == A_TOKEN(fontRef)) ?
         rAttribs.getToken( XML_idx, XML_none ) : rAttribs.getInteger( XML_idx, 0 );
     return new ColorContext( *this, o_rStyle.maPhClr );
 }
@@ -122,7 +120,7 @@ DiagramQStylesFragmentHandler::DiagramQStylesFragmentHandler( XmlFilterBase& rFi
                                                                                const AttributeList& rAttribs )
 {
     // state-table like way of navigating the color fragment. we
-    // currently ignore everything except styleLbl in the colorsDef
+    // currently ignore everything except styleLbl in the styleDef
     // element
     switch( getCurrentElement() )
     {
@@ -136,16 +134,16 @@ DiagramQStylesFragmentHandler::DiagramQStylesFragmentHandler( XmlFilterBase& rFi
         {
             switch( nElement )
             {
-                case DGM_TOKEN(lnRef) :     // CT_StyleMatrixReference
+                case A_TOKEN(lnRef):     // CT_StyleMatrixReference
                     return createStyleMatrixContext(nElement,rAttribs,
                                                     maStyleEntry.maLineStyle);
-                case DGM_TOKEN(fillRef) :   // CT_StyleMatrixReference
+                case A_TOKEN(fillRef):   // CT_StyleMatrixReference
                     return createStyleMatrixContext(nElement,rAttribs,
                                                     maStyleEntry.maFillStyle);
-                case DGM_TOKEN(effectRef) : // CT_StyleMatrixReference
+                case A_TOKEN(effectRef): // CT_StyleMatrixReference
                     return createStyleMatrixContext(nElement,rAttribs,
                                                     maStyleEntry.maEffectStyle);
-                case DGM_TOKEN(fontRef) :   // CT_FontRe    ference
+                case A_TOKEN(fontRef):   // CT_FontReference
                     return createStyleMatrixContext(nElement,rAttribs,
                                                     maStyleEntry.maTextStyle);
             }
@@ -198,21 +196,18 @@ ColorFragmentHandler::ColorFragmentHandler( ::oox::core::XmlFilterBase& rFilter,
             {
                 // the actual colors - defer to color fragment handlers.
 
-                // TODO(F1): well, actually, there might be *several* color
-                // definitions in it, after all its called list. but
-                // apparently ColorContext doesn't handle that anyway...
                 case DGM_TOKEN(fillClrLst):
-                    return new ColorContext( *this, maColorEntry.maFillColor );
+                    return new ColorsContext( *this, maColorEntry.maFillColors );
                 case DGM_TOKEN(linClrLst):
-                    return new ColorContext( *this, maColorEntry.maLineColor );
+                    return new ColorsContext( *this, maColorEntry.maLineColors );
                 case DGM_TOKEN(effectClrLst):
-                    return new ColorContext( *this, maColorEntry.maEffectColor );
+                    return new ColorsContext( *this, maColorEntry.maEffectColors );
                 case DGM_TOKEN(txFillClrLst):
-                    return new ColorContext( *this, maColorEntry.maTextFillColor );
+                    return new ColorsContext( *this, maColorEntry.maTextFillColors );
                 case DGM_TOKEN(txLinClrLst):
-                    return new ColorContext( *this, maColorEntry.maTextLineColor );
+                    return new ColorsContext( *this, maColorEntry.maTextLineColors );
                 case DGM_TOKEN(txEffectClrLst):
-                    return new ColorContext( *this, maColorEntry.maTextEffectColor );
+                    return new ColorsContext( *this, maColorEntry.maTextEffectColors );
             }
             break;
         }
@@ -236,6 +231,6 @@ void ColorFragmentHandler::onEndElement( )
         mrColorsMap[maColorName] = maColorEntry;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

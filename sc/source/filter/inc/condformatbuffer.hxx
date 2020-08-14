@@ -20,10 +20,10 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_CONDFORMATBUFFER_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_CONDFORMATBUFFER_HXX
 
-#include "formulaparser.hxx"
 #include "worksheethelper.hxx"
 #include <tools/color.hxx>
-#include "rangelst.hxx"
+#include <conditio.hxx>
+#include <rangelst.hxx>
 
 #include <memory>
 #include <vector>
@@ -31,13 +31,12 @@
 class ScColorScaleFormat;
 class ScDataBarFormat;
 struct ScDataBarFormatData;
-class ScConditionalFormat;
 class ScIconSetFormat;
-class ScFormatEntry;
 struct ScIconSetFormatData;
 
-namespace oox {
-namespace xls {
+namespace oox { class AttributeList; }
+
+namespace oox::xls {
 
 class CondFormat;
 
@@ -160,6 +159,9 @@ public:
     /** Imports rule settings from a CFRULE record. */
     void                importCfRule( SequenceInputStream& rStrm );
 
+    /** Directly set a ScFormatEntry with a priority ready for finalizeImport(). */
+    void                setFormatEntry(sal_Int32 nPriority, ScFormatEntry* pEntry);
+
     /** Creates a conditional formatting rule in the Calc document. */
     void                finalizeImport();
 
@@ -174,6 +176,7 @@ private:
     const CondFormat&   mrCondFormat;
     CondFormatRuleModel maModel;
     ScConditionalFormat* mpFormat;
+    ScFormatEntry*       mpFormatEntry;
     std::unique_ptr<ColorScaleRule> mpColor;
     std::unique_ptr<DataBarRule> mpDataBar;
     std::unique_ptr<IconSetRule> mpIconSet;
@@ -190,9 +193,12 @@ struct CondFormatModel
     explicit            CondFormatModel();
 };
 
+class CondFormatBuffer;
+
 /** Represents a conditional formatting object with a list of affected cell ranges. */
 class CondFormat : public WorksheetHelper
 {
+friend class CondFormatBuffer;
 public:
     explicit            CondFormat( const WorksheetHelper& rHelper );
 
@@ -228,17 +234,15 @@ private:
 
 struct ExCfRuleModel
 {
-    ExCfRuleModel() : mbGradient( false ), mnAxisColor( UNSIGNED_RGB_TRANSPARENT ), mnNegativeColor( UNSIGNED_RGB_TRANSPARENT ), mbIsLower( true ) {}
-    // DataBar
-    bool mbGradient;
-    OUString maAxisPosition;
+    ExCfRuleModel() : mnAxisColor( UNSIGNED_RGB_TRANSPARENT ), mnNegativeColor( UNSIGNED_RGB_TRANSPARENT ), mbGradient( false ), mbIsLower( true ) {}
     // AxisColor
     ::Color mnAxisColor;
     // NegativeFillColor
     ::Color mnNegativeColor;
-    // Cfvo
-    bool mbIsLower;
-    OUString maColorScaleType;
+    OUString maAxisPosition; // DataBar
+    OUString maColorScaleType; // Cfvo
+    bool mbGradient; // DataBar
+    bool mbIsLower; // Cfvo
 };
 
 class ExtCfDataBarRule : public WorksheetHelper
@@ -256,7 +260,7 @@ class ExtCfDataBarRule : public WorksheetHelper
     ScDataBarFormatData* mpTarget;
 public:
 
-    ExtCfDataBarRule(ScDataBarFormatData* pTarget, WorksheetHelper& rParent);
+    ExtCfDataBarRule(ScDataBarFormatData* pTarget, const WorksheetHelper& rParent);
     void finalizeImport();
     void importDataBar(  const AttributeList& rAttribs );
     void importNegativeFillColor(  const AttributeList& rAttribs );
@@ -268,14 +272,17 @@ public:
 class ExtCfCondFormat
 {
 public:
-    ExtCfCondFormat(const ScRangeList& aRange, std::vector< std::unique_ptr<ScFormatEntry> >& rEntries);
+    ExtCfCondFormat(const ScRangeList& aRange, std::vector< std::unique_ptr<ScFormatEntry> >& rEntries,
+                    const std::vector<sal_Int32>* pPriorities = nullptr);
     ~ExtCfCondFormat();
 
-    const ScRangeList& getRange();
-    const std::vector< std::unique_ptr<ScFormatEntry> >& getEntries();
+    const ScRangeList& getRange() const;
+    const std::vector< std::unique_ptr<ScFormatEntry> >& getEntries() const;
+    const std::vector<sal_Int32>& getPriorities() const { return maPriorities; }
 
 private:
     std::vector< std::unique_ptr<ScFormatEntry> > maEntries;
+    std::vector<sal_Int32> maPriorities;
     ScRangeList maRange;
 };
 
@@ -296,7 +303,7 @@ public:
 
     /** Converts an OOXML condition operator token to the API constant. */
     static sal_Int32    convertToApiOperator( sal_Int32 nToken );
-    static sal_Int32    convertToInternalOperator( sal_Int32 nToken );
+    static ScConditionMode convertToInternalOperator( sal_Int32 nToken );
     void                finalizeImport();
 private:
     CondFormatRef       createCondFormat();
@@ -307,10 +314,10 @@ private:
     CondFormatVec       maCondFormats;      /// All conditional formatting in a sheet.
     ExtCfDataBarRuleVec        maCfRules;          /// All external conditional formatting rules in a sheet.
     std::vector< std::unique_ptr<ExtCfCondFormat> > maExtCondFormats;
+    sal_Int32 mnNonPrioritizedRuleNextPriority = 1048576;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

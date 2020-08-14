@@ -17,16 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <algorithm>
+
 #include <drawinglayer/attribute/sdrfillgraphicattribute.hxx>
 #include <drawinglayer/attribute/fillgraphicattribute.hxx>
 #include <rtl/instance.hxx>
 #include <vcl/graph.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpSdrFillGraphicAttribute
         {
         public:
@@ -136,36 +138,20 @@ namespace drawinglayer
         {
         }
 
-        SdrFillGraphicAttribute::SdrFillGraphicAttribute(const SdrFillGraphicAttribute& rCandidate)
-        :   mpSdrFillGraphicAttribute(rCandidate.mpSdrFillGraphicAttribute)
-        {
-        }
+        SdrFillGraphicAttribute::SdrFillGraphicAttribute(const SdrFillGraphicAttribute&) = default;
 
-        SdrFillGraphicAttribute::SdrFillGraphicAttribute(SdrFillGraphicAttribute&& rCandidate)
-        :   mpSdrFillGraphicAttribute(std::move(rCandidate.mpSdrFillGraphicAttribute))
-        {
-        }
+        SdrFillGraphicAttribute::SdrFillGraphicAttribute(SdrFillGraphicAttribute&&) = default;
 
-        SdrFillGraphicAttribute::~SdrFillGraphicAttribute()
-        {
-        }
+        SdrFillGraphicAttribute::~SdrFillGraphicAttribute() = default;
 
         bool SdrFillGraphicAttribute::isDefault() const
         {
             return mpSdrFillGraphicAttribute.same_object(theGlobalDefault::get());
         }
 
-        SdrFillGraphicAttribute& SdrFillGraphicAttribute::operator=(const SdrFillGraphicAttribute& rCandidate)
-        {
-            mpSdrFillGraphicAttribute = rCandidate.mpSdrFillGraphicAttribute;
-            return *this;
-        }
+        SdrFillGraphicAttribute& SdrFillGraphicAttribute::operator=(const SdrFillGraphicAttribute&) = default;
 
-        SdrFillGraphicAttribute& SdrFillGraphicAttribute::operator=(SdrFillGraphicAttribute&& rCandidate)
-        {
-            mpSdrFillGraphicAttribute = std::move(rCandidate.mpSdrFillGraphicAttribute);
-            return *this;
-        }
+        SdrFillGraphicAttribute& SdrFillGraphicAttribute::operator=(SdrFillGraphicAttribute&&) = default;
 
         bool SdrFillGraphicAttribute::operator==(const SdrFillGraphicAttribute& rCandidate) const
         {
@@ -305,8 +291,8 @@ namespace drawinglayer
             }
 
             // get offset in percent
-            const double fOffsetX(basegfx::clamp(getOffset().getX() * 0.01, 0.0, 1.0));
-            const double fOffsetY(basegfx::clamp(getOffset().getY() * 0.01, 0.0, 1.0));
+            const double fOffsetX(std::clamp(getOffset().getX() * 0.01, 0.0, 1.0));
+            const double fOffsetY(std::clamp(getOffset().getY() * 0.01, 0.0, 1.0));
 
             // create FillGraphicAttribute
             return FillGraphicAttribute(
@@ -316,7 +302,7 @@ namespace drawinglayer
                 fOffsetX,
                 fOffsetY);
         }
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

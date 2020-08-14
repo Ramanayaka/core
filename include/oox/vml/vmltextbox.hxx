@@ -29,12 +29,11 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace drawing { class XShape; }
-} } }
+}
 
-namespace oox {
-namespace vml {
+namespace oox::vml {
 
 struct ShapeTypeModel;
 
@@ -43,12 +42,15 @@ struct ShapeTypeModel;
 struct TextParagraphModel
 {
     OptValue<OUString> moParaAdjust; ///< Paragraph adjust (left, center, right, etc.)
+    OptValue<OUString> moParaStyleName;
 };
 
 /** Font settings for a text portion in a textbox. */
 struct OOX_DLLPUBLIC TextFontModel
 {
     OptValue< OUString > moName;     ///< Font name.
+    OptValue< OUString > moNameAsian; ///< Asian font name.
+    OptValue< OUString > moNameComplex; ///< Complex font name.
     OptValue< OUString > moColor;    ///< Font color, HTML encoded, sort of.
     OptValue< sal_Int32 > monSize;          ///< Font size in twips.
     OptValue< sal_Int32 > monUnderline;     ///< Single or double underline.
@@ -104,8 +106,7 @@ private:
 };
 
 
-} // namespace vml
-} // namespace oox
+} // namespace oox::vml
 
 #endif
 

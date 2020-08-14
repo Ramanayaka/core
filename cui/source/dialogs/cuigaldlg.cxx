@@ -17,7 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <config_features.h>
+
+#include <sal/config.h>
 
 #include <algorithm>
 #include <cassert>
@@ -25,31 +27,30 @@
 #include <vcl/errinf.hxx>
 #include <ucbhelper/content.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/weld.hxx>
 #include <avmedia/mediawindow.hxx>
 #include <unotools/pathoptions.hxx>
 #include <sfx2/opengrf.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <svx/gallery1.hxx>
 #include <svx/galtheme.hxx>
-#include "cuigaldlg.hxx"
-#include "helpid.hrc"
-#include "bitmaps.hlst"
+#include <cuigaldlg.hxx>
+#include <bitmaps.hlst>
+#include <unotools/localedatawrapper.hxx>
 #include <unotools/syslocale.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <com/sun/star/ucb/XContentAccess.hpp>
 #include <com/sun/star/ui/dialogs/FolderPicker.hpp>
 #include <com/sun/star/ui/dialogs/XAsynchronousExecutableDialog.hpp>
-#include <sfx2/sfxuno.hxx>
-#include "dialmgr.hxx"
-#include "gallery.hrc"
-#include <svx/dialogs.hrc>
+#include <dialmgr.hxx>
+#include <strings.hrc>
 #include <svx/dialmgr.hxx>
+#include <svx/strings.hrc>
 
 using namespace ::ucbhelper;
 using namespace ::cppu;
@@ -60,47 +61,45 @@ using namespace ::com::sun::star::ui::dialogs;
 using namespace ::com::sun::star::uno;
 
 
-SearchThread::SearchThread( SearchProgress* pProgress,
-                            TPGalleryThemeProperties* pBrowser,
-                            const INetURLObject& rStartURL ) :
-        Thread      ( "cuiSearchThread" ),
-        mpProgress  ( pProgress ),
-        mpBrowser   ( pBrowser ),
-        maStartURL  ( rStartURL )
+SearchThread::SearchThread(SearchProgress* pProgress,
+                           TPGalleryThemeProperties* pBrowser,
+                           const INetURLObject& rStartURL)
+    : Thread("cuiSearchThread")
+    , mpProgress(pProgress)
+    , mpBrowser(pBrowser)
+    , maStartURL(rStartURL)
 {
 }
-
 
 SearchThread::~SearchThread()
 {
 }
 
-
 void SearchThread::execute()
 {
-    const OUString aFileType( mpBrowser->m_pCbbFileType->GetText() );
+    const OUString aFileType(mpBrowser->m_xCbbFileType->get_active_text());
 
-    if( !aFileType.isEmpty() )
+    if (!aFileType.isEmpty())
     {
-        const sal_Int32 nFileNumber = mpBrowser->m_pCbbFileType->GetEntryPos( aFileType );
+        const int nFileNumber = mpBrowser->m_xCbbFileType->find_text(aFileType);
         sal_Int32 nBeginFormat, nEndFormat;
         std::vector< OUString > aFormats;
 
-        if( !nFileNumber || ( nFileNumber >= mpBrowser->m_pCbbFileType->GetEntryCount() ) )
+        if( !nFileNumber || nFileNumber == -1)
         {
             nBeginFormat = 1;
-            nEndFormat = mpBrowser->m_pCbbFileType->GetEntryCount() - 1;
+            nEndFormat = mpBrowser->m_xCbbFileType->get_count() - 1;
         }
         else
             nBeginFormat = nEndFormat = nFileNumber;
 
-        for( sal_Int32 i = nBeginFormat; i <= nEndFormat; ++i )
+        for (sal_Int32 i = nBeginFormat; i <= nEndFormat; ++i)
             aFormats.push_back( mpBrowser->aFilterEntryList[ i ]->aFilterName.toAsciiLowerCase() );
 
         ImplSearch( maStartURL, aFormats, mpBrowser->bSearchRecursive );
     }
 
-    Application::PostUserEvent( LINK( mpProgress, SearchProgress, CleanUpHdl ), nullptr, true );
+    Application::PostUserEvent(LINK(mpProgress, SearchProgress, CleanUpHdl));
 }
 
 
@@ -112,7 +111,6 @@ void SearchThread::ImplSearch( const INetURLObject& rStartURL,
         SolarMutexGuard aGuard;
 
         mpProgress->SetDirectory( rStartURL );
-        mpProgress->Flush();
     }
 
     try
@@ -160,7 +158,7 @@ void SearchThread::ImplSearch( const INetURLObject& rStartURL,
                               != rFormats.end() ) ||
                             std::find( rFormats.begin(),
                                          rFormats.end(),
-                                         aFoundURL.GetExtension().toAsciiLowerCase() )
+                                         aFoundURL.GetFileExtension().toAsciiLowerCase())
                             != rFormats.end() )
                         {
                             SolarMutexGuard aGuard;
@@ -168,9 +166,9 @@ void SearchThread::ImplSearch( const INetURLObject& rStartURL,
                             mpBrowser->aFoundList.push_back(
                                 aFoundURL.GetMainURL( INetURLObject::DecodeMechanism::NONE )
                             );
-                            mpBrowser->m_pLbxFound->InsertEntry(
-                                GetReducedString( aFoundURL, 50 ),
-                                (sal_uInt16) mpBrowser->aFoundList.size() - 1 );
+                            mpBrowser->m_xLbxFound->insert_text(
+                                mpBrowser->aFoundList.size() - 1,
+                                GetReducedString(aFoundURL, 50));
                         }
                     }
                 }
@@ -188,72 +186,42 @@ void SearchThread::ImplSearch( const INetURLObject& rStartURL,
     }
 }
 
-
-SearchProgress::SearchProgress( vcl::Window* pParent, const INetURLObject& rStartURL )
-    : ModalDialog(pParent, "GallerySearchProgress", "cui/ui/gallerysearchprogress.ui")
-    , parent_(pParent)
+SearchProgress::SearchProgress(weld::Window* pParent, TPGalleryThemeProperties* pTabPage, const INetURLObject& rStartURL)
+    : GenericDialogController(pParent, "cui/ui/gallerysearchprogress.ui", "GallerySearchProgress")
     , startUrl_(rStartURL)
+    , m_pTabPage(pTabPage)
+    , m_xFtSearchDir(m_xBuilder->weld_label("dir"))
+    , m_xFtSearchType(m_xBuilder->weld_label("file"))
+    , m_xBtnCancel(m_xBuilder->weld_button("cancel"))
 {
-    get(m_pFtSearchDir, "dir");
-    get(m_pFtSearchType, "file");
-    m_pFtSearchType->set_width_request(m_pFtSearchType->get_preferred_size().Width());
-    get(m_pBtnCancel, "cancel");
-    m_pBtnCancel->SetClickHdl( LINK( this, SearchProgress, ClickCancelBtn ) );
+    m_xFtSearchType->set_size_request(m_xFtSearchType->get_preferred_size().Width(), -1);
+    m_xBtnCancel->connect_clicked(LINK(this, SearchProgress, ClickCancelBtn));
 }
-
 
 SearchProgress::~SearchProgress()
 {
-    disposeOnce();
 }
 
-
-void SearchProgress::dispose()
+IMPL_LINK_NOARG(SearchProgress, ClickCancelBtn, weld::Button&, void)
 {
-    m_pFtSearchDir.clear();
-    m_pFtSearchType.clear();
-    m_pBtnCancel.clear();
-    parent_.clear();
-    ModalDialog::dispose();
+    if (m_aSearchThread.is())
+        m_aSearchThread->terminate();
 }
-
-
-IMPL_LINK_NOARG(SearchProgress, ClickCancelBtn, Button*, void)
-{
-    if (maSearchThread.is())
-        maSearchThread->terminate();
-}
-
 
 IMPL_LINK_NOARG(SearchProgress, CleanUpHdl, void*, void)
 {
-    if (maSearchThread.is())
-        maSearchThread->join();
+    if (m_aSearchThread.is())
+        m_aSearchThread->join();
 
-    EndDialog( RET_OK );
-
-    disposeOnce();
+    m_xDialog->response(RET_OK);
 }
 
-
-short SearchProgress::Execute()
+void SearchProgress::LaunchThread()
 {
-    OSL_FAIL( "SearchProgress cannot be executed via Dialog::Execute!\n"
-               "It creates a thread that will call back to VCL apartment => deadlock!\n"
-               "Use Dialog::StartExecuteModal to execute the dialog!" );
-    return RET_CANCEL;
+    assert(!m_aSearchThread.is());
+    m_aSearchThread = new SearchThread(this, m_pTabPage, startUrl_);
+    m_aSearchThread->launch();
 }
-
-
-void SearchProgress::StartExecuteModal( const Link<Dialog&,void>& rEndDialogHdl )
-{
-    assert(!maSearchThread.is());
-    maSearchThread = new SearchThread(
-        this, static_cast< TPGalleryThemeProperties * >(parent_.get()), startUrl_);
-    maSearchThread->launch();
-    ModalDialog::StartExecuteModal( rEndDialogHdl );
-}
-
 
 TakeThread::TakeThread(
     TakeProgress* pProgress,
@@ -272,33 +240,39 @@ TakeThread::~TakeThread()
 {
 }
 
-
 void TakeThread::execute()
 {
     sal_Int32           nEntries;
     GalleryTheme*       pThm = mpBrowser->GetXChgData()->pTheme;
-    GalleryProgress*    pStatusProgress;
+    std::unique_ptr<GalleryProgress> pStatusProgress;
+
+    std::vector<int> aSelectedRows;
 
     {
         SolarMutexGuard aGuard;
-        pStatusProgress = new GalleryProgress;
-        nEntries = mpBrowser->bTakeAll ? mpBrowser->m_pLbxFound->GetEntryCount() : mpBrowser->m_pLbxFound->GetSelectEntryCount();
+        pStatusProgress.reset(new GalleryProgress);
+        if (mpBrowser->bTakeAll)
+            nEntries = mpBrowser->m_xLbxFound->n_children();
+        else
+        {
+            aSelectedRows = mpBrowser->m_xLbxFound->get_selected_rows();
+            nEntries = aSelectedRows.size();
+        }
         pThm->LockBroadcaster();
     }
 
     for( sal_Int32 i = 0; i < nEntries && schedule(); ++i )
     {
-        const sal_Int32 nPos = mpBrowser->bTakeAll ? i : mpBrowser->m_pLbxFound->GetSelectEntryPos( i );
+        const sal_Int32 nPos = mpBrowser->bTakeAll ? i : aSelectedRows[i];
         const INetURLObject aURL( mpBrowser->aFoundList[ nPos ]);
 
-        mrTakenList.push_back( (sal_uLong)nPos );
+        mrTakenList.push_back( nPos );
 
         {
             SolarMutexGuard aGuard;
 
             mpProgress->SetFile( aURL );
             pStatusProgress->Update( i, nEntries - 1 );
-            mpProgress->Flush();
             pThm->InsertURL( aURL );
         }
     }
@@ -307,41 +281,28 @@ void TakeThread::execute()
         SolarMutexGuard aGuard;
 
         pThm->UnlockBroadcaster();
-        delete pStatusProgress;
+        pStatusProgress.reset();
     }
 
-    Application::PostUserEvent( LINK( mpProgress, TakeProgress, CleanUpHdl ), nullptr, true );
+    Application::PostUserEvent(LINK(mpProgress, TakeProgress, CleanUpHdl));
 }
 
-
-TakeProgress::TakeProgress(vcl::Window* pWindow)
-    : ModalDialog(pWindow, "GalleryApplyProgress",
-        "cui/ui/galleryapplyprogress.ui")
-    , window_(pWindow)
+TakeProgress::TakeProgress(weld::Window* pParent, TPGalleryThemeProperties* pTabPage)
+    : GenericDialogController(pParent, "cui/ui/galleryapplyprogress.ui",
+                              "GalleryApplyProgress")
+    , m_pParent(pParent)
+    , m_pTabPage(pTabPage)
+    , m_xFtTakeFile(m_xBuilder->weld_label("file"))
+    , m_xBtnCancel(m_xBuilder->weld_button("cancel"))
 {
-    get(m_pFtTakeFile, "file");
-    get(m_pBtnCancel, "cancel");
-
-    m_pBtnCancel->SetClickHdl( LINK( this, TakeProgress, ClickCancelBtn ) );
+    m_xBtnCancel->connect_clicked(LINK(this, TakeProgress, ClickCancelBtn));
 }
-
 
 TakeProgress::~TakeProgress()
 {
-    disposeOnce();
 }
 
-
-void TakeProgress::dispose()
-{
-    m_pFtTakeFile.clear();
-    m_pBtnCancel.clear();
-    window_.clear();
-    ModalDialog::dispose();
-}
-
-
-IMPL_LINK_NOARG(TakeProgress, ClickCancelBtn, Button*, void)
+IMPL_LINK_NOARG(TakeProgress, ClickCancelBtn, weld::Button&, void)
 {
     if (maTakeThread.is())
         maTakeThread->terminate();
@@ -353,14 +314,14 @@ IMPL_LINK_NOARG(TakeProgress, CleanUpHdl, void*, void)
     if (maTakeThread.is())
         maTakeThread->join();
 
-    TPGalleryThemeProperties*   pBrowser = static_cast<TPGalleryThemeProperties*>( GetParent() );
-    std::vector<bool, std::allocator<bool> > aRemoveEntries( pBrowser->aFoundList.size(), false );
+    std::vector<bool, std::allocator<bool> > aRemoveEntries(m_pTabPage->aFoundList.size(), false);
     std::vector< OUString >   aRemainingVector;
     sal_uInt32                  i, nCount;
 
-    GetParent()->EnterWait();
-    pBrowser->m_pLbxFound->SetUpdateMode( false );
-    pBrowser->m_pLbxFound->SetNoSelection();
+    std::unique_ptr<weld::WaitObject> xWait(new weld::WaitObject(m_pParent));
+
+    m_pTabPage->m_xLbxFound->select(-1);
+    m_pTabPage->m_xLbxFound->freeze();
 
     // mark all taken positions in aRemoveEntries
     for( i = 0, nCount = maTakenList.size(); i < nCount; ++i )
@@ -370,273 +331,189 @@ IMPL_LINK_NOARG(TakeProgress, CleanUpHdl, void*, void)
     // refill found list
     for( i = 0, nCount = aRemoveEntries.size(); i < nCount; ++i )
         if( !aRemoveEntries[ i ] )
-            aRemainingVector.push_back( pBrowser->aFoundList[i] );
+            aRemainingVector.push_back( m_pTabPage->aFoundList[i] );
 
-    pBrowser->aFoundList.clear();
+    m_pTabPage->aFoundList.clear();
 
     for( i = 0, nCount = aRemainingVector.size(); i < nCount; ++i )
-        pBrowser->aFoundList.push_back( aRemainingVector[ i ] );
+        m_pTabPage->aFoundList.push_back( aRemainingVector[ i ] );
 
     aRemainingVector.clear();
 
     // refill list box
     for( i = 0, nCount = aRemoveEntries.size(); i < nCount; ++i )
         if( !aRemoveEntries[ i ] )
-            aRemainingVector.push_back( pBrowser->m_pLbxFound->GetEntry( (sal_uInt16) i ) );
+            aRemainingVector.push_back(m_pTabPage->m_xLbxFound->get_text(i));
 
-    pBrowser->m_pLbxFound->Clear();
+    m_pTabPage->m_xLbxFound->clear();
 
     for( i = 0, nCount = aRemainingVector.size(); i < nCount; ++i )
-        pBrowser->m_pLbxFound->InsertEntry( aRemainingVector[ i ] );
+        m_pTabPage->m_xLbxFound->append_text(aRemainingVector[i]);
 
     aRemainingVector.clear();
 
-    pBrowser->m_pLbxFound->SetUpdateMode( true );
-    pBrowser->SelectFoundHdl( *pBrowser->m_pLbxFound );
-    GetParent()->LeaveWait();
+    m_pTabPage->m_xLbxFound->thaw();
+    m_pTabPage->SelectFoundHdl( *m_pTabPage->m_xLbxFound );
 
-    EndDialog( RET_OK );
-    disposeOnce();
+    xWait.reset();
+
+    m_xDialog->response(RET_OK);
 }
 
-
-short TakeProgress::Execute()
-{
-    OSL_FAIL( "TakeProgress cannot be executed via Dialog::Execute!\n"
-               "It creates a thread that will call back to VCL apartment => deadlock!\n"
-               "Use Dialog::StartExecuteModal to execute the dialog!" );
-    return RET_CANCEL;
-}
-
-
-void TakeProgress::StartExecuteModal( const Link<Dialog&,void>& rEndDialogHdl )
+void TakeProgress::LaunchThread()
 {
     assert(!maTakeThread.is());
-    maTakeThread = new TakeThread(
-        this, static_cast< TPGalleryThemeProperties * >(window_.get()), maTakenList);
+    maTakeThread = new TakeThread(this, m_pTabPage, maTakenList);
     maTakeThread->launch();
-    ModalDialog::StartExecuteModal( rEndDialogHdl );
 }
 
-
-ActualizeProgress::ActualizeProgress(vcl::Window* pWindow, GalleryTheme* pThm)
-    : ModalDialog(pWindow, "GalleryUpdateProgress",
-        "cui/ui/galleryupdateprogress.ui")
+ActualizeProgress::ActualizeProgress(weld::Widget* pWindow, GalleryTheme* pThm)
+    : GenericDialogController(pWindow, "cui/ui/galleryupdateprogress.ui",
+                              "GalleryUpdateProgress")
     , pIdle(nullptr)
     , pTheme(pThm)
+    , m_xFtActualizeFile(m_xBuilder->weld_label("file"))
+    , m_xBtnCancel(m_xBuilder->weld_button("cancel"))
 {
-    get(m_pFtActualizeFile, "file");
-    get(m_pBtnCancel, "cancel");
-    m_pBtnCancel->SetClickHdl( LINK( this, ActualizeProgress, ClickCancelBtn ) );
+    m_xBtnCancel->connect_clicked(LINK(this, ActualizeProgress, ClickCancelBtn));
 }
-
 
 ActualizeProgress::~ActualizeProgress()
 {
-    disposeOnce();
 }
 
-
-void ActualizeProgress::dispose()
+short ActualizeProgress::run()
 {
-    m_pFtActualizeFile.clear();
-    m_pBtnCancel.clear();
-    ModalDialog::dispose();
-}
-
-
-short ActualizeProgress::Execute()
-{
-    short nRet;
-
     pIdle = new Idle("ActualizeProgressTimeout");
     pIdle->SetInvokeHandler( LINK( this, ActualizeProgress, TimeoutHdl ) );
     pIdle->SetPriority( TaskPriority::LOWEST );
     pIdle->Start();
 
-    nRet = ModalDialog::Execute();
-
-    return nRet;
+    return GenericDialogController::run();
 }
 
-
-IMPL_LINK_NOARG(ActualizeProgress, ClickCancelBtn, Button*, void)
+IMPL_LINK_NOARG(ActualizeProgress, ClickCancelBtn, weld::Button&, void)
 {
     pTheme->AbortActualize();
-    EndDialog( RET_OK );
+    m_xDialog->response(RET_OK);
 }
-
 
 IMPL_LINK( ActualizeProgress, TimeoutHdl, Timer*, _pTimer, void)
 {
-    if ( _pTimer )
+    if (_pTimer)
     {
         _pTimer->Stop();
         delete _pTimer;
     }
 
-    pTheme->Actualize( LINK( this, ActualizeProgress, ActualizeHdl ), &aStatusProgress );
-    ClickCancelBtn( nullptr );
+    pTheme->Actualize(LINK(this, ActualizeProgress, ActualizeHdl), &aStatusProgress);
+    ClickCancelBtn(*m_xBtnCancel);
 }
-
 
 IMPL_LINK( ActualizeProgress, ActualizeHdl, const INetURLObject&, rURL, void )
 {
-    for( long i = 0; i < 128; i++ )
-        Application::Reschedule();
-
-    Flush();
-
-    m_pFtActualizeFile->SetText( GetReducedString( rURL, 30 ) );
-    m_pFtActualizeFile->Flush();
+    Application::Reschedule(true);
+    m_xFtActualizeFile->set_label(GetReducedString(rURL, 30));
 }
 
-
-TitleDialog::TitleDialog(vcl::Window* pParent, const OUString& rOldTitle)
-    : ModalDialog(pParent, "GalleryTitleDialog", "cui/ui/gallerytitledialog.ui")
+TitleDialog::TitleDialog(weld::Widget* pParent, const OUString& rOldTitle)
+    : GenericDialogController(pParent, "cui/ui/gallerytitledialog.ui", "GalleryTitleDialog")
+    , m_xEdit(m_xBuilder->weld_entry("entry"))
 {
-    get(m_pEdit, "entry");
-    m_pEdit->SetText( rOldTitle );
-    m_pEdit->GrabFocus();
+    m_xEdit->set_text(rOldTitle);
+    m_xEdit->grab_focus();
 }
-
 
 TitleDialog::~TitleDialog()
 {
-    disposeOnce();
 }
 
-
-void TitleDialog::dispose()
+GalleryIdDialog::GalleryIdDialog(weld::Widget* pParent, GalleryTheme* _pThm)
+    : GenericDialogController(pParent, "cui/ui/gallerythemeiddialog.ui", "GalleryThemeIDDialog")
+    , m_pThm(_pThm)
+    , m_xBtnOk(m_xBuilder->weld_button("ok"))
+    , m_xLbResName(m_xBuilder->weld_combo_box("entry"))
 {
-    m_pEdit.clear();
-    ModalDialog::dispose();
+    m_xLbResName->append_text("!!! No Id !!!");
+
+    GalleryTheme::InsertAllThemes(*m_xLbResName);
+
+    m_xLbResName->set_active(m_pThm->GetId());
+    m_xLbResName->grab_focus();
+
+    m_xBtnOk->connect_clicked(LINK(this, GalleryIdDialog, ClickOkHdl));
 }
-
-
-GalleryIdDialog::GalleryIdDialog( vcl::Window* pParent, GalleryTheme* _pThm )
-    : ModalDialog(pParent, "GalleryThemeIDDialog", "cui/ui/gallerythemeiddialog.ui")
-    , pThm(_pThm )
-{
-    get(m_pBtnOk, "ok");
-    get(m_pLbResName, "entry");
-
-    m_pLbResName->InsertEntry( OUString( "!!! No Id !!!" ) );
-
-    GalleryTheme::InsertAllThemes(*m_pLbResName);
-
-    m_pLbResName->SelectEntryPos( (sal_uInt16) pThm->GetId() );
-    m_pLbResName->GrabFocus();
-
-    m_pBtnOk->SetClickHdl( LINK( this, GalleryIdDialog, ClickOkHdl ) );
-}
-
 
 GalleryIdDialog::~GalleryIdDialog()
 {
-    disposeOnce();
 }
 
-
-void GalleryIdDialog::dispose()
+IMPL_LINK_NOARG(GalleryIdDialog, ClickOkHdl, weld::Button&, void)
 {
-    m_pBtnOk.clear();
-    m_pLbResName.clear();
-    ModalDialog::dispose();
-}
-
-
-IMPL_LINK_NOARG(GalleryIdDialog, ClickOkHdl, Button*, void)
-{
-    Gallery*    pGal = pThm->GetParent();
-    const sal_uLong nId = GetId();
+    Gallery*    pGal = m_pThm->GetParent();
+    const sal_uInt32 nId = GetId();
     bool        bDifferentThemeExists = false;
 
-    for( sal_uLong i = 0, nCount = pGal->GetThemeCount(); i < nCount && !bDifferentThemeExists; i++ )
+    for( size_t i = 0, nCount = pGal->GetThemeCount(); i < nCount && !bDifferentThemeExists; i++ )
     {
         const GalleryThemeEntry* pInfo = pGal->GetThemeInfo( i );
 
-        if( ( pInfo->GetId() == nId ) && ( pInfo->GetThemeName() != pThm->GetName() ) )
+        if ((pInfo->GetId() == nId) && (pInfo->GetThemeName() != m_pThm->GetName()))
         {
-            OUString aStr( CuiResId( RID_SVXSTR_GALLERY_ID_EXISTS ) );
+            OUString aStr = CuiResId( RID_SVXSTR_GALLERY_ID_EXISTS ) +
+                " (" + pInfo->GetThemeName() + ")";
 
-            aStr += " (" + pInfo->GetThemeName() + ")";
-
-            ScopedVclPtrInstance< InfoBox > aBox( this, aStr );
-            aBox->Execute();
-            m_pLbResName->GrabFocus();
+            std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(m_xDialog.get(),
+                                                          VclMessageType::Info, VclButtonsType::Ok,
+                                                          aStr));
+            xInfoBox->run();
+            m_xLbResName->grab_focus();
             bDifferentThemeExists = true;
         }
     }
 
-    if( !bDifferentThemeExists )
-        EndDialog( RET_OK );
+    if (!bDifferentThemeExists)
+        m_xDialog->response(RET_OK);
 }
 
-
-GalleryThemeProperties::GalleryThemeProperties(vcl::Window* pParent,
-    ExchangeData* _pData, SfxItemSet* pItemSet)
-    : SfxTabDialog( pParent, "GalleryThemeDialog",
-        "cui/ui/gallerythemedialog.ui", pItemSet)
+GalleryThemeProperties::GalleryThemeProperties(weld::Widget* pParent,
+    ExchangeData* _pData, SfxItemSet const * pItemSet)
+    : SfxTabDialogController(pParent, "cui/ui/gallerythemedialog.ui",
+                             "GalleryThemeDialog", pItemSet)
     , pData(_pData)
-    , m_nGeneralPageId(0)
-    , m_nFilesPageId(0)
 {
-    m_nGeneralPageId = AddTabPage("general", TPGalleryThemeGeneral::Create, nullptr);
-    m_nFilesPageId = AddTabPage("files", TPGalleryThemeProperties::Create, nullptr);
+    AddTabPage("general", TPGalleryThemeGeneral::Create, nullptr);
+    AddTabPage("files", TPGalleryThemeProperties::Create, nullptr);
+    if (pData->pTheme->IsReadOnly())
+        RemoveTabPage("files");
 
-    if( pData->pTheme->IsReadOnly() )
-        RemoveTabPage(m_nFilesPageId);
+    OUString aText = m_xDialog->get_title().replaceFirst( "%1",  pData->pTheme->GetName() );
 
-    OUString aText = GetText() + pData->pTheme->GetName();
+    if (pData->pTheme->IsReadOnly())
+        aText +=  " " + CuiResId( RID_SVXSTR_GALLERY_READONLY );
 
-    if( pData->pTheme->IsReadOnly() )
-        aText +=  CuiResId( RID_SVXSTR_GALLERY_READONLY );
-
-    SetText( aText );
+    m_xDialog->set_title(aText);
 }
 
-
-void GalleryThemeProperties::PageCreated( sal_uInt16 nId, SfxTabPage &rPage )
+void GalleryThemeProperties::PageCreated(const OString& rId, SfxTabPage &rPage)
 {
-    if (nId == m_nGeneralPageId)
+    if (rId == "general")
         static_cast<TPGalleryThemeGeneral&>( rPage ).SetXChgData( pData );
     else
         static_cast<TPGalleryThemeProperties&>( rPage ).SetXChgData( pData );
 }
 
-
-TPGalleryThemeGeneral::TPGalleryThemeGeneral(vcl::Window* pParent, const SfxItemSet& rSet)
-    : SfxTabPage(pParent, "GalleryGeneralPage",
-        "cui/ui/gallerygeneralpage.ui", &rSet)
+TPGalleryThemeGeneral::TPGalleryThemeGeneral(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
+    : SfxTabPage(pPage, pController, "cui/ui/gallerygeneralpage.ui", "GalleryGeneralPage", &rSet)
     , pData(nullptr)
+    , m_xFiMSImage(m_xBuilder->weld_image("image"))
+    , m_xEdtMSName(m_xBuilder->weld_entry("name"))
+    , m_xFtMSShowType(m_xBuilder->weld_label("type"))
+    , m_xFtMSShowPath(m_xBuilder->weld_label("location"))
+    , m_xFtMSShowContent(m_xBuilder->weld_label("contents"))
+    , m_xFtMSShowChangeDate(m_xBuilder->weld_label("modified"))
 {
-    get(m_pFiMSImage, "image");
-    get(m_pEdtMSName, "name");
-    get(m_pFtMSShowType, "type");
-    get(m_pFtMSShowPath, "location");
-    get(m_pFtMSShowContent, "contents");
-    get(m_pFtMSShowChangeDate, "modified");
 }
-
-
-TPGalleryThemeGeneral::~TPGalleryThemeGeneral()
-{
-    disposeOnce();
-}
-
-
-void TPGalleryThemeGeneral::dispose()
-{
-    m_pFiMSImage.clear();
-    m_pEdtMSName.clear();
-    m_pFtMSShowType.clear();
-    m_pFtMSShowPath.clear();
-    m_pFtMSShowContent.clear();
-    m_pFtMSShowChangeDate.clear();
-    SfxTabPage::dispose();
-}
-
 
 void TPGalleryThemeGeneral::SetXChgData( ExchangeData* _pData )
 {
@@ -649,19 +526,15 @@ void TPGalleryThemeGeneral::SetXChgData( ExchangeData* _pData )
     OUString            aType( SvxResId( RID_SVXSTR_GALLERYPROPS_GALTHEME ) );
     bool            bReadOnly = pThm->IsReadOnly();
 
-    m_pEdtMSName->SetText( pThm->GetName() );
-    m_pEdtMSName->SetReadOnly( bReadOnly );
-
-    if( bReadOnly )
-        m_pEdtMSName->Disable();
-    else
-        m_pEdtMSName->Enable();
+    m_xEdtMSName->set_text(pThm->GetName());
+    m_xEdtMSName->set_editable(!bReadOnly);
+    m_xEdtMSName->set_sensitive(!bReadOnly);
 
     if( pThm->IsReadOnly() )
         aType += CuiResId( RID_SVXSTR_GALLERY_READONLY );
 
-    m_pFtMSShowType->SetText( aType );
-    m_pFtMSShowPath->SetText( pThm->GetSdgURL().GetMainURL( INetURLObject::DecodeMechanism::Unambiguous ) );
+    m_xFtMSShowType->set_label(aType);
+    m_xFtMSShowPath->set_label(pThm->GetSdgURL().GetMainURL(INetURLObject::DecodeMechanism::Unambiguous));
 
     // singular or plural?
     if ( 1 == pThm->GetObjectCount() )
@@ -671,7 +544,7 @@ void TPGalleryThemeGeneral::SetXChgData( ExchangeData* _pData )
 
     aOutStr += " " + aObjStr;
 
-    m_pFtMSShowContent->SetText( aOutStr );
+    m_xFtMSShowContent->set_label(aOutStr);
 
     // get locale wrapper (singleton)
     const SvtSysLocale aSysLocale;
@@ -679,7 +552,7 @@ void TPGalleryThemeGeneral::SetXChgData( ExchangeData* _pData )
 
     // ChangeDate/Time
     aAccess = aLocaleData.getDate( pData->aThemeChangeDate ) + ", " + aLocaleData.getTime( pData->aThemeChangeTime );
-    m_pFtMSShowChangeDate->SetText( aAccess );
+    m_xFtMSShowChangeDate->set_label(aAccess);
 
     // set image
     OUString sId;
@@ -691,46 +564,41 @@ void TPGalleryThemeGeneral::SetXChgData( ExchangeData* _pData )
     else
         sId = RID_SVXBMP_THEME_NORMAL_BIG;
 
-    m_pFiMSImage->SetImage(Image(BitmapEx(sId)));
+    m_xFiMSImage->set_from_icon_name(sId);
 }
 
 bool TPGalleryThemeGeneral::FillItemSet( SfxItemSet* /*rSet*/ )
 {
-    pData->aEditedTitle = m_pEdtMSName->GetText();
+    pData->aEditedTitle = m_xEdtMSName->get_text();
     return true;
 }
 
-VclPtr<SfxTabPage> TPGalleryThemeGeneral::Create( vcl::Window* pParent, const SfxItemSet* rSet )
+std::unique_ptr<SfxTabPage> TPGalleryThemeGeneral::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet)
 {
-    return VclPtr<TPGalleryThemeGeneral>::Create( pParent, *rSet );
+    return std::make_unique<TPGalleryThemeGeneral>(pPage, pController, *rSet);
 }
 
-
-TPGalleryThemeProperties::TPGalleryThemeProperties( vcl::Window* pWindow, const SfxItemSet& rSet )
-    : SfxTabPage(pWindow, "GalleryFilesPage", "cui/ui/galleryfilespage.ui", &rSet)
+TPGalleryThemeProperties::TPGalleryThemeProperties(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
+    : SfxTabPage(pPage, pController, "cui/ui/galleryfilespage.ui", "GalleryFilesPage", &rSet)
     , pData(nullptr)
-    , nFirstExtFilterPos(0)
     , bEntriesFound(false)
     , bInputAllowed(true)
     , bTakeAll(false)
     , bSearchRecursive(false)
     , xDialogListener(new ::svt::DialogClosedListener())
+    , m_xCbbFileType(m_xBuilder->weld_combo_box("filetype"))
+    , m_xLbxFound(m_xBuilder->weld_tree_view("files"))
+    , m_xBtnSearch(m_xBuilder->weld_button("findfiles"))
+    , m_xBtnTake(m_xBuilder->weld_button("add"))
+    , m_xBtnTakeAll(m_xBuilder->weld_button("addall"))
+    , m_xCbxPreview(m_xBuilder->weld_check_button("preview"))
+    , m_xWndPreview(new weld::CustomWeld(*m_xBuilder, "image", m_aWndPreview))
 {
-    get(m_pCbbFileType, "filetype");
-    get(m_pLbxFound, "files");
-    Size aSize(LogicToPixel(Size(172, 156), MapUnit::MapAppFont));
-    m_pLbxFound->set_width_request(aSize.Width());
-    m_pLbxFound->set_height_request(aSize.Height());
-    m_pLbxFound->EnableMultiSelection(true);
-    get(m_pBtnSearch, "findfiles");
-    get(m_pBtnTake, "add");
-    get(m_pBtnTakeAll, "addall");
-    get(m_pCbxPreview, "preview");
-    get(m_pWndPreview, "image");
-
+    m_xLbxFound->set_size_request(m_xLbxFound->get_approximate_digit_width() * 35,
+                                  m_xLbxFound->get_height_rows(15));
+    m_xLbxFound->set_selection_mode(SelectionMode::Multiple);
     xDialogListener->SetDialogClosedLink( LINK( this, TPGalleryThemeProperties, DialogClosedHdl ) );
 }
-
 
 void TPGalleryThemeProperties::SetXChgData( ExchangeData* _pData )
 {
@@ -738,24 +606,22 @@ void TPGalleryThemeProperties::SetXChgData( ExchangeData* _pData )
 
     aPreviewTimer.SetInvokeHandler( LINK( this, TPGalleryThemeProperties, PreviewTimerHdl ) );
     aPreviewTimer.SetTimeout( 500 );
-    m_pBtnSearch->SetClickHdl(LINK(this, TPGalleryThemeProperties, ClickSearchHdl));
-    m_pBtnTake->SetClickHdl(LINK(this, TPGalleryThemeProperties, ClickTakeHdl));
-    m_pBtnTakeAll->SetClickHdl(LINK(this, TPGalleryThemeProperties, ClickTakeAllHdl));
-    m_pCbxPreview->SetClickHdl(LINK(this, TPGalleryThemeProperties, ClickPreviewHdl));
-    m_pCbbFileType->SetSelectHdl(LINK(this, TPGalleryThemeProperties, SelectFileTypeHdl));
-    m_pCbbFileType->EnableDDAutoWidth( false );
-    m_pLbxFound->SetDoubleClickHdl(LINK(this, TPGalleryThemeProperties, DClickFoundHdl));
-    m_pLbxFound->SetSelectHdl(LINK(this, TPGalleryThemeProperties, SelectFoundHdl));
-    m_pLbxFound->InsertEntry(CuiResId(RID_SVXSTR_GALLERY_NOFILES));
-    m_pLbxFound->Show();
+    m_xBtnSearch->connect_clicked(LINK(this, TPGalleryThemeProperties, ClickSearchHdl));
+    m_xBtnTake->connect_clicked(LINK(this, TPGalleryThemeProperties, ClickTakeHdl));
+    m_xBtnTakeAll->connect_clicked(LINK(this, TPGalleryThemeProperties, ClickTakeAllHdl));
+    m_xCbxPreview->connect_toggled(LINK(this, TPGalleryThemeProperties, ClickPreviewHdl));
+    m_xCbbFileType->connect_changed(LINK(this, TPGalleryThemeProperties, SelectFileTypeHdl));
+    m_xLbxFound->connect_row_activated(LINK(this, TPGalleryThemeProperties, DClickFoundHdl));
+    m_xLbxFound->connect_changed(LINK(this, TPGalleryThemeProperties, SelectFoundHdl));
+    m_xLbxFound->append_text(CuiResId(RID_SVXSTR_GALLERY_NOFILES));
+    m_xLbxFound->show();
 
     FillFilterList();
 
-    m_pBtnTake->Enable();
-    m_pBtnTakeAll->Disable();
-    m_pCbxPreview->Disable();
+    m_xBtnTake->set_sensitive(true);
+    m_xBtnTakeAll->set_sensitive(false);
+    m_xCbxPreview->set_sensitive(false);
 }
-
 
 void TPGalleryThemeProperties::StartSearchFiles( const OUString& _rFolderURL, short _nDlgResult )
 {
@@ -767,39 +633,17 @@ void TPGalleryThemeProperties::StartSearchFiles( const OUString& _rFolderURL, sh
     }
 }
 
-
 TPGalleryThemeProperties::~TPGalleryThemeProperties()
-{
-    disposeOnce();
-}
-
-
-void TPGalleryThemeProperties::dispose()
 {
     xMediaPlayer.clear();
     xDialogListener.clear();
-
-    for (FilterEntry* i : aFilterEntryList) {
-        delete i;
-    }
     aFilterEntryList.clear();
-
-    m_pCbbFileType.clear();
-    m_pLbxFound.clear();
-    m_pBtnSearch.clear();
-    m_pBtnTake.clear();
-    m_pBtnTakeAll.clear();
-    m_pCbxPreview.clear();
-    m_pWndPreview.clear();
-    SfxTabPage::dispose();
 }
 
-
-VclPtr<SfxTabPage> TPGalleryThemeProperties::Create( vcl::Window* pParent, const SfxItemSet* rSet )
+std::unique_ptr<SfxTabPage> TPGalleryThemeProperties::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet)
 {
-    return VclPtr<TPGalleryThemeProperties>::Create( pParent, *rSet );
+    return std::make_unique<TPGalleryThemeProperties>(pPage, pController, *rSet);
 }
-
 
 OUString TPGalleryThemeProperties::addExtension( const OUString& _rDisplayText, const OUString& _rExtension )
 {
@@ -811,13 +655,11 @@ OUString TPGalleryThemeProperties::addExtension( const OUString& _rDisplayText, 
     return sRet;
 }
 
-
 void TPGalleryThemeProperties::FillFilterList()
 {
     GraphicFilter &rFilter = GraphicFilter::GetGraphicFilter();
     OUString            aExt;
     OUString            aName;
-    FilterEntry*        pFilterEntry;
     sal_uInt16          i, nKeyCount;
 
     // graphic filters
@@ -826,7 +668,7 @@ void TPGalleryThemeProperties::FillFilterList()
         aExt = rFilter.GetImportFormatShortName( i );
         aName = rFilter.GetImportFormatName( i );
         size_t entryIndex = 0;
-        FilterEntry* pTestEntry = aFilterEntryList.empty() ? nullptr : aFilterEntryList[ entryIndex ];
+        FilterEntry* pTestEntry = aFilterEntryList.empty() ? nullptr : aFilterEntryList[ entryIndex ].get();
         bool bInList = false;
 
         OUString aExtensions;
@@ -854,50 +696,36 @@ void TPGalleryThemeProperties::FillFilterList()
                 break;
             }
             pTestEntry = ( ++entryIndex < aFilterEntryList.size() )
-                       ? aFilterEntryList[ entryIndex ] : nullptr;
+                       ? aFilterEntryList[ entryIndex ].get() : nullptr;
         }
         if ( !bInList )
         {
-            pFilterEntry = new FilterEntry;
+            std::unique_ptr<FilterEntry> pFilterEntry(new FilterEntry);
             pFilterEntry->aFilterName = aExt;
-            size_t pos = m_pCbbFileType->InsertEntry( aName );
-            if ( pos < aFilterEntryList.size() ) {
-                aFilterEntryList.insert( aFilterEntryList.begin() + pos, pFilterEntry );
-            } else {
-                aFilterEntryList.push_back( pFilterEntry );
-            }
+            m_xCbbFileType->append_text(aName);
+            aFilterEntryList.push_back(std::move(pFilterEntry));
         }
     }
 
+#if HAVE_FEATURE_AVMEDIA
     // media filters
     static const char aWildcard[] = "*.";
-    ::avmedia::FilterNameVector     aFilters;
-    ::avmedia::MediaWindow::getMediaFilters( aFilters );
+    ::avmedia::FilterNameVector     aFilters= ::avmedia::MediaWindow::getMediaFilters();
 
-    for(std::pair<OUString,OUString> & aFilter : aFilters)
+    for(const std::pair<OUString,OUString> & aFilter : aFilters)
     {
         for( sal_Int32 nIndex = 0; nIndex >= 0; )
         {
             OUString aFilterWildcard( aWildcard );
 
-            pFilterEntry = new FilterEntry;
+            std::unique_ptr<FilterEntry> pFilterEntry(new FilterEntry);
             pFilterEntry->aFilterName = aFilter.second.getToken( 0, ';', nIndex );
-            nFirstExtFilterPos = m_pCbbFileType->InsertEntry(
-                addExtension(
-                    aFilter.first,
-                    aFilterWildcard += pFilterEntry->aFilterName
-                )
-            );
-            if ( nFirstExtFilterPos < aFilterEntryList.size() ) {
-                aFilterEntryList.insert(
-                    aFilterEntryList.begin() + nFirstExtFilterPos,
-                    pFilterEntry
-                );
-            } else {
-                aFilterEntryList.push_back( pFilterEntry );
-            }
+            aFilterWildcard += pFilterEntry->aFilterName;
+            m_xCbbFileType->append_text(addExtension(aFilter.first, aFilterWildcard));
+            aFilterEntryList.push_back( std::move(pFilterEntry) );
         }
     }
+#endif
 
     // 'All' filters
     OUString aExtensions;
@@ -922,8 +750,9 @@ void TPGalleryThemeProperties::FillFilterList()
         }
     }
 
+#if HAVE_FEATURE_AVMEDIA
     // media filters
-    for(std::pair<OUString,OUString> & aFilter : aFilters)
+    for(const std::pair<OUString,OUString> & aFilter : aFilters)
     {
         for( sal_Int32 nIndex = 0; nIndex >= 0; )
         {
@@ -932,176 +761,171 @@ void TPGalleryThemeProperties::FillFilterList()
             aExtensions += aWildcard + aFilter.second.getToken( 0, ';', nIndex );
         }
      }
+#endif
 
 #if defined(_WIN32)
     if (aExtensions.getLength() > 240)
         aExtensions = "*.*";
 #endif
 
-    pFilterEntry = new FilterEntry;
+    std::unique_ptr<FilterEntry> pFilterEntry(new FilterEntry);
     pFilterEntry->aFilterName = CuiResId(RID_SVXSTR_GALLERY_ALLFILES);
-    pFilterEntry->aFilterName = addExtension( pFilterEntry->aFilterName, aExtensions );
-    size_t pos = m_pCbbFileType->InsertEntry( pFilterEntry->aFilterName, 0 );
-    if ( pos < aFilterEntryList.size() ) {
-        aFilterEntryList.insert( aFilterEntryList.begin() + pos, pFilterEntry );
-    } else {
-        aFilterEntryList.push_back( pFilterEntry );
-    }
-    m_pCbbFileType->SetText( pFilterEntry->aFilterName );
+    pFilterEntry->aFilterName = addExtension(pFilterEntry->aFilterName, aExtensions);
+    m_xCbbFileType->insert_text(0, pFilterEntry->aFilterName);
+    m_xCbbFileType->set_active(0);
+    aFilterEntryList.insert(aFilterEntryList.begin(), std::move(pFilterEntry));
 }
 
-
-IMPL_LINK_NOARG(TPGalleryThemeProperties, SelectFileTypeHdl, ComboBox&, void)
+IMPL_LINK_NOARG(TPGalleryThemeProperties, SelectFileTypeHdl, weld::ComboBox&, void)
 {
-    OUString aText( m_pCbbFileType->GetText() );
+    OUString aText(m_xCbbFileType->get_active_text());
 
     if( bInputAllowed && ( aLastFilterName != aText ) )
     {
         aLastFilterName = aText;
 
-        if( ScopedVclPtrInstance<MessageDialog>( this, "QueryUpdateFileListDialog","cui/ui/queryupdategalleryfilelistdialog.ui" )->Execute() == RET_YES )
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), "cui/ui/queryupdategalleryfilelistdialog.ui"));
+        std::unique_ptr<weld::MessageDialog> xQuery(xBuilder->weld_message_dialog("QueryUpdateFileListDialog"));
+        if (xQuery->run() == RET_YES)
             SearchFiles();
     }
 }
 
-
 void TPGalleryThemeProperties::SearchFiles()
 {
-    VclPtrInstance<SearchProgress> pProgress( this, aURL );
+    auto xProgress = std::make_shared<SearchProgress>(GetFrameWeld(), this, aURL);
 
     aFoundList.clear();
-    m_pLbxFound->Clear();
+    m_xLbxFound->clear();
 
-    pProgress->SetFileType( m_pCbbFileType->GetText() );
-    pProgress->SetDirectory( INetURLObject() );
-    pProgress->Update();
+    xProgress->SetFileType( m_xCbbFileType->get_active_text() );
+    xProgress->SetDirectory( INetURLObject() );
 
-    pProgress->StartExecuteModal( LINK( this, TPGalleryThemeProperties, EndSearchProgressHdl ) );
+    xProgress->LaunchThread();
+    weld::DialogController::runAsync(xProgress, [this](sal_Int32 nResult) {
+        EndSearchProgressHdl(nResult);
+    });
 }
 
-
-IMPL_LINK_NOARG(TPGalleryThemeProperties, ClickSearchHdl, Button*, void)
+IMPL_LINK_NOARG(TPGalleryThemeProperties, ClickSearchHdl, weld::Button&, void)
 {
-    if( bInputAllowed )
+    if( !bInputAllowed )
+        return;
+
+    try
     {
-        try
+        // setup folder picker
+        css::uno::Reference< XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+        xFolderPicker = FolderPicker::create(xContext);
+
+        OUString  aDlgPathName( SvtPathOptions().GetGraphicPath() );
+        xFolderPicker->setDisplayDirectory(aDlgPathName);
+
+        aPreviewTimer.Stop();
+
+        css::uno::Reference< XAsynchronousExecutableDialog > xAsyncDlg( xFolderPicker, UNO_QUERY );
+        if ( xAsyncDlg.is() )
+            xAsyncDlg->startExecuteModal( xDialogListener.get() );
+        else
         {
-            // setup folder picker
-            css::uno::Reference< XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
-            xFolderPicker = FolderPicker::create(xContext);
-
-            OUString  aDlgPathName( SvtPathOptions().GetGraphicPath() );
-            xFolderPicker->setDisplayDirectory(aDlgPathName);
-
-            aPreviewTimer.Stop();
-
-            css::uno::Reference< XAsynchronousExecutableDialog > xAsyncDlg( xFolderPicker, UNO_QUERY );
-            if ( xAsyncDlg.is() )
-                xAsyncDlg->startExecuteModal( xDialogListener.get() );
-            else
+            if( xFolderPicker->execute() == RET_OK )
             {
-                if( xFolderPicker->execute() == RET_OK )
-                {
-                    aURL = INetURLObject( xFolderPicker->getDirectory() );
-                    bSearchRecursive = true;    // UI choice no longer possible, windows file picker allows no user controls
-                    SearchFiles();
-                }
+                aURL = INetURLObject( xFolderPicker->getDirectory() );
+                bSearchRecursive = true;    // UI choice no longer possible, windows file picker allows no user controls
+                SearchFiles();
             }
         }
-        catch (const IllegalArgumentException&)
-        {
-            OSL_FAIL( "Folder picker failed with illegal arguments" );
-        }
+    }
+    catch (const IllegalArgumentException&)
+    {
+        OSL_FAIL( "Folder picker failed with illegal arguments" );
     }
 }
-
 
 void TPGalleryThemeProperties::TakeFiles()
 {
-    if( m_pLbxFound->GetSelectEntryCount() || ( bTakeAll && bEntriesFound ) )
+    if (m_xLbxFound->count_selected_rows() || (bTakeAll && bEntriesFound))
     {
-        VclPtrInstance<TakeProgress> pTakeProgress( this );
-        pTakeProgress->Update();
+        auto xTakeProgress = std::make_shared<TakeProgress>(GetFrameWeld(), this);
+        xTakeProgress->LaunchThread();
+        weld::DialogController::runAsync(xTakeProgress, [=](sal_Int32 /*nResult*/) {
+            /* no postprocessing needed, pTakeProgress
+               will be disposed in TakeProgress::CleanupHdl */
+        });
 
-        pTakeProgress->StartExecuteModal(
-            Link<Dialog&,void>() /* no postprocessing needed, pTakeProgress
-                      will be disposed in TakeProgress::CleanupHdl */ );
     }
 }
 
-
-IMPL_LINK_NOARG(TPGalleryThemeProperties, ClickPreviewHdl, Button*, void)
+IMPL_LINK_NOARG(TPGalleryThemeProperties, ClickPreviewHdl, weld::ToggleButton&, void)
 {
-    if ( bInputAllowed )
+    if ( !bInputAllowed )
+        return;
+
+    aPreviewTimer.Stop();
+    aPreviewString.clear();
+
+    if (!m_xCbxPreview->get_active())
     {
-        aPreviewTimer.Stop();
-        aPreviewString.clear();
-
-        if( !m_pCbxPreview->IsChecked() )
-        {
-            xMediaPlayer.clear();
-            m_pWndPreview->SetGraphic( Graphic() );
-            m_pWndPreview->Invalidate();
-        }
-        else
-            DoPreview();
+        xMediaPlayer.clear();
+        m_aWndPreview.SetGraphic(Graphic());
+        m_aWndPreview.Invalidate();
     }
+    else
+        DoPreview();
 }
-
 
 void TPGalleryThemeProperties::DoPreview()
 {
-    OUString aString( m_pLbxFound->GetSelectEntry() );
+    int nIndex = m_xLbxFound->get_selected_index();
+    OUString aString(m_xLbxFound->get_text(nIndex));
 
-    if( aString != aPreviewString )
+    if (aString == aPreviewString)
+        return;
+
+    INetURLObject _aURL(aFoundList[nIndex]);
+    bInputAllowed = false;
+
+    if (!m_aWndPreview.SetGraphic(_aURL))
     {
-        INetURLObject   _aURL( aFoundList[ m_pLbxFound->GetEntryPos( aString ) ] );
-        bInputAllowed = false;
-
-        if ( !m_pWndPreview->SetGraphic( _aURL ) )
-        {
-            GetParent()->LeaveWait();
-            ErrorHandler::HandleError( ERRCODE_IO_NOTEXISTSPATH );
-            GetParent()->EnterWait();
-        }
-        else if( ::avmedia::MediaWindow::isMediaURL( _aURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous ), "" ) )
-        {
-            xMediaPlayer = ::avmedia::MediaWindow::createPlayer( _aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), "" );
-            if( xMediaPlayer.is() )
-                xMediaPlayer->start();
-        }
-
-        bInputAllowed = true;
-        aPreviewString = aString;
+        weld::WaitObject aWaitObject(GetFrameWeld());
+        ErrorHandler::HandleError(ERRCODE_IO_NOTEXISTSPATH, GetFrameWeld());
     }
+#if HAVE_FEATURE_AVMEDIA
+    else if( ::avmedia::MediaWindow::isMediaURL( _aURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous ), "" ) )
+    {
+        xMediaPlayer = ::avmedia::MediaWindow::createPlayer( _aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), "" );
+        if( xMediaPlayer.is() )
+            xMediaPlayer->start();
+    }
+#endif
+    bInputAllowed = true;
+    aPreviewString = aString;
 }
 
-
-IMPL_LINK_NOARG(TPGalleryThemeProperties, ClickTakeHdl, Button*, void)
+IMPL_LINK_NOARG(TPGalleryThemeProperties, ClickTakeHdl, weld::Button&, void)
 {
-    if( bInputAllowed )
+    if( !bInputAllowed )
+        return;
+
+    aPreviewTimer.Stop();
+
+    if (!m_xLbxFound->count_selected_rows() || !bEntriesFound)
     {
-        aPreviewTimer.Stop();
+        SvxOpenGraphicDialog aDlg(CuiResId(RID_SVXSTR_KEY_GALLERY_DIR), GetFrameWeld());
+        aDlg.EnableLink(false);
+        aDlg.AsLink(false);
 
-        if( !m_pLbxFound->GetSelectEntryCount() || !bEntriesFound )
-        {
-            SvxOpenGraphicDialog aDlg("Gallery");
-            aDlg.EnableLink(false);
-            aDlg.AsLink(false);
-
-            if( !aDlg.Execute() )
-                pData->pTheme->InsertURL( INetURLObject( aDlg.GetPath() ) );
-        }
-        else
-        {
-            bTakeAll = false;
-            TakeFiles();
-        }
+        if( !aDlg.Execute() )
+            pData->pTheme->InsertURL( INetURLObject( aDlg.GetPath() ) );
+    }
+    else
+    {
+        bTakeAll = false;
+        TakeFiles();
     }
 }
 
-
-IMPL_LINK_NOARG(TPGalleryThemeProperties, ClickTakeAllHdl, Button*, void)
+IMPL_LINK_NOARG(TPGalleryThemeProperties, ClickTakeAllHdl, weld::Button&, void)
 {
     if( bInputAllowed )
     {
@@ -1111,48 +935,46 @@ IMPL_LINK_NOARG(TPGalleryThemeProperties, ClickTakeAllHdl, Button*, void)
     }
 }
 
-
-IMPL_LINK_NOARG(TPGalleryThemeProperties, SelectFoundHdl, ListBox&, void)
+IMPL_LINK_NOARG(TPGalleryThemeProperties, SelectFoundHdl, weld::TreeView&, void)
 {
-    if( bInputAllowed )
+    if (!bInputAllowed)
+        return;
+
+    bool bPreviewPossible = false;
+
+    aPreviewTimer.Stop();
+
+    if( bEntriesFound )
     {
-        bool bPreviewPossible = false;
-
-        aPreviewTimer.Stop();
-
-        if( bEntriesFound )
+        if (m_xLbxFound->count_selected_rows() == 1)
         {
-            if( m_pLbxFound->GetSelectEntryCount() == 1 )
-            {
-                m_pCbxPreview->Enable();
-                bPreviewPossible = true;
-            }
-            else
-                m_pCbxPreview->Disable();
-
-            if( !aFoundList.empty() )
-                m_pBtnTakeAll->Enable();
-            else
-                m_pBtnTakeAll->Disable();
+            m_xCbxPreview->set_sensitive(true);
+            bPreviewPossible = true;
         }
+        else
+            m_xCbxPreview->set_sensitive(false);
 
-        if( bPreviewPossible && m_pCbxPreview->IsChecked() )
-            aPreviewTimer.Start();
+        if( !aFoundList.empty() )
+            m_xBtnTakeAll->set_sensitive(true);
+        else
+            m_xBtnTakeAll->set_sensitive(false);
     }
+
+    if (bPreviewPossible && m_xCbxPreview->get_active())
+        aPreviewTimer.Start();
 }
 
-
-IMPL_LINK_NOARG(TPGalleryThemeProperties, DClickFoundHdl, ListBox&, void)
+IMPL_LINK_NOARG(TPGalleryThemeProperties, DClickFoundHdl, weld::TreeView&, bool)
 {
     if( bInputAllowed )
     {
         aPreviewTimer.Stop();
 
-        if (m_pLbxFound->GetSelectEntryCount() == 1 && bEntriesFound)
-            ClickTakeHdl(nullptr);
+        if (m_xLbxFound->count_selected_rows() == 1 && bEntriesFound)
+            ClickTakeHdl(*m_xBtnTake);
     }
+    return true;
 }
-
 
 IMPL_LINK_NOARG(TPGalleryThemeProperties, PreviewTimerHdl, Timer *, void)
 {
@@ -1160,25 +982,23 @@ IMPL_LINK_NOARG(TPGalleryThemeProperties, PreviewTimerHdl, Timer *, void)
     DoPreview();
 }
 
-
-IMPL_LINK_NOARG(TPGalleryThemeProperties, EndSearchProgressHdl, Dialog&, void)
+void TPGalleryThemeProperties::EndSearchProgressHdl(sal_Int32 /*nResult*/)
 {
   if( !aFoundList.empty() )
   {
-      m_pLbxFound->SelectEntryPos( 0 );
-      m_pBtnTakeAll->Enable();
-      m_pCbxPreview->Enable();
+      m_xLbxFound->select(0);
+      m_xBtnTakeAll->set_sensitive(true);
+      m_xCbxPreview->set_sensitive(true);
       bEntriesFound = true;
   }
   else
   {
-      m_pLbxFound->InsertEntry( CuiResId( RID_SVXSTR_GALLERY_NOFILES ) );
-      m_pBtnTakeAll->Disable();
-      m_pCbxPreview->Disable();
+      m_xLbxFound->append_text(CuiResId(RID_SVXSTR_GALLERY_NOFILES));
+      m_xBtnTakeAll->set_sensitive(false);
+      m_xCbxPreview->set_sensitive(false);
       bEntriesFound = false;
   }
 }
-
 
 IMPL_LINK( TPGalleryThemeProperties, DialogClosedHdl, css::ui::dialogs::DialogClosedEvent*, pEvt, void )
 {

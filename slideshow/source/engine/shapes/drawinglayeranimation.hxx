@@ -20,9 +20,9 @@
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_DRAWINGLAYERANIMATION_HXX
 
 #include <sal/config.h>
+#include <memory>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 class Activity;
 struct SlideShowContext;
@@ -32,8 +32,7 @@ std::shared_ptr<Activity> createDrawingLayerAnimActivity(
     SlideShowContext const&                 rContext,
     std::shared_ptr<DrawShape> const&     pDrawShape );
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif // ! defined INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_DRAWINGLAYERANIMATION_HXX
 

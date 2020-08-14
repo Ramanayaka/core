@@ -20,15 +20,14 @@
 #define INCLUDED_CHART2_SOURCE_MODEL_TEMPLATE_LINECHARTTYPE_HXX
 
 #include "ChartType.hxx"
-#include <com/sun/star/chart2/CurveStyle.hpp>
 
 namespace chart
 {
 
-class LineChartType : public ChartType
+class LineChartType final : public ChartType
 {
 public:
-    explicit LineChartType( css::uno::Reference< css::uno::XComponentContext > const & xContext );
+    explicit LineChartType();
     virtual ~LineChartType() override;
 
     virtual OUString SAL_CALL
@@ -38,7 +37,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL
         getSupportedServiceNames() override;
 
-protected:
+private:
     explicit LineChartType( const LineChartType & rOther );
 
     // ____ XChartType ____

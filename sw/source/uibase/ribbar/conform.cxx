@@ -17,16 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/fmglob.hxx>
 #include <svx/svdview.hxx>
-#include <svx/fmshell.hxx>
+#include <vcl/ptrstyle.hxx>
 
-#include "swmodule.hxx"
-#include "view.hxx"
-#include "edtwin.hxx"
-#include "wrtsh.hxx"
-#include "drawbase.hxx"
-#include "conform.hxx"
+#include <swmodule.hxx>
+#include <view.hxx>
+#include <edtwin.hxx>
+#include <wrtsh.hxx>
+#include <drawbase.hxx>
+#include <conform.hxx>
 
 ConstFormControl::ConstFormControl(SwWrtShell* pWrtShell, SwEditWin* pEditWin, SwView* pSwView) :
     SwDrawBase(pWrtShell, pEditWin, pSwView)
@@ -64,7 +63,7 @@ bool ConstFormControl::MouseButtonDown(const MouseEvent& rMEvt)
         g_bNoInterrupt = true;
         m_pWin->CaptureMouse();
 
-        m_pWin->SetPointer(Pointer(PointerStyle::DrawRect));
+        m_pWin->SetPointer(PointerStyle::DrawRect);
 
         m_aStartPos = m_pWin->PixelToLogic(rMEvt.GetPosPixel());
         bReturn = m_pSh->BeginCreate( static_cast< sal_uInt16 >(m_pWin->GetSdrDrawMode()), SdrInventor::FmForm, m_aStartPos);
@@ -84,17 +83,17 @@ void ConstFormControl::Activate(const sal_uInt16 nSlotId)
     SwDrawBase::Activate(nSlotId);
     m_pSh->GetDrawView()->SetCurrentObj(nSlotId);
 
-    m_pWin->SetPointer(Pointer(PointerStyle::DrawRect));
+    m_pWin->SetPointer(PointerStyle::DrawRect);
 }
 
 void ConstFormControl::CreateDefaultObject()
 {
     Point aStartPos(GetDefaultCenterPos());
     Point aEndPos(aStartPos);
-    aStartPos.X() -= 2 * MM50;
-    aStartPos.Y() -= MM50;
-    aEndPos.X() += 2 * MM50;
-    aEndPos.Y() += MM50;
+    aStartPos.AdjustX( -(2 * MM50) );
+    aStartPos.AdjustY( -(MM50) );
+    aEndPos.AdjustX(2 * MM50 );
+    aEndPos.AdjustY(MM50 );
 
     if(!m_pSh->HasDrawView())
         m_pSh->MakeDrawView();

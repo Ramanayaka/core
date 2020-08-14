@@ -14,32 +14,13 @@
 #include <memory>
 #include <com/sun/star/frame/XFrame.hpp>
 
-#include <svx/sidebar/PanelLayout.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
 
 #include <sfx2/sidebar/ControllerItem.hxx>
 
-#include <sfx2/objsh.hxx>
-
-#include <svx/pageitem.hxx>
-#include <svx/rulritem.hxx>
-#include <editeng/sizeitem.hxx>
-
-#include <vcl/ctrl.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <vcl/toolbox.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/field.hxx>
-#include <svl/intitem.hxx>
-#include <svl/lstner.hxx>
-
 #include <svtools/valueset.hxx>
 
-#include <svx/fntctrl.hxx>
-
-#include "docstyle.hxx"
-
-namespace sw { namespace sidebar {
+namespace sw::sidebar {
 
 class StylePresetsPanel : public PanelLayout,
                        public sfx2::sidebar::ControllerItem::ItemUpdateReceiverInterface
@@ -51,8 +32,11 @@ public:
 
     virtual void NotifyItemUpdate(const sal_uInt16 nSId,
                                   const SfxItemState eState,
-                                  const SfxPoolItem* pState,
-                                  const bool bIsEnabled) override;
+                                  const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(
+        const sal_uInt16 /*nSId*/,
+        boost::property_tree::ptree& /*rState*/) override {};
 
 private:
     struct TemplateEntry
@@ -72,14 +56,15 @@ private:
     virtual ~StylePresetsPanel() override;
     virtual void dispose() override;
 
-    VclPtr<ValueSet> mpValueSet;
+    std::unique_ptr<ValueSet> mxValueSet;
+    std::unique_ptr<weld::CustomWeld> mxValueSetWin;
 
     std::vector<std::unique_ptr<TemplateEntry>> maTemplateEntries;
 
     DECL_LINK(DoubleClickHdl, ValueSet*, void);
 };
 
-}} // end of namespace sw::sidebar
+} // end of namespace sw::sidebar
 
 #endif // INCLUDED_SW_SOURCE_UIBASE_SIDEBAR_STYLEPRESETSPANEL_HXX
 

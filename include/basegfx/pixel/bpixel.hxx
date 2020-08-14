@@ -17,19 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_PIXEL_BPIXEL_HXX
-#define INCLUDED_BASEGFX_PIXEL_BPIXEL_HXX
+#pragma once
 
 #include <sal/types.h>
-#include <basegfx/numeric/ftools.hxx>
 #include <basegfx/color/bcolor.hxx>
-#include <basegfx/basegfxdllapi.h>
 
 namespace basegfx
 {
-    class BASEGFX_DLLPUBLIC BPixel
+    class BPixel final
     {
-    protected:
         union
         {
             struct
@@ -49,7 +45,7 @@ namespace basegfx
     public:
         BPixel()
         {
-            maPixelUnion.maCombinedRGBO.mnValue = 0L;
+            maPixelUnion.maCombinedRGBO.mnValue = 0;
         }
 
         // use explicit here to make sure everyone knows what he is doing. Values range from
@@ -98,7 +94,5 @@ namespace basegfx
 
 
 } // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_PIXEL_BPIXEL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

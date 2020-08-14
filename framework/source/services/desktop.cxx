@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <services/desktop.hxx>
+#include <framework/desktop.hxx>
 
 #include <loadenv/loadenv.hxx>
-#include <loadenv/targethelper.hxx>
 
 #include <helper/ocomponentaccess.hxx>
 #include <helper/oframes.hxx>
@@ -29,36 +28,26 @@
 #include <dispatch/interceptionhelper.hxx>
 #include <classes/taskcreator.hxx>
 #include <threadhelp/transactionguard.hxx>
-#include <general.h>
 #include <properties.h>
+#include <targets.h>
 
-#include <classes/resource.hrc>
+#include <strings.hrc>
 #include <classes/fwkresid.hxx>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
 #include <com/sun/star/frame/TerminationVetoException.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/XWindowPeer.hpp>
-#include <com/sun/star/awt/WindowDescriptor.hpp>
-#include <com/sun/star/awt/WindowAttribute.hpp>
-#include <com/sun/star/awt/PosSize.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/task/XInteractionAbort.hpp>
 #include <com/sun/star/task/XInteractionApprove.hpp>
 #include <com/sun/star/document/XInteractionFilterSelect.hpp>
 #include <com/sun/star/task/ErrorCodeRequest.hpp>
-#include <com/sun/star/ucb/InteractiveIOException.hpp>
-#include <com/sun/star/ucb/InteractiveAugmentedIOException.hpp>
 #include <com/sun/star/frame/DispatchResultState.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/util/CloseVetoException.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
-#include <com/sun/star/document/MacroExecMode.hpp>
-#include <com/sun/star/document/UpdateDocMode.hpp>
 #include <com/sun/star/frame/XTerminateListener2.hpp>
 
+#include <comphelper/numberedcollection.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/lok.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -66,20 +55,23 @@
 #include <vcl/svapp.hxx>
 #include <desktop/crashreport.hxx>
 #include <vcl/scheduler.hxx>
-
-#include <vcl/errinf.hxx>
+#include <sal/log.hxx>
+#include <vcl/errcode.hxx>
 #include <unotools/configmgr.hxx>
-#include <comphelper/extract.hxx>
 
 namespace framework{
+
+namespace {
 
 enum PropHandle {
     ActiveFrame, DispatchRecorderSupplier, IsPlugged, SuspendQuickstartVeto,
     Title };
 
+}
+
 OUString SAL_CALL Desktop::getImplementationName()
 {
-    return OUString("com.sun.star.comp.framework.Desktop");
+    return "com.sun.star.comp.framework.Desktop";
 }
 
 sal_Bool SAL_CALL Desktop::supportsService(OUString const & ServiceName)
@@ -114,18 +106,16 @@ void Desktop::constructorInit()
     InterceptionHelper* pInterceptionHelper = new InterceptionHelper( this, xDispatchProvider );
     m_xDispatchHelper.set( static_cast< ::cppu::OWeakObject* >(pInterceptionHelper), css::uno::UNO_QUERY );
 
-    OUStringBuffer sUntitledPrefix (256);
-    sUntitledPrefix.append      (FwkResId(STR_UNTITLED_DOCUMENT));
-    sUntitledPrefix.append (" ");
+    OUString sUntitledPrefix = FwkResId(STR_UNTITLED_DOCUMENT) + " ";
 
     ::comphelper::NumberedCollection* pNumbers = new ::comphelper::NumberedCollection ();
     m_xTitleNumberGenerator.set(static_cast< ::cppu::OWeakObject* >(pNumbers), css::uno::UNO_QUERY_THROW);
     pNumbers->setOwner          ( static_cast< ::cppu::OWeakObject* >(this) );
-    pNumbers->setUntitledPrefix ( sUntitledPrefix.makeStringAndClear ()     );
+    pNumbers->setUntitledPrefix ( sUntitledPrefix );
 
     // Safe impossible cases
     // We can't work without this helper!
-    SAL_WARN_IF( !m_xFramesHelper.is(), "fwk.desktop", "Desktop::Desktop(): Frames helper is not valid. XFrames, XIndexAccess and XElementAcces are not supported!");
+    SAL_WARN_IF( !m_xFramesHelper.is(), "fwk.desktop", "Desktop::Desktop(): Frames helper is not valid. XFrames, XIndexAccess and XElementAccess are not supported!");
     SAL_WARN_IF( !m_xDispatchHelper.is(), "fwk.desktop", "Desktop::Desktop(): Dispatch helper is not valid. XDispatch will not work correctly!" );
 
     // Enable object for real working!
@@ -138,7 +128,7 @@ void Desktop::constructorInit()
     @descr      This constructor initialize a new instance of this class by valid factory,
                 and will be set valid values on his member and baseclasses.
 
-    @attention  a)  Don't use your own reference during an UNO-Service-ctor! There is no guarantee, that you
+    @attention  a)  Don't use your own reference during a UNO-Service-ctor! There is no guarantee, that you
                     will get over this. (e.g. using of your reference as parameter to initialize some member)
                     Do such things in DEFINE_INIT_SERVICE() method, which is called automatically after your ctor!!!
                 b)  Baseclass OBroadcastHelper is a typedef in namespace cppu!
@@ -153,11 +143,11 @@ void Desktop::constructorInit()
     @onerror    We throw an ASSERT in debug version or do nothing in release version.
 *//*-*************************************************************************************************************/
 Desktop::Desktop( const css::uno::Reference< css::uno::XComponentContext >& xContext )
-        :   TransactionBase         (                                               )
-        ,   Desktop_BASE            ( m_aMutex )
+        :   Desktop_BASE            ( m_aMutex )
         ,   cppu::OPropertySetHelper( cppu::WeakComponentImplHelperBase::rBHelper   )
         // Init member
-        ,   m_bIsTerminated         ( false                                     )   // see dispose() for further information!
+    , m_bIsTerminated(false)
+    , m_bIsShutdown(false)   // see dispose() for further information!
         ,   m_bSession              ( false                                         )
         ,   m_xContext              ( xContext                                      )
         ,   m_aChildTaskContainer   (                                               )
@@ -165,15 +155,12 @@ Desktop::Desktop( const css::uno::Reference< css::uno::XComponentContext >& xCon
         ,   m_xFramesHelper         (                                               )
         ,   m_xDispatchHelper       (                                               )
         ,   m_eLoadState            ( E_NOTSET                                      )
-        ,   m_xLastFrame            (                                               )
-        ,   m_aInteractionRequest   (                                               )
         ,   m_bSuspendQuickstartVeto( false                                     )
         ,   m_sName                 (                                               )
         ,   m_sTitle                (                                               )
         ,   m_xDispatchRecorderSupplier(                                            )
         ,   m_xPipeTerminator       (                                               )
         ,   m_xQuickLauncher        (                                               )
-        ,   m_xStarBasicQuitGuard   (                                               )
         ,   m_xSWThreadManager      (                                               )
         ,   m_xSfxTerminator        (                                               )
         ,   m_xTitleNumberGenerator (                                               )
@@ -182,13 +169,13 @@ Desktop::Desktop( const css::uno::Reference< css::uno::XComponentContext >& xCon
 
 /*-************************************************************************************************************
     @short      standard destructor
-    @descr      This one do NOTHING! Use dispose() instaed of this.
+    @descr      This one do NOTHING! Use dispose() instead of this.
 
     @seealso    method dispose()
 *//*-*************************************************************************************************************/
 Desktop::~Desktop()
 {
-    SAL_WARN_IF( !m_bIsTerminated, "fwk.desktop", "Desktop not terminated before being destructed" );
+    SAL_WARN_IF(!m_bIsShutdown, "fwk.desktop", "Desktop not terminated before being destructed");
     SAL_WARN_IF( m_aTransactionManager.getWorkingMode()!=E_CLOSE, "fwk.desktop", "Desktop::~Desktop(): Who forgot to dispose this service?" );
 }
 
@@ -211,42 +198,34 @@ css::uno::Sequence< css::uno::Type > SAL_CALL Desktop::getTypes(  )
 sal_Bool SAL_CALL Desktop::terminate()
 {
     TransactionGuard aTransaction( m_aTransactionManager, E_HARDEXCEPTIONS );
+    SolarMutexResettableGuard aGuard;
 
-    SolarMutexClearableGuard aReadLock;
+    if (m_bIsTerminated)
+        return true;
 
     css::uno::Reference< css::frame::XTerminateListener > xPipeTerminator    = m_xPipeTerminator;
     css::uno::Reference< css::frame::XTerminateListener > xQuickLauncher     = m_xQuickLauncher;
-    css::uno::Reference< css::frame::XTerminateListener > xStarBasicQuitGuard = m_xStarBasicQuitGuard;
     css::uno::Reference< css::frame::XTerminateListener > xSWThreadManager   = m_xSWThreadManager;
     css::uno::Reference< css::frame::XTerminateListener > xSfxTerminator     = m_xSfxTerminator;
 
     css::lang::EventObject                                aEvent             ( static_cast< ::cppu::OWeakObject* >(this) );
     bool                                                  bAskQuickStart     = !m_bSuspendQuickstartVeto;
+    const bool bRestartableMainLoop = Application::IsEventTestingModeEnabled() ||
+                                      comphelper::LibreOfficeKit::isActive();
+    aGuard.clear();
 
-    aReadLock.clear();
-
-    // try to close all open frames.
     // Allow using of any UI ... because Desktop.terminate() was designed as UI functionality in the past.
-    bool bRestartableMainLoop = Application::IsEventTestingModeEnabled() ||
-                                comphelper::LibreOfficeKit::isActive();
-    bool bFramesClosed = impl_closeFrames(!bRestartableMainLoop);
 
-    // Ask normal terminate listener. They could stop terminating the process.
+    // Ask normal terminate listener. They could veto terminating the process.
     Desktop::TTerminateListenerList lCalledTerminationListener;
-    bool bVeto = false;
-    impl_sendQueryTerminationEvent(lCalledTerminationListener, bVeto);
-    if ( bVeto )
+    if (!impl_sendQueryTerminationEvent(lCalledTerminationListener))
     {
         impl_sendCancelTerminationEvent(lCalledTerminationListener);
         return false;
     }
 
-    if (bRestartableMainLoop)
-    {
-        Application::Quit();
-        return true;
-    }
-    if ( ! bFramesClosed )
+    // try to close all open frames
+    if (!impl_closeFrames(!bRestartableMainLoop))
     {
         impl_sendCancelTerminationEvent(lCalledTerminationListener);
         return false;
@@ -268,22 +247,12 @@ sal_Bool SAL_CALL Desktop::terminate()
     // but some can be dangerous. E.g. it would be dangerous if we close our pipe
     // and don't terminate in real because another listener throws a veto exception .-)
 
-    bool bTerminate = false;
     try
     {
-        if(
-            ( bAskQuickStart      ) &&
-            ( xQuickLauncher.is() )
-          )
+        if( bAskQuickStart && xQuickLauncher.is() )
         {
             xQuickLauncher->queryTermination( aEvent );
             lCalledTerminationListener.push_back( xQuickLauncher );
-        }
-
-        if ( xStarBasicQuitGuard.is() )
-        {
-            xStarBasicQuitGuard->queryTermination( aEvent );
-            lCalledTerminationListener.push_back( xStarBasicQuitGuard );
         }
 
         if ( xSWThreadManager.is() )
@@ -303,47 +272,33 @@ sal_Bool SAL_CALL Desktop::terminate()
             xSfxTerminator->queryTermination( aEvent );
             lCalledTerminationListener.push_back( xSfxTerminator );
         }
-
-        bTerminate = true;
     }
     catch(const css::frame::TerminationVetoException&)
     {
-        bTerminate = false;
+        impl_sendCancelTerminationEvent(lCalledTerminationListener);
+        return false;
     }
 
-    if ( ! bTerminate )
-        impl_sendCancelTerminationEvent(lCalledTerminationListener);
-    else
+    aGuard.reset();
+    if (m_bIsTerminated)
+        return true;
+    m_bIsTerminated = true;
+
+    if (!bRestartableMainLoop)
     {
-        // "Protect" us against dispose before terminate calls!
-        // see dispose() for further information.
-        /* SAFE AREA --------------------------------------------------------------------------------------- */
-        SolarMutexClearableGuard aWriteLock;
-        CrashReporter::AddKeyValue("ShutDown", OUString::boolean(true));
-        m_bIsTerminated = true;
-        aWriteLock.clear();
-        /* UNSAFE AREA ------------------------------------------------------------------------------------- */
+        CrashReporter::addKeyValue("ShutDown", OUString::boolean(true), CrashReporter::Write);
 
         // The clipboard listener needs to be the first. It can create copies of the
         // existing document which needs basically all the available infrastructure.
         impl_sendTerminateToClipboard();
-
-        impl_sendNotifyTerminationEvent();
         {
-            SolarMutexGuard aGuard;
-            Scheduler::ProcessEventsToIdle();
+            SolarMutexReleaser aReleaser;
+            impl_sendNotifyTerminationEvent();
         }
+        Scheduler::ProcessEventsToIdle();
 
-        if(
-            ( bAskQuickStart      ) &&
-            ( xQuickLauncher.is() )
-          )
-        {
+        if( bAskQuickStart && xQuickLauncher.is() )
             xQuickLauncher->notifyTermination( aEvent );
-        }
-
-        if ( xStarBasicQuitGuard.is() )
-            xStarBasicQuitGuard->notifyTermination( aEvent );
 
         if ( xSWThreadManager.is() )
             xSWThreadManager->notifyTermination( aEvent );
@@ -351,21 +306,46 @@ sal_Bool SAL_CALL Desktop::terminate()
         if ( xPipeTerminator.is() )
             xPipeTerminator->notifyTermination( aEvent );
 
-        // we need a copy here as the notifyTermination call might cause a removeTerminateListener call
-        std::vector< css::uno::Reference<css::frame::XTerminateListener> > xComponentDllListeners = m_xComponentDllListeners;
-        for (auto& xListener : xComponentDllListeners)
-        {
-            xListener->notifyTermination(aEvent);
-        }
-        m_xComponentDllListeners.clear();
-
-        // Must be really the last listener to be called.
-        // Because it shutdown the whole process asynchronous !
-        if ( xSfxTerminator.is() )
-            xSfxTerminator->notifyTermination( aEvent );
+        // further termination is postponed to shutdown, if LO already runs the main loop
+        if (!Application::IsInExecute())
+            shutdown();
     }
+    else
+        m_bIsShutdown = true;
 
-    return bTerminate;
+#ifndef IOS // or ANDROID?
+    aGuard.clear();
+    // In the iOS app, posting the ImplQuitMsg user event will be too late, it will not be handled during the
+    // lifetime of the current document, but handled for the next document opened, which thus will break horribly.
+    Application::Quit();
+#endif
+
+    return true;
+}
+
+void Desktop::shutdown()
+{
+    TransactionGuard aTransaction(m_aTransactionManager, E_HARDEXCEPTIONS);
+    SolarMutexGuard aGuard;
+
+    if (m_bIsShutdown)
+        return;
+    m_bIsShutdown = true;
+
+    css::uno::Reference<css::frame::XTerminateListener> xSfxTerminator = m_xSfxTerminator;
+    css::lang::EventObject aEvent(static_cast<::cppu::OWeakObject* >(this));
+
+    // we need a copy here as the notifyTermination call might cause a removeTerminateListener call
+    std::vector< css::uno::Reference<css::frame::XTerminateListener> > xComponentDllListeners;
+    xComponentDllListeners.swap(m_xComponentDllListeners);
+    for (auto& xListener : xComponentDllListeners)
+        xListener->notifyTermination(aEvent);
+    xComponentDllListeners.clear();
+
+    // Must be really the last listener to be called.
+    // Because it shuts down the whole process asynchronous!
+    if (xSfxTerminator.is())
+        xSfxTerminator->notifyTermination(aEvent);
 }
 
 namespace
@@ -392,7 +372,7 @@ namespace
     };
 }
 
-bool SAL_CALL Desktop::terminateQuickstarterToo()
+bool Desktop::terminateQuickstarterToo()
 {
     QuickstartSuppressor aQuickstartSuppressor(this, m_xQuickLauncher);
     m_bSession = true;
@@ -425,11 +405,6 @@ void SAL_CALL Desktop::addTerminateListener( const css::uno::Reference< css::fra
             m_xQuickLauncher = xListener;
             return;
         }
-        if( sImplementationName == "com.sun.star.comp.svx.StarBasicQuitGuard" )
-        {
-            m_xStarBasicQuitGuard = xListener;
-            return;
-        }
         if( sImplementationName == "com.sun.star.util.comp.FinalThreadManager" )
         {
             m_xSWThreadManager = xListener;
@@ -442,7 +417,7 @@ void SAL_CALL Desktop::addTerminateListener( const css::uno::Reference< css::fra
         }
     }
 
-    // No lock required ... container is threadsafe by itself.
+    // No lock required... container is threadsafe by itself.
     m_aListenerContainer.addInterface( cppu::UnoType<css::frame::XTerminateListener>::get(), xListener );
 }
 
@@ -472,12 +447,6 @@ void SAL_CALL Desktop::removeTerminateListener( const css::uno::Reference< css::
         if( sImplementationName == "com.sun.star.comp.desktop.QuickstartWrapper" )
         {
             m_xQuickLauncher.clear();
-            return;
-        }
-
-        if( sImplementationName == "com.sun.star.comp.svx.StarBasicQuitGuard" )
-        {
-            m_xStarBasicQuitGuard.clear();
             return;
         }
 
@@ -590,7 +559,7 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Desktop::getCurrentFrame()
             xNext.set( xNext->getActiveFrame(), css::uno::UNO_QUERY );
         }
     }
-    return css::uno::Reference< css::frame::XFrame >( xLast, css::uno::UNO_QUERY );
+    return xLast;
 }
 
 /*-************************************************************************************************************
@@ -603,7 +572,7 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Desktop::getCurrentFrame()
     @param      "sTargetFrameName"  , name of target frame or special value like "_self", "_blank" ...
     @param      "nSearchFlags"      , optional arguments for frame search, if target isn't a special one
     @param      "lArguments"        , optional arguments for loading
-    @return     A valid component reference, if loading was successfully.
+    @return     A valid component reference, if loading was successful.
                 A null reference otherwise.
 
     @onerror    We return a null reference.
@@ -704,7 +673,7 @@ css::uno::Reference< css::frame::XDispatch > SAL_CALL Desktop::queryDispatch( co
     if ( aURL.Protocol.equalsIgnoreAsciiCase(".uno:") )
         aCommand = aURL.Path;
 
-    if (!m_xCommandOptions && !utl::ConfigManager::IsAvoidConfig())
+    if (!m_xCommandOptions && !utl::ConfigManager::IsFuzzing())
         m_xCommandOptions.reset(new SvtCommandOptions);
 
     // Make std::unordered_map lookup if the current URL is in the disabled list
@@ -732,9 +701,9 @@ css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > SAL_CALL Desk
     @short      supports registration/deregistration of interception objects, which
                 are interested on special dispatches.
 
-    @descr      Its really provided by an internal helper, which is used inside the dispatch api too.
+    @descr      It's really provided by an internal helper, which is used inside the dispatch API too.
     @param      xInterceptor
-                the interceptor object, which wish to be (de)registered.
+                the interceptor object, which wishes to be (de)registered.
 
     @threadsafe yes
 *//*-*************************************************************************************************************/
@@ -973,7 +942,7 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Desktop::findFrame( const OUS
     if ( sTargetFrameName==SPECIALTARGET_BLANK )
     {
         TaskCreator aCreator( m_xContext );
-        xTarget = aCreator.createTask(sTargetFrameName);
+        xTarget = aCreator.createTask(sTargetFrameName, utl::MediaDescriptor());
     }
 
     // I.II) "_top"
@@ -1057,7 +1026,7 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Desktop::findFrame( const OUS
            )
         {
             TaskCreator aCreator( m_xContext );
-            xTarget = aCreator.createTask(sTargetFrameName);
+            xTarget = aCreator.createTask(sTargetFrameName, utl::MediaDescriptor());
         }
     }
 
@@ -1067,24 +1036,24 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Desktop::findFrame( const OUS
 void SAL_CALL Desktop::disposing()
 {
     // Safe impossible cases
-    // It's an programming error if dispose is called before terminate!
+    // It's a programming error if dispose is called before terminate!
 
     // But if you just ignore the assertion (which happens in unit
     // tests for instance in sc/qa/unit) nothing bad happens.
-    SAL_WARN_IF( !m_bIsTerminated, "fwk.desktop", "Desktop disposed before terminating it" );
-
-    SolarMutexClearableGuard aWriteLock;
+    assert(m_bIsShutdown && "Desktop disposed before terminating it");
 
     {
-        TransactionGuard aTransaction( m_aTransactionManager, E_HARDEXCEPTIONS );
+        SolarMutexGuard aWriteLock;
+
+        {
+            TransactionGuard aTransaction(m_aTransactionManager, E_HARDEXCEPTIONS);
+        }
+
+        // Disable this instance for further work.
+        // This will wait for all current running transactions ...
+        // and reject all new incoming requests!
+        m_aTransactionManager.setWorkingMode(E_BEFORECLOSE);
     }
-
-    // Disable this instance for further work.
-    // This will wait for all current running transactions ...
-    // and reject all new incoming requests!
-    m_aTransactionManager.setWorkingMode( E_BEFORECLOSE );
-
-    aWriteLock.clear();
 
     // Following lines of code can be called outside a synchronized block ...
     // Because our transaction manager will block all new requests to this object.
@@ -1110,22 +1079,20 @@ void SAL_CALL Desktop::disposing()
     // At least clean up other member references.
     m_xDispatchHelper.clear();
     m_xFramesHelper.clear();
-    m_xLastFrame.clear();
     m_xContext.clear();
 
     m_xPipeTerminator.clear();
     m_xQuickLauncher.clear();
-    m_xStarBasicQuitGuard.clear();
     m_xSWThreadManager.clear();
 
     // we need a copy because the disposing might call the removeEventListener method
-    std::vector< css::uno::Reference<css::frame::XTerminateListener> > xComponentDllListeners = m_xComponentDllListeners;
+    std::vector< css::uno::Reference<css::frame::XTerminateListener> > xComponentDllListeners;
+    xComponentDllListeners.swap(m_xComponentDllListeners);
     for (auto& xListener: xComponentDllListeners)
     {
         xListener->disposing(aEvent);
     }
     xComponentDllListeners.clear();
-    m_xComponentDllListeners.clear();
     m_xSfxTerminator.clear();
     m_xCommandOptions.reset();
 
@@ -1191,11 +1158,11 @@ void SAL_CALL Desktop::dispatchFinished( const css::frame::DispatchResultEvent& 
     SolarMutexGuard g;
     if( m_eLoadState != E_INTERACTION )
     {
-        m_xLastFrame.clear();
         m_eLoadState = E_FAILED;
         if( aEvent.State == css::frame::DispatchResultState::SUCCESS )
         {
-            if ( aEvent.Result >>= m_xLastFrame )
+            css::uno::Reference< css::frame::XFrame > xLastFrame; /// last target of "loadComponentFromURL()"!
+            if ( aEvent.Result >>= xLastFrame )
                 m_eLoadState = E_SUCCESSFUL;
         }
     }
@@ -1275,7 +1242,7 @@ void SAL_CALL Desktop::handle( const css::uno::Reference< css::task::XInteractio
     css::task::ErrorCodeRequest          aErrorCodeRequest;
     if( aRequest >>= aErrorCodeRequest )
     {
-        bool bWarning = ((aErrorCodeRequest.ErrCode & ERRCODE_WARNING_MASK) == ERRCODE_WARNING_MASK);
+        bool bWarning = ErrCode(aErrorCodeRequest.ErrCode).IsWarning();
         if (xApprove.is() && bWarning)
             xApprove->select();
         else
@@ -1298,7 +1265,6 @@ void SAL_CALL Desktop::handle( const css::uno::Reference< css::task::XInteractio
     {
         SolarMutexGuard g;
         m_eLoadState          = E_INTERACTION;
-        m_aInteractionRequest = aRequest;
     }
 }
 
@@ -1549,37 +1515,34 @@ css::uno::Reference< css::lang::XComponent > Desktop::impl_getFrameComponent( co
     if( !xController.is() )
     {
         // Controller not exist - use the VCL-component.
-        xComponent.set( xFrame->getComponentWindow(), css::uno::UNO_QUERY );
+        xComponent = xFrame->getComponentWindow();
     }
     else
     {
         // Does no model exists?
-        css::uno::Reference< css::frame::XModel > xModel( xController->getModel(), css::uno::UNO_QUERY );
+        css::uno::Reference< css::frame::XModel > xModel = xController->getModel();
         if( xModel.is() )
         {
             // Model exist - use the model as component.
-            xComponent.set( xModel, css::uno::UNO_QUERY );
+            xComponent = xModel;
         }
         else
         {
             // Model not exist - use the controller as component.
-            xComponent.set( xController, css::uno::UNO_QUERY );
+            xComponent = xController;
         }
     }
 
     return xComponent;
 }
 
-void Desktop::impl_sendQueryTerminationEvent(Desktop::TTerminateListenerList& lCalledListener,
-                                             bool&                      bVeto          )
+bool Desktop::impl_sendQueryTerminationEvent(Desktop::TTerminateListenerList& lCalledListener)
 {
-    bVeto = false;
-
     TransactionGuard aTransaction( m_aTransactionManager, E_HARDEXCEPTIONS );
 
     ::cppu::OInterfaceContainerHelper* pContainer = m_aListenerContainer.getContainer( cppu::UnoType<css::frame::XTerminateListener>::get());
     if ( ! pContainer )
-        return;
+        return true;
 
     css::lang::EventObject aEvent( static_cast< ::cppu::OWeakObject* >(this) );
 
@@ -1596,9 +1559,8 @@ void Desktop::impl_sendQueryTerminationEvent(Desktop::TTerminateListenerList& lC
         }
         catch( const css::frame::TerminationVetoException& )
         {
-            // first veto will stop notification loop.
-            bVeto = true;
-            return;
+            // first veto will stop the query loop.
+            return false;
         }
         catch( const css::uno::Exception& )
         {
@@ -1608,6 +1570,8 @@ void Desktop::impl_sendQueryTerminationEvent(Desktop::TTerminateListenerList& lC
             aIterator.remove();
         }
     }
+
+    return true;
 }
 
 void Desktop::impl_sendCancelTerminationEvent(const Desktop::TTerminateListenerList& lCalledListener)
@@ -1615,15 +1579,11 @@ void Desktop::impl_sendCancelTerminationEvent(const Desktop::TTerminateListenerL
     TransactionGuard aTransaction( m_aTransactionManager, E_HARDEXCEPTIONS );
 
     css::lang::EventObject                          aEvent( static_cast< ::cppu::OWeakObject* >(this) );
-    Desktop::TTerminateListenerList::const_iterator pIt;
-    for (  pIt  = lCalledListener.begin();
-           pIt != lCalledListener.end  ();
-         ++pIt                           )
+    for (const css::uno::Reference<css::frame::XTerminateListener>& xListener : lCalledListener)
     {
         try
         {
             // Note: cancelTermination() is a new and optional interface method !
-            css::uno::Reference< css::frame::XTerminateListener  > xListener           = *pIt;
             css::uno::Reference< css::frame::XTerminateListener2 > xListenerGeneration2(xListener, css::uno::UNO_QUERY);
             if ( ! xListenerGeneration2.is() )
                 continue;
@@ -1720,14 +1680,11 @@ bool Desktop::impl_closeFrames(bool bAllowUI)
         {
             css::uno::Reference< css::frame::XFrame > xFrame = lFrames[i];
 
-            // XController.suspend() will show an UI ...
+            // XController.suspend() will show a UI ...
             // Use it in case it was allowed from outside only.
             bool                                       bSuspended = false;
-            css::uno::Reference< css::frame::XController > xController( xFrame->getController(), css::uno::UNO_QUERY );
-            if (
-                ( bAllowUI         ) &&
-                ( xController.is() )
-               )
+            css::uno::Reference< css::frame::XController > xController = xFrame->getController();
+            if ( bAllowUI && xController.is() )
             {
                 bSuspended = xController->suspend( true );
                 if ( ! bSuspended )
@@ -1757,26 +1714,22 @@ bool Desktop::impl_closeFrames(bool bAllowUI)
                     ++nNonClosedFrames;
 
                     // Reactivate controller.
-                    // It can happen that XController.suspend() returned true ... but a registered close listener
-                    // throwed these veto exception. Then the controller has to be reactivated. Otherwise
+                    // It can happen that XController.suspend() returned true... but a registered close listener
+                    // threw these veto exception. Then the controller has to be reactivated. Otherwise
                     // these document doesn't work any more.
-                    if (
-                        (bSuspended      ) &&
-                        (xController.is())
-                       )
+                    if ( bSuspended && xController.is())
                         xController->suspend(false);
                 }
 
-                // If interface XClosable interface exists and was used ...
-                // it's not allowed to use XComponent->dispose() also !
+                // If interface XClosable interface exists and was used...
+                // it's not allowed to use XComponent->dispose() also!
                 continue;
             }
 
             // XClosable not supported ?
             // Then we have to dispose these frame hardly.
-            css::uno::Reference< css::lang::XComponent > xDispose( xFrame, css::uno::UNO_QUERY );
-            if ( xDispose.is() )
-                xDispose->dispose();
+            if ( xFrame.is() )
+                xFrame->dispose();
 
             // Don't remove these frame from our child container!
             // A frame do it by itself inside close()/dispose() method.
@@ -1798,30 +1751,30 @@ bool Desktop::impl_closeFrames(bool bAllowUI)
 
 namespace {
 
-struct Instance {
-    explicit Instance(
-        css::uno::Reference<css::uno::XComponentContext> const & context):
-        instance(new framework::Desktop(context))
-    {
-        instance->constructorInit();
-    }
-
-    rtl::Reference<framework::Desktop> instance;
-};
-
-struct Singleton:
-    public rtl::StaticWithArg<
-        Instance, css::uno::Reference<css::uno::XComponentContext>, Singleton>
-{};
+rtl::Reference<framework::Desktop> createDesktop(
+    css::uno::Reference<css::uno::XComponentContext> const & context)
+{
+    SolarMutexGuard g; // tdf#114025 init with SolarMutex to avoid deadlock
+    rtl::Reference<framework::Desktop> desktop(new framework::Desktop(context));
+    desktop->constructorInit();
+    return desktop;
+}
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+rtl::Reference<framework::Desktop> framework::getDesktop(
+    css::uno::Reference<css::uno::XComponentContext> const & context)
+{
+    static auto const instance = createDesktop(context);
+    return instance;
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_Desktop_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(Singleton::get(context).instance.get());
+    return cppu::acquire(framework::getDesktop(context).get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

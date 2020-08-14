@@ -18,7 +18,6 @@
  */
 
 #include <com/sun/star/util/XCloneable.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
@@ -44,7 +43,6 @@
 #include <com/sun/star/presentation/ShapeAnimationSubType.hpp>
 #include <com/sun/star/container/ElementExistException.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/util/XChangesNotifier.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <comphelper/servicehelper.hxx>
@@ -56,9 +54,14 @@
 #include <cppuhelper/implbase.hxx>
 
 #include <osl/mutex.hxx>
-#include <list>
+#include <sal/log.hxx>
+#include <array>
+#include <vector>
 #include <algorithm>
 #include <string.h>
+
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::beans { struct NamedValue; }
 
 using ::osl::Mutex;
 using ::osl::Guard;
@@ -67,7 +70,6 @@ using ::comphelper::OInterfaceIteratorHelper2;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::uno::UNO_QUERY;
 using ::com::sun::star::uno::XInterface;
-using ::com::sun::star::uno::RuntimeException;
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::WeakReference;
@@ -77,7 +79,6 @@ using ::com::sun::star::uno::XWeak;
 using ::com::sun::star::uno::Type;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::lang::IllegalArgumentException;
-using ::com::sun::star::lang::WrappedTargetException;
 using ::com::sun::star::lang::XServiceInfo;
 using ::com::sun::star::lang::XTypeProvider;
 using ::com::sun::star::container::NoSuchElementException;
@@ -100,9 +101,7 @@ using namespace ::com::sun::star::animations::AnimationNodeType;
 namespace animcore
 {
 
-
-typedef std::list< Reference< XAnimationNode > > ChildList_t;
-
+namespace {
 
 class AnimationNodeBase :   public XAnimateMotion,
                             public XAnimateColor,
@@ -292,7 +291,7 @@ private:
     const sal_Int16 mnNodeType;
 
     // for XTypeProvider
-    static Sequence< Type >* mpTypes[12];
+    static std::array<Sequence< Type >*, 12> mpTypes;
 
     // attributes for the XAnimationNode interface implementation
     Any maBegin, maDuration, maEnd, maEndSync, maRepeatCount, maRepeatDuration;
@@ -344,14 +343,14 @@ private:
     double  mfIterateInterval;
 
     /** sorted list of child nodes for XTimeContainer*/
-    ChildList_t             maChildren;
+    std::vector< Reference< XAnimationNode > > maChildren;
 };
 
 
 class TimeContainerEnumeration : public ::cppu::WeakImplHelper< XEnumeration >
 {
 public:
-    explicit TimeContainerEnumeration( const ChildList_t &rChildren );
+    explicit TimeContainerEnumeration( const std::vector< Reference< XAnimationNode > > &rChildren );
 
     // Methods
     virtual sal_Bool SAL_CALL hasMoreElements() override;
@@ -359,16 +358,18 @@ public:
 
 private:
     /** sorted list of child nodes */
-    ChildList_t             maChildren;
+    std::vector< Reference< XAnimationNode > > maChildren;
 
     /** current iteration position */
-    ChildList_t::iterator   maIter;
+    std::vector< Reference< XAnimationNode > >::iterator   maIter;
 
     /** our first, last and only protection from multi-threads! */
     Mutex                   maMutex;
 };
 
-TimeContainerEnumeration::TimeContainerEnumeration( const ChildList_t &rChildren )
+}
+
+TimeContainerEnumeration::TimeContainerEnumeration( const std::vector< Reference< XAnimationNode > > &rChildren )
 : maChildren( rChildren )
 {
     maIter = maChildren.begin();
@@ -393,7 +394,7 @@ Any SAL_CALL TimeContainerEnumeration::nextElement()
 }
 
 
-Sequence< Type >* AnimationNode::mpTypes[] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+std::array<Sequence< Type >*, 12> AnimationNode::mpTypes = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 
 AnimationNode::AnimationNode( sal_Int16 nNodeType )
 :   maChangeListener(maMutex),
@@ -423,7 +424,7 @@ AnimationNode::AnimationNode( sal_Int16 nNodeType )
     mnIterateType( css::presentation::ShapeAnimationSubType::AS_WHOLE ),
     mfIterateInterval(0.0)
 {
-    assert(nNodeType < int(SAL_N_ELEMENTS(mpTypes)));
+    assert(nNodeType < int(mpTypes.size()));
 }
 
 AnimationNode::AnimationNode( const AnimationNode& rNode )
@@ -494,114 +495,114 @@ AnimationNode::AnimationNode( const AnimationNode& rNode )
 {
 }
 
-Sequence<OUString> getSupportedServiceNames_PAR()
+static Sequence<OUString> getSupportedServiceNames_PAR()
 {
     return { "com.sun.star.animations.ParallelTimeContainer" };
 }
 
-OUString getImplementationName_PAR()
+static OUString getImplementationName_PAR()
 {
-    return OUString( "animcore::ParallelTimeContainer" );
+    return "animcore::ParallelTimeContainer";
 }
 
-Sequence<OUString> getSupportedServiceNames_SEQ()
+static Sequence<OUString> getSupportedServiceNames_SEQ()
 {
     return { "com.sun.star.animations.SequenceTimeContainer" };
 }
 
-OUString getImplementationName_SEQ()
+static OUString getImplementationName_SEQ()
 {
-    return OUString( "animcore::SequenceTimeContainer" );
+    return "animcore::SequenceTimeContainer";
 }
 
-Sequence<OUString> getSupportedServiceNames_ITERATE()
+static Sequence<OUString> getSupportedServiceNames_ITERATE()
 {
     return { "com.sun.star.animations.IterateContainer" };
 }
 
-OUString getImplementationName_ITERATE()
+static OUString getImplementationName_ITERATE()
 {
-    return OUString( "animcore::IterateContainer" );
+    return "animcore::IterateContainer";
 }
 
-Sequence<OUString> getSupportedServiceNames_ANIMATE()
+static Sequence<OUString> getSupportedServiceNames_ANIMATE()
 {
     return { "com.sun.star.animations.Animate" };
 }
 
-OUString getImplementationName_ANIMATE()
+static OUString getImplementationName_ANIMATE()
 {
-        return OUString( "animcore::Animate" );
+        return "animcore::Animate";
 }
 
-Sequence<OUString> getSupportedServiceNames_SET()
+static Sequence<OUString> getSupportedServiceNames_SET()
 {
     return { "com.sun.star.animations.AnimateSet" };
 }
 
-OUString getImplementationName_SET()
+static OUString getImplementationName_SET()
 {
-    return OUString( "animcore::AnimateSet" );
+    return "animcore::AnimateSet";
 }
 
-Sequence<OUString> getSupportedServiceNames_ANIMATECOLOR()
+static Sequence<OUString> getSupportedServiceNames_ANIMATECOLOR()
 {
     return { "com.sun.star.animations.AnimateColor" };
 }
 
-OUString getImplementationName_ANIMATECOLOR()
+static OUString getImplementationName_ANIMATECOLOR()
 {
-    return OUString( "animcore::AnimateColor" );
+    return "animcore::AnimateColor";
 }
 
-Sequence<OUString> getSupportedServiceNames_ANIMATEMOTION()
+static Sequence<OUString> getSupportedServiceNames_ANIMATEMOTION()
 {
     return { "com.sun.star.animations.AnimateMotion" };
 }
 
-OUString getImplementationName_ANIMATEMOTION()
+static OUString getImplementationName_ANIMATEMOTION()
 {
-    return OUString( "animcore::AnimateMotion" );
+    return "animcore::AnimateMotion";
 }
 
-Sequence<OUString> getSupportedServiceNames_ANIMATETRANSFORM()
+static Sequence<OUString> getSupportedServiceNames_ANIMATETRANSFORM()
 {
     return { "com.sun.star.animations.AnimateTransform" };
 }
 
-OUString getImplementationName_ANIMATETRANSFORM()
+static OUString getImplementationName_ANIMATETRANSFORM()
 {
-    return OUString( "animcore::AnimateTransform" );
+    return "animcore::AnimateTransform";
 }
 
-Sequence<OUString> getSupportedServiceNames_TRANSITIONFILTER()
+static Sequence<OUString> getSupportedServiceNames_TRANSITIONFILTER()
 {
     return { "com.sun.star.animations.TransitionFilter" };
 }
 
-OUString getImplementationName_TRANSITIONFILTER()
+static OUString getImplementationName_TRANSITIONFILTER()
 {
-        return OUString( "animcore::TransitionFilter" );
+        return "animcore::TransitionFilter";
 }
 
-Sequence<OUString> getSupportedServiceNames_AUDIO()
+static Sequence<OUString> getSupportedServiceNames_AUDIO()
 {
     return { "com.sun.star.animations.Audio" };
 }
 
-OUString getImplementationName_AUDIO()
+static OUString getImplementationName_AUDIO()
 {
-        return OUString( "animcore::Audio" );
+        return "animcore::Audio";
 }
 
-Sequence<OUString> getSupportedServiceNames_COMMAND()
+static Sequence<OUString> getSupportedServiceNames_COMMAND()
 {
     return { "com.sun.star.animations.Command" };
 }
 
-OUString getImplementationName_COMMAND()
+static OUString getImplementationName_COMMAND()
 {
-    return OUString( "animcore::Command" );
+    return "animcore::Command";
 }
 
 // XInterface
@@ -699,75 +700,75 @@ void AnimationNode::initTypeProvider( sal_Int16 nNodeType ) throw()
 {
     ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
 
-    if(! mpTypes[nNodeType] )
+    if( mpTypes[nNodeType] )
+        return;
+
+    static constexpr std::array<sal_Int32, mpTypes.size()> type_numbers =
     {
-        static const sal_Int32 type_numbers[] =
-        {
-            7, // CUSTOM
-            9, // PAR
-            9, // SEQ
-            9, // ITERATE
-            8, // ANIMATE
-            8, // SET
-            8, // ANIMATEMOTION
-            8, // ANIMATECOLOR
-            8, // ANIMATETRANSFORM
-            8, // TRANSITIONFILTER
-            8, // AUDIO
-            8, // COMMAND
-        };
+        7, // CUSTOM
+        9, // PAR
+        9, // SEQ
+        9, // ITERATE
+        8, // ANIMATE
+        8, // SET
+        8, // ANIMATEMOTION
+        8, // ANIMATECOLOR
+        8, // ANIMATETRANSFORM
+        8, // TRANSITIONFILTER
+        8, // AUDIO
+        8, // COMMAND
+    };
 
-        // collect types
-        Sequence< Type > * types = new Sequence< Type >( type_numbers[nNodeType] );
-        Type * pTypeAr = types->getArray();
-        sal_Int32 nPos = 0;
+    // collect types
+    Sequence< Type > * types = new Sequence< Type >( type_numbers[nNodeType] );
+    Type * pTypeAr = types->getArray();
+    sal_Int32 nPos = 0;
 
-        pTypeAr[nPos++] = cppu::UnoType<XWeak>::get();
-        pTypeAr[nPos++] = cppu::UnoType<XChild>::get();
-        pTypeAr[nPos++] = cppu::UnoType<XCloneable>::get();
-        pTypeAr[nPos++] = cppu::UnoType<XTypeProvider>::get();
-        pTypeAr[nPos++] = cppu::UnoType<XServiceInfo>::get();
-        pTypeAr[nPos++] = cppu::UnoType<XUnoTunnel>::get();
-        pTypeAr[nPos++] = cppu::UnoType<XChangesNotifier>::get();
+    pTypeAr[nPos++] = cppu::UnoType<XWeak>::get();
+    pTypeAr[nPos++] = cppu::UnoType<XChild>::get();
+    pTypeAr[nPos++] = cppu::UnoType<XCloneable>::get();
+    pTypeAr[nPos++] = cppu::UnoType<XTypeProvider>::get();
+    pTypeAr[nPos++] = cppu::UnoType<XServiceInfo>::get();
+    pTypeAr[nPos++] = cppu::UnoType<XUnoTunnel>::get();
+    pTypeAr[nPos++] = cppu::UnoType<XChangesNotifier>::get();
 
-        switch( nNodeType )
-        {
-        case AnimationNodeType::PAR:
-        case AnimationNodeType::SEQ:
-            pTypeAr[nPos++] = cppu::UnoType<XTimeContainer>::get();
-            pTypeAr[nPos++] = cppu::UnoType<XEnumerationAccess>::get();
-            break;
-        case AnimationNodeType::ITERATE:
-            pTypeAr[nPos++] = cppu::UnoType<XIterateContainer>::get();
-            pTypeAr[nPos++] = cppu::UnoType<XEnumerationAccess>::get();
-            break;
-        case AnimationNodeType::ANIMATE:
-            pTypeAr[nPos++] = cppu::UnoType<XAnimate>::get();
-            break;
-        case AnimationNodeType::ANIMATEMOTION:
-            pTypeAr[nPos++] = cppu::UnoType<XAnimateMotion>::get();
-            break;
-        case AnimationNodeType::ANIMATECOLOR:
-            pTypeAr[nPos++] = cppu::UnoType<XAnimateColor>::get();
-            break;
-        case AnimationNodeType::ANIMATETRANSFORM:
-            pTypeAr[nPos++] = cppu::UnoType<XAnimateTransform>::get();
-            break;
-        case AnimationNodeType::SET:
-            pTypeAr[nPos++] = cppu::UnoType<XAnimateSet>::get();
-            break;
-        case AnimationNodeType::TRANSITIONFILTER:
-            pTypeAr[nPos++] = cppu::UnoType<XTransitionFilter>::get();
-            break;
-        case AnimationNodeType::AUDIO:
-            pTypeAr[nPos++] = cppu::UnoType<XAudio>::get();
-            break;
-        case AnimationNodeType::COMMAND:
-            pTypeAr[nPos++] = cppu::UnoType<XCommand>::get();
-            break;
-        }
-        mpTypes[nNodeType] = types;
+    switch( nNodeType )
+    {
+    case AnimationNodeType::PAR:
+    case AnimationNodeType::SEQ:
+        pTypeAr[nPos++] = cppu::UnoType<XTimeContainer>::get();
+        pTypeAr[nPos++] = cppu::UnoType<XEnumerationAccess>::get();
+        break;
+    case AnimationNodeType::ITERATE:
+        pTypeAr[nPos++] = cppu::UnoType<XIterateContainer>::get();
+        pTypeAr[nPos++] = cppu::UnoType<XEnumerationAccess>::get();
+        break;
+    case AnimationNodeType::ANIMATE:
+        pTypeAr[nPos++] = cppu::UnoType<XAnimate>::get();
+        break;
+    case AnimationNodeType::ANIMATEMOTION:
+        pTypeAr[nPos++] = cppu::UnoType<XAnimateMotion>::get();
+        break;
+    case AnimationNodeType::ANIMATECOLOR:
+        pTypeAr[nPos++] = cppu::UnoType<XAnimateColor>::get();
+        break;
+    case AnimationNodeType::ANIMATETRANSFORM:
+        pTypeAr[nPos++] = cppu::UnoType<XAnimateTransform>::get();
+        break;
+    case AnimationNodeType::SET:
+        pTypeAr[nPos++] = cppu::UnoType<XAnimateSet>::get();
+        break;
+    case AnimationNodeType::TRANSITIONFILTER:
+        pTypeAr[nPos++] = cppu::UnoType<XTransitionFilter>::get();
+        break;
+    case AnimationNodeType::AUDIO:
+        pTypeAr[nPos++] = cppu::UnoType<XAudio>::get();
+        break;
+    case AnimationNodeType::COMMAND:
+        pTypeAr[nPos++] = cppu::UnoType<XCommand>::get();
+        break;
     }
+    mpTypes[nNodeType] = types;
 }
 
 
@@ -1192,11 +1193,9 @@ Reference< XCloneable > SAL_CALL AnimationNode::createClone()
             Reference< XTimeContainer > xContainer( xNewNode, UNO_QUERY );
             if( xContainer.is() )
             {
-                ChildList_t::iterator aIter( maChildren.begin() );
-                ChildList_t::iterator aEnd( maChildren.end() );
-                while( aIter != aEnd )
+                for (auto const& child : maChildren)
                 {
-                    Reference< XCloneable > xCloneable((*aIter++), UNO_QUERY );
+                    Reference< XCloneable > xCloneable(child, UNO_QUERY );
                     if( xCloneable.is() ) try
                     {
                         Reference< XAnimationNode > xNewChildNode( xCloneable->createClone(), UNO_QUERY );
@@ -1768,12 +1767,12 @@ Reference< XAnimationNode > SAL_CALL AnimationNode::insertBefore( const Referenc
     if( !newChild.is() || !refChild.is() )
         throw IllegalArgumentException();
 
-    ChildList_t::iterator before = std::find(maChildren.begin(), maChildren.end(), refChild);
-    if( before == maChildren.end() )
-        throw NoSuchElementException();
-
     if( std::find(maChildren.begin(), maChildren.end(), newChild) != maChildren.end() )
         throw ElementExistException();
+
+    auto before = std::find(maChildren.begin(), maChildren.end(), refChild);
+    if( before == maChildren.end() )
+        throw NoSuchElementException();
 
     maChildren.insert( before, newChild );
 
@@ -1792,12 +1791,12 @@ Reference< XAnimationNode > SAL_CALL AnimationNode::insertAfter( const Reference
     if( !newChild.is() || !refChild.is() )
         throw IllegalArgumentException();
 
-    ChildList_t::iterator before = std::find(maChildren.begin(), maChildren.end(), refChild);
-    if( before == maChildren.end() )
-        throw NoSuchElementException();
-
     if( std::find(maChildren.begin(), maChildren.end(), newChild) != maChildren.end() )
         throw ElementExistException();
+
+    auto before = std::find(maChildren.begin(), maChildren.end(), refChild);
+    if( before == maChildren.end() )
+        throw NoSuchElementException();
 
     ++before;
     if( before != maChildren.end() )
@@ -1820,15 +1819,14 @@ Reference< XAnimationNode > SAL_CALL AnimationNode::replaceChild( const Referenc
     if( !newChild.is() || !oldChild.is() )
         throw IllegalArgumentException();
 
-    ChildList_t::iterator replace = std::find(maChildren.begin(), maChildren.end(), oldChild);
-    if( replace == maChildren.end() )
-        throw NoSuchElementException();
-
     if( std::find(maChildren.begin(), maChildren.end(), newChild) != maChildren.end() )
         throw ElementExistException();
 
-    Reference< XInterface > xNull( nullptr );
-    oldChild->setParent( xNull );
+    auto replace = std::find(maChildren.begin(), maChildren.end(), oldChild);
+    if( replace == maChildren.end() )
+        throw NoSuchElementException();
+
+    oldChild->setParent( Reference< XInterface >() );
 
     (*replace) = newChild;
 
@@ -1847,12 +1845,11 @@ Reference< XAnimationNode > SAL_CALL AnimationNode::removeChild( const Reference
     if( !oldChild.is() )
         throw IllegalArgumentException();
 
-    ChildList_t::iterator old = std::find(maChildren.begin(), maChildren.end(), oldChild);
+    auto old = std::find(maChildren.begin(), maChildren.end(), oldChild);
     if( old == maChildren.end() )
         throw NoSuchElementException();
 
-    Reference< XInterface > xNull( nullptr );
-    oldChild->setParent( xNull );
+    oldChild->setParent( Reference< XInterface >() );
 
     maChildren.erase( old );
 
@@ -1942,7 +1939,7 @@ void SAL_CALL AnimationNode::removeChangesListener( const Reference< XChangesLis
 // XUnoTunnel
 ::sal_Int64 SAL_CALL AnimationNode::getSomething( const Sequence< ::sal_Int8 >& rId )
 {
-    if( rId.getLength() == 16 && memcmp( getUnoTunnelId().getConstArray(), rId.getConstArray(), 16 ) == 0 )
+    if( isUnoTunnelId<AnimationNode>(rId) )
     {
         return sal::static_int_cast< sal_Int64 >(reinterpret_cast< sal_IntPtr >(this));
 
@@ -1995,77 +1992,77 @@ void AnimationNode::fireChangeListener()
 } // namespace animcore
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_animations_ParallelTimeContainer_get_implementation(css::uno::XComponentContext*,
                                                              css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new animcore::AnimationNode(PAR));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_animations_SequenceTimeContainer_get_implementation(css::uno::XComponentContext*,
                                                              css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new animcore::AnimationNode(SEQ));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_animations_IterateContainer_get_implementation(css::uno::XComponentContext*,
                                                              css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new animcore::AnimationNode(ITERATE));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_animations_Animate_get_implementation(css::uno::XComponentContext*,
                                                              css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new animcore::AnimationNode(ANIMATE));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_animations_AnimateSet_get_implementation(css::uno::XComponentContext*,
                                                              css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new animcore::AnimationNode(SET));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_animations_AnimateColor_get_implementation(css::uno::XComponentContext*,
                                                              css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new animcore::AnimationNode(ANIMATECOLOR));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_animations_AnimateMotion_get_implementation(css::uno::XComponentContext*,
                                                              css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new animcore::AnimationNode(ANIMATEMOTION));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_animations_AnimateTransform_get_implementation(css::uno::XComponentContext*,
                                                              css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new animcore::AnimationNode(ANIMATETRANSFORM));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_animations_TransitionFilter_get_implementation(css::uno::XComponentContext*,
                                                              css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new animcore::AnimationNode(TRANSITIONFILTER));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_animations_Audio_get_implementation(css::uno::XComponentContext*,
                                                              css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new animcore::AnimationNode(AUDIO));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_animations_Command_get_implementation(css::uno::XComponentContext*,
                                                              css::uno::Sequence<css::uno::Any> const &)
 {

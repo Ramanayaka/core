@@ -18,14 +18,12 @@
  */
 
 #include <helper/uiconfigelementwrapperbase.hxx>
-#include <general.h>
 #include <properties.h>
 #include <uielement/constitemcontainer.hxx>
 #include <uielement/rootitemcontainer.hxx>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/ui/XUIConfiguration.hpp>
 
 #include <vcl/svapp.hxx>
@@ -39,7 +37,6 @@ const int UIELEMENT_PROPHANDLE_TYPE             = 5;
 const int UIELEMENT_PROPHANDLE_XMENUBAR         = 6;
 const int UIELEMENT_PROPHANDLE_CONFIGLISTENER   = 7;
 const int UIELEMENT_PROPHANDLE_NOCLOSE          = 8;
-const int UIELEMENT_PROPCOUNT                   = 8;
 const char UIELEMENT_PROPNAME_CONFIGLISTENER[] = "ConfigListener";
 const char UIELEMENT_PROPNAME_CONFIGSOURCE[] = "ConfigurationSource";
 const char UIELEMENT_PROPNAME_FRAME[] = "Frame";
@@ -60,7 +57,7 @@ namespace framework
 
 UIConfigElementWrapperBase::UIConfigElementWrapperBase( sal_Int16 nType )
     :   ::cppu::OBroadcastHelperVar< ::cppu::OMultiTypeInterfaceContainerHelper, ::cppu::OMultiTypeInterfaceContainerHelper::keyType >( m_aMutex )
-    ,   ::cppu::OPropertySetHelper  ( *(static_cast< ::cppu::OBroadcastHelper* >(this)) )
+    ,   ::cppu::OPropertySetHelper  ( *static_cast< ::cppu::OBroadcastHelper* >(this) )
     ,   m_nType                     ( nType                                             )
     ,   m_bPersistent               ( true                                          )
     ,   m_bInitialized              ( false                                         )
@@ -114,32 +111,32 @@ void SAL_CALL UIConfigElementWrapperBase::initialize( const Sequence< Any >& aAr
 {
     SolarMutexGuard g;
 
-    if ( !m_bInitialized )
-    {
-        for ( sal_Int32 n = 0; n < aArguments.getLength(); n++ )
-        {
-            PropertyValue aPropValue;
-            if ( aArguments[n] >>= aPropValue )
-            {
-                if ( aPropValue.Name == UIELEMENT_PROPNAME_CONFIGSOURCE )
-                    setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_CONFIGSOURCE, aPropValue.Value );
-                else if ( aPropValue.Name == UIELEMENT_PROPNAME_FRAME )
-                    setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_FRAME, aPropValue.Value );
-                else if ( aPropValue.Name == UIELEMENT_PROPNAME_PERSISTENT )
-                    setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_PERSISTENT, aPropValue.Value );
-                else if ( aPropValue.Name == UIELEMENT_PROPNAME_RESOURCEURL )
-                    setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_RESOURCEURL, aPropValue.Value );
-                else if ( aPropValue.Name == UIELEMENT_PROPNAME_TYPE )
-                    setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_TYPE, aPropValue.Value );
-                else if ( aPropValue.Name == UIELEMENT_PROPNAME_CONFIGLISTENER )
-                    setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_CONFIGLISTENER, aPropValue.Value );
-                else if ( aPropValue.Name == UIELEMENT_PROPNAME_NOCLOSE )
-                    setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_NOCLOSE, aPropValue.Value );
-            }
-        }
+    if ( m_bInitialized )
+        return;
 
-        m_bInitialized = true;
+    for ( const Any& rArg : aArguments )
+    {
+        PropertyValue aPropValue;
+        if ( rArg >>= aPropValue )
+        {
+            if ( aPropValue.Name == UIELEMENT_PROPNAME_CONFIGSOURCE )
+                setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_CONFIGSOURCE, aPropValue.Value );
+            else if ( aPropValue.Name == UIELEMENT_PROPNAME_FRAME )
+                setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_FRAME, aPropValue.Value );
+            else if ( aPropValue.Name == UIELEMENT_PROPNAME_PERSISTENT )
+                setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_PERSISTENT, aPropValue.Value );
+            else if ( aPropValue.Name == UIELEMENT_PROPNAME_RESOURCEURL )
+                setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_RESOURCEURL, aPropValue.Value );
+            else if ( aPropValue.Name == UIELEMENT_PROPNAME_TYPE )
+                setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_TYPE, aPropValue.Value );
+            else if ( aPropValue.Name == UIELEMENT_PROPNAME_CONFIGLISTENER )
+                setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_CONFIGLISTENER, aPropValue.Value );
+            else if ( aPropValue.Name == UIELEMENT_PROPNAME_NOCLOSE )
+                setFastPropertyValue_NoBroadcast( UIELEMENT_PROPHANDLE_NOCLOSE, aPropValue.Value );
+        }
     }
+
+    m_bInitialized = true;
 }
 
 // XUpdatable
@@ -390,16 +387,16 @@ css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL UIConfigElementWrap
     return xInfo;
 }
 
-const css::uno::Sequence< css::beans::Property > UIConfigElementWrapperBase::impl_getStaticPropertyDescriptor()
+css::uno::Sequence< css::beans::Property > UIConfigElementWrapperBase::impl_getStaticPropertyDescriptor()
 {
     // Create property array to initialize sequence!
-    // Table of all predefined properties of this class. Its used from OPropertySetHelper-class!
+    // Table of all predefined properties of this class. It's used from OPropertySetHelper-class!
     // Don't forget to change the defines (see begin of this file), if you add, change or delete a property in this list!!!
     // It's necessary for methods of OPropertySetHelper.
     // ATTENTION:
     //      YOU MUST SORT FOLLOW TABLE BY NAME ALPHABETICAL !!!
 
-    const css::beans::Property pProperties[] =
+    return
     {
         css::beans::Property( UIELEMENT_PROPNAME_CONFIGLISTENER, UIELEMENT_PROPHANDLE_CONFIGLISTENER , cppu::UnoType<sal_Bool>::get(), css::beans::PropertyAttribute::TRANSIENT  ),
         css::beans::Property( UIELEMENT_PROPNAME_CONFIGSOURCE, UIELEMENT_PROPHANDLE_CONFIGSOURCE   , cppu::UnoType<css::ui::XUIConfigurationManager>::get(), css::beans::PropertyAttribute::TRANSIENT  ),
@@ -410,44 +407,41 @@ const css::uno::Sequence< css::beans::Property > UIConfigElementWrapperBase::imp
         css::beans::Property( UIELEMENT_PROPNAME_TYPE, UIELEMENT_PROPHANDLE_TYPE           , cppu::UnoType<OUString>::get(), css::beans::PropertyAttribute::TRANSIENT | css::beans::PropertyAttribute::READONLY ),
         css::beans::Property( UIELEMENT_PROPNAME_XMENUBAR, UIELEMENT_PROPHANDLE_XMENUBAR       , cppu::UnoType<css::awt::XMenuBar>::get(), css::beans::PropertyAttribute::TRANSIENT | css::beans::PropertyAttribute::READONLY )
     };
-    // Use it to initialize sequence!
-    const css::uno::Sequence< css::beans::Property > lPropertyDescriptor( pProperties, UIELEMENT_PROPCOUNT );
-    // Return "PropertyDescriptor"
-    return lPropertyDescriptor;
 }
+
 void SAL_CALL UIConfigElementWrapperBase::setSettings( const Reference< XIndexAccess >& xSettings )
 {
     SolarMutexClearableGuard aLock;
 
-    if ( xSettings.is() )
+    if ( !xSettings.is() )
+        return;
+
+    // Create a copy of the data if the container is not const
+    Reference< XIndexReplace > xReplace( xSettings, UNO_QUERY );
+    if ( xReplace.is() )
+        m_xConfigData.set( static_cast< OWeakObject * >( new ConstItemContainer( xSettings ) ), UNO_QUERY );
+    else
+        m_xConfigData = xSettings;
+
+    if ( m_xConfigSource.is() && m_bPersistent )
     {
-        // Create a copy of the data if the container is not const
-        Reference< XIndexReplace > xReplace( xSettings, UNO_QUERY );
-        if ( xReplace.is() )
-            m_xConfigData.set( static_cast< OWeakObject * >( new ConstItemContainer( xSettings ) ), UNO_QUERY );
-        else
-            m_xConfigData = xSettings;
+        OUString aResourceURL( m_aResourceURL );
+        Reference< XUIConfigurationManager > xUICfgMgr( m_xConfigSource );
 
-        if ( m_xConfigSource.is() && m_bPersistent )
+        aLock.clear();
+
+        try
         {
-            OUString aResourceURL( m_aResourceURL );
-            Reference< XUIConfigurationManager > xUICfgMgr( m_xConfigSource );
-
-            aLock.clear();
-
-            try
-            {
-                xUICfgMgr->replaceSettings( aResourceURL, m_xConfigData );
-            }
-            catch( const NoSuchElementException& )
-            {
-            }
+            xUICfgMgr->replaceSettings( aResourceURL, m_xConfigData );
         }
-        else if ( !m_bPersistent )
+        catch( const NoSuchElementException& )
         {
-            // Transient menubar => Fill menubar with new data
-            impl_fillNewData();
         }
+    }
+    else if ( !m_bPersistent )
+    {
+        // Transient menubar => Fill menubar with new data
+        impl_fillNewData();
     }
 }
 void UIConfigElementWrapperBase::impl_fillNewData()

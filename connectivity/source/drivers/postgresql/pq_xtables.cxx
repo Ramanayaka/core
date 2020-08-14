@@ -36,12 +36,12 @@
 
 #include <rtl/ustrbuf.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbcx/Privilege.hpp>
-#include <com/sun/star/sdbcx/KeyType.hpp>
-#include <com/sun/star/sdbc/KeyRule.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 
 #include "pq_xtables.hxx"
 #include "pq_xviews.hxx"
@@ -58,7 +58,6 @@ using com::sun::star::uno::makeAny;
 using com::sun::star::uno::UNO_QUERY;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::Sequence;
-using com::sun::star::uno::RuntimeException;
 
 using com::sun::star::container::XEnumerationAccess;
 using com::sun::star::container::XEnumeration;
@@ -120,8 +119,7 @@ void Tables::refresh()
                 st.DESCRIPTION , makeAny( xRow->getString( TABLE_INDEX_REMARKS+1) ) );
             pTable->setPropertyValue_NoBroadcast_public(
                 st.PRIVILEGES ,
-                makeAny( (sal_Int32)
-                         ( css::sdbcx::Privilege::SELECT |
+                makeAny( sal_Int32( css::sdbcx::Privilege::SELECT |
                            css::sdbcx::Privilege::INSERT |
                            css::sdbcx::Privilege::UPDATE |
                            css::sdbcx::Privilege::DELETE |
@@ -133,9 +131,7 @@ void Tables::refresh()
 
             {
                 m_values.push_back( makeAny( prop ) );
-                OUStringBuffer buf( name.getLength() + schema.getLength() + 1);
-                buf.append( schema + "." + name );
-                map[ buf.makeStringAndClear() ] = tableIndex;
+                map[ schema + "." + name ] = tableIndex;
                 ++tableIndex;
             }
         }
@@ -143,7 +139,9 @@ void Tables::refresh()
     }
     catch ( const css::sdbc::SQLException & e )
     {
-        throw RuntimeException( e.Message , e.Context );
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException( e.Message,
+                        e.Context, anyEx );
     }
 
     fire( RefreshedBroadcaster( *this ) );
@@ -153,83 +151,83 @@ void Tables::refresh()
 static void appendColumnList(
     OUStringBuffer &buf, const Reference< XColumnsSupplier > & columnSupplier, ConnectionSettings *settings )
 {
-    if( columnSupplier.is() )
+    if( !columnSupplier.is() )
+        return;
+
+    Reference< XEnumerationAccess > columns( columnSupplier->getColumns(),UNO_QUERY );
+    if( !columns.is() )
+        return;
+
+    Reference< XEnumeration > xEnum( columns->createEnumeration() );
+    bool first = true;
+    Statics & st = getStatics();
+
+    while( xEnum.is() && xEnum->hasMoreElements() )
     {
-        Reference< XEnumerationAccess > columns( columnSupplier->getColumns(),UNO_QUERY );
-        if( columns.is() )
+        if( first )
         {
-            Reference< XEnumeration > xEnum( columns->createEnumeration() );
-            bool first = true;
-            Statics & st = getStatics();
-
-            while( xEnum.is() && xEnum->hasMoreElements() )
-            {
-                if( first )
-                {
-                    first = false;
-                }
-                else
-                {
-                    buf.append( ", " );
-                }
-                Reference< XPropertySet > column( xEnum->nextElement(), UNO_QUERY );
-                OUString name = extractStringProperty( column, st.NAME );
-                OUString defaultValue = extractStringProperty( column, st.DEFAULT_VALUE );
-                bool isNullable = extractBoolProperty( column, st.IS_NULLABLE );
-                bool isAutoIncrement = extractBoolProperty( column, st.IS_AUTO_INCREMENT );
-
-                bufferQuoteIdentifier( buf, name, settings );
-
-                OUString type = sqltype2string( column );
-                if( isAutoIncrement )
-                {
-                    sal_Int32 dataType = 0;
-                    column->getPropertyValue( st.TYPE ) >>= dataType;
-                    if( css::sdbc::DataType::INTEGER == dataType )
-                    {
-                        buf.append( " serial  ");
-                        isNullable = false;
-                    }
-                    else if( css::sdbc::DataType::BIGINT == dataType )
-                    {
-                        buf.append( " serial8 " );
-                        isNullable = false;
-                    }
-                    else
-                        buf.append( type );
-                }
-                else
-                {
-                    buf.append( type );
-                }
-                if( !defaultValue.isEmpty() )
-                {
-                    bufferQuoteConstant( buf, defaultValue, settings );
-                }
-
-                if( ! isNullable )
-                    buf.append( " NOT NULL " );
-
-            }
+            first = false;
         }
+        else
+        {
+            buf.append( ", " );
+        }
+        Reference< XPropertySet > column( xEnum->nextElement(), UNO_QUERY );
+        OUString name = extractStringProperty( column, st.NAME );
+        OUString defaultValue = extractStringProperty( column, st.DEFAULT_VALUE );
+        bool isNullable = extractBoolProperty( column, st.IS_NULLABLE );
+        bool isAutoIncrement = extractBoolProperty( column, st.IS_AUTO_INCREMENT );
+
+        bufferQuoteIdentifier( buf, name, settings );
+
+        OUString type = sqltype2string( column );
+        if( isAutoIncrement )
+        {
+            sal_Int32 dataType = 0;
+            column->getPropertyValue( st.TYPE ) >>= dataType;
+            if( css::sdbc::DataType::INTEGER == dataType )
+            {
+                buf.append( " serial  ");
+                isNullable = false;
+            }
+            else if( css::sdbc::DataType::BIGINT == dataType )
+            {
+                buf.append( " serial8 " );
+                isNullable = false;
+            }
+            else
+                buf.append( type );
+        }
+        else
+        {
+            buf.append( type );
+        }
+        if( !defaultValue.isEmpty() )
+        {
+            bufferQuoteConstant( buf, defaultValue, settings );
+        }
+
+        if( ! isNullable )
+            buf.append( " NOT NULL " );
+
     }
 }
 
 static void appendKeyList(
     OUStringBuffer & buf, const Reference< XKeysSupplier > &keySupplier, ConnectionSettings *settings )
 {
-    if( keySupplier.is() )
+    if( !keySupplier.is() )
+        return;
+
+    Reference< XEnumerationAccess > keys( keySupplier->getKeys(), UNO_QUERY );
+    if(keys.is() )
     {
-        Reference< XEnumerationAccess > keys( keySupplier->getKeys(), UNO_QUERY );
-        if(keys.is() )
+        Reference< XEnumeration > xEnum = keys->createEnumeration();
+        while( xEnum.is() && xEnum->hasMoreElements() )
         {
-            Reference< XEnumeration > xEnum = keys->createEnumeration();
-            while( xEnum.is() && xEnum->hasMoreElements() )
-            {
-                buf.append( ", " );
-                Reference< XPropertySet > key( xEnum->nextElement(), UNO_QUERY );
-                bufferKey2TableConstraint( buf, key, settings );
-            }
+            buf.append( ", " );
+            Reference< XPropertySet > key( xEnum->nextElement(), UNO_QUERY );
+            bufferKey2TableConstraint( buf, key, settings );
         }
     }
 }
@@ -263,7 +261,7 @@ void Tables::appendByDescriptor(
     // execute the creation !
     transaction.executeUpdate( buf.makeStringAndClear() );
 
-    // description ....
+    // description...
     OUString description = extractStringProperty( descriptor, st.DESCRIPTION );
     if( !description.isEmpty() )
     {
@@ -312,7 +310,7 @@ void Tables::appendByDescriptor(
 void Tables::dropByIndex( sal_Int32 index )
 {
     osl::MutexGuard guard( m_xMutex->GetMutex() );
-    if( index < 0 ||  index >= (sal_Int32)m_values.size() )
+    if( index < 0 ||  index >= static_cast<sal_Int32>(m_values.size()) )
     {
         throw css::lang::IndexOutOfBoundsException(
             "TABLES: Index out of range (allowed 0 to " + OUString::number(m_values.size() -1)
@@ -326,7 +324,7 @@ void Tables::dropByIndex( sal_Int32 index )
     OUString name,schema;
     set->getPropertyValue( st.SCHEMA_NAME ) >>= schema;
     set->getPropertyValue( st.NAME ) >>= name;
-    if( extractStringProperty( set, st.TYPE ).equals( st.VIEW ) && m_pSettings->views.is() )
+    if( extractStringProperty( set, st.TYPE ) == st.VIEW && m_pSettings->views.is() )
     {
         m_pSettings->pViewsImpl->dropByName( concatQualified( schema, name ) );
     }
@@ -334,7 +332,7 @@ void Tables::dropByIndex( sal_Int32 index )
     {
         OUStringBuffer update( 128 );
         update.append( "DROP " );
-        if( extractStringProperty( set, st.TYPE ).equals( st.VIEW ) )
+        if( extractStringProperty( set, st.TYPE ) == st.VIEW )
             update.append( "VIEW " );
         else
             update.append( "TABLE " );

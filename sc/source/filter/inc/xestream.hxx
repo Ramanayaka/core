@@ -20,29 +20,28 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_XESTREAM_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_XESTREAM_HXX
 
-#include <com/sun/star/beans/NamedValue.hpp>
-#include <com/sun/star/ucb/ContentCreationException.hpp>
-
 #include <map>
 #include <stack>
-#include <string>
 #include <rtl/strbuf.hxx>
 
 #include <oox/core/xmlfilterbase.hxx>
-#include <oox/token/tokens.hxx>
 #include <sax/fshelper.hxx>
-
-#include "xlstream.hxx"
-#include "xestring.hxx"
+#include <tools/stream.hxx>
+#include <formula/errorcodes.hxx>
+#include "ftools.hxx"
+#include <types.hxx>
 
 #include <filter/msfilter/mscodec.hxx>
 #include <vector>
+
+namespace com::sun::star::beans { struct NamedValue; }
 
 /* ============================================================================
 Output stream class for Excel export
 - CONTINUE record handling
 ============================================================================ */
 
+class XclExpString;
 class XclExpRoot;
 class XclExpBiff8Encrypter;
 typedef std::shared_ptr< XclExpBiff8Encrypter > XclExpEncrypterRef;
@@ -61,7 +60,7 @@ typedef std::shared_ptr< XclExpBiff8Encrypter > XclExpEncrypterRef;
     If some data exceeds the record size limit, a CONTINUE record is started automatically
     and the new data will be written to this record.
 
-    If specific data pieces must not be splitted, use SetSliceSize(). For instance:
+    If specific data pieces must not be split, use SetSliceSize(). For instance:
     To write a sequence of 16-bit values, where 4 values form a unit and cannot be
     split, call SetSliceSize( 8 ) first (4*2 bytes == 8).
 
@@ -234,14 +233,12 @@ private:
 
 class ScAddress;
 class ScDocShell;
-class ScDocument;
 class ScFormulaCell;
 class ScRange;
 class ScRangeList;
 class ScTokenArray;
 struct XclAddress;
 struct XclFontData;
-struct XclRange;
 class XclRangeList;
 namespace sc { class CompileFormulaContext; }
 
@@ -257,41 +254,36 @@ public:
     static OUString          GetStreamName( const char* sStreamDir, const char* sStream, sal_Int32 nId );
 
     static OString ToOString( const Color& rColor );
-    static OString ToOString( const OUString& s );
     static OString ToOString( const ScfUInt16Vec& rBuffer );
     static OStringBuffer& ToOString( OStringBuffer& s, const ScAddress& rRange );
-    static OString ToOString( const ScRange& rRange, bool bFullAddressNotation = false );
-    static OString ToOString( const ScRangeList& rRangeList );
+    static OString ToOString( const ScDocument& rDoc, const ScRange& rRange, bool bFullAddressNotation = false );
+    static OString ToOString( const ScDocument& rDoc, const ScRangeList& rRangeList );
     static OStringBuffer& ToOString( OStringBuffer& s, const XclAddress& rAddress );
     static OString ToOString( const XclExpString& s );
-    static OString ToOString( const XclRangeList& rRangeList );
+    static OString ToOString( const ScDocument& rDoc, const XclRangeList& rRangeList );
 
     static OUString ToOUString( const char* s );
     static OUString ToOUString( const ScfUInt16Vec& rBuffer, sal_Int32 nStart = 0, sal_Int32 nLength = -1 );
-    static OUString ToOUString( sc::CompileFormulaContext& rCtx, const ScAddress& rAddress, const ScTokenArray* pTokenArray );
+    static OUString ToOUString( sc::CompileFormulaContext& rCtx, const ScAddress& rAddress,
+            const ScTokenArray* pTokenArray, FormulaError nErrCode = FormulaError::NONE );
     static OUString ToOUString( const XclExpString& s );
 
-    /**
-     * @return const char* literal "true" for true value, or literal "false"
-     *         for false value.
-     */
-    static const char* ToPsz( bool b );
+    template <class T>
+    static sax_fastparser::FSHelperPtr WriteElement(sax_fastparser::FSHelperPtr pStream, sal_Int32 nElement, const T& value)
+    {
+        pStream->startElement(nElement);
+        pStream->write(value);
+        pStream->endElement(nElement);
 
-    /**
-     * @return literal "1" for true value, or literal "0" for false value.
-     */
-    static const char* ToPsz10( bool b );
-
-    static sax_fastparser::FSHelperPtr  WriteElement( sax_fastparser::FSHelperPtr pStream, sal_Int32 nElement, sal_Int32 nValue );
-    static sax_fastparser::FSHelperPtr  WriteElement( sax_fastparser::FSHelperPtr pStream, sal_Int32 nElement, sal_Int64 nValue );
-    static sax_fastparser::FSHelperPtr  WriteElement( sax_fastparser::FSHelperPtr pStream, sal_Int32 nElement, const char* sValue );
+        return pStream;
+    }
     static sax_fastparser::FSHelperPtr  WriteFontData( sax_fastparser::FSHelperPtr pStream, const XclFontData& rFontData, sal_Int32 nNameId );
 };
 
 class XclExpXmlStream : public oox::core::XmlFilterBase
 {
 public:
-    XclExpXmlStream( const css::uno::Reference< css::uno::XComponentContext >& rCC, bool bExportVBA );
+    XclExpXmlStream( const css::uno::Reference< css::uno::XComponentContext >& rCC, bool bExportVBA, bool bExportTemplate );
     virtual ~XclExpXmlStream() override;
 
     /** Returns the filter root data. */
@@ -303,11 +295,16 @@ public:
 
     sax_fastparser::FSHelperPtr     GetStreamForPath( const OUString& rPath );
 
-    // FIXME: if written through this cannot be checked for well-formedness
-    sax_fastparser::FSHelperPtr&    WriteAttributes( sal_Int32 nAttribute, const char* value, FSEND_t )
-        { return WriteAttributesInternal( nAttribute, value, FSEND_internal ); }
-    sax_fastparser::FSHelperPtr&    WriteAttributes( sal_Int32 nAttribute, const OString& value, FSEND_t )
-        { return WriteAttributesInternal( nAttribute, value.getStr(), FSEND_internal ); }
+    template <typename Str, typename... Args>
+    void WriteAttributes(sal_Int32 nAttribute, Str&& value, Args&&... rest)
+    {
+        WriteAttribute(nAttribute, std::forward<Str>(value));
+        if constexpr(sizeof...(rest) > 0)
+        {
+            // coverity[stray_semicolon : FALSE] - coverity parse error
+            WriteAttributes(std::forward<Args>(rest)...);
+        }
+    }
 
     sax_fastparser::FSHelperPtr     CreateOutputStream (
                                         const OUString& sFullStream,
@@ -324,43 +321,27 @@ public:
     virtual bool importDocument() throw() override;
     virtual oox::vml::Drawing* getVmlDrawing() override;
     virtual const oox::drawingml::Theme* getCurrentTheme() const override;
-    virtual const oox::drawingml::table::TableStyleListPtr getTableStyles() override;
+    virtual oox::drawingml::table::TableStyleListPtr getTableStyles() override;
     virtual oox::drawingml::chart::ChartConverter* getChartConverter() override;
-
-    /*
-      Now create all the overloads in a typesafe way (i.e. without varargs) by creating a number of overloads
-      up to a certain reasonable limit (feel free to raise it). This would be a lot easier with C++11 vararg templates.
-    */
-    // now overloads for 2 and more pairs
-    #define SAX_ARGS_FUNC_DECL( argsdecl, argsuse ) \
-        sax_fastparser::FSHelperPtr&    WriteAttributes( argsdecl, FSEND_t ) \
-            { return WriteAttributesInternal( argsuse, FSEND_internal ); }
-    #define SAX_ARGS_FUNC_NUM( decl1, decl2, use1, use2, convert, num ) \
-        SAX_ARGS_FUNC_DECL( SAX_ARGS_ARG##num( decl1, decl2, ), SAX_ARGS_ARG##num( use1, use2, convert ))
-    #define SAX_ARGS_FUNC_SUBST( type, convert, num ) \
-        SAX_ARGS_FUNC_NUM( sal_Int32 attribute, type value, attribute, value, convert, num )
-    #define SAX_ARGS_FUNC( arg, convert ) SAX_ARGS_FUNC_SUBST( arg, convert, 2 ) \
-        SAX_ARGS_FUNC_SUBST( arg, convert, 3 ) SAX_ARGS_FUNC_SUBST( arg, convert, 4 ) \
-        SAX_ARGS_FUNC_SUBST( arg, convert, 5 ) SAX_ARGS_FUNC_SUBST( arg, convert, 6 ) \
-        SAX_ARGS_FUNC_SUBST( arg, convert, 7 ) SAX_ARGS_FUNC_SUBST( arg, convert, 8 ) \
-        SAX_ARGS_FUNC_SUBST( arg, convert, 9 ) SAX_ARGS_FUNC_SUBST( arg, convert, 10 ) \
-        SAX_ARGS_FUNC_SUBST( arg, convert, 11 ) SAX_ARGS_FUNC_SUBST( arg, convert, 12 ) \
-        SAX_ARGS_FUNC_SUBST( arg, convert, 13 ) SAX_ARGS_FUNC_SUBST( arg, convert, 14 ) \
-        SAX_ARGS_FUNC_SUBST( arg, convert, 15 ) SAX_ARGS_FUNC_SUBST( arg, convert, 16 ) \
-        SAX_ARGS_FUNC_SUBST( arg, convert, 17 ) SAX_ARGS_FUNC_SUBST( arg, convert, 18 ) \
-        SAX_ARGS_FUNC_SUBST( arg, convert, 19 ) SAX_ARGS_FUNC_SUBST( arg, convert, 20 )
-    SAX_ARGS_FUNC( const char*, )
-    SAX_ARGS_FUNC( const OString&, .getStr() )
-    #undef SAX_ARGS_FUNC_DECL
-    #undef SAX_ARGS_FUNC_NUM
-    #undef SAX_ARGS_FUNC_SUBST
-    #undef SAX_ARGS_FUNC
 
 private:
     virtual ::oox::ole::VbaProject* implCreateVbaProject() const override;
     virtual OUString SAL_CALL getImplementationName() override;
     ScDocShell *getDocShell();
-    sax_fastparser::FSHelperPtr&    WriteAttributesInternal( sal_Int32 nAttribute, ... );
+    void WriteAttribute(sal_Int32 nAttr, const OUString& sVal);
+    void WriteAttribute(sal_Int32 nAttr, const OString& sVal)
+    {
+        WriteAttribute(nAttr, OStringToOUString(sVal, RTL_TEXTENCODING_UTF8));
+    }
+    void WriteAttribute(sal_Int32 nAttr, const char* sVal)
+    {
+        if (sVal)
+            WriteAttribute(nAttr, OUString(sVal, strlen(sVal), RTL_TEXTENCODING_UTF8));
+    }
+
+    void validateTabNames(std::vector<OUString>& aOriginalTabNames);
+    void restoreTabNames(const std::vector<OUString>& aOriginalTabNames);
+    void renameTab(SCTAB aTab, OUString aNewName);
 
     typedef std::map< OUString,
         std::pair< OUString,
@@ -371,6 +352,7 @@ private:
     XclExpXmlPathToStateMap                     maOpenedStreamMap;
 
     bool mbExportVBA;
+    bool mbExportTemplate;
 };
 
 #endif

@@ -17,23 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "parclass.hxx"
-#include "token.hxx"
-#include "global.hxx"
-#include "callform.hxx"
-#include "addincol.hxx"
-#include "funcdesc.hxx"
+#include <parclass.hxx>
+#include <token.hxx>
+#include <global.hxx>
+#include <callform.hxx>
+#include <addincol.hxx>
+#include <funcdesc.hxx>
 #include <unotools/charclass.hxx>
 #include <osl/diagnose.h>
 #include <sal/macros.h>
+#include <sal/log.hxx>
 #include <string.h>
 
 #if DEBUG_SC_PARCLASSDOC
 // the documentation thingy
 #include <com/sun/star/sheet/FormulaLanguage.hpp>
 #include <rtl/strbuf.hxx>
+#include <formula/funcvarargs.h>
 #include "compiler.hxx"
-#include "sc.hrc"
 #endif
 
 using namespace formula;
@@ -98,28 +99,29 @@ const ScParameterClassification::RawData ScParameterClassification::pRawData[] =
     { ocTableOp,         {{ Value, Value, Value, Value, Value                    }, 0, Value }},
     // Operators and functions.
     { ocAdd,             {{ Array, Array                                         }, 0, Value }},
-    { ocAggregate,       {{ Value, Value, Reference                              }, 1, Value }},
+    { ocAggregate,       {{ Value, Value, ReferenceOrForceArray                  }, 1, Value }},
     { ocAmpersand,       {{ Array, Array                                         }, 0, Value }},
     { ocAnd,             {{ Reference                                            }, 1, Value }},
     { ocAreas,           {{ Reference                                            }, 0, Value }},
     { ocAveDev,          {{ Reference                                            }, 1, Value }},
-    { ocAverage,         {{ Reference                                            }, 1, Value }},
-    { ocAverageA,        {{ Reference                                            }, 1, Value }},
-    { ocAverageIf,       {{ Reference, Value, Reference                          }, 0, Value }},
-    { ocAverageIfs,      {{ Reference, Reference, Value                          }, 2, Value }},
+    { ocAverage,         {{ ReferenceOrRefArray                                  }, 1, Value }},
+    { ocAverageA,        {{ ReferenceOrRefArray                                  }, 1, Value }},
+    { ocAverageIf,       {{ ReferenceOrRefArray, Value, Reference                }, 0, Value }},
+    { ocAverageIfs,      {{ ReferenceOrRefArray, ReferenceOrRefArray, Value      }, 2, Value }},
     { ocCell,            {{ Value, Reference                                     }, 0, Value }},
     { ocColumn,          {{ Reference                                            }, 0, Value }},
     { ocColumns,         {{ Reference                                            }, 1, Value }},
     { ocConcat_MS,       {{ Reference                                            }, 1, Value }},
     { ocCorrel,          {{ ForceArray, ForceArray                               }, 0, Value }},
-    { ocCount,           {{ Reference                                            }, 1, Value }},
-    { ocCount2,          {{ Reference                                            }, 1, Value }},
-    { ocCountEmptyCells, {{ Reference                                            }, 0, Value }},
-    { ocCountIf,         {{ Reference, Value                                     }, 0, Value }},
-    { ocCountIfs,        {{ Reference, Value                                     }, 2, Value }},
+    { ocCount,           {{ ReferenceOrRefArray                                  }, 1, Value }},
+    { ocCount2,          {{ ReferenceOrRefArray                                  }, 1, Value }},
+    { ocCountEmptyCells, {{ ReferenceOrRefArray                                  }, 0, Value }},
+    { ocCountIf,         {{ ReferenceOrRefArray, Value                           }, 0, Value }},
+    { ocCountIfs,        {{ ReferenceOrRefArray, Value                           }, 2, Value }},
     { ocCovar,           {{ ForceArray, ForceArray                               }, 0, Value }},
     { ocCovarianceP,     {{ ForceArray, ForceArray                               }, 0, Value }},
     { ocCovarianceS,     {{ ForceArray, ForceArray                               }, 0, Value }},
+    { ocCurrent,         {{ Bounds                                               }, 0, Value }},
     { ocDBAverage,       {{ Reference, Reference, Reference                      }, 0, Value }},
     { ocDBCount,         {{ Reference, Reference, Reference                      }, 0, Value }},
     { ocDBCount2,        {{ Reference, Reference, Reference                      }, 0, Value }},
@@ -136,6 +138,7 @@ const ScParameterClassification::RawData ScParameterClassification::pRawData[] =
     { ocDiv,             {{ Array, Array                                         }, 0, Value }},
     { ocEqual,           {{ Array, Array                                         }, 0, Value }},
     { ocFTest,           {{ ForceArray, ForceArray                               }, 0, Value }},
+    { ocFalse,           {{ Bounds                                               }, 0, Value }},
     { ocForecast,        {{ Value, ForceArray, ForceArray                        }, 0, Value }},
     { ocForecast_ETS_ADD, {{ ForceArray, ForceArray, ForceArray, Value, Value, Value        }, 0, Value }},
     { ocForecast_ETS_MUL, {{ ForceArray, ForceArray, ForceArray, Value, Value, Value        }, 0, Value }},
@@ -145,9 +148,12 @@ const ScParameterClassification::RawData ScParameterClassification::pRawData[] =
     { ocForecast_ETS_STA, {{ ForceArray, ForceArray, ForceArray, Value, Value, Value        }, 0, Value }},
     { ocForecast_ETS_STM, {{ ForceArray, ForceArray, ForceArray, Value, Value, Value        }, 0, Value }},
     { ocFormula,         {{ Reference                                            }, 0, Value }},
-    { ocFrequency,       {{ Reference, Reference                                 }, 0, Value }},
+    { ocFourier,         {{ ForceArray, Value, Value, Value, Value               }, 0, Value }},
+    { ocFrequency,       {{ ReferenceOrForceArray, ReferenceOrForceArray         }, 0, ForceArrayReturn }},
     { ocGCD,             {{ Reference                                            }, 1, Value }},
     { ocGeoMean,         {{ Reference                                            }, 1, Value }},
+    { ocGetActDate,      {{ Bounds                                               }, 0, Value }},
+    { ocGetActTime,      {{ Bounds                                               }, 0, Value }},
     { ocGreater,         {{ Array, Array                                         }, 0, Value }},
     { ocGreaterEqual,    {{ Array, Array                                         }, 0, Value }},
     { ocGrowth,          {{ Reference, Reference, Reference, Value               }, 0, Value }},
@@ -158,6 +164,7 @@ const ScParameterClassification::RawData ScParameterClassification::pRawData[] =
     { ocIndirect,        {{ Value, Value                                         }, 0, Reference }},
     { ocIntercept,       {{ ForceArray, ForceArray                               }, 0, Value }},
     { ocIntersect,       {{ Reference, Reference                                 }, 0, Reference }},
+    { ocIsFormula,       {{ Reference                                            }, 0, Value }},
     { ocIsRef,           {{ Reference                                            }, 0, Value }},
     { ocKurt,            {{ Reference                                            }, 1, Value }},
     { ocLCM,             {{ Reference                                            }, 1, Value }},
@@ -171,14 +178,16 @@ const ScParameterClassification::RawData ScParameterClassification::pRawData[] =
     { ocMatDet,          {{ ForceArray                                           }, 0, Value }},
     { ocMatInv,          {{ ForceArray                                           }, 0, Value }},
     { ocMatMult,         {{ ForceArray, ForceArray                               }, 0, Value }},
-    { ocMatTrans,        {{ Array                                                }, 0, Value }}, // strange, but Xcl doesn't force MatTrans array
+    { ocMatTrans,        {{ ForceArray                                           }, 0, ForceArrayReturn }},
     { ocMatValue,        {{ Reference, Value, Value                              }, 0, Value }},
     { ocMatch,           {{ Value, ReferenceOrForceArray, Value                  }, 0, Value }},
-    { ocMax,             {{ Reference                                            }, 1, Value }},
-    { ocMaxA,            {{ Reference                                            }, 1, Value }},
+    { ocMax,             {{ ReferenceOrRefArray                                  }, 1, Value }},
+    { ocMaxA,            {{ ReferenceOrRefArray                                  }, 1, Value }},
+    { ocMaxIfs_MS,       {{ ReferenceOrRefArray, ReferenceOrRefArray, Value      }, 2, Value }},
     { ocMedian,          {{ Reference                                            }, 1, Value }},
-    { ocMin,             {{ Reference                                            }, 1, Value }},
-    { ocMinA,            {{ Reference                                            }, 1, Value }},
+    { ocMin,             {{ ReferenceOrRefArray                                  }, 1, Value }},
+    { ocMinA,            {{ ReferenceOrRefArray                                  }, 1, Value }},
+    { ocMinIfs_MS,       {{ ReferenceOrRefArray, ReferenceOrRefArray, Value      }, 2, Value }},
     { ocModalValue,      {{ ForceArray                                           }, 1, Value }},
     { ocModalValue_MS,   {{ ForceArray                                           }, 1, Value }},
     { ocModalValue_Multi,{{ ForceArray                                           }, 1, Value }},
@@ -190,24 +199,29 @@ const ScParameterClassification::RawData ScParameterClassification::pRawData[] =
     { ocNetWorkdays,     {{ Value, Value, Reference, Reference                   }, 0, Value }},
     { ocNetWorkdays_MS,  {{ Value, Value, Value, Reference                       }, 0, Value }},
     { ocNot,             {{ Array                                                }, 0, Value }},
+    { ocNotAvail,        {{ Bounds                                               }, 0, Value }},
     { ocNotEqual,        {{ Array, Array                                         }, 0, Value }},
     { ocOffset,          {{ Reference, Value, Value, Value, Value                }, 0, Reference }},
     { ocOr,              {{ Reference                                            }, 1, Value }},
     { ocPearson,         {{ ForceArray, ForceArray                               }, 0, Value }},
+    { ocPercentSign,     {{ Array                                                }, 0, Value }},
     { ocPercentile,      {{ Reference, Value                                     }, 0, Value }},
     { ocPercentile_Exc,  {{ Reference, Value                                     }, 0, Value }},
     { ocPercentile_Inc,  {{ Reference, Value                                     }, 0, Value }},
     { ocPercentrank,     {{ Reference, Value, Value                              }, 0, Value }},
     { ocPercentrank_Exc, {{ Reference, Value, Value                              }, 0, Value }},
     { ocPercentrank_Inc, {{ Reference, Value, Value                              }, 0, Value }},
+    { ocPi,              {{ Bounds                                               }, 0, Value }},
     { ocPow,             {{ Array, Array                                         }, 0, Value }},
     { ocPower,           {{ Array, Array                                         }, 0, Value }},
     { ocProb,            {{ ForceArray, ForceArray, Value, Value                 }, 0, Value }},
-    { ocProduct,         {{ Reference                                            }, 1, Value }},
+    { ocProduct,         {{ ReferenceOrRefArray                                  }, 1, Value }},
     { ocQuartile,        {{ Reference, Value                                     }, 0, Value }},
     { ocQuartile_Exc,    {{ Reference, Value                                     }, 0, Value }},
     { ocQuartile_Inc,    {{ Reference, Value                                     }, 0, Value }},
     { ocRSQ,             {{ ForceArray, ForceArray                               }, 0, Value }},
+    { ocRandom,          {{ Bounds                                               }, 0, Value }},
+    { ocRandomNV,        {{ Bounds                                               }, 0, Value }},
     { ocRange,           {{ Reference, Reference                                 }, 0, Reference }},
     { ocRank,            {{ Value, Reference, Value                              }, 0, Value }},
     { ocRank_Avg,        {{ Value, Reference, Value                              }, 0, Value }},
@@ -228,12 +242,12 @@ const ScParameterClassification::RawData ScParameterClassification::pRawData[] =
     { ocStDevP_MS,       {{ Reference                                            }, 1, Value }},
     { ocStDevS,          {{ Reference                                            }, 1, Value }},
     { ocSub,             {{ Array, Array                                         }, 0, Value }},
-    { ocSubTotal,        {{ Value, Reference                                     }, 1, Value }},
-    { ocSum,             {{ Reference                                            }, 1, Value }},
-    { ocSumIf,           {{ Reference, Value, Reference                          }, 0, Value }},
-    { ocSumIfs,          {{ Reference, Reference, Value                          }, 2, Value }},
+    { ocSubTotal,        {{ Value, ReferenceOrRefArray                           }, 1, Value }},
+    { ocSum,             {{ ReferenceOrRefArray                                  }, 1, Value }},
+    { ocSumIf,           {{ ReferenceOrRefArray, Value, Reference                }, 0, Value }},
+    { ocSumIfs,          {{ ReferenceOrRefArray, ReferenceOrRefArray, Value      }, 2, Value }},
     { ocSumProduct,      {{ ForceArray                                           }, 1, Value }},
-    { ocSumSQ,           {{ Reference                                            }, 1, Value }},
+    { ocSumSQ,           {{ ReferenceOrRefArray                                  }, 1, Value }},
     { ocSumX2DY2,        {{ ForceArray, ForceArray                               }, 0, Value }},
     { ocSumX2MY2,        {{ ForceArray, ForceArray                               }, 0, Value }},
     { ocSumXMY2,         {{ ForceArray, ForceArray                               }, 0, Value }},
@@ -241,12 +255,13 @@ const ScParameterClassification::RawData ScParameterClassification::pRawData[] =
     { ocTextJoin_MS,     {{ Reference, Value, Reference                          }, 1, Value }},
     { ocTrend,           {{ Reference, Reference, Reference, Value               }, 0, Value }},
     { ocTrimMean,        {{ Reference, Value                                     }, 0, Value }},
+    { ocTrue,            {{ Bounds                                               }, 0, Value }},
     { ocUnion,           {{ Reference, Reference                                 }, 0, Reference }},
     { ocVLookup,         {{ Value, ReferenceOrForceArray, Value, Value           }, 0, Value }},
-    { ocVar,             {{ Reference                                            }, 1, Value }},
-    { ocVarA,            {{ Reference                                            }, 1, Value }},
-    { ocVarP,            {{ Reference                                            }, 1, Value }},
-    { ocVarPA,           {{ Reference                                            }, 1, Value }},
+    { ocVar,             {{ ReferenceOrRefArray                                  }, 1, Value }},
+    { ocVarA,            {{ ReferenceOrRefArray                                  }, 1, Value }},
+    { ocVarP,            {{ ReferenceOrRefArray                                  }, 1, Value }},
+    { ocVarPA,           {{ ReferenceOrRefArray                                  }, 1, Value }},
     { ocVarP_MS,         {{ Reference                                            }, 1, Value }},
     { ocVarS,            {{ Reference                                            }, 1, Value }},
     { ocWorkday_MS,      {{ Value, Value, Value, Reference                       }, 0, Value }},
@@ -286,7 +301,7 @@ void ScParameterClassification::Init()
         else
         {
             RunData* pRun = &pData[ pRaw->eOp ];
-            SAL_WARN_IF(pRun->aData.nParam[0] != Unknown,  "sc.core", "already assigned: " << (int)pRaw->eOp);
+            SAL_WARN_IF(pRun->aData.nParam[0] != Unknown,  "sc.core", "already assigned: " << static_cast<int>(pRaw->eOp));
             memcpy( &(pRun->aData), &(pRaw->aData), sizeof(CommonData));
             // fill 0-initialized fields with real values
             if ( pRun->aData.nRepeatLast )
@@ -323,7 +338,7 @@ void ScParameterClassification::Init()
                         pRun->aData.nParam[CommonData::nMaxParams-1] != Bounds)
                     pRun->nMinParams = CommonData::nMaxParams;
             }
-            for (formula::ParamClass & j : pRun->aData.nParam)
+            for (const formula::ParamClass & j : pRun->aData.nParam)
             {
                 if ( j == ForceArray || j == ReferenceOrForceArray )
                 {
@@ -360,7 +375,7 @@ formula::ParamClass ScParameterClassification::GetParameterType(
             // added to avoid warnings
         }
     }
-    if ( 0 <= (short)eOp && eOp <= SC_OPCODE_LAST_OPCODE_ID )
+    if ( 0 <= static_cast<short>(eOp) && eOp <= SC_OPCODE_LAST_OPCODE_ID )
     {
         sal_uInt8 nRepeat;
         formula::ParamClass eType;
@@ -393,7 +408,7 @@ formula::ParamClass ScParameterClassification::GetExternalParameterType( const f
         return eRet;
 
     // similar to ScInterpreter::ScExternal()
-    OUString aFuncName = ScGlobal::pCharClass->uppercase( pToken->GetExternal());
+    OUString aFuncName = ScGlobal::getCharClassPtr()->uppercase( pToken->GetExternal());
     {
         const LegacyFuncData* pLegacyFuncData = ScGlobal::GetLegacyFuncCollection()->findByName(aFuncName);
         if (pLegacyFuncData)
@@ -519,7 +534,7 @@ void ScParameterClassification::MergeArgumentsFromFunctionResource()
 
 void ScParameterClassification::GenerateDocumentation()
 {
-    static const sal_Char aEnvVarName[] = "OOO_CALC_GENPARCLASSDOC";
+    static const char aEnvVarName[] = "OOO_CALC_GENPARCLASSDOC";
     if ( !getenv( aEnvVarName) )
         return;
     MergeArgumentsFromFunctionResource();
@@ -610,6 +625,9 @@ void ScParameterClassification::GenerateDocumentation()
                     case Reference :
                         aStr.append(" Reference");
                     break;
+                    case ReferenceOrRefArray :
+                        aStr.append(" ReferenceOrRefArray");
+                    break;
                     case Array :
                         aStr.append(" Array");
                     break;
@@ -661,6 +679,9 @@ void ScParameterClassification::GenerateDocumentation()
                 case Reference :
                     aStr.append(" -> Reference");
                 break;
+                case ReferenceOrRefArray :
+                    aStr.append(" -> ReferenceOrRefArray");
+                break;
                 case Array :
                     aStr.append(" -> Array");
                 break;
@@ -676,7 +697,7 @@ void ScParameterClassification::GenerateDocumentation()
                 default:
                     aStr.append(" (-> ???, classification error?)");
             }
-            /* We could add yet another log domain for this, if we wanted.. but
+            /* We could add yet another log domain for this, if we wanted... but
              * as it more seldom than rarely used it's not actually necessary,
              * just grep output. */
             SAL_INFO( "sc.core", "CALC_GENPARCLASSDOC: " << aStr.makeStringAndClear());

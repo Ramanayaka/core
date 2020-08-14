@@ -21,7 +21,6 @@
 #include <com/sun/star/linguistic2/XSearchableDictionaryList.hpp>
 #include <com/sun/star/linguistic2/SpellFailure.hpp>
 #include <com/sun/star/registry/XRegistryKey.hpp>
-#include <comphelper/string.hxx>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <tools/debug.hxx>
@@ -51,10 +50,10 @@ sal_Bool operator == ( const Locale &rL1, const Locale &rL2 )
 
 
 SpellChecker::SpellChecker() :
-    aEvtListeners   ( GetLinguMutex() )
+    aEvtListeners   ( GetLinguMutex() ),
+    pPropHelper(NULL),
+    bDisposing(sal_False)
 {
-    bDisposing = sal_False;
-    pPropHelper = NULL;
 }
 
 
@@ -454,7 +453,7 @@ sal_Bool SAL_CALL SpellChecker_writeInfo(
 }
 
 
-void * SAL_CALL SpellChecker_getFactory( const sal_Char * pImplName,
+void * SAL_CALL SpellChecker_getFactory( const char * pImplName,
             XMultiServiceFactory * pServiceManager, void *  )
 {
     void * pRet = 0;

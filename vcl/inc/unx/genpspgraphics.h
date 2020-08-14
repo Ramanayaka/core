@@ -23,29 +23,27 @@
 #include <vcl/vclenum.hxx>
 #include <config_cairo_canvas.h>
 
-#include "unx/fontmanager.hxx"
-#include "salgdi.hxx"
-#include "sallayout.hxx"
-#include "vclpluginapi.h"
+#include <unx/fontmanager.hxx>
+#include <salgdi.hxx>
+#include <sallayout.hxx>
 
 class PhysicalFontFace;
 class PhysicalFontCollection;
 
 namespace psp { struct JobData; class PrinterGfx; }
 
-class FreetypeFont;
+class FreetypeFontInstance;
 class FontAttributes;
 class SalInfoPrinter;
-class GlyphCache;
 class ImplFontMetricData;
 
-class VCL_DLLPUBLIC GenPspGraphics : public SalGraphics
+class VCL_DLLPUBLIC GenPspGraphics final : public SalGraphics
 {
- protected:
     psp::JobData*           m_pJobData;
     psp::PrinterGfx*        m_pPrinterGfx;
 
-    FreetypeFont*           m_pFreetypeFont[ MAX_FALLBACK ];
+    rtl::Reference<FreetypeFontInstance>
+                            m_pFreetypeFont[ MAX_FALLBACK ];
 public:
                             GenPspGraphics();
     virtual                ~GenPspGraphics() override;
@@ -76,17 +74,17 @@ public:
     virtual bool            setClipRegion( const vcl::Region& ) override;
 
     virtual void            SetLineColor() override;
-    virtual void            SetLineColor( SalColor nSalColor ) override;
+    virtual void            SetLineColor( Color nColor ) override;
     virtual void            SetFillColor() override;
-    virtual void            SetFillColor( SalColor nSalColor ) override;
-    virtual void            SetXORMode( bool bSet ) override;
+    virtual void            SetFillColor( Color nColor ) override;
+    virtual void            SetXORMode( bool bSet, bool ) override;
     virtual void            SetROPLineColor( SalROPColor nROPColor ) override;
     virtual void            SetROPFillColor( SalROPColor nROPColor ) override;
 
-    virtual void            SetTextColor( SalColor nSalColor ) override;
-    virtual void            SetFont( FontSelectPattern*, int nFallbackLevel ) override;
+    virtual void            SetTextColor( Color nColor ) override;
+    virtual void            SetFont(LogicalFontInstance*, int nFallbackLevel) override;
     virtual void            GetFontMetric( ImplFontMetricDataRef&, int nFallbackLevel ) override;
-    virtual const FontCharMapRef GetFontCharMap() const override;
+    virtual FontCharMapRef  GetFontCharMap() const override;
     virtual bool            GetFontCapabilities(vcl::FontCapabilities &rFontCapabilities) const override;
     virtual void            GetDevFontList( PhysicalFontCollection* ) override;
     // graphics must drop any cached font info
@@ -96,8 +94,7 @@ public:
                                             const OUString& rFontName ) override;
     static bool             AddTempDevFontHelper( PhysicalFontCollection* pFontCollection,
                                                   const OUString& rFileURL,
-                                                  const OUString& rFontName,
-                                                  GlyphCache &rGC );
+                                                  const OUString& rFontName);
 
     virtual bool            CreateFontSubset( const OUString& rToFile,
                                               const PhysicalFontFace*,
@@ -112,13 +109,12 @@ public:
                                             bool bVertical,
                                             std::vector< sal_Int32 >& rWidths,
                                             Ucs2UIntMap& rUnicodeEnc ) override;
-    virtual bool            GetGlyphBoundRect(const GlyphItem&, tools::Rectangle&) override;
-    virtual bool            GetGlyphOutline(const GlyphItem&, basegfx::B2DPolyPolygon&) override;
-    virtual SalLayout*      GetTextLayout( ImplLayoutArgs&, int nFallbackLevel ) override;
-    virtual void            DrawTextLayout( const CommonSalLayout& ) override;
+    virtual std::unique_ptr<GenericSalLayout>
+                            GetTextLayout(int nFallbackLevel) override;
+    virtual void            DrawTextLayout( const GenericSalLayout& ) override;
     virtual bool            supportsOperation( OutDevSupportType ) const override;
     virtual void            drawPixel( long nX, long nY ) override;
-    virtual void            drawPixel( long nX, long nY, SalColor nSalColor ) override;
+    virtual void            drawPixel( long nX, long nY, Color nColor ) override;
     virtual void            drawLine( long nX1, long nY1, long nX2, long nY2 ) override;
     virtual void            drawRect( long nX, long nY, long nWidth, long nHeight ) override;
     virtual void            drawPolyLine( sal_uInt32 nPoints, const SalPoint* pPtAry ) override;
@@ -126,14 +122,22 @@ public:
     virtual void            drawPolyPolygon( sal_uInt32 nPoly,
                                              const sal_uInt32* pPoints,
                                              PCONSTSALPOINT* pPtAry ) override;
-    virtual bool            drawPolyPolygon( const basegfx::B2DPolyPolygon&,
-                                             double fTransparency ) override;
-    virtual bool            drawPolyLine( const basegfx::B2DPolygon&,
-                                          double fTransparency,
-                                          const basegfx::B2DVector& rLineWidths,
-                                          basegfx::B2DLineJoin,
-                                          css::drawing::LineCap,
-                                          double fMiterMinimumAngle) override;
+
+    virtual bool            drawPolyPolygon(
+                                const basegfx::B2DHomMatrix& rObjectToDevice,
+                                const basegfx::B2DPolyPolygon&,
+                                double fTransparency) override;
+
+    virtual bool            drawPolyLine(
+                                const basegfx::B2DHomMatrix& rObjectToDevice,
+                                const basegfx::B2DPolygon&,
+                                double fTransparency,
+                                double fLineWidth,
+                                const std::vector< double >* pStroke, // MM01
+                                basegfx::B2DLineJoin,
+                                css::drawing::LineCap,
+                                double fMiterMinimumAngle,
+                                bool bPixelSnapHairline) override;
     virtual bool            drawPolyLineBezier( sal_uInt32 nPoints,
                                                 const SalPoint* pPtAry,
                                                 const PolyFlags* pFlgAry ) override;
@@ -162,16 +166,16 @@ public:
                                         const SalBitmap& rTransparentBitmap ) override;
     virtual void            drawMask( const SalTwoRect& rPosAry,
                                       const SalBitmap& rSalBitmap,
-                                      SalColor nMaskColor ) override;
-    virtual SalBitmap*      getBitmap( long nX, long nY, long nWidth, long nHeight ) override;
-    virtual SalColor        getPixel( long nX, long nY ) override;
+                                      Color nMaskColor ) override;
+    virtual std::shared_ptr<SalBitmap> getBitmap( long nX, long nY, long nWidth, long nHeight ) override;
+    virtual Color           getPixel( long nX, long nY ) override;
     virtual void            invert( long nX, long nY, long nWidth, long nHeight,
                                     SalInvert nFlags ) override;
     virtual void            invert( sal_uInt32 nPoints, const SalPoint* pPtAry,
                                     SalInvert nFlags ) override;
 
     virtual bool            drawEPS( long nX, long nY, long nWidth, long nHeight,
-                                     void* pPtr, sal_uIntPtr nSize ) override;
+                                     void* pPtr, sal_uInt32 nSize ) override;
     virtual bool            blendBitmap( const SalTwoRect&,
                                          const SalBitmap& rBitmap ) override;
     virtual bool            blendAlphaBitmap( const SalTwoRect&,
@@ -191,14 +195,14 @@ public:
 
     virtual SystemGraphicsData GetGraphicsData() const override;
 
+    virtual OUString getRenderBackendName() const override { return "genpsp"; }
+
 #if ENABLE_CAIRO_CANVAS
     virtual bool            SupportsCairo() const override;
     virtual cairo::SurfaceSharedPtr CreateSurface(const cairo::CairoSurfaceSharedPtr& rSurface) const override;
     virtual cairo::SurfaceSharedPtr CreateSurface(const OutputDevice& rRefDevice, int x, int y, int width, int height) const override;
     virtual cairo::SurfaceSharedPtr CreateBitmapSurface(const OutputDevice& rRefDevice, const BitmapSystemData& rData, const Size& rSize) const override;
     virtual css::uno::Any   GetNativeSurfaceHandle(cairo::SurfaceSharedPtr& rSurface, const basegfx::B2ISize& rSize) const override;
-
-    virtual SystemFontData  GetSysFontData( int nFallbacklevel ) const override;
 #endif // ENABLE_CAIRO_CANVAS
 };
 

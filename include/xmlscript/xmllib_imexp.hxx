@@ -19,13 +19,14 @@
 #ifndef INCLUDED_XMLSCRIPT_XMLLIB_IMEXP_HXX
 #define INCLUDED_XMLSCRIPT_XMLLIB_IMEXP_HXX
 
-#include <com/sun/star/xml/sax/XWriter.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 
-#include <xmlscript/xmlns.h>
 #include <xmlscript/xmlscriptdllapi.h>
 
 #include <memory>
+
+namespace com::sun::star::xml::sax { class XDocumentHandler; }
+namespace com::sun::star::xml::sax { class XWriter; }
 
 namespace xmlscript
 {
@@ -59,23 +60,23 @@ struct XMLSCRIPT_DLLPUBLIC LibDescriptorArray
 };
 
 XMLSCRIPT_DLLPUBLIC void
-SAL_CALL exportLibraryContainer(
+exportLibraryContainer(
     css::uno::Reference< css::xml::sax::XWriter > const & xOut,
     const LibDescriptorArray* pLibArray );
 
 XMLSCRIPT_DLLPUBLIC css::uno::Reference<
     css::xml::sax::XDocumentHandler >
-SAL_CALL importLibraryContainer( LibDescriptorArray* pLibArray );
+importLibraryContainer( LibDescriptorArray* pLibArray );
 
 
 XMLSCRIPT_DLLPUBLIC void
-SAL_CALL exportLibrary(
+exportLibrary(
     css::uno::Reference< css::xml::sax::XWriter > const & xOut,
     const LibDescriptor& rLib );
 
 XMLSCRIPT_DLLPUBLIC css::uno::Reference<
     css::xml::sax::XDocumentHandler >
-SAL_CALL importLibrary( LibDescriptor& rLib );
+importLibrary( LibDescriptor& rLib );
 
 }
 

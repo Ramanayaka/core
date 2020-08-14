@@ -10,31 +10,34 @@
 #include <memory>
 #include <sal/config.h>
 
-#include "PivotTableDataProvider.hxx"
-#include "PivotTableDataSource.hxx"
-#include "PivotTableDataSequence.hxx"
+#include <PivotTableDataProvider.hxx>
+#include <PivotTableDataSource.hxx>
+#include <PivotTableDataSequence.hxx>
 
-#include "miscuno.hxx"
-#include "document.hxx"
-#include "unonames.hxx"
-#include "docsh.hxx"
-#include "scresid.hxx"
-#include "globstr.hrc"
-#include "scres.hrc"
-#include "dpobject.hxx"
-#include "hints.hxx"
+#include <miscuno.hxx>
+#include <document.hxx>
+#include <unonames.hxx>
+#include <scresid.hxx>
+#include <globstr.hrc>
+#include <strings.hrc>
+#include <dpobject.hxx>
+#include <hints.hxx>
 
+#include <o3tl/safeint.hxx>
 #include <vcl/svapp.hxx>
 #include <sfx2/objsh.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/sequence.hxx>
+#include <comphelper/processfactory.hxx>
 
 #include <com/sun/star/chart2/data/LabeledDataSequence.hpp>
 #include <com/sun/star/chart/ChartDataRowSource.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 
 #include <com/sun/star/sheet/XDataPilotResults.hpp>
 #include <com/sun/star/sheet/DataResultFlags.hpp>
 
+#include <com/sun/star/sheet/XDimensionsSupplier.hpp>
 #include <com/sun/star/sheet/XHierarchiesSupplier.hpp>
 #include <com/sun/star/sheet/XLevelsSupplier.hpp>
 #include <com/sun/star/sheet/XDataPilotMemberResults.hpp>
@@ -42,6 +45,7 @@
 #include <com/sun/star/sheet/XMembersSupplier.hpp>
 
 #include <com/sun/star/chart/ChartDataChangeEvent.hpp>
+#include <com/sun/star/container/XNamed.hpp>
 
 #include <unordered_map>
 
@@ -51,22 +55,22 @@ namespace sc
 {
 namespace
 {
-const OUString constIdCategories("categories");
-const OUString constIdLabel("label");
-const OUString constIdData("data");
+const OUStringLiteral constIdCategories("categories");
+const OUStringLiteral constIdLabel("label");
+const OUStringLiteral constIdData("data");
 
 const SfxItemPropertyMapEntry* lcl_GetDataProviderPropertyMap()
 {
     static const SfxItemPropertyMapEntry aDataProviderPropertyMap_Impl[] =
     {
-        { OUString(SC_UNONAME_INCLUDEHIDDENCELLS), 0, cppu::UnoType<bool>::get(), 0, 0 },
-        { OUString(SC_UNONAME_USE_INTERNAL_DATA_PROVIDER), 0, cppu::UnoType<bool>::get(), 0, 0 },
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        { SC_UNONAME_INCLUDEHIDDENCELLS, 0, cppu::UnoType<bool>::get(), 0, 0 },
+        { SC_UNONAME_USE_INTERNAL_DATA_PROVIDER, 0, cppu::UnoType<bool>::get(), 0, 0 },
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     return aDataProviderPropertyMap_Impl;
 }
 
-uno::Reference<frame::XModel> lcl_GetXModel(ScDocument * pDoc)
+uno::Reference<frame::XModel> lcl_GetXModel(const ScDocument * pDoc)
 {
     uno::Reference<frame::XModel> xModel;
     SfxObjectShell* pObjSh(pDoc ? pDoc->GetDocumentShell() : nullptr);
@@ -104,7 +108,8 @@ std::vector<OUString> lcl_getVisiblePageMembers(const uno::Reference<uno::XInter
     if (!xMembersAccess.is())
         return aResult;
 
-    for (OUString const & rMemberNames : xMembersAccess->getElementNames())
+    const css::uno::Sequence<OUString> aMembersNames = xMembersAccess->getElementNames();
+    for (OUString const & rMemberNames : aMembersNames)
     {
         uno::Reference<beans::XPropertySet> xProperties(xMembersAccess->getByName(rMemberNames), uno::UNO_QUERY);
         if (!xProperties.is())
@@ -195,13 +200,8 @@ uno::Reference<chart2::data::XDataSource> SAL_CALL
     if (!m_pDocument)
         throw uno::RuntimeException();
 
-    bool bLabel = true;
-    bool bCategories = false;
     bool bOrientCol = true;
     OUString aRangeRepresentation;
-    OUString sPivotTable;
-    uno::Sequence<sal_Int32> aSequenceMapping;
-    bool bTimeBased = false;
 
     for (beans::PropertyValue const & rProperty : aArguments)
     {
@@ -216,18 +216,8 @@ uno::Reference<chart2::data::XDataSource> SAL_CALL
             }
             bOrientCol = (eSource == chart::ChartDataRowSource_COLUMNS);
         }
-        else if (rProperty.Name == "FirstCellAsLabel")
-            rProperty.Value >>= bLabel;
-        else if (rProperty.Name == "HasCategories")
-            rProperty.Value >>= bCategories;
         else if (rProperty.Name == "CellRangeRepresentation")
             rProperty.Value >>= aRangeRepresentation;
-        else if (rProperty.Name == "SequenceMapping")
-            rProperty.Value >>= aSequenceMapping;
-        else if (rProperty.Name == "TimeBased")
-            rProperty.Value >>= bTimeBased;
-        else if (rProperty.Name == "ConnectedPivotTable")
-            rProperty.Value >>= sPivotTable;
     }
 
     uno::Reference<chart2::data::XDataSource> xResult;
@@ -266,7 +256,7 @@ PivotTableDataProvider::createCategoriesDataSource(bool bOrientationIsColumn)
     {
         uno::Reference<chart2::data::XLabeledDataSequence> xResult = newLabeledDataSequence();
         std::unique_ptr<PivotTableDataSequence> pSequence;
-        pSequence.reset(new PivotTableDataSequence(m_pDocument, m_sPivotTableName,
+        pSequence.reset(new PivotTableDataSequence(m_pDocument,
                                                    lcl_identifierForCategories(), rCategories));
         pSequence->setRole("categories");
         xResult->setValues(uno::Reference<chart2::data::XDataSequence>(pSequence.release()));
@@ -296,7 +286,9 @@ void PivotTableDataProvider::collectPivotTableData()
     m_aFieldOutputDescriptionMap.clear();
 
     uno::Reference<sheet::XDataPilotResults> xDPResults(pDPObject->GetSource(), uno::UNO_QUERY);
-    uno::Sequence<uno::Sequence<sheet::DataResult>> xDataResultsSequence = xDPResults->getResults();
+    if (!xDPResults.is())
+        return;
+    const uno::Sequence<uno::Sequence<sheet::DataResult>> xDataResultsSequence = xDPResults->getResults();
 
     double fNan;
     rtl::math::setNan(&fNan);
@@ -315,7 +307,7 @@ void PivotTableDataProvider::collectPivotTableData()
                 continue;
             if (rDataResult.Flags == 0 || rDataResult.Flags & css::sheet::DataResultFlags::HASDATA)
             {
-                aRow.push_back(ValueAndFormat(rDataResult.Flags ? rDataResult.Value : fNan, 0));
+                aRow.emplace_back(rDataResult.Flags ? rDataResult.Value : fNan, 0);
                 if (rDataResult.Flags != 0) // set as valid only if we have data
                 {
                     bRowEmpty = false;
@@ -342,25 +334,25 @@ void PivotTableDataProvider::collectPivotTableData()
     uno::Reference<sheet::XDimensionsSupplier> xDimensionsSupplier(pDPObject->GetSource());
     uno::Reference<container::XIndexAccess> xDims = new ScNameToIndexAccess(xDimensionsSupplier->getDimensions());
 
-    std::unordered_map<OUString, sal_Int32, OUStringHash> aDataFieldNumberFormatMap;
+    std::unordered_map<OUString, sal_Int32> aDataFieldNumberFormatMap;
     std::vector<OUString> aDataFieldNamesVectors;
 
-    std::unordered_map<OUString, OUString, OUStringHash> aDataFieldCaptionNames;
+    std::unordered_map<OUString, OUString> aDataFieldCaptionNames;
 
     sheet::DataPilotFieldOrientation eDataFieldOrientation = sheet::DataPilotFieldOrientation_HIDDEN;
 
     for (sal_Int32 nDim = 0; nDim < xDims->getCount(); nDim++)
     {
-        uno::Reference<uno::XInterface> xDim = ScUnoHelpFunctions::AnyToInterface(xDims->getByIndex(nDim));
+        uno::Reference<uno::XInterface> xDim(xDims->getByIndex(nDim), uno::UNO_QUERY);
         uno::Reference<beans::XPropertySet> xDimProp(xDim, uno::UNO_QUERY);
         uno::Reference<sheet::XHierarchiesSupplier> xDimSupp(xDim, uno::UNO_QUERY);
 
         if (!xDimProp.is() || !xDimSupp.is())
             continue;
 
-        sheet::DataPilotFieldOrientation eDimOrient = sheet::DataPilotFieldOrientation(
+        sheet::DataPilotFieldOrientation eDimOrient =
             ScUnoHelpFunctions::GetEnumProperty(xDimProp, SC_UNO_DP_ORIENTATION,
-                                                sheet::DataPilotFieldOrientation_HIDDEN));
+                                                sheet::DataPilotFieldOrientation_HIDDEN);
 
         if (eDimOrient == sheet::DataPilotFieldOrientation_HIDDEN)
             continue;
@@ -370,9 +362,8 @@ void PivotTableDataProvider::collectPivotTableData()
         if (nHierarchy >= xHierarchies->getCount())
             nHierarchy = 0;
 
-        uno::Reference<uno::XInterface> xHierarchy = ScUnoHelpFunctions::AnyToInterface(xHierarchies->getByIndex(nHierarchy));
-
-        uno::Reference<sheet::XLevelsSupplier> xLevelsSupplier(xHierarchy, uno::UNO_QUERY);
+        uno::Reference<sheet::XLevelsSupplier> xLevelsSupplier(xHierarchies->getByIndex(nHierarchy),
+                                                               uno::UNO_QUERY);
 
         if (!xLevelsSupplier.is())
             continue;
@@ -381,7 +372,7 @@ void PivotTableDataProvider::collectPivotTableData()
 
         for (long nLevel = 0; nLevel < xLevels->getCount(); nLevel++)
         {
-            uno::Reference<uno::XInterface> xLevel = ScUnoHelpFunctions::AnyToInterface(xLevels->getByIndex(nLevel));
+            uno::Reference<uno::XInterface> xLevel(xLevels->getByIndex(nLevel), uno::UNO_QUERY);
             uno::Reference<container::XNamed> xLevelName(xLevel, uno::UNO_QUERY);
             uno::Reference<sheet::XDataPilotMemberResults> xLevelResult(xLevel, uno::UNO_QUERY );
 
@@ -396,9 +387,9 @@ void PivotTableDataProvider::collectPivotTableData()
                 {
                     case sheet::DataPilotFieldOrientation_COLUMN:
                     {
-                        m_aColumnFields.push_back(chart2::data::PivotTableFieldEntry{xLevelName->getName(), nDim, nDimPos, bHasHiddenMember});
+                        m_aColumnFields.emplace_back(xLevelName->getName(), nDim, nDimPos, bHasHiddenMember);
 
-                        uno::Sequence<sheet::MemberResult> aSequence = xLevelResult->getResults();
+                        const uno::Sequence<sheet::MemberResult> aSequence = xLevelResult->getResults();
                         size_t i = 0;
                         OUString sCaption;
                         OUString sName;
@@ -420,7 +411,7 @@ void PivotTableDataProvider::collectPivotTableData()
                                 if (i >= m_aLabels.size())
                                     m_aLabels.resize(i + 1);
 
-                                if (size_t(nDimPos) >= m_aLabels[i].size())
+                                if (o3tl::make_unsigned(nDimPos) >= m_aLabels[i].size())
                                     m_aLabels[i].resize(nDimPos + 1);
                                 m_aLabels[i][nDimPos] = ValueAndFormat(sCaption);
 
@@ -440,9 +431,9 @@ void PivotTableDataProvider::collectPivotTableData()
 
                     case sheet::DataPilotFieldOrientation_ROW:
                     {
-                        m_aRowFields.push_back(chart2::data::PivotTableFieldEntry{xLevelName->getName(), nDim, nDimPos, bHasHiddenMember});
+                        m_aRowFields.emplace_back(xLevelName->getName(), nDim, nDimPos, bHasHiddenMember);
 
-                        uno::Sequence<sheet::MemberResult> aSequence = xLevelResult->getResults();
+                        const uno::Sequence<sheet::MemberResult> aSequence = xLevelResult->getResults();
 
                         size_t i = 0;
                         size_t nEachIndex = 0;
@@ -460,11 +451,8 @@ void PivotTableDataProvider::collectPivotTableData()
                             {
                                 if (!bHasContinueFlag)
                                 {
-                                    double fValue = rMember.Value;
-                                    if (rtl::math::isNan(fValue))
-                                        pItem.reset(new ValueAndFormat(rMember.Caption));
-                                    else
-                                        pItem.reset(new ValueAndFormat(fValue, nNumberFormat));
+                                    // Chart2 does not use number format for labels, so use the display string.
+                                    pItem.reset(new ValueAndFormat(rMember.Caption));
                                 }
 
                                 if (bFound)
@@ -472,11 +460,11 @@ void PivotTableDataProvider::collectPivotTableData()
                                     if (i >= m_aCategoriesRowOrientation.size())
                                         m_aCategoriesRowOrientation.resize(i + 1);
 
-                                    if (size_t(nDimPos) >= m_aCategoriesColumnOrientation.size())
+                                    if (o3tl::make_unsigned(nDimPos) >= m_aCategoriesColumnOrientation.size())
                                         m_aCategoriesColumnOrientation.resize(nDimPos + 1);
                                     m_aCategoriesColumnOrientation[nDimPos].push_back(*pItem);
 
-                                    if (size_t(nDimPos) >= m_aCategoriesRowOrientation[i].size())
+                                    if (o3tl::make_unsigned(nDimPos) >= m_aCategoriesRowOrientation[i].size())
                                         m_aCategoriesRowOrientation[i].resize(nDimPos + 1);
                                     m_aCategoriesRowOrientation[i][nDimPos] = *pItem;
 
@@ -501,7 +489,7 @@ void PivotTableDataProvider::collectPivotTableData()
 
                     case sheet::DataPilotFieldOrientation_PAGE:
                     {
-                        m_aPageFields.push_back(chart2::data::PivotTableFieldEntry{xLevelName->getName(), nDim, nDimPos, bHasHiddenMember});
+                        m_aPageFields.emplace_back(xLevelName->getName(), nDim, nDimPos, bHasHiddenMember);
 
                         // Resolve filtering
                         OUString aFieldOutputDescription;
@@ -525,7 +513,7 @@ void PivotTableDataProvider::collectPivotTableData()
                     case sheet::DataPilotFieldOrientation_DATA:
                     {
                         aDataFieldNumberFormatMap[xLevelName->getName()] = nNumberFormat;
-                        m_aDataFields.push_back(chart2::data::PivotTableFieldEntry{xLevelName->getName(), nDim, nDimPos, bHasHiddenMember});
+                        m_aDataFields.emplace_back(xLevelName->getName(), nDim, nDimPos, bHasHiddenMember);
                     }
                     break;
 
@@ -600,7 +588,7 @@ PivotTableDataProvider::assignValuesToDataSequence(size_t nIndex)
 
     std::vector<ValueAndFormat> const & rRowOfData = m_aDataRowVector[nIndex];
     std::unique_ptr<PivotTableDataSequence> pSequence;
-    pSequence.reset(new PivotTableDataSequence(m_pDocument, m_sPivotTableName, sDataID, rRowOfData));
+    pSequence.reset(new PivotTableDataSequence(m_pDocument, sDataID, rRowOfData));
     pSequence->setRole("values-y");
     xDataSequence.set(pSequence.release());
     return xDataSequence;
@@ -613,33 +601,33 @@ PivotTableDataProvider::assignLabelsToDataSequence(size_t nIndex)
 
     OUString sLabelID = lcl_identifierForLabel(nIndex);
 
-    OUString aLabel;
+    OUStringBuffer aLabel;
     bool bFirst = true;
 
     if (m_aLabels.empty())
     {
-        aLabel = ScGlobal::GetRscString(STR_PIVOT_TOTAL);
+        aLabel = ScResId(STR_PIVOT_TOTAL);
     }
-    else
+    else if (nIndex < m_aLabels.size())
     {
         for (ValueAndFormat const & rItem : m_aLabels[nIndex])
         {
             if (bFirst)
             {
-                aLabel += rItem.m_aString;
+                aLabel.append(rItem.m_aString);
                 bFirst = false;
             }
             else
             {
-                aLabel += " - " + rItem.m_aString;
+                aLabel.append(" - ").append(rItem.m_aString);
             }
         }
     }
 
-    std::vector<ValueAndFormat> aLabelVector { ValueAndFormat(aLabel) };
+    std::vector<ValueAndFormat> aLabelVector { ValueAndFormat(aLabel.makeStringAndClear()) };
 
     std::unique_ptr<PivotTableDataSequence> pSequence;
-    pSequence.reset(new PivotTableDataSequence(m_pDocument, m_sPivotTableName,
+    pSequence.reset(new PivotTableDataSequence(m_pDocument,
                                                sLabelID, aLabelVector));
     pSequence->setRole("values-y");
     xDataSequence.set(pSequence.release());
@@ -657,7 +645,7 @@ css::uno::Reference<css::chart2::data::XDataSequence>
     std::vector<ValueAndFormat> const & rCategories = m_aCategoriesColumnOrientation.back();
 
     std::unique_ptr<PivotTableDataSequence> pSequence;
-    pSequence.reset(new PivotTableDataSequence(m_pDocument, m_sPivotTableName,
+    pSequence.reset(new PivotTableDataSequence(m_pDocument,
                                                lcl_identifierForCategories(), rCategories));
     pSequence->setRole("categories");
     xDataSequence.set(uno::Reference<chart2::data::XDataSequence>(pSequence.release()));
@@ -836,7 +824,7 @@ void SAL_CALL PivotTableDataProvider::addModifyListener(const uno::Reference< ut
 {
     SolarMutexGuard aGuard;
 
-    m_aValueListeners.push_back(uno::Reference<util::XModifyListener>(aListener));
+    m_aValueListeners.emplace_back(aListener);
 }
 
 void SAL_CALL PivotTableDataProvider::removeModifyListener(const uno::Reference<util::XModifyListener>& aListener )
@@ -867,13 +855,11 @@ uno::Reference< beans::XPropertySetInfo> SAL_CALL
 
 void SAL_CALL PivotTableDataProvider::setPropertyValue(const OUString& rPropertyName, const uno::Any& rValue)
 {
-    if (rPropertyName == SC_UNONAME_INCLUDEHIDDENCELLS)
-    {
-        if (!(rValue >>= m_bIncludeHiddenCells))
-            throw lang::IllegalArgumentException();
-    }
-    else
-        throw beans::UnknownPropertyException();
+    if (rPropertyName != SC_UNONAME_INCLUDEHIDDENCELLS)
+        throw beans::UnknownPropertyException(rPropertyName);
+
+    if (!(rValue >>= m_bIncludeHiddenCells))
+        throw lang::IllegalArgumentException();
 }
 
 uno::Any SAL_CALL PivotTableDataProvider::getPropertyValue(const OUString& rPropertyName)
@@ -887,7 +873,7 @@ uno::Any SAL_CALL PivotTableDataProvider::getPropertyValue(const OUString& rProp
         aRet <<= m_pDocument->PastingDrawFromOtherDoc();
     }
     else
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(rPropertyName);
     return aRet;
 }
 

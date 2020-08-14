@@ -20,6 +20,8 @@
 #ifndef INCLUDED_XMLOFF_SOURCE_TEXT_XMLTEXTLISTITEMCONTEXT_HXX
 #define INCLUDED_XMLOFF_SOURCE_TEXT_XMLTEXTLISTITEMCONTEXT_HXX
 
+#include <com/sun/star/container/XIndexReplace.hpp>
+
 #include <xmloff/xmlictxt.hxx>
 
 class XMLTextImportHelper;
@@ -49,7 +51,7 @@ public:
 
     virtual void EndElement() override;
 
-    SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                  const OUString& rLocalName,
                  const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
 

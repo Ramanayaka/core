@@ -17,11 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
+#include <config_java.h>
 
 #include "desktopcontext.hxx"
 
-#include <vcl/svapp.hxx>
 #include <svtools/javainteractionhandler.hxx>
 
 using namespace com::sun::star::uno;

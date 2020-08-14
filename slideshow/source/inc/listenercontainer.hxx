@@ -19,13 +19,12 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_INC_LISTENERCONTAINER_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_INC_LISTENERCONTAINER_HXX
 
-#include <osl/mutex.hxx>
 #include <algorithm>
+#include <memory>
 #include <vector>
 #include <iterator>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 struct EmptyBase
 {
@@ -85,7 +84,7 @@ template< typename ListenerT > struct ListenerOperations
         bool bRet(false);
         for( const auto& rCurr : rContainer )
         {
-            if( FunctionApply< typename ::std::result_of< FuncT( const typename ContainerT::value_type& ) >::type,
+            if( FunctionApply< typename ::std::invoke_result< FuncT, const typename ContainerT::value_type& >::type,
                                typename ContainerT::value_type >::apply(
                                    func,
                                    rCurr) )
@@ -136,7 +135,7 @@ struct ListenerOperations< std::weak_ptr<ListenerTargetT> >
             std::shared_ptr<ListenerTargetT> pListener( rCurr.lock() );
 
             if( pListener.get() &&
-                FunctionApply<typename ::std::result_of<FuncT (std::shared_ptr<ListenerTargetT> const&)>::type,
+                FunctionApply<typename ::std::invoke_result<FuncT, std::shared_ptr<ListenerTargetT> const&>::type,
                                std::shared_ptr<ListenerTargetT> >::apply(func,pListener) )
             {
                 bRet = true;
@@ -167,7 +166,7 @@ struct ListenerOperations< std::weak_ptr<ListenerTargetT> >
 
 /** Container for objects that can be notified.
 
-    This templatized container holds listener objects, than can get
+    This templatized container holds listener objects, then can get
     notified (by calling certain methods on them).
 
     @tpl Listener
@@ -196,7 +195,6 @@ template< typename ListenerT,
 public:
     typedef ListenerT        listener_type;
     typedef ContainerT       container_type;
-    typedef MutexHolderBaseT mutex_type;
 
     /** Check whether listener container is empty
 
@@ -413,8 +411,7 @@ class ThreadUnsafeListenerContainer : public ListenerContainerBase<ListenerT,
 {
 };
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_LISTENERCONTAINER_HXX
 

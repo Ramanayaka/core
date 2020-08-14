@@ -16,13 +16,13 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_I18NPOOL_INC_TEXTTOPRONOUNCE_ZH_HXX
-#define INCLUDED_I18NPOOL_INC_TEXTTOPRONOUNCE_ZH_HXX
 
-#include <transliteration_Ignore.hxx>
-#include <indexentrysupplier_asian.hxx>
+#pragma once
 
-namespace com { namespace sun { namespace star { namespace i18n {
+#include "transliteration_Ignore.hxx"
+#include <osl/module.hxx>
+
+namespace i18npool {
 
 class TextToPronounce_zh : public transliteration_Ignore
 {
@@ -31,18 +31,18 @@ protected:
         oslModule hModule;
 #endif
         sal_uInt16 **idx;
-        const sal_Unicode* SAL_CALL getPronounce(const sal_Unicode ch);
+        const sal_Unicode* getPronounce(const sal_Unicode ch);
 
 public:
 #ifndef DISABLE_DYNLOADING
-        TextToPronounce_zh(const sal_Char* func_name);
+        TextToPronounce_zh(const char* func_name);
 #else
         TextToPronounce_zh(sal_uInt16 ** (*function)());
 #endif
         virtual ~TextToPronounce_zh() override;
 
-        OUString SAL_CALL
-        folding(const OUString & inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 > & offset) override;
+        OUString
+        foldingImpl(const OUString & inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 > & offset, bool useOffset) override;
 
         sal_Int16 SAL_CALL getType() override;
 
@@ -57,7 +57,7 @@ public:
 };
 
 #define TRANSLITERATION_TextToPronounce_zh( name ) \
-class name : public TextToPronounce_zh \
+class name final : public TextToPronounce_zh \
 { \
 public: \
         name (); \
@@ -68,8 +68,6 @@ TRANSLITERATION_TextToPronounce_zh( TextToChuyin_zh_TW)
 
 #undef TRANSLITERATION_TextToPronounce_zh
 
-} } } }
-
-#endif
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

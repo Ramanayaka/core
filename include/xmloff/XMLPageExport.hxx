@@ -22,19 +22,17 @@
 
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
-#include <sal/types.h>
 #include <rtl/ustring.hxx>
 #include <vector>
-#include <xmloff/attrlist.hxx>
 #include <rtl/ref.hxx>
 #include <salhelper/simplereferenceobject.hxx>
-#include <com/sun/star/container/XIndexAccess.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace style { class XStyle; }
-    namespace container { class XIndexReplace; class XNameAccess;}
+    namespace container { class XNameAccess;}
     namespace beans { class XPropertySet; }
-} } }
+}
 
 class SvXMLExport;
 class XMLPropertyHandlerFactory;
@@ -45,6 +43,7 @@ class SvXMLExportPropertyMapper;
 struct XMLPageExportNameEntry
 {
     OUString         sPageMasterName;
+    OUString         sDrawingPageStyleName;
     OUString         sStyleName;
 };
 
@@ -53,17 +52,15 @@ class XMLOFF_DLLPUBLIC XMLPageExport : public salhelper::SimpleReferenceObject
 {
     SvXMLExport& rExport;
 
-    const OUString sIsPhysical;
-    const OUString sFollowStyle;
-
     css::uno::Reference< css::container::XNameAccess > xPageStyles;
 
     ::std::vector< XMLPageExportNameEntry > aNameVector;
-    SAL_DLLPRIVATE bool findPageMasterName( const OUString& rStyleName, OUString& rPMName ) const;
 
     rtl::Reference < XMLPropertyHandlerFactory > xPageMasterPropHdlFactory;
     rtl::Reference < XMLPropertySetMapper > xPageMasterPropSetMapper;
     rtl::Reference < SvXMLExportPropertyMapper > xPageMasterExportPropMapper;
+    rtl::Reference<XMLPropertySetMapper> m_xPageMasterDrawingPagePropSetMapper;
+    rtl::Reference<SvXMLExportPropertyMapper> m_xPageMasterDrawingPageExportPropMapper;
 
 protected:
 
@@ -71,7 +68,7 @@ protected:
 
     void collectPageMasterAutoStyle(
                 const css::uno::Reference< css::beans::XPropertySet > & rPropSet,
-                OUString& rPageMasterName );
+                XMLPageExportNameEntry & rEntry);
 
     virtual void exportMasterPageContent(
                 const css::uno::Reference< css::beans::XPropertySet > & rPropSet,

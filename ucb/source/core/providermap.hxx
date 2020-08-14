@@ -20,13 +20,13 @@
 #ifndef INCLUDED_UCB_SOURCE_CORE_PROVIDERMAP_HXX
 #define INCLUDED_UCB_SOURCE_CORE_PROVIDERMAP_HXX
 
-#include <list>
+#include <deque>
 #include <com/sun/star/uno/Reference.h>
 #include <regexpmap.hxx>
 
-namespace com { namespace sun { namespace star { namespace ucb {
+namespace com::sun::star::ucb {
     class XContentProvider;
-} } } }
+}
 
 
 class ProviderListEntry_Impl
@@ -46,17 +46,17 @@ public:
 
     const css::uno::Reference< css::ucb::XContentProvider >& getProvider() const
     { return m_xProvider; }
-    inline css::uno::Reference< css::ucb::XContentProvider > getResolvedProvider() const;
+    inline css::uno::Reference< css::ucb::XContentProvider > const & getResolvedProvider() const;
 };
 
-inline css::uno::Reference< css::ucb::XContentProvider >
+inline css::uno::Reference< css::ucb::XContentProvider > const &
 ProviderListEntry_Impl::getResolvedProvider() const
 {
     return m_xResolvedProvider.is() ? m_xResolvedProvider : resolveProvider();
 }
 
 
-typedef std::list< ProviderListEntry_Impl > ProviderList_Impl;
+typedef std::deque< ProviderListEntry_Impl > ProviderList_Impl;
 
 
 typedef ucb_impl::RegexpMap< ProviderList_Impl > ProviderMap_Impl;

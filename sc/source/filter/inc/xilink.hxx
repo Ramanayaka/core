@@ -24,7 +24,8 @@
 #include <map>
 #include "xllink.hxx"
 #include "xiroot.hxx"
-#include "types.hxx"
+#include "ftools.hxx"
+#include <types.hxx>
 
 namespace svl {
 
@@ -53,8 +54,8 @@ Classes for import of different kinds of internal/external references.
 
     The second purpose is to store the creation order of all sheets inside the
     Excel workbook. The creation order list is contained in the TABID record
-    and needed to import the change log. Example: If the list contains 3;1;2
-    this means that the second sheet in the file was created first, than the
+    and needed to import the change log. Example: if the list contains 3;1;2
+    this means that the second sheet in the file was created first, then the
     third sheet in the file was created and finally the first sheet.
  */
 class XclImpTabInfo
@@ -133,7 +134,7 @@ public:
     void                CreateDdeData( ScDocument& rDoc,
                             const OUString& rApplc, const OUString& rExtDoc ) const;
 
-    void                CreateExtNameData( ScDocument& rDoc, sal_uInt16 nFileId ) const;
+    void                CreateExtNameData( const ScDocument& rDoc, sal_uInt16 nFileId ) const;
 
     /**
      * Create OLE link data.  OLE link data is converted to external

@@ -23,15 +23,13 @@
 
 #include "PresenterUIPainter.hxx"
 
-#include "PresenterCanvasHelper.hxx"
 #include "PresenterGeometryHelper.hxx"
 #include <com/sun/star/rendering/CompositeOperation.hpp>
-#include <com/sun/star/rendering/XPolyPolygon2D.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 void PresenterUIPainter::PaintHorizontalBitmapComposite (
     const css::uno::Reference<css::rendering::XCanvas>& rxCanvas,
@@ -108,30 +106,30 @@ void PresenterUIPainter::PaintHorizontalBitmapComposite (
     }
 
     // Paint the center bitmap to fill the remaining space.
-    if (rxRepeatableCenterBitmap.is())
+    if (!rxRepeatableCenterBitmap.is())
+        return;
+
+    const awt::Rectangle aCenterBoundingBox (
+        rBoundingBox.X + aLeftBitmapSize.Width,
+        rBoundingBox.Y,
+        rBoundingBox.Width - aLeftBitmapSize.Width - aRightBitmapSize.Width,
+        rBoundingBox.Height);
+    if (aCenterBoundingBox.Width <= 0)
+        return;
+
+    aViewState.Clip.set(
+        PresenterGeometryHelper::CreatePolygon(
+            PresenterGeometryHelper::Intersection(rRepaintBox, aCenterBoundingBox),
+            rxCanvas->getDevice()));
+    sal_Int32 nX (aCenterBoundingBox.X);
+    const sal_Int32 nRight (aCenterBoundingBox.X + aCenterBoundingBox.Width - 1);
+    aRenderState.AffineTransform.m12
+        = aCenterBoundingBox.Y + (aCenterBoundingBox.Height-aCenterBitmapSize.Height) / 2;
+    while(nX <= nRight)
     {
-        const awt::Rectangle aCenterBoundingBox (
-            rBoundingBox.X + aLeftBitmapSize.Width,
-            rBoundingBox.Y,
-            rBoundingBox.Width - aLeftBitmapSize.Width - aRightBitmapSize.Width,
-            rBoundingBox.Height);
-        if (aCenterBoundingBox.Width > 0)
-        {
-            aViewState.Clip.set(
-                PresenterGeometryHelper::CreatePolygon(
-                    PresenterGeometryHelper::Intersection(rRepaintBox, aCenterBoundingBox),
-                    rxCanvas->getDevice()));
-            sal_Int32 nX (aCenterBoundingBox.X);
-            const sal_Int32 nRight (aCenterBoundingBox.X + aCenterBoundingBox.Width - 1);
-            aRenderState.AffineTransform.m12
-                = aCenterBoundingBox.Y + (aCenterBoundingBox.Height-aCenterBitmapSize.Height) / 2;
-            while(nX <= nRight)
-            {
-                aRenderState.AffineTransform.m02 = nX;
-                rxCanvas->drawBitmap(rxRepeatableCenterBitmap, aViewState, aRenderState);
-                nX += aCenterBitmapSize.Width;
-            }
-        }
+        aRenderState.AffineTransform.m02 = nX;
+        rxCanvas->drawBitmap(rxRepeatableCenterBitmap, aViewState, aRenderState);
+        nX += aCenterBitmapSize.Width;
     }
 }
 
@@ -211,33 +209,33 @@ void PresenterUIPainter::PaintVerticalBitmapComposite (
     }
 
     // Paint the center bitmap to fill the remaining space.
-    if (rxRepeatableCenterBitmap.is())
+    if (!rxRepeatableCenterBitmap.is())
+        return;
+
+    const awt::Rectangle aCenterBoundingBox (
+        rBoundingBox.X,
+        rBoundingBox.Y + aTopBitmapSize.Height,
+        rBoundingBox.Width,
+        rBoundingBox.Height - aTopBitmapSize.Height - aBottomBitmapSize.Height);
+    if (aCenterBoundingBox.Height <= 0)
+        return;
+
+    aViewState.Clip.set(
+        PresenterGeometryHelper::CreatePolygon(
+            PresenterGeometryHelper::Intersection(rRepaintBox, aCenterBoundingBox),
+            rxCanvas->getDevice()));
+    sal_Int32 nY (aCenterBoundingBox.Y);
+    const sal_Int32 nBottom (aCenterBoundingBox.Y + aCenterBoundingBox.Height - 1);
+    aRenderState.AffineTransform.m02
+        = aCenterBoundingBox.X + (aCenterBoundingBox.Width-aCenterBitmapSize.Width) / 2;
+    while(nY <= nBottom)
     {
-        const awt::Rectangle aCenterBoundingBox (
-            rBoundingBox.X,
-            rBoundingBox.Y + aTopBitmapSize.Height,
-            rBoundingBox.Width,
-            rBoundingBox.Height - aTopBitmapSize.Height - aBottomBitmapSize.Height);
-        if (aCenterBoundingBox.Height > 0)
-        {
-            aViewState.Clip.set(
-                PresenterGeometryHelper::CreatePolygon(
-                    PresenterGeometryHelper::Intersection(rRepaintBox, aCenterBoundingBox),
-                    rxCanvas->getDevice()));
-            sal_Int32 nY (aCenterBoundingBox.Y);
-            const sal_Int32 nBottom (aCenterBoundingBox.Y + aCenterBoundingBox.Height - 1);
-            aRenderState.AffineTransform.m02
-                = aCenterBoundingBox.X + (aCenterBoundingBox.Width-aCenterBitmapSize.Width) / 2;
-            while(nY <= nBottom)
-            {
-                aRenderState.AffineTransform.m12 = nY;
-                rxCanvas->drawBitmap(rxRepeatableCenterBitmap, aViewState, aRenderState);
-                nY += aCenterBitmapSize.Height;
-            }
-        }
+        aRenderState.AffineTransform.m12 = nY;
+        rxCanvas->drawBitmap(rxRepeatableCenterBitmap, aViewState, aRenderState);
+        nY += aCenterBitmapSize.Height;
     }
 }
 
-} } // end of namespace sdext::presenter
+} // end of namespace sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

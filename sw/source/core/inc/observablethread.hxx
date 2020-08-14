@@ -20,11 +20,11 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_OBSERVABLETHREAD_HXX
 
 #include <osl/thread.hxx>
-#include <rtl/ref.hxx>
 #include <osl/interlck.h>
 #include <salhelper/simplereferenceobject.hxx>
-#include <ifinishedthreadlistener.hxx>
 #include <memory>
+
+class IFinishedThreadListener;
 
 /** class for an observable thread
 
@@ -46,11 +46,9 @@ class ObservableThread : public osl::Thread,
         void SetListener( std::weak_ptr< IFinishedThreadListener > const & pThreadListener,
                           const oslInterlockedCount nThreadID );
 
-        static void * operator new(std::size_t size)
-        { return SimpleReferenceObject::operator new(size); }
-
-        static void operator delete(void * pointer)
-        { SimpleReferenceObject::operator delete(pointer); }
+        // resolve ambiguity
+        using SimpleReferenceObject::operator new;
+        using SimpleReferenceObject::operator delete;
 
     protected:
 

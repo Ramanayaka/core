@@ -55,7 +55,7 @@ private:
     size_t mnCurPos;
 
     ScRTFColTwips       aColTwips;
-    ScRTFCellDefault*   pInsDefault;
+    std::unique_ptr<ScRTFCellDefault> pInsDefault;
     ScRTFCellDefault*   pActDefault;
     ScRTFCellDefault*   pDefMerge;
     sal_uLong           nStartAdjust;
@@ -68,7 +68,7 @@ private:
     void                ProcToken( RtfImportInfo* );
     void                ColAdjust();
     bool                SeekTwips( sal_uInt16 nTwips, SCCOL* pCol );
-    void                NewCellRow( RtfImportInfo* );
+    void                NewCellRow();
 
 public:
                         ScRTFParser( EditEngine* );

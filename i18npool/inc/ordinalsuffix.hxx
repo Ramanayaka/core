@@ -23,14 +23,14 @@
 #include <com/sun/star/i18n/XOrdinalSuffix.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/Locale.hpp>
 
+namespace com::sun::star::lang { struct Locale; }
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
-class OrdinalSuffixService : public cppu::WeakImplHelper
+class OrdinalSuffixService final : public cppu::WeakImplHelper
 <
-    XOrdinalSuffix,
+    css::i18n::XOrdinalSuffix,
     css::lang::XServiceInfo
 >
 {
@@ -47,7 +47,8 @@ class OrdinalSuffixService : public cppu::WeakImplHelper
         virtual css::uno::Sequence < OUString > SAL_CALL getSupportedServiceNames() override;
 
 };
-} } } }
+
+}
 
 #endif // INCLUDED_I18NPOOL_INC_ORDINALSUFFIX_HXX
 

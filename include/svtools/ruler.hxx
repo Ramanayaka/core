@@ -21,19 +21,20 @@
 #define INCLUDED_SVTOOLS_RULER_HXX
 
 #include <memory>
+#include <map>
+#include <vector>
 #include <svtools/svtdllapi.h>
 #include <rtl/ref.hxx>
+#include <tools/fldunit.hxx>
 #include <tools/link.hxx>
 #include <tools/fract.hxx>
 #include <vcl/window.hxx>
-#include <vcl/virdev.hxx>
-#include <vcl/field.hxx>
-
-#include <svtools/accessibleruler.hxx>
+#include <vcl/glyphitem.hxx>
 
 class MouseEvent;
 class TrackingEvent;
 class DataChangedEvent;
+class SvtRulerAccessible;
 
 /*************************************************************************
 
@@ -108,15 +109,15 @@ The values are computed as described below:
 SetUnit() and SetZoom() configure which unit is used to display
 the values on the ruler. The following units are accepted:
 
-    FUNIT_MM
-    FUNIT_CM (Default)
-    FUNIT_M
-    FUNIT_KM
-    FUNIT_INCH
-    FUNIT_FOOT
-    FUNIT_MILE
-    FUNIT_POINT
-    FUNIT_PICA
+    FieldUnit::MM
+    FieldUnit::CM (Default)
+    FieldUnit::M
+    FieldUnit::KM
+    FieldUnit::INCH
+    FieldUnit::FOOT
+    FieldUnit::MILE
+    FieldUnit::POINT
+    FieldUnit::PICA
 
 --------------------------------------------------------------------------
 
@@ -459,9 +460,9 @@ Tips for the use of the ruler:
 *************************************************************************/
 
 
-#define WB_EXTRAFIELD     ((WinBits)0x00004000)
-#define WB_RIGHT_ALIGNED  ((WinBits)0x00008000)
-#define WB_STDRULER       WB_HORZ
+constexpr WinBits WB_EXTRAFIELD = 0x00004000;
+constexpr WinBits WB_RIGHT_ALIGNED = 0x00008000;
+constexpr auto WB_STDRULER = WB_HORZ;
 
 
 enum class RulerType { DontKnow, Outside,
@@ -470,9 +471,9 @@ enum class RulerType { DontKnow, Outside,
 
 enum class RulerExtra { DontKnow, NullOffset, Tab };
 
-#define RULER_STYLE_HIGHLIGHT   ((sal_uInt16)0x8000)
-#define RULER_STYLE_DONTKNOW    ((sal_uInt16)0x4000)
-#define RULER_STYLE_INVISIBLE   ((sal_uInt16)0x2000)
+constexpr sal_uInt16 RULER_STYLE_HIGHLIGHT = 0x8000;
+constexpr sal_uInt16 RULER_STYLE_DONTKNOW = 0x4000;
+constexpr sal_uInt16 RULER_STYLE_INVISIBLE = 0x2000;
 
 enum class RulerDragSize {
     Move,
@@ -480,9 +481,9 @@ enum class RulerDragSize {
     N2
 };
 
-#define RULER_MOUSE_BORDERMOVE  5
-#define RULER_MOUSE_BORDERWIDTH 5
-#define RULER_MOUSE_MARGINWIDTH 3
+constexpr auto RULER_MOUSE_BORDERMOVE = 5;
+constexpr auto RULER_MOUSE_BORDERWIDTH = 5;
+constexpr auto RULER_MOUSE_MARGINWIDTH = 3;
 
 
 enum class RulerMarginStyle {
@@ -499,13 +500,10 @@ enum class RulerBorderStyle {
     Sizeable   = 0x0001,
     Moveable   = 0x0002,
     Variable   = 0x0004,
-    Table      = 0x0008,
-    Snap       = 0x0010,
-    Margin     = 0x0020,
-    Invisible  = 0x0040
+    Invisible  = 0x0008
 };
 namespace o3tl {
-    template<> struct typed_flags<RulerBorderStyle> : is_typed_flags<RulerBorderStyle, 0x007f> {};
+    template<> struct typed_flags<RulerBorderStyle> : is_typed_flags<RulerBorderStyle, 0x000f> {};
 }
 
 struct RulerBorder
@@ -529,13 +527,13 @@ struct RulerIndent
 };
 
 
-#define RULER_TAB_LEFT          ((sal_uInt16)0x0000)
-#define RULER_TAB_RIGHT         ((sal_uInt16)0x0001)
-#define RULER_TAB_CENTER        ((sal_uInt16)0x0002)
-#define RULER_TAB_DECIMAL       ((sal_uInt16)0x0003)
-#define RULER_TAB_DEFAULT       ((sal_uInt16)0x0004)
-#define RULER_TAB_STYLE         ((sal_uInt16)0x000F)
-#define RULER_TAB_RTL           ((sal_uInt16)0x0010)
+constexpr sal_uInt16 RULER_TAB_LEFT = 0x0000;
+constexpr sal_uInt16 RULER_TAB_RIGHT = 0x0001;
+constexpr sal_uInt16 RULER_TAB_CENTER = 0x0002;
+constexpr sal_uInt16 RULER_TAB_DECIMAL = 0x0003;
+constexpr sal_uInt16 RULER_TAB_DEFAULT = 0x0004;
+constexpr sal_uInt16 RULER_TAB_STYLE = 0x000F;
+constexpr sal_uInt16 RULER_TAB_RTL = 0x0010;
 
 struct RulerTab
 {
@@ -547,7 +545,6 @@ struct RulerTab
 struct RulerLine
 {
     long    nPos;
-    sal_uInt16  nStyle;
 };
 
 
@@ -581,7 +578,7 @@ struct RulerUnitData
     double          nTick2;             // Tick quarter unit
     double          nTick3;             // Tick half unit
     double          nTick4;             // Tick whole unit
-    sal_Char        aUnitStr[8];        // Unit string
+    char            aUnitStr[8];        // Unit string
 };
 
 
@@ -625,10 +622,9 @@ private:
     long            mnBorderWidth;
     long            mnStartDragPos;
     long            mnDragPos;
-    ImplSVEvent *   mnUpdateEvtId;
-    ImplRulerData*  mpSaveData;
+    std::unique_ptr<ImplRulerData>  mpSaveData;
     ImplRulerData*  mpData;
-    ImplRulerData*  mpDragData;
+    std::unique_ptr<ImplRulerData>  mpDragData;
     tools::Rectangle       maExtraRect;
     WinBits         mnWinStyle;
     sal_uInt16      mnUnitIndex;
@@ -661,6 +657,8 @@ private:
 
     rtl::Reference<SvtRulerAccessible> mxAccContext;
 
+    std::map<OUString, SalLayoutGlyphs> maTextGlyphs;
+
     SVT_DLLPRIVATE void ImplVDrawLine(vcl::RenderContext& rRenderContext,  long nX1, long nY1, long nX2, long nY2 );
     SVT_DLLPRIVATE void ImplVDrawRect(vcl::RenderContext& rRenderContext, long nX1, long nY1, long nX2, long nY2 );
     SVT_DLLPRIVATE void ImplVDrawText(vcl::RenderContext& rRenderContext, long nX, long nY, const OUString& rText,
@@ -682,7 +680,7 @@ private:
     SVT_DLLPRIVATE void ImplInit( WinBits nWinBits );
     SVT_DLLPRIVATE void ImplInitSettings( bool bFont, bool bForeground, bool bBackground );
     SVT_DLLPRIVATE void ImplCalc();
-    SVT_DLLPRIVATE void ImplFormat(vcl::RenderContext& rRenderContext);
+    SVT_DLLPRIVATE void ImplFormat(vcl::RenderContext const & rRenderContext);
     SVT_DLLPRIVATE void ImplInitExtraField( bool bUpdate );
     SVT_DLLPRIVATE void ImplInvertLines(vcl::RenderContext& rRenderContext);
     SVT_DLLPRIVATE void ImplDraw(vcl::RenderContext& rRenderContext);
@@ -697,7 +695,7 @@ private:
                                          bool bRequiredStyle = false,
                                          RulerIndentStyle nRequiredStyle = RulerIndentStyle::Top ) const;
     SVT_DLLPRIVATE bool     ImplDocHitTest( const Point& rPos, RulerType eDragType, RulerSelection* pHitTest ) const;
-    SVT_DLLPRIVATE bool     ImplStartDrag( RulerSelection* pHitTest, sal_uInt16 nModifier );
+    SVT_DLLPRIVATE bool     ImplStartDrag( RulerSelection const * pHitTest, sal_uInt16 nModifier );
     SVT_DLLPRIVATE void     ImplDrag( const Point& rPos );
     SVT_DLLPRIVATE void     ImplEndDrag();
 
@@ -781,6 +779,7 @@ public:
     void            SetIndents( sal_uInt32 n = 0, const RulerIndent* pIndentAry = nullptr );
 
     void            SetTabs( sal_uInt32 n = 0, const RulerTab* pTabAry = nullptr );
+    const std::vector<RulerTab>& GetTabs() const;
 
     static void     DrawTab(vcl::RenderContext& rRenderContext, const Color &rFillColor,
                             const Point& rPos, sal_uInt16 nStyle);
@@ -791,7 +790,7 @@ public:
     void            SetDoubleClickHdl( const Link<Ruler*,void>& rLink ) { maDoubleClickHdl = rLink; }
 
     void            SetTextRTL(bool bRTL);
-    bool            GetTextRTL();
+    bool            GetTextRTL() const;
     void            SetCharWidth( long nWidth ) { mnCharWidth = nWidth ; }
     void            SetLineHeight( long nHeight ) { mnLineHeight = nHeight ; }
 

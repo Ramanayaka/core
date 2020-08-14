@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
 #include <editeng/eeitem.hxx>
 
 #include <svx/svxdlg.hxx>
@@ -27,30 +26,24 @@
 #include <editeng/outliner.hxx>
 #include <editeng/spltitem.hxx>
 #include <editeng/widwitem.hxx>
-#include <sot/exchange.hxx>
-#include <vcl/msgbox.hxx>
-#include <svtools/transfer.hxx>
+#include <editeng/editids.hrc>
+#include <svx/svxids.hrc>
+#include <vcl/transfer.hxx>
 
-#include "sc.hrc"
-#include "drtxtob.hxx"
-#include "drawview.hxx"
-#include "viewdata.hxx"
-#include "scresid.hxx"
+#include <drtxtob.hxx>
+#include <drawview.hxx>
+#include <viewdata.hxx>
 #include <gridwin.hxx>
 
-#include "scabstdlg.hxx"
-#include <memory>
+#include <scabstdlg.hxx>
 
 bool ScDrawTextObjectBar::ExecuteCharDlg( const SfxItemSet& rArgs,
                                                 SfxItemSet& rOutSet , sal_uInt16 nSlot)
 {
     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-    assert(pFact && "ScAbstractFactory create fail!");
-
     ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateScCharDlg(
         pViewData->GetDialogParent(), &rArgs,
-        pViewData->GetSfxDocShell()));
-    assert(pDlg && "Dialog create fail!");
+        pViewData->GetSfxDocShell(), true));
     if (nSlot == SID_CHAR_DLG_EFFECT)
     {
         pDlg->SetCurPageId("fonteffects");
@@ -89,11 +82,9 @@ bool ScDrawTextObjectBar::ExecuteParaDlg( const SfxItemSet& rArgs,
     aNewAttr.Put( SvxOrphansItem( 0, SID_ATTR_PARA_ORPHANS) );
 
     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-    OSL_ENSURE(pFact, "ScAbstractFactory create fail!");
 
     ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateScParagraphDlg(
         pViewData->GetDialogParent(), &aNewAttr));
-    OSL_ENSURE(pDlg, "Dialog create fail!");
     bool bRet = ( pDlg->Execute() == RET_OK );
 
     if ( bRet )
@@ -111,7 +102,7 @@ void ScDrawTextObjectBar::ExecutePasteContents( SfxRequest & /* rReq */ )
     SdrView* pView = pViewData->GetScDrawView();
     OutlinerView* pOutView = pView->GetTextEditOutlinerView();
     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-    ScopedVclPtr<SfxAbstractPasteDialog> pDlg(pFact->CreatePasteDialog( pViewData->GetDialogParent() ));
+    ScopedVclPtr<SfxAbstractPasteDialog> pDlg(pFact->CreatePasteDialog(pViewData->GetDialogParent()));
 
     pDlg->Insert( SotClipboardFormatId::STRING, EMPTY_OUSTRING );
     pDlg->Insert( SotClipboardFormatId::RTF,    EMPTY_OUSTRING );

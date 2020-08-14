@@ -20,14 +20,14 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSPAGEOBJECTLAYOUTER_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSPAGEOBJECTLAYOUTER_HXX
 
-#include "SlideSorter.hxx"
-#include "model/SlsSharedPageDescriptor.hxx"
-#include "tools/gen.hxx"
+#include <model/SlsSharedPageDescriptor.hxx>
+#include <tools/gen.hxx>
 #include <vcl/image.hxx>
 
 namespace vcl { class Font; }
+namespace sd { class Window; }
 
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::view {
 
 /** In contrast to the Layouter that places page objects in the view, the
     PageObjectLayouter places the parts of individual page objects like page
@@ -122,7 +122,6 @@ private:
 
 private:
     VclPtr<sd::Window> mpWindow;
-    Size maPageObjectSize;
     ::tools::Rectangle maFocusIndicatorBoundingBox;
     ::tools::Rectangle maPageObjectBoundingBox;
     ::tools::Rectangle maPageNumberAreaBoundingBox;
@@ -141,7 +140,7 @@ private:
         const sal_Int32 nFocusIndicatorWidth);
 };
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 #endif
 

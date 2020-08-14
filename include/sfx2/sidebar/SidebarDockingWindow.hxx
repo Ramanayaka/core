@@ -23,37 +23,55 @@
 
 #include <rtl/ref.hxx>
 
-namespace sfx2 { namespace sidebar {
+class SfxViewShell;
+
+namespace svt { class AcceleratorExecute; }
+
+namespace sfx2::sidebar {
 
 class SidebarChildWindow;
 
 class SidebarController;
 
-class SidebarDockingWindow : public SfxDockingWindow
+class SidebarNotifyIdle;
+
+class SFX2_DLLPUBLIC SidebarDockingWindow final : public SfxDockingWindow
 {
 public:
     SidebarDockingWindow(SfxBindings* pBindings, SidebarChildWindow& rChildWindow,
                          vcl::Window* pParent, WinBits nBits);
     virtual ~SidebarDockingWindow() override;
     virtual void dispose() override;
+    virtual bool EventNotify(NotifyEvent& rEvent) override;
+    virtual bool Close() override;
 
+    /// Force generation of all panels by completion.
+    void SyncUpdate();
+
+    void NotifyResize();
+    auto& GetSidebarController() const { return mpSidebarController; }
     using SfxDockingWindow::Close;
 
-protected:
+private:
     // Window overridables
     virtual void GetFocus() override;
+    virtual void Resize() override;
 
     virtual SfxChildAlignment CheckAlignment (
         SfxChildAlignment eCurrentAlignment,
         SfxChildAlignment eRequestedAlignment) override;
 
-private:
-    ::rtl::Reference<sfx2::sidebar::SidebarController> mpSidebarController;
+    /// Notify LOKit that we closed and release the LOKNotifier.
+    void LOKClose();
 
-    void DoDispose();
+    ::rtl::Reference<sfx2::sidebar::SidebarController> mpSidebarController;
+    bool mbIsReadyToDrag;
+    std::unique_ptr<svt::AcceleratorExecute> mpAccel;
+
+    std::unique_ptr<SidebarNotifyIdle> mpIdleNotify;
 };
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 
 #endif

@@ -33,17 +33,15 @@ using namespace com::sun::star::util;
 using namespace ::dbtools;
 
 
-MacabRecord::MacabRecord()
+MacabRecord::MacabRecord() : size(0)
 {
-    size = 0;
-    fields = nullptr;
 }
 
 
 MacabRecord::MacabRecord(const sal_Int32 _size)
+   : size(_size),
+     fields(std::make_unique<macabfield *[]>(size))
 {
-    size = _size;
-    fields = new macabfield *[size];
     sal_Int32 i;
     for(i = 0; i < size; i++)
         fields[i] = nullptr;
@@ -54,6 +52,7 @@ MacabRecord::~MacabRecord()
 {
     if(size > 0)
     {
+        releaseFields();
         int i;
         for(i = 0; i < size; i++)
         {
@@ -61,8 +60,6 @@ MacabRecord::~MacabRecord()
             fields[i] = nullptr;
         }
     }
-    delete [] fields;
-    fields = nullptr;
 }
 
 
@@ -214,7 +211,7 @@ sal_Int32 MacabRecord::compareFields(const macabfield *_field1, const macabfield
             result = kCFCompareEqualTo; // can't compare
     }
 
-    return (sal_Int32) result;
+    return static_cast<sal_Int32>(result);
 }
 
 
@@ -246,7 +243,7 @@ macabfield *MacabRecord::createMacabField(const OUString& _newFieldString, const
                     double nTime = DBTypeConversion::toDouble(aDateTime, DBTypeConversion::getStandardDate());
                     nTime -= kCFAbsoluteTimeIntervalSince1970;
                     newField = new macabfield;
-                    newField->value = CFDateCreate(nullptr, (CFAbsoluteTime) nTime);
+                    newField->value = CFDateCreate(nullptr, static_cast<CFAbsoluteTime>(nTime));
                     newField->type = _abType;
                 }
             }

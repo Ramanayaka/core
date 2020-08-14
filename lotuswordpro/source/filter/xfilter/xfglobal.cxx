@@ -58,33 +58,25 @@
  * Global functions or include files that are needed.
  * It's all for the full filter.
  ************************************************************************/
-#include "xfglobal.hxx"
-#include "xffontfactory.hxx"
-#include "xfstylemanager.hxx"
+#include <xfilter/xfglobal.hxx>
 
 int XFGlobal::s_nFrameID = 1;
-int XFGlobal::s_nGraphID = 1;
 int XFGlobal::s_nSectionID = 1;
-int XFGlobal::s_nTableID = 1;
 int XFGlobal::s_nNoteID = 1;
 int XFGlobal::s_nStrokeDashID = 1;
 int XFGlobal::s_nAreaID = 1;
-
-//For chart object, /2005/2
-int XFGlobal::s_nObjID = 1;
-
 int XFGlobal::s_nImageID = 1;
 
 OUString XFGlobal::GenSectionName()
 {
-    //give it a initial name:
+    //give it an initial name:
     OUString sResult = "sect" + OUString::number(s_nSectionID++);
     return sResult;
 }
 
 OUString XFGlobal::GenFrameName()
 {
-    //give it a initial name:
+    //give it an initial name:
     OUString sResult = "frame" + OUString::number(s_nFrameID++);
     return sResult;
 }
@@ -119,21 +111,19 @@ OUString XFGlobal::GenImageName()
     return sResult;
 }
 
-void    XFGlobal::Reset()
+void XFGlobal::Reset()
 {
     s_nSectionID = 1;
     s_nFrameID = 1;
-    s_nTableID = 1;
     s_nNoteID = 1;
     s_nStrokeDashID = 1;
     s_nAreaID = 1;
-    s_nObjID = 1;
 }
 
-void    XFGlobalReset()
+void XFGlobalReset()
 {
-//  XFFontFactory::Reset();
-//  XFStyleManager::Reset();
+    //  XFFontFactory::Reset();
+    //  XFStyleManager::Reset();
     XFGlobal::Reset();
 }
 

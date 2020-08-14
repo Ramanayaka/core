@@ -20,7 +20,7 @@
 #include "fastserializer.hxx"
 
 #include <com/sun/star/xml/sax/FastTokenHandler.hpp>
-#include <rtl/math.hxx>
+#include <rtl/math.h>
 #include <sal/log.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
@@ -42,15 +42,15 @@ using ::com::sun::star::io::XOutputStream;
 // number of characters without terminating 0
 #define N_CHARS(string) (SAL_N_ELEMENTS(string) - 1)
 
-static const char sClosingBracket[] = ">";
-static const char sSlashAndClosingBracket[] = "/>";
-static const char sColon[] = ":";
-static const char sOpeningBracket[] = "<";
-static const char sOpeningBracketAndSlash[] = "</";
-static const char sQuote[] = "\"";
-static const char sEqualSignAndQuote[] = "=\"";
-static const char sSpace[] = " ";
-static const char sXmlHeader[] = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+const char sClosingBracket[] = ">";
+const char sSlashAndClosingBracket[] = "/>";
+const char sColon[] = ":";
+const char sOpeningBracket[] = "<";
+const char sOpeningBracketAndSlash[] = "</";
+const char sQuote[] = "\"";
+const char sEqualSignAndQuote[] = "=\"";
+const char sSpace[] = " ";
+const char sXmlHeader[] = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
 
 namespace sax_fastparser {
     FastSaxSerializer::FastSaxSerializer( const css::uno::Reference< css::io::XOutputStream >& xOutputStream )
@@ -105,7 +105,7 @@ namespace sax_fastparser {
     /** Characters not allowed in XML 1.0
         XML 1.1 would exclude only U+0000
      */
-    bool invalidChar( char c )
+    static bool invalidChar( char c )
     {
         if (static_cast<unsigned char>(c) >= 0x20)
             return false;
@@ -120,7 +120,7 @@ namespace sax_fastparser {
         return true;
     }
 
-    bool isHexDigit( char c )
+    static bool isHexDigit( char c )
     {
         return ('0' <= c && c <= '9') || ('A' <= c && c <= 'F') || ('a' <= c && c <= 'f');
     }
@@ -199,6 +199,7 @@ namespace sax_fastparser {
                 default:
                             if (mbXescape)
                             {
+                                char c1, c2, c3, c4;
                                 // Escape characters not valid in XML 1.0 as
                                 // _xHHHH_. A literal "_xHHHH_" has to be
                                 // escaped as _x005F_xHHHH_ (effectively
@@ -209,22 +210,44 @@ namespace sax_fastparser {
                                 if (c == '_' && i >= nNextXescape && i <= nLen - kXescapeLen &&
                                         pStr[i+6] == '_' &&
                                         ((pStr[i+1] | 0x20) == 'x') &&
-                                        isHexDigit( pStr[i+2] ) &&
-                                        isHexDigit( pStr[i+3] ) &&
-                                        isHexDigit( pStr[i+4] ) &&
-                                        isHexDigit( pStr[i+5] ))
+                                        isHexDigit( c1 = pStr[i+2] ) &&
+                                        isHexDigit( c2 = pStr[i+3] ) &&
+                                        isHexDigit( c3 = pStr[i+4] ) &&
+                                        isHexDigit( c4 = pStr[i+5] ))
                                 {
                                     // OOXML has the odd habit to write some
                                     // names using this that when re-saving
                                     // should *not* be escaped, specifically
                                     // _x0020_ for blanks in w:xpath values.
-                                    if (strncmp( pStr+i+2, "0020", 4) != 0)
+                                    if (!(c1 == '0' && c2 == '0' && c3 == '2' && c4 == '0'))
                                     {
-                                        writeBytes( "_x005F_", kXescapeLen);
-                                        // Remember this escapement so in
-                                        // _xHHHH_xHHHH_ only the first '_' is
-                                        // escaped.
-                                        nNextXescape = i + kXescapeLen;
+                                        // When encountering "_x005F_xHHHH_"
+                                        // assume that is an already escaped
+                                        // sequence that was not unescaped and
+                                        // shall be written as is, to not end
+                                        // up with "_x005F_x005F_xHHHH_" and
+                                        // repeated...
+                                        if (c1 == '0' && c2 == '0' && c3 == '5' && (c4 | 0x20) == 'f' &&
+                                                i + kXescapeLen <= nLen - 6 &&
+                                                pStr[i+kXescapeLen+5] == '_' &&
+                                                ((pStr[i+kXescapeLen+0] | 0x20) == 'x') &&
+                                                isHexDigit( pStr[i+kXescapeLen+1] ) &&
+                                                isHexDigit( pStr[i+kXescapeLen+2] ) &&
+                                                isHexDigit( pStr[i+kXescapeLen+3] ) &&
+                                                isHexDigit( pStr[i+kXescapeLen+4] ))
+                                        {
+                                            writeBytes( &c, 1 );
+                                            // Remember this fake escapement.
+                                            nNextXescape = i + kXescapeLen + 6;
+                                        }
+                                        else
+                                        {
+                                            writeBytes( "_x005F_", kXescapeLen);
+                                            // Remember this escapement so in
+                                            // _xHHHH_xHHHH_ only the first '_'
+                                            // is escaped.
+                                            nNextXescape = i + kXescapeLen;
+                                        }
                                         break;
                                     }
                                 }
@@ -270,11 +293,18 @@ namespace sax_fastparser {
     void FastSaxSerializer::writeId( ::sal_Int32 nElement )
     {
         if( HAS_NAMESPACE( nElement ) ) {
-            writeBytes(mxFastTokenHandler->getUTF8Identifier(NAMESPACE(nElement)));
+            auto const Namespace(mxFastTokenHandler->getUTF8Identifier(NAMESPACE(nElement)));
+            assert(Namespace.hasElements());
+            writeBytes(Namespace);
             writeBytes(sColon, N_CHARS(sColon));
-            writeBytes(mxFastTokenHandler->getUTF8Identifier(TOKEN(nElement)));
-        } else
-            writeBytes(mxFastTokenHandler->getUTF8Identifier(nElement));
+            auto const Element(mxFastTokenHandler->getUTF8Identifier(TOKEN(nElement)));
+            assert(Element.hasElements());
+            writeBytes(Element);
+        } else {
+            auto const Element(mxFastTokenHandler->getUTF8Identifier(nElement));
+            assert(Element.hasElements());
+            writeBytes(Element);
+        }
     }
 
 #ifdef DBG_UTIL
@@ -285,18 +315,18 @@ namespace sax_fastparser {
                 mxFastTokenHandler->getUTF8Identifier(NAMESPACE(nElement)));
             Sequence<sal_Int8> const name(
                 mxFastTokenHandler->getUTF8Identifier(TOKEN(nElement)));
-            return OString(reinterpret_cast<sal_Char const*>(ns.getConstArray()), ns.getLength())
+            return OString(reinterpret_cast<char const*>(ns.getConstArray()), ns.getLength())
                  + OString(sColon, N_CHARS(sColon))
-                 + OString(reinterpret_cast<sal_Char const*>(name.getConstArray()), name.getLength());
+                 + OString(reinterpret_cast<char const*>(name.getConstArray()), name.getLength());
         } else {
             Sequence<sal_Int8> const name(
                 mxFastTokenHandler->getUTF8Identifier(nElement));
-            return OString(reinterpret_cast<sal_Char const*>(name.getConstArray()), name.getLength());
+            return OString(reinterpret_cast<char const*>(name.getConstArray()), name.getLength());
         }
     }
 #endif
 
-    void FastSaxSerializer::startFastElement( ::sal_Int32 Element, FastAttributeList* pAttrList )
+    void FastSaxSerializer::startFastElement( ::sal_Int32 Element, FastAttributeList const * pAttrList )
     {
         if ( !mbMarkStackEmpty )
         {
@@ -358,7 +388,7 @@ namespace sax_fastparser {
         writeBytes(sClosingBracket, N_CHARS(sClosingBracket));
     }
 
-    void FastSaxSerializer::singleFastElement( ::sal_Int32 Element, FastAttributeList* pAttrList )
+    void FastSaxSerializer::singleFastElement( ::sal_Int32 Element, FastAttributeList const * pAttrList )
     {
         if ( !mbMarkStackEmpty )
         {
@@ -377,7 +407,7 @@ namespace sax_fastparser {
         writeBytes(sSlashAndClosingBracket, N_CHARS(sSlashAndClosingBracket));
     }
 
-    css::uno::Reference< css::io::XOutputStream > FastSaxSerializer::getOutputStream()
+    css::uno::Reference< css::io::XOutputStream > const & FastSaxSerializer::getOutputStream() const
     {
         return maCachedOutputStream.getOutputStream();
     }
@@ -410,7 +440,7 @@ namespace sax_fastparser {
         maTokenValues.clear();
     }
 
-    void FastSaxSerializer::writeFastAttributeList(FastAttributeList& rAttrList)
+    void FastSaxSerializer::writeFastAttributeList(FastAttributeList const & rAttrList)
     {
 #ifdef DBG_UTIL
         ::std::set<OString> DebugAttributes;
@@ -433,7 +463,12 @@ namespace sax_fastparser {
 
             writeBytes(sEqualSignAndQuote, N_CHARS(sEqualSignAndQuote));
 
-            write(rAttrList.getFastAttributeValue(j), rAttrList.AttributeValueLength(j), true);
+            const char* pAttributeValue = rAttrList.getFastAttributeValue(j);
+
+            // tdf#127274 don't escape the special VML shape type id "#_x0000_t202"
+            bool bEscape = !(pAttributeValue && strcmp(pAttributeValue, "#_x0000_t202") == 0);
+
+            write(pAttributeValue, rAttrList.AttributeValueLength(j), bEscape);
 
             writeBytes(sQuote, N_CHARS(sQuote));
         }
@@ -443,13 +478,13 @@ namespace sax_fastparser {
     {
         if (rOrder.hasElements())
         {
-            std::shared_ptr< ForMerge > pSort( new ForSort(nTag, rOrder) );
+            auto pSort = std::make_shared<ForSort>(nTag, rOrder);
             maMarkStack.push( pSort );
             maCachedOutputStream.setOutput( pSort );
         }
         else
         {
-            std::shared_ptr< ForMerge > pMerge( new ForMerge(nTag) );
+            auto pMerge = std::make_shared<ForMerge>(nTag);
             maMarkStack.push( pMerge );
             maCachedOutputStream.setOutput( pMerge );
         }
@@ -678,7 +713,7 @@ namespace sax_fastparser {
         merge( maData, rWhat, false );
     }
 
-    void FastSaxSerializer::ForMerge::append( const Int8Sequence &rWhat )
+    void FastSaxSerializer::ForMerge::append( const css::uno::Sequence<sal_Int8> &rWhat )
     {
         merge( maData, rWhat, true );
     }
@@ -691,22 +726,22 @@ namespace sax_fastparser {
     void FastSaxSerializer::ForMerge::merge( Int8Sequence &rTop, const Int8Sequence &rMerge, bool bAppend )
     {
         sal_Int32 nMergeLen = rMerge.getLength();
-        if ( nMergeLen > 0 )
-        {
-            sal_Int32 nTopLen = rTop.getLength();
+        if ( nMergeLen <= 0 )
+            return;
 
-            rTop.realloc( nTopLen + nMergeLen );
-            if ( bAppend )
-            {
-                // append the rMerge to the rTop
-                memcpy( rTop.getArray() + nTopLen, rMerge.getConstArray(), nMergeLen );
-            }
-            else
-            {
-                // prepend the rMerge to the rTop
-                memmove( rTop.getArray() + nMergeLen, rTop.getConstArray(), nTopLen );
-                memcpy( rTop.getArray(), rMerge.getConstArray(), nMergeLen );
-            }
+        sal_Int32 nTopLen = rTop.getLength();
+
+        rTop.realloc( nTopLen + nMergeLen );
+        if ( bAppend )
+        {
+            // append the rMerge to the rTop
+            memcpy( rTop.getArray() + nTopLen, rMerge.getConstArray(), nMergeLen );
+        }
+        else
+        {
+            // prepend the rMerge to the rTop
+            memmove( rTop.getArray() + nMergeLen, rTop.getConstArray(), nTopLen );
+            memcpy( rTop.getArray(), rMerge.getConstArray(), nMergeLen );
         }
     }
 
@@ -731,7 +766,7 @@ namespace sax_fastparser {
         append( rWhat );
     }
 
-    void FastSaxSerializer::ForSort::append( const Int8Sequence &rWhat )
+    void FastSaxSerializer::ForSort::append( const css::uno::Sequence<sal_Int8> &rWhat )
     {
         merge( maData[mnCurrentElement], rWhat, true );
     }
@@ -743,9 +778,9 @@ namespace sax_fastparser {
 
         // Sort it all
         std::map< sal_Int32, Int8Sequence >::iterator iter;
-        for ( sal_Int32 i=0, len=maOrder.getLength(); i < len; i++ )
+        for ( const auto nIndex : std::as_const(maOrder) )
         {
-            iter = maData.find( maOrder[i] );
+            iter = maData.find( nIndex );
             if ( iter != maData.end() )
                 ForMerge::append( iter->second );
         }
@@ -760,14 +795,12 @@ namespace sax_fastparser {
 #if OSL_DEBUG_LEVEL > 0
     void FastSaxSerializer::ForSort::print( )
     {
-        std::map< sal_Int32, Int8Sequence >::iterator iter = maData.begin();
-        while ( iter != maData.end( ) )
+        for ( const auto& [rElement, rData] : maData )
         {
-            std::cerr << "pair: " << iter->first;
-            for ( sal_Int32 i=0, len=iter->second.getLength(); i < len; ++i )
-                std::cerr << iter->second[i];
+            std::cerr << "pair: " << rElement;
+            for ( sal_Int32 i=0, len=rData.getLength(); i < len; ++i )
+                std::cerr << rData[i];
             std::cerr << "\n";
-            ++iter;
         }
 
         sort( );

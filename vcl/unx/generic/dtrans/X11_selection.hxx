@@ -36,11 +36,10 @@
 
 #include <list>
 #include <unordered_map>
+#include <vector>
 
 #include <X11/Xlib.h>
 
-#define XDND_IMPLEMENTATION_NAME "com.sun.star.datatransfer.dnd.XdndSupport"
-#define XDND_DROPTARGET_IMPLEMENTATION_NAME "com.sun.star.datatransfer.dnd.XdndDropTarget"
 
 namespace x11 {
 
@@ -77,7 +76,7 @@ namespace x11 {
         ::Window                    m_aTargetWindow;
         rtl::Reference<SelectionManager>
                                     m_xSelectionManager;
-        ::std::list< css::uno::Reference< css::datatransfer::dnd::XDropTargetListener > >
+        ::std::vector< css::uno::Reference< css::datatransfer::dnd::XDropTargetListener > >
                                     m_aListeners;
 
         DropTarget();
@@ -151,13 +150,13 @@ namespace x11 {
         >,
         public SelectionAdaptor
     {
-        static std::unordered_map< OUString, SelectionManager*, OUStringHash >& getInstances();
+        static std::unordered_map< OUString, SelectionManager* >& getInstances();
 
         // for INCR type selection transfer
         // INCR protocol is used if the data cannot
         // be transported at once but in parts
         // IncrementalTransfer holds the bytes to be transmitted
-        // as well a the current position
+        // as well as the current position
         // INCR triggers the delivery of the next part by deleting the
         // property used to transfer the data
         struct IncrementalTransfer
@@ -199,7 +198,7 @@ namespace x11 {
             bool                        m_bOwner;
             ::Window                    m_aLastOwner;
             PixmapHolder*               m_pPixmap;
-            // m_nOrigTimestamp contains the Timestamp at which the seclection
+            // m_nOrigTimestamp contains the Timestamp at which the selection
             // was acquired; needed for TimeSTAMP target
             Time                        m_nOrigTimestamp;
 
@@ -345,7 +344,7 @@ namespace x11 {
         // caching for atoms
         std::unordered_map< Atom, OUString >
                                     m_aAtomToString;
-        std::unordered_map< OUString, Atom, OUStringHash >
+        std::unordered_map< OUString, Atom >
                                     m_aStringToAtom;
 
         // the registered selections
@@ -356,7 +355,7 @@ namespace x11 {
                                     m_aIncrementals;
 
         // do not use X11 multithreading capabilities
-        // since this leads to deadlocks in different Xlib implentations
+        // since this leads to deadlocks in different Xlib implementations
         // (XFree as well as Xsun) use an own mutex instead
         ::osl::Mutex                m_aMutex;
         bool                        m_bShutDown;
@@ -369,11 +368,11 @@ namespace x11 {
 
         // handle various events
         bool handleSelectionRequest( XSelectionRequestEvent& rRequest );
-        bool handleSendPropertyNotify( XPropertyEvent& rNotify );
-        bool handleReceivePropertyNotify( XPropertyEvent& rNotify );
-        bool handleSelectionNotify( XSelectionEvent& rNotify );
-        bool handleDragEvent( XEvent& rMessage );
-        bool handleDropEvent( XClientMessageEvent& rMessage );
+        bool handleSendPropertyNotify( XPropertyEvent const & rNotify );
+        bool handleReceivePropertyNotify( XPropertyEvent const & rNotify );
+        bool handleSelectionNotify( XSelectionEvent const & rNotify );
+        bool handleDragEvent( XEvent const & rMessage );
+        bool handleDropEvent( XClientMessageEvent const & rMessage );
 
         // dnd helpers
         void sendDragStatus( Atom nDropAction );
@@ -449,7 +448,7 @@ namespace x11 {
         void dropComplete( bool success, ::Window aDropXLIB_Window );
 
         // for XDragSourceContext
-        sal_Int32 getCurrentCursor() { return m_aCurrentCursor;}
+        sal_Int32 getCurrentCursor() const { return m_aCurrentCursor;}
         void setCursor( sal_Int32 cursor, ::Window aDropXLIB_Window );
         void transferablesFlavorsChanged();
 
@@ -485,11 +484,11 @@ namespace x11 {
         virtual void SAL_CALL notifyTermination( const css::lang::EventObject& aEvent ) override;
     };
 
-    css::uno::Sequence< OUString > SAL_CALL Xdnd_getSupportedServiceNames();
+    css::uno::Sequence< OUString > Xdnd_getSupportedServiceNames();
     css::uno::Reference< css::uno::XInterface > SAL_CALL Xdnd_createInstance(
         const css::uno::Reference< css::lang::XMultiServiceFactory > & xMultiServiceFactory);
 
-    css::uno::Sequence< OUString > SAL_CALL Xdnd_dropTarget_getSupportedServiceNames();
+    css::uno::Sequence< OUString > Xdnd_dropTarget_getSupportedServiceNames();
     css::uno::Reference< css::uno::XInterface > SAL_CALL Xdnd_dropTarget_createInstance(
         const css::uno::Reference< css::lang::XMultiServiceFactory > & xMultiServiceFactory);
 

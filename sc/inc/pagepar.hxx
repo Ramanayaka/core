@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SC_INC_PAGEPAR_HXX
 #define INCLUDED_SC_INC_PAGEPAR_HXX
 
-#include "global.hxx"
 #include "address.hxx"
 
 struct ScPageTableParam
@@ -60,8 +59,6 @@ struct ScPageAreaParam
     bool    bRepeatRow;
     bool    bRepeatCol;
     ScRange aPrintArea;
-    ScRange aRepeatRow;
-    ScRange aRepeatCol;
 
     ScPageAreaParam();
     ~ScPageAreaParam();

@@ -31,17 +31,16 @@
     This item describes a wrap-attribute
     Automatic?, Page or column break, before or after?
 */
-#define FMTBREAK_NOAUTO ((sal_uInt16)0x0001)
+constexpr sal_uInt16 FMTBREAK_NOAUTO = 0x0001;
 
-class EDITENG_DLLPUBLIC SvxFormatBreakItem : public SfxEnumItem<SvxBreak>
+class EDITENG_DLLPUBLIC SvxFormatBreakItem final : public SfxEnumItem<SvxBreak>
 {
 public:
     static SfxPoolItem* CreateDefault();
 
     inline SvxFormatBreakItem( const SvxBreak eBrk /*= SvxBreak::NONE*/,
                             const sal_uInt16 nWhich );
-    inline SvxFormatBreakItem( const SvxFormatBreakItem& rBreak );
-    inline SvxFormatBreakItem& operator=( const SvxFormatBreakItem& rCpy );
+    SvxFormatBreakItem(SvxFormatBreakItem const &) = default; // SfxPoolItem copy function dichotomy
 
     // "pure virtual Methods" from SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
@@ -51,13 +50,10 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
-    virtual OUString         GetValueTextByPos( sal_uInt16 nPos ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
+    static OUString          GetValueTextByPos( sal_uInt16 nPos );
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SvStream&        Store( SvStream& , sal_uInt16 nItemVersion ) const override;
-    virtual sal_uInt16       GetVersion( sal_uInt16 nFileVersion ) const override;
-    virtual SfxPoolItem*     Create( SvStream&, sal_uInt16 ) const override;
+    virtual SvxFormatBreakItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual sal_uInt16       GetValueCount() const override;
 
     SvxBreak                 GetBreak() const { return GetValue(); }
@@ -69,16 +65,6 @@ inline SvxFormatBreakItem::SvxFormatBreakItem( const SvxBreak eBreak,
     SfxEnumItem( _nWhich, eBreak )
 {}
 
-inline SvxFormatBreakItem::SvxFormatBreakItem( const SvxFormatBreakItem& rBreak ) :
-    SfxEnumItem( rBreak )
-{}
-
-inline SvxFormatBreakItem& SvxFormatBreakItem::operator=(
-    const SvxFormatBreakItem& rBreak )
-{
-    SetValue( rBreak.GetBreak() );
-    return *this;
-}
 
 #endif
 

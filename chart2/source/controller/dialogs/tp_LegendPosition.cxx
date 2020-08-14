@@ -18,52 +18,42 @@
  */
 
 #include "tp_LegendPosition.hxx"
-#include "ResId.hxx"
-#include "ResourceIds.hrc"
-#include "res_LegendPosition.hxx"
-#include "chartview/ChartSfxItemIds.hxx"
-#include <svx/chrtitem.hxx>
+#include <res_LegendPosition.hxx>
+#include <TextDirectionListBox.hxx>
+#include <chartview/ChartSfxItemIds.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/frmdiritem.hxx>
 
 namespace chart
 {
 
-SchLegendPosTabPage::SchLegendPosTabPage(vcl::Window* pWindow, const SfxItemSet& rInAttrs)
-    : SfxTabPage( pWindow
-                 ,"tp_LegendPosition"
-                 ,"modules/schart/ui/tp_LegendPosition.ui"
-                 , &rInAttrs )
-    , m_aLegendPositionResources(*this)
+SchLegendPosTabPage::SchLegendPosTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
+    : SfxTabPage(pPage, pController, "modules/schart/ui/tp_LegendPosition.ui", "tp_LegendPosition", &rInAttrs)
+    , m_aLegendPositionResources(*m_xBuilder)
+    , m_xLbTextDirection(new TextDirectionListBox(m_xBuilder->weld_combo_box("LB_LEGEND_TEXTDIR")))
+    , m_xCBLegendNoOverlay(m_xBuilder->weld_check_button("CB_NO_OVERLAY"))
 {
-    get(m_pLbTextDirection,"LB_LEGEND_TEXTDIR");
-
-    m_pLbTextDirection->SetDropDownLineCount(3);
 }
 
 SchLegendPosTabPage::~SchLegendPosTabPage()
 {
-    disposeOnce();
+    m_xLbTextDirection.reset();
 }
 
-void SchLegendPosTabPage::dispose()
+std::unique_ptr<SfxTabPage> SchLegendPosTabPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rOutAttrs)
 {
-    m_pLbTextDirection.clear();
-    SfxTabPage::dispose();
-}
-
-
-VclPtr<SfxTabPage> SchLegendPosTabPage::Create(vcl::Window* pWindow, const SfxItemSet* rOutAttrs)
-{
-    return VclPtr<SchLegendPosTabPage>::Create(pWindow, *rOutAttrs);
+    return std::make_unique<SchLegendPosTabPage>(pPage, pController, *rOutAttrs);
 }
 
 bool SchLegendPosTabPage::FillItemSet(SfxItemSet* rOutAttrs)
 {
     m_aLegendPositionResources.writeToItemSet(*rOutAttrs);
 
-    if( m_pLbTextDirection->GetSelectEntryCount() > 0 )
-        rOutAttrs->Put( SvxFrameDirectionItem( m_pLbTextDirection->GetSelectEntryValue(), EE_PARA_WRITINGDIR ) );
+    if (m_xLbTextDirection->get_active() != -1)
+        rOutAttrs->Put(SvxFrameDirectionItem(m_xLbTextDirection->get_active_id(), EE_PARA_WRITINGDIR));
+
+    if (m_xCBLegendNoOverlay->get_visible())
+        rOutAttrs->Put(SfxBoolItem(SCHATTR_LEGEND_NO_OVERLAY, m_xCBLegendNoOverlay->get_active()));
 
     return true;
 }
@@ -74,7 +64,13 @@ void SchLegendPosTabPage::Reset(const SfxItemSet* rInAttrs)
 
     const SfxPoolItem* pPoolItem = nullptr;
     if( rInAttrs->GetItemState( EE_PARA_WRITINGDIR, true, &pPoolItem ) == SfxItemState::SET )
-        m_pLbTextDirection->SelectEntryValue( SvxFrameDirection(static_cast<const SvxFrameDirectionItem*>(pPoolItem)->GetValue()) );
+        m_xLbTextDirection->set_active_id( static_cast<const SvxFrameDirectionItem*>(pPoolItem)->GetValue() );
+
+    if (rInAttrs->GetItemState(SCHATTR_LEGEND_NO_OVERLAY, true, &pPoolItem) == SfxItemState::SET)
+    {
+        bool bVal = static_cast<const SfxBoolItem*>(pPoolItem)->GetValue();
+        m_xCBLegendNoOverlay->set_active(bVal);
+    }
 }
 
 } //namespace chart

@@ -25,10 +25,10 @@
 
 #include <vector>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
     namespace beans { class XPropertySet; }
-} } }
+}
 
 
 /**
@@ -69,7 +69,7 @@ protected:
 
     virtual void EndElement() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference<css::xml::sax::XAttributeList> & xAttrList ) override;

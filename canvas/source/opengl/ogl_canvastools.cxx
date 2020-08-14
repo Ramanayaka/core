@@ -14,11 +14,8 @@
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/polygon/b2dpolygontriangulator.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/tools/tools.hxx>
+#include <basegfx/utils/tools.hxx>
 #include <com/sun/star/rendering/ARGBColor.hpp>
-#include <tools/diagnose_ex.h>
 
 #include "ogl_canvastools.hxx"
 
@@ -35,15 +32,32 @@ namespace oglcanvas
         const ::basegfx::B2DRange& rBounds(aPolyPoly.getB2DRange());
         const double nWidth=rBounds.getWidth();
         const double nHeight=rBounds.getHeight();
-        const ::basegfx::B2DPolygon& rTriangulatedPolygon(
+        const ::basegfx::triangulator::B2DTriangleVector rTriangulatedPolygon(
             ::basegfx::triangulator::triangulate(aPolyPoly));
 
-        for( sal_uInt32 i=0; i<rTriangulatedPolygon.count(); i++ )
+        for( size_t i=0; i<rTriangulatedPolygon.size(); i++ )
         {
-            const ::basegfx::B2DPoint& rPt( rTriangulatedPolygon.getB2DPoint(i) );
-            const double s(rPt.getX()/nWidth);
-            const double t(rPt.getY()/nHeight);
-            glTexCoord2f(s,t); glVertex2d(rPt.getX(), rPt.getY());
+            const::basegfx::triangulator::B2DTriangle& rCandidate(rTriangulatedPolygon[i]);
+            glTexCoord2f(
+                rCandidate.getA().getX()/nWidth,
+                rCandidate.getA().getY()/nHeight);
+            glVertex2d(
+                rCandidate.getA().getX(),
+                rCandidate.getA().getY());
+
+            glTexCoord2f(
+                rCandidate.getB().getX()/nWidth,
+                rCandidate.getB().getY()/nHeight);
+            glVertex2d(
+                rCandidate.getB().getX(),
+                rCandidate.getB().getY());
+
+            glTexCoord2f(
+                rCandidate.getC().getX()/nWidth,
+                rCandidate.getC().getY()/nHeight);
+            glVertex2d(
+                rCandidate.getC().getX(),
+                rCandidate.getC().getY());
         }
     }
 
@@ -120,7 +134,7 @@ namespace oglcanvas
             y += 1.2*scale;
 
             basegfx::B2DPolyPolygon aPoly=
-                basegfx::tools::number2PolyPolygon(rNumber,10,3);
+                basegfx::utils::number2PolyPolygon(rNumber,10,3);
 
             aTmp=aTmp*aScaleShear;
             aPoly.transform(aTmp);

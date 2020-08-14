@@ -24,9 +24,17 @@ $(eval $(call gb_Library_use_custom_headers,svgfilter,filter/source/svg))
 $(eval $(call gb_Library_set_componentfile,svgfilter,filter/source/svg/svgfilter))
 
 $(eval $(call gb_Library_add_defs,svgfilter,\
+	-DBOOST_ALL_NO_LIB \
 	-DUSE_MODERN_SPIRIT \
 	-DFILTER_DLLIMPLEMENTATION \
 ))
+
+ifeq ($(COM),MSC)
+$(eval $(call gb_Library_add_defs,svgfilter,\
+	-D_SILENCE_CXX17_ALLOCATOR_VOID_DEPRECATION_WARNING \
+	-D_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING \
+))
+endif
 
 $(eval $(call gb_Library_set_include,svgfilter,\
     $$(INCLUDE) \
@@ -48,6 +56,7 @@ $(eval $(call gb_Library_use_libraries,svgfilter,\
 	sax \
 	salhelper \
 	comphelper \
+	drawinglayer \
 	basegfx \
 	cppuhelper \
 	cppu \
@@ -60,15 +69,7 @@ $(eval $(call gb_Library_use_externals,svgfilter,\
 ))
 
 $(eval $(call gb_Library_add_exception_objects,svgfilter,\
-	filter/source/svg/b2dellipse \
-	filter/source/svg/impsvgdialog \
-	filter/source/svg/parserfragments \
-	filter/source/svg/svgdialog \
 	filter/source/svg/svgfilter \
-	filter/source/svg/svgimport \
-	filter/source/svg/svgreader \
-	filter/source/svg/tokenmap \
-	filter/source/svg/units \
 	filter/source/svg/svgexport \
 	filter/source/svg/svgfontexport \
 	filter/source/svg/svgwriter \

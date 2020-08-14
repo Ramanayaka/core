@@ -20,25 +20,14 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_TOOLBARMODEMENUCONTROLLER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_TOOLBARMODEMENUCONTROLLER_HXX
 
-#include <macros/xserviceinfo.hxx>
-#include <stdtypes.h>
-
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 
 #include <svtools/popupmenucontrollerbase.hxx>
-#include <toolkit/awt/vclxmenu.hxx>
-#include <cppuhelper/weak.hxx>
-#include <rtl/ustring.hxx>
-
-#include <vector>
 
 namespace framework
 {
-    class ToolbarModeMenuController : public svt::PopupMenuControllerBase
+    class ToolbarModeMenuController final : public svt::PopupMenuControllerBase
     {
         using svt::PopupMenuControllerBase::disposing;
 
@@ -46,12 +35,10 @@ namespace framework
             ToolbarModeMenuController( const css::uno::Reference< css::uno::XComponentContext >& xContext );
             virtual ~ToolbarModeMenuController() override;
 
-            // XServiceInfo
-            DECLARE_XSERVICEINFO_NOFACTORY
-            /* Helper for registry */
-            /// @throws css::uno::Exception
-            static css::uno::Reference< css::uno::XInterface >             SAL_CALL impl_createInstance                ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
-            static css::uno::Reference< css::lang::XSingleServiceFactory > SAL_CALL impl_createFactory                 ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
+            /* interface XServiceInfo */
+            virtual OUString SAL_CALL getImplementationName() override;
+            virtual sal_Bool SAL_CALL supportsService( const OUString& sServiceName ) override;
+            virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
             // XPopupMenuController
             virtual void SAL_CALL setPopupMenu( const css::uno::Reference< css::awt::XPopupMenu >& PopupMenu ) override;
@@ -66,17 +53,8 @@ namespace framework
             // XEventListener
             virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
-            struct ExecuteInfo
-            {
-                css::uno::Reference< css::frame::XDispatch >     xDispatch;
-                css::util::URL                                   aTargetURL;
-                css::uno::Sequence< css::beans::PropertyValue >  aArgs;
-            };
-
-            DECL_STATIC_LINK( ToolbarModeMenuController, ExecuteHdl_Impl, void*, void );
-
         private:
-            void fillPopupMenu( css::uno::Reference< css::awt::XPopupMenu >& rPopupMenu );
+            void fillPopupMenu( css::uno::Reference< css::awt::XPopupMenu > const & rPopupMenu );
 
             css::uno::Reference< css::uno::XComponentContext >        m_xContext;
     };

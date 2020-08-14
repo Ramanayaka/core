@@ -29,14 +29,12 @@
 |*
 \************************************************************************/
 
-class SVX_DLLPUBLIC XFormTextDistanceItem : public SfxMetricItem
+class SVXCORE_DLLPUBLIC XFormTextDistanceItem final : public SfxMetricItem
 {
 public:
                             static SfxPoolItem* CreateDefault();
                             XFormTextDistanceItem(long nDist = 0);
-                            XFormTextDistanceItem(SvStream& rIn);
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual XFormTextDistanceItem* Clone(SfxItemPool* pPool = nullptr) const override;
 };
 
 #endif

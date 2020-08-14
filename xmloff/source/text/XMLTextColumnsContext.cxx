@@ -17,20 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/text/XTextColumns.hpp>
 #include <com/sun/star/text/TextColumn.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/style/VerticalAlignment.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <o3tl/make_unique.hxx>
 #include <sax/tools/converter.hxx>
 #include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmluconv.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmltoken.hxx>
-#include "XMLTextColumnsContext.hxx"
+#include <xmloff/xmlement.hxx>
+#include <XMLTextColumnsContext.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -39,6 +42,8 @@ using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::style;
 using namespace ::com::sun::star::beans;
 using namespace ::xmloff::token;
+
+namespace {
 
 enum SvXMLTokenMapAttrs
 {
@@ -56,7 +61,9 @@ enum SvXMLSepTokenMapAttrs
     XML_TOK_COLUMN_SEP_STYLE
 };
 
-static const SvXMLTokenMapEntry aColAttrTokenMap[] =
+}
+
+const SvXMLTokenMapEntry aColAttrTokenMap[] =
 {
     { XML_NAMESPACE_STYLE,  XML_REL_WIDTH,      XML_TOK_COLUMN_WIDTH },
     { XML_NAMESPACE_FO,     XML_START_INDENT,   XML_TOK_COLUMN_MARGIN_LEFT },
@@ -64,7 +71,7 @@ static const SvXMLTokenMapEntry aColAttrTokenMap[] =
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aColSepAttrTokenMap[] =
+const SvXMLTokenMapEntry aColSepAttrTokenMap[] =
 {
     { XML_NAMESPACE_STYLE,  XML_WIDTH,          XML_TOK_COLUMN_SEP_WIDTH },
     { XML_NAMESPACE_STYLE,  XML_COLOR,          XML_TOK_COLUMN_SEP_COLOR },
@@ -74,7 +81,7 @@ static const SvXMLTokenMapEntry aColSepAttrTokenMap[] =
     XML_TOKEN_MAP_END
 };
 
-static SvXMLEnumMapEntry<sal_Int8> const pXML_Sep_Style_Enum[] =
+SvXMLEnumMapEntry<sal_Int8> const pXML_Sep_Style_Enum[] =
 {
     { XML_NONE,          0 },
     { XML_SOLID,         1 },
@@ -83,12 +90,12 @@ static SvXMLEnumMapEntry<sal_Int8> const pXML_Sep_Style_Enum[] =
     { XML_TOKEN_INVALID, 0 }
 };
 
-static SvXMLEnumMapEntry<VerticalAlignment> const pXML_Sep_Align_Enum[] =
+SvXMLEnumMapEntry<VerticalAlignment> const pXML_Sep_Align_Enum[] =
 {
     { XML_TOP,           VerticalAlignment_TOP   },
     { XML_MIDDLE,        VerticalAlignment_MIDDLE },
     { XML_BOTTOM,        VerticalAlignment_BOTTOM },
-    { XML_TOKEN_INVALID, (VerticalAlignment)0 }
+    { XML_TOKEN_INVALID, VerticalAlignment(0) }
 };
 
 class XMLTextColumnContext_Impl: public SvXMLImportContext
@@ -137,10 +144,11 @@ XMLTextColumnContext_Impl::XMLTextColumnContext_Impl(
                 sal_Int32 nPos = rValue.indexOf( '*' );
                 if( nPos != -1 && nPos+1 == rValue.getLength() )
                 {
-                    OUString sTmp( rValue.copy( 0, nPos ) );
                     if (::sax::Converter::convertNumber(
-                                nVal, sTmp, 0, USHRT_MAX))
-                    aColumn.Width = nVal;
+                                nVal,
+                                std::u16string_view(rValue).substr(0, nPos),
+                                0, USHRT_MAX))
+                        aColumn.Width = nVal;
                 }
             }
             break;
@@ -219,7 +227,7 @@ XMLTextColumnSepContext_Impl::XMLTextColumnSepContext_Impl(
         case XML_TOK_COLUMN_SEP_HEIGHT:
             if (::sax::Converter::convertPercent( nVal, rValue ) &&
                  nVal >=1 && nVal <= 100 )
-                nHeight = (sal_Int8)nVal;
+                nHeight = static_cast<sal_Int8>(nVal);
             break;
         case XML_TOK_COLUMN_SEP_COLOR:
             ::sax::Converter::convertColor( nColor, rValue );
@@ -236,6 +244,14 @@ XMLTextColumnSepContext_Impl::XMLTextColumnSepContext_Impl(
     }
 }
 
+const OUStringLiteral gsSeparatorLineIsOn("SeparatorLineIsOn");
+const OUStringLiteral gsSeparatorLineWidth("SeparatorLineWidth");
+const OUStringLiteral gsSeparatorLineColor("SeparatorLineColor");
+const OUStringLiteral gsSeparatorLineRelativeHeight("SeparatorLineRelativeHeight");
+const OUStringLiteral gsSeparatorLineVerticalAlignment("SeparatorLineVerticalAlignment");
+const OUStringLiteral gsAutomaticDistance("AutomaticDistance");
+const OUStringLiteral gsSeparatorLineStyle("SeparatorLineStyle");
+
 XMLTextColumnsContext::XMLTextColumnsContext(
                                 SvXMLImport& rImport, sal_uInt16 nPrfx,
                                 const OUString& rLName,
@@ -244,13 +260,6 @@ XMLTextColumnsContext::XMLTextColumnsContext(
                                 const XMLPropertyState& rProp,
                                  ::std::vector< XMLPropertyState > &rProps )
 :   XMLElementPropertyContext( rImport, nPrfx, rLName, rProp, rProps )
-,   sSeparatorLineIsOn("SeparatorLineIsOn")
-,   sSeparatorLineWidth("SeparatorLineWidth")
-,   sSeparatorLineColor("SeparatorLineColor")
-,   sSeparatorLineRelativeHeight("SeparatorLineRelativeHeight")
-,   sSeparatorLineVerticalAlignment("SeparatorLineVerticalAlignment")
-,   sAutomaticDistance("AutomaticDistance")
-,   sSeparatorLineStyle("SeparatorLineStyle")
 ,   pColumnAttrTokenMap( new SvXMLTokenMap(aColAttrTokenMap) )
 ,   pColumnSepAttrTokenMap( new SvXMLTokenMap(aColSepAttrTokenMap) )
 ,   nCount( 0 )
@@ -272,7 +281,7 @@ XMLTextColumnsContext::XMLTextColumnsContext(
             if( IsXMLToken( aLocalName, XML_COLUMN_COUNT ) &&
                 ::sax::Converter::convertNumber( nVal, rValue, 0, SHRT_MAX ))
             {
-                nCount = (sal_Int16)nVal;
+                nCount = static_cast<sal_Int16>(nVal);
             }
             else if( IsXMLToken( aLocalName, XML_COLUMN_GAP ) )
             {
@@ -283,7 +292,7 @@ XMLTextColumnsContext::XMLTextColumnsContext(
     }
 }
 
-SvXMLImportContext *XMLTextColumnsContext::CreateChildContext(
+SvXMLImportContextRef XMLTextColumnsContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const uno::Reference< xml::sax::XAttributeList > & xAttrList )
@@ -299,7 +308,7 @@ SvXMLImportContext *XMLTextColumnsContext::CreateChildContext(
 
         // add new tabstop to array of tabstops
         if( !pColumns )
-            pColumns = o3tl::make_unique<XMLTextColumnsArray_Impl>();
+            pColumns = std::make_unique<XMLTextColumnsArray_Impl>();
 
         pColumns->push_back( xColumn );
 
@@ -313,10 +322,6 @@ SvXMLImportContext *XMLTextColumnsContext::CreateChildContext(
                                            xAttrList, *pColumnSepAttrTokenMap ));
 
         pContext = mxColumnSep.get();
-    }
-    else
-    {
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
     }
 
     return pContext;
@@ -339,7 +344,7 @@ void XMLTextColumnsContext::EndElement( )
         xColumns->setColumnCount( 1 );
     }
     else if( !bAutomatic && pColumns &&
-             pColumns->size() == (sal_uInt16)nCount )
+             pColumns->size() == static_cast<sal_uInt16>(nCount) )
     {
         // if we have column descriptions, one per column, and we don't use
         // automatic width, then set the column widths
@@ -351,7 +356,7 @@ void XMLTextColumnsContext::EndElement( )
         for( i = 0; i < nCount; i++ )
         {
             const TextColumn& rColumn =
-                (*pColumns)[(sal_uInt16)i]->getTextColumn();
+                (*pColumns)[static_cast<sal_uInt16>(i)]->getTextColumn();
             if( rColumn.Width > 0 )
             {
                 nRelWidth += rColumn.Width;
@@ -367,7 +372,7 @@ void XMLTextColumnsContext::EndElement( )
             for( i=0; i < nCount; i++ )
             {
                 TextColumn& rColumn =
-                    (*pColumns)[(sal_uInt16)i]->getTextColumn();
+                    (*pColumns)[static_cast<sal_uInt16>(i)]->getTextColumn();
                 if( rColumn.Width == 0 )
                 {
                     rColumn.Width = nColWidth;
@@ -378,10 +383,10 @@ void XMLTextColumnsContext::EndElement( )
             }
         }
 
-        Sequence< TextColumn > aColumns( (sal_Int32)nCount );
+        Sequence< TextColumn > aColumns( static_cast<sal_Int32>(nCount) );
         TextColumn *pTextColumns = aColumns.getArray();
         for( i=0; i < nCount; i++ )
-            *pTextColumns++ = (*pColumns)[(sal_uInt16)i]->getTextColumn();
+            *pTextColumns++ = (*pColumns)[static_cast<sal_uInt16>(i)]->getTextColumn();
 
         xColumns->setColumns( aColumns );
     }
@@ -398,33 +403,33 @@ void XMLTextColumnsContext::EndElement( )
     {
         bool bOn = mxColumnSep != nullptr;
 
-        xPropSet->setPropertyValue( sSeparatorLineIsOn, Any(bOn) );
+        xPropSet->setPropertyValue( gsSeparatorLineIsOn, Any(bOn) );
 
         if( mxColumnSep.is() )
         {
             if( mxColumnSep->GetWidth() )
             {
-                xPropSet->setPropertyValue( sSeparatorLineWidth, Any(mxColumnSep->GetWidth()) );
+                xPropSet->setPropertyValue( gsSeparatorLineWidth, Any(mxColumnSep->GetWidth()) );
             }
             if( mxColumnSep->GetHeight() )
             {
-                xPropSet->setPropertyValue( sSeparatorLineRelativeHeight,
+                xPropSet->setPropertyValue( gsSeparatorLineRelativeHeight,
                                             Any(mxColumnSep->GetHeight()) );
             }
             if ( mxColumnSep->GetStyle() )
             {
-                xPropSet->setPropertyValue( sSeparatorLineStyle, Any(mxColumnSep->GetStyle()) );
+                xPropSet->setPropertyValue( gsSeparatorLineStyle, Any(mxColumnSep->GetStyle()) );
             }
 
-            xPropSet->setPropertyValue( sSeparatorLineColor, Any(mxColumnSep->GetColor()) );
+            xPropSet->setPropertyValue( gsSeparatorLineColor, Any(mxColumnSep->GetColor()) );
 
-            xPropSet->setPropertyValue( sSeparatorLineVerticalAlignment, Any(mxColumnSep->GetVertAlign()) );
+            xPropSet->setPropertyValue( gsSeparatorLineVerticalAlignment, Any(mxColumnSep->GetVertAlign()) );
         }
 
         // handle 'automatic columns': column distance
         if( bAutomatic )
         {
-            xPropSet->setPropertyValue( sAutomaticDistance, Any(nAutomaticDistance) );
+            xPropSet->setPropertyValue( gsAutomaticDistance, Any(nAutomaticDistance) );
         }
     }
 

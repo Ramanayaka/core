@@ -27,7 +27,6 @@
 
 #include <algorithm>
 #include <iterator>
-#include <map>
 
 
 namespace pcr
@@ -95,14 +94,11 @@ namespace pcr
         osl_atomic_increment( &m_refCount );
         {
             Reference< XPropertyChangeListener > xMeMyselfAndI( this );
-            for (   HandlerArray::const_iterator loop = m_aSlaveHandlers.begin();
-                    loop != m_aSlaveHandlers.end();
-                    ++loop
-                )
+            for (auto const& slaveHandler : m_aSlaveHandlers)
             {
-                if ( !loop->is() )
+                if ( !slaveHandler.is() )
                     throw NullPointerException();
-                (*loop)->addPropertyChangeListener( xMeMyselfAndI );
+                slaveHandler->addPropertyChangeListener( xMeMyselfAndI );
             }
         }
         osl_atomic_decrement( &m_refCount );
@@ -113,12 +109,9 @@ namespace pcr
     {
         MethodGuard aGuard( *this );
 
-        for ( HandlerArray::const_iterator loop = m_aSlaveHandlers.begin();
-              loop != m_aSlaveHandlers.end();
-              ++loop
-            )
+        for (auto const& slaveHandler : m_aSlaveHandlers)
         {
-            (*loop)->inspect( _rxIntrospectee );
+            slaveHandler->inspect( _rxIntrospectee );
         }
     }
 
@@ -166,7 +159,7 @@ namespace pcr
 
         // loop through the secondary sets
         PropertyState eSecondaryState = PropertyState_DIRECT_VALUE;
-        for ( HandlerArray::const_iterator loop = ( m_aSlaveHandlers.begin() + 1 );
+        for ( HandlerArray::const_iterator loop = m_aSlaveHandlers.begin() + 1;
               loop != m_aSlaveHandlers.end();
               ++loop
             )
@@ -216,7 +209,7 @@ namespace pcr
             putIntoBag( (*m_aSlaveHandlers.begin())->getSupportedProperties(), m_aSupportedProperties );
 
             // now intersect with the properties of *all* other handlers
-            for ( HandlerArray::const_iterator loop = ( m_aSlaveHandlers.begin() + 1 );
+            for ( HandlerArray::const_iterator loop = m_aSlaveHandlers.begin() + 1;
                 loop != m_aSlaveHandlers.end();
                 ++loop
                 )
@@ -243,9 +236,7 @@ namespace pcr
                 bool bIsComposable = isComposable( check->Name );
                 if ( !bIsComposable )
                 {
-                    PropertyBag::iterator next = check; ++next;
-                    m_aSupportedProperties.erase( check );
-                    check = next;
+                    check = m_aSupportedProperties.erase( check );
                 }
                 else
                     ++check;
@@ -258,18 +249,15 @@ namespace pcr
     }
 
 
-    void uniteStringArrays( const PropertyComposer::HandlerArray& _rHandlers, Sequence< OUString > (SAL_CALL XPropertyHandler::*pGetter)( void ),
+    static void uniteStringArrays( const PropertyComposer::HandlerArray& _rHandlers, Sequence< OUString > (SAL_CALL XPropertyHandler::*pGetter)( ),
         Sequence< OUString >& /* [out] */ _rUnion )
     {
         std::set< OUString > aUnitedBag;
 
         Sequence< OUString > aThisRound;
-        for ( PropertyComposer::HandlerArray::const_iterator loop = _rHandlers.begin();
-              loop != _rHandlers.end();
-              ++loop
-            )
+        for (auto const& handler : _rHandlers)
         {
-            aThisRound = (loop->get()->*pGetter)();
+            aThisRound = (handler.get()->*pGetter)();
             putIntoBag( aThisRound, aUnitedBag );
         }
 
@@ -367,10 +355,12 @@ namespace pcr
 
     void PropertyComposer::impl_ensureUIRequestComposer( const Reference< XObjectInspectorUI >& _rxInspectorUI )
     {
-        OSL_ENSURE( !m_pUIRequestComposer.get() || m_pUIRequestComposer->getDelegatorUI().get() == _rxInspectorUI.get(),
-            "PropertyComposer::impl_ensureUIRequestComposer: somebody's changing the horse in the mid of the race!" );
+        OSL_ENSURE(!m_pUIRequestComposer
+                       || m_pUIRequestComposer->getDelegatorUI().get() == _rxInspectorUI.get(),
+                   "PropertyComposer::impl_ensureUIRequestComposer: somebody's changing the horse "
+                   "in the mid of the race!");
 
-        if ( !m_pUIRequestComposer.get() )
+        if (!m_pUIRequestComposer)
             m_pUIRequestComposer.reset( new ComposedPropertyUIUpdate( _rxInspectorUI, this ) );
     }
 
@@ -387,19 +377,16 @@ namespace pcr
 
         // ask all handlers which expressed interest in this particular property, and "compose" their
         // commands for the UIUpdater
-        for (   HandlerArray::const_iterator loop = m_aSlaveHandlers.begin();
-                loop != m_aSlaveHandlers.end();
-                ++loop
-            )
+        for (auto const& slaveHandler : m_aSlaveHandlers)
         {
             // TODO: make this cheaper (cache it?)
-            const StlSyntaxSequence< OUString > aThisHandlersActuatingProps( (*loop)->getActuatingProperties() );
+            const StlSyntaxSequence< OUString > aThisHandlersActuatingProps( slaveHandler->getActuatingProperties() );
             for (const auto & aThisHandlersActuatingProp : aThisHandlersActuatingProps)
             {
                 if ( aThisHandlersActuatingProp == _rActuatingPropertyName )
                 {
-                    (*loop)->actuatingPropertyChanged( _rActuatingPropertyName, _rNewValue, _rOldValue,
-                        m_pUIRequestComposer->getUIForPropertyHandler( *loop ),
+                    slaveHandler->actuatingPropertyChanged( _rActuatingPropertyName, _rNewValue, _rOldValue,
+                        m_pUIRequestComposer->getUIForPropertyHandler(slaveHandler),
                         _bFirstTimeInit );
                     break;
                 }
@@ -416,18 +403,15 @@ namespace pcr
         MethodGuard aGuard( *this );
 
         // dispose our slave handlers
-        for ( PropertyComposer::HandlerArray::const_iterator loop = m_aSlaveHandlers.begin();
-              loop != m_aSlaveHandlers.end();
-              ++loop
-            )
+        for (auto const& slaveHandler : m_aSlaveHandlers)
         {
-            (*loop)->removePropertyChangeListener( this );
-            (*loop)->dispose();
+            slaveHandler->removePropertyChangeListener( this );
+            slaveHandler->dispose();
         }
 
         clearContainer( m_aSlaveHandlers );
 
-        if ( m_pUIRequestComposer.get() )
+        if (m_pUIRequestComposer)
             m_pUIRequestComposer->dispose();
         m_pUIRequestComposer.reset();
     }
@@ -446,7 +430,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
         m_aPropertyListeners.notify( aTranslatedEvent, &XPropertyChangeListener::propertyChange );
     }
@@ -488,7 +472,7 @@ namespace pcr
     }
 
 
-    bool SAL_CALL PropertyComposer::hasPropertyByName( const OUString& _rName )
+    bool PropertyComposer::hasPropertyByName( const OUString& _rName )
     {
         return impl_isSupportedProperty_nothrow( _rName );
     }

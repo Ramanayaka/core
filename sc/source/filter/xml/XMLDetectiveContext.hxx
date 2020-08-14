@@ -20,13 +20,13 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_XML_XMLDETECTIVECONTEXT_HXX
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLDETECTIVECONTEXT_HXX
 
-#include <xmloff/xmlimp.hxx>
-#include "detfunc.hxx"
-#include "detdata.hxx"
-#include "xmlimprt.hxx"
+#include <detfunc.hxx>
+#include <detdata.hxx>
 #include "importcontext.hxx"
 
 #include <list>
+
+namespace sax_fastparser { class FastAttributeList; }
 
 struct ScMyImpDetectiveObj
 {
@@ -80,18 +80,15 @@ private:
 public:
                                 ScXMLDetectiveContext(
                                     ScXMLImport& rImport,
-                                    sal_uInt16 nPrfx,
-                                    const OUString& rLName,
                                     ScMyImpDetectiveObjVec* pNewDetectiveObjVec
                                     );
     virtual                     ~ScXMLDetectiveContext() override;
 
-    virtual SvXMLImportContext* CreateChildContext(
-                                    sal_uInt16 nPrefix,
-                                    const OUString& rLocalName,
-                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL
+                                createFastChildContext(
+                                    sal_Int32 nElement,
+                                    const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList
                                     ) override;
-    virtual void                EndElement() override;
 };
 
 class ScXMLDetectiveHighlightedContext : public ScXMLImportContext
@@ -104,19 +101,12 @@ private:
 public:
                                 ScXMLDetectiveHighlightedContext(
                                     ScXMLImport& rImport,
-                                    sal_uInt16 nPrfx,
-                                    const OUString& rLName,
-                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList,
+                                    const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                                     ScMyImpDetectiveObjVec* pNewDetectiveObjVec
                                     );
     virtual                     ~ScXMLDetectiveHighlightedContext() override;
 
-    virtual SvXMLImportContext* CreateChildContext(
-                                    sal_uInt16 nPrefix,
-                                    const OUString& rLocalName,
-                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList
-                                    ) override;
-    virtual void                EndElement() override;
+    virtual void SAL_CALL       endFastElement( sal_Int32 nElement ) override;
 };
 
 class ScXMLDetectiveOperationContext : public ScXMLImportContext
@@ -128,18 +118,11 @@ private:
 public:
                                 ScXMLDetectiveOperationContext(
                                     ScXMLImport& rImport,
-                                    sal_uInt16 nPrfx,
-                                    const OUString& rLName,
-                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList
+                                    const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList
                                     );
     virtual                     ~ScXMLDetectiveOperationContext() override;
 
-    virtual SvXMLImportContext* CreateChildContext(
-                                    sal_uInt16 nPrefix,
-                                    const OUString& rLocalName,
-                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList
-                                    ) override;
-    virtual void                EndElement() override;
+    virtual void SAL_CALL       endFastElement( sal_Int32 nElement ) override;
 };
 
 #endif

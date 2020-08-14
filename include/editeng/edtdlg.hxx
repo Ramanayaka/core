@@ -20,23 +20,28 @@
 #define INCLUDED_EDITENG_EDTDLG_HXX
 
 #include <rtl/ustring.hxx>
-#include <tools/link.hxx>
 #include <editeng/editengdllapi.h>
 #include <i18nlangtag/lang.h>
-#include <com/sun/star/uno/Reference.hxx>
 #include <vcl/abstdlg.hxx>
 #include <editeng/hangulhanja.hxx>
 
-namespace com { namespace sun { namespace star { namespace linguistic2
+namespace com::sun::star::linguistic2
 {
     class XThesaurus;
     class XHyphenator;
-} } } }
+}
+
+template <typename Arg, typename Ret> class Link;
 
 namespace vcl { class Window; }
 class SvxSpellWrapper;
-class Button;
-class CheckBox;
+class LinkParamNone;
+
+namespace weld { class Button; }
+namespace weld { class ToggleButton; }
+namespace weld { class Window; }
+
+
 
 class AbstractThesaurusDialog : public VclAbstractDialog
 {
@@ -50,8 +55,6 @@ class AbstractHyphenWordDialog : public VclAbstractDialog
 {
 protected:
     virtual ~AbstractHyphenWordDialog() override = default;
-public:
-    virtual vcl::Window* GetWindow() = 0;
 };
 
 class AbstractHangulHanjaConversionDialog : public VclAbstractTerminatedDialog
@@ -64,13 +67,13 @@ public:
     virtual void     SetConversionDirectionState( bool _bTryBothDirections, editeng::HangulHanjaConversion::ConversionDirection _ePrimaryConversionDirection ) = 0;
     virtual void     SetConversionFormat( editeng::HangulHanjaConversion::ConversionFormat _eType ) = 0;
     virtual void     SetOptionsChangedHdl( const Link<LinkParamNone*,void>& _rHdl ) = 0;
-    virtual void     SetIgnoreHdl( const Link<Button*,void>& _rHdl ) = 0;
-    virtual void     SetIgnoreAllHdl( const Link<Button*,void>& _rHdl ) = 0;
-    virtual void     SetChangeHdl( const Link<Button*,void>& _rHdl ) = 0;
-    virtual void     SetChangeAllHdl( const Link<Button*,void>& _rHdl ) = 0;
-    virtual void     SetClickByCharacterHdl( const Link<CheckBox*,void>& _rHdl ) = 0;
-    virtual void     SetConversionFormatChangedHdl( const Link<Button*,void>& _rHdl ) = 0;
-    virtual void     SetFindHdl( const Link<Button*,void>& _rHdl ) = 0;
+    virtual void     SetIgnoreHdl( const Link<weld::Button&,void>& _rHdl ) = 0;
+    virtual void     SetIgnoreAllHdl( const Link<weld::Button&,void>& _rHdl ) = 0;
+    virtual void     SetChangeHdl( const Link<weld::Button&,void>& _rHdl ) = 0;
+    virtual void     SetChangeAllHdl( const Link<weld::Button&,void>& _rHdl ) = 0;
+    virtual void     SetClickByCharacterHdl( const Link<weld::ToggleButton&,void>& _rHdl ) = 0;
+    virtual void     SetConversionFormatChangedHdl( const Link<weld::Button&,void>& _rHdl ) = 0;
+    virtual void     SetFindHdl( const Link<weld::Button&,void>& _rHdl ) = 0;
     virtual bool     GetUseBothDirections() const= 0;
     virtual editeng::HangulHanjaConversion::ConversionDirection
                      GetDirection( editeng::HangulHanjaConversion::ConversionDirection _eDefaultDirection ) const = 0;
@@ -90,15 +93,15 @@ class EDITENG_DLLPUBLIC EditAbstractDialogFactory : virtual public VclAbstractDi
 public:
                                         virtual ~EditAbstractDialogFactory() override;   // needed for export of vtable
     static EditAbstractDialogFactory*   Create();
-    virtual VclPtr<AbstractThesaurusDialog>  CreateThesaurusDialog( vcl::Window*, css::uno::Reference< css::linguistic2::XThesaurus >  xThesaurus,
-                                                const OUString &rWord, LanguageType nLanguage ) = 0;
+    virtual VclPtr<AbstractThesaurusDialog>  CreateThesaurusDialog(weld::Window*,
+                                                css::uno::Reference<css::linguistic2::XThesaurus> xThesaurus,
+                                                const OUString &rWord, LanguageType nLanguage) = 0;
 
-    virtual VclPtr<AbstractHyphenWordDialog> CreateHyphenWordDialog( vcl::Window*,
+    virtual VclPtr<AbstractHyphenWordDialog> CreateHyphenWordDialog(weld::Window*,
                                                 const OUString &rWord, LanguageType nLang,
                                                 css::uno::Reference< css::linguistic2::XHyphenator >  &xHyphen,
-                                                SvxSpellWrapper* pWrapper ) = 0;
-    virtual VclPtr<AbstractHangulHanjaConversionDialog> CreateHangulHanjaConversionDialog( vcl::Window* _pParent,
-                                            editeng::HangulHanjaConversion::ConversionDirection _ePrimaryDirection ) = 0;
+                                                SvxSpellWrapper* pWrapper) = 0;
+    virtual VclPtr<AbstractHangulHanjaConversionDialog> CreateHangulHanjaConversionDialog(weld::Window* pParent) = 0;
 };
 
 #endif

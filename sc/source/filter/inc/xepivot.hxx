@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_XEPIVOT_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_XEPIVOT_HXX
 
-#include <map>
 #include "xerecord.hxx"
 #include "xlpivot.hxx"
 #include "xeroot.hxx"
@@ -30,7 +29,6 @@ class ScDPSaveData;
 class ScDPSaveDimension;
 class ScDPSaveMember;
 class ScDPSaveGroupDimension;
-class ScDPSaveNumGroupDimension;
 struct ScDPNumGroupInfo;
 
 // Pivot cache
@@ -40,10 +38,10 @@ class XclExpPCItem : public XclExpRecord, public XclPCItem
 {
 public:
     explicit            XclExpPCItem( const OUString& rText );
-    explicit            XclExpPCItem( double fValue );
-    explicit            XclExpPCItem( const DateTime& rDateTime );
+    explicit            XclExpPCItem( double fValue, const OUString& rText = OUString() );
+    explicit            XclExpPCItem( const DateTime& rDateTime, const OUString& rText = OUString() );
     explicit            XclExpPCItem( sal_Int16 nValue );
-    explicit            XclExpPCItem( bool bValue );
+    explicit            XclExpPCItem( bool bValue, const OUString& rText );
 
     sal_uInt16   GetTypeFlag() const { return mnTypeFlag; }
 
@@ -58,8 +56,6 @@ private:
 private:
     sal_uInt16          mnTypeFlag;         /// Data type flag.
 };
-
-class XclExpPivotCache;
 
 class XclExpPCField : public XclExpRecord, public XclPCField, protected XclExpRoot
 {
@@ -120,11 +116,11 @@ private:
     /** Inserts an original text item, if it is not contained already. */
     void                InsertOrigTextItem( const OUString& rText );
     /** Inserts an original value item, if it is not contained already. */
-    void                InsertOrigDoubleItem( double fValue );
+    void                InsertOrigDoubleItem( double fValue, const OUString& rText );
     /** Inserts an original date/time item, if it is not contained already. */
-    void                InsertOrigDateTimeItem( const DateTime& rDateTime );
+    void                InsertOrigDateTimeItem( const DateTime& rDateTime, const OUString& rText );
     /** Inserts an original boolean item, if it is not contained already. */
-    void                InsertOrigBoolItem( bool bValue );
+    void                InsertOrigBoolItem( bool bValue, const OUString& rText );
 
     /** Inserts an item into the grouping item list. Does not change anything else.
         @return  The list index of the new item. */
@@ -157,7 +153,7 @@ private:
     sal_uInt16          mnTypeFlags;        /// Collected item data type flags.
 };
 
-class XclExpPivotCache : protected XclExpRoot
+class XclExpPivotCache : public salhelper::SimpleReferenceObject, protected XclExpRoot
 {
 public:
     explicit            XclExpPivotCache( const XclExpRoot& rRoot,
@@ -222,6 +218,8 @@ private:
     sal_uInt16          mnListIdx;          /// List index in pivot cache buffer.
     bool                mbValid;            /// true = The cache is valid for export.
 };
+
+typedef rtl::Reference<XclExpPivotCache>       XclExpPivotCacheRef;
 
 // Pivot table
 
@@ -305,23 +303,23 @@ private:
     void                WriteSxvdex( XclExpStream& rStrm ) const;
 
 private:
-    typedef ::std::vector< XclPTDataFieldInfo > XclPTDataFieldInfoVec;
-    typedef XclExpRecordList< XclExpPTItem >    XclExpPTItemList;
 
     const XclExpPivotTable& mrPTable;       /// Parent pivot table containing this field.
     const XclExpPCField* mpCacheField;      /// The referred pivot cache field.
     XclPTFieldInfo      maFieldInfo;        /// General field info (SXVD record).
     XclPTFieldExtInfo   maFieldExtInfo;     /// Extended field info (SXVDEX record).
     XclPTPageFieldInfo  maPageInfo;         /// Page field info (entry in SXPI record).
-    XclPTDataFieldInfoVec maDataInfoVec;    /// List of extended data field info (SXDI records).
-    XclExpPTItemList    maItemList;         /// List of all items of this field.
+    std::vector< XclPTDataFieldInfo >
+                        maDataInfoVec;    /// List of extended data field info (SXDI records).
+    XclExpRecordList< XclExpPTItem >
+                        maItemList;         /// List of all items of this field.
 };
 
 class XclExpPivotTable : public XclExpRecordBase, protected XclExpRoot
 {
 public:
     explicit            XclExpPivotTable( const XclExpRoot& rRoot,
-                            const ScDPObject& rDPObj, const XclExpPivotCache& rPCache, size_t nId );
+                            const ScDPObject& rDPObj, const XclExpPivotCache& rPCache );
 
     /** Returns a pivot cache field. */
     const XclExpPCField* GetCacheField( sal_uInt16 nCacheIdx ) const;
@@ -381,7 +379,6 @@ private:
 private:
     typedef XclExpRecordList< XclExpPTField >   XclExpPTFieldList;
     typedef XclExpPTFieldList::RecordRefType    XclExpPTFieldRef;
-    typedef ::std::vector< XclPTDataFieldPos >  XclPTDataFieldPosVec;
 
     const XclExpPivotCache& mrPCache;       /// The pivot cache this pivot table bases on.
     XclPTInfo           maPTInfo;           /// Info about the pivot table (SXVIEW record).
@@ -391,7 +388,8 @@ private:
     ScfUInt16Vec        maRowFields;        /// Row field indexes.
     ScfUInt16Vec        maColFields;        /// Column field indexes.
     ScfUInt16Vec        maPageFields;       /// Page field indexes.
-    XclPTDataFieldPosVec maDataFields;      /// Data field indexes.
+    std::vector< XclPTDataFieldPos >
+                        maDataFields;      /// Data field indexes.
     XclExpPTField       maDataOrientField;  /// Special data field orientation field.
     SCTAB               mnOutScTab;         /// Sheet index of the output range.
     bool                mbValid;            /// true = The pivot table is valid for export.
@@ -429,13 +427,11 @@ private:
     const XclExpPivotCache* CreatePivotCache( const ScDPObject& rDPObj );
 
 private:
-    typedef XclExpRecordList< XclExpPivotCache >    XclExpPivotCacheList;
-    typedef XclExpPivotCacheList::RecordRefType     XclExpPivotCacheRef;
     typedef XclExpRecordList< XclExpPivotTable >    XclExpPivotTableList;
     typedef XclExpPivotTableList::RecordRefType     XclExpPivotTableRef;
 
-    XclExpPivotCacheList maPCacheList;      /// List of all pivot caches.
-    XclExpPivotTableList maPTableList;      /// List of all pivot tables.
+    XclExpRecordList< XclExpPivotCache > maPCacheList;      /// List of all pivot caches.
+    XclExpPivotTableList                 maPTableList;      /// List of all pivot tables.
 };
 
 #endif

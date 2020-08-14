@@ -21,25 +21,17 @@
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_SLIDEANIMATIONS_HXX
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <basegfx/vector/b2dvector.hxx>
 
-#include "event.hxx"
-#include "slideshowcontext.hxx"
-#include "subsettableshapemanager.hxx"
-#include "animationnode.hxx"
+#include <slideshowcontext.hxx>
+#include <animationnode.hxx>
 
-namespace com { namespace sun { namespace star { namespace animations
-{
-    class XAnimationNode;
-} } } }
+namespace com::sun::star::animations { class XAnimationNode; }
 
 
 /* Definition of SlideAnimations class */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** This class generates and manages all animations of a slide.
 
@@ -57,7 +49,7 @@ namespace slideshow
              */
             SlideAnimations( const SlideShowContext&     rContext,
                              const ::basegfx::B2DVector& rSlideSize );
-            ~SlideAnimations();
+            ~SlideAnimations() COVERITY_NOEXCEPT_FALSE;
 
             /** Import animations from a SMIL root animation node.
 
@@ -107,7 +99,7 @@ namespace slideshow
             const basegfx::B2DVector maSlideSize;
             AnimationNodeSharedPtr   mpRootNode;
         };
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_SLIDEANIMATIONS_HXX

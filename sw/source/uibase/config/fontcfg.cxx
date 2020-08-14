@@ -19,19 +19,18 @@
 
 #include <fontcfg.hxx>
 #include <i18nlangtag/mslangid.hxx>
+#include <osl/diagnose.h>
+#include <tools/UnitConversion.hxx>
 #include <vcl/outdev.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/lingucfg.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/i18n/ScriptType.hpp>
-#include <swtypes.hxx>
-
-#include <unomid.h>
 
 using namespace utl;
 using namespace com::sun::star::uno;
 
-static inline LanguageType lcl_LanguageOfType(sal_Int16 nType, LanguageType eWestern, LanguageType eCJK, LanguageType eCTL)
+static LanguageType lcl_LanguageOfType(sal_Int16 nType, LanguageType eWestern, LanguageType eCJK, LanguageType eCTL)
 {
     return nType < FONT_STANDARD_CJK
            ? eWestern
@@ -80,7 +79,7 @@ SwStdFontConfig::SwStdFontConfig() :
 {
     SvtLinguOptions aLinguOpt;
 
-    if (!utl::ConfigManager::IsAvoidConfig())
+    if (!utl::ConfigManager::IsFuzzing())
         SvtLinguConfig().GetOptions( aLinguOpt );
 
     LanguageType eWestern = MsLangId::resolveSystemLanguageByScriptType(aLinguOpt.nDefaultLanguage, css::i18n::ScriptType::LATIN),
@@ -98,23 +97,23 @@ SwStdFontConfig::SwStdFontConfig() :
     Sequence<Any> aValues = GetProperties(aNames);
     const Any* pValues = aValues.getConstArray();
     OSL_ENSURE(aValues.getLength() == aNames.getLength(), "GetProperties failed");
-    if(aValues.getLength() == aNames.getLength())
+    if(aValues.getLength() != aNames.getLength())
+        return;
+
+    for(int nProp = 0; nProp < aNames.getLength(); nProp++)
     {
-        for(int nProp = 0; nProp < aNames.getLength(); nProp++)
+        if(pValues[nProp].hasValue())
         {
-            if(pValues[nProp].hasValue())
+            if( nProp < DEF_FONT_COUNT)
             {
-                if( nProp < DEF_FONT_COUNT)
-                {
-                    OUString sVal;
-                    pValues[nProp] >>= sVal;
-                    sDefaultFonts[nProp] = sVal;
-                }
-                else
-                {
-                   pValues[nProp] >>= nDefaultFontHeight[nProp - DEF_FONT_COUNT];
-                   nDefaultFontHeight[nProp - DEF_FONT_COUNT] = convertMm100ToTwip(nDefaultFontHeight[nProp - DEF_FONT_COUNT]);
-                }
+                OUString sVal;
+                pValues[nProp] >>= sVal;
+                sDefaultFonts[nProp] = sVal;
+            }
+            else
+            {
+               pValues[nProp] >>= nDefaultFontHeight[nProp - DEF_FONT_COUNT];
+               nDefaultFontHeight[nProp - DEF_FONT_COUNT] = convertMm100ToTwip(nDefaultFontHeight[nProp - DEF_FONT_COUNT]);
             }
         }
     }
@@ -160,7 +159,7 @@ bool SwStdFontConfig::IsFontDefault(sal_uInt16 nFontType) const
     bool bSame = false;
     SvtLinguOptions aLinguOpt;
 
-    if (!utl::ConfigManager::IsAvoidConfig())
+    if (!utl::ConfigManager::IsFuzzing())
         SvtLinguConfig().GetOptions(aLinguOpt);
 
     LanguageType eWestern = MsLangId::resolveSystemLanguageByScriptType(aLinguOpt.nDefaultLanguage, css::i18n::ScriptType::LATIN),
@@ -270,30 +269,30 @@ sal_Int32 SwStdFontConfig::GetDefaultHeightFor(sal_uInt16 nFontType, LanguageTyp
 
 void SwStdFontConfig::ChangeInt( sal_uInt16 nFontType, sal_Int32 nHeight )
 {
-    OSL_ENSURE( nFontType < DEF_FONT_COUNT, "invalid index in SwStdFontConfig::ChangInt()");
-    if( nFontType < DEF_FONT_COUNT && nDefaultFontHeight[nFontType] != nHeight)
+    OSL_ENSURE( nFontType < DEF_FONT_COUNT, "invalid index in SwStdFontConfig::ChangeInt()");
+    if( nFontType >= DEF_FONT_COUNT || nDefaultFontHeight[nFontType] == nHeight)
+        return;
+
+    SvtLinguOptions aLinguOpt;
+    if (!utl::ConfigManager::IsFuzzing())
+        SvtLinguConfig().GetOptions( aLinguOpt );
+
+    LanguageType eWestern = MsLangId::resolveSystemLanguageByScriptType(aLinguOpt.nDefaultLanguage, css::i18n::ScriptType::LATIN),
+                 eCJK = MsLangId::resolveSystemLanguageByScriptType(aLinguOpt.nDefaultLanguage_CJK, css::i18n::ScriptType::ASIAN),
+                 eCTL = MsLangId::resolveSystemLanguageByScriptType(aLinguOpt.nDefaultLanguage_CTL, css::i18n::ScriptType::COMPLEX);
+
+    // #i92090# default height value sets back to -1
+    const sal_Int32 nDefaultHeight = GetDefaultHeightFor(nFontType, lcl_LanguageOfType(nFontType, eWestern, eCJK, eCTL));
+    const bool bIsDefaultHeight = nHeight == nDefaultHeight;
+    if( bIsDefaultHeight && nDefaultFontHeight[nFontType] > 0 )
     {
-        SvtLinguOptions aLinguOpt;
-        if (!utl::ConfigManager::IsAvoidConfig())
-            SvtLinguConfig().GetOptions( aLinguOpt );
-
-        LanguageType eWestern = MsLangId::resolveSystemLanguageByScriptType(aLinguOpt.nDefaultLanguage, css::i18n::ScriptType::LATIN),
-                     eCJK = MsLangId::resolveSystemLanguageByScriptType(aLinguOpt.nDefaultLanguage_CJK, css::i18n::ScriptType::ASIAN),
-                     eCTL = MsLangId::resolveSystemLanguageByScriptType(aLinguOpt.nDefaultLanguage_CTL, css::i18n::ScriptType::COMPLEX);
-
-        // #i92090# default height value sets back to -1
-        const sal_Int32 nDefaultHeight = GetDefaultHeightFor(nFontType, lcl_LanguageOfType(nFontType, eWestern, eCJK, eCTL));
-        const bool bIsDefaultHeight = nHeight == nDefaultHeight;
-        if( bIsDefaultHeight && nDefaultFontHeight[nFontType] > 0 )
-        {
-            SetModified();
-            nDefaultFontHeight[nFontType] = -1;
-        }
-        else if( !bIsDefaultHeight && nHeight != nDefaultFontHeight[nFontType] )
-        {
-            SetModified();
-            nDefaultFontHeight[nFontType] = nHeight;
-        }
+        SetModified();
+        nDefaultFontHeight[nFontType] = -1;
+    }
+    else if( !bIsDefaultHeight && nHeight != nDefaultFontHeight[nFontType] )
+    {
+        SetModified();
+        nDefaultFontHeight[nFontType] = nHeight;
     }
 }
 

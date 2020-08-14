@@ -22,25 +22,20 @@
 
 #include <svl/eitem.hxx>
 
-#include <svx/xdef.hxx>
-#include <svx/xenum.hxx>
 #include <svx/svxdllapi.h>
 #include <com/sun/star/drawing/FillStyle.hpp>
 
 
-// class XFillStyleItem
 
 
-class SVX_DLLPUBLIC XFillStyleItem : public SfxEnumItem<css::drawing::FillStyle>
+class SVXCORE_DLLPUBLIC XFillStyleItem final : public SfxEnumItem<css::drawing::FillStyle>
 {
 public:
                             static SfxPoolItem* CreateDefault();
 
                             XFillStyleItem(css::drawing::FillStyle = css::drawing::FillStyle_SOLID);
-                            XFillStyleItem(SvStream& rIn);
 
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual XFillStyleItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -48,10 +43,11 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
     virtual sal_uInt16          GetValueCount() const override;
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
+    virtual boost::property_tree::ptree dumpAsJSON() const override;
 };
 
 #endif

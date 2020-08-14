@@ -20,18 +20,19 @@
 #ifndef INCLUDED_FRAMEWORK_UNDOMANAGERHELPER_HXX
 #define INCLUDED_FRAMEWORK_UNDOMANAGERHELPER_HXX
 
-#include <framework/fwedllapi.h>
-#include <framework/imutex.hxx>
-
-#include <com/sun/star/document/XUndoManager.hpp>
-#include <com/sun/star/util/XModifyListener.hpp>
+#include <framework/fwkdllapi.h>
+#include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/Reference.hxx>
 
 #include <memory>
 
-namespace svl
-{
-    class IUndoManager;
-}
+namespace com::sun::star::document { class XUndoAction; }
+namespace com::sun::star::document { class XUndoManager; }
+namespace com::sun::star::document { class XUndoManagerListener; }
+namespace com::sun::star::util { class XModifyListener; }
+namespace framework { class IMutex; }
+
+class SfxUndoManager;
 
 
 namespace framework
@@ -63,17 +64,17 @@ namespace framework
     class SAL_NO_VTABLE IUndoManagerImplementation
     {
     public:
-        /** returns the IUndoManager interface to the actual Undo stack
+        /** returns the SfxUndoManager interface to the actual Undo stack
 
             @throws css::lang::DisposedException
-                when the instance is already disposed, and no IUndoManager can be provided
+                when the instance is already disposed, and no SfxUndoManager can be provided
 
             @throws css::lang::NotInitializedException
-                when the instance is not initialized, yet, and no IUndoManager can be provided
+                when the instance is not initialized, yet, and no SfxUndoManager can be provided
         */
-        virtual ::svl::IUndoManager&    getImplUndoManager() = 0;
+        virtual SfxUndoManager&        getImplUndoManager() = 0;
 
-        /** provides access to an UNO interface for the XUndoManager implementation. Used when throwing exceptions.
+        /** provides access to a UNO interface for the XUndoManager implementation. Used when throwing exceptions.
         */
         virtual css::uno::Reference< css::document::XUndoManager >
                                         getThis() = 0;
@@ -95,21 +96,21 @@ namespace framework
         The following locking strategy is used for this mutex:
         <ul><li>Any notifications to the registered XUndoManagerListeners are after the guard has been cleared. i.e.
                 without the mutex being locked.</p>
-            <li>Any calls into the <code>IUndoManager</code> implementation is made without the mutex being locked.
-                Note that this implies that the <code>IUndoManager</code> implementation must be thread-safe in itself
+            <li>Any calls into the <code>SfxUndoManager</code> implementation is made without the mutex being locked.
+                Note that this implies that the <code>SfxUndoManager</code> implementation must be thread-safe in itself
                 (which is true for the default implementation, SfxUndoManager).</li>
-            <li>An exception to the previous item are the <member>IUndoManager::Undo</member> and
-                <member>IUndoManager::Redo</member> methods: They're called with the given external mutex being
+            <li>An exception to the previous item are the <member>SfxUndoManager::Undo</member> and
+                <member>SfxUndoManager::Redo</member> methods: They're called with the given external mutex being
                 locked.</li>
         </ul>
 
-        The reason for the exception for IUndoManager::Undo and IUndoManager::Redo is that those are expected to
+        The reason for the exception for SfxUndoManager::Undo and SfxUndoManager::Redo is that those are expected to
         modify the actual document which the UndoManager works for. And as long as our documents are not thread-safe,
         and as long as we do not re-fit <strong>all</strong> existing SfxUndoImplementations to <em>not</em> expect
         the dreaded SolarMutex being locked when they're called, the above behavior is a compromise between "how it should
         be" and "how it can realistically be".
     */
-    class FWE_DLLPUBLIC UndoManagerHelper
+    class FWK_DLLPUBLIC UndoManagerHelper
     {
     public:
         UndoManagerHelper( IUndoManagerImplementation& i_undoManagerImpl );

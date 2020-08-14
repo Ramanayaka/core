@@ -8,8 +8,11 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
+#include <osl/file.hxx>
 
 #include <svtools/filechangedchecker.hxx>
+#include <vcl/timer.hxx>
 
 FileChangedChecker::FileChangedChecker(const OUString& rFilename,
         const ::std::function<void ()>& rCallback)
@@ -42,12 +45,13 @@ bool FileChangedChecker::getCurrentModTime(TimeValue& o_rValue) const
 {
     // Need a Directory item to fetch file status
     osl::DirectoryItem aItem;
-    osl::DirectoryItem::get(mFileName, aItem);
+    if (osl::FileBase::E_None != osl::DirectoryItem::get(mFileName, aItem))
+        return false;
 
     // Retrieve the status - we are only interested in last File
     // Modified time
     osl::FileStatus aStatus( osl_FileStatus_Mask_ModifyTime );
-    if( osl::FileBase::E_None != aItem.getFileStatus(aStatus) )
+    if (osl::FileBase::E_None != aItem.getFileStatus(aStatus))
         return false;
 
     o_rValue = aStatus.getModifyTime();

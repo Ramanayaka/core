@@ -28,10 +28,10 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 
-#include "apitools.hxx"
-#include "column.hxx"
-#include "datasettings.hxx"
-#include "commandbase.hxx"
+#include <apitools.hxx>
+#include <column.hxx>
+#include <datasettings.hxx>
+#include <commandbase.hxx>
 #include <comphelper/broadcasthelper.hxx>
 #include <comphelper/uno3.hxx>
 
@@ -55,7 +55,7 @@ private:
     ::osl::Mutex&   m_rMutex;
 
 protected:
-    OColumns*       m_pColumns;                 // our column descriptions
+    std::unique_ptr<OColumns> m_pColumns;                 // our column descriptions
     OUString m_sElementName;
     virtual ~OQueryDescriptor_Base();
 
@@ -79,7 +79,7 @@ public:
 // css::lang::XUnoTunnel
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
     virtual css::uno::Sequence<sal_Int8> SAL_CALL getImplementationId(  ) override;
-    static css::uno::Sequence< sal_Int8 >  getUnoTunnelImplementationId();
+    static css::uno::Sequence< sal_Int8 >  getUnoTunnelId();
 
 
 // css::lang::XServiceInfo

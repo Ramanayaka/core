@@ -21,16 +21,12 @@
 
 // helper classes
 #include <cppuhelper/propshlp.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
-#include <cppuhelper/weak.hxx>
 
 // interfaces and types
 #include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/beans/XMultiPropertyStates.hpp>
-#include <com/sun/star/beans/Property.hpp>
 #include <com/sun/star/style/XStyleSupplier.hpp>
-#include <osl/mutex.hxx>
 #include "charttoolsdllapi.hxx"
 
 #include <memory>
@@ -41,7 +37,7 @@ namespace property
 namespace impl
 { class ImplOPropertySet; }
 
-class OOO_DLLPUBLIC_CHARTTOOLS OPropertySet :
+class OPropertySet :
     public ::cppu::OBroadcastHelper,
     // includes beans::XPropertySet, XMultiPropertySet and XFastPropertySet
     public ::cppu::OPropertySetHelper,
@@ -110,7 +106,7 @@ protected:
           sal_Int32 nHandle,
           const css::uno::Any& rValue ) override;
 
-    /** The same as setFastProperyValue; nHandle is always valid.
+    /** The same as setFastPropertyValue; nHandle is always valid.
         The changes must not be broadcasted in this method.
 
         @attention
@@ -132,7 +128,7 @@ protected:
           const css::uno::Any& rValue ) override;
 
     /**
-       The same as getFastProperyValue, but return the value through rValue and
+       The same as getFastPropertyValue, but return the value through rValue and
        nHandle is always valid.
 
         @see ::cppu::OPropertySetHelper

@@ -17,30 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/lineproperties.hxx"
-#include <vector>
+#include <drawingml/lineproperties.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
 #include <com/sun/star/beans/NamedValue.hpp>
-#include <com/sun/star/drawing/FlagSequence.hpp>
+#include <com/sun/star/drawing/LineCap.hpp>
 #include <com/sun/star/drawing/LineDash.hpp>
 #include <com/sun/star/drawing/LineJoint.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
-#include <com/sun/star/drawing/PointSequence.hpp>
 #include <com/sun/star/drawing/PolyPolygonBezierCoords.hpp>
-#include "oox/drawingml/drawingmltypes.hxx"
-#include "oox/drawingml/shapepropertymap.hxx"
-#include "oox/helper/containerhelper.hxx"
-#include "oox/helper/graphichelper.hxx"
-#include "oox/token/tokens.hxx"
+#include <oox/drawingml/drawingmltypes.hxx>
+#include <oox/drawingml/shapepropertymap.hxx>
+#include <oox/helper/containerhelper.hxx>
+#include <oox/helper/graphichelper.hxx>
+#include <oox/token/tokens.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::drawing;
 
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 namespace {
 
@@ -55,91 +52,156 @@ void lclSetDashData( LineDash& orLineDash, sal_Int16 nDots, sal_Int32 nDotLen,
 }
 
 /** Converts the specified preset dash to API dash.
-
-    Line length and dot length are set relative to line width and have to be
-    multiplied by the actual line width after this function.
  */
-void lclConvertPresetDash( LineDash& orLineDash, sal_Int32 nPresetDash )
+void lclConvertPresetDash(LineDash& orLineDash, sal_Int32 nPresetDash)
 {
     switch( nPresetDash )
     {
         case XML_dot:           lclSetDashData( orLineDash, 1, 1, 0, 0, 3 );    break;
-        case XML_dash:          lclSetDashData( orLineDash, 0, 0, 1, 4, 3 );    break;
-        case XML_dashDot:       lclSetDashData( orLineDash, 1, 1, 1, 4, 3 );    break;
+        case XML_dash:          lclSetDashData( orLineDash, 1, 4, 0, 0, 3 );    break;
+        case XML_dashDot:       lclSetDashData( orLineDash, 1, 4, 1, 1, 3 );    break;
 
-        case XML_lgDash:        lclSetDashData( orLineDash, 0, 0, 1, 8, 3 );    break;
-        case XML_lgDashDot:     lclSetDashData( orLineDash, 1, 1, 1, 8, 3 );    break;
-        case XML_lgDashDotDot:  lclSetDashData( orLineDash, 2, 1, 1, 8, 3 );    break;
+        case XML_lgDash:        lclSetDashData( orLineDash, 1, 8, 0, 0, 3 );    break;
+        case XML_lgDashDot:     lclSetDashData( orLineDash, 1, 8, 1, 1, 3 );    break;
+        case XML_lgDashDotDot:  lclSetDashData( orLineDash, 1, 8, 2, 1, 3 );    break;
 
         case XML_sysDot:        lclSetDashData( orLineDash, 1, 1, 0, 0, 1 );    break;
-        case XML_sysDash:       lclSetDashData( orLineDash, 0, 0, 1, 3, 1 );    break;
-        case XML_sysDashDot:    lclSetDashData( orLineDash, 1, 1, 1, 3, 1 );    break;
-        case XML_sysDashDotDot: lclSetDashData( orLineDash, 2, 1, 1, 3, 1 );    break;
+        case XML_sysDash:       lclSetDashData( orLineDash, 1, 3, 0, 0, 1 );    break;
+        case XML_sysDashDot:    lclSetDashData( orLineDash, 1, 3, 1, 1, 1 );    break;
+        case XML_sysDashDotDot: lclSetDashData( orLineDash, 1, 3, 2, 1, 1 );    break;
 
         default:
             OSL_FAIL( "lclConvertPresetDash - unsupported preset dash" );
-            lclSetDashData( orLineDash, 0, 0, 1, 4, 3 );
+            lclSetDashData( orLineDash, 1, 4, 0, 0, 3 );
     }
+    orLineDash.DotLen *= 100;
+    orLineDash.DashLen *= 100;
+    orLineDash.Distance *= 100;
 }
 
-/** Converts the passed custom dash to API dash.
-
-    Line length and dot length are set relative to line width and have to be
-    multiplied by the actual line width after this function.
+/** Converts the passed custom dash to API dash. rCustomDash should not be empty.
+ * We assume, that there exist only two length values and the distance is the same
+ * for all dashes. Other kind of dash stop sequences cannot be represented, neither
+ * in model nor in ODF.
  */
-void lclConvertCustomDash( LineDash& orLineDash, const LineProperties::DashStopVector& rCustomDash )
+void lclConvertCustomDash(LineDash& orLineDash, const LineProperties::DashStopVector& rCustomDash)
 {
-    if( rCustomDash.empty() )
+    OSL_ASSERT(!rCustomDash.empty());
+    // Assume all dash stops have the same sp values.
+    orLineDash.Distance = rCustomDash[0].second;
+    // First kind of dashes go to "Dots"
+    orLineDash.DotLen = rCustomDash[0].first;
+    orLineDash.Dots = 0;
+    for(const auto& rIt : rCustomDash)
     {
-        OSL_FAIL( "lclConvertCustomDash - unexpected empty custom dash" );
-        lclSetDashData( orLineDash, 0, 0, 1, 4, 3 );
-        return;
+        if (rIt.first != orLineDash.DotLen)
+            break;
+        ++orLineDash.Dots;
     }
+    // All others go to "Dashes", we cannot handle more than two kinds.
+    orLineDash.Dashes = rCustomDash.size() - orLineDash.Dots;
+    if (orLineDash.Dashes > 0)
+        orLineDash.DashLen = rCustomDash[orLineDash.Dots].first;
+    else
+        orLineDash.DashLen = 0;
 
-    // count dashes and dots (stops equal or less than 2 are assumed to be dots)
-    sal_Int16 nDots = 0;
-    sal_Int32 nDotLen = 0;
-    sal_Int16 nDashes = 0;
-    sal_Int32 nDashLen = 0;
-    sal_Int32 nDistance = 0;
-    sal_Int32 nConvertedLen = 0;
-    sal_Int32 nConvertedDistance = 0;
-    for( LineProperties::DashStopVector::const_iterator aIt = rCustomDash.begin(), aEnd = rCustomDash.end(); aIt != aEnd; ++aIt )
-    {
-        // Get from "1000th of percent" ==> percent ==> multiplier
-        nConvertedLen      = aIt->first  / 1000 / 100;
-        nConvertedDistance = aIt->second / 1000 / 100;
+    // convert to API, e.g. 123% is 123000 in MS Office and 123 in our API
+    orLineDash.DotLen = orLineDash.DotLen / 1000;
+    orLineDash.DashLen = orLineDash.DashLen / 1000;
+    orLineDash.Distance = orLineDash.Distance / 1000;
+}
 
-        // Check if it is a dot (100% = dot)
-        if( nConvertedLen == 1 )
-        {
-            ++nDots;
-            nDotLen += nConvertedLen;
-        }
-        else
-        {
-            ++nDashes;
-            nDashLen += nConvertedLen;
-        }
-        nDistance += nConvertedDistance;
+/** LibreOffice uses value 0, if a length attribute is missing in the
+ * style definition, but treats it as 100%.
+ * LibreOffice uses absolute values in some style definitions. Try to
+ * reconstruct them from the imported relative values.
+ */
+void lclRecoverStandardDashStyles(LineDash& orLineDash, sal_Int32 nLineWidth)
+{
+    sal_uInt16 nDots = orLineDash.Dots;
+    sal_uInt16 nDashes = orLineDash.Dashes;
+    sal_uInt32 nDotLen = orLineDash.DotLen;
+    sal_uInt32 nDashLen = orLineDash.DashLen;
+    sal_uInt32 nDistance = orLineDash.Distance;
+    // Use same ersatz for hairline as in export.
+    double fWidthHelp = nLineWidth == 0 ? 26.95/100.0 : nLineWidth / 100.0;
+    // start with (var) cases, because they have no rounding problems
+    // "Fine Dashed", "Line Style 9" and "Dashed (var)" need no recover
+    if (nDots == 3 && nDotLen == 197 &&nDashes == 3 && nDashLen == 100 && nDistance == 100)
+    {   // "3 Dashes 3 Dots (var)"
+        orLineDash.DashLen = 0;
     }
-    orLineDash.DotLen = (nDots > 0) ? ::std::max< sal_Int32 >( nDotLen / nDots, 1 ) : 0;
-    orLineDash.Dots = nDots;
-    orLineDash.DashLen = (nDashes > 0) ? ::std::max< sal_Int32 >( nDashLen / nDashes, 1 ) : 0;
-    orLineDash.Dashes = nDashes;
-    orLineDash.Distance = ::std::max< sal_Int32 >( nDistance / rCustomDash.size(), 1 );
+    else if (nDots == 1 && nDotLen == 100 && nDashes == 0 && nDistance == 50)
+    {   // "Ultrafine Dotted (var)"
+        orLineDash.DotLen = 0;
+    }
+    else if (nDots == 2 && nDashes == 0 && nDotLen == nDistance
+        && std::abs(nDistance * fWidthHelp - 51.0) < fWidthHelp)
+    {   // "Ultrafine Dashed"
+        orLineDash.Dots = 1;
+        orLineDash.DotLen = 51;
+        orLineDash.Dashes = 1;
+        orLineDash.DashLen = 51;
+        orLineDash.Distance = 51;
+        orLineDash.Style = orLineDash.Style == DashStyle_ROUNDRELATIVE ? DashStyle_ROUND : DashStyle_RECT;
+    }
+    else if (nDots == 2 && nDashes == 3 && std::abs(nDotLen * fWidthHelp - 51.0) < fWidthHelp
+        && std::abs(nDashLen * fWidthHelp - 254.0) < fWidthHelp
+        && std::abs(nDistance * fWidthHelp - 127.0) < fWidthHelp)
+    {   // "Ultrafine 2 Dots 3 Dashes"
+        orLineDash.DotLen = 51;
+        orLineDash.DashLen = 254;
+        orLineDash.Distance = 127;
+        orLineDash.Style = orLineDash.Style == DashStyle_ROUNDRELATIVE ? DashStyle_ROUND : DashStyle_RECT;
+    }
+    else if (nDots == 1 && nDotLen == 100 && nDashes == 0
+        && std::abs(nDistance * fWidthHelp - 457.0) < fWidthHelp)
+    {    // "Fine Dotted"
+        orLineDash.DotLen = 0;
+        orLineDash.Distance = 457;
+        orLineDash.Style = orLineDash.Style == DashStyle_ROUNDRELATIVE ? DashStyle_ROUND : DashStyle_RECT;
+    }
+    else if (nDots == 1 && nDashes == 10 && nDashLen == 100
+        && std::abs(nDistance * fWidthHelp - 152.0) < fWidthHelp)
+    {   // "Line with Fine Dots"
+        orLineDash.DotLen = 2007;
+        orLineDash.DashLen = 0;
+        orLineDash.Distance = 152;
+        orLineDash.Style = orLineDash.Style == DashStyle_ROUNDRELATIVE ? DashStyle_ROUND : DashStyle_RECT;
+    }
+    else if (nDots == 2 && nDotLen == 100 && nDashes == 1 && nDashLen == nDistance
+        && std::abs(nDistance * fWidthHelp - 203.0) < fWidthHelp)
+    {   // "2 Dots 1 Dash"
+        orLineDash.DotLen = 0;
+        orLineDash.DashLen = 203;
+        orLineDash.Distance = 203;
+        orLineDash.Style = orLineDash.Style == DashStyle_ROUNDRELATIVE ? DashStyle_ROUND : DashStyle_RECT;
+    }
 }
 
 DashStyle lclGetDashStyle( sal_Int32 nToken )
 {
     OSL_ASSERT((nToken & sal_Int32(0xFFFF0000))==0);
+    // MS Office dashing is always relative to line width
     switch( nToken )
     {
         case XML_rnd:   return DashStyle_ROUNDRELATIVE;
-        case XML_sq:    return DashStyle_RECTRELATIVE;
-        case XML_flat:  return DashStyle_RECT;
+        case XML_sq:    return DashStyle_RECTRELATIVE; // default in OOXML
+        case XML_flat:  return DashStyle_RECTRELATIVE; // default in MS Office
     }
-    return DashStyle_ROUNDRELATIVE;
+    return DashStyle_RECTRELATIVE;
+}
+
+LineCap lclGetLineCap( sal_Int32 nToken )
+{
+    OSL_ASSERT((nToken & sal_Int32(0xFFFF0000))==0);
+    switch( nToken )
+    {
+        case XML_rnd:   return LineCap_ROUND;
+        case XML_sq:    return LineCap_SQUARE; // default in OOXML
+        case XML_flat:  return LineCap_BUTT; // default in MS Office
+    }
+    return LineCap_BUTT;
 }
 
 LineJoint lclGetLineJoint( sal_Int32 nToken )
@@ -205,31 +267,36 @@ void lclPushMarkerProperties( ShapePropertyMap& rPropMap,
 
     if( !aBuffer.isEmpty() )
     {
+        bool bIsArrow = nArrowType == XML_arrow;
         sal_Int32 nLength = lclGetArrowSize( rArrowProps.moArrowLength.get( XML_med ) );
         sal_Int32 nWidth  = lclGetArrowSize( rArrowProps.moArrowWidth.get( XML_med ) );
 
         sal_Int32 nNameIndex = nWidth * 3 + nLength + 1;
         aBuffer.append( ' ' ).append( nNameIndex );
+        if (bIsArrow)
+        {
+            // Arrow marker form depends also on line width
+            aBuffer.append(' ').append(nLineWidth);
+        }
         OUString aMarkerName = aBuffer.makeStringAndClear();
 
-        bool bIsArrow = nArrowType == XML_arrow;
         double fArrowLength = 1.0;
         switch( nLength )
         {
-            case OOX_ARROWSIZE_SMALL:   fArrowLength = (bIsArrow ? 3.5 : 2.0); break;
-            case OOX_ARROWSIZE_MEDIUM:  fArrowLength = (bIsArrow ? 4.5 : 3.0); break;
-            case OOX_ARROWSIZE_LARGE:   fArrowLength = (bIsArrow ? 6.0 : 5.0); break;
+            case OOX_ARROWSIZE_SMALL:   fArrowLength = (bIsArrow ? 2.5 : 2.0); break;
+            case OOX_ARROWSIZE_MEDIUM:  fArrowLength = (bIsArrow ? 3.5 : 3.0); break;
+            case OOX_ARROWSIZE_LARGE:   fArrowLength = (bIsArrow ? 5.5 : 5.0); break;
         }
         double fArrowWidth = 1.0;
         switch( nWidth )
         {
-            case OOX_ARROWSIZE_SMALL:   fArrowWidth = (bIsArrow ? 3.5 : 2.0);  break;
-            case OOX_ARROWSIZE_MEDIUM:  fArrowWidth = (bIsArrow ? 4.5 : 3.0);  break;
-            case OOX_ARROWSIZE_LARGE:   fArrowWidth = (bIsArrow ? 6.0 : 5.0);  break;
+            case OOX_ARROWSIZE_SMALL:   fArrowWidth = (bIsArrow ? 2.5 : 2.0);  break;
+            case OOX_ARROWSIZE_MEDIUM:  fArrowWidth = (bIsArrow ? 3.5 : 3.0);  break;
+            case OOX_ARROWSIZE_LARGE:   fArrowWidth = (bIsArrow ? 5.5 : 5.0);  break;
         }
         // set arrow width relative to line width
         sal_Int32 nBaseLineWidth = ::std::max< sal_Int32 >( nLineWidth, 70 );
-        nMarkerWidth = static_cast< sal_Int32 >( fArrowWidth * nBaseLineWidth );
+        nMarkerWidth = static_cast<sal_Int32>( fArrowWidth * nBaseLineWidth );
 
         /*  Test if the marker already exists in the marker table, do not
             create it again in this case. If markers are inserted explicitly
@@ -237,8 +304,12 @@ void lclPushMarkerProperties( ShapePropertyMap& rPropMap,
             TODO: this can be optimized by using a map. */
         if( !rPropMap.hasNamedLineMarkerInTable( aMarkerName ) )
         {
-// pass X and Y as percentage to OOX_ARROW_POINT
-#define OOX_ARROW_POINT( x, y ) awt::Point( static_cast< sal_Int32 >( fArrowWidth * x ), static_cast< sal_Int32 >( fArrowLength * y ) )
+            // pass X and Y as percentage to OOX_ARROW_POINT
+            auto OOX_ARROW_POINT = [fArrowLength, fArrowWidth]( double x, double y ) { return awt::Point( static_cast< sal_Int32 >( fArrowWidth * x ), static_cast< sal_Int32 >( fArrowLength * y ) ); };
+            // tdf#100491 Arrow line marker, unlike other markers, depends on line width.
+            // So calculate width of half line (more convenient during drawing) taking into account
+            // further conversions/scaling done in OOX_ARROW_POINT and scaling to nMarkerWidth.
+            const double fArrowLineHalfWidth = ::std::max< double >( 100.0 * 0.5 * nLineWidth / nMarkerWidth, 1 );
 
             ::std::vector< awt::Point > aPoints;
             OSL_ASSERT((rArrowProps.moArrowType.get() & sal_Int32(0xFFFF0000))==0);
@@ -251,13 +322,16 @@ void lclPushMarkerProperties( ShapePropertyMap& rPropMap,
                     aPoints.push_back( OOX_ARROW_POINT(  50,   0 ) );
                 break;
                 case XML_arrow:
-                    aPoints.push_back( OOX_ARROW_POINT(  50,   0 ) );
-                    aPoints.push_back( OOX_ARROW_POINT( 100,  91 ) );
-                    aPoints.push_back( OOX_ARROW_POINT(  85, 100 ) );
-                    aPoints.push_back( OOX_ARROW_POINT(  50,  36 ) );
-                    aPoints.push_back( OOX_ARROW_POINT(  15, 100 ) );
-                    aPoints.push_back( OOX_ARROW_POINT(   0,  91 ) );
-                    aPoints.push_back( OOX_ARROW_POINT(  50,   0 ) );
+                    aPoints.push_back( OOX_ARROW_POINT( 50, 0 ) );
+                    aPoints.push_back( OOX_ARROW_POINT( 100, 100 - fArrowLineHalfWidth * 1.5) );
+                    aPoints.push_back( OOX_ARROW_POINT( 100 - fArrowLineHalfWidth * 1.5, 100 ) );
+                    aPoints.push_back( OOX_ARROW_POINT( 50.0 + fArrowLineHalfWidth, 5.5 * fArrowLineHalfWidth) );
+                    aPoints.push_back( OOX_ARROW_POINT( 50.0 + fArrowLineHalfWidth, 100 ) );
+                    aPoints.push_back( OOX_ARROW_POINT( 50.0 - fArrowLineHalfWidth, 100 ) );
+                    aPoints.push_back( OOX_ARROW_POINT( 50.0 - fArrowLineHalfWidth, 5.5 * fArrowLineHalfWidth) );
+                    aPoints.push_back( OOX_ARROW_POINT( fArrowLineHalfWidth * 1.5, 100 ) );
+                    aPoints.push_back( OOX_ARROW_POINT( 0, 100 - fArrowLineHalfWidth * 1.5) );
+                    aPoints.push_back( OOX_ARROW_POINT( 50, 0 ) );
                 break;
                 case XML_stealth:
                     aPoints.push_back( OOX_ARROW_POINT(  50,   0 ) );
@@ -289,7 +363,6 @@ void lclPushMarkerProperties( ShapePropertyMap& rPropMap,
                     aPoints.push_back( OOX_ARROW_POINT(  50,   0 ) );
                 break;
             }
-#undef OOX_ARROW_POINT
 
             OSL_ENSURE( !aPoints.empty(), "lclPushMarkerProperties - missing arrow coordinates" );
             if( !aPoints.empty() )
@@ -316,20 +389,20 @@ void lclPushMarkerProperties( ShapePropertyMap& rPropMap,
     }
 
     // push the properties (filled aNamedMarker.Name indicates valid marker)
-    if( !aNamedMarker.Name.isEmpty() )
+    if( aNamedMarker.Name.isEmpty() )
+        return;
+
+    if( bLineEnd )
     {
-        if( bLineEnd )
-        {
-            rPropMap.setProperty( ShapeProperty::LineEnd, aNamedMarker );
-            rPropMap.setProperty( ShapeProperty::LineEndWidth, nMarkerWidth );
-            rPropMap.setProperty( ShapeProperty::LineEndCenter, bMarkerCenter );
-        }
-        else
-        {
-            rPropMap.setProperty( ShapeProperty::LineStart, aNamedMarker );
-            rPropMap.setProperty( ShapeProperty::LineStartWidth, nMarkerWidth );
-            rPropMap.setProperty( ShapeProperty::LineStartCenter, bMarkerCenter );
-        }
+        rPropMap.setProperty( ShapeProperty::LineEnd, aNamedMarker );
+        rPropMap.setProperty( ShapeProperty::LineEndWidth, nMarkerWidth );
+        rPropMap.setProperty( ShapeProperty::LineEndCenter, bMarkerCenter );
+    }
+    else
+    {
+        rPropMap.setProperty( ShapeProperty::LineStart, aNamedMarker );
+        rPropMap.setProperty( ShapeProperty::LineStartWidth, nMarkerWidth );
+        rPropMap.setProperty( ShapeProperty::LineStartCenter, bMarkerCenter );
     }
 }
 
@@ -357,62 +430,76 @@ void LineProperties::assignUsed( const LineProperties& rSourceProps )
 }
 
 void LineProperties::pushToPropMap( ShapePropertyMap& rPropMap,
-        const GraphicHelper& rGraphicHelper, sal_Int32 nPhClr ) const
+        const GraphicHelper& rGraphicHelper, ::Color nPhClr ) const
 {
     // line fill type must exist, otherwise ignore other properties
-    if( maLineFill.moFillType.has() )
+    if( !maLineFill.moFillType.has() )
+        return;
+
+    // line style (our core only supports none and solid)
+    drawing::LineStyle eLineStyle = (maLineFill.moFillType.get() == XML_noFill) ? drawing::LineStyle_NONE : drawing::LineStyle_SOLID;
+
+    // line width in 1/100mm
+    sal_Int32 nLineWidth = getLineWidth(); // includes conversion from EMUs to 1/100mm
+    rPropMap.setProperty( ShapeProperty::LineWidth, nLineWidth );
+
+    // line cap type
+    LineCap eLineCap = moLineCap.has() ? lclGetLineCap( moLineCap.get() ) : LineCap_BUTT;
+    if( moLineCap.has() )
+        rPropMap.setProperty( ShapeProperty::LineCap, eLineCap );
+
+    // create line dash from preset dash token or dash stop vector (not for invisible line)
+    if( (eLineStyle != drawing::LineStyle_NONE) && (moPresetDash.differsFrom( XML_solid ) || !maCustomDash.empty()) )
     {
-        // line style (our core only supports none and solid)
-        drawing::LineStyle eLineStyle = (maLineFill.moFillType.get() == XML_noFill) ? drawing::LineStyle_NONE : drawing::LineStyle_SOLID;
+        LineDash aLineDash;
+        aLineDash.Style = lclGetDashStyle( moLineCap.get( XML_flat ) );
 
-        // convert line width from EMUs to 1/100mm
-        sal_Int32 nLineWidth = getLineWidth();
-
-        // create line dash from preset dash token (not for invisible line)
-        if( (eLineStyle != drawing::LineStyle_NONE) && (moPresetDash.differsFrom( XML_solid ) || !maCustomDash.empty()) )
+        if(moPresetDash.differsFrom(XML_solid))
+            lclConvertPresetDash(aLineDash, moPresetDash.get(XML_dash));
+        else // !maCustomDash.empty()
         {
-            LineDash aLineDash;
-            aLineDash.Style = lclGetDashStyle( moLineCap.get( XML_rnd ) );
-
-            // convert preset dash or custom dash
-            if( moPresetDash.differsFrom( XML_solid ) )
-                lclConvertPresetDash( aLineDash, moPresetDash.get() );
-            else
-                lclConvertCustomDash( aLineDash, maCustomDash );
-
-            // convert relative dash/dot length to absolute length
-            sal_Int32 nBaseLineWidth = ::std::max< sal_Int32 >( nLineWidth, 35 );
-            aLineDash.DotLen *= nBaseLineWidth;
-            aLineDash.DashLen *= nBaseLineWidth;
-            aLineDash.Distance *= nBaseLineWidth;
-
-            if( rPropMap.setProperty( ShapeProperty::LineDash, aLineDash ) )
-                eLineStyle = drawing::LineStyle_DASH;
+            lclConvertCustomDash(aLineDash, maCustomDash);
+            lclRecoverStandardDashStyles(aLineDash, nLineWidth);
         }
 
-        // set final line style property
-        rPropMap.setProperty( ShapeProperty::LineStyle, eLineStyle );
-
-        // line joint type
-        if( moLineJoint.has() )
-            rPropMap.setProperty( ShapeProperty::LineJoint, lclGetLineJoint( moLineJoint.get() ) );
-
-        // line width in 1/100mm
-        rPropMap.setProperty( ShapeProperty::LineWidth, nLineWidth );
-
-        // line color and transparence
-        Color aLineColor = maLineFill.getBestSolidColor();
-        if( aLineColor.isUsed() )
+        // In MS Office (2020) for preset dash style line caps round and square are included in dash length.
+        // For custom dash style round line cap is included, square line cap is added. In ODF line caps are
+        // always added to dash length. Tweak the length accordingly.
+        if (eLineCap == LineCap_ROUND || (eLineCap == LineCap_SQUARE && maCustomDash.empty()))
         {
-            rPropMap.setProperty( ShapeProperty::LineColor, aLineColor.getColor( rGraphicHelper, nPhClr ) );
-            if( aLineColor.hasTransparency() )
-                rPropMap.setProperty( ShapeProperty::LineTransparency, aLineColor.getTransparency() );
+            // Cannot use -100 because that results in 0 length in some cases and
+            // LibreOffice interprets 0 length as 100%.
+            if (aLineDash.DotLen >= 100 || aLineDash.DashLen >= 100)
+                aLineDash.Distance += 99;
+            if (aLineDash.DotLen >= 100)
+                aLineDash.DotLen -= 99;
+            if (aLineDash.DashLen >= 100)
+                aLineDash.DashLen -= 99;
         }
 
-        // line markers
-        lclPushMarkerProperties( rPropMap, maStartArrow, nLineWidth, false );
-        lclPushMarkerProperties( rPropMap, maEndArrow,   nLineWidth, true );
+        if( rPropMap.setProperty( ShapeProperty::LineDash, aLineDash ) )
+            eLineStyle = drawing::LineStyle_DASH;
     }
+
+    // set final line style property
+    rPropMap.setProperty( ShapeProperty::LineStyle, eLineStyle );
+
+    // line joint type
+    if( moLineJoint.has() )
+        rPropMap.setProperty( ShapeProperty::LineJoint, lclGetLineJoint( moLineJoint.get() ) );
+
+    // line color and transparence
+    Color aLineColor = maLineFill.getBestSolidColor();
+    if( aLineColor.isUsed() )
+    {
+        rPropMap.setProperty( ShapeProperty::LineColor, aLineColor.getColor( rGraphicHelper, nPhClr ) );
+        if( aLineColor.hasTransparency() )
+            rPropMap.setProperty( ShapeProperty::LineTransparency, aLineColor.getTransparency() );
+    }
+
+    // line markers
+    lclPushMarkerProperties( rPropMap, maStartArrow, nLineWidth, false );
+    lclPushMarkerProperties( rPropMap, maEndArrow,   nLineWidth, true );
 }
 
 drawing::LineStyle LineProperties::getLineStyle() const
@@ -423,6 +510,14 @@ drawing::LineStyle LineProperties::getLineStyle() const
             (moPresetDash.differsFrom( XML_solid ) || (!moPresetDash && !maCustomDash.empty())) ?
                     drawing::LineStyle_DASH :
                     drawing::LineStyle_SOLID;
+}
+
+drawing::LineCap LineProperties::getLineCap() const
+{
+    if( moLineCap.has() )
+        return lclGetLineCap( moLineCap.get() );
+
+    return drawing::LineCap_BUTT;
 }
 
 drawing::LineJoint LineProperties::getLineJoint() const
@@ -438,7 +533,6 @@ sal_Int32 LineProperties::getLineWidth() const
     return convertEmuToHmm( moLineWidth.get( 0 ) );
 }
 
-} // namespace drawingml
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

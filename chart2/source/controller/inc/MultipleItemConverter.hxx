@@ -16,14 +16,14 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_MULTIPLEITEMCONVERTER_HXX
-#define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_MULTIPLEITEMCONVERTER_HXX
+
+#pragma once
 
 #include "ItemConverter.hxx"
 
 #include <vector>
 
-namespace chart { namespace wrapper {
+namespace chart::wrapper {
 
 /** Note: virtual const sal_uInt16 * GetWhichPairs() const; is still pure virtual
  */
@@ -41,11 +41,9 @@ public:
 protected:
     MultipleItemConverter( SfxItemPool& rItemPool );
 
-    std::vector< ItemConverter * >            m_aConverters;
+    std::vector< std::unique_ptr<ItemConverter> >  m_aConverters;
 };
 
-}}
-
-#endif
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

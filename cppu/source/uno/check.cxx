@@ -29,7 +29,7 @@
 
 namespace {
 
-#if defined( SAL_W32)
+#if defined( _WIN32)
 #pragma pack(push, 8)
 #endif
 
@@ -133,17 +133,12 @@ struct Char3 : public Char2
 {
     char c3 CPPU_GCC3_ALIGN( Char2 );
 };
-struct Char4
-{
-    Char3 chars;
-    char c;
-};
 enum Enum
 {
     v = SAL_MAX_ENUM
 };
 
-#ifdef SAL_W32
+#ifdef _WIN32
 #   pragma pack(pop)
 #endif
 
@@ -153,7 +148,7 @@ static_assert( static_cast<sal_Bool>(false) == sal_False,
                "must be binary compatible" );
 #if SAL_TYPES_ALIGNMENT8 == 2
 static_assert(offsetof(AlignSize_Impl, dDouble) == 2, "offsetof(AlignSize_Impl, dDouble) != 2");
-static_assert(sizeof(AlignSize_Impl) == 12, "sizeof(AlignSize_Impl) != 12");
+static_assert(sizeof(AlignSize_Impl) == 10, "sizeof(AlignSize_Impl) != 10");
 #elif SAL_TYPES_ALIGNMENT8 == 4
 static_assert(offsetof(AlignSize_Impl, dDouble) == 4, "offsetof(AlignSize_Impl, dDouble) != 4");
 static_assert(sizeof(AlignSize_Impl) == 12, "sizeof(AlignSize_Impl) != 12");
@@ -177,13 +172,19 @@ static_assert(offsetof(uno_Any, pReserved) == 2 * sizeof(void *), "offsetof(uno_
 // string
 static_assert(sizeof(OUString) == sizeof(rtl_uString *), "binary compatibility test failed: sizeof(OUString) != sizeof(rtl_uString *)");
 // struct
+#if SAL_TYPES_ALIGNMENT8 == 2
+static_assert(sizeof(M) == 6, "sizeof(M) != 6");
+static_assert(sizeof(N) == 8, "sizeof(N) != 8");
+static_assert(sizeof(N2) == 8, "sizeof(N2) != 8");
+static_assert(offsetof(N2, p) == 6, "offsetof(N2, p) != 6");
+#else
 static_assert(sizeof(M) == 8, "sizeof(M) != 8");
-static_assert(offsetof(M, o) == 4, "offsetof(M, o) != 4");
 static_assert(sizeof(N) == 12, "sizeof(N) != 12");
-
 static_assert(sizeof(N2) == 12, "sizeof(N2) != 12");
-
 static_assert(offsetof(N2, p) == 8, "offsetof(N2, p) != 8");
+#endif
+static_assert(offsetof(M, o) == 4, "offsetof(M, o) != 4");
+
 #if SAL_TYPES_ALIGNMENT8 == 2
 static_assert(sizeof(O) == 16, "sizeof(O) != 16");
 #elif SAL_TYPES_ALIGNMENT8 == 4
@@ -193,13 +194,21 @@ static_assert(sizeof(O) == 24, "sizeof(O) != 24");
 #else
 # error unexpected alignment of 8 byte types
 #endif
+
+#if SAL_TYPES_ALIGNMENT8 == 2
+static_assert(sizeof(C2) == 6, "sizeof(C2) != 6");
+static_assert(sizeof(D) == 6, "sizeof(D) != 6");
+static_assert(offsetof(D, e) == 2, "offsetof(D, e) != 2");
+static_assert(offsetof(E, e) == 6, "offsetof(E, e) != 6");
+#else
+static_assert(sizeof(C2) == 8, "sizeof(C2) != 8");
 static_assert(sizeof(D) == 8, "sizeof(D) != 8");
 static_assert(offsetof(D, e) == 4, "offsetof(D, e) != 4");
-static_assert(offsetof(E, d) == 4, "offsetof(E, d) != 4");
 static_assert(offsetof(E, e) == 8, "offsetof(E, e) != 8");
+#endif
 
 static_assert(sizeof(C1) == 2, "sizeof(C1) != 2");
-static_assert(sizeof(C2) == 8, "sizeof(C2) != 8");
+static_assert(offsetof(E, d) == 4, "offsetof(E, d) != 4");
 
 #if SAL_TYPES_ALIGNMENT8 == 2
 static_assert(sizeof(C3) == 18, "sizeof(C3) != 18");
@@ -242,7 +251,13 @@ static_assert(sizeof(second) == sizeof(int), "sizeof(second) != sizeof(int)");
 # error unexpected alignment of 8 byte types
 #endif
 
-#if OSL_DEBUG_LEVEL > 0
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
+
+struct Char4
+{
+    Char3 chars;
+    char c;
+};
 
 #define OFFSET_OF( s, m ) reinterpret_cast< size_t >(reinterpret_cast<char *>(&reinterpret_cast<s *>(16)->m) -16)
 
@@ -297,7 +312,7 @@ BinaryCompatible_Impl::BinaryCompatible_Impl()
     assert(OFFSET_OF(Char4, c) == 3);
 }
 
-static BinaryCompatible_Impl aTest;
+BinaryCompatible_Impl aTest;
 
 #endif
 

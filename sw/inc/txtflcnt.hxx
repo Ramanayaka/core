@@ -19,7 +19,7 @@
 #ifndef INCLUDED_SW_INC_TXTFLCNT_HXX
 #define INCLUDED_SW_INC_TXTFLCNT_HXX
 
-#include <txatbase.hxx>
+#include "txatbase.hxx"
 
 class SwFlyInContentFrame;
 class SwFrame;
@@ -50,7 +50,7 @@ inline SwFlyInContentFrame *SwTextFlyCnt::GetFlyFrame( const SwFrame *pCurrFrame
 
 inline const SwFlyInContentFrame *SwTextFlyCnt::GetFlyFrame( const SwFrame *pCurrFrame ) const
 {
-    return (const_cast<SwTextFlyCnt*>(this))->GetFlyFrame_( pCurrFrame );
+    return const_cast<SwTextFlyCnt*>(this)->GetFlyFrame_( pCurrFrame );
 }
 
 #endif

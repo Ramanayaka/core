@@ -13,19 +13,19 @@ $(eval $(call gb_UnpackedTarball_set_tarball,libmspub,$(MSPUB_TARBALL)))
 
 $(eval $(call gb_UnpackedTarball_set_patchlevel,libmspub,0))
 
+# * external/libmspub/stdint.patch is upstream at <https://gerrit.libreoffice.org/#/c/73814/>
+#   "missing include":
 $(eval $(call gb_UnpackedTarball_add_patches,libmspub,\
     external/libmspub/ubsan.patch \
+    external/libmspub/stdint.patch \
 ))
 
-ifeq ($(COM_IS_CLANG),TRUE)
-ifneq ($(filter -fsanitize=%,$(CC)),)
+$(eval $(call gb_UnpackedTarball_update_autoconf_configs,libmspub))
+
+ifeq ($(ANDROID_APP_ABI),armeabi-v7a)
 $(eval $(call gb_UnpackedTarball_add_patches,libmspub, \
-    external/libmspub/ubsan-visibility.patch \
+    external/libmspub/libmspub_android_arm.patch.1 \
 ))
-endif
 endif
 
-$(eval $(call gb_UnpackedTarball_add_patches,libmspub, \
-    external/libmspub/iOS.patch.0 \
-))
 # vim: set noet sw=4 ts=4:

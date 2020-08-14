@@ -22,7 +22,7 @@
 
 #include <osl/interlck.h>
 #include <osl/mutex.hxx>
-#include <fwidllapi.h>
+#include <framework/fwkdllapi.h>
 
 namespace framework
 {
@@ -30,7 +30,7 @@ namespace framework
 /**
  * This acts like a rtl::Reference<osl::Mutex>
  */
-class FWI_DLLPUBLIC ShareableMutex
+class ShareableMutex
 {
     public:
         ShareableMutex();
@@ -70,7 +70,7 @@ class FWI_DLLPUBLIC ShareableMutex
 class ShareGuard
 {
     public:
-        ShareGuard( ShareableMutex& rShareMutex ) :
+        explicit ShareGuard( ShareableMutex& rShareMutex ) :
             m_rShareMutex( rShareMutex )
         {
             m_rShareMutex.acquire();

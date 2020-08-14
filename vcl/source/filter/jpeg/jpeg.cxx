@@ -21,30 +21,19 @@
 #include "JpegWriter.hxx"
 #include "jpeg.hxx"
 
-#include <vcl/bitmapaccess.hxx>
-#include <vcl/FilterConfigItem.hxx>
 #include <vcl/graphicfilter.hxx>
 
-VCL_DLLPUBLIC bool ImportJPEG( SvStream& rInputStream, Graphic& rGraphic, GraphicFilterImportFlags nImportFlags, Bitmap::ScopedWriteAccess* ppAccess )
+VCL_DLLPUBLIC bool ImportJPEG( SvStream& rInputStream, Graphic& rGraphic, GraphicFilterImportFlags nImportFlags, BitmapScopedWriteAccess* ppAccess )
 {
     bool        bReturn = true;
 
-    std::shared_ptr<GraphicReader> pContext = rGraphic.GetContext();
-    rGraphic.SetContext(nullptr);
+    std::shared_ptr<GraphicReader> pContext = rGraphic.GetReaderContext();
+    rGraphic.SetReaderContext(nullptr);
     JPEGReader* pJPEGReader = dynamic_cast<JPEGReader*>( pContext.get() );
     if (!pJPEGReader)
     {
         pContext = std::make_shared<JPEGReader>( rInputStream, nImportFlags );
         pJPEGReader = static_cast<JPEGReader*>( pContext.get() );
-    }
-
-    if( nImportFlags & GraphicFilterImportFlags::ForPreview )
-    {
-        pJPEGReader->SetPreviewSize( Size(128,128) );
-    }
-    else
-    {
-        pJPEGReader->DisablePreviewMode();
     }
 
     ReadState eReadState = pJPEGReader->Read( rGraphic, nImportFlags, ppAccess );
@@ -55,7 +44,7 @@ VCL_DLLPUBLIC bool ImportJPEG( SvStream& rInputStream, Graphic& rGraphic, Graphi
     }
     else if( eReadState == JPEGREAD_NEED_MORE )
     {
-        rGraphic.SetContext( pContext );
+        rGraphic.SetReaderContext( pContext );
     }
 
     return bReturn;

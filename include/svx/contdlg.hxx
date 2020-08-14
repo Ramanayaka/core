@@ -20,16 +20,14 @@
 #ifndef INCLUDED_SVX_CONTDLG_HXX
 #define INCLUDED_SVX_CONTDLG_HXX
 
-#include "sal/types.h"
+#include <sal/types.h>
 
 #include <sfx2/basedlgs.hxx>
 #include <sfx2/childwin.hxx>
 #include <svx/svxdllapi.h>
 #include <tools/poly.hxx>
-#include <vcl/vclptr.hxx>
 #include <vcl/window.hxx>
 
-class Rectangle;
 class SfxBindings;
 class SfxModule;
 
@@ -41,38 +39,29 @@ class SfxModule;
 
 class Graphic;
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxContourDlgChildWindow : public SfxChildWindow
+class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxContourDlgChildWindow final : public SfxChildWindow
 {
 public:
-    SvxContourDlgChildWindow( vcl::Window*, sal_uInt16, SfxBindings*, SfxChildWinInfo* );
+    SvxContourDlgChildWindow( vcl::Window*, sal_uInt16, SfxBindings*, SfxChildWinInfo const * );
 
     SFX_DECL_CHILDWINDOW_WITHID( SvxContourDlgChildWindow );
 };
 
 class SvxSuperContourDlg;
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxContourDlg : public SfxFloatingWindow
+class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxContourDlg final : public SfxModelessDialogController
 {
-    using Window::Update;
-
-    VclPtr<SvxSuperContourDlg> pSuperClass;
-
-
-protected:
-
-    void                SetSuperClass( SvxSuperContourDlg& rSuperClass );
+    std::unique_ptr<SvxSuperContourDlg> m_xImpl;
 
 public:
 
-                        SvxContourDlg(SfxBindings *pBindings, SfxChildWindow *pCW,
-                                      vcl::Window* pParent);
+    SvxContourDlg(SfxBindings *pBindings, SfxChildWindow *pCW, weld::Window* pParent);
     virtual             ~SvxContourDlg() override;
-    virtual void        dispose() override;
 
     const Graphic&      GetGraphic() const;
     bool                IsGraphicChanged() const;
 
-    tools::PolyPolygon         GetPolyPolygon();
+    tools::PolyPolygon  GetPolyPolygon();
 
     const void*         GetEditingObject() const;
 
@@ -80,8 +69,7 @@ public:
                                 const tools::PolyPolygon* pPolyPoly, void* pEditingObj );
 
     static tools::PolyPolygon  CreateAutoContour(  const Graphic& rGraphic,
-                                            const tools::Rectangle* pRect = nullptr,
-                                            const sal_uIntPtr nFlags = 0L );
+                                            const tools::Rectangle* pRect = nullptr );
 };
 
 #endif // INCLUDED_SVX_CONTDLG_HXX

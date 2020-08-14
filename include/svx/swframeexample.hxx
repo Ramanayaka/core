@@ -19,26 +19,24 @@
 #ifndef INCLUDED_SVX_SWFRAMEEXAMPLE_HXX
 #define INCLUDED_SVX_SWFRAMEEXAMPLE_HXX
 
-#include <vcl/window.hxx>
 #include <tools/color.hxx>
 #include <tools/gen.hxx>
 #include <svx/svxdllapi.h>
 #include <svx/swframetypes.hxx>
+#include <vcl/customweld.hxx>
 #include <com/sun/star/text/WrapTextMode.hpp>
 
-// class SwFrmPagePreview -------------------------------------------------------
-
-class SVX_DLLPUBLIC SvxSwFrameExample : public vcl::Window
+class SVX_DLLPUBLIC SwFrameExample final : public weld::CustomWidgetController
 {
-    Color       m_aTransColor;      // transparency
-    Color       m_aBgCol;           // background
-    Color       m_aFrameColor;      // graphic frame
-    Color       m_aAlignColor;      // align anchor
-    Color       m_aBorderCol;       // frame of doc
-    Color       m_aPrintAreaCol;    // frame of printable area of doc
-    Color       m_aTxtCol;          // symbolised text
-    Color       m_aBlankCol;        // area of symbol for blank
-    Color       m_aBlankFrameCol;   // frame of symbol for blank
+    Color       m_aTransColor;      ///< transparency
+    Color       m_aBgCol;           ///< background
+    Color       m_aFrameColor;      ///< graphic frame
+    Color       m_aAlignColor;      ///< align anchor
+    Color       m_aBorderCol;       ///< frame of doc
+    Color       m_aPrintAreaCol;    ///< frame of printable area of doc
+    Color       m_aTxtCol;          ///< symbolised text
+    Color       m_aBlankCol;        ///< area of symbol for blank
+    Color       m_aBlankFrameCol;   ///< frame of symbol for blank
 
     tools::Rectangle   aPage;
     tools::Rectangle   aPagePrtArea;
@@ -64,16 +62,16 @@ class SVX_DLLPUBLIC SvxSwFrameExample : public vcl::Window
 
     void InitColors_Impl();
     void InitAllRects_Impl(vcl::RenderContext& rRenderContext);
-    void CalcBoundRect_Impl(tools::Rectangle &rRect);
+    void CalcBoundRect_Impl(const vcl::RenderContext& rRenderContext, tools::Rectangle &rRect);
     tools::Rectangle DrawInnerFrame_Impl(vcl::RenderContext& rRenderContext, const tools::Rectangle &rRect, const Color &rFillColor, const Color &rBorderColor);
 
+    virtual void StyleUpdated() override;
     virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&) override;
-    virtual Size GetOptimalSize() const override;
-protected:
-    virtual void DataChanged( const DataChangedEvent& rDCEvt ) override;
 public:
 
-    SvxSwFrameExample(vcl::Window* pParent, WinBits nStyle);
+    SwFrameExample();
+
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
 
     void SetWrap(css::text::WrapTextMode nW) { nWrap     = nW; }
 
@@ -88,6 +86,7 @@ public:
 
     void SetRelPos(const Point& rP);
 };
+
 
 
 #endif // INCLUDED_SVX_SWFRAMEEXAMPLE_HXX

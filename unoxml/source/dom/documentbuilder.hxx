@@ -33,9 +33,7 @@
 #include <com/sun/star/xml/dom/XDOMImplementation.hpp>
 #include <com/sun/star/xml/sax/XEntityResolver.hpp>
 #include <com/sun/star/xml/sax/XErrorHandler.hpp>
-#include <com/sun/star/xml/sax/SAXParseException.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
@@ -58,15 +56,6 @@ namespace DOM
 
         // ctor
         explicit CDocumentBuilder();
-
-        // static helpers for service info and component management
-        static const char* aImplementationName;
-        static const char* aSupportedServiceNames[];
-        static OUString _getImplementationName();
-        static css::uno::Sequence< OUString > _getSupportedServiceNames();
-        static css::uno::Reference< XInterface > _getInstance(
-            css::uno::Reference< css::lang::XMultiServiceFactory > const&
-                rSMgr);
 
         // XServiceInfo
         virtual OUString SAL_CALL getImplementationName() override;
@@ -115,7 +104,7 @@ namespace DOM
         virtual void SAL_CALL setEntityResolver(const css::uno::Reference< css::xml::sax::XEntityResolver >& er) override;
 
         /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::xml::sax::XEntityResolver > SAL_CALL getEntityResolver();
+        css::uno::Reference< css::xml::sax::XEntityResolver > getEntityResolver();
 
 
         /**
@@ -123,6 +112,17 @@ namespace DOM
         the XML document to be parsed.
         */
         virtual void SAL_CALL setErrorHandler(const css::uno::Reference< css::xml::sax::XErrorHandler >& eh) override;
+
+        /*
+        Get the ErrorHandler to be used to report errors present in
+        the XML document to be parsed.
+        */
+
+        const css::uno::Reference< css::xml::sax::XErrorHandler >& getErrorHandler() const
+        {
+            return m_xErrorHandler;
+        }
+
     };
 }
 

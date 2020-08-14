@@ -24,7 +24,7 @@
 #include <com/sun/star/xml/dom/XComment.hpp>
 
 #include <cppuhelper/implbase.hxx>
-#include <characterdata.hxx>
+#include "characterdata.hxx"
 
 namespace DOM
 {
@@ -34,10 +34,8 @@ namespace DOM
     class CComment
         : public CComment_Base
     {
-    private:
         friend class CDocument;
 
-    protected:
         CComment(CDocument const& rDocument, ::osl::Mutex const& rMutex,
                 xmlNodePtr const pNode);
 

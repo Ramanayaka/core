@@ -18,25 +18,23 @@
  */
 #include "vbafield.hxx"
 #include "vbarange.hxx"
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/text/XTextViewCursorSupplier.hpp>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/text/XTextFieldsSupplier.hpp>
 #include <com/sun/star/text/FilenameDisplayFormat.hpp>
 #include <com/sun/star/util/XRefreshable.hpp>
 #include <com/sun/star/util/XUpdatable.hpp>
-#include <comphelper/string.hxx>
 #include <ooo/vba/word/WdFieldType.hpp>
-#include <swtypes.hxx>
 #include <basic/sberrors.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <sal/log.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
 SwVbaField::SwVbaField(  const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext, const  uno::Reference< css::text::XTextField >& xTextField) : SwVbaField_BASE( rParent, rContext )
 {
-    mxTextField.set( xTextField, uno::UNO_QUERY_THROW );
+    mxTextField.set( xTextField, uno::UNO_SET_THROW );
 }
 
 sal_Bool SAL_CALL SwVbaField::Update()
@@ -54,20 +52,20 @@ sal_Bool SAL_CALL SwVbaField::Update()
 OUString
 SwVbaField::getServiceImplName()
 {
-    return OUString("SwVbaField");
+    return "SwVbaField";
 }
 
 uno::Sequence<OUString>
 SwVbaField::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Field";
-    }
+        "ooo.vba.word.Field"
+    };
     return aServiceNames;
 }
+
+namespace {
 
 // FIXME? copy and paste code
 // the codes are copied from ww8par5.cxx
@@ -87,6 +85,8 @@ public:
     OUString GetResult() const;
     const OUString& GetFieldName()const { return aFieldName; }
 };
+
+}
 
 SwVbaReadFieldParams::SwVbaReadFieldParams( const OUString& _rData )
     : aData( _rData ), nLen( _rData.getLength() ), nNext( 0 )
@@ -223,6 +223,8 @@ static uno::Any lcl_createField( const uno::Reference< XHelperInterface >& xPare
     return uno::makeAny( xField );
 }
 
+namespace {
+
 class FieldEnumeration : public ::cppu::WeakImplHelper< css::container::XEnumeration >
 {
     uno::Reference< XHelperInterface > mxParent;
@@ -257,7 +259,7 @@ public:
     FieldCollectionHelper( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< frame::XModel >& xModel ) : mxParent( xParent ), mxContext( xContext ), mxModel( xModel )
     {
         uno::Reference< text::XTextFieldsSupplier > xSupp( xModel, uno::UNO_QUERY_THROW );
-        mxEnumerationAccess.set( xSupp->getTextFields(), uno::UNO_QUERY_THROW );
+        mxEnumerationAccess.set( xSupp->getTextFields(), uno::UNO_SET_THROW );
     }
     // XElementAccess
     virtual uno::Type SAL_CALL getElementType(  ) override { return  mxEnumerationAccess->getElementType(); }
@@ -299,6 +301,8 @@ public:
     }
 };
 
+}
+
 SwVbaFields::SwVbaFields( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< frame::XModel >& xModel ) : SwVbaFields_BASE( xParent, xContext , uno::Reference< container::XIndexAccess >( new FieldCollectionHelper( xParent, xContext, xModel ) ) ), mxModel( xModel )
 {
     mxMSF.set( mxModel, uno::UNO_QUERY_THROW );
@@ -317,7 +321,7 @@ SwVbaFields::Add( const css::uno::Reference< ::ooo::vba::word::XRange >& Range, 
     {
         SwVbaReadFieldParams aReadParam(sText);
         sFieldName = aReadParam.GetFieldName();
-        SAL_INFO("sw", "the field name is " << sFieldName );
+        SAL_INFO("sw.vba", "the field name is " << sFieldName );
     }
 
     uno::Reference< text::XTextContent > xTextField;
@@ -334,7 +338,7 @@ SwVbaFields::Add( const css::uno::Reference< ::ooo::vba::word::XRange >& Range, 
         throw uno::RuntimeException("Not implemented" );
     }
 
-    SwVbaRange& rVbaRange = dynamic_cast<SwVbaRange&>(*Range.get());
+    SwVbaRange& rVbaRange = dynamic_cast<SwVbaRange&>(*Range);
     uno::Reference< text::XTextRange > xTextRange = rVbaRange.getXTextRange();
     uno::Reference< text::XText > xText = xTextRange->getText();
     xText->insertTextContent( xTextRange, xTextField, true );
@@ -373,13 +377,17 @@ uno::Reference< text::XTextField > SwVbaFields::Create_Field_FileName( const OUS
     return xTextField;
 }
 
+namespace {
+
 struct DocPropertyTable
 {
     const char* sDocPropertyName;
     const char* sFieldService;
 };
 
-static const DocPropertyTable aDocPropertyTables[] =
+}
+
+const DocPropertyTable aDocPropertyTables[] =
 {
     { "Author", "com.sun.star.text.textfield.docinfo.CreateAuthor" },
     { "Bytes", nullptr },
@@ -430,7 +438,7 @@ uno::Reference< text::XTextField > SwVbaFields::Create_Field_DocProperty( const 
         }
     }
     aDocProperty = aDocProperty.replaceAll("\"", "");
-    SAL_INFO("sw", "SwVbaFields::Create_Field_DocProperty, the document property name is " << aDocProperty );
+    SAL_INFO("sw.vba", "SwVbaFields::Create_Field_DocProperty, the document property name is " << aDocProperty );
     if( aDocProperty.isEmpty() )
     {
         throw uno::RuntimeException();
@@ -505,7 +513,7 @@ sal_Int32 SAL_CALL SwVbaFields::Update()
 OUString
 SwVbaFields::getServiceImplName()
 {
-    return OUString("SwVbaFields");
+    return "SwVbaFields";
 }
 
 // XEnumerationAccess
@@ -518,12 +526,10 @@ SwVbaFields::getElementType()
 uno::Sequence<OUString>
 SwVbaFields::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Fields";
-    }
+        "ooo.vba.word.Fields"
+    };
     return aServiceNames;
 }
 

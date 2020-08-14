@@ -25,8 +25,6 @@
 #include "stgstrms.hxx"
 
 class StgIo;
-class StgEntry;
-class StgDirEntry;
 class StgDirStrm;
 
 class BaseStorageStream;
@@ -45,7 +43,7 @@ class StgDirEntry : public StgAvlNode
     bool         m_bDirty;                    // dirty directory entry
     bool         m_bRemoved;                  // removed per Invalidate()
     void         InitMembers();             // ctor helper
-    virtual short Compare( const StgAvlNode* ) const override;
+    virtual sal_Int32 Compare( const StgAvlNode* ) const override;
     bool         StoreStream( StgIo& );     // store the stream
     bool         StoreStreams( StgIo& );    // store all streams
     void         RevertAll();               // revert the whole tree
@@ -68,7 +66,6 @@ public:
     void Enum( sal_Int32& );                // enumerate entries for iteration
     void DelTemp( bool );                   // delete temporary entries
     bool Store( StgDirStrm& );              // save entry into dir strm
-    bool IsContained( StgDirEntry* );       // check if subentry
 
     void SetDirty()  { m_bDirty = true; }
     bool IsDirty();
@@ -77,7 +74,7 @@ public:
 
     void  OpenStream( StgIo& );     // set up an appropriate stream
     void  Close();
-    sal_Int32 GetSize();
+    sal_Int32 GetSize() const;
     bool  SetSize( sal_Int32 );
     sal_Int32 Seek( sal_Int32 );
     sal_Int32 Read( void*, sal_Int32 );
@@ -97,7 +94,7 @@ public:
     bool         Store();
     void*        GetEntry( sal_Int32 n, bool );// get an entry
     StgDirEntry* GetRoot() { return m_pRoot; }
-    StgDirEntry* Find( StgDirEntry&, const OUString& );
+    static StgDirEntry* Find( StgDirEntry&, const OUString& );
     StgDirEntry* Create( StgDirEntry&, const OUString&, StgEntryType );
 };
 

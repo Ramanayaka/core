@@ -22,28 +22,21 @@
 #include <utility>
 
 #include <hintids.hxx>
-#include <o3tl/make_unique.hxx>
 #include <rtl/textenc.h>
 #include <i18nlangtag/mslangid.hxx>
 #include <com/sun/star/i18n/ScriptType.hpp>
 #include <unotools/lingucfg.hxx>
-#include <fontcfg.hxx>
-#include <swmodule.hxx>
-#include <editeng/unolingu.hxx>
+#include <unotools/viewoptions.hxx>
+#include <sfx2/sfxsids.hrc>
 #include <sfx2/printer.hxx>
-#include <editeng/flstitem.hxx>
-#include <svx/dlgutil.hxx>
-#include <editeng/fontitem.hxx>
+#include <svl/languageoptions.hxx>
 #include <editeng/langitem.hxx>
-#include <editeng/scripttypeitem.hxx>
 #include <swtypes.hxx>
 #include <ascfldlg.hxx>
 #include <shellio.hxx>
 #include <docsh.hxx>
 #include <doc.hxx>
 #include <IDocumentDeviceAccess.hxx>
-
-#include <dialog.hrc>
 
 #include <vcl/metric.hxx>
 
@@ -59,38 +52,44 @@ const sal_Int32 nDialogExtraDataLen = 11;      // 12345678901
 
 }
 
-SwAsciiFilterDlg::SwAsciiFilterDlg( vcl::Window* pParent, SwDocShell& rDocSh,
+SwAsciiFilterDlg::SwAsciiFilterDlg( weld::Window* pParent, SwDocShell& rDocSh,
                                     SvStream* pStream )
-    : SfxModalDialog(pParent, "AsciiFilterDialog", "modules/swriter/ui/asciifilterdialog.ui")
+    : SfxDialogController(pParent, "modules/swriter/ui/asciifilterdialog.ui", "AsciiFilterDialog")
     , m_bSaveLineStatus(true)
+    , m_xCharSetLB(new SvxTextEncodingBox(m_xBuilder->weld_combo_box("charset")))
+    , m_xFontFT(m_xBuilder->weld_label("fontft"))
+    , m_xFontLB(m_xBuilder->weld_combo_box("font"))
+    , m_xLanguageFT(m_xBuilder->weld_label("languageft"))
+    , m_xLanguageLB(new SvxLanguageBox(m_xBuilder->weld_combo_box("language")))
+    , m_xCRLF_RB(m_xBuilder->weld_radio_button("crlf"))
+    , m_xCR_RB(m_xBuilder->weld_radio_button("cr"))
+    , m_xLF_RB(m_xBuilder->weld_radio_button("lf"))
+    , m_xIncludeBOM_CB(m_xBuilder->weld_check_button("includebom"))
 {
-    get(m_pCharSetLB, "charset");
-    m_pCharSetLB->SetStyle(m_pCharSetLB->GetStyle() | WB_SORT);
-    get(m_pFontFT, "fontft");
-    get(m_pFontLB, "font");
-    m_pFontLB->SetStyle(m_pFontLB->GetStyle() | WB_SORT);
-    get(m_pLanguageFT, "languageft");
-    get(m_pLanguageLB, "language");
-    m_pLanguageLB->SetStyle(m_pLanguageLB->GetStyle() | WB_SORT);
-    get(m_pCRLF_RB, "crlf");
-    get(m_pCR_RB, "cr");
-    get(m_pLF_RB, "lf");
+    m_xFontLB->make_sorted();
 
     SwAsciiOptions aOpt;
     {
+        SvtViewOptions aDlgOpt(EViewType::Dialog, OStringToOUString(m_xDialog->get_help_id(), RTL_TEXTENCODING_UTF8));
+        if (aDlgOpt.Exists())
+        {
+            css::uno::Any aUserItem = aDlgOpt.GetUserItem("UserItem");
+            aUserItem >>= m_sExtraData;
+        }
+
         const OUString sFindNm = OUString::createFromAscii(
                                     pStream ? sDialogImpExtraData
                                               : sDialogExpExtraData);
-        sal_Int32 nEnd, nStt = GetExtraData().indexOf( sFindNm );
+        sal_Int32 nEnd, nStt = m_sExtraData.indexOf( sFindNm );
         if( -1 != nStt )
         {
             nStt += nDialogExtraDataLen;
-            nEnd = GetExtraData().indexOf( cDialogExtraDataClose, nStt );
+            nEnd = m_sExtraData.indexOf( cDialogExtraDataClose, nStt );
             if( -1 != nEnd )
             {
-                aOpt.ReadUserData( GetExtraData().copy( nStt, nEnd - nStt ));
+                aOpt.ReadUserData(m_sExtraData.copy(nStt, nEnd - nStt));
                 nStt -= nDialogExtraDataLen;
-                GetExtraData() = GetExtraData().replaceAt( nStt, nEnd - nStt + 1, "" );
+                m_sExtraData = m_sExtraData.replaceAt(nStt, nEnd - nStt + 1, "");
             }
         }
     }
@@ -173,8 +172,8 @@ SwAsciiFilterDlg::SwAsciiFilterDlg( vcl::Window* pParent, SwDocShell& rDocSh,
                 }
             }
 
-            m_pLanguageLB->SetLanguageList( SvxLanguageListFlags::ALL, true );
-            m_pLanguageLB->SelectLanguage( aOpt.GetLanguage() );
+            m_xLanguageLB->SetLanguageList( SvxLanguageListFlags::ALL, true );
+            m_xLanguageLB->set_active_id(aOpt.GetLanguage());
         }
 
         {
@@ -182,14 +181,14 @@ SwAsciiFilterDlg::SwAsciiFilterDlg( vcl::Window* pParent, SwDocShell& rDocSh,
             VclPtr<SfxPrinter> pPrt = pDoc ? pDoc->getIDocumentDeviceAccess().getPrinter(false) : nullptr;
             if( !pPrt )
             {
-                auto pSet = o3tl::make_unique<SfxItemSet>( rDocSh.GetPool(),
+                auto pSet = std::make_unique<SfxItemSet>( rDocSh.GetPool(),
                             svl::Items<SID_PRINTER_NOTFOUND_WARN, SID_PRINTER_NOTFOUND_WARN,
                             SID_PRINTER_CHANGESTODOC, SID_PRINTER_CHANGESTODOC>{} );
                 pPrt = VclPtr<SfxPrinter>::Create( std::move(pSet) );
                 bDelPrinter = true;
             }
 
-            // get the set of disctinct available family names
+            // get the set of distinct available family names
             std::set< OUString > aFontNames;
             int nFontNames = pPrt->GetDevFontCount();
             for( int i = 0; i < nFontNames; i++ )
@@ -199,10 +198,9 @@ SwAsciiFilterDlg::SwAsciiFilterDlg( vcl::Window* pParent, SwDocShell& rDocSh,
             }
 
             // insert into listbox
-            for( std::set< OUString >::const_iterator it = aFontNames.begin();
-                 it != aFontNames.end(); ++it )
+            for( const auto& rFontName : aFontNames )
             {
-                m_pFontLB->InsertEntry( *it );
+                m_xFontLB->append_text(rFontName);
             }
 
             if( aOpt.GetFontName().isEmpty() )
@@ -212,126 +210,154 @@ SwAsciiFilterDlg::SwAsciiFilterDlg( vcl::Window* pParent, SwDocShell& rDocSh,
                 aOpt.SetFontName(aTmpFont.GetFamilyName());
             }
 
-            m_pFontLB->SelectEntry( aOpt.GetFontName() );
+            m_xFontLB->set_active_text(aOpt.GetFontName());
 
             if( bDelPrinter )
                 pPrt.disposeAndClear();
         }
 
+        // hide the unused Controls for Export
+        m_xIncludeBOM_CB->hide();
     }
     else
     {
         // hide the unused Controls for Export
-        m_pFontFT->Hide();
-        m_pFontLB->Hide();
-        m_pLanguageFT->Hide();
-        m_pLanguageLB->Hide();
+        m_xFontFT->hide();
+        m_xFontLB->hide();
+        m_xLanguageFT->hide();
+        m_xLanguageLB->hide();
+
+
+        SetIncludeBOM(aOpt.GetIncludeBOM());
+        m_xIncludeBOM_CB->save_state();
     }
 
     // initialize character set
-    m_pCharSetLB->FillFromTextEncodingTable( pStream != nullptr );
-    m_pCharSetLB->SelectTextEncoding( aOpt.GetCharSet()  );
+    m_xCharSetLB->FillFromTextEncodingTable( pStream != nullptr );
+    m_xCharSetLB->SelectTextEncoding( aOpt.GetCharSet()  );
 
-    m_pCharSetLB->SetSelectHdl( LINK( this, SwAsciiFilterDlg, CharSetSelHdl ));
-    m_pCRLF_RB->SetToggleHdl( LINK( this, SwAsciiFilterDlg, LineEndHdl ));
-    m_pLF_RB->SetToggleHdl( LINK( this, SwAsciiFilterDlg, LineEndHdl ));
-    m_pCR_RB->SetToggleHdl( LINK( this, SwAsciiFilterDlg, LineEndHdl ));
+    m_xCharSetLB->connect_changed( LINK( this, SwAsciiFilterDlg, CharSetSelHdl ));
+    m_xCRLF_RB->connect_toggled( LINK( this, SwAsciiFilterDlg, LineEndHdl ));
+    m_xLF_RB->connect_toggled( LINK( this, SwAsciiFilterDlg, LineEndHdl ));
+    m_xCR_RB->connect_toggled( LINK( this, SwAsciiFilterDlg, LineEndHdl ));
 
     SetCRLF( aOpt.GetParaFlags() );
 
-    m_pCRLF_RB->SaveValue();
-    m_pLF_RB->SaveValue();
-    m_pCR_RB->SaveValue();
+    m_xCRLF_RB->save_state();
+    m_xLF_RB->save_state();
+    m_xCR_RB->save_state();
+
+    UpdateIncludeBOMSensitiveState();
 }
 
 SwAsciiFilterDlg::~SwAsciiFilterDlg()
 {
-    disposeOnce();
+    SvtViewOptions aDlgOpt(EViewType::Dialog, OStringToOUString(m_xDialog->get_help_id(), RTL_TEXTENCODING_UTF8));
+    aDlgOpt.SetUserItem("UserItem", uno::makeAny(m_sExtraData));
 }
-
-void SwAsciiFilterDlg::dispose()
-{
-    m_pCharSetLB.clear();
-    m_pFontFT.clear();
-    m_pFontLB.clear();
-    m_pLanguageFT.clear();
-    m_pLanguageLB.clear();
-    m_pCRLF_RB.clear();
-    m_pCR_RB.clear();
-    m_pLF_RB.clear();
-    SfxModalDialog::dispose();
-}
-
 
 void SwAsciiFilterDlg::FillOptions( SwAsciiOptions& rOptions )
 {
-    sal_uLong nCCode = m_pCharSetLB->GetSelectTextEncoding();
+    sal_uLong nCCode = m_xCharSetLB->GetSelectTextEncoding();
     OUString sFont;
     LanguageType nLng = LANGUAGE_SYSTEM;
-    if( m_pFontLB->IsVisible() )
+    if (m_xFontLB->get_visible())
     {
-        sFont = m_pFontLB->GetSelectEntry();
-        nLng = m_pLanguageLB->GetSelectLanguage();
+        sFont = m_xFontLB->get_active_text();
+        nLng = m_xLanguageLB->get_active_id();
     }
 
     rOptions.SetFontName( sFont );
     rOptions.SetCharSet( rtl_TextEncoding( nCCode ) );
     rOptions.SetLanguage( nLng );
     rOptions.SetParaFlags( GetCRLF() );
+    rOptions.SetIncludeBOM( GetIncludeBOM() );
 
     // save the user settings
     OUString sData;
     rOptions.WriteUserData( sData );
-    if (!sData.isEmpty())
+    if (sData.isEmpty())
+        return;
+
+    const OUString sFindNm = OUString::createFromAscii(
+                                m_xFontLB->get_visible() ? sDialogImpExtraData
+                                          : sDialogExpExtraData);
+    sal_Int32 nEnd, nStt = m_sExtraData.indexOf( sFindNm );
+    if( -1 != nStt )
     {
-        const OUString sFindNm = OUString::createFromAscii(
-                                    m_pFontLB->IsVisible() ? sDialogImpExtraData
-                                              : sDialogExpExtraData);
-        sal_Int32 nEnd, nStt = GetExtraData().indexOf( sFindNm );
-        if( -1 != nStt )
-        {
-            // called twice, so remove "old" settings
-            nEnd = GetExtraData().indexOf( cDialogExtraDataClose,
-                                            nStt + nDialogExtraDataLen );
-            if( -1 != nEnd )
-                GetExtraData() = GetExtraData().replaceAt( nStt, nEnd - nStt + 1, "" );
-        }
-        GetExtraData() += sFindNm + sData + OUStringLiteral1(cDialogExtraDataClose);
+        // called twice, so remove "old" settings
+        nEnd = m_sExtraData.indexOf( cDialogExtraDataClose,
+                                        nStt + nDialogExtraDataLen );
+        if( -1 != nEnd )
+            m_sExtraData = m_sExtraData.replaceAt( nStt, nEnd - nStt + 1, "" );
     }
+    m_sExtraData += sFindNm + sData + OUStringChar(cDialogExtraDataClose);
 }
 
 void SwAsciiFilterDlg::SetCRLF( LineEnd eEnd )
 {
-    switch( eEnd )
+    switch (eEnd)
     {
-    case LINEEND_CR:    m_pCR_RB->Check();     break;
-    case LINEEND_CRLF:  m_pCRLF_RB->Check();   break;
-    case LINEEND_LF:    m_pLF_RB->Check();     break;
+        case LINEEND_CR:
+            m_xCR_RB->set_active(true);
+            break;
+        case LINEEND_CRLF:
+            m_xCRLF_RB->set_active(true);
+            break;
+        case LINEEND_LF:
+            m_xLF_RB->set_active(true);
+            break;
     }
 }
 
 LineEnd SwAsciiFilterDlg::GetCRLF() const
 {
     LineEnd eEnd;
-    if( m_pCR_RB->IsChecked() )
+    if(m_xCR_RB->get_active())
         eEnd = LINEEND_CR;
-    else if( m_pLF_RB->IsChecked() )
+    else if (m_xLF_RB->get_active())
         eEnd = LINEEND_LF;
     else
         eEnd = LINEEND_CRLF;
     return eEnd;
 }
 
-IMPL_LINK( SwAsciiFilterDlg, CharSetSelHdl, ListBox&, rListBox, void )
+void SwAsciiFilterDlg::SetIncludeBOM( bool bIncludeBOM )
 {
-    SvxTextEncodingBox* pBox = static_cast<SvxTextEncodingBox*>(&rListBox);
-    LineEnd eOldEnd = GetCRLF(), eEnd = (LineEnd)-1;
-    LanguageType nLng = m_pFontLB->IsVisible()
-                    ? m_pLanguageLB->GetSelectLanguage()
+    m_xIncludeBOM_CB->set_state(bIncludeBOM ? TRISTATE_TRUE : TRISTATE_FALSE);
+}
+
+bool SwAsciiFilterDlg::GetIncludeBOM() const
+{
+    return m_xIncludeBOM_CB->get_state() != TRISTATE_FALSE;
+}
+
+void SwAsciiFilterDlg::UpdateIncludeBOMSensitiveState()
+{
+    if (!m_xIncludeBOM_CB->get_visible())
+        return;
+
+    switch (m_xCharSetLB->GetSelectTextEncoding())
+    {
+        case RTL_TEXTENCODING_UTF8:
+        case RTL_TEXTENCODING_UCS2:
+            m_xIncludeBOM_CB->set_sensitive(true);
+            break;
+        default:
+            m_xIncludeBOM_CB->set_sensitive(false);
+            break;
+    }
+}
+
+IMPL_LINK_NOARG(SwAsciiFilterDlg, CharSetSelHdl, weld::ComboBox&, void)
+{
+    LineEnd eOldEnd = GetCRLF(), eEnd = LineEnd(-1);
+    LanguageType nLng = m_xFontLB->get_visible()
+                    ? m_xLanguageLB->get_active_id()
                     : LANGUAGE_SYSTEM,
                 nOldLng = nLng;
 
-    rtl_TextEncoding nChrSet = pBox->GetSelectTextEncoding();
+    rtl_TextEncoding nChrSet = m_xCharSetLB->GetSelectTextEncoding();
     if( nChrSet == osl_getThreadTextEncoding() )
         eEnd = GetSystemLineEnd();
     else
@@ -379,7 +405,7 @@ IMPL_LINK( SwAsciiFilterDlg, CharSetSelHdl, ListBox&, rListBox, void )
     }
 
     m_bSaveLineStatus = false;
-    if( eEnd != (LineEnd)-1 )       // changed?
+    if( eEnd != LineEnd(-1) )       // changed?
     {
         if( eOldEnd != eEnd )
             SetCRLF( eEnd );
@@ -387,20 +413,22 @@ IMPL_LINK( SwAsciiFilterDlg, CharSetSelHdl, ListBox&, rListBox, void )
     else
     {
         // restore old user choice (not the automatic!)
-        m_pCRLF_RB->Check( m_pCRLF_RB->GetSavedValue() );
-        m_pCR_RB->Check( m_pCR_RB->GetSavedValue() );
-        m_pLF_RB->Check( m_pLF_RB->GetSavedValue() );
+        m_xCRLF_RB->set_state(m_xCRLF_RB->get_saved_state());
+        m_xCR_RB->set_state(m_xCR_RB->get_saved_state());
+        m_xLF_RB->set_state(m_xLF_RB->get_saved_state());
     }
     m_bSaveLineStatus = true;
 
-    if( nOldLng != nLng && m_pFontLB->IsVisible() )
-        m_pLanguageLB->SelectLanguage( nLng );
+    if (nOldLng != nLng && m_xFontLB->get_visible())
+        m_xLanguageLB->set_active_id(nLng);
+
+    UpdateIncludeBOMSensitiveState();
 }
 
-IMPL_LINK( SwAsciiFilterDlg, LineEndHdl, RadioButton&, rBtn, void )
+IMPL_LINK(SwAsciiFilterDlg, LineEndHdl, weld::ToggleButton&, rBtn, void)
 {
-    if( m_bSaveLineStatus )
-        rBtn.SaveValue();
+    if (m_bSaveLineStatus)
+        rBtn.save_state();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

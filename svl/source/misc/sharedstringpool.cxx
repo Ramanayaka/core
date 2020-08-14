@@ -19,32 +19,9 @@ namespace svl {
 
 namespace {
 
-inline sal_Int32 getRefCount( const rtl_uString* p )
+sal_Int32 getRefCount( const rtl_uString* p )
 {
     return (p->refCount & 0x3FFFFFFF);
-}
-
-typedef std::unordered_set<OUString, OUStringHash> StrHashType;
-typedef std::pair<StrHashType::iterator, bool> InsertResultType;
-typedef std::unordered_map<const rtl_uString*, OUString> StrStoreType;
-
-InsertResultType findOrInsert( StrHashType& rPool, const OUString& rStr )
-{
-    StrHashType::iterator it = rPool.find(rStr);
-    bool bInserted = false;
-    if (it == rPool.end())
-    {
-        // Not yet in the pool.
-        std::pair<StrHashType::iterator, bool> r = rPool.insert(rStr);
-        if (!r.second)
-            // Insertion failed.
-            return InsertResultType(rPool.end(), false);
-
-        it = r.first;
-        bInserted = true;
-    }
-
-    return InsertResultType(it, bInserted);
 }
 
 }
@@ -52,16 +29,17 @@ InsertResultType findOrInsert( StrHashType& rPool, const OUString& rStr )
 struct SharedStringPool::Impl
 {
     mutable osl::Mutex maMutex;
-    StrHashType maStrPool;
-    StrHashType maStrPoolUpper;
-    StrStoreType maStrStore;
-    const CharClass* mpCharClass;
+    // We use this map for two purposes - to store lower->upper case mappings
+    // and to retrieve a shared uppercase object, so the management logic
+    // is quite complex.
+    std::unordered_map<OUString,OUString> maStrMap;
+    const CharClass& mrCharClass;
 
-    explicit Impl( const CharClass* pCharClass ) : mpCharClass(pCharClass) {}
+    explicit Impl( const CharClass& rCharClass ) : mrCharClass(rCharClass) {}
 };
 
-SharedStringPool::SharedStringPool( const CharClass* pCharClass ) :
-    mpImpl(new Impl(pCharClass)) {}
+SharedStringPool::SharedStringPool( const CharClass& rCharClass ) :
+    mpImpl(new Impl(rCharClass)) {}
 
 SharedStringPool::~SharedStringPool()
 {
@@ -71,88 +49,101 @@ SharedString SharedStringPool::intern( const OUString& rStr )
 {
     osl::MutexGuard aGuard(&mpImpl->maMutex);
 
-    InsertResultType aRes = findOrInsert(mpImpl->maStrPool, rStr);
-    if (aRes.first == mpImpl->maStrPool.end())
-        // Insertion failed.
-        return SharedString();
-
-    rtl_uString* pOrig = aRes.first->pData;
-
-    if (!mpImpl->mpCharClass)
-        // We don't track case insensitive strings.
-        return SharedString(pOrig, nullptr);
-
-    if (!aRes.second)
-    {
-        // No new string has been inserted. Return the existing string in the pool.
-        StrStoreType::const_iterator it = mpImpl->maStrStore.find(pOrig);
-        if (it == mpImpl->maStrStore.end())
-            return SharedString();
-
-        rtl_uString* pUpper = it->second.pData;
-        return SharedString(pOrig, pUpper);
-    }
+    auto [mapIt,bInserted] = mpImpl->maStrMap.emplace(rStr, rStr);
+    if (!bInserted)
+        // there is already a mapping
+        return SharedString(mapIt->first.pData, mapIt->second.pData);
 
     // This is a new string insertion. Establish mapping to upper-case variant.
+    OUString aUpper = mpImpl->mrCharClass.uppercase(rStr);
+    if (aUpper == rStr)
+        // no need to do anything more, because we inserted an upper->upper mapping
+        return SharedString(mapIt->first.pData, mapIt->second.pData);
 
-    OUString aUpper = mpImpl->mpCharClass->uppercase(rStr);
-    aRes = findOrInsert(mpImpl->maStrPoolUpper, aUpper);
-    if (aRes.first == mpImpl->maStrPoolUpper.end())
-        // Failed to insert or fetch upper-case variant. Should never happen.
-        return SharedString();
+    // We need to insert a lower->upper mapping, so also insert
+    // an upper->upper mapping, which we can use both for when an upper string
+    // is interned, and to look up a shared upper string.
+    auto mapIt2 = mpImpl->maStrMap.find(aUpper);
+    if (mapIt2 != mpImpl->maStrMap.end())
+    {
+        // there is an already existing upper string
+        mapIt->second = mapIt2->first;
+        return SharedString(mapIt->first.pData, mapIt->second.pData);
+    }
 
-    mpImpl->maStrStore.insert(StrStoreType::value_type(pOrig, *aRes.first));
-
-    return SharedString(pOrig, aRes.first->pData);
+    // There is no already existing upper string.
+    // First, update using the iterator, can't do this later because
+    // the iterator will be invalid.
+    mapIt->second = aUpper;
+    mpImpl->maStrMap.emplace_hint(mapIt2, aUpper, aUpper);
+    return SharedString(rStr.pData, aUpper.pData);
 }
 
 void SharedStringPool::purge()
 {
     osl::MutexGuard aGuard(&mpImpl->maMutex);
 
-    StrHashType aNewStrPool;
-    StrHashType::iterator it = mpImpl->maStrPool.begin(), itEnd = mpImpl->maStrPool.end();
-    for (; it != itEnd; ++it)
+    // Because we can have an uppercase entry mapped to itself,
+    // and then a bunch of lowercase entries mapped to that same
+    // upper-case entry, we need to scan the map twice - the first
+    // time to remove lowercase entries, and then only can we
+    // check for unused uppercase entries.
+
+    auto it = mpImpl->maStrMap.begin();
+    auto itEnd = mpImpl->maStrMap.end();
+    while (it != itEnd)
     {
-        const rtl_uString* p = it->pData;
-        if (getRefCount(p) == 1)
+        rtl_uString* p1 = it->first.pData;
+        rtl_uString* p2 = it->second.pData;
+        if (p1 != p2)
         {
-            // Remove it from the upper string map.  This should unref the
-            // upper string linked to this original string.
-            mpImpl->maStrStore.erase(p);
+            // normal case - lowercase mapped to uppercase, which
+            // means that the lowercase entry has one ref-counted
+            // entry as the key in the map
+            if (getRefCount(p1) == 1)
+            {
+                it = mpImpl->maStrMap.erase(it);
+                continue;
+            }
         }
-        else
-            // Still referenced outside the pool. Keep it.
-            aNewStrPool.insert(*it);
+        ++it;
     }
 
-    mpImpl->maStrPool.swap(aNewStrPool);
-
-    aNewStrPool.clear(); // for re-use.
-
-    // Purge the upper string pool as well.
-    it = mpImpl->maStrPoolUpper.begin();
-    itEnd = mpImpl->maStrPoolUpper.end();
-    for (; it != itEnd; ++it)
+    it = mpImpl->maStrMap.begin();
+    itEnd = mpImpl->maStrMap.end();
+    while (it != itEnd)
     {
-        const rtl_uString* p = it->pData;
-        if (getRefCount(p) > 1)
-            aNewStrPool.insert(*it);
+        rtl_uString* p1 = it->first.pData;
+        rtl_uString* p2 = it->second.pData;
+        if (p1 == p2)
+        {
+            // uppercase which is mapped to itself, which means
+            // one ref-counted entry as the key in the map, and
+            // one ref-counted entry in the value in the map
+            if (getRefCount(p1) == 2)
+            {
+                it = mpImpl->maStrMap.erase(it);
+                continue;
+            }
+        }
+        ++it;
     }
-
-    mpImpl->maStrPoolUpper.swap(aNewStrPool);
 }
 
 size_t SharedStringPool::getCount() const
 {
     osl::MutexGuard aGuard(&mpImpl->maMutex);
-    return mpImpl->maStrPool.size();
+    return mpImpl->maStrMap.size();
 }
 
 size_t SharedStringPool::getCountIgnoreCase() const
 {
     osl::MutexGuard aGuard(&mpImpl->maMutex);
-    return mpImpl->maStrPoolUpper.size();
+    // this is only called from unit tests, so no need to be efficient
+    std::unordered_set<OUString> aUpperSet;
+    for (auto const & pair : mpImpl->maStrMap)
+        aUpperSet.insert(pair.second);
+    return aUpperSet.size();
 }
 
 }

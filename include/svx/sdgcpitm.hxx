@@ -20,6 +20,7 @@
 #ifndef INCLUDED_SVX_SDGCPITM_HXX
 #define INCLUDED_SVX_SDGCPITM_HXX
 
+#include <config_options.h>
 #include <svx/grfcrop.hxx>
 #include <svx/svddef.hxx>
 
@@ -27,7 +28,7 @@
 // SdrGrafCropItem -
 
 
-class SVX_DLLPUBLIC SdrGrafCropItem : public SvxGrfCrop
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SdrGrafCropItem : public SvxGrfCrop
 {
 public:
 
@@ -36,9 +37,7 @@ public:
                                              sal_Int32 nRightCrop = 0, sal_Int32 nBottomCrop = 0 ) :
                                 SvxGrfCrop( nLeftCrop, nRightCrop, nTopCrop, nBottomCrop, SDRATTR_GRAFCROP ) {}
 
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create( SvStream& rIn, sal_uInt16 nVer ) const override;
-    virtual sal_uInt16          GetVersion( sal_uInt16 nFileVersion ) const override;
+    virtual SdrGrafCropItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 };
 
 #endif // INCLUDED_SVX_SDGCPITM_HXX

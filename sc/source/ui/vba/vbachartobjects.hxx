@@ -21,13 +21,12 @@
 #define INCLUDED_SC_SOURCE_UI_VBA_VBACHARTOBJECTS_HXX
 
 #include <ooo/vba/excel/XChartObjects.hpp>
-#include <ooo/vba/excel/XChartObject.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/table/XTableCharts.hpp>
-#include <com/sun/star/drawing/XDrawPageSupplier.hpp>
-#include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <vbahelper/vbacollectionimpl.hxx>
-#include "excelvbahelper.hxx"
+
+namespace com::sun::star::container { class XEnumeration; }
+namespace com::sun::star::drawing { class XDrawPageSupplier; }
+namespace com::sun::star::table { class XTableCharts; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 typedef CollTestImplHelper< ov::excel::XChartObjects > ChartObjects_BASE;
 
@@ -42,7 +41,7 @@ public:
     ScVbaChartObjects( const css::uno::Reference< ov::XHelperInterface >& _xParent, const css::uno::Reference< css::uno::XComponentContext >& _xContext, const css::uno::Reference< css::table::XTableCharts >& _xTableCharts, const css::uno::Reference< css::drawing::XDrawPageSupplier >&  _xDrawPageSupplier );
 
     /// @throws css::script::BasicErrorException
-    css::uno::Sequence< OUString > getChartObjectNames();
+    css::uno::Sequence< OUString > getChartObjectNames() const;
     void removeByName(const OUString& _sChartName);
 
     // XChartObjects

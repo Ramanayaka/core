@@ -12,20 +12,14 @@ $(eval $(call gb_Module_Module,chart2))
 $(eval $(call gb_Module_add_targets,chart2,\
     Library_chartcontroller \
     Library_chartcore \
-))
-ifeq ($(ENABLE_HEADLESS),)
-$(eval $(call gb_Module_add_targets,chart2,\
-     Library_chartopengl \
-     Package_opengl \
- ))
-endif
-
-$(eval $(call gb_Module_add_l10n_targets,chart2,\
-    AllLangResTarget_chartcontroller \
 	UIConfig_chart2 \
 ))
 
-ifneq ($(OS),IOS)
+$(eval $(call gb_Module_add_l10n_targets,chart2,\
+	AllLangMoTarget_chart \
+))
+
+ifneq ($(OS),iOS)
 $(eval $(call gb_Module_add_check_targets,chart2,\
 	CppunitTest_chart2_common_functors \
 ))
@@ -36,6 +30,7 @@ $(eval $(call gb_Module_add_slowcheck_targets,chart2,\
     CppunitTest_chart2_trendcalculators \
     CppunitTest_chart2_dump \
     CppunitTest_chart2_pivot_chart_test \
+    CppunitTest_chart2_geometry \
 ))
 
 ifeq ($(ENABLE_CHART_TESTS),TRUE)

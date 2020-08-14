@@ -71,7 +71,7 @@ namespace dbaccess
 
     namespace
     {
-        void lcl_dispatchScriptURL_throw( DocumentEventExecutor_Data& _rDocExecData,
+        void lcl_dispatchScriptURL_throw( DocumentEventExecutor_Data const & _rDocExecData,
             const OUString& _rScriptURL, const DocumentEvent& _rTrigger )
         {
             Reference< XModel > xDocument( _rDocExecData.xDocument.get(), UNO_QUERY_THROW );
@@ -129,7 +129,7 @@ namespace dbaccess
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 
@@ -150,7 +150,7 @@ namespace dbaccess
 
         try
         {
-            Reference< XNameAccess > xDocEvents( xEventsSupplier->getEvents().get(), UNO_SET_THROW );
+            Reference< XNameAccess > xDocEvents( xEventsSupplier->getEvents(), UNO_SET_THROW );
             if ( !xDocEvents->hasByName( Event.EventName ) )
             {
                 // this is worth an assertion: We are listener at the very same document which we just asked
@@ -185,7 +185,7 @@ namespace dbaccess
         catch( const RuntimeException& ) { throw; }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 

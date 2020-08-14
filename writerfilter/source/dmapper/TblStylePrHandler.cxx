@@ -17,16 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <TblStylePrHandler.hxx>
-#include <PropertyMap.hxx>
+#include "TblStylePrHandler.hxx"
+#include "TagLogger.hxx"
+#include "CellMarginHandler.hxx"
+#include "PropertyMap.hxx"
+#include "MeasureHandler.hxx"
 #include <ooxml/resourceids.hxx>
 #include <comphelper/sequence.hxx>
 
 
 using namespace css;
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
 TblStylePrHandler::TblStylePrHandler( DomainMapper & rDMapper ) :
 LoggedProperties("TblStylePrHandler"),
@@ -41,23 +43,23 @@ TblStylePrHandler::~TblStylePrHandler( )
 {
 }
 
-OUString TblStylePrHandler::getTypeString()
+OUString TblStylePrHandler::getTypeString() const
 {
     switch (m_nType)
     {
-        case TBL_STYLE_WHOLETABLE: return OUString("wholeTable");
-        case TBL_STYLE_FIRSTROW: return OUString("firstRow");
-        case TBL_STYLE_LASTROW: return OUString("lastRow");
-        case TBL_STYLE_FIRSTCOL: return OUString("firstCol");
-        case TBL_STYLE_LASTCOL: return OUString("lastCol");
-        case TBL_STYLE_BAND1VERT: return OUString("band1Vert");
-        case TBL_STYLE_BAND2VERT: return OUString("band2Vert");
-        case TBL_STYLE_BAND1HORZ: return OUString("band1Horz");
-        case TBL_STYLE_BAND2HORZ: return OUString("band2Horz");
-        case TBL_STYLE_NECELL: return OUString("neCell");
-        case TBL_STYLE_NWCELL: return OUString("nwCell");
-        case TBL_STYLE_SECELL: return OUString("seCell");
-        case TBL_STYLE_SWCELL: return OUString("swCell");
+        case TBL_STYLE_WHOLETABLE: return "wholeTable";
+        case TBL_STYLE_FIRSTROW: return "firstRow";
+        case TBL_STYLE_LASTROW: return "lastRow";
+        case TBL_STYLE_FIRSTCOL: return "firstCol";
+        case TBL_STYLE_LASTCOL: return "lastCol";
+        case TBL_STYLE_BAND1VERT: return "band1Vert";
+        case TBL_STYLE_BAND2VERT: return "band2Vert";
+        case TBL_STYLE_BAND1HORZ: return "band1Horz";
+        case TBL_STYLE_BAND2HORZ: return "band2Horz";
+        case TBL_STYLE_NECELL: return "neCell";
+        case TBL_STYLE_NWCELL: return "nwCell";
+        case TBL_STYLE_SECELL: return "seCell";
+        case TBL_STYLE_SWCELL: return "swCell";
         default: break;
     }
     return OUString();
@@ -119,12 +121,11 @@ void TblStylePrHandler::lcl_attribute(Id rName, Value & rVal)
 
 void TblStylePrHandler::lcl_sprm(Sprm & rSprm)
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().startElement("TblStylePrHandler.sprm");
     TagLogger::getInstance().attribute("sprm", rSprm.toString());
 #endif
 
-    Value::Pointer_t pValue = rSprm.getValue();
     switch ( rSprm.getId( ) )
     {
         case NS_ooxml::LN_CT_PPrBase:
@@ -137,11 +138,11 @@ void TblStylePrHandler::lcl_sprm(Sprm & rSprm)
             bool bGrabBag = rSprm.getId() == NS_ooxml::LN_CT_PPrBase ||
                 rSprm.getId() == NS_ooxml::LN_EG_RPrBase ||
                 rSprm.getId() == NS_ooxml::LN_CT_TblPrBase ||
+                rSprm.getId() == NS_ooxml::LN_CT_TrPrBase ||
                 rSprm.getId() == NS_ooxml::LN_CT_TcPrBase;
             if (bGrabBag)
             {
-                aSavedGrabBag = m_aInteropGrabBag;
-                m_aInteropGrabBag.clear();
+                std::swap(aSavedGrabBag, m_aInteropGrabBag);
             }
             resolveSprmProps( rSprm );
             if (bGrabBag)
@@ -152,12 +153,58 @@ void TblStylePrHandler::lcl_sprm(Sprm & rSprm)
                     aSavedGrabBag.push_back(getInteropGrabBag("rPr"));
                 else if (rSprm.getId() == NS_ooxml::LN_CT_TblPrBase)
                     aSavedGrabBag.push_back(getInteropGrabBag("tblPr"));
+                else if (rSprm.getId() == NS_ooxml::LN_CT_TrPrBase)
+                    aSavedGrabBag.push_back(getInteropGrabBag("trPr"));
                 else if (rSprm.getId() == NS_ooxml::LN_CT_TcPrBase)
                     aSavedGrabBag.push_back(getInteropGrabBag("tcPr"));
-                m_aInteropGrabBag = aSavedGrabBag;
+                std::swap(m_aInteropGrabBag, aSavedGrabBag);
             }
         }
             break;
+        case NS_ooxml::LN_CT_TrPrBase_tblHeader:
+        {
+            m_pProperties->Insert( PROP_HEADER_ROW_COUNT, uno::makeAny(sal_Int32(1)));
+            beans::PropertyValue aValue;
+            aValue.Name = "tblHeader";
+            aValue.Value <<= true;
+            m_aInteropGrabBag.push_back(aValue);
+        }
+            break;
+        case NS_ooxml::LN_CT_TblPrBase_tblInd:
+        {
+            //contains unit and value
+            writerfilter::Reference<Properties>::Pointer_t pProperties = rSprm.getProps();
+            if( pProperties )
+            {
+                MeasureHandlerPtr pMeasureHandler( new MeasureHandler );
+                pProperties->resolve(*pMeasureHandler);
+                TablePropertyMapPtr pPropMap( new TablePropertyMap );
+                pPropMap->setValue( TablePropertyMap::LEFT_MARGIN, pMeasureHandler->getMeasureValue() );
+                m_pProperties->Insert( PROP_LEFT_MARGIN, uno::makeAny(pMeasureHandler->getMeasureValue()) );
+            }
+        }
+            break;
+        case NS_ooxml::LN_CT_TblPrBase_tblCellMar:
+        {
+            writerfilter::Reference<Properties>::Pointer_t pProperties = rSprm.getProps();
+            if ( pProperties )
+            {
+                auto pCellMarginHandler = std::make_shared<CellMarginHandler>();
+                pCellMarginHandler->enableInteropGrabBag("tblCellMar");
+                pProperties->resolve( *pCellMarginHandler );
+                m_aInteropGrabBag.push_back(pCellMarginHandler->getInteropGrabBag());
+
+                if( pCellMarginHandler->m_bTopMarginValid )
+                    m_pProperties->Insert( META_PROP_CELL_MAR_TOP, uno::makeAny(pCellMarginHandler->m_nTopMargin) );
+                if( pCellMarginHandler->m_bBottomMarginValid )
+                    m_pProperties->Insert( META_PROP_CELL_MAR_BOTTOM, uno::makeAny(pCellMarginHandler->m_nBottomMargin) );
+                if( pCellMarginHandler->m_bLeftMarginValid )
+                    m_pProperties->Insert( META_PROP_CELL_MAR_LEFT, uno::makeAny(pCellMarginHandler->m_nLeftMargin) );
+                if( pCellMarginHandler->m_bRightMarginValid )
+                    m_pProperties->Insert( META_PROP_CELL_MAR_RIGHT, uno::makeAny(pCellMarginHandler->m_nRightMargin) );
+            }
+        }
+        break;
         default:
             // Tables specific properties have to handled here
             m_pTablePropsHandler->SetProperties( m_pProperties );
@@ -178,7 +225,7 @@ void TblStylePrHandler::lcl_sprm(Sprm & rSprm)
             }
     }
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().endElement();
 #endif
 }
@@ -186,7 +233,7 @@ void TblStylePrHandler::lcl_sprm(Sprm & rSprm)
 void TblStylePrHandler::resolveSprmProps(Sprm & rSprm)
 {
     writerfilter::Reference<Properties>::Pointer_t pProperties = rSprm.getProps();
-    if( pProperties.get())
+    if( pProperties )
         pProperties->resolve(*this);
 }
 
@@ -207,6 +254,6 @@ beans::PropertyValue TblStylePrHandler::getInteropGrabBag(const OUString& aName)
     return aRet;
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

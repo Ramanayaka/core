@@ -38,7 +38,7 @@ namespace sdr
     }
 }
 
-class SdrAShapeObjGeoData : public SdrTextObjGeoData
+class SdrAShapeObjGeoData final : public SdrTextObjGeoData
 {
 public:
     bool        bMirroredX;
@@ -57,11 +57,12 @@ enum class CustomShapeHandleModes
     RESIZE_ABSOLUTE_Y    = 8,
     MOVE_SHAPE           = 16,
     ORTHO4               = 32,
+    RESIZE_ABSOLUTE_NEGX = 64
 };
 
 namespace o3tl
 {
-    template<> struct typed_flags<CustomShapeHandleModes> : is_typed_flags<CustomShapeHandleModes, 63> {};
+    template<> struct typed_flags<CustomShapeHandleModes> : is_typed_flags<CustomShapeHandleModes, 127> {};
 }
 
 struct SdrCustomShapeInteraction
@@ -71,7 +72,7 @@ struct SdrCustomShapeInteraction
     CustomShapeHandleModes                                  nMode;
 };
 
-class SVX_DLLPUBLIC SdrObjCustomShape : public SdrTextObj
+class SVXCORE_DLLPUBLIC SdrObjCustomShape : public SdrTextObj
 {
 private:
     // fObjectRotation is containing the object rotation in degrees.
@@ -79,11 +80,11 @@ private:
     bool mbAdjustingTextFrameWidthAndHeight;
 
 protected:
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
     virtual void impl_setUnoShape(const css::uno::Reference<css::uno::XInterface>& rxUnoShape) override;
 
 public:
-    virtual sdr::properties::BaseProperties* CreateObjectSpecificProperties() override;
+    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
 
     // to allow sdr::properties::CustomShapeProperties access
     friend class sdr::properties::CustomShapeProperties;
@@ -97,18 +98,11 @@ public:
 
     css::uno::Reference< css::drawing::XCustomShapeEngine > const & GetCustomShapeEngine() const;
 
-//  SVX_DLLPRIVATE css::uno::Sequence< css::uno::Reference< css::drawing::XCustomShapeHandle > >
-//      SdrObjCustomShape::GetInteraction( const SdrObjCustomShape* pCustomShape ) const;
-// #i47293#
-//  SVX_DLLPRIVATE std::vector< css::uno::Reference< css::drawing::XCustomShapeHandle > > GetFixedInteractionHandle() const;
-
-    SVX_DLLPRIVATE std::vector< SdrCustomShapeInteraction > GetInteractionHandles() const;
-
+    std::vector< SdrCustomShapeInteraction > GetInteractionHandles() const; // needed in unit test
     SVX_DLLPRIVATE void DragCreateObject( SdrDragStat& rDrag );
-
     SVX_DLLPRIVATE void DragResizeCustomShape( const tools::Rectangle& rNewRect );
-    SVX_DLLPRIVATE void DragMoveCustomShapeHdl( const Point& rDestination,
-            const sal_uInt16 nCustomShapeHdlNum, bool bMoveCalloutRectangle );
+    void DragMoveCustomShapeHdl( const Point& rDestination,
+            const sal_uInt16 nCustomShapeHdlNum, bool bMoveCalloutRectangle ); // needed in unit test
 
     // #i37011# centralize throw-away of render geometry
     void InvalidateRenderGeometry();
@@ -135,20 +129,22 @@ protected:
 
     Size m_aSuggestedTextFrameSize;
 
+    // protected destructor
+    virtual ~SdrObjCustomShape() override;
+
 public:
     bool UseNoFillStyle() const;
 
     bool IsMirroredX() const;
     bool IsMirroredY() const;
-    bool IsPostRotate() const;
     void SetMirroredX( const bool bMirroredX );
     void SetMirroredY( const bool bMirroredY );
 
     double GetObjectRotation() const { return fObjectRotation;}
     double GetExtraTextRotation( const bool bPreRotation = false ) const;
+    double GetCameraRotation() const;
 
-    SdrObjCustomShape();
-    virtual ~SdrObjCustomShape() override;
+    SdrObjCustomShape(SdrModel& rSdrModel);
 
     /* is merging default attributes from type-shape into the SdrCustomShapeGeometryItem. If pType
     is NULL then the type is being taken from the "Type" property of the SdrCustomShapeGeometryItem.
@@ -172,12 +168,11 @@ public:
     virtual sal_uInt16 GetObjIdentifier() const override;
     virtual void TakeObjInfo(SdrObjTransformInfoRec& rInfo) const override;
 
-    virtual void SetModel(SdrModel* pNewModel) override;
-
     virtual void Move(const Size& rSiz) override;
     virtual void Shear(const Point& rRef, long nAngle, double tn, bool bVShear) override;
     virtual void SetSnapRect(const tools::Rectangle& rRect) override;
     virtual void SetLogicRect(const tools::Rectangle& rRect) override;
+    virtual void AdjustToMaxRect( const tools::Rectangle& rMaxRect, bool bShrinkOnly = false ) override;
 
     virtual void NbcMove(const Size& rSiz) override;
     virtual void NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
@@ -216,7 +211,7 @@ public:
     virtual void TakeTextAnchorRect( tools::Rectangle& rAnchorRect ) const override;
     virtual void TakeTextRect( SdrOutliner& rOutliner, tools::Rectangle& rTextRect, bool bNoEditText,
         tools::Rectangle* pAnchorRect, bool bLineWidth = true ) const override;
-    virtual SdrObjCustomShape* Clone() const override;
+    virtual SdrObjCustomShape* CloneSdrObject(SdrModel& rTargetModel) const override;
     SdrObjCustomShape& operator=(const SdrObjCustomShape& rObj);
 
     virtual OUString TakeObjNameSingul() const override;
@@ -227,11 +222,12 @@ public:
     virtual basegfx::B2DPolyPolygon TakeXorPoly() const override;
     virtual basegfx::B2DPolyPolygon TakeContour() const override;
 
-    virtual void NbcSetOutlinerParaObject(OutlinerParaObject* pTextObject) override;
+    virtual void NbcSetOutlinerParaObject(std::unique_ptr<OutlinerParaObject> pTextObject) override;
 
-    virtual SdrObject* DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
+    virtual SdrObjectUniquePtr DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
 
-    virtual void SetPage( SdrPage* pNewPage ) override;
+    // react on model/page change
+    virtual void handlePageChange(SdrPage* pOldPage, SdrPage* pNewPage) override;
 
     virtual SdrObjGeoData *NewGeoData() const override;
     virtual void SaveGeoData(SdrObjGeoData &rGeo) const override;
@@ -246,14 +242,14 @@ public:
     virtual SdrGluePointList* ForceGluePointList() override;
 
     virtual sal_uInt32 GetHdlCount() const override;
-    virtual SdrHdl* GetHdl( sal_uInt32 nHdlNum ) const override;
+    virtual void AddToHdlList(SdrHdlList& rHdlList) const override;
 
     // #i33136#
     static bool doConstructOrthogonal(const OUString& rName);
 
     using SdrTextObj::NbcSetOutlinerParaObject;
 
-    OUString GetCustomShapeName();
+    OUString GetCustomShapeName() const;
 };
 
 #endif // INCLUDED_SVX_SVDOASHP_HXX

@@ -14,9 +14,10 @@ $(eval $(call gb_ExternalProject_register_targets,hsqldb,\
 ))
 
 $(call gb_ExternalProject_get_state_target,hsqldb,build) :
+	$(call gb_Trace_StartRange,hsqldb,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		$(ICECREAM_RUN) "$(ANT)" \
-			-q \
+			$(if $(verbose),-v,-q) \
 			-f build/build.xml \
 			-Dbuild.label="build-$(LIBO_VERSION_MAJOR).$(LIBO_VERSION_MINOR).$(LIBO_VERSION_MICRO).$(LIBO_VERSION_PATCH)" \
 			-Dant.build.javac.source=$(JAVA_SOURCE_VER) \
@@ -24,5 +25,6 @@ $(call gb_ExternalProject_get_state_target,hsqldb,build) :
 			$(if $(debug),-Dbuild.debug="on") \
 			jar \
 	)
+	$(call gb_Trace_EndRange,hsqldb,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

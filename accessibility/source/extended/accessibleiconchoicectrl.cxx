@@ -17,17 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "extended/accessibleiconchoicectrl.hxx"
-#include "extended/accessibleiconchoicectrlentry.hxx"
-#include <svtools/ivctrl.hxx>
+#include <extended/accessibleiconchoicectrl.hxx>
+#include <extended/accessibleiconchoicectrlentry.hxx>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <unotools/accessiblestatesethelper.hxx>
-#include <vcl/svapp.hxx>
+#include <vcl/ivctrl.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
 
 
 namespace accessibility
@@ -44,14 +42,9 @@ namespace accessibility
 
     // Ctor() and Dtor()
 
-    AccessibleIconChoiceCtrl::AccessibleIconChoiceCtrl( SvtIconChoiceCtrl& _rIconCtrl, const Reference< XAccessible >& _xParent ) :
-
+    AccessibleIconChoiceCtrl::AccessibleIconChoiceCtrl( SvtIconChoiceCtrl const & _rIconCtrl, const Reference< XAccessible >& _xParent ) :
         VCLXAccessibleComponent( _rIconCtrl.GetWindowPeer() ),
         m_xParent       ( _xParent )
-    {
-    }
-
-    AccessibleIconChoiceCtrl::~AccessibleIconChoiceCtrl()
     {
     }
 
@@ -60,60 +53,60 @@ namespace accessibility
 
     void AccessibleIconChoiceCtrl::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
     {
-        if ( isAlive() )
+        if ( !isAlive() )
+            return;
+
+        switch ( rVclWindowEvent.GetId() )
         {
-            switch ( rVclWindowEvent.GetId() )
+            case VclEventId::ListboxSelect :
             {
-                case VclEventId::ListboxSelect :
-                {
-                    // First send an event that tells the listeners of a
-                    // modified selection.  The active descendant event is
-                    // send after that so that the receiving AT has time to
-                    // read the text or name of the active child.
+                // First send an event that tells the listeners of a
+                // modified selection.  The active descendant event is
+                // send after that so that the receiving AT has time to
+                // read the text or name of the active child.
 //                  NotifyAccessibleEvent( AccessibleEventId::SELECTION_CHANGED, Any(), Any() );
 
-                    if ( getCtrl() && getCtrl()->HasFocus() )
-                    {
-                        SvxIconChoiceCtrlEntry* pEntry = static_cast< SvxIconChoiceCtrlEntry* >( rVclWindowEvent.GetData() );
-                        if ( pEntry )
-                        {
-                            sal_uLong nPos = getCtrl()->GetEntryListPos( pEntry );
-                            Reference< XAccessible > xChild = new AccessibleIconChoiceCtrlEntry( *getCtrl(), nPos, this );
-                            uno::Any aOldValue, aNewValue;
-                            aNewValue <<= xChild;
-                            NotifyAccessibleEvent( AccessibleEventId::ACTIVE_DESCENDANT_CHANGED, aOldValue, aNewValue );
-
-                            NotifyAccessibleEvent( AccessibleEventId::SELECTION_CHANGED, aOldValue, aNewValue );
-
-                        }
-                    }
-                    break;
-                }
-                case VclEventId::WindowGetFocus :
+                if ( getCtrl() && getCtrl()->HasFocus() )
                 {
-                    VclPtr<SvtIconChoiceCtrl> pCtrl = getCtrl();
-                    if ( pCtrl && pCtrl->HasFocus() )
+                    SvxIconChoiceCtrlEntry* pEntry = static_cast< SvxIconChoiceCtrlEntry* >( rVclWindowEvent.GetData() );
+                    if ( pEntry )
                     {
-                        SvxIconChoiceCtrlEntry* pEntry = static_cast< SvxIconChoiceCtrlEntry* >( rVclWindowEvent.GetData() );
-                        if ( pEntry == nullptr )
-                        {
-                            pEntry = getCtrl()->GetSelectedEntry();
-                        }
-                        if ( pEntry )
-                        {
-                            sal_uLong nPos = pCtrl->GetEntryListPos( pEntry );
-                            Reference< XAccessible > xChild = new AccessibleIconChoiceCtrlEntry( *pCtrl, nPos, this );
-                            uno::Any aOldValue, aNewValue;
-                            aNewValue <<= xChild;
-                            NotifyAccessibleEvent( AccessibleEventId::ACTIVE_DESCENDANT_CHANGED, aOldValue, aNewValue );
-                            NotifyAccessibleEvent( AccessibleEventId::SELECTION_CHANGED, aOldValue, aNewValue );
-                        }
+                        sal_Int32 nPos = getCtrl()->GetEntryListPos( pEntry );
+                        Reference< XAccessible > xChild = new AccessibleIconChoiceCtrlEntry( *getCtrl(), nPos, this );
+                        uno::Any aOldValue, aNewValue;
+                        aNewValue <<= xChild;
+                        NotifyAccessibleEvent( AccessibleEventId::ACTIVE_DESCENDANT_CHANGED, aOldValue, aNewValue );
+
+                        NotifyAccessibleEvent( AccessibleEventId::SELECTION_CHANGED, aOldValue, aNewValue );
+
                     }
-                    break;
                 }
-                default:
-                    VCLXAccessibleComponent::ProcessWindowChildEvent (rVclWindowEvent);
+                break;
             }
+            case VclEventId::WindowGetFocus :
+            {
+                VclPtr<SvtIconChoiceCtrl> pCtrl = getCtrl();
+                if ( pCtrl && pCtrl->HasFocus() )
+                {
+                    SvxIconChoiceCtrlEntry* pEntry = static_cast< SvxIconChoiceCtrlEntry* >( rVclWindowEvent.GetData() );
+                    if ( pEntry == nullptr )
+                    {
+                        pEntry = getCtrl()->GetSelectedEntry();
+                    }
+                    if ( pEntry )
+                    {
+                        sal_Int32 nPos = pCtrl->GetEntryListPos( pEntry );
+                        Reference< XAccessible > xChild = new AccessibleIconChoiceCtrlEntry( *pCtrl, nPos, this );
+                        uno::Any aOldValue, aNewValue;
+                        aNewValue <<= xChild;
+                        NotifyAccessibleEvent( AccessibleEventId::ACTIVE_DESCENDANT_CHANGED, aOldValue, aNewValue );
+                        NotifyAccessibleEvent( AccessibleEventId::SELECTION_CHANGED, aOldValue, aNewValue );
+                    }
+                }
+                break;
+            }
+            default:
+                VCLXAccessibleComponent::ProcessWindowChildEvent (rVclWindowEvent);
         }
     }
 
@@ -130,7 +123,7 @@ namespace accessibility
 
     OUString SAL_CALL AccessibleIconChoiceCtrl::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.svtools.AccessibleIconChoiceControl" );
+        return "com.sun.star.comp.svtools.AccessibleIconChoiceControl";
     }
 
     Sequence< OUString > SAL_CALL AccessibleIconChoiceCtrl::getSupportedServiceNames()
@@ -159,7 +152,6 @@ namespace accessibility
     {
         ::comphelper::OExternalLockGuard aGuard( this );
 
-        ensureAlive();
         return getCtrl()->GetEntryCount();
     }
 
@@ -167,11 +159,13 @@ namespace accessibility
     {
         ::comphelper::OExternalLockGuard aGuard( this );
 
-        ensureAlive();
         VclPtr<SvtIconChoiceCtrl> pCtrl = getCtrl();
         SvxIconChoiceCtrlEntry* pEntry = pCtrl->GetEntry(i);
         if ( !pEntry )
-            throw RuntimeException();
+            throw RuntimeException("getAccessibleChild: Entry "
+                                   + OUString::number(i) + " not found",
+                static_cast<css::lang::XTypeProvider*>(
+                    static_cast<VCLXAccessibleComponent_BASE*>(this)));
 
         return new AccessibleIconChoiceCtrlEntry( *pCtrl, i, this );
     }
@@ -194,15 +188,12 @@ namespace accessibility
     {
         ::comphelper::OExternalLockGuard aGuard( this );
 
-        ensureAlive();
         return getCtrl()->GetAccessibleDescription();
     }
 
     OUString SAL_CALL AccessibleIconChoiceCtrl::getAccessibleName(  )
     {
         ::comphelper::OExternalLockGuard aGuard( this );
-
-        ensureAlive();
 
         OUString sName = getCtrl()->GetAccessibleName();
         if ( sName.isEmpty() )
@@ -216,8 +207,6 @@ namespace accessibility
     {
         ::comphelper::OExternalLockGuard aGuard( this );
 
-        ensureAlive();
-
         VclPtr<SvtIconChoiceCtrl> pCtrl = getCtrl();
         SvxIconChoiceCtrlEntry* pEntry = pCtrl->GetEntry( nChildIndex );
         if ( !pEntry )
@@ -230,8 +219,6 @@ namespace accessibility
     {
         ::comphelper::OExternalLockGuard aGuard( this );
 
-        ensureAlive();
-
         VclPtr<SvtIconChoiceCtrl> pCtrl = getCtrl();
         SvxIconChoiceCtrlEntry* pEntry = pCtrl->GetEntry( nChildIndex );
         if ( !pEntry )
@@ -243,16 +230,12 @@ namespace accessibility
     void SAL_CALL AccessibleIconChoiceCtrl::clearAccessibleSelection(  )
     {
         ::comphelper::OExternalLockGuard aGuard( this );
-
-        ensureAlive();
         getCtrl()->SetNoSelection();
     }
 
     void SAL_CALL AccessibleIconChoiceCtrl::selectAllAccessibleChildren(  )
     {
         ::comphelper::OExternalLockGuard aGuard( this );
-
-        ensureAlive();
 
         VclPtr<SvtIconChoiceCtrl> pCtrl = getCtrl();
         sal_Int32 nCount = pCtrl->GetEntryCount();
@@ -267,8 +250,6 @@ namespace accessibility
     sal_Int32 SAL_CALL AccessibleIconChoiceCtrl::getSelectedAccessibleChildCount(  )
     {
         ::comphelper::OExternalLockGuard aGuard( this );
-
-        ensureAlive();
 
         sal_Int32 nSelCount = 0;
         VclPtr<SvtIconChoiceCtrl> pCtrl = getCtrl();
@@ -286,8 +267,6 @@ namespace accessibility
     Reference< XAccessible > SAL_CALL AccessibleIconChoiceCtrl::getSelectedAccessibleChild( sal_Int32 nSelectedChildIndex )
     {
         ::comphelper::OExternalLockGuard aGuard( this );
-
-        ensureAlive();
 
         if ( nSelectedChildIndex < 0 || nSelectedChildIndex >= getSelectedAccessibleChildCount() )
             throw IndexOutOfBoundsException();
@@ -315,8 +294,6 @@ namespace accessibility
     void SAL_CALL AccessibleIconChoiceCtrl::deselectAccessibleChild( sal_Int32 nSelectedChildIndex )
     {
         ::comphelper::OExternalLockGuard aGuard( this );
-
-        ensureAlive();
 
         if ( nSelectedChildIndex < 0 || nSelectedChildIndex >= getAccessibleChildCount() )
             throw IndexOutOfBoundsException();
@@ -352,7 +329,7 @@ namespace accessibility
         }
     }
 
-    VclPtr< SvtIconChoiceCtrl > AccessibleIconChoiceCtrl::getCtrl()
+    VclPtr< SvtIconChoiceCtrl > AccessibleIconChoiceCtrl::getCtrl() const
     {
         return GetAs<SvtIconChoiceCtrl >();
     }

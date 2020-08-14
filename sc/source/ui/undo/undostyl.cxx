@@ -19,16 +19,17 @@
 
 #include <svl/itemset.hxx>
 #include <vcl/virdev.hxx>
+#include <osl/diagnose.h>
 
-#include "undostyl.hxx"
-#include "docsh.hxx"
-#include "docpool.hxx"
-#include "stlpool.hxx"
-#include "printfun.hxx"
-#include "scmod.hxx"
-#include "inputhdl.hxx"
-#include "globstr.hrc"
-
+#include <undostyl.hxx>
+#include <docsh.hxx>
+#include <docpool.hxx>
+#include <stlpool.hxx>
+#include <printfun.hxx>
+#include <scmod.hxx>
+#include <inputhdl.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
 
 //      modify style (cell or page style)
 
@@ -46,10 +47,12 @@ ScStyleSaveData::ScStyleSaveData( const ScStyleSaveData& rOther ) :
 
 ScStyleSaveData& ScStyleSaveData::operator=( const ScStyleSaveData& rOther )
 {
-    aName   = rOther.aName;
-    aParent = rOther.aParent;
-    xItems.reset(rOther.xItems ? new SfxItemSet(*rOther.xItems) : nullptr);
-
+    if (this != &rOther)
+    {
+        aName   = rOther.aName;
+        aParent = rOther.aParent;
+        xItems.reset(rOther.xItems ? new SfxItemSet(*rOther.xItems) : nullptr);
+    }
     return *this;
 }
 
@@ -80,18 +83,18 @@ ScUndoModifyStyle::~ScUndoModifyStyle()
 
 OUString ScUndoModifyStyle::GetComment() const
 {
-    sal_uInt16 nId = (eFamily == SfxStyleFamily::Para) ?
+    const char* pId = (eFamily == SfxStyleFamily::Para) ?
                                 STR_UNDO_EDITCELLSTYLE :
                                 STR_UNDO_EDITPAGESTYLE;
-    return ScGlobal::GetRscString( nId );
+    return ScResId(pId);
 }
 
-static void lcl_DocStyleChanged( ScDocument* pDoc, SfxStyleSheetBase* pStyle, bool bRemoved )
+static void lcl_DocStyleChanged( ScDocument* pDoc, const SfxStyleSheetBase* pStyle, bool bRemoved )
 {
     //! move to document or docshell
 
     ScopedVclPtrInstance< VirtualDevice > pVDev;
-    Point aLogic = pVDev->LogicToPixel( Point(1000,1000), MapUnit::MapTwip );
+    Point aLogic = pVDev->LogicToPixel(Point(1000,1000), MapMode(MapUnit::MapTwip));
     double nPPTX = aLogic.X() / 1000.0;
     double nPPTY = aLogic.Y() / 1000.0;
     Fraction aZoom(1,1);
@@ -127,7 +130,7 @@ void ScUndoModifyStyle::DoChange( ScDocShell* pDocSh, const OUString& rName,
     else if ( !bDelete )
     {
         // create style (with new name)
-        pStyle = &pStlPool->Make( aNewName, eStyleFamily, SFXSTYLEBIT_USERDEF );
+        pStyle = &pStlPool->Make( aNewName, eStyleFamily, SfxStyleSearchBits::UserDefined );
 
         if ( eStyleFamily == SfxStyleFamily::Para )
             rDoc.GetPool()->CellStyleCreated( aNewName, &rDoc );
@@ -178,7 +181,7 @@ void ScUndoModifyStyle::DoChange( ScDocShell* pDocSh, const OUString& rName,
         }
     }
 
-    pDocSh->PostPaint( 0,0,0, MAXCOL,MAXROW,MAXTAB, PaintPartFlags::Grid|PaintPartFlags::Left );
+    pDocSh->PostPaint( 0,0,0, rDoc.MaxCol(),rDoc.MaxRow(),MAXTAB, PaintPartFlags::Grid|PaintPartFlags::Left );
 
     //! undo/redo document modifications for deleted styles
     //! undo/redo modifications of number formatter
@@ -227,21 +230,21 @@ ScUndoApplyPageStyle::~ScUndoApplyPageStyle()
 
 void ScUndoApplyPageStyle::AddSheetAction( SCTAB nTab, const OUString& rOldStyle )
 {
-    maEntries.push_back( ApplyStyleEntry( nTab, rOldStyle ) );
+    maEntries.emplace_back( nTab, rOldStyle );
 }
 
 OUString ScUndoApplyPageStyle::GetComment() const
 {
-    return ScGlobal::GetRscString( STR_UNDO_APPLYPAGESTYLE );
+    return ScResId( STR_UNDO_APPLYPAGESTYLE );
 }
 
 void ScUndoApplyPageStyle::Undo()
 {
     BeginUndo();
-    for( ApplyStyleVec::const_iterator aIt = maEntries.begin(), aEnd = maEntries.end(); aIt != aEnd; ++aIt )
+    for( const auto& rEntry : maEntries )
     {
-        pDocShell->GetDocument().SetPageStyle( aIt->mnTab, aIt->maOldStyle );
-        ScPrintFunc( pDocShell, pDocShell->GetPrinter(), aIt->mnTab ).UpdatePages();
+        pDocShell->GetDocument().SetPageStyle( rEntry.mnTab, rEntry.maOldStyle );
+        ScPrintFunc( pDocShell, pDocShell->GetPrinter(), rEntry.mnTab ).UpdatePages();
     }
     EndUndo();
 }
@@ -249,10 +252,10 @@ void ScUndoApplyPageStyle::Undo()
 void ScUndoApplyPageStyle::Redo()
 {
     BeginRedo();
-    for( ApplyStyleVec::const_iterator aIt = maEntries.begin(), aEnd = maEntries.end(); aIt != aEnd; ++aIt )
+    for( const auto& rEntry : maEntries )
     {
-        pDocShell->GetDocument().SetPageStyle( aIt->mnTab, maNewStyle );
-        ScPrintFunc( pDocShell, pDocShell->GetPrinter(), aIt->mnTab ).UpdatePages();
+        pDocShell->GetDocument().SetPageStyle( rEntry.mnTab, maNewStyle );
+        ScPrintFunc( pDocShell, pDocShell->GetPrinter(), rEntry.mnTab ).UpdatePages();
     }
     EndRedo();
 }

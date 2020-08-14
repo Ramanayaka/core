@@ -7,23 +7,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cassert>
-#include <cstring>
 #include <vector>
 
-#include "registry/reader.hxx"
-#include "registry/registry.hxx"
-#include "registry/regtype.h"
-#include "rtl/ref.hxx"
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
-#include "unoidl/unoidl.hxx"
+#include <registry/reader.hxx>
+#include <registry/registry.hxx>
+#include <registry/regtype.h>
+#include <rtl/ref.hxx>
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
+#include <unoidl/unoidl.hxx>
 
 #include "legacyprovider.hxx"
 
-namespace unoidl { namespace detail {
+namespace unoidl::detail {
 
 namespace {
 
@@ -189,14 +188,14 @@ typereg::Reader getReader(RegistryKey & key, std::vector< char > * buffer) {
              + " of key " + key.getName()));
     }
     buffer->resize(static_cast< std::vector< char >::size_type >(size));
-    e = key.getValue("", &(*buffer)[0]);
+    e = key.getValue("", buffer->data());
     if (e != RegError::NO_ERROR) {
         throw FileFormatException(
             key.getRegistryName(),
             ("legacy format: cannot get binary value of key " + key.getName()
              + ": " + OUString::number(static_cast<int>(e))));
     }
-    typereg::Reader reader(&(*buffer)[0], size);
+    typereg::Reader reader(buffer->data(), size);
     if (!reader.isValid()) {
         throw FileFormatException(
             key.getRegistryName(),
@@ -219,7 +218,7 @@ rtl::Reference< Entity > readEntity(
         if (probe) {
             return rtl::Reference< Entity >();
         }
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     default:
         throw FileFormatException(
             key.getRegistryName(),
@@ -259,9 +258,9 @@ rtl::Reference< Entity > readEntity(
                             {
                                 sal_uInt16 m
                                     = reader.getMethodExceptionCount(k);
-                                // coverity[tainted_data] cid#1213376
-                                // unhelpfully warns about an untrusted loop
-                                // bound here:
+                                // cid#1213376 unhelpfully warns about an
+                                // untrusted loop bound here:
+                                // coverity[tainted_data] - trusted data source
                                 for (sal_uInt16 l = 0; l != m; ++l) {
                                     getExcs.push_back(
                                         reader.getMethodExceptionTypeName(k, l).
@@ -273,9 +272,9 @@ rtl::Reference< Entity > readEntity(
                             {
                                 sal_uInt16 m
                                     = reader.getMethodExceptionCount(k);
-                                // coverity[tainted_data] cid#1213376
-                                // unhelpfully warns about an untrusted loop
-                                // bound here:
+                                // cid#1213376 unhelpfully warns about an
+                                // untrusted loop bound here:
+                                // coverity[tainted_data] - trusted data source
                                 for (sal_uInt16 l = 0; l != m; ++l) {
                                     setExcs.push_back(
                                         reader.getMethodExceptionTypeName(k, l).
@@ -301,6 +300,7 @@ rtl::Reference< Entity > readEntity(
                     translateAnnotations(reader.getFieldDocumentation(j)));
             }
             std::vector< InterfaceTypeEntity::Method > meths;
+            meths.reserve(methodCount);
             for (sal_uInt16 j = 0; j != methodCount; ++j) {
                 RTMethodMode flags = reader.getMethodFlags(j);
                 if (flags != RTMethodMode::ATTRIBUTE_GET
@@ -309,8 +309,9 @@ rtl::Reference< Entity > readEntity(
                     std::vector< InterfaceTypeEntity::Method::Parameter >
                         params;
                     sal_uInt16 m = reader.getMethodParameterCount(j);
-                    // coverity[tainted_data] cid#1213376 unhelpfully warns
-                    // about an untrusted loop bound here:
+                    // cid#1213376 unhelpfully warns about an untrusted loop
+                    // bound here:
+                    // coverity[tainted_data] - trusted data source
                     for (sal_uInt16 k = 0; k != m; ++k) {
                         RTParamMode mode = reader.getMethodParameterFlags(j, k);
                         InterfaceTypeEntity::Method::Parameter::Direction dir;
@@ -342,8 +343,9 @@ rtl::Reference< Entity > readEntity(
                     }
                     std::vector< OUString > excs;
                     m = reader.getMethodExceptionCount(j);
-                    // coverity[tainted_data] cid#1213376 unhelpfully warns
-                    // about an untrusted loop bound here:
+                    // cid#1213376 unhelpfully warns about an untrusted loop
+                    // bound here:
+                    // coverity[tainted_data] - trusted data source
                     for (sal_uInt16 k = 0; k != m; ++k) {
                         excs.push_back(
                             reader.getMethodExceptionTypeName(j, k).replace(
@@ -375,7 +377,7 @@ rtl::Reference< Entity > readEntity(
                     base = reader.getSuperTypeName(0).replace('/', '.');
                     break;
                 default:
-                    FileFormatException(
+                    throw FileFormatException(
                         key.getRegistryName(),
                         ("legacy format: unexpected number "
                          + OUString::number(reader.getSuperTypeCount())
@@ -395,7 +397,7 @@ rtl::Reference< Entity > readEntity(
                     translateAnnotations(reader.getDocumentation()));
             } else {
                 if (reader.getSuperTypeCount() != 0) {
-                    FileFormatException(
+                    throw FileFormatException(
                         key.getRegistryName(),
                         ("legacy format: unexpected number "
                          + OUString::number(reader.getSuperTypeCount())
@@ -430,7 +432,7 @@ rtl::Reference< Entity > readEntity(
             for (sal_uInt16 j = 0; j != n; ++j) {
                 RTConstValue v(reader.getFieldValue(j));
                 if (v.m_type != RT_TYPE_INT32) {
-                    FileFormatException(
+                    throw FileFormatException(
                         key.getRegistryName(),
                         ("legacy format: unexpected type "
                          + OUString::number(v.m_type) + " of value of field "
@@ -607,8 +609,9 @@ rtl::Reference< Entity > readEntity(
                             SingleInterfaceBasedServiceEntity::Constructor::
                             Parameter > params;
                         sal_uInt16 m = reader.getMethodParameterCount(j);
-                        // coverity[tainted_data] cid#1213376 unhelpfully warns
-                        // about an untrusted loop bound here:
+                        // cid#1213376 unhelpfully warns about an untrusted
+                        // loop bound here:
+                        // coverity[tainted_data] - trusted data source
                         for (sal_uInt16 k = 0; k != m; ++k) {
                             RTParamMode mode
                                 = reader.getMethodParameterFlags(j, k);
@@ -625,10 +628,10 @@ rtl::Reference< Entity > readEntity(
                                      + sub.getName()));
                             }
                             if ((mode & RT_PARAM_REST) != 0
-                                && !(m == 1
-                                     && ((reader.getMethodParameterTypeName(
+                                && (m != 1
+                                     || ((reader.getMethodParameterTypeName(
                                               j, 0))
-                                         == "any")))
+                                         != "any")))
                             {
                                 throw FileFormatException(
                                     key.getRegistryName(),
@@ -647,8 +650,9 @@ rtl::Reference< Entity > readEntity(
                         }
                         std::vector< OUString > excs;
                         m = reader.getMethodExceptionCount(j);
-                        // coverity[tainted_data] cid#1213376 unhelpfully warns
-                        // about an untrusted loop bound here:
+                        // cid#1213376 unhelpfully warns about an untrusted
+                        // loop bound here:
+                        // coverity[tainted_data] - trusted data source
                         for (sal_uInt16 k = 0; k != m; ++k) {
                             excs.push_back(
                                 reader.getMethodExceptionTypeName(j, k).replace(
@@ -818,6 +822,6 @@ rtl::Reference< Entity > LegacyProvider::findEntity(OUString const & name)
 
 LegacyProvider::~LegacyProvider() throw () {}
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,7 +20,7 @@
 #ifndef INCLUDED_I18NPOOL_SOURCE_SEARCH_LEVDIS_HXX
 #define INCLUDED_I18NPOOL_SOURCE_SEARCH_LEVDIS_HXX
 
-#include <rtl/ustring.hxx>
+#include <sal/types.h>
 #include <memory>
 
 // Sensible default values for a user interface could be:
@@ -63,7 +63,7 @@
 // One caveat, if the WLD reaches nLimit due to nDelR0 (i.e. data string is nZ
 // characters longer than pattern) then no character can be replaced any more.
 // This can be circumvented by increasing nX or/and nZ, but of course with the
-// side effect of being less strict then.. or the other solution is to use
+// side effect of being less strict then... or the other solution is to use
 // relaxed SplitCount (see below), which is the default when using CalcLPQR().
 //
 // Attention: shorter = WLD.Insert, longer = WLD.Delete

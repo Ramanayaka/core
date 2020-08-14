@@ -19,20 +19,14 @@
 
 #include <sal/config.h>
 
-#include <limits>
-
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/numeric/ftools.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/range/b2drectangle.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/tools/tools.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <rtl/math.hxx>
 
-#include <canvas/canvastools.hxx>
-#include <canvas/parametricpolypolygon.hxx>
+#include <com/sun/star/rendering/XGraphicDevice.hpp>
+
+#include <parametricpolypolygon.hxx>
 
 using namespace ::com::sun::star;
 
@@ -64,10 +58,10 @@ namespace canvas
         colorStops[1] = 1;
 
         // extract args
-        for( sal_Int32 i=0; i<rArgs.getLength(); ++i )
+        for( const uno::Any& rArg : rArgs )
         {
             beans::PropertyValue aProp;
-            if( (rArgs[i] >>= aProp) )
+            if( rArg >>= aProp )
             {
                 if ( aProp.Name == "Colors" )
                 {
@@ -136,7 +130,7 @@ namespace canvas
         // the colors
         return new ParametricPolyPolygon(
             rDevice,
-            ::basegfx::tools::createPolygonFromCircle(
+            ::basegfx::utils::createPolygonFromCircle(
                 ::basegfx::B2DPoint(0,0), 1 ),
             GradientType::Elliptical,
             colors, stops, fAspectRatio );
@@ -151,7 +145,7 @@ namespace canvas
         // the colors
         return new ParametricPolyPolygon(
             rDevice,
-            ::basegfx::tools::createPolygonFromRect(
+            ::basegfx::utils::createPolygonFromRect(
                 ::basegfx::B2DRectangle( -1, -1, 1, 1 ) ),
             GradientType::Rectangular,
             colors, stops, fAspectRatio );
@@ -192,7 +186,7 @@ namespace canvas
 
     OUString SAL_CALL ParametricPolyPolygon::getImplementationName(  )
     {
-        return OUString( "Canvas::ParametricPolyPolygon" );
+        return "Canvas::ParametricPolyPolygon";
     }
 
     sal_Bool SAL_CALL ParametricPolyPolygon::supportsService( const OUString& ServiceName )

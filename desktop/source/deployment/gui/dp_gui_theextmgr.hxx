@@ -20,13 +20,10 @@
 #ifndef INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_GUI_DP_GUI_THEEXTMGR_HXX
 #define INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_GUI_DP_GUI_THEEXTMGR_HXX
 
-#include <comphelper/sequence.hxx>
-
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/deployment/XExtensionManager.hpp>
-#include <com/sun/star/deployment/ExtensionManager.hpp>
 #include <com/sun/star/frame/XDesktop2.hpp>
 #include <com/sun/star/frame/XTerminateListener.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
@@ -34,7 +31,6 @@
 
 #include "dp_gui.h"
 #include "dp_gui_dialog2.hxx"
-#include "dp_gui_updatedata.hxx"
 
 
 namespace dp_gui {
@@ -53,12 +49,13 @@ private:
     css::uno::Reference< css::deployment::XExtensionManager > m_xExtensionManager;
     css::uno::Reference< css::container::XNameAccess >        m_xNameAccessNodes;
     css::uno::Reference< css::awt::XWindow >                  m_xParent;
-    VclPtr<ExtMgrDialog>         m_pExtMgrDialog;
-    VclPtr<UpdateRequiredDialog> m_pUpdReqDialog;
-    ExtensionCmdQueue           *m_pExecuteCmdQueue;
+    std::shared_ptr<ExtMgrDialog> m_xExtMgrDialog;
+    std::unique_ptr<UpdateRequiredDialog> m_xUpdReqDialog;
+    std::unique_ptr<ExtensionCmdQueue> m_xExecuteCmdQueue;
 
     OUString                     m_sGetExtensionsURL;
     bool                         m_bModified;
+    bool                         m_bExtMgrDialogExecuting;
 
 public:
     static ::rtl::Reference<TheExtensionManager> s_ExtMgr;
@@ -73,24 +70,26 @@ public:
     bool isModified() const { return m_bModified; }
     void clearModified() { m_bModified = false; }
 
-    Dialog* getDialog()
+    weld::Window* getDialog()
     {
-        if (m_pExtMgrDialog)
-            return m_pExtMgrDialog.get();
-        return m_pUpdReqDialog.get();
+        if (m_xExtMgrDialog)
+            return m_xExtMgrDialog->getDialog();
+        if (m_xUpdReqDialog)
+            return m_xUpdReqDialog->getDialog();
+        return nullptr;
     }
     DialogHelper* getDialogHelper()
     {
-        if (m_pExtMgrDialog)
-            return m_pExtMgrDialog.get();
-        return m_pUpdReqDialog.get();
+        if (m_xExtMgrDialog)
+            return m_xExtMgrDialog.get();
+        return m_xUpdReqDialog.get();
     }
-    ExtensionCmdQueue* getCmdQueue() const { return m_pExecuteCmdQueue; }
+    ExtensionCmdQueue* getCmdQueue() const { return m_xExecuteCmdQueue.get(); }
 
     void SetText( const OUString &rTitle );
     void Show();
-    void ToTop( ToTopFlags nFlags );
-    bool Close();
+    void ToTop();
+    void Close();
     bool isVisible();
 
 
@@ -98,7 +97,6 @@ public:
     bool installPackage( const OUString &rPackageURL, bool bWarnUser = false );
     void createPackageList();
 
-    static bool queryTermination();
     void terminateDialog();
 
     // Tools

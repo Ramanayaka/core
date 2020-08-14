@@ -20,7 +20,6 @@
 
 #include "gridcolumn.hxx"
 
-#include <com/sun/star/awt/XVclWindowPeer.hpp>
 #include <com/sun/star/awt/grid/XGridColumnModel.hpp>
 #include <com/sun/star/awt/grid/XGridColumn.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
@@ -28,12 +27,16 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <comphelper/sequence.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/componentguard.hxx>
 #include <comphelper/interfacecontainer2.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <o3tl/safeint.hxx>
+#include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <tools/diagnose_ex.h>
 
 #include <vector>
@@ -114,7 +117,7 @@ private:
                 Reference< css::util::XCloneable > const xCloneable( *col, UNO_QUERY_THROW );
                 Reference< XGridColumn > const xClone( xCloneable->createClone(), UNO_QUERY_THROW );
 
-                GridColumn* const pGridColumn = GridColumn::getImplementation( xClone );
+                GridColumn* const pGridColumn = comphelper::getUnoTunnelImplementation<GridColumn>( xClone );
                 if ( pGridColumn == nullptr )
                     throw RuntimeException( "invalid clone source implementation", *this );
                     // that's indeed a RuntimeException, not an IllegalArgumentException or some such:
@@ -127,7 +130,7 @@ private:
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("toolkit.controls");
         }
         if ( aColumns.size() == i_copySource.m_aColumns.size() )
             m_aColumns.swap( aColumns );
@@ -150,7 +153,7 @@ private:
     {
         ::comphelper::ComponentGuard aGuard( *this, rBHelper );
 
-        GridColumn* const pGridColumn = GridColumn::getImplementation( i_column );
+        GridColumn* const pGridColumn = comphelper::getUnoTunnelImplementation<GridColumn>( i_column );
         if ( pGridColumn == nullptr )
             throw css::lang::IllegalArgumentException( "invalid column implementation", *this, 1 );
 
@@ -175,7 +178,7 @@ private:
     {
         ::comphelper::ComponentGuard aGuard( *this, rBHelper );
 
-        if ( ( i_columnIndex < 0 ) || ( size_t( i_columnIndex ) >= m_aColumns.size() ) )
+        if ( ( i_columnIndex < 0 ) || ( o3tl::make_unsigned( i_columnIndex ) >= m_aColumns.size() ) )
             throw css::lang::IndexOutOfBoundsException( OUString(), *this );
 
         Columns::iterator const pos = m_aColumns.begin() + i_columnIndex;
@@ -189,7 +192,7 @@ private:
                 ++updatePos, ++columnIndex
             )
         {
-            GridColumn* pColumnImpl = GridColumn::getImplementation( *updatePos );
+            GridColumn* pColumnImpl = comphelper::getUnoTunnelImplementation<GridColumn>( *updatePos );
             if ( !pColumnImpl )
             {
                 SAL_WARN( "toolkit.controls", "DefaultGridColumnModel::removeColumn: invalid column implementation!" );
@@ -215,7 +218,7 @@ private:
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("toolkit.controls");
         }
     }
 
@@ -231,7 +234,7 @@ private:
     {
         ::comphelper::ComponentGuard aGuard( *this, rBHelper );
 
-        if ( index >=0 && index < ((sal_Int32)m_aColumns.size()))
+        if ( index >=0 && index < static_cast<sal_Int32>(m_aColumns.size()))
             return m_aColumns[index];
 
         throw css::lang::IndexOutOfBoundsException();
@@ -265,10 +268,8 @@ private:
             {
                 ::rtl::Reference< GridColumn > const pGridColumn = new GridColumn();
                 Reference< XGridColumn > const xColumn( pGridColumn.get() );
-                OUStringBuffer colTitle;
-                colTitle.append( "Column " );
-                colTitle.append( i + 1 );
-                pGridColumn->setTitle( colTitle.makeStringAndClear() );
+                OUString colTitle = "Column " + OUString::number( i + 1 );
+                pGridColumn->setTitle( colTitle );
                 pGridColumn->setColumnWidth( 80 /* APPFONT */ );
                 pGridColumn->setFlexibility( 1 );
                 pGridColumn->setResizeable( true );
@@ -286,37 +287,28 @@ private:
         }
 
         // fire removal notifications
-        for (   ::std::vector< ContainerEvent >::const_iterator event = aRemovedColumns.begin();
-                event != aRemovedColumns.end();
-                ++event
-            )
+        for (const auto& rEvent : aRemovedColumns)
         {
-            m_aContainerListeners.notifyEach( &XContainerListener::elementRemoved, *event );
+            m_aContainerListeners.notifyEach( &XContainerListener::elementRemoved, rEvent );
         }
 
         // fire insertion notifications
-        for (   ::std::vector< ContainerEvent >::const_iterator event = aInsertedColumns.begin();
-                event != aInsertedColumns.end();
-                ++event
-            )
+        for (const auto& rEvent : aInsertedColumns)
         {
-            m_aContainerListeners.notifyEach( &XContainerListener::elementInserted, *event );
+            m_aContainerListeners.notifyEach( &XContainerListener::elementInserted, rEvent );
         }
 
         // dispose removed columns
-        for (   ::std::vector< ContainerEvent >::const_iterator event = aRemovedColumns.begin();
-                event != aRemovedColumns.end();
-                ++event
-            )
+        for (const auto& rEvent : aRemovedColumns)
         {
             try
             {
-                const Reference< XComponent > xColComp( event->Element, UNO_QUERY_THROW );
+                const Reference< XComponent > xColComp( rEvent.Element, UNO_QUERY_THROW );
                 xColComp->dispose();
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("toolkit.controls");
             }
         }
     }
@@ -324,7 +316,7 @@ private:
 
     OUString SAL_CALL DefaultGridColumnModel::getImplementationName(  )
     {
-        return OUString("stardiv.Toolkit.DefaultGridColumnModel");
+        return "stardiv.Toolkit.DefaultGridColumnModel";
     }
 
     sal_Bool SAL_CALL DefaultGridColumnModel::supportsService( const OUString& i_serviceName )
@@ -334,9 +326,7 @@ private:
 
     Sequence< OUString > SAL_CALL DefaultGridColumnModel::getSupportedServiceNames(  )
     {
-        const OUString aServiceName("com.sun.star.awt.grid.DefaultGridColumnModel");
-        const Sequence< OUString > aSeq( &aServiceName, 1 );
-        return aSeq;
+        return { "com.sun.star.awt.grid.DefaultGridColumnModel" };
     }
 
 
@@ -373,7 +363,7 @@ private:
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("toolkit.controls");
             }
 
             m_aColumns.erase( m_aColumns.begin() );
@@ -392,7 +382,7 @@ private:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_DefaultGridColumnModel_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

@@ -29,19 +29,18 @@
 class SdrDragMethod;
 class SdrPageView;
 
-namespace sdr { namespace properties {
+namespace sdr::properties {
     class ConnectorProperties;
-}}
+}
 
 
 /// Utility class SdrObjConnection
-class SdrObjConnection
+class SdrObjConnection final
 {
     friend class                SdrEdgeObj;
     friend class                ImpEdgeHdl;
     friend class                SdrCreateView;
 
-protected:
     Point                       aObjOfs;       // set during dragging of a node
     SdrObject*                  pObj;          // referenced object
     sal_uInt16                  nConId;        // connector number
@@ -53,7 +52,6 @@ protected:
 
 public:
     SdrObjConnection() { ResetVars(); }
-    SVX_DLLPUBLIC ~SdrObjConnection();
 
     void ResetVars();
     bool TakeGluePoint(SdrGluePoint& rGP) const;
@@ -90,7 +88,7 @@ public:
     long                        nAngle2;           // exit angle at Obj2
     sal_uInt16                  nObj1Lines;        // 1..3
     sal_uInt16                  nObj2Lines;        // 1..3
-    sal_uInt16                  nMiddleLine;       // 0xFFFF=none, otherwiese point number of the beginning of the line
+    sal_uInt16                  nMiddleLine;       // 0xFFFF=none, otherwise point number of the beginning of the line
 
 public:
     SdrEdgeInfoRec()
@@ -110,7 +108,7 @@ public:
 
 
 /// Utility class SdrEdgeObjGeoData
-class SdrEdgeObjGeoData : public SdrTextObjGeoData
+class SdrEdgeObjGeoData final : public SdrTextObjGeoData
 {
 public:
     SdrObjConnection            aCon1;  // connection status of the beginning of the line
@@ -127,7 +125,7 @@ public:
 
 
 /// Utility class SdrEdgeObj
-class SVX_DLLPUBLIC SdrEdgeObj : public SdrTextObj
+class SVXCORE_DLLPUBLIC SdrEdgeObj : public SdrTextObj
 {
 private:
     // to allow sdr::properties::ConnectorProperties access to ImpSetAttrToEdgeInfo()
@@ -137,13 +135,13 @@ private:
     friend class                ImpEdgeHdl;
 
 protected:
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
-    virtual sdr::properties::BaseProperties* CreateObjectSpecificProperties() override;
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
 
     SdrObjConnection            aCon1;  // Connection status of the beginning of the line
     SdrObjConnection            aCon2;  // Connection status of the end of the line
 
-    XPolygon*                   pEdgeTrack;
+    std::unique_ptr<XPolygon>   pEdgeTrack;
     sal_uInt16                  nNotifyingCount; // Locking
     SdrEdgeInfoRec              aEdgeInfo;
 
@@ -180,24 +178,27 @@ protected:
         const Point& rPt2, long nAngle2, const tools::Rectangle& rBoundRect2, const tools::Rectangle& rBewareRect2,
         sal_uIntPtr* pnQuality, SdrEdgeInfoRec* pInfo) const;
     static bool ImpFindConnector(const Point& rPt, const SdrPageView& rPV, SdrObjConnection& rCon, const SdrEdgeObj* pThis, OutputDevice* pOut=nullptr);
-    static SdrEscapeDirection ImpCalcEscAngle(SdrObject* pObj, const Point& aPt2);
+    static SdrEscapeDirection ImpCalcEscAngle(SdrObject const * pObj, const Point& aPt2);
     void ImpSetTailPoint(bool bTail1, const Point& rPt);
     void ImpUndirtyEdgeTrack();  // potential recalculation of the connection track
     void ImpDirtyEdgeTrack();    // invalidate connector path, so it will be recalculated next time
     void ImpSetAttrToEdgeInfo(); // copying values from the pool to aEdgeInfo
     void ImpSetEdgeInfoToAttr(); // copying values from the aEdgeInfo to the pool
 
-public:
-
-    SdrEdgeObj();
+    // protected destructor
     virtual ~SdrEdgeObj() override;
+
+public:
+    SdrEdgeObj(SdrModel& rSdrModel);
+
+    // react on model/page change
+    virtual void handlePageChange(SdrPage* pOldPage, SdrPage* pNewPage) override;
 
     SdrObjConnection& GetConnection(bool bTail1) { return *(bTail1 ? &aCon1 : &aCon2); }
     virtual void TakeObjInfo(SdrObjTransformInfoRec& rInfo) const override;
     virtual sal_uInt16 GetObjIdentifier() const override;
     virtual const tools::Rectangle& GetCurrentBoundRect() const override;
     virtual const tools::Rectangle& GetSnapRect() const override;
-    virtual bool IsNode() const override;
     virtual SdrGluePoint GetVertexGluePoint(sal_uInt16 nNum) const override;
     virtual SdrGluePoint GetCornerGluePoint(sal_uInt16 nNum) const override;
     virtual const SdrGluePointList* GetGluePointList() const override;
@@ -215,7 +216,7 @@ public:
 
     virtual void RecalcSnapRect() override;
     virtual void TakeUnrotatedSnapRect(tools::Rectangle& rRect) const override;
-    virtual SdrEdgeObj* Clone() const override;
+    virtual SdrEdgeObj* CloneSdrObject(SdrModel& rTargetModel) const override;
     SdrEdgeObj& operator=(const SdrEdgeObj& rObj);
     virtual OUString TakeObjNameSingul() const override;
     virtual OUString TakeObjNamePlural() const override;
@@ -225,7 +226,7 @@ public:
 
     virtual basegfx::B2DPolyPolygon TakeXorPoly() const override;
     virtual sal_uInt32 GetHdlCount() const override;
-    virtual SdrHdl* GetHdl(sal_uInt32 nHdlNum) const override;
+    virtual void AddToHdlList(SdrHdlList& rHdlList) const override;
 
     // special drag methods
     virtual bool hasSpecialDrag() const override;
@@ -234,7 +235,7 @@ public:
     virtual OUString getSpecialDragComment(const SdrDragStat& rDrag) const override;
 
     // FullDrag support
-    virtual SdrObject* getFullDragClone() const override;
+    virtual SdrObjectUniquePtr getFullDragClone() const override;
 
     virtual void NbcSetSnapRect(const tools::Rectangle& rRect) override;
     virtual void NbcMove(const Size& aSize) override;
@@ -254,8 +255,8 @@ public:
     virtual bool BckCreate(SdrDragStat& rStat) override;
     virtual void BrkCreate(SdrDragStat& rStat) override;
     virtual basegfx::B2DPolyPolygon TakeCreatePoly(const SdrDragStat& rDrag) const override;
-    virtual Pointer GetCreatePointer() const override;
-    virtual SdrObject* DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
+    virtual PointerStyle GetCreatePointer() const override;
+    virtual SdrObjectUniquePtr DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
 
     virtual sal_uInt32 GetSnapPointCount() const override;
     virtual Point GetSnapPoint(sal_uInt32 i) const override;
@@ -286,7 +287,7 @@ public:
     // for geometry access
     ::basegfx::B2DPolygon getEdgeTrack() const;
 
-    // helper method for SdrDragMethod::AddConnectorOverlays. Adds a overlay polygon for
+    // helper method for SdrDragMethod::AddConnectorOverlays. Adds an overlay polygon for
     // this connector to rResult.
     basegfx::B2DPolygon ImplAddConnectorOverlay(SdrDragMethod& rDragMethod, bool bTail1, bool bTail2, bool bDetail) const;
 };

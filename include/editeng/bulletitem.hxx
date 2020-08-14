@@ -22,7 +22,7 @@
 #include <memory>
 #include <editeng/editengdllapi.h>
 #include <svl/poolitem.hxx>
-#include <svtools/grfmgr.hxx>
+#include <vcl/GraphicObject.hxx>
 #include <vcl/font.hxx>
 
 
@@ -43,7 +43,7 @@ enum class SvxBulletStyle
 
 // class SvxBulletItem ---------------------------------------------------
 
-class EDITENG_DLLPUBLIC SvxBulletItem : public SfxPoolItem
+class EDITENG_DLLPUBLIC SvxBulletItem final : public SfxPoolItem
 {
     vcl::Font       aFont;
     std::unique_ptr<GraphicObject>
@@ -56,18 +56,12 @@ class EDITENG_DLLPUBLIC SvxBulletItem : public SfxPoolItem
     sal_uInt16      nScale;
     sal_Unicode     cSymbol;
 
-    void    SetDefaultFont_Impl();
-    void    SetDefaults_Impl();
-
 public:
     explicit SvxBulletItem( sal_uInt16 nWhich );
-    explicit SvxBulletItem( SvStream& rStrm, sal_uInt16 nWhich );
     SvxBulletItem( const SvxBulletItem& );
     virtual ~SvxBulletItem() override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create( SvStream&, sal_uInt16 nVersion ) const override;
-    virtual SvStream&       Store( SvStream & , sal_uInt16 nItemVersion ) const override;
+    virtual SvxBulletItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     OUString            GetFullText() const;
 
@@ -85,15 +79,11 @@ public:
     void                SetFont( const vcl::Font& rNew) { aFont = rNew; }
     void                SetScale( sal_uInt16 nNew ) { nScale = nNew; }
 
-    virtual sal_uInt16  GetVersion(sal_uInt16 nFileVersion) const override;
     virtual bool        operator==( const SfxPoolItem& ) const override;
     virtual bool        GetPresentation( SfxItemPresentation ePres,
                                     MapUnit eCoreMetric,
                                     MapUnit ePresMetric,
-                                    OUString &rText, const IntlWrapper * = nullptr ) const override;
-
-    static void         StoreFont( SvStream&, const vcl::Font& );
-    static vcl::Font    CreateFont( SvStream&, sal_uInt16 nVer );
+                                    OUString &rText, const IntlWrapper& ) const override;
 
     void                CopyValidProperties( const SvxBulletItem& rCopyFrom );
 };

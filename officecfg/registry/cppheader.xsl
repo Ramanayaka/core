@@ -78,7 +78,7 @@
     <xsl:if test=".//prop or .//set">
       <xsl:if
           test=".//prop[count(@oor:nillable) = 0 or @oor:nillable = 'true']">
-        <xsl:text>#include "boost/optional.hpp"&#xA;</xsl:text>
+        <xsl:text>#include &lt;optional&gt;&#xA;</xsl:text>
       </xsl:if>
       <xsl:if test=".//prop/@oor:type = 'oor:any'">
         <xsl:text>#include "com/sun/star/uno/Any.hxx"&#xA;</xsl:text>
@@ -129,7 +129,7 @@
       <xsl:text>: public comphelper::ConfigurationGroup&lt; </xsl:text>
       <xsl:value-of select="$name"/>
       <xsl:text>&gt; {&#xA;</xsl:text>
-      <xsl:text>    static rtl::OUString path() { return rtl::OUString(<!--
+      <xsl:text>    static OUString path() { return OUString(<!--
       -->"</xsl:text>
       <xsl:value-of select="$path"/>
       <xsl:text>/</xsl:text>
@@ -163,7 +163,7 @@
     <xsl:text>: public comphelper::ConfigurationSet&lt; </xsl:text>
     <xsl:value-of select="$name"/>
     <xsl:text>&gt; {&#xA;</xsl:text>
-    <xsl:text>    static rtl::OUString path() { return rtl::OUString(<!--
+    <xsl:text>    static OUString path() { return OUString(<!--
     -->"</xsl:text>
     <xsl:value-of select="$path"/>
     <xsl:text>/</xsl:text>
@@ -198,7 +198,7 @@
     <xsl:value-of select="$name"/>
     <xsl:text>, </xsl:text>
     <xsl:if test="not(@oor:nillable = 'false')">
-      <xsl:text>boost::optional&lt;</xsl:text>
+      <xsl:text>std::optional&lt;</xsl:text>
     </xsl:if>
     <xsl:choose>
       <xsl:when test="@oor:type='oor:any'">
@@ -220,7 +220,7 @@
         <xsl:text>double</xsl:text>
       </xsl:when>
       <xsl:when test="@oor:type='xs:string'">
-        <xsl:text>rtl::OUString</xsl:text>
+        <xsl:text>OUString</xsl:text>
       </xsl:when>
       <xsl:when test="@oor:type='xs:hexBinary'">
         <xsl:text>com::sun::star::uno::Sequence&lt;sal_Int8&gt; </xsl:text>
@@ -241,7 +241,7 @@
         <xsl:text>com::sun::star::uno::Sequence&lt;double&gt; </xsl:text>
       </xsl:when>
       <xsl:when test="@oor:type='oor:string-list'">
-        <xsl:text>com::sun::star::uno::Sequence&lt;rtl::OUString&gt; </xsl:text>
+        <xsl:text>com::sun::star::uno::Sequence&lt;OUString&gt; </xsl:text>
       </xsl:when>
       <xsl:when test="@oor:type='oor:hexBinary-list'">
         <xsl:text>com::sun::star::uno::Sequence&lt;<!--
@@ -252,7 +252,7 @@
       <xsl:text>&gt; </xsl:text>
     </xsl:if>
     <xsl:text>&gt; {&#xA;</xsl:text>
-    <xsl:text>    static rtl::OUString path() { return rtl::OUString(<!--
+    <xsl:text>    static OUString path() { return OUString(<!--
     -->"</xsl:text>
     <xsl:value-of select="$path"/>
     <xsl:text>/</xsl:text>

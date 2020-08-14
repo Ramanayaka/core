@@ -21,15 +21,6 @@ interface Application
     SID_AUTOPILOTMENU // ole(no) api(final/play/rec)
     [
     ]
-    SID_HELPMENU // ole(no) api(no)
-    [
-    ]
-    SID_PICKLIST // ole(no) api(no)
-    [
-    ]
-    SID_MDIWINDOWLIST // ole(no) api(no)
-    [
-    ]
     SID_ABOUT // ole(no) api(final/play/rec)
     [
         ExecMethod = MiscExec_Impl ;
@@ -64,6 +55,10 @@ interface Application
     [
         ExecMethod = MiscExec_Impl ;
         StateMethod = MiscState_Impl ;
+    ]
+    SID_TIPOFTHEDAY // ole(no) api(final/play/rec)
+    [
+        ExecMethod = MiscExec_Impl ;
     ]
     SID_CONFIG // ole(no) api(final/play/rec)
     [
@@ -120,11 +115,6 @@ interface Application
         ExecMethod = MiscExec_Impl ;
         StateMethod = MiscState_Impl ;
     ]
-    SID_SHOW_IME_STATUS_WINDOW
-    [
-        ExecMethod = MiscExec_Impl ;
-        StateMethod = MiscState_Impl ;
-    ]
     SID_SEND_FEEDBACK
     [
         ExecMethod = MiscExec_Impl ;
@@ -134,6 +124,18 @@ interface Application
         ExecMethod = MiscExec_Impl ;
     ]
     SID_DOCUMENTATION
+    [
+        ExecMethod = MiscExec_Impl ;
+    ]
+    SID_DONATION
+    [
+        ExecMethod = MiscExec_Impl ;
+    ]
+    SID_GETINVOLVED
+    [
+        ExecMethod = MiscExec_Impl ;
+    ]
+    SID_WHATSNEW
     [
         ExecMethod = MiscExec_Impl ;
     ]
@@ -220,6 +222,7 @@ shell SfxApplication
     SID_NEWDOCDIRECT // ole(no) api(no)
     [
         ExecMethod = NewDocDirectExec_Impl ;
+        StateMethod = NewDocDirectState_Impl ;
     ]
     SID_CLOSEDOCS
     [
@@ -229,18 +232,22 @@ shell SfxApplication
     SID_BASICIDE_APPEAR // status(final|play)
     [
         ExecMethod = OfaExec_Impl;
+        StateMethod = OfaState_Impl;
     ]
     SID_SCRIPTORGANIZER  // status(final|play)
     [
         ExecMethod = OfaExec_Impl;
+        StateMethod = OfaState_Impl;
     ]
     SID_MACROORGANIZER  // status(final|play)
     [
         ExecMethod = OfaExec_Impl;
+        StateMethod = OfaState_Impl;
     ]
     SID_RUNMACRO  // status(final|play)
     [
         ExecMethod = OfaExec_Impl;
+        StateMethod = OfaState_Impl;
     ]
     SID_BASICCHOOSER  // status(final|play)
     [
@@ -289,6 +296,7 @@ shell SfxApplication
     SID_AUTO_CORRECT_DLG
     [
         ExecMethod = OfaExec_Impl ;
+        StateMethod = OfaState_Impl;
     ]
     SID_OPTIONS_TREEDIALOG
     [

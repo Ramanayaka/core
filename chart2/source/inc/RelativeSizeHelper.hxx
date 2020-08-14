@@ -19,9 +19,11 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_RELATIVESIZEHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_INC_RELATIVESIZEHELPER_HXX
 
-#include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include "charttoolsdllapi.hxx"
+
+namespace com::sun::star::awt { struct Size; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
 
 namespace chart
 {

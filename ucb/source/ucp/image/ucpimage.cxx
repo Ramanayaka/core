@@ -48,7 +48,7 @@ public:
 
 private:
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.comp.ucb.ImageContentProvider"); }
+    { return "com.sun.star.comp.ucb.ImageContentProvider"; }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
@@ -155,7 +155,7 @@ private:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_ucb_ImageContentProvider_get_implementation(
     css::uno::XComponentContext * context,
     css::uno::Sequence<css::uno::Any> const &)

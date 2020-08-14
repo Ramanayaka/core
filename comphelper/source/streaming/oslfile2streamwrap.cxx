@@ -22,6 +22,8 @@
 #include <com/sun/star/io/BufferSizeExceededException.hpp>
 #include <com/sun/star/io/NotConnectedException.hpp>
 #include <comphelper/oslfile2streamwrap.hxx>
+#include <o3tl/safeint.hxx>
+#include <osl/file.hxx>
 
 #include <algorithm>
 
@@ -59,12 +61,11 @@ sal_Int32 SAL_CALL OSLInputStreamWrapper::readBytes(css::uno::Sequence< sal_Int8
         throw css::io::BufferSizeExceededException(OUString(),static_cast<css::uno::XWeak*>(this));
 
     // If the read character < MaxLength, adjust css::uno::Sequence
-    if (nRead < (sal_uInt32)nBytesToRead)
+    if (nRead < o3tl::make_unsigned(nBytesToRead))
         aData.realloc( sal::static_int_cast< sal_Int32 >(nRead) );
 
     return sal::static_int_cast< sal_Int32 >(nRead);
 }
-
 
 sal_Int32 SAL_CALL OSLInputStreamWrapper::readSomeBytes(css::uno::Sequence< sal_Int8 >& aData, sal_Int32 nMaxBytesToRead)
 {
@@ -77,7 +78,6 @@ sal_Int32 SAL_CALL OSLInputStreamWrapper::readSomeBytes(css::uno::Sequence< sal_
     return readBytes(aData, nMaxBytesToRead);
 }
 
-
 void SAL_CALL OSLInputStreamWrapper::skipBytes(sal_Int32 nBytesToSkip)
 {
     ::osl::MutexGuard aGuard( m_aMutex );
@@ -85,16 +85,15 @@ void SAL_CALL OSLInputStreamWrapper::skipBytes(sal_Int32 nBytesToSkip)
         throw css::io::NotConnectedException(OUString(), static_cast<css::uno::XWeak*>(this));
 
     sal_uInt64 nCurrentPos;
-    m_pFile->getPos(nCurrentPos);
+    FileBase::RC eError = m_pFile->getPos(nCurrentPos);
+    if (eError != FileBase::E_None)
+        throw css::io::NotConnectedException(OUString(), static_cast<css::uno::XWeak*>(this));
 
     sal_uInt64 nNewPos = nCurrentPos + nBytesToSkip;
-    FileBase::RC eError = m_pFile->setPos(osl_Pos_Absolut, nNewPos);
+    eError = m_pFile->setPos(osl_Pos_Absolut, nNewPos);
     if (eError != FileBase::E_None)
-    {
         throw css::io::NotConnectedException(OUString(), static_cast<css::uno::XWeak*>(this));
-    }
 }
-
 
 sal_Int32 SAL_CALL OSLInputStreamWrapper::available()
 {
@@ -120,8 +119,7 @@ sal_Int32 SAL_CALL OSLInputStreamWrapper::available()
     eError = m_pFile->setPos(osl_Pos_Absolut, nPos);
     if (eError != FileBase::E_None)
        throw css::io::NotConnectedException(OUString(),static_cast<css::uno::XWeak*>(this));
-    return sal::static_int_cast< sal_Int32 >(
-        std::max(nAvailable, sal::static_int_cast< sal_uInt64 >(SAL_MAX_INT32)));
+    return std::min<sal_Int64>(nAvailable, SAL_MAX_INT32);
 }
 
 

@@ -19,7 +19,6 @@
  */
 
 #include "PresenterSlideShowView.hxx"
-#include <vcl/svapp.hxx>
 #include "PresenterCanvasHelper.hxx"
 #include "PresenterGeometryHelper.hxx"
 #include "PresenterHelper.hxx"
@@ -30,10 +29,7 @@
 #include <com/sun/star/awt/Toolkit.hpp>
 #include <com/sun/star/awt/WindowAttribute.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/XWindow2.hpp>
 #include <com/sun/star/awt/XWindowPeer.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/drawing/CanvasFeature.hpp>
 #include <com/sun/star/drawing/XPresenterHelper.hpp>
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <com/sun/star/drawing/framework/XConfigurationController.hpp>
@@ -46,7 +42,7 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 //===== PresenterSlideShowView ================================================
 
@@ -83,7 +79,7 @@ PresenterSlideShowView::PresenterSlideShowView (
       mbIsEndSlideVisible(false),
       mxCurrentSlide()
 {
-    if (mpPresenterController.get() != nullptr)
+    if (mpPresenterController)
     {
         mnPageAspectRatio = mpPresenterController->GetSlideAspectRatio();
         mpBackground = mpPresenterController->GetViewBackground(mxViewId->getResourceURL());
@@ -92,13 +88,12 @@ PresenterSlideShowView::PresenterSlideShowView (
 
 void PresenterSlideShowView::LateInit()
 {
-    mxSlideShow.set( mxSlideShowController->getSlideShow(), UNO_QUERY_THROW);
+    mxSlideShow.set( mxSlideShowController->getSlideShow(), UNO_SET_THROW);
     Reference<lang::XComponent> xSlideShowComponent (mxSlideShow, UNO_QUERY);
-    if (xSlideShowComponent.is())
-        xSlideShowComponent->addEventListener(static_cast<awt::XWindowListener*>(this));
+    xSlideShowComponent->addEventListener(static_cast<awt::XWindowListener*>(this));
 
     Reference<lang::XMultiComponentFactory> xFactory (
-        mxComponentContext->getServiceManager(), UNO_QUERY_THROW);
+        mxComponentContext->getServiceManager(), UNO_SET_THROW);
     mxPresenterHelper.set (xFactory->createInstanceWithContext(
                    "com.sun.star.comp.Draw.PresenterHelper",
                    mxComponentContext),
@@ -111,7 +106,7 @@ void PresenterSlideShowView::LateInit()
 
     if (xCC.is())
     {
-    mxTopPane.set(xCC->getResource(mxViewId->getAnchor()->getAnchor()), UNO_QUERY);
+        mxTopPane.set(xCC->getResource(mxViewId->getAnchor()->getAnchor()), UNO_QUERY);
 
         Reference<XPane> xPane (xCC->getResource(mxViewId->getAnchor()), UNO_QUERY_THROW);
 
@@ -210,7 +205,7 @@ void PresenterSlideShowView::disposing()
     }
     if (mxViewWindow.is())
     {
-        Reference<XComponent> xComponent (mxViewWindow, UNO_QUERY);
+        Reference<XComponent> xComponent = mxViewWindow;
         mxViewWindow = nullptr;
         if (xComponent.is())
             xComponent->dispose();
@@ -255,7 +250,7 @@ void SAL_CALL PresenterSlideShowView::setCurrentPage (
     const css::uno::Reference<css::drawing::XDrawPage>& rxSlide)
 {
     mxCurrentSlide = rxSlide;
-    if (mpPresenterController.get() != nullptr
+    if (mpPresenterController
         && mxSlideShowController.is()
         && ! mpPresenterController->GetCurrentSlide().is()
         && ! mxSlideShowController->isPaused())
@@ -270,7 +265,7 @@ void SAL_CALL PresenterSlideShowView::setCurrentPage (
         // backwards.
         PresenterPaneContainer::SharedPaneDescriptor pDescriptor (
             mpPresenterController->GetPaneContainer()->FindViewURL(mxViewId->getResourceURL()));
-        if (pDescriptor.get() != nullptr)
+        if (pDescriptor)
         {
             msTitleTemplate = pDescriptor->msTitleTemplate;
             pDescriptor->msTitleTemplate = msClickToExitPresentationTitle;
@@ -284,10 +279,10 @@ void SAL_CALL PresenterSlideShowView::setCurrentPage (
         // Restore the title template.
         PresenterPaneContainer::SharedPaneDescriptor pDescriptor (
             mpPresenterController->GetPaneContainer()->FindViewURL(mxViewId->getResourceURL()));
-        if (pDescriptor.get() != nullptr)
+        if (pDescriptor)
         {
             pDescriptor->msTitleTemplate = msTitleTemplate;
-            (pDescriptor->msTitle).clear();
+            pDescriptor->msTitle.clear();
             mpPresenterController->UpdatePaneTitles();
         }
     }
@@ -324,25 +319,25 @@ void SAL_CALL PresenterSlideShowView::clear()
     mbIsForcedPaintPending = false;
     mbIsPaintPending = false;
 
-    if (mxViewCanvas.is() && mxViewWindow.is())
-    {
-        // Create a polygon for the window outline.
-        awt::Rectangle aViewWindowBox (mxViewWindow->getPosSize());
-        Reference<rendering::XPolyPolygon2D> xPolygon (PresenterGeometryHelper::CreatePolygon(
-            awt::Rectangle(0,0, aViewWindowBox.Width,aViewWindowBox.Height),
-            mxViewCanvas->getDevice()));
+    if (!(mxViewCanvas.is() && mxViewWindow.is()))
+        return;
 
-        rendering::ViewState aViewState (
-            geometry::AffineMatrix2D(1,0,0, 0,1,0),
-            nullptr);
-        double aColor[4] = {0,0,0,0};
-        rendering::RenderState aRenderState(
-            geometry::AffineMatrix2D(1,0,0, 0,1,0),
-            nullptr,
-            Sequence<double>(aColor,4),
-            rendering::CompositeOperation::SOURCE);
-        mxViewCanvas->fillPolyPolygon(xPolygon, aViewState, aRenderState);
-    }
+    // Create a polygon for the window outline.
+    awt::Rectangle aViewWindowBox (mxViewWindow->getPosSize());
+    Reference<rendering::XPolyPolygon2D> xPolygon (PresenterGeometryHelper::CreatePolygon(
+        awt::Rectangle(0,0, aViewWindowBox.Width,aViewWindowBox.Height),
+        mxViewCanvas->getDevice()));
+
+    rendering::ViewState aViewState (
+        geometry::AffineMatrix2D(1,0,0, 0,1,0),
+        nullptr);
+    double const aColor[4] = {0,0,0,0};
+    rendering::RenderState aRenderState(
+        geometry::AffineMatrix2D(1,0,0, 0,1,0),
+        nullptr,
+        Sequence<double>(aColor,4),
+        rendering::CompositeOperation::SOURCE);
+    mxViewCanvas->fillPolyPolygon(xPolygon, aViewState, aRenderState);
 }
 
 geometry::AffineMatrix2D SAL_CALL PresenterSlideShowView::getTransformation()
@@ -528,7 +523,7 @@ void SAL_CALL PresenterSlideShowView::mousePressed (const awt::MouseEvent& rEven
     // the PresenterController so that it switches to the next slide and
     // ends the presentation.
     if (mbIsEndSlideVisible)
-        if (mpPresenterController.get() != nullptr)
+        if (mpPresenterController)
             mpPresenterController->HandleMouseClick(rEvent);
 }
 
@@ -655,7 +650,7 @@ void PresenterSlideShowView::PaintOuterWindow (const awt::Rectangle& rRepaintBox
     if ( ! mxCanvas.is())
         return;
 
-    if (mpBackground.get() == nullptr)
+    if (!mpBackground)
         return;
 
     const rendering::ViewState aViewState(
@@ -732,15 +727,15 @@ void PresenterSlideShowView::PaintEndSlide (const awt::Rectangle& rRepaintBox)
 
     do
     {
-        if (mpPresenterController.get() == nullptr)
+        if (!mpPresenterController)
             break;
         std::shared_ptr<PresenterTheme> pTheme (mpPresenterController->GetTheme());
-        if (pTheme.get() == nullptr)
+        if (pTheme == nullptr)
             break;
 
         const OUString sViewStyle (pTheme->GetStyleName(mxViewId->getResourceURL()));
         PresenterTheme::SharedFontDescriptor pFont (pTheme->GetFont(sViewStyle));
-        if (pFont.get() == nullptr)
+        if (!pFont)
             break;
 
         /// this is responsible of the " presentation exit " text inside the slide windows
@@ -819,10 +814,7 @@ Reference<awt::XWindow> PresenterSlideShowView::CreateViewWindow (
 
         // Make the background transparent.  The slide show paints its own background.
         Reference<awt::XWindowPeer> xPeer (xViewWindow, UNO_QUERY_THROW);
-        if (xPeer.is())
-        {
-            xPeer->setBackground(0xff000000);
-        }
+        xPeer->setBackground(0xff000000);
 
         xViewWindow->setVisible(true);
     }
@@ -972,6 +964,6 @@ void PresenterSlideShowView::impl_addAndConfigureView()
     mxSlideShow->setProperty(aProperty);
 }
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

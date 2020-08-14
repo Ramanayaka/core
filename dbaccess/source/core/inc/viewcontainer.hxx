@@ -20,17 +20,15 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_CORE_INC_VIEWCONTAINER_HXX
 #define INCLUDED_DBACCESS_SOURCE_CORE_INC_VIEWCONTAINER_HXX
 
+#include <sal/config.h>
+
+#include <atomic>
+#include <cstddef>
+
 #include <cppuhelper/implbase1.hxx>
 
-#include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/util/XRefreshable.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/sdbc/SQLWarning.hpp>
-#include <com/sun/star/sdb/SQLContext.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
-#include "apitools.hxx"
 
 #include "FilteredContainer.hxx"
 
@@ -41,11 +39,9 @@ namespace dbtools
 
 namespace dbaccess
 {
-    typedef ::cppu::ImplHelper1< css::container::XContainerListener> OViewContainer_Base;
-
     // OViewContainer
     class OViewContainer :  public OFilteredContainer,
-                            public OViewContainer_Base
+                            public ::cppu::ImplHelper1< css::container::XContainerListener>
     {
     public:
         /** ctor of the container. The parent has to support the <type scope="css::sdbc">XConnection</type>
@@ -62,7 +58,7 @@ namespace dbaccess
                         const css::uno::Reference< css::sdbc::XConnection >& _xCon,
                         bool _bCase,
                         IRefreshListener*   _pRefreshListener,
-                        oslInterlockedCount& _nInAppend
+                        std::atomic<std::size_t>& _nInAppend
                         );
 
         virtual ~OViewContainer() override;

@@ -111,12 +111,10 @@ public:
     PropItem&       operator=( PropItem& rPropItem );
 };
 
-class Section
+class Section final
 {
         sal_uInt16              mnTextEnc;
         std::vector<std::unique_ptr<PropEntry> > maEntries;
-
-    protected:
 
         sal_uInt8                   aFMTID[ 16 ];
 
@@ -139,9 +137,6 @@ class PropRead
         tools::SvRef<SotStorageStream>      mpSvStream;
 
         sal_uInt16              mnByteOrder;
-        sal_uInt16              mnFormat;
-        sal_uInt16              mnVersionLo;
-        sal_uInt16              mnVersionHi;
         sal_uInt8               mApplicationCLSID[ 16 ];
         std::vector<std::unique_ptr<Section> > maSections;
 

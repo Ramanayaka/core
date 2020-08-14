@@ -21,67 +21,51 @@
 
 #include <vcl/gfxlink.hxx>
 #include <vcl/graphicfilter.hxx>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <tools/stream.hxx>
 
 #include "jpeg/Exif.hxx"
 #include "jpeg/JpegTransform.hxx"
 
-GraphicNativeTransform::GraphicNativeTransform(Graphic& rGraphic) :
-    mrGraphic(rGraphic)
-{}
-
-GraphicNativeTransform::~GraphicNativeTransform()
-{}
-
-bool GraphicNativeTransform::canBeRotated()
+GraphicNativeTransform::GraphicNativeTransform(Graphic& rGraphic)
+    : mrGraphic(rGraphic)
 {
-    GfxLink aLink = mrGraphic.GetLink();
-
-    // Don't allow rotation on animations for now
-    if (mrGraphic.IsAnimated())
-    {
-        return false;
-    }
-
-    return aLink.GetType() == GfxLinkType::NativeJpg
-        || aLink.GetType() == GfxLinkType::NativePng
-        || aLink.GetType() == GfxLinkType::NativeGif
-        || aLink.GetType() == GfxLinkType::NONE;
 }
 
-bool GraphicNativeTransform::rotate(sal_uInt16 aInputRotation)
+GraphicNativeTransform::~GraphicNativeTransform() {}
+
+void GraphicNativeTransform::rotate(sal_uInt16 aInputRotation)
 {
     // Rotation can be between 0 and 3600
     sal_uInt16 aRotation = aInputRotation % 3600;
 
     if (aRotation == 0)
     {
-        return true; // No rotation is needed
+        return; // No rotation is needed
     }
     else if (aRotation != 900 && aRotation != 1800 && aRotation != 2700)
     {
-        return false;
+        return;
     }
 
-    GfxLink aLink = mrGraphic.GetLink();
-    if ( aLink.GetType() == GfxLinkType::NativeJpg )
+    GfxLink aLink = mrGraphic.GetGfxLink();
+    if (aLink.GetType() == GfxLinkType::NativeJpg)
     {
-        return rotateJPEG(aRotation);
+        rotateJPEG(aRotation);
     }
-    else if ( aLink.GetType() == GfxLinkType::NativePng )
+    else if (aLink.GetType() == GfxLinkType::NativePng)
     {
-        return rotateGeneric(aRotation, "png");
+        rotateGeneric(aRotation, "png");
     }
-    else if ( aLink.GetType() == GfxLinkType::NativeGif )
+    else if (aLink.GetType() == GfxLinkType::NativeGif)
     {
-        return rotateGeneric(aRotation, "gif");
+        rotateGeneric(aRotation, "gif");
     }
-    else if ( aLink.GetType() == GfxLinkType::NONE )
+    else if (aLink.GetType() == GfxLinkType::NONE)
     {
-        return rotateBitmapOnly(aRotation);
+        rotateBitmapOnly(aRotation);
     }
-    return false;
 }
 
 bool GraphicNativeTransform::rotateBitmapOnly(sal_uInt16 aRotation)
@@ -110,77 +94,74 @@ bool GraphicNativeTransform::rotateGeneric(sal_uInt16 aRotation, const OUString&
 
     GraphicFilter& rFilter = GraphicFilter::GetGraphicFilter();
 
-    css::uno::Sequence< css::beans::PropertyValue > aFilterData( 3 );
-    aFilterData[ 0 ].Name = "Interlaced";
-    aFilterData[ 0 ].Value <<= (sal_Int32) 0;
-    aFilterData[ 1 ].Name = "Compression";
-    aFilterData[ 1 ].Value <<= (sal_Int32) 9;
-    aFilterData[ 2 ].Name = "Quality";
-    aFilterData[ 2 ].Value <<= (sal_Int32) 90;
+    css::uno::Sequence<css::beans::PropertyValue> aFilterData(3);
+    aFilterData[0].Name = "Interlaced";
+    aFilterData[0].Value <<= sal_Int32(0);
+    aFilterData[1].Name = "Compression";
+    aFilterData[1].Value <<= sal_Int32(9);
+    aFilterData[2].Name = "Quality";
+    aFilterData[2].Value <<= sal_Int32(90);
 
-    sal_uInt16 nFilterFormat = rFilter.GetExportFormatNumberForShortName( aType );
+    sal_uInt16 nFilterFormat = rFilter.GetExportFormatNumberForShortName(aType);
 
     BitmapEx aBitmap = mrGraphic.GetBitmapEx();
     aBitmap.Rotate(aRotation, COL_BLACK);
-    rFilter.ExportGraphic( aBitmap, "none", aStream, nFilterFormat, &aFilterData );
+    rFilter.ExportGraphic(aBitmap, "none", aStream, nFilterFormat, &aFilterData);
 
-    aStream.Seek( STREAM_SEEK_TO_BEGIN );
+    aStream.Seek(STREAM_SEEK_TO_BEGIN);
 
     Graphic aGraphic;
-    rFilter.ImportGraphic( aGraphic, OUString("import"), aStream );
+    rFilter.ImportGraphic(aGraphic, "import", aStream);
 
     mrGraphic = aGraphic;
     return true;
 }
 
-bool GraphicNativeTransform::rotateJPEG(sal_uInt16 aRotation)
+void GraphicNativeTransform::rotateJPEG(sal_uInt16 aRotation)
 {
     BitmapEx aBitmap = mrGraphic.GetBitmapEx();
 
-    if (aBitmap.GetSizePixel().Width()  % 16 != 0 ||
-        aBitmap.GetSizePixel().Height() % 16 != 0 )
+    if (aBitmap.GetSizePixel().Width() % 16 != 0 || aBitmap.GetSizePixel().Height() % 16 != 0)
     {
         rotateGeneric(aRotation, "png");
     }
     else
     {
-        GfxLink aLink = mrGraphic.GetLink();
+        GfxLink aLink = mrGraphic.GetGfxLink();
 
         SvMemoryStream aSourceStream;
         aSourceStream.WriteBytes(aLink.GetData(), aLink.GetDataSize());
-        aSourceStream.Seek( STREAM_SEEK_TO_BEGIN );
+        aSourceStream.Seek(STREAM_SEEK_TO_BEGIN);
 
-        Orientation aOrientation = TOP_LEFT;
+        exif::Orientation aOrientation = exif::TOP_LEFT;
 
         Exif exif;
-        if ( exif.read(aSourceStream) )
+        if (exif.read(aSourceStream))
         {
             aOrientation = exif.getOrientation();
         }
 
         SvMemoryStream aTargetStream;
-        JpegTransform tranform(aSourceStream, aTargetStream);
-        tranform.setRotate(aRotation);
-        tranform.perform();
+        JpegTransform transform(aSourceStream, aTargetStream);
+        transform.setRotate(aRotation);
+        transform.perform();
 
-        aTargetStream.Seek( STREAM_SEEK_TO_BEGIN );
+        aTargetStream.Seek(STREAM_SEEK_TO_BEGIN);
 
         // Reset orientation in exif if needed
-        if ( exif.hasExif() && aOrientation != TOP_LEFT)
+        if (exif.hasExif() && aOrientation != exif::TOP_LEFT)
         {
-            exif.setOrientation(TOP_LEFT);
+            exif.setOrientation(exif::TOP_LEFT);
             exif.write(aTargetStream);
         }
 
-        aTargetStream.Seek( STREAM_SEEK_TO_BEGIN );
+        aTargetStream.Seek(STREAM_SEEK_TO_BEGIN);
 
         Graphic aGraphic;
         GraphicFilter& rFilter = GraphicFilter::GetGraphicFilter();
-        rFilter.ImportGraphic( aGraphic, OUString("import"), aTargetStream );
+        rFilter.ImportGraphic(aGraphic, "import", aTargetStream);
         mrGraphic = aGraphic;
     }
-
-    return true;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -18,35 +18,26 @@
  */
 
 #include <memory>
-#include <config_features.h>
 
 #include <hintids.hxx>
 #include <com/sun/star/linguistic2/XThesaurus.hpp>
-#include <svl/aeitem.hxx>
 #include <svl/whiter.hxx>
 #include <svl/cjkoptions.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <sfx2/objitem.hxx>
 #include <svl/imageitm.hxx>
 #include <svl/languageoptions.hxx>
-#include <editeng/protitem.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <editeng/langitem.hxx>
 #include <editeng/brushitem.hxx>
 #include <editeng/tstpitem.hxx>
 #include <sfx2/htmlmode.hxx>
-#include <editeng/unolingu.hxx>
-#include <sfx2/msgpool.hxx>
 #include <swmodule.hxx>
 #include <tox.hxx>
 #include <sfx2/dispatch.hxx>
-#include <sfx2/app.hxx>
 #include <view.hxx>
 #include <wrtsh.hxx>
-#include <basesh.hxx>
 #include <uitool.hxx>
 #include <viewopt.hxx>
-#include <tablemgr.hxx>
 #include <pagedesc.hxx>
 #include <wview.hxx>
 #include <globdoc.hxx>
@@ -56,6 +47,7 @@
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <svl/visitem.hxx>
 #include <redline.hxx>
+#include <rootfrm.hxx>
 #include <docary.hxx>
 
 #include <cmdid.h>
@@ -77,28 +69,67 @@ void SwView::GetState(SfxItemSet &rSet)
     {
         switch(nWhich)
         {
-        case FN_EDIT_LINK_DLG:
-            if( m_pWrtShell->GetLinkManager().GetLinks().empty() )
-                rSet.DisableItem(nWhich);
-            else if( m_pWrtShell->IsSelFrameMode() &&
-                m_pWrtShell->IsSelObjProtected(FlyProtectFlags::Content) != FlyProtectFlags::NONE)
+            case FN_TOGGLE_OUTLINE_CONTENT_VISIBILITY:
             {
-                rSet.DisableItem(nWhich);
+                bool bDisable(true);
+                if (m_pWrtShell->GetViewOptions()->IsShowOutlineContentVisibilityButton())
+                {
+                    SwOutlineNodes::size_type nPos = m_pWrtShell->GetOutlinePos();
+                    if (nPos != SwOutlineNodes::npos)
+                        bDisable = false;
+                }
+                if (bDisable)
+                    rSet.DisableItem(nWhich);
             }
             break;
-
-        case SID_DRAWTBX_LINES:
-            if ( bWeb )
-                rSet.DisableItem(nWhich);
+            case FN_NAV_ELEMENT:
+                // used to update all instances of this control
+                rSet.InvalidateItem( nWhich );
             break;
+            case FN_EDIT_LINK_DLG:
+                if( m_pWrtShell->GetLinkManager().GetLinks().empty() )
+                    rSet.DisableItem(nWhich);
+                else if( m_pWrtShell->IsSelFrameMode() &&
+                    m_pWrtShell->IsSelObjProtected(FlyProtectFlags::Content) != FlyProtectFlags::NONE)
+                {
+                    rSet.DisableItem(nWhich);
+                }
+                break;
 
-        case SID_INSERT_GRAPHIC:
-            if( m_pWrtShell->CursorInsideInputField() )
-            {
-                rSet.DisableItem(nWhich);
-            }
-            break;
+            case SID_DRAWTBX_LINES:
+                if ( bWeb )
+                    rSet.DisableItem(nWhich);
+                break;
 
+            case SID_INSERT_GRAPHIC:
+                if( m_pWrtShell->CursorInsideInputField() )
+                {
+                    rSet.DisableItem(nWhich);
+                }
+                break;
+            case SID_INSERT_SIGNATURELINE:
+                if( !( m_nSelectionType & SelectionType::Text ||
+                    m_nSelectionType & SelectionType::NumberList ) )
+                {
+                    rSet.DisableItem(nWhich);
+                }
+                break;
+            case SID_EDIT_SIGNATURELINE:
+            case SID_SIGN_SIGNATURELINE:
+                if (!isSignatureLineSelected() || isSignatureLineSigned())
+                    rSet.DisableItem(nWhich);
+                break;
+            case SID_INSERT_QRCODE:
+                if( !( m_nSelectionType & SelectionType::Text ||
+                    m_nSelectionType & SelectionType::NumberList ) )
+                {
+                    rSet.DisableItem(nWhich);
+                }
+                break;
+            case SID_EDIT_QRCODE:
+                if (!isQRCodeSelected())
+                    rSet.DisableItem(nWhich);
+                break;
             case FN_INSERT_CAPTION:
                 {
                     // There are captions for graphics, OLE objects, frames and tables
@@ -120,6 +151,7 @@ void SwView::GetState(SfxItemSet &rSet)
                         rSet.DisableItem(nWhich);
                     }
                     else if( m_pWrtShell->IsTableMode()
+                        || isSignatureLineSelected()
                         || m_pWrtShell->CursorInsideInputField() )
                     {
                         rSet.DisableItem(nWhich);
@@ -167,6 +199,20 @@ void SwView::GetState(SfxItemSet &rSet)
                 }
 
                 ::PageDescToItemSet( rDesc, rSet);
+
+                if (nWhich == SID_ATTR_PAGE_ORIENTATION && comphelper::LibreOfficeKit::isActive())
+                {
+                    OString aPayload = ".uno:Orientation=";
+                    if (rDesc.GetLandscape())
+                    {
+                        aPayload += "IsLandscape";
+                    }
+                    else
+                    {
+                        aPayload += "IsPortrait";
+                    }
+                    libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED, aPayload.getStr());
+                }
             }
             break;
             case RES_BACKGROUND:
@@ -175,8 +221,7 @@ void SwView::GetState(SfxItemSet &rSet)
                 const size_t nCurIdx = m_pWrtShell->GetCurPageDesc();
                 const SwPageDesc& rDesc = m_pWrtShell->GetPageDesc( nCurIdx );
                 const SwFrameFormat& rMaster = rDesc.GetMaster();
-                const SvxBrushItem& rBrush = static_cast<const SvxBrushItem&>(
-                                    rMaster.GetFormatAttr(RES_BACKGROUND));
+                const SvxBrushItem& rBrush = rMaster.GetFormatAttr(RES_BACKGROUND);
                 rSet.Put(rBrush);
             }
             break;
@@ -231,32 +276,26 @@ void SwView::GetState(SfxItemSet &rSet)
             case RES_PARATR_TABSTOP:
             case SID_ATTR_DEFTABSTOP:
             {
-                const SvxTabStopItem& rDefTabs =
-                    static_cast<const SvxTabStopItem&>(m_pWrtShell->
-                                        GetDefault(RES_PARATR_TABSTOP));
+                const SvxTabStopItem& rDefTabs = m_pWrtShell->GetDefault(RES_PARATR_TABSTOP);
                 rSet.Put( SfxUInt16Item( nWhich,
-                                                (sal_uInt16)::GetTabDist(rDefTabs)));
+                                                static_cast<sal_uInt16>(::GetTabDist(rDefTabs))));
             }
             break;
             case SID_ATTR_LANGUAGE:
             {
-                std::unique_ptr<SfxPoolItem> pNewItem(static_cast<const SvxLanguageItem&>(
-                    m_pWrtShell->GetDefault(RES_CHRATR_LANGUAGE)).CloneSetWhich(SID_ATTR_LANGUAGE));
-                rSet.Put(*pNewItem);
+                rSet.Put(m_pWrtShell->GetDefault(RES_CHRATR_LANGUAGE).CloneSetWhich(SID_ATTR_LANGUAGE));
             }
             break;
             case RES_CHRATR_CJK_LANGUAGE:
             {
-                std::unique_ptr<SfxPoolItem> pNewItem(static_cast<const SvxLanguageItem&>(
-                    m_pWrtShell->GetDefault(RES_CHRATR_CJK_LANGUAGE)).CloneSetWhich(RES_CHRATR_CJK_LANGUAGE));
-                rSet.Put(*pNewItem);
+                rSet.Put(m_pWrtShell->GetDefault(RES_CHRATR_CJK_LANGUAGE)
+                            .CloneSetWhich(RES_CHRATR_CJK_LANGUAGE));
             }
             break;
             case RES_CHRATR_CTL_LANGUAGE:
             {
-                std::unique_ptr<SfxPoolItem> pNewItem(static_cast<const SvxLanguageItem&>(
-                    m_pWrtShell->GetDefault(RES_CHRATR_CTL_LANGUAGE)).CloneSetWhich(RES_CHRATR_CTL_LANGUAGE));
-                rSet.Put(*pNewItem);
+                rSet.Put(m_pWrtShell->GetDefault(RES_CHRATR_CTL_LANGUAGE)
+                            .CloneSetWhich(RES_CHRATR_CTL_LANGUAGE));
             }
             break;
             case FN_REDLINE_ON:
@@ -267,7 +306,7 @@ void SwView::GetState(SfxItemSet &rSet)
             break;
             case FN_REDLINE_SHOW:
             {
-                rSet.Put( SfxBoolItem( nWhich, IDocumentRedlineAccess::IsShowChanges(m_pWrtShell->GetRedlineFlags()) ));
+                rSet.Put(SfxBoolItem(nWhich, !m_pWrtShell->GetLayout()->IsHideRedlines()));
             }
             break;
             case SID_AVMEDIA_PLAYER :
@@ -282,6 +321,8 @@ void SwView::GetState(SfxItemSet &rSet)
             break;
             case FN_REDLINE_ACCEPT_DIRECT:
             case FN_REDLINE_REJECT_DIRECT:
+            case FN_REDLINE_ACCEPT_TONEXT:
+            case FN_REDLINE_REJECT_TONEXT:
             {
                 SwDoc *pDoc = m_pWrtShell->GetDoc();
                 SwPaM *pCursor = m_pWrtShell->GetCursor();
@@ -322,7 +363,7 @@ void SwView::GetState(SfxItemSet &rSet)
                 }
 
                 // LibreOfficeKit wants to handle changes by index, so always allow here.
-                if (bDisable && !comphelper::LibreOfficeKit::isActive())
+                if (bDisable)
                     rSet.DisableItem(nWhich);
                 if (comphelper::LibreOfficeKit::isActive())
                 {
@@ -387,7 +428,7 @@ void SwView::GetState(SfxItemSet &rSet)
             case SID_DOCUMENT_COMPARE:
             case SID_DOCUMENT_MERGE:
                 if( dynamic_cast<const SwGlobalDocShell* >(GetDocShell()) != nullptr||
-                    (SID_DOCUMENT_MERGE == nWhich && m_pWrtShell->getIDocumentRedlineAccess().GetRedlinePassword().getLength()))
+                    (SID_DOCUMENT_MERGE == nWhich && m_pWrtShell->getIDocumentRedlineAccess().GetRedlinePassword().hasElements()))
                     rSet.DisableItem(nWhich);
             break;
             case  SID_VIEW_DATA_SOURCE_BROWSER:
@@ -462,8 +503,7 @@ void SwView::GetState(SfxItemSet &rSet)
                 {
                     if (!(m_nSelectionType & SelectionType::DrawObject))
                     {
-                        std::unique_ptr<SfxPoolItem> pNewItem(pState->CloneSetWhich(nWhich));
-                        rSet.Put(*pNewItem);
+                        rSet.Put(pState->CloneSetWhich(nWhich));
                     }
                 }
                 else

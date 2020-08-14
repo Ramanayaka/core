@@ -17,7 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "formulabase.hxx"
+#include <formulabase.hxx>
+#include <rangelst.hxx>
+#include <addressconverter.hxx>
 
 #include <map>
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -41,6 +43,8 @@
 #include <oox/token/properties.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
+namespace {
+
 enum class FuncFlags : sal_uInt16 {
     NONE              = 0x0000,
     VOLATILE          = 0x0001,   /// Result is volatile (e.g. NOW() function).
@@ -58,17 +62,18 @@ enum class FuncFlags : sal_uInt16 {
     MACROCALL_NEW     = MACROCALL | MACROCALL_FN, /** New Excel functions not
                                                       defined in OOXML, _xlfn. prefix in all formats. OOXML name
                                                       must exist. */
-    BIFFIMPORTONLY    = 0x0800,   /// Only used in BIFF binary import filter.
     BIFFEXPORTONLY    = 0x1000,   /// Only used in BIFF binary export filter.
     INTERNAL          = 0x2000,   /// Function is internal in Calc.
     EUROTOOL          = 0x4000,   /// function of euro tool lib, FUNCLIB_EUROTOOL
 };
-namespace o3tl {
-    template<> struct typed_flags<FuncFlags> : is_typed_flags<FuncFlags, 0x7fff> {};
+
 }
 
-namespace oox {
-namespace xls {
+namespace o3tl {
+    template<> struct typed_flags<FuncFlags> : is_typed_flags<FuncFlags, 0x77ff> {};
+}
+
+namespace oox::xls {
 
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::sheet;
@@ -127,7 +132,7 @@ ApiTokenVector::ApiTokenVector()
 
 Any& ApiTokenVector::append( sal_Int32 nOpCode )
 {
-    mvTokens.resize( mvTokens.size() + 1 );
+    mvTokens.emplace_back();
     mvTokens.back().OpCode = nOpCode;
     return mvTokens.back().Data;
 }
@@ -139,11 +144,10 @@ ApiTokenSequence ApiTokenVector::toSequence() const
 
 // token sequence iterator ====================================================
 
-ApiTokenIterator::ApiTokenIterator( const ApiTokenSequence& rTokens, sal_Int32 nSpacesOpCode, bool bSkipSpaces ) :
+ApiTokenIterator::ApiTokenIterator( const ApiTokenSequence& rTokens, sal_Int32 nSpacesOpCode ) :
     mpToken( rTokens.getConstArray() ),
     mpTokenEnd( rTokens.getConstArray() + rTokens.getLength() ),
-    mnSpacesOpCode( nSpacesOpCode ),
-    mbSkipSpaces( bSkipSpaces )
+    mnSpacesOpCode( nSpacesOpCode )
 {
     skipSpaces();
 }
@@ -160,9 +164,8 @@ ApiTokenIterator& ApiTokenIterator::operator++()
 
 void ApiTokenIterator::skipSpaces()
 {
-    if( mbSkipSpaces )
-        while( is() && (mpToken->OpCode == mnSpacesOpCode) )
-            ++mpToken;
+    while( is() && (mpToken->OpCode == mnSpacesOpCode) )
+        ++mpToken;
 }
 
 // function data ==============================================================
@@ -175,29 +178,29 @@ typedef std::shared_ptr< FunctionInfo > FunctionInfoRef;
 
 struct FunctionData
 {
-    const sal_Char*     mpcOdfFuncName;     /// ODF function name.
-    const sal_Char*     mpcOoxFuncName;     /// OOXML function name.
-    sal_uInt16          mnBiff12FuncId;     /// BIFF12 function identifier.
-    sal_uInt16          mnBiffFuncId;       /// BIFF2-BIFF8 function identifier.
-    sal_uInt8           mnMinParamCount;    /// Minimum number of parameters.
-    sal_uInt8           mnMaxParamCount;    /// Maximum number of parameters.
-    sal_uInt8           mnRetClass;         /// BIFF token class of the return value.
-    FunctionParamInfo   mpParamInfos[ FUNCINFO_PARAMINFOCOUNT ]; /// Information about all parameters.
-    FuncFlags           mnFlags;            /// Additional flags.
+    const char*          mpcOdfFuncName;     /// ODF function name.
+    const char*          mpcOoxFuncName;     /// OOXML function name.
+    sal_uInt16           mnBiff12FuncId;     /// BIFF12 function identifier.
+    sal_uInt16           mnBiffFuncId;       /// BIFF2-BIFF8 function identifier.
+    sal_uInt8            mnMinParamCount;    /// Minimum number of parameters.
+    sal_uInt8            mnMaxParamCount;    /// Maximum number of parameters.
+    sal_uInt8            mnRetClass;         /// BIFF token class of the return value.
+    FunctionParamInfo    mpParamInfos[ FUNCINFO_PARAMINFOCOUNT ]; /// Information about all parameters.
+    FuncFlags            mnFlags;            /// Additional flags.
 
-    inline bool         isSupported(bool bImportFilter) const;
+    bool         isSupported(bool bImportFilter) const;
 };
 
-inline bool FunctionData::isSupported(bool bImportFilter) const
+bool FunctionData::isSupported(bool bImportFilter) const
 {
     /*  For import filters: the FuncFlags::EXPORTONLY, FuncFlags::BIFFEXPORTONLY
-                            and FuncFlags::BIFFIMPORTONLY flag must not be set.
-        For export filters: the FuncFlags::IMPORTONLY, FuncFlags::BIFFIMPORTONLY
-                            and FuncFlags::BIFFEXPORTONLY flag must not be set. */
+                            must not be set.
+        For export filters: the FuncFlags::IMPORTONLY, FuncFlags::BIFFEXPORTONLY
+                            must not be set. */
     if (bImportFilter)
-        return !(mnFlags & ( FuncFlags::EXPORTONLY | FuncFlags::BIFFEXPORTONLY | FuncFlags::BIFFIMPORTONLY));
+        return !(mnFlags & ( FuncFlags::EXPORTONLY | FuncFlags::BIFFEXPORTONLY));
     else
-        return !(mnFlags & ( FuncFlags::IMPORTONLY | FuncFlags::BIFFIMPORTONLY | FuncFlags::BIFFEXPORTONLY));
+        return !(mnFlags & ( FuncFlags::IMPORTONLY | FuncFlags::BIFFEXPORTONLY));
 }
 
 const sal_uInt16 NOID = SAL_MAX_UINT16;     /// No BIFF function identifier available.
@@ -225,7 +228,7 @@ const sal_uInt8 A = BIFF_TOKCLASS_ARR;
 // Note: parameter types of all macro sheet functions (FuncFlags::MACROFUNC/FuncFlags::MACROCMD) untested!
 
 /** Functions new in BIFF2. */
-static const FunctionData saFuncTableBiff2[] =
+const FunctionData saFuncTableBiff2[] =
 {
     { "COUNT",                  "COUNT",                0,      0,      0,  MX, V, { RX }, FuncFlags::NONE },
     { "IF",                     "IF",                   1,      1,      2,  3,  R, { VO, RO }, FuncFlags::NONE },
@@ -379,7 +382,7 @@ static const FunctionData saFuncTableBiff2[] =
 };
 
 /** Functions new in BIFF3. */
-static const FunctionData saFuncTableBiff3[] =
+const FunctionData saFuncTableBiff3[] =
 {
     { "LINEST",                 "LINEST",               49,     49,     1,  4,  A, { RA, RA, VV }, FuncFlags::NONE },             // BIFF2: 1-2, BIFF3: 1-4
     { "TREND",                  "TREND",                50,     50,     1,  4,  A, { RA, RA, RA, VV }, FuncFlags::NONE },             // BIFF2: 1-3, BIFF3: 1-4
@@ -387,9 +390,9 @@ static const FunctionData saFuncTableBiff3[] =
     { "GROWTH",                 "GROWTH",               52,     52,     1,  4,  A, { RA, RA, RA, VV }, FuncFlags::NONE },             // BIFF2: 1-3, BIFF3: 1-4
     { "TRUNC",                  "TRUNC",                197,    197,    1,  2,  V, { VR }, FuncFlags::NONE },                      // BIFF2: 1,   BIFF3: 1-2
     { "DOLLAR",                 "USDOLLAR",             204,    204,    1,  2,  V, { VR }, FuncFlags::IMPORTONLY },
-    { nullptr/*"FIND"*/,              "FINDB",                205,    205,    2,  3,  V, { VR }, FuncFlags::NONE },
-    { nullptr/*"SEARCH"*/,            "SEARCHB",              206,    206,    2,  3,  V, { VR }, FuncFlags::NONE },
-    { nullptr/*"REPLACE"*/,           "REPLACEB",             207,    207,    4,  4,  V, { VR }, FuncFlags::NONE },
+    { "FINDB",                  "FINDB",                205,    205,    2,  3,  V, { VR }, FuncFlags::NONE },
+    { "SEARCHB",                "SEARCHB",              206,    206,    2,  3,  V, { VR }, FuncFlags::NONE },
+    { "REPLACEB",               "REPLACEB",             207,    207,    4,  4,  V, { VR }, FuncFlags::NONE },
     { "LEFTB",                  "LEFTB",                208,    208,    1,  2,  V, { VR }, FuncFlags::NONE },
     { "RIGHTB",                 "RIGHTB",               209,    209,    1,  2,  V, { VR }, FuncFlags::NONE },
     { "MIDB",                   "MIDB",                 210,    210,    3,  3,  V, { VR }, FuncFlags::NONE },
@@ -425,7 +428,7 @@ static const FunctionData saFuncTableBiff3[] =
 };
 
 /** Functions new in BIFF4. */
-static const FunctionData saFuncTableBiff4[] =
+const FunctionData saFuncTableBiff4[] =
 {
     { "FIXED",                  "FIXED",                14,     14,     1,  3,  V, { VR }, FuncFlags::NONE },       // BIFF2-3: 1-2, BIFF4: 1-3
     { "RANK",                   "RANK",                 216,    216,    2,  3,  V, { VR, RO, VR }, FuncFlags::NONE },
@@ -600,7 +603,7 @@ static const FunctionData saFuncTableBiff4[] =
 };
 
 /** Functions new in BIFF5/BIFF7. */
-static const FunctionData saFuncTableBiff5[] =
+const FunctionData saFuncTableBiff5[] =
 {
     { "WEEKDAY",                "WEEKDAY",              70,     70,     1,  2,  V, { VR }, FuncFlags::NONE },                              // BIFF2-4: 1,   BIFF5: 1-2
     { "HLOOKUP",                "HLOOKUP",              101,    101,    3,  4,  V, { VV, RO, RO, VV }, FuncFlags::NONE },                     // BIFF2-4: 3,   BIFF5: 3-4
@@ -634,7 +637,7 @@ static const FunctionData saFuncTableBiff5[] =
 };
 
 /** Functions new in BIFF8. */
-static const FunctionData saFuncTableBiff8[] =
+const FunctionData saFuncTableBiff8[] =
 {
     { "GETPIVOTDATA",           "GETPIVOTDATA",         358,    358,    2,  MX, V, { RR, RR, VR, VR }, FuncFlags::IMPORTONLY | FuncFlags::PARAMPAIRS },
     { "HYPERLINK",              "HYPERLINK",            359,    359,    1,  2,  V, { VV, VO }, FuncFlags::NONE },
@@ -661,7 +664,7 @@ static const FunctionData saFuncTableBiff8[] =
 };
 
 /** Functions new in OOXML. */
-static const FunctionData saFuncTableOox[] =
+const FunctionData saFuncTableOox[] =
 {
     { nullptr,                        "CUBEVALUE",            380,    NOID,   1,  MX, V, { VR, RX }, FuncFlags::NONE },
     { nullptr,                        "CUBEMEMBER",           381,    NOID,   2,  3,  V, { VR, RX, VR }, FuncFlags::NONE },
@@ -697,7 +700,7 @@ static const FunctionData saFuncTableOox[] =
     @See sc/source/filter/excel/xlformula.cxx saFuncTable_2010
  */
 /* FIXME: BIFF12 function identifiers available? Where to obtain? */
-static const FunctionData saFuncTable2010[] =
+const FunctionData saFuncTable2010[] =
 {
     { "COM.MICROSOFT.COVARIANCE.P",           "COVARIANCE.P",        NOID,    NOID,   2,  2,  V, { VA }, FuncFlags::MACROCALL_NEW },
     { "COM.MICROSOFT.COVARIANCE.S",           "COVARIANCE.S",        NOID,    NOID,   2,  2,  V, { VA }, FuncFlags::MACROCALL_NEW },
@@ -777,7 +780,7 @@ static const FunctionData saFuncTable2010[] =
     @See sc/source/filter/excel/xlformula.cxx saFuncTable_2013
  */
 /* FIXME: BIFF12 function identifiers available? Where to obtain? */
-static const FunctionData saFuncTable2013[] =
+const FunctionData saFuncTable2013[] =
 {
     { "ACOT",                   "ACOT",                 NOID,   NOID,   1,  1,  V, { VR }, FuncFlags::MACROCALL_NEW },
     { "ACOTH",                  "ACOTH",                NOID,   NOID,   1,  1,  V, { VR }, FuncFlags::MACROCALL_NEW },
@@ -845,7 +848,7 @@ static const FunctionData saFuncTable2013[] =
     @See sc/source/filter/excel/xlformula.cxx saFuncTable_2016
  */
 /* FIXME: BIFF12 function identifiers available? Where to obtain? */
-static const FunctionData saFuncTable2016[] =
+const FunctionData saFuncTable2016[] =
 {
     { "COM.MICROSOFT.FORECAST.ETS",             "FORECAST.ETS",             NOID,   NOID,   3,  6,  V, { VR, VA, VR }, FuncFlags::MACROCALL_NEW },
     { "COM.MICROSOFT.FORECAST.ETS.CONFINT",     "FORECAST.ETS.CONFINT",     NOID,   NOID,   4,  7,  V, { VR, VA, VR }, FuncFlags::MACROCALL_NEW },
@@ -862,14 +865,14 @@ static const FunctionData saFuncTable2016[] =
 
 
 /** Functions defined by OpenFormula, but not supported by Calc or by Excel. */
-static const FunctionData saFuncTableOdf[] =
+const FunctionData saFuncTableOdf[] =
 {
     { "CHISQDIST",              nullptr,                      NOID,   NOID,   2,  3,  V, { VR }, FuncFlags::MACROCALLODF },
     { "CHISQINV",               nullptr,                      NOID,   NOID,   2,  2,  V, { VR }, FuncFlags::MACROCALLODF }
 };
 
 /** Functions defined by Calc, but not in OpenFormula nor supported by Excel. */
-static const FunctionData saFuncTableOOoLO[] =
+const FunctionData saFuncTableOOoLO[] =
 {
     { "ORG.OPENOFFICE.WEEKS",       "ORG.OPENOFFICE.WEEKS",       NOID,   NOID,   3,  3,  V, { VR }, FuncFlags::MACROCALL_NEW | FuncFlags::EXTERNAL },
     { "ORG.OPENOFFICE.MONTHS",      "ORG.OPENOFFICE.MONTHS",      NOID,   NOID,   3,  3,  V, { VR }, FuncFlags::MACROCALL_NEW | FuncFlags::EXTERNAL },
@@ -910,7 +913,11 @@ static const FunctionData saFuncTableOOoLO[] =
     { "ORG.LIBREOFFICE.FORECAST.ETS.MULT",      "ORG.LIBREOFFICE.FORECAST.ETS.MULT",      NOID,   NOID,   3,  6,  V, { VR, VA, VR }, FuncFlags::MACROCALL_NEW },
     { "ORG.LIBREOFFICE.FORECAST.ETS.PI.MULT",   "ORG.LIBREOFFICE.FORECAST.ETS.PI.MULT",   NOID,   NOID,   4,  7,  V, { VR, VA, VR }, FuncFlags::MACROCALL_NEW },
     { "ORG.LIBREOFFICE.FORECAST.ETS.STAT.MULT", "ORG.LIBREOFFICE.FORECAST.ETS.STAT.MULT", NOID,   NOID,   3,  6,  V, { VR, VA, VR }, FuncFlags::MACROCALL_NEW },
-    { "ORG.LIBREOFFICE.ROUNDSIG",  "ORG.LIBREOFFICE.ROUNDSIG",  NOID,   NOID,   2,  2,  V, { RX }, FuncFlags::MACROCALL_NEW }
+    { "ORG.LIBREOFFICE.ROUNDSIG",   "ORG.LIBREOFFICE.ROUNDSIG", NOID, NOID,  2,  2,  V, { RX }, FuncFlags::MACROCALL_NEW },
+    { "ORG.LIBREOFFICE.REGEX",      "ORG.LIBREOFFICE.REGEX", NOID, NOID,  2,  4,  V, { RX }, FuncFlags::MACROCALL_NEW },
+    { "ORG.LIBREOFFICE.FOURIER",    "ORG.LIBREOFFICE.FOURIER", NOID, NOID,  2,  5,  A, { RX }, FuncFlags::MACROCALL_NEW },
+    { "ORG.LIBREOFFICE.RAND.NV",    "ORG.LIBREOFFICE.RAND.NV", NOID, NOID,  0,  0,  V, {}, FuncFlags::MACROCALL_NEW },
+    { "ORG.LIBREOFFICE.RANDBETWEEN.NV", "ORG.LIBREOFFICE.RANDBETWEEN.NV", NOID, NOID,  2,  2,  V, { VR }, FuncFlags::MACROCALL_NEW }
 
 };
 
@@ -1006,7 +1013,7 @@ FunctionProviderImpl::FunctionProviderImpl( bool bImportFilter )
 void FunctionProviderImpl::initFunc(const FunctionData& rFuncData)
 {
     // create a function info object
-    FunctionInfoRef xFuncInfo( new FunctionInfo );
+    FunctionInfoRef xFuncInfo = std::make_shared<FunctionInfo>();
     if( rFuncData.mpcOdfFuncName )
         xFuncInfo->maOdfFuncName = OUString::createFromAscii( rFuncData.mpcOdfFuncName );
     if( rFuncData.mpcOoxFuncName )
@@ -1067,7 +1074,7 @@ void FunctionProviderImpl::initFuncs(const FunctionData* pBeg, const FunctionDat
 }
 
 FunctionProvider::FunctionProvider(  bool bImportFilter ) :
-    mxFuncImpl( new FunctionProviderImpl( bImportFilter ) )
+    mxFuncImpl( std::make_shared<FunctionProviderImpl>( bImportFilter ) )
 {
 }
 
@@ -1132,7 +1139,7 @@ private:
 
     static bool         initOpCode( sal_Int32& ornOpCode, const OpCodeEntrySequence& rEntrySeq, sal_Int32 nSpecialId );
     bool                initOpCode( sal_Int32& ornOpCode, const ApiTokenMap& rTokenMap, const OUString& rOdfName, const OUString& rOoxName );
-    bool                initOpCode( sal_Int32& ornOpCode, const ApiTokenMap& rTokenMap, const sal_Char* pcOdfName, const sal_Char* pcOoxName );
+    bool                initOpCode( sal_Int32& ornOpCode, const ApiTokenMap& rTokenMap, const char* pcOdfName, const char* pcOoxName );
     bool                initOpCode( sal_Int32& ornOpCode, const ApiTokenMap& rTokenMap, sal_Unicode cOdfName, sal_Unicode cOoxName );
 
     bool                initFuncOpCode( FunctionInfo& orFuncInfo, const ApiTokenMap& rFuncTokenMap );
@@ -1142,7 +1149,10 @@ private:
 OpCodeProviderImpl::OpCodeProviderImpl( const FunctionInfoVector& rFuncInfos,
         const Reference< XMultiServiceFactory >& rxModelFactory )
 {
-    if( rxModelFactory.is() ) try
+    if( !rxModelFactory.is() )
+        return;
+
+    try
     {
         Reference< XFormulaOpCodeMapper > xMapper( rxModelFactory->createInstance(
             "com.sun.star.sheet.FormulaOpCodeMapper" ), UNO_QUERY_THROW );
@@ -1237,10 +1247,8 @@ bool OpCodeProviderImpl::fillTokenMap( ApiTokenMap& orTokenMap, OpCodeEntrySeque
     orTokenMap.clear();
     if( fillEntrySeq( orEntrySeq, rxMapper, nMapGroup ) )
     {
-        const FormulaOpCodeMapEntry* pEntry = orEntrySeq.getConstArray();
-        const FormulaOpCodeMapEntry* pEntryEnd = pEntry + orEntrySeq.getLength();
-        for( ; pEntry != pEntryEnd; ++pEntry )
-            orTokenMap[ pEntry->Name ] = pEntry->Token;
+        for( const FormulaOpCodeMapEntry& rEntry : std::as_const(orEntrySeq) )
+            orTokenMap[ rEntry.Name ] = rEntry.Token;
     }
     return orEntrySeq.hasElements();
 }
@@ -1251,10 +1259,8 @@ bool OpCodeProviderImpl::fillFuncTokenMaps( ApiTokenMap& orIntFuncTokenMap, ApiT
     orExtFuncTokenMap.clear();
     if( fillEntrySeq( orEntrySeq, rxMapper, css::sheet::FormulaMapGroup::FUNCTIONS ) )
     {
-        const FormulaOpCodeMapEntry* pEntry = orEntrySeq.getConstArray();
-        const FormulaOpCodeMapEntry* pEntryEnd = pEntry + orEntrySeq.getLength();
-        for( ; pEntry != pEntryEnd; ++pEntry )
-            ((pEntry->Token.OpCode == OPCODE_EXTERNAL) ? orExtFuncTokenMap : orIntFuncTokenMap)[ pEntry->Name ] = pEntry->Token;
+        for( const FormulaOpCodeMapEntry& rEntry : std::as_const(orEntrySeq) )
+            ((rEntry.Token.OpCode == OPCODE_EXTERNAL) ? orExtFuncTokenMap : orIntFuncTokenMap)[ rEntry.Name ] = rEntry.Token;
     }
     return orEntrySeq.hasElements();
 }
@@ -1292,7 +1298,7 @@ bool OpCodeProviderImpl::initOpCode( sal_Int32& ornOpCode, const ApiTokenMap& rT
     return false;
 }
 
-bool OpCodeProviderImpl::initOpCode( sal_Int32& ornOpCode, const ApiTokenMap& rTokenMap, const sal_Char* pcOdfName, const sal_Char* pcOoxName )
+bool OpCodeProviderImpl::initOpCode( sal_Int32& ornOpCode, const ApiTokenMap& rTokenMap, const char* pcOdfName, const char* pcOoxName )
 {
     OUString aOoxName;
     if( pcOoxName ) aOoxName = OUString::createFromAscii( pcOoxName );
@@ -1371,9 +1377,8 @@ bool OpCodeProviderImpl::initFuncOpCode( FunctionInfo& orFuncInfo, const ApiToke
 bool OpCodeProviderImpl::initFuncOpCodes( const ApiTokenMap& rIntFuncTokenMap, const ApiTokenMap& rExtFuncTokenMap, const FunctionInfoVector& rFuncInfos )
 {
     bool bIsValid = true;
-    for( FunctionInfoVector::const_iterator aIt = rFuncInfos.begin(), aEnd = rFuncInfos.end(); aIt != aEnd; ++aIt )
+    for( const FunctionInfoRef& xFuncInfo : rFuncInfos )
     {
-        FunctionInfoRef xFuncInfo = *aIt;
         // set API opcode from ODF function name
         if (xFuncInfo->mbExternal)
             bIsValid &= initFuncOpCode( *xFuncInfo, rExtFuncTokenMap );
@@ -1394,7 +1399,7 @@ bool OpCodeProviderImpl::initFuncOpCodes( const ApiTokenMap& rIntFuncTokenMap, c
 OpCodeProvider::OpCodeProvider( const Reference< XMultiServiceFactory >& rxModelFactory,
          bool bImportFilter ) :
     FunctionProvider( bImportFilter ),
-    mxOpCodeImpl( new OpCodeProviderImpl( getFuncs(), rxModelFactory ) )
+    mxOpCodeImpl( std::make_shared<OpCodeProviderImpl>( getFuncs(), rxModelFactory ) )
 {
 }
 
@@ -1499,7 +1504,7 @@ TokenToRangeListState lclProcessRef( ScRangeList& orRanges, const Any& rData, sa
         ScAddress aAddress;
         // ignore invalid addresses (with #REF! errors), but do not stop parsing
         if( lclConvertToCellAddress( aAddress, aSingleRef, nForbiddenFlags, nFilterBySheet ) )
-            orRanges.Append( ScRange(aAddress, aAddress) );
+            orRanges.push_back( ScRange(aAddress, aAddress) );
         return STATE_REF;
     }
     ComplexReference aComplexRef;
@@ -1508,7 +1513,7 @@ TokenToRangeListState lclProcessRef( ScRangeList& orRanges, const Any& rData, sa
         ScRange aRange;
         // ignore invalid ranges (with #REF! errors), but do not stop parsing
         if( lclConvertToCellRange( aRange, aComplexRef, nForbiddenFlags, nFilterBySheet ) )
-            orRanges.Append( aRange );
+            orRanges.push_back( aRange );
         return STATE_REF;
     }
     return STATE_ERROR;
@@ -1544,7 +1549,7 @@ OUString FormulaProcessorBase::generateAddress2dString( const BinAddress& rAddre
 {
     OUStringBuffer aBuffer;
     // column
-    for( sal_Int32 nTemp = rAddress.mnCol; nTemp >= 0; (nTemp /= 26) -= 1 )
+    for( sal_Int32 nTemp = rAddress.mnCol; nTemp >= 0; nTemp = (nTemp / 26) - 1 )
         aBuffer.insert( 0, sal_Unicode( 'A' + (nTemp % 26) ) );
     if( bAbsolute )
         aBuffer.insert( 0, '$' );
@@ -1593,7 +1598,7 @@ OUString FormulaProcessorBase::generateApiArray( const Matrix< Any >& rMatrix )
 
 Any FormulaProcessorBase::extractReference( const ApiTokenSequence& rTokens ) const
 {
-    ApiTokenIterator aTokenIt( rTokens, OPCODE_SPACES, true );
+    ApiTokenIterator aTokenIt( rTokens, OPCODE_SPACES );
     if( aTokenIt.is() && (aTokenIt->OpCode == OPCODE_PUSH) )
     {
         Any aRefAny = aTokenIt->Data;
@@ -1610,7 +1615,7 @@ bool FormulaProcessorBase::extractCellRange( ScRange& orRange,
     lclProcessRef( aRanges, extractReference( rTokens ), -1 );
     if( !aRanges.empty() )
     {
-        orRange = *aRanges.front();
+        orRange = aRanges.front();
         return true;
     }
     return false;
@@ -1622,7 +1627,7 @@ void FormulaProcessorBase::extractCellRangeList( ScRangeList& orRanges,
     orRanges.RemoveAll();
     TokenToRangeListState eState = STATE_OPEN;
     sal_Int32 nParenLevel = 0;
-    for( ApiTokenIterator aIt( rTokens, OPCODE_SPACES, true ); aIt.is() && (eState != STATE_ERROR); ++aIt )
+    for( ApiTokenIterator aIt( rTokens, OPCODE_SPACES ); aIt.is() && (eState != STATE_ERROR); ++aIt )
     {
         sal_Int32 nOpCode = aIt->OpCode;
         switch( eState )
@@ -1668,13 +1673,13 @@ void FormulaProcessorBase::extractCellRangeList( ScRangeList& orRanges,
 
 bool FormulaProcessorBase::extractString( OUString& orString, const ApiTokenSequence& rTokens ) const
 {
-    ApiTokenIterator aTokenIt( rTokens, OPCODE_SPACES, true );
+    ApiTokenIterator aTokenIt( rTokens, OPCODE_SPACES );
     return aTokenIt.is() && (aTokenIt->OpCode == OPCODE_PUSH) && (aTokenIt->Data >>= orString) && !(++aTokenIt).is();
 }
 
 bool FormulaProcessorBase::extractSpecialTokenInfo( ApiSpecialTokenInfo& orTokenInfo, const ApiTokenSequence& rTokens ) const
 {
-    ApiTokenIterator aTokenIt( rTokens, OPCODE_SPACES, true );
+    ApiTokenIterator aTokenIt( rTokens, OPCODE_SPACES );
     return aTokenIt.is() && (aTokenIt->OpCode == OPCODE_BAD) && (aTokenIt->Data >>= orTokenInfo);
 }
 
@@ -1682,29 +1687,26 @@ void FormulaProcessorBase::convertStringToStringList(
         ApiTokenSequence& orTokens, sal_Unicode cStringSep, bool bTrimLeadingSpaces ) const
 {
     OUString aString;
-    if( extractString( aString, orTokens ) && !aString.isEmpty() )
+    if( !(extractString( aString, orTokens ) && !aString.isEmpty()) )
+        return;
+
+    ::std::vector< ApiToken > aNewTokens;
+    for( sal_Int32 nPos{ 0 }; nPos>=0; )
     {
-        ::std::vector< ApiToken > aNewTokens;
-        sal_Int32 nPos = 0;
-        sal_Int32 nLen = aString.getLength();
-        while( (0 <= nPos) && (nPos < nLen) )
+        OUString aEntry = aString.getToken( 0, cStringSep, nPos );
+        if( bTrimLeadingSpaces )
         {
-            OUString aEntry = aString.getToken( 0, cStringSep, nPos );
-            if( bTrimLeadingSpaces )
-            {
-                sal_Int32 nStart = 0;
-                while( (nStart < aEntry.getLength()) && (aEntry[ nStart ] == ' ') ) ++nStart;
-                aEntry = aEntry.copy( nStart );
-            }
-            if( !aNewTokens.empty() )
-                aNewTokens.push_back( ApiToken( OPCODE_SEP, Any() ) );
-            aNewTokens.push_back( ApiToken( OPCODE_PUSH, Any( aEntry ) ) );
+            sal_Int32 nStart = 0;
+            while( (nStart < aEntry.getLength()) && (aEntry[ nStart ] == ' ') ) ++nStart;
+            aEntry = aEntry.copy( nStart );
         }
-        orTokens = ContainerHelper::vectorToSequence( aNewTokens );
+        if( !aNewTokens.empty() )
+            aNewTokens.emplace_back( OPCODE_SEP, Any() );
+        aNewTokens.emplace_back( OPCODE_PUSH, Any( aEntry ) );
     }
+    orTokens = ContainerHelper::vectorToSequence( aNewTokens );
 }
 
-} // namespace xls
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

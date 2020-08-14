@@ -20,25 +20,24 @@
 #ifndef INCLUDED_CPPU_SOURCE_THREADPOOL_JOBQUEUE_HXX
 #define INCLUDED_CPPU_SOURCE_THREADPOOL_JOBQUEUE_HXX
 
-#include <list>
+#include <sal/config.h>
+
+#include <condition_variable>
 #include <deque>
 #include <memory>
-#include <sal/types.h>
+#include <mutex>
 
-#include <osl/conditn.hxx>
-#include <osl/mutex.hxx>
+#include <sal/types.h>
 
 namespace cppu_threadpool
 {
-    extern "C" typedef void (SAL_CALL RequestFun)(void *);
+    extern "C" typedef void (RequestFun)(void *);
 
     struct Job
     {
         void *pThreadSpecificData;
         RequestFun * doRequest;
     };
-
-    typedef std::list < struct Job > JobList;
 
     class DisposedCallerAdmin;
     typedef std::shared_ptr<DisposedCallerAdmin> DisposedCallerAdminHolder;
@@ -50,8 +49,8 @@ namespace cppu_threadpool
 
         void add( void *pThreadSpecificData, RequestFun * doRequest );
 
-        void *enter( sal_Int64 nDisposeId , bool bReturnWhenNoJob = false );
-        void dispose( sal_Int64 nDisposeId );
+        void *enter( void const * nDisposeId , bool bReturnWhenNoJob = false );
+        void dispose( void const * nDisposeId );
 
         void suspend();
         void resume();
@@ -61,12 +60,12 @@ namespace cppu_threadpool
         bool isBusy() const;
 
     private:
-        mutable ::osl::Mutex m_mutex;
-        JobList      m_lstJob;
-        std::deque<sal_Int64>  m_lstCallstack;
+        mutable std::mutex m_mutex;
+        std::deque < struct Job > m_lstJob;
+        std::deque<void const *>  m_lstCallstack;
         sal_Int32 m_nToDo;
         bool m_bSuspended;
-        osl::Condition m_cndWait;
+        std::condition_variable m_cndWait;
         DisposedCallerAdminHolder m_DisposedCallerAdmin;
     };
 }

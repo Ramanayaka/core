@@ -19,30 +19,21 @@
 #include <memory>
 #include <sfx2/sidebar/ControllerItem.hxx>
 
-#include <sfx2/msgpool.hxx>
-#include <sfx2/viewsh.hxx>
 #include <sfx2/bindings.hxx>
-#include <unotools/cmdoptions.hxx>
-#include <vcl/commandinfoprovider.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/toolbox.hxx>
-#include <vcl/help.hxx>
 
-#include <cppuhelper/compbase.hxx>
+#include <com/sun/star/lang/XComponent.hpp>
 
 using namespace css;
 using namespace css::uno;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 ControllerItem::ControllerItem (
     const sal_uInt16 nSlotId,
     SfxBindings &rBindings,
     ItemUpdateReceiverInterface& rItemUpdateReceiver)
     : SfxControllerItem(nSlotId, rBindings),
-      mrItemUpdateReceiver(rItemUpdateReceiver),
-      mxFrameActionListener(),
-      msCommandName()
+      mrItemUpdateReceiver(rItemUpdateReceiver)
 {
 }
 
@@ -51,58 +42,32 @@ ControllerItem::~ControllerItem()
     dispose();
 }
 
-void ControllerItem::dispose()
-{
-    if (mxFrameActionListener.is())
-        mxFrameActionListener->dispose();
-    mxFrameActionListener.clear();
-
-    SfxControllerItem::dispose();
-}
-
 void ControllerItem::StateChanged (
     sal_uInt16 nSID,
     SfxItemState eState,
     const SfxPoolItem* pState)
 {
-    mrItemUpdateReceiver.NotifyItemUpdate(nSID, eState, pState, IsEnabled(eState));
+    mrItemUpdateReceiver.NotifyItemUpdate(nSID, eState, pState);
 }
 
-bool ControllerItem::IsEnabled (SfxItemState eState) const
+void ControllerItem::GetControlState (
+    sal_uInt16 nSID,
+    boost::property_tree::ptree& rState)
 {
-    if (eState == SfxItemState::DISABLED)
-        return false;
-    else if ( ! SvtCommandOptions().HasEntries(SvtCommandOptions::CMDOPTION_DISABLED))
-    {
-        // There are no disabled commands.
-        return true;
-    }
-    else if (msCommandName.getLength() == 0)
-    {
-        // We were not given a command name at construction and can
-        // not check the state now.  Assume the best and return true.
-        return true;
-    }
-    else if (SvtCommandOptions().Lookup(SvtCommandOptions::CMDOPTION_DISABLED, msCommandName))
-    {
-        // The command is part of a list of disabled commands.
-        return false;
-    }
-    else
-        return true;
+    mrItemUpdateReceiver.GetControlState(nSID, rState);
 }
 
 void ControllerItem::RequestUpdate()
 {
     std::unique_ptr<SfxPoolItem> pState;
     const SfxItemState eState (GetBindings().QueryState(GetId(), pState));
-    mrItemUpdateReceiver.NotifyItemUpdate(GetId(), eState, pState.get(), IsEnabled(eState));
+    mrItemUpdateReceiver.NotifyItemUpdate(GetId(), eState, pState.get());
 }
 
 ControllerItem::ItemUpdateReceiverInterface::~ItemUpdateReceiverInterface()
 {
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

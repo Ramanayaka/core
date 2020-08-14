@@ -18,6 +18,7 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
@@ -26,10 +27,10 @@
 #include <basegfx/vector/b2ivector.hxx>
 #include <vcl/svapp.hxx>
 
-#include "quartz/salgdi.h"
-#include "quartz/utils.h"
-#include "osx/salframe.h"
-#include "osx/saldata.hxx"
+#include <quartz/salgdi.h>
+#include <quartz/utils.h>
+#include <osx/salframe.h>
+#include <osx/saldata.hxx>
 
 void AquaSalGraphics::SetWindowGraphics( AquaSalFrame* pFrame )
 {
@@ -45,7 +46,7 @@ void AquaSalGraphics::SetPrinterGraphics( CGContextRef xContext, long nDPIX, lon
     mbPrinter = true;
     mbVirDev = false;
 
-    mrContext = xContext;
+    maContextHolder.set(xContext);
     mnRealDPIX = nDPIX;
     mnRealDPIY = nDPIY;
 
@@ -56,11 +57,11 @@ void AquaSalGraphics::SetPrinterGraphics( CGContextRef xContext, long nDPIX, lon
         mxClipPath = nullptr;
     }
 
-    if( mrContext )
+    if (maContextHolder.isSet())
     {
-        CGContextSetFillColorSpace( mrContext, GetSalData()->mxRGBSpace );
-        CGContextSetStrokeColorSpace( mrContext, GetSalData()->mxRGBSpace );
-        CGContextSaveGState( mrContext );
+        CGContextSetFillColorSpace( maContextHolder.get(), GetSalData()->mxRGBSpace );
+        CGContextSetStrokeColorSpace( maContextHolder.get(), GetSalData()->mxRGBSpace );
+        CGContextSaveGState( maContextHolder.get() );
         SetState();
     }
 }
@@ -68,38 +69,41 @@ void AquaSalGraphics::SetPrinterGraphics( CGContextRef xContext, long nDPIX, lon
 void AquaSalGraphics::InvalidateContext()
 {
     UnsetState();
-    mrContext = nullptr;
+    maContextHolder.set(nullptr);
 }
 
 void AquaSalGraphics::UnsetState()
 {
-    if( mrContext )
+    if (maContextHolder.isSet())
     {
-        SAL_INFO( "vcl.cg", "CGContextRestoreGState(" << mrContext << ")" );
-        CGContextRestoreGState( mrContext );
-        mrContext = nullptr;
+        maContextHolder.restoreState();
+        maContextHolder.set(nullptr);
     }
     if( mxClipPath )
     {
-        SAL_INFO( "vcl.cg", "CGPathRelease(" << mxClipPath << ")" );
         CGPathRelease( mxClipPath );
         mxClipPath = nullptr;
     }
 }
 
 /**
- * (re-)create the off-screen mxLayer we render everything to if
+ * (re-)create the off-screen maLayer we render everything to if
  * necessary: eg. not initialized yet, or it has an incorrect size.
  */
 bool AquaSalGraphics::CheckContext()
 {
-    if( mbWindow && mpFrame && mpFrame->getNSWindow() )
+    if (mbWindow && mpFrame && (mpFrame->getNSWindow() || Application::IsBitmapRendering()))
     {
         const unsigned int nWidth = mpFrame->maGeometry.nWidth;
         const unsigned int nHeight = mpFrame->maGeometry.nHeight;
 
-        CGContextRef rReleaseContext = nullptr;
-        CGLayerRef   rReleaseLayer = nullptr;
+        // Let's get the window scaling factor if possible, or use 1.0
+        // as the scaling factor.
+        float fScale = 1.0f;
+        if (mpFrame->getNSWindow())
+            fScale = [mpFrame->getNSWindow() backingScaleFactor];
+
+        CGLayerRef rReleaseLayer = nullptr;
 
         // check if a new drawing context is needed (e.g. after a resize)
         if( (unsigned(mnWidth) != nWidth) || (unsigned(mnHeight) != nHeight) )
@@ -107,77 +111,83 @@ bool AquaSalGraphics::CheckContext()
             mnWidth = nWidth;
             mnHeight = nHeight;
             // prepare to release the corresponding resources
-            rReleaseContext = mrContext;
-            rReleaseLayer   = mxLayer;
-            mrContext = nullptr;
-            mxLayer = nullptr;
+            if (maLayer.isSet())
+            {
+                rReleaseLayer = maLayer.get();
+            }
+            else if (maContextHolder.isSet())
+            {
+                CGContextRelease(maContextHolder.get());
+            }
+            maContextHolder.set(nullptr);
+            maLayer.set(nullptr);
         }
 
-        if( !mrContext )
+        if (!maContextHolder.isSet())
         {
-            const CGSize aLayerSize = { static_cast<CGFloat>(nWidth), static_cast<CGFloat>(nHeight) };
-            NSGraphicsContext* pNSGContext = [NSGraphicsContext graphicsContextWithWindow: mpFrame->getNSWindow()];
-            CGContextRef xCGContext = static_cast<CGContextRef>([pNSGContext graphicsPort]);
-            mxLayer = CGLayerCreateWithContext( xCGContext, aLayerSize, nullptr );
-            SAL_INFO( "vcl.cg", "CGLayerCreateWithContext(" << xCGContext << "," << aLayerSize << ",NULL) = " << mxLayer );
-            if( mxLayer )
-            {
-                mrContext = CGLayerGetContext( mxLayer );
-                SAL_INFO( "vcl.cg", "CGLayerGetContext(" << mxLayer << ") = " << mrContext );
-            }
+            const int nBitmapDepth = 32;
 
-            if( mrContext )
+            float nScaledWidth = mnWidth * fScale;
+            float nScaledHeight = mnHeight * fScale;
+
+            const CGSize aLayerSize = { static_cast<CGFloat>(nScaledWidth), static_cast<CGFloat>(nScaledHeight) };
+
+            const int nBytesPerRow = (nBitmapDepth * nScaledWidth) / 8;
+            void* pRawData = std::malloc(nBytesPerRow * nScaledHeight);
+            const int nFlags = kCGImageAlphaNoneSkipFirst;
+            CGContextHolder aContextHolder(CGBitmapContextCreate(
+                pRawData, nScaledWidth, nScaledHeight, 8, nBytesPerRow, GetSalData()->mxRGBSpace, nFlags));
+
+            maLayer.set(CGLayerCreateWithContext(aContextHolder.get(), aLayerSize, nullptr));
+            maLayer.setScale(fScale);
+
+            CGContextRef xDrawContext = CGLayerGetContext(maLayer.get());
+            maContextHolder = xDrawContext;
+
+            if (rReleaseLayer)
             {
                 // copy original layer to resized layer
-                if( rReleaseLayer )
+                if (maContextHolder.isSet())
                 {
-                    SAL_INFO( "vcl.cg", "CGContextDrawLayerAtPoint(" << mrContext << "," << CGPointZero << "," << rReleaseLayer << ")" );
-                    CGContextDrawLayerAtPoint( mrContext, CGPointZero, rReleaseLayer );
+                    CGContextDrawLayerAtPoint(maContextHolder.get(), CGPointZero, rReleaseLayer);
                 }
+                CGLayerRelease(rReleaseLayer);
+            }
 
-                CGContextTranslateCTM( mrContext, 0, nHeight );
-                CGContextScaleCTM( mrContext, 1.0, -1.0 );
-                CGContextSetFillColorSpace( mrContext, GetSalData()->mxRGBSpace );
-                CGContextSetStrokeColorSpace( mrContext, GetSalData()->mxRGBSpace );
-                SAL_INFO( "vcl.cg", "CGContextSaveGState(" << mrContext << ") " << ++mnContextStackDepth );
-                CGContextSaveGState( mrContext );
+            if (maContextHolder.isSet())
+            {
+                CGContextTranslateCTM(maContextHolder.get(), 0, nScaledHeight);
+                CGContextScaleCTM(maContextHolder.get(), 1.0, -1.0);
+                CGContextSetFillColorSpace(maContextHolder.get(), GetSalData()->mxRGBSpace);
+                CGContextSetStrokeColorSpace(maContextHolder.get(), GetSalData()->mxRGBSpace);
+                // apply a scale matrix so everything is auto-magically scaled
+                CGContextScaleCTM(maContextHolder.get(), fScale, fScale);
+                maContextHolder.saveState();
                 SetState();
 
                 // re-enable XOR emulation for the new context
-                if( mpXorEmulation )
-                {
-                    mpXorEmulation->SetTarget( mnWidth, mnHeight, mnBitmapDepth, mrContext, mxLayer );
-                }
+                if (mpXorEmulation)
+                    mpXorEmulation->SetTarget(mnWidth, mnHeight, mnBitmapDepth, maContextHolder.get(), maLayer.get());
             }
-        }
-
-        if( rReleaseLayer )
-        {
-            SAL_INFO( "vcl.cg", "CGLayerRelease(" << rReleaseLayer << ")" );
-            CGLayerRelease( rReleaseLayer );
-        }
-        else if( rReleaseContext )
-        {
-            SAL_INFO( "vcl.cg", "CGContextRelease(" << rReleaseContext << ")" );
-            CGContextRelease( rReleaseContext );
         }
     }
 
-    SAL_WARN_IF( !mrContext && !mbPrinter, "vcl", "<<<WARNING>>> AquaSalGraphics::CheckContext() FAILED!!!!" );
-    return (mrContext != nullptr);
+    SAL_WARN_IF(!maContextHolder.isSet() && !mbPrinter, "vcl", "<<<WARNING>>> AquaSalGraphics::CheckContext() FAILED!!!!");
+
+    return maContextHolder.isSet();
 }
 
 CGContextRef AquaSalGraphics::GetContext()
 {
-    if(!mrContext)
+    if (!maContextHolder.isSet())
     {
         CheckContext();
     }
-    return mrContext;
+    return maContextHolder.get();
 }
 
 /**
- * Blit the contents of our internal mxLayer state to the
+ * Blit the contents of our internal maLayer state to the
  * associated window, if any; cf. drawRect event handling
  * on the frame.
  */
@@ -189,30 +199,28 @@ void AquaSalGraphics::UpdateWindow( NSRect& )
     }
 
     NSGraphicsContext* pContext = [NSGraphicsContext currentContext];
-    if( (mxLayer != nullptr) && (pContext != nullptr) )
+    if (maLayer.isSet() && pContext != nullptr)
     {
-        CGContextRef rCGContext = static_cast<CGContextRef>([pContext graphicsPort]);
-        SAL_INFO( "vcl.cg", "[[NSGraphicsContext currentContext] graphicsPort] = " << rCGContext );
+        CGContextHolder rCGContextHolder([pContext CGContext]);
+
+        rCGContextHolder.saveState();
 
         CGMutablePathRef rClip = mpFrame->getClipPath();
-        if( rClip )
+        if (rClip)
         {
-            CGContextSaveGState( rCGContext );
-            SAL_INFO( "vcl.cg", "CGContextBeginPath(" << rCGContext << ")" );
-            CGContextBeginPath( rCGContext );
-            SAL_INFO( "vcl.cg", "CGContextAddPath(" << rCGContext << "," << rClip << ")" );
-            CGContextAddPath( rCGContext, rClip );
-            SAL_INFO( "vcl.cg", "CGContextClip(" << rCGContext << ")" );
-            CGContextClip( rCGContext );
+            CGContextBeginPath(rCGContextHolder.get());
+            CGContextAddPath(rCGContextHolder.get(), rClip );
+            CGContextClip(rCGContextHolder.get());
         }
 
         ApplyXorContext();
-        SAL_INFO( "vcl.cg", "CGContextDrawLayerAtPoint(" << rCGContext << "," << CGPointZero << "," << mxLayer << ")" );
-        CGContextDrawLayerAtPoint( rCGContext, CGPointZero, mxLayer );
-        if( rClip ) // cleanup clipping
-        {
-            CGContextRestoreGState( rCGContext );
-        }
+
+        const CGSize aSize = maLayer.getSizePoints();
+        const CGRect aRect = CGRectMake(0, 0, aSize.width,  aSize.height);
+
+        CGContextDrawLayerInRect(rCGContextHolder.get(), aRect, maLayer.get());
+
+        rCGContextHolder.restoreState();
     }
     else
     {

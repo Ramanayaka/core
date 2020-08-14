@@ -12,6 +12,7 @@ $(eval $(call gb_Library_Library,sdfilt))
 $(eval $(call gb_Library_set_include,sdfilt,\
     $$(INCLUDE) \
     -I$(SRCDIR)/sd/inc \
+    -I$(SRCDIR)/sd/source/ui/inc \
 ))
 
 ifneq ($(strip $(dbg_anim_log)$(DBG_ANIM_LOG)),)
@@ -49,9 +50,12 @@ $(eval $(call gb_Library_use_libraries,sdfilt,\
     ucbhelper \
     utl \
     vcl \
+    basegfx \
 ))
 
 $(eval $(call gb_Library_set_componentfile,sdfilt,sd/util/sdfilt))
+
+$(eval $(call gb_Library_use_common_precompiled_header,sdfilt))
 
 $(eval $(call gb_Library_add_exception_objects,sdfilt,\
     sd/source/filter/eppt/eppt \
@@ -61,6 +65,7 @@ $(eval $(call gb_Library_add_exception_objects,sdfilt,\
     sd/source/filter/eppt/pptexsoundcollection \
     sd/source/filter/eppt/pptx-epptbase \
     sd/source/filter/eppt/pptx-epptooxml \
+    sd/source/filter/eppt/pptx-animations \
     sd/source/filter/eppt/pptx-grouptable \
     sd/source/filter/eppt/pptx-stylesheet \
     sd/source/filter/eppt/pptx-text \

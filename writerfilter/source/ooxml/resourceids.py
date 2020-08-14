@@ -7,7 +7,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-from __future__ import print_function
 import xml.sax
 import sys
 
@@ -52,6 +51,7 @@ namespace NS_ooxml
                         print("    const Id LN_%s = %s;" % (token, self.counter))
                         self.tokens.append(token)
                 self.counter += 1
+
 
 parser = xml.sax.make_parser()
 parser.setContentHandler(ContentHandler())

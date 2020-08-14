@@ -17,38 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CUI_SOURCE_OPTIONS_DOCLINKDIALOG_HXX
-#define INCLUDED_CUI_SOURCE_OPTIONS_DOCLINKDIALOG_HXX
+#pragma once
 
-#include <vcl/dialog.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/button.hxx>
+#include <vcl/weld.hxx>
 #include <svtools/inettbc.hxx>
-#include <svtools/urlcontrol.hxx>
-
 
 namespace svx
 {
-
     /** dialog for editing document links associated with data sources
     */
-    class ODocumentLinkDialog : public ModalDialog
+    class ODocumentLinkDialog final : public weld::GenericDialogController
     {
-    protected:
-        VclPtr< ::svt::OFileURLControl> m_pURL;
-        VclPtr<PushButton>              m_pBrowseFile;
-        VclPtr<Edit>                    m_pName;
-        VclPtr<OKButton>                m_pOK;
-
-        bool                            m_bCreatingNew;
-
         Link<const OUString&,bool>      m_aNameValidator;
 
+        std::unique_ptr<weld::Button> m_xBrowseFile;
+        std::unique_ptr<weld::Entry> m_xName;
+        std::unique_ptr<weld::Button> m_xOK;
+        std::unique_ptr<weld::Label> m_xAltTitle;
+        std::unique_ptr<SvtURLBox> m_xURL;
+
     public:
-        ODocumentLinkDialog( vcl::Window* _pParent, bool _bCreateNew );
+        ODocumentLinkDialog(weld::Window* pParent, bool bCreateNew);
         virtual ~ODocumentLinkDialog() override;
-        virtual void dispose() override;
 
         // name validation has to be done by an external instance
         // the validator link gets a pointer to a String, and should return 0 if the string is not
@@ -58,18 +48,14 @@ namespace svx
         void    setLink( const  OUString& _rName, const   OUString& _rURL );
         void    getLink(        OUString& _rName,         OUString& _rURL ) const;
 
-    protected:
-        DECL_LINK( OnTextModified, Edit&, void );
-        DECL_LINK( OnBrowseFile, Button*, void );
-        DECL_LINK( OnOk, Button*, void );
+    private:
+        DECL_LINK( OnEntryModified, weld::Entry&, void );
+        DECL_LINK( OnComboBoxModified, weld::ComboBox&, void );
+        DECL_LINK( OnBrowseFile, weld::Button&, void );
+        DECL_LINK( OnOk, weld::Button&, void );
 
-        void validate( );
+        void validate();
     };
-
-
 }
-
-
-#endif // INCLUDED_CUI_SOURCE_OPTIONS_DOCLINKDIALOG_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

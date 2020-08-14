@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <drawinglayer/primitive3d/polygontubeprimitive3d.hxx>
+#include <primitive3d/polygontubeprimitive3d.hxx>
 #include <drawinglayer/attribute/materialattribute3d.hxx>
 #include <basegfx/matrix/b3dhommatrix.hxx>
 #include <basegfx/polygon/b3dpolypolygon.hxx>
@@ -28,10 +28,8 @@
 #include <rtl/instance.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         namespace // anonymous namespace
         {
             class TubeBuffer
@@ -44,7 +42,7 @@ namespace drawinglayer
                 ::osl::Mutex m_aMutex;
             public:
                 TubeBuffer()
-                    : m_nLineTubeSegments(0L)
+                    : m_nLineTubeSegments(0)
                 {
                 }
 
@@ -72,7 +70,7 @@ namespace drawinglayer
                         basegfx::B3DPoint aLastLeft(0.0, 1.0, 0.0);
                         basegfx::B3DPoint aLastRight(1.0, 1.0, 0.0);
                         basegfx::B3DHomMatrix aRot;
-                        aRot.rotate(F_2PI / (double)m_nLineTubeSegments, 0.0, 0.0);
+                        aRot.rotate(F_2PI / static_cast<double>(m_nLineTubeSegments), 0.0, 0.0);
                         m_aLineTubeList.resize(m_nLineTubeSegments);
 
                         for(sal_uInt32 a = 0; a < m_nLineTubeSegments; ++a)
@@ -82,16 +80,16 @@ namespace drawinglayer
                             basegfx::B3DPolygon aNewPolygon;
 
                             aNewPolygon.append(aNextLeft);
-                            aNewPolygon.setNormal(0L, basegfx::B3DVector(aNextLeft - aLeft));
+                            aNewPolygon.setNormal(0, basegfx::B3DVector(aNextLeft - aLeft));
 
                             aNewPolygon.append(aLastLeft);
-                            aNewPolygon.setNormal(1L, basegfx::B3DVector(aLastLeft - aLeft));
+                            aNewPolygon.setNormal(1, basegfx::B3DVector(aLastLeft - aLeft));
 
                             aNewPolygon.append(aLastRight);
-                            aNewPolygon.setNormal(2L, basegfx::B3DVector(aLastRight - aRight));
+                            aNewPolygon.setNormal(2, basegfx::B3DVector(aLastRight - aRight));
 
                             aNewPolygon.append(aNextRight);
-                            aNewPolygon.setNormal(3L, basegfx::B3DVector(aNextRight - aRight));
+                            aNewPolygon.setNormal(3, basegfx::B3DVector(aNextRight - aRight));
 
                             aNewPolygon.setClosed(true);
 
@@ -154,7 +152,7 @@ namespace drawinglayer
                         const basegfx::B3DPoint aNull(0.0, 0.0, 0.0);
                         basegfx::B3DPoint aLast(0.0, 1.0, 0.0);
                         basegfx::B3DHomMatrix aRot;
-                        aRot.rotate(F_2PI / (double)m_nLineCapSegments, 0.0, 0.0);
+                        aRot.rotate(F_2PI / static_cast<double>(m_nLineCapSegments), 0.0, 0.0);
                         m_aLineCapList.resize(m_nLineCapSegments);
 
                         for(sal_uInt32 a = 0; a < m_nLineCapSegments; ++a)
@@ -163,13 +161,13 @@ namespace drawinglayer
                             basegfx::B3DPolygon aNewPolygon;
 
                             aNewPolygon.append(aLast);
-                            aNewPolygon.setNormal(0L, basegfx::B3DVector(aLast - aNull));
+                            aNewPolygon.setNormal(0, basegfx::B3DVector(aLast - aNull));
 
                             aNewPolygon.append(aNext);
-                            aNewPolygon.setNormal(1L, basegfx::B3DVector(aNext - aNull));
+                            aNewPolygon.setNormal(1, basegfx::B3DVector(aNext - aNull));
 
                             aNewPolygon.append(aNull);
-                            aNewPolygon.setNormal(2L, basegfx::B3DVector(-1.0, 0.0, 0.0));
+                            aNewPolygon.setNormal(2, basegfx::B3DVector(-1.0, 0.0, 0.0));
 
                             aNewPolygon.setClosed(true);
 
@@ -239,7 +237,7 @@ namespace drawinglayer
 
                         // create half-sphere; upper half of unit sphere
                         basegfx::B3DPolyPolygon aSphere(
-                            basegfx::tools::createUnitSphereFillPolyPolygon(
+                            basegfx::utils::createUnitSphereFillPolyPolygon(
                                 nSegments,
                                 nVerSeg,
                                 true,
@@ -249,7 +247,7 @@ namespace drawinglayer
 
                         if (nCount)
                         {
-                            // rotate to have sphere cap orientned to negative X-Axis; do not
+                            // rotate to have sphere cap oriented to negative X-Axis; do not
                             // forget to transform normals, too
                             basegfx::B3DHomMatrix aSphereTrans;
 
@@ -262,7 +260,7 @@ namespace drawinglayer
 
                             for (sal_uInt32 a = 0; a < nCount; ++a)
                             {
-                                const basegfx::B3DPolygon aPartPolygon(aSphere.getB3DPolygon(a));
+                                const basegfx::B3DPolygon& aPartPolygon(aSphere.getB3DPolygon(a));
                                 const basegfx::B3DPolyPolygon aPartPolyPolygon(aPartPolygon);
 
                                 // need to create one primitive per Polygon since the primitive
@@ -297,12 +295,11 @@ namespace drawinglayer
                 sal_uInt32 nSegments,
                 const attribute::MaterialAttribute3D& rMaterial,
                 double fAngle,
-                double /*fDegreeStepWidth*/,
                 double fMiterMinimumAngle,
                 basegfx::B2DLineJoin aLineJoin)
             {
                 // nSegments is for whole circle, adapt to half circle
-                const sal_uInt32 nVerSeg(nSegments >> 1L);
+                const sal_uInt32 nVerSeg(nSegments >> 1);
                 std::vector< BasePrimitive3D* > aResultVector;
 
                 if(nVerSeg)
@@ -310,16 +307,16 @@ namespace drawinglayer
                     if(basegfx::B2DLineJoin::Round == aLineJoin)
                     {
                         // calculate new horizontal segments
-                        const sal_uInt32 nHorSeg(basegfx::fround((fAngle / F_2PI) * (double)nSegments));
+                        const sal_uInt32 nHorSeg(basegfx::fround((fAngle / F_2PI) * static_cast<double>(nSegments)));
 
                         if(nHorSeg)
                         {
                             // create half-sphere
-                            const basegfx::B3DPolyPolygon aSphere(basegfx::tools::createUnitSphereFillPolyPolygon(nHorSeg, nVerSeg, true, F_PI2, -F_PI2, 0.0, fAngle));
+                            const basegfx::B3DPolyPolygon aSphere(basegfx::utils::createUnitSphereFillPolyPolygon(nHorSeg, nVerSeg, true, F_PI2, -F_PI2, 0.0, fAngle));
 
-                            for(sal_uInt32 a(0L); a < aSphere.count(); a++)
+                            for(sal_uInt32 a(0); a < aSphere.count(); a++)
                             {
-                                const basegfx::B3DPolygon aPartPolygon(aSphere.getB3DPolygon(a));
+                                const basegfx::B3DPolygon& aPartPolygon(aSphere.getB3DPolygon(a));
                                 const basegfx::B3DPolyPolygon aPartPolyPolygon(aPartPolygon);
                                 BasePrimitive3D* pNew = new PolyPolygonMaterialPrimitive3D(aPartPolyPolygon, rMaterial, false);
                                 aResultVector.push_back(pNew);
@@ -346,7 +343,7 @@ namespace drawinglayer
                             }
                         }
 
-                        const double fInc(F_PI / (double)nVerSeg);
+                        const double fInc(F_PI / static_cast<double>(nVerSeg));
                         const double fSin(sin(-fAngle));
                         const double fCos(cos(-fAngle));
                         const bool bMiter(basegfx::B2DLineJoin::Miter == aLineJoin);
@@ -361,10 +358,10 @@ namespace drawinglayer
                         aNewPolygon.setClosed(true);
                         aMiterPolygon.setClosed(true);
 
-                        for(sal_uInt32 a(0L); a < nVerSeg; a++)
+                        for(sal_uInt32 a(0); a < nVerSeg; a++)
                         {
-                            const bool bFirst(0L == a);
-                            const bool bLast(a + 1L == nVerSeg);
+                            const bool bFirst(0 == a);
+                            const bool bLast(a + 1 == nVerSeg);
 
                             if(bFirst || !bLast)
                             {
@@ -460,7 +457,7 @@ namespace drawinglayer
                             }
 
                             // set normals
-                            for(sal_uInt32 b(0L); b < aNewPolygon.count(); b++)
+                            for(sal_uInt32 b(0); b < aNewPolygon.count(); b++)
                             {
                                 aNewPolygon.setNormal(b, basegfx::B3DVector(aNewPolygon.getB3DPoint(b)));
                             }
@@ -476,7 +473,7 @@ namespace drawinglayer
                             if(bMiter && aMiterPolygon.count())
                             {
                                 // set normals
-                                for(sal_uInt32 c(0L); c < aMiterPolygon.count(); c++)
+                                for(sal_uInt32 c(0); c < aMiterPolygon.count(); c++)
                                 {
                                     aMiterPolygon.setNormal(c, basegfx::B3DVector(aMiterPolygon.getB3DPoint(c)));
                                 }
@@ -528,17 +525,10 @@ namespace drawinglayer
                 return aRetval;
             }
         } // end of anonymous namespace
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
 
 
 using namespace com::sun::star;
 
-
-namespace drawinglayer
-{
-    namespace primitive3d
-    {
         Primitive3DContainer PolygonTubePrimitive3D::impCreate3DDecomposition(const geometry::ViewInformation3D& /*rViewInformation*/) const
         {
             const sal_uInt32 nPointCount(getB3DPolygon().count());
@@ -549,7 +539,7 @@ namespace drawinglayer
                 if(basegfx::fTools::more(getRadius(), 0.0))
                 {
                     const attribute::MaterialAttribute3D aMaterial(getBColor());
-                    static sal_uInt32 nSegments(8); // default for 3d line segments, for more quality just raise this value (in even steps)
+                    static const sal_uInt32 nSegments(8); // default for 3d line segments, for more quality just raise this value (in even steps)
                     const bool bClosed(getB3DPolygon().isClosed());
                     const bool bNoLineJoin(basegfx::B2DLineJoin::NONE == getLineJoin());
                     const sal_uInt32 nLoopCount(bClosed ? nPointCount : nPointCount - 1);
@@ -642,7 +632,6 @@ namespace drawinglayer
                                             nSegments,
                                             aMaterial,
                                             fAngle,
-                                            getDegreeStepWidth(),
                                             getMiterMinimumAngle(),
                                             getLineJoin()));
 
@@ -793,7 +782,5 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive3DIDBlock(PolygonTubePrimitive3D, PRIMITIVE3D_ID_POLYGONTUBEPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
-
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

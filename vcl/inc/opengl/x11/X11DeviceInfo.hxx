@@ -10,11 +10,11 @@
 #ifndef INCLUDED_VCL_INC_OPENGL_X11_X11DEVICEINFO_HXX
 #define INCLUDED_VCL_INC_OPENGL_X11_X11DEVICEINFO_HXX
 
-#include "opengl/DeviceInfo.hxx"
+#include <opengl/DeviceInfo.hxx>
 
 #include <rtl/string.hxx>
 
-class X11OpenGLDeviceInfo : public OpenGLDeviceInfo
+class X11OpenGLDeviceInfo final : public OpenGLDeviceInfo
 {
 private:
     bool mbIsMesa;
@@ -40,7 +40,6 @@ private:
 
 public:
     X11OpenGLDeviceInfo();
-    virtual ~X11OpenGLDeviceInfo() override;
 
     virtual bool isDeviceBlocked() override;
 

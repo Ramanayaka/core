@@ -19,12 +19,9 @@
 
 #include "xmlconti.hxx"
 #include "xmlimprt.hxx"
-#include "global.hxx"
-#include "document.hxx"
 
-#include <xmloff/xmltkmap.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 
 using namespace xmloff::token;
@@ -32,10 +29,15 @@ using namespace xmloff::token;
 ScXMLContentContext::ScXMLContentContext( ScXMLImport& rImport,
                                       sal_uInt16 nPrfx,
                                       const OUString& rLName,
-                                      const css::uno::Reference<css::xml::sax::XAttributeList>& /* xAttrList */,
                                       OUStringBuffer& sTempValue) :
     ScXMLImportContext( rImport, nPrfx, rLName ),
-    sOUText(),
+    sValue(sTempValue)
+{
+}
+
+ScXMLContentContext::ScXMLContentContext( ScXMLImport& rImport,
+                                      OUStringBuffer& sTempValue) :
+    ScXMLImportContext( rImport ),
     sValue(sTempValue)
 {
 }
@@ -44,7 +46,7 @@ ScXMLContentContext::~ScXMLContentContext()
 {
 }
 
-SvXMLImportContext *ScXMLContentContext::CreateChildContext( sal_uInt16 nPrefix,
+SvXMLImportContextRef ScXMLContentContext::CreateChildContext( sal_uInt16 nPrefix,
                                             const OUString& rLName,
                                             const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList )
 {
@@ -64,22 +66,43 @@ SvXMLImportContext *ScXMLContentContext::CreateChildContext( sal_uInt16 nPrefix,
         }
         if (nRepeat)
             for (sal_Int32 j = 0; j < nRepeat; ++j)
-                sOUText.append(' ');
+                sValue.append(' ');
         else
-            sOUText.append(' ');
+            sValue.append(' ');
     }
 
     return new SvXMLImportContext( GetImport(), nPrefix, rLName );
 }
 
-void ScXMLContentContext::Characters( const OUString& rChars )
+css::uno::Reference< css::xml::sax::XFastContextHandler > ScXMLContentContext::createFastChildContext(
+            sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList )
 {
-    sOUText.append(rChars);
+    if (nElement == XML_ELEMENT(TEXT, XML_S))
+    {
+        sal_Int32 nRepeat(0);
+        for (auto &aIter : sax_fastparser::castToFastAttributeList( xAttrList ))
+        {
+            if (aIter.getToken() == XML_ELEMENT(TEXT, XML_C))
+                nRepeat = aIter.toInt32();
+        }
+        if (nRepeat)
+            for (sal_Int32 j = 0; j < nRepeat; ++j)
+                sValue.append(' ');
+        else
+            sValue.append(' ');
+    }
+
+    return new SvXMLImportContext( GetImport() );
 }
 
-void ScXMLContentContext::EndElement()
+void ScXMLContentContext::Characters( const OUString& rChars )
 {
-    sValue.append(sOUText.toString());
+    sValue.append(rChars);
+}
+
+void ScXMLContentContext::characters( const OUString& rChars )
+{
+    sValue.append(rChars);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

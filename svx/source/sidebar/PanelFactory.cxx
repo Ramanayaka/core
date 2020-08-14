@@ -17,25 +17,29 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <config_features.h>
+
 #include "text/TextPropertyPanel.hxx"
 #include "styles/StylesPropertyPanel.hxx"
 #include "paragraph/ParaPropertyPanel.hxx"
+#include "lists/ListsPropertyPanel.hxx"
 #include "area/AreaPropertyPanel.hxx"
+#include "glow/GlowPropertyPanel.hxx"
 #include "shadow/ShadowPropertyPanel.hxx"
+#include "softedge/SoftEdgePropertyPanel.hxx"
 #include "graphic/GraphicPropertyPanel.hxx"
 #include "line/LinePropertyPanel.hxx"
 #include "possize/PosSizePropertyPanel.hxx"
-#include "shapes/DefaultShapesPanel.hxx"
+#include <DefaultShapesPanel.hxx>
+#if HAVE_FEATURE_AVMEDIA
 #include "media/MediaPlaybackPanel.hxx"
-#include "GalleryControl.hxx"
+#endif
+#include <GalleryControl.hxx>
 #include "EmptyPanel.hxx"
 #include <sfx2/sidebar/SidebarPanelBase.hxx>
-#include <sfx2/sidebar/Tools.hxx>
-#include <sfx2/sfxbasecontroller.hxx>
 #include <sfx2/templdlg.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/window.hxx>
-#include <rtl/ref.hxx>
 #include <comphelper/namedvaluecollection.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
@@ -43,6 +47,7 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/ui/XSidebar.hpp>
 #include <com/sun/star/ui/XUIElementFactory.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 using namespace css;
 using namespace css::uno;
@@ -70,11 +75,11 @@ public:
 
     // XUIElementFactory
     css::uno::Reference<css::ui::XUIElement> SAL_CALL createUIElement (
-        const ::rtl::OUString& rsResourceURL,
+        const OUString& rsResourceURL,
         const ::css::uno::Sequence<css::beans::PropertyValue>& rArguments) override;
 
     OUString SAL_CALL getImplementationName() override
-    { return OUString("org.apache.openoffice.comp.svx.sidebar.PanelFactory"); }
+    { return "org.apache.openoffice.comp.svx.sidebar.PanelFactory"; }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
@@ -89,7 +94,7 @@ PanelFactory::PanelFactory()
 }
 
 Reference<ui::XUIElement> SAL_CALL PanelFactory::createUIElement (
-    const ::rtl::OUString& rsResourceURL,
+    const OUString& rsResourceURL,
     const ::css::uno::Sequence<css::beans::PropertyValue>& rArguments)
 {
     const ::comphelper::NamedValueCollection aArguments (rArguments);
@@ -98,9 +103,6 @@ Reference<ui::XUIElement> SAL_CALL PanelFactory::createUIElement (
     Reference<ui::XSidebar> xSidebar (aArguments.getOrDefault("Sidebar", Reference<ui::XSidebar>()));
     const sal_uInt64 nBindingsValue (aArguments.getOrDefault("SfxBindings", sal_uInt64(0)));
     SfxBindings* pBindings = reinterpret_cast<SfxBindings*>(nBindingsValue);
-    vcl::EnumContext aContext (
-        aArguments.getOrDefault("ApplicationName", OUString()),
-        aArguments.getOrDefault("ContextName", OUString()));
 
     VclPtr<vcl::Window> pParentWindow = VCLUnoHelper::GetWindow(xParentWindow);
     if ( ! xParentWindow.is() || pParentWindow==nullptr)
@@ -131,13 +133,25 @@ Reference<ui::XUIElement> SAL_CALL PanelFactory::createUIElement (
     {
         pControl = ParaPropertyPanel::Create(pParentWindow, xFrame, pBindings, xSidebar);
     }
+    else if (rsResourceURL.endsWith("/ListsPropertyPanel"))
+    {
+        pControl = ListsPropertyPanel::Create(pParentWindow, xFrame);
+    }
     else if (rsResourceURL.endsWith("/AreaPropertyPanel"))
     {
         pControl = AreaPropertyPanel::Create(pParentWindow, xFrame, pBindings);
     }
+    else if (rsResourceURL.endsWith("/GlowPropertyPanel"))
+    {
+        pControl = GlowPropertyPanel::Create(pParentWindow, xFrame, pBindings);
+    }
     else if (rsResourceURL.endsWith("/ShadowPropertyPanel"))
     {
         pControl = ShadowPropertyPanel::Create(pParentWindow, xFrame, pBindings);
+    }
+    else if (rsResourceURL.endsWith("/SoftEdgePropertyPanel"))
+    {
+        pControl = SoftEdgePropertyPanel::Create(pParentWindow, xFrame, pBindings);
     }
     else if (rsResourceURL.endsWith("/GraphicPropertyPanel"))
     {
@@ -155,10 +169,12 @@ Reference<ui::XUIElement> SAL_CALL PanelFactory::createUIElement (
     {
         pControl = DefaultShapesPanel::Create(pParentWindow, xFrame);
     }
+#if HAVE_FEATURE_AVMEDIA
     else if (rsResourceURL.endsWith("/MediaPlaybackPanel"))
     {
         pControl = MediaPlaybackPanel::Create(pParentWindow, xFrame, pBindings);
     }
+#endif
     else if (rsResourceURL.endsWith("/GalleryPanel"))
     {
         pControl.reset(VclPtr<GalleryControl>::Create(pParentWindow));
@@ -189,7 +205,7 @@ Reference<ui::XUIElement> SAL_CALL PanelFactory::createUIElement (
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 org_apache_openoffice_comp_svx_sidebar_PanelFactory_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

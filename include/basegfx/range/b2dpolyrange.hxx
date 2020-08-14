@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_RANGE_B2DPOLYRANGE_HXX
-#define INCLUDED_BASEGFX_RANGE_B2DPOLYRANGE_HXX
+#pragma once
 
 #include <o3tl/cow_wrapper.hxx>
 #include <tuple>
@@ -27,7 +26,6 @@
 
 namespace basegfx
 {
-    class B2DTuple;
     class B2DRange;
     class B2DPolyPolygon;
     class B2DHomMatrix;
@@ -71,7 +69,7 @@ namespace basegfx
         ElementType getElement(sal_uInt32 nIndex) const;
 
         // insert/append a single range
-        void appendElement(const B2DRange& rRange, B2VectorOrientation eOrient, sal_uInt32 nCount = 1);
+        void appendElement(const B2DRange& rRange, B2VectorOrientation eOrient);
 
         void clear();
 
@@ -91,7 +89,5 @@ namespace basegfx
         o3tl::cow_wrapper< ImplB2DPolyRange > mpImpl;
     };
 }
-
-#endif // INCLUDED_BASEGFX_RANGE_B2DPOLYRANGE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

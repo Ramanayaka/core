@@ -19,36 +19,30 @@
 
 #include "modulepcr.hxx"
 #include "pcrcommon.hxx"
-#include "pcrservices.hxx"
 #include "inspectormodelbase.hxx"
 
 #include <com/sun/star/ucb/AlreadyInitializedException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-
-#include <comphelper/broadcasthelper.hxx>
-#include <comphelper/uno3.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 
 namespace pcr
 {
 
 
-    using ::com::sun::star::inspection::XObjectInspectorModel;
-    using ::com::sun::star::lang::XInitialization;
-    using ::com::sun::star::lang::XServiceInfo;
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::uno::XComponentContext;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::uno::Any;
     using ::com::sun::star::inspection::PropertyCategoryDescriptor;
-    using ::com::sun::star::uno::Exception;
     using ::com::sun::star::uno::XInterface;
     using ::com::sun::star::lang::IllegalArgumentException;
     using ::com::sun::star::ucb::AlreadyInitializedException;
 
 
     //= ObjectInspectorModel
+
+    namespace {
 
     class ObjectInspectorModel : public ImplInspectorModel
     {
@@ -70,14 +64,6 @@ namespace pcr
         virtual OUString SAL_CALL getImplementationName(  ) override;
         virtual Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
-        // XServiceInfo - static versions
-        /// @throws RuntimeException
-        static OUString getImplementationName_static(  );
-        /// @throws RuntimeException
-        static Sequence< OUString > getSupportedServiceNames_static(  );
-        static Reference< XInterface > SAL_CALL
-                        Create(const Reference< XComponentContext >&);
-
     protected:
         void    createDefault();
         void    createWithHandlerFactories( const Sequence< Any >& _rFactories );
@@ -89,6 +75,7 @@ namespace pcr
         void    impl_verifyArgument_throw( bool _bCondition, sal_Int16 _nArgumentPosition );
     };
 
+    }
 
     //= ObjectInspectorModel
 
@@ -121,7 +108,7 @@ namespace pcr
     void SAL_CALL ObjectInspectorModel::initialize( const Sequence< Any >& _arguments )
     {
         ::osl::MutexGuard aGuard( m_aMutex );
-        if ( m_aFactories.getLength() )
+        if ( m_aFactories.hasElements() )
             throw AlreadyInitializedException();
 
         StlSyntaxSequence< Any > arguments( _arguments );
@@ -155,32 +142,13 @@ namespace pcr
 
     OUString SAL_CALL ObjectInspectorModel::getImplementationName(  )
     {
-        return getImplementationName_static();
+        return "org.openoffice.comp.extensions.ObjectInspectorModel";
     }
 
 
     Sequence< OUString > SAL_CALL ObjectInspectorModel::getSupportedServiceNames(  )
     {
-        return getSupportedServiceNames_static();
-    }
-
-
-    OUString ObjectInspectorModel::getImplementationName_static(  )
-    {
-        return OUString( "org.openoffice.comp.extensions.ObjectInspectorModel" );
-    }
-
-
-    Sequence< OUString > ObjectInspectorModel::getSupportedServiceNames_static(  )
-    {
-        OUString sService( "com.sun.star.inspection.ObjectInspectorModel" );
-        return Sequence< OUString >( &sService, 1 );
-    }
-
-
-    Reference< XInterface > SAL_CALL ObjectInspectorModel::Create(const Reference< XComponentContext >& /* _rxContext */ )
-    {
-        return *( new ObjectInspectorModel() );
+        return { "com.sun.star.inspection.ObjectInspectorModel" };
     }
 
 
@@ -193,14 +161,14 @@ namespace pcr
 
     void ObjectInspectorModel::createWithHandlerFactories( const Sequence< Any >& _rFactories )
     {
-        impl_verifyArgument_throw( _rFactories.getLength() > 0, 1 );
+        impl_verifyArgument_throw( _rFactories.hasElements(), 1 );
         m_aFactories = _rFactories;
     }
 
 
     void ObjectInspectorModel::createWithHandlerFactoriesAndHelpSection( const Sequence< Any >& _rFactories, sal_Int32 _nMinHelpTextLines, sal_Int32 _nMaxHelpTextLines )
     {
-        impl_verifyArgument_throw( _rFactories.getLength() > 0, 1 );
+        impl_verifyArgument_throw( _rFactories.hasElements(), 1 );
         impl_verifyArgument_throw( _nMinHelpTextLines >= 1, 2 );
         impl_verifyArgument_throw( _nMaxHelpTextLines >= 1, 3 );
         impl_verifyArgument_throw( _nMinHelpTextLines <= _nMaxHelpTextLines, 2 );
@@ -219,10 +187,11 @@ namespace pcr
 
 } // namespace pcr
 
-
-extern "C" void SAL_CALL createRegistryInfo_ObjectInspectorModel()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_propctrlr_ObjectInspectorModel_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    ::pcr::OAutoRegistration< ::pcr::ObjectInspectorModel > aObjectInspectorModelRegistration;
+    return cppu::acquire(new pcr::ObjectInspectorModel());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

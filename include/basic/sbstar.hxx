@@ -27,25 +27,19 @@
 #include <tools/link.hxx>
 
 #include <basic/sbdef.hxx>
-#include <basic/sberrors.hxx>
-#include <com/sun/star/script/ModuleInfo.hpp>
-#include <com/sun/star/frame/XModel.hpp>
 #include <basic/basicdllapi.h>
 
-class SbiInstance;                  // runtime instance
-class SbiRuntime;                   // currently running procedure
-class SbiImage;                     // compiled image
-class BasicLibInfo;                 // info block for basic manager
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::script { struct ModuleInfo; }
+
 class SbMethod;
-class BasicManager;
-class DocBasicItem;
 
 class BASIC_DLLPUBLIC StarBASIC : public SbxObject
 {
     friend class SbiScanner;
     friend class SbiExpression; // Access to RTL
-    friend class SbiInstance;
-    friend class SbiRuntime;
+    friend class SbiInstance;   // runtime instance
+    friend class SbiRuntime;    // currently running procedure
     friend class DocBasicItem;
 
     SbModules       pModules;               // List of all modules
@@ -62,7 +56,6 @@ class BASIC_DLLPUBLIC StarBASIC : public SbxObject
     bool            bQuit;
 
     SbxObjectRef pVBAGlobals;
-    BASIC_DLLPRIVATE SbxObject* getVBAGlobals( );
 
     BASIC_DLLPRIVATE void implClearDependingVarsOnDelete( StarBASIC* pDeletedBasic );
 
@@ -86,7 +79,7 @@ public:
 
     StarBASIC( StarBASIC* pParent = nullptr, bool bIsDocBasic = false );
 
-    // #51727 SetModified overridden so that the Modfied-State is
+    // #51727 SetModified overridden so that the Modified-State is
         // not delivered to Parent.
     virtual void SetModified( bool ) override;
 
@@ -116,7 +109,7 @@ public:
     SbxObject*      GetRtl()     { return pRtl.get();     }
     SbModule*       FindModule( const OUString& );
     // Run init code of all modules (including the inserted Doc-Basics)
-    void            InitAllModules( StarBASIC* pBasicNotToInit = nullptr );
+    void            InitAllModules( StarBASIC const * pBasicNotToInit = nullptr );
     void            DeInitAllModules();
     void            ClearAllModuleVars();
 
@@ -130,12 +123,12 @@ public:
     // Specific to error handler
     static void     MakeErrorText( ErrCode, const OUString& aMsg );
     static const    OUString& GetErrorText();
-    static ErrCode  GetErrorCode();
+    static ErrCode const & GetErrorCode();
     static sal_uInt16 GetVBErrorCode( ErrCode nError );
     static ErrCode  GetSfxFromVBError( sal_uInt16 nError );
     bool            IsBreak() const             { return bBreak; }
 
-    static Link<StarBASIC*,bool> GetGlobalErrorHdl();
+    static Link<StarBASIC*,bool> const & GetGlobalErrorHdl();
     static void     SetGlobalErrorHdl( const Link<StarBASIC*,bool>& rNewHdl );
 
     static void     SetGlobalBreakHdl( const Link<StarBASIC*,BasicDebugFlags>& rNewHdl );
@@ -146,14 +139,16 @@ public:
     static SbMethod* GetActiveMethod( sal_uInt16 nLevel = 0 );
     static SbModule* GetActiveModule();
     void SetVBAEnabled( bool bEnabled );
-    bool isVBAEnabled();
+    bool isVBAEnabled() const;
 
-    const SbxObjectRef& getRTL() { return pRtl; }
-    bool IsDocBasic() { return bDocBasic; }
+    const SbxObjectRef& getRTL() const { return pRtl; }
+    bool IsDocBasic() const { return bDocBasic; }
     SbxVariable* VBAFind( const OUString& rName, SbxClassType t );
     bool GetUNOConstant( const OUString& rName, css::uno::Any& aOut );
     void QuitAndExitApplication();
-    bool IsQuitApplication() { return bQuit; };
+    bool IsQuitApplication() const { return bQuit; };
+
+    SbxObject* getVBAGlobals( );
 
     static css::uno::Reference< css::frame::XModel >
         GetModelFromBasic( SbxObject* pBasic );

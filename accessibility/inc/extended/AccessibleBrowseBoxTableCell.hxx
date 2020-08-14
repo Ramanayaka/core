@@ -16,12 +16,12 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXTABLECELL_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXTABLECELL_HXX
+#pragma once
 
-#include "extended/accessiblebrowseboxcell.hxx"
+#include <extended/accessiblebrowseboxcell.hxx>
 #include <comphelper/accessibletexthelper.hxx>
 #include <cppuhelper/implbase2.hxx>
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 
 namespace accessibility
 {
@@ -30,35 +30,32 @@ namespace accessibility
                                 >   AccessibleTextHelper_BASE;
 
     // implementation of a table cell of BrowseBox
-    class AccessibleBrowseBoxTableCell  :public AccessibleBrowseBoxCell
+    class AccessibleBrowseBoxTableCell final : public AccessibleBrowseBoxCell
                                         ,public AccessibleTextHelper_BASE
                                         ,public ::comphelper::OCommonAccessibleText
     {
     private:
         sal_Int32   m_nOffset;
 
-    protected:
         // OCommonAccessibleText
-        virtual OUString                        implGetText() override;
+        virtual OUString                        implGetText() final override;
         virtual css::lang::Locale               implGetLocale() override;
         virtual void                            implGetSelection( sal_Int32& nStartIndex, sal_Int32& nEndIndex ) override;
 
     public:
         AccessibleBrowseBoxTableCell( const css::uno::Reference< css::accessibility::XAccessible >& _rxParent,
-                                    ::svt::IAccessibleTableProvider& _rBrowseBox,
+                                    ::vcl::IAccessibleTableProvider& _rBrowseBox,
                                     const css::uno::Reference< css::awt::XWindow >& _xFocusWindow,
                                     sal_Int32 _nRowId,
                                     sal_uInt16 _nColId,
                                     sal_Int32 _nOffset );
-
-        void    nameChanged( const OUString& rNewName, const OUString& rOldName );
 
         // XInterface -------------------------------------------------------------
 
         /** Queries for a new interface. */
         css::uno::Any SAL_CALL queryInterface( const css::uno::Type& rType ) override;
 
-        /** Aquires the object (calls acquire() on base class). */
+        /** Acquires the object (calls acquire() on base class). */
         virtual void SAL_CALL acquire() throw () override;
 
         /** Releases the object (calls release() on base class). */
@@ -112,14 +109,14 @@ namespace accessibility
         virtual sal_Int32 SAL_CALL getSelectionStart() override;
         virtual sal_Int32 SAL_CALL getSelectionEnd() override;
         virtual sal_Bool SAL_CALL setSelection( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
-        virtual OUString SAL_CALL getText() override;
+        virtual OUString SAL_CALL getText() final override;
         virtual OUString SAL_CALL getTextRange( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
         virtual css::accessibility::TextSegment SAL_CALL getTextAtIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
         virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
         virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
         virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+        virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
     };
 }
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXTABLECELL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

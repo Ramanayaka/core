@@ -26,9 +26,7 @@
 #include <drawinglayer/geometry/viewinformation2d.hxx>
 
 
-namespace drawinglayer
-{
-    namespace processor2d
+namespace drawinglayer::processor2d
     {
         /** BaseProcessor2D class
 
@@ -45,7 +43,7 @@ namespace drawinglayer
             to construct any processor with a given ViewInformation2D. To be able
             to handle primitives which need to change the current transformation
             (as e.g. TransformPrimitive2D) it is allowed for the processor implementation
-            to change tis local value using updateViewInformation.
+            to change its local value using updateViewInformation.
 
             The basic processing method is process(..) which gets handed over the
             sequence of primitives to process. For convenience of the C++ implementations,
@@ -56,7 +54,7 @@ namespace drawinglayer
             The process(..) implementation makes a complete iteration over the given
             sequence of primitives. If the Primitive is not derived from BasePrimitive2D
             and thus not part of the C++ implementations, it converts ViewInformation2D
-            to the corresponding API implementation (an uno::Sequence< beans::PropertyValue >)
+            to the corresponding API implementation (a uno::Sequence< beans::PropertyValue >)
             and recursively calls the method process(..) at the primitive with the decomposition
             derived from that primitive. This is the preparation to handle unknown implementations
             of the css::graphic::XPrimitive2D interface in the future.
@@ -188,8 +186,8 @@ namespace drawinglayer
             /// data read access
             const geometry::ViewInformation2D& getViewInformation2D() const { return maViewInformation2D; }
         };
-    } // end of namespace processor2d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::processor2d
 
 
 #endif //INCLUDED_DRAWINGLAYER_PROCESSOR2D_BASEPROCESSOR2D_HXX

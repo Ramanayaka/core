@@ -22,9 +22,9 @@
 
 #include <xmloff/xmlstyle.hxx>
 
-namespace com { namespace sun { namespace star { namespace io {
+namespace com::sun::star::io {
     class XOutputStream;
-} } } }
+}
 
 /// Handles <style:font-face>
 class XMLFontStyleContextFontFace : public SvXMLStyleContext
@@ -35,11 +35,11 @@ class XMLFontStyleContextFontFace : public SvXMLStyleContext
     css::uno::Any aPitch;
     css::uno::Any aEnc;
 
-    SvXMLImportContextRef xStyles;
+    rtl::Reference<XMLFontStylesContext> xStyles;
 
     XMLFontStylesContext *GetStyles()
     {
-        return static_cast<XMLFontStylesContext *>(xStyles.get());
+        return xStyles.get();
     }
 
 public:
@@ -64,7 +64,7 @@ public:
 
     OUString familyName() const;
 
-    SvXMLImportContext * CreateChildContext(
+    SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
@@ -81,7 +81,7 @@ public:
             const OUString& rLName,
             const XMLFontStyleContextFontFace& font );
 
-    virtual SvXMLImportContext * CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
@@ -111,7 +111,7 @@ public:
         const OUString& rValue ) override;
     void SetFormat( const OUString& rFormat );
     void EndElement() override;
-    SvXMLImportContext * CreateChildContext(
+    SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;

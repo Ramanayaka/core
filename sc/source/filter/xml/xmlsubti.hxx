@@ -19,16 +19,15 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_XML_XMLSUBTI_HXX
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLSUBTI_HXX
 
-#include <xmloff/xmlictxt.hxx>
-#include <xmloff/xmlimp.hxx>
-#include <com/sun/star/sheet/XSpreadsheet.hpp>
-#include <com/sun/star/drawing/XDrawPage.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
-
 #include "XMLTableShapeResizer.hxx"
 #include <formula/grammar.hxx>
-#include "tabprotection.hxx"
-#include "rangelst.hxx"
+#include <tabprotection.hxx>
+#include <rangelst.hxx>
+
+namespace com::sun::star::drawing { class XDrawPage; }
+namespace com::sun::star::sheet { class XSpreadsheet; }
+namespace com::sun::star::table { class XCellRange; }
+namespace com::sun::star::drawing { class XShapes; }
 
 class ScXMLImport;
 
@@ -56,7 +55,6 @@ private:
     ScMyOLEFixer                        aFixupOLEs;
 
     css::uno::Reference< css::sheet::XSpreadsheet > xCurrentSheet;
-    css::uno::Reference< css::table::XCellRange > xCurrentCellRange;
     css::uno::Reference< css::drawing::XDrawPage > xDrawPage;
     css::uno::Reference < css::drawing::XShapes > xShapes;
     OUString                       sCurrentSheetName;
@@ -77,7 +75,7 @@ public:
     void                                SetRowStyle(const OUString& rCellStyleName);
     void                                AddColumn(bool bIsCovered);
     void                                FixupOLEs() { aFixupOLEs.FixupOLEs(); }
-    static bool                         IsOLE(css::uno::Reference< css::drawing::XShape >& rShape)
+    static bool                         IsOLE(const css::uno::Reference< css::drawing::XShape >& rShape)
                                             { return ScMyOLEFixer::IsOLE(rShape); }
     void                                DeleteTable();
     const ScAddress&                    GetCurrentCellPos() const { return maCurrentCellPos; };
@@ -85,7 +83,7 @@ public:
     ScXMLTabProtectionData&             GetCurrentProtectionData() { return maProtectionData; }
     const OUString&                     GetCurrentSheetName() const { return sCurrentSheetName; }
     SCTAB                               GetCurrentSheet() const { return (maCurrentCellPos.Tab() >= 0) ? maCurrentCellPos.Tab() : 0; }
-    SCCOL                               GetCurrentColCount() const { return std::min<sal_Int32>(nCurrentColCount, MAXCOL); }
+    SCCOL                               GetCurrentColCount() const;
     SCROW                               GetCurrentRow() const { return (maCurrentCellPos.Row() >= 0) ? maCurrentCellPos.Row() : 0; }
     const css::uno::Reference< css::sheet::XSpreadsheet >&
                                         GetCurrentXSheet() const { return xCurrentSheet; }
@@ -93,9 +91,9 @@ public:
                                         GetCurrentXDrawPage();
     css::uno::Reference< css::drawing::XShapes > const &
                                         GetCurrentXShapes();
-    bool                                HasDrawPage();
-    bool                                HasXShapes();
-    void                                AddOLE(css::uno::Reference <css::drawing::XShape>& rShape,
+    bool                                HasDrawPage() const;
+    bool                                HasXShapes() const;
+    void                                AddOLE(const css::uno::Reference <css::drawing::XShape>& rShape,
                                                const OUString &rRangeList);
 
     void                                AddMatrixRange( const SCCOL nStartColumn,

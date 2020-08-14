@@ -16,44 +16,45 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SVX_SOURCE_SIDEBAR_PARAGRAPH_PARALINESPACINGCONTROL_HXX
-#define INCLUDED_SVX_SOURCE_SIDEBAR_PARAGRAPH_PARALINESPACINGCONTROL_HXX
+#pragma once
 
-#include <svtools/ctrlbox.hxx>
-#include <sfx2/tbxctrl.hxx>
+#include <svtools/toolbarmenu.hxx>
 
 class SvxLineSpacingItem;
-class Button;
 
-namespace svx {
+namespace svx
+{
+class SvxLineSpacingToolBoxControl;
 
-class ParaLineSpacingControl : public SfxPopupWindow
+class ParaLineSpacingControl : public WeldToolbarPopup
 {
 public:
-    explicit ParaLineSpacingControl(sal_uInt16 nId);
+    explicit ParaLineSpacingControl(SvxLineSpacingToolBoxControl* pControl, weld::Widget* pParent);
     virtual ~ParaLineSpacingControl() override;
-    virtual void dispose() override;
 
-private:
-    MapUnit                        meLNSpaceUnit;
-
-    VclPtr<Edit>                   mpActLineDistFld;
-
-    VclPtr<PushButton>             mpSpacing1Button;
-    VclPtr<PushButton>             mpSpacing115Button;
-    VclPtr<PushButton>             mpSpacing15Button;
-    VclPtr<PushButton>             mpSpacing2Button;
-
-    VclPtr<ListBox>                mpLineDist;
-
-    VclPtr<FixedText>              mpLineDistLabel;
-    VclPtr<MetricField>            mpLineDistAtPercentBox;
-    VclPtr<MetricField>            mpLineDistAtMetricBox;
-
-private:
     /// Setup the widgets with values from the document.
     void Initialize();
 
+    virtual void GrabFocus() override;
+
+private:
+    rtl::Reference<SvxLineSpacingToolBoxControl> mxControl;
+
+    MapUnit meLNSpaceUnit;
+
+    std::unique_ptr<weld::Button> mxSpacing1Button;
+    std::unique_ptr<weld::Button> mxSpacing115Button;
+    std::unique_ptr<weld::Button> mxSpacing15Button;
+    std::unique_ptr<weld::Button> mxSpacing2Button;
+
+    std::unique_ptr<weld::ComboBox> mxLineDist;
+
+    std::unique_ptr<weld::Label> mxLineDistLabel;
+    std::unique_ptr<weld::MetricSpinButton> mxLineDistAtPercentBox;
+    std::unique_ptr<weld::MetricSpinButton> mxLineDistAtMetricBox;
+    weld::MetricSpinButton* mpActLineDistFld;
+
+private:
     /// Take the values from the widgets, and update the paragraph accordingly.
     void ExecuteLineSpace();
 
@@ -69,13 +70,10 @@ private:
     /// Set the entry and update the metric fields.
     void SelectEntryPos(sal_Int32 nPos);
 
-    DECL_LINK(LineSPDistHdl_Impl, ListBox&, void);
-    DECL_LINK(LineSPDistAtHdl_Impl, Edit&, void);
-    DECL_LINK(PredefinedValuesHandler, Button*, void);
+    DECL_LINK(LineSPDistHdl_Impl, weld::ComboBox&, void);
+    DECL_LINK(LineSPDistAtHdl_Impl, weld::MetricSpinButton&, void);
+    DECL_LINK(PredefinedValuesHandler, weld::Button&, void);
 };
-
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

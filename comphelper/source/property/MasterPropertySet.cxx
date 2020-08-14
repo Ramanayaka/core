@@ -28,6 +28,8 @@
 #include <memory>
 #include <vector>
 
+namespace {
+
 class AutoOGuardArray
 {
     std::vector<std::unique_ptr< osl::Guard< comphelper::SolarMutex > >>  maGuardArray;
@@ -37,6 +39,8 @@ public:
 
     std::unique_ptr< osl::Guard< comphelper::SolarMutex > > &  operator[] ( sal_Int32 i ) { return maGuardArray[i]; }
 };
+
+}
 
 AutoOGuardArray::AutoOGuardArray( sal_Int32 nNumElements ) : maGuardArray(nNumElements)
 {
@@ -51,8 +55,7 @@ using namespace ::com::sun::star::beans;
 
 
 SlaveData::SlaveData ( ChainablePropertySet *pSlave)
-: mpSlave ( pSlave )
-, mxSlave ( pSlave )
+: mxSlave ( pSlave )
 , mbInit ( false )
 {
 }
@@ -68,7 +71,7 @@ MasterPropertySet::MasterPropertySet( comphelper::MasterPropertySetInfo* pInfo, 
 MasterPropertySet::~MasterPropertySet()
     throw()
 {
-    for( auto& rSlave : maSlaveMap )
+    for( const auto& rSlave : maSlaveMap )
         delete rSlave.second;
 }
 
@@ -105,7 +108,7 @@ void SAL_CALL MasterPropertySet::setPropertyValue( const OUString& rPropertyName
     }
     else
     {
-        ChainablePropertySet * pSlave = maSlaveMap [ (*aIter).second->mnMapId ]->mpSlave;
+        ChainablePropertySet * pSlave = maSlaveMap [ (*aIter).second->mnMapId ]->mxSlave.get();
 
         // acquire mutex in c-tor and releases it in the d-tor (exception safe!).
         std::unique_ptr< osl::Guard< comphelper::SolarMutex > > xMutexGuard2;
@@ -139,7 +142,7 @@ Any SAL_CALL MasterPropertySet::getPropertyValue( const OUString& rPropertyName 
     }
     else
     {
-        ChainablePropertySet * pSlave = maSlaveMap [ (*aIter).second->mnMapId ]->mpSlave;
+        ChainablePropertySet * pSlave = maSlaveMap [ (*aIter).second->mnMapId ]->mxSlave.get();
 
         // acquire mutex in c-tor and releases it in the d-tor (exception safe!).
         std::unique_ptr< osl::Guard< comphelper::SolarMutex > > xMutexGuard2;
@@ -186,53 +189,53 @@ void SAL_CALL MasterPropertySet::setPropertyValues( const Sequence< OUString >& 
     if( nCount != aValues.getLength() )
         throw IllegalArgumentException();
 
-    if( nCount )
+    if( !nCount )
+        return;
+
+    _preSetValues();
+
+    const Any * pAny = aValues.getConstArray();
+    const OUString * pString = aPropertyNames.getConstArray();
+    PropertyDataHash::const_iterator aEnd = mxInfo->maMap.end(), aIter;
+
+    //!! have a unique_ptr to an array of OGuards in order to have the
+    //!! allocated memory properly freed (exception safe!).
+    //!! Since the array itself has unique_ptrs as members we have to use a
+    //!! helper class 'AutoOGuardArray' in order to have
+    //!! the acquired locks properly released.
+    AutoOGuardArray aOGuardArray( nCount );
+
+    for ( sal_Int32 i = 0; i < nCount; ++i, ++pString, ++pAny )
     {
-        _preSetValues();
+        aIter = mxInfo->maMap.find ( *pString );
+        if ( aIter == aEnd )
+            throw RuntimeException( *pString, static_cast< XPropertySet* >( this ) );
 
-        const Any * pAny = aValues.getConstArray();
-        const OUString * pString = aPropertyNames.getConstArray();
-        PropertyDataHash::const_iterator aEnd = mxInfo->maMap.end(), aIter;
-
-        //!! have a unique_ptr to an array of OGuards in order to have the
-        //!! allocated memory properly freed (exception safe!).
-        //!! Since the array itself has unique_ptrs as members we have to use a
-        //!! helper class 'AutoOGuardArray' in order to have
-        //!! the acquired locks properly released.
-        AutoOGuardArray aOGuardArray( nCount );
-
-        for ( sal_Int32 i = 0; i < nCount; ++i, ++pString, ++pAny )
+        if ( (*aIter).second->mnMapId == 0 ) // 0 means it's one of ours !
+            _setSingleValue( *((*aIter).second->mpInfo), *pAny );
+        else
         {
-            aIter = mxInfo->maMap.find ( *pString );
-            if ( aIter == aEnd )
-                throw RuntimeException( *pString, static_cast< XPropertySet* >( this ) );
-
-            if ( (*aIter).second->mnMapId == 0 ) // 0 means it's one of ours !
-                _setSingleValue( *((*aIter).second->mpInfo), *pAny );
-            else
+            SlaveData * pSlave = maSlaveMap [ (*aIter).second->mnMapId ];
+            if (!pSlave->IsInit())
             {
-                SlaveData * pSlave = maSlaveMap [ (*aIter).second->mnMapId ];
-                if (!pSlave->IsInit())
-                {
-                    // acquire mutex in c-tor and releases it in the d-tor (exception safe!).
-                    if (pSlave->mpSlave->mpMutex)
-                        aOGuardArray[i].reset( new osl::Guard< comphelper::SolarMutex >(pSlave->mpSlave->mpMutex) );
+                // acquire mutex in c-tor and releases it in the d-tor (exception safe!).
+                if (pSlave->mxSlave->mpMutex)
+                    aOGuardArray[i].reset( new osl::Guard< comphelper::SolarMutex >(pSlave->mxSlave->mpMutex) );
 
-                    pSlave->mpSlave->_preSetValues();
-                    pSlave->SetInit ( true );
-                }
-                pSlave->mpSlave->_setSingleValue( *((*aIter).second->mpInfo), *pAny );
+                pSlave->mxSlave->_preSetValues();
+                pSlave->SetInit ( true );
             }
+            pSlave->mxSlave->_setSingleValue( *((*aIter).second->mpInfo), *pAny );
         }
+    }
 
-        _postSetValues();
-        for( const auto& rSlave : maSlaveMap )
+    _postSetValues();
+    for( const auto& rSlave : maSlaveMap )
+    {
+        if( rSlave.second->IsInit() )
         {
-            if( rSlave.second->IsInit() )
-            {
-                rSlave.second->mpSlave->_postSetValues();
-                rSlave.second->SetInit( false );
-            }
+            rSlave.second->mxSlave->_postSetValues();
+            rSlave.second->SetInit( false );
         }
     }
 }
@@ -256,7 +259,7 @@ Sequence< Any > SAL_CALL MasterPropertySet::getPropertyValues( const Sequence< O
         const OUString * pString = aPropertyNames.getConstArray();
         PropertyDataHash::const_iterator aEnd = mxInfo->maMap.end(), aIter;
 
-        //!! have an unique_ptr to an array of OGuards in order to have the
+        //!! have a unique_ptr to an array of OGuards in order to have the
         //!! allocated memory properly freed (exception safe!).
         //!! Since the array itself has unique_ptrs as members we have to use a
         //!! helper class 'AutoOGuardArray' in order to have
@@ -277,13 +280,13 @@ Sequence< Any > SAL_CALL MasterPropertySet::getPropertyValues( const Sequence< O
                 if (!pSlave->IsInit())
                 {
                     // acquire mutex in c-tor and releases it in the d-tor (exception safe!).
-                    if (pSlave->mpSlave->mpMutex)
-                        aOGuardArray[i].reset( new osl::Guard< comphelper::SolarMutex >(pSlave->mpSlave->mpMutex) );
+                    if (pSlave->mxSlave->mpMutex)
+                        aOGuardArray[i].reset( new osl::Guard< comphelper::SolarMutex >(pSlave->mxSlave->mpMutex) );
 
-                    pSlave->mpSlave->_preGetValues();
+                    pSlave->mxSlave->_preGetValues();
                     pSlave->SetInit ( true );
                 }
-                pSlave->mpSlave->_getSingleValue( *((*aIter).second->mpInfo), *pAny );
+                pSlave->mxSlave->_getSingleValue( *((*aIter).second->mpInfo), *pAny );
             }
         }
 
@@ -292,7 +295,7 @@ Sequence< Any > SAL_CALL MasterPropertySet::getPropertyValues( const Sequence< O
         {
             if( rSlave.second->IsInit() )
             {
-                rSlave.second->mpSlave->_postSetValues();
+                rSlave.second->mxSlave->_postSetValues();
                 rSlave.second->SetInit( false );
             }
         }
@@ -325,7 +328,7 @@ PropertyState SAL_CALL MasterPropertySet::getPropertyState( const OUString& Prop
     // 0 means it's one of ours !
     if ( (*aIter).second->mnMapId != 0 )
     {
-        ChainablePropertySet * pSlave = maSlaveMap [ (*aIter).second->mnMapId ]->mpSlave;
+        ChainablePropertySet * pSlave = maSlaveMap [ (*aIter).second->mnMapId ]->mxSlave.get();
 
         // acquire mutex in c-tor and releases it in the d-tor (exception safe!).
         std::unique_ptr< osl::Guard< comphelper::SolarMutex > > xMutexGuard;

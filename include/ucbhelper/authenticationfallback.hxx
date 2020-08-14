@@ -7,13 +7,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_UCBHELPER_AUTHENTICATIONFALLBACK_HXX
-#define INCLUDED_UCBHELPER_AUTHENTICATIONFALLBACK_HXX
+#pragma once
 
 #include <rtl/ref.hxx>
 #include <ucbhelper/interactionrequest.hxx>
 #include <ucbhelper/ucbhelperdllapi.h>
-#include <com/sun/star/ucb/AuthenticationFallbackRequest.hpp>
 
 
 namespace ucbhelper {
@@ -25,7 +23,7 @@ namespace ucbhelper {
   * Read-only values : instructions, url
   * Read-write values: code
   */
-class UCBHELPER_DLLPUBLIC AuthenticationFallbackRequest : public ucbhelper::InteractionRequest
+class UCBHELPER_DLLPUBLIC AuthenticationFallbackRequest final : public ucbhelper::InteractionRequest
 {
 private:
     rtl::Reference< ucbhelper::InteractionAuthFallback > m_xAuthFallback;
@@ -46,7 +44,5 @@ public:
 };
 
 } // namespace ucbhelper
-
-#endif /* ! INCLUDED_UCBHELPER_AUTHENTICATIONFALLBACK_HXX*/
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

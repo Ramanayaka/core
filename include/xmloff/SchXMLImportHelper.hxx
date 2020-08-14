@@ -23,15 +23,14 @@
 
 #include <salhelper/simplereferenceobject.hxx>
 #include <xmloff/families.hxx>
-#include <com/sun/star/util/XStringMapping.hpp>
-#include <com/sun/star/chart/XChartDocument.hpp>
+#include <xmloff/xmltkmap.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star::chart { class XChartDocument; }
+namespace com::sun::star::beans { class XPropertySet; }
+
+namespace com::sun::star {
     namespace frame {
         class XModel;
-    }
-    namespace task {
-        class XStatusIndicator;
     }
     namespace xml {
         namespace sax {
@@ -39,19 +38,12 @@ namespace com { namespace sun { namespace star {
         }
     }
     namespace chart2 {
-        namespace data {
-            class XDataProvider;
-            class XLabeledDataSequence;
-        }
         class XChartDocument;
         class XDataSeries;
     }
-}}}
+}
 
-class SvXMLUnitConverter;
 class SvXMLStylesContext;
-class XMLChartImportPropertyMapper;
-class SvXMLTokenMap;
 class SvXMLImportContext;
 class SvXMLImport;
 
@@ -62,7 +54,7 @@ class SvXMLImport;
     converts table addresses in XML format to the appropriate application
     format.
  */
-class SchXMLImportHelper : public salhelper::SimpleReferenceObject
+class SchXMLImportHelper final : public salhelper::SimpleReferenceObject
 {
 private:
     css::uno::Reference< css::chart::XChartDocument > mxChartDoc;
@@ -104,7 +96,7 @@ public:
     /// Fill in the autostyle.
     void FillAutoStyle(const OUString& rAutoStyleName, const css::uno::Reference<css::beans::XPropertySet>& rProp);
 
-    const css::uno::Reference< css::chart::XChartDocument >& GetChartDocument()
+    const css::uno::Reference< css::chart::XChartDocument >& GetChartDocument() const
         { return mxChartDoc; }
 
     const SvXMLTokenMap& GetDocElemTokenMap();
@@ -120,7 +112,7 @@ public:
     const SvXMLTokenMap& GetSeriesAttrTokenMap();
     const SvXMLTokenMap& GetRegEquationAttrTokenMap();
 
-    static sal_uInt16 GetChartFamilyID() { return XML_STYLE_FAMILY_SCH_CHART_ID; }
+    static XmlStyleFamily GetChartFamilyID() { return XmlStyleFamily::SCH_CHART_ID; }
 
     /** @param bPushLastChartType If </sal_False>, in case a new chart type has to
                be added (because it does not exist yet), it is appended at the

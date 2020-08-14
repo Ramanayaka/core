@@ -18,23 +18,23 @@
  */
 
 #include <vcl/builderfactory.hxx>
+#include <vcl/button.hxx>
 #include <vcl/layout.hxx>
+#include <vcl/notebookbar.hxx>
 #include <vcl/tabpage.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <sfx2/notebookbar/NotebookbarTabControl.hxx>
+#include <notebookbar/NotebookbarTabControl.hxx>
 #include <com/sun/star/ui/theModuleUIConfigurationManagerSupplier.hpp>
-#include <com/sun/star/ui/XUIConfigurationManagerSupplier.hpp>
 #include <com/sun/star/ui/ItemType.hpp>
 #include <com/sun/star/frame/XModuleManager.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
-#include <sfx2/notebookbar/SfxNotebookBar.hxx>
+#include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/uno/Reference.h>
 #include <toolkit/awt/vclxmenu.hxx>
 #include <com/sun/star/frame/XPopupMenuController.hpp>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <sfx2/sidebar/SidebarToolBox.hxx>
-#include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #define ICON_SIZE 25
@@ -117,6 +117,8 @@ public:
     }
 };
 
+namespace {
+
 class ShortcutsToolBox : public sfx2::sidebar::SidebarToolBox
 {
 public:
@@ -124,9 +126,26 @@ public:
     : sfx2::sidebar::SidebarToolBox( pParent )
     {
         mbUseDefaultButtonSize = false;
+        mbSideBar = false;
         SetToolboxButtonSize(ToolBoxButtonSize::Small);
     }
+
+    virtual void KeyInput( const KeyEvent& rKEvt ) override
+    {
+        if ( rKEvt.GetKeyCode().IsMod1() )
+        {
+            sal_uInt16 nCode( rKEvt.GetKeyCode().GetCode() );
+            if ( nCode == KEY_RIGHT || nCode == KEY_LEFT )
+            {
+                GetParent()->KeyInput( rKEvt );
+                return;
+            }
+        }
+        return sfx2::sidebar::SidebarToolBox::KeyInput( rKEvt );
+    }
 };
+
+}
 
 NotebookbarTabControl::NotebookbarTabControl( Window* pParent )
 : NotebookbarTabControlBase( pParent )
@@ -137,6 +156,84 @@ NotebookbarTabControl::NotebookbarTabControl( Window* pParent )
 
 NotebookbarTabControl::~NotebookbarTabControl()
 {
+}
+
+void NotebookbarTabControl::ArrowStops( sal_uInt16 nCode )
+{
+    ToolBox* pToolBox( GetToolBox() );
+    PushButton* pOpenMenu( GetOpenMenu() );
+
+    if ( nCode == KEY_LEFT )
+    {
+        if ( HasFocus() )
+        {
+            if ( pToolBox )
+                pToolBox->GrabFocus();
+            else if ( pOpenMenu )
+                pOpenMenu->GrabFocus();
+        }
+        else if ( pToolBox && pToolBox->HasFocus() )
+        {
+            if ( pOpenMenu )
+                pOpenMenu->GrabFocus();
+            else
+                GrabFocus();
+        }
+        else if ( pOpenMenu && pOpenMenu->HasFocus() )
+        {
+            GrabFocus();
+        }
+    }
+    else if ( nCode == KEY_RIGHT )
+    {
+        if ( HasFocus() )
+        {
+            if ( pOpenMenu )
+                pOpenMenu->GrabFocus();
+            else if ( pToolBox )
+                pToolBox->GrabFocus();
+        }
+        else if ( pToolBox && pToolBox->HasFocus() )
+        {
+            GrabFocus();
+        }
+        else if ( pOpenMenu && pOpenMenu->HasFocus() )
+        {
+            if ( pToolBox )
+                pToolBox->GrabFocus();
+            else
+                GrabFocus();
+        }
+    }
+}
+
+void NotebookbarTabControl::KeyInput( const KeyEvent& rKEvt )
+{
+    if ( rKEvt.GetKeyCode().IsMod1() )
+    {
+        sal_uInt16 nCode( rKEvt.GetKeyCode().GetCode() );
+        if ( nCode == KEY_RIGHT || nCode == KEY_LEFT )
+        {
+            ArrowStops( nCode );
+            return;
+        }
+    }
+    return NotebookbarTabControlBase::KeyInput( rKEvt );
+}
+
+bool NotebookbarTabControl::EventNotify( NotifyEvent& rNEvt )
+{
+    if ( rNEvt.GetType() == MouseNotifyEvent::KEYINPUT )
+    {
+        const vcl::KeyCode& rKey = rNEvt.GetKeyEvent()->GetKeyCode();
+        sal_uInt16 nCode = rKey.GetCode();
+        if ( rKey.IsMod1() && ( nCode == KEY_RIGHT || nCode == KEY_LEFT ) )
+        {
+            ArrowStops( nCode );
+            return true;
+        }
+    }
+    return NotebookbarTabControlBase::EventNotify( rNEvt );
 }
 
 void NotebookbarTabControl::StateChanged(StateChangedType nStateChange)
@@ -178,7 +275,7 @@ void NotebookbarTabControl::StateChanged(StateChangedType nStateChange)
     NotebookbarTabControlBase::StateChanged( nStateChange );
 }
 
-void NotebookbarTabControl::FillShortcutsToolBox(Reference<XComponentContext>& xContext,
+void NotebookbarTabControl::FillShortcutsToolBox(Reference<XComponentContext> const & xContext,
                                           const Reference<XFrame>& xFrame,
                                           const OUString& aModuleName,
                                           ToolBox* pShortcuts
@@ -207,16 +304,13 @@ void NotebookbarTabControl::FillShortcutsToolBox(Reference<XComponentContext>& x
             if ( xIndex->getByIndex( i ) >>= aPropSequence )
             {
                 OUString aCommandURL;
-                OUString aLabel;
                 sal_uInt16 nType = ItemType::DEFAULT;
                 bool bVisible = true;
 
-                for ( const auto& aProp: aPropSequence )
+                for ( const auto& aProp: std::as_const(aPropSequence) )
                 {
                     if ( aProp.Name == "CommandURL" )
                         aProp.Value >>= aCommandURL;
-                    else if ( aProp.Name == "Label" )
-                        aProp.Value >>= aLabel;
                     else if ( aProp.Name == "Type" )
                         aProp.Value >>= nType;
                     else if ( aProp.Name == "IsVisible" )
@@ -235,33 +329,33 @@ void NotebookbarTabControl::FillShortcutsToolBox(Reference<XComponentContext>& x
 
 IMPL_LINK(NotebookbarTabControl, OpenNotebookbarPopupMenu, NotebookBar*, pNotebookbar, void)
 {
-    if (pNotebookbar && m_xFrame.is())
-    {
-        Sequence<Any> aArgs {
-            makeAny(comphelper::makePropertyValue("Value", OUString("notebookbar"))),
-            makeAny(comphelper::makePropertyValue("Frame", m_xFrame)) };
+    if (!pNotebookbar || !m_xFrame.is())
+        return;
 
-        Reference<XComponentContext> xContext = comphelper::getProcessComponentContext();
-        Reference<XPopupMenuController> xPopupController(
-            xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-            "com.sun.star.comp.framework.ResourceMenuController", aArgs, xContext), UNO_QUERY);
+    Sequence<Any> aArgs {
+        makeAny(comphelper::makePropertyValue("Value", OUString("notebookbar"))),
+        makeAny(comphelper::makePropertyValue("Frame", m_xFrame)) };
 
-        Reference<css::awt::XPopupMenu> xPopupMenu(xContext->getServiceManager()->createInstanceWithContext(
-            "com.sun.star.awt.PopupMenu", xContext), UNO_QUERY);
+    Reference<XComponentContext> xContext = comphelper::getProcessComponentContext();
+    Reference<XPopupMenuController> xPopupController(
+        xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
+        "com.sun.star.comp.framework.ResourceMenuController", aArgs, xContext), UNO_QUERY);
 
-        if (!xPopupController.is() || !xPopupMenu.is())
-            return;
+    Reference<css::awt::XPopupMenu> xPopupMenu(xContext->getServiceManager()->createInstanceWithContext(
+        "com.sun.star.awt.PopupMenu", xContext), UNO_QUERY);
 
-        xPopupController->setPopupMenu(xPopupMenu);
-        VCLXMenu* pAwtMenu = VCLXMenu::GetImplementation(xPopupMenu);
-        PopupMenu* pVCLMenu = static_cast<PopupMenu*>(pAwtMenu->GetMenu());
-        Point aPos(0, NotebookbarTabControl::GetHeaderHeight());
-        pVCLMenu->Execute(pNotebookbar, tools::Rectangle(aPos, aPos),PopupMenuFlags::ExecuteDown|PopupMenuFlags::NoMouseUpClose);
+    if (!xPopupController.is() || !xPopupMenu.is())
+        return;
 
-        Reference<css::lang::XComponent> xComponent(xPopupController, UNO_QUERY);
-        if (xComponent.is())
-            xComponent->dispose();
-    }
+    xPopupController->setPopupMenu(xPopupMenu);
+    VCLXMenu* pAwtMenu = comphelper::getUnoTunnelImplementation<VCLXMenu>(xPopupMenu);
+    PopupMenu* pVCLMenu = static_cast<PopupMenu*>(pAwtMenu->GetMenu());
+    Point aPos(pNotebookbar->GetSizePixel().getWidth(), NotebookbarTabControl::GetHeaderHeight() - ICON_SIZE + 10);
+    pVCLMenu->Execute(pNotebookbar, tools::Rectangle(aPos, aPos),PopupMenuFlags::ExecuteDown|PopupMenuFlags::NoMouseUpClose);
+
+    Reference<css::lang::XComponent> xComponent(xPopupController, UNO_QUERY);
+    if (xComponent.is())
+        xComponent->dispose();
 }
 
 Size NotebookbarTabControl::calculateRequisition() const
@@ -270,19 +364,19 @@ Size NotebookbarTabControl::calculateRequisition() const
 
     for (int i = 0; i < GetPageCount(); i++)
     {
-        vcl::Window* pChild = static_cast<vcl::Window*>(GetTabPage(TabControl::GetPageId(i)));
+        vcl::Window* pChild = GetTabPage(TabControl::GetPageId(i));
 
         if (pChild)
         {
             Size aChildSize = VclAlignment::getLayoutRequisition(*pChild);
 
             if (aChildSize.getWidth() < aSize.getWidth())
-                aSize.Width() = aChildSize.Width();
+                aSize.setWidth( aChildSize.Width() );
         }
     }
 
     if (aSize.Width() < 400)
-        aSize.Width() = 400;
+        aSize.setWidth( 400 );
 
     return aSize;
 }

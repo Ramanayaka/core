@@ -23,7 +23,6 @@
 
 #include "ChartTransferable.hxx"
 
-#include <o3tl/make_unique.hxx>
 #include <sot/exchange.hxx>
 #include <sot/storage.hxx>
 #include <unotools/streamwrap.hxx>
@@ -33,9 +32,10 @@
 #include <editeng/fhgtitem.hxx>
 #include <svx/svditer.hxx>
 #include <svx/svdmodel.hxx>
-#include <svx/svdpage.hxx>
 #include <svx/unomodel.hxx>
 #include <svx/svdview.hxx>
+
+constexpr sal_uInt32 CHARTTRANSFER_OBJECTTYPE_DRAWMODEL = 1;
 
 using namespace ::com::sun::star;
 
@@ -44,12 +44,15 @@ using ::com::sun::star::uno::Reference;
 namespace chart
 {
 
-ChartTransferable::ChartTransferable( SdrModel* pDrawModel, SdrObject* pSelectedObj, bool bDrawing )
-    :m_pMarkedObjModel( nullptr )
+ChartTransferable::ChartTransferable(
+    SdrModel& rSdrModel,
+    SdrObject* pSelectedObj,
+    bool bDrawing)
+:   m_pMarkedObjModel( nullptr )
     ,m_bDrawing( bDrawing )
 {
-    std::unique_ptr<SdrExchangeView> pExchgView(o3tl::make_unique<SdrView>( pDrawModel ));
-    SdrPageView* pPv = pExchgView->ShowSdrPage( pDrawModel->GetPage( 0 ));
+    std::unique_ptr<SdrExchangeView> pExchgView(std::make_unique<SdrView>( rSdrModel ));
+    SdrPageView* pPv = pExchgView->ShowSdrPage( rSdrModel.GetPage( 0 ));
     if( pSelectedObj )
         pExchgView->MarkObj( pSelectedObj, pPv );
     else
@@ -58,7 +61,7 @@ ChartTransferable::ChartTransferable( SdrModel* pDrawModel, SdrObject* pSelected
     m_xMetaFileGraphic.set( aGraphic.GetXGraphic());
     if ( m_bDrawing )
     {
-        m_pMarkedObjModel = pExchgView->GetMarkedObjModel();
+        m_pMarkedObjModel = pExchgView->CreateMarkedObjModel().release();
     }
 }
 
@@ -85,7 +88,7 @@ bool ChartTransferable::GetData( const css::datatransfer::DataFlavor& rFlavor, c
     {
         if ( nFormat == SotClipboardFormatId::DRAWING )
         {
-            bResult = SetObject( m_pMarkedObjModel, SotClipboardFormatId::STRING, rFlavor );
+            bResult = SetObject( m_pMarkedObjModel, CHARTTRANSFER_OBJECTTYPE_DRAWMODEL, rFlavor );
         }
         else if ( nFormat == SotClipboardFormatId::GDIMETAFILE )
         {
@@ -102,7 +105,7 @@ bool ChartTransferable::GetData( const css::datatransfer::DataFlavor& rFlavor, c
     return bResult;
 }
 
-bool ChartTransferable::WriteObject( tools::SvRef<SotStorageStream>& rxOStm, void* pUserObject, SotClipboardFormatId nUserObjectId,
+bool ChartTransferable::WriteObject( tools::SvRef<SotStorageStream>& rxOStm, void* pUserObject, sal_uInt32 nUserObjectId,
     const datatransfer::DataFlavor& /* rFlavor */ )
 {
     // called from SetObject, put data into stream
@@ -110,7 +113,7 @@ bool ChartTransferable::WriteObject( tools::SvRef<SotStorageStream>& rxOStm, voi
     bool bRet = false;
     switch ( nUserObjectId )
     {
-        case SotClipboardFormatId::STRING:
+        case CHARTTRANSFER_OBJECTTYPE_DRAWMODEL:
             {
                 SdrModel* pMarkedObjModel = static_cast< SdrModel* >( pUserObject );
                 if ( pMarkedObjModel )
@@ -120,18 +123,16 @@ bool ChartTransferable::WriteObject( tools::SvRef<SotStorageStream>& rxOStm, voi
                     // for the changed pool defaults from drawing layer pool set those
                     // attributes as hard attributes to preserve them for saving
                     const SfxItemPool& rItemPool = pMarkedObjModel->GetItemPool();
-                    const SvxFontHeightItem& rDefaultFontHeight = static_cast< const SvxFontHeightItem& >(
-                        rItemPool.GetDefaultItem( EE_CHAR_FONTHEIGHT ) );
+                    const SvxFontHeightItem& rDefaultFontHeight = rItemPool.GetDefaultItem( EE_CHAR_FONTHEIGHT );
                     sal_uInt16 nCount = pMarkedObjModel->GetPageCount();
                     for ( sal_uInt16 i = 0; i < nCount; ++i )
                     {
                         const SdrPage* pPage = pMarkedObjModel->GetPage( i );
-                        SdrObjListIter aIter( *pPage, SdrIterMode::DeepNoGroups );
+                        SdrObjListIter aIter( pPage, SdrIterMode::DeepNoGroups );
                         while ( aIter.IsMore() )
                         {
                             SdrObject* pObj = aIter.Next();
-                            const SvxFontHeightItem& rItem = static_cast< const SvxFontHeightItem& >(
-                                pObj->GetMergedItem( EE_CHAR_FONTHEIGHT ) );
+                            const SvxFontHeightItem& rItem = pObj->GetMergedItem( EE_CHAR_FONTHEIGHT );
                             if ( rItem.GetHeight() == rDefaultFontHeight.GetHeight() )
                             {
                                 pObj->SetMergedItem( rDefaultFontHeight );

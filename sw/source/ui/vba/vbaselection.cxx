@@ -18,16 +18,13 @@
  */
 #include "vbaselection.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
 #include "vbarange.hxx"
 #include "vbafind.hxx"
 #include <com/sun/star/text/XTextRange.hpp>
 #include <com/sun/star/text/XTextTable.hpp>
 #include <com/sun/star/text/XTextTableCursor.hpp>
-#include <com/sun/star/text/ControlCharacter.hpp>
 #include <com/sun/star/table/XCell.hpp>
 #include <basic/sberrors.hxx>
-#include <comphelper/string.hxx>
 #include <ooo/vba/word/WdUnits.hpp>
 #include <ooo/vba/word/WdMovementType.hpp>
 #include <ooo/vba/word/WdGoToItem.hpp>
@@ -36,10 +33,9 @@
 #include <ooo/vba/word/XApplication.hpp>
 #include <ooo/vba/word/WdCollapseDirection.hpp>
 #include <com/sun/star/text/XPageCursor.hpp>
-#include "unotbl.hxx"
-#include "unocoll.hxx"
+#include <unotbl.hxx>
+#include <unocoll.hxx>
 #include "vbatable.hxx"
-#include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/view/XViewCursor.hpp>
 #include <com/sun/star/view/XLineCursor.hpp>
 #include <com/sun/star/text/XWordCursor.hpp>
@@ -82,19 +78,18 @@ uno::Reference< text::XTextRange > SwVbaSelection::GetSelectedRange()
 {
     uno::Reference< text::XTextRange > xTextRange;
     uno::Reference< lang::XServiceInfo > xServiceInfo( mxModel->getCurrentSelection(), uno::UNO_QUERY_THROW );
-    if( xServiceInfo->supportsService("com.sun.star.text.TextRanges") )
-    {
-        uno::Reference< container::XIndexAccess > xTextRanges( xServiceInfo, uno::UNO_QUERY_THROW );
-        if( xTextRanges->getCount() > 0 )
-        {
-            // if there are multiple selection, just return the last selected Range.
-            xTextRange.set( xTextRanges->getByIndex( xTextRanges->getCount()-1 ), uno::UNO_QUERY_THROW );
-        }
-    }
-    else
+    if( !xServiceInfo->supportsService("com.sun.star.text.TextRanges") )
     {
         throw uno::RuntimeException("Not implemented" );
     }
+
+    uno::Reference< container::XIndexAccess > xTextRanges( xServiceInfo, uno::UNO_QUERY_THROW );
+    if( xTextRanges->getCount() > 0 )
+    {
+        // if there are multiple selection, just return the last selected Range.
+        xTextRange.set( xTextRanges->getByIndex( xTextRanges->getCount()-1 ), uno::UNO_QUERY_THROW );
+    }
+
     return xTextRange;
 }
 
@@ -220,8 +215,7 @@ SwVbaSelection::Delete( const uno::Any& _unit, const uno::Any& _count )
             }
         }
     }
-    OUString url = ".uno:Delete";
-    dispatchRequests( mxModel,url );
+    dispatchRequests( mxModel,".uno:Delete" );
 }
 
 void
@@ -549,8 +543,7 @@ SwVbaSelection::getFont()
 void SAL_CALL
 SwVbaSelection::TypeBackspace()
 {
-    OUString url = ".uno:SwBackspace";
-    dispatchRequests( mxModel,url );
+    dispatchRequests( mxModel,".uno:SwBackspace" );
 }
 
 uno::Reference< word::XRange > SAL_CALL SwVbaSelection::GoTo( const uno::Any& _what, const uno::Any& _which, const uno::Any& _count, const uno::Any& _name )
@@ -619,7 +612,7 @@ uno::Reference< word::XRange > SAL_CALL SwVbaSelection::GoTo( const uno::Any& _w
                nPage = 1;
             if( nPage > nLastPage )
                nPage = nLastPage;
-            xPageCursor->jumpToPage( ( sal_Int16 )( nPage ) );
+            xPageCursor->jumpToPage( static_cast<sal_Int16>(nPage) );
             break;
         }
         case word::WdGoToItem::wdGoToSection:
@@ -646,10 +639,9 @@ uno::Reference< word::XRange > SAL_CALL SwVbaSelection::GoTo( const uno::Any& _w
                     nPage = 0;
                }
             }
-            if( nPage != 0 )
-                xPageCursor->jumpToPage( ( sal_Int16 )( nPage ) );
-            else
+            if( nPage == 0 )
                 throw uno::RuntimeException("Not implemented" );
+            xPageCursor->jumpToPage( static_cast<sal_Int16>(nPage) );
             break;
         }
         default:
@@ -945,7 +937,7 @@ uno::Any SAL_CALL SwVbaSelection::Columns( const uno::Any& index )
     return uno::makeAny( xCol );
 }
 
-uno::Reference< text::XTextTable > SwVbaSelection::GetXTextTable()
+uno::Reference< text::XTextTable > SwVbaSelection::GetXTextTable() const
 {
     uno::Reference< beans::XPropertySet > xCursorProps( mxTextViewCursor, uno::UNO_QUERY_THROW );
     uno::Reference< text::XTextTable > xTextTable;
@@ -953,7 +945,7 @@ uno::Reference< text::XTextTable > SwVbaSelection::GetXTextTable()
     return xTextTable;
 }
 
-bool SwVbaSelection::IsInTable()
+bool SwVbaSelection::IsInTable() const
 {
     uno::Reference< text::XTextTable > xTextTable = GetXTextTable();
     return xTextTable.is();
@@ -978,11 +970,12 @@ void SwVbaSelection::GetSelectedCellRange( OUString& sTLName, OUString& sBRName 
     uno::Reference< text::XTextTableCursor > xTextTableCursor( mxModel->getCurrentSelection(), uno::UNO_QUERY );
     if( xTextTableCursor.is() )
     {
-        OUString sRange( xTextTableCursor->getRangeName() );
-        if( comphelper::string::getTokenCount(sRange, ':') > 0 )
+        const OUString sRange( xTextTableCursor->getRangeName() );
+        if (!sRange.isEmpty())
         {
-            sTLName = sRange.getToken(0, ':');
-            sBRName = sRange.getToken(1, ':');
+            sal_Int32 nIdx{0};
+            sTLName = sRange.getToken(0, ':', nIdx);
+            sBRName = sRange.getToken(0, ':', nIdx);
         }
     }
     if( sTLName.isEmpty() )
@@ -1031,8 +1024,7 @@ uno::Any SAL_CALL SwVbaSelection::Cells( const uno::Any& index )
 
 void SAL_CALL SwVbaSelection::Copy(  )
 {
-    OUString url = ".uno:Copy";
-    dispatchRequests( mxModel,url );
+    dispatchRequests( mxModel,".uno:Copy" );
 }
 
 void SAL_CALL SwVbaSelection::CopyAsPicture(  )
@@ -1043,8 +1035,7 @@ void SAL_CALL SwVbaSelection::CopyAsPicture(  )
 
 void SAL_CALL SwVbaSelection::Paste(  )
 {
-    OUString url = ".uno:Paste";
-    dispatchRequests( mxModel,url );
+    dispatchRequests( mxModel,".uno:Paste" );
 }
 
 void SAL_CALL SwVbaSelection::Collapse( const uno::Any& Direction )
@@ -1091,8 +1082,7 @@ void SAL_CALL SwVbaSelection::WholeStory(  )
             // insert an empty line
             uno::Reference< text::XTextRange > xFirstCellRange = word::getFirstObjectPosition( xText );
             mxTextViewCursor->gotoRange( xFirstCellRange, false );
-            OUString url = ".uno:InsertPara";
-            dispatchRequests( mxModel,url );
+            dispatchRequests( mxModel,".uno:InsertPara" );
         }
     }
     uno::Reference< text::XTextRange > xStart = xText->getStart();
@@ -1155,18 +1145,16 @@ SwVbaSelection::Paragraphs( const uno::Any& aIndex )
 OUString
 SwVbaSelection::getServiceImplName()
 {
-    return OUString("SwVbaSelection");
+    return "SwVbaSelection";
 }
 
 uno::Sequence< OUString >
 SwVbaSelection::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Selection";
-    }
+        "ooo.vba.word.Selection"
+    };
     return aServiceNames;
 }
 

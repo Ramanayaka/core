@@ -48,28 +48,12 @@ public:
 
 private:
     /// @throws css::lang::IllegalArgumentException
-    void SAL_CALL init( const OUString& aCntType );
-    void SAL_CALL getSym();
-    void SAL_CALL acceptSym( const OUString& pSymTlb );
-    void SAL_CALL skipSpaces();
-    void SAL_CALL type();
-    void SAL_CALL subtype();
-    void SAL_CALL trailer();
-    OUString SAL_CALL pName( );
-    OUString SAL_CALL pValue( );
-    OUString SAL_CALL quotedPValue( );
-    OUString SAL_CALL nonquotedPValue( );
-    void SAL_CALL comment();
-    static bool SAL_CALL isInRange( const OUString& aChr, const OUString& aRange );
+    void init( const OUString& aCntType );
 
 private:
-    ::osl::Mutex                             m_aMutex;
     OUString                            m_MediaType;
     OUString                            m_MediaSubtype;
-    OUString                            m_ContentType;
     std::map< OUString, OUString > m_ParameterMap;
-    sal_Int32                                m_nPos;
-    OUString                            m_nxtSym;
 };
 
 #endif

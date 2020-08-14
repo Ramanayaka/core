@@ -28,18 +28,12 @@
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/awt/XFocusListener.hpp>
-#include <com/sun/star/document/XEventListener.hpp>
 #include <vcl/vclptr.hxx>
+#include <vcl/window.hxx>
 
 #include <memory>
 
-namespace vcl { class Window; }
-
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
+namespace sd::slidesorter { class SlideSorter; }
 
 namespace accessibility {
 

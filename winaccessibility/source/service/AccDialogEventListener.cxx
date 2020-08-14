@@ -25,9 +25,9 @@
 
 #include <vcl/svapp.hxx>
 
-#include "AccDialogEventListener.hxx"
-#include "AccObjectManagerAgent.hxx"
-#include "unomsaaevent.hxx"
+#include <AccDialogEventListener.hxx>
+#include <AccObjectManagerAgent.hxx>
+#include <unomsaaevent.hxx>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::accessibility;
@@ -84,12 +84,10 @@ void AccDialogEventListener::HandleChildChangedEvent(Any oldValue, Any newValue)
             pAgent->InsertChildrenAccObj(pAcc);
             pAgent->NotifyAccEvent(UM_EVENT_CHILD_ADDED, pAcc);
         }
-        else
-        {}
     }
     else if (oldValue >>= xChild)
     {
-        //delete a existing child
+        //delete an existing child
         if(xChild.is())
         {
             XAccessible* pAcc = xChild.get();
@@ -99,8 +97,6 @@ void AccDialogEventListener::HandleChildChangedEvent(Any oldValue, Any newValue)
             //delete this child
             pAgent->DeleteAccObj( pAcc );
         }
-        else
-        {}
     }
 
 }

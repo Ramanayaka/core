@@ -23,18 +23,9 @@
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
-#include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
-#include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
-#include <com/sun/star/xml/sax/XParser.hpp>
 
-#include <com/sun/star/lang/NoSupportException.hpp>
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
-namespace dp_registry
-{
-namespace backend
-{
-namespace sfwk
+namespace dp_registry::backend::sfwk
 {
 
 class ParcelDescDocHandler : public ::cppu::WeakImplHelper< css::xml::sax::XDocumentHandler >
@@ -45,8 +36,8 @@ private:
     sal_Int32 skipIndex;
 public:
     ParcelDescDocHandler():m_bIsParsed( false ), skipIndex( 0 ){}
-    const OUString& getParcelLanguage() { return m_sLang; }
-    bool isParsed() { return m_bIsParsed; }
+    const OUString& getParcelLanguage() const { return m_sLang; }
+    bool isParsed() const { return m_bIsParsed; }
     // XDocumentHandler
     virtual void SAL_CALL startDocument() override;
 
@@ -68,8 +59,8 @@ public:
         const css::uno::Reference< css::xml::sax::XLocator >& xLocator ) override;
 };
 }
-}
-}
+
+
 
 #endif // INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_REGISTRY_SFWK_DP_PARCELDESC_HXX
 

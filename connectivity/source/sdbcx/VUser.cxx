@@ -18,11 +18,7 @@
  */
 
 
-#include <connectivity/sdbcx/VUser.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/sdbcx/Privilege.hpp>
-#include <com/sun/star/sdbcx/PrivilegeObject.hpp>
-#include "TConnection.hxx"
+#include <sdbcx/VUser.hxx>
 #include <connectivity/sdbcx/VCollection.hxx>
 #include <connectivity/dbexception.hxx>
 #include <comphelper/sequence.hxx>
@@ -40,13 +36,11 @@ IMPLEMENT_SERVICE_INFO(OUser,"com.sun.star.sdbcx.VUser","com.sun.star.sdbcx.User
 
 OUser::OUser(bool _bCase)  : OUser_BASE(m_aMutex)
                 , ODescriptor(OUser_BASE::rBHelper,_bCase,true)
-                , m_pGroups(nullptr)
 {
 }
 
 OUser::OUser(const OUString& Name, bool _bCase) :    OUser_BASE(m_aMutex)
                         ,ODescriptor(OUser_BASE::rBHelper,_bCase)
-                        ,m_pGroups(nullptr)
 {
     m_Name = Name;
 }
@@ -76,7 +70,7 @@ Sequence< Type > SAL_CALL OUser::getTypes(  )
 
 ::cppu::IPropertyArrayHelper* OUser::createArrayHelper( ) const
 {
-        Sequence< Property > aProps;
+    Sequence< Property > aProps;
     describeProperties(aProps);
     return new ::cppu::OPropertyArrayHelper(aProps);
 

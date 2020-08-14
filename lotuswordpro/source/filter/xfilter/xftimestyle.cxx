@@ -58,7 +58,8 @@
  * Time style. The Time format for time field.
  ************************************************************************/
 
-#include "xftimestyle.hxx"
+#include <xfilter/xftimestyle.hxx>
+#include <xfilter/ixfattrlist.hxx>
 
 XFTimePart::XFTimePart()
 {
@@ -134,10 +135,9 @@ void    XFTimeStyle::ToXml(IXFStream *pStrm)
         pAttrList->AddAttribute( "number:truncate-on-overflow", "false" );
     pStrm->StartElement( "number:time-style" );
 
-    std::vector<XFTimePart>::iterator it;
-    for( it = m_aParts.begin(); it != m_aParts.end(); ++it )
+    for (auto & part : m_aParts)
     {
-        (*it).ToXml(pStrm);
+        part.ToXml(pStrm);
     }
     if( m_bAmPm )
     {

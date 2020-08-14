@@ -20,16 +20,19 @@
 #ifndef INCLUDED_SC_INC_CHGTRACK_HXX
 #define INCLUDED_SC_INC_CHGTRACK_HXX
 
-#include <deque>
 #include <map>
+#include <memory>
 #include <set>
 #include <stack>
+#include <vector>
 
+#include <com/sun/star/uno/Sequence.hxx>
 #include <tools/color.hxx>
 #include <tools/datetime.hxx>
 #include <tools/link.hxx>
-#include <tools/mempool.hxx>
+#include <tools/solar.h>
 #include <unotools/options.hxx>
+#include <optional>
 #include "global.hxx"
 #include "bigrange.hxx"
 #include "scdllapi.h"
@@ -40,6 +43,7 @@ class ScFormulaCell;
 class ScChangeAction;
 class ScChangeTrack;
 class ScAppOptions;
+namespace tools { class JsonWriter; }
 
 class ScActionColorChanger
 {
@@ -48,12 +52,12 @@ private:
     const std::set<OUString>& rUsers;
     OUString                aLastUserName;
     sal_uInt16              nLastUserIndex;
-    ColorData               nColor;
+    Color                   nColor;
 
 public:
     ScActionColorChanger( const ScChangeTrack& rTrack );
     void        Update( const ScChangeAction& rAction );
-    ColorData   GetColor() const    { return nColor; }
+    Color       GetColor() const { return nColor; }
 };
 
 enum ScChangeActionType
@@ -84,8 +88,6 @@ enum ScChangeActionClipMode
     SC_CACM_PASTE
 };
 
-class ScChangeAction;
-
 /** A link/connection/dependency between change actions.
 
     Upon construction inserts itself as the head of a chain / linked list,
@@ -111,8 +113,6 @@ protected:
     ScChangeActionLinkEntry*    pLink;
 
 public:
-
-    DECL_FIXEDMEMPOOL_NEWDEL( ScChangeActionLinkEntry )
 
     ScChangeActionLinkEntry(
             ScChangeActionLinkEntry** ppPrevP,
@@ -175,34 +175,7 @@ public:
 // this is only for the XML Export in the hxx
 class ScChangeActionContent;
 
-class ScChangeActionCellListEntry
-{
-    friend class ScChangeAction;
-    friend class ScChangeActionDel;
-    friend class ScChangeActionMove;
-    friend class ScChangeTrack;
-
-    ScChangeActionCellListEntry*    pNext;
-    ScChangeActionContent*          pContent;
-
-    ScChangeActionCellListEntry(
-        ScChangeActionContent* pContentP,
-        ScChangeActionCellListEntry* pNextP )
-        :   pNext( pNextP ),
-            pContent( pContentP )
-        {}
-
-public:
-    DECL_FIXEDMEMPOOL_NEWDEL( ScChangeActionCellListEntry )
-};
-
-//  ScChangeAction
-class ScChangeTrack;
-class ScChangeActionIns;
-class ScChangeActionDel;
-class ScChangeActionContent;
-
-class ScChangeAction
+class SAL_DLLPUBLIC_RTTI ScChangeAction
 {
     friend class ScChangeTrack;
     friend class ScChangeActionIns;
@@ -246,10 +219,8 @@ protected:
     // only to be used in the XML import
     ScChangeAction( ScChangeActionType, const ScBigRange&, const sal_uLong nAction);
 
-    virtual ~ScChangeAction();
-
     OUString GetRefString(
-        const ScBigRange& rRange, ScDocument* pDoc, bool bFlag3D = false) const;
+        const ScBigRange& rRange, const ScDocument* pDoc, bool bFlag3D = false) const;
 
     void SetActionNumber( sal_uLong n ) { nAction = n; }
     void SetRejectAction( sal_uLong n ) { nRejectAction = n; }
@@ -308,6 +279,8 @@ protected:
     virtual const ScChangeTrack* GetChangeTrack() const = 0;
 
 public:
+    virtual ~ScChangeAction();
+
     bool IsInsertType() const;
     bool IsDeleteType() const;
     bool IsVirgin() const;
@@ -391,14 +364,13 @@ public:
 };
 
 //  ScChangeActionIns
-class ScChangeActionIns : public ScChangeAction
+class SAL_DLLPUBLIC_RTTI ScChangeActionIns : public ScChangeAction
 {
     friend class ScChangeTrack;
 
     bool mbEndOfList; /// whether or not a row was auto-inserted at the bottom.
 
-    ScChangeActionIns( const ScRange& rRange, bool bEndOfList = false );
-    virtual                     ~ScChangeActionIns() override;
+    ScChangeActionIns( const ScDocument* pDoc, const ScRange& rRange, bool bEndOfList = false );
 
     virtual void                AddContent( ScChangeActionContent* ) override {}
     virtual void                DeleteCellEntries() override {}
@@ -408,6 +380,7 @@ class ScChangeActionIns : public ScChangeAction
     virtual const ScChangeTrack*    GetChangeTrack() const override { return nullptr; }
 
 public:
+    virtual                     ~ScChangeActionIns() override;
     ScChangeActionIns(
         const sal_uLong nActionNumber,
         const ScChangeActionState eState,
@@ -426,9 +399,9 @@ public:
 };
 
 //  ScChangeActionDel
-class ScChangeActionMove;
+class SAL_DLLPUBLIC_RTTI ScChangeActionMove;
 
-class ScChangeActionDelMoveEntry : public ScChangeActionLinkEntry
+class ScChangeActionDelMoveEntry final : public ScChangeActionLinkEntry
 {
     friend class ScChangeActionDel;
     friend class ScChangeTrack;
@@ -454,21 +427,20 @@ public:
     short               GetCutOffTo() const { return nCutOffTo; }
 };
 
-class ScChangeActionDel : public ScChangeAction
+class ScChangeActionDel final : public ScChangeAction
 {
     friend class ScChangeTrack;
     friend void ScChangeAction::Accept();
 
     ScChangeTrack*      pTrack;
-    ScChangeActionCellListEntry* pFirstCell;
+    std::vector<ScChangeActionContent*> mvCells;
     ScChangeActionIns*  pCutOff;        // cut insert
     short               nCutOff;        // +: start  -: end
     ScChangeActionDelMoveEntry* pLinkMove;
     SCCOL               nDx;
     SCROW               nDy;
 
-    ScChangeActionDel( const ScRange& rRange, SCCOL nDx, SCROW nDy, ScChangeTrack* );
-    virtual ~ScChangeActionDel() override;
+    ScChangeActionDel( const ScDocument* pDoc, const ScRange& rRange, SCCOL nDx, SCROW nDy, ScChangeTrack* );
 
     virtual void                AddContent( ScChangeActionContent* ) override;
     virtual void                DeleteCellEntries() override;
@@ -492,6 +464,7 @@ public:
         const OUString &sComment, const ScChangeActionType eType,
         const SCCOLROW nD, ScChangeTrack* pTrack); // only to use in the XML import
                                             // which of nDx and nDy is set is dependent on the type
+    virtual ~ScChangeActionDel() override;
 
     // is the last in a row (or single)
     bool IsBaseDelete() const;
@@ -527,14 +500,15 @@ public:
 };
 
 //  ScChangeActionMove
-class ScChangeActionMove : public ScChangeAction
+class ScChangeActionMove final : public ScChangeAction
 {
     friend class ScChangeTrack;
+    friend struct std::default_delete<ScChangeActionMove>; // for std::unique_ptr
     friend class ScChangeActionDel;
 
     ScBigRange          aFromRange;
     ScChangeTrack*      pTrack;
-    ScChangeActionCellListEntry* pFirstCell;
+    std::vector<ScChangeActionContent*> mvCells;
     sal_uLong               nStartLastCut;  // for PasteCut undo
     sal_uLong               nEndLastCut;
 
@@ -544,7 +518,6 @@ class ScChangeActionMove : public ScChangeAction
         : ScChangeAction( SC_CAT_MOVE, rToRange ),
             aFromRange( rFromRange ),
             pTrack( pTrackP ),
-            pFirstCell( nullptr ),
             nStartLastCut(0),
             nEndLastCut(0)
         {}
@@ -625,7 +598,7 @@ enum ScChangeActionContentCellType
     SC_CACCT_MATREF
 };
 
-class ScChangeActionContent : public ScChangeAction
+class SAL_DLLPUBLIC_RTTI ScChangeActionContent : public ScChangeAction
 {
     friend class ScChangeTrack;
 
@@ -712,9 +685,6 @@ protected:
     using ScChangeAction::GetRefString;
 
 public:
-
-    DECL_FIXEDMEMPOOL_NEWDEL( ScChangeActionContent )
-
     ScChangeActionContent( const ScRange& rRange );
 
     ScChangeActionContent(
@@ -722,11 +692,11 @@ public:
         const sal_uLong nRejectingNumber, const ScBigRange& aBigRange,
         const OUString& aUser, const DateTime& aDateTime,
         const OUString &sComment, const ScCellValue& rOldCell,
-        ScDocument* pDoc, const OUString& sOldValue ); // to use for XML Import
+        const ScDocument* pDoc, const OUString& sOldValue ); // to use for XML Import
 
     ScChangeActionContent(
         const sal_uLong nActionNumber, const ScCellValue& rNewCell,
-        const ScBigRange& aBigRange, ScDocument* pDoc,
+        const ScBigRange& aBigRange, const ScDocument* pDoc,
         const OUString& sNewValue ); // to use for XML Import of Generated Actions
 
     virtual ~ScChangeActionContent() override;
@@ -753,12 +723,12 @@ public:
     // Used in import filter AppendContentOnTheFly,
     void SetOldNewCells(
         const ScCellValue& rOldCell, sal_uLong nOldFormat,
-        const ScCellValue& rNewCell, sal_uLong nNewFormat, ScDocument* pDoc );
+        const ScCellValue& rNewCell, sal_uLong nNewFormat, const ScDocument* pDoc );
 
     // Use this only in the XML import,
     // takes ownership of cell.
     void SetNewCell(
-        const ScCellValue& rCell, ScDocument* pDoc, const OUString& rFormatted );
+        const ScCellValue& rCell, const ScDocument* pDoc, const OUString& rFormatted );
 
                         // These functions should be protected but for
                         // the XML import they are public.
@@ -791,7 +761,7 @@ public:
 };
 
 //  ScChangeActionReject
-class ScChangeActionReject : public ScChangeAction
+class ScChangeActionReject final : public ScChangeAction
 {
     friend class ScChangeTrack;
     friend class ScChangeActionContent;
@@ -814,27 +784,25 @@ public:
 };
 
 //  ScChangeTrack
-enum ScChangeTrackMsgType
+enum class ScChangeTrackMsgType
 {
-    SC_CTM_NONE,
-    SC_CTM_APPEND,      // Actions appended
-    SC_CTM_REMOVE,      // Actions removed
-    SC_CTM_CHANGE,      // Actions changed
-    SC_CTM_PARENT       // became a parent (and wasn't before)
+    NONE,
+    Append,      // Actions appended
+    Remove,      // Actions removed
+    Change,      // Actions changed
+    Parent       // became a parent (and wasn't before)
 };
 
 struct ScChangeTrackMsgInfo
 {
-    DECL_FIXEDMEMPOOL_NEWDEL( ScChangeTrackMsgInfo )
-
     ScChangeTrackMsgType    eMsgType;
     sal_uLong                   nStartAction;
     sal_uLong                   nEndAction;
 };
 
 // MsgQueue for notification via ModifiedLink
-typedef std::deque<ScChangeTrackMsgInfo*> ScChangeTrackMsgQueue;
-typedef std::stack<ScChangeTrackMsgInfo*> ScChangeTrackMsgStack;
+typedef std::vector<ScChangeTrackMsgInfo> ScChangeTrackMsgQueue;
+typedef std::vector<ScChangeTrackMsgInfo> ScChangeTrackMsgStack;
 typedef std::map<sal_uLong, ScChangeAction*> ScChangeActionMap;
 
 enum ScChangeTrackMergeState
@@ -848,9 +816,9 @@ enum ScChangeTrackMergeState
 
 // Internally generated actions start at this value (nearly all bits set)
 // and are decremented, to keep values in a table separated from "normal" actions.
-#define SC_CHGTRACK_GENERATED_START ((sal_uInt32) 0xfffffff0)
+#define SC_CHGTRACK_GENERATED_START (sal_uInt32(0xfffffff0))
 
-class ScChangeTrack : public utl::ConfigurationListener
+class SAL_DLLPUBLIC_RTTI ScChangeTrack : public utl::ConfigurationListener
 {
     friend void ScChangeAction::RejectRestoreContents( ScChangeTrack*, SCCOL, SCROW );
     friend bool ScChangeActionDel::Reject( ScDocument* pDoc );
@@ -876,14 +844,14 @@ class ScChangeTrack : public utl::ConfigurationListener
     ScChangeAction*     pFirst;
     ScChangeAction*     pLast;
     ScChangeActionContent*  pFirstGeneratedDelContent;
-    ScChangeActionContent** ppContentSlots;
-    ScChangeActionMove*     pLastCutMove;
+    std::unique_ptr<ScChangeActionContent*[]> ppContentSlots;
+    std::unique_ptr<ScChangeActionMove> pLastCutMove;
     ScChangeActionLinkEntry*    pLinkInsertCol;
     ScChangeActionLinkEntry*    pLinkInsertRow;
     ScChangeActionLinkEntry*    pLinkInsertTab;
     ScChangeActionLinkEntry*    pLinkMove;
-    ScChangeTrackMsgInfo*   pBlockModifyMsg;
-    ScDocument*         pDoc;
+    std::optional<ScChangeTrackMsgInfo> xBlockModifyMsg;
+    ScDocument*             pDoc;
     sal_uLong               nActionMax;
     sal_uLong               nGeneratedMin;
     sal_uLong               nMarkLastSaved;
@@ -953,9 +921,9 @@ class ScChangeTrack : public utl::ConfigurationListener
     void                Remove( ScChangeAction* );
     void                MasterLinks( ScChangeAction* );
 
-                                // Content on top an Position
+                                // Content on top at Position
     ScChangeActionContent*  SearchContentAt( const ScBigAddress&,
-                                    ScChangeAction* pButNotThis ) const;
+                                    const ScChangeAction* pButNotThis ) const;
     void                DeleteGeneratedDelContent(
                                     ScChangeActionContent* );
 
@@ -963,8 +931,8 @@ class ScChangeTrack : public utl::ConfigurationListener
         const ScAddress& rPos, const ScCellValue& rCell, const ScDocument* pFromDoc );
 
     void                DeleteCellEntries(
-                                    ScChangeActionCellListEntry*&,
-                                    ScChangeAction* pDeletor );
+                                    std::vector<ScChangeActionContent*>&,
+                                    const ScChangeAction* pDeletor );
 
                                 // Reject action and all dependent actions,
                                 // Table stems from previous GetDependents,
@@ -1003,7 +971,7 @@ public:
     sal_uLong GetLastSavedActionNumber() const;
     void SetLastSavedActionNumber(sal_uLong nNew);
     ScChangeAction* GetLastSaved() const;
-    ScChangeActionContent** GetContentSlots() const { return ppContentSlots; }
+    ScChangeActionContent** GetContentSlots() const { return ppContentSlots.get(); }
 
     const ScRange&      GetInDeleteRange() const
                             { return aInDeleteRange; }
@@ -1044,7 +1012,7 @@ public:
                         // after new value was set in the document,
                         // old value from RefDoc/UndoDoc
     void                AppendContent( const ScAddress& rPos,
-                            ScDocument* pRefDoc );
+                            const ScDocument* pRefDoc );
                         // after new values were set in the document,
                         // old values from RefDoc/UndoDoc
     void                AppendContentRange( const ScRange& rRange,
@@ -1091,11 +1059,7 @@ public:
     void ResetLastCut()
     {
         nStartLastCut = nEndLastCut = 0;
-        if ( pLastCutMove )
-        {
-            delete pLastCutMove;
-            pLastCutMove = nullptr;
-        }
+        pLastCutMove.reset();
     }
     bool HasLastCut() const
     {
@@ -1109,7 +1073,7 @@ public:
                         // adjust references for MergeDocument
                         //! may only be used in a temporary opened document.
                         //! the Track (?) is unclean afterwards
-    void                MergePrepare( ScChangeAction* pFirstMerge, bool bShared );
+    void                MergePrepare( const ScChangeAction* pFirstMerge, bool bShared );
     void                MergeOwn( ScChangeAction* pAct, sal_uLong nFirstMerge, bool bShared );
     static bool MergeIgnore( const ScChangeAction&, sal_uLong nFirstMerge );
 
@@ -1163,7 +1127,7 @@ public:
 
     sal_uLong           AddLoadedGenerated( const ScCellValue& rNewCell,
                             const ScBigRange& aBigRange, const OUString& sNewValue ); // only to use in the XML import
-    void                AppendLoaded( ScChangeAction* pAppend ); // this is only for the XML import public, it should be protected
+    void                AppendLoaded( std::unique_ptr<ScChangeAction> pAppend ); // this is only for the XML import public, it should be protected
     void                SetActionMax(sal_uLong nTempActionMax)
                             { nActionMax = nTempActionMax; } // only to use in the XML import
 
@@ -1171,7 +1135,7 @@ public:
                             { aProtectPass = rPass; }
     const css::uno::Sequence< sal_Int8 >& GetProtection() const
                                     { return aProtectPass; }
-    bool IsProtected() const { return aProtectPass.getLength() != 0; }
+    bool IsProtected() const { return aProtectPass.hasElements(); }
 
                                 // If time stamps of actions of this
                                 // ChangeTrack and a second one are to be
@@ -1183,7 +1147,7 @@ public:
     SC_DLLPUBLIC ScChangeTrack* Clone( ScDocument* pDocument ) const;
     static void MergeActionState( ScChangeAction* pAct, const ScChangeAction* pOtherAct );
     /// Get info about all ScChangeAction elements.
-    OUString GetChangeTrackInfo();
+    void GetChangeTrackInfo(tools::JsonWriter&);
 };
 
 #endif

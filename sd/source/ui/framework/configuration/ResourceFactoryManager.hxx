@@ -26,13 +26,15 @@
 #include <utility>
 #include <vector>
 
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
-#include <com/sun/star/drawing/framework/XModuleController.hpp>
-#include <com/sun/star/drawing/framework/XResourceFactoryManager.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
+#include <com/sun/star/uno/Reference.hxx>
+#include <rtl/ustring.hxx>
 #include <osl/mutex.hxx>
 
-namespace sd { namespace framework {
+namespace com::sun::star::drawing::framework { class XControllerManager; }
+namespace com::sun::star::drawing::framework { class XResourceFactory; }
+namespace com::sun::star::util { class XURLTransformer; }
+
+namespace sd::framework {
 
 /** Container of resource factories of the drawing framework.
 */
@@ -89,8 +91,7 @@ private:
     ::osl::Mutex maMutex;
     typedef std::unordered_map<
         OUString,
-        css::uno::Reference<css::drawing::framework::XResourceFactory>,
-        OUStringHash> FactoryMap;
+        css::uno::Reference<css::drawing::framework::XResourceFactory> > FactoryMap;
     FactoryMap maFactoryMap;
 
     typedef ::std::vector<
@@ -115,7 +116,7 @@ private:
         const OUString& rsURLBase);
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

@@ -18,27 +18,19 @@
  */
 
 #include "UndoActions.hxx"
-#include "DisposeHelper.hxx"
-#include "CommonFunctors.hxx"
-#include "PropertyHelper.hxx"
 #include "ChartModelClone.hxx"
 
 #include <com/sun/star/lang/DisposedException.hpp>
 
-#include <tools/diagnose_ex.h>
 #include <svx/svdundo.hxx>
 
-#include <algorithm>
 #include <memory>
 
 using namespace ::com::sun::star;
 
-namespace chart
-{
-namespace impl
+namespace chart::impl
 {
     using ::com::sun::star::uno::Reference;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::frame::XModel;
     using ::com::sun::star::lang::DisposedException;
 
@@ -57,7 +49,7 @@ UndoElement::~UndoElement()
 
 void SAL_CALL UndoElement::disposing()
 {
-    if ( !!m_pModelClone )
+    if ( m_pModelClone )
         m_pModelClone->dispose();
     m_pModelClone.reset();
     m_xDocumentModel.clear();
@@ -71,7 +63,7 @@ OUString SAL_CALL UndoElement::getTitle()
 void UndoElement::impl_toggleModelState()
 {
     // get a snapshot of the current state of our model
-    std::shared_ptr< ChartModelClone > pNewClone( new ChartModelClone( m_xDocumentModel, m_pModelClone->getFacet() ) );
+    auto pNewClone = std::make_shared<ChartModelClone>( m_xDocumentModel, m_pModelClone->getFacet() );
     // apply the previous snapshot to our model
     m_pModelClone->applyToModel( m_xDocumentModel );
     // remember the new snapshot, for the next toggle
@@ -90,10 +82,10 @@ void SAL_CALL UndoElement::redo(  )
 
 // = ShapeUndoElement
 
-ShapeUndoElement::ShapeUndoElement( SdrUndoAction& i_sdrUndoAction )
+ShapeUndoElement::ShapeUndoElement( std::unique_ptr<SdrUndoAction> xSdrUndoAction )
     :ShapeUndoElement_MBase()
     ,ShapeUndoElement_TBase( m_aMutex )
-    ,m_pAction( &i_sdrUndoAction )
+    ,m_xAction( std::move(xSdrUndoAction) )
 {
 }
 
@@ -103,30 +95,29 @@ ShapeUndoElement::~ShapeUndoElement()
 
 OUString SAL_CALL ShapeUndoElement::getTitle()
 {
-    if ( !m_pAction )
+    if ( !m_xAction )
         throw DisposedException( OUString(), *this );
-    return m_pAction->GetComment();
+    return m_xAction->GetComment();
 }
 
 void SAL_CALL ShapeUndoElement::undo(  )
 {
-    if ( !m_pAction )
+    if ( !m_xAction )
         throw DisposedException( OUString(), *this );
-    m_pAction->Undo();
+    m_xAction->Undo();
 }
 
 void SAL_CALL ShapeUndoElement::redo(  )
 {
-    if ( !m_pAction )
+    if ( !m_xAction )
         throw DisposedException( OUString(), *this );
-    m_pAction->Redo();
+    m_xAction->Redo();
 }
 
 void SAL_CALL ShapeUndoElement::disposing()
 {
 }
 
-} // namespace impl
-} //  namespace chart
+} //  namespace chart::impl
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

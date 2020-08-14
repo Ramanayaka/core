@@ -22,23 +22,21 @@
 
 #include "ChangeRequestQueue.hxx"
 #include <osl/mutex.hxx>
-#include <rtl/ref.hxx>
-#include <com/sun/star/drawing/framework/XConfigurationChangeRequest.hpp>
-#include <com/sun/star/drawing/framework/ConfigurationChangeEvent.hpp>
 
-#include <cppuhelper/interfacecontainer.hxx>
 #include <tools/link.hxx>
 
 #include <memory>
 
+namespace com::sun::star::drawing::framework { class XConfiguration; }
+namespace com::sun::star::drawing::framework { class XConfigurationChangeRequest; }
+
 struct ImplSVEvent;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
-class ConfigurationController;
 class ConfigurationUpdater;
 
-/** The ChangeRequestQueueProcessor ownes the ChangeRequestQueue and
+/** The ChangeRequestQueueProcessor owns the ChangeRequestQueue and
     processes the configuration change requests.
 
     When after processing one entry the queue is empty then the
@@ -118,7 +116,7 @@ private:
     DECL_LINK(ProcessEvent, void*, void);
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

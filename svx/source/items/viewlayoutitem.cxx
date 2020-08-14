@@ -17,8 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <tools/stream.hxx>
-
 #include <svx/viewlayoutitem.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
@@ -46,7 +44,7 @@ SvxViewLayoutItem::SvxViewLayoutItem
 
 
 SvxViewLayoutItem::SvxViewLayoutItem( const SvxViewLayoutItem& rOrig )
-:   SfxUInt16Item( rOrig.Which(), rOrig.GetValue() ),
+:   SfxUInt16Item( rOrig ),
     mbBookMode( rOrig.IsBookMode() )
 {
 }
@@ -56,24 +54,10 @@ SvxViewLayoutItem::~SvxViewLayoutItem()
 {
 }
 
-
-SfxPoolItem* SvxViewLayoutItem::Clone( SfxItemPool * /*pPool*/ ) const
+SvxViewLayoutItem* SvxViewLayoutItem::Clone( SfxItemPool * /*pPool*/ ) const
 {
     return new SvxViewLayoutItem( *this );
 }
-
-
-SfxPoolItem* SvxViewLayoutItem::Create( SvStream& /*rStrm*/, sal_uInt16 /*nVersion*/ ) const
-{
-    return nullptr;
-}
-
-
-SvStream& SvxViewLayoutItem::Store( SvStream& rStrm, sal_uInt16 /*nItemVersion*/ ) const
-{
-    return rStrm;
-}
-
 
 bool SvxViewLayoutItem::operator==( const SfxPoolItem& rAttr ) const
 {
@@ -101,7 +85,7 @@ bool SvxViewLayoutItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) c
         }
         break;
 
-        case MID_VIEWLAYOUT_COLUMNS : rVal <<= (sal_Int32) GetValue(); break;
+        case MID_VIEWLAYOUT_COLUMNS : rVal <<= static_cast<sal_Int32>(GetValue()); break;
         case MID_VIEWLAYOUT_BOOKMODE: rVal <<= mbBookMode; break;
         default:
             OSL_FAIL("svx::SvxViewLayoutItem::QueryValue(), Wrong MemberId!");
@@ -125,23 +109,23 @@ bool SvxViewLayoutItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId
                 bool  bBookMode = false;
                 bool bAllConverted( true );
                 sal_Int16 nConvertedCount( 0 );
-                for ( sal_Int32 i = 0; i < aSeq.getLength(); i++ )
+                for ( const auto& rProp : std::as_const(aSeq) )
                 {
-                    if ( aSeq[i].Name == VIEWLAYOUT_PARAM_COLUMNS )
+                    if ( rProp.Name == VIEWLAYOUT_PARAM_COLUMNS )
                     {
-                        bAllConverted &= ( aSeq[i].Value >>= nColumns );
+                        bAllConverted &= ( rProp.Value >>= nColumns );
                         ++nConvertedCount;
                     }
-                    else if ( aSeq[i].Name == VIEWLAYOUT_PARAM_BOOKMODE )
+                    else if ( rProp.Name == VIEWLAYOUT_PARAM_BOOKMODE )
                     {
-                        bAllConverted &= ( aSeq[i].Value >>= bBookMode );
+                        bAllConverted &= ( rProp.Value >>= bBookMode );
                         ++nConvertedCount;
                     }
                 }
 
                 if ( bAllConverted && nConvertedCount == VIEWLAYOUT_PARAMS )
                 {
-                    SetValue( (sal_uInt16)nColumns );
+                    SetValue( static_cast<sal_uInt16>(nColumns) );
                     mbBookMode = bBookMode;
                     return true;
                 }
@@ -155,7 +139,7 @@ bool SvxViewLayoutItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId
             sal_Int32 nVal = 0;
             if ( rVal >>= nVal )
             {
-                SetValue( (sal_uInt16)nVal );
+                SetValue( static_cast<sal_uInt16>(nVal) );
                 return true;
             }
             else

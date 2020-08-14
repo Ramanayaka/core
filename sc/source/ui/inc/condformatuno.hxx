@@ -10,7 +10,7 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_CONDFORMATUNO_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_CONDFORMATUNO_HXX
 
-#include "address.hxx"
+#include <types.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sheet/XConditionalFormats.hpp>
@@ -25,7 +25,6 @@
 #include <svl/lstner.hxx>
 #include <rtl/ref.hxx>
 
-class ScDocument;
 class ScDocShell;
 class ScConditionalFormatList;
 class ScConditionalFormat;
@@ -38,15 +37,7 @@ class ScCondDateFormatEntry;
 
 using namespace com::sun::star;
 
-namespace com { namespace sun { namespace star {
-
-namespace sheet {
-
-class XSheetCellRanges;
-
-}
-
-} } }
+namespace com::sun::star::sheet { class XSheetCellRanges; }
 
 class ScCondFormatsObj : public cppu::WeakImplHelper<css::sheet::XConditionalFormats>,
                             public SfxListener
@@ -204,9 +195,9 @@ public:
 
     virtual ~ScColorScaleEntryObj() override;
 
-    virtual css::util::Color SAL_CALL getColor() override;
+    virtual sal_Int32 SAL_CALL getColor() override;
 
-    virtual void SAL_CALL setColor(css::util::Color aColor) override;
+    virtual void SAL_CALL setColor(sal_Int32 aColor) override;
 
     virtual sal_Int32 SAL_CALL getType() override;
 

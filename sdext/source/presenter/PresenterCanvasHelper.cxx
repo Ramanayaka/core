@@ -19,16 +19,14 @@
 
 #include "PresenterCanvasHelper.hxx"
 
-#include "PresenterController.hxx"
 #include "PresenterGeometryHelper.hxx"
 #include <com/sun/star/rendering/CompositeOperation.hpp>
-#include <com/sun/star/rendering/TextDirection.hpp>
-#include <com/sun/star/rendering/TexturingMode.hpp>
+#include <osl/diagnose.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 PresenterCanvasHelper::PresenterCanvasHelper()
     : maDefaultViewState(
@@ -66,7 +64,7 @@ void PresenterCanvasHelper::PaintRectangle (
     const css::rendering::ViewState& rDefaultViewState,
     const css::rendering::RenderState& rDefaultRenderState)
 {
-    if (rpBitmap.get() == nullptr)
+    if (!rpBitmap)
         return;
 
     if ( ! rxCanvas.is() || ! rxCanvas->getDevice().is())
@@ -94,7 +92,7 @@ void PresenterCanvasHelper::PaintRectangle (
             || rpBitmap->meVerticalTexturingMode == PresenterBitmapDescriptor::Repeat)
         {
             PaintTiledBitmap(
-                Reference<rendering::XBitmap>(rpBitmap->GetNormalBitmap(), UNO_QUERY),
+                rpBitmap->GetNormalBitmap(),
                 rxCanvas,
                 rRepaintBox,
                 xPolyPolygon,
@@ -105,7 +103,7 @@ void PresenterCanvasHelper::PaintRectangle (
         else
         {
             PaintBitmap(
-                Reference<rendering::XBitmap>(rpBitmap->GetNormalBitmap(), UNO_QUERY),
+                rpBitmap->GetNormalBitmap(),
                 awt::Point(rOuterBoundingBox.X, rOuterBoundingBox.Y),
                 rxCanvas,
                 rRepaintBox,
@@ -285,6 +283,6 @@ css::geometry::RealSize2D PresenterCanvasHelper::GetTextSize (
     return css::geometry::RealSize2D(aTextBBox.X2 - aTextBBox.X1, aTextBBox.Y2 - aTextBBox.Y1);
 }
 
-} } // end of namespace sdext::presenter
+} // end of namespace sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

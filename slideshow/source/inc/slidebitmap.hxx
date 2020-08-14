@@ -29,17 +29,12 @@
 
 #include <memory>
 
-namespace com { namespace sun { namespace star { namespace rendering
-{
-    class XBitmap;
-} } } }
+namespace com::sun::star::rendering { class XBitmap; }
 
 
 /* Definition of SlideBitmap class */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
 
         /** Little wrapper encapsulating an XBitmap
@@ -68,7 +63,7 @@ namespace slideshow
             void                move( const ::basegfx::B2DPoint& rNewPos );
             void                clip( const ::basegfx::B2DPolyPolygon& rClipPoly );
 
-            const css::uno::Reference< css::rendering::XBitmap >&  getXBitmap();
+            const css::uno::Reference< css::rendering::XBitmap >&  getXBitmap() const;
 
         private:
             ::basegfx::B2DPoint                                     maOutputPos;
@@ -79,7 +74,7 @@ namespace slideshow
         };
 
         typedef ::std::shared_ptr< SlideBitmap > SlideBitmapSharedPtr;
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_SLIDEBITMAP_HXX

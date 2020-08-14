@@ -20,19 +20,19 @@
 #ifndef INCLUDED_SC_SOURCE_CORE_INC_BCASLOT_HXX
 #define INCLUDED_SC_SOURCE_CORE_INC_BCASLOT_HXX
 
-#include <functional>
 #include <memory>
 #include <map>
-#include <set>
 #include <unordered_set>
 
 #include <svl/broadcast.hxx>
+#include <svl/hint.hxx>
+#include <tools/solar.h>
 
-#include "global.hxx"
-#include "brdcst.hxx"
-#include <columnspanset.hxx>
+#include <document.hxx>
+#include <global.hxx>
 
-class ScBroadcastArea;
+namespace sc { class ColumnSpanSet; }
+class ScHint;
 
 namespace sc {
 
@@ -73,7 +73,7 @@ public:
     const ScRange&   GetRange() const { return aRange; }
     void         IncRef() { ++nRefCount; }
     sal_uLong        DecRef() { return nRefCount ? --nRefCount : 0; }
-    sal_uLong        GetRef() { return nRefCount; }
+    sal_uLong        GetRef() const { return nRefCount; }
     ScBroadcastArea* GetUpdateChainNext() const { return pUpdateChainNext; }
     void         SetUpdateChainNext( ScBroadcastArea* p ) { pUpdateChainNext = p; }
     bool         IsInUpdateChain() const { return mbInUpdateChain; }
@@ -164,7 +164,7 @@ private:
         whether there would be an overflow when adding an area, setting the
         proper state if so.
 
-        @return HARDRECALCSTATE_ETERNAL if a HardRecalcState is effective and
+        @return HardRecalcState::ETERNAL if a HardRecalcState is effective and
                 area is not to be added.
       */
     ScDocument::HardRecalcState CheckHardRecalcStateCondition() const;
@@ -265,23 +265,23 @@ private:
     public:
                                         TableSlots();
                                         ~TableSlots();
-        ScBroadcastAreaSlot**    getSlots() { return ppSlots; }
+        ScBroadcastAreaSlot**    getSlots() { return ppSlots.get(); }
 
         /**
             Obtain slot pointer, no check on validity! It is assumed that
             all calls are made with the results of ComputeSlotOffset(),
             ComputeAreaPoints() and ComputeNextSlot()
           */
-        ScBroadcastAreaSlot*     getAreaSlot( SCSIZE nOff ) { return *(ppSlots + nOff); }
+        ScBroadcastAreaSlot*     getAreaSlot( SCSIZE nOff ) { return ppSlots[nOff]; }
 
     private:
-        ScBroadcastAreaSlot**   ppSlots;
+        std::unique_ptr<ScBroadcastAreaSlot*[]>   ppSlots;
 
         TableSlots( const TableSlots& ) = delete;
         TableSlots& operator=( const TableSlots& ) = delete;
     };
 
-    typedef ::std::map< SCTAB, TableSlots* > TableSlotsMap;
+    typedef ::std::map< SCTAB, std::unique_ptr<TableSlots> > TableSlotsMap;
 
     typedef ::std::vector< ::std::pair< ScBroadcastAreaSlot*, ScBroadcastAreas::iterator > > AreasToBeErased;
 
@@ -290,16 +290,16 @@ private:
     BulkGroupAreasType m_BulkGroupAreas;
     TableSlotsMap         aTableSlotsMap;
     AreasToBeErased       maAreasToBeErased;
-    SvtBroadcaster       *pBCAlways;             // for the RC_ALWAYS special range
+    std::unique_ptr<SvtBroadcaster> pBCAlways;             // for the RC_ALWAYS special range
     ScDocument           *pDoc;
     ScBroadcastArea      *pUpdateChain;
     ScBroadcastArea      *pEOUpdateChain;
     sal_uInt32            nInBulkBroadcast;
 
-    static inline SCSIZE ComputeSlotOffset( const ScAddress& rAddress );
-    static void          ComputeAreaPoints( const ScRange& rRange,
+    inline SCSIZE        ComputeSlotOffset( const ScAddress& rAddress ) const;
+    void                 ComputeAreaPoints( const ScRange& rRange,
                                             SCSIZE& nStart, SCSIZE& nEnd,
-                                            SCSIZE& nRowBreak );
+                                            SCSIZE& nRowBreak ) const;
 
 public:
                         ScBroadcastAreaSlotMachine( ScDocument* pDoc );
@@ -350,7 +350,13 @@ public:
 class ScBulkBroadcast
 {
     ScBroadcastAreaSlotMachine* pBASM;
-    SfxHintId                  mnHintId;
+    SfxHintId                   mnHintId;
+
+    ScBulkBroadcast(ScBulkBroadcast const &) = delete;
+    ScBulkBroadcast(ScBulkBroadcast &&) = delete;
+    ScBulkBroadcast & operator =(ScBulkBroadcast const &) = delete;
+    ScBulkBroadcast & operator =(ScBulkBroadcast &&) = delete;
+
 public:
     explicit ScBulkBroadcast( ScBroadcastAreaSlotMachine* p, SfxHintId nHintId ) :
         pBASM(p),

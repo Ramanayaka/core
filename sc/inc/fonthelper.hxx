@@ -7,11 +7,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_SC_INC_FONTHELPER_HXX
-#define INCLUDED_SC_INC_FONTHELPER_HXX
+#pragma once
 
 #include "scdllapi.h"
-#include <boost/optional.hpp>
+#include <optional>
 #include <tools/fontenum.hxx>
 #include <tools/color.hxx>
 #include <vcl/fntstyle.hxx>
@@ -21,22 +20,22 @@ class SvxFontItem;
 
 struct SC_DLLPUBLIC ScDxfFont
 {
-    boost::optional<const SvxFontItem*> pFontAttr;
-    boost::optional<sal_uInt32> nFontHeight;
-    boost::optional<FontWeight> eWeight;
-    boost::optional<FontItalic> eItalic;
-    boost::optional<FontLineStyle> eUnder;
-    boost::optional<FontLineStyle> eOver;
-    boost::optional<bool> bWordLine;
-    boost::optional<FontStrikeout> eStrike;
-    boost::optional<bool> bOutline;
-    boost::optional<bool> bShadow;
-    boost::optional<FontEmphasisMark> eEmphasis;
-    boost::optional<FontRelief> eRelief;
-    boost::optional<Color> aColor;
-    boost::optional<LanguageType> eLang;
+    std::optional<const SvxFontItem*> pFontAttr;
+    std::optional<sal_uInt32> nFontHeight;
+    std::optional<FontWeight> eWeight;
+    std::optional<FontItalic> eItalic;
+    std::optional<FontLineStyle> eUnder;
+    std::optional<FontLineStyle> eOver;
+    std::optional<bool> bWordLine;
+    std::optional<FontStrikeout> eStrike;
+    std::optional<bool> bOutline;
+    std::optional<bool> bShadow;
+    std::optional<FontEmphasisMark> eEmphasis;
+    std::optional<FontRelief> eRelief;
+    std::optional<Color> aColor;
+    std::optional<LanguageType> eLang;
 
-    bool isEmpty()
+    bool isEmpty() const
     {
         return !(pFontAttr || nFontHeight ||
             eWeight || eItalic || eUnder ||
@@ -45,7 +44,5 @@ struct SC_DLLPUBLIC ScDxfFont
             eRelief || aColor || eLang);
     }
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

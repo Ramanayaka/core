@@ -28,6 +28,7 @@
 #include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 #include <com/sun/star/xforms/XDataTypeRepository.hpp>
 #include <unotools/syslocale.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <tools/diagnose_ex.h>
 
 
@@ -90,7 +91,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "XSDValidationHelper::getAvailableDataTypeNames: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "XSDValidationHelper::getAvailableDataTypeNames" );
         }
     }
 
@@ -147,7 +148,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "XSDValidationHelper::getValidatingDataTypeName: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "XSDValidationHelper::getValidatingDataTypeName" );
         }
         return sDataTypeName;
     }
@@ -169,7 +170,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "XSDValidationHelper::getDataTypeByName: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "XSDValidationHelper::getDataTypeByName" );
         }
 
         return pReturn;
@@ -204,7 +205,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "XSDValidationHelper::cloneDataType: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "XSDValidationHelper::cloneDataType" );
         }
         return true;
     }
@@ -229,7 +230,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "XSDValidationHelper::removeDataTypeFromRepository: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "XSDValidationHelper::removeDataTypeFromRepository" );
             return false;
         }
         return true;
@@ -249,13 +250,15 @@ namespace pcr
                 OUString sOldDataTypeName;
                 OSL_VERIFY( xBinding->getPropertyValue( PROPERTY_XSD_DATA_TYPE ) >>= sOldDataTypeName );
                 Reference< XPropertySet > xOldType;
-                try { xOldType.set(getDataType( sOldDataTypeName ), css::uno::UNO_QUERY); } catch( const Exception& ) { }
+                try {
+                    xOldType = getDataType( sOldDataTypeName );
+                } catch( const Exception& ) { }
 
                 // set the new data type name
                 xBinding->setPropertyValue( PROPERTY_XSD_DATA_TYPE, makeAny( _rName ) );
 
                 // retrieve the new data type object
-                Reference< XPropertySet > xNewType( getDataType( _rName ), UNO_QUERY );
+                Reference< XPropertySet > xNewType = getDataType( _rName );
 
                 // fire any changes in the properties which result from this new type
                 std::set< OUString > aFilter; aFilter.insert( PROPERTY_NAME );
@@ -269,7 +272,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
     }
 
@@ -309,7 +312,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "XSDValidationHelper::copyDataType: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "XSDValidationHelper::copyDataType" );
         }
     }
 
@@ -361,7 +364,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "XSDValidationHelper::findDefaultFormatForIntrospectee: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "XSDValidationHelper::findDefaultFormatForIntrospectee" );
         }
     }
 
@@ -388,7 +391,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "XSDValidationHelper::getBasicTypeNameForClass: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "XSDValidationHelper::getBasicTypeNameForClass" );
         }
 
         return sReturn;

@@ -28,40 +28,31 @@ using namespace com::sun::star::ucb;
 
 #include "filinl.hxx"
 
-#if OSL_DEBUG_LEVEL > 0
-#define THROW_WHERE SAL_WHERE
-#else
-#define THROW_WHERE ""
-#endif
-
 XPropertySetInfo_impl::XPropertySetInfo_impl( TaskManager* pMyShell,const OUString& aUnqPath )
     : m_pMyShell( pMyShell ),
-      m_count( 0 ),
       m_seq( 0 )
 {
     m_pMyShell->m_pProvider->acquire();
 
     TaskManager::ContentMap::iterator it = m_pMyShell->m_aContent.find( aUnqPath );
 
-    TaskManager::PropertySet& properties = *(it->second.properties);
-    TaskManager::PropertySet::iterator it1 = properties.begin();
+    TaskManager::PropertySet& properties = it->second.properties;
 
     m_seq.realloc( properties.size() );
 
-    while( it1 != properties.end() )
+    sal_Int32 count = 0;
+    for( const auto& rProp : properties )
     {
-        m_seq[ m_count++ ] = beans::Property( it1->getPropertyName(),
-                                              it1->getHandle(),
-                                              it1->getType(),
-                                              it1->getAttributes() );
-        ++it1;
+        m_seq[ count++ ] = beans::Property( rProp.getPropertyName(),
+                                            rProp.getHandle(),
+                                            rProp.getType(),
+                                            rProp.getAttributes() );
     }
 }
 
 
 XPropertySetInfo_impl::XPropertySetInfo_impl( TaskManager* pMyShell,const Sequence< beans::Property >& seq )
     : m_pMyShell( pMyShell ),
-      m_count( seq.getLength() ),
       m_seq( seq )
 {
     m_pMyShell->m_pProvider->acquire();
@@ -77,10 +68,12 @@ XPropertySetInfo_impl::~XPropertySetInfo_impl()
 beans::Property SAL_CALL
 XPropertySetInfo_impl::getPropertyByName( const OUString& aName )
 {
-  for( sal_Int32 i = 0; i < m_seq.getLength(); ++i )
-    if( m_seq[i].Name == aName ) return m_seq[i];
+    auto pProp = std::find_if(m_seq.begin(), m_seq.end(),
+        [&aName](const beans::Property& rProp) { return rProp.Name == aName; });
+    if (pProp != m_seq.end())
+        return *pProp;
 
-  throw beans::UnknownPropertyException( THROW_WHERE );
+    throw beans::UnknownPropertyException( aName );
 }
 
 
@@ -94,9 +87,8 @@ XPropertySetInfo_impl::getProperties()
 sal_Bool SAL_CALL
 XPropertySetInfo_impl::hasPropertyByName( const OUString& aName )
 {
-  for( sal_Int32 i = 0; i < m_seq.getLength(); ++i )
-    if( m_seq[i].Name == aName ) return true;
-  return false;
+    return std::any_of(m_seq.begin(), m_seq.end(),
+        [&aName](const beans::Property& rProp) { return rProp.Name == aName; });
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

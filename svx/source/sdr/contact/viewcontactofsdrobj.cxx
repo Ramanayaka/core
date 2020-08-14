@@ -21,23 +21,16 @@
 #include <svx/sdr/contact/viewobjectcontactofsdrobj.hxx>
 #include <svx/sdr/contact/viewobjectcontact.hxx>
 #include <svx/svdobj.hxx>
-#include <svx/sdr/contact/displayinfo.hxx>
-#include <vcl/outdev.hxx>
-#include <svx/svdoole2.hxx>
+#include <tools/debug.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/sdr/contact/objectcontact.hxx>
-#include <basegfx/color/bcolor.hxx>
 #include <drawinglayer/primitive2d/markerarrayprimitive2d.hxx>
 #include <drawinglayer/primitive2d/objectinfoprimitive2d.hxx>
-#include <sdr/contact/objectcontactofpageview.hxx>
-#include <svx/sdrpagewindow.hxx>
-#include <svx/sdrpaintwindow.hxx>
 #include <svx/svdhdl.hxx>
-#include <comphelper/sequence.hxx>
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
-// Create a Object-Specific ViewObjectContact, set ViewContact and
+// Create an Object-Specific ViewObjectContact, set ViewContact and
 // ObjectContact. Always needs to return something.
 ViewObjectContact& ViewContactOfSdrObj::CreateObjectSpecificViewObjectContact(ObjectContact& rObjectContact)
 {
@@ -72,7 +65,7 @@ sal_uInt32 ViewContactOfSdrObj::GetObjectCount() const
         return GetSdrObject().GetSubList()->GetObjCount();
     }
 
-    return 0L;
+    return 0;
 }
 
 ViewContact& ViewContactOfSdrObj::GetViewContact(sal_uInt32 nIndex) const
@@ -87,7 +80,7 @@ ViewContact& ViewContactOfSdrObj::GetViewContact(sal_uInt32 nIndex) const
 ViewContact* ViewContactOfSdrObj::GetParentContact() const
 {
     ViewContact* pRetval = nullptr;
-    SdrObjList* pObjList = GetSdrObject().GetObjList();
+    SdrObjList* pObjList = GetSdrObject().getParentSdrObjListFromSdrObject();
 
     if(pObjList)
     {
@@ -99,9 +92,9 @@ ViewContact* ViewContactOfSdrObj::GetParentContact() const
         else
         {
             // Is a group?
-            if(pObjList->GetOwnerObj())
+            if(pObjList->getSdrObjectFromSdrObjList())
             {
-                pRetval = &(pObjList->GetOwnerObj()->GetViewContact());
+                pRetval = &(pObjList->getSdrObjectFromSdrObjList()->GetViewContact());
             }
         }
     }
@@ -113,14 +106,12 @@ ViewContact* ViewContactOfSdrObj::GetParentContact() const
 void ViewContactOfSdrObj::ActionChanged()
 {
     // look for own changes
-    if(dynamic_cast<const SdrTextObj*>( &GetSdrObject() ) != nullptr)
+    if (SdrTextObj* pTextObj = dynamic_cast<SdrTextObj*>(&GetSdrObject()))
     {
-        SdrTextObj& rTextObj = static_cast<SdrTextObj&>(GetSdrObject());
-
-        if(rTextObj.GetTextAniKind() != meRememberedAnimationKind)
+        if (pTextObj->GetTextAniKind() != meRememberedAnimationKind)
         {
             // #i38135# now remember new type
-            meRememberedAnimationKind = rTextObj.GetTextAniKind();
+            meRememberedAnimationKind = pTextObj->GetTextAniKind();
         }
     }
 
@@ -153,12 +144,12 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfSdrObj::createGlueP
             std::vector< basegfx::B2DPoint > aGluepointVector;
 
             // create GluePoint primitives. ATM these are relative to the SnapRect
-            for(sal_uInt32 a(0L); a < nCount; a++)
+            for(sal_uInt32 a(0); a < nCount; a++)
             {
-                const SdrGluePoint& rCandidate = (*pGluePointList)[(sal_uInt16)a];
+                const SdrGluePoint& rCandidate = (*pGluePointList)[static_cast<sal_uInt16>(a)];
                 const Point aPosition(rCandidate.GetAbsolutePos(GetSdrObject()));
 
-                aGluepointVector.push_back(basegfx::B2DPoint(aPosition.X(), aPosition.Y()));
+                aGluepointVector.emplace_back(aPosition.X(), aPosition.Y());
             }
 
             if(!aGluepointVector.empty())
@@ -174,16 +165,16 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfSdrObj::createGlueP
     return xRetval;
 }
 
-drawinglayer::primitive2d::Primitive2DContainer ViewContactOfSdrObj::embedToObjectSpecificInformation(const drawinglayer::primitive2d::Primitive2DContainer& rSource) const
+drawinglayer::primitive2d::Primitive2DContainer ViewContactOfSdrObj::embedToObjectSpecificInformation(drawinglayer::primitive2d::Primitive2DContainer aSource) const
 {
-    if(!rSource.empty() &&
+    if(!aSource.empty() &&
         (!GetSdrObject().GetName().isEmpty() ||
          !GetSdrObject().GetTitle().isEmpty() ||
          !GetSdrObject().GetDescription().isEmpty()))
     {
         const drawinglayer::primitive2d::Primitive2DReference xRef(
             new drawinglayer::primitive2d::ObjectInfoPrimitive2D(
-                rSource,
+                aSource,
                 GetSdrObject().GetName(),
                 GetSdrObject().GetTitle(),
                 GetSdrObject().GetDescription()));
@@ -191,9 +182,9 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfSdrObj::embedToObje
         return drawinglayer::primitive2d::Primitive2DContainer { xRef };
     }
 
-    return rSource;
+    return aSource;
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

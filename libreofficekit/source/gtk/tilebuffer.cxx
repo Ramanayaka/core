@@ -50,10 +50,9 @@ void Tile::setSurface(cairo_surface_t *buffer)
 */
 void TileBuffer::resetAllTiles()
 {
-    std::map<int, Tile>::iterator it = m_mTiles.begin();
-    for (; it != m_mTiles.end(); ++it)
+    for (auto & tile : m_mTiles)
     {
-        it->second.valid = false;
+        tile.second.valid = false;
     }
 }
 
@@ -62,21 +61,21 @@ void TileBuffer::setInvalid(int x, int y, float fZoom, GTask* task,
 {
     int index = x * m_nWidth + y;
     GError* error = nullptr;
-    if (m_mTiles.find(index) != m_mTiles.end())
-    {
-        m_mTiles[index].valid = false;
+    if (m_mTiles.find(index) == m_mTiles.end())
+        return;
 
-        LOEvent* pLOEvent = new LOEvent(LOK_PAINT_TILE);
-        pLOEvent->m_nPaintTileX = x;
-        pLOEvent->m_nPaintTileY = y;
-        pLOEvent->m_fPaintTileZoom = fZoom;
-        g_task_set_task_data(task, pLOEvent, LOEvent::destroy);
-        g_thread_pool_push(lokThreadPool, g_object_ref(task), &error);
-        if (error != nullptr)
-        {
-            g_warning("Unable to call LOK_PAINT_TILE: %s", error->message);
-            g_clear_error(&error);
-        }
+    m_mTiles[index].valid = false;
+
+    LOEvent* pLOEvent = new LOEvent(LOK_PAINT_TILE);
+    pLOEvent->m_nPaintTileX = x;
+    pLOEvent->m_nPaintTileY = y;
+    pLOEvent->m_fPaintTileZoom = fZoom;
+    g_task_set_task_data(task, pLOEvent, LOEvent::destroy);
+    g_thread_pool_push(lokThreadPool, g_object_ref(task), &error);
+    if (error != nullptr)
+    {
+        g_warning("Unable to call LOK_PAINT_TILE: %s", error->message);
+        g_clear_error(&error);
     }
 }
 
@@ -110,6 +109,21 @@ Tile& TileBuffer::getTile(int x, int y, GTask* task,
     return m_mTiles[index];
 }
 
+void TileBuffer::setTile(int x, int y, cairo_surface_t *surface)
+{
+    int index = x * m_nWidth + y;
+
+    m_mTiles[index].setSurface(surface);
+    m_mTiles[index].valid = true;
+}
+
+bool TileBuffer::hasValidTile(int x, int y)
+{
+    int index = x * m_nWidth + y;
+    auto it = m_mTiles.find(index);
+    return (it != m_mTiles.end()) && it->second.valid;
+}
+
 void LOEvent::destroy(void* pMemory)
 {
     LOEvent* pLOEvent = static_cast<LOEvent*>(pMemory);
@@ -117,7 +131,7 @@ void LOEvent::destroy(void* pMemory)
 }
 
 GQuark
-LOKTileBufferErrorQuark(void)
+LOKTileBufferErrorQuark()
 {
     return g_quark_from_static_string("lok-tilebuffer-error");
 }

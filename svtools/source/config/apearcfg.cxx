@@ -24,13 +24,12 @@
 #include <tools/debug.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
-#include <sal/macros.h>
+
+#include <com/sun/star/uno/Sequence.hxx>
 
 #define DEFAULT_DRAGMODE    DragMode::SystemDep
 #define DEFAULT_SNAPMODE    SnapType::ToButton
-#if defined UNX
 #define DEFAULT_AAMINHEIGHT 8
-#endif
 
 using namespace ::com::sun::star::uno;
 
@@ -41,48 +40,42 @@ SvtTabAppearanceCfg::SvtTabAppearanceCfg()
     ,nDragMode          ( DEFAULT_DRAGMODE )
     ,nSnapMode          ( DEFAULT_SNAPMODE )
     ,nMiddleMouse       ( MouseMiddleButtonAction::AutoScroll )
-#if defined( UNX )
     ,nAAMinPixelHeight  ( DEFAULT_AAMINHEIGHT )
-#endif
-    ,bMenuMouseFollow   ( false )
-#if defined( UNX )
     ,bFontAntialiasing  ( true )
-#endif
+    ,bMenuMouseFollow   ( false )
 {
     const Sequence<OUString>& rNames = GetPropertyNames();
     Sequence<Any> aValues = GetProperties(rNames);
     const Any* pValues = aValues.getConstArray();
     DBG_ASSERT(aValues.getLength() == rNames.getLength(), "GetProperties failed");
 
-    if(aValues.getLength() == rNames.getLength())
+    if(aValues.getLength() != rNames.getLength())
+        return;
+
+    for(int nProp = 0; nProp < rNames.getLength(); ++nProp, ++pValues)
     {
-        for(int nProp = 0; nProp < rNames.getLength(); ++nProp, ++pValues)
+        if(pValues->hasValue())
         {
-            if(pValues->hasValue())
+            switch(nProp)
             {
-                switch(nProp)
+                case  0:    //"Window/Drag"
                 {
-                    case  0:    //"Window/Drag"
-                    {
-                        short nTmp;
-                        if (*pValues >>= nTmp)
-                            nDragMode = (DragMode)nTmp;
-                        break;
-                    }
-                    case  1: bMenuMouseFollow = *o3tl::doAccess<bool>(*pValues); break; //"Menu/FollowMouse",
-                    case  2:
-                    {
-                        short nTmp;
-                        if (*pValues >>= nTmp)
-                            nSnapMode = (SnapType)nTmp; //"Dialog/MousePositioning",
-                        break;
-                    }
-                    case  3: { short nTmp = 0; *pValues >>= nTmp; nMiddleMouse = static_cast<MouseMiddleButtonAction>(nTmp); break; } //"Dialog/MiddleMouseButton",
-#if defined( UNX )
-                    case  4: bFontAntialiasing = *o3tl::doAccess<bool>(*pValues); break;    // "FontAntialising/Enabled",
-                    case  5: *pValues >>= nAAMinPixelHeight; break;                         // "FontAntialising/MinPixelHeight",
-#endif
+                    short nTmp;
+                    if (*pValues >>= nTmp)
+                        nDragMode = static_cast<DragMode>(nTmp);
+                    break;
                 }
+                case  1: bMenuMouseFollow = *o3tl::doAccess<bool>(*pValues); break; //"Menu/FollowMouse",
+                case  2:
+                {
+                    short nTmp;
+                    if (*pValues >>= nTmp)
+                        nSnapMode = static_cast<SnapType>(nTmp); //"Dialog/MousePositioning",
+                    break;
+                }
+                case  3: { short nTmp = 0; *pValues >>= nTmp; nMiddleMouse = static_cast<MouseMiddleButtonAction>(nTmp); break; } //"Dialog/MiddleMouseButton",
+                case  4: bFontAntialiasing = *o3tl::doAccess<bool>(*pValues); break;    // "FontAntialising/Enabled",
+                case  5: *pValues >>= nAAMinPixelHeight; break;                         // "FontAntialising/MinPixelHeight",
             }
         }
     }
@@ -94,28 +87,15 @@ SvtTabAppearanceCfg::~SvtTabAppearanceCfg( )
 
 const Sequence<OUString>& SvtTabAppearanceCfg::GetPropertyNames()
 {
-    static Sequence<OUString> aNames;
-    if(!aNames.getLength())
+    static Sequence<OUString> const aNames
     {
-        static const sal_Char* aPropNames[] =
-        {
              "Window/Drag"                       //  0
             ,"Menu/FollowMouse"                  //  1
             ,"Dialog/MousePositioning"           //  2
             ,"Dialog/MiddleMouseButton"          //  3
-#if defined( UNX )
             ,"FontAntiAliasing/Enabled"          //  4
             ,"FontAntiAliasing/MinPixelHeight"   //  5
-#endif
-        };
-        const int nCount = SAL_N_ELEMENTS( aPropNames );
-        aNames.realloc(nCount);
-
-        const sal_Char** pAsciiNames = aPropNames;
-        OUString* pNames = aNames.getArray();
-        for(int i = 0; i < nCount; ++i, ++pNames, ++pAsciiNames)
-            *pNames = OUString::createFromAscii( *pAsciiNames );
-    }
+    };
     return aNames;
 }
 
@@ -129,14 +109,12 @@ void  SvtTabAppearanceCfg::ImplCommit()
     {
         switch(nProp)
         {
-            case  0: pValues[nProp] <<= (short)nDragMode; break;        // "Window/Drag",
+            case  0: pValues[nProp] <<= static_cast<short>(nDragMode); break;        // "Window/Drag",
             case  1: pValues[nProp] <<= bMenuMouseFollow; break;        // "Menu/FollowMouse",
-            case  2: pValues[nProp] <<= (short)nSnapMode; break;        // "Dialog/MousePositioning",
+            case  2: pValues[nProp] <<= static_cast<short>(nSnapMode); break;        // "Dialog/MousePositioning",
             case  3: pValues[nProp] <<= static_cast<short>(nMiddleMouse); break; // "Dialog/MiddleMouseButton",
-#if defined( UNX )
             case  4: pValues[nProp] <<= bFontAntialiasing; break;       // "FontAntialising/Enabled",
             case  5: pValues[nProp] <<= nAAMinPixelHeight; break;       // "FontAntialising/MinPixelHeight",
-#endif
         }
     }
     PutProperties(rNames, aValues);
@@ -172,11 +150,9 @@ void SvtTabAppearanceCfg::SetApplicationDefaults ( Application* pApp )
     // and set it here
     hAppStyle.SetUseSystemUIFonts( bUseSystemUIFonts );
 
-#if defined( UNX )
     // font anti aliasing
     hAppStyle.SetAntialiasingMinPixelHeight( nAAMinPixelHeight );
     hAppStyle.SetDisplayOptions( bFontAntialiasing ? DisplayOptions::NONE : DisplayOptions::AADisable );
-#endif
 
     // Mouse Snap
 

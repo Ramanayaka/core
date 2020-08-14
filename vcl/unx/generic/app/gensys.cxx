@@ -21,66 +21,15 @@
 
 #include <unx/gensys.h>
 
-#include <vcl/msgbox.hxx>
-#include <vcl/button.hxx>
-
 #include <svdata.hxx>
 
-#include <rtl/ustrbuf.hxx>
 #include <rtl/strbuf.hxx>
 #include <rtl/bootstrap.hxx>
 #include <osl/process.h>
 #include <osl/thread.h>
 #include <unotools/configmgr.hxx>
 
-#include <vcl/unohelp.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-
 using namespace com::sun::star;
-
-namespace {
-
-OUString GetNativeMessageBoxButtonText( StandardButtonType nButtonId, bool bUseResources )
-{
-    OUString aText;
-    if( bUseResources )
-    {
-        aText = Button::GetStandardText( nButtonId );
-    }
-    if( aText.isEmpty() )
-    {
-        switch( nButtonId )
-        {
-        case StandardButtonType::OK:
-            aText = "OK";
-            break;
-        case StandardButtonType::Cancel:
-            aText = "Cancel";
-            break;
-        case StandardButtonType::Abort:
-            aText = "Abort";
-            break;
-        case StandardButtonType::Retry:
-            aText = "Retry";
-            break;
-        case StandardButtonType::Ignore:
-            aText = "Ignore";
-            break;
-        case StandardButtonType::Yes:
-            aText = "Yes";
-            break;
-        case StandardButtonType::No:
-            aText = "No";
-            break;
-        default: break;
-        }
-    }
-    return aText;
-}
-
-}
 
 SalGenericSystem::SalGenericSystem()
 {
@@ -92,14 +41,14 @@ SalGenericSystem::~SalGenericSystem()
 
 int SalGenericSystem::ShowNativeMessageBox( const OUString& rTitle, const OUString& rMessage )
 {
-    std::list< OUString > aButtons;
+    std::vector< OUString > aButtons;
     int nButtonIds[5] = {0}, nBut = 0;
 
     ImplHideSplash();
 
-    aButtons.push_back( GetNativeMessageBoxButtonText( StandardButtonType::OK, false/*bUseResources*/ ) );
+    aButtons.push_back( "OK" );
     nButtonIds[nBut++] = SALSYSTEM_SHOWNATIVEMSGBOX_BTN_OK;
-    int nResult = ShowNativeDialog( rTitle, rMessage, aButtons, 0/*nDefButton*/ );
+    int nResult = ShowNativeDialog( rTitle, rMessage, aButtons );
 
     return nResult != -1 ? nButtonIds[ nResult ] : 0;
 }

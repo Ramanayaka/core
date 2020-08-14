@@ -22,19 +22,18 @@
 #include <toolkit/awt/vclxfont.hxx>
 #include <toolkit/helper/convert.hxx>
 
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
+#include <com/sun/star/awt/XDevice.hpp>
+#include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <comphelper/sequence.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
 #include <vcl/menu.hxx>
-#include <vcl/unohelp2.hxx>
 #include <vcl/settings.hxx>
+#include <i18nlangtag/languagetag.hxx>
 
 using namespace ::com::sun::star::accessibility;
 using namespace ::com::sun::star::uno;
@@ -43,18 +42,6 @@ using namespace ::com::sun::star;
 using namespace ::comphelper;
 
 
-// class OAccessibleMenuComponent
-
-
-OAccessibleMenuComponent::OAccessibleMenuComponent( Menu* pMenu )
-    :OAccessibleMenuBaseComponent( pMenu )
-{
-}
-
-
-OAccessibleMenuComponent::~OAccessibleMenuComponent()
-{
-}
 
 
 bool OAccessibleMenuComponent::IsEnabled()
@@ -288,9 +275,9 @@ sal_Int32 OAccessibleMenuComponent::getForeground(  )
     OExternalLockGuard aGuard( this );
 
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
-    sal_Int32 nColor = rStyleSettings.GetMenuTextColor().GetColor();
+    Color nColor = rStyleSettings.GetMenuTextColor();
 
-    return nColor;
+    return sal_Int32(nColor);
 }
 
 
@@ -321,7 +308,7 @@ Reference< awt::XFont > OAccessibleMenuComponent::getFont(  )
             {
                 const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
                 VCLXFont* pVCLXFont = new VCLXFont;
-                pVCLXFont->Init( *xDev.get(), rStyleSettings.GetMenuFont() );
+                pVCLXFont->Init( *xDev, rStyleSettings.GetMenuFont() );
                 xFont = pVCLXFont;
             }
         }

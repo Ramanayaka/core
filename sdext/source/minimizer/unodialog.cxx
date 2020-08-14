@@ -19,15 +19,11 @@
 
 
 #include "unodialog.hxx"
-#include <com/sun/star/awt/MessageBoxButtons.hpp>
+
 #include <com/sun/star/awt/Toolkit.hpp>
 #include <com/sun/star/awt/UnoControlDialog.hpp>
-#include <com/sun/star/awt/XMessageBoxFactory.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/text/XTextRange.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
-#include <com/sun/star/view/XControlAccess.hpp>
 
 
 using namespace ::com::sun::star::awt;
@@ -38,11 +34,11 @@ using namespace ::com::sun::star::view;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::beans;
 
-UnoDialog::UnoDialog( const Reference< XComponentContext > &rxContext, Reference< XFrame >& rxFrame ) :
+UnoDialog::UnoDialog( const Reference< XComponentContext > &rxContext, Reference< XFrame > const & rxFrame ) :
     mxContext( rxContext ),
     mxController( rxFrame->getController() ),
     mxDialogModel( mxContext->getServiceManager()->createInstanceWithContext(
-        "com.sun.star.awt.UnoControlDialogModel", mxContext ), UNO_QUERY_THROW ),
+        "com.sun.star.awt.UnoControlDialogModel", mxContext ), UNO_SET_THROW ),
     mxDialogModelMultiPropertySet( mxDialogModel, UNO_QUERY_THROW ),
     mxDialogModelMSF( mxDialogModel, UNO_QUERY_THROW ),
     mxDialogModelNameContainer( mxDialogModel, UNO_QUERY_THROW ),
@@ -56,16 +52,23 @@ UnoDialog::UnoDialog( const Reference< XComponentContext > &rxContext, Reference
 
     Reference< XFrame > xFrame( mxController->getFrame() );
     Reference< XWindow > xContainerWindow( xFrame->getContainerWindow() );
-    mxWindowPeer.set( xContainerWindow, UNO_QUERY_THROW );
-    createWindowPeer( mxWindowPeer );
-}
+    Reference< XWindowPeer > xWindowPeer( xContainerWindow, UNO_QUERY_THROW );
 
+    // set the main loop handle to update GUI while busy
+    Reference< XToolkit > xToolkit( Toolkit::create( mxContext ), UNO_QUERY_THROW  );
+    mxReschedule.set( xToolkit, UNO_QUERY );
+
+    // allocate the real window resources
+    mxDialog->createPeer(xToolkit,
+        xWindowPeer.is() ? xWindowPeer : xToolkit->getDesktopWindow());
+}
 
 UnoDialog::~UnoDialog()
 {
-
+    // free the resources
+    Reference<XComponent> xDialogComponent(mxDialog, UNO_QUERY_THROW);
+    xDialogComponent->dispose();
 }
-
 
 void UnoDialog::execute()
 {
@@ -79,20 +82,6 @@ void UnoDialog::endExecute( bool bStatus )
     mbStatus = bStatus;
     mxDialog->endExecute();
 }
-
-
-Reference< XWindowPeer > UnoDialog::createWindowPeer( Reference< XWindowPeer > const & xParentPeer )
-{
-    mxDialog->setVisible( false );
-    Reference< XToolkit > xToolkit( Toolkit::create( mxContext ), UNO_QUERY_THROW  );
-    mxReschedule.set( xToolkit, UNO_QUERY );
-    mxDialog->createPeer(
-        xToolkit,
-        xParentPeer.is() ? xParentPeer : xToolkit->getDesktopWindow());
-//  xWindowPeer = xControl.getPeer();
-    return mxDialog->getPeer();
-}
-
 
 Reference< XInterface > UnoDialog::insertControlModel( const OUString& rServiceName, const OUString& rName,
                                                         const Sequence< OUString >& rPropertyNames, const Sequence< Any >& rPropertyValues )
@@ -194,7 +183,7 @@ Reference< XControl > UnoDialog::insertFormattedField( const OUString& rName, co
         Reference< XPropertySet > xPropertySet( insertControlModel( "com.sun.star.awt.UnoControlFormattedFieldModel",
             rName, rPropertyNames, rPropertyValues ), UNO_QUERY_THROW );
         xPropertySet->setPropertyValue("Name", Any( rName ) );
-        xControl.set( mxDialog->getControl( rName ), UNO_QUERY_THROW );
+        xControl.set( mxDialog->getControl( rName ), UNO_SET_THROW );
     }
     catch ( Exception& )
     {
@@ -262,7 +251,7 @@ Reference< XControl > UnoDialog::insertImage( const OUString& rName, const Seque
         Reference< XPropertySet > xPropertySet( insertControlModel( "com.sun.star.awt.UnoControlImageControlModel",
             rName, rPropertyNames, rPropertyValues ), UNO_QUERY_THROW );
         xPropertySet->setPropertyValue("Name", Any( rName ) );
-        xControl.set( mxDialog->getControl( rName ), UNO_QUERY_THROW );
+        xControl.set( mxDialog->getControl( rName ), UNO_SET_THROW );
     }
     catch ( Exception& )
     {
@@ -307,15 +296,13 @@ Any UnoDialog::getControlProperty( const OUString& rControlName, const OUString&
 
 void UnoDialog::enableControl( const OUString& rControlName )
 {
-    const OUString sEnabled( "Enabled" );
-    setControlProperty( rControlName, sEnabled, Any( true ) );
+    setControlProperty( rControlName, "Enabled", Any( true ) );
 }
 
 
 void UnoDialog::disableControl( const OUString& rControlName )
 {
-    const OUString sEnabled( "Enabled" );
-    setControlProperty( rControlName, sEnabled, Any( false ) );
+    setControlProperty( rControlName, "Enabled", Any( false ) );
 }
 
 

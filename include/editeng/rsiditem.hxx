@@ -16,19 +16,22 @@
 // SvxRsidItem
 
 
-class EDITENG_DLLPUBLIC SvxRsidItem : public SfxUInt32Item
+class EDITENG_DLLPUBLIC SvxRsidItem final : public SfxUInt32Item
 {
 public:
     SvxRsidItem( sal_uInt32 nRsid, sal_uInt16 nId ) : SfxUInt32Item( nId, nRsid ) {}
-    SvxRsidItem( SvStream& rIn, sal_uInt16 nId ) : SfxUInt32Item( nId, rIn ) {}
 
-    virtual SfxPoolItem* Clone( SfxItemPool* pPool = nullptr ) const override;
-    virtual SfxPoolItem* Create( SvStream& rIn, sal_uInt16 nVer ) const override;
+    virtual bool GetPresentation( SfxItemPresentation ePres,
+                                  MapUnit eCoreMetric,
+                                  MapUnit ePresMetric,
+                                  OUString &rText, const IntlWrapper& ) const override;
+
+    virtual SvxRsidItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 #endif // INCLUDED_EDITENG_RSIDITEM_HXX

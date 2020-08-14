@@ -61,8 +61,8 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPFOOTNOTE_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPFOOTNOTE_HXX
 
-#include "lwpfrib.hxx"
-#include "lwpobj.hxx"
+#include <lwpfrib.hxx>
+#include <lwpobj.hxx>
 #include "lwpsection.hxx"
 #include "lwpborderstuff.hxx"
 #include "lwptable.hxx"
@@ -123,7 +123,7 @@ class LwpTable;
 class LwpFootnote : public LwpOrderedObject
 {
 public:
-    LwpFootnote(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpFootnote(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual ~LwpFootnote() override;
     void RegisterStyle() override;
     void XFConvert(XFContentContainer * pCont) override;
@@ -134,14 +134,14 @@ private:
     sal_uInt16 m_nRow;
     LwpObjectID m_Content;
 public:
-    sal_uInt16 GetType(){ return m_nType;}
+    sal_uInt16 GetType() const { return m_nType;}
 private:
     LwpCellLayout* GetCellLayout();
     LwpDocument* GetFootnoteTableDivision();
     LwpDocument* GetEndnoteDivision(LwpDocument* pPossible);
     LwpEnSuperTableLayout* FindFootnoteTableLayout();
     LwpContent* FindFootnoteContent();
-    OUString GetTableClass();
+    OUString GetTableClass() const;
 };
 
 /**
@@ -150,7 +150,7 @@ private:
 class LwpFootnoteTable : public LwpTable
 {
 public:
-    LwpFootnoteTable(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpFootnoteTable(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
 protected:
     void Read() override;
 };
@@ -184,10 +184,10 @@ public:
         SUPERSCRIPT_REFERENCE   = 0x10
     };
 public:
-    sal_uInt16 GetStartingNumber(){ return m_nStartingNumber;}
-    OUString GetLeadingText(){ return m_LeadingText.str();}
-    OUString GetTrailingText(){ return m_TrailingText.str();}
-    sal_uInt16 GetReset(){ return static_cast<sal_uInt16>(m_nFlag & RESET_MASK);}
+    sal_uInt16 GetStartingNumber() const { return m_nStartingNumber;}
+    OUString const & GetLeadingText() const { return m_LeadingText.str();}
+    OUString const & GetTrailingText() const { return m_TrailingText.str();}
+    sal_uInt16 GetReset() const { return static_cast<sal_uInt16>(m_nFlag & RESET_MASK);}
 };
 
 /**
@@ -218,12 +218,12 @@ public:
         HAS_SEPARATOR   = 0x01,
         CUSTOM_LENGTH   = 0x02
     };
-    sal_uInt32 GetLength(){ return m_nLength;}
-    sal_uInt32 GetIndent(){ return m_nIndent;}
-    sal_uInt32 GetAbove(){ return m_nAbove;}
-    sal_uInt32 GetBelow(){ return m_nBelow;}
-    bool HasCustomLength(){ return (m_nFlag & CUSTOM_LENGTH) != 0;}
-    bool HasSeparator(){ return (m_nFlag & HAS_SEPARATOR) != 0;}
+    sal_uInt32 GetLength() const { return m_nLength;}
+    sal_uInt32 GetIndent() const { return m_nIndent;}
+    sal_uInt32 GetAbove() const { return m_nAbove;}
+    sal_uInt32 GetBelow() const { return m_nBelow;}
+    bool HasCustomLength() const { return (m_nFlag & CUSTOM_LENGTH) != 0;}
+    bool HasSeparator() const { return (m_nFlag & HAS_SEPARATOR) != 0;}
     float GetTopBorderWidth(){ return m_BorderStuff.GetSideWidth(LwpBorderStuff::TOP);}
     LwpColor GetTopBorderColor(){ return m_BorderStuff.GetSideColor(LwpBorderStuff::TOP);}
 };
@@ -231,16 +231,15 @@ public:
 /**
  * @brief   VO_FOOTNOTEOPTS object
 */
-class LwpFootnoteOptions : public LwpObject
+class LwpFootnoteOptions final : public LwpObject
 {
 public:
-    LwpFootnoteOptions(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpFootnoteOptions(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     void RegisterStyle() override;
-protected:
+private:
     void Read() override;
     void RegisterFootnoteStyle();
     void RegisterEndnoteStyle();
-private:
     virtual ~LwpFootnoteOptions() override;
 
     sal_uInt16 m_nFlag;
@@ -268,10 +267,10 @@ private:
 
 public:
     LwpFootnoteSeparatorOptions& GetFootnoteSeparator(){ return m_FootnoteSeparator;}
-    bool GetContinuedFrom(){ return ((m_nFlag & FO_CONTINUEFROM) != 0);}
-    bool GetContinuedOn(){ return ((m_nFlag & FO_CONTINUEON) != 0);}
-    OUString GetContinuedOnMessage();
-    OUString GetContinuedFromMessage();
+    bool GetContinuedFrom() const { return ((m_nFlag & FO_CONTINUEFROM) != 0);}
+    bool GetContinuedOn() const { return ((m_nFlag & FO_CONTINUEON) != 0);}
+    OUString GetContinuedOnMessage() const;
+    OUString GetContinuedFromMessage() const;
     void SetMasterPage(const OUString& strMasterPage){ m_strMasterPage = strMasterPage;}
 };
 

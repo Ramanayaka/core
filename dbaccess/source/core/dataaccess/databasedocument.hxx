@@ -22,8 +22,9 @@
 #include <sal/config.h>
 
 #include <map>
+#include <memory>
 
-#include "ModelImpl.hxx"
+#include <ModelImpl.hxx>
 #include "documenteventnotifier.hxx"
 
 #include <com/sun/star/document/XDocumentSubStorageSupplier.hpp>
@@ -39,6 +40,7 @@
 #include <com/sun/star/frame/XModuleManager2.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/lang/NotInitializedException.hpp>
 #include <com/sun/star/sdb/XOfficeDatabaseDocument.hpp>
 #include <com/sun/star/embed/XTransactionListener.hpp>
 #include <com/sun/star/document/XStorageBasedDocument.hpp>
@@ -167,11 +169,11 @@ class ODatabaseDocument :public ModelDependentComponent             // ModelDepe
     typedef std::map< OUString, css::uno::Reference< css::frame::XUntitledNumbers > > TNumberedController;
     css::uno::Reference< css::ui::XUIConfigurationManager2>                                     m_xUIConfigurationManager;
 
-    ::comphelper::OInterfaceContainerHelper2                                                           m_aModifyListeners;
-    ::comphelper::OInterfaceContainerHelper2                                                           m_aCloseListener;
-    ::comphelper::OInterfaceContainerHelper2                                                           m_aStorageListeners;
+    ::comphelper::OInterfaceContainerHelper2                                                    m_aModifyListeners;
+    ::comphelper::OInterfaceContainerHelper2                                                    m_aCloseListener;
+    ::comphelper::OInterfaceContainerHelper2                                                    m_aStorageListeners;
 
-    DocumentEvents*                                                                             m_pEventContainer;
+    std::unique_ptr<DocumentEvents>                                                             m_pEventContainer;
     ::rtl::Reference< DocumentEventExecutor >                                                   m_pEventExecutor;
     DocumentEventNotifier                                                                       m_aEventNotifier;
 
@@ -195,7 +197,7 @@ class ODatabaseDocument :public ModelDependentComponent             // ModelDepe
     bool                                                                                        m_bClosing;
     bool                                                                                        m_bAllowDocumentScripting;
     bool                                                                                        m_bHasBeenRecovered;
-    /// If XModel::attachResource() was called to inform us that the document is embedded into an other one.
+    /// If XModel::attachResource() was called to inform us that the document is embedded into another one.
     bool                                                                                        m_bEmbedded;
 
     enum StoreType { SAVE, SAVE_AS };
@@ -234,8 +236,8 @@ class ODatabaseDocument :public ModelDependentComponent             // ModelDepe
     /// write a single XML stream into the package
     void WriteThroughComponent(
         const css::uno::Reference< css::lang::XComponent > & xComponent,  /// the component we export
-        const sal_Char* pStreamName,                                                                /// the stream name
-        const sal_Char* pServiceName,                                                               /// service name of the component
+        const char* pStreamName,                                                                /// the stream name
+        const char* pServiceName,                                                               /// service name of the component
         const css::uno::Sequence< css::uno::Any> & rArguments,            /// the argument (XInitialization)
         const css::uno::Sequence< css::beans::PropertyValue> & rMediaDesc,/// output descriptor
         const css::uno::Reference< css::embed::XStorage >& _xStorageToSaveTo
@@ -246,7 +248,7 @@ class ODatabaseDocument :public ModelDependentComponent             // ModelDepe
     void WriteThroughComponent(
         const css::uno::Reference< css::io::XOutputStream >& xOutputStream,
         const css::uno::Reference< css::lang::XComponent >& xComponent,
-        const sal_Char* pServiceName,
+        const char* pServiceName,
         const css::uno::Sequence< css::uno::Any >& rArguments,
         const css::uno::Sequence< css::beans::PropertyValue> & rMediaDesc
     ) const;
@@ -327,6 +329,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getAvailableViewControllerNames(  ) override ;
     virtual css::uno::Reference< css::frame::XController2 > SAL_CALL createDefaultViewController( const css::uno::Reference< css::frame::XFrame >& Frame ) override ;
     virtual css::uno::Reference< css::frame::XController2 > SAL_CALL createViewController( const OUString& ViewName, const css::uno::Sequence< css::beans::PropertyValue >& Arguments, const css::uno::Reference< css::frame::XFrame >& Frame ) override ;
+    virtual void SAL_CALL setArgs(const css::uno::Sequence<css::beans::PropertyValue>& aArgs) override;
 
     // XStorable
     virtual sal_Bool SAL_CALL hasLocation(  ) override ;
@@ -544,6 +547,19 @@ private:
             impl_createStorageFor_throw(
                 const OUString& _rURL
             ) const;
+
+    /** Extracts storage from arguments, or creates for the given URL, truncating it if a file with
+        this name already exists
+
+        @throws Exception
+            if creating the storage failed
+
+        @return
+            the storage that is either extracted from arguments, or newly created for the file at
+            the given URL
+    */
+    css::uno::Reference<css::embed::XStorage> impl_GetStorageOrCreateFor_throw(
+        const ::comphelper::NamedValueCollection& _rArguments, const OUString& _rURL) const;
 
     /** sets our "modified" flag
 

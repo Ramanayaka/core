@@ -23,7 +23,7 @@ $(eval $(call gb_Library_set_include,dbase,\
 	-I$(WORKDIR)/YaccTarget/connectivity/source/parse \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,dbase,$(SRCDIR)/connectivity/inc/pch/precompiled_dbase))
+$(eval $(call gb_Library_set_precompiled_header,dbase,connectivity/inc/pch/precompiled_dbase))
 
 $(eval $(call gb_Library_use_libraries,dbase,\
 	cppu \
@@ -54,7 +54,6 @@ $(eval $(call gb_Library_add_exception_objects,dbase,\
 	connectivity/source/drivers/dbase/DIndexes \
 	connectivity/source/drivers/dbase/DTables \
 	connectivity/source/drivers/dbase/DConnection \
-	connectivity/source/drivers/dbase/Dservices \
 	connectivity/source/drivers/dbase/DDriver \
 	connectivity/source/drivers/dbase/DTable \
 ))

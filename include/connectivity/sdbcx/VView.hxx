@@ -20,21 +20,19 @@
 #ifndef INCLUDED_CONNECTIVITY_SDBCX_VVIEW_HXX
 #define INCLUDED_CONNECTIVITY_SDBCX_VVIEW_HXX
 
-#include <osl/diagnose.h>
 #include <com/sun/star/sdbcx/XDataDescriptorFactory.hpp>
-#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-#include <comphelper/proparrhlp.hxx>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <comphelper/broadcasthelper.hxx>
 #include <connectivity/CommonTools.hxx>
-#include <cppuhelper/interfacecontainer.h>
 #include <com/sun/star/container/XNamed.hpp>
 #include <connectivity/sdbcx/VDescriptor.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
 #include <comphelper/IdPropArrayHelper.hxx>
 #include <cppuhelper/implbase.hxx>
 
-namespace connectivity
-{
-    namespace sdbcx
+namespace com::sun::star::sdbc { class XDatabaseMetaData; }
+
+namespace connectivity::sdbcx
     {
 
         typedef ::cppu::WeakImplHelper< css::lang::XServiceInfo,
@@ -87,7 +85,7 @@ namespace connectivity
             virtual OUString SAL_CALL getName(  ) override;
             virtual void SAL_CALL setName( const OUString& ) override;
         };
-    }
+
 }
 
 #endif // INCLUDED_CONNECTIVITY_SDBCX_VVIEW_HXX

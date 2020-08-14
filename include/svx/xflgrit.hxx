@@ -20,6 +20,7 @@
 #ifndef INCLUDED_SVX_XFLGRIT_HXX
 #define INCLUDED_SVX_XFLGRIT_HXX
 
+#include <svx/xdef.hxx>
 #include <svx/xit.hxx>
 #include <svx/xgrad.hxx>
 #include <svx/svxdllapi.h>
@@ -27,9 +28,8 @@
 class SdrModel;
 
 
-// class XFillGradientItem
 
-class SVX_DLLPUBLIC XFillGradientItem : public NameOrIndex
+class SVXCORE_DLLPUBLIC XFillGradientItem : public NameOrIndex
 {
     XGradient   aGradient;
 
@@ -40,25 +40,23 @@ public:
             XFillGradientItem(const OUString& rName, const XGradient& rTheGradient, sal_uInt16 nWhich = XATTR_FILLGRADIENT);
             XFillGradientItem(const XGradient& rTheGradient);
             XFillGradientItem(const XFillGradientItem& rItem);
-            XFillGradientItem(SvStream& rIn, sal_uInt16 nVer);
 
     virtual bool            operator==(const SfxPoolItem& rItem) const override;
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
-    virtual SvStream&       Store(SvStream& rOut, sal_uInt16 nItemVersion ) const override;
-    virtual sal_uInt16      GetVersion( sal_uInt16 nFileFormatVersion ) const override;
+    virtual XFillGradientItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
     const XGradient&        GetGradientValue() const; // GetValue -> GetGradientValue
     void                    SetGradientValue(const XGradient& rNew) { aGradient = rNew; Detach(); } // SetValue -> SetGradientValue
 
     static bool CompareValueFunc( const NameOrIndex* p1, const NameOrIndex* p2 );
-    XFillGradientItem* checkForUniqueItem( SdrModel* pModel ) const;
+    std::unique_ptr<XFillGradientItem> checkForUniqueItem( SdrModel* pModel ) const;
+
+    virtual boost::property_tree::ptree dumpAsJSON() const override;
 };
 
 #endif

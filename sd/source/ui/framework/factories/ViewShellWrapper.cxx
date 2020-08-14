@@ -17,31 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "framework/ViewShellWrapper.hxx"
-#include "framework/Pane.hxx"
-#include "sdpage.hxx"
-#include "ViewShell.hxx"
-#include "Window.hxx"
+#include <framework/ViewShellWrapper.hxx>
+#include <sdpage.hxx>
+#include <ViewShell.hxx>
 
-#include "SlideSorter.hxx"
-#include "SlideSorterViewShell.hxx"
-#include "controller/SlsPageSelector.hxx"
-#include "controller/SlsCurrentSlideManager.hxx"
-#include "controller/SlideSorterController.hxx"
-#include "model/SlsPageEnumerationProvider.hxx"
-#include "model/SlideSorterModel.hxx"
-#include "model/SlsPageDescriptor.hxx"
+#include <SlideSorter.hxx>
+#include <SlideSorterViewShell.hxx>
+#include <controller/SlsPageSelector.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <model/SlsPageEnumerationProvider.hxx>
+#include <model/SlsPageDescriptor.hxx>
 
 #include <com/sun/star/drawing/framework/XPane.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 
 #include <toolkit/helper/vclunohelper.hxx>
-#include <comphelper/sequence.hxx>
 #include <comphelper/servicehelper.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <vcl/svapp.hxx>
 #include <osl/mutex.hxx>
-#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -49,7 +42,7 @@ using namespace ::com::sun::star::drawing::framework;
 
 using ::com::sun::star::awt::XWindow;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 ViewShellWrapper::ViewShellWrapper (
     const std::shared_ptr<ViewShell>& pViewShell,
@@ -124,10 +117,9 @@ sal_Bool SAL_CALL ViewShellWrapper::select( const css::uno::Any& aSelection )
     rSelector.DeselectAllPages();
     Sequence<Reference<drawing::XDrawPage> > xPages;
     aSelection >>= xPages;
-    const sal_uInt32 nCount = xPages.getLength();
-    for (sal_uInt32 nIndex=0; nIndex<nCount; ++nIndex)
+    for (const auto& rPage : std::as_const(xPages))
     {
-        Reference<beans::XPropertySet> xSet (xPages[nIndex], UNO_QUERY);
+        Reference<beans::XPropertySet> xSet (rPage, UNO_QUERY);
         if (xSet.is())
         {
             try
@@ -196,7 +188,7 @@ sal_Bool SAL_CALL ViewShellWrapper::relocateToAnchor (
             xWindow->removeWindowListener(this);
         mxWindow = nullptr;
 
-        if (mpViewShell.get() != nullptr)
+        if (mpViewShell != nullptr)
         {
             VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow(xPane->getWindow());
             if (pWindow && mpViewShell->RelocateToParentWindow(pWindow))
@@ -204,7 +196,7 @@ sal_Bool SAL_CALL ViewShellWrapper::relocateToAnchor (
                 bResult = true;
 
                 // Attach to the window of the new pane.
-                xWindow.set(xPane->getWindow(), UNO_QUERY);
+                xWindow = xPane->getWindow();
                 if (xWindow.is())
                 {
                     xWindow->addWindowListener(this);
@@ -233,8 +225,7 @@ sal_Int64 SAL_CALL ViewShellWrapper::getSomething (const Sequence<sal_Int8>& rId
 {
     sal_Int64 nResult = 0;
 
-    if (rId.getLength() == 16
-        && memcmp(getUnoTunnelId().getConstArray(), rId.getConstArray(), 16) == 0)
+    if (isUnoTunnelId<ViewShellWrapper>(rId))
     {
         nResult = reinterpret_cast<sal_Int64>(this);
     }
@@ -270,6 +261,6 @@ void SAL_CALL ViewShellWrapper::disposing (const lang::EventObject& rEvent)
         mxWindow = nullptr;
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

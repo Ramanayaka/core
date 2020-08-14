@@ -17,19 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "AccessibleChartView.hxx"
-#include "chartview/ExplicitValueProvider.hxx"
-#include "servicenames.hxx"
-#include "macros.hxx"
-#include "ObjectHierarchy.hxx"
-#include "ObjectIdentifier.hxx"
-#include "ResId.hxx"
-#include "Strings.hrc"
+#include <AccessibleChartView.hxx>
+#include <chartview/ExplicitValueProvider.hxx>
+#include <ObjectHierarchy.hxx>
+#include <ObjectIdentifier.hxx>
+#include <ResId.hxx>
+#include <strings.hrc>
 #include "AccessibleViewForwarder.hxx"
 
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
+#include <com/sun/star/view/XSelectionSupplier.hpp>
+#include <com/sun/star/chart2/XChartDocument.hpp>
+
+#include <comphelper/servicehelper.hxx>
 
 #include <rtl/ustring.hxx>
 #include <vcl/window.hxx>
@@ -55,8 +56,7 @@ AccessibleChartView::AccessibleChartView(SdrView* pView ) :
             true, // has children
             true  // always transparent
             ),
-        m_pSdrView( pView ),
-        m_pViewForwarder( nullptr )
+        m_pSdrView( pView )
 {
     AddState( AccessibleStateType::OPAQUE );
 }
@@ -176,7 +176,7 @@ void SAL_CALL AccessibleChartView::initialize( const Sequence< Any >& rArguments
     Reference< XAccessible > xParent;
     Reference< awt::XWindow > xWindow;
     {
-        MutexGuard aGuard( GetMutex());
+        MutexGuard aGuard( m_aMutex);
         xSelectionSupplier.set( m_xSelectionSupplier );
         xChartModel.set( m_xChartModel );
         xChartView.set( m_xChartView );
@@ -243,7 +243,7 @@ void SAL_CALL AccessibleChartView::initialize( const Sequence< Any >& rArguments
         }
     }
 
-    if( rArguments.getLength() > 0 && xChartModel.is() && xChartView.is() )
+    if( rArguments.hasElements() && xChartModel.is() && xChartView.is() )
     {
         Reference< view::XSelectionSupplier > xNewSelectionSupplier;
         rArguments[0] >>= xNewSelectionSupplier;
@@ -278,7 +278,7 @@ void SAL_CALL AccessibleChartView::initialize( const Sequence< Any >& rArguments
     }
 
     {
-        MutexGuard aGuard( GetMutex());
+        MutexGuard aGuard( m_aMutex);
         m_xSelectionSupplier = WeakReference< view::XSelectionSupplier >(xSelectionSupplier);
         m_xChartModel = WeakReference< frame::XModel >(xChartModel);
         m_xChartView = WeakReference< uno::XInterface >(xChartView);
@@ -289,37 +289,37 @@ void SAL_CALL AccessibleChartView::initialize( const Sequence< Any >& rArguments
     if( bOldInvalid && bNewInvalid )
         bChanged = false;
 
-    if( bChanged )
-    {
-        {
-            //before notification we prepare for creation of new context
-            //the old context will be deleted after notification than
-            MutexGuard aGuard( GetMutex());
-            Reference< chart2::XChartDocument > xChartDoc( xChartModel, uno::UNO_QUERY );
-            if( xChartDoc.is())
-                m_spObjectHierarchy.reset(
-                    new ObjectHierarchy( xChartDoc, ExplicitValueProvider::getExplicitValueProvider(m_xChartView) ));
-            else
-                m_spObjectHierarchy.reset();
-        }
+    if( !bChanged )
+        return;
 
-        {
-            AccessibleElementInfo aAccInfo;
-            aAccInfo.m_aOID = ObjectIdentifier("ROOT");
-            aAccInfo.m_xChartDocument = uno::WeakReference< chart2::XChartDocument >(
-                uno::Reference< chart2::XChartDocument >( m_xChartModel.get(), uno::UNO_QUERY ));
-            aAccInfo.m_xSelectionSupplier = m_xSelectionSupplier;
-            aAccInfo.m_xView = m_xChartView;
-            aAccInfo.m_xWindow = m_xWindow;
-            aAccInfo.m_pParent = nullptr;
-            aAccInfo.m_spObjectHierarchy = m_spObjectHierarchy;
-            aAccInfo.m_pSdrView = m_pSdrView;
-            VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( m_xWindow );
-            m_pViewForwarder.reset( new AccessibleViewForwarder( this, pWindow ) );
-            aAccInfo.m_pViewForwarder = m_pViewForwarder.get();
-            // broadcasts an INVALIDATE_ALL_CHILDREN event globally
-            SetInfo( aAccInfo );
-        }
+    {
+        //before notification we prepare for creation of new context
+        //the old context will be deleted after notification than
+        MutexGuard aGuard( m_aMutex);
+        Reference< chart2::XChartDocument > xChartDoc( xChartModel, uno::UNO_QUERY );
+        if( xChartDoc.is())
+            m_spObjectHierarchy =
+                std::make_shared<ObjectHierarchy>( xChartDoc, comphelper::getUnoTunnelImplementation<ExplicitValueProvider>(m_xChartView) );
+        else
+            m_spObjectHierarchy.reset();
+    }
+
+    {
+        AccessibleElementInfo aAccInfo;
+        aAccInfo.m_aOID = ObjectIdentifier("ROOT");
+        aAccInfo.m_xChartDocument = uno::WeakReference< chart2::XChartDocument >(
+            uno::Reference< chart2::XChartDocument >( m_xChartModel.get(), uno::UNO_QUERY ));
+        aAccInfo.m_xSelectionSupplier = m_xSelectionSupplier;
+        aAccInfo.m_xView = m_xChartView;
+        aAccInfo.m_xWindow = m_xWindow;
+        aAccInfo.m_pParent = nullptr;
+        aAccInfo.m_spObjectHierarchy = m_spObjectHierarchy;
+        aAccInfo.m_pSdrView = m_pSdrView;
+        VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( m_xWindow );
+        m_pViewForwarder.reset( new AccessibleViewForwarder( this, pWindow ) );
+        aAccInfo.m_pViewForwarder = m_pViewForwarder.get();
+        // broadcasts an INVALIDATE_ALL_CHILDREN event globally
+        SetInfo( aAccInfo );
     }
 }
 
@@ -329,23 +329,23 @@ void SAL_CALL AccessibleChartView::selectionChanged( const lang::EventObject& /*
 {
     Reference< view::XSelectionSupplier > xSelectionSupplier;
     {
-        MutexGuard aGuard( GetMutex());
+        MutexGuard aGuard( m_aMutex);
         xSelectionSupplier.set(m_xSelectionSupplier);
     }
 
-    if( xSelectionSupplier.is() )
+    if( !xSelectionSupplier.is() )
+        return;
+
+    ObjectIdentifier aSelectedOID( xSelectionSupplier->getSelection() );
+    if ( m_aCurrentSelectionOID.isValid() )
     {
-        ObjectIdentifier aSelectedOID( xSelectionSupplier->getSelection() );
-        if ( m_aCurrentSelectionOID.isValid() )
-        {
-            NotifyEvent( EventType::LOST_SELECTION, m_aCurrentSelectionOID );
-        }
-        if( aSelectedOID.isValid() )
-        {
-            NotifyEvent( EventType::GOT_SELECTION, aSelectedOID );
-        }
-        m_aCurrentSelectionOID = aSelectedOID;
+        NotifyEvent( EventType::LOST_SELECTION, m_aCurrentSelectionOID );
     }
+    if( aSelectedOID.isValid() )
+    {
+        NotifyEvent( EventType::GOT_SELECTION, aSelectedOID );
+    }
+    m_aCurrentSelectionOID = aSelectedOID;
 }
 
 // XEventListener

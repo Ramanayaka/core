@@ -17,13 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "PreviewRenderer.hxx"
+#include <PreviewRenderer.hxx>
 
-#include "DrawDocShell.hxx"
-#include "drawdoc.hxx"
-#include "drawview.hxx"
-#include "sdpage.hxx"
-#include "ViewShell.hxx"
+#include <DrawDocShell.hxx>
+#include <drawdoc.hxx>
+#include <drawview.hxx>
+#include <sdpage.hxx>
+#include <ViewShell.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/settings.hxx>
 
@@ -120,7 +120,7 @@ Image PreviewRenderer::RenderPage (
                 PaintFrame();
 
                 Size aSize (mpPreviewDevice->GetOutputSizePixel());
-                aPreview = Image(mpPreviewDevice->GetBitmap (
+                aPreview = Image(mpPreviewDevice->GetBitmapEx(
                     mpPreviewDevice->PixelToLogic(Point(0,0)),
                     mpPreviewDevice->PixelToLogic(aSize)));
 
@@ -129,7 +129,7 @@ Image PreviewRenderer::RenderPage (
         }
         catch (const css::uno::Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("sd.tools");
         }
     }
 
@@ -182,13 +182,13 @@ Image PreviewRenderer::RenderSubstitution (
         PaintFrame();
 
         const Size aSize (mpPreviewDevice->GetOutputSizePixel());
-        aPreview = Image(mpPreviewDevice->GetBitmap(
+        aPreview = Image(mpPreviewDevice->GetBitmapEx(
             mpPreviewDevice->PixelToLogic(Point(0,0)),
             mpPreviewDevice->PixelToLogic(aSize)));
     }
     catch (const css::uno::Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sd.tools");
     }
 
     return aPreview;
@@ -199,22 +199,19 @@ bool PreviewRenderer::Initialize (
     const Size& rPixelSize,
     const bool bObeyHighContrastMode)
 {
-    if (pPage == nullptr)
-        return false;
-
-    SdrModel* pModel = pPage->GetModel();
-    if (pModel == nullptr)
+    if (!pPage)
         return false;
 
     SetupOutputSize(*pPage, rPixelSize);
+    SdDrawDocument& rDocument(static_cast< SdDrawDocument& >(pPage->getSdrModelFromSdrPage()));
+    DrawDocShell* pDocShell = rDocument.GetDocSh();
 
-    SdDrawDocument* pDocument
-        = static_cast<SdDrawDocument*>(pPage->GetModel());
-    DrawDocShell* pDocShell = pDocument->GetDocSh();
+    if (!pDocShell)
+        return false;
 
     // Create view
     ProvideView (pDocShell);
-    if (mpView.get() == nullptr)
+    if (mpView == nullptr)
         return false;
 
     // Adjust contrast mode.
@@ -260,9 +257,9 @@ bool PreviewRenderer::Initialize (
     }
 
     pPageView->SetApplicationDocumentColor(aApplicationDocumentColor);
-    SdrOutliner& rOutliner(pDocument->GetDrawOutliner());
+    SdrOutliner& rOutliner(rDocument.GetDrawOutliner());
     rOutliner.SetBackgroundColor(aApplicationDocumentColor);
-    rOutliner.SetDefaultLanguage(pDocument->GetLanguage(EE_CHAR_LANGUAGE));
+    rOutliner.SetDefaultLanguage(rDocument.GetLanguage(EE_CHAR_LANGUAGE));
     mpPreviewDevice->SetBackground(Wallpaper(aApplicationDocumentColor));
     mpPreviewDevice->Erase();
 
@@ -284,7 +281,7 @@ void PreviewRenderer::PaintPage (
     {
         pOutliner = &mpDocShellOfView->GetDoc()->GetDrawOutliner();
         nSavedControlWord = pOutliner->GetControlWord();
-        pOutliner->SetControlWord((nSavedControlWord & ~EEControlBits::ONLINESPELLING));
+        pOutliner->SetControlWord(nSavedControlWord & ~EEControlBits::ONLINESPELLING);
     }
 
     // Use a special redirector to prevent PresObj shapes from being painted.
@@ -298,7 +295,7 @@ void PreviewRenderer::PaintPage (
     }
     catch (const css::uno::Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sd.tools");
     }
 
     // Restore the previous online spelling and redlining states.
@@ -308,30 +305,30 @@ void PreviewRenderer::PaintPage (
 
 void PreviewRenderer::PaintSubstitutionText (const OUString& rSubstitutionText)
 {
-    if (!rSubstitutionText.isEmpty())
-    {
-        // Set the font size.
-        const vcl::Font& rOriginalFont (mpPreviewDevice->GetFont());
-        vcl::Font aFont (mpPreviewDevice->GetSettings().GetStyleSettings().GetAppFont());
-        sal_Int32 nHeight (mpPreviewDevice->PixelToLogic(Size(0,snSubstitutionTextSize)).Height());
-        aFont.SetFontHeight(nHeight);
-        mpPreviewDevice->SetFont (aFont);
+    if (rSubstitutionText.isEmpty())
+        return;
 
-        // Paint the substitution text.
-        ::tools::Rectangle aTextBox (
-            Point(0,0),
-            mpPreviewDevice->PixelToLogic(
-                mpPreviewDevice->GetOutputSizePixel()));
-        DrawTextFlags const nTextStyle =
-            DrawTextFlags::Center
-            | DrawTextFlags::VCenter
-            | DrawTextFlags::MultiLine
-            | DrawTextFlags::WordBreak;
-        mpPreviewDevice->DrawText (aTextBox, rSubstitutionText, nTextStyle);
+    // Set the font size.
+    const vcl::Font& rOriginalFont (mpPreviewDevice->GetFont());
+    vcl::Font aFont (mpPreviewDevice->GetSettings().GetStyleSettings().GetAppFont());
+    sal_Int32 nHeight (mpPreviewDevice->PixelToLogic(Size(0,snSubstitutionTextSize)).Height());
+    aFont.SetFontHeight(nHeight);
+    mpPreviewDevice->SetFont (aFont);
 
-        // Restore the font.
-        mpPreviewDevice->SetFont (rOriginalFont);
-    }
+    // Paint the substitution text.
+    ::tools::Rectangle aTextBox (
+        Point(0,0),
+        mpPreviewDevice->PixelToLogic(
+            mpPreviewDevice->GetOutputSizePixel()));
+    DrawTextFlags const nTextStyle =
+        DrawTextFlags::Center
+        | DrawTextFlags::VCenter
+        | DrawTextFlags::MultiLine
+        | DrawTextFlags::WordBreak;
+    mpPreviewDevice->DrawText (aTextBox, rSubstitutionText, nTextStyle);
+
+    // Restore the font.
+    mpPreviewDevice->SetFont (rOriginalFont);
 }
 
 void PreviewRenderer::PaintFrame()
@@ -361,7 +358,7 @@ void PreviewRenderer::SetupOutputSize (
 
     // Adapt it to the desired width.
     const Size aPageModelSize (rPage.GetSize());
-    if (aPageModelSize.Width()>0 || aPageModelSize.Height()>0)
+    if (!aPageModelSize.IsEmpty())
     {
         const sal_Int32 nFrameWidth (mbHasFrame ? snFrameWidth : 0);
         aMapMode.SetScaleX(
@@ -374,8 +371,8 @@ void PreviewRenderer::SetupOutputSize (
     {
         // We should never get here.
         OSL_ASSERT(false);
-        aMapMode.SetScaleX(1.0);
-        aMapMode.SetScaleY(1.0);
+        aMapMode.SetScaleX(Fraction(1.0));
+        aMapMode.SetScaleY(Fraction(1.0));
     }
     mpPreviewDevice->SetMapMode (aMapMode);
     mpPreviewDevice->SetOutputSizePixel(rFramePixelSize);
@@ -396,7 +393,7 @@ void PreviewRenderer::ProvideView (DrawDocShell* pDocShell)
         if (mpDocShellOfView != nullptr)
             StartListening (*mpDocShellOfView);
     }
-    if (mpView.get() == nullptr)
+    if (mpView == nullptr)
     {
         mpView.reset (new DrawView (pDocShell, mpPreviewDevice.get(), nullptr));
     }
@@ -438,13 +435,13 @@ Image PreviewRenderer::ScaleBitmap (
             break;
         Size aFrameSize (
             nWidth,
-            (long)((nWidth*1.0 * aSize.Height()) / aSize.Width() + 0.5));
+            static_cast<long>((nWidth*1.0 * aSize.Height()) / aSize.Width() + 0.5));
         Size aPreviewSize (aFrameSize.Width()-2,aFrameSize.Height()-2);
         MapMode aMapMode (mpPreviewDevice->GetMapMode());
         aMapMode.SetMapUnit(MapUnit::MapPixel);
         aMapMode.SetOrigin (Point());
-        aMapMode.SetScaleX (1.0);
-        aMapMode.SetScaleY (1.0);
+        aMapMode.SetScaleX (Fraction(1.0));
+        aMapMode.SetScaleY (Fraction(1.0));
         mpPreviewDevice->SetMapMode (aMapMode);
         mpPreviewDevice->SetOutputSize (aFrameSize);
 
@@ -454,15 +451,15 @@ Image PreviewRenderer::ScaleBitmap (
         mpPreviewDevice->DrawRect (::tools::Rectangle(Point(0,0), aFrameSize));
 
         // Paint the bitmap scaled to the desired width.
-        BitmapEx aScaledBitmap (rBitmapEx.GetBitmap());
+        BitmapEx aScaledBitmap(rBitmapEx);
         aScaledBitmap.Scale (aPreviewSize, BmpScaleFlag::BestQuality);
-        mpPreviewDevice->DrawBitmap (
+        mpPreviewDevice->DrawBitmapEx (
             Point(1,1),
             aPreviewSize,
-            aScaledBitmap.GetBitmap());
+            aScaledBitmap);
 
         // Get the resulting bitmap.
-        aPreview = Image(mpPreviewDevice->GetBitmap(Point(0,0), aFrameSize));
+        aPreview = Image(mpPreviewDevice->GetBitmapEx(Point(0,0), aFrameSize));
     }
     while (false);
 
@@ -499,7 +496,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewRedirector::createRedirected
 {
     SdrObject* pObject = rOriginal.GetViewContact().TryToGetSdrObject();
 
-    if (pObject==nullptr || pObject->GetPage() == nullptr)
+    if (pObject==nullptr || pObject->getSdrPageFromSdrObject() == nullptr)
     {
         // not a SdrObject visualisation (maybe e.g. page) or no page
         return sdr::contact::ViewObjectContactRedirector::createRedirectedPrimitive2DSequence(
@@ -507,7 +504,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewRedirector::createRedirected
             rDisplayInfo);
     }
 
-    const bool bDoCreateGeometry (pObject->GetPage()->checkVisibility( rOriginal, rDisplayInfo, true));
+    const bool bDoCreateGeometry (pObject->getSdrPageFromSdrObject()->checkVisibility( rOriginal, rDisplayInfo, true));
 
     if ( ! bDoCreateGeometry
         && (pObject->GetObjInventor() != SdrInventor::Default || pObject->GetObjIdentifier() != OBJ_PAGE))

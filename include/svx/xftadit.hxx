@@ -22,6 +22,7 @@
 
 #include <svl/eitem.hxx>
 #include <svx/svxdllapi.h>
+#include <svx/xenum.hxx>
 
 /*************************************************************************
 |*
@@ -29,15 +30,13 @@
 |*
 \************************************************************************/
 
-class SVX_DLLPUBLIC XFormTextAdjustItem : public SfxEnumItem<XFormTextAdjust>
+class SVXCORE_DLLPUBLIC XFormTextAdjustItem final : public SfxEnumItem<XFormTextAdjust>
 {
 public:
                             static SfxPoolItem* CreateDefault();
 
                             XFormTextAdjustItem(XFormTextAdjust = XFormTextAdjust::Center);
-                            XFormTextAdjustItem(SvStream& rIn);
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual XFormTextAdjustItem* Clone(SfxItemPool* pPool = nullptr) const override;
     virtual sal_uInt16      GetValueCount() const override;
     // #FontWork#
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;

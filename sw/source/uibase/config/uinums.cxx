@@ -20,20 +20,15 @@
 #include <memory>
 #include <uinums.hxx>
 
-#include <hintids.hxx>
-#include <svl/urihelper.hxx>
 #include <unotools/pathoptions.hxx>
 #include <tools/stream.hxx>
 #include <sfx2/docfile.hxx>
 #include <svl/itemiter.hxx>
 
-#include <tools/resid.hxx>
 #include <swtypes.hxx>
 #include <wrtsh.hxx>
 #include <poolfmt.hxx>
 #include <charfmt.hxx>
-
-#include <unomid.h>
 
 using namespace ::com::sun::star;
 
@@ -74,14 +69,12 @@ void SwChapterNumRules::Save()
 
 SwChapterNumRules::~SwChapterNumRules()
 {
-    for(SwNumRulesWithName* pNumRule : pNumRules)
-        delete pNumRule;
 }
 
 void  SwChapterNumRules::Init()
 {
-    for(SwNumRulesWithName* & rpNumRule : pNumRules)
-        rpNumRule = nullptr;
+    for(auto & rpNumRule : pNumRules)
+        rpNumRule.reset();
 
     OUString sNm(CHAPTER_FILENAME);
     SvtPathOptions aOpt;
@@ -97,14 +90,14 @@ void SwChapterNumRules::CreateEmptyNumRule(sal_uInt16 const nIndex)
 {
     assert(nIndex < nMaxRules);
     assert(!pNumRules[nIndex]);
-    pNumRules[nIndex] = new SwNumRulesWithName;
+    pNumRules[nIndex].reset(new SwNumRulesWithName);
 }
 
 void SwChapterNumRules::ApplyNumRules(const SwNumRulesWithName &rCopy, sal_uInt16 nIdx)
 {
     assert(nIdx < nMaxRules);
     if( !pNumRules[nIdx] )
-        pNumRules[nIdx] = new SwNumRulesWithName( rCopy );
+        pNumRules[nIdx].reset(new SwNumRulesWithName( rCopy ));
     else
         *pNumRules[nIdx] = rCopy;
     Save(); // store it immediately
@@ -118,27 +111,19 @@ SwNumRulesWithName::SwNumRulesWithName( const SwNumRule &rCopy,
     {
         const SwNumFormat* pFormat = rCopy.GetNumFormat( n );
         if( pFormat )
-            aFormats[ n ] = new SwNumFormatGlobal( *pFormat );
+            aFormats[ n ].reset(new SwNumFormatGlobal( *pFormat ));
         else
-            aFormats[ n ] = nullptr;
+            aFormats[ n ].reset();
     }
-}
-
-SwNumRulesWithName::SwNumRulesWithName()
-{
-    memset(aFormats, 0, sizeof(aFormats));
 }
 
 SwNumRulesWithName::SwNumRulesWithName( const SwNumRulesWithName& rCopy )
 {
-    memset( aFormats, 0, sizeof( aFormats ));
     *this = rCopy;
 }
 
 SwNumRulesWithName::~SwNumRulesWithName()
 {
-    for(SwNumFormatGlobal* p : aFormats)
-        delete p;
 }
 
 SwNumRulesWithName& SwNumRulesWithName::operator=(const SwNumRulesWithName &rCopy)
@@ -148,26 +133,24 @@ SwNumRulesWithName& SwNumRulesWithName::operator=(const SwNumRulesWithName &rCop
         maName = rCopy.maName;
         for( int n = 0; n < MAXLEVEL; ++n )
         {
-            delete aFormats[ n ];
-
-            SwNumFormatGlobal* pFormat = rCopy.aFormats[ n ];
+            SwNumFormatGlobal* pFormat = rCopy.aFormats[ n ].get();
             if( pFormat )
-                aFormats[ n ] = new SwNumFormatGlobal( *pFormat );
+                aFormats[ n ].reset(new SwNumFormatGlobal( *pFormat ));
             else
-                aFormats[ n ] = nullptr;
+                aFormats[ n ].reset();
         }
     }
     return *this;
 }
 
-SwNumRule* SwNumRulesWithName::MakeNumRule(SwWrtShell& rSh) const
+std::unique_ptr<SwNumRule> SwNumRulesWithName::MakeNumRule(SwWrtShell& rSh) const
 {
     // #i89178#
-    SwNumRule* pChg = new SwNumRule(maName, numfunc::GetDefaultPositionAndSpaceMode());
+    std::unique_ptr<SwNumRule> pChg(new SwNumRule(maName, numfunc::GetDefaultPositionAndSpaceMode()));
     pChg->SetAutoRule( false );
     for (sal_uInt16 n = 0; n < MAXLEVEL; ++n)
     {
-        SwNumFormatGlobal* pFormat = aFormats[ n ];
+        SwNumFormatGlobal* pFormat = aFormats[ n ].get();
         if (!pFormat)
             continue;
         pChg->Set(n, pFormat->MakeNumFormat(rSh));
@@ -185,8 +168,7 @@ void SwNumRulesWithName::GetNumFormat(
 void SwNumRulesWithName::SetNumFormat(
         size_t const nIndex, SwNumFormat const& rNumFormat, OUString const& rName)
 {
-    delete aFormats[nIndex];
-    aFormats[nIndex] = new SwNumFormatGlobal(rNumFormat);
+    aFormats[nIndex].reset( new SwNumFormatGlobal(rNumFormat) );
     aFormats[nIndex]->sCharFormatName = rName;
     aFormats[nIndex]->nCharPoolId = USHRT_MAX;
     aFormats[nIndex]->m_Items.clear();
@@ -198,25 +180,23 @@ SwNumRulesWithName::SwNumFormatGlobal::SwNumFormatGlobal( const SwNumFormat& rFo
     // relative gaps?????
 
     SwCharFormat* pFormat = rFormat.GetCharFormat();
-    if( pFormat )
-    {
-        sCharFormatName = pFormat->GetName();
-        nCharPoolId = pFormat->GetPoolFormatId();
-        if( pFormat->GetAttrSet().Count() )
-        {
-            SfxItemIter aIter( pFormat->GetAttrSet() );
-            const SfxPoolItem *pCurr = aIter.GetCurItem();
-            while( true )
-            {
-                m_Items.push_back(std::unique_ptr<SfxPoolItem>(pCurr->Clone()));
-                if( aIter.IsAtEnd() )
-                    break;
-                pCurr = aIter.NextItem();
-            }
-        }
+    if( !pFormat )
+        return;
 
-        aFormat.SetCharFormat( nullptr );
+    sCharFormatName = pFormat->GetName();
+    nCharPoolId = pFormat->GetPoolFormatId();
+    if( pFormat->GetAttrSet().Count() )
+    {
+        SfxItemIter aIter( pFormat->GetAttrSet() );
+        const SfxPoolItem *pCurr = aIter.GetCurItem();
+        do
+        {
+            m_Items.push_back(std::unique_ptr<SfxPoolItem>(pCurr->Clone()));
+            pCurr = aIter.NextItem();
+        } while (pCurr);
     }
+
+    aFormat.SetCharFormat( nullptr );
 }
 
 SwNumRulesWithName::SwNumFormatGlobal::SwNumFormatGlobal( const SwNumFormatGlobal& rFormat )

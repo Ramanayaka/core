@@ -19,12 +19,11 @@
 
 
 #include "cellvalueconversion.hxx"
-#include "table/gridtablerenderer.hxx"
-#include <svtools/colorcfg.hxx>
+#include <table/gridtablerenderer.hxx>
+#include <table/tablesort.hxx>
 
 #include <com/sun/star/graphic/XGraphic.hpp>
 
-#include <comphelper/processfactory.hxx>
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
 #include <vcl/window.hxx>
@@ -34,7 +33,7 @@
 #include <vcl/settings.hxx>
 
 
-namespace svt { namespace table
+namespace svt::table
 {
     using ::css::uno::Any;
     using ::css::uno::Reference;
@@ -52,6 +51,8 @@ namespace svt { namespace table
 
     //= CachedSortIndicator
 
+    namespace {
+
     class CachedSortIndicator
     {
     public:
@@ -61,7 +62,7 @@ namespace svt { namespace table
         {
         }
 
-        BitmapEx const & getBitmapFor(OutputDevice const & i_device, long const i_headerHeight,
+        BitmapEx const & getBitmapFor(vcl::RenderContext const & i_device, long const i_headerHeight,
                                       StyleSettings const & i_style, bool const i_sortAscending);
 
     private:
@@ -70,6 +71,8 @@ namespace svt { namespace table
         BitmapEx m_sortAscending;
         BitmapEx m_sortDescending;
     };
+
+    }
 
     BitmapEx const & CachedSortIndicator::getBitmapFor(vcl::RenderContext const& i_device, long const i_headerHeight,
         StyleSettings const & i_style, bool const i_sortAscending )
@@ -129,16 +132,16 @@ namespace svt { namespace table
             tools::Rectangle aContentArea( i_cellArea );
             if ( i_impl.bUseGridLines )
             {
-                --aContentArea.Right();
-                --aContentArea.Bottom();
+                aContentArea.AdjustRight( -1 );
+                aContentArea.AdjustBottom( -1 );
             }
             return aContentArea;
         }
         tools::Rectangle lcl_getTextRenderingArea( tools::Rectangle const & i_contentArea )
         {
             tools::Rectangle aTextArea( i_contentArea );
-            aTextArea.Left() += 2; aTextArea.Right() -= 2;
-            ++aTextArea.Top(); --aTextArea.Bottom();
+            aTextArea.AdjustLeft(2 ); aTextArea.AdjustRight( -2 );
+            aTextArea.AdjustTop( 1 ); aTextArea.AdjustBottom( -1 );
             return aTextArea;
         }
 
@@ -200,7 +203,7 @@ namespace svt { namespace table
 
     namespace
     {
-        Color lcl_getEffectiveColor(boost::optional<Color> const& i_modelColor,
+        Color lcl_getEffectiveColor(std::optional<Color> const& i_modelColor,
                                     StyleSettings const& i_styleSettings,
                                     Color const& (StyleSettings::*i_getDefaultColor) () const)
         {
@@ -226,7 +229,7 @@ namespace svt { namespace table
         rRenderContext.DrawRect(_rArea);
 
         // delimiter lines at bottom/right
-        boost::optional<Color> aLineColor(m_pImpl->rModel.getLineColor());
+        std::optional<Color> aLineColor(m_pImpl->rModel.getLineColor());
         Color const lineColor = !aLineColor ? _rStyle.GetSeparatorColor() : *aLineColor;
         rRenderContext.SetLineColor(lineColor);
         rRenderContext.DrawLine(_rArea.BottomLeft(), _rArea.BottomRight());
@@ -238,8 +241,6 @@ namespace svt { namespace table
 
     void GridTableRenderer::PaintColumnHeader(
         ColPos _nCol,
-        bool, // _bActive: no special painting for the active column at the moment
-        bool, // _bSelected: selection for column header not yet implemented
         vcl::RenderContext& rRenderContext,
         const tools::Rectangle& _rArea, const StyleSettings& _rStyle)
     {
@@ -247,8 +248,8 @@ namespace svt { namespace table
 
         OUString sHeaderText;
         PColumnModel const pColumn = m_pImpl->rModel.getColumnModel( _nCol );
-        DBG_ASSERT( !!pColumn, "GridTableRenderer::PaintColumnHeader: invalid column model object!" );
-        if ( !!pColumn )
+        DBG_ASSERT( pColumn, "GridTableRenderer::PaintColumnHeader: invalid column model object!" );
+        if ( pColumn )
             sHeaderText = pColumn->getName();
 
         Color const textColor = lcl_getEffectiveColor( m_pImpl->rModel.getTextColor(), _rStyle, &StyleSettings::GetFieldTextColor );
@@ -260,7 +261,7 @@ namespace svt { namespace table
             nDrawTextFlags |= DrawTextFlags::Disable;
         rRenderContext.DrawText( aTextRect, sHeaderText, nDrawTextFlags );
 
-        boost::optional<Color> const aLineColor( m_pImpl->rModel.getLineColor() );
+        std::optional<Color> const aLineColor( m_pImpl->rModel.getLineColor() );
         Color const lineColor = !aLineColor ? _rStyle.GetSeparatorColor() : *aLineColor;
         rRenderContext.SetLineColor( lineColor );
         rRenderContext.DrawLine( _rArea.BottomRight(), _rArea.TopRight());
@@ -308,7 +309,7 @@ namespace svt { namespace table
 
         Color backgroundColor = _rStyle.GetFieldColor();
 
-        boost::optional<Color> const aLineColor( m_pImpl->rModel.getLineColor() );
+        std::optional<Color> const aLineColor( m_pImpl->rModel.getLineColor() );
         Color lineColor = !aLineColor ? _rStyle.GetSeparatorColor() : *aLineColor;
 
         Color const activeSelectionBackColor = lcl_getEffectiveColor(m_pImpl->rModel.getActiveSelectionBackColor(),
@@ -324,7 +325,7 @@ namespace svt { namespace table
         }
         else
         {
-            boost::optional< std::vector<Color> > aRowColors = m_pImpl->rModel.getRowBackgroundColors();
+            std::optional< std::vector<Color> > aRowColors = m_pImpl->rModel.getRowBackgroundColors();
             if (!aRowColors)
             {
                 // use alternating default colors
@@ -364,12 +365,12 @@ namespace svt { namespace table
     }
 
 
-    void GridTableRenderer::PaintRowHeader(bool /*i_hasControlFocus*/, bool /*_bSelected*/, vcl::RenderContext& rRenderContext,
+    void GridTableRenderer::PaintRowHeader(vcl::RenderContext& rRenderContext,
                                            const tools::Rectangle& _rArea, const StyleSettings& _rStyle)
     {
         rRenderContext.Push( PushFlags::LINECOLOR | PushFlags::TEXTCOLOR );
 
-        boost::optional<Color> const aLineColor( m_pImpl->rModel.getLineColor() );
+        std::optional<Color> const aLineColor( m_pImpl->rModel.getLineColor() );
         Color const lineColor = !aLineColor ? _rStyle.GetSeparatorColor() : *aLineColor;
         rRenderContext.SetLineColor(lineColor);
         rRenderContext.DrawLine(_rArea.BottomLeft(), _rArea.BottomRight());
@@ -386,7 +387,7 @@ namespace svt { namespace table
             DrawTextFlags nDrawTextFlags = lcl_getAlignmentTextDrawFlags(*m_pImpl, 0) | DrawTextFlags::Clip;
             if (!m_pImpl->rModel.isEnabled())
                 nDrawTextFlags |= DrawTextFlags::Disable;
-                // TODO: is using the horizontal alignment of the 0'th column a good idea here? This is pretty ... arbitray ..
+                // TODO: is using the horizontal alignment of the 0'th column a good idea here? This is pretty ... arbitrary ..
             rRenderContext.DrawText(aTextRect, rowTitle, nDrawTextFlags);
         }
 
@@ -427,7 +428,7 @@ namespace svt { namespace table
 
         if ( m_pImpl->bUseGridLines )
         {
-            ::boost::optional< ::Color > aLineColor( m_pImpl->rModel.getLineColor() );
+            ::std::optional< ::Color > aLineColor( m_pImpl->rModel.getLineColor() );
             ::Color lineColor = !aLineColor ? _rStyle.GetSeparatorColor() : *aLineColor;
 
             if ( _bSelected && !aLineColor )
@@ -457,10 +458,10 @@ namespace svt { namespace table
             switch ( eHorzAlign )
             {
             case HorizontalAlignment_CENTER:
-                imagePos.X() += ( i_context.aContentArea.GetWidth() - imageSize.Width() ) / 2;
+                imagePos.AdjustX(( i_context.aContentArea.GetWidth() - imageSize.Width() ) / 2 );
                 break;
             case HorizontalAlignment_RIGHT:
-                imagePos.X() = i_context.aContentArea.Right() - imageSize.Width();
+                imagePos.setX( i_context.aContentArea.Right() - imageSize.Width() );
                 break;
             default:
                 break;
@@ -468,7 +469,7 @@ namespace svt { namespace table
 
         }
         else
-            imageSize.Width() = i_context.aContentArea.GetWidth();
+            imageSize.setWidth( i_context.aContentArea.GetWidth() );
 
         if ( i_context.aContentArea.GetHeight() > imageSize.Height() )
         {
@@ -476,17 +477,17 @@ namespace svt { namespace table
             switch ( eVertAlign )
             {
             case VerticalAlignment_MIDDLE:
-                imagePos.Y() += ( i_context.aContentArea.GetHeight() - imageSize.Height() ) / 2;
+                imagePos.AdjustY(( i_context.aContentArea.GetHeight() - imageSize.Height() ) / 2 );
                 break;
             case VerticalAlignment_BOTTOM:
-                imagePos.Y() = i_context.aContentArea.Bottom() - imageSize.Height();
+                imagePos.setY( i_context.aContentArea.Bottom() - imageSize.Height() );
                 break;
             default:
                 break;
             }
         }
         else
-            imageSize.Height() = i_context.aContentArea.GetHeight() - 1;
+            imageSize.setHeight( i_context.aContentArea.GetHeight() - 1 );
         DrawImageFlags const nStyle = m_pImpl->rModel.isEnabled() ? DrawImageFlags::NONE : DrawImageFlags::Disable;
         i_context.rDevice.DrawImage( imagePos, imageSize, i_image, nStyle );
     }
@@ -546,7 +547,7 @@ namespace svt { namespace table
     }
 
 
-    void GridTableRenderer::HideCellCursor( vcl::Window& _rView, const tools::Rectangle&)
+    void GridTableRenderer::HideCellCursor( vcl::Window& _rView )
     {
         _rView.HideFocus();
     }
@@ -596,7 +597,7 @@ namespace svt { namespace table
     }
 
 
-} } // namespace svt::table
+} // namespace svt::table
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -28,12 +28,11 @@
 #include <svx/svxdllapi.h>
 
 struct _xmlTextWriter;
+typedef struct _xmlTextWriter* xmlTextWriterPtr;
 
-namespace sdr
-{
-    namespace properties
+namespace sdr::properties
     {
-        class SVX_DLLPUBLIC DefaultProperties : public BaseProperties
+        class SVXCORE_DLLPUBLIC DefaultProperties : public BaseProperties
         {
         protected:
             // the to be used ItemSet
@@ -54,6 +53,9 @@ namespace sdr
             // react on ItemSet changes
             virtual void ItemSetChanged(const SfxItemSet& rSet) override;
 
+            // check if SfxItemSet exists
+            bool HasSfxItemSet() const { return bool(mpItemSet); }
+
         public:
             // basic constructor
             explicit DefaultProperties(SdrObject& rObj);
@@ -64,10 +66,10 @@ namespace sdr
             // destructor
             virtual ~DefaultProperties() override;
 
-            void dumpAsXml(struct _xmlTextWriter * pWriter) const;
+            void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 
             // Clone() operator, normally just calls the local copy constructor
-            virtual BaseProperties& Clone(SdrObject& rObj) const override;
+            virtual std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const override;
 
             // get itemset
             virtual const SfxItemSet& GetObjectItemSet() const override;
@@ -82,7 +84,7 @@ namespace sdr
             virtual void ClearObjectItem(const sal_uInt16 nWhich = 0) override;
 
             // clear single item direct, do not do any notifies or things like that.
-            // Also supports complete deleteion of items when default parameter 0 is used.
+            // Also supports complete deletion of items when default parameter 0 is used.
             virtual void ClearObjectItemDirect(const sal_uInt16 nWhich) override;
 
             // set complete item set
@@ -98,12 +100,9 @@ namespace sdr
             // DefaultProperties::GetObjectItemSet() if a new ItemSet is created.
             // Default implementation does nothing.
             virtual void ForceDefaultAttributes();
-
-            // Scale the included ItemSet.
-            virtual void Scale(const Fraction& rScale) override;
         };
-    } // end of namespace properties
-} // end of namespace sdr
+
+} // end of namespace sdr::properties
 
 #endif // INCLUDED_SVX_SDR_PROPERTIES_DEFAULTPROPERTIES_HXX
 

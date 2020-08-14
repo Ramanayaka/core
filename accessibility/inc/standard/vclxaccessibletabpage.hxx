@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETABPAGE_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETABPAGE_HXX
+#pragma once
 
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <comphelper/accessibletexthelper.hxx>
@@ -34,7 +34,6 @@ class AccessibleStateSetHelper;
 }
 
 
-//  class VCLXAccessibleTabPage
 
 
 typedef ::comphelper::OAccessibleTextHelper AccessibleTextHelper_BASE;
@@ -43,7 +42,7 @@ typedef ::cppu::ImplHelper2<
     css::accessibility::XAccessible,
     css::lang::XServiceInfo > VCLXAccessibleTabPage_BASE;
 
-class VCLXAccessibleTabPage :   public AccessibleTextHelper_BASE,
+class VCLXAccessibleTabPage final : public AccessibleTextHelper_BASE,
                                 public VCLXAccessibleTabPage_BASE
 {
     friend class VCLXAccessibleTabControl;
@@ -55,9 +54,10 @@ private:
     bool                    m_bSelected;
     OUString                m_sPageText;
 
-protected:
-    bool                    IsFocused();
-    bool                    IsSelected();
+    sal_Int32               implGetAccessibleChildCount();
+
+    bool                    IsFocused() const;
+    bool                    IsSelected() const;
 
     void                    SetFocused( bool bFocused );
     void                    SetSelected( bool bSelected );
@@ -123,6 +123,9 @@ public:
     virtual OUString SAL_CALL getToolTipText(  ) override;
 
     // XAccessibleText
+    virtual OUString SAL_CALL getText() override;
+    virtual sal_Unicode SAL_CALL getCharacter( sal_Int32 nIndex ) override;
+    virtual sal_Int32 SAL_CALL getCharacterCount() override;
     virtual sal_Int32 SAL_CALL getCaretPosition() override;
     virtual sal_Bool SAL_CALL setCaretPosition( sal_Int32 nIndex ) override;
     virtual css::uno::Sequence< css::beans::PropertyValue > SAL_CALL getCharacterAttributes( sal_Int32 nIndex, const css::uno::Sequence< OUString >& aRequestedAttributes ) override;
@@ -130,8 +133,9 @@ public:
     virtual sal_Int32 SAL_CALL getIndexAtPoint( const css::awt::Point& aPoint ) override;
     virtual sal_Bool SAL_CALL setSelection( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
     virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+    virtual OUString SAL_CALL getTextRange(sal_Int32 nStartIndex, sal_Int32 nEndIndex) override;
+    virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETABPAGE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -13,20 +13,16 @@
 #include <stdexcept>
 #include <algorithm>
 
-// constants for theme ids and display names. Only the theme id for hicontrast is used
+// constants for theme ids and display names. Only the theme id for high contrast is used
 // outside of this class and hence made public.
 
-const OUStringLiteral vcl::IconThemeInfo::HIGH_CONTRAST_ID("hicontrast");
+const OUStringLiteral vcl::IconThemeInfo::HIGH_CONTRAST_ID("sifr");
 
 namespace {
 
-static const OUStringLiteral HIGH_CONTRAST_DISPLAY_NAME("High Contrast");
-static const OUStringLiteral TANGO_TESTING_ID("tango_testing");
-static const OUStringLiteral TANGO_TESTING_DISPLAY_NAME("Tango Testing");
-static const OUStringLiteral BREEZE_DARK_ID("breeze_dark");
-static const OUStringLiteral BREEZE_DARK_DISPLAY_NAME("Breeze Dark");
-static const OUStringLiteral SIFR_DARK_ID("sifr_dark");
-static const OUStringLiteral SIFR_DARK_DISPLAY_NAME("Sifr Dark");
+const OUStringLiteral KARASA_JAGA_ID("karasa_jaga");
+const OUStringLiteral KARASA_JAGA_DISPLAY_NAME("Karasa Jaga");
+const OUStringLiteral HELPIMG_FAKE_THEME("helpimg");
 
 OUString
 filename_from_url(const OUString& url)
@@ -43,9 +39,9 @@ filename_from_url(const OUString& url)
 
 namespace vcl {
 
-static const char ICON_THEME_PACKAGE_PREFIX[] = "images_";
+const char ICON_THEME_PACKAGE_PREFIX[] = "images_";
 
-static const char EXTENSION_FOR_ICON_PACKAGES[] = ".zip";
+const char EXTENSION_FOR_ICON_PACKAGES[] = ".zip";
 
 IconThemeInfo::IconThemeInfo()
 {
@@ -67,18 +63,12 @@ IconThemeInfo::IconThemeInfo(const OUString& urlToFile)
 /*static*/ Size
 IconThemeInfo::SizeByThemeName(const OUString& themeName)
 {
-    if (themeName == "tango") {
-        return Size( 24, 24 );
-    }
-    else if (themeName == "crystal") {
-        return Size( 22, 22 );
-    }
-    else if (themeName == "galaxy") {
-        return Size( 22, 22 );
-    }
-    else {
-        return Size( 26, 26 );
-    }
+   if (themeName == "galaxy") { //kept for compiler because of unused parameter 'themeName'
+     return Size( 26, 26 );
+   }
+   else {
+     return Size( 24, 24 );
+   }
 }
 
 /*static*/ bool
@@ -94,6 +84,10 @@ IconThemeInfo::UrlCanBeParsed(const OUString& url)
     }
 
     if (!fname.endsWithIgnoreAsciiCase(EXTENSION_FOR_ICON_PACKAGES)) {
+        return false;
+    }
+
+    if (fname.indexOf(HELPIMG_FAKE_THEME) != -1 ) {
         return false;
     }
 
@@ -124,32 +118,36 @@ IconThemeInfo::ThemeIdToDisplayName(const OUString& themeId)
         throw std::runtime_error("IconThemeInfo::ThemeIdToDisplayName() called with invalid id.");
     }
 
+    // Strip _svg and _dark filename "extensions"
+    OUString aDisplayName = themeId;
+
+    bool bIsSvg = aDisplayName.endsWith("_svg", &aDisplayName);
+    bool bIsDark = aDisplayName.endsWith("_dark", &aDisplayName);
+    if (!bIsSvg && bIsDark)
+        bIsSvg = aDisplayName.endsWith("_svg", &aDisplayName);
+
     // special cases
-    if (themeId.equalsIgnoreAsciiCase(HIGH_CONTRAST_ID)) {
-        return HIGH_CONTRAST_DISPLAY_NAME;
+    if (aDisplayName.equalsIgnoreAsciiCase(KARASA_JAGA_ID)) {
+        aDisplayName = KARASA_JAGA_DISPLAY_NAME;
     }
-    else if (themeId.equalsIgnoreAsciiCase(TANGO_TESTING_ID)) {
-        return TANGO_TESTING_DISPLAY_NAME;
-    }
-    else if (themeId.equalsIgnoreAsciiCase(BREEZE_DARK_ID)) {
-        return BREEZE_DARK_DISPLAY_NAME;
-    }
-    else if (themeId.equalsIgnoreAsciiCase(SIFR_DARK_ID)) {
-        return SIFR_DARK_DISPLAY_NAME;
-    }
-
-    // make the first letter uppercase
-    OUString r;
-    sal_Unicode firstLetter = themeId[0];
-    if (rtl::isAsciiLowerCase(firstLetter)) {
-        r = OUString(sal_Unicode(rtl::toAsciiUpperCase(firstLetter)));
-        r += themeId.copy(1);
-    }
-    else {
-        r = themeId;
+    else
+    {
+        // make the first letter uppercase
+        sal_Unicode firstLetter = aDisplayName[0];
+        if (rtl::isAsciiLowerCase(firstLetter))
+        {
+            aDisplayName = OUStringChar(sal_Unicode(rtl::toAsciiUpperCase(firstLetter))) + aDisplayName.copy(1);
+        }
     }
 
-    return r;
+    if (bIsSvg && bIsDark)
+        aDisplayName += " (SVG + dark)";
+    else if (bIsSvg)
+        aDisplayName += " (SVG)";
+    else if (bIsDark)
+        aDisplayName += " (dark)";
+
+    return aDisplayName;
 }
 
 namespace

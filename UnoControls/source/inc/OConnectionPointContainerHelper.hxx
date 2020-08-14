@@ -17,33 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_UNOCONTROLS_SOURCE_INC_OCONNECTIONPOINTCONTAINERHELPER_HXX
-#define INCLUDED_UNOCONTROLS_SOURCE_INC_OCONNECTIONPOINTCONTAINERHELPER_HXX
+#pragma once
 
 #include <com/sun/star/lang/XConnectionPointContainer.hpp>
-#include <com/sun/star/lang/XConnectionPoint.hpp>
 #include <cppuhelper/weak.hxx>
-#include <cppuhelper/propshlp.hxx>
+#include <cppuhelper/interfacecontainer.hxx>
 
-//  namespaces
+namespace com::sun::star::lang { class XConnectionPoint; }
 
-namespace unocontrols{
+namespace unocontrols {
 
-//  class declaration OConnectionPointContainerHelper
-
-class OConnectionPointContainerHelper   :   public  css::lang::XConnectionPointContainer
+class OConnectionPointContainerHelper final :   public  css::lang::XConnectionPointContainer
                                         ,   public  ::cppu::OWeakObject
 {
-
 public:
-
     OConnectionPointContainerHelper( ::osl::Mutex& aMutex );
 
     virtual ~OConnectionPointContainerHelper() override;
 
     //  XInterface
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      give answer, if interface is supported
         @descr      The interfaces are searched by type.
 
@@ -58,7 +52,7 @@ public:
 
     virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& aType ) override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      increment refcount
         @seealso    XInterface
         @seealso    release()
@@ -67,7 +61,7 @@ public:
 
     virtual void SAL_CALL acquire() throw() override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      decrement refcount
         @seealso    XInterface
         @seealso    acquire()
@@ -100,16 +94,12 @@ public:
     // "Parent" function must do this.
     ::cppu::OMultiTypeInterfaceContainerHelper& impl_getMultiTypeContainer() { return m_aMultiTypeContainer; }
 
-
 private:
-
     ::osl::Mutex&                                   m_aSharedMutex;
     ::cppu::OMultiTypeInterfaceContainerHelper      m_aMultiTypeContainer;   // Container to hold listener
+};
 
-};  // class OConnectionPointContainerHelper
+}
 
-}   // namespace unocontrols
-
-#endif // INCLUDED_UNOCONTROLS_SOURCE_INC_OCONNECTIONPOINTCONTAINERHELPER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

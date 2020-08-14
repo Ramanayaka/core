@@ -20,37 +20,21 @@
 #include <uielement/addonstoolbarmanager.hxx>
 #include <uielement/toolbarmerger.hxx>
 
-#include <uielement/generictoolbarcontroller.hxx>
-#include "services.h"
-#include <framework/sfxhelperfunctions.hxx>
-#include <classes/fwkresid.hxx>
-#include <classes/resource.hrc>
+#include <classes/resource.hxx>
 #include <framework/addonsoptions.hxx>
-#include <uielement/comboboxtoolbarcontroller.hxx>
-#include <uielement/imagebuttontoolbarcontroller.hxx>
-#include <uielement/togglebuttontoolbarcontroller.hxx>
-#include <uielement/buttontoolbarcontroller.hxx>
-#include <uielement/spinfieldtoolbarcontroller.hxx>
-#include <uielement/edittoolbarcontroller.hxx>
-#include <uielement/dropdownboxtoolbarcontroller.hxx>
 
-#include <com/sun/star/ui/ItemType.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
 #include <com/sun/star/frame/XToolbarController.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/ui/DockingArea.hpp>
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
-#include <comphelper/processfactory.hxx>
-#include <svtools/imgdef.hxx>
-#include <svtools/toolboxcontroller.hxx>
+#include <com/sun/star/util/XUpdatable.hpp>
+#include <comphelper/propertysequence.hxx>
+#include <o3tl/safeint.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 
 #include <svtools/miscopt.hxx>
+#include <vcl/event.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/menu.hxx>
-#include <vcl/syswin.hxx>
-#include <vcl/taskpanelist.hxx>
 #include <vcl/toolbox.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/commandinfoprovider.hxx>
@@ -102,7 +86,7 @@ static bool IsCorrectContext( const OUString& rModuleIdentifier, const OUString&
     return false;
 }
 
-static Image RetrieveImage( Reference< css::frame::XFrame >& rFrame,
+static Image RetrieveImage( Reference< css::frame::XFrame > const & rFrame,
                             const OUString& aImageId,
                             const OUString& aURL,
                             bool bBigImage
@@ -112,11 +96,9 @@ static Image RetrieveImage( Reference< css::frame::XFrame >& rFrame,
     if (bBigImage)
         eImageType = vcl::ImageType::Size26;
 
-    Image aImage;
-
     if ( !aImageId.isEmpty() )
     {
-        aImage = framework::AddonsOptions().GetImageFromURL( aImageId, bBigImage );
+        Image aImage(framework::AddonsOptions().GetImageFromURL(aImageId, bBigImage));
         if ( !!aImage )
             return aImage;
         else
@@ -125,7 +107,7 @@ static Image RetrieveImage( Reference< css::frame::XFrame >& rFrame,
             return aImage;
     }
 
-    aImage = framework::AddonsOptions().GetImageFromURL( aURL, bBigImage );
+    Image aImage(framework::AddonsOptions().GetImageFromURL(aURL, bBigImage));
     if ( !aImage )
         aImage = vcl::CommandInfoProvider::GetImageForCommand(aImageId, rFrame, eImageType);
 
@@ -216,7 +198,7 @@ void AddonsToolBarManager::FillToolbar( const Sequence< Sequence< PropertyValue 
     sal_uInt32  nElements( 0 );
     bool    bAppendSeparator( false );
     Reference< XWindow > xToolbarWindow = VCLUnoHelper::GetInterface( m_pToolBar );
-    for ( sal_uInt32 n = 0; n < (sal_uInt32)rAddonToolbar.getLength(); n++ )
+    for ( const Sequence< PropertyValue >& rSeq : rAddonToolbar )
     {
         OUString   aURL;
         OUString   aTitle;
@@ -225,8 +207,6 @@ void AddonsToolBarManager::FillToolbar( const Sequence< Sequence< PropertyValue 
         OUString   aTarget;
         OUString   aControlType;
         sal_uInt16 nWidth( 0 );
-
-        const Sequence< PropertyValue >& rSeq = rAddonToolbar[n];
 
         ToolBarMerger::ConvertSequenceToValues( rSeq, aURL, aTitle, aImageId, aTarget, aContext, aControlType, nWidth );
 
@@ -263,7 +243,7 @@ void AddonsToolBarManager::FillToolbar( const Sequence< Sequence< PropertyValue 
                 // Create TbRuntimeItemData to hold additional information we will need in the future
                 AddonsParams* pRuntimeItemData = new AddonsParams;
                 pRuntimeItemData->aImageId  = aImageId;
-                pRuntimeItemData->aTarget   = aTarget;
+                pRuntimeItemData->aControlType = aControlType;
                 pRuntimeItemData->nWidth    = nWidth;
                 m_pToolBar->SetItemData( nId, pRuntimeItemData );
                 m_pToolBar->SetItemCommand( nId, aURL );
@@ -276,25 +256,14 @@ void AddonsToolBarManager::FillToolbar( const Sequence< Sequence< PropertyValue 
                 if ( m_xToolbarControllerFactory.is() &&
                      m_xToolbarControllerFactory->hasController( aURL, m_aModuleIdentifier ))
                 {
-                    Sequence< Any > aArgs(5);
-                    PropertyValue   aPropValue;
-
-                    aPropValue.Name     = "ModuleIdentifier";
-                    aPropValue.Value    <<= m_aModuleIdentifier;
-                    aArgs[0] <<= aPropValue;
-                    aPropValue.Name     = "Frame";
-                    aPropValue.Value    <<= m_xFrame;
-                    aArgs[1] <<= aPropValue;
-                    aPropValue.Name     = "ServiceManager";
-                    aPropValue.Value    <<= Reference<XMultiServiceFactory>(m_xContext->getServiceManager(), UNO_QUERY_THROW);
-                    aArgs[2] <<= aPropValue;
-                    aPropValue.Name     = "ParentWindow";
-                    aPropValue.Value    <<= xToolbarWindow;
-                    aArgs[3] <<= aPropValue;
-                    aPropValue.Name     = "ItemId";
-                    aPropValue.Value    <<= sal_Int32( nId );
-                    aArgs[4] <<= aPropValue;
-
+                    uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+                    {
+                        {"ModuleIdentifier", uno::Any(m_aModuleIdentifier)},
+                        {"Frame", uno::Any(m_xFrame)},
+                        {"ServiceManager", uno::Any(Reference<XMultiServiceFactory>(m_xContext->getServiceManager(), UNO_QUERY_THROW))},
+                        {"ParentWindow", uno::Any(xToolbarWindow)},
+                        {"ItemId", uno::Any(sal_Int32( nId ))}
+                    }));
                     try
                     {
                         xController.set( m_xToolbarControllerFactory->createInstanceWithArgumentsAndContext(
@@ -308,9 +277,7 @@ void AddonsToolBarManager::FillToolbar( const Sequence< Sequence< PropertyValue 
                 }
                 else
                 {
-                    ::cppu::OWeakObject* pController = nullptr;
-
-                    pController = ToolBarMerger::CreateController( m_xContext, m_xFrame, m_pToolBar, aURL, nId, nWidth, aControlType );
+                    ::cppu::OWeakObject* pController = ToolBarMerger::CreateController( m_xContext, m_xFrame, m_pToolBar, aURL, nId, nWidth, aControlType );
                     xController.set( pController, UNO_QUERY );
                 }
 
@@ -340,7 +307,7 @@ void AddonsToolBarManager::FillToolbar( const Sequence< Sequence< PropertyValue 
                     }
                 }
 
-                // Request a item window from the toolbar controller and set it at the VCL toolbar
+                // Request an item window from the toolbar controller and set it at the VCL toolbar
                 Reference< XToolbarController > xTbxController( xController, UNO_QUERY );
                 if ( xTbxController.is() && xToolbarWindow.is() )
                 {
@@ -358,7 +325,7 @@ void AddonsToolBarManager::FillToolbar( const Sequence< Sequence< PropertyValue 
                     }
                 }
 
-                // Notify controller implementation to its listeners. Controller is now useable from outside.
+                // Notify controller implementation to its listeners. Controller is now usable from outside.
                 Reference< XUpdatable > xUpdatable( xController, UNO_QUERY );
                 if ( xUpdatable.is() )
                 {
@@ -417,7 +384,7 @@ IMPL_LINK_NOARG(AddonsToolBarManager, Select, ToolBox *, void)
     if ( m_bDisposed )
         return;
 
-    sal_Int16   nKeyModifier( (sal_Int16)m_pToolBar->GetModifier() );
+    sal_Int16   nKeyModifier( static_cast<sal_Int16>(m_pToolBar->GetModifier()) );
     sal_uInt16      nId( m_pToolBar->GetCurItemId() );
     ToolBarControllerMap::const_iterator pIter = m_aControllerMap.find( nId );
     if ( pIter != m_aControllerMap.end() )

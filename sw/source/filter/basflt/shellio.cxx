@@ -18,12 +18,13 @@
  */
 
 #include <hintids.hxx>
+#include <osl/diagnose.h>
 #include <tools/date.hxx>
 #include <tools/time.hxx>
-#include <svl/urihelper.hxx>
 #include <svl/fstathelper.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <sfx2/docfile.hxx>
+#include <sfx2/docfilt.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/boxitem.hxx>
@@ -33,8 +34,8 @@
 #include <fmtanchr.hxx>
 #include <fmtfsize.hxx>
 #include <fmtpdsc.hxx>
-#include <swtypes.hxx>
 #include <shellio.hxx>
+#include <iodetect.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <IDocumentSettingAccess.hxx>
@@ -55,25 +56,36 @@
 #include <poolfmt.hxx>
 #include <fltini.hxx>
 #include <docsh.hxx>
+#include <ndole.hxx>
+#include <ndtxt.hxx>
 #include <redline.hxx>
 #include <swerror.h>
-#include <paratr.hxx>
 #include <pausethreadstarting.hxx>
+#include <frameformats.hxx>
 
 using namespace ::com::sun::star;
+
+static bool sw_MergePortions(SwNode *const& pNode, void *)
+{
+    if (pNode->IsTextNode())
+    {
+        pNode->GetTextNode()->FileLoadedInitHints();
+    }
+    return true;
+}
 
 ErrCode SwReader::Read( const Reader& rOptions )
 {
     // copy variables
     Reader* po = const_cast<Reader*>(&rOptions);
-    po->pStrm = pStrm;
-    po->pStg  = pStg;
-    po->xStg  = xStg;
-    po->bInsertMode = nullptr != pCursor;
-    po->bSkipImages = mbSkipImages;
+    po->m_pStream = mpStrm;
+    po->m_pStorage  = mpStg;
+    po->m_xStorage  = mxStg;
+    po->m_bInsertMode = nullptr != mpCursor;
+    po->m_bSkipImages = mbSkipImages;
 
     // if a Medium is selected, get its Stream
-    if( nullptr != (po->pMedium = pMedium ) &&
+    if( nullptr != (po->m_pMedium = mpMedium ) &&
         !po->SetStrmStgPtr() )
     {
         po->SetReadUTF8( false );
@@ -93,10 +105,14 @@ ErrCode SwReader::Read( const Reader& rOptions )
 
     mxDoc->SetInReading( true );
     mxDoc->SetInXMLImport( dynamic_cast< XMLReader* >(po) !=  nullptr );
+    mxDoc->SetInWriterfilterImport(mpMedium && mpMedium->GetFilter()
+            && (mpMedium->GetFilter()->GetUserData() == FILTER_RTF
+                || mpMedium->GetFilter()->GetUserData() == sRtfWH
+                || mpMedium->GetFilter()->GetUserData() == FILTER_DOCX));
 
     SwPaM *pPam;
-    if( pCursor )
-        pPam = pCursor;
+    if( mpCursor )
+        pPam = mpCursor;
     else
     {
         // if the Reader was not called by a Shell, create a PaM ourselves
@@ -111,15 +127,14 @@ ErrCode SwReader::Read( const Reader& rOptions )
 
     // Pams are connected like rings; stop when we return to the 1st element
     SwPaM *pEnd = pPam;
-    SwUndoInsDoc* pUndo = nullptr;
 
     bool bReadPageDescs = false;
     bool const bDocUndo = mxDoc->GetIDocumentUndoRedo().DoesUndo();
-    bool bSaveUndo = bDocUndo && pCursor;
+    bool bSaveUndo = bDocUndo && mpCursor;
     if( bSaveUndo )
     {
         // the reading of the page template cannot be undone!
-        bReadPageDescs = po->aOpt.IsPageDescs();
+        bReadPageDescs = po->m_aOption.IsPageDescs();
         if( bReadPageDescs )
         {
             bSaveUndo = false;
@@ -133,36 +148,35 @@ ErrCode SwReader::Read( const Reader& rOptions )
     }
     mxDoc->GetIDocumentUndoRedo().DoUndo(false);
 
-    SwNodeIndex aSplitIdx( mxDoc->GetNodes() );
-
     RedlineFlags eOld = mxDoc->getIDocumentRedlineAccess().GetRedlineFlags();
     RedlineFlags ePostReadRedlineFlags( RedlineFlags::Ignore );
 
     // Array of FlyFormats
     SwFrameFormatsV aFlyFrameArr;
     // only read templates? then ignore multi selection!
-    bool bFormatsOnly = po->aOpt.IsFormatsOnly();
+    bool bFormatsOnly = po->m_aOption.IsFormatsOnly();
 
     while( true )
     {
+        std::unique_ptr<SwUndoInsDoc> pUndo;
         if( bSaveUndo )
-            pUndo = new SwUndoInsDoc( *pPam );
+            pUndo.reset(new SwUndoInsDoc( *pPam ));
 
         mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( RedlineFlags::Ignore );
 
-        SwPaM* pUndoPam = nullptr;
-        if( bDocUndo || pCursor )
+        std::unique_ptr<SwPaM> pUndoPam;
+        if( bDocUndo || mpCursor )
         {
             // set Pam to the previous node, so that it is not also moved
             const SwNodeIndex& rTmp = pPam->GetPoint()->nNode;
-            pUndoPam = new SwPaM( rTmp, rTmp, 0, -1 );
+            pUndoPam.reset(new SwPaM( rTmp, rTmp, 0, -1 ));
         }
 
         // store for now all Fly's
-        if( pCursor )
+        if( mpCursor )
         {
-            std::copy(mxDoc->GetSpzFrameFormats()->begin(),
-                mxDoc->GetSpzFrameFormats()->end(), std::back_inserter(aFlyFrameArr));
+            aFlyFrameArr.insert( aFlyFrameArr.end(), mxDoc->GetSpzFrameFormats()->begin(),
+                mxDoc->GetSpzFrameFormats()->end() );
         }
 
         const sal_Int32 nSttContent = pPam->GetPoint()->nContent.GetIndex();
@@ -174,7 +188,7 @@ ErrCode SwReader::Read( const Reader& rOptions )
 
         mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld );
 
-        nError = po->Read( *mxDoc, sBaseURL, *pPam, aFileName );
+        nError = po->Read( *mxDoc, msBaseURL, *pPam, maFileName );
 
         // an ODF document may contain redline mode in settings.xml; save it!
         ePostReadRedlineFlags = mxDoc->getIDocumentRedlineAccess().GetRedlineFlags();
@@ -207,7 +221,7 @@ ErrCode SwReader::Read( const Reader& rOptions )
             }
         }
 
-        if( pCursor )
+        if( mpCursor )
         {
             *pUndoPam->GetMark() = *pPam->GetPoint();
             ++pUndoPam->GetPoint()->nNode;
@@ -229,28 +243,11 @@ ErrCode SwReader::Read( const Reader& rOptions )
                 // ok, here IsAlive is a misnomer...
                 if (!aFlyFrameArr.IsAlive(pFrameFormat))
                 {
-                    SwPosition const*const pFrameAnchor(
-                            rAnchor.GetContentAnchor());
                     if  (   (RndStdIds::FLY_AT_PAGE == rAnchor.GetAnchorId())
-                        ||  (   pFrameAnchor
-                            &&  (   (   (RndStdIds::FLY_AT_PARA == rAnchor.GetAnchorId())
-                                    &&  (   (pUndoPam->GetPoint()->nNode ==
-                                             pFrameAnchor->nNode)
-                                        ||  (pUndoPam->GetMark()->nNode ==
-                                             pFrameAnchor->nNode)
-                                        )
-                                    )
-                                // #i97570# also check frames anchored AT char
-                                ||  (   (RndStdIds::FLY_AT_CHAR == rAnchor.GetAnchorId())
-                                    &&  !IsDestroyFrameAnchoredAtChar(
-                                              *pFrameAnchor,
-                                              *pUndoPam->GetPoint(),
-                                              *pUndoPam->GetMark(),
-                                              mxDoc.get())
-                                    )
-                                )
-                            )
-                        )
+                        // TODO: why is this not handled via SetInsertRange?
+                        ||  SwUndoInserts::IsCreateUndoForNewFly(rAnchor,
+                                pUndoPam->GetPoint()->nNode.GetIndex(),
+                                pUndoPam->GetMark()->nNode.GetIndex()))
                     {
                         if( bChkHeaderFooter &&
                             (RndStdIds::FLY_AT_PARA == rAnchor.GetAnchorId()) &&
@@ -269,7 +266,7 @@ ErrCode SwReader::Read( const Reader& rOptions )
                                 // UGLY: temp. enable undo
                                 mxDoc->GetIDocumentUndoRedo().DoUndo(true);
                                 mxDoc->GetIDocumentUndoRedo().AppendUndo(
-                                    new SwUndoInsLayFormat( pFrameFormat,0,0 ) );
+                                    std::make_unique<SwUndoInsLayFormat>( pFrameFormat,0,0 ) );
                                 mxDoc->GetIDocumentUndoRedo().DoUndo(false);
                                 mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( RedlineFlags::Ignore );
                             }
@@ -285,7 +282,7 @@ ErrCode SwReader::Read( const Reader& rOptions )
                                 {
                                     pFrameFormat->MakeFrames();
                                 }
-                                else if( pCursor )
+                                else if( mpCursor )
                                 {
                                     mxDoc->SetContainsAtPageObjWithContentAnchor( true );
                                 }
@@ -296,12 +293,11 @@ ErrCode SwReader::Read( const Reader& rOptions )
                     }
                 }
             }
-            if( !aFlyFrameArr.empty() )
-                aFlyFrameArr.clear();
+            aFlyFrameArr.clear();
 
             mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld );
             if( mxDoc->getIDocumentRedlineAccess().IsRedlineOn() )
-                mxDoc->getIDocumentRedlineAccess().AppendRedline( new SwRangeRedline( nsRedlineType_t::REDLINE_INSERT, *pUndoPam ), true);
+                mxDoc->getIDocumentRedlineAccess().AppendRedline( new SwRangeRedline( RedlineType::Insert, *pUndoPam ), true);
             else
                 mxDoc->getIDocumentRedlineAccess().SplitRedline( *pUndoPam );
             mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( RedlineFlags::Ignore );
@@ -312,12 +308,12 @@ ErrCode SwReader::Read( const Reader& rOptions )
             pUndo->SetInsertRange( *pUndoPam, false );
             // UGLY: temp. enable undo
             mxDoc->GetIDocumentUndoRedo().DoUndo(true);
-            mxDoc->GetIDocumentUndoRedo().AppendUndo( pUndo );
+            mxDoc->GetIDocumentUndoRedo().AppendUndo( std::move(pUndo) );
             mxDoc->GetIDocumentUndoRedo().DoUndo(false);
             mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( RedlineFlags::Ignore );
         }
 
-        delete pUndoPam;
+        pUndoPam.reset();
 
         pPam = pPam->GetNext();
         if( pPam == pEnd )
@@ -332,37 +328,41 @@ ErrCode SwReader::Read( const Reader& rOptions )
          *     When Seeking, the current Status-, EOF- and bad-Bit is set;
          *     nobody knows why
          */
-        if( pStrm )
+        if( mpStrm )
         {
-            pStrm->Seek(0);
-            pStrm->ResetError();
+            mpStrm->Seek(0);
+            mpStrm->ResetError();
         }
     }
 
+    // fdo#52028: ODF file import does not result in MergePortions being called
+    // for every attribute, since that would be inefficient.  So call it here.
+    // This is only necessary for formats that may contain RSIDs (ODF,MSO).
+    // It's too hard to figure out which nodes were inserted in Insert->File
+    // case (redlines, flys, footnotes, header/footer) so just do every node.
+    mxDoc->GetNodes().ForEach(&sw_MergePortions);
+
     mxDoc->SetInReading( false );
     mxDoc->SetInXMLImport( false );
+    mxDoc->SetInWriterfilterImport(false);
 
     mxDoc->InvalidateNumRules();
     mxDoc->UpdateNumRule();
     mxDoc->ChkCondColls();
     mxDoc->SetAllUniqueFlyNames();
-    mxDoc->getIDocumentState().SetLoaded();
     // Clear unassigned cell styles, because they aren't needed anymore.
     mxDoc->GetCellStyles().clear();
 
     mxDoc->GetIDocumentUndoRedo().DoUndo(bDocUndo);
-    if (!bReadPageDescs)
+    if (!bReadPageDescs && bSaveUndo )
     {
-        if( bSaveUndo )
-        {
-            mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld );
-            mxDoc->GetIDocumentUndoRedo().EndUndo( SwUndoId::INSDOKUMENT, nullptr );
-            mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( RedlineFlags::Ignore );
-        }
+        mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld );
+        mxDoc->GetIDocumentUndoRedo().EndUndo( SwUndoId::INSDOKUMENT, nullptr );
+        mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( RedlineFlags::Ignore );
     }
 
     // delete Pam if it was created only for reading
-    if( !pCursor )
+    if( !mpCursor )
     {
         delete pPam;          // open a new one
 
@@ -380,7 +380,7 @@ ErrCode SwReader::Read( const Reader& rOptions )
     mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld );
     mxDoc->SetOle2Link( aOLELink );
 
-    if( pCursor )                 // the document is now modified
+    if( mpCursor )                 // the document is now modified
         mxDoc->getIDocumentState().SetModified();
     // #i38810# - If links have been updated, the document
     // have to be modified. During update of links the OLE link at the document
@@ -401,8 +401,8 @@ ErrCode SwReader::Read( const Reader& rOptions )
 
 
 SwReader::SwReader(SfxMedium& rMedium, const OUString& rFileName, SwDoc *pDocument)
-    : SwDocFac(pDocument), pStrm(nullptr), pMedium(&rMedium), pCursor(nullptr),
-    aFileName(rFileName), mbSkipImages(false)
+    : SwDocFac(pDocument), mpStrm(nullptr), mpMedium(&rMedium), mpCursor(nullptr),
+    maFileName(rFileName), mbSkipImages(false)
 {
     SetBaseURL( rMedium.GetBaseURL() );
     SetSkipImages( rMedium.IsSkipImages() );
@@ -411,31 +411,31 @@ SwReader::SwReader(SfxMedium& rMedium, const OUString& rFileName, SwDoc *pDocume
 
 // Read into an existing document
 SwReader::SwReader(SvStream& rStrm, const OUString& rFileName, const OUString& rBaseURL, SwPaM& rPam)
-    : SwDocFac(rPam.GetDoc()), pStrm(&rStrm), pMedium(nullptr), pCursor(&rPam),
-    aFileName(rFileName), mbSkipImages(false)
+    : SwDocFac(rPam.GetDoc()), mpStrm(&rStrm), mpMedium(nullptr), mpCursor(&rPam),
+    maFileName(rFileName), mbSkipImages(false)
 {
     SetBaseURL( rBaseURL );
 }
 
 SwReader::SwReader(SfxMedium& rMedium, const OUString& rFileName, SwPaM& rPam)
-    : SwDocFac(rPam.GetDoc()), pStrm(nullptr), pMedium(&rMedium),
-    pCursor(&rPam), aFileName(rFileName), mbSkipImages(false)
+    : SwDocFac(rPam.GetDoc()), mpStrm(nullptr), mpMedium(&rMedium),
+    mpCursor(&rPam), maFileName(rFileName), mbSkipImages(false)
 {
     SetBaseURL( rMedium.GetBaseURL() );
 }
 
 SwReader::SwReader( const uno::Reference < embed::XStorage > &rStg, const OUString& rFilename, SwPaM &rPam )
-    : SwDocFac(rPam.GetDoc()), pStrm(nullptr), xStg( rStg ), pMedium(nullptr), pCursor(&rPam), aFileName(rFilename), mbSkipImages(false)
+    : SwDocFac(rPam.GetDoc()), mpStrm(nullptr), mxStg( rStg ), mpMedium(nullptr), mpCursor(&rPam), maFileName(rFilename), mbSkipImages(false)
 {
 }
 
 Reader::Reader()
-  : aDStamp( Date::EMPTY ),
-    aTStamp( tools::Time::EMPTY ),
-    aChkDateTime( DateTime::EMPTY ),
-    pStrm(nullptr), pMedium(nullptr), bInsertMode(false),
-    bTmplBrowseMode(false), bReadUTF8(false), bBlockMode(false), bOrganizerMode(false),
-    bHasAskTemplateName(false), bIgnoreHTMLComments(false), bSkipImages(false)
+  : m_aDateStamp( Date::EMPTY ),
+    m_aTimeStamp( tools::Time::EMPTY ),
+    m_aCheckDateTime( DateTime::EMPTY ),
+    m_pStream(nullptr), m_pMedium(nullptr), m_bInsertMode(false),
+    m_bTemplateBrowseMode(false), m_bReadUTF8(false), m_bBlockMode(false), m_bOrganizerMode(false),
+    m_bHasAskTemplateName(false), m_bIgnoreHTMLComments(false), m_bSkipImages(false)
 {
 }
 
@@ -443,48 +443,48 @@ Reader::~Reader()
 {
 }
 
-OUString Reader::GetTemplateName() const
+OUString Reader::GetTemplateName(SwDoc& /*rDoc*/) const
 {
     return OUString();
 }
 
 // load the Filter template, set and release
-SwDoc* Reader::GetTemplateDoc()
+SwDoc* Reader::GetTemplateDoc(SwDoc& rDoc)
 {
-    if( !bHasAskTemplateName )
+    if( !m_bHasAskTemplateName )
     {
-        SetTemplateName( GetTemplateName() );
-        bHasAskTemplateName = true;
+        SetTemplateName( GetTemplateName(rDoc) );
+        m_bHasAskTemplateName = true;
     }
 
-    if( aTemplateNm.isEmpty() )
+    if( m_aTemplateName.isEmpty() )
         ClearTemplate();
     else
     {
-        INetURLObject aTDir( aTemplateNm );
+        INetURLObject aTDir( m_aTemplateName );
         const OUString aFileName = aTDir.GetMainURL( INetURLObject::DecodeMechanism::NONE );
         OSL_ENSURE( !aTDir.HasError(), "No absolute path for template name!" );
         DateTime aCurrDateTime( DateTime::SYSTEM );
         bool bLoad = false;
 
         // if the template is already loaded, check once-a-minute if it has changed
-        if( !mxTemplate.is() || aCurrDateTime >= aChkDateTime )
+        if( !mxTemplate.is() || aCurrDateTime >= m_aCheckDateTime )
         {
             Date aTstDate( Date::EMPTY );
             tools::Time aTstTime( tools::Time::EMPTY );
             if( FStatHelper::GetModifiedDateTimeOfFile(
                             aTDir.GetMainURL( INetURLObject::DecodeMechanism::NONE ),
                             &aTstDate, &aTstTime ) &&
-                ( !mxTemplate.is() || aDStamp != aTstDate || aTStamp != aTstTime ))
+                ( !mxTemplate.is() || m_aDateStamp != aTstDate || m_aTimeStamp != aTstTime ))
             {
                 bLoad = true;
-                aDStamp = aTstDate;
-                aTStamp = aTstTime;
+                m_aDateStamp = aTstDate;
+                m_aTimeStamp = aTstTime;
             }
 
             // only one minute later check if it has changed
-            aChkDateTime = aCurrDateTime;
-            aChkDateTime += tools::Time( 0L, 1L );
+            m_aCheckDateTime = aCurrDateTime;
+            m_aCheckDateTime += tools::Time( 0, 1 );
         }
 
         if (bLoad)
@@ -507,7 +507,7 @@ SwDoc* Reader::GetTemplateDoc()
                     mxTemplate->SetOle2Link( Link<bool,void>() );
                     // always FALSE
                     mxTemplate->GetIDocumentUndoRedo().DoUndo( false );
-                    mxTemplate->getIDocumentSettingAccess().set(DocumentSettingId::BROWSE_MODE, bTmplBrowseMode );
+                    mxTemplate->getIDocumentSettingAccess().set(DocumentSettingId::BROWSE_MODE, m_bTemplateBrowseMode );
                     mxTemplate->RemoveAllFormatLanguageDependencies();
 
                     ReadXML->SetOrganizerMode( true );
@@ -519,7 +519,7 @@ SwDoc* Reader::GetTemplateDoc()
             }
         }
 
-        OSL_ENSURE( !mxTemplate.is() || FStatHelper::IsDocument( aFileName ) || aTemplateNm=="$$Dummy$$",
+        OSL_ENSURE( !mxTemplate.is() || FStatHelper::IsDocument( aFileName ) || m_aTemplateName=="$$Dummy$$",
                 "TemplatePtr but no template exist!" );
     }
 
@@ -530,7 +530,7 @@ bool Reader::SetTemplate( SwDoc& rDoc )
 {
     bool bRet = false;
 
-    GetTemplateDoc();
+    GetTemplateDoc(rDoc);
     if( mxTemplate.is() )
     {
         rDoc.RemoveAllFormatLanguageDependencies();
@@ -549,10 +549,10 @@ void Reader::ClearTemplate()
 
 void Reader::SetTemplateName( const OUString& rDir )
 {
-    if( !rDir.isEmpty() && aTemplateNm != rDir )
+    if( !rDir.isEmpty() && m_aTemplateName != rDir )
     {
         ClearTemplate();
-        aTemplateNm = rDir;
+        m_aTemplateName = rDir;
     }
 }
 
@@ -560,38 +560,38 @@ void Reader::MakeHTMLDummyTemplateDoc()
 {
     ClearTemplate();
     mxTemplate = new SwDoc;
-    mxTemplate->getIDocumentSettingAccess().set(DocumentSettingId::BROWSE_MODE, bTmplBrowseMode );
+    mxTemplate->getIDocumentSettingAccess().set(DocumentSettingId::BROWSE_MODE, m_bTemplateBrowseMode );
     mxTemplate->getIDocumentDeviceAccess().getPrinter( true );
     mxTemplate->RemoveAllFormatLanguageDependencies();
-    aChkDateTime = Date( 1, 1, 2300 );  // year 2300 should be sufficient
-    aTemplateNm = "$$Dummy$$";
+    m_aCheckDateTime = Date( 1, 1, 2300 );  // year 2300 should be sufficient
+    m_aTemplateName = "$$Dummy$$";
 }
 
 // Users that do not need to open these Streams / Storages,
 // have to override this method
 bool Reader::SetStrmStgPtr()
 {
-    OSL_ENSURE( pMedium, "Where is the Media??" );
+    OSL_ENSURE( m_pMedium, "Where is the Media??" );
 
-    if( pMedium->IsStorage() )
+    if( m_pMedium->IsStorage() )
     {
-        if( SW_STORAGE_READER & GetReaderType() )
+        if( SwReaderType::Storage & GetReaderType() )
         {
-            xStg = pMedium->GetStorage();
+            m_xStorage = m_pMedium->GetStorage();
             return true;
         }
     }
     else
     {
-        pStrm = pMedium->GetInStream();
-        if ( pStrm && SotStorage::IsStorageFile(pStrm) && (SW_STORAGE_READER & GetReaderType()) )
+        m_pStream = m_pMedium->GetInStream();
+        if ( m_pStream && SotStorage::IsStorageFile(m_pStream) && (SwReaderType::Storage & GetReaderType()) )
         {
-            pStg = new SotStorage( *pStrm );
-            pStrm = nullptr;
+            m_pStorage = new SotStorage( *m_pStream );
+            m_pStream = nullptr;
         }
-        else if ( !(SW_STREAM_READER & GetReaderType()) )
+        else if ( !(SwReaderType::Stream & GetReaderType()) )
         {
-            pStrm = nullptr;
+            m_pStream = nullptr;
             return false;
         }
 
@@ -600,9 +600,9 @@ bool Reader::SetStrmStgPtr()
     return false;
 }
 
-int Reader::GetReaderType()
+SwReaderType Reader::GetReaderType()
 {
-    return SW_STREAM_READER;
+    return SwReaderType::Stream;
 }
 
 void Reader::SetFltName( const OUString& )
@@ -633,7 +633,7 @@ void Reader::ResetFrameFormats( SwDoc& rDoc )
 
     // read the sections of the document, which is equal to the medium.
     // returns the count of it
-size_t Reader::GetSectionList( SfxMedium&, std::vector<OUString*>& ) const
+size_t Reader::GetSectionList(SfxMedium&, std::vector<OUString>&) const
 {
     return 0;
 }
@@ -642,13 +642,13 @@ bool SwReader::HasGlossaries( const Reader& rOptions )
 {
     // copy variables
     Reader* po = const_cast<Reader*>(&rOptions);
-    po->pStrm = pStrm;
-    po->pStg  = pStg;
-    po->bInsertMode = false;
+    po->m_pStream = mpStrm;
+    po->m_pStorage  = mpStg;
+    po->m_bInsertMode = false;
 
     // if a Medium is selected, get its Stream
     bool bRet = false;
-    if( !( nullptr != (po->pMedium = pMedium ) && !po->SetStrmStgPtr() ))
+    if(  nullptr == (po->m_pMedium = mpMedium ) || po->SetStrmStgPtr() )
         bRet = po->HasGlossaries();
     return bRet;
 }
@@ -658,13 +658,13 @@ bool SwReader::ReadGlossaries( const Reader& rOptions,
 {
     // copy variables
     Reader* po = const_cast<Reader*>(&rOptions);
-    po->pStrm = pStrm;
-    po->pStg  = pStg;
-    po->bInsertMode = false;
+    po->m_pStream = mpStrm;
+    po->m_pStorage  = mpStg;
+    po->m_bInsertMode = false;
 
     // if a Medium is selected, get its Stream
     bool bRet = false;
-    if( !( nullptr != (po->pMedium = pMedium ) && !po->SetStrmStgPtr() ))
+    if( nullptr == (po->m_pMedium = mpMedium ) || po->SetStrmStgPtr() )
         bRet = po->ReadGlossaries( rBlocks, bSaveRelFiles );
     return bRet;
 }
@@ -679,9 +679,9 @@ bool Reader::ReadGlossaries( SwTextBlocks&, bool ) const
     return false;
 }
 
-int StgReader::GetReaderType()
+SwReaderType StgReader::GetReaderType()
 {
-    return SW_STORAGE_READER;
+    return SwReaderType::Storage;
 }
 
 /*
@@ -693,53 +693,54 @@ int StgReader::GetReaderType()
  */
 
 SwWriter::SwWriter(SvStream& rStrm, SwCursorShell &rShell, bool bInWriteAll)
-    : pStrm(&rStrm), pMedium(nullptr), pOutPam(nullptr), pShell(&rShell),
-    rDoc(*rShell.GetDoc()), bWriteAll(bInWriteAll)
+    : m_pStrm(&rStrm), m_pMedium(nullptr), m_pOutPam(nullptr), m_pShell(&rShell),
+    m_rDoc(*rShell.GetDoc()), m_bWriteAll(bInWriteAll)
 {
 }
 
 SwWriter::SwWriter(SvStream& rStrm,SwDoc &rDocument)
-    : pStrm(&rStrm), pMedium(nullptr), pOutPam(nullptr), pShell(nullptr), rDoc(rDocument),
-    bWriteAll(true)
+    : m_pStrm(&rStrm), m_pMedium(nullptr), m_pOutPam(nullptr), m_pShell(nullptr), m_rDoc(rDocument),
+    m_bWriteAll(true)
 {
 }
 
 SwWriter::SwWriter(SvStream& rStrm, SwPaM& rPam, bool bInWriteAll)
-    : pStrm(&rStrm), pMedium(nullptr), pOutPam(&rPam), pShell(nullptr),
-    rDoc(*rPam.GetDoc()), bWriteAll(bInWriteAll)
+    : m_pStrm(&rStrm), m_pMedium(nullptr), m_pOutPam(&rPam), m_pShell(nullptr),
+    m_rDoc(*rPam.GetDoc()), m_bWriteAll(bInWriteAll)
 {
 }
 
 SwWriter::SwWriter( const uno::Reference < embed::XStorage >& rStg, SwDoc &rDocument)
-    : pStrm(nullptr), xStg( rStg ), pMedium(nullptr), pOutPam(nullptr), pShell(nullptr), rDoc(rDocument), bWriteAll(true)
+    : m_pStrm(nullptr), m_xStg( rStg ), m_pMedium(nullptr), m_pOutPam(nullptr), m_pShell(nullptr), m_rDoc(rDocument), m_bWriteAll(true)
 {
 }
 
 SwWriter::SwWriter(SfxMedium& rMedium, SwCursorShell &rShell, bool bInWriteAll)
-    : pStrm(nullptr), pMedium(&rMedium), pOutPam(nullptr), pShell(&rShell),
-    rDoc(*rShell.GetDoc()), bWriteAll(bInWriteAll)
+    : m_pStrm(nullptr), m_pMedium(&rMedium), m_pOutPam(nullptr), m_pShell(&rShell),
+    m_rDoc(*rShell.GetDoc()), m_bWriteAll(bInWriteAll)
 {
 }
 
 SwWriter::SwWriter(SfxMedium& rMedium, SwDoc &rDocument)
-    : pStrm(nullptr), pMedium(&rMedium), pOutPam(nullptr), pShell(nullptr), rDoc(rDocument),
-    bWriteAll(true)
+    : m_pStrm(nullptr), m_pMedium(&rMedium), m_pOutPam(nullptr), m_pShell(nullptr), m_rDoc(rDocument),
+    m_bWriteAll(true)
 {
 }
 
-ErrCode SwWriter::Write( WriterRef& rxWriter, const OUString* pRealFileName )
+ErrCode SwWriter::Write( WriterRef const & rxWriter, const OUString* pRealFileName )
 {
     // #i73788#
     SwPauseThreadStarting aPauseThreadStarting;
 
     bool bHasMark = false;
+    std::shared_ptr<SwUnoCursor> pTempCursor;
     SwPaM * pPam;
 
     rtl::Reference<SwDoc> xDoc;
 
-    if ( pShell && !bWriteAll && pShell->IsTableMode() )
+    if ( m_pShell && !m_bWriteAll && m_pShell->IsTableMode() )
     {
-        bWriteAll = true;
+        m_bWriteAll = true;
         xDoc = new SwDoc;
 
         // Copy parts of a table:
@@ -748,7 +749,7 @@ ErrCode SwWriter::Write( WriterRef& rxWriter, const OUString* pRealFileName )
 
         // search the layout for cells
         SwSelBoxes aBoxes;
-        GetTableSel( *pShell, aBoxes );
+        GetTableSel( *m_pShell, aBoxes );
         const SwTableNode* pTableNd = static_cast<const SwTableNode*>(aBoxes[0]->GetSttNd()->StartOfSectionNode());
         SwNodeIndex aIdx( xDoc->GetNodes().GetEndOfExtras(), 2 );
         SwContentNode *pNd = aIdx.GetNode().GetContentNode();
@@ -757,12 +758,12 @@ ErrCode SwWriter::Write( WriterRef& rxWriter, const OUString* pRealFileName )
         pTableNd->GetTable().MakeCopy( xDoc.get(), aPos, aBoxes );
     }
 
-    if( !bWriteAll && ( pShell || pOutPam ))
+    if( !m_bWriteAll && ( m_pShell || m_pOutPam ))
     {
-        if( pShell )
-            pPam = pShell->GetCursor();
+        if( m_pShell )
+            pPam = m_pShell->GetCursor();
         else
-            pPam = pOutPam;
+            pPam = m_pOutPam;
 
         SwPaM *pEnd = pPam;
 
@@ -778,12 +779,12 @@ ErrCode SwWriter::Write( WriterRef& rxWriter, const OUString* pRealFileName )
         // if there is no selection, select the whole document
         if(!bHasMark)
         {
-            if( pShell )
+            if( m_pShell )
             {
-                pShell->Push();
-                pShell->SttEndDoc(true);
-                pShell->SetMark();
-                pShell->SttEndDoc(false);
+                m_pShell->Push();
+                m_pShell->SttEndDoc(true);
+                m_pShell->SetMark();
+                m_pShell->SttEndDoc(false);
             }
             else
             {
@@ -798,8 +799,10 @@ ErrCode SwWriter::Write( WriterRef& rxWriter, const OUString* pRealFileName )
     else
     {
         // no Shell or write-everything -> create a Pam
-        SwDoc* pOutDoc = xDoc.is() ? xDoc.get() : &rDoc;
-        pPam = new SwPaM( pOutDoc->GetNodes().GetEndOfContent() );
+        SwDoc* pOutDoc = xDoc.is() ? xDoc.get() : &m_rDoc;
+        pTempCursor = pOutDoc->CreateUnoCursor(
+                SwPosition(pOutDoc->GetNodes().GetEndOfContent()), false);
+        pPam = pTempCursor.get();
         if( pOutDoc->IsClipBoard() )
         {
             pPam->Move( fnMoveBackward, GoInDoc );
@@ -813,8 +816,8 @@ ErrCode SwWriter::Write( WriterRef& rxWriter, const OUString* pRealFileName )
         }
     }
 
-    rxWriter->bWriteAll = bWriteAll;
-    SwDoc* pOutDoc = xDoc.is() ? xDoc.get() : &rDoc;
+    rxWriter->m_bWriteAll = m_bWriteAll;
+    SwDoc* pOutDoc = xDoc.is() ? xDoc.get() : &m_rDoc;
 
     // If the default PageDesc has still the initial value,
     // (e.g. if no printer was set) then set it to DIN A4.
@@ -848,20 +851,19 @@ ErrCode SwWriter::Write( WriterRef& rxWriter, const OUString* pRealFileName )
         pESh->StartAllAction();
     }
 
-    const bool bOrigPurgeOle = pOutDoc->getIDocumentSettingAccess().get(DocumentSettingId::PURGE_OLE);
-    pOutDoc->getIDocumentSettingAccess().set(DocumentSettingId::PURGE_OLE, false);
+    auto xGuard = std::make_unique<PurgeGuard>(*pOutDoc);
 
+    pOutDoc->SetInWriting(true);
     ErrCode nError = ERRCODE_NONE;
-    if( pMedium )
-        nError = rxWriter->Write( *pPam, *pMedium, pRealFileName );
-    else if( pStg.is() )
-        nError = rxWriter->Write( *pPam, *pStg, pRealFileName );
-    else if( pStrm )
-        nError = rxWriter->Write( *pPam, *pStrm, pRealFileName );
-    else if( xStg.is() )
-        nError = rxWriter->Write( *pPam, xStg, pRealFileName );
+    if( m_pMedium )
+        nError = rxWriter->Write( *pPam, *m_pMedium, pRealFileName );
+    else if( m_pStrm )
+        nError = rxWriter->Write( *pPam, *m_pStrm, pRealFileName );
+    else if( m_xStg.is() )
+        nError = rxWriter->Write( *pPam, m_xStg, pRealFileName );
+    pOutDoc->SetInWriting(false);
 
-    pOutDoc->getIDocumentSettingAccess().set(DocumentSettingId::PURGE_OLE, bOrigPurgeOle );
+    xGuard.reset();
 
     if( pESh )
     {
@@ -870,32 +872,31 @@ ErrCode SwWriter::Write( WriterRef& rxWriter, const OUString* pRealFileName )
     }
 
     // If the selection was only created for printing, reset the old cursor before returning
-    if( !bWriteAll && ( pShell || pOutPam ))
+    if( !m_bWriteAll && ( m_pShell || m_pOutPam ))
     {
         if(!bHasMark)
         {
-            if( pShell )
-                pShell->Pop(SwCursorShell::PopMode::DeleteCurrent);
+            if( m_pShell )
+                m_pShell->Pop(SwCursorShell::PopMode::DeleteCurrent);
             else
                 delete pPam;
         }
     }
     else
     {
-        delete pPam;            // delete the created Pam
         // Everything was written successfully? Tell the document!
         if ( !nError.IsError() && !xDoc.is() )
         {
-            rDoc.getIDocumentState().ResetModified();
+            m_rDoc.getIDocumentState().ResetModified();
             // #i38810# - reset also flag, that indicates updated links
-            rDoc.getIDocumentLinksAdministration().SetLinksUpdated( false );
+            m_rDoc.getIDocumentLinksAdministration().SetLinksUpdated( false );
         }
     }
 
     if ( xDoc.is() )
     {
         xDoc.clear();
-        bWriteAll = false;
+        m_bWriteAll = false;
     }
 
     return nError;
@@ -904,7 +905,7 @@ ErrCode SwWriter::Write( WriterRef& rxWriter, const OUString* pRealFileName )
 bool SetHTMLTemplate( SwDoc & rDoc )
 {
     // get template name of the Sfx-HTML-Filter !!!
-    if( !ReadHTML->GetTemplateDoc() )
+    if( !ReadHTML->GetTemplateDoc(rDoc) )
         ReadHTML->MakeHTMLDummyTemplateDoc();
 
     bool bRet = ReadHTML->SetTemplate( rDoc );

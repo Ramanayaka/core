@@ -7,7 +7,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-from __future__ import print_function
 from xml.dom import minidom
 import sys
 
@@ -51,8 +50,8 @@ def factoryGetInstance(nsLabel):
 
 OOXMLFactory_ns::Pointer_t OOXMLFactory_%s::getInstance()
 {
-    if (m_pInstance.get() == NULL)
-        m_pInstance.reset(new OOXMLFactory_%s());
+    if (!m_pInstance)
+        m_pInstance = new OOXMLFactory_%s();
 
     return m_pInstance;
 }""" % (nsLabel, nsLabel, nsLabel))
@@ -94,6 +93,13 @@ def resourceForAttribute(nsNode, attrNode):
             resourceName = "Boolean"
         elif len([i for i in attrNode.getElementsByTagName("data") if i.getAttribute("type") in ("unsignedInt", "integer", "int")]):
             resourceName = "Integer"
+        else:
+            dataNodes = attrNode.getElementsByTagName("data")
+            if len(dataNodes):
+                t = dataNodes[0].getAttribute("type")
+                # Denylist existing unexpected data types.
+                if t not in ("token", "long", "decimal", "float", "byte", "ST_DecimalNumber", "positiveInteger"):
+                    raise Exception("unexpected data type: " + dataNodes[0].getAttribute("type"))
     return resourceName
 
 
@@ -235,7 +241,6 @@ def printValueData(values):
                 output_else = "else "
             print("            else { return false; }")
             print("            return true;")
-            print("            break;")
     print("        }")
 
 
@@ -258,7 +263,6 @@ def factoryGetListValue(nsNode):
             appendValueData(values, valueData, idToLabel(valueNode.getAttribute("tokenid")))
         printValueData(values)
         print("        return false;")
-        print("        break;")
 
     print("""    default:
         break;
@@ -376,7 +380,6 @@ def factoryCreateElementMap(files, nsNode):
             print("        default: return false;")
             print("        }")
             print("        return true;")
-            print("        break;")
     print("    default:")
     print("        switch (nId)")
     print("        {")
@@ -384,10 +387,7 @@ def factoryCreateElementMap(files, nsNode):
     print("""        default: return false;
         }
         return true;
-        break;
     }
-
-    return false;
 }
 """)
 
@@ -399,7 +399,7 @@ def charactersActionForValues(nsNode, refNode):
     ret = []
 
     refName = refNode.getAttribute("name")
-    for defineNode in [i for i in getChildrenByName(getChildByName(nsNode, "grammar"), "define") if defineNode.getAttribute("name") == refName]:
+    for defineNode in [i for i in getChildrenByName(getChildByName(nsNode, "grammar"), "define") if i.getAttribute("name") == refName]:
         ret.append("    {")
         ret.append("    // %s" % defineNode.getAttribute("name"))
         for dataNode in getChildrenByName(defineNode, "data"):
@@ -439,9 +439,13 @@ def factoryChooseAction(actionNode):
     elif actionNode.getAttribute("action") in ("startRow", "endRow"):
         ret.append("    %sif (OOXMLFastContextHandlerTextTableRow* pTextTableRow = dynamic_cast<OOXMLFastContextHandlerTextTableRow*>(pHandler))" % extra_space)
         ret.append("    %s    pTextTableRow->%s();" % (extra_space, actionNode.getAttribute("action")))
-    elif actionNode.getAttribute("action") == "handleGridBefore" or actionNode.getAttribute("action") == "handleGridAfter":
-        ret.append("    %sif (OOXMLFastContextHandlerTextTableRow* pTextTableRow = dynamic_cast<OOXMLFastContextHandlerTextTableRow*>(pHandler))" % extra_space)
-        ret.append("    %s    pTextTableRow->%s();" % (extra_space, actionNode.getAttribute("action")))
+    elif actionNode.getAttribute("action") == "handleGridAfter":
+        ret.append("    %sif (OOXMLFastContextHandlerValue* pValueHandler = dynamic_cast<OOXMLFastContextHandlerValue*>(pHandler))" % extra_space)
+        ret.append("    %s    pValueHandler->%s();" % (extra_space, actionNode.getAttribute("action")))
+    # tdf#111550
+    elif actionNode.getAttribute("action") in ("start_P_Tbl"):
+        ret.append("    %sif (OOXMLFastContextHandlerTextTable* pTextTable = dynamic_cast<OOXMLFastContextHandlerTextTable*>(pHandler))" % extra_space)
+        ret.append("    %s    pTextTable->%s();" % (extra_space, actionNode.getAttribute("action")))
     elif actionNode.getAttribute("action") in ("sendProperty", "handleHyperlink"):
         ret.append("    %sif (OOXMLFastContextHandlerStream* pStream = dynamic_cast<OOXMLFastContextHandlerStream*>(pHandler))" % extra_space)
         ret.append("    %s    pStream->%s();" % (extra_space, actionNode.getAttribute("action")))
@@ -747,6 +751,7 @@ def main():
     modelNode = getChildByName(minidom.parse(modelPath), "model")
     nsName = filePath.split('OOXMLFactory_')[1].split('.cxx')[0]
     createImpl(modelNode, nsName)
+
 
 if __name__ == "__main__":
     main()

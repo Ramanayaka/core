@@ -79,16 +79,9 @@ private:
     sal_uInt16      nIndex;
     bool            bModified;          // is set/cleared by UpdateReference
 
-    // max row and column to use for wrapping of references.  If -1 use the
-    // application's default.
-    SCROW           mnMaxRow;
-    SCCOL           mnMaxCol;
-
     void CompileRangeData( const OUString& rSymbol, bool bSetError );
     void InitCode();
 public:
-
-    typedef ::std::map<sal_uInt16, sal_uInt16> IndexMap;
 
     SC_DLLPUBLIC                ScRangeData( ScDocument* pDoc,
                                  const OUString& rName,
@@ -106,7 +99,7 @@ public:
                                  const ScAddress& rTarget );
                                 // rTarget is ABSPOS jump label
 
-    /* Exact copy, not recompiled, no other index (!), nothing.. except if
+    /* Exact copy, not recompiled, no other index (!), nothing... except if
      * pDocument or pPos are passed, those values are assigned instead of the
      * copies. */
     ScRangeData( const ScRangeData& rScRangeData, ScDocument* pDocument = nullptr, const ScAddress* pPos = nullptr );
@@ -125,7 +118,7 @@ public:
     /// Does not change the name, but sets maNewName for formula update after dialog.
     void            SetNewName( const OUString& rNewName )  { maNewName = rNewName; }
     ScTokenArray*   GetCode()                       { return pCode.get(); }
-    SC_DLLPUBLIC void   SetCode( ScTokenArray& );
+    SC_DLLPUBLIC void   SetCode( const ScTokenArray& );
     const ScTokenArray* GetCode() const             { return pCode.get(); }
     SC_DLLPUBLIC FormulaError GetErrCode() const;
     bool            HasReferences() const;
@@ -160,12 +153,9 @@ public:
 
     void            ValidateTabRefs();
 
-    static void     MakeValidName( OUString& rName );
+    static void     MakeValidName( const ScDocument* pDoc, OUString& rName );
 
-    SC_DLLPUBLIC static IsNameValidType     IsNameValid( const OUString& rName, ScDocument* pDoc );
-
-    SCROW GetMaxRow() const;
-    SCCOL GetMaxCol() const;
+    SC_DLLPUBLIC static IsNameValidType     IsNameValid( const OUString& rName, const ScDocument* pDoc );
 
     void CompileUnresolvedXML( sc::CompileFormulaContext& rCxt );
 
@@ -189,7 +179,7 @@ inline bool ScRangeData::HasType( Type nType ) const
     return ( ( eType & nType ) == nType );
 }
 
-extern "C" int SAL_CALL ScRangeData_QsortNameCompare( const void*, const void* );
+extern "C" int ScRangeData_QsortNameCompare( const void*, const void* );
 
 class ScRangeName
 {

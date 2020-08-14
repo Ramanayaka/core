@@ -24,20 +24,18 @@
 #include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
 #include <frmfmt.hxx>
-#include <ndnotxt.hxx>
 #include <flyfrm.hxx>
-#include <cntfrm.hxx>
 #include <fmtcntnt.hxx>
 #include <ndindex.hxx>
-#include "fesh.hxx"
+#include <fesh.hxx>
 #include <hints.hxx>
-#include "accmap.hxx"
+#include <accmap.hxx>
 #include "accframebase.hxx"
 
 #include <crsrsh.hxx>
-#include <txtfrm.hxx>
+#include <notxtfrm.hxx>
 #include <ndtxt.hxx>
-#include <dcontact.hxx>
+#include <undobj.hxx>
 #include <fmtanchr.hxx>
 
 using namespace ::com::sun::star;
@@ -50,9 +48,8 @@ bool SwAccessibleFrameBase::IsSelected()
     assert(GetMap());
     const SwViewShell *pVSh = GetMap()->GetShell();
     assert(pVSh);
-    if( dynamic_cast<const SwFEShell*>( pVSh) !=  nullptr )
+    if( auto pFESh = dynamic_cast<const SwFEShell*>(pVSh) )
     {
-        const SwFEShell *pFESh = static_cast< const SwFEShell * >( pVSh );
         const SwFrame *pFlyFrame = pFESh->GetSelectedFlyFrame();
         if( pFlyFrame == GetFrame() )
             bRet = true;
@@ -68,21 +65,20 @@ void SwAccessibleFrameBase::GetStates(
 
     const SwViewShell *pVSh = GetMap()->GetShell();
     assert(pVSh);
-    bool bSelectable =  dynamic_cast<const SwFEShell*>( pVSh) !=  nullptr;
 
-    // SELECTABLE
-    if( bSelectable )
-        rStateSet.AddState( AccessibleStateType::SELECTABLE );
-
-    // FOCUSABLE
-    if( bSelectable )
-        rStateSet.AddState( AccessibleStateType::FOCUSABLE );
+    if (dynamic_cast<const SwFEShell*>(pVSh))
+    {
+        // SELECTABLE
+        rStateSet.AddState(AccessibleStateType::SELECTABLE);
+        // FOCUSABLE
+        rStateSet.AddState(AccessibleStateType::FOCUSABLE);
+    }
 
     // SELECTED and FOCUSED
     if( IsSelected() )
     {
         rStateSet.AddState( AccessibleStateType::SELECTED );
-        assert(bIsSelected && "bSelected out of sync");
+        SAL_WARN_IF(!m_bIsSelected, "sw.a11y", "bSelected out of sync");
         ::rtl::Reference < SwAccessibleContext > xThis( this );
         GetMap()->SetCursorContext( xThis );
 
@@ -101,8 +97,8 @@ SwNodeType SwAccessibleFrameBase::GetNodeType( const SwFlyFrame *pFlyFrame )
     {
          if( pFlyFrame->Lower()->IsNoTextFrame() )
         {
-            const SwContentFrame *pContentFrame =
-                static_cast<const SwContentFrame *>( pFlyFrame->Lower() );
+            const SwNoTextFrame *const pContentFrame =
+                static_cast<const SwNoTextFrame *>(pFlyFrame->Lower());
             nType = pContentFrame->GetNode()->GetNodeType();
         }
     }
@@ -128,14 +124,15 @@ SwAccessibleFrameBase::SwAccessibleFrameBase(
         sal_Int16 nInitRole,
         const SwFlyFrame* pFlyFrame  ) :
     SwAccessibleContext( pInitMap, nInitRole, pFlyFrame ),
-    bIsSelected( false )
+    m_bIsSelected( false )
 {
-    const SwFrameFormat *pFrameFormat = pFlyFrame->GetFormat();
-    const_cast< SwFrameFormat * >( pFrameFormat )->Add( this );
+    const SwFrameFormat* pFrameFormat = pFlyFrame->GetFormat();
+    if(pFrameFormat)
+        StartListening(const_cast<SwFrameFormat*>(pFrameFormat)->GetNotifier());
 
     SetName( pFrameFormat->GetName() );
 
-    bIsSelected = IsSelected();
+    m_bIsSelected = IsSelected();
 }
 
 void SwAccessibleFrameBase::InvalidateCursorPos_()
@@ -145,8 +142,8 @@ void SwAccessibleFrameBase::InvalidateCursorPos_()
 
     {
         osl::MutexGuard aGuard( m_Mutex );
-        bOldSelected = bIsSelected;
-        bIsSelected = bNewSelected;
+        bOldSelected = m_bIsSelected;
+        m_bIsSelected = bNewSelected;
     }
 
     if( bNewSelected )
@@ -157,117 +154,97 @@ void SwAccessibleFrameBase::InvalidateCursorPos_()
         GetMap()->SetCursorContext( xThis );
     }
 
-    if( bOldSelected != bNewSelected )
-    {
-        vcl::Window *pWin = GetWindow();
-        if( pWin && pWin->HasFocus() && bNewSelected )
-            FireStateChangedEvent( AccessibleStateType::FOCUSED, bNewSelected );
-        if( pWin && pWin->HasFocus() && !bNewSelected )
-            FireStateChangedEvent( AccessibleStateType::FOCUSED, bNewSelected );
-        if(bNewSelected)
-        {
-            uno::Reference< XAccessible > xParent( GetWeakParent() );
-            if( xParent.is() )
-            {
-                SwAccessibleContext *pAcc =
-                    static_cast <SwAccessibleContext *>( xParent.get() );
+    if( bOldSelected == bNewSelected )
+        return;
 
-                AccessibleEventObject aEvent;
-                aEvent.EventId = AccessibleEventId::SELECTION_CHANGED;
-                uno::Reference< XAccessible > xChild(this);
-                aEvent.NewValue <<= xChild;
-                pAcc->FireAccessibleEvent( aEvent );
-            }
-        }
+    vcl::Window *pWin = GetWindow();
+    if( pWin && pWin->HasFocus() && bNewSelected )
+        FireStateChangedEvent( AccessibleStateType::FOCUSED, bNewSelected );
+    if( pWin && pWin->HasFocus() && !bNewSelected )
+        FireStateChangedEvent( AccessibleStateType::FOCUSED, bNewSelected );
+    if(!bNewSelected)
+        return;
+
+    uno::Reference< XAccessible > xParent( GetWeakParent() );
+    if( xParent.is() )
+    {
+        SwAccessibleContext *pAcc =
+            static_cast <SwAccessibleContext *>( xParent.get() );
+
+        AccessibleEventObject aEvent;
+        aEvent.EventId = AccessibleEventId::SELECTION_CHANGED;
+        uno::Reference< XAccessible > xChild(this);
+        aEvent.NewValue <<= xChild;
+        pAcc->FireAccessibleEvent( aEvent );
     }
 }
 
 void SwAccessibleFrameBase::InvalidateFocus_()
 {
     vcl::Window *pWin = GetWindow();
-    if( pWin )
+    if( !pWin )
+        return;
+
+    bool bSelected;
+
     {
-        bool bSelected;
-
-        {
-            osl::MutexGuard aGuard( m_Mutex );
-            bSelected = bIsSelected;
-        }
-        assert(bSelected && "focus object should be selected");
-
-        FireStateChangedEvent( AccessibleStateType::FOCUSED,
-                               pWin->HasFocus() && bSelected );
+        osl::MutexGuard aGuard( m_Mutex );
+        bSelected = m_bIsSelected;
     }
+    assert(bSelected && "focus object should be selected");
+
+    FireStateChangedEvent( AccessibleStateType::FOCUSED,
+                           pWin->HasFocus() && bSelected );
 }
 
 bool SwAccessibleFrameBase::HasCursor()
 {
     osl::MutexGuard aGuard( m_Mutex );
-    return bIsSelected;
+    return m_bIsSelected;
 }
 
 SwAccessibleFrameBase::~SwAccessibleFrameBase()
 {
 }
 
-void SwAccessibleFrameBase::Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew)
+void SwAccessibleFrameBase::Notify(const SfxHint& rHint)
 {
-    sal_uInt16 nWhich = pOld ? pOld->Which() : pNew ? pNew->Which() : 0 ;
-    switch( nWhich )
+    if(rHint.GetId() == SfxHintId::Dying)
     {
-    case RES_NAME_CHANGED:
+        EndListeningAll();
+    }
+    else if(auto pLegacyModifyHint = dynamic_cast<const sw::LegacyModifyHint*>(&rHint))
+    {
+        sal_uInt16 nWhich = pLegacyModifyHint->m_pOld ? pLegacyModifyHint->m_pOld->Which() : pLegacyModifyHint->m_pNew ? pLegacyModifyHint->m_pNew->Which() : 0;
+        const SwFlyFrame* pFlyFrame = static_cast<const SwFlyFrame*>(GetFrame());
+        if(nWhich == RES_NAME_CHANGED && pFlyFrame)
         {
-            const SwFlyFrame *pFlyFrame = static_cast< const SwFlyFrame * >( GetFrame() );
-            if(  pFlyFrame )
+            const SwFrameFormat* pFrameFormat = pFlyFrame->GetFormat();
+
+            const OUString sOldName( GetName() );
+            assert( !pLegacyModifyHint->m_pOld ||
+                    static_cast<const SwStringMsgPoolItem *>(pLegacyModifyHint->m_pOld)->GetString() == GetName());
+
+            SetName( pFrameFormat->GetName() );
+            assert( !pLegacyModifyHint->m_pNew ||
+                    static_cast<const SwStringMsgPoolItem *>(pLegacyModifyHint->m_pNew)->GetString() == GetName());
+
+            if( sOldName != GetName() )
             {
-                const SwFrameFormat *pFrameFormat = pFlyFrame->GetFormat();
-                assert(pFrameFormat == GetRegisteredIn() && "invalid frame");
-
-                const OUString sOldName( GetName() );
-                assert( !pOld ||
-                        static_cast<const SwStringMsgPoolItem *>(pOld)->GetString() == GetName());
-
-                SetName( pFrameFormat->GetName() );
-                assert( !pNew ||
-                        static_cast<const SwStringMsgPoolItem *>(pNew)->GetString() == GetName());
-
-                if( sOldName != GetName() )
-                {
-                    AccessibleEventObject aEvent;
-                    aEvent.EventId = AccessibleEventId::NAME_CHANGED;
-                    aEvent.OldValue <<= sOldName;
-                    aEvent.NewValue <<= GetName();
-                    FireAccessibleEvent( aEvent );
-                }
+                AccessibleEventObject aEvent;
+                aEvent.EventId = AccessibleEventId::NAME_CHANGED;
+                aEvent.OldValue <<= sOldName;
+                aEvent.NewValue <<= GetName();
+                FireAccessibleEvent( aEvent );
             }
-            break;
         }
-    case RES_OBJECTDYING:
-        // mba: it seems that this class intentionally does not call code in base class SwClient
-        if( pOld && ( GetRegisteredIn() == static_cast< SwModify *>( static_cast< const SwPtrMsgPoolItem * >( pOld )->pObject ) ) )
-            GetRegisteredInNonConst()->Remove( this );
-        break;
-
-    case RES_FMT_CHG:
-        if( pOld &&
-            static_cast< const SwFormatChg * >(pNew)->pChangedFormat == GetRegisteredIn() &&
-            static_cast< const SwFormatChg * >(pOld)->pChangedFormat->IsFormatInDTOR() )
-            GetRegisteredInNonConst()->Remove( this );
-        break;
-
-    default:
-        // mba: former call to base class method removed as it is meant to handle only RES_OBJECTDYING
-        break;
     }
 }
 
 void SwAccessibleFrameBase::Dispose(bool bRecursive, bool bCanSkipInvisible)
 {
     SolarMutexGuard aGuard;
-
-    if( GetRegisteredIn() )
-        GetRegisteredInNonConst()->Remove( this );
-
+    EndListeningAll();
     SwAccessibleContext::Dispose(bRecursive, bCanSkipInvisible);
 }
 
@@ -304,7 +281,7 @@ bool SwAccessibleFrameBase::GetSelectedState( )
         return true;
     }
 
-    // SELETED.
+    // SELECTED.
     SwFlyFrame* pFlyFrame = getFlyFrame();
     const SwFrameFormat *pFrameFormat = pFlyFrame->GetFormat();
     const SwFormatAnchor& rAnchor = pFrameFormat->GetAnchor();
@@ -342,9 +319,15 @@ bool SwAccessibleFrameBase::GetSelectedState( )
                         }
                         else if( rAnchor.GetAnchorId() == RndStdIds::FLY_AT_PARA )
                         {
-                            if( ((nHere > nStartIndex) || pStart->nContent.GetIndex() ==0 )
-                                && (nHere < nEndIndex ) )
+                            if (IsSelectFrameAnchoredAtPara(*pPos, *pStart, *pEnd))
                                 return true;
+                        }
+                        else if (rAnchor.GetAnchorId() == RndStdIds::FLY_AT_CHAR)
+                        {
+                            if (IsDestroyFrameAnchoredAtChar(*pPos, *pStart, *pEnd))
+                            {
+                                return true;
+                            }
                         }
                         break;
                     }

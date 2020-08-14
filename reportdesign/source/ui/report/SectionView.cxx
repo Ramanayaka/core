@@ -16,27 +16,26 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "SectionView.hxx"
-#include "DesignView.hxx"
+#include <SectionView.hxx>
+#include <DesignView.hxx>
 #include <RptPage.hxx>
 #include <RptObject.hxx>
 #include <RptDef.hxx>
-#include <svx/svxids.hrc>
 #include <svx/svddrgmt.hxx>
-#include <vcl/scrbar.hxx>
-#include "ReportSection.hxx"
-#include "ReportWindow.hxx"
-#include "uistrings.hrc"
-#include <tools/debug.hxx>
+#include <ReportSection.hxx>
+#include <ReportWindow.hxx>
+#include <strings.hxx>
 #include <tools/diagnose_ex.h>
 
 namespace rptui
 {
     using namespace ::com::sun::star;
 
-
-OSectionView::OSectionView( SdrModel* pModel, OReportSection* _pSectionWindow, OReportWindow* pEditor )
-    :SdrView( pModel, _pSectionWindow )
+OSectionView::OSectionView(
+    SdrModel& rSdrModel,
+    OReportSection* _pSectionWindow,
+    OReportWindow* pEditor)
+:   SdrView(rSdrModel, _pSectionWindow)
     ,m_pReportWindow( pEditor )
     ,m_pSectionWindow(_pSectionWindow)
 {
@@ -104,11 +103,10 @@ void OSectionView::MakeVisible( const tools::Rectangle& rRect, vcl::Window& rWin
             nScrollY = -nVisTop;
 
         // scroll window
-        rWin.Update();
+        rWin.PaintImmediately();
         rWin.Scroll( -nScrollX, -nScrollY );
         aMap.SetOrigin( Point( aOrg.X() - nScrollX, aOrg.Y() - nScrollY ) );
         rWin.SetMapMode( aMap );
-        rWin.Update();
         rWin.Invalidate();
 
         if ( m_pReportWindow )
@@ -126,17 +124,16 @@ void OSectionView::MakeVisible( const tools::Rectangle& rRect, vcl::Window& rWin
 void OSectionView::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 {
     SdrView::Notify(rBC,rHint);
-    const SdrHint* pSdrHint = dynamic_cast<const SdrHint*>(&rHint);
-    if ( pSdrHint )
-    {
-        const SdrObject* pObj = pSdrHint->GetObject();
-        const SdrHintKind eKind = pSdrHint->GetKind();
-        // check for change of selected object
-        if(SdrHintKind::ObjectChange == eKind && pObj && IsObjMarked(const_cast<SdrObject*>(pObj)))
-            AdjustMarkHdl();
-        else if ( eKind == SdrHintKind::ObjectRemoved )
-            ObjectRemovedInAliveMode(pObj);
-    }
+    if (rHint.GetId() != SfxHintId::ThisIsAnSdrHint)
+        return;
+    const SdrHint* pSdrHint = static_cast<const SdrHint*>(&rHint);
+    const SdrObject* pObj = pSdrHint->GetObject();
+    const SdrHintKind eKind = pSdrHint->GetKind();
+    // check for change of selected object
+    if(SdrHintKind::ObjectChange == eKind && pObj && IsObjMarked(pObj))
+        AdjustMarkHdl();
+    else if ( eKind == SdrHintKind::ObjectRemoved )
+        ObjectRemovedInAliveMode(pObj);
 }
 
 
@@ -161,39 +158,39 @@ void OSectionView::ObjectRemovedInAliveMode( const SdrObject* _pObject )
 
 void OSectionView::SetMarkedToLayer( SdrLayerID _nLayerNo )
 {
-    if (AreObjectsMarked())
-    {
-        //  #i11702# use SdrUndoObjectLayerChange for undo
-        //  STR_UNDO_SELATTR is "Attributes" - should use a different text later
-        BegUndo( );
+    if (!AreObjectsMarked())
+        return;
 
-        const SdrMarkList& rMark = GetMarkedObjectList();
-        const size_t nCount = rMark.GetMarkCount();
-        for (size_t i = 0; i<nCount; ++i)
+    //  #i11702# use SdrUndoObjectLayerChange for undo
+    //  STR_UNDO_SELATTR is "Attributes" - should use a different text later
+    BegUndo( );
+
+    const SdrMarkList& rMark = GetMarkedObjectList();
+    const size_t nCount = rMark.GetMarkCount();
+    for (size_t i = 0; i<nCount; ++i)
+    {
+        SdrObject* pObj = rMark.GetMark(i)->GetMarkedSdrObj();
+        if ( dynamic_cast< const OCustomShape *>( pObj ) !=  nullptr )
         {
-            SdrObject* pObj = rMark.GetMark(i)->GetMarkedSdrObj();
-            if ( dynamic_cast< const OCustomShape *>( pObj ) !=  nullptr )
+            AddUndo( std::make_unique<SdrUndoObjectLayerChange>( *pObj, pObj->GetLayer(), _nLayerNo) );
+            pObj->SetLayer( _nLayerNo );
+            OObjectBase& rBaseObj = dynamic_cast<OObjectBase&>(*pObj);
+            try
             {
-                AddUndo( new SdrUndoObjectLayerChange( *pObj, pObj->GetLayer(), _nLayerNo) );
-                pObj->SetLayer( _nLayerNo );
-                OObjectBase& rBaseObj = dynamic_cast<OObjectBase&>(*pObj);
-                try
-                {
-                    rBaseObj.getReportComponent()->setPropertyValue(PROPERTY_OPAQUE,uno::makeAny(_nLayerNo == RPT_LAYER_FRONT));
-                }
-                catch(const uno::Exception&)
-                {
-                    DBG_UNHANDLED_EXCEPTION();
-                }
+                rBaseObj.getReportComponent()->setPropertyValue(PROPERTY_OPAQUE,uno::makeAny(_nLayerNo == RPT_LAYER_FRONT));
+            }
+            catch(const uno::Exception&)
+            {
+                DBG_UNHANDLED_EXCEPTION("reportdesign");
             }
         }
-
-        EndUndo();
-
-        // check mark list now instead of later in a timer
-        CheckMarked();
-        MarkListHasChanged();
     }
+
+    EndUndo();
+
+    // check mark list now instead of later in a timer
+    CheckMarked();
+    MarkListHasChanged();
 }
 
 bool OSectionView::OnlyShapesMarked() const

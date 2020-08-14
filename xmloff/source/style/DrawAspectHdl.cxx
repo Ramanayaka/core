@@ -22,7 +22,6 @@
 #include <com/sun/star/uno/Any.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <sax/tools/converter.hxx>
-#include <xmloff/xmlement.hxx>
 #include <xmloff/xmltoken.hxx>
 
 using namespace ::com::sun::star;
@@ -46,7 +45,7 @@ bool DrawAspectHdl::importXML( const OUString& rStrImpValue, uno::Any& rValue, c
 bool DrawAspectHdl::exportXML( OUString& rStrExpValue, const uno::Any& rValue, const SvXMLUnitConverter& ) const
 {
     bool bRet = false;
-      OUStringBuffer aOut;
+    OUStringBuffer aOut;
 
     sal_Int64 nAspect = 0;
     if( ( rValue >>= nAspect ) && nAspect > 0 )

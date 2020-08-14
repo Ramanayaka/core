@@ -20,18 +20,18 @@
 #ifndef INCLUDED_TESTTOOLS_SOURCE_BRIDGETEST_MULTI_HXX
 #define INCLUDED_TESTTOOLS_SOURCE_BRIDGETEST_MULTI_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "com/sun/star/uno/Reference.hxx"
-#include "com/sun/star/uno/RuntimeException.hpp"
+#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/uno/RuntimeException.hpp>
 #include <cppuhelper/implbase.hxx>
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
-#include "test/testtools/bridgetest/XMulti.hpp"
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
+#include <test/testtools/bridgetest/XMulti.hpp>
 
-#include <dllapi.hxx>
+#include "dllapi.hxx"
 
-namespace testtools { namespace bridgetest {
+namespace testtools::bridgetest {
 
 class Multi: public cppu::WeakImplHelper< test::testtools::bridgetest::XMulti >
 {
@@ -97,7 +97,7 @@ private:
 LO_DLLPUBLIC_TESTTOOLS
 OUString testMulti( css::uno::Reference< test::testtools::bridgetest::XMulti >  const & multi);
 
-} }
+}
 
 #endif
 

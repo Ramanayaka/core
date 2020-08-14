@@ -18,22 +18,29 @@
  */
 
 #include "composerdialogs.hxx"
-#include "uiservices.hxx"
 
-#include "dbu_reghelper.hxx"
+#include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include "dbustrings.hrc"
-#include "queryfilter.hxx"
-#include "queryorder.hxx"
+#include <queryfilter.hxx>
+#include <queryorder.hxx>
 #include <comphelper/processfactory.hxx>
 #include <connectivity/dbtools.hxx>
 #include <tools/diagnose_ex.h>
 #include <osl/diagnose.h>
+#include <vcl/svapp.hxx>
 
-extern "C" void SAL_CALL createRegistryInfo_ComposerDialogs()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_uno_comp_sdb_RowsetOrderDialog_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static ::dbaui::OMultiInstanceAutoRegistration< ::dbaui::RowsetOrderDialog > aOrderDialogRegistration;
-    static ::dbaui::OMultiInstanceAutoRegistration< ::dbaui::RowsetFilterDialog > aFilterDialogRegistration;
+    return cppu::acquire(new ::dbaui::RowsetOrderDialog(context));
+}
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_uno_comp_sdb_RowsetFilterDialog_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new ::dbaui::RowsetFilterDialog(context));
 }
 
 namespace dbaui
@@ -76,7 +83,7 @@ namespace dbaui
 
     IMPLEMENT_PROPERTYCONTAINER_DEFAULTS( ComposerDialog )
 
-    VclPtr<Dialog> ComposerDialog::createDialog(vcl::Window* _pParent)
+    std::unique_ptr<weld::DialogController> ComposerDialog::createDialog(const css::uno::Reference<css::awt::XWindow>& rParent)
     {
         // obtain all the objects needed for the dialog
         Reference< XConnection > xConnection;
@@ -93,7 +100,7 @@ namespace dbaui
 
             // fallback: if there is a connection and thus a row set, but no composer, create one
             if ( xConnection.is() && !m_xComposer.is() )
-                m_xComposer = ::dbtools::getCurrentSettingsComposer( Reference< XPropertySet >( m_xRowSet, UNO_QUERY ), m_aContext );
+                m_xComposer = ::dbtools::getCurrentSettingsComposer( Reference< XPropertySet >( m_xRowSet, UNO_QUERY ), m_aContext, rParent );
 
             // the columns of the row set
             Reference< XColumnsSupplier > xSuppColumns( m_xRowSet, UNO_QUERY );
@@ -113,14 +120,16 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
 
         if ( !xConnection.is() || !xColumns.is() || !m_xComposer.is() )
+        {
             // can't create the dialog if I have improper settings
             return nullptr;
+        }
 
-        return createComposerDialog( _pParent, xConnection, xColumns );
+        return createComposerDialog(Application::GetFrameWeld(rParent), xConnection, xColumns);
     }
 
     // RowsetFilterDialog
@@ -129,19 +138,19 @@ namespace dbaui
     {
     }
 
-    IMPLEMENT_SERVICE_INFO_IMPLNAME_STATIC(RowsetFilterDialog, "com.sun.star.uno.comp.sdb.RowsetFilterDialog")
-    IMPLEMENT_SERVICE_INFO_SUPPORTS(RowsetFilterDialog)
-    IMPLEMENT_SERVICE_INFO_GETSUPPORTED1_STATIC(RowsetFilterDialog, "com.sun.star.sdb.FilterDialog")
-
-    css::uno::Reference< css::uno::XInterface >
-        SAL_CALL RowsetFilterDialog::Create(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxORB)
+    OUString SAL_CALL RowsetFilterDialog::getImplementationName()
     {
-        return static_cast< XServiceInfo* >(new RowsetFilterDialog( comphelper::getComponentContext(_rxORB)));
+        return "com.sun.star.uno.comp.sdb.RowsetFilterDialog";
+    }
+    IMPLEMENT_SERVICE_INFO_SUPPORTS(RowsetFilterDialog)
+    css::uno::Sequence< OUString > SAL_CALL RowsetFilterDialog::getSupportedServiceNames()
+    {
+        return { "com.sun.star.sdb.FilterDialog" };
     }
 
-    VclPtr<Dialog> RowsetFilterDialog::createComposerDialog( vcl::Window* _pParent, const Reference< XConnection >& _rxConnection, const Reference< XNameAccess >& _rxColumns )
+    std::unique_ptr<weld::GenericDialogController> RowsetFilterDialog::createComposerDialog(weld::Window* _pParent, const Reference< XConnection >& _rxConnection, const Reference< XNameAccess >& _rxColumns )
     {
-        return VclPtr<DlgFilterCrit>::Create( _pParent, m_aContext, _rxConnection, m_xComposer, _rxColumns );
+        return std::make_unique<DlgFilterCrit>(_pParent, m_aContext, _rxConnection, m_xComposer, _rxColumns);
     }
 
     void SAL_CALL RowsetFilterDialog::initialize( const Sequence< Any >& aArguments )
@@ -167,8 +176,8 @@ namespace dbaui
     {
         ComposerDialog::executedDialog( _nExecutionResult );
 
-        if ( _nExecutionResult && m_pDialog )
-            static_cast< DlgFilterCrit* >( m_pDialog.get() )->BuildWherePart();
+        if ( _nExecutionResult && m_xDialog )
+            static_cast<DlgFilterCrit*>(m_xDialog.get())->BuildWherePart();
     }
 
     // RowsetOrderDialog
@@ -177,24 +186,24 @@ namespace dbaui
     {
     }
 
-    IMPLEMENT_SERVICE_INFO_IMPLNAME_STATIC(RowsetOrderDialog, "com.sun.star.uno.comp.sdb.RowsetOrderDialog")
-    IMPLEMENT_SERVICE_INFO_SUPPORTS(RowsetOrderDialog)
-    IMPLEMENT_SERVICE_INFO_GETSUPPORTED1_STATIC(RowsetOrderDialog, "com.sun.star.sdb.OrderDialog")
-
-    css::uno::Reference< css::uno::XInterface >
-        SAL_CALL RowsetOrderDialog::Create(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxORB)
+    OUString SAL_CALL RowsetOrderDialog::getImplementationName()
     {
-        return static_cast< XServiceInfo* >(new RowsetOrderDialog( comphelper::getComponentContext(_rxORB)));
+        return "com.sun.star.uno.comp.sdb.RowsetOrderDialog";
+    }
+    IMPLEMENT_SERVICE_INFO_SUPPORTS(RowsetOrderDialog)
+    css::uno::Sequence< OUString > SAL_CALL RowsetOrderDialog::getSupportedServiceNames()
+    {
+        return { "com.sun.star.sdb.OrderDialog" };
     }
 
-    VclPtr<Dialog> RowsetOrderDialog::createComposerDialog( vcl::Window* _pParent, const Reference< XConnection >& _rxConnection, const Reference< XNameAccess >& _rxColumns )
+    std::unique_ptr<weld::GenericDialogController> RowsetOrderDialog::createComposerDialog(weld::Window* pParent, const Reference< XConnection >& rxConnection, const Reference< XNameAccess >& rxColumns)
     {
-        return VclPtr<DlgOrderCrit>::Create( _pParent, _rxConnection, m_xComposer, _rxColumns );
+        return std::make_unique<DlgOrderCrit>(pParent, rxConnection, m_xComposer, rxColumns);
     }
 
     void SAL_CALL RowsetOrderDialog::initialize( const Sequence< Any >& aArguments )
     {
-        if( aArguments.getLength() == 2 )
+        if (aArguments.getLength() == 2 || aArguments.getLength() == 3)
         {
             Reference<css::sdb::XSingleSelectQueryComposer> xQueryComposer;
             aArguments[0] >>= xQueryComposer;
@@ -202,6 +211,12 @@ namespace dbaui
             aArguments[1] >>= xRowSet;
             setPropertyValue( "QueryComposer", makeAny( xQueryComposer ) );
             setPropertyValue( "RowSet",        makeAny( xRowSet ) );
+            if (aArguments.getLength() == 3)
+            {
+                Reference<css::awt::XWindow> xParentWindow;
+                aArguments[2] >>= xParentWindow;
+                setPropertyValue("ParentWindow",  makeAny(xParentWindow));
+            }
         }
         else
             ComposerDialog::initialize(aArguments);
@@ -211,13 +226,13 @@ namespace dbaui
     {
         ComposerDialog::executedDialog( _nExecutionResult );
 
-        if ( !m_pDialog )
+        if ( !m_xDialog )
             return;
 
         if ( _nExecutionResult )
-            static_cast< DlgOrderCrit* >( m_pDialog.get() )->BuildOrderPart();
+            static_cast<DlgOrderCrit*>(m_xDialog.get())->BuildOrderPart();
         else if ( m_xComposer.is() )
-            m_xComposer->setOrder( static_cast< DlgOrderCrit* >( m_pDialog.get() )->GetOrignalOrder() );
+            m_xComposer->setOrder(static_cast<DlgOrderCrit*>(m_xDialog.get())->GetOriginalOrder());
     }
 
 }   // namespace dbaui

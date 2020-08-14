@@ -21,19 +21,11 @@
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERPANE_HXX
 
 #include "PresenterPaneBase.hxx"
-#include <com/sun/star/awt/XMouseListener.hpp>
-#include <com/sun/star/awt/XMouseMotionListener.hpp>
-#include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/drawing/XPresenterHelper.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
-#include <com/sun/star/drawing/framework/XPaneBorderPainter.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
 #include <rtl/ref.hxx>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 /** Pane used by the presenter screen.  Pane objects are stored in the
     PresenterPaneContainer.  Sizes and positions are controlled
@@ -76,7 +68,6 @@ private:
     css::awt::Rectangle maBoundingBox;
 
     virtual void CreateCanvases (
-        const css::uno::Reference<css::awt::XWindow>& rxParentWindow,
         const css::uno::Reference<css::rendering::XSpriteCanvas>& rxParentCanvas) override;
 
     void Invalidate (
@@ -84,7 +75,7 @@ private:
     void UpdateBoundingBox();
 };
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 #endif
 

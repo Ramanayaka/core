@@ -23,7 +23,6 @@
 #include <svl/poolitem.hxx>
 #include <svl/itemset.hxx>
 #include <svl/languageoptions.hxx>
-#include <unotools/fontcvt.hxx>
 #include <editeng/svxenum.hxx>
 #include "scdllapi.h"
 #include "fonthelper.hxx"
@@ -50,9 +49,10 @@ enum ScAutoFontColorMode
     SC_AUTOCOL_IGNOREALL    ///< like DISPLAY, but ignore stored font and background colors
 };
 
-class SC_DLLPUBLIC ScPatternAttr: public SfxSetItem
+class SC_DLLPUBLIC ScPatternAttr final : public SfxSetItem
 {
-    std::unique_ptr<OUString>  pName;
+    std::optional<OUString>  pName;
+    mutable std::optional<size_t> mxHashCode;
     ScStyleSheet*              pStyle;
     sal_uInt64                 mnKey;
 public:
@@ -63,17 +63,22 @@ public:
 
                             virtual ~ScPatternAttr() override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream& rStream, sal_uInt16 nVersion) const override;
-    virtual SvStream&       Store(SvStream& rStream, sal_uInt16 nItemVersion) const override;
+    virtual ScPatternAttr*  Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool            operator==(const SfxPoolItem& rCmp) const override;
 
     const SfxPoolItem&      GetItem( sal_uInt16 nWhichP ) const
                                         { return GetItemSet().Get(nWhichP); }
+    template<class T> const T& GetItem( TypedWhichId<T> nWhich ) const
+    { return static_cast<const T&>(GetItem(sal_uInt16(nWhich))); }
 
     static const SfxPoolItem& GetItem( sal_uInt16 nWhich, const SfxItemSet& rItemSet, const SfxItemSet* pCondSet );
+    template<class T> static const T& GetItem( TypedWhichId<T> nWhich, const SfxItemSet& rItemSet, const SfxItemSet* pCondSet )
+    { return static_cast<const T&>(GetItem(sal_uInt16(nWhich), rItemSet, pCondSet)); }
+
     const SfxPoolItem&      GetItem( sal_uInt16 nWhich, const SfxItemSet* pCondSet ) const;
+    template<class T> const T& GetItem( TypedWhichId<T> nWhich, const SfxItemSet* pCondSet  ) const
+    { return static_cast<const T&>(GetItem(sal_uInt16(nWhich), pCondSet)); }
 
                             /// @param pWhich are no ranges, but single IDs, 0-terminated
     bool                    HasItemsSet( const sal_uInt16* pWhich ) const;
@@ -87,7 +92,7 @@ public:
     /** Static helper function to fill a font object from the passed item set. */
     static void             GetFont( vcl::Font& rFont, const SfxItemSet& rItemSet,
                                         ScAutoFontColorMode eAutoMode,
-                                        OutputDevice* pOutDev = nullptr,
+                                        const OutputDevice* pOutDev = nullptr,
                                         const Fraction* pScale = nullptr,
                                         const SfxItemSet* pCondSet = nullptr,
                                         SvtScriptType nScript = SvtScriptType::NONE, const Color* pBackConfigColor = nullptr,
@@ -96,11 +101,12 @@ public:
     static ScDxfFont        GetDxfFont(const SfxItemSet& rSet, SvtScriptType nScript);
     /** Fills a font object from the own item set. */
     void                    GetFont( vcl::Font& rFont, ScAutoFontColorMode eAutoMode,
-                                        OutputDevice* pOutDev = nullptr,
-                                        const Fraction* pScale = nullptr,
-                                        const SfxItemSet* pCondSet = nullptr,
-                                        SvtScriptType nScript = SvtScriptType::NONE, const Color* pBackConfigColor = nullptr,
-                                        const Color* pTextConfigColor = nullptr ) const;
+                                     const OutputDevice* pOutDev = nullptr,
+                                     const Fraction* pScale = nullptr,
+                                     const SfxItemSet* pCondSet = nullptr,
+                                     SvtScriptType nScript = SvtScriptType::NONE,
+                                     const Color* pBackConfigColor = nullptr,
+                                     const Color* pTextConfigColor = nullptr ) const;
 
     /** Converts all Calc items contained in rSrcSet to edit engine items and puts them into rEditSet. */
     static void             FillToEditItemSet( SfxItemSet& rEditSet, const SfxItemSet& rSrcSet, const SfxItemSet* pCondSet = nullptr );
@@ -119,7 +125,7 @@ public:
     void                    SetStyleSheet(ScStyleSheet* pNewStyle, bool bClearDirectFormat = true);
     const ScStyleSheet*     GetStyleSheet() const  { return pStyle; }
     const OUString*         GetStyleName() const;
-    void                    UpdateStyleSheet(ScDocument* pDoc);
+    void                    UpdateStyleSheet(const ScDocument* pDoc);
     void                    StyleToName();
 
     bool                    IsVisible() const;
@@ -129,15 +135,18 @@ public:
                                 with text encoding RTL_TEXTENC_SYMBOL */
     bool                    IsSymbolFont() const;
 
-    sal_uLong                   GetNumberFormat( SvNumberFormatter* ) const;
-    sal_uLong                   GetNumberFormat( SvNumberFormatter* pFormatter,
-                                                const SfxItemSet* pCondSet ) const;
+    sal_uInt32              GetNumberFormat( SvNumberFormatter* ) const;
+    sal_uInt32              GetNumberFormat( SvNumberFormatter* pFormatter,
+                                             const SfxItemSet* pCondSet ) const;
 
     long                    GetRotateVal( const SfxItemSet* pCondSet ) const;
     ScRotateDir             GetRotateDir( const SfxItemSet* pCondSet ) const;
 
     void                    SetKey(sal_uInt64 nKey);
     sal_uInt64              GetKey() const;
+
+private:
+    void                    CalcHashCode() const;
 };
 
 #endif

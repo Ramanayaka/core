@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "externallinkbuffer.hxx"
+#include <externallinkbuffer.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sheet/DDELinkInfo.hpp>
@@ -25,20 +25,21 @@
 #include <com/sun/star/sheet/XDDELinks.hpp>
 #include <com/sun/star/sheet/XDDELinkResults.hpp>
 #include <com/sun/star/sheet/XExternalDocLinks.hpp>
+#include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
-#include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
 #include <oox/core/filterbase.hxx>
 #include <oox/helper/attributelist.hxx>
+#include <oox/helper/binaryinputstream.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/properties.hxx>
+#include <oox/core/relations.hxx>
 #include <oox/token/tokens.hxx>
-#include "addressconverter.hxx"
-#include "excelhandlers.hxx"
-#include "formulaparser.hxx"
-#include "worksheetbuffer.hxx"
+#include <addressconverter.hxx>
+#include <biffhelper.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::sheet;
 using namespace ::com::sun::star::uno;
@@ -400,8 +401,8 @@ ExternalLinkInfo ExternalLink::getLinkInfo() const
             aDdeLinkInfo.Topic = maTargetUrl;
             ::std::vector< DDEItemInfo > aItemInfos;
             DDEItemInfo aItemInfo;
-            for( ExternalNameVector::const_iterator aIt = maExtNames.begin(), aEnd = maExtNames.end(); aIt != aEnd; ++aIt )
-                if( (*aIt)->getDdeItemInfo( aItemInfo ) )
+            for( const auto& rxExtName : maExtNames )
+                if( rxExtName->getDdeItemInfo( aItemInfo ) )
                     aItemInfos.push_back( aItemInfo );
             aDdeLinkInfo.Items = ContainerHelper::vectorToSequence( aItemInfos );
             aLinkInfo.Data <<= aDdeLinkInfo;
@@ -538,7 +539,7 @@ void ExternalLink::insertExternalSheet( const OUString& rSheetName )
 
 ExternalNameRef ExternalLink::createExternalName()
 {
-    ExternalNameRef xExtName( new ExternalName( *this ) );
+    ExternalNameRef xExtName = std::make_shared<ExternalName>( *this );
     maExtNames.push_back( xExtName );
     return xExtName;
 }
@@ -559,7 +560,7 @@ void RefSheetsModel::readBiff12Data( SequenceInputStream& rStrm )
 
 ExternalLinkBuffer::ExternalLinkBuffer( const WorkbookHelper& rHelper ) :
     WorkbookHelper( rHelper ),
-    mxSelfRef( new ExternalLink( rHelper ) ),
+    mxSelfRef( std::make_shared<ExternalLink>( rHelper ) ),
     mbUseRefSheets( false )
 {
     mxSelfRef->setSelfLinkType();
@@ -623,8 +624,8 @@ Sequence< ExternalLinkInfo > ExternalLinkBuffer::getLinkInfos() const
     ::std::vector< ExternalLinkInfo > aLinkInfos;
     // add entry for implicit index 0 (self reference to this document)
     aLinkInfos.push_back( mxSelfRef->getLinkInfo() );
-    for( ExternalLinkVec::const_iterator aIt = maExtLinks.begin(), aEnd = maExtLinks.end(); aIt != aEnd; ++aIt )
-        aLinkInfos.push_back( (*aIt)->getLinkInfo() );
+    for( const auto& rxExtLink : maExtLinks )
+        aLinkInfos.push_back( rxExtLink->getLinkInfo() );
     return ContainerHelper::vectorToSequence( aLinkInfos );
 }
 
@@ -654,18 +655,17 @@ LinkSheetRange ExternalLinkBuffer::getSheetRange( sal_Int32 nRefId ) const
 
 ExternalLinkRef ExternalLinkBuffer::createExternalLink()
 {
-    ExternalLinkRef xExtLink( new ExternalLink( *this ) );
+    ExternalLinkRef xExtLink = std::make_shared<ExternalLink>( *this );
     maLinks.push_back( xExtLink );
     return xExtLink;
 }
 
 const RefSheetsModel* ExternalLinkBuffer::getRefSheets( sal_Int32 nRefId ) const
 {
-    return ((0 <= nRefId) && (static_cast< size_t >( nRefId ) < maRefSheets.size())) ?
+    return ((0 <= nRefId) && (o3tl::make_unsigned( nRefId ) < maRefSheets.size())) ?
         &maRefSheets[ static_cast< size_t >( nRefId ) ] : nullptr;
 }
 
-} // namespace xls
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

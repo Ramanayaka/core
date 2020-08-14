@@ -25,7 +25,7 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include "addresssettings.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace lang {
         class XMultiServiceFactory;
     }
@@ -35,9 +35,8 @@ namespace com { namespace sun { namespace star {
     namespace beans {
         class XPropertySet;
     }
-} } }
-namespace vcl { class Window; }
-
+}
+namespace weld { class Window; }
 
 namespace abp
 {
@@ -59,7 +58,7 @@ namespace abp
         */
         bool invokeDialog(
             const css::uno::Reference< css::uno::XComponentContext >& _rxORB,
-            class vcl::Window* _pParent,
+            class weld::Window* _pParent,
             const css::uno::Reference< css::beans::XPropertySet >& _rxDataSource,
             AddressSettings& _rSettings
         );

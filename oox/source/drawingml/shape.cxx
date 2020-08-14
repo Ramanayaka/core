@@ -17,54 +17,62 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/drawingml/shape.hxx"
-#include "drawingml/customshapeproperties.hxx"
-#include "oox/drawingml/theme.hxx"
-#include "drawingml/fillproperties.hxx"
-#include "drawingml/graphicproperties.hxx"
-#include <drawingml/scene3dcontext.hxx>
-#include "drawingml/lineproperties.hxx"
+#include <oox/drawingml/shape.hxx>
+#include <drawingml/customshapeproperties.hxx>
+#include <oox/drawingml/theme.hxx>
+#include <drawingml/fillproperties.hxx>
+#include <drawingml/graphicproperties.hxx>
+#include <drawingml/lineproperties.hxx>
+#include <drawingml/presetgeometrynames.hxx>
+#include <drawingml/shape3dproperties.hxx>
 #include "effectproperties.hxx"
-#include "oox/drawingml/shapepropertymap.hxx"
-#include "drawingml/textbody.hxx"
+#include <oox/drawingml/shapepropertymap.hxx>
+#include <drawingml/textbody.hxx>
 #include <drawingml/textparagraph.hxx>
 #include <drawingml/ThemeOverrideFragmentHandler.hxx>
-#include "drawingml/table/tableproperties.hxx"
-#include "oox/drawingml/chart/chartconverter.hxx"
-#include "drawingml/chart/chartspacefragment.hxx"
-#include "drawingml/chart/chartspacemodel.hxx"
-#include "oox/ppt/pptimport.hxx"
-#include "oox/vml/vmldrawing.hxx"
-#include "oox/vml/vmlshape.hxx"
-#include "oox/vml/vmlshapecontainer.hxx"
-#include "oox/core/xmlfilterbase.hxx"
-#include "oox/helper/graphichelper.hxx"
-#include "oox/helper/propertyset.hxx"
-#include "oox/helper/modelobjecthelper.hxx"
+#include <drawingml/table/tableproperties.hxx>
+#include <oox/drawingml/chart/chartconverter.hxx>
+#include <drawingml/chart/chartspacefragment.hxx>
+#include <drawingml/chart/chartspacemodel.hxx>
+#include <o3tl/safeint.hxx>
+#include <oox/ppt/pptimport.hxx>
+#include <oox/vml/vmldrawing.hxx>
+#include <oox/vml/vmlshape.hxx>
+#include <oox/vml/vmlshapecontainer.hxx>
+#include <oox/core/xmlfilterbase.hxx>
+#include <oox/helper/graphichelper.hxx>
+#include <oox/helper/propertyset.hxx>
+#include <oox/helper/modelobjecthelper.hxx>
 #include <oox/mathml/importutils.hxx>
 #include <oox/mathml/import.hxx>
 #include <oox/token/properties.hxx>
+#include "diagram/datamodel.hxx"
 
 #include <comphelper/classids.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/sequence.hxx>
+#include <tools/diagnose_ex.h>
 #include <tools/gen.hxx>
 #include <tools/globname.hxx>
 #include <tools/mapunit.hxx>
+#include <tools/UnitConversion.hxx>
 #include <editeng/unoprnms.hxx>
 #include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/awt/XBitmap.hpp>
+#include <com/sun/star/awt/FontWeight.hpp>
 #include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/container/XNamed.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/xml/AttributeData.hpp>
+#include <com/sun/star/xml/dom/XDocument.hpp>
 #include <com/sun/star/xml/sax/XFastSAXSerializable.hpp>
+#include <com/sun/star/drawing/FillStyle.hpp>
 #include <com/sun/star/drawing/HomogenMatrix3.hpp>
 #include <com/sun/star/drawing/TextVerticalAdjust.hpp>
 #include <com/sun/star/drawing/GraphicExportFilter.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
+#include <com/sun/star/drawing/EnhancedCustomShapeAdjustmentValue.hpp>
+#include <com/sun/star/drawing/EnhancedCustomShapeTextPathMode.hpp>
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/table/BorderLine2.hpp>
@@ -78,15 +86,18 @@
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <com/sun/star/document/XActionLockable.hpp>
 #include <com/sun/star/chart2/data/XDataReceiver.hpp>
-#include <svl/outstrm.hxx>
 #include <svx/svdtrans.hxx>
+#include <tools/stream.hxx>
 #include <unotools/streamwrap.hxx>
 #include <unotools/fltrcfg.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <vcl/svapp.hxx>
-
-#include <vcl/wmf.hxx>
+#include <vcl/wmfexternal.hxx>
+#include <sal/log.hxx>
+#include <svx/unoapi.hxx>
+#include <svx/unoshape.hxx>
+#include <svx/sdtaitm.hxx>
 
 using namespace ::oox::core;
 using namespace ::com::sun::star;
@@ -97,26 +108,28 @@ using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::style;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-Shape::Shape( const sal_Char* pServiceName, bool bDefaultHeight )
-: mpLinePropertiesPtr( new LineProperties )
-, mpShapeRefLinePropPtr( new LineProperties )
-, mpFillPropertiesPtr( new FillProperties )
-, mpShapeRefFillPropPtr( new FillProperties )
-, mpGraphicPropertiesPtr( new GraphicProperties )
-, mpCustomShapePropertiesPtr( new CustomShapeProperties )
-, mp3DPropertiesPtr( new Shape3DProperties )
-, mpEffectPropertiesPtr( new EffectProperties )
-, mpShapeRefEffectPropPtr( new EffectProperties )
-, mpMasterTextListStyle( new TextListStyle )
+Shape::Shape( const char* pServiceName, bool bDefaultHeight )
+: mpLinePropertiesPtr( std::make_shared<LineProperties>() )
+, mpShapeRefLinePropPtr( std::make_shared<LineProperties>() )
+, mpFillPropertiesPtr( std::make_shared<FillProperties>() )
+, mpShapeRefFillPropPtr( std::make_shared<FillProperties>() )
+, mpGraphicPropertiesPtr( std::make_shared<GraphicProperties>() )
+, mpCustomShapePropertiesPtr( std::make_shared<CustomShapeProperties>() )
+, mp3DPropertiesPtr( std::make_shared<Shape3DProperties>() )
+, mpEffectPropertiesPtr( std::make_shared<EffectProperties>() )
+, mpShapeRefEffectPropPtr( std::make_shared<EffectProperties>() )
+, mpMasterTextListStyle( std::make_shared<TextListStyle>() )
 , mnSubType( 0 )
 , meFrameType( FRAMETYPE_GENERIC )
 , mnRotation( 0 )
+, mnDiagramRotation( 0 )
 , mbFlipH( false )
 , mbFlipV( false )
 , mbHidden( false )
 , mbHiddenMasterShape( false )
+, mbLocked( false )
 , mbLockedCanvas( false )
 , mbWps( false )
 , mbTextBox( false )
@@ -146,6 +159,7 @@ Shape::Shape( const ShapePtr& pSourceShape )
 , mxShape()
 , msServiceName( pSourceShape->msServiceName )
 , msName( pSourceShape->msName )
+, msInternalName( pSourceShape->msInternalName )
 , msId( pSourceShape->msId )
 , mnSubType( pSourceShape->mnSubType )
 , moSubTypeIndex( pSourceShape->moSubTypeIndex )
@@ -154,16 +168,23 @@ Shape::Shape( const ShapePtr& pSourceShape )
 , maPosition( pSourceShape->maPosition )
 , meFrameType( pSourceShape->meFrameType )
 , mnRotation( pSourceShape->mnRotation )
+, mnDiagramRotation( pSourceShape->mnDiagramRotation )
 , mbFlipH( pSourceShape->mbFlipH )
 , mbFlipV( pSourceShape->mbFlipV )
 , mbHidden( pSourceShape->mbHidden )
 , mbHiddenMasterShape( pSourceShape->mbHiddenMasterShape )
+, mbLocked( pSourceShape->mbLocked )
 , mbLockedCanvas( pSourceShape->mbLockedCanvas )
 , mbWps( pSourceShape->mbWps )
 , mbTextBox( pSourceShape->mbTextBox )
 , maLinkedTxbxAttr()
 , mbHasLinkedTxbx(false)
 , maDiagramDoms( pSourceShape->maDiagramDoms )
+, mnZOrder(pSourceShape->mnZOrder)
+, mnZOrderOff(pSourceShape->mnZOrderOff)
+, mnDataNodeType(pSourceShape->mnDataNodeType)
+, mfAspectRatio(pSourceShape->mfAspectRatio)
+, mbUseBgFill(pSourceShape->mbUseBgFill)
 {}
 
 Shape::~Shape()
@@ -172,8 +193,8 @@ Shape::~Shape()
 
 table::TablePropertiesPtr const & Shape::getTableProperties()
 {
-    if ( !mpTablePropertiesPtr.get() )
-        mpTablePropertiesPtr.reset( new table::TableProperties() );
+    if ( !mpTablePropertiesPtr )
+        mpTablePropertiesPtr = std::make_shared<table::TableProperties>();
     return mpTablePropertiesPtr;
 }
 
@@ -188,14 +209,14 @@ void Shape::setDefaults(bool bHeight)
     if (bHeight)
         maDefaultShapeProperties.setProperty(PROP_CharHeight, static_cast< float >( 18.0 ));
     maDefaultShapeProperties.setProperty(PROP_TextVerticalAdjust, TextVerticalAdjust_TOP);
-    maDefaultShapeProperties.setProperty(PROP_ParaAdjust, static_cast< sal_Int16 >( ParagraphAdjust_LEFT )); // check for RTL?
+    maDefaultShapeProperties.setProperty(PROP_ParaAdjust, static_cast< sal_Int16 >( ParagraphAdjust_CENTER ));
 }
 
 ::oox::vml::OleObjectInfo& Shape::setOleObjectType()
 {
     OSL_ENSURE( meFrameType == FRAMETYPE_GENERIC, "Shape::setOleObjectType - multiple frame types" );
     meFrameType = FRAMETYPE_OLEOBJECT;
-    mxOleObjectInfo.reset( new ::oox::vml::OleObjectInfo( true ) );
+    mxOleObjectInfo = std::make_shared<::oox::vml::OleObjectInfo>( true );
     return *mxOleObjectInfo;
 }
 
@@ -203,8 +224,11 @@ ChartShapeInfo& Shape::setChartType( bool bEmbedShapes )
 {
     OSL_ENSURE( meFrameType == FRAMETYPE_GENERIC, "Shape::setChartType - multiple frame types" );
     meFrameType = FRAMETYPE_CHART;
-    msServiceName = "com.sun.star.drawing.OLE2Shape";
-    mxChartShapeInfo.reset( new ChartShapeInfo( bEmbedShapes ) );
+    if (mbWps)
+        msServiceName = "com.sun.star.drawing.temporaryForXMLImportOLE2Shape";
+    else
+        msServiceName = "com.sun.star.drawing.OLE2Shape";
+    mxChartShapeInfo = std::make_shared<ChartShapeInfo>( bEmbedShapes );
     return *mxChartShapeInfo;
 }
 
@@ -224,7 +248,7 @@ void Shape::setTableType()
     mnSubType = 0;
 }
 
-void Shape::setServiceName( const sal_Char* pServiceName )
+void Shape::setServiceName( const char* pServiceName )
 {
     if ( pServiceName )
         msServiceName = OUString::createFromAscii( pServiceName );
@@ -242,7 +266,8 @@ void Shape::addShape(
         const Reference< XShapes >& rxShapes,
         const basegfx::B2DHomMatrix& aTransformation,
         FillProperties& rShapeOrParentShapeFillProps,
-        ShapeIdMap* pShapeMap )
+        ShapeIdMap* pShapeMap,
+        bool bInGroup )
 {
     SAL_INFO("oox.drawingml", "Shape::addShape: id='" << msId << "'");
 
@@ -252,7 +277,7 @@ void Shape::addShape(
         if( !sServiceName.isEmpty() )
         {
             basegfx::B2DHomMatrix aMatrix( aTransformation );
-            Reference< XShape > xShape( createAndInsert( rFilterBase, sServiceName, pTheme, rxShapes, false, false, aMatrix, rShapeOrParentShapeFillProps ) );
+            Reference< XShape > xShape( createAndInsert( rFilterBase, sServiceName, pTheme, rxShapes, false, false, aMatrix, rShapeOrParentShapeFillProps, bInGroup ) );
 
             if( pShapeMap && !msId.isEmpty() )
             {
@@ -266,14 +291,15 @@ void Shape::addShape(
 
             if( meFrameType == FRAMETYPE_DIAGRAM )
             {
+                keepDiagramCompatibilityInfo();
                 if( !SvtFilterOptions::Get().IsSmartArt2Shape() )
-                    keepDiagramCompatibilityInfo( rFilterBase );
+                    convertSmartArtToMetafile( rFilterBase );
             }
         }
     }
-    catch( const Exception& e )
+    catch( const Exception& )
     {
-        SAL_WARN( "oox.drawingml", "Shape::addShape: Exception: " << e.Message );
+        TOOLS_WARN_EXCEPTION( "oox.drawingml", "Shape::addShape" );
     }
 }
 
@@ -296,32 +322,27 @@ void Shape::applyShapeReference( const Shape& rReferencedShape, bool bUseText )
 {
     SAL_INFO("oox.drawingml", "Shape::applyShapeReference: apply '" << rReferencedShape.msId << "' to '" << msId << "'");
 
-    if ( rReferencedShape.mpTextBody.get() && bUseText )
-        mpTextBody = std::make_shared<TextBody>( *rReferencedShape.mpTextBody.get() );
+    if ( rReferencedShape.mpTextBody && bUseText )
+        mpTextBody = std::make_shared<TextBody>( *rReferencedShape.mpTextBody );
     else
         mpTextBody.reset();
     maShapeProperties = rReferencedShape.maShapeProperties;
     mpShapeRefLinePropPtr = std::make_shared<LineProperties>( rReferencedShape.getActualLineProperties(nullptr) );
     mpShapeRefFillPropPtr = std::make_shared<FillProperties>( rReferencedShape.getActualFillProperties(nullptr, nullptr) );
-    mpCustomShapePropertiesPtr = std::make_shared<CustomShapeProperties>( *rReferencedShape.mpCustomShapePropertiesPtr.get() );
-    mpTablePropertiesPtr = table::TablePropertiesPtr( rReferencedShape.mpTablePropertiesPtr.get() ? new table::TableProperties( *rReferencedShape.mpTablePropertiesPtr.get() ) : nullptr );
+    mpCustomShapePropertiesPtr = std::make_shared<CustomShapeProperties>( *rReferencedShape.mpCustomShapePropertiesPtr );
+    mpTablePropertiesPtr = rReferencedShape.mpTablePropertiesPtr ? std::make_shared<table::TableProperties>( *rReferencedShape.mpTablePropertiesPtr ) : nullptr;
     mpShapeRefEffectPropPtr = std::make_shared<EffectProperties>( rReferencedShape.getActualEffectProperties(nullptr) );
-    mpMasterTextListStyle = std::make_shared<TextListStyle>( *rReferencedShape.mpMasterTextListStyle.get() );
+    mpMasterTextListStyle = std::make_shared<TextListStyle>( *rReferencedShape.mpMasterTextListStyle );
     maSize = rReferencedShape.maSize;
     maPosition = rReferencedShape.maPosition;
     mnRotation = rReferencedShape.mnRotation;
     mbFlipH = rReferencedShape.mbFlipH;
     mbFlipV = rReferencedShape.mbFlipV;
     mbHidden = rReferencedShape.mbHidden;
+    mbLocked = rReferencedShape.mbLocked;
 }
 
-void Shape::addChildren( ::oox::core::XmlFilterBase& rFilterBase,
-                         const Theme* pTheme,
-                         const Reference< XShapes >& rxShapes,
-                         basegfx::B2DHomMatrix& aTransformation )
-{
-    addChildren(rFilterBase, *this, pTheme, rxShapes, nullptr, aTransformation);
-}
+namespace {
 
 struct ActionLockGuard
 {
@@ -341,6 +362,8 @@ struct ActionLockGuard
 private:
     Reference<document::XActionLockable> m_xLockable;
 };
+
+}
 
 // for group shapes, the following method is also adding each child
 void Shape::addChildren(
@@ -382,11 +405,232 @@ void Shape::addChildren(
              << aChildTransformation.get(2, 1) << " "
              << aChildTransformation.get(2, 2));
 
-    std::vector< ShapePtr >::iterator aIter( rMaster.maChildren.begin() );
-    while( aIter != rMaster.maChildren.end() ) {
-        (*aIter)->setMasterTextListStyle( mpMasterTextListStyle );
-        (*aIter++)->addShape( rFilterBase, pTheme, rxShapes, aChildTransformation, getFillProperties(), pShapeMap );
+    for (auto const& child : rMaster.maChildren)
+    {
+        child->setMasterTextListStyle( mpMasterTextListStyle );
+        child->addShape( rFilterBase, pTheme, rxShapes, aChildTransformation, getFillProperties(), pShapeMap, true );
     }
+}
+
+static void lcl_resetPropertyValue( std::vector<beans::PropertyValue>& rPropVec, const OUString& rName )
+{
+    auto aIterator = std::find_if( rPropVec.begin(), rPropVec.end(),
+        [rName]( const beans::PropertyValue& rValue ) { return rValue.Name == rName; } );
+
+    if (aIterator != rPropVec.end())
+        rPropVec.erase( aIterator );
+}
+
+static void lcl_setPropertyValue( std::vector<beans::PropertyValue>& rPropVec,
+                           const OUString& rName,
+                           const beans::PropertyValue& rPropertyValue )
+{
+    lcl_resetPropertyValue( rPropVec, rName );
+
+    rPropVec.push_back( rPropertyValue );
+}
+
+static SdrTextHorzAdjust lcl_convertAdjust( ParagraphAdjust eAdjust )
+{
+    if (eAdjust == ParagraphAdjust_LEFT)
+        return SDRTEXTHORZADJUST_LEFT;
+    else if (eAdjust == ParagraphAdjust_RIGHT)
+        return SDRTEXTHORZADJUST_RIGHT;
+    else if (eAdjust == ParagraphAdjust_CENTER)
+        return SDRTEXTHORZADJUST_CENTER;
+    return SDRTEXTHORZADJUST_LEFT;
+}
+
+static void lcl_createPresetShape(const uno::Reference<drawing::XShape>& xShape,
+                                         const OUString& rClass, const OUString& rPresetType,
+                                         const CustomShapePropertiesPtr& pCustomShapePropertiesPtr,
+                                         const TextBodyPtr& pTextBody,
+                                         const GraphicHelper& rGraphicHelper)
+{
+    if (!xShape.is() || !pCustomShapePropertiesPtr || !pTextBody)
+        return;
+
+    uno::Reference<drawing::XEnhancedCustomShapeDefaulter> xDefaulter( xShape,
+                                                                       uno::UNO_QUERY );
+
+    if (!xDefaulter.is() || rClass.isEmpty())
+        return;
+
+    Reference<XPropertySet> xSet( xShape, UNO_QUERY );
+    if (!xSet.is())
+        return;
+
+    // The DrawingML shapes from the presetTextWarpDefinitions are mapped to the definitions
+    // in svx/../EnhancedCustomShapeGeometry.cxx, which are used for WordArt shapes from
+    // binary MS Office. Therefore all adjustment values need to be adapted.
+    auto aAdjGdList = pCustomShapePropertiesPtr->getAdjustmentGuideList();
+    Sequence<drawing::EnhancedCustomShapeAdjustmentValue> aAdjustment(
+        !aAdjGdList.empty() ? aAdjGdList.size() : 1 );
+
+    int nIndex = 0;
+    for (const auto& aEntry : aAdjGdList)
+    {
+        double fValue = aEntry.maFormula.toDouble();
+        // then: polar-handle, else: XY-handle
+        // There exist only 8 polar-handles at all in presetTextWarp.
+        if ((rClass == "fontwork-arch-down-curve")
+            || (rClass == "fontwork-arch-down-pour" && aEntry.maName == "adj1")
+            || (rClass == "fontwork-arch-up-curve")
+            || (rClass == "fontwork-arch-up-pour" && aEntry.maName == "adj1")
+            || (rClass == "fontwork-open-circle-curve")
+            || (rClass == "fontwork-open-circle-pour" && aEntry.maName == "adj1")
+            || (rClass == "fontwork-circle-curve")
+            || (rClass == "fontwork-circle-pour" && aEntry.maName == "adj1"))
+        {
+            // DrawingML has 1/60000 degree unit, but WordArt simple degree. Range [0..360[
+            // or range ]-180..180] doesn't matter, because only cos(angle) and
+            // sin(angle) are used.
+            fValue = NormAngle360(fValue / 60000.0);
+        }
+        else
+        {
+            // DrawingML writes adjustment guides as relative value with 100% = 100000,
+            // but WordArt definitions use values absolute in viewBox 0 0 21600 21600,
+            // so scale with 21600/100000 = 0.216, with two exceptions:
+            // X-handles of waves describe increase/decrease relative to horizontal center.
+            // The gdRefR of pour-shapes is not relative to viewBox but to radius.
+            if ((rClass == "mso-spt158" && aEntry.maName == "adj2") // textDoubleWave1
+                || (rClass == "fontwork-wave" && aEntry.maName == "adj2") // textWave1
+                || (rClass == "mso-spt157" && aEntry.maName == "adj2") // textWave2
+                || (rClass == "mso-spt159" && aEntry.maName == "adj2")) // textWave4
+            {
+                fValue = (fValue + 50000.0) * 0.216;
+            }
+            else if ( (rClass == "fontwork-arch-down-pour" && aEntry.maName == "adj2")
+                    || (rClass == "fontwork-arch-up-pour" && aEntry.maName == "adj2")
+                    || (rClass == "fontwork-open-circle-pour" && aEntry.maName == "adj2")
+                    || (rClass == "fontwork-circle-pour" && aEntry.maName == "adj2"))
+                {
+                    fValue *= 0.108;
+                }
+            else
+            {
+                fValue *= 0.216;
+            }
+        }
+
+        aAdjustment[nIndex].Value <<= fValue;
+        aAdjustment[nIndex++].State = css::beans::PropertyState_DIRECT_VALUE;
+    }
+
+    // Set properties
+    xSet->setPropertyValue( UNO_NAME_TEXT_AUTOGROWHEIGHT, uno::makeAny( false ) );
+    xSet->setPropertyValue( UNO_NAME_TEXT_AUTOGROWWIDTH, uno::makeAny( false ) );
+    xSet->setPropertyValue( UNO_NAME_FILLSTYLE, uno::makeAny( drawing::FillStyle_SOLID ) );
+
+    // ToDo: Old binary WordArt does not allow different styles for different paragraphs, so it
+    // was not necessary to examine all paragraphs. Solution for DrawingML is needed.
+    // Currently different alignment of paragraphs are lost, for example.
+    const TextParagraphVector& rParagraphs = pTextBody->getParagraphs();
+    if (!rParagraphs.empty() && !rParagraphs[0]->getRuns().empty())
+    {
+        std::shared_ptr<TextParagraph> pParagraph = rParagraphs[0];
+        std::shared_ptr<TextRun> pRun = pParagraph->getRuns()[0];
+        TextCharacterProperties& pProperties = pRun->getTextCharacterProperties();
+
+        if (pProperties.moBold.has() && pProperties.moBold.get())
+        {
+            xSet->setPropertyValue( UNO_NAME_CHAR_WEIGHT, uno::makeAny( css::awt::FontWeight::BOLD ) );
+        }
+        if (pProperties.moItalic.has() && pProperties.moItalic.get())
+        {
+            xSet->setPropertyValue( UNO_NAME_CHAR_POSTURE, uno::makeAny( css::awt::FontSlant::FontSlant_ITALIC ) );
+        }
+        if (pProperties.moHeight.has())
+        {
+            sal_Int32 nHeight = pProperties.moHeight.get() / 100;
+            xSet->setPropertyValue( UNO_NAME_CHAR_HEIGHT, uno::makeAny( nHeight ) );
+        }
+        if (pProperties.maFillProperties.maFillColor.isUsed())
+        {
+            const sal_Int32 aFillColor = static_cast<sal_Int32>(
+                pProperties.maFillProperties.maFillColor.getColor( rGraphicHelper ).GetRGBColor() );
+            xSet->setPropertyValue( UNO_NAME_FILLCOLOR, uno::makeAny( aFillColor ) );
+        }
+        else
+        {
+            // Set default color
+            xSet->setPropertyValue( UNO_NAME_FILLCOLOR, uno::makeAny( COL_BLACK ) );
+        }
+        {
+            ParagraphAdjust eAdjust = ParagraphAdjust_LEFT;
+            if (pParagraph->getProperties().getParaAdjust())
+                eAdjust = *pParagraph->getProperties().getParaAdjust();
+            xSet->setPropertyValue( "ParaAdjust", uno::makeAny( eAdjust ) );
+            SvxShape* pShape = comphelper::getUnoTunnelImplementation<SvxShape>( xShape );
+            assert(pShape);
+            SdrTextHorzAdjust eHorzAdjust = lcl_convertAdjust( eAdjust );
+            pShape->GetSdrObject()->SetMergedItem( SdrTextHorzAdjustItem( eHorzAdjust ) );
+        }
+    }
+
+    // Apply vertical adjustment for text on arc
+    // ToDo: The property is currently not evaluated.
+    SvxShape* pShape = comphelper::getUnoTunnelImplementation<SvxShape>(xShape);
+    assert(pShape);
+    if (rClass == "fontwork-arch-up-curve")
+        pShape->GetSdrObject()->SetMergedItem( SdrTextVertAdjustItem( SdrTextVertAdjust::SDRTEXTVERTADJUST_BOTTOM ) );
+    else if (rClass == "fontwork-arch-down-curve")
+        pShape->GetSdrObject()->SetMergedItem( SdrTextVertAdjustItem( SdrTextVertAdjust::SDRTEXTVERTADJUST_TOP ) );
+
+    // Apply preset shape
+    xDefaulter->createCustomShapeDefaults( rClass );
+
+    auto aGeomPropSeq = xSet->getPropertyValue( "CustomShapeGeometry" )
+                            .get<uno::Sequence<beans::PropertyValue>>();
+    auto aGeomPropVec
+        = comphelper::sequenceToContainer<std::vector<beans::PropertyValue>>(
+            aGeomPropSeq );
+
+    // Reset old properties
+    const OUString sTextPath( "TextPath" );
+    const OUString sAdjustmentValues( "AdjustmentValues" );
+    const OUString sPresetTextWarp( "PresetTextWarp" );
+
+    lcl_resetPropertyValue( aGeomPropVec, "CoordinateSize" );
+    lcl_resetPropertyValue( aGeomPropVec, "Equations" );
+    lcl_resetPropertyValue( aGeomPropVec, "Path" );
+    lcl_resetPropertyValue( aGeomPropVec, sAdjustmentValues);
+
+    bool bFromWordArt(false);
+    pTextBody->getTextProperties().maPropertyMap.getProperty(PROP_FromWordArt) >>= bFromWordArt;
+
+    bool bScaleX(false);
+    if (!bFromWordArt
+        && (rPresetType == "textArchDown" || rPresetType == "textArchUp"
+            || rPresetType == "textCircle" || rPresetType == "textButton"))
+    {
+        bScaleX = true;
+    }
+
+    // Apply geometry properties
+    uno::Sequence<beans::PropertyValue> aPropertyValues(
+        comphelper::InitPropertySequence(
+            { { sTextPath, uno::makeAny( true ) },
+                { "TextPathMode",
+                uno::Any( drawing::EnhancedCustomShapeTextPathMode_PATH ) },
+                { "ScaleX", uno::Any(bScaleX) } } ) );
+
+    lcl_setPropertyValue( aGeomPropVec, sTextPath,
+        comphelper::makePropertyValue( sTextPath, aPropertyValues ) );
+
+    lcl_setPropertyValue( aGeomPropVec, sPresetTextWarp,
+        comphelper::makePropertyValue( sPresetTextWarp, rPresetType ) );
+
+    if (!aAdjGdList.empty())
+    {
+        lcl_setPropertyValue( aGeomPropVec, sAdjustmentValues,
+            comphelper::makePropertyValue( sAdjustmentValues, aAdjustment ) );
+    }
+
+    xSet->setPropertyValue(
+        "CustomShapeGeometry",
+        uno::makeAny(comphelper::containerToSequence(aGeomPropVec)));
 }
 
 Reference< XShape > const & Shape::createAndInsert(
@@ -397,13 +641,14 @@ Reference< XShape > const & Shape::createAndInsert(
         bool bClearText,
         bool bDoNotInsertEmptyTextBody,
         basegfx::B2DHomMatrix& aParentTransformation,
-        FillProperties& rShapeOrParentShapeFillProps )
+        FillProperties& rShapeOrParentShapeFillProps,
+        bool bInGroup )
 {
     bool bIsEmbMedia = false;
     SAL_INFO("oox.drawingml", "Shape::createAndInsert: id='" << msId << "' service='" << rServiceName << "'");
 
     formulaimport::XmlStreamBuilder * pMathXml(nullptr);
-    if (mpTextBody.get())
+    if (mpTextBody)
     {
         for (auto const& it : mpTextBody->getParagraphs())
         {
@@ -422,19 +667,17 @@ Reference< XShape > const & Shape::createAndInsert(
     }
 
     // tdf#90403 PowerPoint ignores a:ext cx and cy values of p:xfrm, and uses real table width and height
-    if ( mpTablePropertiesPtr.get() && rServiceName == "com.sun.star.drawing.TableShape" )
+    if ( mpTablePropertiesPtr && rServiceName == "com.sun.star.drawing.TableShape" )
     {
         maSize.Width = 0;
-        for( std::vector< sal_Int32 >::const_iterator aTableColIter(mpTablePropertiesPtr->getTableGrid().begin());
-             aTableColIter != mpTablePropertiesPtr->getTableGrid().end(); ++aTableColIter )
+        for (auto const& elem : mpTablePropertiesPtr->getTableGrid())
         {
-            maSize.Width += *aTableColIter;
+            maSize.Width = o3tl::saturating_add(maSize.Width, static_cast<sal_Int32>(elem));
         }
         maSize.Height = 0;
-        for( std::vector< ::oox::drawingml::table::TableRow >::const_iterator aTableRowIter(mpTablePropertiesPtr->getTableRows().begin());
-             aTableRowIter != mpTablePropertiesPtr->getTableRows().end(); ++aTableRowIter )
+        for (auto const& elem : mpTablePropertiesPtr->getTableRows())
         {
-            maSize.Height += (*aTableRowIter).getHeight();
+            maSize.Height = o3tl::saturating_add(maSize.Height, elem.getHeight());
         }
     }
 
@@ -459,8 +702,18 @@ Reference< XShape > const & Shape::createAndInsert(
     {
         aServiceName = finalizeServiceName( rFilterBase, rServiceName, aShapeRectHmm );
     }
+    // Use custom shape instead of GraphicObjectShape if the image is cropped to
+    // shape. Except rectangle, which does not require further cropping
+    bool bIsCroppedGraphic = (aServiceName == "com.sun.star.drawing.GraphicObjectShape" && mpCustomShapePropertiesPtr->getShapePresetType() >= 0
+            && mpCustomShapePropertiesPtr->getShapePresetType() != XML_Rect && mpCustomShapePropertiesPtr->getShapePresetType() != XML_rect);
     bool bIsCustomShape = ( aServiceName == "com.sun.star.drawing.CustomShape" ||
-                            aServiceName == "com.sun.star.drawing.ConnectorShape" );
+                            aServiceName == "com.sun.star.drawing.ConnectorShape" ||
+                            bIsCroppedGraphic);
+    if(bIsCroppedGraphic)
+    {
+        aServiceName = "com.sun.star.drawing.CustomShape";
+        mpGraphicPropertiesPtr->mbIsCustomShape = true;
+    }
     bool bUseRotationTransform = ( !mbWps ||
             aServiceName == "com.sun.star.drawing.LineShape" ||
             aServiceName == "com.sun.star.drawing.GroupShape" ||
@@ -468,6 +721,14 @@ Reference< XShape > const & Shape::createAndInsert(
             mbFlipV );
 
     basegfx::B2DHomMatrix aTransformation;
+
+    if (bUseRotationTransform && mnDiagramRotation != 0)
+    {
+        // rotate diagram's shape around object's center before sizing
+        aTransformation.translate(-0.5, -0.5);
+        aTransformation.rotate(basegfx::deg2rad(mnDiagramRotation / 60000.0));
+        aTransformation.translate(0.5, 0.5);
+    }
 
     if( maSize.Width != 1 || maSize.Height != 1)
     {
@@ -477,7 +738,8 @@ Reference< XShape > const & Shape::createAndInsert(
             maSize.Height ? maSize.Height : 1.0 );
     }
 
-    if( mbFlipH || mbFlipV || mnRotation != 0)
+    bool bNoTranslation = !aParentTransformation.isIdentity();
+    if( mbFlipH || mbFlipV || mnRotation != 0 || bNoTranslation )
     {
         // calculate object's center
         basegfx::B2DPoint aCenter(0.5, 0.5);
@@ -492,17 +754,34 @@ Reference< XShape > const & Shape::createAndInsert(
             aTransformation.scale( mbFlipH ? -1.0 : 1.0, mbFlipV ? -1.0 : 1.0 );
         }
 
-        if( bUseRotationTransform && mnRotation != 0 )
+        if( bUseRotationTransform )
         {
+            // OOXML flips shapes before rotating them.
+            if( bIsCustomShape )
+            {
+                basegfx::B2DVector aScale, aTranslate;
+                double fRotate, fShearX;
+                aParentTransformation.decompose(aScale, aTranslate, fRotate, fShearX);
+                // A negative scale means that the shape needs to be flipped
+                if(aScale.getX() < 0)
+                {
+                    mbFlipH = !mbFlipH;
+                    aTransformation.scale(-1, 1);
+                }
+                if(aScale.getY() < 0)
+                {
+                    mbFlipV = !mbFlipV;
+                    aTransformation.scale(1, -1);
+                }
+            }
             // rotate around object's center
-            aTransformation.rotate( F_PI180 * ( (double)mnRotation / 60000.0 ) );
+            aTransformation.rotate(basegfx::deg2rad(static_cast<double>(mnRotation) / 60000.0));
         }
 
         // move object back from center
         aTransformation.translate( aCenter.getX(), aCenter.getY() );
     }
 
-    bool bInGroup = !aParentTransformation.isIdentity();
     if( maPosition.X != 0 || maPosition.Y != 0)
     {
         // if global position is used, add it to transformation
@@ -515,6 +794,24 @@ Reference< XShape > const & Shape::createAndInsert(
     aTransformation = aParentTransformation*aTransformation;
     aParentTransformation = aTransformation;
     aTransformation.scale(1/double(EMU_PER_HMM), 1/double(EMU_PER_HMM));
+
+    if( bIsCustomShape && mbFlipH != mbFlipV )
+    {
+        basegfx::B2DVector aScale, aTranslate;
+        double fRotate, fShearX;
+        aTransformation.decompose(aScale, aTranslate, fRotate, fShearX);
+
+        if(fRotate != 0)
+        {
+            // calculate object's center
+            basegfx::B2DPoint aCenter(0.5, 0.5);
+            aCenter *= aTransformation;
+            aTransformation.translate( -aCenter.getX(), -aCenter.getY() );
+            // OOXML flips shapes before rotating them, so the rotation needs to be inverted
+            aTransformation.rotate( fRotate * -2.0 );
+            aTransformation.translate( aCenter.getX(), aCenter.getY() );
+        }
+    }
 
     // special for lineshape
     if ( aServiceName == "com.sun.star.drawing.LineShape" )
@@ -532,19 +829,12 @@ Reference< XShape > const & Shape::createAndInsert(
         bool bIsWriter = xModelInfo->supportsService("com.sun.star.text.TextDocument");
         for( i = 0; i < nNumPoints; ++i )
         {
-            basegfx::B2DPoint aPoint( aPoly.getB2DPoint( i ) );
+            const basegfx::B2DPoint aPoint( aPoly.getB2DPoint( i ) );
 
-            // Guard against zero width or height.
-            if (i)
-            {
-                const basegfx::B2DPoint& rPreviousPoint = aPoly.getB2DPoint(i - 1);
-                if (aPoint.getX() - rPreviousPoint.getX() == 0)
-                    aPoint.setX(aPoint.getX() + 1);
-                if (aPoint.getY() - rPreviousPoint.getY() == 0)
-                    aPoint.setY(aPoint.getY() + 1);
-            }
+            // tdf#106792 Not needed anymore due to the change in SdrPathObj::NbcResize:
+            // tdf#96674: Guard against zero width or height.
 
-            if (bIsWriter && bInGroup)
+            if (bIsWriter && bNoTranslation)
                 // Writer's draw page is in twips, and these points get passed
                 // to core without any unit conversion when Writer
                 // postprocesses only the group shape itself.
@@ -597,7 +887,7 @@ Reference< XShape > const & Shape::createAndInsert(
         mxShape.set( xServiceFact->createInstance( aServiceName ), UNO_QUERY_THROW );
 
     Reference< XPropertySet > xSet( mxShape, UNO_QUERY );
-    if( mxShape.is() && xSet.is() )
+    if (xSet.is())
     {
         if( !msName.isEmpty() )
         {
@@ -605,14 +895,25 @@ Reference< XShape > const & Shape::createAndInsert(
             if( xNamed.is() )
                 xNamed->setName( msName );
         }
+        if( !msDescription.isEmpty() )
+        {
+            xSet->setPropertyValue( "Description", Any( msDescription ) );
+        }
         if (aServiceName != "com.sun.star.text.TextFrame")
             rxShapes->add( mxShape );
 
         if ( mbHidden || mbHiddenMasterShape )
         {
             SAL_INFO("oox.drawingml", "Shape::createAndInsert: invisible shape with id='" << msId << "'");
-            const OUString sVisible( "Visible" );
-            xSet->setPropertyValue( sVisible, Any( false ) );
+            xSet->setPropertyValue( "Visible", Any( false ) );
+            // In Excel hidden means not printed, let's use visibility for now until that's handled separately
+            xSet->setPropertyValue( "Printable", Any( false ) );
+        }
+
+        if (mbLocked)
+        {
+            xSet->setPropertyValue("MoveProtect", Any(true));
+            xSet->setPropertyValue("SizeProtect", Any(true));
         }
 
         ActionLockGuard const alg(mxShape);
@@ -636,17 +937,20 @@ Reference< XShape > const & Shape::createAndInsert(
             xSet->setPropertyValue("CLSID", uno::makeAny(name.GetHexName()));
             uno::Reference<embed::XEmbeddedObject> const xObj(
                 xSet->getPropertyValue("EmbeddedObject"), uno::UNO_QUERY);
-            uno::Reference<uno::XInterface> const xMathModel(xObj->getComponent());
-            oox::FormulaImportBase *const pMagic(
-                    dynamic_cast<oox::FormulaImportBase*>(xMathModel.get()));
-            assert(pMagic);
-            pMagic->readFormulaOoxml(*pMathXml);
+            if (xObj.is())
+            {
+                uno::Reference<uno::XInterface> const xMathModel(xObj->getComponent());
+                oox::FormulaImportBase *const pMagic(
+                        dynamic_cast<oox::FormulaImportBase*>(xMathModel.get()));
+                assert(pMagic);
+                pMagic->readFormulaOoxml(*pMathXml);
+            }
         }
 
         const GraphicHelper& rGraphicHelper = rFilterBase.getGraphicHelper();
 
-        sal_Int32 nLinePhClr = -1;
-        sal_Int32 nFillPhClr = -1;
+        ::Color nLinePhClr(0xffffffff);
+        ::Color nFillPhClr(0xffffffff);
         // TODO: use ph color when applying effect properties
         //sal_Int32 nEffectPhClr = -1;
 
@@ -667,6 +971,7 @@ Reference< XShape > const & Shape::createAndInsert(
                     {"Idx", uno::makeAny(pLineRef->mnThemedIdx)},
                     {"Color", uno::makeAny(nLinePhClr)},
                     {"LineStyle", uno::makeAny(aLineProperties.getLineStyle())},
+                    {"LineCap", uno::makeAny(aLineProperties.getLineCap())},
                     {"LineJoint", uno::makeAny(aLineProperties.getLineJoint())},
                     {"LineWidth", uno::makeAny(aLineProperties.getLineWidth())},
                     {"Transformations", uno::makeAny(pLineRef->maPhClr.getTransformations())}
@@ -675,7 +980,10 @@ Reference< XShape > const & Shape::createAndInsert(
             }
             if( const ShapeStyleRef* pFillRef = getShapeStyleRef( XML_fillRef ) )
             {
-                nFillPhClr = pFillRef->maPhClr.getColor( rGraphicHelper );
+                if (!mbUseBgFill)
+                {
+                    nFillPhClr = pFillRef->maPhClr.getColor(rGraphicHelper);
+                }
 
                 OUString sColorScheme = pFillRef->maPhClr.getSchemeName();
                 if( !sColorScheme.isEmpty() )
@@ -709,7 +1017,7 @@ Reference< XShape > const & Shape::createAndInsert(
         ShapePropertyMap aShapeProps( rFilterBase.getModelObjectHelper() );
 
         // add properties from textbody to shape properties
-        if( mpTextBody.get() )
+        if( mpTextBody )
         {
             mpTextBody->getTextProperties().pushRotationAdjustments();
             aShapeProps.assignUsed( mpTextBody->getTextProperties().maPropertyMap );
@@ -721,13 +1029,16 @@ Reference< XShape > const & Shape::createAndInsert(
         // applying properties
         aShapeProps.assignUsed( getShapeProperties() );
         aShapeProps.assignUsed( maDefaultShapeProperties );
-        if ( bIsEmbMedia || aServiceName == "com.sun.star.drawing.GraphicObjectShape" || aServiceName == "com.sun.star.drawing.OLE2Shape" )
+        if ( bIsEmbMedia || aServiceName == "com.sun.star.drawing.GraphicObjectShape" || aServiceName == "com.sun.star.drawing.OLE2Shape" || bIsCustomShape )
             mpGraphicPropertiesPtr->pushToPropMap( aShapeProps, rGraphicHelper );
-        if ( mpTablePropertiesPtr.get() && aServiceName == "com.sun.star.drawing.TableShape" )
+        if ( mpTablePropertiesPtr && aServiceName == "com.sun.star.drawing.TableShape" )
             mpTablePropertiesPtr->pushToPropSet( rFilterBase, xSet, mpMasterTextListStyle );
 
         FillProperties aFillProperties = getActualFillProperties(pTheme, &rShapeOrParentShapeFillProps);
-        aFillProperties.pushToPropMap( aShapeProps, rGraphicHelper, mnRotation, nFillPhClr, mbFlipH, mbFlipV );
+        if (getFillProperties().moFillType.has() && getFillProperties().moFillType.get() == XML_grpFill)
+            getFillProperties().assignUsed(aFillProperties);
+        if(!bIsCroppedGraphic)
+            aFillProperties.pushToPropMap( aShapeProps, rGraphicHelper, mnRotation, nFillPhClr, mbFlipH, mbFlipV );
         LineProperties aLineProperties = getActualLineProperties(pTheme);
         aLineProperties.pushToPropMap( aShapeProps, rGraphicHelper, nLinePhClr );
         EffectProperties aEffectProperties = getActualEffectProperties(pTheme);
@@ -766,7 +1077,7 @@ Reference< XShape > const & Shape::createAndInsert(
                 }
                 //If the text box has links then save the link information so that
                 //it can be accessed in DomainMapper_Impl.cxx while chaining the text frames.
-                if (this->isLinkedTxbx())
+                if (isLinkedTxbx())
                 {
                     uno::Reference<beans::XPropertySet> propertySet (mxShape, uno::UNO_QUERY);
                     uno::Sequence<beans::PropertyValue> aGrabBag;
@@ -774,11 +1085,11 @@ Reference< XShape > const & Shape::createAndInsert(
                     sal_Int32 length = aGrabBag.getLength();
                     aGrabBag.realloc( length + 3 );
                     aGrabBag[length].Name = "TxbxHasLink";
-                    aGrabBag[length].Value <<= this->isLinkedTxbx();
+                    aGrabBag[length].Value <<= isLinkedTxbx();
                     aGrabBag[length + 1 ].Name = "Txbx-Id";
-                    aGrabBag[length + 1 ].Value <<= this->getLinkedTxbxAttributes().id;
+                    aGrabBag[length + 1 ].Value <<= getLinkedTxbxAttributes().id;
                     aGrabBag[length + 2 ].Name = "Txbx-Seq";
-                    aGrabBag[length + 2 ].Value <<= this->getLinkedTxbxAttributes().seq;
+                    aGrabBag[length + 2 ].Value <<= getLinkedTxbxAttributes().seq;
                     propertySet->setPropertyValue("FrameInteropGrabBag",uno::makeAny(aGrabBag));
                 }
 
@@ -794,16 +1105,19 @@ Reference< XShape > const & Shape::createAndInsert(
                     aShapeProps.setAnyProperty(PROP_BackColorTransparency, aShapeProps.getProperty(PROP_FillTransparence));
                     aShapeProps.erase(PROP_FillTransparence);
                 }
-                // TextFrames have BackGrahicURL, not FillBitmapURL
-                if (aShapeProps.hasProperty(PROP_FillBitmapURL))
+                // TextFrames have BackGraphic, not FillBitmap
+                if (aShapeProps.hasProperty(PROP_FillBitmap))
                 {
-                    aShapeProps.setAnyProperty(PROP_BackGraphicURL, aShapeProps.getProperty(PROP_FillBitmapURL));
-                    aShapeProps.erase(PROP_FillBitmapURL);
+                    aShapeProps.setAnyProperty(PROP_BackGraphic, aShapeProps.getProperty(PROP_FillBitmap));
+                    aShapeProps.erase(PROP_FillBitmap);
                 }
                 if (aShapeProps.hasProperty(PROP_FillBitmapName))
                 {
                     uno::Any aAny = aShapeProps.getProperty(PROP_FillBitmapName);
-                    aShapeProps.setProperty(PROP_BackGraphicURL, rFilterBase.getModelObjectHelper().getFillBitmapUrl( aAny.get<OUString>() ));
+                    OUString aFillBitmapName = aAny.get<OUString>();
+                    uno::Reference<awt::XBitmap> xBitmap = rFilterBase.getModelObjectHelper().getFillBitmap(aFillBitmapName);
+                    uno::Reference<graphic::XGraphic> xGraphic(xBitmap, uno::UNO_QUERY);
+                    aShapeProps.setProperty(PROP_BackGraphic, xGraphic);
                     // aShapeProps.erase(PROP_FillBitmapName);  // Maybe, leave the name as well
                 }
                 // And no LineColor property; individual borders can have colors
@@ -847,7 +1161,7 @@ Reference< XShape > const & Shape::createAndInsert(
                     xPropertySet->setPropertyValue(aGrabBagPropName, uno::makeAny(aGrabBag));
                 }
                 // TextFrames have ShadowFormat, not individual shadow properties.
-                boost::optional<sal_Int32> oShadowDistance;
+                std::optional<sal_Int32> oShadowDistance;
                 if (aShapeProps.hasProperty(PROP_ShadowXDistance))
                 {
                     oShadowDistance = aShapeProps.getProperty(PROP_ShadowXDistance).get<sal_Int32>();
@@ -858,7 +1172,7 @@ Reference< XShape > const & Shape::createAndInsert(
                     // There is a single 'dist' attribute, so no need to count the avg of x and y.
                     aShapeProps.erase(PROP_ShadowYDistance);
                 }
-                boost::optional<sal_Int32> oShadowColor;
+                std::optional<sal_Int32> oShadowColor;
                 if (aShapeProps.hasProperty(PROP_ShadowColor))
                 {
                     oShadowColor = aShapeProps.getProperty(PROP_ShadowColor).get<sal_Int32>();
@@ -895,6 +1209,7 @@ Reference< XShape > const & Shape::createAndInsert(
                     aFormat.ShadowWidth = *oShadowDistance;
                     aShapeProps.setProperty(PROP_ShadowFormat, aFormat);
                 }
+
             }
             else if (mbTextBox)
             {
@@ -931,6 +1246,7 @@ Reference< XShape > const & Shape::createAndInsert(
 
             // Store original fill and line colors of the shape and the theme color name to InteropGrabBag
             std::vector<beans::PropertyValue> aProperties;
+            aProperties.push_back(comphelper::makePropertyValue("EmuLineWidth", aLineProperties.moLineWidth.get(0)));
             aProperties.push_back(comphelper::makePropertyValue("OriginalSolidFillClr", aShapeProps.getProperty(PROP_FillColor)));
             aProperties.push_back(comphelper::makePropertyValue("OriginalLnSolidFillClr", aShapeProps.getProperty(PROP_LineColor)));
             OUString sColorFillScheme = aFillProperties.maFillColor.getSchemeName();
@@ -952,35 +1268,35 @@ Reference< XShape > const & Shape::createAndInsert(
             if( aShapeProps.hasProperty( PROP_FillGradient ) )
             {
                 std::vector<beans::PropertyValue> aGradientStops;
-                ::std::map< double, Color >::iterator aIt = aFillProperties.maGradientProps.maGradientStops.begin();
-                for( size_t i = 0; i < aFillProperties.maGradientProps.maGradientStops.size(); ++i )
+                size_t i = 0;
+                for( const auto& [rPos, rColor] : aFillProperties.maGradientProps.maGradientStops )
                 { // for each stop in the gradient definition:
 
                     // save position
                     std::vector<beans::PropertyValue> aGradientStop;
-                    aGradientStop.push_back(comphelper::makePropertyValue("Pos", aIt->first));
+                    aGradientStop.push_back(comphelper::makePropertyValue("Pos", rPos));
 
-                    OUString sStopColorScheme = aIt->second.getSchemeName();
+                    OUString sStopColorScheme = rColor.getSchemeName();
                     if( sStopColorScheme.isEmpty() )
                     {
                         // save RGB color
-                        aGradientStop.push_back(comphelper::makePropertyValue("RgbClr", aIt->second.getColor(rGraphicHelper, nFillPhClr)));
+                        aGradientStop.push_back(comphelper::makePropertyValue("RgbClr", rColor.getColor(rGraphicHelper, nFillPhClr)));
                         // in the case of a RGB color, transformations are already applied to
                         // the color with the exception of alpha transformations. We only need
                         // to keep the transparency value to calculate the alpha value later.
-                        if( aIt->second.hasTransparency() )
-                            aGradientStop.push_back(comphelper::makePropertyValue("Transparency", aIt->second.getTransparency()));
+                        if( rColor.hasTransparency() )
+                            aGradientStop.push_back(comphelper::makePropertyValue("Transparency", rColor.getTransparency()));
                     }
                     else
                     {
                         // save color with scheme name
                         aGradientStop.push_back(comphelper::makePropertyValue("SchemeClr", sStopColorScheme));
                         // save all color transformations
-                        aGradientStop.push_back(comphelper::makePropertyValue("Transformations", aIt->second.getTransformations()));
+                        aGradientStop.push_back(comphelper::makePropertyValue("Transformations", rColor.getTransformations()));
                     }
 
                     aGradientStops.push_back(comphelper::makePropertyValue(OUString::number(i), comphelper::containerToSequence(aGradientStop)));
-                    ++aIt;
+                    ++i;
                 }
                 // If getFillProperties.moFillType is unused that means gradient is defined by a theme
                 // which is already saved into StyleFillRef property, so no need to save the explicit values too
@@ -1027,7 +1343,7 @@ Reference< XShape > const & Shape::createAndInsert(
             Sequence< PropertyValue > aCamera3DEffects = get3DProperties().getCameraAttributes();
             Sequence< PropertyValue > aLightRig3DEffects = get3DProperties().getLightRigAttributes();
             Sequence< PropertyValue > aShape3DEffects = get3DProperties().getShape3DAttributes( rGraphicHelper, nFillPhClr );
-            if( aCamera3DEffects.getLength() > 0 || aLightRig3DEffects.getLength() > 0 || aShape3DEffects.getLength() > 0 )
+            if( aCamera3DEffects.hasElements() || aLightRig3DEffects.hasElements() || aShape3DEffects.hasElements() )
             {
                 uno::Sequence<beans::PropertyValue> a3DEffectsGrabBag = comphelper::InitPropertySequence(
                 {
@@ -1064,7 +1380,12 @@ Reference< XShape > const & Shape::createAndInsert(
                 mpCustomShapePropertiesPtr->setMirroredY( true );
             if( getTextBody() )
             {
+                sal_Int32 nTextCameraZRotation = static_cast< sal_Int32 >( get3DProperties().maCameraRotation.mnRevolution.get() );
+                mpCustomShapePropertiesPtr->setTextCameraZRotateAngle( nTextCameraZRotation / 60000 );
+
                 sal_Int32 nTextRotateAngle = static_cast< sal_Int32 >( getTextBody()->getTextProperties().moRotation.get( 0 ) );
+
+                nTextRotateAngle -= mnDiagramRotation;
                 /* OOX measures text rotation clockwise in 1/60000th degrees,
                    relative to the containing shape. setTextRotateAngle wants
                    degrees anticlockwise. */
@@ -1076,6 +1397,19 @@ Reference< XShape > const & Shape::createAndInsert(
             SAL_INFO("oox.cscode", "==cscode== shape name: '" << msName << "'");
             SAL_INFO("oox.csdata", "==csdata== shape name: '" << msName << "'");
             mpCustomShapePropertiesPtr->pushToPropSet( xSet, mxShape, maSize );
+
+            if (mpTextBody)
+            {
+                bool bIsPresetShape = !mpTextBody->getTextProperties().msPrst.isEmpty();
+                if (bIsPresetShape)
+                {
+                    OUString sClass;
+                    const OUString sPresetType = mpTextBody->getTextProperties().msPrst;
+                    sClass = PresetGeometryTypeNames::GetFontworkType( sPresetType );
+
+                    lcl_createPresetShape( mxShape, sClass, sPresetType, mpCustomShapePropertiesPtr, mpTextBody, rGraphicHelper );
+                }
+            }
         }
         else if( getTextBody() )
             getTextBody()->getTextProperties().pushVertSimulation();
@@ -1084,7 +1418,7 @@ Reference< XShape > const & Shape::createAndInsert(
         if ( !bUseRotationTransform && mnRotation != 0 )
         {
             // use the same logic for rotation from VML exporter (SimpleShape::implConvertAndInsert at vmlshape.cxx)
-            aPropertySet.setAnyProperty( PROP_RotateAngle, makeAny( sal_Int32( NormAngle360( mnRotation / -600 ) ) ) );
+            aPropertySet.setAnyProperty( PROP_RotateAngle, makeAny( sal_Int32( NormAngle36000( mnRotation / -600 ) ) ) );
             aPropertySet.setAnyProperty( PROP_HoriOrientPosition, makeAny( maPosition.X ) );
             aPropertySet.setAnyProperty( PROP_VertOrientPosition, makeAny( maPosition.Y ) );
         }
@@ -1122,9 +1456,26 @@ Reference< XShape > const & Shape::createAndInsert(
             // character color on the shape, then.
             if(const ShapeStyleRef* pFontRef = getShapeStyleRef(XML_fontRef))
             {
-                sal_Int32 nCharColor = pFontRef->maPhClr.getColor(rGraphicHelper);
+                ::Color nCharColor = pFontRef->maPhClr.getColor(rGraphicHelper);
                 aPropertySet.setAnyProperty(PROP_CharColor, uno::makeAny(nCharColor));
             }
+        }
+
+        // Set glow effect properties
+        if ( aEffectProperties.maGlow.moGlowRad.has() )
+        {
+            uno::Reference<beans::XPropertySet> propertySet (mxShape, uno::UNO_QUERY);
+            propertySet->setPropertyValue("GlowEffectRadius", makeAny(convertEmuToHmm(aEffectProperties.maGlow.moGlowRad.get())));
+            propertySet->setPropertyValue("GlowEffectColor", makeAny(aEffectProperties.maGlow.moGlowColor.getColor(rGraphicHelper)));
+            propertySet->setPropertyValue("GlowEffectTransparency", makeAny(aEffectProperties.maGlow.moGlowColor.getTransparency()));
+        }
+
+        // Set soft edge effect properties
+        if (aEffectProperties.maSoftEdge.moRad.has())
+        {
+            uno::Reference<beans::XPropertySet> propertySet(mxShape, uno::UNO_QUERY);
+            propertySet->setPropertyValue(
+                "SoftEdgeRadius", makeAny(convertEmuToHmm(aEffectProperties.maSoftEdge.moRad.get())));
         }
     }
 
@@ -1134,7 +1485,23 @@ Reference< XShape > const & Shape::createAndInsert(
     return mxShape;
 }
 
-void Shape::keepDiagramCompatibilityInfo( XmlFilterBase& rFilterBase )
+void Shape::keepDiagramDrawing(XmlFilterBase& rFilterBase, const OUString& rFragmentPath)
+{
+    uno::Sequence<uno::Any> diagramDrawing(2);
+    // drawingValue[0] => dom, drawingValue[1] => Sequence of associated relationships
+
+    sal_Int32 length = maDiagramDoms.getLength();
+    maDiagramDoms.realloc(length + 1);
+
+    diagramDrawing[0] <<= rFilterBase.importFragment(rFragmentPath);
+    diagramDrawing[1] <<= resolveRelationshipsOfTypeFromOfficeDoc(rFilterBase, rFragmentPath, "image");
+
+    beans::PropertyValue* pValue = maDiagramDoms.getArray();
+    pValue[length].Name = "OOXDrawing";
+    pValue[length].Value <<= diagramDrawing;
+}
+
+void Shape::keepDiagramCompatibilityInfo()
 {
     try
     {
@@ -1146,6 +1513,12 @@ void Shape::keepDiagramCompatibilityInfo( XmlFilterBase& rFilterBase )
         if ( !xSetInfo.is() )
             return;
 
+        if (mpDiagramData)
+        {
+            if (SdrObject* pObj = GetSdrObjectFromXShape(mxShape))
+                pObj->SetDiagramData(mpDiagramData);
+        }
+
         const OUString aGrabBagPropName = UNO_NAME_MISC_OBJ_INTEROPGRABBAG;
         if( !xSetInfo->hasPropertyByName( aGrabBagPropName ) )
             return;
@@ -1155,35 +1528,40 @@ void Shape::keepDiagramCompatibilityInfo( XmlFilterBase& rFilterBase )
 
         // We keep the previous items, if present
         if ( aGrabBag.hasElements() )
-        {
-            sal_Int32 length = aGrabBag.getLength();
-            aGrabBag.realloc( length+maDiagramDoms.getLength() );
-
-            for( sal_Int32 i = 0; i < maDiagramDoms.getLength(); ++i )
-                aGrabBag[length+i] = maDiagramDoms[i];
-
-            xSet->setPropertyValue( aGrabBagPropName, Any( aGrabBag ) );
-        } else
+            xSet->setPropertyValue( aGrabBagPropName, Any( comphelper::concatSequences(aGrabBag, maDiagramDoms) ) );
+        else
             xSet->setPropertyValue( aGrabBagPropName, Any( maDiagramDoms ) );
-
-        xSet->setPropertyValue( "MoveProtect", Any( true ) );
-        xSet->setPropertyValue( "SizeProtect", Any( true ) );
-
-        // Replace existing shapes with a new Graphic Object rendered
-        // from them
-        Reference < XShape > xShape( renderDiagramToGraphic( rFilterBase ) );
-        Reference < XShapes > xShapes( mxShape, UNO_QUERY_THROW );
-        while( xShapes->hasElements() )
-            xShapes->remove( Reference < XShape > ( xShapes->getByIndex( 0 ),  UNO_QUERY_THROW ) );
-        xShapes->add( xShape );
     }
-    catch( const Exception& e )
+    catch( const Exception& )
     {
-        SAL_WARN( "oox.drawingml", "Shape::keepDiagramCompatibilityInfo: Exception: " << e.Message );
+        TOOLS_WARN_EXCEPTION( "oox.drawingml", "Shape::keepDiagramCompatibilityInfo" );
     }
 }
 
-Reference < XShape > Shape::renderDiagramToGraphic( XmlFilterBase& rFilterBase )
+void Shape::convertSmartArtToMetafile(XmlFilterBase const & rFilterBase)
+{
+    try
+    {
+        Reference<XPropertySet> xSet(mxShape, UNO_QUERY_THROW);
+
+        xSet->setPropertyValue("MoveProtect", Any(true));
+        xSet->setPropertyValue("SizeProtect", Any(true));
+
+        // Replace existing shapes with a new Graphic Object rendered
+        // from them
+        Reference<XShape> xShape(renderDiagramToGraphic(rFilterBase));
+        Reference<XShapes> xShapes(mxShape, UNO_QUERY_THROW);
+        while (xShapes->hasElements())
+            xShapes->remove(Reference<XShape>(xShapes->getByIndex(0), UNO_QUERY_THROW));
+        xShapes->add(xShape);
+    }
+    catch (const Exception&)
+    {
+        TOOLS_WARN_EXCEPTION("oox.drawingml", "Shape::convertSmartArtToMetafile");
+    }
+}
+
+Reference < XShape > Shape::renderDiagramToGraphic( XmlFilterBase const & rFilterBase )
 {
     Reference< XShape > xShape;
 
@@ -1199,10 +1577,10 @@ Reference < XShape > Shape::renderDiagramToGraphic( XmlFilterBase& rFilterBase )
 
         // Size of the rendering
         awt::Size aActualSize = mxShape->getSize();
-        Size aResolution( Application::GetDefaultDevice()->LogicToPixel( Size( 100, 100 ), MapUnit::MapCM ) );
+        Size aResolution(Application::GetDefaultDevice()->LogicToPixel(Size(100, 100), MapMode(MapUnit::MapCM)));
         double fPixelsPer100thmm = static_cast < double > ( aResolution.Width() ) / 100000.0;
-        awt::Size aSize = awt::Size( static_cast < sal_Int32 > ( ( fPixelsPer100thmm * aActualSize.Width ) + 0.5 ),
-                                     static_cast < sal_Int32 > ( ( fPixelsPer100thmm * aActualSize.Height ) + 0.5 ) );
+        awt::Size aSize( static_cast < sal_Int32 > ( ( fPixelsPer100thmm * aActualSize.Width ) + 0.5 ),
+                         static_cast < sal_Int32 > ( ( fPixelsPer100thmm * aActualSize.Height ) + 0.5 ) );
 
         Sequence< PropertyValue > aFilterData( 4 );
         aFilterData[ 0 ].Name = "PixelWidth";
@@ -1246,9 +1624,9 @@ Reference < XShape > Shape::renderDiagramToGraphic( XmlFilterBase& rFilterBase )
         xPropSet->setPropertyValue(  "SizeProtect", Any( true ) );
         xPropSet->setPropertyValue(  "Name", Any( OUString( "RenderedShapes" ) ) );
     }
-    catch( const Exception& e )
+    catch( const Exception& )
     {
-        SAL_WARN( "oox.drawingml", "Shape::renderDiagramToGraphic: Exception: " << e.Message );
+        TOOLS_WARN_EXCEPTION( "oox.drawingml", "Shape::renderDiagramToGraphic" );
     }
 
     return xShape;
@@ -1288,7 +1666,7 @@ OUString Shape::finalizeServiceName( XmlFilterBase& rFilter, const OUString& rSe
             if( !aGraphicPath.isEmpty() )
             {
                 // Transfer shape's width and height to graphicsfilter (can be used by WMF/EMF)
-                WMF_EXTERNALHEADER aExtHeader;
+                WmfExternal aExtHeader;
                 aExtHeader.mapMode = 8; // MM_ANISOTROPIC
                 aExtHeader.xExt = rShapeRect.Width;
                 aExtHeader.yExt = rShapeRect.Height;
@@ -1353,9 +1731,9 @@ void Shape::finalizeXShape( XmlFilterBase& rFilter, const Reference< XShapes >& 
                     if( !xChartDoc->hasInternalDataProvider() )
                     {
                         Reference< chart2::data::XDataReceiver > xDataRec( xChartDoc, UNO_QUERY );
-                        Reference< chart2::data::XDataSource > xData( xDataRec->getUsedData(), UNO_QUERY );
-                        if( xData->getDataSequences().getLength() <= 0 || !xData->getDataSequences()[0]->getValues().is() ||
-                                xData->getDataSequences()[0]->getValues()->getData().getLength() <= 0 )
+                        Reference< chart2::data::XDataSource > xData = xDataRec->getUsedData();
+                        if( !xData->getDataSequences().hasElements() || !xData->getDataSequences()[0]->getValues().is() ||
+                                !xData->getDataSequences()[0]->getValues()->getData().hasElements() )
                         {
                             rFilter.useInternalChartDataTable( true );
                             rFilter.getChartConverter()->convertFromModel( rFilter, aModel, xChartDoc, xExternalPage, mxShape->getPosition(), mxShape->getSize() );
@@ -1406,26 +1784,27 @@ void Shape::putPropertiesToGrabBag( const Sequence< PropertyValue >& aProperties
     Reference< XPropertySet > xSet( mxShape, UNO_QUERY );
     Reference< XPropertySetInfo > xSetInfo( xSet->getPropertySetInfo() );
     const OUString aGrabBagPropName = UNO_NAME_MISC_OBJ_INTEROPGRABBAG;
-    if( mxShape.is() && xSet.is() && xSetInfo.is() && xSetInfo->hasPropertyByName( aGrabBagPropName ) )
-    {
-        // get existing grab bag
-        Sequence< PropertyValue > aGrabBag;
-        xSet->getPropertyValue( aGrabBagPropName ) >>= aGrabBag;
-        sal_Int32 length = aGrabBag.getLength();
+    if( !(mxShape.is() && xSet.is() && xSetInfo.is() && xSetInfo->hasPropertyByName( aGrabBagPropName )) )
+        return;
 
-        // update grab bag size to contain the new items
-        aGrabBag.realloc( length + aProperties.getLength() );
+    // get existing grab bag
+    Sequence< PropertyValue > aGrabBag;
+    xSet->getPropertyValue( aGrabBagPropName ) >>= aGrabBag;
 
-        // put the new items
-        for( sal_Int32 i=0; i < aProperties.getLength(); ++i )
-        {
-            aGrabBag[length + i].Name = aProperties[i].Name;
-            aGrabBag[length + i].Value = aProperties[i].Value;
-        }
+    std::vector<PropertyValue> aVec;
+    aVec.reserve(aProperties.getLength());
 
-        // put it back to the shape
-        xSet->setPropertyValue( aGrabBagPropName, Any( aGrabBag ) );
-    }
+    // put the new items
+    std::transform(aProperties.begin(), aProperties.end(), std::back_inserter(aVec),
+        [](const PropertyValue& rProp) {
+            PropertyValue aProp;
+            aProp.Name = rProp.Name;
+            aProp.Value = rProp.Value;
+            return aProp;
+        });
+
+    // put it back to the shape
+    xSet->setPropertyValue( aGrabBagPropName, Any( comphelper::concatSequences(aGrabBag, aVec) ) );
 }
 
 FillProperties Shape::getActualFillProperties(const Theme* pTheme, const FillProperties* pParentShapeFillProps) const
@@ -1516,11 +1895,11 @@ uno::Sequence< uno::Sequence< uno::Any > >  Shape::resolveRelationshipsOfTypeFro
         if ( xImageRels )
         {
             xRelListTemp.realloc( xImageRels->size() );
-            for( ::std::map< OUString, core::Relation >::const_iterator aIt = xImageRels->begin(), aEnd = xImageRels->end(); aIt != aEnd; ++aIt )
+            for (auto const& imageRel : *xImageRels)
             {
                 uno::Sequence< uno::Any > diagramRelTuple (3);
                 // [0] => RID, [1] => InputStream [2] => extension
-                OUString sRelId = aIt->second.maId;
+                OUString sRelId = imageRel.second.maId;
 
                 diagramRelTuple[0] <<= sRelId;
                 OUString sTarget = xImageRels->getFragmentPathFromRelId( sRelId );
@@ -1544,6 +1923,12 @@ uno::Sequence< uno::Sequence< uno::Any > >  Shape::resolveRelationshipsOfTypeFro
     return xRelListTemp;
 }
 
-} }
+void Shape::cloneFillProperties()
+{
+    auto pFillProperties = std::make_shared<FillProperties>();
+    pFillProperties->assignUsed(*mpFillPropertiesPtr);
+    mpFillPropertiesPtr = pFillProperties;
+}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

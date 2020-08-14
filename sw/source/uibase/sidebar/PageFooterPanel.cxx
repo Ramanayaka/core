@@ -17,23 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <sal/config.h>
-#include <swtypes.hxx>
 #include <svl/intitem.hxx>
 #include <svl/eitem.hxx>
-#include <editeng/sizeitem.hxx>
-#include <editeng/paperinf.hxx>
-#include <svx/svxids.hrc>
 #include <svx/dlgutil.hxx>
 #include <svx/rulritem.hxx>
+#include <svx/svdtrans.hxx>
 #include "PageFooterPanel.hxx"
-#include <sfx2/sidebar/ControlFactory.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/bindings.hxx>
-#include <sfx2/viewsh.hxx>
-#include <sfx2/objsh.hxx>
-#include "cmdid.h"
+#include <cmdid.h>
 
-namespace sw { namespace sidebar{
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+
+namespace sw::sidebar{
 
 VclPtr<vcl::Window> PageFooterPanel::Create(
     vcl::Window* pParent,
@@ -48,6 +44,12 @@ VclPtr<vcl::Window> PageFooterPanel::Create(
     return VclPtr<PageFooterPanel>::Create(pParent, rxFrame, pBindings);
 }
 
+void PageFooterPanel::SetMarginsAndSpacingFieldUnit()
+{
+    SpacingListBox::Fill(IsInch(meFUnit) ? SpacingType::SPACING_INCH : SpacingType::SPACING_CM, *mxFooterSpacingLB);
+    SpacingListBox::Fill(IsInch(meFUnit) ? SpacingType::MARGINS_INCH : SpacingType::MARGINS_CM, *mxFooterMarginPresetLB);
+}
+
 PageFooterPanel::PageFooterPanel(
     vcl::Window* pParent,
     const ::com::sun::star::uno::Reference< ::com::sun::star::frame::XFrame >& rxFrame,
@@ -55,21 +57,22 @@ PageFooterPanel::PageFooterPanel(
     PanelLayout(pParent, "PageFooterPanel", "modules/swriter/ui/pagefooterpanel.ui", rxFrame),
     mpBindings( pBindings ),
     maHFToggleController(SID_ATTR_PAGE_FOOTER, *pBindings, *this),
+    maMetricController(SID_ATTR_METRIC, *pBindings,*this),
     maFooterLRMarginController(SID_ATTR_PAGE_FOOTER_LRMARGIN, *pBindings, *this),
     maFooterSpacingController(SID_ATTR_PAGE_FOOTER_SPACING, *pBindings, *this),
     maFooterLayoutController(SID_ATTR_PAGE_FOOTER_LAYOUT, *pBindings, *this),
+    meFUnit(GetModuleFieldUnit()),
     aCustomEntry(),
     mpFooterItem( new SfxBoolItem(SID_ATTR_PAGE_FOOTER) ),
     mpFooterLRMarginItem( new SvxLongLRSpaceItem(0, 0, SID_ATTR_PAGE_FOOTER_LRMARGIN)),
     mpFooterSpacingItem( new SvxLongULSpaceItem(0, 0, SID_ATTR_PAGE_FOOTER_SPACING)),
-    mpFooterLayoutItem( new SfxInt16Item(SID_ATTR_PAGE_FOOTER_LAYOUT))
+    mpFooterLayoutItem( new SfxInt16Item(SID_ATTR_PAGE_FOOTER_LAYOUT)),
+    mxFooterToggle(m_xBuilder->weld_check_button("footertoggle")),
+    mxFooterSpacingLB(m_xBuilder->weld_combo_box("spacingpreset")),
+    mxFooterMarginPresetLB(m_xBuilder->weld_combo_box("footermarginpreset")),
+    mxFooterLayoutLB(m_xBuilder->weld_combo_box("samecontentLB")),
+    mxCustomEntry(m_xBuilder->weld_label("customlabel"))
 {
-    get(mpFooterToggle, "footertoggle");
-    get(mpFooterSpacingLB, "spacingpreset");
-    get(mpFooterLayoutLB, "samecontentLB");
-    get(mpFooterMarginPresetLB, "footermarginpreset");
-    get(mpCustomEntry, "customlabel");
-
     Initialize();
 }
 
@@ -80,23 +83,41 @@ PageFooterPanel::~PageFooterPanel()
 
 void PageFooterPanel::dispose()
 {
-    mpFooterToggle.disposeAndClear();
-    mpFooterSpacingLB.disposeAndClear();
-    mpFooterLayoutLB.disposeAndClear();
-    mpFooterMarginPresetLB.disposeAndClear();
-    mpCustomEntry.clear();
+    mxFooterToggle.reset();
+    maMetricController.dispose();
+    mxFooterSpacingLB.reset();
+    mxFooterLayoutLB.reset();
+    mxFooterMarginPresetLB.reset();
+    mxCustomEntry.reset();
 
     PanelLayout::dispose();
 }
 
+FieldUnit PageFooterPanel::GetCurrentUnit(SfxItemState eState, const SfxPoolItem* pState)
+{
+    FieldUnit eUnit;
+
+    if (pState && eState >= SfxItemState::DEFAULT)
+        eUnit = static_cast<FieldUnit>(static_cast<const SfxUInt16Item*>(pState)->GetValue());
+    else
+        eUnit = GetModuleFieldUnit();
+
+    return eUnit;
+}
+
 void PageFooterPanel::Initialize()
 {
-    aCustomEntry = mpCustomEntry->GetText();
-    mpFooterToggle->SetClickHdl( LINK(this, PageFooterPanel, FooterToggleHdl) );
-    mpFooterMarginPresetLB->SetSelectHdl( LINK(this, PageFooterPanel, FooterLRMarginHdl));
-    mpFooterSpacingLB->SetSelectHdl( LINK(this, PageFooterPanel, FooterSpacingHdl));
-    mpFooterLayoutLB->SetSelectHdl( LINK(this, PageFooterPanel, FooterLayoutHdl));
+    SameContentListBox::Fill(*mxFooterLayoutLB);
 
+    SetMarginsAndSpacingFieldUnit();
+
+    aCustomEntry = mxCustomEntry->get_label();
+    mxFooterToggle->connect_toggled( LINK(this, PageFooterPanel, FooterToggleHdl) );
+    mxFooterMarginPresetLB->connect_changed( LINK(this, PageFooterPanel, FooterLRMarginHdl));
+    mxFooterSpacingLB->connect_changed( LINK(this, PageFooterPanel, FooterSpacingHdl));
+    mxFooterLayoutLB->connect_changed( LINK(this, PageFooterPanel, FooterLayoutHdl));
+
+    mpBindings->Invalidate(SID_ATTR_METRIC);
     mpBindings->Invalidate(SID_ATTR_PAGE_FOOTER);
     mpBindings->Invalidate(SID_ATTR_PAGE_FOOTER_LRMARGIN);
     mpBindings->Invalidate(SID_ATTR_PAGE_FOOTER_SPACING);
@@ -105,17 +126,17 @@ void PageFooterPanel::Initialize()
 
 void PageFooterPanel::UpdateFooterCheck()
 {
-    if(mpFooterToggle->IsChecked())
+    if (mxFooterToggle->get_active())
     {
-        mpFooterSpacingLB->Enable();
-        mpFooterLayoutLB->Enable();
-        mpFooterMarginPresetLB->Enable();
+        mxFooterSpacingLB->set_sensitive(true);
+        mxFooterLayoutLB->set_sensitive(true);
+        mxFooterMarginPresetLB->set_sensitive(true);
     }
     else
     {
-        mpFooterSpacingLB->Disable();
-        mpFooterLayoutLB->Disable();
-        mpFooterMarginPresetLB->Disable();
+        mxFooterSpacingLB->set_sensitive(false);
+        mxFooterLayoutLB->set_sensitive(false);
+        mxFooterMarginPresetLB->set_sensitive(false);
     }
 }
 
@@ -123,51 +144,54 @@ void PageFooterPanel::UpdateMarginControl()
 {
     sal_uInt16 nLeft = mpFooterLRMarginItem->GetLeft();
     sal_uInt16 nRight = mpFooterLRMarginItem->GetRight();
-    sal_uInt16 nCount = mpFooterMarginPresetLB->GetEntryCount();
+    sal_uInt16 nCount = mxFooterMarginPresetLB->get_count();
     if(nLeft == nRight)
     {
-        for(sal_uInt16 i = 0; i < nCount; i++)
+        for (sal_uInt16 i = 0; i < nCount; ++i)
         {
-            if(reinterpret_cast<sal_uLong>(mpFooterMarginPresetLB->GetEntryData(i)) == nLeft )
+            if (mxFooterMarginPresetLB->get_id(i).toUInt32() == nLeft)
             {
-                mpFooterMarginPresetLB->SelectEntryPos(i);
-                mpFooterMarginPresetLB->RemoveEntry(aCustomEntry);
+                mxFooterMarginPresetLB->set_active(i);
+                int nCustomEntry = mxFooterMarginPresetLB->find_text(aCustomEntry);
+                if (nCustomEntry != -1)
+                    mxFooterMarginPresetLB->remove(nCustomEntry);
                 return;
             }
         }
     }
-    mpFooterMarginPresetLB->InsertEntry(aCustomEntry);
-    mpFooterMarginPresetLB->SelectEntry(aCustomEntry);
+    mxFooterMarginPresetLB->append_text(aCustomEntry);
+    mxFooterMarginPresetLB->set_active_text(aCustomEntry);
 }
 
 void PageFooterPanel::UpdateSpacingControl()
 {
     sal_uInt16 nBottom = mpFooterSpacingItem->GetUpper();
-    sal_uInt16 nCount = mpFooterSpacingLB->GetEntryCount();
-    for(sal_uInt16 i = 0; i < nCount; i++)
+    sal_uInt16 nCount = mxFooterSpacingLB->get_count();
+    for (sal_uInt16 i = 0; i < nCount; ++i)
     {
-        if(reinterpret_cast<sal_uLong>(mpFooterSpacingLB->GetEntryData(i)) == nBottom )
+        if (mxFooterSpacingLB->get_id(i).toUInt32() == nBottom)
         {
-            mpFooterSpacingLB->SelectEntryPos(i);
-            mpFooterSpacingLB->RemoveEntry(aCustomEntry);
+            mxFooterSpacingLB->set_active(i);
+            int nCustomEntry = mxFooterSpacingLB->find_text(aCustomEntry);
+            if (nCustomEntry != -1)
+                mxFooterSpacingLB->remove(nCustomEntry);
             return;
         }
     }
-    mpFooterSpacingLB->InsertEntry(aCustomEntry);
-    mpFooterSpacingLB->SelectEntry(aCustomEntry);
+    mxFooterSpacingLB->append_text(aCustomEntry);
+    mxFooterSpacingLB->set_active_text(aCustomEntry);
 }
 
 void PageFooterPanel::UpdateLayoutControl()
 {
     sal_uInt16 nLayout = mpFooterLayoutItem->GetValue();
-    mpFooterLayoutLB->SelectEntryPos( nLayout );
+    mxFooterLayoutLB->set_active(nLayout);
 }
 
 void PageFooterPanel::NotifyItemUpdate(
     const sal_uInt16 nSid,
     const SfxItemState eState,
-    const SfxPoolItem* pState,
-    const bool)
+    const SfxPoolItem* pState)
 {
     if (IsDisposed())
         return;
@@ -177,10 +201,10 @@ void PageFooterPanel::NotifyItemUpdate(
         case SID_ATTR_PAGE_FOOTER:
         {
             if(eState >= SfxItemState::DEFAULT &&
-                pState && dynamic_cast<const SfxBoolItem*>( pState) !=  nullptr )
+                dynamic_cast<const SfxBoolItem*>( pState) )
             {
                 mpFooterItem.reset( static_cast<SfxBoolItem*>(pState->Clone()) );
-                mpFooterToggle->Check(mpFooterItem->GetValue());
+                mxFooterToggle->set_active(mpFooterItem->GetValue());
                 UpdateFooterCheck();
             }
         }
@@ -188,7 +212,7 @@ void PageFooterPanel::NotifyItemUpdate(
         case SID_ATTR_PAGE_FOOTER_LRMARGIN:
         {
             if(eState >= SfxItemState::DEFAULT &&
-                pState && dynamic_cast<const SvxLongLRSpaceItem*>( pState) !=  nullptr )
+                dynamic_cast<const SvxLongLRSpaceItem*>( pState) )
             {
                 mpFooterLRMarginItem.reset( static_cast<SvxLongLRSpaceItem*>(pState->Clone()) );
                 UpdateMarginControl();
@@ -198,7 +222,7 @@ void PageFooterPanel::NotifyItemUpdate(
         case SID_ATTR_PAGE_FOOTER_SPACING:
         {
             if(eState >= SfxItemState::DEFAULT &&
-                pState && dynamic_cast<const SvxLongULSpaceItem*>( pState) !=  nullptr )
+                dynamic_cast<const SvxLongULSpaceItem*>( pState) )
             {
                 mpFooterSpacingItem.reset(static_cast<SvxLongULSpaceItem*>(pState->Clone()) );
                 UpdateSpacingControl();
@@ -208,10 +232,22 @@ void PageFooterPanel::NotifyItemUpdate(
         case SID_ATTR_PAGE_FOOTER_LAYOUT:
         {
             if(eState >= SfxItemState::DEFAULT &&
-                pState && dynamic_cast<const SfxInt16Item*>( pState) !=  nullptr )
+                dynamic_cast<const SfxInt16Item*>( pState) )
             {
                 mpFooterLayoutItem.reset(static_cast<SfxInt16Item*>(pState->Clone()) );
                 UpdateLayoutControl();
+            }
+        }
+        break;
+        case SID_ATTR_METRIC:
+        {
+            FieldUnit eFUnit = GetCurrentUnit(eState, pState);
+            if (meFUnit != eFUnit)
+            {
+                meFUnit = eFUnit;
+                SetMarginsAndSpacingFieldUnit();
+                UpdateSpacingControl();
+                UpdateMarginControl();
             }
         }
         break;
@@ -220,40 +256,40 @@ void PageFooterPanel::NotifyItemUpdate(
     }
 }
 
-IMPL_LINK_NOARG( PageFooterPanel, FooterToggleHdl, Button*, void )
+IMPL_LINK_NOARG( PageFooterPanel, FooterToggleHdl, weld::ToggleButton&, void )
 {
-    bool IsChecked = mpFooterToggle->IsChecked();
+    bool IsChecked = mxFooterToggle->get_active();
     mpFooterItem->SetValue(IsChecked);
     GetBindings()->GetDispatcher()->ExecuteList( SID_ATTR_PAGE_FOOTER, SfxCallMode::RECORD, { mpFooterItem.get() } );
     UpdateFooterCheck();
 }
 
-IMPL_LINK_NOARG( PageFooterPanel, FooterLRMarginHdl, ListBox&, void )
+IMPL_LINK_NOARG( PageFooterPanel, FooterLRMarginHdl, weld::ComboBox&, void )
 {
-    sal_uInt16 nVal = (sal_uInt16)reinterpret_cast<sal_uLong>(mpFooterMarginPresetLB->GetSelectEntryData());
+    sal_uInt16 nVal = mxFooterMarginPresetLB->get_active_id().toUInt32();
     mpFooterLRMarginItem->SetLeft(nVal);
     mpFooterLRMarginItem->SetRight(nVal);
     GetBindings()->GetDispatcher()->ExecuteList( SID_ATTR_PAGE_FOOTER_LRMARGIN,
                                                  SfxCallMode::RECORD, { mpFooterLRMarginItem.get() } );
 }
 
-IMPL_LINK_NOARG( PageFooterPanel, FooterSpacingHdl, ListBox&, void )
+IMPL_LINK_NOARG( PageFooterPanel, FooterSpacingHdl, weld::ComboBox&, void )
 {
-    sal_uInt16 nVal = (sal_uInt16)reinterpret_cast<sal_uLong>(mpFooterSpacingLB->GetSelectEntryData());
+    sal_uInt16 nVal = mxFooterSpacingLB->get_active_id().toUInt32();
     mpFooterSpacingItem->SetUpper(nVal);
     GetBindings()->GetDispatcher()->ExecuteList( SID_ATTR_PAGE_FOOTER_SPACING,
                                                  SfxCallMode::RECORD, { mpFooterSpacingItem.get() } );
 
 }
-IMPL_LINK_NOARG( PageFooterPanel, FooterLayoutHdl, ListBox&, void )
+IMPL_LINK_NOARG( PageFooterPanel, FooterLayoutHdl, weld::ComboBox&, void )
 {
-    sal_uInt16 nVal = mpFooterLayoutLB->GetSelectEntryPos();
+    sal_uInt16 nVal = mxFooterLayoutLB->get_active();
     mpFooterLayoutItem->SetValue(nVal);
     GetBindings()->GetDispatcher()->ExecuteList( SID_ATTR_PAGE_FOOTER_LAYOUT,
                                                  SfxCallMode::RECORD, { mpFooterLayoutItem.get() } );
 }
 
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

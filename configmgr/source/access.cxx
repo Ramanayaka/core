@@ -26,7 +26,6 @@
 #include <com/sun/star/beans/Property.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/PropertyChangeEvent.hpp>
-#include <com/sun/star/beans/PropertyVetoException.hpp>
 #include <com/sun/star/beans/UnknownPropertyException.hpp>
 #include <com/sun/star/beans/XExactName.hpp>
 #include <com/sun/star/beans/XHierarchicalPropertySet.hpp>
@@ -53,8 +52,6 @@
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/EventObject.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/lang/NoSupportException.hpp>
-#include <com/sun/star/lang/WrappedTargetException.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -66,11 +63,12 @@
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Type.hxx>
-#include <com/sun/star/uno/TypeClass.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/uno/XWeak.hpp>
 #include <com/sun/star/util/ElementChange.hpp>
 #include <comphelper/sequence.hxx>
+#include <comphelper/lok.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <cppu/unotype.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -80,7 +78,6 @@
 #include <rtl/character.hxx>
 #include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <sal/log.hxx>
 #include <sal/types.h>
@@ -113,8 +110,8 @@ bool isValidName(OUString const & name, bool setMember) {
     for (sal_Int32 i = 0; i != name.getLength();) {
         sal_uInt32 c = name.iterateCodePoints(&i);
         if ((c < 0x20 && !(c == 0x09 || c == 0x0A || c == 0x0D))
-            || rtl::isHighSurrogate(c) || rtl::isLowSurrogate(c) || c == 0xFFFE
-            || c == 0xFFFF || (!setMember && c == '/'))
+            || rtl::isSurrogate(c) || c == 0xFFFE || c == 0xFFFF
+            || (!setMember && c == '/'))
         {
             return false;
         }
@@ -154,10 +151,9 @@ void Access::markChildAsModified(rtl::Reference< ChildAccess > const & child) {
             break;
         }
         assert(dynamic_cast< ChildAccess * >(p.get()) != nullptr);
-        parent->modifiedChildren_.insert(
-            ModifiedChildren::value_type(
+        parent->modifiedChildren_.emplace(
                 p->getNameInternal(),
-                ModifiedChild(static_cast< ChildAccess * >(p.get()), false)));
+                ModifiedChild(static_cast< ChildAccess * >(p.get()), false));
         p = parent;
     }
 }
@@ -236,7 +232,7 @@ OUString Access::getImplementationName()
     assert(thisIs(IS_ANY));
     osl::MutexGuard g(*lock_);
     checkLocalizedPropertyAccess();
-    return OUString("org.openoffice-configmgr::Access");
+    return "org.openoffice-configmgr::Access";
 }
 
 sal_Bool Access::supportsService(OUString const & ServiceName)
@@ -250,25 +246,24 @@ css::uno::Sequence< OUString > Access::getSupportedServiceNames()
     osl::MutexGuard g(*lock_);
     checkLocalizedPropertyAccess();
     std::vector<OUString> services;
-    services.push_back("com.sun.star.configuration.ConfigurationAccess");
+    services.emplace_back("com.sun.star.configuration.ConfigurationAccess");
     if (getRootAccess()->isUpdate()) {
-        services.push_back(
-            "com.sun.star.configuration.ConfigurationUpdateAccess");
+        services.emplace_back("com.sun.star.configuration.ConfigurationUpdateAccess");
     }
-    services.push_back("com.sun.star.configuration.HierarchyAccess");
-    services.push_back("com.sun.star.configuration.HierarchyElement");
+    services.emplace_back("com.sun.star.configuration.HierarchyAccess");
+    services.emplace_back("com.sun.star.configuration.HierarchyElement");
     if (getNode()->kind() == Node::KIND_GROUP) {
-        services.push_back("com.sun.star.configuration.GroupAccess");
-        services.push_back("com.sun.star.configuration.PropertyHierarchy");
+        services.emplace_back("com.sun.star.configuration.GroupAccess");
+        services.emplace_back("com.sun.star.configuration.PropertyHierarchy");
         if (getRootAccess()->isUpdate()) {
-            services.push_back("com.sun.star.configuration.GroupUpdate");
+            services.emplace_back("com.sun.star.configuration.GroupUpdate");
         }
     } else {
-        services.push_back("com.sun.star.configuration.SetAccess");
-        services.push_back("com.sun.star.configuration.SimpleSetAccess");
+        services.emplace_back("com.sun.star.configuration.SetAccess");
+        services.emplace_back("com.sun.star.configuration.SimpleSetAccess");
         if (getRootAccess()->isUpdate()) {
-            services.push_back("com.sun.star.configuration.SetUpdate");
-            services.push_back("com.sun.star.configuration.SimpleSetUpdate");
+            services.emplace_back("com.sun.star.configuration.SetUpdate");
+            services.emplace_back("com.sun.star.configuration.SimpleSetUpdate");
         }
     }
     addSupportedServiceNames(&services);
@@ -415,11 +410,10 @@ css::uno::Sequence< OUString > Access::getElementNames()
     checkLocalizedPropertyAccess();
     std::vector< rtl::Reference< ChildAccess > > children(getAllChildren());
     std::vector<OUString> names;
-    for (std::vector< rtl::Reference< ChildAccess > >::iterator i(
-             children.begin());
-         i != children.end(); ++i)
+    names.reserve(children.size());
+    for (auto const& child : children)
     {
-        names.push_back((*i)->getNameInternal());
+        names.push_back(child->getNameInternal());
     }
     return comphelper::containerToSequence(names);
 }
@@ -543,11 +537,10 @@ css::uno::Sequence< css::beans::Property > Access::getProperties()
     osl::MutexGuard g(*lock_);
     std::vector< rtl::Reference< ChildAccess > > children(getAllChildren());
     std::vector< css::beans::Property > properties;
-    for (std::vector< rtl::Reference< ChildAccess > >::iterator i(
-             children.begin());
-         i != children.end(); ++i)
+    properties.reserve(children.size());
+    for (auto const& child : children)
     {
-        properties.push_back((*i)->asProperty());
+        properties.push_back(child->asProperty());
     }
     return comphelper::containerToSequence(properties);
 }
@@ -669,7 +662,7 @@ void Access::setName(OUString const & aName)
                     }
                 }
             }
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case Node::KIND_LOCALIZED_PROPERTY:
             // renaming a property could only work for an extension property,
             // but a localized property is never an extension property
@@ -1123,7 +1116,7 @@ void Access::insertByName(
                         aName, static_cast<cppu::OWeakObject *>(this), 0);
                 }
                 checkValue(aElement, TYPE_ANY, true);
-                rtl::Reference< ChildAccess > child(
+                rtl::Reference child(
                     new ChildAccess(
                         components_, getRootAccess(), this, aName,
                         new PropertyNode(
@@ -1210,7 +1203,7 @@ css::uno::Reference< css::uno::XInterface > Access::createInstanceWithArguments(
     css::uno::Sequence< css::uno::Any > const & aArguments)
 {
     assert(thisIs(IS_SET|IS_UPDATE));
-    if (aArguments.getLength() != 0) {
+    if (aArguments.hasElements()) {
         throw css::uno::Exception(
             ("configuration SimpleSetUpdate createInstanceWithArguments"
              " must not specify any arguments"),
@@ -1228,50 +1221,42 @@ Access::~Access() {}
 
 void Access::initDisposeBroadcaster(Broadcaster * broadcaster) {
     assert(broadcaster != nullptr);
-    for (DisposeListeners::iterator i(disposeListeners_.begin());
-         i != disposeListeners_.end(); ++i)
+    for (auto const& disposeListener : disposeListeners_)
     {
         broadcaster->addDisposeNotification(
-            *i,
+            disposeListener,
             css::lang::EventObject(static_cast< cppu::OWeakObject * >(this)));
     }
-    for (ContainerListeners::iterator i(containerListeners_.begin());
-         i != containerListeners_.end(); ++i)
+    for (auto const& containerListener : containerListeners_)
     {
         broadcaster->addDisposeNotification(
-            i->get(),
+            containerListener.get(),
             css::lang::EventObject(static_cast< cppu::OWeakObject * >(this)));
     }
-    for (PropertyChangeListeners::iterator i(propertyChangeListeners_.begin());
-         i != propertyChangeListeners_.end(); ++i)
+    for (auto const& propertyChangeListener : propertyChangeListeners_)
     {
-        for (PropertyChangeListenersElement::iterator j(i->second.begin());
-             j != i->second.end(); ++j)
+        for (auto const& propertyChangeListenerElement : propertyChangeListener.second)
         {
             broadcaster->addDisposeNotification(
-                j->get(),
+                propertyChangeListenerElement.get(),
                 css::lang::EventObject(
                     static_cast< cppu::OWeakObject * >(this)));
         }
     }
-    for (VetoableChangeListeners::iterator i(vetoableChangeListeners_.begin());
-         i != vetoableChangeListeners_.end(); ++i)
+    for (auto const& vetoableChangeListener : vetoableChangeListeners_)
     {
-        for (VetoableChangeListenersElement::iterator j(i->second.begin());
-             j != i->second.end(); ++j)
+        for (auto const& vetoableChangeListenerElement : vetoableChangeListener.second)
         {
             broadcaster->addDisposeNotification(
-                j->get(),
+                vetoableChangeListenerElement.get(),
                 css::lang::EventObject(
                     static_cast< cppu::OWeakObject * >(this)));
         }
     }
-    for (PropertiesChangeListeners::iterator i(
-             propertiesChangeListeners_.begin());
-         i != propertiesChangeListeners_.end(); ++i)
+    for (auto const& propertiesChangeListener : propertiesChangeListeners_)
     {
         broadcaster->addDisposeNotification(
-            i->get(),
+            propertiesChangeListener.get(),
             css::lang::EventObject(static_cast< cppu::OWeakObject * >(this)));
     }
     //TODO: iterate over children w/ listeners (incl. unmodified ones):
@@ -1392,49 +1377,49 @@ rtl::Reference< ChildAccess > Access::getChild(OUString const & name) {
             locale.isEmpty(), "configmgr",
             ("access best-matching localized property value via \"*<locale>\""
              " with empty <locale>; falling back to defaults"));
+
+        // Since the locale given to us is the one used at initialization,
+        // here we override it with the actual current-user's language to
+        // support per-view localization in LOK.
+        if (comphelper::LibreOfficeKit::isActive())
+            locale = comphelper::LibreOfficeKit::getLanguageTag().getBcp47();
+
         if (!locale.isEmpty()) {
-            // Find best match using an adaption of RFC 4647 lookup matching
-            // rules, removing "-" or "_" delimited segments from the end:
-            for (;;) {
-                rtl::Reference< ChildAccess > child(getChild(locale));
-                if (child.is()) {
+            // Find the best match using the LanguageTag fallback mechanism
+            std::vector<OUString> aFallbacks = LanguageTag(locale).getFallbackStrings(true);
+            for (const OUString& rFallback : aFallbacks)
+            {
+                rtl::Reference<ChildAccess> child(getChild(rFallback));
+                if (child.is())
                     return child;
-                }
-                sal_Int32 i = locale.getLength() - 1;
-                while (i > 0 && locale[i] != '-' && locale[i] != '_') {
-                    --i;
-                }
-                if (i <= 0) {
-                    break;
-                }
-                locale = locale.copy(0, i);
             }
+
             // As a workaround for broken xcu data that does not use shortest
             // xml:lang attributes, look for the first entry with the same first
             // segment as the requested language tag before falling back to
             // defaults (see fdo#33638):
+            assert(aFallbacks.size() > 0);
+            locale = aFallbacks[aFallbacks.size() - 1];
             assert(
                 !locale.isEmpty() && locale.indexOf('-') == -1 &&
                 locale.indexOf('_') == -1);
+
             std::vector< rtl::Reference< ChildAccess > > children(
                 getAllChildren());
-            for (std::vector< rtl::Reference< ChildAccess > >::iterator i(
-                     children.begin());
-                 i != children.end(); ++i)
+            for (auto const& child : children)
             {
-                OUString name2((*i)->getNameInternal());
+                OUString name2(child->getNameInternal());
                 if (name2.startsWith(locale) &&
                     (name2.getLength() == locale.getLength() ||
                      name2[locale.getLength()] == '-' ||
                      name2[locale.getLength()] == '_'))
                 {
-                    return *i;
+                    return child;
                 }
             }
         }
-        // Defaults are the "en-US" locale, the "en" locale, the empty string
-        // locale, the first child (if any), or a null ChildAccess, in that
-        // order:
+        // Defaults are the "en-US" locale, the "en" locale, the empty string locale, the first child (if
+        // any, and if the property is non-nillable), or a null ChildAccess, in that order:
         rtl::Reference< ChildAccess > child(getChild("en-US"));
         if (child.is()) {
             return child;
@@ -1447,9 +1432,11 @@ rtl::Reference< ChildAccess > Access::getChild(OUString const & name) {
         if (child.is()) {
             return child;
         }
-        std::vector< rtl::Reference< ChildAccess > > children(getAllChildren());
-        if (!children.empty()) {
-            return children.front();
+        if (!static_cast<LocalizedPropertyNode *>(getNode().get())->isNillable()) {
+            std::vector< rtl::Reference< ChildAccess > > children(getAllChildren());
+            if (!children.empty()) {
+                return children.front();
+            }
         }
         return rtl::Reference< ChildAccess >();
     }
@@ -1461,9 +1448,10 @@ rtl::Reference< ChildAccess > Access::getChild(OUString const & name) {
 std::vector< rtl::Reference< ChildAccess > > Access::getAllChildren() {
     std::vector< rtl::Reference< ChildAccess > > vec;
     NodeMap const & members = getNode()->getMembers();
-    for (NodeMap::const_iterator i(members.begin()); i != members.end(); ++i) {
-        if (modifiedChildren_.find(i->first) == modifiedChildren_.end()) {
-            vec.push_back(getUnmodifiedChild(i->first));
+    for (auto const& member : members)
+    {
+        if (modifiedChildren_.find(member.first) == modifiedChildren_.end()) {
+            vec.push_back(getUnmodifiedChild(member.first));
             assert(vec.back().is());
         }
     }
@@ -1520,7 +1508,7 @@ void Access::insertLocalizedValueChild(
     LocalizedPropertyNode * locprop = static_cast< LocalizedPropertyNode * >(
         getNode().get());
     checkValue(value, locprop->getStaticType(), locprop->isNillable());
-    rtl::Reference< ChildAccess > child(
+    rtl::Reference child(
         new ChildAccess(
             components_, getRootAccess(), this, name,
             new LocalizedValueNode(Data::NO_LAYER, value)));
@@ -1619,13 +1607,11 @@ void Access::initBroadcasterAndChanges(
                     } else {
                         //TODO: filter child mods that are irrelevant for
                         // locale:
-                        for (ContainerListeners::iterator j(
-                                 containerListeners_.begin());
-                             j != containerListeners_.end(); ++j)
+                        for (auto const& containerListener : containerListeners_)
                         {
                             broadcaster->
                                 addContainerElementReplacedNotification(
-                                    *j,
+                                    containerListener,
                                     css::container::ContainerEvent(
                                         static_cast< cppu::OWeakObject * >(
                                             this),
@@ -1636,12 +1622,10 @@ void Access::initBroadcasterAndChanges(
                         PropertyChangeListeners::iterator j(
                             propertyChangeListeners_.find(i.first));
                         if (j != propertyChangeListeners_.end()) {
-                            for (PropertyChangeListenersElement::iterator k(
-                                     j->second.begin());
-                                 k != j->second.end(); ++k)
+                            for (auto const& propertyChangeListenerElement : j->second)
                             {
                                 broadcaster->addPropertyChangeNotification(
-                                    *k,
+                                    propertyChangeListenerElement,
                                     css::beans::PropertyChangeEvent(
                                         static_cast< cppu::OWeakObject * >(
                                             this),
@@ -1651,12 +1635,10 @@ void Access::initBroadcasterAndChanges(
                         }
                         j = propertyChangeListeners_.find("");
                         if (j != propertyChangeListeners_.end()) {
-                            for (PropertyChangeListenersElement::iterator k(
-                                     j->second.begin());
-                                 k != j->second.end(); ++k)
+                            for (auto const& propertyChangeListenerElement : j->second)
                             {
                                 broadcaster->addPropertyChangeNotification(
-                                    *k,
+                                    propertyChangeListenerElement,
                                     css::beans::PropertyChangeEvent(
                                         static_cast< cppu::OWeakObject * >(
                                             this),
@@ -1673,11 +1655,10 @@ void Access::initBroadcasterAndChanges(
                                 //TODO: non-void Element, ReplacedElement
                         }
                         if (collectPropChanges) {
-                            propChanges.push_back(
-                                css::beans::PropertyChangeEvent(
+                            propChanges.emplace_back(
                                     static_cast< cppu::OWeakObject * >(this),
                                     i.first, false, -1, css::uno::Any(),
-                                    css::uno::Any()));
+                                    css::uno::Any());
                         }
                     }
                 }
@@ -1685,12 +1666,10 @@ void Access::initBroadcasterAndChanges(
                 break;
             case Node::KIND_LOCALIZED_VALUE:
                 assert(Components::allLocales(getRootAccess()->getLocale()));
-                for (ContainerListeners::iterator j(
-                         containerListeners_.begin());
-                     j != containerListeners_.end(); ++j)
+                for (auto const& containerListener : containerListeners_)
                 {
                     broadcaster->addContainerElementReplacedNotification(
-                        *j,
+                        containerListener,
                         css::container::ContainerEvent(
                             static_cast< cppu::OWeakObject * >(this),
                             css::uno::Any(i.first), child->asValue(),
@@ -1709,12 +1688,10 @@ void Access::initBroadcasterAndChanges(
                 break;
             case Node::KIND_PROPERTY:
                 {
-                    for (ContainerListeners::iterator j(
-                             containerListeners_.begin());
-                         j != containerListeners_.end(); ++j)
+                    for (auto const& containerListener : containerListeners_)
                     {
                         broadcaster->addContainerElementReplacedNotification(
-                            *j,
+                            containerListener,
                             css::container::ContainerEvent(
                                 static_cast< cppu::OWeakObject * >(this),
                                 css::uno::Any(i.first), child->asValue(),
@@ -1725,12 +1702,10 @@ void Access::initBroadcasterAndChanges(
                     PropertyChangeListeners::iterator j(
                         propertyChangeListeners_.find(i.first));
                     if (j != propertyChangeListeners_.end()) {
-                        for (PropertyChangeListenersElement::iterator k(
-                                 j->second.begin());
-                             k != j->second.end(); ++k)
+                        for (auto const& propertyChangeListenerElement : j->second)
                         {
                             broadcaster->addPropertyChangeNotification(
-                                *k,
+                                propertyChangeListenerElement,
                                 css::beans::PropertyChangeEvent(
                                     static_cast< cppu::OWeakObject * >(this),
                                     i.first, false, -1, css::uno::Any(),
@@ -1739,12 +1714,10 @@ void Access::initBroadcasterAndChanges(
                     }
                     j = propertyChangeListeners_.find("");
                     if (j != propertyChangeListeners_.end()) {
-                        for (PropertyChangeListenersElement::iterator k(
-                                 j->second.begin());
-                             k != j->second.end(); ++k)
+                        for (auto const& propertyChangeListenerElement : j->second)
                         {
                             broadcaster->addPropertyChangeNotification(
-                                *k,
+                                propertyChangeListenerElement,
                                 css::beans::PropertyChangeEvent(
                                     static_cast< cppu::OWeakObject * >(this),
                                     i.first, false, -1, css::uno::Any(),
@@ -1760,11 +1733,10 @@ void Access::initBroadcasterAndChanges(
                             //TODO: non-void ReplacedElement
                     }
                     if (collectPropChanges) {
-                        propChanges.push_back(
-                            css::beans::PropertyChangeEvent(
+                        propChanges.emplace_back(
                                 static_cast< cppu::OWeakObject * >(this),
                                 i.first, false, -1, css::uno::Any(),
-                                css::uno::Any()));
+                                css::uno::Any());
                     }
                 }
                 break;
@@ -1772,13 +1744,11 @@ void Access::initBroadcasterAndChanges(
             case Node::KIND_SET:
                 if (i.second.children.empty()) {
                     if (!child->getNode()->getTemplateName().isEmpty()) {
-                        for (ContainerListeners::iterator j(
-                                 containerListeners_.begin());
-                             j != containerListeners_.end(); ++j)
+                        for (auto const& containerListener : containerListeners_)
                         {
                             broadcaster->
                                 addContainerElementInsertedNotification(
-                                    *j,
+                                    containerListener,
                                     css::container::ContainerEvent(
                                         static_cast< cppu::OWeakObject * >(
                                             this),
@@ -1812,12 +1782,10 @@ void Access::initBroadcasterAndChanges(
             case Node::KIND_LOCALIZED_PROPERTY:
                 // Removed localized property value:
                 assert(Components::allLocales(getRootAccess()->getLocale()));
-                for (ContainerListeners::iterator j(
-                         containerListeners_.begin());
-                     j != containerListeners_.end(); ++j)
+                for (auto const& containerListener : containerListeners_)
                 {
                     broadcaster->addContainerElementRemovedNotification(
-                        *j,
+                        containerListener,
                         css::container::ContainerEvent(
                             static_cast< cppu::OWeakObject * >(this),
                             css::uno::Any(i.first), css::uno::Any(),
@@ -1841,12 +1809,10 @@ void Access::initBroadcasterAndChanges(
             case Node::KIND_GROUP:
                 {
                     // Removed (non-localized) extension property:
-                    for (ContainerListeners::iterator j(
-                             containerListeners_.begin());
-                         j != containerListeners_.end(); ++j)
+                    for (auto const& containerListener : containerListeners_)
                     {
                         broadcaster->addContainerElementRemovedNotification(
-                            *j,
+                            containerListener,
                             css::container::ContainerEvent(
                                 static_cast< cppu::OWeakObject * >(this),
                                 css::uno::Any(i.first), css::uno::Any(),
@@ -1856,12 +1822,10 @@ void Access::initBroadcasterAndChanges(
                     PropertyChangeListeners::iterator j(
                         propertyChangeListeners_.find(i.first));
                     if (j != propertyChangeListeners_.end()) {
-                        for (PropertyChangeListenersElement::iterator k(
-                                 j->second.begin());
-                             k != j->second.end(); ++k)
+                        for (auto const& propertyChangeListenerElement : j->second)
                         {
                             broadcaster->addPropertyChangeNotification(
-                                *k,
+                                propertyChangeListenerElement,
                                 css::beans::PropertyChangeEvent(
                                     static_cast< cppu::OWeakObject * >(this),
                                     i.first, false, -1, css::uno::Any(),
@@ -1870,12 +1834,10 @@ void Access::initBroadcasterAndChanges(
                     }
                     j = propertyChangeListeners_.find("");
                     if (j != propertyChangeListeners_.end()) {
-                        for (PropertyChangeListenersElement::iterator k(
-                                 j->second.begin());
-                             k != j->second.end(); ++k)
+                        for (auto const& propertyChangeListenerElement : j->second)
                         {
                             broadcaster->addPropertyChangeNotification(
-                                *k,
+                                propertyChangeListenerElement,
                                 css::beans::PropertyChangeEvent(
                                     static_cast< cppu::OWeakObject * >(this),
                                     i.first, false, -1, css::uno::Any(),
@@ -1896,23 +1858,20 @@ void Access::initBroadcasterAndChanges(
                             //TODO: non-void ReplacedElement
                     }
                     if (collectPropChanges) {
-                        propChanges.push_back(
-                            css::beans::PropertyChangeEvent(
+                        propChanges.emplace_back(
                                 static_cast< cppu::OWeakObject * >(this),
                                 i.first, false, -1, css::uno::Any(),
-                                css::uno::Any()));
+                                css::uno::Any());
                     }
                 }
                 break;
             case Node::KIND_SET:
                 // Removed set member:
                 if (i.second.children.empty()) {
-                    for (ContainerListeners::iterator j(
-                             containerListeners_.begin());
-                         j != containerListeners_.end(); ++j)
+                    for (auto const& containerListener : containerListeners_)
                     {
                         broadcaster->addContainerElementRemovedNotification(
-                            *j,
+                            containerListener,
                             css::container::ContainerEvent(
                                 static_cast< cppu::OWeakObject * >(this),
                                 css::uno::Any(i.first),
@@ -1944,11 +1903,9 @@ void Access::initBroadcasterAndChanges(
     if (!propChanges.empty()) {
         css::uno::Sequence< css::beans::PropertyChangeEvent > seq(
             comphelper::containerToSequence(propChanges));
-        for (PropertiesChangeListeners::iterator i(
-                 propertiesChangeListeners_.begin());
-             i != propertiesChangeListeners_.end(); ++i)
+        for (auto const& propertyChangeListener : propertiesChangeListeners_)
         {
-            broadcaster->addPropertiesChangeNotification(*i, seq);
+            broadcaster->addPropertiesChangeNotification(propertyChangeListener, seq);
         }
     }
 }
@@ -1975,7 +1932,7 @@ rtl::Reference< ChildAccess > Access::getModifiedChild(
 rtl::Reference< ChildAccess > Access::createUnmodifiedChild(
                 const OUString &name, const rtl::Reference< Node > &node)
 {
-    rtl::Reference< ChildAccess > child(
+    rtl::Reference child(
         new ChildAccess(components_, getRootAccess(), this, name, node));
     cachedChildren_[name] = child.get();
     return child;
@@ -2013,7 +1970,8 @@ rtl::Reference< ChildAccess > Access::getSubChild(OUString const & path) {
             return rtl::Reference< ChildAccess >();
         }
         std::vector<OUString> abs(getAbsolutePath());
-        for (auto j(abs.begin()); j != abs.end(); ++j) {
+        for (auto const& elem : abs)
+        {
             OUString name1;
             bool setElement1;
             OUString templateName1;
@@ -2025,7 +1983,7 @@ rtl::Reference< ChildAccess > Access::getSubChild(OUString const & path) {
             OUString name2;
             bool setElement2;
             OUString templateName2;
-            Data::parseSegment(*j, 0, &name2, &setElement2, &templateName2);
+            Data::parseSegment(elem, 0, &name2, &setElement2, &templateName2);
             if (name1 != name2 || setElement1 != setElement2 ||
                 (setElement1 &&
                  !Data::equalTemplateNames(templateName1, templateName2)))

@@ -10,8 +10,6 @@
 #define ZEROCONF_SERVICE
 
 #include <string>
-#include <stdio.h>
-#include <stdlib.h>
 
 /**
 * The port used by LO's custom remote server discovery protocol.
@@ -20,8 +18,6 @@
 #define BUFFER_SIZE 200
 
 #define kREG_TYPE "_impressremote._tcp"
-
-#define CHARSET RTL_TEXTENCODING_UTF8
 
 struct sockaddr_in;
 

@@ -20,8 +20,9 @@
 #include <retrieveinputstream.hxx>
 #include <unotools/mediadescriptor.hxx>
 #include <com/sun/star/io/XStream.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 
-/* class for a thread to retrieve an input stream given by an URL
+/* class for a thread to retrieve an input stream given by a URL
 
     #i73788#
 */

@@ -18,9 +18,11 @@
  */
 
 #include <DocumentListItemsManager.hxx>
-#include <SwNodeNum.hxx>
-#include <ndtxt.hxx>
 
+#include <SwNodeNum.hxx>
+#include <txtfrm.hxx>
+#include <ndtxt.hxx>
+#include <osl/diagnose.h>
 
 namespace sw
 {
@@ -43,13 +45,9 @@ void DocumentListItemsManager::addListItem( const SwNodeNum& rNodeNum )
     }
 
     const bool bAlreadyInserted(
-            mpListItemsList->find( &rNodeNum ) != mpListItemsList->end() );
-    OSL_ENSURE( !bAlreadyInserted,
+            mpListItemsList->insert( &rNodeNum ).second );
+    OSL_ENSURE( bAlreadyInserted,
             "<DocumentListItemsManager::addListItem(..)> - <SwNodeNum> instance already registered as numbered item!" );
-    if ( !bAlreadyInserted )
-    {
-        mpListItemsList->insert( &rNodeNum );
-    }
 }
 
 void DocumentListItemsManager::removeListItem( const SwNodeNum& rNodeNum )
@@ -66,12 +64,19 @@ void DocumentListItemsManager::removeListItem( const SwNodeNum& rNodeNum )
     }
 }
 
-OUString DocumentListItemsManager::getListItemText( const SwNodeNum& rNodeNum ) const
+OUString DocumentListItemsManager::getListItemText(const SwNodeNum& rNodeNum,
+        SwRootFrame const& rLayout) const
 {
-    return rNodeNum.GetTextNode()
-           ? rNodeNum.GetTextNode()->GetExpandText( 0, -1, true/*bWithNumber*/,
-                                                    true/*bWithNumber*/, true/*bWithSpacesForLevel*/ )
-           : OUString();
+    SwTextNode const*const pNode(rNodeNum.GetTextNode());
+    assert(pNode);
+    return sw::GetExpandTextMerged(&rLayout, *pNode, true, true, ExpandMode::ExpandFootnote);
+}
+
+bool DocumentListItemsManager::isNumberedInLayout(
+        SwNodeNum const& rNodeNum, // note: this is the non-hidden Num ...
+        SwRootFrame const& rLayout) const
+{
+    return sw::IsParaPropsNode(rLayout, *rNodeNum.GetTextNode());
 }
 
 void DocumentListItemsManager::getNumItems( tSortedNodeNumList& orNodeNumList ) const
@@ -79,11 +84,8 @@ void DocumentListItemsManager::getNumItems( tSortedNodeNumList& orNodeNumList ) 
     orNodeNumList.clear();
     orNodeNumList.reserve( mpListItemsList->size() );
 
-    tImplSortedNodeNumList::iterator aIter;
-    tImplSortedNodeNumList::iterator aEndIter = mpListItemsList->end();
-    for ( aIter = mpListItemsList->begin(); aIter != aEndIter; ++aIter )
+    for ( const SwNodeNum* pNodeNum : *mpListItemsList )
     {
-        const SwNodeNum* pNodeNum = (*aIter);
         if ( pNodeNum->IsCounted() &&
              pNodeNum->GetTextNode() && pNodeNum->GetTextNode()->HasNumber() )
         {

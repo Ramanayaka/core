@@ -22,28 +22,31 @@ extras_AUTOTEXTUSER_MIMETYPEFILES := \
 	mytexts/mimetype \
 
 
-ifneq ($(sort $(foreach file,$(extras_AUTOTEXTUSER_XMLFILES),$(firstword $(subst /, ,$(file))))),$(sort $(extras_AUTOTEXTUSER_AUTOTEXTS)))
-$(call gb_Output_error,defined user autotext do not match existing directories)
-endif
-
 $(call gb_CustomTarget_get_target,extras/source/autotext/user) : \
 	$(foreach atexts,$(extras_AUTOTEXTUSER_AUTOTEXTS),$(call gb_CustomTarget_get_workdir,extras/source/autotext/user)/$(atexts).bau)
 
 $(call gb_CustomTarget_get_workdir,extras/source/autotext/user)/%/mimetype : $(SRCDIR)/extras/source/autotext/%/mimetype
-	$(call gb_Output_announce,$*/mimetype,$(true),CPY,1)
+	$(call gb_Output_announce,autotext/user/$*/mimetype,$(true),CPY,1)
+	$(call gb_Trace_StartRange,autotext/user/$*/mimetype,CPY)
 	cp $< $@
+	$(call gb_Trace_EndRange,autotext/user/$*/mimetype,CPY)
 
 $(call gb_CustomTarget_get_workdir,extras/source/autotext/user)/%.xml : $(SRCDIR)/extras/source/autotext/%.xml \
 		| $(call gb_ExternalExecutable_get_dependencies,xsltproc)
-	$(call gb_Output_announce,$*.xml,$(true),XSL,1)
+	$(call gb_Output_announce,autotext/user/$*.xml,$(true),XSL,1)
+	$(call gb_Trace_StartRange,autotext/user/$*.xml,XSL)
 	$(call gb_ExternalExecutable_get_command,xsltproc) --nonet -o $@ $(SRCDIR)/extras/util/compact.xsl $<
+	$(call gb_Trace_EndRange,autotext/user/$*.xml,XSL)
 
 $(call gb_CustomTarget_get_workdir,extras/source/autotext/user)/%.bau :
-	$(call gb_Output_announce,$*.bau,$(true),ZIP,2)
+	$(call gb_Output_announce,autotext/user/$*.bau,$(true),ZIP,2)
+	$(call gb_Trace_StartRange,autotext/user/$*.bau,ZIP)
 	$(call gb_Helper_abbreviate_dirs,\
 		cd $(EXTRAS_AUTOTEXTUSER_DIR) && \
-		zip -qrX --filesync --must-match $@ $(EXTRAS_AUTOTEXTUSER_FILES) \
+		zip -q0X --filesync --must-match $@ $(EXTRAS_AUTOTEXTUSER_MIMEFILES_FILTER) && \
+		zip -qrX --must-match $@ $(EXTRAS_AUTOTEXTUSER_XMLFILES_FILTER) \
 	)
+	$(call gb_Trace_EndRange,autotext/user/$*.bau,ZIP)
 
 define extras_Autotextuser_make_file_deps
 $(call gb_CustomTarget_get_workdir,$(1)/user)/$(2) : $(SRCDIR)/$(1)/$(2) \
@@ -57,7 +60,9 @@ $(call gb_CustomTarget_get_workdir,$(1)/user)/$(2) : \
 	| $(dir $(call gb_CustomTarget_get_workdir,$(1)/user)/$(2)).dir
 
 $(call gb_CustomTarget_get_workdir,$(1)/user)/$(2) : \
-	EXTRAS_AUTOTEXTUSER_FILES := $(foreach file,$(filter $(3)/%,$(extras_AUTOTEXTUSER_MIMETYPEFILES) $(extras_AUTOTEXTUSER_XMLFILES)),$(subst $(3)/,,$(file)))
+	EXTRAS_AUTOTEXTUSER_MIMEFILES_FILTER := $(foreach file,$(filter $(3)/%,$(extras_AUTOTEXTUSER_MIMETYPEFILES)),$(subst $(3)/,,$(file)))
+$(call gb_CustomTarget_get_workdir,$(1)/user)/$(2) : \
+	EXTRAS_AUTOTEXTUSER_XMLFILES_FILTER := $(foreach file,$(filter $(3)/%,$(extras_AUTOTEXTUSER_XMLFILES)),$(subst $(3)/,,$(file)))
 $(call gb_CustomTarget_get_workdir,$(1)/user)/$(2) : \
 	EXTRAS_AUTOTEXTUSER_DIR := $(call gb_CustomTarget_get_workdir,$(1)/user)/$(3)
 

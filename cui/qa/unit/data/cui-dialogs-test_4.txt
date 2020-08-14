@@ -7,7 +7,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-# See cui-dailog-test.txt for explanations
+# See cui-dialogs-test.txt for explanations
 
 # covering p to z
 
@@ -47,7 +47,6 @@ cui/ui/scriptorganizer.ui
 cui/ui/searchattrdialog.ui
 cui/ui/searchformatdialog.ui
 cui/ui/securityoptionsdialog.ui
-cui/ui/select_persona_dialog.ui
 cui/ui/selectpathdialog.ui
 cui/ui/shadowtabpage.ui
 cui/ui/showcoldialog.ui
@@ -64,7 +63,6 @@ cui/ui/storedwebconnectiondialog.ui
 cui/ui/swpossizepage.ui
 cui/ui/textanimtabpage.ui
 cui/ui/textattrtabpage.ui
-cui/ui/textdialog.ui
 cui/ui/textflowpage.ui
 cui/ui/transparencytabpage.ui
 cui/ui/tsaurldialog.ui

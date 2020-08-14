@@ -20,6 +20,8 @@
 #ifndef INCLUDED_VCL_SCOPEDBITMAPACCESS_HXX
 #define INCLUDED_VCL_SCOPEDBITMAPACCESS_HXX
 
+#include <sal/types.h>
+
 namespace vcl
 {
 
@@ -35,7 +37,7 @@ namespace vcl
     pReadAccess->SetPixel()...
 
     Bitmap aBitmap2;
-    Bitmap::ScopedWriteAccess pWriteAccess( bCond ? aBitmap2.AcquireWriteAccess() : 0, aBitmap2 );
+    BitmapScopedWriteAccess pWriteAccess( bCond ? aBitmap2.AcquireWriteAccess() : 0, aBitmap2 );
     if ( pWriteAccess )...
 
     @attention for practical reasons, ScopedBitmapAccess stores a
@@ -45,9 +47,6 @@ namespace vcl
  */
 template < class Access, class Bitmap, Access* (Bitmap::* Acquire)() > class ScopedBitmapAccess
 {
-    typedef ScopedBitmapAccess< Access, Bitmap, Acquire > self_type;
-    typedef bool (self_type::* unspecified_bool_type)() const;
-
 public:
     explicit ScopedBitmapAccess( Bitmap& rBitmap ) :
         mpAccess( nullptr ),
@@ -82,7 +81,7 @@ public:
     ScopedBitmapAccess(const ScopedBitmapAccess&) = delete;
     ScopedBitmapAccess &operator=(const ScopedBitmapAccess&) = delete;
 
-    ~ScopedBitmapAccess()
+    ~ScopedBitmapAccess() COVERITY_NOEXCEPT_FALSE
     {
         if (mpAccess)
            mpBitmap->ReleaseAccess( mpAccess );
@@ -98,9 +97,9 @@ public:
     }
 
     bool operator!() const { return !mpAccess; }
-    operator unspecified_bool_type() const
+    explicit operator bool() const
     {
-        return mpAccess ? &self_type::operator! : 0;
+        return mpAccess;
     }
 
     Access*         get() { return mpAccess; }

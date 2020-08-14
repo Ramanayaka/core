@@ -19,20 +19,10 @@
 
 #include <uielement/statusbarwrapper.hxx>
 
-#include <framework/actiontriggerhelper.hxx>
-#include <uielement/constitemcontainer.hxx>
-#include <uielement/rootitemcontainer.hxx>
 #include <uielement/statusbar.hxx>
 
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/awt/XSystemDependentMenuPeer.hpp>
-#include <com/sun/star/awt/XMenuBar.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/ui/UIElementType.hpp>
 
-#include <comphelper/processfactory.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 
 #include <tools/solar.h>
@@ -69,19 +59,18 @@ void SAL_CALL StatusBarWrapper::dispose()
     m_aListenerContainer.disposeAndClear( aEvent );
 
     SolarMutexGuard g;
-    if ( !m_bDisposed )
-    {
-        if ( m_xStatusBarManager.is() )
-            m_xStatusBarManager->dispose();
-        m_xStatusBarManager.clear();
-        m_xConfigSource.clear();
-        m_xConfigData.clear();
-        m_xContext.clear();
-
-        m_bDisposed = true;
-    }
-    else
+    if ( m_bDisposed )
         throw DisposedException();
+
+    if ( m_xStatusBarManager.is() )
+        m_xStatusBarManager->dispose();
+    m_xStatusBarManager.clear();
+    m_xConfigSource.clear();
+    m_xConfigData.clear();
+    m_xContext.clear();
+
+    m_bDisposed = true;
+
 }
 
 // XInitialization
@@ -92,43 +81,43 @@ void SAL_CALL StatusBarWrapper::initialize( const Sequence< Any >& aArguments )
     if ( m_bDisposed )
         throw DisposedException();
 
-    if ( !m_bInitialized )
+    if ( m_bInitialized )
+        return;
+
+    UIConfigElementWrapperBase::initialize( aArguments );
+
+    Reference< XFrame > xFrame( m_xWeakFrame );
+    if ( !(xFrame.is() && m_xConfigSource.is()) )
+        return;
+
+    // Create VCL based toolbar which will be filled with settings data
+    StatusBar*        pStatusBar( nullptr );
+    StatusBarManager* pStatusBarManager( nullptr );
     {
-        UIConfigElementWrapperBase::initialize( aArguments );
-
-        Reference< XFrame > xFrame( m_xWeakFrame );
-        if ( xFrame.is() && m_xConfigSource.is() )
+        SolarMutexGuard aSolarMutexGuard;
+        VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xFrame->getContainerWindow() );
+        if ( pWindow )
         {
-            // Create VCL based toolbar which will be filled with settings data
-            StatusBar*        pStatusBar( nullptr );
-            StatusBarManager* pStatusBarManager( nullptr );
-            {
-                SolarMutexGuard aSolarMutexGuard;
-                VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xFrame->getContainerWindow() );
-                if ( pWindow )
-                {
-                    sal_uLong nStyles = WinBits( WB_LEFT | WB_3DLOOK );
+            sal_uLong nStyles = WinBits( WB_LEFT | WB_3DLOOK );
 
-                    pStatusBar = VclPtr<FrameworkStatusBar>::Create( pWindow, nStyles );
-                    pStatusBarManager = new StatusBarManager( m_xContext, xFrame, pStatusBar );
-                    static_cast<FrameworkStatusBar*>(pStatusBar)->SetStatusBarManager( pStatusBarManager );
-                    m_xStatusBarManager.set( static_cast< OWeakObject *>( pStatusBarManager ), UNO_QUERY );
-                }
-            }
-
-            try
-            {
-                m_xConfigData = m_xConfigSource->getSettings( m_aResourceURL, false );
-                if ( m_xConfigData.is() && pStatusBar && pStatusBarManager )
-                {
-                    // Fill statusbar with container contents
-                    pStatusBarManager->FillStatusBar( m_xConfigData );
-                }
-            }
-            catch ( const NoSuchElementException& )
-            {
-            }
+            pStatusBar = VclPtr<FrameworkStatusBar>::Create( pWindow, nStyles );
+            pStatusBarManager = new StatusBarManager( m_xContext, xFrame, pStatusBar );
+            static_cast<FrameworkStatusBar*>(pStatusBar)->SetStatusBarManager( pStatusBarManager );
+            m_xStatusBarManager.set( static_cast< OWeakObject *>( pStatusBarManager ), UNO_QUERY );
         }
+    }
+
+    try
+    {
+        m_xConfigData = m_xConfigSource->getSettings( m_aResourceURL, false );
+        if ( m_xConfigData.is() && pStatusBar && pStatusBarManager )
+        {
+            // Fill statusbar with container contents
+            pStatusBarManager->FillStatusBar( m_xConfigData );
+        }
+    }
+    catch ( const NoSuchElementException& )
+    {
     }
 }
 
@@ -140,21 +129,21 @@ void SAL_CALL StatusBarWrapper::updateSettings()
     if ( m_bDisposed )
         throw DisposedException();
 
-    if ( m_bPersistent &&
+    if ( !(m_bPersistent &&
          m_xConfigSource.is() &&
-         m_xStatusBarManager.is() )
-    {
-        try
-        {
-            StatusBarManager* pStatusBarManager = static_cast< StatusBarManager *>( m_xStatusBarManager.get() );
+         m_xStatusBarManager.is()) )
+        return;
 
-            m_xConfigData = m_xConfigSource->getSettings( m_aResourceURL, false );
-            if ( m_xConfigData.is() )
-                pStatusBarManager->FillStatusBar( m_xConfigData );
-        }
-        catch ( const NoSuchElementException& )
-        {
-        }
+    try
+    {
+        StatusBarManager* pStatusBarManager = static_cast< StatusBarManager *>( m_xStatusBarManager.get() );
+
+        m_xConfigData = m_xConfigSource->getSettings( m_aResourceURL, false );
+        if ( m_xConfigData.is() )
+            pStatusBarManager->FillStatusBar( m_xConfigData );
+    }
+    catch ( const NoSuchElementException& )
+    {
     }
 }
 
@@ -167,7 +156,7 @@ Reference< XInterface > SAL_CALL StatusBarWrapper::getRealInterface()
         StatusBarManager* pStatusBarManager = static_cast< StatusBarManager *>( m_xStatusBarManager.get() );
         if ( pStatusBarManager )
         {
-            vcl::Window* pWindow = static_cast<vcl::Window *>(pStatusBarManager->GetStatusBar());
+            vcl::Window* pWindow = pStatusBarManager->GetStatusBar();
             if ( pWindow )
                 return Reference< XInterface >( VCLUnoHelper::GetInterface( pWindow ), UNO_QUERY );
         }

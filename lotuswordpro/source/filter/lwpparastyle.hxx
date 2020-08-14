@@ -62,7 +62,6 @@
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPPARASTYLE_HXX
 
 #include "lwpcharacterstyle.hxx"
-#include "lwppiece.hxx"
 #include "lwpborderstuff.hxx"
 #include "lwppara.hxx"
 
@@ -74,7 +73,7 @@ class XFBorders;
 class LwpParaStyle : public LwpTextStyle
 {
 public:
-    LwpParaStyle(LwpObjectHeader& objHdr, LwpSvStream* pStrm);
+    LwpParaStyle(LwpObjectHeader const & objHdr, LwpSvStream* pStrm);
 
     virtual ~LwpParaStyle() override;
 
@@ -82,9 +81,9 @@ public:
 
     void        Apply(XFParaStyle *pStrm);
     static void ApplyParaBorder(XFParaStyle* pParaStyle, LwpParaBorderOverride* pBorder);
-    static void ApplyBreaks(XFParaStyle* pParaStyle, LwpBreaksOverride* pBreaks);
-    static void ApplyAlignment(XFParaStyle* pParaStyle, LwpAlignmentOverride* pAlign);
-    static void ApplyIndent(LwpPara* pPara, XFParaStyle* pParaStyle, LwpIndentOverride* pIndent);
+    static void ApplyBreaks(XFParaStyle* pParaStyle, const LwpBreaksOverride* pBreaks);
+    static void ApplyAlignment(XFParaStyle* pParaStyle, const LwpAlignmentOverride* pAlign);
+    static void ApplyIndent(LwpPara* pPara, XFParaStyle* pParaStyle, const LwpIndentOverride* pIndent);
     static void ApplySpacing(LwpPara* pPara, XFParaStyle* pParaStyle, LwpSpacingOverride* pSpacing);
 
     static void ApplyTab(XFParaStyle* pParaStyle, LwpTabOverride* pTab);
@@ -97,7 +96,7 @@ public:
     LwpParaBorderOverride* GetParaBorder() const;
     LwpBreaksOverride* GetBreaks() const;
     LwpTabOverride* GetTabOverride() const;
-    const LwpBulletOverride* GetBulletOverride() const { return &m_BulletOverride;}
+    const LwpBulletOverride& GetBulletOverride() const { return m_BulletOverride; }
     LwpNumberingOverride* GetNumberingOverride() const;
 public:
     static void ApplySubBorder(LwpBorderStuff* pBorderStuff, LwpBorderStuff::BorderType eType, XFBorders* pXFBorders);

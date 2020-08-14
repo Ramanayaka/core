@@ -16,14 +16,15 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_VIEWELEMENTLISTPROVIDER_HXX
-#define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_VIEWELEMENTLISTPROVIDER_HXX
+
+#pragma once
 
 #include <memory>
 #include <svx/xtable.hxx>
-#include <svx/svdpage.hxx>
 
 class FontList;
+class SdrObjList;
+class SfxItemSet;
 
 namespace chart
 {
@@ -34,7 +35,7 @@ class ViewElementListProvider final
 {
 public:
     ViewElementListProvider( DrawModelWrapper* pDrawModelWrapper );
-    ViewElementListProvider( ViewElementListProvider&& );
+    ViewElementListProvider(ViewElementListProvider&&) noexcept;
     ~ViewElementListProvider();
 
     XColorListRef     GetColorTable() const;
@@ -58,6 +59,5 @@ private:
 };
 
 } //namespace chart
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,15 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <collatorImpl.hxx>
 #include <indexentrysupplier_common.hxx>
-#include <com/sun/star/i18n/CollatorOptions.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <localedata.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 IndexEntrySupplier_Common::IndexEntrySupplier_Common(const Reference < uno::XComponentContext >& rxContext)
 {
@@ -98,7 +98,7 @@ OUString SAL_CALL IndexEntrySupplier_Common::getIndexFollowPageWord( sal_Bool,
     throw RuntimeException();
 }
 
-const OUString& SAL_CALL
+const OUString&
 IndexEntrySupplier_Common::getEntry( const OUString& IndexEntry,
     const OUString& PhoneticEntry, const lang::Locale& rLocale )
 {
@@ -133,6 +133,6 @@ IndexEntrySupplier_Common::getSupportedServiceNames()
     return aRet;
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

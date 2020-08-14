@@ -33,19 +33,17 @@ public:
 
     void Join( SwGluePortion *pVictim );
 
-    inline short GetPrtGlue() const;
+    inline long GetPrtGlue() const;
     sal_uInt16 GetFixWidth() const { return nFixWidth; }
     void SetFixWidth( const sal_uInt16 nNew ) { nFixWidth = nNew; }
-    void MoveGlue( SwGluePortion *pTarget, const short nPrtGlue );
+    void MoveGlue( SwGluePortion *pTarget, const long nPrtGlue );
     inline void MoveAllGlue( SwGluePortion *pTarget );
     inline void MoveHalfGlue( SwGluePortion *pTarget );
     inline void AdjFixWidth();
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
-    virtual sal_Int32 GetCursorOfst( const sal_uInt16 nOfst ) const override;
+    virtual TextFrameIndex GetModelPositionForViewPoint(sal_uInt16 nOfst) const override;
     virtual SwPosSize GetTextSize( const SwTextSizeInfo &rInfo ) const override;
     virtual bool GetExpText( const SwTextSizeInfo &rInf, OUString &rText ) const override;
-
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 class SwFixPortion : public SwGluePortion
@@ -56,7 +54,6 @@ public:
     SwFixPortion();
     void   SetFix( const sal_uInt16 nNewFix ) { nFix = nNewFix; }
     sal_uInt16 GetFix() const { return nFix; }
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 class SwMarginPortion : public SwGluePortion
@@ -64,10 +61,9 @@ class SwMarginPortion : public SwGluePortion
 public:
     explicit SwMarginPortion();
     void AdjustRight( const SwLineLayout* pCurr );
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
-inline short SwGluePortion::GetPrtGlue() const
+inline long SwGluePortion::GetPrtGlue() const
 { return Width() - nFixWidth; }
 
 // The FixWidth MUST NEVER be larger than the accumulated width!

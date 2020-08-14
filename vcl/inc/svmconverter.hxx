@@ -21,13 +21,7 @@
 #define INCLUDED_VCL_INC_SVMCONVERTER_HXX
 
 #include <vcl/dllapi.h>
-#include <vcl/metaact.hxx>
 #include <vcl/gdimtf.hxx>
-
-#include <stack>
-
-#define CONVERT_TO_SVM1                 0x00000001UL
-#define CONVERT_FROM_SVM1               0x00000002UL
 
 #define GDI_PIXEL_ACTION                1
 #define GDI_POINT_ACTION                2
@@ -75,18 +69,16 @@
 
 #define GDI_LINECAP_ACTION              1036
 
-class VCL_PLUGIN_PUBLIC SVMConverter
+/**
+ * Converts old SVGDI aka SVM1 format data to current VCLMTF aka SVM2 format metafile data.
+ */
+class SVMConverter
 {
 private:
-    SAL_DLLPRIVATE static void      ImplConvertFromSVM1( SvStream& rIStm, GDIMetaFile& rMtf );
-    SAL_DLLPRIVATE void             ImplConvertToSVM1( SvStream& rOStm, GDIMetaFile& rMtf );
-    SAL_DLLPRIVATE sal_uLong            ImplWriteActions( SvStream& rOStm, GDIMetaFile& rMtf,
-                                          VirtualDevice& rSaveVDev, bool& rRop_0_1,
-                                          Color& rLineCol, ::std::stack<Color*>& rLineColStack,
-                                          rtl_TextEncoding& rActualCharSet );
+    static void      ImplConvertFromSVM1( SvStream& rIStm, GDIMetaFile& rMtf );
 
 public:
-                        SVMConverter( SvStream& rIStm, GDIMetaFile& rMtf, sal_uLong nConvertMode  );
+                        SVMConverter( SvStream& rIStm, GDIMetaFile& rMtf  );
 
 private:
                         SVMConverter( const SVMConverter& ) = delete;

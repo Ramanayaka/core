@@ -17,39 +17,34 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "undocell.hxx"
+#include <undocell.hxx>
 
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
+#include <scitems.hxx>
 #include <editeng/editobj.hxx>
-#include <svl/zforlist.hxx>
-#include <svl/sharedstringpool.hxx>
 #include <sfx2/app.hxx>
+#include <comphelper/lok.hxx>
 
-#include "document.hxx"
-#include "docpool.hxx"
-#include "patattr.hxx"
-#include "docsh.hxx"
-#include "tabvwsh.hxx"
-#include "globstr.hrc"
-#include "global.hxx"
-#include "formulacell.hxx"
-#include "target.hxx"
-#include "undoolk.hxx"
-#include "detdata.hxx"
-#include "stlpool.hxx"
-#include "printfun.hxx"
-#include "rangenam.hxx"
-#include "chgtrack.hxx"
-#include "sc.hrc"
-#include "docuno.hxx"
-#include "stringutil.hxx"
-
-using std::shared_ptr;
+#include <document.hxx>
+#include <docpool.hxx>
+#include <patattr.hxx>
+#include <docsh.hxx>
+#include <tabvwsh.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <global.hxx>
+#include <formulacell.hxx>
+#include <target.hxx>
+#include <undoolk.hxx>
+#include <detdata.hxx>
+#include <stlpool.hxx>
+#include <printfun.hxx>
+#include <rangenam.hxx>
+#include <chgtrack.hxx>
+#include <stringutil.hxx>
 
 namespace HelperNotifyChanges
 {
-    void NotifyIfChangesListeners(ScDocShell& rDocShell, const ScAddress &rPos,
+    static void NotifyIfChangesListeners(const ScDocShell& rDocShell, const ScAddress &rPos,
         const ScUndoEnterData::ValuesType &rOldValues)
     {
         if (ScModelObj* pModelObj = getMustPropagateChangesModel(rDocShell))
@@ -58,7 +53,7 @@ namespace HelperNotifyChanges
 
             for (const auto & rOldValue : rOldValues)
             {
-                aChangeRanges.Append( ScRange(rPos.Col(), rPos.Row(), rOldValue.mnTab));
+                aChangeRanges.push_back( ScRange(rPos.Col(), rPos.Row(), rOldValue.mnTab));
             }
 
             Notify(*pModelObj, aChangeRanges, "cell-change");
@@ -79,9 +74,9 @@ ScUndoCursorAttr::ScUndoCursorAttr( ScDocShell* pNewDocShell,
     pNewEditData( static_cast<EditTextObject*>(nullptr) )
 {
     ScDocumentPool* pPool = pDocShell->GetDocument().GetPool();
-    pNewPattern = const_cast<ScPatternAttr*>(static_cast<const ScPatternAttr*>( &pPool->Put( *pNewPat ) ));
-    pOldPattern = const_cast<ScPatternAttr*>(static_cast<const ScPatternAttr*>( &pPool->Put( *pOldPat ) ));
-    pApplyPattern = const_cast<ScPatternAttr*>(static_cast<const ScPatternAttr*>( &pPool->Put( *pApplyPat ) ));
+    pNewPattern = const_cast<ScPatternAttr*>( &pPool->Put( *pNewPat ) );
+    pOldPattern = const_cast<ScPatternAttr*>( &pPool->Put( *pOldPat ) );
+    pApplyPattern = const_cast<ScPatternAttr*>( &pPool->Put( *pApplyPat ) );
 }
 
 ScUndoCursorAttr::~ScUndoCursorAttr()
@@ -95,16 +90,16 @@ ScUndoCursorAttr::~ScUndoCursorAttr()
 OUString ScUndoCursorAttr::GetComment() const
 {
     //! own text for automatic attribution
-    return ScGlobal::GetRscString( STR_UNDO_CURSORATTR ); // "Attribute"
+    return ScResId( STR_UNDO_CURSORATTR ); // "Attribute"
 }
 
-void ScUndoCursorAttr::SetEditData( EditTextObject* pOld, EditTextObject* pNew )
+void ScUndoCursorAttr::SetEditData( std::unique_ptr<EditTextObject> pOld, std::unique_ptr<EditTextObject> pNew )
 {
-    pOldEditData.reset(pOld);
-    pNewEditData.reset(pNew);
+    pOldEditData = std::move(pOld);
+    pNewEditData = std::move(pNew);
 }
 
-void ScUndoCursorAttr::DoChange( const ScPatternAttr* pWhichPattern, const shared_ptr<EditTextObject>& pEditData ) const
+void ScUndoCursorAttr::DoChange( const ScPatternAttr* pWhichPattern, const std::unique_ptr<EditTextObject>& pEditData ) const
 {
     ScDocument& rDoc = pDocShell->GetDocument();
     ScAddress aPos(nCol, nRow, nTab);
@@ -163,10 +158,10 @@ ScUndoEnterData::Value::Value() : mnTab(-1), mbHasFormat(false), mnFormat(0) {}
 
 ScUndoEnterData::ScUndoEnterData(
     ScDocShell* pNewDocShell, const ScAddress& rPos, ValuesType& rOldValues,
-    const OUString& rNewStr, EditTextObject* pObj ) :
+    const OUString& rNewStr, std::unique_ptr<EditTextObject> pObj ) :
     ScSimpleUndo( pNewDocShell ),
     maNewString(rNewStr),
-    mpNewEditData(pObj),
+    mpNewEditData(std::move(pObj)),
     mnEndChangeAction(0),
     maPos(rPos)
 {
@@ -175,22 +170,31 @@ ScUndoEnterData::ScUndoEnterData(
     SetChangeTrack();
 }
 
-ScUndoEnterData::~ScUndoEnterData() {}
-
 OUString ScUndoEnterData::GetComment() const
 {
-    return ScGlobal::GetRscString( STR_UNDO_ENTERDATA ); // "Input"
+    return ScResId( STR_UNDO_ENTERDATA ); // "Input"
 }
 
 void ScUndoEnterData::DoChange() const
 {
     // only when needed (old or new Edit cell, or Attribute)?
+    bool bHeightChanged = false;
     for (const auto & i : maOldValues)
-        pDocShell->AdjustRowHeight(maPos.Row(), maPos.Row(), i.mnTab);
+    {
+        if (pDocShell->AdjustRowHeight(maPos.Row(), maPos.Row(), i.mnTab))
+            bHeightChanged = true;
+    }
 
     ScTabViewShell* pViewShell = ScTabViewShell::GetActiveViewShell();
     if (pViewShell)
     {
+        if (comphelper::LibreOfficeKit::isActive() && bHeightChanged)
+        {
+            ScTabViewShell::notifyAllViewsHeaderInvalidation(pViewShell, ROW_HEADER, maPos.Tab());
+            ScTabViewShell::notifyAllViewsSheetGeomInvalidation(
+                pViewShell, false /* bColumns */, true /* bRows */, true /* bSizes*/,
+                false /* bHidden */, false /* bFiltered */, false /* bGroups */, maPos.Tab());
+        }
         pViewShell->SetTabNo(maPos.Tab());
         pViewShell->MoveCursorAbs(maPos.Col(), maPos.Row(), SC_FOLLOW_JUMP, false, false);
     }
@@ -205,7 +209,7 @@ void ScUndoEnterData::SetChangeTrack()
     {
         mnEndChangeAction = pChangeTrack->GetActionMax() + 1;
         ScAddress aPos(maPos);
-        for (Value & rOldValue : maOldValues)
+        for (const Value & rOldValue : maOldValues)
         {
             aPos.SetTab(rOldValue.mnTab);
             sal_uLong nFormat = 0;
@@ -225,7 +229,7 @@ void ScUndoEnterData::Undo()
     BeginUndo();
 
     ScDocument& rDoc = pDocShell->GetDocument();
-    for (Value & rVal : maOldValues)
+    for (const Value & rVal : maOldValues)
     {
         ScCellValue aNewCell;
         aNewCell.assign(rVal.maCell, rDoc, ScCloneFlags::StartListening);
@@ -238,9 +242,9 @@ void ScUndoEnterData::Undo()
                             SfxUInt32Item(ATTR_VALUE_FORMAT, rVal.mnFormat));
         else
         {
-            ScPatternAttr aPattern(*rDoc.GetPattern(maPos.Col(), maPos.Row(), rVal.mnTab));
-            aPattern.GetItemSet().ClearItem( ATTR_VALUE_FORMAT );
-            rDoc.SetPattern(maPos.Col(), maPos.Row(), rVal.mnTab, aPattern);
+            auto pPattern = std::make_unique<ScPatternAttr>(*rDoc.GetPattern(maPos.Col(), maPos.Row(), rVal.mnTab));
+            pPattern->GetItemSet().ClearItem( ATTR_VALUE_FORMAT );
+            rDoc.SetPattern(maPos.Col(), maPos.Row(), rVal.mnTab, std::move(pPattern));
         }
         pDocShell->PostPaintCell(maPos.Col(), maPos.Row(), rVal.mnTab);
     }
@@ -261,14 +265,14 @@ void ScUndoEnterData::Redo()
     BeginRedo();
 
     ScDocument& rDoc = pDocShell->GetDocument();
-    for (Value & rOldValue : maOldValues)
+    for (const Value & rOldValue : maOldValues)
     {
         SCTAB nTab = rOldValue.mnTab;
         if (mpNewEditData)
         {
             ScAddress aPos = maPos;
             aPos.SetTab(nTab);
-            // edit text wil be cloned.
+            // edit text will be cloned.
             rDoc.SetEditText(aPos, *mpNewEditData, nullptr);
         }
         else
@@ -316,7 +320,7 @@ ScUndoEnterValue::~ScUndoEnterValue()
 
 OUString ScUndoEnterValue::GetComment() const
 {
-    return ScGlobal::GetRscString( STR_UNDO_ENTERDATA ); // "Input"
+    return ScResId( STR_UNDO_ENTERDATA ); // "Input"
 }
 
 void ScUndoEnterValue::SetChangeTrack()
@@ -387,6 +391,7 @@ void ScUndoSetCell::Undo()
 {
     BeginUndo();
     SetValue(maOldValue);
+    MoveCursorToCell();
     pDocShell->PostPaintCell(maPos);
 
     ScDocument& rDoc = pDocShell->GetDocument();
@@ -401,6 +406,7 @@ void ScUndoSetCell::Redo()
 {
     BeginRedo();
     SetValue(maNewValue);
+    MoveCursorToCell();
     pDocShell->PostPaintCell(maPos);
     SetChangeTrack();
     EndRedo();
@@ -418,7 +424,7 @@ bool ScUndoSetCell::CanRepeat( SfxRepeatTarget& /*rTarget*/ ) const
 
 OUString ScUndoSetCell::GetComment() const
 {
-    return ScGlobal::GetRscString(STR_UNDO_ENTERDATA); // "Input"
+    return ScResId(STR_UNDO_ENTERDATA); // "Input"
 }
 
 void ScUndoSetCell::SetChangeTrack()
@@ -455,7 +461,9 @@ void ScUndoSetCell::SetValue( const ScCellValue& rVal )
         {
             ScSetStringParam aParam;
             aParam.setTextInput();
-            rDoc.SetString(maPos, rVal.mpString->getString());
+            // Undo only cell content, without setting any number format.
+            aParam.meSetTextNumFormat = ScSetStringParam::Keep;
+            rDoc.SetString(maPos, rVal.mpString->getString(), &aParam);
         }
         break;
         case CELLTYPE_EDIT:
@@ -466,6 +474,16 @@ void ScUndoSetCell::SetValue( const ScCellValue& rVal )
         break;
         default:
             ;
+    }
+}
+
+void ScUndoSetCell::MoveCursorToCell()
+{
+    ScTabViewShell* pViewShell = ScTabViewShell::GetActiveViewShell();
+    if ( pViewShell )
+    {
+        pViewShell->SetTabNo( maPos.Tab() );
+        pViewShell->MoveCursorAbs( maPos.Col(), maPos.Row(), SC_FOLLOW_JUMP, false, false );
     }
 }
 
@@ -490,12 +508,12 @@ OUString ScUndoPageBreak::GetComment() const
     //"Column break" | "Row break"  "insert" | "delete"
     return bColumn ?
         ( bInsert ?
-            ScGlobal::GetRscString( STR_UNDO_INSCOLBREAK ) :
-            ScGlobal::GetRscString( STR_UNDO_DELCOLBREAK )
+            ScResId( STR_UNDO_INSCOLBREAK ) :
+            ScResId( STR_UNDO_DELCOLBREAK )
         ) :
         ( bInsert ?
-            ScGlobal::GetRscString( STR_UNDO_INSROWBREAK ) :
-            ScGlobal::GetRscString( STR_UNDO_DELROWBREAK )
+            ScResId( STR_UNDO_INSROWBREAK ) :
+            ScResId( STR_UNDO_DELROWBREAK )
         );
 }
 
@@ -566,7 +584,7 @@ ScUndoPrintZoom::~ScUndoPrintZoom()
 
 OUString ScUndoPrintZoom::GetComment() const
 {
-    return ScGlobal::GetRscString( STR_UNDO_PRINTSCALE );
+    return ScResId( STR_UNDO_PRINTSCALE );
 }
 
 void ScUndoPrintZoom::DoChange( bool bUndo )
@@ -636,7 +654,7 @@ ScUndoThesaurus::~ScUndoThesaurus() {}
 
 OUString ScUndoThesaurus::GetComment() const
 {
-    return ScGlobal::GetRscString( STR_UNDO_THESAURUS );    // "Thesaurus"
+    return ScResId( STR_UNDO_THESAURUS );    // "Thesaurus"
 }
 
 void ScUndoThesaurus::SetChangeTrack( const ScCellValue& rOldCell )
@@ -700,11 +718,12 @@ bool ScUndoThesaurus::CanRepeat(SfxRepeatTarget& rTarget) const
     return dynamic_cast<const ScTabViewTarget*>( &rTarget) !=  nullptr;
 }
 
+
 ScUndoReplaceNote::ScUndoReplaceNote( ScDocShell& rDocShell, const ScAddress& rPos,
-        const ScNoteData& rNoteData, bool bInsert, SdrUndoAction* pDrawUndo ) :
+        const ScNoteData& rNoteData, bool bInsert, std::unique_ptr<SdrUndoAction> pDrawUndo ) :
     ScSimpleUndo( &rDocShell ),
     maPos( rPos ),
-    mpDrawUndo( pDrawUndo )
+    mpDrawUndo( std::move(pDrawUndo) )
 {
     OSL_ENSURE( rNoteData.mxCaption, "ScUndoReplaceNote::ScUndoReplaceNote - missing note caption" );
     if (bInsert)
@@ -720,28 +739,28 @@ ScUndoReplaceNote::ScUndoReplaceNote( ScDocShell& rDocShell, const ScAddress& rP
 }
 
 ScUndoReplaceNote::ScUndoReplaceNote( ScDocShell& rDocShell, const ScAddress& rPos,
-        const ScNoteData& rOldData, const ScNoteData& rNewData, SdrUndoAction* pDrawUndo ) :
+        const ScNoteData& rOldData, const ScNoteData& rNewData, std::unique_ptr<SdrUndoAction> pDrawUndo ) :
     ScSimpleUndo( &rDocShell ),
     maPos( rPos ),
     maOldData( rOldData ),
     maNewData( rNewData ),
-    mpDrawUndo( pDrawUndo )
+    mpDrawUndo( std::move(pDrawUndo) )
 {
     OSL_ENSURE( maOldData.mxCaption || maNewData.mxCaption, "ScUndoReplaceNote::ScUndoReplaceNote - missing note captions" );
-    OSL_ENSURE( !maOldData.mxInitData.get() && !maNewData.mxInitData.get(), "ScUndoReplaceNote::ScUndoReplaceNote - unexpected unitialized note" );
+    OSL_ENSURE( !maOldData.mxInitData && !maNewData.mxInitData, "ScUndoReplaceNote::ScUndoReplaceNote - unexpected uninitialized note" );
     maOldData.mxCaption.setNotOwner();
     maNewData.mxCaption.setNotOwner();
 }
 
 ScUndoReplaceNote::~ScUndoReplaceNote()
 {
-    DeleteSdrUndoAction( mpDrawUndo );
+    mpDrawUndo.reset();
 }
 
 void ScUndoReplaceNote::Undo()
 {
     BeginUndo();
-    DoSdrUndoAction( mpDrawUndo, &pDocShell->GetDocument() );
+    DoSdrUndoAction( mpDrawUndo.get(), &pDocShell->GetDocument() );
     /*  Undo insert -> remove new note.
         Undo remove -> insert old note.
         Undo replace -> remove new note, insert old note. */
@@ -754,7 +773,7 @@ void ScUndoReplaceNote::Undo()
 void ScUndoReplaceNote::Redo()
 {
     BeginRedo();
-    RedoSdrUndoAction( mpDrawUndo );
+    RedoSdrUndoAction( mpDrawUndo.get() );
     /*  Redo insert -> insert new note.
         Redo remove -> remove old note.
         Redo replace -> remove old note, insert new note. */
@@ -775,7 +794,7 @@ bool ScUndoReplaceNote::CanRepeat( SfxRepeatTarget& /*rTarget*/ ) const
 
 OUString ScUndoReplaceNote::GetComment() const
 {
-    return ScGlobal::GetRscString( maNewData.mxCaption ?
+    return ScResId( maNewData.mxCaption ?
         (maOldData.mxCaption ? STR_UNDO_EDITNOTE : STR_UNDO_INSERTNOTE) : STR_UNDO_DELETENOTE );
 }
 
@@ -786,26 +805,25 @@ void ScUndoReplaceNote::DoInsertNote( const ScNoteData& rNoteData )
         ScDocument& rDoc = pDocShell->GetDocument();
         OSL_ENSURE( !rDoc.GetNote(maPos), "ScUndoReplaceNote::DoInsertNote - unexpected cell note" );
         ScPostIt* pNote = new ScPostIt( rDoc, maPos, rNoteData, false );
-        rDoc.SetNote( maPos, pNote );
+        rDoc.SetNote( maPos, std::unique_ptr<ScPostIt>(pNote) );
         ScDocShell::LOKCommentNotify(LOKCommentNotificationType::Add, &rDoc, maPos, pNote);
     }
 }
 
 void ScUndoReplaceNote::DoRemoveNote( const ScNoteData& rNoteData )
 {
-    if( rNoteData.mxCaption )
+    if( !rNoteData.mxCaption )
+        return;
+
+    ScDocument& rDoc = pDocShell->GetDocument();
+    OSL_ENSURE( rDoc.GetNote(maPos), "ScUndoReplaceNote::DoRemoveNote - missing cell note" );
+    if( std::unique_ptr<ScPostIt> pNote = rDoc.ReleaseNote( maPos ) )
     {
-        ScDocument& rDoc = pDocShell->GetDocument();
-        OSL_ENSURE( rDoc.GetNote(maPos), "ScUndoReplaceNote::DoRemoveNote - missing cell note" );
-        if( ScPostIt* pNote = rDoc.ReleaseNote( maPos ) )
-        {
-            /*  Forget pointer to caption object to suppress removing the
-                caption object from the drawing layer while deleting pNote
-                (removing the caption is done by a drawing undo action). */
-            pNote->ForgetCaption();
-            ScDocShell::LOKCommentNotify(LOKCommentNotificationType::Remove, &rDoc, maPos, pNote);
-            delete pNote;
-        }
+        /*  Forget pointer to caption object to suppress removing the
+            caption object from the drawing layer while deleting pNote
+            (removing the caption is done by a drawing undo action). */
+        pNote->ForgetCaption();
+        ScDocShell::LOKCommentNotify(LOKCommentNotificationType::Remove, &rDoc, maPos, pNote.get());
     }
 }
 
@@ -847,45 +865,45 @@ bool ScUndoShowHideNote::CanRepeat( SfxRepeatTarget& /*rTarget*/ ) const
 
 OUString ScUndoShowHideNote::GetComment() const
 {
-    return ScGlobal::GetRscString( mbShown ? STR_UNDO_SHOWNOTE : STR_UNDO_HIDENOTE );
+    return ScResId( mbShown ? STR_UNDO_SHOWNOTE : STR_UNDO_HIDENOTE );
 }
 
 ScUndoDetective::ScUndoDetective( ScDocShell* pNewDocShell,
-                                    SdrUndoAction* pDraw, const ScDetOpData* pOperation,
-                                    ScDetOpList* pUndoList ) :
+                                    std::unique_ptr<SdrUndoAction> pDraw, const ScDetOpData* pOperation,
+                                    std::unique_ptr<ScDetOpList> pUndoList ) :
     ScSimpleUndo( pNewDocShell ),
-    pOldList    ( pUndoList ),
+    pOldList    ( std::move(pUndoList) ),
     nAction     ( 0 ),
-    pDrawUndo   ( pDraw )
+    pDrawUndo   ( std::move(pDraw) )
 {
     bIsDelete = ( pOperation == nullptr );
     if (!bIsDelete)
     {
-        nAction = (sal_uInt16) pOperation->GetOperation();
+        nAction = static_cast<sal_uInt16>(pOperation->GetOperation());
         aPos = pOperation->GetPos();
     }
 }
 
 ScUndoDetective::~ScUndoDetective()
 {
-    DeleteSdrUndoAction( pDrawUndo );
-    delete pOldList;
+    pDrawUndo.reset();
+    pOldList.reset();
 }
 
 OUString ScUndoDetective::GetComment() const
 {
-    sal_uInt16 nId = STR_UNDO_DETDELALL;
+    const char* pId = STR_UNDO_DETDELALL;
     if ( !bIsDelete )
-        switch ( (ScDetOpType) nAction )
+        switch ( static_cast<ScDetOpType>(nAction) )
         {
-            case SCDETOP_ADDSUCC:   nId = STR_UNDO_DETADDSUCC;  break;
-            case SCDETOP_DELSUCC:   nId = STR_UNDO_DETDELSUCC;  break;
-            case SCDETOP_ADDPRED:   nId = STR_UNDO_DETADDPRED;  break;
-            case SCDETOP_DELPRED:   nId = STR_UNDO_DETDELPRED;  break;
-            case SCDETOP_ADDERROR:  nId = STR_UNDO_DETADDERROR; break;
+            case SCDETOP_ADDSUCC:   pId = STR_UNDO_DETADDSUCC;  break;
+            case SCDETOP_DELSUCC:   pId = STR_UNDO_DETDELSUCC;  break;
+            case SCDETOP_ADDPRED:   pId = STR_UNDO_DETADDPRED;  break;
+            case SCDETOP_DELPRED:   pId = STR_UNDO_DETDELPRED;  break;
+            case SCDETOP_ADDERROR:  pId = STR_UNDO_DETADDERROR; break;
         }
 
-    return ScGlobal::GetRscString( nId );
+    return ScResId(pId);
 }
 
 void ScUndoDetective::Undo()
@@ -893,12 +911,12 @@ void ScUndoDetective::Undo()
     BeginUndo();
 
     ScDocument& rDoc = pDocShell->GetDocument();
-    DoSdrUndoAction(pDrawUndo, &rDoc);
+    DoSdrUndoAction(pDrawUndo.get(), &rDoc);
 
     if (bIsDelete)
     {
         if ( pOldList )
-            rDoc.SetDetOpList( new ScDetOpList(*pOldList) );
+            rDoc.SetDetOpList( std::unique_ptr<ScDetOpList>(new ScDetOpList(*pOldList)) );
     }
     else
     {
@@ -909,7 +927,7 @@ void ScUndoDetective::Undo()
         {
             ScDetOpDataVector& rVec = pList->GetDataVector();
             ScDetOpDataVector::iterator it = rVec.begin() + rVec.size() - 1;
-            if ( (*it)->GetOperation() == (ScDetOpType) nAction && (*it)->GetPos() == aPos )
+            if ( (*it)->GetOperation() == static_cast<ScDetOpType>(nAction) && (*it)->GetPos() == aPos )
                 rVec.erase( it);
             else
             {
@@ -929,14 +947,14 @@ void ScUndoDetective::Redo()
 {
     BeginRedo();
 
-    RedoSdrUndoAction(pDrawUndo);
+    RedoSdrUndoAction(pDrawUndo.get());
 
     ScDocument& rDoc = pDocShell->GetDocument();
 
     if (bIsDelete)
         rDoc.ClearDetectiveOperations();
     else
-        rDoc.AddDetectiveOperation( ScDetOpData( aPos, (ScDetOpType) nAction ) );
+        rDoc.AddDetectiveOperation( ScDetOpData( aPos, static_cast<ScDetOpType>(nAction) ) );
 
     ScTabViewShell* pViewShell = ScTabViewShell::GetActiveViewShell();
     if (pViewShell)
@@ -956,23 +974,23 @@ bool ScUndoDetective::CanRepeat(SfxRepeatTarget& /* rTarget */) const
 }
 
 ScUndoRangeNames::ScUndoRangeNames( ScDocShell* pNewDocShell,
-                                    ScRangeName* pOld, ScRangeName* pNew, SCTAB nTab ) :
+                                    std::unique_ptr<ScRangeName> pOld, std::unique_ptr<ScRangeName> pNew, SCTAB nTab ) :
     ScSimpleUndo( pNewDocShell ),
-    pOldRanges  ( pOld ),
-    pNewRanges  ( pNew ),
+    pOldRanges  ( std::move(pOld) ),
+    pNewRanges  ( std::move(pNew) ),
     mnTab       ( nTab )
 {
 }
 
 ScUndoRangeNames::~ScUndoRangeNames()
 {
-    delete pOldRanges;
-    delete pNewRanges;
+    pOldRanges.reset();
+    pNewRanges.reset();
 }
 
 OUString ScUndoRangeNames::GetComment() const
 {
-    return ScGlobal::GetRscString( STR_UNDO_RANGENAMES );
+    return ScResId( STR_UNDO_RANGENAMES );
 }
 
 void ScUndoRangeNames::DoChange( bool bUndo )
@@ -982,17 +1000,19 @@ void ScUndoRangeNames::DoChange( bool bUndo )
 
     if ( bUndo )
     {
+        auto p = std::make_unique<ScRangeName>(*pOldRanges);
         if (mnTab >= 0)
-            rDoc.SetRangeName( mnTab, new ScRangeName( *pOldRanges ) );
+            rDoc.SetRangeName( mnTab, std::move(p) );
         else
-            rDoc.SetRangeName( new ScRangeName( *pOldRanges ) );
+            rDoc.SetRangeName( std::move(p) );
     }
     else
     {
+        auto p = std::make_unique<ScRangeName>(*pNewRanges);
         if (mnTab >= 0)
-            rDoc.SetRangeName( mnTab, new ScRangeName( *pNewRanges ) );
+            rDoc.SetRangeName( mnTab, std::move(p) );
         else
-            rDoc.SetRangeName( new ScRangeName( *pNewRanges ) );
+            rDoc.SetRangeName( std::move(p) );
     }
 
     rDoc.CompileHybridFormula();

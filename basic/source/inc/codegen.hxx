@@ -24,7 +24,6 @@ class SbiParser;
 class SbModule;
 #include "opcodes.hxx"
 #include "buffer.hxx"
-#include <basic/codecompletecache.hxx>
 
 class SbiCodeGen {
     SbiParser* pParser;         // for error messages, line, column etc.
@@ -45,16 +44,16 @@ public:
     void BackChain( sal_uInt32 off )    { aCode.Chain( off );  }
     void Statement();
     void GenStmnt();            // create statement-opcode maybe
-    sal_uInt32 GetPC();
-    sal_uInt32 GetOffset()              { return GetPC() + 1; }
+    sal_uInt32 GetPC() const;
+    sal_uInt32 GetOffset() const { return GetPC() + 1; }
     void Save();
 
     // #29955 service for-loop-level
     void IncForLevel() { nForLevel++; }
     void DecForLevel() { nForLevel--; }
 
-    static sal_uInt32 calcNewOffSet( sal_uInt8* pCode, sal_uInt16 nOffset );
-    static sal_uInt16 calcLegacyOffSet( sal_uInt8* pCode, sal_uInt32 nOffset );
+    static sal_uInt32 calcNewOffSet( sal_uInt8 const * pCode, sal_uInt16 nOffset );
+    static sal_uInt16 calcLegacyOffSet( sal_uInt8 const * pCode, sal_uInt32 nOffset );
 
 };
 

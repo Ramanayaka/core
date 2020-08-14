@@ -27,9 +27,7 @@
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/lang/WrappedTargetException.hpp>
 #include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Type.hxx>
 #include <osl/diagnose.h>
 
@@ -40,10 +38,10 @@ typedef cppu::WeakImplHelper<
 template<class T>
 class NameContainer : public NameContainer_t
 {
-protected:
     typedef std::map<OUString,T> map_t;
     map_t maItems;
 
+protected:
     typename map_t::const_iterator findItem( const OUString& rName )
     {
         return maItems.find( rName );
@@ -103,8 +101,7 @@ public:
         typename map_t::const_iterator aIter = findItem( rName );
         if( aIter == maItems.end() )
             throw css::container::NoSuchElementException();
-        else
-            return css::uno::makeAny( aIter->second );
+        return css::uno::makeAny( aIter->second );
     }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getElementNames() override
@@ -127,13 +124,11 @@ public:
         const css::uno::Any& aElement ) override
     {
         T aItem;
-        if( aElement >>= aItem )
-            if( hasByName( rName ) )
-                replace( rName, aItem );
-            else
-                throw css::container::NoSuchElementException();
-        else
+        if( !(aElement >>= aItem) )
             throw css::lang::IllegalArgumentException();
+        if( !hasByName( rName ) )
+            throw css::container::NoSuchElementException();
+        replace( rName, aItem );
     }
 
 
@@ -145,22 +140,19 @@ public:
         const css::uno::Any& aElement ) override
     {
         T aItem;
-        if( aElement >>= aItem )
-            if( ! hasByName( rName ) )
-                insert( rName, aItem );
-            else
-                throw css::container::ElementExistException();
-        else
+        if( !(aElement >>= aItem) )
             throw css::lang::IllegalArgumentException();
+        if( hasByName( rName ) )
+            throw css::container::ElementExistException();
+        insert( rName, aItem );
     }
 
     virtual void SAL_CALL removeByName(
         const OUString& rName ) override
     {
-        if( hasByName( rName ) )
-            remove( rName );
-        else
+        if( !hasByName( rName ) )
             throw css::container::NoSuchElementException();
+        remove( rName );
     }
 
 };

@@ -20,7 +20,6 @@
 #ifndef INCLUDED_COMPHELPER_PROPERTYCONTAINERHELPER_HXX
 #define INCLUDED_COMPHELPER_PROPERTYCONTAINERHELPER_HXX
 
-#include <cppuhelper/propshlp.hxx>
 #include <com/sun/star/uno/Type.hxx>
 #include <com/sun/star/beans/Property.hpp>
 #include <vector>
@@ -73,8 +72,6 @@ struct COMPHELPER_DLLPUBLIC PropertyDescription
 class COMPHELPER_DLLPUBLIC OPropertyContainerHelper
 {
     typedef ::std::vector< css::uno::Any >              PropertyContainer;
-    typedef PropertyContainer::iterator                 PropertyContainerIterator;
-    typedef PropertyContainer::const_iterator           ConstPropertyContainerIterator;
     PropertyContainer   m_aHoldProperties;
         // the properties which are hold by this class' instance, not the derived one's
 
@@ -135,10 +132,10 @@ protected:
     void    revokeProperty( sal_Int32 _nHandle );
 
 
-    /// checkes whether a property with the given handle has been registered
+    /// checks whether a property with the given handle has been registered
     bool    isRegisteredProperty( sal_Int32 _nHandle ) const;
 
-    /// checkes whether a property with the given name has been registered
+    /// checks whether a property with the given name has been registered
     bool    isRegisteredProperty( const OUString& _rName ) const;
 
 
@@ -150,7 +147,7 @@ protected:
                     const css::uno::Any& rValue
                 );
 
-    bool        setFastPropertyValue(
+    void        setFastPropertyValue(
                         sal_Int32 nHandle,
                         const css::uno::Any& rValue
                     );

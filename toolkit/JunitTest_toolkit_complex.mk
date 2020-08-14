@@ -20,9 +20,8 @@ $(eval $(call gb_JunitTest_JunitTest,toolkit_complex))
 
 $(eval $(call gb_JunitTest_use_jars,toolkit_complex,\
     OOoRunner \
-    ridl \
+    libreoffice \
     test \
-    unoil \
 ))
 
 $(eval $(call gb_JunitTest_add_sourcefiles,toolkit_complex,\
@@ -36,12 +35,10 @@ $(eval $(call gb_JunitTest_add_sourcefiles,toolkit_complex,\
     toolkit/qa/complex/toolkit/awtgrid/TMutableGridDataModel \
     toolkit/qa/complex/toolkit/awtgrid/DummyColumn \
     toolkit/qa/complex/toolkit/GridControl \
-    toolkit/qa/complex/toolkit/UnitConversion \
 ))
 
 $(eval $(call gb_JunitTest_add_classes,toolkit_complex,\
     complex.toolkit.GridControl \
-    complex.toolkit.UnitConversion \
 ))
 
 # vim: set noet sw=4 ts=4:

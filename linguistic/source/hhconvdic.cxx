@@ -19,21 +19,16 @@
 
 #include <unicode/uscript.h>
 #include <i18nlangtag/lang.h>
-#include <tools/stream.hxx>
 #include <osl/mutex.hxx>
-#include <ucbhelper/content.hxx>
 
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/linguistic2/ConversionDictionaryType.hpp>
-#include <com/sun/star/lang/Locale.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 
 #include "hhconvdic.hxx"
-#include "linguistic/misc.hxx"
-#include "defs.hxx"
+#include <linguistic/misc.hxx>
 
-using namespace utl;
 using namespace osl;
 using namespace com::sun::star;
 using namespace com::sun::star::lang;
@@ -45,7 +40,6 @@ using namespace linguistic;
 #define SN_HH_CONV_DICTIONARY   "com.sun.star.linguistic2.HangulHanjaConversionDictionary"
 
 
-#include <i18nutil/unicode.hxx>
 #include <com/sun/star/i18n/UnicodeScript.hpp>
 
 using namespace i18n;
@@ -56,7 +50,7 @@ using namespace i18n;
 
 // from i18npool/source/textconversion/textconversion_ko.cxx
 /// @throws RuntimeException
-sal_Int16 SAL_CALL checkScriptType(sal_Unicode c)
+static sal_Int16 checkScriptType(sal_Unicode c)
 {
   UErrorCode status = U_ZERO_ERROR;
 
@@ -69,15 +63,14 @@ sal_Int16 SAL_CALL checkScriptType(sal_Unicode c)
 }
 
 
-bool TextIsAllScriptType( const OUString &rTxt, sal_Int16 nScriptType )
+static bool TextIsAllScriptType( const OUString &rTxt, sal_Int16 nScriptType )
 {
-    bool bIsAll = true;
-    for (sal_Int32 i = 0;  i < rTxt.getLength() && bIsAll;  ++i)
+    for (sal_Int32 i = 0; i < rTxt.getLength(); ++i)
     {
         if (checkScriptType( rTxt[i]) != nScriptType)
-            bIsAll = false;
+            return false;
     }
-    return bIsAll;
+    return true;
 }
 
 
@@ -108,7 +101,7 @@ void SAL_CALL HHConvDic::addEntry(
 
 OUString SAL_CALL HHConvDic::getImplementationName(  )
 {
-    return OUString( "com.sun.star.lingu2.HHConvDic" );
+    return "com.sun.star.lingu2.HHConvDic";
 }
 
 

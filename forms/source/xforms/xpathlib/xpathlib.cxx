@@ -20,10 +20,8 @@
 
 #include <string.h>
 #include <sal/types.h>
-#include <rtl/alloc.h>
 #include <rtl/ustring.hxx>
 #include <rtl/string.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <rtl/strbuf.hxx>
 #include <tools/date.hxx>
 #include <tools/time.hxx>
@@ -36,8 +34,10 @@
 #include <com/sun/star/xml/dom/XDocument.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 
-#include "xpathlib.hxx"
+#include <boost/lexical_cast.hpp>
+#include <libxml/xpathInternals.h>
 
+#include "xpathlib.hxx"
 #include "extension.hxx"
 
 // C interface
@@ -232,23 +232,23 @@ void xforms_propertyFunction(xmlXPathParserContextPtr ctxt, int nargs)
 static OString makeDateTimeString (const DateTime& aDateTime)
 {
     OStringBuffer aDateTimeString;
-    aDateTimeString.append((sal_Int32)aDateTime.GetYear());
-    aDateTimeString.append("-");
-    if (aDateTime.GetMonth()<10) aDateTimeString.append("0");
-    aDateTimeString.append((sal_Int32)aDateTime.GetMonth());
-    aDateTimeString.append("-");
-    if (aDateTime.GetDay()<10) aDateTimeString.append("0");
-    aDateTimeString.append((sal_Int32)aDateTime.GetDay());
-    aDateTimeString.append("T");
-    if (aDateTime.GetHour()<10) aDateTimeString.append("0");
-    aDateTimeString.append((sal_Int32)aDateTime.GetHour());
-    aDateTimeString.append(":");
-    if (aDateTime.GetMin()<10) aDateTimeString.append("0");
-    aDateTimeString.append((sal_Int32)aDateTime.GetMin());
-    aDateTimeString.append(":");
-    if (aDateTime.GetSec()<10) aDateTimeString.append("0");
-    aDateTimeString.append((sal_Int32)aDateTime.GetSec());
-    aDateTimeString.append("Z");
+    aDateTimeString.append(static_cast<sal_Int32>(aDateTime.GetYear()));
+    aDateTimeString.append('-');
+    if (aDateTime.GetMonth()<10) aDateTimeString.append('0');
+    aDateTimeString.append(static_cast<sal_Int32>(aDateTime.GetMonth()));
+    aDateTimeString.append('-');
+    if (aDateTime.GetDay()<10) aDateTimeString.append('0');
+    aDateTimeString.append(static_cast<sal_Int32>(aDateTime.GetDay()));
+    aDateTimeString.append('T');
+    if (aDateTime.GetHour()<10) aDateTimeString.append('0');
+    aDateTimeString.append(static_cast<sal_Int32>(aDateTime.GetHour()));
+    aDateTimeString.append(':');
+    if (aDateTime.GetMin()<10) aDateTimeString.append('0');
+    aDateTimeString.append(static_cast<sal_Int32>(aDateTime.GetMin()));
+    aDateTimeString.append(':');
+    if (aDateTime.GetSec()<10) aDateTimeString.append('0');
+    aDateTimeString.append(static_cast<sal_Int32>(aDateTime.GetSec()));
+    aDateTimeString.append('Z');
 
     return aDateTimeString.makeStringAndClear();
 }
@@ -293,25 +293,18 @@ static bool parseDateTime(const OUString& aString, DateTime& aDateTime)
     if (aDateTimeString.getLength() < 19 || aDateTimeString.getLength() > 20)
         return false;
 
-    sal_Int32 nDateLength = 10;
-    sal_Int32 const nTimeLength = 8;
-
-    OUString aDateString = aDateTimeString.copy(0, nDateLength);
-    OUString aTimeString = aDateTimeString.copy(nDateLength+1, nTimeLength);
-
     sal_Int32 nIndex = 0;
-    sal_Int32 nYear = aDateString.getToken(0, '-', nIndex).toInt32();
-    sal_Int32 nMonth = aDateString.getToken(0, '-', nIndex).toInt32();
-    sal_Int32 nDay = aDateString.getToken(0, '-', nIndex).toInt32();
-    nIndex = 0;
-    sal_Int32 nHour = aTimeString.getToken(0, ':', nIndex).toInt32();
-    sal_Int32 nMinute = aTimeString.getToken(0, ':', nIndex).toInt32();
-    sal_Int32 nSecond = aTimeString.getToken(0, ':', nIndex).toInt32();
+    sal_Int32 nYear = aDateTimeString.getToken(0, '-', nIndex).toInt32();
+    sal_Int32 nMonth = aDateTimeString.getToken(0, '-', nIndex).toInt32();
+    sal_Int32 nDay = aDateTimeString.getToken(0, 'T', nIndex).toInt32();
+    sal_Int32 nHour = aDateTimeString.getToken(0, ':', nIndex).toInt32();
+    sal_Int32 nMinute = aDateTimeString.getToken(0, ':', nIndex).toInt32();
+    sal_Int32 nSecond = aDateTimeString.getToken(0, 'Z', nIndex).toInt32();
 
-    Date tmpDate((sal_uInt16)nDay, (sal_uInt16)nMonth, (sal_uInt16)nYear);
+    Date tmpDate(static_cast<sal_uInt16>(nDay), static_cast<sal_uInt16>(nMonth), static_cast<sal_uInt16>(nYear));
     tools::Time tmpTime(nHour, nMinute, nSecond);
     DateTime tmpDateTime(tmpDate, tmpTime);
-    if (aString.indexOf("Z") < 0)
+    if (aString.lastIndexOf('Z') < 0)
         tmpDateTime.ConvertToUTC();
 
     aDateTime = tmpDateTime;
@@ -373,10 +366,7 @@ static bool parseDuration(const xmlChar* aString, bool& bNegative, sal_Int32& nY
                               sal_Int32& nHours, sal_Int32& nMinutes, sal_Int32& nSeconds)
 {
     bool bTime = false; // in part after T
-    sal_Int32 nLength = strlen(reinterpret_cast<char const *>(aString))+1;
-    char *pString = static_cast<char*>(rtl_allocateMemory(nLength));
-    char *pString0 = pString;
-    strncpy(pString, reinterpret_cast<char const *>(aString), nLength);
+    const xmlChar *pString = aString;
 
     if (pString[0] == '-') {
         bNegative = true;
@@ -385,41 +375,35 @@ static bool parseDuration(const xmlChar* aString, bool& bNegative, sal_Int32& nY
 
     if (pString[0] != 'P')
     {
-        rtl_freeMemory(pString0);
         return false;
     }
 
     pString++;
-    char* pToken = pString;
+    const xmlChar* pToken = pString;
     while(pToken[0] != 0)
     {
         switch(pToken[0]) {
         case 'Y':
-            pToken[0] = 0;
-            nYears = atoi(pString);
+            nYears = boost::lexical_cast<sal_Int32>(pString, pString-pToken);
             pString = ++pToken;
             break;
         case 'M':
-            pToken[0] = 0;
             if (!bTime)
-                nMonth = atoi(pString);
+                nMonth = boost::lexical_cast<sal_Int32>(pString, pString-pToken);
             else
-                nMinutes = atoi(pString);
+                nMinutes = boost::lexical_cast<sal_Int32>(pString, pString-pToken);
             pString = ++pToken;
             break;
         case 'D':
-            pToken[0] = 0;
-            nDays = atoi(pString);
+            nDays = boost::lexical_cast<sal_Int32>(pString, pString-pToken);
             pString = ++pToken;
             break;
         case 'H':
-            pToken[0] = 0;
-            nHours = atoi(pString);
+            nHours = boost::lexical_cast<sal_Int32>(pString, pString-pToken);
             pString = ++pToken;
             break;
         case 'S':
-            pToken[0] = 0;
-            nSeconds = atoi(pString);
+            nSeconds = boost::lexical_cast<sal_Int32>(pString, pString-pToken);
             pString = ++pToken;
             break;
         case 'T':
@@ -430,7 +414,6 @@ static bool parseDuration(const xmlChar* aString, bool& bNegative, sal_Int32& nY
             pToken++;
         }
     }
-    rtl_freeMemory(pString0);
     return true;
 }
 

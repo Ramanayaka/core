@@ -18,28 +18,21 @@
  */
 
 
-#include <cppuhelper/weakref.hxx>
-#include <cppuhelper/implementationentry.hxx>
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <unotools/mediadescriptor.hxx>
 
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/reflection/ProxyFactory.hpp>
 
 #include <com/sun/star/script/provider/theMasterScriptProviderFactory.hpp>
 #include <com/sun/star/script/browse/BrowseNodeFactoryViewTypes.hpp>
 #include <com/sun/star/script/browse/BrowseNodeTypes.hpp>
-#include <com/sun/star/document/XScriptInvocationContext.hpp>
 
 #include <tools/diagnose_ex.h>
 
 #include "BrowseNodeFactoryImpl.hxx"
 #include "MasterScriptProvider.hxx"
-#include "ActiveMSPList.hxx"
 #include <util/MiscUtils.hxx>
 
 #include <vector>
@@ -53,6 +46,7 @@ using namespace ::sf_misc;
 
 namespace browsenodefactory
 {
+namespace {
 class BrowseNodeAggregator :
     public ::cppu::WeakImplHelper< browse::XBrowseNode >
 {
@@ -63,8 +57,8 @@ private:
 public:
 
     explicit BrowseNodeAggregator( const Reference< browse::XBrowseNode >& node )
+        : m_Name(node->getName())
     {
-        m_Name = node->getName();
         m_Nodes.resize( 1 );
         m_Nodes[ 0 ] = node;
     }
@@ -104,17 +98,15 @@ public:
             }
         }
 
-        std::vector<  Sequence< Reference < browse::XBrowseNode > > >::const_iterator it = seqs.begin();
-        std::vector<  Sequence< Reference < browse::XBrowseNode > > >::const_iterator it_end = seqs.end();
-
         Sequence< Reference < browse::XBrowseNode > > result( numChildren );
-        for ( sal_Int32 index = 0; it != it_end && index < numChildren ; ++it )
+        sal_Int32 index = 0;
+        for ( Sequence< Reference < browse::XBrowseNode > >& children : seqs )
         {
-            Sequence< Reference < browse::XBrowseNode > > children = *it;
-            for ( sal_Int32 j = 0; j < children.getLength(); j++ )
-            {
-                result[ index++ ] = children[ j ];
-            }
+            std::copy(children.begin(), children.end(), std::next(result.begin(), index));
+            index += children.getLength();
+
+            if (index >= numChildren)
+                break;
         }
         return result;
     }
@@ -122,22 +114,19 @@ public:
     virtual sal_Bool SAL_CALL
     hasChildNodes() override
     {
-        if ( !m_Nodes.empty() )
+        for (Reference<XBrowseNode> & xNode : m_Nodes)
         {
-            for (Reference<XBrowseNode> & xNode : m_Nodes)
+            try
             {
-                try
+                if ( xNode->hasChildNodes() )
                 {
-                    if ( xNode->hasChildNodes() )
-                    {
-                        return true;
-                    }
+                    return true;
                 }
-                catch ( Exception& )
-                {
-                    // some form of exception getting child nodes so move
-                    // on to the next one
-                }
+            }
+            catch ( Exception& )
+            {
+                // some form of exception getting child nodes so move
+                // on to the next one
             }
         }
 
@@ -150,12 +139,6 @@ public:
     }
 };
 
-//typedef std::map< OUString, Reference< browse::XBrowseNode > >
-typedef std::unordered_map< OUString, Reference< browse::XBrowseNode >,
-    OUStringHash >
-        BrowseNodeAggregatorHash;
-typedef std::vector< OUString > vString;
-
 struct alphaSort
 {
     bool operator()( const OUString& a, const OUString& b )
@@ -167,17 +150,16 @@ class LocationBrowseNode :
     public ::cppu::WeakImplHelper< browse::XBrowseNode >
 {
 private:
-    std::unique_ptr<BrowseNodeAggregatorHash> m_hBNA;
-    vString m_vStr;
+    std::unique_ptr<std::unordered_map< OUString, Reference< browse::XBrowseNode > >> m_hBNA;
+    std::vector< OUString > m_vStr;
     OUString m_sNodeName;
     Reference< browse::XBrowseNode > m_origNode;
 
 public:
 
     explicit LocationBrowseNode( const Reference< browse::XBrowseNode >& node )
+        : m_sNodeName(node->getName())
     {
-        m_sNodeName = node->getName();
-        m_hBNA = nullptr;
         m_origNode.set( node );
     }
 
@@ -200,11 +182,10 @@ public:
         Sequence<  Reference< browse::XBrowseNode > > children( m_hBNA->size() );
         sal_Int32 index = 0;
 
-        vString::const_iterator it = m_vStr.begin();
-
-        for ( ; it != m_vStr.end(); ++it, index++ )
+        for ( const auto& str : m_vStr )
         {
-            children[ index ].set( m_hBNA->find( *it )->second );
+            children[ index ].set( m_hBNA->find( str )->second );
+            ++index;
         }
 
         return children;
@@ -224,31 +205,29 @@ private:
 
     void loadChildNodes()
     {
-        m_hBNA.reset( new BrowseNodeAggregatorHash );
+        m_hBNA.reset( new std::unordered_map< OUString, Reference< browse::XBrowseNode > > );
 
-        Sequence< Reference< browse::XBrowseNode > > langNodes =
+        const Sequence< Reference< browse::XBrowseNode > > langNodes =
             m_origNode->getChildNodes();
 
-        for ( sal_Int32 i = 0; i < langNodes.getLength(); i++ )
+        for ( const auto& rLangNode : langNodes )
         {
             Reference< browse::XBrowseNode > xbn;
-            if ( langNodes[ i ]->getName() == "uno_packages" )
+            if ( rLangNode->getName() == "uno_packages" )
             {
-                xbn.set( new LocationBrowseNode( langNodes[ i ] ) );
+                xbn.set( new LocationBrowseNode( rLangNode ) );
             }
             else
             {
-                xbn.set( langNodes[ i ] );
+                xbn.set( rLangNode );
             }
 
-            Sequence< Reference< browse::XBrowseNode > > grandchildren =
+            const Sequence< Reference< browse::XBrowseNode > > grandchildren =
                 xbn->getChildNodes();
 
-            for ( sal_Int32 j = 0; j < grandchildren.getLength(); j++ )
+            for ( const Reference< browse::XBrowseNode >& grandchild : grandchildren )
             {
-                Reference< browse::XBrowseNode > grandchild(grandchildren[j]);
-
-                BrowseNodeAggregatorHash::iterator h_it =
+                auto h_it =
                     m_hBNA->find( grandchild->getName() );
 
                 if ( h_it != m_hBNA->end() )
@@ -270,12 +249,9 @@ private:
     }
 };
 
-namespace
-{
-
 std::vector< Reference< browse::XBrowseNode > > getAllBrowseNodes( const Reference< XComponentContext >& xCtx )
 {
-    Sequence< OUString > openDocs =
+    const Sequence< OUString > openDocs =
         MiscUtils::allOpenTDocUrls( xCtx );
 
     Reference< provider::XScriptProviderFactory > xFac;
@@ -291,18 +267,18 @@ std::vector< Reference< browse::XBrowseNode > > getAllBrowseNodes( const Referen
         locnBNs[ mspIndex++ ].set( xFac->createScriptProvider( makeAny( OUString("share") ) ), UNO_QUERY_THROW );
     }
     // TODO proper exception handling, should throw
-    catch( const Exception& e )
+    catch( const Exception& )
     {
-        SAL_WARN("scripting", "Caught Exception " << e.Message );
+        TOOLS_WARN_EXCEPTION("scripting", "Caught" );
         locnBNs.resize( mspIndex );
         return locnBNs;
     }
 
-    for ( sal_Int32 i = 0; i < openDocs.getLength(); i++ )
+    for ( const auto& rDoc : openDocs )
     {
         try
         {
-            Reference< frame::XModel > model( MiscUtils::tDocUrlToModel( openDocs[ i ] ), UNO_QUERY_THROW );
+            Reference< frame::XModel > model( MiscUtils::tDocUrlToModel( rDoc ), UNO_SET_THROW );
 
             // #i44599 Check if it's a real document or something special like Hidden/Preview
             css::uno::Reference< css::frame::XController > xCurrentController = model->getCurrentController();
@@ -322,7 +298,7 @@ std::vector< Reference< browse::XBrowseNode > > getAllBrowseNodes( const Referen
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("scripting");
         }
 
     }
@@ -338,6 +314,8 @@ std::vector< Reference< browse::XBrowseNode > > getAllBrowseNodes( const Referen
 
 typedef ::std::vector< Reference< browse::XBrowseNode > > vXBrowseNodes;
 
+namespace {
+
 struct alphaSortForBNodes
 {
     bool operator()( const Reference< browse::XBrowseNode >& a, const Reference< browse::XBrowseNode >& b )
@@ -346,7 +324,12 @@ struct alphaSortForBNodes
     }
 };
 
+}
+
 typedef ::cppu::WeakImplHelper< browse::XBrowseNode > t_BrowseNodeBase;
+
+namespace {
+
 class DefaultBrowseNode :
     public t_BrowseNodeBase
 {
@@ -377,21 +360,21 @@ public:
         OSL_ENSURE( m_xAggProxy.is(),
             "DefaultBrowseNode::DefaultBrowseNode: Wrapped BrowseNode cannot be aggregated!" );
 
-        if ( m_xAggProxy.is() )
+        if ( !m_xAggProxy.is() )
+            return;
+
+        osl_atomic_increment( &m_refCount );
+
+        /* i35609 - Fix crash on Solaris. The setDelegator call needs
+           to be in its own block to ensure that all temporary Reference
+           instances that are acquired during the call are released
+           before m_refCount is decremented again */
         {
-            osl_atomic_increment( &m_refCount );
-
-            /* i35609 - Fix crash on Solaris. The setDelegator call needs
-               to be in its own block to ensure that all temporary Reference
-               instances that are acquired during the call are released
-               before m_refCount is decremented again */
-            {
-                m_xAggProxy->setDelegator(
-                    static_cast< cppu::OWeakObject * >( this ) );
-            }
-
-            osl_atomic_decrement( &m_refCount );
+            m_xAggProxy->setDelegator(
+                static_cast< cppu::OWeakObject * >( this ) );
         }
+
+        osl_atomic_decrement( &m_refCount );
     }
 
     virtual ~DefaultBrowseNode() override
@@ -408,11 +391,10 @@ public:
         if ( hasChildNodes() )
         {
             vXBrowseNodes aVNodes;
-            Sequence < Reference< browse::XBrowseNode > > nodes =
+            const Sequence < Reference< browse::XBrowseNode > > nodes =
                 m_xWrappedBrowseNode->getChildNodes();
-            for ( sal_Int32 i=0; i<nodes.getLength(); i++ )
+            for ( const Reference< browse::XBrowseNode >& xBrowseNode : nodes )
             {
-                Reference< browse::XBrowseNode > xBrowseNode = nodes[ i ];
                 OSL_ENSURE( xBrowseNode.is(), "DefaultBrowseNode::getChildNodes(): Invalid BrowseNode" );
                 if( xBrowseNode.is() )
                     aVNodes.push_back( new DefaultBrowseNode( m_xCtx, xBrowseNode ) );
@@ -420,10 +402,11 @@ public:
 
             ::std::sort( aVNodes.begin(), aVNodes.end(), alphaSortForBNodes() );
             Sequence < Reference< browse::XBrowseNode > > children( aVNodes.size() );
-            vXBrowseNodes::const_iterator it = aVNodes.begin();
-            for ( sal_Int32 i=0; it != aVNodes.end() && i<children.getLength(); i++, ++it )
+            sal_Int32 i = 0;
+            for ( const auto& rxNode : aVNodes )
             {
-                children[ i ].set( *it );
+                children[ i ].set( rxNode );
+                i++;
             }
             return children;
         }
@@ -510,10 +493,11 @@ public:
         // no need to sort user, share, doc1...docN
         //::std::sort( m_vNodes.begin(), m_vNodes.end(), alphaSortForBNodes() );
         Sequence < Reference< browse::XBrowseNode > > children( m_vNodes.size() );
-        vXBrowseNodes::const_iterator it = m_vNodes.begin();
-        for ( sal_Int32 i=0; it != m_vNodes.end() && i<children.getLength(); i++, ++it )
+        sal_Int32 i = 0;
+        for ( const auto& rxNode : m_vNodes )
         {
-            children[ i ].set( *it );
+            children[ i ].set( rxNode );
+            i++;
         }
         return children;
     }
@@ -556,7 +540,7 @@ public:
 
     virtual OUString SAL_CALL getName() override
     {
-        return OUString("Root");
+        return "Root";
     }
 
     virtual Sequence< Reference< browse::XBrowseNode > > SAL_CALL
@@ -586,6 +570,8 @@ public:
         return browse::BrowseNodeTypes::CONTAINER;
     }
 };
+
+}
 
 BrowseNodeFactoryImpl::BrowseNodeFactoryImpl(
     Reference< XComponentContext > const & xComponentContext )
@@ -620,41 +606,11 @@ BrowseNodeFactoryImpl::createView( sal_Int16 viewType )
 }
 
 Reference< browse::XBrowseNode >
-BrowseNodeFactoryImpl::getOrganizerHierarchy()
+BrowseNodeFactoryImpl::getOrganizerHierarchy() const
 {
     Reference< browse::XBrowseNode > xRet = new  DefaultRootBrowseNode( m_xComponentContext );
     return xRet;
 }
-
-// Helper methods
-
-
-// Namespace global methods for setting up BrowseNodeFactory service
-
-
-Sequence< OUString > SAL_CALL
-bnf_getSupportedServiceNames( )
-{
-    OUString str_name(
-        "com.sun.star.script.browse.BrowseNodeFactory");
-
-    return Sequence< OUString >( &str_name, 1 );
-}
-
-OUString SAL_CALL
-bnf_getImplementationName( )
-{
-    return OUString(
-        "com.sun.star.script.browse.BrowseNodeFactory" );
-}
-
-Reference< XInterface > SAL_CALL
-bnf_create( Reference< XComponentContext > const & xComponentContext )
-{
-    return static_cast< ::cppu::OWeakObject * >(
-        new BrowseNodeFactoryImpl( xComponentContext ) );
-}
-
 
 // Implementation of XServiceInfo
 
@@ -662,18 +618,25 @@ bnf_create( Reference< XComponentContext > const & xComponentContext )
 OUString SAL_CALL
 BrowseNodeFactoryImpl::getImplementationName()
 {
-    return bnf_getImplementationName();
+    return "com.sun.star.script.browse.BrowseNodeFactory";
 }
 
 Sequence< OUString > SAL_CALL
 BrowseNodeFactoryImpl::getSupportedServiceNames()
 {
-    return bnf_getSupportedServiceNames();
+    return { "com.sun.star.script.browse.BrowseNodeFactory" };
 }
 
 sal_Bool BrowseNodeFactoryImpl::supportsService(OUString const & serviceName )
 {
     return cppu::supportsService(this, serviceName);
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+scripting_BrowseNodeFactoryImpl_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new BrowseNodeFactoryImpl(context));
 }
 
 } // namespace browsenodefactory

@@ -20,21 +20,17 @@
 #include <com/sun/star/io/XMarkableStream.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
-#include <toolkit/controls/stdtabcontrollermodel.hxx>
+#include <controls/stdtabcontrollermodel.hxx>
 #include <toolkit/helper/macros.hxx>
-#include <toolkit/helper/servicenames.hxx>
-#include <toolkit/helper/property.hxx>
+#include <helper/servicenames.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
-#include <rtl/uuid.h>
 
 #include <tools/debug.hxx>
 
-#define UNOCONTROL_STREAMVERSION    (short)2
+#define UNOCONTROL_STREAMVERSION    short(2)
 
 
-//  class UnoControlModelEntryList
 
 UnoControlModelEntryList::UnoControlModelEntryList()
 {
@@ -88,7 +84,6 @@ void UnoControlModelEntryList::insert( size_t i, UnoControlModelEntry* item ) {
 }
 
 
-//  class StdTabControllerModel
 
 StdTabControllerModel::StdTabControllerModel()
 {
@@ -132,14 +127,12 @@ void StdTabControllerModel::ImplGetControlModels( css::uno::Reference< css::awt:
 
 void StdTabControllerModel::ImplSetControlModels( UnoControlModelEntryList& rList, const css::uno::Sequence< css::uno::Reference< css::awt::XControlModel > >& Controls )
 {
-    const css::uno::Reference< css::awt::XControlModel > * pRefs = Controls.getConstArray();
-    sal_uInt32 nControls = Controls.getLength();
-    for ( sal_uInt32 n = 0; n < nControls; n++ )
+    for ( const css::uno::Reference< css::awt::XControlModel >& rRef : Controls )
     {
         UnoControlModelEntry* pNewEntry = new UnoControlModelEntry;
         pNewEntry->bGroup = false;
         pNewEntry->pxControl = new css::uno::Reference< css::awt::XControlModel > ;
-        *pNewEntry->pxControl = pRefs[n];
+        *pNewEntry->pxControl = rRef;
         rList.push_back( pNewEntry );
     }
 }
@@ -155,7 +148,7 @@ sal_uInt32 StdTabControllerModel::ImplGetControlPos( const css::uno::Reference< 
     return CONTROLPOS_NOTFOUND;
 }
 
-void ImplWriteControls( const css::uno::Reference< css::io::XObjectOutputStream > & OutStream, const css::uno::Sequence< css::uno::Reference< css::awt::XControlModel > >& rCtrls )
+static void ImplWriteControls( const css::uno::Reference< css::io::XObjectOutputStream > & OutStream, const css::uno::Sequence< css::uno::Reference< css::awt::XControlModel > >& rCtrls )
 {
     css::uno::Reference< css::io::XMarkableStream >  xMark( OutStream, css::uno::UNO_QUERY );
     DBG_ASSERT( xMark.is(), "write: no XMarkableStream!" );
@@ -163,13 +156,11 @@ void ImplWriteControls( const css::uno::Reference< css::io::XObjectOutputStream 
     sal_uInt32 nStoredControls = 0;
     sal_Int32 nDataBeginMark = xMark->createMark();
 
-    OutStream->writeLong( 0L ); // DataLen
-    OutStream->writeLong( 0L ); // nStoredControls
+    OutStream->writeLong( 0 ); // DataLen
+    OutStream->writeLong( 0 ); // nStoredControls
 
-    sal_uInt32 nCtrls = rCtrls.getLength();
-    for ( sal_uInt32 n = 0; n < nCtrls; n++ )
+    for ( const css::uno::Reference< css::awt::XControlModel >& xI : rCtrls )
     {
-        const css::uno::Reference< css::awt::XControlModel >  xI = rCtrls.getConstArray()[n];
         css::uno::Reference< css::io::XPersistObject >  xPO( xI, css::uno::UNO_QUERY );
         DBG_ASSERT( xPO.is(), "write: Control doesn't support XPersistObject" );
         if ( xPO.is() )
@@ -186,7 +177,7 @@ void ImplWriteControls( const css::uno::Reference< css::io::XObjectOutputStream 
     xMark->deleteMark(nDataBeginMark);
 }
 
-css::uno::Sequence< css::uno::Reference< css::awt::XControlModel > > ImplReadControls( const css::uno::Reference< css::io::XObjectInputStream > & InStream )
+static css::uno::Sequence< css::uno::Reference< css::awt::XControlModel > > ImplReadControls( const css::uno::Reference< css::io::XObjectInputStream > & InStream )
 {
     css::uno::Reference< css::io::XMarkableStream >  xMark( InStream, css::uno::UNO_QUERY );
     DBG_ASSERT( xMark.is(), "write: no XMarkableStream!" );
@@ -216,19 +207,26 @@ css::uno::Sequence< css::uno::Reference< css::awt::XControlModel > > ImplReadCon
 css::uno::Any StdTabControllerModel::queryAggregation( const css::uno::Type & rType )
 {
     css::uno::Any aRet = ::cppu::queryInterface( rType,
-                                        (static_cast< css::awt::XTabControllerModel* >(this)),
-                                        (static_cast< css::lang::XServiceInfo* >(this)),
-                                        (static_cast< css::io::XPersistObject* >(this)),
-                                        (static_cast< css::lang::XTypeProvider* >(this)) );
+                                        static_cast< css::awt::XTabControllerModel* >(this),
+                                        static_cast< css::lang::XServiceInfo* >(this),
+                                        static_cast< css::io::XPersistObject* >(this),
+                                        static_cast< css::lang::XTypeProvider* >(this) );
     return (aRet.hasValue() ? aRet : OWeakAggObject::queryAggregation( rType ));
 }
 
+IMPL_IMPLEMENTATION_ID( StdTabControllerModel )
+
 // css::lang::XTypeProvider
-IMPL_XTYPEPROVIDER_START( StdTabControllerModel )
-    cppu::UnoType<css::awt::XTabControllerModel>::get(),
-    cppu::UnoType<css::lang::XServiceInfo>::get(),
-    cppu::UnoType<css::io::XPersistObject>::get()
-IMPL_XTYPEPROVIDER_END
+css::uno::Sequence< css::uno::Type > StdTabControllerModel::getTypes()
+{
+    static const css::uno::Sequence< css::uno::Type > aTypeList {
+        cppu::UnoType<css::lang::XTypeProvider>::get(),
+        cppu::UnoType<css::awt::XTabControllerModel>::get(),
+        cppu::UnoType<css::lang::XServiceInfo>::get(),
+        cppu::UnoType<css::io::XPersistObject>::get()
+    };
+    return aTypeList;
+}
 
 sal_Bool StdTabControllerModel::getGroupControl(  )
 {
@@ -330,7 +328,7 @@ void StdTabControllerModel::getGroup( sal_Int32 nGroup, css::uno::Sequence< css:
         UnoControlModelEntry* pEntry = maControls[ n ];
         if ( pEntry->bGroup )
         {
-            if ( nG == (sal_uInt32)nGroup )
+            if ( nG == static_cast<sal_uInt32>(nGroup) )
             {
                 sal_uInt32 nCount = ImplGetControlCount( *pEntry->pGroup );
                 aSeq = css::uno::Sequence< css::uno::Reference< css::awt::XControlModel > >( nCount );
@@ -371,7 +369,7 @@ void StdTabControllerModel::getGroupByName( const OUString& rName, css::uno::Seq
 // css::io::XPersistObject
 OUString StdTabControllerModel::getServiceName(  )
 {
-    return OUString::createFromAscii( szServiceName_TabControllerModel );
+    return "stardiv.vcl.controlmodel.TabController";
 }
 
 void StdTabControllerModel::write( const css::uno::Reference< css::io::XObjectOutputStream >& OutStream )
@@ -416,7 +414,7 @@ void StdTabControllerModel::read( const css::uno::Reference< css::io::XObjectInp
 
 OUString StdTabControllerModel::getImplementationName()
 {
-    return OUString("stardiv.Toolkit.StdTabControllerModel");
+    return "stardiv.Toolkit.StdTabControllerModel";
 }
 
 sal_Bool StdTabControllerModel::supportsService(OUString const & ServiceName)
@@ -427,11 +425,11 @@ sal_Bool StdTabControllerModel::supportsService(OUString const & ServiceName)
 css::uno::Sequence<OUString> StdTabControllerModel::getSupportedServiceNames()
 {
     return css::uno::Sequence<OUString>{
-        OUString::createFromAscii(szServiceName2_TabControllerModel),
+        "com.sun.star.awt.TabControllerModel",
         "stardiv.vcl.controlmodel.TabController"};
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_StdTabControllerModel_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

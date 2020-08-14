@@ -29,10 +29,9 @@
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
-#include <com/sun/star/ucb/NumberedSortingInfo.hpp>
 #include <com/sun/star/ucb/XContentProvider.hpp>
 #include <com/sun/star/ucb/XContentIdentifier.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/beans/Property.hpp>
 
 
@@ -134,7 +133,7 @@ namespace ftp {
             if( 0 <= m_nRow && m_nRow < sal::static_int_cast<sal_Int32>(m_aItems.size()) )
                 return m_aItems[m_nRow]->getInt( columnIndex );
             else
-                return sal_Int32( 0 );
+                return 0;
         }
 
         virtual sal_Int64 SAL_CALL
@@ -391,20 +390,18 @@ namespace ftp {
                                             IdentSet;
         typedef std::vector< css::uno::Reference< css::sdbc::XRow > >
                                             ItemSet;
-        typedef std::vector< OUString >     PathSet;
 
         IdentSet                            m_aIdents;
         ItemSet                             m_aItems;
-        PathSet                             m_aPath;
+        std::vector<OUString>               m_aPath;
 
         css::uno::Sequence< css::beans::Property >
                                             m_sProperty;
 
         osl::Mutex                          m_aMutex;
-        comphelper::OInterfaceContainerHelper2*   m_pDisposeEventListeners;
-
-        comphelper::OInterfaceContainerHelper2*   m_pRowCountListeners;
-        comphelper::OInterfaceContainerHelper2*   m_pIsFinalListeners;
+        std::unique_ptr<comphelper::OInterfaceContainerHelper2>   m_pDisposeEventListeners;
+        std::unique_ptr<comphelper::OInterfaceContainerHelper2>   m_pRowCountListeners;
+        std::unique_ptr<comphelper::OInterfaceContainerHelper2>   m_pIsFinalListeners;
     };
 
 

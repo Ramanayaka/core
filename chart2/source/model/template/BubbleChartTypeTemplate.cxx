@@ -18,16 +18,14 @@
  */
 
 #include "BubbleChartTypeTemplate.hxx"
-#include "macros.hxx"
 #include "BubbleDataInterpreter.hxx"
-#include "CartesianCoordinateSystem.hxx"
-#include "Scaling.hxx"
-#include "DiagramHelper.hxx"
-#include "servicenames_charttypes.hxx"
-#include "DataSeriesHelper.hxx"
+#include <servicenames_charttypes.hxx>
+#include <DataSeriesHelper.hxx>
 #include <com/sun/star/drawing/LineStyle.hpp>
-#include "PropertyHelper.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <PropertyHelper.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <tools/diagnose_ex.h>
 
 #include <algorithm>
 
@@ -167,9 +165,9 @@ Reference< chart2::XChartType > BubbleChartTypeTemplate::getChartTypeForIndex( s
         xResult.set( xFact->createInstance(
                          CHART2_SERVICE_NAME_CHARTTYPE_BUBBLE ), uno::UNO_QUERY_THROW );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return xResult;
@@ -189,9 +187,9 @@ Reference< chart2::XChartType > SAL_CALL BubbleChartTypeTemplate::getChartTypeFo
 
         ChartTypeTemplate::copyPropertiesFromOldToNewCoordinateSystem( aFormerlyUsedChartTypes, xResult );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return xResult;

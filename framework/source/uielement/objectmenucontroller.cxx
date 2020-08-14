@@ -19,13 +19,8 @@
 
 #include <stdtypes.h>
 
-#include <com/sun/star/awt/XDevice.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/awt/MenuItemStyle.hpp>
-
 #include <com/sun/star/embed/VerbAttributes.hpp>
 #include <com/sun/star/embed/VerbDescriptor.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 
 #include <svtools/popupmenucontrollerbase.hxx>
 #include <toolkit/awt/vclxmenu.hxx>
@@ -33,9 +28,6 @@
 #include <cppuhelper/weak.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/i18nhelp.hxx>
-#include <rtl/ref.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <osl/mutex.hxx>
 
 using namespace com::sun::star::uno;
@@ -57,7 +49,7 @@ public:
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.ObjectMenuController");
+        return "com.sun.star.comp.framework.ObjectMenuController";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -77,7 +69,7 @@ public:
     virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
 private:
-    void fillPopupMenu( const css::uno::Sequence< css::embed::VerbDescriptor >& rVerbCommandSeq, css::uno::Reference< css::awt::XPopupMenu >& rPopupMenu );
+    void fillPopupMenu( const css::uno::Sequence< css::embed::VerbDescriptor >& rVerbCommandSeq, css::uno::Reference< css::awt::XPopupMenu > const & rPopupMenu );
 };
 
 ObjectMenuController::ObjectMenuController( const css::uno::Reference< css::uno::XComponentContext >& xContext ) :
@@ -86,10 +78,10 @@ ObjectMenuController::ObjectMenuController( const css::uno::Reference< css::uno:
 }
 
 // private function
-void ObjectMenuController::fillPopupMenu( const Sequence< css::embed::VerbDescriptor >& rVerbCommandSeq, Reference< css::awt::XPopupMenu >& rPopupMenu )
+void ObjectMenuController::fillPopupMenu( const Sequence< css::embed::VerbDescriptor >& rVerbCommandSeq, Reference< css::awt::XPopupMenu > const & rPopupMenu )
 {
     const css::embed::VerbDescriptor* pVerbCommandArray = rVerbCommandSeq.getConstArray();
-    VCLXPopupMenu*                    pPopupMenu        = static_cast<VCLXPopupMenu *>(VCLXMenu::GetImplementation( rPopupMenu ));
+    VCLXPopupMenu*                    pPopupMenu        = static_cast<VCLXPopupMenu *>(comphelper::getUnoTunnelImplementation<VCLXMenu>( rPopupMenu ));
     PopupMenu*                        pVCLPopupMenu     = nullptr;
 
     SolarMutexGuard aSolarMutexGuard;
@@ -98,21 +90,20 @@ void ObjectMenuController::fillPopupMenu( const Sequence< css::embed::VerbDescri
     if ( pPopupMenu )
         pVCLPopupMenu = static_cast<PopupMenu *>(pPopupMenu->GetMenu());
 
-    if ( pVCLPopupMenu )
-    {
-        const OUString aVerbCommand( ".uno:ObjectMenue?VerbID:short=" );
-        for ( sal_Int32 i = 0; i < rVerbCommandSeq.getLength(); i++ )
-        {
-            const css::embed::VerbDescriptor& rVerb = pVerbCommandArray[i];
-            if ( rVerb.VerbAttributes & css::embed::VerbAttributes::MS_VERBATTR_ONCONTAINERMENU )
-            {
-                m_xPopupMenu->insertItem( i+1, rVerb.VerbName, 0, i );
-                // use VCL popup menu pointer to set vital information that are not part of the awt implementation
+    if ( !pVCLPopupMenu )
+        return;
 
-                OUString aCommand( aVerbCommand );
-                aCommand += OUString::number( rVerb.VerbID );
-                pVCLPopupMenu->SetItemCommand( i+1, aCommand ); // Store verb command
-            }
+    const OUString aVerbCommand( ".uno:ObjectMenue?VerbID:short=" );
+    for ( sal_Int32 i = 0; i < rVerbCommandSeq.getLength(); i++ )
+    {
+        const css::embed::VerbDescriptor& rVerb = pVerbCommandArray[i];
+        if ( rVerb.VerbAttributes & css::embed::VerbAttributes::MS_VERBATTR_ONCONTAINERMENU )
+        {
+            m_xPopupMenu->insertItem( i+1, rVerb.VerbName, 0, i );
+            // use VCL popup menu pointer to set vital information that are not part of the awt implementation
+
+            OUString aCommand = aVerbCommand + OUString::number( rVerb.VerbID );
+            pVCLPopupMenu->SetItemCommand( i+1, aCommand ); // Store verb command
         }
     }
 }
@@ -145,7 +136,7 @@ void SAL_CALL ObjectMenuController::statusChanged( const FeatureStateEvent& Even
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_ObjectMenuController_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

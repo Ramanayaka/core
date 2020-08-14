@@ -10,7 +10,6 @@
 #ifndef INCLUDED_VCL_COMMANDICONRESOLVER_HXX
 #define INCLUDED_VCL_COMMANDICONRESOLVER_HXX
 
-#include <vcl/dllapi.h>
 #include <vcl/image.hxx>
 #include <o3tl/enumarray.hxx>
 
@@ -18,6 +17,7 @@
 
 #include "ImageList.hxx"
 
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -27,13 +27,13 @@ namespace vcl
 class CommandImageResolver final
 {
 private:
-    typedef std::unordered_map<OUString, OUString, OUStringHash > CommandToImageNameMap;
+    typedef std::unordered_map<OUString, OUString > CommandToImageNameMap;
 
     CommandToImageNameMap m_aCommandToImageNameMap;
     std::vector<OUString> m_aImageCommandNameVector;
     std::vector<OUString> m_aImageNameVector;
 
-    o3tl::enumarray<ImageType, ImageList*> m_pImageList;
+    o3tl::enumarray<ImageType, std::unique_ptr<ImageList>> m_pImageList;
     OUString m_sIconTheme;
 
     ImageList* getImageList(ImageType nImageType);
@@ -42,7 +42,7 @@ public:
     CommandImageResolver();
     ~CommandImageResolver();
 
-    bool registerCommands(css::uno::Sequence<OUString>& aCommandSequence);
+    void registerCommands(css::uno::Sequence<OUString>& aCommandSequence);
     Image getImageFromCommandURL(ImageType nImageType, const OUString& rCommandURL);
 
     std::vector<OUString>& getCommandNames()

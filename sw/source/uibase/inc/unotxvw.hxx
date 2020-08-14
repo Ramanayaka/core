@@ -38,8 +38,7 @@
 #include <com/sun/star/datatransfer/XTransferableSupplier.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <svl/itemprop.hxx>
-#include "calbck.hxx"
-#include "TextCursorHelper.hxx"
+#include <TextCursorHelper.hxx>
 #include <comphelper/uno3.hxx>
 
 #include <sfx2/objsh.hxx>
@@ -151,15 +150,13 @@ typedef cppu::WeakImplHelper<
                             css::beans::XPropertyState
                             > SwXTextViewCursor_Base;
 
-class SwXTextViewCursor : public SwXTextViewCursor_Base,
-public SwClient,
-public OTextCursorHelper
+class SwXTextViewCursor final: public SwXTextViewCursor_Base, public OTextCursorHelper
 {
     SwView*                         m_pView;
     const SfxItemPropertySet*       m_pPropSet;
-protected:
     bool        IsTextSelection( bool bAllowTables = true ) const;
     virtual     ~SwXTextViewCursor() override;
+
 public:
     SwXTextViewCursor(SwView* pVw);
 

@@ -20,6 +20,8 @@
 #ifndef INCLUDED_VCL_SOURCE_FILTER_IXPM_RGBTABLE_HXX
 #define INCLUDED_VCL_SOURCE_FILTER_IXPM_RGBTABLE_HXX
 
+#include <sal/types.h>
+
 struct XPMRGBTab
 {
     const char* name;
@@ -28,7 +30,7 @@ struct XPMRGBTab
     sal_uInt8  blue;
 };
 
-static const XPMRGBTab pRGBTable[] = {
+const XPMRGBTab pRGBTable[] = {
 { "white",                  255, 255, 255 },
 { "black",                  0,   0,   0 },
 { "snow",                   255, 250, 250 },

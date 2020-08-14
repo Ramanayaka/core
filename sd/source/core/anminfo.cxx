@@ -17,24 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/xtable.hxx"
-#include <svx/svdopath.hxx>
-#include <svl/urihelper.hxx>
 #include <editeng/flditem.hxx>
 #include <editeng/eeitem.hxx>
+#include <tools/debug.hxx>
 
-#include "anminfo.hxx"
-#include "glob.hxx"
-#include "sdiocmpt.hxx"
-#include "drawdoc.hxx"
-
-#include <tools/tenccvt.hxx>
+#include <anminfo.hxx>
+#include <glob.hxx>
 
 using namespace ::com::sun::star;
 
 SdAnimationInfo::SdAnimationInfo(SdrObject& rObject)
                : SdrObjUserData(SdrInventor::StarDrawUserData, SD_ANIMATIONINFO_ID),
-                 mePresObjKind              (PRESOBJ_NONE),
+                 mePresObjKind              (PresObjKind::NONE),
                  meEffect                   (presentation::AnimationEffect_NONE),
                  meTextEffect               (presentation::AnimationEffect_NONE),
                  meSpeed                    (presentation::AnimationSpeed_SLOW),
@@ -52,13 +46,13 @@ SdAnimationInfo::SdAnimationInfo(SdrObject& rObject)
                  mnVerb                     (0),
                  mrObject                   (rObject)
 {
-    maBlueScreen = RGB_Color(COL_LIGHTMAGENTA);
-    maDimColor = RGB_Color(COL_LIGHTGRAY);
+    maBlueScreen = COL_LIGHTMAGENTA;
+    maDimColor = COL_LIGHTGRAY;
 }
 
 SdAnimationInfo::SdAnimationInfo(const SdAnimationInfo& rAnmInfo, SdrObject& rObject)
                : SdrObjUserData             (rAnmInfo),
-                 mePresObjKind               (PRESOBJ_NONE),
+                 mePresObjKind               (PresObjKind::NONE),
                  meEffect                   (rAnmInfo.meEffect),
                  meTextEffect               (rAnmInfo.meTextEffect),
                  meSpeed                    (rAnmInfo.meSpeed),
@@ -89,21 +83,20 @@ SdAnimationInfo::~SdAnimationInfo()
 {
 }
 
-SdrObjUserData* SdAnimationInfo::Clone(SdrObject* pObject) const
+std::unique_ptr<SdrObjUserData> SdAnimationInfo::Clone(SdrObject* pObject) const
 {
     DBG_ASSERT( pObject, "SdAnimationInfo::Clone(), pObject must not be null!" );
     if( pObject == nullptr )
         pObject = &mrObject;
 
-    return new SdAnimationInfo(*this, *pObject );
+    return std::unique_ptr<SdrObjUserData>(new SdAnimationInfo(*this, *pObject ));
 }
 
 void SdAnimationInfo::SetBookmark( const OUString& rBookmark )
 {
     if( meClickAction == css::presentation::ClickAction_BOOKMARK )
     {
-        OUString sURL("#");
-        sURL += rBookmark;
+        OUString sURL = "#" + rBookmark;
         SvxFieldItem aURLItem( SvxURLField( sURL, sURL ), EE_FEATURE_FIELD );
         mrObject.SetMergedItem( aURLItem );
     }
@@ -114,7 +107,7 @@ void SdAnimationInfo::SetBookmark( const OUString& rBookmark )
     }
 }
 
-OUString SdAnimationInfo::GetBookmark()
+OUString SdAnimationInfo::GetBookmark() const
 {
     OUString sBookmark;
 

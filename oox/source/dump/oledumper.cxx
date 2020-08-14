@@ -17,22 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/dump/oledumper.hxx"
+#include <oox/dump/oledumper.hxx>
 
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/io/XOutputStream.hpp>
-#include <osl/file.hxx>
-#include <osl/thread.h>
 #include <rtl/tencinfo.h>
-#include "oox/core/filterbase.hxx"
-#include "oox/helper/binaryoutputstream.hxx"
-#include "oox/ole/olestorage.hxx"
-#include "oox/ole/vbainputstream.hxx"
+#include <oox/ole/vbainputstream.hxx>
 
-#if OOX_INCLUDE_DUMPER
+#ifdef DBG_UTIL
 
-namespace oox {
-namespace dump {
+namespace oox::dump {
 
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::uno;
@@ -281,8 +273,8 @@ void OlePropertyStreamObject::dumpSection( const OUString& rGuid, sal_uInt32 nSt
     }
 
     // other properties
-    for( PropertyPosMap::const_iterator aIt = aPropMap.begin(), aEnd = aPropMap.end(); aIt != aEnd; ++aIt )
-        dumpProperty( aIt->first, aIt->second );
+    for (auto const& elem : aPropMap)
+        dumpProperty( elem.first, elem.second );
 
     // remove the user defined list of property ID names
     cfg().eraseNameList( "OLEPROP-IDS" );
@@ -331,7 +323,7 @@ void OlePropertyStreamObject::dumpDictionaryProperty( sal_uInt32 nStartPos )
             TableGuard aTabGuard( mxOut, 10, 20 );
             sal_Int32 nId = dumpDec< sal_Int32 >( "id" );
             OUString aName = dumpString8( "name" );
-            if( mxPropIds.get() )
+            if( mxPropIds )
                 mxPropIds->setName( nId, aName );
         }
     }
@@ -918,7 +910,7 @@ OUString AxPropertyObjectBase::getPropertyName() const
     return cfg().getName( mxPropNames, mnCurrProp );
 }
 
-sal_uInt32 AxPropertyObjectBase::dumpFlagsProperty( sal_uInt32 nDefault, const sal_Char* pcNameList )
+sal_uInt32 AxPropertyObjectBase::dumpFlagsProperty( sal_uInt32 nDefault, const char* pcNameList )
 {
     if( startNextProperty() )
     {
@@ -957,19 +949,19 @@ void AxPropertyObjectBase::dumpUnknownProperty()
 void AxPropertyObjectBase::dumpPosProperty()
 {
     if( startNextProperty() )
-        maLargeProps.push_back( LargeProperty( LargeProperty::PROPTYPE_POS, getPropertyName(), 8 ) );
+        maLargeProps.emplace_back( LargeProperty::PROPTYPE_POS, getPropertyName(), 8 );
 }
 
 void AxPropertyObjectBase::dumpSizeProperty()
 {
     if( startNextProperty() )
-        maLargeProps.push_back( LargeProperty( LargeProperty::PROPTYPE_SIZE, getPropertyName(), 8 ) );
+        maLargeProps.emplace_back( LargeProperty::PROPTYPE_SIZE, getPropertyName(), 8 );
 }
 
 void AxPropertyObjectBase::dumpGuidProperty( OUString* pValue )
 {
     if( startNextProperty() )
-        maLargeProps.push_back( LargeProperty( LargeProperty::PROPTYPE_GUID, getPropertyName(), 16, pValue ) );
+        maLargeProps.emplace_back( LargeProperty::PROPTYPE_GUID, getPropertyName(), 16, pValue );
 }
 
 void AxPropertyObjectBase::dumpStringProperty( OUString* pValue )
@@ -978,7 +970,7 @@ void AxPropertyObjectBase::dumpStringProperty( OUString* pValue )
     {
         alignInput< sal_uInt32 >();
         sal_uInt32 nLen = dumpHex< sal_uInt32 >( getPropertyName(), "AX-STRINGLEN" );
-        maLargeProps.push_back( LargeProperty( LargeProperty::PROPTYPE_STRING, getPropertyName(), nLen, pValue ) );
+        maLargeProps.emplace_back( LargeProperty::PROPTYPE_STRING, getPropertyName(), nLen, pValue );
     }
 }
 
@@ -988,7 +980,7 @@ void AxPropertyObjectBase::dumpStringArrayProperty()
     {
         alignInput< sal_uInt32 >();
         sal_uInt32 nLen = dumpHex< sal_uInt32 >( getPropertyName(), "CONV-DEC" );
-        maLargeProps.push_back( LargeProperty( LargeProperty::PROPTYPE_STRINGARRAY, getPropertyName(), nLen ) );
+        maLargeProps.emplace_back( LargeProperty::PROPTYPE_STRINGARRAY, getPropertyName(), nLen );
     }
 }
 
@@ -998,7 +990,7 @@ void AxPropertyObjectBase::dumpStreamProperty()
     {
         alignInput< sal_uInt16 >();
         sal_uInt16 nData = dumpHex< sal_uInt16 >( getPropertyName() );
-        maStreamProps.push_back( StreamProperty( getPropertyName(), nData ) );
+        maStreamProps.emplace_back( getPropertyName(), nData );
     }
 }
 
@@ -1067,14 +1059,16 @@ void AxPropertyObjectBase::dumpLargeProperties()
     {
         writeEmptyItem( "large-properties" );
         IndentGuard aIndGuard( mxOut );
-        for( LargePropertyVector::iterator aIt = maLargeProps.begin(), aEnd = maLargeProps.end(); ensureValid() && (aIt != aEnd); ++aIt )
+        for (auto const& largeProp : maLargeProps)
         {
-            switch( aIt->mePropType )
+            if (!ensureValid())
+                break;
+            switch( largeProp.mePropType )
             {
                 case LargeProperty::PROPTYPE_POS:
                 {
                     MultiItemsGuard aMultiGuard( mxOut );
-                    writeEmptyItem( aIt->maItemName );
+                    writeEmptyItem( largeProp.maItemName );
                     dumpDec< sal_Int32 >( "top", "CONV-HMM-TO-CM" );
                     dumpDec< sal_Int32 >( "left", "CONV-HMM-TO-CM" );
                 }
@@ -1082,31 +1076,31 @@ void AxPropertyObjectBase::dumpLargeProperties()
                 case LargeProperty::PROPTYPE_SIZE:
                 {
                     MultiItemsGuard aMultiGuard( mxOut );
-                    writeEmptyItem( aIt->maItemName );
+                    writeEmptyItem( largeProp.maItemName );
                     dumpDec< sal_Int32 >( "width", "CONV-HMM-TO-CM" );
                     dumpDec< sal_Int32 >( "height", "CONV-HMM-TO-CM" );
                 }
                 break;
                 case LargeProperty::PROPTYPE_GUID:
                 {
-                    OUString aGuid = dumpGuid( aIt->maItemName );
-                    if( aIt->mpItemValue )
-                        *aIt->mpItemValue = cfg().getStringOption( aGuid, OUString() );
+                    OUString aGuid = dumpGuid( largeProp.maItemName );
+                    if( largeProp.mpItemValue )
+                        *largeProp.mpItemValue = cfg().getStringOption( aGuid, OUString() );
                 }
                 break;
                 case LargeProperty::PROPTYPE_STRING:
                 {
-                    OUString aString = dumpString( aIt->maItemName, aIt->mnDataSize, false );
-                    if( aIt->mpItemValue )
-                        *aIt->mpItemValue = aString;
+                    OUString aString = dumpString( largeProp.maItemName, largeProp.mnDataSize, false );
+                    if( largeProp.mpItemValue )
+                        *largeProp.mpItemValue = aString;
                 }
                 break;
                 case LargeProperty::PROPTYPE_STRINGARRAY:
                 {
-                    writeEmptyItem( aIt->maItemName );
+                    writeEmptyItem( largeProp.maItemName );
                     IndentGuard aIndGuard2( mxOut );
                     mxOut->resetItemIndex();
-                    sal_Int64 nEndPos = mxStrm->tell() + aIt->mnDataSize;
+                    sal_Int64 nEndPos = mxStrm->tell() + largeProp.mnDataSize;
                     while( mxStrm->tell() < nEndPos )
                     {
                         MultiItemsGuard aMultiGuard( mxOut );
@@ -1121,26 +1115,28 @@ void AxPropertyObjectBase::dumpLargeProperties()
     }
     dumpToPosition( mnPropertiesEnd );
 
-    if( ensureValid() && !maStreamProps.empty() )
+    if( !(ensureValid() && !maStreamProps.empty()) )
+        return;
+
+    writeEmptyItem( "stream-properties" );
+    IndentGuard aIndGuard( mxOut );
+    for (auto const& streamProp : maStreamProps)
     {
-        writeEmptyItem( "stream-properties" );
-        IndentGuard aIndGuard( mxOut );
-        for( StreamPropertyVector::iterator aIt = maStreamProps.begin(), aEnd = maStreamProps.end(); ensureValid() && (aIt != aEnd); ++aIt )
+        if (!ensureValid())
+            break;
+        writeEmptyItem( streamProp.maItemName );
+        if( ensureValid( streamProp.mnData == 0xFFFF ) )
         {
-            writeEmptyItem( aIt->maItemName );
-            if( ensureValid( aIt->mnData == 0xFFFF ) )
-            {
-                IndentGuard aIndGuard2( mxOut );
-                OUString aClassName = cfg().getStringOption( dumpGuid(), OUString() );
-                if ( aClassName == "StdFont" )
-                    StdFontObject( *this ).dump();
-                else if ( aClassName == "StdPic" )
-                    StdPicObject( *this ).dump();
-                else if ( aClassName == "CFontNew" )
-                    AxCFontNewObject( *this ).dump();
-                else
-                    ensureValid( false );
-            }
+            IndentGuard aIndGuard2( mxOut );
+            OUString aClassName = cfg().getStringOption( dumpGuid(), OUString() );
+            if ( aClassName == "StdFont" )
+                StdFontObject( *this ).dump();
+            else if ( aClassName == "StdPic" )
+                StdPicObject( *this ).dump();
+            else if ( aClassName == "CFontNew" )
+                AxCFontNewObject( *this ).dump();
+            else
+                ensureValid( false );
         }
     }
 }
@@ -1495,7 +1491,7 @@ VbaFormClassInfoObject::VbaFormClassInfoObject( const InputObjectBase& rParent, 
 
 void VbaFormClassInfoObject::implDumpShortProperties()
 {
-    mrFormData.maClassInfoProgIds.push_back( OUString() );
+    mrFormData.maClassInfoProgIds.emplace_back( );
     dumpGuidProperty( &mrFormData.maClassInfoProgIds.back() );
     dumpGuidProperty();
     dumpUnknownProperty();
@@ -1665,39 +1661,39 @@ void VbaFStreamObject::dumpFormSites( sal_uInt32 nCount )
 
 void VbaFStreamObject::dumpSiteData()
 {
-    if( ensureValid() )
+    if( !ensureValid() )
+        return;
+
+    mxOut->emptyLine();
+    setAlignAnchor();
+    sal_uInt32 nSiteCount = dumpDec< sal_uInt32 >( "site-count" );
+    sal_uInt32 nSiteLength = dumpDec< sal_uInt32 >( "site-data-size" );
+    sal_Int64 nEndPos = mxStrm->tell() + nSiteLength;
+    if( !ensureValid( nEndPos <= mxStrm->size() ) )
+        return;
+
+    mxOut->resetItemIndex();
+    sal_uInt32 nSiteIdx = 0;
+    while( ensureValid() && (nSiteIdx < nSiteCount) )
     {
         mxOut->emptyLine();
-        setAlignAnchor();
-        sal_uInt32 nSiteCount = dumpDec< sal_uInt32 >( "site-count" );
-        sal_uInt32 nSiteLength = dumpDec< sal_uInt32 >( "site-data-size" );
-        sal_Int64 nEndPos = mxStrm->tell() + nSiteLength;
-        if( ensureValid( nEndPos <= mxStrm->size() ) )
+        writeEmptyItem( "#site-info" );
+        IndentGuard aIndGuard( mxOut );
+        dumpDec< sal_uInt8 >( "depth" );
+        sal_uInt8 nTypeCount = dumpHex< sal_uInt8 >( "type-count", "VBA-FORM-SITE-TYPECOUNT" );
+        if( getFlag( nTypeCount, AX_FORM_SITECOUNTTYPE_COUNT ) )
         {
-            mxOut->resetItemIndex();
-            sal_uInt32 nSiteIdx = 0;
-            while( ensureValid() && (nSiteIdx < nSiteCount) )
-            {
-                mxOut->emptyLine();
-                writeEmptyItem( "#site-info" );
-                IndentGuard aIndGuard( mxOut );
-                dumpDec< sal_uInt8 >( "depth" );
-                sal_uInt8 nTypeCount = dumpHex< sal_uInt8 >( "type-count", "VBA-FORM-SITE-TYPECOUNT" );
-                if( getFlag( nTypeCount, AX_FORM_SITECOUNTTYPE_COUNT ) )
-                {
-                    dumpDec< sal_uInt8 >( "repeated-type" );
-                    nSiteIdx += (nTypeCount & AX_FORM_SITECOUNTTYPE_MASK);
-                }
-                else
-                {
-                    ++nSiteIdx;
-                }
-            }
-            alignInput< sal_uInt32 >();
-            dumpFormSites( nSiteCount );
-            dumpToPosition( nEndPos );
+            dumpDec< sal_uInt8 >( "repeated-type" );
+            nSiteIdx += (nTypeCount & AX_FORM_SITECOUNTTYPE_MASK);
+        }
+        else
+        {
+            ++nSiteIdx;
         }
     }
+    alignInput< sal_uInt32 >();
+    dumpFormSites( nSiteCount );
+    dumpToPosition( nEndPos );
 }
 
 void VbaFStreamObject::dumpDesignExtender()
@@ -1720,16 +1716,18 @@ VbaOStreamObject::VbaOStreamObject( const ObjectBase& rParent,
 
 void VbaOStreamObject::implDump()
 {
-    for( VbaFormSiteInfoVector::iterator aIt = mrFormData.maSiteInfos.begin(), aEnd = mrFormData.maSiteInfos.end(); !mxStrm->isEof() && (aIt != aEnd); ++aIt )
+    for (auto const& siteInfo : mrFormData.maSiteInfos)
     {
-        if( (aIt->mbInStream) && (aIt->mnLength > 0) )
+        if (mxStrm->isEof())
+            break;
+        if( (siteInfo.mbInStream) && (siteInfo.mnLength > 0) )
         {
             mxOut->emptyLine();
-            writeDecItem( "control-id", aIt->mnId );
-            writeInfoItem( "prog-id", aIt->maProgId );
+            writeDecItem( "control-id", siteInfo.mnId );
+            writeInfoItem( "prog-id", siteInfo.maProgId );
             IndentGuard aIndGuard( mxOut );
-            BinaryInputStreamRef xRelStrm( new RelativeInputStream( *mxStrm, aIt->mnLength ) );
-            FormControlStreamObject( *this, xRelStrm, &aIt->maProgId ).dump();
+            BinaryInputStreamRef xRelStrm( std::make_shared<RelativeInputStream>( *mxStrm, siteInfo.mnLength ) );
+            FormControlStreamObject( *this, xRelStrm, &siteInfo.maProgId ).dump();
         }
     }
     dumpRemainingStream();
@@ -1833,8 +1831,8 @@ bool VbaContainerStorageObject::isFormStorage( const OUString& rStrgPath ) const
             aId = aId.copy( 1 );
         sal_Int32 nId = aId.toInt32();
         if( (nId > 0) && (OUString::number( nId ) == aId) )
-            for( VbaFormSiteInfoVector::const_iterator aIt = maFormData.maSiteInfos.begin(), aEnd = maFormData.maSiteInfos.end(); aIt != aEnd; ++aIt )
-                if( aIt->mnId == nId )
+            for (auto const& siteInfo : maFormData.maSiteInfos)
+                if( siteInfo.mnId == nId )
                     return true;
     }
     return false;
@@ -1861,22 +1859,22 @@ VbaDirStreamObject::VbaDirStreamObject( const ObjectBase& rParent,
     mrVbaData( rVbaData )
 {
     mxInStrm = rxStrm;
-    if( mxInStrm.get() )
+    if( mxInStrm )
     {
-        BinaryInputStreamRef xVbaStrm( new ::oox::ole::VbaInputStream( *mxInStrm ) );
+        BinaryInputStreamRef xVbaStrm( std::make_shared<::oox::ole::VbaInputStream>( *mxInStrm ) );
         SequenceRecordObjectBase::construct( rParent, xVbaStrm, rSysFileName, "VBA-DIR-RECORD-NAMES", "VBA-DIR-SIMPLE-RECORDS" );
     }
 }
 
 bool VbaDirStreamObject::implIsValid() const
 {
-    return mxInStrm.get() && SequenceRecordObjectBase::implIsValid();
+    return mxInStrm && SequenceRecordObjectBase::implIsValid();
 }
 
 bool VbaDirStreamObject::implReadRecordHeader( BinaryInputStream& rBaseStrm, sal_Int64& ornRecId, sal_Int64& ornRecSize )
 {
-     ornRecId = rBaseStrm.readuInt16();
-     ornRecSize = rBaseStrm.readInt32();
+    ornRecId = rBaseStrm.readuInt16();
+    ornRecSize = rBaseStrm.readInt32();
 
     // for no obvious reason, PROJECTVERSION record contains size field of 4, but is 6 bytes long
     if( ornRecId == 9 )
@@ -2008,7 +2006,7 @@ void VbaModuleStreamObject::implDump()
     mxOut->emptyLine();
     writeEmptyItem( "source-code" );
     IndentGuard aIndGuard( mxOut );
-    BinaryInputStreamRef xVbaStrm( new ::oox::ole::VbaInputStream( *mxStrm ) );
+    BinaryInputStreamRef xVbaStrm( std::make_shared<::oox::ole::VbaInputStream>( *mxStrm ) );
     TextLineStreamObject( *this, xVbaStrm, mrVbaData.meTextEnc ).dump();
 }
 
@@ -2075,7 +2073,6 @@ void ActiveXStorageObject::implDumpBaseStream( const BinaryInputStreamRef& rxStr
     FormControlStreamObject( *this, rxStrm, rSysFileName ).dump();
 }
 
-} // namespace dump
 } // namespace oox
 
 #endif

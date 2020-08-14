@@ -19,28 +19,29 @@
 #ifndef INCLUDED_SW_INC_FMTFSIZE_HXX
 #define INCLUDED_SW_INC_FMTFSIZE_HXX
 
-#include <tools/gen.hxx>
+#include <sal/config.h>
+
+#include <editeng/sizeitem.hxx>
 #include <svl/poolitem.hxx>
 #include "swdllapi.h"
-#include <hintids.hxx>
-#include <swtypes.hxx>
-#include <format.hxx>
+#include "hintids.hxx"
+#include "swtypes.hxx"
+#include "format.hxx"
 
 class IntlWrapper;
 
 //Frame size.
 
-enum SwFrameSize
+enum class SwFrameSize
 {
-    ATT_VAR_SIZE,       ///< Frame is variable in Var-direction.
-    ATT_FIX_SIZE,       ///< Frame cannot be moved in Var-direction.
-    ATT_MIN_SIZE        /**< Value in Var-direction gives minimum
-                         (can be exceeded but not be less). */
+    Variable,  ///< Frame is variable in Var-direction.
+    Fixed,     ///< Frame cannot be moved in Var-direction.
+    Minimum    /**< Value in Var-direction gives minimum
+                    (can be exceeded but not be less). */
 };
 
-class SW_DLLPUBLIC SwFormatFrameSize: public SfxPoolItem
+class SW_DLLPUBLIC SwFormatFrameSize: public SvxSizeItem
 {
-    Size      m_aSize;
     SwFrameSize m_eFrameHeightType;
     SwFrameSize m_eFrameWidthType;
     sal_uInt8 m_nWidthPercent;
@@ -59,19 +60,20 @@ class SW_DLLPUBLIC SwFormatFrameSize: public SfxPoolItem
     // the object is placed (PrtArea) and to the screen width
     // minus borders in BrowseView if the environment is the page.
 
-public:
-    SwFormatFrameSize( SwFrameSize eSize = ATT_VAR_SIZE,
-                  SwTwips nWidth = 0, SwTwips nHeight = 0 );
-    SwFormatFrameSize& operator=( const SwFormatFrameSize& rCpy );
+    void ScaleMetrics(long lMult, long lDiv) override;
+    bool HasMetrics() const override;
 
-    /// "Pure virtual methods" of SfxPoolItem.
+public:
+    SwFormatFrameSize( SwFrameSize eSize = SwFrameSize::Variable,
+                  SwTwips nWidth = 0, SwTwips nHeight = 0 );
+
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwFormatFrameSize* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper*    pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
@@ -80,14 +82,6 @@ public:
 
     SwFrameSize GetWidthSizeType() const { return m_eFrameWidthType; }
     void SetWidthSizeType( SwFrameSize eSize ) { m_eFrameWidthType = eSize; }
-
-    const Size& GetSize() const { return m_aSize; }
-          void  SetSize( const Size &rNew ) { m_aSize = rNew; }
-
-    SwTwips GetHeight() const { return m_aSize.Height(); }
-    SwTwips GetWidth()  const { return m_aSize.Width();  }
-    void    SetHeight( const SwTwips nNew ) { m_aSize.Height() = nNew; }
-    void    SetWidth ( const SwTwips nNew ) { m_aSize.Width()  = nNew; }
 
     enum PercentFlags { SYNCED = 0xff };
     //0xff is reserved to indicate height is synced to width
@@ -101,11 +95,11 @@ public:
     void    SetWidthPercent ( sal_uInt8 n ) { m_nWidthPercent  = n; }
     void    SetWidthPercentRelation ( sal_Int16 n ) { m_eWidthPercentRelation  = n; }
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 inline const SwFormatFrameSize &SwAttrSet::GetFrameSize(bool bInP) const
-    { return static_cast<const SwFormatFrameSize&>(Get( RES_FRM_SIZE,bInP)); }
+    { return Get( RES_FRM_SIZE,bInP); }
 
 inline const SwFormatFrameSize &SwFormat::GetFrameSize(bool bInP) const
     { return m_aSet.GetFrameSize(bInP); }

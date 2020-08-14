@@ -21,6 +21,8 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <tools/urlobj.hxx>
 #include <unotools/bootstrap.hxx>
+#include <sal/log.hxx>
+#include <osl/file.hxx>
 
 
 using namespace ::com::sun::star;
@@ -33,22 +35,6 @@ namespace migration
 
     #define sSourceUserBasic "/user/basic"
     #define sTargetUserBasic "/user/__basic_80"
-
-
-    // component operations
-
-
-    OUString BasicMigration_getImplementationName()
-    {
-        return OUString("com.sun.star.comp.desktop.migration.Basic");
-    }
-
-
-    Sequence< OUString > BasicMigration_getSupportedServiceNames()
-    {
-        Sequence< OUString > aNames { "com.sun.star.migration.Basic" };
-        return aNames;
-    }
 
 
     // BasicMigration
@@ -87,12 +73,10 @@ namespace migration
             }
 
             // iterate recursive over subfolders
-            TStringVector::const_iterator aI = aSubDirs.begin();
-            while ( aI != aSubDirs.end() )
+            for (auto const& subDir : aSubDirs)
             {
-                TStringVectorPtr aSubResult = getFiles( *aI );
+                TStringVectorPtr aSubResult = getFiles(subDir);
                 aResult->insert( aResult->end(), aSubResult->begin(), aSubResult->end() );
-                ++aI;
             }
         }
 
@@ -100,7 +84,7 @@ namespace migration
     }
 
 
-    void BasicMigration::checkAndCreateDirectory( INetURLObject& rDirURL )
+    void BasicMigration::checkAndCreateDirectory( INetURLObject const & rDirURL )
     {
         ::osl::FileBase::RC aResult = ::osl::Directory::create( rDirURL.GetMainURL( INetURLObject::DecodeMechanism::ToIUri ) );
         if ( aResult == ::osl::FileBase::E_NOENT )
@@ -121,21 +105,19 @@ namespace migration
         {
             sTargetDir += sTargetUserBasic;
             TStringVectorPtr aFileList = getFiles( m_sSourceDir );
-            TStringVector::const_iterator aI = aFileList->begin();
-            while ( aI != aFileList->end() )
+            for (auto const& elem : *aFileList)
             {
-                OUString sLocalName = aI->copy( m_sSourceDir.getLength() );
+                OUString sLocalName = elem.copy( m_sSourceDir.getLength() );
                 OUString sTargetName = sTargetDir + sLocalName;
                 INetURLObject aURL( sTargetName );
                 aURL.removeSegment();
                 checkAndCreateDirectory( aURL );
-                ::osl::FileBase::RC aResult = ::osl::File::copy( *aI, sTargetName );
+                ::osl::FileBase::RC aResult = ::osl::File::copy( elem, sTargetName );
                 if ( aResult != ::osl::FileBase::E_None )
                 {
                     SAL_WARN( "desktop", "BasicMigration::copyFiles: cannot copy "
-                                << *aI << " to " << sTargetName );
+                                << elem << " to " << sTargetName );
                 }
-                ++aI;
             }
         }
         else
@@ -150,7 +132,7 @@ namespace migration
 
     OUString BasicMigration::getImplementationName()
     {
-        return BasicMigration_getImplementationName();
+        return "com.sun.star.comp.desktop.migration.Basic";
     }
 
 
@@ -162,7 +144,7 @@ namespace migration
 
     Sequence< OUString > BasicMigration::getSupportedServiceNames()
     {
-        return BasicMigration_getSupportedServiceNames();
+        return { "com.sun.star.migration.Basic" };
     }
 
 
@@ -205,17 +187,15 @@ namespace migration
     }
 
 
-    // component operations
-
-
-    Reference< XInterface > SAL_CALL BasicMigration_create(
-        Reference< XComponentContext > const & )
-    {
-        return static_cast< lang::XTypeProvider * >( new BasicMigration() );
-    }
-
-
 }   // namespace migration
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+desktop_BasicMigration_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new migration::BasicMigration());
+}
+
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

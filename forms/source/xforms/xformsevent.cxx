@@ -20,12 +20,7 @@
 
 #include "xformsevent.hxx"
 
-namespace com {
-namespace sun {
-namespace star {
-namespace xforms {
-
-using com::sun::star::uno::RuntimeException;
+namespace com::sun::star::xforms {
 
 void SAL_CALL XFormsEventConcrete::initXFormsEvent(const OUString& typeArg,
     sal_Bool canBubbleArg, sal_Bool cancelableArg)
@@ -40,12 +35,12 @@ OUString SAL_CALL XFormsEventConcrete::getType()
 
 css::uno::Reference< css::xml::dom::events::XEventTarget > SAL_CALL XFormsEventConcrete::getTarget()
 {
-    return m_target;
+    return css::uno::Reference< css::xml::dom::events::XEventTarget >();
 }
 
 css::uno::Reference< css::xml::dom::events::XEventTarget > SAL_CALL XFormsEventConcrete::getCurrentTarget()
 {
-    return m_currentTarget;
+    return css::uno::Reference< css::xml::dom::events::XEventTarget >();
 }
 
 css::xml::dom::events::PhaseType SAL_CALL XFormsEventConcrete::getEventPhase()
@@ -65,7 +60,7 @@ sal_Bool SAL_CALL XFormsEventConcrete::getCancelable()
 
 css::util::Time SAL_CALL XFormsEventConcrete::getTimeStamp()
 {
-    return m_time;
+    return css::util::Time();
 }
 
 void SAL_CALL XFormsEventConcrete::stopPropagation()
@@ -83,6 +78,6 @@ void SAL_CALL XFormsEventConcrete::initEvent(const OUString& eventTypeArg, sal_B
     m_cancelable = cancelableArg;
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

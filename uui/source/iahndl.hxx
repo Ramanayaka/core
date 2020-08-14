@@ -30,13 +30,11 @@
 #include <com/sun/star/task/InteractionClassification.hpp>
 
 #include <vcl/errcode.hxx>
-#include <tools/resary.hxx>
-#include <tools/wintypes.hxx>
 
 #include <unordered_map>
 #include <vector>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt {
         class XWindow;
     }
@@ -57,7 +55,7 @@ namespace com { namespace sun { namespace star {
     namespace ucb {
         class NameClashResolveRequest;
     }
-} } }
+}
 
 namespace vcl { class Window; }
 
@@ -70,17 +68,17 @@ struct InteractionHandlerData
 
 typedef std::vector< InteractionHandlerData > InteractionHandlerDataList;
 
-typedef std::unordered_map< OUString, OUString, OUStringHash >    StringHashMap;
+typedef std::unordered_map< OUString, OUString >    StringHashMap;
 
 class UUIInteractionHelper
 {
 private:
-            css::uno::Reference< css::uno::XComponentContext >      m_xContext;
-            css::uno::Reference< css::awt::XWindow >                m_xWindowParam;
-            const OUString                                          m_aContextParam;
-            StringHashMap                                           m_aTypedCustomHandlers;
-    UUIInteractionHelper(UUIInteractionHelper &) = delete;
-    void operator =(const UUIInteractionHelper&) = delete;
+    css::uno::Reference< css::uno::XComponentContext >      m_xContext;
+    css::uno::Reference< css::awt::XWindow >                m_xWindowParam;
+    const OUString                                          m_aContextParam;
+    StringHashMap                                           m_aTypedCustomHandlers;
+    UUIInteractionHelper(UUIInteractionHelper const &) = delete;
+    UUIInteractionHelper& operator =(UUIInteractionHelper const &) = delete;
 
 public:
     UUIInteractionHelper(
@@ -89,6 +87,9 @@ public:
         const OUString & rContextParam);
     explicit UUIInteractionHelper(
         css::uno::Reference< css::uno::XComponentContext > const & rxContext);
+
+    css::uno::Reference<css::awt::XWindow> GetParentWindow() const { return m_xWindowParam; }
+    void SetParentWindow(const css::uno::Reference<css::awt::XWindow>& rWindow) { m_xWindowParam = rWindow; }
 
     ~UUIInteractionHelper();
 
@@ -123,14 +124,11 @@ private:
 
     static void getstringfromrequest(void* pHandleData, void* pInteractionHandler);
 
-    vcl::Window *
-    getParentProperty();
-
     const css::uno::Reference< css::awt::XWindow>&
     getParentXWindow() const;
 
     css::uno::Reference< css::task::XInteractionHandler2 >
-    getInteractionHandler();
+    getInteractionHandler() const;
 
     bool    handleTypedHandlerImplementations(
                 css::uno::Reference< css::task::XInteractionRequest > const &  rRequest
@@ -239,19 +237,23 @@ private:
                 const OUString& i_rServiceName
             ) const;
 
-    bool
+    void
     handleAuthFallbackRequest(
-            OUString & instructions,
-            OUString & url,
+            const OUString & instructions,
+            const OUString & url,
             css::uno::Sequence< css::uno::Reference< css::task::XInteractionContinuation > > const & rContinuations );
 };
 
 class ErrorResource
 {
-    ResStringArray m_aStringArray;
+    const std::pair<const char*, ErrCode>* m_pStringArray;
+    const std::locale& m_rResLocale;
 public:
-    explicit ErrorResource(ResId& rResId) : m_aStringArray(rResId) {}
-
+    explicit ErrorResource(const std::pair<const char*, ErrCode>* pStringArray, const std::locale& rResLocale)
+        : m_pStringArray(pStringArray)
+        , m_rResLocale(rResLocale)
+    {
+    }
     bool getString(ErrCode nErrorCode, OUString &rString) const;
 };
 

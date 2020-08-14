@@ -18,21 +18,20 @@
  */
 
 
-#include "secerr.h"
+#include <secerr.h>
 #include "secerror.hxx"
-#include "sslerr.h"
-#include "nspr.h"
-#include "nss.h"
-#include "certt.h"
+#include <nss.h>
+#include <certt.h>
 #include <sal/log.hxx>
-#include <sal/macros.h>
-#include <sal/types.h>
+
+namespace {
 
 struct ErrDesc {
-    PRErrorCode  errNum;
+    PRErrorCode const errNum;
     const char * errString;
 };
 
+}
 
 const ErrDesc allDesc[] = {
 
@@ -59,7 +58,7 @@ getCertError(PRErrorCode errNum)
 void
 printChainFailure(CERTVerifyLog *log)
 {
-    unsigned int       depth  = (unsigned int)-1;
+    unsigned int       depth  = static_cast<unsigned int>(-1);
     CERTVerifyLogNode *node   = nullptr;
 
     if (log->count > 0)

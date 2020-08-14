@@ -18,7 +18,6 @@
  */
 
 #include <memory>
-#include <sfx2/app.hxx>
 #include <sfx2/objface.hxx>
 #include <sfx2/request.hxx>
 #include <avmedia/mediaitem.hxx>
@@ -27,14 +26,14 @@
 #include <svx/sdr/contact/viewcontactofsdrmediaobj.hxx>
 #include <vcl/EnumContext.hxx>
 
-#include "mediash.hxx"
-#include "scres.hrc"
-#include "viewdata.hxx"
-#include "drawview.hxx"
-#include "scresid.hxx"
+#include <mediash.hxx>
+#include <strings.hrc>
+#include <viewdata.hxx>
+#include <drawview.hxx>
+#include <scresid.hxx>
 
-#define ScMediaShell
-#include "scslots.hxx"
+#define ShellClass_ScMediaShell
+#include <scslots.hxx>
 
 SFX_IMPL_INTERFACE(ScMediaShell, ScDrawShell)
 
@@ -61,42 +60,42 @@ void ScMediaShell::GetMediaState( SfxItemSet& rSet )
 {
     ScDrawView* pView = GetViewData()->GetScDrawView();
 
-    if( pView )
+    if( !pView )
+        return;
+
+    SfxWhichIter aIter( rSet );
+    sal_uInt16   nWhich = aIter.FirstWhich();
+
+    while( nWhich )
     {
-        SfxWhichIter    aIter( rSet );
-        sal_uInt16          nWhich = aIter.FirstWhich();
-
-        while( nWhich )
+        if( SID_AVMEDIA_TOOLBOX == nWhich )
         {
-            if( SID_AVMEDIA_TOOLBOX == nWhich )
+            std::unique_ptr<SdrMarkList> pMarkList(new SdrMarkList( pView->GetMarkedObjectList() ));
+            bool            bDisable = true;
+
+            if( 1 == pMarkList->GetMarkCount() )
             {
-                std::unique_ptr<SdrMarkList> pMarkList(new SdrMarkList( pView->GetMarkedObjectList() ));
-                bool            bDisable = true;
+                SdrObject* pObj = pMarkList->GetMark( 0 )->GetMarkedSdrObj();
 
-                if( 1 == pMarkList->GetMarkCount() )
+                if( dynamic_cast<const SdrMediaObj*>( pObj) )
                 {
-                    SdrObject* pObj = pMarkList->GetMark( 0 )->GetMarkedSdrObj();
+                    ::avmedia::MediaItem aItem( SID_AVMEDIA_TOOLBOX );
 
-                    if( pObj && dynamic_cast<const SdrMediaObj*>( pObj) !=  nullptr )
-                    {
-                        ::avmedia::MediaItem aItem( SID_AVMEDIA_TOOLBOX );
-
-                        static_cast< sdr::contact::ViewContactOfSdrMediaObj& >( pObj->GetViewContact() ).updateMediaItem( aItem );
-                        rSet.Put( aItem );
-                        bDisable = false;
-                    }
+                    static_cast< sdr::contact::ViewContactOfSdrMediaObj& >( pObj->GetViewContact() ).updateMediaItem( aItem );
+                    rSet.Put( aItem );
+                    bDisable = false;
                 }
-
-                if( bDisable )
-                    rSet.DisableItem( SID_AVMEDIA_TOOLBOX );
             }
 
-            nWhich = aIter.NextWhich();
+            if( bDisable )
+                rSet.DisableItem( SID_AVMEDIA_TOOLBOX );
         }
+
+        nWhich = aIter.NextWhich();
     }
 }
 
-void ScMediaShell::ExecuteMedia( SfxRequest& rReq )
+void ScMediaShell::ExecuteMedia( const SfxRequest& rReq )
 {
     ScDrawView* pView = GetViewData()->GetScDrawView();
 
@@ -116,7 +115,7 @@ void ScMediaShell::ExecuteMedia( SfxRequest& rReq )
             {
                 SdrObject* pObj = pMarkList->GetMark( 0 )->GetMarkedSdrObj();
 
-                if( pObj && dynamic_cast<const SdrMediaObj*>( pObj) !=  nullptr )
+                if( dynamic_cast<const SdrMediaObj*>( pObj) )
                 {
                     static_cast< sdr::contact::ViewContactOfSdrMediaObj& >( pObj->GetViewContact() ).executeMediaItem(
                         static_cast< const ::avmedia::MediaItem& >( *pItem ) );

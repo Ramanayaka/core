@@ -30,7 +30,6 @@
 #include <com/sun/star/form/binding/XListEntrySource.hpp>
 #include <osl/mutex.hxx>
 #include <rtl/ustring.hxx>
-#include <comphelper/listenernotification.hxx>
 
 #include <vector>
 #include <set>
@@ -72,7 +71,7 @@ namespace pcr
 
         /** determines whether the given document is an eForm
 
-            If this method returns <FALSE/>, you cannot instantiate a EFormsHelper with
+            If this method returns <FALSE/>, you cannot instantiate an EFormsHelper with
             this document, since none of its functionality will be available then.
         */
         static  bool

@@ -21,12 +21,14 @@
 
 #include <transliteration_Ignore.hxx>
 
+#include <numeric>
+
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
-OneToOneMappingTable_t const IandE[] = {
+i18nutil::OneToOneMappingTable_t const IandE[] = {
     { 0x30A3, 0x0000 },  // KATAKANA LETTER SMALL I
     { 0x30A4, 0x0000 },  // KATAKANA LETTER I
     { 0x30A7, 0x0000 },  // KATAKANA LETTER SMALL E
@@ -63,8 +65,8 @@ OneToOneMappingTable_t const IandE[] = {
 };
 
 
-OUString SAL_CALL
-ignoreIandEfollowedByYa_ja_JP::folding( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, Sequence< sal_Int32 >& offset )
+OUString
+ignoreIandEfollowedByYa_ja_JP::foldingImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, Sequence< sal_Int32 >& offset, bool useOffset )
 {
     // Create a string buffer which can hold nCount + 1 characters.
     // The reference count is 1 now.
@@ -72,13 +74,10 @@ ignoreIandEfollowedByYa_ja_JP::folding( const OUString& inStr, sal_Int32 startPo
     sal_Unicode * dst = newStr->buffer;
     const sal_Unicode * src = inStr.getStr() + startPos;
 
-    sal_Int32 *p = nullptr;
-    sal_Int32 position = 0;
     if (useOffset) {
         // Allocate nCount length to offset argument.
         offset.realloc( nCount );
-        p = offset.getArray();
-        position = startPos;
+        std::iota(offset.begin(), offset.end(), startPos);
     }
 
 
@@ -86,7 +85,7 @@ ignoreIandEfollowedByYa_ja_JP::folding( const OUString& inStr, sal_Int32 startPo
     sal_Unicode currentChar;
 
     // One to one mapping
-    oneToOneMapping aTable(IandE, sizeof(IandE));
+    i18nutil::oneToOneMapping aTable(IandE, sizeof(IandE));
 
     // Translation
     while (-- nCount > 0) {
@@ -96,10 +95,6 @@ ignoreIandEfollowedByYa_ja_JP::folding( const OUString& inStr, sal_Int32 startPo
         if (currentChar == 0x30E3 ||   // KATAKANA LETTER SMALL YA
                 currentChar == 0x30E4) {   // KATAKANA LETTER YA
             if (aTable[ previousChar ] != previousChar) {
-                if (useOffset) {
-                    *p ++ = position++;
-                    *p ++ = position++;
-                }
                 *dst ++ = previousChar;
                 *dst ++ = 0x30A2;          // KATAKANA LETTER A
                 previousChar = *src ++;
@@ -108,15 +103,11 @@ ignoreIandEfollowedByYa_ja_JP::folding( const OUString& inStr, sal_Int32 startPo
             }
         }
 
-        if (useOffset)
-            *p ++ = position++;
         *dst ++ = previousChar;
         previousChar = currentChar;
     }
 
     if (nCount == 0) {
-        if (useOffset)
-            *p = position;
         *dst ++ = previousChar;
     }
 
@@ -128,6 +119,6 @@ ignoreIandEfollowedByYa_ja_JP::folding( const OUString& inStr, sal_Int32 startPo
     return OUString(newStr, SAL_NO_ACQUIRE); // take ownership
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

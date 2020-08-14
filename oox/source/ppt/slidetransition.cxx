@@ -17,37 +17,37 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ppt/slidetransition.hxx"
+#include <oox/ppt/slidetransition.hxx>
 
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/animations/TransitionType.hpp>
 #include <com/sun/star/animations/TransitionSubType.hpp>
 #include <com/sun/star/animations/XTransitionFilter.hpp>
 
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
+#include <tools/color.hxx>
 
-#include "oox/helper/helper.hxx"
-#include "oox/helper/propertymap.hxx"
+#include <oox/helper/propertymap.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
 #include <oox/ppt/pptfilterhelpers.hxx>
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::animations;
 using namespace ::com::sun::star::presentation;
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
     SlideTransition::SlideTransition()
         : mnTransitionType( 0 )
         , mnTransitionSubType( 0 )
         , mbTransitionDirectionNormal( true )
         , mnAnimationSpeed( AnimationSpeed_FAST )
-        , mnFadeColor( 0 )
+        , mfTransitionDurationInSeconds( -1.0 )
         , mbMode( true )
         , mnAdvanceTime( -1 )
+        , mnTransitionFadeColor( 0 )
     {
 
     }
@@ -57,9 +57,10 @@ namespace oox { namespace ppt {
         , mnTransitionSubType( 0 )
         , mbTransitionDirectionNormal( true )
         , mnAnimationSpeed( AnimationSpeed_FAST )
-        , mnFadeColor( 0 )
+        , mfTransitionDurationInSeconds( -1.0 )
         , mbMode( true )
         , mnAdvanceTime( -1 )
+        , mnTransitionFadeColor( 0 )
     {
         const transition *p = transition::find( sFilterName );
         if( p )
@@ -78,11 +79,13 @@ namespace oox { namespace ppt {
             aProps.setProperty( PROP_TransitionSubtype, mnTransitionSubType);
             aProps.setProperty( PROP_TransitionDirection, mbTransitionDirectionNormal);
             aProps.setProperty( PROP_Speed, mnAnimationSpeed);
-            aProps.setProperty( PROP_TransitionFadeColor, mnFadeColor);
-        if( mnAdvanceTime != -1 ) {
-        aProps.setProperty( PROP_Duration, mnAdvanceTime/1000);
-        aProps.setProperty( PROP_Change, static_cast<sal_Int32>(1));
-        }
+            if( mfTransitionDurationInSeconds >= 0.0 )
+                aProps.setProperty( PROP_TransitionDuration, mfTransitionDurationInSeconds);
+            aProps.setProperty( PROP_TransitionFadeColor, mnTransitionFadeColor);
+            if( mnAdvanceTime != -1 ) {
+                aProps.setProperty( PROP_Duration, mnAdvanceTime/1000);
+                aProps.setProperty( PROP_Change, static_cast<sal_Int32>(1));
+            }
         }
         catch( Exception& )
         {
@@ -98,7 +101,7 @@ namespace oox { namespace ppt {
             xFilter->setTransition( mnTransitionType );
             xFilter->setSubtype( mnTransitionSubType );
             xFilter->setDirection( mbTransitionDirectionNormal );
-            xFilter->setFadeColor( mnFadeColor );
+            xFilter->setFadeColor( 0 );
             xFilter->setMode( mbMode );
         }
         catch( Exception& )
@@ -112,19 +115,21 @@ namespace oox { namespace ppt {
     {
         switch( nToken  )
         {
-            /* In case you want to use time values in second,
-             * the speed values are located in the PPT97 importer
-             * sd/source/filter/ppt/ppt97animations.cxx:664
-             * (void Ppt97Animation::UpdateCacheData() const)
+            /* the speed values are located in the PPT97 importer
+             * sd/source/filter/ppt/pptin.cxx:1783
+             * (void ImplSdPPTImport::ImportPageEffect)
              */
         case XML_fast:
             mnAnimationSpeed = AnimationSpeed_FAST;
+            mfTransitionDurationInSeconds = 0.5;
             break;
         case XML_med:
             mnAnimationSpeed = AnimationSpeed_MEDIUM;
+            mfTransitionDurationInSeconds = 0.75;
             break;
         case XML_slow:
             mnAnimationSpeed = AnimationSpeed_SLOW;
+            mfTransitionDurationInSeconds = 1.0;
             break;
         default:
             // should not happen. just ignore
@@ -132,9 +137,17 @@ namespace oox { namespace ppt {
         }
     }
 
+    void SlideTransition::setOoxTransitionSpeed( double fDurationInSeconds )
+    {
+        // for compatibility
+        mnAnimationSpeed = ( fDurationInSeconds <= 0.5 ) ? AnimationSpeed_FAST
+                                : ( fDurationInSeconds >= 1.0 ) ? AnimationSpeed_SLOW : AnimationSpeed_MEDIUM;
+        mfTransitionDurationInSeconds = fDurationInSeconds;
+    }
+
     sal_Int16 SlideTransition::ooxToOdpEightDirections( ::sal_Int32 nOoxType )
     {
-    sal_Int16 nOdpDirection;
+        sal_Int16 nOdpDirection;
         nOdpDirection = ooxToOdpBorderDirections( nOoxType );
         if( nOdpDirection == 0 )
         {
@@ -145,7 +158,7 @@ namespace oox { namespace ppt {
 
     sal_Int16 SlideTransition::ooxToOdpBorderDirections( ::sal_Int32 nOoxType )
     {
-    sal_Int16 nOdpDirection;
+        sal_Int16 nOdpDirection;
         switch( nOoxType )
         {
         case XML_d:
@@ -169,7 +182,7 @@ namespace oox { namespace ppt {
 
     sal_Int16 SlideTransition::ooxToOdpSideDirections( ::sal_Int32 nOoxType )
     {
-    sal_Int16 nOdpDirection;
+        sal_Int16 nOdpDirection;
         switch( nOoxType )
         {
         case XML_d:
@@ -202,7 +215,7 @@ namespace oox { namespace ppt {
 
     sal_Int16 SlideTransition::ooxToOdpCornerDirections( ::sal_Int32 nOoxType )
     {
-    sal_Int16 nOdpDirection;
+        sal_Int16 nOdpDirection;
         switch( nOoxType )
         {
         case XML_lu:
@@ -226,7 +239,7 @@ namespace oox { namespace ppt {
 
     sal_Int16 SlideTransition::ooxToOdpDirection( ::sal_Int32 nOoxType )
     {
-    sal_Int16 nOdpDir;
+        sal_Int16 nOdpDir;
         switch( nOoxType )
         {
         case XML_vert:
@@ -346,7 +359,7 @@ namespace oox { namespace ppt {
             default:
                 SAL_INFO(
                     "oox.ppt",
-                    "strange number of blades for thw wheel-wipe " << param1);
+                    "strange number of blades for the wheel-wipe " << param1);
                 if( param1 > 8 )
                 {
                     mnTransitionSubType = TransitionSubType::EIGHTBLADE;
@@ -421,6 +434,15 @@ namespace oox { namespace ppt {
             mnTransitionType = TransitionType::MISCSHAPEWIPE;
             mnTransitionSubType = TransitionSubType::HEART;
             break;
+        case P14_TOKEN(flash):
+            mnTransitionType = TransitionType::FADE;
+            mnTransitionSubType = TransitionSubType::FADEOVERCOLOR;
+            mnTransitionFadeColor = static_cast<sal_Int32>(COL_WHITE);
+            break;
+        case PPT_TOKEN(strips):
+            mnTransitionType = TransitionType::SLIDEWIPE;
+            mnTransitionSubType = ooxToOdpCornerDirections( param1 );
+            break;
         default:
             mnTransitionType = 0;
             break;
@@ -440,6 +462,6 @@ namespace oox { namespace ppt {
         }
     }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

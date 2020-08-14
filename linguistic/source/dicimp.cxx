@@ -19,11 +19,13 @@
 
 
 #include <cppuhelper/factory.hxx>
-#include <dicimp.hxx>
-#include <hyphdsp.hxx>
+#include "dicimp.hxx"
 #include <i18nlangtag/lang.h>
 #include <i18nlangtag/languagetag.hxx>
+#include <linguistic/misc.hxx>
 #include <osl/mutex.hxx>
+#include <osl/thread.h>
+#include <sal/log.hxx>
 #include <tools/debug.hxx>
 #include <tools/stream.hxx>
 #include <tools/urlobj.hxx>
@@ -33,12 +35,12 @@
 #include <unotools/ucbstreamhelper.hxx>
 
 #include <com/sun/star/ucb/SimpleFileAccess.hpp>
-#include <com/sun/star/linguistic2/DictionaryType.hpp>
 #include <com/sun/star/linguistic2/DictionaryEventFlags.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/io/TempFile.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/io/XOutputStream.hpp>
+
+#include <com/sun/star/linguistic2/LinguServiceManager.hpp>
+#include <com/sun/star/linguistic2/XSpellChecker1.hpp>
 
 #include "defs.hxx"
 
@@ -59,18 +61,40 @@ using namespace linguistic;
 
 #define MAX_HEADER_LENGTH 16
 
-static const sal_Char* const pVerStr2    = "WBSWG2";
-static const sal_Char* const pVerStr5    = "WBSWG5";
-static const sal_Char* const pVerStr6    = "WBSWG6";
-static const sal_Char* const pVerOOo7    = "OOoUserDict1";
+// XML-header to query SPELLML support
+// to handle user words with "Grammar By" model words
+#define SPELLML_SUPPORT "<?xml?>"
 
-static const sal_Int16 DIC_VERSION_DONTKNOW = -1;
-static const sal_Int16 DIC_VERSION_2 = 2;
-static const sal_Int16 DIC_VERSION_5 = 5;
-static const sal_Int16 DIC_VERSION_6 = 6;
-static const sal_Int16 DIC_VERSION_7 = 7;
+// User dictionaries can contain optional "title:" tags
+// to support custom titles with space and other characters.
+// (old mechanism stores the title of the user dictionary
+// only in its file name, but special characters are
+// problem for user dictionaries shipped with LibreOffice).
+//
+// The following fake file name extension will be
+// added to the text of the title: field for correct
+// text stripping and dictionary saving.
+#define EXTENSION_FOR_TITLE_TEXT "."
 
-static bool getTag(const OString &rLine, const sal_Char *pTagName,
+const char* const pVerStr2    = "WBSWG2";
+const char* const pVerStr5    = "WBSWG5";
+const char* const pVerStr6    = "WBSWG6";
+const char* const pVerOOo7    = "OOoUserDict1";
+
+const sal_Int16 DIC_VERSION_DONTKNOW = -1;
+const sal_Int16 DIC_VERSION_2 = 2;
+const sal_Int16 DIC_VERSION_5 = 5;
+const sal_Int16 DIC_VERSION_6 = 6;
+const sal_Int16 DIC_VERSION_7 = 7;
+
+static uno::Reference< XLinguServiceManager2 > GetLngSvcMgr_Impl()
+{
+    uno::Reference< XComponentContext > xContext( comphelper::getProcessComponentContext() );
+    uno::Reference< XLinguServiceManager2 > xRes = LinguServiceManager::create( xContext ) ;
+    return xRes;
+}
+
+static bool getTag(const OString &rLine, const char *pTagName,
     OString &rTagValue)
 {
     sal_Int32 nPos = rLine.indexOf(pTagName);
@@ -83,22 +107,22 @@ static bool getTag(const OString &rLine, const sal_Char *pTagName,
 }
 
 
-sal_Int16 ReadDicVersion( SvStreamPtr &rpStream, LanguageType &nLng, bool &bNeg )
+sal_Int16 ReadDicVersion( SvStream& rStream, LanguageType &nLng, bool &bNeg, OUString &aDicName )
 {
     // Sniff the header
     sal_Int16 nDicVersion = DIC_VERSION_DONTKNOW;
-    sal_Char pMagicHeader[MAX_HEADER_LENGTH];
+    char pMagicHeader[MAX_HEADER_LENGTH];
 
     nLng = LANGUAGE_NONE;
     bNeg = false;
 
-    if (!rpStream.get() || rpStream->GetError())
+    if (rStream.GetError())
         return -1;
 
-    sal_uInt64 const nSniffPos = rpStream->Tell();
+    sal_uInt64 const nSniffPos = rStream.Tell();
     static std::size_t nVerOOo7Len = sal::static_int_cast< std::size_t >(strlen( pVerOOo7 ));
     pMagicHeader[ nVerOOo7Len ] = '\0';
-    if ((rpStream->ReadBytes(static_cast<void *>(pMagicHeader), nVerOOo7Len) == nVerOOo7Len) &&
+    if ((rStream.ReadBytes(static_cast<void *>(pMagicHeader), nVerOOo7Len) == nVerOOo7Len) &&
         !strcmp(pMagicHeader, pVerOOo7))
     {
         bool bSuccess;
@@ -107,10 +131,10 @@ sal_Int16 ReadDicVersion( SvStreamPtr &rpStream, LanguageType &nLng, bool &bNeg 
         nDicVersion = DIC_VERSION_7;
 
         // 1st skip magic / header line
-        rpStream->ReadLine(aLine);
+        rStream.ReadLine(aLine);
 
         // 2nd line: language all | en-US | pt-BR ...
-        while ((bSuccess = rpStream->ReadLine(aLine)))
+        while ((bSuccess = rStream.ReadLine(aLine)))
         {
             OString aTagValue;
 
@@ -133,6 +157,16 @@ sal_Int16 ReadDicVersion( SvStreamPtr &rpStream, LanguageType &nLng, bool &bNeg 
                 bNeg = aTagValue == "negative";
             }
 
+            // lang: title
+            if (getTag(aLine, "title: ", aTagValue))
+            {
+                aDicName = OStringToOUString( aTagValue, RTL_TEXTENCODING_UTF8) +
+                    // recent title text preparation in GetDicInfoStr() waits for an
+                    // extension, so we add it to avoid bad stripping at final dot
+                    // of the title text
+                    EXTENSION_FOR_TITLE_TEXT;
+            }
+
             if (aLine.indexOf("---") != -1) // end of header
                 break;
         }
@@ -143,13 +177,13 @@ sal_Int16 ReadDicVersion( SvStreamPtr &rpStream, LanguageType &nLng, bool &bNeg 
     {
         sal_uInt16 nLen;
 
-        rpStream->Seek (nSniffPos );
+        rStream.Seek (nSniffPos );
 
-        rpStream->ReadUInt16( nLen );
+        rStream.ReadUInt16( nLen );
         if (nLen >= MAX_HEADER_LENGTH)
             return -1;
 
-        rpStream->ReadBytes(pMagicHeader, nLen);
+        rStream.ReadBytes(pMagicHeader, nLen);
         pMagicHeader[nLen] = '\0';
 
         // Check version magic
@@ -168,13 +202,13 @@ sal_Int16 ReadDicVersion( SvStreamPtr &rpStream, LanguageType &nLng, bool &bNeg 
         {
             // The language of the dictionary
             sal_uInt16 nTmp = 0;
-            rpStream->ReadUInt16( nTmp );
+            rStream.ReadUInt16( nTmp );
             nLng = LanguageType(nTmp);
             if (VERS2_NOLANGUAGE == static_cast<sal_uInt16>(nLng))
                 nLng = LANGUAGE_NONE;
 
             // Negative Flag
-            rpStream->ReadCharAsBool( bNeg );
+            rStream.ReadCharAsBool( bNeg );
         }
     }
 
@@ -256,12 +290,12 @@ ErrCode DictionaryNeo::loadEntries(const OUString &rMainURL)
     if (!xStream.is())
         return ErrCode(sal_uInt32(-1));
 
-    SvStreamPtr pStream = SvStreamPtr( utl::UcbStreamHelper::CreateStream( xStream ) );
+    std::unique_ptr<SvStream> pStream( utl::UcbStreamHelper::CreateStream( xStream ) );
 
     // read header
     bool bNegativ;
     LanguageType nLang;
-    nDicVersion = ReadDicVersion(pStream, nLang, bNegativ);
+    nDicVersion = ReadDicVersion(*pStream, nLang, bNegativ, aDicName);
     ErrCode nErr = pStream->GetError();
     if (nErr != ERRCODE_NONE)
         return nErr;
@@ -280,10 +314,10 @@ ErrCode DictionaryNeo::loadEntries(const OUString &rMainURL)
         DIC_VERSION_2 == nDicVersion)
     {
         sal_uInt16  nLen = 0;
-        sal_Char aWordBuf[ BUFSIZE ];
+        char aWordBuf[ BUFSIZE ];
 
         // Read the first word
-        if (!pStream->IsEof())
+        if (!pStream->eof())
         {
             pStream->ReadUInt16( nLen );
             if (ERRCODE_NONE != (nErr = pStream->GetError()))
@@ -299,7 +333,7 @@ ErrCode DictionaryNeo::loadEntries(const OUString &rMainURL)
                 return SVSTREAM_READ_ERROR;
         }
 
-        while(!pStream->IsEof())
+        while(!pStream->eof())
         {
             // Read from file
             // Paste in dictionary without converting
@@ -312,7 +346,7 @@ ErrCode DictionaryNeo::loadEntries(const OUString &rMainURL)
             }
 
             pStream->ReadUInt16( nLen );
-            if (pStream->IsEof())
+            if (pStream->eof())
                 break;
             if (ERRCODE_NONE != (nErr = pStream->GetError()))
                 return nErr;
@@ -335,7 +369,7 @@ ErrCode DictionaryNeo::loadEntries(const OUString &rMainURL)
         // remaining lines - stock strings (a [==] b)
         while (pStream->ReadLine(aLine))
         {
-            if (aLine[0] == '#') // skip comments
+            if (aLine.isEmpty() || aLine[0] == '#') // skip comments
                 continue;
             OUString aText = OStringToOUString(aLine, RTL_TEXTENCODING_UTF8);
             uno::Reference< XDictionaryEntry > xEntry =
@@ -359,7 +393,7 @@ static OString formatForSave(const uno::Reference< XDictionaryEntry > &xEntry,
 {
    OStringBuffer aStr(OUStringToOString(xEntry->getDictionaryWord(), eEnc));
 
-   if (xEntry->isNegative())
+   if (xEntry->isNegative() || !xEntry->getReplacementText().isEmpty())
    {
        aStr.append("==");
        aStr.append(OUStringToOString(xEntry->getReplacementText(), eEnc));
@@ -390,12 +424,12 @@ ErrCode DictionaryNeo::saveEntries(const OUString &rURL)
     if (!xStream.is())
         return ErrCode(sal_uInt32(-1));
 
-    SvStreamPtr pStream = SvStreamPtr( utl::UcbStreamHelper::CreateStream( xStream ) );
+    std::unique_ptr<SvStream> pStream( utl::UcbStreamHelper::CreateStream( xStream ) );
 
     // Always write as the latest version, i.e. DIC_VERSION_7
 
     rtl_TextEncoding eEnc = RTL_TEXTENCODING_UTF8;
-    pStream->WriteLine(OString(pVerOOo7));
+    pStream->WriteLine(pVerOOo7);
     ErrCode nErr = pStream->GetError();
     if (nErr != ERRCODE_NONE)
         return nErr;
@@ -403,7 +437,7 @@ ErrCode DictionaryNeo::saveEntries(const OUString &rURL)
      * undetermined or multiple? Earlier versions did not know about 'und' and
      * 'mul' and 'zxx' codes. Sync with ReadDicVersion() */
     if (LinguIsUnspecified(nLanguage))
-        pStream->WriteLine(OString("lang: <none>"));
+        pStream->WriteLine("lang: <none>");
     else
     {
         OStringBuffer aLine("lang: ");
@@ -413,15 +447,21 @@ ErrCode DictionaryNeo::saveEntries(const OUString &rURL)
     if (ERRCODE_NONE != (nErr = pStream->GetError()))
         return nErr;
     if (eDicType == DictionaryType_POSITIVE)
-        pStream->WriteLine(OString("type: positive"));
+        pStream->WriteLine("type: positive");
     else
-        pStream->WriteLine(OString("type: negative"));
+        pStream->WriteLine("type: negative");
+    if (aDicName.endsWith(EXTENSION_FOR_TITLE_TEXT))
+    {
+        pStream->WriteLine(OUStringToOString("title: " +
+            // strip EXTENSION_FOR_TITLE_TEXT
+            aDicName.copy(0, aDicName.lastIndexOf(EXTENSION_FOR_TITLE_TEXT)), eEnc));
+    }
     if (ERRCODE_NONE != (nErr = pStream->GetError()))
         return nErr;
-    pStream->WriteLine(OString("---"));
+    pStream->WriteLine("---");
     if (ERRCODE_NONE != (nErr = pStream->GetError()))
         return nErr;
-    for (Reference<XDictionaryEntry> & aEntrie : aEntries)
+    for (const Reference<XDictionaryEntry> & aEntrie : aEntries)
     {
         OString aOutStr = formatForSave(aEntrie, eEnc);
         pStream->WriteLine (aOutStr);
@@ -502,8 +542,11 @@ int DictionaryNeo::cmpDicEntry(const OUString& rWord1,
     {
         // skip chars to be ignored
         IgnState = false;
-        while (nIdx1 < nLen1  &&  ((cChar1 = rWord1[ nIdx1 ]) == cIgnChar || cChar1 == cIgnBeg || IgnState ))
+        while (nIdx1 < nLen1)
         {
+            cChar1 = rWord1[ nIdx1 ];
+            if (cChar1 != cIgnChar && cChar1 != cIgnBeg && !IgnState )
+                break;
             if ( cChar1 == cIgnBeg )
                 IgnState = true;
             else if (cChar1 == cIgnEnd)
@@ -512,8 +555,11 @@ int DictionaryNeo::cmpDicEntry(const OUString& rWord1,
             nNumIgnChar1++;
         }
         IgnState = false;
-        while (nIdx2 < nLen2  &&  ((cChar2 = rWord2[ nIdx2 ]) == cIgnChar || cChar2 == cIgnBeg || IgnState ))
+        while (nIdx2 < nLen2)
         {
+            cChar2 = rWord2[ nIdx2 ];
+            if (cChar2 != cIgnChar && cChar2 != cIgnBeg && !IgnState )
+                break;
             if ( cChar2 == cIgnBeg )
                 IgnState = true;
             else if (cChar2 == cIgnEnd)
@@ -672,6 +718,27 @@ bool DictionaryNeo::addEntry_Impl(const uno::Reference< XDictionaryEntry >& xDic
         }
     }
 
+    // add word to the Hunspell dictionary using a sample word for affixation/compounding
+    if (xDicEntry.is() && !xDicEntry->isNegative() && !xDicEntry->getReplacementText().isEmpty()) {
+        uno::Reference< XLinguServiceManager2 > xLngSvcMgr( GetLngSvcMgr_Impl() );
+        uno::Reference< XSpellChecker1 > xSpell;
+        Reference< XSpellAlternatives > xTmpRes;
+        xSpell.set( xLngSvcMgr->getSpellChecker(), UNO_QUERY );
+        Sequence< css::beans::PropertyValue > aEmptySeq;
+        if (xSpell.is() && (xSpell->isValid( SPELLML_SUPPORT, static_cast<sal_uInt16>(nLanguage), aEmptySeq )))
+        {
+            // "Grammar By" sample word is a Hunspell dictionary word?
+            if (xSpell->isValid( xDicEntry->getReplacementText(), static_cast<sal_uInt16>(nLanguage), aEmptySeq ))
+            {
+                xTmpRes = xSpell->spell( "<?xml?><query type='add'><word>" +
+                    xDicEntry->getDictionaryWord() + "</word><word>" + xDicEntry->getReplacementText() +
+                    "</word></query>", static_cast<sal_uInt16>(nLanguage), aEmptySeq );
+                bRes = true;
+            } else
+                bRes = false;
+        }
+    }
+
     return bRes;
 }
 
@@ -703,31 +770,31 @@ void SAL_CALL DictionaryNeo::setActive( sal_Bool bActivate )
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
-    if (bIsActive != bool(bActivate))
+    if (bIsActive == bool(bActivate))
+        return;
+
+    bIsActive = bActivate;
+    sal_Int16 nEvent = bIsActive ?
+            DictionaryEventFlags::ACTIVATE_DIC : DictionaryEventFlags::DEACTIVATE_DIC;
+
+    // remove entries from memory if dictionary is deactivated
+    if (!bIsActive)
     {
-        bIsActive = bActivate;
-        sal_Int16 nEvent = bIsActive ?
-                DictionaryEventFlags::ACTIVATE_DIC : DictionaryEventFlags::DEACTIVATE_DIC;
+        bool bIsEmpty = aEntries.empty();
 
-        // remove entries from memory if dictionary is deactivated
-        if (!bIsActive)
+        // save entries first if necessary
+        if (bIsModified && hasLocation() && !isReadonly())
         {
-            bool bIsEmpty = aEntries.empty();
+            store();
 
-            // save entries first if necessary
-            if (bIsModified && hasLocation() && !isReadonly())
-            {
-                store();
-
-                aEntries.clear();
-                bNeedEntries = !bIsEmpty;
-            }
-            DBG_ASSERT( !bIsModified || !hasLocation() || isReadonly(),
-                    "lng : dictionary is still modified" );
+            aEntries.clear();
+            bNeedEntries = !bIsEmpty;
         }
-
-        launchEvent(nEvent, nullptr);
+        DBG_ASSERT( !bIsModified || !hasLocation() || isReadonly(),
+                "lng : dictionary is still modified" );
     }
+
+    launchEvent(nEvent, nullptr);
 }
 
 sal_Bool SAL_CALL DictionaryNeo::isActive(  )
@@ -742,7 +809,7 @@ sal_Int32 SAL_CALL DictionaryNeo::getCount(  )
 
     if (bNeedEntries)
         loadEntries( aMainURL );
-    return (sal_Int32)aEntries.size();
+    return static_cast<sal_Int32>(aEntries.size());
 }
 
 Locale SAL_CALL DictionaryNeo::getLocale(  )
@@ -774,7 +841,7 @@ uno::Reference< XDictionaryEntry > SAL_CALL DictionaryNeo::getEntry(
 
     sal_Int32 nPos;
     bool bFound = seekEntry( aWord, &nPos, true );
-    DBG_ASSERT(!bFound || nPos < (sal_Int32)aEntries.size(), "lng : index out of range");
+    DBG_ASSERT(!bFound || nPos < static_cast<sal_Int32>(aEntries.size()), "lng : index out of range");
 
     return bFound ? aEntries[ nPos ]
                     : uno::Reference< XDictionaryEntry >();
@@ -828,7 +895,7 @@ sal_Bool SAL_CALL DictionaryNeo::remove( const OUString& aWord )
 
         sal_Int32 nPos;
         bool bFound = seekEntry( aWord, &nPos );
-        DBG_ASSERT(!bFound || nPos < (sal_Int32)aEntries.size(), "lng : index out of range");
+        DBG_ASSERT(!bFound || nPos < static_cast<sal_Int32>(aEntries.size()), "lng : index out of range");
 
         // remove element if found
         if (bFound)

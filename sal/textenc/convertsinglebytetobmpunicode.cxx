@@ -17,12 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
+#include <cassert>
 #include <cstddef>
 
-#include "rtl/textcvt.h"
-#include "sal/types.h"
+#include <rtl/character.hxx>
+#include <rtl/textcvt.h>
+#include <sal/types.h>
 
 #include "context.hxx"
 #include "converter.hxx"
@@ -30,7 +32,7 @@
 #include "unichars.hxx"
 
 sal_Size rtl_textenc_convertSingleByteToBmpUnicode(
-    void const * data, SAL_UNUSED_PARAMETER void *, sal_Char const * srcBuf,
+    void const * data, SAL_UNUSED_PARAMETER void *, char const * srcBuf,
     sal_Size srcBytes, sal_Unicode * destBuf, sal_Size destChars,
     sal_uInt32 flags, sal_uInt32 * info, sal_Size * srcCvtBytes)
 {
@@ -42,7 +44,7 @@ sal_Size rtl_textenc_convertSingleByteToBmpUnicode(
     sal_Unicode * destBufPtr = destBuf;
     sal_Unicode * destBufEnd = destBuf + destChars;
     for (; converted < srcBytes; ++converted) {
-        sal_Char b = *srcBuf++;
+        char b = *srcBuf++;
         sal_Unicode c = map[static_cast< sal_uInt8 >(b)];
         if (c == 0xFFFF) {
             goto bad_input;
@@ -58,6 +60,9 @@ sal_Size rtl_textenc_convertSingleByteToBmpUnicode(
                     &infoFlags))
         {
         case sal::detail::textenc::BAD_INPUT_STOP:
+            if ((flags & RTL_TEXTTOUNICODE_FLAGS_FLUSH) == 0) {
+                ++converted;
+            }
             break;
 
         case sal::detail::textenc::BAD_INPUT_CONTINUE:
@@ -69,7 +74,7 @@ sal_Size rtl_textenc_convertSingleByteToBmpUnicode(
         break;
     no_output:
         --srcBuf;
-        infoFlags |= RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOSMALL;
+        infoFlags |= RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL;
         break;
     }
     if (info != nullptr) {
@@ -83,7 +88,7 @@ sal_Size rtl_textenc_convertSingleByteToBmpUnicode(
 
 sal_Size rtl_textenc_convertBmpUnicodeToSingleByte(
     void const * data, void * context,
-    sal_Unicode const * srcBuf, sal_Size srcChars, sal_Char * destBuf,
+    sal_Unicode const * srcBuf, sal_Size srcChars, char * destBuf,
     sal_Size destBytes, sal_uInt32 flags, sal_uInt32 * info,
     sal_Size * srcCvtChars)
 {
@@ -96,8 +101,8 @@ sal_Size rtl_textenc_convertBmpUnicodeToSingleByte(
     sal_Unicode highSurrogate = 0;
     sal_uInt32 infoFlags = 0;
     sal_Size converted = 0;
-    sal_Char * destBufPtr = destBuf;
-    sal_Char * destBufEnd = destBuf + destBytes;
+    char * destBufPtr = destBuf;
+    char * destBufEnd = destBuf + destBytes;
     if (context != nullptr) {
         highSurrogate = static_cast< ImplUnicodeToTextContext * >(context)->
             m_nHighSurrogate;
@@ -110,16 +115,18 @@ sal_Size rtl_textenc_convertBmpUnicodeToSingleByte(
                 highSurrogate = static_cast< sal_Unicode >(c);
                 continue;
             }
+            else if (ImplIsLowSurrogate(c))
+            {
+                undefined = false;
+                goto bad_input;
+            }
         } else if (ImplIsLowSurrogate(c)) {
             c = ImplCombineSurrogates(highSurrogate, c);
         } else {
             undefined = false;
             goto bad_input;
         }
-        if (ImplIsLowSurrogate(c) || ImplIsNoncharacter(c)) {
-            undefined = false;
-            goto bad_input;
-        }
+        assert(rtl::isUnicodeScalarValue(c));
         // Linearly searching through the ranges if probably fastest, assuming
         // that most converted characters belong to the ASCII subset:
         for (std::size_t i = 0; i < entries; ++i) {
@@ -132,7 +139,7 @@ sal_Size rtl_textenc_convertBmpUnicodeToSingleByte(
                 if (destBufEnd - destBufPtr < 1) {
                     goto no_output;
                 }
-                *destBufPtr++ = static_cast< sal_Char >(
+                *destBufPtr++ = static_cast< char >(
                     ranges[i].byte + (c - ranges[i].unicode));
                 goto done;
             }

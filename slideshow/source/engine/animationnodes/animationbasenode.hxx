@@ -21,15 +21,13 @@
 
 #include <com/sun/star/animations/XAnimate.hpp>
 
-#include "basecontainernode.hxx"
-#include "activitiesfactory.hxx"
-#include "shapeattributelayer.hxx"
-#include "shapeattributelayerholder.hxx"
-#include "attributableshape.hxx"
-#include "shapesubset.hxx"
+#include <basecontainernode.hxx>
+#include <activitiesfactory.hxx>
+#include <shapeattributelayerholder.hxx>
+#include <attributableshape.hxx>
+#include <shapesubset.hxx>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /** Common base class for all leaf animation nodes.
 
@@ -40,12 +38,13 @@ class AnimationBaseNode : public BaseNode
 public:
     AnimationBaseNode(
         css::uno::Reference<css::animations::XAnimationNode> const& xNode,
-        ::std::shared_ptr<BaseContainerNode> const& pParent,
+        BaseContainerNodeSharedPtr const& pParent,
         NodeContext const& rContext );
 
 #if defined(DBG_UTIL)
     virtual void showState() const override;
 #endif
+    virtual void removeEffect() override;
 
 protected:
     virtual void dispose() override;
@@ -56,7 +55,7 @@ protected:
     /// Create parameter struct for ActivitiesFactory
     ActivitiesFactory::CommonParameters fillCommonParameters() const;
     ::basegfx::B2DVector const&         getSlideSize() const { return maSlideSize; }
-    AttributableShapeSharedPtr          getShape() const;
+    AttributableShapeSharedPtr const &  getShape() const;
 
 private:
     virtual bool hasPendingAnimation() const override;
@@ -87,11 +86,11 @@ private:
     /// When valid, this is a subsetted target shape
     ShapeSubsetSharedPtr                            mpShapeSubset;
     SubsettableShapeManagerSharedPtr                mpSubsetManager;
+    bool                                            mbPreservedVisibility;
     bool                                            mbIsIndependentSubset;
 };
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_ANIMATIONBASENODE_HXX
 

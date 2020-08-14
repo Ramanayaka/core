@@ -17,17 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/chartcontextbase.hxx"
+#include <drawingml/chart/chartcontextbase.hxx>
 
-#include "oox/drawingml/chart/modelbase.hxx"
+#include <oox/drawingml/chart/modelbase.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
-#include "drawingml/shapepropertiescontext.hxx"
+#include <drawingml/shapepropertiescontext.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 using ::oox::core::ContextHandler2Helper;
 using ::oox::core::ContextHandlerRef;
@@ -104,8 +102,6 @@ ContextHandlerRef LayoutContext::onCreateContext( sal_Int32 nElement, const Attr
     return nullptr;
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

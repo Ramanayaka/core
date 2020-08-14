@@ -20,15 +20,9 @@
 #ifndef INCLUDED_SD_SOURCE_UI_ANIMATIONS_CUSTOMANIMATIONDIALOG_HXX
 #define INCLUDED_SD_SOURCE_UI_ANIMATIONS_CUSTOMANIMATIONDIALOG_HXX
 
-#include "CustomAnimationEffect.hxx"
-#include "CustomAnimationPreset.hxx"
-#include <vcl/tabdlg.hxx>
-#include <vcl/lstbox.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 
-class TabControl;
-class OKButton;
-class CancelButton;
-class HelpButton;
 namespace sd {
 
 // property handles
@@ -94,44 +88,28 @@ const sal_Int32 nPropertyTypeTransparency = 19;
 const sal_Int32 nPropertyTypeFontStyle = 20;
 const sal_Int32 nPropertyTypeScale = 21;
 
-class PropertySubControl
+class SdPropertySubControl
 {
 public:
-    explicit PropertySubControl( sal_Int32 nType ) : mnType( nType ) {}
-    virtual ~PropertySubControl();
+    explicit SdPropertySubControl(weld::Container* pParent);
+    virtual ~SdPropertySubControl();
 
     virtual             css::uno::Any getValue() = 0;
     virtual             void setValue( const css::uno::Any& rValue, const OUString& rPresetId ) = 0;
 
-    virtual Control*    getControl() = 0;
-
-    static PropertySubControl*
+    static std::unique_ptr<SdPropertySubControl>
                         create( sal_Int32 nType,
-                                vcl::Window* pParent,
+                                weld::Label* pLabel,
+                                weld::Container* pParent,
+                                weld::Window* pTopLevel,
                                 const css::uno::Any& rValue,
                                 const OUString& rPresetId,
                                 const Link<LinkParamNone*,void>& rModifyHdl );
 
-    sal_Int32 getControlType() const { return mnType; }
-
 protected:
-    sal_Int32           mnType;
-};
-
-class PropertyControl : public ListBox
-{
-public:
-    explicit PropertyControl( vcl::Window* pParent );
-    virtual ~PropertyControl() override;
-    virtual void dispose() override;
-
-    void setSubControl( PropertySubControl* pSubControl );
-    PropertySubControl* getSubControl() const { return mpSubControl; }
-
-    virtual void Resize() override;
-
-private:
-    PropertySubControl* mpSubControl;
+    std::unique_ptr<weld::Builder> mxBuilder;
+    std::unique_ptr<weld::Container> mxContainer;
+    weld::Container* mpParent;
 };
 
 class CustomAnimationDurationTabPage;
@@ -139,26 +117,25 @@ class CustomAnimationEffectTabPage;
 class CustomAnimationTextAnimTabPage;
 class STLPropertySet;
 
-class CustomAnimationDialog : public TabDialog
+class CustomAnimationDialog : public weld::GenericDialogController
 {
 public:
-    CustomAnimationDialog(vcl::Window* pParent, STLPropertySet* pSet, const OString& Page);
+    CustomAnimationDialog(weld::Window* pParent, std::unique_ptr<STLPropertySet> pSet, const OString& Page);
     virtual ~CustomAnimationDialog() override;
-    virtual void dispose() override;
 
     STLPropertySet* getResultSet();
+    STLPropertySet* getPropertySet() const { return mxSet.get(); }
 
-    static STLPropertySet* createDefaultSet();
+    static std::unique_ptr<STLPropertySet> createDefaultSet();
 
 private:
-    STLPropertySet* mpSet;
-    STLPropertySet* mpResultSet;
+    std::unique_ptr<STLPropertySet> mxSet;
+    std::unique_ptr<STLPropertySet> mxResultSet;
 
-    VclPtr<TabControl> mpTabControl;
-
-    VclPtr<CustomAnimationDurationTabPage> mpDurationTabPage;
-    VclPtr<CustomAnimationEffectTabPage> mpEffectTabPage;
-    VclPtr<CustomAnimationTextAnimTabPage> mpTextAnimTabPage;
+    std::unique_ptr<weld::Notebook> mxTabControl;
+    std::unique_ptr<CustomAnimationDurationTabPage> mxDurationTabPage;
+    std::unique_ptr<CustomAnimationEffectTabPage> mxEffectTabPage;
+    std::unique_ptr<CustomAnimationTextAnimTabPage> mxTextAnimTabPage;
 };
 
 }

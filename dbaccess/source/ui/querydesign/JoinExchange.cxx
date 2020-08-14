@@ -17,34 +17,31 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "JoinExchange.hxx"
+#include <JoinExchange.hxx>
 #include <sot/formats.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/typeprovider.hxx>
 
 namespace dbaui
 {
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::util;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::datatransfer;
 
-    // class OJoinExchObj
-    OJoinExchObj::OJoinExchObj(const OJoinExchangeData& jxdSource,bool _bFirstEntry)
-        :m_bFirstEntry(_bFirstEntry)
-        ,m_jxdSourceDescription(jxdSource)
-        ,m_pDragListener(nullptr)
+    void OJoinExchObj::setDescriptors(const OJoinExchangeData& jxdSource,bool _bFirstEntry)
     {
-        // add available types to list
+        m_bFirstEntry = _bFirstEntry;
+        m_jxdSourceDescription = jxdSource;
+    }
+
+    OJoinExchObj::OJoinExchObj()
+        : m_bFirstEntry(false)
+        , m_pDragListener(nullptr)
+    {
     }
 
     OJoinExchObj::~OJoinExchObj()
     {
-    }
-
-    void OJoinExchObj::StartDrag( vcl::Window* _pWindow, sal_Int8 _nDragSourceActions, IDragTransferableListener* _pListener )
-    {
-        m_pDragListener = _pListener;
-        TransferableHelper::StartDrag(_pWindow, _nDragSourceActions);
     }
 
     void OJoinExchObj::DragFinished( sal_Int8 /*nDropAction*/ )
@@ -56,13 +53,9 @@ namespace dbaui
 
     bool OJoinExchObj::isFormatAvailable( const DataFlavorExVector& _rFormats ,SotClipboardFormatId _nSlotID)
     {
-        DataFlavorExVector::const_iterator aCheckEnd = _rFormats.end();
-        for (   DataFlavorExVector::const_iterator aCheck = _rFormats.begin();
-                aCheck != aCheckEnd;
-                ++aCheck
-            )
+        for (auto const& format : _rFormats)
         {
-            if ( _nSlotID == aCheck->mnSotId )
+            if ( _nSlotID == format.mnSotId )
                 return true;
         }
         return false;
@@ -71,17 +64,13 @@ namespace dbaui
     OJoinExchangeData OJoinExchObj::GetSourceDescription(const Reference< XTransferable >& _rxObject)
     {
         OJoinExchangeData aReturn;
-        Reference< XUnoTunnel > xTunnel(_rxObject, UNO_QUERY);
-        if (xTunnel.is())
-        {
-            OJoinExchObj* pImplementation = reinterpret_cast<OJoinExchObj*>(xTunnel->getSomething(getUnoTunnelImplementationId()));
-            if (pImplementation)
-                aReturn = pImplementation->m_jxdSourceDescription;
-        }
+        auto pImplementation = comphelper::getUnoTunnelImplementation<OJoinExchObj>(_rxObject);
+        if (pImplementation)
+            aReturn = pImplementation->m_jxdSourceDescription;
         return aReturn;
     }
 
-    Sequence< sal_Int8 > OJoinExchObj::getUnoTunnelImplementationId()
+    Sequence< sal_Int8 > OJoinExchObj::getUnoTunnelId()
     {
         static ::cppu::OImplementationId implId;
 
@@ -90,7 +79,7 @@ namespace dbaui
 
     sal_Int64 SAL_CALL OJoinExchObj::getSomething( const Sequence< sal_Int8 >& _rIdentifier )
     {
-        if (_rIdentifier.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  _rIdentifier.getConstArray(), 16 ) )
+        if (isUnoTunnelId<OJoinExchObj>(_rIdentifier))
             return reinterpret_cast<sal_Int64>(this);
 
         return 0;
@@ -108,8 +97,8 @@ namespace dbaui
         SotClipboardFormatId nFormat = SotExchange::GetFormat(rFlavor);
         if ( SotClipboardFormatId::SBA_JOIN == nFormat )
             // this is a HACK
-            // we don't really copy our data, the instances using us have to call GetSourceDescription ....
-            // if, one day, we have a _lot_ of time, this hack should be removed ....
+            // we don't really copy our data, the instances using us have to call GetSourceDescription...
+            // if, one day, we have a _lot_ of time, this hack should be removed...
             return true;
 
         return false;
@@ -117,7 +106,7 @@ namespace dbaui
 
     Any SAL_CALL OJoinExchObj::queryInterface( const Type& _rType )
     {
-        Any aReturn = TransferableHelper::queryInterface(_rType);
+        Any aReturn = TransferDataContainer::queryInterface(_rType);
         if (!aReturn.hasValue())
             aReturn = OJoinExchObj_Base::queryInterface(_rType);
         return aReturn;
@@ -125,12 +114,12 @@ namespace dbaui
 
     void SAL_CALL OJoinExchObj::acquire(  ) throw()
     {
-        TransferableHelper::acquire( );
+        TransferDataContainer::acquire( );
     }
 
     void SAL_CALL OJoinExchObj::release(  ) throw()
     {
-        TransferableHelper::release( );
+        TransferDataContainer::release( );
     }
 
 }   // namespace dbaui

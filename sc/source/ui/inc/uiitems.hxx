@@ -20,11 +20,10 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_UIITEMS_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_UIITEMS_HXX
 
-#include "scdllapi.h"
-#include "conditio.hxx"
-#include "sortparam.hxx"
-#include "subtotalparam.hxx"
-#include "paramisc.hxx"
+#include <scdllapi.h>
+#include <sortparam.hxx>
+#include <subtotalparam.hxx>
+#include <paramisc.hxx>
 #include <svl/poolitem.hxx>
 
 #include <memory>
@@ -63,7 +62,7 @@ public:
                             virtual ~ScInputStatusItem() override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScInputStatusItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const ScAddress&        GetPos() const      { return aCursorPos; }
 
@@ -134,11 +133,9 @@ public:
                                         const ScSortParam*  pSortData );
                             ScSortItem( sal_uInt16              nWhich,
                                         const ScSortParam*  pSortData );
-                            ScSortItem( const ScSortItem& rItem );
-                            virtual ~ScSortItem() override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScSortItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
 
     ScViewData*         GetViewData () const { return pViewData; }
@@ -161,7 +158,7 @@ public:
                             virtual ~ScQueryItem() override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScQueryItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
 
     ScViewData*         GetViewData () const { return pViewData; }
     const ScQueryParam& GetQueryData() const;
@@ -184,11 +181,9 @@ public:
                                 const ScSubTotalParam*  pSubTotalData );
                 ScSubTotalItem( sal_uInt16                  nWhich,
                                 const ScSubTotalParam*  pSubTotalData );
-                ScSubTotalItem( const ScSubTotalItem&   rItem );
-                virtual ~ScSubTotalItem() override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScSubTotalItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
 
     ScViewData*             GetViewData () const { return pViewData; }
@@ -207,7 +202,7 @@ public:
                 virtual ~ScUserListItem() override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScUserListItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     void        SetUserList ( const ScUserList& rUserList );
     ScUserList* GetUserList () const { return pUserList.get(); }
@@ -221,11 +216,9 @@ class ScConsolidateItem : public SfxPoolItem
 public:
                 ScConsolidateItem( sal_uInt16                    nWhich,
                                    const ScConsolidateParam* pParam );
-                ScConsolidateItem( const ScConsolidateItem& rItem );
-                virtual ~ScConsolidateItem() override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScConsolidateItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const ScConsolidateParam& GetData() const { return theConsData; }
 
@@ -242,7 +235,7 @@ public:
                 virtual ~ScPivotItem() override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScPivotItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const ScDPSaveData& GetData() const         { return *pSaveData; }
     const ScRange&      GetDestRange() const    { return aDestRange; }
@@ -259,11 +252,9 @@ class ScSolveItem : public SfxPoolItem
 public:
                 ScSolveItem( sal_uInt16              nWhich,
                              const ScSolveParam* pParam );
-                ScSolveItem( const ScSolveItem& rItem );
-                virtual ~ScSolveItem() override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScSolveItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const ScSolveParam& GetData() const { return theSolveData; }
 
@@ -276,11 +267,9 @@ class ScTabOpItem : public SfxPoolItem
 public:
                 ScTabOpItem( sal_uInt16              nWhich,
                              const ScTabOpParam* pParam );
-                ScTabOpItem( const ScTabOpItem& rItem );
-                virtual ~ScTabOpItem() override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScTabOpItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const ScTabOpParam& GetData() const { return theTabOpData; }
 

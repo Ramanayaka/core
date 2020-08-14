@@ -17,20 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <rtl/string.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <cppuhelper/component.hxx>
-#include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/typeprovider.hxx>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/uno/RuntimeException.hpp>
 
 using namespace osl;
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
-
-using ::rtl::OString;
-using ::rtl::OUStringToOString;
 
 namespace cppu
 {
@@ -92,7 +90,7 @@ void OComponentHelper::release() throw()
                 catch (css::uno::RuntimeException & exc)
                 {
                     // release should not throw exceptions
-                    SAL_WARN( "cppuhelper", exc.Message );
+                    SAL_WARN( "cppuhelper", exc );
                 }
 
                 // only the alive ref holds the object
@@ -109,21 +107,13 @@ void OComponentHelper::release() throw()
 
 Sequence< Type > OComponentHelper::getTypes()
 {
-    static OTypeCollection * s_pTypes = nullptr;
-    if (! s_pTypes)
-    {
-        MutexGuard aGuard( Mutex::getGlobalMutex() );
-        if (! s_pTypes)
-        {
-            static OTypeCollection s_aTypes(
-                cppu::UnoType<lang::XComponent>::get(),
-                cppu::UnoType<lang::XTypeProvider>::get(),
-                cppu::UnoType<XAggregation>::get(),
-                cppu::UnoType<XWeak>::get() );
-            s_pTypes = &s_aTypes;
-        }
-    }
-    return s_pTypes->getTypes();
+    static OTypeCollection s_aTypes(
+        cppu::UnoType<lang::XComponent>::get(),
+        cppu::UnoType<lang::XTypeProvider>::get(),
+        cppu::UnoType<XAggregation>::get(),
+        cppu::UnoType<XWeak>::get() );
+
+    return s_aTypes.getTypes();
 }
 
 // XComponent
@@ -189,8 +179,10 @@ void OComponentHelper::dispose()
         }
         catch (Exception & exc)
         {
-            throw RuntimeException(
-                "unexpected UNO exception caught: " + exc.Message );
+            css::uno::Any anyEx = cppu::getCaughtException();
+            throw lang::WrappedTargetRuntimeException(
+                "unexpected UNO exception caught: " + exc.Message,
+                nullptr, anyEx );
         }
     }
     else

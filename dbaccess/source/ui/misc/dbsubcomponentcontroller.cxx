@@ -17,37 +17,34 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "browserids.hxx"
-#include "commontypes.hxx"
+#include <browserids.hxx>
+#include <commontypes.hxx>
+#include <core_resource.hxx>
 #include <dbaccess/dataview.hxx>
-#include "dbu_misc.hrc"
-#include "dbustrings.hrc"
-#include "moduledbu.hxx"
+#include <strings.hrc>
+#include <strings.hxx>
 #include <dbaccess/dbsubcomponentcontroller.hxx>
 
 #include <com/sun/star/frame/XUntitledNumbers.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/sdb/XDocumentDataSource.hpp>
 #include <com/sun/star/sdb/XOfficeDatabaseDocument.hpp>
 #include <com/sun/star/sdbc/XDataSource.hpp>
 #include <com/sun/star/util/NumberFormatter.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 
-#include <comphelper/processfactory.hxx>
-#include <comphelper/sequence.hxx>
 #include <comphelper/types.hxx>
 #include <connectivity/dbexception.hxx>
 #include <connectivity/dbmetadata.hxx>
 #include <connectivity/dbtools.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <comphelper/interfacecontainer2.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
-#include <vcl/layout.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 
 namespace dbaui
 {
@@ -55,7 +52,6 @@ namespace dbaui
     using ::com::sun::star::uno::Any;
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::beans::XPropertySet;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::uno::Type;
     using ::com::sun::star::uno::XComponentContext;
@@ -68,7 +64,6 @@ namespace dbaui
     using ::com::sun::star::util::XNumberFormatsSupplier;
     using ::com::sun::star::frame::XFrame;
     using ::com::sun::star::uno::Exception;
-    using ::com::sun::star::sdbc::SQLException;
     using ::com::sun::star::lang::EventObject;
     using ::com::sun::star::beans::PropertyValue;
     using ::com::sun::star::frame::XModel;
@@ -81,7 +76,8 @@ namespace dbaui
     using ::com::sun::star::uno::UNO_SET_THROW;
     using ::com::sun::star::uno::UNO_QUERY_THROW;
     using ::com::sun::star::frame::XUntitledNumbers;
-    using ::com::sun::star::beans::PropertyVetoException;
+
+    namespace {
 
     class DataSourceHolder
     {
@@ -91,8 +87,8 @@ namespace dbaui
         }
 
         explicit DataSourceHolder(const Reference< XDataSource >& _rxDataSource)
+              : m_xDataSource(_rxDataSource)
         {
-            m_xDataSource = _rxDataSource;
             Reference< XDocumentDataSource > xDocDS( m_xDataSource, UNO_QUERY );
             if ( xDocDS.is() )
                 m_xDocument = xDocDS->getDatabaseDocument();
@@ -118,13 +114,14 @@ namespace dbaui
         Reference< XOfficeDatabaseDocument >    m_xDocument;
     };
 
+    }
+
     struct DBSubComponentController_Impl
     {
     private:
-        ::boost::optional< bool >       m_aDocScriptSupport;
+        ::std::optional< bool >       m_aDocScriptSupport;
 
     public:
-        OModuleClient                   m_aModuleClient;
         ::dbtools::SQLExceptionInfo     m_aCurrentError;
 
         ::comphelper::OInterfaceContainerHelper2
@@ -165,7 +162,7 @@ namespace dbaui
         {
             OSL_PRECOND( !m_aDocScriptSupport,
                 "DBSubComponentController_Impl::setDocumentScriptSupport: already initialized!" );
-            m_aDocScriptSupport = ::boost::optional< bool >( _bSupport );
+            m_aDocScriptSupport = ::std::optional< bool >( _bSupport );
         }
     };
 
@@ -226,15 +223,11 @@ namespace dbaui
         Sequence< Type > aTypes( DBSubComponentController_Base::getTypes() );
         if ( !m_pImpl->documentHasScriptSupport() )
         {
-            Sequence< Type > aStrippedTypes( aTypes.getLength() - 1 );
-            std::remove_copy_if(
-                aTypes.getConstArray(),
-                aTypes.getConstArray() + aTypes.getLength(),
-                aStrippedTypes.getArray(),
-                std::bind2nd( std::equal_to< Type >(), cppu::UnoType<XScriptInvocationContext>::get() )
-            );
-            aTypes = aStrippedTypes;
-        }
+            auto newEnd = std::remove_if( aTypes.begin(), aTypes.end(),
+                                          [](const Type& type)
+                                          { return type == cppu::UnoType<XScriptInvocationContext>::get(); } );
+            aTypes.realloc( std::distance(aTypes.begin(), newEnd) );
+       }
         return aTypes;
     }
 
@@ -260,7 +253,7 @@ namespace dbaui
                 if ( xConnAsChild.is() )
                     xDS.set( xConnAsChild->getParent(), UNO_QUERY );
 
-                // (take the indirection through XDataSource to ensure we have a correct object ....)
+                // (take the indirection through XDataSource to ensure we have a correct object...)
                 m_pImpl->m_aDataSource = DataSourceHolder(xDS);
             }
             SAL_WARN_IF( !m_pImpl->m_aDataSource.is(), "dbaccess.ui", "DBSubComponentController::initializeConnection: unable to obtain the data source object!" );
@@ -291,7 +284,7 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 
@@ -307,8 +300,10 @@ namespace dbaui
         bool bReConnect = true;
         if ( _bUI )
         {
-            ScopedVclPtrInstance< MessageDialog > aQuery(getView(), ModuleRes(STR_QUERY_CONNECTION_LOST), VclMessageType::Question, VclButtonsType::YesNo);
-            bReConnect = ( RET_YES == aQuery->Execute() );
+            std::unique_ptr<weld::MessageDialog> xQuery(Application::CreateMessageDialog(getFrameWeld(),
+                                                        VclMessageType::Question, VclButtonsType::YesNo,
+                                                        DBA_RES(STR_QUERY_CONNECTION_LOST)));
+            bReConnect = (RET_YES == xQuery->run());
         }
 
         // now really reconnect ...
@@ -448,7 +443,7 @@ namespace dbaui
     }
     void DBSubComponentController::connectionLostMessage() const
     {
-        OUString aMessage(ModuleRes(RID_STR_CONNECTION_LOST));
+        OUString aMessage(DBA_RES(RID_STR_CONNECTION_LOST));
         Reference< XWindow > xWindow = getTopMostContainerWindow();
         vcl::Window* pWin = nullptr;
         if ( xWindow.is() )
@@ -456,7 +451,9 @@ namespace dbaui
         if ( !pWin )
             pWin = getView()->Window::GetParent();
 
-        ScopedVclPtrInstance<MessageDialog>(pWin, aMessage, VclMessageType::Info)->Execute();
+        std::unique_ptr<weld::MessageDialog> xInfo(Application::CreateMessageDialog(pWin ? pWin->GetFrameWeld() : nullptr,
+                                                   VclMessageType::Info, VclButtonsType::Ok, aMessage));
+        xInfo->run();
     }
     const Reference< XConnection >& DBSubComponentController::getConnection() const
     {
@@ -498,7 +495,7 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
         return xMeta;
     }
@@ -518,7 +515,7 @@ namespace dbaui
         return Reference< XModel >( m_pImpl->m_aDataSource.getDatabaseDocument(), UNO_QUERY );
     }
 
-    Reference< XNumberFormatter > DBSubComponentController::getNumberFormatter() const
+    Reference< XNumberFormatter > const & DBSubComponentController::getNumberFormatter() const
     {
         return m_pImpl->m_xFormatter;
     }

@@ -19,10 +19,6 @@
 
 
 #include "ZConnectionPool.hxx"
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/container/ElementExistException.hpp>
-#include <comphelper/extract.hxx>
-#include <comphelper/types.hxx>
 #include <com/sun/star/lang/XComponent.hpp>
 #include "ZPooledConnection.hxx"
 #include "ZPoolCollection.hxx"
@@ -45,7 +41,7 @@ void SAL_CALL OPoolTimer::onShot()
     m_pPool->invalidatePooledConnections();
 }
 
-static const char TIMEOUT_NODENAME[] = "Timeout";
+const char TIMEOUT_NODENAME[] = "Timeout";
 
 OConnectionPool::OConnectionPool(const Reference< XDriver >& _xDriver,
                                  const Reference< XInterface >& _xDriverNode,
@@ -77,12 +73,14 @@ OConnectionPool::~OConnectionPool()
     clear(false);
 }
 
+namespace {
+
 struct TRemoveEventListenerFunctor
 {
     OConnectionPool* m_pConnectionPool;
     bool m_bDispose;
 
-    TRemoveEventListenerFunctor(OConnectionPool* _pConnectionPool,bool _bDispose = false)
+    TRemoveEventListenerFunctor(OConnectionPool* _pConnectionPool, bool _bDispose)
         : m_pConnectionPool(_pConnectionPool)
         ,m_bDispose(_bDispose)
     {
@@ -127,6 +125,8 @@ struct TConnectionPoolFunctor
     }
 };
 
+}
+
 void OConnectionPool::clear(bool _bDispose)
 {
     MutexGuard aGuard(m_aMutex);
@@ -147,11 +147,11 @@ void OConnectionPool::clear(bool _bDispose)
     if (xProp.is())
         xProp->removePropertyChangeListener(TIMEOUT_NODENAME, this);
 
-m_xDriverNode.clear();
-m_xDriver.clear();
+    m_xDriverNode.clear();
+    m_xDriver.clear();
 }
 
-Reference< XConnection > SAL_CALL OConnectionPool::getConnectionWithInfo( const OUString& _rURL, const Sequence< PropertyValue >& _rInfo )
+Reference< XConnection > OConnectionPool::getConnectionWithInfo( const OUString& _rURL, const Sequence< PropertyValue >& _rInfo )
 {
     MutexGuard aGuard(m_aMutex);
 
@@ -179,7 +179,7 @@ void SAL_CALL OConnectionPool::disposing( const css::lang::EventObject& Source )
     {
         MutexGuard aGuard(m_aMutex);
         TActiveConnectionMap::iterator aIter = m_aActiveConnections.find(xConnection);
-        OSL_ENSURE(aIter != m_aActiveConnections.end(),"OConnectionPool::disposing: Conenction wasn't in pool");
+        OSL_ENSURE(aIter != m_aActiveConnections.end(),"OConnectionPool::disposing: Connection wasn't in pool");
         if(aIter != m_aActiveConnections.end())
         { // move the pooled connection back to the pool
             aIter->second.aPos->second.nALiveCount = m_nALiveCount;
@@ -195,7 +195,7 @@ void SAL_CALL OConnectionPool::disposing( const css::lang::EventObject& Source )
 
 Reference< XConnection> OConnectionPool::createNewConnection(const OUString& _rURL,const Sequence< PropertyValue >& _rInfo)
 {
-    // create new pooled conenction
+    // create new pooled connection
     Reference< XPooledConnection > xPooledConnection = new ::connectivity::OPooledConnection(m_xDriver->connect(_rURL,_rInfo),m_xProxyFactory);
     // get the new connection from the pooled connection
     Reference<XConnection> xConnection = xPooledConnection->getConnection();
@@ -215,9 +215,9 @@ Reference< XConnection> OConnectionPool::createNewConnection(const OUString& _rU
         // insert the new connection and struct into the active connection map
         aPack.nALiveCount               = m_nALiveCount;
         TActiveConnectionInfo aActiveInfo;
-        aActiveInfo.aPos                = m_aPool.insert(TConnectionMap::value_type(nId,aPack)).first;
+        aActiveInfo.aPos                = m_aPool.emplace(nId,aPack).first;
         aActiveInfo.xPooledConnection   = xPooledConnection;
-        m_aActiveConnections.insert(TActiveConnectionMap::value_type(xConnection,aActiveInfo));
+        m_aActiveConnections.emplace(xConnection,aActiveInfo);
 
         if(m_xInvalidator->isExpired())
             m_xInvalidator->start();
@@ -239,17 +239,11 @@ void OConnectionPool::invalidatePooledConnections()
             aIter->second.aConnections.clear();
 
             // look if the iterator aIter is still present in the active connection map
-            TActiveConnectionMap::const_iterator aActIter = m_aActiveConnections.begin();
-            for (; aActIter != m_aActiveConnections.end(); ++aActIter)
-            {
-                if(aIter == aActIter->second.aPos)
-                    break;
-            }
-            if(aActIter == m_aActiveConnections.end())
+            bool isPresent = std::any_of(m_aActiveConnections.begin(), m_aActiveConnections.end(),
+                [&aIter](const TActiveConnectionMap::value_type& rEntry) { return rEntry.second.aPos == aIter; });
+            if(!isPresent)
             {// he isn't so we can delete him
-                TConnectionMap::iterator aDeleteIter = aIter;
-                ++aIter;
-                m_aPool.erase(aDeleteIter);
+                aIter = m_aPool.erase(aIter);
             }
             else
                 ++aIter;
@@ -261,7 +255,7 @@ void OConnectionPool::invalidatePooledConnections()
         m_xInvalidator->start();
 }
 
-Reference< XConnection> OConnectionPool::getPooledConnection(TConnectionMap::iterator& _rIter)
+Reference< XConnection> OConnectionPool::getPooledConnection(TConnectionMap::iterator const & _rIter)
 {
     Reference<XConnection> xConnection;
 

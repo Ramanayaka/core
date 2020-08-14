@@ -17,23 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ooxformulaparser.hxx"
+#include <ooxformulaparser.hxx>
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/lang/XComponent.hpp>
 #include <osl/diagnose.h>
 #include <cppuhelper/supportsservice.hxx>
-#include "formulaparser.hxx"
+#include <formulaparser.hxx>
 
-namespace oox {
-namespace xls {
+namespace com::sun::star::uno { class XComponentContext; }
+
+namespace oox::xls {
 
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::sheet;
 using namespace ::com::sun::star::table;
 using namespace ::com::sun::star::uno;
-
-using ::rtl::OUString;
 
 class OOXMLFormulaParserImpl : private FormulaFinalizer
 {
@@ -110,7 +109,7 @@ OOXMLFormulaParser::~OOXMLFormulaParser()
 // com.sun.star.lang.XServiceInfo interface -----------------------------------
 OUString SAL_CALL OOXMLFormulaParser::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.oox.xls.FormulaParser");
+    return "com.sun.star.comp.oox.xls.FormulaParser";
 }
 
 sal_Bool SAL_CALL OOXMLFormulaParser::supportsService( const OUString& rService )
@@ -120,8 +119,7 @@ sal_Bool SAL_CALL OOXMLFormulaParser::supportsService( const OUString& rService 
 
 Sequence< OUString > SAL_CALL OOXMLFormulaParser::getSupportedServiceNames()
 {
-    Sequence< OUString > aServiceNames { "com.sun.star.sheet.FilterFormulaParser" };
-    return aServiceNames;
+    return { "com.sun.star.sheet.FilterFormulaParser" };
 }
 
 // com.sun.star.lang.XInitialization interface --------------------------------
@@ -138,7 +136,7 @@ void SAL_CALL OOXMLFormulaParser::initialize( const Sequence< Any >& rArgs )
 
 OUString SAL_CALL OOXMLFormulaParser::getSupportedNamespace()
 {
-    return OUString( "http://schemas.microsoft.com/office/excel/formula");
+    return "http://schemas.microsoft.com/office/excel/formula";
 }
 
 // com.sun.star.sheet.XFormulaParser interface --------------------------------
@@ -149,7 +147,7 @@ Sequence< FormulaToken > SAL_CALL OOXMLFormulaParser::parseFormula(
     if( !mxParserImpl )
     {
         Reference< XMultiServiceFactory > xModelFactory( mxComponent, UNO_QUERY_THROW );
-        mxParserImpl.reset( new OOXMLFormulaParserImpl( xModelFactory ) );
+        mxParserImpl = std::make_shared<OOXMLFormulaParserImpl>( xModelFactory );
     }
     return mxParserImpl->parseFormula( rFormula,
                                        ScAddress(rReferencePos.Column, rReferencePos.Row, rReferencePos.Sheet) );
@@ -162,11 +160,10 @@ OUString SAL_CALL OOXMLFormulaParser::printFormula(
     throw RuntimeException();
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_oox_xls_FormulaParser_get_implementation(css::uno::XComponentContext*,
                                                            css::uno::Sequence<css::uno::Any> const &)
 {

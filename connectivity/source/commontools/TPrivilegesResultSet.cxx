@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TPrivilegesResultSet.hxx"
+#include <TPrivilegesResultSet.hxx>
 
 using namespace connectivity;
 
@@ -42,7 +42,7 @@ OResultSetPrivileges::OResultSetPrivileges( const Reference< XDatabaseMetaData>&
         // we want all catalogues, all schemas, all tables
         sTableTypes[0] = "VIEW";
         sTableTypes[1] = "TABLE";
-        sTableTypes[2] = "%"; // just to be sure to include anything else ....
+        sTableTypes[2] = "%"; // just to be sure to include anything else...
         try
         {
             m_xTables = _rxMeta->getTables(catalog,schemaPattern,tableNamePattern,sTableTypes);
@@ -55,7 +55,7 @@ OResultSetPrivileges::OResultSetPrivileges( const Reference< XDatabaseMetaData>&
         }
 
         ODatabaseMetaDataResultSet::ORows aRows;
-        static ODatabaseMetaDataResultSet::ORow aRow(8);
+        ODatabaseMetaDataResultSet::ORow aRow(8);
         aRow[5] = new ORowSetValueDecorator(sUserWorkingFor);
         aRow[6] = ODatabaseMetaDataResultSet::getSelectValue();
         aRow[7] = new ORowSetValueDecorator(OUString("YES"));
@@ -110,8 +110,8 @@ const ORowSetValue& OResultSetPrivileges::getValue(sal_Int32 columnIndex)
 void SAL_CALL OResultSetPrivileges::disposing()
 {
     ODatabaseMetaDataResultSet::disposing();
-m_xTables.clear();
-m_xRow.clear();
+    m_xTables.clear();
+    m_xRow.clear();
 }
 
 sal_Bool SAL_CALL OResultSetPrivileges::next(  )

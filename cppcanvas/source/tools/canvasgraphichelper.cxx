@@ -20,41 +20,25 @@
 
 #include <canvasgraphichelper.hxx>
 
-#include <com/sun/star/rendering/XGraphicDevice.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
-#include <com/sun/star/rendering/XPolyPolygon2D.hpp>
 
 #include <canvas/canvastools.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-
-#include <cppcanvas/polypolygon.hxx>
-#include "tools.hxx"
 
 
 using namespace ::com::sun::star;
 
 /* Implementation of CanvasGraphicHelper class */
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-
-    namespace internal
-    {
         CanvasGraphicHelper::CanvasGraphicHelper( const CanvasSharedPtr& rParentCanvas ) :
             maClipPolyPolygon(),
-            mpCanvas( rParentCanvas ),
-            mxGraphicDevice()
+            mpCanvas( rParentCanvas )
         {
-            OSL_ENSURE( mpCanvas.get() != nullptr &&
-                        mpCanvas->getUNOCanvas().is(),
+            OSL_ENSURE( mpCanvas && mpCanvas->getUNOCanvas().is(),
                         "CanvasGraphicHelper::CanvasGraphicHelper: no valid canvas" );
-
-            if( mpCanvas.get() != nullptr &&
-                mpCanvas->getUNOCanvas().is() )
-            {
-                mxGraphicDevice = mpCanvas->getUNOCanvas()->getDevice();
-            }
 
             ::canvas::tools::initRenderState( maRenderState );
         }
@@ -67,7 +51,7 @@ namespace cppcanvas
         void CanvasGraphicHelper::setClip( const ::basegfx::B2DPolyPolygon& rClipPoly )
         {
             // TODO(T3): not thread-safe. B2DPolyPolygon employs copy-on-write
-            maClipPolyPolygon.reset( rClipPoly );
+            maClipPolyPolygon = rClipPoly;
             maRenderState.Clip.clear();
         }
 
@@ -98,7 +82,6 @@ namespace cppcanvas
             maRenderState.CompositeOperation = aOp;
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

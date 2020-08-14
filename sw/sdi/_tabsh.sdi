@@ -92,7 +92,7 @@ interface BaseTextTable
     [
         ExecMethod = Execute ;
         StateMethod = GetState ;
-        GroupId = GID_TABLE;
+        GroupId = SfxGroupId::Table;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
 
@@ -210,6 +210,13 @@ interface BaseTextTable
         StateMethod = GetState ;
     ]
 
+    SID_TABLE_MINIMAL_COLUMN_WIDTH  // status()
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
     FN_TABLE_ADJUST_CELLS  // status(final|play)
     [
         ExecMethod = Execute ;
@@ -218,6 +225,13 @@ interface BaseTextTable
     ]
 
     FN_TABLE_BALANCE_CELLS  // status()
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
+    SID_TABLE_MINIMAL_ROW_HEIGHT  // status()
     [
         ExecMethod = Execute ;
         StateMethod = GetState ;
@@ -311,7 +325,7 @@ interface BaseTextTable
     [
         ExecMethod = Execute ;
         StateMethod = GetFrameBorderState ;
-        GroupId = GID_TABLE;
+        GroupId = SfxGroupId::Table;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
 
@@ -396,7 +410,7 @@ interface BaseTextTable
         StateMethod = NoState ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
-// Slots ohne Export
+// Slots without export
 
     FN_INSERT_TABLE
     [
@@ -418,6 +432,20 @@ interface BaseTextTable
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
     FN_TABLE_DELETE_TABLE
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
+    SID_ATTR_TABLE_ROW_HEIGHT
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
+    SID_ATTR_TABLE_COLUMN_WIDTH
     [
         ExecMethod = Execute ;
         StateMethod = GetState ;

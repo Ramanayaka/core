@@ -23,15 +23,10 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <memory>
 
-namespace com { namespace sun { namespace star { namespace drawing
-{
-    class XShape;
-} } } }
+namespace com::sun::star::drawing { class XShape; }
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         struct SlideShowContext;
         class Shape;
 
@@ -42,7 +37,6 @@ namespace slideshow
             const char**                            pPropCopyTable,
             std::size_t                             nNumPropEntries,
             const SlideShowContext&                 rContext );
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_APPLETSHAPE_HXX

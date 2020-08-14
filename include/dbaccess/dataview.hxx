@@ -29,16 +29,15 @@
 #include <vcl/vclptr.hxx>
 #include <vcl/window.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace frame { class XFrame; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
 namespace svt {
     class AcceleratorExecute;
 }
 
-class DataChangedEvent;
 class FixedLine;
 class NotifyEvent;
 namespace tools { class Rectangle; }
@@ -51,7 +50,7 @@ namespace dbaui
         css::uno::Reference< css::uno::XComponentContext >    m_xContext;  // the service factory to work with
 
     protected:
-        rtl::Reference<IController> m_xController;  // the controller in where we resides in
+        rtl::Reference<IController> m_xController;  // the controller where we reside in
         VclPtr<FixedLine>   m_aSeparator;
         ::std::unique_ptr< ::svt::AcceleratorExecute> m_pAccel;
 
@@ -70,11 +69,10 @@ namespace dbaui
         // window overridables
         virtual bool PreNotify( NotifyEvent& rNEvt ) override;
         virtual void StateChanged( StateChangedType nStateChange ) override;
-        virtual void DataChanged( const DataChangedEvent& rDCEvt ) override;
 
-        IController& getCommandController() const { return *m_xController.get(); }
+        IController& getCommandController() const { return *m_xController; }
 
-        const css::uno::Reference< css::uno::XComponentContext >& getORB() { return m_xContext;}
+        const css::uno::Reference< css::uno::XComponentContext >& getORB() const { return m_xContext;}
 
         // the default implementation simply calls resizeAll( GetSizePixel() )
         virtual void Resize() override;

@@ -18,17 +18,14 @@
  */
 
 #include "DragMethod_Base.hxx"
+#include <DrawViewWrapper.hxx>
 
-#include "Strings.hrc"
-#include "ResId.hxx"
-#include "macros.hxx"
-#include "ObjectNameProvider.hxx"
-#include "ObjectIdentifier.hxx"
+#include <ObjectNameProvider.hxx>
+#include <ObjectIdentifier.hxx>
 
-#include <rtl/math.hxx>
-#include <svx/svdpagv.hxx>
 #include <svx/ActionDescriptionProvider.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <vcl/ptrstyle.hxx>
 
 namespace chart
 {
@@ -64,16 +61,16 @@ OUString DragMethod_Base::getUndoDescription() const
                 m_eActionType,
                 ObjectNameProvider::getName( ObjectIdentifier::getObjectType( m_aObjectCID )));
 }
-void DragMethod_Base::TakeSdrDragComment(OUString& rStr) const
+OUString DragMethod_Base::GetSdrDragComment() const
 {
-    rStr = getUndoDescription();
+    return getUndoDescription();
 }
-Pointer DragMethod_Base::GetSdrDragPointer() const
+PointerStyle DragMethod_Base::GetSdrDragPointer() const
 {
     if( IsDraggingPoints() || IsDraggingGluePoints() )
-        return Pointer(PointerStyle::MovePoint);
+        return PointerStyle::MovePoint;
     else
-        return Pointer(PointerStyle::Move);
+        return PointerStyle::Move;
 }
 } //namespace chart
 

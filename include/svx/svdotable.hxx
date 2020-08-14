@@ -26,17 +26,17 @@
 #include <rtl/ref.hxx>
 #include <svx/svdotext.hxx>
 #include <svx/svxdllapi.h>
-
+#include <boost/property_tree/ptree_fwd.hpp>
 
 class SvStream;
 class SfxStyleSheet;
 class SdrUndoAction;
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
     class ViewContactOfTableObj;
-}}
+}
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
 class TableLayouter;
 struct ImplTableShadowPaintInfo;
@@ -72,7 +72,7 @@ struct CellPos
 
 
 /// TableStyleSettings
-struct SVX_DLLPUBLIC TableStyleSettings
+struct TableStyleSettings
 {
     bool mbUseFirstRow;
     bool mbUseLastRow;
@@ -88,25 +88,31 @@ struct SVX_DLLPUBLIC TableStyleSettings
     bool operator==( const TableStyleSettings& r ) const;
 };
 
-
 /// SdrTableObj
 class SdrTableObjImpl;
 
-class SVX_DLLPUBLIC SdrTableObj : public ::SdrTextObj
+class SVXCORE_DLLPUBLIC SdrTableObj final : public ::SdrTextObj
 {
     friend class Cell;
     friend class SdrTableObjImpl;
 
-public:
-    SdrTableObj(SdrModel* _pModel);
-    SdrTableObj(SdrModel* _pModel, const ::tools::Rectangle& rNewRect, sal_Int32 nColumns, sal_Int32 nRows);
+    // protected destructor
     virtual ~SdrTableObj() override;
 
+public:
+    SdrTableObj(SdrModel& rSdrModel);
+    SdrTableObj(
+        SdrModel& rSdrModel,
+        const ::tools::Rectangle& rNewRect,
+        sal_Int32 nColumns,
+        sal_Int32 nRows);
+
+    // helper to limit existing TableModel to a given selection
+    void CropTableModelToSelection(const CellPos& rStart, const CellPos& rEnd);
 
     // Table stuff
-    SdrTableObj* CloneRange( const CellPos& rStartPos, const CellPos& rEndPos );
-    void DistributeColumns( sal_Int32 nFirstColumn, sal_Int32 nLastColumn );
-    void DistributeRows( sal_Int32 nFirstRow, sal_Int32 nLastRow );
+    void DistributeColumns( sal_Int32 nFirstColumn, sal_Int32 nLastColumn, const bool bOptimize, const bool bMinimize );
+    void DistributeRows( sal_Int32 nFirstRow, sal_Int32 nLastRow, const bool bOptimize, const bool bMinimize );
 
     css::uno::Reference< css::table::XTable > getTable() const;
 
@@ -138,10 +144,14 @@ public:
     void setActiveCell( const sdr::table::CellPos& rPos );
     void getActiveCellPos( sdr::table::CellPos& rPos ) const;
     sal_Int32 getColumnCount() const;
+    sal_Int32 getRowCount() const;
+
+    bool createTableEdgesJson(boost::property_tree::ptree & rJsonRoot);
+    void changeEdge(bool bHorizontal, int nEdge, sal_Int32 nOffset);
+
     void getCellBounds( const sdr::table::CellPos& rPos, ::tools::Rectangle& rCellRect );
 
     const SfxItemSet& GetActiveCellItemSet() const;
-    void SetMergedItemSetAndBroadcastOnActiveCell(const SfxItemSet& rSet);
 
      void setTableStyle( const css::uno::Reference< css::container::XIndexAccess >& xAutoFormatStyle );
      const css::uno::Reference< css::container::XIndexAccess >& getTableStyle() const;
@@ -175,7 +185,7 @@ public:
     /** At the same time, we set the text in the outliner (if applicable the EditOutliners')
      * as well as the PaperSize
      */
-    void TakeTextRect( const sdr::table::CellPos& rPos, SdrOutliner& rOutliner, ::tools::Rectangle& rTextRect, bool bNoEditText, ::tools::Rectangle* pAnchorRect=nullptr ) const;
+    void TakeTextRect( const sdr::table::CellPos& rPos, SdrOutliner& rOutliner, ::tools::Rectangle& rTextRect, bool bNoEditText, ::tools::Rectangle* pAnchorRect ) const;
     virtual void TakeTextRect( SdrOutliner& rOutliner, tools::Rectangle& rTextRect, bool bNoEditText, tools::Rectangle* pAnchorRect, bool bLineWidth = true ) const override;
     void TakeTextAnchorRect(const sdr::table::CellPos& rPos, ::tools::Rectangle& rAnchorRect ) const;
     virtual void TakeTextAnchorRect(::tools::Rectangle& rAnchorRect) const override;
@@ -185,7 +195,6 @@ public:
 
     virtual bool IsFontwork() const override;
 
-    virtual void SetModel(SdrModel* pNewModel) override;
     virtual void TakeObjInfo(SdrObjTransformInfoRec& rInfo) const override;
     virtual sal_uInt16 GetObjIdentifier() const override;
     virtual void SetChanged() override;
@@ -194,7 +203,7 @@ public:
     virtual bool AdjustTextFrameWidthAndHeight() override;
     virtual OUString TakeObjNameSingul() const override;
     virtual OUString TakeObjNamePlural() const override;
-    virtual SdrTableObj* Clone() const override;
+    virtual SdrTableObj* CloneSdrObject(SdrModel& rTargetModel) const override;
     SdrTableObj& operator=(const SdrTableObj& rObj);
     virtual void RecalcSnapRect() override;
     virtual const tools::Rectangle& GetSnapRect() const override;
@@ -205,7 +214,6 @@ public:
     virtual void AdjustToMaxRect( const tools::Rectangle& rMaxRect, bool bShrinkOnly = false ) override;
 
     virtual sal_uInt32 GetHdlCount() const override;
-    virtual SdrHdl* GetHdl(sal_uInt32 nHdlNum) const override;
     virtual void AddToHdlList(SdrHdlList& rHdlList) const override;
 
     // Special drag methods
@@ -220,7 +228,7 @@ public:
     virtual bool BckCreate(SdrDragStat& rStat) override;
     virtual void BrkCreate(SdrDragStat& rStat) override;
     virtual basegfx::B2DPolyPolygon TakeCreatePoly(const SdrDragStat& rDrag) const override;
-    virtual Pointer GetCreatePointer() const override;
+    virtual PointerStyle GetCreatePointer() const override;
 
     virtual void NbcMove(const Size& rSiz) override;
     virtual void NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
@@ -231,12 +239,11 @@ public:
     void TakeTextEditArea(const sdr::table::CellPos& rPos, Size* pPaperMin, Size* pPaperMax, tools::Rectangle* pViewInit, tools::Rectangle* pViewMin) const;
     virtual EEAnchorMode GetOutlinerViewAnchorMode() const override;
 
-    virtual void NbcSetOutlinerParaObject(OutlinerParaObject* pTextObject) override;
+    virtual void NbcSetOutlinerParaObject(std::unique_ptr<OutlinerParaObject> pTextObject) override;
 
     virtual OutlinerParaObject* GetOutlinerParaObject() const override;
 
     virtual void NbcReformatText() override;
-    virtual void ReformatText() override;
 
     virtual bool IsVerticalWriting() const override;
     virtual void SetVerticalWriting(bool bVertical) override;
@@ -251,39 +258,34 @@ public:
 
     virtual void onEditOutlinerStatusEvent( EditStatus* pEditStatus ) override;
 
-    /** Hack for clipboard with calc and writer, export and import table content as rtf table */
-    static void ExportAsRTF( SvStream& rStrm, SdrTableObj& rObj );
-    static void ImportAsRTF( SvStream& rStrm, SdrTableObj& rObj );
-
-    virtual void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 
 private:
     void init( sal_Int32 nColumns, sal_Int32 nRows );
 
-protected:
-    virtual sdr::properties::BaseProperties* CreateObjectSpecificProperties() override;
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
 
     virtual SdrObjGeoData* NewGeoData() const override;
     virtual void SaveGeoData(SdrObjGeoData& rGeo) const override;
     virtual void RestGeoData(const SdrObjGeoData& rGeo) override;
 
-private:
     SdrOutliner* GetCellTextEditOutliner( const sdr::table::Cell& rCell ) const;
 
-private:
     // For the ViewContactOfTableObj to build the primitive representation, it is necessary to access the
     // TableLayouter for position and attribute information
     friend class sdr::contact::ViewContactOfTableObj;
     const TableLayouter& getTableLayouter() const;
 
     tools::Rectangle   maLogicRect;
-private:
     rtl::Reference<SdrTableObjImpl>    mpImpl;
 };
 
+/** Hack for clipboard with calc and writer, export and import table content as rtf table */
+SVX_DLLPUBLIC void ExportAsRTF( SvStream& rStrm, SdrTableObj& rObj );
+SVX_DLLPUBLIC void ImportAsRTF( SvStream& rStrm, SdrTableObj& rObj );
 
-} }
+}
 
 #endif
 

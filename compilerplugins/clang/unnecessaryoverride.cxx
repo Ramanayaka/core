@@ -7,6 +7,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#ifndef LO_CLANG_SHARED_PLUGINS
+
 #include <cassert>
 #include <string>
 #include <iostream>
@@ -14,8 +16,8 @@
 #include <set>
 
 #include <clang/AST/CXXInheritance.h>
-#include "compat.hxx"
 #include "plugin.hxx"
+#include "check.hxx"
 
 /**
 look for methods where all they do is call their superclass method
@@ -23,50 +25,91 @@ look for methods where all they do is call their superclass method
 
 namespace {
 
+bool hasMultipleBaseInstances_(
+    CXXRecordDecl const * derived, CXXRecordDecl const * canonicBase,
+    bool & hasAsNonVirtualBase, bool & hasAsVirtualBase)
+{
+    for (auto i = derived->bases_begin(); i != derived->bases_end(); ++i) {
+        auto const cls = i->getType()->getAsCXXRecordDecl();
+        if (cls == nullptr) {
+            assert(i->getType()->isDependentType());
+            // Conservatively assume "yes" for dependent bases:
+            return true;
+        }
+        if (cls->getCanonicalDecl() == canonicBase) {
+            if (i->isVirtual()) {
+                if (hasAsNonVirtualBase) {
+                    return true;
+                }
+                hasAsVirtualBase = true;
+            } else {
+                if (hasAsNonVirtualBase || hasAsVirtualBase) {
+                    return true;
+                }
+                hasAsNonVirtualBase = true;
+            }
+        } else if (hasMultipleBaseInstances_(
+                       cls, canonicBase, hasAsNonVirtualBase, hasAsVirtualBase))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool hasMultipleBaseInstances(
+    CXXRecordDecl const * derived, CXXRecordDecl const * base)
+{
+    bool nonVirt = false;
+    bool virt = false;
+    return hasMultipleBaseInstances_(
+        derived, base->getCanonicalDecl(), nonVirt, virt);
+}
+
 class UnnecessaryOverride:
-    public RecursiveASTVisitor<UnnecessaryOverride>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<UnnecessaryOverride>
 {
 public:
-    explicit UnnecessaryOverride(InstantiationData const & data): Plugin(data) {}
+    explicit UnnecessaryOverride(loplugin::InstantiationData const & data): FilteringPlugin(data) {}
+
+    virtual bool preRun() override
+    {
+        // ignore some files with problematic macros
+        StringRef fn(handler.getMainFileName());
+        if (loplugin::isSamePathname(fn, SRCDIR "/sd/source/ui/framework/factories/ChildWindowPane.cxx"))
+            return false;
+        if (loplugin::isSamePathname(fn, SRCDIR "/forms/source/component/Date.cxx"))
+            return false;
+        if (loplugin::isSamePathname(fn, SRCDIR "/forms/source/component/Time.cxx"))
+            return false;
+        if (loplugin::isSamePathname(fn, SRCDIR "/svx/source/dialog/hyperdlg.cxx"))
+            return false;
+        if (loplugin::isSamePathname(fn, SRCDIR "/svx/source/dialog/rubydialog.cxx"))
+            return false;
+        if (loplugin::hasPathnamePrefix(fn, SRCDIR "/canvas/"))
+            return false;
+        if (loplugin::isSamePathname(fn, SRCDIR "/sc/source/ui/view/spelldialog.cxx"))
+            return false;
+        if (loplugin::isSamePathname(fn, SRCDIR "/sd/source/ui/dlg/SpellDialogChildWindow.cxx"))
+            return false;
+        // HAVE_ODBC_ADMINISTRATION
+        if (loplugin::isSamePathname(fn, SRCDIR "/dbaccess/source/ui/dlg/dsselect.cxx"))
+            return false;
+        return true;
+    }
 
     virtual void run() override
     {
-        // ignore some files with problematic macros
-        StringRef fn( compiler.getSourceManager().getFileEntryForID(
-                          compiler.getSourceManager().getMainFileID())->getName() );
-        if (loplugin::isSamePathname(fn, SRCDIR "/sd/source/ui/framework/factories/ChildWindowPane.cxx"))
-             return;
-        if (loplugin::isSamePathname(fn, SRCDIR "/forms/source/component/Date.cxx"))
-             return;
-        if (loplugin::isSamePathname(fn, SRCDIR "/forms/source/component/Time.cxx"))
-            return;
-        if (loplugin::isSamePathname(fn, SRCDIR "/svx/source/dialog/hyperdlg.cxx"))
-            return;
-        if (loplugin::isSamePathname(fn, SRCDIR "/svx/source/dialog/rubydialog.cxx"))
-            return;
-        if (loplugin::hasPathnamePrefix(fn, SRCDIR "/canvas"))
-            return;
-        if (loplugin::isSamePathname(fn, SRCDIR "/sc/source/ui/view/spelldialog.cxx"))
-            return;
-        if (loplugin::isSamePathname(fn, SRCDIR "/sd/source/ui/dlg/SpellDialogChildWindow.cxx"))
-            return;
-        // HAVE_ODBC_ADMINISTRATION
-        if (loplugin::isSamePathname(fn, SRCDIR "/dbaccess/source/ui/dlg/dsselect.cxx"))
-            return;
-
-        TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
+        if( preRun())
+            TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
     }
 
     bool VisitCXXMethodDecl(const CXXMethodDecl *);
 
 private:
     const CXXMethodDecl * findOverriddenOrSimilarMethodInSuperclasses(const CXXMethodDecl *);
-    bool BaseCheckCallback(
-        const CXXRecordDecl *BaseDefinition
-    #if CLANG_VERSION < 30800
-        , void *
-    #endif
-        );
+    bool BaseCheckCallback(const CXXRecordDecl *BaseDefinition);
+    CXXMemberCallExpr const * extractCallExpr(Expr const *);
 };
 
 bool UnnecessaryOverride::VisitCXXMethodDecl(const CXXMethodDecl* methodDecl)
@@ -78,7 +121,8 @@ bool UnnecessaryOverride::VisitCXXMethodDecl(const CXXMethodDecl* methodDecl)
         return true;
     }
 
-    StringRef aFileName = compiler.getSourceManager().getFilename(compiler.getSourceManager().getSpellingLoc(methodDecl->getLocStart()));
+    StringRef aFileName = getFilenameOfLocation(
+        compiler.getSourceManager().getSpellingLoc(compat::getBeginLoc(methodDecl)));
 
     if (isa<CXXDestructorDecl>(methodDecl)
        && !isInUnoIncludeFile(methodDecl))
@@ -155,7 +199,9 @@ bool UnnecessaryOverride::VisitCXXMethodDecl(const CXXMethodDecl* methodDecl)
             return true;
         }
         if (!methodDecl->isExplicitlyDefaulted()) {
-            if (!methodDecl->doesThisDeclarationHaveABody()) {
+            if (!methodDecl->doesThisDeclarationHaveABody()
+                || methodDecl->isLateTemplateParsed())
+            {
                 return true;
             }
             auto stmt = dyn_cast<CompoundStmt>(methodDecl->getBody());
@@ -194,41 +240,53 @@ bool UnnecessaryOverride::VisitCXXMethodDecl(const CXXMethodDecl* methodDecl)
         return true;
     }
 
-    if (!methodDecl->doesThisDeclarationHaveABody()) {
+    if (!methodDecl->doesThisDeclarationHaveABody()
+        || methodDecl->isLateTemplateParsed())
+    {
         return true;
     }
 
-    // if we are overriding more than one method, then this is a disambiguating override
+    auto fdc = loplugin::DeclCheck(methodDecl);
+    // Has code only in #ifdef.
+    if (fdc.Function("GetBackendCapabilities").Class("X11SalInstance").GlobalNamespace())
+        return true;
+
+    // If overriding more than one base member function, or one base member
+    // function that is available in multiple (non-virtual) base class
+    // instances, then this is a disambiguating override:
     if (methodDecl->isVirtual()) {
         if (methodDecl->size_overridden_methods() != 1)
         {
             return true;
         }
+        if (hasMultipleBaseInstances(
+                methodDecl->getParent(),
+                (*methodDecl->begin_overridden_methods())->getParent()))
+        {
+            return true;
+        }
     }
-    // sometimes the disambiguation happens in a base class
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/comphelper/source/property/propertycontainer.cxx"))
-        return true;
-    // not sure what is happening here
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/extensions/source/bibliography/datman.cxx"))
-        return true;
-    // some very creative method hiding going on here
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/svx/source/dialog/checklbx.cxx"))
-        return true;
-    // entertaining template magic
-    if (loplugin::isSamePathname(aFileName, SRCDIR "/sc/source/ui/vba/vbaformatcondition.cxx"))
-        return true;
-    // not sure what is going on here, but removing the override causes a crash
-     if (methodDecl->getQualifiedNameAsString() == "SwXTextDocument::queryAdapter")
-         return true;
-
 
     const CXXMethodDecl* overriddenMethodDecl = findOverriddenOrSimilarMethodInSuperclasses(methodDecl);
     if (!overriddenMethodDecl) {
         return true;
     }
 
-    if (compat::getReturnType(*methodDecl).getCanonicalType()
-        != compat::getReturnType(*overriddenMethodDecl).getCanonicalType())
+    // Check for differences in default parameters:
+    unsigned const numParams = methodDecl->getNumParams();
+    assert(overriddenMethodDecl->getNumParams() == numParams);
+    for (unsigned i = 0; i != numParams; ++i) {
+        if (checkIdenticalDefaultArguments(
+                methodDecl->getParamDecl(i)->getDefaultArg(),
+                overriddenMethodDecl->getParamDecl(i)->getDefaultArg())
+            != IdenticalDefaultArgumentsResult::Yes)
+        {
+            return true;
+        }
+    }
+
+    if (methodDecl->getReturnType().getCanonicalType()
+        != overriddenMethodDecl->getReturnType().getCanonicalType())
     {
         return true;
     }
@@ -236,64 +294,58 @@ bool UnnecessaryOverride::VisitCXXMethodDecl(const CXXMethodDecl* methodDecl)
     //TODO: check for identical exception specifications
 
     const CompoundStmt* compoundStmt = dyn_cast<CompoundStmt>(methodDecl->getBody());
-    if (!compoundStmt || compoundStmt->size() != 1)
+    if (!compoundStmt || compoundStmt->size() > 2)
         return true;
 
-    const CXXMemberCallExpr* callExpr;
-    if (compat::getReturnType(*methodDecl).getCanonicalType()->isVoidType())
+    const CXXMemberCallExpr* callExpr = nullptr;
+    if (compoundStmt->size() == 1)
     {
-        callExpr = dyn_cast<CXXMemberCallExpr>(*compoundStmt->body_begin());
-    }
-    else
-    {
-        auto returnStmt = dyn_cast<ReturnStmt>(*compoundStmt->body_begin());
-        if (returnStmt == nullptr) {
-            return true;
-        }
-        auto returnExpr = returnStmt->getRetValue();
-        if (returnExpr == nullptr) {
-            return true;
-        }
-        returnExpr = returnExpr->IgnoreImplicit();
-
-        // In something like
-        //
-        //  Reference< XResultSet > SAL_CALL OPreparedStatement::executeQuery(
-        //      const rtl::OUString& sql)
-        //      throw(SQLException, RuntimeException, std::exception)
-        //  {
-        //      return OCommonStatement::executeQuery( sql );
-        //  }
-        //
-        // look down through all the
-        //
-        //   ReturnStmt
-        //   `-ExprWithCleanups
-        //     `-CXXConstructExpr
-        //      `-MaterializeTemporaryExpr
-        //       `-ImplicitCastExpr
-        //        `-CXXBindTemporaryExpr
-        //         `-CXXMemberCallExpr
-        //
-        // where the fact that the overriding and overridden function have identical
-        // return types makes us confident that all we need to check here is whether
-        // there's an (arbitrary, one-argument) CXXConstructorExpr and
-        // CXXBindTemporaryExpr in between:
-        if (auto ctorExpr = dyn_cast<CXXConstructExpr>(returnExpr)) {
-            if (ctorExpr->getNumArgs() == 1) {
-                auto tempExpr1 = ctorExpr->getArg(0)->IgnoreImplicit();
-                if (auto tempExpr2 = dyn_cast<CXXBindTemporaryExpr>(tempExpr1))
-                {
-                    returnExpr = tempExpr2->getSubExpr();
-                }
-                else if (auto tempExpr2 = dyn_cast<CXXMemberCallExpr>(tempExpr1))
-                {
-                    returnExpr = tempExpr2;
-                }
+        if (methodDecl->getReturnType().getCanonicalType()->isVoidType())
+        {
+            if (auto const e = dyn_cast<Expr>(*compoundStmt->body_begin())) {
+                callExpr = dyn_cast<CXXMemberCallExpr>(e->IgnoreImplicit()->IgnoreParens());
             }
         }
-
-        callExpr = dyn_cast<CXXMemberCallExpr>(returnExpr->IgnoreParenImpCasts());
+        else
+        {
+            auto returnStmt = dyn_cast<ReturnStmt>(*compoundStmt->body_begin());
+            if (returnStmt == nullptr) {
+                return true;
+            }
+            auto returnExpr = returnStmt->getRetValue();
+            if (returnExpr == nullptr) {
+                return true;
+            }
+            callExpr = extractCallExpr(returnExpr);
+        }
+    }
+    else if (!methodDecl->getReturnType().getCanonicalType()->isVoidType())
+    {
+        /** handle constructions like
+               bool foo() {
+                bool ret = Base::foo();
+                return ret;
+            }
+        */
+        auto bodyIt = compoundStmt->body_begin();
+        auto declStmt = dyn_cast<DeclStmt>(*bodyIt);
+        if (!declStmt || !declStmt->isSingleDecl())
+            return true;
+        auto varDecl = dyn_cast<VarDecl>(declStmt->getSingleDecl());
+        ++bodyIt;
+        auto returnStmt = dyn_cast<ReturnStmt>(*bodyIt);
+        if (!varDecl || !returnStmt)
+            return true;
+        Expr const * retValue = returnStmt->getRetValue()->IgnoreParenImpCasts();
+        if (auto exprWithCleanups = dyn_cast<ExprWithCleanups>(retValue))
+            retValue = exprWithCleanups->getSubExpr()->IgnoreParenImpCasts();
+        if (auto constructExpr = dyn_cast<CXXConstructExpr>(retValue)) {
+            if (constructExpr->getNumArgs() == 1)
+                retValue = constructExpr->getArg(0)->IgnoreParenImpCasts();
+        }
+        if (!isa<DeclRefExpr>(retValue))
+            return true;
+        callExpr = extractCallExpr(varDecl->getInit());
     }
 
     if (!callExpr || callExpr->getMethodDecl() != overriddenMethodDecl)
@@ -305,15 +357,36 @@ bool UnnecessaryOverride::VisitCXXMethodDecl(const CXXMethodDecl* methodDecl)
     if (!expr2)
         return true;
     for (unsigned i = 0; i<callExpr->getNumArgs(); ++i) {
-        // ignore ImplicitCastExpr
-        const DeclRefExpr * declRefExpr = dyn_cast<DeclRefExpr>(callExpr->getArg(i)->IgnoreImplicit());
+        auto e = callExpr->getArg(i)->IgnoreImplicit();
+        if (auto const e1 = dyn_cast<CXXConstructExpr>(e)) {
+            if (e1->getConstructor()->isCopyOrMoveConstructor() && e1->getNumArgs() == 1) {
+                e = e1->getArg(0)->IgnoreImpCasts();
+            }
+        }
+        const DeclRefExpr * declRefExpr = dyn_cast<DeclRefExpr>(e);
         if (!declRefExpr || declRefExpr->getDecl() != methodDecl->getParamDecl(i))
             return true;
     }
 
+    const CXXMethodDecl* pOther = nullptr;
+    if (methodDecl->getCanonicalDecl()->getLocation() != methodDecl->getLocation())
+        pOther = methodDecl->getCanonicalDecl();
+
+    if (pOther) {
+        StringRef aFileName = getFilenameOfLocation(
+            compiler.getSourceManager().getSpellingLoc(compat::getBeginLoc(pOther)));
+        // SFX_DECL_CHILDWINDOW_WITHID macro
+        if (loplugin::isSamePathname(aFileName, SRCDIR "/include/sfx2/childwin.hxx"))
+            return true;
+    }
+
+    if (containsPreprocessingConditionalInclusion(methodDecl->getBody()->getSourceRange())) {
+        return true;
+    }
+
     report(
             DiagnosticsEngine::Warning, "%0%1 function just calls %2 parent",
-            methodDecl->getSourceRange().getBegin())
+            methodDecl->getLocation())
         << methodDecl->getAccess()
         << (methodDecl->isVirtual() ? " virtual" : "")
         << overriddenMethodDecl->getAccess()
@@ -323,7 +396,7 @@ bool UnnecessaryOverride::VisitCXXMethodDecl(const CXXMethodDecl* methodDecl)
         report(
             DiagnosticsEngine::Note,
             "method declaration here",
-            pOther->getLocStart())
+            pOther->getLocation())
           << pOther->getSourceRange();
     }
     return true;
@@ -338,12 +411,10 @@ const CXXMethodDecl* UnnecessaryOverride::findOverriddenOrSimilarMethodInSupercl
         return nullptr;
     }
 
-#if CLANG_VERSION < 30800
-        return nullptr;
-#else
-    std::vector<const CXXMethodDecl*> maSimilarMethods;
+    const CXXMethodDecl* similarMethod = nullptr;
+    CXXBasePath similarBasePath;
 
-    auto BaseMatchesCallback = [&](const CXXBaseSpecifier *cxxBaseSpecifier, CXXBasePath& )
+    auto BaseMatchesCallback = [&](const CXXBaseSpecifier *cxxBaseSpecifier, CXXBasePath& path)
     {
         if (cxxBaseSpecifier->getAccessSpecifier() != AS_public && cxxBaseSpecifier->getAccessSpecifier() != AS_protected)
             return false;
@@ -356,16 +427,28 @@ const CXXMethodDecl* UnnecessaryOverride::findOverriddenOrSimilarMethodInSupercl
             return false;
         for (const CXXMethodDecl* baseMethod : baseCXXRecordDecl->methods())
         {
+            auto effectiveBaseMethodAccess = baseMethod->getAccess();
+            if (effectiveBaseMethodAccess == AS_public && path.Access == AS_protected)
+                effectiveBaseMethodAccess = AS_protected;
+            if (effectiveBaseMethodAccess != methodDecl->getAccess())
+                continue;
             if (!baseMethod->getDeclName().isIdentifier() || methodDecl->getName() != baseMethod->getName()) {
                 continue;
             }
-            if (compat::getReturnType(*methodDecl).getCanonicalType()
-                != compat::getReturnType(*baseMethod).getCanonicalType())
+            if (methodDecl->isStatic() != baseMethod->isStatic()
+                || methodDecl->isConst() != baseMethod->isConst()
+                || methodDecl->isVolatile() != baseMethod->isVolatile()
+                || (methodDecl->getRefQualifier()
+                    != baseMethod->getRefQualifier())
+                || methodDecl->isVariadic() != baseMethod->isVariadic())
             {
                 continue;
             }
-            if (methodDecl->param_size() != baseMethod->param_size())
+            if (methodDecl->getReturnType().getCanonicalType()
+                != baseMethod->getReturnType().getCanonicalType())
+            {
                 continue;
+            }
             if (methodDecl->getNumParams() != baseMethod->getNumParams())
                 continue;
             bool bParamsMatch = true;
@@ -378,24 +461,81 @@ const CXXMethodDecl* UnnecessaryOverride::findOverriddenOrSimilarMethodInSupercl
                 }
             }
             if (bParamsMatch)
-                maSimilarMethods.push_back(baseMethod);
+            {
+                // if we have already found a method directly below us in the inheritance hierarchy, just ignore this one
+                auto Compare = [&](CXXBasePathElement const & lhs, CXXBasePathElement const & rhs)
+                {
+                    return lhs.Class == rhs.Class;
+                };
+                if (similarMethod
+                    && similarBasePath.size() < path.size()
+                    && std::equal(similarBasePath.begin(), similarBasePath.end(),
+                                  path.begin(), Compare))
+                    break;
+                if (similarMethod)
+                    return true; // short circuit the process
+                similarMethod = baseMethod;
+                similarBasePath = path;
+            }
         }
         return false;
     };
 
     CXXBasePaths aPaths;
-    methodDecl->getParent()->lookupInBases(BaseMatchesCallback, aPaths);
+    if (methodDecl->getParent()->lookupInBases(BaseMatchesCallback, aPaths))
+        return nullptr;
 
-    if (maSimilarMethods.size() == 1) {
-        return maSimilarMethods[0];
+    return similarMethod;
+}
+
+CXXMemberCallExpr const * UnnecessaryOverride::extractCallExpr(Expr const *returnExpr)
+{
+    returnExpr = returnExpr->IgnoreImplicit();
+
+    // In something like
+    //
+    //  Reference< XResultSet > SAL_CALL OPreparedStatement::executeQuery(
+    //      const rtl::OUString& sql)
+    //      throw(SQLException, RuntimeException, std::exception)
+    //  {
+    //      return OCommonStatement::executeQuery( sql );
+    //  }
+    //
+    // look down through all the
+    //
+    //   ReturnStmt
+    //   `-ExprWithCleanups
+    //     `-CXXConstructExpr
+    //      `-MaterializeTemporaryExpr
+    //       `-ImplicitCastExpr
+    //        `-CXXBindTemporaryExpr
+    //         `-CXXMemberCallExpr
+    //
+    // where the fact that the overriding and overridden function have identical
+    // return types makes us confident that all we need to check here is whether
+    // there's an (arbitrary, one-argument) CXXConstructorExpr and
+    // CXXBindTemporaryExpr in between:
+    if (auto ctorExpr = dyn_cast<CXXConstructExpr>(returnExpr)) {
+        if (ctorExpr->getNumArgs() == 1) {
+            auto tempExpr1 = ctorExpr->getArg(0)->IgnoreImplicit();
+            if (auto tempExpr2 = dyn_cast<CXXBindTemporaryExpr>(tempExpr1))
+            {
+                returnExpr = tempExpr2->getSubExpr();
+            }
+            else if (auto tempExpr2 = dyn_cast<CXXMemberCallExpr>(tempExpr1))
+            {
+                returnExpr = tempExpr2;
+            }
+        }
     }
-    return nullptr;
-#endif
+
+    return dyn_cast<CXXMemberCallExpr>(returnExpr->IgnoreParenImpCasts());
 }
 
-
-loplugin::Plugin::Registration< UnnecessaryOverride > X("unnecessaryoverride", true);
+loplugin::Plugin::Registration< UnnecessaryOverride > unnecessaryoverride("unnecessaryoverride", true);
 
 }
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

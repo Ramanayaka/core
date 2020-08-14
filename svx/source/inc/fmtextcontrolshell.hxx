@@ -20,9 +20,8 @@
 #define INCLUDED_SVX_SOURCE_INC_FMTEXTCONTROLSHELL_HXX
 
 #include <com/sun/star/frame/XDispatchProvider.hpp>
+#include <com/sun/star/awt/FocusEvent.hpp>
 #include <com/sun/star/awt/XTextComponent.hpp>
-#include <com/sun/star/awt/XFocusListener.hpp>
-#include <com/sun/star/awt/XMouseListener.hpp>
 #include <com/sun/star/form/runtime/XFormController.hpp>
 #include <com/sun/star/awt/XControl.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
@@ -66,7 +65,7 @@ namespace svx
     class IContextRequestObserver
     {
     public:
-        virtual void    contextMenuRequested( const css::awt::MouseEvent& _rEvent ) = 0;
+        virtual void    contextMenuRequested() = 0;
 
     protected:
         ~IContextRequestObserver() {}
@@ -142,7 +141,7 @@ namespace svx
         virtual void    focusLost( const css::awt::FocusEvent& _rEvent ) override;
 
         // IContextRequestObserver
-        virtual void    contextMenuRequested( const css::awt::MouseEvent& _rEvent ) override;
+        virtual void    contextMenuRequested() override;
 
         enum AttributeSet { eCharAttribs, eParaAttribs };
         void    executeAttributeDialog( AttributeSet _eSet, SfxRequest& _rReq );
@@ -155,7 +154,7 @@ namespace svx
         FmTextControlFeature*
                         implGetFeatureDispatcher(
                             const css::uno::Reference< css::frame::XDispatchProvider >& _rxProvider,
-                            SfxApplication* _pApplication,
+                            SfxApplication const * _pApplication,
                             SfxSlotId _nSlot
                         );
 

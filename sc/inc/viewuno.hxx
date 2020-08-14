@@ -22,8 +22,9 @@
 
 #include <sfx2/sfxbasecontroller.hxx>
 #include <svl/itemprop.hxx>
+#include <svl/lstner.hxx>
+#include <tools/gen.hxx>
 #include <com/sun/star/view/XFormLayerAccess.hpp>
-#include <com/sun/star/view/XSelectionChangeListener.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/sheet/XCellRangeReferrer.hpp>
 #include <com/sun/star/sheet/XViewSplitable.hpp>
@@ -39,8 +40,11 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/datatransfer/XTransferableSupplier.hpp>
+#include <comphelper/servicehelper.hxx>
 
-#include "address.hxx"
+#include "types.hxx"
+
+namespace com::sun::star::view { class XSelectionChangeListener; }
 
 class ScTabViewShell;
 class ScPreviewShell;
@@ -108,7 +112,7 @@ public:
 
 //  ScViewPaneObj for direct use (including OWeakObject)
 
-class ScViewPaneObj : public ScViewPaneBase, public cppu::OWeakObject
+class ScViewPaneObj final : public ScViewPaneBase, public cppu::OWeakObject
 {
 public:
                             ScViewPaneObj(ScTabViewShell* pViewSh, sal_uInt16 nP);
@@ -121,7 +125,7 @@ public:
 
 //  OWeakObject is base of SfxBaseController -> use ScViewPaneBase
 
-class ScTabViewObj : public ScViewPaneBase,
+class ScTabViewObj final : public ScViewPaneBase,
                      public SfxBaseController,
                      public css::sheet::XSpreadsheetView,
                      public css::sheet::XEnhancedMouseClickBroadcaster,
@@ -138,20 +142,19 @@ class ScTabViewObj : public ScViewPaneBase,
                      public css::sheet::XSelectedSheetsSupplier
 {
 private:
-    typedef std::vector<css::uno::Reference<css::sheet::XRangeSelectionListener> > XRangeSelectionListenerVector;
-    typedef std::vector<css::uno::Reference<css::sheet::XRangeSelectionChangeListener> > XRangeSelectionChangeListenerVector;
-    typedef std::vector<css::uno::Reference<css::view::XSelectionChangeListener> > XSelectionChangeListenerVector;
-    typedef std::vector<css::uno::Reference<css::beans::XPropertyChangeListener> > XViewPropertyChangeListenerVector;
-    typedef std::vector<css::uno::Reference<css::awt::XEnhancedMouseClickHandler> > XMouseClickHandlerVector;
-    typedef std::vector<css::uno::Reference<css::sheet::XActivationEventListener> > XActivationEventListenerVector;
-
     SfxItemPropertySet                      aPropSet;
-    XSelectionChangeListenerVector          aSelectionChgListeners;
-    XRangeSelectionListenerVector           aRangeSelListeners;
-    XRangeSelectionChangeListenerVector     aRangeChgListeners;
-    XViewPropertyChangeListenerVector       aPropertyChgListeners;
-    XMouseClickHandlerVector                aMouseClickHandlers;
-    XActivationEventListenerVector          aActivationListeners;
+    std::vector<css::uno::Reference<css::view::XSelectionChangeListener> >
+                                            aSelectionChgListeners;
+    std::vector<css::uno::Reference<css::sheet::XRangeSelectionListener> >
+                                            aRangeSelListeners;
+    std::vector<css::uno::Reference<css::sheet::XRangeSelectionChangeListener> >
+                                            aRangeChgListeners;
+    std::vector<css::uno::Reference<css::beans::XPropertyChangeListener> >
+                                            aPropertyChgListeners;
+    std::vector<css::uno::Reference<css::awt::XEnhancedMouseClickHandler> >
+                                            aMouseClickHandlers;
+    std::vector<css::uno::Reference<css::sheet::XActivationEventListener> >
+                                            aActivationListeners;
     SCTAB                                   nPreviousTab;
     bool                                    bDrawSelModeSet;
     bool                                    bFilteredRangeSelection;
@@ -166,7 +169,6 @@ private:
     void                    EndMouseListening();
     void                    EndActivationListening();
     bool                    mbLeftMousePressed;
-    bool                    mbPendingSelectionChanged;
 public:
                             ScTabViewObj(ScTabViewShell* pViewSh);
                             ScTabViewObj() = delete;
@@ -268,11 +270,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
                             // XUnoTunnel
-    virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence<
-                                    sal_Int8 >& aIdentifier ) override;
-
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    static ScTabViewObj* getImplementation(const css::uno::Reference<css::uno::XInterface>& rObj);
+    UNO3_GETIMPLEMENTATION_DECL(ScTabViewObj)
 
                             // XTypeProvider
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
@@ -286,7 +284,7 @@ public:
     virtual css::uno::Sequence<sal_Int32> SAL_CALL getSelectedSheets() override;
 };
 
-class ScPreviewObj : public SfxBaseController,
+class ScPreviewObj final : public SfxBaseController,
                      public SfxListener,
                      public css::sheet::XSelectedSheetsSupplier
 {

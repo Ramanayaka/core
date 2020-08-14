@@ -25,14 +25,14 @@
 #include <com/sun/star/uno/Reference.h>
 
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace text {
         class XTextCursor;
     }
-    namespace xml { namespace sax {
+    namespace xml::sax {
         class XAttributeList;
-    } }
-} } }
+    }
+}
 
 /**
  * Import <text:changed-region> elements contained in a
@@ -63,7 +63,7 @@ public:
     virtual void StartElement(
         const css::uno::Reference<css::xml::sax::XAttributeList> & xAttrList) override;
 
-    virtual SvXMLImportContext* CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference<css::xml::sax::XAttributeList> & xAttrList) override;

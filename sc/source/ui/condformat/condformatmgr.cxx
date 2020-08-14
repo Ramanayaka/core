@@ -7,190 +7,163 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "condformatmgr.hxx"
-#include "scresid.hxx"
-#include "globstr.hrc"
-#include "condformatdlg.hxx"
-#include <vcl/msgbox.hxx>
-#include "document.hxx"
+#include <condformatmgr.hxx>
+#include <condformathelper.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <condformatdlg.hxx>
+#include <document.hxx>
+#include <conditio.hxx>
 
-ScCondFormatManagerWindow::ScCondFormatManagerWindow(SvSimpleTableContainer& rParent,
+ScCondFormatManagerWindow::ScCondFormatManagerWindow(weld::TreeView& rTreeView,
     ScDocument* pDoc, ScConditionalFormatList* pFormatList)
-    : SvSimpleTable(rParent, WB_HSCROLL | WB_SORT | WB_TABSTOP)
+    : mrTreeView(rTreeView)
     , mpDoc(pDoc)
     , mpFormatList(pFormatList)
 {
-    OUString aConditionStr(ScGlobal::GetRscString(STR_HEADER_COND));
-    OUString aRangeStr(ScGlobal::GetRscString(STR_HEADER_RANGE));
-
-    OUStringBuffer sHeader;
-    sHeader.append(aRangeStr).append("\t").append(aConditionStr);
-    InsertHeaderEntry(sHeader.makeStringAndClear(), HEADERBAR_APPEND, HeaderBarItemBits::LEFT | HeaderBarItemBits::VCENTER);
+    mrTreeView.set_size_request(mrTreeView.get_approximate_digit_width() * 70,
+                                mrTreeView.get_height_rows(20));
     setColSizes();
 
     Init();
-    Show();
-    SetSelectionMode(SelectionMode::Multiple);
-}
-
-OUString ScCondFormatManagerWindow::createEntryString(const ScConditionalFormat& rFormat)
-{
-    const ScRangeList& aRange = rFormat.GetRange();
-    OUString aStr;
-    aRange.Format(aStr, ScRefFlags::VALID, mpDoc, mpDoc->GetAddressConvention());
-    aStr += "\t";
-    aStr += ScCondFormatHelper::GetExpression(rFormat, aRange.GetTopLeftCorner());
-    return aStr;
+    mrTreeView.set_selection_mode(SelectionMode::Multiple);
+    mrTreeView.make_sorted();
 }
 
 void ScCondFormatManagerWindow::Init()
 {
-    SetUpdateMode(false);
+    mrTreeView.freeze();
 
     if (mpFormatList)
     {
-        for(ScConditionalFormatList::iterator itr = mpFormatList->begin(); itr != mpFormatList->end(); ++itr)
+        int nRow = 0;
+        OUString sRangeStr;
+        for(const auto& rItem : *mpFormatList)
         {
-            SvTreeListEntry* pEntry = InsertEntryToColumn( createEntryString(**itr) );
-            maMapLBoxEntryToCondIndex.insert(std::pair<SvTreeListEntry*,sal_Int32>(pEntry, (*itr)->GetKey()));
+            const ScRangeList& aRange = rItem->GetRange();
+            aRange.Format(sRangeStr, ScRefFlags::VALID, *mpDoc, mpDoc->GetAddressConvention());
+            mrTreeView.append(OUString::number(rItem->GetKey()), sRangeStr);
+            mrTreeView.set_text(nRow, ScCondFormatHelper::GetExpression(*rItem, aRange.GetTopLeftCorner()), 1);
+            ++nRow;
         }
     }
 
-    SetUpdateMode(true);
+    mrTreeView.thaw();
 
-    if (mpFormatList && mpFormatList->size())
-        SelectRow(0);
-}
-
-void ScCondFormatManagerWindow::Resize()
-{
-    SvSimpleTable::Resize();
-    if (GetParentDialog()->isCalculatingInitialLayoutSize())
-        setColSizes();
+    if (mpFormatList && !mpFormatList->empty())
+        mrTreeView.select(0);
 }
 
 void ScCondFormatManagerWindow::DeleteSelection()
 {
-    if(GetSelectionCount())
+    auto aSelectedRows = mrTreeView.get_selected_rows();
+    std::sort(aSelectedRows.begin(), aSelectedRows.end());
+    for (auto it = aSelectedRows.rbegin(); it != aSelectedRows.rend(); ++it)
     {
-        for(SvTreeListEntry* pEntry = FirstSelected(); pEntry != nullptr; pEntry = NextSelected(pEntry))
-        {
-            sal_Int32 nIndex = maMapLBoxEntryToCondIndex.find(pEntry)->second;
-            mpFormatList->erase(nIndex);
-        }
-        RemoveSelection();
+        sal_Int32 nIndex = mrTreeView.get_id(*it).toInt32();
+        mpFormatList->erase(nIndex);
+        mrTreeView.remove(*it);
     }
 }
 
 ScConditionalFormat* ScCondFormatManagerWindow::GetSelection()
 {
-    SvTreeListEntry* pEntry = FirstSelected();
-    if(!pEntry)
+    int nEntry = mrTreeView.get_selected_index();
+    if (nEntry == -1)
         return nullptr;
 
-    sal_Int32 nIndex = maMapLBoxEntryToCondIndex.find(pEntry)->second;
+    sal_Int32 nIndex = mrTreeView.get_id(nEntry).toInt32();
     return mpFormatList->GetFormat(nIndex);
 }
 
 void ScCondFormatManagerWindow::setColSizes()
 {
-    HeaderBar &rBar = GetTheHeaderBar();
-    if (rBar.GetItemCount() < 2)
-        return;
-    long aStaticTabs[]= { 2, 0, 0 };
-    aStaticTabs[2] = rBar.GetSizePixel().Width() / 2;
-    SvSimpleTable::SetTabs(aStaticTabs, MapUnit::MapPixel);
+    std::vector<int> aWidths;
+    aWidths.push_back(mrTreeView.get_size_request().Width() / 2);
+    mrTreeView.set_column_fixed_widths(aWidths);
 }
 
-ScCondFormatManagerDlg::ScCondFormatManagerDlg(vcl::Window* pParent, ScDocument* pDoc, const ScConditionalFormatList* pFormatList):
-    ModalDialog(pParent, "CondFormatManager", "modules/scalc/ui/condformatmanager.ui"),
-    mpFormatList( pFormatList ? new ScConditionalFormatList(*pFormatList) : nullptr),
-    mpDoc(pDoc),
-    mbModified(false)
+ScCondFormatManagerDlg::ScCondFormatManagerDlg(weld::Window* pParent, ScDocument* pDoc, const ScConditionalFormatList* pFormatList)
+    : GenericDialogController(pParent, "modules/scalc/ui/condformatmanager.ui", "CondFormatManager")
+    , m_bModified(false)
+    , m_xFormatList( pFormatList ? new ScConditionalFormatList(*pFormatList) : nullptr)
+    , m_xBtnAdd(m_xBuilder->weld_button("add"))
+    , m_xBtnRemove(m_xBuilder->weld_button("remove"))
+    , m_xBtnEdit(m_xBuilder->weld_button("edit"))
+    , m_xTreeView(m_xBuilder->weld_tree_view("CONTAINER"))
+    , m_xCtrlManager(new ScCondFormatManagerWindow(*m_xTreeView, pDoc, m_xFormatList.get()))
 {
-    SvSimpleTableContainer *pContainer = get<SvSimpleTableContainer>("CONTAINER");
-    Size aSize(LogicToPixel(Size(290, 220), MapUnit::MapAppFont));
-    pContainer->set_width_request(aSize.Width());
-    pContainer->set_height_request(aSize.Height());
-    m_pCtrlManager = VclPtr<ScCondFormatManagerWindow>::Create(*pContainer, mpDoc, mpFormatList);
-    get(m_pBtnAdd, "add");
-    get(m_pBtnRemove, "remove");
-    get(m_pBtnEdit, "edit");
+    m_xBtnRemove->connect_clicked(LINK(this, ScCondFormatManagerDlg, RemoveBtnHdl));
+    m_xBtnEdit->connect_clicked(LINK(this, ScCondFormatManagerDlg, EditBtnClickHdl));
+    m_xBtnAdd->connect_clicked(LINK(this, ScCondFormatManagerDlg, AddBtnHdl));
+    m_xTreeView->connect_row_activated(LINK(this, ScCondFormatManagerDlg, EditBtnHdl));
 
-    m_pBtnRemove->SetClickHdl(LINK(this, ScCondFormatManagerDlg, RemoveBtnHdl));
-    m_pBtnEdit->SetClickHdl(LINK(this, ScCondFormatManagerDlg, EditBtnClickHdl));
-    m_pBtnAdd->SetClickHdl(LINK(this, ScCondFormatManagerDlg, AddBtnHdl));
-    m_pCtrlManager->SetDoubleClickHdl(LINK(this, ScCondFormatManagerDlg, EditBtnHdl));
+    UpdateButtonSensitivity();
 }
 
 ScCondFormatManagerDlg::~ScCondFormatManagerDlg()
 {
-    disposeOnce();
 }
 
-void ScCondFormatManagerDlg::dispose()
+std::unique_ptr<ScConditionalFormatList> ScCondFormatManagerDlg::GetConditionalFormatList()
 {
-    delete mpFormatList;
-    m_pBtnAdd.clear();
-    m_pBtnRemove.clear();
-    m_pBtnEdit.clear();
-    m_pCtrlManager.disposeAndClear();
-    ModalDialog::dispose();
+    return std::move(m_xFormatList);
 }
 
-
-ScConditionalFormatList* ScCondFormatManagerDlg::GetConditionalFormatList()
+void ScCondFormatManagerDlg::UpdateButtonSensitivity()
 {
-    ScConditionalFormatList* pList = mpFormatList;
-    mpFormatList = nullptr;
-    return pList;
+    bool bNewSensitivity = !m_xFormatList->empty();
+    m_xBtnRemove->set_sensitive(bNewSensitivity);
+    m_xBtnEdit->set_sensitive(bNewSensitivity);
 }
 
 // Get the current conditional format selected.
 //
 ScConditionalFormat* ScCondFormatManagerDlg::GetCondFormatSelected()
 {
-    return m_pCtrlManager->GetSelection();
+    return m_xCtrlManager->GetSelection();
 }
 
-IMPL_LINK_NOARG(ScCondFormatManagerDlg, RemoveBtnHdl, Button*, void)
+IMPL_LINK_NOARG(ScCondFormatManagerDlg, RemoveBtnHdl, weld::Button&, void)
 {
-    m_pCtrlManager->DeleteSelection();
-    mbModified = true;
+    m_xCtrlManager->DeleteSelection();
+    m_bModified = true;
+    UpdateButtonSensitivity();
 }
 
-IMPL_LINK_NOARG(ScCondFormatManagerDlg, EditBtnClickHdl, Button*, void)
+IMPL_LINK_NOARG(ScCondFormatManagerDlg, EditBtnClickHdl, weld::Button&, void)
 {
-    mbModified = true;
-    EditBtnHdl(nullptr);
-}
-IMPL_LINK_NOARG(ScCondFormatManagerDlg, EditBtnHdl, SvTreeListBox*, bool)
-{
-    ScConditionalFormat* pFormat = m_pCtrlManager->GetSelection();
-
-    if(!pFormat)
-        return false;
-
-    mbModified = true;
-    EndDialog( DLG_RET_EDIT );
-
-    return false;
+    EditBtnHdl(*m_xTreeView);
 }
 
-IMPL_LINK_NOARG(ScCondFormatManagerDlg, AddBtnHdl, Button*, void)
+IMPL_LINK_NOARG(ScCondFormatManagerDlg, EditBtnHdl, weld::TreeView&, bool)
 {
-    mbModified = true;
-    EndDialog( DLG_RET_ADD );
+    ScConditionalFormat* pFormat = m_xCtrlManager->GetSelection();
+
+    if (!pFormat)
+        return true;
+
+    m_bModified = true;
+    m_xDialog->response( DLG_RET_EDIT );
+
+    return true;
+}
+
+IMPL_LINK_NOARG(ScCondFormatManagerDlg, AddBtnHdl, weld::Button&, void)
+{
+    m_bModified = true;
+    m_xDialog->response( DLG_RET_ADD );
 }
 
 void ScCondFormatManagerDlg::SetModified()
 {
-    mbModified = true;
+    m_bModified = true;
+    UpdateButtonSensitivity();
 }
 
 bool ScCondFormatManagerDlg::CondFormatsChanged() const
 {
-    return mbModified;
+    return m_bModified;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,11 +19,12 @@
 #ifndef INCLUDED_CHART2_SOURCE_MODEL_MAIN_DATAPOINTPROPERTIES_HXX
 #define INCLUDED_CHART2_SOURCE_MODEL_MAIN_DATAPOINTPROPERTIES_HXX
 
-#include "PropertyHelper.hxx"
-#include "FastPropertyIdRanges.hxx"
-#include <com/sun/star/beans/Property.hpp>
+#include <PropertyHelper.hxx>
+#include <FastPropertyIdRanges.hxx>
 
 #include <vector>
+
+namespace com::sun::star::beans { struct Property; }
 
 namespace chart
 {
@@ -34,6 +35,11 @@ namespace DataPointProperties
     // FastProperty Ids for properties
     enum
     {
+        PROP_DATAPOINT_LABEL_FILL_STYLE,
+        PROP_DATAPOINT_LABEL_FILL_COLOR,
+        PROP_DATAPOINT_LABEL_FILL_BACKGROUND,
+        PROP_DATAPOINT_LABEL_FILL_HATCH_NAME,
+
         // common
         PROP_DATAPOINT_COLOR = FAST_PROPERTY_ID_START_DATA_POINT,
         PROP_DATAPOINT_TRANSPARENCY,
@@ -80,9 +86,11 @@ namespace DataPointProperties
         PROP_DATAPOINT_LABEL_BORDER_WIDTH,
         PROP_DATAPOINT_LABEL_BORDER_DASH,
         PROP_DATAPOINT_LABEL_BORDER_DASH_NAME,
-        PROP_DATAPOINT_LABEL_BORDER_TRANS
+        PROP_DATAPOINT_LABEL_BORDER_TRANS,
+        PROP_DATAPOINT_CUSTOM_LABEL_FIELDS,
+        PROP_DATAPOINT_LABEL_CUSTOM_POS
 
-        // additionally some properites from ::chart::LineProperties
+        // additionally some properties from ::chart::LineProperties
     };
 
     void AddPropertiesToVector(

@@ -23,7 +23,7 @@
 #include <svx/svdsob.hxx>
 #include <svx/svdtypes.hxx>
 #include <svx/svxdllapi.h>
-#include <algorithm>
+#include <memory>
 #include <vector>
 
 /**
@@ -55,15 +55,17 @@
 
 class SdrModel;
 
-class SVX_DLLPUBLIC SdrLayer
+class SVXCORE_DLLPUBLIC SdrLayer
 {
     friend class SdrLayerAdmin;
 
     OUString maName;
     OUString maTitle;
     OUString maDescription;
+    bool mbVisibleODF; // corresponds to ODF draw:display
+    bool mbPrintableODF; // corresponds to ODF draw:display
+    bool mbLockedODF; // corresponds to ODF draw:protected
     SdrModel*  pModel; // For broadcasting
-    sal_uInt16 nType;  // 0= userdefined, 1= default layer
     SdrLayerID nID;
 
     SdrLayer(SdrLayerID nNewID, const OUString& rNewName);
@@ -80,25 +82,30 @@ public:
     void SetDescription(const OUString& rDesc) { maDescription = rDesc; }
     const OUString& GetDescription() const { return maDescription; }
 
+    void SetVisibleODF(bool bVisibleODF) { mbVisibleODF = bVisibleODF; }
+    bool IsVisibleODF() const { return mbVisibleODF; }
+
+    void SetPrintableODF(bool bPrintableODF) { mbPrintableODF = bPrintableODF; }
+    bool IsPrintableODF() const { return mbPrintableODF; }
+
+    void SetLockedODF(bool bLockedODF) { mbLockedODF = bLockedODF; }
+    bool IsLockedODF() const { return mbLockedODF; }
+
     SdrLayerID    GetID() const                               { return nID; }
     void          SetModel(SdrModel* pNewModel)               { pModel=pNewModel; }
-    // A SdrLayer should be considered the standard Layer. It shall then set the
-    // appropriate country-specific name. SetName() sets the "StandardLayer" flag
-    // and if necessary returns "Userdefined".
-    void          SetStandardLayer();
 };
 
 #define SDRLAYER_MAXCOUNT 255
 #define SDRLAYERPOS_NOTFOUND 0xffff
 
 // When Changing the layer data you currently have to set the Modify flag manually
-class SVX_DLLPUBLIC SdrLayerAdmin {
+class SVXCORE_DLLPUBLIC SdrLayerAdmin {
 friend class SdrView;
 friend class SdrModel;
 friend class SdrPage;
 
 protected:
-    std::vector<SdrLayer*> aLayer;
+    std::vector<std::unique_ptr<SdrLayer>> maLayers;
     SdrLayerAdmin* pParent; // The page's admin knows the doc's admin
     SdrModel* pModel; // For broadcasting
     OUString maControlLayerName;
@@ -114,35 +121,25 @@ public:
     SdrLayerAdmin(const SdrLayerAdmin& rSrcLayerAdmin);
     ~SdrLayerAdmin();
     SdrLayerAdmin& operator=(const SdrLayerAdmin& rSrcLayerAdmin);
-    void               SetParent(SdrLayerAdmin* pNewParent)                        { pParent=pNewParent; }
-    void               SetModel(SdrModel* pNewModel);
-    void               InsertLayer(SdrLayer* pLayer, sal_uInt16 nPos)
-    {
-        if(nPos==0xFFFF)
-            aLayer.push_back(pLayer);
-        else
-            aLayer.insert(aLayer.begin() + nPos, pLayer);
-        pLayer->SetModel(pModel);
-        Broadcast();
-    }
-    SdrLayer*          RemoveLayer(sal_uInt16 nPos);
 
-    // Delete the entire layer
-    void               ClearLayer();
+    void               SetModel(SdrModel* pNewModel);
+
+    void               InsertLayer(std::unique_ptr<SdrLayer> pLayer, sal_uInt16 nPos);
+    std::unique_ptr<SdrLayer> RemoveLayer(sal_uInt16 nPos);
+
+    // Delete all layers
+    void               ClearLayers();
 
     // New layer is created and inserted
     SdrLayer*          NewLayer(const OUString& rName, sal_uInt16 nPos=0xFFFF);
 
-    // New layer, name is retrieved from the resource
-    void               NewStandardLayer(sal_uInt16 nPos);
-
     // Iterate over all layers
-    sal_uInt16         GetLayerCount() const                                         { return sal_uInt16(aLayer.size()); }
+    sal_uInt16         GetLayerCount() const                                         { return sal_uInt16(maLayers.size()); }
 
-    SdrLayer*          GetLayer(sal_uInt16 i)                                        { return aLayer[i]; }
-    const SdrLayer*    GetLayer(sal_uInt16 i) const                                  { return aLayer[i]; }
+    SdrLayer*          GetLayer(sal_uInt16 i)                                        { return maLayers[i].get(); }
+    const SdrLayer*    GetLayer(sal_uInt16 i) const                                  { return maLayers[i].get(); }
 
-    sal_uInt16         GetLayerPos(SdrLayer* pLayer) const;
+    sal_uInt16         GetLayerPos(const SdrLayer* pLayer) const;
 
     SdrLayer*          GetLayer(const OUString& rName);
     const SdrLayer*    GetLayer(const OUString& rName) const;
@@ -152,6 +149,16 @@ public:
 
     void               SetControlLayerName(const OUString& rNewName);
     const OUString&    GetControlLayerName() const { return maControlLayerName; }
+
+    // Removes all elements in rOutSet and then adds all IDs of layers from member aLayer
+    // that fulfill the criterion visible, printable, or locked respectively.
+    void               getVisibleLayersODF( SdrLayerIDSet& rOutSet) const;
+    void               getPrintableLayersODF( SdrLayerIDSet& rOutSet) const;
+    void               getLockedLayersODF( SdrLayerIDSet& rOutSet) const;
+
+    // Generates a bitfield for settings.xml from the SdrLayerIDSet.
+    // Output is a UNO sequence of BYTE (which is 'short' in API).
+    void               QueryValue(const SdrLayerIDSet& rViewLayerSet, css::uno::Any& rAny);
 };
 
 #endif // INCLUDED_SVX_SVDLAYER_HXX

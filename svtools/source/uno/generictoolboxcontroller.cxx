@@ -19,14 +19,14 @@
 
 #include <svtools/generictoolboxcontroller.hxx>
 
-#include <com/sun/star/util/URLTransformer.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/frame/status/ItemStatus.hpp>
+#include <com/sun/star/frame/XDispatch.hpp>
 
-#include <comphelper/processfactory.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 
 using namespace css::awt;
 using namespace css::uno;
@@ -39,6 +39,8 @@ using namespace css::util;
 namespace svt
 {
 
+namespace {
+
 struct ExecuteInfo
 {
     css::uno::Reference< css::frame::XDispatch >     xDispatch;
@@ -46,21 +48,41 @@ struct ExecuteInfo
     css::uno::Sequence< css::beans::PropertyValue >  aArgs;
 };
 
+}
+
 GenericToolboxController::GenericToolboxController( const Reference< XComponentContext >& rxContext,
                                                     const Reference< XFrame >&            rFrame,
                                                     ToolBox*                              pToolbox,
                                                     sal_uInt16                            nID,
-                                                    const OUString&                       aCommand ) :
-    svt::ToolboxController( rxContext, rFrame, aCommand )
-    ,   m_pToolbox( pToolbox )
-    ,   m_nID( nID )
+                                                    const OUString&                       aCommand )
+    : svt::ToolboxController( rxContext, rFrame, aCommand )
+    , m_xToolbox( pToolbox )
+    , m_nID( nID )
+    , m_pToolbox(nullptr)
 {
     // Initialization is done through ctor
     m_bInitialized = true;
 
     // insert main command to our listener map
     if ( !m_aCommandURL.isEmpty() )
-        m_aListenerMap.insert( URLToDispatchMap::value_type( aCommand, Reference< XDispatch >() ));
+        m_aListenerMap.emplace( aCommand, Reference< XDispatch >() );
+}
+
+GenericToolboxController::GenericToolboxController( const Reference< XComponentContext >& rxContext,
+                                                    const Reference< XFrame >&            rFrame,
+                                                    weld::Toolbar&                        rToolbar,
+                                                    const OUString&                       aCommand )
+    : svt::ToolboxController( rxContext, rFrame, aCommand )
+    , m_xToolbox( nullptr )
+    , m_nID( 0 )
+    , m_pToolbox(&rToolbar)
+{
+    // Initialization is done through ctor
+    m_bInitialized = true;
+
+    // insert main command to our listener map
+    if ( !m_aCommandURL.isEmpty() )
+        m_aListenerMap.emplace( aCommand, Reference< XDispatch >() );
 }
 
 GenericToolboxController::~GenericToolboxController()
@@ -70,8 +92,9 @@ GenericToolboxController::~GenericToolboxController()
 void SAL_CALL GenericToolboxController::dispose()
 {
     SolarMutexGuard aSolarMutexGuard;
-    m_pToolbox.clear();
+    m_xToolbox.clear();
     m_nID = 0;
+    m_pToolbox = nullptr;
     svt::ToolboxController::dispose();
 }
 
@@ -97,22 +120,22 @@ void SAL_CALL GenericToolboxController::execute( sal_Int16 /*KeyModifier*/ )
         }
     }
 
-    if ( xDispatch.is() )
-    {
-        css::util::URL aTargetURL;
-        Sequence<PropertyValue>   aArgs;
+    if ( !xDispatch.is() )
+        return;
 
-        aTargetURL.Complete = aCommandURL;
-        if ( m_xUrlTransformer.is() )
-            m_xUrlTransformer->parseStrict( aTargetURL );
+    css::util::URL aTargetURL;
+    Sequence<PropertyValue>   aArgs;
 
-        // Execute dispatch asynchronously
-        ExecuteInfo* pExecuteInfo = new ExecuteInfo;
-        pExecuteInfo->xDispatch     = xDispatch;
-        pExecuteInfo->aTargetURL    = aTargetURL;
-        pExecuteInfo->aArgs         = aArgs;
-        Application::PostUserEvent( LINK(nullptr, GenericToolboxController , ExecuteHdl_Impl), pExecuteInfo );
-    }
+    aTargetURL.Complete = aCommandURL;
+    if ( m_xUrlTransformer.is() )
+        m_xUrlTransformer->parseStrict( aTargetURL );
+
+    // Execute dispatch asynchronously
+    ExecuteInfo* pExecuteInfo = new ExecuteInfo;
+    pExecuteInfo->xDispatch     = xDispatch;
+    pExecuteInfo->aTargetURL    = aTargetURL;
+    pExecuteInfo->aArgs         = aArgs;
+    Application::PostUserEvent( LINK(nullptr, GenericToolboxController , ExecuteHdl_Impl), pExecuteInfo );
 }
 
 void GenericToolboxController::statusChanged( const FeatureStateEvent& Event )
@@ -122,11 +145,11 @@ void GenericToolboxController::statusChanged( const FeatureStateEvent& Event )
     if ( m_bDisposed )
         return;
 
-    if ( m_pToolbox )
+    if (m_xToolbox)
     {
-        m_pToolbox->EnableItem( m_nID, Event.IsEnabled );
+        m_xToolbox->EnableItem( m_nID, Event.IsEnabled );
 
-        ToolBoxItemBits nItemBits = m_pToolbox->GetItemBits( m_nID );
+        ToolBoxItemBits nItemBits = m_xToolbox->GetItemBits( m_nID );
         nItemBits &= ~ToolBoxItemBits::CHECKABLE;
         TriState eTri = TRISTATE_FALSE;
 
@@ -137,15 +160,15 @@ void GenericToolboxController::statusChanged( const FeatureStateEvent& Event )
         if ( Event.State >>= bValue )
         {
             // Boolean, treat it as checked/unchecked
-            m_pToolbox->SetItemBits( m_nID, nItemBits );
-            m_pToolbox->CheckItem( m_nID, bValue );
+            m_xToolbox->SetItemBits( m_nID, nItemBits );
+            m_xToolbox->CheckItem( m_nID, bValue );
             if ( bValue )
                 eTri = TRISTATE_TRUE;
             nItemBits |= ToolBoxItemBits::CHECKABLE;
         }
         else if ( Event.State >>= aStrValue )
         {
-            m_pToolbox->SetItemText( m_nID, aStrValue );
+            m_xToolbox->SetItemText( m_nID, aStrValue );
         }
         else if ( Event.State >>= aItemState )
         {
@@ -153,9 +176,31 @@ void GenericToolboxController::statusChanged( const FeatureStateEvent& Event )
             nItemBits |= ToolBoxItemBits::CHECKABLE;
         }
 
-        m_pToolbox->SetItemState( m_nID, eTri );
-        m_pToolbox->SetItemBits( m_nID, nItemBits );
+        m_xToolbox->SetItemState( m_nID, eTri );
+        m_xToolbox->SetItemBits( m_nID, nItemBits );
     }
+
+    if (!m_pToolbox)
+        return;
+
+    OString sId = m_aCommandURL.toUtf8();
+
+    m_pToolbox->set_item_sensitive(sId, Event.IsEnabled);
+
+    bool        bValue;
+    OUString    aStrValue;
+
+    if ( Event.State >>= bValue )
+    {
+        // Boolean, treat it as checked/unchecked
+        m_pToolbox->set_item_active(sId, bValue);
+    }
+    else if ( Event.State >>= aStrValue )
+    {
+        m_pToolbox->set_item_label(sId, aStrValue);
+    }
+    else
+        m_pToolbox->set_item_active(sId, false);
 }
 
 IMPL_STATIC_LINK( GenericToolboxController, ExecuteHdl_Impl, void*, p, void )

@@ -27,8 +27,7 @@
 #include <oox/dllapi.h>
 #include <rtl/ustring.hxx>
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 
 /** Expands to an OUString containing an 'officeDocument' transitional relation type created
@@ -78,9 +77,10 @@ public:
     {
         return maMap.end();
     }
-    void insert( const ::std::map< OUString, Relation >::value_type& rVal )
+    template<class... Args>
+    void emplace(Args&&... args)
     {
-        maMap.insert( rVal );
+        maMap.emplace(std::forward<Args>(args)...);
     }
 
     /** Returns the path of the fragment this relations collection is related to. */
@@ -112,8 +112,7 @@ private:
 };
 
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 #endif
 

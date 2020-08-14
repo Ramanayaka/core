@@ -19,29 +19,26 @@
 
 #include <config_features.h>
 
-#include <hintids.hxx>
 #include <comphelper/string.hxx>
-#include <rtl/strbuf.hxx>
-#include <sfx2/sfx.hrc>
-#include <basic/sbx.hxx>
+#include <osl/diagnose.h>
 #include <basic/basmgr.hxx>
 #include <basic/sbmod.hxx>
 #include <sfx2/evntconf.hxx>
 #include <sfx2/app.hxx>
 #include <svtools/htmlout.hxx>
-#include <svtools/htmltokn.h>
 #include <svtools/htmlkywd.hxx>
 
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/script/XLibraryContainer.hpp>
+#include <com/sun/star/container/XNameContainer.hpp>
 
-#include <fmtornt.hxx>
 #include <fmtfld.hxx>
 
-#include "doc.hxx"
+#include <doc.hxx>
 #include <IDocumentFieldsAccess.hxx>
-#include "docsh.hxx"
-#include "docufld.hxx"
+#include <docsh.hxx>
+#include <docufld.hxx>
 #include "wrthtml.hxx"
 #include "swhtml.hxx"
 
@@ -49,13 +46,13 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::container;
 
-static HTMLOutEvent aBodyEventTable[] =
+HTMLOutEvent const aBodyEventTable[] =
 {
-    { OOO_STRING_SVTOOLS_HTML_O_SDonload,    OOO_STRING_SVTOOLS_HTML_O_onload,    (sal_uInt16)SfxEventHintId::OpenDoc   },
-    { OOO_STRING_SVTOOLS_HTML_O_SDonunload,  OOO_STRING_SVTOOLS_HTML_O_onunload,  (sal_uInt16)SfxEventHintId::PrepareCloseDoc   },
-    { OOO_STRING_SVTOOLS_HTML_O_SDonfocus,   OOO_STRING_SVTOOLS_HTML_O_onfocus,   (sal_uInt16)SfxEventHintId::ActivateDoc   },
-    { OOO_STRING_SVTOOLS_HTML_O_SDonblur,    OOO_STRING_SVTOOLS_HTML_O_onblur,    (sal_uInt16)SfxEventHintId::DeactivateDoc },
-    { nullptr,                               nullptr,                             0                   }
+    { OOO_STRING_SVTOOLS_HTML_O_SDonload,    OOO_STRING_SVTOOLS_HTML_O_onload,    SvMacroItemId::OpenDoc   },
+    { OOO_STRING_SVTOOLS_HTML_O_SDonunload,  OOO_STRING_SVTOOLS_HTML_O_onunload,  SvMacroItemId::PrepareCloseDoc   },
+    { OOO_STRING_SVTOOLS_HTML_O_SDonfocus,   OOO_STRING_SVTOOLS_HTML_O_onfocus,   SvMacroItemId::ActivateDoc   },
+    { OOO_STRING_SVTOOLS_HTML_O_SDonblur,    OOO_STRING_SVTOOLS_HTML_O_onblur,    SvMacroItemId::DeactivateDoc },
+    { nullptr,                               nullptr,                             SvMacroItemId::NONE }
 };
 
 void SwHTMLParser::NewScript()
@@ -107,7 +104,7 @@ void SwHTMLParser::EndScript()
     // Create a Basic module for javascript and StarBasic.
 
         // The Basic does still not remove SGML comments
-        RemoveSGMLComment( m_aScriptSource, true );
+        RemoveSGMLComment( m_aScriptSource );
 
         // get library name
         OUString aLibName;
@@ -117,7 +114,7 @@ void SwHTMLParser::EndScript()
             aLibName = "Standard";
 
         // get module library container
-        Reference< script::XLibraryContainer > xModLibContainer( pDocSh->GetBasicContainer(), UNO_QUERY );
+        Reference< script::XLibraryContainer > xModLibContainer = pDocSh->GetBasicContainer();
 
         if ( xModLibContainer.is() )
         {
@@ -142,8 +139,7 @@ void SwHTMLParser::EndScript()
                     bool bFound = true;
                     while( bFound )
                     {
-                        m_aBasicModule = "Modul";
-                        m_aBasicModule += OUString::number( (sal_Int32)(++m_nSBModuleCnt) );
+                        m_aBasicModule = "Modul" + OUString::number( static_cast<sal_Int32>(++m_nSBModuleCnt) );
                         bFound = xModLib->hasByName( m_aBasicModule );
                     }
                 }
@@ -160,7 +156,7 @@ void SwHTMLParser::EndScript()
         }
 
         // get dialog library container
-        Reference< script::XLibraryContainer > xDlgLibContainer( pDocSh->GetDialogContainer(), UNO_QUERY );
+        Reference< script::XLibraryContainer > xDlgLibContainer = pDocSh->GetDialogContainer();
 
         if ( xDlgLibContainer.is() )
         {
@@ -249,13 +245,15 @@ void SwHTMLParser::InsertBasicDocEvent( const OUString& aEvent, const OUString& 
                            pDocSh );
 }
 
-void SwHTMLWriter::OutBasic()
+void SwHTMLWriter::OutBasic(SwHTMLWriter & rHTMLWrt)
 {
-#if HAVE_FEATURE_SCRIPTING
+#if !HAVE_FEATURE_SCRIPTING
+    (void) rHTMLWrt;
+#else
     if( !m_bCfgStarBasic )
         return;
 
-    BasicManager *pBasicMan = pDoc->GetDocShell()->GetBasicManager();
+    BasicManager *pBasicMan = m_pDoc->GetDocShell()->GetBasicManager();
     OSL_ENSURE( pBasicMan, "Where is the Basic-Manager?" );
     // Only write DocumentBasic
     if( !pBasicMan || pBasicMan == SfxApplication::GetBasicManager() )
@@ -277,23 +275,23 @@ void SwHTMLWriter::OutBasic()
             {
                 bFirst = false;
                 OutNewLine();
-                OStringBuffer sOut;
-                sOut.append('<').append(OOO_STRING_SVTOOLS_HTML_meta)
-                    .append(' ').append(OOO_STRING_SVTOOLS_HTML_O_httpequiv)
-                    .append("=\"")
-                    .append(OOO_STRING_SVTOOLS_HTML_META_content_script_type)
-                    .append("\" ").append(OOO_STRING_SVTOOLS_HTML_O_content)
-                    .append("=\"text/x-");
-                Strm().WriteCharPtr( sOut.getStr() );
+                OString sOut =
+                    "<" + rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_meta
+                    " " OOO_STRING_SVTOOLS_HTML_O_httpequiv
+                    "=\""
+                    OOO_STRING_SVTOOLS_HTML_META_content_script_type
+                    "\" " OOO_STRING_SVTOOLS_HTML_O_content
+                    "=\"text/x-";
+                Strm().WriteOString( sOut );
                 // Entities aren't welcome here
-                Strm().WriteCharPtr( OUStringToOString(sLang, m_eDestEnc).getStr() )
+                Strm().WriteOString( OUStringToOString(sLang, m_eDestEnc) )
                    .WriteCharPtr( "\">" );
             }
 
             const OUString& rModName = pModule->GetName();
             Strm().WriteCharPtr( SAL_NEWLINE_STRING );   // don't indent!
-            HTMLOutFuncs::OutScript( Strm(), GetBaseURL(), pModule->GetSource(),
-                                     sLang, STARBASIC, aEmptyOUStr,
+            HTMLOutFuncs::OutScript( Strm(), GetBaseURL(), pModule->GetSource32(),
+                                     sLang, STARBASIC, OUString(),
                                      &rLibName, &rModName,
                                      m_eDestEnc, &m_aNonConvertableCharacters );
         }
@@ -308,7 +306,7 @@ static const char* aEventNames[] =
 
 void SwHTMLWriter::OutBasicBodyEvents()
 {
-    SwDocShell *pDocSh = pDoc->GetDocShell();
+    SwDocShell *pDocSh = m_pDoc->GetDocShell();
     if( !pDocSh )
         return;
 
@@ -318,11 +316,10 @@ void SwHTMLWriter::OutBasicBodyEvents()
     uno::Reference < container::XNameReplace > xEvents = xSup->getEvents();
     for ( sal_Int32 i=0; i<4; i++ )
     {
-        SvxMacro* pMacro = SfxEventConfiguration::ConvertToMacro( xEvents->getByName( OUString::createFromAscii(aEventNames[i]) ), pDocSh, true );
+        std::unique_ptr<SvxMacro> pMacro = SfxEventConfiguration::ConvertToMacro( xEvents->getByName( OUString::createFromAscii(aEventNames[i]) ), pDocSh );
         if ( pMacro )
         {
             aDocTable.Insert( aBodyEventTable[i].nEvent, *pMacro );
-            delete pMacro;
         }
     }
 

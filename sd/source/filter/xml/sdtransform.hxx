@@ -22,7 +22,9 @@
 
 #include <sal/config.h>
 
-void TransformOOo2xDocument( SdDrawDocument* pDocument );
+#include <drawdoc.hxx>
+
+void TransformOOo2xDocument(SdDrawDocument* pDocument);
 
 #endif
 

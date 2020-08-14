@@ -16,22 +16,21 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "svx/sidebar/SelectionChangeHandler.hxx"
-#include "svx/sidebar/SelectionAnalyzer.hxx"
-#include "svx/sidebar/ContextChangeEventMultiplexer.hxx"
-#include "svx/svdmrkv.hxx"
+#include <svx/sidebar/SelectionChangeHandler.hxx>
+#include <svx/sidebar/ContextChangeEventMultiplexer.hxx>
+
+#include <com/sun/star/view/XSelectionSupplier.hpp>
 
 #include <vcl/EnumContext.hxx>
-#include <sfx2/shell.hxx>
 
 
 using namespace css;
 using namespace css::uno;
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
 SelectionChangeHandler::SelectionChangeHandler (
-    const std::function<rtl::OUString()>& rSelectionChangeCallback,
+    const std::function<OUString()>& rSelectionChangeCallback,
     const Reference<css::frame::XController>& rxController,
     const vcl::EnumContext::Context eDefaultContext)
     : SelectionChangeHandlerInterfaceBase(m_aMutex),
@@ -97,6 +96,6 @@ void SelectionChangeHandler::Disconnect()
 }
 
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

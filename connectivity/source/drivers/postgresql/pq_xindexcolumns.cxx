@@ -34,14 +34,13 @@
  *
  ************************************************************************/
 
+#include <sal/log.hxx>
 #include <vector>
 
-#include <rtl/ustrbuf.hxx>
-#include <rtl/strbuf.hxx>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 
 #include "pq_xcolumns.hxx"
 #include "pq_xindexcolumns.hxx"
@@ -58,12 +57,8 @@ using com::sun::star::uno::makeAny;
 using com::sun::star::uno::UNO_QUERY;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::Sequence;
-using com::sun::star::uno::RuntimeException;
-
-using com::sun::star::container::NoSuchElementException;
 
 using com::sun::star::sdbc::XRow;
-using com::sun::star::sdbc::XStatement;
 using com::sun::star::sdbc::XResultSet;
 using com::sun::star::sdbc::XDatabaseMetaData;
 using com::sun::star::sdbc::SQLException;
@@ -104,13 +99,7 @@ void IndexColumns::refresh()
 {
     try
     {
-        if (isLog(m_pSettings, LogLevel::Info))
-        {
-            OStringBuffer buf;
-            buf.append( "sdbcx.IndexColumns get refreshed for index " );
-            buf.append( OUStringToOString( m_indexName, ConnectionSettings::encoding ) );
-            log( m_pSettings, LogLevel::Info, buf.makeStringAndClear().getStr() );
-        }
+        SAL_INFO("connectivity.postgresql", "sdbcx.IndexColumns get refreshed for index " << m_indexName);
 
         osl::MutexGuard guard( m_xMutex->GetMutex() );
 
@@ -147,7 +136,9 @@ void IndexColumns::refresh()
     }
     catch ( css::sdbc::SQLException & e )
     {
-        throw RuntimeException( e.Message , e.Context );
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException( e.Message,
+                        e.Context, anyEx );
     }
 
     fire( RefreshedBroadcaster( *this ) );

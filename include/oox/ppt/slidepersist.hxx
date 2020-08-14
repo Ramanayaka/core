@@ -20,7 +20,7 @@
 #ifndef INCLUDED_OOX_PPT_SLIDEPERSIST_HXX
 #define INCLUDED_OOX_PPT_SLIDEPERSIST_HXX
 
-#include <list>
+#include <vector>
 #include <map>
 #include <memory>
 
@@ -35,15 +35,15 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace animations { class XAnimationNode; }
     namespace drawing { class XDrawPage; }
-} } }
+}
 
-namespace oox { namespace core { class XmlFilterBase; } }
-namespace oox { namespace vml { class Drawing; } }
+namespace oox::core { class XmlFilterBase; }
+namespace oox::vml { class Drawing; }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
 enum ShapeLocation
 {
@@ -67,6 +67,7 @@ public:
                     oox::drawingml::ShapePtr const & pShapesPtr, const ::oox::drawingml::TextListStylePtr & );
     ~SlidePersist();
 
+
     const css::uno::Reference< css::drawing::XDrawPage >& getPage() const { return mxPage; };
 
 #if OSL_DEBUG_LEVEL > 0
@@ -85,8 +86,6 @@ public:
     void setTheme( const oox::drawingml::ThemePtr& rThemePtr ){ mpThemePtr = rThemePtr; }
     const oox::drawingml::ThemePtr& getTheme() const { return mpThemePtr; }
 
-    const oox::drawingml::ClrSchemePtr& getClrScheme() const { return mpClrSchemePtr; }
-
     void setClrMap( const oox::drawingml::ClrMapPtr pClrMapPtr ){ mpClrMapPtr = pClrMapPtr; }
     const oox::drawingml::ClrMapPtr& getClrMap() const { return mpClrMapPtr; }
 
@@ -98,7 +97,7 @@ public:
     bool isNotesPage() const { return mbNotes; }
 
     void setLayoutValueToken( sal_Int32 nLayoutValueToken ) { mnLayoutValueToken = nLayoutValueToken; }
-    short getLayoutFromValueToken();
+    sal_Int16 getLayoutFromValueToken() const;
 
 
     const oox::drawingml::TextListStylePtr& getDefaultTextStyle() const { return maDefaultTextStylePtr; }
@@ -107,9 +106,9 @@ public:
     const oox::drawingml::TextListStylePtr& getNotesTextStyle() const { return maNotesTextStylePtr; }
     const oox::drawingml::TextListStylePtr& getOtherTextStyle() const { return maOtherTextStylePtr; }
 
-    const oox::drawingml::ShapePtr& getShapes() { return maShapesPtr; }
+    const oox::drawingml::ShapePtr& getShapes() const { return maShapesPtr; }
     void hideShapesAsMasterShapes();
-    ::std::list< std::shared_ptr< TimeNode > >& getTimeNodeList() { return maTimeNodeList; }
+    ::std::vector< std::shared_ptr< TimeNode > >& getTimeNodeList() { return maTimeNodeList; }
     oox::ppt::HeaderFooter& getHeaderFooter(){ return maHeaderFooter; };
 
     oox::vml::Drawing* getDrawing() { return mpDrawingPtr.get(); }
@@ -119,6 +118,7 @@ public:
     void applyTextStyles( const oox::core::XmlFilterBase& rFilterBase );
 
     std::map< OUString, css::uno::Reference< css::animations::XAnimationNode > >& getAnimNodesMap() { return maAnimNodesMap; };
+    css::uno::Reference<css::animations::XAnimationNode> getAnimationNode(const OUString& sId) const;
     ::oox::drawingml::ShapePtr getShape( const OUString & id ) { return maShapeMap[ id ]; }
     ::oox::drawingml::ShapeIdMap& getShapeMap() { return maShapeMap; }
 
@@ -131,14 +131,13 @@ private:
     std::shared_ptr< oox::vml::Drawing >                                    mpDrawingPtr;
     css::uno::Reference< css::drawing::XDrawPage >                          mxPage;
     oox::drawingml::ThemePtr                                                mpThemePtr;         // the theme that is used
-    oox::drawingml::ClrSchemePtr                                            mpClrSchemePtr;     // the local color scheme (if any)
     oox::drawingml::ClrMapPtr                                               mpClrMapPtr;        // color mapping (if any)
     SlidePersistPtr                                                         mpMasterPagePtr;
 
     oox::drawingml::ShapePtr                                                maShapesPtr;
     oox::drawingml::Color                                                   maBackgroundColor;
     oox::drawingml::FillPropertiesPtr                                       mpBackgroundPropertiesPtr;
-    ::std::list< std::shared_ptr< TimeNode > >                              maTimeNodeList;
+    ::std::vector< std::shared_ptr< TimeNode > >                            maTimeNodeList;
 
     oox::ppt::HeaderFooter                                                  maHeaderFooter;
     sal_Int32                                                               mnLayoutValueToken;
@@ -159,7 +158,7 @@ private:
     CommentAuthorList                                                       maCommentAuthors;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_PPT_SLIDEPERSIST_HXX
 

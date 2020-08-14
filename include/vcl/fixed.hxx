@@ -20,15 +20,9 @@
 #ifndef INCLUDED_VCL_FIXED_HXX
 #define INCLUDED_VCL_FIXED_HXX
 
-#include <tools/solar.h>
 #include <vcl/dllapi.h>
-#include <vcl/bitmap.hxx>
 #include <vcl/ctrl.hxx>
-#include <vcl/edit.hxx>
 #include <vcl/image.hxx>
-
-class UserDrawEvent;
-
 
 class VCL_DLLPUBLIC FixedText : public Control
 {
@@ -62,7 +56,7 @@ public:
     virtual void    ApplySettings(vcl::RenderContext& rRenderContext) override;
 
     virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-    virtual void    Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize, DrawFlags nFlags ) override;
+    virtual void    Draw( OutputDevice* pDev, const Point& rPos, DrawFlags nFlags ) override;
     virtual void    Resize() override;
     virtual void    StateChanged( StateChangedType nType ) override;
     virtual void    DataChanged( const DataChangedEvent& rDCEvt ) override;
@@ -77,16 +71,6 @@ public:
     void            set_mnemonic_widget(vcl::Window *pWindow);
     vcl::Window*    get_mnemonic_widget() const { return m_pMnemonicWindow; }
 };
-
-class VCL_DLLPUBLIC SelectableFixedText : public Edit
-{
-public:
-    explicit SelectableFixedText( vcl::Window* pParent, WinBits nStyle );
-
-    virtual void    LoseFocus() override;
-    virtual void    ApplySettings(vcl::RenderContext&) override;
-};
-
 
 class VCL_DLLPUBLIC FixedLine : public Control
 {
@@ -110,40 +94,13 @@ public:
     virtual void    ApplySettings(vcl::RenderContext&) override;
 
     virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-    virtual void    Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize, DrawFlags nFlags ) override;
+    virtual void    Draw( OutputDevice* pDev, const Point& rPos, DrawFlags nFlags ) override;
     virtual void    Resize() override;
     virtual void    StateChanged( StateChangedType nType ) override;
     virtual void    DataChanged( const DataChangedEvent& rDCEvt ) override;
 
     virtual Size    GetOptimalSize() const override;
 };
-
-class VCL_DLLPUBLIC FixedBitmap : public Control
-{
-private:
-    Bitmap          maBitmap;
-
-    using Control::ImplInitSettings;
-    using Window::ImplInit;
-    SAL_DLLPRIVATE void    ImplInit( vcl::Window* pParent, WinBits nStyle );
-    SAL_DLLPRIVATE static WinBits ImplInitStyle( WinBits nStyle );
-    SAL_DLLPRIVATE void    ImplDraw( OutputDevice* pDev, const Point& rPos, const Size& rSize );
-
-public:
-    explicit        FixedBitmap( vcl::Window* pParent, WinBits nStyle = 0 );
-
-    virtual void    ApplySettings(vcl::RenderContext&) override;
-
-    virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-    virtual void    Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize, DrawFlags nFlags ) override;
-    virtual void    Resize() override;
-    virtual void    StateChanged( StateChangedType nType ) override;
-    virtual void    DataChanged( const DataChangedEvent& rDCEvt ) override;
-
-    void            SetBitmap( const Bitmap& rBitmap );
-    using OutputDevice::GetBitmap;
-};
-
 
 class VCL_DLLPUBLIC FixedImage : public Control
 {
@@ -157,7 +114,7 @@ private:
     SAL_DLLPRIVATE static WinBits ImplInitStyle( WinBits nStyle );
 
 protected:
-    SAL_DLLPRIVATE void    ImplDraw( OutputDevice* pDev, DrawFlags nDrawFlags,
+    SAL_DLLPRIVATE void    ImplDraw( OutputDevice* pDev,
                               const Point& rPos, const Size& rSize );
 public:
     explicit        FixedImage( vcl::Window* pParent, WinBits nStyle = 0 );
@@ -165,7 +122,7 @@ public:
     virtual void    ApplySettings(vcl::RenderContext&) override;
 
     virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-    virtual void    Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize, DrawFlags nFlags ) override;
+    virtual void    Draw( OutputDevice* pDev, const Point& rPos, DrawFlags nFlags ) override;
     virtual void    Resize() override;
     virtual void    StateChanged( StateChangedType nType ) override;
     virtual void    DataChanged( const DataChangedEvent& rDCEvt ) override;
@@ -174,7 +131,7 @@ public:
     void            SetImage( const Image& rImage );
     const Image&    GetImage() const { return maImage; }
 
-    bool            SetModeImage( const Image& rImage );
+    void            SetModeImage( const Image& rImage );
     const Image&    GetModeImage( ) const { return maImage;}
     virtual bool    set_property(const OString &rKey, const OUString &rValue) override;
 

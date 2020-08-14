@@ -43,6 +43,8 @@ static void lcl_setTabStops( const uno::Reference< beans::XPropertySet >& xParaP
     xParaProps->setPropertyValue("ParaTabStops", uno::makeAny( aSeq ) );
 }
 
+namespace {
+
 class TabStopsEnumWrapper : public EnumerationHelper_BASE
 {
     uno::Reference< container::XIndexAccess > mxIndexAccess;
@@ -77,9 +79,8 @@ private:
 
 public:
     /// @throws css::uno::RuntimeException
-    TabStopCollectionHelper( const css::uno::Reference< ov::XHelperInterface >& xParent, const css::uno::Reference< css::uno::XComponentContext > & xContext, const css::uno::Reference< css::beans::XPropertySet >& xParaProps ): mxParent( xParent ), mxContext( xContext )
+    TabStopCollectionHelper( const css::uno::Reference< ov::XHelperInterface >& xParent, const css::uno::Reference< css::uno::XComponentContext > & xContext, const css::uno::Reference< css::beans::XPropertySet >& xParaProps ): mxParent( xParent ), mxContext( xContext ), mnTabStops(lcl_getTabStops( xParaProps ).getLength())
     {
-        mnTabStops = lcl_getTabStops( xParaProps ).getLength();
     }
 
     virtual sal_Int32 SAL_CALL getCount(  ) override
@@ -107,6 +108,8 @@ public:
         return new TabStopsEnumWrapper( this );
     }
 };
+
+}
 
 SwVbaTabStops::SwVbaTabStops( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< beans::XPropertySet >& xParaProps ) : SwVbaTabStops_BASE( xParent, xContext, uno::Reference< container::XIndexAccess >( new TabStopCollectionHelper( xParent, xContext, xParaProps ) ) ), mxParaProps( xParaProps )
 {
@@ -199,28 +202,24 @@ uno::Reference< word::XTabStop > SAL_CALL SwVbaTabStops::Add( float Position, co
     aTab.FillChar = cLeader;
 
     uno::Sequence< style::TabStop > aOldTabs = lcl_getTabStops( mxParaProps );
-    bool bOverWriter = false;
 
-    sal_Int32 nTabs = aOldTabs.getLength();
-    uno::Sequence< style::TabStop > aNewTabs( nTabs + 1 );
-
-    style::TabStop* pOldTab = aOldTabs.getArray();
-    style::TabStop* pNewTab = aNewTabs.getArray();
-    pNewTab[0] = aTab;
-    for( sal_Int32 nIndex = 0; nIndex < nTabs && !bOverWriter; nIndex++ )
-    {
-        if( pOldTab[nIndex].Position == nPosition )
-        {
-            bOverWriter = true;
-            pOldTab[nIndex] = aTab;
-            break;
-        }
-        pNewTab[ nIndex+1 ] = pOldTab[ nIndex ];
-    }
+    style::TabStop* pOldTab = std::find_if(aOldTabs.begin(), aOldTabs.end(),
+        [nPosition](const style::TabStop& rTab) { return rTab.Position == nPosition; });
+    bool bOverWriter = pOldTab != aOldTabs.end();
     if( bOverWriter )
+    {
+        *pOldTab = aTab;
         lcl_setTabStops( mxParaProps, aOldTabs );
+    }
     else
+    {
+        sal_Int32 nTabs = aOldTabs.getLength();
+        uno::Sequence< style::TabStop > aNewTabs( nTabs + 1 );
+
+        aNewTabs[0] = aTab;
+        std::copy(aOldTabs.begin(), aOldTabs.end(), std::next(aNewTabs.begin()));
         lcl_setTabStops( mxParaProps, aNewTabs );
+    }
 
     return uno::Reference< word::XTabStop >( new SwVbaTabStop( this, mxContext ) );
 }
@@ -252,18 +251,16 @@ SwVbaTabStops::createCollectionObject( const css::uno::Any& aSource )
 OUString
 SwVbaTabStops::getServiceImplName()
 {
-    return OUString("SwVbaTabStops");
+    return "SwVbaTabStops";
 }
 
 css::uno::Sequence<OUString>
 SwVbaTabStops::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.TabStops";
-    }
+        "ooo.vba.word.TabStops"
+    };
     return sNames;
 }
 

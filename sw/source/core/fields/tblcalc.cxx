@@ -21,15 +21,13 @@
 
 #include <o3tl/any.hxx>
 
+#include <calc.hxx>
 #include <calbck.hxx>
-#include <cntfrm.hxx>
 #include <doc.hxx>
-#include <pam.hxx>
 #include <ndtxt.hxx>
 #include <fmtfld.hxx>
 #include <txtfld.hxx>
 #include <expfld.hxx>
-#include <docfld.hxx>
 #include <unofldmid.h>
 
 using namespace ::com::sun::star;
@@ -38,9 +36,9 @@ SwTableFieldType::SwTableFieldType(SwDoc* pDocPtr)
     : SwValueFieldType( pDocPtr, SwFieldIds::Table )
 {}
 
-SwFieldType* SwTableFieldType::Copy() const
+std::unique_ptr<SwFieldType> SwTableFieldType::Copy() const
 {
-    return new SwTableFieldType(GetDoc());
+    return std::make_unique<SwTableFieldType>(GetDoc());
 }
 
 void SwTableField::CalcField( SwTableCalcPara& rCalcPara )
@@ -58,20 +56,20 @@ void SwTableField::CalcField( SwTableCalcPara& rCalcPara )
 SwTableField::SwTableField( SwTableFieldType* pInitType, const OUString& rFormel,
                         sal_uInt16 nType, sal_uLong nFormat )
     : SwValueField( pInitType, nFormat ), SwTableFormula( rFormel ),
-    nSubType(nType)
+    m_nSubType(nType)
 {
-    sExpand = "0";
+    m_sExpand = "0";
 }
 
-SwField* SwTableField::Copy() const
+std::unique_ptr<SwField> SwTableField::Copy() const
 {
-    SwTableField* pTmp = new SwTableField( static_cast<SwTableFieldType*>(GetTyp()),
-                                        SwTableFormula::GetFormula(), nSubType, GetFormat() );
-    pTmp->sExpand     = sExpand;
+    std::unique_ptr<SwTableField> pTmp(new SwTableField( static_cast<SwTableFieldType*>(GetTyp()),
+                                        SwTableFormula::GetFormula(), m_nSubType, GetFormat() ));
+    pTmp->m_sExpand     = m_sExpand;
     pTmp->SwValueField::SetValue(GetValue());
     pTmp->SwTableFormula::operator=( *this );
     pTmp->SetAutomaticLanguage(IsAutomaticLanguage());
-    return pTmp;
+    return std::unique_ptr<SwField>(pTmp.release());
 }
 
 OUString SwTableField::GetFieldName() const
@@ -82,14 +80,8 @@ OUString SwTableField::GetFieldName() const
 /// search TextNode containing this field
 const SwNode* SwTableField::GetNodeOfFormula() const
 {
-    if( !GetTyp()->HasWriterListeners() )
-        return nullptr;
-
-    SwIterator<SwFormatField,SwFieldType> aIter( *GetTyp() );
-    for( SwFormatField* pFormatField = aIter.First(); pFormatField; pFormatField = aIter.Next() )
-            if( this == pFormatField->GetField() )
-                return &pFormatField->GetTextField()->GetTextNode();
-    return nullptr;
+    auto pFormat = GetTyp()->FindFormatForField(this);
+    return pFormat ? &pFormat->GetTextField()->GetTextNode() : nullptr;
 }
 
 OUString SwTableField::GetCommand()
@@ -97,7 +89,7 @@ OUString SwTableField::GetCommand()
     if (EXTRNL_NAME != GetNameType())
     {
         SwNode const*const pNd = GetNodeOfFormula();
-        SwTableNode const*const pTableNd = (pNd) ? pNd->FindTableNode() : nullptr;
+        SwTableNode const*const pTableNd = pNd ? pNd->FindTableNode() : nullptr;
         if (pTableNd)
         {
             PtrToBoxNm( &pTableNd->GetTable() );
@@ -108,36 +100,36 @@ OUString SwTableField::GetCommand()
         : OUString();
 }
 
-OUString SwTableField::Expand() const
+OUString SwTableField::ExpandImpl(SwRootFrame const*const) const
 {
-    if (nSubType & nsSwExtendedSubType::SUB_CMD)
+    if (m_nSubType & nsSwExtendedSubType::SUB_CMD)
     {
         return const_cast<SwTableField *>(this)->GetCommand();
     }
 
-    if(nSubType & nsSwGetSetExpType::GSE_STRING)
+    if(m_nSubType & nsSwGetSetExpType::GSE_STRING)
     {
         // it is a string
-        return sExpand.copy(1, sExpand.getLength()-2);
+        return m_sExpand.copy(1, m_sExpand.getLength()-2);
     }
 
-    return sExpand;
+    return m_sExpand;
 }
 
 sal_uInt16 SwTableField::GetSubType() const
 {
-    return nSubType;
+    return m_nSubType;
 }
 
 void SwTableField::SetSubType(sal_uInt16 nType)
 {
-    nSubType = nType;
+    m_nSubType = nType;
 }
 
 void SwTableField::SetValue( const double& rVal )
 {
     SwValueField::SetValue(rVal);
-    sExpand = static_cast<SwValueFieldType*>(GetTyp())->ExpandValue(rVal, GetFormat(), GetLanguage());
+    m_sExpand = static_cast<SwValueFieldType*>(GetTyp())->ExpandValue(rVal, GetFormat(), GetLanguage());
 }
 
 OUString SwTableField::GetPar2() const
@@ -157,21 +149,21 @@ bool SwTableField::QueryValue( uno::Any& rAny, sal_uInt16 nWhichId ) const
     {
     case FIELD_PROP_PAR2:
         {
-            sal_uInt16 nOldSubType = nSubType;
+            sal_uInt16 nOldSubType = m_nSubType;
             SwTableField* pThis = const_cast<SwTableField*>(this);
-            pThis->nSubType |= nsSwExtendedSubType::SUB_CMD;
-            rAny <<= Expand();
-            pThis->nSubType = nOldSubType;
+            pThis->m_nSubType |= nsSwExtendedSubType::SUB_CMD;
+            rAny <<= ExpandImpl(nullptr);
+            pThis->m_nSubType = nOldSubType;
         }
         break;
     case FIELD_PROP_BOOL1:
-        rAny <<= 0 != (nsSwExtendedSubType::SUB_CMD & nSubType);
+        rAny <<= 0 != (nsSwExtendedSubType::SUB_CMD & m_nSubType);
         break;
     case FIELD_PROP_PAR1:
-        rAny <<= sExpand;
+        rAny <<= m_sExpand;
         break;
     case FIELD_PROP_FORMAT:
-        rAny <<= (sal_Int32)GetFormat();
+        rAny <<= static_cast<sal_Int32>(GetFormat());
         break;
     default:
         bRet = false;
@@ -193,9 +185,9 @@ bool SwTableField::PutValue( const uno::Any& rAny, sal_uInt16 nWhichId )
         break;
     case FIELD_PROP_BOOL1:
         if(*o3tl::doAccess<bool>(rAny))
-            nSubType = nsSwGetSetExpType::GSE_FORMULA|nsSwExtendedSubType::SUB_CMD;
+            m_nSubType = nsSwGetSetExpType::GSE_FORMULA|nsSwExtendedSubType::SUB_CMD;
         else
-            nSubType = nsSwGetSetExpType::GSE_FORMULA;
+            m_nSubType = nsSwGetSetExpType::GSE_FORMULA;
         break;
     case FIELD_PROP_PAR1:
         {

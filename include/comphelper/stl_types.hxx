@@ -21,21 +21,19 @@
 
 #include <sal/config.h>
 
-#include <math.h>
-#include <functional>
 #include <memory>
 
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
+
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 namespace comphelper
 {
 
 // comparison functors
 
-struct UStringMixLess : public ::std::binary_function< OUString, OUString, bool>
+struct UStringMixLess
 {
     bool m_bCaseSensitive;
 public:
@@ -43,41 +41,29 @@ public:
     bool operator() (const OUString& x, const OUString& y) const
     {
         if (m_bCaseSensitive)
-            return rtl_ustr_compare(x.getStr(), y.getStr()) < 0;
+            return x.compareTo(y) < 0;
         else
-            return rtl_ustr_compareIgnoreAsciiCase(x.getStr(), y.getStr()) < 0;
+            return x.compareToIgnoreAsciiCase(y) < 0;
     }
 
     bool isCaseSensitive() const {return m_bCaseSensitive;}
 };
 
-class UStringMixEqual: public std::binary_function<OUString, OUString, bool>
+class UStringMixEqual
 {
-    bool m_bCaseSensitive;
+    bool const m_bCaseSensitive;
 
 public:
     UStringMixEqual(bool bCaseSensitive = true):m_bCaseSensitive(bCaseSensitive){}
     bool operator() (const OUString& lhs, const OUString& rhs) const
     {
-        return m_bCaseSensitive ? lhs.equals( rhs ) : lhs.equalsIgnoreAsciiCase( rhs );
+        return m_bCaseSensitive ? lhs == rhs : lhs.equalsIgnoreAsciiCase( rhs );
     }
     bool isCaseSensitive() const {return m_bCaseSensitive;}
 };
 
-class TPropertyValueEqualFunctor : public ::std::binary_function< css::beans::PropertyValue,OUString,bool>
-{
-public:
-    TPropertyValueEqualFunctor()
-    {}
-    bool operator() (const css::beans::PropertyValue& lhs, const OUString& rhs) const
-    {
-        return !!(lhs.Name == rhs);
-    }
-};
-
 /// by-value less functor for std::set<std::unique_ptr<T>>
 template<class T> struct UniquePtrValueLess
-    : public ::std::binary_function<std::unique_ptr<T>, std::unique_ptr<T>, bool>
 {
         bool operator()(std::unique_ptr<T> const& lhs,
                         std::unique_ptr<T> const& rhs) const
@@ -111,34 +97,15 @@ bool ContainerUniquePtrEquals(
 };
 
 
-/** STL-compliant structure for comparing Reference&lt; &lt;iface&gt; &gt; instances
-*/
-template < class IAFCE >
-struct OInterfaceCompare
-    :public ::std::binary_function  <   css::uno::Reference< IAFCE >
-                                    ,   css::uno::Reference< IAFCE >
-                                    ,   bool
-                                    >
-{
-    bool operator() (const css::uno::Reference< IAFCE >& lhs, const css::uno::Reference< IAFCE >& rhs) const
-    {
-        return lhs.get() < rhs.get();
-            // this does not make any sense if you see the semantics of the pointer returned by get:
-            // It's a pointer to a point in memory where an interface implementation lies.
-            // But for our purpose (provide a reliable less-operator which can be used with the STL), this is
-            // sufficient ....
-    }
-};
-
 template <class Tp, class Arg>
-class mem_fun1_t : public ::std::binary_function<Tp*,Arg,void>
+class mem_fun1_t
 {
     typedef void (Tp::*_fun_type)(Arg);
 public:
     explicit mem_fun1_t(_fun_type pf) : M_f(pf) {}
     void operator()(Tp* p, Arg x) const { (p->*M_f)(x); }
 private:
-    _fun_type M_f;
+    _fun_type const M_f;
 };
 
 template <class Tp, class Arg>
@@ -149,8 +116,7 @@ inline mem_fun1_t<Tp,Arg> mem_fun(void (Tp::*f)(Arg))
 
 /** output iterator that appends OUStrings into an OUStringBuffer.
  */
-class OUStringBufferAppender :
-    public ::std::iterator< ::std::output_iterator_tag, void, void, void, void>
+class OUStringBufferAppender
 {
 public:
     typedef OUStringBufferAppender Self;
@@ -161,21 +127,17 @@ public:
     typedef size_t difference_type;
 
     OUStringBufferAppender(OUStringBuffer & i_rBuffer)
-        : m_rBuffer(i_rBuffer) { }
-    Self & operator=(Self const &)
-    {   // MSVC 2013 with non-debug runtime requires this in xutility.hpp:289
-        return *this;
-    }
+        : m_rBuffer(&i_rBuffer) { }
     Self & operator=(OUString const & i_rStr)
     {
-        m_rBuffer.append( i_rStr );
+        m_rBuffer->append( i_rStr );
         return *this;
     }
     Self & operator*() { return *this; } // so operator= works
     Self & operator++() { return *this; }
 
 private:
-    OUStringBuffer & m_rBuffer;
+    OUStringBuffer * m_rBuffer;
 };
 
 /** algorithm similar to std::copy, but inserts a separator between elements.

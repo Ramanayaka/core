@@ -7,13 +7,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-from __future__ import print_function
-
+import pathlib
 import subprocess
 import time
 import uuid
 import argparse
 import os
+import shutil
+import urllib.parse
+import urllib.request
 
 try:
     import pyuno
@@ -71,7 +73,7 @@ class OfficeConnection(object):
         except KeyError:
             self.verbose = False
         try:
-            prog = self.args["programm"]
+            prog = self.args["program"]
         except KeyError:
             prog = os.getenv("SOFFICE_BIN")
         if not (prog):
@@ -138,10 +140,8 @@ class OfficeConnection(object):
             self.xContext = None
             self.socket = None
             self.soffice = None
-# WTF 255 return value?
-#            if ret != 0:
-#                raise Exception("Exit status indicates failure: " + str(ret))
-#            return ret
+            if ret != 0:
+                raise Exception("Exit status indicates failure: " + str(ret))
 
     def getContext(self):
         return self.xContext
@@ -195,72 +195,36 @@ class UnoInProcess:
         if not(havePonies):
             pyuno.private_initTestEnvironment()
             havePonies = True
+
     def openEmptyWriterDoc(self):
-        assert(self.xContext)
-        smgr = self.getContext().ServiceManager
-        desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", self.getContext())
-        props = [("Hidden", True), ("ReadOnly", False)]
-        loadProps = tuple([mkPropertyValue(name, value) for (name, value) in props])
-        self.xDoc = desktop.loadComponentFromURL("private:factory/swriter", "_blank", 0, loadProps)
-        assert(self.xDoc)
-        return self.xDoc
+        return self.openEmptyDoc("private:factory/swriter")
 
     def openEmptyCalcDoc(self):
-        self.xDoc = self.openEmptyDoc("private:factory/scalc")
-        return self.xDoc
+        return self.openEmptyDoc("private:factory/scalc")
 
     def openEmptyDoc(self, url, bHidden = True, bReadOnly = False):
-        assert(self.xContext)
-        smgr = self.getContext().ServiceManager
-        desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", self.getContext())
         props = [("Hidden", bHidden), ("ReadOnly", bReadOnly)]
-        loadProps = tuple([mkPropertyValue(name, value) for (name, value) in props])
-        self.xDoc = desktop.loadComponentFromURL(url, "_blank", 0, loadProps)
-        assert(self.xDoc)
-        return self.xDoc
+        return self.__openDocFromURL(url, props)
 
-    def openWriterTemplateDoc(self, file):
+    def openTemplateFromTDOC(self, file):
+        return self.openDocFromTDOC(file, True)
+
+    def openDocFromTDOC(self, file, asTemplate = False):
+        path = makeCopyFromTDOC(file)
+        return self.openDocFromAbsolutePath(path, asTemplate)
+
+    def openDocFromAbsolutePath(self, file, asTemplate = False):
+        return self.openDocFromURL(pathlib.Path(file).as_uri(), asTemplate)
+
+    def openDocFromURL(self, url, asTemplate = False):
+        props = [("Hidden", True), ("ReadOnly", False), ("AsTemplate", asTemplate)]
+        return self.__openDocFromURL(url, props)
+
+    def __openDocFromURL(self, url, props):
         assert(self.xContext)
         smgr = self.getContext().ServiceManager
         desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", self.getContext())
-        props = [("Hidden", True), ("ReadOnly", False), ("AsTemplate", True)]
         loadProps = tuple([mkPropertyValue(name, value) for (name, value) in props])
-        path = os.getenv("TDOC")
-        if os.name == "nt":
-            # do not quote drive letter - it must be "X:"
-            url = "file:///" + path + "/" + quote(file)
-        else:
-            url = "file://" + quote(path) + "/" + quote(file)
-        self.xDoc = desktop.loadComponentFromURL(url, "_blank", 0, loadProps)
-        assert(self.xDoc)
-        return self.xDoc
-
-    def openBaseDoc(self, file):
-        assert(self.xContext)
-        smgr = self.getContext().ServiceManager
-        desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", self.getContext())
-        props = [("Hidden", True), ("ReadOnly", False), ("AsTemplate", False)]
-        loadProps = tuple([mkPropertyValue(name, value) for (name, value) in props])
-        path = os.getenv("TDOC")
-        if os.name == "nt":
-            #do not quote drive letter - it must be "X:"
-            url = "file:///" + path + "/" + quote(file)
-        else:
-            url = "file://" + quote(path) + "/" + quote(file)
-        self.xDoc = desktop.loadComponentFromURL(url, "_blank", 0, loadProps)
-        assert(self.xDoc)
-        return self.xDoc
-
-    def openDoc(self, file):
-        assert(self.xContext)
-        smgr = self.getContext().ServiceManager
-        desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", self.getContext())
-        props = [("Hidden", True), ("ReadOnly", False), ("AsTemplate", False)]
-        loadProps = tuple([mkPropertyValue(name, value) for (name, value) in props])
-        if os.name == "nt":
-            url = "file:///" + file
-        else:
-            url = "file://" + file
         self.xDoc = desktop.loadComponentFromURL(url, "_blank", 0, loadProps)
         assert(self.xDoc)
         return self.xDoc
@@ -278,7 +242,12 @@ class UnoInProcess:
     def postTest(self):
         assert(self.xContext)
     def tearDown(self):
-        self.xDoc.close(True)
+        if hasattr(self, 'xDoc'):
+            self.xDoc.close(True)
+            # HACK in case self.xDoc holds a UNO proxy to an SwXTextDocument (whose dtor calls
+            # Application::GetSolarMutex via sw::UnoImplPtrDeleter), which would potentially only be
+            # garbage-collected after VCL has already been deinitialized:
+            self.xDoc = None
 
 def simpleInvoke(connection, test):
     try:
@@ -311,6 +280,28 @@ def runConnectionTests(connection, invoker, tests):
             invoker(connection, test)
     finally:
         connection.tearDown()
+
+def makeCopyFromTDOC(file):
+    src = os.getenv("TDOC")
+    assert(src is not None)
+    src = os.path.join(src, file)
+    dst = os.getenv("TestUserDir")
+    assert(dst is not None)
+    uri = urllib.parse.urlparse(dst)
+    assert(uri.scheme.casefold() == "file")
+    assert(uri.netloc == "" or uri.netloc.casefold() == "localhost")
+    assert(uri.params == "")
+    assert(uri.query == "")
+    assert(uri.fragment == "")
+    dst = urllib.request.url2pathname(uri.path)
+    dst = os.path.join(dst, "tmp", file)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    try:
+        os.remove(dst)
+    except FileNotFoundError:
+        pass
+    shutil.copyfile(src, dst)
+    return dst
 
 ### tests ###
 

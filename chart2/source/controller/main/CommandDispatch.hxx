@@ -19,16 +19,16 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_MAIN_COMMANDDISPATCH_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_MAIN_COMMANDDISPATCH_HXX
 
-#include "MutexContainer.hxx"
+#include <MutexContainer.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/interfacecontainer2.hxx>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
 
-#include <vector>
 #include <map>
+
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::util { class XURLTransformer; }
 
 namespace chart
 {
@@ -117,11 +117,10 @@ protected:
     virtual void SAL_CALL disposing(
         const css::lang::EventObject& Source ) override;
 
-protected:
+private:
     css::uno::Reference< css::uno::XComponentContext > m_xContext;
     css::uno::Reference< css::util::XURLTransformer >  m_xURLTransformer;
 
-private:
     typedef std::map< OUString, ::comphelper::OInterfaceContainerHelper2* >
         tListenerMap;
 

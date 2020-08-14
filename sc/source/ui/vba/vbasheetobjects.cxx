@@ -32,6 +32,7 @@
 #include <com/sun/star/form/XFormsSupplier.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include "vbasheetobject.hxx"
 #include <cppuhelper/implbase.hxx>
 
@@ -41,7 +42,7 @@ using namespace ::ooo::vba;
 namespace {
 
 template< typename Type >
-inline bool lclGetProperty( Type& orValue, const uno::Reference< beans::XPropertySet >& rxPropSet, const OUString& rPropName )
+bool lclGetProperty( Type& orValue, const uno::Reference< beans::XPropertySet >& rxPropSet, const OUString& rPropName )
 {
     try
     {
@@ -57,7 +58,7 @@ inline bool lclGetProperty( Type& orValue, const uno::Reference< beans::XPropert
 
     @throws uno::RuntimeException
 */
-inline double lclPointsToHmm( const uno::Any& rPoints )
+double lclPointsToHmm( const uno::Any& rPoints )
 {
     return PointsToHmm( ::rtl::math::approxFloor( rPoints.get< double >() / 0.75 ) * 0.75 );
 }
@@ -222,9 +223,10 @@ uno::Any ScVbaObjectContainer::createCollectionObject( const uno::Any& rSource )
 
 uno::Any ScVbaObjectContainer::getItemByStringIndex( const OUString& rIndex )
 {
-    for( ShapeVector::iterator aIt = maShapes.begin(), aEnd = maShapes.end(); aIt != aEnd; ++aIt )
-        if( rIndex == implGetShapeName( *aIt ) )
-            return createCollectionObject( uno::Any( *aIt ) );
+    auto aIt = std::find_if(maShapes.begin(), maShapes.end(),
+        [&rIndex, this](const ShapeVector::value_type& rxShape) { return rIndex == implGetShapeName( rxShape ); });
+    if (aIt != maShapes.end())
+        return createCollectionObject( uno::Any( *aIt ) );
     throw uno::RuntimeException();
 }
 
@@ -266,6 +268,8 @@ void ScVbaObjectContainer::implOnShapeCreated( const uno::Reference< drawing::XS
 {
 }
 
+namespace {
+
 class ScVbaObjectEnumeration : public SimpleEnumerationBase
 {
 public:
@@ -275,6 +279,8 @@ public:
 private:
     ScVbaObjectContainerRef mxContainer;
 };
+
+}
 
 ScVbaObjectEnumeration::ScVbaObjectEnumeration( const ScVbaObjectContainerRef& rxContainer ) :
     SimpleEnumerationBase( rxContainer.get() ),
@@ -361,6 +367,8 @@ uno::Any SAL_CALL ScVbaGraphicObjectsBase::Add( const uno::Any& rLeft, const uno
 
 // Drawing controls
 
+namespace {
+
 class ScVbaControlContainer : public ScVbaObjectContainer
 {
 public:
@@ -371,7 +379,8 @@ public:
         const uno::Reference< frame::XModel >& rxModel,
         const uno::Reference< sheet::XSpreadsheet >& rxSheet,
         const uno::Type& rVbaType,
-        const OUString& rModelServiceName );
+        const OUString& rModelServiceName,
+        sal_Int16 /* css::form::FormComponentType */ eType );
 
 protected:
     /// @throws uno::RuntimeException
@@ -386,7 +395,10 @@ protected:
 protected:
     uno::Reference< container::XIndexContainer > mxFormIC;
     OUString maModelServiceName;
+    sal_Int16 /* css::form::FormComponentType */ meType;
 };
+
+}
 
 ScVbaControlContainer::ScVbaControlContainer(
         const uno::Reference< XHelperInterface >& rxParent,
@@ -394,9 +406,11 @@ ScVbaControlContainer::ScVbaControlContainer(
         const uno::Reference< frame::XModel >& rxModel,
         const uno::Reference< sheet::XSpreadsheet >& rxSheet,
         const uno::Type& rVbaType,
-        const OUString& rModelServiceName ) :
+        const OUString& rModelServiceName,
+        sal_Int16 /* css::form::FormComponentType */ eType ) :
     ScVbaObjectContainer( rxParent, rxContext, rxModel, rxSheet, rVbaType ),
-    maModelServiceName( rModelServiceName )
+    maModelServiceName( rModelServiceName ),
+    meType( eType )
 {
 }
 
@@ -429,7 +443,7 @@ bool ScVbaControlContainer::implPickShape( const uno::Reference< drawing::XShape
         uno::Reference< beans::XPropertySet > xModelProps( xControlShape->getControl(), uno::UNO_QUERY_THROW );
         sal_Int16 nClassId = -1;
         return lclGetProperty( nClassId, xModelProps, "ClassId" ) &&
-            (nClassId == form::FormComponentType::COMMANDBUTTON) && implCheckProperties( xModelProps );
+            (nClassId == meType) && implCheckProperties( xModelProps );
     }
     catch( uno::Exception& )
     {
@@ -439,7 +453,7 @@ bool ScVbaControlContainer::implPickShape( const uno::Reference< drawing::XShape
 
 OUString ScVbaControlContainer::implGetShapeServiceName() const
 {
-    return OUString( "com.sun.star.drawing.ControlShape" );
+    return "com.sun.star.drawing.ControlShape";
 }
 
 bool ScVbaControlContainer::implCheckProperties( const uno::Reference< beans::XPropertySet >& /*rxModelProps*/ ) const
@@ -470,30 +484,43 @@ void ScVbaControlContainer::implOnShapeCreated( const uno::Reference< drawing::X
 
 // Push button
 
+namespace {
+
 class ScVbaButtonContainer : public ScVbaControlContainer
 {
+    bool mbOptionButtons;
 public:
     /// @throws uno::RuntimeException
     explicit ScVbaButtonContainer(
         const uno::Reference< XHelperInterface >& rxParent,
         const uno::Reference< uno::XComponentContext >& rxContext,
         const uno::Reference< frame::XModel >& rxModel,
-        const uno::Reference< sheet::XSpreadsheet >& rxSheet );
+        const uno::Reference< sheet::XSpreadsheet >& rxSheet,
+        bool bOptionButtons);
 
 protected:
     virtual ScVbaSheetObjectBase* implCreateVbaObject( const uno::Reference< drawing::XShape >& rxShape ) override;
     virtual bool implCheckProperties( const uno::Reference< beans::XPropertySet >& rxModelProps ) const override;
 };
 
+}
+
 ScVbaButtonContainer::ScVbaButtonContainer(
         const uno::Reference< XHelperInterface >& rxParent,
         const uno::Reference< uno::XComponentContext >& rxContext,
         const uno::Reference< frame::XModel >& rxModel,
-        const uno::Reference< sheet::XSpreadsheet >& rxSheet ) :
+        const uno::Reference< sheet::XSpreadsheet >& rxSheet,
+        bool bOptionButtons ) :
     ScVbaControlContainer(
         rxParent, rxContext, rxModel, rxSheet,
         cppu::UnoType<excel::XButton>::get(),
-        "com.sun.star.form.component.CommandButton" )
+        ( bOptionButtons ?
+          OUString( "com.sun.star.form.component.RadioButton" ) :
+          OUString( "com.sun.star.form.component.CommandButton" ) ),
+        ( bOptionButtons ?
+          form::FormComponentType::RADIOBUTTON :
+          form::FormComponentType::COMMANDBUTTON) ),
+    mbOptionButtons(bOptionButtons)
 {
 }
 
@@ -505,6 +532,9 @@ ScVbaSheetObjectBase* ScVbaButtonContainer::implCreateVbaObject( const uno::Refe
 
 bool ScVbaButtonContainer::implCheckProperties( const uno::Reference< beans::XPropertySet >& rxModelProps ) const
 {
+    if (mbOptionButtons)
+        return true;
+
     // do not insert toggle buttons into the 'Buttons' collection
     bool bToggle = false;
     return lclGetProperty( bToggle, rxModelProps, "Toggle" ) && !bToggle;
@@ -514,8 +544,9 @@ ScVbaButtons::ScVbaButtons(
         const uno::Reference< XHelperInterface >& rxParent,
         const uno::Reference< uno::XComponentContext >& rxContext,
         const uno::Reference< frame::XModel >& rxModel,
-        const uno::Reference< sheet::XSpreadsheet >& rxSheet ) :
-    ScVbaGraphicObjectsBase( new ScVbaButtonContainer( rxParent, rxContext, rxModel, rxSheet ) )
+        const uno::Reference< sheet::XSpreadsheet >& rxSheet,
+        bool bOptionButtons) :
+    ScVbaGraphicObjectsBase( new ScVbaButtonContainer( rxParent, rxContext, rxModel, rxSheet, bOptionButtons ) )
 {
 }
 

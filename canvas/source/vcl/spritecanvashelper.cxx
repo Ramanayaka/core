@@ -18,13 +18,13 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <boost/cast.hpp>
 
 #include <basegfx/range/b2drectangle.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <rtl/math.hxx>
 #include <tools/diagnose_ex.h>
-#include <vcl/bitmapex.hxx>
 #include <vcl/canvastools.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/window.hxx>
@@ -33,6 +33,7 @@
 
 #include "canvascustomsprite.hxx"
 #include "spritecanvashelper.hxx"
+#include "spritecanvas.hxx"
 
 using namespace ::com::sun::star;
 
@@ -66,7 +67,7 @@ namespace vclcanvas
         }
 
         void repaintBackground( OutputDevice&               rOutDev,
-                                OutputDevice&               rBackBuffer,
+                                OutputDevice const &        rBackBuffer,
                                 const ::basegfx::B2DRange&  rArea )
         {
             const ::Point& rPos( vcl::unotools::pointFromB2DPoint( rArea.getMinimum()) );
@@ -104,10 +105,10 @@ namespace vclcanvas
         {
             vcl::Font aVCLFont;
             aVCLFont.SetFontHeight( 20 );
-            aVCLFont.SetColor( Color( INFO_COLOR ) );
+            aVCLFont.SetColor( INFO_COLOR );
 
             rOutDev.SetTextAlign(ALIGN_TOP);
-            rOutDev.SetTextColor( Color( INFO_COLOR ) );
+            rOutDev.SetTextColor( INFO_COLOR );
             rOutDev.SetFont( aVCLFont );
 
             rOutDev.DrawText( rPos, rStr );
@@ -126,7 +127,10 @@ namespace vclcanvas
     {
 #if OSL_DEBUG_LEVEL > 0
         // inverse defaults for verbose debug mode
-        mbShowSpriteBounds = mbShowFrameInfo = true;
+        mbShowFrameInfo = true;
+        // this looks like drawing errors, enable only if explicitly asked for
+        static bool enableShowSpriteBounds = getenv("CANVAS_SPRITE_BOUNDS") != nullptr;
+        mbShowSpriteBounds = enableShowSpriteBounds;
 #endif
     }
 
@@ -227,7 +231,7 @@ namespace vclcanvas
             pTargetWindow->ExpandPaintClipRegion(aFullWindowRegion);
         }
 
-        // TODO(P1): Might be worthwile to track areas of background
+        // TODO(P1): Might be worthwhile to track areas of background
         // changes, too.
         if( !bUpdateAll && !io_bSurfaceDirty )
         {
@@ -262,7 +266,7 @@ namespace vclcanvas
 
             // repaint all active sprites on top of background into
             // VDev.
-            OutputDevice& rTmpOutDev( *maVDev.get() );
+            OutputDevice& rTmpOutDev( *maVDev );
             mpRedrawManager->forEachSprite(
                     [&rTmpOutDev]( const ::canvas::Sprite::Reference& rSprite )
                     { spriteRedraw( rTmpOutDev, rSprite ); }
@@ -533,7 +537,7 @@ namespace vclcanvas
                         rSpriteScreenPos - vcl::unotools::b2DPointFromPoint(aOutputPosition)
                         );
 
-                pSprite->redraw( *maVDev.get(), rSpriteRenderPos, true );
+                pSprite->redraw( *maVDev, rSpriteRenderPos, true );
             }
         }
 
@@ -578,7 +582,6 @@ namespace vclcanvas
             {
             }
 
-            void operator()() { *mpTarget += mnIncrement; }
             void operator()( const ::canvas::Sprite::Reference& ) { *mpTarget += mnIncrement; }
             void operator()( T nIncrement ) { *mpTarget += nIncrement; }
 
@@ -595,64 +598,64 @@ namespace vclcanvas
 
     void SpriteCanvasHelper::renderSpriteCount( OutputDevice& rOutDev )
     {
-        if( mpRedrawManager )
-        {
-            sal_Int32 nCount(0);
+        if( !mpRedrawManager )
+            return;
 
-            mpRedrawManager->forEachSprite( makeAdder(nCount,sal_Int32(1)) );
-            OUString text( OUString::number(nCount) );
+        sal_Int32 nCount(0);
 
-            // pad with leading space
-            while( text.getLength() < 3 )
-                text = " " + text;
+        mpRedrawManager->forEachSprite( makeAdder(nCount,sal_Int32(1)) );
+        OUString text( OUString::number(nCount) );
 
-            text = "Sprites: " + text;
+        // pad with leading space
+        while( text.getLength() < 3 )
+            text = " " + text;
 
-            renderInfoText( rOutDev,
-                            text,
-                            Point(0, 30) );
-        }
+        text = "Sprites: " + text;
+
+        renderInfoText( rOutDev,
+                        text,
+                        Point(0, 30) );
     }
 
     void SpriteCanvasHelper::renderMemUsage( OutputDevice& rOutDev )
     {
         BackBufferSharedPtr pBackBuffer( mpOwningSpriteCanvas->getBackBuffer() );
 
-        if( mpRedrawManager &&
-            pBackBuffer )
-        {
-            double nPixel(0.0);
+        if( !(mpRedrawManager &&
+            pBackBuffer) )
+            return;
 
-            // accumulate pixel count for each sprite into fCount
-            mpRedrawManager->forEachSprite(
-                    [&nPixel]( const ::canvas::Sprite::Reference& rSprite )
-                    { makeAdder( nPixel, 1.0 )( calcNumPixel(rSprite) ); }
-                    );
+        double nPixel(0.0);
 
-            static const int NUM_VIRDEV(2);
-            static const int BYTES_PER_PIXEL(3);
+        // accumulate pixel count for each sprite into fCount
+        mpRedrawManager->forEachSprite(
+                [&nPixel]( const ::canvas::Sprite::Reference& rSprite )
+                { makeAdder( nPixel, 1.0 )( calcNumPixel(rSprite) ); }
+                );
 
-            const Size& rVDevSize( maVDev->GetOutputSizePixel() );
-            const Size& rBackBufferSize( pBackBuffer->getOutDev().GetOutputSizePixel() );
+        static const int NUM_VIRDEV(2);
+        static const int BYTES_PER_PIXEL(3);
 
-            const double nMemUsage( nPixel * NUM_VIRDEV * BYTES_PER_PIXEL +
-                                    rVDevSize.Width()*rVDevSize.Height() * BYTES_PER_PIXEL +
-                                    rBackBufferSize.Width()*rBackBufferSize.Height() * BYTES_PER_PIXEL );
+        const Size& rVDevSize( maVDev->GetOutputSizePixel() );
+        const Size& rBackBufferSize( pBackBuffer->getOutDev().GetOutputSizePixel() );
 
-            OUString text( ::rtl::math::doubleToUString( nMemUsage / 1048576.0,
-                                                                rtl_math_StringFormat_F,
-                                                                2,'.',nullptr,' ') );
+        const double nMemUsage( nPixel * NUM_VIRDEV * BYTES_PER_PIXEL +
+                                rVDevSize.Width()*rVDevSize.Height() * BYTES_PER_PIXEL +
+                                rBackBufferSize.Width()*rBackBufferSize.Height() * BYTES_PER_PIXEL );
 
-            // pad with leading space
-            while( text.getLength() < 4 )
-                text = " " + text;
+        OUString text( ::rtl::math::doubleToUString( nMemUsage / 1048576.0,
+                                                            rtl_math_StringFormat_F,
+                                                            2,'.',nullptr,' ') );
 
-            text = "Mem: " + text + "MB";
+        // pad with leading space
+        while( text.getLength() < 4 )
+            text = " " + text;
 
-            renderInfoText( rOutDev,
-                            text,
-                            Point(0, 60) );
-        }
+        text = "Mem: " + text + "MB";
+
+        renderInfoText( rOutDev,
+                        text,
+                        Point(0, 60) );
     }
 }
 

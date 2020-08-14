@@ -20,13 +20,11 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AUSER_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AUSER_HXX
 
-#include <connectivity/sdbcx/VUser.hxx>
-#include "ado/Awrapadox.hxx"
+#include <sdbcx/VUser.hxx>
+#include <ado/Awrapadox.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         class OCatalog;
         typedef connectivity::sdbcx::OUser OUser_TYPEDEF;
         typedef connectivity::sdbcx::OUser_BASE OUser_BASE_TYPEDEF;
@@ -53,7 +51,7 @@ namespace connectivity
 
             // css::lang::XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
             // XUser
             virtual void SAL_CALL changePassword( const OUString& objPassword, const OUString& newPassword ) override;
             // XAuthorizable
@@ -84,7 +82,6 @@ namespace connectivity
             virtual void construct() override;
             OUString getPassword() const { return m_Password;}
         };
-    }
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AUSER_HXX
 

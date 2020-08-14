@@ -38,16 +38,17 @@ OPENSSL_PLATFORM := \
         $(if $(filter X86_64,$(CPUNAME)),solaris64-x86_64-cc,solaris-sparcv9-cc)\
       )\
     ,\
-      $(if $(filter IOS,$(OS)),\
-        ios-armv7\
+      $(if $(filter iOS,$(OS)),\
+        ios-aarch64\
       ,\
         $(if $(filter WNT,$(OS)),\
-          $(if $(filter INTEL,$(CPUNAME)),VC-WIN32,VC-WIN64A)\
+          $(if $(filter INTEL,$(CPUNAME)),VC-WIN32)\
+          $(if $(filter X86_64,$(CPUNAME)),VC-WIN64A)\
+          $(if $(filter ARM64,$(CPUNAME)),VC-WIN64-ARM)\
         ,\
           $(if $(filter MACOSX,$(OS)),\
-            $(if $(filter POWERPC,$(CPUNAME)),darwin-ppc-cc)\
-            $(if $(filter INTEL,$(CPUNAME)),darwin-i386-cc)\
             $(if $(filter X86_64,$(CPUNAME)),darwin64-x86_64-cc)\
+            $(if $(filter AARCH64,$(CPUNAME)),darwin64-arm64-cc)\
           )\
         )\
       )\
@@ -55,36 +56,39 @@ OPENSSL_PLATFORM := \
   )
 
 ifeq ($(COM),MSC)
+$(eval $(call gb_ExternalProject_use_nmake,openssl,build))
+
 $(call gb_ExternalProject_get_state_target,openssl,build):
+	$(call gb_Trace_StartRange,openssl,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
-		export CC="$(shell cygpath -w $(filter-out -%,$(CC))) $(filter -%,$(CC))" \
+		CONFIGURE_INSIST=1 $(PERL) Configure $(OPENSSL_PLATFORM) no-tests no-multilib \
 		&& export PERL="$(shell cygpath -w $(PERL))" \
-		&& export LIB="$(ILIB)" \
-		&& $(PERL) Configure $(OPENSSL_PLATFORM) no-idea \
-		&& cmd /c "ms\do_ms.bat $(PERL) $(OPENSSL_PLATFORM)" \
-		&& unset MAKEFLAGS \
-		&& nmake -f "ms\ntdll.mak" \
-		&& mv inc32/* include/ \
+		&& nmake -f makefile \
 	)
+	$(call gb_Trace_EndRange,openssl,EXTERNAL)
 
 else
 $(call gb_ExternalProject_get_state_target,openssl,build):
+	$(call gb_Trace_StartRange,openssl,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		unset MAKEFLAGS && \
-		$(if $(filter LINUX MACOSX FREEBSD ANDROID SOLARIS IOS,$(OS)), \
+		$(if $(filter LINUX MACOSX FREEBSD ANDROID SOLARIS iOS,$(OS)), \
 			./Configure, \
 		$(if $(filter WNT,$(OS)), \
 			$(PERL) Configure, \
 			./config)) \
-			$(OPENSSL_PLATFORM) no-dso no-shared \
-			$(if $(filter-out WNT,$(OS)),no-idea) \
-			$(if $(filter-out ANDROID IOS WNT,$(OS)), \
+			$(OPENSSL_PLATFORM) no-dso no-shared no-tests no-multilib threads \
+			$(if $(filter-out ANDROID iOS WNT,$(OS)), \
 				$(if $(SYSBASE),-I$(SYSBASE)/usr/include -L$(SYSBASE)/usr/lib)) \
 			$(if $(filter MACOSX,$(OS)),--prefix=/@.__________________________________________________OOO) \
 		&& $(MAKE) build_libs \
 			CC="$(CC) -fPIC \
+				$(if $(filter TRUE, $(ENABLE_DBGUTIL)), -DPURIFY,) \
 				$(if $(filter-out WNT MACOSX,$(OS)),-fvisibility=hidden)" \
+		&& ln -s . lib \
 	)
+	$(call gb_Trace_EndRange,openssl,EXTERNAL)
+# symlink lib dir for python3
 endif
 
 # vim: set noet sw=4 ts=4:

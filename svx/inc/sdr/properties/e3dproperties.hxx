@@ -23,9 +23,7 @@
 #include <sdr/properties/attributeproperties.hxx>
 
 
-namespace sdr
-{
-    namespace properties
+namespace sdr::properties
     {
         class E3dProperties : public AttributeProperties
         {
@@ -47,13 +45,10 @@ namespace sdr
             virtual ~E3dProperties() override;
 
             // Clone() operator, normally just calls the local copy constructor
-            virtual BaseProperties& Clone(SdrObject& rObj) const override;
-
-            // set a new StyleSheet and broadcast
-            virtual void SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr) override;
+            virtual std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const override;
         };
-    } // end of namespace properties
-} // end of namespace sdr
+
+} // end of namespace sdr::properties
 
 
 #endif // INCLUDED_SVX_SDR_PROPERTIES_E3DPROPERTIES_HXX

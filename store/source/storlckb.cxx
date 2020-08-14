@@ -19,14 +19,12 @@
 
 #include "storlckb.hxx"
 
-#include "sal/types.h"
-#include "sal/macros.h"
-#include "rtl/string.h"
-#include "rtl/ref.hxx"
-#include "osl/mutex.hxx"
+#include <sal/types.h>
+#include <rtl/string.h>
+#include <rtl/ref.hxx>
+#include <osl/mutex.hxx>
 
-#include "store/types.h"
-#include "object.hxx"
+#include <store/types.h>
 
 #include "storbase.hxx"
 #include "stordata.hxx"
@@ -75,8 +73,8 @@ bool OStoreLockBytes::isKindOf (sal_uInt32 nTypeId)
  */
 storeError OStoreLockBytes::create (
     OStorePageManager *pManager,
-    rtl_String        *pPath,
-    rtl_String        *pName,
+    rtl_String const  *pPath,
+    rtl_String const  *pName,
     storeAccessMode    eMode)
 {
     rtl::Reference<OStorePageManager> xManager (pManager);

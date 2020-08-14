@@ -18,18 +18,19 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
+#include <tools/stream.hxx>
 #include <vcl/opengl/OpenGLContext.hxx>
 #include <vcl/opengl/OpenGLHelper.hxx>
 
-#include "svdata.hxx"
+#include <svdata.hxx>
 
-#include <vcl/salbtype.hxx>
 #include <vcl/pngwrite.hxx>
 
-#include "opengl/framebuffer.hxx"
-#include "opengl/texture.hxx"
-#include "opengl/zone.hxx"
-#include "opengl/RenderState.hxx"
+#include <opengl/framebuffer.hxx>
+#include <opengl/texture.hxx>
+#include <opengl/zone.hxx>
+#include <opengl/RenderState.hxx>
 
 namespace
 {
@@ -63,7 +64,21 @@ ImplOpenGLTexture::ImplOpenGLTexture( int nWidth, int nHeight, bool bAllocate ) 
     CHECK_GL_ERROR();
     if( bAllocate )
     {
+#ifdef DBG_UTIL
+        std::vector< sal_uInt8 > buffer;
+        buffer.resize( nWidth * nHeight * 4 );
+        for( int i = 0; i < nWidth * nHeight; ++i )
+        {   // pre-fill the texture with deterministic garbage
+            bool odd = (i & 0x01);
+            buffer[ i * 4 ] =  odd ? 0x40 : 0xBF;
+            buffer[ i * 4 + 1 ] = 0x80;
+            buffer[ i * 4 + 2 ] = odd ? 0xBF : 0x40;
+            buffer[ i * 4 + 3 ] = 0xFF;
+        }
+        glTexImage2D( GL_TEXTURE_2D, 0, constInternalFormat, nWidth, nHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer.data());
+#else
         glTexImage2D( GL_TEXTURE_2D, 0, constInternalFormat, nWidth, nHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr );
+#endif
         CHECK_GL_ERROR();
     }
 
@@ -154,43 +169,43 @@ GLuint ImplOpenGLTexture::AddStencil()
 ImplOpenGLTexture::~ImplOpenGLTexture()
 {
     VCL_GL_INFO( "~OpenGLTexture " << mnTexture );
-    if( mnTexture != 0 )
+    if( mnTexture == 0 )
+        return;
+
+    // During shutdown GL is already de-initialized, so we should not try to create a new context.
+    OpenGLZone aZone;
+    rtl::Reference<OpenGLContext> xContext = OpenGLContext::getVCLContext(false);
+    if( xContext.is() )
     {
-        // During shutdown GL is already de-initialized, so we should not try to create a new context.
-        OpenGLZone aZone;
-        rtl::Reference<OpenGLContext> xContext = OpenGLContext::getVCLContext(false);
-        if( xContext.is() )
+        // FIXME: this is really not optimal performance-wise.
+
+        // Check we have been correctly un-bound from all framebuffers.
+        ImplSVData* pSVData = ImplGetSVData();
+        rtl::Reference<OpenGLContext> pContext = pSVData->maGDIData.mpLastContext;
+
+        if( pContext.is() )
         {
-            // FIXME: this is really not optimal performance-wise.
-
-            // Check we have been correctly un-bound from all framebuffers.
-            ImplSVData* pSVData = ImplGetSVData();
-            rtl::Reference<OpenGLContext> pContext = pSVData->maGDIData.mpLastContext;
-
-            if( pContext.is() )
-            {
-                pContext->makeCurrent();
-                pContext->UnbindTextureFromFramebuffers( mnTexture );
-            }
-
-            if( mnOptStencil != 0 )
-            {
-                glDeleteRenderbuffers( 1, &mnOptStencil );
-                mnOptStencil = 0;
-            }
-            auto& rState = pContext->state();
-            rState.texture().unbindAndDelete(mnTexture);
-            mnTexture = 0;
+            pContext->makeCurrent();
+            pContext->UnbindTextureFromFramebuffers( mnTexture );
         }
-        else
+
+        if( mnOptStencil != 0 )
         {
+            glDeleteRenderbuffers( 1, &mnOptStencil );
             mnOptStencil = 0;
-            mnTexture = 0;
         }
+        auto& rState = pContext->state();
+        rState.texture().unbindAndDelete(mnTexture);
+        mnTexture = 0;
+    }
+    else
+    {
+        mnOptStencil = 0;
+        mnTexture = 0;
     }
 }
 
-bool ImplOpenGLTexture::InsertBuffer(int nX, int nY, int nWidth, int nHeight, int nFormat, int nType, sal_uInt8* pData)
+bool ImplOpenGLTexture::InsertBuffer(int nX, int nY, int nWidth, int nHeight, int nFormat, int nType, sal_uInt8 const * pData)
 {
     if (!pData || mnTexture == 0)
         return false;
@@ -210,13 +225,12 @@ bool ImplOpenGLTexture::InsertBuffer(int nX, int nY, int nWidth, int nHeight, in
     return true;
 }
 
-bool ImplOpenGLTexture::InitializeSlotMechanism(int nInitialSlotSize)
+void ImplOpenGLTexture::InitializeSlotMechanism(int nInitialSlotSize)
 {
     if (mpSlotReferences)
-        return false;
+        return;
 
     mpSlotReferences.reset(new std::vector<int>(nInitialSlotSize, 0));
-    return true;
 }
 
 void ImplOpenGLTexture::IncreaseRefCount(int nSlotNumber)
@@ -264,21 +278,21 @@ OpenGLTexture::OpenGLTexture(const std::shared_ptr<ImplOpenGLTexture>& rpImpl, t
 
 OpenGLTexture::OpenGLTexture( int nWidth, int nHeight, bool bAllocate )
     : maRect( Point( 0, 0 ), Size( nWidth, nHeight ) )
-    , mpImpl(new ImplOpenGLTexture(nWidth, nHeight, bAllocate))
+    , mpImpl(std::make_shared<ImplOpenGLTexture>(nWidth, nHeight, bAllocate))
     , mnSlotNumber(-1)
 {
 }
 
 OpenGLTexture::OpenGLTexture( int nX, int nY, int nWidth, int nHeight )
     : maRect( Point( 0, 0 ), Size( nWidth, nHeight ) )
-    , mpImpl(new ImplOpenGLTexture(nX, nY, nWidth, nHeight))
+    , mpImpl(std::make_shared<ImplOpenGLTexture>(nX, nY, nWidth, nHeight))
     , mnSlotNumber(-1)
 {
 }
 
 OpenGLTexture::OpenGLTexture( int nWidth, int nHeight, int nFormat, int nType, void const * pData )
     : maRect( Point( 0, 0 ), Size( nWidth, nHeight ) )
-    , mpImpl(new ImplOpenGLTexture(nWidth, nHeight, nFormat, nType, pData))
+    , mpImpl(std::make_shared<ImplOpenGLTexture>(nWidth, nHeight, nFormat, nType, pData))
     , mnSlotNumber(-1)
 {
 
@@ -293,7 +307,7 @@ OpenGLTexture::OpenGLTexture(const OpenGLTexture& rTexture)
         mpImpl->IncreaseRefCount(mnSlotNumber);
 }
 
-OpenGLTexture::OpenGLTexture(OpenGLTexture&& rTexture)
+OpenGLTexture::OpenGLTexture(OpenGLTexture&& rTexture) noexcept
     : maRect(rTexture.maRect)
     , mpImpl(std::move(rTexture.mpImpl))
     , mnSlotNumber(rTexture.mnSlotNumber)
@@ -320,7 +334,7 @@ OpenGLTexture::~OpenGLTexture()
 
 bool OpenGLTexture::IsUnique() const
 {
-    return !mpImpl || mpImpl.unique();
+    return !mpImpl || (mpImpl.use_count() == 1);
 }
 
 GLuint OpenGLTexture::Id() const
@@ -364,22 +378,22 @@ void OpenGLTexture::GetCoord( GLfloat* pCoord, const SalTwoRect& rPosAry, bool b
         return;
     }
 
-    pCoord[0] = pCoord[2] = (maRect.Left() + rPosAry.mnSrcX) / (double) mpImpl->mnWidth;
-    pCoord[4] = pCoord[6] = (maRect.Left() + rPosAry.mnSrcX + rPosAry.mnSrcWidth) / (double) mpImpl->mnWidth;
+    pCoord[0] = pCoord[2] = (maRect.Left() + rPosAry.mnSrcX) / static_cast<double>(mpImpl->mnWidth);
+    pCoord[4] = pCoord[6] = (maRect.Left() + rPosAry.mnSrcX + rPosAry.mnSrcWidth) / static_cast<double>(mpImpl->mnWidth);
 
     if( !bInverted )
     {
-        pCoord[3] = pCoord[5] = 1.0f - (maRect.Top() + rPosAry.mnSrcY) / (double) mpImpl->mnHeight;
-        pCoord[1] = pCoord[7] = 1.0f - (maRect.Top() + rPosAry.mnSrcY + rPosAry.mnSrcHeight) / (double) mpImpl->mnHeight;
+        pCoord[3] = pCoord[5] = 1.0f - (maRect.Top() + rPosAry.mnSrcY) / static_cast<double>(mpImpl->mnHeight);
+        pCoord[1] = pCoord[7] = 1.0f - (maRect.Top() + rPosAry.mnSrcY + rPosAry.mnSrcHeight) / static_cast<double>(mpImpl->mnHeight);
     }
     else
     {
-        pCoord[1] = pCoord[7] = 1.0f - (maRect.Top() + rPosAry.mnSrcY) / (double) mpImpl->mnHeight;
-        pCoord[3] = pCoord[5] = 1.0f - (maRect.Top() + rPosAry.mnSrcY + rPosAry.mnSrcHeight) / (double) mpImpl->mnHeight;
+        pCoord[1] = pCoord[7] = 1.0f - (maRect.Top() + rPosAry.mnSrcY) / static_cast<double>(mpImpl->mnHeight);
+        pCoord[3] = pCoord[5] = 1.0f - (maRect.Top() + rPosAry.mnSrcY + rPosAry.mnSrcHeight) / static_cast<double>(mpImpl->mnHeight);
     }
 }
 
-bool OpenGLTexture::GetTextureRect(const SalTwoRect& rPosAry, bool bInverted, GLfloat& x1, GLfloat& x2, GLfloat& y1, GLfloat& y2) const
+void OpenGLTexture::GetTextureRect(const SalTwoRect& rPosAry, GLfloat& x1, GLfloat& x2, GLfloat& y1, GLfloat& y2) const
 {
     if (IsValid())
     {
@@ -389,19 +403,9 @@ bool OpenGLTexture::GetTextureRect(const SalTwoRect& rPosAry, bool bInverted, GL
         x1 = (maRect.Left() + rPosAry.mnSrcX) / fTextureWidth;
         x2 = (maRect.Left() + rPosAry.mnSrcX + rPosAry.mnSrcWidth) / fTextureWidth;
 
-        if (bInverted)
-        {
-            y2 = 1.0f - (maRect.Top() + rPosAry.mnSrcY) / fTextureHeight;
-            y1 = 1.0f - (maRect.Top() + rPosAry.mnSrcY + rPosAry.mnSrcHeight) / fTextureHeight;
-        }
-        else
-        {
-            y1 = 1.0f - (maRect.Top() + rPosAry.mnSrcY) / fTextureHeight;
-            y2 = 1.0f - (maRect.Top() + rPosAry.mnSrcY + rPosAry.mnSrcHeight) / fTextureHeight;
-        }
-        return true;
+        y1 = 1.0f - (maRect.Top() + rPosAry.mnSrcY) / fTextureHeight;
+        y2 = 1.0f - (maRect.Top() + rPosAry.mnSrcY + rPosAry.mnSrcHeight) / fTextureHeight;
     }
-    return false;
 }
 
 template <>
@@ -412,7 +416,7 @@ void OpenGLTexture::FillCoords<GL_TRIANGLE_FAN>(std::vector<GLfloat>& rCoords, c
     GLfloat y1 = 0.0f;
     GLfloat y2 = 0.0f;
 
-    GetTextureRect(rPosAry, false/*bInverted*/, x1, x2, y1, y2);
+    GetTextureRect(rPosAry, x1, x2, y1, y2);
 
     rCoords.insert(rCoords.end(), {
         x1, y2, x1, y1,
@@ -428,7 +432,7 @@ void OpenGLTexture::FillCoords<GL_TRIANGLES>(std::vector<GLfloat>& rCoords, cons
     GLfloat y1 = 0.0f;
     GLfloat y2 = 0.0f;
 
-    GetTextureRect(rPosAry, false/*bInverted*/, x1, x2, y1, y2);
+    GetTextureRect(rPosAry, x1, x2, y1, y2);
 
     rCoords.insert(rCoords.end(), {
         x1, y1, x2, y1, x1, y2,
@@ -440,10 +444,10 @@ void OpenGLTexture::GetWholeCoord( GLfloat* pCoord ) const
 {
     if( GetWidth() != mpImpl->mnWidth || GetHeight() != mpImpl->mnHeight )
     {
-        pCoord[0] = pCoord[2] = maRect.Left() / (double) mpImpl->mnWidth;
-        pCoord[4] = pCoord[6] = maRect.Right() / (double) mpImpl->mnWidth;
-        pCoord[3] = pCoord[5] = 1.0f - maRect.Top() / (double) mpImpl->mnHeight;
-        pCoord[1] = pCoord[7] = 1.0f - maRect.Bottom() / (double) mpImpl->mnHeight;
+        pCoord[0] = pCoord[2] = maRect.Left() / static_cast<double>(mpImpl->mnWidth);
+        pCoord[4] = pCoord[6] = maRect.Right() / static_cast<double>(mpImpl->mnWidth);
+        pCoord[3] = pCoord[5] = 1.0f - maRect.Top() / static_cast<double>(mpImpl->mnHeight);
+        pCoord[1] = pCoord[7] = 1.0f - maRect.Bottom() / static_cast<double>(mpImpl->mnHeight);
     }
     else
     {
@@ -461,7 +465,7 @@ GLenum OpenGLTexture::GetFilter() const
     return GL_NEAREST;
 }
 
-bool OpenGLTexture::CopyData(int nWidth, int nHeight, int nFormat, int nType, sal_uInt8* pData)
+bool OpenGLTexture::CopyData(int nWidth, int nHeight, int nFormat, int nType, sal_uInt8 const * pData)
 {
     if (!pData || !IsValid())
         return false;
@@ -507,8 +511,8 @@ void OpenGLTexture::Unbind()
 void OpenGLTexture::SaveToFile(const OUString& rFileName)
 {
     std::vector<sal_uInt8> aBuffer(GetWidth() * GetHeight() * 4);
-    Read(GL_BGRA, GL_UNSIGNED_BYTE, aBuffer.data());
-    BitmapEx aBitmap = OpenGLHelper::ConvertBGRABufferToBitmapEx(aBuffer.data(), GetWidth(), GetHeight());
+    Read(OpenGLHelper::OptimalBufferFormat(), GL_UNSIGNED_BYTE, aBuffer.data());
+    BitmapEx aBitmap = OpenGLHelper::ConvertBufferToBitmapEx(aBuffer.data(), GetWidth(), GetHeight());
     try
     {
         vcl::PNGWriter aWriter(aBitmap);
@@ -570,16 +574,8 @@ OpenGLTexture::operator bool() const
 
 OpenGLTexture& OpenGLTexture::operator=(const OpenGLTexture& rTexture)
 {
-    if (rTexture.mpImpl)
-        rTexture.mpImpl->IncreaseRefCount(rTexture.mnSlotNumber);
-
-    if (mpImpl)
-        mpImpl->DecreaseRefCount(mnSlotNumber);
-
-    maRect = rTexture.maRect;
-    mpImpl = rTexture.mpImpl;
-    mnSlotNumber = rTexture.mnSlotNumber;
-
+    OpenGLTexture aTemp(rTexture);
+    *this = std::move(aTemp);
     return *this;
 }
 

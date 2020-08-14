@@ -21,10 +21,11 @@
 #include "xmlTableFilterPattern.hxx"
 #include "xmlEnums.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
-#include "xmlstrings.hrc"
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/ProgressBarHelper.hxx>
+#include <strings.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <comphelper/sequence.hxx>
 #include <xmloff/xmlimp.hxx>
 #include "xmlfilter.hxx"
 
@@ -35,8 +36,8 @@ namespace dbaxml
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::xml::sax;
 
-OXMLTableFilterList::OXMLTableFilterList( SvXMLImport& rImport, sal_uInt16 nPrfx, const OUString& _sLocalName )
-    :SvXMLImportContext( rImport, nPrfx, _sLocalName )
+OXMLTableFilterList::OXMLTableFilterList( SvXMLImport& rImport)
+    :SvXMLImportContext( rImport )
 {
 
 }
@@ -45,26 +46,29 @@ OXMLTableFilterList::~OXMLTableFilterList()
 {
 }
 
-SvXMLImportContext* OXMLTableFilterList::CreateChildContext(
-        sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const Reference< XAttributeList > & /*xAttrList*/ )
+css::uno::Reference< css::xml::sax::XFastContextHandler > OXMLTableFilterList::createFastChildContext(
+            sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*xAttrList*/ )
 {
     SvXMLImportContext *pContext = nullptr;
 
-    if ( XML_NAMESPACE_DB == nPrefix )
+    if ( IsTokenInNamespace(nElement, XML_NAMESPACE_DB) ||
+         IsTokenInNamespace(nElement, XML_NAMESPACE_DB_OASIS) )
     {
         GetImport().GetProgressBarHelper()->Increment( PROGRESS_BAR_STEP );
-        if ( IsXMLToken( rLocalName, XML_TABLE_FILTER_PATTERN ) )
-            pContext = new OXMLTableFilterPattern( GetImport(), nPrefix, rLocalName,true,*this);
-        else if ( IsXMLToken( rLocalName, XML_TABLE_TYPE ) )
-            pContext = new OXMLTableFilterPattern( GetImport(), nPrefix, rLocalName,false,*this);
-        else if ( IsXMLToken( rLocalName, XML_TABLE_INCLUDE_FILTER ) )
-            pContext = new OXMLTableFilterList( GetImport(), nPrefix, rLocalName );
+        switch (nElement & TOKEN_MASK)
+        {
+            case XML_TABLE_FILTER_PATTERN:
+                pContext = new OXMLTableFilterPattern( GetImport(), true,*this);
+                break;
+            case XML_TABLE_TYPE:
+                pContext = new OXMLTableFilterPattern( GetImport(), false,*this);
+                break;
+            case XML_TABLE_INCLUDE_FILTER:
+                pContext = new OXMLTableFilterList( GetImport() );
+                break;
+            default: break;
+        }
     }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }
@@ -74,15 +78,15 @@ ODBFilter& OXMLTableFilterList::GetOwnImport()
     return static_cast<ODBFilter&>(GetImport());
 }
 
-void OXMLTableFilterList::EndElement()
+void OXMLTableFilterList::endFastElement(sal_Int32 )
 {
     Reference<XPropertySet> xDataSource(GetOwnImport().getDataSource());
     if ( xDataSource.is() )
     {
         if ( !m_aPatterns.empty() )
-            xDataSource->setPropertyValue(PROPERTY_TABLEFILTER,makeAny(Sequence< OUString>(&(*m_aPatterns.begin()),m_aPatterns.size())));
+            xDataSource->setPropertyValue(PROPERTY_TABLEFILTER,makeAny(comphelper::containerToSequence(m_aPatterns)));
         if ( !m_aTypes.empty() )
-            xDataSource->setPropertyValue(PROPERTY_TABLETYPEFILTER,makeAny(Sequence< OUString>(&(*m_aTypes.begin()),m_aTypes.size())));
+            xDataSource->setPropertyValue(PROPERTY_TABLETYPEFILTER,makeAny(comphelper::containerToSequence(m_aTypes)));
     }
 }
 

@@ -17,15 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "filter/msfilter/mscodec.hxx"
+#include <filter/msfilter/mscodec.hxx>
 
 #include <osl/diagnose.h>
 #include <algorithm>
 #include <string.h>
 #include <tools/solar.h>
 
+#include <comphelper/hash.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <comphelper/docpasswordhelper.hxx>
+#include <com/sun/star/beans/NamedValue.hpp>
 
 #define DEBUG_MSO_ENCRYPTION_STD97 0
 
@@ -42,7 +44,7 @@ namespace {
 
 /** Rotates rnValue left by nBits bits. */
 template< typename Type >
-inline void lclRotateLeft( Type& rnValue, int nBits )
+void lclRotateLeft( Type& rnValue, int nBits )
 {
     OSL_ASSERT(
         nBits >= 0 &&
@@ -52,7 +54,7 @@ inline void lclRotateLeft( Type& rnValue, int nBits )
 
 /** Rotates the lower nWidth bits of rnValue left by nBits bits. */
 template< typename Type >
-inline void lclRotateLeft( Type& rnValue, sal_uInt8 nBits, sal_uInt8 nWidth )
+void lclRotateLeft( Type& rnValue, sal_uInt8 nBits, sal_uInt8 nWidth )
 {
     OSL_ASSERT( (nBits < nWidth) && (nWidth < sizeof( Type ) * 8) );
     Type nMask = static_cast< Type >( (1UL << nWidth) - 1 );
@@ -121,7 +123,6 @@ MSCodec_Xor95::MSCodec_Xor95(int nRotateDistance) :
     mnHash( 0 ),
     mnRotateDistance( nRotateDistance )
 {
-    (void)memset( mpnKey, 0, sizeof( mpnKey ) );
 }
 
 MSCodec_Xor95::~MSCodec_Xor95()
@@ -172,8 +173,8 @@ bool MSCodec_Xor95::InitCodec( const uno::Sequence< beans::NamedValue >& aData )
         (void)memcpy( mpnKey, aKey.getConstArray(), 16 );
         bResult = true;
 
-        mnKey = (sal_uInt16)aHashData.getUnpackedValueOrDefault("XOR95BaseKey", (sal_Int16)0 );
-        mnHash = (sal_uInt16)aHashData.getUnpackedValueOrDefault("XOR95PasswordHash", (sal_Int16)0 );
+        mnKey = static_cast<sal_uInt16>(aHashData.getUnpackedValueOrDefault("XOR95BaseKey", sal_Int16(0) ));
+        mnHash = static_cast<sal_uInt16>(aHashData.getUnpackedValueOrDefault("XOR95PasswordHash", sal_Int16(0) ));
     }
     else
         OSL_FAIL( "Unexpected key size!" );
@@ -185,8 +186,8 @@ uno::Sequence< beans::NamedValue > MSCodec_Xor95::GetEncryptionData()
 {
     ::comphelper::SequenceAsHashMap aHashData;
     aHashData[ OUString( "XOR95EncryptionKey" ) ] <<= uno::Sequence<sal_Int8>( reinterpret_cast<sal_Int8*>(mpnKey), 16 );
-    aHashData[ OUString( "XOR95BaseKey" ) ] <<= (sal_Int16)mnKey;
-    aHashData[ OUString( "XOR95PasswordHash" ) ] <<= (sal_Int16)mnHash;
+    aHashData[ OUString( "XOR95BaseKey" ) ] <<= static_cast<sal_Int16>(mnKey);
+    aHashData[ OUString( "XOR95PasswordHash" ) ] <<= static_cast<sal_Int16>(mnHash);
 
     return aHashData.getAsConstNamedValueList();
 }
@@ -244,8 +245,9 @@ void MSCodec_Xor95::Skip( std::size_t nBytes )
     mnOffset = (mnOffset + nBytes) & 0x0F;
 }
 
-MSCodec97::MSCodec97(size_t nHashLen)
-    : m_nHashLen(nHashLen)
+MSCodec97::MSCodec97(size_t nHashLen, const OUString& rEncKeyName)
+    : m_sEncKeyName(rEncKeyName)
+    , m_nHashLen(nHashLen)
     , m_hCipher(rtl_cipher_create(rtl_Cipher_AlgorithmARCFOUR, rtl_Cipher_ModeStream))
     , m_aDocId(16, 0)
     , m_aDigestValue(nHashLen, 0)
@@ -254,14 +256,14 @@ MSCodec97::MSCodec97(size_t nHashLen)
 }
 
 MSCodec_Std97::MSCodec_Std97()
-    : MSCodec97(RTL_DIGEST_LENGTH_MD5)
+    : MSCodec97(RTL_DIGEST_LENGTH_MD5, "STD97EncryptionKey")
 {
     m_hDigest = rtl_digest_create(rtl_Digest_AlgorithmMD5);
     assert(m_hDigest != nullptr);
 }
 
 MSCodec_CryptoAPI::MSCodec_CryptoAPI()
-    : MSCodec97(RTL_DIGEST_LENGTH_SHA1)
+    : MSCodec97(RTL_DIGEST_LENGTH_SHA1, "CryptoAPIEncryptionKey")
 {
 }
 
@@ -286,7 +288,7 @@ static void lcl_PrintDigest(const sal_uInt8* pDigest, const char* msg)
     printf("\n");
 }
 #else
-static inline void lcl_PrintDigest(const sal_uInt8* /*pDigest*/, const char* /*msg*/)
+static void lcl_PrintDigest(const sal_uInt8* /*pDigest*/, const char* /*msg*/)
 {
 }
 #endif
@@ -299,7 +301,7 @@ bool MSCodec97::InitCodec( const uno::Sequence< beans::NamedValue >& aData )
     bool bResult = false;
 
     ::comphelper::SequenceAsHashMap aHashData( aData );
-    uno::Sequence< sal_Int8 > aKey = aHashData.getUnpackedValueOrDefault("STD97EncryptionKey", uno::Sequence< sal_Int8 >() );
+    uno::Sequence<sal_Int8> aKey = aHashData.getUnpackedValueOrDefault(m_sEncKeyName, uno::Sequence<sal_Int8>());
     const size_t nKeyLen = aKey.getLength();
     if (nKeyLen == m_nHashLen)
     {
@@ -327,7 +329,7 @@ uno::Sequence< beans::NamedValue > MSCodec97::GetEncryptionData()
 {
     ::comphelper::SequenceAsHashMap aHashData;
     assert(m_aDigestValue.size() == m_nHashLen);
-    aHashData[ OUString( "STD97EncryptionKey" ) ] <<= uno::Sequence< sal_Int8 >( reinterpret_cast<sal_Int8*>(m_aDigestValue.data()), m_nHashLen );
+    aHashData[m_sEncKeyName] <<= uno::Sequence<sal_Int8>(reinterpret_cast<sal_Int8*>(m_aDigestValue.data()), m_nHashLen);
     aHashData[ OUString( "STD97UniqueID" ) ] <<= uno::Sequence< sal_Int8 >( reinterpret_cast<sal_Int8*>(m_aDocId.data()), m_aDocId.size() );
 
     return aHashData.getAsConstNamedValueList();
@@ -373,13 +375,19 @@ void MSCodec_CryptoAPI::InitKey (
     }
 
     // calculate SHA1 hash of initialData
-    rtl_digest_SHA1(initialData.data(), initialData.size(), m_aDigestValue.data(), m_aDigestValue.size());
+    std::vector<unsigned char> const sha1(::comphelper::Hash::calculateHash(
+            initialData.data(), initialData.size(),
+            ::comphelper::HashType::SHA1));
+    m_aDigestValue = sha1;
 
     lcl_PrintDigest(m_aDigestValue.data(), "digest value");
 
     (void)memcpy(m_aDocId.data(), pDocId, 16);
 
     lcl_PrintDigest(m_aDocId.data(), "DocId value");
+
+    //generate the old format key while we have the required data
+    m_aStd97Key = ::comphelper::DocPasswordHelper::GenerateStd97Key(pPassData, pDocId);
 }
 
 bool MSCodec97::VerifyKey(const sal_uInt8* pSaltData, const sal_uInt8* pSaltDigest)
@@ -419,15 +427,14 @@ void MSCodec_CryptoAPI::GetDigestFromSalt(const sal_uInt8* pSaltData, sal_uInt8*
     rtl_cipher_decode(m_hCipher,
         pSaltData, 16, verifier.data(), verifier.size());
 
-    rtl_digest_SHA1(verifier.data(), verifier.size(), pDigest, RTL_DIGEST_LENGTH_SHA1);
+    std::vector<unsigned char> const sha1(::comphelper::Hash::calculateHash(
+            verifier.data(), verifier.size(), ::comphelper::HashType::SHA1));
+    ::std::copy(sha1.begin(), sha1.end(), pDigest);
 }
 
 bool MSCodec_Std97::InitCipher(sal_uInt32 nCounter)
 {
-    sal_uInt8      pKeyData[64]; // 512-bit message block
-
-    // Initialize KeyData array.
-    (void)memset (pKeyData, 0, sizeof(pKeyData));
+    sal_uInt8      pKeyData[64] = {}; // 512-bit message block
 
     // Fill 40 bit of DigestValue into [0..4].
     (void)memcpy (pKeyData, m_aDigestValue.data(), 5);
@@ -467,14 +474,23 @@ bool MSCodec_CryptoAPI::InitCipher(sal_uInt32 nCounter)
     aKeyData.push_back(sal_uInt8((nCounter >> 16) & 0xff));
     aKeyData.push_back(sal_uInt8((nCounter >> 24) & 0xff));
 
-    std::vector<sal_uInt8> hash(RTL_DIGEST_LENGTH_SHA1);
-    rtl_digest_SHA1(aKeyData.data(), aKeyData.size(), hash.data(), RTL_DIGEST_LENGTH_SHA1);
+    std::vector<unsigned char> const hash(::comphelper::Hash::calculateHash(
+            aKeyData.data(), aKeyData.size(), ::comphelper::HashType::SHA1));
 
     rtlCipherError result =
         rtl_cipher_init(m_hCipher, rtl_Cipher_DirectionDecode,
                         hash.data(), ENCRYPT_KEY_SIZE_AES_128/8, nullptr, 0);
 
     return (result == rtl_Cipher_E_None);
+}
+
+uno::Sequence<beans::NamedValue> MSCodec_CryptoAPI::GetEncryptionData()
+{
+    ::comphelper::SequenceAsHashMap aHashData(MSCodec97::GetEncryptionData());
+    //add in the old encryption key as well as our new key so saving using the
+    //old crypto scheme can be done without reprompt for the password
+    aHashData[OUString("STD97EncryptionKey")] <<= m_aStd97Key;
+    return aHashData.getAsConstNamedValueList();
 }
 
 void MSCodec_Std97::CreateSaltDigest( const sal_uInt8 nSaltData[16], sal_uInt8 nSaltDigest[16] )
@@ -562,31 +578,31 @@ void MSCodec_Std97::GetEncryptKey (
     sal_uInt8 pSaltData[16],
     sal_uInt8 pSaltDigest[16])
 {
-    if (InitCipher(0))
-    {
-        sal_uInt8 pDigest[RTL_DIGEST_LENGTH_MD5];
-        sal_uInt8 pBuffer[64];
+    if (!InitCipher(0))
+        return;
 
-        rtl_cipher_encode (
-            m_hCipher, pSalt, 16, pSaltData, sizeof(pBuffer));
+    sal_uInt8 pDigest[RTL_DIGEST_LENGTH_MD5];
+    sal_uInt8 pBuffer[64];
 
-        (void)memcpy( pBuffer, pSalt, 16 );
+    rtl_cipher_encode (
+        m_hCipher, pSalt, 16, pSaltData, sizeof(pBuffer));
 
-        pBuffer[16] = 0x80;
-        (void)memset (pBuffer + 17, 0, sizeof(pBuffer) - 17);
-        pBuffer[56] = 0x80;
+    (void)memcpy( pBuffer, pSalt, 16 );
 
-        rtl_digest_updateMD5 (
-            m_hDigest, pBuffer, sizeof(pBuffer));
-        rtl_digest_rawMD5 (
-            m_hDigest, pDigest, sizeof(pDigest));
+    pBuffer[16] = 0x80;
+    (void)memset (pBuffer + 17, 0, sizeof(pBuffer) - 17);
+    pBuffer[56] = 0x80;
 
-        rtl_cipher_encode (
-            m_hCipher, pDigest, 16, pSaltDigest, 16);
+    rtl_digest_updateMD5 (
+        m_hDigest, pBuffer, sizeof(pBuffer));
+    rtl_digest_rawMD5 (
+        m_hDigest, pDigest, sizeof(pDigest));
 
-        rtl_secureZeroMemory (pBuffer, sizeof(pBuffer));
-        rtl_secureZeroMemory (pDigest, sizeof(pDigest));
-    }
+    rtl_cipher_encode (
+        m_hCipher, pDigest, 16, pSaltDigest, 16);
+
+    rtl_secureZeroMemory (pBuffer, sizeof(pBuffer));
+    rtl_secureZeroMemory (pDigest, sizeof(pDigest));
 }
 
 void MSCodec97::GetDocId( sal_uInt8 pDocId[16] )
@@ -609,20 +625,14 @@ EncryptionStandardHeader::EncryptionStandardHeader()
 
 EncryptionVerifierAES::EncryptionVerifierAES()
     : saltSize(SALT_LENGTH)
-    , encryptedVerifierHashSize(SHA1_HASH_LENGTH)
+    , encryptedVerifierHashSize(comphelper::SHA1_HASH_LENGTH)
 {
-    memset(salt, 0, sizeof(salt));
-    memset(encryptedVerifier, 0, sizeof(encryptedVerifier));
-    memset(encryptedVerifierHash, 0, sizeof(encryptedVerifierHash));
 }
 
 EncryptionVerifierRC4::EncryptionVerifierRC4()
     : saltSize(SALT_LENGTH)
-    , encryptedVerifierHashSize(SHA1_HASH_LENGTH)
+    , encryptedVerifierHashSize(comphelper::SHA1_HASH_LENGTH)
 {
-    memset(salt, 0, sizeof(salt));
-    memset(encryptedVerifier, 0, sizeof(encryptedVerifier));
-    memset(encryptedVerifierHash, 0, sizeof(encryptedVerifierHash));
 }
 
 }

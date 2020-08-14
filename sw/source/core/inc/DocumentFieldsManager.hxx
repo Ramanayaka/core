@@ -21,6 +21,7 @@
 
 #include <IDocumentFieldsAccess.hxx>
 #include <sal/types.h>
+#include <memory>
 
 class SwDoc;
 class SwDBNameInfField;
@@ -41,7 +42,7 @@ public:
     virtual void RemoveFieldType(size_t nField) override;
     virtual void UpdateFields(bool bCloseDB) override;
     virtual void InsDeletedFieldType(SwFieldType &) override;
-    virtual bool PutValueToField(const SwPosition & rPos, const css::uno::Any& rVal, sal_uInt16 nWhich) override;
+    virtual void PutValueToField(const SwPosition & rPos, const css::uno::Any& rVal, sal_uInt16 nWhich) override;
     virtual bool UpdateField(SwTextField * rDstFormatField, SwField & rSrcField, SwMsgPoolItem * pMsgHint, bool bUpdateTableFields) override;
     virtual void UpdateRefFields() override;
     virtual void UpdateTableFields(SfxPoolItem* pHt) override;
@@ -54,9 +55,9 @@ public:
     virtual SwDocUpdateField& GetUpdateFields() const override;
     virtual bool SetFieldsDirty(bool b, const SwNode* pChk, sal_uLong nLen) override;
     virtual void SetFixFields(const DateTime* pNewDateTime) override;
-    virtual void FieldsToCalc(SwCalc& rCalc, sal_uLong nLastNd, sal_uInt16 nLastCnt) override;
-    virtual void FieldsToCalc(SwCalc& rCalc, const SetGetExpField& rToThisField) override;
-    virtual void FieldsToExpand(SwHash**& ppTable, sal_uInt16& rTableSize, const SetGetExpField& rToThisField) override;
+    virtual void FieldsToCalc(SwCalc& rCalc, sal_uLong nLastNd, sal_Int32 nLastCnt) override;
+    virtual void FieldsToCalc(SwCalc& rCalc, const SetGetExpField& rToThisField, SwRootFrame const* pLayout) override;
+    virtual void FieldsToExpand(SwHashTable<HashStr>& rTable, const SetGetExpField& rToThisField, SwRootFrame const& rLayout) override;
     virtual bool IsNewFieldLst() const override;
     virtual void SetNewFieldLst( bool bFlag) override;
     virtual void InsDelFieldInFieldLst(bool bIns, const SwTextField& rField) override;
@@ -94,11 +95,13 @@ private:
     DocumentFieldsManager(DocumentFieldsManager const&) = delete;
     DocumentFieldsManager& operator=(DocumentFieldsManager const&) = delete;
 
+    void UpdateExpFieldsImpl(SwTextField* pField, SwRootFrame const* pLayout);
+
     SwDoc& m_rDoc;
 
     bool mbNewFieldLst; //< TRUE: Rebuild field-list.
-    SwDocUpdateField    *mpUpdateFields; //< Struct for updating fields
-    SwFieldTypes      *mpFieldTypes;
+    std::unique_ptr<SwDocUpdateField> mpUpdateFields; //< Struct for updating fields
+    std::unique_ptr<SwFieldTypes>     mpFieldTypes;
     sal_Int8    mnLockExpField;  //< If != 0 UpdateExpFields() has no effect!
 };
 

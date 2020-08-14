@@ -9,12 +9,9 @@
  *
  */
 
-#include <config_global.h>
+#ifndef LO_CLANG_SHARED_PLUGINS
 
-// If there is support for warn_unused attribute even in STL classes, then there's
-// no point in having this check enabled, otherwise keep it at least for STL
-// (LO classes won't get duplicated warnings, as the attribute is different).
-#if !HAVE_GCC_ATTRIBUTE_WARN_UNUSED_STL
+#include <config_global.h>
 
 #include "compat.hxx"
 #include "check.hxx"
@@ -39,7 +36,7 @@ that cannot be edited there is a manual list below.
 */
 
 UnusedVariableCheck::UnusedVariableCheck( const InstantiationData& data )
-    : Plugin( data )
+    : FilteringPlugin( data )
     {
     }
 
@@ -56,7 +53,21 @@ bool UnusedVariableCheck::VisitVarDecl( const VarDecl* var )
         return true;
     if( var->isDefinedOutsideFunctionOrMethod())
         return true;
-    if( loplugin::isExtraWarnUnusedType(var->getType()))
+
+    auto type = var->getType();
+    bool check = loplugin::isExtraWarnUnusedType(type);
+
+    // this chunk of logic generates false+, which is why we don't leave it on
+/*
+    if (!check && type->isRecordType())
+    {
+        auto recordDecl
+            = dyn_cast_or_null<CXXRecordDecl>(type->getAs<RecordType>()->getDecl());
+        if (recordDecl && recordDecl->hasDefinition() && recordDecl->hasTrivialDestructor())
+            check = true;
+    }
+*/
+    if(check)
         {
             if( const ParmVarDecl* param = dyn_cast< ParmVarDecl >( var ))
                 {
@@ -77,10 +88,10 @@ bool UnusedVariableCheck::VisitVarDecl( const VarDecl* var )
     return true;
     }
 
-static Plugin::Registration< UnusedVariableCheck > X( "unusedvariablecheck" );
+static Plugin::Registration< UnusedVariableCheck > unusedvariablecheck( "unusedvariablecheck" );
 
 } // namespace
 
-#endif
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

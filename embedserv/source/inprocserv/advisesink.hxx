@@ -24,7 +24,11 @@
 
 #include <memory>
 
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
+#include <objidl.h>
 #include "smartpointer.hxx"
 
 namespace inprocserv {
@@ -66,7 +70,7 @@ public:
     void SetRegID( DWORD nRegID ) { m_nRegID = nRegID; }
     DWORD GetRegID() { return m_nRegID; }
 
-    BOOL IsOleAdvise() { return m_bObjectAdvise; }
+    bool IsOleAdvise() { return m_bObjectAdvise; }
     DWORD GetDataAdviseFlag() { return m_nDataRegFlag; }
     DWORD GetViewAdviseFlag() { return m_nViewRegFlag; }
 
@@ -83,9 +87,9 @@ public:
     STDMETHODIMP_(ULONG) AddRef() override;
     STDMETHODIMP_(ULONG) Release() override;
 
-    STDMETHODIMP_(void)  OnDataChange(LPFORMATETC, LPSTGMEDIUM) override;
+    STDMETHODIMP_(void)  OnDataChange(FORMATETC *, STGMEDIUM *) override;
     STDMETHODIMP_(void)  OnViewChange(DWORD, LONG) override;
-    STDMETHODIMP_(void)  OnRename(LPMONIKER) override;
+    STDMETHODIMP_(void)  OnRename(IMoniker *) override;
     STDMETHODIMP_(void)  OnSave() override;
     STDMETHODIMP_(void)  OnClose() override;
 };

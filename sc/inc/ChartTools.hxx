@@ -12,14 +12,17 @@
 #define INCLUDED_SC_INC_CHARTTOOLS_HXX
 
 #include <memory>
-#include <svx/svdoole2.hxx>
+#include <vector>
+
 #include <svx/svditer.hxx>
+#include <rtl/ustring.hxx>
 
-#include "docsh.hxx"
-#include "drwlayer.hxx"
+#include "types.hxx"
 
-namespace sc {
-namespace tools {
+class ScDocShell;
+class SdrOle2Obj;
+
+namespace sc::tools {
 
 enum class ChartSourceType
 {
@@ -46,7 +49,7 @@ SdrOle2Obj* getChartByIndex(ScDocShell* pDocShell, SCTAB nTab,
 
 std::vector<SdrOle2Obj*> getAllPivotChartsConntectedTo(OUString const & sPivotTableName, ScDocShell* pDocShell);
 
-}} // end sc::tools
+} // end sc::tools
 
 #endif
 

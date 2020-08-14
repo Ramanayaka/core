@@ -17,18 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "brwctrlr.hxx"
-#include "brwview.hxx"
-#include "sbagrid.hxx"
+#include <brwview.hxx>
+#include <sbagrid.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <comphelper/types.hxx>
+#include <vcl/fixed.hxx>
 #include <vcl/split.hxx>
-#include "dbtreeview.hxx"
-#include "dbustrings.hrc"
-#include "dbu_brw.hrc"
+#include <strings.hxx>
 #include <com/sun/star/form/XLoadable.hpp>
 #include <com/sun/star/awt/XControlContainer.hpp>
-#include "UITools.hxx"
+#include <com/sun/star/awt/PosSize.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/container/XChild.hpp>
 #include <osl/diagnose.h>
 
 using namespace dbaui;
@@ -45,7 +45,7 @@ namespace
     {
         bool bGrabFocus = false;
         SbaGridControl* pVclControl = _pView->getVclControl();
-        Reference< css::awt::XControl > xGrid = _pView->getGridControl();
+        const Reference< css::awt::XControl >& xGrid = _pView->getGridControl();
         if (pVclControl && xGrid.is())
         {
             bGrabFocus = true;
@@ -152,12 +152,12 @@ void UnoDataBrowserView::setSplitter(Splitter* _pSplitter)
     LINK( this, UnoDataBrowserView, SplitHdl ).Call(m_pSplitter);
 }
 
-void UnoDataBrowserView::setTreeView(DBTreeView* _pTreeView)
+void UnoDataBrowserView::setTreeView(InterimDBTreeListBox* pTreeView)
 {
-    if (m_pTreeView.get() != _pTreeView)
+    if (m_pTreeView.get() != pTreeView)
     {
         m_pTreeView.disposeAndClear();
-        m_pTreeView = _pTreeView;
+        m_pTreeView = pTreeView;
     }
 }
 
@@ -172,7 +172,7 @@ void UnoDataBrowserView::showStatus( const OUString& _rStatus )
         m_pStatus->SetText(_rStatus);
         m_pStatus->Show();
         Resize();
-        Update();
+        PaintImmediately();
     }
 }
 
@@ -183,7 +183,7 @@ void UnoDataBrowserView::hideStatus()
         return;
     m_pStatus->Hide();
     Resize();
-    Update();
+    PaintImmediately();
 }
 
 void UnoDataBrowserView::resizeDocumentView(tools::Rectangle& _rPlayground)
@@ -197,15 +197,15 @@ void UnoDataBrowserView::resizeDocumentView(tools::Rectangle& _rPlayground)
     {
         // calculate the splitter pos and size
         aSplitPos   = m_pSplitter->GetPosPixel();
-        aSplitPos.Y() = aPlaygroundPos.Y();
+        aSplitPos.setY( aPlaygroundPos.Y() );
         aSplitSize  = m_pSplitter->GetOutputSizePixel();
-        aSplitSize.Height() = aPlaygroundSize.Height();
+        aSplitSize.setHeight( aPlaygroundSize.Height() );
 
         if( ( aSplitPos.X() + aSplitSize.Width() ) > ( aPlaygroundSize.Width() ))
-            aSplitPos.X() = aPlaygroundSize.Width() - aSplitSize.Width();
+            aSplitPos.setX( aPlaygroundSize.Width() - aSplitSize.Width() );
 
         if( aSplitPos.X() <= aPlaygroundPos.X() )
-            aSplitPos.X() = aPlaygroundPos.X() + sal_Int32(aPlaygroundSize.Width() * 0.2);
+            aSplitPos.setX( aPlaygroundPos.X() + sal_Int32(aPlaygroundSize.Width() * 0.2) );
 
         // the tree pos and size
         Point   aTreeViewPos( aPlaygroundPos );
@@ -215,12 +215,12 @@ void UnoDataBrowserView::resizeDocumentView(tools::Rectangle& _rPlayground)
         if (m_pStatus && m_pStatus->IsVisible())
         {
             Size aStatusSize(aPlaygroundPos.X(), GetTextHeight() + 2);
-            aStatusSize = LogicToPixel(aStatusSize, MapUnit::MapAppFont);
-            aStatusSize.Width() = aTreeViewSize.Width() - 2 - 2;
+            aStatusSize = LogicToPixel(aStatusSize, MapMode(MapUnit::MapAppFont));
+            aStatusSize.setWidth( aTreeViewSize.Width() - 2 - 2 );
 
             Point aStatusPos( aPlaygroundPos.X() + 2, aTreeViewPos.Y() + aTreeViewSize.Height() - aStatusSize.Height() );
             m_pStatus->SetPosSizePixel( aStatusPos, aStatusSize );
-            aTreeViewSize.Height() -= aStatusSize.Height();
+            aTreeViewSize.AdjustHeight( -(aStatusSize.Height()) );
         }
 
         // set the size of treelistbox
@@ -257,12 +257,12 @@ SbaGridControl* UnoDataBrowserView::getVclControl() const
             Reference< css::awt::XWindowPeer >  xPeer = m_xGrid->getPeer();
             if ( xPeer.is() )
             {
-                SbaXGridPeer* pPeer = SbaXGridPeer::getImplementation(xPeer);
+                SbaXGridPeer* pPeer = comphelper::getUnoTunnelImplementation<SbaXGridPeer>(xPeer);
                 UnoDataBrowserView* pTHIS = const_cast<UnoDataBrowserView*>(this);
                 if ( pPeer )
                 {
                     m_pVclControl = static_cast<SbaGridControl*>(pPeer->GetWindow().get());
-                    pTHIS->startComponentListening(Reference<XComponent>(VCLUnoHelper::GetInterface(m_pVclControl),UNO_QUERY));
+                    pTHIS->startComponentListening(VCLUnoHelper::GetInterface(m_pVclControl));
                 }
             }
         }
@@ -291,7 +291,7 @@ void UnoDataBrowserView::GetFocus()
 
 void UnoDataBrowserView::_disposing( const css::lang::EventObject& /*_rSource*/ )
 {
-    stopComponentListening(Reference<XComponent>(VCLUnoHelper::GetInterface(m_pVclControl),UNO_QUERY));
+    stopComponentListening(VCLUnoHelper::GetInterface(m_pVclControl));
     m_pVclControl = nullptr;
 }
 

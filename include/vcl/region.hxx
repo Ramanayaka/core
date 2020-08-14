@@ -25,7 +25,6 @@
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <memory>
 
-class ImplRegionBand;
 class RegionBand;
 
 namespace tools {
@@ -41,7 +40,7 @@ typedef std::vector< tools::Rectangle > RectangleVector;
 
 namespace vcl {
 
-class VCL_DLLPUBLIC Region
+class SAL_WARN_UNUSED VCL_DLLPUBLIC Region
 {
 private:
     friend class ::OutputDevice;
@@ -73,7 +72,7 @@ public:
     explicit Region(const tools::PolyPolygon& rPolyPoly);
     explicit Region(const basegfx::B2DPolyPolygon&);
     Region(const vcl::Region& rRegion);
-    Region(vcl::Region&& rRegion);
+    Region(vcl::Region&& rRegion) noexcept;
     ~Region();
 
     // direct access to contents
@@ -83,20 +82,20 @@ public:
 
     // access with converters, the asked data will be created from the most
     // valuable data, buffered and returned
-    const tools::PolyPolygon GetAsPolyPolygon() const;
-    const basegfx::B2DPolyPolygon GetAsB2DPolyPolygon() const;
+    tools::PolyPolygon GetAsPolyPolygon() const;
+    basegfx::B2DPolyPolygon GetAsB2DPolyPolygon() const;
     const RegionBand* GetAsRegionBand() const;
 
     // manipulators
     void Move( long nHorzMove, long nVertMove );
     void Scale( double fScaleX, double fScaleY );
-    bool Union( const tools::Rectangle& rRegion );
-    bool Intersect( const tools::Rectangle& rRegion );
-    bool Exclude( const tools::Rectangle& rRegion );
-    bool XOr( const tools::Rectangle& rRegion );
-    bool Union( const vcl::Region& rRegion );
-    bool Intersect( const vcl::Region& rRegion );
-    bool Exclude( const vcl::Region& rRegion );
+    void Union( const tools::Rectangle& rRegion );
+    void Intersect( const tools::Rectangle& rRegion );
+    void Exclude( const tools::Rectangle& rRegion );
+    void XOr( const tools::Rectangle& rRegion );
+    void Union( const vcl::Region& rRegion );
+    void Intersect( const vcl::Region& rRegion );
+    void Exclude( const vcl::Region& rRegion );
     bool XOr( const vcl::Region& rRegion );
 
     bool IsEmpty() const;
@@ -115,7 +114,7 @@ public:
     bool IsOver( const tools::Rectangle& rRect ) const;
 
     vcl::Region& operator=( const vcl::Region& rRegion );
-    vcl::Region& operator=( vcl::Region&& rRegion );
+    vcl::Region& operator=( vcl::Region&& rRegion ) noexcept;
     vcl::Region& operator=( const tools::Rectangle& rRect );
 
     bool operator==( const vcl::Region& rRegion ) const;

@@ -13,85 +13,116 @@
  manual changes will be rewritten by the next run of update_pch.sh (which presumably
  also fixes all possible problems, so it's usually better to use it).
 
- Generated on 2015-11-14 14:16:28 using:
+ Generated on 2020-07-09 17:06:13 using:
  ./bin/update_pch basic sb --cutoff=2 --exclude:system --exclude:module --include:local
 
  If after updating build fails, use the following command to locate conflicting headers:
- ./bin/update_pch_bisect ./basic/inc/pch/precompiled_sb.hxx "/opt/lo/bin/make basic.build" --find-conflicts
+ ./bin/update_pch_bisect ./basic/inc/pch/precompiled_sb.hxx "make basic.build" --find-conflicts
 */
 
-#include <cassert>
-#include <config_features.h>
+#if PCH_LEVEL >= 1
 #include <cstddef>
-#include <cstdlib>
-#include <ctype.h>
 #include <math.h>
 #include <memory>
-#include <new>
 #include <ostream>
-#include <sstream>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <boost/optional.hpp>
+#include <vector>
+#endif // PCH_LEVEL >= 1
+#if PCH_LEVEL >= 2
+#include <osl/endian.h>
 #include <osl/file.hxx>
-#include <osl/mutex.hxx>
 #include <osl/process.h>
 #include <osl/thread.h>
 #include <osl/time.h>
 #include <rtl/character.hxx>
 #include <rtl/math.hxx>
-#include <rtl/strbuf.hxx>
-#include <rtl/string.h>
 #include <rtl/string.hxx>
-#include <rtl/stringutils.hxx>
 #include <rtl/textenc.h>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/config.h>
-#include <sal/detail/log.h>
 #include <sal/log.hxx>
 #include <sal/saldllapi.h>
 #include <sal/types.h>
+#include <vcl/bitmap.hxx>
+#include <vcl/cairo.hxx>
+#include <vcl/devicecoordinate.hxx>
 #include <vcl/dllapi.h>
+#include <vcl/errcode.hxx>
+#include <vcl/font.hxx>
 #include <vcl/mapmod.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/metaactiontypes.hxx>
+#include <vcl/outdev.hxx>
+#include <vcl/outdevmap.hxx>
+#include <vcl/outdevstate.hxx>
+#include <vcl/region.hxx>
+#include <vcl/salnativewidgets.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
-#include <basrid.hxx>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/i18n/KCharacterType.hpp>
-#include <com/sun/star/i18n/KParseTokens.hpp>
-#include <com/sun/star/i18n/KParseType.hpp>
-#include <com/sun/star/i18n/ParseResult.hpp>
-#include <com/sun/star/i18n/XCharacterClassification.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <vcl/vclreferencebase.hxx>
+#include <vcl/wall.hxx>
+#include <vcl/weld.hxx>
+#endif // PCH_LEVEL >= 2
+#if PCH_LEVEL >= 3
+#include <basegfx/color/bcolor.hxx>
+#include <basegfx/numeric/ftools.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <basegfx/vector/b2enums.hxx>
+#include <com/sun/star/drawing/LineCap.hpp>
+#include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/uno/Reference.h>
+#include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/util/DateTime.hpp>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/string.hxx>
 #include <i18nlangtag/lang.h>
-#include <i18nlangtag/languagetag.hxx>
-#include <sbobjmod.hxx>
-#include <sbxbase.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
+#include <o3tl/cow_wrapper.hxx>
+#include <o3tl/float_int_conversion.hxx>
+#include <o3tl/safeint.hxx>
+#include <o3tl/typed_flags_set.hxx>
 #include <svl/SfxBroadcaster.hxx>
 #include <svl/zforlist.hxx>
+#include <tools/color.hxx>
 #include <tools/debug.hxx>
-#include <vcl/errcode.hxx>
+#include <tools/gen.hxx>
 #include <tools/link.hxx>
 #include <tools/mapunit.hxx>
+#include <tools/poly.hxx>
+#include <tools/ref.hxx>
+#include <tools/solar.h>
 #include <tools/stream.hxx>
 #include <tools/toolsdllapi.h>
 #include <tools/urlobj.hxx>
+#include <tools/wintypes.hxx>
 #include <unotools/charclass.hxx>
+#include <unotools/fontdefs.hxx>
+#include <unotools/syslocale.hxx>
 #include <unotools/unotoolsdllapi.h>
+#endif // PCH_LEVEL >= 3
+#if PCH_LEVEL >= 4
 #include <basic/basicdllapi.h>
+#include <basic/sbdef.hxx>
+#include <basic/sberrors.hxx>
+#include <basic/sbmod.hxx>
+#include <basic/sbstar.hxx>
 #include <basic/sbuno.hxx>
 #include <basic/sbx.hxx>
-#include <basic/sbxfac.hxx>
-#include <basic/sbxform.hxx>
+#include <basic/sbxmeth.hxx>
 #include <basic/sbxobj.hxx>
 #include <basic/sbxvar.hxx>
+#include <date.hxx>
+#include <iosys.hxx>
+#include <rtlproto.hxx>
+#include <runtime.hxx>
+#include <sbintern.hxx>
+#include <sbobjmod.hxx>
+#include <sbunoobj.hxx>
+#include <sbxbase.hxx>
+#include <sbxfac.hxx>
+#include <sbxform.hxx>
+#include <sbxprop.hxx>
+#endif // PCH_LEVEL >= 4
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

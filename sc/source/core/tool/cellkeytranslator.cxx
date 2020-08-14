@@ -18,18 +18,21 @@
  */
 
 #include <memory>
-#include "cellkeytranslator.hxx"
+#include <global.hxx>
+#include <cellkeytranslator.hxx>
 #include <comphelper/processfactory.hxx>
 #include <i18nlangtag/mslangid.hxx>
 #include <i18nlangtag/lang.h>
 #include <i18nutil/transliteration.hxx>
 #include <rtl/ustring.hxx>
 #include <unotools/syslocale.hxx>
+#include <com/sun/star/uno/Sequence.hxx>
 
 using ::com::sun::star::uno::Sequence;
-using ::std::list;
 
 using namespace ::com::sun::star;
+
+namespace {
 
 enum LocaleMatch
 {
@@ -39,6 +42,8 @@ enum LocaleMatch
     LOCALE_MATCH_LANG_SCRIPT_COUNTRY,
     LOCALE_MATCH_ALL
 };
+
+}
 
 static LocaleMatch lclLocaleCompare(const lang::Locale& rLocale1, const LanguageTag& rLanguageTag2)
 {
@@ -66,7 +71,7 @@ static LocaleMatch lclLocaleCompare(const lang::Locale& rLocale1, const Language
     return eMatchLevel;
 }
 
-ScCellKeyword::ScCellKeyword(const sal_Char* pName, OpCode eOpCode, const lang::Locale& rLocale) :
+ScCellKeyword::ScCellKeyword(const char* pName, OpCode eOpCode, const lang::Locale& rLocale) :
     mpName(pName),
     meOpCode(eOpCode),
     mrLocale(rLocale)
@@ -94,61 +99,59 @@ static void lclMatchKeyword(OUString& rName, const ScCellKeywordHashMap& aMap,
     }
 
     LanguageTag aLanguageTag( pLocale ? *pLocale : lang::Locale("","",""));
-    const sal_Char* aBestMatchName = itr->second.front().mpName;
+    const char* aBestMatchName = itr->second.front().mpName;
     LocaleMatch eLocaleMatchLevel = LOCALE_MATCH_NONE;
     bool bOpCodeMatched = false;
 
-    list<ScCellKeyword>::const_iterator itrListEnd = itr->second.end();
-    list<ScCellKeyword>::const_iterator itrList = itr->second.begin();
-    for ( ; itrList != itrListEnd; ++itrList )
+    for (auto const& elem : itr->second)
     {
         if ( eOpCode != ocNone && pLocale )
         {
-            if ( itrList->meOpCode == eOpCode )
+            if (elem.meOpCode == eOpCode)
             {
-                LocaleMatch eLevel = lclLocaleCompare(itrList->mrLocale, aLanguageTag);
+                LocaleMatch eLevel = lclLocaleCompare(elem.mrLocale, aLanguageTag);
                 if ( eLevel == LOCALE_MATCH_ALL )
                 {
                     // Name with matching opcode and locale found.
-                    rName = OUString::createFromAscii( itrList->mpName );
+                    rName = OUString::createFromAscii( elem.mpName );
                     return;
                 }
                 else if ( eLevel > eLocaleMatchLevel )
                 {
                     // Name with a better matching locale.
                     eLocaleMatchLevel = eLevel;
-                    aBestMatchName = itrList->mpName;
+                    aBestMatchName = elem.mpName;
                 }
                 else if ( !bOpCodeMatched )
                     // At least the opcode matches.
-                    aBestMatchName = itrList->mpName;
+                    aBestMatchName = elem.mpName;
 
                 bOpCodeMatched = true;
             }
         }
         else if ( eOpCode != ocNone && !pLocale )
         {
-            if ( itrList->meOpCode == eOpCode )
+            if ( elem.meOpCode == eOpCode )
             {
                 // Name with a matching opcode preferred.
-                rName = OUString::createFromAscii( itrList->mpName );
+                rName = OUString::createFromAscii( elem.mpName );
                 return;
             }
         }
         else if ( pLocale )
         {
-            LocaleMatch eLevel = lclLocaleCompare(itrList->mrLocale, aLanguageTag);
+            LocaleMatch eLevel = lclLocaleCompare(elem.mrLocale, aLanguageTag);
             if ( eLevel == LOCALE_MATCH_ALL )
             {
                 // Name with matching locale preferred.
-                rName = OUString::createFromAscii( itrList->mpName );
+                rName = OUString::createFromAscii( elem.mpName );
                 return;
             }
             else if ( eLevel > eLocaleMatchLevel )
             {
                 // Name with a better matching locale.
                 eLocaleMatchLevel = eLevel;
-                aBestMatchName = itrList->mpName;
+                aBestMatchName = elem.mpName;
             }
         }
     }
@@ -159,11 +162,11 @@ static void lclMatchKeyword(OUString& rName, const ScCellKeywordHashMap& aMap,
 
 void ScCellKeywordTranslator::transKeyword(OUString& rName, const lang::Locale* pLocale, OpCode eOpCode)
 {
-    if ( !spInstance.get() )
+    if (!spInstance)
         spInstance.reset( new ScCellKeywordTranslator );
 
     LanguageType nLang = pLocale ?
-        LanguageTag(*pLocale).makeFallback().getLanguageType() : ScGlobal::pSysLocale->GetLanguageTag().getLanguageType();
+        LanguageTag(*pLocale).makeFallback().getLanguageType() : ScGlobal::xSysLocale->GetLanguageTag().getLanguageType();
     Sequence<sal_Int32> aOffsets;
     rName = spInstance->maTransWrapper.transliterate(rName, nLang, 0, rName.getLength(), &aOffsets);
     lclMatchKeyword(rName, spInstance->maStringNameMap, eOpCode, pLocale);
@@ -183,7 +186,7 @@ ScCellKeywordTranslator::~ScCellKeywordTranslator()
 struct TransItem
 {
     const sal_Unicode*  from;
-    const sal_Char*     to;
+    const char*         to;
     OpCode              func;
 };
 
@@ -204,7 +207,7 @@ void ScCellKeywordTranslator::init()
     #include "cellkeywords.inl"
 }
 
-void ScCellKeywordTranslator::addToMap(const OUString& rKey, const sal_Char* pName, const lang::Locale& rLocale, OpCode eOpCode)
+void ScCellKeywordTranslator::addToMap(const OUString& rKey, const char* pName, const lang::Locale& rLocale, OpCode eOpCode)
 {
     ScCellKeyword aKeyItem( pName, eOpCode, rLocale );
 
@@ -214,9 +217,8 @@ void ScCellKeywordTranslator::addToMap(const OUString& rKey, const sal_Char* pNa
     if ( itr == itrEnd )
     {
         // New keyword.
-        list<ScCellKeyword> aList;
-        aList.push_back(aKeyItem);
-        maStringNameMap.insert( ScCellKeywordHashMap::value_type(rKey, aList) );
+        std::vector<ScCellKeyword> aVector { aKeyItem };
+        maStringNameMap.emplace(rKey, aVector);
     }
     else
         itr->second.push_back(aKeyItem);

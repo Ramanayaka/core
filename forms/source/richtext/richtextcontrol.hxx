@@ -23,14 +23,13 @@
 #include <toolkit/controls/unocontrols.hxx>
 #include <toolkit/awt/vclxwindow.hxx>
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase1.hxx>
 #include <rtl/ref.hxx>
 #include <tools/wintypes.hxx>
 #include "rtattributes.hxx"
-#include "attributedispatcher.hxx"
+#include "textattributelistener.hxx"
 
 #include <map>
 
@@ -75,7 +74,7 @@ namespace frm
 
     typedef ::cppu::ImplHelper1 <   css::frame::XDispatchProvider
                                 >   ORichTextPeer_Base;
-    class ORichTextPeer :public VCLXWindow
+    class ORichTextPeer final :public VCLXWindow
                         ,public ORichTextPeer_Base
                         ,public ITextSelectionListener
     {
@@ -86,10 +85,8 @@ namespace frm
 
     public:
         /** factory method
-            @return
-                a new ORichTextPeer instance, which has been acquired once!
         */
-        static ORichTextPeer* Create(
+        static rtl::Reference<ORichTextPeer> Create(
             const css::uno::Reference< css::awt::XControlModel >&         _rxModel,
             vcl::Window* _pParentWindow,
             WinBits _nStyle
@@ -98,7 +95,7 @@ namespace frm
         // XInterface
         DECLARE_XINTERFACE( )
 
-    protected:
+    private:
         ORichTextPeer();
         virtual ~ORichTextPeer() override;
 
@@ -119,7 +116,7 @@ namespace frm
         virtual css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > SAL_CALL queryDispatches( const css::uno::Sequence< css::frame::DispatchDescriptor >& Requests ) override;
 
         // ITextSelectionListener
-        virtual void    onSelectionChanged( const ESelection& _rSelection ) override;
+        virtual void    onSelectionChanged() override;
 
     private:
         SingleAttributeDispatcher implCreateDispatcher( SfxSlotId _nSlotId, const css::util::URL& _rURL );

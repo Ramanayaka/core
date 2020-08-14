@@ -23,9 +23,7 @@
 #include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/form/XGridColumnFactory.hpp>
 #include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/form/XFormsSupplier.hpp>
 #include <com/sun/star/form/XForm.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -127,7 +125,7 @@ namespace pcr
 
                     if ( xSuppForms->getForms() == xFormsCollection )
                     {   // found it
-                        nSheetIndex = (sal_Int16)i;
+                        nSheetIndex = static_cast<sal_Int16>(i);
                         _out_rxSheet.set( xSuppPage, UNO_QUERY_THROW );
                         break;
                     }
@@ -136,7 +134,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
 
         return nSheetIndex;
@@ -176,14 +174,14 @@ namespace pcr
             try
             {
                 Reference< XSpreadsheet > xSheet;
-                xConverter->setPropertyValue( PROPERTY_REFERENCE_SHEET, makeAny( (sal_Int32)getControlSheetIndex( xSheet ) ) );
+                xConverter->setPropertyValue( PROPERTY_REFERENCE_SHEET, makeAny( static_cast<sal_Int32>(getControlSheetIndex( xSheet )) ) );
                 xConverter->setPropertyValue( _rInputProperty, _rInputValue );
                 _rOutputValue = xConverter->getPropertyValue( _rOutputProperty );
                 bSuccess = true;
             }
             catch( const Exception& )
             {
-                OSL_FAIL( "CellBindingHelper::doConvertAddressRepresentations: caught an exception!" );
+                TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "CellBindingHelper::doConvertAddressRepresentations" );
             }
         }
 
@@ -310,7 +308,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "CellBindingHelper::getAddressFromCellBinding: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "CellBindingHelper::getAddressFromCellBinding" );
         }
 
         return bReturn;
@@ -360,7 +358,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "CellBindingHelper::getStringAddressFromCellListSource: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "CellBindingHelper::getStringAddressFromCellListSource" );
         }
 
         return sAddress;
@@ -381,15 +379,11 @@ namespace pcr
             if ( xDocumentFactory.is() )
                 aAvailableServices = xDocumentFactory->getAvailableServiceNames( );
 
-            const OUString* pFound = std::find_if(
-                aAvailableServices.getConstArray(),
-                aAvailableServices.getConstArray() + aAvailableServices.getLength(),
+            bYesItIs = std::any_of(
+                aAvailableServices.begin(),
+                aAvailableServices.end(),
                 StringCompare( _rService )
             );
-            if ( pFound - aAvailableServices.getConstArray() < aAvailableServices.getLength() )
-            {
-                bYesItIs = true;
-            }
         }
 
         return bYesItIs;
@@ -436,7 +430,7 @@ namespace pcr
             }
             catch( const Exception& )
             {
-                OSL_FAIL( "CellBindingHelper::isCellIntegerBindingAllowed: caught an exception!" );
+                TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "CellBindingHelper::isCellIntegerBindingAllowed" );
                     // are there really control models which survive isCellBindingAllowed, but don't have a ClassId
                     // property?
                 bAllow = false;
@@ -473,7 +467,7 @@ namespace pcr
             }
             catch( const Exception& )
             {
-                OSL_FAIL( "CellBindingHelper::isCellBindingAllowed: caught an exception!" );
+                TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "CellBindingHelper::isCellBindingAllowed" );
                 bAllow = false;
             }
         }

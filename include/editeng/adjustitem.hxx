@@ -19,12 +19,10 @@
 #ifndef INCLUDED_EDITENG_ADJUSTITEM_HXX
 #define INCLUDED_EDITENG_ADJUSTITEM_HXX
 
-#include <svl/eitem.hxx>
+#include <svl/cenumitm.hxx>
+#include <svl/poolitem.hxx>
 #include <editeng/svxenum.hxx>
-#include <editeng/eeitem.hxx>
 #include <editeng/editengdllapi.h>
-
-class SvXMLUnitConverter;
 
 // class SvxAdjustItem ---------------------------------------------------
 
@@ -32,16 +30,16 @@ class SvXMLUnitConverter;
 [Description]
 This item describes the row orientation.
 */
-#define ADJUST_LASTBLOCK_VERSION        ((sal_uInt16)0x0001)
+constexpr sal_uInt16 ADJUST_LASTBLOCK_VERSION = 0x0001;
 
-class EDITENG_DLLPUBLIC SvxAdjustItem : public SfxEnumItemInterface
+class EDITENG_DLLPUBLIC SvxAdjustItem final : public SfxEnumItemInterface
 {
     bool    bLeft      : 1;
     bool    bRight     : 1;
     bool    bCenter    : 1;
     bool    bBlock     : 1;
 
-    // only activ when bBlock
+    // only active when bBlock
     bool    bOneBlock : 1;
     bool    bLastCenter : 1;
     bool    bLastBlock : 1;
@@ -61,15 +59,12 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
     virtual sal_uInt16       GetValueCount() const override;
-    virtual OUString         GetValueTextByPos( sal_uInt16 nPos ) const override;
+    static OUString          GetValueTextByPos( sal_uInt16 nPos );
     virtual sal_uInt16       GetEnumValue() const override;
     virtual void             SetEnumValue( sal_uInt16 nNewVal ) override;
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion ) const override;
-    virtual sal_uInt16       GetVersion( sal_uInt16 nFileVersion ) const override;
+    virtual SvxAdjustItem*   Clone( SfxItemPool *pPool = nullptr ) const override;
 
     void SetOneWord( const SvxAdjust eType )
     {
@@ -121,6 +116,25 @@ public:
         else if ( bBlock )
             eRet = SvxAdjust::Block;
         return eRet;
+    }
+
+    sal_Int8 GetAsFlags() const
+    {
+        sal_Int8 nFlags = 0;
+        if ( bOneBlock )
+            nFlags |= 0x0001;
+        if ( bLastCenter )
+            nFlags |= 0x0002;
+        if ( bLastBlock )
+            nFlags |= 0x0004;
+        return nFlags;
+    }
+
+    void SetAsFlags(sal_Int8 nFlags)
+    {
+        bOneBlock = 0 != (nFlags & 0x0001);
+        bLastCenter = 0 != (nFlags & 0x0002);
+        bLastBlock = 0 != (nFlags & 0x0004);
     }
 };
 

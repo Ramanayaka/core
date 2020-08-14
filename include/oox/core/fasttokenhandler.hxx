@@ -20,13 +20,9 @@
 #ifndef INCLUDED_OOX_CORE_FASTTOKENHANDLER_HXX
 #define INCLUDED_OOX_CORE_FASTTOKENHANDLER_HXX
 
-#include <exception>
-
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/xml/sax/XFastTokenHandler.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <oox/dllapi.h>
 #include <rtl/ustring.hxx>
@@ -35,17 +31,14 @@
 
 namespace oox { class TokenMap; }
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 
 /** Wrapper implementing the com.sun.star.xml.sax.XFastTokenHandler API interface
     that provides access to the tokens generated from the internal token name list.
  */
-class OOX_DLLPUBLIC FastTokenHandler :
-    public ::cppu::WeakImplHelper< css::lang::XServiceInfo,
-                                   css::xml::sax::XFastTokenHandler >,
-    public sax_fastparser::FastTokenHandlerBase
+class OOX_DLLPUBLIC FastTokenHandler final :
+    public cppu::ImplInheritanceHelper< sax_fastparser::FastTokenHandlerBase, css::lang::XServiceInfo >
 {
 public:
     explicit            FastTokenHandler();
@@ -68,8 +61,7 @@ private:
 };
 
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 #endif
 

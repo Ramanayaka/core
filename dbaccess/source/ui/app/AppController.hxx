@@ -20,38 +20,32 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_APP_APPCONTROLLER_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_APP_APPCONTROLLER_HXX
 
-#include "AppElementType.hxx"
-#include "callbacks.hxx"
-#include "commontypes.hxx"
-#include "dsntypes.hxx"
+#include <AppElementType.hxx>
+#include <callbacks.hxx>
+#include <commontypes.hxx>
+#include <dsntypes.hxx>
 #include <dbaccess/genericcontroller.hxx>
-#include "linkeddocuments.hxx"
-#include "moduledbu.hxx"
-#include "TableCopyHelper.hxx"
+#include <linkeddocuments.hxx>
+#include <TableCopyHelper.hxx>
 
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <com/sun/star/sdb/application/XDatabaseDocumentUI.hpp>
-#include <com/sun/star/util/XModifiable.hpp>
 #include <com/sun/star/ui/XContextMenuInterception.hpp>
 
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase5.hxx>
 #include <comphelper/interfacecontainer2.hxx>
-#include <sot/storage.hxx>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include <svx/dataaccessdescriptor.hxx>
-#include <vcl/timer.hxx>
 
 #include <memory>
 
-class SvTreeListEntry;
-class SvTreeListBox;
 class TransferableHelper;
 class TransferableClipboardListener;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container {
         class XNameContainer;
         class XContainer;
@@ -59,10 +53,16 @@ namespace com { namespace sun { namespace star {
     namespace ucb {
         class XContent;
     }
-}}}
+}
+
+namespace weld
+{
+    class TreeView;
+}
 
 namespace dbaui
 {
+    class TreeListBox;
     class SubComponentManager;
     class OApplicationController;
     class OApplicationView;
@@ -94,7 +94,6 @@ namespace dbaui
         css::uno::Reference< css::sdbc::XDatabaseMetaData >
                                 m_xMetaData;
 
-        OModuleClient           m_aModuleClient;
         TransferableDataHelper  m_aSystemClipboard;     // content of the clipboard
         css::uno::Reference< css::beans::XPropertySet >
                                 m_xDataSource;
@@ -248,7 +247,7 @@ namespace dbaui
             @param  _bMove
                 if <TRUE/> the name of the content must be inserted without any change, otherwise not.
             @return
-                <TRUE/> if the paste opertions was successful, otherwise <FALSE/>.
+                <TRUE/> if the paste operations was successful, otherwise <FALSE/>.
         */
         bool paste( ElementType _eType, const svx::ODataAccessDescriptor& _rPasteData, const OUString& _sParentFolder = OUString(), bool _bMove = false);
 
@@ -304,14 +303,14 @@ namespace dbaui
             @param  _bMove
                 if <TRUE/> the name of the content must be inserted without any change, otherwise not.
             @return
-                <TRUE/> if the insert opertions was successful, otherwise <FALSE/>.
+                <TRUE/> if the insert operations was successful, otherwise <FALSE/>.
         */
         bool insertHierachyElement(  ElementType _eType
                                     ,const OUString& _sParentFolder
                                     ,bool _bCollection = true
                                     ,const css::uno::Reference< css::ucb::XContent>& _xContent = css::uno::Reference< css::ucb::XContent>()
                                     ,bool _bMove = false);
-        /** checks if delete command or rename comamnd is allowed
+        /** checks if delete command or rename command is allowed
             @param  _eType
                 The element type.
             @param  _bDelete
@@ -348,15 +347,10 @@ namespace dbaui
         /// determines whether the given table name denotes a view which can be altered
         bool    impl_isAlterableView_nothrow( const OUString& _rTableOrViewName ) const;
 
-        /** does the macro/script migration, where macros/scripts in forms/reports are moved
-            to the database document itself.
-        */
-        void    impl_migrateScripts_nothrow();
-
         /** verifies the object type denotes a valid DatabaseObject, and the object name denotes an existing
             object of this type. Throws if not.
         */
-        void    impl_validateObjectTypeAndName_throw( const sal_Int32 _nObjectType, const ::boost::optional< OUString >& i_rObjectName );
+        void    impl_validateObjectTypeAndName_throw( const sal_Int32 _nObjectType, const ::std::optional< OUString >& i_rObjectName );
 
     protected:
         // initializing members
@@ -385,13 +379,6 @@ namespace dbaui
         // XServiceInfo
         virtual OUString SAL_CALL getImplementationName() override;
         virtual css::uno::Sequence< OUString> SAL_CALL getSupportedServiceNames() override;
-        // need by registration
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static();
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-        static css::uno::Reference< css::uno::XInterface >
-                SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
 
         // css::frame::XController
         virtual void SAL_CALL attachFrame(const css::uno::Reference< css::frame::XFrame > & xFrame) override;
@@ -459,7 +446,8 @@ namespace dbaui
                 <TRUE/> if the double click event has been handled by the called, and should not
                 be processed further.
         */
-        bool onEntryDoubleClick(SvTreeListBox& _rTree);
+        bool onEntryDoubleClick(const weld::TreeView& rTree);
+
         /** called when a container (category) in the application view has been selected
             @param  _pTree
                 The tree list box.
@@ -467,22 +455,28 @@ namespace dbaui
                 <TRUE/> if the container could be changed otherwise <FALSE/>
         */
         bool onContainerSelect(ElementType _eType);
+
         /** called when an entry in a tree view has been selected
             @param  _pEntry
                 the selected entry
         */
         void onSelectionChanged();
+
         /** called when a "Copy" command is executed in a tree view
         */
         void onCopyEntry();
+
         /** called when a "Paste" command is executed in a tree view
         */
         void onPasteEntry();
+
         /** called when a "Delete" command is executed in a tree view
         */
         void onDeleteEntry();
+
         /// called when the preview mode was changed
         void previewChanged( sal_Int32 _nMode);
+
         /// called when an object container of any kind was found during enumerating tree view elements
         void containerFound( const css::uno::Reference< css::container::XContainer >& _xContainer);
 
@@ -490,13 +484,13 @@ namespace dbaui
         virtual bool        isDataSourceReadOnly() const override;
 
         // IControlActionListener overridables
-        virtual bool        requestQuickHelp( const SvTreeListEntry* _pEntry, OUString& _rText ) const override;
-        virtual bool        requestDrag( sal_Int8 _nAction, const Point& _rPosPixel ) override;
+        virtual bool        requestQuickHelp(const void* pUserData, OUString& rText) const override;
+        virtual bool        requestDrag(const weld::TreeIter& rEntry) override;
         virtual sal_Int8    queryDrop( const AcceptDropEvent& _rEvt, const DataFlavorExVector& _rFlavors ) override;
         virtual sal_Int8    executeDrop( const ExecuteDropEvent& _rEvt ) override;
 
         // IContextMenuProvider
-        virtual OUString          getContextMenuResourceName( Control& _rControl ) const override;
+        virtual OUString          getContextMenuResourceName() const override;
         virtual IController&      getCommandController() override;
         virtual ::comphelper::OInterfaceContainerHelper2*
                                 getContextMenuInterceptors() override;

@@ -17,22 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/plotareacontext.hxx"
+#include <drawingml/chart/plotareacontext.hxx>
 
-#include "drawingml/shapepropertiescontext.hxx"
-#include "drawingml/chart/axiscontext.hxx"
-#include "drawingml/chart/plotareamodel.hxx"
-#include "drawingml/chart/seriescontext.hxx"
-#include "drawingml/chart/titlecontext.hxx"
-#include "drawingml/chart/typegroupcontext.hxx"
+#include <drawingml/shapepropertiescontext.hxx>
+#include <drawingml/chart/axiscontext.hxx>
+#include <drawingml/chart/plotareamodel.hxx>
+#include <drawingml/chart/seriescontext.hxx>
+#include <drawingml/chart/typegroupcontext.hxx>
 #include <oox/core/xmlfilterbase.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 using ::oox::core::ContextHandler2Helper;
 using ::oox::core::ContextHandlerRef;
@@ -194,7 +191,7 @@ ContextHandlerRef PlotAreaContext::onCreateContext( sal_Int32 nElement, const At
                 case C_TOKEN( layout ):
                     return new LayoutContext( *this, mrModel.mxLayout.create() );
                 case C_TOKEN( spPr ):
-                    return new ShapePropertiesContext( *this, mrModel.mxShapeProp.create() );
+                    return new ShapePropertiesContext( *this, mrModel.mxShapeProp.getOrCreate() );
                 case C_TOKEN(dTable):
                     return new DataTableContext( *this, mrModel.mxDataTable.create() );
             }
@@ -203,8 +200,6 @@ ContextHandlerRef PlotAreaContext::onCreateContext( sal_Int32 nElement, const At
     return nullptr;
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

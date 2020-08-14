@@ -19,23 +19,25 @@
 #ifndef INCLUDED_CHART2_SOURCE_VIEW_INC_PLOTTINGPOSITIONHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_VIEW_INC_PLOTTINGPOSITIONHELPER_HXX
 
-#include "LabelAlignment.hxx"
-#include "chartview/ExplicitScaleValues.hxx"
+#include <chartview/ExplicitScaleValues.hxx>
 
 #include <basegfx/range/b2drectangle.hxx>
 #include <rtl/math.hxx>
-#include <com/sun/star/chart2/XTransformation.hpp>
 #include <com/sun/star/drawing/Direction3D.hpp>
-#include <com/sun/star/drawing/HomogenMatrix.hpp>
-#include <com/sun/star/drawing/PolyPolygonShape3D.hpp>
 #include <com/sun/star/drawing/Position3D.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
 #include <basegfx/matrix/b3dhommatrix.hxx>
+#include <com/sun/star/awt/Point.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
+
+namespace com::sun::star::chart2 { class XTransformation; }
+namespace com::sun::star::drawing { class XShapes; }
+namespace com::sun::star::drawing { struct HomogenMatrix; }
+namespace com::sun::star::drawing { struct PolyPolygonShape3D; }
 
 namespace chart
 {
 
-class AbstractShapeFactory;
+class ShapeFactory;
 
 class PlottingPositionHelper
 {
@@ -44,8 +46,8 @@ public:
     PlottingPositionHelper( const PlottingPositionHelper& rSource );
     virtual ~PlottingPositionHelper();
 
-    virtual PlottingPositionHelper* clone() const;
-    PlottingPositionHelper* createSecondaryPosHelper( const ExplicitScaleData& rSecondaryScale );
+    virtual std::unique_ptr<PlottingPositionHelper> clone() const;
+    std::unique_ptr<PlottingPositionHelper> createSecondaryPosHelper( const ExplicitScaleData& rSecondaryScale );
 
     virtual void setTransformationSceneToScreen( const css::drawing::HomogenMatrix& rMatrix);
 
@@ -81,7 +83,7 @@ public:
     static css::awt::Point transformSceneToScreenPosition(
                   const css::drawing::Position3D& rScenePosition3D
                 , const css::uno::Reference< css::drawing::XShapes >& xSceneTarget
-                , AbstractShapeFactory* pShapeFactory, sal_Int32 nDimensionCount );
+                , ShapeFactory* pShapeFactory, sal_Int32 nDimensionCount );
 
     inline double getLogicMinX() const;
     inline double getLogicMinY() const;
@@ -141,7 +143,7 @@ public:
     PolarPlottingPositionHelper( const PolarPlottingPositionHelper& rSource );
     virtual ~PolarPlottingPositionHelper() override;
 
-    virtual PlottingPositionHelper* clone() const override;
+    virtual std::unique_ptr<PlottingPositionHelper> clone() const override;
 
     virtual void setTransformationSceneToScreen( const css::drawing::HomogenMatrix& rMatrix) override;
     virtual void setScales( const std::vector< ExplicitScaleData >& rScales, bool bSwapXAndYAxis ) override;
@@ -245,8 +247,8 @@ void PlottingPositionHelper::setCoordinateSystemResolution( const css::uno::Sequ
 bool PlottingPositionHelper::isSameForGivenResolution( double fX, double fY, double fZ
                                 , double fX2, double fY2, double fZ2 /*these values are all expected tp be scaled already*/ )
 {
-    if( !::rtl::math::isFinite(fX) || !::rtl::math::isFinite(fY) || !::rtl::math::isFinite(fZ)
-        || !::rtl::math::isFinite(fX2) || !::rtl::math::isFinite(fY2) || !::rtl::math::isFinite(fZ2) )
+    if( !std::isfinite(fX) || !std::isfinite(fY) || !std::isfinite(fZ)
+        || !std::isfinite(fX2) || !std::isfinite(fY2) || !std::isfinite(fZ2) )
         return false;
 
     double fScaledMinX = getLogicMinX();

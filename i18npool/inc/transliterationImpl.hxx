@@ -19,16 +19,17 @@
 #ifndef INCLUDED_I18NPOOL_INC_TRANSLITERATIONIMPL_HXX
 #define INCLUDED_I18NPOOL_INC_TRANSLITERATIONIMPL_HXX
 
-#include <com/sun/star/i18n/XLocaleData4.hpp>
 #include <com/sun/star/i18n/XExtendedTransliteration.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace com::sun::star::i18n { class XLocaleData5; }
+namespace com::sun::star::uno { class XComponentContext; }
 
-class TransliterationImpl : public cppu::WeakImplHelper
+namespace i18npool {
+
+class TransliterationImpl final : public cppu::WeakImplHelper
 <
     css::i18n::XExtendedTransliteration,
     css::lang::XServiceInfo
@@ -44,8 +45,8 @@ public:
     virtual OUString SAL_CALL getName(  ) override ;
     virtual sal_Int16 SAL_CALL getType(  ) override ;
 
-    virtual void SAL_CALL loadModule( TransliterationModules modName, const css::lang::Locale& rLocale ) override ;
-    virtual void SAL_CALL loadModuleNew( const css::uno::Sequence< TransliterationModulesNew >& modName,
+    virtual void SAL_CALL loadModule( css::i18n::TransliterationModules modName, const css::lang::Locale& rLocale ) override ;
+    virtual void SAL_CALL loadModuleNew( const css::uno::Sequence< css::i18n::TransliterationModulesNew >& modName,
         const css::lang::Locale& rLocale ) override ;
     virtual void SAL_CALL loadModuleByImplName( const OUString& implName,
         const css::lang::Locale& rLocale ) override;
@@ -87,26 +88,26 @@ private:
     sal_Int16 numCascade;
     bool caseignoreOnly;
     css::uno::Reference< css::uno::XComponentContext > mxContext;
-    css::uno::Reference< XLocaleData4 > mxLocaledata;
+    css::uno::Reference< css::i18n::XLocaleData5 > mxLocaledata;
     css::uno::Reference< css::i18n::XExtendedTransliteration > caseignore;
 
     /// @throws css::uno::RuntimeException
-    bool SAL_CALL loadModuleByName( const OUString& implName,
+    bool loadModuleByName( const OUString& implName,
         css::uno::Reference<css::i18n::XExtendedTransliteration> & body, const css::lang::Locale& rLocale);
 
     void clear();
 
     /// @throws css::uno::RuntimeException
-    void loadBody( OUString &implName,
+    void loadBody( OUString const &implName,
         css::uno::Reference< css::i18n::XExtendedTransliteration >& body );
 
     /// @throws css::uno::RuntimeException
-    css::uno::Sequence< OUString > SAL_CALL getRange(
+    css::uno::Sequence< OUString > getRange(
         const css::uno::Sequence< OUString > &inStrs,
         sal_Int32 length, const sal_Int16 _nCascade);
 };
 
-} } } }
+}
 
 #endif
 

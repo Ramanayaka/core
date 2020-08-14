@@ -18,13 +18,14 @@
  */
 
 #include <cppuhelper/queryinterface.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/typeprovider.hxx>
+#include <sal/log.hxx>
 
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/reflection/XConstantTypeDescription.hpp>
 #include <com/sun/star/reflection/XTypeDescription.hpp>
 #include <com/sun/star/uno/RuntimeException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <o3tl/any.hxx>
 #include <uno/lbnames.h>
 
@@ -32,7 +33,6 @@ using namespace css;
 using namespace css::uno;
 using namespace css::lang;
 using namespace css::reflection;
-using namespace css::registry;
 using namespace cppu;
 using namespace osl;
 
@@ -42,19 +42,6 @@ using namespace osl;
 
 namespace stoc_corefl
 {
-
-#define IMPLNAME    "com.sun.star.comp.stoc.CoreReflection"
-
-static Sequence< OUString > core_getSupportedServiceNames()
-{
-    Sequence< OUString > seqNames { "com.sun.star.reflection.CoreReflection" };
-    return seqNames;
-}
-
-static OUString core_getImplementationName()
-{
-    return OUString(IMPLNAME);
-}
 
 IdlReflectionServiceImpl::IdlReflectionServiceImpl(
     const Reference< XComponentContext > & xContext )
@@ -95,21 +82,13 @@ void IdlReflectionServiceImpl::release() throw()
 
 Sequence< Type > IdlReflectionServiceImpl::getTypes()
 {
-    static OTypeCollection * s_pTypes = nullptr;
-    if (! s_pTypes)
-    {
-        MutexGuard aGuard( _aComponentMutex );
-        if (! s_pTypes)
-        {
-            static OTypeCollection s_aTypes(
-                cppu::UnoType<XIdlReflection>::get(),
-                cppu::UnoType<XHierarchicalNameAccess>::get(),
-                cppu::UnoType<XServiceInfo>::get(),
-                OComponentHelper::getTypes() );
-            s_pTypes = &s_aTypes;
-        }
-    }
-    return s_pTypes->getTypes();
+    static OTypeCollection s_aTypes(
+        cppu::UnoType<XIdlReflection>::get(),
+        cppu::UnoType<XHierarchicalNameAccess>::get(),
+        cppu::UnoType<XServiceInfo>::get(),
+        OComponentHelper::getTypes() );
+
+    return s_aTypes.getTypes();
 }
 
 Sequence< sal_Int8 > IdlReflectionServiceImpl::getImplementationId()
@@ -127,11 +106,9 @@ void IdlReflectionServiceImpl::dispose()
     _aElements.clear();
 #ifdef TEST_LIST_CLASSES
     OSL_ENSURE( g_aClassNames.empty(), "### idl classes still alive!" );
-    ClassNameList::const_iterator iPos( g_aClassNames.begin() );
-    while (iPos != g_aClassNames.end())
+    for (auto const& className : g_aClassNames)
     {
-        OUString aName( *iPos );
-        ++iPos;
+        OUString aName(className);
     }
 #endif
 }
@@ -140,7 +117,7 @@ void IdlReflectionServiceImpl::dispose()
 
 OUString IdlReflectionServiceImpl::getImplementationName()
 {
-    return core_getImplementationName();
+    return "com.sun.star.comp.stoc.CoreReflection";
 }
 
 sal_Bool IdlReflectionServiceImpl::supportsService( const OUString & rServiceName )
@@ -150,7 +127,8 @@ sal_Bool IdlReflectionServiceImpl::supportsService( const OUString & rServiceNam
 
 Sequence< OUString > IdlReflectionServiceImpl::getSupportedServiceNames()
 {
-    return core_getSupportedServiceNames();
+    Sequence< OUString > seqNames { "com.sun.star.reflection.CoreReflection" };
+    return seqNames;
 }
 
 // XIdlReflection
@@ -222,7 +200,8 @@ Reference< XIdlClass > IdlReflectionServiceImpl::forName( const OUString & rType
         typelib_typedescription_getByName( &pTD, rTypeName.pData );
         if (pTD)
         {
-            if ((xRet = constructClass( pTD )).is())
+            xRet = constructClass( pTD );
+            if (xRet.is())
                 _aElements.setValue( rTypeName, makeAny( xRet ) ); // update
             typelib_typedescription_release( pTD );
         }
@@ -256,7 +235,7 @@ Any IdlReflectionServiceImpl::getByHierarchicalName( const OUString & rName )
                 // if you are interested in a type then CALL forName()!!!
                 // this way is NOT recommended for types, because this method looks for constants first
 
-                // if td manager found some type, it will be in the cache (hopefully.. we just got it)
+                // if td manager found some type, it will be in the cache (hopefully... we just got it)
                 // so the second retrieving via c typelib callback chain should succeed...
 
                 // try to get _type_ by name
@@ -276,12 +255,10 @@ Any IdlReflectionServiceImpl::getByHierarchicalName( const OUString & rName )
         // else is enum member(?)
 
         // update
-        if (aRet.hasValue())
-            _aElements.setValue( rName, aRet );
-        else
-        {
+        if (!aRet.hasValue())
             throw container::NoSuchElementException( rName );
-        }
+
+        _aElements.setValue( rName, aRet );
     }
     return aRet;
 }
@@ -311,7 +288,8 @@ Reference< XIdlClass > IdlReflectionServiceImpl::forType( typelib_TypeDescriptio
     }
     else
     {
-        if ((xRet = constructClass( pTypeDescr )).is())
+        xRet = constructClass( pTypeDescr );
+        if (xRet.is())
             _aElements.setValue( aName, makeAny( xRet ) ); // update
     }
 
@@ -341,9 +319,7 @@ const Mapping & IdlReflectionServiceImpl::getCpp2Uno()
         MutexGuard aGuard( getMutexAccess() );
         if (! _aCpp2Uno.is())
         {
-            _aCpp2Uno = Mapping(
-                OUString( CPPU_CURRENT_LANGUAGE_BINDING_NAME ),
-                OUString( UNO_LB_UNO ) );
+            _aCpp2Uno = Mapping( CPPU_CURRENT_LANGUAGE_BINDING_NAME, UNO_LB_UNO );
             OSL_ENSURE( _aCpp2Uno.is(), "### cannot get c++ to uno mapping!" );
             if (! _aCpp2Uno.is())
             {
@@ -363,9 +339,7 @@ const Mapping & IdlReflectionServiceImpl::getUno2Cpp()
         MutexGuard aGuard( getMutexAccess() );
         if (! _aUno2Cpp.is())
         {
-            _aUno2Cpp = Mapping(
-                OUString( UNO_LB_UNO ),
-                OUString( CPPU_CURRENT_LANGUAGE_BINDING_NAME ) );
+            _aUno2Cpp = Mapping( UNO_LB_UNO, CPPU_CURRENT_LANGUAGE_BINDING_NAME );
             OSL_ENSURE( _aUno2Cpp.is(), "### cannot get uno to c++ mapping!" );
             if (! _aUno2Cpp.is())
             {
@@ -390,32 +364,35 @@ uno_Interface * IdlReflectionServiceImpl::mapToUno(
         static_cast<XWeak *>(static_cast<OWeakObject *>(this)) );
 }
 
-/// @throws css::uno::Exception
-Reference< XInterface > SAL_CALL IdlReflectionServiceImpl_create(
-    const Reference< XComponentContext > & xContext )
-{
-    return Reference< XInterface >( static_cast<XWeak *>(static_cast<OWeakObject *>(new IdlReflectionServiceImpl( xContext ))) );
-}
-
 }
 
 
-using namespace stoc_corefl;
+namespace {
 
-static const struct ImplementationEntry g_entries[] =
-{
-    {
-        IdlReflectionServiceImpl_create, core_getImplementationName,
-        core_getSupportedServiceNames, createSingleComponentFactory,
-        nullptr, 0
-    },
-    { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
+struct Instance {
+    explicit Instance(
+        css::uno::Reference<css::uno::XComponentContext> const & context):
+        instance(new stoc_corefl::IdlReflectionServiceImpl(context))
+    {}
+
+    rtl::Reference<cppu::OWeakObject> instance;
 };
 
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL reflection_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * pRegistryKey )
+struct Singleton:
+    public rtl::StaticWithArg<
+        Instance, css::uno::Reference<css::uno::XComponentContext>, Singleton>
+{};
+
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_stoc_CoreReflection_get_implementation(
+    css::uno::XComponentContext * context,
+    css::uno::Sequence<css::uno::Any> const & arguments)
 {
-    return component_getFactoryHelper( pImplName, pServiceManager, pRegistryKey , g_entries );
+    SAL_WARN_IF(
+        arguments.hasElements(), "stoc", "unexpected singleton arguments");
+    return cppu::acquire(Singleton::get(context).instance.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

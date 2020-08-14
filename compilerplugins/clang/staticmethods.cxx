@@ -10,7 +10,6 @@
 #include "clang/AST/Attr.h"
 
 #include "check.hxx"
-#include "compat.hxx"
 #include "plugin.hxx"
 
 /*
@@ -19,12 +18,12 @@
 namespace {
 
 class StaticMethods:
-    public RecursiveASTVisitor<StaticMethods>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<StaticMethods>
 {
 private:
     bool bVisitedThis;
 public:
-    explicit StaticMethods(InstantiationData const & data): Plugin(data), bVisitedThis(false) {}
+    explicit StaticMethods(loplugin::InstantiationData const & data): FilteringPlugin(data), bVisitedThis(false) {}
 
     void run() override
     { TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()); }
@@ -39,13 +38,7 @@ private:
     StringRef getFilename(SourceLocation loc);
 };
 
-bool BaseCheckNotTestFixtureSubclass(
-    const CXXRecordDecl *BaseDefinition
-#if CLANG_VERSION < 30800
-    , void *
-#endif
-    )
-{
+bool BaseCheckNotTestFixtureSubclass(const CXXRecordDecl *BaseDefinition) {
     if (loplugin::TypeCheck(BaseDefinition).Class("TestFixture").Namespace("CppUnit").GlobalNamespace()) {
         return false;
     }
@@ -58,7 +51,7 @@ bool isDerivedFromTestFixture(const CXXRecordDecl *decl) {
     if (// not sure what hasAnyDependentBases() does,
         // but it avoids classes we don't want, e.g. WeakAggComponentImplHelper1
         !decl->hasAnyDependentBases() &&
-        !compat::forallBases(*decl, BaseCheckNotTestFixtureSubclass, nullptr, true)) {
+        !decl->forallBases(BaseCheckNotTestFixtureSubclass)) {
         return true;
     }
     return false;
@@ -67,7 +60,7 @@ bool isDerivedFromTestFixture(const CXXRecordDecl *decl) {
 StringRef StaticMethods::getFilename(SourceLocation loc)
 {
     SourceLocation spellingLocation = compiler.getSourceManager().getSpellingLoc(loc);
-    return compiler.getSourceManager().getFilename(spellingLocation);
+    return getFilenameOfLocation(spellingLocation);
 }
 
 bool startsWith(const std::string& rStr, const char* pSubStr) {
@@ -78,7 +71,7 @@ bool StaticMethods::TraverseCXXMethodDecl(const CXXMethodDecl * pCXXMethodDecl) 
     if (ignoreLocation(pCXXMethodDecl)) {
         return true;
     }
-    if (!pCXXMethodDecl->isInstance() || pCXXMethodDecl->isVirtual() || !pCXXMethodDecl->hasBody()) {
+    if (!pCXXMethodDecl->isInstance() || pCXXMethodDecl->isVirtual() || !pCXXMethodDecl->doesThisDeclarationHaveABody() || pCXXMethodDecl->isLateTemplateParsed()) {
         return true;
     }
     if (pCXXMethodDecl->getOverloadedOperator() != OverloadedOperatorKind::OO_None || pCXXMethodDecl->hasAttr<OverrideAttr>()) {
@@ -90,20 +83,19 @@ bool StaticMethods::TraverseCXXMethodDecl(const CXXMethodDecl * pCXXMethodDecl) 
     if (isInUnoIncludeFile(pCXXMethodDecl)) {
         return true;
     }
-    if ( pCXXMethodDecl != pCXXMethodDecl->getCanonicalDecl() ) {
+    if (pCXXMethodDecl->getTemplateSpecializationKind() == TSK_ExplicitSpecialization)
         return true;
-    }
 
     // the CppUnit stuff uses macros and methods that can't be changed
     if (isDerivedFromTestFixture(pCXXMethodDecl->getParent())) {
         return true;
     }
     // don't mess with the backwards compatibility stuff
-    if (loplugin::isSamePathname(getFilename(pCXXMethodDecl->getLocStart()), SRCDIR "/cppuhelper/source/compat.cxx")) {
+    if (loplugin::isSamePathname(getFilename(compat::getBeginLoc(pCXXMethodDecl)), SRCDIR "/cppuhelper/source/compat.cxx")) {
         return true;
     }
     // the DDE has a dummy implementation on Linux and a real one on Windows
-    auto aFilename = getFilename(pCXXMethodDecl->getCanonicalDecl()->getLocStart());
+    auto aFilename = getFilename(compat::getBeginLoc(pCXXMethodDecl->getCanonicalDecl()));
     if (loplugin::isSamePathname(aFilename, SRCDIR "/include/svl/svdde.hxx")) {
         return true;
     }
@@ -117,24 +109,18 @@ bool StaticMethods::TraverseCXXMethodDecl(const CXXMethodDecl * pCXXMethodDecl) 
     if (cdc.Class("BitmapInfoAccess").GlobalNamespace()) {
         return true;
     }
-    // in this case, the code is taking the address of the member function
-    // shell/source/unix/sysshell/recently_used_file_handler.cxx
-    if (cdc.Struct("recently_used_item").AnonymousNamespace().GlobalNamespace())
-    {
-        return true;
-    }
     // the unotools and svl config code stuff is doing weird stuff with a reference-counted statically allocated pImpl class
-    if (loplugin::hasPathnamePrefix(aFilename, SRCDIR "/include/unotools")) {
+    if (loplugin::hasPathnamePrefix(aFilename, SRCDIR "/include/unotools/")) {
         return true;
     }
-    if (loplugin::hasPathnamePrefix(aFilename, SRCDIR "/include/svl")) {
+    if (loplugin::hasPathnamePrefix(aFilename, SRCDIR "/include/svl/")) {
         return true;
     }
-    if (loplugin::hasPathnamePrefix(aFilename, SRCDIR "/include/framework") || loplugin::hasPathnamePrefix(aFilename, SRCDIR "/framework")) {
+    if (loplugin::hasPathnamePrefix(aFilename, SRCDIR "/include/framework/") || loplugin::hasPathnamePrefix(aFilename, SRCDIR "/framework/")) {
         return true;
     }
     // there is some odd stuff happening here I don't fully understand, leave it for now
-    if (loplugin::hasPathnamePrefix(aFilename, SRCDIR "/include/canvas") || loplugin::hasPathnamePrefix(aFilename, SRCDIR "/canvas")) {
+    if (loplugin::hasPathnamePrefix(aFilename, SRCDIR "/include/canvas/") || loplugin::hasPathnamePrefix(aFilename, SRCDIR "/canvas/")) {
         return true;
     }
     // classes that have static data and some kind of weird reference-counting trick in its constructor
@@ -173,6 +159,8 @@ bool StaticMethods::TraverseCXXMethodDecl(const CXXMethodDecl * pCXXMethodDecl) 
             .GlobalNamespace())
         || (fdc.Function("RemoveDdeTopic").Class("SfxApplication")
             .GlobalNamespace())
+        || (fdc.Function("UpdateSkiaStatus").Class("OfaViewTabPage")
+            .GlobalNamespace())
         || (fdc.Function("ReleaseData").Class("ScannerManager")
             .GlobalNamespace()))
     {
@@ -187,7 +175,7 @@ bool StaticMethods::TraverseCXXMethodDecl(const CXXMethodDecl * pCXXMethodDecl) 
     // used in a function-pointer-table
     if ((cdc.Class("SbiRuntime").GlobalNamespace()
          && startsWith(pCXXMethodDecl->getNameAsString(), "Step"))
-        || (cdc.Class("OoxFormulaParserImpl").Namespace("xls").Namespace("oox")
+        || (cdc.Class("OoxFormulaParserImpl").AnonymousNamespace().Namespace("xls").Namespace("oox")
             .GlobalNamespace())
         || cdc.Class("SwTableFormula").GlobalNamespace()
         || (cdc.Class("BiffFormulaParserImpl").Namespace("xls").Namespace("oox")
@@ -227,6 +215,10 @@ bool StaticMethods::TraverseCXXMethodDecl(const CXXMethodDecl * pCXXMethodDecl) 
     bVisitedThis = false;
     TraverseStmt(pCXXMethodDecl->getBody());
     if (bVisitedThis) {
+        return true;
+    }
+
+    if (containsPreprocessingConditionalInclusion((pCXXMethodDecl->getSourceRange()))) {
         return true;
     }
 

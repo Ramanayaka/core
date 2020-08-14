@@ -19,7 +19,6 @@
 
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/range/b2irange.hxx>
-#include <basegfx/numeric/ftools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 
 namespace basegfx
@@ -51,6 +50,19 @@ namespace basegfx
         }
     }
 
+    B2DRange& B2DRange::operator*=( const ::basegfx::B2DHomMatrix& rMat )
+    {
+        transform(rMat);
+        return *this;
+    }
+
+    const B2DRange& B2DRange::getUnitB2DRange()
+    {
+        static const B2DRange aUnitB2DRange(0.0, 0.0, 1.0, 1.0);
+
+        return aUnitB2DRange;
+    }
+
     B2IRange fround(const B2DRange& rRange)
     {
         return rRange.isEmpty() ?
@@ -58,6 +70,14 @@ namespace basegfx
             B2IRange(fround(rRange.getMinimum()),
                      fround(rRange.getMaximum()));
     }
+
+    B2DRange operator*( const ::basegfx::B2DHomMatrix& rMat, const B2DRange& rB2DRange )
+    {
+        B2DRange aRes( rB2DRange );
+        aRes *= rMat;
+        return aRes;
+    }
+
 } // end of namespace basegfx
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,16 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "futxtatt.hxx"
-#include <vcl/msgbox.hxx>
+#include <futxtatt.hxx>
 #include <sfx2/request.hxx>
 
 #include <svx/svxdlg.hxx>
-#include <svx/dialogs.hrc>
-#include "View.hxx"
-#include "ViewShell.hxx"
-#include "drawdoc.hxx"
-#include <memory>
+#include <View.hxx>
+#include <drawdoc.hxx>
 
 namespace sd {
 
@@ -58,7 +54,7 @@ void FuTextAttrDlg::DoExecute( SfxRequest& rReq )
     if( !pArgs )
     {
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-        ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateTextTabDialog( nullptr, &aNewAttr, mpView ));
+        ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateTextTabDialog(rReq.GetFrameWeld(), &aNewAttr, mpView));
 
         sal_uInt16 nResult = pDlg->Execute();
 

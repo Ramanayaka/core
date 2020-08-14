@@ -43,13 +43,12 @@
 #include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 
 
 using osl::MutexGuard;
 
-using com::sun::star::uno::RuntimeException;
 using com::sun::star::uno::Any;
-using com::sun::star::uno::makeAny;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::XInterface;
 
@@ -257,7 +256,7 @@ sal_Int32 ResultSet::guessDataType( sal_Int32 column )
     // we don't look into more than 100 rows ...
     sal_Int32 ret = css::sdbc::DataType::INTEGER;
 
-    int maxRows = ( m_rowCount > 100 ? 100 : m_rowCount );
+    int maxRows = std::min<sal_Int32>( m_rowCount, 100 );
     for( int i = 0 ; i < maxRows ; i ++ )
     {
         if( ! PQgetisnull( m_result, i , column-1  ) )

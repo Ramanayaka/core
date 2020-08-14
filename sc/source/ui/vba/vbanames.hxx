@@ -20,23 +20,20 @@
 #define INCLUDED_SC_SOURCE_UI_VBA_VBANAMES_HXX
 
 #include <ooo/vba/excel/XNames.hpp>
-#include <ooo/vba/XCollection.hpp>
-#include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/sheet/XNamedRanges.hpp>
 #include <vbahelper/vbacollectionimpl.hxx>
 
+namespace com::sun::star::sheet { class XNamedRanges; }
+
 class ScDocument;
-class ScDocShell;
 
 typedef CollTestImplHelper< ov::excel::XNames > ScVbaNames_BASE;
 
-class ScVbaNames : public ScVbaNames_BASE
+class ScVbaNames final : public ScVbaNames_BASE
 {
     css::uno::Reference< css::frame::XModel > mxModel;
     css::uno::Reference< css::sheet::XNamedRanges > mxNames;
 
-protected:
-    const css::uno::Reference< css::frame::XModel >&  getModel() { return mxModel; }
+    const css::uno::Reference< css::frame::XModel >&  getModel() const { return mxModel; }
 
 public:
     ScVbaNames( const css::uno::Reference< ov::XHelperInterface >& xParent,  const css::uno::Reference< css::uno::XComponentContext >& xContext, const css::uno::Reference< css::sheet::XNamedRanges >& xNames , const css::uno::Reference< css::frame::XModel >& xModel );

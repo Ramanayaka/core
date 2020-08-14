@@ -19,23 +19,28 @@
 #ifndef INCLUDED_SFX2_SOURCE_SIDEBAR_PANEL_HXX
 #define INCLUDED_SFX2_SOURCE_SIDEBAR_PANEL_HXX
 
-#include <sfx2/sidebar/Context.hxx>
+#include <sfx2/dllapi.h>
 
 #include <vcl/window.hxx>
 
-#include <com/sun/star/ui/XUIElement.hpp>
-#include <com/sun/star/ui/XSidebarPanel.hpp>
-#include <com/sun/star/frame/XFrame.hpp>
-
 #include <vector>
 
-namespace sfx2 { namespace sidebar {
+namespace com::sun::star::frame { class XFrame; }
+namespace com::sun::star::ui { class XSidebarPanel; }
+namespace com::sun::star::ui { class XUIElement; }
+namespace com::sun::star::awt { class XWindow; }
+
+namespace sfx2::sidebar {
 
 class PanelDescriptor;
-class TitleBar;
 class PanelTitleBar;
+class Context;
 
-class Panel : public vcl::Window
+/**
+ * Multiple panels form a single deck.
+ * E.g. the Properties deck has panels like Styles, Character, paragraph.
+ */
+class SFX2_DLLPUBLIC Panel final : public vcl::Window
 {
 public:
     Panel(const PanelDescriptor& rPanelDescriptor, vcl::Window* pParentWindow,
@@ -46,7 +51,7 @@ public:
     virtual ~Panel() override;
     virtual void dispose() override;
 
-    VclPtr<PanelTitleBar> GetTitleBar() const;
+    VclPtr<PanelTitleBar> const & GetTitleBar() const;
     bool IsTitleBarOptional() const { return mbIsTitleBarOptional;}
     void SetUIElement (const css::uno::Reference<css::ui::XUIElement>& rxElement);
     const css::uno::Reference<css::ui::XSidebarPanel>& GetPanelComponent() const { return mxPanelComponent;}
@@ -55,10 +60,16 @@ public:
     bool IsExpanded() const { return mbIsExpanded;}
     bool HasIdPredicate (const OUString& rsId) const;
     const OUString& GetId() const { return msPanelId;}
+    void TriggerDeckLayouting() { maDeckLayoutTrigger(); }
+
+    /// Set whether a panel should be present but invisible / inactive
+    void SetLurkMode(bool bLurk);
+    bool IsLurking() const { return mbLurking; }
 
     virtual void Resize() override;
     virtual void DataChanged (const DataChangedEvent& rEvent) override;
     virtual void ApplySettings(vcl::RenderContext& rRenderContext) override;
+    virtual void DumpAsPropertyTree(tools::JsonWriter&) override;
 
 private:
     const OUString msPanelId;
@@ -67,6 +78,7 @@ private:
     css::uno::Reference<css::ui::XUIElement> mxElement;
     css::uno::Reference<css::ui::XSidebarPanel> mxPanelComponent;
     bool mbIsExpanded;
+    bool mbLurking;
     const std::function<void()> maDeckLayoutTrigger;
     const std::function<Context()> maContextAccess;
 
@@ -75,7 +87,7 @@ private:
 };
 typedef std::vector<VclPtr<Panel> > SharedPanelContainer;
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 #endif
 

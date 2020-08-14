@@ -20,11 +20,16 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_ACTIVITIES_INTERPOLATION_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_ACTIVITIES_INTERPOLATION_HXX
 
-#include <basegfx/tools/lerp.hxx>
+#include <basegfx/utils/lerp.hxx>
+#include <osl/diagnose.h>
+#include <rtl/ustring.hxx>
+
+#include <rgbcolor.hxx>
+#include <hslcolor.hxx>
 
 namespace basegfx
 {
-    namespace tools
+    namespace utils
     {
         // Interpolator specializations
         // ============================
@@ -81,7 +86,7 @@ namespace slideshow
                                   const ValueType&  rTo,
                                   double            t ) const
             {
-                return basegfx::tools::lerp( rFrom, rTo, t );
+                return basegfx::utils::lerp( rFrom, rTo, t );
             }
         };
 
@@ -145,7 +150,7 @@ namespace slideshow
         {
             // until one half of the total frames are over, take from value.
             // after that, take to value.
-            // For nFrames not divisable by 2, we prefer to over from, which
+            // For nFrames not divisible by 2, we prefer to over from, which
             // also neatly yields to for 1 frame activities
             return nFrame < nTotalFrames/2 ? rFrom : rTo;
         }
@@ -159,7 +164,7 @@ namespace slideshow
         {
             // until one half of the total frames are over, take from value.
             // after that, take to value.
-            // For nFrames not divisable by 2, we prefer to over from, which
+            // For nFrames not divisible by 2, we prefer to over from, which
             // also neatly yields to for 1 frame activities
             return nFrame < nTotalFrames/2 ? rFrom : rTo;
         }
@@ -173,7 +178,7 @@ namespace slideshow
         {
             // until one half of the total frames are over, take from value.
             // after that, take to value.
-            // For nFrames not divisable by 2, we prefer to over from, which
+            // For nFrames not divisible by 2, we prefer to over from, which
             // also neatly yields to for 1 frame activities
             return nFrame < nTotalFrames/2 ? bFrom : bTo;
         }

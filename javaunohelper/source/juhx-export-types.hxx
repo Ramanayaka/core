@@ -20,9 +20,9 @@
 #ifndef INCLUDED_JAVAUNOHELPER_SOURCE_JUHX_EXPORT_TYPES_HXX
 #define INCLUDED_JAVAUNOHELPER_SOURCE_JUHX_EXPORT_TYPES_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "jni.h"
+#include <jni.h>
 
 #if defined DISABLE_DYNLOADING
 #define JAVAUNOHELPER_DETAIL_CALLCONV JNICALL
@@ -32,7 +32,7 @@
 
 extern "C" {
 
-namespace javaunohelper { namespace detail {
+namespace javaunohelper::detail {
 
 typedef jobject JAVAUNOHELPER_DETAIL_CALLCONV Func_bootstrap(
     JNIEnv *_env, jclass, jstring, jobjectArray, jobject);
@@ -43,7 +43,7 @@ typedef jobject JAVAUNOHELPER_DETAIL_CALLCONV Func_getFactory(
 typedef jboolean JAVAUNOHELPER_DETAIL_CALLCONV Func_writeInfo(
     JNIEnv *, jclass, jstring, jobject, jobject, jobject);
 
-} }
+}
 
 }
 

@@ -10,61 +10,80 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_XML_XMLCONDFORMAT_HXX
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLCONDFORMAT_HXX
 
+#include <array>
 #include <memory>
-#include <xmloff/xmlictxt.hxx>
-#include "xmlimprt.hxx"
+#include <tools/link.hxx>
 #include "importcontext.hxx"
-#include "rangelst.hxx"
+#include <tokenarray.hxx>
+
+namespace sax_fastparser { class FastAttributeList; }
 
 class ScColorScaleFormat;
 class ScColorScaleEntry;
-class ScDataBarFormat;
 struct ScDataBarFormatData;
 class ScConditionalFormat;
 struct ScIconSetFormatData;
 
 class ScXMLConditionalFormatsContext : public ScXMLImportContext
 {
+private:
+    struct CacheEntry
+    {
+        ScConditionalFormat* mpFormat = nullptr;
+        bool mbSingleRelativeReference;
+        std::unique_ptr<const ScTokenArray> mpTokens;
+        sal_Int64 mnAge = SAL_MAX_INT64;
+    };
+
+    struct CondFormatData
+    {
+        ScConditionalFormat* mpFormat;
+        SCTAB mnTab;
+    };
+
+    DECL_LINK(FormatDeletedHdl, ScConditionalFormat*, void);
+
 public:
-    ScXMLConditionalFormatsContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName );
+    ScXMLConditionalFormatsContext( ScXMLImport& rImport );
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
-    virtual void EndElement() override;
+    virtual void SAL_CALL endFastElement( sal_Int32 nElement ) override;
+
+    std::array<CacheEntry, 4> maCache;
+
+    std::vector<CondFormatData> mvCondFormatData;
 };
 
 class ScXMLConditionalFormatContext : public ScXMLImportContext
 {
 public:
-    ScXMLConditionalFormatContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList);
+    ScXMLConditionalFormatContext( ScXMLImport& rImport,
+                                   const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
+                                   ScXMLConditionalFormatsContext& rParent );
 
     virtual ~ScXMLConditionalFormatContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
-    virtual void EndElement() override;
+    virtual void SAL_CALL endFastElement( sal_Int32 nElement ) override;
 private:
 
     std::unique_ptr<ScConditionalFormat> mxFormat;
-    ScRangeList maRange;
+
+    ScXMLConditionalFormatsContext& mrParent;
 };
 
 class ScXMLColorScaleFormatContext : public ScXMLImportContext
 {
 public:
-    ScXMLColorScaleFormatContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName, ScConditionalFormat* pFormat);
+    ScXMLColorScaleFormatContext( ScXMLImport& rImport,
+                        ScConditionalFormat* pFormat);
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 private:
 
     ScColorScaleFormat* pColorScaleFormat;
@@ -73,18 +92,16 @@ private:
 class ScXMLDataBarFormatContext : public ScXMLImportContext
 {
 public:
-    ScXMLDataBarFormatContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+    ScXMLDataBarFormatContext( ScXMLImport& rImport,
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                         ScConditionalFormat* pFormat);
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 private:
 
-    ScDataBarFormat* mpDataBarFormat;
     ScDataBarFormatData* mpFormatData;
+    ScConditionalFormat* mpParent;
 
     sal_Int32 mnIndex;
 };
@@ -92,54 +109,46 @@ private:
 class ScXMLIconSetFormatContext : public ScXMLImportContext
 {
     ScIconSetFormatData* mpFormatData;
+    ScConditionalFormat* mpParent;
 public:
 
-    ScXMLIconSetFormatContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+    ScXMLIconSetFormatContext( ScXMLImport& rImport,
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                         ScConditionalFormat* pFormat);
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                                     const OUString& rLocalName,
-                                     const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 };
 
 class ScXMLColorScaleFormatEntryContext : public ScXMLImportContext
 {
 public:
-    ScXMLColorScaleFormatEntryContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+    ScXMLColorScaleFormatEntryContext( ScXMLImport& rImport,
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                         ScColorScaleFormat* pFormat);
-
-private:
-    ScColorScaleEntry* mpFormatEntry;
 };
 
 class ScXMLFormattingEntryContext : public ScXMLImportContext
 {
 public:
-    ScXMLFormattingEntryContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+    ScXMLFormattingEntryContext( ScXMLImport& rImport,
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                         ScColorScaleEntry*& pData);
 };
 
 class ScXMLCondContext : public ScXMLImportContext
 {
 public:
-    ScXMLCondContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+    ScXMLCondContext( ScXMLImport& rImport,
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                         ScConditionalFormat* pFormat);
 };
 
 class ScXMLDateContext : public ScXMLImportContext
 {
 public:
-    ScXMLDateContext( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                        const OUString& rLName,
-                        const css::uno::Reference<css::xml::sax::XAttributeList>& xAttrList,
+    ScXMLDateContext( ScXMLImport& rImport,
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList,
                         ScConditionalFormat* pFormat);
 };
 

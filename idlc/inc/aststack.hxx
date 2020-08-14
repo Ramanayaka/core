@@ -16,10 +16,11 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_IDLC_INC_ASTSTACK_HXX
-#define INCLUDED_IDLC_INC_ASTSTACK_HXX
+
+#pragma once
 
 #include <sal/types.h>
+#include <vector>
 
 class AstScope;
 
@@ -29,7 +30,7 @@ public:
     AstStack();
     ~AstStack();
 
-    sal_uInt32 depth() { return m_top;}
+    sal_uInt32 depth() const { return m_stack.size();}
     AstScope* top();
     AstScope* bottom();
     AstScope* nextToTop();
@@ -39,11 +40,7 @@ public:
     void clear();
 
 private:
-    AstScope**  m_stack;
-    sal_uInt32  m_size;
-    sal_uInt32  m_top;
+    std::vector<AstScope*>  m_stack;
 };
-
-#endif // INCLUDED_IDLC_INC_ASTSTACK_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

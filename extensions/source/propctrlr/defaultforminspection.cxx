@@ -19,22 +19,14 @@
 
 #include "defaultforminspection.hxx"
 #include "pcrcommon.hxx"
-#include "pcrservices.hxx"
-#include "propresid.hrc"
-#include "formresid.hrc"
+#include <helpids.h>
+#include <strings.hrc>
 #include "modulepcr.hxx"
-#include "propctrlr.hrc"
 #include "formmetadata.hxx"
 
 #include <com/sun/star/ucb/AlreadyInitializedException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <sal/macros.h>
-
-
-extern "C" void SAL_CALL createRegistryInfo_DefaultFormComponentInspectorModel()
-{
-    ::pcr::OAutoRegistration< ::pcr::DefaultFormComponentInspectorModel > aAutoRegistration;
-}
 
 
 namespace pcr
@@ -44,10 +36,8 @@ namespace pcr
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::uno::Any;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::XInterface;
     using ::com::sun::star::uno::XComponentContext;
-    using ::com::sun::star::uno::Exception;
     using ::com::sun::star::inspection::PropertyCategoryDescriptor;
     using ::com::sun::star::ucb::AlreadyInitializedException;
     using ::com::sun::star::lang::IllegalArgumentException;
@@ -68,32 +58,13 @@ namespace pcr
 
     OUString SAL_CALL DefaultFormComponentInspectorModel::getImplementationName(  )
     {
-        return getImplementationName_static();
+        return "org.openoffice.comp.extensions.DefaultFormComponentInspectorModel";
     }
 
 
     Sequence< OUString > SAL_CALL DefaultFormComponentInspectorModel::getSupportedServiceNames(  )
     {
-        return getSupportedServiceNames_static();
-    }
-
-
-    OUString DefaultFormComponentInspectorModel::getImplementationName_static(  )
-    {
-        return OUString("org.openoffice.comp.extensions.DefaultFormComponentInspectorModel");
-    }
-
-
-    Sequence< OUString > DefaultFormComponentInspectorModel::getSupportedServiceNames_static(  )
-    {
-        Sequence< OUString > aSupported { "com.sun.star.form.inspection.DefaultFormComponentInspectorModel" };
-        return aSupported;
-    }
-
-
-    Reference< XInterface > SAL_CALL DefaultFormComponentInspectorModel::Create( const Reference< XComponentContext >& )
-    {
-        return *new DefaultFormComponentInspectorModel();
+        return { "com.sun.star.form.inspection.DefaultFormComponentInspectorModel" };
     }
 
 
@@ -102,11 +73,11 @@ namespace pcr
         ::osl::MutexGuard aGuard( m_aMutex );
 
         // service names for all our handlers
-        struct
+        static struct
         {
-            const sal_Char* serviceName;
-            bool            isFormOnly;
-        } aFactories[] = {
+            const char* serviceName;
+            bool        isFormOnly;
+        } const aFactories[] = {
 
             // a generic handler for form component properties (must precede the ButtonNavigationHandler)
             { "com.sun.star.form.inspection.FormComponentPropertyHandler", false },
@@ -156,12 +127,12 @@ namespace pcr
     {
         ::osl::MutexGuard aGuard( m_aMutex );
 
-        struct
+        static struct
         {
-            const sal_Char* programmaticName;
-            sal_uInt16          uiNameResId;
-            const sal_Char* helpId;
-        } aCategories[] = {
+            const char* programmaticName;
+            const char* uiNameResId;
+            const char* helpId;
+        } const aCategories[] = {
             { "General",    RID_STR_PROPPAGE_DEFAULT,   HID_FM_PROPDLG_TAB_GENERAL },
             { "Data",       RID_STR_PROPPAGE_DATA,      HID_FM_PROPDLG_TAB_DATA },
             { "Events",     RID_STR_EVENTS,             HID_FM_PROPDLG_TAB_EVT }
@@ -234,5 +205,11 @@ namespace pcr
 
 } // namespace pcr
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_propctrlr_DefaultFormComponentInspectorModel_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new pcr::DefaultFormComponentInspectorModel(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

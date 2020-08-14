@@ -17,10 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "LabeledDataSequence.hxx"
-#include "ModifyListenerHelper.hxx"
-#include "macros.hxx"
+#include <LabeledDataSequence.hxx>
+#include <ModifyListenerHelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <tools/diagnose_ex.h>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
@@ -123,9 +125,9 @@ void SAL_CALL LabeledDataSequence::addModifyListener( const Reference< util::XMo
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -136,15 +138,15 @@ void SAL_CALL LabeledDataSequence::removeModifyListener( const Reference< util::
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
 OUString SAL_CALL LabeledDataSequence::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart2.LabeledDataSequence");
+    return "com.sun.star.comp.chart2.LabeledDataSequence";
 }
 
 sal_Bool SAL_CALL LabeledDataSequence::supportsService( const OUString& rServiceName )
@@ -159,7 +161,7 @@ css::uno::Sequence< OUString > SAL_CALL LabeledDataSequence::getSupportedService
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_LabeledDataSequence_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {

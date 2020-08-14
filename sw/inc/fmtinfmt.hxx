@@ -22,15 +22,19 @@
 #include <svl/poolitem.hxx>
 #include "swdllapi.h"
 #include <memory>
+#include "calbck.hxx"
 
 class SvxMacro;
 class SvxMacroTableDtor;
 class SwTextINetFormat;
 class IntlWrapper;
+enum class SvMacroItemId : sal_uInt16;
 
 // ATT_INETFMT
 
-class SW_DLLPUBLIC SwFormatINetFormat: public SfxPoolItem
+class SW_DLLPUBLIC SwFormatINetFormat final
+    : public SfxPoolItem
+    , public sw::BroadcasterMixin
 {
     friend class SwTextINetFormat;
 
@@ -53,12 +57,12 @@ public:
 
     /// "Pure virtual methods" of SfxPoolItem.
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwFormatINetFormat* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper* pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -131,10 +135,8 @@ public:
     }
 
     /// Macro getter and setter.
-    void SetMacro(
-            sal_uInt16 nEvent,
-            const SvxMacro& rMacro );
-    const SvxMacro* GetMacro( sal_uInt16 nEvent ) const;
+    void SetMacro( SvMacroItemId nEvent, const SvxMacro& rMacro );
+    const SvxMacro* GetMacro( SvMacroItemId nEvent ) const;
 };
 
 #endif

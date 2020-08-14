@@ -24,6 +24,7 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/weakref.hxx>
 #include <ooo/vba/XHelperInterface.hpp>
@@ -31,11 +32,7 @@
 #include <sal/types.h>
 #include <vbahelper/vbahelper.hxx>
 
-namespace com { namespace sun { namespace star {
-    namespace uno { class XComponentContext; } }
-} }
-
-// use this class when you have an a object like
+// use this class when you have an object like
 // interface  XAnInterface which contains XHelperInterface in its inheritance hierarchy
 // interface XAnInterface
 // {
@@ -95,7 +92,7 @@ public:
         const OUString* pStart = sServices.getConstArray();
         const OUString* pEnd = pStart + sServices.getLength();
         for ( ; pStart != pEnd ; ++pStart )
-            if ( (*pStart).equals( ServiceName ) )
+            if ( *pStart == ServiceName )
                 return true;
         return false;
     }
@@ -111,7 +108,7 @@ class SAL_DLLPUBLIC_TEMPLATE InheritedHelperInterfaceWeakImpl : public Inherited
 {
     typedef InheritedHelperInterfaceImpl< ::cppu::WeakImplHelper< Ifc... > > Base;
 public:
-    InheritedHelperInterfaceWeakImpl< Ifc... >( const css::uno::Reference< ov::XHelperInterface >& xParent, const css::uno::Reference< css::uno::XComponentContext >& xContext ) : Base( xParent, xContext ) {}
+    InheritedHelperInterfaceWeakImpl( const css::uno::Reference< ov::XHelperInterface >& xParent, const css::uno::Reference< css::uno::XComponentContext >& xContext ) : Base( xParent, xContext ) {}
 };
 
 
@@ -131,7 +128,7 @@ public:
 #define VBAHELPER_IMPL_XHELPERINTERFACE( classname, servicename ) \
 OUString classname::getServiceImplName() \
 { \
-    return OUString( #classname ); \
+    return #classname; \
 } \
 css::uno::Sequence< OUString > classname::getServiceNames() \
 { \

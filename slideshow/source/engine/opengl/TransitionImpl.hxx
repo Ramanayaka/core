@@ -29,7 +29,11 @@
 #define INCLUDED_OGLTRANS_TRANSITIONIMPL_HXX_
 
 #include <config_lgpl.h>
+#include <epoxy/gl.h>
 #include <glm/gtc/type_ptr.hpp>
+
+#include <o3tl/safeint.hxx>
+#include <sal/types.h>
 
 #include <limits>
 #include <memory>
@@ -46,7 +50,7 @@ struct TransitionSettings
     TransitionSettings() :
         mbUseMipMapLeaving( true ),
         mbUseMipMapEntering( true ),
-        mnRequiredGLVersion( 2.1f )
+        mnRequiredGLVersion( 3.0f )
     {
     }
 
@@ -171,13 +175,13 @@ private:
       *
       * Default implementation does nothing.
       */
-    virtual void prepare( double nTime, double SlideWidth, double SlideHeight, double DispWidth, double DispHeight );
+    virtual void prepare( double SlideWidth, double SlideHeight );
 
     /** This function is called in display method to prepare the slides, scene, etc.
       *
       * Default implementation does nothing.
       */
-    virtual void finish( double nTime, double SlideWidth, double SlideHeight, double DispWidth, double DispHeight );
+    virtual void cleanup();
 
     /** This function is called after glx context is ready to let the transition prepare GL related things, like GLSL program.
       *
@@ -267,7 +271,8 @@ std::shared_ptr<OGLTransitionImpl> makeNewsflash();
 
 std::shared_ptr<OGLTransitionImpl> makeDiamond();
 std::shared_ptr<OGLTransitionImpl> makeFadeSmoothly();
-std::shared_ptr<OGLTransitionImpl> makeFadeThroughBlack();
+// fade through black or white
+std::shared_ptr<OGLTransitionImpl> makeFadeThroughColor( bool white = false );
 
 class SceneObject
 {
@@ -337,7 +342,7 @@ public:
 
     int getVerticesCount() const
     {
-        assert(Vertices.size() < unsigned(std::numeric_limits<int>::max()));
+        assert(Vertices.size() < o3tl::make_unsigned(std::numeric_limits<int>::max()));
         return int(unsigned(Vertices.size()));
     }
 

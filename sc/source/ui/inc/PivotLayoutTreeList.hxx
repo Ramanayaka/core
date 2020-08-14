@@ -12,26 +12,28 @@
 #define INCLUDED_SC_SOURCE_UI_INC_PIVOTLAYOUTTREELIST_HXX
 
 #include <memory>
+#include <tools/solar.h>
 #include "PivotLayoutTreeListBase.hxx"
 
 class ScPivotLayoutTreeList : public ScPivotLayoutTreeListBase
 {
 private:
-    std::vector<std::unique_ptr<ScItemValue> > maItemValues;
+    std::vector<std::unique_ptr<ScItemValue>> maItemValues;
+
+    DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
+    DECL_LINK(DoubleClickHdl, weld::TreeView&, bool);
 
 public:
-    ScPivotLayoutTreeList(vcl::Window* pParent, WinBits nBits);
+    ScPivotLayoutTreeList(std::unique_ptr<weld::TreeView> xControl);
     virtual ~ScPivotLayoutTreeList() override;
-    virtual bool DoubleClickHdl() override;
 
     void Setup(ScPivotLayoutDialog* pParent, SvPivotTreeListType eType);
     void FillFields(ScPivotFieldVector& rFieldVector);
 
-protected:
-    virtual void InsertEntryForSourceTarget(SvTreeListEntry* pSource, SvTreeListEntry* pTarget) override;
-    virtual void InsertEntryForItem(ScItemValue* pItemValue, sal_uLong nPosition) override;
+    virtual void InsertEntryForSourceTarget(weld::TreeView& rSource, int nTarget) override;
 
-    virtual void KeyInput(const KeyEvent& rKeyEvent) override;
+protected:
+    void InsertEntryForItem(const ScItemValue* pItemValue, int nPosition);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

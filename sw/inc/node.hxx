@@ -21,13 +21,12 @@
 #define INCLUDED_SW_INC_NODE_HXX
 
 #include <sal/types.h>
-#include <tools/mempool.hxx>
 
 #include "swdllapi.h"
-#include <ndarr.hxx>
-#include <ndtyp.hxx>
-#include <index.hxx>
-#include <fmtcol.hxx>
+#include "ndarr.hxx"
+#include "ndtyp.hxx"
+#include "index.hxx"
+#include "fmtcol.hxx"
 
 #include <memory>
 #include <vector>
@@ -68,12 +67,13 @@ class IDocumentFieldsAccess;
 class IDocumentContentOperations;
 class IDocumentListItems;
 class Point;
+enum class SvxFrameDirection;
 typedef std::vector<SwOLENode*> SwOLENodes; // docary.hxx
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class SdrAllFillAttributesHelper;
     typedef std::shared_ptr< SdrAllFillAttributesHelper > SdrAllFillAttributesHelperPtr;
-}}
+}
 
 /// Base class of the Writer document model elements.
 class SW_DLLPUBLIC SwNode
@@ -86,6 +86,17 @@ class SW_DLLPUBLIC SwNode
     /// For text nodes: level of auto format. Was put here because we had still free bits.
     sal_uInt8 m_nAFormatNumLvl : 3;
     bool m_bIgnoreDontExpand : 1;     ///< for Text Attributes - ignore the flag
+
+public:
+    /// sw_redlinehide: redline node merge state
+    enum class Merge { None, First, NonFirst, Hidden };
+    bool IsCreateFrameWhenHidingRedlines() const {
+        return m_eMerge == Merge::None || m_eMerge == Merge::First;
+    }
+    void SetRedlineMergeFlag(Merge const eMerge) { m_eMerge = eMerge; }
+    Merge GetRedlineMergeFlag() const { return m_eMerge; }
+private:
+    Merge m_eMerge;
 
 #ifdef DBG_UTIL
     static long s_nSerial;
@@ -246,15 +257,12 @@ public:
      */
           IStyleAccess& getIDocumentStyleAccess();
 
-    /** Provides access to the document's numbered items interface
-
-        @author OD
-    */
+    /** Provides access to the document's numbered items interface */
     IDocumentListItems& getIDocumentListItems();
 
     /// Is node in the visible area of the Shell?
     bool IsInVisibleArea( SwViewShell const * pSh ) const;
-    /// Is node in an protected area?
+    /// Is node in a protected area?
     bool IsInProtectSect() const;
     /**  Is node in something that is protected (range, frame,
         table cells ... including anchor in case of frames or footnotes)? */
@@ -273,7 +281,7 @@ public:
 
     sal_uLong GetIndex() const { return GetPos(); }
 
-    const SwTextNode* FindOutlineNodeOfLevel( sal_uInt8 nLvl ) const;
+    const SwTextNode* FindOutlineNodeOfLevel(sal_uInt8 nLvl, SwRootFrame const* pLayout = nullptr) const;
 
     sal_uInt8 HasPrevNextLayNode() const;
 
@@ -283,9 +291,8 @@ public:
 
     /**
      * Dumps the node structure to the given destination (file nodes.xml in the current directory by default)
-     * @since 3.5
      */
-    virtual void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
 
 private:
     SwNode( const SwNode & rNodes ) = delete;
@@ -293,7 +300,7 @@ private:
 };
 
 /// Starts a section of nodes in the document model.
-class SwStartNode: public SwNode
+class SAL_DLLPUBLIC_RTTI SwStartNode: public SwNode
 {
     friend class SwNode;
     friend class SwNodes;
@@ -310,14 +317,12 @@ protected:
                  const SwNodeType nNodeType = SwNodeType::Start,
                  SwStartNodeType = SwNormalStartNode );
 public:
-    DECL_FIXEDMEMPOOL_NEWDEL(SwStartNode)
-
     SwStartNodeType GetStartNodeType() const        { return m_eStartNodeType; }
 
     /// Call ChkCondcoll to all ContentNodes of section.
     void CheckSectionCondColl() const;
 
-    virtual void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 
 private:
     SwStartNode( const SwStartNode & rNode ) = delete;
@@ -337,8 +342,6 @@ class SwEndNode : public SwNode
 protected:
     SwEndNode( const SwNodeIndex &rWhere, SwStartNode& rSttNd );
 
-    DECL_FIXEDMEMPOOL_NEWDEL(SwEndNode)
-
 private:
     SwEndNode( const SwEndNode & rNode ) = delete;
     SwEndNode & operator= ( const SwEndNode & rNode ) = delete;
@@ -346,12 +349,11 @@ private:
 
 // SwContentNode
 
-class SW_DLLPUBLIC SwContentNode: public SwModify, public SwNode, public SwIndexReg
+class SW_DLLPUBLIC SwContentNode: public sw::BroadcastingModify, public SwNode, public SwIndexReg
 {
 
-//FEATURE::CONDCOLL
-    SwDepend* m_pCondColl;
-//FEATURE::CONDCOLL
+    sw::WriterMultiListener m_aCondCollListener;
+    SwFormatColl* m_pCondColl;
     mutable bool mbSetModifyAtAttr;
 
 protected:
@@ -372,7 +374,7 @@ protected:
        SwAttrSet (handle): */
     sal_uInt16 ClearItemsFromAttrSet( const std::vector<sal_uInt16>& rWhichIds );
 
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew) override;
+    virtual void SwClientNotify( const SwModify&, const SfxHint& rHint) override;
 
 public:
 
@@ -380,10 +382,7 @@ public:
        pSib is another SwFrame of the same layout (e.g. the SwRootFrame itself, a sibling, the parent) */
     virtual SwContentFrame *MakeFrame( SwFrame* pSib ) = 0;
 
-    virtual SwContentNode *SplitContentNode(const SwPosition & ) = 0;
-
     virtual SwContentNode *JoinNext();
-    virtual void           JoinPrev();
     /** Is it possible to join two nodes?
        In pIdx the second position can be returned. */
     bool CanJoinNext( SwNodeIndex* pIdx =nullptr ) const;
@@ -395,11 +394,10 @@ public:
     bool GoNext(SwIndex *, sal_uInt16 nMode ) const;
     bool GoPrevious(SwIndex *, sal_uInt16 nMode ) const;
 
-    /// Replacement for good old GetFrame(..):
+    /// @see GetFrameOfModify
     SwContentFrame *getLayoutFrame( const SwRootFrame*,
-                        const Point* pDocPos = nullptr,
-                        const SwPosition *pPos = nullptr,
-                        const bool bCalcFrame = true ) const;
+            const SwPosition *pPos = nullptr,
+            std::pair<Point, bool> const* pViewPosAndCalcFrame = nullptr) const;
     /** @return the real size of the frame or an empty rectangle if
        no layout exists. Needed for export filters. */
     SwRect FindLayoutRect( const bool bPrtArea = false,
@@ -408,20 +406,18 @@ public:
 
     /** Method creates all views of document for given node. The content
        frames that are created are put in the respective layout. */
-    void MakeFrames( SwContentNode& rNode );
+    void MakeFramesForAdjacentContentNode(SwContentNode& rNode);
 
     /** Method deletes all views of document for the node. The content-
         frames are removed from the respective layout.
-
-        Add an input param to identify if acc table should be disposed
     */
-    void DelFrames( bool bIsAccTableDispose = true );
+    void DelFrames(SwRootFrame const* pLayout);
 
     /** @return count of elements of node content. Default is 1.
        There are differences between text node and formula node. */
     virtual sal_Int32 Len() const;
 
-    virtual SwContentNode* MakeCopy( SwDoc*, const SwNodeIndex& ) const = 0;
+    virtual SwContentNode* MakeCopy(SwDoc*, const SwNodeIndex&, bool bNewFrames) const = 0;
 
     /// Get information from Client.
     virtual bool GetInfo( SfxPoolItem& ) const override;
@@ -471,10 +467,15 @@ public:
     void SetModifyAtAttr( bool bSetModifyAtAttr ) const { mbSetModifyAtAttr = bSetModifyAtAttr; }
     bool GetModifyAtAttr() const { return mbSetModifyAtAttr; }
 
-    static SwOLENodes* CreateOLENodesArray( const SwFormatColl& rColl, bool bOnlyWithInvalidSize );
+    static std::unique_ptr<SwOLENodes> CreateOLENodesArray( const SwFormatColl& rColl, bool bOnlyWithInvalidSize );
 
     // Access to DrawingLayer FillAttributes in a preprocessed form for primitive usage
     virtual drawinglayer::attribute::SdrAllFillAttributesHelperPtr getSdrAllFillAttributesHelper() const;
+
+    virtual void ModifyNotification(const SfxPoolItem* pOld, const SfxPoolItem* pNew) override
+    {
+        SwClientNotify(*this, sw::LegacyModifyHint(pOld, pNew));
+    }
 
 private:
     SwContentNode( const SwContentNode & rNode ) = delete;
@@ -483,10 +484,10 @@ private:
 
 // SwTableNode
 
-class SW_DLLPUBLIC SwTableNode : public SwStartNode, public SwModify
+class SW_DLLPUBLIC SwTableNode : public SwStartNode, public sw::BroadcastingModify
 {
     friend class SwNodes;
-    SwTable* m_pTable;
+    std::unique_ptr<SwTable> m_pTable;
 protected:
     virtual ~SwTableNode() override;
 
@@ -498,18 +499,18 @@ public:
     SwTabFrame *MakeFrame( SwFrame* );
 
     /// Creates the frms for the table node (i.e. the TabFrames).
-    void MakeFrames( SwNodeIndex* pIdxBehind );
+    void MakeOwnFrames(SwNodeIndex* pIdxBehind);
 
     /** Method deletes all views of document for the node.
        The content frames are removed from the respective layout. */
-    void DelFrames();
+    void DelFrames(SwRootFrame const* pLayout = nullptr);
 
     /** Method creates all views of the document for the previous node.
        The content frames that are created are put into the respective layout. */
-    void MakeFrames( const SwNodeIndex & rIdx );
+    void MakeFramesForAdjacentContentNode(const SwNodeIndex & rIdx);
 
     SwTableNode* MakeCopy( SwDoc*, const SwNodeIndex& ) const;
-    void SetNewTable( SwTable* , bool bNewFrames=true );
+    void SetNewTable( std::unique_ptr<SwTable> , bool bNewFrames=true );
 
     // Removes redline objects that relate to this table from the 'Extra Redlines' table
     void RemoveRedlines();
@@ -519,7 +520,7 @@ private:
     SwTableNode & operator= ( const SwTableNode & rNode ) = delete;
 };
 
-class SwSectionNode
+class SAL_DLLPUBLIC_RTTI SwSectionNode
     : public SwStartNode
 {
     friend class SwNodes;
@@ -546,15 +547,15 @@ public:
        On default the frames are created until the end of the range.
        When another NodeIndex pEnd is passed a MakeFrames is called up to it.
        Used by TableToText. */
-    void MakeFrames( SwNodeIndex* pIdxBehind, SwNodeIndex* pEnd = nullptr );
+    void MakeOwnFrames(SwNodeIndex* pIdxBehind, SwNodeIndex* pEnd = nullptr);
 
     /** Method deletes all views of document for the node. The
      content frames are removed from the respective layout. */
-    void DelFrames();
+    void DelFrames(SwRootFrame const* pLayout = nullptr);
 
     /** Method creates all views of document for the previous node.
        The content frames created are put into the respective layout. */
-    void MakeFrames( const SwNodeIndex & rIdx );
+    void MakeFramesForAdjacentContentNode(const SwNodeIndex & rIdx);
 
     SwSectionNode* MakeCopy( SwDoc*, const SwNodeIndex& ) const;
 
@@ -572,7 +573,7 @@ public:
 Some of the nodes are then replaced with SwPlaceholderNode, and at the end of the operation, removed again.
 FIXME find out if this is really necessary, and if we can avoid creation of the SwPlaceholderNodes in the first place.
 */
-class SwPlaceholderNode : private SwNode
+class SwPlaceholderNode final : private SwNode
 {
 private:
     friend class SwNodes;
@@ -709,14 +710,14 @@ inline const SwDoc* SwNode::GetDoc() const
 
 inline SwFormatColl* SwContentNode::GetCondFormatColl() const
 {
-    return m_pCondColl ? static_cast<SwFormatColl*>(m_pCondColl->GetRegisteredIn()) : nullptr;
+    return m_pCondColl;
 }
 
 inline SwFormatColl& SwContentNode::GetAnyFormatColl() const
 {
-    return m_pCondColl && m_pCondColl->GetRegisteredIn()
-                ? *static_cast<SwFormatColl*>(m_pCondColl->GetRegisteredIn())
-                : *const_cast<SwFormatColl*>(static_cast<const SwFormatColl*>(GetRegisteredIn()));
+    return m_pCondColl
+            ? *m_pCondColl
+            : *const_cast<SwFormatColl*>(static_cast<const SwFormatColl*>(GetRegisteredIn()));
 }
 
 inline const SwAttrSet& SwContentNode::GetSwAttrSet() const

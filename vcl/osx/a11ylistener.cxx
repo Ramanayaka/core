@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "osx/salinst.h"
-#include "osx/a11ylistener.hxx"
-#include "osx/a11yfactory.h"
-#include "osx/a11yfocustracker.hxx"
-#include "osx/a11ywrapper.h"
+#include <osx/salinst.h>
+#include <osx/a11ylistener.hxx>
+#include <osx/a11yfactory.h>
+#include <osx/a11yfocustracker.hxx>
+#include <osx/a11ywrapper.h>
 
 #include "a11ytextwrapper.h"
 
@@ -35,7 +35,7 @@ using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 
-NSString * getTableNotification( const AccessibleEventObject& aEvent )
+static NSString * getTableNotification( const AccessibleEventObject& aEvent )
 {
     AccessibleTableModelChange aChange;
     NSString * notification = nil;
@@ -63,7 +63,7 @@ AquaA11yEventListener::~AquaA11yEventListener()
 void SAL_CALL
 AquaA11yEventListener::disposing( const EventObject& )
 {
-    [ AquaA11yFactory removeFromWrapperRepositoryFor: [ (AquaA11yWrapper *) m_wrapperObject accessibleContext ] ];
+    [ AquaA11yFactory removeFromWrapperRepositoryFor: [ static_cast<AquaA11yWrapper *>(m_wrapperObject) accessibleContext ] ];
 }
 
 void SAL_CALL

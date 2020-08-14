@@ -18,41 +18,30 @@
  */
 
 #include "tp_Trendline.hxx"
-#include "ResId.hxx"
-#include "ResourceIds.hrc"
-#include <vcl/settings.hxx>
 
 namespace chart
 {
 
-TrendlineTabPage::TrendlineTabPage( vcl::Window* pParent, const SfxItemSet& rInAttrs ) :
-        SfxTabPage( pParent, "TP_TRENDLINE", "modules/schart/ui/tp_Trendline.ui", &rInAttrs ),
-        m_aTrendlineResources( this, rInAttrs )
+TrendlineTabPage::TrendlineTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
+    : SfxTabPage(pPage, pController, "modules/schart/ui/tp_Trendline.ui", "TP_TRENDLINE", &rInAttrs)
+    , m_aTrendlineResources(*m_xBuilder, rInAttrs)
 {
 }
 
-VclPtr<SfxTabPage> TrendlineTabPage::Create(
-    vcl::Window* pParent, const SfxItemSet* rOutAttrs )
+std::unique_ptr<SfxTabPage> TrendlineTabPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rOutAttrs)
 {
-    return VclPtr<TrendlineTabPage>::Create( pParent, *rOutAttrs );
+    return std::make_unique<TrendlineTabPage>(pPage, pController, *rOutAttrs);
 }
 
 bool TrendlineTabPage::FillItemSet( SfxItemSet* rOutAttrs )
 {
-    return m_aTrendlineResources.FillItemSet( rOutAttrs );
+    m_aTrendlineResources.FillItemSet( rOutAttrs );
+    return true;
 }
 
 void TrendlineTabPage::Reset( const SfxItemSet* rInAttrs )
 {
     m_aTrendlineResources.Reset( *rInAttrs );
-}
-
-void TrendlineTabPage::DataChanged( const DataChangedEvent& rDCEvt )
-{
-    SfxTabPage::DataChanged( rDCEvt );
-
-    if ( (rDCEvt.GetType() == DataChangedEventType::SETTINGS) && (rDCEvt.GetFlags() & AllSettingsFlags::STYLE) )
-        m_aTrendlineResources.FillValueSets();
 }
 
 void TrendlineTabPage::SetNumFormatter( SvNumberFormatter* pNumFormatter )

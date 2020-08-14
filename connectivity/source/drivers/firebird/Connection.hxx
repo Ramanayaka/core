@@ -20,17 +20,11 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_CONNECTION_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_CONNECTION_HXX
 
-#include "Clob.hxx"
-#include "Blob.hxx"
-#include "SubComponent.hxx"
-
 #include <ibase.h>
 
 #include <connectivity/CommonTools.hxx>
-#include <connectivity/OSubComponent.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/weakref.hxx>
-#include <map>
 #include <memory>
 #include <OTypeInfo.hxx>
 #include <unotools/tempfile.hxx>
@@ -39,18 +33,15 @@
 #include <com/sun/star/document/DocumentEvent.hpp>
 #include <com/sun/star/document/XDocumentEventListener.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <com/sun/star/sdbc/SQLWarning.hpp>
+#include <com/sun/star/sdbc/XBlob.hpp>
+#include <com/sun/star/sdbc/XClob.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbc/XWarningsSupplier.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
 
-namespace connectivity
-{
-    namespace firebird
+namespace connectivity::firebird
     {
 
         typedef ::cppu::WeakComponentImplHelper< css::document::XDocumentEventListener,
@@ -67,27 +58,22 @@ namespace connectivity
         typedef std::vector< ::connectivity::OTypeInfo>   TTypeInfoVector;
         typedef std::vector< css::uno::WeakReferenceHelper > OWeakRefArray;
 
-        class Connection : public Connection_BASE,
-                            public connectivity::OSubComponent<Connection, Connection_BASE>
+        class Connection final : public Connection_BASE
         {
-            friend class connectivity::OSubComponent<Connection, Connection_BASE>;
-
             ::osl::Mutex        m_aMutex;
 
             TTypeInfoVector     m_aTypeInfo;    //  vector containing an entry
                                                                     //  for each row returned by
                                                                     //  DatabaseMetaData.getTypeInfo.
-            /** The parent driver that created this connection. */
-            ::rtl::Reference<FirebirdDriver>     m_xDriver;
 
             /** The URL passed to us when opening, i.e. of the form sdbc:* */
-            ::rtl::OUString     m_sConnectionURL;
+            OUString     m_sConnectionURL;
             /**
              * The URL passed to firebird, i.e. either a local file (for a
              * temporary .fdb extracted from a .odb or a normal local file) or
              * a remote url.
              */
-            ::rtl::OUString     m_sFirebirdURL;
+            OUString     m_sFirebirdURL;
 
             /* EMBEDDED MODE DATA */
             /** Denotes that we have a database stored within a .odb file. */
@@ -123,7 +109,7 @@ namespace connectivity
              *
              * (The temporary .fdb is our m_sFirebirdURL.)
              */
-            ::rtl::OUString m_sFBKPath;
+            OUString m_sFBKPath;
 
             void loadDatabaseFile(const OUString& pSrcLocation, const OUString& pTmpLocation);
 
@@ -169,21 +155,13 @@ namespace connectivity
             void setupTransaction();
             void disposeStatements();
 
-        /** transform named parameters into unnamed parameters
-            @param  _sSQL
-                The SQL statement to transform.
-            @return
-                The new statement with unnamed parameters
-        */
-        OUString transformPreparedStatement(const OUString& _sSQL);
-
         public:
-            explicit Connection(FirebirdDriver* _pDriver);
+            explicit Connection();
             virtual ~Connection() override;
 
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            void construct( const ::rtl::OUString& url,
+            void construct( const OUString& url,
                                     const css::uno::Sequence< css::beans::PropertyValue >& info);
 
             const OUString& getConnectionURL()  const   {return m_sConnectionURL;}
@@ -211,11 +189,11 @@ namespace connectivity
              * @throws css::uno::RuntimeException
              */
             css::uno::Reference< css::sdbc::XBlob>
-                createBlob(ISC_QUAD* pBlobID);
+                createBlob(ISC_QUAD const * pBlobID);
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
             css::uno::Reference< css::sdbc::XClob>
-                createClob(ISC_QUAD* pBlobID);
+                createClob(ISC_QUAD const * pBlobID);
 
             /**
              * Create and/or connect to the sdbcx Catalog. This is completely
@@ -226,16 +204,14 @@ namespace connectivity
 
             // OComponentHelper
             virtual void SAL_CALL disposing() override;
-            // XInterface
-            virtual void SAL_CALL release() throw() override;
 
             // XServiceInfo
             DECLARE_SERVICE_INFO();
             // XConnection
             virtual css::uno::Reference< css::sdbc::XStatement > SAL_CALL createStatement(  ) override;
-            virtual css::uno::Reference< css::sdbc::XPreparedStatement > SAL_CALL prepareStatement( const ::rtl::OUString& sql ) override;
-            virtual css::uno::Reference< css::sdbc::XPreparedStatement > SAL_CALL prepareCall( const ::rtl::OUString& sql ) override;
-            virtual ::rtl::OUString SAL_CALL nativeSQL( const ::rtl::OUString& sql ) override;
+            virtual css::uno::Reference< css::sdbc::XPreparedStatement > SAL_CALL prepareStatement( const OUString& sql ) override;
+            virtual css::uno::Reference< css::sdbc::XPreparedStatement > SAL_CALL prepareCall( const OUString& sql ) override;
+            virtual OUString SAL_CALL nativeSQL( const OUString& sql ) override;
             virtual void SAL_CALL setAutoCommit( sal_Bool autoCommit ) override;
             virtual sal_Bool SAL_CALL getAutoCommit(  ) override;
             virtual void SAL_CALL commit(  ) override;
@@ -244,8 +220,8 @@ namespace connectivity
             virtual css::uno::Reference< css::sdbc::XDatabaseMetaData > SAL_CALL getMetaData(  ) override;
             virtual void SAL_CALL setReadOnly( sal_Bool readOnly ) override;
             virtual sal_Bool SAL_CALL isReadOnly(  ) override;
-            virtual void SAL_CALL setCatalog( const ::rtl::OUString& catalog ) override;
-            virtual ::rtl::OUString SAL_CALL getCatalog(  ) override;
+            virtual void SAL_CALL setCatalog( const OUString& catalog ) override;
+            virtual OUString SAL_CALL getCatalog(  ) override;
             virtual void SAL_CALL setTransactionIsolation( sal_Int32 level ) override;
             virtual sal_Int32 SAL_CALL getTransactionIsolation(  ) override;
             virtual css::uno::Reference< css::container::XNameAccess > SAL_CALL getTypeMap(  ) override;
@@ -261,7 +237,7 @@ namespace connectivity
             virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_CONNECTION_HXX
 

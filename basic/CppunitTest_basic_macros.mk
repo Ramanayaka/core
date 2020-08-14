@@ -15,6 +15,8 @@ $(eval $(call gb_CppunitTest_add_exception_objects,basic_macros, \
 	basic/qa/cppunit/basictest \
 	basic/qa/cppunit/basic_coverage \
 	basic/qa/cppunit/test_append \
+	basic/qa/cppunit/test_compiler_checks \
+	basic/qa/cppunit/test_language_conditionals \
 	basic/qa/cppunit/test_nested_struct \
 	basic/qa/cppunit/test_vba \
 ))
@@ -41,7 +43,7 @@ $(eval $(call gb_CppunitTest_use_libraries,basic_macros, \
 ifeq ($(OS),WNT)
 $(eval $(call gb_CppunitTest_use_system_win32_libs,basic_macros, \
 	oleaut32 \
-	$(if $(filter 140 150,$(VCVER)),legacy_stdio_definitions) \
+	legacy_stdio_definitions \
 	odbc32 \
 	odbccp32 \
 ))
@@ -59,8 +61,10 @@ $(eval $(call gb_CppunitTest_use_vcl,basic_macros))
 $(eval $(call gb_CppunitTest_use_components,basic_macros,\
 	configmgr/source/configmgr \
 	i18npool/util/i18npool \
-	$(if $(DISABLE_ATL),,$(if $(filter $(OS),WNT), \
-		extensions/source/ole/oleautobridge)) \
+	ucb/source/core/ucb1 \
+	ucb/source/ucp/file/ucpfile1 \
+	$(if $(filter $(OS),WNT), \
+		extensions/source/ole/oleautobridge) \
 ))
 $(eval $(call gb_CppunitTest_use_configuration,basic_macros))
 

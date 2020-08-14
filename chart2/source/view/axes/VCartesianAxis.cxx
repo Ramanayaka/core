@@ -18,24 +18,21 @@
  */
 
 #include "VCartesianAxis.hxx"
-#include "PlottingPositionHelper.hxx"
-#include "AbstractShapeFactory.hxx"
-#include "CommonConverters.hxx"
-#include "macros.hxx"
-#include "ViewDefines.hxx"
-#include "PropertyMapper.hxx"
-#include "NumberFormatterWrapper.hxx"
-#include "LabelPositionHelper.hxx"
-#include "TrueGuard.hxx"
-#include "BaseGFXHelper.hxx"
-#include "AxisHelper.hxx"
+#include <PlottingPositionHelper.hxx>
+#include <ShapeFactory.hxx>
+#include <PropertyMapper.hxx>
+#include <NumberFormatterWrapper.hxx>
+#include <LabelPositionHelper.hxx>
+#include <TrueGuard.hxx>
+#include <BaseGFXHelper.hxx>
+#include <AxisHelper.hxx>
 #include "Tickmarks_Equidistant.hxx"
-
+#include <ExplicitCategoriesProvider.hxx>
+#include <com/sun/star/chart2/AxisType.hpp>
+#include <com/sun/star/chart2/XAxis.hpp>
 #include <rtl/math.hxx>
+#include <tools/diagnose_ex.h>
 #include <tools/color.hxx>
-#include <com/sun/star/text/XText.hpp>
-#include <com/sun/star/text/WritingMode2.hpp>
-#include <editeng/unoprnms.hxx>
 #include <svx/unoshape.hxx>
 #include <svx/unoshtxt.hxx>
 
@@ -75,7 +72,55 @@ VCartesianAxis::~VCartesianAxis()
     m_pPosHelper = nullptr;
 }
 
-Reference< drawing::XShape > createSingleLabel(
+static void lcl_ResizeTextShapeToFitAvailableSpace( Reference< drawing::XShape > const & xShape2DText,
+                                             const AxisLabelProperties& rAxisLabelProperties,
+                                             const OUString& rLabel,
+                                             const tNameSequence& rPropNames,
+                                             const tAnySequence& rPropValues,
+                                             const bool bIsHorizontalAxis )
+{
+    uno::Reference< text::XTextRange > xTextRange( xShape2DText, uno::UNO_QUERY );
+
+    if( !xTextRange.is() )
+        return;
+
+    const sal_Int32 nFullSize = bIsHorizontalAxis ? rAxisLabelProperties.m_aFontReferenceSize.Height : rAxisLabelProperties.m_aFontReferenceSize.Width;
+
+    if( !nFullSize || !rLabel.getLength() )
+        return;
+
+    sal_Int32 nMaxLabelsSize = bIsHorizontalAxis ? rAxisLabelProperties.m_aMaximumSpaceForLabels.Height : rAxisLabelProperties.m_aMaximumSpaceForLabels.Width;
+    const sal_Int32 nAvgCharWidth = xShape2DText->getSize().Width / rLabel.getLength();
+    const sal_Int32 nTextSize = bIsHorizontalAxis ? ShapeFactory::getSizeAfterRotation(xShape2DText, rAxisLabelProperties.fRotationAngleDegree).Height :
+                                                    ShapeFactory::getSizeAfterRotation(xShape2DText, rAxisLabelProperties.fRotationAngleDegree).Width;
+
+    if( !nAvgCharWidth )
+        return;
+
+    const OUString sDots = "...";
+    const sal_Int32 nCharsToRemove = ( nTextSize - nMaxLabelsSize ) / nAvgCharWidth + 1;
+    sal_Int32 nNewLen = rLabel.getLength() - nCharsToRemove - sDots.getLength();
+    // Prevent from showing only dots
+    if (nNewLen < 0)
+        nNewLen = ( rLabel.getLength() >= sDots.getLength() ) ? sDots.getLength() : rLabel.getLength();
+
+    bool bCrop = nCharsToRemove > 0;
+    if( !bCrop )
+        return;
+
+    OUString aNewLabel = rLabel.copy( 0, nNewLen );
+    if( nNewLen > sDots.getLength() )
+        aNewLabel += sDots;
+    xTextRange->setString( aNewLabel );
+
+    uno::Reference< beans::XPropertySet > xProp( xTextRange, uno::UNO_QUERY );
+    if( xProp.is() )
+    {
+        PropertyMapper::setMultiProperties( rPropNames, rPropValues, xProp );
+    }
+}
+
+static Reference< drawing::XShape > createSingleLabel(
             const Reference< lang::XMultiServiceFactory>& xShapeFactory
           , const Reference< drawing::XShapes >& xTarget
           , const awt::Point& rAnchorScreenPosition2D
@@ -84,18 +129,22 @@ Reference< drawing::XShape > createSingleLabel(
           , const AxisProperties& rAxisProperties
           , const tNameSequence& rPropNames
           , const tAnySequence& rPropValues
+          , const bool bIsHorizontalAxis
           )
 {
     if(rLabel.isEmpty())
         return nullptr;
 
     // #i78696# use mathematically correct rotation now
-    const double fRotationAnglePi(rAxisLabelProperties.fRotationAngleDegree * (F_PI / -180.0));
-    uno::Any aATransformation = AbstractShapeFactory::makeTransformation( rAnchorScreenPosition2D, fRotationAnglePi );
-    OUString aLabel = AbstractShapeFactory::getStackedString( rLabel, rAxisLabelProperties.bStackCharacters );
+    const double fRotationAnglePi(-basegfx::deg2rad(rAxisLabelProperties.fRotationAngleDegree));
+    uno::Any aATransformation = ShapeFactory::makeTransformation( rAnchorScreenPosition2D, fRotationAnglePi );
+    OUString aLabel = ShapeFactory::getStackedString( rLabel, rAxisLabelProperties.bStackCharacters );
 
-    Reference< drawing::XShape > xShape2DText = AbstractShapeFactory::getOrCreateShapeFactory(xShapeFactory)
+    Reference< drawing::XShape > xShape2DText = ShapeFactory::getOrCreateShapeFactory(xShapeFactory)
                     ->createText( xTarget, aLabel, rPropNames, rPropValues, aATransformation );
+
+    if( rAxisProperties.m_bLimitSpaceForLabels )
+        lcl_ResizeTextShapeToFitAvailableSpace(xShape2DText, rAxisLabelProperties, aLabel, rPropNames, rPropValues, bIsHorizontalAxis);
 
     LabelPositionHelper::correctPositionForRotation( xShape2DText
         , rAxisProperties.maLabelAlignment.meAlignment, rAxisLabelProperties.fRotationAngleDegree, rAxisProperties.m_bComplexCategories );
@@ -103,26 +152,14 @@ Reference< drawing::XShape > createSingleLabel(
     return xShape2DText;
 }
 
-bool lcl_doesShapeOverlapWithTickmark( const Reference< drawing::XShape >& xShape
+static bool lcl_doesShapeOverlapWithTickmark( const Reference< drawing::XShape >& xShape
                        , double fRotationAngleDegree
-                       , const basegfx::B2DVector& rTickScreenPosition
-                       , bool bIsHorizontalAxis, bool bIsVerticalAxis )
+                       , const basegfx::B2DVector& rTickScreenPosition )
 {
     if(!xShape.is())
         return false;
 
-    ::basegfx::B2IRectangle aShapeRect = BaseGFXHelper::makeRectangle(xShape->getPosition(),AbstractShapeFactory::getSizeAfterRotation( xShape, fRotationAngleDegree ));
-
-    if( bIsVerticalAxis )
-    {
-        return ( (rTickScreenPosition.getY() >= aShapeRect.getMinY())
-            && (rTickScreenPosition.getY() <= aShapeRect.getMaxY()) );
-    }
-    if( bIsHorizontalAxis )
-    {
-        return ( (rTickScreenPosition.getX() >= aShapeRect.getMinX())
-            && (rTickScreenPosition.getX() <= aShapeRect.getMaxX()) );
-    }
+    ::basegfx::B2IRectangle aShapeRect = BaseGFXHelper::makeRectangle(xShape->getPosition(), ShapeFactory::getSizeAfterRotation( xShape, fRotationAngleDegree ));
 
     basegfx::B2IVector aPosition(
         static_cast<sal_Int32>( rTickScreenPosition.getX() )
@@ -130,9 +167,9 @@ bool lcl_doesShapeOverlapWithTickmark( const Reference< drawing::XShape >& xShap
     return aShapeRect.isInside(aPosition);
 }
 
-void lcl_getRotatedPolygon( B2DPolygon &aPoly, const ::basegfx::B2DRectangle &aRect, const awt::Point &aPos, const double fRotationAngleDegree )
+static void lcl_getRotatedPolygon( B2DPolygon &aPoly, const ::basegfx::B2DRectangle &aRect, const awt::Point &aPos, const double fRotationAngleDegree )
 {
-    aPoly = basegfx::tools::createPolygonFromRect( aRect );
+    aPoly = basegfx::utils::createPolygonFromRect( aRect );
 
     // For rotating the rectangle we use the opposite angle,
     // since `B2DHomMatrix` class used for
@@ -145,12 +182,12 @@ void lcl_getRotatedPolygon( B2DPolygon &aPoly, const ::basegfx::B2DRectangle &aR
     // which is then moved to its final position by using the top-left
     // vertex of the text label bounding box (aPos) as the translation vector.
     ::basegfx::B2DHomMatrix aMatrix;
-    aMatrix.rotate( -fRotationAngleDegree*M_PI/180.0 );
+    aMatrix.rotate(-basegfx::deg2rad(fRotationAngleDegree));
     aMatrix.translate( aPos.X, aPos.Y);
     aPoly.transform( aMatrix );
 }
 
-bool doesOverlap( const Reference< drawing::XShape >& xShape1
+static bool doesOverlap( const Reference< drawing::XShape >& xShape1
                 , const Reference< drawing::XShape >& xShape2
                 , double fRotationAngleDegree )
 {
@@ -168,12 +205,12 @@ bool doesOverlap( const Reference< drawing::XShape >& xShape1
     B2DPolyPolygon aPolyPoly1, aPolyPoly2;
     aPolyPoly1.append( aPoly1 );
     aPolyPoly2.append( aPoly2 );
-    B2DPolyPolygon overlapPoly = ::basegfx::tools::clipPolyPolygonOnPolyPolygon( aPolyPoly1, aPolyPoly2, true, false );
+    B2DPolyPolygon overlapPoly = ::basegfx::utils::clipPolyPolygonOnPolyPolygon( aPolyPoly1, aPolyPoly2, true, false );
 
     return (overlapPoly.count() > 0);
 }
 
-void removeShapesAtWrongRhythm( TickIter& rIter
+static void removeShapesAtWrongRhythm( TickIter& rIter
                               , sal_Int32 nCorrectRhythm
                               , sal_Int32 nMaxTickToCheck
                               , const Reference< drawing::XShapes >& xTarget )
@@ -194,6 +231,8 @@ void removeShapesAtWrongRhythm( TickIter& rIter
         }
     }
 }
+
+namespace {
 
 /**
  * If the labels are staggered and bInnerLine is true we iterate through
@@ -220,6 +259,8 @@ private: //member
     bool m_bInnerLine;
 };
 
+}
+
 LabelIterator::LabelIterator( TickInfoArrayType& rTickInfoVector
             , const AxisLabelStaggering eAxisLabelStaggering
             , bool bInnerLine )
@@ -236,9 +277,9 @@ TickInfo* LabelIterator::firstInfo()
         pTickInfo = m_aPureTickIter.nextInfo();
     if(!pTickInfo)
         return nullptr;
-    if( (m_eAxisLabelStaggering==STAGGER_EVEN && m_bInnerLine)
+    if( (m_eAxisLabelStaggering==AxisLabelStaggering::StaggerEven && m_bInnerLine)
         ||
-        (m_eAxisLabelStaggering==STAGGER_ODD && !m_bInnerLine)
+        (m_eAxisLabelStaggering==AxisLabelStaggering::StaggerOdd && !m_bInnerLine)
         )
     {
         //skip first label
@@ -259,8 +300,8 @@ TickInfo* LabelIterator::nextInfo()
         pTickInfo = m_aPureTickIter.nextInfo();
     while( pTickInfo && !pTickInfo->xTextShape.is() );
 
-    if(  m_eAxisLabelStaggering==STAGGER_EVEN
-      || m_eAxisLabelStaggering==STAGGER_ODD )
+    if(  m_eAxisLabelStaggering==AxisLabelStaggering::StaggerEven
+      || m_eAxisLabelStaggering==AxisLabelStaggering::StaggerOdd )
     {
         //skip one label
         do
@@ -270,7 +311,7 @@ TickInfo* LabelIterator::nextInfo()
     return pTickInfo;
 }
 
-B2DVector lcl_getLabelsDistance( TickIter& rIter, const B2DVector& rDistanceTickToText, double fRotationAngleDegree )
+static B2DVector lcl_getLabelsDistance( TickIter& rIter, const B2DVector& rDistanceTickToText, double fRotationAngleDegree )
 {
     //calculates the height or width of a line of labels
     //thus a following line of labels can be shifted for that distance
@@ -285,7 +326,7 @@ B2DVector lcl_getLabelsDistance( TickIter& rIter, const B2DVector& rDistanceTick
     aStaggerDirection.normalize();
 
     sal_Int32 nDistance=0;
-    Reference< drawing::XShape >  xShape2DText(nullptr);
+    Reference< drawing::XShape >  xShape2DText;
     for( TickInfo* pTickInfo = rIter.firstInfo()
         ; pTickInfo
         ; pTickInfo = rIter.nextInfo() )
@@ -293,7 +334,7 @@ B2DVector lcl_getLabelsDistance( TickIter& rIter, const B2DVector& rDistanceTick
         xShape2DText = pTickInfo->xTextShape;
         if( xShape2DText.is() )
         {
-            awt::Size aSize = AbstractShapeFactory::getSizeAfterRotation( xShape2DText, fRotationAngleDegree );
+            awt::Size aSize = ShapeFactory::getSizeAfterRotation( xShape2DText, fRotationAngleDegree );
             if(fabs(aStaggerDirection.getX())>fabs(aStaggerDirection.getY()))
                 nDistance = std::max(nDistance,aSize.Width);
             else
@@ -310,11 +351,11 @@ B2DVector lcl_getLabelsDistance( TickIter& rIter, const B2DVector& rDistanceTick
     return aRet;
 }
 
-void lcl_shiftLabels( TickIter& rIter, const B2DVector& rStaggerDistance )
+static void lcl_shiftLabels( TickIter& rIter, const B2DVector& rStaggerDistance )
 {
     if(rStaggerDistance.getLength()==0.0)
         return;
-    Reference< drawing::XShape >  xShape2DText(nullptr);
+    Reference< drawing::XShape >  xShape2DText;
     for( TickInfo* pTickInfo = rIter.firstInfo()
         ; pTickInfo
         ; pTickInfo = rIter.nextInfo() )
@@ -330,12 +371,12 @@ void lcl_shiftLabels( TickIter& rIter, const B2DVector& rStaggerDistance )
     }
 }
 
-bool lcl_hasWordBreak( const Reference<drawing::XShape>& xShape )
+static bool lcl_hasWordBreak( const Reference<drawing::XShape>& xShape )
 {
     if (!xShape.is())
         return false;
 
-    SvxShape* pShape = SvxShape::getImplementation(xShape);
+    SvxShape* pShape = comphelper::getUnoTunnelImplementation<SvxShape>(xShape);
     SvxShapeText* pShapeText = dynamic_cast<SvxShapeText*>(pShape);
     if (!pShapeText)
         return false;
@@ -372,9 +413,9 @@ bool lcl_hasWordBreak( const Reference<drawing::XShape>& xShape )
     return false;
 }
 
-OUString getTextLabelString(
+static OUString getTextLabelString(
     const FixedNumberFormatter& rFixedNumberFormatter, const uno::Sequence<OUString>* pCategories,
-    const TickInfo* pTickInfo, bool bComplexCat, sal_Int32& rExtraColor, bool& rHasExtraColor )
+    const TickInfo* pTickInfo, bool bComplexCat, Color& rExtraColor, bool& rHasExtraColor )
 {
     if (pCategories)
     {
@@ -396,7 +437,7 @@ OUString getTextLabelString(
     return rFixedNumberFormatter.getFormattedString(pTickInfo->getUnscaledTickValue(), rExtraColor, rHasExtraColor);
 }
 
-void getAxisLabelProperties(
+static void getAxisLabelProperties(
     tNameSequence& rPropNames, tAnySequence& rPropValues, const AxisProperties& rAxisProp,
     const AxisLabelProperties& rAxisLabelProp,
     sal_Int32 nLimitedSpaceForText, bool bLimitedHeight )
@@ -412,6 +453,8 @@ void getAxisLabelProperties(
     LabelPositionHelper::changeTextAdjustment(
         rPropValues, rPropNames, rAxisProp.maLabelAlignment.meAlignment);
 }
+
+namespace {
 
 /**
  * Iterate through only 3 ticks including the one that has the longest text
@@ -432,6 +475,8 @@ private:
     std::vector<size_t> m_aValidIndices;
     size_t m_nCurrentIndex;
 };
+
+}
 
 MaxLabelTickIter::MaxLabelTickIter(
     TickInfoArrayType& rTickInfoVector, size_t nLongestLabelIndex ) :
@@ -476,7 +521,7 @@ TickInfo* MaxLabelTickIter::nextInfo()
 }
 
 bool VCartesianAxis::isBreakOfLabelsAllowed(
-    const AxisLabelProperties& rAxisLabelProperties, bool bIsHorizontalAxis ) const
+    const AxisLabelProperties& rAxisLabelProperties, bool bIsHorizontalAxis, bool bIsVerticalAxis) const
 {
     if( m_aTextLabels.getLength() > 100 )
         return false;
@@ -487,10 +532,17 @@ bool VCartesianAxis::isBreakOfLabelsAllowed(
     //no break for value axis
     if( !m_bUseTextLabels )
         return false;
-    if( rAxisLabelProperties.fRotationAngleDegree != 0.0 )
+    if( !( rAxisLabelProperties.fRotationAngleDegree == 0.0 ||
+           rAxisLabelProperties.fRotationAngleDegree == 90.0 ||
+           rAxisLabelProperties.fRotationAngleDegree == 270.0 ) )
         return false;
-    //break only for horizontal axis
-    return bIsHorizontalAxis;
+    //no break for complex vertical category axis
+    if( !m_aAxisProperties.m_bSwapXAndY )
+        return bIsHorizontalAxis;
+    else if( m_aAxisProperties.m_bSwapXAndY && !m_aAxisProperties.m_bComplexCategories )
+        return bIsVerticalAxis;
+    else
+        return false;
 }
 namespace{
 
@@ -517,7 +569,7 @@ bool canAutoAdjustLabelPlacement(
 bool isAutoStaggeringOfLabelsAllowed(
     const AxisLabelProperties& rAxisLabelProperties, bool bIsHorizontalAxis, bool bIsVerticalAxis )
 {
-    if( rAxisLabelProperties.eStaggering != STAGGER_AUTO )
+    if( rAxisLabelProperties.eStaggering != AxisLabelStaggering::StaggerAuto )
         return false;
     return canAutoAdjustLabelPlacement(rAxisLabelProperties, bIsHorizontalAxis, bIsVerticalAxis);
 }
@@ -545,14 +597,11 @@ void VCartesianAxis::createAllTickInfosFromComplexCategories( TickInfoArraysType
                 continue;
 
             sal_Int32 nCatIndex = 0;
-            std::vector<ComplexCategory>::const_iterator aIt = pComplexCategories->begin();
-            std::vector<ComplexCategory>::const_iterator aEnd = pComplexCategories->end();
 
-            for(;aIt!=aEnd;++aIt)
+            for (auto const& complexCategory : *pComplexCategories)
             {
                 TickInfo aTickInfo(nullptr);
-                ComplexCategory aCat(*aIt);
-                sal_Int32 nCount = aCat.Count;
+                sal_Int32 nCount = complexCategory.Count;
                 if( nCatIndex + 1.0 + nCount >= m_aScale.Maximum )
                 {
                     nCount = static_cast<sal_Int32>(m_aScale.Maximum - 1.0 - nCatIndex);
@@ -561,7 +610,7 @@ void VCartesianAxis::createAllTickInfosFromComplexCategories( TickInfoArraysType
                 }
                 aTickInfo.fScaledTickValue = nCatIndex + 1.0 + nCount/2.0;
                 aTickInfo.nFactorForLimitedTextWidth = nCount;
-                aTickInfo.aText = aCat.Text;
+                aTickInfo.aText = complexCategory.Text;
                 aTickInfoVector.push_back(aTickInfo);
                 nCatIndex += nCount;
                 if( nCatIndex + 1.0 >= m_aScale.Maximum )
@@ -583,15 +632,12 @@ void VCartesianAxis::createAllTickInfosFromComplexCategories( TickInfoArraysType
             sal_Int32 nCatIndex = 0;
             if (pComplexCategories)
             {
-                std::vector<ComplexCategory>::const_iterator aIt = pComplexCategories->begin();
-                std::vector<ComplexCategory>::const_iterator aEnd = pComplexCategories->end();
-                for(;aIt!=aEnd;++aIt)
+                for (auto const& complexCategory : *pComplexCategories)
                 {
                     TickInfo aTickInfo(nullptr);
-                    ComplexCategory aCat(*aIt);
                     aTickInfo.fScaledTickValue = nCatIndex + 1.0;
                     aTickInfoVector.push_back(aTickInfo);
-                    nCatIndex += aCat.Count;
+                    nCatIndex += complexCategory.Count;
                     if( nCatIndex + 1.0 > m_aScale.Maximum )
                         break;
                 }
@@ -666,13 +712,28 @@ sal_Int32 VCartesianAxis::getTextLevelCount() const
 
 bool VCartesianAxis::createTextShapes(
     const Reference<drawing::XShapes>& xTarget, TickIter& rTickIter,
-    AxisLabelProperties& rAxisLabelProperties, TickFactory2D* pTickFactory,
+    AxisLabelProperties& rAxisLabelProperties, TickFactory2D const * pTickFactory,
     sal_Int32 nScreenDistanceBetweenTicks )
 {
     const bool bIsHorizontalAxis = pTickFactory->isHorizontalAxis();
     const bool bIsVerticalAxis = pTickFactory->isVerticalAxis();
 
-    if (!isBreakOfLabelsAllowed(rAxisLabelProperties, bIsHorizontalAxis) &&
+    if( m_bUseTextLabels && (m_aAxisProperties.m_eLabelPos == css::chart::ChartAxisLabelPosition_NEAR_AXIS ||
+        m_aAxisProperties.m_eLabelPos == css::chart::ChartAxisLabelPosition_OUTSIDE_START))
+    {
+        if (bIsHorizontalAxis)
+        {
+            rAxisLabelProperties.m_aMaximumSpaceForLabels.Y = pTickFactory->getXaxisStartPos().getY();
+            rAxisLabelProperties.m_aMaximumSpaceForLabels.Height = rAxisLabelProperties.m_aFontReferenceSize.Height - rAxisLabelProperties.m_aMaximumSpaceForLabels.Y;
+        }
+        else if (bIsVerticalAxis)
+        {
+            rAxisLabelProperties.m_aMaximumSpaceForLabels.X = 0;
+            rAxisLabelProperties.m_aMaximumSpaceForLabels.Width = pTickFactory->getXaxisStartPos().getX();
+        }
+    }
+
+    if (!isBreakOfLabelsAllowed(rAxisLabelProperties, bIsHorizontalAxis, bIsVerticalAxis) &&
         !isAutoStaggeringOfLabelsAllowed(rAxisLabelProperties, bIsHorizontalAxis, bIsVerticalAxis) &&
         !rAxisLabelProperties.isStaggered())
         return createTextShapesSimple(xTarget, rTickIter, rAxisLabelProperties, pTickFactory);
@@ -684,7 +745,7 @@ bool VCartesianAxis::createTextShapes(
     B2DVector aTextToTickDistance = pTickFactory->getDistanceAxisTickToText(m_aAxisProperties, true);
     sal_Int32 nLimitedSpaceForText = -1;
 
-    if( isBreakOfLabelsAllowed( rAxisLabelProperties, bIsHorizontalAxis ) )
+    if( isBreakOfLabelsAllowed( rAxisLabelProperties, bIsHorizontalAxis, bIsVerticalAxis ) )
     {
         nLimitedSpaceForText = nScreenDistanceBetweenTicks;
         if( bIsStaggered )
@@ -697,23 +758,40 @@ bool VCartesianAxis::createTextShapes(
                 nReduce = 1;
             nLimitedSpaceForText -= nReduce;
         }
+
+        // recalculate the nLimitedSpaceForText in case of 90 and 270 degree if the text break is true
+        if ( rAxisLabelProperties.fRotationAngleDegree == 90.0 || rAxisLabelProperties.fRotationAngleDegree == 270.0 )
+        {
+            nLimitedSpaceForText = rAxisLabelProperties.m_aMaximumSpaceForLabels.Height;
+            m_aAxisProperties.m_bLimitSpaceForLabels = false;
+        }
+
+        // recalculate the nLimitedSpaceForText in case of vertical category axis if the text break is true
+        if ( m_aAxisProperties.m_bSwapXAndY && bIsVerticalAxis && rAxisLabelProperties.fRotationAngleDegree == 0.0 )
+        {
+            nLimitedSpaceForText = pTickFactory->getXaxisStartPos().getX();
+            m_aAxisProperties.m_bLimitSpaceForLabels = false;
+        }
     }
 
-     // Stores an array of text label strings in case of a normal
-     // (non-complex) category axis.
+    // Stores an array of text label strings in case of a normal
+    // (non-complex) category axis.
     const uno::Sequence<OUString>* pCategories = nullptr;
     if( m_bUseTextLabels && !m_aAxisProperties.m_bComplexCategories )
         pCategories = &m_aTextLabels;
 
-    bool bLimitedHeight = fabs(aTextToTickDistance.getX()) > fabs(aTextToTickDistance.getY());
-
+    bool bLimitedHeight;
+    if( !m_aAxisProperties.m_bSwapXAndY )
+        bLimitedHeight = fabs(aTextToTickDistance.getX()) > fabs(aTextToTickDistance.getY());
+    else
+        bLimitedHeight = fabs(aTextToTickDistance.getX()) < fabs(aTextToTickDistance.getY());
     //prepare properties for multipropertyset-interface of shape
     tNameSequence aPropNames;
     tAnySequence aPropValues;
     getAxisLabelProperties(aPropNames, aPropValues, m_aAxisProperties, rAxisLabelProperties, nLimitedSpaceForText, bLimitedHeight);
 
     uno::Any* pColorAny = PropertyMapper::getValuePointer(aPropValues,aPropNames,"CharColor");
-    sal_Int32 nColor = Color( COL_AUTO ).GetColor();
+    Color nColor = COL_AUTO;
     if(pColorAny)
         *pColorAny >>= nColor;
 
@@ -740,13 +818,12 @@ bool VCartesianAxis::createTextShapes(
         if( pLastVisibleNeighbourTickInfo && !rAxisLabelProperties.bOverlapAllowed )
         {
             // Overlapping is not allowed.  If the label overlaps with its
-            // neighbering label, try increasing the tick interval (or rhythm
+            // neighboring label, try increasing the tick interval (or rhythm
             // as it's called) and start over.
 
             if( lcl_doesShapeOverlapWithTickmark( pLastVisibleNeighbourTickInfo->xTextShape
                        , rAxisLabelProperties.fRotationAngleDegree
-                       , pTickInfo->aTickScreenPosition
-                       , bIsHorizontalAxis, bIsVerticalAxis ) )
+                       , pTickInfo->aTickScreenPosition ) )
             {
                 // This tick overlaps with its neighbor.  Try to stagger (if
                 // auto staggering is allowed) to avoid overlapping.
@@ -755,13 +832,12 @@ bool VCartesianAxis::createTextShapes(
                 if( !bIsStaggered && isAutoStaggeringOfLabelsAllowed( rAxisLabelProperties, bIsHorizontalAxis, bIsVerticalAxis ) )
                 {
                     bIsStaggered = true;
-                    rAxisLabelProperties.eStaggering = STAGGER_EVEN;
+                    rAxisLabelProperties.eStaggering = AxisLabelStaggering::StaggerEven;
                     pLastVisibleNeighbourTickInfo = pPREPreviousVisibleTickInfo;
                     if( !pLastVisibleNeighbourTickInfo ||
                         !lcl_doesShapeOverlapWithTickmark( pLastVisibleNeighbourTickInfo->xTextShape
                                 , rAxisLabelProperties.fRotationAngleDegree
-                                , pTickInfo->aTickScreenPosition
-                            , bIsHorizontalAxis, bIsVerticalAxis ) )
+                                , pTickInfo->aTickScreenPosition ) )
                         bOverlapsAfterAutoStagger = false;
                 }
 
@@ -779,7 +855,7 @@ bool VCartesianAxis::createTextShapes(
         }
 
         bool bHasExtraColor=false;
-        sal_Int32 nExtraColor=0;
+        Color nExtraColor;
 
         OUString aLabel = getTextLabelString(
             aFixedNumberFormatter, pCategories, pTickInfo, isComplexCategoryAxis(),
@@ -801,20 +877,23 @@ bool VCartesianAxis::createTextShapes(
             pTickInfo->xTextShape = createSingleLabel( m_xShapeFactory, xTarget
                                     , aAnchorScreenPosition2D, aLabel
                                     , rAxisLabelProperties, m_aAxisProperties
-                                    , aPropNames, aPropValues );
+                                    , aPropNames, aPropValues, bIsHorizontalAxis );
         if(!pTickInfo->xTextShape.is())
             continue;
 
         recordMaximumTextSize( pTickInfo->xTextShape, rAxisLabelProperties.fRotationAngleDegree );
 
+        // Label has multiple lines and the words are broken
         if( nLimitedSpaceForText>0 && !rAxisLabelProperties.bOverlapAllowed
                 && rAxisLabelProperties.fRotationAngleDegree == 0.0
-                && m_aAxisProperties.m_bComplexCategories
                 && lcl_hasWordBreak( pTickInfo->xTextShape ) )
         {
             // Label has multiple lines and belongs to a complex category
             // axis. Rotate 90 degrees to try to avoid overlaps.
-            rAxisLabelProperties.fRotationAngleDegree = 90;
+            if ( m_aAxisProperties.m_bComplexCategories )
+            {
+                rAxisLabelProperties.fRotationAngleDegree = 90;
+            }
             rAxisLabelProperties.bLineBreakAllowed = false;
             m_aAxisLabelProperties.fRotationAngleDegree = rAxisLabelProperties.fRotationAngleDegree;
             removeTextShapesFromTicks();
@@ -824,7 +903,7 @@ bool VCartesianAxis::createTextShapes(
         //if NO OVERLAP -> remove overlapping shapes
         if( pLastVisibleNeighbourTickInfo && !rAxisLabelProperties.bOverlapAllowed )
         {
-            // Check if the label still overlaps with its neighber.
+            // Check if the label still overlaps with its neighbor.
             if( doesOverlap( pLastVisibleNeighbourTickInfo->xTextShape, pTickInfo->xTextShape, rAxisLabelProperties.fRotationAngleDegree ) )
             {
                 // It overlaps.  Check if staggering helps.
@@ -837,13 +916,12 @@ bool VCartesianAxis::createTextShapes(
                         || m_aAxisProperties.m_bTryStaggeringFirst )
                     {
                         bIsStaggered = true;
-                        rAxisLabelProperties.eStaggering = STAGGER_EVEN;
+                        rAxisLabelProperties.eStaggering = AxisLabelStaggering::StaggerEven;
                         pLastVisibleNeighbourTickInfo = pPREPreviousVisibleTickInfo;
                         if( !pLastVisibleNeighbourTickInfo ||
                             !lcl_doesShapeOverlapWithTickmark( pLastVisibleNeighbourTickInfo->xTextShape
                                 , rAxisLabelProperties.fRotationAngleDegree
-                                , pTickInfo->aTickScreenPosition
-                                , bIsHorizontalAxis, bIsVerticalAxis ) )
+                                , pTickInfo->aTickScreenPosition ) )
                             bOverlapsAfterAutoStagger = false;
                     }
                 }
@@ -881,7 +959,7 @@ bool VCartesianAxis::createTextShapes(
 
 bool VCartesianAxis::createTextShapesSimple(
     const Reference<drawing::XShapes>& xTarget, TickIter& rTickIter,
-    AxisLabelProperties& rAxisLabelProperties, TickFactory2D* pTickFactory )
+    AxisLabelProperties& rAxisLabelProperties, TickFactory2D const * pTickFactory )
 {
     FixedNumberFormatter aFixedNumberFormatter(
                 m_xNumberFormatsSupplier, rAxisLabelProperties.nNumberFormatKey );
@@ -904,7 +982,7 @@ bool VCartesianAxis::createTextShapesSimple(
     getAxisLabelProperties(aPropNames, aPropValues, m_aAxisProperties, rAxisLabelProperties, -1, bLimitedHeight);
 
     uno::Any* pColorAny = PropertyMapper::getValuePointer(aPropValues,aPropNames,"CharColor");
-    sal_Int32 nColor = Color( COL_AUTO ).GetColor();
+    Color nColor = COL_AUTO;
     if(pColorAny)
         *pColorAny >>= nColor;
 
@@ -929,13 +1007,12 @@ bool VCartesianAxis::createTextShapesSimple(
         if( pLastVisibleNeighbourTickInfo && !rAxisLabelProperties.bOverlapAllowed )
         {
             // Overlapping is not allowed.  If the label overlaps with its
-            // neighbering label, try increasing the tick interval (or rhythm
+            // neighboring label, try increasing the tick interval (or rhythm
             // as it's called) and start over.
 
             if( lcl_doesShapeOverlapWithTickmark( pLastVisibleNeighbourTickInfo->xTextShape
                        , rAxisLabelProperties.fRotationAngleDegree
-                       , pTickInfo->aTickScreenPosition
-                       , bIsHorizontalAxis, bIsVerticalAxis ) )
+                       , pTickInfo->aTickScreenPosition ) )
             {
                 // This tick overlaps with its neighbor. Increment the visible
                 // tick intervals (if that's allowed) and start over.
@@ -947,7 +1024,7 @@ bool VCartesianAxis::createTextShapesSimple(
         }
 
         bool bHasExtraColor=false;
-        sal_Int32 nExtraColor=0;
+        Color nExtraColor;
 
         OUString aLabel = getTextLabelString(
             aFixedNumberFormatter, pCategories, pTickInfo, isComplexCategoryAxis(),
@@ -969,7 +1046,7 @@ bool VCartesianAxis::createTextShapesSimple(
             pTickInfo->xTextShape = createSingleLabel( m_xShapeFactory, xTarget
                                     , aAnchorScreenPosition2D, aLabel
                                     , rAxisLabelProperties, m_aAxisProperties
-                                    , aPropNames, aPropValues );
+                                    , aPropNames, aPropValues, bIsHorizontalAxis );
         if(!pTickInfo->xTextShape.is())
             continue;
 
@@ -978,7 +1055,7 @@ bool VCartesianAxis::createTextShapesSimple(
         //if NO OVERLAP -> remove overlapping shapes
         if( pLastVisibleNeighbourTickInfo && !rAxisLabelProperties.bOverlapAllowed )
         {
-            // Check if the label still overlaps with its neighber.
+            // Check if the label still overlaps with its neighbor.
             if( doesOverlap( pLastVisibleNeighbourTickInfo->xTextShape, pTickInfo->xTextShape, rAxisLabelProperties.fRotationAngleDegree ) )
             {
                 // It overlaps.
@@ -1057,7 +1134,7 @@ B2DVector VCartesianAxis::getScreenPosition( double fLogicX, double fLogicY, dou
         drawing::Position3D aScenePos = m_pPosHelper->transformLogicToScene( fLogicX, fLogicY, fLogicZ, true );
         if(m_nDimension==3)
         {
-            if( m_xLogicTarget.is() && m_pPosHelper && m_pShapeFactory )
+            if (m_xLogicTarget.is() && m_pShapeFactory)
             {
                 tPropertyNameMap aDummyPropertyNameMap;
                 Reference< drawing::XShape > xShape3DAnchor = m_pShapeFactory->createCube( m_xLogicTarget
@@ -1093,7 +1170,10 @@ VCartesianAxis::ScreenPosAndLogicPos VCartesianAxis::getScreenPosAndLogicPos( do
 }
 
 typedef std::vector< VCartesianAxis::ScreenPosAndLogicPos > tScreenPosAndLogicPosList;
-struct lcl_LessXPos : std::binary_function< VCartesianAxis::ScreenPosAndLogicPos, VCartesianAxis::ScreenPosAndLogicPos, bool >
+
+namespace {
+
+struct lcl_LessXPos
 {
     bool operator() ( const VCartesianAxis::ScreenPosAndLogicPos& rPos1, const VCartesianAxis::ScreenPosAndLogicPos& rPos2 )
     {
@@ -1101,13 +1181,15 @@ struct lcl_LessXPos : std::binary_function< VCartesianAxis::ScreenPosAndLogicPos
     }
 };
 
-struct lcl_GreaterYPos : std::binary_function< VCartesianAxis::ScreenPosAndLogicPos, VCartesianAxis::ScreenPosAndLogicPos, bool >
+struct lcl_GreaterYPos
 {
     bool operator() ( const VCartesianAxis::ScreenPosAndLogicPos& rPos1, const VCartesianAxis::ScreenPosAndLogicPos& rPos2 )
     {
         return ( rPos1.aScreenPos.getY() > rPos2.aScreenPos.getY() );
     }
 };
+
+}
 
 void VCartesianAxis::get2DAxisMainLine(
     B2DVector& rStart, B2DVector& rEnd, AxisLabelAlignment& rAlignment, double fCrossesOtherAxis ) const
@@ -1366,65 +1448,65 @@ void VCartesianAxis::get2DAxisMainLine(
     if(m_nDimension==3 && !AxisHelper::isAxisPositioningEnabled() )
         rAlignment.mfInnerTickDirection = rAlignment.mfLabelDirection;//to behave like before
 
-    if(m_nDimension==3 && AxisHelper::isAxisPositioningEnabled() )
+    if(!(m_nDimension==3 && AxisHelper::isAxisPositioningEnabled()) )
+        return;
+
+    double fDeltaX = rEnd.getX() - rStart.getX();
+    double fDeltaY = rEnd.getY() - rStart.getY();
+
+    if( m_nDimensionIndex==2 )
     {
-        double fDeltaX = rEnd.getX() - rStart.getX();
-        double fDeltaY = rEnd.getY() - rStart.getY();
-
-        if( m_nDimensionIndex==2 )
+        if( m_eLeftWallPos != CuboidPlanePosition_Left )
         {
-            if( m_eLeftWallPos != CuboidPlanePosition_Left )
-            {
-                rAlignment.mfLabelDirection *= -1.0;
-                rAlignment.mfInnerTickDirection *= -1.0;
-            }
-
-            rAlignment.meAlignment =
-                (rAlignment.mfLabelDirection < 0) ?
-                    LABEL_ALIGN_LEFT :  LABEL_ALIGN_RIGHT;
-
-            if( ( fDeltaY<0 && m_aScale.Orientation == chart2::AxisOrientation_REVERSE ) ||
-                ( fDeltaY>0 && m_aScale.Orientation == chart2::AxisOrientation_MATHEMATICAL ) )
-                rAlignment.meAlignment =
-                    (rAlignment.meAlignment == LABEL_ALIGN_RIGHT) ?
-                        LABEL_ALIGN_LEFT : LABEL_ALIGN_RIGHT;
+            rAlignment.mfLabelDirection *= -1.0;
+            rAlignment.mfInnerTickDirection *= -1.0;
         }
-        else if( fabs(fDeltaY) > fabs(fDeltaX) )
-        {
-            if( m_eBackWallPos != CuboidPlanePosition_Back )
-            {
-                rAlignment.mfLabelDirection *= -1.0;
-                rAlignment.mfInnerTickDirection *= -1.0;
-            }
 
+        rAlignment.meAlignment =
+            (rAlignment.mfLabelDirection < 0) ?
+                LABEL_ALIGN_LEFT :  LABEL_ALIGN_RIGHT;
+
+        if( ( fDeltaY<0 && m_aScale.Orientation == chart2::AxisOrientation_REVERSE ) ||
+            ( fDeltaY>0 && m_aScale.Orientation == chart2::AxisOrientation_MATHEMATICAL ) )
             rAlignment.meAlignment =
-                (rAlignment.mfLabelDirection < 0) ?
+                (rAlignment.meAlignment == LABEL_ALIGN_RIGHT) ?
                     LABEL_ALIGN_LEFT : LABEL_ALIGN_RIGHT;
-
-            if( ( fDeltaY<0 && m_aScale.Orientation == chart2::AxisOrientation_REVERSE ) ||
-                ( fDeltaY>0 && m_aScale.Orientation == chart2::AxisOrientation_MATHEMATICAL ) )
-                rAlignment.meAlignment =
-                    (rAlignment.meAlignment == LABEL_ALIGN_RIGHT) ?
-                        LABEL_ALIGN_LEFT :  LABEL_ALIGN_RIGHT;
-        }
-        else
+    }
+    else if( fabs(fDeltaY) > fabs(fDeltaX) )
+    {
+        if( m_eBackWallPos != CuboidPlanePosition_Back )
         {
-            if( m_eBackWallPos != CuboidPlanePosition_Back )
-            {
-                rAlignment.mfLabelDirection *= -1.0;
-                rAlignment.mfInnerTickDirection *= -1.0;
-            }
-
-            rAlignment.meAlignment =
-                (rAlignment.mfLabelDirection < 0) ?
-                    LABEL_ALIGN_TOP : LABEL_ALIGN_BOTTOM;
-
-            if( ( fDeltaX>0 && m_aScale.Orientation == chart2::AxisOrientation_REVERSE ) ||
-                ( fDeltaX<0 && m_aScale.Orientation == chart2::AxisOrientation_MATHEMATICAL ) )
-                rAlignment.meAlignment =
-                    (rAlignment.meAlignment == LABEL_ALIGN_TOP) ?
-                        LABEL_ALIGN_BOTTOM : LABEL_ALIGN_TOP;
+            rAlignment.mfLabelDirection *= -1.0;
+            rAlignment.mfInnerTickDirection *= -1.0;
         }
+
+        rAlignment.meAlignment =
+            (rAlignment.mfLabelDirection < 0) ?
+                LABEL_ALIGN_LEFT : LABEL_ALIGN_RIGHT;
+
+        if( ( fDeltaY<0 && m_aScale.Orientation == chart2::AxisOrientation_REVERSE ) ||
+            ( fDeltaY>0 && m_aScale.Orientation == chart2::AxisOrientation_MATHEMATICAL ) )
+            rAlignment.meAlignment =
+                (rAlignment.meAlignment == LABEL_ALIGN_RIGHT) ?
+                    LABEL_ALIGN_LEFT :  LABEL_ALIGN_RIGHT;
+    }
+    else
+    {
+        if( m_eBackWallPos != CuboidPlanePosition_Back )
+        {
+            rAlignment.mfLabelDirection *= -1.0;
+            rAlignment.mfInnerTickDirection *= -1.0;
+        }
+
+        rAlignment.meAlignment =
+            (rAlignment.mfLabelDirection < 0) ?
+                LABEL_ALIGN_TOP : LABEL_ALIGN_BOTTOM;
+
+        if( ( fDeltaX>0 && m_aScale.Orientation == chart2::AxisOrientation_REVERSE ) ||
+            ( fDeltaX<0 && m_aScale.Orientation == chart2::AxisOrientation_MATHEMATICAL ) )
+            rAlignment.meAlignment =
+                (rAlignment.meAlignment == LABEL_ALIGN_TOP) ?
+                    LABEL_ALIGN_BOTTOM : LABEL_ALIGN_TOP;
     }
 }
 
@@ -1446,7 +1528,7 @@ TickFactory2D* VCartesianAxis::createTickFactory2D()
     return new TickFactory2D( m_aScale, m_aIncrement, aStart, aEnd, aLabelLineStart-aStart );
 }
 
-void lcl_hideIdenticalScreenValues( TickIter& rTickIter )
+static void lcl_hideIdenticalScreenValues( TickIter& rTickIter )
 {
     TickInfo* pPrevTickInfo = rTickIter.firstInfo();
     if (!pPrevTickInfo)
@@ -1496,7 +1578,30 @@ sal_Int32 VCartesianAxis::estimateMaximumAutoMainIncrementCount()
 
     sal_Int32 nTotalAvailable = nMaxHeight;
     sal_Int32 nSingleNeeded = m_nMaximumTextHeightSoFar;
+    sal_Int32 nMaxSameLabel = 0;
 
+    // tdf#48041: do not duplicate the value labels because of rounding
+    if (m_aAxisProperties.m_nAxisType != css::chart2::AxisType::DATE)
+    {
+        FixedNumberFormatter aFixedNumberFormatterTest(m_xNumberFormatsSupplier, m_aAxisLabelProperties.nNumberFormatKey);
+        OUString sPreviousValueLabel;
+        sal_Int32 nSameLabel = 0;
+        for (sal_Int32 nLabel = 0; nLabel < static_cast<sal_Int32>(m_aAllTickInfos[0].size()); ++nLabel)
+        {
+            Color nColor = COL_AUTO;
+            bool bHasColor = false;
+            OUString sValueLabel = aFixedNumberFormatterTest.getFormattedString(m_aAllTickInfos[0][nLabel].fScaledTickValue, nColor, bHasColor);
+            if (sValueLabel == sPreviousValueLabel)
+            {
+                nSameLabel++;
+                if (nSameLabel > nMaxSameLabel)
+                    nMaxSameLabel = nSameLabel;
+            }
+            else
+                nSameLabel = 0;
+            sPreviousValueLabel = sValueLabel;
+        }
+    }
     //for horizontal axis:
     if( (m_nDimensionIndex == 0 && !m_aAxisProperties.m_bSwapXAndY)
         || (m_nDimensionIndex == 1 && m_aAxisProperties.m_bSwapXAndY) )
@@ -1508,10 +1613,17 @@ sal_Int32 VCartesianAxis::estimateMaximumAutoMainIncrementCount()
     if( nSingleNeeded>0 )
         nRet = nTotalAvailable/nSingleNeeded;
 
+    if ( nMaxSameLabel > 0 )
+    {
+        sal_Int32 nRetNoSameLabel = m_aAllTickInfos[0].size() / (nMaxSameLabel + 1);
+        if ( nRet > nRetNoSameLabel )
+           nRet = nRetNoSameLabel;
+    }
+
     return nRet;
 }
 
-void VCartesianAxis::doStaggeringOfLabels( const AxisLabelProperties& rAxisLabelProperties, TickFactory2D* pTickFactory2D )
+void VCartesianAxis::doStaggeringOfLabels( const AxisLabelProperties& rAxisLabelProperties, TickFactory2D const * pTickFactory2D )
 {
     if( !pTickFactory2D )
         return;
@@ -1528,12 +1640,16 @@ void VCartesianAxis::doStaggeringOfLabels( const AxisLabelProperties& rAxisLabel
                 double fRotationAngleDegree = m_aAxisLabelProperties.fRotationAngleDegree;
                 if( nTextLevel>0 )
                 {
-                    lcl_shiftLabels( *apTickIter.get(), aCummulatedLabelsDistance );
-                    fRotationAngleDegree = 0.0;
+                    lcl_shiftLabels(*apTickIter, aCummulatedLabelsDistance);
+                    //multilevel labels: 0 or 90 by default
+                    if( m_aAxisProperties.m_bSwapXAndY )
+                        fRotationAngleDegree = 90.0;
+                    else
+                        fRotationAngleDegree = 0.0;
                 }
-                aCummulatedLabelsDistance += lcl_getLabelsDistance( *apTickIter.get()
-                    , pTickFactory2D->getDistanceAxisTickToText( m_aAxisProperties )
-                    , fRotationAngleDegree );
+                aCummulatedLabelsDistance += lcl_getLabelsDistance(
+                    *apTickIter, pTickFactory2D->getDistanceAxisTickToText(m_aAxisProperties),
+                    fRotationAngleDegree);
             }
         }
     }
@@ -1560,10 +1676,8 @@ void VCartesianAxis::createLabels()
     if (!m_aAxisProperties.m_bDisplayLabels)
         return;
 
-    std::unique_ptr< TickFactory2D > apTickFactory2D( this->createTickFactory2D() );
+    std::unique_ptr<TickFactory2D> apTickFactory2D(createTickFactory2D()); // throws on failure
     TickFactory2D* pTickFactory2D = apTickFactory2D.get();
-    if( !pTickFactory2D )
-        return;
 
     //get the transformed screen values for all tickmarks in aAllTickInfos
     pTickFactory2D->updateScreenValues( m_aAllTickInfos );
@@ -1582,7 +1696,7 @@ void VCartesianAxis::createLabels()
         {
             if(nTextLevel==0)
             {
-                nScreenDistanceBetweenTicks = TickFactory2D::getTickScreenDistance( *apTickIter.get() );
+                nScreenDistanceBetweenTicks = TickFactory2D::getTickScreenDistance(*apTickIter);
                 if( nTextLevelCount>1 )
                     nScreenDistanceBetweenTicks*=2; //the above used tick iter does contain also the sub ticks -> thus the given distance is only the half
             }
@@ -1592,10 +1706,18 @@ void VCartesianAxis::createLabels()
             {
                 aComplexProps.bLineBreakAllowed = true;
                 aComplexProps.bOverlapAllowed = aComplexProps.fRotationAngleDegree != 0.0;
-
+                if( nTextLevel > 0 )
+                {
+                    //multilevel labels: 0 or 90 by default
+                    if( m_aAxisProperties.m_bSwapXAndY )
+                        aComplexProps.fRotationAngleDegree = 90.0;
+                    else
+                        aComplexProps.fRotationAngleDegree = 0.0;
+                }
             }
             AxisLabelProperties& rAxisLabelProperties =  m_aAxisProperties.m_bComplexCategories ? aComplexProps : m_aAxisLabelProperties;
-            while( !createTextShapes( m_xTextTarget, *apTickIter.get(), rAxisLabelProperties, pTickFactory2D, nScreenDistanceBetweenTicks ) )
+            while (!createTextShapes(m_xTextTarget, *apTickIter, rAxisLabelProperties,
+                                     pTickFactory2D, nScreenDistanceBetweenTicks))
             {
             };
         }
@@ -1614,10 +1736,8 @@ void VCartesianAxis::createMaximumLabels()
     if (!m_aAxisProperties.m_bDisplayLabels)
         return;
 
-    std::unique_ptr< TickFactory2D > apTickFactory2D( this->createTickFactory2D() );
+    std::unique_ptr<TickFactory2D> apTickFactory2D(createTickFactory2D()); // throws on failure
     TickFactory2D* pTickFactory2D = apTickFactory2D.get();
-    if( !pTickFactory2D )
-        return;
 
     //get the transformed screen values for all tickmarks in aAllTickInfos
     pTickFactory2D->updateScreenValues( m_aAllTickInfos );
@@ -1627,7 +1747,7 @@ void VCartesianAxis::createMaximumLabels()
 
     AxisLabelProperties aAxisLabelProperties( m_aAxisLabelProperties );
     if( isAutoStaggeringOfLabelsAllowed( aAxisLabelProperties, pTickFactory2D->isHorizontalAxis(), pTickFactory2D->isVerticalAxis() ) )
-        aAxisLabelProperties.eStaggering = STAGGER_EVEN;
+        aAxisLabelProperties.eStaggering = AxisLabelStaggering::StaggerEven;
 
     aAxisLabelProperties.bOverlapAllowed = true;
     aAxisLabelProperties.bLineBreakAllowed = false;
@@ -1637,7 +1757,8 @@ void VCartesianAxis::createMaximumLabels()
         std::unique_ptr< TickIter > apTickIter(createMaximumLabelTickIterator( nTextLevel ));
         if(apTickIter)
         {
-            while( !createTextShapes( m_xTextTarget, *apTickIter.get(), aAxisLabelProperties, pTickFactory2D, -1 ) )
+            while (!createTextShapes(m_xTextTarget, *apTickIter, aAxisLabelProperties,
+                                     pTickFactory2D, -1))
             {
             };
         }
@@ -1651,28 +1772,22 @@ void VCartesianAxis::updatePositions()
     if (!m_aAxisProperties.m_bDisplayLabels)
         return;
 
-    std::unique_ptr< TickFactory2D > apTickFactory2D( this->createTickFactory2D() );
+    std::unique_ptr<TickFactory2D> apTickFactory2D(createTickFactory2D()); // throws on failure
     TickFactory2D* pTickFactory2D = apTickFactory2D.get();
-    if( !pTickFactory2D )
-        return;
 
     //update positions of all existing text shapes
     pTickFactory2D->updateScreenValues( m_aAllTickInfos );
 
-    TickInfoArraysType::iterator aDepthIter = m_aAllTickInfos.begin();
-    const TickInfoArraysType::const_iterator aDepthEnd  = m_aAllTickInfos.end();
-    for( sal_Int32 nDepth=0; aDepthIter != aDepthEnd; ++aDepthIter, nDepth++ )
+    sal_Int32 nDepth=0;
+    for (auto const& tickInfos : m_aAllTickInfos)
     {
-        TickInfoArrayType::iterator aTickIter = aDepthIter->begin();
-        const TickInfoArrayType::const_iterator aTickEnd  = aDepthIter->end();
-        for( ; aTickIter != aTickEnd; ++aTickIter )
+        for (auto const& tickInfo : tickInfos)
         {
-            TickInfo& rTickInfo = (*aTickIter);
-            Reference< drawing::XShape > xShape2DText( rTickInfo.xTextShape );
+            Reference< drawing::XShape > xShape2DText(tickInfo.xTextShape);
             if( xShape2DText.is() )
             {
                 B2DVector aTextToTickDistance( pTickFactory2D->getDistanceAxisTickToText( m_aAxisProperties, true ) );
-                B2DVector aTickScreenPos2D( rTickInfo.aTickScreenPosition );
+                B2DVector aTickScreenPos2D(tickInfo.aTickScreenPosition);
                 aTickScreenPos2D += aTextToTickDistance;
                 awt::Point aAnchorScreenPosition2D(
                     static_cast<sal_Int32>(aTickScreenPos2D.getX())
@@ -1681,7 +1796,7 @@ void VCartesianAxis::updatePositions()
                 double fRotationAngleDegree = m_aAxisLabelProperties.fRotationAngleDegree;
                 if( nDepth > 0 )
                 {
-                    /* Multi-level Labels: default to 0 or 90 */
+                    //multilevel labels: 0 or 90 by default
                     if( pTickFactory2D->isHorizontalAxis() )
                         fRotationAngleDegree = 0.0;
                     else
@@ -1689,8 +1804,8 @@ void VCartesianAxis::updatePositions()
                 }
 
                 // #i78696# use mathematically correct rotation now
-                const double fRotationAnglePi(fRotationAngleDegree * (F_PI / -180.0));
-                uno::Any aATransformation = AbstractShapeFactory::makeTransformation(aAnchorScreenPosition2D, fRotationAnglePi);
+                const double fRotationAnglePi(-basegfx::deg2rad(fRotationAngleDegree));
+                uno::Any aATransformation = ShapeFactory::makeTransformation(aAnchorScreenPosition2D, fRotationAnglePi);
 
                 //set new position
                 uno::Reference< beans::XPropertySet > xProp( xShape2DText, uno::UNO_QUERY );
@@ -1700,9 +1815,9 @@ void VCartesianAxis::updatePositions()
                     {
                         xProp->setPropertyValue( "Transformation", aATransformation );
                     }
-                    catch( const uno::Exception& e )
+                    catch( const uno::Exception& )
                     {
-                        ASSERT_EXCEPTION( e );
+                        TOOLS_WARN_EXCEPTION("chart2", "" );
                     }
                 }
 
@@ -1711,22 +1826,21 @@ void VCartesianAxis::updatePositions()
                     , m_aAxisProperties.maLabelAlignment.meAlignment, fRotationAngleDegree, m_aAxisProperties.m_bComplexCategories );
             }
         }
+        ++nDepth;
     }
 
     doStaggeringOfLabels( m_aAxisLabelProperties, pTickFactory2D );
 }
 
-void VCartesianAxis::createTickMarkLineShapes( TickInfoArrayType& rTickInfos, const TickmarkProperties& rTickmarkProperties, TickFactory2D& rTickFactory2D, bool bOnlyAtLabels )
+void VCartesianAxis::createTickMarkLineShapes( TickInfoArrayType& rTickInfos, const TickmarkProperties& rTickmarkProperties, TickFactory2D const & rTickFactory2D, bool bOnlyAtLabels )
 {
     sal_Int32 nPointCount = rTickInfos.size();
     drawing::PointSequenceSequence aPoints(2*nPointCount);
 
-    TickInfoArrayType::const_iterator       aTickIter = rTickInfos.begin();
-    const TickInfoArrayType::const_iterator aTickEnd  = rTickInfos.end();
     sal_Int32 nN = 0;
-    for( ; aTickIter != aTickEnd; ++aTickIter )
+    for (auto const& tickInfo : rTickInfos)
     {
-        if( !(*aTickIter).bPaintIt )
+        if( !tickInfo.bPaintIt )
             continue;
 
         bool bTicksAtLabels = ( m_aAxisProperties.m_eTickmarkPos != css::chart::ChartAxisMarkPosition_AT_AXIS );
@@ -1735,11 +1849,11 @@ void VCartesianAxis::createTickMarkLineShapes( TickInfoArrayType& rTickInfos, co
             fInnerDirectionSign *= -1.0;
         bTicksAtLabels = bTicksAtLabels || bOnlyAtLabels;
         //add ticks at labels:
-        rTickFactory2D.addPointSequenceForTickLine( aPoints, nN++, (*aTickIter).fScaledTickValue
+        rTickFactory2D.addPointSequenceForTickLine( aPoints, nN++, tickInfo.fScaledTickValue
             , fInnerDirectionSign , rTickmarkProperties, bTicksAtLabels );
         //add ticks at axis (without labels):
         if( !bOnlyAtLabels && m_aAxisProperties.m_eTickmarkPos == css::chart::ChartAxisMarkPosition_AT_LABELS_AND_AXIS )
-            rTickFactory2D.addPointSequenceForTickLine( aPoints, nN++, (*aTickIter).fScaledTickValue
+            rTickFactory2D.addPointSequenceForTickLine( aPoints, nN++, tickInfo.fScaledTickValue
                 , m_aAxisProperties.maLabelAlignment.mfInnerTickDirection, rTickmarkProperties, !bTicksAtLabels );
     }
     aPoints.realloc(nN);
@@ -1752,10 +1866,8 @@ void VCartesianAxis::createShapes()
     if( !prepareShapeCreation() )
         return;
 
-    std::unique_ptr< TickFactory2D > apTickFactory2D( this->createTickFactory2D() );
+    std::unique_ptr<TickFactory2D> apTickFactory2D(createTickFactory2D()); // throws on failure
     TickFactory2D* pTickFactory2D = apTickFactory2D.get();
-    if( !pTickFactory2D )
-        return;
 
     //create line shapes
     if(m_nDimension==2)
@@ -1769,7 +1881,7 @@ void VCartesianAxis::createShapes()
             hideIdenticalScreenValues( aComplexTickInfos );
 
             std::vector<TickmarkProperties> aTickmarkPropertiesList;
-            static bool bIncludeSpaceBetweenTickAndText = false;
+            static const bool bIncludeSpaceBetweenTickAndText = false;
             sal_Int32 nOffset = static_cast<sal_Int32>(pTickFactory2D->getDistanceAxisTickToText( m_aAxisProperties, false, bIncludeSpaceBetweenTickAndText ).getLength());
             sal_Int32 nTextLevelCount = getTextLevelCount();
             for( sal_Int32 nTextLevel=0; nTextLevel<nTextLevelCount; nTextLevel++ )
@@ -1778,7 +1890,17 @@ void VCartesianAxis::createShapes()
                 if( apTickIter )
                 {
                     double fRotationAngleDegree = m_aAxisLabelProperties.fRotationAngleDegree;
-                    B2DVector aLabelsDistance( lcl_getLabelsDistance( *apTickIter.get(), pTickFactory2D->getDistanceAxisTickToText( m_aAxisProperties ), fRotationAngleDegree ) );
+                    if( nTextLevel > 0 )
+                    {
+                        //Multi-level Labels: default to 0 or 90
+                        if( m_aAxisProperties.m_bSwapXAndY )
+                            fRotationAngleDegree = 90.0;
+                        else
+                            fRotationAngleDegree = 0.0;
+                    }
+                    B2DVector aLabelsDistance(lcl_getLabelsDistance(
+                        *apTickIter, pTickFactory2D->getDistanceAxisTickToText(m_aAxisProperties),
+                        fRotationAngleDegree));
                     sal_Int32 nCurrentLength = static_cast<sal_Int32>(aLabelsDistance.getLength());
                     aTickmarkPropertiesList.push_back( m_aAxisProperties.makeTickmarkPropertiesForComplexCategories( nOffset + nCurrentLength, 0 ) );
                     nOffset += nCurrentLength;
@@ -1806,14 +1928,19 @@ void VCartesianAxis::createShapes()
             }
             TickInfoArraysType& rAllTickInfos = m_aScale.ShiftedCategoryPosition ? aUnshiftedTickInfos : m_aAllTickInfos;
 
-            TickInfoArraysType::iterator aDepthIter             = rAllTickInfos.begin();
-            const TickInfoArraysType::const_iterator aDepthEnd  = rAllTickInfos.end();
-            if(aDepthIter == aDepthEnd)//no tickmarks at all
+            if (rAllTickInfos.empty())
                 return;
 
+            sal_Int32 nDepth = 0;
             sal_Int32 nTickmarkPropertiesCount = m_aAxisProperties.m_aTickmarkPropertiesList.size();
-            for( sal_Int32 nDepth=0; aDepthIter != aDepthEnd && nDepth < nTickmarkPropertiesCount; ++aDepthIter, nDepth++ )
-                createTickMarkLineShapes( *aDepthIter, m_aAxisProperties.m_aTickmarkPropertiesList[nDepth], *pTickFactory2D, false /*bOnlyAtLabels*/ );
+            for( auto& rTickInfos : rAllTickInfos )
+            {
+                if (nDepth == nTickmarkPropertiesCount)
+                    break;
+
+                createTickMarkLineShapes( rTickInfos, m_aAxisProperties.m_aTickmarkPropertiesList[nDepth], *pTickFactory2D, false /*bOnlyAtLabels*/ );
+                nDepth++;
+            }
         }
         //create axis main lines
         //it serves also as the handle shape for the axis selection
@@ -1824,13 +1951,13 @@ void VCartesianAxis::createShapes()
                     m_xGroupShape_Shapes, aPoints
                     , &m_aAxisProperties.m_aLineProperties );
             //because of this name this line will be used for marking the axis
-            ::chart::AbstractShapeFactory::setShapeName( xShape, "MarkHandles" );
+            ::chart::ShapeFactory::setShapeName( xShape, "MarkHandles" );
         }
         //create an additional line at NULL
         if( !AxisHelper::isAxisPositioningEnabled() )
         {
             double fExtraLineCrossesOtherAxis = getExtraLineIntersectionValue();
-            if (!rtl::math::isNan(fExtraLineCrossesOtherAxis))
+            if (!std::isnan(fExtraLineCrossesOtherAxis))
             {
                 B2DVector aStart, aEnd;
                 AxisLabelAlignment aLabelAlign = m_aAxisProperties.maLabelAlignment;

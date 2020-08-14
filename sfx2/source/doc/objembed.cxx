@@ -18,23 +18,17 @@
  */
 
 #include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/embed/XEmbedObjectCreator.hpp>
-#include <com/sun/star/embed/XComponentSupplier.hpp>
-#include <com/sun/star/embed/XEmbedPersist.hpp>
-#include <com/sun/star/util/XCloseable.hpp>
-#include <com/sun/star/embed/EmbedStates.hpp>
+#include <com/sun/star/lang/XUnoTunnel.hpp>
 
 #include <sfx2/objsh.hxx>
 #include <sfx2/app.hxx>
-#include "objshimp.hxx"
-#include <sfx2/sfx.hrc>
+#include <objshimp.hxx>
 #include <sfx2/event.hxx>
 
-#include <comphelper/seqstream.hxx>
-#include <comphelper/processfactory.hxx>
-#include <comphelper/storagehelper.hxx>
-#include <svtools/embedtransfer.hxx>
+#include <comphelper/fileformat.h>
+#include <tools/globname.hxx>
 #include <tools/fract.hxx>
+#include <vcl/transfer.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/gdimtf.hxx>
 
@@ -55,7 +49,7 @@ SfxObjectShell* SfxObjectShell::GetParentShellByModel_Impl()
             {
                 SvGlobalName aSfxIdent( SFX_GLOBAL_CLASSID );
                 pResult = reinterpret_cast<SfxObjectShell*>(xParentTunnel->getSomething(
-                                                uno::Sequence< sal_Int8 >( aSfxIdent.GetByteSequence() ) ) );
+                                                aSfxIdent.GetByteSequence() ) );
             }
         }
     }
@@ -100,7 +94,7 @@ tools::Rectangle SfxObjectShell::GetVisArea( sal_uInt16 nAspect ) const
     {
         tools::Rectangle aRect;
         aRect.SetSize( OutputDevice::LogicToLogic( Size( 5000, 5000 ),
-                                         MapUnit::Map100thMM, GetMapUnit() ) );
+                         MapMode(MapUnit::Map100thMM), MapMode(GetMapUnit())));
         return aRect;
     }
     return tools::Rectangle();
@@ -151,11 +145,10 @@ void SfxObjectShell::SetMapUnit( MapUnit nMapUnit )
 void SfxObjectShell::FillTransferableObjectDescriptor( TransferableObjectDescriptor& rDesc ) const
 {
     SotClipboardFormatId nClipFormat;
-    OUString aAppName, aShortName;
-    FillClass( &rDesc.maClassName, &nClipFormat, &aAppName, &rDesc.maTypeName, &aShortName, SOFFICE_FILEFORMAT_CURRENT );
+    FillClass( &rDesc.maClassName, &nClipFormat, &rDesc.maTypeName, SOFFICE_FILEFORMAT_CURRENT );
 
     rDesc.mnViewAspect = ASPECT_CONTENT;
-    rDesc.maSize = OutputDevice::LogicToLogic( GetVisArea().GetSize(), GetMapUnit(), MapUnit::Map100thMM );
+    rDesc.maSize = OutputDevice::LogicToLogic(GetVisArea().GetSize(), MapMode(GetMapUnit()), MapMode(MapUnit::Map100thMM));
     rDesc.maDragStartPos = Point();
     rDesc.maDisplayName.clear();
 }
@@ -189,7 +182,7 @@ void SfxObjectShell::DoDraw_Impl( OutputDevice* pDev,
                                sal_uInt16 nAspect )
 {
     tools::Rectangle aVisArea  = GetVisArea( nAspect );
-    // MapUnit des Ziels
+    // MapUnit of the target
     MapMode aMapMode( GetMapUnit() );
     aMapMode.SetScaleX( rScaleX );
     aMapMode.SetScaleY( rScaleY );
@@ -238,15 +231,15 @@ void SfxObjectShell::DoDraw_Impl( OutputDevice* pDev,
 
 comphelper::EmbeddedObjectContainer& SfxObjectShell::GetEmbeddedObjectContainer() const
 {
-    if ( !pImpl->mpObjectContainer )
-        pImpl->mpObjectContainer = new comphelper::EmbeddedObjectContainer( const_cast<SfxObjectShell*>(this)->GetStorage(), GetModel() );
-    return *pImpl->mpObjectContainer;
+    if ( !pImpl->mxObjectContainer )
+        pImpl->mxObjectContainer.reset(new comphelper::EmbeddedObjectContainer( const_cast<SfxObjectShell*>(this)->GetStorage(), GetModel() ));
+    return *pImpl->mxObjectContainer;
 }
 
 void SfxObjectShell::ClearEmbeddedObjects()
 {
     // frees all space taken by embedded objects
-    DELETEZ( pImpl->mpObjectContainer );
+    pImpl->mxObjectContainer.reset();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

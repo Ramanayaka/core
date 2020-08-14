@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/textliststyle.hxx"
+#include <drawingml/textliststyle.hxx>
+#include <sal/log.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 TextListStyle::TextListStyle()
 {
@@ -62,20 +63,18 @@ TextListStyle& TextListStyle::operator=(const TextListStyle& rStyle)
     return *this;
 }
 
-void applyStyleList( const TextParagraphPropertiesVector& rSourceListStyle, TextParagraphPropertiesVector& rDestListStyle )
+static void applyStyleList( const TextParagraphPropertiesVector& rSourceListStyle, TextParagraphPropertiesVector& rDestListStyle )
 {
-    TextParagraphPropertiesVector::const_iterator aSourceListStyleIter( rSourceListStyle.begin() );
     TextParagraphPropertiesVector::iterator aDestListStyleIter( rDestListStyle.begin() );
-    while( aSourceListStyleIter != rSourceListStyle.end() )
+    for (auto const& elemSource : rSourceListStyle)
     {
         if ( aDestListStyleIter != rDestListStyle.end() )
         {
-            (*aDestListStyleIter)->apply( **aSourceListStyleIter );
+            (*aDestListStyleIter)->apply(*elemSource);
             ++aDestListStyleIter;
         }
         else
-            rDestListStyle.push_back( std::make_shared<TextParagraphProperties>( **aSourceListStyleIter ) );
-        ++aSourceListStyleIter;
+            rDestListStyle.push_back( std::make_shared<TextParagraphProperties>(*elemSource) );
     }
 }
 
@@ -95,6 +94,6 @@ void TextListStyle::dump() const
     }
 }
 #endif
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

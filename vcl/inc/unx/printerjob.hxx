@@ -20,11 +20,10 @@
 #ifndef INCLUDED_VCL_INC_GENERIC_PRINTERJOB_HXX
 #define INCLUDED_VCL_INC_GENERIC_PRINTERJOB_HXX
 
-#include <vcl/jobdata.hxx>
-#include "osl/file.hxx"
-#include "rtl/string.hxx"
+#include <jobdata.hxx>
+#include <osl/file.hxx>
 
-#include <list>
+#include <vector>
 
 namespace psp {
 
@@ -38,11 +37,11 @@ private:
     OUString           maJobTitle;
     int                     mnFileMode;
 
-    osl::File*              mpJobHeader;
-    osl::File*              mpJobTrailer;
+    std::unique_ptr<osl::File> mpJobHeader;
+    std::unique_ptr<osl::File> mpJobTrailer;
 
-    std::list< osl::File* > maPageList;
-    std::list< osl::File* > maHeaderList;
+    std::vector< std::unique_ptr<osl::File> > maPageVector;
+    std::vector< std::unique_ptr<osl::File> > maHeaderVector;
 
     JobData                 m_aDocumentJobData;
     JobData                 m_aLastJobData;
@@ -69,7 +68,7 @@ private:
     bool            m_bQuickJob;
 
 private:
-    osl::File*      CreateSpoolFile (const OUString& rName,
+    std::unique_ptr<osl::File> CreateSpoolFile (const OUString& rName,
                                      const OUString& rExtension);
     void            InitPaperSize (const JobData& rJobSetup);
 
@@ -77,7 +76,7 @@ private:
     bool            writeSetup( osl::File* pFile, const JobData& );
     bool            writePageSetup( osl::File* pFile, const JobData&, bool bWriteFeatures );
     static void     writeJobPatch( osl::File* File, const JobData& );
-    static bool     writeProlog (osl::File* pFile, const JobData& );
+    static void     writeProlog (osl::File* pFile, const JobData& );
 
 public:             // for usage in PrinterGfx
     sal_uInt32      GetResolution () const { return mnResolution; }
@@ -86,7 +85,6 @@ public:             // for usage in PrinterGfx
     sal_uInt16      GetPostscriptLevel (const JobData *pJobData = nullptr) const;
     bool        IsColorPrinter () const;
 
-    osl::File*      GetCurrentPageHeader ();
     osl::File*      GetCurrentPageBody ();
 
     const OUString& GetPrinterName() const { return m_aLastJobData.m_aPrinterName; }
@@ -120,7 +118,7 @@ public:
     bool        EndJob ();
 
     void        StartPage (const JobData& rJobSetup);
-    bool        EndPage ();
+    void        EndPage ();
 };
 
 }  // namespace psp

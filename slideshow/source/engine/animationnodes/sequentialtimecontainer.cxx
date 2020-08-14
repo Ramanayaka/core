@@ -18,16 +18,12 @@
  */
 
 
-#include "delayevent.hxx"
-#include "eventqueue.hxx"
-#include "usereventqueue.hxx"
+#include <delayevent.hxx>
+#include <eventqueue.hxx>
+#include <usereventqueue.hxx>
 #include "sequentialtimecontainer.hxx"
-#include "tools.hxx"
 
-#include <algorithm>
-
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 void SequentialTimeContainer::activate_st()
 {
@@ -61,10 +57,6 @@ void SequentialTimeContainer::dispose()
         mpCurrentSkipEvent->dispose();
         mpCurrentSkipEvent.reset();
     }
-    if (mpCurrentRewindEvent) {
-        mpCurrentRewindEvent->dispose();
-        mpCurrentRewindEvent.reset();
-    }
 }
 
 void SequentialTimeContainer::skipEffect(
@@ -89,8 +81,6 @@ bool SequentialTimeContainer::resolveChild(
         // discharge events:
         if (mpCurrentSkipEvent)
             mpCurrentSkipEvent->dispose();
-        if (mpCurrentRewindEvent)
-            mpCurrentRewindEvent->dispose();
 
         // event that will deactivate the resolved/running child:
         mpCurrentSkipEvent = makeEvent(
@@ -127,7 +117,6 @@ void SequentialTimeContainer::notifyDeactivating(
     }
 }
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

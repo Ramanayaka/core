@@ -20,11 +20,9 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_FLAT_ESTATEMENT_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_FLAT_ESTATEMENT_HXX
 
-#include "file/FStatement.hxx"
+#include <file/FStatement.hxx>
 
-namespace connectivity
-{
-    namespace flat
+namespace connectivity::flat
     {
         class OConnection;
         class OFlatStatement : public file::OStatement
@@ -35,7 +33,7 @@ namespace connectivity
             OFlatStatement( file::OConnection* _pConnection) : file::OStatement( _pConnection){}
             DECLARE_SERVICE_INFO();
         };
-    }
+
 }
 
 #endif //_CONNECTIVITY_FLAT_DSTATEMENT_HXX_

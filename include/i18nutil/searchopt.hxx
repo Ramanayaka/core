@@ -20,10 +20,9 @@
 #define INCLUDED_I18NUTIL_SEARCHOPT_HXX
 
 #include <sal/types.h>
-#include "com/sun/star/lang/Locale.hpp"
-#include "com/sun/star/util/SearchAlgorithms.hpp"
-#include "com/sun/star/util/SearchOptions2.hpp"
-#include <i18nutil/i18nutildllapi.h>
+#include <com/sun/star/lang/Locale.hpp>
+#include <com/sun/star/util/SearchAlgorithms.hpp>
+#include <com/sun/star/util/SearchOptions2.hpp>
 #include <i18nutil/transliteration.hxx>
 
 namespace i18nutil
@@ -54,7 +53,7 @@ struct SAL_WARN_UNUSED SearchOptions {
         changedChars = other.changedChars;
         deletedChars = other.deletedChars;
         insertedChars = other.insertedChars;
-        transliterateFlags = (TransliterationFlags)other.transliterateFlags;
+        transliterateFlags = static_cast<TransliterationFlags>(other.transliterateFlags);
         return *this;
     }
 
@@ -113,7 +112,7 @@ struct SAL_WARN_UNUSED SearchOptions2 : public SearchOptions {
                        searchString, replaceString,
                        Locale,
                        changedChars, deletedChars, insertedChars,
-                       (sal_Int32)transliterateFlags,
+                       static_cast<sal_Int32>(transliterateFlags),
                        AlgorithmType2, WildcardEscapeCharacter);
     }
 

@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -19,83 +19,69 @@
 
 #include <sal/config.h>
 
-#include "scitems.hxx"
+#include <scitems.hxx>
 #include <editeng/eeitem.hxx>
+#include <formdata.hxx>
 
 #include <sfx2/app.hxx>
+#include <svx/dialogs.hrc>
 #include <svx/extrusionbar.hxx>
 #include <svx/fontworkbar.hxx>
-#include <editeng/boxitem.hxx>
-#include <svx/fmpage.hxx>
+#include <editeng/borderline.hxx>
 #include <svx/fmshell.hxx>
-#include <editeng/sizeitem.hxx>
-#include <svx/prtqry.hxx>
 #include <svx/sidebar/ContextChangeEventMultiplexer.hxx>
-#include <sfx2/request.hxx>
 #include <sfx2/printer.hxx>
 #include <sfx2/dispatch.hxx>
-#include <svl/whiter.hxx>
-#include <unotools/moduleoptions.hxx>
+#include <sfx2/ipclient.hxx>
 #include <tools/urlobj.hxx>
 #include <sfx2/docfile.hxx>
-#include <o3tl/make_unique.hxx>
+#include <tools/svborder.hxx>
 
-#include "tabvwsh.hxx"
-#include "sc.hrc"
-#include "globstr.hrc"
-#include "stlpool.hxx"
-#include "stlsheet.hxx"
-#include "docsh.hxx"
-#include "scmod.hxx"
-#include "appoptio.hxx"
-#include "rangeutl.hxx"
-#include "printfun.hxx"
-#include "drawsh.hxx"
-#include "drformsh.hxx"
-#include "editsh.hxx"
-#include "pivotsh.hxx"
-#include "auditsh.hxx"
-#include "drtxtob.hxx"
-#include "inputhdl.hxx"
-#include "editutil.hxx"
-#include "inputopt.hxx"
-#include "inputwin.hxx"
-#include "scresid.hxx"
-#include "dbdata.hxx"
-#include "reffact.hxx"
-#include "viewuno.hxx"
-#include "dispuno.hxx"
-#include "anyrefdg.hxx"
-#include "chgtrack.hxx"
-#include "cellsh.hxx"
-#include "oleobjsh.hxx"
-#include "chartsh.hxx"
-#include "graphsh.hxx"
-#include "mediash.hxx"
-#include "pgbrksh.hxx"
-#include "dpobject.hxx"
-#include "prevwsh.hxx"
-#include "tpprint.hxx"
-#include "scextopt.hxx"
-#include "printopt.hxx"
-#include "drawview.hxx"
-#include "fupoor.hxx"
-#include "navsett.hxx"
-#include "scabstdlg.hxx"
-#include "externalrefmgr.hxx"
-#include "defaultsoptions.hxx"
-#include "markdata.hxx"
-#include "preview.hxx"
-#include "docoptio.hxx"
+#include <IAnyRefDialog.hxx>
+#include <tabvwsh.hxx>
+#include <sc.hrc>
+#include <globstr.hrc>
+#include <docsh.hxx>
+#include <scmod.hxx>
+#include <appoptio.hxx>
+#include <drawsh.hxx>
+#include <drformsh.hxx>
+#include <editsh.hxx>
+#include <pivotsh.hxx>
+#include <auditsh.hxx>
+#include <drtxtob.hxx>
+#include <inputhdl.hxx>
+#include <editutil.hxx>
+#include <inputopt.hxx>
+#include <inputwin.hxx>
+#include <dbdata.hxx>
+#include <reffact.hxx>
+#include <fuinsert.hxx>
+#include <viewuno.hxx>
+#include <dispuno.hxx>
+#include <chgtrack.hxx>
+#include <cellsh.hxx>
+#include <oleobjsh.hxx>
+#include <chartsh.hxx>
+#include <graphsh.hxx>
+#include <mediash.hxx>
+#include <pgbrksh.hxx>
+#include <dpobject.hxx>
+#include <prevwsh.hxx>
+#include <scextopt.hxx>
+#include <drawview.hxx>
+#include <fupoor.hxx>
+#include <navsett.hxx>
+#include <scabstdlg.hxx>
+#include <externalrefmgr.hxx>
+#include <defaultsoptions.hxx>
+#include <markdata.hxx>
+#include <preview.hxx>
+#include <docoptio.hxx>
 #include <documentlinkmgr.hxx>
 #include <gridwin.hxx>
 
 #include <com/sun/star/document/XDocumentProperties.hpp>
-#include <com/sun/star/chart2/X3DChartWindowProvider.hpp>
-#include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
-#include <com/sun/star/chart2/XCoordinateSystem.hpp>
-#include <com/sun/star/chart2/XChartTypeContainer.hpp>
-#include <com/sun/star/chart2/XChartType.hpp>
 #include <sfx2/lokhelper.hxx>
 #include <comphelper/flagguard.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
@@ -140,6 +126,11 @@ void ScTabViewShell::Activate(bool bMDI)
                     SfxViewShell* pSh = SfxViewShell::GetFirst( true, checkSfxViewShell<ScTabViewShell> );
                     while ( pSh!=nullptr && pOldHdl!=nullptr)
                     {
+                        // Hmm, what if pSh is a shell for a different document? But as this code
+                        // does not seem to be LibreOfficeKit-specific, probably that doesn't
+                        // happen, because having multiple documents open simultaneously has of
+                        // course not been a problem at all in traditional desktop LibreOffice.
+                        // (Unlike in a LibreOfficeKit-based process where it has been a problem.)
                         if (static_cast<ScTabViewShell*>(pSh)->GetInputHandler() == pOldHdl)
                         {
                             pOldHdl->ResetDelayTimer();
@@ -200,11 +191,11 @@ void ScTabViewShell::Activate(bool bMDI)
             SfxChildWindow* pChildWnd = pThisFrame->GetChildWindow( nModRefDlgId );
             if ( pChildWnd )
             {
-                IAnyRefDialog* pRefDlg = dynamic_cast<IAnyRefDialog*>(pChildWnd->GetWindow());
-                assert(pRefDlg);
-                if(pRefDlg)
+                if (auto pController = pChildWnd->GetController())
                 {
-                    pRefDlg->ViewShellChanged();
+                    IAnyRefDialog* pRefDlg = dynamic_cast<IAnyRefDialog*>(pController.get());
+                    if (pRefDlg)
+                        pRefDlg->ViewShellChanged();
                 }
             }
         }
@@ -320,19 +311,14 @@ void ScTabViewShell::UpdateOleZoom()
     {
         //TODO/LATER: is there a difference between the two GetVisArea methods?
         Size aObjSize = static_cast<const SfxObjectShell*>(pDocSh)->GetVisArea().GetSize();
-        if ( aObjSize.Width() > 0 && aObjSize.Height() > 0 )
+        if ( !aObjSize.IsEmpty() )
         {
             vcl::Window* pWin = GetActiveWin();
-            Size aWinHMM = pWin->PixelToLogic( pWin->GetOutputSizePixel(), MapUnit::Map100thMM );
+            Size aWinHMM = pWin->PixelToLogic(pWin->GetOutputSizePixel(), MapMode(MapUnit::Map100thMM));
             SetZoomFactor( Fraction( aWinHMM.Width(),aObjSize.Width() ),
                             Fraction( aWinHMM.Height(),aObjSize.Height() ) );
         }
     }
-}
-
-void ScTabViewShell::AdjustPosSizePixel( const Point &rPos, const Size &rSize )
-{
-    OuterResizePixel( rPos, rSize );
 }
 
 void ScTabViewShell::InnerResizePixel( const Point &rOfs, const Size &rSize, bool inplaceEditModeChange )
@@ -341,25 +327,25 @@ void ScTabViewShell::InnerResizePixel( const Point &rOfs, const Size &rSize, boo
     if ( GetViewFrame()->GetFrame().IsInPlace() )
     {
         SvBorder aBorder;
-           GetBorderSize( aBorder, rSize );
+        GetBorderSize( aBorder, rSize );
         SetBorderPixel( aBorder );
 
         Size aObjSize = GetObjectShell()->GetVisArea().GetSize();
 
-          Size aSize( rSize );
-        aSize.Width() -= (aBorder.Left() + aBorder.Right());
-        aSize.Height() -= (aBorder.Top() + aBorder.Bottom());
+        Size aSize( rSize );
+        aSize.AdjustWidth( -(aBorder.Left() + aBorder.Right()) );
+        aSize.AdjustHeight( -(aBorder.Top() + aBorder.Bottom()) );
 
-        if ( aObjSize.Width() > 0 && aObjSize.Height() > 0 )
+        if ( !aObjSize.IsEmpty() )
         {
-            Size aLogicSize = GetWindow()->PixelToLogic( aSize, MapUnit::Map100thMM );
+            Size aLogicSize = GetWindow()->PixelToLogic(aSize, MapMode(MapUnit::Map100thMM));
             SfxViewShell::SetZoomFactor( Fraction( aLogicSize.Width(),aObjSize.Width() ),
                             Fraction( aLogicSize.Height(),aObjSize.Height() ) );
         }
 
         Point aPos( rOfs );
-        aPos.X() += aBorder.Left();
-        aPos.Y() += aBorder.Top();
+        aPos.AdjustX(aBorder.Left() );
+        aPos.AdjustY(aBorder.Top() );
         GetWindow()->SetPosSizePixel( aPos, aSize );
     }
     else
@@ -367,8 +353,8 @@ void ScTabViewShell::InnerResizePixel( const Point &rOfs, const Size &rSize, boo
         SvBorder aBorder;
         GetBorderSize( aBorder, rSize );
         SetBorderPixel( aBorder );
-        aNewSize.Width()  += aBorder.Left() + aBorder.Right();
-        aNewSize.Height() += aBorder.Top() + aBorder.Bottom();
+        aNewSize.AdjustWidth(aBorder.Left() + aBorder.Right() );
+        aNewSize.AdjustHeight(aBorder.Top() + aBorder.Bottom() );
     }
 
     DoResize( rOfs, aNewSize, true );                   // rSize = size of gridwin
@@ -443,7 +429,7 @@ void ScTabViewShell::QueryObjAreaPixel( tools::Rectangle& rRect ) const
     if ( bNegativePage )
     {
         // use right edge of aLogicRect, and aLogicSize
-        aLogicRect.Left() = aLogicRect.Right() - aLogicSize.Width() + 1;    // Right() is set below
+        aLogicRect.SetLeft( aLogicRect.Right() - aLogicSize.Width() + 1 );    // Right() is set below
     }
     aLogicRect.SetSize( aLogicSize );
 
@@ -570,7 +556,7 @@ void ScTabViewShell::UpdateDrawShell()
     // Called after user interaction that may delete the selected drawing object.
     // Remove DrawShell if nothing is selected.
 
-    SdrView* pDrView = GetSdrView();
+    SdrView* pDrView = GetScDrawView();
     if ( pDrView && !pDrView->AreObjectsMarked() && !IsDrawSelMode() )
         SetDrawShell( false );
 }
@@ -672,21 +658,21 @@ void ScTabViewShell::SetPivotShell( bool bActive )
     //  SetPivotShell is called from CursorPosChanged every time
     //  -> don't change anything except switching between cell and pivot shell
 
-    if ( eCurOST == OST_Pivot || eCurOST == OST_Cell )
+    if (eCurOST != OST_Pivot && eCurOST != OST_Cell)
+        return;
+
+    if ( bActive )
     {
-        if ( bActive )
-        {
-            bActiveDrawTextSh = bActiveDrawSh = false;
-            bActiveDrawFormSh=false;
-            bActiveGraphicSh=false;
-            bActiveMediaSh=false;
-            bActiveOleObjectSh=false;
-            bActiveChartSh=false;
-            SetCurSubShell(OST_Pivot);
-        }
-        else
-            SetCurSubShell(OST_Cell);
+        bActiveDrawTextSh = bActiveDrawSh = false;
+        bActiveDrawFormSh=false;
+        bActiveGraphicSh=false;
+        bActiveMediaSh=false;
+        bActiveOleObjectSh=false;
+        bActiveChartSh=false;
+        SetCurSubShell(OST_Pivot);
     }
+    else
+        SetCurSubShell(OST_Cell);
 }
 
 void ScTabViewShell::SetAuditShell( bool bActive )
@@ -753,7 +739,7 @@ void ScTabViewShell::SetEditShell(EditView* pView, bool bActive )
         if (pEditShell)
             pEditShell->SetEditView( pView );
         else
-            pEditShell = new ScEditShell( pView, &GetViewData() );
+            pEditShell.reset( new ScEditShell( pView, &GetViewData() ) );
 
         SetCurSubShell(OST_Editing);
     }
@@ -773,7 +759,7 @@ void ScTabViewShell::SetCurSubShell(ObjectSelectionType eOST, bool bForce)
 
     if(!pCellShell) // is anyway always used
     {
-        pCellShell = new ScCellShell( &GetViewData(), GetFrameWin() );
+        pCellShell.reset( new ScCellShell( &GetViewData(), GetFrameWin() ) );
         pCellShell->SetRepeatTarget( &aTarget );
     }
 
@@ -781,185 +767,185 @@ void ScTabViewShell::SetCurSubShell(ObjectSelectionType eOST, bool bForce)
 
     if(bPgBrk && !pPageBreakShell)
     {
-        pPageBreakShell = new ScPageBreakShell( this );
+        pPageBreakShell.reset( new ScPageBreakShell( this ) );
         pPageBreakShell->SetRepeatTarget( &aTarget );
     }
 
-    if ( eOST!=eCurOST || bForce )
+    if ( !(eOST!=eCurOST || bForce) )
+        return;
+
+    bool bCellBrush = false;    // "format paint brush" allowed for cells
+    bool bDrawBrush = false;    // "format paint brush" allowed for drawing objects
+
+    if(eCurOST!=OST_NONE) RemoveSubShell();
+
+    if (pFormShell && !bFormShellAtTop)
+        AddSubShell(*pFormShell);               // add below own subshells
+
+    switch(eOST)
     {
-        bool bCellBrush = false;    // "format paint brush" allowed for cells
-        bool bDrawBrush = false;    // "format paint brush" allowed for drawing objects
-
-        if(eCurOST!=OST_NONE) RemoveSubShell();
-
-        if (pFormShell && !bFormShellAtTop)
-            AddSubShell(*pFormShell);               // add below own subshells
-
-        switch(eOST)
+        case    OST_Cell:
         {
-            case    OST_Cell:
-            {
-                AddSubShell(*pCellShell);
-                if(bPgBrk) AddSubShell(*pPageBreakShell);
-                bCellBrush = true;
-            }
-            break;
-            case    OST_Editing:
-            {
-                AddSubShell(*pCellShell);
-                if(bPgBrk) AddSubShell(*pPageBreakShell);
-
-                if(pEditShell)
-                {
-                    AddSubShell(*pEditShell);
-                }
-            }
-            break;
-            case    OST_DrawText:
-            {
-                if ( !pDrawTextShell )
-                {
-                    pDocSh->MakeDrawLayer();
-                    pDrawTextShell = new ScDrawTextObjectBar( &GetViewData() );
-                }
-                AddSubShell(*pDrawTextShell);
-            }
-            break;
-            case    OST_Drawing:
-            {
-                if (svx::checkForSelectedCustomShapes(
-                            GetScDrawView(), true /* bOnlyExtruded */ )) {
-                    if (pExtrusionBarShell == nullptr)
-                        pExtrusionBarShell = new svx::ExtrusionBar(this);
-                    AddSubShell( *pExtrusionBarShell );
-                }
-                sal_uInt32 nCheckStatus = 0;
-                if (svx::checkForSelectedFontWork(
-                            GetScDrawView(), nCheckStatus )) {
-                    if (pFontworkBarShell == nullptr)
-                        pFontworkBarShell = new svx::FontworkBar(this);
-                    AddSubShell( *pFontworkBarShell );
-                }
-
-                if ( !pDrawShell )
-                {
-                    pDocSh->MakeDrawLayer();
-                    pDrawShell = new ScDrawShell( &GetViewData() );
-                    pDrawShell->SetRepeatTarget( &aTarget );
-                }
-                AddSubShell(*pDrawShell);
-                bDrawBrush = true;
-            }
-            break;
-
-            case    OST_DrawForm:
-            {
-                if ( !pDrawFormShell )
-                {
-                    pDocSh->MakeDrawLayer();
-                    pDrawFormShell = new ScDrawFormShell( &GetViewData() );
-                    pDrawFormShell->SetRepeatTarget( &aTarget );
-                }
-                AddSubShell(*pDrawFormShell);
-                bDrawBrush = true;
-            }
-            break;
-
-            case    OST_Chart:
-            {
-                if ( !pChartShell )
-                {
-                    pDocSh->MakeDrawLayer();
-                    pChartShell = new ScChartShell( &GetViewData() );
-                    pChartShell->SetRepeatTarget( &aTarget );
-                }
-                AddSubShell(*pChartShell);
-                bDrawBrush = true;
-            }
-            break;
-
-            case    OST_OleObject:
-            {
-                if ( !pOleObjectShell )
-                {
-                    pDocSh->MakeDrawLayer();
-                    pOleObjectShell = new ScOleObjectShell( &GetViewData() );
-                    pOleObjectShell->SetRepeatTarget( &aTarget );
-                }
-                AddSubShell(*pOleObjectShell);
-                bDrawBrush = true;
-            }
-            break;
-
-            case    OST_Graphic:
-            {
-                if ( !pGraphicShell)
-                {
-                    pDocSh->MakeDrawLayer();
-                    pGraphicShell = new ScGraphicShell( &GetViewData() );
-                    pGraphicShell->SetRepeatTarget( &aTarget );
-                }
-                AddSubShell(*pGraphicShell);
-                bDrawBrush = true;
-            }
-            break;
-
-            case    OST_Media:
-            {
-                if ( !pMediaShell)
-                {
-                    pDocSh->MakeDrawLayer();
-                    pMediaShell = new ScMediaShell( &GetViewData() );
-                    pMediaShell->SetRepeatTarget( &aTarget );
-                }
-                AddSubShell(*pMediaShell);
-            }
-            break;
-
-            case    OST_Pivot:
-            {
-                AddSubShell(*pCellShell);
-                if(bPgBrk) AddSubShell(*pPageBreakShell);
-
-                if ( !pPivotShell )
-                {
-                    pPivotShell = new ScPivotShell( this );
-                    pPivotShell->SetRepeatTarget( &aTarget );
-                }
-                AddSubShell(*pPivotShell);
-                bCellBrush = true;
-            }
-            break;
-            case    OST_Auditing:
-            {
-                AddSubShell(*pCellShell);
-                if(bPgBrk) AddSubShell(*pPageBreakShell);
-
-                if ( !pAuditingShell )
-                {
-                    pDocSh->MakeDrawLayer();    // the waiting time rather now as on the click
-
-                    pAuditingShell = new ScAuditingShell( &GetViewData() );
-                    pAuditingShell->SetRepeatTarget( &aTarget );
-                }
-                AddSubShell(*pAuditingShell);
-                bCellBrush = true;
-            }
-            break;
-            default:
-            OSL_FAIL("wrong shell requested");
-            break;
+            AddSubShell(*pCellShell);
+            if(bPgBrk) AddSubShell(*pPageBreakShell);
+            bCellBrush = true;
         }
+        break;
+        case    OST_Editing:
+        {
+            AddSubShell(*pCellShell);
+            if(bPgBrk) AddSubShell(*pPageBreakShell);
 
-        if (pFormShell && bFormShellAtTop)
-            AddSubShell(*pFormShell);               // add on top of own subshells
+            if(pEditShell)
+            {
+                AddSubShell(*pEditShell);
+            }
+        }
+        break;
+        case    OST_DrawText:
+        {
+            if ( !pDrawTextShell )
+            {
+                pDocSh->MakeDrawLayer();
+                pDrawTextShell.reset( new ScDrawTextObjectBar( &GetViewData() ) );
+            }
+            AddSubShell(*pDrawTextShell);
+        }
+        break;
+        case    OST_Drawing:
+        {
+            if (svx::checkForSelectedCustomShapes(
+                        GetScDrawView(), true /* bOnlyExtruded */ )) {
+                if (pExtrusionBarShell == nullptr)
+                    pExtrusionBarShell.reset( new svx::ExtrusionBar(this) );
+                AddSubShell( *pExtrusionBarShell );
+            }
+            sal_uInt32 nCheckStatus = 0;
+            if (svx::checkForSelectedFontWork(
+                        GetScDrawView(), nCheckStatus )) {
+                if (pFontworkBarShell == nullptr)
+                    pFontworkBarShell.reset( new svx::FontworkBar(this) );
+                AddSubShell( *pFontworkBarShell );
+            }
 
-        eCurOST=eOST;
+            if ( !pDrawShell )
+            {
+                pDocSh->MakeDrawLayer();
+                pDrawShell.reset( new ScDrawShell( &GetViewData() ) );
+                pDrawShell->SetRepeatTarget( &aTarget );
+            }
+            AddSubShell(*pDrawShell);
+            bDrawBrush = true;
+        }
+        break;
 
-        // abort "format paint brush" when switching to an incompatible shell
-        if ( ( GetBrushDocument() && !bCellBrush ) || ( GetDrawBrushSet() && !bDrawBrush ) )
-            ResetBrushDocument();
+        case    OST_DrawForm:
+        {
+            if ( !pDrawFormShell )
+            {
+                pDocSh->MakeDrawLayer();
+                pDrawFormShell.reset( new ScDrawFormShell( &GetViewData() ) );
+                pDrawFormShell->SetRepeatTarget( &aTarget );
+            }
+            AddSubShell(*pDrawFormShell);
+            bDrawBrush = true;
+        }
+        break;
+
+        case    OST_Chart:
+        {
+            if ( !pChartShell )
+            {
+                pDocSh->MakeDrawLayer();
+                pChartShell.reset( new ScChartShell( &GetViewData() ) );
+                pChartShell->SetRepeatTarget( &aTarget );
+            }
+            AddSubShell(*pChartShell);
+            bDrawBrush = true;
+        }
+        break;
+
+        case    OST_OleObject:
+        {
+            if ( !pOleObjectShell )
+            {
+                pDocSh->MakeDrawLayer();
+                pOleObjectShell.reset( new ScOleObjectShell( &GetViewData() ) );
+                pOleObjectShell->SetRepeatTarget( &aTarget );
+            }
+            AddSubShell(*pOleObjectShell);
+            bDrawBrush = true;
+        }
+        break;
+
+        case    OST_Graphic:
+        {
+            if ( !pGraphicShell)
+            {
+                pDocSh->MakeDrawLayer();
+                pGraphicShell.reset( new ScGraphicShell( &GetViewData() ) );
+                pGraphicShell->SetRepeatTarget( &aTarget );
+            }
+            AddSubShell(*pGraphicShell);
+            bDrawBrush = true;
+        }
+        break;
+
+        case    OST_Media:
+        {
+            if ( !pMediaShell)
+            {
+                pDocSh->MakeDrawLayer();
+                pMediaShell.reset( new ScMediaShell( &GetViewData() ) );
+                pMediaShell->SetRepeatTarget( &aTarget );
+            }
+            AddSubShell(*pMediaShell);
+        }
+        break;
+
+        case    OST_Pivot:
+        {
+            AddSubShell(*pCellShell);
+            if(bPgBrk) AddSubShell(*pPageBreakShell);
+
+            if ( !pPivotShell )
+            {
+                pPivotShell.reset( new ScPivotShell( this ) );
+                pPivotShell->SetRepeatTarget( &aTarget );
+            }
+            AddSubShell(*pPivotShell);
+            bCellBrush = true;
+        }
+        break;
+        case    OST_Auditing:
+        {
+            AddSubShell(*pCellShell);
+            if(bPgBrk) AddSubShell(*pPageBreakShell);
+
+            if ( !pAuditingShell )
+            {
+                pDocSh->MakeDrawLayer();    // the waiting time rather now as on the click
+
+                pAuditingShell.reset( new ScAuditingShell( &GetViewData() ) );
+                pAuditingShell->SetRepeatTarget( &aTarget );
+            }
+            AddSubShell(*pAuditingShell);
+            bCellBrush = true;
+        }
+        break;
+        default:
+        OSL_FAIL("wrong shell requested");
+        break;
     }
+
+    if (pFormShell && bFormShellAtTop)
+        AddSubShell(*pFormShell);               // add on top of own subshells
+
+    eCurOST=eOST;
+
+    // abort "format paint brush" when switching to an incompatible shell
+    if ( ( GetBrushDocument() && !bCellBrush ) || ( GetDrawBrushSet() && !bDrawBrush ) )
+        ResetBrushDocument();
 }
 
 void ScTabViewShell::SetFormShellAtTop( bool bSet )
@@ -981,7 +967,7 @@ IMPL_LINK_NOARG(ScTabViewShell, FormControlActivated, LinkParamNone*, void)
 }
 
 // GetMySubShell / SetMySubShell: simulate old behavior,
-// so that there is only one SubShell (only whithin the 5 own SubShells)
+// so that there is only one SubShell (only within the 5 own SubShells)
 
 SfxShell* ScTabViewShell::GetMySubShell() const
 {
@@ -991,10 +977,10 @@ SfxShell* ScTabViewShell::GetMySubShell() const
     SfxShell* pSub = const_cast<ScTabViewShell*>(this)->GetSubShell(nPos);
     while (pSub)
     {
-        if ( pSub == pDrawShell  || pSub == pDrawTextShell || pSub == pEditShell ||
-             pSub == pPivotShell || pSub == pAuditingShell || pSub == pDrawFormShell ||
-             pSub == pCellShell  || pSub == pOleObjectShell|| pSub == pChartShell ||
-             pSub == pGraphicShell || pSub == pMediaShell || pSub == pPageBreakShell)
+        if ( pSub == pDrawShell.get()  || pSub == pDrawTextShell.get() || pSub == pEditShell.get() ||
+             pSub == pPivotShell.get() || pSub == pAuditingShell.get() || pSub == pDrawFormShell.get() ||
+             pSub == pCellShell.get()  || pSub == pOleObjectShell.get() || pSub == pChartShell.get() ||
+             pSub == pGraphicShell.get() || pSub == pMediaShell.get() || pSub == pPageBreakShell.get())
             return pSub;    // found
 
         pSub = const_cast<ScTabViewShell*>(this)->GetSubShell(++nPos);
@@ -1004,15 +990,15 @@ SfxShell* ScTabViewShell::GetMySubShell() const
 
 bool ScTabViewShell::IsDrawTextShell() const
 {
-    return ( pDrawTextShell && ( GetMySubShell() == pDrawTextShell ) );
+    return ( pDrawTextShell && ( GetMySubShell() == pDrawTextShell.get() ) );
 }
 
 bool ScTabViewShell::IsAuditShell() const
 {
-    return ( pAuditingShell && ( GetMySubShell() == pAuditingShell ) );
+    return ( pAuditingShell && ( GetMySubShell() == pAuditingShell.get() ) );
 }
 
-void ScTabViewShell::SetDrawTextUndo( ::svl::IUndoManager* pNewUndoMgr )
+void ScTabViewShell::SetDrawTextUndo( SfxUndoManager* pNewUndoMgr )
 {
     // Default: undo manager for DocShell
     if (!pNewUndoMgr)
@@ -1055,14 +1041,13 @@ bool ScTabViewShell::HasPrintOptionsPage() const
     return true;
 }
 
-VclPtr<SfxTabPage> ScTabViewShell::CreatePrintOptionsPage( vcl::Window *pParent, const SfxItemSet &rOptions )
+std::unique_ptr<SfxTabPage> ScTabViewShell::CreatePrintOptionsPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rOptions )
 {
     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-    OSL_ENSURE(pFact, "ScAbstractFactory create fail!");
     ::CreateTabPage ScTpPrintOptionsCreate = pFact->GetTabPageCreatorFunc(RID_SC_TP_PRINT);
     if ( ScTpPrintOptionsCreate )
-        return ScTpPrintOptionsCreate( pParent, &rOptions );
-    return VclPtr<SfxTabPage>();
+        return ScTpPrintOptionsCreate(pPage, pController, &rOptions);
+    return nullptr;
 }
 
 void ScTabViewShell::StopEditShell()
@@ -1089,7 +1074,7 @@ IMPL_LINK_NOARG(ScTabViewShell, SimpleRefClose, const OUString*, void)
 
 // handlers to call UNO listeners:
 
-static ScTabViewObj* lcl_GetViewObj( ScTabViewShell& rShell )
+static ScTabViewObj* lcl_GetViewObj( const ScTabViewShell& rShell )
 {
     ScTabViewObj* pRet = nullptr;
     SfxViewFrame* pViewFrame = rShell.GetViewFrame();
@@ -1098,7 +1083,7 @@ static ScTabViewObj* lcl_GetViewObj( ScTabViewShell& rShell )
         SfxFrame& rFrame = pViewFrame->GetFrame();
         uno::Reference<frame::XController> xController = rFrame.GetController();
         if (xController.is())
-            pRet = ScTabViewObj::getImplementation( xController );
+            pRet = comphelper::getUnoTunnelImplementation<ScTabViewObj>( xController );
     }
     return pRet;
 }
@@ -1144,19 +1129,19 @@ void ScTabViewShell::StartSimpleRefDialog(
     SC_MOD()->SetRefDialog( nId, true, pViewFrm );
 
     ScSimpleRefDlgWrapper* pWnd = static_cast<ScSimpleRefDlgWrapper*>(pViewFrm->GetChildWindow( nId ));
-    if (pWnd)
-    {
-        pWnd->SetCloseHdl( LINK( this, ScTabViewShell, SimpleRefClose ) );
-        pWnd->SetUnoLinks( LINK( this, ScTabViewShell, SimpleRefDone ),
-                           LINK( this, ScTabViewShell, SimpleRefAborted ),
-                           LINK( this, ScTabViewShell, SimpleRefChange ) );
-        pWnd->SetRefString( rInitVal );
-        pWnd->SetFlags( bCloseOnButtonUp, bSingleCell, bMultiSelection );
-        ScSimpleRefDlgWrapper::SetAutoReOpen( false );
-        vcl::Window* pWin = pWnd->GetWindow();
-        pWin->SetText( rTitle );
-        pWnd->StartRefInput();
-    }
+    if (!pWnd)
+        return;
+
+    pWnd->SetCloseHdl( LINK( this, ScTabViewShell, SimpleRefClose ) );
+    pWnd->SetUnoLinks( LINK( this, ScTabViewShell, SimpleRefDone ),
+                       LINK( this, ScTabViewShell, SimpleRefAborted ),
+                       LINK( this, ScTabViewShell, SimpleRefChange ) );
+    pWnd->SetRefString( rInitVal );
+    pWnd->SetFlags( bCloseOnButtonUp, bSingleCell, bMultiSelection );
+    ScSimpleRefDlgWrapper::SetAutoReOpen( false );
+    if (auto xWin = pWnd->GetController())
+        xWin->set_title(rTitle);
+    pWnd->StartRefInput();
 }
 
 void ScTabViewShell::StopSimpleRefDialog()
@@ -1167,9 +1152,8 @@ void ScTabViewShell::StopSimpleRefDialog()
     ScSimpleRefDlgWrapper* pWnd = static_cast<ScSimpleRefDlgWrapper*>(pViewFrm->GetChildWindow( nId ));
     if (pWnd)
     {
-        vcl::Window* pWin = pWnd->GetWindow();
-        if (pWin && pWin->IsSystemWindow())
-            static_cast<SystemWindow*>(pWin)->Close();     // calls abort handler
+        if (auto pWin = pWnd->GetController())
+            pWin->response(RET_CLOSE);
     }
 }
 
@@ -1365,6 +1349,27 @@ bool ScTabViewShell::TabKeyInput(const KeyEvent& rKEvt)
             case KEY_PAGEDOWN:
                 nSlotId = bShift ? SID_CURSORPAGERIGHT_SEL : SID_CURSORPAGERIGHT_;
                 break;
+            case KEY_EQUAL:
+            {
+                // #tdf39302: Use "Alt + =" for autosum
+                if ( !bAnyEdit ) // Ignore shortcut if currently editing a cell
+                {
+                    ScInputHandler* pHdl = pScMod->GetInputHdl(this);
+                    if ( pHdl )
+                    {
+                        ScInputWindow* pWin = pHdl->GetInputWindow();
+                        if ( pWin )
+                        {
+                            bool bRangeFinder = false;
+                            bool bSubTotal = false;
+                            pWin->AutoSum( bRangeFinder, bSubTotal, ocSum );
+                        }
+                    }
+
+                    bUsed = true;
+                    break;
+                }
+            }
         }
         if ( nSlotId )
         {
@@ -1448,11 +1453,10 @@ void ScTabViewShell::Construct( TriState nForceDesignMode )
     SetPool( &SC_MOD()->GetPool() );
     SetWindow( GetActiveWin() );
 
-    pCurFrameLine   = new ::editeng::SvxBorderLine(&aColBlack, 20, SvxBorderLineStyle::SOLID);
-    pPivotSource    = new ScArea;
-    StartListening(*GetViewData().GetDocShell(),true);
-    StartListening(*GetViewFrame(),true);
-    StartListening(*pSfxApp,true);              // #i62045# #i62046# application is needed for Calc's own hints
+    pCurFrameLine.reset( new ::editeng::SvxBorderLine(&aColBlack, 20, SvxBorderLineStyle::SOLID) );
+    StartListening(*GetViewData().GetDocShell(), DuplicateHandling::Prevent);
+    StartListening(*GetViewFrame(), DuplicateHandling::Prevent);
+    StartListening(*pSfxApp, DuplicateHandling::Prevent); // #i62045# #i62046# application is needed for Calc's own hints
 
     SfxViewFrame* pFirst = SfxViewFrame::GetFirst(pDocSh);
     bool bFirstView = !pFirst
@@ -1497,8 +1501,7 @@ void ScTabViewShell::Construct( TriState nForceDesignMode )
     // use the InputHandler of the App).
     // As an intermediate solution each View gets its own InputHandler,
     // which only yields problems if two Views are in one task window.
-
-    mpInputHandler = o3tl::make_unique<ScInputHandler>();
+    mpInputHandler.reset(new ScInputHandler);
 
     // old version:
     //  if ( !GetViewFrame()->ISA(SfxTopViewFrame) )        // OLE or Plug-In
@@ -1507,7 +1510,7 @@ void ScTabViewShell::Construct( TriState nForceDesignMode )
             // create FormShell before MakeDrawView, so that DrawView can be registered at the
             // FormShell in every case
             // the FormShell is pushed in the first activate
-    pFormShell = new FmFormShell(this);
+    pFormShell.reset( new FmFormShell(this) );
     pFormShell->SetControlActivationHandler( LINK( this, ScTabViewShell, FormControlActivated ) );
 
             // DrawView must not be created in TabView - ctor,
@@ -1516,7 +1519,7 @@ void ScTabViewShell::Construct( TriState nForceDesignMode )
         MakeDrawView( nForceDesignMode );
     ViewOptionsHasChanged(false, false);   // possibly also creates DrawView
 
-    ::svl::IUndoManager* pMgr = pDocSh->GetUndoManager();
+    SfxUndoManager* pMgr = pDocSh->GetUndoManager();
     SetUndoManager( pMgr );
     pFormShell->SetUndoManager( pMgr );
     if ( !rDoc.IsUndoEnabled() )
@@ -1567,7 +1570,7 @@ void ScTabViewShell::Construct( TriState nForceDesignMode )
             if (!bLink)
             {
                 const sc::DocumentLinkManager& rMgr = rDoc.GetDocLinkManager();
-                if (rMgr.hasDdeOrOleLinks() || rDoc.HasAreaLinks())
+                if (rDoc.HasLinkFormulaNeedingCheck() || rDoc.HasAreaLinks() || rMgr.hasDdeOrOleOrWebServiceLinks())
                     bLink = true;
             }
             if (bLink)
@@ -1587,16 +1590,8 @@ void ScTabViewShell::Construct( TriState nForceDesignMode )
             if ( pDBColl )
             {
                 const ScDBCollection::NamedDBs& rDBs = pDBColl->getNamedDBs();
-                ScDBCollection::NamedDBs::const_iterator itr = rDBs.begin(), itrEnd = rDBs.end();
-                for (; itr != itrEnd; ++itr)
-                {
-                    if ((*itr)->IsStripData() && (*itr)->HasImportParam()
-                        && !(*itr)->HasImportSelection())
-                    {
-                        bReImport = true;
-                        break;
-                    }
-                }
+                bReImport = std::any_of(rDBs.begin(), rDBs.end(),
+                    [](const std::unique_ptr<ScDBData>& rxDB) { return rxDB->IsStripData() && rxDB->HasImportParam() && !rxDB->HasImportSelection(); });
             }
             if (bReImport)
             {
@@ -1635,26 +1630,7 @@ ScTabViewShell::ScTabViewShell( SfxViewFrame* pViewFrame,
     ScDBFunc( &pViewFrame->GetWindow(), static_cast<ScDocShell&>(*pViewFrame->GetObjectShell()), this ),
     eCurOST(OST_NONE),
     nDrawSfxId(0),
-    pDrawShell(nullptr),
-    pDrawTextShell(nullptr),
-    pEditShell(nullptr),
-    pPivotShell(nullptr),
-    pAuditingShell(nullptr),
-    pDrawFormShell(nullptr),
-    pCellShell(nullptr),
-    pOleObjectShell(nullptr),
-    pChartShell(nullptr),
-    pGraphicShell(nullptr),
-    pMediaShell(nullptr),
-    pPageBreakShell(nullptr),
-    pExtrusionBarShell(nullptr),
-    pFontworkBarShell(nullptr),
-    pFormShell(nullptr),
-    mpInputHandler(nullptr),
-    pCurFrameLine(nullptr),
     aTarget(this),
-    pDialogDPObject(nullptr),
-    pNavSettings(nullptr),
     bActiveDrawSh(false),
     bActiveDrawTextSh(false),
     bActiveDrawFormSh(false),
@@ -1670,7 +1646,6 @@ ScTabViewShell::ScTabViewShell( SfxViewFrame* pViewFrame,
     bInPrepareClose(false),
     bInDispose(false),
     nCurRefDlgId(0),
-    pAccessibilityBroadcaster(nullptr),
     mbInSwitch(false)
 {
     const ScAppOptions& rAppOpt = SC_MOD()->GetAppOptions();
@@ -1682,9 +1657,8 @@ ScTabViewShell::ScTabViewShell( SfxViewFrame* pViewFrame,
     //  old DesignMode state from form layer must be restored, too
 
     TriState nForceDesignMode = TRISTATE_INDET;
-    if ( pOldSh && dynamic_cast<const ScPreviewShell*>( pOldSh) !=  nullptr )
+    if ( auto pPreviewShell = dynamic_cast<ScPreviewShell*>( pOldSh) )
     {
-        ScPreviewShell* pPreviewShell = static_cast<ScPreviewShell*>(pOldSh);
         nForceDesignMode = pPreviewShell->GetSourceDesignMode();
         ScPreview* p = pPreviewShell->GetPreview();
         if (p)
@@ -1703,7 +1677,7 @@ ScTabViewShell::ScTabViewShell( SfxViewFrame* pViewFrame,
     // available to them.
     bool bInstalledScTabViewObjAsTempController = false;
     uno::Reference<frame::XController> xCurrentController(GetViewData().GetDocShell()->GetModel()->getCurrentController());
-    if (!xCurrentController.get())
+    if (!xCurrentController)
     {
         //GetController here returns the ScTabViewObj above
         GetViewData().GetDocShell()->GetModel()->setCurrentController(GetController());
@@ -1733,6 +1707,37 @@ ScTabViewShell::ScTabViewShell( SfxViewFrame* pViewFrame,
     //put things back as we found them
     if (bInstalledScTabViewObjAsTempController)
         GetViewData().GetDocShell()->GetModel()->setCurrentController(nullptr);
+
+    // formula mode in online is not usable in collaborative mode,
+    // this is a workaround for disabling formula mode in online
+    // when there is more than a single view
+    if (!comphelper::LibreOfficeKit::isActive())
+        return;
+
+    SfxViewShell* pViewShell = SfxViewShell::GetFirst();
+    // have we already one view ?
+    if (!pViewShell)
+        return;
+
+    // this view is not yet visible at this stage, so we look for not visible views, too, for this same document
+    SfxViewShell* pViewShell2 = pViewShell;
+    do
+    {
+        pViewShell2 = SfxViewShell::GetNext(*pViewShell2, /*only visible shells*/ false);
+    } while (pViewShell2 && pViewShell2->GetDocId() != pViewShell->GetDocId());
+    // if the second view is not this one, it means that there is
+    // already more than one active view and so the formula mode
+    // has already been disabled
+    if (pViewShell2 && pViewShell2 == this)
+    {
+        ScTabViewShell* pTabViewShell = dynamic_cast<ScTabViewShell*>(pViewShell);
+        assert(pTabViewShell);
+        ScInputHandler* pInputHdl = pTabViewShell->GetInputHandler();
+        if (pInputHdl && pInputHdl->IsFormulaMode())
+        {
+            pInputHdl->SetMode(SC_INPUT_NONE);
+        }
+    }
 }
 
 ScTabViewShell::~ScTabViewShell()
@@ -1745,6 +1750,13 @@ ScTabViewShell::~ScTabViewShell()
     SfxLokHelper::notifyOtherViews(this, LOK_CALLBACK_GRAPHIC_VIEW_SELECTION, "selection", "EMPTY");
     SfxLokHelper::notifyOtherViews(this, LOK_CALLBACK_CELL_VIEW_CURSOR, "rectangle", "EMPTY");
 
+    // all to NULL, in case the TabView-dtor tries to access them
+    //! (should not really! ??!?!)
+    if (mpInputHandler)
+    {
+        mpInputHandler->SetDocumentDisposing(true);
+    }
+
     ScDocShell* pDocSh = GetViewData().GetDocShell();
     EndListening(*pDocSh);
     EndListening(*GetViewFrame());
@@ -1755,42 +1767,36 @@ ScTabViewShell::~ScTabViewShell()
     RemoveSubShell();           // all
     SetWindow(nullptr);
 
-    // all to NULL, in case the TabView-dtor tries to access them
-    //! (should not really! ??!?!)
-    if (mpInputHandler)
-        mpInputHandler->SetDocumentDisposing(true);
+    // need kill editview or we will touch the editengine after it has been freed by the ScInputHandler
+    KillEditView(true);
 
-    DELETEZ(pFontworkBarShell);
-    DELETEZ(pExtrusionBarShell);
-    DELETEZ(pCellShell);
-    DELETEZ(pPageBreakShell);
-    DELETEZ(pDrawShell);
-    DELETEZ(pDrawFormShell);
-    DELETEZ(pOleObjectShell);
-    DELETEZ(pChartShell);
-    DELETEZ(pGraphicShell);
-    DELETEZ(pMediaShell);
-    DELETEZ(pDrawTextShell);
-    DELETEZ(pEditShell);
-    DELETEZ(pPivotShell);
-    DELETEZ(pAuditingShell);
-    DELETEZ(pCurFrameLine);
+    pFontworkBarShell.reset();
+    pExtrusionBarShell.reset();
+    pCellShell.reset();
+    pPageBreakShell.reset();
+    pDrawShell.reset();
+    pDrawFormShell.reset();
+    pOleObjectShell.reset();
+    pChartShell.reset();
+    pGraphicShell.reset();
+    pMediaShell.reset();
+    pDrawTextShell.reset();
+    pEditShell.reset();
+    pPivotShell.reset();
+    pAuditingShell.reset();
+    pCurFrameLine.reset();
+    mpFormEditData.reset();
     mpInputHandler.reset();
-    DELETEZ(pPivotSource);
-    DELETEZ(pDialogDPObject);
-    DELETEZ(pNavSettings);
+    pDialogDPObject.reset();
+    pNavSettings.reset();
 
-    DELETEZ(pFormShell);
-    DELETEZ(pAccessibilityBroadcaster);
+    pFormShell.reset();
+    pAccessibilityBroadcaster.reset();
 }
 
-void ScTabViewShell::SetDialogDPObject( const ScDPObject* pObj )
+void ScTabViewShell::SetDialogDPObject( std::unique_ptr<ScDPObject> pObj )
 {
-    delete pDialogDPObject;
-    if (pObj)
-        pDialogDPObject = new ScDPObject( *pObj );
-    else
-        pDialogDPObject = nullptr;
+    pDialogDPObject = std::move(pObj);
 }
 
 void ScTabViewShell::FillFieldData( ScHeaderFieldData& rData )
@@ -1810,7 +1816,7 @@ void ScTabViewShell::FillFieldData( ScHeaderFieldData& rData )
     const INetURLObject& rURLObj = pDocShell->GetMedium()->GetURLObject();
     rData.aLongDocName  = rURLObj.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous );
     if ( !rData.aLongDocName.isEmpty() )
-        rData.aShortDocName = rURLObj.GetName( INetURLObject::DecodeMechanism::Unambiguous );
+        rData.aShortDocName = rURLObj.GetLastName(INetURLObject::DecodeMechanism::Unambiguous);
     else
         rData.aShortDocName = rData.aLongDocName = rData.aTitle;
     rData.nPageNo       = 1;
@@ -1819,19 +1825,11 @@ void ScTabViewShell::FillFieldData( ScHeaderFieldData& rData )
     // eNumType is known by the dialog
 }
 
-bool ScTabViewShell::GetChartArea( ScRangeListRef& rSource, tools::Rectangle& rDest, SCTAB& rTab ) const
-{
-    rSource = aChartSource;
-    rDest   = aChartPos;
-    rTab    = nChartDestTab;
-    return false;
-}
-
 ScNavigatorSettings* ScTabViewShell::GetNavigatorSettings()
 {
     if( !pNavSettings )
-        pNavSettings = new ScNavigatorSettings;
-    return pNavSettings;
+        pNavSettings.reset(new ScNavigatorSettings);
+    return pNavSettings.get();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

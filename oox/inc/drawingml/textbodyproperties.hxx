@@ -23,10 +23,9 @@
 #include <com/sun/star/drawing/TextVerticalAdjust.hpp>
 #include <oox/helper/helper.hxx>
 #include <oox/helper/propertymap.hxx>
-#include <boost/optional.hpp>
+#include <optional>
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 
 struct TextBodyProperties
@@ -35,12 +34,17 @@ struct TextBodyProperties
     OptValue< sal_Int32 >                           moRotation;
     bool                                            mbAnchorCtr;
     OptValue< sal_Int32 >                           moVert;
-    boost::optional< sal_Int32 >                    moInsets[4];
-    boost::optional< sal_Int32 >                    moTextOffUpper;
-    boost::optional< sal_Int32 >                    moTextOffLeft;
-    boost::optional< sal_Int32 >                    moTextOffLower;
-    boost::optional< sal_Int32 >                    moTextOffRight;
+    std::optional< sal_Int32 >                    moInsets[4];
+    std::optional< sal_Int32 >                    moTextOffUpper;
+    std::optional< sal_Int32 >                    moTextOffLeft;
+    std::optional< sal_Int32 >                    moTextOffLower;
+    std::optional< sal_Int32 >                    moTextOffRight;
     css::drawing::TextVerticalAdjust                meVA;
+    OUString                                        msPrst;
+    /// Number of requested columns.
+    sal_Int32 mnNumCol = 1;
+    /// Normal autofit: font scale (default: 100%).
+    sal_Int32 mnFontScale = 100000;
 
     explicit            TextBodyProperties();
 
@@ -49,8 +53,7 @@ struct TextBodyProperties
 };
 
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 #endif
 

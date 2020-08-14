@@ -21,9 +21,10 @@
 #define INCLUDED_XMLOFF_SOURCE_TRANSFORM_TRANSFORMERACTIONS_HXX
 
 #include <rtl/ustring.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include "TransformerActionInit.hxx"
 #include "TransformerAction.hxx"
+#include <boost/functional/hash.hpp>
 #include <unordered_map>
 
 struct NameKey_Impl
@@ -57,8 +58,10 @@ struct NameHash_Impl
 
 inline size_t NameHash_Impl::operator()( const NameKey_Impl& r ) const
 {
-    return static_cast< size_t >( r.m_nPrefix ) +
-           static_cast< size_t >( r.m_aLocalName.hashCode() );
+    std::size_t seed = 0;
+    boost::hash_combine(seed, r.m_nPrefix);
+    boost::hash_combine(seed, r.m_aLocalName.hashCode());
+    return seed;
 }
 
 inline bool NameHash_Impl::operator()(
@@ -120,10 +123,10 @@ class XMLTransformerActions :
                             NameHash_Impl, NameHash_Impl >
 {
 public:
-    explicit XMLTransformerActions( XMLTransformerActionInit *pInit );
+    explicit XMLTransformerActions( XMLTransformerActionInit const *pInit );
     ~XMLTransformerActions();
 
-    void Add( XMLTransformerActionInit *pInit );
+    void Add( XMLTransformerActionInit const *pInit );
 };
 
 #endif // INCLUDED_XMLOFF_SOURCE_TRANSFORM_TRANSFORMERACTIONS_HXX

@@ -8,86 +8,140 @@
  */
 
 #include <test/calc_unoapi_test.hxx>
+#include <test/container/xenumerationaccess.hxx>
+#include <test/sheet/sheetcell.hxx>
 #include <test/sheet/xcelladdressable.hxx>
+#include <test/sheet/xformulaquery.hxx>
+#include <test/sheet/xsheetannotationanchor.hxx>
+#include <test/table/xcell.hxx>
+#include <test/table/xcolumnrowrange.hxx>
+#include <test/text/xsimpletext.hxx>
+#include <test/util/xindent.hxx>
 
 #include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/sheet/XSheetAnnotationsSupplier.hpp>
+#include <com/sun/star/sheet/XSheetAnnotations.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
+#include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheets.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
+#include <com/sun/star/table/CellAddress.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 
 using namespace css;
 using namespace css::uno;
 
-namespace sc_apitest {
-
-#define NUMBER_OF_TESTS 1
-
-class ScCellObj : public CalcUnoApiTest, public apitest::XCellAddressable
+namespace sc_apitest
+{
+class ScCellObj : public CalcUnoApiTest,
+                  public apitest::SheetCell,
+                  public apitest::XCell,
+                  public apitest::XCellAddressable,
+                  public apitest::XColumnRowRange,
+                  public apitest::XEnumerationAccess,
+                  public apitest::XFormulaQuery,
+                  public apitest::XIndent,
+                  public apitest::XSheetAnnotationAnchor,
+                  public apitest::XSimpleText
 {
 public:
     ScCellObj();
 
-    virtual uno::Reference< uno::XInterface > init() override;
+    virtual uno::Reference<uno::XInterface> init() override;
+    virtual uno::Reference<uno::XInterface> getXSpreadsheet() override;
     virtual void setUp() override;
     virtual void tearDown() override;
 
     CPPUNIT_TEST_SUITE(ScCellObj);
+
+    // SheetCell
+    CPPUNIT_TEST(testSheetCellProperties);
+
+    // XCell
+    CPPUNIT_TEST(testGetError);
+    CPPUNIT_TEST(testGetType);
+    CPPUNIT_TEST(testSetGetFormula);
+    CPPUNIT_TEST(testSetGetValue);
+
     // XCellAddressable
     CPPUNIT_TEST(testGetCellAddress);
+
+    // XColumnRowRange
+    CPPUNIT_TEST(testGetColumns);
+    CPPUNIT_TEST(testGetRows);
+
+    // XEnumerationAccess
+    CPPUNIT_TEST(testCreateEnumeration);
+
+    // XFormulaQuery
+    CPPUNIT_TEST(testQueryDependents);
+    CPPUNIT_TEST(testQueryPrecedents);
+
+    // XIndent
+    CPPUNIT_TEST(testIncrementIndent);
+    CPPUNIT_TEST(testDecrementIndent);
+
+    // XSheetAnnotationAnchor
+    CPPUNIT_TEST(testGetAnnotation);
+
+    // XSimpleText
+    CPPUNIT_TEST(testCreateTextCursor);
+    CPPUNIT_TEST(testCreateTextCursorByRange);
+    CPPUNIT_TEST(testInsertString);
+    CPPUNIT_TEST(testInsertControlCharacter);
+
     CPPUNIT_TEST_SUITE_END();
 
 private:
-
-    static sal_Int32 nTest;
-    static uno::Reference< lang::XComponent > mxComponent;
-
+    uno::Reference<lang::XComponent> mxComponent;
 };
 
-sal_Int32 ScCellObj::nTest = 0;
-uno::Reference< lang::XComponent > ScCellObj::mxComponent;
-
 ScCellObj::ScCellObj()
-        : CalcUnoApiTest("/sc/qa/extrax/testdocuments")
+    : CalcUnoApiTest("/sc/qa/extras/testdocuments")
+    , apitest::XFormulaQuery(table::CellRangeAddress(0, 2, 3, 2, 3),
+                             table::CellRangeAddress(0, 0, 0, 3, 0), 0, 0)
 {
 }
 
-uno::Reference< uno::XInterface > ScCellObj::init()
+uno::Reference<uno::XInterface> ScCellObj::init()
 {
-    // create a calc document
-    if (!mxComponent.is())
-        mxComponent = loadFromDesktop("private:factory/scalc");
+    uno::Reference<sheet::XSpreadsheetDocument> xSheetDoc(mxComponent, uno::UNO_QUERY_THROW);
 
-    uno::Reference< sheet::XSpreadsheetDocument > xSheetDoc(mxComponent, uno::UNO_QUERY_THROW);
-    CPPUNIT_ASSERT_MESSAGE("no calc document", xSheetDoc.is());
+    uno::Reference<sheet::XSpreadsheets> xSheets(xSheetDoc->getSheets(), UNO_SET_THROW);
+    uno::Reference<container::XIndexAccess> xIndex(xSheets, UNO_QUERY_THROW);
+    uno::Reference<sheet::XSpreadsheet> xSheet(xIndex->getByIndex(0), UNO_QUERY_THROW);
 
-    // get getSheets
-    uno::Reference< sheet::XSpreadsheets > xSheets (xSheetDoc->getSheets(), UNO_QUERY_THROW);
-    uno::Any rSheet = xSheets->getByName("Sheet1");
-    // query for the XCellRange interface
-    uno::Reference< table::XCellRange > rCellRange(rSheet, UNO_QUERY);
-    uno::Reference< table::XCellRange > xCellRange = rCellRange->getCellRangeByName("A1");
+    uno::Reference<sheet::XSheetAnnotationsSupplier> xSheetAnnosSupplier(xSheet, UNO_QUERY_THROW);
+    uno::Reference<sheet::XSheetAnnotations> xSheetAnnos(xSheetAnnosSupplier->getAnnotations(),
+                                                         UNO_SET_THROW);
+    xSheetAnnos->insertNew(table::CellAddress(0, 2, 3), "xSheetAnnotation");
 
-    return xCellRange->getCellByPosition(0, 0);
+    return xSheet->getCellByPosition(2, 3);
+}
+
+uno::Reference<uno::XInterface> ScCellObj::getXSpreadsheet()
+{
+    uno::Reference<sheet::XSpreadsheetDocument> xSheetDoc(mxComponent, uno::UNO_QUERY_THROW);
+
+    uno::Reference<sheet::XSpreadsheets> xSheets(xSheetDoc->getSheets(), UNO_SET_THROW);
+    uno::Reference<container::XIndexAccess> xIndex(xSheets, UNO_QUERY_THROW);
+    uno::Reference<sheet::XSpreadsheet> xSheet(xIndex->getByIndex(0), UNO_QUERY_THROW);
+
+    setXCell(xSheet->getCellByPosition(2, 3));
+
+    return xSheet;
 }
 
 void ScCellObj::setUp()
 {
-    nTest++;
     CalcUnoApiTest::setUp();
+    mxComponent = loadFromDesktop("private:factory/scalc");
 }
 
 void ScCellObj::tearDown()
 {
-    if (nTest == NUMBER_OF_TESTS)
-    {
-        closeDocument(mxComponent);
-        mxComponent.clear();
-    }
-
+    closeDocument(mxComponent);
     CalcUnoApiTest::tearDown();
 }
-
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScCellObj);
 

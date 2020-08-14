@@ -17,21 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/svdview.hxx>
+#include <svx/svdmark.hxx>
+#include <tools/diagnose_ex.h>
+
+#include <com/sun/star/frame/XModel.hpp>
 
 #include <editsh.hxx>
 #include <fesh.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
-#include <IDocumentContentOperations.hxx>
 #include <IDocumentRedlineAccess.hxx>
 #include <pam.hxx>
 #include <UndoCore.hxx>
 #include <swundo.hxx>
-#include <dcontact.hxx>
 #include <flyfrm.hxx>
 #include <frmfmt.hxx>
-#include <viewimp.hxx>
 #include <docsh.hxx>
 #include <pagefrm.hxx>
 
@@ -94,9 +94,9 @@ void SwEditShell::HandleUndoRedoContext(::sw::UndoRedoContext & rContext)
     }
 }
 
-bool SwEditShell::Undo(sal_uInt16 const nCount)
+void SwEditShell::Undo(sal_uInt16 const nCount)
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
 
     // current undo state was not saved
     ::sw::UndoGuard const undoGuard(GetDoc()->GetIDocumentUndoRedo());
@@ -120,7 +120,7 @@ bool SwEditShell::Undo(sal_uInt16 const nCount)
                                        || SwUndoId::SETDEFTATTR == nLastUndoId );
         Push();
 
-        // Destroy stored TableBoxPtr. A dection is only permitted for the new "Box"!
+        // Destroy stored TableBoxPtr. A detection is only permitted for the new "Box"!
         ClearTableBoxContent();
 
         const RedlineFlags eOld = GetDoc()->getIDocumentRedlineAccess().GetRedlineFlags();
@@ -131,16 +131,15 @@ bool SwEditShell::Undo(sal_uInt16 const nCount)
                 bRet = GetDoc()->GetIDocumentUndoRedo().Undo()
                     || bRet;
             }
-        } catch (const css::uno::Exception & e) {
-            SAL_WARN("sw.core",
-                    "SwEditShell::Undo(): exception caught: " << e.Message);
+        } catch (const css::uno::Exception &) {
+            TOOLS_WARN_EXCEPTION("sw.core", "SwEditShell::Undo()");
         }
 
         if (bRestoreCursor)
         {   // fdo#39003 Pop does not touch the rest of the cursor ring
             KillPams(); // so call this first to get rid of unwanted cursors
         }
-        Pop((bRestoreCursor) ? PopMode::DeleteCurrent : PopMode::DeleteStack);
+        Pop(bRestoreCursor ? PopMode::DeleteCurrent : PopMode::DeleteStack);
 
         GetDoc()->getIDocumentRedlineAccess().SetRedlineFlags( eOld );
         GetDoc()->getIDocumentRedlineAccess().CompressRedlines();
@@ -149,13 +148,11 @@ bool SwEditShell::Undo(sal_uInt16 const nCount)
         SaveTableBoxContent();
     }
     EndAllAction();
-
-    return bRet;
 }
 
-bool SwEditShell::Redo(sal_uInt16 const nCount)
+void SwEditShell::Redo(sal_uInt16 const nCount)
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
 
     bool bRet = false;
 
@@ -176,7 +173,7 @@ bool SwEditShell::Redo(sal_uInt16 const nCount)
         const bool bRestoreCursor = nCount == 1 && SwUndoId::SETDEFTATTR == nFirstRedoId;
         Push();
 
-        // Destroy stored TableBoxPtr. A dection is only permitted for the new "Box"!
+        // Destroy stored TableBoxPtr. A detection is only permitted for the new "Box"!
         ClearTableBoxContent();
 
         RedlineFlags eOld = GetDoc()->getIDocumentRedlineAccess().GetRedlineFlags();
@@ -187,12 +184,11 @@ bool SwEditShell::Redo(sal_uInt16 const nCount)
                 bRet = GetDoc()->GetIDocumentUndoRedo().Redo()
                     || bRet;
             }
-        } catch (const css::uno::Exception & e) {
-            SAL_WARN("sw.core",
-                    "SwEditShell::Redo(): exception caught: " << e.Message);
+        } catch (const css::uno::Exception &) {
+            TOOLS_WARN_EXCEPTION("sw.core", "SwEditShell::Redo()");
         }
 
-        Pop((bRestoreCursor) ? PopMode::DeleteCurrent : PopMode::DeleteStack);
+        Pop(bRestoreCursor ? PopMode::DeleteCurrent : PopMode::DeleteStack);
 
         GetDoc()->getIDocumentRedlineAccess().SetRedlineFlags( eOld );
         GetDoc()->getIDocumentRedlineAccess().CompressRedlines();
@@ -202,28 +198,22 @@ bool SwEditShell::Redo(sal_uInt16 const nCount)
     }
 
     EndAllAction();
-
-    return bRet;
 }
 
-bool SwEditShell::Repeat(sal_uInt16 const nCount)
+void SwEditShell::Repeat(sal_uInt16 const nCount)
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
 
-    bool bRet = false;
     StartAllAction();
 
     try {
         ::sw::RepeatContext context(*GetDoc(), *GetCursor());
-        bRet = GetDoc()->GetIDocumentUndoRedo().Repeat( context, nCount )
-            || bRet;
-    } catch (const css::uno::Exception & e) {
-        SAL_WARN("sw.core",
-                "SwEditShell::Repeat(): exception caught: " << e.Message);
+        GetDoc()->GetIDocumentUndoRedo().Repeat( context, nCount );
+    } catch (const css::uno::Exception &) {
+        TOOLS_WARN_EXCEPTION("sw.core", "SwEditShell::Repeat()");
     }
 
     EndAllAction();
-    return bRet;
 }
 
 static void lcl_SelectSdrMarkList( SwEditShell* pShell,
@@ -232,25 +222,25 @@ static void lcl_SelectSdrMarkList( SwEditShell* pShell,
     OSL_ENSURE( pShell != nullptr, "need shell!" );
     OSL_ENSURE( pSdrMarkList != nullptr, "need mark list" );
 
-    if( dynamic_cast<const SwFEShell*>( pShell) !=  nullptr )
-    {
-        SwFEShell* pFEShell = static_cast<SwFEShell*>( pShell );
-        bool bFirst = true;
-        for( size_t i = 0; i < pSdrMarkList->GetMarkCount(); ++i )
-        {
-            SdrObject *pObj = pSdrMarkList->GetMark( i )->GetMarkedSdrObj();
-            if( pObj )
-            {
-                pFEShell->SelectObj( Point(), bFirst ? 0 : SW_ADD_SELECT, pObj );
-                bFirst = false;
-            }
-        }
+    if( dynamic_cast<const SwFEShell*>( pShell) ==  nullptr )
+        return;
 
-        // the old implementation would always unselect
-        // objects, even if no new ones were selected. If this
-        // is a problem, we need to re-work this a little.
-        OSL_ENSURE( pSdrMarkList->GetMarkCount() != 0, "empty mark list" );
+    SwFEShell* pFEShell = static_cast<SwFEShell*>( pShell );
+    bool bFirst = true;
+    for( size_t i = 0; i < pSdrMarkList->GetMarkCount(); ++i )
+    {
+        SdrObject *pObj = pSdrMarkList->GetMark( i )->GetMarkedSdrObj();
+        if( pObj )
+        {
+            pFEShell->SelectObj( Point(), bFirst ? 0 : SW_ADD_SELECT, pObj );
+            bFirst = false;
+        }
     }
+
+    // the old implementation would always unselect
+    // objects, even if no new ones were selected. If this
+    // is a problem, we need to re-work this a little.
+    OSL_ENSURE( pSdrMarkList->GetMarkCount() != 0, "empty mark list" );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -23,10 +23,12 @@
 #include <com/sun/star/bridge/BridgeFactory.hpp>
 #include <com/sun/star/connection/Acceptor.hpp>
 #include <com/sun/star/uno/XNamingService.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace css::bridge;
 using namespace css::connection;
@@ -36,11 +38,15 @@ using namespace css::uno;
 namespace desktop
 {
 
-extern "C" void offacc_workerfunc (void * acc)
+extern "C" {
+
+static void offacc_workerfunc (void * acc)
 {
     osl_setThreadName("URP Acceptor");
 
     static_cast<Acceptor*>(acc)->run();
+}
+
 }
 
 Acceptor::Acceptor( const Reference< XComponentContext >& rxContext )
@@ -101,15 +107,14 @@ void Acceptor::run()
 
             // accept connection
             Reference< XConnection > rConnection = m_rAcceptor->accept( m_aConnectString );
-            // if we return without a valid connection we mus assume that the acceptor
+            // if we return without a valid connection we must assume that the acceptor
             // is destructed so we break out of the run method terminating the thread
             if (! rConnection.is()) break;
             OUString aDescription = rConnection->getDescription();
             SAL_INFO( "desktop.offacc", "Acceptor::run connection " << aDescription );
 
             // create instanceprovider for this connection
-            Reference< XInstanceProvider > rInstanceProvider(
-                new AccInstanceProvider(m_rContext, rConnection));
+            Reference< XInstanceProvider > rInstanceProvider(new AccInstanceProvider(m_rContext));
             // create the bridge. The remote end will have a reference to this bridge
             // thus preventing the bridge from being disposed. When the remote end releases
             // the bridge, it will be destructed.
@@ -117,8 +122,8 @@ void Acceptor::run()
                 "", m_aProtocol, rConnection, rInstanceProvider);
             osl::MutexGuard g(m_aMutex);
             m_bridges.add(rBridge);
-        } catch (const Exception& e) {
-            SAL_WARN("desktop.offacc", "caught Exception \"" << e.Message << "\"");
+        } catch (const Exception&) {
+            TOOLS_WARN_EXCEPTION("desktop.offacc", "");
             // connection failed...
             // something went wrong during connection setup.
             // just wait for a new connection to accept
@@ -130,7 +135,7 @@ void Acceptor::run()
 void Acceptor::initialize( const Sequence<Any>& aArguments )
 {
     // prevent multiple initialization
-    osl::ClearableMutexGuard aGuard( m_aMutex );
+    osl::MutexGuard aGuard( m_aMutex );
     SAL_INFO( "desktop.offacc", "Acceptor::initialize()" );
 
     bool bOk = false;
@@ -178,22 +183,13 @@ void Acceptor::initialize( const Sequence<Any>& aArguments )
 }
 
 // XServiceInfo
-OUString Acceptor::impl_getImplementationName()
-{
-    return OUString("com.sun.star.office.comp.Acceptor");
-}
 OUString Acceptor::getImplementationName()
 {
-    return Acceptor::impl_getImplementationName();
-}
-Sequence<OUString> Acceptor::impl_getSupportedServiceNames()
-{
-    Sequence<OUString> aSequence { "com.sun.star.office.Acceptor" };
-    return aSequence;
+    return "com.sun.star.office.comp.Acceptor";
 }
 Sequence<OUString> Acceptor::getSupportedServiceNames()
 {
-    return Acceptor::impl_getSupportedServiceNames();
+    return { "com.sun.star.office.Acceptor" };
 }
 
 sal_Bool Acceptor::supportsService(OUString const & ServiceName)
@@ -201,22 +197,11 @@ sal_Bool Acceptor::supportsService(OUString const & ServiceName)
     return cppu::supportsService(this, ServiceName);
 }
 
-// Factory
-Reference< XInterface > Acceptor::impl_getInstance( const Reference< XMultiServiceFactory >& aFactory )
-{
-    try {
-        return static_cast<cppu::OWeakObject *>(
-            new Acceptor(comphelper::getComponentContext(aFactory)));
-    } catch ( const Exception& ) {
-        return css::uno::Reference<css::uno::XInterface>();
-    }
-}
 
 // InstanceProvider
-AccInstanceProvider::AccInstanceProvider(const Reference<XComponentContext>& rxContext, const Reference<XConnection>& rConnection)
+AccInstanceProvider::AccInstanceProvider(const Reference<XComponentContext>& rxContext)
+  : m_rContext(rxContext)
 {
-    m_rContext = rxContext;
-    m_rConnection = rConnection;
 }
 
 AccInstanceProvider::~AccInstanceProvider()
@@ -253,41 +238,12 @@ Reference<XInterface> AccInstanceProvider::getInstance (const OUString& aName )
 
 }
 
-// component management stuff...
-
-extern "C"
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+desktop_Acceptor_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-using namespace desktop;
-
-SAL_DLLPUBLIC_EXPORT void * SAL_CALL offacc_component_getFactory(char const *pImplementationName, void *pServiceManager, void *)
-{
-    void* pReturn = nullptr ;
-    if  ( pImplementationName && pServiceManager )
-    {
-        // Define variables which are used in following macros.
-        Reference< XSingleServiceFactory > xFactory;
-        Reference< XMultiServiceFactory >  xServiceManager(
-            static_cast< XMultiServiceFactory* >(pServiceManager));
-
-        if (desktop::Acceptor::impl_getImplementationName().equalsAscii( pImplementationName ) )
-        {
-            xFactory.set( cppu::createSingleFactory(
-                xServiceManager, desktop::Acceptor::impl_getImplementationName(),
-                desktop::Acceptor::impl_getInstance, desktop::Acceptor::impl_getSupportedServiceNames()) );
-        }
-
-        // Factory is valid - service was found.
-        if ( xFactory.is() )
-        {
-            xFactory->acquire();
-            pReturn = xFactory.get();
-        }
-    }
-
-    // Return with result of this operation.
-    return pReturn ;
+    return cppu::acquire(new desktop::Acceptor(context));
 }
 
-} // extern "C"
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

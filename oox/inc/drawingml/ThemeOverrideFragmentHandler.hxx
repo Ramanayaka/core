@@ -12,12 +12,11 @@
 
 #include <oox/core/fragmenthandler2.hxx>
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 class Theme;
 
-class ThemeOverrideFragmentHandler : public ::oox::core::FragmentHandler2
+class ThemeOverrideFragmentHandler final : public ::oox::core::FragmentHandler2
 {
 public:
     explicit            ThemeOverrideFragmentHandler(
@@ -32,8 +31,7 @@ private:
     Theme&              mrTheme;
 };
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 #endif
 

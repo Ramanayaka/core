@@ -22,7 +22,9 @@
 
 #include <memory>
 
-#include "sdundo.hxx"
+#include <svl/itemset.hxx>
+
+#include <sdundo.hxx>
 
 class SfxItemSet;
 class SfxStyleSheet;

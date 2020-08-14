@@ -24,10 +24,8 @@
 #include <cppuhelper/implbase.hxx>
 
 #include <memory>
-#include <dllapi.h>
-#include <vector>
 
-#include <vcl/svapp.hxx>
+#include <vcl/vclevent.hxx>
 #include <tools/link.hxx>
 
 #include "FormattedFieldBeautifier.hxx"
@@ -97,15 +95,10 @@ namespace rptui
         void Clear();
     private:
 
-        void TogglePropertyListening(const css::uno::Reference< css::uno::XInterface>& Element);
         void switchListening( const css::uno::Reference< css::container::XIndexAccess >& _rxContainer, bool _bStartListening );
         void switchListening( const css::uno::Reference< css::uno::XInterface >& _rxObject, bool _bStartListening );
 
         DECL_LINK(SettingsChanged, VclSimpleEvent&, void );
-    private:
-
-        ::std::vector< css::uno::Reference< css::container::XChild> >::const_iterator getSection(const css::uno::Reference< css::container::XChild>& _xContainer) const;
-
     };
 
 } // namespace rptui

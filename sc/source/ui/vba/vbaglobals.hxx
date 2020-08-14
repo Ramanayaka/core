@@ -19,18 +19,15 @@
 #ifndef SC_VBA_GLOBALS
 #define SC_VBA_GLOBALS
 
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <ooo/vba/excel/XGlobals.hpp>
-#include <ooo/vba/excel/XApplication.hpp>
 
 #include <cppuhelper/implbase.hxx>
-#include "excelvbahelper.hxx"
 
 #include <vbahelper/vbaglobalbase.hxx>
 
-    // class ScVbaGlobals
+namespace com::sun::star::uno { class XComponentContext; }
+namespace ooo::vba::excel { class XApplication; }
+
 
 typedef ::cppu::ImplInheritanceHelper< VbaGlobalsBase, ov::excel::XGlobals > ScVbaGlobals_BASE;
 
@@ -38,7 +35,7 @@ class ScVbaGlobals : public ScVbaGlobals_BASE
 {
     css::uno::Reference< ov::excel::XApplication > mxApplication;
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< ov::excel::XApplication > const & SAL_CALL getApplication();
+    css::uno::Reference< ov::excel::XApplication > const & getApplication();
 public:
 
     ScVbaGlobals( css::uno::Sequence< css::uno::Any > const& aArgs,

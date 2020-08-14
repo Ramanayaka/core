@@ -59,6 +59,7 @@
  */
 
 #include <memory>
+#include <lwpfilehdr.hxx>
 #include "lwpnumericfmt.hxx"
 
 LwpCurrencyPool  LwpNumericFormat::m_aCurrencyInfo;
@@ -103,7 +104,7 @@ void LwpNumericFormatSubset::QuickRead(LwpObjectStream* pStrm)
 
     pStrm->SkipExtra();
 }
-LwpColor LwpNumericFormatSubset::GetColor()
+LwpColor LwpNumericFormatSubset::GetColor() const
 {
     if (cSubFlags&0x04)
     {
@@ -115,9 +116,6 @@ LwpColor LwpNumericFormatSubset::GetColor()
     }
 }
 LwpNumericFormatSubset::LwpNumericFormatSubset():cSubFlags(0)
-{
-}
-LwpNumericFormatSubset::~LwpNumericFormatSubset()
 {
 }
 
@@ -235,22 +233,22 @@ void LwpNumericFormat::GetCurrencyStr(LwpNumericFormatSubset aNumber, OUString& 
             }
         }
     }
-    if ( aNumber.IsDefaultSuffix())
+    if ( !aNumber.IsDefaultSuffix())
+        return;
+
+    if (bPost)
     {
-        if (bPost)
+        aSuffix = aSymbol;
+        if (bShowSpace)
         {
-            aSuffix = aSymbol;
-            if (bShowSpace)
-            {
-                aSuffix = " " + aSuffix;
-            }
-
+            aSuffix = " " + aSuffix;
         }
 
-        if (bNegtive)
-        {
-            aSuffix += ")";
-        }
+    }
+
+    if (bNegtive)
+    {
+        aSuffix += ")";
     }
 }
 void LwpNumericFormat::SetNumberType(XFNumberStyle* pStyle)
@@ -352,14 +350,14 @@ XFStyle* LwpNumericFormat::Convert()
         pStyle->SetPrefix(aPrefix);
         //Set suffix
         pStyle->SetSurfix(aSuffix);
-        pStyle->SetColor( XFColor( (sal_uInt8)aColor.GetRed(),
-                                   (sal_uInt8)aColor.GetGreen(),
-                                   (sal_uInt8)aColor.GetBlue()) );
+        pStyle->SetColor( XFColor( static_cast<sal_uInt8>(aColor.GetRed()),
+                                   static_cast<sal_uInt8>(aColor.GetGreen()),
+                                   static_cast<sal_uInt8>(aColor.GetBlue())) );
     }
-    {//Negtive
-        pStyle->SetNegativeStyle( aNegPrefix, aNegSuffix, XFColor((sal_uInt8)aNegativeColor.GetRed(),
-                                                                    (sal_uInt8)aNegativeColor.GetGreen(),
-                                                                    (sal_uInt8)aNegativeColor.GetBlue()) );
+    {//Negative
+        pStyle->SetNegativeStyle( aNegPrefix, aNegSuffix, XFColor(static_cast<sal_uInt8>(aNegativeColor.GetRed()),
+                                                                    static_cast<sal_uInt8>(aNegativeColor.GetGreen()),
+                                                                    static_cast<sal_uInt8>(aNegativeColor.GetBlue())) );
     }
 
     return pStyle;
@@ -374,7 +372,7 @@ OUString    LwpNumericFormat::reencode(const OUString& sCode)
     const sal_Unicode * pString = sCode.getStr();
     sal_uInt16 nLen = sCode.getLength();
     bool bFound = false;
-    sal_uInt16 i;
+    sal_Int32 i;
     std::unique_ptr<sal_Unicode[]> pBuff( new sal_Unicode[sCode.getLength()] );
 
     for (i=0; i< sCode.getLength() - 1; i++)

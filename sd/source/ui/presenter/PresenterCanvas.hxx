@@ -20,23 +20,20 @@
 #ifndef INCLUDED_SD_SOURCE_UI_PRESENTER_PRESENTERCANVAS_HXX
 #define INCLUDED_SD_SOURCE_UI_PRESENTER_PRESENTERCANVAS_HXX
 
-#include "CanvasUpdateRequester.hxx"
 #include <basegfx/range/b2drectangle.hxx>
 #include <com/sun/star/awt/Point.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/geometry/AffineMatrix2D.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/rendering/XSpriteCanvas.hpp>
-#include <com/sun/star/rendering/XBitmapCanvas.hpp>
-#include <com/sun/star/rendering/VolatileContentDestroyedException.hpp>
+#include <com/sun/star/rendering/XBitmap.hpp>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <memory>
 
-namespace sd { namespace presenter {
+namespace sd::presenter { class CanvasUpdateRequester; }
+namespace com::sun::star::awt { class XWindow; }
+namespace com::sun::star::geometry { struct AffineMatrix2D; }
+
+namespace sd::presenter {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::rendering::XSpriteCanvas,
@@ -301,10 +298,6 @@ private:
     */
     std::shared_ptr<CanvasUpdateRequester> m_pUpdateRequester;
 
-    /** The clip rectangle as given to SetClip().
-    */
-    css::awt::Rectangle maClipRectangle;
-
     /** When this flag is true (it is set to true after every call to
         updateScreen()) then the next call to MergeViewState updates the
         maOffset member.  A possible optimization would set this flag only
@@ -325,7 +318,7 @@ private:
     void ThrowIfDisposed();
 };
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 #endif
 

@@ -17,21 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <vector>
 
-#include "codemaker/generatedtypeset.hxx"
-#include "codemaker/typemanager.hxx"
-#include "rtl/ref.hxx"
-#include "rtl/string.hxx"
-#include "rtl/ustring.hxx"
-#include "sal/main.h"
-#include "sal/types.h"
-#include "unoidl/unoidl.hxx"
+#include <codemaker/generatedtypeset.hxx>
+#include <codemaker/typemanager.hxx>
+#include <rtl/ref.hxx>
+#include <rtl/string.hxx>
+#include <rtl/ustring.hxx>
+#include <sal/main.h>
+#include <sal/types.h>
+#include <unoidl/unoidl.hxx>
 
 #include "javaoptions.hxx"
 #include "javatype.hxx"
@@ -43,7 +43,7 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv) {
             return EXIT_FAILURE;
         }
 
-        rtl::Reference< TypeManager > typeMgr(new TypeManager);
+        rtl::Reference typeMgr(new TypeManager);
         for (const OString& i : options.getExtraInputFiles())
         {
             typeMgr->loadProvider(convertToFileUrl(i), false);

@@ -21,25 +21,24 @@
 #include <com/sun/star/rendering/XCanvas.hpp>
 
 #include <sal/types.h>
+#include <sal/log.hxx>
 #include <vcl/canvastools.hxx>
 
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <canvas/canvastools.hxx>
 
 #include "pointaction.hxx"
-#include "outdevstate.hxx"
-#include "cppcanvas/canvas.hxx"
+#include <outdevstate.hxx>
+#include <cppcanvas/canvas.hxx>
 #include "mtftools.hxx"
 
 
 using namespace ::com::sun::star;
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
         namespace
         {
             class PointAction : public Action
@@ -155,21 +154,20 @@ namespace cppcanvas
             }
         }
 
-        ActionSharedPtr PointActionFactory::createPointAction( const ::basegfx::B2DPoint& rPoint,
+        std::shared_ptr<Action> PointActionFactory::createPointAction( const ::basegfx::B2DPoint& rPoint,
                                                                const CanvasSharedPtr&     rCanvas,
                                                                const OutDevState&         rState )
         {
-            return ActionSharedPtr( new PointAction( rPoint, rCanvas, rState ) );
+            return std::make_shared<PointAction>( rPoint, rCanvas, rState );
         }
 
-        ActionSharedPtr PointActionFactory::createPointAction( const ::basegfx::B2DPoint& rPoint,
+        std::shared_ptr<Action> PointActionFactory::createPointAction( const ::basegfx::B2DPoint& rPoint,
                                                                const CanvasSharedPtr&     rCanvas,
                                                                const OutDevState&         rState,
                                                                const ::Color&             rColor    )
         {
-            return ActionSharedPtr( new PointAction( rPoint, rCanvas, rState, rColor ) );
+            return std::make_shared<PointAction>( rPoint, rCanvas, rState, rColor );
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

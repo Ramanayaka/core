@@ -20,38 +20,37 @@
 #ifndef INCLUDED_OOX_PPT_PPTIMPORT_HXX
 #define INCLUDED_OOX_PPT_PPTIMPORT_HXX
 
-#include <exception>
 #include <map>
 #include <memory>
 #include <vector>
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <oox/core/filterbase.hxx>
 #include <oox/core/xmlfilterbase.hxx>
 #include <oox/drawingml/drawingmltypes.hxx>
 #include <oox/drawingml/theme.hxx>
 #include <oox/ppt/slidepersist.hxx>
+#include <oox/ppt/pptshape.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { struct PropertyValue; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
 namespace oox {
     class GraphicHelper;
-    namespace drawingml { namespace chart { class ChartConverter; } }
+    namespace drawingml::chart { class ChartConverter; }
     namespace ole { class VbaProject; }
     namespace vml { class Drawing; }
 }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
 
-class PowerPointImport : public oox::core::XmlFilterBase
+class PowerPointImport final : public oox::core::XmlFilterBase
 {
 public:
     /// @throws css::uno::RuntimeException
@@ -64,7 +63,7 @@ public:
 
     virtual const ::oox::drawingml::Theme* getCurrentTheme() const override;
     virtual ::oox::vml::Drawing* getVmlDrawing() override;
-    virtual const oox::drawingml::table::TableStyleListPtr getTableStyles() override;
+    virtual oox::drawingml::table::TableStyleListPtr getTableStyles() override;
     virtual ::oox::drawingml::chart::ChartConverter* getChartConverter() override;
 
     const SlidePersistPtr&                                  getActualSlidePersist() const { return mpActualSlidePersist; };
@@ -76,7 +75,9 @@ public:
 
     virtual sal_Bool SAL_CALL filter( const css::uno::Sequence<   css::beans::PropertyValue >& rDescriptor ) override;
 
-    sal_Int32 getSchemeColor( sal_Int32 nToken ) const;
+    ::Color getSchemeColor( sal_Int32 nToken ) const;
+
+    static std::vector< PPTShape* > maPPTShapes;
 
 #if OSL_DEBUG_LEVEL > 0
     static XmlFilterBase* mpDebugFilterBase;
@@ -101,7 +102,7 @@ private:
     std::shared_ptr< ::oox::drawingml::chart::ChartConverter > mxChartConv;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_PPT_PPTIMPORT_HXX
 

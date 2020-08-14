@@ -11,25 +11,19 @@
  * Corel Corporation or Corel Corporation Limited."
  */
 
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <libcdr/libcdr.h>
-#include <libodfgen/libodfgen.hxx>
 
 #include "CDRImportFilter.hxx"
 
-using com::sun::star::uno::RuntimeException;
-using com::sun::star::uno::Sequence;
-using com::sun::star::uno::XComponentContext;
-using com::sun::star::uno::XInterface;
-
-bool CDRImportFilter::doImportDocument(librevenge::RVNGInputStream &rInput, OdgGenerator &rGenerator, utl::MediaDescriptor &)
+bool CDRImportFilter::doImportDocument(weld::Window*, librevenge::RVNGInputStream& rInput,
+                                       OdgGenerator& rGenerator, utl::MediaDescriptor&)
 {
     return libcdr::CDRDocument::parse(&rInput, &rGenerator);
 }
 
-bool CDRImportFilter::doDetectFormat(librevenge::RVNGInputStream &rInput, OUString &rTypeName)
+bool CDRImportFilter::doDetectFormat(librevenge::RVNGInputStream& rInput, OUString& rTypeName)
 {
     if (libcdr::CDRDocument::isSupported(&rInput))
     {
@@ -43,28 +37,22 @@ bool CDRImportFilter::doDetectFormat(librevenge::RVNGInputStream &rInput, OUStri
 // XServiceInfo
 OUString SAL_CALL CDRImportFilter::getImplementationName()
 {
-    return OUString("com.sun.star.comp.Draw.CDRImportFilter");
+    return "com.sun.star.comp.Draw.CDRImportFilter";
 }
 
-sal_Bool SAL_CALL CDRImportFilter::supportsService(const OUString &rServiceName)
+sal_Bool SAL_CALL CDRImportFilter::supportsService(const OUString& rServiceName)
 {
     return cppu::supportsService(this, rServiceName);
 }
 
-Sequence< OUString > SAL_CALL CDRImportFilter::getSupportedServiceNames()
+css::uno::Sequence<OUString> SAL_CALL CDRImportFilter::getSupportedServiceNames()
 {
-    Sequence < OUString > aRet(2);
-    OUString *pArray = aRet.getArray();
-    pArray[0] =  "com.sun.star.document.ImportFilter";
-    pArray[1] =  "com.sun.star.document.ExtendedTypeDetection";
-    return aRet;
+    return { "com.sun.star.document.ImportFilter", "com.sun.star.document.ExtendedTypeDetection" };
 }
 
-extern "C"
-SAL_DLLPUBLIC_EXPORT css::uno::XInterface *SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Draw_CDRImportFilter_get_implementation(
-    css::uno::XComponentContext *const context,
-    const css::uno::Sequence<css::uno::Any> &)
+    css::uno::XComponentContext* const context, const css::uno::Sequence<css::uno::Any>&)
 {
     return cppu::acquire(new CDRImportFilter(context));
 }

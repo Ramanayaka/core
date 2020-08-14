@@ -56,6 +56,13 @@ interface BaseSelection
     SID_INSERT_OBJECT           [ ExecMethod = ExecDrawIns; StateMethod = GetDrawInsState; ]
     SID_INSERT_FLOATINGFRAME    [ ExecMethod = ExecDrawIns; StateMethod = GetDrawInsState; ]
     SID_INSERT_AVMEDIA          [ ExecMethod = ExecDrawIns; StateMethod = GetDrawInsState; ]
+    SID_INSERT_SIGNATURELINE    [ ExecMethod = ExecDrawIns; StateMethod = GetDrawInsState; ]
+    SID_EDIT_SIGNATURELINE      [ ExecMethod = ExecDrawIns; StateMethod = GetDrawInsState; ]
+    SID_SIGN_SIGNATURELINE      [ ExecMethod = ExecDrawIns; StateMethod = GetDrawInsState; ]
+
+    SID_INSERT_QRCODE           [ ExecMethod = ExecDrawIns; StateMethod = GetDrawInsState; ]
+    SID_EDIT_QRCODE             [ ExecMethod = ExecDrawIns; StateMethod = GetDrawInsState; ]
+    SID_ADDITIONS_DIALOG        [ ExecMethod = ExecDrawIns; StateMethod = GetDrawInsState; ]
 
     SID_IMAP                    [ ExecMethod = ExecImageMap; StateMethod = GetImageMapState; ]
     SID_IMAP_EXEC               [ ExecMethod = ExecImageMap; StateMethod = GetImageMapState; ]
@@ -122,7 +129,6 @@ interface BaseSelection
     SID_FM_CREATE_CONTROL   [ ExecMethod = ExecDraw ; ]
     SID_LINKS               [ ExecMethod = ExecDrawIns; StateMethod = GetDrawInsState; ]
     SID_DRAW_CHART          [ ExecMethod = ExecDraw; StateMethod = GetDrawState; ]
-    SID_INSERT_DIAGRAM_FROM_FILE [ ExecMethod = ExecDrawIns; StateMethod = GetDrawState; ]
     SID_FM_CREATE_FIELDCONTROL [ ExecMethod = ExecDrawIns ; ]
 
     // } insert objects
@@ -139,8 +145,8 @@ interface TableEditView
         SID_CURRENTDOC      [ ExecMethod = Execute; StateMethod = GetState; ]
     SID_WINDOW_SPLIT    [ ExecMethod = Execute; StateMethod = GetState; ]
     SID_WINDOW_FIX      [ ExecMethod = Execute; StateMethod = GetState; ]
-    SID_WINDOW_FIX_ROW  [ ExecMethod = Execute; ]
-    SID_WINDOW_FIX_COL  [ ExecMethod = Execute; ]
+    SID_WINDOW_FIX_ROW  [ ExecMethod = Execute; StateMethod = GetState; ]
+    SID_WINDOW_FIX_COL  [ ExecMethod = Execute; StateMethod = GetState; ]
     SID_SAVEDOC
     [
         ExecMethod = ExecuteSave ;

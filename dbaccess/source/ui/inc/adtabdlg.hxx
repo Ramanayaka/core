@@ -21,10 +21,7 @@
 
 #include <memory>
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include <vcl/dialog.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
+#include <vcl/weld.hxx>
 #include "tabletree.hxx"
 
 namespace dbaui
@@ -50,47 +47,44 @@ namespace dbaui
         virtual bool    allowQueries() const = 0;
         virtual bool    allowAddition() const = 0;
         virtual void    addTableWindow( const OUString& _rQualifiedTableName, const OUString& _rAliasName ) = 0;
-        virtual void    onWindowClosing( const vcl::Window* _pWindow ) = 0;
+        virtual void    onWindowClosing() = 0;
 
     protected:
         ~IAddTableDialogContext() {}
     };
 
-    class OAddTableDlg : public ModelessDialog
+    class OAddTableDlg : public weld::GenericDialogController
     {
-        VclPtr<RadioButton>        m_pCaseTables;
-        VclPtr<RadioButton>        m_pCaseQueries;
-
-        VclPtr<OTableTreeListBox>  m_pTableList;
-        VclPtr<SvTreeListBox>      m_pQueryList;
+        IAddTableDialogContext& m_rContext;
         std::unique_ptr< TableObjectListFacade > m_xCurrentList;
 
-        VclPtr<PushButton>         m_pAddButton;
-        VclPtr<PushButton>         m_pCloseButton;
+        std::unique_ptr<weld::RadioButton> m_xCaseTables;
+        std::unique_ptr<weld::RadioButton> m_xCaseQueries;
 
-        IAddTableDialogContext& m_rContext;
+        std::unique_ptr<TableTreeListBox> m_xTableList;
+        std::unique_ptr<weld::TreeView> m_xQueryList;
 
-        DECL_LINK( AddClickHdl, Button*, void );
-        DECL_LINK( CloseClickHdl, Button*, void);
-        DECL_LINK( TableListDoubleClickHdl, SvTreeListBox*, bool );
-        DECL_LINK( TableListSelectHdl, SvTreeListBox*, void );
-        DECL_LINK( OnTypeSelected, Button*, void );
+        std::unique_ptr<weld::Button> m_xAddButton;
+        std::unique_ptr<weld::Button> m_xCloseButton;
+
+        DECL_LINK( AddClickHdl, weld::Button&, void );
+        DECL_LINK( CloseClickHdl, weld::Button&, void);
+        DECL_LINK( TableListDoubleClickHdl, weld::TreeView&, bool );
+        DECL_LINK( TableListSelectHdl, weld::TreeView&, void );
+        DECL_LINK( OnTypeSelected, weld::Button&, void );
 
     public:
-        OAddTableDlg(
-            vcl::Window* _pParent,
-            IAddTableDialogContext& _rContext );
+        OAddTableDlg(weld::Window* _pParent,
+                     IAddTableDialogContext& _rContext);
         virtual ~OAddTableDlg() override;
-        virtual void dispose() override;
 
         void Update();
+        void OnClose();
 
         static  OUString  getDialogTitleForContext(
-            IAddTableDialogContext& _rContext );
+            IAddTableDialogContext const & _rContext );
 
     private:
-        virtual bool Close() override;
-
         bool impl_isAddAllowed();
 
         enum ObjectList

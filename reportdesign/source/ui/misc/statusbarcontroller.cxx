@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "statusbarcontroller.hxx"
+#include <statusbarcontroller.hxx>
 
 #include <cppuhelper/supportsservice.hxx>
+#include <comphelper/types.hxx>
 #include <svx/zoomsliderctrl.hxx>
 #include <svx/zoomctrl.hxx>
 #include <svx/svxids.hrc>
@@ -30,6 +31,8 @@
 #include <vcl/status.hxx>
 #include <osl/mutex.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
+#include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 
 namespace rptui
 {
@@ -42,18 +45,7 @@ namespace rptui
 
 OUString SAL_CALL OStatusbarController::getImplementationName()
 {
-    return getImplementationName_Static();
-}
-
-OUString OStatusbarController::getImplementationName_Static()
-{
-    return OUString("com.sun.star.report.comp.StatusbarController");
-}
-
-Sequence< OUString> OStatusbarController::getSupportedServiceNames_Static()
-{
-    Sequence<OUString> aSupported { "com.sun.star.frame.StatusbarController" };
-    return aSupported;
+    return "com.sun.star.report.comp.StatusbarController";
 }
 
 sal_Bool SAL_CALL OStatusbarController::supportsService( const OUString& ServiceName )
@@ -63,13 +55,9 @@ sal_Bool SAL_CALL OStatusbarController::supportsService( const OUString& Service
 
 Sequence< OUString> SAL_CALL OStatusbarController::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
+    return { "com.sun.star.frame.StatusbarController" };
 }
 
-Reference< XInterface > OStatusbarController::create(Reference< XComponentContext > const & xContext)
-{
-    return *(new OStatusbarController(xContext));
-}
 IMPLEMENT_FORWARD_XINTERFACE2(OStatusbarController, ::svt::StatusbarController,OStatusbarController_BASE)
 
 OStatusbarController::OStatusbarController(const Reference< XComponentContext >& rxContext)
@@ -86,42 +74,44 @@ void SAL_CALL OStatusbarController::initialize( const Sequence< Any >& _rArgumen
     ::osl::MutexGuard aGuard(m_aMutex);
 
     VclPtr< StatusBar > pStatusBar = static_cast<StatusBar*>(VCLUnoHelper::GetWindow(m_xParentWindow).get());
-    if ( pStatusBar )
+    if ( !pStatusBar )
+        return;
+
+    const sal_uInt16 nCount = pStatusBar->GetItemCount();
+    for (sal_uInt16 nPos = 0; nPos < nCount; ++nPos)
     {
-        const sal_uInt16 nCount = pStatusBar->GetItemCount();
-        for (sal_uInt16 nPos = 0; nPos < nCount; ++nPos)
+        const sal_uInt16 nItemId = pStatusBar->GetItemId(nPos);
+        if ( pStatusBar->GetItemCommand(nItemId) == m_aCommandURL )
         {
-            const sal_uInt16 nItemId = pStatusBar->GetItemId(nPos);
-            if ( pStatusBar->GetItemCommand(nItemId) == m_aCommandURL )
-            {
-                m_nId = nItemId;
-                break;
-            }
+            m_nId = nItemId;
+            break;
         }
-
-        SfxStatusBarControl *pController = nullptr;
-        if ( m_aCommandURL == ".uno:ZoomSlider" )
-        {
-            pController = new SvxZoomSliderControl(m_nSlotId = SID_ATTR_ZOOMSLIDER,m_nId,*pStatusBar);
-        }
-        else if ( m_aCommandURL == ".uno:Zoom" )
-        {
-            pController = new SvxZoomStatusBarControl(m_nSlotId = SID_ATTR_ZOOM,m_nId,*pStatusBar);
-        }
-
-        if ( pController )
-        {
-            m_rController.set( pController );
-            if ( m_rController.is() )
-            {
-                m_rController->initialize(_rArguments);
-                m_rController->update();
-            }
-        }
-
-        addStatusListener(m_aCommandURL);
-        update();
     }
+
+    SfxStatusBarControl *pController = nullptr;
+    if ( m_aCommandURL == ".uno:ZoomSlider" )
+    {
+        m_nSlotId = SID_ATTR_ZOOMSLIDER;
+        pController = new SvxZoomSliderControl(m_nSlotId,m_nId,*pStatusBar);
+    }
+    else if ( m_aCommandURL == ".uno:Zoom" )
+    {
+        m_nSlotId = SID_ATTR_ZOOM;
+        pController = new SvxZoomStatusBarControl(m_nSlotId,m_nId,*pStatusBar);
+    }
+
+    if ( pController )
+    {
+        m_rController.set( pController );
+        if ( m_rController.is() )
+        {
+            m_rController->initialize(_rArguments);
+            m_rController->update();
+        }
+    }
+
+    addStatusListener(m_aCommandURL);
+    update();
 }
 // XStatusListener
 void SAL_CALL OStatusbarController::statusChanged( const FeatureStateEvent& _aEvent)
@@ -129,27 +119,27 @@ void SAL_CALL OStatusbarController::statusChanged( const FeatureStateEvent& _aEv
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard(m_aMutex);
 
-    if ( m_rController.is() )
+    if ( !m_rController.is() )
+        return;
+
+    if ( m_aCommandURL == ".uno:ZoomSlider" )
     {
-        if ( m_aCommandURL == ".uno:ZoomSlider" )
+        Sequence< PropertyValue > aSeq;
+        if ( (_aEvent.State >>= aSeq) && aSeq.getLength() == 2 )
         {
-            Sequence< PropertyValue > aSeq;
-            if ( (_aEvent.State >>= aSeq) && aSeq.getLength() == 2 )
-            {
-                SvxZoomSliderItem aZoomSlider(100,20,400);
-                aZoomSlider.PutValue(_aEvent.State, 0);
-                static_cast<SvxZoomSliderControl*>(m_rController.get())->StateChanged(m_nSlotId,SfxItemState::DEFAULT,&aZoomSlider);
-            }
+            SvxZoomSliderItem aZoomSlider(100,20,400);
+            aZoomSlider.PutValue(_aEvent.State, 0);
+            static_cast<SvxZoomSliderControl*>(m_rController.get())->StateChanged(m_nSlotId,SfxItemState::DEFAULT,&aZoomSlider);
         }
-        else if ( m_aCommandURL == ".uno:Zoom" )
+    }
+    else if ( m_aCommandURL == ".uno:Zoom" )
+    {
+        Sequence< PropertyValue > aSeq;
+        if ( (_aEvent.State >>= aSeq) && aSeq.getLength() == 3 )
         {
-            Sequence< PropertyValue > aSeq;
-            if ( (_aEvent.State >>= aSeq) && aSeq.getLength() == 3 )
-            {
-                SvxZoomItem aZoom;
-                aZoom.PutValue(_aEvent.State, 0 );
-                static_cast<SvxZoomStatusBarControl*>(m_rController.get())->StateChanged(m_nSlotId,SfxItemState::DEFAULT,&aZoom);
-            }
+            SvxZoomItem aZoom;
+            aZoom.PutValue(_aEvent.State, 0 );
+            static_cast<SvxZoomStatusBarControl*>(m_rController.get())->StateChanged(m_nSlotId,SfxItemState::DEFAULT,&aZoom);
         }
     }
 }
@@ -220,6 +210,13 @@ void SAL_CALL OStatusbarController::dispose()
 }
 
 } // rptui
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+reportdesign_OStatusbarController_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new rptui::OStatusbarController(context));
+}
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

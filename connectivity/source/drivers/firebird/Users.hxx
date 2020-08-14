@@ -10,13 +10,10 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_USERS_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_USERS_HXX
 
-#include "DatabaseMetaData.hxx"
-
 #include <connectivity/sdbcx/VCollection.hxx>
+#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
 
-namespace connectivity
-{
-    namespace firebird
+namespace connectivity::firebird
     {
 
         /**
@@ -24,14 +21,14 @@ namespace connectivity
          */
         class Users: public ::connectivity::sdbcx::OCollection
         {
-        protected:
             css::uno::Reference< css::sdbc::XDatabaseMetaData >
                 m_xMetaData;
+        protected:
 
             // OCollection
             virtual void impl_refresh() override;
             virtual ::connectivity::sdbcx::ObjectType createObject(
-                                                const ::rtl::OUString& rName) override;
+                                                const OUString& rName) override;
             virtual css::uno::Reference< css::beans::XPropertySet >
                     createDescriptor() override;
             virtual ::connectivity::sdbcx::ObjectType appendObject(
@@ -42,18 +39,17 @@ namespace connectivity
             Users(const css::uno::Reference< css::sdbc::XDatabaseMetaData >& rMetaData,
                   ::cppu::OWeakObject& rParent,
                   ::osl::Mutex& rMutex,
-                  ::connectivity::TStringVector& rNames);
+                  ::std::vector< OUString> const & rNames);
 
             // TODO: we should also implement XDataDescriptorFactory, XRefreshable,
             // XAppend,  etc., but all are optional.
 
             // XDrop
-            virtual void dropObject(sal_Int32 nPosition, const ::rtl::OUString& rName) override;
+            virtual void dropObject(sal_Int32 nPosition, const OUString& rName) override;
 
         };
 
-    } // namespace firebird
-} // namespace connectivity
+} // namespace connectivity::firebird
 
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_USERS_HXX

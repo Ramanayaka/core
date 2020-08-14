@@ -20,33 +20,27 @@
 #define INCLUDED_SD_SOURCE_UI_UNOIDL_UNOPAGE_HXX
 
 #include <com/sun/star/document/XLinkTargetSupplier.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/drawing/XMasterPageTarget.hpp>
+#include <com/sun/star/drawing/XShapeCombiner.hpp>
+#include <com/sun/star/drawing/XShapeBinder.hpp>
 #include <com/sun/star/presentation/XPresentationPage.hpp>
 #include <com/sun/star/animations/XAnimationNodeSupplier.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/office/XAnnotationAccess.hpp>
 
-#include <svl/itemprop.hxx>
-
 #include <svx/unopage.hxx>
 #include <svx/fmdpage.hxx>
-#include <svx/svdpool.hxx>
 
 #include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include "unosrch.hxx"
+#include <sdpage.hxx>
 
-class SdPage;
 class SdrObject;
 class SdXImpressDocument;
-struct SfxItemPropertySimpleEntry;
 
-/***********************************************************************
-*                                                                      *
-***********************************************************************/
 class SdGenericDrawPage : public SvxFmDrawPage,
                           public SdUnoSearchReplaceShape,
                           public css::drawing::XShapeCombiner,
@@ -59,7 +53,7 @@ class SdGenericDrawPage : public SvxFmDrawPage,
                           public css::document::XLinkTargetSupplier
 {
 private:
-    SdXImpressDocument* mpModel;
+    SdXImpressDocument* mpDocModel;
     SdrModel* mpSdrModel;
     bool      mbIsImpressDocument;
     sal_Int16 mnTempPageNumber; // for printing handouts
@@ -77,12 +71,12 @@ protected:
     virtual void getBackground( css::uno::Any& rValue );
 
     OUString getBookmarkURL() const;
-    void setBookmarkURL( OUString& rURL );
+    void setBookmarkURL( OUString const & rURL );
 
-    void SetLftBorder( sal_Int32 nValue );
-    void SetRgtBorder( sal_Int32 nValue );
-    void SetUppBorder( sal_Int32 nValue );
-    void SetLwrBorder( sal_Int32 nValue );
+    void SetLeftBorder( sal_Int32 nValue );
+    void SetRightBorder( sal_Int32 nValue );
+    void SetUpperBorder( sal_Int32 nValue );
+    void SetLowerBorder( sal_Int32 nValue );
 
     void SetWidth( sal_Int32 nWidth );
     void SetHeight( sal_Int32 nHeight );
@@ -98,11 +92,11 @@ protected:
     void throwIfDisposed() const;
 
 public:
-    SdGenericDrawPage( SdXImpressDocument* pModel, SdPage* pInPage, const SvxItemPropertySet* pSet ) throw();
+    SdGenericDrawPage(SdXImpressDocument* pModel, SdPage* pInPage, const SvxItemPropertySet* pSet);
     virtual ~SdGenericDrawPage() throw() override;
 
     // intern
-    bool isValid() { return (SvxDrawPage::mpPage != nullptr) && (mpModel != nullptr); }
+    bool isValid() const { return (SvxDrawPage::mpPage != nullptr) && (mpModel != nullptr); }
 
     SdPage* GetPage() const { return static_cast<SdPage*>(SvxDrawPage::mpPage); }
     SdXImpressDocument* GetModel() const;
@@ -110,7 +104,7 @@ public:
     static const css::uno::Sequence< sal_Int8 > & getUnoTunnelId() throw();
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
 
-    // this is called whenever a SdrObject must be created for a empty api shape wrapper
+    // this is called whenever a SdrObject must be created for an empty api shape wrapper
     virtual SdrObject *CreateSdrObject_( const css::uno::Reference< css::drawing::XShape >& xShape ) override;
 
     // SvxFmDrawPage
@@ -172,14 +166,14 @@ private:
 
 protected:
     virtual void setBackground( const css::uno::Any& rValue ) override;
-    virtual void getBackground( css::uno::Any& rValue ) throw() override;
+    virtual void getBackground( css::uno::Any& rValue ) override;
 public:
-    SdDrawPage( SdXImpressDocument* pModel, SdPage* pInPage ) throw();
+    SdDrawPage(SdXImpressDocument* pModel, SdPage* pInPage);
     virtual ~SdDrawPage() throw() override;
 
     UNO3_GETIMPLEMENTATION_DECL( SdDrawPage )
 
-    static OUString getPageApiName( SdPage* pPage );
+    static OUString getPageApiName( SdPage const * pPage );
     static OUString getPageApiNameFromUiName( const OUString& rUIName );
     static OUString getUiNameFromPageApiName( const OUString& rApiName );
 
@@ -235,7 +229,7 @@ protected:
     virtual void getBackground( css::uno::Any& rValue ) override;
 
 public:
-    SdMasterPage( SdXImpressDocument* pModel, SdPage* pInPage ) throw();
+    SdMasterPage(SdXImpressDocument* pModel, SdPage* pInPage);
     virtual ~SdMasterPage() throw() override;
 
     UNO3_GETIMPLEMENTATION_DECL(SdMasterPage)

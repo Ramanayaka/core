@@ -17,24 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "odbc/OResultSet.hxx"
-#include "odbc/OTools.hxx"
-#include "odbc/OResultSetMetaData.hxx"
+#include <odbc/OResultSet.hxx>
+#include <odbc/OTools.hxx>
+#include <odbc/OResultSetMetaData.hxx>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/PropertyVetoException.hpp>
 #include <com/sun/star/sdbcx/CompareBookmark.hpp>
 #include <com/sun/star/sdbc/ResultSetConcurrency.hpp>
-#include <com/sun/star/sdbc/FetchDirection.hpp>
 #include <com/sun/star/sdbc/ResultSetType.hpp>
 #include <comphelper/property.hxx>
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <comphelper/types.hxx>
 #include <connectivity/dbtools.hxx>
 #include <connectivity/dbexception.hxx>
+#include <o3tl/safeint.hxx>
+#include <sal/log.hxx>
 
 using namespace ::comphelper;
 using namespace connectivity;
@@ -64,15 +64,12 @@ namespace
 //  IMPLEMENT_SERVICE_INFO(OResultSet,"com.sun.star.sdbcx.OResultSet","com.sun.star.sdbc.ResultSet");
 OUString SAL_CALL OResultSet::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdbcx.odbc.ResultSet");
+    return "com.sun.star.sdbcx.odbc.ResultSet";
 }
 
  Sequence< OUString > SAL_CALL OResultSet::getSupportedServiceNames(  )
 {
-     Sequence< OUString > aSupported(2);
-    aSupported[0] = "com.sun.star.sdbc.ResultSet";
-    aSupported[1] = "com.sun.star.sdbcx.ResultSet";
-    return aSupported;
+    return { "com.sun.star.sdbc.ResultSet", "com.sun.star.sdbcx.ResultSet" };
 }
 
 sal_Bool SAL_CALL OResultSet::supportsService( const OUString& _rServiceName )
@@ -87,17 +84,13 @@ OResultSet::OResultSet(SQLHANDLE _pStatementHandle ,OStatement_Base* pStmt) :   
                         ,m_aStatementHandle(_pStatementHandle)
                         ,m_aConnectionHandle(pStmt->getConnectionHandle())
                         ,m_pStatement(pStmt)
-                        ,m_pSkipDeletedSet(nullptr)
                         ,m_xStatement(*pStmt)
-                        ,m_xMetaData(nullptr)
-                        ,m_pRowStatusArray( nullptr )
                         ,m_nTextEncoding(pStmt->getOwnConnection()->getTextEncoding())
                         ,m_nRowPos(0)
                         ,m_nUseBookmarks(ODBC_SQL_NOT_DEFINED)
                         ,m_nCurrentFetchState(0)
                         ,m_bWasNull(true)
                         ,m_bEOF(true)
-                        ,m_bInserting(false)
                         ,m_bRowInserted(false)
                         ,m_bRowDeleted(false)
                         ,m_bUseFetchScroll(false)
@@ -105,8 +98,8 @@ OResultSet::OResultSet(SQLHANDLE _pStatementHandle ,OStatement_Base* pStmt) :   
     osl_atomic_increment( &m_refCount );
     try
     {
-        m_pRowStatusArray = new SQLUSMALLINT[1]; // the default value
-        setStmtOption<SQLUSMALLINT*, SQL_IS_POINTER>(SQL_ATTR_ROW_STATUS_PTR, m_pRowStatusArray);
+        m_pRowStatusArray.reset( new SQLUSMALLINT[1] ); // the default value
+        setStmtOption<SQLUSMALLINT*, SQL_IS_POINTER>(SQL_ATTR_ROW_STATUS_PTR, m_pRowStatusArray.get());
     }
     catch(const Exception&)
     { // we don't want our result destroy here
@@ -118,7 +111,7 @@ OResultSet::OResultSet(SQLHANDLE _pStatementHandle ,OStatement_Base* pStmt) :   
         SQLUINTEGER nValueLen = m_pStatement->getCursorProperties(nCurType,false);
         if( (nValueLen & SQL_CA2_SENSITIVITY_DELETIONS) != SQL_CA2_SENSITIVITY_DELETIONS ||
             (nValueLen & SQL_CA2_CRC_EXACT) != SQL_CA2_CRC_EXACT)
-            m_pSkipDeletedSet = new OSkipDeletedSet(this);
+            m_pSkipDeletedSet.reset( new OSkipDeletedSet(this) );
     }
     catch(const Exception&)
     { // we don't want our result destroy here
@@ -137,7 +130,7 @@ OResultSet::OResultSet(SQLHANDLE _pStatementHandle ,OStatement_Base* pStmt) :   
         // In other words, isolate them from ODBC restrictions.
         // TODO: we assume SQL_GD_BLOCK, unless fetchSize is 1
         OTools::GetInfo(m_pStatement->getOwnConnection(),m_aConnectionHandle,SQL_GETDATA_EXTENSIONS,nValueLen,nullptr);
-        m_bFetchDataInOrder = !((SQL_GD_ANY_ORDER & nValueLen) == SQL_GD_ANY_ORDER);
+        m_bFetchDataInOrder = ((SQL_GD_ANY_ORDER & nValueLen) != SQL_GD_ANY_ORDER);
     }
     catch(const Exception&)
     {
@@ -165,8 +158,6 @@ OResultSet::OResultSet(SQLHANDLE _pStatementHandle ,OStatement_Base* pStmt) :   
 
 OResultSet::~OResultSet()
 {
-    delete [] m_pRowStatusArray;
-    delete m_pSkipDeletedSet;
 }
 
 void OResultSet::construct()
@@ -184,6 +175,7 @@ void OResultSet::disposing()
     ::osl::MutexGuard aGuard(m_aMutex);
     releaseBuffer();
 
+    setStmtOption<SQLUSMALLINT*, SQL_IS_POINTER>(SQL_ATTR_ROW_STATUS_PTR, nullptr);
     m_xStatement.clear();
     m_xMetaData.clear();
 }
@@ -194,62 +186,60 @@ SQLRETURN OResultSet::unbind(bool _bUnbindHandle)
     if ( _bUnbindHandle )
         nRet = N3SQLFreeStmt(m_aStatementHandle,SQL_UNBIND);
 
-    if ( m_aBindVector.size() > 0 )
+    if ( !m_aBindVector.empty() )
     {
-        TVoidVector::iterator pValue = m_aBindVector.begin();
-        TVoidVector::const_iterator pEnd = m_aBindVector.end();
-        for(; pValue != pEnd; ++pValue)
+        for(auto& [rPtrAddr, rType] : m_aBindVector)
         {
-            switch (pValue->second)
+            switch (rType)
             {
                 case DataType::CHAR:
                 case DataType::VARCHAR:
-                    delete static_cast< OString* >(reinterpret_cast< void * >(pValue->first));
+                    delete static_cast< OString* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
                 case DataType::BIGINT:
-                    delete static_cast< sal_Int64* >(reinterpret_cast< void * >(pValue->first));
+                    delete static_cast< sal_Int64* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
                 case DataType::DECIMAL:
                 case DataType::NUMERIC:
-                    delete static_cast< OString* >(reinterpret_cast< void * >(pValue->first));
+                    delete static_cast< OString* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
                 case DataType::REAL:
                 case DataType::DOUBLE:
-                    delete static_cast< double* >(reinterpret_cast< void * >(pValue->first));
+                    delete static_cast< double* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
                 case DataType::LONGVARCHAR:
                 case DataType::CLOB:
-                    delete [] static_cast< char* >(reinterpret_cast< void * >(pValue->first));
+                    delete [] static_cast< char* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
                 case DataType::LONGVARBINARY:
                 case DataType::BLOB:
-                    delete [] static_cast< char* >(reinterpret_cast< void * >(pValue->first));
+                    delete [] static_cast< char* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
                 case DataType::DATE:
-                    delete static_cast< DATE_STRUCT* >(reinterpret_cast< void * >(pValue->first));
+                    delete static_cast< DATE_STRUCT* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
                 case DataType::TIME:
-                    delete static_cast< TIME_STRUCT* >(reinterpret_cast< void * >(pValue->first));
+                    delete static_cast< TIME_STRUCT* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
                 case DataType::TIMESTAMP:
-                    delete static_cast< TIMESTAMP_STRUCT* >(reinterpret_cast< void * >(pValue->first));
+                    delete static_cast< TIMESTAMP_STRUCT* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
                 case DataType::BIT:
                 case DataType::TINYINT:
-                    delete static_cast< sal_Int8* >(reinterpret_cast< void * >(pValue->first));
+                    delete static_cast< sal_Int8* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
                 case DataType::SMALLINT:
-                    delete static_cast< sal_Int16* >(reinterpret_cast< void * >(pValue->first));
+                    delete static_cast< sal_Int16* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
                 case DataType::INTEGER:
-                    delete static_cast< sal_Int32* >(reinterpret_cast< void * >(pValue->first));
+                    delete static_cast< sal_Int32* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
                 case DataType::FLOAT:
-                    delete static_cast< float* >(reinterpret_cast< void * >(pValue->first));
+                    delete static_cast< float* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
                 case DataType::BINARY:
                 case DataType::VARBINARY:
-                    delete static_cast< sal_Int8* >(reinterpret_cast< void * >(pValue->first));
+                    delete static_cast< sal_Int8* >(reinterpret_cast< void * >(rPtrAddr));
                     break;
             }
         }
@@ -406,10 +396,9 @@ void OResultSet::ensureCacheForColumn(sal_Int32 columnIndex)
 }
 void OResultSet::invalidateCache()
 {
-    const TDataRow::const_iterator end = m_aRow.end();
-    for(TDataRow::iterator i=m_aRow.begin(); i!=end; ++i)
+    for(auto& rItem : m_aRow)
     {
-        i->setBound(false);
+        rItem.setBound(false);
     }
 }
 
@@ -484,8 +473,7 @@ Sequence< sal_Int8 > SAL_CALL OResultSet::getBytes( sal_Int32 columnIndex )
         break;
     default:
     {
-        OUString sRet;
-        sRet = m_aRow[columnIndex].getString();
+        OUString const & sRet = m_aRow[columnIndex].getString();
         nRet = Sequence<sal_Int8>(reinterpret_cast<const sal_Int8*>(sRet.getStr()),sizeof(sal_Unicode)*sRet.getLength());
     }
     }
@@ -504,7 +492,7 @@ Sequence< sal_Int8 > OResultSet::impl_getBytes( sal_Int32 columnIndex )
     case SQL_CHAR:
     case SQL_LONGVARCHAR:
     {
-        OUString aRet = OTools::getStringValue(m_pStatement->getOwnConnection(),m_aStatementHandle,columnIndex,nColumnType,m_bWasNull,**this,m_nTextEncoding);
+        OUString const & aRet = OTools::getStringValue(m_pStatement->getOwnConnection(),m_aStatementHandle,columnIndex,nColumnType,m_bWasNull,**this,m_nTextEncoding);
         return Sequence<sal_Int8>(reinterpret_cast<const sal_Int8*>(aRet.getStr()),sizeof(sal_Unicode)*aRet.getLength());
     }
     default:
@@ -828,7 +816,7 @@ void SAL_CALL OResultSet::insertRow(  )
 
     SQLLEN nRealLen = 0;
     Sequence<sal_Int8> aBookmark(nMaxBookmarkLen);
-    static_assert(static_cast<size_t>(nMaxBookmarkLen) >= sizeof(SQLLEN), "must be larger");
+    static_assert(o3tl::make_unsigned(nMaxBookmarkLen) >= sizeof(SQLLEN), "must be larger");
 
     SQLRETURN nRet = N3SQLBindCol(m_aStatementHandle,
                                 0,
@@ -920,14 +908,16 @@ void SAL_CALL OResultSet::updateRow(  )
                                 &nRealLen
                                 );
             OTools::ThrowException(m_pStatement->getOwnConnection(),nRet,m_aStatementHandle,SQL_HANDLE_STMT,*this);
-            fillNeededData(nRet = N3SQLBulkOperations(m_aStatementHandle, SQL_UPDATE_BY_BOOKMARK));
+            nRet = N3SQLBulkOperations(m_aStatementHandle, SQL_UPDATE_BY_BOOKMARK);
+            fillNeededData(nRet);
             // the driver should not have touched this
             // (neither the contents of aBookmark FWIW)
             assert(nRealLen == aBookmark.getLength());
         }
         else
         {
-            fillNeededData(nRet = N3SQLSetPos(m_aStatementHandle,1,SQL_UPDATE,SQL_LOCK_NO_CHANGE));
+            nRet = N3SQLSetPos(m_aStatementHandle,1,SQL_UPDATE,SQL_LOCK_NO_CHANGE);
+            fillNeededData(nRet);
         }
         OTools::ThrowException(m_pStatement->getOwnConnection(),nRet,m_aStatementHandle,SQL_HANDLE_STMT,*this);
         // unbind all columns so we can fetch all columns again with SQLGetData
@@ -956,16 +946,10 @@ void SAL_CALL OResultSet::deleteRow(  )
     m_bRowDeleted = ( m_pRowStatusArray[0] == SQL_ROW_DELETED );
     if ( m_bRowDeleted )
     {
-        TBookmarkPosMap::iterator aIter = m_aPosToBookmarks.begin();
-        TBookmarkPosMap::const_iterator aEnd = m_aPosToBookmarks.end();
-        for (; aIter != aEnd; ++aIter)
-        {
-            if ( aIter->second == nPos )
-            {
-                m_aPosToBookmarks.erase(aIter);
-                break;
-            }
-        }
+        TBookmarkPosMap::iterator aIter = std::find_if(m_aPosToBookmarks.begin(), m_aPosToBookmarks.end(),
+            [&nPos](const TBookmarkPosMap::value_type& rEntry) { return rEntry.second == nPos; });
+        if (aIter != m_aPosToBookmarks.end())
+            m_aPosToBookmarks.erase(aIter);
     }
     if ( m_pSkipDeletedSet )
         m_pSkipDeletedSet->deletePosition(nPos);
@@ -987,7 +971,6 @@ void SAL_CALL OResultSet::moveToInsertRow(  )
     // first unbound all columns
     OSL_VERIFY( unbind() == SQL_SUCCESS );
     //  SQLRETURN nRet = N3SQLSetStmtAttr(m_aStatementHandle,SQL_ATTR_ROW_ARRAY_SIZE ,(SQLPOINTER)1,SQL_IS_INTEGER);
-    m_bInserting = true;
 }
 
 
@@ -996,7 +979,7 @@ void SAL_CALL OResultSet::moveToCurrentRow(  )
     invalidateCache();
 }
 
-void OResultSet::updateValue(sal_Int32 columnIndex,SQLSMALLINT _nType,void* _pValue)
+void OResultSet::updateValue(sal_Int32 columnIndex, SQLSMALLINT _nType, void const * _pValue)
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OResultSet_BASE::rBHelper.bDisposed);
@@ -1072,7 +1055,7 @@ void SAL_CALL OResultSet::updateString( sal_Int32 columnIndex, const OUString& x
     m_aRow[columnIndex] = x;
     m_aRow[columnIndex].setTypeKind(nType); // OJ: otherwise longvarchar will be recognized by fillNeededData
     m_aRow[columnIndex].setBound(true);
-    updateValue(columnIndex,nOdbcType,const_cast<OUString *>(&x));
+    updateValue(columnIndex,nOdbcType, &x);
 }
 
 void SAL_CALL OResultSet::updateBytes( sal_Int32 columnIndex, const Sequence< sal_Int8 >& x )
@@ -1082,7 +1065,7 @@ void SAL_CALL OResultSet::updateBytes( sal_Int32 columnIndex, const Sequence< sa
     m_aRow[columnIndex] = x;
     m_aRow[columnIndex].setTypeKind(nType); // OJ: otherwise longvarbinary will be recognized by fillNeededData
     m_aRow[columnIndex].setBound(true);
-    updateValue(columnIndex,nOdbcType,const_cast<css::uno::Sequence<sal_Int8> *>(&x));
+    updateValue(columnIndex,nOdbcType, &x);
 }
 
 void SAL_CALL OResultSet::updateDate( sal_Int32 columnIndex, const Date& x )
@@ -1173,7 +1156,7 @@ Sequence<sal_Int8> OResultSet::impl_getBookmark(  )
 
         Sequence<sal_Int8> bookmark = OTools::getBytesValue(m_pStatement->getOwnConnection(),m_aStatementHandle,0,SQL_C_VARBOOKMARK,m_bWasNull,**this);
         m_aPosToBookmarks[bookmark] = m_nRowPos;
-        OSL_ENSURE(bookmark.getLength(),"Invalid bookmark from length 0!");
+        OSL_ENSURE(bookmark.hasElements(),"Invalid bookmark from length 0!");
         return bookmark;
     }
     else
@@ -1190,8 +1173,8 @@ sal_Bool SAL_CALL OResultSet::moveToBookmark( const  Any& bookmark )
     invalidateCache();
     Sequence<sal_Int8> aBookmark;
     bookmark >>= aBookmark;
-    OSL_ENSURE(aBookmark.getLength(),"Invalid bookmark from length 0!");
-    if(aBookmark.getLength())
+    OSL_ENSURE(aBookmark.hasElements(),"Invalid bookmark from length 0!");
+    if(aBookmark.hasElements())
     {
         SQLRETURN nReturn = setStmtOption<SQLLEN*, SQL_IS_POINTER>(SQL_ATTR_FETCH_BOOKMARK_PTR, reinterpret_cast<SQLLEN*>(aBookmark.getArray()));
 
@@ -1388,14 +1371,9 @@ void OResultSet::setFetchSize(sal_Int32 _par0)
     {
         throw css::beans::PropertyVetoException("SDBC/ODBC layer not prepared for fetchSize > 1", *this);
     }
-    if ( _par0 > 0 )
-    {
-        setStmtOption<SQLULEN, SQL_IS_UINTEGER>(SQL_ATTR_ROW_ARRAY_SIZE, _par0);
-        delete [] m_pRowStatusArray;
-
-        m_pRowStatusArray = new SQLUSMALLINT[_par0];
-        setStmtOption<SQLUSMALLINT*, SQL_IS_POINTER>(SQL_ATTR_ROW_STATUS_PTR, m_pRowStatusArray);
-    }
+    setStmtOption<SQLULEN, SQL_IS_UINTEGER>(SQL_ATTR_ROW_ARRAY_SIZE, _par0);
+    m_pRowStatusArray.reset( new SQLUSMALLINT[_par0] );
+    setStmtOption<SQLUSMALLINT*, SQL_IS_POINTER>(SQL_ATTR_ROW_STATUS_PTR, m_pRowStatusArray.get());
 }
 
 IPropertyArrayHelper* OResultSet::createArrayHelper( ) const
@@ -1463,7 +1441,7 @@ void OResultSet::setFastPropertyValue_NoBroadcast(
         case PROPERTY_ID_CURSORNAME:
         case PROPERTY_ID_RESULTSETCONCURRENCY:
         case PROPERTY_ID_RESULTSETTYPE:
-            throw Exception();
+            throw Exception("cannot set prop " + OUString::number(nHandle), nullptr);
         case PROPERTY_ID_FETCHDIRECTION:
             setFetchDirection(getINT32(rValue));
             break;
@@ -1661,13 +1639,10 @@ bool OResultSet::move(IResultSetHelper::Movement _eCursorPosition, sal_Int32 _nO
             break;
         case IResultSetHelper::BOOKMARK: // special case here because we are only called with position numbers
         {
-            TBookmarkPosMap::const_iterator aIter = m_aPosToBookmarks.begin();
-            TBookmarkPosMap::const_iterator aEnd = m_aPosToBookmarks.end();
-            for (; aIter != aEnd; ++aIter)
-            {
-                if ( aIter->second == _nOffset )
-                    return moveToBookmark(makeAny(aIter->first));
-            }
+            TBookmarkPosMap::const_iterator aIter = std::find_if(m_aPosToBookmarks.begin(), m_aPosToBookmarks.end(),
+                [&_nOffset](const TBookmarkPosMap::value_type& rEntry) { return rEntry.second == _nOffset; });
+            if (aIter != m_aPosToBookmarks.end())
+                return moveToBookmark(makeAny(aIter->first));
             SAL_WARN( "connectivity.odbc", "Bookmark not found!");
         }
         return false;
@@ -1729,7 +1704,7 @@ bool OResultSet::move(IResultSetHelper::Movement _eCursorPosition, sal_Int32 _nO
             ensureCacheForColumn(0);
             Sequence<sal_Int8> bookmark  = OTools::getBytesValue(m_pStatement->getOwnConnection(),m_aStatementHandle,0,SQL_C_VARBOOKMARK,m_bWasNull,**this);
             m_aPosToBookmarks[bookmark] = m_nRowPos;
-            OSL_ENSURE(bookmark.getLength(),"Invalid bookmark from length 0!");
+            OSL_ENSURE(bookmark.hasElements(),"Invalid bookmark from length 0!");
             m_aRow[0] = bookmark;
         }
         m_aRow[0].setBound(true);
@@ -1770,57 +1745,58 @@ bool OResultSet::moveImpl(IResultSetHelper::Movement _eCursorPosition, sal_Int32
 void OResultSet::fillNeededData(SQLRETURN _nRet)
 {
     SQLRETURN nRet = _nRet;
-    if( nRet == SQL_NEED_DATA)
+    if( nRet != SQL_NEED_DATA)
+        return;
+
+    void* pColumnIndex = nullptr;
+    nRet = N3SQLParamData(m_aStatementHandle,&pColumnIndex);
+
+    do
     {
-        void* pColumnIndex = nullptr;
-        nRet = N3SQLParamData(m_aStatementHandle,&pColumnIndex);
+        if (nRet != SQL_SUCCESS && nRet != SQL_SUCCESS_WITH_INFO && nRet != SQL_NEED_DATA)
+            break;
 
-        do
+        sal_IntPtr nColumnIndex ( reinterpret_cast<sal_IntPtr>(pColumnIndex));
+        Sequence< sal_Int8 > aSeq;
+        switch(m_aRow[nColumnIndex].getTypeKind())
         {
-            if (nRet != SQL_SUCCESS && nRet != SQL_SUCCESS_WITH_INFO && nRet != SQL_NEED_DATA)
+            case DataType::BINARY:
+            case DataType::VARBINARY:
+            case DataType::LONGVARBINARY:
+            case DataType::BLOB:
+                aSeq = m_aRow[nColumnIndex];
+                N3SQLPutData (m_aStatementHandle, aSeq.getArray(), aSeq.getLength());
                 break;
-
-            sal_IntPtr nColumnIndex ( reinterpret_cast<sal_IntPtr>(pColumnIndex));
-            Sequence< sal_Int8 > aSeq;
-            switch(m_aRow[nColumnIndex].getTypeKind())
+            case SQL_WLONGVARCHAR:
             {
-                case DataType::BINARY:
-                case DataType::VARBINARY:
-                case DataType::LONGVARBINARY:
-                case DataType::BLOB:
-                    aSeq = m_aRow[nColumnIndex];
-                    N3SQLPutData (m_aStatementHandle, aSeq.getArray(), aSeq.getLength());
-                    break;
-                case SQL_WLONGVARCHAR:
-                {
-                    OUString sRet;
-                    sRet = m_aRow[nColumnIndex].getString();
-                    N3SQLPutData (m_aStatementHandle, static_cast<SQLPOINTER>(const_cast<sal_Unicode *>(sRet.getStr())), sizeof(sal_Unicode)*sRet.getLength());
-                    break;
-                }
-                case DataType::LONGVARCHAR:
-                case DataType::CLOB:
-                {
-                    OUString sRet;
-                    sRet = m_aRow[nColumnIndex].getString();
-                    OString aString(OUStringToOString(sRet,m_nTextEncoding));
-                    N3SQLPutData (m_aStatementHandle, static_cast<SQLPOINTER>(const_cast<char *>(aString.getStr())), aString.getLength());
-                    break;
-                }
-                default:
-                    SAL_WARN( "connectivity.odbc", "Not supported at the moment!");
+                OUString const & sRet = m_aRow[nColumnIndex].getString();
+                N3SQLPutData (m_aStatementHandle, static_cast<SQLPOINTER>(const_cast<sal_Unicode *>(sRet.getStr())), sizeof(sal_Unicode)*sRet.getLength());
+                break;
             }
-            nRet = N3SQLParamData(m_aStatementHandle,&pColumnIndex);
+            case DataType::LONGVARCHAR:
+            case DataType::CLOB:
+            {
+                OUString sRet = m_aRow[nColumnIndex].getString();
+                OString aString(OUStringToOString(sRet,m_nTextEncoding));
+                N3SQLPutData (m_aStatementHandle, static_cast<SQLPOINTER>(const_cast<char *>(aString.getStr())), aString.getLength());
+                break;
+            }
+            default:
+                SAL_WARN( "connectivity.odbc", "Not supported at the moment!");
         }
-        while (nRet == SQL_NEED_DATA);
+        nRet = N3SQLParamData(m_aStatementHandle,&pColumnIndex);
     }
+    while (nRet == SQL_NEED_DATA);
 }
 
 SWORD OResultSet::impl_getColumnType_nothrow(sal_Int32 columnIndex)
 {
     std::map<sal_Int32,SWORD>::const_iterator aFind = m_aODBCColumnTypes.find(columnIndex);
     if ( aFind == m_aODBCColumnTypes.end() )
-        aFind = m_aODBCColumnTypes.insert(std::map<sal_Int32,SWORD>::value_type(columnIndex,OResultSetMetaData::getColumnODBCType(m_pStatement->getOwnConnection(),m_aStatementHandle,*this,columnIndex))).first;
+        aFind = m_aODBCColumnTypes.emplace(
+                           columnIndex,
+                           OResultSetMetaData::getColumnODBCType(m_pStatement->getOwnConnection(),m_aStatementHandle,*this,columnIndex)
+                        ).first;
     return aFind->second;
 }
 

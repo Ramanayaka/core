@@ -17,12 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <classes/framecontainer.hxx>
+#include <framework/framecontainer.hxx>
 
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
 
 #include <vcl/svapp.hxx>
 #include <comphelper/sequence.hxx>
+#include <sal/log.hxx>
 
 namespace framework{
 
@@ -141,7 +142,7 @@ void FrameContainer::clear()
 sal_uInt32 FrameContainer::getCount() const
 {
     SolarMutexGuard g;
-    return( (sal_uInt32)m_aContainer.size() );
+    return static_cast<sal_uInt32>(m_aContainer.size());
 }
 
 /**-***************************************************************************************************************
@@ -163,7 +164,7 @@ css::uno::Reference< css::frame::XFrame > FrameContainer::operator[]( sal_uInt32
     try
     {
         // Get element form container WITH automatic test of ranges!
-        // If index not valid, a out_of_range exception is thrown.
+        // If index not valid, an out_of_range exception is thrown.
         SolarMutexGuard g;
         xFrame = m_aContainer.at( nIndex );
     }
@@ -242,16 +243,16 @@ css::uno::Reference< css::frame::XFrame > FrameContainer::searchOnAllChildrens( 
     // Step over all child frames. But if direct child isn't the right one search on his children first - before
     // you go to next direct child of this container!
     css::uno::Reference< css::frame::XFrame > xSearchedFrame;
-    for( TFrameContainer::const_iterator pIterator=m_aContainer.begin(); pIterator!=m_aContainer.end(); ++pIterator )
+    for (auto const& container : m_aContainer)
     {
-        if ((*pIterator)->getName()==sName)
+        if (container->getName()==sName)
         {
-            xSearchedFrame = *pIterator;
+            xSearchedFrame = container;
             break;
         }
         else
         {
-            xSearchedFrame = (*pIterator)->findFrame( sName, css::frame::FrameSearchFlag::CHILDREN );
+            xSearchedFrame = container->findFrame( sName, css::frame::FrameSearchFlag::CHILDREN );
             if (xSearchedFrame.is())
                 break;
         }
@@ -274,11 +275,11 @@ css::uno::Reference< css::frame::XFrame > FrameContainer::searchOnDirectChildren
 {
     SolarMutexGuard g;
     css::uno::Reference< css::frame::XFrame > xSearchedFrame;
-    for( TFrameContainer::const_iterator pIterator=m_aContainer.begin(); pIterator!=m_aContainer.end(); ++pIterator )
+    for (auto const& container : m_aContainer)
     {
-        if ((*pIterator)->getName()==sName)
+        if (container->getName()==sName)
         {
-            xSearchedFrame = *pIterator;
+            xSearchedFrame = container;
             break;
         }
     }

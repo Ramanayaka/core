@@ -20,23 +20,45 @@
 #define INCLUDED_SW_INC_DDEFLD_HXX
 
 #include <sfx2/lnkbase.hxx>
+#include <svl/hint.hxx>
+#include <tools/solar.h>
 #include "swdllapi.h"
 #include "fldbas.hxx"
 
 class SwDoc;
+class SwNode;
+class SwNodes;
+
+namespace sw
+{
+    struct LinkAnchorSearchHint final : public SfxHint
+    {
+        SwNodes& m_rNodes;
+        const SwNode*& m_rpFoundNode;
+        LinkAnchorSearchHint(SwNodes& rNodes, const SwNode*& rpFoundNode) : m_rNodes(rNodes), m_rpFoundNode(rpFoundNode) {};
+        virtual ~LinkAnchorSearchHint() override;
+    };
+    struct InRangeSearchHint final : public SfxHint
+    {
+        const sal_uLong m_nSttNd, m_nEndNd;
+        bool& m_rIsInRange;
+        InRangeSearchHint(const sal_uLong nSttNd, const sal_uLong nEndNd, bool& rIsInRange)
+            : m_nSttNd(nSttNd), m_nEndNd(nEndNd), m_rIsInRange(rIsInRange) {}
+    };
+}
 
 // FieldType for DDE
-class SW_DLLPUBLIC SwDDEFieldType : public SwFieldType
+class SW_DLLPUBLIC SwDDEFieldType final : public SwFieldType
 {
-    OUString aName;
-    OUString aExpansion;
+    OUString m_aName;
+    OUString m_aExpansion;
 
-    tools::SvRef<sfx2::SvBaseLink> refLink;
-    SwDoc* pDoc;
+    tools::SvRef<sfx2::SvBaseLink> m_RefLink;
+    SwDoc* m_pDoc;
 
-    sal_uInt16 nRefCnt;
-    bool bCRLFFlag : 1;
-    bool bDeleted : 1;
+    sal_uInt16 m_nRefCount;
+    bool m_bCRLFFlag : 1;
+    bool m_bDeleted : 1;
 
     SAL_DLLPRIVATE void RefCntChgd();
 
@@ -45,46 +67,46 @@ public:
                     SfxLinkUpdateMode );
     virtual ~SwDDEFieldType() override;
 
-    const OUString& GetExpansion() const               { return aExpansion; }
-    void SetExpansion( const OUString& rStr )   { aExpansion = rStr;
-                                                  bCRLFFlag = false; }
+    const OUString& GetExpansion() const               { return m_aExpansion; }
+    void SetExpansion( const OUString& rStr )   { m_aExpansion = rStr;
+                                                  m_bCRLFFlag = false; }
 
-    virtual SwFieldType* Copy() const override;
+    virtual std::unique_ptr<SwFieldType> Copy() const override;
     virtual OUString GetName() const override;
 
-    virtual bool QueryValue( css::uno::Any& rVal, sal_uInt16 nWhich ) const override;
-    virtual bool PutValue( const css::uno::Any& rVal, sal_uInt16 nWhich ) override;
+    virtual void QueryValue( css::uno::Any& rVal, sal_uInt16 nWhich ) const override;
+    virtual void PutValue( const css::uno::Any& rVal, sal_uInt16 nWhich ) override;
 
-    OUString GetCmd() const;
+    OUString const & GetCmd() const;
     void SetCmd( const OUString& aStr );
 
-    SfxLinkUpdateMode GetType() const          { return refLink->GetUpdateMode();  }
-    void SetType( SfxLinkUpdateMode nType )    { refLink->SetUpdateMode( nType );  }
+    SfxLinkUpdateMode GetType() const          { return m_RefLink->GetUpdateMode();  }
+    void SetType( SfxLinkUpdateMode nType )    { m_RefLink->SetUpdateMode( nType );  }
 
-    bool IsDeleted() const          { return bDeleted; }
-    void SetDeleted( bool b )       { bDeleted = b; }
+    bool IsDeleted() const          { return m_bDeleted; }
+    void SetDeleted( bool b )       { m_bDeleted = b; }
 
-    void Disconnect()               { refLink->Disconnect(); }
+    void Disconnect()               { m_RefLink->Disconnect(); }
 
-    const ::sfx2::SvBaseLink& GetBaseLink() const    { return *refLink; }
-          ::sfx2::SvBaseLink& GetBaseLink()          { return *refLink; }
+    const ::sfx2::SvBaseLink& GetBaseLink() const    { return *m_RefLink; }
+          ::sfx2::SvBaseLink& GetBaseLink()          { return *m_RefLink; }
 
-    const SwDoc* GetDoc() const     { return pDoc; }
-          SwDoc* GetDoc()           { return pDoc; }
+    const SwDoc* GetDoc() const     { return m_pDoc; }
+          SwDoc* GetDoc()           { return m_pDoc; }
     void SetDoc( SwDoc* pDoc );
 
-    void IncRefCnt() {  if( !nRefCnt++ && pDoc ) RefCntChgd(); }
-    void DecRefCnt() {  if( !--nRefCnt && pDoc ) RefCntChgd(); }
+    void IncRefCnt() {  if( !m_nRefCount++ && m_pDoc ) RefCntChgd(); }
+    void DecRefCnt() {  if( !--m_nRefCount && m_pDoc ) RefCntChgd(); }
 
-    void SetCRLFDelFlag( bool bFlag )    { bCRLFFlag = bFlag; }
+    void SetCRLFDelFlag( bool bFlag )    { m_bCRLFFlag = bFlag; }
 };
 
 // DDE-field
-class SwDDEField : public SwField
+class SwDDEField final : public SwField
 {
 private:
-    virtual OUString Expand() const override;
-    virtual SwField* Copy() const override;
+    virtual OUString ExpandImpl(SwRootFrame const* pLayout) const override;
+    virtual std::unique_ptr<SwField> Copy() const override;
 
 public:
     SwDDEField(SwDDEFieldType*);

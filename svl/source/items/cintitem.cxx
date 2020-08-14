@@ -18,21 +18,21 @@
  */
 
 #include <com/sun/star/uno/Any.hxx>
-#include <tools/stream.hxx>
 #include <svl/cintitem.hxx>
+#include <sal/log.hxx>
 
 
 // virtual
 bool CntByteItem::operator ==(const SfxPoolItem & rItem) const
 {
     assert(dynamic_cast<const CntByteItem*>(&rItem) != nullptr);
-    return m_nValue == (static_cast< const CntByteItem * >(&rItem))->m_nValue;
+    return m_nValue == static_cast< const CntByteItem * >(&rItem)->m_nValue;
 }
 
 // virtual
 bool CntByteItem::GetPresentation(SfxItemPresentation, MapUnit, MapUnit,
                                   OUString & rText,
-                                  const IntlWrapper *) const
+                                  const IntlWrapper&) const
 {
     rText = OUString::number( m_nValue );
     return true;
@@ -61,33 +61,9 @@ bool CntByteItem::PutValue(const css::uno::Any& rVal, sal_uInt8)
 }
 
 // virtual
-SfxPoolItem * CntByteItem::Create(SvStream & rStream, sal_uInt16) const
-{
-    short nTheValue = 0;
-    rStream.ReadInt16( nTheValue );
-    return new CntByteItem(Which(), sal_uInt8(nTheValue));
-}
-
-// virtual
-SvStream & CntByteItem::Store(SvStream & rStream, sal_uInt16) const
-{
-    rStream.WriteInt16( short(m_nValue) );
-    return rStream;
-}
-
-// virtual
-SfxPoolItem * CntByteItem::Clone(SfxItemPool *) const
+CntByteItem* CntByteItem::Clone(SfxItemPool *) const
 {
     return new CntByteItem(*this);
-}
-
-
-CntUInt16Item::CntUInt16Item(sal_uInt16 which, SvStream & rStream) :
-    SfxPoolItem(which)
-{
-    sal_uInt16 nTheValue = 0;
-    rStream.ReadUInt16( nTheValue );
-    m_nValue = nTheValue;
 }
 
 // virtual
@@ -101,7 +77,7 @@ bool CntUInt16Item::operator ==(const SfxPoolItem & rItem) const
 bool CntUInt16Item::GetPresentation(SfxItemPresentation,
                                     MapUnit, MapUnit,
                                     OUString & rText,
-                                    const IntlWrapper *)
+                                    const IntlWrapper&)
     const
 {
     rText = OUString::number( m_nValue );
@@ -122,7 +98,7 @@ bool CntUInt16Item::PutValue(const css::uno::Any& rVal, sal_uInt8)
     sal_Int32 nValue = 0;
     if (rVal >>= nValue)
     {
-        SAL_WARN_IF(nValue > USHRT_MAX, "svl.items", "Overflow in UInt16 value!");
+        SAL_WARN_IF(nValue < 0 || nValue > SAL_MAX_UINT16, "svl.items", "Overflow in UInt16 value!");
         m_nValue = static_cast<sal_uInt16>(nValue);
         return true;
     }
@@ -132,30 +108,9 @@ bool CntUInt16Item::PutValue(const css::uno::Any& rVal, sal_uInt8)
 }
 
 // virtual
-SfxPoolItem * CntUInt16Item::Create(SvStream & rStream, sal_uInt16) const
-{
-    return new CntUInt16Item(Which(), rStream);
-}
-
-// virtual
-SvStream & CntUInt16Item::Store(SvStream &rStream, sal_uInt16) const
-{
-    rStream.WriteUInt16( m_nValue );
-    return rStream;
-}
-
-// virtual
-SfxPoolItem * CntUInt16Item::Clone(SfxItemPool *) const
+CntUInt16Item* CntUInt16Item::Clone(SfxItemPool *) const
 {
     return new CntUInt16Item(*this);
-}
-
-
-CntInt32Item::CntInt32Item(sal_uInt16 which, SvStream & rStream)
-    : SfxPoolItem(which)
-    , m_nValue(0)
-{
-    rStream.ReadInt32( m_nValue );
 }
 
 // virtual
@@ -169,7 +124,7 @@ bool CntInt32Item::operator ==(const SfxPoolItem & rItem) const
 bool CntInt32Item::GetPresentation(SfxItemPresentation,
                                    MapUnit, MapUnit,
                                    OUString & rText,
-                                   const IntlWrapper *) const
+                                   const IntlWrapper&) const
 {
     rText = OUString::number( m_nValue );
     return true;
@@ -198,31 +153,9 @@ bool CntInt32Item::PutValue(const css::uno::Any& rVal, sal_uInt8)
 }
 
 // virtual
-SfxPoolItem * CntInt32Item::Create(SvStream & rStream, sal_uInt16) const
-{
-    return new CntInt32Item(Which(), rStream);
-}
-
-// virtual
-SvStream & CntInt32Item::Store(SvStream &rStream, sal_uInt16) const
-{
-    rStream.WriteInt32( m_nValue );
-    return rStream;
-}
-
-// virtual
-SfxPoolItem * CntInt32Item::Clone(SfxItemPool *) const
+CntInt32Item* CntInt32Item::Clone(SfxItemPool *) const
 {
     return new CntInt32Item(*this);
-}
-
-
-CntUInt32Item::CntUInt32Item(sal_uInt16 which, SvStream & rStream) :
-    SfxPoolItem(which)
-{
-    sal_uInt32 nTheValue = 0;
-    rStream.ReadUInt32( nTheValue );
-    m_nValue = nTheValue;
 }
 
 // virtual
@@ -236,7 +169,7 @@ bool CntUInt32Item::operator ==(const SfxPoolItem & rItem) const
 bool CntUInt32Item::GetPresentation(SfxItemPresentation,
                                     MapUnit, MapUnit,
                                     OUString & rText,
-                                    const IntlWrapper *)
+                                    const IntlWrapper&)
     const
 {
     rText = OUString::number(m_nValue);
@@ -268,20 +201,7 @@ bool CntUInt32Item::PutValue(const css::uno::Any& rVal, sal_uInt8)
 }
 
 // virtual
-SfxPoolItem * CntUInt32Item::Create(SvStream & rStream, sal_uInt16) const
-{
-    return new CntUInt32Item(Which(), rStream);
-}
-
-// virtual
-SvStream & CntUInt32Item::Store(SvStream &rStream, sal_uInt16) const
-{
-    rStream.WriteUInt32( m_nValue );
-    return rStream;
-}
-
-// virtual
-SfxPoolItem * CntUInt32Item::Clone(SfxItemPool *) const
+CntUInt32Item* CntUInt32Item::Clone(SfxItemPool *) const
 {
     return new CntUInt32Item(*this);
 }

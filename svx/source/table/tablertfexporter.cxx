@@ -33,12 +33,11 @@
 #include <editeng/postitem.hxx>
 #include <editeng/udlnitem.hxx>
 
-#include "cell.hxx"
-#include "celltypes.hxx"
-#include "svx/svdotable.hxx"
-#include "svx/svdoutl.hxx"
-#include "editeng/editeng.hxx"
-#include "editeng/outlobj.hxx"
+#include <cell.hxx>
+#include <svx/svdotable.hxx>
+#include <svx/svdoutl.hxx>
+#include <editeng/editeng.hxx>
+#include <editeng/outlobj.hxx>
 
 
 using namespace ::com::sun::star::uno;
@@ -46,7 +45,7 @@ using namespace ::com::sun::star::table;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::beans;
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
 class SdrTableRtfExporter
 {
@@ -60,24 +59,24 @@ private:
     SvStream& mrStrm;
     SdrTableObj& mrObj;
     Reference< XTable > mxTable;
-    const OUString msSize;
 };
 
-void SdrTableObj::ExportAsRTF( SvStream& rStrm, SdrTableObj& rObj )
+void ExportAsRTF( SvStream& rStrm, SdrTableObj& rObj )
 {
     SdrTableRtfExporter aEx( rStrm, rObj );
     aEx.Write();
 }
 
+const OUStringLiteral gsSize( "Size" );
+
 SdrTableRtfExporter::SdrTableRtfExporter( SvStream& rStrm, SdrTableObj& rObj )
 : mrStrm( rStrm )
 , mrObj( rObj )
 , mxTable( rObj.getTable() )
-, msSize( "Size" )
 {
 }
 
-long HundMMToTwips( long nIn )
+static long HundMMToTwips( long nIn )
 {
     long nRet = OutputDevice::LogicToLogic( nIn, MapUnit::Map100thMM, MapUnit::MapTwip );
     return nRet;
@@ -100,7 +99,7 @@ void SdrTableRtfExporter::Write()
     {
         Reference< XPropertySet > xSet( xColumns->getByIndex(nCol), UNO_QUERY_THROW );
         sal_Int32 nWidth = 0;
-        xSet->getPropertyValue( msSize ) >>= nWidth;
+        xSet->getPropertyValue( gsSize ) >>= nWidth;
         nPos += HundMMToTwips( nWidth );
         aColumnStart.push_back( nPos );
     }
@@ -129,10 +128,10 @@ void SdrTableRtfExporter::Write()
 void SdrTableRtfExporter::WriteRow( const Reference< XPropertySet >& xRowSet, sal_Int32 nRow, const std::vector< sal_Int32 >& aColumnStart )
 {
     sal_Int32 nRowHeight = 0;
-    xRowSet->getPropertyValue( msSize ) >>= nRowHeight;
+    xRowSet->getPropertyValue( gsSize ) >>= nRowHeight;
 
     mrStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TROWD ).WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TRGAPH ).WriteCharPtr( "30" ).WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TRLEFT ).WriteCharPtr( "-30" );
-    mrStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TRRH ).WriteCharPtr( OString::number(nRowHeight).getStr() );
+    mrStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TRRH ).WriteOString( OString::number(nRowHeight) );
 
     const sal_Int32 nColCount = mxTable->getColumnCount();
     for( sal_Int32 nCol = 0; nCol < nColCount; nCol++ )
@@ -142,7 +141,7 @@ void SdrTableRtfExporter::WriteRow( const Reference< XPropertySet >& xRowSet, sa
         if( !xCell.is() )
             continue;
 
-        mrStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_CELLX ).WriteCharPtr( OString::number(aColumnStart[nCol]).getStr() );
+        mrStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_CELLX ).WriteOString( OString::number(aColumnStart[nCol]) );
         if ( (nCol & 0x0F) == 0x0F )
             mrStrm.WriteCharPtr( SAL_NEWLINE_STRING );        // prevent long lines
     }
@@ -174,7 +173,7 @@ void SdrTableRtfExporter::WriteCell( sal_Int32 nCol, sal_Int32 nRow )
 
     OUString aContent;
 
-    OutlinerParaObject* pParaObj = xCell->GetEditOutlinerParaObject();
+    OutlinerParaObject* pParaObj = xCell->CreateEditOutlinerParaObject().release();
     bool bOwnParaObj = pParaObj != nullptr;
 
     if( pParaObj == nullptr )
@@ -200,11 +199,11 @@ void SdrTableRtfExporter::WriteCell( sal_Int32 nCol, sal_Int32 nRow )
 
     const SfxItemSet& rCellSet = xCell->GetItemSet();
 
-    const SvxWeightItem&        rWeightItem     = static_cast<const SvxWeightItem&>   ( rCellSet.Get( EE_CHAR_WEIGHT ) );
-    const SvxPostureItem&       rPostureItem    = static_cast<const SvxPostureItem&>  ( rCellSet.Get( EE_CHAR_ITALIC ) );
-    const SvxUnderlineItem&     rUnderlineItem  = static_cast<const SvxUnderlineItem&>( rCellSet.Get( EE_CHAR_UNDERLINE ) );
+    const SvxWeightItem&        rWeightItem     = rCellSet.Get( EE_CHAR_WEIGHT );
+    const SvxPostureItem&       rPostureItem    = rCellSet.Get( EE_CHAR_ITALIC );
+    const SvxUnderlineItem&     rUnderlineItem  = rCellSet.Get( EE_CHAR_UNDERLINE );
 
-    const sal_Char* pChar;
+    const char* pChar;
 
     switch( eHAdj )
     {
@@ -240,6 +239,6 @@ void SdrTableRtfExporter::WriteCell( sal_Int32 nCol, sal_Int32 nRow )
         mrStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_PLAIN );
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

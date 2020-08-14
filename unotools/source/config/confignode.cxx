@@ -21,19 +21,17 @@
 #include <unotools/configpaths.hxx>
 #include <tools/diagnose_ex.h>
 #include <osl/diagnose.h>
-#include <com/sun/star/container/XHierarchicalName.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
+#include <sal/log.hxx>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/util/XChangesBatch.hpp>
 #include <com/sun/star/util/XStringEscape.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/XNamed.hpp>
+#include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <comphelper/namedvaluecollection.hxx>
-#include <rtl/string.hxx>
-#if OSL_DEBUG_LEVEL > 0
-#include <rtl/strbuf.hxx>
-#endif
 
 namespace utl
 {
@@ -155,7 +153,7 @@ namespace utl
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("unotools");
         }
         return sLocalName;
     }
@@ -163,7 +161,7 @@ namespace utl
     OUString OConfigurationNode::normalizeName(const OUString& _rName, NAMEORIGIN _eOrigin) const
     {
         OUString sName(_rName);
-        if (getEscape())
+        if (m_bEscapeNames)
         {
             Reference< XStringEscape > xEscaper(m_xDirectAccess, UNO_QUERY);
             if (xEscaper.is() && !sName.isEmpty())
@@ -177,7 +175,7 @@ namespace utl
                 }
                 catch(Exception&)
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("unotools");
                 }
             }
         }
@@ -194,9 +192,8 @@ namespace utl
             {
                 aReturn = m_xDirectAccess->getElementNames();
                 // normalize the names
-                OUString* pNames = aReturn.getArray();
-                for (sal_Int32 i=0; i<aReturn.getLength(); ++i, ++pNames)
-                    *pNames = normalizeName(*pNames, NO_CONFIGURATION);
+                std::transform(aReturn.begin(), aReturn.end(), aReturn.begin(),
+                    [this](const OUString& rName) -> OUString { return normalizeName(rName, NO_CONFIGURATION); });
             }
             catch(Exception&)
             {
@@ -247,7 +244,7 @@ namespace utl
             }
             catch(const Exception&)
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("unotools");
             }
 
             // dispose the child if it has already been created, but could not be inserted
@@ -273,7 +270,7 @@ namespace utl
             }
             catch(const Exception&)
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("unotools");
             }
             return insertNode(_rName,xNewChild);
         }
@@ -380,7 +377,7 @@ namespace utl
                     bResult = true;
                 }
 
-                // check if the name refers to a indirect descendant
+                // check if the name refers to an indirect descendant
                 else if (m_xHierarchyAccess.is() && m_xHierarchyAccess->hasByHierarchicalName(_rPath))
                 {
                     OSL_ASSERT(!_rPath.isEmpty());
@@ -441,7 +438,7 @@ namespace utl
         }
         catch(const NoSuchElementException&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("unotools");
         }
         return aReturn;
     }
@@ -468,20 +465,19 @@ namespace utl
             }
             catch ( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("unotools");
             }
             return nullptr;
         }
 
         Reference< XInterface > lcl_createConfigurationRoot( const Reference< XMultiServiceFactory >& i_rxConfigProvider,
-            const OUString& i_rNodePath, const bool i_bUpdatable, const sal_Int32 i_nDepth, const bool i_bLazyWrite )
+            const OUString& i_rNodePath, const bool i_bUpdatable, const sal_Int32 i_nDepth )
         {
             ENSURE_OR_RETURN( i_rxConfigProvider.is(), "invalid provider", nullptr );
             try
             {
                 ::comphelper::NamedValueCollection aArgs;
                 aArgs.put( "nodepath", i_rNodePath );
-                aArgs.put( "lazywrite", i_bLazyWrite );
                 aArgs.put( "depth", i_nDepth );
 
                 OUString sAccessService( i_bUpdatable ?
@@ -496,7 +492,7 @@ namespace utl
             }
             catch ( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("unotools");
             }
             return nullptr;
         }
@@ -510,7 +506,7 @@ namespace utl
 
     OConfigurationTreeRoot::OConfigurationTreeRoot( const Reference<XComponentContext> & i_rContext, const OUString& i_rNodePath, const bool i_bUpdatable )
         :OConfigurationNode( lcl_createConfigurationRoot( lcl_getConfigProvider( i_rContext ),
-            i_rNodePath, i_bUpdatable, -1, false ).get() )
+            i_rNodePath, i_bUpdatable, -1 ).get() )
         ,m_xCommitter()
     {
         if ( i_bUpdatable )
@@ -542,23 +538,23 @@ namespace utl
         }
         catch(const Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("unotools");
         }
         return false;
     }
 
-    OConfigurationTreeRoot OConfigurationTreeRoot::createWithProvider(const Reference< XMultiServiceFactory >& _rxConfProvider, const OUString& _rPath, sal_Int32 _nDepth, CREATION_MODE _eMode, bool _bLazyWrite)
+    OConfigurationTreeRoot OConfigurationTreeRoot::createWithProvider(const Reference< XMultiServiceFactory >& _rxConfProvider, const OUString& _rPath, sal_Int32 _nDepth, CREATION_MODE _eMode)
     {
         Reference< XInterface > xRoot( lcl_createConfigurationRoot(
-            _rxConfProvider, _rPath, _eMode != CM_READONLY, _nDepth, _bLazyWrite ) );
+            _rxConfProvider, _rPath, _eMode != CM_READONLY, _nDepth ) );
         if ( xRoot.is() )
             return OConfigurationTreeRoot( xRoot );
         return OConfigurationTreeRoot();
     }
 
-    OConfigurationTreeRoot OConfigurationTreeRoot::createWithComponentContext( const Reference< XComponentContext >& _rxContext, const OUString& _rPath, sal_Int32 _nDepth, CREATION_MODE _eMode, bool _bLazyWrite )
+    OConfigurationTreeRoot OConfigurationTreeRoot::createWithComponentContext( const Reference< XComponentContext >& _rxContext, const OUString& _rPath, sal_Int32 _nDepth, CREATION_MODE _eMode )
     {
-        return createWithProvider( lcl_getConfigProvider( _rxContext ), _rPath, _nDepth, _eMode, _bLazyWrite );
+        return createWithProvider( lcl_getConfigProvider( _rxContext ), _rPath, _nDepth, _eMode );
     }
 
     OConfigurationTreeRoot OConfigurationTreeRoot::tryCreateWithComponentContext( const Reference< XComponentContext >& rxContext,

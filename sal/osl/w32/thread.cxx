@@ -18,7 +18,7 @@
  */
 
 #include "system.h"
-#include <thread.hxx>
+#include "thread.hxx"
 
 #include <osl/diagnose.h>
 #include <osl/thread.h>
@@ -27,6 +27,8 @@
 #include <osl/interlck.h>
 #include <rtl/tencinfo.h>
 #include <errno.h>
+
+namespace {
 
 /**
     Thread-data structure hidden behind oslThread:
@@ -40,6 +42,8 @@ typedef struct
     void*               m_pData;
 
 } osl_TThreadImpl;
+
+}
 
 static unsigned __stdcall oslWorkerWrapperFunction(void* pData);
 static oslThread oslCreateThread(oslWorkerFunction pWorker, void* pThreadData, sal_uInt32 nFlags);
@@ -134,9 +138,9 @@ oslThreadIdentifier SAL_CALL osl_getThreadIdentifier(oslThread Thread)
     osl_TThreadImpl* pThreadImpl= static_cast<osl_TThreadImpl*>(Thread);
 
     if (pThreadImpl != nullptr)
-        return (oslThreadIdentifier)pThreadImpl->m_ThreadId;
+        return static_cast<oslThreadIdentifier>(pThreadImpl->m_ThreadId);
     else
-        return (oslThreadIdentifier)GetCurrentThreadId();
+        return static_cast<oslThreadIdentifier>(GetCurrentThreadId());
 }
 
 void SAL_CALL osl_destroyThread(oslThread Thread)
@@ -366,7 +370,7 @@ void SAL_CALL osl_setThreadName(char const * name) {
 #pragma pack(pop)
     info.dwType = 0x1000;
     info.szName = name;
-    info.dwThreadID = (DWORD) -1;
+    info.dwThreadID = DWORD(-1);
     info.dwFlags = 0;
     __try {
         RaiseException(
@@ -378,12 +382,16 @@ void SAL_CALL osl_setThreadName(char const * name) {
 #endif
 }
 
+namespace {
+
 typedef struct TLS_
 {
     DWORD                           dwIndex;
     oslThreadKeyCallbackFunction    pfnCallback;
     struct TLS_                     *pNext, *pPrev;
 } TLS, *PTLS;
+
+}
 
 static  PTLS        g_pThreadKeyList = nullptr;
 CRITICAL_SECTION    g_ThreadKeyListCS;
@@ -425,7 +433,7 @@ static void RemoveKeyFromList( PTLS pTls )
     }
 }
 
-void SAL_CALL osl_callThreadKeyCallbackOnThreadDetach(void)
+void osl_callThreadKeyCallbackOnThreadDetach(void)
 {
     PTLS    pTls;
 
@@ -448,14 +456,14 @@ void SAL_CALL osl_callThreadKeyCallbackOnThreadDetach(void)
 
 oslThreadKey SAL_CALL osl_createThreadKey(oslThreadKeyCallbackFunction pCallback)
 {
-    PTLS    pTls = static_cast<PTLS>(rtl_allocateMemory( sizeof(TLS) ));
+    PTLS    pTls = static_cast<PTLS>(malloc( sizeof(TLS) ));
 
     if ( pTls )
     {
         pTls->pfnCallback = pCallback;
-        if ( (DWORD)-1 == (pTls->dwIndex = TlsAlloc()) )
+        if ( DWORD(-1) == (pTls->dwIndex = TlsAlloc()) )
         {
-            rtl_freeMemory( pTls );
+            free( pTls );
             pTls = nullptr;
         }
         else
@@ -473,7 +481,7 @@ void SAL_CALL osl_destroyThreadKey(oslThreadKey Key)
 
         RemoveKeyFromList( pTls );
         TlsFree( pTls->dwIndex );
-        rtl_freeMemory( pTls );
+        free( pTls );
     }
 }
 
@@ -495,7 +503,7 @@ sal_Bool SAL_CALL osl_setThreadKeyData(oslThreadKey Key, void *pData)
     {
         PTLS    pTls = static_cast<PTLS>(Key);
         void*   pOldData = nullptr;
-        BOOL    fSuccess;
+        bool    fSuccess;
 
         if ( pTls->pfnCallback )
             pOldData = TlsGetValue( pTls->dwIndex );
@@ -505,21 +513,21 @@ sal_Bool SAL_CALL osl_setThreadKeyData(oslThreadKey Key, void *pData)
         if ( fSuccess && pTls->pfnCallback && pOldData )
             pTls->pfnCallback( pOldData );
 
-        return fSuccess != FALSE;
+        return fSuccess;
     }
 
     return false;
 }
 
-DWORD   g_dwTLSTextEncodingIndex = (DWORD)-1;
+DWORD   g_dwTLSTextEncodingIndex = DWORD(-1);
 
 rtl_TextEncoding SAL_CALL osl_getThreadTextEncoding(void)
 {
     DWORD_PTR           dwEncoding;
     rtl_TextEncoding    _encoding;
-    BOOL                gotACP;
+    bool                gotACP;
 
-    if ( (DWORD)-1 == g_dwTLSTextEncodingIndex )
+    if ( DWORD(-1) == g_dwTLSTextEncodingIndex )
         g_dwTLSTextEncodingIndex = TlsAlloc();
 
     dwEncoding = reinterpret_cast<DWORD_PTR>(TlsGetValue( g_dwTLSTextEncodingIndex ));
@@ -529,7 +537,7 @@ rtl_TextEncoding SAL_CALL osl_getThreadTextEncoding(void)
     if ( !gotACP )
     {
         _encoding = rtl_getTextEncodingFromWindowsCodePage( GetACP() );
-        TlsSetValue( g_dwTLSTextEncodingIndex, reinterpret_cast<LPVOID>((DWORD_PTR)MAKELONG( _encoding, TRUE )) );
+        TlsSetValue( g_dwTLSTextEncodingIndex, reinterpret_cast<LPVOID>(static_cast<DWORD_PTR>(MAKELONG( _encoding, TRUE ))) );
     }
 
     return _encoding;
@@ -539,7 +547,7 @@ rtl_TextEncoding SAL_CALL osl_setThreadTextEncoding( rtl_TextEncoding Encoding )
 {
     rtl_TextEncoding oldEncoding = osl_getThreadTextEncoding();
 
-    TlsSetValue( g_dwTLSTextEncodingIndex, reinterpret_cast<LPVOID>((DWORD_PTR)MAKELONG( Encoding, TRUE)) );
+    TlsSetValue( g_dwTLSTextEncodingIndex, reinterpret_cast<LPVOID>(static_cast<DWORD_PTR>(MAKELONG( Encoding, TRUE))) );
 
     return oldEncoding;
 }

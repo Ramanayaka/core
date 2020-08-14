@@ -17,12 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sal/types.h>
 #include <cppunit/TestAssert.h>
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
 
-#include <basegfx/tools/keystoplerp.hxx>
+#include <basegfx/utils/keystoplerp.hxx>
 #include <basegfx/numeric/ftools.hxx>
 
 using namespace ::basegfx;
@@ -32,7 +31,7 @@ namespace basegfxtools
 
 class KeyStopLerpTest : public CppUnit::TestFixture
 {
-    tools::KeyStopLerp maKeyStops;
+    utils::KeyStopLerp maKeyStops;
 
     static std::vector<double> getTestVector()
     {

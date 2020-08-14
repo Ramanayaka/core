@@ -19,6 +19,7 @@
 
 #include "typelib/typedescription.h"
 #include "rtl/ustrbuf.hxx"
+#include <sal/log.hxx>
 #include "com/sun/star/uno/RuntimeException.hpp"
 #include "cli_proxy.h"
 #include "cli_base.h"
@@ -218,7 +219,7 @@ bool UnoInterfaceProxy::CanCastTo(System::Type^ fromType,
         if (nullptr != findInfo( fromType )) // proxy supports demanded interface
             return true;
 
-        //query an uno interface for the required type
+        //query a uno interface for the required type
 
         // we use the first interface in the list (m_listIfaces) to make
         // the queryInterface call
@@ -420,7 +421,7 @@ srrm::IMessage^ UnoInterfaceProxy::Invoke(srrm::IMessage^ callmsg)
         UnoInterfaceInfo^ info = findInfo( typeBeingCalled );
         OSL_ASSERT( nullptr != info );
 
-        // ToDo do without string conversion, a OUString is not needed here
+        // ToDo do without string conversion, an OUString is not needed here
         // get the type description of the call
         OUString usMethodName(mapCliString(static_cast<System::String^>(
                  props[m_methodNameString])));
@@ -1096,7 +1097,7 @@ void SAL_CALL cli_proxy_dispatch(
             css::uno::XInterface >() );
         css::uno::Type const & exc_type = cppu::UnoType<decltype(exc)>::get();
         uno_type_any_construct( *uno_exc, &exc, exc_type.getTypeLibType(), 0);
-        SAL_WARN( "cli", exc.Message);
+        SAL_WARN( "cli", exc);
     }
 }
 

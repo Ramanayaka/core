@@ -23,8 +23,8 @@
 #include "XMLTableShapeImportHelper.hxx"
 
 #include <xmloff/xmltkmap.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 
 using namespace com::sun::star;
@@ -46,16 +46,15 @@ ScXMLAnnotationContext::ScXMLAnnotationContext( ScXMLImport& rImport,
                                       const uno::Reference<xml::sax::XAttributeList>& xAttrList,
                                       ScXMLAnnotationData& rAnnotationData) :
     ScXMLImportContext( rImport, nPrfx, rLName ),
-    mrAnnotationData( rAnnotationData ),
-    pShapeContext(nullptr)
+    mrAnnotationData( rAnnotationData )
 {
     uno::Reference<drawing::XShapes> xLocalShapes (GetScImport().GetTables().GetCurrentXShapes());
     if (xLocalShapes.is())
     {
         XMLTableShapeImportHelper* pTableShapeImport = static_cast<XMLTableShapeImportHelper*>(GetScImport().GetShapeImport().get());
         pTableShapeImport->SetAnnotation(this);
-        pShapeContext = GetScImport().GetShapeImport()->CreateGroupChildContext(
-            GetScImport(), nPrfx, rLName, xAttrList, xLocalShapes, true);
+        pShapeContext.reset( GetScImport().GetShapeImport()->CreateGroupChildContext(
+            GetScImport(), nPrfx, rLName, xAttrList, xLocalShapes, true) );
     }
 
     sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
@@ -114,35 +113,32 @@ void ScXMLAnnotationContext::StartElement(const css::uno::Reference< css::xml::s
         pShapeContext->StartElement(xAttrList);
 }
 
-SvXMLImportContext *ScXMLAnnotationContext::CreateChildContext( sal_uInt16 nPrefix,
+SvXMLImportContextRef ScXMLAnnotationContext::CreateChildContext( sal_uInt16 nPrefix,
                                             const OUString& rLName,
                                             const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList )
 {
-    SvXMLImportContext *pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     if( XML_NAMESPACE_DC == nPrefix )
     {
         if( IsXMLToken( rLName, XML_CREATOR ) )
-            pContext = new ScXMLContentContext(GetScImport(), nPrefix,
-                                            rLName, xAttrList, maAuthorBuffer);
+            xContext = new ScXMLContentContext(GetScImport(), nPrefix,
+                                            rLName, maAuthorBuffer);
         else if( IsXMLToken( rLName, XML_DATE ) )
-            pContext = new ScXMLContentContext(GetScImport(), nPrefix,
-                                            rLName, xAttrList, maCreateDateBuffer);
+            xContext = new ScXMLContentContext(GetScImport(), nPrefix,
+                                            rLName, maCreateDateBuffer);
     }
     else if( XML_NAMESPACE_META == nPrefix )
     {
         if( IsXMLToken( rLName, XML_DATE_STRING ) )
-            pContext = new ScXMLContentContext(GetScImport(), nPrefix,
-                                            rLName, xAttrList, maCreateDateStringBuffer);
+            xContext = new ScXMLContentContext(GetScImport(), nPrefix,
+                                            rLName, maCreateDateStringBuffer);
     }
 
-    if( !pContext && pShapeContext )
-        pContext = pShapeContext->CreateChildContext(nPrefix, rLName, xAttrList);
+    if( !xContext && pShapeContext )
+        xContext = pShapeContext->CreateChildContext(nPrefix, rLName, xAttrList);
 
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLName );
-
-    return pContext;
+    return xContext;
 }
 
 void ScXMLAnnotationContext::Characters( const OUString& rChars )
@@ -155,8 +151,7 @@ void ScXMLAnnotationContext::EndElement()
     if (pShapeContext)
     {
         pShapeContext->EndElement();
-        delete pShapeContext;
-        pShapeContext = nullptr;
+        pShapeContext.reset();
     }
 
     mrAnnotationData.maAuthor = maAuthorBuffer.makeStringAndClear();
@@ -178,9 +173,9 @@ void ScXMLAnnotationContext::SetShape( const uno::Reference< drawing::XShape >& 
     mrAnnotationData.maTextStyle = rTextStyle;
 }
 
-void ScXMLAnnotationContext::AddContentStyle( sal_uInt16 nFamily, const OUString& rName, const ESelection& rSelection )
+void ScXMLAnnotationContext::AddContentStyle( XmlStyleFamily nFamily, const OUString& rName, const ESelection& rSelection )
 {
-    mrAnnotationData.maContentStyles.push_back( ScXMLAnnotationStyleEntry( nFamily, rName, rSelection ) );
+    mrAnnotationData.maContentStyles.emplace_back( nFamily, rName, rSelection );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,13 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/core/relations.hxx"
+#include <sal/config.h>
 
-#include <rtl/ustrbuf.hxx>
-#include "oox/helper/helper.hxx"
+#include <algorithm>
 
-namespace oox {
-namespace core {
+#include <oox/core/relations.hxx>
+
+namespace oox::core {
 
 namespace {
 
@@ -35,7 +35,7 @@ OUString lclRemoveFileName( const OUString& rPath )
 OUString lclAppendFileName( const OUString& rPath, const OUString& rFileName )
 {
     return rPath.isEmpty() ? rFileName :
-        rPath + OUStringLiteral1('/') + rFileName;
+        rPath + OUStringChar('/') + rFileName;
 }
 
 OUString createOfficeDocRelationTypeTransitional(const OUString& rType)
@@ -64,19 +64,19 @@ const Relation* Relations::getRelationFromRelId( const OUString& rId ) const
 
 const Relation* Relations::getRelationFromFirstType( const OUString& rType ) const
 {
-    for( ::std::map< OUString, Relation >::const_iterator aIt = maMap.begin(), aEnd = maMap.end(); aIt != aEnd; ++aIt )
-        if( aIt->second.maType.equalsIgnoreAsciiCase( rType ) )
-            return &aIt->second;
+    for (auto const& elem : maMap)
+        if( elem.second.maType.equalsIgnoreAsciiCase( rType ) )
+            return &elem.second;
     return nullptr;
 }
 
 RelationsRef Relations::getRelationsFromTypeFromOfficeDoc( const OUString& rType ) const
 {
-    RelationsRef xRelations( new Relations( maFragmentPath ) );
-    for( ::std::map< OUString, Relation >::const_iterator aIt = maMap.begin(), aEnd = maMap.end(); aIt != aEnd; ++aIt )
-        if( aIt->second.maType.equalsIgnoreAsciiCase( createOfficeDocRelationTypeTransitional(rType) ) ||
-                aIt->second.maType.equalsIgnoreAsciiCase( createOfficeDocRelationTypeStrict(rType) ))
-            xRelations->maMap[ aIt->first ] = aIt->second;
+    RelationsRef xRelations = std::make_shared<Relations>( maFragmentPath );
+    for (auto const& elem : maMap)
+        if( elem.second.maType.equalsIgnoreAsciiCase( createOfficeDocRelationTypeTransitional(rType) ) ||
+                elem.second.maType.equalsIgnoreAsciiCase( createOfficeDocRelationTypeStrict(rType) ))
+            xRelations->maMap[ elem.first ] = elem.second;
     return xRelations;
 }
 
@@ -149,7 +149,6 @@ OUString Relations::getFragmentPathFromFirstTypeFromOfficeDoc( const OUString& r
     return pRelation ? getFragmentPathFromRelation( *pRelation ) : OUString();
 }
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

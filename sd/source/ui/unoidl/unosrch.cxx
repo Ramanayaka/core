@@ -20,18 +20,19 @@
 #include <memory>
 #include <sal/config.h>
 
+#include <com/sun/star/drawing/XShapes.hpp>
+#include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <vcl/svapp.hxx>
 
-#include <svx/unoshape.hxx>
+#include <svx/svdobj.hxx>
 #include <svx/svdpool.hxx>
-#include <svx/unoprov.hxx>
+#include <editeng/unoipset.hxx>
 #include <editeng/unotext.hxx>
+#include <tools/debug.hxx>
 
-#include <comphelper/extract.hxx>
-
-#include "unoprnms.hxx"
-#include "unosrch.hxx"
+#include <unoprnms.hxx>
+#include <unosrch.hxx>
 
 using namespace ::com::sun::star;
 
@@ -39,28 +40,29 @@ using namespace ::com::sun::star;
 #define WID_SEARCH_CASE         1
 #define WID_SEARCH_WORDS        2
 
-const SfxItemPropertyMapEntry* ImplGetSearchPropertyMap()
+static const SfxItemPropertyMapEntry* ImplGetSearchPropertyMap()
 {
     static const SfxItemPropertyMapEntry aSearchPropertyMap_Impl[] =
     {
-        { OUString(UNO_NAME_SEARCH_BACKWARDS),  WID_SEARCH_BACKWARDS,   cppu::UnoType<bool>::get(),    0,  0 },
-        { OUString(UNO_NAME_SEARCH_CASE),       WID_SEARCH_CASE,        cppu::UnoType<bool>::get(),    0,  0 },
-        { OUString(UNO_NAME_SEARCH_WORDS),      WID_SEARCH_WORDS,       cppu::UnoType<bool>::get(),    0,  0 },
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        { UNO_NAME_SEARCH_BACKWARDS,  WID_SEARCH_BACKWARDS,   cppu::UnoType<bool>::get(),    0,  0 },
+        { UNO_NAME_SEARCH_CASE,       WID_SEARCH_CASE,        cppu::UnoType<bool>::get(),    0,  0 },
+        { UNO_NAME_SEARCH_WORDS,      WID_SEARCH_WORDS,       cppu::UnoType<bool>::get(),    0,  0 },
+        { "", 0, css::uno::Type(), 0, 0 }
     };
 
     return aSearchPropertyMap_Impl;
 }
 
+namespace {
+
 class SearchContext_impl
 {
     uno::Reference< drawing::XShapes > mxShapes;
     sal_Int32 mnIndex;
-    SearchContext_impl* mpParent;
 
 public:
-    SearchContext_impl( uno::Reference< drawing::XShapes > const & xShapes, SearchContext_impl* pParent = nullptr )
-        : mxShapes( xShapes ), mnIndex( -1 ), mpParent( pParent ) {}
+    SearchContext_impl(uno::Reference<drawing::XShapes> const& xShapes)
+        : mxShapes( xShapes ), mnIndex( -1 ) {}
 
     uno::Reference< drawing::XShape > firstShape()
     {
@@ -78,9 +80,9 @@ public:
         }
         return xShape;
     }
-
-    SearchContext_impl* getParent() const { return mpParent; }
 };
+
+}
 
 /* ================================================================= */
 /** this class implements a search or replace operation on a given
@@ -88,8 +90,7 @@ public:
   */
 
 SdUnoSearchReplaceShape::SdUnoSearchReplaceShape( drawing::XDrawPage* pPage ) throw()
-    : mpShape(nullptr)
-    , mpPage(pPage)
+    : mpPage(pPage)
 {
 }
 
@@ -105,7 +106,7 @@ uno::Reference< util::XReplaceDescriptor > SAL_CALL SdUnoSearchReplaceShape::cre
 
 sal_Int32 SAL_CALL SdUnoSearchReplaceShape::replaceAll( const uno::Reference< util::XSearchDescriptor >& xDesc )
 {
-    SdUnoSearchReplaceDescriptor* pDescr = SdUnoSearchReplaceDescriptor::getImplementation( xDesc );
+    SdUnoSearchReplaceDescriptor* pDescr = comphelper::getUnoTunnelImplementation<SdUnoSearchReplaceDescriptor>( xDesc );
     if( pDescr == nullptr )
         return 0;
 
@@ -114,33 +115,27 @@ sal_Int32 SAL_CALL SdUnoSearchReplaceShape::replaceAll( const uno::Reference< ut
     uno::Reference< drawing::XShapes >  xShapes;
     uno::Reference< drawing::XShape >  xShape;
 
-    SearchContext_impl* pContext = nullptr;
+    std::vector<SearchContext_impl> aContexts;
     if(mpPage)
     {
-        uno::Reference< drawing::XDrawPage > xPage( mpPage );
+        xShapes = mpPage;
 
-        xShapes.set( xPage, uno::UNO_QUERY );
-
-        if( xShapes.is() && (xShapes->getCount() > 0) )
+        if( xShapes->getCount() )
         {
-            pContext = new SearchContext_impl( xShapes );
-            xShape = pContext->firstShape();
+            aContexts.push_back(SearchContext_impl(xShapes));
+            xShape = aContexts.back().firstShape();
         }
         else
         {
             xShapes = nullptr;
         }
     }
-    else
-    {
-        xShape = mpShape;
-    }
 
     while( xShape.is() )
     {
         // replace in xShape
         uno::Reference< text::XText >  xText(xShape, uno::UNO_QUERY);
-        uno::Reference< text::XTextRange >  xRange(xText, uno::UNO_QUERY);
+        uno::Reference< text::XTextRange >  xRange = xText;
         uno::Reference< text::XTextRange >  xFound;
 
         while( xRange.is() )
@@ -159,34 +154,24 @@ sal_Int32 SAL_CALL SdUnoSearchReplaceShape::replaceAll( const uno::Reference< ut
         uno::Reference< drawing::XShapes > xGroupShape( xShape, uno::UNO_QUERY );
         if( xGroupShape.is() && ( xGroupShape->getCount() > 0 ) )
         {
-            pContext = new SearchContext_impl( xGroupShape, pContext );
-            xShape = pContext->firstShape();
+            aContexts.push_back(SearchContext_impl(xGroupShape));
+            xShape = aContexts.back().firstShape();
         }
         else
         {
-            if( pContext )
-                xShape = pContext->nextShape();
+            if (!aContexts.empty())
+                xShape = aContexts.back().nextShape();
             else
                 xShape = nullptr;
         }
 
         // test parent contexts for next shape if none
         // is found in the current context
-        while( pContext && !xShape.is() )
+        while (!aContexts.empty() && !xShape.is())
         {
-            if( pContext->getParent() )
-            {
-                SearchContext_impl* pOldContext = pContext;
-                pContext = pContext->getParent();
-                delete pOldContext;
-                xShape = pContext->nextShape();
-            }
-            else
-            {
-                delete pContext;
-                pContext = nullptr;
-                xShape = nullptr;
-            }
+            aContexts.pop_back();
+            if (!aContexts.empty())
+                xShape = aContexts.back().nextShape();
         }
     }
 
@@ -201,7 +186,7 @@ uno::Reference< css::util::XSearchDescriptor > SAL_CALL SdUnoSearchReplaceShape:
 
 uno::Reference< css::container::XIndexAccess > SAL_CALL SdUnoSearchReplaceShape::findAll( const css::uno::Reference< css::util::XSearchDescriptor >& xDesc )
 {
-    SdUnoSearchReplaceDescriptor* pDescr = SdUnoSearchReplaceDescriptor::getImplementation( xDesc );
+    SdUnoSearchReplaceDescriptor* pDescr = comphelper::getUnoTunnelImplementation<SdUnoSearchReplaceDescriptor>( xDesc );
     if( pDescr == nullptr )
         return uno::Reference< container::XIndexAccess > ();
 
@@ -215,31 +200,27 @@ uno::Reference< css::container::XIndexAccess > SAL_CALL SdUnoSearchReplaceShape:
     uno::Reference< drawing::XShapes >  xShapes;
     uno::Reference< drawing::XShape >  xShape;
 
-    SearchContext_impl* pContext = nullptr;
+    std::vector<SearchContext_impl> aContexts;
     if(mpPage)
     {
-        uno::Reference< drawing::XDrawPage >  xPage( mpPage );
-        xShapes.set( xPage, uno::UNO_QUERY );
+        xShapes = mpPage;
 
-        if( xShapes.is() && xShapes->getCount() > 0 )
+        if( xShapes->getCount() > 0 )
         {
-            pContext = new SearchContext_impl( xShapes );
-            xShape = pContext->firstShape();
+            aContexts.push_back(SearchContext_impl(xShapes));
+            xShape = aContexts.back().firstShape();
         }
         else
         {
             xShapes = nullptr;
         }
     }
-    else
-    {
-        xShape = mpShape;
-    }
+
     while( xShape.is() )
     {
         // find in xShape
         uno::Reference< text::XText >  xText(xShape, uno::UNO_QUERY);
-        uno::Reference< text::XTextRange >  xRange(xText, uno::UNO_QUERY);
+        uno::Reference< text::XTextRange >  xRange = xText;
         uno::Reference< text::XTextRange >  xFound;
 
         while( xRange.is() )
@@ -267,34 +248,24 @@ uno::Reference< css::container::XIndexAccess > SAL_CALL SdUnoSearchReplaceShape:
 
         if( xGroupShape.is() && xGroupShape->getCount() > 0 )
         {
-            pContext = new SearchContext_impl( xGroupShape, pContext );
-            xShape = pContext->firstShape();
+            aContexts.push_back(SearchContext_impl(xGroupShape));
+            xShape = aContexts.back().firstShape();
         }
         else
         {
-            if( pContext )
-                xShape = pContext->nextShape();
+            if (!aContexts.empty())
+                xShape = aContexts.back().nextShape();
             else
                 xShape = nullptr;
         }
 
         // test parent contexts for next shape if none
         // is found in the current context
-        while( pContext && !xShape.is() )
+        while (!aContexts.empty() && !xShape.is())
         {
-            if( pContext->getParent() )
-            {
-                SearchContext_impl* pOldContext = pContext;
-                pContext = pContext->getParent();
-                delete pOldContext;
-                xShape = pContext->nextShape();
-            }
-            else
-            {
-                delete pContext;
-                pContext = nullptr;
-                xShape = nullptr;
-            }
+            aContexts.pop_back();
+            if (!aContexts.empty())
+                xShape = aContexts.back().nextShape();
         }
     }
 
@@ -318,22 +289,8 @@ uno::Reference< drawing::XShape >  SdUnoSearchReplaceShape::GetCurrentShape() co
 {
     uno::Reference< drawing::XShape >  xShape;
 
-    if( mpPage )
-    {
-        uno::Reference< drawing::XDrawPage >  xPage( mpPage );
-        uno::Reference< container::XIndexAccess >  xShapes( xPage, uno::UNO_QUERY );
-        if( xShapes.is() )
-        {
-            if(xShapes->getCount() > 0)
-            {
-                xShapes->getByIndex(0) >>= xShape;
-            }
-        }
-    }
-    else if( mpShape )
-    {
-        xShape = mpShape;
-    }
+    if( mpPage && mpPage->getCount() > 0)
+        mpPage->getByIndex(0) >>= xShape;
 
     return xShape;
 
@@ -341,7 +298,7 @@ uno::Reference< drawing::XShape >  SdUnoSearchReplaceShape::GetCurrentShape() co
 
 uno::Reference< css::uno::XInterface > SAL_CALL SdUnoSearchReplaceShape::findNext( const css::uno::Reference< css::uno::XInterface >& xStartAt, const css::uno::Reference< css::util::XSearchDescriptor >& xDesc )
 {
-    SdUnoSearchReplaceDescriptor* pDescr = SdUnoSearchReplaceDescriptor::getImplementation( xDesc );
+    SdUnoSearchReplaceDescriptor* pDescr = comphelper::getUnoTunnelImplementation<SdUnoSearchReplaceDescriptor>( xDesc );
 
     uno::Reference< uno::XInterface > xFound;
 
@@ -363,24 +320,17 @@ uno::Reference< css::uno::XInterface > SAL_CALL SdUnoSearchReplaceShape::findNex
 
                 if(mpPage)
                 {
-                    uno::Reference< drawing::XDrawPage >  xPage( mpPage );
-
                     // we do a page wide search, so skip to the next shape here
-                    uno::Reference< container::XIndexAccess > xShapes( xPage, uno::UNO_QUERY );
-
                     // get next shape on our page
-                    if( xShapes.is() )
-                    {
-                        uno::Reference< drawing::XShape > xFound2( GetNextShape( xShapes, xCurrentShape ) );
-                        if( xFound2.is() && (xFound2.get() != xCurrentShape.get()) )
-                            xCurrentShape = xFound2;
-                        else
-                            xCurrentShape = nullptr;
+                    uno::Reference< drawing::XShape > xFound2( GetNextShape( mpPage, xCurrentShape ) );
+                    if( xFound2.is() && (xFound2.get() != xCurrentShape.get()) )
+                        xCurrentShape = xFound2;
+                    else
+                        xCurrentShape = nullptr;
 
-                        xRange.set( xCurrentShape, uno::UNO_QUERY );
-                        if(!(xCurrentShape.is() && (xRange.is())))
-                            xRange = nullptr;
-                    }
+                    xRange.set( xCurrentShape, uno::UNO_QUERY );
+                    if(!(xCurrentShape.is() && (xRange.is())))
+                        xRange = nullptr;
                 }
                 else
                 {
@@ -453,7 +403,7 @@ uno::Reference< drawing::XShape >  SdUnoSearchReplaceShape::GetNextShape( const 
     return xFound;
 }
 
-uno::Reference< text::XTextRange >  SdUnoSearchReplaceShape::Search( const uno::Reference< text::XTextRange >&  xText, SdUnoSearchReplaceDescriptor* pDescr ) throw()
+uno::Reference< text::XTextRange >  SdUnoSearchReplaceShape::Search( const uno::Reference< text::XTextRange >&  xText, SdUnoSearchReplaceDescriptor* pDescr )
 {
     if(!xText.is())
         return uno::Reference< text::XTextRange > ();
@@ -578,9 +528,8 @@ uno::Reference< text::XTextRange >  SdUnoSearchReplaceShape::Search( const uno::
     uno::Reference< text::XTextRange >  xFound;
     ESelection aSel;
 
-    uno::Reference< text::XTextRange > xRangeRef( xText, uno::UNO_QUERY );
-    if( xRangeRef.is() )
-        aSel = GetSelection( xRangeRef );
+    if( xText.is() )
+        aSel = GetSelection( xText );
 
     sal_Int32 nStartPos;
     sal_Int32 nEndPos   = 0;
@@ -598,7 +547,7 @@ uno::Reference< text::XTextRange >  SdUnoSearchReplaceShape::Search( const uno::
                              pConvertPara[nEndPos], pConvertPos[nEndPos] );
             SvxUnoTextRange *pRange;
 
-            SvxUnoTextBase* pParent = SvxUnoTextBase::getImplementation( xParent );
+            SvxUnoTextBase* pParent = comphelper::getUnoTunnelImplementation<SvxUnoTextBase>( xParent );
 
             if(pParent)
             {
@@ -653,7 +602,7 @@ bool SdUnoSearchReplaceShape::Search( const OUString& rText, sal_Int32& nStartPo
 ESelection SdUnoSearchReplaceShape::GetSelection( const uno::Reference< text::XTextRange >&  xTextRange ) throw()
 {
     ESelection aSel;
-    SvxUnoTextRangeBase* pRange = SvxUnoTextRangeBase::getImplementation( xTextRange );
+    SvxUnoTextRangeBase* pRange = comphelper::getUnoTunnelImplementation<SvxUnoTextRangeBase>( xTextRange );
 
     if(pRange)
         aSel = pRange->GetSelection();
@@ -798,7 +747,7 @@ void SAL_CALL SdUnoSearchReplaceDescriptor::removeVetoableChangeListener( const 
 
 /* ================================================================= */
 
-SdUnoFindAllAccess::SdUnoFindAllAccess( uno::Sequence< uno::Reference< uno::XInterface >  >& rSequence ) throw()
+SdUnoFindAllAccess::SdUnoFindAllAccess( uno::Sequence< uno::Reference< uno::XInterface >  > const & rSequence ) throw()
 :maSequence( rSequence )
 {
 }
@@ -815,7 +764,7 @@ uno::Type SAL_CALL SdUnoFindAllAccess::getElementType()
 
 sal_Bool SAL_CALL SdUnoFindAllAccess::hasElements()
 {
-    return maSequence.getLength() > 0;
+    return maSequence.hasElements();
 }
 
 // XIndexAccess
@@ -826,14 +775,11 @@ sal_Int32 SAL_CALL SdUnoFindAllAccess::getCount()
 
 uno::Any SAL_CALL SdUnoFindAllAccess::getByIndex( sal_Int32 Index )
 {
-    uno::Any aAny;
-
     if( Index < 0 || Index >= getCount() )
         throw lang::IndexOutOfBoundsException();
 
-    const uno::Reference< uno::XInterface >  *pRefs = maSequence.getConstArray();
-    if(pRefs)
-        aAny <<= pRefs[ Index ];
+    uno::Any aAny;
+    aAny <<= maSequence[Index];
     return aAny;
 }
 

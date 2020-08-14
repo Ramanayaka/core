@@ -17,6 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <libxml/xmlwriter.h>
+
 #include <IShellCursorSupplier.hxx>
 #include <txtftn.hxx>
 #include <fmtanchr.hxx>
@@ -28,7 +30,6 @@
 #include <docary.hxx>
 #include <swundo.hxx>
 #include <pam.hxx>
-#include <pamtyp.hxx>
 #include <ndtxt.hxx>
 #include <UndoCore.hxx>
 #include <rolbck.hxx>
@@ -37,15 +38,15 @@
 #include <mvsave.hxx>
 #include <redline.hxx>
 #include <crossrefbookmark.hxx>
-#include <undo.hrc>
-#include <comcore.hrc>
+#include <strings.hrc>
 #include <docsh.hxx>
 #include <view.hxx>
-#include <o3tl/make_unique.hxx>
+#include <frameformats.hxx>
+#include <sal/log.hxx>
 
 // This class saves the Pam as integers and can recompose those into a PaM
 SwUndRng::SwUndRng()
-    : nSttNode( 0 ), nEndNode( 0 ), nSttContent( 0 ), nEndContent( 0 )
+    : m_nSttNode( 0 ), m_nEndNode( 0 ), m_nSttContent( 0 ), m_nEndContent( 0 )
 {
 }
 
@@ -62,42 +63,42 @@ void SwUndRng::SetValues( const SwPaM& rPam )
         const SwPosition *pEnd = rPam.GetPoint() == pStt
                         ? rPam.GetMark()
                         : rPam.GetPoint();
-        nEndNode = pEnd->nNode.GetIndex();
-        nEndContent = pEnd->nContent.GetIndex();
+        m_nEndNode = pEnd->nNode.GetIndex();
+        m_nEndContent = pEnd->nContent.GetIndex();
     }
     else
     {
         // no selection !!
-        nEndNode = 0;
-        nEndContent = COMPLETE_STRING;
+        m_nEndNode = 0;
+        m_nEndContent = COMPLETE_STRING;
     }
 
-    nSttNode = pStt->nNode.GetIndex();
-    nSttContent = pStt->nContent.GetIndex();
+    m_nSttNode = pStt->nNode.GetIndex();
+    m_nSttContent = pStt->nContent.GetIndex();
 }
 
 void SwUndRng::SetPaM( SwPaM & rPam, bool bCorrToContent ) const
 {
     rPam.DeleteMark();
-    rPam.GetPoint()->nNode = nSttNode;
+    rPam.GetPoint()->nNode = m_nSttNode;
     SwNode& rNd = rPam.GetNode();
     if( rNd.IsContentNode() )
-        rPam.GetPoint()->nContent.Assign( rNd.GetContentNode(), nSttContent );
+        rPam.GetPoint()->nContent.Assign( rNd.GetContentNode(), m_nSttContent );
     else if( bCorrToContent )
         rPam.Move( fnMoveForward, GoInContent );
     else
         rPam.GetPoint()->nContent.Assign( nullptr, 0 );
 
-    if( !nEndNode && COMPLETE_STRING == nEndContent )       // no selection
+    if( !m_nEndNode && COMPLETE_STRING == m_nEndContent )       // no selection
         return ;
 
     rPam.SetMark();
-    if( nSttNode == nEndNode && nSttContent == nEndContent )
+    if( m_nSttNode == m_nEndNode && m_nSttContent == m_nEndContent )
         return;                             // nothing left to do
 
-    rPam.GetPoint()->nNode = nEndNode;
+    rPam.GetPoint()->nNode = m_nEndNode;
     if( rPam.GetNode().IsContentNode() )
-        rPam.GetPoint()->nContent.Assign( rPam.GetNode().GetContentNode(), nEndContent );
+        rPam.GetPoint()->nContent.Assign( rPam.GetNode().GetContentNode(), m_nEndContent );
     else if( bCorrToContent )
         rPam.Move( fnMoveBackward, GoInContent );
     else
@@ -158,10 +159,10 @@ void SwUndo::RemoveIdxRel( sal_uLong nIdx, const SwPosition& rPos )
 }
 
 SwUndo::SwUndo(SwUndoId const nId, const SwDoc* pDoc)
-    : m_nId(nId), nOrigRedlineFlags(RedlineFlags::NONE)
+    : m_nId(nId), m_nOrigRedlineFlags(RedlineFlags::NONE)
     , m_nViewShellId(CreateViewShellId(pDoc))
     , m_isRepeatIgnored(false)
-    , bCacheComment(true), pComment(nullptr)
+    , m_bCacheComment(true)
 {
 }
 
@@ -188,10 +189,12 @@ SwUndo::~SwUndo()
 {
 }
 
+namespace {
+
 class UndoRedoRedlineGuard
 {
 public:
-    UndoRedoRedlineGuard(::sw::UndoRedoContext & rContext, SwUndo & rUndo)
+    UndoRedoRedlineGuard(::sw::UndoRedoContext const & rContext, SwUndo const & rUndo)
         : m_rRedlineAccess(rContext.GetDoc().getIDocumentRedlineAccess())
         , m_eMode(m_rRedlineAccess.GetRedlineFlags())
     {
@@ -210,6 +213,8 @@ private:
     IDocumentRedlineAccess & m_rRedlineAccess;
     RedlineFlags const m_eMode;
 };
+
+}
 
 void SwUndo::Undo()
 {
@@ -263,26 +268,414 @@ void SwUndo::RepeatImpl( ::sw::RepeatContext & )
 {
 }
 
+OUString GetUndoComment(SwUndoId eId)
+{
+    const char *pId = nullptr;
+    switch (eId)
+    {
+        case SwUndoId::EMPTY:
+            pId = STR_CANT_UNDO;
+            break;
+        case SwUndoId::START:
+        case SwUndoId::END:
+            break;
+        case SwUndoId::DELETE:
+            pId = STR_DELETE_UNDO;
+            break;
+        case SwUndoId::INSERT:
+            pId = STR_INSERT_UNDO;
+            break;
+        case SwUndoId::OVERWRITE:
+            pId = STR_OVR_UNDO;
+            break;
+        case SwUndoId::SPLITNODE:
+            pId = STR_SPLITNODE_UNDO;
+            break;
+        case SwUndoId::INSATTR:
+            pId = STR_INSATTR_UNDO;
+            break;
+        case SwUndoId::SETFMTCOLL:
+            pId = STR_SETFMTCOLL_UNDO;
+            break;
+        case SwUndoId::RESETATTR:
+            pId = STR_RESET_ATTR_UNDO;
+            break;
+        case SwUndoId::INSFMTATTR:
+            pId = STR_INSFMT_ATTR_UNDO;
+            break;
+        case SwUndoId::INSDOKUMENT:
+            pId = STR_INSERT_DOC_UNDO;
+            break;
+        case SwUndoId::COPY:
+            pId = STR_COPY_UNDO;
+            break;
+        case SwUndoId::INSTABLE:
+            pId = STR_INSTABLE_UNDO;
+            break;
+        case SwUndoId::TABLETOTEXT:
+            pId = STR_TABLETOTEXT_UNDO;
+            break;
+        case SwUndoId::TEXTTOTABLE:
+            pId = STR_TEXTTOTABLE_UNDO;
+            break;
+        case SwUndoId::SORT_TXT:
+            pId = STR_SORT_TXT;
+            break;
+        case SwUndoId::INSLAYFMT:
+            pId = STR_INSERTFLY;
+            break;
+        case SwUndoId::TABLEHEADLINE:
+            pId = STR_TABLEHEADLINE;
+            break;
+        case SwUndoId::INSSECTION:
+            pId = STR_INSERTSECTION;
+            break;
+        case SwUndoId::OUTLINE_LR:
+            pId = STR_OUTLINE_LR;
+            break;
+        case SwUndoId::OUTLINE_UD:
+            pId = STR_OUTLINE_UD;
+            break;
+        case SwUndoId::INSNUM:
+            pId = STR_INSNUM;
+            break;
+        case SwUndoId::NUMUP:
+            pId = STR_NUMUP;
+            break;
+        case SwUndoId::MOVENUM:
+            pId = STR_MOVENUM;
+            break;
+        case SwUndoId::INSDRAWFMT:
+            pId = STR_INSERTDRAW;
+            break;
+        case SwUndoId::NUMORNONUM:
+            pId = STR_NUMORNONUM;
+            break;
+        case SwUndoId::INC_LEFTMARGIN:
+            pId = STR_INC_LEFTMARGIN;
+            break;
+        case SwUndoId::DEC_LEFTMARGIN:
+            pId = STR_DEC_LEFTMARGIN;
+            break;
+        case SwUndoId::INSERTLABEL:
+            pId = STR_INSERTLABEL;
+            break;
+        case SwUndoId::SETNUMRULESTART:
+            pId = STR_SETNUMRULESTART;
+            break;
+        case SwUndoId::CHGFTN:
+            pId = STR_CHANGEFTN;
+            break;
+        case SwUndoId::REDLINE:
+            SAL_INFO("sw.core", "Should NEVER be used/translated");
+            return "$1";
+        case SwUndoId::ACCEPT_REDLINE:
+            pId = STR_ACCEPT_REDLINE;
+            break;
+        case SwUndoId::REJECT_REDLINE:
+            pId = STR_REJECT_REDLINE;
+            break;
+        case SwUndoId::SPLIT_TABLE:
+            pId = STR_SPLIT_TABLE;
+            break;
+        case SwUndoId::DONTEXPAND:
+            pId = STR_DONTEXPAND;
+            break;
+        case SwUndoId::AUTOCORRECT:
+            pId = STR_AUTOCORRECT;
+            break;
+        case SwUndoId::MERGE_TABLE:
+            pId = STR_MERGE_TABLE;
+            break;
+        case SwUndoId::TRANSLITERATE:
+            pId = STR_TRANSLITERATE;
+            break;
+        case SwUndoId::PASTE_CLIPBOARD:
+            pId = STR_PASTE_CLIPBOARD_UNDO;
+            break;
+        case SwUndoId::TYPING:
+            pId = STR_TYPING_UNDO;
+            break;
+        case SwUndoId::MOVE:
+            pId = STR_MOVE_UNDO;
+            break;
+        case SwUndoId::INSGLOSSARY:
+            pId = STR_INSERT_GLOSSARY;
+            break;
+        case SwUndoId::DELBOOKMARK:
+            pId = STR_DELBOOKMARK;
+            break;
+        case SwUndoId::INSBOOKMARK:
+            pId = STR_INSBOOKMARK;
+            break;
+        case SwUndoId::SORT_TBL:
+            pId = STR_SORT_TBL;
+            break;
+        case SwUndoId::DELLAYFMT:
+            pId = STR_DELETEFLY;
+            break;
+        case SwUndoId::AUTOFORMAT:
+            pId = STR_AUTOFORMAT;
+            break;
+        case SwUndoId::REPLACE:
+            pId = STR_REPLACE;
+            break;
+        case SwUndoId::DELSECTION:
+            pId = STR_DELETESECTION;
+            break;
+        case SwUndoId::CHGSECTION:
+            pId = STR_CHANGESECTION;
+            break;
+        case SwUndoId::SETDEFTATTR:
+            pId = STR_CHANGEDEFATTR;
+            break;
+        case SwUndoId::DELNUM:
+            pId = STR_DELNUM;
+            break;
+        case SwUndoId::DRAWUNDO:
+            pId = STR_DRAWUNDO;
+            break;
+        case SwUndoId::DRAWGROUP:
+            pId = STR_DRAWGROUP;
+            break;
+        case SwUndoId::DRAWUNGROUP:
+            pId = STR_DRAWUNGROUP;
+            break;
+        case SwUndoId::DRAWDELETE:
+            pId = STR_DRAWDELETE;
+            break;
+        case SwUndoId::REREAD:
+            pId = STR_REREAD;
+            break;
+        case SwUndoId::DELGRF:
+            pId = STR_DELGRF;
+            break;
+        case SwUndoId::TABLE_ATTR:
+            pId = STR_TABLE_ATTR;
+            break;
+        case SwUndoId::TABLE_AUTOFMT:
+            pId = STR_UNDO_TABLE_AUTOFMT;
+            break;
+        case SwUndoId::TABLE_INSCOL:
+            pId = STR_UNDO_TABLE_INSCOL;
+            break;
+        case SwUndoId::TABLE_INSROW:
+            pId = STR_UNDO_TABLE_INSROW;
+            break;
+        case SwUndoId::TABLE_DELBOX:
+            pId = STR_UNDO_TABLE_DELBOX;
+            break;
+        case SwUndoId::TABLE_SPLIT:
+            pId = STR_UNDO_TABLE_SPLIT;
+            break;
+        case SwUndoId::TABLE_MERGE:
+            pId = STR_UNDO_TABLE_MERGE;
+            break;
+        case SwUndoId::TBLNUMFMT:
+            pId = STR_TABLE_NUMFORMAT;
+            break;
+        case SwUndoId::INSTOX:
+            pId = STR_INSERT_TOX;
+            break;
+        case SwUndoId::CLEARTOXRANGE:
+            pId = STR_CLEAR_TOX_RANGE;
+            break;
+        case SwUndoId::TBLCPYTBL:
+            pId = STR_TABLE_TBLCPYTBL;
+            break;
+        case SwUndoId::CPYTBL:
+            pId = STR_TABLE_CPYTBL;
+            break;
+        case SwUndoId::INS_FROM_SHADOWCRSR:
+            pId = STR_INS_FROM_SHADOWCRSR;
+            break;
+        case SwUndoId::CHAINE:
+            pId = STR_UNDO_CHAIN;
+            break;
+        case SwUndoId::UNCHAIN:
+            pId = STR_UNDO_UNCHAIN;
+            break;
+        case SwUndoId::FTNINFO:
+            pId = STR_UNDO_FTNINFO;
+            break;
+        case SwUndoId::COMPAREDOC:
+            pId = STR_UNDO_COMPAREDOC;
+            break;
+        case SwUndoId::SETFLYFRMFMT:
+            pId = STR_UNDO_SETFLYFRMFMT;
+            break;
+        case SwUndoId::SETRUBYATTR:
+            pId = STR_UNDO_SETRUBYATTR;
+            break;
+        case SwUndoId::TOXCHANGE:
+            pId = STR_TOXCHANGE;
+            break;
+        case SwUndoId::CREATE_PAGEDESC:
+            pId = STR_UNDO_PAGEDESC_CREATE;
+            break;
+        case SwUndoId::CHANGE_PAGEDESC:
+            pId = STR_UNDO_PAGEDESC;
+            break;
+        case SwUndoId::DELETE_PAGEDESC:
+            pId = STR_UNDO_PAGEDESC_DELETE;
+            break;
+        case SwUndoId::HEADER_FOOTER:
+            pId = STR_UNDO_HEADER_FOOTER;
+            break;
+        case SwUndoId::FIELD:
+            pId = STR_UNDO_FIELD;
+            break;
+        case SwUndoId::TXTFMTCOL_CREATE:
+            pId = STR_UNDO_TXTFMTCOL_CREATE;
+            break;
+        case SwUndoId::TXTFMTCOL_DELETE:
+            pId = STR_UNDO_TXTFMTCOL_DELETE;
+            break;
+        case SwUndoId::TXTFMTCOL_RENAME:
+            pId = STR_UNDO_TXTFMTCOL_RENAME;
+            break;
+        case SwUndoId::CHARFMT_CREATE:
+            pId = STR_UNDO_CHARFMT_CREATE;
+            break;
+        case SwUndoId::CHARFMT_DELETE:
+            pId = STR_UNDO_CHARFMT_DELETE;
+            break;
+        case SwUndoId::CHARFMT_RENAME:
+            pId = STR_UNDO_CHARFMT_RENAME;
+            break;
+        case SwUndoId::FRMFMT_CREATE:
+            pId = STR_UNDO_FRMFMT_CREATE;
+            break;
+        case SwUndoId::FRMFMT_DELETE:
+            pId = STR_UNDO_FRMFMT_DELETE;
+            break;
+        case SwUndoId::FRMFMT_RENAME:
+            pId = STR_UNDO_FRMFMT_RENAME;
+            break;
+        case SwUndoId::NUMRULE_CREATE:
+            pId = STR_UNDO_NUMRULE_CREATE;
+            break;
+        case SwUndoId::NUMRULE_DELETE:
+            pId = STR_UNDO_NUMRULE_DELETE;
+            break;
+        case SwUndoId::NUMRULE_RENAME:
+            pId = STR_UNDO_NUMRULE_RENAME;
+            break;
+        case SwUndoId::BOOKMARK_RENAME:
+            pId = STR_UNDO_BOOKMARK_RENAME;
+            break;
+        case SwUndoId::INDEX_ENTRY_INSERT:
+            pId = STR_UNDO_INDEX_ENTRY_INSERT;
+            break;
+        case SwUndoId::INDEX_ENTRY_DELETE:
+            pId = STR_UNDO_INDEX_ENTRY_DELETE;
+            break;
+        case SwUndoId::COL_DELETE:
+            pId = STR_UNDO_COL_DELETE;
+            break;
+        case SwUndoId::ROW_DELETE:
+            pId = STR_UNDO_ROW_DELETE;
+            break;
+        case SwUndoId::RENAME_PAGEDESC:
+            pId = STR_UNDO_PAGEDESC_RENAME;
+            break;
+        case SwUndoId::NUMDOWN:
+            pId = STR_NUMDOWN;
+            break;
+        case SwUndoId::FLYFRMFMT_TITLE:
+            pId = STR_UNDO_FLYFRMFMT_TITLE;
+            break;
+        case SwUndoId::FLYFRMFMT_DESCRIPTION:
+            pId = STR_UNDO_FLYFRMFMT_DESCRIPTION;
+            break;
+        case SwUndoId::TBLSTYLE_CREATE:
+            pId = STR_UNDO_TBLSTYLE_CREATE;
+            break;
+        case SwUndoId::TBLSTYLE_DELETE:
+            pId = STR_UNDO_TBLSTYLE_DELETE;
+            break;
+        case SwUndoId::TBLSTYLE_UPDATE:
+            pId = STR_UNDO_TBLSTYLE_UPDATE;
+            break;
+        case SwUndoId::UI_REPLACE:
+            pId = STR_REPLACE_UNDO;
+            break;
+        case SwUndoId::UI_INSERT_PAGE_BREAK:
+            pId = STR_INSERT_PAGE_BREAK_UNDO;
+            break;
+        case SwUndoId::UI_INSERT_COLUMN_BREAK:
+            pId = STR_INSERT_COLUMN_BREAK_UNDO;
+            break;
+        case SwUndoId::UI_INSERT_ENVELOPE:
+            pId = STR_INSERT_ENV_UNDO;
+            break;
+        case SwUndoId::UI_DRAG_AND_COPY:
+            pId = STR_DRAG_AND_COPY;
+            break;
+        case SwUndoId::UI_DRAG_AND_MOVE:
+            pId = STR_DRAG_AND_MOVE;
+            break;
+        case SwUndoId::UI_INSERT_CHART:
+            pId = STR_INSERT_CHART;
+            break;
+        case SwUndoId::UI_INSERT_FOOTNOTE:
+            pId = STR_INSERT_FOOTNOTE;
+            break;
+        case SwUndoId::UI_INSERT_URLBTN:
+            pId = STR_INSERT_URLBTN;
+            break;
+        case SwUndoId::UI_INSERT_URLTXT:
+            pId = STR_INSERT_URLTXT;
+            break;
+        case SwUndoId::UI_DELETE_INVISIBLECNTNT:
+            pId = STR_DELETE_INVISIBLECNTNT;
+            break;
+        case SwUndoId::UI_REPLACE_STYLE:
+            pId = STR_REPLACE_STYLE;
+            break;
+        case SwUndoId::UI_DELETE_PAGE_BREAK:
+            pId = STR_DELETE_PAGE_BREAK;
+            break;
+        case SwUndoId::UI_TEXT_CORRECTION:
+            pId = STR_TEXT_CORRECTION;
+            break;
+        case SwUndoId::UI_TABLE_DELETE:
+            pId = STR_UNDO_TABLE_DELETE;
+            break;
+        case SwUndoId::CONFLICT:
+            break;
+        case SwUndoId::PARA_SIGN_ADD:
+            pId = STR_PARAGRAPH_SIGN_UNDO;
+            break;
+        case SwUndoId::INSERT_FORM_FIELD:
+            pId = STR_UNDO_INSERT_FORM_FIELD;
+            break;
+    }
+
+    assert(pId);
+    return SwResId(pId);
+}
+
 OUString SwUndo::GetComment() const
 {
     OUString aResult;
 
-    if (bCacheComment)
+    if (m_bCacheComment)
     {
-        if (! pComment)
+        if (! maComment)
         {
-            pComment.reset( new OUString(SwResId(UNDO_BASE + (int)GetId())) );
+            maComment = GetUndoComment(GetId());
 
             SwRewriter aRewriter = GetRewriter();
 
-            *pComment = aRewriter.Apply(*pComment);
+            maComment = aRewriter.Apply(*maComment);
         }
 
-        aResult = *pComment;
+        aResult = *maComment;
     }
     else
     {
-        aResult = SwResId(UNDO_BASE + (int)GetId());
+        aResult = GetUndoComment(GetId());
 
         SwRewriter aRewriter = GetRewriter();
 
@@ -305,11 +698,23 @@ SwRewriter SwUndo::GetRewriter() const
 }
 
 SwUndoSaveContent::SwUndoSaveContent()
-    : pHistory( nullptr )
 {}
 
-SwUndoSaveContent::~SwUndoSaveContent()
+SwUndoSaveContent::~SwUndoSaveContent() COVERITY_NOEXCEPT_FALSE
 {
+}
+
+void SwUndoSaveContent::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    xmlTextWriterStartElement(pWriter, BAD_CAST("SwUndoSaveContent"));
+    xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
+
+    if (m_pHistory)
+    {
+        m_pHistory->dumpAsXml(pWriter);
+    }
+
+    xmlTextWriterEndElement(pWriter);
 }
 
 // This is needed when deleting content. For REDO all contents will be moved
@@ -321,7 +726,7 @@ SwUndoSaveContent::~SwUndoSaveContent()
 // If pEndNdIdx is given, Undo/Redo calls -Ins/DelFly. In that case the whole
 // section should be moved.
 void SwUndoSaveContent::MoveToUndoNds( SwPaM& rPaM, SwNodeIndex* pNodeIdx,
-                    sal_uLong* pEndNdIdx, sal_Int32* pEndCntIdx )
+                    sal_uLong* pEndNdIdx )
 {
     SwDoc& rDoc = *rPaM.GetDoc();
     ::sw::UndoGuard const undoGuard(rDoc.GetIDocumentUndoRedo());
@@ -340,7 +745,7 @@ void SwUndoSaveContent::MoveToUndoNds( SwPaM& rPaM, SwNodeIndex* pNodeIdx,
     if( pCpyNd || pEndNdIdx )
     {
         SwNodeRange aRg( pStt->nNode, 0, pEnd->nNode, 1 );
-        rDoc.GetNodes().MoveNodes( aRg, rNds, aPos.nNode, false );
+        rDoc.GetNodes().MoveNodes( aRg, rNds, aPos.nNode, true );
         aPos.nContent = 0;
         --aPos.nNode;
     }
@@ -350,8 +755,6 @@ void SwUndoSaveContent::MoveToUndoNds( SwPaM& rPaM, SwNodeIndex* pNodeIdx,
     }
     if( pEndNdIdx )
         *pEndNdIdx = aPos.nNode.GetIndex();
-    if( pEndCntIdx )
-        *pEndCntIdx = aPos.nContent.GetIndex();
 
     // old position
     aPos.nNode = nTmpMvNode;
@@ -361,7 +764,7 @@ void SwUndoSaveContent::MoveToUndoNds( SwPaM& rPaM, SwNodeIndex* pNodeIdx,
 
 void SwUndoSaveContent::MoveFromUndoNds( SwDoc& rDoc, sal_uLong nNodeIdx,
                             SwPosition& rInsPos,
-                            const sal_uLong* pEndNdIdx, const sal_Int32* pEndCntIdx )
+            const sal_uLong* pEndNdIdx, bool const bForceCreateFrames)
 {
     // here comes the recovery
     SwNodes & rNds = rDoc.GetUndoManager().GetUndoNodes();
@@ -382,9 +785,6 @@ void SwUndoSaveContent::MoveFromUndoNds( SwDoc& rDoc, sal_uLong nNodeIdx,
     SwTextNode* pTextNd = aPaM.GetNode().GetTextNode();
     if (!pEndNdIdx && pTextNd)
     {
-        if( pEndCntIdx )
-            aPaM.GetPoint()->nContent.Assign( pTextNd, *pEndCntIdx );
-
         aPaM.SetMark();
         aPaM.GetPoint()->nNode = nNodeIdx;
         aPaM.GetPoint()->nContent.Assign(aPaM.GetContentNode(), 0);
@@ -407,16 +807,13 @@ void SwUndoSaveContent::MoveFromUndoNds( SwDoc& rDoc, sal_uLong nNodeIdx,
 
         aRedlRest.Restore();
     }
-    else if( pEndNdIdx || !pTextNd )
+    else
     {
         SwNodeRange aRg( rNds, nNodeIdx, rNds, (pEndNdIdx
                         ? ((*pEndNdIdx) + 1)
                         : rNds.GetEndOfExtras().GetIndex() ) );
-        rNds.MoveNodes( aRg, rDoc.GetNodes(), rInsPos.nNode, nullptr == pEndNdIdx );
+        rNds.MoveNodes(aRg, rDoc.GetNodes(), rInsPos.nNode, nullptr == pEndNdIdx || bForceCreateFrames);
 
-    }
-    else {
-        assert(false); // wtf?
     }
 }
 
@@ -458,7 +855,6 @@ void SwUndoSaveContent::MovePtForward( SwPaM& rPam, bool bMvBkwrd )
 //                  - Footnotes
 //                  - Flys
 //                  - Bookmarks
-//                  - Directories
 
 // #i81002# - extending method
 // delete certain (not all) cross-reference bookmarks at text node of <rMark>
@@ -507,13 +903,13 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                 // will be problems with TextNode because the index will be
                 // deleted in the DTOR of SwFootnote!
                 SwTextNode* pTextNd = const_cast<SwTextNode*>(static_cast<const SwTextNode*>(pFootnoteNd));
-                if( !pHistory )
-                    pHistory.reset( new SwHistory );
+                if( !m_pHistory )
+                    m_pHistory.reset( new SwHistory );
                 SwTextAttr* const pFootnoteHint =
                     pTextNd->GetTextAttrForCharAt( nFootnoteSttIdx );
                 assert(pFootnoteHint);
                 SwIndex aIdx( pTextNd, nFootnoteSttIdx );
-                pHistory->Add( pFootnoteHint, pTextNd->GetIndex(), false );
+                m_pHistory->Add( pFootnoteHint, pTextNd->GetIndex(), false );
                 pTextNd->EraseText( aIdx, 1 );
             }
 
@@ -532,13 +928,13 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                 // will be problems with TextNode because the index will be
                 // deleted in the DTOR of SwFootnote!
                 SwTextNode* pTextNd = const_cast<SwTextNode*>(static_cast<const SwTextNode*>(pFootnoteNd));
-                if( !pHistory )
-                    pHistory.reset( new SwHistory );
+                if( !m_pHistory )
+                    m_pHistory.reset( new SwHistory );
                 SwTextAttr* const pFootnoteHint =
                     pTextNd->GetTextAttrForCharAt( nFootnoteSttIdx );
                 assert(pFootnoteHint);
                 SwIndex aIdx( pTextNd, nFootnoteSttIdx );
-                pHistory->Add( pFootnoteHint, pTextNd->GetIndex(), false );
+                m_pHistory->Add( pFootnoteHint, pTextNd->GetIndex(), false );
                 pTextNd->EraseText( aIdx, 1 );
             }
         }
@@ -547,11 +943,10 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
     // 2. Flys
     if( DelContentType::Fly & nDelContentType )
     {
-        sal_uInt16 nChainInsPos = pHistory ? pHistory->Count() : 0;
+        sal_uInt16 nChainInsPos = m_pHistory ? m_pHistory->Count() : 0;
         const SwFrameFormats& rSpzArr = *pDoc->GetSpzFrameFormats();
         if( !rSpzArr.empty() )
         {
-            const bool bDelFwrd = rMark.nNode.GetIndex() <= rPoint.nNode.GetIndex();
             SwFrameFormat* pFormat;
             const SwFormatAnchor* pAnchor;
             size_t n = rSpzArr.size();
@@ -570,14 +965,14 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                             pAPos->nNode < pEnd->nNode )
                         : ( *pStt <= *pAPos && *pAPos < *pEnd )) )
                     {
-                        if( !pHistory )
-                            pHistory.reset( new SwHistory );
+                        if( !m_pHistory )
+                            m_pHistory.reset( new SwHistory );
                         SwTextNode *const pTextNd =
                             pAPos->nNode.GetNode().GetTextNode();
                         SwTextAttr* const pFlyHint = pTextNd->GetTextAttrForCharAt(
                             pAPos->nContent.GetIndex());
                         assert(pFlyHint);
-                        pHistory->Add( pFlyHint, 0, false );
+                        m_pHistory->Add( pFlyHint, 0, false );
                         // reset n so that no Format is skipped
                         n = n >= rSpzArr.size() ? rSpzArr.size() : n+1;
                     }
@@ -585,47 +980,34 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                 case RndStdIds::FLY_AT_PARA:
                     {
                         pAPos =  pAnchor->GetContentAnchor();
-                        if( pAPos )
+                        if (pAPos &&
+                            pStt->nNode <= pAPos->nNode && pAPos->nNode <= pEnd->nNode)
                         {
-                            bool bTmp;
-                            if( DelContentType::CheckNoCntnt & nDelContentType )
-                                bTmp = pStt->nNode <= pAPos->nNode && pAPos->nNode < pEnd->nNode;
-                            else
+                            if (!m_pHistory)
+                                m_pHistory.reset( new SwHistory );
+
+                            if (!(DelContentType::Replace & nDelContentType)
+                                && IsSelectFrameAnchoredAtPara(*pAPos, *pStt, *pEnd, nDelContentType))
                             {
-                                if (bDelFwrd)
-                                    bTmp = rMark.nNode < pAPos->nNode &&
-                                        pAPos->nNode <= rPoint.nNode;
-                                else
-                                    bTmp = rPoint.nNode <= pAPos->nNode &&
-                                        pAPos->nNode < rMark.nNode;
+                                m_pHistory->AddDeleteFly(*pFormat, nChainInsPos);
+                                // reset n so that no Format is skipped
+                                n = n >= rSpzArr.size() ? rSpzArr.size() : n+1;
                             }
-
-                            if (bTmp)
+                            // Moving the anchor?
+                            else if (!((DelContentType::CheckNoCntnt|DelContentType::ExcludeFlyAtStartEnd)
+                                    & nDelContentType) &&
+                                // at least for calls from SwUndoDelete,
+                                // this should work - other Undos don't
+                                // remember the order of the cursor
+                                (rPoint.nNode.GetIndex() == pAPos->nNode.GetIndex())
+                                // Do not try to move the anchor to a table!
+                                && rMark.nNode.GetNode().IsTextNode())
                             {
-                                if( !pHistory )
-                                    pHistory.reset( new SwHistory );
-
-                                // Moving the anchor?
-                                if( !( DelContentType::CheckNoCntnt & nDelContentType ) &&
-                                    ( rPoint.nNode.GetIndex() == pAPos->nNode.GetIndex() ) )
-                                {
-                                    // Do not try to move the anchor to a table!
-                                    if( rMark.nNode.GetNode().GetTextNode() )
-                                    {
-                                        pHistory->Add( *pFormat );
-                                        SwFormatAnchor aAnch( *pAnchor );
-                                        SwPosition aPos( rMark.nNode );
-                                        aAnch.SetAnchor( &aPos );
-                                        pFormat->SetFormatAttr( aAnch );
-                                    }
-                                }
-                                else
-                                {
-                                    pHistory->Add( *static_cast<SwFlyFrameFormat *>(pFormat), nChainInsPos );
-                                    // reset n so that no Format is skipped
-                                    n = n >= rSpzArr.size() ?
-                                        rSpzArr.size() : n+1;
-                                }
+                                m_pHistory->AddChangeFlyAnchor(*pFormat);
+                                SwFormatAnchor aAnch( *pAnchor );
+                                SwPosition aPos( rMark.nNode );
+                                aAnch.SetAnchor( &aPos );
+                                pFormat->SetFormatAttr( aAnch );
                             }
                         }
                     }
@@ -634,15 +1016,18 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                     if( nullptr != (pAPos = pAnchor->GetContentAnchor() ) &&
                         ( pStt->nNode <= pAPos->nNode && pAPos->nNode <= pEnd->nNode ) )
                     {
-                        if( !pHistory )
-                            pHistory.reset( new SwHistory );
-                        if (IsDestroyFrameAnchoredAtChar(
-                                *pAPos, *pStt, *pEnd, pDoc, nDelContentType))
+                        if( !m_pHistory )
+                            m_pHistory.reset( new SwHistory );
+                        if (!(DelContentType::Replace & nDelContentType)
+                            && IsDestroyFrameAnchoredAtChar(
+                                *pAPos, *pStt, *pEnd, nDelContentType))
                         {
-                            pHistory->Add( *static_cast<SwFlyFrameFormat *>(pFormat), nChainInsPos );
+                            m_pHistory->AddDeleteFly(*pFormat, nChainInsPos);
                             n = n >= rSpzArr.size() ? rSpzArr.size() : n+1;
                         }
-                        else if( !( DelContentType::CheckNoCntnt & nDelContentType ) )
+                        else if (!((DelContentType::CheckNoCntnt |
+                                    DelContentType::ExcludeFlyAtStartEnd)
+                                    & nDelContentType))
                         {
                             if( *pStt <= *pAPos && *pAPos < *pEnd )
                             {
@@ -651,7 +1036,7 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                                 // Do not try to move the anchor to a table!
                                 if( rMark.nNode.GetNode().GetTextNode() )
                                 {
-                                    pHistory->Add( *pFormat );
+                                    m_pHistory->AddChangeFlyAnchor(*pFormat);
                                     SwFormatAnchor aAnch( *pAnchor );
                                     aAnch.SetAnchor( &rMark );
                                     pFormat->SetFormatAttr( aAnch );
@@ -665,10 +1050,10 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                     if( nullptr != (pAPos = pAnchor->GetContentAnchor() ) &&
                         pStt->nNode == pAPos->nNode )
                     {
-                        if( !pHistory )
-                            pHistory.reset( new SwHistory );
+                        if( !m_pHistory )
+                            m_pHistory.reset( new SwHistory );
 
-                        pHistory->Add( *static_cast<SwFlyFrameFormat *>(pFormat), nChainInsPos );
+                        m_pHistory->AddDeleteFly(*pFormat, nChainInsPos);
 
                         // reset n so that no Format is skipped
                         n = n >= rSpzArr.size() ? rSpzArr.size() : n+1;
@@ -681,121 +1066,127 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
     }
 
     // 3. Bookmarks
-    if( DelContentType::Bkm & nDelContentType )
+    if( !(DelContentType::Bkm & nDelContentType) )
+        return;
+
+    IDocumentMarkAccess* const pMarkAccess = pDoc->getIDocumentMarkAccess();
+    if( !pMarkAccess->getAllMarksCount() )
+        return;
+
+    for( sal_Int32 n = 0; n < pMarkAccess->getAllMarksCount(); ++n )
     {
-        IDocumentMarkAccess* const pMarkAccess = pDoc->getIDocumentMarkAccess();
-        if( pMarkAccess->getAllMarksCount() )
+        // #i81002#
+        bool bSavePos = false;
+        bool bSaveOtherPos = false;
+        const ::sw::mark::IMark *const pBkmk = pMarkAccess->getAllMarksBegin()[n];
+        auto const type(IDocumentMarkAccess::GetType(*pBkmk));
+
+        if( DelContentType::CheckNoCntnt & nDelContentType )
         {
-
-            for( sal_Int32 n = 0; n < pMarkAccess->getAllMarksCount(); ++n )
+            if ( pStt->nNode <= pBkmk->GetMarkPos().nNode
+                 && pBkmk->GetMarkPos().nNode < pEnd->nNode )
             {
-                // #i81002#
-                bool bSavePos = false;
-                bool bSaveOtherPos = false;
-                const ::sw::mark::IMark* pBkmk = (pMarkAccess->getAllMarksBegin() + n)->get();
+                bSavePos = true;
+            }
+            if ( pBkmk->IsExpanded()
+                 && pStt->nNode <= pBkmk->GetOtherMarkPos().nNode
+                 && pBkmk->GetOtherMarkPos().nNode < pEnd->nNode )
+            {
+                bSaveOtherPos = true;
+            }
+        }
+        else
+        {
+            // #i92125#
+            // keep cross-reference bookmarks, if content inside one paragraph is deleted.
+            if ( rMark.nNode == rPoint.nNode
+                && (   type == IDocumentMarkAccess::MarkType::CROSSREF_HEADING_BOOKMARK
+                    || type == IDocumentMarkAccess::MarkType::CROSSREF_NUMITEM_BOOKMARK))
+            {
+                continue;
+            }
 
-                if( DelContentType::CheckNoCntnt & nDelContentType )
+            bool bMaybe = false;
+            if ( *pStt <= pBkmk->GetMarkPos() && pBkmk->GetMarkPos() <= *pEnd )
+            {
+                if ( pBkmk->GetMarkPos() == *pEnd
+                     || ( *pStt == pBkmk->GetMarkPos() && pBkmk->IsExpanded() ) )
+                    bMaybe = true;
+                else
+                    bSavePos = true;
+            }
+            if( pBkmk->IsExpanded() &&
+                *pStt <= pBkmk->GetOtherMarkPos() && pBkmk->GetOtherMarkPos() <= *pEnd )
+            {
+                assert(!bSaveOtherPos);
+                if (   bSavePos
+                    || (*pStt < pBkmk->GetOtherMarkPos() && pBkmk->GetOtherMarkPos() < *pEnd)
+                    || (bMaybe
+                        && (   type == IDocumentMarkAccess::MarkType::TEXT_FIELDMARK
+                            || type == IDocumentMarkAccess::MarkType::CHECKBOX_FIELDMARK
+                            || type == IDocumentMarkAccess::MarkType::DROPDOWN_FIELDMARK
+                            || type == IDocumentMarkAccess::MarkType::DATE_FIELDMARK)))
                 {
-                    if ( pStt->nNode <= pBkmk->GetMarkPos().nNode
-                         && pBkmk->GetMarkPos().nNode < pEnd->nNode )
+                    if( bMaybe )
+                        bSavePos = true;
+                    bSaveOtherPos = true;
+                }
+            }
+
+            if ( !bSavePos && !bSaveOtherPos
+                 && dynamic_cast< const ::sw::mark::CrossRefBookmark* >(pBkmk) )
+            {
+                // certain special handling for cross-reference bookmarks
+                const bool bDifferentTextNodesAtMarkAndPoint =
+                    rMark.nNode != rPoint.nNode
+                    && rMark.nNode.GetNode().GetTextNode()
+                    && rPoint.nNode.GetNode().GetTextNode();
+                if ( bDifferentTextNodesAtMarkAndPoint )
+                {
+                    // delete cross-reference bookmark at <pStt>, if only part of
+                    // <pEnd> text node content is deleted.
+                    if( pStt->nNode == pBkmk->GetMarkPos().nNode
+                        && pEnd->nContent.GetIndex() != pEnd->nNode.GetNode().GetTextNode()->Len() )
                     {
                         bSavePos = true;
+                        bSaveOtherPos = false; // cross-reference bookmarks are not expanded
                     }
-                    if ( pBkmk->IsExpanded()
-                         && pStt->nNode <= pBkmk->GetOtherMarkPos().nNode
-                         && pBkmk->GetOtherMarkPos().nNode < pEnd->nNode )
+                    // delete cross-reference bookmark at <pEnd>, if only part of
+                    // <pStt> text node content is deleted.
+                    else if( pEnd->nNode == pBkmk->GetMarkPos().nNode &&
+                        pStt->nContent.GetIndex() != 0 )
                     {
-                        bSaveOtherPos = true;
+                        bSavePos = true;
+                        bSaveOtherPos = false; // cross-reference bookmarks are not expanded
                     }
                 }
-                else
+            }
+            else if (type == IDocumentMarkAccess::MarkType::ANNOTATIONMARK)
+            {
+                // delete annotation marks, if its end position is covered by the deletion
+                const SwPosition& rAnnotationEndPos = pBkmk->GetMarkEnd();
+                if ( *pStt < rAnnotationEndPos && rAnnotationEndPos <= *pEnd )
                 {
-                    // #i92125#
-                    // keep cross-reference bookmarks, if content inside one paragraph is deleted.
-                    if ( rMark.nNode == rPoint.nNode
-                         && ( IDocumentMarkAccess::GetType(*pBkmk) == IDocumentMarkAccess::MarkType::CROSSREF_HEADING_BOOKMARK
-                              || IDocumentMarkAccess::GetType(*pBkmk) == IDocumentMarkAccess::MarkType::CROSSREF_NUMITEM_BOOKMARK ) )
-                    {
-                        continue;
-                    }
-
-                    bool bMaybe = false;
-                    if ( *pStt <= pBkmk->GetMarkPos() && pBkmk->GetMarkPos() <= *pEnd )
-                    {
-                        if ( pBkmk->GetMarkPos() == *pEnd
-                             || ( *pStt == pBkmk->GetMarkPos() && pBkmk->IsExpanded() ) )
-                            bMaybe = true;
-                        else
-                            bSavePos = true;
-                    }
-                    if( pBkmk->IsExpanded() &&
-                        *pStt <= pBkmk->GetOtherMarkPos() && pBkmk->GetOtherMarkPos() <= *pEnd )
-                    {
-                        if ( bSavePos || bSaveOtherPos
-                             || ( pBkmk->GetOtherMarkPos() < *pEnd && pBkmk->GetOtherMarkPos() > *pStt ) )
-                        {
-                            if( bMaybe )
-                                bSavePos = true;
-                            bSaveOtherPos = true;
-                        }
-                    }
-
-                    if ( !bSavePos && !bSaveOtherPos
-                         && dynamic_cast< const ::sw::mark::CrossRefBookmark* >(pBkmk) )
-                    {
-                        // certain special handling for cross-reference bookmarks
-                        const bool bDifferentTextNodesAtMarkAndPoint =
-                            rMark.nNode != rPoint.nNode
-                            && rMark.nNode.GetNode().GetTextNode()
-                            && rPoint.nNode.GetNode().GetTextNode();
-                        if ( bDifferentTextNodesAtMarkAndPoint )
-                        {
-                            // delete cross-reference bookmark at <pStt>, if only part of
-                            // <pEnd> text node content is deleted.
-                            if( pStt->nNode == pBkmk->GetMarkPos().nNode
-                                && pEnd->nContent.GetIndex() != pEnd->nNode.GetNode().GetTextNode()->Len() )
-                            {
-                                bSavePos = true;
-                                bSaveOtherPos = false; // cross-reference bookmarks are not expanded
-                            }
-                            // delete cross-reference bookmark at <pEnd>, if only part of
-                            // <pStt> text node content is deleted.
-                            else if( pEnd->nNode == pBkmk->GetMarkPos().nNode &&
-                                pStt->nContent.GetIndex() != 0 )
-                            {
-                                bSavePos = true;
-                                bSaveOtherPos = false; // cross-reference bookmarks are not expanded
-                            }
-                        }
-                    }
-                    else if ( IDocumentMarkAccess::GetType(*pBkmk) == IDocumentMarkAccess::MarkType::ANNOTATIONMARK )
-                    {
-                        // delete annotation marks, if its end position is covered by the deletion
-                        const SwPosition& rAnnotationEndPos = pBkmk->GetMarkEnd();
-                        if ( *pStt < rAnnotationEndPos && rAnnotationEndPos <= *pEnd )
-                        {
-                            bSavePos = true;
-                            bSaveOtherPos = pBkmk->IsExpanded(); //tdf#90138, only save the other pos if there is one
-                        }
-                    }
+                    bSavePos = true;
+                    bSaveOtherPos = pBkmk->IsExpanded(); //tdf#90138, only save the other pos if there is one
                 }
+            }
+        }
 
-                if ( bSavePos || bSaveOtherPos )
-                {
-                    if( IDocumentMarkAccess::GetType(*pBkmk) != IDocumentMarkAccess::MarkType::UNO_BOOKMARK )
-                    {
-                        if( !pHistory )
-                            pHistory.reset( new SwHistory );
-                        pHistory->Add( *pBkmk, bSavePos, bSaveOtherPos );
-                    }
-                    if ( bSavePos
-                         && ( bSaveOtherPos
-                              || !pBkmk->IsExpanded() ) )
-                    {
-                        pMarkAccess->deleteMark(pMarkAccess->getAllMarksBegin()+n);
-                        n--;
-                    }
-                }
+        if ( bSavePos || bSaveOtherPos )
+        {
+            if (type != IDocumentMarkAccess::MarkType::UNO_BOOKMARK)
+            {
+                if( !m_pHistory )
+                    m_pHistory.reset( new SwHistory );
+                m_pHistory->Add( *pBkmk, bSavePos, bSaveOtherPos );
+            }
+            if ( bSavePos
+                 && ( bSaveOtherPos
+                      || !pBkmk->IsExpanded() ) )
+            {
+                pMarkAccess->deleteMark(pMarkAccess->getAllMarksBegin()+n);
+                n--;
             }
         }
     }
@@ -803,21 +1194,21 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
 
 // save a complete section into UndoNodes array
 SwUndoSaveSection::SwUndoSaveSection()
-    : pMvStt( nullptr ), pRedlSaveData( nullptr ), nMvLen( 0 ), nStartPos( ULONG_MAX )
+    : m_nMoveLen( 0 ), m_nStartPos( ULONG_MAX )
 {
 }
 
 SwUndoSaveSection::~SwUndoSaveSection()
 {
-    if( pMvStt )        // delete also the section from UndoNodes array
+    if (m_pMovedStart) // delete also the section from UndoNodes array
     {
         // SaveSection saves the content in the PostIt section.
-        SwNodes& rUNds = pMvStt->GetNode().GetNodes();
-        rUNds.Delete( *pMvStt, nMvLen );
+        SwNodes& rUNds = m_pMovedStart->GetNode().GetNodes();
+        rUNds.Delete( *m_pMovedStart, m_nMoveLen );
 
-        delete pMvStt;
+        m_pMovedStart.reset();
     }
-    delete pRedlSaveData;
+    m_pRedlineSaveData.reset();
 }
 
 void SwUndoSaveSection::SaveSection( const SwNodeIndex& rSttIdx )
@@ -827,12 +1218,22 @@ void SwUndoSaveSection::SaveSection( const SwNodeIndex& rSttIdx )
 }
 
 void SwUndoSaveSection::SaveSection(
-    const SwNodeRange& rRange )
+    const SwNodeRange& rRange, bool const bExpandNodes)
 {
     SwPaM aPam( rRange.aStart, rRange.aEnd );
 
-    // delete all footnotes, fly frames, bookmarks and indexes
+    // delete all footnotes, fly frames, bookmarks
     DelContentIndex( *aPam.GetMark(), *aPam.GetPoint() );
+
+    // redlines *before* CorrAbs, because DelBookmarks will make them 0-length
+    // but *after* DelContentIndex because that also may use FillSaveData (in
+    // flys) and that will be restored *after* this one...
+    m_pRedlineSaveData.reset( new SwRedlineSaveDatas );
+    if (!SwUndo::FillSaveData( aPam, *m_pRedlineSaveData ))
+    {
+        m_pRedlineSaveData.reset();
+    }
+
     {
         // move certain indexes out of deleted range
         SwNodeIndex aSttIdx( aPam.Start()->nNode.GetNode() );
@@ -841,68 +1242,65 @@ void SwUndoSaveSection::SaveSection(
         SwDoc::CorrAbs( aSttIdx, aEndIdx, SwPosition( aMvStt ), true );
     }
 
-    pRedlSaveData = new SwRedlineSaveDatas;
-    if( !SwUndo::FillSaveData( aPam, *pRedlSaveData ))
+    m_nStartPos = rRange.aStart.GetIndex();
+
+    if (bExpandNodes)
     {
-        delete pRedlSaveData;
-        pRedlSaveData = nullptr;
+        --aPam.GetPoint()->nNode;
+        ++aPam.GetMark()->nNode;
     }
-
-    nStartPos = rRange.aStart.GetIndex();
-
-    --aPam.GetPoint()->nNode;
-    ++aPam.GetMark()->nNode;
 
     SwContentNode* pCNd = aPam.GetContentNode( false );
     if( pCNd )
         aPam.GetMark()->nContent.Assign( pCNd, 0 );
-    if( nullptr != ( pCNd = aPam.GetContentNode()) )
+    pCNd = aPam.GetContentNode();
+    if( nullptr != pCNd )
         aPam.GetPoint()->nContent.Assign( pCNd, pCNd->Len() );
 
     // Keep positions as SwIndex so that this section can be deleted in DTOR
     sal_uLong nEnd;
-    pMvStt = new SwNodeIndex( rRange.aStart );
-    MoveToUndoNds(aPam, pMvStt, &nEnd);
-    nMvLen = nEnd - pMvStt->GetIndex() + 1;
+    m_pMovedStart.reset(new SwNodeIndex(rRange.aStart));
+    MoveToUndoNds(aPam, m_pMovedStart.get(), &nEnd);
+    m_nMoveLen = nEnd - m_pMovedStart->GetIndex() + 1;
 }
 
 void SwUndoSaveSection::RestoreSection( SwDoc* pDoc, SwNodeIndex* pIdx,
                                         sal_uInt16 nSectType )
 {
-    if( ULONG_MAX != nStartPos )        // was there any content?
-    {
-        // check if the content is at the old position
-        SwNodeIndex aSttIdx( pDoc->GetNodes(), nStartPos );
+    if( ULONG_MAX == m_nStartPos )        // was there any content?
+        return;
 
-        // move the content from UndoNodes array into Fly
-        SwStartNode* pSttNd = SwNodes::MakeEmptySection( aSttIdx,
-                                                (SwStartNodeType)nSectType );
+    // check if the content is at the old position
+    SwNodeIndex aSttIdx( pDoc->GetNodes(), m_nStartPos );
 
-        RestoreSection( pDoc, SwNodeIndex( *pSttNd->EndOfSectionNode() ));
+    // move the content from UndoNodes array into Fly
+    SwStartNode* pSttNd = SwNodes::MakeEmptySection( aSttIdx,
+                                            static_cast<SwStartNodeType>(nSectType) );
 
-        if( pIdx )
-            *pIdx = *pSttNd;
-    }
+    RestoreSection( pDoc, SwNodeIndex( *pSttNd->EndOfSectionNode() ));
+
+    if( pIdx )
+        *pIdx = *pSttNd;
 }
 
-void SwUndoSaveSection::RestoreSection( SwDoc* pDoc, const SwNodeIndex& rInsPos )
+void SwUndoSaveSection::RestoreSection(
+        SwDoc *const pDoc, const SwNodeIndex& rInsPos, bool bForceCreateFrames)
 {
-    if( ULONG_MAX != nStartPos )        // was there any content?
+    if( ULONG_MAX == m_nStartPos )        // was there any content?
+        return;
+
+    SwPosition aInsPos( rInsPos );
+    sal_uLong nEnd = m_pMovedStart->GetIndex() + m_nMoveLen - 1;
+    MoveFromUndoNds(*pDoc, m_pMovedStart->GetIndex(), aInsPos, &nEnd, bForceCreateFrames);
+
+    // destroy indices again, content was deleted from UndoNodes array
+    m_pMovedStart.reset();
+    m_nMoveLen = 0;
+
+    if( m_pRedlineSaveData )
     {
-        SwPosition aInsPos( rInsPos );
-        sal_uLong nEnd = pMvStt->GetIndex() + nMvLen - 1;
-        MoveFromUndoNds(*pDoc, pMvStt->GetIndex(), aInsPos, &nEnd);
-
-        // destroy indices again, content was deleted from UndoNodes array
-        DELETEZ( pMvStt );
-        nMvLen = 0;
-
-        if( pRedlSaveData )
-        {
-            SwUndo::SetSaveData( *pDoc, *pRedlSaveData );
-            delete pRedlSaveData;
-            pRedlSaveData = nullptr;
-        }
+        SwUndo::SetSaveData( *pDoc, *m_pRedlineSaveData );
+        m_pRedlineSaveData.reset();
     }
 }
 
@@ -922,20 +1320,20 @@ SwRedlineSaveData::SwRedlineSaveData(
     switch (eCmpPos)
     {
     case SwComparePosition::OverlapBefore:        // Pos1 overlaps Pos2 at the beginning
-        nEndNode = rEndPos.nNode.GetIndex();
-        nEndContent = rEndPos.nContent.GetIndex();
+        m_nEndNode = rEndPos.nNode.GetIndex();
+        m_nEndContent = rEndPos.nContent.GetIndex();
         break;
 
     case SwComparePosition::OverlapBehind:        // Pos1 overlaps Pos2 at the end
-        nSttNode = rSttPos.nNode.GetIndex();
-        nSttContent = rSttPos.nContent.GetIndex();
+        m_nSttNode = rSttPos.nNode.GetIndex();
+        m_nSttContent = rSttPos.nContent.GetIndex();
         break;
 
     case SwComparePosition::Inside:                // Pos1 lays completely in Pos2
-        nSttNode = rSttPos.nNode.GetIndex();
-        nSttContent = rSttPos.nContent.GetIndex();
-        nEndNode = rEndPos.nNode.GetIndex();
-        nEndContent = rEndPos.nContent.GetIndex();
+        m_nSttNode = rSttPos.nNode.GetIndex();
+        m_nSttContent = rSttPos.nContent.GetIndex();
+        m_nEndNode = rEndPos.nNode.GetIndex();
+        m_nEndContent = rEndPos.nContent.GetIndex();
         break;
 
     case SwComparePosition::Outside:               // Pos2 lays completely in Pos1
@@ -955,7 +1353,7 @@ SwRedlineSaveData::SwRedlineSaveData(
     }
 
 #if OSL_DEBUG_LEVEL > 0
-    nRedlineCount = rSttPos.nNode.GetNode().GetDoc()->getIDocumentRedlineAccess().GetRedlineTable().size();
+    m_nRedlineCount = rSttPos.nNode.GetNode().GetDoc()->getIDocumentRedlineAccess().GetRedlineTable().size();
 #endif
 }
 
@@ -963,7 +1361,7 @@ SwRedlineSaveData::~SwRedlineSaveData()
 {
 }
 
-void SwRedlineSaveData::RedlineToDoc( SwPaM& rPam )
+void SwRedlineSaveData::RedlineToDoc( SwPaM const & rPam )
 {
     SwDoc& rDoc = *rPam.GetDoc();
     SwRangeRedline* pRedl = new SwRangeRedline( *this, rPam );
@@ -980,7 +1378,7 @@ void SwRedlineSaveData::RedlineToDoc( SwPaM& rPam )
     // First, delete the "old" so that in an Append no unexpected things will
     // happen, e.g. a delete in an insert. In the latter case the just restored
     // content will be deleted and not the one you originally wanted.
-    rDoc.getIDocumentRedlineAccess().DeleteRedline( *pRedl, false, USHRT_MAX );
+    rDoc.getIDocumentRedlineAccess().DeleteRedline( *pRedl, false, RedlineType::Any );
 
     RedlineFlags eOld = rDoc.getIDocumentRedlineAccess().GetRedlineFlags();
     rDoc.getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld | RedlineFlags::DontCombineRedlines );
@@ -988,9 +1386,9 @@ void SwRedlineSaveData::RedlineToDoc( SwPaM& rPam )
     if (rDoc.GetDocShell() && (!pRedl->GetComment().isEmpty()) )
         rDoc.GetDocShell()->Broadcast(SwRedlineHint());
 
-    bool const bSuccess = rDoc.getIDocumentRedlineAccess().AppendRedline( pRedl, true );
-    assert(bSuccess); // SwRedlineSaveData::RedlineToDoc: insert redline failed
-    (void) bSuccess; // unused in non-debug
+    auto const result(rDoc.getIDocumentRedlineAccess().AppendRedline(pRedl, true));
+    assert(result != IDocumentRedlineAccess::AppendResult::IGNORED); // SwRedlineSaveData::RedlineToDoc: insert redline failed
+    (void) result; // unused in non-debug
     rDoc.getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld );
 }
 
@@ -1019,12 +1417,12 @@ bool SwUndo::FillSaveData(
              && eCmpPos != SwComparePosition::CollideStart )
         {
 
-            rSData.push_back(o3tl::make_unique<SwRedlineSaveData>(eCmpPos, *pStt, *pEnd, *pRedl, bCopyNext));
+            rSData.push_back(std::unique_ptr<SwRedlineSaveData, o3tl::default_delete<SwRedlineSaveData>>(new SwRedlineSaveData(eCmpPos, *pStt, *pEnd, *pRedl, bCopyNext)));
         }
     }
     if( !rSData.empty() && bDelRange )
     {
-        rRange.GetDoc()->getIDocumentRedlineAccess().DeleteRedline( rRange, false, USHRT_MAX );
+        rRange.GetDoc()->getIDocumentRedlineAccess().DeleteRedline( rRange, false, RedlineType::Any );
     }
     return !rSData.empty();
 }
@@ -1042,7 +1440,7 @@ bool SwUndo::FillSaveDataForFormat(
     for ( ; n < rTable.size(); ++n )
     {
         SwRangeRedline* pRedl = rTable[n];
-        if ( nsRedlineType_t::REDLINE_FORMAT == pRedl->GetType() )
+        if ( RedlineType::Format == pRedl->GetType() )
         {
             const SwComparePosition eCmpPos = ComparePosition( *pStt, *pEnd, *pRedl->Start(), *pRedl->End() );
             if ( eCmpPos != SwComparePosition::Before
@@ -1050,7 +1448,7 @@ bool SwUndo::FillSaveDataForFormat(
                  && eCmpPos != SwComparePosition::CollideEnd
                  && eCmpPos != SwComparePosition::CollideStart )
             {
-                rSData.push_back(o3tl::make_unique<SwRedlineSaveData>(eCmpPos, *pStt, *pEnd, *pRedl, true));
+                rSData.push_back(std::unique_ptr<SwRedlineSaveData, o3tl::default_delete<SwRedlineSaveData>>(new SwRedlineSaveData(eCmpPos, *pStt, *pEnd, *pRedl, true)));
             }
 
         }
@@ -1071,7 +1469,7 @@ void SwUndo::SetSaveData( SwDoc& rDoc, SwRedlineSaveDatas& rSData )
 #if OSL_DEBUG_LEVEL > 0
     // check redline count against count saved in RedlineSaveData object
     assert(rSData.empty() ||
-           (rSData[0].nRedlineCount == rDoc.getIDocumentRedlineAccess().GetRedlineTable().size()));
+           (rSData[0].m_nRedlineCount == rDoc.getIDocumentRedlineAccess().GetRedlineTable().size()));
             // "redline count not restored properly"
 #endif
 
@@ -1096,10 +1494,10 @@ bool SwUndo::CanRedlineGroup( SwRedlineSaveDatas& rCurr,
     {
         const SwRedlineSaveData& rSet = rCurr[ n ];
         const SwRedlineSaveData& rGet = rCheck[ n ];
-        if( rSet.nSttNode != rGet.nSttNode ||
+        if( rSet.m_nSttNode != rGet.m_nSttNode ||
             rSet.GetMvSttIdx() || rGet.GetMvSttIdx() ||
-            ( bCurrIsEnd ? rSet.nSttContent != rGet.nEndContent
-                            : rSet.nEndContent != rGet.nSttContent ) ||
+            ( bCurrIsEnd ? rSet.m_nSttContent != rGet.m_nEndContent
+                            : rSet.m_nEndContent != rGet.m_nSttContent ) ||
             !rGet.CanCombine( rSet ) )
         {
             return false;
@@ -1111,9 +1509,9 @@ bool SwUndo::CanRedlineGroup( SwRedlineSaveDatas& rCurr,
         SwRedlineSaveData& rSet = rCurr[ n ];
         const SwRedlineSaveData& rGet = rCheck[ n ];
         if( bCurrIsEnd )
-            rSet.nSttContent = rGet.nSttContent;
+            rSet.m_nSttContent = rGet.m_nSttContent;
         else
-            rSet.nEndContent = rGet.nEndContent;
+            rSet.m_nEndContent = rGet.m_nEndContent;
     }
     return true;
 }
@@ -1137,32 +1535,160 @@ OUString ShortenString(const OUString & rStr, sal_Int32 nLength, const OUString 
            + rStr.copy(rStr.getLength() - nBackLen);
 }
 
+static bool IsAtEndOfSection(SwPosition const& rAnchorPos)
+{
+    SwNodeIndex node(*rAnchorPos.nNode.GetNode().EndOfSectionNode());
+    SwContentNode *const pNode(SwNodes::GoPrevious(&node));
+    assert(pNode);
+    assert(rAnchorPos.nNode <= node); // last valid anchor pos is last content
+    return node == rAnchorPos.nNode
+        // at-para fly has no SwIndex!
+        && (rAnchorPos.nContent == pNode->Len() || rAnchorPos.nContent.GetIdxReg() == nullptr);
+}
+
+static bool IsAtStartOfSection(SwPosition const& rAnchorPos)
+{
+    SwNodes const& rNodes(rAnchorPos.nNode.GetNodes());
+    SwNodeIndex node(*rAnchorPos.nNode.GetNode().StartOfSectionNode());
+    SwContentNode *const pNode(rNodes.GoNext(&node));
+    assert(pNode);
+    (void) pNode;
+    assert(node <= rAnchorPos.nNode);
+    return node == rAnchorPos.nNode && rAnchorPos.nContent == 0;
+}
+
+/// passed start / end position could be on section start / end node
+static bool IsAtEndOfSection2(SwPosition const& rPos)
+{
+    return rPos.nNode.GetNode().IsEndNode()
+        || IsAtEndOfSection(rPos);
+}
+
+static bool IsAtStartOfSection2(SwPosition const& rPos)
+{
+    return rPos.nNode.GetNode().IsStartNode()
+        || IsAtStartOfSection(rPos);
+}
+
+static bool IsNotBackspaceHeuristic(
+        SwPosition const& rStart, SwPosition const& rEnd)
+{
+    // check if the selection is backspace/delete created by DelLeft/DelRight
+    return rStart.nNode.GetIndex() + 1 != rEnd.nNode.GetIndex()
+        || rEnd.nContent != 0
+        || rStart.nContent != rStart.nNode.GetNode().GetTextNode()->Len();
+}
+
 bool IsDestroyFrameAnchoredAtChar(SwPosition const & rAnchorPos,
-        SwPosition const & rStart, SwPosition const & rEnd, const SwDoc* doc,
+        SwPosition const & rStart, SwPosition const & rEnd,
         DelContentType const nDelContentType)
 {
-    bool inSelection = rAnchorPos < rEnd;
-    if( rAnchorPos == rEnd )
+    assert(rStart <= rEnd);
+
+    // CheckNoCntnt means DelFullPara which is obvious to handle
+    if (DelContentType::CheckNoCntnt & nDelContentType)
+    {   // exclude selection end node because it won't be deleted
+        return (rAnchorPos.nNode < rEnd.nNode)
+            && (rStart.nNode <= rAnchorPos.nNode);
+    }
+
+    if ((nDelContentType & DelContentType::WriterfilterHack)
+        && rAnchorPos.GetDoc()->IsInWriterfilterImport())
+    {   // FIXME hack for writerfilter RemoveLastParagraph() and MakeFlyAndMove(); can't test file format more specific?
+        return (rStart < rAnchorPos) && (rAnchorPos < rEnd);
+    }
+
+    if (nDelContentType & DelContentType::ExcludeFlyAtStartEnd)
+    {   // exclude selection start and end node
+        return (rAnchorPos.nNode < rEnd.nNode)
+            && (rStart.nNode < rAnchorPos.nNode);
+    }
+
+    // in general, exclude the start and end position
+    return ((rStart < rAnchorPos)
+            || (rStart == rAnchorPos
+                // special case: fully deleted node
+                && ((rStart.nNode != rEnd.nNode && rStart.nContent == 0
+                        // but not if the selection is backspace/delete!
+                        && IsNotBackspaceHeuristic(rStart, rEnd))
+                    || (IsAtStartOfSection(rAnchorPos) && IsAtEndOfSection2(rEnd)))))
+        && ((rAnchorPos < rEnd)
+            || (rAnchorPos == rEnd
+                // special case: fully deleted node
+                && ((rEnd.nNode != rStart.nNode && rEnd.nContent == rEnd.nNode.GetNode().GetTextNode()->Len()
+                        && IsNotBackspaceHeuristic(rStart, rEnd))
+                    || (IsAtEndOfSection(rAnchorPos) && IsAtStartOfSection2(rStart)))));
+}
+
+bool IsSelectFrameAnchoredAtPara(SwPosition const & rAnchorPos,
+        SwPosition const & rStart, SwPosition const & rEnd,
+        DelContentType const nDelContentType)
+{
+    assert(rStart <= rEnd);
+
+    // CheckNoCntnt means DelFullPara which is obvious to handle
+    if (DelContentType::CheckNoCntnt & nDelContentType)
+    {   // exclude selection end node because it won't be deleted
+        return (rAnchorPos.nNode < rEnd.nNode)
+            && (rStart.nNode <= rAnchorPos.nNode);
+    }
+
+    if ((nDelContentType & DelContentType::WriterfilterHack)
+        && rAnchorPos.GetDoc()->IsInWriterfilterImport())
+    {   // FIXME hack for writerfilter RemoveLastParagraph() and MakeFlyAndMove(); can't test file format more specific?
+        // but it MUST NOT be done during the SetRedlineFlags at the end of ODF
+        // import, where the IsInXMLImport() cannot be checked because the
+        // stupid code temp. overrides it - instead rely on setting the ALLFLYS
+        // flag in MoveFromSection() and converting that to CheckNoCntnt with
+        // adjusted cursor!
+        return (rStart.nNode < rAnchorPos.nNode) && (rAnchorPos.nNode < rEnd.nNode);
+    }
+
+    // in general, exclude the start and end position
+    return ((rStart.nNode < rAnchorPos.nNode)
+            || (rStart.nNode == rAnchorPos.nNode
+                && !(nDelContentType & DelContentType::ExcludeFlyAtStartEnd)
+                // special case: fully deleted node
+                && ((rStart.nNode != rEnd.nNode && rStart.nContent == 0
+                        // but not if the selection is backspace/delete!
+                        && IsNotBackspaceHeuristic(rStart, rEnd))
+                    || (IsAtStartOfSection2(rStart) && IsAtEndOfSection2(rEnd)))))
+        && ((rAnchorPos.nNode < rEnd.nNode)
+            || (rAnchorPos.nNode == rEnd.nNode
+                && !(nDelContentType & DelContentType::ExcludeFlyAtStartEnd)
+                // special case: fully deleted node
+                && ((rEnd.nNode != rStart.nNode && rEnd.nContent == rEnd.nNode.GetNode().GetTextNode()->Len()
+                        && IsNotBackspaceHeuristic(rStart, rEnd))
+                    || (IsAtEndOfSection2(rEnd) && IsAtStartOfSection2(rStart)))));
+}
+
+bool IsFlySelectedByCursor(SwDoc const & rDoc,
+        SwPosition const & rStart, SwPosition const & rEnd)
+{
+    for (SwFrameFormat const*const pFly : *rDoc.GetSpzFrameFormats())
     {
-        const SwNodes& nodes = doc->GetNodes();
-        if( rEnd == SwPosition( nodes.GetEndOfContent()))
-            inSelection = true;
-        else
+        SwFormatAnchor const& rAnchor(pFly->GetAnchor());
+        switch (rAnchor.GetAnchorId())
         {
-            SwNodeIndex idx( nodes.GetEndOfContent());
-         if( SwContentNode* last = SwNodes::GoPrevious( &idx ))
-            inSelection = rEnd == SwPosition( *last, last->Len());
+            case RndStdIds::FLY_AT_CHAR:
+            case RndStdIds::FLY_AT_PARA:
+            {
+                SwPosition const*const pAnchorPos(rAnchor.GetContentAnchor());
+                // can this really be null?
+                if (pAnchorPos != nullptr
+                    && ((rAnchor.GetAnchorId() == RndStdIds::FLY_AT_CHAR)
+                        ? IsDestroyFrameAnchoredAtChar(*pAnchorPos, rStart, rEnd)
+                        : IsSelectFrameAnchoredAtPara(*pAnchorPos, rStart, rEnd)))
+                {
+                    return true;
+                }
+            }
+            break;
+            default: // other types not relevant
+            break;
         }
     }
-    // Here we identified the objects to destroy:
-    // - anchored between start and end of the selection
-    // - anchored in start of the selection with "CheckNoContent"
-    // - anchored in start of sel. and the selection start at pos 0
-    return  inSelection
-         && (   (DelContentType::CheckNoCntnt & nDelContentType)
-            ||  (rStart.nNode < rAnchorPos.nNode)
-            ||  !rStart.nContent.GetIndex()
-            );
+    return false;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

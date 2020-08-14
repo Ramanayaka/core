@@ -26,7 +26,7 @@
 
 namespace comphelper
 {
-/** Base class to implement an UNO object supporting types and weak references, i.e. the object can be held
+/** Base class to implement a UNO object supporting types and weak references, i.e. the object can be held
     weakly (by a css::uno::WeakReference).
     This implementation copes with reference counting.  Upon last release(), the virtual dtor
     is called.
@@ -40,9 +40,17 @@ public:
     OWeakTypeObject();
     virtual ~OWeakTypeObject() override;
 
+    OWeakTypeObject(OWeakTypeObject const &) = default;
+    OWeakTypeObject(OWeakTypeObject &&) = default;
+    OWeakTypeObject & operator =(OWeakTypeObject const &) = default;
+    OWeakTypeObject & operator =(OWeakTypeObject &&) = default;
+
     virtual css::uno::Any SAL_CALL queryInterface(const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire() throw () override;
-    virtual void SAL_CALL release() throw () override;
+    virtual void SAL_CALL acquire() throw () override
+    { ::cppu::OWeakObject::acquire(); }
+    virtual void SAL_CALL release() throw () override
+    { ::cppu::OWeakObject::release(); }
+
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
     virtual css::uno::Sequence< ::sal_Int8 > SAL_CALL getImplementationId(  ) override;
 

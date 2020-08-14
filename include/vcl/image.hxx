@@ -22,51 +22,44 @@
 
 #include <vcl/dllapi.h>
 #include <tools/gen.hxx>
-#include <tools/resid.hxx>
-#include <tools/solar.h>
 #include <vcl/bitmapex.hxx>
 #include <vcl/outdev.hxx>
 
-#include <com/sun/star/uno/Reference.hxx>
-
 #include <memory>
-#include <vector>
 
-struct ImplImage;
-struct ImplImageList;
-namespace com { namespace sun { namespace star { namespace graphic { class XGraphic;} } } }
+class ImplImage;
 
-namespace vcl
-{
-    enum class ImageType
-    {
-        Size16,
-        Size26,
-        Size32,
-        Small = Size16,
-        LAST = Size32,
-    };
-}
+namespace com::sun::star::graphic { class XGraphic; }
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
 
-#define IMAGELIST_IMAGE_NOTFOUND    ((sal_uInt16)0xFFFF)
+#define IMAGELIST_IMAGE_NOTFOUND (sal_uInt16(0xFFFF))
+
+enum class StockImage { Yes };
 
 class SAL_WARN_UNUSED VCL_DLLPUBLIC Image
 {
     friend class ::OutputDevice;
-
 public:
-                    Image();
-                    explicit Image( const BitmapEx& rBitmapEx );
-                    explicit Image( const css::uno::Reference< css::graphic::XGraphic >& rxGraphic );
-                    explicit Image( const OUString &rPNGFileUrl );
+    Image();
+    explicit Image(BitmapEx const & rBitmapEx);
+    explicit Image(css::uno::Reference<css::graphic::XGraphic> const & rxGraphic);
+    explicit Image(OUString const & rPNGFileUrl);
+    explicit Image(StockImage, OUString const & rPNGFilePath, Size aSpecificSize = Size());
 
-    Size            GetSizePixel() const;
+    Size GetSizePixel() const;
+    BitmapEx GetBitmapEx() const;
 
-    BitmapEx        GetBitmapEx() const;
+    bool operator!() const
+    {
+        return !mpImplData;
+    }
+    bool operator==(const Image& rImage) const;
+    bool operator!=(const Image& rImage) const
+    {
+        return !(Image::operator==(rImage));
+    }
 
-    bool            operator!() const { return !mpImplData; }
-    bool            operator==( const Image& rImage ) const;
-    bool            operator!=( const Image& rImage ) const { return !(Image::operator==( rImage )); }
+    OUString GetStock() const;
 
     void Draw(OutputDevice* pOutDev, const Point& rPos, DrawImageFlags nStyle, const Size* pSize = nullptr);
 
@@ -74,7 +67,7 @@ private:
 
     std::shared_ptr<ImplImage> mpImplData;
 
-    SAL_DLLPRIVATE void    ImplInit( const BitmapEx& rBmpEx );
+    SAL_DLLPRIVATE void ImplInit(BitmapEx const & rBmpEx);
 };
 
 #endif // INCLUDED_VCL_IMAGE_HXX

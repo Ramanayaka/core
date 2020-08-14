@@ -20,44 +20,11 @@
 #ifndef INCLUDED_SDEXT_SOURCE_MINIMIZER_PPPOPTIMIZER_HXX
 #define INCLUDED_SDEXT_SOURCE_MINIMIZER_PPPOPTIMIZER_HXX
 
-#include <cppuhelper/implbase.hxx>
-#include <com/sun/star/frame/XDispatch.hpp>
-#include <com/sun/star/frame/XDispatchProvider.hpp>
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/frame/XController.hpp>
+#include <rtl/ustring.hxx>
 
 
-class PPPOptimizer : public cppu::WeakImplHelper<
-                                    css::frame::XDispatchProvider,
-                                    css::frame::XDispatch >
+struct PPPOptimizer
 {
-    css::uno::Reference< css::uno::XComponentContext > mxContext;
-    css::uno::Reference< css::frame::XController > mxController;
-
-public:
-
-    PPPOptimizer(
-        css::uno::Reference<css::uno::XComponentContext> const & xContext,
-        css::uno::Reference< css::frame::XFrame > const & xFrame);
-    virtual     ~PPPOptimizer() override;
-
-    // XDispatchProvider
-    virtual css::uno::Reference< css::frame::XDispatch > SAL_CALL queryDispatch(
-        const css::util::URL& aURL, const OUString& aTargetFrameName, sal_Int32 nSearchFlags ) override;
-
-    virtual css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > SAL_CALL queryDispatches(
-        const css::uno::Sequence< css::frame::DispatchDescriptor >& aDescripts ) override;
-
-    // XDispatch
-    virtual void SAL_CALL dispatch( const css::util::URL& aURL,
-                                        const css::uno::Sequence< css::beans::PropertyValue >& lArguments ) override;
-
-    virtual void SAL_CALL addStatusListener( const css::uno::Reference< css::frame::XStatusListener >& xListener,
-                                                const css::util::URL& aURL ) override;
-    virtual void SAL_CALL removeStatusListener( const css::uno::Reference< css::frame::XStatusListener >& xListener,
-                                                const css::util::URL& aURL ) override;
-
     static sal_Int64 GetFileSize( const OUString& rURL );
 };
 

@@ -20,11 +20,13 @@
 #ifndef INCLUDED_VCL_INC_UNX_I18N_IM_HXX
 #define INCLUDED_VCL_INC_UNX_I18N_IM_HXX
 
+#include <X11/Xlib.h>
+
 #include <vclpluginapi.h>
 
 #define bUseInputMethodDefault True
 
-class VCLPLUG_GEN_PUBLIC SalI18N_InputMethod
+class SalI18N_InputMethod
 {
     bool        mbUseable;  // system supports locale as well as status
                             // and preedit style ?

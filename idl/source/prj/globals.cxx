@@ -18,6 +18,7 @@
  */
 
 #include <sal/config.h>
+#include <rtl/instance.hxx>
 
 #include <globals.hxx>
 #include <database.hxx>
@@ -34,18 +35,13 @@ IdlDll & GetIdlApp()
 }
 
 IdlDll::IdlDll()
-    : pHashTable( nullptr )
-    , pGlobalNames( nullptr )
-
 {}
 
 IdlDll::~IdlDll()
 {
-    delete pGlobalNames;
-    delete pHashTable;
 }
 
-inline SvStringHashEntry * INS( const OString& rName )
+static SvStringHashEntry * INS( const OString& rName )
 {
     sal_uInt32  nIdx;
     GetIdlApp().pHashTable->Insert( rName, &nIdx );

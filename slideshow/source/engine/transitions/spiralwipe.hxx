@@ -21,12 +21,9 @@
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_TRANSITIONS_SPIRALWIPE_HXX
 
 #include "parametricpolypolygon.hxx"
-#include <basegfx/numeric/ftools.hxx>
-#include <basegfx/point/b2dpoint.hxx>
 
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /// Generates a topLeftClockWise or
 /// bottomLeftCounterClockWise (flipOnYAxis=true) spiral wipe:
@@ -54,7 +51,7 @@ private:
     const bool m_fourBox;
 };
 
-}
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_TRANSITIONS_SPIRALWIPE_HXX

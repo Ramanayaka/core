@@ -19,32 +19,20 @@
 
 
 #if defined(_WIN32)
-#if defined _MSC_VER
-#pragma warning(push, 1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
+#include <algorithm>
 #endif
 
-#include <string>
-#include <string.h>
-#include "osl/module.hxx"
-#include "osl/thread.hxx"
-#include "rtl/ustring.hxx"
-#include "rtl/ustrbuf.hxx"
-#include "rtl/bootstrap.hxx"
-#include "osl/file.hxx"
-#include "osl/process.h"
-#include "rtl/instance.hxx"
-#include "rtl/uri.hxx"
-#include "osl/getglobalmutex.hxx"
-#include "com/sun/star/lang/IllegalArgumentException.hpp"
-#include "cppuhelper/bootstrap.hxx"
+#include <osl/module.hxx>
+#include <rtl/ustring.hxx>
+#include <osl/file.hxx>
+#include <sal/log.hxx>
 
 #include "framework.hxx"
-#include "fwkutil.hxx"
+#include <fwkutil.hxx>
 #include <memory>
 
 using namespace osl;
@@ -52,59 +40,6 @@ using namespace osl;
 
 namespace jfw
 {
-
-bool isAccessibilitySupportDesired()
-{
-    OUString sValue;
-    if (::rtl::Bootstrap::get( "JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY", sValue) &&
-        sValue == "1" )
-        return false;
-
-#ifdef _WIN32
-    bool retVal = false;
-    HKEY    hKey = nullptr;
-    if (RegOpenKeyEx(HKEY_CURRENT_USER,
-                     "Software\\LibreOffice\\Accessibility\\AtToolSupport",
-                     0, KEY_READ, &hKey) == ERROR_SUCCESS)
-    {
-        DWORD   dwType = 0;
-        DWORD   dwLen = 16;
-        unsigned char arData[16];
-        if( RegQueryValueEx(hKey, "SupportAssistiveTechnology", nullptr, &dwType, arData,
-                            & dwLen)== ERROR_SUCCESS)
-        {
-            if (dwType == REG_SZ)
-            {
-                if (strcmp(reinterpret_cast<char*>(arData), "true") == 0
-                    || strcmp(reinterpret_cast<char*>(arData), "1") == 0)
-                    retVal = true;
-                else if (strcmp(reinterpret_cast<char*>(arData), "false") == 0
-                         || strcmp(reinterpret_cast<char*>(arData), "0") == 0)
-                    retVal = false;
-                else
-                    SAL_WARN("jfw", "bad registry value " << arData);
-            }
-            else if (dwType == REG_DWORD)
-            {
-                if (arData[0] == 1)
-                    retVal = true;
-                else if (arData[0] == 0)
-                    retVal = false;
-                else
-                    SAL_WARN(
-                        "jfw", "bad registry value " << unsigned(arData[0]));
-            }
-        }
-    }
-    RegCloseKey(hKey);
-
-#elif defined UNX
-    // Java is no longer required for a11y - we use atk directly.
-    bool retVal = ::rtl::Bootstrap::get( "JFW_PLUGIN_FORCE_ACCESSIBILITY", sValue) && sValue == "1";
-#endif
-
-    return retVal;
-}
 
 rtl::ByteSequence encodeBase16(const rtl::ByteSequence& rawData)
 {
@@ -139,7 +74,7 @@ rtl::ByteSequence decodeBase16(const rtl::ByteSequence& data)
     static const char decodingTable[] =
         {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
     sal_Int32 lenData = data.getLength();
-    sal_Int32 lenBuf = lenData / 2; //always divisable by two
+    sal_Int32 lenBuf = lenData / 2; //always divisible by two
     std::unique_ptr<unsigned char[]> pBuf(new unsigned char[lenBuf]);
     const sal_Int8* pData = data.getConstArray();
     for (sal_Int32 i = 0; i < lenBuf; i++)
@@ -175,8 +110,8 @@ rtl::ByteSequence decodeBase16(const rtl::ByteSequence& data)
 
 OUString getDirFromFile(const OUString& usFilePath)
 {
-    sal_Int32 index= usFilePath.lastIndexOf('/');
-    return OUString(usFilePath.getStr(), index);
+    sal_Int32 index = usFilePath.lastIndexOf('/');
+    return usFilePath.copy(0, index);
 }
 
 OUString getLibraryLocation()

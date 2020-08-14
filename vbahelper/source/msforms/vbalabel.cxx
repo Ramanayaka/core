@@ -23,7 +23,8 @@
 using namespace com::sun::star;
 using namespace ooo::vba;
 
-ScVbaLabel::ScVbaLabel(  const css::uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, ov::AbstractGeometryAttributes* pGeomHelper ) : LabelImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper )
+ScVbaLabel::ScVbaLabel(  const css::uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, std::unique_ptr<ov::AbstractGeometryAttributes> pGeomHelper )
+    : LabelImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) )
 {
 }
 
@@ -75,7 +76,7 @@ uno::Reference< msforms::XNewFont > SAL_CALL ScVbaLabel::getFont()
 
 OUString ScVbaLabel::getServiceImplName()
 {
-    return OUString( "ScVbaLabel" );
+    return "ScVbaLabel";
 }
 
 sal_Int32 SAL_CALL ScVbaLabel::getBackColor()
@@ -101,12 +102,10 @@ void SAL_CALL ScVbaLabel::setAutoSize( sal_Bool bAutoSize )
 uno::Sequence< OUString >
 ScVbaLabel::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.Label";
-    }
+        "ooo.vba.msforms.Label"
+    };
     return aServiceNames;
 }
 

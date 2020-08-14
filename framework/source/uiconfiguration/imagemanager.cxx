@@ -18,30 +18,14 @@
  */
 
 #include <uiconfiguration/imagemanager.hxx>
-#include <xml/imagesconfiguration.hxx>
-#include <uiconfiguration/graphicnameaccess.hxx>
 #include "imagemanagerimpl.hxx"
 
-#include "properties.h"
-
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/embed/ElementModes.hpp>
-#include <com/sun/star/io/XStream.hpp>
 
 #include <vcl/svapp.hxx>
-#include <rtl/ref.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <comphelper/sequence.hxx>
-#include <unotools/ucbstreamhelper.hxx>
-#include <vcl/pngread.hxx>
-#include <vcl/pngwrite.hxx>
 
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::XInterface;
-using ::com::sun::star::uno::Exception;
-using ::com::sun::star::uno::RuntimeException;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::graphic::XGraphic;
 using namespace ::com::sun::star;
@@ -178,7 +162,7 @@ sal_Bool SAL_CALL ImageManager::isReadOnly()
 
 } // namespace framework
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_ImageManager_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

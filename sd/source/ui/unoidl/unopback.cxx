@@ -18,21 +18,19 @@
  */
 
 #include <com/sun/star/drawing/BitmapMode.hpp>
-#include <o3tl/make_unique.hxx>
 #include <vcl/svapp.hxx>
 #include <svl/itemset.hxx>
 #include <svx/svdpool.hxx>
-#include <comphelper/extract.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <svx/xflbstit.hxx>
 #include <svx/xflbmtit.hxx>
 #include <svx/svdobj.hxx>
-#include <svx/unoprov.hxx>
 #include <svx/unoshape.hxx>
+#include <svx/unoshprp.hxx>
 
 #include "unopback.hxx"
-#include "drawdoc.hxx"
-#include "unokywds.hxx"
+#include <drawdoc.hxx>
+#include <unokywds.hxx>
 
 using namespace ::com::sun::star;
 
@@ -41,7 +39,7 @@ const SvxItemPropertySet* ImplGetPageBackgroundPropertySet()
     static const SfxItemPropertyMapEntry aPageBackgroundPropertyMap_Impl[] =
     {
         FILL_PROPERTIES
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        { "", 0, css::uno::Type(), 0, 0 }
     };
 
     static SvxItemPropertySet aPageBackgroundPropertySet_Impl( aPageBackgroundPropertyMap_Impl, SdrObject::GetGlobalDrawObjectItemPool() );
@@ -52,14 +50,14 @@ UNO3_GETIMPLEMENTATION_IMPL( SdUnoPageBackground );
 
 SdUnoPageBackground::SdUnoPageBackground(
     SdDrawDocument* pDoc /* = NULL */,
-    const SfxItemSet* pSet /* = NULL */) throw()
+    const SfxItemSet* pSet /* = NULL */)
 :   mpPropSet(ImplGetPageBackgroundPropertySet()),
     mpDoc(pDoc)
 {
     if( pDoc )
     {
         StartListening( *pDoc );
-        mpSet = o3tl::make_unique<SfxItemSet>( pDoc->GetPool(), svl::Items<XATTR_FILL_FIRST, XATTR_FILL_LAST>{} );
+        mpSet = std::make_unique<SfxItemSet>( pDoc->GetPool(), svl::Items<XATTR_FILL_FIRST, XATTR_FILL_LAST>{} );
 
         if( pSet )
             mpSet->Put(*pSet);
@@ -76,22 +74,20 @@ SdUnoPageBackground::~SdUnoPageBackground() throw()
 
 void SdUnoPageBackground::Notify( SfxBroadcaster&, const SfxHint& rHint )
 {
-    const SdrHint* pSdrHint = dynamic_cast<const SdrHint*>( &rHint );
+    if (rHint.GetId() != SfxHintId::ThisIsAnSdrHint)
+        return;
+    const SdrHint* pSdrHint = static_cast<const SdrHint*>( &rHint );
 
-    if( pSdrHint )
+    // delete item set if document is dying because then the pool
+    // will also die
+    if( pSdrHint->GetKind() == SdrHintKind::ModelCleared )
     {
-        // delete item set if document is dying because then the pool
-        // will also die
-        if( pSdrHint->GetKind() == SdrHintKind::ModelCleared )
-        {
-            mpSet.reset();
-            mpDoc = nullptr;
-        }
+        mpSet.reset();
+        mpDoc = nullptr;
     }
-
 }
 
-void SdUnoPageBackground::fillItemSet( SdDrawDocument* pDoc, SfxItemSet& rSet ) throw()
+void SdUnoPageBackground::fillItemSet( SdDrawDocument* pDoc, SfxItemSet& rSet )
 {
     rSet.ClearItem();
 
@@ -100,31 +96,30 @@ void SdUnoPageBackground::fillItemSet( SdDrawDocument* pDoc, SfxItemSet& rSet ) 
         StartListening( *pDoc );
         mpDoc = pDoc;
 
-        mpSet = o3tl::make_unique<SfxItemSet>( *rSet.GetPool(), svl::Items<XATTR_FILL_FIRST, XATTR_FILL_LAST>{} );
+        mpSet = std::make_unique<SfxItemSet>( *rSet.GetPool(), svl::Items<XATTR_FILL_FIRST, XATTR_FILL_LAST>{} );
 
         if( mpPropSet->AreThereOwnUsrAnys() )
         {
             PropertyEntryVector_t aProperties = mpPropSet->getPropertyMap().getPropertyEntries();
-            PropertyEntryVector_t::const_iterator aIt = aProperties.begin();
 
-            while( aIt != aProperties.end() )
+            for( const auto& rProp : aProperties )
             {
-                uno::Any* pAny = mpPropSet->GetUsrAnyForID( aIt->nWID );
+                uno::Any* pAny = mpPropSet->GetUsrAnyForID( rProp );
                 if( pAny )
                 {
-                    OUString aPropertyName( aIt->sName );
-                    switch( aIt->nWID )
+                    OUString aPropertyName( rProp.sName );
+                    switch( rProp.nWID )
                     {
                         case XATTR_FILLFLOATTRANSPARENCE :
                         case XATTR_FILLGRADIENT :
                         {
                             if ( ( pAny->getValueType() == ::cppu::UnoType< css::awt::Gradient>::get() )
-                                && ( aIt->nMemberId == MID_FILLGRADIENT ) )
+                                && ( rProp.nMemberId == MID_FILLGRADIENT ) )
                             {
                                 setPropertyValue( aPropertyName, *pAny );
                             }
                             else if ( ( pAny->getValueType() == ::cppu::UnoType<OUString>::get() ) &&
-                                        ( aIt->nMemberId == MID_NAME ) )
+                                        ( rProp.nMemberId == MID_NAME ) )
                             {
                                 setPropertyValue( aPropertyName, *pAny );
                             }
@@ -133,12 +128,12 @@ void SdUnoPageBackground::fillItemSet( SdDrawDocument* pDoc, SfxItemSet& rSet ) 
                         case XATTR_FILLHATCH :
                         {
                             if ( ( pAny->getValueType() == ::cppu::UnoType< css::drawing::Hatch>::get() )
-                                && ( aIt->nMemberId == MID_FILLHATCH ) )
+                                && ( rProp.nMemberId == MID_FILLHATCH ) )
                             {
                                 setPropertyValue( aPropertyName, *pAny );
                             }
                             else if ( ( pAny->getValueType() == ::cppu::UnoType<OUString>::get() ) &&
-                                        ( aIt->nMemberId == MID_NAME ) )
+                                        ( rProp.nMemberId == MID_NAME ) )
                             {
                                 setPropertyValue( aPropertyName, *pAny );
                             }
@@ -146,14 +141,13 @@ void SdUnoPageBackground::fillItemSet( SdDrawDocument* pDoc, SfxItemSet& rSet ) 
                         break;
                         case XATTR_FILLBITMAP :
                         {
-                            if ( ( ( pAny->getValueType() == cppu::UnoType<css::awt::XBitmap>::get()) ||
-                                    ( pAny->getValueType() == cppu::UnoType<css::graphic::XGraphic>::get()) ) &&
-                                    ( aIt->nMemberId == MID_BITMAP ) )
+                            if (rProp.nMemberId == MID_BITMAP &&
+                                (pAny->getValueType() == cppu::UnoType<css::awt::XBitmap>::get() ||
+                                 pAny->getValueType() == cppu::UnoType<css::graphic::XGraphic>::get()))
                             {
                                 setPropertyValue( aPropertyName, *pAny );
                             }
-                            else if ( ( pAny->getValueType() == ::cppu::UnoType<OUString>::get() ) &&
-                                        ( ( aIt->nMemberId == MID_NAME ) || ( aIt->nMemberId == MID_GRAFURL ) ) )
+                            else if (pAny->getValueType() == ::cppu::UnoType<OUString>::get() && rProp.nMemberId == MID_NAME)
                             {
                                 setPropertyValue( aPropertyName, *pAny );
                             }
@@ -164,7 +158,6 @@ void SdUnoPageBackground::fillItemSet( SdDrawDocument* pDoc, SfxItemSet& rSet ) 
                             setPropertyValue( aPropertyName, *pAny );
                     }
                 }
-                ++aIt;
             }
         }
     }
@@ -175,7 +168,7 @@ void SdUnoPageBackground::fillItemSet( SdDrawDocument* pDoc, SfxItemSet& rSet ) 
 // XServiceInfo
 OUString SAL_CALL SdUnoPageBackground::getImplementationName()
 {
-    return OUString("SdUnoPageBackground");
+    return "SdUnoPageBackground";
 }
 
 sal_Bool SAL_CALL SdUnoPageBackground::supportsService( const OUString& ServiceName )
@@ -185,13 +178,7 @@ sal_Bool SAL_CALL SdUnoPageBackground::supportsService( const OUString& ServiceN
 
 uno::Sequence< OUString > SAL_CALL SdUnoPageBackground::getSupportedServiceNames()
 {
-    uno::Sequence< OUString > aNameSequence( 2 );
-    OUString* pStrings = aNameSequence.getArray();
-
-    *pStrings++ = sUNO_Service_PageBackground;
-    *pStrings   = sUNO_Service_FillProperties;
-
-    return aNameSequence;
+    return { sUNO_Service_PageBackground, sUNO_Service_FillProperties };
 }
 
 // XPropertySet
@@ -210,49 +197,47 @@ void SAL_CALL SdUnoPageBackground::setPropertyValue( const OUString& aPropertyNa
     {
         throw beans::UnknownPropertyException( aPropertyName, static_cast<cppu::OWeakObject*>(this));
     }
-    else
+
+    if( mpSet )
     {
-        if( mpSet )
+        if( pEntry->nWID == OWN_ATTR_FILLBMP_MODE )
         {
-            if( pEntry->nWID == OWN_ATTR_FILLBMP_MODE )
+            drawing::BitmapMode eMode;
+            if( aValue >>= eMode )
             {
-                drawing::BitmapMode eMode;
-                if( aValue >>= eMode )
-                {
-                    mpSet->Put( XFillBmpStretchItem( eMode == drawing::BitmapMode_STRETCH ) );
-                    mpSet->Put( XFillBmpTileItem( eMode == drawing::BitmapMode_REPEAT ) );
-                    return;
-                }
+                mpSet->Put( XFillBmpStretchItem( eMode == drawing::BitmapMode_STRETCH ) );
+                mpSet->Put( XFillBmpTileItem( eMode == drawing::BitmapMode_REPEAT ) );
+                return;
+            }
+            throw lang::IllegalArgumentException();
+        }
+
+        SfxItemPool& rPool = *mpSet->GetPool();
+        SfxItemSet aSet( rPool, {{pEntry->nWID, pEntry->nWID}});
+        aSet.Put( *mpSet );
+
+        if( !aSet.Count() )
+            aSet.Put( rPool.GetDefaultItem( pEntry->nWID ) );
+
+        if( pEntry->nMemberId == MID_NAME && ( pEntry->nWID == XATTR_FILLBITMAP || pEntry->nWID == XATTR_FILLGRADIENT || pEntry->nWID == XATTR_FILLHATCH || pEntry->nWID == XATTR_FILLFLOATTRANSPARENCE ) )
+        {
+            OUString aName;
+            if(!(aValue >>= aName ))
                 throw lang::IllegalArgumentException();
-            }
 
-            SfxItemPool& rPool = *mpSet->GetPool();
-            SfxItemSet aSet( rPool, {{pEntry->nWID, pEntry->nWID}});
-            aSet.Put( *mpSet );
-
-            if( !aSet.Count() )
-                aSet.Put( rPool.GetDefaultItem( pEntry->nWID ) );
-
-            if( pEntry->nMemberId == MID_NAME && ( pEntry->nWID == XATTR_FILLBITMAP || pEntry->nWID == XATTR_FILLGRADIENT || pEntry->nWID == XATTR_FILLHATCH || pEntry->nWID == XATTR_FILLFLOATTRANSPARENCE ) )
-            {
-                OUString aName;
-                if(!(aValue >>= aName ))
-                    throw lang::IllegalArgumentException();
-
-                SvxShape::SetFillAttribute( pEntry->nWID, aName, aSet );
-            }
-            else
-            {
-                SvxItemPropertySet_setPropertyValue( pEntry, aValue, aSet );
-            }
-
-            mpSet->Put( aSet );
+            SvxShape::SetFillAttribute( pEntry->nWID, aName, aSet );
         }
         else
         {
-            if(pEntry && pEntry->nWID)
-                mpPropSet->setPropertyValue( pEntry, aValue );
+            SvxItemPropertySet_setPropertyValue( pEntry, aValue, aSet );
         }
+
+        mpSet->Put( aSet );
+    }
+    else
+    {
+        if(pEntry->nWID)
+            mpPropSet->setPropertyValue( pEntry, aValue );
     }
 }
 
@@ -267,43 +252,41 @@ uno::Any SAL_CALL SdUnoPageBackground::getPropertyValue( const OUString& Propert
     {
         throw beans::UnknownPropertyException( PropertyName, static_cast<cppu::OWeakObject*>(this));
     }
-    else
+
+    if( mpSet )
     {
-        if( mpSet )
+        if( pEntry->nWID == OWN_ATTR_FILLBMP_MODE )
         {
-            if( pEntry->nWID == OWN_ATTR_FILLBMP_MODE )
+            const XFillBmpStretchItem* pStretchItem = mpSet->GetItem<XFillBmpStretchItem>(XATTR_FILLBMP_STRETCH);
+            const XFillBmpTileItem* pTileItem = mpSet->GetItem<XFillBmpTileItem>(XATTR_FILLBMP_TILE);
+
+            if( pStretchItem && pTileItem )
             {
-                const XFillBmpStretchItem* pStretchItem = mpSet->GetItem<XFillBmpStretchItem>(XATTR_FILLBMP_STRETCH);
-                const XFillBmpTileItem* pTileItem = mpSet->GetItem<XFillBmpTileItem>(XATTR_FILLBMP_TILE);
-
-                if( pStretchItem && pTileItem )
-                {
-                    if( pTileItem->GetValue() )
-                        aAny <<= drawing::BitmapMode_REPEAT;
-                    else if( pStretchItem->GetValue() )
-                        aAny <<= drawing::BitmapMode_STRETCH;
-                    else
-                        aAny <<= drawing::BitmapMode_NO_REPEAT;
-                }
-            }
-            else
-            {
-                SfxItemPool& rPool = *mpSet->GetPool();
-                SfxItemSet aSet( rPool, {{pEntry->nWID, pEntry->nWID}});
-                aSet.Put( *mpSet );
-
-                if( !aSet.Count() )
-                    aSet.Put( rPool.GetDefaultItem( pEntry->nWID ) );
-
-                // get value from ItemSet
-                aAny = SvxItemPropertySet_getPropertyValue( pEntry, aSet );
+                if( pTileItem->GetValue() )
+                    aAny <<= drawing::BitmapMode_REPEAT;
+                else if( pStretchItem->GetValue() )
+                    aAny <<= drawing::BitmapMode_STRETCH;
+                else
+                    aAny <<= drawing::BitmapMode_NO_REPEAT;
             }
         }
         else
         {
-            if(pEntry && pEntry->nWID)
-                aAny = mpPropSet->getPropertyValue( pEntry );
+            SfxItemPool& rPool = *mpSet->GetPool();
+            SfxItemSet aSet( rPool, {{pEntry->nWID, pEntry->nWID}});
+            aSet.Put( *mpSet );
+
+            if( !aSet.Count() )
+                aSet.Put( rPool.GetDefaultItem( pEntry->nWID ) );
+
+            // get value from ItemSet
+            aAny = SvxItemPropertySet_getPropertyValue( pEntry, aSet );
         }
+    }
+    else
+    {
+        if(pEntry->nWID)
+            aAny = mpPropSet->getPropertyValue( pEntry );
     }
     return aAny;
 }
@@ -353,7 +336,7 @@ beans::PropertyState SAL_CALL SdUnoPageBackground::getPropertyState( const OUStr
     }
     else
     {
-        if( nullptr == mpPropSet->GetUsrAnyForID(pEntry->nWID) )
+        if( nullptr == mpPropSet->GetUsrAnyForID(*pEntry) )
             return beans::PropertyState_DEFAULT_VALUE;
         else
             return beans::PropertyState_DIRECT_VALUE;
@@ -365,13 +348,11 @@ uno::Sequence< beans::PropertyState > SAL_CALL SdUnoPageBackground::getPropertyS
     SolarMutexGuard aGuard;
 
     sal_Int32 nCount = aPropertyName.getLength();
-    const OUString* pNames = aPropertyName.getConstArray();
 
     uno::Sequence< beans::PropertyState > aPropertyStateSequence( nCount );
-    beans::PropertyState* pState = aPropertyStateSequence.getArray();
 
-    while( nCount-- )
-        *pState++ = getPropertyState( *pNames++ );
+    std::transform(aPropertyName.begin(), aPropertyName.end(), aPropertyStateSequence.begin(),
+        [this](const OUString& rName) -> beans::PropertyState { return getPropertyState(rName); });
 
     return aPropertyStateSequence;
 }
@@ -408,20 +389,17 @@ uno::Any SAL_CALL SdUnoPageBackground::getPropertyDefault( const OUString& aProp
         throw beans::UnknownPropertyException( aPropertyName, static_cast<cppu::OWeakObject*>(this));
 
     uno::Any aAny;
-    if( mpSet )
+    if (pEntry->nWID == OWN_ATTR_FILLBMP_MODE)
     {
-        if( pEntry->nWID == OWN_ATTR_FILLBMP_MODE )
-        {
-            aAny <<= drawing::BitmapMode_REPEAT;
-        }
-        else
-        {
-            SfxItemPool& rPool = *mpSet->GetPool();
-            SfxItemSet aSet( rPool, {{pEntry->nWID, pEntry->nWID}});
-            aSet.Put( rPool.GetDefaultItem( pEntry->nWID ) );
+        aAny <<= drawing::BitmapMode_REPEAT;
+    }
+    else
+    {
+        SfxItemPool& rPool = *mpSet->GetPool();
+        SfxItemSet aSet(rPool, { { pEntry->nWID, pEntry->nWID } });
+        aSet.Put(rPool.GetDefaultItem(pEntry->nWID));
 
-            aAny = SvxItemPropertySet_getPropertyValue( pEntry, aSet );
-        }
+        aAny = SvxItemPropertySet_getPropertyValue(pEntry, aSet);
     }
     return aAny;
 }

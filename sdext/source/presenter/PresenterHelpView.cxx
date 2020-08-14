@@ -16,14 +16,12 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <vcl/svapp.hxx>
+
 #include <vcl/settings.hxx>
 #include "PresenterHelpView.hxx"
 #include "PresenterButton.hxx"
 #include "PresenterCanvasHelper.hxx"
 #include "PresenterGeometryHelper.hxx"
-#include "PresenterHelper.hxx"
-#include "PresenterWindowManager.hxx"
 #include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/drawing/framework/XConfigurationController.hpp>
@@ -32,6 +30,7 @@
 #include <com/sun/star/rendering/TextDirection.hpp>
 #include <com/sun/star/util/Color.hpp>
 #include <algorithm>
+#include <numeric>
 #include <vector>
 
 using namespace ::com::sun::star;
@@ -39,12 +38,12 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 using ::std::vector;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 namespace {
-    const static sal_Int32 gnHorizontalGap (20);
-    const static sal_Int32 gnVerticalBorder (30);
-    const static sal_Int32 gnVerticalButtonPadding (12);
+    const sal_Int32 gnHorizontalGap (20);
+    const sal_Int32 gnVerticalBorder (30);
+    const sal_Int32 gnVerticalButtonPadding (12);
 
     class LineDescriptor
     {
@@ -140,7 +139,7 @@ PresenterHelpView::PresenterHelpView (
         // Get the content window via the pane anchor.
         Reference<XControllerManager> xCM (rxController, UNO_QUERY_THROW);
         Reference<XConfigurationController> xCC (
-            xCM->getConfigurationController(), UNO_QUERY_THROW);
+            xCM->getConfigurationController(), UNO_SET_THROW);
         mxPane.set(xCC->getResource(rxViewId->getAnchor()), UNO_QUERY_THROW);
 
         mxWindow = mxPane->getWindow();
@@ -156,7 +155,7 @@ PresenterHelpView::PresenterHelpView (
         if (mpPresenterController.is())
         {
             mpFont = mpPresenterController->GetViewFont(mxViewId->getResourceURL());
-            if (mpFont.get() != nullptr)
+            if (mpFont)
             {
                 mpFont->PrepareFont(mxCanvas);
             }
@@ -262,7 +261,7 @@ void PresenterHelpView::Paint (const awt::Rectangle& rUpdateBox)
     const awt::Rectangle aWindowBox (mxWindow->getPosSize());
     mpPresenterController->GetCanvasHelper()->Paint(
         mpPresenterController->GetViewBackground(mxViewId->getResourceURL()),
-        Reference<rendering::XCanvas>(mxCanvas, UNO_QUERY),
+        mxCanvas,
         rUpdateBox,
         awt::Rectangle(0,0,aWindowBox.Width,aWindowBox.Height),
         awt::Rectangle());
@@ -295,9 +294,7 @@ void PresenterHelpView::Paint (const awt::Rectangle& rUpdateBox)
 
     // Paint text.
     double nY (gnVerticalBorder);
-    TextContainer::const_iterator iBlock (mpTextContainer->begin());
-    TextContainer::const_iterator iBlockEnd (mpTextContainer->end());
-    for ( ; iBlock!=iBlockEnd; ++iBlock)
+    for (const auto& rxBlock : *mpTextContainer)
     {
         sal_Int32 LeftX1 = gnHorizontalGap;
         sal_Int32 LeftX2 = aWindowBox.Width/2 - gnHorizontalGap;
@@ -313,7 +310,7 @@ void PresenterHelpView::Paint (const awt::Rectangle& rUpdateBox)
             RightX2 = aWindowBox.Width/2 - gnHorizontalGap;
         }
         const double nLeftHeight (
-            (*iBlock)->maLeft.Paint(mxCanvas,
+            rxBlock->maLeft.Paint(mxCanvas,
                 geometry::RealRectangle2D(
                         LeftX1,
                         nY,
@@ -324,7 +321,7 @@ void PresenterHelpView::Paint (const awt::Rectangle& rUpdateBox)
                 aRenderState,
                 mpFont->mxFont));
         const double nRightHeight (
-            (*iBlock)->maRight.Paint(mxCanvas,
+            rxBlock->maRight.Paint(mxCanvas,
                 geometry::RealRectangle2D(
                         RightX1,
                         nY,
@@ -378,7 +375,7 @@ void PresenterHelpView::ProcessString (
 
 void PresenterHelpView::CheckFontSize()
 {
-    if (mpFont.get() == nullptr)
+    if (!mpFont)
         return;
 
     sal_Int32 nBestSize (6);
@@ -388,13 +385,12 @@ void PresenterHelpView::CheckFontSize()
     // small enough.  Restrict the number of loops.
     for (int nLoopCount=0; nLoopCount<5; ++nLoopCount)
     {
-        double nY (0.0);
-        TextContainer::iterator iBlock (mpTextContainer->begin());
-        TextContainer::const_iterator iBlockEnd (mpTextContainer->end());
-        for ( ; iBlock!=iBlockEnd; ++iBlock)
-            nY += ::std::max(
-                (*iBlock)->maLeft.GetHeight(),
-                (*iBlock)->maRight.GetHeight());
+        double nY = std::accumulate(mpTextContainer->begin(), mpTextContainer->end(), double(0),
+            [](const double& sum, const std::shared_ptr<Block>& rxBlock) {
+                return sum + std::max(
+                    rxBlock->maLeft.GetHeight(),
+                    rxBlock->maRight.GetHeight());
+            });
 
         const double nHeightDifference (nY - (mnSeparatorY-gnVerticalBorder));
         if (nHeightDifference <= 0 && nHeightDifference > -50)
@@ -418,8 +414,8 @@ void PresenterHelpView::CheckFontSize()
         mpFont->PrepareFont(mxCanvas);
 
         // Reformat blocks.
-        for (iBlock=mpTextContainer->begin(); iBlock!=iBlockEnd; ++iBlock)
-            (*iBlock)->Update(mpFont->mxFont, mnMaximalWidth);
+        for (auto& rxBlock : *mpTextContainer)
+            rxBlock->Update(mpFont->mxFont, mnMaximalWidth);
     }
 
     if (nBestSize != mpFont->mnSize)
@@ -429,13 +425,9 @@ void PresenterHelpView::CheckFontSize()
         mpFont->PrepareFont(mxCanvas);
 
         // Reformat blocks.
-        for (TextContainer::iterator
-                 iBlock (mpTextContainer->begin()),
-                 iEnd (mpTextContainer->end());
-             iBlock!=iEnd;
-             ++iBlock)
+        for (auto& rxBlock : *mpTextContainer)
         {
-            (*iBlock)->Update(mpFont->mxFont, mnMaximalWidth);
+            rxBlock->Update(mpFont->mxFont, mnMaximalWidth);
         }
     }
 }
@@ -472,21 +464,21 @@ void PresenterHelpView::ProvideCanvas()
 
 void PresenterHelpView::Resize()
 {
-    if (mpCloseButton.get() != nullptr && mxWindow.is())
-    {
-        const awt::Rectangle aWindowBox (mxWindow->getPosSize());
-        mnMaximalWidth = (mxWindow->getPosSize().Width - 4*gnHorizontalGap) / 2;
+    if (!(mpCloseButton && mxWindow.is()))
+        return;
 
-        // Place vertical separator.
-        mnSeparatorY = aWindowBox.Height
-            - mpCloseButton->GetSize().Height - gnVerticalButtonPadding;
+    const awt::Rectangle aWindowBox (mxWindow->getPosSize());
+    mnMaximalWidth = (mxWindow->getPosSize().Width - 4*gnHorizontalGap) / 2;
 
-        mpCloseButton->SetCenter(geometry::RealPoint2D(
-            aWindowBox.Width/2.0,
-            aWindowBox.Height - mpCloseButton->GetSize().Height/2.0));
+    // Place vertical separator.
+    mnSeparatorY = aWindowBox.Height
+        - mpCloseButton->GetSize().Height - gnVerticalButtonPadding;
 
-        CheckFontSize();
-    }
+    mpCloseButton->SetCenter(geometry::RealPoint2D(
+        aWindowBox.Width/2.0,
+        aWindowBox.Height - mpCloseButton->GetSize().Height/2.0));
+
+    CheckFontSize();
 }
 
 void PresenterHelpView::ThrowIfDisposed()
@@ -499,7 +491,7 @@ void PresenterHelpView::ThrowIfDisposed()
     }
 }
 
-//===== LineDescritor =========================================================
+//===== LineDescriptor =========================================================
 
 namespace {
 
@@ -564,9 +556,7 @@ double LineDescriptorList::Paint(
         return 0;
 
     double nY (rBBox.Y1);
-    vector<LineDescriptor>::const_iterator iLine (mpLineDescriptors->begin());
-    vector<LineDescriptor>::const_iterator iEnd (mpLineDescriptors->end());
-    for ( ; iLine!=iEnd; ++iLine)
+    for (const auto& rLine : *mpLineDescriptors)
     {
         double nX;
         /// check whether RTL interface or not
@@ -574,18 +564,18 @@ double LineDescriptorList::Paint(
         {
             nX = rBBox.X1;
             if ( ! bFlushLeft)
-                nX = rBBox.X2 - iLine->maSize.Width;
+                nX = rBBox.X2 - rLine.maSize.Width;
         }
         else
         {
-            nX=rBBox.X2 - iLine->maSize.Width;
+            nX=rBBox.X2 - rLine.maSize.Width;
             if ( ! bFlushLeft)
                 nX = rBBox.X1;
         }
         rRenderState.AffineTransform.m02 = nX;
-        rRenderState.AffineTransform.m12 = nY + iLine->maSize.Height - iLine->mnVerticalOffset;
+        rRenderState.AffineTransform.m12 = nY + rLine.maSize.Height - rLine.mnVerticalOffset;
 
-        const rendering::StringContext aContext (iLine->msLine, 0, iLine->msLine.getLength());
+        const rendering::StringContext aContext (rLine.msLine, 0, rLine.msLine.getLength());
         Reference<rendering::XTextLayout> xLayout (
         rxFont->createTextLayout(aContext, rendering::TextDirection::WEAK_LEFT_TO_RIGHT, 0));
         rxCanvas->drawTextLayout (
@@ -593,7 +583,7 @@ double LineDescriptorList::Paint(
             rViewState,
             rRenderState);
 
-        nY += iLine->maSize.Height * 1.2;
+        nY += rLine.maSize.Height * 1.2;
     }
 
     return nY - rBBox.Y1;
@@ -601,13 +591,10 @@ double LineDescriptorList::Paint(
 
 double LineDescriptorList::GetHeight() const
 {
-    double nHeight (0);
-    vector<LineDescriptor>::const_iterator iLine (mpLineDescriptors->begin());
-    vector<LineDescriptor>::const_iterator iEnd (mpLineDescriptors->end());
-    for ( ; iLine!=iEnd; ++iLine)
-        nHeight += iLine->maSize.Height * 1.2;
-
-    return nHeight;
+    return std::accumulate(mpLineDescriptors->begin(), mpLineDescriptors->end(), double(0),
+        [](const double& nHeight, const LineDescriptor& rLine) {
+            return nHeight + rLine.maSize.Height * 1.2;
+        });
 }
 
 void LineDescriptorList::Update (
@@ -623,8 +610,8 @@ void LineDescriptorList::SplitText (
     const OUString& rsText,
     vector<OUString>& rTextParts)
 {
-    const sal_Char cQuote ('\'');
-    const sal_Char cSeparator (',');
+    const char cQuote ('\'');
+    const char cSeparator (',');
 
     sal_Int32 nIndex (0);
     sal_Int32 nStart (0);
@@ -664,7 +651,7 @@ void LineDescriptorList::FormatText (
 {
     LineDescriptor aLineDescriptor;
 
-    mpLineDescriptors.reset(new vector<LineDescriptor>);
+    mpLineDescriptors = std::make_shared<vector<LineDescriptor>>();
 
     vector<OUString>::const_iterator iPart (rTextParts.begin());
     vector<OUString>::const_iterator iEnd (rTextParts.end());
@@ -676,7 +663,7 @@ void LineDescriptorList::FormatText (
             if (PresenterCanvasHelper::GetTextSize(
                 rxFont, *iPart).Width > nMaximalWidth)
             {
-                const sal_Char cSpace (' ');
+                const char cSpace (' ');
 
                 sal_Int32 nIndex (0);
                 sal_Int32 nStart (0);
@@ -762,6 +749,6 @@ void Block::Update (
 
 } // end of anonymous namespace
 
-} } // end of namespace ::sdext::presenter
+} // end of namespace ::sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

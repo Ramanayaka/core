@@ -17,38 +17,26 @@
  */
 
 #include <hintids.hxx>
-#include <vcl/outdev.hxx>
-#include <sfx2/printer.hxx>
-#include <editeng/eeitem.hxx>
 #include <editeng/flditem.hxx>
 #include <editeng/editeng.hxx>
-#include <svx/svdoutl.hxx>
 #include <editeng/colritem.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/svdogrp.hxx>
-#include <editeng/langitem.hxx>
-#include <editeng/unolingu.hxx>
 #include <editeng/measfld.hxx>
-#include <svx/svdpool.hxx>
+#include <sal/log.hxx>
 #include <fmtanchr.hxx>
 #include <charatr.hxx>
 #include <frmfmt.hxx>
 #include <charfmt.hxx>
 #include <viewimp.hxx>
-#include <svl/hint.hxx>
 #include <doc.hxx>
 #include <docfunc.hxx>
 #include <IDocumentUndoRedo.hxx>
-#include <DocumentSettingManager.hxx>
-#include <IDocumentDeviceAccess.hxx>
 #include <IDocumentDrawModelAccess.hxx>
 #include <IDocumentState.hxx>
 #include <IDocumentLayoutAccess.hxx>
 #include <IDocumentStylePoolAccess.hxx>
-#include <docsh.hxx>
-#include <rootfrm.hxx>
 #include <poolfmt.hxx>
-#include <viewsh.hxx>
 #include <drawdoc.hxx>
 #include <UndoDraw.hxx>
 #include <swundo.hxx>
@@ -57,16 +45,12 @@
 #include <mvsave.hxx>
 #include <flyfrm.hxx>
 #include <dflyobj.hxx>
-#include <svx/svdetc.hxx>
-#include <editeng/fhgtitem.hxx>
-#include <svx/svdpagv.hxx>
 #include <txtfrm.hxx>
 #include <editeng/frmdiritem.hxx>
 #include <fmtornt.hxx>
 #include <svx/svditer.hxx>
 
 #include <vector>
-#include <calbck.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::linguistic2;
@@ -110,7 +94,7 @@ static void lcl_AdjustPositioningAttr( SwDrawFrameFormat* _pFrameFormat,
             // If no anchor frame exist - e.g. because no layout exists - the
             // default layout direction is taken.
             const SvxFrameDirectionItem& rDirItem =
-                static_cast<const SvxFrameDirectionItem&>(_pFrameFormat->GetAttrSet().GetPool()->GetDefaultItem( RES_FRAMEDIR ));
+                _pFrameFormat->GetAttrSet().GetPool()->GetDefaultItem( RES_FRAMEDIR );
             switch ( rDirItem.GetValue() )
             {
                 case SvxFrameDirection::Vertical_LR_TB:
@@ -185,10 +169,8 @@ static void lcl_AdjustPositioningAttr( SwDrawFrameFormat* _pFrameFormat,
     // to adjust the positioning attributes - see <SwDrawContact::Changed_(..)>.
     {
         const SwAnchoredObject* pAnchoredObj = pContact->GetAnchoredObj( &_rSdrObj );
-        if ( dynamic_cast<const SwAnchoredDrawObject*>( pAnchoredObj) !=  nullptr )
+        if ( auto pAnchoredDrawObj = dynamic_cast<const SwAnchoredDrawObject*>( pAnchoredObj) )
         {
-            const SwAnchoredDrawObject* pAnchoredDrawObj =
-                            static_cast<const SwAnchoredDrawObject*>(pAnchoredObj);
             const SwRect aObjRect = _rSdrObj.GetSnapRect();
             const_cast<SwAnchoredDrawObject*>(pAnchoredDrawObj)
                                         ->SetLastObjRect( aObjRect.SVRect() );
@@ -204,7 +186,7 @@ SwDrawContact* SwDoc::GroupSelection( SdrView& rDrawView )
 
     const SdrMarkList &rMrkList = rDrawView.GetMarkedObjectList();
     SdrObject *pObj = rMrkList.GetMark( 0 )->GetMarkedSdrObj();
-    bool bNoGroup = ( nullptr == pObj->GetUpGroup() );
+    bool bNoGroup = ( nullptr == pObj->getParentSdrObjectFromSdrObject() );
     SwDrawContact* pNewContact = nullptr;
     if( bNoGroup )
     {
@@ -214,9 +196,9 @@ SwDrawContact* SwDoc::GroupSelection( SdrView& rDrawView )
         SwDrawContact *pMyContact = static_cast<SwDrawContact*>(GetUserCall(pObj));
         const SwFormatAnchor aAnch( pMyContact->GetFormat()->GetAnchor() );
 
-        SwUndoDrawGroup *const pUndo = (!GetIDocumentUndoRedo().DoesUndo())
-                                 ? nullptr
-                                 : new SwUndoDrawGroup( (sal_uInt16)rMrkList.GetMarkCount() , this);
+        std::unique_ptr<SwUndoDrawGroup> pUndo;
+        if (GetIDocumentUndoRedo().DoesUndo())
+            pUndo.reset(new SwUndoDrawGroup( static_cast<sal_uInt16>(rMrkList.GetMarkCount()) , this));
 
         // #i53320#
         bool bGroupMembersNotPositioned( false );
@@ -257,7 +239,7 @@ SwDrawContact* SwDoc::GroupSelection( SdrView& rDrawView )
             pObj->NbcMove( Size( aAnchorPos.getX(), aAnchorPos.getY() ) );
         }
 
-        pFormat = MakeDrawFrameFormat( "DrawObject",
+        pFormat = MakeDrawFrameFormat( GetUniqueDrawObjectName(),
                                 GetDfltFrameFormat() );
         pFormat->SetFormatAttr( aAnch );
         // #i36010# - set layout direction of the position
@@ -268,6 +250,7 @@ SwDrawContact* SwDoc::GroupSelection( SdrView& rDrawView )
         OSL_ENSURE( rMrkList.GetMarkCount() == 1, "GroupMarked more or none groups." );
 
         SdrObject* pNewGroupObj = rMrkList.GetMark( 0 )->GetMarkedSdrObj();
+        pNewGroupObj->SetName(pFormat->GetName());
         pNewContact = new SwDrawContact( pFormat, pNewGroupObj );
         // #i35635#
         pNewContact->MoveObjToVisibleLayer( pNewGroupObj );
@@ -283,7 +266,7 @@ SwDrawContact* SwDoc::GroupSelection( SdrView& rDrawView )
         if( pUndo )
         {
             pUndo->SetGroupFormat( pFormat );
-            GetIDocumentUndoRedo().AppendUndo( pUndo );
+            GetIDocumentUndoRedo().AppendUndo( std::move(pUndo) );
         }
     }
     else
@@ -313,13 +296,13 @@ void SwDoc::UnGroupSelection( SdrView& rDrawView )
     SwDrawView::ReplaceMarkedDrawVirtObjs( rDrawView );
 
     const SdrMarkList &rMrkList = rDrawView.GetMarkedObjectList();
-    std::vector< std::pair< SwDrawFrameFormat*, SdrObject* > >* pFormatsAndObjs( nullptr );
+    std::unique_ptr<std::vector< std::pair< SwDrawFrameFormat*, SdrObject* > >[]> pFormatsAndObjs;
     const size_t nMarkCount( rMrkList.GetMarkCount() );
     if ( nMarkCount )
     {
-        pFormatsAndObjs = new std::vector< std::pair< SwDrawFrameFormat*, SdrObject* > >[nMarkCount];
+        pFormatsAndObjs.reset( new std::vector< std::pair< SwDrawFrameFormat*, SdrObject* > >[nMarkCount] );
         SdrObject *pMyObj = rMrkList.GetMark( 0 )->GetMarkedSdrObj();
-        if( !pMyObj->GetUpGroup() )
+        if( !pMyObj->getParentSdrObjectFromSdrObject() )
         {
             for ( size_t i = 0; i < nMarkCount; ++i )
             {
@@ -334,19 +317,19 @@ void SwDoc::UnGroupSelection( SdrView& rDrawView )
                     if( bUndo )
                     {
                         pUndo = new SwUndoDrawUnGroup( static_cast<SdrObjGroup*>(pObj), this );
-                        GetIDocumentUndoRedo().AppendUndo(pUndo);
+                        GetIDocumentUndoRedo().AppendUndo(std::unique_ptr<SwUndo>(pUndo));
                     }
 
                     for ( size_t i2 = 0; i2 < pLst->GetObjCount(); ++i2 )
                     {
                         SdrObject* pSubObj = pLst->GetObj( i2 );
-                        SwDrawFrameFormat *pFormat = MakeDrawFrameFormat( "DrawObject",
+                        SwDrawFrameFormat *pFormat = MakeDrawFrameFormat( GetUniqueShapeName(),
                                                             GetDfltFrameFormat() );
                         pFormat->SetFormatAttr( aAnch );
                         // #i36010# - set layout direction of the position
                         pFormat->SetPositionLayoutDir(
                             text::PositionLayoutDir::PositionInLayoutDirOfAnchor );
-                        pFormatsAndObjs[i].push_back( std::pair< SwDrawFrameFormat*, SdrObject* >( pFormat, pSubObj ) );
+                        pFormatsAndObjs[i].emplace_back( pFormat, pSubObj );
 
                         if( bUndo )
                             pUndo->AddObj( static_cast<sal_uInt16>(i2), pFormat );
@@ -364,10 +347,10 @@ void SwDoc::UnGroupSelection( SdrView& rDrawView )
         if( bUndo )
         {
             pUndo = new SwUndoDrawUnGroupConnectToLayout(this);
-            GetIDocumentUndoRedo().AppendUndo(pUndo);
+            GetIDocumentUndoRedo().AppendUndo(std::unique_ptr<SwUndo>(pUndo));
         }
 
-        while ( pFormatsAndObjs[i].size() > 0 )
+        while ( !pFormatsAndObjs[i].empty() )
         {
             SwDrawFrameFormat* pFormat( pFormatsAndObjs[i].back().first );
             SdrObject* pObj( pFormatsAndObjs[i].back().second );
@@ -384,7 +367,6 @@ void SwDoc::UnGroupSelection( SdrView& rDrawView )
             }
         }
     }
-    delete [] pFormatsAndObjs;
 }
 
 bool SwDoc::DeleteSelection( SwDrawView& rDrawView )
@@ -431,12 +413,11 @@ bool SwDoc::DeleteSelection( SwDrawView& rDrawView )
         if( rMrkList.GetMarkCount() && bDelMarked )
         {
             SdrObject *pObj = rMrkList.GetMark( 0 )->GetMarkedSdrObj();
-            if( !pObj->GetUpGroup() )
+            if( !pObj->getParentSdrObjectFromSdrObject() )
             {
-                SwUndoDrawDelete *const pUndo =
-                    (!GetIDocumentUndoRedo().DoesUndo())
-                        ? nullptr
-                            : new SwUndoDrawDelete( (sal_uInt16)rMrkList.GetMarkCount(), this );
+                std::unique_ptr<SwUndoDrawDelete> pUndo;
+                if (GetIDocumentUndoRedo().DoesUndo())
+                    pUndo.reset(new SwUndoDrawDelete( static_cast<sal_uInt16>(rMrkList.GetMarkCount()), this ));
 
                 // Destroy ContactObjects, save formats.
                 for( size_t i = 0; i < rMrkList.GetMarkCount(); ++i )
@@ -468,7 +449,7 @@ bool SwDoc::DeleteSelection( SwDrawView& rDrawView )
 
                 if( pUndo )
                 {
-                    GetIDocumentUndoRedo().AppendUndo( pUndo );
+                    GetIDocumentUndoRedo().AppendUndo( std::move(pUndo) );
                 }
             }
             bCallBase = true;
@@ -482,12 +463,12 @@ bool SwDoc::DeleteSelection( SwDrawView& rDrawView )
 }
 
 ZSortFly::ZSortFly(const SwFrameFormat* pFrameFormat, const SwFormatAnchor* pFlyAn, sal_uInt32 nArrOrdNum)
-    : pFormat(pFrameFormat)
-    , pAnchor(pFlyAn)
-    , nOrdNum(nArrOrdNum)
+    : m_pFormat(pFrameFormat)
+    , m_pAnchor(pFlyAn)
+    , m_nOrdNum(nArrOrdNum)
 {
-    SAL_WARN_IF(pFormat->Which() != RES_FLYFRMFMT && pFormat->Which() != RES_DRAWFRMFMT, "sw.core", "What kind of format is this?");
-    pFormat->CallSwClientNotify(sw::GetZOrderHint(nOrdNum));
+    SAL_WARN_IF(m_pFormat->Which() != RES_FLYFRMFMT && m_pFormat->Which() != RES_DRAWFRMFMT, "sw.core", "What kind of format is this?");
+    m_pFormat->CallSwClientNotify(sw::GetZOrderHint(m_nOrdNum));
 }
 
 /// In the Outliner, set a link to the method for field display in edit objects.
@@ -505,37 +486,31 @@ IMPL_LINK(SwDoc, CalcFieldValueHdl, EditFieldInfo*, pInfo, void)
     const SvxFieldItem& rField = pInfo->GetField();
     const SvxFieldData* pField = rField.GetField();
 
-    if (pField && dynamic_cast<const SvxDateField*>( pField) !=  nullptr)
+    if (auto pDateField = dynamic_cast<const SvxDateField*>( pField))
     {
         // Date field
         pInfo->SetRepresentation(
-            static_cast<const SvxDateField*>( pField)->GetFormatted(
+            pDateField->GetFormatted(
                     *GetNumberFormatter(), LANGUAGE_SYSTEM) );
     }
-    else if (pField && dynamic_cast<const SvxURLField*>( pField) !=  nullptr)
+    else if (auto pURLField = dynamic_cast<const SvxURLField*>( pField))
     {
         // URL field
-        switch ( static_cast<const SvxURLField*>( pField)->GetFormat() )
+        switch ( pURLField->GetFormat() )
         {
-            case SVXURLFORMAT_APPDEFAULT: //!!! Can be set in App???
-            case SVXURLFORMAT_REPR:
-            {
-                pInfo->SetRepresentation(
-                    static_cast<const SvxURLField*>(pField)->GetRepresentation());
-            }
-            break;
+            case SvxURLFormat::AppDefault: //!!! Can be set in App???
+            case SvxURLFormat::Repr:
+                pInfo->SetRepresentation(pURLField->GetRepresentation());
+                break;
 
-            case SVXURLFORMAT_URL:
-            {
-                pInfo->SetRepresentation(
-                    static_cast<const SvxURLField*>(pField)->GetURL());
-            }
-            break;
+            case SvxURLFormat::Url:
+                pInfo->SetRepresentation(pURLField->GetURL());
+                break;
         }
 
         sal_uInt16 nChrFormat;
 
-        if (IsVisitedURL(static_cast<const SvxURLField*>(pField)->GetURL()))
+        if (IsVisitedURL(pURLField->GetURL()))
             nChrFormat = RES_POOLCHR_INET_VISIT;
         else
             nChrFormat = RES_POOLCHR_INET_NORMAL;
@@ -548,17 +523,16 @@ IMPL_LINK(SwDoc, CalcFieldValueHdl, EditFieldInfo*, pInfo, void)
 
         pInfo->SetTextColor(aColor);
     }
-    else if (pField && dynamic_cast<const SdrMeasureField*>( pField) !=  nullptr)
+    else if (dynamic_cast<const SdrMeasureField*>( pField))
     {
-        // Measure field
-        pInfo->ClearFieldColor();
+        // Clear measure field
+        pInfo->SetFieldColor(std::optional<Color>());
     }
-    else if ( pField && dynamic_cast<const SvxExtTimeField*>( pField) !=  nullptr)
+    else if ( auto pTimeField = dynamic_cast<const SvxExtTimeField*>( pField) )
     {
         // Time field
         pInfo->SetRepresentation(
-            static_cast<const SvxExtTimeField*>( pField)->GetFormatted(
-                    *GetNumberFormatter(), LANGUAGE_SYSTEM) );
+            pTimeField->GetFormatted(*GetNumberFormatter(), LANGUAGE_SYSTEM) );
     }
     else
     {
@@ -579,7 +553,7 @@ namespace docfunc
         {
             const SdrPage& rSdrPage( *(p_rDoc.getIDocumentDrawModelAccess().GetDrawModel()->GetPage( 0 )) );
 
-            SdrObjListIter aIter( rSdrPage, SdrIterMode::Flat );
+            SdrObjListIter aIter( &rSdrPage, SdrIterMode::Flat );
             while( aIter.IsMore() )
             {
                 SdrObject* pObj( aIter.Next() );
@@ -604,7 +578,7 @@ namespace docfunc
         {
             const SdrPage& rSdrPage( *(p_rDoc.getIDocumentDrawModelAccess().GetDrawModel()->GetPage( 0 )) );
 
-            SdrObjListIter aIter( rSdrPage, SdrIterMode::Flat );
+            SdrObjListIter aIter( &rSdrPage, SdrIterMode::Flat );
             while( aIter.IsMore() )
             {
                 SdrObject* pObj( aIter.Next() );

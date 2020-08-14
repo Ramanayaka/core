@@ -26,15 +26,13 @@ class SwHyphPortion : public SwExpandPortion
 public:
     SwHyphPortion()
     {
-        SetWhichPor( POR_HYPH );
+        SetWhichPor( PortionType::Hyphen );
     }
     virtual bool GetExpText( const SwTextSizeInfo &rInf, OUString &rText ) const override;
     virtual bool Format( SwTextFormatInfo &rInf ) override;
 
     // Accessibility: pass information about this portion to the PortionHandler
     virtual void HandlePortion( SwPortionHandler& rPH ) const override;
-
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 class SwHyphStrPortion : public SwHyphPortion
@@ -44,15 +42,13 @@ public:
     explicit SwHyphStrPortion(const OUString &rStr)
         : aExpand(rStr + "-")
     {
-        SetWhichPor( POR_HYPHSTR );
+        SetWhichPor( PortionType::HyphenStr );
     }
 
     virtual bool GetExpText( const SwTextSizeInfo &rInf, OUString &rText ) const override;
 
     // Accessibility: pass information about this portion to the PortionHandler
     virtual void HandlePortion( SwPortionHandler& rPH ) const override;
-
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 class SwSoftHyphPortion : public SwHyphPortion
@@ -74,8 +70,6 @@ public:
 
     // Accessibility: pass information about this portion to the PortionHandler
     virtual void HandlePortion( SwPortionHandler& rPH ) const override;
-
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 class SwSoftHyphStrPortion : public SwHyphStrPortion
@@ -83,7 +77,6 @@ class SwSoftHyphStrPortion : public SwHyphStrPortion
 public:
     explicit SwSoftHyphStrPortion( const OUString &rStr );
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 #endif

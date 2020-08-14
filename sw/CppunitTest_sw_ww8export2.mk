@@ -11,6 +11,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sw_ww8export2))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sw_ww8export2))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sw_ww8export2, \
     sw/qa/extras/ww8export/ww8export2 \
 ))
@@ -19,14 +21,17 @@ $(eval $(call gb_CppunitTest_use_libraries,sw_ww8export2, \
     comphelper \
     cppu \
     cppuhelper \
-    $(if $(filter WNT-TRUE,$(OS)-$(DISABLE_ATL)),,emboleobj) \
+    editeng \
+    emboleobj \
     sal \
     sfx \
     test \
     unotest \
     utl \
     sw \
+	swqahelper \
     tl \
+    svxcore \
 ))
 
 $(eval $(call gb_CppunitTest_use_externals,sw_ww8export2,\
@@ -37,46 +42,25 @@ $(eval $(call gb_CppunitTest_use_externals,sw_ww8export2,\
 $(eval $(call gb_CppunitTest_set_include,sw_ww8export2,\
     -I$(SRCDIR)/sw/inc \
     -I$(SRCDIR)/sw/source/core/inc \
-    -I$(SRCDIR)/sw/qa/extras/inc \
+    -I$(SRCDIR)/sw/qa/inc \
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_CppunitTest_use_sdk_api,sw_ww8export2))
+$(eval $(call gb_CppunitTest_use_api,sw_ww8export2,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_CppunitTest_use_ure,sw_ww8export2))
 $(eval $(call gb_CppunitTest_use_vcl,sw_ww8export2))
 
-$(eval $(call gb_CppunitTest_use_components,sw_ww8export2,\
-    basic/util/sb \
-    comphelper/util/comphelp \
-    configmgr/source/configmgr \
-    dbaccess/util/dba \
-    filter/source/config/cache/filterconfig1 \
-    filter/source/storagefilterdetect/storagefd \
-    forms/util/frm \
-    framework/util/fwk \
-    i18npool/util/i18npool \
-    linguistic/source/lng \
-    package/source/xstor/xstor \
-    package/util/package2 \
-    sax/source/expatwrap/expwrap \
-    sw/util/msword \
-    sw/util/sw \
-    sw/util/swd \
-    sfx2/util/sfx \
-    svl/source/fsstor/fsstorage \
-    svtools/util/svt \
-    toolkit/util/tk \
-    ucb/source/core/ucb1 \
-    ucb/source/ucp/file/ucpfile1 \
-    unotools/util/utl \
-    unoxml/source/service/unoxml \
-    unoxml/source/rdf/unordf \
-    uui/util/uui \
-    $(if $(filter DESKTOP,$(BUILD_TYPE)),xmlhelp/util/ucpchelp1) \
-    xmloff/util/xo \
-))
+$(eval $(call gb_CppunitTest_use_rdb,sw_ww8export2,services))
 
 $(eval $(call gb_CppunitTest_use_configuration,sw_ww8export2))
+
+# At least testTdf118133::Import_Export_Import (sw/qa/extras/ww8export/ww8export2.cxx) depends on
+# TIFFReader from Library_gie, which is loaded dynamically in vcl/source/filter/graphicfilter.cxx:
+$(call gb_CppunitTest_get_target,sw_ww8export2): $(call gb_Library_get_target,gie)
 
 # vim: set noet sw=4 ts=4:

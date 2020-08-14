@@ -7,12 +7,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 #include "basictest.hxx"
-#include <comphelper/processfactory.hxx>
 #include <unotools/syslocaleoptions.hxx>
 
 #ifdef _WIN32
 #include <string.h>
+#include <comphelper/processfactory.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #include <odbcinst.h>
 #endif
@@ -78,7 +82,9 @@ void VBATest::testMiscVBAFunctions()
         "datediff.vb",
         "datepart.vb",
         "day.vb",
+        "enum.vb",
         "error.vb",
+        "Err.Raise.vb",
         "exp.vb",
         "fix.vb",
         "hex.vb",
@@ -105,19 +111,36 @@ void VBATest::testMiscVBAFunctions()
         "ltrim.vb",
         "mid.vb",
         "minute.vb",
-        "mirr.vb",
         "month.vb",
         "monthname.vb",
         "oct.vb",
-        "nper.vb",
-        "npv.vb",
-        "pmt.vb",
-        "ppmt.vb",
-        "pv.vb",
+        "optional_paramters.vb",
         "qbcolor.vb",
-        "rate.vb",
         "rgb.vb",
-#ifndef WIN32 // missing 64bit Currency marshalling.
+        "rtrim.vb",
+        "right.vb",
+        "second.vb",
+        "sgn.vb",
+        "sin.vb",
+        "space.vb",
+        "sqr.vb",
+        "str.vb",
+        "strcomp.vb",
+        "string.vb",
+        "strreverse.vb",
+        "switch.vb",
+        "timeserial.vb",
+        "timevalue.vb",
+        "trim.vb",
+        "typename.vb",
+        "ubound.vb",
+        "ucase.vb",
+        "val.vb",
+        "vartype.vb",
+        "weekday.vb",
+        "weekdayname.vb",
+        "year.vb",
+#ifndef _WIN32 // missing 64bit Currency marshalling.
         "win32compat.vb", // windows compatibility hooks.
 #endif
         "win32compatb.vb" // same methods, different signatures.
@@ -128,7 +151,7 @@ void VBATest::testMiscVBAFunctions()
     SvtSysLocaleOptions aLocalOptions;
     aLocalOptions.SetLocaleConfigString( aLocale.getBcp47() );
 
-    for ( sal_uInt32  i=0; i<SAL_N_ELEMENTS( macroSource ); ++i )
+    for ( size_t  i=0; i<SAL_N_ELEMENTS( macroSource ); ++i )
     {
         OUString sMacroURL = sMacroPathURL
                            + OUString::createFromAscii( macroSource[ i ] );
@@ -136,13 +159,12 @@ void VBATest::testMiscVBAFunctions()
         MacroSnippet myMacro;
         myMacro.LoadSourceFromFile( sMacroURL );
         SbxVariableRef pReturn = myMacro.Run();
-        if ( pReturn.is() )
-        {
-            fprintf(stderr, "macro result for %s\n", macroSource[ i ] );
-            fprintf(stderr, "macro returned:\n%s\n", OUStringToOString( pReturn->GetOUString(), RTL_TEXTENCODING_UTF8 ).getStr() );
-        }
-        CPPUNIT_ASSERT_MESSAGE("No return variable huh?", pReturn.get() != nullptr );
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Result not as expected", OUString("OK"), pReturn->GetOUString() );
+        CPPUNIT_ASSERT_MESSAGE("No return variable huh?", pReturn.is());
+        fprintf(stderr, "macro result for %s\n", macroSource[i]);
+        fprintf(stderr, "macro returned:\n%s\n",
+                OUStringToOString(pReturn->GetOUString(), RTL_TEXTENCODING_UTF8).getStr());
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Result not as expected", OUString("OK"),
+                                     pReturn->GetOUString());
     }
 }
 
@@ -151,7 +173,11 @@ void VBATest::testMiscOLEStuff()
 // Not much point even trying to run except on Windows.
 // (Without Excel doesn't really do anything anyway,
 // see "so skip test" below.)
-#if defined(_WIN32)
+
+// Since some time, on a properly updated Windows 10, this works
+// only with a 64-bit LibreOffice
+
+#if defined(_WIN64)
     // test if we have the necessary runtime environment
     // to run the OLE tests.
     uno::Reference< lang::XMultiServiceFactory > xOLEFactory;
@@ -191,10 +217,6 @@ void VBATest::testMiscOLEStuff()
     const char* macroSource[] = {
         "ole_ObjAssignNoDflt.vb",
         "ole_ObjAssignToNothing.vb",
-#if !defined(_WIN64)
-        // This test uses Microsoft.Jet.OLEDB.4.0 Provider, that is unavailable on Win64
-        "ole_dfltObjDflMethod.vb",
-#endif
     };
 
     OUString sMacroPathURL = m_directories.getURLFromSrc("/basic/qa/vba_tests/");
@@ -205,8 +227,7 @@ void VBATest::testMiscOLEStuff()
     sPath = sPath.replaceAll( "/", "\\" );
 
     aArgs[ 0 ] <<= sPath;
-    aArgs[ 1 ] <<= OUString(
-        reinterpret_cast<sal_Unicode const *>(pODBCDriverName));
+    aArgs[ 1 ] <<= OUString(o3tl::toU(pODBCDriverName));
 
     for ( sal_uInt32  i=0; i<SAL_N_ELEMENTS( macroSource ); ++i )
     {
@@ -215,13 +236,12 @@ void VBATest::testMiscOLEStuff()
         MacroSnippet myMacro;
         myMacro.LoadSourceFromFile( sMacroURL );
         SbxVariableRef pReturn = myMacro.Run( aArgs );
-        if ( pReturn.is() )
-        {
-            fprintf(stderr, "macro result for %s\n", macroSource[ i ] );
-            fprintf(stderr, "macro returned:\n%s\n", OUStringToOString( pReturn->GetOUString(), RTL_TEXTENCODING_UTF8 ).getStr() );
-        }
-        CPPUNIT_ASSERT_MESSAGE("No return variable huh?", pReturn.get() != nullptr );
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Result not as expected", OUString("OK"), pReturn->GetOUString() );
+        CPPUNIT_ASSERT_MESSAGE("No return variable huh?", pReturn.is());
+        fprintf(stderr, "macro result for %s\n", macroSource[i]);
+        fprintf(stderr, "macro returned:\n%s\n",
+                OUStringToOString(pReturn->GetOUString(), RTL_TEXTENCODING_UTF8).getStr());
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Result not as expected", OUString("OK"),
+                                     pReturn->GetOUString());
     }
 #else
     // Avoid "this method is empty and should be removed" warning

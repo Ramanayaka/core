@@ -18,12 +18,13 @@
  */
 
 #include <svtools/miscopt.hxx>
-#include <unotools/configmgr.hxx>
 #include <unotools/configitem.hxx>
 #include <tools/debug.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <comphelper/sequence.hxx>
 #include <tools/link.hxx>
+#include <osl/diagnose.h>
 
 #include <rtl/instance.hxx>
 #include "itemholder2.hxx"
@@ -33,7 +34,7 @@
 #include <vcl/settings.hxx>
 #include <vcl/toolbox.hxx>
 
-#include <list>
+#include <vector>
 
 using namespace ::utl                   ;
 using namespace ::osl                   ;
@@ -68,12 +69,12 @@ using namespace ::com::sun::star;
 #define PROPERTYNAME_NOTEBOOKBARICONSIZE    "NotebookbarIconSize"
 #define PROPERTYHANDLE_NOTEBOOKBARICONSIZE      11
 
-#define VCL_TOOLBOX_STYLE_FLAT              ((sal_uInt16)0x0004) // from <vcl/toolbox.hxx>
+#define VCL_TOOLBOX_STYLE_FLAT              (sal_uInt16(0x0004)) // from <vcl/toolbox.hxx>
 
 class SvtMiscOptions_Impl : public ConfigItem
 {
 private:
-    ::std::list<Link<LinkParamNone*,void>> aList;
+    ::std::vector<Link<LinkParamNone*,void>> aList;
     bool        m_bUseSystemFileDialog;
     bool        m_bIsUseSystemFileDialogRO;
     bool        m_bPluginsEnabled;
@@ -152,13 +153,13 @@ public:
         bool IsPluginsEnabled() const
         { return m_bPluginsEnabled; }
 
-        sal_Int16 GetSymbolsSize()
+        sal_Int16 GetSymbolsSize() const
         { return m_nSymbolsSize; }
 
-        ToolBoxButtonSize GetSidebarIconSize()
+        ToolBoxButtonSize GetSidebarIconSize() const
         { return m_nSidebarIconSize; }
 
-        ToolBoxButtonSize GetNotebookbarIconSize()
+        ToolBoxButtonSize GetNotebookbarIconSize() const
         { return m_nNotebookbarIconSize; }
 
         void SetSymbolsSize( sal_Int16 nSet );
@@ -190,7 +191,7 @@ public:
         {return m_bIconThemeWasSetAutomatically;}
 
         // translate to VCL settings ( "0" = 3D, "1" = FLAT )
-        sal_Int16 GetToolboxStyle()
+        sal_Int16 GetToolboxStyle() const
         { return m_nToolboxStyle ? VCL_TOOLBOX_STYLE_FLAT : 0; }
 
         // translate from VCL settings
@@ -305,7 +306,7 @@ SvtMiscOptions_Impl::SvtMiscOptions_Impl()
                 {
                     OSL_FAIL("Wrong type of \"Misc\\SidebarIconSize\"!" );
                 } else
-                    m_nSidebarIconSize = (ToolBoxButtonSize)nTmp;
+                    m_nSidebarIconSize = static_cast<ToolBoxButtonSize>(nTmp);
                 m_bIsSidebarIconSizeRO = seqRO[nProperty];
                 break;
             }
@@ -317,7 +318,7 @@ SvtMiscOptions_Impl::SvtMiscOptions_Impl()
                 {
                     OSL_FAIL("Wrong type of \"Misc\\NotebookbarIconSize\"!" );
                 } else
-                    m_nNotebookbarIconSize = (ToolBoxButtonSize)nTmp;
+                    m_nNotebookbarIconSize = static_cast<ToolBoxButtonSize>(nTmp);
                 m_bIsNotebookbarIconSizeRO = seqRO[nProperty];
                 break;
             }
@@ -408,17 +409,6 @@ SvtMiscOptions_Impl::~SvtMiscOptions_Impl()
     assert(!IsModified()); // should have been committed
 }
 
-static int lcl_MapPropertyName( const OUString& rCompare,
-                const uno::Sequence< OUString>& aInternalPropertyNames)
-{
-    for(int nProp = 0; nProp < aInternalPropertyNames.getLength(); ++nProp)
-    {
-        if( aInternalPropertyNames[nProp] == rCompare )
-            return nProp;
-    }
-    return -1;
-}
-
 void SvtMiscOptions_Impl::Load( const Sequence< OUString >& rPropertyNames )
 {
     const uno::Sequence< OUString> aInternalPropertyNames( GetPropertyNames());
@@ -435,7 +425,7 @@ void SvtMiscOptions_Impl::Load( const Sequence< OUString >& rPropertyNames )
     {
         if (!seqValues[nProperty].hasValue())
             continue;
-        switch( lcl_MapPropertyName(rPropertyNames[nProperty], aInternalPropertyNames) )
+        switch( comphelper::findValue(aInternalPropertyNames, rPropertyNames[nProperty]) )
         {
             case PROPERTYHANDLE_PLUGINSENABLED      :   {
                                                             if( !(seqValues[nProperty] >>= m_bPluginsEnabled) )
@@ -457,7 +447,7 @@ void SvtMiscOptions_Impl::Load( const Sequence< OUString >& rPropertyNames )
                                                             {
                                                                 OSL_FAIL("Wrong type of \"Misc\\SidebarIconSize\"!" );
                                                             } else
-                                                                m_nSidebarIconSize = (ToolBoxButtonSize)nTmp;
+                                                                m_nSidebarIconSize = static_cast<ToolBoxButtonSize>(nTmp);
                                                         }
                                                     break;
             case PROPERTYHANDLE_NOTEBOOKBARICONSIZE     :   {
@@ -466,7 +456,7 @@ void SvtMiscOptions_Impl::Load( const Sequence< OUString >& rPropertyNames )
                                                             {
                                                                 OSL_FAIL("Wrong type of \"Misc\\NotebookbarIconSize\"!" );
                                                             } else
-                                                                m_nNotebookbarIconSize = (ToolBoxButtonSize)nTmp;
+                                                                m_nNotebookbarIconSize = static_cast<ToolBoxButtonSize>(nTmp);
                                                         }
                                                     break;
             case PROPERTYHANDLE_TOOLBOXSTYLE        :   {
@@ -521,20 +511,13 @@ void SvtMiscOptions_Impl::AddListenerLink( const Link<LinkParamNone*,void>& rLin
 
 void SvtMiscOptions_Impl::RemoveListenerLink( const Link<LinkParamNone*,void>& rLink )
 {
-    for ( ::std::list<Link<LinkParamNone*,void>>::iterator iter = aList.begin(); iter != aList.end(); ++iter )
-    {
-        if ( *iter == rLink )
-        {
-            aList.erase(iter);
-            break;
-        }
-    }
+    aList.erase(std::remove(aList.begin(), aList.end(), rLink), aList.end());
 }
 
 void SvtMiscOptions_Impl::CallListeners()
 {
-    for ( ::std::list<Link<LinkParamNone*,void>>::const_iterator iter = aList.begin(); iter != aList.end(); ++iter )
-        iter->Call( nullptr );
+    for (auto const& elem : aList)
+        elem.Call( nullptr );
 }
 
 void SvtMiscOptions_Impl::SetToolboxStyle( sal_Int16 nStyle )
@@ -635,14 +618,14 @@ void SvtMiscOptions_Impl::ImplCommit()
             case PROPERTYHANDLE_SIDEBARICONSIZE :
             {
                 if ( !m_bIsSidebarIconSizeRO )
-                   seqValues[nProperty] <<= (sal_uInt16)m_nSidebarIconSize;
+                   seqValues[nProperty] <<= static_cast<sal_uInt16>(m_nSidebarIconSize);
                 break;
             }
 
             case PROPERTYHANDLE_NOTEBOOKBARICONSIZE :
             {
                 if ( !m_bIsNotebookbarIconSizeRO )
-                   seqValues[nProperty] <<= (sal_uInt16)m_nNotebookbarIconSize;
+                   seqValues[nProperty] <<= static_cast<sal_uInt16>(m_nNotebookbarIconSize);
                 break;
             }
 

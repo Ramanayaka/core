@@ -9,21 +9,15 @@
 #ifndef INCLUDED_SD_SOURCE_UI_REMOTECONTROL_COMMUNICATOR_HXX
 #define INCLUDED_SD_SOURCE_UI_REMOTECONTROL_COMMUNICATOR_HXX
 
-#include <stdlib.h>
-#ifndef _WIN32
-#include <unistd.h>
-#endif
-#include <sys/types.h>
-#include <vector>
+#include <memory>
 
 #include <rtl/ref.hxx>
 #include <salhelper/thread.hxx>
 
-#include <com/sun/star/presentation/XSlideShowController.hpp>
+namespace com::sun::star::uno { template <typename > class Reference; }
+namespace com::sun::star::presentation { class XSlideShowController; }
+namespace sd { struct IBluetoothSocket; }
 
-#include "IBluetoothSocket.hxx"
-
-#define CHARSET RTL_TEXTENCODING_UTF8
 namespace sd
 {
 
@@ -38,7 +32,7 @@ namespace sd
     class Communicator : public salhelper::Thread
     {
         public:
-            explicit Communicator( IBluetoothSocket *pSocket );
+            explicit Communicator( std::unique_ptr<IBluetoothSocket> pSocket );
             virtual ~Communicator() override;
 
             void presentationStarted( const css::uno::Reference<
@@ -49,9 +43,9 @@ namespace sd
 
         private:
             void execute() override;
-            IBluetoothSocket *mpSocket;
+            std::unique_ptr<IBluetoothSocket> mpSocket;
 
-            Transmitter *pTransmitter;
+            std::unique_ptr<Transmitter> pTransmitter;
             rtl::Reference<Listener> mListener;
     };
 }

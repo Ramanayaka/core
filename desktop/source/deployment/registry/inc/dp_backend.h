@@ -20,24 +20,19 @@
 #ifndef INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_REGISTRY_INC_DP_BACKEND_H
 #define INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_REGISTRY_INC_DP_BACKEND_H
 
-#include "dp_misc.h"
-#include "dp_resource.h"
-#include "dp_interact.h"
+#include <dp_misc.h>
+#include <dp_shared.hxx>
+#include <dp_interact.h>
 #include <rtl/ref.hxx>
-#include <cppuhelper/weakref.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <com/sun/star/lang/XEventListener.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/deployment/XPackageRegistry.hpp>
-#include <com/sun/star/deployment/XPackageManager.hpp>
-#include <com/sun/star/deployment/InvalidRemovedParameterException.hpp>
-#include <list>
 #include <unordered_map>
-#include "dp_registry.hrc"
+#include <strings.hrc>
 
-namespace dp_registry
-{
-namespace backend
+namespace dp_registry::backend
 {
 
 class PackageRegistryBackend;
@@ -193,7 +188,8 @@ public:
 
 typedef ::cppu::WeakComponentImplHelper<
     css::lang::XEventListener,
-    css::deployment::XPackageRegistry > t_BackendBase;
+    css::deployment::XPackageRegistry,
+    css::lang::XServiceInfo > t_BackendBase;
 
 
 class PackageRegistryBackend
@@ -201,14 +197,13 @@ class PackageRegistryBackend
 {
     //The map held originally WeakReferences. The map entries are removed in the disposing
     //function, which is called when the XPackages are destructed or they are
-    //explicitly disposed. The latter happens, for example, when a extension is
+    //explicitly disposed. The latter happens, for example, when an extension is
     //removed (see dp_manager.cxx). However, because of how the help systems work, now
     // XPackageManager::getDeployedPackages is called often. This results in a lot
     //of bindPackage calls which are costly. Therefore we keep hard references in
     //the map now.
     typedef std::unordered_map<
-        OUString, css::uno::Reference<css::deployment::XPackage>,
-        OUStringHash > t_string2ref;
+        OUString, css::uno::Reference<css::deployment::XPackage> > t_string2ref;
     t_string2ref m_bound;
 
 protected:
@@ -221,10 +216,8 @@ protected:
         Unknown, User, Shared, Bundled, Tmp, Document
     } m_eContext;
 
-    struct StrCannotDetectMediaType : public ::dp_misc::StaticResourceString<
-        StrCannotDetectMediaType, RID_STR_CANNOT_DETECT_MEDIA_TYPE> {};
-    struct StrUnsupportedMediaType : public ::dp_misc::StaticResourceString<
-        StrUnsupportedMediaType, RID_STR_UNSUPPORTED_MEDIA_TYPE> {};
+    static OUString StrCannotDetectMediaType() { return DpResId(RID_STR_CANNOT_DETECT_MEDIA_TYPE); }
+    static OUString StrUnsupportedMediaType() { return DpResId(RID_STR_UNSUPPORTED_MEDIA_TYPE); }
 
     // @@@ to be implemented by specific backend:
     virtual css::uno::Reference<css::deployment::XPackage> bindPackage_(
@@ -253,7 +246,7 @@ protected:
        not used are deleted.
      */
     void deleteUnusedFolders(
-        std::list< OUString> const & usedFolders);
+        std::vector< OUString> const & usedFolders);
     /* deletes one folder with a "temporary" name and the corresponding
        tmp file, which was used to derive the folder name.
     */
@@ -261,10 +254,8 @@ protected:
         OUString const & folderUrl);
 
 public:
-    struct StrRegisteringPackage : public ::dp_misc::StaticResourceString<
-        StrRegisteringPackage, RID_STR_REGISTERING_PACKAGE> {};
-    struct StrRevokingPackage : public ::dp_misc::StaticResourceString<
-        StrRevokingPackage, RID_STR_REVOKING_PACKAGE> {};
+    static OUString StrRegisteringPackage() { return DpResId(RID_STR_REGISTERING_PACKAGE); }
+    static OUString StrRevokingPackage() { return DpResId(RID_STR_REVOKING_PACKAGE); }
 
     css::uno::Reference<css::uno::XComponentContext> const &
     getComponentContext() const { return m_xComponentContext; }
@@ -291,7 +282,7 @@ public:
 };
 
 }
-}
+
 
 #endif
 

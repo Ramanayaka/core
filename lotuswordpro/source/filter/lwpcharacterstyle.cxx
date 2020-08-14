@@ -59,19 +59,18 @@
  ************************************************************************/
 
 #include "lwpcharacterstyle.hxx"
-#include "lwpfilehdr.hxx"
-#include "lwptools.hxx"
-#include "lwpoverride.hxx"
-#include "lwpatomholder.hxx"
-#include "lwpfont.hxx"
-#include "lwpfoundry.hxx"
+#include <lwpfilehdr.hxx>
+#include <lwpoverride.hxx>
+#include <lwpatomholder.hxx>
+#include <lwpfont.hxx>
+#include <lwpfoundry.hxx>
 #include "lwpcharborderoverride.hxx"
-#include "xfilter/xfparastyle.hxx"
-#include "xfilter/xffont.hxx"
+#include <xfilter/xffont.hxx>
+#include <xfilter/xftextstyle.hxx>
 
 
 /*class LwpTextStyle*/
-LwpTextStyle::LwpTextStyle(LwpObjectHeader& objHdr, LwpSvStream* pStrm)
+LwpTextStyle::LwpTextStyle(LwpObjectHeader const & objHdr, LwpSvStream* pStrm)
     : LwpDLNFPVList(objHdr, pStrm),
     m_nFontID(0), m_nFinalFontID(0), m_nCSFlags(0), m_nUseCount(0),
     m_nStyleDefinition(0), m_nKey(0)
@@ -145,7 +144,7 @@ void LwpTextStyle::RegisterStyle()
         return;
     }
 
-    XFTextStyle* pStyle = new XFTextStyle();
+    std::unique_ptr<XFTextStyle> pStyle(new XFTextStyle());
 
     //Set name
     OUString styleName = GetName().str();
@@ -160,12 +159,12 @@ void LwpTextStyle::RegisterStyle()
 
     //Add style
     LwpStyleManager* pStyleMgr = m_pFoundry->GetStyleManager();
-    pStyleMgr->AddStyle(GetObjectID(), pStyle);
+    pStyleMgr->AddStyle(GetObjectID(), std::move(pStyle));
 
 }
 
 /*class LwpCharacterStyle*/
-LwpCharacterStyle::LwpCharacterStyle(LwpObjectHeader& objHdr, LwpSvStream* pStrm) :
+LwpCharacterStyle::LwpCharacterStyle(LwpObjectHeader const & objHdr, LwpSvStream* pStrm) :
 LwpTextStyle(objHdr, pStrm)
 {
 }

@@ -19,22 +19,26 @@
 
 #include "vbasheetobject.hxx"
 #include <com/sun/star/awt/TextAlign.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/drawing/XControlShape.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/script/ScriptEventDescriptor.hpp>
 #include <com/sun/star/script/XEventAttacherManager.hpp>
 #include <com/sun/star/style/VerticalAlignment.hpp>
+#include <comphelper/documentinfo.hxx>
 #include <ooo/vba/excel/Constants.hpp>
 #include <ooo/vba/excel/XlOrientation.hpp>
 #include <ooo/vba/excel/XlPlacement.hpp>
-#include <rtl/ustrbuf.hxx>
 #include <filter/msfilter/msvbahelper.hxx>
-#include <svx/unoshape.hxx>
 #include "vbafont.hxx"
-#include "drwlayer.hxx"
 
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
+
+constexpr OUStringLiteral gaListenerType = "XActionListener";
+constexpr OUStringLiteral gaEventMethod = "actionPerformed";
+
 
 ScVbaButtonCharacters::ScVbaButtonCharacters(
         const uno::Reference< XHelperInterface >& rxParent,
@@ -227,7 +231,7 @@ sal_Int32 SAL_CALL ScVbaSheetObjectBase::getPlacement()
 {
     sal_Int32 const nRet = excel::XlPlacement::xlMoveAndSize;
 #if 0 // TODO: not working at the moment.
-    SvxShape* pShape = SvxShape::getImplementation( mxShape );
+    SvxShape* pShape = comphelper::getUnoTunnelImplementation<SvxShape>( mxShape );
     if(pShape)
     {
         SdrObject* pObj = pShape->GetSdrObject();
@@ -245,7 +249,7 @@ sal_Int32 SAL_CALL ScVbaSheetObjectBase::getPlacement()
 void SAL_CALL ScVbaSheetObjectBase::setPlacement( sal_Int32 /*nPlacement*/ )
 {
 #if 0 // TODO: not working at the moment.
-    SvxShape* pShape = SvxShape::getImplementation( mxShape );
+    SvxShape* pShape = comphelper::getUnoTunnelImplementation<SvxShape>( mxShape );
     if(pShape)
     {
         SdrObject* pObj = pShape->GetSdrObject();
@@ -278,7 +282,7 @@ void SAL_CALL ScVbaSheetObjectBase::setPrintObject( sal_Bool /*bPrintObject*/ )
 
 void ScVbaSheetObjectBase::setDefaultProperties( sal_Int32 nIndex )
 {
-    OUString aName = implGetBaseName() + OUStringLiteral1(' ') + OUString::number( nIndex + 1 );
+    OUString aName = implGetBaseName() + OUStringChar(' ') + OUString::number( nIndex + 1 );
     setName( aName );
     implSetDefaultProperties();
 }
@@ -292,37 +296,12 @@ ScVbaControlObjectBase::ScVbaControlObjectBase(
         const uno::Reference< uno::XComponentContext >& rxContext,
         const uno::Reference< frame::XModel >& rxModel,
         const uno::Reference< container::XIndexContainer >& rxFormIC,
-        const uno::Reference< drawing::XControlShape >& rxControlShape,
-        ListenerType eListenerType ) :
+        const uno::Reference< drawing::XControlShape >& rxControlShape ) :
     ScVbaControlObject_BASE( rxParent, rxContext, rxModel, uno::Reference< drawing::XShape >( rxControlShape, uno::UNO_QUERY_THROW ) ),
     mxFormIC( rxFormIC, uno::UNO_SET_THROW ),
-    mxControlProps( rxControlShape->getControl(), uno::UNO_QUERY_THROW )
+    mxControlProps( rxControlShape->getControl(), uno::UNO_QUERY_THROW ),
+    mbNotifyMacroEventRead(false)
 {
-    // set listener and event name to be used for OnAction attribute
-    switch( eListenerType )
-    {
-        case LISTENER_ACTION:
-            maListenerType = "XActionListener";
-            maEventMethod = "actionPerformed";
-        break;
-        case LISTENER_MOUSE:
-            maListenerType = "XMouseListener";
-            maEventMethod = "mouseReleased";
-        break;
-        case LISTENER_TEXT:
-            maListenerType = "XTextListener";
-            maEventMethod = "textChanged";
-        break;
-        case LISTENER_VALUE:
-            maListenerType = "XAdjustmentListener";
-            maEventMethod = "adjustmentValueChanged";
-        break;
-        case LISTENER_CHANGE:
-            maListenerType = "XChangeListener";
-            maEventMethod = "changed";
-        break;
-        // no default, to let the compiler complain about missing case
-    }
 }
 
 // XSheetObject attributes
@@ -341,17 +320,28 @@ OUString SAL_CALL ScVbaControlObjectBase::getOnAction()
 {
     uno::Reference< script::XEventAttacherManager > xEventMgr( mxFormIC, uno::UNO_QUERY_THROW );
     sal_Int32 nIndex = getModelIndexInForm();
-    uno::Sequence< script::ScriptEventDescriptor > aEvents = xEventMgr->getScriptEvents( nIndex );
+    const uno::Sequence< script::ScriptEventDescriptor > aEvents = xEventMgr->getScriptEvents( nIndex );
     if( aEvents.hasElements() )
     {
-        const script::ScriptEventDescriptor* pEvent = aEvents.getConstArray();
-        const script::ScriptEventDescriptor* pEventEnd = pEvent + aEvents.getLength();
         const OUString aScriptType = "Script";
-        for( ; pEvent < pEventEnd; ++pEvent )
-            if( (pEvent->ListenerType == maListenerType) && (pEvent->EventMethod == maEventMethod) && (pEvent->ScriptType == aScriptType) )
-                return extractMacroName( pEvent->ScriptCode );
+        const script::ScriptEventDescriptor* pEvent = std::find_if(aEvents.begin(), aEvents.end(),
+            [&aScriptType](const script::ScriptEventDescriptor& rEvent) {
+                return (rEvent.ListenerType == gaListenerType)
+                    && (rEvent.EventMethod == gaEventMethod)
+                    && (rEvent.ScriptType == aScriptType);
+            });
+        if (pEvent != aEvents.end())
+            return extractMacroName( pEvent->ScriptCode );
     }
     return OUString();
+}
+
+void ScVbaControlObjectBase::NotifyMacroEventRead()
+{
+    if (mbNotifyMacroEventRead)
+        return;
+    comphelper::DocumentInfo::notifyMacroEventRead(mxModel);
+    mbNotifyMacroEventRead = true;
 }
 
 void SAL_CALL ScVbaControlObjectBase::setOnAction( const OUString& rMacroName )
@@ -360,21 +350,22 @@ void SAL_CALL ScVbaControlObjectBase::setOnAction( const OUString& rMacroName )
     sal_Int32 nIndex = getModelIndexInForm();
 
     // first, remove a registered event (try/catch just in case implementation throws)
-    try { xEventMgr->revokeScriptEvent( nIndex, maListenerType, maEventMethod, OUString() ); } catch( uno::Exception& ) {}
+    try { xEventMgr->revokeScriptEvent( nIndex, gaListenerType, gaEventMethod, OUString() ); } catch( uno::Exception& ) {}
 
     // if a macro name has been passed, try to attach it to the event
-    if( !rMacroName.isEmpty() )
-    {
-        MacroResolvedInfo aResolvedMacro = resolveVBAMacro( getSfxObjShell( mxModel ), rMacroName );
-        if( !aResolvedMacro.mbFound )
-            throw uno::RuntimeException();
-        script::ScriptEventDescriptor aDescriptor;
-        aDescriptor.ListenerType = maListenerType;
-        aDescriptor.EventMethod = maEventMethod;
-        aDescriptor.ScriptType = "Script";
-        aDescriptor.ScriptCode = makeMacroURL( aResolvedMacro.msResolvedMacro );
-        xEventMgr->registerScriptEvent( nIndex, aDescriptor );
-    }
+    if( rMacroName.isEmpty() )
+        return;
+
+    MacroResolvedInfo aResolvedMacro = resolveVBAMacro( getSfxObjShell( mxModel ), rMacroName );
+    if( !aResolvedMacro.mbFound )
+        throw uno::RuntimeException();
+    script::ScriptEventDescriptor aDescriptor;
+    aDescriptor.ListenerType = gaListenerType;
+    aDescriptor.EventMethod = gaEventMethod;
+    aDescriptor.ScriptType = "Script";
+    aDescriptor.ScriptCode = makeMacroURL( aResolvedMacro.msResolvedMacro );
+    NotifyMacroEventRead();
+    xEventMgr->registerScriptEvent( nIndex, aDescriptor );
 }
 
 sal_Bool SAL_CALL ScVbaControlObjectBase::getPrintObject()
@@ -419,7 +410,7 @@ ScVbaButton::ScVbaButton(
         const uno::Reference< frame::XModel >& rxModel,
         const uno::Reference< container::XIndexContainer >& rxFormIC,
         const uno::Reference< drawing::XControlShape >& rxControlShape ) :
-    ScVbaButton_BASE( rxParent, rxContext, rxModel, rxFormIC, rxControlShape, LISTENER_ACTION )
+    ScVbaButton_BASE( rxParent, rxContext, rxModel, rxFormIC, rxControlShape )
 {
 }
 
@@ -504,6 +495,26 @@ void SAL_CALL ScVbaButton::setOrientation( sal_Int32 /*nOrientation*/ )
     // not supported
 }
 
+uno::Any SAL_CALL ScVbaButton::getValue()
+{
+    return mxControlProps->getPropertyValue( "State" );
+}
+
+void SAL_CALL ScVbaButton::setValue( const uno::Any &nValue )
+{
+    return mxControlProps->setPropertyValue( "State", nValue );
+}
+
+OUString SAL_CALL ScVbaButton::getText()
+{
+    return mxControlProps->getPropertyValue( "Label" ).get< OUString >();
+}
+
+void SAL_CALL ScVbaButton::setText( const OUString &aText )
+{
+    return mxControlProps->setPropertyValue( "Label", uno::Any( aText ) );
+}
+
 // XButton methods
 
 uno::Reference< excel::XCharacters > SAL_CALL ScVbaButton::Characters( const uno::Any& rStart, const uno::Any& rLength )
@@ -519,7 +530,7 @@ VBAHELPER_IMPL_XHELPERINTERFACE( ScVbaButton, "ooo.vba.excel.Button" )
 
 OUString ScVbaButton::implGetBaseName() const
 {
-    return OUString( "Button" );
+    return "Button";
 }
 
 void ScVbaButton::implSetDefaultProperties()

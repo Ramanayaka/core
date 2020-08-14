@@ -20,15 +20,11 @@
 
 #include <svl/ctloptions.hxx>
 
-#include <svl/languageoptions.hxx>
-#include <i18nlangtag/mslangid.hxx>
 #include <unotools/configitem.hxx>
 #include <com/sun/star/uno/Any.h>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <osl/mutex.hxx>
 #include <rtl/instance.hxx>
-#include <unotools/syslocale.hxx>
-#include <svl/hint.hxx>
 #include "itemholder2.hxx"
 
 using namespace ::com::sun::star;
@@ -181,7 +177,7 @@ void SvtCTLOptions_Impl::ImplCommit()
                 if (!m_bROCTLCursorMovement)
                 {
                     pNames[nRealCount] = pOrgNames[nProp];
-                    pValues[nRealCount] <<= (sal_Int32)m_eCTLCursorMovement;
+                    pValues[nRealCount] <<= static_cast<sal_Int32>(m_eCTLCursorMovement);
                     ++nRealCount;
                 }
             }
@@ -192,7 +188,7 @@ void SvtCTLOptions_Impl::ImplCommit()
                 if (!m_bROCTLTextNumerals)
                 {
                     pNames[nRealCount] = pOrgNames[nProp];
-                    pValues[nRealCount] <<= (sal_Int32)m_eCTLTextNumerals;
+                    pValues[nRealCount] <<= static_cast<sal_Int32>(m_eCTLTextNumerals);
                     ++nRealCount;
                 }
             }
@@ -230,7 +226,7 @@ void SvtCTLOptions_Impl::ImplCommit()
 void SvtCTLOptions_Impl::Load()
 {
     Sequence< OUString >& rPropertyNames = PropertyNames::get();
-    if ( !rPropertyNames.getLength() )
+    if ( !rPropertyNames.hasElements() )
     {
         rPropertyNames.realloc(6);
         OUString* pNames = rPropertyNames.getArray();
@@ -271,8 +267,8 @@ void SvtCTLOptions_Impl::Load()
                 {
                     switch ( nProp )
                     {
-                        case 2: { m_eCTLCursorMovement = (SvtCTLOptions::CursorMovement)nValue; m_bROCTLCursorMovement = pROStates[nProp]; } break;
-                        case 3: { m_eCTLTextNumerals = (SvtCTLOptions::TextNumerals)nValue; m_bROCTLTextNumerals = pROStates[nProp]; } break;
+                        case 2: { m_eCTLCursorMovement = static_cast<SvtCTLOptions::CursorMovement>(nValue); m_bROCTLCursorMovement = pROStates[nProp]; } break;
+                        case 3: { m_eCTLTextNumerals = static_cast<SvtCTLOptions::TextNumerals>(nValue); m_bROCTLTextNumerals = pROStates[nProp]; } break;
                     }
                 }
             }

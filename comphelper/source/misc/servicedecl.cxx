@@ -20,7 +20,6 @@
 
 #include <comphelper/servicedecl.hxx>
 #include <rtl/string.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/sequence.hxx>
 #include <com/sun/star/lang/XSingleComponentFactory.hpp>
@@ -29,8 +28,7 @@
 
 using namespace com::sun::star;
 
-namespace comphelper {
-namespace service_decl {
+namespace comphelper::service_decl {
 
 const char cDelim = ';';
 
@@ -100,7 +98,7 @@ ServiceDecl::Factory::createInstanceWithArgumentsAndContext(
         m_rServiceDecl, args, xContext );
 }
 
-void * ServiceDecl::getFactory( sal_Char const* pImplName ) const
+void * ServiceDecl::getFactory( char const* pImplName ) const
 {
     if (rtl_str_compare(m_pImplName, pImplName) == 0) {
         lang::XSingleComponentFactory * const pFac( new Factory(*this) );
@@ -118,8 +116,8 @@ uno::Sequence<OUString> ServiceDecl::getSupportedServiceNames() const
     sal_Int32 nIndex = 0;
     do {
         OString const token( str.getToken( 0, cDelim, nIndex ) );
-        vec.push_back( OUString( token.getStr(), token.getLength(),
-                                      RTL_TEXTENCODING_ASCII_US ) );
+        vec.emplace_back( token.getStr(), token.getLength(),
+                                      RTL_TEXTENCODING_ASCII_US );
     }
     while (nIndex >= 0);
 
@@ -144,7 +142,7 @@ OUString ServiceDecl::getImplementationName() const
     return OUString::createFromAscii(m_pImplName);
 }
 
-void* component_getFactoryHelper( const sal_Char* pImplName,
+void* component_getFactoryHelper( const char* pImplName,
                                   std::initializer_list<ServiceDecl const *> args )
 {
     for (auto const i: args) {
@@ -157,7 +155,6 @@ void* component_getFactoryHelper( const sal_Char* pImplName,
     return nullptr;
 }
 
-} // namespace service_decl
-} // namespace comphelper
+} // namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

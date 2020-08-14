@@ -22,9 +22,7 @@
 
 #include <drawingml/chart/seriesmodel.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 struct UpDownBarsModel
 {
@@ -41,13 +39,13 @@ struct UpDownBarsModel
 struct TypeGroupModel
 {
     typedef ModelVector< SeriesModel >  SeriesVector;
-    typedef ::std::vector< sal_Int32 >  AxisIdVector;
     typedef ModelRef< DataLabelsModel > DataLabelsRef;
     typedef ModelRef< UpDownBarsModel > UpDownBarsRef;
     typedef ModelRef< Shape >           ShapeRef;
 
     SeriesVector        maSeries;           /// Series attached to this chart type group.
-    AxisIdVector        maAxisIds;          /// List of axis identifiers used by this chart type.
+    std::vector<sal_Int32>
+                        maAxisIds;          /// List of axis identifiers used by this chart type.
     DataLabelsRef       mxLabels;           /// Data point label settings for all series.
     UpDownBarsRef       mxUpDownBars;       /// Up/down bars in stock charts.
     ShapeRef            mxSerLines;         /// Connector lines in stacked bar charts.
@@ -76,14 +74,13 @@ struct TypeGroupModel
     bool                mbSmooth;           /// True = smooth lines in line charts.
     bool                mbVaryColors;       /// True = different automatic colors for each point.
     bool                mbWireframe;        /// True = wireframe surface chart, false = filled surface chart.
+    bool                mbCatAxisVisible;   /// True = Category axis is visible.
 
     explicit            TypeGroupModel( sal_Int32 nTypeId, bool bMSO2007Doc );
                         ~TypeGroupModel();
 };
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

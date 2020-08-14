@@ -22,7 +22,7 @@
 
 #include <tools/gen.hxx>
 #include <vcl/window.hxx>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 
 namespace sd {
 
@@ -58,7 +58,7 @@ public:
     */
     void    SetZoomIntegral(long nZoom);
 
-    /** This internally used method performs the actual adaption of the
+    /** This internally used method performs the actual adaptation of the
         window's map mode to the specified zoom factor.
         @param nZoom
             The zoom factor is given as integral percent value.
@@ -91,7 +91,7 @@ public:
 
     /** Calculate the minimal zoom factor as the value at which the
         application area would completely fill the window.  All values set
-        manually or programatically are set to this value if they are
+        manually or programmatically are set to this value if they are
         smaller.  If the currently used zoom factor is smaller than the minimal zoom
         factor than set the minimal zoom factor as the new current zoom
         factor.
@@ -126,15 +126,16 @@ public:
 
     void UpdateMapMode();
 
-    double  GetVisibleX();          // interface for ScrollBars
-    double  GetVisibleY();
+    double  GetVisibleX() const;          // interface for ScrollBars
+    double  GetVisibleY() const;
     void    SetVisibleXY(double fX, double fY);
-    double  GetVisibleWidth();
-    double  GetVisibleHeight();
-    double  GetScrlLineWidth();
-    double  GetScrlLineHeight();
-    double  GetScrlPageWidth();
-    double  GetScrlPageHeight();
+    double  GetVisibleWidth() const;
+    double  GetVisibleHeight() const;
+    Point   GetVisibleCenter();
+    double  GetScrlLineWidth() const;
+    double  GetScrlLineHeight() const;
+    double  GetScrlPageWidth() const;
+    double  GetScrlPageHeight() const;
     void GrabFocus();
     virtual void DataChanged( const DataChangedEvent& rDCEvt ) override;
 
@@ -150,7 +151,6 @@ public:
     void DropScroll (const Point& rMousePos);
     virtual void KeyInput(const KeyEvent& rKEvt) override;
 protected:
-    VclPtr< ::sd::Window> mpShareWin;
     Point maWinPos;
     Point maViewOrigin;
     Size maViewSize;
@@ -190,8 +190,14 @@ protected:
 
     OUString GetSurroundingText() const override;
     Selection GetSurroundingTextSelection() const override;
-    /// @see OutputDevice::LogicInvalidate().
+    /// @see Window::LogicInvalidate().
     void LogicInvalidate(const ::tools::Rectangle* pRectangle) override;
+    /// Same as MouseButtonDown(), but coordinates are in logic unit.
+    virtual void LogicMouseButtonDown(const MouseEvent& rMouseEvent) override;
+    /// Same as MouseButtonUp(), but coordinates are in logic unit.
+    virtual void LogicMouseButtonUp(const MouseEvent& rMouseEvent) override;
+    /// Same as MouseMove(), but coordinates are in logic unit.
+    virtual void LogicMouseMove(const MouseEvent& rMouseEvent) override;
 
     FactoryFunction GetUITestFactory() const override;
 };

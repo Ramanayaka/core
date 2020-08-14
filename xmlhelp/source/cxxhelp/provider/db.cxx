@@ -20,7 +20,6 @@
 
 #include "db.hxx"
 
-#include <rtl/alloc.h>
 #include <cstring>
 
 #include <com/sun/star/io/XSeekable.hpp>
@@ -68,73 +67,69 @@ void Hdf::createHashMap( bool bOptimizeForPerformance )
     {
         if( m_pStringToDataMap != nullptr )
             return;
-        m_pStringToDataMap = new StringToDataMap;
+        m_pStringToDataMap.reset(new StringToDataMap);
     }
     else
     {
         if( m_pStringToValPosMap != nullptr )
             return;
-        m_pStringToValPosMap = new StringToValPosMap;
+        m_pStringToValPosMap.reset(new StringToValPosMap);
     }
 
     Reference< XInputStream > xIn = m_xSFA->openFileRead( m_aFileURL );
-    if( xIn.is() )
+    if( !xIn.is() )
+        return;
+
+    Sequence< sal_Int8 > aData;
+    sal_Int32 nSize = m_xSFA->getSize( m_aFileURL );
+    sal_Int32 nRead = xIn->readBytes( aData, nSize );
+
+    const char* pData = reinterpret_cast<const char*>(aData.getConstArray());
+    int iPos = 0;
+    while( iPos < nRead )
     {
-        Sequence< sal_Int8 > aData;
-        sal_Int32 nSize = m_xSFA->getSize( m_aFileURL );
-        sal_Int32 nRead = xIn->readBytes( aData, nSize );
+        HDFData aDBKey;
+        if( !implReadLenAndData( pData, iPos, aDBKey ) )
+            break;
 
-        const char* pData = reinterpret_cast<const char*>(aData.getConstArray());
-        int iPos = 0;
-        while( iPos < nRead )
+        OString aOKeyStr = aDBKey.getData();
+
+        // Read val len
+        const char* pStartPtr = pData + iPos;
+        char* pEndPtr;
+        sal_Int32 nValLen = strtol( pStartPtr, &pEndPtr, 16 );
+        if( pEndPtr == pStartPtr )
+            break;
+
+        iPos += (pEndPtr - pStartPtr) + 1;
+
+        if( bOptimizeForPerformance )
         {
-            HDFData aDBKey;
-            if( !implReadLenAndData( pData, iPos, aDBKey ) )
-                break;
-
-            OString aOKeyStr = aDBKey.getData();
-
-            // Read val len
-            const char* pStartPtr = pData + iPos;
-            char* pEndPtr;
-            sal_Int32 nValLen = strtol( pStartPtr, &pEndPtr, 16 );
-            if( pEndPtr == pStartPtr )
-                break;
-
-            iPos += (pEndPtr - pStartPtr) + 1;
-
-            if( bOptimizeForPerformance )
-            {
-                const char* pValSrc = pData + iPos;
-                OString aValStr( pValSrc, nValLen );
-                (*m_pStringToDataMap)[aOKeyStr] = aValStr;
-            }
-            else
-            {
-                // store value start position
-                (*m_pStringToValPosMap)[aOKeyStr] = std::pair<int,int>( iPos, nValLen );
-            }
-            iPos += nValLen + 1;
+            const char* pValSrc = pData + iPos;
+            OString aValStr( pValSrc, nValLen );
+            (*m_pStringToDataMap)[aOKeyStr] = aValStr;
         }
-
-        xIn->closeInput();
+        else
+        {
+            // store value start position
+            (*m_pStringToValPosMap)[aOKeyStr] = std::pair<int,int>( iPos, nValLen );
+        }
+        iPos += nValLen + 1;
     }
+
+    xIn->closeInput();
 }
 
 void Hdf::releaseHashMap()
 {
-    if( m_pStringToDataMap != nullptr )
-    {
-        delete m_pStringToDataMap;
-        m_pStringToDataMap = nullptr;
-    }
-    if( m_pStringToValPosMap != nullptr )
-    {
-        delete m_pStringToValPosMap;
-        m_pStringToValPosMap = nullptr;
-    }
+    m_pStringToDataMap.reset();
+    m_pStringToValPosMap.reset();
 }
 
+
+Hdf::~Hdf()
+{
+}
 
 bool Hdf::getValueForKey( const OString& rKey, HDFData& rValue )
 {
@@ -171,7 +166,7 @@ bool Hdf::getValueForKey( const OString& rKey, HDFData& rValue )
                     sal_Int32 nRead = xIn->readBytes( aData, nValueLen );
                     if( nRead == nValueLen )
                     {
-                        const char* pData = reinterpret_cast<const sal_Char*>(aData.getConstArray());
+                        const char* pData = reinterpret_cast<const char*>(aData.getConstArray());
                         rValue.copyToBuffer( pData, nValueLen );
                         bSuccess = true;
                     }

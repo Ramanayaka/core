@@ -23,14 +23,8 @@
 #include <vcl/window.hxx>
 #include <svtools/colorcfg.hxx>
 #include "ReportDefines.hxx"
-#include "ReportSection.hxx"
-#include <comphelper/propmultiplex.hxx>
-#include <cppuhelper/basemutex.hxx>
-#include <com/sun/star/beans/NamedValue.hpp>
-#include <svx/svdedtv.hxx>
 #include "SectionView.hxx"
 #include <unotools/options.hxx>
-#include <list>
 #include <vector>
 
 #include "MarkedSection.hxx"
@@ -45,7 +39,7 @@ namespace rptui
     class OSectionView;
     enum class ControlModification;
 
-    struct RectangleLess : public ::std::binary_function< tools::Rectangle, tools::Rectangle, bool>
+    struct RectangleLess
     {
         enum CompareMode { POS_LEFT,POS_RIGHT,POS_UPPER,POS_DOWN,POS_CENTER_HORIZONTAL,POS_CENTER_VERTICAL };
         CompareMode m_eCompareMode;
@@ -95,8 +89,8 @@ namespace rptui
         static void collectBoundResizeRect(const TRectangleMap& _rSortRectangles, ControlModification _nControlModification,bool _bAlignAtSection,tools::Rectangle& _rBound,tools::Rectangle& _rResize);
         void impl_resizeSectionWindow(OSectionWindow& _rSectionWindow,Point& _rStartPoint,bool _bSet);
 
-        OViewsWindow(OViewsWindow&) = delete;
-        void operator =(OViewsWindow&) = delete;
+        OViewsWindow(OViewsWindow const &) = delete;
+        void operator =(OViewsWindow const &) = delete;
     protected:
         virtual void DataChanged( const DataChangedEvent& rDCEvt ) override;
         // Window overrides
@@ -179,7 +173,7 @@ namespace rptui
         */
         void SelectAll(const sal_uInt16 _nObjectType);
 
-        /** returns <TRUE/> when a object is marked
+        /** returns <TRUE/> when an object is marked
         */
         bool HasSelection() const;
 
@@ -187,7 +181,7 @@ namespace rptui
         *
         * @param _pSectionView The view where the objects should not be unmarked.
         */
-        void            unmarkAllObjects(OSectionView* _pSectionView);
+        void            unmarkAllObjects(OSectionView const * _pSectionView);
 
         /** returns the report section window for the given xsection
             @param  _xSection   the section
@@ -204,7 +198,7 @@ namespace rptui
             @param  _pSectionView   the section where to set the marked flag
             @param  _bMark  the marked flag
         */
-        void            setMarked(OSectionView* _pSectionView, bool _bMark);
+        void            setMarked(OSectionView const * _pSectionView, bool _bMark);
         void            setMarked(const css::uno::Reference< css::report::XSection>& _xSection, bool _bMark);
         void            setMarked(const css::uno::Sequence< css::uno::Reference< css::report::XReportComponent> >& _xShape, bool _bMark);
 
@@ -275,11 +269,11 @@ namespace rptui
         */
         void fillCollapsedSections(::std::vector<sal_uInt16>& _rCollapsedPositions) const;
 
-        /** collpase all sections given by their position
+        /** collapse all sections given by their position
         *
-        * \param _aCollpasedSections The position of the sections which should be collapsed.
+        * \param _aCollapsedSections The position of the sections which should be collapsed.
         */
-        void collapseSections(const css::uno::Sequence< css::beans::PropertyValue>& _aCollpasedSections);
+        void collapseSections(const css::uno::Sequence< css::beans::PropertyValue>& _aCollapsedSections);
 
         /** zoom the ruler and view windows
         */

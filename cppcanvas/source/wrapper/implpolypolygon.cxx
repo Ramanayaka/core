@@ -25,20 +25,15 @@
 #include <com/sun/star/rendering/PathJoinType.hpp>
 #include <com/sun/star/rendering/PathCapType.hpp>
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/tools/canvastools.hxx>
-
 #include "implpolypolygon.hxx"
-#include "tools.hxx"
+#include <tools.hxx>
 
 
 using namespace ::com::sun::star;
 
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
         ImplPolyPolygon::ImplPolyPolygon( const CanvasSharedPtr& rParentCanvas,
                                           const uno::Reference< rendering::XPolyPolygon2D >& rPolyPoly ) :
             CanvasGraphicHelper( rParentCanvas ),
@@ -62,24 +57,21 @@ namespace cppcanvas
         {
         }
 
-        void ImplPolyPolygon::setRGBAFillColor( Color::IntSRGBA aColor )
+        void ImplPolyPolygon::setRGBAFillColor( IntSRGBA aColor )
         {
-            maFillColor = tools::intSRGBAToDoubleSequence( getGraphicDevice(),
-                                                           aColor );
+            maFillColor = tools::intSRGBAToDoubleSequence( aColor );
             mbFillColorSet = true;
         }
 
-        void ImplPolyPolygon::setRGBALineColor( Color::IntSRGBA aColor )
+        void ImplPolyPolygon::setRGBALineColor( IntSRGBA aColor )
         {
-            maStrokeColor = tools::intSRGBAToDoubleSequence( getGraphicDevice(),
-                                                             aColor );
+            maStrokeColor = tools::intSRGBAToDoubleSequence( aColor );
             mbStrokeColorSet = true;
         }
 
-        Color::IntSRGBA ImplPolyPolygon::getRGBALineColor() const
+        IntSRGBA ImplPolyPolygon::getRGBALineColor() const
         {
-            return tools::doubleSequenceToIntSRGBA( getGraphicDevice(),
-                                                    maStrokeColor );
+            return tools::doubleSequenceToIntSRGBA( maStrokeColor );
         }
 
         void ImplPolyPolygon::setStrokeWidth( const double& rStrokeWidth )
@@ -96,11 +88,10 @@ namespace cppcanvas
         {
             CanvasSharedPtr pCanvas( getCanvas() );
 
-            OSL_ENSURE( pCanvas.get() != nullptr &&
-                        pCanvas->getUNOCanvas().is(),
+            OSL_ENSURE( pCanvas && pCanvas->getUNOCanvas().is(),
                         "ImplBitmap::draw: invalid canvas" );
 
-            if( pCanvas.get() == nullptr ||
+            if( !pCanvas ||
                 !pCanvas->getUNOCanvas().is() )
                 return false;
 
@@ -138,7 +129,6 @@ namespace cppcanvas
             return mxPolyPoly;
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

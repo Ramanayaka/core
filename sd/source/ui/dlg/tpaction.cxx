@@ -22,45 +22,39 @@
 #include <com/sun/star/embed/NeedsRunningStateException.hpp>
 #include <com/sun/star/embed/VerbDescriptor.hpp>
 #include <com/sun/star/embed/EmbedStates.hpp>
-#include <comphelper/processfactory.hxx>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <comphelper/string.hxx>
 #include <com/sun/star/embed/VerbAttributes.hpp>
 #include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
 
-#include "sdattr.hxx"
+#include <sdattr.hrc>
 #include <sfx2/sfxresid.hxx>
-
-#include <vcl/waitobj.hxx>
-#include <osl/file.hxx>
+#include <sfx2/strings.hrc>
+#include <o3tl/safeint.hxx>
+#include <tools/debug.hxx>
 #include <sfx2/app.hxx>
 #include <unotools/pathoptions.hxx>
 #include <svx/svdograf.hxx>
-#include <svx/svdpagv.hxx>
-#include <unotools/localfilehelper.hxx>
 #include <svl/aeitem.hxx>
-#include <editeng/colritem.hxx>
+#include <svl/stritem.hxx>
 #include <svx/svdoole2.hxx>
 #include <sfx2/docfile.hxx>
-#include <sot/storage.hxx>
-#include <basic/sbmeth.hxx>
-#include <basic/sbmod.hxx>
-#include <basic/sbstar.hxx>
 #include <svx/xtable.hxx>
-#include <vcl/svapp.hxx>
 #include <vcl/mnemonic.hxx>
+#include <svl/intitem.hxx>
 #include <svl/urihelper.hxx>
 #include <sfx2/filedlghelper.hxx>
 #include <svx/drawitem.hxx>
-#include "View.hxx"
-#include "sdresid.hxx"
-#include "tpaction.hxx"
-#include "strmname.h"
-#include "ViewShell.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-#include "strings.hrc"
-#include "res_bmp.hrc"
-#include "filedlg.hxx"
+#include <View.hxx>
+#include <sdresid.hxx>
+#include <tpaction.hxx>
+#include <strmname.h>
+#include <ViewShell.hxx>
+#include <drawdoc.hxx>
+#include <DrawDocShell.hxx>
+#include <strings.hrc>
+
+#include <filedlg.hxx>
 
 #include <algorithm>
 
@@ -73,89 +67,64 @@ using namespace com::sun::star::lang;
 /**
  * Constructor of the Tab dialog: appends the pages to the dialog
  */
-SdActionDlg::SdActionDlg (
-    vcl::Window* pParent, const SfxItemSet* pAttr, ::sd::View* pView )
-    : SfxSingleTabDialog(pParent, *pAttr, "InteractionDialog",
-        "modules/simpress/ui/interactiondialog.ui")
-    , rOutAttrs(*pAttr)
+SdActionDlg::SdActionDlg(weld::Window* pParent, const SfxItemSet* pAttr, ::sd::View const * pView)
+    : SfxSingleTabDialogController(pParent, pAttr, "modules/simpress/ui/interactiondialog.ui",
+                                   "InteractionDialog")
 {
-    VclPtr<SfxTabPage> pNewPage = SdTPAction::Create(get_content_area(), rOutAttrs);
-    assert(pNewPage); //Unable to create page
+    std::unique_ptr<SfxTabPage> xNewPage = SdTPAction::Create(get_content_area(), this, *pAttr);
 
     // formerly in PageCreated
-    static_cast<SdTPAction*>( pNewPage.get() )->SetView( pView );
-    static_cast<SdTPAction*>( pNewPage.get() )->Construct();
+    static_cast<SdTPAction*>( xNewPage.get() )->SetView( pView );
+    static_cast<SdTPAction*>( xNewPage.get() )->Construct();
 
-    SetTabPage( pNewPage );
+    SetTabPage(std::move(xNewPage));
 }
 
 /**
  *  Action-TabPage
  */
-SdTPAction::SdTPAction(vcl::Window* pWindow, const SfxItemSet& rInAttrs)
-    : SfxTabPage(pWindow, "InteractionPage",
-        "modules/simpress/ui/interactionpage.ui", &rInAttrs)
+SdTPAction::SdTPAction(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
+    : SfxTabPage(pPage, pController, "modules/simpress/ui/interactionpage.ui", "InteractionPage", &rInAttrs)
     , mpView(nullptr)
     , mpDoc(nullptr)
     , bTreeUpdated(false)
+    , m_xLbAction(m_xBuilder->weld_combo_box("listbox"))
+    , m_xFtTree(m_xBuilder->weld_label("fttree"))
+    , m_xLbTree(new SdPageObjsTLV(m_xBuilder->weld_tree_view("tree")))
+    , m_xLbTreeDocument(new SdPageObjsTLV(m_xBuilder->weld_tree_view("treedoc")))
+    , m_xLbOLEAction(m_xBuilder->weld_tree_view("oleaction"))
+    , m_xFrame(m_xBuilder->weld_frame("frame"))
+    , m_xEdtSound(m_xBuilder->weld_entry("sound"))
+    , m_xEdtBookmark(m_xBuilder->weld_entry("bookmark"))
+    , m_xEdtDocument(m_xBuilder->weld_entry("document"))
+    , m_xEdtProgram(m_xBuilder->weld_entry("program"))
+    , m_xEdtMacro(m_xBuilder->weld_entry("macro"))
+    , m_xBtnSearch(m_xBuilder->weld_button("browse"))
+    , m_xBtnSeek(m_xBuilder->weld_button("find"))
 {
-    get(m_pLbAction, "listbox");
-    get(m_pFtTree, "fttree");
-    get(m_pLbTree, "tree");
-    get(m_pLbTreeDocument, "treedoc");
-    get(m_pLbOLEAction, "oleaction");
-    get(m_pFrame, "frame");
-    get(m_pEdtSound, "sound");
-    get(m_pEdtBookmark, "bookmark");
-    get(m_pEdtDocument, "document");
-    get(m_pEdtProgram, "program");
-    get(m_pEdtMacro, "macro");
-    get(m_pBtnSearch, "browse");
-    get(m_pBtnSeek, "find");
+    m_xLbOLEAction->set_size_request(m_xLbOLEAction->get_approximate_digit_width() * 48,
+                                     m_xLbOLEAction->get_height_rows(12));
 
-    m_pLbOLEAction->set_width_request(m_pLbOLEAction->approximate_char_width() * 52);
-    m_pLbOLEAction->set_height_request(m_pLbOLEAction->GetTextHeight() * 12);
-
-    m_pBtnSearch->SetClickHdl( LINK( this, SdTPAction, ClickSearchHdl ) );
-    m_pBtnSeek->SetClickHdl( LINK( this, SdTPAction, ClickSearchHdl ) );
+    m_xBtnSearch->connect_clicked( LINK( this, SdTPAction, ClickSearchHdl ) );
+    m_xBtnSeek->connect_clicked( LINK( this, SdTPAction, ClickSearchHdl ) );
 
     // this page needs ExchangeSupport
     SetExchangeSupport();
 
-    m_pLbAction->SetSelectHdl( LINK( this, SdTPAction, ClickActionHdl ) );
-    m_pLbTree->SetSelectHdl( LINK( this, SdTPAction, SelectTreeHdl ) );
-    m_pEdtDocument->SetLoseFocusHdl( LINK( this, SdTPAction, CheckFileHdl ) );
-    m_pEdtMacro->SetLoseFocusHdl( LINK( this, SdTPAction, CheckFileHdl ) );
+    m_xLbAction->connect_changed( LINK( this, SdTPAction, ClickActionHdl ) );
+    m_xLbTree->connect_changed( LINK( this, SdTPAction, SelectTreeHdl ) );
+    m_xEdtDocument->connect_focus_out( LINK( this, SdTPAction, CheckFileHdl ) );
+    m_xEdtMacro->connect_focus_out( LINK( this, SdTPAction, CheckFileHdl ) );
 
     //Lock to initial max size
-    Size aSize(get_preferred_size());
-    set_width_request(aSize.Width());
-    set_height_request(aSize.Height());
+    Size aSize(m_xContainer->get_preferred_size());
+    m_xContainer->set_size_request(aSize.Width(), aSize.Height());
 
-    ClickActionHdl( *m_pLbAction );
+    ClickActionHdl( *m_xLbAction );
 }
 
 SdTPAction::~SdTPAction()
 {
-    disposeOnce();
-}
-
-void SdTPAction::dispose()
-{
-    m_pLbAction.clear();
-    m_pFtTree.clear();
-    m_pLbTree.clear();
-    m_pLbTreeDocument.clear();
-    m_pLbOLEAction.clear();
-    m_pFrame.clear();
-    m_pEdtSound.clear();
-    m_pEdtBookmark.clear();
-    m_pEdtDocument.clear();
-    m_pEdtProgram.clear();
-    m_pEdtMacro.clear();
-    m_pBtnSearch.clear();
-    m_pBtnSeek.clear();
-    SfxTabPage::dispose();
 }
 
 void SdTPAction::SetView( const ::sd::View* pSdView )
@@ -168,11 +137,10 @@ void SdTPAction::SetView( const ::sd::View* pSdView )
     {
         mpDoc = pDocSh->GetDoc();
         SfxViewFrame* pFrame = pDocSh->GetViewShell()->GetViewFrame();
-        m_pLbTree->SetViewFrame( pFrame );
-        m_pLbTreeDocument->SetViewFrame( pFrame );
+        m_xLbTree->SetViewFrame( pFrame );
+        m_xLbTreeDocument->SetViewFrame( pFrame );
 
-        SvxColorListItem aItem( *static_cast<const SvxColorListItem*>( pDocSh->GetItem( SID_COLOR_TABLE ) ) );
-        pColList = aItem.GetColorList();
+        pColList = pDocSh->GetItem( SID_COLOR_TABLE )->GetColorList();
         DBG_ASSERT( pColList.is(), "No color table available!" );
     }
     else
@@ -216,11 +184,11 @@ void SdTPAction::Construct()
         bOLEAction = true;
 
         aVerbVector.push_back( 0 );
-        m_pLbOLEAction->InsertEntry( MnemonicGenerator::EraseAllMnemonicChars( SdResId( STR_EDIT_OBJ ) ) );
+        m_xLbOLEAction->append_text( MnemonicGenerator::EraseAllMnemonicChars( SdResId( STR_EDIT_OBJ ) ) );
     }
     else if( pOleObj )
     {
-        uno::Reference < embed::XEmbeddedObject > xObj = pOleObj->GetObjRef();
+        const uno::Reference < embed::XEmbeddedObject >& xObj = pOleObj->GetObjRef();
         if ( xObj.is() )
         {
             bOLEAction = true;
@@ -235,14 +203,13 @@ void SdTPAction::Construct()
                 aVerbs = xObj->getSupportedVerbs();
             }
 
-            for( sal_Int32 i=0; i<aVerbs.getLength(); i++ )
+            for( const embed::VerbDescriptor& aVerb : std::as_const(aVerbs) )
             {
-                embed::VerbDescriptor aVerb = aVerbs[i];
                 if( aVerb.VerbAttributes & embed::VerbAttributes::MS_VERBATTR_ONCONTAINERMENU )
                 {
                     OUString aTmp( aVerb.VerbName );
                     aVerbVector.push_back( aVerb.VerbID );
-                    m_pLbOLEAction->InsertEntry( MnemonicGenerator::EraseAllMnemonicChars( aTmp ) );
+                    m_xLbOLEAction->append_text( MnemonicGenerator::EraseAllMnemonicChars( aTmp ) );
                 }
             }
         }
@@ -256,17 +223,17 @@ void SdTPAction::Construct()
     maCurrentActions.push_back( presentation::ClickAction_BOOKMARK );
     maCurrentActions.push_back( presentation::ClickAction_DOCUMENT );
     maCurrentActions.push_back( presentation::ClickAction_SOUND );
-    if( bOLEAction && m_pLbOLEAction->GetEntryCount() )
+    if( bOLEAction && m_xLbOLEAction->n_children() )
         maCurrentActions.push_back( presentation::ClickAction_VERB );
     maCurrentActions.push_back( presentation::ClickAction_PROGRAM );
     maCurrentActions.push_back( presentation::ClickAction_MACRO );
     maCurrentActions.push_back( presentation::ClickAction_STOPPRESENTATION );
 
     // fill Action-Listbox
-    for (presentation::ClickAction & rAction : maCurrentActions)
+    for (const presentation::ClickAction & rAction : maCurrentActions)
     {
-        sal_uInt16 nRId = GetClickActionSdResId( rAction );
-        m_pLbAction->InsertEntry( SdResId( nRId ) );
+        const char* pRId = GetClickActionSdResId(rAction);
+        m_xLbAction->append_text(SdResId(pRId));
     }
 
 }
@@ -276,12 +243,12 @@ bool SdTPAction::FillItemSet( SfxItemSet* rAttrs )
     bool bModified = false;
     presentation::ClickAction eCA = presentation::ClickAction_NONE;
 
-    if( m_pLbAction->GetSelectEntryCount() )
+    if (m_xLbAction->get_active() != -1)
         eCA = GetActualClickAction();
 
-    if( m_pLbAction->IsValueChangedFromSaved() )
+    if( m_xLbAction->get_value_changed_from_saved() )
     {
-        rAttrs->Put( SfxAllEnumItem( ATTR_ACTION, (sal_uInt16)eCA ) );
+        rAttrs->Put( SfxUInt16Item( ATTR_ACTION, static_cast<sal_uInt16>(eCA) ) );
         bModified = true;
     }
     else
@@ -319,17 +286,17 @@ void SdTPAction::Reset( const SfxItemSet* rAttrs )
     presentation::ClickAction eCA = presentation::ClickAction_NONE;
     OUString aFileName;
 
-    // m_pLbAction
+    // m_xLbAction
     if( rAttrs->GetItemState( ATTR_ACTION ) != SfxItemState::DONTCARE )
     {
-        eCA = (presentation::ClickAction) static_cast<const SfxAllEnumItem&>( rAttrs->
-                    Get( ATTR_ACTION ) ).GetValue();
+        eCA = static_cast<presentation::ClickAction>(static_cast<const SfxUInt16Item&>( rAttrs->
+                    Get( ATTR_ACTION ) ).GetValue());
         SetActualClickAction( eCA );
     }
     else
-        m_pLbAction->SetNoSelection();
+        m_xLbAction->set_active(-1);
 
-    // m_pEdtSound
+    // m_xEdtSound
     if( rAttrs->GetItemState( ATTR_ACTION_FILENAME ) != SfxItemState::DONTCARE )
     {
             aFileName = static_cast<const SfxStringItem&>( rAttrs->Get( ATTR_ACTION_FILENAME ) ).GetValue();
@@ -340,25 +307,25 @@ void SdTPAction::Reset( const SfxItemSet* rAttrs )
     {
         case presentation::ClickAction_BOOKMARK:
         {
-            if( !m_pLbTree->SelectEntry( aFileName ) )
-                m_pLbTree->SelectAll( false );
+            if (!m_xLbTree->SelectEntry(aFileName))
+                m_xLbTree->unselect_all();
         }
         break;
 
         case presentation::ClickAction_DOCUMENT:
         {
             if( comphelper::string::getTokenCount(aFileName, DOCUMENT_TOKEN) == 2 )
-                m_pLbTreeDocument->SelectEntry( aFileName.getToken( 1, DOCUMENT_TOKEN ) );
+                m_xLbTreeDocument->SelectEntry( aFileName.getToken( 1, DOCUMENT_TOKEN ) );
         }
         break;
 
         default:
         break;
     }
-    ClickActionHdl( *m_pLbAction );
+    ClickActionHdl( *m_xLbAction );
 
-    m_pLbAction->SaveValue();
-    m_pEdtSound->SaveValue();
+    m_xLbAction->save_value();
+    m_xEdtSound->save_value();
 }
 
 void SdTPAction::ActivatePage( const SfxItemSet& )
@@ -373,18 +340,16 @@ DeactivateRC SdTPAction::DeactivatePage( SfxItemSet* pPageSet )
     return DeactivateRC::LeavePage;
 }
 
-VclPtr<SfxTabPage> SdTPAction::Create( vcl::Window* pWindow,
-                                       const SfxItemSet& rAttrs )
+std::unique_ptr<SfxTabPage> SdTPAction::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rAttrs)
 {
-    return VclPtr<SdTPAction>::Create( pWindow, rAttrs );
+    return std::make_unique<SdTPAction>( pPage, pController, rAttrs );
 }
 
 void SdTPAction::UpdateTree()
 {
     if( !bTreeUpdated && mpDoc && mpDoc->GetDocSh() && mpDoc->GetDocSh()->GetMedium() )
     {
-        //m_pLbTree->Clear();
-        m_pLbTree->Fill( mpDoc, true, mpDoc->GetDocSh()->GetMedium()->GetName() );
+        m_xLbTree->Fill( mpDoc, true, mpDoc->GetDocSh()->GetMedium()->GetName() );
         bTreeUpdated = true;
     }
 }
@@ -402,7 +367,7 @@ void SdTPAction::OpenFileDialog()
     if( bPage )
     {
         // search in the TreeLB for the specified object
-        m_pLbTree->SelectEntry( GetEditText() );
+        m_xLbTree->SelectEntry(GetEditText());
     }
     else
     {
@@ -410,12 +375,10 @@ void SdTPAction::OpenFileDialog()
 
         if (bSound)
         {
-            SdOpenSoundFileDialog   aFileDialog;
+            SdOpenSoundFileDialog aFileDialog(GetFrameWeld());
 
-            if( aFile.isEmpty() )
-                aFile = SvtPathOptions().GetWorkPath();
-
-            aFileDialog.SetPath( aFile );
+            if( !aFile.isEmpty() )
+                aFileDialog.SetPath( aFile );
 
             if( aFileDialog.Execute() == ERRCODE_NONE )
             {
@@ -426,7 +389,7 @@ void SdTPAction::OpenFileDialog()
         else if (bMacro)
         {
             // choose macro dialog
-            OUString aScriptURL = SfxApplication::ChooseScript();
+            OUString aScriptURL = SfxApplication::ChooseScript(GetFrameWeld());
 
             if ( !aScriptURL.isEmpty() )
             {
@@ -436,7 +399,8 @@ void SdTPAction::OpenFileDialog()
         else
         {
             sfx2::FileDialogHelper aFileDialog(
-                ui::dialogs::TemplateDescription::FILEOPEN_READONLY_VERSION);
+                ui::dialogs::TemplateDescription::FILEOPEN_READONLY_VERSION,
+                FileDialogFlags::NONE, GetFrameWeld());
 
             if (bDocument && aFile.isEmpty())
                 aFile = SvtPathOptions().GetWorkPath();
@@ -457,17 +421,17 @@ void SdTPAction::OpenFileDialog()
                 SetEditText( aFile );
             }
             if( bDocument )
-                CheckFileHdl( *m_pEdtDocument );
+                CheckFileHdl( *m_xEdtDocument );
         }
     }
 }
 
-IMPL_LINK_NOARG(SdTPAction, ClickSearchHdl, Button*, void)
+IMPL_LINK_NOARG(SdTPAction, ClickSearchHdl, weld::Button&, void)
 {
     OpenFileDialog();
 }
 
-IMPL_LINK_NOARG(SdTPAction, ClickActionHdl, ListBox&, void)
+IMPL_LINK_NOARG(SdTPAction, ClickActionHdl, weld::ComboBox&, void)
 {
     presentation::ClickAction eCA = GetActualClickAction();
 
@@ -482,81 +446,81 @@ IMPL_LINK_NOARG(SdTPAction, ClickActionHdl, ListBox&, void)
         case presentation::ClickAction_LASTPAGE:
         case presentation::ClickAction_STOPPRESENTATION:
         default:
-            m_pFtTree->Hide();
-            m_pLbTree->Hide();
-            m_pLbTreeDocument->Hide();
-            m_pLbOLEAction->Hide();
+            m_xFtTree->hide();
+            m_xLbTree->hide();
+            m_xLbTreeDocument->hide();
+            m_xLbOLEAction->hide();
 
-            m_pFrame->Hide();
-            m_pEdtSound->Hide();
-            m_pEdtBookmark->Hide();
-            m_pEdtDocument->Hide();
-            m_pEdtProgram->Hide();
-            m_pEdtMacro->Hide();
-            m_pBtnSearch->Hide();
-            m_pBtnSeek->Hide();
+            m_xFrame->hide();
+            m_xEdtSound->hide();
+            m_xEdtBookmark->hide();
+            m_xEdtDocument->hide();
+            m_xEdtProgram->hide();
+            m_xEdtMacro->hide();
+            m_xBtnSearch->hide();
+            m_xBtnSeek->hide();
             break;
 
         case presentation::ClickAction_SOUND:
         case presentation::ClickAction_PROGRAM:
         case presentation::ClickAction_MACRO:
-            m_pFtTree->Hide();
-            m_pLbTree->Hide();
-            m_pLbTreeDocument->Hide();
-            m_pLbOLEAction->Hide();
+            m_xFtTree->hide();
+            m_xLbTree->hide();
+            m_xLbTreeDocument->hide();
+            m_xLbOLEAction->hide();
 
-            m_pEdtDocument->Hide();
+            m_xEdtDocument->hide();
 
             if( eCA == presentation::ClickAction_MACRO )
             {
-                m_pEdtSound->Hide();
-                m_pEdtProgram->Hide();
+                m_xEdtSound->hide();
+                m_xEdtProgram->hide();
             }
             else if( eCA == presentation::ClickAction_PROGRAM )
             {
-                m_pEdtSound->Hide();
-                m_pEdtMacro->Hide();
+                m_xEdtSound->hide();
+                m_xEdtMacro->hide();
             }
             else if( eCA == presentation::ClickAction_SOUND )
             {
-                m_pEdtProgram->Hide();
-                m_pEdtMacro->Hide();
+                m_xEdtProgram->hide();
+                m_xEdtMacro->hide();
             }
 
-            m_pBtnSeek->Hide();
+            m_xBtnSeek->hide();
             break;
 
         case presentation::ClickAction_DOCUMENT:
-            m_pLbTree->Hide();
-            m_pLbOLEAction->Hide();
+            m_xLbTree->hide();
+            m_xLbOLEAction->hide();
 
-            m_pEdtSound->Hide();
-            m_pEdtProgram->Hide();
-            m_pEdtMacro->Hide();
-            m_pEdtBookmark->Hide();
-            m_pBtnSeek->Hide();
+            m_xEdtSound->hide();
+            m_xEdtProgram->hide();
+            m_xEdtMacro->hide();
+            m_xEdtBookmark->hide();
+            m_xBtnSeek->hide();
             break;
 
         case presentation::ClickAction_BOOKMARK:
-            m_pLbTreeDocument->Hide();
-            m_pLbOLEAction->Hide();
-            m_pEdtSound->Hide();
-            m_pEdtDocument->Hide();
-            m_pEdtProgram->Hide();
-            m_pEdtMacro->Hide();
-            m_pBtnSearch->Hide();
+            m_xLbTreeDocument->hide();
+            m_xLbOLEAction->hide();
+            m_xEdtSound->hide();
+            m_xEdtDocument->hide();
+            m_xEdtProgram->hide();
+            m_xEdtMacro->hide();
+            m_xBtnSearch->hide();
             break;
 
         case presentation::ClickAction_VERB:
-            m_pLbTree->Hide();
-            m_pEdtDocument->Hide();
-            m_pEdtProgram->Hide();
-            m_pEdtBookmark->Hide();
-            m_pEdtMacro->Hide();
-            m_pBtnSearch->Hide();
-            m_pFrame->Hide();
-            m_pEdtSound->Hide();
-            m_pBtnSeek->Hide();
+            m_xLbTree->hide();
+            m_xEdtDocument->hide();
+            m_xEdtProgram->hide();
+            m_xEdtBookmark->hide();
+            m_xEdtMacro->hide();
+            m_xBtnSearch->hide();
+            m_xFrame->hide();
+            m_xEdtSound->hide();
+            m_xBtnSeek->hide();
             break;
     }
 
@@ -574,81 +538,86 @@ IMPL_LINK_NOARG(SdTPAction, ClickActionHdl, ListBox&, void)
             break;
 
         case presentation::ClickAction_SOUND:
-            m_pFrame->Show();
-            m_pEdtSound->Show();
-            m_pEdtSound->Enable();
-            m_pBtnSearch->Show();
-            m_pBtnSearch->Enable();
-            m_pFrame->set_label( SdResId( STR_EFFECTDLG_SOUND ) );
+            m_xFrame->show();
+            m_xEdtSound->show();
+            m_xEdtSound->set_sensitive(true);
+            m_xBtnSearch->show();
+            m_xBtnSearch->set_sensitive(true);
+            m_xFrame->set_label( SdResId( STR_EFFECTDLG_SOUND ) );
             break;
 
         case presentation::ClickAction_PROGRAM:
         case presentation::ClickAction_MACRO:
-            m_pFrame->Show();
-            m_pBtnSearch->Show();
-            m_pBtnSearch->Enable();
+            m_xFrame->show();
+            m_xBtnSearch->show();
+            m_xBtnSearch->set_sensitive(true);
             if( eCA == presentation::ClickAction_MACRO )
             {
-                m_pEdtMacro->Show();
-                m_pFrame->set_label( SdResId( STR_EFFECTDLG_MACRO ) );
+                m_xEdtMacro->show();
+                m_xFrame->set_label( SdResId( STR_EFFECTDLG_MACRO ) );
             }
             else
             {
-                m_pEdtProgram->Show();
-                m_pFrame->set_label( SdResId( STR_EFFECTDLG_PROGRAM ) );
+                m_xEdtProgram->show();
+                m_xFrame->set_label( SdResId( STR_EFFECTDLG_PROGRAM ) );
             }
             break;
 
         case presentation::ClickAction_DOCUMENT:
-            m_pFtTree->Show();
-            m_pLbTreeDocument->Show();
+            m_xFtTree->show();
+            m_xLbTreeDocument->show();
 
-            m_pFrame->Show();
-            m_pEdtDocument->Show();
-            m_pBtnSearch->Show();
-            m_pBtnSearch->Enable();
+            m_xFrame->show();
+            m_xEdtDocument->show();
+            m_xBtnSearch->show();
+            m_xBtnSearch->set_sensitive(true);
 
-            m_pFtTree->SetText( SdResId( STR_EFFECTDLG_JUMP ) );
-            m_pFrame->set_label( SdResId( STR_EFFECTDLG_DOCUMENT ) );
+            m_xFtTree->set_label( SdResId( STR_EFFECTDLG_JUMP ) );
+            m_xFrame->set_label( SdResId( STR_EFFECTDLG_DOCUMENT ) );
 
-            CheckFileHdl( *m_pEdtDocument );
+            CheckFileHdl( *m_xEdtDocument );
             break;
 
         case presentation::ClickAction_VERB:
-            m_pFtTree->Show();
-            m_pLbOLEAction->Show();
+            m_xFtTree->show();
+            m_xLbOLEAction->show();
 
-            m_pFtTree->SetText( SdResId( STR_EFFECTDLG_ACTION ) );
+            m_xFtTree->set_label( SdResId( STR_EFFECTDLG_ACTION ) );
             break;
 
         case presentation::ClickAction_BOOKMARK:
             UpdateTree();
 
-            m_pFtTree->Show();
-            m_pLbTree->Show();
+            m_xFtTree->show();
+            m_xLbTree->show();
 
-            m_pFrame->Show();
-            m_pEdtBookmark->Show();
-            m_pBtnSeek->Show();
+            m_xFrame->show();
+            m_xEdtBookmark->show();
+            m_xBtnSeek->show();
 
-            m_pFtTree->SetText( SdResId( STR_EFFECTDLG_JUMP ) );
-            m_pFrame->set_label( SdResId( STR_EFFECTDLG_PAGE_OBJECT ) );
+            m_xFtTree->set_label( SdResId( STR_EFFECTDLG_JUMP ) );
+            m_xFrame->set_label( SdResId( STR_EFFECTDLG_PAGE_OBJECT ) );
             break;
         default:
             break;
     }
 }
 
-IMPL_LINK_NOARG(SdTPAction, SelectTreeHdl, SvTreeListBox*, void)
+IMPL_LINK_NOARG(SdTPAction, SelectTreeHdl, weld::TreeView&, void)
 {
-    m_pEdtBookmark->SetText( m_pLbTree->GetSelectEntry() );
+    m_xEdtBookmark->set_text( m_xLbTree->get_selected_text() );
 }
 
-IMPL_LINK_NOARG(SdTPAction, CheckFileHdl, Control&, void)
+IMPL_LINK_NOARG(SdTPAction, CheckFileHdl, weld::Widget&, void)
 {
     OUString aFile( GetEditText() );
 
-    if( aFile != aLastFile )
+    if( aFile == aLastFile )
+        return;
+
+    bool bHideTreeDocument = true;
+
+    if (mpDoc)
     {
         // check if it is a valid draw file
         SfxMedium aMedium( aFile,
@@ -656,31 +625,27 @@ IMPL_LINK_NOARG(SdTPAction, CheckFileHdl, Control&, void)
 
         if( aMedium.IsStorage() )
         {
-            WaitObject aWait( GetParentDialog() );
-
-            bool bHideTreeDocument = true;
+            weld::WaitObject aWait(GetFrameWeld());
 
             // is it a draw file?
             // open with READ, otherwise the Storages might write into the file!
             uno::Reference < embed::XStorage > xStorage = aMedium.GetStorage();
             DBG_ASSERT( xStorage.is(), "No storage!" );
 
-            uno::Reference < container::XNameAccess > xAccess( xStorage, uno::UNO_QUERY );
-            if (xAccess.is())
+            if (xStorage.is())
             {
                 try
                 {
-                    if (xAccess->hasByName(pStarDrawXMLContent) ||
-                        xAccess->hasByName(pStarDrawOldXMLContent))
+                    if (xStorage->hasByName(pStarDrawXMLContent))
                     {
                         if (SdDrawDocument* pBookmarkDoc = mpDoc->OpenBookmarkDoc(aFile))
                         {
                             aLastFile = aFile;
 
-                            m_pLbTreeDocument->Clear();
-                            m_pLbTreeDocument->Fill(pBookmarkDoc, true, aFile);
+                            m_xLbTreeDocument->clear();
+                            m_xLbTreeDocument->Fill(pBookmarkDoc, true, aFile);
                             mpDoc->CloseBookmarkDoc();
-                            m_pLbTreeDocument->Show();
+                            m_xLbTreeDocument->show();
                             bHideTreeDocument = false;
                         }
                     }
@@ -689,22 +654,18 @@ IMPL_LINK_NOARG(SdTPAction, CheckFileHdl, Control&, void)
                 {
                 }
             }
-
-            if (bHideTreeDocument)
-                m_pLbTreeDocument->Hide();
-
         }
-        else
-            m_pLbTreeDocument->Hide();
     }
+
+    if (bHideTreeDocument)
+        m_xLbTreeDocument->hide();
 }
 
 presentation::ClickAction SdTPAction::GetActualClickAction()
 {
     presentation::ClickAction eCA = presentation::ClickAction_NONE;
-    sal_Int32 nPos = m_pLbAction->GetSelectEntryPos();
-
-    if (nPos != LISTBOX_ENTRY_NOTFOUND && static_cast<size_t>(nPos) < maCurrentActions.size())
+    int nPos = m_xLbAction->get_active();
+    if (nPos != -1 && o3tl::make_unsigned(nPos) < maCurrentActions.size())
         eCA = maCurrentActions[ nPos ];
     return eCA;
 }
@@ -715,7 +676,7 @@ void SdTPAction::SetActualClickAction( presentation::ClickAction eCA )
             std::find(maCurrentActions.begin(),maCurrentActions.end(),eCA);
 
     if ( pIter != maCurrentActions.end() )
-        m_pLbAction->SelectEntryPos( pIter-maCurrentActions.begin() );
+        m_xLbAction->set_active(pIter-maCurrentActions.begin());
 }
 
 void SdTPAction::SetEditText( OUString const & rStr )
@@ -730,7 +691,7 @@ void SdTPAction::SetEditText( OUString const & rStr )
             if( comphelper::string::getTokenCount(rStr, DOCUMENT_TOKEN) == 2 )
                 aText = rStr.getToken( 0, DOCUMENT_TOKEN );
 
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case presentation::ClickAction_SOUND:
         case presentation::ClickAction_PROGRAM:
             {
@@ -751,28 +712,26 @@ void SdTPAction::SetEditText( OUString const & rStr )
     switch( eCA )
     {
         case presentation::ClickAction_SOUND:
-            m_pEdtSound->SetText(aText );
+            m_xEdtSound->set_text(aText );
             break;
         case presentation::ClickAction_VERB:
             {
                 ::std::vector< long >::iterator aFound( ::std::find( aVerbVector.begin(), aVerbVector.end(), rStr.toInt32() ) );
                 if( aFound != aVerbVector.end() )
-                    m_pLbOLEAction->SelectEntryPos( static_cast< short >( aFound - aVerbVector.begin() ) );
+                    m_xLbOLEAction->select(aFound - aVerbVector.begin());
             }
             break;
         case presentation::ClickAction_PROGRAM:
-            m_pEdtProgram->SetText( aText );
+            m_xEdtProgram->set_text( aText );
             break;
         case presentation::ClickAction_MACRO:
-        {
-            m_pEdtMacro->SetText( aText );
-        }
+            m_xEdtMacro->set_text( aText );
             break;
         case presentation::ClickAction_DOCUMENT:
-            m_pEdtDocument->SetText( aText );
+            m_xEdtDocument->set_text( aText );
             break;
         case presentation::ClickAction_BOOKMARK:
-            m_pEdtBookmark->SetText( aText );
+            m_xEdtBookmark->set_text( aText );
             break;
         default:
             break;
@@ -787,30 +746,30 @@ OUString SdTPAction::GetEditText( bool bFullDocDestination )
     switch( eCA )
     {
         case presentation::ClickAction_SOUND:
-            aStr = m_pEdtSound->GetText();
+            aStr = m_xEdtSound->get_text();
             break;
         case presentation::ClickAction_VERB:
             {
-                const sal_Int32 nPos = m_pLbOLEAction->GetSelectEntryPos();
-                if( static_cast<size_t>(nPos) < aVerbVector.size() )
+                const int nPos = m_xLbOLEAction->get_selected_index();
+                if (nPos != -1 && o3tl::make_unsigned(nPos) < aVerbVector.size() )
                     aStr = OUString::number( aVerbVector[ nPos ] );
                 return aStr;
             }
         case presentation::ClickAction_DOCUMENT:
-            aStr = m_pEdtDocument->GetText();
+            aStr = m_xEdtDocument->get_text();
             break;
 
         case presentation::ClickAction_PROGRAM:
-            aStr = m_pEdtProgram->GetText();
+            aStr = m_xEdtProgram->get_text();
             break;
 
         case presentation::ClickAction_MACRO:
         {
-            return m_pEdtMacro->GetText();
+            return m_xEdtMacro->get_text();
         }
 
         case presentation::ClickAction_BOOKMARK:
-            return m_pEdtBookmark->GetText();
+            return m_xEdtBookmark->get_text();
 
         default:
             break;
@@ -830,20 +789,20 @@ OUString SdTPAction::GetEditText( bool bFullDocDestination )
 
     if( bFullDocDestination &&
         eCA == presentation::ClickAction_DOCUMENT &&
-        m_pLbTreeDocument->Control::IsVisible() &&
-        m_pLbTreeDocument->GetSelectionCount() > 0 )
+        m_xLbTreeDocument->get_visible() &&
+        m_xLbTreeDocument->get_selected() )
     {
-        OUString aTmpStr( m_pLbTreeDocument->GetSelectEntry() );
+        OUString aTmpStr( m_xLbTreeDocument->get_selected_text() );
         if( !aTmpStr.isEmpty() )
         {
-            aStr += OUStringLiteral1(DOCUMENT_TOKEN) + aTmpStr;
+            aStr += OUStringChar(DOCUMENT_TOKEN) + aTmpStr;
         }
     }
 
     return aStr;
 }
 
-sal_uInt16 SdTPAction::GetClickActionSdResId( presentation::ClickAction eCA )
+const char* SdTPAction::GetClickActionSdResId( presentation::ClickAction eCA )
 {
     switch( eCA )
     {
@@ -861,7 +820,7 @@ sal_uInt16 SdTPAction::GetClickActionSdResId( presentation::ClickAction eCA )
         case presentation::ClickAction_STOPPRESENTATION: return STR_CLICK_ACTION_STOPPRESENTATION;
         default: OSL_FAIL( "No StringResource for ClickAction available!" );
     }
-    return 0;
+    return nullptr;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

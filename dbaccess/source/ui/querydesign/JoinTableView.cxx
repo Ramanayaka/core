@@ -17,32 +17,36 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "JoinTableView.hxx"
+#include <JoinTableView.hxx>
 #include <osl/diagnose.h>
-#include "querycontroller.hxx"
-#include "JoinDesignView.hxx"
-#include "dbu_qry.hrc"
-#include "TableWindow.hxx"
-#include "TableWindowListBox.hxx"
-#include "TableConnection.hxx"
-#include "TableConnectionData.hxx"
-#include "ConnectionLine.hxx"
-#include "ConnectionLineData.hxx"
-#include "browserids.hxx"
-#include <svl/urlbmk.hxx>
+#include <JoinController.hxx>
+#include <JoinDesignView.hxx>
+#include <TableWindow.hxx>
+#include <TableWindowListBox.hxx>
+#include <TableConnection.hxx>
+#include <TableConnectionData.hxx>
+#include <ConnectionLine.hxx>
+#include <ConnectionLineData.hxx>
+#include <browserids.hxx>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include "QueryMoveTabWinUndoAct.hxx"
 #include "QuerySizeTabWinUndoAct.hxx"
+#include <toolkit/helper/vclunohelper.hxx>
+#include <vcl/menu.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
-#include "TableWindowData.hxx"
-#include "JAccess.hxx"
+#include <vcl/commandevent.hxx>
+#include <vcl/event.hxx>
+#include <vcl/ptrstyle.hxx>
+#include <vcl/builder.hxx>
+#include <TableWindowData.hxx>
+#include <JAccess.hxx>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include "UITools.hxx"
 #include <cppuhelper/exc_hlp.hxx>
-#include <comphelper/processfactory.hxx>
+#include <connectivity/dbtools.hxx>
 #include <tools/diagnose_ex.h>
 #include <algorithm>
 #include <functional>
@@ -155,7 +159,6 @@ void OScrollWindowHelper::Resize()
     m_pTableView->SetPosSizePixel(Point( 0, 0 ),Size( aTotalOutputSize.Width()-nVScrollWidth, aTotalOutputSize.Height()-nHScrollHeight ));
 }
 
-// class OJoinTableView
 
 OJoinTableView::OJoinTableView( vcl::Window* pParent, OJoinDesignView* pView )
     :Window( pParent,WB_BORDER )
@@ -165,7 +168,6 @@ OJoinTableView::OJoinTableView( vcl::Window* pParent, OJoinDesignView* pView )
     ,m_pDragWin( nullptr )
     ,m_pSizingWin( nullptr )
     ,m_pSelectedConn( nullptr )
-    ,m_bTrackingInitiallyMoved(false)
     ,m_pLastFocusTabWin(nullptr)
     ,m_pView( pView )
     ,m_pAccessible(nullptr)
@@ -217,8 +219,8 @@ void OJoinTableView::Resize()
         return;
 
     // we have at least one table so resize it
-    m_aScrollOffset.X() = GetHScrollBar().GetThumbPos();
-    m_aScrollOffset.Y() = GetVScrollBar().GetThumbPos();
+    m_aScrollOffset.setX( GetHScrollBar().GetThumbPos() );
+    m_aScrollOffset.setY( GetVScrollBar().GetThumbPos() );
 
     VclPtr<OTableWindow> pCheck = m_aTableMap.begin()->second;
     Point aRealPos = pCheck->GetPosPixel();
@@ -228,17 +230,15 @@ void OJoinTableView::Resize()
         // all ok
         return;
 
-    OTableWindowMap::const_iterator aIter = m_aTableMap.begin();
-    OTableWindowMap::const_iterator aEnd = m_aTableMap.end();
-    for(;aIter != aEnd;++aIter)
+    for (auto const& elem : m_aTableMap)
     {
-        OTableWindow* pCurrent = aIter->second;
+        OTableWindow* pCurrent = elem.second;
         Point aPos(pCurrent->GetData()->GetPosition() - GetScrollOffset());
         pCurrent->SetPosPixel(aPos);
     }
 }
 
-sal_uLong OJoinTableView::GetTabWinCount()
+sal_uLong OJoinTableView::GetTabWinCount() const
 {
     return m_aTableMap.size();
 }
@@ -292,27 +292,27 @@ TTableWindowData::value_type OJoinTableView::createTableWindowData(const OUStrin
     }
     catch ( const SQLException& )
     {
-        ::dbaui::showError( ::dbtools::SQLExceptionInfo( ::cppu::getCaughtException() ),
-            pParent, pParent->getController().getORB() );
+        ::dbtools::showError( ::dbtools::SQLExceptionInfo( ::cppu::getCaughtException() ),
+            VCLUnoHelper::GetInterface(pParent), pParent->getController().getORB() );
     }
     catch( const WrappedTargetException& e )
     {
         SQLException aSql;
         if ( e.TargetException >>= aSql )
-            ::dbaui::showError( ::dbtools::SQLExceptionInfo( aSql ), pParent, pParent->getController().getORB() );
+            ::dbtools::showError( ::dbtools::SQLExceptionInfo( aSql ), VCLUnoHelper::GetInterface(pParent), pParent->getController().getORB() );
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
     return pData;
 }
 
-OTableWindowData* OJoinTableView::CreateImpl(const OUString& _rComposedName
+std::shared_ptr<OTableWindowData> OJoinTableView::CreateImpl(const OUString& _rComposedName
                                              ,const OUString& _sTableName
                                              ,const OUString& _rWinName)
 {
-    return new OTableWindowData( nullptr,_rComposedName,_sTableName, _rWinName );
+    return std::make_shared<OTableWindowData>( nullptr,_rComposedName,_sTableName, _rWinName );
 }
 
 void OJoinTableView::AddTabWin(const OUString& _rComposedName, const OUString& rWinName, bool /*bNewTable*/)
@@ -357,7 +357,7 @@ void OJoinTableView::RemoveTabWin( OTableWindow* pTabWin )
     auto aIter = m_vTableConnection.rbegin();
     while(aIter != m_vTableConnection.rend() && bRemove)
     {
-        VclPtr<OTableConnection>& rTabConn = (*aIter);
+        VclPtr<OTableConnection>& rTabConn = *aIter;
         if (
              (pData == rTabConn->GetData()->getReferencingTable()) ||
              (pData == rTabConn->GetData()->getReferencedTable())
@@ -397,7 +397,7 @@ void OJoinTableView::RemoveTabWin( OTableWindow* pTabWin )
         pTabWin->disposeOnce();
     }
 
-    if ( (sal_Int32)m_vTableConnection.size() < (nCount-1) ) // if some connections could be removed
+    if ( static_cast<sal_Int32>(m_vTableConnection.size()) < (nCount-1) ) // if some connections could be removed
         modified();
 }
 
@@ -527,20 +527,18 @@ void OJoinTableView::SetDefaultTabWinPosSize( OTableWindow* pTabWin )
     while( !bEnd )
     {
         // Set new position to start of line
-        aNewPos.X() = TABWIN_SPACING_X;
-        aNewPos.Y() = (nRow+1) * TABWIN_SPACING_Y;
+        aNewPos.setX( TABWIN_SPACING_X );
+        aNewPos.setY( (nRow+1) * TABWIN_SPACING_Y );
 
         // determine rectangle for the corresponding line
         tools::Rectangle aRowRect( Point(0,0), aOutSize );
-        aRowRect.Top() = nRow * ( TABWIN_SPACING_Y + TABWIN_HEIGHT_STD );
-        aRowRect.Bottom() = (nRow+1) * ( TABWIN_SPACING_Y + TABWIN_HEIGHT_STD );
+        aRowRect.SetTop( nRow * ( TABWIN_SPACING_Y + TABWIN_HEIGHT_STD ) );
+        aRowRect.SetBottom( (nRow+1) * ( TABWIN_SPACING_Y + TABWIN_HEIGHT_STD ) );
 
         // check occupied areas of this line
-        OTableWindowMap::const_iterator aIter = m_aTableMap.begin();
-        OTableWindowMap::const_iterator aEnd = m_aTableMap.end();
-        for(;aIter != aEnd;++aIter)
+        for (auto const& elem : m_aTableMap)
         {
-            OTableWindow* pOtherTabWin = aIter->second;
+            OTableWindow* pOtherTabWin = elem.second;
             tools::Rectangle aOtherTabWinRect( pOtherTabWin->GetPosPixel(), pOtherTabWin->GetSizePixel() );
 
             if(
@@ -550,14 +548,14 @@ void OJoinTableView::SetDefaultTabWinPosSize( OTableWindow* pTabWin )
             {
                 // TabWin is in the line
                 if( aOtherTabWinRect.Right()>aNewPos.X() )
-                    aNewPos.X() = aOtherTabWinRect.Right() + TABWIN_SPACING_X;
+                    aNewPos.setX( aOtherTabWinRect.Right() + TABWIN_SPACING_X );
             }
         }
 
         // Is there space left in this line?
         if( (aNewPos.X()+TABWIN_WIDTH_STD)<aRowRect.Right() )
         {
-            aNewPos.Y() = aRowRect.Top() + TABWIN_SPACING_Y;
+            aNewPos.setY( aRowRect.Top() + TABWIN_SPACING_Y );
             bEnd = true;
         }
         else
@@ -567,7 +565,7 @@ void OJoinTableView::SetDefaultTabWinPosSize( OTableWindow* pTabWin )
                 // insert it in the first row
                 sal_Int32 nCount = m_aTableMap.size() % (nRow+1);
                 ++nCount;
-                aNewPos.Y() = nCount * TABWIN_SPACING_Y + (nCount-1)*CalcZoom(TABWIN_HEIGHT_STD);
+                aNewPos.setY( nCount * TABWIN_SPACING_Y + (nCount-1)*CalcZoom(TABWIN_HEIGHT_STD) );
                 bEnd = true;
             }
             else
@@ -581,8 +579,8 @@ void OJoinTableView::SetDefaultTabWinPosSize( OTableWindow* pTabWin )
 
     // check if the new position in inside the scrollbars ranges
     Point aBottom(aNewPos);
-    aBottom.X() += aNewSize.Width();
-    aBottom.Y() += aNewSize.Height();
+    aBottom.AdjustX(aNewSize.Width() );
+    aBottom.AdjustY(aNewSize.Height() );
 
     if(!GetHScrollBar().GetRange().IsInside(aBottom.X()))
         GetHScrollBar().SetRange( Range(0, aBottom.X()) );
@@ -607,7 +605,7 @@ void OJoinTableView::InitColors()
 {
     // the colors for the illustration should be the system colors
     StyleSettings aSystemStyle = Application::GetSettings().GetStyleSettings();
-    SetBackground(Wallpaper(Color(aSystemStyle.GetDialogColor())));
+    SetBackground(Wallpaper(aSystemStyle.GetDialogColor()));
 }
 
 void OJoinTableView::BeginChildMove( OTableWindow* pTabWin, const Point& rMousePos  )
@@ -617,11 +615,10 @@ void OJoinTableView::BeginChildMove( OTableWindow* pTabWin, const Point& rMouseP
         return;
 
     m_pDragWin = pTabWin;
-    SetPointer(Pointer(PointerStyle::Move));
+    SetPointer(PointerStyle::Move);
     Point aMousePos = ScreenToOutputPixel( rMousePos );
     m_aDragOffset = aMousePos - pTabWin->GetPosPixel();
     m_pDragWin->SetZOrder(nullptr, ZOrderFlags::First);
-    m_bTrackingInitiallyMoved = false;
     StartTracking();
 }
 
@@ -631,13 +628,13 @@ void OJoinTableView::NotifyTitleClicked( OTableWindow* pTabWin, const Point& rMo
     BeginChildMove(pTabWin, rMousePos);
 }
 
-void OJoinTableView::BeginChildSizing( OTableWindow* pTabWin, const Pointer& rPointer )
+void OJoinTableView::BeginChildSizing( OTableWindow* pTabWin, PointerStyle nPointer )
 {
 
     if (m_pView->getController().isReadOnly())
         return;
 
-    SetPointer( rPointer );
+    SetPointer( nPointer );
     m_pSizingWin = pTabWin;
     StartTracking();
 }
@@ -692,24 +689,22 @@ bool OJoinTableView::ScrollPane( long nDelta, bool bHoriz, bool bPaintScrollBars
 
     // set ScrollOffset anew
     if (bHoriz)
-        m_aScrollOffset.X() = GetHScrollBar().GetThumbPos();
+        m_aScrollOffset.setX( GetHScrollBar().GetThumbPos() );
     else
-        m_aScrollOffset.Y() = GetVScrollBar().GetThumbPos();
+        m_aScrollOffset.setY( GetVScrollBar().GetThumbPos() );
 
     // move all windows
     OTableWindow* pTabWin;
     Point aPos;
 
-    OTableWindowMap::const_iterator aIter = m_aTableMap.begin();
-    OTableWindowMap::const_iterator aEnd = m_aTableMap.end();
-    for(;aIter != aEnd;++aIter)
+    for (auto const& elem : m_aTableMap)
     {
-        pTabWin = aIter->second;
+        pTabWin = elem.second;
         aPos = pTabWin->GetPosPixel();
 
         if( bHoriz )
-            aPos.X() -= nDelta;
-        else aPos.Y() -= nDelta;
+            aPos.AdjustX( -nDelta );
+        else aPos.AdjustY( -nDelta );
 
         pTabWin->SetPosPixel( aPos );
     }
@@ -735,17 +730,17 @@ void OJoinTableView::Tracking( const TrackingEvent& rTEvt )
             Point aDragWinPos = rTEvt.GetMouseEvent().GetPosPixel() - m_aDragOffset;
             Size aDragWinSize = m_pDragWin->GetSizePixel();
             if( aDragWinPos.X() < 0 )
-                aDragWinPos.X() = 0;
+                aDragWinPos.setX( 0 );
             if( aDragWinPos.Y() < 0 )
-                aDragWinPos.Y() = 0;
+                aDragWinPos.setY( 0 );
             if( (aDragWinPos.X() + aDragWinSize.Width()) > m_aOutputSize.Width() )
-                aDragWinPos.X() = m_aOutputSize.Width() - aDragWinSize.Width() - 1;
+                aDragWinPos.setX( m_aOutputSize.Width() - aDragWinSize.Width() - 1 );
             if( (aDragWinPos.Y() + aDragWinSize.Height()) > m_aOutputSize.Height() )
-                aDragWinPos.Y() = m_aOutputSize.Height() - aDragWinSize.Height() - 1;
+                aDragWinPos.setY( m_aOutputSize.Height() - aDragWinSize.Height() - 1 );
             if( aDragWinPos.X() < 0 )
-                aDragWinPos.X() = 0;
+                aDragWinPos.setX( 0 );
             if( aDragWinPos.Y() < 0 )
-                aDragWinPos.Y() = 0;
+                aDragWinPos.setY( 0 );
             // TODO : don't position window anew, if it is leaving range, but just expand the range
 
             // position window
@@ -765,12 +760,12 @@ void OJoinTableView::Tracking( const TrackingEvent& rTEvt )
                 m_pDragWin->GrabFocus();
             }
             m_pDragWin = nullptr;
-            SetPointer(Pointer(PointerStyle::Arrow));
+            SetPointer(PointerStyle::Arrow);
         }
         // else we handle the resizing
         else if( m_pSizingWin )
         {
-            SetPointer( Pointer() );
+            SetPointer( PointerStyle::Arrow );
             EndTracking();
 
             // old physical coordinates
@@ -804,7 +799,7 @@ void OJoinTableView::Tracking( const TrackingEvent& rTEvt )
         {
             Point aMousePos = rTEvt.GetMouseEvent().GetPosPixel();
             m_aSizingRect = m_pSizingWin->getSizingRect(aMousePos,m_aOutputSize);
-            Update();
+            PaintImmediately();
             ShowTracking( m_aSizingRect, ShowTrackFlags::Small | ShowTrackFlags::TrackWindow );
         }
     }
@@ -824,24 +819,22 @@ void OJoinTableView::MouseButtonUp( const MouseEvent& rEvt )
 {
     Window::MouseButtonUp(rEvt);
     // Has a connection been selected?
-    if( !m_vTableConnection.empty() )
+    if( m_vTableConnection.empty() )
+        return;
+
+    DeselectConn(GetSelectedConn());
+
+    for (auto & elem : m_vTableConnection)
     {
-        DeselectConn(GetSelectedConn());
-
-        auto aIter = m_vTableConnection.begin();
-        auto aEnd = m_vTableConnection.end();
-        for(;aIter != aEnd;++aIter)
+        if( elem->CheckHit(rEvt.GetPosPixel()) )
         {
-            if( (*aIter)->CheckHit(rEvt.GetPosPixel()) )
-            {
-                SelectConn((*aIter));
+            SelectConn(elem);
 
-                // Double-click
-                if( rEvt.GetClicks() == 2 )
-                    ConnDoubleClicked( (*aIter) );
+            // Double-click
+            if( rEvt.GetClicks() == 2 )
+                ConnDoubleClicked(elem);
 
-                break;
-            }
+            break;
         }
     }
 }
@@ -869,11 +862,11 @@ void OJoinTableView::DeselectConn(OTableConnection* pConn)
     // deselect the corresponding entries in the ListBox of the table window
     OTableWindow* pWin = pConn->GetSourceWin();
     if (pWin && pWin->GetListBox())
-        pWin->GetListBox()->SelectAll(false);
+        pWin->GetListBox()->get_widget().unselect_all();
 
     pWin = pConn->GetDestWin();
     if (pWin && pWin->GetListBox())
-        pWin->GetListBox()->SelectAll(false);
+        pWin->GetListBox()->get_widget().unselect_all();
 
     pConn->Deselect();
     m_pSelectedConn = nullptr;
@@ -890,46 +883,47 @@ void OJoinTableView::SelectConn(OTableConnection* pConn)
     // select the concerned entries in the windows
     OTableWindow* pConnSource = pConn->GetSourceWin();
     OTableWindow* pConnDest = pConn->GetDestWin();
-    if (pConnSource && pConnDest)
+    if (!(pConnSource && pConnDest))
+        return;
+
+    OTableWindowListBox* pSourceBox = pConnSource->GetListBox().get();
+    OTableWindowListBox* pDestBox = pConnDest->GetListBox().get();
+    if (!(pSourceBox && pDestBox))
+        return;
+
+    pSourceBox->get_widget().unselect_all();
+    pDestBox->get_widget().unselect_all();
+
+    bool bScrolled = false;
+
+    const std::vector<std::unique_ptr<OConnectionLine>>& rLines = pConn->GetConnLineList();
+    auto aIter = rLines.rbegin();
+    for(;aIter != rLines.rend();++aIter)
     {
-        OTableWindowListBox* pSourceBox = pConnSource->GetListBox().get();
-        OTableWindowListBox* pDestBox = pConnDest->GetListBox().get();
-        if (pSourceBox && pDestBox)
+        if ((*aIter)->IsValid())
         {
-            pSourceBox->SelectAll(false);
-            pDestBox->SelectAll(false);
-
-            SvTreeListEntry* pFirstSourceVisible = pSourceBox->GetFirstEntryInView();
-            SvTreeListEntry* pFirstDestVisible = pDestBox->GetFirstEntryInView();
-
-            const std::vector<OConnectionLine*>& rLines = pConn->GetConnLineList();
-            std::vector<OConnectionLine*>::const_reverse_iterator aIter = rLines.rbegin();
-            for(;aIter != rLines.rend();++aIter)
+            int nSourceEntry = pSourceBox->GetEntryFromText((*aIter)->GetData()->GetSourceFieldName());
+            if (nSourceEntry != -1)
             {
-                if ((*aIter)->IsValid())
-                {
-                    SvTreeListEntry* pSourceEntry = pSourceBox->GetEntryFromText((*aIter)->GetData()->GetSourceFieldName());
-                    if (pSourceEntry)
-                    {
-                        pSourceBox->Select(pSourceEntry);
-                        pSourceBox->MakeVisible(pSourceEntry);
-                    }
-
-                    SvTreeListEntry* pDestEntry = pDestBox->GetEntryFromText((*aIter)->GetData()->GetDestFieldName());
-                    if (pDestEntry)
-                    {
-                        pDestBox->Select(pDestEntry);
-                        pDestBox->MakeVisible(pDestEntry);
-                    }
-
-                }
+                pSourceBox->get_widget().select(nSourceEntry);
+                pSourceBox->get_widget().scroll_to_row(nSourceEntry);
+                bScrolled = true;
             }
 
-            if ((pFirstSourceVisible != pSourceBox->GetFirstEntryInView())
-                || (pFirstDestVisible != pDestBox->GetFirstEntryInView()))
-                // scrolling was done -> redraw
-                Invalidate(InvalidateFlags::NoChildren);
+            int nDestEntry = pDestBox->GetEntryFromText((*aIter)->GetData()->GetDestFieldName());
+            if (nDestEntry != -1)
+            {
+                pDestBox->get_widget().select(nDestEntry);
+                pDestBox->get_widget().scroll_to_row(nDestEntry);
+                bScrolled = true;
+            }
         }
+    }
+
+    if (bScrolled)
+    {
+        // scrolling was done -> redraw
+        Invalidate(InvalidateFlags::NoChildren);
     }
 }
 
@@ -959,14 +953,14 @@ std::vector<VclPtr<OTableConnection> >::const_iterator OJoinTableView::getTableC
 {
     return std::find_if(  m_vTableConnection.begin(),
                             m_vTableConnection.end(),
-                            std::bind2nd(std::mem_fun(&OTableConnection::isTableConnection),_pFromWin));
+                            [_pFromWin](OTableConnection * p) { return p->isTableConnection(_pFromWin); });
 }
 
 sal_Int32 OJoinTableView::getConnectionCount(const OTableWindow* _pFromWin) const
 {
     return std::count_if( m_vTableConnection.begin(),
                             m_vTableConnection.end(),
-                            std::bind2nd(std::mem_fun(&OTableConnection::isTableConnection),_pFromWin));
+                            [_pFromWin](OTableConnection * p) { return p->isTableConnection(_pFromWin); });
 }
 
 bool OJoinTableView::ExistsAConn(const OTableWindow* pFrom) const
@@ -981,12 +975,9 @@ void OJoinTableView::ClearAll()
     HideTabWins();
 
     // and the same with the Connections
-    while(true)
+    for (auto & elem : m_vTableConnection)
     {
-        auto aIter = m_vTableConnection.begin();
-        if (aIter == m_vTableConnection.end())
-            break;
-        RemoveConnection(*aIter, true);
+        RemoveConnection(elem, true);
     }
     m_vTableConnection.clear();
 
@@ -1011,7 +1002,7 @@ void OJoinTableView::ScrollWhileDragging()
     Size aDragWinSize = m_pDragWin->GetSizePixel();
     Point aLowerRight(aDragWinPos.X() + aDragWinSize.Width(), aDragWinPos.Y() + aDragWinSize.Height());
 
-    if (!m_bTrackingInitiallyMoved && (aDragWinPos == m_pDragWin->GetPosPixel()))
+    if (aDragWinPos == m_pDragWin->GetPosPixel())
         return;
 
     // avoid illustration errors (when scrolling with active TrackingRect)
@@ -1026,7 +1017,7 @@ void OJoinTableView::ScrollWhileDragging()
     {
         bScrolling = ScrollPane( -LINE_SIZE, true, true );
         if( !bScrolling && (aDragWinPos.X()<0) )
-            aDragWinPos.X() = 0;
+            aDragWinPos.setX( 0 );
 
         // do I need further (timer controlled) scrolling ?
         bNeedScrollTimer = bScrolling && (aDragWinPos.X() < 5);
@@ -1036,7 +1027,7 @@ void OJoinTableView::ScrollWhileDragging()
     {
         bScrolling = ScrollPane( LINE_SIZE, true, true ) ;
         if( !bScrolling && ( aLowerRight.X() > m_aOutputSize.Width() ) )
-            aDragWinPos.X() = m_aOutputSize.Width() - aDragWinSize.Width();
+            aDragWinPos.setX( m_aOutputSize.Width() - aDragWinSize.Width() );
 
         // do I need further (timer controlled) scrolling ?
         bNeedScrollTimer = bScrolling && (aLowerRight.X() > m_aOutputSize.Width() - 5);
@@ -1046,7 +1037,7 @@ void OJoinTableView::ScrollWhileDragging()
     {
         bScrolling = ScrollPane( -LINE_SIZE, false, true );
         if( !bScrolling && (aDragWinPos.Y()<0) )
-            aDragWinPos.Y() = 0;
+            aDragWinPos.setY( 0 );
 
         bNeedScrollTimer = bScrolling && (aDragWinPos.Y() < 5);
     }
@@ -1055,7 +1046,7 @@ void OJoinTableView::ScrollWhileDragging()
     {
         bScrolling = ScrollPane( LINE_SIZE, false, true );
         if( !bScrolling && ( (aDragWinPos.Y() + aDragWinSize.Height()) > m_aOutputSize.Height() ) )
-            aDragWinPos.Y() =  m_aOutputSize.Height() - aDragWinSize.Height();
+            aDragWinPos.setY(  m_aOutputSize.Height() - aDragWinSize.Height() );
 
         bNeedScrollTimer = bScrolling && (aLowerRight.Y() > m_aOutputSize.Height() - 5);
     }
@@ -1063,13 +1054,13 @@ void OJoinTableView::ScrollWhileDragging()
     // resetting timer, if still necessary
     if (bNeedScrollTimer)
     {
-        m_aDragScrollIdle.SetPriority(TaskPriority::LOW);
+        m_aDragScrollIdle.SetPriority( TaskPriority::HIGH_IDLE );
         m_aDragScrollIdle.Start();
     }
 
     // redraw DraggingRect
     m_aDragRect = tools::Rectangle(m_ptPrevDraggingPos - m_aDragOffset, m_pDragWin->GetSizePixel());
-    Update();
+    PaintImmediately();
     ShowTracking( m_aDragRect, ShowTrackFlags::Small | ShowTrackFlags::TrackWindow );
 }
 
@@ -1078,10 +1069,10 @@ IMPL_LINK_NOARG(OJoinTableView, OnDragScrollTimer, Timer *, void)
     ScrollWhileDragging();
 }
 
-void OJoinTableView::invalidateAndModify(SfxUndoAction *_pAction)
+void OJoinTableView::invalidateAndModify(std::unique_ptr<SfxUndoAction> _pAction)
 {
     Invalidate(InvalidateFlags::NoChildren);
-    m_pView->getController().addUndoActionAndInvalidate(_pAction);
+    m_pView->getController().addUndoActionAndInvalidate(std::move(_pAction));
 }
 
 void OJoinTableView::TabWinMoved(OTableWindow* ptWhich, const Point& ptOldPosition)
@@ -1089,7 +1080,7 @@ void OJoinTableView::TabWinMoved(OTableWindow* ptWhich, const Point& ptOldPositi
     Point ptThumbPos(GetHScrollBar().GetThumbPos(), GetVScrollBar().GetThumbPos());
     ptWhich->GetData()->SetPosition(ptWhich->GetPosPixel() + ptThumbPos);
 
-    invalidateAndModify(new OJoinMoveTabWinUndoAct(this, ptOldPosition, ptWhich));
+    invalidateAndModify(std::make_unique<OJoinMoveTabWinUndoAct>(this, ptOldPosition, ptWhich));
 }
 
 void OJoinTableView::TabWinSized(OTableWindow* ptWhich, const Point& ptOldPosition, const Size& szOldSize)
@@ -1097,7 +1088,7 @@ void OJoinTableView::TabWinSized(OTableWindow* ptWhich, const Point& ptOldPositi
     ptWhich->GetData()->SetSize(ptWhich->GetSizePixel());
     ptWhich->GetData()->SetPosition(ptWhich->GetPosPixel());
 
-    invalidateAndModify(new OJoinSizeTabWinUndoAct(this, ptOldPosition, szOldSize, ptWhich));
+    invalidateAndModify(std::make_unique<OJoinSizeTabWinUndoAct>(this, ptOldPosition, szOldSize, ptWhich));
 }
 
 bool OJoinTableView::IsAddAllowed()
@@ -1116,7 +1107,7 @@ bool OJoinTableView::IsAddAllowed()
         Reference < XDatabaseMetaData > xMetaData( xConnection->getMetaData() );
 
         sal_Int32 nMax = xMetaData.is() ? xMetaData->getMaxTablesInSelect() : 0;
-        if (nMax && nMax <= (sal_Int32)m_aTableMap.size())
+        if (nMax && nMax <= static_cast<sal_Int32>(m_aTableMap.size()))
             return false;
     }
     catch(SQLException&)
@@ -1129,7 +1120,7 @@ bool OJoinTableView::IsAddAllowed()
 
 void OJoinTableView::executePopup(const Point& _aPos, VclPtr<OTableConnection>& rSelConnection)
 {
-    VclBuilder aBuilder(nullptr, VclBuilderContainer::getUIRootDir(), "dbaccess/ui/joinviewmenu.ui", "");
+    VclBuilder aBuilder(nullptr, AllSettings::GetUIRootDir(), "dbaccess/ui/joinviewmenu.ui", "");
     VclPtr<PopupMenu> aContextMenu(aBuilder.get_menu("menu"));
     aContextMenu->Execute(this, _aPos);
     OString sIdent = aContextMenu->GetCurItemIdent();
@@ -1157,8 +1148,8 @@ void OJoinTableView::Command(const CommandEvent& rEvt)
             {
                 if (rSelConnection)
                 {
-                    const std::vector<OConnectionLine*>& rLines = rSelConnection->GetConnLineList();
-                    std::vector<OConnectionLine*>::const_iterator aIter = std::find_if(rLines.begin(), rLines.end(),std::mem_fun(&OConnectionLine::IsValid));
+                    const std::vector<std::unique_ptr<OConnectionLine>>& rLines = rSelConnection->GetConnLineList();
+                    auto aIter = std::find_if(rLines.begin(), rLines.end(),std::mem_fn(&OConnectionLine::IsValid));
                     if( aIter != rLines.end() )
                         executePopup((*aIter)->getMidPoint(), rSelConnection);
                 }
@@ -1168,15 +1159,13 @@ void OJoinTableView::Command(const CommandEvent& rEvt)
                 DeselectConn(rSelConnection);
 
                 const Point& aMousePos = rEvt.GetMousePosPixel();
-                auto aIter = m_vTableConnection.begin();
-                auto aEnd = m_vTableConnection.end();
-                for(;aIter != aEnd;++aIter)
+                for (auto & elem : m_vTableConnection)
                 {
-                    if( (*aIter)->CheckHit(aMousePos) )
+                    if( elem->CheckHit(aMousePos) )
                     {
-                        SelectConn(*aIter);
+                        SelectConn(elem);
                         if(!getDesignView()->getController().isReadOnly() && getDesignView()->getController().isConnected())
-                            executePopup(rEvt.GetMousePosPixel(),*aIter);
+                            executePopup(rEvt.GetMousePosPixel(),elem);
                         break;
                     }
                 }
@@ -1265,11 +1254,8 @@ bool OJoinTableView::PreNotify(NotifyEvent& rNEvt)
 
                         bool bForward = !pKeyEvent->GetKeyCode().IsShift();
                         // is there an active tab win ?
-                        OTableWindowMap::const_iterator aIter = m_aTableMap.begin();
-                        OTableWindowMap::const_iterator aEnd = m_aTableMap.end();
-                        for(;aIter != aEnd;++aIter)
-                            if (aIter->second && aIter->second->HasChildPathFocus())
-                                break;
+                        OTableWindowMap::const_iterator aIter = std::find_if(m_aTableMap.begin(), m_aTableMap.end(),
+                            [](const OTableWindowMap::value_type& rEntry) { return rEntry.second && rEntry.second->HasChildPathFocus(); });
 
                         OTableWindow* pNextWin = nullptr;
                         OTableConnection* pNextConn = nullptr;
@@ -1283,7 +1269,7 @@ bool OJoinTableView::PreNotify(NotifyEvent& rNEvt)
                                     // the last win is active and we're travelling forward -> select the first conn
                                     pNextConn = m_vTableConnection.begin()->get();
                                 if ((aIter == m_aTableMap.begin()) && !bForward)
-                                    // the first win is active an we're traveling backward -> select the last conn
+                                    // the first win is active and we're traveling backward -> select the last conn
                                     pNextConn = m_vTableConnection.rbegin()->get();
                             }
 
@@ -1316,13 +1302,11 @@ bool OJoinTableView::PreNotify(NotifyEvent& rNEvt)
                         {   // no active tab win -> travel the connections
                             // find the currently selected conn within the conn list
                             sal_Int32 i(0);
-                            for (   auto connectionIter = m_vTableConnection.begin();
-                                    connectionIter != m_vTableConnection.end();
-                                    ++connectionIter, ++i
-                                )
+                            for (auto const& elem : m_vTableConnection)
                             {
-                                if ( (*connectionIter).get() == GetSelectedConn() )
+                                if ( elem.get() == GetSelectedConn() )
                                     break;
+                                ++i;
                             }
                             if (i == sal_Int32(m_vTableConnection.size() - 1) && bForward)
                                 // the last conn is active and we're travelling forward -> select the first win
@@ -1335,7 +1319,7 @@ bool OJoinTableView::PreNotify(NotifyEvent& rNEvt)
                                 DeselectConn(GetSelectedConn());
                             else
                                 // no win for any reason -> select the next or previous conn
-                                if (i < (sal_Int32)m_vTableConnection.size())
+                                if (i < static_cast<sal_Int32>(m_vTableConnection.size()))
                                     // there is a currently active conn
                                     pNextConn = m_vTableConnection[(i + (bForward ? 1 : m_vTableConnection.size() - 1)) % m_vTableConnection.size()].get();
                                 else
@@ -1398,13 +1382,11 @@ bool OJoinTableView::PreNotify(NotifyEvent& rNEvt)
 
                 if (pSearchFor)
                 {
-                    OTableWindowMap::const_iterator aIter = m_aTableMap.begin();
-                    OTableWindowMap::const_iterator aEnd = m_aTableMap.end();
-                    for(;aIter != aEnd;++aIter)
+                    for (auto const& elem : m_aTableMap)
                     {
-                        if (aIter->second == pSearchFor)
+                        if (elem.second == pSearchFor)
                         {
-                            m_pLastFocusTabWin = aIter->second;
+                            m_pLastFocusTabWin = elem.second;
                             break;
                         }
                     }
@@ -1445,25 +1427,23 @@ void OJoinTableView::StateChanged( StateChangedType nType )
     Window::StateChanged( nType );
 
     // FIXME RenderContext
-    if ( nType == StateChangedType::Zoom )
+    if ( nType != StateChangedType::Zoom )
+        return;
+
+    const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
+
+    vcl::Font aFont = rStyleSettings.GetGroupFont();
+    if ( IsControlFont() )
+        aFont.Merge( GetControlFont() );
+    SetZoomedPointFont(*this, aFont);
+
+    for (auto const& elem : m_aTableMap)
     {
-        const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
-
-        vcl::Font aFont = rStyleSettings.GetGroupFont();
-        if ( IsControlFont() )
-            aFont.Merge( GetControlFont() );
-        SetZoomedPointFont(*this, aFont);
-
-        OTableWindowMap::const_iterator aIter = m_aTableMap.begin();
-        OTableWindowMap::const_iterator aEnd = m_aTableMap.end();
-        for(;aIter != aEnd;++aIter)
-        {
-            aIter->second->SetZoom(GetZoom());
-            Size aSize(CalcZoom(aIter->second->GetSizePixel().Width()),CalcZoom(aIter->second->GetSizePixel().Height()));
-            aIter->second->SetSizePixel(aSize);
-        }
-        Resize();
+        elem.second->SetZoom(GetZoom());
+        Size aSize(CalcZoom(elem.second->GetSizePixel().Width()),CalcZoom(elem.second->GetSizePixel().Height()));
+        elem.second->SetSizePixel(aSize);
     }
+    Resize();
 }
 
 void OJoinTableView::HideTabWins()
@@ -1474,10 +1454,8 @@ void OJoinTableView::HideTabWins()
 
     // working on a copy because the real list will be cleared in inner calls
     OTableWindowMap aCopy(rTabWins);
-    OTableWindowMap::const_iterator aIter = aCopy.begin();
-    OTableWindowMap::const_iterator aEnd = aCopy.end();
-    for(;aIter != aEnd;++aIter)
-        RemoveTabWin(aIter->second);
+    for (auto const& elem : aCopy)
+        RemoveTabWin(elem.second);
 
     m_pView->getController().setModified(true);
 
@@ -1504,20 +1482,17 @@ void OJoinTableView::clearLayoutInformation()
     m_pLastFocusTabWin  = nullptr;
     m_pSelectedConn     = nullptr;
     // delete lists
-    OTableWindowMap::iterator aIter = m_aTableMap.begin();
-    OTableWindowMap::const_iterator aEnd  = m_aTableMap.end();
-    for(;aIter != aEnd;++aIter)
+    for (auto & elem : m_aTableMap)
     {
-        if ( aIter->second )
-            aIter->second->clearListBox();
-        aIter->second.disposeAndClear();
+        if ( elem.second )
+            elem.second->clearListBox();
+        elem.second.disposeAndClear();
     }
 
     m_aTableMap.clear();
 
-    for(auto i = m_vTableConnection.begin();
-             i != m_vTableConnection.end(); ++i)
-        i->disposeAndClear();
+    for (auto & elem : m_vTableConnection)
+        elem.disposeAndClear();
 
     m_vTableConnection.clear();
 }
@@ -1563,7 +1538,7 @@ void OJoinTableView::addConnection(OTableConnection* _pConnection,bool _bAddData
 #endif
         m_pView->getController().getTableConnectionData().push_back(_pConnection->GetData());
     }
-    m_vTableConnection.push_back(_pConnection);
+    m_vTableConnection.emplace_back(_pConnection);
     _pConnection->RecalcLines();
     _pConnection->InvalidateConnection();
 

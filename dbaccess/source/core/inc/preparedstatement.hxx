@@ -24,8 +24,8 @@
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
 #include <com/sun/star/sdbc/XParameters.hpp>
 #include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
-#include <statement.hxx>
-#include <column.hxx>
+#include "statement.hxx"
+#include "column.hxx"
 
 namespace dbaccess
 {
@@ -39,8 +39,7 @@ namespace dbaccess
                                public css::sdbcx::XColumnsSupplier,
                                public css::lang::XServiceInfo
     {
-    protected:
-        OColumns*       m_pColumns;
+        std::unique_ptr<OColumns>  m_pColumns;
         css::uno::Reference< css::sdbc::XParameters > m_xAggregateAsParameters;
 
     public:

@@ -17,37 +17,35 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/svxdlg.hxx>
 #include <svx/svxids.hrc>
 #include <svx/dialogs.hrc>
 #include <svl/itemset.hxx>
 #include <svx/flagsdef.hxx>
+#include <sfx2/sfxdlg.hxx>
 #include <sfx2/tabdlg.hxx>
 #include <svl/intitem.hxx>
 
-#include "swtypes.hxx"
-#include "uiborder.hxx"
-#include "frmui.hrc"
+#include <swtypes.hxx>
+#include <uiborder.hxx>
+#include <strings.hrc>
 
-SwBorderDlg::SwBorderDlg(vcl::Window* pParent, SfxItemSet& rSet, SwBorderModes nType) :
-    SfxSingleTabDialog(pParent, rSet)
-
+SwBorderDlg::SwBorderDlg(weld::Window* pParent, SfxItemSet& rSet, SwBorderModes nType)
+    : SfxSingleTabDialogController(pParent, &rSet)
 {
-    SetText(SwResId(STR_FRMUI_BORDER));
+    m_xDialog->set_title(SwResId(STR_FRMUI_BORDER));
 
     SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
-    OSL_ENSURE(pFact, "Dialog creation failed!");
     ::CreateTabPage fnCreatePage = pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BORDER );
 
-    if ( fnCreatePage )
+    if (fnCreatePage)
     {
-        VclPtr<SfxTabPage> pNewPage = (*fnCreatePage)( get_content_area(), &rSet );
+        std::unique_ptr<SfxTabPage> xNewPage = (*fnCreatePage)(get_content_area(), this, &rSet);
         SfxAllItemSet aSet(*(rSet.GetPool()));
         aSet.Put (SfxUInt16Item(SID_SWMODE_TYPE, static_cast<sal_uInt16>(nType)));
         if(SwBorderModes::TABLE == nType)
             aSet.Put (SfxUInt32Item(SID_FLAG_TYPE,SVX_HIDESHADOWCTL));
-        pNewPage->PageCreated(aSet);
-        SetTabPage(pNewPage);
+        xNewPage->PageCreated(aSet);
+        SetTabPage(std::move(xNewPage));
     }
 }
 

@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "maildispatcher.hxx"
-#include "imaildsplistener.hxx"
+#include <maildispatcher.hxx>
+#include <imaildsplistener.hxx>
 
 #include <algorithm>
 
@@ -27,47 +27,21 @@
 
 using namespace ::com::sun::star;
 
-typedef std::list< ::rtl::Reference<IMailDispatcherListener> > MailDispatcherListenerContainer_t;
+typedef std::vector< ::rtl::Reference<IMailDispatcherListener> > MailDispatcherListenerContainer_t;
 
 namespace /* private */
 {
-    /* Generic event notifier for started,
-       stopped, and idle events which are
-       very similarly */
-    class GenericEventNotifier
-    {
-    public:
-        // pointer to virtual function typedef
-        typedef void (IMailDispatcherListener::*GenericNotificationFunc_t)(::rtl::Reference<MailDispatcher>);
-
-        GenericEventNotifier(
-            GenericNotificationFunc_t notification_function,
-            ::rtl::Reference<MailDispatcher> const & mail_dispatcher) :
-            notification_function_(notification_function),
-            mail_dispatcher_(mail_dispatcher)
-        {}
-
-        void operator() (::rtl::Reference<IMailDispatcherListener> const & listener) const
-        { (listener.get()->*notification_function_)(mail_dispatcher_); }
-
-    private:
-        GenericNotificationFunc_t notification_function_;
-        ::rtl::Reference<MailDispatcher> mail_dispatcher_;
-    };
-
     class MailDeliveryNotifier
     {
     public:
-        MailDeliveryNotifier(::rtl::Reference<MailDispatcher> const & xMailDispatcher, uno::Reference<mail::XMailMessage> const & message) :
-            mail_dispatcher_(xMailDispatcher),
+        MailDeliveryNotifier(uno::Reference<mail::XMailMessage> const & message) :
             message_(message)
         {}
 
         void operator() (::rtl::Reference<IMailDispatcherListener> const & listener) const
-        { listener->mailDelivered(mail_dispatcher_, message_); }
+        { listener->mailDelivered(message_); }
 
     private:
-        ::rtl::Reference<MailDispatcher> mail_dispatcher_;
         uno::Reference<mail::XMailMessage> message_;
     };
 
@@ -120,7 +94,7 @@ void MailDispatcher::enqueueMailMessage(uno::Reference<mail::XMailMessage> const
     ::osl::MutexGuard thread_status_guard( m_aThreadStatusMutex );
     ::osl::MutexGuard message_container_guard( m_aMessageContainerMutex );
 
-    OSL_PRECOND( !m_bShutdownRequested, "MailDispatcher thread is shuting down already" );
+    OSL_PRECOND( !m_bShutdownRequested, "MailDispatcher thread is shutting down already" );
 
     m_aXMessageList.push_back( message );
     if ( m_bActive )
@@ -145,17 +119,13 @@ void MailDispatcher::start()
 
     ::osl::ClearableMutexGuard thread_status_guard( m_aThreadStatusMutex );
 
-    OSL_PRECOND(!m_bShutdownRequested, "MailDispatcher thread is shuting down already");
+    OSL_PRECOND(!m_bShutdownRequested, "MailDispatcher thread is shutting down already");
 
     if ( !m_bShutdownRequested )
     {
         m_bActive = true;
         m_aWakeupCondition.set();
         thread_status_guard.clear();
-
-        MailDispatcherListenerContainer_t aClonedListenerList(cloneListener());
-        std::for_each( aClonedListenerList.begin(), aClonedListenerList.end(),
-                       GenericEventNotifier(&IMailDispatcherListener::started, this) );
     }
 }
 
@@ -165,17 +135,13 @@ void MailDispatcher::stop()
 
     ::osl::ClearableMutexGuard thread_status_guard( m_aThreadStatusMutex );
 
-    OSL_PRECOND(!m_bShutdownRequested, "MailDispatcher thread is shuting down already");
+    OSL_PRECOND(!m_bShutdownRequested, "MailDispatcher thread is shutting down already");
 
     if (!m_bShutdownRequested)
     {
         m_bActive = false;
         m_aWakeupCondition.reset();
         thread_status_guard.clear();
-
-        MailDispatcherListenerContainer_t aClonedListenerList(cloneListener());
-        std::for_each( aClonedListenerList.begin(), aClonedListenerList.end(),
-                       GenericEventNotifier(&IMailDispatcherListener::stopped, this) );
     }
 }
 
@@ -183,7 +149,7 @@ void MailDispatcher::shutdown()
 {
     ::osl::MutexGuard thread_status_guard( m_aThreadStatusMutex );
 
-    OSL_PRECOND(!m_bShutdownRequested, "MailDispatcher thread is shuting down already");
+    OSL_PRECOND(!m_bShutdownRequested, "MailDispatcher thread is shutting down already");
 
     m_bShutdownRequested = true;
     m_aWakeupCondition.set();
@@ -192,16 +158,16 @@ void MailDispatcher::shutdown()
 
 void MailDispatcher::addListener(::rtl::Reference<IMailDispatcherListener> const & listener)
 {
-    OSL_PRECOND(!m_bShutdownRequested, "MailDispatcher thread is shuting down already");
+    OSL_PRECOND(!m_bShutdownRequested, "MailDispatcher thread is shutting down already");
 
     ::osl::MutexGuard guard( m_aListenerContainerMutex );
-    m_aListenerList.push_back( listener );
+    m_aListenerVector.push_back( listener );
 }
 
-std::list< ::rtl::Reference<IMailDispatcherListener> > MailDispatcher::cloneListener()
+std::vector< ::rtl::Reference<IMailDispatcherListener> > MailDispatcher::cloneListener()
 {
     ::osl::MutexGuard guard( m_aListenerContainerMutex );
-    return m_aListenerList;
+    return m_aListenerVector;
 }
 
 void MailDispatcher::sendMailMessageNotifyListener(uno::Reference<mail::XMailMessage> const & message)
@@ -209,20 +175,20 @@ void MailDispatcher::sendMailMessageNotifyListener(uno::Reference<mail::XMailMes
     try
     {
         m_xMailserver->sendMailMessage( message );
-        MailDispatcherListenerContainer_t aClonedListenerList(cloneListener());
-        std::for_each( aClonedListenerList.begin(), aClonedListenerList.end(),
-                       MailDeliveryNotifier(this, message) );
+        MailDispatcherListenerContainer_t aClonedListenerVector(cloneListener());
+        std::for_each( aClonedListenerVector.begin(), aClonedListenerVector.end(),
+                       MailDeliveryNotifier(message) );
     }
     catch (const mail::MailException& ex)
     {
-        MailDispatcherListenerContainer_t aClonedListenerList(cloneListener());
-        std::for_each( aClonedListenerList.begin(), aClonedListenerList.end(),
+        MailDispatcherListenerContainer_t aClonedListenerVector(cloneListener());
+        std::for_each( aClonedListenerVector.begin(), aClonedListenerVector.end(),
                        MailDeliveryErrorNotifier(this, message, ex.Message) );
     }
     catch (const uno::RuntimeException& ex)
     {
-        MailDispatcherListenerContainer_t aClonedListenerList(cloneListener());
-        std::for_each( aClonedListenerList.begin(), aClonedListenerList.end(),
+        MailDispatcherListenerContainer_t aClonedListenerVector(cloneListener());
+        std::for_each( aClonedListenerVector.begin(), aClonedListenerVector.end(),
                        MailDeliveryErrorNotifier(this, message, ex.Message) );
     }
 }
@@ -252,7 +218,7 @@ void MailDispatcher::run()
 
         ::osl::ClearableMutexGuard message_container_guard( m_aMessageContainerMutex );
 
-        if ( m_aXMessageList.size() )
+        if ( !m_aXMessageList.empty() )
         {
             thread_status_guard.clear();
             uno::Reference<mail::XMailMessage> message = m_aXMessageList.front();
@@ -266,8 +232,8 @@ void MailDispatcher::run()
             message_container_guard.clear();
             thread_status_guard.clear();
             MailDispatcherListenerContainer_t aListenerListcloned( cloneListener() );
-            std::for_each( aListenerListcloned.begin(), aListenerListcloned.end(),
-                           GenericEventNotifier(&IMailDispatcherListener::idle, this) );
+            for( const auto & l : aListenerListcloned)
+                l->idle();
         }
     }
 }

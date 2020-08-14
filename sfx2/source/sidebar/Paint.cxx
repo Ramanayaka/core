@@ -16,13 +16,13 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <sfx2/sidebar/Paint.hxx>
-#include <sfx2/sidebar/Tools.hxx>
+#include <sidebar/Paint.hxx>
+#include <sidebar/Tools.hxx>
 #include <com/sun/star/awt/Gradient.hpp>
 
 using namespace css;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 Paint::Paint()
     : meType(NoPaint)
@@ -43,9 +43,9 @@ Paint::Paint (const Gradient& rGradient)
 
 Paint Paint::Create (const css::uno::Any& rValue)
 {
-    ColorData aColor (0);
+    Color aColor (0);
     if (rValue >>= aColor)
-        return Paint(Color(aColor));
+        return Paint(aColor);
 
     awt::Gradient aAwtGradient;
     if (rValue >>= aAwtGradient)
@@ -59,7 +59,7 @@ const Color& Paint::GetColor() const
     if (meType != ColorPaint)
     {
         assert(meType==ColorPaint);
-        static Color aErrorColor;
+        static const Color aErrorColor;
         return aErrorColor;
     }
     else
@@ -97,6 +97,6 @@ Wallpaper Paint::GetWallpaper() const
     }
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

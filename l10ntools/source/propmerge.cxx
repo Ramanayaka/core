@@ -14,9 +14,9 @@
 #include <fstream>
 #include <iomanip>
 
-#include "export.hxx"
-#include "common.hxx"
-#include "propmerge.hxx"
+#include <export.hxx>
+#include <common.hxx>
+#include <propmerge.hxx>
 
 namespace
 {
@@ -51,8 +51,7 @@ namespace
             const OString sHex = sResult.copy( nIndex + 2, 4 );
             const sal_Unicode cDec =
                 static_cast<sal_Unicode>( strtol( sHex.getStr(), nullptr, 16 ) );
-            const OString sNewChar =
-                OString( &cDec, 1, RTL_TEXTENCODING_UTF8 );
+            const OString sNewChar( &cDec, 1, RTL_TEXTENCODING_UTF8 );
             sResult = sResult.replaceAll( "\\u" + sHex, sNewChar );
             nIndex = lcl_IndexOfUnicode( sResult, nIndex );
         }
@@ -173,7 +172,7 @@ void PropParser::Merge( const OString &rMergeSrc, const OString &rDestinationFil
         pMergeDataFile.reset( new MergeDataFile( rMergeSrc, m_sSource, false, false ) );
 
         const std::vector<OString> vLanguages = pMergeDataFile->GetLanguages();
-        if( vLanguages.size()>=1 && vLanguages[0] != m_sLang )
+        if( !vLanguages.empty() && vLanguages[0] != m_sLang )
         {
             std::cerr
                 << ("Propex error: given language conflicts with language of"
@@ -205,7 +204,7 @@ void PropParser::Merge( const OString &rMergeSrc, const OString &rDestinationFil
                 MergeEntrys* pEntrys = pMergeDataFile->GetMergeEntrys( &aResData );
                 if( pEntrys )
                 {
-                    pEntrys->GetText( sNewText, StringType::Text, m_sLang );
+                    pEntrys->GetText( sNewText, m_sLang );
                 }
             }
             if( !sNewText.isEmpty() )

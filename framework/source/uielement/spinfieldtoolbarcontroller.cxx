@@ -20,17 +20,18 @@
 #include <sal/config.h>
 
 #include <stdio.h>
-#include <wchar.h>
 
-#include "uielement/spinfieldtoolbarcontroller.hxx"
+#include <uielement/spinfieldtoolbarcontroller.hxx>
 
-#include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 
 #include <svtools/toolboxcontroller.hxx>
+#include <vcl/InterimItemWindow.hxx>
+#include <vcl/event.hxx>
+#include <vcl/formatter.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/mnemonic.hxx>
 #include <vcl/toolbox.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -46,30 +47,67 @@ namespace framework
 // Unfortunaltly the events are notified through virtual methods instead
 // of Listeners.
 
-class SpinfieldControl : public SpinField
+class SpinfieldControl final : public InterimItemWindow
 {
-    public:
-        SpinfieldControl( vcl::Window* pParent, WinBits nStyle, SpinfieldToolbarController* pSpinfieldToolbarController );
-        virtual ~SpinfieldControl() override;
-        virtual void dispose() override;
+public:
+    SpinfieldControl(vcl::Window* pParent, SpinfieldToolbarController* pSpinfieldToolbarController);
+    virtual ~SpinfieldControl() override;
+    virtual void dispose() override;
 
-        virtual void Up() override;
-        virtual void Down() override;
-        virtual void First() override;
-        virtual void Last() override;
-        virtual void Modify() override;
-        virtual void GetFocus() override;
-        virtual void LoseFocus() override;
-        virtual bool PreNotify( NotifyEvent& rNEvt ) override;
+    Formatter& GetFormatter()
+    {
+        return m_xWidget->GetFormatter();
+    }
 
-    private:
-        SpinfieldToolbarController* m_pSpinfieldToolbarController;
+    OUString get_entry_text() const { return m_xWidget->get_text(); }
+
+    DECL_LINK(ValueChangedHdl, weld::FormattedSpinButton&, void);
+    DECL_LINK(FormatOutputHdl, LinkParamNone*, bool);
+    DECL_LINK(ParseInputHdl, sal_Int64*, TriState);
+    DECL_LINK(ModifyHdl, weld::Entry&, void);
+    DECL_LINK(ActivateHdl, weld::Entry&, bool);
+    DECL_LINK(FocusInHdl, weld::Widget&, void);
+    DECL_LINK(FocusOutHdl, weld::Widget&, void);
+    DECL_LINK(KeyInputHdl, const ::KeyEvent&, bool);
+
+private:
+    std::unique_ptr<weld::FormattedSpinButton> m_xWidget;
+    SpinfieldToolbarController* m_pSpinfieldToolbarController;
 };
 
-SpinfieldControl::SpinfieldControl( vcl::Window* pParent, WinBits nStyle, SpinfieldToolbarController* pSpinfieldToolbarController ) :
-    SpinField( pParent, nStyle )
-    , m_pSpinfieldToolbarController( pSpinfieldToolbarController )
+SpinfieldControl::SpinfieldControl(vcl::Window* pParent, SpinfieldToolbarController* pSpinfieldToolbarController)
+    : InterimItemWindow(pParent, "svt/ui/spinfieldcontrol.ui", "SpinFieldControl")
+    , m_xWidget(m_xBuilder->weld_formatted_spin_button("spinbutton"))
+    , m_pSpinfieldToolbarController(pSpinfieldToolbarController)
 {
+    InitControlBase(m_xWidget.get());
+
+    m_xWidget->connect_focus_in(LINK(this, SpinfieldControl, FocusInHdl));
+    m_xWidget->connect_focus_out(LINK(this, SpinfieldControl, FocusOutHdl));
+    Formatter& rFormatter = m_xWidget->GetFormatter();
+    rFormatter.SetOutputHdl(LINK(this, SpinfieldControl, FormatOutputHdl));
+    rFormatter.SetInputHdl(LINK(this, SpinfieldControl, ParseInputHdl));
+    m_xWidget->connect_value_changed(LINK(this, SpinfieldControl, ValueChangedHdl));
+    m_xWidget->connect_changed(LINK(this, SpinfieldControl, ModifyHdl));
+    m_xWidget->connect_activate(LINK(this, SpinfieldControl, ActivateHdl));
+    m_xWidget->connect_key_press(LINK(this, SpinfieldControl, KeyInputHdl));
+
+    // so a later narrow size request can stick
+    m_xWidget->set_width_chars(3);
+    m_xWidget->set_size_request(42, -1);
+
+    SetSizePixel(get_preferred_size());
+}
+
+IMPL_LINK(SpinfieldControl, KeyInputHdl, const ::KeyEvent&, rKEvt, bool)
+{
+    return ChildKeyInput(rKEvt);
+}
+
+IMPL_LINK(SpinfieldControl, ParseInputHdl, sal_Int64*, result, TriState)
+{
+    *result = m_xWidget->get_text().toDouble() * weld::SpinButton::Power10(m_xWidget->GetFormatter().GetDecimalDigits());
+    return TRISTATE_TRUE;
 }
 
 SpinfieldControl::~SpinfieldControl()
@@ -80,67 +118,50 @@ SpinfieldControl::~SpinfieldControl()
 void SpinfieldControl::dispose()
 {
     m_pSpinfieldToolbarController = nullptr;
-    SpinField::dispose();
+    m_xWidget.reset();
+    InterimItemWindow::dispose();
 }
 
-void SpinfieldControl::Up()
+IMPL_LINK_NOARG(SpinfieldControl, ValueChangedHdl, weld::FormattedSpinButton&, void)
 {
-    SpinField::Up();
-    if ( m_pSpinfieldToolbarController )
-        m_pSpinfieldToolbarController->Up();
+    if (m_pSpinfieldToolbarController)
+        m_pSpinfieldToolbarController->execute(0);
 }
 
-void SpinfieldControl::Down()
+IMPL_LINK_NOARG(SpinfieldControl, ModifyHdl, weld::Entry&, void)
 {
-    SpinField::Down();
-    if ( m_pSpinfieldToolbarController )
-        m_pSpinfieldToolbarController->Down();
-}
-
-void SpinfieldControl::First()
-{
-    SpinField::First();
-    if ( m_pSpinfieldToolbarController )
-        m_pSpinfieldToolbarController->First();
-}
-
-void SpinfieldControl::Last()
-{
-    SpinField::First();
-    if ( m_pSpinfieldToolbarController )
-        m_pSpinfieldToolbarController->Last();
-}
-
-void SpinfieldControl::Modify()
-{
-    SpinField::Modify();
-    if ( m_pSpinfieldToolbarController )
+    if (m_pSpinfieldToolbarController)
         m_pSpinfieldToolbarController->Modify();
 }
 
-void SpinfieldControl::GetFocus()
+IMPL_LINK_NOARG(SpinfieldControl, FocusInHdl, weld::Widget&, void)
 {
-    SpinField::GetFocus();
-    if ( m_pSpinfieldToolbarController )
+    if (m_pSpinfieldToolbarController)
         m_pSpinfieldToolbarController->GetFocus();
 }
 
-void SpinfieldControl::LoseFocus()
+IMPL_LINK_NOARG(SpinfieldControl, FocusOutHdl, weld::Widget&, void)
 {
-    SpinField::GetFocus();
-    if ( m_pSpinfieldToolbarController )
-        m_pSpinfieldToolbarController->GetFocus();
+    if (m_pSpinfieldToolbarController)
+        m_pSpinfieldToolbarController->LoseFocus();
 }
 
-bool SpinfieldControl::PreNotify( NotifyEvent& rNEvt )
+IMPL_LINK_NOARG(SpinfieldControl, ActivateHdl, weld::Entry&, bool)
 {
-    bool bRet = false;
-    if ( m_pSpinfieldToolbarController )
-        bRet = m_pSpinfieldToolbarController->PreNotify( rNEvt );
-    if ( !bRet )
-        bRet = SpinField::PreNotify( rNEvt );
+    bool bConsumed = false;
+    if (m_pSpinfieldToolbarController)
+    {
+        m_pSpinfieldToolbarController->Activate();
+        bConsumed = true;
+    }
+    return bConsumed;
+}
 
-    return bRet;
+IMPL_LINK_NOARG(SpinfieldControl, FormatOutputHdl, LinkParamNone*, bool)
+{
+    OUString aText = m_pSpinfieldToolbarController->FormatOutputString(m_xWidget->GetFormatter().GetValue());
+    m_xWidget->set_text(aText);
+    return true;
 }
 
 SpinfieldToolbarController::SpinfieldToolbarController(
@@ -152,23 +173,21 @@ SpinfieldToolbarController::SpinfieldToolbarController(
     const OUString&                          aCommand ) :
     ComplexToolbarController( rxContext, rFrame, pToolbar, nID, aCommand )
     ,   m_bFloat( false )
-    ,   m_bMaxSet( false )
-    ,   m_bMinSet( false )
     ,   m_nMax( 0.0 )
     ,   m_nMin( 0.0 )
     ,   m_nValue( 0.0 )
     ,   m_nStep( 0.0 )
     ,   m_pSpinfieldControl( nullptr )
 {
-    m_pSpinfieldControl = VclPtr<SpinfieldControl>::Create( m_pToolbar, WB_SPIN|WB_BORDER, this );
+    m_pSpinfieldControl = VclPtr<SpinfieldControl>::Create(m_xToolbar, this);
     if ( nWidth == 0 )
         nWidth = 100;
 
-    // Calculate height of the spin field according to the application font height
-    sal_Int32 nHeight = getFontSizePixel( m_pSpinfieldControl ) + 5 + 1;
+    // SpinFieldControl ctor has set a suitable height already
+    auto nHeight = m_pSpinfieldControl->GetSizePixel().Height();
 
     m_pSpinfieldControl->SetSizePixel( ::Size( nWidth, nHeight ));
-    m_pToolbar->SetItemWindow( m_nID, m_pSpinfieldControl );
+    m_xToolbar->SetItemWindow( m_nID, m_pSpinfieldControl );
 }
 
 SpinfieldToolbarController::~SpinfieldToolbarController()
@@ -179,7 +198,7 @@ void SAL_CALL SpinfieldToolbarController::dispose()
 {
     SolarMutexGuard aSolarMutexGuard;
 
-    m_pToolbar->SetItemWindow( m_nID, nullptr );
+    m_xToolbar->SetItemWindow( m_nID, nullptr );
     m_pSpinfieldControl.disposeAndClear();
 
     ComplexToolbarController::dispose();
@@ -188,7 +207,7 @@ void SAL_CALL SpinfieldToolbarController::dispose()
 Sequence<PropertyValue> SpinfieldToolbarController::getExecuteArgs(sal_Int16 KeyModifier) const
 {
     Sequence<PropertyValue> aArgs( 2 );
-    OUString aSpinfieldText = m_pSpinfieldControl->GetText();
+    OUString aSpinfieldText = m_pSpinfieldControl->get_entry_text();
 
     // Add key modifier to argument list
     aArgs[0].Name = "KeyModifier";
@@ -201,59 +220,9 @@ Sequence<PropertyValue> SpinfieldToolbarController::getExecuteArgs(sal_Int16 Key
     return aArgs;
 }
 
-void SpinfieldToolbarController::Up()
-{
-    double nValue = m_nValue + m_nStep;
-    if ( m_bMaxSet && nValue > m_nMax )
-        return;
-
-    m_nValue = nValue;
-
-    OUString aText = impl_formatOutputString( m_nValue );
-    m_pSpinfieldControl->SetText( aText );
-    execute( 0 );
-}
-
-void SpinfieldToolbarController::Down()
-{
-    double nValue = m_nValue - m_nStep;
-    if ( m_bMinSet && nValue < m_nMin )
-        return;
-
-    m_nValue = nValue;
-
-    OUString aText = impl_formatOutputString( m_nValue );
-    m_pSpinfieldControl->SetText( aText );
-    execute( 0 );
-}
-
-void SpinfieldToolbarController::First()
-{
-    if ( m_bMinSet )
-    {
-        m_nValue = m_nMin;
-
-        OUString aText = impl_formatOutputString( m_nValue );
-        m_pSpinfieldControl->SetText( aText );
-        execute( 0 );
-    }
-}
-
-void SpinfieldToolbarController::Last()
-{
-    if ( m_bMaxSet )
-    {
-        m_nValue = m_nMax;
-
-        OUString aText = impl_formatOutputString( m_nValue );
-        m_pSpinfieldControl->SetText( aText );
-        execute( 0 );
-    }
-}
-
 void SpinfieldToolbarController::Modify()
 {
-    notifyTextChanged( m_pSpinfieldControl->GetText() );
+    notifyTextChanged(m_pSpinfieldControl->get_entry_text());
 }
 
 void SpinfieldToolbarController::GetFocus()
@@ -261,22 +230,16 @@ void SpinfieldToolbarController::GetFocus()
     notifyFocusGet();
 }
 
-bool SpinfieldToolbarController::PreNotify( NotifyEvent& rNEvt )
+void SpinfieldToolbarController::LoseFocus()
 {
-    if( rNEvt.GetType() == MouseNotifyEvent::KEYINPUT )
-    {
-        const ::KeyEvent* pKeyEvent = rNEvt.GetKeyEvent();
-        const vcl::KeyCode& rKeyCode = pKeyEvent->GetKeyCode();
-        if(( rKeyCode.GetModifier() | rKeyCode.GetCode()) == KEY_RETURN )
-        {
-            // Call execute only with non-empty text
-            if ( !m_pSpinfieldControl->GetText().isEmpty() )
-                execute( rKeyCode.GetModifier() );
-            return true;
-        }
-    }
+    notifyFocusLost();
+}
 
-    return false;
+void SpinfieldToolbarController::Activate()
+{
+    // Call execute only with non-empty text
+    if (!m_pSpinfieldControl->get_entry_text().isEmpty())
+        execute(0);
 }
 
 void SpinfieldToolbarController::executeControlCommand( const css::frame::ControlCommand& rControlCommand )
@@ -289,33 +252,34 @@ void SpinfieldToolbarController::executeControlCommand( const css::frame::Contro
 
     if ( rControlCommand.Command == "SetStep" )
     {
-        for ( sal_Int32 i = 0; i < rControlCommand.Arguments.getLength(); i++ )
+        for ( auto const & arg : rControlCommand.Arguments )
         {
-            if ( rControlCommand.Arguments[i].Name == "Step" )
+            if ( arg.Name == "Step" )
             {
                 sal_Int32   nValue;
                 double      fValue;
                 bool        bFloat( false );
-                if ( impl_getValue( rControlCommand.Arguments[i].Value, nValue, fValue, bFloat ))
-                    aStep = bFloat ? OUString::number( fValue ) :
-                                     OUString::number( nValue );
+                if ( impl_getValue( arg.Value, nValue, fValue, bFloat ))
+                    aStep = bFloat ? OUString( OUString::number( fValue )) :
+                                     OUString( OUString::number( nValue ));
                 break;
             }
         }
     }
     else if ( rControlCommand.Command == "SetValue" )
     {
-        for ( sal_Int32 i = 0; i < rControlCommand.Arguments.getLength(); i++ )
+        for ( auto const & arg : rControlCommand.Arguments )
         {
-            if ( rControlCommand.Arguments[i].Name == "Value" )
+            if ( arg.Name == "Value" )
             {
                 sal_Int32   nValue;
                 double      fValue;
                 bool        bFloat( false );
 
-                if ( impl_getValue( rControlCommand.Arguments[i].Value, nValue, fValue, bFloat ))
+                if ( impl_getValue( arg.Value, nValue, fValue, bFloat ))
                 {
-                    aValue = bFloat ? OUString::number( fValue ) : OUString::number( nValue );
+                    aValue = bFloat ? OUString( OUString::number( fValue )) :
+                                      OUString( OUString::number( nValue ));
                     bFloatValue = bFloat;
                 }
                 break;
@@ -324,100 +288,105 @@ void SpinfieldToolbarController::executeControlCommand( const css::frame::Contro
     }
     else if ( rControlCommand.Command == "SetValues" )
     {
-        for ( sal_Int32 i = 0; i < rControlCommand.Arguments.getLength(); i++ )
+        for ( auto const & arg : rControlCommand.Arguments )
         {
             sal_Int32   nValue;
             double      fValue;
             bool        bFloat( false );
 
-            OUString aName = rControlCommand.Arguments[i].Name;
-            if ( impl_getValue( rControlCommand.Arguments[i].Value, nValue, fValue, bFloat ))
+            OUString aName = arg.Name;
+            if ( impl_getValue( arg.Value, nValue, fValue, bFloat ))
             {
                 if ( aName == "Value" )
                 {
-                    aValue = bFloat ? OUString::number( fValue ) : OUString::number( nValue );
+                    aValue = bFloat ? OUString( OUString::number( fValue )) :
+                                      OUString( OUString::number( nValue ));
                     bFloatValue = bFloat;
                 }
                 else if ( aName == "Step" )
-                    aStep = bFloat ? OUString::number( fValue ) :
-                                     OUString::number( nValue );
+                    aStep = bFloat ? OUString( OUString::number( fValue )) :
+                                     OUString( OUString::number( nValue ));
                 else if ( aName == "LowerLimit" )
-                    aMin = bFloat ? OUString::number( fValue ) :
-                                    OUString::number( nValue );
+                    aMin = bFloat ? OUString( OUString::number( fValue )) :
+                                    OUString( OUString::number( nValue ));
                 else if ( aName == "UpperLimit" )
-                    aMax = bFloat ? OUString::number( fValue ) :
-                                    OUString::number( nValue );
+                    aMax = bFloat ? OUString( OUString::number( fValue )) :
+                                    OUString( OUString::number( nValue ));
             }
             else if ( aName == "OutputFormat" )
-                rControlCommand.Arguments[i].Value >>= m_aOutFormat;
+                arg.Value >>= m_aOutFormat;
         }
     }
     else if ( rControlCommand.Command == "SetLowerLimit" )
     {
-        for ( sal_Int32 i = 0; i < rControlCommand.Arguments.getLength(); i++ )
+        for ( auto const & arg : rControlCommand.Arguments )
         {
-            if ( rControlCommand.Arguments[i].Name == "LowerLimit" )
+            if ( arg.Name == "LowerLimit" )
             {
                 sal_Int32   nValue;
                 double      fValue;
                 bool        bFloat( false );
-                if ( impl_getValue( rControlCommand.Arguments[i].Value, nValue, fValue, bFloat ))
-                    aMin = bFloat ? OUString::number( fValue ) :
-                                    OUString::number( nValue );
+                if ( impl_getValue( arg.Value, nValue, fValue, bFloat ))
+                    aMin = bFloat ? OUString( OUString::number( fValue )) :
+                                    OUString( OUString::number( nValue ));
                 break;
             }
         }
     }
     else if ( rControlCommand.Command == "SetUpperLimit" )
     {
-        for ( sal_Int32 i = 0; i < rControlCommand.Arguments.getLength(); i++ )
+        for ( auto const & arg : rControlCommand.Arguments )
         {
-            if ( rControlCommand.Arguments[i].Name == "UpperLimit" )
+            if ( arg.Name == "UpperLimit" )
             {
                 sal_Int32   nValue;
                 double      fValue;
                 bool        bFloat( false );
-                if ( impl_getValue( rControlCommand.Arguments[i].Value, nValue, fValue, bFloat ))
-                    aMax = bFloat ? OUString::number( fValue ) :
-                                    OUString::number( nValue );
+                if ( impl_getValue( arg.Value, nValue, fValue, bFloat ))
+                    aMax = bFloat ? OUString( OUString::number( fValue )) :
+                                    OUString( OUString::number( nValue ));
                 break;
             }
         }
     }
     else if ( rControlCommand.Command == "SetOutputFormat" )
     {
-        for ( sal_Int32 i = 0; i < rControlCommand.Arguments.getLength(); i++ )
+        for ( auto const & arg : rControlCommand.Arguments )
         {
-            if ( rControlCommand.Arguments[i].Name == "OutputFormat" )
+            if ( arg.Name == "OutputFormat" )
             {
-                rControlCommand.Arguments[i].Value >>= m_aOutFormat;
+                arg.Value >>= m_aOutFormat;
                 break;
             }
         }
     }
 
+    Formatter& rFormatter = m_pSpinfieldControl->GetFormatter();
+
     // Check values and set members
+    if (bFloatValue)
+        rFormatter.SetDecimalDigits(2);
     if ( !aValue.isEmpty() )
     {
         m_bFloat = bFloatValue;
         m_nValue = aValue.toDouble();
-
-        OUString aOutString = impl_formatOutputString( m_nValue );
-        m_pSpinfieldControl->SetText( aOutString );
-        notifyTextChanged( aOutString );
+        rFormatter.SetValue(m_nValue);
     }
     if ( !aMax.isEmpty() )
     {
         m_nMax = aMax.toDouble();
-        m_bMaxSet = true;
+        rFormatter.SetMaxValue(m_nMax);
     }
     if ( !aMin.isEmpty() )
     {
         m_nMin = aMin.toDouble();
-        m_bMinSet = true;
+        rFormatter.SetMinValue(m_nMin);
     }
     if ( !aStep.isEmpty() )
+    {
         m_nStep = aStep.toDouble();
+        rFormatter.SetSpinSize(m_nStep);
+    }
 }
 
 bool SpinfieldToolbarController::impl_getValue(
@@ -443,7 +412,7 @@ bool SpinfieldToolbarController::impl_getValue(
     return bValueValid;
 }
 
-OUString SpinfieldToolbarController::impl_formatOutputString( double fValue )
+OUString SpinfieldToolbarController::FormatOutputString( double fValue )
 {
     if ( m_aOutFormat.isEmpty() )
     {
@@ -459,12 +428,11 @@ OUString SpinfieldToolbarController::impl_formatOutputString( double fValue )
 
         aBuffer[0] = 0;
         if ( m_bFloat )
-            _snwprintf( reinterpret_cast<wchar_t *>(aBuffer), 128, reinterpret_cast<const wchar_t *>(m_aOutFormat.getStr()), fValue );
+            _snwprintf( o3tl::toW(aBuffer), SAL_N_ELEMENTS(aBuffer), o3tl::toW(m_aOutFormat.getStr()), fValue );
         else
-            _snwprintf( reinterpret_cast<wchar_t *>(aBuffer), 128, reinterpret_cast<const wchar_t *>(m_aOutFormat.getStr()), sal_Int32( fValue ));
+            _snwprintf( o3tl::toW(aBuffer), SAL_N_ELEMENTS(aBuffer), o3tl::toW(m_aOutFormat.getStr()), sal_Int32( fValue ));
 
-        sal_Int32 nSize = rtl_ustr_getLength( aBuffer );
-        return OUString( aBuffer, nSize );
+        return aBuffer;
 #else
         // Currently we have no support for a format string using sal_Unicode. wchar_t
         // is 32 bit on Unix platform!

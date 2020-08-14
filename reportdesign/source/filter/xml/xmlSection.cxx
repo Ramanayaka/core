@@ -19,18 +19,13 @@
 #include "xmlSection.hxx"
 #include "xmlfilter.hxx"
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmluconv.hxx>
 #include "xmlHelper.hxx"
-#include "xmlEnums.hxx"
-#include "xmlColumn.hxx"
-#include "xmlCondPrtExpr.hxx"
-#include "xmlStyleImport.hxx"
-#include <connectivity/dbtools.hxx>
 #include <com/sun/star/report/ReportPrintOption.hpp>
-#include "xmlstrings.hrc"
 #include "xmlTable.hxx"
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 
 namespace rptxml
@@ -40,7 +35,7 @@ namespace rptxml
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::xml::sax;
 
-    sal_Int16 lcl_getReportPrintOption(const OUString& _sValue)
+    static sal_Int16 lcl_getReportPrintOption(const OUString& _sValue)
     {
         sal_Int16 nRet = report::ReportPrintOption::ALL_PAGES;
         const SvXMLEnumMapEntry<sal_Int16>* aXML_EnumMap = OXMLHelper::GetReportPrintOptions();
@@ -50,44 +45,35 @@ namespace rptxml
 
 
 OXMLSection::OXMLSection( ORptFilter& rImport,
-                sal_uInt16 nPrfx, const OUString& _sLocalName,
-                const uno::Reference< xml::sax::XAttributeList > & _xAttrList
+                const uno::Reference< xml::sax::XFastAttributeList > & _xAttrList
                 ,const uno::Reference< report::XSection >& _xSection
                 ,bool _bPageHeader)
-:SvXMLImportContext( rImport, nPrfx, _sLocalName )
+:SvXMLImportContext( rImport )
 ,m_xSection(_xSection)
 {
 
-    OSL_ENSURE(_xAttrList.is(),"Attribute list is NULL!");
-    const SvXMLNamespaceMap& rMap = rImport.GetNamespaceMap();
-    const SvXMLTokenMap& rTokenMap = rImport.GetSectionElemTokenMap();
-
-    const sal_Int16 nLength = (m_xSection.is() && _xAttrList.is()) ? _xAttrList->getLength() : 0;
+    if (!m_xSection.is())
+        return;
     static const OUString s_sTRUE = ::xmloff::token::GetXMLToken(XML_TRUE);
     try
     {
-        for(sal_Int16 i = 0; i < nLength; ++i)
+        for (auto &aIter : sax_fastparser::castToFastAttributeList( _xAttrList ))
         {
-            OUString sLocalName;
-            const OUString sAttrName = _xAttrList->getNameByIndex( i );
-            const sal_uInt16 nPrefix = rMap.GetKeyByAttrName( sAttrName,&sLocalName );
-            const OUString sValue = _xAttrList->getValueByIndex( i );
+            OUString sValue = aIter.toString();
 
-            switch( rTokenMap.Get( nPrefix, sLocalName ) )
+            switch( aIter.getToken() )
             {
-
-                case XML_TOK_PAGE_PRINT_OPTION:
+                case XML_ELEMENT(REPORT, XML_PAGE_PRINT_OPTION):
                     if ( _bPageHeader )
                         m_xSection->getReportDefinition()->setPageHeaderOption(lcl_getReportPrintOption(sValue));
                     else
                         m_xSection->getReportDefinition()->setPageFooterOption(lcl_getReportPrintOption(sValue));
                     break;
-                case XML_TOK_REPEAT_SECTION:
+                case XML_ELEMENT(REPORT, XML_REPEAT_SECTION):
                     m_xSection->setRepeatSection(sValue == s_sTRUE );
                     break;
-
                 default:
-                    OSL_FAIL("OXMLSection: Unknown attribute!");
+                    SAL_WARN("reportdesign", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << " = " << sValue);
             }
         }
     }
@@ -101,29 +87,23 @@ OXMLSection::~OXMLSection()
 {
 }
 
-
-SvXMLImportContext* OXMLSection::CreateChildContext(
-        sal_uInt16 _nPrefix,
-        const OUString& _rLocalName,
-        const uno::Reference< xml::sax::XAttributeList > & xAttrList )
+css::uno::Reference< css::xml::sax::XFastContextHandler > OXMLSection::createFastChildContext(
+        sal_Int32 nElement,
+        const Reference< XFastAttributeList > & xAttrList )
 {
-    SvXMLImportContext *pContext = nullptr;
+    css::uno::Reference< css::xml::sax::XFastContextHandler > xContext;
     ORptFilter& rImport = GetOwnImport();
-    const SvXMLTokenMap&    rTokenMap   = rImport.GetSectionElemTokenMap();
 
-    switch( rTokenMap.Get( _nPrefix, _rLocalName ) )
+    switch( nElement )
     {
-        case XML_TOK_TABLE:
-            pContext = new OXMLTable( rImport, _nPrefix, _rLocalName, xAttrList, m_xSection);
+        case XML_ELEMENT(TABLE, XML_TABLE):
+            xContext = new OXMLTable( rImport, xAttrList, m_xSection);
             break;
         default:
             break;
     }
 
-    if( !pContext )
-        pContext = new SvXMLImportContext( rImport, _nPrefix, _rLocalName );
-
-    return pContext;
+    return xContext;
 }
 
 ORptFilter& OXMLSection::GetOwnImport()

@@ -20,8 +20,8 @@
 #include <standard/vclxaccessiblefixedtext.hxx>
 
 #include <unotools/accessiblestatesethelper.hxx>
+#include <vcl/window.hxx>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <vcl/fixed.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -31,17 +31,6 @@ using namespace ::com::sun::star::accessibility;
 
 
 // VCLXAccessibleFixedText
-
-
-VCLXAccessibleFixedText::VCLXAccessibleFixedText( VCLXWindow* pVCLWindow )
-    :VCLXAccessibleTextComponent( pVCLWindow )
-{
-}
-
-
-VCLXAccessibleFixedText::~VCLXAccessibleFixedText()
-{
-}
 
 
 void VCLXAccessibleFixedText::FillAccessibleStateSet( utl::AccessibleStateSetHelper& rStateSet )
@@ -58,7 +47,7 @@ void VCLXAccessibleFixedText::FillAccessibleStateSet( utl::AccessibleStateSetHel
 
 OUString VCLXAccessibleFixedText::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleFixedText" );
+    return "com.sun.star.comp.toolkit.AccessibleFixedText";
 }
 
 

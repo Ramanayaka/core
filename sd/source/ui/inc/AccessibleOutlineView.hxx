@@ -34,7 +34,7 @@ namespace accessibility {
     wrapper around the AccessibleTextHelper class; as basically the
     Outline View is a big Outliner.
 */
-class AccessibleOutlineView
+class AccessibleOutlineView final
     : public AccessibleDocumentViewBase
 {
 public:
@@ -89,7 +89,7 @@ public:
     virtual void SAL_CALL
         propertyChange (const css::beans::PropertyChangeEvent& rEventObject) override;
 
-protected:
+private:
 
     // overridden to detect focus changes
     virtual void Activated() override;
@@ -107,13 +107,6 @@ protected:
     /// Create an accessible name that contains the current view mode.
     virtual OUString
         CreateAccessibleName () override;
-
-    /// Create an accessible description that contains the current
-    /// view mode.
-    virtual OUString
-        CreateAccessibleDescription () override;
-
-private:
 
     /// Invalidate text helper, updates visible children
     void UpdateChildren();

@@ -17,8 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
-
 #include "system.h"
 
 #include <osl/pipe.h>
@@ -28,20 +26,15 @@
 #include <osl/conditn.h>
 #include <osl/interlck.h>
 #include <osl/process.h>
-
 #include <rtl/alloc.h>
+#include <sal/log.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
+
+#include <cassert>
+#include <string.h>
 
 #define PIPESYSTEM      "\\\\.\\pipe\\"
 #define PIPEPREFIX      "OSL_PIPE_"
-
-typedef struct
-{
-    sal_uInt32           m_Size;
-    sal_uInt32           m_ReadPos;
-    sal_uInt32           m_WritePos;
-    BYTE                 m_Data[1];
-
-} oslPipeBuffer;
 
 struct oslPipeImpl
 {
@@ -57,7 +50,7 @@ struct oslPipeImpl
     bool                 m_bClosed;
 };
 
-oslPipe osl_createPipeImpl(void)
+static oslPipe osl_createPipeImpl(void)
 {
     oslPipe pPipe;
 
@@ -67,26 +60,26 @@ oslPipe osl_createPipeImpl(void)
     pPipe->m_Reference = 0;
     pPipe->m_Name = nullptr;
     pPipe->m_File = INVALID_HANDLE_VALUE;
-    pPipe->m_NamedObject = INVALID_HANDLE_VALUE;
+    pPipe->m_NamedObject = nullptr;
 
-    pPipe->m_ReadEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
-    pPipe->m_WriteEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
-    pPipe->m_AcceptEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+    pPipe->m_ReadEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    pPipe->m_WriteEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    pPipe->m_AcceptEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
 
     return pPipe;
 }
 
-void osl_destroyPipeImpl(oslPipe pPipe)
+static void osl_destroyPipeImpl(oslPipe pPipe)
 {
     if (pPipe)
     {
-        if (pPipe->m_NamedObject != INVALID_HANDLE_VALUE && pPipe->m_NamedObject)
+        if (pPipe->m_NamedObject)
             CloseHandle(pPipe->m_NamedObject);
 
         if (pPipe->m_Security)
         {
-            rtl_freeMemory(pPipe->m_Security->lpSecurityDescriptor);
-            rtl_freeMemory(pPipe->m_Security);
+            free(pPipe->m_Security->lpSecurityDescriptor);
+            free(pPipe->m_Security);
         }
 
         CloseHandle(pPipe->m_ReadEvent);
@@ -96,7 +89,7 @@ void osl_destroyPipeImpl(oslPipe pPipe)
         if (pPipe->m_Name)
             rtl_uString_release(pPipe->m_Name);
 
-        rtl_freeMemory(pPipe);
+        free(pPipe);
     }
 }
 
@@ -108,7 +101,7 @@ oslPipe SAL_CALL osl_createPipe(rtl_uString *strPipeName, oslPipeOptions Options
     rtl_uString* temp = nullptr;
     oslPipe pPipe;
 
-    PSECURITY_ATTRIBUTES  pSecAttr = nullptr;
+    PSECURITY_ATTRIBUTES pSecAttr = nullptr;
 
     rtl_uString_newFromAscii(&path, PIPESYSTEM);
     rtl_uString_newFromAscii(&name, PIPEPREFIX);
@@ -133,13 +126,15 @@ oslPipe SAL_CALL osl_createPipe(rtl_uString *strPipeName, oslPipeOptions Options
         {
             PSECURITY_DESCRIPTOR pSecDesc;
 
-            pSecDesc = static_cast< PSECURITY_DESCRIPTOR >(rtl_allocateMemory(SECURITY_DESCRIPTOR_MIN_LENGTH));
+            pSecDesc = static_cast< PSECURITY_DESCRIPTOR >(malloc(SECURITY_DESCRIPTOR_MIN_LENGTH));
+            assert(pSecDesc); // Don't handle OOM conditions
 
             /* add a NULL disc. ACL to the security descriptor */
             OSL_VERIFY(InitializeSecurityDescriptor(pSecDesc, SECURITY_DESCRIPTOR_REVISION));
             OSL_VERIFY(SetSecurityDescriptorDacl(pSecDesc, TRUE, nullptr, FALSE));
 
-            pSecAttr = static_cast< PSECURITY_ATTRIBUTES >(rtl_allocateMemory(sizeof(SECURITY_ATTRIBUTES)));
+            pSecAttr = static_cast< PSECURITY_ATTRIBUTES >(malloc(sizeof(SECURITY_ATTRIBUTES)));
+            assert(pSecAttr); // Don't handle OOM conditions
             pSecAttr->nLength = sizeof(SECURITY_ATTRIBUTES);
             pSecAttr->lpSecurityDescriptor = pSecDesc;
             pSecAttr->bInheritHandle = TRUE;
@@ -150,7 +145,10 @@ oslPipe SAL_CALL osl_createPipe(rtl_uString *strPipeName, oslPipeOptions Options
     rtl_uString_newConcat(&name, temp, strPipeName);
 
     /* alloc memory */
-    pPipe= osl_createPipeImpl();
+    pPipe = osl_createPipeImpl();
+
+    assert(pPipe);  // if osl_createPipeImpl() cannot init. a new pipe, this is a failure
+
     osl_atomic_increment(&(pPipe->m_Reference));
 
     /* build system pipe name */
@@ -161,11 +159,11 @@ oslPipe SAL_CALL osl_createPipe(rtl_uString *strPipeName, oslPipeOptions Options
 
     if (Options & osl_Pipe_CREATE)
     {
-        SetLastError( ERROR_SUCCESS );
+        SetLastError(ERROR_SUCCESS);
 
-        pPipe->m_NamedObject = CreateMutexW(nullptr, FALSE, SAL_W(name->buffer));
+        pPipe->m_NamedObject = CreateMutexW(nullptr, FALSE, o3tl::toW(name->buffer));
 
-        if (pPipe->m_NamedObject != INVALID_HANDLE_VALUE && pPipe->m_NamedObject)
+        if (pPipe->m_NamedObject)
         {
             if (GetLastError() != ERROR_ALREADY_EXISTS)
             {
@@ -174,7 +172,7 @@ oslPipe SAL_CALL osl_createPipe(rtl_uString *strPipeName, oslPipeOptions Options
 
                 /* try to open system pipe */
                 pPipe->m_File = CreateNamedPipeW(
-                    SAL_W(path->buffer),
+                    o3tl::toW(path->buffer),
                     PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
                     PIPE_WAIT | PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE,
                     PIPE_UNLIMITED_INSTANCES,
@@ -193,24 +191,24 @@ oslPipe SAL_CALL osl_createPipe(rtl_uString *strPipeName, oslPipeOptions Options
             else
             {
                 CloseHandle(pPipe->m_NamedObject);
-                pPipe->m_NamedObject = INVALID_HANDLE_VALUE;
+                pPipe->m_NamedObject = nullptr;
             }
         }
     }
     else
     {
-        BOOL    fPipeAvailable;
+        bool bPipeAvailable;
 
         do
         {
             /* free instance should be available first */
-            fPipeAvailable = WaitNamedPipeW(SAL_W(path->buffer), NMPWAIT_WAIT_FOREVER);
+            bPipeAvailable = WaitNamedPipeW(o3tl::toW(path->buffer), NMPWAIT_WAIT_FOREVER);
 
             /* first try to open system pipe */
-            if (fPipeAvailable)
+            if (bPipeAvailable)
             {
                 pPipe->m_File = CreateFileW(
-                    SAL_W(path->buffer),
+                    o3tl::toW(path->buffer),
                     GENERIC_READ|GENERIC_WRITE,
                     FILE_SHARE_READ | FILE_SHARE_WRITE,
                     nullptr,
@@ -224,6 +222,14 @@ oslPipe SAL_CALL osl_createPipe(rtl_uString *strPipeName, oslPipeOptions Options
                     rtl_uString_release(name);
                     rtl_uString_release(path);
 
+                    // We should try to transfer our privilege to become foreground process
+                    // to the other process, so that it may show popups (otherwise, they might
+                    // be blocked by SPI_GETFOREGROUNDLOCKTIMEOUT setting -
+                    // see SystemParametersInfo function at MSDN
+                    ULONG ServerProcessId = 0;
+                    if (GetNamedPipeServerProcessId(pPipe->m_File, &ServerProcessId))
+                        AllowSetForegroundWindow(ServerProcessId);
+
                     return pPipe;
                 }
                 else
@@ -231,7 +237,7 @@ oslPipe SAL_CALL osl_createPipe(rtl_uString *strPipeName, oslPipeOptions Options
                     // Pipe instance maybe caught by another client -> try again
                 }
             }
-        } while ( fPipeAvailable );
+        } while (bPipeAvailable);
     }
 
     /* if we reach here something went wrong */
@@ -277,16 +283,18 @@ oslPipe SAL_CALL osl_acceptPipe(oslPipe pPipe)
 {
     oslPipe pAcceptedPipe = nullptr;
 
-    OVERLAPPED os;
+    OVERLAPPED os = {};
 
     DWORD nBytesTransfered;
     rtl_uString* path = nullptr;
     rtl_uString* temp = nullptr;
 
-    OSL_ASSERT(pPipe);
-    OSL_ASSERT(pPipe->m_File != INVALID_HANDLE_VALUE);
+    SAL_WARN_IF(!pPipe, "sal.osl.pipe", "osl_acceptPipe: invalid pipe");
+    if (!pPipe)
+        return nullptr;
 
-    memset(&os, 0, sizeof(OVERLAPPED));
+    SAL_WARN_IF(pPipe->m_File == INVALID_HANDLE_VALUE, "sal.osl.pipe", "osl_acceptPipe: invalid handle");
+
     os.hEvent = pPipe->m_AcceptEvent;
     ResetEvent(pPipe->m_AcceptEvent);
 
@@ -325,7 +333,7 @@ oslPipe SAL_CALL osl_acceptPipe(oslPipe pPipe)
     }
 
     pAcceptedPipe = osl_createPipeImpl();
-    OSL_ASSERT(pAcceptedPipe);
+    assert(pAcceptedPipe);  // should never be the case that an oslPipe cannot be initialized
 
     osl_atomic_increment(&(pAcceptedPipe->m_Reference));
     rtl_uString_assign(&pAcceptedPipe->m_Name, pPipe->m_Name);
@@ -337,7 +345,7 @@ oslPipe SAL_CALL osl_acceptPipe(oslPipe pPipe)
 
     // prepare for next accept
     pPipe->m_File =
-        CreateNamedPipeW(SAL_W(path->buffer),
+        CreateNamedPipeW(o3tl::toW(path->buffer),
             PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
             PIPE_WAIT | PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE,
             PIPE_UNLIMITED_INSTANCES,
@@ -354,11 +362,10 @@ sal_Int32 SAL_CALL osl_receivePipe(oslPipe pPipe,
                         sal_Int32 BytesToRead)
 {
     DWORD nBytes;
-    OVERLAPPED os;
+    OVERLAPPED os = {};
 
-    OSL_ASSERT(pPipe);
+    assert(pPipe);
 
-    memset(&os, 0, sizeof(OVERLAPPED));
     os.hEvent = pPipe->m_ReadEvent;
 
     ResetEvent(pPipe->m_ReadEvent);
@@ -370,15 +377,17 @@ sal_Int32 SAL_CALL osl_receivePipe(oslPipe pPipe,
         DWORD lastError = GetLastError();
 
         if (lastError == ERROR_MORE_DATA)
+        {
             nBytes = BytesToRead;
-          else
-          {
-              if (lastError == ERROR_PIPE_NOT_CONNECTED)
+        }
+        else
+        {
+            if (lastError == ERROR_PIPE_NOT_CONNECTED)
                 nBytes = 0;
             else
-                nBytes = (DWORD) -1;
+                nBytes = DWORD(-1);
 
-             pPipe->m_Error = osl_Pipe_E_ConnectionAbort;
+            pPipe->m_Error = osl_Pipe_E_ConnectionAbort;
         }
     }
 
@@ -390,24 +399,23 @@ sal_Int32 SAL_CALL osl_sendPipe(oslPipe pPipe,
                        sal_Int32 BytesToSend)
 {
     DWORD nBytes;
-    OVERLAPPED os;
+    OVERLAPPED os = {};
 
-    OSL_ASSERT(pPipe);
+    assert(pPipe);
 
-    memset(&os, 0, sizeof(OVERLAPPED));
     os.hEvent = pPipe->m_WriteEvent;
     ResetEvent(pPipe->m_WriteEvent);
 
     if (!WriteFile(pPipe->m_File, pBuffer, BytesToSend, &nBytes, &os) &&
         ((GetLastError() != ERROR_IO_PENDING) ||
-          ! GetOverlappedResult(pPipe->m_File, &os, &nBytes, TRUE)))
+          !GetOverlappedResult(pPipe->m_File, &os, &nBytes, TRUE)))
     {
-          if (GetLastError() == ERROR_PIPE_NOT_CONNECTED)
+        if (GetLastError() == ERROR_PIPE_NOT_CONNECTED)
             nBytes = 0;
         else
-            nBytes = (DWORD) -1;
+            nBytes = DWORD(-1);
 
-         pPipe->m_Error = osl_Pipe_E_ConnectionAbort;
+        pPipe->m_Error = osl_Pipe_E_ConnectionAbort;
     }
 
     return nBytes;
@@ -419,7 +427,7 @@ sal_Int32 SAL_CALL osl_writePipe(oslPipe pPipe, const void *pBuffer , sal_Int32 
     sal_Int32 BytesSend = 0;
     sal_Int32 BytesToSend = n;
 
-    OSL_ASSERT(pPipe);
+    SAL_WARN_IF(!pPipe, "sal.osl.pipe", "osl_writePipe: invalid pipe");
     while (BytesToSend > 0)
     {
         sal_Int32 RetVal;
@@ -432,7 +440,7 @@ sal_Int32 SAL_CALL osl_writePipe(oslPipe pPipe, const void *pBuffer , sal_Int32 
 
         BytesToSend -= RetVal;
         BytesSend += RetVal;
-        pBuffer= static_cast< sal_Char const* >(pBuffer) + RetVal;
+        pBuffer= static_cast< char const* >(pBuffer) + RetVal;
     }
 
     return BytesSend;
@@ -444,7 +452,7 @@ sal_Int32 SAL_CALL osl_readPipe(oslPipe pPipe, void *pBuffer, sal_Int32 n)
     sal_Int32 BytesRead = 0;
     sal_Int32 BytesToRead = n;
 
-    OSL_ASSERT(pPipe);
+    SAL_WARN_IF(!pPipe, "sal.osl.pipe", "osl_readPipe: invalid pipe");
     while (BytesToRead > 0)
     {
         sal_Int32 RetVal;
@@ -456,7 +464,7 @@ sal_Int32 SAL_CALL osl_readPipe(oslPipe pPipe, void *pBuffer, sal_Int32 n)
 
         BytesToRead -= RetVal;
         BytesRead += RetVal;
-        pBuffer= static_cast< sal_Char* >(pBuffer) + RetVal;
+        pBuffer= static_cast< char* >(pBuffer) + RetVal;
     }
     return BytesRead;
 }

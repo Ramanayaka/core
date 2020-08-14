@@ -20,11 +20,10 @@
 #include <com/sun/star/xml/sax/InputSource.hpp>
 #include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
+#include <osl/diagnose.h>
 
-#include <comphelper/processfactory.hxx>
 #include "typedetectionimport.hxx"
-#include "xmlfiltersettingsdialog.hxx"
+#include "xmlfiltercommon.hxx"
 
 using namespace com::sun::star::lang;
 using namespace com::sun::star::uno;
@@ -42,7 +41,8 @@ TypeDetectionImporter::~TypeDetectionImporter()
 {
 }
 
-void TypeDetectionImporter::doImport( const Reference< XComponentContext >& rxContext, const Reference< XInputStream >& xIS, XMLFilterVector& rFilters )
+void TypeDetectionImporter::doImport( const Reference< XComponentContext >& rxContext, const Reference< XInputStream >& xIS,
+                                      std::vector< std::unique_ptr<filter_info_impl> >& rFilters )
 {
     try
     {
@@ -66,23 +66,19 @@ void TypeDetectionImporter::doImport( const Reference< XComponentContext >& rxCo
     }
 }
 
-void TypeDetectionImporter::fillFilterVector(  XMLFilterVector& rFilters )
+void TypeDetectionImporter::fillFilterVector(  std::vector< std::unique_ptr<filter_info_impl> >& rFilters )
 {
     // create filter infos from imported filter nodes
-    NodeVector::iterator aIter = maFilterNodes.begin();
-    while( aIter != maFilterNodes.end() )
+    for (auto const& filterNode : maFilterNodes)
     {
-        filter_info_impl* pFilter = createFilterForNode( (*aIter) );
+        std::unique_ptr<filter_info_impl> pFilter = createFilterForNode(filterNode.get());
         if( pFilter )
-            rFilters.push_back( pFilter );
-
-        delete (*aIter++);
+            rFilters.push_back( std::move(pFilter) );
     }
+    maFilterNodes.clear();
 
     // now delete type nodes
-    aIter = maTypeNodes.begin();
-    while( aIter != maTypeNodes.end() )
-        delete (*aIter++);
+    maTypeNodes.clear();
 }
 
 static OUString getSubdata( int index, sal_Unicode delimiter, const OUString& rData )
@@ -118,19 +114,17 @@ static OUString getSubdata( int index, sal_Unicode delimiter, const OUString& rD
 
 Node* TypeDetectionImporter::findTypeNode( const OUString& rType )
 {
-    // now delete type nodes
-    for (NodeVector::const_iterator aIter(maTypeNodes.begin()), aEnd(maTypeNodes.end()); aIter != aEnd; ++aIter)
-    {
-        if( (*aIter)->maName == rType )
-            return (*aIter);
-    }
+    auto aIter = std::find_if(maTypeNodes.begin(), maTypeNodes.end(),
+        [&rType](const std::unique_ptr<Node>& rxNode) { return rxNode->maName == rType; });
+    if (aIter != maTypeNodes.end())
+        return aIter->get();
 
     return nullptr;
 }
 
-filter_info_impl* TypeDetectionImporter::createFilterForNode( Node * pNode )
+std::unique_ptr<filter_info_impl> TypeDetectionImporter::createFilterForNode( Node * pNode )
 {
-    filter_info_impl* pFilter = new filter_info_impl;
+    std::unique_ptr<filter_info_impl> pFilter(new filter_info_impl);
 
     pFilter->maFilterName = pNode->maName;
     pFilter->maInterfaceName = pNode->maPropertyMap["UIName"];
@@ -198,10 +192,7 @@ filter_info_impl* TypeDetectionImporter::createFilterForNode( Node * pNode )
         bOk = false;
 
     if( !bOk )
-    {
-        delete pFilter;
-        pFilter = nullptr;
-    }
+        return nullptr;
 
     return pFilter;
 }
@@ -272,38 +263,38 @@ void SAL_CALL TypeDetectionImporter::startElement( const OUString& aName, const 
 }
 void SAL_CALL TypeDetectionImporter::endElement( const OUString& /* aName */ )
 {
-    if( !maStack.empty()  )
+    if( maStack.empty()  )
+        return;
+
+    ImportState eCurrentState = maStack.top();
+    switch( eCurrentState )
     {
-        ImportState eCurrentState = maStack.top();
-        switch( eCurrentState )
+    case e_Filter:
+    case e_Type:
         {
-        case e_Filter:
-        case e_Type:
+            std::unique_ptr<Node> pNode(new Node);
+            pNode->maName = maNodeName;
+            pNode->maPropertyMap = maPropertyMap;
+            maPropertyMap.clear();
+
+            if( eCurrentState == e_Filter )
             {
-                Node* pNode = new Node;
-                pNode->maName = maNodeName;
-                pNode->maPropertyMap = maPropertyMap;
-                maPropertyMap.clear();
-
-                if( eCurrentState == e_Filter )
-                {
-                    maFilterNodes.push_back( pNode );
-                }
-                else
-                {
-                    maTypeNodes.push_back( pNode );
-                }
+                maFilterNodes.push_back( std::move(pNode) );
             }
-            break;
-
-        case e_Property:
-            maPropertyMap[ maPropertyName ] = maValue;
-            break;
-        default: break;
+            else
+            {
+                maTypeNodes.push_back( std::move(pNode) );
+            }
         }
+        break;
 
-        maStack.pop();
+    case e_Property:
+        maPropertyMap[ maPropertyName ] = maValue;
+        break;
+    default: break;
     }
+
+    maStack.pop();
 }
 void SAL_CALL TypeDetectionImporter::characters( const OUString& aChars )
 {

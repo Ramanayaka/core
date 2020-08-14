@@ -18,29 +18,32 @@
  */
 
 #include "txtpaint.hxx"
-#include "swrect.hxx"
-#include "rootfrm.hxx"
+#include <txtfrm.hxx>
+#include <swrect.hxx>
+#include <rootfrm.hxx>
 
 SwSaveClip::~SwSaveClip()
 {
     // We recover the old state
-    if( pOut && bChg )
+    if( !(pOut && bChg) )
+        return;
+
+    if ( pOut->GetConnectMetaFile() )
+        pOut->Pop();
+    else
     {
-        if ( pOut->GetConnectMetaFile() )
-            pOut->Pop();
+        if( bOn )
+            pOut->SetClipRegion( aClip );
         else
-        {
-            if( bOn )
-                pOut->SetClipRegion( aClip );
-            else
-                pOut->SetClipRegion();
-        }
-        bChg = false;
+            pOut->SetClipRegion();
     }
+    bChg = false;
 }
 
 void SwSaveClip::ChgClip_( const SwRect &rRect, const SwTextFrame* pFrame,
-                           bool bEnlargeRect )
+                           bool bEnlargeRect,
+                           sal_Int32 nEnlargeTop,
+                           sal_Int32 nEnlargeBottom )
 {
     SwRect aOldRect( rRect );
     const bool bVertical = pFrame && pFrame->IsVertical();
@@ -75,7 +78,14 @@ void SwSaveClip::ChgClip_( const SwRect &rRect, const SwTextFrame* pFrame,
         // (see frmform.cxx) because for some fonts it could be too small.
         // Consequently, we have to enlarge the clipping rectangle as well.
         if ( bEnlargeRect && ! bVertical )
-            aRect.Bottom() += 40;
+            aRect.AdjustBottom(40 );
+
+        // enlarge clip for paragraph margins at small fixed line height
+        if ( nEnlargeTop > 0 )
+            aRect.AdjustTop( -nEnlargeTop );
+
+        if ( nEnlargeBottom > 0 )
+            aRect.AdjustBottom( nEnlargeBottom );
 
         // If the ClipRect is identical, nothing will happen
         if( pOut->IsClipRegion() ) // no && because of Mac
@@ -94,14 +104,6 @@ void SwSaveClip::ChgClip_( const SwRect &rRect, const SwTextFrame* pFrame,
             const vcl::Region aClipRegion( aRect );
             pOut->SetClipRegion( aClipRegion );
         }
-#ifdef DBG_UTIL
-        static bool bDbg = false;
-        if( bDbg )
-        {
-            DbgBackColor aDbg( pOut, bDbg );
-            pOut->DrawRect( aRect );
-        }
-#endif
     }
     bChg = true;
 

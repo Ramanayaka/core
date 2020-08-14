@@ -32,10 +32,10 @@ class OOo2OasisTransformer :
         public css::document::XImporter,
         public css::document::XFilter
 {
-    OUString m_aImplName;
-    OUString m_aSubServiceName;
+    OUString const m_aImplName;
+    OUString const m_aSubServiceName;
 
-    XMLTransformerActions       *m_aActions[MAX_OOO_ACTIONS];
+    std::unique_ptr<XMLTransformerActions> m_aActions[MAX_OOO_ACTIONS];
     XMLTransformerOOoEventMap_Impl *m_pEventMap;
 protected:
 
@@ -47,13 +47,13 @@ protected:
     virtual XMLTransformerActions *GetUserDefinedActions( sal_uInt16 n ) override;
 
 public:
-    OOo2OasisTransformer( const sal_Char *pImplName=nullptr,
-                          const sal_Char *pSubServiceName=nullptr ) throw();
+    OOo2OasisTransformer( OUString const & rImplName,
+                          OUString const & rSubServiceName ) throw();
     virtual ~OOo2OasisTransformer() throw() override;
 
     // XInterface
 
-    // (XInterface methods need to be implemented to disambigouate
+    // (XInterface methods need to be implemented to disambiguate
     // between those inherited through XMLTransformerBase and
     // the new interfaces).
 
@@ -79,6 +79,7 @@ public:
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
 
     // XUnoTunnel
+    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId() throw();
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
 
     // XImporter
@@ -90,7 +91,7 @@ public:
 
     /// @throws css::uno::Exception
     /// @throws css::uno::RuntimeException
-    void SAL_CALL Initialize( const css::uno::Sequence< css::uno::Any >& aArguments );
+    void Initialize( const css::uno::Sequence< css::uno::Any >& aArguments );
 
     // css::xml::sax::XDocumentHandler
     virtual void SAL_CALL startDocument() override;

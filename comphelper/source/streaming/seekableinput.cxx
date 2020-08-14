@@ -25,7 +25,6 @@
 #include <com/sun/star/io/XOutputStream.hpp>
 
 
-#include <comphelper/processfactory.hxx>
 #include <comphelper/seekableinput.hxx>
 
 using namespace ::com::sun::star;
@@ -36,7 +35,7 @@ namespace comphelper
 const sal_Int32 nConstBufferSize = 32000;
 
 
-void copyInputToOutput_Impl( const uno::Reference< io::XInputStream >& xIn,
+static void copyInputToOutput_Impl( const uno::Reference< io::XInputStream >& xIn,
                             const uno::Reference< io::XOutputStream >& xOut )
 {
     sal_Int32 nRead;
@@ -82,10 +81,7 @@ uno::Reference< io::XInputStream > OSeekableInputWrapper::CheckSeekableCanWrap(
     if ( xSeek.is() )
         return xInStream;
 
-    uno::Reference< io::XInputStream > xNewStream(
-            static_cast< io::XInputStream* >(
-                new OSeekableInputWrapper( xInStream, rxContext ) ) );
-    return xNewStream;
+    return new OSeekableInputWrapper(xInStream, rxContext);
 }
 
 

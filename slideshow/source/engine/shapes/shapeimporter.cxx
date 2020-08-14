@@ -17,12 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/cvtgrf.hxx>
-#include <tools/urlobj.hxx>
-#include <tools/stream.hxx>
-#include <svtools/grfmgr.hxx>
-#include <unotools/ucbstreamhelper.hxx>
-#include <unotools/streamwrap.hxx>
+#include <vcl/GraphicObject.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <cppcanvas/basegfxfactory.hxx>
@@ -30,33 +25,29 @@
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/drawing/ColorMode.hpp>
 #include <com/sun/star/text/GraphicCrop.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/drawing/PointSequenceSequence.hpp>
 #include <com/sun/star/drawing/PointSequence.hpp>
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/drawing/XLayerSupplier.hpp>
 #include <com/sun/star/drawing/XLayerManager.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 
-#include "drawshapesubsetting.hxx"
 #include "drawshape.hxx"
 #include "backgroundshape.hxx"
 #include "mediashape.hxx"
 #include "appletshape.hxx"
-#include "shapeimporter.hxx"
-#include "slideshowexceptions.hxx"
-#include "gdimtftools.hxx"
-#include "tools.hxx"
-#include "slideshowcontext.hxx"
+#include <shapeimporter.hxx>
+#include <slideshowexceptions.hxx>
+#include <tools.hxx>
+#include <slideshowcontext.hxx>
+#include <unoviewcontainer.hxx>
 
 #include <memory>
 
 using namespace com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 namespace {
 
@@ -64,78 +55,19 @@ std::unique_ptr<GraphicObject> importShapeGraphic(uno::Reference<beans::XPropert
 {
     std::unique_ptr<GraphicObject> xRet;
 
-    OUString aURL;
-    if( !getPropertyValue( aURL, xPropSet, "GraphicURL") ||
-        aURL.isEmpty() )
+    uno::Reference<graphic::XGraphic> xGraphic;
+    if (!getPropertyValue(xGraphic, xPropSet, "Graphic") || !xGraphic.is())
     {
         // no or empty property - cannot import shape graphic
         return xRet;
     }
 
-    OUString const aVndUrl(
-        "vnd.sun.star.GraphicObject:"  );
-    sal_Int32 nIndex( aURL.indexOf( aVndUrl ) );
+    Graphic aGraphic(xGraphic);
+    xRet.reset(new GraphicObject(aGraphic));
 
-    if(nIndex != -1)
+    if (GraphicType::Default == xRet->GetType() || GraphicType::NONE == xRet->GetType())
     {
-        // skip past the end of the "vnd..." prefix
-        nIndex += aVndUrl.getLength();
-
-        if(nIndex >= aURL.getLength())
-        {
-            OSL_FAIL( "ShapeImporter::importShape(): "
-                        "embedded graphic has no graphic ID" );
-            return nullptr;
-        }
-
-        // unique ID string found in URL, extract
-        // to separate string
-        OUString const aUniqueId(
-            aURL.copy( nIndex, aURL.getLength() - nIndex ) );
-
-        // TODO(T2): Creating a GraphicObject is not
-        // thread safe (internally calls VCL, and has
-        // unguarded internal singleton mpGlobalMgr)
-
-        // fetch already loaded graphic from graphic manager.
-        OString const aOldString(OUStringToOString(aUniqueId,
-            RTL_TEXTENCODING_UTF8));
-        xRet.reset(new GraphicObject(aOldString));
-
-
-        if (GraphicType::Default == xRet->GetType()
-            || GraphicType::NONE == xRet->GetType())
-        {
-            // even the GrfMgr does not seem to know this graphic
-            return nullptr;
-        }
-    }
-    else
-    {
-        // no special string found, graphic must be
-        // external. Load via GraphicIm porter
-        INetURLObject aTmp( aURL );
-        std::unique_ptr<SvStream> pGraphicStream(
-            utl::UcbStreamHelper::CreateStream(
-                aTmp.GetMainURL( INetURLObject::DecodeMechanism::NONE ),
-                StreamMode::READ ) );
-        if( !pGraphicStream )
-        {
-            OSL_FAIL( "ShapeImporter::importShape(): "
-                        "cannot create input stream for graphic" );
-            return nullptr;
-        }
-
-        Graphic aTmpGraphic;
-        if( GraphicConverter::Import(
-                *pGraphicStream, aTmpGraphic ) != ERRCODE_NONE )
-        {
-            OSL_FAIL( "ShapeImporter::importShape(): "
-                        "Failed to import shape graphic from given URL" );
-            return nullptr;
-        }
-
-        xRet.reset(new GraphicObject(aTmpGraphic));
+        xRet.reset();
     }
     return xRet;
 }
@@ -231,8 +163,8 @@ bool ShapeOfGroup::isContentChanged() const
 basegfx::B2DRectangle ShapeOfGroup::getBounds() const
 {
     basegfx::B2DRectangle const groupPosSize( mpGroupShape->getBounds() );
-    double const posX = (groupPosSize.getMinX() + maPosOffset.getX());
-    double const posY = (groupPosSize.getMinY() + maPosOffset.getY());
+    double const posX = groupPosSize.getMinX() + maPosOffset.getX();
+    double const posY = groupPosSize.getMinY() + maPosOffset.getY();
     return basegfx::B2DRectangle( posX, posY, posX + mnWidth, posY + mnHeight );
 }
 
@@ -356,7 +288,7 @@ ShapeSharedPtr ShapeImporter::createShape(
         getPropertyValue( nRotation, xPropSet, "RotateAngle" );
 
         GraphicAttr aGraphAttrs;
-        aGraphAttrs.SetDrawMode( (GraphicDrawMode)eColorMode );
+        aGraphAttrs.SetDrawMode( static_cast<GraphicDrawMode>(eColorMode) );
         aGraphAttrs.SetLuminance( nLuminance );
         aGraphAttrs.SetContrast( nContrast );
         aGraphAttrs.SetChannelR( nRed );
@@ -420,9 +352,7 @@ bool ShapeImporter::isSkip(
     if(xLayer.is())
     {
         OUString layerName;
-        uno::Reference<beans::XPropertySet> xPropLayerSet(
-                                                          xLayer, uno::UNO_QUERY );
-        const uno::Any& a(xPropLayerSet->getPropertyValue("Name") );
+        const uno::Any& a(xLayer->getPropertyValue("Name") );
         bool const bRet = (a >>= layerName);
         if(bRet)
         {
@@ -458,15 +388,14 @@ void ShapeImporter::importPolygons(uno::Reference<beans::XPropertySet> const& xP
     getPropertyValue( nLineColor, xPropSet, "LineColor" );
     getPropertyValue( fLineWidth, xPropSet, "LineWidth" );
 
-    drawing::PointSequence* pOuterSequence = aRetval.getArray();
-    awt::Point* pInnerSequence = pOuterSequence->getArray();
+    const drawing::PointSequence* pOuterSequence = aRetval.getArray();
 
     ::basegfx::B2DPolygon aPoly;
     basegfx::B2DPoint aPoint;
-    for( sal_Int32 nCurrPoly=0; nCurrPoly<pOuterSequence->getLength(); ++nCurrPoly, ++pInnerSequence )
+    for( const awt::Point& rPoint : *pOuterSequence )
     {
-        aPoint.setX((*pInnerSequence).X);
-        aPoint.setY((*pInnerSequence).Y);
+        aPoint.setX(rPoint.X);
+        aPoint.setY(rPoint.Y);
         aPoly.append( aPoint );
     }
     for( const auto& pView : mrContext.mrViewContainer )
@@ -535,7 +464,7 @@ ShapeSharedPtr ShapeImporter::importShape() // throw (ShapeLoadFailedException)
 
                 uno::Reference< drawing::XLayerManager > xLayerManager(xNameAccess, uno::UNO_QUERY);
 
-                   xDrawnInSlideshow = xLayerManager->getLayerForShape(xCurrShape);
+                xDrawnInSlideshow = xLayerManager->getLayerForShape(xCurrShape);
             }
 
             OUString const shapeType( xCurrShape->getShapeType());
@@ -547,10 +476,10 @@ ShapeSharedPtr ShapeImporter::importShape() // throw (ShapeLoadFailedException)
 
                 if( rTop.mpGroupShape ) // in group particle mode?
                 {
-                    pRet.reset( new ShapeOfGroup(
+                    pRet = std::make_shared<ShapeOfGroup>(
                                     rTop.mpGroupShape /* container shape */,
                                     xCurrShape, xPropSet,
-                                    mnAscendingPrio ) );
+                                    mnAscendingPrio );
                 }
                 else
                 {
@@ -566,6 +495,7 @@ ShapeSharedPtr ShapeImporter::importShape() // throw (ShapeLoadFailedException)
         }
         if( bIsGroupShape && pRet )
         {
+            pRet->setIsForeground(false);
             // push new group on the stack: group traversal
             maShapesStack.push( XShapesEntry( pRet ) );
         }
@@ -579,7 +509,7 @@ bool ShapeImporter::isImportDone() const
     return maShapesStack.empty();
 }
 
-const PolyPolygonVector& ShapeImporter::getPolygons()
+const PolyPolygonVector& ShapeImporter::getPolygons() const
 {
     return maPolygons;
 }
@@ -603,7 +533,6 @@ ShapeImporter::ShapeImporter( uno::Reference<drawing::XDrawPage> const&         
     maShapesStack.push( XShapesEntry(xShapes) );
 }
 
-} // namespace internal
 } // namespace presentation
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

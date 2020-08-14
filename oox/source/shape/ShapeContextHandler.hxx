@@ -23,16 +23,13 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/xml/sax/XFastShapeContextHandler.hpp>
-#include "oox/drawingml/graphicshapecontext.hxx"
-#include "oox/drawingml/shape.hxx"
-#include "oox/drawingml/theme.hxx"
-#include "oox/core/fragmenthandler2.hxx"
-#include "oox/core/xmlfilterbase.hxx"
-#include "ShapeFilterBase.hxx"
+#include <oox/drawingml/graphicshapecontext.hxx>
+#include <oox/core/fragmenthandler2.hxx>
+#include <oox/core/xmlfilterbase.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
 
-namespace oox { namespace shape {
+namespace oox::shape {
 
 class ShapeFragmentHandler : public core::FragmentHandler2
 {
@@ -123,8 +120,8 @@ public:
     virtual void SAL_CALL setMediaDescriptor(const css::uno::Sequence<css::beans::PropertyValue>& rMediaDescriptor) override;
 
 private:
-    ShapeContextHandler(ShapeContextHandler &) = delete;
-    void operator =(ShapeContextHandler &) = delete;
+    ShapeContextHandler(ShapeContextHandler const &) = delete;
+    void operator =(ShapeContextHandler const &) = delete;
 
     ::sal_uInt32 mnStartToken;
     css::awt::Point maPosition;
@@ -160,7 +157,7 @@ private:
     css::uno::Reference<XFastContextHandler> getContextHandler(sal_Int32 nElement = 0);
 };
 
-}}
+}
 
 #endif // INCLUDED_OOX_SOURCE_SHAPE_SHAPECONTEXTHANDLER_HXX
 

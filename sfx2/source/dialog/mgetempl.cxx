@@ -18,82 +18,79 @@
  */
 
 #include <comphelper/string.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/field.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <svl/eitem.hxx>
 #include <svl/intitem.hxx>
 #include <svl/style.hxx>
+#include <osl/diagnose.h>
 
 #include <sfx2/styfitem.hxx>
 #include <sfx2/styledlg.hxx>
 #include <sfx2/tabdlg.hxx>
 #include <sfx2/app.hxx>
-#include <sfx2/mgetempl.hxx>
 #include <sfx2/objsh.hxx>
-#include "sfxtypes.hxx"
 #include <sfx2/sfxresid.hxx>
 #include <sfx2/module.hxx>
+#include <sfx2/sfxsids.hrc>
 
-#include <sfx2/templdlg.hxx>
-#include "templdgi.hxx"
-#include <sfx2/sfx.hrc>
-#include "dialog.hrc"
+#include <sfx2/strings.hrc>
 
-#include <svl/style.hrc>
 #include <svl/stritem.hxx>
 #include <sfx2/dispatch.hxx>
+
+#include "mgetempl.hxx"
 
 /*  SfxManageStyleSheetPage Constructor
  *
  *  initializes the list box with the templates
  */
-SfxManageStyleSheetPage::SfxManageStyleSheetPage(vcl::Window* pParent, const SfxItemSet& rAttrSet)
-    : SfxTabPage(pParent, "ManageStylePage", "sfx/ui/managestylepage.ui", &rAttrSet)
-    , pStyle(&static_cast<SfxStyleDialog*>(GetParentDialog())->GetStyleSheet())
+SfxManageStyleSheetPage::SfxManageStyleSheetPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rAttrSet)
+    : SfxTabPage(pPage, pController, "sfx/ui/managestylepage.ui", "ManageStylePage", &rAttrSet)
+    , pStyle(&static_cast<SfxStyleDialogController*>(pController)->GetStyleSheet())
     , pItem(nullptr)
     , bModified(false)
     , aName(pStyle->GetName())
     , aFollow(pStyle->GetFollow())
     , aParent(pStyle->GetParent())
     , nFlags(pStyle->GetMask())
+    , m_xName(m_xBuilder->weld_entry("name"))
+    , m_xAutoCB(m_xBuilder->weld_check_button("autoupdate"))
+    , m_xFollowFt(m_xBuilder->weld_label("nextstyleft"))
+    , m_xFollowLb(m_xBuilder->weld_combo_box("nextstyle"))
+    , m_xEditStyleBtn(m_xBuilder->weld_button("editstyle"))
+    , m_xBaseFt(m_xBuilder->weld_label("linkedwithft"))
+    , m_xBaseLb(m_xBuilder->weld_combo_box("linkedwith"))
+    , m_xEditLinkStyleBtn(m_xBuilder->weld_button("editlinkstyle"))
+    , m_xFilterFt(m_xBuilder->weld_label("categoryft"))
+    , m_xFilterLb(m_xBuilder->weld_combo_box("category"))
+    , m_xDescFt(m_xBuilder->weld_label("desc"))
+    , m_xNameFt(m_xBuilder->weld_label("nameft"))
 {
-    get(m_pNameRo, "namero");
-    get(m_pNameRw, "namerw");
-    m_pNameRo->set_width_request(m_pNameRw->get_preferred_size().Width());
-    get(m_pAutoCB, "autoupdate");
-    get(m_pFollowFt, "nextstyleft");
-    get(m_pFollowLb, "nextstyle");
-    m_pFollowLb->SetStyle(m_pFollowLb->GetStyle() | WB_SORT);
-    const sal_Int32 nMaxWidth(62);
-    m_pFollowLb->setMaxWidthChars(nMaxWidth);
-    get(m_pEditStyleBtn, "editstyle");
-    get(m_pBaseFt, "linkedwithft");
-    get(m_pBaseLb, "linkedwith");
-    get(m_pEditLinkStyleBtn, "editlinkstyle");
-    m_pBaseLb->SetStyle(m_pBaseLb->GetStyle() | WB_SORT);
-    m_pBaseLb->setMaxWidthChars(nMaxWidth);
-    get(m_pFilterFt, "categoryft");
-    get(m_pFilterLb, "category");
+    m_xFollowLb->make_sorted();
+    // tdf#120188 like SwCharURLPage limit the width of the style combos
+    const int nMaxWidth(m_xFollowLb->get_approximate_digit_width() * 50);
+    m_xFollowLb->set_size_request(nMaxWidth , -1);
+    m_xBaseLb->make_sorted();
+    m_xBaseLb->set_size_request(nMaxWidth , -1);
     //note that the code depends on categories not being lexically
-    //sorted, so if its changed to sorted, the code needs to
+    //sorted, so if it's changed to sorted, the code needs to
     //be adapted to be position unaware
-    m_pFilterLb->setMaxWidthChars(nMaxWidth);
-    get(m_pDescFt, "desc");
+    m_xFilterLb->set_size_request(nMaxWidth , -1);
 
     // this Page needs ExchangeSupport
     SetExchangeSupport();
 
-    if ( aFollow == aName )
-        m_pEditStyleBtn->Disable();
+    if ( aFollow.isEmpty() || aFollow == aName )
+        m_xEditStyleBtn->set_sensitive(false);
     else
-        m_pEditStyleBtn->Enable();
+        m_xEditStyleBtn->set_sensitive(true);
 
-    sal_Int32 linkSelectPos = m_pBaseLb->GetSelectEntryPos();
+    int linkSelectPos = m_xBaseLb->get_active();
     if ( linkSelectPos == 0 )
-        m_pEditLinkStyleBtn->Disable();
+        m_xEditLinkStyleBtn->set_sensitive(false);
     else
-        m_pEditLinkStyleBtn->Enable();
+        m_xEditLinkStyleBtn->set_sensitive(true);
 
     pFamilies = SfxApplication::GetModule_Impl()->CreateStyleFamilies();
 
@@ -106,73 +103,80 @@ SfxManageStyleSheetPage::SfxManageStyleSheetPage(vcl::Window* pParent, const Sfx
 
     if ( pPool )
     {
-        pPool->SetSearchMask( pStyle->GetFamily() );
-        pPool->First();     // for SW - update internal list
+        pPool->First(pStyle->GetFamily()); // for SW - update internal list
     }
 
     if ( pStyle->GetName().isEmpty() && pPool )
     {
         // NullString as Name -> generate Name
-        OUString aNoName(SfxStyleDialog::GenerateUnusedName(*pPool));
+        OUString aNoName(SfxStyleDialogController::GenerateUnusedName(*pPool, pStyle->GetFamily()));
         pStyle->SetName( aNoName );
         aName = aNoName;
         aFollow = pStyle->GetFollow();
         aParent = pStyle->GetParent();
     }
-    m_pNameRw->SetText(pStyle->GetName());
+    m_xName->set_text(pStyle->GetName());
 
     // Set the field read-only if it is NOT an user-defined style
     // but allow selecting and copying
-    if (!pStyle->IsUserDefined())
+    if (pStyle->IsUserDefined())
     {
-        m_pNameRo->SetText(m_pNameRw->GetText());
-        m_pNameRw->Hide();
-        m_pNameRo->Show();
-        FixedText *pLabel = get<FixedText>("nameft");
-        pLabel->set_mnemonic_widget(m_pNameRo);
+        m_xName->set_can_focus(true);
+        m_xName->set_editable(true);
     }
 
     if ( pStyle->HasFollowSupport() && pPool )
     {
-        SfxStyleSheetBase* pPoolStyle = pPool->First();
+        SfxStyleSheetBase* pPoolStyle = pPool->First(pStyle->GetFamily());
+
+        m_xFollowLb->freeze();
 
         while ( pPoolStyle )
         {
-            m_pFollowLb->InsertEntry( pPoolStyle->GetName() );
+            m_xFollowLb->append_text(pPoolStyle->GetName());
             pPoolStyle = pPool->Next();
         }
 
         // A new Template is not yet in the Pool
-        if ( LISTBOX_ENTRY_NOTFOUND == m_pFollowLb->GetEntryPos( pStyle->GetName() ) )
-            m_pFollowLb->InsertEntry( pStyle->GetName() );
+        if (m_xFollowLb->find_text(pStyle->GetName()) == -1)
+            m_xFollowLb->append_text(pStyle->GetName());
+
+        m_xFollowLb->thaw();
     }
     else
     {
-        m_pFollowFt->Hide();
-        m_pFollowLb->Hide();
+        m_xFollowFt->set_sensitive(false);
+        m_xFollowFt->hide();
+        m_xFollowLb->set_sensitive(false);
+        m_xFollowLb->hide();
+        m_xEditStyleBtn->hide();
     }
 
     if ( pStyle->HasParentSupport() && pPool )
     {
+        m_xBaseLb->freeze();
+
         if ( pStyle->HasClearParentSupport() )
             // the base template can be set to NULL
-            m_pBaseLb->InsertEntry( SfxResId(STR_NONE) );
+            m_xBaseLb->append_text(SfxResId(STR_NONE));
 
-        SfxStyleSheetBase* pPoolStyle = pPool->First();
+        SfxStyleSheetBase* pPoolStyle = pPool->First(pStyle->GetFamily());
 
         while ( pPoolStyle )
         {
             const OUString aStr( pPoolStyle->GetName() );
             // own name as base template
             if ( aStr != aName )
-                m_pBaseLb->InsertEntry( aStr );
+                m_xBaseLb->append_text(aStr);
             pPoolStyle = pPool->Next();
         }
+
+        m_xBaseLb->thaw();
     }
     else
     {
-        m_pBaseFt->Disable();
-        m_pBaseLb->Disable();
+        m_xBaseFt->set_sensitive(false);
+        m_xBaseLb->set_sensitive(false);
     }
 
     size_t nCount = pFamilies->size();
@@ -192,23 +196,22 @@ SfxManageStyleSheetPage::SfxManageStyleSheetPage(vcl::Window* pParent, const Sfx
         const SfxStyleFilter& rList = pItem->GetFilterList();
         nCount = rList.size();
         sal_uInt16 nIdx = 0;
-        sal_uInt16 nMask = pStyle->GetMask() & ~SFXSTYLEBIT_USERDEF;
+        SfxStyleSearchBits nMask = pStyle->GetMask() & ~SfxStyleSearchBits::UserDefined;
 
-        if ( !nMask )   // User Template?
+        if ( nMask == SfxStyleSearchBits::Auto )   // User Template?
             nMask = pStyle->GetMask();
 
         for ( i = 0; i < nCount; ++i )
         {
-            const SfxFilterTupel& rTupel = rList[ i ];
+            const SfxFilterTuple& rTupel = rList[ i ];
 
-            if ( rTupel.nFlags != SFXSTYLEBIT_AUTO     &&
-                 rTupel.nFlags != SFXSTYLEBIT_USED     &&
-                 rTupel.nFlags != SFXSTYLEBIT_ALL_VISIBLE &&
-                 rTupel.nFlags != SFXSTYLEBIT_ALL )
+            if ( rTupel.nFlags != SfxStyleSearchBits::Auto     &&
+                 rTupel.nFlags != SfxStyleSearchBits::Used     &&
+                 rTupel.nFlags != SfxStyleSearchBits::AllVisible &&
+                 rTupel.nFlags != SfxStyleSearchBits::All )
             {
-                m_pFilterLb->InsertEntry( rTupel.aName, nIdx );
-                m_pFilterLb->SetEntryData(nIdx, reinterpret_cast<void*>(i));
-
+                OUString sId(OUString::number(i));
+                m_xFilterLb->insert(nIdx, rTupel.aName, &sId, nullptr, nullptr);
                 if ( ( rTupel.nFlags & nMask ) == nMask )
                     nStyleFilterIdx = nIdx;
                 ++nIdx;
@@ -216,65 +219,43 @@ SfxManageStyleSheetPage::SfxManageStyleSheetPage(vcl::Window* pParent, const Sfx
         }
 
         if ( nStyleFilterIdx != 0xFFFF )
-            m_pFilterLb->SelectEntryPos( nStyleFilterIdx );
+            m_xFilterLb->set_active(nStyleFilterIdx);
     }
 
-    if ( !m_pFilterLb->GetEntryCount() || !pStyle->IsUserDefined() )
+    if ( !m_xFilterLb->get_count() || !pStyle->IsUserDefined() )
     {
         pItem = nullptr;
-        m_pFilterFt->Disable();
-        m_pFilterLb->Disable();
+        m_xFilterFt->set_sensitive(false);
+        m_xFilterLb->set_sensitive(false);
     }
     else
-        m_pFilterLb->SaveValue();
+        m_xFilterLb->save_value();
     SetDescriptionText_Impl();
 
-    if ( m_pFollowLb->IsEnabled() || m_pBaseLb->IsEnabled() )
+    if (m_xFollowLb->get_sensitive() || m_xBaseLb->get_sensitive())
     {
-        m_pNameRw->SetGetFocusHdl(
+        m_xName->connect_focus_in(
             LINK( this, SfxManageStyleSheetPage, GetFocusHdl ) );
-        m_pNameRw->SetLoseFocusHdl(
+        m_xName->connect_focus_out(
             LINK( this, SfxManageStyleSheetPage, LoseFocusHdl ) );
     }
     // It is a style with auto update? (SW only)
     if(SfxItemState::SET == rAttrSet.GetItemState(SID_ATTR_AUTO_STYLE_UPDATE))
-        m_pAutoCB->Show();
-    m_pFollowLb->SetSelectHdl( LINK( this, SfxManageStyleSheetPage, EditStyleSelectHdl_Impl ) );
-    m_pBaseLb->SetSelectHdl( LINK( this, SfxManageStyleSheetPage, EditLinkStyleSelectHdl_Impl ) );
-    m_pEditStyleBtn->SetClickHdl( LINK( this, SfxManageStyleSheetPage, EditStyleHdl_Impl ) );
-    m_pEditLinkStyleBtn->SetClickHdl( LINK( this, SfxManageStyleSheetPage, EditLinkStyleHdl_Impl ) );
+        m_xAutoCB->show();
+    m_xFollowLb->connect_changed(LINK(this, SfxManageStyleSheetPage, EditStyleSelectHdl_Impl));
+    m_xBaseLb->connect_changed(LINK(this, SfxManageStyleSheetPage, EditLinkStyleSelectHdl_Impl));
+    m_xEditStyleBtn->connect_clicked(LINK(this, SfxManageStyleSheetPage, EditStyleHdl_Impl));
+    m_xEditLinkStyleBtn->connect_clicked(LINK(this, SfxManageStyleSheetPage, EditLinkStyleHdl_Impl));
 }
-
 
 SfxManageStyleSheetPage::~SfxManageStyleSheetPage()
 {
-    disposeOnce();
-}
-
-void SfxManageStyleSheetPage::dispose()
-{
-    m_pNameRw->SetGetFocusHdl( Link<Control&,void>() );
-    m_pNameRw->SetLoseFocusHdl( Link<Control&,void>() );
-    delete pFamilies;
+    pFamilies.reset();
     pItem = nullptr;
     pStyle = nullptr;
-    m_pNameRo.clear();
-    m_pNameRw.clear();
-    m_pAutoCB.clear();
-    m_pFollowFt.clear();
-    m_pFollowLb.clear();
-    m_pEditStyleBtn.clear();
-    m_pBaseFt.clear();
-    m_pBaseLb.clear();
-    m_pEditLinkStyleBtn.clear();
-    m_pFilterFt.clear();
-    m_pFilterLb.clear();
-    m_pDescFt.clear();
-    SfxTabPage::dispose();
 }
 
-
-void SfxManageStyleSheetPage::UpdateName_Impl( ListBox* pBox,
+void SfxManageStyleSheetPage::UpdateName_Impl( weld::ComboBox* pBox,
                                                const OUString& rNew )
 
 /*  [Description]
@@ -288,18 +269,19 @@ void SfxManageStyleSheetPage::UpdateName_Impl( ListBox* pBox,
 */
 
 {
-    if ( pBox->IsEnabled() )
+    if (pBox->get_sensitive())
     {
         // it is the current entry, which name was modified
-        const bool bSelect = pBox->GetSelectEntry() == aBuf;
-        pBox->RemoveEntry( aBuf );
-        pBox->InsertEntry( rNew );
+        const bool bSelect = pBox->get_active_text() == aBuf;
+        int nOldIndex = pBox->find_text(aBuf);
+        if (nOldIndex != -1)
+            pBox->remove(nOldIndex);
+        pBox->append_text(rNew);
 
-        if ( bSelect )
-            pBox->SelectEntry( rNew );
+        if (bSelect)
+            pBox->set_active_text(rNew);
     }
 }
-
 
 void SfxManageStyleSheetPage::SetDescriptionText_Impl()
 
@@ -310,99 +292,87 @@ void SfxManageStyleSheetPage::SetDescriptionText_Impl()
 
 {
     MapUnit eUnit = MapUnit::MapCM;
-    FieldUnit eFieldUnit( FUNIT_CM );
+    FieldUnit eFieldUnit( FieldUnit::CM );
     SfxModule* pModule = SfxModule::GetActiveModule();
     if ( pModule )
     {
         const SfxPoolItem* pPoolItem = pModule->GetItem( SID_ATTR_METRIC );
         if ( pPoolItem )
-            eFieldUnit = (FieldUnit) static_cast<const SfxUInt16Item*>( pPoolItem )->GetValue();
+            eFieldUnit = static_cast<FieldUnit>(static_cast<const SfxUInt16Item*>( pPoolItem )->GetValue());
     }
 
     switch ( eFieldUnit )
     {
-        case FUNIT_MM:      eUnit = MapUnit::MapMM; break;
-        case FUNIT_CM:
-        case FUNIT_M:
-        case FUNIT_KM:      eUnit = MapUnit::MapCM; break;
-        case FUNIT_POINT:
-        case FUNIT_PICA:    eUnit = MapUnit::MapPoint; break;
-        case FUNIT_INCH:
-        case FUNIT_FOOT:
-        case FUNIT_MILE:    eUnit = MapUnit::MapInch; break;
+        case FieldUnit::MM:      eUnit = MapUnit::MapMM; break;
+        case FieldUnit::CM:
+        case FieldUnit::M:
+        case FieldUnit::KM:      eUnit = MapUnit::MapCM; break;
+        case FieldUnit::POINT:
+        case FieldUnit::PICA:    eUnit = MapUnit::MapPoint; break;
+        case FieldUnit::INCH:
+        case FieldUnit::FOOT:
+        case FieldUnit::MILE:    eUnit = MapUnit::MapInch; break;
 
         default:
             OSL_FAIL( "non supported field unit" );
     }
-    m_pDescFt->SetText( pStyle->GetDescription( eUnit ) );
+    m_xDescFt->set_label(pStyle->GetDescription(eUnit));
 }
 
-IMPL_LINK_NOARG( SfxManageStyleSheetPage, EditStyleSelectHdl_Impl, ListBox&, void )
+IMPL_LINK_NOARG(SfxManageStyleSheetPage, EditStyleSelectHdl_Impl, weld::ComboBox&, void)
 {
-    OUString aTemplName(m_pFollowLb->GetSelectEntry());
-    OUString aEditTemplName(m_pNameRo->GetText());
-    if (!( aTemplName == aEditTemplName))
-        m_pEditStyleBtn->Enable();
-    else
-        m_pEditStyleBtn->Disable();
+    OUString aTemplName(m_xFollowLb->get_active_text());
+    OUString aEditTemplName(m_xName->get_text());
+    m_xEditStyleBtn->set_sensitive(aTemplName != aEditTemplName);
 }
 
-IMPL_LINK_NOARG( SfxManageStyleSheetPage, EditStyleHdl_Impl, Button*, void )
+IMPL_LINK_NOARG(SfxManageStyleSheetPage, EditStyleHdl_Impl, weld::Button&, void)
 {
-    OUString aTemplName(m_pFollowLb->GetSelectEntry());
-    if (Execute_Impl( SID_STYLE_EDIT, aTemplName, OUString(),(sal_uInt16)pStyle->GetFamily() ))
-    {
-    }
+    OUString aTemplName(m_xFollowLb->get_active_text());
+    Execute_Impl(SID_STYLE_EDIT, aTemplName, static_cast<sal_uInt16>(pStyle->GetFamily()));
 }
 
-IMPL_LINK_NOARG( SfxManageStyleSheetPage, EditLinkStyleSelectHdl_Impl, ListBox&, void )
+IMPL_LINK_NOARG(SfxManageStyleSheetPage, EditLinkStyleSelectHdl_Impl, weld::ComboBox&, void)
 {
-    sal_Int32 linkSelectPos = m_pBaseLb->GetSelectEntryPos();
+    int linkSelectPos = m_xBaseLb->get_active();
     if ( linkSelectPos == 0 )
-        m_pEditLinkStyleBtn->Disable();
+        m_xEditLinkStyleBtn->set_sensitive(false);
     else
-        m_pEditLinkStyleBtn->Enable();
+        m_xEditLinkStyleBtn->set_sensitive(true);
 }
 
-IMPL_LINK_NOARG( SfxManageStyleSheetPage, EditLinkStyleHdl_Impl, Button*, void )
+IMPL_LINK_NOARG(SfxManageStyleSheetPage, EditLinkStyleHdl_Impl, weld::Button&, void)
 {
-    OUString aTemplName(m_pBaseLb->GetSelectEntry());
+    OUString aTemplName(m_xBaseLb->get_active_text());
     if (aTemplName != SfxResId(STR_NONE))
-        Execute_Impl( SID_STYLE_EDIT, aTemplName, OUString(),(sal_uInt16)pStyle->GetFamily() );
+        Execute_Impl( SID_STYLE_EDIT, aTemplName, static_cast<sal_uInt16>(pStyle->GetFamily()) );
 }
 
 // Internal: Perform functions through the Dispatcher
 bool SfxManageStyleSheetPage::Execute_Impl(
-    sal_uInt16 nId, const OUString &rStr, const OUString& rRefStr, sal_uInt16 nFamily,
-    sal_uInt16 nMask)
+    sal_uInt16 nId, const OUString &rStr, sal_uInt16 nFamily)
 {
 
     SfxDispatcher &rDispatcher = *SfxGetpApp()->GetDispatcher_Impl();
     SfxStringItem aItem(nId, rStr);
     SfxUInt16Item aFamily(SID_STYLE_FAMILY, nFamily);
-    SfxUInt16Item aMask( SID_STYLE_MASK, nMask );
-    SfxStringItem aRefName( SID_STYLE_REFERENCE, rRefStr );
     const SfxPoolItem* pItems[ 6 ];
     sal_uInt16 nCount = 0;
     if( !rStr.isEmpty() )
         pItems[ nCount++ ] = &aItem;
     pItems[ nCount++ ] = &aFamily;
-    if( nMask )
-        pItems[ nCount++ ] = &aMask;
-    if ( !rRefStr.isEmpty() )
-        pItems[ nCount++ ] = &aRefName;
 
     pItems[ nCount++ ] = nullptr;
 
     const SfxPoolItem* pItem = rDispatcher.Execute(
-        nId, SfxCallMode::SYNCHRON | SfxCallMode::RECORD | SfxCallMode::MODAL,
+        nId, SfxCallMode::SYNCHRON | SfxCallMode::RECORD,
         pItems );
 
     return pItem != nullptr;
 
 }
 
-IMPL_LINK( SfxManageStyleSheetPage, GetFocusHdl, Control&, rControl, void )
+IMPL_LINK(SfxManageStyleSheetPage, GetFocusHdl, weld::Widget&, rControl, void)
 
 /*  [Description]
 
@@ -410,11 +380,11 @@ IMPL_LINK( SfxManageStyleSheetPage, GetFocusHdl, Control&, rControl, void )
 */
 
 {
-    Edit* pEdit = static_cast<Edit*>(&rControl);
-    aBuf = comphelper::string::stripStart(pEdit->GetText(), ' ');
+    weld::Entry& rEdit = dynamic_cast<weld::Entry&>(rControl);
+    aBuf = comphelper::string::stripStart(rEdit.get_text(), ' ');
 }
 
-IMPL_LINK( SfxManageStyleSheetPage, LoseFocusHdl, Control&, rControl, void )
+IMPL_LINK(SfxManageStyleSheetPage, LoseFocusHdl, weld::Widget&, rControl, void)
 
 /*  [Description]
 
@@ -424,12 +394,12 @@ IMPL_LINK( SfxManageStyleSheetPage, LoseFocusHdl, Control&, rControl, void )
 */
 
 {
-    Edit* pEdit = static_cast<Edit*>(&rControl);
-    const OUString aStr(comphelper::string::stripStart(pEdit->GetText(), ' '));
-    pEdit->SetText( aStr );
+    weld::Entry& rEdit = dynamic_cast<weld::Entry&>(rControl);
+    const OUString aStr(comphelper::string::stripStart(rEdit.get_text(), ' '));
+    rEdit.set_text(aStr);
     // Update the Listbox of the base template if possible
     if ( aStr != aBuf )
-        UpdateName_Impl(m_pFollowLb, aStr);
+        UpdateName_Impl(m_xFollowLb.get(), aStr);
 }
 
 bool SfxManageStyleSheetPage::FillItemSet( SfxItemSet* rSet )
@@ -454,24 +424,23 @@ bool SfxManageStyleSheetPage::FillItemSet( SfxItemSet* rSet )
 */
 
 {
-    const sal_Int32 nFilterIdx = m_pFilterLb->GetSelectEntryPos();
+    const int nFilterIdx = m_xFilterLb->get_active();
 
     // Set Filter
 
-    if ( LISTBOX_ENTRY_NOTFOUND  != nFilterIdx      &&
-         m_pFilterLb->IsValueChangedFromSaved()    &&
-         m_pFilterLb->IsEnabled() )
+    if ( nFilterIdx != -1 &&
+         m_xFilterLb->get_value_changed_from_saved() &&
+         m_xFilterLb->get_sensitive() )
     {
         bModified = true;
         OSL_ENSURE( pItem, "No Item" );
         // is only possibly for user templates
-        sal_uInt16 nMask = pItem->GetFilterList()[ reinterpret_cast<size_t>(m_pFilterLb->GetEntryData( nFilterIdx )) ].nFlags | SFXSTYLEBIT_USERDEF;
+        SfxStyleSearchBits nMask = pItem->GetFilterList()[m_xFilterLb->get_id(nFilterIdx).toUInt32()].nFlags | SfxStyleSearchBits::UserDefined;
         pStyle->SetMask( nMask );
     }
-    if(m_pAutoCB->IsVisible() &&
-       m_pAutoCB->IsValueChangedFromSaved())
+    if (m_xAutoCB->get_visible() && m_xAutoCB->get_state_changed_from_saved())
     {
-        rSet->Put(SfxBoolItem(SID_ATTR_AUTO_STYLE_UPDATE, m_pAutoCB->IsChecked()));
+        rSet->Put(SfxBoolItem(SID_ATTR_AUTO_STYLE_UPDATE, m_xAutoCB->get_active()));
     }
 
     return bModified;
@@ -499,10 +468,11 @@ void SfxManageStyleSheetPage::Reset( const SfxItemSet* /*rAttrSet*/ )
 
     if ( sCmp != aName )
         pStyle->SetName( aName );
-    m_pNameRw->SetText( aName );
-    m_pNameRw->SetSelection( Selection( SELECTION_MIN, SELECTION_MAX ) );
+    m_xName->set_text( aName );
+    if (m_xName->get_editable())
+        m_xName->select_region(0, -1);
 
-    if ( m_pFollowLb->IsEnabled() )
+    if ( m_xFollowLb->get_sensitive() )
     {
         sCmp = pStyle->GetFollow();
 
@@ -510,12 +480,15 @@ void SfxManageStyleSheetPage::Reset( const SfxItemSet* /*rAttrSet*/ )
             pStyle->SetFollow( aFollow );
 
         if ( aFollow.isEmpty() )
-            m_pFollowLb->SelectEntry( aName );
+        {
+            m_xFollowLb->set_active_text( aName );
+            m_xEditStyleBtn->set_sensitive( false );
+        }
         else
-            m_pFollowLb->SelectEntry( aFollow );
+            m_xFollowLb->set_active_text( aFollow );
     }
 
-    if ( m_pBaseLb->IsEnabled() )
+    if (m_xBaseLb->get_sensitive())
     {
         sCmp = pStyle->GetParent();
 
@@ -523,35 +496,38 @@ void SfxManageStyleSheetPage::Reset( const SfxItemSet* /*rAttrSet*/ )
             pStyle->SetParent( aParent );
 
         if ( aParent.isEmpty() )
-            m_pBaseLb->SelectEntry( SfxResId(STR_NONE) );
+        {
+            m_xBaseLb->set_active_text( SfxResId(STR_NONE) );
+            m_xEditLinkStyleBtn->set_sensitive( false );
+        }
         else
-            m_pBaseLb->SelectEntry( aParent );
+            m_xBaseLb->set_active_text( aParent );
 
-        if ( SfxResId(STR_STANDARD).equals(aName) )
+        if ( SfxResId(STR_STANDARD) == aName )
         {
             // the default template can not be linked
-            m_pBaseFt->Disable();
-            m_pBaseLb->Disable();
+            m_xBaseFt->set_sensitive(false);
+            m_xBaseLb->set_sensitive(false);
         }
     }
+    else
+        m_xEditLinkStyleBtn->set_sensitive( false );
 
-    if ( m_pFilterLb->IsEnabled() )
+    if (m_xFilterLb->get_sensitive())
     {
-        sal_uInt16 nCmp = pStyle->GetMask();
+        SfxStyleSearchBits nCmp = pStyle->GetMask();
 
         if ( nCmp != nFlags )
             pStyle->SetMask( nFlags );
-        m_pFilterLb->SelectEntryPos( m_pFilterLb->GetSavedValue() );
+        m_xFilterLb->set_active_text(m_xFilterLb->get_saved_value());
     }
 }
 
-
-VclPtr<SfxTabPage> SfxManageStyleSheetPage::Create( vcl::Window* pParent,
+std::unique_ptr<SfxTabPage> SfxManageStyleSheetPage::Create( weld::Container* pPage, weld::DialogController* pController,
                                                     const SfxItemSet *rAttrSet )
 {
-    return VclPtr<SfxManageStyleSheetPage>::Create( pParent, *rAttrSet );
+    return std::make_unique<SfxManageStyleSheetPage>(pPage, pController, *rAttrSet);
 }
-
 
 void SfxManageStyleSheetPage::ActivatePage( const SfxItemSet& rSet)
 
@@ -578,10 +554,10 @@ void SfxManageStyleSheetPage::ActivatePage( const SfxItemSet& rSet)
 
     if ( SfxItemState::SET ==
          rSet.GetItemState( SID_ATTR_AUTO_STYLE_UPDATE, false, &pPoolItem ) )
-        m_pAutoCB->Check( static_cast<const SfxBoolItem*>(pPoolItem)->GetValue() );
-    m_pAutoCB->SaveValue();
+        m_xAutoCB->set_active(static_cast<const SfxBoolItem*>(pPoolItem)->GetValue());
+    m_xAutoCB->save_state();
+    m_xName->save_value();
 }
-
 
 DeactivateRC SfxManageStyleSheetPage::DeactivatePage( SfxItemSet* pItemSet )
 
@@ -602,54 +578,60 @@ DeactivateRC SfxManageStyleSheetPage::DeactivatePage( SfxItemSet* pItemSet )
 {
     DeactivateRC nRet = DeactivateRC::LeavePage;
 
-    if ( m_pNameRw->IsModified() )
+    if (m_xName->get_value_changed_from_saved())
     {
-        // By pressing <Enter> LoseFocus() is not trigged through StarView
-        if ( m_pNameRw->HasFocus() )
-            LoseFocusHdl( *m_pNameRw );
+        // By pressing <Enter> LoseFocus() is not triggered through StarView
+        if (m_xName->has_focus())
+            LoseFocusHdl( *m_xName );
 
-        if (!pStyle->SetName(comphelper::string::stripStart(m_pNameRw->GetText(), ' ')))
+        if (!pStyle->SetName(comphelper::string::stripStart(m_xName->get_text(), ' ')))
         {
-            ScopedVclPtrInstance< MessageDialog > aBox(this, SfxResId( STR_TABPAGE_INVALIDNAME ), VclMessageType::Info);
-            aBox->Execute();
-            m_pNameRw->GrabFocus();
-            m_pNameRw->SetSelection( Selection( SELECTION_MIN, SELECTION_MAX ) );
+            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(GetFrameWeld(),
+                                                                     VclMessageType::Info, VclButtonsType::Ok,
+                                                                     SfxResId(STR_TABPAGE_INVALIDNAME)));
+            xBox->run();
+            m_xName->grab_focus();
+            m_xName->select_region(0, -1);
             return DeactivateRC::KeepPage;
         }
         bModified = true;
     }
 
-    if ( pStyle->HasFollowSupport() && m_pFollowLb->IsEnabled() )
+    if (pStyle->HasFollowSupport() && m_xFollowLb->get_sensitive())
     {
-        const OUString aFollowEntry( m_pFollowLb->GetSelectEntry() );
+        const OUString aFollowEntry( m_xFollowLb->get_active_text() );
 
         if ( pStyle->GetFollow() != aFollowEntry )
         {
             if ( !pStyle->SetFollow( aFollowEntry ) )
             {
-                ScopedVclPtrInstance< MessageDialog > aBox(this, SfxResId( STR_TABPAGE_INVALIDSTYLE ), VclMessageType::Info);
-                aBox->Execute();
-                m_pFollowLb->GrabFocus();
+                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(GetFrameWeld(),
+                                                                         VclMessageType::Info, VclButtonsType::Ok,
+                                                                         SfxResId(STR_TABPAGE_INVALIDSTYLE)));
+                xBox->run();
+                m_xFollowLb->grab_focus();
                 return DeactivateRC::KeepPage;
             }
             bModified = true;
         }
     }
 
-    if ( m_pBaseLb->IsEnabled() )
+    if (m_xBaseLb->get_sensitive())
     {
-        OUString aParentEntry( m_pBaseLb->GetSelectEntry() );
+        OUString aParentEntry( m_xBaseLb->get_active_text() );
 
-        if ( SfxResId(STR_NONE).equals(aParentEntry) || aParentEntry == pStyle->GetName() )
+        if ( SfxResId(STR_NONE) == aParentEntry || aParentEntry == pStyle->GetName() )
             aParentEntry.clear();
 
         if ( pStyle->GetParent() != aParentEntry )
         {
             if ( !pStyle->SetParent( aParentEntry ) )
             {
-                ScopedVclPtrInstance< MessageDialog > aBox(this, SfxResId( STR_TABPAGE_INVALIDPARENT ), VclMessageType::Info);
-                aBox->Execute();
-                m_pBaseLb->GrabFocus();
+                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(GetFrameWeld(),
+                                                                         VclMessageType::Info, VclButtonsType::Ok,
+                                                                         SfxResId(STR_TABPAGE_INVALIDPARENT)));
+                xBox->run();
+                m_xBaseLb->grab_focus();
                 return DeactivateRC::KeepPage;
             }
             bModified = true;

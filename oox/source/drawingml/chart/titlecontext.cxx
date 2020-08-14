@@ -17,24 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/titlecontext.hxx"
+#include <drawingml/chart/titlecontext.hxx>
 
-#include "drawingml/shapepropertiescontext.hxx"
-#include "drawingml/textbodycontext.hxx"
-#include "drawingml/chart/datasourcecontext.hxx"
-#include "drawingml/chart/titlemodel.hxx"
+#include <drawingml/shapepropertiescontext.hxx>
+#include <drawingml/textbodycontext.hxx>
+#include <drawingml/chart/datasourcecontext.hxx>
+#include <drawingml/chart/titlemodel.hxx>
 #include <oox/core/xmlfilterbase.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
-#include "rtl/ustrbuf.hxx"
 #include <osl/diagnose.h>
 
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 using ::oox::core::ContextHandler2Helper;
 using ::oox::core::ContextHandlerRef;
@@ -72,9 +69,7 @@ void TextContext::onCharacters( const OUString& rChars )
     if( isCurrentElement( C_TOKEN( v ) ) )
     {
         // Static text is stored as a single string formula token for Excel document.
-        OUStringBuffer aBuf;
-        aBuf.append('"').append(rChars).append('"');
-        mrModel.mxDataSeq.create().maFormula = aBuf.makeStringAndClear();
+        mrModel.mxDataSeq.create().maFormula =  "\"" + rChars + "\"";
 
         // Also store it as a single element type for non-Excel document.
         mrModel.mxDataSeq->maData[0] <<= rChars;
@@ -93,7 +88,6 @@ TitleContext::~TitleContext()
 
 ContextHandlerRef TitleContext::onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs )
 {
-    bool bMSO2007Doc = getFilter().isMSO2007Document();
     // this context handler is used for <c:title> only
     switch( nElement )
     {
@@ -101,7 +95,7 @@ ContextHandlerRef TitleContext::onCreateContext( sal_Int32 nElement, const Attri
             return new LayoutContext( *this, mrModel.mxLayout.create() );
 
         case C_TOKEN( overlay ):
-            mrModel.mbOverlay = rAttribs.getBool( XML_val, !bMSO2007Doc );
+            mrModel.mbOverlay = rAttribs.getBool( XML_val, true );
             return nullptr;
 
         case C_TOKEN( spPr ):
@@ -112,6 +106,31 @@ ContextHandlerRef TitleContext::onCreateContext( sal_Int32 nElement, const Attri
 
         case C_TOKEN( txPr ):
             return new TextBodyContext( *this, mrModel.mxTextProp.create() );
+    }
+    return nullptr;
+}
+
+LegendEntryContext::LegendEntryContext( ContextHandler2Helper& rParent, LegendEntryModel& rModel ) :
+    ContextBase< LegendEntryModel >( rParent, rModel )
+{
+}
+
+LegendEntryContext::~LegendEntryContext()
+{
+}
+
+ContextHandlerRef LegendEntryContext::onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs )
+{
+    // this context handler is used for <c:legendEntry> only
+    switch( nElement )
+    {
+        case C_TOKEN( idx ):
+            mrModel.mnLegendEntryIdx = rAttribs.getInteger( XML_val, -1 );
+            return nullptr;
+
+        case C_TOKEN( delete ):
+            mrModel.mbLabelDeleted = rAttribs.getBool( XML_val, true );
+            return nullptr;
     }
     return nullptr;
 }
@@ -127,7 +146,6 @@ LegendContext::~LegendContext()
 
 ContextHandlerRef LegendContext::onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs )
 {
-    bool bMSO2007Doc = getFilter().isMSO2007Document();
     // this context handler is used for <c:legend> only
     switch( nElement )
     {
@@ -138,8 +156,11 @@ ContextHandlerRef LegendContext::onCreateContext( sal_Int32 nElement, const Attr
             mrModel.mnPosition = rAttribs.getToken( XML_val, XML_r );
             return nullptr;
 
+        case C_TOKEN( legendEntry ):
+            return new LegendEntryContext( *this, mrModel.maLegendEntries.create() );
+
         case C_TOKEN( overlay ):
-            mrModel.mbOverlay = rAttribs.getBool( XML_val, !bMSO2007Doc );
+            mrModel.mbOverlay = rAttribs.getBool( XML_val, true );
             return nullptr;
 
         case C_TOKEN( spPr ):
@@ -151,8 +172,6 @@ ContextHandlerRef LegendContext::onCreateContext( sal_Int32 nElement, const Attr
     return nullptr;
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,6 +20,7 @@
 
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/drawing/BitmapMode.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
 
 #include <tools/debug.hxx>
 
@@ -27,12 +28,13 @@
 
 #include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmluconv.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlement.hxx>
 #include <xmloff/XMLBase64ImportContext.hxx>
-#include "XMLBackgroundImageContext.hxx"
+#include <XMLBackgroundImageContext.hxx>
 
 
 using namespace ::com::sun::star;
@@ -40,6 +42,8 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::style;
 using namespace ::com::sun::star::io;
 using namespace ::xmloff::token;
+
+namespace {
 
 enum SvXMLTokenMapAttrs
 {
@@ -52,36 +56,35 @@ enum SvXMLTokenMapAttrs
     XML_TOK_BGIMG_FILTER,
     XML_TOK_BGIMG_OPACITY
 };
-static const SvXMLTokenMapEntry* lcl_getBGImgAttributesAttrTokenMap()
-{
-    static const SvXMLTokenMapEntry aBGImgAttributesAttrTokenMap[] =
-    {
-        { XML_NAMESPACE_XLINK, XML_HREF,        XML_TOK_BGIMG_HREF      },
-        { XML_NAMESPACE_XLINK, XML_TYPE,        XML_TOK_BGIMG_TYPE      },
-        { XML_NAMESPACE_XLINK, XML_ACTUATE,     XML_TOK_BGIMG_ACTUATE   },
-        { XML_NAMESPACE_XLINK, XML_SHOW,        XML_TOK_BGIMG_SHOW      },
-        { XML_NAMESPACE_STYLE, XML_POSITION,    XML_TOK_BGIMG_POSITION  },
-        { XML_NAMESPACE_STYLE, XML_REPEAT,      XML_TOK_BGIMG_REPEAT    },
-        { XML_NAMESPACE_STYLE, XML_FILTER_NAME, XML_TOK_BGIMG_FILTER    },
-        { XML_NAMESPACE_DRAW,  XML_OPACITY,     XML_TOK_BGIMG_OPACITY   },
-        XML_TOKEN_MAP_END
-    };
-    return aBGImgAttributesAttrTokenMap;
+
 }
 
+const SvXMLTokenMapEntry aBGImgAttributesAttrTokenMap[] =
+{
+    { XML_NAMESPACE_XLINK, XML_HREF,        XML_TOK_BGIMG_HREF      },
+    { XML_NAMESPACE_XLINK, XML_TYPE,        XML_TOK_BGIMG_TYPE      },
+    { XML_NAMESPACE_XLINK, XML_ACTUATE,     XML_TOK_BGIMG_ACTUATE   },
+    { XML_NAMESPACE_XLINK, XML_SHOW,        XML_TOK_BGIMG_SHOW      },
+    { XML_NAMESPACE_STYLE, XML_POSITION,    XML_TOK_BGIMG_POSITION  },
+    { XML_NAMESPACE_STYLE, XML_REPEAT,      XML_TOK_BGIMG_REPEAT    },
+    { XML_NAMESPACE_STYLE, XML_FILTER_NAME, XML_TOK_BGIMG_FILTER    },
+    { XML_NAMESPACE_DRAW,  XML_OPACITY,     XML_TOK_BGIMG_OPACITY   },
+    XML_TOKEN_MAP_END
+};
 
-static const SvXMLEnumMapEntry<GraphicLocation> psXML_BrushHoriPos[] =
+
+const SvXMLEnumMapEntry<GraphicLocation> psXML_BrushHoriPos[] =
 {
     { XML_LEFT,         GraphicLocation_LEFT_MIDDLE },
     { XML_RIGHT,        GraphicLocation_RIGHT_MIDDLE    },
-    { XML_TOKEN_INVALID,                    (GraphicLocation)0           }
+    { XML_TOKEN_INVALID,                    GraphicLocation(0)           }
 };
 
-static const SvXMLEnumMapEntry<GraphicLocation> psXML_BrushVertPos[] =
+const SvXMLEnumMapEntry<GraphicLocation> psXML_BrushVertPos[] =
 {
     { XML_TOP,          GraphicLocation_MIDDLE_TOP  },
     { XML_BOTTOM,       GraphicLocation_MIDDLE_BOTTOM   },
-    { XML_TOKEN_INVALID,                    (GraphicLocation)0           }
+    { XML_TOKEN_INVALID,                    GraphicLocation(0)           }
 };
 
 static void lcl_xmlbic_MergeHoriPos( GraphicLocation& ePos,
@@ -168,7 +171,7 @@ static void lcl_xmlbic_MergeVertPos( GraphicLocation& ePos,
 void XMLBackgroundImageContext::ProcessAttrs(
         const Reference< xml::sax::XAttributeList >& xAttrList )
 {
-    SvXMLTokenMap aTokenMap( lcl_getBGImgAttributesAttrTokenMap() );
+    static const SvXMLTokenMap aTokenMap( aBGImgAttributesAttrTokenMap );
 
     ePos = GraphicLocation_NONE;
 
@@ -185,7 +188,7 @@ void XMLBackgroundImageContext::ProcessAttrs(
         switch( aTokenMap.Get( nPrefix, aLocalName ) )
         {
         case XML_TOK_BGIMG_HREF:
-            sURL = rValue;
+            m_sURL = rValue;
             if( GraphicLocation_NONE == ePos )
                 ePos = GraphicLocation_TILED;
             break;
@@ -285,10 +288,10 @@ void XMLBackgroundImageContext::ProcessAttrs(
                 GraphicLocation nPos = GraphicLocation_NONE;
                 static const SvXMLEnumMapEntry<GraphicLocation> psXML_BrushRepeat[] =
                 {
-                    { XML_BACKGROUND_REPEAT,    GraphicLocation_TILED   },
+                    { XML_REPEAT,               GraphicLocation_TILED   },
                     { XML_BACKGROUND_NO_REPEAT, GraphicLocation_MIDDLE_MIDDLE       },
-                    { XML_BACKGROUND_STRETCH,   GraphicLocation_AREA    },
-                    { XML_TOKEN_INVALID,        (GraphicLocation)0      }
+                    { XML_STRETCH,              GraphicLocation_AREA    },
+                    { XML_TOKEN_INVALID,        GraphicLocation(0)      }
                 };
                 if( SvXMLUnitConverter::convertEnum( nPos, rValue,
                                                 psXML_BrushRepeat ) )
@@ -344,7 +347,7 @@ XMLBackgroundImageContext::~XMLBackgroundImageContext()
 {
 }
 
-SvXMLImportContext *XMLBackgroundImageContext::CreateChildContext(
+SvXMLImportContextRef XMLBackgroundImageContext::CreateChildContext(
         sal_uInt16 nPrefix, const OUString& rLocalName,
         const Reference< xml::sax::XAttributeList > & xAttrList )
 {
@@ -353,18 +356,14 @@ SvXMLImportContext *XMLBackgroundImageContext::CreateChildContext(
         xmloff::token::IsXMLToken( rLocalName,
                                         xmloff::token::XML_BINARY_DATA ) )
     {
-        if( sURL.isEmpty() && !xBase64Stream.is() )
+        if( m_sURL.isEmpty() && !m_xBase64Stream.is() )
         {
-            xBase64Stream = GetImport().GetStreamForGraphicObjectURLFromBase64();
-            if( xBase64Stream.is() )
+            m_xBase64Stream = GetImport().GetStreamForGraphicObjectURLFromBase64();
+            if( m_xBase64Stream.is() )
                 pContext = new XMLBase64ImportContext( GetImport(), nPrefix,
                                                     rLocalName, xAttrList,
-                                                    xBase64Stream );
+                                                    m_xBase64Stream );
         }
-    }
-    if( !pContext )
-    {
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
     }
 
     return pContext;
@@ -372,23 +371,24 @@ SvXMLImportContext *XMLBackgroundImageContext::CreateChildContext(
 
 void XMLBackgroundImageContext::EndElement()
 {
-    if( !sURL.isEmpty() )
+    uno::Reference<graphic::XGraphic> xGraphic;
+    if (!m_sURL.isEmpty())
     {
-        sURL = GetImport().ResolveGraphicObjectURL( sURL, false );
+        xGraphic = GetImport().loadGraphicByURL(m_sURL);
     }
-    else if( xBase64Stream.is() )
+    else if (m_xBase64Stream.is())
     {
-        sURL = GetImport().ResolveGraphicObjectURLFromBase64( xBase64Stream );
-        xBase64Stream = nullptr;
+        xGraphic = GetImport().loadGraphicFromBase64(m_xBase64Stream);
+        m_xBase64Stream = nullptr;
     }
 
-    if( sURL.isEmpty() )
+    if (!xGraphic.is())
         ePos = GraphicLocation_NONE;
-    else if( GraphicLocation_NONE == ePos )
+    else if (GraphicLocation_NONE == ePos)
         ePos = GraphicLocation_TILED;
 
-    if (!sURL.isEmpty())
-        aProp.maValue <<= sURL;
+    if (xGraphic.is())
+        aProp.maValue <<= xGraphic;
     aPosProp.maValue <<= ePos;
     aFilterProp.maValue <<= sFilter;
     aTransparencyProp.maValue <<= nTransparency;

@@ -17,37 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/bindings.hxx>
-#include <sfx2/htmlmode.hxx>
-#include <svx/sdtacitm.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/sdtagitm.hxx>
-#include <svx/sdtakitm.hxx>
-#include <svx/sdtaditm.hxx>
-#include <svx/sdtaaitm.hxx>
 #include <svx/svdview.hxx>
-#include <svx/svdocapt.hxx>
-#include <editeng/outlobj.hxx>
-#include <cmdid.h>
+#include <editeng/eeitem.hxx>
 #include <view.hxx>
 #include <edtwin.hxx>
 #include <wrtsh.hxx>
-#include <viewopt.hxx>
 #include <drawbase.hxx>
 #include <concustomshape.hxx>
 #include <svx/gallery.hxx>
 #include <sfx2/request.hxx>
 #include <svx/fmmodel.hxx>
 #include <svl/itempool.hxx>
+#include <svl/stritem.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/svdoashp.hxx>
+#include <svx/xfillit0.hxx>
 #include <editeng/adjustitem.hxx>
 
 #include <math.h>
 
 using namespace com::sun::star;
 
-ConstCustomShape::ConstCustomShape( SwWrtShell* pWrtShell, SwEditWin* pEditWin, SwView* pSwView, SfxRequest& rReq )
+ConstCustomShape::ConstCustomShape( SwWrtShell* pWrtShell, SwEditWin* pEditWin, SwView* pSwView, SfxRequest const & rReq )
     : SwDrawBase( pWrtShell, pEditWin, pSwView )
 {
     aCustomShape = ConstCustomShape::GetShapeTypeFromRequest( rReq );
@@ -58,7 +51,7 @@ const OUString& ConstCustomShape::GetShapeType() const
     return aCustomShape;
 }
 
-OUString ConstCustomShape::GetShapeTypeFromRequest( SfxRequest& rReq )
+OUString ConstCustomShape::GetShapeTypeFromRequest( SfxRequest const & rReq )
 {
     OUString aRet;
     const SfxItemSet* pArgs = rReq.GetArgs();
@@ -119,8 +112,9 @@ void ConstCustomShape::SetAttributes( SdrObject* pObj )
                 if ( aObjList[ i ].equalsIgnoreAsciiCase( aCustomShape ) )
                 {
                     FmFormModel aFormModel;
-                    SfxItemPool& rPool = aFormModel.GetItemPool();
+                    SfxItemPool& rPool(aFormModel.GetItemPool());
                     rPool.FreezeIdRanges();
+
                     if ( GalleryExplorer::GetSdrObj( GALLERY_THEME_POWERPOINT, i, &aFormModel ) )
                     {
                         const SdrObject* pSourceObj = aFormModel.GetPage( 0 )->GetObj( 0 );
@@ -128,7 +122,7 @@ void ConstCustomShape::SetAttributes( SdrObject* pObj )
                         {
                             const SfxItemSet& rSource = pSourceObj->GetMergedItemSet();
                             SfxItemSet aDest(
-                                pObj->GetModel()->GetItemPool(),
+                                pObj->getSdrModelFromSdrObject().GetItemPool(),
                                 svl::Items<
                                     // Ranges from SdrAttrObj:
                                     SDRATTR_START, SDRATTR_SHADOW_LAST,
@@ -177,7 +171,7 @@ void ConstCustomShape::CreateDefaultObject()
         if ( rMarkList.GetMarkCount() == 1 )
         {
             SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
-            if ( pObj && dynamic_cast< const SdrObjCustomShape *>( pObj ) !=  nullptr )
+            if ( dynamic_cast< const SdrObjCustomShape *>( pObj ) )
                 SetAttributes( pObj );
         }
     }

@@ -21,9 +21,12 @@
 #define INCLUDED_SVTOOLS_SCRIPTEDTEXT_HXX
 
 #include <svtools/svtdllapi.h>
-#include <com/sun/star/i18n/XBreakIterator.hpp>
+#include <rtl/ustring.hxx>
 #include <memory>
 
+
+namespace com :: sun :: star :: i18n { class XBreakIterator; }
+namespace com :: sun :: star :: uno { template <typename > class Reference; }
 
 class OutputDevice;
 namespace vcl { class Font; }
@@ -62,7 +65,7 @@ public:
                                     The font for asian characters.
                                     @param  _pCmplxFont
                                     The font for complex text layout. */
-    void                        SetFonts( vcl::Font* _pLatinFont, vcl::Font* _pAsianFont, vcl::Font* _pCmplxFont );
+    void                        SetFonts( vcl::Font const * _pLatinFont, vcl::Font const * _pAsianFont, vcl::Font const * _pCmplxFont );
 
                                 /** Sets the default font of the current output device to all script types. */
     void                        SetDefaultFont();

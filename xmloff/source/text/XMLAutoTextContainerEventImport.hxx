@@ -24,10 +24,10 @@
 #include <com/sun/star/uno/Reference.hxx>
 
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XNameReplace; }
-    namespace xml { namespace sax { class XAttributeList; } }
-} } }
+    namespace xml::sax { class XAttributeList; }
+}
 
 
 /**
@@ -44,8 +44,6 @@ public:
 
     XMLAutoTextContainerEventImport(
         SvXMLImport& rImport,
-        sal_uInt16 nPrfx,
-        const OUString& rLName,
         const css::uno::Reference<css::container::XNameReplace > & rEvents );
 
     virtual ~XMLAutoTextContainerEventImport() override;
@@ -53,7 +51,15 @@ public:
 
 protected:
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual void SAL_CALL startFastElement(
+            sal_Int32 /*nElement*/,
+            const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*xAttrList*/ ) override {}
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL
+        createFastChildContext(sal_Int32 /*nElement*/,
+            const css::uno::Reference< css::xml::sax::XFastAttributeList > & /*rxAttribs*/) override
+    { return nullptr; }
+
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference<css::xml::sax::XAttributeList> & xAttrList ) override;

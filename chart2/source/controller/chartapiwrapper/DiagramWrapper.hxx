@@ -19,18 +19,11 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_DIAGRAMWRAPPER_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_DIAGRAMWRAPPER_HXX
 
-#include "WrappedPropertySet.hxx"
-#include "DiagramHelper.hxx"
+#include <WrappedPropertySet.hxx>
 
-#include <comphelper/uno3.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
-#include <com/sun/star/chart2/XChartDocument.hpp>
-#include <com/sun/star/chart2/XDiagram.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <comphelper/interfacecontainer2.hxx>
 #include <com/sun/star/chart/XDiagramPositioning.hpp>
 #include <com/sun/star/chart2/XDiagramProvider.hpp>
-#include <com/sun/star/chart2/XChartTypeTemplate.hpp>
-#include <com/sun/star/chart2/XChartTypeManager.hpp>
 #include <com/sun/star/chart/XDiagram.hpp>
 #include <com/sun/star/chart/XAxisSupplier.hpp>
 #include <com/sun/star/chart/XAxisZSupplier.hpp>
@@ -40,15 +33,15 @@
 #include <com/sun/star/chart/X3DDisplay.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/chart/XSecondAxisTitleSupplier.hpp>
 
 #include <com/sun/star/chart/X3DDefaultSetter.hpp>
 #include <memory>
 
-namespace chart
-{
-namespace wrapper
+namespace com::sun::star::chart2 { class XDiagram; }
+namespace com::sun::star::lang { class XEventListener; }
+
+namespace chart::wrapper
 {
 
 class Chart2ModelContact;
@@ -189,7 +182,7 @@ public:
 protected:
     // ____ WrappedPropertySet ____
     virtual const css::uno::Sequence< css::beans::Property >& getPropertySequence() override;
-    virtual const std::vector< WrappedProperty* > createWrappedProperties() override;
+    virtual std::vector< std::unique_ptr<WrappedProperty> > createWrappedProperties() override;
     virtual css::uno::Reference< css::beans::XPropertySet > getInnerPropertySet() override;
 
 private:
@@ -220,8 +213,7 @@ private:
         css::beans::XPropertySet > m_xDownBarWrapper;
 };
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_DIAGRAMWRAPPER_HXX
 #endif

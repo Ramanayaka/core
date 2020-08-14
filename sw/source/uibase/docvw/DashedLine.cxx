@@ -12,7 +12,7 @@
 #include <basegfx/color/bcolortools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonStrokePrimitive2D.hxx>
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processorfromoutputdevice.hxx>
 #include <vcl/svapp.hxx>
@@ -60,13 +60,13 @@ void SwDashedLine::Paint(vcl::RenderContext& rRenderContext, const tools::Rectan
     else
     {
         // Get a color for the contrast
-        basegfx::BColor aHslLine = basegfx::tools::rgb2hsl(aColor);
+        basegfx::BColor aHslLine = basegfx::utils::rgb2hsl(aColor);
         double nLuminance = aHslLine.getZ();
         nLuminance += (1.0 - nLuminance) * 0.75;
         if (aHslLine.getZ() > 0.7)
             nLuminance = aHslLine.getZ() * 0.7;
         aHslLine.setZ(nLuminance);
-        const basegfx::BColor aOtherColor = basegfx::tools::hsl2rgb(aHslLine);
+        const basegfx::BColor aOtherColor = basegfx::utils::hsl2rgb(aHslLine);
 
         // Compute the plain line
         drawinglayer::primitive2d::PolygonHairlinePrimitive2D * pPlainLine =

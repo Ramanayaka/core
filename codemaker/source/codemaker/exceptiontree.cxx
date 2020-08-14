@@ -18,14 +18,14 @@
  */
 
 
-#include "codemaker/exceptiontree.hxx"
-#include "codemaker/typemanager.hxx"
+#include <codemaker/exceptiontree.hxx>
+#include <codemaker/typemanager.hxx>
 
-#include "rtl/ref.hxx"
-#include "rtl/string.hxx"
-#include "rtl/textenc.h"
-#include "rtl/ustring.hxx"
-#include "unoidl/unoidl.hxx"
+#include <rtl/ref.hxx>
+#include <rtl/string.hxx>
+#include <rtl/textenc.h>
+#include <rtl/ustring.hxx>
+#include <unoidl/unoidl.hxx>
 
 #include <memory>
 #include <vector>
@@ -33,7 +33,7 @@
 using codemaker::ExceptionTree;
 using codemaker::ExceptionTreeNode;
 
-ExceptionTreeNode * ExceptionTreeNode::add(rtl::OString const & theName) {
+ExceptionTreeNode * ExceptionTreeNode::add(OString const & theName) {
     std::unique_ptr< ExceptionTreeNode > node(new ExceptionTreeNode(theName));
     children.push_back(std::move(node));
     return children.back().get();
@@ -44,11 +44,11 @@ void ExceptionTreeNode::clearChildren() {
 }
 
 void ExceptionTree::add(
-    rtl::OString const & name, rtl::Reference< TypeManager > const & manager)
+    OString const & name, rtl::Reference< TypeManager > const & manager)
 {
-    std::vector< rtl::OString > list;
+    std::vector< OString > list;
     bool bRuntimeException = false;
-    for (rtl::OString n(name); n != "com.sun.star.uno.Exception";) {
+    for (OString n(name); n != "com.sun.star.uno.Exception";) {
         if (n == "com.sun.star.uno.RuntimeException") {
             bRuntimeException = true;
             break;
@@ -63,27 +63,28 @@ void ExceptionTree::add(
             getDirectBase());
         assert(!n.isEmpty());
     }
-    if (!bRuntimeException) {
-        ExceptionTreeNode * node = &m_root;
-        for (std::vector< rtl::OString >::reverse_iterator i(list.rbegin());
-             !node->present; ++i)
+    if (bRuntimeException)
+        return;
+
+    ExceptionTreeNode * node = &m_root;
+    for (std::vector< OString >::reverse_iterator i(list.rbegin());
+         !node->present; ++i)
+    {
+        if (i == list.rend()) {
+            node->setPresent();
+            break;
+        }
+        for (ExceptionTreeNode::Children::iterator j(
+                 node->children.begin());;
+             ++j)
         {
-            if (i == list.rend()) {
-                node->setPresent();
+            if (j == node->children.end()) {
+                node = node->add(*i);
                 break;
             }
-            for (ExceptionTreeNode::Children::iterator j(
-                     node->children.begin());;
-                 ++j)
-            {
-                if (j == node->children.end()) {
-                    node = node->add(*i);
-                    break;
-                }
-                if ((*j)->name == *i) {
-                    node = j->get();
-                    break;
-                }
+            if ((*j)->name == *i) {
+                node = j->get();
+                break;
             }
         }
     }

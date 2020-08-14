@@ -26,9 +26,7 @@
 #include <memory>
 
 
-namespace drawinglayer
-{
-    namespace animation
+namespace drawinglayer::animation
     {
 
 
@@ -50,9 +48,8 @@ namespace drawinglayer
         };
 
 
-        class DRAWINGLAYER_DLLPUBLIC AnimationEntryFixed : public AnimationEntry
+        class DRAWINGLAYER_DLLPUBLIC AnimationEntryFixed final : public AnimationEntry
         {
-        protected:
             double                                      mfDuration;
             double                                      mfState;
 
@@ -68,9 +65,8 @@ namespace drawinglayer
         };
 
 
-        class DRAWINGLAYER_DLLPUBLIC AnimationEntryLinear : public AnimationEntry
+        class DRAWINGLAYER_DLLPUBLIC AnimationEntryLinear final : public AnimationEntry
         {
-        protected:
             double                                      mfDuration;
             double                                      mfFrequency;
             double                                      mfStart;
@@ -112,9 +108,8 @@ namespace drawinglayer
         };
 
 
-        class DRAWINGLAYER_DLLPUBLIC AnimationEntryLoop : public AnimationEntryList
+        class DRAWINGLAYER_DLLPUBLIC AnimationEntryLoop final : public AnimationEntryList
         {
-        protected:
             sal_uInt32                                  mnRepeat;
 
         public:
@@ -129,8 +124,7 @@ namespace drawinglayer
         };
 
 
-    } // end of namespace animation
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::animation
 
 
 #endif //INCLUDED_DRAWINGLAYER_ANIMATION_ANIMATIONTIMING_HXX

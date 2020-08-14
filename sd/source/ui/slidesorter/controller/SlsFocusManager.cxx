@@ -17,23 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "controller/SlsFocusManager.hxx"
+#include <controller/SlsFocusManager.hxx>
 
-#include "SlideSorter.hxx"
-#include "PaneDockingWindow.hxx"
-#include "controller/SlideSorterController.hxx"
-#include "controller/SlsCurrentSlideManager.hxx"
-#include "controller/SlsVisibleAreaManager.hxx"
-#include "model/SlideSorterModel.hxx"
-#include "model/SlsPageDescriptor.hxx"
-#include "view/SlideSorterView.hxx"
-#include "view/SlsLayouter.hxx"
-#include <vcl/toolbox.hxx>
+#include <SlideSorter.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsCurrentSlideManager.hxx>
+#include <controller/SlsVisibleAreaManager.hxx>
+#include <model/SlideSorterModel.hxx>
+#include <model/SlsPageDescriptor.hxx>
+#include <view/SlideSorterView.hxx>
+#include <view/SlsLayouter.hxx>
 
-#include "Window.hxx"
-#include "sdpage.hxx"
+#include <Window.hxx>
+#include <sdpage.hxx>
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 FocusManager::FocusManager (SlideSorter& rSlideSorter)
     : mrSlideSorter(rSlideSorter),
@@ -50,62 +48,62 @@ FocusManager::~FocusManager()
 
 void FocusManager::MoveFocus (FocusMoveDirection eDirection)
 {
-    if (mnPageIndex >= 0 && mbPageIsFocused)
+    if (!(mnPageIndex >= 0 && mbPageIsFocused))
+        return;
+
+    HideFocusIndicator (GetFocusedPageDescriptor());
+
+    const sal_Int32 nColumnCount (mrSlideSorter.GetView().GetLayouter().GetColumnCount());
+    const sal_Int32 nPageCount (mrSlideSorter.GetModel().GetPageCount());
+    switch (eDirection)
     {
-        HideFocusIndicator (GetFocusedPageDescriptor());
-
-        const sal_Int32 nColumnCount (mrSlideSorter.GetView().GetLayouter().GetColumnCount());
-        const sal_Int32 nPageCount (mrSlideSorter.GetModel().GetPageCount());
-        switch (eDirection)
-        {
-            case FocusMoveDirection::Left:
-                if (mnPageIndex > 0)
-                    mnPageIndex -= 1;
-                break;
-
-            case FocusMoveDirection::Right:
-                if (mnPageIndex < nPageCount-1)
-                    mnPageIndex += 1;
-                break;
-
-            case FocusMoveDirection::Up:
-            {
-                const sal_Int32 nCandidate (mnPageIndex - nColumnCount);
-                if (nCandidate >= 0)
-                {
-                    // Move the focus the previous row.
-                    mnPageIndex = nCandidate;
-                }
-            }
+        case FocusMoveDirection::Left:
+            if (mnPageIndex > 0)
+                mnPageIndex -= 1;
             break;
 
-            case FocusMoveDirection::Down:
-            {
-                const sal_Int32 nCandidate (mnPageIndex + nColumnCount);
-                if (nCandidate < nPageCount)
-                {
-                    // Move the focus to the next row.
-                    mnPageIndex = nCandidate;
-                }
-            }
+        case FocusMoveDirection::Right:
+            if (mnPageIndex < nPageCount-1)
+                mnPageIndex += 1;
             break;
-        }
 
-        if (mnPageIndex < 0)
+        case FocusMoveDirection::Up:
         {
-            OSL_ASSERT(mnPageIndex>=0);
-            mnPageIndex = 0;
+            const sal_Int32 nCandidate (mnPageIndex - nColumnCount);
+            if (nCandidate >= 0)
+            {
+                // Move the focus the previous row.
+                mnPageIndex = nCandidate;
+            }
         }
-        else if (mnPageIndex >= nPageCount)
-        {
-            OSL_ASSERT(mnPageIndex<nPageCount);
-            mnPageIndex = nPageCount - 1;
-        }
+        break;
 
-        if (mbPageIsFocused)
+        case FocusMoveDirection::Down:
         {
-            ShowFocusIndicator(GetFocusedPageDescriptor(), true);
+            const sal_Int32 nCandidate (mnPageIndex + nColumnCount);
+            if (nCandidate < nPageCount)
+            {
+                // Move the focus to the next row.
+                mnPageIndex = nCandidate;
+            }
         }
+        break;
+    }
+
+    if (mnPageIndex < 0)
+    {
+        OSL_ASSERT(mnPageIndex>=0);
+        mnPageIndex = 0;
+    }
+    else if (mnPageIndex >= nPageCount)
+    {
+        OSL_ASSERT(mnPageIndex<nPageCount);
+        mnPageIndex = nPageCount - 1;
+    }
+
+    if (mbPageIsFocused)
+    {
+        ShowFocusIndicator(GetFocusedPageDescriptor(), true);
     }
 }
 
@@ -143,13 +141,15 @@ model::SharedPageDescriptor FocusManager::GetFocusedPageDescriptor() const
     return mrSlideSorter.GetModel().GetPageDescriptor(mnPageIndex);
 }
 
-void FocusManager::SetFocusedPage (const model::SharedPageDescriptor& rpDescriptor)
+bool FocusManager::SetFocusedPage (const model::SharedPageDescriptor& rpDescriptor)
 {
-    if (rpDescriptor.get() != nullptr)
+    if (rpDescriptor)
     {
         FocusHider aFocusHider (*this);
         mnPageIndex = (rpDescriptor->GetPage()->GetPageNum()-1)/2;
+        return true;
     }
+    return false;
 }
 
 void FocusManager::SetFocusedPage (sal_Int32 nPageIndex)
@@ -158,9 +158,9 @@ void FocusManager::SetFocusedPage (sal_Int32 nPageIndex)
     mnPageIndex = nPageIndex;
 }
 
-void FocusManager::SetFocusedPageToCurrentPage()
+bool FocusManager::SetFocusedPageToCurrentPage()
 {
-    SetFocusedPage(mrSlideSorter.GetController().GetCurrentSlideManager()->GetCurrentSlide());
+    return SetFocusedPage(mrSlideSorter.GetController().GetCurrentSlideManager()->GetCurrentSlide());
 }
 
 bool FocusManager::IsFocusShowing() const
@@ -170,7 +170,7 @@ bool FocusManager::IsFocusShowing() const
 
 void FocusManager::HideFocusIndicator (const model::SharedPageDescriptor& rpDescriptor)
 {
-    if (rpDescriptor.get() != nullptr)
+    if (rpDescriptor)
     {
         mrSlideSorter.GetView().SetState(rpDescriptor, model::PageDescriptor::ST_Focused, false);
 
@@ -183,20 +183,20 @@ void FocusManager::ShowFocusIndicator (
     const model::SharedPageDescriptor& rpDescriptor,
     const bool bScrollToFocus)
 {
-    if (rpDescriptor.get() != nullptr)
+    if (!rpDescriptor)
+        return;
+
+    mrSlideSorter.GetView().SetState(rpDescriptor, model::PageDescriptor::ST_Focused, true);
+
+    if (bScrollToFocus)
     {
-        mrSlideSorter.GetView().SetState(rpDescriptor, model::PageDescriptor::ST_Focused, true);
-
-        if (bScrollToFocus)
-        {
-            // Scroll the focused page object into the visible area and repaint
-            // it, so that the focus indicator becomes visible.
-            mrSlideSorter.GetController().GetVisibleAreaManager().RequestVisible(rpDescriptor,true);
-        }
-        mrSlideSorter.GetView().RequestRepaint(rpDescriptor);
-
-        NotifyFocusChangeListeners();
+        // Scroll the focused page object into the visible area and repaint
+        // it, so that the focus indicator becomes visible.
+        mrSlideSorter.GetController().GetVisibleAreaManager().RequestVisible(rpDescriptor,true);
     }
+    mrSlideSorter.GetView().RequestRepaint(rpDescriptor);
+
+    NotifyFocusChangeListeners();
 }
 
 void FocusManager::AddFocusChangeListener (const Link<LinkParamNone*,void>& rListener)
@@ -220,11 +220,9 @@ void FocusManager::NotifyFocusChangeListeners() const
     ::std::vector<Link<LinkParamNone*,void>> aListeners (maFocusChangeListeners);
 
     // Tell the selection change listeners that the selection has changed.
-    ::std::vector<Link<LinkParamNone*,void>>::iterator iListener (aListeners.begin());
-    ::std::vector<Link<LinkParamNone*,void>>::iterator iEnd (aListeners.end());
-    for (; iListener!=iEnd; ++iListener)
+    for (const auto& rListener : aListeners)
     {
-        iListener->Call(nullptr);
+        rListener.Call(nullptr);
     }
 }
 
@@ -235,12 +233,12 @@ FocusManager::FocusHider::FocusHider (FocusManager& rManager)
     mrManager.HideFocus();
 }
 
-FocusManager::FocusHider::~FocusHider()
+FocusManager::FocusHider::~FocusHider() COVERITY_NOEXCEPT_FALSE
 {
     if (mbFocusVisible)
         mrManager.ShowFocus();
 }
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

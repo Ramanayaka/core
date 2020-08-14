@@ -18,19 +18,15 @@
  */
 
 #include <sdr/overlay/overlayrollingrectangle.hxx>
-#include <vcl/outdev.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <sdr/overlay/overlaytools.hxx>
 #include <svx/sdr/overlay/overlaymanager.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonMarkerPrimitive2D.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonSelectionPrimitive2D.hxx>
 
-
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         drawinglayer::primitive2d::Primitive2DContainer OverlayRollingRectangleStriped::createOverlayObjectPrimitive2DSequence()
         {
             drawinglayer::primitive2d::Primitive2DContainer aRetval;
@@ -45,7 +41,7 @@ namespace sdr
                 if(mbShowBounds)
                 {
                     // view-independent part, create directly
-                    const basegfx::B2DPolygon aPolygon(basegfx::tools::createPolygonFromRect(aRollingRectangle));
+                    const basegfx::B2DPolygon aPolygon(basegfx::utils::createPolygonFromRect(aRollingRectangle));
 
                     aRetval.resize(2);
                     aRetval[0] = new drawinglayer::primitive2d::PolyPolygonMarkerPrimitive2D(
@@ -94,7 +90,7 @@ namespace sdr
             const basegfx::B2DPoint& rSecondPos,
             bool bExtendedLines,
             bool bShowBounds)
-        :   OverlayObjectWithBasePosition(rBasePos, Color(COL_BLACK)),
+        :   OverlayObjectWithBasePosition(rBasePos, COL_BLACK),
             maSecondPosition(rSecondPos),
             mbExtendedLines(bExtendedLines),
             mbShowBounds(bShowBounds)
@@ -116,7 +112,6 @@ namespace sdr
                 objectChange();
             }
         }
-    } // end of namespace overlay
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

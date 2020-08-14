@@ -20,18 +20,15 @@
 #include "PresenterBitmapContainer.hxx"
 #include "PresenterConfigurationAccess.hxx"
 
-#include <com/sun/star/deployment/XPackageInformationProvider.hpp>
 #include <com/sun/star/drawing/XPresenterHelper.hpp>
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
-#include <com/sun/star/rendering/CompositeOperation.hpp>
-#include <com/sun/star/rendering/XIntegerBitmap.hpp>
 #include <osl/diagnose.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::std;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 //===== PresenterBitmapContainer ==============================================
 
@@ -79,20 +76,20 @@ PresenterBitmapContainer::PresenterBitmapContainer (
 void PresenterBitmapContainer::Initialize (
     const css::uno::Reference<css::uno::XComponentContext>& rxComponentContext)
 {
-    if ( ! mxPresenterHelper.is())
-    {
-        // Create an object that is able to load the bitmaps in a format that is
-        // supported by the canvas.
-        Reference<lang::XMultiComponentFactory> xFactory (
-            rxComponentContext->getServiceManager(), UNO_QUERY);
-        if ( ! xFactory.is())
-            return;
-        mxPresenterHelper.set(
-            xFactory->createInstanceWithContext(
-                "com.sun.star.drawing.PresenterHelper",
-                rxComponentContext),
-            UNO_QUERY_THROW);
-    }
+    if (  mxPresenterHelper.is())
+        return;
+
+    // Create an object that is able to load the bitmaps in a format that is
+    // supported by the canvas.
+    Reference<lang::XMultiComponentFactory> xFactory =
+        rxComponentContext->getServiceManager();
+    if ( ! xFactory.is())
+        return;
+    mxPresenterHelper.set(
+        xFactory->createInstanceWithContext(
+            "com.sun.star.drawing.PresenterHelper",
+            rxComponentContext),
+        UNO_QUERY_THROW);
 }
 
 PresenterBitmapContainer::~PresenterBitmapContainer()
@@ -100,13 +97,13 @@ PresenterBitmapContainer::~PresenterBitmapContainer()
     maIconContainer.clear();
 }
 
-SharedBitmapDescriptor PresenterBitmapContainer::GetBitmap (
+std::shared_ptr<PresenterBitmapContainer::BitmapDescriptor> PresenterBitmapContainer::GetBitmap (
     const OUString& rsName) const
 {
     BitmapContainer::const_iterator iSet (maIconContainer.find(rsName));
     if (iSet != maIconContainer.end())
         return iSet->second;
-    else if (mpParentContainer.get() != nullptr)
+    else if (mpParentContainer != nullptr)
         return mpParentContainer->GetBitmap(rsName);
     else
         return SharedBitmapDescriptor();
@@ -140,12 +137,12 @@ void PresenterBitmapContainer::LoadBitmaps (
     }
 }
 
-SharedBitmapDescriptor PresenterBitmapContainer::LoadBitmap (
+std::shared_ptr<PresenterBitmapContainer::BitmapDescriptor> PresenterBitmapContainer::LoadBitmap (
     const css::uno::Reference<css::container::XHierarchicalNameAccess>& rxNode,
     const OUString& rsPath,
     const css::uno::Reference<css::drawing::XPresenterHelper>& rxPresenterHelper,
     const css::uno::Reference<css::rendering::XCanvas>& rxCanvas,
-    const SharedBitmapDescriptor& rpDefault)
+    const std::shared_ptr<BitmapDescriptor>& rpDefault)
 {
     SharedBitmapDescriptor pBitmap;
 
@@ -187,16 +184,16 @@ void PresenterBitmapContainer::ProcessBitmap (
         SharedBitmapDescriptor());
 }
 
-SharedBitmapDescriptor PresenterBitmapContainer::LoadBitmap (
+std::shared_ptr<PresenterBitmapContainer::BitmapDescriptor> PresenterBitmapContainer::LoadBitmap (
     const Reference<beans::XPropertySet>& rxProperties,
     const css::uno::Reference<css::drawing::XPresenterHelper>& rxPresenterHelper,
     const css::uno::Reference<css::rendering::XCanvas>& rxCanvas,
-    const SharedBitmapDescriptor& rpDefault)
+    const std::shared_ptr<BitmapDescriptor>& rpDefault)
 {
     OSL_ASSERT(rxCanvas.is());
     OSL_ASSERT(rxPresenterHelper.is());
 
-    SharedBitmapDescriptor pBitmap (new BitmapDescriptor(rpDefault));
+    SharedBitmapDescriptor pBitmap = std::make_shared<BitmapDescriptor>(rpDefault);
 
     if ( ! rxProperties.is())
         return pBitmap;
@@ -317,23 +314,23 @@ PresenterBitmapContainer::BitmapDescriptor::BitmapDescriptor (
       mxDisabledBitmap(),
       mxMaskBitmap()
 {
-    if (rpDefault.get() != nullptr)
-    {
-        mnWidth = rpDefault->mnWidth;
-        mnHeight = rpDefault->mnHeight;
-        mnXOffset = rpDefault->mnXOffset;
-        mnYOffset = rpDefault->mnYOffset;
-        mnXHotSpot = rpDefault->mnXHotSpot;
-        mnYHotSpot = rpDefault->mnYHotSpot;
-        maReplacementColor = rpDefault->maReplacementColor;
-        meHorizontalTexturingMode = rpDefault->meHorizontalTexturingMode;
-        meVerticalTexturingMode = rpDefault->meVerticalTexturingMode;
-        mxNormalBitmap = rpDefault->mxNormalBitmap;
-        mxMouseOverBitmap = rpDefault->mxMouseOverBitmap;
-        mxButtonDownBitmap = rpDefault->mxButtonDownBitmap;
-        mxDisabledBitmap = rpDefault->mxDisabledBitmap;
-        mxMaskBitmap = rpDefault->mxMaskBitmap;
-    }
+    if (rpDefault == nullptr)
+        return;
+
+    mnWidth = rpDefault->mnWidth;
+    mnHeight = rpDefault->mnHeight;
+    mnXOffset = rpDefault->mnXOffset;
+    mnYOffset = rpDefault->mnYOffset;
+    mnXHotSpot = rpDefault->mnXHotSpot;
+    mnYHotSpot = rpDefault->mnYHotSpot;
+    maReplacementColor = rpDefault->maReplacementColor;
+    meHorizontalTexturingMode = rpDefault->meHorizontalTexturingMode;
+    meVerticalTexturingMode = rpDefault->meVerticalTexturingMode;
+    mxNormalBitmap = rpDefault->mxNormalBitmap;
+    mxMouseOverBitmap = rpDefault->mxMouseOverBitmap;
+    mxButtonDownBitmap = rpDefault->mxButtonDownBitmap;
+    mxDisabledBitmap = rpDefault->mxDisabledBitmap;
+    mxMaskBitmap = rpDefault->mxMaskBitmap;
 }
 
 const css::uno::Reference<css::rendering::XBitmap>&
@@ -409,6 +406,6 @@ void PresenterBitmapContainer::BitmapDescriptor::SetBitmap (
     }
 }
 
-} } // end of namespace ::sdext::presenter
+} // end of namespace ::sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

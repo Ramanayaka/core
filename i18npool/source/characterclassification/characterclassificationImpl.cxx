@@ -20,25 +20,23 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <characterclassificationImpl.hxx>
 #include <localedata.hxx>
-#include <rtl/ustrbuf.hxx>
+
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 using namespace com::sun::star::uno;
+using namespace ::com::sun::star::i18n;
 using namespace com::sun::star::lang;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 CharacterClassificationImpl::CharacterClassificationImpl(
-        const Reference < uno::XComponentContext >& rxContext ) : m_xContext( rxContext )
+        const Reference < XComponentContext >& rxContext ) : m_xContext( rxContext )
 {
     if (createLocaleSpecificCharacterClassification("Unicode", Locale()))
         xUCI = cachedItem->xCI;
 }
 
 CharacterClassificationImpl::~CharacterClassificationImpl() {
-        // Clear lookuptable
-        for (lookupTableItem* p : lookupTable)
-            delete p;
-        lookupTable.clear();
 }
 
 
@@ -123,13 +121,14 @@ ParseResult SAL_CALL CharacterClassificationImpl::parsePredefinedToken(
             contCharTokenType, userDefinedCharactersCont);
 }
 
-bool SAL_CALL CharacterClassificationImpl::createLocaleSpecificCharacterClassification(const OUString& serviceName, const Locale& rLocale)
+bool CharacterClassificationImpl::createLocaleSpecificCharacterClassification(const OUString& serviceName, const Locale& rLocale)
 {
     // to share service between same Language but different Country code, like zh_CN and zh_SG
     for (size_t l = 0; l < lookupTable.size(); l++) {
-        cachedItem = lookupTable[l];
+        cachedItem = lookupTable[l].get();
         if (serviceName == cachedItem->aName) {
-            lookupTable.push_back( cachedItem = new lookupTableItem(rLocale, serviceName, cachedItem->xCI) );
+            lookupTable.emplace_back( new lookupTableItem(rLocale, serviceName, cachedItem->xCI) );
+            cachedItem = lookupTable.back().get();
             return true;
         }
     }
@@ -141,22 +140,23 @@ bool SAL_CALL CharacterClassificationImpl::createLocaleSpecificCharacterClassifi
     if ( xI.is() ) {
         xCI.set( xI, UNO_QUERY );
         if (xCI.is()) {
-            lookupTable.push_back( cachedItem =  new lookupTableItem(rLocale, serviceName, xCI) );
+            lookupTable.emplace_back( new lookupTableItem(rLocale, serviceName, xCI) );
+            cachedItem = lookupTable.back().get();
             return true;
         }
     }
     return false;
 }
 
-Reference < XCharacterClassification > const & SAL_CALL
+Reference < XCharacterClassification > const &
 CharacterClassificationImpl::getLocaleSpecificCharacterClassification(const Locale& rLocale)
 {
     // reuse instance if locale didn't change
     if (cachedItem && cachedItem->equals(rLocale))
         return cachedItem->xCI;
     else {
-        for (lookupTableItem* i : lookupTable) {
-            cachedItem = i;
+        for (const auto & i : lookupTable) {
+            cachedItem = i.get();
             if (cachedItem->equals(rLocale))
                 return cachedItem->xCI;
         }
@@ -168,9 +168,9 @@ CharacterClassificationImpl::getLocaleSpecificCharacterClassification(const Loca
         if (!bLoaded)
         {
             ::std::vector< OUString > aFallbacks( LocaleDataImpl::getFallbackLocaleServiceNames( rLocale));
-            for (::std::vector< OUString >::const_iterator it( aFallbacks.begin()); it != aFallbacks.end(); ++it)
+            for (const auto& rFallback : aFallbacks)
             {
-                bLoaded = createLocaleSpecificCharacterClassification( *it, rLocale);
+                bLoaded = createLocaleSpecificCharacterClassification(rFallback, rLocale);
                 if (bLoaded)
                     break;
             }
@@ -179,7 +179,8 @@ CharacterClassificationImpl::getLocaleSpecificCharacterClassification(const Loca
             return cachedItem->xCI;
         else if (xUCI.is())
         {
-            lookupTable.push_back( cachedItem = new lookupTableItem( rLocale, "Unicode", xUCI));
+            lookupTable.emplace_back( new lookupTableItem(rLocale, "Unicode", xUCI) );
+            cachedItem = lookupTable.back().get();
             return cachedItem->xCI;
         }
     }
@@ -189,7 +190,7 @@ CharacterClassificationImpl::getLocaleSpecificCharacterClassification(const Loca
 OUString SAL_CALL
 CharacterClassificationImpl::getImplementationName()
 {
-    return OUString("com.sun.star.i18n.CharacterClassification");
+    return "com.sun.star.i18n.CharacterClassification";
 }
 
 sal_Bool SAL_CALL
@@ -201,18 +202,17 @@ CharacterClassificationImpl::supportsService(const OUString& rServiceName)
 Sequence< OUString > SAL_CALL
 CharacterClassificationImpl::getSupportedServiceNames()
 {
-    Sequence< OUString > aRet { "com.sun.star.i18n.CharacterClassification" };
-    return aRet;
+    return { "com.sun.star.i18n.CharacterClassification" };
 }
 
-} } } }
+}
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_i18n_CharacterClassification_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new css::i18n::CharacterClassificationImpl(context));
+    return cppu::acquire(new i18npool::CharacterClassificationImpl(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

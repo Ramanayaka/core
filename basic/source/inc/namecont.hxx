@@ -21,7 +21,6 @@
 #define INCLUDED_BASIC_SOURCE_INC_NAMECONT_HXX
 
 #include <unordered_map>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/script/XStorageBasedLibraryContainer.hpp>
@@ -47,13 +46,10 @@
 #include <unotools/eventlisteneradapter.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 #include <cppuhelper/weakref.hxx>
 #include <cppuhelper/component.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <rtl/ref.hxx>
-#include <sot/storage.hxx>
 #include <comphelper/listenernotification.hxx>
 #include <xmlscript/xmllib_imexp.hxx>
 
@@ -69,7 +65,7 @@ typedef ::cppu::WeakImplHelper<
 
 class NameContainer : public ::cppu::BaseMutex, public NameContainer_BASE
 {
-    typedef std::unordered_map < OUString, sal_Int32, OUStringHash > NameContainerNameMap;
+    typedef std::unordered_map < OUString, sal_Int32 > NameContainerNameMap;
 
     NameContainerNameMap mHashMap;
     std::vector< OUString > mNames;
@@ -190,7 +186,10 @@ typedef ::cppu::WeakComponentImplHelper<
     css::script::vba::XVBACompatibility,
     css::lang::XServiceInfo > SfxLibraryContainer_BASE;
 
-class SfxLibraryContainer : public SfxLibraryContainer_BASE, public ::utl::OEventListenerAdapter
+class SfxLibraryContainer
+    : public ::cppu::BaseMutex
+    , public SfxLibraryContainer_BASE
+    , public ::utl::OEventListenerAdapter
 {
     VBAScriptListenerContainer maVBAScriptListeners;
     sal_Int32 mnRunningVBAScripts;
@@ -202,7 +201,6 @@ protected:
     css::uno::Reference< css::util::XStringSubstitution >    mxStringSubstitution;
     css::uno::WeakReference< css::frame::XModel >            mxOwnerDocument;
 
-    ::osl::Mutex        maMutex;
     ModifiableHelper    maModifiable;
 
     rtl::Reference<NameContainer> maNameContainer;
@@ -255,30 +253,30 @@ protected:
                                     const css::uno::Reference< css::embed::XStorage >& xStorage,
                                     const OUString& aIndexFileName );
 
-    void implImportLibDescriptor( SfxLibrary* pLib, ::xmlscript::LibDescriptor& rLib );
+    void implImportLibDescriptor( SfxLibrary* pLib, ::xmlscript::LibDescriptor const & rLib );
 
     // Methods to distinguish between different library types
-    virtual SfxLibrary* SAL_CALL implCreateLibrary( const OUString& aName ) = 0;
-    virtual SfxLibrary* SAL_CALL implCreateLibraryLink
+    virtual SfxLibrary* implCreateLibrary( const OUString& aName ) = 0;
+    virtual SfxLibrary* implCreateLibraryLink
         ( const OUString& aName, const OUString& aLibInfoFileURL,
           const OUString& StorageURL, bool ReadOnly ) = 0;
-    virtual css::uno::Any SAL_CALL createEmptyLibraryElement() = 0;
-    virtual bool SAL_CALL isLibraryElementValid(const css::uno::Any& rElement) const = 0;
+    virtual css::uno::Any createEmptyLibraryElement() = 0;
+    virtual bool isLibraryElementValid(const css::uno::Any& rElement) const = 0;
     /// @throws css::uno::Exception
-    virtual void SAL_CALL writeLibraryElement
+    virtual void writeLibraryElement
     (
         const css::uno::Reference< css::container::XNameContainer>& xLibrary,
         const OUString& aElementName,
         const css::uno::Reference< css::io::XOutputStream >& xOutput
     ) = 0;
 
-    virtual css::uno::Any SAL_CALL importLibraryElement
+    virtual css::uno::Any importLibraryElement
     (
         const css::uno::Reference< css::container::XNameContainer>& xLibrary,
         const OUString& aElementName,
         const OUString& aFile,
         const css::uno::Reference< css::io::XInputStream >& xElementStream ) = 0;
-    virtual void SAL_CALL importFromOldStorage( const OUString& aFile ) = 0;
+    virtual void importFromOldStorage( const OUString& aFile ) = 0;
 
     // Password encryption
     virtual bool implStorePasswordLibrary( SfxLibrary* pLib, const OUString& aName,
@@ -310,10 +308,10 @@ protected:
     void init( const OUString& rInitialDocumentURL,
                const css::uno::Reference< css::embed::XStorage >& _rxInitialStorage );
 
-    virtual const sal_Char* SAL_CALL    getInfoFileName() const = 0;
-    virtual const sal_Char* SAL_CALL    getOldInfoFileName() const = 0;
-    virtual const sal_Char* SAL_CALL    getLibElementFileExtension() const = 0;
-    virtual const sal_Char* SAL_CALL    getLibrariesDir() const = 0;
+    virtual const char*    getInfoFileName() const = 0;
+    virtual const char*    getOldInfoFileName() const = 0;
+    virtual const char*    getLibElementFileExtension() const = 0;
+    virtual const char*    getLibrariesDir() const = 0;
 
     // Handle maLibInfoFileURL and maStorageURL correctly
     void checkStorageURL
@@ -332,7 +330,7 @@ protected:
                             const css::uno::Reference< css::embed::XStorage >& xStorage,
                             bool bComplete );
 
-    void SAL_CALL initializeFromDocument( const css::uno::Reference< css::document::XStorageBasedDocument >& _rxDocument );
+    void initializeFromDocument( const css::uno::Reference< css::document::XStorageBasedDocument >& _rxDocument );
 
     // OEventListenerAdapter
     virtual void _disposing( const css::lang::EventObject& _rSource ) override;
@@ -587,7 +585,7 @@ public:
 protected:
     virtual bool isLoadedStorable();
 
-    virtual bool SAL_CALL isLibraryElementValid(const css::uno::Any& rElement) const = 0;
+    virtual bool isLibraryElementValid(const css::uno::Any& rElement) const = 0;
 };
 
 
@@ -613,13 +611,13 @@ public:
 };
 
 
-class ScriptExtensionIterator
+class ScriptExtensionIterator final
 {
 public:
     ScriptExtensionIterator();
     OUString nextBasicOrDialogLibrary( bool& rbPureDialogLib );
 
-protected:
+private:
     css::uno::Reference< css::deployment::XPackage >
         implGetNextUserScriptPackage( bool& rbPureDialogLib );
     css::uno::Reference< css::deployment::XPackage >
@@ -648,7 +646,7 @@ protected:
 
     int m_iUserPackage;
     int m_iSharedPackage;
-       int m_iBundledPackage;
+    int m_iBundledPackage;
 
     ScriptSubPackageIterator* m_pScriptSubPackageIterator;
 

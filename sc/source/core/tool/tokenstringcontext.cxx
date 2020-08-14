@@ -7,12 +7,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "tokenstringcontext.hxx"
-#include "compiler.hxx"
-#include "document.hxx"
-#include "dbdata.hxx"
-#include "externalrefmgr.hxx"
-#include "globstr.hrc"
+#include <tokenstringcontext.hxx>
+#include <compiler.hxx>
+#include <document.hxx>
+#include <dbdata.hxx>
+#include <externalrefmgr.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
 
 using namespace com::sun::star;
 
@@ -25,8 +26,7 @@ void insertAllNames( TokenStringContext::IndexNameMapType& rMap, const ScRangeNa
     for (auto const& it : rNames)
     {
         const ScRangeData *const pData = it.second.get();
-        rMap.insert(
-            TokenStringContext::IndexNameMapType::value_type(pData->GetIndex(), pData->GetName()));
+        rMap.emplace(pData->GetIndex(), pData->GetName());
     }
 }
 
@@ -43,7 +43,7 @@ TokenStringContext::TokenStringContext( const ScDocument* pDoc, formula::Formula
     else
     {
         assert(!"TokenStringContext - no OpCodeMap?!?");
-        maErrRef = ScGlobal::GetRscString(STR_NO_REF_TABLE);
+        maErrRef = ScResId(STR_NO_REF_TABLE);
     }
 
     if (!pDoc)
@@ -52,9 +52,8 @@ TokenStringContext::TokenStringContext( const ScDocument* pDoc, formula::Formula
     // Fetch all sheet names.
     maTabNames = pDoc->GetAllTableNames();
     {
-        std::vector<OUString>::iterator it = maTabNames.begin(), itEnd = maTabNames.end();
-        for (; it != itEnd; ++it)
-            ScCompiler::CheckTabQuotes(*it, formula::FormulaGrammar::extractRefConvention(eGram));
+        for (auto& rTabName : maTabNames)
+            ScCompiler::CheckTabQuotes(rTabName, formula::FormulaGrammar::extractRefConvention(eGram));
     }
 
     // Fetch all named range names.
@@ -66,17 +65,14 @@ TokenStringContext::TokenStringContext( const ScDocument* pDoc, formula::Formula
     {
         ScRangeName::TabNameCopyMap aTabRangeNames;
         pDoc->GetAllTabRangeNames(aTabRangeNames);
-        ScRangeName::TabNameCopyMap::const_iterator it = aTabRangeNames.begin(), itEnd = aTabRangeNames.end();
-        for (; it != itEnd; ++it)
+        for (const auto& [nTab, pSheetNames] : aTabRangeNames)
         {
-            const ScRangeName* pSheetNames = it->second;
             if (!pSheetNames)
                 continue;
 
-            SCTAB nTab = it->first;
             IndexNameMapType aNames;
             insertAllNames(aNames, *pSheetNames);
-            maSheetRangeNames.insert(TabIndexMapType::value_type(nTab, aNames));
+            maSheetRangeNames.emplace(nTab, aNames);
         }
     }
 
@@ -85,28 +81,26 @@ TokenStringContext::TokenStringContext( const ScDocument* pDoc, formula::Formula
     if (pDBs)
     {
         const ScDBCollection::NamedDBs& rNamedDBs = pDBs->getNamedDBs();
-        ScDBCollection::NamedDBs::const_iterator it = rNamedDBs.begin(), itEnd = rNamedDBs.end();
-        for (; it != itEnd; ++it)
+        for (const auto& rxNamedDB : rNamedDBs)
         {
-            const ScDBData& rData = **it;
-            maNamedDBs.insert(IndexNameMapType::value_type(rData.GetIndex(), rData.GetName()));
+            const ScDBData& rData = *rxNamedDB;
+            maNamedDBs.emplace(rData.GetIndex(), rData.GetName());
         }
     }
 
     // Fetch all relevant bits for external references.
-    if (pDoc->HasExternalRefManager())
+    if (!pDoc->HasExternalRefManager())
+        return;
+
+    const ScExternalRefManager* pRefMgr = pDoc->GetExternalRefManager();
+    maExternalFileNames = pRefMgr->getAllCachedExternalFileNames();
+    for (size_t i = 0, n = maExternalFileNames.size(); i < n; ++i)
     {
-        const ScExternalRefManager* pRefMgr = pDoc->GetExternalRefManager();
-        maExternalFileNames = pRefMgr->getAllCachedExternalFileNames();
-        for (size_t i = 0, n = maExternalFileNames.size(); i < n; ++i)
-        {
-            sal_uInt16 nFileId = static_cast<sal_uInt16>(i);
-            std::vector<OUString> aTabNames;
-            pRefMgr->getAllCachedTableNames(nFileId, aTabNames);
-            if (!aTabNames.empty())
-                maExternalCachedTabNames.insert(
-                    IndexNamesMapType::value_type(nFileId, aTabNames));
-        }
+        sal_uInt16 nFileId = static_cast<sal_uInt16>(i);
+        std::vector<OUString> aTabNames;
+        pRefMgr->getAllCachedTableNames(nFileId, aTabNames);
+        if (!aTabNames.empty())
+            maExternalCachedTabNames.emplace(nFileId, aTabNames);
     }
 }
 
@@ -127,9 +121,8 @@ void CompileFormulaContext::updateTabNames()
     // Fetch all sheet names.
     maTabNames = mpDoc->GetAllTableNames();
     {
-        std::vector<OUString>::iterator it = maTabNames.begin(), itEnd = maTabNames.end();
-        for (; it != itEnd; ++it)
-            ScCompiler::CheckTabQuotes(*it, formula::FormulaGrammar::extractRefConvention(meGram));
+        for (auto& rTabName : maTabNames)
+            ScCompiler::CheckTabQuotes(rTabName, formula::FormulaGrammar::extractRefConvention(meGram));
     }
 }
 

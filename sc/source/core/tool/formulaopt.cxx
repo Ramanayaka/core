@@ -10,12 +10,13 @@
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/lang/Locale.hpp>
 #include <osl/diagnose.h>
-
-#include "formulaopt.hxx"
-#include "miscuno.hxx"
-#include "global.hxx"
-#include "formulagroup.hxx"
-#include "sc.hrc"
+#include <sal/log.hxx>
+#include <unotools/localedatawrapper.hxx>
+#include <formulaopt.hxx>
+#include <miscuno.hxx>
+#include <global.hxx>
+#include <formulagroup.hxx>
+#include <sc.hrc>
 
 using namespace utl;
 using namespace com::sun::star::uno;
@@ -25,23 +26,6 @@ namespace lang = ::com::sun::star::lang;
 ScFormulaOptions::ScFormulaOptions()
 {
     SetDefaults();
-}
-
-ScFormulaOptions::ScFormulaOptions( const ScFormulaOptions& rCpy ) :
-    bUseEnglishFuncName ( rCpy.bUseEnglishFuncName ),
-    eFormulaGrammar     ( rCpy.eFormulaGrammar ),
-    aCalcConfig(rCpy.aCalcConfig),
-    mbWriteCalcConfig   (rCpy.mbWriteCalcConfig),
-    aFormulaSepArg      ( rCpy.aFormulaSepArg ),
-    aFormulaSepArrayRow ( rCpy.aFormulaSepArrayRow ),
-    aFormulaSepArrayCol ( rCpy.aFormulaSepArrayCol ),
-    meOOXMLRecalc       ( rCpy.meOOXMLRecalc ),
-    meODFRecalc         ( rCpy.meODFRecalc )
-{
-}
-
-ScFormulaOptions::~ScFormulaOptions()
-{
 }
 
 void ScFormulaOptions::SetDefaults()
@@ -78,7 +62,7 @@ void ScFormulaOptions::GetDefaultFormulaSeparators(
         // the old separator set.
         return;
 
-    const LocaleDataWrapper& rLocaleData = *ScGlobal::pLocaleData;
+    const LocaleDataWrapper& rLocaleData = *ScGlobal::getLocaleDataPtr();
     const OUString& rDecSep  = rLocaleData.getNumDecimalSep();
     const OUString& rListSep = rLocaleData.getListSep();
 
@@ -88,13 +72,19 @@ void ScFormulaOptions::GetDefaultFormulaSeparators(
 
     sal_Unicode cDecSep  = rDecSep[0];
     sal_Unicode cListSep = rListSep[0];
+    sal_Unicode cDecSepAlt = rLocaleData.getNumDecimalSepAlt().toChar();    // usually 0 (empty)
 
     // Excel by default uses system's list separator as the parameter
     // separator, which in English locales is a comma.  However, OOo's list
     // separator value is set to ';' for all English locales.  Because of this
     // discrepancy, we will hardcode the separator value here, for now.
-    if (cDecSep == '.')
+    // Similar for decimal separator alternative.
+    // However, if the decimal separator alternative is '.' and the decimal
+    // separator is ',' this makes no sense, fall back to ';' in that case.
+    if (cDecSep == '.' || (cDecSepAlt == '.' && cDecSep != ','))
         cListSep = ',';
+    else if (cDecSep == ',' && cDecSepAlt == '.')
+        cListSep = ';';
 
     // Special case for de_CH locale.
     if (rLocale.Language == "de" && rLocale.Country == "CH")
@@ -114,20 +104,6 @@ void ScFormulaOptions::GetDefaultFormulaSeparators(
     if (cDecSep == ',')
         rSepArrayCol = ".";
     rSepArrayRow = ";";
-}
-
-ScFormulaOptions& ScFormulaOptions::operator=( const ScFormulaOptions& rCpy )
-{
-    bUseEnglishFuncName = rCpy.bUseEnglishFuncName;
-    eFormulaGrammar     = rCpy.eFormulaGrammar;
-    aCalcConfig = rCpy.aCalcConfig;
-    mbWriteCalcConfig = rCpy.mbWriteCalcConfig;
-    aFormulaSepArg      = rCpy.aFormulaSepArg;
-    aFormulaSepArrayRow = rCpy.aFormulaSepArrayRow;
-    aFormulaSepArrayCol = rCpy.aFormulaSepArrayCol;
-    meOOXMLRecalc       = rCpy.meOOXMLRecalc;
-    meODFRecalc         = rCpy.meODFRecalc;
-    return *this;
 }
 
 bool ScFormulaOptions::operator==( const ScFormulaOptions& rOpt ) const
@@ -154,12 +130,6 @@ ScTpFormulaItem::ScTpFormulaItem( const ScFormulaOptions& rOpt ) :
 {
 }
 
-ScTpFormulaItem::ScTpFormulaItem( const ScTpFormulaItem& rItem ) :
-    SfxPoolItem ( rItem ),
-    theOptions  ( rItem.theOptions )
-{
-}
-
 ScTpFormulaItem::~ScTpFormulaItem()
 {
 }
@@ -172,7 +142,7 @@ bool ScTpFormulaItem::operator==( const SfxPoolItem& rItem ) const
     return ( theOptions == rPItem.theOptions );
 }
 
-SfxPoolItem* ScTpFormulaItem::Clone( SfxItemPool * ) const
+ScTpFormulaItem* ScTpFormulaItem::Clone( SfxItemPool * ) const
 {
     return new ScTpFormulaItem( *this );
 }
@@ -255,235 +225,235 @@ void ScFormulaCfg::UpdateFromProperties( const Sequence<OUString>& aNames )
     const Any* pValues = aValues.getConstArray();
     OSL_ENSURE(aValues.getLength() == aNames.getLength(), "GetProperties failed");
     PropsToIds aPropMap = GetPropNamesToId();
-    if(aValues.getLength() == aNames.getLength())
+    if(aValues.getLength() != aNames.getLength())
+        return;
+
+    sal_Int32 nIntVal = 0;
+    for(int nProp = 0; nProp < aNames.getLength(); nProp++)
     {
-        sal_Int32 nIntVal = 0;
-        for(int nProp = 0; nProp < aNames.getLength(); nProp++)
+        PropsToIds::iterator it_end = aPropMap.end();
+        PropsToIds::iterator it = aPropMap.find( aNames[nProp] );
+        if(pValues[nProp].hasValue() && it != it_end )
         {
-            PropsToIds::iterator it_end = aPropMap.end();
-            PropsToIds::iterator it = aPropMap.find( aNames[nProp] );
-            if(pValues[nProp].hasValue() && it != it_end )
+            switch(it->second)
             {
-                switch(it->second)
-                {
-                case SCFORMULAOPT_GRAMMAR:
-                {
-                    // Get default value in case this option is not set.
-                    ::formula::FormulaGrammar::Grammar eGram = GetFormulaSyntax();
+            case SCFORMULAOPT_GRAMMAR:
+            {
+                // Get default value in case this option is not set.
+                ::formula::FormulaGrammar::Grammar eGram = GetFormulaSyntax();
 
-                    do
+                do
+                {
+                    if (!(pValues[nProp] >>= nIntVal))
+                        // extracting failed.
+                        break;
+
+                    switch (nIntVal)
                     {
-                        if (!(pValues[nProp] >>= nIntVal))
-                            // extracting failed.
-                            break;
-
-                        switch (nIntVal)
-                        {
-                            case 0: // Calc A1
-                                eGram = ::formula::FormulaGrammar::GRAM_NATIVE;
-                            break;
-                            case 1: // Excel A1
-                                eGram = ::formula::FormulaGrammar::GRAM_NATIVE_XL_A1;
-                            break;
-                            case 2: // Excel R1C1
-                                eGram = ::formula::FormulaGrammar::GRAM_NATIVE_XL_R1C1;
-                            break;
-                            default:
-                                ;
-                        }
+                        case 0: // Calc A1
+                            eGram = ::formula::FormulaGrammar::GRAM_NATIVE;
+                        break;
+                        case 1: // Excel A1
+                            eGram = ::formula::FormulaGrammar::GRAM_NATIVE_XL_A1;
+                        break;
+                        case 2: // Excel R1C1
+                            eGram = ::formula::FormulaGrammar::GRAM_NATIVE_XL_R1C1;
+                        break;
+                        default:
+                            ;
                     }
-                    while (false);
-                    SetFormulaSyntax(eGram);
                 }
-                break;
-                case SCFORMULAOPT_ENGLISH_FUNCNAME:
-                {
-                    bool bEnglish = false;
-                    if (pValues[nProp] >>= bEnglish)
-                        SetUseEnglishFuncName(bEnglish);
-                }
-                break;
-                case SCFORMULAOPT_SEP_ARG:
-                {
-                    OUString aSep;
-                    if ((pValues[nProp] >>= aSep) && !aSep.isEmpty())
-                        SetFormulaSepArg(aSep);
-                }
-                break;
-                case SCFORMULAOPT_SEP_ARRAY_ROW:
-                {
-                    OUString aSep;
-                    if ((pValues[nProp] >>= aSep) && !aSep.isEmpty())
-                        SetFormulaSepArrayRow(aSep);
-                }
-                break;
-                case SCFORMULAOPT_SEP_ARRAY_COL:
-                {
-                    OUString aSep;
-                    if ((pValues[nProp] >>= aSep) && !aSep.isEmpty())
-                        SetFormulaSepArrayCol(aSep);
-                }
-                break;
-                case SCFORMULAOPT_STRING_REF_SYNTAX:
-                {
-                    // Get default value in case this option is not set.
-                    ::formula::FormulaGrammar::AddressConvention eConv = GetCalcConfig().meStringRefAddressSyntax;
+                while (false);
+                SetFormulaSyntax(eGram);
+            }
+            break;
+            case SCFORMULAOPT_ENGLISH_FUNCNAME:
+            {
+                bool bEnglish = false;
+                if (pValues[nProp] >>= bEnglish)
+                    SetUseEnglishFuncName(bEnglish);
+            }
+            break;
+            case SCFORMULAOPT_SEP_ARG:
+            {
+                OUString aSep;
+                if ((pValues[nProp] >>= aSep) && !aSep.isEmpty())
+                    SetFormulaSepArg(aSep);
+            }
+            break;
+            case SCFORMULAOPT_SEP_ARRAY_ROW:
+            {
+                OUString aSep;
+                if ((pValues[nProp] >>= aSep) && !aSep.isEmpty())
+                    SetFormulaSepArrayRow(aSep);
+            }
+            break;
+            case SCFORMULAOPT_SEP_ARRAY_COL:
+            {
+                OUString aSep;
+                if ((pValues[nProp] >>= aSep) && !aSep.isEmpty())
+                    SetFormulaSepArrayCol(aSep);
+            }
+            break;
+            case SCFORMULAOPT_STRING_REF_SYNTAX:
+            {
+                // Get default value in case this option is not set.
+                ::formula::FormulaGrammar::AddressConvention eConv = GetCalcConfig().meStringRefAddressSyntax;
 
-                    do
+                do
+                {
+                    if (!(pValues[nProp] >>= nIntVal))
+                        // extraction failed.
+                        break;
+
+                    switch (nIntVal)
                     {
-                        if (!(pValues[nProp] >>= nIntVal))
-                            // extraction failed.
-                            break;
-
-                        switch (nIntVal)
-                        {
-                            case -1: // Same as the formula grammar.
-                                eConv = formula::FormulaGrammar::CONV_UNSPECIFIED;
-                            break;
-                            case 0: // Calc A1
-                                eConv = formula::FormulaGrammar::CONV_OOO;
-                            break;
-                            case 1: // Excel A1
-                                eConv = formula::FormulaGrammar::CONV_XL_A1;
-                            break;
-                            case 2: // Excel R1C1
-                                eConv = formula::FormulaGrammar::CONV_XL_R1C1;
-                            break;
-                            case 3: // Calc A1 | Excel A1
-                                eConv = formula::FormulaGrammar::CONV_A1_XL_A1;
-                            break;
-                            default:
-                                ;
-                        }
+                        case -1: // Same as the formula grammar.
+                            eConv = formula::FormulaGrammar::CONV_UNSPECIFIED;
+                        break;
+                        case 0: // Calc A1
+                            eConv = formula::FormulaGrammar::CONV_OOO;
+                        break;
+                        case 1: // Excel A1
+                            eConv = formula::FormulaGrammar::CONV_XL_A1;
+                        break;
+                        case 2: // Excel R1C1
+                            eConv = formula::FormulaGrammar::CONV_XL_R1C1;
+                        break;
+                        case 3: // Calc A1 | Excel A1
+                            eConv = formula::FormulaGrammar::CONV_A1_XL_A1;
+                        break;
+                        default:
+                            ;
                     }
-                    while (false);
-                    GetCalcConfig().meStringRefAddressSyntax = eConv;
                 }
-                break;
-                case SCFORMULAOPT_STRING_CONVERSION:
-                {
-                    // Get default value in case this option is not set.
-                    ScCalcConfig::StringConversion eConv = GetCalcConfig().meStringConversion;
+                while (false);
+                GetCalcConfig().meStringRefAddressSyntax = eConv;
+            }
+            break;
+            case SCFORMULAOPT_STRING_CONVERSION:
+            {
+                // Get default value in case this option is not set.
+                ScCalcConfig::StringConversion eConv = GetCalcConfig().meStringConversion;
 
-                    do
+                do
+                {
+                    if (!(pValues[nProp] >>= nIntVal))
+                        // extraction failed.
+                        break;
+
+                    switch (nIntVal)
                     {
-                        if (!(pValues[nProp] >>= nIntVal))
-                            // extraction failed.
-                            break;
-
-                        switch (nIntVal)
-                        {
-                            case 0:
-                                eConv = ScCalcConfig::StringConversion::ILLEGAL;
-                            break;
-                            case 1:
-                                eConv = ScCalcConfig::StringConversion::ZERO;
-                            break;
-                            case 2:
-                                eConv = ScCalcConfig::StringConversion::UNAMBIGUOUS;
-                            break;
-                            case 3:
-                                eConv = ScCalcConfig::StringConversion::LOCALE;
-                            break;
-                            default:
-                                SAL_WARN("sc", "unknown string conversion option!");
-                        }
+                        case 0:
+                            eConv = ScCalcConfig::StringConversion::ILLEGAL;
+                        break;
+                        case 1:
+                            eConv = ScCalcConfig::StringConversion::ZERO;
+                        break;
+                        case 2:
+                            eConv = ScCalcConfig::StringConversion::UNAMBIGUOUS;
+                        break;
+                        case 3:
+                            eConv = ScCalcConfig::StringConversion::LOCALE;
+                        break;
+                        default:
+                            SAL_WARN("sc", "unknown string conversion option!");
                     }
-                    while (false);
-                    GetCalcConfig().meStringConversion = eConv;
                 }
-                break;
-                case SCFORMULAOPT_EMPTY_OUSTRING_AS_ZERO:
+                while (false);
+                GetCalcConfig().meStringConversion = eConv;
+            }
+            break;
+            case SCFORMULAOPT_EMPTY_OUSTRING_AS_ZERO:
+            {
+                bool bVal = GetCalcConfig().mbEmptyStringAsZero;
+                pValues[nProp] >>= bVal;
+                GetCalcConfig().mbEmptyStringAsZero = bVal;
+            }
+            break;
+            case SCFORMULAOPT_OOXML_RECALC:
+            {
+                ScRecalcOptions eOpt = RECALC_ASK;
+                if (pValues[nProp] >>= nIntVal)
                 {
-                    bool bVal = GetCalcConfig().mbEmptyStringAsZero;
-                    pValues[nProp] >>= bVal;
-                    GetCalcConfig().mbEmptyStringAsZero = bVal;
-                }
-                break;
-                case SCFORMULAOPT_OOXML_RECALC:
-                {
-                    ScRecalcOptions eOpt = RECALC_ASK;
-                    if (pValues[nProp] >>= nIntVal)
+                    switch (nIntVal)
                     {
-                        switch (nIntVal)
-                        {
-                            case 0:
-                                eOpt = RECALC_ALWAYS;
-                                break;
-                            case 1:
-                                eOpt = RECALC_NEVER;
-                                break;
-                            case 2:
-                                eOpt = RECALC_ASK;
-                                break;
-                            default:
-                                SAL_WARN("sc", "unknown ooxml recalc option!");
-                        }
+                        case 0:
+                            eOpt = RECALC_ALWAYS;
+                            break;
+                        case 1:
+                            eOpt = RECALC_NEVER;
+                            break;
+                        case 2:
+                            eOpt = RECALC_ASK;
+                            break;
+                        default:
+                            SAL_WARN("sc", "unknown ooxml recalc option!");
                     }
-
-                    SetOOXMLRecalcOptions(eOpt);
                 }
-                break;
-                case SCFORMULAOPT_ODF_RECALC:
+
+                SetOOXMLRecalcOptions(eOpt);
+            }
+            break;
+            case SCFORMULAOPT_ODF_RECALC:
+            {
+                ScRecalcOptions eOpt = RECALC_ASK;
+                if (pValues[nProp] >>= nIntVal)
                 {
-                    ScRecalcOptions eOpt = RECALC_ASK;
-                    if (pValues[nProp] >>= nIntVal)
+                    switch (nIntVal)
                     {
-                        switch (nIntVal)
-                        {
-                            case 0:
-                                eOpt = RECALC_ALWAYS;
-                                break;
-                            case 1:
-                                eOpt = RECALC_NEVER;
-                                break;
-                            case 2:
-                                eOpt = RECALC_ASK;
-                                break;
-                            default:
-                                SAL_WARN("sc", "unknown odf recalc option!");
-                        }
+                        case 0:
+                            eOpt = RECALC_ALWAYS;
+                            break;
+                        case 1:
+                            eOpt = RECALC_NEVER;
+                            break;
+                        case 2:
+                            eOpt = RECALC_ASK;
+                            break;
+                        default:
+                            SAL_WARN("sc", "unknown odf recalc option!");
                     }
+                }
 
-                    SetODFRecalcOptions(eOpt);
-                }
-                break;
-                case SCFORMULAOPT_OPENCL_AUTOSELECT:
-                {
-                    bool bVal = GetCalcConfig().mbOpenCLAutoSelect;
-                    pValues[nProp] >>= bVal;
-                    GetCalcConfig().mbOpenCLAutoSelect = bVal;
-                }
-                break;
-                case SCFORMULAOPT_OPENCL_DEVICE:
-                {
-                    OUString aOpenCLDevice = GetCalcConfig().maOpenCLDevice;
-                    pValues[nProp] >>= aOpenCLDevice;
-                    GetCalcConfig().maOpenCLDevice = aOpenCLDevice;
-                }
-                break;
-                case SCFORMULAOPT_OPENCL_SUBSET_ONLY:
-                {
-                    bool bVal = GetCalcConfig().mbOpenCLSubsetOnly;
-                    pValues[nProp] >>= bVal;
-                    GetCalcConfig().mbOpenCLSubsetOnly = bVal;
-                }
-                break;
-                case SCFORMULAOPT_OPENCL_MIN_SIZE:
-                {
-                    sal_Int32 nVal = GetCalcConfig().mnOpenCLMinimumFormulaGroupSize;
-                    pValues[nProp] >>= nVal;
-                    GetCalcConfig().mnOpenCLMinimumFormulaGroupSize = nVal;
-                }
-                break;
-                case SCFORMULAOPT_OPENCL_SUBSET_OPS:
-                {
-                    OUString sVal = ScOpCodeSetToSymbolicString(GetCalcConfig().mpOpenCLSubsetOpCodes);
-                    pValues[nProp] >>= sVal;
-                    GetCalcConfig().mpOpenCLSubsetOpCodes = ScStringToOpCodeSet(sVal);
-                }
-                break;
-                }
+                SetODFRecalcOptions(eOpt);
+            }
+            break;
+            case SCFORMULAOPT_OPENCL_AUTOSELECT:
+            {
+                bool bVal = GetCalcConfig().mbOpenCLAutoSelect;
+                pValues[nProp] >>= bVal;
+                GetCalcConfig().mbOpenCLAutoSelect = bVal;
+            }
+            break;
+            case SCFORMULAOPT_OPENCL_DEVICE:
+            {
+                OUString aOpenCLDevice = GetCalcConfig().maOpenCLDevice;
+                pValues[nProp] >>= aOpenCLDevice;
+                GetCalcConfig().maOpenCLDevice = aOpenCLDevice;
+            }
+            break;
+            case SCFORMULAOPT_OPENCL_SUBSET_ONLY:
+            {
+                bool bVal = GetCalcConfig().mbOpenCLSubsetOnly;
+                pValues[nProp] >>= bVal;
+                GetCalcConfig().mbOpenCLSubsetOnly = bVal;
+            }
+            break;
+            case SCFORMULAOPT_OPENCL_MIN_SIZE:
+            {
+                sal_Int32 nVal = GetCalcConfig().mnOpenCLMinimumFormulaGroupSize;
+                pValues[nProp] >>= nVal;
+                GetCalcConfig().mnOpenCLMinimumFormulaGroupSize = nVal;
+            }
+            break;
+            case SCFORMULAOPT_OPENCL_SUBSET_OPS:
+            {
+                OUString sVal = ScOpCodeSetToSymbolicString(GetCalcConfig().mpOpenCLSubsetOpCodes);
+                pValues[nProp] >>= sVal;
+                GetCalcConfig().mpOpenCLSubsetOpCodes = ScStringToOpCodeSet(sVal);
+            }
+            break;
             }
         }
     }

@@ -11,42 +11,41 @@
 #ifndef INCLUDED_OOX_CRYPTO_DOCUMENTENCRYPTION_HXX
 #define INCLUDED_OOX_CRYPTO_DOCUMENTENCRYPTION_HXX
 
-#include <oox/dllapi.h>
-
 #include <com/sun/star/uno/Reference.hxx>
-#include <oox/crypto/Standard2007Engine.hxx>
-#include <rtl/ustring.hxx>
+#include <com/sun/star/uno/Sequence.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XStream; }
-} } }
+    namespace packages { class XPackageEncryption; }
+    namespace beans { struct NamedValue; }
+    namespace uno { class XComponentContext; }
+}
 
-namespace oox { namespace ole { class OleStorage; } }
+namespace oox::ole { class OleStorage; }
 
-namespace oox {
-namespace core {
+namespace oox::crypto {
 
-class OOX_DLLPUBLIC DocumentEncryption
+class DocumentEncryption
 {
 private:
+    css::uno::Reference< css::uno::XComponentContext > mxContext;
     css::uno::Reference< css::io::XStream > mxDocumentStream;
     oox::ole::OleStorage& mrOleStorage;
-    OUString maPassword;
 
-    Standard2007Engine mEngine;
+    css::uno::Reference< css::packages::XPackageEncryption > mxPackageEncryption;
+    const css::uno::Sequence< css::beans::NamedValue >& mMediaEncData;
 
 public:
-    DocumentEncryption(
+    DocumentEncryption(const css::uno::Reference< css::uno::XComponentContext >& rxContext,
         css::uno::Reference< css::io::XStream > const & xDocumentStream,
         oox::ole::OleStorage& rOleStorage,
-        const OUString& aPassword);
+        const css::uno::Sequence< css::beans::NamedValue >& rMediaEncData);
 
     bool encrypt();
 
 };
 
-} // namespace core
-} // namespace oox
+} // namespace oox::crypto
 
 #endif
 

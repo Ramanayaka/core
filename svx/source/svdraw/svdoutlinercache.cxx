@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svdoutlinercache.hxx"
+#include <svdoutlinercache.hxx>
 #include <svx/svdoutl.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/svdetc.hxx>
@@ -30,18 +30,18 @@ SdrOutlinerCache::SdrOutlinerCache( SdrModel* pModel )
 {
 }
 
-SdrOutliner* SdrOutlinerCache::createOutliner( OutlinerMode nOutlinerMode )
+std::unique_ptr<SdrOutliner> SdrOutlinerCache::createOutliner( OutlinerMode nOutlinerMode )
 {
-    SdrOutliner* pOutliner = nullptr;
+    std::unique_ptr<SdrOutliner> pOutliner;
 
     if( (OutlinerMode::OutlineObject == nOutlinerMode) && !maModeOutline.empty() )
     {
-        pOutliner = maModeOutline.back();
+        pOutliner = std::move(maModeOutline.back());
         maModeOutline.pop_back();
     }
     else if( (OutlinerMode::TextObject == nOutlinerMode) && !maModeText.empty() )
     {
-        pOutliner = maModeText.back();
+        pOutliner = std::move(maModeText.back());
         maModeText.pop_back();
     }
     else
@@ -49,7 +49,7 @@ SdrOutliner* SdrOutlinerCache::createOutliner( OutlinerMode nOutlinerMode )
         pOutliner = SdrMakeOutliner(nOutlinerMode, *mpModel);
         Outliner& aDrawOutliner = mpModel->GetDrawOutliner();
         pOutliner->SetCalcFieldValueHdl( aDrawOutliner.GetCalcFieldValueHdl() );
-        maActiveOutliners.insert(pOutliner);
+        maActiveOutliners.insert(pOutliner.get());
     }
 
     return pOutliner;
@@ -57,50 +57,36 @@ SdrOutliner* SdrOutlinerCache::createOutliner( OutlinerMode nOutlinerMode )
 
 SdrOutlinerCache::~SdrOutlinerCache()
 {
-    for( auto candA : maModeOutline )
-    {
-        delete candA;
-    }
-
-    maModeOutline.clear();
-
-    for( auto candB : maModeText )
-    {
-        delete candB;
-    }
-
-    maModeText.clear();
 }
 
-void SdrOutlinerCache::disposeOutliner( SdrOutliner* pOutliner )
+void SdrOutlinerCache::disposeOutliner( std::unique_ptr<SdrOutliner> pOutliner )
 {
-    if( pOutliner )
+    if( !pOutliner )
+        return;
+
+    OutlinerMode nOutlMode = pOutliner->GetOutlinerMode();
+
+    if( OutlinerMode::OutlineObject == nOutlMode )
     {
-        OutlinerMode nOutlMode = pOutliner->GetOutlinerMode();
+        pOutliner->Clear();
+        pOutliner->SetVertical( false );
 
-        if( OutlinerMode::OutlineObject == nOutlMode )
-        {
-            maModeOutline.push_back(pOutliner);
-            pOutliner->Clear();
-            pOutliner->SetVertical( false );
+        // Deregister on outliner, might be reused from outliner cache
+        pOutliner->SetNotifyHdl( Link<EENotify&,void>() );
+        maModeOutline.emplace_back(std::move(pOutliner));
+    }
+    else if( OutlinerMode::TextObject == nOutlMode )
+    {
+        pOutliner->Clear();
+        pOutliner->SetVertical( false );
 
-            // Deregister on outliner, might be reused from outliner cache
-            pOutliner->SetNotifyHdl( Link<EENotify&,void>() );
-        }
-        else if( OutlinerMode::TextObject == nOutlMode )
-        {
-            maModeText.push_back(pOutliner);
-            pOutliner->Clear();
-            pOutliner->SetVertical( false );
-
-            // Deregister on outliner, might be reused from outliner cache
-            pOutliner->SetNotifyHdl( Link<EENotify&,void>() );
-        }
-        else
-        {
-            maActiveOutliners.erase(pOutliner);
-            delete pOutliner;
-        }
+        // Deregister on outliner, might be reused from outliner cache
+        pOutliner->SetNotifyHdl( Link<EENotify&,void>() );
+        maModeText.emplace_back(std::move(pOutliner));
+    }
+    else
+    {
+        maActiveOutliners.erase(pOutliner.get());
     }
 }
 

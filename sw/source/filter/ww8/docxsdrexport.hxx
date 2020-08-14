@@ -11,23 +11,17 @@
 #define INCLUDED_SW_SOURCE_FILTER_WW8_DOCXSDREXPORT_HXX
 
 #include <memory>
-#include <o3tl/make_unique.hxx>
 
-#include <com/sun/star/xml/dom/XDocument.hpp>
 #include <rtl/strbuf.hxx>
-#include <rtl/ref.hxx>
 #include <sax/fshelper.hxx>
 #include <tools/solar.h>
 
-namespace oox
+namespace rtl
 {
-namespace drawingml
-{
-class DrawingML;
+template <typename> class Reference;
 }
-}
+namespace oox::drawingml { class DrawingML; }
 class Size;
-class Point;
 class SdrObject;
 class SvxBoxItem;
 
@@ -36,7 +30,6 @@ namespace ww8
 class Frame;
 }
 class SwFrameFormat;
-class SwNode;
 
 class DocxExport;
 
@@ -46,7 +39,7 @@ class ExportDataSaveRestore
 private:
     DocxExport& m_rExport;
 public:
-    ExportDataSaveRestore(DocxExport& rExport, sal_uLong nStt, sal_uLong nEnd, ww8::Frame* pParentFrame);
+    ExportDataSaveRestore(DocxExport& rExport, sal_uLong nStt, sal_uLong nEnd, ww8::Frame const* pParentFrame);
     ~ExportDataSaveRestore();
 };
 
@@ -56,27 +49,25 @@ class DocxSdrExport
     struct Impl;
     std::unique_ptr<Impl> m_pImpl;
 public:
-    DocxSdrExport(DocxExport& rExport, sax_fastparser::FSHelperPtr pSerializer, oox::drawingml::DrawingML* pDrawingML);
+    DocxSdrExport(DocxExport& rExport, const sax_fastparser::FSHelperPtr& pSerializer, oox::drawingml::DrawingML* pDrawingML);
     ~DocxSdrExport();
 
     void setSerializer(const sax_fastparser::FSHelperPtr& pSerializer);
     /// When exporting fly frames, this holds the real size of the frame.
-    const Size* getFlyFrameSize();
-    bool getTextFrameSyntax();
-    bool getDMLTextFrameSyntax();
+    const Size* getFlyFrameSize() const;
+    bool getTextFrameSyntax() const;
+    bool getDMLTextFrameSyntax() const;
     rtl::Reference<sax_fastparser::FastAttributeList>& getFlyAttrList();
     /// Attributes of the next v:textbox element.
     rtl::Reference<sax_fastparser::FastAttributeList>& getTextboxAttrList();
     OStringBuffer& getTextFrameStyle();
-    /// Same, as DocxAttributeOutput::m_bBtLr, but for textframe rotation.
-    bool getFrameBtLr();
 
     /// Set if paragraph sdt open in the current drawing.
     void setParagraphSdtOpen(bool bParagraphSdtOpen);
 
-    bool IsDrawingOpen();
-    bool IsDMLAndVMLDrawingOpen();
-    bool IsParagraphHasDrawing();
+    bool IsDrawingOpen() const;
+    bool IsDMLAndVMLDrawingOpen() const;
+    bool IsParagraphHasDrawing() const;
     void setParagraphHasDrawing(bool bParagraphHasDrawing);
     rtl::Reference<sax_fastparser::FastAttributeList>& getFlyFillAttrList();
     sax_fastparser::FastAttributeList* getFlyWrapAttrList();
@@ -88,28 +79,25 @@ public:
     void startDMLAnchorInline(const SwFrameFormat* pFrameFormat, const Size& rSize);
     void endDMLAnchorInline(const SwFrameFormat* pFrameFormat);
     /// Writes a drawing as VML data.
-    void writeVMLDrawing(const SdrObject* sdrObj, const SwFrameFormat& rFrameFormat,const Point& rNdTopLeft);
+    void writeVMLDrawing(const SdrObject* sdrObj, const SwFrameFormat& rFrameFormat);
     /// Writes a drawing as DML.
-    void writeDMLDrawing(const SdrObject* pSdrObj, const SwFrameFormat* pFrameFormat, int nAnchorId);
+    void writeDMLDrawing(const SdrObject* pSdrObject, const SwFrameFormat* pFrameFormat, int nAnchorId);
     /// Writes shape in both DML and VML format.
-    void writeDMLAndVMLDrawing(const SdrObject* sdrObj, const SwFrameFormat& rFrameFormat,const Point& rNdTopLeft, int nAnchorId);
+    void writeDMLAndVMLDrawing(const SdrObject* sdrObj, const SwFrameFormat& rFrameFormat, int nAnchorId);
     /// Write <a:effectLst>, the effect list.
     void writeDMLEffectLst(const SwFrameFormat& rFrameFormat);
     /// Writes a diagram (smartart).
-    void writeDiagram(const SdrObject* sdrObject, const SwFrameFormat& rFrameFormat, int nAnchorId);
-    void writeDiagramRels(const css::uno::Sequence< css::uno::Sequence<css::uno::Any> >& xRelSeq,
-                          const css::uno::Reference<css::io::XOutputStream>& xOutStream, const OUString& sGrabBagProperyName,
-                          int nAnchorId);
+    void writeDiagram(const SdrObject* sdrObject, const SwFrameFormat& rFrameFormat, int nDiagramId);
     /// Writes text frame in DML format.
-    void writeDMLTextFrame(ww8::Frame* pParentFrame, int nAnchorId, bool bTextBoxOnly = false);
+    void writeDMLTextFrame(ww8::Frame const* pParentFrame, int nAnchorId, bool bTextBoxOnly = false);
     /// Writes text frame in VML format.
-    void writeVMLTextFrame(ww8::Frame* pParentFrame, bool bTextBoxOnly = false);
+    void writeVMLTextFrame(ww8::Frame const* pParentFrame, bool bTextBoxOnly = false);
     /// Is this a standalone TextFrame, or used as a TextBox of a shape?
     static bool isTextBox(const SwFrameFormat& rFrameFormat);
     /// Writes text from Textbox for <w:framePr>
-    void writeOnlyTextOfFrame(ww8::Frame* pParentFrame);
+    void writeOnlyTextOfFrame(ww8::Frame const* pParentFrame);
     /// Writes the drawingML <a:ln> markup of a box item.
-    void writeBoxItemLine(const SvxBoxItem& rBoxItem);
+    void writeBoxItemLine(const SvxBoxItem& rBox);
 };
 
 #endif // INCLUDED_SW_SOURCE_FILTER_WW8_DOCXSDREXPORT_HXX

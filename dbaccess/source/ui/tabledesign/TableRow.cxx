@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TableRow.hxx"
+#include <TableRow.hxx>
 #include <tools/stream.hxx>
-#include "FieldDescriptions.hxx"
-#include <algorithm>
+#include <FieldDescriptions.hxx>
 #include <comphelper/types.hxx>
 
 using namespace dbaui;
@@ -28,7 +27,6 @@ using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 
-// class OTableRow
 OTableRow::OTableRow()
     :m_pActFieldDescr( nullptr )
     ,m_nPos( -1 )
@@ -80,7 +78,7 @@ bool OTableRow::IsPrimaryKey() const
 
 void OTableRow::SetFieldType( const TOTypeInfoSP& _pType, bool _bForce )
 {
-    if ( _pType.get() )
+    if ( _pType )
     {
         if( !m_pActFieldDescr )
         {
@@ -127,7 +125,7 @@ namespace dbaui
             _rStr.WriteInt32( pFieldDesc->GetScale() );
             _rStr.WriteInt32( pFieldDesc->GetIsNullable() );
             _rStr.WriteInt32( pFieldDesc->GetFormatKey() );
-            _rStr.WriteInt32( (sal_Int32)pFieldDesc->GetHorJustify() );
+            _rStr.WriteInt32( static_cast<sal_Int32>(pFieldDesc->GetHorJustify()) );
             _rStr.WriteInt32( pFieldDesc->IsAutoIncrement() ? 1 : 0 );
             _rStr.WriteInt32( pFieldDesc->IsPrimaryKey() ? 1 : 0 );
             _rStr.WriteInt32( pFieldDesc->IsCurrency() ? 1 : 0 );
@@ -179,7 +177,7 @@ namespace dbaui
             _rStr.ReadInt32( nValue );
             pFieldDesc->SetFormatKey(nValue);
             _rStr.ReadInt32( nValue );
-            pFieldDesc->SetHorJustify((SvxCellHorJustify)nValue);
+            pFieldDesc->SetHorJustify(static_cast<SvxCellHorJustify>(nValue));
 
             _rStr.ReadInt32( nValue );
             pFieldDesc->SetAutoIncrement(nValue != 0);

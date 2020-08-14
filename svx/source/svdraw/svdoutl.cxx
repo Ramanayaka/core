@@ -21,14 +21,12 @@
 #include <editeng/outliner.hxx>
 #include <svx/svdotext.hxx>
 #include <editeng/editstat.hxx>
-#include <svx/svdmodel.hxx>
-#include <editeng/eeitem.hxx>
 #include <svl/itempool.hxx>
+#include <editeng/editview.hxx>
 
 
 SdrOutliner::SdrOutliner( SfxItemPool* pItemPool, OutlinerMode nMode )
 :   Outliner( pItemPool, nMode ),
-    //mpPaintInfoRec( NULL )
     mpVisualizedPage(nullptr)
 {
 }
@@ -55,9 +53,8 @@ void SdrOutliner::SetTextObj( const SdrTextObj* pObj )
         nStat &= ~EEControlBits( EEControlBits::STRETCHING | EEControlBits::AUTOPAGESIZE );
         SetControlWord(nStat);
 
-        Size aNullSize;
         Size aMaxSize( 100000,100000 );
-        SetMinAutoPaperSize( aNullSize );
+        SetMinAutoPaperSize( Size() );
         SetMaxAutoPaperSize( aMaxSize );
         SetPaperSize( aMaxSize );
         ClearPolygon();
@@ -72,13 +69,13 @@ void SdrOutliner::SetTextObjNoInit( const SdrTextObj* pObj )
 }
 
 OUString SdrOutliner::CalcFieldValue(const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos,
-                                     Color*& rpTxtColor, Color*& rpFldColor)
+                                     std::optional<Color>& rpTxtColor, std::optional<Color>& rpFldColor)
 {
     bool bOk = false;
     OUString aRet;
 
     if(mpTextObj.is())
-        bOk = static_cast< SdrTextObj* >( mpTextObj.get())->CalcFieldValue(rField, nPara, nPos, false, rpTxtColor, rpFldColor, aRet);
+        bOk = mpTextObj->CalcFieldValue(rField, nPara, nPos, false, rpTxtColor, rpFldColor, aRet);
 
     if (!bOk)
         aRet = Outliner::CalcFieldValue(rField, nPara, nPos, rpTxtColor, rpFldColor);
@@ -88,10 +85,22 @@ OUString SdrOutliner::CalcFieldValue(const SvxFieldItem& rField, sal_Int32 nPara
 
 const SdrTextObj* SdrOutliner::GetTextObj() const
 {
-    if( mpTextObj.is() )
-        return static_cast< SdrTextObj* >( mpTextObj.get() );
-    else
-        return nullptr;
+    return mpTextObj.get();
+}
+
+bool SdrOutliner::hasEditViewCallbacks() const
+{
+    for (size_t a(0); a < GetViewCount(); a++)
+    {
+        OutlinerView* pOutlinerView = GetView(a);
+
+        if (pOutlinerView && pOutlinerView->GetEditView().getEditViewCallbacks())
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

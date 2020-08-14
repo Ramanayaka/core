@@ -20,10 +20,9 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_LOTFNTBF_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_LOTFNTBF_HXX
 
-#include "scitems.hxx"
 #include <editeng/fontitem.hxx>
 #include <editeng/fhgtitem.hxx>
-#include <editeng/colritem.hxx>
+#include <optional>
 
 // Code in fontbuff.cxx (excel)
 
@@ -32,42 +31,17 @@ class LotusFontBuffer
 private:
     struct ENTRY
     {
-        OUString*           pTmpName;
-        SvxFontItem*        pFont;
-        SvxFontHeightItem*  pHeight;
-        SvxColorItem*       pColor;
-        sal_Int32               nType;      // < 0 -> undefiniert
-        ENTRY()
-                            {
-                                pTmpName = nullptr;
-                                pFont = nullptr;
-                                pHeight = nullptr;
-                                pColor = nullptr;
-                                nType = -1;
-                            }
-        ~ENTRY()
-                            {
-                                if( pTmpName )
-                                    delete pTmpName;
-                                if( pFont )
-                                    delete pFont;
-                                if( pHeight )
-                                    delete pHeight;
-                                if( pColor )
-                                    delete pColor;
-                            }
+        std::optional<OUString>           xTmpName;
+        std::unique_ptr<SvxFontItem>        pFont;
+        std::unique_ptr<SvxFontHeightItem>  pHeight;
+        sal_Int32                           nType = -1; // < 0 -> undefined
         void         TmpName( const OUString &rNew )
                             {
-                                if( pTmpName )
-                                    *pTmpName = rNew;
-                                else
-                                    pTmpName = new OUString( rNew );
+                                xTmpName = rNew;
                             }
-        void         Height( SvxFontHeightItem& rNew )
+        void         Height( std::unique_ptr<SvxFontHeightItem> pNew )
                             {
-                                if( pHeight )
-                                    delete pHeight;
-                                pHeight = &rNew;
+                                pHeight = std::move(pNew);
                             }
         void         Type( const sal_uInt16 nNew )       { nType = nNew; }
     };

@@ -23,10 +23,7 @@
 #include "condformatbuffer.hxx"
 #include "excelhandlers.hxx"
 
-class IconSetRule;
-
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 class CondFormatContext;
 
@@ -89,8 +86,7 @@ private:
     CondFormatRuleRef   mxRule;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

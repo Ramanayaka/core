@@ -37,7 +37,6 @@ $(eval $(call gb_Module_add_moduledirs,cross_toolset,\
 	registry \
 	remotebridges \
 	ridljar \
-	rsc \
 	sal \
 	salhelper \
 	sax \
@@ -56,41 +55,6 @@ $(eval $(call gb_Module_add_moduledirs,cross_toolset,\
 	unotools \
 	ure \
 	xmlreader \
-	$(call gb_Helper_optional_for_host,DESKTOP, \
-		$(if $(WITH_GALLERY_BUILD), \
-			avmedia \
-			basic \
-			canvas \
-			configmgr \
-			connectivity \
-			cppcanvas \
-			drawinglayer \
-			editeng \
-			extensions \
-			filter \
-			framework \
-			linguistic \
-			mysqlc \
-			officecfg \
-			package \
-			postprocess \
-			sfx2 \
-			sot \
-			svgio \
-			svl \
-			svtools \
-			svx \
-			swext \
-			toolkit \
-			ucb \
-			unoxml \
-			vcl \
-			xmloff \
-			xmlscript \
-		) \
-		helpcompiler \
-		xmlhelp \
-	) \
 	$(call gb_Helper_optional,QADEVOOO,qadevOOo) \
 ))
 

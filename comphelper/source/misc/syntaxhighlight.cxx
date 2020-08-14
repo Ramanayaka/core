@@ -26,6 +26,8 @@
 #include <comphelper/syntaxhighlight.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
+namespace {
+
 // Flags for character properties
 enum class CharFlags {
     StartIdentifier   = 0x0001,
@@ -39,6 +41,9 @@ enum class CharFlags {
     Space             = 0x0100,
     EOL               = 0x0200
 };
+
+}
+
 namespace o3tl {
     template<> struct typed_flags<CharFlags> : is_typed_flags<CharFlags, 0x03ff> {};
 }
@@ -246,11 +251,14 @@ static const char* strListSqlKeyWords[] = {
 };
 
 
-extern "C" int compare_strings( const void *arg1, const void *arg2 )
+extern "C" {
+
+static int compare_strings( const void *arg1, const void *arg2 )
 {
     return strcmp( static_cast<char const *>(arg1), *static_cast<char * const *>(arg2) );
 }
 
+}
 
 namespace
 {
@@ -265,7 +273,7 @@ namespace
 class SyntaxHighlighter::Tokenizer
 {
     // Character information tables
-    CharFlags aCharTypeTab[256];
+    CharFlags aCharTypeTab[256] = {};
 
     // Auxiliary function: testing of the character flags
     bool testCharFlags(sal_Unicode c, CharFlags nTestFlags) const;
@@ -587,8 +595,6 @@ bool SyntaxHighlighter::Tokenizer::getNextToken(const sal_Unicode*& pos, /*out*/
 
 SyntaxHighlighter::Tokenizer::Tokenizer( HighlighterLanguage aLang ): aLanguage(aLang)
 {
-    memset( aCharTypeTab, 0, sizeof( aCharTypeTab ) );
-
     // Fill character table
     sal_uInt16 i;
 
@@ -598,8 +604,8 @@ SyntaxHighlighter::Tokenizer::Tokenizer( HighlighterLanguage aLang ): aLanguage(
         aCharTypeTab[i] |= nHelpMask;
     for( i = 'A' ; i <= 'Z' ; i++ )
         aCharTypeTab[i] |= nHelpMask;
-    aCharTypeTab[(int)'_'] |= nHelpMask;
-    aCharTypeTab[(int)'$'] |= nHelpMask;
+    aCharTypeTab[int('_')] |= nHelpMask;
+    aCharTypeTab[int('$')] |= nHelpMask;
 
     // Digit (can be identifier and number)
     nHelpMask = CharFlags::InIdentifier | CharFlags::StartNumber |
@@ -608,10 +614,10 @@ SyntaxHighlighter::Tokenizer::Tokenizer( HighlighterLanguage aLang ): aLanguage(
         aCharTypeTab[i] |= nHelpMask;
 
     // Add e, E, . and & here manually
-    aCharTypeTab[(int)'e'] |= CharFlags::InNumber;
-    aCharTypeTab[(int)'E'] |= CharFlags::InNumber;
-    aCharTypeTab[(int)'.'] |= CharFlags::InNumber | CharFlags::StartNumber;
-    aCharTypeTab[(int)'&'] |= CharFlags::StartNumber;
+    aCharTypeTab[int('e')] |= CharFlags::InNumber;
+    aCharTypeTab[int('E')] |= CharFlags::InNumber;
+    aCharTypeTab[int('.')] |= CharFlags::InNumber | CharFlags::StartNumber;
+    aCharTypeTab[int('&')] |= CharFlags::StartNumber;
 
     // Hexadecimal digit
     for( i = 'a' ; i <= 'f' ; i++ )
@@ -624,43 +630,43 @@ SyntaxHighlighter::Tokenizer::Tokenizer( HighlighterLanguage aLang ): aLanguage(
         aCharTypeTab[i] |= CharFlags::InOctNumber;
 
     // String literal start/end characters
-    aCharTypeTab[(int)'\''] |= CharFlags::StartString;
-    aCharTypeTab[(int)'\"'] |= CharFlags::StartString;
-    aCharTypeTab[(int)'[']  |= CharFlags::StartString;
-    aCharTypeTab[(int)'`']  |= CharFlags::StartString;
+    aCharTypeTab[int('\'')] |= CharFlags::StartString;
+    aCharTypeTab[int('\"')] |= CharFlags::StartString;
+    aCharTypeTab[int('[')]  |= CharFlags::StartString;
+    aCharTypeTab[int('`')]  |= CharFlags::StartString;
 
     // Operator characters
-    aCharTypeTab[(int)'!'] |= CharFlags::Operator;
-    aCharTypeTab[(int)'%'] |= CharFlags::Operator;
+    aCharTypeTab[int('!')] |= CharFlags::Operator;
+    aCharTypeTab[int('%')] |= CharFlags::Operator;
     // aCharTypeTab[(int)'&'] |= CharFlags::Operator;     Removed because of #i14140
-    aCharTypeTab[(int)'('] |= CharFlags::Operator;
-    aCharTypeTab[(int)')'] |= CharFlags::Operator;
-    aCharTypeTab[(int)'*'] |= CharFlags::Operator;
-    aCharTypeTab[(int)'+'] |= CharFlags::Operator;
-    aCharTypeTab[(int)','] |= CharFlags::Operator;
-    aCharTypeTab[(int)'-'] |= CharFlags::Operator;
-    aCharTypeTab[(int)'/'] |= CharFlags::Operator;
-    aCharTypeTab[(int)':'] |= CharFlags::Operator;
-    aCharTypeTab[(int)'<'] |= CharFlags::Operator;
-    aCharTypeTab[(int)'='] |= CharFlags::Operator;
-    aCharTypeTab[(int)'>'] |= CharFlags::Operator;
-    aCharTypeTab[(int)'?'] |= CharFlags::Operator;
-    aCharTypeTab[(int)'^'] |= CharFlags::Operator;
-    aCharTypeTab[(int)'|'] |= CharFlags::Operator;
-    aCharTypeTab[(int)'~'] |= CharFlags::Operator;
-    aCharTypeTab[(int)'{'] |= CharFlags::Operator;
-    aCharTypeTab[(int)'}'] |= CharFlags::Operator;
+    aCharTypeTab[int('(')] |= CharFlags::Operator;
+    aCharTypeTab[int(')')] |= CharFlags::Operator;
+    aCharTypeTab[int('*')] |= CharFlags::Operator;
+    aCharTypeTab[int('+')] |= CharFlags::Operator;
+    aCharTypeTab[int(',')] |= CharFlags::Operator;
+    aCharTypeTab[int('-')] |= CharFlags::Operator;
+    aCharTypeTab[int('/')] |= CharFlags::Operator;
+    aCharTypeTab[int(':')] |= CharFlags::Operator;
+    aCharTypeTab[int('<')] |= CharFlags::Operator;
+    aCharTypeTab[int('=')] |= CharFlags::Operator;
+    aCharTypeTab[int('>')] |= CharFlags::Operator;
+    aCharTypeTab[int('?')] |= CharFlags::Operator;
+    aCharTypeTab[int('^')] |= CharFlags::Operator;
+    aCharTypeTab[int('|')] |= CharFlags::Operator;
+    aCharTypeTab[int('~')] |= CharFlags::Operator;
+    aCharTypeTab[int('{')] |= CharFlags::Operator;
+    aCharTypeTab[int('}')] |= CharFlags::Operator;
     // aCharTypeTab[(int)'['] |= CharFlags::Operator;     Removed because of #i17826
-    aCharTypeTab[(int)']'] |= CharFlags::Operator;
-    aCharTypeTab[(int)';'] |= CharFlags::Operator;
+    aCharTypeTab[int(']')] |= CharFlags::Operator;
+    aCharTypeTab[int(';')] |= CharFlags::Operator;
 
     // Space
-    aCharTypeTab[(int)' ' ] |= CharFlags::Space;
-    aCharTypeTab[(int)'\t'] |= CharFlags::Space;
+    aCharTypeTab[int(' ') ] |= CharFlags::Space;
+    aCharTypeTab[int('\t')] |= CharFlags::Space;
 
     // End of line characters
-    aCharTypeTab[(int)'\r'] |= CharFlags::EOL;
-    aCharTypeTab[(int)'\n'] |= CharFlags::EOL;
+    aCharTypeTab[int('\r')] |= CharFlags::EOL;
+    aCharTypeTab[int('\n')] |= CharFlags::EOL;
 
     ppListKeyWords = nullptr;
     nKeyWordCount = 0;
@@ -680,17 +686,16 @@ void SyntaxHighlighter::Tokenizer::getHighlightPortions(const OUString& rLine,
     // Loop over all the tokens
     while( getNextToken( pos, eType, pStartPos, pEndPos ) )
     {
-        portions.push_back(
-            HighlightPortion(
-                pStartPos - rLine.getStr(), pEndPos - rLine.getStr(), eType));
+        portions.emplace_back(
+                pStartPos - rLine.getStr(), pEndPos - rLine.getStr(), eType);
     }
 }
 
 
 SyntaxHighlighter::SyntaxHighlighter(HighlighterLanguage language):
-    eLanguage(language), m_tokenizer(new SyntaxHighlighter::Tokenizer(language))
+    m_tokenizer(new SyntaxHighlighter::Tokenizer(language))
 {
-    switch (eLanguage)
+    switch (language)
     {
         case HighlighterLanguage::Basic:
             m_tokenizer->setKeyWords( strListBasicKeyWords,
@@ -713,7 +718,7 @@ void SyntaxHighlighter::getHighlightPortions(const OUString& rLine,
     m_tokenizer->getHighlightPortions( rLine, portions );
 }
 
-HighlighterLanguage SyntaxHighlighter::GetLanguage()
+HighlighterLanguage SyntaxHighlighter::GetLanguage() const
 {
     return m_tokenizer->aLanguage;
 }

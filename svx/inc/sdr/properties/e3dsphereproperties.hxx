@@ -23,13 +23,10 @@
 #include <sdr/properties/e3dcompoundproperties.hxx>
 
 
-namespace sdr
-{
-    namespace properties
+namespace sdr::properties
     {
-        class E3dSphereProperties : public E3dCompoundProperties
+        class E3dSphereProperties final : public E3dCompoundProperties
         {
-        protected:
             // Called after ItemChange() is done for all items.
             virtual void PostItemChange(const sal_uInt16 nWhich) override;
 
@@ -44,10 +41,10 @@ namespace sdr
             virtual ~E3dSphereProperties() override;
 
             // Clone() operator, normally just calls the local copy constructor
-            virtual BaseProperties& Clone(SdrObject& rObj) const override;
+            virtual std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const override;
         };
-    } // end of namespace properties
-} // end of namespace sdr
+
+} // end of namespace sdr::properties
 
 
 #endif // INCLUDED_SVX_INC_SDR_PROPERTIES_E3DSPHEREPROPERTIES_HXX

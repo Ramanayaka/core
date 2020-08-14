@@ -26,8 +26,8 @@ FolderItem gid_Folderitem_LibreOffice
 #else
     FolderID = gid_Folder_Staroffice51;
 #endif
-    FileID = auto_brand_exe_soffice;
-    IconFile = auto_brand_exe_soffice;
+    FileID = auto_brand_exe_soffice_exe;
+    IconFile = auto_brand_exe_soffice_exe;
     IconID = 0;
     WkDir = gid_Brand_Dir_Program;
     Parameter = "";
@@ -49,8 +49,8 @@ FolderItem gid_Folderitem_Soffice_Desktop
 #endif
     ModuleID = gid_Module_Root;
     FolderID = PREDEFINED_DESKTOP;
-    FileID = auto_brand_exe_soffice;
-    IconFile = auto_brand_exe_soffice;
+    FileID = auto_brand_exe_soffice_exe;
+    IconFile = auto_brand_exe_soffice_exe;
     IconID = 0;
     ComponentIDFile = "gid_Brand_File_Desktophelper_Txt";
     WkDir = gid_Brand_Dir_Program;
@@ -67,15 +67,15 @@ FolderItemProperty gid_Fip_Soffice_Desktop_AppID
 End
 
 FolderItem gid_Folderitem_LibreOffice_SafeMode
-    Name = "%PRODUCTNAME (Safe Mode)";
+    ALL_LANG(Name, STR_FI_NAME_SAFEMODE);
     ModuleID = gid_Module_Root;
 #ifdef ENABLE_SILENT_MSI
     FolderID = PREDEFINED_STARTMENU;
 #else
     FolderID = gid_Folder_Staroffice51;
 #endif
-    FileID = auto_brand_exe_soffice;
-    IconFile = auto_brand_exe_soffice;
+    FileID = auto_brand_exe_soffice_exe;
+    IconFile = auto_brand_exe_soffice_exe;
     IconID = 0;
     WkDir = gid_Brand_Dir_Program;
     Parameter = "--safe-mode";

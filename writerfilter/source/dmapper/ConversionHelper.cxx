@@ -16,9 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <ConversionHelper.hxx>
+#include "ConversionHelper.hxx"
 #include <com/sun/star/table/BorderLine2.hpp>
-#include <com/sun/star/table/BorderLineStyle.hpp>
 #include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/text/HoriOrientation.hpp>
 #include <com/sun/star/style/NumberingType.hpp>
@@ -27,17 +26,14 @@
 #include <rtl/ustrbuf.hxx>
 #include <tools/color.hxx>
 #include <tools/mapunit.hxx>
-#include <algorithm>
-#include <functional>
+#include <tools/UnitConversion.hxx>
 
 using namespace com::sun::star;
 
-namespace writerfilter {
-namespace dmapper{
-namespace ConversionHelper{
+namespace writerfilter::dmapper::ConversionHelper{
 
 /// Convert OOXML border style to WW8 that editeng can handle.
-sal_Int32 lcl_convertBorderStyleFromToken(sal_Int32 nOOXMLType)
+static sal_Int32 lcl_convertBorderStyleFromToken(sal_Int32 nOOXMLType)
 {
     switch (nOOXMLType)
     {
@@ -241,20 +237,21 @@ void MakeBorderLine( sal_Int32 nLineThickness,   sal_Int32 nLineToken,
                                             sal_Int32 nLineColor,
                                             table::BorderLine2& rToFill, bool bIsOOXML )
 {
-    static const sal_Int32 aBorderDefColor[] =
+    static const Color aBorderDefColor[] =
     {
         // The first item means automatic color (COL_AUTO), but we
         // do not use it anyway (see the next statement) .-)
-        0, COL_BLACK, COL_LIGHTBLUE, COL_LIGHTCYAN, COL_LIGHTGREEN,
+        // See also GetLineIndex in sw/source/filter/ww8/ww8par6.cxx
+        COL_AUTO, COL_BLACK, COL_LIGHTBLUE, COL_LIGHTCYAN, COL_LIGHTGREEN,
         COL_LIGHTMAGENTA, COL_LIGHTRED, COL_YELLOW, COL_WHITE, COL_BLUE,
         COL_CYAN, COL_GREEN, COL_MAGENTA, COL_RED, COL_BROWN, COL_GRAY,
         COL_LIGHTGRAY
     };
-    //no auto color for borders
-    if(!nLineColor)
-        ++nLineColor;
     if(!bIsOOXML && sal::static_int_cast<sal_uInt32>(nLineColor) < SAL_N_ELEMENTS(aBorderDefColor))
-        nLineColor = aBorderDefColor[nLineColor];
+        nLineColor = sal_Int32(aBorderDefColor[nLineColor]);
+    //no auto color for borders
+    if (nLineColor == sal_Int32(COL_AUTO))
+        nLineColor = sal_Int32(COL_BLACK);
 
     sal_Int32 nLineType = lcl_convertBorderStyleFromToken(nLineToken);
 
@@ -264,7 +261,7 @@ void MakeBorderLine( sal_Int32 nLineThickness,   sal_Int32 nLineToken,
     // object size
     SvxBorderLineStyle const nLineStyle(
             ::editeng::ConvertBorderStyleFromWord(nLineType));
-    rToFill.LineStyle = (sal_Int16)nLineStyle;
+    rToFill.LineStyle = static_cast<sal_Int16>(nLineStyle);
     double const fConverted( (SvxBorderLineStyle::NONE == nLineStyle) ? 0.0 :
         ::editeng::ConvertBorderWidthFromWord(nLineStyle, nLineThickness,
             nLineType));
@@ -277,7 +274,7 @@ void lcl_SwapQuotesInField(OUString &rFmt)
 {
     //Swap unescaped " and ' with ' and "
     sal_Int32 nLen = rFmt.getLength();
-    OUStringBuffer aBuffer( rFmt.getStr() );
+    OUStringBuffer aBuffer( rFmt );
     const sal_Unicode* pFmt = rFmt.getStr();
     for (sal_Int32 nI = 0; nI < nLen; ++nI)
     {
@@ -288,7 +285,7 @@ void lcl_SwapQuotesInField(OUString &rFmt)
     }
     rFmt = aBuffer.makeStringAndClear();
 }
-bool lcl_IsNotAM(OUString& rFmt, sal_Int32 nPos)
+bool lcl_IsNotAM(OUString const & rFmt, sal_Int32 nPos)
 {
     return (
             (nPos == rFmt.getLength() - 1) ||
@@ -321,7 +318,7 @@ OUString ConvertMSFormatStringToSO(
         {
             ++nI;
             //While not at the end and not at an unescaped end quote
-            while ((nI < nLen) && (!(aNewFormat[nI] == '\"') && (aNewFormat[nI-1] != '\\')))
+            while ((nI < nLen) && ((aNewFormat[nI] != '\"') && (aNewFormat[nI-1] != '\\')))
                 ++nI;
         }
         else //normal unquoted section
@@ -416,6 +413,15 @@ sal_Int32 convertTwipToMM100(sal_Int32 _t)
     return ::convertTwipToMm100( _t );
 }
 
+double convertTwipToMM100Double(sal_Int32 _t)
+{
+    // It appears that MSO handles large twip values specially, probably legacy 16bit handling,
+    // anything that's bigger than 32767 appears to be simply ignored.
+    if( _t >= 0x8000 )
+        return 0.0;
+    return _t * 254.0 / 144.0;
+}
+
 sal_uInt32 convertTwipToMM100Unsigned(sal_Int32 _t)
 {
     if( _t < 0 )
@@ -484,7 +490,7 @@ sal_Int16 ConvertNumberingType(sal_Int32 nFmt)
             nRet = style::NumberingType::ROMAN_LOWER;
             break;
         case NS_ooxml::LN_Value_ST_NumberFormat_ordinal:
-            nRet = style::NumberingType::ARABIC;
+            nRet = style::NumberingType::TEXT_NUMBER;
             break;
         case NS_ooxml::LN_Value_ST_NumberFormat_bullet:
             nRet = style::NumberingType::CHAR_SPECIAL;
@@ -523,6 +529,7 @@ sal_Int16 ConvertNumberingType(sal_Int32 nFmt)
             nRet = style::NumberingType::CHARS_CYRILLIC_UPPER_LETTER_RU;
             break;
         case NS_ooxml::LN_Value_ST_NumberFormat_decimalEnclosedCircleChinese:
+        case NS_ooxml::LN_Value_ST_NumberFormat_decimalEnclosedCircle:
         case NS_ooxml::LN_Value_ST_NumberFormat_ideographEnclosedCircle:
             nRet = style::NumberingType::CIRCLE_NUMBER;
             break;
@@ -569,25 +576,31 @@ sal_Int16 ConvertNumberingType(sal_Int32 nFmt)
             break;
         case NS_ooxml::LN_Value_ST_NumberFormat_hebrew1:
             //91726
-            nRet = style::NumberingType::CHARS_HEBREW;
+            nRet = style::NumberingType::NUMBER_HEBREW;
             break;
         case NS_ooxml::LN_Value_ST_NumberFormat_decimalFullWidth:
         case NS_ooxml::LN_Value_ST_NumberFormat_decimalFullWidth2:
             nRet = style::NumberingType::FULLWIDTH_ARABIC;
             break;
+        case NS_ooxml::LN_Value_ST_NumberFormat_cardinalText:
+            nRet = style::NumberingType::TEXT_CARDINAL;
+            break;
+        case NS_ooxml::LN_Value_ST_NumberFormat_ordinalText:
+            nRet = style::NumberingType::TEXT_ORDINAL;
+            break;
+        case NS_ooxml::LN_Value_ST_NumberFormat_chicago:
+            nRet = style::NumberingType::SYMBOL_CHICAGO;
+            break;
+        case NS_ooxml::LN_Value_ST_NumberFormat_decimalZero:
+            nRet = style::NumberingType::ARABIC_ZERO;
+            break;
         default: nRet = style::NumberingType::ARABIC;
     }
 /*  TODO: Lots of additional values are available - some are supported in the I18 framework
-    NS_ooxml::LN_Value_ST_NumberFormat_ordinal = 91682;
-    NS_ooxml::LN_Value_ST_NumberFormat_cardinalText = 91683;
-    NS_ooxml::LN_Value_ST_NumberFormat_ordinalText = 91684;
     NS_ooxml::LN_Value_ST_NumberFormat_hex = 91685;
-    NS_ooxml::LN_Value_ST_NumberFormat_chicago = 91686;
     NS_ooxml::LN_Value_ST_NumberFormat_decimalFullWidth = 91691;
     NS_ooxml::LN_Value_ST_NumberFormat_decimalHalfWidth = 91692;
     NS_ooxml::LN_Value_ST_NumberFormat_japaneseDigitalTenThousand = 91694;
-    NS_ooxml::LN_Value_ST_NumberFormat_decimalEnclosedCircle = 91695;
-    NS_ooxml::LN_Value_ST_NumberFormat_decimalZero = 91699;
     NS_ooxml::LN_Value_ST_NumberFormat_decimalEnclosedFullstop = 91703;
     NS_ooxml::LN_Value_ST_NumberFormat_decimalEnclosedParen = 91704;
     NS_ooxml::LN_Value_ST_NumberFormat_ideographZodiacTraditional = 91709;
@@ -603,6 +616,26 @@ sal_Int16 ConvertNumberingType(sal_Int32 nFmt)
     NS_ooxml::LN_Value_ST_NumberFormat_hindiCounting = 91733;
     NS_ooxml::LN_Value_ST_NumberFormat_thaiNumbers = 91735;
     NS_ooxml::LN_Value_ST_NumberFormat_thaiCounting = 91736;*/
+    return nRet;
+}
+
+sal_Int16 ConvertCustomNumberFormat(const OUString& rFormat)
+{
+    sal_Int16 nRet = -1;
+
+    if (rFormat == "001, 002, 003, ...")
+    {
+        nRet = style::NumberingType::ARABIC_ZERO3;
+    }
+    else if (rFormat == "0001, 0002, 0003, ...")
+    {
+        nRet = style::NumberingType::ARABIC_ZERO4;
+    }
+    else if (rFormat == "00001, 00002, 00003, ...")
+    {
+        nRet = style::NumberingType::ARABIC_ZERO5;
+    }
+
     return nRet;
 }
 
@@ -632,8 +665,6 @@ util::DateTime ConvertDateStringToDateTime( const OUString& rDateTime )
 }
 
 
-} // namespace ConversionHelper
-} //namespace dmapper
 } //namespace writerfilter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

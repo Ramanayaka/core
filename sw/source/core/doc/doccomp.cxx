@@ -17,13 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <hintids.hxx>
-#include <vcl/vclenum.hxx>
-#include <editeng/crossedoutitem.hxx>
-#include <editeng/colritem.hxx>
-#include <editeng/boxitem.hxx>
-#include <editeng/svxenum.hxx>
-#include <editeng/udlnitem.hxx>
+#include <sal/config.h>
+
+#include <rtl/ustrbuf.hxx>
+#include <o3tl/safeint.hxx>
+#include <osl/diagnose.h>
+#include <rtl/character.hxx>
 #include <swmodule.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
@@ -40,26 +39,27 @@
 #include <docsh.hxx>
 #include <fmtcntnt.hxx>
 #include <modcfg.hxx>
+#include <frameformats.hxx>
 
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 
 #include <cstddef>
-#include <vector>
-
-#include <list>
-
 #include <memory>
+#include <vector>
 
 using namespace ::com::sun::star;
 
 using std::vector;
 
+namespace {
+
 class SwCompareLine
 {
-    const SwNode& rNode;
+    const SwNode& m_rNode;
 public:
-    explicit SwCompareLine( const SwNode& rNd ) : rNode( rNd ) {}
+    explicit SwCompareLine( const SwNode& rNd ) : m_rNode( rNd ) {}
 
     sal_uLong GetHashValue() const;
     bool Compare( const SwCompareLine& rLine ) const;
@@ -70,9 +70,9 @@ public:
                               const SwTextNode& rSrcNd );
 
     bool ChangesInLine( const SwCompareLine& rLine,
-                            SwPaM *& rpInsRing, SwPaM*& rpDelRing ) const;
+                            std::unique_ptr<SwPaM>& rpInsRing, std::unique_ptr<SwPaM>& rpDelRing ) const;
 
-    const SwNode& GetNode() const { return rNode; }
+    const SwNode& GetNode() const { return m_rNode; }
 
     const SwNode& GetEndNode() const;
 
@@ -84,17 +84,17 @@ public:
 class CompareData
 {
 protected:
-    SwDoc& rDoc;
+    SwDoc& m_rDoc;
 private:
-    size_t* pIndex;
-    bool* pChangedFlag;
+    std::unique_ptr<size_t[]> m_pIndex;
+    std::unique_ptr<bool[]> m_pChangedFlag;
 
-    SwPaM *pInsRing, *pDelRing;
+    std::unique_ptr<SwPaM> m_pInsertRing, m_pDelRing;
 
     static sal_uLong PrevIdx( const SwNode* pNd );
     static sal_uLong NextIdx( const SwNode* pNd );
 
-    vector< SwCompareLine* > aLines;
+    vector< SwCompareLine* > m_aLines;
     bool m_bRecordDiff;
 
     // Truncate beginning and end and add all others to the LinesArray
@@ -104,7 +104,7 @@ private:
 
 public:
     CompareData(SwDoc& rD, bool bRecordDiff)
-        : rDoc( rD ), pIndex( nullptr ), pChangedFlag( nullptr ), pInsRing(nullptr), pDelRing(nullptr)
+        : m_rDoc( rD )
         , m_bRecordDiff(bRecordDiff)
     {
     }
@@ -124,27 +124,27 @@ public:
     void ShowDelete( const CompareData& rData, sal_uLong nStt,
                                 sal_uLong nEnd, sal_uLong nInsPos );
     void CheckForChangesInLine( const CompareData& rData,
-                                    sal_uLong& nStt, sal_uLong& nEnd,
-                                    sal_uLong& nThisStt, sal_uLong& nThisEnd );
+                                    sal_uLong nStt, sal_uLong nEnd,
+                                    sal_uLong nThisStt, sal_uLong nThisEnd );
 
     // Set non-ambiguous index for a line. Same lines have the same index, even in the other CompareData!
     void SetIndex( size_t nLine, size_t nIndex );
     size_t GetIndex( size_t nLine ) const
-        { return nLine < aLines.size() ? pIndex[ nLine ] : 0; }
+        { return nLine < m_aLines.size() ? m_pIndex[ nLine ] : 0; }
 
     // Set/get of a line has changed
     void SetChanged( size_t nLine, bool bFlag = true );
     bool GetChanged( size_t nLine ) const
         {
-            return (pChangedFlag && nLine < aLines.size())
-                && pChangedFlag[ nLine ];
+            return (m_pChangedFlag && nLine < m_aLines.size())
+                && m_pChangedFlag[ nLine ];
         }
 
-    size_t GetLineCount() const     { return aLines.size(); }
+    size_t GetLineCount() const     { return m_aLines.size(); }
     const SwCompareLine* GetLine( size_t nLine ) const
-            { return aLines[ nLine ]; }
+            { return m_aLines[ nLine ]; }
     void InsertLine( SwCompareLine* pLine )
-        { aLines.push_back( pLine ); }
+        { m_aLines.push_back( pLine ); }
 
     void SetRedlinesToDoc( bool bUseDocInfo );
 };
@@ -152,14 +152,14 @@ public:
 class CompareMainText : public CompareData
 {
 public:
-    CompareMainText(SwDoc &rD, bool bRecordDiff=true)
+    CompareMainText(SwDoc &rD, bool bRecordDiff)
         : CompareData(rD, bRecordDiff)
     {
     }
 
     virtual const SwNode& GetEndOfContent() override
     {
-        return rDoc.GetNodes().GetEndOfContent();
+        return m_rDoc.GetNodes().GetEndOfContent();
     }
 };
 
@@ -190,17 +190,16 @@ class Hash
             : nNext( 0 ), nHash( 0 ), pLine(nullptr) {}
     };
 
-    sal_uLong* pHashArr;
-    HashData* pDataArr;
-    sal_uLong nCount, nPrime;
+    std::unique_ptr<sal_uLong[]> m_pHashArr;
+    std::unique_ptr<HashData[]> m_pDataArr;
+    sal_uLong m_nCount, m_nPrime;
 
 public:
     explicit Hash( sal_uLong nSize );
-    ~Hash();
 
     void CalcHashValue( CompareData& rData );
 
-    sal_uLong GetCount() const { return nCount; }
+    sal_uLong GetCount() const { return m_nCount; }
 };
 
 class Compare
@@ -208,27 +207,26 @@ class Compare
 public:
     class MovedData
     {
-        sal_uLong* pIndex;
-        sal_uLong* pLineNum;
-        sal_uLong nCount;
+        std::unique_ptr<sal_uLong[]> m_pIndex;
+        std::unique_ptr<sal_uLong[]> m_pLineNum;
+        sal_uLong m_nCount;
 
     public:
-        MovedData( CompareData& rData, const sal_Char* pDiscard );
-        ~MovedData();
+        MovedData( CompareData& rData, const char* pDiscard );
 
-        sal_uLong GetIndex( sal_uLong n ) const { return pIndex[ n ]; }
-        sal_uLong GetLineNum( sal_uLong n ) const { return pLineNum[ n ]; }
-        sal_uLong GetCount() const { return nCount; }
+        sal_uLong GetIndex( sal_uLong n ) const { return m_pIndex[ n ]; }
+        sal_uLong GetLineNum( sal_uLong n ) const { return m_pLineNum[ n ]; }
+        sal_uLong GetCount() const { return m_nCount; }
     };
 
 private:
     /// Look for the moved lines
     class CompareSequence
     {
-        CompareData &rData1, &rData2;
-        const MovedData &rMoved1, &rMoved2;
-        std::unique_ptr<long[]> pMemory;
-        long *pFDiag, *pBDiag;
+        CompareData &m_rData1, &m_rData2;
+        const MovedData &m_rMoved1, &m_rMoved2;
+        std::unique_ptr<long[]> m_pMemory;
+        long *m_pFDiag, *m_pBDiag;
 
         void Compare( sal_uLong nStt1, sal_uLong nEnd1, sal_uLong nStt2, sal_uLong nEnd2 );
         sal_uLong CheckDiag( sal_uLong nStt1, sal_uLong nEnd1,
@@ -240,8 +238,8 @@ private:
 
     static void CountDifference( const CompareData& rData, sal_uLong* pCounts );
     static void SetDiscard( const CompareData& rData,
-                            sal_Char* pDiscard, const sal_uLong* pCounts );
-    static void CheckDiscard( sal_uLong nLen, sal_Char* pDiscard );
+                            char* pDiscard, const sal_uLong* pCounts );
+    static void CheckDiscard( sal_uLong nLen, char* pDiscard );
     static void ShiftBoundaries( CompareData& rData1, CompareData& rData2 );
 
 public:
@@ -262,35 +260,34 @@ public:
 class LineArrayComparator : public ArrayComparator
 {
 private:
-    int nLen1, nLen2;
-    const CompareData &rData1, &rData2;
-    int nFirst1, nFirst2;
+    int m_nLen1, m_nLen2;
+    const CompareData &m_rData1, &m_rData2;
+    int m_nFirst1, m_nFirst2;
 
 public:
     LineArrayComparator( const CompareData &rD1, const CompareData &rD2,
                             int nStt1, int nEnd1, int nStt2, int nEnd2 );
 
     virtual bool Compare( int nIdx1, int nIdx2 ) const override;
-    virtual int GetLen1() const override { return nLen1; }
-    virtual int GetLen2() const override { return nLen2; }
+    virtual int GetLen1() const override { return m_nLen1; }
+    virtual int GetLen2() const override { return m_nLen2; }
 };
 
 class WordArrayComparator : public ArrayComparator
 {
 private:
-    const SwTextNode *pTextNd1, *pTextNd2;
-    int *pPos1, *pPos2;
-    int nCnt1, nCnt2;       // number of words
+    const SwTextNode *m_pTextNode1, *m_pTextNode2;
+    std::unique_ptr<int[]> m_pPos1, m_pPos2;
+    int m_nCount1, m_nCount2;       // number of words
 
     static void CalcPositions( int *pPos, const SwTextNode *pTextNd, int &nCnt );
 
 public:
     WordArrayComparator( const SwTextNode *pNode1, const SwTextNode *pNode2 );
-    virtual ~WordArrayComparator() override;
 
     virtual bool Compare( int nIdx1, int nIdx2 ) const override;
-    virtual int GetLen1() const override { return nCnt1; }
-    virtual int GetLen2() const override { return nCnt2; }
+    virtual int GetLen1() const override { return m_nCount1; }
+    virtual int GetLen2() const override { return m_nCount2; }
     int GetCharSequence( const int *pWordLcs1, const int *pWordLcs2,
                         int *pSubseq1, int *pSubseq2, int nLcsLen );
 };
@@ -298,17 +295,17 @@ public:
 class CharArrayComparator : public ArrayComparator
 {
 private:
-    const SwTextNode *pTextNd1, *pTextNd2;
+    const SwTextNode *m_pTextNode1, *m_pTextNode2;
 
 public:
     CharArrayComparator( const SwTextNode *pNode1, const SwTextNode *pNode2 )
-        : pTextNd1( pNode1 ), pTextNd2( pNode2 )
+        : m_pTextNode1( pNode1 ), m_pTextNode2( pNode2 )
     {
     }
 
     virtual bool Compare( int nIdx1, int nIdx2 ) const override;
-    virtual int GetLen1() const override { return pTextNd1->GetText().getLength(); }
-    virtual int GetLen2() const override { return pTextNd2->GetText().getLength(); }
+    virtual int GetLen1() const override { return m_pTextNode1->GetText().getLength(); }
+    virtual int GetLen2() const override { return m_pTextNode2->GetText().getLength(); }
 };
 
 /// Options set in Tools->Options->Writer->Comparison
@@ -318,29 +315,29 @@ struct CmpOptionsContainer
     int nIgnoreLen;
     bool bUseRsid;
 };
+
+}
+
 static CmpOptionsContainer CmpOptions;
+
+namespace {
 
 class CommonSubseq
 {
 private:
-    std::unique_ptr<int[]> pData;
-    int nSize;
+    std::unique_ptr<int[]> m_pData;
 
 protected:
-    ArrayComparator &rCmp;
+    ArrayComparator &m_rComparator;
 
     CommonSubseq( ArrayComparator &rComparator, int nMaxSize )
-        : nSize( nMaxSize ), rCmp( rComparator )
+        : m_rComparator( rComparator )
     {
-        pData.reset( new int[ nSize ] );
-    }
-
-    ~CommonSubseq()
-    {
+        m_pData.reset( new int[ nMaxSize ] );
     }
 
     int FindLCS( int *pLcs1, int *pLcs2, int nStt1,
-                    int nEnd1 = 0, int nStt2 = 0, int nEnd2 = 0 );
+                 int nEnd1, int nStt2, int nEnd2 );
 
 public:
     static int IgnoreIsolatedPieces( int *pLcs1, int *pLcs2, int nLen1, int nLen2,
@@ -353,8 +350,8 @@ class LgstCommonSubseq: public CommonSubseq
 private:
     static const int CUTOFF = 1<<20; // Stop recursion at this value
 
-    int *pL1, *pL2;
-    int *pBuff1, *pBuff2;
+    std::unique_ptr<int[]> m_pL1, m_pL2;
+    std::unique_ptr<int[]> m_pBuff1, m_pBuff2;
 
     void FindL( int *pL, int nStt1, int nEnd1, int nStt2, int nEnd2  );
     int HirschbergLCS( int *pLcs1, int *pLcs2, int nStt1, int nEnd1,
@@ -362,7 +359,6 @@ private:
 
 public:
     explicit LgstCommonSubseq( ArrayComparator &rComparator );
-    ~LgstCommonSubseq();
 
     int Find( int *pSubseq1, int *pSubseq2 );
 };
@@ -384,50 +380,49 @@ public:
 
     int Find( int *pSubseq1, int *pSubseq2 )
     {
-        return FindFastCS( pSubseq1, pSubseq2, 0, rCmp.GetLen1(),
-                                                0, rCmp.GetLen2() );
+        return FindFastCS( pSubseq1, pSubseq2, 0, m_rComparator.GetLen1(),
+                                                0, m_rComparator.GetLen2() );
     }
 };
 
+}
+
 CompareData::~CompareData()
 {
-    if( pDelRing )
+    if( m_pDelRing )
     {
-        while( pDelRing->GetNext() != pDelRing )
-            delete pDelRing->GetNext();
-        delete pDelRing;
+        while( m_pDelRing->GetNext() != m_pDelRing.get() )
+            delete m_pDelRing->GetNext();
+        m_pDelRing.reset();
     }
-    if( pInsRing )
+    if( m_pInsertRing )
     {
-        while( pInsRing->GetNext() != pInsRing )
-            delete pInsRing->GetNext();
-        delete pInsRing;
+        while( m_pInsertRing->GetNext() != m_pInsertRing.get() )
+            delete m_pInsertRing->GetNext();
+        m_pInsertRing.reset();
     }
-
-    delete[] pIndex;
-    delete[] pChangedFlag;
 }
 
 void CompareData::SetIndex( size_t nLine, size_t nIndex )
 {
-    if( !pIndex )
+    if( !m_pIndex )
     {
-        pIndex = new size_t[ aLines.size() ];
-        memset( pIndex, 0, aLines.size() * sizeof( size_t ) );
+        m_pIndex.reset( new size_t[ m_aLines.size() ] );
+        memset( m_pIndex.get(), 0, m_aLines.size() * sizeof( size_t ) );
     }
-    if( nLine < aLines.size() )
-        pIndex[ nLine ] = nIndex;
+    if( nLine < m_aLines.size() )
+        m_pIndex[ nLine ] = nIndex;
 }
 
 void CompareData::SetChanged( size_t nLine, bool bFlag )
 {
-    if( !pChangedFlag )
+    if( !m_pChangedFlag )
     {
-        pChangedFlag = new bool[ aLines.size() +1 ];
-        memset( pChangedFlag, 0, (aLines.size() +1) * sizeof( bool ) );
+        m_pChangedFlag.reset( new bool[ m_aLines.size() +1 ] );
+        memset( m_pChangedFlag.get(), 0, (m_aLines.size() +1) * sizeof( bool ) );
     }
-    if( nLine < aLines.size() )
-        pChangedFlag[ nLine ] = bFlag;
+    if( nLine < m_aLines.size() )
+        m_pChangedFlag[ nLine ] = bFlag;
 }
 
 void CompareData::CompareLines( CompareData& rData )
@@ -497,122 +492,113 @@ bool CompareData::HasDiffs( const CompareData& rData ) const
 }
 
 Hash::Hash( sal_uLong nSize )
-    : nCount(1)
+    : m_nCount(1)
 {
 
-static const sal_uLong primes[] =
-{
-  509,
-  1021,
-  2039,
-  4093,
-  8191,
-  16381,
-  32749,
-  65521,
-  131071,
-  262139,
-  524287,
-  1048573,
-  2097143,
-  4194301,
-  8388593,
-  16777213,
-  33554393,
-  67108859,         /* Preposterously large . . . */
-  134217689,
-  268435399,
-  536870909,
-  1073741789,
-  2147483647,
-  0
-};
+    static const sal_uLong primes[] =
+    {
+      509,
+      1021,
+      2039,
+      4093,
+      8191,
+      16381,
+      32749,
+      65521,
+      131071,
+      262139,
+      524287,
+      1048573,
+      2097143,
+      4194301,
+      8388593,
+      16777213,
+      33554393,
+      67108859,         /* Preposterously large . . . */
+      134217689,
+      268435399,
+      536870909,
+      1073741789,
+      2147483647,
+      0
+    };
     int i;
 
-    pDataArr = new HashData[ nSize ];
-    pDataArr[0].nNext = 0;
-    pDataArr[0].nHash = 0;
-    pDataArr[0].pLine = nullptr;
-    nPrime = primes[0];
+    m_pDataArr.reset( new HashData[ nSize ] );
+    m_pDataArr[0].nNext = 0;
+    m_pDataArr[0].nHash = 0;
+    m_pDataArr[0].pLine = nullptr;
+    m_nPrime = primes[0];
 
     for( i = 0; primes[i] < nSize / 3;  i++)
         if( !primes[i] )
         {
-            pHashArr = nullptr;
+            m_pHashArr = nullptr;
             return;
         }
-    nPrime = primes[ i ];
-    pHashArr = new sal_uLong[ nPrime ];
-    memset( pHashArr, 0, nPrime * sizeof( sal_uLong ) );
-}
-
-Hash::~Hash()
-{
-    delete[] pHashArr;
-    delete[] pDataArr;
+    m_nPrime = primes[ i ];
+    m_pHashArr.reset( new sal_uLong[ m_nPrime ] );
+    memset( m_pHashArr.get(), 0, m_nPrime * sizeof( sal_uLong ) );
 }
 
 void Hash::CalcHashValue( CompareData& rData )
 {
-    if( pHashArr )
+    if( !m_pHashArr )
+        return;
+
+    for( size_t n = 0; n < rData.GetLineCount(); ++n )
     {
-        for( size_t n = 0; n < rData.GetLineCount(); ++n )
-        {
-            const SwCompareLine* pLine = rData.GetLine( n );
-            OSL_ENSURE( pLine, "where is the line?" );
-            sal_uLong nH = pLine->GetHashValue();
+        const SwCompareLine* pLine = rData.GetLine( n );
+        OSL_ENSURE( pLine, "where is the line?" );
+        sal_uLong nH = pLine->GetHashValue();
 
-            sal_uLong* pFound = &pHashArr[ nH % nPrime ];
-            size_t i;
-            for( i = *pFound;  ;  i = pDataArr[i].nNext )
-                if( !i )
-                {
-                    i = nCount++;
-                    pDataArr[i].nNext = *pFound;
-                    pDataArr[i].nHash = nH;
-                    pDataArr[i].pLine = pLine;
-                    *pFound = i;
-                    break;
-                }
-                else if( pDataArr[i].nHash == nH &&
-                        pDataArr[i].pLine->Compare( *pLine ))
-                    break;
+        sal_uLong* pFound = &m_pHashArr[ nH % m_nPrime ];
+        size_t i;
+        for( i = *pFound;  ;  i = m_pDataArr[i].nNext )
+            if( !i )
+            {
+                i = m_nCount++;
+                m_pDataArr[i].nNext = *pFound;
+                m_pDataArr[i].nHash = nH;
+                m_pDataArr[i].pLine = pLine;
+                *pFound = i;
+                break;
+            }
+            else if( m_pDataArr[i].nHash == nH &&
+                    m_pDataArr[i].pLine->Compare( *pLine ))
+                break;
 
-            rData.SetIndex( n, i );
-        }
+        rData.SetIndex( n, i );
     }
 }
 
 Compare::Compare( sal_uLong nDiff, CompareData& rData1, CompareData& rData2 )
 {
-    MovedData *pMD1, *pMD2;
+    std::unique_ptr<MovedData> pMD1, pMD2;
     // Look for the differing lines
     {
-        std::unique_ptr<sal_Char[]> pDiscard1( new sal_Char[ rData1.GetLineCount() ] );
-        std::unique_ptr<sal_Char[]> pDiscard2( new sal_Char[ rData2.GetLineCount() ] );
+        std::unique_ptr<char[]> pDiscard1( new char[ rData1.GetLineCount() ] );
+        std::unique_ptr<char[]> pDiscard2( new char[ rData2.GetLineCount() ] );
 
-        sal_uLong* pCount1 = new sal_uLong[ nDiff ];
-        sal_uLong* pCount2 = new sal_uLong[ nDiff ];
-        memset( pCount1, 0, nDiff * sizeof( sal_uLong ));
-        memset( pCount2, 0, nDiff * sizeof( sal_uLong ));
+        std::unique_ptr<sal_uLong[]> pCount1(new sal_uLong[ nDiff ]);
+        std::unique_ptr<sal_uLong[]> pCount2(new sal_uLong[ nDiff ]);
+        memset( pCount1.get(), 0, nDiff * sizeof( sal_uLong ));
+        memset( pCount2.get(), 0, nDiff * sizeof( sal_uLong ));
 
         // find indices in CompareData which have been assigned multiple times
-        CountDifference( rData1, pCount1 );
-        CountDifference( rData2, pCount2 );
+        CountDifference( rData1, pCount1.get() );
+        CountDifference( rData2, pCount2.get() );
 
         // All which occur only once now have either been inserted or deleted.
         // All which are also contained in the other one have been moved.
-        SetDiscard( rData1, pDiscard1.get(), pCount2 );
-        SetDiscard( rData2, pDiscard2.get(), pCount1 );
-
-        // forget the arrays again
-        delete [] pCount1; delete [] pCount2;
+        SetDiscard( rData1, pDiscard1.get(), pCount2.get() );
+        SetDiscard( rData2, pDiscard2.get(), pCount1.get() );
 
         CheckDiscard( rData1.GetLineCount(), pDiscard1.get() );
         CheckDiscard( rData2.GetLineCount(), pDiscard2.get() );
 
-        pMD1 = new MovedData( rData1, pDiscard1.get() );
-        pMD2 = new MovedData( rData2, pDiscard2.get() );
+        pMD1.reset(new MovedData( rData1, pDiscard1.get() ));
+        pMD2.reset(new MovedData( rData2, pDiscard2.get() ));
     }
 
     {
@@ -620,9 +606,6 @@ Compare::Compare( sal_uLong nDiff, CompareData& rData1, CompareData& rData2 )
     }
 
     ShiftBoundaries( rData1, rData2 );
-
-    delete pMD1;
-    delete pMD2;
 }
 
 void Compare::CountDifference( const CompareData& rData, sal_uLong* pCounts )
@@ -636,7 +619,7 @@ void Compare::CountDifference( const CompareData& rData, sal_uLong* pCounts )
 }
 
 void Compare::SetDiscard( const CompareData& rData,
-                            sal_Char* pDiscard, const sal_uLong* pCounts )
+                            char* pDiscard, const sal_uLong* pCounts )
 {
     const sal_uLong nLen = rData.GetLineCount();
 
@@ -659,7 +642,7 @@ void Compare::SetDiscard( const CompareData& rData,
     }
 }
 
-void Compare::CheckDiscard( sal_uLong nLen, sal_Char* pDiscard )
+void Compare::CheckDiscard( sal_uLong nLen, char* pDiscard )
 {
     for( sal_uLong n = 0; n < nLen; ++n )
     {
@@ -771,8 +754,8 @@ void Compare::CheckDiscard( sal_uLong nLen, sal_Char* pDiscard )
     }
 }
 
-Compare::MovedData::MovedData( CompareData& rData, const sal_Char* pDiscard )
-    : pIndex( nullptr ), pLineNum( nullptr ), nCount( 0 )
+Compare::MovedData::MovedData( CompareData& rData, const char* pDiscard )
+    : m_nCount( 0 )
 {
     sal_uLong nLen = rData.GetLineCount();
     sal_uLong n;
@@ -781,38 +764,32 @@ Compare::MovedData::MovedData( CompareData& rData, const sal_Char* pDiscard )
         if( pDiscard[ n ] )
             rData.SetChanged( n );
         else
-            ++nCount;
+            ++m_nCount;
 
-    if( nCount )
+    if( m_nCount )
     {
-        pIndex = new sal_uLong[ nCount ];
-        pLineNum = new sal_uLong[ nCount ];
+        m_pIndex.reset( new sal_uLong[ m_nCount ] );
+        m_pLineNum.reset( new sal_uLong[ m_nCount ] );
 
-        for( n = 0, nCount = 0; n < nLen; ++n )
+        for( n = 0, m_nCount = 0; n < nLen; ++n )
             if( !pDiscard[ n ] )
             {
-                pIndex[ nCount ] = rData.GetIndex( n );
-                pLineNum[ nCount++ ] = n;
+                m_pIndex[ m_nCount ] = rData.GetIndex( n );
+                m_pLineNum[ m_nCount++ ] = n;
             }
     }
-}
-
-Compare::MovedData::~MovedData()
-{
-    delete [] pIndex;
-    delete [] pLineNum;
 }
 
 /// Find the differing lines
 Compare::CompareSequence::CompareSequence(
                             CompareData& rD1, CompareData& rD2,
                             const MovedData& rMD1, const MovedData& rMD2 )
-    : rData1( rD1 ), rData2( rD2 ), rMoved1( rMD1 ), rMoved2( rMD2 )
+    : m_rData1( rD1 ), m_rData2( rD2 ), m_rMoved1( rMD1 ), m_rMoved2( rMD2 )
 {
     sal_uLong nSize = rMD1.GetCount() + rMD2.GetCount() + 3;
-    pMemory.reset( new long[ nSize * 2 ] );
-    pFDiag = pMemory.get() + ( rMD2.GetCount() + 1 );
-    pBDiag = pMemory.get() + ( nSize + rMD2.GetCount() + 1 );
+    m_pMemory.reset( new long[ nSize * 2 ] );
+    m_pFDiag = m_pMemory.get() + ( rMD2.GetCount() + 1 );
+    m_pBDiag = m_pMemory.get() + ( nSize + rMD2.GetCount() + 1 );
 
     Compare( 0, rMD1.GetCount(), 0, rMD2.GetCount() );
 }
@@ -822,7 +799,7 @@ void Compare::CompareSequence::Compare( sal_uLong nStt1, sal_uLong nEnd1,
 {
     /* Slide down the bottom initial diagonal. */
     while( nStt1 < nEnd1 && nStt2 < nEnd2 &&
-        rMoved1.GetIndex( nStt1 ) == rMoved2.GetIndex( nStt2 ))
+        m_rMoved1.GetIndex( nStt1 ) == m_rMoved2.GetIndex( nStt2 ))
     {
         ++nStt1;
         ++nStt2;
@@ -830,7 +807,7 @@ void Compare::CompareSequence::Compare( sal_uLong nStt1, sal_uLong nEnd1,
 
     /* Slide up the top initial diagonal. */
     while( nEnd1 > nStt1 && nEnd2 > nStt2 &&
-        rMoved1.GetIndex( nEnd1 - 1 ) == rMoved2.GetIndex( nEnd2 - 1 ))
+        m_rMoved1.GetIndex( nEnd1 - 1 ) == m_rMoved2.GetIndex( nEnd2 - 1 ))
     {
         --nEnd1;
         --nEnd2;
@@ -839,11 +816,11 @@ void Compare::CompareSequence::Compare( sal_uLong nStt1, sal_uLong nEnd1,
     /* Handle simple cases. */
     if( nStt1 == nEnd1 )
         while( nStt2 < nEnd2 )
-            rData2.SetChanged( rMoved2.GetLineNum( nStt2++ ));
+            m_rData2.SetChanged( m_rMoved2.GetLineNum( nStt2++ ));
 
     else if (nStt2 == nEnd2)
         while (nStt1 < nEnd1)
-            rData1.SetChanged( rMoved1.GetLineNum( nStt1++ ));
+            m_rData1.SetChanged( m_rMoved1.GetLineNum( nStt1++ ));
 
     else
     {
@@ -852,7 +829,7 @@ void Compare::CompareSequence::Compare( sal_uLong nStt1, sal_uLong nEnd1,
         /* Find a point of correspondence in the middle of the files.  */
 
         d = CheckDiag( nStt1, nEnd1, nStt2, nEnd2, &c );
-        b = pBDiag[ d ];
+        b = m_pBDiag[ d ];
 
         if( 1 != c )
         {
@@ -882,33 +859,39 @@ sal_uLong Compare::CompareSequence::CheckDiag( sal_uLong nStt1, sal_uLong nEnd1,
     long odd = (fmid - bmid) & 1;   /* True if southeast corner is on an odd
                      diagonal with respect to the northwest. */
 
-    pFDiag[fmid] = nStt1;
-    pBDiag[bmid] = nEnd1;
+    m_pFDiag[fmid] = nStt1;
+    m_pBDiag[bmid] = nEnd1;
 
     for (c = 1;; ++c)
     {
         long d;         /* Active diagonal. */
 
         /* Extend the top-down search by an edit step in each diagonal. */
-        fmin > dmin ? pFDiag[--fmin - 1] = -1 : ++fmin;
-        fmax < dmax ? pFDiag[++fmax + 1] = -1 : --fmax;
+        if (fmin > dmin)
+            m_pFDiag[--fmin - 1] = -1;
+        else
+            ++fmin;
+        if (fmax < dmax)
+            m_pFDiag[++fmax + 1] = -1;
+        else
+            --fmax;
         for (d = fmax; d >= fmin; d -= 2)
         {
-            long x, y, tlo = pFDiag[d - 1], thi = pFDiag[d + 1];
+            long x, y, tlo = m_pFDiag[d - 1], thi = m_pFDiag[d + 1];
 
             if (tlo >= thi)
                 x = tlo + 1;
             else
                 x = thi;
             y = x - d;
-            while( sal_uLong(x) < nEnd1 && sal_uLong(y) < nEnd2 &&
-                rMoved1.GetIndex( x ) == rMoved2.GetIndex( y ))
+            while( o3tl::make_unsigned(x) < nEnd1 && o3tl::make_unsigned(y) < nEnd2 &&
+                m_rMoved1.GetIndex( x ) == m_rMoved2.GetIndex( y ))
             {
                 ++x;
                 ++y;
             }
-            pFDiag[d] = x;
-            if( odd && bmin <= d && d <= bmax && pBDiag[d] <= pFDiag[d] )
+            m_pFDiag[d] = x;
+            if( odd && bmin <= d && d <= bmax && m_pBDiag[d] <= m_pFDiag[d] )
             {
                 *pCost = 2 * c - 1;
                 return d;
@@ -916,25 +899,31 @@ sal_uLong Compare::CompareSequence::CheckDiag( sal_uLong nStt1, sal_uLong nEnd1,
         }
 
         /* Similar extend the bottom-up search. */
-        bmin > dmin ? pBDiag[--bmin - 1] = INT_MAX : ++bmin;
-        bmax < dmax ? pBDiag[++bmax + 1] = INT_MAX : --bmax;
+        if (bmin > dmin)
+            m_pBDiag[--bmin - 1] = INT_MAX;
+        else
+            ++bmin;
+        if (bmax < dmax)
+            m_pBDiag[++bmax + 1] = INT_MAX;
+        else
+            --bmax;
         for (d = bmax; d >= bmin; d -= 2)
         {
-            long x, y, tlo = pBDiag[d - 1], thi = pBDiag[d + 1];
+            long x, y, tlo = m_pBDiag[d - 1], thi = m_pBDiag[d + 1];
 
             if (tlo < thi)
                 x = tlo;
             else
                 x = thi - 1;
             y = x - d;
-            while( sal_uLong(x) > nStt1 && sal_uLong(y) > nStt2 &&
-                rMoved1.GetIndex( x - 1 ) == rMoved2.GetIndex( y - 1 ))
+            while( o3tl::make_unsigned(x) > nStt1 && o3tl::make_unsigned(y) > nStt2 &&
+                m_rMoved1.GetIndex( x - 1 ) == m_rMoved2.GetIndex( y - 1 ))
             {
                 --x;
                 --y;
             }
-            pBDiag[d] = x;
-            if (!odd && fmin <= d && d <= fmax && pBDiag[d] <= pFDiag[d])
+            m_pBDiag[d] = x;
+            if (!odd && fmin <= d && d <= fmax && m_pBDiag[d] <= m_pFDiag[d])
             {
                 *pCost = 2 * c;
                 return d;
@@ -945,7 +934,7 @@ sal_uLong Compare::CompareSequence::CheckDiag( sal_uLong nStt1, sal_uLong nEnd1,
 
 namespace
 {
-    inline void lcl_ShiftBoundariesOneway( CompareData* const pData, CompareData* const pOtherData)
+    void lcl_ShiftBoundariesOneway( CompareData* const pData, CompareData const * const pOtherData)
     {
         sal_uLong i = 0;
         sal_uLong j = 0;
@@ -994,7 +983,7 @@ namespace
                 if( i != i_end &&
                     pData->GetIndex( start ) == pData->GetIndex( i ) &&
                     !pOtherData->GetChanged( j ) &&
-                    !( start == preceding || other_start == other_preceding ))
+                    start != preceding && other_start != other_preceding )
                 {
                     pData->SetChanged( start++, false );
                     pData->SetChanged(  i );
@@ -1022,16 +1011,16 @@ void Compare::ShiftBoundaries( CompareData& rData1, CompareData& rData2 )
 sal_uLong SwCompareLine::GetHashValue() const
 {
     sal_uLong nRet = 0;
-    switch( rNode.GetNodeType() )
+    switch( m_rNode.GetNodeType() )
     {
     case SwNodeType::Text:
-        nRet = GetTextNodeHashValue( *rNode.GetTextNode(), nRet );
+        nRet = GetTextNodeHashValue( *m_rNode.GetTextNode(), nRet );
         break;
 
     case SwNodeType::Table:
         {
-            const SwNode* pEndNd = rNode.EndOfSectionNode();
-            SwNodeIndex aIdx( rNode );
+            const SwNode* pEndNd = m_rNode.EndOfSectionNode();
+            SwNodeIndex aIdx( m_rNode );
             while( &aIdx.GetNode() != pEndNd )
             {
                 if( aIdx.GetNode().IsTextNode() )
@@ -1045,7 +1034,7 @@ sal_uLong SwCompareLine::GetHashValue() const
         {
             OUString sStr( GetText() );
             for( sal_Int32 n = 0; n < sStr.getLength(); ++n )
-                ( nRet <<= 1 ) += sStr[ n ];
+                nRet = (nRet << 1) + sStr[ n ];
         }
         break;
 
@@ -1060,19 +1049,19 @@ sal_uLong SwCompareLine::GetHashValue() const
 
 const SwNode& SwCompareLine::GetEndNode() const
 {
-    const SwNode* pNd = &rNode;
-    switch( rNode.GetNodeType() )
+    const SwNode* pNd = &m_rNode;
+    switch( m_rNode.GetNodeType() )
     {
     case SwNodeType::Table:
-        pNd = rNode.EndOfSectionNode();
+        pNd = m_rNode.EndOfSectionNode();
         break;
 
     case SwNodeType::Section:
         {
-            const SwSectionNode& rSNd = static_cast<const SwSectionNode&>(rNode);
+            const SwSectionNode& rSNd = static_cast<const SwSectionNode&>(m_rNode);
             const SwSection& rSect = rSNd.GetSection();
-            if( CONTENT_SECTION != rSect.GetType() || rSect.IsProtect() )
-                pNd = rNode.EndOfSectionNode();
+            if( SectionType::Content != rSect.GetType() || rSect.IsProtect() )
+                pNd = m_rNode.EndOfSectionNode();
         }
         break;
     default: break;
@@ -1082,7 +1071,7 @@ const SwNode& SwCompareLine::GetEndNode() const
 
 bool SwCompareLine::Compare( const SwCompareLine& rLine ) const
 {
-    return CompareNode( rNode, rLine.rNode );
+    return CompareNode( m_rNode, rLine.m_rNode );
 }
 
 namespace
@@ -1100,7 +1089,7 @@ namespace
                 {
                     sRet.append( '\n' );
                 }
-                sRet.append( aIdx.GetNode().GetTextNode()->GetExpandText() );
+                sRet.append( aIdx.GetNode().GetTextNode()->GetExpandText(nullptr) );
             }
             ++aIdx;
         }
@@ -1148,8 +1137,8 @@ bool SwCompareLine::CompareNode( const SwNode& rDstNd, const SwNode& rSrcNd )
                         eDstSectType = rDstSect.GetType();
             switch( eSrcSectType )
             {
-            case CONTENT_SECTION:
-                bRet = CONTENT_SECTION == eDstSectType &&
+            case SectionType::Content:
+                bRet = SectionType::Content == eDstSectType &&
                         rSrcSect.IsProtect() == rDstSect.IsProtect();
                 if( bRet && rSrcSect.IsProtect() )
                 {
@@ -1159,10 +1148,10 @@ bool SwCompareLine::CompareNode( const SwNode& rDstNd, const SwNode& rSrcNd )
                 }
                 break;
 
-            case TOX_HEADER_SECTION:
-            case TOX_CONTENT_SECTION:
-                if( TOX_HEADER_SECTION == eDstSectType ||
-                    TOX_CONTENT_SECTION == eDstSectType )
+            case SectionType::ToxHeader:
+            case SectionType::ToxContent:
+                if( SectionType::ToxHeader == eDstSectType ||
+                    SectionType::ToxContent == eDstSectType )
                 {
                     // the same type of TOX?
                     const SwTOXBase* pSrcTOX = rSrcSect.GetTOXBase();
@@ -1175,8 +1164,8 @@ bool SwCompareLine::CompareNode( const SwNode& rDstNd, const SwNode& rSrcNd )
                 }
                 break;
 
-            case DDE_LINK_SECTION:
-            case FILE_LINK_SECTION:
+            case SectionType::DdeLink:
+            case SectionType::FileLink:
                 bRet = eSrcSectType == eDstSectType &&
                         rSrcSect.GetLinkFileName() ==
                         rDstSect.GetLinkFileName();
@@ -1206,15 +1195,15 @@ bool SwCompareLine::CompareNode( const SwNode& rDstNd, const SwNode& rSrcNd )
 OUString SwCompareLine::GetText() const
 {
     OUString sRet;
-    switch( rNode.GetNodeType() )
+    switch( m_rNode.GetNodeType() )
     {
     case SwNodeType::Text:
-        sRet = rNode.GetTextNode()->GetExpandText();
+        sRet = m_rNode.GetTextNode()->GetExpandText(nullptr);
         break;
 
     case SwNodeType::Table:
         {
-            sRet = "Tabelle: " + SimpleTableToText(rNode);
+            sRet = "Tabelle: " + SimpleTableToText(m_rNode);
         }
         break;
 
@@ -1222,18 +1211,18 @@ OUString SwCompareLine::GetText() const
         {
             sRet = "Section - Node:";
 
-            const SwSectionNode& rSNd = static_cast<const SwSectionNode&>(rNode);
+            const SwSectionNode& rSNd = static_cast<const SwSectionNode&>(m_rNode);
             const SwSection& rSect = rSNd.GetSection();
             switch( rSect.GetType() )
             {
-            case CONTENT_SECTION:
+            case SectionType::Content:
                 if( rSect.IsProtect() )
                     sRet += OUString::number(
                             rSNd.EndOfSectionIndex() - rSNd.GetIndex() );
                 break;
 
-            case TOX_HEADER_SECTION:
-            case TOX_CONTENT_SECTION:
+            case SectionType::ToxHeader:
+            case SectionType::ToxContent:
                 {
                     const SwTOXBase* pTOX = rSect.GetTOXBase();
                     if( pTOX )
@@ -1242,8 +1231,8 @@ OUString SwCompareLine::GetText() const
                 }
                 break;
 
-            case DDE_LINK_SECTION:
-            case FILE_LINK_SECTION:
+            case SectionType::DdeLink:
+            case SectionType::FileLink:
                 sRet += rSect.GetLinkFileName();
                 break;
             }
@@ -1263,9 +1252,9 @@ OUString SwCompareLine::GetText() const
 
 sal_uLong SwCompareLine::GetTextNodeHashValue( const SwTextNode& rNd, sal_uLong nVal )
 {
-    OUString sStr( rNd.GetExpandText() );
+    OUString sStr( rNd.GetExpandText(nullptr) );
     for( sal_Int32 n = 0; n < sStr.getLength(); ++n )
-        ( nVal <<= 1 ) += sStr[ n ];
+        nVal = (nVal << 1 ) + sStr[ n ];
     return nVal;
 }
 
@@ -1283,15 +1272,15 @@ bool SwCompareLine::CompareTextNd( const SwTextNode& rDstNd,
 }
 
 bool SwCompareLine::ChangesInLine( const SwCompareLine& rLine,
-                            SwPaM *& rpInsRing, SwPaM*& rpDelRing ) const
+                            std::unique_ptr<SwPaM>& rpInsRing, std::unique_ptr<SwPaM>& rpDelRing ) const
 {
     bool bRet = false;
 
     // Only compare textnodes
-    if( SwNodeType::Text == rNode.GetNodeType() &&
+    if( SwNodeType::Text == m_rNode.GetNodeType() &&
         SwNodeType::Text == rLine.GetNode().GetNodeType() )
     {
-        SwTextNode& rDstNd = *const_cast<SwTextNode*>(rNode.GetTextNode());
+        SwTextNode& rDstNd = *const_cast<SwTextNode*>(m_rNode.GetTextNode());
         const SwTextNode& rSrcNd = *rLine.GetNode().GetTextNode();
         SwDoc* pDstDoc = rDstNd.GetDoc();
 
@@ -1315,28 +1304,28 @@ bool SwCompareLine::ChangesInLine( const SwCompareLine& rLine,
 
             LgstCommonSubseq aSeq( aCmp );
 
-            nLcsLen = aSeq.Find( &aTmpLcsDst[0], &aTmpLcsSrc[0] );
+            nLcsLen = aSeq.Find( aTmpLcsDst.data(), aTmpLcsSrc.data() );
 
             if( CmpOptions.nIgnoreLen )
             {
-                nLcsLen = CommonSubseq::IgnoreIsolatedPieces( &aTmpLcsDst[0], &aTmpLcsSrc[0],
+                nLcsLen = CommonSubseq::IgnoreIsolatedPieces( aTmpLcsDst.data(), aTmpLcsSrc.data(),
                                                 aCmp.GetLen1(), aCmp.GetLen2(),
                                                 nLcsLen, CmpOptions.nIgnoreLen );
             }
 
-            nLcsLen = aCmp.GetCharSequence( &aTmpLcsDst[0], &aTmpLcsSrc[0],
-                                            &aLcsDst[0], &aLcsSrc[0], nLcsLen );
+            nLcsLen = aCmp.GetCharSequence( aTmpLcsDst.data(), aTmpLcsSrc.data(),
+                                            aLcsDst.data(), aLcsSrc.data(), nLcsLen );
         }
         else
         {
             CharArrayComparator aCmp( &rDstNd, &rSrcNd );
             LgstCommonSubseq aSeq( aCmp );
 
-            nLcsLen = aSeq.Find( &aLcsDst[0], &aLcsSrc[0] );
+            nLcsLen = aSeq.Find( aLcsDst.data(), aLcsSrc.data() );
 
             if( CmpOptions.nIgnoreLen )
             {
-                nLcsLen = CommonSubseq::IgnoreIsolatedPieces( &aLcsDst[0], &aLcsSrc[0], nDstLen,
+                nLcsLen = CommonSubseq::IgnoreIsolatedPieces( aLcsDst.data(), aLcsSrc.data(), nDstLen,
                                                     nSrcLen, nLcsLen,
                                                     CmpOptions.nIgnoreLen );
             }
@@ -1378,9 +1367,9 @@ bool SwCompareLine::ChangesInLine( const SwCompareLine& rLine,
 
             if ( nDstFrom < nDstTo )
             {
-                SwPaM* pTmp = new SwPaM( *aPam.GetPoint(), rpInsRing );
+                SwPaM* pTmp = new SwPaM( *aPam.GetPoint(), rpInsRing.get() );
                 if( !rpInsRing )
-                    rpInsRing = pTmp;
+                    rpInsRing.reset(pTmp);
                 pTmp->SetMark();
                 pTmp->GetMark()->nContent = nDstFrom + nSkip;
             }
@@ -1393,12 +1382,12 @@ bool SwCompareLine::ChangesInLine( const SwCompareLine& rLine,
                 aCpyPam.SetMark();
                 aCpyPam.GetPoint()->nContent = nSrcTo;
                 aCpyPam.GetDoc()->getIDocumentContentOperations().CopyRange( aCpyPam, *aPam.GetPoint(),
-                    /*bCopyAll=*/false, /*bCheckPos=*/true );
+                    SwCopyFlags::CheckPosInFly);
                 pDstDoc->GetIDocumentUndoRedo().DoUndo( bUndo );
 
-                SwPaM* pTmp = new SwPaM( *aPam.GetPoint(), rpDelRing );
+                SwPaM* pTmp = new SwPaM( *aPam.GetPoint(), rpDelRing.get() );
                 if( !rpDelRing )
-                    rpDelRing = pTmp;
+                    rpDelRing.reset(pTmp);
 
                 pTmp->SetMark();
                 pTmp->GetMark()->nContent = nDstTo + nSkip;
@@ -1423,12 +1412,16 @@ sal_uLong CompareData::NextIdx( const SwNode* pNd )
 {
     if( pNd->IsStartNode() )
     {
-        const SwSectionNode* pSNd;
-        if( pNd->IsTableNode() ||
-            ( nullptr != (pSNd = pNd->GetSectionNode() ) &&
-                ( CONTENT_SECTION != pSNd->GetSection().GetType() ||
-                    pSNd->GetSection().IsProtect() ) ) )
+        if( pNd->IsTableNode() )
             pNd = pNd->EndOfSectionNode();
+        else
+        {
+            const SwSectionNode* pSNd = pNd->GetSectionNode();
+            if( pSNd &&
+                ( SectionType::Content != pSNd->GetSection().GetType() ||
+                    pSNd->GetSection().IsProtect() ) )
+                pNd = pNd->EndOfSectionNode();
+        }
     }
     return pNd->GetIndex() + 1;
 }
@@ -1437,20 +1430,24 @@ sal_uLong CompareData::PrevIdx( const SwNode* pNd )
 {
     if( pNd->IsEndNode() )
     {
-        const SwSectionNode* pSNd;
-        if( pNd->StartOfSectionNode()->IsTableNode() ||
-            ( nullptr != (pSNd = pNd->StartOfSectionNode()->GetSectionNode() ) &&
-                ( CONTENT_SECTION != pSNd->GetSection().GetType() ||
-                    pSNd->GetSection().IsProtect() ) ) )
+        if( pNd->StartOfSectionNode()->IsTableNode() )
             pNd = pNd->StartOfSectionNode();
+        else
+        {
+            const SwSectionNode* pSNd = pNd->StartOfSectionNode()->GetSectionNode();
+            if( pSNd &&
+                ( SectionType::Content != pSNd->GetSection().GetType() ||
+                    pSNd->GetSection().IsProtect() ) )
+                pNd = pNd->StartOfSectionNode();
+        }
     }
     return pNd->GetIndex() - 1;
 }
 
 void CompareData::CheckRanges( CompareData& rData )
 {
-    const SwNodes& rSrcNds = rData.rDoc.GetNodes();
-    const SwNodes& rDstNds = rDoc.GetNodes();
+    const SwNodes& rSrcNds = rData.m_rDoc.GetNodes();
+    const SwNodes& rDstNds = m_rDoc.GetNodes();
 
     const SwNode& rSrcEndNd = rData.GetEndOfContent();
     const SwNode& rDstEndNd = GetEndOfContent();
@@ -1504,9 +1501,9 @@ void CompareData::ShowInsert( sal_uLong nStt, sal_uLong nEnd )
 {
     SwPaM* pTmp = new SwPaM( GetLine( nStt )->GetNode(), 0,
                              GetLine( nEnd-1 )->GetEndNode(), 0,
-                             pInsRing );
-    if( !pInsRing )
-        pInsRing = pTmp;
+                             m_pInsertRing.get() );
+    if( !m_pInsertRing )
+        m_pInsertRing.reset( pTmp );
 
     // #i65201#: These SwPaMs are calculated smaller than needed, see comment below
 }
@@ -1551,8 +1548,8 @@ void CompareData::ShowDelete(
     SwNodeIndex aInsPos( *pLineNd, nOffset );
     SwNodeIndex aSavePos( aInsPos, -1 );
 
-    rData.rDoc.GetDocumentContentOperationsManager().CopyWithFlyInFly( aRg, 0, aInsPos );
-    rDoc.getIDocumentState().SetModified();
+    rData.m_rDoc.GetDocumentContentOperationsManager().CopyWithFlyInFly(aRg, aInsPos);
+    m_rDoc.getIDocumentState().SetModified();
     ++aSavePos;
 
     // #i65201#: These SwPaMs are calculated when the (old) delete-redlines are hidden,
@@ -1560,13 +1557,13 @@ void CompareData::ShowDelete(
     // To avoid unwanted insertions of delete-redlines into these new redlines, what happens
     // especially at the end of the document, I reduce the SwPaM by one node.
     // Before the new redlines are inserted, they have to expand again.
-    SwPaM* pTmp = new SwPaM( aSavePos.GetNode(), aInsPos.GetNode(), 0, -1, pDelRing );
-    if( !pDelRing )
-        pDelRing = pTmp;
+    SwPaM* pTmp = new SwPaM( aSavePos.GetNode(), aInsPos.GetNode(), 0, -1, m_pDelRing.get() );
+    if( !m_pDelRing )
+        m_pDelRing.reset(pTmp);
 
-    if( pInsRing )
+    if( m_pInsertRing )
     {
-        SwPaM* pCorr = pInsRing->GetPrev();
+        SwPaM* pCorr = m_pInsertRing->GetPrev();
         if( *pCorr->GetPoint() == *pTmp->GetPoint() )
         {
             SwNodeIndex aTmpPos( pTmp->GetMark()->nNode, -1 );
@@ -1576,11 +1573,11 @@ void CompareData::ShowDelete(
 }
 
 void CompareData::CheckForChangesInLine( const CompareData& rData,
-                                    sal_uLong& rStt, sal_uLong& rEnd,
-                                    sal_uLong& rThisStt, sal_uLong& rThisEnd )
+                                    sal_uLong nStt, sal_uLong nEnd,
+                                    sal_uLong nThisStt, sal_uLong nThisEnd )
 {
-    LineArrayComparator aCmp( *this, rData, rThisStt, rThisEnd,
-                              rStt, rEnd );
+    LineArrayComparator aCmp( *this, rData, nThisStt, nThisEnd,
+                              nStt, nEnd );
 
     int nMinLen = std::min( aCmp.GetLen1(), aCmp.GetLen2() );
     std::unique_ptr<int[]> pLcsDst(new int[ nMinLen ]);
@@ -1601,41 +1598,41 @@ void CompareData::CheckForChangesInLine( const CompareData& rData,
 
         if( i )
         {
-            const SwCompareLine* pDstLn = GetLine( rThisStt + nDstFrom - 1 );
-            const SwCompareLine* pSrcLn = rData.GetLine( rStt + nSrcFrom - 1 );
+            const SwCompareLine* pDstLn = GetLine( nThisStt + nDstFrom - 1 );
+            const SwCompareLine* pSrcLn = rData.GetLine( nStt + nSrcFrom - 1 );
 
             // Show differences in detail for lines that
             // were matched as only slightly different
-            if( !pDstLn->ChangesInLine( *pSrcLn, pInsRing, pDelRing ) )
+            if( !pDstLn->ChangesInLine( *pSrcLn, m_pInsertRing, m_pDelRing ) )
             {
-                ShowInsert( rThisStt + nDstFrom - 1, rThisStt + nDstFrom );
-                ShowDelete( rData, rStt + nSrcFrom - 1, rStt + nSrcFrom,
-                                                    rThisStt + nDstFrom );
+                ShowInsert( nThisStt + nDstFrom - 1, nThisStt + nDstFrom );
+                ShowDelete( rData, nStt + nSrcFrom - 1, nStt + nSrcFrom,
+                                                    nThisStt + nDstFrom );
             }
         }
 
         // Lines missing from source are inserted
         if( nDstFrom != nDstTo )
         {
-            ShowInsert( rThisStt + nDstFrom, rThisStt + nDstTo );
+            ShowInsert( nThisStt + nDstFrom, nThisStt + nDstTo );
         }
 
         // Lines missing from destination are deleted
         if( nSrcFrom != nSrcTo )
         {
-            ShowDelete( rData, rStt + nSrcFrom, rStt + nSrcTo, rThisStt + nDstTo );
+            ShowDelete( rData, nStt + nSrcFrom, nStt + nSrcTo, nThisStt + nDstTo );
         }
     }
 }
 
 void CompareData::SetRedlinesToDoc( bool bUseDocInfo )
 {
-    SwPaM* pTmp = pDelRing;
+    SwPaM* pTmp = m_pDelRing.get();
 
     // get the Author / TimeStamp from the "other" document info
-    std::size_t nAuthor = rDoc.getIDocumentRedlineAccess().GetRedlineAuthor();
+    std::size_t nAuthor = m_rDoc.getIDocumentRedlineAccess().GetRedlineAuthor();
     DateTime aTimeStamp( DateTime::SYSTEM );
-    SwDocShell *pDocShell(rDoc.GetDocShell());
+    SwDocShell *pDocShell(m_rDoc.GetDocShell());
     OSL_ENSURE(pDocShell, "no SwDocShell");
     if (pDocShell) {
         uno::Reference<document::XDocumentPropertiesSupplier> xDPS(
@@ -1654,7 +1651,7 @@ void CompareData::SetRedlinesToDoc( bool bUseDocInfo )
 
             if( !aTmp.isEmpty() )
             {
-                nAuthor = rDoc.getIDocumentRedlineAccess().InsertRedlineAuthor( aTmp );
+                nAuthor = m_rDoc.getIDocumentRedlineAccess().InsertRedlineAuthor( aTmp );
                 aTimeStamp = DateTime(uDT);
             }
         }
@@ -1662,7 +1659,7 @@ void CompareData::SetRedlinesToDoc( bool bUseDocInfo )
 
     if( pTmp )
     {
-        SwRedlineData aRedlnData( nsRedlineType_t::REDLINE_DELETE, nAuthor, aTimeStamp,
+        SwRedlineData aRedlnData( RedlineType::Delete, nAuthor, aTimeStamp,
                                     OUString(), nullptr );
         do {
             // #i65201#: Expand again, see comment above.
@@ -1679,7 +1676,7 @@ void CompareData::SetRedlinesToDoc( bool bUseDocInfo )
                 --pTmp->GetPoint()->nNode;
                 SwContentNode *const pContentNode( pTmp->GetContentNode() );
                 pTmp->GetPoint()->nContent.Assign( pContentNode,
-                        (pContentNode) ? pContentNode->Len() : 0 );
+                        pContentNode ? pContentNode->Len() : 0 );
                 // tdf#106218 try to avoid losing a paragraph break here:
                 if (pTmp->GetMark()->nContent == 0)
                 {
@@ -1693,93 +1690,95 @@ void CompareData::SetRedlinesToDoc( bool bUseDocInfo )
                 }
             }
 
-            rDoc.getIDocumentRedlineAccess().DeleteRedline( *pTmp, false, USHRT_MAX );
+            m_rDoc.getIDocumentRedlineAccess().DeleteRedline( *pTmp, false, RedlineType::Any );
 
-            if (rDoc.GetIDocumentUndoRedo().DoesUndo())
+            if (m_rDoc.GetIDocumentUndoRedo().DoesUndo())
             {
-                SwUndo *const pUndo(new SwUndoCompDoc( *pTmp, false )) ;
-                rDoc.GetIDocumentUndoRedo().AppendUndo(pUndo);
+                m_rDoc.GetIDocumentUndoRedo().AppendUndo(
+                    std::make_unique<SwUndoCompDoc>( *pTmp, false ));
             }
-            rDoc.getIDocumentRedlineAccess().AppendRedline( new SwRangeRedline( aRedlnData, *pTmp ), true );
+            m_rDoc.getIDocumentRedlineAccess().AppendRedline( new SwRangeRedline( aRedlnData, *pTmp ), true );
 
-        } while( pDelRing != ( pTmp = pTmp->GetNext()) );
+        } while( m_pDelRing.get() != ( pTmp = pTmp->GetNext()) );
     }
 
-    pTmp = pInsRing;
-    if( pTmp )
+    pTmp = m_pInsertRing.get();
+    if( !pTmp )
+        return;
+
+    do {
+        if( pTmp->GetPoint()->nContent == 0 )
+        {
+            ++pTmp->GetPoint()->nNode;
+            pTmp->GetPoint()->nContent.Assign( pTmp->GetContentNode(), 0 );
+        }
+        // #i101009#
+        // prevent redlines that end on structural end node
+        if (& GetEndOfContent() ==
+            & pTmp->GetPoint()->nNode.GetNode())
+        {
+            --pTmp->GetPoint()->nNode;
+            SwContentNode *const pContentNode( pTmp->GetContentNode() );
+            pTmp->GetPoint()->nContent.Assign( pContentNode,
+                    pContentNode ? pContentNode->Len() : 0 );
+            // tdf#106218 try to avoid losing a paragraph break here:
+            if (pTmp->GetMark()->nContent == 0)
+            {
+                SwNodeIndex const prev(pTmp->GetMark()->nNode, -1);
+                if (prev.GetNode().IsTextNode())
+                {
+                    *pTmp->GetMark() = SwPosition(
+                        *prev.GetNode().GetTextNode(),
+                        prev.GetNode().GetTextNode()->Len());
+                }
+            }
+        }
+    } while( m_pInsertRing.get() != ( pTmp = pTmp->GetNext()) );
+    SwRedlineData aRedlnData( RedlineType::Insert, nAuthor, aTimeStamp,
+                                OUString(), nullptr );
+
+    // combine consecutive
+    if( pTmp->GetNext() != m_pInsertRing.get() )
     {
         do {
-            if( pTmp->GetPoint()->nContent == 0 )
+            SwPosition& rSttEnd = *pTmp->End(),
+                      & rEndStt = *pTmp->GetNext()->Start();
+            const SwContentNode* pCNd;
+            if( rSttEnd == rEndStt ||
+                (!rEndStt.nContent.GetIndex() &&
+                rEndStt.nNode.GetIndex() - 1 == rSttEnd.nNode.GetIndex() &&
+                nullptr != ( pCNd = rSttEnd.nNode.GetNode().GetContentNode() ) &&
+                rSttEnd.nContent.GetIndex() == pCNd->Len()))
             {
-                ++pTmp->GetPoint()->nNode;
-                pTmp->GetPoint()->nContent.Assign( pTmp->GetContentNode(), 0 );
-            }
-            // #i101009#
-            // prevent redlines that end on structural end node
-            if (& GetEndOfContent() ==
-                & pTmp->GetPoint()->nNode.GetNode())
-            {
-                --pTmp->GetPoint()->nNode;
-                SwContentNode *const pContentNode( pTmp->GetContentNode() );
-                pTmp->GetPoint()->nContent.Assign( pContentNode,
-                        (pContentNode) ? pContentNode->Len() : 0 );
-                // tdf#106218 try to avoid losing a paragraph break here:
-                if (pTmp->GetMark()->nContent == 0)
+                if( pTmp->GetNext() == m_pInsertRing.get() )
                 {
-                    SwNodeIndex const prev(pTmp->GetMark()->nNode, -1);
-                    if (prev.GetNode().IsTextNode())
-                    {
-                        *pTmp->GetMark() = SwPosition(
-                            *prev.GetNode().GetTextNode(),
-                            prev.GetNode().GetTextNode()->Len());
-                    }
-                }
-            }
-        } while( pInsRing != ( pTmp = pTmp->GetNext()) );
-        SwRedlineData aRedlnData( nsRedlineType_t::REDLINE_INSERT, nAuthor, aTimeStamp,
-                                    OUString(), nullptr );
-
-        // combine consecutive
-        if( pTmp->GetNext() != pInsRing )
-        {
-            do {
-                SwPosition& rSttEnd = *pTmp->End(),
-                          & rEndStt = *(pTmp->GetNext())->Start();
-                const SwContentNode* pCNd;
-                if( rSttEnd == rEndStt ||
-                    (!rEndStt.nContent.GetIndex() &&
-                    rEndStt.nNode.GetIndex() - 1 == rSttEnd.nNode.GetIndex() &&
-                    nullptr != ( pCNd = rSttEnd.nNode.GetNode().GetContentNode() ) &&
-                    rSttEnd.nContent.GetIndex() == pCNd->Len()))
-                {
-                    if( pTmp->GetNext() == pInsRing )
-                    {
-                        // are consecutive, so combine
-                        rEndStt = *pTmp->Start();
-                        delete pTmp;
-                        pTmp = pInsRing;
-                    }
-                    else
-                    {
-                        // are consecutive, so combine
-                        rSttEnd = *(pTmp->GetNext())->End();
-                        delete pTmp->GetNext();
-                    }
+                    // are consecutive, so combine
+                    rEndStt = *pTmp->Start();
+                    delete pTmp;
+                    pTmp = m_pInsertRing.get();
                 }
                 else
-                    pTmp = pTmp->GetNext();
-            } while( pInsRing != pTmp );
-        }
-
-        do {
-            if( rDoc.getIDocumentRedlineAccess().AppendRedline( new SwRangeRedline( aRedlnData, *pTmp ), true) &&
-                rDoc.GetIDocumentUndoRedo().DoesUndo())
-            {
-                SwUndo *const pUndo(new SwUndoCompDoc( *pTmp, true ));
-                rDoc.GetIDocumentUndoRedo().AppendUndo(pUndo);
+                {
+                    // are consecutive, so combine
+                    rSttEnd = *pTmp->GetNext()->End();
+                    delete pTmp->GetNext();
+                }
             }
-        } while( pInsRing != ( pTmp = pTmp->GetNext()) );
+            else
+                pTmp = pTmp->GetNext();
+        } while( m_pInsertRing.get() != pTmp );
     }
+
+    do {
+        if (IDocumentRedlineAccess::AppendResult::APPENDED ==
+                m_rDoc.getIDocumentRedlineAccess().AppendRedline(
+                    new SwRangeRedline(aRedlnData, *pTmp), true) &&
+            m_rDoc.GetIDocumentUndoRedo().DoesUndo())
+        {
+            m_rDoc.GetIDocumentUndoRedo().AppendUndo(
+                std::make_unique<SwUndoCompDoc>( *pTmp, true ));
+        }
+    } while( m_pInsertRing.get() != ( pTmp = pTmp->GetNext()) );
 }
 
 typedef std::shared_ptr<CompareData> CompareDataPtr;
@@ -1792,8 +1791,8 @@ namespace
     {
         Comparators aComparisons;
         //compare main text
-        aComparisons.push_back(CompareDataPtrPair(CompareDataPtr(new CompareMainText(rSrcDoc)),
-                                                  CompareDataPtr(new CompareMainText(rDestDoc))));
+        aComparisons.emplace_back(std::make_shared<CompareMainText>(rSrcDoc, true),
+                                  std::make_shared<CompareMainText>(rDestDoc, true));
 
         //if we have the same number of frames then try to compare within them
         const SwFrameFormats *pSrcFrameFormats = rSrcDoc.GetSpzFrameFormats();
@@ -1816,8 +1815,13 @@ namespace
                     continue;
                 if (!pSrcNode || !pDestNode)
                     break;
-                aComparisons.push_back(CompareDataPtrPair(CompareDataPtr(new CompareFrameFormatText(rSrcDoc, *pSrcIdx)),
-                                                          CompareDataPtr(new CompareFrameFormatText(rDestDoc, *pDestIdx))));
+                if (pSrcIdx->GetNodes()[pSrcIdx->GetIndex() + 1]->IsNoTextNode()
+                    || pDestIdx->GetNodes()[pDestIdx->GetIndex() + 1]->IsNoTextNode())
+                {
+                    continue; // tdf#125660 don't redline GrfNode/OLENode
+                }
+                aComparisons.emplace_back(std::make_shared<CompareFrameFormatText>(rSrcDoc, *pSrcIdx),
+                                          std::make_shared<CompareFrameFormatText>(rDestDoc, *pDestIdx));
             }
         }
         return aComparisons;
@@ -1868,8 +1872,8 @@ long SwDoc::CompareDoc( const SwDoc& rDoc )
 
     for (auto& a : aComparisons)
     {
-        CompareData& rD0 = *a.first.get();
-        CompareData& rD1 = *a.second.get();
+        CompareData& rD0 = *a.first;
+        CompareData& rD1 = *a.second;
         rD1.CompareLines( rD0 );
         nRet |= rD1.ShowDiffs( rD0 );
     }
@@ -1881,7 +1885,7 @@ long SwDoc::CompareDoc( const SwDoc& rDoc )
 
         for (auto& a : aComparisons)
         {
-            CompareData& rD1 = *a.second.get();
+            CompareData& rD1 = *a.second;
             rD1.SetRedlinesToDoc( !bDocWasModified );
         }
         getIDocumentState().SetModified();
@@ -1920,19 +1924,19 @@ SaveMergeRedline::SaveMergeRedline( const SwNode& rDstNd,
         aPos.nContent.Assign( const_cast<SwContentNode*>(static_cast<const SwContentNode*>(&rDstNd)), pStt->nContent.GetIndex() );
     pDestRedl = new SwRangeRedline( rSrcRedl.GetRedlineData(), aPos );
 
-    if( nsRedlineType_t::REDLINE_DELETE == pDestRedl->GetType() )
-    {
-        // mark the area as deleted
-        const SwPosition* pEnd = pStt == rSrcRedl.GetPoint()
-                                            ? rSrcRedl.GetMark()
-                                            : rSrcRedl.GetPoint();
+    if( RedlineType::Delete != pDestRedl->GetType() )
+        return;
 
-        pDestRedl->SetMark();
-        pDestRedl->GetPoint()->nNode += pEnd->nNode.GetIndex() -
-                                        pStt->nNode.GetIndex();
-        pDestRedl->GetPoint()->nContent.Assign( pDestRedl->GetContentNode(),
-                                                pEnd->nContent.GetIndex() );
-    }
+    // mark the area as deleted
+    const SwPosition* pEnd = pStt == rSrcRedl.GetPoint()
+                                        ? rSrcRedl.GetMark()
+                                        : rSrcRedl.GetPoint();
+
+    pDestRedl->SetMark();
+    pDestRedl->GetPoint()->nNode += pEnd->nNode.GetIndex() -
+                                    pStt->nNode.GetIndex();
+    pDestRedl->GetPoint()->nContent.Assign( pDestRedl->GetContentNode(),
+                                            pEnd->nContent.GetIndex() );
 }
 
 sal_uInt16 SaveMergeRedline::InsertRedline(SwPaM* pLastDestRedline)
@@ -1940,7 +1944,7 @@ sal_uInt16 SaveMergeRedline::InsertRedline(SwPaM* pLastDestRedline)
     sal_uInt16 nIns = 0;
     SwDoc* pDoc = pDestRedl->GetDoc();
 
-    if( nsRedlineType_t::REDLINE_INSERT == pDestRedl->GetType() )
+    if( RedlineType::Insert == pDestRedl->GetType() )
     {
         // the part was inserted so copy it from the SourceDoc
         ::sw::UndoGuard const undoGuard(pDoc->GetIDocumentUndoRedo());
@@ -1953,7 +1957,7 @@ sal_uInt16 SaveMergeRedline::InsertRedline(SwPaM* pLastDestRedline)
 
         pSrcRedl->GetDoc()->getIDocumentContentOperations().CopyRange(
                 *const_cast<SwPaM*>(static_cast<const SwPaM*>(pSrcRedl)),
-                *pDestRedl->GetPoint(), /*bCopyAll=*/false, /*bCheckPos=*/true );
+                *pDestRedl->GetPoint(), SwCopyFlags::CheckPosInFly);
 
         pDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld );
 
@@ -1985,8 +1989,8 @@ sal_uInt16 SaveMergeRedline::InsertRedline(SwPaM* pLastDestRedline)
             SwPosition* pRStt = pRedl->Start(),
                       * pREnd = pRStt == pRedl->GetPoint() ? pRedl->GetMark()
                                                            : pRedl->GetPoint();
-            if( nsRedlineType_t::REDLINE_DELETE == pRedl->GetType() ||
-                nsRedlineType_t::REDLINE_INSERT == pRedl->GetType() )
+            if( RedlineType::Delete == pRedl->GetType() ||
+                RedlineType::Insert == pRedl->GetType() )
             {
                 SwComparePosition eCmpPos = ComparePosition( *pDStt, *pDEnd, *pRStt, *pREnd );
                 switch( eCmpPos )
@@ -1999,7 +2003,7 @@ sal_uInt16 SaveMergeRedline::InsertRedline(SwPaM* pLastDestRedline)
                 case SwComparePosition::Equal:
                     delete pDestRedl;
                     pDestRedl = nullptr;
-                    SAL_FALLTHROUGH;
+                    [[fallthrough]];
 
                 case SwComparePosition::CollideEnd:
                 case SwComparePosition::Before:
@@ -2015,15 +2019,15 @@ sal_uInt16 SaveMergeRedline::InsertRedline(SwPaM* pLastDestRedline)
                         pCpyRedl->SetMark();
                         *pCpyRedl->GetPoint() = *pRStt;
 
-                        SwUndoCompDoc *const pUndo =
-                            (pDoc->GetIDocumentUndoRedo().DoesUndo())
-                                    ? new SwUndoCompDoc( *pCpyRedl ) : nullptr;
+                        std::unique_ptr<SwUndoCompDoc> pUndo;
+                        if (pDoc->GetIDocumentUndoRedo().DoesUndo())
+                            pUndo.reset(new SwUndoCompDoc( *pCpyRedl ));
 
                         // now modify doc: append redline, undo (and count)
                         pDoc->getIDocumentRedlineAccess().AppendRedline( pCpyRedl, true );
                         if( pUndo )
                         {
-                            pDoc->GetIDocumentUndoRedo().AppendUndo(pUndo);
+                            pDoc->GetIDocumentUndoRedo().AppendUndo(std::move(pUndo));
                         }
                         ++nIns;
 
@@ -2051,20 +2055,22 @@ sal_uInt16 SaveMergeRedline::InsertRedline(SwPaM* pLastDestRedline)
 
     if( pDestRedl )
     {
-        SwUndoCompDoc *const pUndo = (pDoc->GetIDocumentUndoRedo().DoesUndo())
-            ? new SwUndoCompDoc( *pDestRedl ) : nullptr;
+        std::unique_ptr<SwUndoCompDoc> pUndo;
+        if (pDoc->GetIDocumentUndoRedo().DoesUndo())
+            pUndo.reset(new SwUndoCompDoc( *pDestRedl ));
 
         // now modify doc: append redline, undo (and count)
-        bool bRedlineAccepted = pDoc->getIDocumentRedlineAccess().AppendRedline( pDestRedl, true );
+        IDocumentRedlineAccess::AppendResult const result(
+            pDoc->getIDocumentRedlineAccess().AppendRedline(pDestRedl, true));
         if( pUndo )
         {
-            pDoc->GetIDocumentUndoRedo().AppendUndo( pUndo );
+            pDoc->GetIDocumentUndoRedo().AppendUndo( std::move(pUndo) );
         }
         ++nIns;
 
         // if AppendRedline has deleted our redline, we may not keep a
         // reference to it
-        if( ! bRedlineAccepted )
+        if (IDocumentRedlineAccess::AppendResult::APPENDED != result)
             pDestRedl = nullptr;
     }
     return nIns;
@@ -2095,23 +2101,23 @@ long SwDoc::MergeDoc( const SwDoc& rDoc )
         // we want to get all redlines from the SourceDoc
 
         // look for all insert redlines from the SourceDoc and determine their position in the DestDoc
-        std::list<SaveMergeRedline> vRedlines;
+        std::vector<SaveMergeRedline> vRedlines;
         const SwRedlineTable& rSrcRedlTable = rSrcDoc.getIDocumentRedlineAccess().GetRedlineTable();
         sal_uLong nEndOfExtra = rSrcDoc.GetNodes().GetEndOfExtras().GetIndex();
         sal_uLong nMyEndOfExtra = GetNodes().GetEndOfExtras().GetIndex();
         for(const SwRangeRedline* pRedl : rSrcRedlTable)
         {
             sal_uLong nNd = pRedl->GetPoint()->nNode.GetIndex();
-            RedlineType_t eType = pRedl->GetType();
+            RedlineType eType = pRedl->GetType();
             if( nEndOfExtra < nNd &&
-                ( nsRedlineType_t::REDLINE_INSERT == eType || nsRedlineType_t::REDLINE_DELETE == eType ))
+                ( RedlineType::Insert == eType || RedlineType::Delete == eType ))
             {
                 const SwNode* pDstNd = GetNodes()[
                                         nMyEndOfExtra + nNd - nEndOfExtra ];
 
                 // Found the position.
                 // Then we also have to insert the redline to the line in the DestDoc.
-                vRedlines.push_back(SaveMergeRedline(*pDstNd, *pRedl));
+                vRedlines.emplace_back(*pDstNd, *pRedl);
             }
         }
 
@@ -2148,22 +2154,22 @@ long SwDoc::MergeDoc( const SwDoc& rDoc )
 LineArrayComparator::LineArrayComparator( const CompareData &rD1,
                                             const CompareData &rD2, int nStt1,
                                             int nEnd1, int nStt2, int nEnd2 )
-    : rData1( rD1 ), rData2( rD2 ), nFirst1( nStt1 ), nFirst2( nStt2 )
+    : m_rData1( rD1 ), m_rData2( rD2 ), m_nFirst1( nStt1 ), m_nFirst2( nStt2 )
 {
-    nLen1 = nEnd1 - nStt1;
-    nLen2 = nEnd2 - nStt2;
+    m_nLen1 = nEnd1 - nStt1;
+    m_nLen2 = nEnd2 - nStt2;
 }
 
 bool LineArrayComparator::Compare( int nIdx1, int nIdx2 ) const
 {
-    if( nIdx1 < 0 || nIdx2 < 0 || nIdx1 >= nLen1 || nIdx2 >= nLen2 )
+    if( nIdx1 < 0 || nIdx2 < 0 || nIdx1 >= m_nLen1 || nIdx2 >= m_nLen2 )
     {
         OSL_ENSURE( false, "Index out of range!" );
         return false;
     }
 
-    const SwTextNode *pTextNd1 = rData1.GetLine( nFirst1 + nIdx1 )->GetNode().GetTextNode();
-    const SwTextNode *pTextNd2 = rData2.GetLine( nFirst2 + nIdx2 )->GetNode().GetTextNode();
+    const SwTextNode *pTextNd1 = m_rData1.GetLine( m_nFirst1 + nIdx1 )->GetNode().GetTextNode();
+    const SwTextNode *pTextNd2 = m_rData2.GetLine( m_nFirst2 + nIdx2 )->GetNode().GetTextNode();
 
     if( !pTextNd1 || !pTextNd2
         || ( CmpOptions.bUseRsid && !pTextNd1->CompareParRsid( *pTextNd2 ) ) )
@@ -2241,40 +2247,34 @@ bool CharArrayComparator::Compare( int nIdx1, int nIdx2 ) const
     }
 
     return ( !CmpOptions.bUseRsid
-            || pTextNd1->CompareRsid(  *pTextNd2, nIdx1 + 1, nIdx2 + 1 ) )
-            && pTextNd1->GetText()[ nIdx1 ] == pTextNd2->GetText()[ nIdx2 ];
+            || m_pTextNode1->CompareRsid(  *m_pTextNode2, nIdx1 + 1, nIdx2 + 1 ) )
+            && m_pTextNode1->GetText()[ nIdx1 ] == m_pTextNode2->GetText()[ nIdx2 ];
 }
 
 WordArrayComparator::WordArrayComparator( const SwTextNode *pNode1,
                                             const SwTextNode *pNode2 )
-    : pTextNd1( pNode1 ), pTextNd2( pNode2 )
+    : m_pTextNode1( pNode1 ), m_pTextNode2( pNode2 )
 {
-    pPos1 = new int[ pTextNd1->GetText().getLength() + 1 ];
-    pPos2 = new int[ pTextNd2->GetText().getLength() + 1 ];
+    m_pPos1.reset( new int[ m_pTextNode1->GetText().getLength() + 1 ] );
+    m_pPos2.reset( new int[ m_pTextNode2->GetText().getLength() + 1 ] );
 
-    CalcPositions( pPos1, pTextNd1, nCnt1 );
-    CalcPositions( pPos2, pTextNd2, nCnt2 );
-}
-
-WordArrayComparator::~WordArrayComparator()
-{
-    delete[] pPos1;
-    delete[] pPos2;
+    CalcPositions( m_pPos1.get(), m_pTextNode1, m_nCount1 );
+    CalcPositions( m_pPos2.get(), m_pTextNode2, m_nCount2 );
 }
 
 bool WordArrayComparator::Compare( int nIdx1, int nIdx2 ) const
 {
-    int nLen = pPos1[ nIdx1 + 1 ] - pPos1[ nIdx1 ];
-    if( nLen != pPos2[ nIdx2 + 1 ] - pPos2[ nIdx2 ] )
+    int nLen = m_pPos1[ nIdx1 + 1 ] - m_pPos1[ nIdx1 ];
+    if( nLen != m_pPos2[ nIdx2 + 1 ] - m_pPos2[ nIdx2 ] )
     {
         return false;
     }
     for( int i = 0; i < nLen; i++)
     {
-        if( pTextNd1->GetText()[ pPos1[ nIdx1 ] + i ]
-            != pTextNd2->GetText()[ pPos2[ nIdx2 ] + i ]
-            || ( CmpOptions.bUseRsid && !pTextNd1->CompareRsid( *pTextNd2,
-                                pPos1[ nIdx1 ] + i, pPos2[ nIdx2 ] + i ) ) )
+        if( m_pTextNode1->GetText()[ m_pPos1[ nIdx1 ] + i ]
+            != m_pTextNode2->GetText()[ m_pPos2[ nIdx2 ] + i ]
+            || ( CmpOptions.bUseRsid && !m_pTextNode1->CompareRsid( *m_pTextNode2,
+                                m_pPos1[ nIdx1 ] + i, m_pPos2[ nIdx2 ] + i ) ) )
         {
             return false;
         }
@@ -2289,18 +2289,18 @@ int WordArrayComparator::GetCharSequence( const int *pWordLcs1,
     for( int i = 0; i < nLcsLen; i++ )
     {
         // Check for hash collisions
-        if( pPos1[ pWordLcs1[i] + 1 ] - pPos1[ pWordLcs1[i] ]
-            != pPos2[ pWordLcs2[i] + 1 ] - pPos2[ pWordLcs2[i] ] )
+        if( m_pPos1[ pWordLcs1[i] + 1 ] - m_pPos1[ pWordLcs1[i] ]
+            != m_pPos2[ pWordLcs2[i] + 1 ] - m_pPos2[ pWordLcs2[i] ] )
         {
             continue;
         }
-        for( int j = 0; j < pPos1[pWordLcs1[i]+1] - pPos1[pWordLcs1[i]]; j++)
+        for( int j = 0; j < m_pPos1[pWordLcs1[i]+1] - m_pPos1[pWordLcs1[i]]; j++)
         {
-            pSubseq1[ nLen ] = pPos1[ pWordLcs1[i] ] + j;
-            pSubseq2[ nLen ] = pPos2[ pWordLcs2[i] ] + j;
+            pSubseq1[ nLen ] = m_pPos1[ pWordLcs1[i] ] + j;
+            pSubseq2[ nLen ] = m_pPos2[ pWordLcs2[i] ] + j;
 
-            if( pTextNd1->GetText()[ pPos1[ pWordLcs1[i] ] + j ]
-             != pTextNd2->GetText()[ pPos2[ pWordLcs2[i] ] + j ] )
+            if( m_pTextNode1->GetText()[ m_pPos1[ pWordLcs1[i] ] + j ]
+             != m_pTextNode2->GetText()[ m_pPos2[ pWordLcs2[i] ] + j ] )
             {
                 nLen -= j;
                 break;
@@ -2331,14 +2331,14 @@ void WordArrayComparator::CalcPositions( int *pPos, const SwTextNode *pTextNd,
 int CommonSubseq::FindLCS( int *pLcs1, int *pLcs2, int nStt1, int nEnd1,
                                                     int nStt2, int nEnd2 )
 {
-    int nLen1 = nEnd1 ? nEnd1 - nStt1 : rCmp.GetLen1();
-    int nLen2 = nEnd2 ? nEnd2 - nStt2 : rCmp.GetLen2();
+    int nLen1 = nEnd1 ? nEnd1 - nStt1 : m_rComparator.GetLen1();
+    int nLen2 = nEnd2 ? nEnd2 - nStt2 : m_rComparator.GetLen2();
 
     assert( nLen1 >= 0 );
     assert( nLen2 >= 0 );
 
     std::unique_ptr<int*[]> pLcs( new int*[ nLen1 + 1 ] );
-    pLcs[ 0 ] = pData.get();
+    pLcs[ 0 ] = m_pData.get();
 
     for( int i = 1; i < nLen1 + 1; i++ )
         pLcs[ i ] = pLcs[ i - 1 ] + nLen2 + 1;
@@ -2354,7 +2354,7 @@ int CommonSubseq::FindLCS( int *pLcs1, int *pLcs2, int nStt1, int nEnd1,
     {
         for( int j = 1; j <= nLen2; j++ )
         {
-            if( rCmp.Compare( nStt1 + i - 1, nStt2 + j - 1 ) )
+            if( m_rComparator.Compare( nStt1 + i - 1, nStt2 + j - 1 ) )
                 pLcs[i][j] = pLcs[i - 1][j - 1] + 1;
             else
                 pLcs[i][j] = std::max( pLcs[i][j - 1], pLcs[i - 1][j] );
@@ -2444,47 +2444,38 @@ int CommonSubseq::IgnoreIsolatedPieces( int *pLcs1, int *pLcs2, int nLen1,
 LgstCommonSubseq::LgstCommonSubseq( ArrayComparator &rComparator )
     : CommonSubseq( rComparator, CUTOFF )
 {
-    pBuff1 = new int[ rComparator.GetLen2() + 1 ];
-    pBuff2 = new int[ rComparator.GetLen2() + 1 ];
+    m_pBuff1.reset( new int[ rComparator.GetLen2() + 1 ] );
+    m_pBuff2.reset( new int[ rComparator.GetLen2() + 1 ] );
 
-    pL1 = new int[ rComparator.GetLen2() + 1 ];
-    pL2 = new int[ rComparator.GetLen2() + 1 ];
-}
-
-LgstCommonSubseq::~LgstCommonSubseq()
-{
-    delete[] pBuff1;
-    delete[] pBuff2;
-
-    delete[] pL1;
-    delete[] pL2;
+    m_pL1.reset( new int[ rComparator.GetLen2() + 1 ] );
+    m_pL2.reset( new int[ rComparator.GetLen2() + 1 ] );
 }
 
 void LgstCommonSubseq::FindL( int *pL, int nStt1, int nEnd1,
                                         int nStt2, int nEnd2  )
 {
-    int nLen1 = nEnd1 ? nEnd1 - nStt1 : rCmp.GetLen1();
-    int nLen2 = nEnd2 ? nEnd2 - nStt2 : rCmp.GetLen2();
+    int nLen1 = nEnd1 ? nEnd1 - nStt1 : m_rComparator.GetLen1();
+    int nLen2 = nEnd2 ? nEnd2 - nStt2 : m_rComparator.GetLen2();
 
-    int *currL = pBuff1;
-    int *prevL = pBuff2;
+    int *currL = m_pBuff1.get();
+    int *prevL = m_pBuff2.get();
 
     // Avoid memory corruption
-    if( nLen2 > rCmp.GetLen2() )
+    if( nLen2 > m_rComparator.GetLen2() )
     {
         assert( false );
         return;
     }
 
-    memset( pBuff1, 0, sizeof( *pBuff1 ) * ( nLen2 + 1 ) );
-    memset( pBuff2, 0, sizeof( *pBuff2 ) * ( nLen2 + 1 ) );
+    memset( m_pBuff1.get(), 0, sizeof( m_pBuff1[0] ) * ( nLen2 + 1 ) );
+    memset( m_pBuff2.get(), 0, sizeof( m_pBuff2[0] ) * ( nLen2 + 1 ) );
 
     // Find lcs
     for( int i = 1; i <= nLen1; i++ )
     {
         for( int j = 1; j <= nLen2; j++ )
         {
-            if( rCmp.Compare( nStt1 + i - 1, nStt2 + j - 1 ) )
+            if( m_rComparator.Compare( nStt1 + i - 1, nStt2 + j - 1 ) )
                 currL[j] = prevL[j - 1] + 1;
             else
                 currL[j] = std::max( currL[j - 1], prevL[j] );
@@ -2515,8 +2506,8 @@ int LgstCommonSubseq::HirschbergLCS( int *pLcs1, int *pLcs2, int nStt1,
 
     int nMid = nLen1/2;
 
-    FindL( pL1, nStt1, nStt1 + nMid, nStt2, nEnd2 );
-    FindL( pL2, nStt1 + nMid, nEnd1, nStt2, nEnd2 );
+    FindL( m_pL1.get(), nStt1, nStt1 + nMid, nStt2, nEnd2 );
+    FindL( m_pL2.get(), nStt1 + nMid, nEnd1, nStt2, nEnd2 );
 
     int nMaxPos = 0;
     static int nMaxVal;
@@ -2525,10 +2516,10 @@ int LgstCommonSubseq::HirschbergLCS( int *pLcs1, int *pLcs2, int nStt1,
     static int i;
     for( i = 0; i <= nLen2; i++ )
     {
-        if( pL1[i] + ( pL2[nLen2] - pL2[i] ) > nMaxVal )
+        if( m_pL1[i] + ( m_pL2[nLen2] - m_pL2[i] ) > nMaxVal )
         {
             nMaxPos = i;
-            nMaxVal = pL1[i]+( pL2[nLen2] - pL2[i] );
+            nMaxVal = m_pL1[i]+( m_pL2[nLen2] - m_pL2[i] );
         }
     }
 
@@ -2544,11 +2535,11 @@ int LgstCommonSubseq::Find( int *pSubseq1, int *pSubseq2 )
 {
     int nStt = 0;
     int nCutEnd = 0;
-    int nEnd1 = rCmp.GetLen1();
-    int nEnd2 = rCmp.GetLen2();
+    int nEnd1 = m_rComparator.GetLen1();
+    int nEnd2 = m_rComparator.GetLen2();
 
     // Check for corresponding lines in the beginning of the sequences
-    while( nStt < nEnd1 && nStt < nEnd2 && rCmp.Compare( nStt, nStt ) )
+    while( nStt < nEnd1 && nStt < nEnd2 && m_rComparator.Compare( nStt, nStt ) )
     {
         pSubseq1[ nStt ] = nStt;
         pSubseq2[ nStt ] = nStt;
@@ -2560,7 +2551,7 @@ int LgstCommonSubseq::Find( int *pSubseq1, int *pSubseq2 )
 
     // Check for corresponding lines in the end of the sequences
     while( nStt < nEnd1 && nStt < nEnd2
-                        && rCmp.Compare( nEnd1 - 1, nEnd2 - 1 ) )
+                        && m_rComparator.Compare( nEnd1 - 1, nEnd2 - 1 ) )
     {
         nCutEnd++;
         nEnd1--;
@@ -2585,7 +2576,7 @@ int FastCommonSubseq::FindFastCS( int *pSeq1, int *pSeq2, int nStt1,
     int nCutEnd = 0;
 
     // Check for corresponding lines in the beginning of the sequences
-    while( nStt1 < nEnd1 && nStt2 < nEnd2 && rCmp.Compare( nStt1, nStt2 ) )
+    while( nStt1 < nEnd1 && nStt2 < nEnd2 && m_rComparator.Compare( nStt1, nStt2 ) )
     {
         pSeq1[ nCutBeg ] = nStt1++;
         pSeq2[ nCutBeg ] = nStt2++;
@@ -2597,7 +2588,7 @@ int FastCommonSubseq::FindFastCS( int *pSeq1, int *pSeq2, int nStt1,
 
     // Check for corresponding lines in the end of the sequences
     while( nStt1 < nEnd1 && nStt2 < nEnd2
-                        && rCmp.Compare( nEnd1 - 1, nEnd2 - 1 ) )
+                        && m_rComparator.Compare( nEnd1 - 1, nEnd2 - 1 ) )
     {
         nCutEnd++;
         nEnd1--;
@@ -2643,13 +2634,13 @@ int FastCommonSubseq::FindFastCS( int *pSeq1, int *pSeq2, int nStt1,
         // Search to the left and to the right of the middle of the first sequence
         for( int i = nMid1 - nRad; i <= nMid1 + nRad; i++ )
         {
-            if( rCmp.Compare( nStt1 + i, nStt2 + nMid2 - nRad ) )
+            if( m_rComparator.Compare( nStt1 + i, nStt2 + nMid2 - nRad ) )
             {
                 nPos1 = nStt1 + i;
                 nPos2 = nStt2 + nMid2 - nRad;
                 break;
             }
-            if( rCmp.Compare( nStt1 + i, nStt2 + nMid2 + nRad ) )
+            if( m_rComparator.Compare( nStt1 + i, nStt2 + nMid2 + nRad ) )
             {
                 nPos1 = nStt1 + i;
                 nPos2 = nStt2 + nMid2 - nRad;
@@ -2659,13 +2650,13 @@ int FastCommonSubseq::FindFastCS( int *pSeq1, int *pSeq2, int nStt1,
         // Search to the left and to the right of the middle of the second sequence
         for( int i = nMid2 - nRad; i <= nMid2 + nRad; i++ )
         {
-            if( rCmp.Compare( nStt2 + nMid2 - nRad, nStt2 + i ) )
+            if( m_rComparator.Compare( nStt2 + nMid2 - nRad, nStt2 + i ) )
             {
                 nPos2 = nStt2 + i;
                 nPos1 = nStt1 + nMid1 - nRad;
                 break;
             }
-            if( rCmp.Compare( nStt2 + nMid2 - nRad, nStt2 + i ) )
+            if( m_rComparator.Compare( nStt2 + nMid2 - nRad, nStt2 + i ) )
             {
                 nPos2 = nStt2 + i;
                 nPos1 = nStt1 + nMid1 - nRad;

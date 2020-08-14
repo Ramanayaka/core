@@ -21,8 +21,9 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cstdlib>
-#include <exception>
+#include <cstddef>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
@@ -39,6 +40,7 @@
 #include <com/sun/star/uri/XUriReference.hpp>
 #include <com/sun/star/uri/XUriReferenceFactory.hpp>
 #include <com/sun/star/uri/XUriSchemeParser.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/weak.hxx>
@@ -96,11 +98,11 @@ class UriReference:
 {
 public:
     UriReference(
-        OUString const & scheme, bool bIsHierarchical, bool bHasAuthority,
+        OUString const & scheme, bool bHasAuthority,
         OUString const & authority, OUString const & path,
         bool bHasQuery, OUString const & query):
         m_base(
-            scheme, bIsHierarchical, bHasAuthority, authority, path, bHasQuery,
+            scheme, bHasAuthority, authority, path, bHasQuery,
             query)
     {}
 
@@ -167,77 +169,113 @@ private:
 css::uno::Reference< css::uri::XUriReference > parseGeneric(
     OUString const & scheme, OUString const & schemeSpecificPart)
 {
-    bool isAbsolute = !scheme.isEmpty();
-    bool isHierarchical = !isAbsolute || schemeSpecificPart.startsWith("/");
+    sal_Int32 len = schemeSpecificPart.getLength();
+    sal_Int32 i = 0;
     bool hasAuthority = false;
     OUString authority;
-    OUString path;
+    if (len - i >= 2 && schemeSpecificPart[i] == '/'
+        && schemeSpecificPart[i + 1] == '/')
+    {
+        i += 2;
+        sal_Int32 n = i;
+        while (i < len && schemeSpecificPart[i] != '/'
+               && schemeSpecificPart[i] != '?') {
+            ++i;
+        }
+        hasAuthority = true;
+        authority = schemeSpecificPart.copy(n, i - n);
+    }
+    sal_Int32 n = i;
+    i = schemeSpecificPart.indexOf('?', i);
+    if (i == -1) {
+        i = len;
+    }
+    OUString path = schemeSpecificPart.copy(n, i - n);
     bool hasQuery = false;
     OUString query;
-    if (isHierarchical) {
-        sal_Int32 len = schemeSpecificPart.getLength();
-        sal_Int32 i = 0;
-        if (len - i >= 2 && schemeSpecificPart[i] == '/'
-            && schemeSpecificPart[i + 1] == '/')
-        {
-            i += 2;
-            sal_Int32 n = i;
-            while (i < len && schemeSpecificPart[i] != '/'
-                   && schemeSpecificPart[i] != '?') {
-                ++i;
-            }
-            hasAuthority = true;
-            authority = schemeSpecificPart.copy(n, i - n);
-        }
-        sal_Int32 n = i;
-        i = schemeSpecificPart.indexOf('?', i);
-        if (i == -1) {
-            i = len;
-        }
-        path = schemeSpecificPart.copy(n, i - n);
-        if (i != len) {
-            hasQuery = true;
-            query = schemeSpecificPart.copy(i + 1);
-        }
-    } else {
-        if (schemeSpecificPart.isEmpty()) {
-            // The scheme-specific part of an opaque URI must not be empty:
-            return nullptr;
-        }
-        path = schemeSpecificPart;
+    if (i != len) {
+        hasQuery = true;
+        query = schemeSpecificPart.copy(i + 1);
     }
     return new UriReference(
-        scheme, isHierarchical, hasAuthority, authority, path, hasQuery, query);
+        scheme, hasAuthority, authority, path, hasQuery, query);
 }
 
-typedef std::vector< sal_Int32 > Segments;
+struct Segment {
+    bool leadingSlash;
+    bool excessParent;
+    std::u16string_view segment;
 
-void processSegments(
-    Segments & segments,
-    css::uno::Reference< css::uri::XUriReference > const & uriReference,
-    bool base, bool processSpecialSegments)
+    Segment(bool theLeadingSlash, bool theExcessParent, std::u16string_view theSegment):
+        leadingSlash(theLeadingSlash), excessParent(theExcessParent), segment(theSegment) {}
+};
+
+std::pair<std::vector<Segment>, bool> processSegments(
+    std::u16string_view first, std::u16string_view second, bool processSpecialSegments)
 {
-    sal_Int32 count = uriReference->getPathSegmentCount() - (base ? 1 : 0);
-    assert(count <= SAL_MAX_INT32 - 1 && -count >= SAL_MIN_INT32 + 1);
-    for (sal_Int32 i = 0; i < count; ++i) {
-        if (processSpecialSegments) {
-            OUString segment(uriReference->getPathSegment(i));
-            if ( segment == "." ) {
-                if (!base && i == count - 1) {
-                    segments.push_back(0);
-                }
-                continue;
-            } else if ( segment == ".." ) {
-                if (segments.empty() || std::abs(segments.back()) == 1) {
-                    segments.push_back(base ? -1 : 1);
-                } else {
-                    segments.pop_back();
-                }
-                continue;
-            }
-        }
-        segments.push_back(base ? -(i + 2) : i + 2);
+    std::vector<Segment> segments;
+    bool processed = false;
+    std::u16string_view const * half = &first;
+        // later checks for `half == &first` and `half == &second` rely on the fact that `first` and
+        // `second` are passed by value, in case a caller passes the same object for both arguments
+    std::size_t index = 0;
+    bool slash = false;
+    if (index == half->length()) {
+        half = &second;
+        index = 0;
     }
+    if (index != half->length()) {
+        if ((*half)[index] == u'/') {
+            slash = true;
+            ++index;
+        }
+        for (;;) {
+            if (index == half->length() && half == &first) {
+                half = &second;
+                index = 0;
+            }
+            if (index == half->length()) {
+                if (slash) {
+                    segments.emplace_back(true, false, std::u16string_view());
+                }
+                break;
+            }
+            auto const n = std::min(half->find(u'/', index), half->length());
+            auto const leadingSlash = slash;
+            auto const segment = half->substr(index, n - index);
+            auto const process = processSpecialSegments || half == &second;
+            index = n;
+            slash = false;
+            if (index == half->length() && half == &first) {
+                half = &second;
+                index = 0;
+            }
+            if (index != half->length() && (*half)[index] == u'/') {
+                slash = true;
+                ++index;
+            }
+            if (process) {
+                if (segment == u".") {
+                    slash = leadingSlash;
+                    processed = true;
+                    continue;
+                } else if (segment == u"..") {
+                    if (segments.empty() || segments.back().excessParent) {
+                        segments.emplace_back(leadingSlash, true, segment);
+                    } else {
+                        if (leadingSlash) {
+                            segments.pop_back();
+                        }
+                        slash = leadingSlash;
+                    }
+                    processed = true;
+                    continue;
+                }
+            }
+            segments.emplace_back(leadingSlash, false, segment);
+        }
+    }
+    return {segments, processed};
 }
 
 class Factory:
@@ -266,7 +304,7 @@ public:
     makeAbsolute(
         css::uno::Reference< css::uri::XUriReference > const & baseUriReference,
         css::uno::Reference< css::uri::XUriReference > const & uriReference,
-        sal_Bool processSpecialBaseSegments,
+        sal_Bool processAdditionalSpecialSegments,
         css::uri::RelativeUriExcessParentSegments excessParentSegments) override;
 
     virtual css::uno::Reference< css::uri::XUriReference > SAL_CALL
@@ -289,7 +327,7 @@ private:
 
 OUString Factory::getImplementationName()
 {
-    return OUString("com.sun.star.comp.uri.UriReferenceFactory");
+    return "com.sun.star.comp.uri.UriReferenceFactory";
 }
 
 sal_Bool Factory::supportsService(OUString const & serviceName)
@@ -318,7 +356,7 @@ css::uno::Reference< css::uri::XUriReference > Factory::parse(
     if (n >= 0) {
         scheme = uriReference.copy(0, n);
         schemeSpecificPart = uriReference.copy(n + 1, fragment - (n + 1));
-        OUStringBuffer buf;
+        OUStringBuffer buf(128);
         buf.append("com.sun.star.uri.UriSchemeParser_");
         for (sal_Int32 i = 0; i < scheme.getLength(); ++i) {
             sal_Unicode c = scheme[i];
@@ -350,11 +388,12 @@ css::uno::Reference< css::uri::XUriReference > Factory::parse(
                     serviceName, m_context);
             } catch (css::uno::RuntimeException &) {
                 throw;
-            } catch (const css::uno::Exception & e) {
+            } catch (const css::uno::Exception &) {
+                css::uno::Any anyEx = cppu::getCaughtException();
                 throw css::lang::WrappedTargetRuntimeException(
                     "creating service " + serviceName,
                     static_cast< cppu::OWeakObject * >(this),
-                    css::uno::makeAny(e)); //TODO: preserve type of e
+                    anyEx);
             }
             if (service.is()) {
                 parser.set( service, css::uno::UNO_QUERY_THROW);
@@ -374,27 +413,83 @@ css::uno::Reference< css::uri::XUriReference > Factory::parse(
 css::uno::Reference< css::uri::XUriReference > Factory::makeAbsolute(
     css::uno::Reference< css::uri::XUriReference > const & baseUriReference,
     css::uno::Reference< css::uri::XUriReference > const & uriReference,
-    sal_Bool processSpecialBaseSegments,
+    sal_Bool processAdditionalSpecialSegments,
     css::uri::RelativeUriExcessParentSegments excessParentSegments)
 {
     if (!baseUriReference.is() || !baseUriReference->isAbsolute()
-        || !baseUriReference->isHierarchical() || !uriReference.is()) {
+        || !uriReference.is()) {
         return nullptr;
     } else if (uriReference->isAbsolute()) {
+        if (processAdditionalSpecialSegments) {
+            auto const path = uriReference->getPath();
+            auto [segments, proc] = processSegments(path, {}, true);
+            if (proc) {
+                OUStringBuffer abs(uriReference->getScheme());
+                abs.append(':');
+                if (uriReference->hasAuthority()) {
+                    abs.append("//");
+                    abs.append(uriReference->getAuthority());
+                }
+                for (auto const & i : segments)
+                {
+                    if (i.excessParent) {
+                        switch (excessParentSegments) {
+                        case css::uri::RelativeUriExcessParentSegments_ERROR:
+                            return nullptr;
+
+                        case css::uri::RelativeUriExcessParentSegments_RETAIN:
+                            assert(i.segment == u"..");
+                            break;
+
+                        case css::uri::RelativeUriExcessParentSegments_REMOVE:
+                            continue;
+
+                        default:
+                            assert(false);
+                            break;
+                        }
+                    }
+                    if (i.leadingSlash) {
+                        abs.append('/');
+                    }
+                    abs.append(i.segment);
+                }
+                if (uriReference->hasQuery()) {
+                    abs.append('?');
+                    abs.append(uriReference->getQuery());
+                }
+                if (uriReference->hasFragment()) {
+                    abs.append('#');
+                    abs.append(uriReference->getFragment());
+                }
+                return parse(abs.makeStringAndClear());
+            }
+        }
         return clone(uriReference);
     } else if (!uriReference->hasAuthority()
-               && uriReference->getPath().isEmpty()
-               && !uriReference->hasQuery()) {
-        css::uno::Reference< css::uri::XUriReference > abs(
-            clone(baseUriReference));
-        if (uriReference->hasFragment()) {
-            abs->setFragment(uriReference->getFragment());
-        } else {
-            abs->clearFragment();
-        }
-        return abs;
-    } else {
+               && uriReference->getPath().isEmpty()) {
         OUStringBuffer abs(baseUriReference->getScheme());
+        abs.append(':');
+        if (baseUriReference->hasAuthority()) {
+            abs.append("//");
+            abs.append(baseUriReference->getAuthority());
+        }
+        abs.append(baseUriReference->getPath());
+        if (uriReference->hasQuery()) {
+            abs.append('?');
+            abs.append(uriReference->getQuery());
+        } else if (baseUriReference->hasQuery()) {
+            abs.append('?');
+            abs.append(baseUriReference->getQuery());
+        }
+        if (uriReference->hasFragment()) {
+            abs.append('#');
+            abs.append(uriReference->getFragment());
+        }
+        return parse(abs.makeStringAndClear());
+    } else {
+        OUStringBuffer abs(128);
+        abs.append(baseUriReference->getScheme());
         abs.append(':');
         if (uriReference->hasAuthority()) {
             abs.append("//");
@@ -404,74 +499,77 @@ css::uno::Reference< css::uri::XUriReference > Factory::makeAbsolute(
             abs.append(baseUriReference->getAuthority());
         }
         if (uriReference->hasRelativePath()) {
-            Segments segments;
-            processSegments(
-                segments, baseUriReference, true, processSpecialBaseSegments);
-            processSegments(segments, uriReference, false, true);
-            // If the path component of the base URI reference is empty (which
-            // implies that the base URI reference denotes a "root entity"), and
-            // the resulting URI reference denotes the same root entity, make
-            // sure the path component of the resulting URI reference is also
-            // empty (and not "/").  RFC 2396 is unclear about this, and I chose
-            // these rules for consistent results.
-            bool slash = !baseUriReference->getPath().isEmpty();
-            if (slash) {
-                abs.append('/');
+            auto path1 = baseUriReference->getPath();
+            if (path1.isEmpty()) {
+                if (baseUriReference->hasAuthority()) {
+                    path1 = "/";
+                }
+            } else {
+                path1 = path1.copy(0, path1.lastIndexOf('/') + 1);
             }
-            for (Segments::iterator i(segments.begin()); i != segments.end();
-                 ++i)
+            auto const path2 = uriReference->getPath();
+            auto [segments, _] = processSegments(path1, path2, processAdditionalSpecialSegments);
+            (void)_;
+            for (auto const & i : segments)
             {
-                if (*i < -1) {
-                    OUString segment(
-                        baseUriReference->getPathSegment(-(*i + 2)));
-                    if (!segment.isEmpty() || segments.size() > 1) {
-                        if (!slash) {
-                            abs.append('/');
-                        }
-                        abs.append(segment);
-                        slash = true;
-                        abs.append('/');
-                    }
-                } else if (*i > 1) {
-                    OUString segment(uriReference->getPathSegment(*i - 2));
-                    if (!segment.isEmpty() || segments.size() > 1) {
-                        if (!slash) {
-                            abs.append('/');
-                        }
-                        abs.append(segment);
-                        slash = false;
-                    }
-                } else if (*i == 0) {
-                    if (segments.size() > 1 && !slash) {
-                        abs.append('/');
-                    }
-                } else {
+                if (i.excessParent) {
                     switch (excessParentSegments) {
                     case css::uri::RelativeUriExcessParentSegments_ERROR:
                         return nullptr;
 
                     case css::uri::RelativeUriExcessParentSegments_RETAIN:
-                        if (!slash) {
-                            abs.append('/');
-                        }
-                        abs.append("..");
-                        slash = *i < 0;
-                        if (slash) {
-                            abs.append('/');
-                        }
+                        assert(i.segment == u"..");
                         break;
 
                     case css::uri::RelativeUriExcessParentSegments_REMOVE:
-                        break;
+                        continue;
 
                     default:
                         assert(false);
                         break;
                     }
                 }
+                if (i.leadingSlash) {
+                    abs.append('/');
+                }
+                abs.append(i.segment);
             }
         } else {
-            abs.append(uriReference->getPath());
+            bool processed = false;
+            if (processAdditionalSpecialSegments) {
+                auto const path = uriReference->getPath();
+                auto [segments, proc] = processSegments(path, {}, true);
+                if (proc) {
+                    for (auto const & i : segments)
+                    {
+                        if (i.excessParent) {
+                            switch (excessParentSegments) {
+                            case css::uri::RelativeUriExcessParentSegments_ERROR:
+                                return nullptr;
+
+                            case css::uri::RelativeUriExcessParentSegments_RETAIN:
+                                assert(i.segment == u"..");
+                                break;
+
+                            case css::uri::RelativeUriExcessParentSegments_REMOVE:
+                                continue;
+
+                            default:
+                                assert(false);
+                                break;
+                            }
+                        }
+                        if (i.leadingSlash) {
+                            abs.append('/');
+                        }
+                        abs.append(i.segment);
+                    }
+                    processed = true;
+                }
+            }
+            if (!processed) {
+                abs.append(uriReference->getPath());
+            }
         }
         if (uriReference->hasQuery()) {
             abs.append('?');
@@ -493,14 +591,14 @@ css::uno::Reference< css::uri::XUriReference > Factory::makeRelative(
     sal_Bool encodeRetainedSpecialSegments)
 {
     if (!baseUriReference.is() || !baseUriReference->isAbsolute()
-        || !baseUriReference->isHierarchical() || !uriReference.is()) {
+        || !uriReference.is()) {
         return nullptr;
-    } else if (!uriReference->isAbsolute() || !uriReference->isHierarchical()
+    } else if (!uriReference->isAbsolute() || uriReference->hasRelativePath()
                || !baseUriReference->getScheme().equalsIgnoreAsciiCase(
                    uriReference->getScheme())) {
         return clone(uriReference);
     } else {
-        OUStringBuffer rel;
+        OUStringBuffer rel(128);
         bool omitQuery = false;
         if ((baseUriReference->hasAuthority() != uriReference->hasAuthority())
             || !equalIgnoreEscapeCase(
@@ -514,8 +612,8 @@ css::uno::Reference< css::uri::XUriReference > Factory::makeRelative(
             rel.append(uriReference->getPath());
         } else if ((equalIgnoreEscapeCase(
                         baseUriReference->getPath(), uriReference->getPath())
-                    || (baseUriReference->getPath().getLength() <= 1
-                        && uriReference->getPath().getLength() <= 1))
+                    || (baseUriReference->getPath() == "/"
+                        && uriReference->getPath().isEmpty()))
                    && baseUriReference->hasQuery() == uriReference->hasQuery()
                    && equalIgnoreEscapeCase(
                        baseUriReference->getQuery(), uriReference->getQuery()))
@@ -535,24 +633,30 @@ css::uno::Reference< css::uri::XUriReference > Factory::makeRelative(
                     break;
                 }
             }
-            if (i == 0 && preferAbsoluteOverRelativePath
+            if (i == 0
+                && (preferAbsoluteOverRelativePath || uriReference->hasQuery())
                 && (preferAuthorityOverRelativePath
                     || !uriReference->getPath().startsWith("//")))
             {
-                if (baseUriReference->getPath().getLength() > 1
-                    || uriReference->getPath().getLength() > 1)
-                {
-                    if (uriReference->getPath().isEmpty()) {
+                if (uriReference->getPath().isEmpty()) {
+                    if (!baseUriReference->getPath().isEmpty()
+                        && baseUriReference->getPath() != "/")
+                    {
                         rel.append('/');
-                    } else {
-                        assert(uriReference->getPath()[0] == '/');
-                        if (uriReference->getPath().startsWith("//")) {
-                            assert(uriReference->hasAuthority());
-                            rel.append("//");
-                            rel.append(uriReference->getAuthority());
-                        }
-                        rel.append(uriReference->getPath());
                     }
+                } else if (uriReference->getPath() == "/") {
+                    if (baseUriReference->getPath().isEmpty()
+                        || baseUriReference->getPath() != "/")
+                    {
+                        rel.append('/');
+                    }
+                } else {
+                    if (uriReference->getPath().startsWith("//")) {
+                        assert(uriReference->hasAuthority());
+                        rel.append("//");
+                        rel.append(uriReference->getAuthority());
+                    }
+                    rel.append(uriReference->getPath());
                 }
             } else {
                 bool segments = false;
@@ -605,7 +709,7 @@ css::uno::Reference< css::uri::XUriReference > Factory::makeRelative(
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_uri_UriReferenceFactory_get_implementation(css::uno::XComponentContext* rxContext,
         css::uno::Sequence<css::uno::Any> const &)
 {

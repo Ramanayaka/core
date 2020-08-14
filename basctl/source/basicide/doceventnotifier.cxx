@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "doceventnotifier.hxx"
-#include "scriptdocument.hxx"
+#include <doceventnotifier.hxx>
+#include <scriptdocument.hxx>
 
 #include <com/sun/star/frame/theGlobalEventBroadcaster.hpp>
 
@@ -38,7 +38,6 @@ namespace basctl
     using ::com::sun::star::document::XDocumentEventListener;
     using ::com::sun::star::document::DocumentEvent;
     using ::com::sun::star::uno::XComponentContext;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::uno::UNO_QUERY_THROW;
     using ::com::sun::star::uno::Exception;
@@ -46,18 +45,20 @@ namespace basctl
     using ::com::sun::star::frame::theGlobalEventBroadcaster;
     using ::com::sun::star::uno::UNO_QUERY;
 
-    namespace csslang = ::com::sun::star::lang;
-
     // DocumentEventNotifier::Impl
 
     typedef ::cppu::WeakComponentImplHelper<   XDocumentEventListener
                                            >   DocumentEventNotifier_Impl_Base;
+
+    namespace {
 
     enum ListenerAction
     {
         RegisterListener,
         RemoveListener
     };
+
+    }
 
     /** impl class for DocumentEventNotifier
     */
@@ -76,7 +77,7 @@ namespace basctl
         virtual void SAL_CALL documentEventOccured( const DocumentEvent& Event ) override;
 
         // XEventListener
-        virtual void SAL_CALL disposing( const csslang::EventObject& Event ) override;
+        virtual void SAL_CALL disposing( const css::lang::EventObject& Event ) override;
 
         // ComponentHelper
         virtual void SAL_CALL disposing() override;
@@ -130,10 +131,10 @@ namespace basctl
 
         struct EventEntry
         {
-            const sal_Char* pEventName;
+            const char* pEventName;
             void (DocumentEventListener::*listenerMethod)( const ScriptDocument& _rDocument );
         };
-        EventEntry aEvents[] = {
+        static EventEntry const aEvents[] = {
             { "OnNew",          &DocumentEventListener::onDocumentCreated },
             { "OnLoad",         &DocumentEventListener::onDocumentOpened },
             { "OnSave",         &DocumentEventListener::onDocumentSave },
@@ -145,7 +146,7 @@ namespace basctl
             { "OnModeChanged",  &DocumentEventListener::onDocumentModeChanged }
         };
 
-        for (EventEntry & aEvent : aEvents)
+        for (EventEntry const & aEvent : aEvents)
         {
             if ( !_rEvent.EventName.equalsAscii( aEvent.pEventName ) )
                 continue;
@@ -168,7 +169,7 @@ namespace basctl
         }
     }
 
-    void SAL_CALL DocumentEventNotifier::Impl::disposing( const csslang::EventObject& /*Event*/ )
+    void SAL_CALL DocumentEventNotifier::Impl::disposing( const css::lang::EventObject& /*Event*/ )
     {
         SolarMutexGuard aSolarGuard;
         ::osl::MutexGuard aGuard( m_aMutex );
@@ -209,7 +210,7 @@ namespace basctl
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("basctl.basicide");
         }
     }
 

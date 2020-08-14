@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/typegroupconverter.hxx"
+#include <drawingml/chart/typegroupconverter.hxx>
 
 #include <com/sun/star/chart/DataLabelPlacement.hpp>
 #include <com/sun/star/chart2/CartesianCoordinateSystem2d.hpp>
@@ -31,21 +31,20 @@
 #include <com/sun/star/chart2/XChartTypeContainer.hpp>
 #include <com/sun/star/chart2/XCoordinateSystem.hpp>
 #include <com/sun/star/chart2/XDataSeriesContainer.hpp>
+#include <com/sun/star/chart2/XDiagram.hpp>
 #include <com/sun/star/chart2/data/XDataSink.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
 #include <osl/diagnose.h>
-#include "drawingml/lineproperties.hxx"
-#include "drawingml/chart/seriesconverter.hxx"
-#include "drawingml/chart/typegroupmodel.hxx"
+#include <drawingml/lineproperties.hxx>
+#include <drawingml/chart/seriesconverter.hxx>
+#include <drawingml/chart/typegroupmodel.hxx>
 #include <oox/core/xmlfilterbase.hxx>
-#include "oox/helper/containerhelper.hxx"
+#include <oox/helper/containerhelper.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::chart2;
@@ -55,39 +54,39 @@ using namespace ::com::sun::star::uno;
 namespace {
 
 // chart type service names
-const sal_Char SERVICE_CHART2_AREA[]      = "com.sun.star.chart2.AreaChartType";
-const sal_Char SERVICE_CHART2_CANDLE[]    = "com.sun.star.chart2.CandleStickChartType";
-const sal_Char SERVICE_CHART2_COLUMN[]    = "com.sun.star.chart2.ColumnChartType";
-const sal_Char SERVICE_CHART2_LINE[]      = "com.sun.star.chart2.LineChartType";
-const sal_Char SERVICE_CHART2_NET[]       = "com.sun.star.chart2.NetChartType";
-const sal_Char SERVICE_CHART2_FILLEDNET[] = "com.sun.star.chart2.FilledNetChartType";
-const sal_Char SERVICE_CHART2_PIE[]       = "com.sun.star.chart2.PieChartType";
-const sal_Char SERVICE_CHART2_SCATTER[]   = "com.sun.star.chart2.ScatterChartType";
-const sal_Char SERVICE_CHART2_BUBBLE[]    = "com.sun.star.chart2.BubbleChartType";
-const sal_Char SERVICE_CHART2_SURFACE[]   = "com.sun.star.chart2.ColumnChartType";    // Todo
+const char SERVICE_CHART2_AREA[]      = "com.sun.star.chart2.AreaChartType";
+const char SERVICE_CHART2_CANDLE[]    = "com.sun.star.chart2.CandleStickChartType";
+const char SERVICE_CHART2_COLUMN[]    = "com.sun.star.chart2.ColumnChartType";
+const char SERVICE_CHART2_LINE[]      = "com.sun.star.chart2.LineChartType";
+const char SERVICE_CHART2_NET[]       = "com.sun.star.chart2.NetChartType";
+const char SERVICE_CHART2_FILLEDNET[] = "com.sun.star.chart2.FilledNetChartType";
+const char SERVICE_CHART2_PIE[]       = "com.sun.star.chart2.PieChartType";
+const char SERVICE_CHART2_SCATTER[]   = "com.sun.star.chart2.ScatterChartType";
+const char SERVICE_CHART2_BUBBLE[]    = "com.sun.star.chart2.BubbleChartType";
+const char SERVICE_CHART2_SURFACE[]   = "com.sun.star.chart2.ColumnChartType";    // Todo
 
 namespace csscd = ::com::sun::star::chart::DataLabelPlacement;
 
-static const TypeGroupInfo spTypeInfos[] =
+const TypeGroupInfo spTypeInfos[] =
 {
-    // type-id          type-category         service                   varied-point-color   default label pos     polar  area2d 1stvis xcateg swap   stack  revers picopt
-    { TYPEID_BAR,       TYPECATEGORY_BAR,     SERVICE_CHART2_COLUMN,    VARPOINTMODE_SINGLE, csscd::OUTSIDE,       false, true,  false, true,  false, true,  false, true  },
-    { TYPEID_HORBAR,    TYPECATEGORY_BAR,     SERVICE_CHART2_COLUMN,    VARPOINTMODE_SINGLE, csscd::OUTSIDE,       false, true,  false, true,  true,  true,  false, true  },
-    { TYPEID_LINE,      TYPECATEGORY_LINE,    SERVICE_CHART2_LINE,      VARPOINTMODE_SINGLE, csscd::RIGHT,         false, false, false, true,  false, true,  false, false },
-    { TYPEID_AREA,      TYPECATEGORY_LINE,    SERVICE_CHART2_AREA,      VARPOINTMODE_NONE,   csscd::CENTER,        false, true,  false, true,  false, true,  true,  false },
-    { TYPEID_STOCK,     TYPECATEGORY_LINE,    SERVICE_CHART2_CANDLE,    VARPOINTMODE_NONE,   csscd::RIGHT,         false, false, false, true,  false, true,  false, false },
-    { TYPEID_RADARLINE, TYPECATEGORY_RADAR,   SERVICE_CHART2_NET,       VARPOINTMODE_SINGLE, csscd::TOP,           true,  false, false, true,  false, false, false, false },
-    { TYPEID_RADARAREA, TYPECATEGORY_RADAR,   SERVICE_CHART2_FILLEDNET, VARPOINTMODE_NONE,   csscd::TOP,           true,  true,  false, true,  false, false, true,  false },
-    { TYPEID_PIE,       TYPECATEGORY_PIE,     SERVICE_CHART2_PIE,       VARPOINTMODE_MULTI,  csscd::AVOID_OVERLAP, true,  true,  true,  true,  false, false, false, false },
-    { TYPEID_DOUGHNUT,  TYPECATEGORY_PIE,     SERVICE_CHART2_PIE,       VARPOINTMODE_MULTI,  csscd::AVOID_OVERLAP, true,  true,  false, true,  false, false, false, false },
-    { TYPEID_OFPIE,     TYPECATEGORY_PIE,     SERVICE_CHART2_PIE,       VARPOINTMODE_MULTI,  csscd::AVOID_OVERLAP, true,  true,  true,  true,  false, false, false, false },
-    { TYPEID_SCATTER,   TYPECATEGORY_SCATTER, SERVICE_CHART2_SCATTER,   VARPOINTMODE_SINGLE, csscd::RIGHT,         false, false, false, false, false, false, false, false },
-    { TYPEID_BUBBLE,    TYPECATEGORY_SCATTER, SERVICE_CHART2_BUBBLE,    VARPOINTMODE_SINGLE, csscd::RIGHT,         false, true,  false, false, false, false, false, false },
-    { TYPEID_SURFACE,   TYPECATEGORY_SURFACE, SERVICE_CHART2_SURFACE,   VARPOINTMODE_NONE,   csscd::RIGHT,         false, true,  false, true,  false, false, false, false }
+    // type-id          type-category         service                   varied-point-color   default label pos     polar  area2d 1stvis xcateg swap   stack  picopt
+    { TYPEID_BAR,       TYPECATEGORY_BAR,     SERVICE_CHART2_COLUMN,    VARPOINTMODE_SINGLE, csscd::OUTSIDE,       false, true,  false, true,  false, true,  true  },
+    { TYPEID_HORBAR,    TYPECATEGORY_BAR,     SERVICE_CHART2_COLUMN,    VARPOINTMODE_SINGLE, csscd::OUTSIDE,       false, true,  false, true,  true,  true,  true  },
+    { TYPEID_LINE,      TYPECATEGORY_LINE,    SERVICE_CHART2_LINE,      VARPOINTMODE_SINGLE, csscd::RIGHT,         false, false, false, true,  false, true,  false },
+    { TYPEID_AREA,      TYPECATEGORY_LINE,    SERVICE_CHART2_AREA,      VARPOINTMODE_NONE,   csscd::CENTER,        false, true,  false, true,  false, true,  false },
+    { TYPEID_STOCK,     TYPECATEGORY_LINE,    SERVICE_CHART2_CANDLE,    VARPOINTMODE_NONE,   csscd::RIGHT,         false, false, false, true,  false, true,  false },
+    { TYPEID_RADARLINE, TYPECATEGORY_RADAR,   SERVICE_CHART2_NET,       VARPOINTMODE_SINGLE, csscd::OUTSIDE,       true,  false, false, true,  false, false, false },
+    { TYPEID_RADARAREA, TYPECATEGORY_RADAR,   SERVICE_CHART2_FILLEDNET, VARPOINTMODE_NONE,   csscd::OUTSIDE,       true,  true,  false, true,  false, false, false },
+    { TYPEID_PIE,       TYPECATEGORY_PIE,     SERVICE_CHART2_PIE,       VARPOINTMODE_MULTI,  csscd::AVOID_OVERLAP, true,  true,  true,  true,  false, false, false },
+    { TYPEID_DOUGHNUT,  TYPECATEGORY_PIE,     SERVICE_CHART2_PIE,       VARPOINTMODE_MULTI,  csscd::AVOID_OVERLAP, true,  true,  false, true,  false, false, false },
+    { TYPEID_OFPIE,     TYPECATEGORY_PIE,     SERVICE_CHART2_PIE,       VARPOINTMODE_MULTI,  csscd::AVOID_OVERLAP, true,  true,  true,  true,  false, false, false },
+    { TYPEID_SCATTER,   TYPECATEGORY_SCATTER, SERVICE_CHART2_SCATTER,   VARPOINTMODE_SINGLE, csscd::RIGHT,         false, false, false, false, false, false, false },
+    { TYPEID_BUBBLE,    TYPECATEGORY_SCATTER, SERVICE_CHART2_BUBBLE,    VARPOINTMODE_SINGLE, csscd::RIGHT,         false, true,  false, false, false, false, false },
+    { TYPEID_SURFACE,   TYPECATEGORY_SURFACE, SERVICE_CHART2_SURFACE,   VARPOINTMODE_NONE,   csscd::RIGHT,         false, true,  false, true,  false, false, false }
 };
 
-static const TypeGroupInfo saUnknownTypeInfo =
-    { TYPEID_UNKNOWN,   TYPECATEGORY_BAR,     SERVICE_CHART2_COLUMN,  VARPOINTMODE_SINGLE, csscd::OUTSIDE,       false, true,  false, true,  false, true,  false, true  };
+const TypeGroupInfo saUnknownTypeInfo =
+    { TYPEID_UNKNOWN,   TYPECATEGORY_BAR,     SERVICE_CHART2_COLUMN,  VARPOINTMODE_SINGLE, csscd::OUTSIDE,       false, true,  false, true,  false, true, true  };
 
 const TypeGroupInfo& lclGetTypeInfoFromTypeId( TypeId eTypeId )
 {
@@ -144,7 +143,7 @@ TypeGroupConverter::TypeGroupConverter( const ConverterRoot& rParent, TypeGroupM
     TypeId eTypeId = TYPEID_UNKNOWN;
     switch( mrModel.mnTypeId )
     {
-#define ENSURE_AXESCOUNT( min, max ) OSL_ENSURE( (min <= (int)mrModel.maAxisIds.size()) && ((int)mrModel.maAxisIds.size() <= max), "TypeGroupConverter::TypeGroupConverter - invalid axes count" )
+#define ENSURE_AXESCOUNT( min, max ) OSL_ENSURE( (min <= static_cast<int>(mrModel.maAxisIds.size())) && (static_cast<int>(mrModel.maAxisIds.size()) <= max), "TypeGroupConverter::TypeGroupConverter - invalid axes count" )
         case C_TOKEN( area3DChart ):    ENSURE_AXESCOUNT( 2, 3 ); eTypeId = TYPEID_AREA;      mb3dChart = true;   break;
         case C_TOKEN( areaChart ):      ENSURE_AXESCOUNT( 2, 2 ); eTypeId = TYPEID_AREA;      mb3dChart = false;  break;
         case C_TOKEN( bar3DChart ):     ENSURE_AXESCOUNT( 2, 3 ); eTypeId = TYPEID_BAR;       mb3dChart = true;   break;
@@ -267,25 +266,27 @@ Reference< XLabeledDataSequence > TypeGroupConverter::createCategorySequence()
 {
     sal_Int32 nMaxValues = 0;
     Reference< XLabeledDataSequence > xLabeledSeq;
-    /*  Find first existing category sequence. The bahaviour of Excel 2007 is
+    /*  Find first existing category sequence. The behaviour of Excel 2007 is
         different to Excel 2003, which always used the category sequence of the
         first series, even if it was empty. */
-    for( TypeGroupModel::SeriesVector::iterator aIt = mrModel.maSeries.begin(), aEnd = mrModel.maSeries.end(); !xLabeledSeq.is() && (aIt != aEnd); ++aIt )
+    for (auto const& elem : mrModel.maSeries)
     {
-        if( (*aIt)->maSources.has( SeriesModel::CATEGORIES ) )
+        if( elem->maSources.has( SeriesModel::CATEGORIES ) && mrModel.mbCatAxisVisible)
         {
-            SeriesConverter aSeriesConv( *this, **aIt );
+            SeriesConverter aSeriesConv(*this, *elem);
             xLabeledSeq = aSeriesConv.createCategorySequence( "categories" );
+            if (xLabeledSeq.is())
+                break;
         }
-        else if( nMaxValues <= 0 && (*aIt)->maSources.has( SeriesModel::VALUES ) )
+        else if( nMaxValues <= 0 && elem->maSources.has( SeriesModel::VALUES ) )
         {
-            DataSourceModel *pValues = (*aIt)->maSources.get( SeriesModel::VALUES ).get();
+            DataSourceModel *pValues = elem->maSources.get( SeriesModel::VALUES ).get();
             if( pValues->mxDataSeq.is() )
-                nMaxValues = pValues->mxDataSeq.get()->maData.size();
+                nMaxValues = pValues->mxDataSeq->maData.size();
         }
     }
     /* n#839727 Create Category Sequence when none are found */
-    if( !xLabeledSeq.is() && mrModel.maSeries.size() > 0 ) {
+    if( !xLabeledSeq.is() && !mrModel.maSeries.empty() && mrModel.mbCatAxisVisible) {
         if( nMaxValues < 0 )
             nMaxValues = 2;
         SeriesModel &aModel = *mrModel.maSeries.get(0);
@@ -309,6 +310,10 @@ void TypeGroupConverter::convertFromModel( const Reference< XDiagram >& rxDiagra
         // create the chart type object
         OUString aService = OUString::createFromAscii( maTypeInfo.mpcServiceName );
         Reference< XChartType > xChartType( createInstance( aService ), UNO_QUERY_THROW );
+
+        Reference< XChartTypeContainer > xChartTypeContOld( rxCoordSystem, UNO_QUERY_THROW );
+        Sequence< Reference< XChartType > > xOldChartTypes( xChartTypeContOld->getChartTypes() );
+        sal_Int32 nOldChartTypeIdx = -1;
 
         // additional properties
         PropertySet aDiaProp( rxDiagram );
@@ -340,12 +345,8 @@ void TypeGroupConverter::convertFromModel( const Reference< XDiagram >& rxDiagra
         // create converter objects for all series models
         typedef RefVector< SeriesConverter > SeriesConvVector;
         SeriesConvVector aSeries;
-        for( TypeGroupModel::SeriesVector::iterator aIt = mrModel.maSeries.begin(), aEnd = mrModel.maSeries.end(); aIt != aEnd; ++aIt )
-            aSeries.push_back( std::make_shared<SeriesConverter>( *this, **aIt ) );
-
-        // reverse series order for some unstacked 2D chart types
-        if( maTypeInfo.mbReverseSeries && !mb3dChart && !isStacked() && !isPercent() )
-            ::std::reverse( aSeries.begin(), aSeries.end() );
+        for (auto const& elemSeries : mrModel.maSeries)
+            aSeries.push_back( std::make_shared<SeriesConverter>(*this, *elemSeries) );
 
         // decide whether to use varying colors for each data point
         bool bVaryColorsByPoint = bSupportsVaryColorsByPoint && mrModel.mbVaryColors;
@@ -369,7 +370,7 @@ void TypeGroupConverter::convertFromModel( const Reference< XDiagram >& rxDiagra
                 ::std::vector< Reference< XLabeledDataSequence > > aLabeledSeqVec;
                 OSL_ENSURE( aSeries.size() >= 3, "TypeGroupConverter::convertFromModel - too few stock chart series" );
                 int nRoleIdx = (aSeries.size() == 3) ? 1 : 0;
-                for( SeriesConvVector::iterator aIt = aSeries.begin(), aEnd = aSeries.end(); (nRoleIdx < 4) && (aIt != aEnd); ++nRoleIdx, ++aIt )
+                for( auto& rxSeriesConv : aSeries )
                 {
                     // create a data sequence with a specific role
                     OUString aRole;
@@ -380,9 +381,13 @@ void TypeGroupConverter::convertFromModel( const Reference< XDiagram >& rxDiagra
                         case 2: aRole = "values-min";    break;
                         case 3: aRole = "values-last";   break;
                     }
-                    Reference< XLabeledDataSequence > xDataSeq = (*aIt)->createValueSequence( aRole );
+                    Reference< XLabeledDataSequence > xDataSeq = rxSeriesConv->createValueSequence( aRole );
                     if( xDataSeq.is() )
                         aLabeledSeqVec.push_back( xDataSeq );
+
+                    ++nRoleIdx;
+                    if (nRoleIdx >= 4)
+                        break;
                 }
 
                 // attach labeled data sequences to series and insert series into chart type
@@ -413,11 +418,19 @@ void TypeGroupConverter::convertFromModel( const Reference< XDiagram >& rxDiagra
         }
         else
         {
-            for( SeriesConvVector::iterator aIt = aSeries.begin(), aEnd = aSeries.end(); aIt != aEnd; ++aIt )
+            for( sal_Int32 nCTIdx=0; nCTIdx<xOldChartTypes.getLength(); ++nCTIdx )
             {
-                SeriesConverter& rSeriesConv = **aIt;
+                if ( xChartType->getChartType() == xOldChartTypes[nCTIdx]->getChartType() )
+                {
+                    nOldChartTypeIdx = nCTIdx;
+                }
+            }
+
+            for (auto const& elem : aSeries)
+            {
+                SeriesConverter& rSeriesConv = *elem;
                 Reference< XDataSeries > xDataSeries = rSeriesConv.createDataSeries( *this, bVaryColorsByPoint );
-                insertDataSeries( xChartType, xDataSeries, nAxesSetIdx );
+                insertDataSeries( nOldChartTypeIdx == -1 ? xChartType : xOldChartTypes[nOldChartTypeIdx], xDataSeries, nAxesSetIdx );
 
                 /*  Excel does not use the value of the c:smooth element of the
                     chart type to set a default line smoothing for the data
@@ -434,7 +447,10 @@ void TypeGroupConverter::convertFromModel( const Reference< XDiagram >& rxDiagra
 
         // add chart type object to coordinate system
         Reference< XChartTypeContainer > xChartTypeCont( rxCoordSystem, UNO_QUERY_THROW );
-        xChartTypeCont->addChartType( xChartType );
+        if (nOldChartTypeIdx == -1)
+        {
+            xChartTypeCont->addChartType(xChartType);
+        }
 
         // set existence of bar connector lines at diagram (only in stacked 2D bar charts)
         if( mrModel.mxSerLines.is() && !mb3dChart && (maTypeInfo.meTypeCategory == TYPECATEGORY_BAR) && (isStacked() || isPercent()) )
@@ -449,42 +465,50 @@ void TypeGroupConverter::convertFromModel( const Reference< XDiagram >& rxDiagra
 void TypeGroupConverter::convertMarker( PropertySet& rPropSet, sal_Int32 nOoxSymbol, sal_Int32 nOoxSize,
        const ModelRef< Shape >& xShapeProps ) const
 {
-    if( !isSeriesFrameFormat() )
+    if( isSeriesFrameFormat() )
+        return;
+
+    namespace cssc = ::com::sun::star::chart2;
+
+    // symbol style
+    cssc::Symbol aSymbol;
+    aSymbol.Style = cssc::SymbolStyle_STANDARD;
+    switch( nOoxSymbol ) // compare with XclChPropSetHelper::WriteMarkerProperties in xlchart.cxx
     {
-        namespace cssc = ::com::sun::star::chart2;
-
-        // symbol style
-        cssc::Symbol aSymbol;
-        aSymbol.Style = cssc::SymbolStyle_STANDARD;
-        switch( nOoxSymbol ) // compare with XclChPropSetHelper::WriteMarkerProperties in xlchart.cxx
-        {
-            case XML_auto:      aSymbol.Style = cssc::SymbolStyle_AUTO; break;
-            case XML_none:      aSymbol.Style = cssc::SymbolStyle_NONE; break;
-            case XML_square:    aSymbol.StandardSymbol = 0;             break;  // square
-            case XML_diamond:   aSymbol.StandardSymbol = 1;             break;  // diamond
-            case XML_triangle:  aSymbol.StandardSymbol = 3;             break;  // arrow up
-            case XML_x:         aSymbol.StandardSymbol = 10;            break;  // X, legacy bow tie
-            case XML_star:      aSymbol.StandardSymbol = 12;            break;  // asterisk, legacy sand glass
-            case XML_dot:       aSymbol.StandardSymbol = 4;             break;  // arrow right
-            case XML_dash:      aSymbol.StandardSymbol = 13;            break;  // horizontal bar, legacy arrow down
-            case XML_circle:    aSymbol.StandardSymbol = 8;             break;  // circle, legacy arrow right
-            case XML_plus:      aSymbol.StandardSymbol = 11;            break;  // plus, legacy arrow left
-        }
-
-        // symbol size (points in OOXML, 1/100 mm in Chart2)
-        sal_Int32 nSize = static_cast< sal_Int32 >( nOoxSize * (2540.0 / 72.0) + 0.5 );
-        aSymbol.Size.Width = aSymbol.Size.Height = nSize;
-
-        if(xShapeProps.is())
-        {
-            Color aFillColor = xShapeProps->getFillProperties().maFillColor;
-            aSymbol.FillColor = aFillColor.getColor(getFilter().getGraphicHelper());
-            rPropSet.setProperty(PROP_Color, aSymbol.FillColor);
-        }
-
-        // set the property
-        rPropSet.setProperty( PROP_Symbol, aSymbol );
+        case XML_auto:      aSymbol.Style = cssc::SymbolStyle_AUTO; break;
+        case XML_none:      aSymbol.Style = cssc::SymbolStyle_NONE; break;
+        case XML_square:    aSymbol.StandardSymbol = 0;             break;  // square
+        case XML_diamond:   aSymbol.StandardSymbol = 1;             break;  // diamond
+        case XML_triangle:  aSymbol.StandardSymbol = 3;             break;  // arrow up
+        case XML_x:         aSymbol.StandardSymbol = 10;            break;  // X, legacy bow tie
+        case XML_star:      aSymbol.StandardSymbol = 12;            break;  // asterisk, legacy sand glass
+        case XML_dot:       aSymbol.StandardSymbol = 4;             break;  // arrow right
+        case XML_dash:      aSymbol.StandardSymbol = 13;            break;  // horizontal bar, legacy arrow down
+        case XML_circle:    aSymbol.StandardSymbol = 8;             break;  // circle, legacy arrow right
+        case XML_plus:      aSymbol.StandardSymbol = 11;            break;  // plus, legacy arrow left
     }
+
+    // symbol size (points in OOXML, 1/100 mm in Chart2)
+    sal_Int32 nSize = static_cast< sal_Int32 >( nOoxSize * (2540.0 / 72.0) + 0.5 );
+    aSymbol.Size.Width = aSymbol.Size.Height = nSize;
+
+    if(xShapeProps.is())
+    {
+        Color aFillColor = xShapeProps->getFillProperties().maFillColor;
+        aSymbol.FillColor = sal_Int32(aFillColor.getColor(getFilter().getGraphicHelper()));
+        // tdf#124817: if there is no fill color, use line color of the symbol
+        if( aSymbol.FillColor < 0 )
+        {
+            Color aLineColor = xShapeProps->getLineProperties().maLineFill.maFillColor;
+            aSymbol.BorderColor = sal_Int32(aLineColor.getColor(getFilter().getGraphicHelper()));
+            rPropSet.setProperty(PROP_Color, aSymbol.BorderColor);
+        }
+        else
+            rPropSet.setProperty(PROP_Color, aSymbol.FillColor);
+    }
+
+    // set the property
+    rPropSet.setProperty( PROP_Symbol, aSymbol );
 }
 
 void TypeGroupConverter::convertLineSmooth( PropertySet& rPropSet, bool bOoxSmooth ) const
@@ -499,23 +523,23 @@ void TypeGroupConverter::convertLineSmooth( PropertySet& rPropSet, bool bOoxSmoo
 
 void TypeGroupConverter::convertBarGeometry( PropertySet& rPropSet, sal_Int32 nOoxShape ) const
 {
-    if( mb3dChart && (maTypeInfo.meTypeCategory == TYPECATEGORY_BAR) )
-    {
-        namespace cssc = ::com::sun::star::chart2;
+    if( !(mb3dChart && (maTypeInfo.meTypeCategory == TYPECATEGORY_BAR)) )
+        return;
 
-        sal_Int32 nGeom3d = cssc::DataPointGeometry3D::CUBOID;
-        switch( nOoxShape )
-        {
-            case XML_box:           nGeom3d = cssc::DataPointGeometry3D::CUBOID;    break;
-            case XML_cone:          nGeom3d = cssc::DataPointGeometry3D::CONE;      break;
-            case XML_coneToMax:     nGeom3d = cssc::DataPointGeometry3D::CONE;      break;
-            case XML_cylinder:      nGeom3d = cssc::DataPointGeometry3D::CYLINDER;  break;
-            case XML_pyramid:       nGeom3d = cssc::DataPointGeometry3D::PYRAMID;   break;
-            case XML_pyramidToMax:  nGeom3d = cssc::DataPointGeometry3D::PYRAMID;   break;
-            default:                OSL_FAIL( "TypeGroupConverter::convertBarGeometry - unknown 3D bar shape type" );
-        }
-        rPropSet.setProperty( PROP_Geometry3D, nGeom3d );
+    namespace cssc = ::com::sun::star::chart2;
+
+    sal_Int32 nGeom3d = cssc::DataPointGeometry3D::CUBOID;
+    switch( nOoxShape )
+    {
+        case XML_box:           nGeom3d = cssc::DataPointGeometry3D::CUBOID;    break;
+        case XML_cone:          nGeom3d = cssc::DataPointGeometry3D::CONE;      break;
+        case XML_coneToMax:     nGeom3d = cssc::DataPointGeometry3D::CONE;      break;
+        case XML_cylinder:      nGeom3d = cssc::DataPointGeometry3D::CYLINDER;  break;
+        case XML_pyramid:       nGeom3d = cssc::DataPointGeometry3D::PYRAMID;   break;
+        case XML_pyramidToMax:  nGeom3d = cssc::DataPointGeometry3D::PYRAMID;   break;
+        default:                OSL_FAIL( "TypeGroupConverter::convertBarGeometry - unknown 3D bar shape type" );
     }
+    rPropSet.setProperty( PROP_Geometry3D, nGeom3d );
 }
 
 void TypeGroupConverter::convertPieRotation( PropertySet& rPropSet, sal_Int32 nOoxAngle ) const
@@ -542,38 +566,36 @@ void TypeGroupConverter::convertPieExplosion( PropertySet& rPropSet, sal_Int32 n
 
 void TypeGroupConverter::insertDataSeries( const Reference< XChartType >& rxChartType, const Reference< XDataSeries >& rxSeries, sal_Int32 nAxesSetIdx )
 {
-    if( rxSeries.is() )
+    if( !rxSeries.is() )
+        return;
+
+    PropertySet aSeriesProp( rxSeries );
+
+    // series stacking mode
+    namespace cssc = ::com::sun::star::chart2;
+    cssc::StackingDirection eStacking = cssc::StackingDirection_NO_STACKING;
+    // stacked overrides deep-3d
+    if( isStacked() || isPercent() )
+        eStacking = cssc::StackingDirection_Y_STACKING;
+    else if( isDeep3dChart() )
+        eStacking = cssc::StackingDirection_Z_STACKING;
+    aSeriesProp.setProperty( PROP_StackingDirection, eStacking );
+
+    // additional series properties
+    aSeriesProp.setProperty( PROP_AttachedAxisIndex, nAxesSetIdx );
+
+    // insert series into container
+    try
     {
-        PropertySet aSeriesProp( rxSeries );
-
-        // series stacking mode
-        namespace cssc = ::com::sun::star::chart2;
-        cssc::StackingDirection eStacking = cssc::StackingDirection_NO_STACKING;
-        // stacked overrides deep-3d
-        if( isStacked() || isPercent() )
-            eStacking = cssc::StackingDirection_Y_STACKING;
-        else if( isDeep3dChart() )
-            eStacking = cssc::StackingDirection_Z_STACKING;
-        aSeriesProp.setProperty( PROP_StackingDirection, eStacking );
-
-        // additional series properties
-        aSeriesProp.setProperty( PROP_AttachedAxisIndex, nAxesSetIdx );
-
-        // insert series into container
-        try
-        {
-            Reference< XDataSeriesContainer > xSeriesCont( rxChartType, UNO_QUERY_THROW );
-            xSeriesCont->addDataSeries( rxSeries );
-        }
-        catch( Exception& )
-        {
-            OSL_FAIL( "TypeGroupConverter::insertDataSeries - cannot add data series" );
-        }
+        Reference< XDataSeriesContainer > xSeriesCont( rxChartType, UNO_QUERY_THROW );
+        xSeriesCont->addDataSeries( rxSeries );
+    }
+    catch( Exception& )
+    {
+        OSL_FAIL( "TypeGroupConverter::insertDataSeries - cannot add data series" );
     }
 }
 
-} // namespace chart
-} // namespace drawingml
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

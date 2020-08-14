@@ -21,13 +21,11 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ATABLE_HXX
 
 #include <connectivity/sdbcx/VTable.hxx>
-#include "ado/Awrapadox.hxx"
-#include "ado/ACatalog.hxx"
+#include <ado/Awrapadox.hxx>
+#include <ado/ACatalog.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         typedef connectivity::sdbcx::OTable OTable_TYPEDEF;
         typedef connectivity::sdbcx::OTableDescriptor_BASE OTableDescriptor_BASE_TYPEDEF;
 
@@ -58,7 +56,7 @@ namespace connectivity
             virtual css::uno::Reference< css::sdbc::XDatabaseMetaData> getMetaData() const override;
             // css::lang::XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
             // XRename
             virtual void SAL_CALL rename( const OUString& newName ) override;
@@ -70,7 +68,6 @@ namespace connectivity
             WpADOTable getImpl() const { return m_aTable;}
             OCatalog* getCatalog() const { return m_pCatalog; }
         };
-    }
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ATABLE_HXX
 

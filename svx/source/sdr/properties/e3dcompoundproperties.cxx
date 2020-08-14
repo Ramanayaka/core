@@ -23,10 +23,8 @@
 #include <svx/scene3d.hxx>
 
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         E3dCompoundProperties::E3dCompoundProperties(SdrObject& rObj)
         :   E3dProperties(rObj)
         {
@@ -41,18 +39,18 @@ namespace sdr
         {
         }
 
-        BaseProperties& E3dCompoundProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> E3dCompoundProperties::Clone(SdrObject& rObj) const
         {
-            return *(new E3dCompoundProperties(*this, rObj));
+            return std::unique_ptr<BaseProperties>(new E3dCompoundProperties(*this, rObj));
         }
 
         const SfxItemSet& E3dCompoundProperties::GetMergedItemSet() const
         {
             // include Items of scene this object belongs to
             const E3dCompoundObject& rObj = static_cast<const E3dCompoundObject&>(GetSdrObject());
-            E3dScene* pScene = rObj.GetScene();
+            E3dScene* pScene(rObj.getRootE3dSceneFromE3dObject());
 
-            if(pScene)
+            if(nullptr != pScene)
             {
                 // force ItemSet
                 GetObjectItemSet();
@@ -71,9 +69,9 @@ namespace sdr
         {
             // Set scene specific items at scene
             E3dCompoundObject& rObj = static_cast<E3dCompoundObject&>(GetSdrObject());
-            E3dScene* pScene = rObj.GetScene();
+            E3dScene* pScene(rObj.getRootE3dSceneFromE3dObject());
 
-            if(pScene)
+            if(nullptr != pScene)
             {
                 // force ItemSet
                 GetObjectItemSet();
@@ -141,7 +139,6 @@ namespace sdr
                 }
             }
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

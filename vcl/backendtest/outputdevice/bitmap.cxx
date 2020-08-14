@@ -8,19 +8,19 @@
  *
  */
 
-#include "test/outputdevice.hxx"
-
+#include <test/outputdevice.hxx>
+#include <vcl/bitmapex.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
+#include <bitmapwriteaccess.hxx>
 
-namespace vcl {
-namespace test {
+namespace vcl::test {
 
 Bitmap OutputDeviceTestBitmap::setupDrawTransformedBitmap()
 {
     Size aBitmapSize(9, 9);
     Bitmap aBitmap(aBitmapSize, 24);
     {
-        Bitmap::ScopedWriteAccess aWriteAccess(aBitmap);
+        BitmapScopedWriteAccess aWriteAccess(aBitmap);
         aWriteAccess->Erase(constFillColor);
         aWriteAccess->SetLineColor(COL_YELLOW);
         aWriteAccess->DrawRect(tools::Rectangle(0, 0,  8, 8));
@@ -45,7 +45,7 @@ Bitmap OutputDeviceTestBitmap::setupDrawBitmap()
     Size aBitmapSize(9, 9);
     Bitmap aBitmap(aBitmapSize, 24);
     {
-        Bitmap::ScopedWriteAccess aWriteAccess(aBitmap);
+        BitmapScopedWriteAccess aWriteAccess(aBitmap);
         aWriteAccess->Erase(constFillColor);
         aWriteAccess->SetLineColor(COL_YELLOW);
         aWriteAccess->DrawRect(tools::Rectangle(0, 0,  8, 8));
@@ -67,7 +67,7 @@ Bitmap OutputDeviceTestBitmap::setupDrawBitmapExWithAlpha()
     Size aBitmapSize(9, 9);
     Bitmap aBitmap(aBitmapSize, 24);
     {
-        Bitmap::ScopedWriteAccess aWriteAccess(aBitmap);
+        BitmapScopedWriteAccess aWriteAccess(aBitmap);
         aWriteAccess->Erase(COL_WHITE);
         aWriteAccess->SetLineColor(Color(0xFF, 0xFF, 0x00));
         aWriteAccess->DrawRect(tools::Rectangle(0, 0, 8, 8));
@@ -76,7 +76,7 @@ Bitmap OutputDeviceTestBitmap::setupDrawBitmapExWithAlpha()
 
     AlphaMask aAlpha(aBitmapSize);
     {
-        AlphaMask::ScopedWriteAccess aWriteAccess(aAlpha);
+        AlphaScopedWriteAccess aWriteAccess(aAlpha);
         aWriteAccess->Erase(COL_WHITE);
         aWriteAccess->SetLineColor(Color(0x44, 0x44, 0x44));
         aWriteAccess->DrawRect(tools::Rectangle(0, 0, 8, 8));
@@ -97,7 +97,7 @@ Bitmap OutputDeviceTestBitmap::setupDrawMask()
     Size aBitmapSize(9, 9);
     Bitmap aBitmap(aBitmapSize, 24);
     {
-        Bitmap::ScopedWriteAccess aWriteAccess(aBitmap);
+        BitmapScopedWriteAccess aWriteAccess(aBitmap);
         aWriteAccess->Erase(COL_WHITE);
         aWriteAccess->SetLineColor(COL_BLACK);
         aWriteAccess->DrawRect(tools::Rectangle(0, 0,  8, 8));
@@ -106,9 +106,45 @@ Bitmap OutputDeviceTestBitmap::setupDrawMask()
 
     initialSetup(13, 13, constBackgroundColor);
 
-    mpVirtualDevice->DrawMask(Point(2, 2), aBitmap, constFillColor);
+    mpVirtualDevice->DrawMask(Point(2, 2), aBitmap, constLineColor);
 
     return mpVirtualDevice->GetBitmap(maVDRectangle.TopLeft(), maVDRectangle.GetSize());
+}
+
+BitmapEx OutputDeviceTestBitmap::setupDrawBlend()
+{
+    Size aBitmapSize(9, 9);
+    Bitmap aBitmap(aBitmapSize, 24);
+    {
+        BitmapScopedWriteAccess aWriteAccess(aBitmap);
+        aWriteAccess->Erase(COL_WHITE);
+        aWriteAccess->SetLineColor(Color(0xFF, 0xFF, 0x00));
+        aWriteAccess->DrawRect(tools::Rectangle(0, 0,  8, 8));
+        aWriteAccess->DrawRect(tools::Rectangle(3, 3,  5, 5));
+    }
+
+    AlphaMask aAlpha(aBitmapSize);
+    {
+        AlphaScopedWriteAccess aWriteAccess(aAlpha);
+        aWriteAccess->Erase(COL_WHITE);
+        aWriteAccess->SetLineColor(Color(0x44, 0x44, 0x44));
+        aWriteAccess->DrawRect(tools::Rectangle(0, 0, 8, 8));
+        aWriteAccess->DrawRect(tools::Rectangle(3, 3, 5, 5));
+    }
+
+    initialSetup(13, 13, COL_TRANSPARENT, false, true);
+    mpVirtualDevice->SetFillColor(constBackgroundColor);
+    mpVirtualDevice->SetLineColor(constBackgroundColor);
+    // Leave the outer part of the device transparent, the inner part set to the background color.
+    // This will test blending of VirtualDevice's "alpha" device (outer yellow rectangle
+    // will be blended with transparent background, inner with the grey one).
+    mpVirtualDevice->DrawRect( tools::Rectangle( Point( 3, 3 ), Size( 7, 7 )));
+
+    Point aPoint(alignToCenter(maVDRectangle, tools::Rectangle(Point(), aBitmapSize)).TopLeft());
+
+    mpVirtualDevice->DrawBitmapEx(aPoint, BitmapEx(aBitmap, aAlpha));
+
+    return mpVirtualDevice->GetBitmapEx(maVDRectangle.TopLeft(), maVDRectangle.GetSize());
 }
 
 TestResult OutputDeviceTestBitmap::checkTransformedBitmap(Bitmap& rBitmap)
@@ -139,6 +175,19 @@ TestResult OutputDeviceTestBitmap::checkMask(Bitmap& rBitmap)
     return checkRectangle(rBitmap);
 }
 
-}} // end namespace vcl::test
+TestResult OutputDeviceTestBitmap::checkBlend(BitmapEx& rBitmapEx)
+{
+    const Color aBlendedColor(0xEE, 0xEE, 0x33);
+
+    std::vector<Color> aExpected
+    {
+        COL_WHITE, COL_WHITE, COL_YELLOW, constBackgroundColor,
+        constBackgroundColor, aBlendedColor, constBackgroundColor
+    };
+    Bitmap aBitmap(rBitmapEx.GetBitmap());
+    return checkRectangles(aBitmap, aExpected);
+}
+
+} // end namespace vcl::test
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

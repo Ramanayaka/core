@@ -19,8 +19,7 @@
 
 
 #include "cachedrowset.hxx"
-#include "services.hxx"
-#include "frm_strings.hxx"
+#include <frm_strings.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sdb/XQueriesSupplier.hpp>
@@ -91,7 +90,7 @@ namespace frm
     void CachedRowSet::setCommandFromQuery( const OUString& _rQueryName )
     {
         Reference< XQueriesSupplier > xSupplyQueries( m_pData->xConnection, UNO_QUERY_THROW );
-        Reference< XNameAccess >      xQueries      ( xSupplyQueries->getQueries(), UNO_QUERY_THROW );
+        Reference< XNameAccess >      xQueries      ( xSupplyQueries->getQueries(), UNO_SET_THROW );
         Reference< XPropertySet >     xQuery        ( xQueries->getByName( _rQueryName ), UNO_QUERY_THROW );
 
         bool bEscapeProcessing( false );
@@ -147,7 +146,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
         return xResult;
     }
@@ -167,7 +166,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
     }
 

@@ -22,13 +22,7 @@ $(eval $(call gb_Library_use_externals,neon,\
 
 $(eval $(call gb_Library_set_visibility_default,neon))
 
-# neon has its share of warning... let's spare use
-# the pointless spamming
-$(eval $(call gb_Library_add_cflags,neon,\
-	-w \
-))
-
-$(eval $(call gb_Library_set_warnings_not_errors,neon))
+$(eval $(call gb_Library_set_warnings_disabled,neon))
 
 $(eval $(call gb_Library_add_generated_cobjects,neon,\
 	UnpackedTarball/neon/src/ne_207 \
@@ -94,6 +88,12 @@ endif
 ifeq ($(OS),LINUX)
 $(eval $(call gb_Library_add_libs,neon,\
 	-ldl \
+))
+endif
+
+ifneq (,$(gb_ENABLE_DBGUTIL))
+$(eval $(call gb_Library_add_cflags,neon,\
+    -DNE_DEBUGGING \
 ))
 endif
 

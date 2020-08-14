@@ -24,29 +24,23 @@
 #include <com/sun/star/awt/VclWindowPeerAttribute.hpp>
 #include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/resource/XStringResourceResolver.hpp>
 #include <toolkit/controls/unocontrol.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <rtl/uuid.h>
 #include <osl/mutex.hxx>
-#include <tools/date.hxx>
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
 #include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
-#include <comphelper/processfactory.hxx>
 #include <toolkit/helper/property.hxx>
-#include <toolkit/helper/servicenames.hxx>
 #include <toolkit/awt/vclxwindow.hxx>
-#include <toolkit/controls/accessiblecontrolcontext.hxx>
-#include <comphelper/container.hxx>
+#include <controls/accessiblecontrolcontext.hxx>
 
 #include <algorithm>
 #include <map>
-#include <set>
 #include <vector>
 
 using namespace ::com::sun::star;
@@ -59,13 +53,17 @@ using namespace ::com::sun::star::util;
 using ::com::sun::star::accessibility::XAccessibleContext;
 using ::com::sun::star::accessibility::XAccessible;
 
+namespace {
+
 struct LanguageDependentProp
 {
     const char* pPropName;
     sal_Int32   nPropNameLength;
 };
 
-static const LanguageDependentProp aLanguageDependentProp[] =
+}
+
+const LanguageDependentProp aLanguageDependentProp[] =
 {
     { "Text",            4 },
     { "Label",           5 },
@@ -86,14 +84,13 @@ static Sequence< OUString> lcl_ImplGetPropertyNames( const Reference< XMultiProp
         Sequence< Property> aProps = xPSInf->getProperties();
         sal_Int32 nLen = aProps.getLength();
         aNames = Sequence< OUString>( nLen );
-        OUString* pNames = aNames.getArray();
-        const Property* pProps = aProps.getConstArray();
-        for ( sal_Int32 n = 0; n < nLen; ++n, ++pProps, ++pNames)
-            *pNames = pProps->Name;
+        std::transform(aProps.begin(), aProps.end(), aNames.begin(),
+            [](const Property& rProp) -> OUString { return rProp.Name; });
     }
     return aNames;
 }
 
+namespace {
 
 class VclListenerLock
 {
@@ -115,6 +112,8 @@ public:
     VclListenerLock(const VclListenerLock&) = delete;
     VclListenerLock& operator=(const VclListenerLock&) = delete;
 };
+
+}
 
 typedef ::std::map< OUString, sal_Int32 >    MapString2Int;
 struct UnoControl_Data
@@ -142,7 +141,7 @@ UnoControl::UnoControl() :
     , mpData( new UnoControl_Data )
 {
     mbDisposePeer = true;
-    mbRefeshingPeer = false;
+    mbRefreshingPeer = false;
     mbCreatingPeer = false;
     mbCreatingCompatiblePeer = false;
     mbDesignMode = false;
@@ -150,7 +149,6 @@ UnoControl::UnoControl() :
 
 UnoControl::~UnoControl()
 {
-    DELETEZ( mpData );
 }
 
 OUString UnoControl::GetComponentServiceName()
@@ -160,7 +158,7 @@ OUString UnoControl::GetComponentServiceName()
 
 Reference< XWindowPeer >    UnoControl::ImplGetCompatiblePeer()
 {
-    DBG_ASSERT( !mbCreatingCompatiblePeer, "ImplGetCompatiblePeer - rekursive?" );
+    DBG_ASSERT( !mbCreatingCompatiblePeer, "ImplGetCompatiblePeer - recursive?" );
 
     mbCreatingCompatiblePeer = true;
 
@@ -240,51 +238,51 @@ bool UnoControl::ImplCheckLocalize( OUString& _rPossiblyLocalizable )
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("toolkit.controls");
     }
     return false;
 }
 
 void UnoControl::ImplSetPeerProperty( const OUString& rPropName, const Any& rVal )
 {
-    // since a change made in propertiesChange, we can't be sure that this is called with an valid getPeer(),
+    // since a change made in propertiesChange, we can't be sure that this is called with a valid getPeer(),
     // this assumption may be false in some (seldom) multi-threading scenarios (cause propertiesChange
     // releases our mutex before calling here in)
     // That's why this additional check
 
-    if ( mxVclWindowPeer.is() )
-    {
-        Any aConvertedValue( rVal );
+    if ( !mxVclWindowPeer.is() )
+        return;
 
-        if ( mpData->bLocalizationSupport )
+    Any aConvertedValue( rVal );
+
+    if ( mpData->bLocalizationSupport )
+    {
+        // We now support a mapping for language dependent properties. This is the
+        // central method to implement it.
+        if( rPropName == "Text"            ||
+            rPropName == "Label"           ||
+            rPropName == "Title"           ||
+            rPropName == "HelpText"        ||
+            rPropName == "CurrencySymbol"  ||
+            rPropName == "StringItemList"  )
         {
-            // We now support a mapping for language dependent properties. This is the
-            // central method to implement it.
-            if( rPropName == "Text"            ||
-                rPropName == "Label"           ||
-                rPropName == "Title"           ||
-                rPropName == "HelpText"        ||
-                rPropName == "CurrencySymbol"  ||
-                rPropName == "StringItemList"  )
+            OUString aValue;
+            uno::Sequence< OUString > aSeqValue;
+            if ( aConvertedValue >>= aValue )
             {
-                OUString aValue;
-                uno::Sequence< OUString > aSeqValue;
-                if ( aConvertedValue >>= aValue )
-                {
-                    if ( ImplCheckLocalize( aValue ) )
-                        aConvertedValue <<= aValue;
-                }
-                else if ( aConvertedValue >>= aSeqValue )
-                {
-                    for ( sal_Int32 i = 0; i < aSeqValue.getLength(); i++ )
-                        ImplCheckLocalize( aSeqValue[i] );
-                    aConvertedValue <<= aSeqValue;
-                }
+                if ( ImplCheckLocalize( aValue ) )
+                    aConvertedValue <<= aValue;
+            }
+            else if ( aConvertedValue >>= aSeqValue )
+            {
+                for ( auto& rValue : aSeqValue )
+                    ImplCheckLocalize( rValue );
+                aConvertedValue <<= aSeqValue;
             }
         }
-
-        mxVclWindowPeer->setProperty( rPropName, aConvertedValue );
     }
+
+    mxVclWindowPeer->setProperty( rPropName, aConvertedValue );
 }
 
 void UnoControl::PrepareWindowDescriptor( WindowDescriptor& )
@@ -415,15 +413,14 @@ void UnoControl::propertiesChange( const Sequence< PropertyChangeEvent >& rEvent
             for ( ; pEvents < pEventsEnd; )
                 if ( mpData->aSuspendedPropertyNotifications.find( pEvents->PropertyName ) != mpData->aSuspendedPropertyNotifications.end() )
                 {
-                    if ( pEvents != pEventsEnd )
-                        ::std::copy( pEvents + 1, pEventsEnd, pEvents );
+                    std::copy(pEvents + 1, pEventsEnd, pEvents);
                     --pEventsEnd;
                 }
                 else
                     ++pEvents;
             aEvents.realloc( pEventsEnd - aEvents.getConstArray() );
 
-            if ( !aEvents.getLength() )
+            if ( !aEvents.hasElements() )
                 return;
         }
     }
@@ -437,7 +434,7 @@ void UnoControl::ImplLockPropertyChangeNotification( const OUString& rPropertyNa
     if ( bLock )
     {
         if ( pos == mpData->aSuspendedPropertyNotifications.end() )
-            pos = mpData->aSuspendedPropertyNotifications.insert( MapString2Int::value_type( rPropertyName, 0 ) ).first;
+            pos = mpData->aSuspendedPropertyNotifications.emplace( rPropertyName, 0 ).first;
         ++pos->second;
     }
     else
@@ -454,211 +451,202 @@ void UnoControl::ImplLockPropertyChangeNotification( const OUString& rPropertyNa
 
 void UnoControl::ImplLockPropertyChangeNotifications( const Sequence< OUString >& rPropertyNames, bool bLock )
 {
-    for (   const OUString* pPropertyName = rPropertyNames.getConstArray();
-            pPropertyName != rPropertyNames.getConstArray() + rPropertyNames.getLength();
-            ++pPropertyName
-        )
-        ImplLockPropertyChangeNotification( *pPropertyName, bLock );
+    for ( auto const & propertyName : rPropertyNames )
+        ImplLockPropertyChangeNotification( propertyName, bLock );
 }
 
 void UnoControl::ImplModelPropertiesChanged( const Sequence< PropertyChangeEvent >& rEvents )
 {
     ::osl::ClearableGuard< ::osl::Mutex > aGuard( GetMutex() );
 
-    if( getPeer().is() )
+    if( !getPeer().is() )
+        return;
+
+    std::vector< PropertyValue > aPeerPropertiesToSet;
+    sal_Int32               nIndependentPos = 0;
+    bool                    bResourceResolverSet( false );
+        // position where to insert the independent properties into aPeerPropertiesToSet,
+        // dependent ones are inserted at the end of the vector
+
+    bool bNeedNewPeer = false;
+        // some properties require a re-creation of the peer, 'cause they can't be changed on the fly
+
+    Reference< XControlModel > xOwnModel = getModel();
+        // our own model for comparison
+    Reference< XPropertySet > xPS( xOwnModel, UNO_QUERY );
+    Reference< XPropertySetInfo > xPSI = xPS->getPropertySetInfo();
+    OSL_ENSURE( xPSI.is(), "UnoControl::ImplModelPropertiesChanged: should have property set meta data!" );
+
+    sal_Int32 nLen = rEvents.getLength();
+    aPeerPropertiesToSet.reserve(nLen);
+
+    for( const PropertyChangeEvent& rEvent : rEvents )
     {
-        std::vector< PropertyValue > aPeerPropertiesToSet;
-        sal_Int32               nIndependentPos = 0;
-        bool                    bResourceResolverSet( false );
-            // position where to insert the independent properties into aPeerPropertiesToSet,
-            // dependent ones are inserted at the end of the vector
+        Reference< XControlModel > xModel( rEvent.Source, UNO_QUERY );
+        bool bOwnModel = xModel.get() == xOwnModel.get();
+        if ( !bOwnModel )
+            continue;
 
-        bool bNeedNewPeer = false;
-            // some properties require a re-creation of the peer, 'cause they can't be changed on the fly
-
-        Reference< XControlModel > xOwnModel( getModel(), UNO_QUERY );
-            // our own model for comparison
-        Reference< XPropertySet > xPS( xOwnModel, UNO_QUERY );
-        Reference< XPropertySetInfo > xPSI( xPS->getPropertySetInfo(), UNO_QUERY );
-        OSL_ENSURE( xPSI.is(), "UnoControl::ImplModelPropertiesChanged: should have property set meta data!" );
-
-        const PropertyChangeEvent* pEvents = rEvents.getConstArray();
-
-        sal_Int32 nLen = rEvents.getLength();
-        aPeerPropertiesToSet.reserve(nLen);
-
-        for( sal_Int32 i = 0; i < nLen; ++i, ++pEvents )
+        // Detect changes on our resource resolver which invalidates
+        // automatically some language dependent properties.
+        if ( rEvent.PropertyName == "ResourceResolver" )
         {
-            Reference< XControlModel > xModel( pEvents->Source, UNO_QUERY );
-            bool bOwnModel = xModel.get() == xOwnModel.get();
-            if ( !bOwnModel )
-                continue;
+            Reference< resource::XStringResourceResolver > xStrResolver;
+            if ( rEvent.NewValue >>= xStrResolver )
+                bResourceResolverSet = xStrResolver.is();
+        }
 
-            // Detect changes on our resource resolver which invalidates
-            // automatically some language dependent properties.
-            if ( pEvents->PropertyName == "ResourceResolver" )
+        sal_uInt16 nPType = GetPropertyId( rEvent.PropertyName );
+        if ( mbDesignMode && mbDisposePeer && !mbRefreshingPeer && !mbCreatingPeer )
+        {
+            // if we're in design mode, then some properties can change which
+            // require creating a *new* peer (since these properties cannot
+            // be switched at existing peers)
+            if ( nPType )
+                bNeedNewPeer = ( nPType == BASEPROPERTY_BORDER )
+                            || ( nPType == BASEPROPERTY_MULTILINE )
+                            || ( nPType == BASEPROPERTY_DROPDOWN )
+                            || ( nPType == BASEPROPERTY_HSCROLL )
+                            || ( nPType == BASEPROPERTY_VSCROLL )
+                            || ( nPType == BASEPROPERTY_AUTOHSCROLL )
+                            || ( nPType == BASEPROPERTY_AUTOVSCROLL )
+                            || ( nPType == BASEPROPERTY_ORIENTATION )
+                            || ( nPType == BASEPROPERTY_SPIN )
+                            || ( nPType == BASEPROPERTY_ALIGN )
+                            || ( nPType == BASEPROPERTY_PAINTTRANSPARENT );
+            else
+                bNeedNewPeer = requiresNewPeer( rEvent.PropertyName );
+
+            if ( bNeedNewPeer )
+                break;
+        }
+
+        if ( nPType && ( nLen > 1 ) && DoesDependOnOthers( nPType ) )
+        {
+            // Add properties with dependencies on other properties last
+            // since they're dependent on properties added later (such as
+            // VALUE dependency on VALUEMIN/MAX)
+            aPeerPropertiesToSet.emplace_back(rEvent.PropertyName, 0, rEvent.NewValue, PropertyState_DIRECT_VALUE);
+        }
+        else
+        {
+            if ( bResourceResolverSet )
             {
-                Reference< resource::XStringResourceResolver > xStrResolver;
-                if ( pEvents->NewValue >>= xStrResolver )
-                    bResourceResolverSet = xStrResolver.is();
+                // The resource resolver property change should be one of the first ones.
+                // All language dependent properties are dependent on this property.
+                // As BASEPROPERTY_NATIVE_WIDGET_LOOK is not dependent on resource
+                // resolver. We don't need to handle a special order for these two props.
+                aPeerPropertiesToSet.insert(
+                    aPeerPropertiesToSet.begin(),
+                    PropertyValue( rEvent.PropertyName, 0, rEvent.NewValue, PropertyState_DIRECT_VALUE ) );
+                ++nIndependentPos;
             }
-
-            sal_uInt16 nPType = GetPropertyId( pEvents->PropertyName );
-            if ( mbDesignMode && mbDisposePeer && !mbRefeshingPeer && !mbCreatingPeer )
+            else if ( nPType == BASEPROPERTY_NATIVE_WIDGET_LOOK )
             {
-                // if we're in design mode, then some properties can change which
-                // require creating a *new* peer (since these properties cannot
-                // be switched at existing peers)
-                if ( nPType )
-                    bNeedNewPeer = ( nPType == BASEPROPERTY_BORDER )
-                                || ( nPType == BASEPROPERTY_MULTILINE )
-                                || ( nPType == BASEPROPERTY_DROPDOWN )
-                                || ( nPType == BASEPROPERTY_HSCROLL )
-                                || ( nPType == BASEPROPERTY_VSCROLL )
-                                || ( nPType == BASEPROPERTY_AUTOHSCROLL )
-                                || ( nPType == BASEPROPERTY_AUTOVSCROLL )
-                                || ( nPType == BASEPROPERTY_ORIENTATION )
-                                || ( nPType == BASEPROPERTY_SPIN )
-                                || ( nPType == BASEPROPERTY_ALIGN )
-                                || ( nPType == BASEPROPERTY_PAINTTRANSPARENT );
-                else
-                    bNeedNewPeer = requiresNewPeer( pEvents->PropertyName );
-
-                if ( bNeedNewPeer )
-                    break;
-            }
-
-            if ( nPType && ( nLen > 1 ) && DoesDependOnOthers( nPType ) )
-            {
-                // Add properties with dependencies on other properties last
-                // since they're dependent on properties added later (such as
-                // VALUE dependency on VALUEMIN/MAX)
-                aPeerPropertiesToSet.push_back(PropertyValue(pEvents->PropertyName, 0, pEvents->NewValue, PropertyState_DIRECT_VALUE));
+                // since *a lot* of other properties might be overruled by this one, we need
+                // a special handling:
+                // NativeWidgetLook needs to be set first: If it is set to ON, all other
+                // properties describing the look (e.g. BackgroundColor) are ignored, anyway.
+                // If it is switched OFF, then we need to do it first because else it will
+                // overrule other look-related properties, and re-initialize them from system
+                // defaults.
+                aPeerPropertiesToSet.insert(
+                    aPeerPropertiesToSet.begin(),
+                    PropertyValue( rEvent.PropertyName, 0, rEvent.NewValue, PropertyState_DIRECT_VALUE ) );
+                ++nIndependentPos;
             }
             else
             {
-                if ( bResourceResolverSet )
-                {
-                    // The resource resolver property change should be one of the first ones.
-                    // All language dependent properties are dependent on this property.
-                    // As BASEPROPERTY_NATIVE_WIDGET_LOOK is not dependent on resource
-                    // resolver. We don't need to handle a special order for these two props.
-                    aPeerPropertiesToSet.insert(
-                        aPeerPropertiesToSet.begin(),
-                        PropertyValue( pEvents->PropertyName, 0, pEvents->NewValue, PropertyState_DIRECT_VALUE ) );
-                    ++nIndependentPos;
-                }
-                else if ( nPType == BASEPROPERTY_NATIVE_WIDGET_LOOK )
-                {
-                    // since *a lot* of other properties might be overruled by this one, we need
-                    // a special handling:
-                    // NativeWidgetLook needs to be set first: If it is set to ON, all other
-                    // properties describing the look (e.g. BackgroundColor) are ignored, anyway.
-                    // If it is switched OFF, then we need to do it first because else it will
-                    // overrule other look-related properties, and re-initialize them from system
-                    // defaults.
-                    aPeerPropertiesToSet.insert(
-                        aPeerPropertiesToSet.begin(),
-                        PropertyValue( pEvents->PropertyName, 0, pEvents->NewValue, PropertyState_DIRECT_VALUE ) );
-                    ++nIndependentPos;
-                }
-                else
-                {
-                    aPeerPropertiesToSet.insert(aPeerPropertiesToSet.begin() + nIndependentPos,
-                        PropertyValue(pEvents->PropertyName, 0, pEvents->NewValue, PropertyState_DIRECT_VALUE));
-                    ++nIndependentPos;
-                }
+                aPeerPropertiesToSet.insert(aPeerPropertiesToSet.begin() + nIndependentPos,
+                    PropertyValue(rEvent.PropertyName, 0, rEvent.NewValue, PropertyState_DIRECT_VALUE));
+                ++nIndependentPos;
             }
-        }
-
-        Reference< XWindow >    xParent = getParentPeer();
-        Reference< XControl > xThis( static_cast<XAggregation*>(static_cast<cppu::OWeakAggObject*>(this)), UNO_QUERY );
-        // call createPeer via a interface got from queryInterface, so the aggregating class can intercept it
-
-        DBG_ASSERT( !bNeedNewPeer || xParent.is(), "Need new peer, but don't have a parent!" );
-
-        // Check if we have to update language dependent properties
-        if ( !bNeedNewPeer && bResourceResolverSet )
-        {
-            // Add language dependent properties into the peer property set.
-            // Our resource resolver has been changed and we must be sure
-            // that language dependent props use the new resolver.
-            const LanguageDependentProp* pLangDepProp = aLanguageDependentProp;
-            while ( pLangDepProp->pPropName != nullptr )
-            {
-                bool bMustBeInserted( true );
-                for (PropertyValue & i : aPeerPropertiesToSet)
-                {
-                    if ( i.Name.equalsAsciiL(
-                            pLangDepProp->pPropName, pLangDepProp->nPropNameLength ))
-                    {
-                        bMustBeInserted = false;
-                        break;
-                    }
-                }
-
-                if ( bMustBeInserted )
-                {
-                    // Add language dependent props at the end
-                    OUString aPropName( OUString::createFromAscii( pLangDepProp->pPropName ));
-                    if ( xPSI.is() && xPSI->hasPropertyByName( aPropName ) )
-                    {
-                        aPeerPropertiesToSet.push_back(
-                            PropertyValue( aPropName, 0, xPS->getPropertyValue( aPropName ), PropertyState_DIRECT_VALUE ) );
-                    }
-                }
-
-                ++pLangDepProp;
-            }
-        }
-        aGuard.clear();
-
-        // clear the guard before creating a new peer - as usual, our peer implementations use the SolarMutex
-
-        if (bNeedNewPeer && xParent.is())
-        {
-            SolarMutexGuard aVclGuard;
-                // and now this is the final withdrawal:
-                // I have no other idea than locking the SolarMutex here....
-                // I really hate the fact that VCL is not threadsafe....
-
-            // Doesn't work for Container!
-            getPeer()->dispose();
-            mxPeer.clear();
-            mxVclWindowPeer = nullptr;
-            mbRefeshingPeer = true;
-            Reference< XWindowPeer >    xP( xParent, UNO_QUERY );
-            xThis->createPeer( Reference< XToolkit > (), xP );
-            mbRefeshingPeer = false;
-            aPeerPropertiesToSet.clear();
-        }
-
-        // lock the multiplexing of VCL events to our UNO listeners
-        // this is for compatibility reasons: in OOo 1.0.x, changes which were done at the
-        // model did not cause the listeners of the controls/peers to be called
-        // Since the implementations for the listeners changed a lot towards 1.1, this
-        // would not be the case anymore, if we would not do this listener-lock below
-        // #i14703#
-        VCLXWindow* pPeer;
-        {
-            SolarMutexGuard g;
-            VclPtr<vcl::Window> pVclPeer = VCLUnoHelper::GetWindow( getPeer() );
-            pPeer = pVclPeer ? pVclPeer->GetWindowPeer() : nullptr;
-        }
-        VclListenerLock aNoVclEventMultiplexing( pPeer );
-
-        // setting peer properties may result in an attempt to acquire the solar mutex, 'cause the peers
-        // usually don't have an own mutex but use the SolarMutex instead.
-        // To prevent deadlocks resulting from this, we do this without our own mutex locked
-        std::vector< PropertyValue >::iterator aEnd = aPeerPropertiesToSet.end();
-        for (   std::vector< PropertyValue >::iterator aLoop = aPeerPropertiesToSet.begin();
-                aLoop != aEnd;
-                ++aLoop
-            )
-        {
-            ImplSetPeerProperty( aLoop->Name, aLoop->Value );
         }
     }
+
+    Reference< XWindow >    xParent = getParentPeer();
+    Reference< XControl > xThis( static_cast<XAggregation*>(static_cast<cppu::OWeakAggObject*>(this)), UNO_QUERY );
+    // call createPeer via an interface got from queryInterface, so the aggregating class can intercept it
+
+    DBG_ASSERT( !bNeedNewPeer || xParent.is(), "Need new peer, but don't have a parent!" );
+
+    // Check if we have to update language dependent properties
+    if ( !bNeedNewPeer && bResourceResolverSet )
+    {
+        // Add language dependent properties into the peer property set.
+        // Our resource resolver has been changed and we must be sure
+        // that language dependent props use the new resolver.
+        const LanguageDependentProp* pLangDepProp = aLanguageDependentProp;
+        while ( pLangDepProp->pPropName != nullptr )
+        {
+            bool bMustBeInserted( true );
+            for (const PropertyValue & i : aPeerPropertiesToSet)
+            {
+                if ( i.Name.equalsAsciiL(
+                        pLangDepProp->pPropName, pLangDepProp->nPropNameLength ))
+                {
+                    bMustBeInserted = false;
+                    break;
+                }
+            }
+
+            if ( bMustBeInserted )
+            {
+                // Add language dependent props at the end
+                OUString aPropName( OUString::createFromAscii( pLangDepProp->pPropName ));
+                if ( xPSI.is() && xPSI->hasPropertyByName( aPropName ) )
+                {
+                    aPeerPropertiesToSet.emplace_back( aPropName, 0, xPS->getPropertyValue( aPropName ), PropertyState_DIRECT_VALUE );
+                }
+            }
+
+            ++pLangDepProp;
+        }
+    }
+    aGuard.clear();
+
+    // clear the guard before creating a new peer - as usual, our peer implementations use the SolarMutex
+
+    if (bNeedNewPeer && xParent.is())
+    {
+        SolarMutexGuard aVclGuard;
+            // and now this is the final withdrawal:
+            // I have no other idea than locking the SolarMutex here...
+            // I really hate the fact that VCL is not threadsafe...
+
+        // Doesn't work for Container!
+        getPeer()->dispose();
+        mxPeer.clear();
+        mxVclWindowPeer = nullptr;
+        mbRefreshingPeer = true;
+        Reference< XWindowPeer >    xP( xParent, UNO_QUERY );
+        xThis->createPeer( Reference< XToolkit > (), xP );
+        mbRefreshingPeer = false;
+        aPeerPropertiesToSet.clear();
+    }
+
+    // lock the multiplexing of VCL events to our UNO listeners
+    // this is for compatibility reasons: in OOo 1.0.x, changes which were done at the
+    // model did not cause the listeners of the controls/peers to be called
+    // Since the implementations for the listeners changed a lot towards 1.1, this
+    // would not be the case anymore, if we would not do this listener-lock below
+    // #i14703#
+    VCLXWindow* pPeer;
+    {
+        SolarMutexGuard g;
+        VclPtr<vcl::Window> pVclPeer = VCLUnoHelper::GetWindow( getPeer() );
+        pPeer = pVclPeer ? pVclPeer->GetWindowPeer() : nullptr;
+    }
+    VclListenerLock aNoVclEventMultiplexing( pPeer );
+
+    // setting peer properties may result in an attempt to acquire the solar mutex, 'cause the peers
+    // usually don't have an own mutex but use the SolarMutex instead.
+    // To prevent deadlocks resulting from this, we do this without our own mutex locked
+    for (const auto& rProp : aPeerPropertiesToSet)
+    {
+        ImplSetPeerProperty( rProp.Name, rProp.Value );
+    }
+
 }
 
 void UnoControl::disposing( const EventObject& rEvt )
@@ -1087,238 +1075,249 @@ void UnoControl::createPeer( const Reference< XToolkit >& rxToolkit, const Refer
         RuntimeException aException;
         aException.Message = "createPeer: no model!";
         aException.Context = static_cast<XAggregation*>(static_cast<cppu::OWeakAggObject*>(this));
-        throw( aException );
+        throw aException;
     }
 
-    if( !getPeer().is() )
-    {
-        mbCreatingPeer = true;
+    if( getPeer().is() )
+        return;
 
-        WindowClass eType;
-        Reference< XToolkit >  xToolkit = rxToolkit;
-        if( rParentPeer.is() && mxContext.is() )
+    mbCreatingPeer = true;
+
+    WindowClass eType;
+    Reference< XToolkit >  xToolkit = rxToolkit;
+    if( rParentPeer.is() && mxContext.is() )
+    {
+        // no TopWindow
+        if ( !xToolkit.is() )
+            xToolkit = rParentPeer->getToolkit();
+        Any aAny = OWeakAggObject::queryInterface( cppu::UnoType<XControlContainer>::get());
+        Reference< XControlContainer > xC;
+        aAny >>= xC;
+        if( xC.is() )
+            // It's a container
+            eType = WindowClass_CONTAINER;
+        else
+            eType = WindowClass_SIMPLE;
+    }
+    else
+    { // This is only correct for Top Window
+        if( rParentPeer.is() )
         {
-            // kein TopWindow
             if ( !xToolkit.is() )
                 xToolkit = rParentPeer->getToolkit();
-            Any aAny = OWeakAggObject::queryInterface( cppu::UnoType<XControlContainer>::get());
-            Reference< XControlContainer > xC;
-            aAny >>= xC;
-            if( xC.is() )
-                // It's a container
-                eType = WindowClass_CONTAINER;
-            else
-                eType = WindowClass_SIMPLE;
+            eType = WindowClass_CONTAINER;
         }
         else
-        { // This is only correct for Top Window
-            if( rParentPeer.is() )
-            {
-                if ( !xToolkit.is() )
-                    xToolkit = rParentPeer->getToolkit();
-                eType = WindowClass_CONTAINER;
-            }
-            else
-            {
-                if ( !xToolkit.is() )
-                    xToolkit = VCLUnoHelper::CreateToolkit();
-                eType = WindowClass_TOP;
-            }
-        }
-        WindowDescriptor aDescr;
-        aDescr.Type = eType;
-        aDescr.WindowServiceName = GetComponentServiceName();
-        aDescr.Parent = rParentPeer;
-        aDescr.Bounds = getPosSize();
-        aDescr.WindowAttributes = 0;
-
-        // Border
-        Reference< XPropertySet > xPSet( mxModel, UNO_QUERY );
-        Reference< XPropertySetInfo >  xInfo = xPSet->getPropertySetInfo();
-
-        Any aVal;
-        OUString aPropName = GetPropertyName( BASEPROPERTY_BORDER );
-        if ( xInfo->hasPropertyByName( aPropName ) )
         {
-            aVal = xPSet->getPropertyValue( aPropName );
-            sal_Int16 n = sal_Int16();
-            if ( aVal >>= n )
-            {
-                if ( n )
-                    aDescr.WindowAttributes |= WindowAttribute::BORDER;
-                else
-                    aDescr.WindowAttributes |= VclWindowPeerAttribute::NOBORDER;
-            }
+            if ( !xToolkit.is() )
+                xToolkit = VCLUnoHelper::CreateToolkit();
+            eType = WindowClass_TOP;
         }
-
-        // DESKTOP_AS_PARENT
-        if ( aDescr.Type == WindowClass_TOP )
-        {
-            aPropName = GetPropertyName( BASEPROPERTY_DESKTOP_AS_PARENT );
-            if ( xInfo->hasPropertyByName( aPropName ) )
-            {
-                aVal = xPSet->getPropertyValue( aPropName );
-                bool b = bool();
-                if ( ( aVal >>= b ) && b)
-                    aDescr.ParentIndex = -1;
-            }
-        }
-        // Moveable
-        aPropName = GetPropertyName( BASEPROPERTY_MOVEABLE );
-        if ( xInfo->hasPropertyByName( aPropName ) )
-        {
-            aVal = xPSet->getPropertyValue( aPropName );
-            bool b = bool();
-            if ( ( aVal >>= b ) && b)
-                aDescr.WindowAttributes |= WindowAttribute::MOVEABLE;
-        }
-
-        // Closeable
-        aPropName = GetPropertyName( BASEPROPERTY_CLOSEABLE );
-        if ( xInfo->hasPropertyByName( aPropName ) )
-        {
-            aVal = xPSet->getPropertyValue( aPropName );
-            bool b = bool();
-            if ( ( aVal >>= b ) && b)
-                aDescr.WindowAttributes |= WindowAttribute::CLOSEABLE;
-        }
-
-        // Dropdown
-        aPropName = GetPropertyName( BASEPROPERTY_DROPDOWN );
-        if ( xInfo->hasPropertyByName( aPropName ) )
-        {
-            aVal = xPSet->getPropertyValue( aPropName );
-            bool b = bool();
-            if ( ( aVal >>= b ) && b)
-                aDescr.WindowAttributes |= VclWindowPeerAttribute::DROPDOWN;
-        }
-
-        // Spin
-        aPropName = GetPropertyName( BASEPROPERTY_SPIN );
-        if ( xInfo->hasPropertyByName( aPropName ) )
-        {
-            aVal = xPSet->getPropertyValue( aPropName );
-            bool b = bool();
-            if ( ( aVal >>= b ) && b)
-                aDescr.WindowAttributes |= VclWindowPeerAttribute::SPIN;
-        }
-
-        // HScroll
-        aPropName = GetPropertyName( BASEPROPERTY_HSCROLL );
-        if ( xInfo->hasPropertyByName( aPropName ) )
-        {
-            aVal = xPSet->getPropertyValue( aPropName );
-            bool b = bool();
-            if ( ( aVal >>= b ) && b)
-                aDescr.WindowAttributes |= VclWindowPeerAttribute::HSCROLL;
-        }
-
-        // VScroll
-        aPropName = GetPropertyName( BASEPROPERTY_VSCROLL );
-        if ( xInfo->hasPropertyByName( aPropName ) )
-        {
-            aVal = xPSet->getPropertyValue( aPropName );
-            bool b = bool();
-            if ( ( aVal >>= b ) && b)
-                aDescr.WindowAttributes |= VclWindowPeerAttribute::VSCROLL;
-        }
-
-        // AutoHScroll
-        aPropName = GetPropertyName( BASEPROPERTY_AUTOHSCROLL );
-        if ( xInfo->hasPropertyByName( aPropName ) )
-        {
-            aVal = xPSet->getPropertyValue( aPropName );
-            bool b = bool();
-            if ( ( aVal >>= b ) && b)
-                aDescr.WindowAttributes |= VclWindowPeerAttribute::AUTOHSCROLL;
-        }
-
-        // AutoVScroll
-        aPropName = GetPropertyName( BASEPROPERTY_AUTOVSCROLL );
-        if ( xInfo->hasPropertyByName( aPropName ) )
-        {
-            aVal = xPSet->getPropertyValue( aPropName );
-            bool b = bool();
-            if ( ( aVal >>= b ) && b)
-                aDescr.WindowAttributes |= VclWindowPeerAttribute::AUTOVSCROLL;
-        }
-
-        //added for issue79712
-        //NoLabel
-        aPropName = GetPropertyName( BASEPROPERTY_NOLABEL );
-        if ( xInfo->hasPropertyByName( aPropName ) )
-        {
-            aVal = xPSet->getPropertyValue( aPropName );
-            bool b = bool();
-            if ( ( aVal >>=b ) && b )
-                aDescr.WindowAttributes |= VclWindowPeerAttribute::NOLABEL;
-        }
-        //issue79712 ends
-
-        // Align
-        aPropName = GetPropertyName( BASEPROPERTY_ALIGN );
-        if ( xInfo->hasPropertyByName( aPropName ) )
-        {
-            aVal = xPSet->getPropertyValue( aPropName );
-            sal_Int16 n = sal_Int16();
-            if ( aVal >>= n )
-            {
-                if ( n == PROPERTY_ALIGN_LEFT )
-                    aDescr.WindowAttributes |= VclWindowPeerAttribute::LEFT;
-                else if ( n == PROPERTY_ALIGN_CENTER )
-                    aDescr.WindowAttributes |= VclWindowPeerAttribute::CENTER;
-                else
-                    aDescr.WindowAttributes |= VclWindowPeerAttribute::RIGHT;
-            }
-        }
-
-        // Allow derivates to manipulate attributes
-        PrepareWindowDescriptor(aDescr);
-
-        // create the peer
-        setPeer( xToolkit->createWindow( aDescr ) );
-
-        // release the mutex guard (and work with copies of our members)
-        // this is necessary as our peer may lock the SolarMutex (actually, all currently known peers do), so calling
-        // into the peer with our own mutex locked may cause deadlocks
-        // (We _really_ need peers which do not use the SolarMutex. It's really pissing me off that from time to
-        // time deadlocks pop up because the low-level components like our peers use a mutex which usually
-        // is locked at the top of the stack (it protects the global message looping). This is always dangerous, and
-        // can not always be solved by tampering with other mutexes.
-        // Unfortunately, the VCL used in the peers is not threadsafe, and by definition needs a locked SolarMutex.)
-        // 82300 - 12/21/00 - FS
-        UnoControlComponentInfos aComponentInfos(maComponentInfos);
-        bool bDesignMode(mbDesignMode);
-
-        Reference< XGraphics >  xGraphics( mxGraphics           );
-        Reference< XView >      xView    ( getPeer(), UNO_QUERY_THROW );
-        Reference< XWindow >    xWindow  ( getPeer(), UNO_QUERY_THROW );
-
-        aGuard.clear();
-
-        // the updateFromModel is done without a locked mutex, too.
-        // The reason is that the only thing this method does  is firing property changes, and this in general has
-        // to be done without locked mutexes (as every notification to external listeners).
-        // 82300 - 12/21/00 - FS
-        updateFromModel();
-
-        xView->setZoom( aComponentInfos.nZoomX, aComponentInfos.nZoomY );
-
-        setPosSize( aComponentInfos.nX, aComponentInfos.nY, aComponentInfos.nWidth, aComponentInfos.nHeight, aComponentInfos.nFlags );
-
-        if( aComponentInfos.bVisible && !bDesignMode )
-            // Show only after setting the data
-            xWindow->setVisible( aComponentInfos.bVisible );
-
-        if( !aComponentInfos.bEnable )
-            xWindow->setEnable( aComponentInfos.bEnable );
-
-        xView->setGraphics( xGraphics );
-
-        peerCreated();
-
-        mbCreatingPeer = false;
     }
+    WindowDescriptor aDescr;
+    aDescr.Type = eType;
+    aDescr.WindowServiceName = GetComponentServiceName();
+    aDescr.Parent = rParentPeer;
+    aDescr.Bounds = getPosSize();
+    aDescr.WindowAttributes = 0;
+
+    // Border
+    Reference< XPropertySet > xPSet( mxModel, UNO_QUERY );
+    Reference< XPropertySetInfo >  xInfo = xPSet->getPropertySetInfo();
+
+    Any aVal;
+    OUString aPropName = GetPropertyName( BASEPROPERTY_BORDER );
+    if ( xInfo->hasPropertyByName( aPropName ) )
+    {
+        aVal = xPSet->getPropertyValue( aPropName );
+        sal_Int16 n = sal_Int16();
+        if ( aVal >>= n )
+        {
+            if ( n )
+                aDescr.WindowAttributes |= WindowAttribute::BORDER;
+            else
+                aDescr.WindowAttributes |= VclWindowPeerAttribute::NOBORDER;
+        }
+    }
+
+    // DESKTOP_AS_PARENT
+    if ( aDescr.Type == WindowClass_TOP )
+    {
+        aPropName = GetPropertyName( BASEPROPERTY_DESKTOP_AS_PARENT );
+        if ( xInfo->hasPropertyByName( aPropName ) )
+        {
+            aVal = xPSet->getPropertyValue( aPropName );
+            bool b = bool();
+            if ( ( aVal >>= b ) && b)
+                aDescr.ParentIndex = -1;
+        }
+    }
+    // Moveable
+    aPropName = GetPropertyName( BASEPROPERTY_MOVEABLE );
+    if ( xInfo->hasPropertyByName( aPropName ) )
+    {
+        aVal = xPSet->getPropertyValue( aPropName );
+        bool b = bool();
+        if ( ( aVal >>= b ) && b)
+            aDescr.WindowAttributes |= WindowAttribute::MOVEABLE;
+    }
+
+    // Sizeable
+    aPropName = GetPropertyName( BASEPROPERTY_SIZEABLE );
+    if ( xInfo->hasPropertyByName( aPropName ) )
+    {
+        aVal = xPSet->getPropertyValue( aPropName );
+        bool b = bool();
+        if ( ( aVal >>= b ) && b)
+            aDescr.WindowAttributes |= WindowAttribute::SIZEABLE;
+    }
+
+    // Closeable
+    aPropName = GetPropertyName( BASEPROPERTY_CLOSEABLE );
+    if ( xInfo->hasPropertyByName( aPropName ) )
+    {
+        aVal = xPSet->getPropertyValue( aPropName );
+        bool b = bool();
+        if ( ( aVal >>= b ) && b)
+            aDescr.WindowAttributes |= WindowAttribute::CLOSEABLE;
+    }
+
+    // Dropdown
+    aPropName = GetPropertyName( BASEPROPERTY_DROPDOWN );
+    if ( xInfo->hasPropertyByName( aPropName ) )
+    {
+        aVal = xPSet->getPropertyValue( aPropName );
+        bool b = bool();
+        if ( ( aVal >>= b ) && b)
+            aDescr.WindowAttributes |= VclWindowPeerAttribute::DROPDOWN;
+    }
+
+    // Spin
+    aPropName = GetPropertyName( BASEPROPERTY_SPIN );
+    if ( xInfo->hasPropertyByName( aPropName ) )
+    {
+        aVal = xPSet->getPropertyValue( aPropName );
+        bool b = bool();
+        if ( ( aVal >>= b ) && b)
+            aDescr.WindowAttributes |= VclWindowPeerAttribute::SPIN;
+    }
+
+    // HScroll
+    aPropName = GetPropertyName( BASEPROPERTY_HSCROLL );
+    if ( xInfo->hasPropertyByName( aPropName ) )
+    {
+        aVal = xPSet->getPropertyValue( aPropName );
+        bool b = bool();
+        if ( ( aVal >>= b ) && b)
+            aDescr.WindowAttributes |= VclWindowPeerAttribute::HSCROLL;
+    }
+
+    // VScroll
+    aPropName = GetPropertyName( BASEPROPERTY_VSCROLL );
+    if ( xInfo->hasPropertyByName( aPropName ) )
+    {
+        aVal = xPSet->getPropertyValue( aPropName );
+        bool b = bool();
+        if ( ( aVal >>= b ) && b)
+            aDescr.WindowAttributes |= VclWindowPeerAttribute::VSCROLL;
+    }
+
+    // AutoHScroll
+    aPropName = GetPropertyName( BASEPROPERTY_AUTOHSCROLL );
+    if ( xInfo->hasPropertyByName( aPropName ) )
+    {
+        aVal = xPSet->getPropertyValue( aPropName );
+        bool b = bool();
+        if ( ( aVal >>= b ) && b)
+            aDescr.WindowAttributes |= VclWindowPeerAttribute::AUTOHSCROLL;
+    }
+
+    // AutoVScroll
+    aPropName = GetPropertyName( BASEPROPERTY_AUTOVSCROLL );
+    if ( xInfo->hasPropertyByName( aPropName ) )
+    {
+        aVal = xPSet->getPropertyValue( aPropName );
+        bool b = bool();
+        if ( ( aVal >>= b ) && b)
+            aDescr.WindowAttributes |= VclWindowPeerAttribute::AUTOVSCROLL;
+    }
+
+    //added for issue79712
+    //NoLabel
+    aPropName = GetPropertyName( BASEPROPERTY_NOLABEL );
+    if ( xInfo->hasPropertyByName( aPropName ) )
+    {
+        aVal = xPSet->getPropertyValue( aPropName );
+        bool b = bool();
+        if ( ( aVal >>=b ) && b )
+            aDescr.WindowAttributes |= VclWindowPeerAttribute::NOLABEL;
+    }
+    //issue79712 ends
+
+    // Align
+    aPropName = GetPropertyName( BASEPROPERTY_ALIGN );
+    if ( xInfo->hasPropertyByName( aPropName ) )
+    {
+        aVal = xPSet->getPropertyValue( aPropName );
+        sal_Int16 n = sal_Int16();
+        if ( aVal >>= n )
+        {
+            if ( n == PROPERTY_ALIGN_LEFT )
+                aDescr.WindowAttributes |= VclWindowPeerAttribute::LEFT;
+            else if ( n == PROPERTY_ALIGN_CENTER )
+                aDescr.WindowAttributes |= VclWindowPeerAttribute::CENTER;
+            else
+                aDescr.WindowAttributes |= VclWindowPeerAttribute::RIGHT;
+        }
+    }
+
+    // Allow derivates to manipulate attributes
+    PrepareWindowDescriptor(aDescr);
+
+    // create the peer
+    setPeer( xToolkit->createWindow( aDescr ) );
+
+    // release the mutex guard (and work with copies of our members)
+    // this is necessary as our peer may lock the SolarMutex (actually, all currently known peers do), so calling
+    // into the peer with our own mutex locked may cause deadlocks
+    // (We _really_ need peers which do not use the SolarMutex. It's really pissing me off that from time to
+    // time deadlocks pop up because the low-level components like our peers use a mutex which usually
+    // is locked at the top of the stack (it protects the global message looping). This is always dangerous, and
+    // can not always be solved by tampering with other mutexes.
+    // Unfortunately, the VCL used in the peers is not threadsafe, and by definition needs a locked SolarMutex.)
+    // 82300 - 12/21/00 - FS
+    UnoControlComponentInfos aComponentInfos(maComponentInfos);
+    bool bDesignMode(mbDesignMode);
+
+    Reference< XGraphics >  xGraphics( mxGraphics           );
+    Reference< XView >      xView    ( getPeer(), UNO_QUERY_THROW );
+    Reference< XWindow >    xWindow  ( getPeer(), UNO_QUERY_THROW );
+
+    aGuard.clear();
+
+    // the updateFromModel is done without a locked mutex, too.
+    // The reason is that the only thing this method does  is firing property changes, and this in general has
+    // to be done without locked mutexes (as every notification to external listeners).
+    // 82300 - 12/21/00 - FS
+    updateFromModel();
+
+    xView->setZoom( aComponentInfos.nZoomX, aComponentInfos.nZoomY );
+
+    setPosSize( aComponentInfos.nX, aComponentInfos.nY, aComponentInfos.nWidth, aComponentInfos.nHeight, aComponentInfos.nFlags );
+
+    if( aComponentInfos.bVisible && !bDesignMode )
+        // Show only after setting the data
+        xWindow->setVisible( aComponentInfos.bVisible );
+
+    if( !aComponentInfos.bEnable )
+        xWindow->setEnable( aComponentInfos.bEnable );
+
+    xView->setGraphics( xGraphics );
+
+    peerCreated();
+
+    mbCreatingPeer = false;
+
 }
 
 Reference< XWindowPeer > UnoControl::getPeer()
@@ -1357,7 +1356,7 @@ sal_Bool UnoControl::setModel( const Reference< XControlModel >& rxModel )
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("toolkit.controls");
             mxModel.clear();
         }
     }
@@ -1394,7 +1393,7 @@ void UnoControl::setDesignMode( sal_Bool bOn )
         maAccessibleContext.clear();
 
         aModeChangeEvent.Source = *this;
-        aModeChangeEvent.NewMode = mbDesignMode ? OUString("design") : OUString("alive" );
+        aModeChangeEvent.NewMode = mbDesignMode ? OUStringLiteral("design") : OUStringLiteral("alive" );
     }
 
     // dispose current AccessibleContext, if we have one - without Mutex lock
@@ -1434,8 +1433,7 @@ sal_Bool UnoControl::supportsService( const OUString& rServiceName )
 
 Sequence< OUString > UnoControl::getSupportedServiceNames(  )
 {
-    OUString sName( "com.sun.star.awt.UnoControl" );
-    return Sequence< OUString >( &sName, 1 );
+    return { "com.sun.star.awt.UnoControl" };
 }
 
 

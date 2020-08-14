@@ -20,10 +20,10 @@ $(eval $(call gb_ExternalProject_use_externals,libvisio,\
 	icu \
 	libxml2 \
 	revenge \
-	zlib \
 ))
 
 $(call gb_ExternalProject_get_state_target,libvisio,build) :
+	$(call gb_Trace_StartRange,libvisio,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		export PKG_CONFIG="" \
 		&& MAKE=$(MAKE) ./configure \
@@ -31,13 +31,17 @@ $(call gb_ExternalProject_get_state_target,libvisio,build) :
 			--enable-static \
 			--disable-shared \
 			--without-docs \
+			--disable-tests \
 			--disable-tools \
 			$(if $(ENABLE_DEBUG),--enable-debug,--disable-debug) \
 			--disable-werror \
 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
-			CXXFLAGS="$(CXXFLAGS) $(ICU_UCHAR_TYPE) $(BOOST_CPPFLAGS)" \
+			$(if $(gb_FULLDEPS),,--disable-dependency-tracking) \
+			CXXFLAGS="$(gb_CXXFLAGS) $(if $(ENABLE_OPTIMIZED),$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS))" \
+			CPPFLAGS="$(CPPFLAGS) $(BOOST_CPPFLAGS)" \
 			$(if $(CROSS_COMPILING),--build=$(BUILD_PLATFORM) --host=$(HOST_PLATFORM)) \
 		&& $(MAKE) \
 	)
+	$(call gb_Trace_EndRange,libvisio,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

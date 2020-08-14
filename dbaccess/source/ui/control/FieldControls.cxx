@@ -17,63 +17,44 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "FieldControls.hxx"
-#include "SqlNameEdit.hxx"
-
-#include <vcl/settings.hxx>
+#include <FieldControls.hxx>
+#include <SqlNameEdit.hxx>
+#include <core_resource.hxx>
 
 namespace dbaui {
 
-namespace {
-
-void lcl_setSpecialReadOnly( bool _bReadOnly, vcl::Window* _pWin )
+OPropColumnEditCtrl::OPropColumnEditCtrl(std::unique_ptr<weld::Entry> xEntry,
+                                         OUString const & _rAllowedChars,
+                                         const char* pHelpId,
+                                         short nPosition)
+    : OSQLNameEntry(std::move(xEntry), _rAllowedChars)
+    , m_nPos(nPosition)
 {
-    StyleSettings aSystemStyle = Application::GetSettings().GetStyleSettings();
-    const Color& rNewColor = _bReadOnly ? aSystemStyle.GetDialogColor() : aSystemStyle.GetFieldColor();
-    _pWin->SetBackground(Wallpaper(rNewColor));
-    _pWin->SetControlBackground(rNewColor);
+    m_strHelpText = DBA_RES(pHelpId);
 }
 
+OPropEditCtrl::OPropEditCtrl(std::unique_ptr<weld::Entry> xEntry, const char* pHelpId, short nPosition)
+    : OWidgetBase(xEntry.get())
+    , m_xEntry(std::move(xEntry))
+    , m_nPos(nPosition)
+{
+    m_strHelpText = DBA_RES(pHelpId);
 }
 
-OPropColumnEditCtrl::OPropColumnEditCtrl(vcl::Window* pParent,
-                                                rtl::OUString& _rAllowedChars,
-                                                sal_uInt16 nHelpId,
-                                                short nPosition,
-                                                WinBits nWinStyle)
-    :OSQLNameEdit(pParent, nWinStyle, _rAllowedChars)
-    ,m_nPos(nPosition)
+OPropNumericEditCtrl::OPropNumericEditCtrl(std::unique_ptr<weld::SpinButton> xSpinButton, const char* pHelpId, short nPosition)
+    : OWidgetBase(xSpinButton.get())
+    , m_xSpinButton(std::move(xSpinButton))
+    , m_nPos(nPosition)
 {
-    m_strHelpText = ModuleRes(nHelpId);
+    m_strHelpText = DBA_RES(pHelpId);
 }
 
-OPropEditCtrl::OPropEditCtrl(vcl::Window* pParent, sal_uInt16 nHelpId, short nPosition, WinBits nWinStyle)
-    :Edit(pParent, nWinStyle)
-    ,m_nPos(nPosition)
+OPropListBoxCtrl::OPropListBoxCtrl(std::unique_ptr<weld::ComboBox> xComboBox, const char* pHelpId, short nPosition)
+    : OWidgetBase(xComboBox.get())
+    , m_xComboBox(std::move(xComboBox))
+    , m_nPos(nPosition)
 {
-    m_strHelpText = ModuleRes(nHelpId);
-}
-
-void
-OPropNumericEditCtrl::SetSpecialReadOnly(bool _bReadOnly)
-{
-    SetReadOnly(_bReadOnly);
-    lcl_setSpecialReadOnly(_bReadOnly,this);
-}
-
-
-OPropNumericEditCtrl::OPropNumericEditCtrl(vcl::Window* pParent, sal_uInt16 nHelpId, short nPosition, WinBits nWinStyle)
-    :NumericField(pParent, nWinStyle)
-    ,m_nPos(nPosition)
-{
-    m_strHelpText = ModuleRes(nHelpId);
-}
-
-OPropListBoxCtrl::OPropListBoxCtrl(vcl::Window* pParent, sal_uInt16 nHelpId, short nPosition, WinBits nWinStyle)
-    :ListBox(pParent, nWinStyle)
-    ,m_nPos(nPosition)
-{
-    m_strHelpText = ModuleRes(nHelpId);
+    m_strHelpText = DBA_RES(pHelpId);
 }
 
 } // end namespace dbaui

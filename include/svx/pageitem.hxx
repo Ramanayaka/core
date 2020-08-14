@@ -49,7 +49,7 @@ This item describes a page attribute (name of the template, enumeration,
 portrait or landscape, layout)
 */
 
-class SVX_DLLPUBLIC SvxPageItem: public SfxPoolItem
+class SVX_DLLPUBLIC SvxPageItem final : public SfxPoolItem
 {
 private:
     OUString            aDescName;          // name of the template
@@ -65,18 +65,16 @@ public:
 
     virtual ~SvxPageItem() override;
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxPageItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool             operator==( const SfxPoolItem& ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-    virtual SfxPoolItem*     Create( SvStream&, sal_uInt16 ) const override;
-    virtual SvStream&        Store( SvStream& , sal_uInt16 nItemVersion ) const override;
 
     // orientation
     SvxPageUsage    GetPageUsage() const                { return eUse;       }
@@ -98,22 +96,19 @@ public:
   container for header/footer attributes
  --------------------------------------------------------------------*/
 
-class SVX_DLLPUBLIC SvxSetItem: public SfxSetItem
+class SVX_DLLPUBLIC SvxSetItem final : public SfxSetItem
 {
 public:
     SvxSetItem( const sal_uInt16 nId, const SfxItemSet& rSet );
     SvxSetItem( const SvxSetItem& rItem );
     SvxSetItem( const sal_uInt16 nId, std::unique_ptr<SfxItemSet>&& pSet );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxSetItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
-
-    virtual SfxPoolItem*    Create( SvStream&, sal_uInt16 nVersion ) const override;
-    virtual SvStream&       Store( SvStream&, sal_uInt16 nItemVersion ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 };
 
 

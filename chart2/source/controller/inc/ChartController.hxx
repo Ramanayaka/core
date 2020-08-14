@@ -19,40 +19,47 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_MAIN_CHARTCONTROLLER_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_MAIN_CHARTCONTROLLER_HXX
 
-#include "LifeTime.hxx"
+#include <LifeTime.hxx>
 #include "CommandDispatchContainer.hxx"
 #include "SelectionHelper.hxx"
 
 #include <svx/svdtypes.hxx>
 #include <vcl/timer.hxx>
-#include <vcl/event.hxx>
 
 #include <cppuhelper/implbase.hxx>
+#include <o3tl/sorted_vector.hxx>
+#include <salhelper/simplereferenceobject.hxx>
 
-#include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/document/XUndoManager.hpp>
-#include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
-#include <com/sun/star/frame/XDispatch.hpp>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/ui/XContextMenuInterception.hpp>
-#include <com/sun/star/uno/XWeak.hpp>
-#include <com/sun/star/util/XCloseListener.hpp>
-#include <com/sun/star/util/XCloseable.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/util/XModifyListener.hpp>
 #include <com/sun/star/util/XModeChangeListener.hpp>
-#include <com/sun/star/awt/Point.hpp>
-#include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
+#include <com/sun/star/util/XCloseListener.hpp>
+#include <com/sun/star/util/XModifyListener.hpp>
+#include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/XLayoutManagerListener.hpp>
-#include <com/sun/star/frame/XLayoutManagerEventBroadcaster.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 #include <memory>
-#include <set>
+
+namespace com::sun::star::accessibility { class XAccessible; }
+namespace com::sun::star::accessibility { class XAccessibleContext; }
+namespace com::sun::star::awt { class XFocusListener; }
+namespace com::sun::star::awt { class XKeyListener; }
+namespace com::sun::star::awt { class XMouseListener; }
+namespace com::sun::star::awt { class XMouseMotionListener; }
+namespace com::sun::star::awt { class XPaintListener; }
+namespace com::sun::star::awt { class XWindow; }
+namespace com::sun::star::awt { class XWindowListener; }
+namespace com::sun::star::awt { struct Point; }
+namespace com::sun::star::document { class XUndoManager; }
+namespace com::sun::star::frame { class XDispatch; }
+namespace com::sun::star::frame { class XLayoutManagerEventBroadcaster; }
+namespace com::sun::star::lang { class XInitialization; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::util { class XCloseable; }
+namespace com::sun::star::view { class XSelectionSupplier; }
+
 
 class SdrModel;
 
@@ -61,17 +68,17 @@ namespace svt
     class AcceleratorExecute;
 }
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
     class SelectionChangeHandler;
-}}
+}
 
 class DropTargetHelper;
 
-namespace com { namespace sun { namespace star {
-namespace graphic {
-    class XGraphic;
+namespace com::sun::star {
+    namespace graphic {
+        class XGraphic;
+    }
 }
-}}}
 
 namespace chart
 {
@@ -320,14 +327,15 @@ public:
     ViewElementListProvider getViewElementListProvider();
     DrawModelWrapper* GetDrawModelWrapper();
     DrawViewWrapper* GetDrawViewWrapper();
-    VclPtr<ChartWindow> GetChartWindow();
-    bool isAdditionalShapeSelected();
+    VclPtr<ChartWindow> GetChartWindow() const;
+    weld::Window* GetChartFrame();
+    bool isAdditionalShapeSelected() const;
     void SetAndApplySelection(const css::uno::Reference<css::drawing::XShape>& rxShape);
     void StartTextEdit( const Point* pMousePixel = nullptr );
 
-    DECL_LINK( NotifyUndoActionHdl, SdrUndoAction*, void );
+    void NotifyUndoActionHdl( std::unique_ptr<SdrUndoAction> );
 
-    css::uno::Reference<css::uno::XInterface> const & getChartView();
+    css::uno::Reference<css::uno::XInterface> const & getChartView() const;
 
 private:
     class TheModel : public salhelper::SimpleReferenceObject
@@ -382,7 +390,7 @@ private:
     css::uno::Reference<css::awt::XWindow> m_xViewWindow;
     css::uno::Reference<css::uno::XInterface> m_xChartView;
     std::shared_ptr< DrawModelWrapper > m_pDrawModelWrapper;
-    DrawViewWrapper* m_pDrawViewWrapper;
+    std::unique_ptr<DrawViewWrapper> m_pDrawViewWrapper;
 
     Selection m_aSelection;
     SdrDragMode m_eDragMode;
@@ -411,7 +419,7 @@ private:
     rtl::Reference<svx::sidebar::SelectionChangeHandler> mpSelectionChangeHandler;
 
     bool impl_isDisposedOrSuspended() const;
-    ReferenceSizeProvider* impl_createReferenceSizeProvider();
+    std::unique_ptr<ReferenceSizeProvider> impl_createReferenceSizeProvider();
     void impl_adaptDataSeriesAutoResize();
 
     void impl_createDrawViewController();
@@ -473,7 +481,7 @@ private:
     bool EndTextEdit();
 
     void executeDispatch_View3D();
-    void executeDispatch_PositionAndSize();
+    void executeDispatch_PositionAndSize( const ::css::uno::Sequence< ::css::beans::PropertyValue >* pArgs = nullptr );
 
     void executeDispatch_EditData();
 
@@ -487,6 +495,9 @@ private:
     void executeDispatch_ToggleLegend();
     void executeDispatch_ToggleGridHorizontal();
     void executeDispatch_ToggleGridVertical();
+
+    void executeDispatch_LOKSetTextSelection(int nType, int nX, int nY);
+    void executeDispatch_LOKPieSegmentDragging(int nOffset);
 
     void sendPopupRequest(OUString const & rCID, tools::Rectangle aRectangle);
 
@@ -518,7 +529,7 @@ private:
         const OUString & rCID, eMoveOrResizeType eType, double fAmountLogicX, double fAmountLogicY );
     bool impl_DragDataPoint( const OUString & rCID, double fOffset );
 
-    static const std::set< OUString >& impl_getAvailableCommands();
+    static const o3tl::sorted_vector< OUString >& impl_getAvailableCommands();
 
     /** Creates a helper accessibility class that must be initialized via XInitialization.  For
         parameters see
@@ -530,7 +541,7 @@ private:
     css::uno::Reference< css::accessibility::XAccessibleContext >
         impl_createAccessibleTextContext();
 
-    void impl_PasteGraphic( css::uno::Reference< css::graphic::XGraphic > & xGraphic,
+    void impl_PasteGraphic( css::uno::Reference< css::graphic::XGraphic > const & xGraphic,
                             const ::Point & aPosition );
     void impl_PasteShapes( SdrModel* pModel );
     void impl_PasteStringAsTextShape( const OUString& rString, const css::awt::Point& rPosition );

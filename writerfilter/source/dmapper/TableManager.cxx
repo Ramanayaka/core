@@ -17,29 +17,29 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <TableManager.hxx>
-#include <DomainMapperTableHandler.hxx>
-#include <DomainMapper_Impl.hxx>
-#include <util.hxx>
+#include "TableManager.hxx"
+#include <ooxml/resourceids.hxx>
+#include "TagLogger.hxx"
+#include "DomainMapperTableHandler.hxx"
+#include "DomainMapper_Impl.hxx"
+#include "util.hxx"
 
-namespace writerfilter
-{
-namespace dmapper
-{
+#include <tools/diagnose_ex.h>
 
-void TableManager::clearData()
+namespace writerfilter::dmapper
 {
-}
+void TableManager::clearData() {}
 
-void TableManager::openCell(const css::uno::Reference<css::text::XTextRange>& rHandle, const TablePropertyMapPtr& pProps)
+void TableManager::openCell(const css::uno::Reference<css::text::XTextRange>& rHandle,
+                            const TablePropertyMapPtr& pProps)
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().startElement("tablemanager.openCell");
     TagLogger::getInstance().chars(XTextRangeToString(rHandle));
     TagLogger::getInstance().endElement();
 #endif
 
-    if (mTableDataStack.size() > 0)
+    if (!mTableDataStack.empty())
     {
         TableData::Pointer_t pTableData = mTableDataStack.top();
 
@@ -47,76 +47,154 @@ void TableManager::openCell(const css::uno::Reference<css::text::XTextRange>& rH
     }
 }
 
-bool TableManager::isIgnore() const
+bool TableManager::isIgnore() const { return isRowEnd(); }
+
+sal_uInt32 TableManager::getGridBefore(sal_uInt32 nRow)
 {
-    return isRowEnd();
+    assert(isInTable());
+    if (nRow >= mTableDataStack.top()->getRowCount())
+        return 0;
+    return mTableDataStack.top()->getRow(nRow)->getGridBefore();
 }
 
-void TableManager::endOfRowAction()
+sal_uInt32 TableManager::getCurrentGridBefore()
 {
+    return mTableDataStack.top()->getCurrentRow()->getGridBefore();
 }
 
-void TableManager::endOfCellAction()
+void TableManager::setCurrentGridBefore(sal_uInt32 nSkipGrids)
 {
+    mTableDataStack.top()->getCurrentRow()->setGridBefore(nSkipGrids);
 }
+
+sal_uInt32 TableManager::getGridAfter(sal_uInt32 nRow)
+{
+    assert(isInTable());
+    if (nRow >= mTableDataStack.top()->getRowCount())
+        return 0;
+    return mTableDataStack.top()->getRow(nRow)->getGridAfter();
+}
+
+void TableManager::setCurrentGridAfter(sal_uInt32 nSkipGrids)
+{
+    assert(isInTable());
+    mTableDataStack.top()->getCurrentRow()->setGridAfter(nSkipGrids);
+}
+
+std::vector<sal_uInt32> TableManager::getCurrentGridSpans()
+{
+    return mTableDataStack.top()->getCurrentRow()->getGridSpans();
+}
+
+void TableManager::setCurrentGridSpan(sal_uInt32 nGridSpan, bool bFirstCell)
+{
+    mTableDataStack.top()->getCurrentRow()->setCurrentGridSpan(nGridSpan, bFirstCell);
+}
+
+sal_uInt32 TableManager::findColumn(const sal_uInt32 nRow, const sal_uInt32 nCell)
+{
+    RowData::Pointer_t pRow = mTableDataStack.top()->getRow(nRow);
+    if (!pRow || nCell < pRow->getGridBefore()
+        || nCell >= pRow->getCellCount() - pRow->getGridAfter())
+    {
+        return SAL_MAX_UINT32;
+    }
+
+    // The gridSpans provide a one-based index, so add up all the spans of the PREVIOUS columns,
+    // and that result will provide the first possible zero-based number for the desired column.
+    sal_uInt32 nColumn = 0;
+    for (sal_uInt32 n = 0; n < nCell; ++n)
+        nColumn += pRow->getGridSpan(n);
+    return nColumn;
+}
+
+sal_uInt32 TableManager::findColumnCell(const sal_uInt32 nRow, const sal_uInt32 nCol)
+{
+    RowData::Pointer_t pRow = mTableDataStack.top()->getRow(nRow);
+    if (!pRow || nCol < pRow->getGridBefore())
+        return SAL_MAX_UINT32;
+
+    sal_uInt32 nCell = 0;
+    sal_uInt32 nGrids = 0;
+    // The gridSpans give us a one-based index, but requested column is zero-based - so keep that in mind.
+    const sal_uInt32 nMaxCell = pRow->getCellCount() - pRow->getGridAfter() - 1;
+    for (const auto& rSpan : pRow->getGridSpans())
+    {
+        nGrids += rSpan;
+        if (nCol < nGrids)
+            return nCell;
+
+        ++nCell;
+        if (nCell > nMaxCell)
+            break;
+    }
+    return SAL_MAX_UINT32; // must be in gridAfter or invalid column request
+}
+
+void TableManager::endOfRowAction() {}
+
+void TableManager::endOfCellAction() {}
 
 void TableManager::insertTableProps(const TablePropertyMapPtr& pProps)
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().startElement("tablemanager.insertTableProps");
 #endif
 
-    if (getTableProps().get() && getTableProps() != pProps)
-        getTableProps()->InsertProps(pProps);
+    if (getTableProps() && getTableProps() != pProps)
+        getTableProps()->InsertProps(pProps.get());
     else
         mState.setTableProps(pProps);
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().endElement();
 #endif
 }
 
 void TableManager::insertRowProps(const TablePropertyMapPtr& pProps)
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().startElement("tablemanager.insertRowProps");
 #endif
 
-    if (getRowProps().get())
-        getRowProps()->InsertProps(pProps);
+    if (getRowProps())
+        getRowProps()->InsertProps(pProps.get());
     else
         mState.setRowProps(pProps);
 
-#ifdef DEBUG_WRITERFILTER
-    TagLogger::getInstance().endElement();
-#endif
-}
-
-void TableManager::cellPropsByCell(unsigned int i, const TablePropertyMapPtr& pProps)
-{
-#ifdef DEBUG_WRITERFILTER
-    TagLogger::getInstance().startElement("tablemanager.cellPropsByCell");
-#endif
-
-    mTableDataStack.top()->insertCellProperties(i, pProps);
-
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().endElement();
 #endif
 }
 
 void TableManager::cellProps(const TablePropertyMapPtr& pProps)
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().startElement("tablemanager.cellProps");
 #endif
 
-    if (getCellProps().get())
-        getCellProps()->InsertProps(pProps);
+    if (getCellProps())
+        getCellProps()->InsertProps(pProps.get());
     else
         mState.setCellProps(pProps);
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
+    TagLogger::getInstance().endElement();
+#endif
+}
+
+void TableManager::tableExceptionProps(const TablePropertyMapPtr& pProps)
+{
+#ifdef DBG_UTIL
+    TagLogger::getInstance().startElement("tablemanager.tableExceptionProps");
+#endif
+
+    if (getTableExceptionProps())
+        getTableExceptionProps()->InsertProps(pProps.get());
+    else
+        mState.setTableExceptionProps(pProps);
+
+#ifdef DBG_UTIL
     TagLogger::getInstance().endElement();
 #endif
 }
@@ -136,16 +214,13 @@ void TableManager::utext(const sal_uInt8* data, std::size_t len)
 void TableManager::text(const sal_uInt8* data, std::size_t len)
 {
     // optimization: cell/row end characters are the last characters in a run
-    if (len > 0)
-    {
-        if (data[len - 1] == 0x7)
-            handle0x7();
-    }
+    if (len > 0 && data[len - 1] == 0x7)
+        handle0x7();
 }
 
 void TableManager::handle0x7()
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().startElement("tablemanager.handle0x7");
 #endif
 
@@ -157,7 +232,7 @@ void TableManager::handle0x7()
     else
         endRow();
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().endElement();
 #endif
 }
@@ -167,37 +242,37 @@ bool TableManager::sprm(Sprm& rSprm)
     bool bRet = true;
     switch (rSprm.getId())
     {
-    case NS_ooxml::LN_tblDepth:
-    {
-        Value::Pointer_t pValue = rSprm.getValue();
+        case NS_ooxml::LN_tblDepth:
+        {
+            Value::Pointer_t pValue = rSprm.getValue();
 
-        cellDepth(pValue->getInt());
-    }
-    break;
-    case NS_ooxml::LN_inTbl:
-        inCell();
+            cellDepth(pValue->getInt());
+        }
         break;
-    case NS_ooxml::LN_tblCell:
-        endCell();
-        break;
-    case NS_ooxml::LN_tblRow:
-        endRow();
-        break;
-    default:
-        bRet = false;
+        case NS_ooxml::LN_inTbl:
+            inCell();
+            break;
+        case NS_ooxml::LN_tblCell:
+            endCell();
+            break;
+        case NS_ooxml::LN_tblRow:
+            endRow();
+            break;
+        default:
+            bRet = false;
     }
     return bRet;
 }
 
 void TableManager::closeCell(const css::uno::Reference<css::text::XTextRange>& rHandle)
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().startElement("tablemanager.closeCell");
     TagLogger::getInstance().chars(XTextRangeToString(rHandle));
     TagLogger::getInstance().endElement();
 #endif
 
-    if (mTableDataStack.size() > 0)
+    if (!mTableDataStack.empty())
     {
         TableData::Pointer_t pTableData = mTableDataStack.top();
 
@@ -210,11 +285,11 @@ void TableManager::closeCell(const css::uno::Reference<css::text::XTextRange>& r
 
 void TableManager::ensureOpenCell(const TablePropertyMapPtr& pProps)
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().startElement("tablemanager.ensureOpenCell");
 #endif
 
-    if (mTableDataStack.size() > 0)
+    if (!mTableDataStack.empty())
     {
         TableData::Pointer_t pTableData = mTableDataStack.top();
 
@@ -226,7 +301,7 @@ void TableManager::ensureOpenCell(const TablePropertyMapPtr& pProps)
                 pTableData->insertCellProperties(pProps);
         }
     }
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().endElement();
 #endif
 }
@@ -253,29 +328,27 @@ void TableManager::endParagraphGroup()
 
     mnTableDepth = mnTableDepthNew;
 
-    if (mnTableDepth > 0)
+    if (mnTableDepth <= 0)
+        return;
+
+    if (isRowEnd())
     {
-        TableData::Pointer_t pTableData = mTableDataStack.top();
-
-        if (isRowEnd())
-        {
-            endOfRowAction();
-            mTableDataStack.top()->endRow(getRowProps());
-            mState.resetRowProps();
-        }
-
-        else if (isInCell())
-        {
-            ensureOpenCell(getCellProps());
-
-            if (mState.isCellEnd())
-            {
-                endOfCellAction();
-                closeCell(getHandle());
-            }
-        }
-        mState.resetCellProps();
+        endOfRowAction();
+        mTableDataStack.top()->endRow(getRowProps());
+        mState.resetRowProps();
     }
+
+    else if (isInCell())
+    {
+        ensureOpenCell(getCellProps());
+
+        if (mState.isCellEnd())
+        {
+            endOfCellAction();
+            closeCell(getHandle());
+        }
+    }
+    mState.resetCellProps();
 }
 
 void TableManager::startParagraphGroup()
@@ -286,7 +359,7 @@ void TableManager::startParagraphGroup()
 
 void TableManager::resolveCurrentTable()
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().startElement("tablemanager.resolveCurrentTable");
 #endif
 
@@ -310,7 +383,8 @@ void TableManager::resolveCurrentTable()
 
                 for (unsigned int nCell = 0; nCell < nCells; ++nCell)
                 {
-                    mpTableDataHandler->startCell(pRowData->getCellStart(nCell), pRowData->getCellProperties(nCell));
+                    mpTableDataHandler->startCell(pRowData->getCellStart(nCell),
+                                                  pRowData->getCellProperties(nCell));
 
                     mpTableDataHandler->endCell(pRowData->getCellEnd(nCell));
                 }
@@ -320,15 +394,15 @@ void TableManager::resolveCurrentTable()
 
             mpTableDataHandler->endTable(mTableDataStack.size() - 1, m_bTableStartsAtCellStart);
         }
-        catch (css::uno::Exception const& e)
+        catch (css::uno::Exception const&)
         {
-            SAL_WARN("writerfilter", "resolving of current table failed with: " << e.Message);
+            TOOLS_WARN_EXCEPTION("writerfilter", "resolving of current table failed");
         }
     }
     mState.resetTableProps();
     clearData();
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().endElement();
 #endif
 }
@@ -344,10 +418,10 @@ void TableManager::endLevel()
     mState.endLevel();
     mTableDataStack.pop();
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TableData::Pointer_t pTableData;
 
-    if (mTableDataStack.size() > 0)
+    if (!mTableDataStack.empty())
         pTableData = mTableDataStack.top();
 
     TagLogger::getInstance().startElement("tablemanager.endLevel");
@@ -362,10 +436,10 @@ void TableManager::endLevel()
 
 void TableManager::startLevel()
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TableData::Pointer_t pTableData;
 
-    if (mTableDataStack.size() > 0)
+    if (!mTableDataStack.empty())
         pTableData = mTableDataStack.top();
 
     TagLogger::getInstance().startElement("tablemanager.startLevel");
@@ -384,10 +458,14 @@ void TableManager::startLevel()
     {
         for (unsigned int i = 0; i < mpUnfinishedRow->getCellCount(); ++i)
         {
-            pTableData2->addCell(mpUnfinishedRow->getCellStart(i), mpUnfinishedRow->getCellProperties(i));
+            pTableData2->addCell(mpUnfinishedRow->getCellStart(i),
+                                 mpUnfinishedRow->getCellProperties(i));
             pTableData2->endCell(mpUnfinishedRow->getCellEnd(i));
+            pTableData2->getCurrentRow()->setCurrentGridSpan(mpUnfinishedRow->getGridSpan(i));
         }
-        mpUnfinishedRow.reset();
+        pTableData2->getCurrentRow()->setGridBefore(mpUnfinishedRow->getGridBefore());
+        pTableData2->getCurrentRow()->setGridAfter(mpUnfinishedRow->getGridAfter());
+        mpUnfinishedRow.clear();
     }
 
     mTableDataStack.push(pTableData2);
@@ -404,7 +482,7 @@ bool TableManager::isInTable()
 
 void TableManager::handle(const css::uno::Reference<css::text::XTextRange>& rHandle)
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().startElement("tablemanager.handle");
     TagLogger::getInstance().chars(XTextRangeToString(rHandle));
     TagLogger::getInstance().endElement();
@@ -413,23 +491,62 @@ void TableManager::handle(const css::uno::Reference<css::text::XTextRange>& rHan
     setHandle(rHandle);
 }
 
-void TableManager::setHandler(const std::shared_ptr<DomainMapperTableHandler>& pTableDataHandler)
+void TableManager::setHandler(const tools::SvRef<DomainMapperTableHandler>& pTableDataHandler)
 {
     mpTableDataHandler = pTableDataHandler;
 }
 
 void TableManager::endRow()
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().element("tablemanager.endRow");
 #endif
+    TableData::Pointer_t pTableData = mTableDataStack.top();
+
+    // Add borderless w:gridBefore cell(s) to the row
+    sal_uInt32 nGridBefore = getCurrentGridBefore();
+    if (pTableData && nGridBefore > 0 && pTableData->getCurrentRow()->getCellCount() > 0)
+    {
+        const css::uno::Reference<css::text::XTextRange>& xRowStart
+            = pTableData->getCurrentRow()->getCellStart(0);
+        if (xRowStart.is())
+        {
+            try
+            {
+                // valid TextRange for table creation (not a nested table)?
+                xRowStart->getText()->createTextCursorByRange(xRowStart);
+
+                for (unsigned int i = 0; i < nGridBefore; ++i)
+                {
+                    css::table::BorderLine2 aBorderLine;
+                    aBorderLine.Color = 0;
+                    aBorderLine.InnerLineWidth = 0;
+                    aBorderLine.OuterLineWidth = 0;
+                    TablePropertyMapPtr pCellProperties(new TablePropertyMap);
+                    pCellProperties->Insert(PROP_TOP_BORDER, css::uno::makeAny(aBorderLine));
+                    pCellProperties->Insert(PROP_LEFT_BORDER, css::uno::makeAny(aBorderLine));
+                    pCellProperties->Insert(PROP_BOTTOM_BORDER, css::uno::makeAny(aBorderLine));
+                    pCellProperties->Insert(PROP_RIGHT_BORDER, css::uno::makeAny(aBorderLine));
+                    pTableData->getCurrentRow()->addCell(xRowStart, pCellProperties,
+                                                         /*bAddBefore=*/true);
+                }
+            }
+            catch (css::uno::Exception const&)
+            {
+                // don't add gridBefore cells in not valid TextRange
+                setCurrentGridBefore(0);
+                setCurrentGridSpan(getCurrentGridSpans().front() + nGridBefore,
+                                   /*bFirstCell=*/true);
+            }
+        }
+    }
 
     setRowEnd(true);
 }
 
 void TableManager::endCell()
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().element("tablemanager.endCell");
 #endif
 
@@ -438,7 +555,7 @@ void TableManager::endCell()
 
 void TableManager::inCell()
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().element("tablemanager.inCell");
 #endif
     setInCell(true);
@@ -449,7 +566,7 @@ void TableManager::inCell()
 
 void TableManager::cellDepth(sal_uInt32 nDepth)
 {
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     TagLogger::getInstance().startElement("tablemanager.cellDepth");
     TagLogger::getInstance().attribute("depth", nDepth);
     TagLogger::getInstance().endElement();
@@ -463,17 +580,24 @@ void TableManager::setTableStartsAtCellStart(bool bTableStartsAtCellStart)
     m_bTableStartsAtCellStart = bTableStartsAtCellStart;
 }
 
+void TableManager::setCellLastParaAfterAutospacing(bool bIsAfterAutospacing)
+{
+    m_bCellLastParaAfterAutospacing = bIsAfterAutospacing;
+}
+
 TableManager::TableManager()
-    : mnTableDepthNew(0), mnTableDepth(0), mbKeepUnfinishedRow(false),
-      m_bTableStartsAtCellStart(false)
+    : mnTableDepthNew(0)
+    , mnTableDepth(0)
+    , mbKeepUnfinishedRow(false)
+    , m_bTableStartsAtCellStart(false)
 {
     setRowEnd(false);
     setInCell(false);
     setCellEnd(false);
+    m_bCellLastParaAfterAutospacing = false;
 }
 
-}
-
+TableManager::~TableManager() = default;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

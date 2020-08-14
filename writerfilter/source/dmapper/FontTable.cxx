@@ -17,19 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <FontTable.hxx>
+#include "FontTable.hxx"
 #include <ooxml/resourceids.hxx>
 #include <vector>
-#include <osl/file.hxx>
+#include <sal/log.hxx>
 #include <rtl/tencinfo.h>
 #include <vcl/embeddedfontshelper.hxx>
 #include <unotools/fontdefs.hxx>
-#include <com/sun/star/awt/FontPitch.hpp>
 
 using namespace com::sun::star;
 
-namespace writerfilter {
-namespace dmapper
+namespace writerfilter::dmapper
 {
 
 struct FontTable_Impl
@@ -92,13 +90,7 @@ void FontTable::lcl_attribute(Id Name, Value & val)
                 m_pImpl->pCurrentEntry->nTextEncoding = RTL_TEXTENCODING_SYMBOL;
             break;
         }
-        default:
-        {
-            //----> debug
-            int nVal = val.getInt();
-            ++nVal;
-            //<---- debug
-        }
+        default: ;
     }
 }
 
@@ -121,7 +113,7 @@ void FontTable::lcl_sprm(Sprm& rSprm)
         case NS_ooxml::LN_CT_Font_embedBoldItalic:
         {
             writerfilter::Reference< Properties >::Pointer_t pProperties = rSprm.getProps();
-            if( pProperties.get( ))
+            if( pProperties )
             {
                 EmbeddedFontHandler handler( m_pImpl->pCurrentEntry->sFontName,
                     nSprmId == NS_ooxml::LN_CT_Font_embedRegular ? ""
@@ -151,19 +143,19 @@ void FontTable::lcl_sprm(Sprm& rSprm)
 void FontTable::resolveSprm(Sprm & r_Sprm)
 {
     writerfilter::Reference<Properties>::Pointer_t pProperties = r_Sprm.getProps();
-    if( pProperties.get())
+    if( pProperties )
         pProperties->resolve(*this);
 }
 
-void FontTable::lcl_entry(int /*pos*/, writerfilter::Reference<Properties>::Pointer_t ref)
+void FontTable::lcl_entry(writerfilter::Reference<Properties>::Pointer_t ref)
 {
     //create a new font entry
     SAL_WARN_IF( m_pImpl->pCurrentEntry, "writerfilter.dmapper", "current entry has to be NULL here" );
-    m_pImpl->pCurrentEntry.reset(new FontEntry);
+    m_pImpl->pCurrentEntry = new FontEntry;
     ref->resolve(*this);
     //append it to the table
     m_pImpl->aFontEntries.push_back( m_pImpl->pCurrentEntry );
-    m_pImpl->pCurrentEntry.reset();
+    m_pImpl->pCurrentEntry.clear();
 }
 
 void FontTable::lcl_startSectionGroup()
@@ -210,10 +202,6 @@ void FontTable::lcl_substream(Id, ::writerfilter::Reference<Stream>::Pointer_t)
 {
 }
 
-void FontTable::lcl_info(const std::string& )
-{
-}
-
 void FontTable::lcl_startShape(uno::Reference<drawing::XShape> const&)
 {
 }
@@ -222,7 +210,7 @@ void FontTable::lcl_endShape( )
 {
 }
 
-const FontEntry::Pointer_t FontTable::getFontEntry(sal_uInt32 nIndex)
+FontEntry::Pointer_t FontTable::getFontEntry(sal_uInt32 nIndex)
 {
     return (m_pImpl->aFontEntries.size() > nIndex)
         ?   m_pImpl->aFontEntries[nIndex]
@@ -277,7 +265,6 @@ void EmbeddedFontHandler::lcl_attribute( Id name, Value& val )
             fontKey = sValue;
             break;
         case NS_ooxml::LN_CT_Rel_id:
-            id = sValue;
             break;
         case NS_ooxml::LN_CT_FontRel_subsetted:
             break; // TODO? Let's just ignore this for now and hope
@@ -295,7 +282,6 @@ void EmbeddedFontHandler::lcl_sprm( Sprm& )
 }
 
 
-}//namespace dmapper
-}//namespace writerfilter
+}//namespace writerfilter::dmapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

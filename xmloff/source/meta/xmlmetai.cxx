@@ -17,81 +17,111 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <string_view>
+
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/xml/dom/SAXDocumentBuilder.hpp>
 #include <com/sun/star/xml/dom/XSAXDocumentBuilder2.hpp>
 #include <com/sun/star/xml/xpath/XPathAPI.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
+#include <com/sun/star/document/XDocumentProperties.hpp>
 #include <comphelper/processfactory.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <rtl/character.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <xmloff/xmlmetai.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 
 using namespace com::sun::star;
 using namespace ::xmloff::token;
+
+namespace {
 
 /// builds a DOM tree from SAX events, by forwarding to SAXDocumentBuilder
 class XMLDocumentBuilderContext : public SvXMLImportContext
 {
 private:
     css::uno::Reference< css::xml::dom::XSAXDocumentBuilder2> mxDocBuilder;
+    SvXMLMetaDocumentContext *const m_pTopLevel;
 
 public:
-    XMLDocumentBuilderContext(SvXMLImport& rImport, sal_uInt16 nPrfx,
-        const OUString& rLName,
-        const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
-        const css::uno::Reference< css::xml::dom::XSAXDocumentBuilder2>& rDocBuilder);
+    XMLDocumentBuilderContext(SvXMLImport& rImport, sal_Int32 nElement,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList>& xAttrList,
+        const css::uno::Reference<css::xml::dom::XSAXDocumentBuilder2>& rDocBuilder,
+        SvXMLMetaDocumentContext * pTopLevel);
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList ) override;
+    virtual void SAL_CALL characters( const OUString& aChars ) override;
 
-    virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
+    virtual void SAL_CALL startFastElement( sal_Int32 nElement,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
-    virtual void Characters( const OUString& rChars ) override;
+    virtual void SAL_CALL endFastElement( sal_Int32 nElement ) override;
 
-    virtual void EndElement() override;
+    virtual void SAL_CALL startUnknownElement( const OUString& Namespace, const OUString& Name,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& Attribs ) override;
+
+    virtual void SAL_CALL endUnknownElement( const OUString& Namespace, const OUString& Name ) override;
+
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList ) override;
+
 };
 
+}
+
 XMLDocumentBuilderContext::XMLDocumentBuilderContext(SvXMLImport& rImport,
-        sal_uInt16 nPrfx, const OUString& rLName,
-        const uno::Reference<xml::sax::XAttributeList>&,
-        const uno::Reference<xml::dom::XSAXDocumentBuilder2>& rDocBuilder) :
-    SvXMLImportContext( rImport, nPrfx, rLName ),
-    mxDocBuilder(rDocBuilder)
+        sal_Int32 /*nElement*/, const uno::Reference<xml::sax::XFastAttributeList>&,
+        const uno::Reference<xml::dom::XSAXDocumentBuilder2>& rDocBuilder,
+        SvXMLMetaDocumentContext *const pTopLevel)
+    : SvXMLImportContext(rImport)
+    , mxDocBuilder(rDocBuilder)
+    , m_pTopLevel(pTopLevel)
 {
 }
 
-SvXMLImportContext *
-XMLDocumentBuilderContext::CreateChildContext( sal_uInt16 nPrefix,
-    const OUString& rLocalName,
-    const uno::Reference< xml::sax::XAttributeList>& rAttrs)
+void SAL_CALL XMLDocumentBuilderContext::startFastElement( sal_Int32 nElement,
+        const uno::Reference< xml::sax::XFastAttributeList >& xAttribs )
 {
-    return new XMLDocumentBuilderContext(
-                GetImport(), nPrefix, rLocalName, rAttrs, mxDocBuilder);
+    mxDocBuilder->startFastElement(nElement, xAttribs);
 }
 
-void XMLDocumentBuilderContext::StartElement(
-    const uno::Reference< xml::sax::XAttributeList >& xAttrList )
+void SAL_CALL XMLDocumentBuilderContext::endFastElement( sal_Int32 nElement )
 {
-    mxDocBuilder->startElement(
-      GetImport().GetNamespaceMap().GetQNameByKey(GetPrefix(), GetLocalName()),
-      xAttrList);
+    mxDocBuilder->endFastElement(nElement);
+    if (m_pTopLevel)
+    {
+        // call this here because in the flat ODF case the top-level
+        // endFastElement is called only at the very end of the document,
+        // which is too late to init BuildId
+        m_pTopLevel->FinishMetaElement();
+    }
 }
 
-void XMLDocumentBuilderContext::Characters( const OUString& rChars )
+void SAL_CALL XMLDocumentBuilderContext::startUnknownElement( const OUString& rNamespace,
+        const OUString& rName, const uno::Reference< xml::sax::XFastAttributeList >& xAttrList )
+{
+    mxDocBuilder->startUnknownElement(rNamespace, rName, xAttrList);
+}
+
+void SAL_CALL XMLDocumentBuilderContext::endUnknownElement( const OUString& rNamespace, const OUString& rName )
+{
+    mxDocBuilder->endUnknownElement(rNamespace, rName);
+}
+
+void SAL_CALL XMLDocumentBuilderContext::characters( const OUString& rChars )
 {
     mxDocBuilder->characters(rChars);
 }
 
-void XMLDocumentBuilderContext::EndElement()
+uno::Reference< xml::sax::XFastContextHandler > SAL_CALL XMLDocumentBuilderContext::createFastChildContext(
+    sal_Int32 nElement, const uno::Reference< xml::sax::XFastAttributeList >& xAttrList )
 {
-    mxDocBuilder->endElement(
-      GetImport().GetNamespaceMap().GetQNameByKey(GetPrefix(), GetLocalName()));
+    return new XMLDocumentBuilderContext(GetImport(), nElement, xAttrList, mxDocBuilder, nullptr);
 }
 
 static void
@@ -115,11 +145,12 @@ lcl_initDocumentProperties(SvXMLImport & rImport,
             xDocProps->getGenerator(), rImport.getImportInfo());
     } catch (const uno::RuntimeException&) {
         throw;
-    } catch (const uno::Exception& e) {
+    } catch (const uno::Exception&) {
+        css::uno::Any anyEx = cppu::getCaughtException();
         throw lang::WrappedTargetRuntimeException(
             "SvXMLMetaDocumentContext::initDocumentProperties: "
             "properties init exception",
-            rImport, makeAny(e));
+            rImport, anyEx);
     }
 }
 
@@ -142,24 +173,12 @@ lcl_initGenerator(SvXMLImport & rImport,
         SvXMLMetaDocumentContext::setBuildId(value, rImport.getImportInfo());
     } catch (const uno::RuntimeException&) {
         throw;
-    } catch (const uno::Exception& e) {
+    } catch (const uno::Exception&) {
+        css::uno::Any anyEx = cppu::getCaughtException();
         throw lang::WrappedTargetRuntimeException(
             "SvXMLMetaDocumentContext::initGenerator: exception",
-            rImport, makeAny(e));
+            rImport, anyEx);
     }
-}
-
-SvXMLMetaDocumentContext::SvXMLMetaDocumentContext(SvXMLImport& rImport,
-            sal_uInt16 nPrfx, const OUString& rLName,
-            const uno::Reference<document::XDocumentProperties>& xDocProps) :
-    SvXMLImportContext( rImport, nPrfx, rLName ),
-    mxDocProps(xDocProps),
-    mxDocBuilder(
-        xml::dom::SAXDocumentBuilder::create(
-            comphelper::getProcessComponentContext()))
-{
-// #i103539#: must always read meta.xml for generator, xDocProps unwanted then
-//    OSL_ENSURE(xDocProps.is(), "SvXMLMetaDocumentContext: no document props");
 }
 
 SvXMLMetaDocumentContext::SvXMLMetaDocumentContext(SvXMLImport& rImport,
@@ -178,39 +197,22 @@ SvXMLMetaDocumentContext::~SvXMLMetaDocumentContext()
 {
 }
 
-SvXMLImportContext *SvXMLMetaDocumentContext::CreateChildContext(
-             sal_uInt16 nPrefix, const OUString& rLocalName,
-             const uno::Reference<xml::sax::XAttributeList>& rAttrs)
-{
-    if (  (XML_NAMESPACE_OFFICE == nPrefix) &&
-         IsXMLToken(rLocalName, XML_META) )
-    {
-        return new XMLDocumentBuilderContext(
-                GetImport(), nPrefix, rLocalName, rAttrs, mxDocBuilder);
-    }
-    else
-    {
-        return new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
-    }
-}
-
-void SvXMLMetaDocumentContext::StartElement(
-    const uno::Reference< xml::sax::XAttributeList >& xAttrList )
+void SAL_CALL SvXMLMetaDocumentContext::startFastElement(sal_Int32 /*nElement*/,
+            const uno::Reference< xml::sax::XFastAttributeList >& xAttrList )
 {
     mxDocBuilder->startDocument();
     // hardcode office:document-meta (necessary in case of flat file ODF)
-    mxDocBuilder->startElement(
-        GetImport().GetNamespaceMap().GetQNameByKey(GetPrefix(),
-            GetXMLToken(XML_DOCUMENT_META)), xAttrList);
-
+    mxDocBuilder->startFastElement(XML_ELEMENT(OFFICE, XML_DOCUMENT_META), xAttrList);
 }
 
-void SvXMLMetaDocumentContext::EndElement()
+void SAL_CALL SvXMLMetaDocumentContext::endFastElement(sal_Int32 /*nElement*/)
+{
+}
+
+void SvXMLMetaDocumentContext::FinishMetaElement()
 {
     // hardcode office:document-meta (necessary in case of flat file ODF)
-    mxDocBuilder->endElement(
-        GetImport().GetNamespaceMap().GetQNameByKey(GetPrefix(),
-            GetXMLToken(XML_DOCUMENT_META)));
+    mxDocBuilder->endFastElement(XML_ELEMENT(OFFICE, XML_DOCUMENT_META));
     mxDocBuilder->endDocument();
     if (mxDocProps.is())
     {
@@ -220,6 +222,19 @@ void SvXMLMetaDocumentContext::EndElement()
     {
         lcl_initGenerator(GetImport(), mxDocBuilder);
     }
+}
+
+void SAL_CALL SvXMLMetaDocumentContext::characters( const OUString& /*rChars*/ )
+{
+}
+
+uno::Reference< xml::sax::XFastContextHandler > SAL_CALL SvXMLMetaDocumentContext::createFastChildContext(
+    sal_Int32 nElement, const uno::Reference< xml::sax::XFastAttributeList >& xAttrList )
+{
+    if ( nElement == XML_ELEMENT(OFFICE, XML_META) )
+        return new XMLDocumentBuilderContext(
+                GetImport(), nElement, xAttrList, mxDocBuilder, this);
+    return nullptr;
 }
 
 void SvXMLMetaDocumentContext::setBuildId(OUString const& i_rBuildId, const uno::Reference<beans::XPropertySet>& xImportInfo )
@@ -244,8 +259,8 @@ void SvXMLMetaDocumentContext::setBuildId(OUString const& i_rBuildId, const uno:
                 if ( nBegin != -1 )
                 {
                     sBuffer.append( '$' );
-                    sBuffer.append( i_rBuildId.copy(
-                        nBegin + sBuildCompare.getLength() ) );
+                    sBuffer.append( std::u16string_view(i_rBuildId).substr(
+                        nBegin + sBuildCompare.getLength()) );
                     sBuildId = sBuffer.makeStringAndClear();
                 }
             }
@@ -256,6 +271,8 @@ void SvXMLMetaDocumentContext::setBuildId(OUString const& i_rBuildId, const uno:
     {
         if (    i_rBuildId.startsWith("StarOffice 7")
             ||  i_rBuildId.startsWith("StarSuite 7")
+            ||  i_rBuildId.startsWith("StarOffice 6")
+            ||  i_rBuildId.startsWith("StarSuite 6")
             ||  i_rBuildId.startsWith("OpenOffice.org 1"))
         {
             sBuildId = "645$8687";
@@ -266,30 +283,34 @@ void SvXMLMetaDocumentContext::setBuildId(OUString const& i_rBuildId, const uno:
         }
     }
 
-    OUString rest;
-    if (i_rBuildId.startsWith("LibreOffice/", &rest) ||
-        i_rBuildId.startsWith("LibreOfficeDev/", &rest) ||
-        i_rBuildId.startsWith("LOdev/", &rest))
+    // "LibreOffice_project" was hard-coded since LO 3.3.0
+    // see utl::DocInfoHelper::GetGeneratorString()
+    if (i_rBuildId.indexOf("LibreOffice_project/") != -1)
     {
         OUStringBuffer sNumber;
-        for (sal_Int32 i = 0; i < rest.getLength(); ++i)
+        auto const firstSlash = i_rBuildId.indexOf("/");
+        assert(firstSlash != -1);
+        for (sal_Int32 i = firstSlash + 1; i < i_rBuildId.getLength(); ++i)
         {
-            if (rtl::isAsciiDigit(rest[i]))
+            if (rtl::isAsciiDigit(i_rBuildId[i]))
             {
-                sNumber.append(rest[i]);
+                sNumber.append(i_rBuildId[i]);
             }
-            else if ('.' != rest[i])
+            else if ('.' != i_rBuildId[i])
             {
                 break;
             }
         }
         if (!sNumber.isEmpty())
         {
-            sBuildId += (";" + sNumber.makeStringAndClear());
+            sBuildId += ";" + sNumber.makeStringAndClear();
         }
     }
 
-    if ( !sBuildId.isEmpty() ) try
+    if ( sBuildId.isEmpty() )
+        return;
+
+    try
     {
         if( xImportInfo.is() )
         {

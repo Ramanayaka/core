@@ -18,18 +18,17 @@
  */
 
 #include "AreaChartType.hxx"
-#include "macros.hxx"
-#include "servicenames_charttypes.hxx"
+#include <servicenames_charttypes.hxx>
 #include <cppuhelper/supportsservice.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
 namespace chart
 {
 
-AreaChartType::AreaChartType(
-    const uno::Reference< uno::XComponentContext > & xContext ) :
-        ChartType( xContext )
+AreaChartType::AreaChartType()
 {}
 
 AreaChartType::AreaChartType( const AreaChartType & rOther ) :
@@ -48,12 +47,12 @@ uno::Reference< util::XCloneable > SAL_CALL AreaChartType::createClone()
 // ____ XChartType ____
 OUString SAL_CALL AreaChartType::getChartType()
 {
-    return OUString(CHART2_SERVICE_NAME_CHARTTYPE_AREA);
+    return CHART2_SERVICE_NAME_CHARTTYPE_AREA;
 }
 
 OUString SAL_CALL AreaChartType::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.AreaChartType");
+    return "com.sun.star.comp.chart.AreaChartType";
 }
 
 sal_Bool SAL_CALL AreaChartType::supportsService( const OUString& rServiceName )
@@ -70,11 +69,11 @@ css::uno::Sequence< OUString > SAL_CALL AreaChartType::getSupportedServiceNames(
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart_AreaChartType_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart_AreaChartType_get_implementation(css::uno::XComponentContext * /*context*/,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::AreaChartType(context));
+    return cppu::acquire(new ::chart::AreaChartType);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

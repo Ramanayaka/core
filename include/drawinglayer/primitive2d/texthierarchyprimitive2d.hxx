@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_TEXTHIERARCHYPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_TEXTHIERARCHYPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
@@ -26,10 +25,8 @@
 #include <rtl/ustring.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** TextHierarchyLinePrimitive2D class
 
             Text format hierarchy helper class. It decomposes to its
@@ -39,7 +36,7 @@ namespace drawinglayer
 
             This primitive encapsulates text lines.
          */
-        class DRAWINGLAYER_DLLPUBLIC TextHierarchyLinePrimitive2D : public GroupPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC TextHierarchyLinePrimitive2D final : public GroupPrimitive2D
         {
         private:
         public:
@@ -47,21 +44,14 @@ namespace drawinglayer
             explicit TextHierarchyLinePrimitive2D(const Primitive2DContainer& rChildren);
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
 
-
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         /** TextHierarchyBulletPrimitive2D class
 
             This primitive encapsulates text bullets.
          */
-        class DRAWINGLAYER_DLLPUBLIC TextHierarchyBulletPrimitive2D : public GroupPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC TextHierarchyBulletPrimitive2D final : public GroupPrimitive2D
         {
         private:
         public:
@@ -69,43 +59,41 @@ namespace drawinglayer
             explicit TextHierarchyBulletPrimitive2D(const Primitive2DContainer& rChildren);
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
 
-
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         /** TextHierarchyParagraphPrimitive2D class
 
             This primitive encapsulates text paragraphs.
          */
-        class DRAWINGLAYER_DLLPUBLIC TextHierarchyParagraphPrimitive2D : public GroupPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC TextHierarchyParagraphPrimitive2D final : public GroupPrimitive2D
         {
         private:
+            // outline level of the encapsulated paragraph data.
+            // -1 means no level, >= 0 is the level
+            sal_Int16           mnOutlineLevel;
+
         public:
             /// constructor
-            explicit TextHierarchyParagraphPrimitive2D(const Primitive2DContainer& rChildren);
+            explicit TextHierarchyParagraphPrimitive2D(
+                const Primitive2DContainer& rChildren,
+                sal_Int16 nOutlineLevel = -1);
+
+            /// data read access
+            sal_Int16 getOutlineLevel() const { return mnOutlineLevel; }
+
+            /// compare operator
+            virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
 
-
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         /** TextHierarchyBlockPrimitive2D class
 
             This primitive encapsulates text blocks.
          */
-        class DRAWINGLAYER_DLLPUBLIC TextHierarchyBlockPrimitive2D : public GroupPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC TextHierarchyBlockPrimitive2D final : public GroupPrimitive2D
         {
         private:
         public:
@@ -113,16 +101,9 @@ namespace drawinglayer
             explicit TextHierarchyBlockPrimitive2D(const Primitive2DContainer& rChildren);
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
 
-
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         /** FieldType definition */
         enum FieldType
         {
@@ -145,37 +126,33 @@ namespace drawinglayer
             type. Also added is a String which is type-dependent. E.g. for URL
             fields, it contains the URL.
          */
-        class DRAWINGLAYER_DLLPUBLIC TextHierarchyFieldPrimitive2D : public GroupPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC TextHierarchyFieldPrimitive2D final : public GroupPrimitive2D
         {
         private:
+            /// field type definition
             FieldType                               meType;
-            OUString                           maString;
+
+            /// field data as name/value pairs (dependent of field type definition)
+            std::vector< std::pair< OUString, OUString>>    meNameValue;
 
         public:
             /// constructor
             TextHierarchyFieldPrimitive2D(
                 const Primitive2DContainer& rChildren,
                 const FieldType& rFieldType,
-                const OUString& rString);
+                const std::vector< std::pair< OUString, OUString>>* pNameValue = nullptr);
 
             /// data read access
             FieldType getType() const { return meType; }
-            const OUString& getString() const { return maString; }
+            OUString getValue(const OUString& rName) const;
 
             /// compare operator
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
 
-
-namespace drawinglayer
-{
-    namespace primitive2d
-    {
         /** TextHierarchyEditPrimitive2D class
 
             #i97628#
@@ -186,7 +163,7 @@ namespace drawinglayer
             content. To suppress, this primitive needs to be parsed by
             the renderer without taking any action.
          */
-        class DRAWINGLAYER_DLLPUBLIC TextHierarchyEditPrimitive2D : public GroupPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC TextHierarchyEditPrimitive2D final : public GroupPrimitive2D
         {
         private:
         public:
@@ -194,12 +171,9 @@ namespace drawinglayer
             explicit TextHierarchyEditPrimitive2D(const Primitive2DContainer& rChildren);
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_TEXTHIERARCHYPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

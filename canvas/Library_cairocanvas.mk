@@ -19,6 +19,11 @@
 
 $(eval $(call gb_Library_Library,cairocanvas))
 
+$(eval $(call gb_Library_set_include,cairocanvas,\
+    $$(INCLUDE) \
+    -I$(SRCDIR)/canvas/inc \
+))
+
 $(eval $(call gb_Library_set_componentfile,cairocanvas,canvas/source/cairo/cairocanvas))
 
 $(eval $(call gb_Library_use_sdk_api,cairocanvas))
@@ -53,7 +58,6 @@ $(eval $(call gb_Library_add_exception_objects,cairocanvas,\
 	canvas/source/cairo/cairo_canvashelper \
 	canvas/source/cairo/cairo_canvashelper_text \
 	canvas/source/cairo/cairo_devicehelper \
-	canvas/source/cairo/cairo_services \
 	canvas/source/cairo/cairo_spritecanvas \
 	canvas/source/cairo/cairo_spritecanvashelper \
 	canvas/source/cairo/cairo_spritedevicehelper \

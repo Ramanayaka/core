@@ -28,23 +28,22 @@
 namespace dbaccess
 {
     class ORowSetBase;
-    typedef struct
+    struct ORowSetCacheIterator_Helper
     {
         ORowSetMatrix::iterator     aIterator;
-        css::uno::Any               aBookmark;
         ORowSetBase*                pRowSet;
-    } ORowSetCacheIterator_Helper;
+    };
 
     typedef std::map<sal_Int32, ORowSetCacheIterator_Helper> ORowSetCacheMap;
 
     class ORowSetCache;
-    class ORowSetCacheIterator
+    class ORowSetCacheIterator final
     {
         friend class ORowSetCache;
         ORowSetCacheMap::iterator   m_aIter;
         ORowSetCache*               m_pCache;
         ORowSetBase*                m_pRowSet;
-    protected:
+
         ORowSetCacheIterator(const ORowSetCacheMap::iterator& _rIter,ORowSetCache* _pCache,ORowSetBase* _pRowSet)
             : m_aIter(_rIter)
             ,m_pCache(_pCache)
@@ -66,8 +65,6 @@ namespace dbaccess
 
         bool operator <(const ORowSetMatrix::iterator& _rRH) const;
         bool operator !=(const ORowSetMatrix::iterator& _rRH) const;
-
-        void setBookmark(const css::uno::Any&  _rBookmark);
 
         const ORowSetCacheMap::iterator& getIter() const { return m_aIter; }
     };

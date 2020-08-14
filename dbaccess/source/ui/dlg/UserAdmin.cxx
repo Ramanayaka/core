@@ -18,24 +18,25 @@
  */
 
 #include "UserAdmin.hxx"
-#include "UITools.hxx"
-#include "dbu_dlg.hrc"
-#include <comphelper/types.hxx>
-#include <comphelper/processfactory.hxx>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
+#include <com/sun/star/sdbc/XDriver.hpp>
 #include <com/sun/star/sdbcx/XDataDefinitionSupplier.hpp>
 #include <com/sun/star/sdbcx/XUsersSupplier.hpp>
 #include <com/sun/star/sdbcx/XDrop.hpp>
 #include <ucbhelper/interactionrequest.hxx>
-#include <ucbhelper/simpleauthenticationrequest.hxx>
 #include <com/sun/star/sdbcx/XDataDescriptorFactory.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sdbcx/XUser.hpp>
 #include <com/sun/star/sdbcx/XAppend.hpp>
-#include "dbustrings.hrc"
-#include "dbadmin.hxx"
-#include "moduledbu.hxx"
-#include <vcl/layout.hxx>
+#include <IItemSetHelper.hxx>
+#include <strings.hrc>
+#include <strings.hxx>
+#include <core_resource.hxx>
+#include <connectivity/dbexception.hxx>
+#include <connectivity/dbtools.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <sfx2/passwd.hxx>
 
 using namespace ::com::sun::star::container;
@@ -48,115 +49,99 @@ using namespace dbaui;
 using namespace ucbhelper;
 using namespace comphelper;
 
-class OPasswordDialog : public ModalDialog
-{
-    VclPtr<VclFrame> m_pUser;
-    VclPtr<Edit>     m_pEDOldPassword;
-    VclPtr<Edit>     m_pEDPassword;
-    VclPtr<Edit>     m_pEDPasswordRepeat;
-    VclPtr<OKButton> m_pOKBtn;
+namespace {
 
-    DECL_LINK( OKHdl_Impl, Button*, void );
-    DECL_LINK( ModifiedHdl, Edit&, void );
+class OPasswordDialog : public weld::GenericDialogController
+{
+    std::unique_ptr<weld::Frame> m_xUser;
+    std::unique_ptr<weld::Entry> m_xEDOldPassword;
+    std::unique_ptr<weld::Entry> m_xEDPassword;
+    std::unique_ptr<weld::Entry> m_xEDPasswordRepeat;
+    std::unique_ptr<weld::Button> m_xOKBtn;
+
+    DECL_LINK(OKHdl_Impl, weld::Button&, void);
+    DECL_LINK(ModifiedHdl, weld::Entry&, void);
 
 public:
-    OPasswordDialog( vcl::Window* pParent,const OUString& _sUserName);
-    virtual ~OPasswordDialog() override { disposeOnce(); }
-    virtual void dispose() override
-    {
-        m_pUser.clear();
-        m_pEDOldPassword.clear();
-        m_pEDPassword.clear();
-        m_pEDPasswordRepeat.clear();
-        m_pOKBtn.clear();
-        ModalDialog::dispose();
-    }
+    OPasswordDialog(weld::Window* pParent,const OUString& rUserName);
 
-    OUString        GetOldPassword() const { return m_pEDOldPassword->GetText(); }
-    OUString        GetNewPassword() const { return m_pEDPassword->GetText(); }
+    OUString        GetOldPassword() const { return m_xEDOldPassword->get_text(); }
+    OUString        GetNewPassword() const { return m_xEDPassword->get_text(); }
 };
 
-OPasswordDialog::OPasswordDialog(vcl::Window* _pParent,const OUString& _sUserName)
-    : ModalDialog(_pParent, "PasswordDialog", "dbaccess/ui/password.ui")
-{
-    get(m_pUser, "userframe");
-    get(m_pEDOldPassword, "oldpassword");
-    get(m_pEDPassword, "newpassword");
-    get(m_pEDPasswordRepeat, "confirmpassword");
-    get(m_pOKBtn, "ok");
-
-    OUString sUser = m_pUser->get_label();
-    sUser = sUser.replaceFirst("$name$:  $",_sUserName);
-    m_pUser->set_label(sUser);
-    m_pOKBtn->Disable();
-
-    m_pOKBtn->SetClickHdl( LINK( this, OPasswordDialog, OKHdl_Impl ) );
-    m_pEDOldPassword->SetModifyHdl( LINK( this, OPasswordDialog, ModifiedHdl ) );
 }
 
-IMPL_LINK_NOARG(OPasswordDialog, OKHdl_Impl, Button*, void)
+OPasswordDialog::OPasswordDialog(weld::Window* _pParent,const OUString& rUserName)
+    : GenericDialogController(_pParent, "dbaccess/ui/password.ui", "PasswordDialog")
+    , m_xUser(m_xBuilder->weld_frame("userframe"))
+    , m_xEDOldPassword(m_xBuilder->weld_entry("oldpassword"))
+    , m_xEDPassword(m_xBuilder->weld_entry("newpassword"))
+    , m_xEDPasswordRepeat(m_xBuilder->weld_entry("confirmpassword"))
+    , m_xOKBtn(m_xBuilder->weld_button("ok"))
 {
-    if( m_pEDPassword->GetText() == m_pEDPasswordRepeat->GetText() )
-        EndDialog( RET_OK );
+    OUString sUser = m_xUser->get_label();
+    sUser = sUser.replaceFirst("$name$:  $", rUserName);
+    m_xUser->set_label(sUser);
+    m_xOKBtn->set_sensitive(false);
+
+    m_xOKBtn->connect_clicked( LINK( this, OPasswordDialog, OKHdl_Impl ) );
+    m_xEDOldPassword->connect_changed( LINK( this, OPasswordDialog, ModifiedHdl ) );
+}
+
+IMPL_LINK_NOARG(OPasswordDialog, OKHdl_Impl, weld::Button&, void)
+{
+    if (m_xEDPassword->get_text() == m_xEDPasswordRepeat->get_text())
+        m_xDialog->response(RET_OK);
     else
     {
-        OUString aErrorMsg( ModuleRes( STR_ERROR_PASSWORDS_NOT_IDENTICAL));
-        ScopedVclPtrInstance< MessageDialog > aErrorBox(this, aErrorMsg);
-        aErrorBox->Execute();
-        m_pEDPassword->SetText( OUString() );
-        m_pEDPasswordRepeat->SetText( OUString() );
-        m_pEDPassword->GrabFocus();
+        OUString aErrorMsg( DBA_RES( STR_ERROR_PASSWORDS_NOT_IDENTICAL));
+        std::unique_ptr<weld::MessageDialog> xErrorBox(Application::CreateMessageDialog(m_xDialog.get(),
+                                                       VclMessageType::Warning, VclButtonsType::Ok,
+                                                       aErrorMsg));
+        xErrorBox->run();
+        m_xEDPassword->set_text(OUString());
+        m_xEDPasswordRepeat->set_text(OUString());
+        m_xEDPassword->grab_focus();
     }
 }
 
-IMPL_LINK( OPasswordDialog, ModifiedHdl, Edit&, rEdit, void )
+IMPL_LINK(OPasswordDialog, ModifiedHdl, weld::Entry&, rEdit, void)
 {
-    m_pOKBtn->Enable(!rEdit.GetText().isEmpty());
+    m_xOKBtn->set_sensitive(!rEdit.get_text().isEmpty());
 }
 
 // OUserAdmin
-OUserAdmin::OUserAdmin(vcl::Window* pParent,const SfxItemSet& _rAttrSet)
-    : OGenericAdministrationPage( pParent, "UserAdminPage", "dbaccess/ui/useradminpage.ui", _rAttrSet)
-    , m_pUSER(nullptr)
-    , m_pNEWUSER(nullptr)
-    , m_pCHANGEPWD(nullptr)
-    , m_pDELETEUSER(nullptr)
-    ,m_TableCtrl(VclPtr<OTableGrantControl>::Create(get<VclAlignment>("table"), WB_TABSTOP))
+OUserAdmin::OUserAdmin(weld::Container* pPage, weld::DialogController* pController,const SfxItemSet& _rAttrSet)
+    : OGenericAdministrationPage(pPage, pController, "dbaccess/ui/useradminpage.ui", "UserAdminPage", _rAttrSet)
+    , m_xUSER(m_xBuilder->weld_combo_box("user"))
+    , m_xNEWUSER(m_xBuilder->weld_button("add"))
+    , m_xCHANGEPWD(m_xBuilder->weld_button("changepass"))
+    , m_xDELETEUSER(m_xBuilder->weld_button("delete"))
+    , m_xTable(m_xBuilder->weld_container("table"))
+    , m_xTableCtrlParent(m_xTable->CreateChildFrame())
+    , m_xTableCtrl(VclPtr<OTableGrantControl>::Create(m_xTableCtrlParent))
 {
-    m_TableCtrl->Show();
-    get(m_pUSER, "user");
-    get(m_pNEWUSER, "add");
-    get(m_pCHANGEPWD, "changepass");
-    get(m_pDELETEUSER, "delete");
+    m_xTableCtrl->Show();
 
-    m_pUSER->SetSelectHdl(LINK(this, OUserAdmin, ListDblClickHdl));
-
-    m_pNEWUSER->SetClickHdl(LINK(this, OUserAdmin, UserHdl));
-    m_pCHANGEPWD->SetClickHdl(LINK(this, OUserAdmin, UserHdl));
-    m_pDELETEUSER->SetClickHdl(LINK(this, OUserAdmin, UserHdl));
+    m_xUSER->connect_changed(LINK(this, OUserAdmin, ListDblClickHdl));
+    m_xNEWUSER->connect_clicked(LINK(this, OUserAdmin, UserHdl));
+    m_xCHANGEPWD->connect_clicked(LINK(this, OUserAdmin, UserHdl));
+    m_xDELETEUSER->connect_clicked(LINK(this, OUserAdmin, UserHdl));
 }
 
 OUserAdmin::~OUserAdmin()
 {
-    disposeOnce();
-}
-
-void OUserAdmin::dispose()
-{
     m_xConnection = nullptr;
-    m_TableCtrl.disposeAndClear();
-    m_pUSER.clear();
-    m_pNEWUSER.clear();
-    m_pCHANGEPWD.clear();
-    m_pDELETEUSER.clear();
-    OGenericAdministrationPage::dispose();
+    m_xTableCtrl.disposeAndClear();
+    m_xTableCtrlParent->dispose();
+    m_xTableCtrlParent.clear();
 }
 
 void OUserAdmin::FillUserNames()
 {
     if(m_xConnection.is())
     {
-        m_pUSER->Clear();
+        m_xUSER->clear();
 
         Reference<XDatabaseMetaData> xMetaData = m_xConnection->getMetaData();
 
@@ -167,66 +152,65 @@ void OUserAdmin::FillUserNames()
             // first we need the users
             if ( m_xUsers.is() )
             {
-                m_pUSER->Clear();
+                m_xUSER->clear();
 
                 m_aUserNames = m_xUsers->getElementNames();
                 const OUString* pBegin = m_aUserNames.getConstArray();
                 const OUString* pEnd   = pBegin + m_aUserNames.getLength();
                 for(;pBegin != pEnd;++pBegin)
-                    m_pUSER->InsertEntry(*pBegin);
+                    m_xUSER->append_text(*pBegin);
 
-                m_pUSER->SelectEntryPos(0);
+                m_xUSER->set_active(0);
                 if(m_xUsers->hasByName(m_UserName))
                 {
                     Reference<XAuthorizable> xAuth;
                     m_xUsers->getByName(m_UserName) >>= xAuth;
-                    m_TableCtrl->setGrantUser(xAuth);
+                    m_xTableCtrl->setGrantUser(xAuth);
                 }
 
-                m_TableCtrl->setUserName(GetUser());
-                m_TableCtrl->Init();
+                m_xTableCtrl->setUserName(GetUser());
+                m_xTableCtrl->Init();
             }
         }
     }
 
     Reference<XAppend> xAppend(m_xUsers,UNO_QUERY);
-    m_pNEWUSER->Enable(xAppend.is());
+    m_xNEWUSER->set_sensitive(xAppend.is());
     Reference<XDrop> xDrop(m_xUsers,UNO_QUERY);
-    m_pDELETEUSER->Enable(xDrop.is());
+    m_xDELETEUSER->set_sensitive(xDrop.is());
 
-    m_pCHANGEPWD->Enable(m_xUsers.is());
-    m_TableCtrl->Enable(m_xUsers.is());
-
+    m_xCHANGEPWD->set_sensitive(m_xUsers.is());
+    m_xTableCtrl->Enable(m_xUsers.is());
 }
 
-VclPtr<SfxTabPage> OUserAdmin::Create( vcl::Window* pParent, const SfxItemSet* _rAttrSet )
+std::unique_ptr<SfxTabPage> OUserAdmin::Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* _rAttrSet )
 {
-    return VclPtr<OUserAdmin>::Create( pParent, *_rAttrSet );
+    return std::make_unique<OUserAdmin>( pPage, pController, *_rAttrSet );
 }
 
-IMPL_LINK( OUserAdmin, UserHdl, Button *, pButton, void )
+IMPL_LINK(OUserAdmin, UserHdl, weld::Button&, rButton, void)
 {
     try
     {
-        if(pButton == m_pNEWUSER)
+        if (&rButton == m_xNEWUSER.get())
         {
-            ScopedVclPtrInstance< SfxPasswordDialog > aPwdDlg(this);
-            aPwdDlg->ShowExtras(SfxShowExtras::ALL);
-            if(aPwdDlg->Execute())
+            SfxPasswordDialog aPwdDlg(GetFrameWeld());
+            aPwdDlg.ShowExtras(SfxShowExtras::ALL);
+            if (aPwdDlg.run())
             {
                 Reference<XDataDescriptorFactory> xUserFactory(m_xUsers,UNO_QUERY);
                 Reference<XPropertySet> xNewUser = xUserFactory->createDataDescriptor();
                 if(xNewUser.is())
                 {
-                    xNewUser->setPropertyValue(PROPERTY_NAME,makeAny(aPwdDlg->GetUser()));
-                    xNewUser->setPropertyValue(PROPERTY_PASSWORD,makeAny(aPwdDlg->GetPassword()));
+                    xNewUser->setPropertyValue(PROPERTY_NAME,makeAny(aPwdDlg.GetUser()));
+                    xNewUser->setPropertyValue(PROPERTY_PASSWORD,makeAny(aPwdDlg.GetPassword()));
                     Reference<XAppend> xAppend(m_xUsers,UNO_QUERY);
                     if(xAppend.is())
                         xAppend->appendByDescriptor(xNewUser);
                 }
             }
         }
-        else if(pButton == m_pCHANGEPWD)
+        else if (&rButton == m_xCHANGEPWD.get())
         {
             OUString sName = GetUser();
 
@@ -237,11 +221,11 @@ IMPL_LINK( OUserAdmin, UserHdl, Button *, pButton, void )
                 if(xUser.is())
                 {
                     OUString sNewPassword,sOldPassword;
-                    ScopedVclPtrInstance< OPasswordDialog > aDlg(this,sName);
-                    if(aDlg->Execute() == RET_OK)
+                    OPasswordDialog aDlg(GetFrameWeld(), sName);
+                    if (aDlg.run() == RET_OK)
                     {
-                        sNewPassword = aDlg->GetNewPassword();
-                        sOldPassword = aDlg->GetOldPassword();
+                        sNewPassword = aDlg.GetNewPassword();
+                        sOldPassword = aDlg.GetOldPassword();
 
                         if(!sNewPassword.isEmpty())
                             xUser->changePassword(sOldPassword,sNewPassword);
@@ -256,8 +240,10 @@ IMPL_LINK( OUserAdmin, UserHdl, Button *, pButton, void )
                 Reference<XDrop> xDrop(m_xUsers,UNO_QUERY);
                 if(xDrop.is())
                 {
-                    ScopedVclPtrInstance< MessageDialog > aQry(this, ModuleRes(STR_QUERY_USERADMIN_DELETE_USER), VclMessageType::Question, VclButtonsType::YesNo);
-                    if(aQry->Execute() == RET_YES)
+                    std::unique_ptr<weld::MessageDialog> xQry(Application::CreateMessageDialog(GetFrameWeld(),
+                                                              VclMessageType::Question, VclButtonsType::YesNo,
+                                                              DBA_RES(STR_QUERY_USERADMIN_DELETE_USER)));
+                    if (xQry->run() == RET_YES)
                         xDrop->dropByName(GetUser());
                 }
             }
@@ -266,37 +252,37 @@ IMPL_LINK( OUserAdmin, UserHdl, Button *, pButton, void )
     }
     catch(const SQLException& e)
     {
-        ::dbaui::showError(::dbtools::SQLExceptionInfo(e), this, m_xORB);
+        ::dbtools::showError(::dbtools::SQLExceptionInfo(e), GetDialogController()->getDialog()->GetXWindow(), m_xORB);
     }
     catch(Exception& )
     {
     }
 }
 
-IMPL_LINK_NOARG( OUserAdmin, ListDblClickHdl, ListBox&, void )
+IMPL_LINK_NOARG(OUserAdmin, ListDblClickHdl, weld::ComboBox&, void)
 {
-    m_TableCtrl->setUserName(GetUser());
-    m_TableCtrl->UpdateTables();
-    m_TableCtrl->DeactivateCell();
-    m_TableCtrl->ActivateCell(m_TableCtrl->GetCurRow(),m_TableCtrl->GetCurColumnId());
+    m_xTableCtrl->setUserName(GetUser());
+    m_xTableCtrl->UpdateTables();
+    m_xTableCtrl->DeactivateCell();
+    m_xTableCtrl->ActivateCell(m_xTableCtrl->GetCurRow(),m_xTableCtrl->GetCurColumnId());
 }
 
-OUString OUserAdmin::GetUser()
+OUString OUserAdmin::GetUser() const
 {
-    return m_pUSER->GetSelectEntry();
+    return m_xUSER->get_active_text();
 }
 
-void OUserAdmin::fillControls(std::vector< ISaveValueWrapper* >& /*_rControlList*/)
+void OUserAdmin::fillControls(std::vector< std::unique_ptr<ISaveValueWrapper> >& /*_rControlList*/)
 {
 }
 
-void OUserAdmin::fillWindows(std::vector< ISaveValueWrapper* >& /*_rControlList*/)
+void OUserAdmin::fillWindows(std::vector< std::unique_ptr<ISaveValueWrapper> >& /*_rControlList*/)
 {
 }
 
 void OUserAdmin::implInitControls(const SfxItemSet& _rSet, bool _bSaveValue)
 {
-    m_TableCtrl->setComponentContext(m_xORB);
+    m_xTableCtrl->setComponentContext(m_xORB);
     try
     {
         if ( !m_xConnection.is() && m_pAdminDialog )
@@ -315,7 +301,7 @@ void OUserAdmin::implInitControls(const SfxItemSet& _rSet, bool _bSaveValue)
             }
             if ( xUsersSup.is() )
             {
-                m_TableCtrl->setTablesSupplier(xTablesSup);
+                m_xTableCtrl->setTablesSupplier(xTablesSup);
                 m_xUsers = xUsersSup->getUsers();
             }
         }
@@ -323,7 +309,7 @@ void OUserAdmin::implInitControls(const SfxItemSet& _rSet, bool _bSaveValue)
     }
     catch(const SQLException& e)
     {
-        ::dbaui::showError(::dbtools::SQLExceptionInfo(e), this, m_xORB);
+        ::dbtools::showError(::dbtools::SQLExceptionInfo(e), GetDialogController()->getDialog()->GetXWindow(), m_xORB);
     }
 
     OGenericAdministrationPage::implInitControls(_rSet, _bSaveValue);

@@ -17,12 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbfunc.hxx"
-#include "docsh.hxx"
-#include "global.hxx"
-#include "document.hxx"
-#include "sc.hrc"
-#include "globstr.hrc"
+#include <dbfunc.hxx>
+#include <document.hxx>
+#include <globstr.hrc>
 
 void ScDBFunc::UpdateCharts( bool bAllCharts )
 {

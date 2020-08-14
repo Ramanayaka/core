@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_FORMS_SOURCE_COMPONENT_CHECKBOX_HXX
-#define INCLUDED_FORMS_SOURCE_COMPONENT_CHECKBOX_HXX
+#pragma once
 
 #include "refvaluecomponent.hxx"
 
@@ -26,9 +25,8 @@
 namespace frm
 {
 
-class OCheckBoxModel    :public OReferenceValueComponent
+class OCheckBoxModel final : public OReferenceValueComponent
 {
-protected:
     bool        DbUseBool();
 
 public:
@@ -36,7 +34,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OCheckBoxModel"); }
+    { return "com.sun.star.form.OCheckBoxModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -52,7 +50,7 @@ public:
         css::uno::Sequence< css::beans::Property >& /* [out] */ _rProps
     ) const override;
 
-protected:
+private:
     virtual css::uno::Reference< css::util::XCloneable > SAL_CALL createClone(  ) override;
 
     // OBoundControlModel overridables
@@ -67,15 +65,12 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OCheckBoxControl"); }
+    { return "com.sun.star.form.OCheckBoxControl"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 };
 
 
 }
-
-
-#endif // INCLUDED_FORMS_SOURCE_COMPONENT_CHECKBOX_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -43,7 +43,8 @@ public:
     virtual void MarkListHasChanged() override;
     void CompleteRedraw(OutputDevice* pOutDev, const vcl::Region& rReg, sdr::contact::ViewObjectContactRedirector* pRedirector = nullptr) override;
 
-    virtual bool SetAttributes(const SfxItemSet& rSet, bool bReplaceAll = false) override;
+    virtual bool SetAttributes(const SfxItemSet& rSet, bool bReplaceAll = false, bool bSlide = false, bool bMaster = false) override;
+    void SetMasterAttributes(SdrObject* pObject, const SdPage& rPage, SfxItemSet rSet, SfxStyleSheetBasePool* pStShPool, bool& bOk, bool bMaster, bool bSlide);
 
     virtual void Notify(SfxBroadcaster& rBC, const SfxHint& rHint) override;
 
@@ -61,7 +62,6 @@ protected:
 private:
     DrawDocShell*   mpDocShell;
     DrawViewShell*  mpDrawViewShell;
-    VclPtr<VirtualDevice> mpVDev;
 
     sal_uInt16          mnPOCHSmph; ///< for blocking PageOrderChangedHint
 };

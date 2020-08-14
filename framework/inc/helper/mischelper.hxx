@@ -21,9 +21,7 @@
 #define INCLUDED_FRAMEWORK_INC_HELPER_MISCHELPER_HXX
 
 #include <com/sun/star/linguistic2/XLanguageGuessing.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/document/XDocumentEventListener.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/util/XChangesListener.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
@@ -31,11 +29,11 @@
 #include <com/sun/star/ui/XContextChangeEventListener.hpp>
 
 #include <cppuhelper/implbase.hxx>
+#include <cppuhelper/weakref.hxx>
 
 #include <i18nlangtag/lang.h>
 #include <svl/languageoptions.hxx>
 #include <rtl/ustring.hxx>
-#include <fwidllapi.h>
 
 #include <functional>
 #include <set>
@@ -58,6 +56,9 @@ enum LangMenuIDs
     MID_LANG_SEL_NONE,
     MID_LANG_SEL_RESET,
     MID_LANG_SEL_MORE,
+    MID_LANG_DEF_NONE,
+    MID_LANG_DEF_RESET,
+    MID_LANG_DEF_MORE,
 
     MID_LANG_PARA_SEPARATOR,
     MID_LANG_PARA_STRING,
@@ -86,31 +87,23 @@ inline void RetrieveTypeNameFromResourceURL( const OUString& aResourceURL, OUStr
     static const char      RESOURCEURL_PREFIX[] = "private:resource/";
     static const sal_Int32 RESOURCEURL_PREFIX_SIZE = strlen(RESOURCEURL_PREFIX);
 
-    if (( aResourceURL.startsWith( RESOURCEURL_PREFIX ) ) &&
-        ( aResourceURL.getLength() > RESOURCEURL_PREFIX_SIZE ))
+    if (aResourceURL.startsWith( RESOURCEURL_PREFIX ))
     {
-        OUString aTmpStr( aResourceURL.copy( RESOURCEURL_PREFIX_SIZE ));
-        sal_Int32 nToken = 0;
-        sal_Int32 nPart  = 0;
-        do
-        {
-            OUString sToken = aTmpStr.getToken( 0, '/', nToken);
-            if ( !sToken.isEmpty() )
-            {
-                if ( nPart == 0 )
-                    aType = sToken;
-                else if ( nPart == 1 )
-                    aName = sToken;
-                else
-                    break;
-                nPart++;
-            }
-        }
-        while( nToken >=0 );
+        sal_Int32 nIdx{ RESOURCEURL_PREFIX_SIZE };
+        while (nIdx<aResourceURL.getLength() && aResourceURL[nIdx]=='/') ++nIdx;
+        if (nIdx>=aResourceURL.getLength())
+            return;
+        aType = aResourceURL.getToken(0, '/', nIdx);
+        if (nIdx<0)
+            return;
+        while (nIdx<aResourceURL.getLength() && aResourceURL[nIdx]=='/') ++nIdx;
+        if (nIdx>=aResourceURL.getLength())
+            return;
+        aName = aResourceURL.getToken(0, '/', nIdx);
     }
 }
 
-class FWI_DLLPUBLIC LanguageGuessingHelper
+class LanguageGuessingHelper
 {
     mutable css::uno::Reference< css::linguistic2::XLanguageGuessing >    m_xLanguageGuesser;
     css::uno::Reference< css::uno::XComponentContext >                    m_xContext;
@@ -121,7 +114,7 @@ public:
     css::uno::Reference< css::linguistic2::XLanguageGuessing > const &  GetGuesser() const;
 };
 
-FWI_DLLPUBLIC void FillLangItems( std::set< OUString > &rLangItems,
+void FillLangItems( std::set< OUString > &rLangItems,
         const css::uno::Reference< css::frame::XFrame > &rxFrame,
         const LanguageGuessingHelper & rLangGuessHelper,
         SvtScriptType    nScriptType,
@@ -137,12 +130,12 @@ FWI_DLLPUBLIC void FillLangItems( std::set< OUString > &rLangItems,
 //owns the Broadcaster which "owns" the Listener.
 
 //The WeakContainerListener allows breaking this cycle and retrofitting
-//afflicted implentations fairly easily.
+//afflicted implementations fairly easily.
 
 //OriginalListener owns the Broadcaster which "owns" the WeakContainerListener
 //which forwards the events to the OriginalListener without taking ownership of
 //it.
-class WeakContainerListener : public ::cppu::WeakImplHelper<css::container::XContainerListener>
+class WeakContainerListener final : public ::cppu::WeakImplHelper<css::container::XContainerListener>
 {
     private:
         css::uno::WeakReference<css::container::XContainerListener> mxOwner;
@@ -189,7 +182,7 @@ class WeakContainerListener : public ::cppu::WeakImplHelper<css::container::XCon
         }
 };
 
-class WeakChangesListener : public ::cppu::WeakImplHelper<css::util::XChangesListener>
+class WeakChangesListener final : public ::cppu::WeakImplHelper<css::util::XChangesListener>
 {
     private:
         css::uno::WeakReference<css::util::XChangesListener> mxOwner;
@@ -220,7 +213,7 @@ class WeakChangesListener : public ::cppu::WeakImplHelper<css::util::XChangesLis
         }
 };
 
-class WeakDocumentEventListener : public ::cppu::WeakImplHelper<css::document::XDocumentEventListener>
+class WeakDocumentEventListener final : public ::cppu::WeakImplHelper<css::document::XDocumentEventListener>
 {
     private:
         css::uno::WeakReference<css::document::XDocumentEventListener> mxOwner;
@@ -251,12 +244,12 @@ class WeakDocumentEventListener : public ::cppu::WeakImplHelper<css::document::X
         }
 };
 
-FWI_DLLPUBLIC css::uno::Reference<css::ui::XContextChangeEventListener>
+css::uno::Reference<css::ui::XContextChangeEventListener>
 GetFirstListenerWith_Impl(
     css::uno::Reference<css::uno::XInterface> const& xEventFocus,
     std::function<bool (css::uno::Reference<css::ui::XContextChangeEventListener> const&)> const& rPredicate);
 
-FWI_DLLPUBLIC extern auto (*g_pGetMultiplexerListener)(
+extern auto (*g_pGetMultiplexerListener)(
     css::uno::Reference<css::uno::XInterface> const&,
     std::function<bool (css::uno::Reference<css::ui::XContextChangeEventListener> const&)> const&)
     -> css::uno::Reference<css::ui::XContextChangeEventListener>;

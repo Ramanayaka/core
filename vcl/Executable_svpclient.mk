@@ -22,6 +22,10 @@ $(eval $(call gb_Executable_set_include,svpclient,\
     -I$(SRCDIR)/vcl/inc \
 ))
 
+$(eval $(call gb_Executable_add_defs,svpclient,\
+    -DVCL_INTERNALS \
+))
+
 $(eval $(call gb_Executable_use_libraries,svpclient,\
     tl \
     sal \
@@ -30,6 +34,10 @@ $(eval $(call gb_Executable_use_libraries,svpclient,\
     cppuhelper \
     comphelper \
 ))
+
+ifeq ($(OS),HAIKU)
+$(eval $(call gb_Executable_add_libs,svpclient,-lnetwork))
+endif
 
 $(eval $(call gb_Executable_add_exception_objects,svpclient,\
     vcl/workben/svpclient \

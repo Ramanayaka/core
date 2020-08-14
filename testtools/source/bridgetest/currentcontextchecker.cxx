@@ -18,28 +18,28 @@
  */
 
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include "currentcontextchecker.hxx"
 
-#include "com/sun/star/uno/Any.hxx"
-#include "com/sun/star/uno/Reference.hxx"
-#include "com/sun/star/uno/RuntimeException.hpp"
-#include "com/sun/star/uno/XCurrentContext.hpp"
-#include "cppu/unotype.hxx"
+#include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/uno/RuntimeException.hpp>
+#include <com/sun/star/uno/XCurrentContext.hpp>
+#include <cppu/unotype.hxx>
 #include <cppuhelper/implbase.hxx>
-#include "osl/diagnose.h"
-#include "osl/diagnose.hxx"
-#include "rtl/string.h"
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
-#include "test/testtools/bridgetest/XCurrentContextChecker.hpp"
-#include "uno/current_context.hxx"
+#include <osl/diagnose.h>
+#include <osl/diagnose.hxx>
+#include <rtl/string.h>
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
+#include <test/testtools/bridgetest/XCurrentContextChecker.hpp>
+#include <uno/current_context.hxx>
 
 namespace {
 
-static char const KEY[] = "testtools.bridgetest.Key";
-static char const VALUE[] = "good";
+char const KEY[] = "testtools.bridgetest.Key";
+char const VALUE[] = "good";
 
 class CurrentContext:
     public ::osl::DebugBase< CurrentContext >,

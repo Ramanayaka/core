@@ -28,9 +28,9 @@
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/window.hxx>
 #include <vcl/menu.hxx>
+
+#include <array>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::lang;
@@ -107,28 +107,28 @@ void OAccessibleMenuBaseComponent::SetStates()
 
 void OAccessibleMenuBaseComponent::SetEnabled( bool bEnabled )
 {
-    if ( m_bEnabled != bEnabled )
+    if ( m_bEnabled == bEnabled )
+        return;
+
+    sal_Int16 nStateType=AccessibleStateType::ENABLED;
+    if (IsMenuHideDisabledEntries())
     {
-        sal_Int16 nStateType=AccessibleStateType::ENABLED;
-        if (IsMenuHideDisabledEntries())
-        {
-            nStateType = AccessibleStateType::VISIBLE;
-        }
-        Any aOldValue[2], aNewValue[2];
-        if ( m_bEnabled )
-        {
-            aOldValue[0] <<= AccessibleStateType::SENSITIVE;
-            aOldValue[1] <<= nStateType;
-        }
-        else
-        {
-            aNewValue[0] <<= nStateType;
-            aNewValue[1] <<= AccessibleStateType::SENSITIVE;
-        }
-        m_bEnabled = bEnabled;
-        NotifyAccessibleEvent( AccessibleEventId::STATE_CHANGED, aOldValue[0], aNewValue[0] );
-        NotifyAccessibleEvent( AccessibleEventId::STATE_CHANGED, aOldValue[1], aNewValue[1] );
+        nStateType = AccessibleStateType::VISIBLE;
     }
+    std::array<Any, 2> aOldValue, aNewValue;
+    if ( m_bEnabled )
+    {
+        aOldValue[0] <<= AccessibleStateType::SENSITIVE;
+        aOldValue[1] <<= nStateType;
+    }
+    else
+    {
+        aNewValue[0] <<= nStateType;
+        aNewValue[1] <<= AccessibleStateType::SENSITIVE;
+    }
+    m_bEnabled = bEnabled;
+    NotifyAccessibleEvent( AccessibleEventId::STATE_CHANGED, aOldValue[0], aNewValue[0] );
+    NotifyAccessibleEvent( AccessibleEventId::STATE_CHANGED, aOldValue[1], aNewValue[1] );
 }
 
 
@@ -194,7 +194,7 @@ void OAccessibleMenuBaseComponent::SetChecked( bool bChecked )
 
 void OAccessibleMenuBaseComponent::UpdateEnabled( sal_Int32 i, bool bEnabled )
 {
-    if ( i >= 0 && i < (sal_Int32)m_aAccessibleChildren.size() )
+    if ( i >= 0 && i < static_cast<sal_Int32>(m_aAccessibleChildren.size()) )
     {
         Reference< XAccessible > xChild( m_aAccessibleChildren[i] );
         if ( xChild.is() )
@@ -209,7 +209,7 @@ void OAccessibleMenuBaseComponent::UpdateEnabled( sal_Int32 i, bool bEnabled )
 
 void OAccessibleMenuBaseComponent::UpdateFocused( sal_Int32 i, bool bFocused )
 {
-    if ( i >= 0 && i < (sal_Int32)m_aAccessibleChildren.size() )
+    if ( i >= 0 && i < static_cast<sal_Int32>(m_aAccessibleChildren.size()) )
     {
         Reference< XAccessible > xChild( m_aAccessibleChildren[i] );
         if ( xChild.is() )
@@ -225,7 +225,7 @@ void OAccessibleMenuBaseComponent::UpdateFocused( sal_Int32 i, bool bFocused )
 void OAccessibleMenuBaseComponent::UpdateVisible()
 {
     SetVisible( IsVisible() );
-    for (Reference<XAccessible>& xChild : m_aAccessibleChildren)
+    for (const Reference<XAccessible>& xChild : m_aAccessibleChildren)
     {
         if ( xChild.is() )
         {
@@ -241,7 +241,7 @@ void OAccessibleMenuBaseComponent::UpdateSelected( sal_Int32 i, bool bSelected )
 {
     NotifyAccessibleEvent( AccessibleEventId::SELECTION_CHANGED, Any(), Any() );
 
-    if ( i >= 0 && i < (sal_Int32)m_aAccessibleChildren.size() )
+    if ( i >= 0 && i < static_cast<sal_Int32>(m_aAccessibleChildren.size()) )
     {
         Reference< XAccessible > xChild( m_aAccessibleChildren[i] );
         if ( xChild.is() )
@@ -256,7 +256,7 @@ void OAccessibleMenuBaseComponent::UpdateSelected( sal_Int32 i, bool bSelected )
 
 void OAccessibleMenuBaseComponent::UpdateChecked( sal_Int32 i, bool bChecked )
 {
-    if ( i >= 0 && i < (sal_Int32)m_aAccessibleChildren.size() )
+    if ( i >= 0 && i < static_cast<sal_Int32>(m_aAccessibleChildren.size()) )
     {
         Reference< XAccessible > xChild( m_aAccessibleChildren[i] );
         if ( xChild.is() )
@@ -271,7 +271,7 @@ void OAccessibleMenuBaseComponent::UpdateChecked( sal_Int32 i, bool bChecked )
 
 void OAccessibleMenuBaseComponent::UpdateAccessibleName( sal_Int32 i )
 {
-    if ( i >= 0 && i < (sal_Int32)m_aAccessibleChildren.size() )
+    if ( i >= 0 && i < static_cast<sal_Int32>(m_aAccessibleChildren.size()) )
     {
         Reference< XAccessible > xChild( m_aAccessibleChildren[i] );
         if ( xChild.is() )
@@ -286,7 +286,7 @@ void OAccessibleMenuBaseComponent::UpdateAccessibleName( sal_Int32 i )
 
 void OAccessibleMenuBaseComponent::UpdateItemText( sal_Int32 i )
 {
-    if ( i >= 0 && i < (sal_Int32)m_aAccessibleChildren.size() )
+    if ( i >= 0 && i < static_cast<sal_Int32>(m_aAccessibleChildren.size()) )
     {
         Reference< XAccessible > xChild( m_aAccessibleChildren[i] );
         if ( xChild.is() )
@@ -299,7 +299,7 @@ void OAccessibleMenuBaseComponent::UpdateItemText( sal_Int32 i )
 }
 
 
-sal_Int32 OAccessibleMenuBaseComponent::GetChildCount()
+sal_Int32 OAccessibleMenuBaseComponent::GetChildCount() const
 {
     return m_aAccessibleChildren.size();
 }
@@ -315,21 +315,21 @@ Reference< XAccessible > OAccessibleMenuBaseComponent::GetChild( sal_Int32 i )
             // create a new child
             OAccessibleMenuBaseComponent* pChild;
 
-            if ( m_pMenu->GetItemType( (sal_uInt16)i ) == MenuItemType::SEPARATOR )
+            if ( m_pMenu->GetItemType( static_cast<sal_uInt16>(i) ) == MenuItemType::SEPARATOR )
             {
-                pChild = new VCLXAccessibleMenuSeparator( m_pMenu, (sal_uInt16)i );
+                pChild = new VCLXAccessibleMenuSeparator( m_pMenu, static_cast<sal_uInt16>(i) );
             }
             else
             {
-                PopupMenu* pPopupMenu = m_pMenu->GetPopupMenu( m_pMenu->GetItemId( (sal_uInt16)i ) );
+                PopupMenu* pPopupMenu = m_pMenu->GetPopupMenu( m_pMenu->GetItemId( static_cast<sal_uInt16>(i) ) );
                 if ( pPopupMenu )
                 {
-                    pChild = new VCLXAccessibleMenu( m_pMenu, (sal_uInt16)i, pPopupMenu );
+                    pChild = new VCLXAccessibleMenu( m_pMenu, static_cast<sal_uInt16>(i), pPopupMenu );
                     pPopupMenu->SetAccessible( pChild );
                 }
                 else
                 {
-                    pChild = new VCLXAccessibleMenuItem( m_pMenu, (sal_uInt16)i );
+                    pChild = new VCLXAccessibleMenuItem( m_pMenu, static_cast<sal_uInt16>(i) );
                 }
             }
 
@@ -375,71 +375,71 @@ Reference< XAccessible > OAccessibleMenuBaseComponent::GetChildAt( const awt::Po
 
 void OAccessibleMenuBaseComponent::InsertChild( sal_Int32 i )
 {
-    if ( i > (sal_Int32)m_aAccessibleChildren.size() )
+    if ( i > static_cast<sal_Int32>(m_aAccessibleChildren.size()) )
         i = m_aAccessibleChildren.size();
 
-    if ( i >= 0 )
+    if ( i < 0 )
+        return;
+
+    // insert entry in child list
+    m_aAccessibleChildren.insert( m_aAccessibleChildren.begin() + i, Reference< XAccessible >() );
+
+    // update item position of accessible children
+    for ( sal_uInt32 j = i, nCount = m_aAccessibleChildren.size(); j < nCount; ++j )
     {
-        // insert entry in child list
-        m_aAccessibleChildren.insert( m_aAccessibleChildren.begin() + i, Reference< XAccessible >() );
-
-        // update item position of accessible children
-        for ( sal_uInt32 j = i, nCount = m_aAccessibleChildren.size(); j < nCount; ++j )
+        Reference< XAccessible > xAcc( m_aAccessibleChildren[j] );
+        if ( xAcc.is() )
         {
-            Reference< XAccessible > xAcc( m_aAccessibleChildren[j] );
-            if ( xAcc.is() )
-            {
-                OAccessibleMenuItemComponent* pComp = static_cast< OAccessibleMenuItemComponent* >( xAcc.get() );
-                if ( pComp )
-                    pComp->SetItemPos( (sal_uInt16)j );
-            }
+            OAccessibleMenuItemComponent* pComp = static_cast< OAccessibleMenuItemComponent* >( xAcc.get() );
+            if ( pComp )
+                pComp->SetItemPos( static_cast<sal_uInt16>(j) );
         }
+    }
 
-        // send accessible child event
-        Reference< XAccessible > xChild( GetChild( i ) );
-        if ( xChild.is() )
-        {
-            Any aOldValue, aNewValue;
-            aNewValue <<= xChild;
-            NotifyAccessibleEvent( AccessibleEventId::CHILD, aOldValue, aNewValue );
-        }
+    // send accessible child event
+    Reference< XAccessible > xChild( GetChild( i ) );
+    if ( xChild.is() )
+    {
+        Any aOldValue, aNewValue;
+        aNewValue <<= xChild;
+        NotifyAccessibleEvent( AccessibleEventId::CHILD, aOldValue, aNewValue );
     }
 }
 
 
 void OAccessibleMenuBaseComponent::RemoveChild( sal_Int32 i )
 {
-    if ( i >= 0 && i < (sal_Int32)m_aAccessibleChildren.size() )
+    if ( i < 0 || i >= static_cast<sal_Int32>(m_aAccessibleChildren.size()) )
+        return;
+
+    // keep the accessible of the removed item
+    Reference< XAccessible > xChild( m_aAccessibleChildren[i] );
+
+    // remove entry in child list
+    m_aAccessibleChildren.erase( m_aAccessibleChildren.begin() + i );
+
+    // update item position of accessible children
+    for ( sal_uInt32 j = i, nCount = m_aAccessibleChildren.size(); j < nCount; ++j )
     {
-        // keep the accessible of the removed item
-        Reference< XAccessible > xChild( m_aAccessibleChildren[i] );
-
-        // remove entry in child list
-        m_aAccessibleChildren.erase( m_aAccessibleChildren.begin() + i );
-
-        // update item position of accessible children
-        for ( sal_uInt32 j = i, nCount = m_aAccessibleChildren.size(); j < nCount; ++j )
+        Reference< XAccessible > xAcc( m_aAccessibleChildren[j] );
+        if ( xAcc.is() )
         {
-            Reference< XAccessible > xAcc( m_aAccessibleChildren[j] );
-            if ( xAcc.is() )
-            {
-                OAccessibleMenuItemComponent* pComp = static_cast< OAccessibleMenuItemComponent* >( xAcc.get() );
-                if ( pComp )
-                    pComp->SetItemPos( (sal_uInt16)j );
-            }
+            OAccessibleMenuItemComponent* pComp = static_cast< OAccessibleMenuItemComponent* >( xAcc.get() );
+            if ( pComp )
+                pComp->SetItemPos( static_cast<sal_uInt16>(j) );
         }
+    }
 
-        // send accessible child event
-        if ( xChild.is() )
-        {
-            Any aOldValue, aNewValue;
-            aOldValue <<= xChild;
-            NotifyAccessibleEvent( AccessibleEventId::CHILD, aOldValue, aNewValue );
+    // send accessible child event
+    if ( xChild.is() )
+    {
+        Any aOldValue, aNewValue;
+        aOldValue <<= xChild;
+        NotifyAccessibleEvent( AccessibleEventId::CHILD, aOldValue, aNewValue );
 
-            Reference< XComponent > xComponent( xChild, UNO_QUERY );
-            if ( xComponent.is() )
-                xComponent->dispose();
-        }
+        Reference< XComponent > xComponent( xChild, UNO_QUERY );
+        if ( xComponent.is() )
+            xComponent->dispose();
     }
 }
 
@@ -454,7 +454,7 @@ bool OAccessibleMenuBaseComponent::IsChildHighlighted()
 {
     bool bChildHighlighted = false;
 
-    for (Reference<XAccessible>& xChild : m_aAccessibleChildren)
+    for (const Reference<XAccessible>& xChild : m_aAccessibleChildren)
     {
         if ( xChild.is() )
         {
@@ -479,7 +479,7 @@ void OAccessibleMenuBaseComponent::SelectChild( sal_Int32 i )
 
     // highlight the child
     if ( m_pMenu )
-        m_pMenu->HighlightItem( (sal_uInt16)i );
+        m_pMenu->HighlightItem( static_cast<sal_uInt16>(i) );
 }
 
 
@@ -494,20 +494,10 @@ bool OAccessibleMenuBaseComponent::IsChildSelected( sal_Int32 i )
 {
     bool bSelected = false;
 
-    if ( m_pMenu && m_pMenu->IsHighlighted( (sal_uInt16)i ) )
+    if ( m_pMenu && m_pMenu->IsHighlighted( static_cast<sal_uInt16>(i) ) )
         bSelected = true;
 
     return bSelected;
-}
-
-
-void OAccessibleMenuBaseComponent::Select()
-{
-}
-
-
-void OAccessibleMenuBaseComponent::DeSelect()
-{
 }
 
 
@@ -614,7 +604,7 @@ void OAccessibleMenuBaseComponent::ProcessMenuEvent( const VclMenuEvent& rVclMen
                 m_pMenu = nullptr;
 
                 // dispose all menu items
-                for (Reference<XAccessible>& i : m_aAccessibleChildren)
+                for (const Reference<XAccessible>& i : m_aAccessibleChildren)
                 {
                     Reference< XComponent > xComponent( i, UNO_QUERY );
                     if ( xComponent.is() )
@@ -651,21 +641,21 @@ void OAccessibleMenuBaseComponent::disposing()
 {
     OAccessibleExtendedComponentHelper::disposing();
 
-    if ( m_pMenu )
+    if ( !m_pMenu )
+        return;
+
+    m_pMenu->RemoveEventListener( LINK( this, OAccessibleMenuBaseComponent, MenuEventListener ) );
+
+    m_pMenu = nullptr;
+
+    // dispose all menu items
+    for (const Reference<XAccessible>& i : m_aAccessibleChildren)
     {
-        m_pMenu->RemoveEventListener( LINK( this, OAccessibleMenuBaseComponent, MenuEventListener ) );
-
-        m_pMenu = nullptr;
-
-        // dispose all menu items
-        for (Reference<XAccessible>& i : m_aAccessibleChildren)
-        {
-            Reference< XComponent > xComponent( i, UNO_QUERY );
-            if ( xComponent.is() )
-                xComponent->dispose();
-        }
-        m_aAccessibleChildren.clear();
+        Reference< XComponent > xComponent( i, UNO_QUERY );
+        if ( xComponent.is() )
+            xComponent->dispose();
     }
+    m_aAccessibleChildren.clear();
 }
 
 

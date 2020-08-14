@@ -23,20 +23,17 @@
 #include <svl/whiter.hxx>
 #include <svx/svdogrp.hxx>
 #include <svx/svditer.hxx>
-#include <vcl/outdev.hxx>
 #include <memory>
 
 // class to remember broadcast start positions
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         ItemChangeBroadcaster::ItemChangeBroadcaster(const SdrObject& rObj)
         {
             if (const SdrObjGroup* pGroupObj = dynamic_cast<const SdrObjGroup*>(&rObj))
             {
-                SdrObjListIter aIter(*pGroupObj, SdrIterMode::DeepNoGroups);
+                SdrObjListIter aIter(pGroupObj->GetSubList(), SdrIterMode::DeepNoGroups);
                 maRectangles.reserve(aIter.Count());
 
                 while(aIter.IsMore())
@@ -54,14 +51,8 @@ namespace sdr
                 maRectangles.push_back(rObj.GetLastBoundRect());
             }
         }
-    } // end of namespace properties
-} // end of namespace sdr
 
 
-namespace sdr
-{
-    namespace properties
-    {
         void ScaleItemSet(SfxItemSet& rSet, const Fraction& rScale)
         {
             sal_Int32 nMul(rScale.GetNumerator());
@@ -84,13 +75,12 @@ namespace sdr
                     {
                         std::unique_ptr<SfxPoolItem> pNewItem(pItem->Clone());
                         pNewItem->ScaleMetrics(nMul, nDiv);
-                        rSet.Put(*pNewItem);
+                        rSet.Put(std::move(pNewItem));
                     }
                 }
                 nWhich = aIter.NextWhich();
             }
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

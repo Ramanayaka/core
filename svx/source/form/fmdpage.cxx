@@ -18,15 +18,13 @@
  */
 
 #include <svx/fmpage.hxx>
-#include "fmobj.hxx"
-#include <svx/fmglob.hxx>
+#include <fmobj.hxx>
 #include <svx/fmdpage.hxx>
 #include <svx/unoshape.hxx>
+#include <vcl/svapp.hxx>
 #include <cppuhelper/queryinterface.hxx>
-#include <cppuhelper/typeprovider.hxx>
 
 using ::com::sun::star::uno::Any;
-using ::com::sun::star::uno::RuntimeException;
 using ::com::sun::star::form::XFormsSupplier2;
 
 SvxFmDrawPage::SvxFmDrawPage( SdrPage* pInPage ) :
@@ -57,12 +55,8 @@ Any SAL_CALL SvxFmDrawPage::queryAggregation( const css::uno::Type& _rType )
 
 css::uno::Sequence< css::uno::Type > SAL_CALL SvxFmDrawPage::getTypes(  )
 {
-    css::uno::Sequence< css::uno::Type > aTypes(SvxDrawPage::getTypes());
-    aTypes.realloc(aTypes.getLength() + 1);
-    css::uno::Type* pTypes = aTypes.getArray();
-
-    pTypes[aTypes.getLength()-1] = cppu::UnoType<css::form::XFormsSupplier>::get();
-    return aTypes;
+    return comphelper::concatSequences(SvxDrawPage::getTypes(),
+        css::uno::Sequence { cppu::UnoType<css::form::XFormsSupplier>::get() });
 }
 
 SdrObject *SvxFmDrawPage::CreateSdrObject_( const css::uno::Reference< css::drawing::XShape > & xDescr )
@@ -72,10 +66,13 @@ SdrObject *SvxFmDrawPage::CreateSdrObject_( const css::uno::Reference< css::draw
     if  (   aShapeType == "com.sun.star.drawing.ShapeControl"   // compatibility
         ||  aShapeType == "com.sun.star.drawing.ControlShape"
         )
-        return new FmFormObj();
+    {
+        return new FmFormObj(GetSdrPage()->getSdrModelFromSdrPage());
+    }
     else
+    {
         return SvxDrawPage::CreateSdrObject_( xDescr );
-
+    }
 }
 
 css::uno::Reference< css::drawing::XShape >  SvxFmDrawPage::CreateShape( SdrObject *pObj ) const
@@ -92,6 +89,8 @@ css::uno::Reference< css::drawing::XShape >  SvxFmDrawPage::CreateShape( SdrObje
 // XFormsSupplier
 css::uno::Reference< css::container::XNameContainer > SAL_CALL SvxFmDrawPage::getForms()
 {
+    SolarMutexGuard g;
+
     css::uno::Reference< css::container::XNameContainer >  xForms;
 
     FmFormPage *pFmPage = dynamic_cast<FmFormPage*>( GetSdrPage()  );
@@ -104,6 +103,8 @@ css::uno::Reference< css::container::XNameContainer > SAL_CALL SvxFmDrawPage::ge
 // XFormsSupplier2
 sal_Bool SAL_CALL SvxFmDrawPage::hasForms()
 {
+    SolarMutexGuard g;
+
     bool bHas = false;
     FmFormPage* pFormPage = dynamic_cast<FmFormPage*>( GetSdrPage()  );
     if ( pFormPage )

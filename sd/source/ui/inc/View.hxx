@@ -21,17 +21,14 @@
 #define INCLUDED_SD_SOURCE_UI_INC_VIEW_HXX
 
 #include <memory>
-#include "pres.hxx"
+#include <pres.hxx>
 #include <tools/gen.hxx>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include <svx/fmview.hxx>
-#include <svx/svdmark.hxx>
 #include <svx/svdpage.hxx>
 #include <vcl/idle.hxx>
-#include "fupoor.hxx"
 
 #include "smarttag.hxx"
-#include <editeng/numitem.hxx>
 
 class SdDrawDocument;
 class SdPage;
@@ -40,16 +37,12 @@ class SdrGrafObj;
 class SdrMediaObj;
 class OutputDevice;
 class ImageMap;
-class Point;
 class Graphic;
 class SdrOutliner;
-class TransferableDataHelper;
-class Outliner;
 
 namespace sd {
 
 class DrawDocShell;
-struct SdNavigatorDropEvent;
 class ViewShell;
 class Window;
 class ViewClipboard;
@@ -73,7 +66,7 @@ public:
     void End();
 };
 
-class View : public FmFormView
+class SAL_DLLPUBLIC_RTTI View : public FmFormView
 {
 public:
 
@@ -86,12 +79,12 @@ public:
     void                    CompleteRedraw( OutputDevice* pOutDev, const vcl::Region& rReg, sdr::contact::ViewObjectContactRedirector* pRedirector = nullptr) override;
 
     virtual void            GetAttributes( SfxItemSet& rTargetSet, bool bOnlyHardAttr = false ) const;
-    virtual bool            SetAttributes(const SfxItemSet& rSet, bool bReplaceAll = false);
+    virtual bool            SetAttributes(const SfxItemSet& rSet, bool bReplaceAll = false, bool bSlide = false, bool bMaster = false);
     virtual void            MarkListHasChanged() override;
     void                    SelectAll();
     void                    DoCut();
     void                    DoCopy();
-    void                    DoPaste(vcl::Window* pWindow=nullptr);
+    void                    DoPaste(::sd::Window* pWindow=nullptr);
     virtual void            DoConnect(SdrOle2Obj* pOleObj) override;
     virtual bool            SetStyleSheet(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAttr = false);
     void                    StartDrag( const Point& rStartPos, vcl::Window* pWindow );
@@ -99,8 +92,6 @@ public:
     virtual sal_Int8 AcceptDrop (
         const AcceptDropEvent& rEvt,
         DropTargetHelper& rTargetHelper,
-        ::sd::Window* pTargetWindow,
-        sal_uInt16 nPage,
         SdrLayerID nLayer);
     virtual sal_Int8 ExecuteDrop (
         const ExecuteDropEvent& rEvt,
@@ -141,15 +132,13 @@ public:
     */
     bool                    InsertMetaFile( TransferableDataHelper& rDataHelper,
                                             const Point& rInsertPos,
-                                            ImageMap* pImageMap, bool bOptimize );
+                                            ImageMap const * pImageMap, bool bOptimize );
     SdrGrafObj*             InsertGraphic( const Graphic& rGraphic,
                                            sal_Int8& rAction, const Point& rPos,
-                                           SdrObject* pSelectedObj, ImageMap* pImageMap );
+                                           SdrObject* pSelectedObj, ImageMap const * pImageMap );
     void                    InsertMediaURL( const OUString& rMediaURL, sal_Int8& rAction,
                                             const Point& rPos, const Size& rSize,
                                             bool const bLink );
-    void                    Insert3DModelURL( const OUString& rModelURL, sal_Int8& rAction,
-                                              const Point& rPos, const Size& rSize );
     SdrMediaObj*            InsertMediaObj( const OUString& rURL, const OUString& rMimeType, sal_Int8& rAction,
                                             const Point& rPos, const Size& rSize );
 
@@ -187,10 +176,8 @@ public:
 
     virtual SdrViewContext GetContext() const override;
     virtual bool HasMarkablePoints() const override;
-    virtual sal_uLong GetMarkablePointCount() const override;
+    virtual sal_Int32 GetMarkablePointCount() const override;
     virtual bool HasMarkedPoints() const override;
-    virtual sal_uLong GetMarkedPointCount() const override;
-    virtual bool IsPointMarkable(const SdrHdl& rHdl) const override;
     virtual bool MarkPoint(SdrHdl& rHdl, bool bUnmark=false) override;
     virtual void CheckPossibilities() override;
     virtual bool MarkPoints(const ::tools::Rectangle* pRect, bool bUnmark) override;
@@ -217,18 +204,18 @@ public:
         const bool bHandleBullets,
         const SvxNumRule* pNumRule);
 
-    void SetPossibilitiesDirty() { bPossibilitiesDirty = true; }
-    void SetMoveAllowed( bool bSet ) { bMoveAllowed = bSet; }
-    void SetMoveProtected( bool bSet ) { bMoveProtect = bSet; }
-    void SetResizeFreeAllowed( bool bSet ) { bResizeFreeAllowed = bSet; }
-    void SetResizePropAllowed( bool bSet ) { bResizePropAllowed = bSet; }
-    void SetResizeProtected( bool bSet ) { bResizeProtect = bSet; }
+    void SetPossibilitiesDirty() { m_bPossibilitiesDirty = true; }
+    void SetMoveAllowed( bool bSet ) { m_bMoveAllowed = bSet; }
+    void SetMoveProtected( bool bSet ) { m_bMoveProtect = bSet; }
+    void SetResizeFreeAllowed( bool bSet ) { m_bResizeFreeAllowed = bSet; }
+    void SetResizePropAllowed( bool bSet ) { m_bResizePropAllowed = bSet; }
+    void SetResizeProtected( bool bSet ) { m_bResizeProtect = bSet; }
 
     SdrObject* GetEmptyPresentationObject( PresObjKind eKind );
     SdPage* GetPage();
-    SdrObject* GetSelectedSingleObject(SdPage* pPage);
+    SdrObject* GetSelectedSingleObject(SdPage const * pPage);
     void SetAuthor(const OUString& rAuthor) { m_sAuthor = rAuthor; }
-    const OUString& GetAuthor() { return m_sAuthor; }
+    const OUString& GetAuthor() const { return m_sAuthor; }
 
 protected:
     DECL_LINK( OnParagraphInsertedHdl, ::Outliner::ParagraphHdlParam, void );
@@ -240,9 +227,9 @@ protected:
     SdDrawDocument&         mrDoc;
     DrawDocShell*           mpDocSh;
     ViewShell*              mpViewSh;
-    SdrMarkList*            mpDragSrcMarkList;
+    std::unique_ptr<SdrMarkList> mpDragSrcMarkList;
     SdrObject*              mpDropMarkerObj;
-    SdrDropMarkerOverlay*   mpDropMarker;
+    std::unique_ptr<SdrDropMarkerOverlay> mpDropMarker;
     sal_uInt16              mnDragSrcPgNum;
     Point                   maDropPos;
     ::std::vector<OUString> maDropFileVector;

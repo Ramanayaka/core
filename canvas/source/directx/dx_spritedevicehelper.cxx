@@ -19,7 +19,11 @@
 
 #include <sal/config.h>
 
-#include <basegfx/tools/canvastools.hxx>
+#include <memory>
+
+#include <sal/log.hxx>
+
+#include <basegfx/utils/canvastools.hxx>
 #include <canvas/canvastools.hxx>
 #include <com/sun/star/lang/NoSupportException.hpp>
 #include <toolkit/helper/vclunohelper.hxx>
@@ -83,11 +87,11 @@ namespace dxcanvas
         mpSurfaceProxyManager = ::canvas::createSurfaceProxyManager( mpRenderModule );
 
         // #i60490# ensure backbuffer has sensible minimal size
-        mpBackBuffer.reset(new DXSurfaceBitmap(
+        mpBackBuffer = std::make_shared<DXSurfaceBitmap>(
                                ::basegfx::B2ISize(w,h),
                                mpSurfaceProxyManager,
                                mpRenderModule,
-                               false));
+                               false);
 
         // Assumes: SystemChildWindow() has CS_OWNDC
         DeviceHelper::init(GetDC(mpRenderModule->getHWND()),rWindow.GetOutDev(), rSpriteCanvas);
@@ -111,12 +115,11 @@ namespace dxcanvas
         if( !getDevice() )
             return uno::Reference< rendering::XBitmap >(); // we're disposed
 
-        DXSurfaceBitmapSharedPtr pBitmap(
-            new DXSurfaceBitmap(
+        DXSurfaceBitmapSharedPtr pBitmap = std::make_shared<DXSurfaceBitmap>(
                 ::basegfx::unotools::b2ISizeFromIntegerSize2D(size),
                 mpSurfaceProxyManager,
                 mpRenderModule,
-                false));
+                false);
 
         // create a 24bit RGB system memory surface
         return uno::Reference< rendering::XBitmap >(new CanvasBitmap(pBitmap,getDevice()));
@@ -136,12 +139,11 @@ namespace dxcanvas
         if( !getDevice() )
             return uno::Reference< rendering::XBitmap >(); // we're disposed
 
-        DXSurfaceBitmapSharedPtr pBitmap(
-            new DXSurfaceBitmap(
+        DXSurfaceBitmapSharedPtr pBitmap = std::make_shared<DXSurfaceBitmap>(
                 ::basegfx::unotools::b2ISizeFromIntegerSize2D(size),
                 mpSurfaceProxyManager,
                 mpRenderModule,
-                true));
+                true);
 
         // create a 32bit ARGB system memory surface
         return uno::Reference< rendering::XBitmap >(new CanvasBitmap(pBitmap,getDevice()));
@@ -194,7 +196,7 @@ namespace dxcanvas
     void SpriteDeviceHelper::resizeBackBuffer( const ::basegfx::B2ISize& rNewSize )
     {
         // disposed?
-        if(!(mpBackBuffer))
+        if(!mpBackBuffer)
             return;
 
         mpBackBuffer->resize(rNewSize);

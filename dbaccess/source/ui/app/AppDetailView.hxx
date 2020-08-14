@@ -24,17 +24,14 @@
 #include <com/sun/star/ucb/XContent.hpp>
 #include <com/sun/star/sdb/application/NamedDatabaseObject.hpp>
 #include <vcl/split.hxx>
-#include <vcl/fixed.hxx>
+#include <vcl/InterimItemWindow.hxx>
 #include <vcl/mnemonic.hxx>
-#include "IClipBoardTest.hxx"
+#include <IClipBoardTest.hxx>
 #include "AppTitleWindow.hxx"
-#include "AppElementType.hxx"
-#include <svtools/treelistbox.hxx>
-#include "VertSplitView.hxx"
+#include <AppElementType.hxx>
+#include <VertSplitView.hxx>
 
 #include <vector>
-
-class SvTreeListEntry;
 
 namespace dbaui
 {
@@ -43,60 +40,17 @@ namespace dbaui
     class OAppDetailPageHelper;
     class OTasksWindow;
 
-    class OCreationList : public SvTreeListBox
-    {
-        OTasksWindow&   m_rTaskWindow;
-
-        // members related to drawing the currently hovered/selected entry
-        SvTreeListEntry*        m_pMouseDownEntry;
-        SvTreeListEntry*        m_pLastActiveEntry;
-        Color                   m_aOriginalBackgroundColor;
-        vcl::Font               m_aOriginalFont;
-
-    public:
-        explicit OCreationList( OTasksWindow& _rParent );
-        // Window overrides
-        virtual void MouseMove( const MouseEvent& rMEvt ) override;
-        virtual void MouseButtonDown( const MouseEvent& rMEvt ) override;
-        virtual void MouseButtonUp( const MouseEvent& rMEvt ) override;
-        virtual void KeyInput( const KeyEvent& rKEvt ) override;
-        virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
-        virtual void StartDrag( sal_Int8 _nAction, const Point& _rPosPixel ) override;
-        virtual void GetFocus() override;
-        virtual void LoseFocus() override;
-
-        void resetLastActive() { m_pLastActiveEntry = nullptr;}
-
-        void    updateHelpText();
-
-    protected:
-        virtual void        PreparePaint(vcl::RenderContext& rRenderContext, SvTreeListEntry& rEntry) override;
-        virtual tools::Rectangle   GetFocusRect( SvTreeListEntry* _pEntry, long _nLine ) override;
-        virtual void        ModelHasCleared() override;
-
-        // IMnemonicEntryList
-        virtual void        SelectSearchEntry( const void* _pEntry ) override;
-        virtual void        ExecuteSearchEntry( const void* _pEntry ) const override;
-
-    private:
-        void    onSelected( SvTreeListEntry* _pEntry ) const;
-        /** sets a new current entry, and invalidates the old and the new one, if necessary
-            @return <TRUE/> if and only if the "current entry" changed
-        */
-        bool    setCurrentEntryInvalidate( SvTreeListEntry* _pEntry );
-    };
-
     struct TaskEntry
     {
         OUString        sUNOCommand;
-        sal_uInt16      nHelpID;
+        const char*     pHelpID;
         OUString        sTitle;
         bool            bHideWhenDisabled;
             // TODO: we should be consistent in the task pane and the menus/toolbars:
             // If an entry is disabled in the latter, it should also be disabled in the former.
             // If an entry is *hidden* in the former, it should also be hidden in the latter.
 
-        TaskEntry( const sal_Char* _pAsciiUNOCommand, sal_uInt16 _nHelpID, sal_uInt16 _nTitleResourceID, bool _bHideWhenDisabled = false );
+        TaskEntry( const char* _pAsciiUNOCommand, const char* pHelpID, const char* pTitleResourceID, bool _bHideWhenDisabled = false );
     };
     typedef std::vector< TaskEntry >  TaskEntryList;
 
@@ -105,42 +59,43 @@ namespace dbaui
         /// the tasks available in the pane
         TaskEntryList   aTasks;
         /// the resource ID for the title of the pane
-        sal_uInt16          nTitleId;
+        const char*     pTitleId;
     };
 
-    class OTasksWindow : public vcl::Window
+    class OTasksWindow final : public InterimItemWindow
     {
-        VclPtr<OCreationList>               m_aCreation;
-        VclPtr<FixedText>                   m_aDescription;
-        VclPtr<FixedText>                   m_aHelpText;
-        VclPtr<FixedLine>                   m_aFL;
-        VclPtr<OApplicationDetailView>      m_pDetailView;
+        std::unique_ptr<weld::TreeView> m_xTreeView;
+        std::unique_ptr<weld::Label> m_xDescription;
+        std::unique_ptr<weld::Label> m_xHelpText;
+        VclPtr<OApplicationDetailView> m_pDetailView;
 
-        DECL_LINK( OnEntrySelectHdl, SvTreeListBox*, void );
-        void ImplInitSettings();
-    protected:
+        int m_nCursorIndex;
+
+        DECL_LINK(onSelected, weld::TreeView&, bool);
+        DECL_LINK(OnEntrySelectHdl, weld::TreeView&, void);
+        DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
+        DECL_LINK(FocusInHdl, weld::Widget&, void);
+        DECL_LINK(FocusOutHdl, weld::Widget&, void);
+
+        void updateHelpText();
+
         virtual void DataChanged(const DataChangedEvent& rDCEvt) override;
     public:
         OTasksWindow(vcl::Window* _pParent,OApplicationDetailView* _pDetailView);
         virtual ~OTasksWindow() override;
         virtual void dispose() override;
 
-        // Window overrides
-        virtual void Resize() override;
+        virtual void GetFocus() override;
 
         OApplicationDetailView* getDetailView() const { return m_pDetailView; }
 
         /// fills the Creation listbox with the necessary strings and images
         void fillTaskEntryList( const TaskEntryList& _rList );
 
-        bool HandleKeyInput( const KeyEvent& _rKEvt )
-        {
-            return m_aCreation->HandleKeyInput( _rKEvt );
-        }
-
         void Clear();
-        void setHelpText(sal_uInt16 _nId);
+        void setHelpText(const char* pId);
     };
+
     class OApplicationDetailView : public OSplitterView
                                  , public IClipboardTest
     {
@@ -177,15 +132,7 @@ namespace dbaui
         */
         void createPage(ElementType _eType,const css::uno::Reference< css::container::XNameAccess >& _xContainer);
 
-        void setTaskExternalMnemonics( MnemonicGenerator& _rMnemonics );
-
-        /** called to give the window the chance to intercept key events, while it has not
-            the focus
-
-            @return <TRUE/> if and only if the event has been handled, and should not
-                not be further processed
-        */
-        bool    interceptKeyInput( const KeyEvent& _rEvent );
+        void setTaskExternalMnemonics( MnemonicGenerator const & _rMnemonics );
 
         OAppBorderWindow& getBorderWin() const { return m_rBorderWin; }
         OTasksWindow& getTasksWindow() const { return *static_cast< OTasksWindow* >( m_aTasks->getChildWindow() ); }
@@ -204,15 +151,17 @@ namespace dbaui
             @return
                 the qualified name
         */
-        OUString getQualifiedName( SvTreeListEntry* _pEntry ) const;
+        OUString getQualifiedName(weld::TreeIter* _pEntry) const;
 
         /** returns if an entry is a leaf
-            @param _pEntry
+            @param rTreeView
+                The TreeView pEntry belongs to
+            @param rEntry
                 The entry to check
             @return
                 <TRUE/> if the entry is a leaf, otherwise <FALSE/>
         */
-        static bool isLeaf(SvTreeListEntry* _pEntry);
+        static bool isLeaf(const weld::TreeView& rTreeView, const weld::TreeIter& rEntry);
 
         /** returns if one of the selected entries is a leaf
             @return
@@ -246,7 +195,7 @@ namespace dbaui
         void clearPages(bool _bTaskAlso = true);
 
         /// returns the count of entries
-        sal_Int32 getElementCount();
+        sal_Int32 getElementCount() const;
 
         /// returns the count of selected entries
         sal_Int32 getSelectionCount();
@@ -279,7 +228,7 @@ namespace dbaui
 
         /** adds a new object to the detail page.
             @param  _eType
-                The type where the entry shold be appended.
+                The type where the entry should be appended.
             @param  _rName
                 The name of the object to be inserted
             @param  _rObject
@@ -287,13 +236,13 @@ namespace dbaui
             @param  _rxConn
                 If we insert a table, the connection must be set.
         */
-        SvTreeListEntry* elementAdded(ElementType eType
-                        ,const OUString& _rName
-                        ,const css::uno::Any& _rObject );
+        std::unique_ptr<weld::TreeIter> elementAdded(ElementType eType,
+                                                     const OUString& rName,
+                                                     const css::uno::Any& rObject);
 
-        /** replaces a objects name with a new one
+        /** replaces an objects name with a new one
             @param  _eType
-                The type where the entry shold be appended.
+                The type where the entry should be appended.
             @param  _rOldName
                 The old name of the object to be replaced
             @param  _rNewName
@@ -309,7 +258,7 @@ namespace dbaui
 
         /** removes an element from the detail page.
             @param  _eType
-                The type where the entry shold be appended.
+                The type where the entry should be appended.
             @param  _rName
                 The name of the element to be removed.
             @param  _rxConn
@@ -319,10 +268,10 @@ namespace dbaui
                             ,const OUString& _rName );
 
         /// returns the preview mode
-        PreviewMode getPreviewMode();
+        PreviewMode getPreviewMode() const;
 
         /// <TRUE/> if the preview is enabled
-        bool isPreviewEnabled();
+        bool isPreviewEnabled() const;
 
         /** switches to the given preview mode
             @param  _eMode
@@ -349,7 +298,7 @@ namespace dbaui
                             const OUString& _sName,
                             bool _bTable);
 
-        SvTreeListEntry* getEntry( const Point& _aPoint ) const;
+        std::unique_ptr<weld::TreeIter> getEntry(const Point& rPosPixel) const;
 
         vcl::Window* getTreeWindow() const;
     private:

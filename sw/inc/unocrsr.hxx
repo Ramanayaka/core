@@ -19,7 +19,7 @@
 #ifndef INCLUDED_SW_INC_UNOCRSR_HXX
 #define INCLUDED_SW_INC_UNOCRSR_HXX
 
-#include <swcrsr.hxx>
+#include "swcrsr.hxx"
 #include <svl/SfxBroadcaster.hxx>
 #include <svl/lstner.hxx>
 
@@ -32,7 +32,7 @@ namespace sw
     };
 }
 
-class SwUnoCursor : public virtual SwCursor
+class SAL_DLLPUBLIC_RTTI SwUnoCursor : public virtual SwCursor
 {
 private:
     bool m_bRemainInSection : 1;
@@ -55,9 +55,9 @@ public:
     // Does a selection of content exist in table?
     // Return value indicates if the cursor remains at its old position.
     virtual bool IsSelOvr( SwCursorSelOverFlags eFlags =
-                                ( SwCursorSelOverFlags::CheckNodeSection |
-                                  SwCursorSelOverFlags::Toggle |
-                                  SwCursorSelOverFlags::ChangePos )) override;
+                                 SwCursorSelOverFlags::CheckNodeSection |
+                                 SwCursorSelOverFlags::Toggle |
+                                 SwCursorSelOverFlags::ChangePos ) override;
 
     virtual bool IsReadOnlyAvailable() const override;
 
@@ -73,11 +73,9 @@ public:
                                     { return m_bSkipOverHiddenSections; }
     void SetSkipOverHiddenSections( bool bFlag )
                                     { m_bSkipOverHiddenSections = bFlag; }
-
-    DECL_FIXEDMEMPOOL_NEWDEL( SwUnoCursor )
 };
 
-class SwUnoTableCursor : public virtual SwUnoCursor, public virtual SwTableCursor
+class SwUnoTableCursor final : public virtual SwUnoCursor, public virtual SwTableCursor
 {
     // The selection has the same order as the table boxes, i.e.
     // if something is deleted from the one array at a certain position
@@ -93,9 +91,9 @@ public:
     // Does a selection of content exist in table?
     // Return value indicates if the cursor remains at its old position.
     virtual bool IsSelOvr( SwCursorSelOverFlags eFlags =
-                                ( SwCursorSelOverFlags::CheckNodeSection |
-                                  SwCursorSelOverFlags::Toggle |
-                                  SwCursorSelOverFlags::ChangePos )) override;
+                                 SwCursorSelOverFlags::CheckNodeSection |
+                                 SwCursorSelOverFlags::Toggle |
+                                 SwCursorSelOverFlags::ChangePos ) override;
 
     void MakeBoxSels();
 
@@ -105,11 +103,10 @@ public:
 
 namespace sw
 {
-    class UnoCursorPointer : public SfxListener
+    class UnoCursorPointer final : public SfxListener
     {
         public:
             UnoCursorPointer()
-                : m_pCursor(nullptr)
            {}
             UnoCursorPointer(std::shared_ptr<SwUnoCursor> const & pCursor)
                 : m_pCursor(pCursor)
@@ -146,6 +143,10 @@ namespace sw
                 { return *get(); }
             UnoCursorPointer& operator=(UnoCursorPointer aOther)
             {
+                if (m_pCursor)
+                {
+                    EndListening(m_pCursor->m_aNotifier);
+                }
                 if(aOther.m_pCursor)
                     StartListening(aOther.m_pCursor->m_aNotifier);
                 m_pCursor = aOther.m_pCursor;
@@ -157,7 +158,7 @@ namespace sw
             {
                 if(pNew)
                     StartListening(pNew->m_aNotifier);
-                else if(m_pCursor)
+                if (m_pCursor)
                     EndListening(m_pCursor->m_aNotifier);
                 m_pCursor = pNew;
             }

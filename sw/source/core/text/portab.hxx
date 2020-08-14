@@ -40,17 +40,14 @@ public:
 
     // Accessibility: pass information about this portion to the PortionHandler
     virtual void HandlePortion( SwPortionHandler& rPH ) const override;
-
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 class SwTabLeftPortion : public SwTabPortion
 {
 public:
-    SwTabLeftPortion( const sal_uInt16 nTabPosVal, const sal_Unicode cFillChar, bool bAutoTab = true )
+    SwTabLeftPortion( const sal_uInt16 nTabPosVal, const sal_Unicode cFillChar, bool bAutoTab )
          : SwTabPortion( nTabPosVal, cFillChar, bAutoTab )
-    { SetWhichPor( POR_TABLEFT ); }
-    OUTPUT_OPERATOR_OVERRIDE
+    { SetWhichPor( PortionType::TabLeft ); }
 };
 
 class SwTabRightPortion : public SwTabPortion
@@ -58,8 +55,7 @@ class SwTabRightPortion : public SwTabPortion
 public:
     SwTabRightPortion( const sal_uInt16 nTabPosVal, const sal_Unicode cFillChar )
          : SwTabPortion( nTabPosVal, cFillChar )
-    { SetWhichPor( POR_TABRIGHT ); }
-    OUTPUT_OPERATOR_OVERRIDE
+    { SetWhichPor( PortionType::TabRight ); }
 };
 
 class SwTabCenterPortion : public SwTabPortion
@@ -67,8 +63,7 @@ class SwTabCenterPortion : public SwTabPortion
 public:
     SwTabCenterPortion( const sal_uInt16 nTabPosVal, const sal_Unicode cFillChar )
          : SwTabPortion( nTabPosVal, cFillChar )
-    { SetWhichPor( POR_TABCENTER ); }
-    OUTPUT_OPERATOR_OVERRIDE
+    { SetWhichPor( PortionType::TabCenter ); }
 };
 
 class SwTabDecimalPortion : public SwTabPortion
@@ -88,7 +83,7 @@ public:
          : SwTabPortion( nTabPosVal, cFillChar ),
            mcTab(cTab),
            mnWidthOfPortionsUpTpDecimalPosition( USHRT_MAX )
-    { SetWhichPor( POR_TABDECIMAL ); }
+    { SetWhichPor( PortionType::TabDecimal ); }
 
     sal_Unicode GetTabDecimal() const { return mcTab; }
 
@@ -100,8 +95,6 @@ public:
     {
         return mnWidthOfPortionsUpTpDecimalPosition;
     }
-
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 class SwAutoTabDecimalPortion : public SwTabDecimalPortion
@@ -110,7 +103,9 @@ public:
     SwAutoTabDecimalPortion( const sal_uInt16 nTabPosVal, const sal_Unicode cTab,
                                     const sal_Unicode cFillChar )
          : SwTabDecimalPortion( nTabPosVal, cTab, cFillChar )
-    { SetLen( 0 ); }
+    {
+        SetLen(TextFrameIndex(0));
+    }
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
 };
 

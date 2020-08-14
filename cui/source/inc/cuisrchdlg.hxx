@@ -19,36 +19,22 @@
 #ifndef INCLUDED_CUI_SOURCE_INC_CUISRCHDLG_HXX
 #define INCLUDED_CUI_SOURCE_INC_CUISRCHDLG_HXX
 
-#include <vcl/combobox.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/button.hxx>
-#include <vcl/group.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/dialog.hxx>
-#include <sfx2/childwin.hxx>
+#include <i18nutil/transliteration.hxx>
 #include <sfx2/basedlgs.hxx>
-#include <svtools/svmedit.hxx>
-#include <svl/srchdefs.hxx>
 
 class SvxJSearchOptionsPage;
 
-class SvxJSearchOptionsDialog : public SfxSingleTabDialog
+class SvxJSearchOptionsDialog : public SfxSingleTabDialogController
 {
-    TransliterationFlags          nInitialTlFlags;
-    VclPtr<SvxJSearchOptionsPage> pPage;
+    SvxJSearchOptionsPage* m_pPage;
 
     SvxJSearchOptionsDialog( const SvxJSearchOptionsDialog & ) = delete;
     SvxJSearchOptionsDialog & operator == ( const SvxJSearchOptionsDialog & ) = delete;
 
 public:
-    SvxJSearchOptionsDialog(vcl::Window *pParent,
+    SvxJSearchOptionsDialog(weld::Window *pParent,
         const SfxItemSet& rOptionsSet, TransliterationFlags nInitialFlags);
     virtual ~SvxJSearchOptionsDialog() override;
-    virtual void dispose() override;
-
-    // Window
-    virtual void    Activate() override;
 
     TransliterationFlags  GetTransliterationFlags() const;
 };

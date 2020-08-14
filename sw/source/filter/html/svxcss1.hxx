@@ -20,18 +20,21 @@
 #define INCLUDED_SW_SOURCE_FILTER_HTML_SVXCSS1_HXX
 
 #include <svl/itemset.hxx>
+#include <svx/flagsdef.hxx>
 #include <editeng/svxenum.hxx>
 #include <rtl/textenc.h>
 #include "parcss1.hxx"
 #include <o3tl/typed_flags_set.hxx>
 
+#include <array>
+#include <map>
 #include <memory>
 #include <vector>
-#include <map>
 
 class SfxItemPool;
 class SvxBoxItem;
 class FontList;
+enum class SvxBoxItemLine;
 
 enum SvxCSS1Position
 {
@@ -82,7 +85,7 @@ namespace o3tl {
 
 struct CSS1PropertyEnum
 {
-    const sal_Char *pName;  // property value
+    const char *pName;  // property value
     sal_uInt16 nEnum;       // and the corresponding value of enum
 };
 
@@ -95,11 +98,12 @@ namespace editeng { class SvxBorderLine; }
 struct SvxCSS1BorderInfo;
 class SvxCSS1PropertyInfo
 {
-    SvxCSS1BorderInfo *m_aBorderInfos[4];
+    std::array<std::unique_ptr<SvxCSS1BorderInfo>,4> m_aBorderInfos;
 
     void DestroyBorderInfos();
 
 public:
+    static constexpr sal_uInt16 UNSET_BORDER_DISTANCE = SAL_MAX_UINT16;
 
     OUString m_aId;             // ID for bookmarks, frame, and so
 
@@ -138,6 +142,8 @@ public:
     SvxCSS1PageBreak m_ePageBreakBefore;
     SvxCSS1PageBreak m_ePageBreakAfter;
 
+    bool m_bVisible = true;
+
     SvxCSS1PropertyInfo();
     SvxCSS1PropertyInfo( const SvxCSS1PropertyInfo& rProp );
     ~SvxCSS1PropertyInfo();
@@ -161,10 +167,6 @@ class SvxCSS1MapEntry
     SvxCSS1PropertyInfo aPropInfo;
 
 public:
-    SvxCSS1MapEntry( SfxItemPool& rPool, const sal_uInt16 *pWhichMap ) :
-        aItemSet( rPool, pWhichMap )
-    {}
-
     SvxCSS1MapEntry( const SfxItemSet& rItemSet,
                      const SvxCSS1PropertyInfo& rProp );
 
@@ -194,22 +196,16 @@ class SvxCSS1Parser : public CSS1Parser
 
     OUString sBaseURL;
 
-    SfxItemSet *pSheetItemSet;  // item set of Style-Sheet
+    std::unique_ptr<SfxItemSet> pSheetItemSet;  // item set of Style-Sheet
     SfxItemSet *pItemSet;       // current item set
 
-    SvxCSS1PropertyInfo *pSheetPropInfo;
+    std::unique_ptr<SvxCSS1PropertyInfo> pSheetPropInfo;
     SvxCSS1PropertyInfo *pPropInfo;
 
-    sal_uInt16 nMinFixLineSpace;    // minimum spacing for fixed line spacing
+    static constexpr sal_uInt16 gnMinFixLineSpace = MM50/2;    // minimum spacing for fixed line spacing
 
     rtl_TextEncoding    eDfltEnc;
-    Css1ScriptFlags     nScriptFlags;
-
     bool bIgnoreFontFamily;
-
-    void ParseProperty( const OUString& rProperty,
-                        const CSS1Expression *pExpr );
-
     std::vector<sal_uInt16> aWhichMap;        // Which-Map of Parser
 
     using CSS1Parser::ParseStyleOption;
@@ -231,19 +227,19 @@ protected:
     /// the content of the aItemSet will be copied into all recently
     /// created Styles.
     /// Derived classes should not override this method!
-    virtual bool SelectorParsed( CSS1Selector *pSelector, bool bFirst ) override;
+    virtual void SelectorParsed( std::unique_ptr<CSS1Selector> pSelector, bool bFirst ) override;
 
     /// Will be called for every parsed Property.  Adds the item to the
     /// pItemSet.
     /// Derived classes should not override this method!
-    virtual bool DeclarationParsed( const OUString& rProperty,
-                                    const CSS1Expression *pExpr ) override;
+    virtual void DeclarationParsed( const OUString& rProperty,
+                                    std::unique_ptr<CSS1Expression> pExpr ) override;
 
 public:
 
     SvxCSS1Parser( SfxItemPool& rPool,
                     const OUString& rBaseURL,
-                   sal_uInt16 *pWhichIds, sal_uInt16 nWhichIds=0 );
+                   sal_uInt16 const *pWhichIds, sal_uInt16 nWhichIds );
     virtual ~SvxCSS1Parser() override;
 
     bool IsIgnoreFontFamily() const { return bIgnoreFontFamily; }
@@ -300,14 +296,10 @@ public:
                       SvxCSS1PropertyInfo& rTargetInfo,
                       bool bSmart );
 
-    sal_uInt16 GetMinFixLineSpace() const { return nMinFixLineSpace; }
+    static sal_uInt16 GetMinFixLineSpace() { return gnMinFixLineSpace; }
 
     virtual void SetDfltEncoding( rtl_TextEncoding eEnc );
     rtl_TextEncoding GetDfltEncoding() const { return eDfltEnc; }
-
-    bool IsSetWesternProps() const { return bool(nScriptFlags & Css1ScriptFlags::Western); }
-    bool IsSetCJKProps() const { return bool(nScriptFlags & Css1ScriptFlags::CJK); }
-    bool IsSetCTLProps() const { return bool(nScriptFlags & Css1ScriptFlags::CTL); }
 
     const OUString& GetBaseURL() const { return sBaseURL;}
 

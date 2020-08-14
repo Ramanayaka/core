@@ -20,11 +20,8 @@
 #ifndef INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_MANAGER_DP_MANAGER_H
 #define INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_MANAGER_DP_MANAGER_H
 
-#include "dp_manager.hrc"
-#include "dp_misc.h"
-#include "dp_interact.h"
+#include <dp_misc.h>
 #include "dp_activepackages.hxx"
-#include <rtl/ref.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <ucbhelper/content.hxx>
@@ -39,7 +36,7 @@ typedef ::cppu::WeakComponentImplHelper<
     css::deployment::XPackageManager > t_pm_helper;
 
 
-class PackageManagerImpl : private ::dp_misc::MutexHolder, public t_pm_helper
+class PackageManagerImpl final : private ::dp_misc::MutexHolder, public t_pm_helper
 {
     css::uno::Reference<css::uno::XComponentContext> m_xComponentContext;
     OUString m_context;
@@ -115,7 +112,6 @@ class PackageManagerImpl : private ::dp_misc::MutexHolder, public t_pm_helper
         virtual void SAL_CALL pop() override;
     };
 
-protected:
     inline void check();
     virtual void SAL_CALL disposing() override;
 
@@ -174,7 +170,7 @@ public:
         css::uno::Reference<css::ucb::XCommandEnvironment> const & xCmdEnv ) override;
 
     OUString getDeployPath( ActivePackages::Data const & data );
-    css::uno::Reference<css::deployment::XPackage> SAL_CALL getDeployedPackage_(
+    css::uno::Reference<css::deployment::XPackage> getDeployedPackage_(
         OUString const & id, OUString const & fileName,
         css::uno::Reference<css::ucb::XCommandEnvironment> const & xCmdEnv );
     css::uno::Reference<css::deployment::XPackage> getDeployedPackage_(

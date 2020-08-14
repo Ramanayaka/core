@@ -18,12 +18,15 @@
  */
 
 #include "smdetect.hxx"
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/io/XInputStream.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <sfx2/docfile.hxx>
 #include <unotools/mediadescriptor.hxx>
+#include <sal/log.hxx>
+#include <sot/storage.hxx>
+#include <tools/diagnose_ex.h>
 
 #include "eqnolefilehdr.hxx"
 
@@ -35,7 +38,7 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::lang;
 using utl::MediaDescriptor;
 
-SmFilterDetect::SmFilterDetect( const Reference < XMultiServiceFactory >& /*xFactory*/ )
+SmFilterDetect::SmFilterDetect()
 {
 }
 
@@ -77,13 +80,13 @@ OUString SAL_CALL SmFilterDetect::detect( Sequence< PropertyValue >& lDescriptor
             {
                 sal_uInt8 nVersion;
                 if ( GetMathTypeVersion( aStorage.get(), nVersion ) && nVersion <=3 )
-                    return OUString("math_MathType_3x");
+                    return "math_MathType_3x";
             }
         }
     }
-    catch (const css::ucb::ContentCreationException &e)
+    catch (const css::ucb::ContentCreationException &)
     {
-        SAL_WARN("starmath", "SmFilterDetect::detect caught " << e.Message);
+        TOOLS_WARN_EXCEPTION("starmath", "SmFilterDetect::detect caught" );
     }
 
     if (!bStorageOk)
@@ -93,12 +96,12 @@ OUString SAL_CALL SmFilterDetect::detect( Sequence< PropertyValue >& lDescriptor
         // stuff I hope?
         static const sal_uInt16 nBufferSize = 200;
         char aBuffer[nBufferSize+1];
-        aBuffer[nBufferSize] = 0;
         pInStrm->Seek( STREAM_SEEK_TO_BEGIN );
         pInStrm->StartReadingUnicodeText( RTL_TEXTENCODING_DONTKNOW ); // avoid BOM marker
         auto nBytesRead = pInStrm->ReadBytes( aBuffer, nBufferSize );
         if (nBytesRead >= 6)
         {
+            aBuffer[nBytesRead] = 0;
             bool bIsMathType = false;
             if (0 == strncmp( "<?xml", aBuffer, 5))
                 bIsMathType = (strstr( aBuffer, "<math>" ) ||
@@ -111,7 +114,7 @@ OUString SAL_CALL SmFilterDetect::detect( Sequence< PropertyValue >& lDescriptor
                                0 == strncmp( "<math:math> ", aBuffer, 12));
 
             if ( bIsMathType )
-                return OUString("math_MathML_XML_Math");
+                return "math_MathML_XML_Math";
         }
     }
 
@@ -121,7 +124,7 @@ OUString SAL_CALL SmFilterDetect::detect( Sequence< PropertyValue >& lDescriptor
 /* XServiceInfo */
 OUString SAL_CALL SmFilterDetect::getImplementationName()
 {
-    return impl_getStaticImplementationName();
+    return "com.sun.star.comp.math.FormatDetector";
 }
 
 /* XServiceInfo */
@@ -133,25 +136,14 @@ sal_Bool SAL_CALL SmFilterDetect::supportsService( const OUString& sServiceName 
 /* XServiceInfo */
 Sequence< OUString > SAL_CALL SmFilterDetect::getSupportedServiceNames()
 {
-    return impl_getStaticSupportedServiceNames();
+    return { "com.sun.star.frame.ExtendedTypeDetection" };
 }
 
-/* Helper for XServiceInfo */
-Sequence< OUString > SmFilterDetect::impl_getStaticSupportedServiceNames()
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+math_FormatDetector_get_implementation(uno::XComponentContext* /*pCtx*/,
+                                       uno::Sequence<uno::Any> const& /*rSeq*/)
 {
-    return Sequence< OUString >{ "com.sun.star.frame.ExtendedTypeDetection" };
-}
-
-/* Helper for XServiceInfo */
-OUString SmFilterDetect::impl_getStaticImplementationName()
-{
-    return OUString("com.sun.star.comp.math.FormatDetector");
-}
-
-/* Helper for registry */
-Reference< XInterface > SAL_CALL SmFilterDetect::impl_createInstance( const Reference< XMultiServiceFactory >& xServiceManager )
-{
-    return Reference< XInterface >( *new SmFilterDetect( xServiceManager ) );
+    return cppu::acquire(new SmFilterDetect);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

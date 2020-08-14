@@ -17,16 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <cppuhelper/implementationentry.hxx>
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <util/MiscUtils.hxx>
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/util/XMacroExpander.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 
-#include "MasterScriptProvider.hxx"
 #include "ActiveMSPList.hxx"
 
 #include <tools/diagnose_ex.h>
@@ -53,12 +48,11 @@ ActiveMSPList::~ActiveMSPList()
 Reference< provider::XScriptProvider >
 ActiveMSPList::createNewMSP( const uno::Any& context )
 {
-    OUString serviceName("com.sun.star.script.provider.MasterScriptProvider");
     Sequence< Any > args( &context, 1 );
 
     Reference< provider::XScriptProvider > msp(
         m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-            serviceName, args, m_xContext ), UNO_QUERY );
+            "com.sun.star.script.provider.MasterScriptProvider", args, m_xContext ), UNO_QUERY );
     return msp;
 }
 
@@ -219,10 +213,11 @@ Reference< provider::XScriptProvider >
     }
     catch( const Exception& )
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         throw lang::WrappedTargetRuntimeException(
             "Failed to create MasterScriptProvider for context '"
             + context + "'.",
-            *this, ::cppu::getCaughtException() );
+            *this, anyEx );
     }
     return msp;
 }
@@ -234,22 +229,21 @@ ActiveMSPList::addActiveMSP( const Reference< uno::XInterface >& xComponent,
     ::osl::MutexGuard guard( m_mutex );
     Reference< XInterface > xNormalized( xComponent, UNO_QUERY );
     ScriptComponent_map::const_iterator pos = m_mScriptComponents.find( xNormalized );
-    if ( pos == m_mScriptComponents.end() )
-    {
-        m_mScriptComponents[ xNormalized ] = msp;
+    if ( pos != m_mScriptComponents.end() )
+        return;
 
-        // add self as listener for component disposal
-        // should probably throw from this method!!, reexamine
-        try
-        {
-            Reference< lang::XComponent > xBroadcaster =
-                Reference< lang::XComponent >( xComponent, UNO_QUERY_THROW );
-            xBroadcaster->addEventListener( this );
-        }
-        catch ( const Exception& )
-        {
-            DBG_UNHANDLED_EXCEPTION();
-        }
+    m_mScriptComponents[ xNormalized ] = msp;
+
+    // add self as listener for component disposal
+    // should probably throw from this method!!, reexamine
+    try
+    {
+        Reference< lang::XComponent > xBroadcaster( xComponent, UNO_QUERY_THROW );
+        xBroadcaster->addEventListener( this );
+    }
+    catch ( const Exception& )
+    {
+        DBG_UNHANDLED_EXCEPTION("scripting");
     }
 }
 
@@ -272,7 +266,7 @@ void SAL_CALL ActiveMSPList::disposing( const css::lang::EventObject& Source )
     {
         // if we get an exception here, there is not much we can do about
         // it can't throw as it will screw up the model that is calling dispose
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("scripting");
     }
 }
 

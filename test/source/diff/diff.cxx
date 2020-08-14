@@ -9,25 +9,23 @@
 
 #define USE_CPPUNIT 1
 
-#include "test/xmldiff.hxx"
+#include <test/xmldiff.hxx>
 
 #include <libxml/xpath.h>
 #include <libxml/parser.h>
-#include <libxml/tree.h>
-#include <libxml/xmlmemory.h>
 
 #include <set>
-#include <cstring>
 #include <sstream>
-#include <cmath>
 #include <cassert>
+#include <vector>
 
 #if USE_CPPUNIT
-#include <cppunit/extensions/HelperMacros.h>
+#include <cppunit/TestAssert.h>
 #endif
 
 #include <rtl/math.hxx>
 
+namespace {
 
 struct tolerance
 {
@@ -81,7 +79,7 @@ private:
 
     void loadToleranceFile(xmlDocPtr xmlTolerance);
     bool compareAttributes(xmlNodePtr node1, xmlNodePtr node2);
-    bool compareElements(xmlNodePtr node1, xmlNodePtr node2);
+    bool compareElements(xmlNode* node1, xmlNode* node2);
 
     /// Error message for cppunit that prints out when expected and found are not equal.
     void cppunitAssertEqual(const xmlChar *expected, const xmlChar *found);
@@ -95,13 +93,13 @@ private:
     std::string fileName;
 };
 
+}
 
 XMLDiff::XMLDiff( const char* pFileName, const char* pContent, int size, const char* pToleranceFile)
-    : fileName(pFileName)
+    : xmlFile1(xmlParseFile(pFileName))
+    , xmlFile2(xmlParseMemory(pContent, size))
+    , fileName(pFileName)
 {
-    xmlFile1 = xmlParseFile(pFileName);
-    xmlFile2 = xmlParseMemory(pContent, size);
-
     if(pToleranceFile)
     {
         xmlDocPtr xmlToleranceFile = xmlParseFile(pToleranceFile);
@@ -304,7 +302,7 @@ bool XMLDiff::compareAttributes(xmlNodePtr node1, xmlNodePtr node2)
         double dVal1 = xmlXPathCastStringToNumber(val1);
         double dVal2 = xmlXPathCastStringToNumber(val2);
 
-        if(!rtl::math::isNan(dVal1) || !rtl::math::isNan(dVal2))
+        if(!std::isnan(dVal1) || !std::isnan(dVal2))
         {
             //compare by value and respect tolerance
             tolerance tol;
@@ -357,8 +355,48 @@ bool XMLDiff::compareAttributes(xmlNodePtr node1, xmlNodePtr node2)
 
     // unequal number of attributes
 #ifdef CPPUNIT_ASSERT
-    CPPUNIT_ASSERT(!attr1);
-    CPPUNIT_ASSERT(!attr2);
+    if (attr1 || attr2)
+    {
+        std::stringstream failStream;
+        failStream << "Unequal number of attributes in ";
+        // print chain from document root
+        std::vector<std::string> parents;
+        auto n = node1;
+        while (n)
+        {
+            if (n->name)
+                parents.push_back(std::string(reinterpret_cast<const char *>(n->name)));
+            n = n->parent;
+        }
+        bool first = true;
+        for (auto it = parents.rbegin(); it != parents.rend(); ++it)
+        {
+            if (!first)
+                failStream << "->";
+            first = false;
+            failStream << *it;
+        }
+        failStream << " Attr1: ";
+        attr1 = node1->properties;
+        while (attr1 != nullptr)
+        {
+            xmlChar* val1 = xmlGetProp(node1, attr1->name);
+            failStream << BAD_CAST(attr1->name) << "=" << BAD_CAST(val1) << ", ";
+            xmlFree(val1);
+            attr1 = attr1->next;
+        }
+
+        failStream << " Attr2: ";
+        attr2 = node2->properties;
+        while (attr2 != nullptr)
+        {
+            xmlChar* val2 = xmlGetProp(node2, attr2->name);
+            failStream << BAD_CAST(attr2->name) << "=" << BAD_CAST(val2) << ", ";
+            xmlFree(val2);
+            attr2 = attr2->next;
+        }
+        CPPUNIT_ASSERT_MESSAGE(failStream.str(), false);
+    }
 #else
     if (attr1 || attr2)
         return false;

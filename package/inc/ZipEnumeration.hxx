@@ -16,22 +16,20 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_PACKAGE_INC_ZIPENUMERATION_HXX
-#define INCLUDED_PACKAGE_INC_ZIPENUMERATION_HXX
 
-#include <HashMaps.hxx>
+#pragma once
 
-class ZipEnumeration
+#include "HashMaps.hxx"
+
+class ZipEnumeration final
 {
-protected:
     EntryHash       &rEntryHash;
     EntryHash::const_iterator aIterator;
 public:
-    bool SAL_CALL hasMoreElements();
-    const ZipEntry * SAL_CALL nextElement();
+    bool hasMoreElements();
+    const ZipEntry * nextElement();
     ZipEnumeration( EntryHash &rNewEntryHash );
     ~ZipEnumeration();
 };
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -18,13 +18,12 @@
  */
 
 #include "RegressionEquation.hxx"
-#include "LinePropertiesHelper.hxx"
-#include "FillProperties.hxx"
-#include "UserDefinedProperties.hxx"
-#include "CharacterProperties.hxx"
-#include "PropertyHelper.hxx"
-#include "macros.hxx"
-#include "ContainerHelper.hxx"
+#include <LinePropertiesHelper.hxx>
+#include <FillProperties.hxx>
+#include <UserDefinedProperties.hxx>
+#include <CharacterProperties.hxx>
+#include <PropertyHelper.hxx>
+#include <ModifyListenerHelper.hxx>
 #include <unonames.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
@@ -34,8 +33,11 @@
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/chart2/RelativePosition.hpp>
 #include <com/sun/star/awt/Size.hpp>
+#include <tools/diagnose_ex.h>
 
 #include <algorithm>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
@@ -60,54 +62,47 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "ShowEquation",
+    rOutProperties.emplace_back( "ShowEquation",
                   PROP_EQUATION_SHOW,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "XName",
+    rOutProperties.emplace_back( "XName",
                   PROP_EQUATION_XNAME,
                   cppu::UnoType<OUString>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "YName",
+    rOutProperties.emplace_back( "YName",
                   PROP_EQUATION_YNAME,
                   cppu::UnoType<OUString>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "ShowCorrelationCoefficient",
+    rOutProperties.emplace_back( "ShowCorrelationCoefficient",
                   PROP_EQUATION_SHOW_CORRELATION_COEFF,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "ReferencePageSize",
+    rOutProperties.emplace_back( "ReferencePageSize",
                   PROP_EQUATION_REF_PAGE_SIZE,
                   cppu::UnoType<awt::Size>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "RelativePosition",
+    rOutProperties.emplace_back( "RelativePosition",
                   PROP_EQUATION_REL_POS,
                   cppu::UnoType<chart2::RelativePosition>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_NUMFMT,
+    rOutProperties.emplace_back( CHART_UNONAME_NUMFMT,
                   PROP_EQUATION_NUMBER_FORMAT,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 }
 
 struct StaticRegressionEquationDefaults_Initializer
@@ -201,8 +196,7 @@ RegressionEquation::RegressionEquation() :
 {}
 
 RegressionEquation::RegressionEquation( const RegressionEquation & rOther ) :
-        MutexContainer(),
-        impl::RegressionEquation_Base(),
+        impl::RegressionEquation_Base(rOther),
         ::property::OPropertySet( rOther, m_aMutex ),
     m_xModifyEventForwarder( new ModifyListenerHelper::ModifyEventForwarder())
 {}
@@ -245,9 +239,9 @@ void SAL_CALL RegressionEquation::addModifyListener( const uno::Reference< util:
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -258,9 +252,9 @@ void SAL_CALL RegressionEquation::removeModifyListener( const uno::Reference< ut
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -290,24 +284,26 @@ void RegressionEquation::fireModifyEvent()
 // ____ XTitle ____
 uno::Sequence< uno::Reference< chart2::XFormattedString > > SAL_CALL RegressionEquation::getText()
 {
-    MutexGuard aGuard( GetMutex() );
+    MutexGuard aGuard( m_aMutex );
     return m_aStrings;
 }
 
 void SAL_CALL RegressionEquation::setText( const uno::Sequence< uno::Reference< chart2::XFormattedString > >& Strings )
 {
-    MutexGuard aGuard( GetMutex() );
+    MutexGuard aGuard( m_aMutex );
     ModifyListenerHelper::removeListenerFromAllElements(
-        ContainerHelper::SequenceToVector( m_aStrings ), m_xModifyEventForwarder );
+        comphelper::sequenceToContainer<std::vector<uno::Reference< chart2::XFormattedString > > >( m_aStrings ),
+        m_xModifyEventForwarder );
     m_aStrings = Strings;
     ModifyListenerHelper::addListenerToAllElements(
-        ContainerHelper::SequenceToVector( m_aStrings ), m_xModifyEventForwarder );
+        comphelper::sequenceToContainer<std::vector<uno::Reference< chart2::XFormattedString > > >( m_aStrings ),
+        m_xModifyEventForwarder );
     fireModifyEvent();
 }
 
 OUString SAL_CALL RegressionEquation::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart2.RegressionEquation");
+    return "com.sun.star.comp.chart2.RegressionEquation";
 }
 
 sal_Bool SAL_CALL RegressionEquation::supportsService( const OUString& rServiceName )
@@ -330,7 +326,7 @@ IMPLEMENT_FORWARD_XINTERFACE2( RegressionEquation, RegressionEquation_Base, ::pr
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_RegressionEquation_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {

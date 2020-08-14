@@ -17,17 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
-
 #include "querydescriptor.hxx"
-#include "apitools.hxx"
-#include "dbastrings.hrc"
-#include <comphelper/property.hxx>
-#include <comphelper/sequence.hxx>
+#include <apitools.hxx>
+#include <stringconstants.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include "definitioncolumn.hxx"
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::awt;
@@ -35,7 +31,6 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::util;
-using namespace ::comphelper;
 using namespace ::osl;
 using namespace ::cppu;
 
@@ -75,7 +70,7 @@ IMPLEMENT_FORWARD_XINTERFACE3( OQueryDescriptor,OWeakObject,OQueryDescriptor_Bas
 void OQueryDescriptor::registerProperties()
 {
     // the properties which OCommandBase supplies (it has no own registration, as it's not derived from
-    // a OPropertyStateContainer)
+    // an OPropertyStateContainer)
     registerProperty(PROPERTY_NAME, PROPERTY_ID_NAME, PropertyAttribute::BOUND|PropertyAttribute::CONSTRAINED,
                     &m_sElementName, cppu::UnoType<decltype(m_sElementName)>::get());
 
@@ -120,14 +115,14 @@ OQueryDescriptor_Base::OQueryDescriptor_Base(::osl::Mutex&  _rMutex,::cppu::OWea
     :m_bColumnsOutOfDate(true)
     ,m_rMutex(_rMutex)
 {
-    m_pColumns = new OColumns(_rMySelf, m_rMutex, true,std::vector< OUString>(), this,this);
+    m_pColumns.reset( new OColumns(_rMySelf, m_rMutex, true,std::vector< OUString>(), this,this) );
 }
 
 OQueryDescriptor_Base::OQueryDescriptor_Base(const OQueryDescriptor_Base& _rSource,::cppu::OWeakObject& _rMySelf)
     :m_bColumnsOutOfDate(true)
     ,m_rMutex(_rSource.m_rMutex)
 {
-    m_pColumns = new OColumns(_rMySelf, m_rMutex, true,std::vector< OUString>(), this,this);
+    m_pColumns.reset( new OColumns(_rMySelf, m_rMutex, true,std::vector< OUString>(), this,this) );
 
     m_sCommand = _rSource.m_sCommand;
     m_bEscapeProcessing = _rSource.m_bEscapeProcessing;
@@ -141,22 +136,26 @@ OQueryDescriptor_Base::~OQueryDescriptor_Base()
 {
     m_pColumns->acquire();
     m_pColumns->disposing();
-    delete m_pColumns;
-
 }
 
 sal_Int64 SAL_CALL OQueryDescriptor_Base::getSomething( const Sequence< sal_Int8 >& _rIdentifier )
 {
-    if (_rIdentifier.getLength() != 16)
-        return 0;
-
-    if (0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  _rIdentifier.getConstArray(), 16 ) )
+    if (isUnoTunnelId<OQueryDescriptor_Base>(_rIdentifier))
         return reinterpret_cast<sal_Int64>(this);
 
     return 0;
 }
 
-IMPLEMENT_IMPLEMENTATION_ID(OQueryDescriptor_Base)
+css::uno::Sequence<sal_Int8> OQueryDescriptor_Base::getUnoTunnelId()
+{
+    static cppu::OImplementationId aId;
+    return aId.getImplementationId();
+}
+
+css::uno::Sequence<sal_Int8> OQueryDescriptor_Base::getImplementationId()
+{
+    return css::uno::Sequence<sal_Int8>();
+}
 
 void OQueryDescriptor_Base::setColumnsOutOfDate( bool _bOutOfDate )
 {
@@ -204,12 +203,12 @@ Reference< XNameAccess > SAL_CALL OQueryDescriptor_Base::getColumns( )
         }
     }
 
-    return m_pColumns;
+    return m_pColumns.get();
 }
 
 OUString SAL_CALL OQueryDescriptor_Base::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdb.OQueryDescriptor");
+    return "com.sun.star.sdb.OQueryDescriptor";
 }
 
 sal_Bool SAL_CALL OQueryDescriptor_Base::supportsService( const OUString& _rServiceName )
@@ -219,10 +218,7 @@ sal_Bool SAL_CALL OQueryDescriptor_Base::supportsService( const OUString& _rServ
 
 Sequence< OUString > SAL_CALL OQueryDescriptor_Base::getSupportedServiceNames(  )
 {
-    Sequence< OUString > aSupported(2);
-    aSupported.getArray()[0] = SERVICE_SDB_DATASETTINGS;
-    aSupported.getArray()[1] = SERVICE_SDB_QUERYDESCRIPTOR;
-    return aSupported;
+    return { SERVICE_SDB_DATASETTINGS, SERVICE_SDB_QUERYDESCRIPTOR };
 }
 
 void OQueryDescriptor_Base::disposeColumns()

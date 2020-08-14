@@ -12,12 +12,14 @@
 
 #include "scdllapi.h"
 #include "address.hxx"
-#include <vcl/image.hxx>
 
 #include <vector>
 #include <memory>
 
-class SvTreeListEntry;
+namespace weld {
+    class TreeIter;
+    class TreeView;
+}
 
 /**
  * Parameter used during call to ScOrcusFilters::loadXMLStructure().
@@ -40,18 +42,17 @@ struct ScOrcusXMLTreeParam
 
     typedef std::vector<std::unique_ptr<EntryData>> UserDataStoreType;
 
-    Image maImgElementDefault;
-    Image maImgElementRepeat;
-    Image maImgAttribute;
+    OUString maImgElementDefault;
+    OUString maImgElementRepeat;
+    OUString maImgAttribute;
 
     /**
      * Store all custom data instances since the tree control doesn't manage
-     * the life cycle of user datas.
+     * the life cycle of user data.
      */
     UserDataStoreType m_UserDataStore;
 
-    static SC_DLLPUBLIC EntryData* getUserData(SvTreeListEntry& rEntry);
-    static SC_DLLPUBLIC const EntryData* getUserData(const SvTreeListEntry& rEntry);
+    static EntryData* getUserData(const weld::TreeView& rControl, const weld::TreeIter& rEntry);
 };
 
 struct ScOrcusImportXMLParam
@@ -68,14 +69,12 @@ struct ScOrcusImportXMLParam
     {
         ScAddress maPos;
         std::vector<OString> maFieldPaths;
+        std::vector<OString> maRowGroups;
     };
 
-    typedef std::vector<CellLink> CellLinksType;
-    typedef std::vector<RangeLink> RangeLinksType;
-
-    std::vector<size_t> maNamespaces;
-    CellLinksType maCellLinks;
-    RangeLinksType maRangeLinks;
+    std::vector<size_t>    maNamespaces;
+    std::vector<CellLink>  maCellLinks;
+    std::vector<RangeLink> maRangeLinks;
 };
 
 #endif

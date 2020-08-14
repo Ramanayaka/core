@@ -20,14 +20,14 @@
 #define INCLUDED_SW_INC_PRTOPT_HXX
 
 #include <unotools/configitem.hxx>
-#include <printdata.hxx>
+#include "printdata.hxx"
 
-class SwPrintOptions : public SwPrintData, public utl::ConfigItem
+class SwPrintOptions final : public SwPrintData, public utl::ConfigItem
 {
 private:
-    bool            bIsWeb;
+    bool            m_bIsWeb;
 
-    css::uno::Sequence<OUString> GetPropertyNames();
+    css::uno::Sequence<OUString> GetPropertyNames() const;
 
     virtual void ImplCommit() override;
 

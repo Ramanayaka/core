@@ -26,7 +26,7 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/ChainablePropertySet.hxx>
-#include <usrpref.hxx>
+#include <tools/fldunit.hxx>
 
 class SwView;
 class SwViewOption;
@@ -69,10 +69,10 @@ enum class SwXPrintSettingsType
     Document
 };
 
-class SwXPrintSettings : public comphelper::ChainablePropertySet
+class SwXPrintSettings final : public comphelper::ChainablePropertySet
 {
     friend class SwXDocumentSettings;
-protected:
+
     SwXPrintSettingsType meType;
     SwPrintData * mpPrtOpt;
     SwDoc *mpDoc;
@@ -97,13 +97,12 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class SwXViewSettings : public comphelper::ChainablePropertySet
+class SwXViewSettings final : public comphelper::ChainablePropertySet
 {
-
     friend class SwXDocumentSettings;
-protected:
+
     SwView*                     pView;
-    SwViewOption*       mpViewOption;
+    std::unique_ptr<SwViewOption> mpViewOption;
     const SwViewOption*         mpConstViewOption;
     bool                    bObjectValid:1, mbApplyZoom;
 

@@ -42,7 +42,7 @@ class SwBoxAutoFormat;
 enum class SwGetPoolIdFromName : sal_uInt16;
 
 // Temporary StyleSheet.
-class SW_DLLPUBLIC SwDocStyleSheet : public SfxStyleSheetBase
+class SW_DLLPUBLIC SwDocStyleSheet final : public SfxStyleSheetBase
 {
     friend class SwDocStyleSheetPool;
     friend class SwStyleSheetIterator;
@@ -73,18 +73,16 @@ class SW_DLLPUBLIC SwDocStyleSheet : public SfxStyleSheetBase
     SAL_DLLPRIVATE bool FillStyleSheet(FillStyleType eFType,
             std::unique_ptr<SfxItemSet> * o_ppFlatSet = nullptr);
 
-protected:
     virtual ~SwDocStyleSheet() override;
 
 public:
     SwDocStyleSheet( SwDoc&                 rDoc,
-                     SwDocStyleSheetPool*   pPool);
+                     SwDocStyleSheetPool&   rPool);
 
     SwDocStyleSheet( const SwDocStyleSheet& );
 
     void                    Reset();
 
-    void                    SetMask(sal_uInt16 nMsk)            { nMask = nMsk;     }
     void                    SetFamily(SfxStyleFamily eFam)  { nFamily = eFam;   }
 
     bool                    IsPhysical() const              { return bPhysical; }
@@ -129,6 +127,8 @@ public:
     virtual bool            HasClearParentSupport() const override;
     virtual OUString        GetDescription(MapUnit eUnit) override;
 
+    virtual OUString GetUsedBy() override;
+
     SwCharFormat*              GetCharFormat();
     SwTextFormatColl*           GetCollection();
     SwFrameFormat*               GetFrameFormat();
@@ -147,7 +147,7 @@ class SwStyleSheetIterator : public SfxStyleSheetIterator, public SfxListener
     class SwPoolFormatList
     {
         std::vector<OUString> maImpl;
-        typedef std::unordered_map<OUString, sal_uInt32, OUStringHash> UniqueHash;
+        typedef std::unordered_map<OUString, sal_uInt32> UniqueHash;
         UniqueHash maUnique;
         void rehash();
     public:
@@ -175,8 +175,8 @@ class SwStyleSheetIterator : public SfxStyleSheetIterator, public SfxListener
                                         char        cType);
 
 public:
-    SwStyleSheetIterator( SwDocStyleSheetPool* pBase,
-                          SfxStyleFamily eFam, sal_uInt16 n );
+    SwStyleSheetIterator(SwDocStyleSheetPool& rBase,
+                         SfxStyleFamily eFam, SfxStyleSearchBits n);
     virtual ~SwStyleSheetIterator() override;
 
     virtual sal_uInt16 Count() override;
@@ -196,7 +196,7 @@ class SwDocStyleSheetPool : public SfxStyleSheetBasePool
     SwDoc&              rDoc;
     bool                bOrganizer : 1;     ///< Organizer
 
-    virtual SfxStyleSheetBase* Create( const OUString&, SfxStyleFamily, sal_uInt16 nMask) override;
+    virtual SfxStyleSheetBase* Create( const OUString&, SfxStyleFamily, SfxStyleSearchBits nMask) override;
     virtual SfxStyleSheetBase* Create( const SfxStyleSheetBase& ) override;
 
     using SfxStyleSheetBasePool::Find;
@@ -205,10 +205,10 @@ public:
     SwDocStyleSheetPool( SwDoc&, bool bOrganizer );
 
     virtual SfxStyleSheetBase& Make(const OUString&, SfxStyleFamily,
-            sal_uInt16 nMask = SFXSTYLEBIT_ALL) override;
+            SfxStyleSearchBits nMask = SfxStyleSearchBits::All) override;
 
     virtual SfxStyleSheetBase* Find( const OUString&, SfxStyleFamily eFam,
-                                    sal_uInt16 n=SFXSTYLEBIT_ALL ) override;
+                                    SfxStyleSearchBits n=SfxStyleSearchBits::All ) override;
 
     virtual bool SetParent( SfxStyleFamily eFam, const OUString &rStyle,
                             const OUString &rParent ) override;
@@ -217,7 +217,7 @@ public:
 
     bool    IsOrganizerMode() const         { return bOrganizer; }
 
-    virtual std::shared_ptr<SfxStyleSheetIterator> CreateIterator( SfxStyleFamily, sal_uInt16 nMask ) override;
+    virtual std::unique_ptr<SfxStyleSheetIterator> CreateIterator( SfxStyleFamily, SfxStyleSearchBits nMask = SfxStyleSearchBits::All) override;
 
     SwDoc& GetDoc() const { return rDoc; }
 

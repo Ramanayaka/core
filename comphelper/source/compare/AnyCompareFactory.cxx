@@ -21,20 +21,17 @@
 #include <com/sun/star/i18n/Collator.hpp>
 #include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/uno/Sequence.h>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
-#include <map>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::ucb;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::i18n;
+
+namespace {
 
 class AnyCompare : public ::cppu::WeakImplHelper< XAnyCompare >
 {
@@ -42,8 +39,8 @@ class AnyCompare : public ::cppu::WeakImplHelper< XAnyCompare >
 
 public:
     AnyCompare( Reference< XComponentContext > const & xContext, const Locale& rLocale )
+       : m_xCollator(Collator::create( xContext ))
     {
-        m_xCollator = Collator::create( xContext );
         m_xCollator->loadDefaultCollator( rLocale,
                                           0 ); //???
     }
@@ -73,6 +70,8 @@ public:
     virtual Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 };
 
+}
+
 sal_Int16 SAL_CALL AnyCompare::compare( const Any& any1, const Any& any2 )
 {
     sal_Int16 aResult = 0;
@@ -101,7 +100,7 @@ Reference< XAnyCompare > SAL_CALL AnyCompareFactory::createAnyCompareByName( con
 
 void SAL_CALL AnyCompareFactory::initialize( const Sequence< Any >& aArguments )
 {
-    if( aArguments.getLength() )
+    if( aArguments.hasElements() )
     {
         if( aArguments[0] >>= m_Locale )
         {
@@ -113,7 +112,7 @@ void SAL_CALL AnyCompareFactory::initialize( const Sequence< Any >& aArguments )
 
 OUString SAL_CALL AnyCompareFactory::getImplementationName(  )
 {
-    return OUString( "AnyCompareFactory" );
+    return "AnyCompareFactory";
 }
 
 sal_Bool SAL_CALL AnyCompareFactory::supportsService( const OUString& ServiceName )
@@ -123,12 +122,10 @@ sal_Bool SAL_CALL AnyCompareFactory::supportsService( const OUString& ServiceNam
 
 Sequence< OUString > SAL_CALL AnyCompareFactory::getSupportedServiceNames(  )
 {
-    const OUString aServiceName( "com.sun.star.ucb.AnyCompareFactory" );
-    const Sequence< OUString > aSeq( &aServiceName, 1 );
-    return aSeq;
+    return { "com.sun.star.ucb.AnyCompareFactory" };
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 AnyCompareFactory_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

@@ -6,6 +6,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
+#ifndef LO_CLANG_SHARED_PLUGINS
 
 #include "check.hxx"
 #include "plugin.hxx"
@@ -19,11 +20,12 @@ bool isAsciiCharacterLiteral(Expr const * expr) {
     return false;
 }
 
-class Visitor final:
-    public RecursiveASTVisitor<Visitor>, public loplugin::Plugin
+class SalUnicodeLiteral final:
+    public loplugin::FilteringPlugin<SalUnicodeLiteral>
 {
 public:
-    explicit Visitor(InstantiationData const & data): Plugin(data) {}
+    explicit SalUnicodeLiteral(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
 
     bool VisitCXXStaticCastExpr(CXXStaticCastExpr const * expr) {
         check(expr);
@@ -40,16 +42,18 @@ public:
         return true;
     }
 
-private:
-    void run() override {
-        if (compiler.getLangOpts().CPlusPlus
+    bool preRun() override {
+        return compiler.getLangOpts().CPlusPlus
             && compiler.getPreprocessor().getIdentifierInfo(
-                "LIBO_INTERNAL_ONLY")->hasMacroDefinition())
-        {
-            TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
-        }
+                "LIBO_INTERNAL_ONLY")->hasMacroDefinition();
     }
 
+    void run() override {
+        if (preRun())
+            TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
+    }
+
+private:
     void check(ExplicitCastExpr const * expr) {
         if (ignoreLocation(expr)
             || isInUnoIncludeFile(expr->getExprLoc()))
@@ -70,7 +74,7 @@ private:
             t = tt->desugar();
         }
         auto const e1 = expr->getSubExprAsWritten();
-        auto const loc = e1->getLocStart();
+        auto const loc = compat::getBeginLoc(e1);
         if (loc.isMacroID()
             && compiler.getSourceManager().isAtStartOfImmediateMacroExpansion(
                 loc))
@@ -89,8 +93,10 @@ private:
     }
 };
 
-static loplugin::Plugin::Registration<Visitor> reg("salunicodeliteral");
+static loplugin::Plugin::Registration<SalUnicodeLiteral> salunicodeliteral("salunicodeliteral");
 
-}
+} // namespace
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

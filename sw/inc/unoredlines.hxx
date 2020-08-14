@@ -21,17 +21,15 @@
 
 #include <sal/config.h>
 
-#include <docary.hxx>
-#include <unocoll.hxx>
-#include <unobaseclass.hxx>
+#include "docary.hxx"
+#include "unocoll.hxx"
+#include "unobaseclass.hxx"
+#include <svl/listener.hxx>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 
 class SwRangeRedline;
-namespace com{ namespace sun{ namespace star{
-        namespace beans{
-            class XPropertySet;
-        }
-}}}
+namespace com::sun::star::beans { class XPropertySet; }
+
 typedef
 cppu::WeakImplHelper
 <
@@ -40,10 +38,9 @@ cppu::WeakImplHelper
     css::lang::XServiceInfo
 >
 SwRedlinesBaseClass;
-class SwXRedlines : public SwRedlinesBaseClass,
+class SwXRedlines final : public SwRedlinesBaseClass,
     public SwUnoCollection
 {
-protected:
     virtual ~SwXRedlines() override;
 public:
     SwXRedlines(SwDoc* pDoc);
@@ -67,13 +64,13 @@ public:
     static css::beans::XPropertySet*           GetObject( SwRangeRedline& rRedline, SwDoc& rDoc );
 };
 
-class SwXRedlineEnumeration
+class SwXRedlineEnumeration final
     : public SwSimpleEnumeration_Base
-    , public SwClient
+    , public SvtListener
 {
     SwDoc* pDoc;
     SwRedlineTable::size_type nCurrentIndex;
-protected:
+
     virtual ~SwXRedlineEnumeration() override;
 public:
     SwXRedlineEnumeration(SwDoc& rDoc);
@@ -86,9 +83,8 @@ public:
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-protected:
-    //SwClient
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew) override;
+
+    virtual void Notify( const SfxHint& ) override;
 };
 
 #endif

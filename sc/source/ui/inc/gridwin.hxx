@@ -20,13 +20,13 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_GRIDWIN_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_GRIDWIN_HXX
 
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include "viewutil.hxx"
 #include "viewdata.hxx"
 #include "cbutton.hxx"
-#include <svx/sdr/overlay/overlayobject.hxx>
+#include "checklistmenu.hxx"
 #include <com/sun/star/sheet/DataPilotFieldOrientation.hpp>
-#include <basegfx/matrix/b2dhommatrix.hxx>
+#include <o3tl/deleter.hxx>
 
 #include <memory>
 #include <vector>
@@ -39,10 +39,11 @@ namespace sc {
     struct SpellCheckContext;
 }
 
+namespace sdr::overlay { class OverlayManager; }
+
 class FmFormView;
 struct ScTableInfo;
 class ScDPObject;
-class ScCheckListMenuWindow;
 class ScDPFieldButton;
 class ScOutputData;
 class ScFilterListBox;
@@ -79,9 +80,11 @@ struct SpellCallbackInfo;
 #define SC_PD_BREAK_V       32
 
 // predefines
-namespace sdr { namespace overlay { class OverlayObjectList; }}
+namespace sdr::overlay { class OverlayObjectList; }
 
-class ScGridWindow : public vcl::Window, public DropTargetHelper, public DragSourceHelper
+class ScFilterFloatingWindow;
+
+class SAL_DLLPUBLIC_RTTI ScGridWindow : public vcl::Window, public DropTargetHelper, public DragSourceHelper
 {
     // ScFilterListBox is always used for selection list
     friend class ScFilterListBox;
@@ -103,7 +106,7 @@ class ScGridWindow : public vcl::Window, public DropTargetHelper, public DragSou
     std::unique_ptr<sdr::overlay::OverlayObjectList> mpOOHeader;
     std::unique_ptr<sdr::overlay::OverlayObjectList> mpOOShrink;
 
-    std::unique_ptr<tools::Rectangle> mpAutoFillRect;
+    std::optional<tools::Rectangle> mpAutoFillRect;
 
     /// LibreOfficeKit needs a persistent FmFormView for tiled rendering,
     /// otherwise the invalidations from drawinglayer do not work.
@@ -122,13 +125,24 @@ class ScGridWindow : public vcl::Window, public DropTargetHelper, public DragSou
         SCROW mnRow1;
         SCROW mnRow2;
 
-        VisibleRange();
+        VisibleRange(const ScDocument*);
 
         bool isInside(SCCOL nCol, SCROW nRow) const;
         bool set(SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2);
     };
 
     VisibleRange maVisibleRange;
+
+    struct LOKCursorEntry
+    {
+        Fraction aScaleX;
+        Fraction aScaleY;
+        tools::Rectangle aRect;
+    };
+
+    // Stores the last cursor position in twips for all
+    // zoom levels demanded from a ScGridWindow instance.
+    std::vector<LOKCursorEntry> maLOKLastCursor;
 
     std::unique_ptr<sc::SpellCheckContext> mpSpellCheckCxt;
 
@@ -137,13 +151,15 @@ class ScGridWindow : public vcl::Window, public DropTargetHelper, public DragSou
     ScHSplitPos             eHWhich;
     ScVSplitPos             eVWhich;
 
-    std::unique_ptr<ScNoteMarker> mpNoteMarker;
+    std::unique_ptr<ScNoteMarker, o3tl::default_delete<ScNoteMarker>> mpNoteMarker;
 
     VclPtr<ScFilterListBox>          mpFilterBox;
-    VclPtr<FloatingWindow>           mpFilterFloat;
+    VclPtr<ScFilterFloatingWindow>   mpFilterFloat;
     VclPtr<ScCheckListMenuWindow>    mpAutoFilterPopup;
     VclPtr<ScCheckListMenuWindow>    mpDPFieldPopup;
     std::unique_ptr<ScDPFieldButton> mpFilterButton;
+
+    ScCheckListMenuControl::ResultType aSaveAutoFilterResult;
 
     sal_uInt16              nCursorHideCount;
 
@@ -234,7 +250,7 @@ class ScGridWindow : public vcl::Window, public DropTargetHelper, public DragSou
 
     bool            HasScenarioButton( const Point& rPosPixel, ScRange& rScenRange );
 
-    bool            DropScroll( const Point& rMousePos );
+    void            DropScroll( const Point& rMousePos );
 
     sal_Int8        AcceptPrivateDrop( const AcceptDropEvent& rEvt );
     sal_Int8        ExecutePrivateDrop( const ExecuteDropEvent& rEvt );
@@ -251,8 +267,7 @@ class ScGridWindow : public vcl::Window, public DropTargetHelper, public DragSou
     bool            DrawHasMarkedObj();
     void            DrawEndAction();
     void            DrawMarkDropObj( SdrObject* pObj );
-    SdrObject*      GetEditObject();
-    bool            IsMyModel(SdrEditView* pSdrView);
+    bool            IsMyModel(const SdrEditView* pSdrView);
 
     void            DrawRedraw( ScOutputData& rOutputData, SdrLayerID nLayer );
     void            DrawSdrGrid( const tools::Rectangle& rDrawingRect, OutputDevice* pContentDev );
@@ -284,8 +299,18 @@ class ScGridWindow : public vcl::Window, public DropTargetHelper, public DragSou
 
     void            SelectForContextMenu( const Point& rPosPixel, SCCOL nCellX, SCROW nCellY );
 
-    void            GetSelectionRects( ::std::vector< tools::Rectangle >& rPixelRects );
-
+    void            GetSelectionRects( ::std::vector< tools::Rectangle >& rPixelRects ) const;
+    void            GetSelectionRectsPrintTwips(::std::vector< tools::Rectangle >& rRects) const;
+    void            GetPixelRectsFor( const ScMarkData &rMarkData,
+                                      ::std::vector< tools::Rectangle >& rPixelRects ) const;
+    void            GetRectsAnyFor(const ScMarkData &rMarkData,
+                                  ::std::vector< tools::Rectangle >& rRects, bool bInPrintTwips) const;
+    void            UpdateKitSelection(const std::vector<tools::Rectangle>& rRectangles,
+                                       std::vector<tools::Rectangle>* pLogicRects = nullptr);
+    bool            NeedLOKCursorInvalidation(const tools::Rectangle& rCursorRect,
+                                              const Fraction aScaleX, const Fraction aScaleY);
+    void            InvalidateLOKViewCursor(const tools::Rectangle& rCursorRect,
+                                            const Fraction aScaleX, const Fraction aScaleY);
 
 protected:
     virtual void    PrePaint(vcl::RenderContext& rRenderContext) override;
@@ -300,7 +325,7 @@ protected:
     virtual void    StartDrag( sal_Int8 nAction, const Point& rPosPixel ) override;
 
 public:
-    enum AutoFilterMode { Normal, Top10, Custom, Empty, NonEmpty, SortAscending, SortDescending };
+    enum class AutoFilterMode { Normal, Top10, Custom, Empty, NonEmpty, SortAscending, SortDescending };
 
     ScGridWindow( vcl::Window* pParent, ScViewData* pData, ScSplitPos eWhichPos );
     virtual ~ScGridWindow() override;
@@ -308,7 +333,7 @@ public:
 
     virtual void    KeyInput(const KeyEvent& rKEvt) override;
     // #i70788# flush and get overlay
-    rtl::Reference<sdr::overlay::OverlayManager> getOverlayManager();
+    rtl::Reference<sdr::overlay::OverlayManager> getOverlayManager() const;
     void flushOverlayManager();
 
     virtual void    Command( const CommandEvent& rCEvt ) override;
@@ -325,7 +350,7 @@ public:
                                int nTilePosX, int nTilePosY,
                                long nTileWidth, long nTileHeight );
 
-    /// @see OutputDevice::LogicInvalidate().
+    /// @see Window::LogicInvalidate().
     void LogicInvalidate(const tools::Rectangle* pRectangle) override;
 
     /// Update the cell selection according to what handles have been dragged.
@@ -351,7 +376,9 @@ public:
     void            ScrollPixel( long nDifX, long nDifY );
     void            UpdateEditViewPos();
 
-    void            UpdateFormulas();
+    void            UpdateFormulas(SCCOL nX1 = -1, SCROW nY1 = -1, SCCOL nX2 = -1, SCROW nY2 = -1);
+
+    void            ShowFilterMenu(const tools::Rectangle& rCellRect, bool bLayoutRTL);
 
     void            LaunchDataSelectMenu( SCCOL nCol, SCROW nRow );
     void            DoScenarioMenu( const ScRange& rScenRange );
@@ -428,17 +455,26 @@ public:
     void            UpdateShrinkOverlay();
     void            UpdateAllOverlays();
 
-    /// @see ScModelObj::getCellCursor().
-    OString         getCellCursor(const Fraction& rZoomX,
-                                  const Fraction& rZoomY) const;
-    OString         getCellCursor(int nOutputWidth,
-                                  int nOutputHeight,
-                                  long nTileWidth,
-                                  long nTileHeight);
-    void updateLibreOfficeKitCellCursor(SfxViewShell* pOtherShell) const;
+    /// get Cell cursor in this view's co-ordinate system @see ScModelObj::getCellCursor().
+    OString getCellCursor() const;
+    void notifyKitCellCursor() const;
+    void notifyKitCellViewCursor(const SfxViewShell* pForShell) const;
+    void updateKitCellCursor(const SfxViewShell* pOtherShell) const;
+    /// notify this view with new positions for other view's cursors (after zoom)
+    void updateKitOtherCursors() const;
+    void updateOtherKitSelections() const;
+
+    /// Same as MouseButtonDown(), but coordinates are in logic unit.
+    virtual void LogicMouseButtonDown(const MouseEvent& rMouseEvent) override;
+    /// Same as MouseButtonUp(), but coordinates are in logic unit.
+    virtual void LogicMouseButtonUp(const MouseEvent& rMouseEvent) override;
+    /// Same as MouseMove(), but coordinates are in logic unit.
+    virtual void LogicMouseMove(const MouseEvent& rMouseEvent) override;
 
     ScViewData* getViewData();
     virtual FactoryFunction GetUITestFactory() const override;
+
+    void updateLOKValListButton(bool bVisible, const ScAddress& rPos) const;
 
 protected:
     void ImpCreateOverlayObjects();

@@ -18,11 +18,10 @@
  */
 
 #include "StatusBarCommandDispatch.hxx"
-#include "ObjectNameProvider.hxx"
-#include "macros.hxx"
-#include <com/sun/star/util/XModifyBroadcaster.hpp>
-
-#include "ResId.hxx"
+#include <ObjectNameProvider.hxx>
+#include <com/sun/star/chart2/XChartDocument.hpp>
+#include <com/sun/star/view/XSelectionSupplier.hpp>
+#include <com/sun/star/util/XModifiable.hpp>
 
 using namespace ::com::sun::star;
 
@@ -49,10 +48,7 @@ void StatusBarCommandDispatch::initialize()
 {
     if( m_xModifiable.is())
     {
-        Reference< util::XModifyBroadcaster > xModifyBroadcaster( m_xModifiable, uno::UNO_QUERY );
-        OSL_ASSERT( xModifyBroadcaster.is());
-        if( xModifyBroadcaster.is())
-            xModifyBroadcaster->addModifyListener( this );
+        m_xModifiable->addModifyListener( this );
     }
 
     if( m_xSelectionSupplier.is())

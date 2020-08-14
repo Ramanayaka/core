@@ -22,14 +22,14 @@
 #include <editeng/eeitem.hxx>
 #include <svx/unopool.hxx>
 
-#include "drawdoc.hxx"
+#include <drawdoc.hxx>
 #include "unopool.hxx"
 
 using namespace ::com::sun::star;
 using namespace ::cppu;
 using namespace ::comphelper;
 
-LanguageType SdUnoGetLanguage( const lang::Locale& rLocale )
+static LanguageType SdUnoGetLanguage( const lang::Locale& rLocale )
 {
     //  empty language -> LANGUAGE_SYSTEM
     if ( rLocale.Language.getLength() == 0 )
@@ -42,10 +42,12 @@ LanguageType SdUnoGetLanguage( const lang::Locale& rLocale )
     return eRet;
 }
 
+namespace {
+
 class SdUnoDrawPool : public SvxUnoDrawPool
 {
 public:
-    explicit SdUnoDrawPool(SdDrawDocument* pModel) throw();
+    explicit SdUnoDrawPool(SdDrawDocument* pModel);
 
 protected:
     virtual void putAny( SfxItemPool* pPool, const PropertyMapEntry* pEntry, const uno::Any& rValue ) override;
@@ -54,7 +56,9 @@ private:
     SdDrawDocument* mpDrawModel;
 };
 
-SdUnoDrawPool::SdUnoDrawPool( SdDrawDocument* pModel ) throw()
+}
+
+SdUnoDrawPool::SdUnoDrawPool(SdDrawDocument* pModel)
 : SvxUnoDrawPool( pModel ), mpDrawModel( pModel )
 {
 }
@@ -71,7 +75,7 @@ void SdUnoDrawPool::putAny( SfxItemPool* pPool, const comphelper::PropertyMapEnt
             if( rValue >>= aLocale )
                 mpDrawModel->SetLanguage(
                     SdUnoGetLanguage( aLocale ),
-                    (sal_uInt16)pEntry->mnHandle );
+                    static_cast<sal_uInt16>(pEntry->mnHandle) );
         }
     }
     SvxUnoDrawPool::putAny( pPool, pEntry, rValue );

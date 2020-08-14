@@ -16,17 +16,14 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifdef _MSC_VER
-#pragma warning(disable : 4917 4555)
-#endif
 
-#include "common.h"
+#include <common.h>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 
-#include <guid.hxx>
+#include "guid.hxx"
 
-wchar_t const * getStorageTypeFromGUID_Impl( GUID* guid )
+wchar_t const * getStorageTypeFromGUID_Impl( GUID const * guid )
 {
     if ( *guid == OID_WriterTextServer )
         return L"soffice.StarWriterDocument.6";
@@ -61,7 +58,7 @@ wchar_t const * getStorageTypeFromGUID_Impl( GUID* guid )
     return L"";
 }
 
-o3tl::u16string_view getServiceNameFromGUID_Impl( GUID* guid )
+std::u16string_view getServiceNameFromGUID_Impl( GUID const * guid )
 {
     if ( *guid == OID_WriterTextServer )
         return u"com.sun.star.comp.Writer.TextDocument";
@@ -96,37 +93,37 @@ o3tl::u16string_view getServiceNameFromGUID_Impl( GUID* guid )
     return u"";
 }
 
-OUString getFilterNameFromGUID_Impl( GUID* guid )
+OUString getFilterNameFromGUID_Impl( GUID const * guid )
 {
     if ( *guid == OID_WriterTextServer )
-        return OUString( "StarOffice XML (Writer)" );
+        return "StarOffice XML (Writer)";
 
     if ( *guid == OID_WriterOASISTextServer )
-        return OUString( "writer8" );
+        return "writer8";
 
     if ( *guid == OID_CalcServer )
-        return OUString( "StarOffice XML (Calc)" );
+        return "StarOffice XML (Calc)";
 
     if ( *guid == OID_CalcOASISServer )
-        return OUString( "calc8" );
+        return "calc8";
 
     if ( *guid == OID_DrawingServer )
-        return OUString( "StarOffice XML (Draw)" );
+        return "StarOffice XML (Draw)";
 
     if ( *guid == OID_DrawingOASISServer )
-        return OUString( "draw8" );
+        return "draw8";
 
     if ( *guid == OID_PresentationServer )
-        return OUString( "StarOffice XML (Impress)" );
+        return "StarOffice XML (Impress)";
 
     if ( *guid == OID_PresentationOASISServer )
-        return OUString( "impress8" );
+        return "impress8";
 
     if ( *guid == OID_MathServer )
-        return OUString( "StarOffice XML (Math)" );
+        return "StarOffice XML (Math)";
 
     if ( *guid == OID_MathOASISServer )
-        return OUString( "math8" );
+        return "math8";
 
     return OUString();
 }

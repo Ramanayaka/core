@@ -19,24 +19,22 @@
 
 #include "MasterPageContainerProviders.hxx"
 
-#include "DrawDocShell.hxx"
-#include "drawdoc.hxx"
-#include "PreviewRenderer.hxx"
-#include <comphelper/processfactory.hxx>
+#include <DrawDocShell.hxx>
+#include <drawdoc.hxx>
+#include <sdpage.hxx>
+#include <PreviewRenderer.hxx>
+#include <svl/eitem.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/sfxsids.hrc>
 #include <sfx2/thumbnailview.hxx>
-#include <unotools/ucbstreamhelper.hxx>
 #include <vcl/image.hxx>
-#include <vcl/pngread.hxx>
-#include <com/sun/star/embed/ElementModes.hpp>
-#include <com/sun/star/embed/StorageFactory.hpp>
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 //===== PagePreviewProvider ===================================================
 
@@ -132,7 +130,7 @@ SdPage* TemplatePageObjectProvider::operator() (SdDrawDocument*)
     }
     catch (const uno::RuntimeException&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("sd");
         pPage = nullptr;
     }
 
@@ -142,10 +140,10 @@ SdPage* TemplatePageObjectProvider::operator() (SdDrawDocument*)
 ::sd::DrawDocShell* TemplatePageObjectProvider::LoadDocument (const OUString& sFileName)
 {
     SfxApplication* pSfxApp = SfxGetpApp();
-    SfxItemSet* pSet = new SfxAllItemSet (pSfxApp->GetPool());
+    std::unique_ptr<SfxItemSet> pSet(new SfxAllItemSet (pSfxApp->GetPool()));
     pSet->Put (SfxBoolItem (SID_TEMPLATE, true));
     pSet->Put (SfxBoolItem (SID_PREVIEW, true));
-    if (pSfxApp->LoadTemplate (mxDocumentShell, sFileName, pSet))
+    if (pSfxApp->LoadTemplate (mxDocumentShell, sFileName, std::move(pSet)))
     {
         mxDocumentShell = nullptr;
     }
@@ -204,6 +202,6 @@ int ExistingPageProvider::GetCostIndex()
     return 0;
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

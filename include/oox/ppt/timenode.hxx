@@ -21,7 +21,7 @@
 #ifndef INCLUDED_OOX_PPT_TIMENODE_HXX
 #define INCLUDED_OOX_PPT_TIMENODE_HXX
 
-#include <list>
+#include <vector>
 #include <map>
 #include <memory>
 
@@ -33,18 +33,18 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace animations { class XAnimationNode; }
-} } }
+}
 
-namespace oox { namespace core { class XmlFilterBase; } }
+namespace oox::core { class XmlFilterBase; }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
     class TimeNode;
 
     typedef std::shared_ptr< TimeNode > TimeNodePtr;
-    typedef std::list< TimeNodePtr > TimeNodePtrList;
+    typedef std::vector< TimeNodePtr > TimeNodePtrList;
 
     class TimeNode final
     {
@@ -75,12 +75,13 @@ namespace oox { namespace ppt {
         void setNode(
             const ::oox::core::XmlFilterBase& rFilter,
             const css::uno::Reference< css::animations::XAnimationNode >& xNode,
-            const SlidePersistPtr & pSlide );
+            const SlidePersistPtr & pSlide,
+            const css::uno::Reference< css::animations::XAnimationNode >& xParent);
 
         AnimTargetElementPtr const & getTarget()
             {
                 if( !mpTarget )
-                    mpTarget.reset( new AnimTargetElement );
+                    mpTarget = std::make_shared<AnimTargetElement>();
                 return mpTarget;
             }
 
@@ -119,7 +120,7 @@ namespace oox { namespace ppt {
         AnimationConditionList     maPrevCondList, maNextCondList;
     };
 
-} }
+}
 
 
 #endif

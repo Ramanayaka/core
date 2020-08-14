@@ -16,6 +16,8 @@ $(eval $(call gb_CppunitTest_use_externals,sd_export_ooxml2,\
 	libxml2 \
 ))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sd_export_ooxml2))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sd_export_ooxml2, \
     sd/qa/unit/export-tests-ooxml2 \
 ))
@@ -75,9 +77,5 @@ $(eval $(call gb_CppunitTest_use_configuration,sd_export_ooxml2))
 $(eval $(call gb_CppunitTest_add_arguments,sd_export_ooxml2,\
 	-env:SVG_DISABLE_FONT_EMBEDDING= \
 ))
-
-$(call gb_CppunitTest_get_target,sd_export_ooxml2): \
-	$(call gb_AllLangResTarget_get_target,avmedia) \
-	$(call gb_AllLangResTarget_get_target,sd)
 
 # vim: set noet sw=4 ts=4:

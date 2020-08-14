@@ -77,7 +77,7 @@ extern "C" {
  *
  */
 #ifndef RASQAL_API
-#  ifdef WIN32
+#  ifdef _WIN32
 #    ifdef __GNUC__
 #      undef _declspec
 #      define _declspec(x) __declspec(x)
@@ -1133,7 +1133,7 @@ typedef enum {
  * @gp: current graph_pattern
  * @user_data: user data passed in
  *
- * User function to visit an graph_pattern and operate on it with
+ * User function to visit a graph_pattern and operate on it with
  * rasqal_graph_pattern_visit() or rasqal_query_graph_pattern_visit()
  *
  * Return value: non-0 to truncate the visit

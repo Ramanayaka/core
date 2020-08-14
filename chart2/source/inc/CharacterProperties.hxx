@@ -22,11 +22,12 @@
 #include "PropertyHelper.hxx"
 #include "FastPropertyIdRanges.hxx"
 #include "charttoolsdllapi.hxx"
-#include <com/sun/star/beans/Property.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/awt/FontDescriptor.hpp>
 
 #include <vector>
+
+namespace com::sun::star::beans { class XMultiPropertySet; }
+namespace com::sun::star::beans { struct Property; }
 
 namespace chart
 {

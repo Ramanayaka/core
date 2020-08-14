@@ -25,15 +25,15 @@
 #include <com/sun/star/uno/Reference.h>
 
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace text {
         class XTextRange;
         class XTextContent;
     }
-    namespace xml { namespace sax {
+    namespace xml::sax {
         class XAttributeList;
-    } }
-} } }
+    }
+}
 class XMLTextImportHelper;
 
 class XMLFieldParamImportContext : public SvXMLImportContext
@@ -90,7 +90,7 @@ protected:
         const css::uno::Reference<css::xml::sax::XAttributeList> & xAttrList) override;
     virtual void EndElement() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                                                     const OUString& rLocalName,
                                                     const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
 

@@ -20,6 +20,7 @@
 #ifndef __com_sun_star_security_XDocumentDigitalSignatures_idl_
 #define __com_sun_star_security_XDocumentDigitalSignatures_idl_
 
+#include <com/sun/star/awt/XWindow.idl>
 #include <com/sun/star/uno/XInterface.idl>
 #include <com/sun/star/io/XInputStream.idl>
 #include <com/sun/star/io/XStream.idl>
@@ -29,10 +30,10 @@
 
 module com { module sun { module star { module security {
 
-/** interface for signing and verifying digital signatures in office documents
+/** Interface for signing and verifying digital signatures in office documents
 
     <p>
-    This interface can be used to digitally sign different content in a office document.
+    This interface can be used to digitally sign different content in an office document.
     It can also be used to verify digital signatures.
     </p>
  */
@@ -45,6 +46,24 @@ interface XDocumentDigitalSignatures : com::sun::star::uno::XInterface
      */
     boolean signDocumentContent( [in] ::com::sun::star::embed::XStorage xStorage,
                                  [in] ::com::sun::star::io::XStream xSignStream);
+
+    /** Signs the content of the document including text and pictures
+        using the given XCertificate.
+
+        Also adds the given Signature Line Id and the signed and unsigned graphics to
+        the signature.
+
+       Macros will not be signed.
+
+       @since LibreOffice 6.1
+     */
+    boolean signSignatureLine( [in] ::com::sun::star::embed::XStorage xStorage,
+                               [in] ::com::sun::star::io::XStream xSignStream,
+                               [in] string signatureLineId,
+                               [in] ::com::sun::star::security::XCertificate xCertificate,
+                               [in] ::com::sun::star::graphic::XGraphic xValidGraphic,
+                               [in] ::com::sun::star::graphic::XGraphic xInvalidGraphic,
+                               [in] string comment);
 
     /** checks for digital signatures and their status.
 
@@ -130,12 +149,81 @@ interface XDocumentDigitalSignatures : com::sun::star::uno::XInterface
     void    addLocationToTrustedSources( [in] string Location );
 
     /**  This method shows the CertificateChooser dialog, used by document and PDF signing
+         Shows only private certificates
 
          @since LibreOffice 5.3
      */
     com::sun::star::security::XCertificate chooseCertificate( [out] string Description );
 
-} ;
+    /**  This is an alias for 'chooseCertificate', shows the CertificateChooser dialog
+         with private certificates
+
+         @since LibreOffice 6.0
+     */
+    com::sun::star::security::XCertificate chooseSigningCertificate( [out] string Description );
+
+    /**  This shows the certificate selection dialog and allows to only select the certificate
+         without actually signing the document.
+
+         @since LibreOffice 6.1
+     */
+    com::sun::star::security::XCertificate selectSigningCertificate( [out] string Description );
+
+    /**  This shows the certificate selection dialog and allows to only select the certificate
+         without actually signing the document. Only certificates of the given type will be shown.
+
+         @since LibreOffice 6.2
+     */
+    com::sun::star::security::XCertificate selectSigningCertificateWithType(
+        [in] CertificateKind certificateKind,
+        [out] string Description);
+
+    /**  This method shows the CertificateChooser dialog with all certificates, private and
+         other people's. Useful when choosing certificate/key for encryption
+
+         @since LibreOffice 6.0
+     */
+    sequence< com::sun::star::security::XCertificate > chooseEncryptionCertificate( );
+
+    /**  This method shows the CertificateChooser dialog, used by document and PDF signing
+         Shows only private certificates and returns usage string in addition to description.
+
+         @since LibreOffice 6.0
+     */
+    com::sun::star::security::XCertificate chooseCertificateWithProps( [out] sequence<::com::sun::star::beans::PropertyValue> Properties);
+
+    /** Signs the content of the document with the provided certificate.
+
+        @since LibreOffice 6.2
+     */
+    boolean signDocumentWithCertificate([in] ::com::sun::star::security::XCertificate xCertificate,
+                                        [in] ::com::sun::star::embed::XStorage xStorage,
+                                        [in] ::com::sun::star::io::XStream xStream);
+
+    /** Set parent window to use when showing dialogs
+
+        @since LibreOffice 6.3
+    */
+    void setParentWindow([in] ::com::sun::star::awt::XWindow xParentWindow);
+
+    /** signs the content of the Scripting including macros and basic dialogs with the provided certificate.
+
+        <p>The rest of document content will not be signed.</p>
+
+        @since LibreOffice 7.0
+    */
+    boolean signScriptingContentWithCertificate([in] ::com::sun::star::security::XCertificate xCertificate,
+                                                [in] ::com::sun::star::embed::XStorage xStorage,
+                                                [in] ::com::sun::star::io::XStream xStream);
+
+    /** signs the full Package, which means everything in the storage except the content of META-INF with the provided certificate.
+
+        @since LibreOffice 7.0
+    */
+    boolean signPackageWithCertificate([in] ::com::sun::star::security::XCertificate xCertificate,
+                                                [in] ::com::sun::star::embed::XStorage xStorage,
+                                                [in] ::com::sun::star::io::XStream xStream);
+};
 
 } ; } ; } ; } ;
 

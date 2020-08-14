@@ -10,15 +10,12 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_CATALOG_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_CATALOG_HXX
 
-#include <connectivity/sdbcx/VCatalog.hxx>
+#include <sdbcx/VCatalog.hxx>
 
-namespace connectivity
-{
-    namespace firebird
+namespace connectivity::firebird
     {
         class Catalog: public ::connectivity::sdbcx::OCatalog
         {
-        protected:
             css::uno::Reference< css::sdbc::XConnection >
                 m_xConnection;
 
@@ -35,8 +32,8 @@ namespace connectivity
             // IRefreshableUsers
             virtual void refreshUsers() override;
         };
-    } // namespace firebird
-} // namespace connectivity
+
+} // namespace connectivity::firebird
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_CATALOG_HXX
 

@@ -21,7 +21,6 @@
 
 #include <com/sun/star/uno/Any.hxx>
 #include <rtl/ref.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 
 #include "localizedvaluenode.hxx"
@@ -42,7 +41,7 @@ rtl::Reference< Node > LocalizedValueNode::clone(bool) const {
 }
 
 OUString LocalizedValueNode::getTemplateName() const {
-    return OUString("*");
+    return "*";
 }
 
 
@@ -52,10 +51,6 @@ void LocalizedValueNode::setValue(int layer, css::uno::Any const & value)
     if (&value != &value_)
         value_ = value;
 }
-
-LocalizedValueNode::LocalizedValueNode(LocalizedValueNode const & other):
-    Node(other), value_(other.value_)
-{}
 
 LocalizedValueNode::~LocalizedValueNode() {}
 

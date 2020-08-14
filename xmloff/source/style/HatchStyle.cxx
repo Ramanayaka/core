@@ -23,19 +23,23 @@
 
 #include <sax/tools/converter.hxx>
 
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmluconv.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 #include <xmloff/xmltkmap.hxx>
+#include <xmloff/xmlement.hxx>
 
 using namespace ::com::sun::star;
 
 using namespace ::xmloff::token;
+
+namespace {
 
 enum SvXMLTokenMapAttrs
 {
@@ -48,12 +52,14 @@ enum SvXMLTokenMapAttrs
     XML_TOK_TABSTOP_END=XML_TOK_UNKNOWN
 };
 
+}
+
 SvXMLEnumMapEntry<drawing::HatchStyle> const pXML_HatchStyle_Enum[] =
 {
-    { XML_HATCHSTYLE_SINGLE,    drawing::HatchStyle_SINGLE },
-    { XML_HATCHSTYLE_DOUBLE,    drawing::HatchStyle_DOUBLE },
+    { XML_SINGLE,               drawing::HatchStyle_SINGLE },
+    { XML_DOUBLE,               drawing::HatchStyle_DOUBLE },
     { XML_HATCHSTYLE_TRIPLE,    drawing::HatchStyle_TRIPLE },
-    { XML_TOKEN_INVALID, (drawing::HatchStyle)0 }
+    { XML_TOKEN_INVALID, drawing::HatchStyle(0) }
 };
 
 // Import
@@ -78,9 +84,7 @@ void XMLHatchStyleImport::importXML(
         { XML_NAMESPACE_DRAW, XML_DISPLAY_NAME, XML_TOK_HATCH_DISPLAY_NAME },
         { XML_NAMESPACE_DRAW, XML_STYLE, XML_TOK_HATCH_STYLE },
         { XML_NAMESPACE_DRAW, XML_COLOR, XML_TOK_HATCH_COLOR },
-        { XML_NAMESPACE_DRAW, XML_HATCH_DISTANCE, XML_TOK_HATCH_DISTANCE,
-            XML_ELEMENT( DRAW, XML_DISTANCE ) },
-        //  XML_HATCH_DISTANCE is a duplicate of XML_DISTANCE
+        { XML_NAMESPACE_DRAW, XML_DISTANCE, XML_TOK_HATCH_DISTANCE },
         { XML_NAMESPACE_DRAW, XML_ROTATION, XML_TOK_HATCH_ROTATION },
         XML_TOKEN_MAP_END
     };
@@ -93,8 +97,8 @@ void XMLHatchStyleImport::importXML(
     aHatch.Distance = 0;
     aHatch.Angle = 0;
 
-    SvXMLTokenMap aTokenMap( aHatchAttrTokenMap );
-    SvXMLNamespaceMap rNamespaceMap = rImport.GetNamespaceMap();
+    static const SvXMLTokenMap aTokenMap( aHatchAttrTokenMap );
+    const SvXMLNamespaceMap& rNamespaceMap = rImport.GetNamespaceMap();
     SvXMLUnitConverter& rUnitConverter = rImport.GetMM100UnitConverter();
 
     sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
@@ -123,13 +127,12 @@ void XMLHatchStyleImport::importXML(
                 rUnitConverter.convertMeasureToCore(aHatch.Distance, rStrValue);
                 break;
             case XML_TOK_HATCH_ROTATION:
-                {
-                    sal_Int32 nValue;
-                    ::sax::Converter::convertNumber(nValue, rStrValue, 0, 3600);
-                    aHatch.Angle = sal_Int16( nValue );
-                }
+            {
+                sal_Int32 nValue;
+                if (::sax::Converter::convertNumber(nValue, rStrValue, 0, 3600))
+                    aHatch.Angle = sal_Int16(nValue);
                 break;
-
+            }
             default:
                 SAL_INFO("xmloff.style", "Unknown token at import hatch style");
         }
@@ -139,7 +142,7 @@ void XMLHatchStyleImport::importXML(
 
     if( !aDisplayName.isEmpty() )
     {
-        rImport.AddStyleDisplayName( XML_STYLE_FAMILY_SD_HATCH_ID, rStrName,
+        rImport.AddStyleDisplayName( XmlStyleFamily::SD_HATCH_ID, rStrName,
                                      aDisplayName );
         rStrName = aDisplayName;
     }
@@ -162,50 +165,50 @@ void XMLHatchStyleExport::exportXML(
 {
     drawing::Hatch aHatch;
 
-    if( !rStrName.isEmpty() )
-    {
-        if( rValue >>= aHatch )
-        {
-            OUString aStrValue;
-            OUStringBuffer aOut;
+    if( rStrName.isEmpty() )
+        return;
 
-            SvXMLUnitConverter& rUnitConverter =
-                rExport.GetMM100UnitConverter();
+    if( !(rValue >>= aHatch) )
+        return;
 
-            // Style
-            if( SvXMLUnitConverter::convertEnum( aOut, aHatch.Style, pXML_HatchStyle_Enum ) )
-            {
-                // Name
-                bool bEncoded = false;
-                rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_NAME,
-                                      rExport.EncodeStyleName( rStrName,
-                                                                &bEncoded ) );
-                if( bEncoded )
-                    rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DISPLAY_NAME,
-                                            rStrName );
+    OUString aStrValue;
+    OUStringBuffer aOut;
 
-                aStrValue = aOut.makeStringAndClear();
-                rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_STYLE, aStrValue );
+    SvXMLUnitConverter& rUnitConverter =
+        rExport.GetMM100UnitConverter();
 
-                // Color
-                ::sax::Converter::convertColor(aOut, aHatch.Color);
-                aStrValue = aOut.makeStringAndClear();
-                rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_COLOR, aStrValue );
+    // Style
+    if( !SvXMLUnitConverter::convertEnum( aOut, aHatch.Style, pXML_HatchStyle_Enum ) )
+        return;
 
-                // Distance
-                rUnitConverter.convertMeasureToXML( aOut, aHatch.Distance );
-                aStrValue = aOut.makeStringAndClear();
-                rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_HATCH_DISTANCE, aStrValue );
+    // Name
+    bool bEncoded = false;
+    rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_NAME,
+                          rExport.EncodeStyleName( rStrName,
+                                                    &bEncoded ) );
+    if( bEncoded )
+        rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DISPLAY_NAME,
+                                rStrName );
 
-                // Angle
-                rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_ROTATION, OUString::number(aHatch.Angle) );
+    aStrValue = aOut.makeStringAndClear();
+    rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_STYLE, aStrValue );
 
-                // Do Write
-                SvXMLElementExport rElem( rExport, XML_NAMESPACE_DRAW, XML_HATCH,
-                                          true, false );
-            }
-        }
-    }
+    // Color
+    ::sax::Converter::convertColor(aOut, aHatch.Color);
+    aStrValue = aOut.makeStringAndClear();
+    rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_COLOR, aStrValue );
+
+    // Distance
+    rUnitConverter.convertMeasureToXML( aOut, aHatch.Distance );
+    aStrValue = aOut.makeStringAndClear();
+    rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_DISTANCE, aStrValue );
+
+    // Angle
+    rExport.AddAttribute( XML_NAMESPACE_DRAW, XML_ROTATION, OUString::number(aHatch.Angle) );
+
+    // Do Write
+    SvXMLElementExport rElem( rExport, XML_NAMESPACE_DRAW, XML_HATCH,
+                              true, false );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

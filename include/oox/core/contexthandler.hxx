@@ -20,14 +20,11 @@
 #ifndef INCLUDED_OOX_CORE_CONTEXTHANDLER_HXX
 #define INCLUDED_OOX_CORE_CONTEXTHANDLER_HXX
 
-#include <exception>
 #include <memory>
 
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/xml/sax/XFastContextHandler.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <oox/dllapi.h>
@@ -35,15 +32,14 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XFastAttributeList; } }
-    namespace xml { namespace sax { class XLocator; } }
-} } }
+namespace com::sun::star {
+    namespace xml::sax { class XFastAttributeList; }
+    namespace xml::sax { class XLocator; }
+}
 
 namespace oox { class SequenceInputStream; }
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 class XmlFilterBase;
 struct Relation;
@@ -111,8 +107,7 @@ private:
     FragmentBaseDataRef mxBaseData;         ///< Base data of the fragment.
 };
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
 
 #endif
 

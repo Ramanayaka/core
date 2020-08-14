@@ -22,8 +22,6 @@
 #include <svl/eitem.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
 // class SvxFormatSplitItem -------------------------------------------------
 
 /*  [Description]
@@ -31,7 +29,7 @@ class SvXMLUnitConverter;
     This item describes a logical variable "split paragraph yes or no".
 */
 
-class EDITENG_DLLPUBLIC SvxFormatSplitItem : public SfxBoolItem
+class EDITENG_DLLPUBLIC SvxFormatSplitItem final : public SfxBoolItem
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -39,29 +37,24 @@ public:
 
     inline SvxFormatSplitItem( const bool bSplit /*= true*/,
                             const sal_uInt16 nWh  );
-    inline SvxFormatSplitItem& operator=( const SvxFormatSplitItem& rSplit );
+
+    SvxFormatSplitItem(SvxFormatSplitItem const &) = default;
+    SvxFormatSplitItem(SvxFormatSplitItem &&) = default;
+    SvxFormatSplitItem & operator =(SvxFormatSplitItem const &) = delete; // due to SfxBoolItem
+    SvxFormatSplitItem & operator =(SvxFormatSplitItem &&) = delete; // due to SfxBoolItem
 
     // "pure virtual Methods" from SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create( SvStream&, sal_uInt16 ) const override;
-    virtual SvStream&       Store( SvStream& , sal_uInt16 nItemVersion ) const override;
+    virtual SvxFormatSplitItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 };
 
 inline SvxFormatSplitItem::SvxFormatSplitItem( const bool bSplit, const sal_uInt16 nWh ) :
     SfxBoolItem( nWh, bSplit )
 {}
-
-inline SvxFormatSplitItem& SvxFormatSplitItem::operator=(
-    const SvxFormatSplitItem& rSplit )
-{
-    SetValue( rSplit.GetValue() );
-    return *this;
-}
 
 #endif
 

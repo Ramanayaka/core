@@ -30,7 +30,7 @@
 #include <jvmfwk/jvmfwkdllapi.hxx>
 #include <rtl/byteseq.hxx>
 #include <rtl/ustring.hxx>
-#include "jni.h"
+#include <jni.h>
 
 /** @file
     <p>This library can operate in two modes, application mode and direct mode.</p>
@@ -98,14 +98,14 @@
     </p>
     <p>
     regcomp -env:UNO_JAVA_JFW_JREHOME=file:///d:/j2re1.4.2
-    -env:&quot;UNO_JAVA_JFW_CLASSPATH=d:\\solver\\bin\\classes.jar;d:\\solver\\bin\\jurt.jar&quot;
-    -register ....
+    -env:&quot;UNO_JAVA_JFW_CLASSPATH=d:\\solver\\bin\\classes.jar;d:\\solver\\bin\\libreoffice.jar&quot;
+    -register...
     </p>
     <p>If UNO_JAVA_JFW_VENDOR_SETTINGS is not set then a plugin library must be specified. For example:</p>
     <p>
     regcomp -env:UNO_JAVA_JFW_JREHOME=file:///d:/j2re1.4.2
-    -env:&quot;UNO_JAVA_JFW_CLASSPATH=d:\\solver\\bin\\classes.jar;d:\\solver\\bin\\jurt.jar&quot;
-    -register ....
+    -env:&quot;UNO_JAVA_JFW_CLASSPATH=d:\\solver\\bin\\classes.jar;d:\\solver\\bin\\libreoffice.jar&quot;
+    -register...
     </p>
     <p>Additional parameters for the Java VM can be provided. For every parameter
     a separate bootstrap parameter must be specified. The names are
@@ -114,8 +114,8 @@
     regcomp -env:UNO_JAVA_JFW_PARAMETER_1=-Xdebug
     -env:UNO_JAVA_JFW_PARAMETER_2=-Xrunjdwp:transport=dt_socket,server=y,address=8100
     -env:UNO_JAVA_JFW_JREHOME=file:///d:/j2re1.4.2
-    -env:&quot;UNO_JAVA_JFW_CLASSPATH=d:\\solver\\bin\\classes.jar;d:\\solver\\bin\\jurt.jar&quot;
-    -register ....</p>
+    -env:&quot;UNO_JAVA_JFW_CLASSPATH=d:\\solver\\bin\\classes.jar;d:\\solver\\bin\\libreoffice.jar&quot;
+    -register...</p>
     <p>
     Here is a complete list of the bootstrap parameter for the direct mode:
     </p>
@@ -145,7 +145,7 @@
 
     <p>A note about bootstrap parameters. The implementation of the bootstrap
     parameter mechanism interprets the characters '\', '$', '{', '}' as
-    escape characters. Thats why the Windows path contain double back-slashes.
+    escape characters. That's why the Windows path contain double back-slashes.
     One should also take into account that a console may have also special
     escape characters.</p>
 
@@ -157,28 +157,8 @@
     <p>
     All settings made by this API are done for the current user if not
     mentioned differently.</p>
-
-    <h2>Other bootstrap variables</h2>
-    <dl>
-    <dt>JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY</dt>
-    <dd>This is a unofficial variable which was introduced to workaround external issues.
-    It may be removed in the future. By setting it to 1, the framework will not try to
-    find out if the system is configured to use accessibility tools or if a JRE has an
-    accessible bridge installed</dd>
-    <dt>JFW_PLUGIN_FORCE_ACCESSIBILITY</dt>
-    <dd>This is a unofficial variable which was introduced to workaround external issues.
-    It may be removed in the future. By setting it to 1, the framework will override a
-    platform's desire not to probe each java backend to determine if it has an accessibility
-    bridge installed. If the JFW_PLUGIN_DO_NOT_CHECK_ACCESSIBILITY is set this variable has
-    no effect, and is Unix specific.</dd>
-    </dl>
 */
 
-/** indicates that a JRE has an accessibility bridge installed.
-    <p>
-    The flag is used with JavaInfo::nFeatures.</p>
- */
-#define JFW_FEATURE_ACCESSBRIDGE 0x1l
 /** indicates that there must be an environment set up before the Java process
     runs.
     <p>Therefore, when a Java is selected in OO then the office must be
@@ -233,12 +213,6 @@ struct JavaInfo
         </p>
     */
     OUString sVersion;
-    /** indicates supported special features.
-
-        <p>For example, <code>JFW_FEATURE_ACCESSBRIDGE</code> indicates that
-        assistive technology tools are supported.</p>
-     */
-    sal_uInt64 nFeatures;
     /** indicates requirements for running the java runtime.
 
         <p>For example, it may be necessary to prepare the environment before
@@ -303,9 +277,7 @@ JVMFWK_DLLPUBLIC bool jfw_isVMRunning();
     which contains version requirements.</p>
     <p>
     JREs can be provided by different vendors.
-    The function obtains information about JRE installations and checks if
-    there is one among them that supports
-    a set of features (currently only accessibility is possible). If none was
+    The function obtains information about JRE installations. If none was
     found then it also uses a list of paths, which have been registered
     by <code>jfw_addJRELocation</code>
     to find JREs. Found JREs are examined in the same way.</p>
@@ -325,27 +297,7 @@ JVMFWK_DLLPUBLIC bool jfw_isVMRunning();
     the PATH environment variable is inspected and the respective JREs
     are checked for their suitability next.</p>
     <p>
-    When support for assistive technology is required, then the
-    <code>JavaInfo</code> objects,
-    which are provided by the <code>getJavaInfo</code> functions, are
-    examined for a suitable JRE.
-    That is, the <code>JavaInfo</code> object that refers to the JRE referred to
-    by JAVA_HOME is examined. If it does not have the flag
-    <code>JFW_FEATURE_ACCESSBRIDGE</code> in the member <code>nFeatures</code>
-    then the <JavaInfo></code> objects that are related to the PATH variable
-    are examined.
-    If no suitable <code>JavaInfo</code> object is found, all <code>JavaInfo</code>
-    objects - representing Java installations on the system -, are examined.
-    As long as no <code>JavaInfo</code> object has the flag
-    <code>JFW_FEATURE_ACCESSBRIDGE</code> in the member <code>nFeatures</code>, more
-    <code>JavaInfo</code> objects are examined.
-    This goes on until a <code>JavaInfo</code> object was found which
-    represents a suitable JRE. Or no such <code>JavaInfo</code> object was found.
-    In that case the first <code>JavaInfo</code> object that was detected
-    by the algorithm described above is used to determine the JRE which is to be used.</p>
-    <p>
-    If there is no need for the support of assistive technology tools then
-    the first <code>JavaInfo</code> object that is detected by the algorithm
+    The first <code>JavaInfo</code> object that is detected by the algorithm
     as described above is used.</p>
 
     @param pInfo
@@ -465,7 +417,7 @@ JVMFWK_DLLPUBLIC javaFrameworkError jfw_getJavaInfoByPath(
     were not met.</br>
     JFW_E_JAVA_DISABLED the use of Java is currently disabled. <br/>
     JFW_E_NO_SELECT there is no JRE selected yet. <br/>
-    JFW_E_RUNNIN_JVM there is already a VM running.<br/>
+    JFW_E_RUNNING_JVM there is already a VM running.<br/>
     JFW_E_INVALID_SETTINGS the javavendors.xml has been changed and no
     JRE has been selected afterwards. <br/>
     JFW_E_NEED_RESTART in the current process a different JRE has been selected
@@ -698,7 +650,7 @@ JVMFWK_DLLPUBLIC javaFrameworkError jfw_existJRE(const JavaInfo *pInfo, bool *ex
     <code>jfw_unlock()</code>. The function should be called if one
     needs an exact snapshot of the current settings. Then the settings
     are retrieved one by one without risk that the settings may be changed
-    by a different thread. Similiary if one needs to make settings which
+    by a different thread. Similarity if one needs to make settings which
     should become effective at the same time then <code>jfw_lock</code>
     should be called. That is, <code>jfw_startVM</code> which uses the
     settings cannot be called before all settings have be made.</p>

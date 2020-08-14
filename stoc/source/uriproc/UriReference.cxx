@@ -17,12 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <cassert>
 
 #include "UriReference.hxx"
 
-#include <osl/diagnose.h>
 #include <osl/mutex.hxx>
-#include <rtl/string.h>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
@@ -30,23 +31,19 @@
 using stoc::uriproc::UriReference;
 
 UriReference::UriReference(
-    OUString const & scheme, bool bIsHierarchical, bool bHasAuthority,
+    OUString const & scheme, bool bHasAuthority,
     OUString const & authority, OUString const & path,
     bool bHasQuery, OUString const & query):
     m_scheme(scheme),
     m_authority(authority),
     m_path(path),
     m_query(query),
-    m_isHierarchical(bIsHierarchical),
     m_hasAuthority(bHasAuthority),
     m_hasQuery(bHasQuery),
     m_hasFragment(false)
 {
-    OSL_ASSERT(!scheme.isEmpty() || bIsHierarchical);
-    OSL_ASSERT(!bHasAuthority || bIsHierarchical);
-    OSL_ASSERT(authority.isEmpty() || bHasAuthority);
-    OSL_ASSERT(!bHasQuery || bIsHierarchical);
-    OSL_ASSERT(query.isEmpty() || bHasQuery);
+    assert(authority.isEmpty() || bHasAuthority);
+    assert(query.isEmpty() || bHasQuery);
 }
 
 UriReference::~UriReference() {}
@@ -54,7 +51,7 @@ UriReference::~UriReference() {}
 OUString UriReference::getUriReference()
 {
     osl::MutexGuard g(m_mutex);
-    OUStringBuffer buf;
+    OUStringBuffer buf(128);
     if (!m_scheme.isEmpty()) {
         buf.append(m_scheme);
         buf.append(':');
@@ -67,7 +64,7 @@ OUString UriReference::getUriReference()
     return buf.makeStringAndClear();
 }
 
-bool UriReference::isAbsolute() {
+bool UriReference::isAbsolute() const {
     return !m_scheme.isEmpty();
 }
 
@@ -82,7 +79,7 @@ OUString UriReference::getSchemeSpecificPart()
 
 bool UriReference::isHierarchical() {
     osl::MutexGuard g(m_mutex);
-    return m_isHierarchical;
+    return m_scheme.isEmpty() || m_hasAuthority || m_path.startsWith("/");
 }
 
 bool UriReference::hasAuthority() {
@@ -102,14 +99,14 @@ OUString UriReference::getPath() {
 
 bool UriReference::hasRelativePath() {
     osl::MutexGuard g(m_mutex);
-    return m_isHierarchical && !m_hasAuthority
+    return !m_hasAuthority
         && (m_path.isEmpty() || m_path[0] != '/');
 }
 
 sal_Int32 UriReference::getPathSegmentCount()
 {
     osl::MutexGuard g(m_mutex);
-    if (!m_isHierarchical || m_path.isEmpty()) {
+    if (m_path.isEmpty()) {
         return 0;
     } else {
         sal_Int32 n = m_path[0] == '/' ? 0 : 1;
@@ -127,7 +124,7 @@ sal_Int32 UriReference::getPathSegmentCount()
 OUString UriReference::getPathSegment(sal_Int32 index)
 {
     osl::MutexGuard g(m_mutex);
-    if (m_isHierarchical && !m_path.isEmpty() && index >= 0) {
+    if (!m_path.isEmpty() && index >= 0) {
         for (sal_Int32 i = m_path[0] == '/' ? 1 : 0;; ++i) {
             if (index-- == 0) {
                 sal_Int32 j = m_path.indexOf('/', i);

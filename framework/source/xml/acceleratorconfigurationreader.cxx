@@ -18,20 +18,15 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <accelerators/keymapping.hxx>
 #include <xml/acceleratorconfigurationreader.hxx>
 
-#include <acceleratorconst.h>
-
-#include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
 #include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/awt/KeyModifier.hpp>
 #include <com/sun/star/awt/KeyEvent.hpp>
-#include <com/sun/star/awt/Key.hpp>
-#include <com/sun/star/container/ElementExistException.hpp>
 
-#include <vcl/svapp.hxx>
 #include <rtl/ustrbuf.hxx>
 
 namespace framework{
@@ -74,10 +69,7 @@ void SAL_CALL AcceleratorConfigurationReader::endDocument()
     // The xml file seems to be corrupted.
     // Because we found no end-tags ... at least for
     // one list or item.
-    if (
-        (m_bInsideAcceleratorList) ||
-        (m_bInsideAcceleratorItem)
-       )
+    if (m_bInsideAcceleratorList || m_bInsideAcceleratorItem)
     {
         THROW_PARSEEXCEPTION("No matching start or end element 'acceleratorlist' found!")
     }
@@ -254,7 +246,7 @@ AcceleratorConfigurationReader::EXMLAttribute AcceleratorConfigurationReader::im
 OUString AcceleratorConfigurationReader::implts_getErrorLineString()
 {
     if (!m_xLocator.is())
-        return OUString("Error during parsing XML. (No further info available ...)");
+        return "Error during parsing XML. (No further info available ...)";
 
     OUStringBuffer sMsg(256);
     sMsg.append("Error during parsing XML in\nline = ");

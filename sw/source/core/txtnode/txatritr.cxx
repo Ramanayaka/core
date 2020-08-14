@@ -20,6 +20,7 @@
 #include <txatritr.hxx>
 
 #include <com/sun/star/i18n/ScriptType.hpp>
+#include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <fchrfmt.hxx>
 #include <charfmt.hxx>
 #include <breakit.hxx>
@@ -32,68 +33,64 @@ SwScriptIterator::SwScriptIterator(
             const OUString& rStr, sal_Int32 nStt, bool const bFrwrd)
     : m_rText(rStr)
     , m_nChgPos(rStr.getLength())
-    , nCurScript(i18n::ScriptType::WEAK)
-    , bForward(bFrwrd)
+    , m_nCurScript(i18n::ScriptType::WEAK)
+    , m_bForward(bFrwrd)
 {
     assert(g_pBreakIt && g_pBreakIt->GetBreakIter().is());
     if ( ! bFrwrd && nStt )
         --nStt;
 
     sal_Int32 nPos = nStt;
-    nCurScript = g_pBreakIt->GetBreakIter()->getScriptType(m_rText, nPos);
-    if( i18n::ScriptType::WEAK == nCurScript )
+    m_nCurScript = g_pBreakIt->GetBreakIter()->getScriptType(m_rText, nPos);
+    if( i18n::ScriptType::WEAK == m_nCurScript )
     {
         if( nPos )
         {
             nPos = g_pBreakIt->GetBreakIter()->beginOfScript(
-                                            m_rText, nPos, nCurScript);
+                                            m_rText, nPos, m_nCurScript);
             if (nPos > 0 && nPos < m_rText.getLength())
             {
                 nStt = --nPos;
-                nCurScript =
+                m_nCurScript =
                     g_pBreakIt->GetBreakIter()->getScriptType(m_rText,nPos);
             }
         }
     }
 
-    m_nChgPos = (bForward)
+    m_nChgPos = m_bForward
         ?  g_pBreakIt->GetBreakIter()->endOfScript(
-                m_rText, nStt, nCurScript)
+                m_rText, nStt, m_nCurScript)
         :  g_pBreakIt->GetBreakIter()->beginOfScript(
-                m_rText, nStt, nCurScript);
+                m_rText, nStt, m_nCurScript);
 }
 
-bool SwScriptIterator::Next()
+void SwScriptIterator::Next()
 {
     assert(g_pBreakIt && g_pBreakIt->GetBreakIter().is());
-    bool bRet = false;
-    if (bForward && m_nChgPos >= 0 && m_nChgPos < m_rText.getLength())
+    if (m_bForward && m_nChgPos >= 0 && m_nChgPos < m_rText.getLength())
     {
-        nCurScript =
+        m_nCurScript =
             g_pBreakIt->GetBreakIter()->getScriptType(m_rText, m_nChgPos);
         m_nChgPos = g_pBreakIt->GetBreakIter()->endOfScript(
-                                        m_rText, m_nChgPos, nCurScript);
-        bRet = true;
+                                        m_rText, m_nChgPos, m_nCurScript);
     }
-    else if (!bForward && m_nChgPos > 0)
+    else if (!m_bForward && m_nChgPos > 0)
     {
         --m_nChgPos;
-        nCurScript =
+        m_nCurScript =
             g_pBreakIt->GetBreakIter()->getScriptType(m_rText, m_nChgPos);
         m_nChgPos = g_pBreakIt->GetBreakIter()->beginOfScript(
-                                            m_rText, m_nChgPos, nCurScript);
-        bRet = true;
+                                            m_rText, m_nChgPos, m_nCurScript);
     }
-    return bRet;
 }
 
 SwLanguageIterator::SwLanguageIterator( const SwTextNode& rTNd,
                                         sal_Int32 nStt )
-    : aSIter( rTNd.GetText(), nStt ),
-      rTextNd( rTNd ),
-      pParaItem( nullptr ),
-      nAttrPos( 0 ),
-      nChgPos( nStt )
+    : m_aScriptIter( rTNd.GetText(), nStt ),
+      m_rTextNode( rTNd ),
+      m_pParaItem( nullptr ),
+      m_nAttrPos( 0 ),
+      m_nChgPos( nStt )
 {
     SearchNextChg();
 }
@@ -101,43 +98,43 @@ SwLanguageIterator::SwLanguageIterator( const SwTextNode& rTNd,
 bool SwLanguageIterator::Next()
 {
     bool bRet = false;
-    if (nChgPos < aSIter.GetText().getLength())
+    if (m_nChgPos < m_aScriptIter.GetText().getLength())
     {
         bRet = true;
-        if( !aStack.empty() )
+        if( !m_aStack.empty() )
         {
             do {
-                const SwTextAttr* pHt = aStack.front();
+                const SwTextAttr* pHt = m_aStack.front();
                 const sal_Int32 nEndPos = *pHt->End();
-                if( nChgPos >= nEndPos )
-                    aStack.pop_front();
+                if( m_nChgPos >= nEndPos )
+                    m_aStack.pop_front();
                 else
                     break;
-            } while( !aStack.empty() );
+            } while( !m_aStack.empty() );
         }
 
-        if( !aStack.empty() )
+        if( !m_aStack.empty() )
         {
-            const size_t nSavePos = nAttrPos;
+            const size_t nSavePos = m_nAttrPos;
             SearchNextChg();
-            if( !aStack.empty() )
+            if( !m_aStack.empty() )
             {
-                const SwTextAttr* pHt = aStack.front();
+                const SwTextAttr* pHt = m_aStack.front();
                 const sal_Int32 nEndPos = *pHt->End();
-                if( nChgPos >= nEndPos )
+                if( m_nChgPos >= nEndPos )
                 {
-                    nChgPos = nEndPos;
-                    nAttrPos = nSavePos;
+                    m_nChgPos = nEndPos;
+                    m_nAttrPos = nSavePos;
 
                     if( RES_TXTATR_CHARFMT == pHt->Which() )
                     {
-                        const sal_uInt16 nWId = GetWhichOfScript( RES_CHRATR_LANGUAGE, aSIter.GetCurrScript() );
-                        pCurItem = &pHt->GetCharFormat().GetCharFormat()->GetFormatAttr(nWId);
+                        const sal_uInt16 nWId = GetWhichOfScript( RES_CHRATR_LANGUAGE, m_aScriptIter.GetCurrScript() );
+                        m_pCurrentItem = &pHt->GetCharFormat().GetCharFormat()->GetFormatAttr(nWId);
                     }
                     else
-                        pCurItem = &pHt->GetAttr();
+                        m_pCurrentItem = &pHt->GetAttr();
 
-                    aStack.pop_front();
+                    m_aStack.pop_front();
                 }
             }
         }
@@ -151,69 +148,69 @@ void SwLanguageIterator::AddToStack( const SwTextAttr& rAttr )
 {
     size_t nIns = 0;
     const sal_Int32 nEndPos = *rAttr.End();
-    for( ; nIns < aStack.size(); ++nIns )
-        if( *aStack[ nIns ]->End() > nEndPos )
+    for( ; nIns < m_aStack.size(); ++nIns )
+        if( *m_aStack[ nIns ]->End() > nEndPos )
             break;
 
-    aStack.insert( aStack.begin() + nIns, &rAttr );
+    m_aStack.insert( m_aStack.begin() + nIns, &rAttr );
 }
 
 void SwLanguageIterator::SearchNextChg()
 {
     sal_uInt16 nWh = 0;
-    if( nChgPos == aSIter.GetScriptChgPos() )
+    if( m_nChgPos == m_aScriptIter.GetScriptChgPos() )
     {
-        aSIter.Next();
-        pParaItem = nullptr;
-        nAttrPos = 0;       // must be restart at the beginning, because
+        m_aScriptIter.Next();
+        m_pParaItem = nullptr;
+        m_nAttrPos = 0;       // must be restart at the beginning, because
                             // some attributes can start before or inside
                             // the current scripttype!
-        aStack.clear();
+        m_aStack.clear();
     }
-    if( !pParaItem )
+    if( !m_pParaItem )
     {
-        nWh = GetWhichOfScript( RES_CHRATR_LANGUAGE, aSIter.GetCurrScript() );
-        pParaItem = &rTextNd.GetSwAttrSet().Get( nWh );
+        nWh = GetWhichOfScript( RES_CHRATR_LANGUAGE, m_aScriptIter.GetCurrScript() );
+        m_pParaItem = &m_rTextNode.GetSwAttrSet().Get( nWh );
     }
 
-    sal_Int32 nStt = nChgPos;
-    nChgPos = aSIter.GetScriptChgPos();
-    pCurItem = pParaItem;
+    sal_Int32 nStt = m_nChgPos;
+    m_nChgPos = m_aScriptIter.GetScriptChgPos();
+    m_pCurrentItem = m_pParaItem;
 
-    const SwpHints* pHts = rTextNd.GetpSwpHints();
-    if( pHts )
+    const SwpHints* pHts = m_rTextNode.GetpSwpHints();
+    if( !pHts )
+        return;
+
+    if( !nWh )
     {
-        if( !nWh )
+        nWh = GetWhichOfScript( RES_CHRATR_LANGUAGE, m_aScriptIter.GetCurrScript() );
+    }
+
+    const SfxPoolItem* pItem = nullptr;
+    for( ; m_nAttrPos < pHts->Count(); ++m_nAttrPos )
+    {
+        const SwTextAttr* pHt = pHts->Get( m_nAttrPos );
+        const sal_Int32* pEnd = pHt->End();
+        const sal_Int32 nHtStt = pHt->GetStart();
+        if( nHtStt < nStt && ( !pEnd || *pEnd <= nStt ))
+            continue;
+
+        if( nHtStt >= m_nChgPos )
+            break;
+
+        pItem = CharFormat::GetItem( *pHt, nWh );
+        if ( pItem )
         {
-            nWh = GetWhichOfScript( RES_CHRATR_LANGUAGE, aSIter.GetCurrScript() );
-        }
-
-        const SfxPoolItem* pItem = nullptr;
-        for( ; nAttrPos < pHts->Count(); ++nAttrPos )
-        {
-            const SwTextAttr* pHt = pHts->Get( nAttrPos );
-            const sal_Int32* pEnd = pHt->End();
-            const sal_Int32 nHtStt = pHt->GetStart();
-            if( nHtStt < nStt && ( !pEnd || *pEnd <= nStt ))
-                continue;
-
-            if( nHtStt >= nChgPos )
-                break;
-
-            pItem = CharFormat::GetItem( *pHt, nWh );
-            if ( pItem )
+            if( nHtStt > nStt )
             {
-                if( nHtStt > nStt )
-                {
-                    if( nChgPos > nHtStt )
-                        nChgPos = nHtStt;
-                    break;
-                }
-                AddToStack( *pHt );
-                pCurItem = pItem;
-                if( *pEnd < nChgPos )
-                    nChgPos = *pEnd;
+                if( m_nChgPos > nHtStt )
+                    m_nChgPos = nHtStt;
+                break;
             }
+            AddToStack( *pHt );
+            m_pCurrentItem = pItem;
+            if( *pEnd < m_nChgPos )
+                m_nChgPos = *pEnd;
         }
     }
 }

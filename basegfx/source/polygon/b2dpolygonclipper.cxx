@@ -20,18 +20,14 @@
 #include <basegfx/polygon/b2dpolygonclipper.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/numeric/ftools.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/polygon/b2dpolypolygoncutter.hxx>
 #include <basegfx/polygon/b2dpolygoncutandtouch.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <basegfx/curve/b2dcubicbezier.hxx>
-#include <basegfx/tools/rectcliptools.hxx>
-#include <basegfx/matrix/b2dhommatrixtools.hxx>
+#include <basegfx/utils/rectcliptools.hxx>
 
-namespace basegfx
+namespace basegfx::utils
 {
-    namespace tools
-    {
         B2DPolyPolygon clipPolygonOnParallelAxis(const B2DPolygon& rCandidate, bool bParallelToXAxis, bool bAboveAxis, double fValueOnOtherAxis, bool bStroke)
         {
             B2DPolyPolygon aRetval;
@@ -260,11 +256,11 @@ namespace basegfx
                     // against X-Axis, higher value
                     if(aRetval.count() == 1)
                     {
-                        aRetval = clipPolygonOnParallelAxis(aRetval.getB2DPolygon(0), true, !bInside, rRange.getMaxY(), bStroke);
+                        aRetval = clipPolygonOnParallelAxis(aRetval.getB2DPolygon(0), true, false, rRange.getMaxY(), bStroke);
                     }
                     else
                     {
-                        aRetval = clipPolyPolygonOnParallelAxis(aRetval, true, !bInside, rRange.getMaxY(), bStroke);
+                        aRetval = clipPolyPolygonOnParallelAxis(aRetval, true, false, rRange.getMaxY(), bStroke);
                     }
 
                     if(aRetval.count())
@@ -272,11 +268,11 @@ namespace basegfx
                         // against Y-Axis, higher value
                         if(aRetval.count() == 1)
                         {
-                            aRetval = clipPolygonOnParallelAxis(aRetval.getB2DPolygon(0), false, !bInside, rRange.getMaxX(), bStroke);
+                            aRetval = clipPolygonOnParallelAxis(aRetval.getB2DPolygon(0), false, false, rRange.getMaxX(), bStroke);
                         }
                         else
                         {
-                            aRetval = clipPolyPolygonOnParallelAxis(aRetval, false, !bInside, rRange.getMaxX(), bStroke);
+                            aRetval = clipPolyPolygonOnParallelAxis(aRetval, false, false, rRange.getMaxX(), bStroke);
                         }
                     }
                 }
@@ -360,7 +356,7 @@ namespace basegfx
                         {
                             aCandidate.getBezierSegment(b, aEdge);
                             const B2DPoint aTestPoint(aEdge.interpolatePoint(0.5));
-                            const bool bIsInside(tools::isInside(rClip, aTestPoint) == bInside);
+                            const bool bIsInside(utils::isInside(rClip, aTestPoint) == bInside);
 
                             if(bIsInside)
                             {
@@ -413,10 +409,10 @@ namespace basegfx
                     // check for simplification with ranges if !bStroke (handling as stroke is more simple),
                     // but also only when bInside, else the simplification may lead to recursive calls (see
                     // calls to clipPolyPolygonOnPolyPolygon in clipPolyPolygonOnRange and clipPolygonOnRange)
-                    if (bInside && basegfx::tools::isRectangle(rClip))
+                    if (bInside && basegfx::utils::isRectangle(rClip))
                     {
                         // #i125349# detect if both given PolyPolygons are indeed ranges
-                        if (basegfx::tools::isRectangle(rCandidate))
+                        if (basegfx::utils::isRectangle(rCandidate))
                         {
                             // both are rectangle
                             if(rCandidate.getB2DRange().equal(rClip.getB2DRange()))
@@ -440,9 +436,9 @@ namespace basegfx
                                 else
                                 {
                                     // use common aIntersectionRange as result, convert
-                                    // to expected tools::PolyPolygon form
+                                    // to expected utils::PolyPolygon form
                                     return basegfx::B2DPolyPolygon(
-                                        basegfx::tools::createPolygonFromRect(aIntersectionRange));
+                                        basegfx::utils::createPolygonFromRect(aIntersectionRange));
                                 }
                             }
                         }
@@ -455,15 +451,14 @@ namespace basegfx
                     }
 
                     // area clipping
-                    B2DPolyPolygon aMergePolyPolygonA(rClip);
 
                     // First solve all polygon-self and polygon-polygon intersections.
                     // Also get rid of some not-needed polygons (neutral, no area -> when
                     // no intersections, these are tubes).
                     // Now it is possible to correct the orientations in the cut-free
-                    // polygons to values corresponding to painting the tools::PolyPolygon with
+                    // polygons to values corresponding to painting the utils::PolyPolygon with
                     // a XOR-WindingRule.
-                    aMergePolyPolygonA = solveCrossovers(aMergePolyPolygonA);
+                    B2DPolyPolygon aMergePolyPolygonA = solveCrossovers(rClip);
                     aMergePolyPolygonA = stripNeutralPolygons(aMergePolyPolygonA);
                     aMergePolyPolygonA = correctOrientations(aMergePolyPolygonA);
 
@@ -474,10 +469,9 @@ namespace basegfx
                         aMergePolyPolygonA.flip();
                     }
 
-                    B2DPolyPolygon aMergePolyPolygonB(rCandidate);
 
                     // prepare 2nd source polygon in same way
-                    aMergePolyPolygonB = solveCrossovers(aMergePolyPolygonB);
+                    B2DPolyPolygon aMergePolyPolygonB = solveCrossovers(rCandidate);
                     aMergePolyPolygonB = stripNeutralPolygons(aMergePolyPolygonB);
                     aMergePolyPolygonB = correctOrientations(aMergePolyPolygonB);
 
@@ -514,6 +508,8 @@ namespace basegfx
             return aRetval;
         }
 
+        namespace {
+
         /*
         * let a plane be defined as
         *
@@ -540,6 +536,8 @@ namespace basegfx
             sal_uInt32 clipmask;    // clipping mask, e.g. 1000 1000
         };
 
+        }
+
         /*
         *
         * polygon clipping rules  (straight out of Foley and Van Dam)
@@ -549,13 +547,13 @@ namespace basegfx
         * inside    |inside     |next
         * inside    |outside    |intersect with clip plane
         * outside   |outside    |nothing
-        * outside   |inside     |intersect with clip plane follwed by next
+        * outside   |inside     |intersect with clip plane followed by next
         *
         */
-        sal_uInt32 scissorLineSegment( ::basegfx::B2DPoint           *in_vertex,    // input buffer
+        static sal_uInt32 scissorLineSegment( ::basegfx::B2DPoint           *in_vertex,    // input buffer
                                        sal_uInt32                     in_count,     // number of verts in input buffer
                                        ::basegfx::B2DPoint           *out_vertex,   // output buffer
-                                       scissor_plane                 *pPlane,       // scissoring plane
+                                       scissor_plane const           *pPlane,       // scissoring plane
                                        const ::basegfx::B2DRectangle &rR )          // clipping rectangle
         {
 
@@ -583,11 +581,11 @@ namespace basegfx
                     // to bring 't' into the [0<=x<=1] interval.
                     ::basegfx::B2DPoint dir((*next)-(*curr));
 
-                    double denominator = ( pPlane->nx*dir.getX() +
-                                        pPlane->ny*dir.getY() );
-                    double numerator = ( pPlane->nx*curr->getX() +
+                    double denominator = pPlane->nx*dir.getX() +
+                                         pPlane->ny*dir.getY();
+                    double numerator =  pPlane->nx*curr->getX() +
                                         pPlane->ny*curr->getY() +
-                                        pPlane->d );
+                                        pPlane->d;
                     double t = -numerator/denominator;
 
                     // calculate the actual point of intersection
@@ -602,11 +600,11 @@ namespace basegfx
                     // to bring 't' into the [0<=x<=1] interval.
                     ::basegfx::B2DPoint dir((*next)-(*curr));
 
-                    double denominator = ( pPlane->nx*dir.getX() +
-                                        pPlane->ny*dir.getY() );
-                    double numerator = ( pPlane->nx*curr->getX() +
+                    double denominator = pPlane->nx*dir.getX() +
+                                         pPlane->ny*dir.getY();
+                    double numerator =  pPlane->nx*curr->getX() +
                                         pPlane->ny*curr->getY() +
-                                        pPlane->d );
+                                        pPlane->d;
                     double t = -numerator/denominator;
 
                     // calculate the actual point of intersection
@@ -800,7 +798,7 @@ namespace basegfx
                                 else
                                 {
                                     // the last triangle has not been altered, simply copy to result
-                                    for(basegfx::B2DPoint & i : stack)
+                                    for(const basegfx::B2DPoint & i : stack)
                                         aResult.append(i);
                                 }
                             }
@@ -814,7 +812,6 @@ namespace basegfx
             return aResult;
         }
 
-    } // end of namespace tools
-} // end of namespace basegfx
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,9 +20,9 @@
 #ifndef INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_INC_DP_INTERACT_H
 #define INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_INC_DP_INTERACT_H
 
+#include <config_options.h>
 #include <rtl/ref.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/task/XAbortChannel.hpp>
 #include "dp_misc_api.hxx"
@@ -103,7 +103,7 @@ DESKTOP_DEPLOYMENTMISC_DLLPUBLIC bool interactContinuation(
 
 
 
-class DESKTOP_DEPLOYMENTMISC_DLLPUBLIC AbortChannel :
+class UNLESS_MERGELIBS(DESKTOP_DEPLOYMENTMISC_DLLPUBLIC) AbortChannel :
     public ::cppu::WeakImplHelper<css::task::XAbortChannel>
 {
     bool m_aborted;

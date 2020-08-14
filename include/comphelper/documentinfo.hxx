@@ -21,8 +21,10 @@
 #define INCLUDED_COMPHELPER_DOCUMENTINFO_HXX
 
 #include <comphelper/comphelperdllapi.h>
+#include <rtl/ustring.hxx>
 
-#include <com/sun/star/frame/XModel.hpp>
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
 
 
 namespace comphelper {
@@ -35,8 +37,11 @@ namespace comphelper {
         /** retrieves the UI title of the given document
         */
         COMPHELPER_DLLPUBLIC OUString  getDocumentTitle( const css::uno::Reference< css::frame::XModel >& _rxDocument );
-    }
 
+        /** notify that this document contains a macro event handler
+        */
+        COMPHELPER_DLLPUBLIC void notifyMacroEventRead( const css::uno::Reference< css::frame::XModel >& _rxDocument );
+    }
 
 }   // namespace comphelper
 

@@ -17,14 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <tools/poly.hxx>
-
-#include <vcl/salbtype.hxx>
 #include <vcl/bitmap.hxx>
-#include <vcl/region.hxx>
-#include <vcl/bitmapaccess.hxx>
 
 #include <bmpfast.hxx>
+#include <bitmapwriteaccess.hxx>
 
 void BitmapWriteAccess::SetLineColor( const Color& rColor )
 {
@@ -36,11 +32,11 @@ void BitmapWriteAccess::SetLineColor( const Color& rColor )
     {
         if (HasPalette())
         {
-            mpLineColor.reset(new BitmapColor(static_cast<sal_uInt8>(GetBestPaletteIndex(rColor))));
+            mpLineColor = BitmapColor(static_cast<sal_uInt8>(GetBestPaletteIndex(rColor)));
         }
         else
         {
-            mpLineColor.reset(new BitmapColor(rColor));
+            mpLineColor = BitmapColor(rColor);
         }
     }
 }
@@ -60,11 +56,11 @@ void BitmapWriteAccess::SetFillColor( const Color& rColor )
     {
         if (HasPalette())
         {
-            mpFillColor.reset(new BitmapColor(static_cast<sal_uInt8>(GetBestPaletteIndex(rColor))));
+            mpFillColor = BitmapColor(static_cast<sal_uInt8>(GetBestPaletteIndex(rColor)));
         }
         else
         {
-            mpFillColor.reset(new BitmapColor(rColor));
+            mpFillColor = BitmapColor(rColor);
         }
     }
 }
@@ -78,151 +74,159 @@ void BitmapWriteAccess::Erase( const Color& rColor )
     {
         aColor = BitmapColor(static_cast<sal_uInt8>(GetBestPaletteIndex(rColor)));
     }
+
     // try fast bitmap method first
     if (ImplFastEraseBitmap(*mpBuffer, aColor))
         return;
 
-    // use the canonical method to clear the bitmap
-    BitmapColor* pOldFillColor = mpFillColor ? new BitmapColor(*mpFillColor) : nullptr;
-    const Point aPoint;
-    const tools::Rectangle aRect(aPoint, maBitmap.GetSizePixel());
-
-    SetFillColor(rColor);
-    FillRect(aRect);
-
-    mpFillColor.reset(pOldFillColor);
+    tools::Rectangle aRect(Point(), maBitmap.GetSizePixel());
+    if (aRect.IsEmpty())
+        return;
+    // clear the bitmap by filling the first line pixel by pixel,
+    // then dup the first line over each other line
+    Scanline pFirstScanline = GetScanline(0);
+    const long nEndX = aRect.Right();
+    for (long nX = 0; nX <= nEndX; ++nX)
+        SetPixelOnData(pFirstScanline, nX, rColor);
+    const auto nScanlineSize = GetScanlineSize();
+    const long nEndY = aRect.Bottom();
+    for (long nY = 1; nY <= nEndY; nY++)
+    {
+        Scanline pDestScanline = GetScanline(nY);
+        memcpy(pDestScanline, pFirstScanline, nScanlineSize);
+    }
 }
 
 void BitmapWriteAccess::DrawLine( const Point& rStart, const Point& rEnd )
 {
-    if (mpLineColor)
+    if (!mpLineColor)
+        return;
+
+    const BitmapColor& rLineColor = *mpLineColor;
+    long nX, nY;
+
+    if (rStart.X() == rEnd.X())
     {
-        const BitmapColor& rLineColor = *mpLineColor.get();
-        long nX, nY;
+        // Vertical Line
+        const long nEndY = rEnd.Y();
 
-        if (rStart.X() == rEnd.X())
+        nX = rStart.X();
+        nY = rStart.Y();
+
+        if (nEndY > nY)
         {
-            // Vertical Line
-            const long nEndY = rEnd.Y();
-
-            nX = rStart.X();
-            nY = rStart.Y();
-
-            if (nEndY > nY)
-            {
-                for (; nY <= nEndY; nY++ )
-                    SetPixel( nY, nX, rLineColor );
-            }
-            else
-            {
-                for (; nY >= nEndY; nY-- )
-                    SetPixel( nY, nX, rLineColor );
-            }
+            for (; nY <= nEndY; nY++ )
+                SetPixel( nY, nX, rLineColor );
         }
-        else if (rStart.Y() == rEnd.Y())
+        else
         {
-            // Horizontal Line
-            const long nEndX = rEnd.X();
+            for (; nY >= nEndY; nY-- )
+                SetPixel( nY, nX, rLineColor );
+        }
+    }
+    else if (rStart.Y() == rEnd.Y())
+    {
+        // Horizontal Line
+        const long nEndX = rEnd.X();
 
-            nX = rStart.X();
-            nY = rStart.Y();
+        nX = rStart.X();
+        nY = rStart.Y();
 
-            if (nEndX > nX)
+        if (nEndX > nX)
+        {
+            for (; nX <= nEndX; nX++)
+                SetPixel(nY, nX, rLineColor);
+        }
+        else
+        {
+            for (; nX >= nEndX; nX--)
+                SetPixel(nY, nX, rLineColor);
+        }
+    }
+    else
+    {
+        const long  nDX = labs( rEnd.X() - rStart.X() );
+        const long  nDY = labs( rEnd.Y() - rStart.Y() );
+        long nX1;
+        long nY1;
+        long nX2;
+        long nY2;
+
+        if (nDX >= nDY)
+        {
+            if (rStart.X() < rEnd.X())
             {
-                for (; nX <= nEndX; nX++)
-                    SetPixel(nY, nX, rLineColor);
+                nX1 = rStart.X();
+                nY1 = rStart.Y();
+                nX2 = rEnd.X();
+                nY2 = rEnd.Y();
             }
             else
             {
-                for (; nX >= nEndX; nX--)
-                    SetPixel(nY, nX, rLineColor);
+                nX1 = rEnd.X();
+                nY1 = rEnd.Y();
+                nX2 = rStart.X();
+                nY2 = rStart.Y();
+            }
+
+            const long nDYX = (nDY - nDX) << 1;
+            const long nDY2 = nDY << 1;
+            long nD = nDY2 - nDX;
+            bool bPos = nY1 < nY2;
+
+            for (nX = nX1, nY = nY1; nX <= nX2; nX++)
+            {
+                SetPixel(nY, nX, rLineColor);
+
+                if (nD < 0)
+                    nD += nDY2;
+                else
+                {
+                    nD += nDYX;
+
+                    if (bPos)
+                        nY++;
+                    else
+                        nY--;
+                }
             }
         }
         else
         {
-            const long  nDX = labs( rEnd.X() - rStart.X() );
-            const long  nDY = labs( rEnd.Y() - rStart.Y() );
-            long nX1;
-            long nY1;
-            long nX2;
-            long nY2;
-
-            if (nDX >= nDY)
+            if (rStart.Y() < rEnd.Y())
             {
-                if (rStart.X() < rEnd.X())
-                {
-                    nX1 = rStart.X();
-                    nY1 = rStart.Y();
-                    nX2 = rEnd.X();
-                    nY2 = rEnd.Y();
-                }
-                else
-                {
-                    nX1 = rEnd.X();
-                    nY1 = rEnd.Y();
-                    nX2 = rStart.X();
-                    nY2 = rStart.Y();
-                }
-
-                const long nDYX = (nDY - nDX) << 1;
-                const long nDY2 = nDY << 1;
-                long nD = nDY2 - nDX;
-                bool bPos = nY1 < nY2;
-
-                for (nX = nX1, nY = nY1; nX <= nX2; nX++)
-                {
-                    SetPixel(nY, nX, rLineColor);
-
-                    if (nD < 0)
-                        nD += nDY2;
-                    else
-                    {
-                        nD += nDYX;
-
-                        if (bPos)
-                            nY++;
-                        else
-                            nY--;
-                    }
-                }
+                nX1 = rStart.X();
+                nY1 = rStart.Y();
+                nX2 = rEnd.X();
+                nY2 = rEnd.Y();
             }
             else
             {
-                if (rStart.Y() < rEnd.Y())
-                {
-                    nX1 = rStart.X();
-                    nY1 = rStart.Y();
-                    nX2 = rEnd.X();
-                    nY2 = rEnd.Y();
-                }
+                nX1 = rEnd.X();
+                nY1 = rEnd.Y();
+                nX2 = rStart.X();
+                nY2 = rStart.Y();
+            }
+
+            const long  nDYX = (nDX - nDY) << 1;
+            const long  nDY2 = nDX << 1;
+            long nD = nDY2 - nDY;
+            bool bPos = nX1 < nX2;
+
+            for (nX = nX1, nY = nY1; nY <= nY2; nY++)
+            {
+                SetPixel(nY, nX, rLineColor);
+
+                if (nD < 0)
+                    nD += nDY2;
                 else
                 {
-                    nX1 = rEnd.X();
-                    nY1 = rEnd.Y();
-                    nX2 = rStart.X();
-                    nY2 = rStart.Y();
-                }
+                    nD += nDYX;
 
-                const long  nDYX = (nDX - nDY) << 1;
-                const long  nDY2 = nDX << 1;
-                long nD = nDY2 - nDY;
-                bool bPos = nX1 < nX2;
-
-                for (nX = nX1, nY = nY1; nY <= nY2; nY++)
-                {
-                    SetPixel(nY, nX, rLineColor);
-
-                    if (nD < 0)
-                        nD += nDY2;
+                    if (bPos)
+                        nX++;
                     else
-                    {
-                        nD += nDYX;
-
-                        if (bPos)
-                            nX++;
-                        else
-                            nX--;
-                    }
+                        nX--;
                 }
             }
         }
@@ -231,28 +235,28 @@ void BitmapWriteAccess::DrawLine( const Point& rStart, const Point& rEnd )
 
 void BitmapWriteAccess::FillRect( const tools::Rectangle& rRect )
 {
-    if (mpFillColor)
+    if (!mpFillColor)
+        return;
+
+    const BitmapColor& rFillColor = *mpFillColor;
+    tools::Rectangle aRect(Point(), maBitmap.GetSizePixel());
+
+    aRect.Intersection(rRect);
+
+    if (aRect.IsEmpty())
+        return;
+
+    const long nStartX = rRect.Left();
+    const long nStartY = rRect.Top();
+    const long nEndX = rRect.Right();
+    const long nEndY = rRect.Bottom();
+
+    for (long nY = nStartY; nY <= nEndY; nY++)
     {
-        const BitmapColor& rFillColor = *mpFillColor.get();
-        Point aPoint;
-        tools::Rectangle aRect(aPoint, maBitmap.GetSizePixel());
-
-        aRect.Intersection(rRect);
-
-        if (!aRect.IsEmpty())
+        Scanline pScanline = GetScanline( nY );
+        for (long nX = nStartX; nX <= nEndX; nX++)
         {
-            const long nStartX = rRect.Left();
-            const long nStartY = rRect.Top();
-            const long nEndX = rRect.Right();
-            const long nEndY = rRect.Bottom();
-
-            for (long nY = nStartY; nY <= nEndY; nY++)
-            {
-                for (long nX = nStartX; nX <= nEndX; nX++)
-                {
-                    SetPixel(nY, nX, rFillColor);
-                }
-            }
+            SetPixelOnData(pScanline, nX, rFillColor);
         }
     }
 }
@@ -262,7 +266,7 @@ void BitmapWriteAccess::DrawRect( const tools::Rectangle& rRect )
     if (mpFillColor)
         FillRect(rRect);
 
-    if (mpLineColor && (!mpFillColor || ( *mpFillColor.get() != *mpLineColor.get())))
+    if (mpLineColor && (!mpFillColor || ( *mpFillColor != *mpLineColor)))
     {
         DrawLine(rRect.TopLeft(), rRect.TopRight());
         DrawLine(rRect.TopRight(), rRect.BottomRight());

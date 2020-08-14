@@ -73,13 +73,14 @@ namespace utl {
 
     public:
         void AddListener( utl::ConfigurationListener* pListener );
-        void RemoveListener( utl::ConfigurationListener* pListener );
+        void RemoveListener( utl::ConfigurationListener const * pListener );
 
         // notify listeners; nHint is an implementation detail of the particular class deriving from ConfigurationBroadcaster
         void NotifyListeners( ConfigurationHints nHint );
         ConfigurationBroadcaster();
         ConfigurationBroadcaster(ConfigurationBroadcaster const & );
         virtual ~ConfigurationBroadcaster();
+        ConfigurationBroadcaster & operator =(ConfigurationBroadcaster const & other);
         virtual void BlockBroadcasts( bool bBlock );
     };
 
@@ -99,8 +100,8 @@ public:
     virtual ~Options() override = 0;
 
 private:
-    Options(Options &) = delete;
-    void operator =(Options &) = delete;
+    Options(Options const &) = delete;
+    Options& operator =(Options const &) = delete;
 
 protected:
     virtual void ConfigurationChanged( ::utl::ConfigurationBroadcaster* p, ConfigurationHints nHint ) override;

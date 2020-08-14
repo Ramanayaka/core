@@ -24,50 +24,33 @@
 #include <sfx2/dllapi.h>
 #include <sal/types.h>
 #include <svl/lstner.hxx>
-#include <sfx2/module.hxx>
 #include <sfx2/frame.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/shell.hxx>
-#include <sfx2/sfxsids.hrc>
 #include <svl/poolitem.hxx>
-#include <vcl/button.hxx>
+#include <vcl/svapp.hxx>
 
-#include <tools/svborder.hxx>
-
+class Button;
 class SvBorder;
 class SfxDispatcher;
 class SfxBindings;
 class SfxProgress;
-class SvData;
 class SfxViewShell;
-class SystemWindow;
-class Fraction;
 class Point;
 class Size;
 class SfxChildWindow;
 class SfxInfoBarWindow;
-enum class InfoBarType;
-
-namespace sfx2
-{
-class SvLinkSource;
-}
-namespace svtools
-{
-    class AsynchronLink;
-}
-namespace basegfx
-{
-    class BColor;
-}
+enum class InfobarType;
 
 class SFX2_DLLPUBLIC SfxViewFrame: public SfxShell, public SfxListener
 {
     std::unique_ptr<struct SfxViewFrame_Impl>   m_pImpl;
 
     SfxObjectShellRef           m_xObjSh;
-    SfxDispatcher*              m_pDispatcher;
+    std::unique_ptr<SfxDispatcher> m_pDispatcher;
     SfxBindings*                m_pBindings;
+    ImplSVHelpData*             m_pHelpData;
+    ImplSVWinData*              m_pWinData;
     sal_uInt16                  m_nAdjustPosPixelLock;
 
 private:
@@ -76,7 +59,10 @@ private:
 protected:
     virtual void            Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
-    DECL_LINK( SwitchReadOnlyHandler, Button*, void );
+    DECL_LINK(GetInvolvedHandler, Button*, void);
+    DECL_LINK(DonationHandler, Button*, void);
+    DECL_LINK(WhatsNewHandler, Button*, void);
+    DECL_LINK(SwitchReadOnlyHandler, Button*, void);
     DECL_LINK(SignDocumentHandler, Button*, void);
     SAL_DLLPRIVATE void KillDispatcher_Impl();
 
@@ -95,11 +81,11 @@ public:
 
     static void             SetViewFrame( SfxViewFrame* );
 
-    static SfxViewFrame*    LoadHiddenDocument( SfxObjectShell& i_rDoc, SfxInterfaceId i_nViewId );
-    static SfxViewFrame*    LoadDocument( SfxObjectShell& i_rDoc, SfxInterfaceId i_nViewId );
-    static SfxViewFrame*    LoadDocumentIntoFrame( SfxObjectShell& i_rDoc, const SfxFrameItem* i_pFrameItem, SfxInterfaceId i_nViewId );
-    static SfxViewFrame*    LoadDocumentIntoFrame( SfxObjectShell& i_rDoc, const css::uno::Reference< css::frame::XFrame >& i_rFrameItem );
-    static SfxViewFrame*    DisplayNewDocument( SfxObjectShell& i_rDoc, const SfxRequest& i_rCreateDocRequest );
+    static SfxViewFrame*    LoadHiddenDocument( SfxObjectShell const & i_rDoc, SfxInterfaceId i_nViewId );
+    static SfxViewFrame*    LoadDocument( SfxObjectShell const & i_rDoc, SfxInterfaceId i_nViewId );
+    static SfxViewFrame*    LoadDocumentIntoFrame( SfxObjectShell const & i_rDoc, const SfxFrameItem* i_pFrameItem, SfxInterfaceId i_nViewId );
+    static SfxViewFrame*    LoadDocumentIntoFrame( SfxObjectShell const & i_rDoc, const css::uno::Reference< css::frame::XFrame >& i_rFrameItem );
+    static SfxViewFrame*    DisplayNewDocument( SfxObjectShell const & i_rDoc, const SfxRequest& i_rCreateDocRequest );
 
     static SfxViewFrame*    Current();
     static SfxViewFrame*    GetFirst( const SfxObjectShell* pDoc = nullptr, bool bOnlyVisible = true );
@@ -108,10 +94,10 @@ public:
     static SfxViewFrame*    Get( const css::uno::Reference< css::frame::XController>& i_rController, const SfxObjectShell* i_pDoc );
 
             void            DoActivate(bool bMDI);
-            void            DoDeactivate(bool bMDI, SfxViewFrame *pOld);
+            void            DoDeactivate(bool bMDI, SfxViewFrame const *pOld);
 
     using SfxShell::GetDispatcher;
-    SfxDispatcher*          GetDispatcher() { return m_pDispatcher; }
+    SfxDispatcher*          GetDispatcher() { return m_pDispatcher.get(); }
     SfxBindings&            GetBindings() { return *m_pBindings; }
     const SfxBindings&      GetBindings() const  { return *m_pBindings; }
     vcl::Window&            GetWindow() const;
@@ -129,7 +115,7 @@ public:
     bool                    IsVisible() const;
     void                    ToTop();
     void                    Enable( bool bEnable );
-    bool                    Close();
+    void                    Close();
     virtual void            Activate( bool bUI ) override;
     virtual void            Deactivate( bool bUI ) override;
 
@@ -146,10 +132,8 @@ public:
     SfxViewFrame*           GetTopViewFrame() const;
 
     bool                    DoClose();
-    sal_uIntPtr             GetFrameType() const
-                            { return GetFrame().GetFrameType(); }
-    void                    GetTargetList( TargetList& rList ) const
-                            { GetFrame().GetTargetList( rList ); }
+    static void             GetTargetList( TargetList& rList )
+                            { SfxFrame::GetDefaultTargetList( rList ); }
 
     void                    SetModalMode( bool );
     bool                    IsInModalMode() const;
@@ -170,10 +154,16 @@ public:
         and position of each button will be changed: only the width will remain unchanged.
       */
     VclPtr<SfxInfoBarWindow> AppendInfoBar(const OUString& sId,
-                                    const OUString& sMessage,
-                                    InfoBarType aInfoBarType);
+                                    const OUString& sPrimaryMessage,
+                                    const OUString& sSecondaryMessage,
+                                    InfobarType aInfobarType,
+                                    bool bShowCloseButton=true);
     void              RemoveInfoBar(const OUString& sId);
+    void              UpdateInfoBar(const OUString& sId, const OUString& sPrimaryMessage,
+                                    const OUString& sSecondaryMessage,
+                                    InfobarType eType);
     bool              HasInfoBarWithID(const OUString& sId);
+    void AppendReadOnlyInfobar();
 
     SAL_DLLPRIVATE void GetDocNumber_Impl();
     SAL_DLLPRIVATE void SetViewShell_Impl( SfxViewShell *pVSh );
@@ -259,7 +249,7 @@ private:
 };
 
 
-class SFX2_DLLPUBLIC SfxViewFrameItem: public SfxPoolItem
+class SFX2_DLLPUBLIC SfxViewFrameItem final : public SfxPoolItem
 {
     SfxViewFrame*           pFrame;
 
@@ -270,7 +260,7 @@ public:
                             {}
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SfxViewFrameItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     SfxViewFrame*           GetFrame() const
                             { return pFrame; }

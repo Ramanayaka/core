@@ -12,6 +12,7 @@ $(eval $(call gb_Executable_Executable,update_service))
 $(eval $(call gb_Executable_set_targettype_gui,update_service,YES))
 
 $(eval $(call gb_Executable_set_include,update_service,\
+	-I$(SRCDIR)/onlineupdate/inc \
 	-I$(SRCDIR)/onlineupdate/source/libmar/src/ \
 	-I$(SRCDIR)/onlineupdate/source/libmar/verify/ \
 	-I$(SRCDIR)/onlineupdate/source/libmar/sign/ \
@@ -21,7 +22,7 @@ $(eval $(call gb_Executable_set_include,update_service,\
 
 $(eval $(call gb_Executable_use_static_libraries,update_service,\
 	updatehelper \
-	winhelper \
+	windows_process \
 ))
 
 $(eval $(call gb_Executable_add_libs,update_service,\
@@ -41,15 +42,11 @@ $(eval $(call gb_Executable_add_libs,update_service,\
     advapi32.lib \
 ))
 
-$(eval $(call gb_Executable_add_defs,update_service,\
-	-DUNICODE \
-))
-
 $(eval $(call gb_Executable_add_ldflags,update_service,\
     /ENTRY:wmainCRTStartup \
 ))
 
-$(eval $(call gb_Executable_add_cxxobjects,update_service,\
+$(eval $(call gb_Executable_add_exception_objects,update_service,\
 	onlineupdate/source/service/certificatecheck \
 	onlineupdate/source/service/maintenanceservice \
 	onlineupdate/source/service/registrycertificates \

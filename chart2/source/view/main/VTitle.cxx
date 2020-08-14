@@ -18,16 +18,12 @@
  */
 
 #include "VTitle.hxx"
-#include "CommonConverters.hxx"
-#include "macros.hxx"
-#include "PropertyMapper.hxx"
-#include "AbstractShapeFactory.hxx"
-#include <com/sun/star/chart2/XFormattedString.hpp>
-#include <rtl/math.hxx>
+#include <CommonConverters.hxx>
+#include <ShapeFactory.hxx>
+#include <com/sun/star/chart2/XTitle.hpp>
+#include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/text/ControlCharacter.hpp>
-#include <com/sun/star/text/XText.hpp>
-#include <com/sun/star/text/XTextCursor.hpp>
+#include <tools/diagnose_ex.h>
 
 namespace chart
 {
@@ -35,10 +31,7 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
 
 VTitle::VTitle( const uno::Reference< XTitle > & xTitle )
-                : m_xTarget(nullptr)
-                , m_xShapeFactory(nullptr)
-                , m_xTitle(xTitle)
-                , m_xShape(nullptr)
+                : m_xTitle(xTitle)
                 , m_aCID()
                 , m_fRotationAngleDegree(0.0)
                 , m_nXPos(0)
@@ -62,7 +55,7 @@ void VTitle::init(
 
 double VTitle::getRotationAnglePi() const
 {
-    return m_fRotationAngleDegree*F_PI/180.0;
+    return basegfx::deg2rad(m_fRotationAngleDegree);
 }
 
 awt::Size VTitle::getUnrotatedSize() const //size before rotation
@@ -75,7 +68,7 @@ awt::Size VTitle::getUnrotatedSize() const //size before rotation
 
 awt::Size VTitle::getFinalSize() const //size after rotation
 {
-    return AbstractShapeFactory::getSizeAfterRotation(
+    return ShapeFactory::getSizeAfterRotation(
          m_xShape, m_fRotationAngleDegree );
 }
 
@@ -98,21 +91,23 @@ void VTitle::changePosition( const awt::Point& rPos )
         aM.translate( m_nXPos, m_nYPos);
         xShapeProp->setPropertyValue( "Transformation", uno::Any( B2DHomMatrixToHomogenMatrix3(aM) ) );
     }
-    catch( const uno::Exception& e )
+    catch( const uno::Exception& )
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
 }
 
 void VTitle::createShapes(
       const awt::Point& rPos
-    , const awt::Size& rReferenceSize )
+    , const awt::Size& rReferenceSize
+    , const awt::Size& rTextMaxWidth
+    , bool bYAxisTitle )
 {
     if(!m_xTitle.is())
         return;
 
     uno::Sequence< uno::Reference< XFormattedString > > aStringList = m_xTitle->getText();
-    if(aStringList.getLength()<=0)
+    if(!aStringList.hasElements())
         return;
 
     m_nXPos = rPos.X;
@@ -126,14 +121,29 @@ void VTitle::createShapes(
         xTitleProperties->getPropertyValue( "TextRotation" ) >>= fAngleDegree;
         m_fRotationAngleDegree += fAngleDegree;
     }
-    catch( const uno::Exception& e )
+    catch( const uno::Exception& )
     {
-        ASSERT_EXCEPTION( e );
+        TOOLS_WARN_EXCEPTION("chart2", "" );
     }
 
-    AbstractShapeFactory* pShapeFactory = AbstractShapeFactory::getOrCreateShapeFactory(m_xShapeFactory);
-    m_xShape =pShapeFactory->createText( m_xTarget, rReferenceSize, rPos, aStringList,
-            xTitleProperties, m_fRotationAngleDegree, m_aCID );
+    sal_Int32 nTextMaxWidth;
+    if (bYAxisTitle)
+    {
+        if (m_fRotationAngleDegree < 75.0 || m_fRotationAngleDegree > 285.0
+            || (m_fRotationAngleDegree > 105.0 && m_fRotationAngleDegree < 255.0))
+            nTextMaxWidth = rTextMaxWidth.Width;
+        else
+            nTextMaxWidth = rTextMaxWidth.Height;
+    }
+    else if (m_fRotationAngleDegree <= 15.0 || m_fRotationAngleDegree >= 345.0
+             || (m_fRotationAngleDegree >= 165.0 && m_fRotationAngleDegree <= 195.0))
+        nTextMaxWidth = rTextMaxWidth.Width;
+    else
+        nTextMaxWidth = rTextMaxWidth.Height;
+
+    ShapeFactory* pShapeFactory = ShapeFactory::getOrCreateShapeFactory(m_xShapeFactory);
+    m_xShape =pShapeFactory->createText( m_xTarget, rReferenceSize, rPos, aStringList, xTitleProperties,
+                                    m_fRotationAngleDegree, m_aCID, nTextMaxWidth );
 }
 
 } //namespace chart

@@ -22,21 +22,19 @@
 
 #include <vector>
 #include <list>
-#include <set>
-#include <com/sun/star/sheet/XSpreadsheet.hpp>
-#include <com/sun/star/table/CellRangeAddress.hpp>
-#include <com/sun/star/table/XCell.hpp>
-#include <com/sun/star/text/XText.hpp>
-#include <com/sun/star/sheet/XSheetAnnotation.hpp>
-#include <com/sun/star/drawing/XShape.hpp>
-#include "global.hxx"
-#include "detfunc.hxx"
-#include "detdata.hxx"
-#include "postit.hxx"
-#include "cellvalue.hxx"
+#include <com/sun/star/table/CellContentType.hpp>
+#include <detfunc.hxx>
+#include <detdata.hxx>
+#include <cellvalue.hxx>
 
 #include <memory>
 
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::sheet { class XSpreadsheet; }
+namespace com::sun::star::table { class XCellRange; }
+namespace com::sun::star::table { struct CellRangeAddress; }
+
+class   ScPostIt;
 class   ScHorizontalCellIterator;
 struct  ScMyCell;
 class   ScXMLExport;
@@ -51,6 +49,11 @@ public:
                                 ScMyIteratorBase();
     virtual                     ~ScMyIteratorBase();
 
+    ScMyIteratorBase(ScMyIteratorBase const &) = default;
+    ScMyIteratorBase(ScMyIteratorBase &&) = default;
+    ScMyIteratorBase & operator =(ScMyIteratorBase const &) = default;
+    ScMyIteratorBase & operator =(ScMyIteratorBase &&) = default;
+
     virtual void                SetCellData( ScMyCell& rMyCell ) = 0;
     virtual void                Sort() = 0;
 
@@ -63,6 +66,7 @@ struct ScMyShape
     ScAddress       aEndAddress;
     sal_Int32       nEndX;
     sal_Int32       nEndY;
+    bool            bResizeWithCell;
     css::uno::Reference<css::drawing::XShape> xShape;
 
     bool operator<(const ScMyShape& aShape) const;
@@ -82,7 +86,7 @@ public:
 
                                 using ScMyIteratorBase::UpdateAddress;
     void                        AddNewShape(const ScMyShape& aShape);
-    bool                        HasShapes() { return !aShapeList.empty(); }
+    bool                        HasShapes() const { return !aShapeList.empty(); }
     const ScMyShapeList&        GetShapes() const { return aShapeList; }
     virtual void                SetCellData( ScMyCell& rMyCell ) override;
     virtual void                Sort() override;
@@ -156,7 +160,7 @@ struct ScMyAreaLink
     ScMyAreaLink() : nRefresh( 0 ) {}
 
     sal_Int32            GetColCount() const { return aDestRange.aEnd.Col() - aDestRange.aStart.Col() + 1; }
-    sal_Int32            GetRowCount() const { return aDestRange.aEnd.Row() - aDestRange.aStart.Col() + 1; }
+    sal_Int32            GetRowCount() const { return aDestRange.aEnd.Row() - aDestRange.aStart.Row() + 1; }
 
     bool                        Compare( const ScMyAreaLink& rAreaLink ) const;
     bool                        operator<(const ScMyAreaLink& rAreaLink ) const;
@@ -194,6 +198,12 @@ protected:
 public:
                                 ScMyEmptyDatabaseRangesContainer();
     virtual                     ~ScMyEmptyDatabaseRangesContainer() override;
+
+    ScMyEmptyDatabaseRangesContainer(ScMyEmptyDatabaseRangesContainer const &) = default;
+    ScMyEmptyDatabaseRangesContainer(ScMyEmptyDatabaseRangesContainer &&) = default;
+    ScMyEmptyDatabaseRangesContainer & operator =(ScMyEmptyDatabaseRangesContainer const &) = default;
+    ScMyEmptyDatabaseRangesContainer & operator =(ScMyEmptyDatabaseRangesContainer &&) = default;
+
     void                        AddNewEmptyDatabaseRange(const css::table::CellRangeAddress& aCellRangeAddress);
 
                                 using ScMyIteratorBase::UpdateAddress;
@@ -304,7 +314,6 @@ struct ScMyCell
     bool                        bHasAnnotation;
 
                                 ScMyCell();
-                                ~ScMyCell();
 };
 
 class ScMyNotEmptyCellsIterator
@@ -357,7 +366,7 @@ public:
                                     { pDetectiveOp = pNewDetectiveOp; }
 
     void                        SetCurrentTable(const SCTAB nTable,
-                                    css::uno::Reference<css::sheet::XSpreadsheet>& rxTable);
+                                    const css::uno::Reference<css::sheet::XSpreadsheet>& rxTable);
     void                        SkipTable(SCTAB nSkip);
 
     bool                        GetNext(ScMyCell& aCell, ScFormatRangeStyles* pCellStyles);

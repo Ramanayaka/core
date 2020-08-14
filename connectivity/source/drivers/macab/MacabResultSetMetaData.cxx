@@ -23,7 +23,7 @@
 #include "MacabRecords.hxx"
 #include "MacabAddressBook.hxx"
 #include "macabutilities.hxx"
-#include "resource/macab_res.hrc"
+#include <strings.hrc>
 
 using namespace connectivity::macab;
 using namespace com::sun::star::uno;
@@ -43,7 +43,6 @@ MacabResultSetMetaData::~MacabResultSetMetaData()
 
 void MacabResultSetMetaData::setMacabFields(const ::rtl::Reference<connectivity::OSQLColumns> &xColumns)
 {
-    OSQLColumns::Vector::const_iterator aIter;
     static const char aName[] = "Name";
     MacabRecords *aRecords;
     MacabHeader *aHeader;
@@ -58,12 +57,12 @@ void MacabResultSetMetaData::setMacabFields(const ::rtl::Reference<connectivity:
 
     aHeader = aRecords->getHeader();
 
-    for (aIter = xColumns->get().begin(); aIter != xColumns->get().end(); ++aIter)
+    for (const auto& rxColumn : *xColumns)
     {
         OUString aFieldName;
         sal_uInt32 nFieldNumber;
 
-        (*aIter)->getPropertyValue(aName) >>= aFieldName;
+        rxColumn->getPropertyValue(aName) >>= aFieldName;
         nFieldNumber = aHeader->getColumnNumber(aFieldName);
         m_aMacabFields.push_back(nFieldNumber);
     }
@@ -189,7 +188,7 @@ sal_Int32 SAL_CALL MacabResultSetMetaData::getScale(sal_Int32)
 
 sal_Int32 SAL_CALL MacabResultSetMetaData::isNullable(sal_Int32)
 {
-    return (sal_Int32) true;
+    return sal_Int32(true);
 }
 
 sal_Bool SAL_CALL MacabResultSetMetaData::isSearchable(sal_Int32)

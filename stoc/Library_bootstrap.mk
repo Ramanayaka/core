@@ -26,11 +26,13 @@ $(eval $(call gb_Library_use_internal_bootstrap_api,bootstrap,\
 ))
 
 $(eval $(call gb_Library_use_libraries,bootstrap,\
+    comphelper \
     cppu \
     cppuhelper \
     reg \
     sal \
     salhelper \
+    tl \
 ))
 
 $(eval $(call gb_Library_set_componentfile,bootstrap,stoc/util/bootstrap))

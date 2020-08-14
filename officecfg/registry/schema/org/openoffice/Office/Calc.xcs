@@ -390,6 +390,14 @@
           </info>
           <value>true</value>
         </prop>
+        <prop oor:name="SearchSummary" oor:type="xs:boolean" oor:nillable="false">
+          <!-- UIHints: Tools - Options -Spreadsheets - View - [Section] Window -->
+          <info>
+            <desc>Specifies whether a summarizing dialog is displayed after search.</desc>
+            <label>Search summary</label>
+          </info>
+          <value>true</value>
+        </prop>
       </group>
       <group oor:name="Other">
         <info>
@@ -1088,6 +1096,13 @@
           </info>
           <value>false</value>
         </prop>
+        <prop oor:name="RemoveSpace" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>If true, leading and trailing white spaces are trimmed off.</desc>
+            <label>RemoveSpace</label>
+          </info>
+          <value>false</value>
+        </prop>
         <prop oor:name="QuotedFieldAsText" oor:type="xs:boolean" oor:nillable="false">
           <info>
             <desc>If true, quoted field is always imported as text with no exception.</desc>
@@ -1163,6 +1178,13 @@
           </info>
           <value>false</value>
         </prop>
+        <prop oor:name="RemoveSpace" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>If true, leading and trailing white spaces are trimmed off.</desc>
+            <label>RemoveSpace</label>
+          </info>
+          <value>false</value>
+        </prop>
         <prop oor:name="QuotedFieldAsText" oor:type="xs:boolean" oor:nillable="false">
           <info>
             <desc>If true, quoted field is always imported as text with no exception.</desc>
@@ -1174,6 +1196,13 @@
           <info>
             <desc>If true, Calc tries to detect special number format, such as date and scientific notation.</desc>
             <label>DetectSpecialNumbers</label>
+          </info>
+          <value>true</value>
+        </prop>
+        <prop oor:name="SkipEmptyCells" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>If true, Calc preserves previous content of cells when pasting empty ones. If false, Calc delete content of previous cells.</desc>
+            <label>SkipEmptyCells</label>
           </info>
           <value>true</value>
         </prop>
@@ -1238,12 +1267,26 @@
           </info>
           <value>false</value>
         </prop>
+        <prop oor:name="RemoveSpace" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>If true, leading and trailing white spaces are trimmed off.</desc>
+            <label>RemoveSpace</label>
+          </info>
+          <value>false</value>
+        </prop>
         <prop oor:name="Separators" oor:type="xs:string" oor:nillable="false">
           <info>
             <desc>List of Separators - as a String</desc>
             <label>Separators</label>
           </info>
           <value>	</value>
+        </prop>
+        <prop oor:name="SkipEmptyCells" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>If true, Calc preserves previous content of cells when pasting empty ones. If false, Calc delete content of previous cells.</desc>
+            <label>SkipEmptyCells</label>
+          </info>
+          <value>false</value>
         </prop>
         <prop oor:name="TextSeparators" oor:type="xs:string" oor:nillable="false">
           <info>
@@ -1416,6 +1459,12 @@
         <info>
           <desc>Contains settings for how to calculate formulae.</desc>
         </info>
+	<prop oor:name="UseThreadedCalculationForFormulaGroups" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Whether to use threaded calculation of formula groups when applicable.</desc>
+          </info>
+          <value>true</value>
+	</prop>
 	<!-- Note: The default values below probably must correspond
 	to those assigned in setOpenCLConfigToDefault() in
 	sc/source/core/tool/calcconfig.cxx
@@ -1426,7 +1475,7 @@
           </info>
           <value>true</value>
         </prop>
-        <prop oor:name="OpenCLMinimumDataSize" oor:type="xs:int">
+        <prop oor:name="OpenCLMinimumDataSize" oor:type="xs:int" oor:nillable="false">
           <info>
             <desc>An approximate lower limit on the number of data cells a spreadsheet formula should use for OpenCL to be considered.</desc>
           </info>
@@ -1439,7 +1488,7 @@
             true, and a formula contains only these operators and
             functions, it might be calculated using OpenCL.</desc>
           </info>
-          <value>+;-;*;/;RAND;SIN;COS;TAN;ATAN;EXP;LN;SQRT;NORMSDIST;NORMSINV;ROUND;POWER;SUMPRODUCT;MIN;MAX;SUM;PRODUCT;AVERAGE;COUNT;VAR;NORMDIST;VLOOKUP;CORREL;COVAR;PEARSON;SLOPE;SUMIFS</value>
+          <value>+;-;*;/;^;RAND;SIN;COS;TAN;ATAN;EXP;LN;SQRT;NORMSDIST;NORMSINV;ROUND;POWER;SUMPRODUCT;MIN;MAX;SUM;PRODUCT;AVERAGE;COUNT;VAR;NORMDIST;VLOOKUP;CORREL;COVAR;PEARSON;SLOPE;SUMIFS</value>
         </prop>
         <prop oor:name="OpenCLAutoSelect" oor:type="xs:boolean" oor:nillable="false">
           <info>
@@ -1781,6 +1830,23 @@
           </prop>
         </group>
       </group>
+      <group oor:name="Export">
+        <info>
+          <desc>Contains settings for export filters.</desc>
+        </info>
+        <group oor:name="MS_Excel">
+          <info>
+            <desc>Contains settings for MS Excel export.</desc>
+          </info>
+          <prop oor:name="TruncateLongSheetNames" oor:type="xs:boolean" oor:nillable="false">
+            <info>
+              <desc>Indicates whether sheet names should be truncated to 31 characters.</desc>
+              <label>Truncate long sheet names</label>
+            </info>
+            <value>true</value>
+          </prop>
+        </group>
+      </group>
     </group>
     <group oor:name="Print">
       <info>
@@ -1925,7 +1991,15 @@
             <desc>Option to set the prefix name for new sheet tabs</desc>
           </info>
         </prop>
-      </group>
+        <prop oor:name="JumboSheets" oor:type="xs:boolean" oor:nillable="false">
+          <!-- UIHints: Tools - Options - Spreadsheet - Defaults -->
+          <info>
+            <desc>Enable very large spreadsheets (16m rows, 16384 cols)</desc>
+            <label>Jumbo sheets</label>
+          </info>
+          <value>false</value>
+        </prop>
+    </group>
     </group>
     <group oor:name="DataStream">
         <info>

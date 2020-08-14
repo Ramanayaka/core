@@ -17,72 +17,69 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "workbookhelper.hxx"
+#include <workbookhelper.hxx>
 
 #include <com/sun/star/container/XIndexAccess.hpp>
+#include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/sheet/XDatabaseRange.hpp>
 #include <com/sun/star/sheet/XDatabaseRanges.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/NamedRangeFlag.hpp>
-#include <com/sun/star/style/XStyle.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
+#include <com/sun/star/document/XViewDataSupplier.hpp>
+#include <o3tl/any.hxx>
 #include <osl/thread.h>
+#include <osl/diagnose.h>
 #include <oox/helper/progressbar.hxx>
 #include <oox/helper/propertyset.hxx>
 #include <oox/ole/vbaproject.hxx>
 #include <oox/token/properties.hxx>
-#include <vcl/msgbox.hxx>
-#include "addressconverter.hxx"
-#include "biffcodec.hxx"
-#include "connectionsbuffer.hxx"
-#include "defnamesbuffer.hxx"
-#include "excelchartconverter.hxx"
-#include "excelfilter.hxx"
-#include "externallinkbuffer.hxx"
-#include "formulaparser.hxx"
-#include "pagesettings.hxx"
-#include "pivotcachebuffer.hxx"
-#include "pivottablebuffer.hxx"
-#include "scenariobuffer.hxx"
-#include "sharedstringsbuffer.hxx"
-#include "stylesbuffer.hxx"
-#include "tablebuffer.hxx"
-#include "themebuffer.hxx"
-#include "unitconverter.hxx"
-#include "viewsettings.hxx"
-#include "workbooksettings.hxx"
-#include "worksheetbuffer.hxx"
-#include "scmod.hxx"
-#include "docsh.hxx"
-#include "document.hxx"
-#include "docuno.hxx"
-#include "rangenam.hxx"
-#include "tokenarray.hxx"
-#include "tokenuno.hxx"
-#include "dbdata.hxx"
-#include "datauno.hxx"
-#include "globalnames.hxx"
-#include "documentimport.hxx"
-#include "drwlayer.hxx"
-#include "globstr.hrc"
+#include <addressconverter.hxx>
+#include <connectionsbuffer.hxx>
+#include <defnamesbuffer.hxx>
+#include <excelchartconverter.hxx>
+#include <excelfilter.hxx>
+#include <externallinkbuffer.hxx>
+#include <formulaparser.hxx>
+#include <pagesettings.hxx>
+#include <pivotcachebuffer.hxx>
+#include <pivottablebuffer.hxx>
+#include <scenariobuffer.hxx>
+#include <sharedstringsbuffer.hxx>
+#include <stylesbuffer.hxx>
+#include <tablebuffer.hxx>
+#include <themebuffer.hxx>
+#include <unitconverter.hxx>
+#include <viewsettings.hxx>
+#include <workbooksettings.hxx>
+#include <worksheetbuffer.hxx>
+#include <docsh.hxx>
+#include <document.hxx>
+#include <docuno.hxx>
+#include <rangenam.hxx>
+#include <tokenarray.hxx>
+#include <tokenuno.hxx>
+#include <dbdata.hxx>
+#include <datauno.hxx>
+#include <globalnames.hxx>
+#include <documentimport.hxx>
+#include <drwlayer.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
 
-#include "formulabuffer.hxx"
-#include <vcl/mapmod.hxx>
-#include "editutil.hxx"
+#include <formulabuffer.hxx>
+#include <editutil.hxx>
 #include <editeng/editstat.hxx>
-
-#include <comphelper/processfactory.hxx>
-#include <officecfg/Office/Calc.hxx>
+#include <unotools/charclass.hxx>
+#include <ViewSettingsSequenceDefines.hxx>
 
 #include <memory>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::document;
@@ -91,6 +88,7 @@ using namespace ::com::sun::star::sheet;
 using namespace ::com::sun::star::style;
 using namespace ::com::sun::star::table;
 using namespace ::com::sun::star::uno;
+using namespace ::com::sun::star::beans;
 
 using ::oox::core::FilterBase;
 using ::oox::core::FragmentHandler;
@@ -138,7 +136,7 @@ public:
 
     ScEditEngineDefaulter& getEditEngine() const
     {
-        return *mxEditEngine.get();
+        return *mxEditEngine;
     }
 
     ScDocument& getScDocument() { return *mpDoc; }
@@ -326,7 +324,7 @@ Reference< XNameContainer > WorkbookGlobals::getStyleFamily( bool bPageStyles ) 
     try
     {
         Reference< XStyleFamiliesSupplier > xFamiliesSup( mxDoc, UNO_QUERY_THROW );
-        Reference< XNameAccess > xFamiliesNA( xFamiliesSup->getStyleFamilies(), UNO_QUERY_THROW );
+        Reference< XNameAccess > xFamiliesNA( xFamiliesSup->getStyleFamilies(), UNO_SET_THROW );
         xStylesNC.set( xFamiliesNA->getByName( bPageStyles ? maPageStyles : maCellStyles ), UNO_QUERY );
     }
     catch( Exception& )
@@ -361,7 +359,7 @@ ScRangeData* lcl_addNewByNameAndTokens( ScDocument& rDoc, ScRangeName* pNames, c
     if ( nUnoType & NamedRangeFlag::PRINT_AREA )         nNewType |= ScRangeData::Type::PrintArea;
     if ( nUnoType & NamedRangeFlag::COLUMN_HEADER )      nNewType |= ScRangeData::Type::ColHeader;
     if ( nUnoType & NamedRangeFlag::ROW_HEADER )         nNewType |= ScRangeData::Type::RowHeader;
-    ScTokenArray aTokenArray;
+    ScTokenArray aTokenArray(&rDoc);
     (void)ScTokenConversion::ConvertToTokenArray( rDoc, aTokenArray, rTokens );
     ScRangeData* pNew = new ScRangeData( &rDoc, rName, aTokenArray, ScAddress(), nNewType );
     pNew->GuessPosition();
@@ -378,8 +376,8 @@ OUString findUnusedName( const ScRangeName* pRangeName, const OUString& rSuggest
 {
     OUString aNewName = rSuggestedName;
     sal_Int32 nIndex = 0;
-    while(pRangeName->findByUpperName(ScGlobal::pCharClass->uppercase(aNewName)))
-        aNewName = rSuggestedName + OUStringLiteral1('_') + OUString::number( nIndex++ );
+    while(pRangeName->findByUpperName(ScGlobal::getCharClassPtr()->uppercase(aNewName)))
+        aNewName = rSuggestedName + OUStringChar('_') + OUString::number( nIndex++ );
 
     return aNewName;
 }
@@ -462,10 +460,10 @@ Reference< XDatabaseRange > WorkbookGlobals::createUnnamedDatabaseRangeObject( c
         ScDocument& rDoc =  getScDocument();
         if( rDoc.GetTableCount() <= aDestRange.aStart.Tab() )
             throw css::lang::IndexOutOfBoundsException();
-        ScDBData* pNewDBData = new ScDBData( STR_DB_LOCAL_NONAME, aDestRange.aStart.Tab(),
+        std::unique_ptr<ScDBData> pNewDBData(new ScDBData( STR_DB_LOCAL_NONAME, aDestRange.aStart.Tab(),
                                        aDestRange.aStart.Col(), aDestRange.aStart.Row(),
-                                       aDestRange.aEnd.Col(), aDestRange.aEnd.Row() );
-        rDoc.SetAnonymousDBData( aDestRange.aStart.Tab() , pNewDBData );
+                                       aDestRange.aEnd.Col(), aDestRange.aEnd.Row() ));
+        rDoc.SetAnonymousDBData( aDestRange.aStart.Tab() , std::move(pNewDBData) );
         ScDocShell* pDocSh = static_cast< ScDocShell* >(rDoc.GetDocumentShell());
         xDatabaseRange.set(new ScDatabaseRangeObj(pDocSh, aDestRange.aStart.Tab()));
     }
@@ -526,7 +524,7 @@ void WorkbookGlobals::initialize()
     mxDoc.set( mrBaseFilter.getModel(), UNO_QUERY );
     OSL_ENSURE( mxDoc.is(), "WorkbookGlobals::initialize - no spreadsheet document" );
 
-    if (mxDoc.get())
+    if (mxDoc)
     {
         ScModelObj* pModel = dynamic_cast<ScModelObj*>(mxDoc.get());
         if (pModel)
@@ -560,7 +558,7 @@ void WorkbookGlobals::initialize()
     mxWorkbookSettings.reset( new WorkbookSettings( *this ) );
     mxViewSettings.reset( new ViewSettings( *this ) );
     mxWorksheets.reset( new WorksheetBuffer( *this ) );
-    mxTheme.reset( new ThemeBuffer( *this ) );
+    mxTheme = std::make_shared<ThemeBuffer>( *this );
     mxStyles.reset( new StylesBuffer( *this ) );
     mxSharedStrings.reset( new SharedStringsBuffer( *this ) );
     mxExtLinks.reset( new ExternalLinkBuffer( *this ) );
@@ -579,7 +577,7 @@ void WorkbookGlobals::initialize()
     // initialise edit engine
     ScDocument& rDoc = getScDocument();
     mxEditEngine.reset( new ScEditEngineDefaulter( rDoc.GetEnginePool() ) );
-    mxEditEngine->SetRefMapMode( MapUnit::Map100thMM );
+    mxEditEngine->SetRefMapMode(MapMode(MapUnit::Map100thMM));
     mxEditEngine->SetEditTextObjectPool( rDoc.GetEditPool() );
     mxEditEngine->SetUpdateMode( false );
     mxEditEngine->EnableUndo( false );
@@ -593,11 +591,11 @@ void WorkbookGlobals::initialize()
         // #i76026# disable Undo while loading the document
         mpDoc->EnableUndo(false);
         // #i79826# disable calculating automatic row height while loading the document
-        mpDoc->EnableAdjustHeight(false);
+        mpDoc->LockAdjustHeight();
         // disable automatic update of linked sheets and DDE links
         mpDoc->EnableExecuteLink(false);
 
-        mxProgressBar.reset( new SegmentProgressBar( mrBaseFilter.getStatusIndicator(), ScGlobal::GetRscString(STR_LOAD_DOC) ) );
+        mxProgressBar.reset( new SegmentProgressBar( mrBaseFilter.getStatusIndicator(), ScResId(STR_LOAD_DOC) ) );
         mxFmlaParser.reset( createFormulaParser() );
 
         //prevent unnecessary broadcasts and "half way listeners" as
@@ -606,33 +604,32 @@ void WorkbookGlobals::initialize()
     }
     else if( mrBaseFilter.isExportFilter() )
     {
-        mxProgressBar.reset( new SegmentProgressBar( mrBaseFilter.getStatusIndicator(), ScGlobal::GetRscString(STR_SAVE_DOC) ) );
+        mxProgressBar.reset( new SegmentProgressBar( mrBaseFilter.getStatusIndicator(), ScResId(STR_SAVE_DOC) ) );
     }
 }
 
 void WorkbookGlobals::finalize()
 {
     // set some document properties needed after import
-    if( mrBaseFilter.isImportFilter() )
-    {
-        // #i74668# do not insert default sheets
-        mpDocShell->SetEmpty(false);
-        // enable automatic update of linked sheets and DDE links
-        mpDoc->EnableExecuteLink(true);
-        // #i79826# enable updating automatic row height after loading the document
-        mpDoc->EnableAdjustHeight(true);
+    if( !mrBaseFilter.isImportFilter() )
+        return;
 
-        // #i76026# enable Undo after loading the document
-        mpDoc->EnableUndo(true);
+    // #i74668# do not insert default sheets
+    mpDocShell->SetEmpty(false);
+    // enable automatic update of linked sheets and DDE links
+    mpDoc->EnableExecuteLink(true);
+    // #i79826# enable updating automatic row height after loading the document
+    mpDoc->UnlockAdjustHeight();
 
-        // disable editing read-only documents (e.g. from read-only files)
-        mpDoc->EnableChangeReadOnly(false);
-        // #111099# open forms in alive mode (has no effect, if no controls in document)
-        ScDrawLayer* pModel = mpDoc->GetDrawLayer();
-        if (pModel)
-            pModel->SetOpenInDesignMode(false);
+    // #i76026# enable Undo after loading the document
+    mpDoc->EnableUndo(true);
 
-    }
+    // disable editing read-only documents (e.g. from read-only files)
+    mpDoc->EnableChangeReadOnly(false);
+    // #111099# open forms in alive mode (has no effect, if no controls in document)
+    ScDrawLayer* pModel = mpDoc->GetDrawLayer();
+    if (pModel)
+        pModel->SetOpenInDesignMode(false);
 }
 
 
@@ -642,7 +639,7 @@ WorkbookHelper::~WorkbookHelper()
 
 /*static*/ WorkbookGlobalsRef WorkbookHelper::constructGlobals( ExcelFilter& rFilter )
 {
-    WorkbookGlobalsRef xBookGlob( new WorkbookGlobals( rFilter ) );
+    WorkbookGlobalsRef xBookGlob = std::make_shared<WorkbookGlobals>( rFilter );
     if( !xBookGlob->isValid() )
         xBookGlob.reset();
     return xBookGlob;
@@ -690,7 +687,7 @@ void WorkbookHelper::finalizeWorkbookImport()
     // contains the workbook code name).  Do it before processing formulas in
     // order to correctly resolve VBA custom function names.
     StorageRef xVbaPrjStrg = mrBookGlob.getVbaProjectStorage();
-    if( xVbaPrjStrg.get() && xVbaPrjStrg->isStorage() )
+    if( xVbaPrjStrg && xVbaPrjStrg->isStorage() )
         getBaseFilter().getVbaProject().importModulesAndForms( *xVbaPrjStrg, getBaseFilter().getGraphicHelper() );
 
     // need to import formulas before scenarios
@@ -722,6 +719,61 @@ void WorkbookHelper::finalizeWorkbookImport()
         aCalcConfig.meStringRefAddressSyntax = formula::FormulaGrammar::CONV_A1_XL_A1;
         getScDocument().SetCalcConfig(aCalcConfig);
     }
+
+    // set selected sheet and positionleft/positiontop for OLE objects
+    Reference<XViewDataSupplier> xViewDataSupplier(getDocument(), UNO_QUERY);
+    if (!xViewDataSupplier.is())
+        return;
+
+    Reference<XIndexAccess> xIndexAccess(xViewDataSupplier->getViewData());
+    if (!(xIndexAccess.is() && xIndexAccess->getCount() > 0))
+        return;
+
+    Sequence< PropertyValue > aSeq;
+    if (!(xIndexAccess->getByIndex(0) >>= aSeq))
+        return;
+
+    OUString sTabName;
+    Reference< XNameAccess > xSheetsNC;
+    for (const auto& rProp : std::as_const(aSeq))
+    {
+        OUString sName(rProp.Name);
+        if (sName == SC_ACTIVETABLE)
+        {
+            if(rProp.Value >>= sTabName)
+            {
+                SCTAB nTab(0);
+                if (getScDocument().GetTable(sTabName, nTab))
+                    getScDocument().SetVisibleTab(nTab);
+            }
+        }
+        else if (sName == SC_TABLES)
+        {
+            rProp.Value >>= xSheetsNC;
+        }
+    }
+    if (!(xSheetsNC.is() && xSheetsNC->hasByName(sTabName)))
+        return;
+
+    Sequence<PropertyValue> aProperties;
+    Any aAny = xSheetsNC->getByName(sTabName);
+    if ( !(aAny >>= aProperties) )
+        return;
+
+    for (const auto& rProp : std::as_const(aProperties))
+    {
+        OUString sName(rProp.Name);
+        if (sName == SC_POSITIONLEFT)
+        {
+            SCCOL nPosLeft = *o3tl::doAccess<SCCOL>(rProp.Value);
+            getScDocument().SetPosLeft(nPosLeft);
+        }
+        else if (sName == SC_POSITIONTOP)
+        {
+            SCROW nPosTop = *o3tl::doAccess<SCROW>(rProp.Value);
+            getScDocument().SetPosTop(nPosTop);
+        }
+    }
 }
 
 // document model -------------------------------------------------------------
@@ -751,7 +803,7 @@ ScEditEngineDefaulter& WorkbookHelper::getEditEngine() const
     return mrBookGlob.getEditEngine();
 }
 
-Reference< XSpreadsheetDocument > WorkbookHelper::getDocument() const
+const Reference< XSpreadsheetDocument > & WorkbookHelper::getDocument() const
 {
     return mrBookGlob.getDocument();
 }
@@ -971,7 +1023,6 @@ rtl_TextEncoding WorkbookHelper::getTextEncoding() const
     return mrBookGlob.getTextEncoding();
 }
 
-} // namespace xls
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,16 +22,12 @@
 
 #include <svx/sdr/overlay/overlayobject.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
 
 
-namespace sdr
-{
-    namespace overlay
+namespace sdr::overlay
     {
-        class SVX_DLLPUBLIC OverlayPolyPolygonStripedAndFilled : public OverlayObject
+        class SVXCORE_DLLPUBLIC OverlayPolyPolygonStripedAndFilled final : public OverlayObject
         {
-        protected:
             // geometry
             basegfx::B2DPolyPolygon             maLinePolyPolygon;
 
@@ -49,8 +45,8 @@ namespace sdr
             // react on stripe definition change
             virtual void stripeDefinitionHasChanged() override;
         };
-    } // end of namespace overlay
-} // end of namespace sdr
+
+} // end of namespace sdr::overlay
 
 
 #endif // INCLUDED_SVX_SDR_OVERLAY_OVERLAYPOLYPOLYGON_HXX

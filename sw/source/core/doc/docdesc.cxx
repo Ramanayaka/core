@@ -19,14 +19,15 @@
 
 #include <cmdid.h>
 #include <init.hxx>
-#include <svx/svdmodel.hxx>
+#include <editeng/lrspitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/paperinf.hxx>
 #include <editeng/frmdiritem.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
-#include <sfx2/printer.hxx>
 #include <tools/globname.hxx>
+#include <sal/log.hxx>
+#include <unotools/localedatawrapper.hxx>
 #include <fmtfsize.hxx>
 #include <fmthdft.hxx>
 #include <fmtcntnt.hxx>
@@ -40,26 +41,24 @@
 #include <DocumentContentOperationsManager.hxx>
 #include <IDocumentState.hxx>
 #include <IDocumentLayoutAccess.hxx>
-#include <docary.hxx>
 #include <rootfrm.hxx>
-#include <frmtool.hxx>
 #include <poolfmt.hxx>
 #include <docsh.hxx>
 #include <ftnidx.hxx>
 #include <fmtftn.hxx>
 #include <txtftn.hxx>
-#include <fntcache.hxx>
-#include <viewopt.hxx>
 #include <fldbas.hxx>
-#include <swwait.hxx>
 #include <GetMetricVal.hxx>
-#include <statstr.hrc>
+#include <strings.hrc>
 #include <hints.hxx>
 #include <SwUndoPageDesc.hxx>
 #include <pagedeschint.hxx>
 #include <tgrditem.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/syslocale.hxx>
+#include <svx/swframetypes.hxx>
+#include <svx/svxids.hrc>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 
 using namespace com::sun::star;
 
@@ -74,7 +73,7 @@ static void lcl_DefaultPageFormat( sal_uInt16 nPoolFormatId,
     // The default page size is obtained from the application
     //locale
 
-    SwFormatFrameSize aFrameSize( ATT_FIX_SIZE );
+    SwFormatFrameSize aFrameSize( SwFrameSize::Fixed );
     const Size aPhysSize = SvxPaperInfo::GetDefaultPaperSize();
     aFrameSize.SetSize( aPhysSize );
 
@@ -93,7 +92,7 @@ static void lcl_DefaultPageFormat( sal_uInt16 nPoolFormatId,
         nMinRight = nMinTop = nMinBottom = GetMetricVal( CM_1 );
         nMinLeft = nMinRight * 2;
     }
-    else if (!utl::ConfigManager::IsAvoidConfig() && MeasurementSystem::Metric == SvtSysLocale().GetLocaleData().getMeasurementSystemEnum() )
+    else if (!utl::ConfigManager::IsFuzzing() && MeasurementSystem::Metric == SvtSysLocale().GetLocaleData().getMeasurementSystemEnum() )
     {
         nMinTop = nMinBottom = nMinLeft = nMinRight = 1134; // 2 centimeters
     }
@@ -107,8 +106,8 @@ static void lcl_DefaultPageFormat( sal_uInt16 nPoolFormatId,
     SvxLRSpaceItem aLR( RES_LR_SPACE );
     SvxULSpaceItem aUL( RES_UL_SPACE );
 
-    aUL.SetUpper( (sal_uInt16)nMinTop );
-    aUL.SetLower( (sal_uInt16)nMinBottom );
+    aUL.SetUpper( static_cast<sal_uInt16>(nMinTop) );
+    aUL.SetLower( static_cast<sal_uInt16>(nMinBottom) );
     aLR.SetRight( nMinRight );
     aLR.SetLeft( nMinLeft );
 
@@ -277,10 +276,10 @@ void SwDoc::CopyMasterHeader(const SwPageDesc &rChged, const SwFormatHeader &rHe
                 // The ContentIdx is _always_ different when called from
                 // SwDocStyleSheet::SetItemSet, because it deep-copies the
                 // PageDesc.  So check if it was previously shared.
-                 ((bFirst) ? rDesc.IsFirstShared() : rDesc.IsHeaderShared()))
+                 (bFirst ? rDesc.IsFirstShared() : rDesc.IsHeaderShared()))
             {
                 SwFrameFormat *pFormat = new SwFrameFormat( GetAttrPool(),
-                        (bFirst) ? "First header" : "Left header",
+                        bFirst ? "First header" : "Left header",
                                                 GetDfltFrameFormat() );
                 ::lcl_DescSetAttr( *pRight, *pFormat, false );
                 // The section which the right header attribute is pointing
@@ -293,8 +292,10 @@ void SwDoc::CopyMasterHeader(const SwPageDesc &rChged, const SwFormatHeader &rHe
                 aTmp = *pSttNd->EndOfSectionNode();
                 GetNodes().Copy_( aRange, aTmp, false );
                 aTmp = *pSttNd;
-                GetDocumentContentOperationsManager().CopyFlyInFlyImpl(aRange, 0, aTmp);
-
+                GetDocumentContentOperationsManager().CopyFlyInFlyImpl(aRange, nullptr, aTmp);
+                SwPaM const source(aRange.aStart, aRange.aEnd);
+                SwPosition dest(aTmp);
+                sw::CopyBookmarks(source, dest);
                 pFormat->SetFormatAttr( SwFormatContent( pSttNd ) );
                 rDescFrameFormat.SetFormatAttr( SwFormatHeader( pFormat ) );
             }
@@ -349,10 +350,10 @@ void SwDoc::CopyMasterFooter(const SwPageDesc &rChged, const SwFormatFooter &rFo
                 // The ContentIdx is _always_ different when called from
                 // SwDocStyleSheet::SetItemSet, because it deep-copies the
                 // PageDesc.  So check if it was previously shared.
-                 ((bFirst) ? rDesc.IsFirstShared() : rDesc.IsFooterShared()))
+                 (bFirst ? rDesc.IsFirstShared() : rDesc.IsFooterShared()))
             {
                 SwFrameFormat *pFormat = new SwFrameFormat( GetAttrPool(),
-                        (bFirst) ? "First footer" : "Left footer",
+                        bFirst ? "First footer" : "Left footer",
                                                 GetDfltFrameFormat() );
                 ::lcl_DescSetAttr( *pRight, *pFormat, false );
                 // The section to which the right footer attribute is pointing
@@ -365,8 +366,10 @@ void SwDoc::CopyMasterFooter(const SwPageDesc &rChged, const SwFormatFooter &rFo
                 aTmp = *pSttNd->EndOfSectionNode();
                 GetNodes().Copy_( aRange, aTmp, false );
                 aTmp = *pSttNd;
-                GetDocumentContentOperationsManager().CopyFlyInFlyImpl(aRange, 0, aTmp);
-
+                GetDocumentContentOperationsManager().CopyFlyInFlyImpl(aRange, nullptr, aTmp);
+                SwPaM const source(aRange.aStart, aRange.aEnd);
+                SwPosition dest(aTmp);
+                sw::CopyBookmarks(source, dest);
                 pFormat->SetFormatAttr( SwFormatContent( pSttNd ) );
                 rDescFrameFormat.SetFormatAttr( SwFormatFooter( pFormat ) );
             }
@@ -379,15 +382,15 @@ void SwDoc::CopyMasterFooter(const SwPageDesc &rChged, const SwFormatFooter &rFo
 
 void SwDoc::ChgPageDesc( size_t i, const SwPageDesc &rChged )
 {
-    OSL_ENSURE(i < m_PageDescs.size(), "PageDescs is out of range.");
+    assert(i < m_PageDescs.size() && "PageDescs is out of range.");
 
     SwPageDesc& rDesc = *m_PageDescs[i];
     SwRootFrame* pTmpRoot = getIDocumentLayoutAccess().GetCurrentLayout();
 
     if (GetIDocumentUndoRedo().DoesUndo())
     {
-        SwUndo *const pUndo(new SwUndoPageDesc(rDesc, rChged, this));
-        GetIDocumentUndoRedo().AppendUndo(pUndo);
+        GetIDocumentUndoRedo().AppendUndo(
+                std::make_unique<SwUndoPageDesc>(rDesc, rChged, this));
     }
     ::sw::UndoGuard const undoGuard(GetIDocumentUndoRedo());
 
@@ -420,7 +423,7 @@ void SwDoc::ChgPageDesc( size_t i, const SwPageDesc &rChged )
         {
             SwTextFootnote *pTextFootnote = rFootnoteIdxs[ nPos ];
             const SwFormatFootnote &rFootnote = pTextFootnote->GetFootnote();
-            pTextFootnote->SetNumber(rFootnote.GetNumber(), rFootnote.GetNumStr());
+            pTextFootnote->SetNumber(rFootnote.GetNumber(), rFootnote.GetNumberRLHidden(), rFootnote.GetNumStr());
         }
     }
 
@@ -551,7 +554,7 @@ void SwDoc::ChgPageDesc( size_t i, const SwPageDesc &rChged )
 
 /// All descriptors whose Follow point to the to-be-deleted have to be adapted.
 // #i7983#
-void SwDoc::PreDelPageDesc(SwPageDesc * pDel)
+void SwDoc::PreDelPageDesc(SwPageDesc const * pDel)
 {
     if (nullptr == pDel)
         return;
@@ -603,8 +606,7 @@ void SwDoc::BroadcastStyleOperation(const OUString& rName, SfxStyleFamily eFamil
 
         if (pPool)
         {
-            pPool->SetSearchMask(eFamily);
-            SfxStyleSheetBase * pBase = pPool->Find(rName);
+            SfxStyleSheetBase* pBase = pPool->Find(rName, eFamily);
 
             if (pBase != nullptr)
                 pPool->Broadcast(SfxStyleSheetHint( nOp, *pBase ));
@@ -627,8 +629,8 @@ void SwDoc::DelPageDesc( size_t i, bool bBroadcast )
 
     if (GetIDocumentUndoRedo().DoesUndo())
     {
-        SwUndo *const pUndo(new SwUndoPageDescDelete(rDel, this));
-        GetIDocumentUndoRedo().AppendUndo(pUndo);
+        GetIDocumentUndoRedo().AppendUndo(
+            std::make_unique<SwUndoPageDescDelete>(rDel, this));
     }
 
     PreDelPageDesc(&rDel); // #i7983#
@@ -677,7 +679,7 @@ SwPageDesc* SwDoc::MakePageDesc(const OUString &rName, const SwPageDesc *pCpy,
 
     if (GetIDocumentUndoRedo().DoesUndo())
     {
-        GetIDocumentUndoRedo().AppendUndo(new SwUndoPageDescCreate(pNew, this));
+        GetIDocumentUndoRedo().AppendUndo(std::make_unique<SwUndoPageDescCreate>(pNew, this));
     }
 
     getIDocumentState().SetModified();
@@ -719,7 +721,7 @@ void SwDoc::PrtOLENotify( bool bAll )
 
         mbOLEPrtNotifyPending = mbAllOLENotify = false;
 
-        SwOLENodes *pNodes = SwContentNode::CreateOLENodesArray( *GetDfltGrfFormatColl(), !bAll );
+        std::unique_ptr<SwOLENodes> pNodes = SwContentNode::CreateOLENodesArray( *GetDfltGrfFormatColl(), !bAll );
         if ( pNodes )
         {
             ::StartProgress( STR_STATSTR_SWGPRTOLENOTIFY,
@@ -746,11 +748,11 @@ void SwDoc::PrtOLENotify( bool bAll )
                 }
 
                 bool bFound = false;
-                for ( std::vector<SvGlobalName*>::size_type j = 0;
+                for ( std::vector<SvGlobalName>::size_type j = 0;
                       j < pGlobalOLEExcludeList->size() && !bFound;
                       ++j )
                 {
-                    bFound = *(*pGlobalOLEExcludeList)[j] == aName;
+                    bFound = (*pGlobalOLEExcludeList)[j] == aName;
                 }
                 if ( bFound )
                     continue;
@@ -759,10 +761,10 @@ void SwDoc::PrtOLENotify( bool bAll )
                 // If it doesn't want to be informed
                 if ( xObj.is() )
                 {
-                        pGlobalOLEExcludeList->push_back( new SvGlobalName( aName ) );
+                    pGlobalOLEExcludeList->push_back( aName );
                 }
             }
-            delete pNodes;
+            pNodes.reset();
             getIDocumentLayoutAccess().GetCurrentLayout()->EndAllAction();
             ::EndProgress( GetDocShell() );
         }
@@ -772,37 +774,36 @@ void SwDoc::PrtOLENotify( bool bAll )
 IMPL_LINK_NOARG( SwDoc, DoUpdateModifiedOLE, Timer *, void )
 {
     SwFEShell* pSh = static_cast<SwFEShell*>(GetEditShell());
-    if( pSh )
+    if( !pSh )
+        return;
+
+    mbOLEPrtNotifyPending = mbAllOLENotify = false;
+
+    std::unique_ptr<SwOLENodes> pNodes = SwContentNode::CreateOLENodesArray( *GetDfltGrfFormatColl(), true );
+    if( !pNodes )
+        return;
+
+    ::StartProgress( STR_STATSTR_SWGPRTOLENOTIFY,
+                     0, pNodes->size(), GetDocShell());
+    getIDocumentLayoutAccess().GetCurrentLayout()->StartAllAction();
+    SwMsgPoolItem aMsgHint( RES_UPDATE_ATTR );
+
+    for( SwOLENodes::size_type i = 0; i < pNodes->size(); ++i )
     {
-        mbOLEPrtNotifyPending = mbAllOLENotify = false;
+        ::SetProgressState( i, GetDocShell() );
 
-        SwOLENodes *pNodes = SwContentNode::CreateOLENodesArray( *GetDfltGrfFormatColl(), true );
-        if( pNodes )
+        SwOLENode* pOLENd = (*pNodes)[i];
+        pOLENd->SetOLESizeInvalid( false );
+
+        // We don't know it, so the object has to be loaded.
+        // If it doesn't want to be informed
+        if( pOLENd->GetOLEObj().GetOleRef().is() ) // Broken?
         {
-            ::StartProgress( STR_STATSTR_SWGPRTOLENOTIFY,
-                             0, pNodes->size(), GetDocShell());
-            getIDocumentLayoutAccess().GetCurrentLayout()->StartAllAction();
-            SwMsgPoolItem aMsgHint( RES_UPDATE_ATTR );
-
-            for( SwOLENodes::size_type i = 0; i < pNodes->size(); ++i )
-            {
-                ::SetProgressState( i, GetDocShell() );
-
-                SwOLENode* pOLENd = (*pNodes)[i];
-                pOLENd->SetOLESizeInvalid( false );
-
-                // We don't know it, so the object has to be loaded.
-                // If it doesn't want to be informed
-                if( pOLENd->GetOLEObj().GetOleRef().is() ) // Broken?
-                {
-                    pOLENd->ModifyNotification( &aMsgHint, &aMsgHint );
-                }
-            }
-            getIDocumentLayoutAccess().GetCurrentLayout()->EndAllAction();
-            ::EndProgress( GetDocShell() );
-            delete pNodes;
+            pOLENd->ModifyNotification( &aMsgHint, &aMsgHint );
         }
     }
+    getIDocumentLayoutAccess().GetCurrentLayout()->EndAllAction();
+    ::EndProgress( GetDocShell() );
 }
 
 static SwPageDesc* lcl_FindPageDesc( const SwPageDescs *pPageDescs,
@@ -892,8 +893,7 @@ void SwDoc::SetDefaultPageMode(bool bSquaredPageMode)
     if( !bSquaredPageMode == !IsSquaredPageMode() )
         return;
 
-    const SwTextGridItem& rGrid =
-                    static_cast<const SwTextGridItem&>(GetDefault( RES_TEXTGRID ));
+    const SwTextGridItem& rGrid = GetDefault( RES_TEXTGRID );
     SwTextGridItem aNewGrid = rGrid;
     aNewGrid.SetSquaredMode(bSquaredPageMode);
     aNewGrid.Init();
@@ -906,7 +906,7 @@ void SwDoc::SetDefaultPageMode(bool bSquaredPageMode)
         SwFrameFormat& rMaster = rDesc.GetMaster();
         SwFrameFormat& rLeft = rDesc.GetLeft();
 
-        SwTextGridItem aGrid(static_cast<const SwTextGridItem&>(rMaster.GetFormatAttr(RES_TEXTGRID)));
+        SwTextGridItem aGrid(rMaster.GetFormatAttr(RES_TEXTGRID));
         aGrid.SwitchPaperMode( bSquaredPageMode );
         rMaster.SetFormatAttr(aGrid);
         rLeft.SetFormatAttr(aGrid);
@@ -915,8 +915,7 @@ void SwDoc::SetDefaultPageMode(bool bSquaredPageMode)
 
 bool SwDoc::IsSquaredPageMode() const
 {
-    const SwTextGridItem& rGrid =
-                        static_cast<const SwTextGridItem&>(GetDefault( RES_TEXTGRID ));
+    const SwTextGridItem& rGrid = GetDefault( RES_TEXTGRID );
     return rGrid.IsSquaredMode();
 }
 

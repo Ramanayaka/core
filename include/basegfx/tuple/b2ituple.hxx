@@ -17,12 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_TUPLE_B2ITUPLE_HXX
-#define INCLUDED_BASEGFX_TUPLE_B2ITUPLE_HXX
+#pragma once
 
 #include <sal/types.h>
-#include <basegfx/numeric/ftools.hxx>
-#include <algorithm>
 #include <basegfx/basegfxdllapi.h>
 
 namespace basegfx
@@ -30,7 +27,7 @@ namespace basegfx
     /** Base class for all Points/Vectors with two sal_Int32 values
 
         This class provides all methods common to Point
-        avd Vector classes which are derived from here.
+        and Vector classes which are derived from here.
 
         @derive Use this class to implement Points or Vectors
         which are based on two sal_Int32 values
@@ -199,7 +196,5 @@ namespace basegfx
     }
 
 } // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_TUPLE_B2ITUPLE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

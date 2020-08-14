@@ -7,9 +7,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_BASCTL_SOURCE_BASICIDE_LINENUMBERWINDOW_HXX
-#define INCLUDED_BASCTL_SOURCE_BASICIDE_LINENUMBERWINDOW_HXX
+#pragma once
 
+#include <vcl/window.hxx>
 
 namespace basctl
 {
@@ -38,11 +38,9 @@ public:
     bool SyncYOffset();
     long& GetCurYOffset() { return m_nCurYOffset;}
 
-    int GetWidth() { return m_nWidth;}
+    int GetWidth() const { return m_nWidth;}
 };
 
 } // namespace basctl
-
-#endif // INCLUDED_BASCTL_SOURCE_BASICIDE_LINENUMBERWINDOW_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

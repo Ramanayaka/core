@@ -34,20 +34,12 @@
  *
  ************************************************************************/
 
-#include <rtl/ustrbuf.hxx>
-
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
 
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-
 #include "pq_xkey.hxx"
 #include "pq_xkeycolumns.hxx"
-#include "pq_tools.hxx"
 #include "pq_statics.hxx"
-
-using osl::MutexGuard;
-using osl::Mutex;
 
 using com::sun::star::container::XNameAccess;
 
@@ -55,7 +47,6 @@ using com::sun::star::uno::Reference;
 using com::sun::star::uno::Sequence;
 using com::sun::star::uno::Any;
 using com::sun::star::uno::Type;
-using com::sun::star::uno::RuntimeException;
 
 using com::sun::star::beans::XPropertySet;
 
@@ -105,19 +96,11 @@ Reference< XNameAccess > Key::getColumns(  )
 
 Sequence<Type > Key::getTypes()
 {
-    static cppu::OTypeCollection *pCollection;
-    if( ! pCollection )
-    {
-        MutexGuard guard( osl::Mutex::getGlobalMutex() );
-        if( !pCollection )
-        {
-            static cppu::OTypeCollection collection(
-                cppu::UnoType<css::sdbcx::XColumnsSupplier>::get(),
-                ReflectionBase::getTypes());
-            pCollection = &collection;
-        }
-    }
-    return pCollection->getTypes();
+    static cppu::OTypeCollection collection(
+        cppu::UnoType<css::sdbcx::XColumnsSupplier>::get(),
+        ReflectionBase::getTypes());
+
+    return collection.getTypes();
 }
 
 Sequence< sal_Int8> Key::getImplementationId()
@@ -127,9 +110,7 @@ Sequence< sal_Int8> Key::getImplementationId()
 
 Any Key::queryInterface( const Type & reqType )
 {
-    Any ret;
-
-    ret = ReflectionBase::queryInterface( reqType );
+    Any ret = ReflectionBase::queryInterface( reqType );
     if( ! ret.hasValue() )
         ret = ::cppu::queryInterface(
             reqType,
@@ -172,19 +153,11 @@ Reference< XNameAccess > KeyDescriptor::getColumns(  )
 
 Sequence<Type > KeyDescriptor::getTypes()
 {
-    static cppu::OTypeCollection *pCollection;
-    if( ! pCollection )
-    {
-        MutexGuard guard( osl::Mutex::getGlobalMutex() );
-        if( !pCollection )
-        {
-            static cppu::OTypeCollection collection(
-                cppu::UnoType<css::sdbcx::XColumnsSupplier>::get(),
-                ReflectionBase::getTypes());
-            pCollection = &collection;
-        }
-    }
-    return pCollection->getTypes();
+    static cppu::OTypeCollection collection(
+        cppu::UnoType<css::sdbcx::XColumnsSupplier>::get(),
+        ReflectionBase::getTypes());
+
+    return collection.getTypes();
 }
 
 Sequence< sal_Int8> KeyDescriptor::getImplementationId()
@@ -194,9 +167,7 @@ Sequence< sal_Int8> KeyDescriptor::getImplementationId()
 
 Any KeyDescriptor::queryInterface( const Type & reqType )
 {
-    Any ret;
-
-    ret = ReflectionBase::queryInterface( reqType );
+    Any ret = ReflectionBase::queryInterface( reqType );
     if( ! ret.hasValue() )
         ret = ::cppu::queryInterface(
             reqType,

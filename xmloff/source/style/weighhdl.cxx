@@ -17,15 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <weighhdl.hxx>
+#include "weighhdl.hxx"
 
 #include <sax/tools/converter.hxx>
 
 #include <xmloff/xmltoken.hxx>
-#include <tools/fontenum.hxx>
 
-#include <limits.h>
-#include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
 
 #include <com/sun/star/uno/Any.hxx>
@@ -34,11 +31,15 @@
 using namespace ::com::sun::star::uno;
 using namespace ::xmloff::token;
 
+namespace {
+
 struct FontWeightMapper
 {
     float fWeight;
     sal_uInt16 nValue;
 };
+
+}
 
 FontWeightMapper const aFontWeightMap[] =
 {
@@ -56,7 +57,6 @@ FontWeightMapper const aFontWeightMap[] =
     { css::awt::FontWeight::DONTKNOW,             1000 }
 };
 
-// class XMLFmtBreakBeforePropHdl
 
 XMLFontWeightPropHdl::~XMLFontWeightPropHdl()
 {
@@ -68,12 +68,12 @@ bool XMLFontWeightPropHdl::importXML( const OUString& rStrImpValue, Any& rValue,
     bool bRet = false;
     sal_uInt16 nWeight = 0;
 
-    if( IsXMLToken( rStrImpValue, XML_WEIGHT_NORMAL ) )
+    if( IsXMLToken( rStrImpValue, XML_NORMAL ) )
     {
         nWeight = 400;
         bRet = true;
     }
-    else if( IsXMLToken( rStrImpValue, XML_WEIGHT_BOLD ) )
+    else if( IsXMLToken( rStrImpValue, XML_BOLD ) )
     {
         nWeight = 700;
         bRet = true;
@@ -121,7 +121,7 @@ bool XMLFontWeightPropHdl::exportXML( OUString& rStrExpValue, const Any& rValue,
         sal_Int32 nValue = 0;
         if( rValue >>= nValue )
         {
-            fValue = (float)nValue;
+            fValue = static_cast<float>(nValue);
             bRet = true;
         }
     }
@@ -141,9 +141,9 @@ bool XMLFontWeightPropHdl::exportXML( OUString& rStrExpValue, const Any& rValue,
         }
 
         if( 400 == nWeight )
-            rStrExpValue = GetXMLToken(XML_WEIGHT_NORMAL);
+            rStrExpValue = GetXMLToken(XML_NORMAL);
         else if( 700 == nWeight )
-            rStrExpValue = GetXMLToken(XML_WEIGHT_BOLD);
+            rStrExpValue = GetXMLToken(XML_BOLD);
         else
             rStrExpValue = OUString::number( nWeight );
     }

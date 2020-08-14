@@ -17,24 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CPPCANVAS_SOURCE_INC_IMPLRENDERER_HXX
-#define INCLUDED_CPPCANVAS_SOURCE_INC_IMPLRENDERER_HXX
+#pragma once
+
+#include <sal/config.h>
 
 #include <sal/types.h>
+#include <tools/stream.hxx>
+#include <vcl/metaactiontypes.hxx>
 #include <cppcanvas/renderer.hxx>
 #include <cppcanvas/canvas.hxx>
 
-#include <canvasgraphichelper.hxx>
-#include <action.hxx>
-#include <outdevstate.hxx>
+#include "canvasgraphichelper.hxx"
+#include "action.hxx"
+#include "outdevstate.hxx"
 
-#include <com/sun/star/rendering/FontRequest.hpp>
-#include <com/sun/star/rendering/StrokeAttributes.hpp>
+#include <osl/diagnose.h>
 
-#include <osl/endian.h>
-
+#include <memory>
 #include <vector>
-#include <map>
 
 class GDIMetaFile;
 class VirtualDevice;
@@ -50,19 +50,11 @@ namespace basegfx {
     class B2DPolygon;
 }
 
-namespace cppcanvas
-{
-
-    namespace internal
+namespace cppcanvas::internal
     {
         struct OutDevState;
         struct ActionFactoryParameters;
         struct XForm;
-
-        struct EMFPObject
-        {
-            virtual ~EMFPObject() {}
-        };
 
         // state stack of OutputDevice, to correctly handle
         // push/pop actions
@@ -106,46 +98,6 @@ namespace cppcanvas
                 eDx = eDy = eM12 = eM21 = 0.0f;
             }
 
-            void Set (const XForm& f)
-            {
-                eM11 = f.eM11;
-                eM12 = f.eM12;
-                eM21 = f.eM21;
-                eM22 = f.eM22;
-                eDx  = f.eDx;
-                eDy  = f.eDy;
-            }
-
-            // Multiple two square matrices
-            //      [ eM11, eM12, eDx ]   [ f.eM11, f.eM12, f.eDx ]
-            //      [ eM21, eM22, eDy ] x [ f.eM21, f.eM22, f.eDy ]
-            //      [ 0,    0,    1   ]   [ 0,      0,      1     ]
-            // More information: https://en.wikipedia.org/wiki/Matrix_multiplication#Square_matrices
-            // FIXME We shouldn't modify source matrix during computation
-            void Multiply (const XForm& f)
-            {
-                eM11 = eM11*f.eM11 + eM12*f.eM21;
-                eM12 = eM11*f.eM12 + eM12*f.eM22;
-                eM21 = eM21*f.eM11 + eM22*f.eM21;
-                eM22 = eM21*f.eM12 + eM22*f.eM22;
-                eDx  = eDx*f.eM11  + eDy*f.eM21 + f.eDx;
-                eDy  = eDx*f.eM12  + eDy*f.eM22 + f.eDy;
-            }
-
-#ifdef OSL_BIGENDIAN
-// little endian <-> big endian switch
-static float GetSwapFloat( SvStream& rSt )
-{
-        float   fTmp;
-        sal_Int8* pPtr = (sal_Int8*)&fTmp;
-        rSt.ReadSChar( pPtr[3] );
-        rSt.ReadSChar( pPtr[2] );
-        rSt.ReadSChar( pPtr[1] );
-        rSt.ReadSChar( pPtr[0] );
-        return fTmp;
-}
-#endif
-
             friend SvStream& ReadXForm( SvStream& rIn, XForm& rXForm )
             {
                 if ( sizeof( float ) != 4 )
@@ -155,29 +107,14 @@ static float GetSwapFloat( SvStream& rSt )
                 }
                 else
                 {
-#ifdef OSL_BIGENDIAN
-                    rXForm.eM11 = GetSwapFloat( rIn );
-                    rXForm.eM12 = GetSwapFloat( rIn );
-                    rXForm.eM21 = GetSwapFloat( rIn );
-                    rXForm.eM22 = GetSwapFloat( rIn );
-                    rXForm.eDx = GetSwapFloat( rIn );
-                    rXForm.eDy = GetSwapFloat( rIn );
-#else
                     rIn.ReadFloat( rXForm.eM11 ).ReadFloat( rXForm.eM12 ).ReadFloat( rXForm.eM21 ).ReadFloat( rXForm.eM22 )
                        .ReadFloat( rXForm.eDx ).ReadFloat( rXForm.eDy );
-#endif
                 }
                 return rIn;
             }
         };
 
         // EMF+
-        typedef struct {
-            XForm aWorldTransform;
-            OutDevState aDevState;
-        } EmfPlusGraphicState;
-
-        typedef std::map<int,EmfPlusGraphicState> GraphicStateMap;
 
         class ImplRenderer : public virtual Renderer, protected CanvasGraphicHelper
         {
@@ -199,29 +136,20 @@ static float GetSwapFloat( SvStream& rSt )
             // public, since some functors need it, too.
             struct MtfAction
             {
-                MtfAction( const ActionSharedPtr&   rAction,
+                MtfAction( const std::shared_ptr<Action>&   rAction,
                            sal_Int32                nOrigIndex ) :
                     mpAction( rAction ),
                     mnOrigIndex( nOrigIndex )
                 {
                 }
 
-                ActionSharedPtr mpAction;
+                std::shared_ptr<Action> mpAction;
                 sal_Int32       mnOrigIndex;
             };
 
             // prefetched and prepared canvas actions
             // (externally not visible)
             typedef std::vector< MtfAction >      ActionVector;
-
-            /* EMF+ */
-            static void ReadRectangle (SvStream& s, float& x, float& y, float &width, float& height, bool bCompressed = false);
-            static void ReadPoint (SvStream& s, float& x, float& y, sal_uInt32 flags);
-            void MapToDevice (double &x, double &y);
-            ::basegfx::B2DPoint Map (double ix, double iy);
-            ::basegfx::B2DSize MapSize (double iwidth, double iheight);
-            void GraphicStatePush (GraphicStateMap& map, sal_Int32 index, OutDevState& rState);
-            void GraphicStatePop (GraphicStateMap& map, sal_Int32 index, OutDevState& rState);
 
         private:
             ImplRenderer(const ImplRenderer&) = delete;
@@ -239,7 +167,7 @@ static float GetSwapFloat( SvStream& rSt )
                 css::rendering::XCanvasFont > createFont( double&                         o_rFontRotation,
                                                           const vcl::Font&                rFont,
                                                           const ActionFactoryParameters&  rParms );
-            bool createActions( GDIMetaFile&                    rMtf,
+            void createActions( GDIMetaFile&                    rMtf,
                                 const ActionFactoryParameters&  rParms,
                                 bool                            bSubsettableActions );
             bool createFillAndStroke( const ::basegfx::B2DPolyPolygon& rPolyPoly,
@@ -273,33 +201,10 @@ static float GetSwapFloat( SvStream& rSt )
                                    ActionVector::const_iterator& o_rRangeBegin,
                                    ActionVector::const_iterator& o_rRangeEnd ) const;
 
-            void processObjectRecord(SvMemoryStream& rObjectStream, sal_uInt16 flags, sal_uInt32 dataSize, bool bUseWholeStream = false);
-
-            /* EMF+ */
-            void processEMFPlus( MetaCommentAction* pAct, const ActionFactoryParameters& rFactoryParms, OutDevState& rState, const CanvasSharedPtr& rCanvas );
-            double setFont(css::rendering::FontRequest& aFontRequest, sal_uInt8 fontObjectId, const ActionFactoryParameters& rParms, OutDevState& rState );
-
-            /// Render LineCap, like the start or end arrow of a polygon.
-            /// @return how much we should shorten the original polygon.
-            double EMFPPlusDrawLineCap(const ::basegfx::B2DPolygon& rPolygon, double fPolyLength,
-                    const ::basegfx::B2DPolyPolygon& rLineCap, bool isFilled, bool bStart,
-                    const css::rendering::StrokeAttributes& rAttributes,
-                    const ActionFactoryParameters& rParms, OutDevState& rState);
-
-            void EMFPPlusDrawPolygon (const ::basegfx::B2DPolyPolygon& polygon, const ActionFactoryParameters& rParms, OutDevState& rState, const CanvasSharedPtr& rCanvas, sal_uInt32 penIndex);
-            void EMFPPlusFillPolygon (::basegfx::B2DPolyPolygon& polygon, const ActionFactoryParameters& rParms, OutDevState& rState, const CanvasSharedPtr& rCanvas, bool isColor, sal_uInt32 brushIndexOrColor);
-
             ActionVector maActions;
 
             /* EMF+ */
             XForm           aBaseTransform;
-            XForm           aWorldTransform;
-            EMFPObject*     aObjects [256];
-            float           fPageScale;
-            sal_Int32       nOriginX;
-            sal_Int32       nOriginY;
-            sal_Int32       nHDPI;
-            sal_Int32       nVDPI;
             /* EMF+ emf header info */
             sal_Int32       nFrameLeft;
             sal_Int32       nFrameTop;
@@ -309,13 +214,6 @@ static float GetSwapFloat( SvStream& rSt )
             sal_Int32       nPixY;
             sal_Int32       nMmX;
             sal_Int32       nMmY;
-            /* multipart object data */
-            bool            mbMultipart;
-            sal_uInt16      mMFlags;
-            SvMemoryStream  mMStream;
-            /* emf+ graphic state stack */
-            GraphicStateMap mGSStack;
-            GraphicStateMap mGSContainerStack;
         };
 
 
@@ -340,9 +238,7 @@ static float GetSwapFloat( SvStream& rSt )
             const Renderer::Parameters& mrParms;
             sal_Int32&                  mrCurrActionIndex;
         };
-    }
-}
 
-#endif // INCLUDED_CPPCANVAS_SOURCE_INC_IMPLRENDERER_HXX
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

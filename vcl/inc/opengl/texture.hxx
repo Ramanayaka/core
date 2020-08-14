@@ -47,12 +47,12 @@ public:
     ImplOpenGLTexture( int nX, int nY, int nWidth, int nHeight );
     ~ImplOpenGLTexture();
 
-    bool InsertBuffer(int nX, int nY, int nWidth, int nHeight, int nFormat, int nType, sal_uInt8* pData);
+    bool InsertBuffer(int nX, int nY, int nWidth, int nHeight, int nFormat, int nType, sal_uInt8 const * pData);
 
     void IncreaseRefCount(int nSlotNumber);
     void DecreaseRefCount(int nSlotNumber);
 
-    bool InitializeSlotMechanism(int nInitialSlotSize);
+    void InitializeSlotMechanism(int nInitialSlotSize);
 
     void SetSlotDeallocateCallback(std::function<void(int)> aCallback)
     {
@@ -76,7 +76,7 @@ private:
     std::shared_ptr<ImplOpenGLTexture> mpImpl;
     int mnSlotNumber;
 
-    inline bool GetTextureRect(const SalTwoRect& rPosAry, bool bInverted, GLfloat& x1, GLfloat& x2, GLfloat& y1, GLfloat& y2) const;
+    inline void GetTextureRect(const SalTwoRect& rPosAry, GLfloat& x1, GLfloat& x2, GLfloat& y1, GLfloat& y2) const;
 
     bool IsValid() const
     {
@@ -91,7 +91,7 @@ public:
                     OpenGLTexture( int nWidth, int nHeight, int nFormat, int nType, void const * pData );
                     OpenGLTexture( int nX, int nY, int nWidth, int nHeight );
                     OpenGLTexture( const OpenGLTexture& rTexture );
-                    OpenGLTexture( OpenGLTexture&& rTexture );
+                    OpenGLTexture( OpenGLTexture&& rTexture ) noexcept;
                     OpenGLTexture( const OpenGLTexture& rTexture, int nX, int nY, int nWidth, int nHeight );
                     ~OpenGLTexture();
 
@@ -109,7 +109,7 @@ public:
     GLuint          AddStencil();
     GLuint          StencilId() const;
 
-    bool            CopyData(int nWidth, int nHeight, int nFormat, int nType, sal_uInt8* pData);
+    bool            CopyData(int nWidth, int nHeight, int nFormat, int nType, sal_uInt8 const * pData);
 
     void            SaveToFile(const OUString& rFileName);
 

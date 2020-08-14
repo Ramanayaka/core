@@ -19,8 +19,6 @@
 
 #include <sal/config.h>
 
-#include <sal/log.hxx>
-#include <tools/stream.hxx>
 #include <svl/rngitem.hxx>
 
 
@@ -32,21 +30,13 @@ SfxRangeItem::SfxRangeItem( sal_uInt16 which, sal_uInt16 from, sal_uInt16 to ):
 }
 
 
-SfxRangeItem::SfxRangeItem( const SfxRangeItem& rItem ) :
-    SfxPoolItem( rItem )
-{
-    nFrom = rItem.nFrom;
-    nTo = rItem.nTo;
-}
-
-
 bool SfxRangeItem::GetPresentation
 (
     SfxItemPresentation     /*ePresentation*/,
     MapUnit                 /*eCoreMetric*/,
     MapUnit                 /*ePresentationMetric*/,
     OUString&               rText,
-    const IntlWrapper *
+    const IntlWrapper&
 )   const
 {
     rText = OUString::number(nFrom) + ":" + OUString::number(nTo);
@@ -61,27 +51,9 @@ bool SfxRangeItem::operator==( const SfxPoolItem& rItem ) const
     return nFrom==rT.nFrom && nTo==rT.nTo;
 }
 
-
-SfxPoolItem* SfxRangeItem::Clone(SfxItemPool *) const
+SfxRangeItem* SfxRangeItem::Clone(SfxItemPool *) const
 {
     return new SfxRangeItem( Which(), nFrom, nTo );
-}
-
-
-SfxPoolItem* SfxRangeItem::Create(SvStream &rStream, sal_uInt16) const
-{
-    sal_uInt16 nVon(0), nBis(0);
-    rStream.ReadUInt16( nVon );
-    rStream.ReadUInt16( nBis );
-    return new SfxRangeItem( Which(), nVon, nBis );
-}
-
-
-SvStream& SfxRangeItem::Store(SvStream &rStream, sal_uInt16) const
-{
-    rStream.WriteUInt16( nFrom );
-    rStream.WriteUInt16( nTo );
-    return rStream;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

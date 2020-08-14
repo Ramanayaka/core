@@ -20,11 +20,11 @@
 #ifndef INCLUDED_UNO_DISPATCHER_HXX
 #define INCLUDED_UNO_DISPATCHER_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cstddef>
 
-#include <uno/dispatcher.h>
+#include "uno/dispatcher.h"
 
 /// @cond INTERNAL
 
@@ -59,7 +59,7 @@ public:
     inline UnoInterfaceReference( UnoInterfaceReference const & ref );
 
 #if defined LIBO_INTERNAL_ONLY
-    UnoInterfaceReference(UnoInterfaceReference && other):
+    UnoInterfaceReference(UnoInterfaceReference && other) noexcept :
         m_pUnoI(other.m_pUnoI)
     { other.m_pUnoI = nullptr; }
 #endif

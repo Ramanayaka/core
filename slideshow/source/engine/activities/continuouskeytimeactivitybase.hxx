@@ -22,13 +22,10 @@
 
 #include "simplecontinuousactivitybase.hxx"
 
-#include <basegfx/tools/keystoplerp.hxx>
-#include <vector>
+#include <basegfx/utils/keystoplerp.hxx>
 
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** Interpolated, key-times animation.
 
@@ -67,9 +64,9 @@ namespace slideshow
                                         sal_uInt32  nRepeatCount ) const override;
 
         private:
-            const ::basegfx::tools::KeyStopLerp maLerper;
+            const ::basegfx::utils::KeyStopLerp maLerper;
         };
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_ACTIVITIES_CONTINUOUSKEYTIMEACTIVITYBASE_HXX

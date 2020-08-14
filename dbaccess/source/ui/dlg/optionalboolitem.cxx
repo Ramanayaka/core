@@ -23,28 +23,19 @@ namespace dbaui
 {
 
     // OptionalBoolItem
-    OptionalBoolItem::OptionalBoolItem( sal_Int16 _nWhich )
+    OptionalBoolItem::OptionalBoolItem( sal_uInt16 _nWhich )
         :SfxPoolItem( _nWhich )
         ,m_aValue()
     {
     }
 
-    OptionalBoolItem::OptionalBoolItem( const OptionalBoolItem& _rSource )
-        :SfxPoolItem( _rSource )
-        ,m_aValue( _rSource.m_aValue )
-    {
-    }
-
     bool OptionalBoolItem::operator==( const SfxPoolItem& _rItem ) const
     {
-        const OptionalBoolItem* pCompare = dynamic_cast<const OptionalBoolItem*>( &_rItem  );
-        if ( !pCompare )
-            return false;
-
-        return m_aValue == pCompare->m_aValue;
+        return SfxPoolItem::operator==(_rItem) &&
+            static_cast<const OptionalBoolItem&>( _rItem  ).m_aValue == m_aValue;
     }
 
-    SfxPoolItem* OptionalBoolItem::Clone( SfxItemPool* /*_pPool*/ ) const
+    OptionalBoolItem* OptionalBoolItem::Clone( SfxItemPool* /*_pPool*/ ) const
     {
         return new OptionalBoolItem( *this );
     }

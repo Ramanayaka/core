@@ -17,25 +17,33 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <slideshowviewimpl.hxx>
-#include <slideshowimpl.hxx>
+#include "slideshowviewimpl.hxx"
+#include "slideshowimpl.hxx"
+#include <sdpage.hxx>
+
 #include <osl/mutex.hxx>
+#include <vcl/svapp.hxx>
 
 #include <com/sun/star/awt/Pointer.hpp>
+#include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
+#include <basegfx/matrix/b2dhommatrix.hxx>
 
 #include <cppcanvas/vclfactory.hxx>
 #include <cppcanvas/basegfxfactory.hxx>
+#include <basegfx/utils/canvastools.hxx>
+
+#include <toolkit/helper/vclunohelper.hxx>
+#include <comphelper/processfactory.hxx>
 
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::WeakReference;
-using ::com::sun::star::uno::RuntimeException;
 using ::com::sun::star::uno::Exception;
-using ::com::sun::star::presentation::XSlideShowView;
 
 using namespace ::com::sun::star;
 
@@ -74,7 +82,7 @@ void SlideShowViewListeners::notify( const lang::EventObject& _rEvent )
     ViewListenerVector::iterator aIter( maListeners.begin() );
     while( aIter != maListeners.end() )
     {
-        Reference< util::XModifyListener > xListener( (*aIter) );
+        Reference< util::XModifyListener > xListener( *aIter );
         if( xListener.is() )
         {
             xListener->modified( _rEvent );
@@ -91,10 +99,9 @@ void SlideShowViewListeners::disposing( const lang::EventObject& _rEventSource )
 {
     ::osl::MutexGuard aGuard( mrMutex );
 
-    ViewListenerVector::iterator aIter( maListeners.begin() );
-    while( aIter != maListeners.end() )
+    for( const auto& rxListener : maListeners )
     {
-        Reference< util::XModifyListener > xListener( (*aIter++) );
+        Reference< util::XModifyListener > xListener( rxListener );
         if( xListener.is() )
             xListener->disposing( _rEventSource );
     }
@@ -177,7 +184,7 @@ SlideShowView::SlideShowView( ShowWindow&     rOutputWindow,
                               bool            bFullScreen )
 :   SlideShowView_Base( m_aMutex ),
     mpCanvas( ::cppcanvas::VCLFactory::createSpriteCanvas( rOutputWindow ) ),
-    mxWindow( VCLUnoHelper::GetInterface( &rOutputWindow ), uno::UNO_QUERY_THROW ),
+    mxWindow( VCLUnoHelper::GetInterface( &rOutputWindow ), uno::UNO_SET_THROW ),
     mxWindowPeer( mxWindow, uno::UNO_QUERY_THROW ),
     mxPointer(),
     mpSlideShow( pSlideShow ),
@@ -234,25 +241,29 @@ void SAL_CALL SlideShowView::disposing( const lang::EventObject& )
     // notify all listeners that _we_ are going down (send a disposing()),
     // then delete listener containers:
     lang::EventObject const evt( static_cast<OWeakObject *>(this) );
-    if (mpViewListeners.get() != nullptr) {
+    if (mpViewListeners != nullptr)
+    {
         mpViewListeners->disposing( evt );
         mpViewListeners.reset();
     }
-    if (mpPaintListeners.get() != nullptr) {
+    if (mpPaintListeners != nullptr)
+    {
         mpPaintListeners->disposing( evt );
         mpPaintListeners.reset();
     }
-    if (mpMouseListeners.get() != nullptr) {
+    if (mpMouseListeners != nullptr)
+    {
         mpMouseListeners->disposing( evt );
         mpMouseListeners.reset();
     }
-    if (mpMouseMotionListeners.get() != nullptr) {
+    if (mpMouseMotionListeners != nullptr)
+    {
         mpMouseMotionListeners->disposing( evt );
         mpMouseMotionListeners.reset();
     }
 }
 
-void SAL_CALL SlideShowView::paint( const awt::PaintEvent& e )
+void SlideShowView::paint( const awt::PaintEvent& e )
 {
     ::osl::ClearableMutexGuard aGuard( m_aMutex );
 
@@ -280,7 +291,7 @@ Reference< rendering::XSpriteCanvas > SAL_CALL SlideShowView::getCanvas(  )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    return mpCanvas.get() ? mpCanvas->getUNOSpriteCanvas() : Reference< rendering::XSpriteCanvas >();
+    return mpCanvas ? mpCanvas->getUNOSpriteCanvas() : Reference< rendering::XSpriteCanvas >();
 }
 
 void SAL_CALL SlideShowView::clear()
@@ -293,14 +304,14 @@ void SAL_CALL SlideShowView::clear()
 
     const Size aWindowSize( mrOutputWindow.GetSizePixel() );
 
-    ::basegfx::B2DPolygon aPoly( ::basegfx::tools::createPolygonFromRect(
+    ::basegfx::B2DPolygon aPoly( ::basegfx::utils::createPolygonFromRect(
                                      ::basegfx::B2DRectangle(0.0,0.0,
                                                              aWindowSize.Width(),
                                                              aWindowSize.Height() ) ) );
     ::cppcanvas::PolyPolygonSharedPtr pPolyPoly(
         ::cppcanvas::BaseGfxFactory::createPolyPolygon( mpCanvas, aPoly ) );
 
-    if( pPolyPoly.get() )
+    if( pPolyPoly )
     {
         pPolyPoly->setRGBAFillColor( 0x000000FFU );
         pPolyPoly->draw();
@@ -319,7 +330,7 @@ geometry::AffineMatrix2D SAL_CALL SlideShowView::getTransformation(  )
 
     const Size& rTmpSize( mrOutputWindow.GetSizePixel() );
 
-    if (rTmpSize.Width()<=0 || rTmpSize.Height()<=0)
+    if (rTmpSize.IsEmpty())
     {
         return geometry::AffineMatrix2D (1,0,0,0,1,0);
     }
@@ -329,23 +340,23 @@ geometry::AffineMatrix2D SAL_CALL SlideShowView::getTransformation(  )
 
     if( meAnimationMode != ANIMATIONMODE_SHOW )
     {
-        aOutputSize.Width() = (long)( aOutputSize.Width() / 1.03 );
-        aOutputSize.Height() = (long)( aOutputSize.Height() / 1.03 );
+        aOutputSize.setWidth( static_cast<long>( aOutputSize.Width() / 1.03 ) );
+        aOutputSize.setHeight( static_cast<long>( aOutputSize.Height() / 1.03 ) );
     }
 
     SdPage* pP = mpDoc->GetSdPage( 0, PageKind::Standard );
     Size aPageSize( pP->GetSize() );
 
-    const double page_ratio = (double)aPageSize.Width() / (double)aPageSize.Height();
-    const double output_ratio = (double)aOutputSize.Width() / (double)aOutputSize.Height();
+    const double page_ratio = static_cast<double>(aPageSize.Width()) / static_cast<double>(aPageSize.Height());
+    const double output_ratio = static_cast<double>(aOutputSize.Width()) / static_cast<double>(aOutputSize.Height());
 
     if( page_ratio > output_ratio )
     {
-        aOutputSize.Height() = ( aOutputSize.Width() * aPageSize.Height() ) / aPageSize.Width();
+        aOutputSize.setHeight( ( aOutputSize.Width() * aPageSize.Height() ) / aPageSize.Width() );
     }
     else if( page_ratio < output_ratio )
     {
-        aOutputSize.Width() = ( aOutputSize.Height() * aPageSize.Width() ) / aPageSize.Height();
+        aOutputSize.setWidth( ( aOutputSize.Height() * aPageSize.Width() ) / aPageSize.Height() );
     }
 
     Point aOutputOffset( ( aWindowSize.Width() - aOutputSize.Width() ) >> 1,
@@ -354,18 +365,15 @@ geometry::AffineMatrix2D SAL_CALL SlideShowView::getTransformation(  )
     // Reduce available width by one, as the slides might actually
     // render one pixel wider and higher as aPageSize below specifies
     // (when shapes of page size have visible border lines)
-    aOutputSize.Width() --;
-    aOutputSize.Height() --;
+    aOutputSize.AdjustWidth( -1 );
+    aOutputSize.AdjustHeight( -1 );
 
     // Record mTranslationOffset
     mTranslationOffset.Height = aOutputOffset.Y();
     mTranslationOffset.Width = aOutputOffset.X();
 
-    maPresentationArea = ::tools::Rectangle( aOutputOffset, aOutputSize );
-    mrOutputWindow.SetPresentationArea( maPresentationArea );
-
     // scale presentation into available window rect (minus 10%); center in the window
-    const basegfx::B2DHomMatrix aMatrix(basegfx::tools::createScaleTranslateB2DHomMatrix(
+    const basegfx::B2DHomMatrix aMatrix(basegfx::utils::createScaleTranslateB2DHomMatrix(
         aOutputSize.Width(), aOutputSize.Height(), aOutputOffset.X(), aOutputOffset.Y()));
 
     geometry::AffineMatrix2D aRes;
@@ -377,7 +385,7 @@ void SAL_CALL SlideShowView::addTransformationChangedListener( const Reference< 
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    if( mpViewListeners.get() )
+    if (mpViewListeners)
         mpViewListeners->addListener( xListener );
 }
 
@@ -385,7 +393,7 @@ void SAL_CALL SlideShowView::removeTransformationChangedListener( const Referenc
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    if( mpViewListeners.get() )
+    if (mpViewListeners)
         mpViewListeners->removeListener( xListener );
 }
 
@@ -393,7 +401,7 @@ void SAL_CALL SlideShowView::addPaintListener( const Reference< awt::XPaintListe
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    if( mpPaintListeners.get() )
+    if (mpPaintListeners)
         mpPaintListeners->addTypedListener( xListener );
 }
 
@@ -401,7 +409,7 @@ void SAL_CALL SlideShowView::removePaintListener( const Reference< awt::XPaintLi
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    if( mpPaintListeners.get() )
+    if (mpPaintListeners)
         mpPaintListeners->removeTypedListener( xListener );
 }
 
@@ -409,7 +417,7 @@ void SAL_CALL SlideShowView::addMouseListener( const Reference< awt::XMouseListe
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    if( mpMouseListeners.get() )
+    if (mpMouseListeners)
         mpMouseListeners->addTypedListener( xListener );
 }
 
@@ -417,7 +425,7 @@ void SAL_CALL SlideShowView::removeMouseListener( const Reference< awt::XMouseLi
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    if( mpMouseListeners.get() )
+    if (mpMouseListeners)
         mpMouseListeners->removeTypedListener( xListener );
 }
 
@@ -433,7 +441,7 @@ void SAL_CALL SlideShowView::addMouseMotionListener( const Reference< awt::XMous
         mxWindow->addMouseMotionListener( this );
     }
 
-    if( mpMouseMotionListeners.get() )
+    if (mpMouseMotionListeners)
         mpMouseMotionListeners->addTypedListener( xListener );
 }
 
@@ -441,7 +449,7 @@ void SAL_CALL SlideShowView::removeMouseMotionListener( const Reference< awt::XM
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    if( mpMouseMotionListeners.get() )
+    if (mpMouseMotionListeners)
         mpMouseMotionListeners->removeTypedListener( xListener );
 
     // TODO(P1): Might be nice to deregister for mouse motion
@@ -474,22 +482,22 @@ awt::Rectangle SAL_CALL SlideShowView::getCanvasArea(  )
 
 void SlideShowView::updateimpl( ::osl::ClearableMutexGuard& rGuard, SlideshowImpl* pSlideShow )
 {
-    if( pSlideShow )
+    if( !pSlideShow )
+        return;
+
+    ::rtl::Reference< SlideshowImpl > xKeepAlive( pSlideShow );
+
+    if( mbFirstPaint )
     {
-        ::rtl::Reference< SlideshowImpl > aSLGuard( pSlideShow );
+        mbFirstPaint = false;
+        SlideshowImpl* pTmpSlideShow = mpSlideShow;
+        rGuard.clear();
+        if( pTmpSlideShow )
+            pTmpSlideShow->onFirstPaint();
+    } else
+        rGuard.clear();
 
-        if( mbFirstPaint )
-        {
-            mbFirstPaint = false;
-            SlideshowImpl* pTmpSlideShow = mpSlideShow;
-            rGuard.clear();
-            if( pTmpSlideShow )
-                pTmpSlideShow->onFirstPaint();
-        } else
-            rGuard.clear();
-
-        pSlideShow->startUpdateTimer();
-    }
+    pSlideShow->startUpdateTimer();
 }
 
 // XWindowListener methods
@@ -497,7 +505,7 @@ void SAL_CALL SlideShowView::windowResized( const awt::WindowEvent& e )
 {
     ::osl::ClearableMutexGuard aGuard( m_aMutex );
 
-    if( mpViewListeners.get() )
+    if (mpViewListeners)
     {
         // Change event source, to enable listeners to match event
         // with view
@@ -543,7 +551,7 @@ void SAL_CALL SlideShowView::mousePressed( const awt::MouseEvent& e )
         aEvent.maEvent = e;
         aEvent.maEvent.Source = static_cast< ::cppu::OWeakObject* >( this );
 
-        if( mpMouseListeners.get() )
+        if (mpMouseListeners)
             mpMouseListeners->notify( aEvent );
         updateimpl( aGuard, mpSlideShow ); // warning: clears guard!
     }
@@ -566,7 +574,7 @@ void SAL_CALL SlideShowView::mouseReleased( const awt::MouseEvent& e )
         aEvent.maEvent = e;
         aEvent.maEvent.Source = static_cast< ::cppu::OWeakObject* >( this );
 
-        if( mpMouseListeners.get() )
+        if (mpMouseListeners)
             mpMouseListeners->notify( aEvent );
         updateimpl( aGuard, mpSlideShow ); // warning: clears guard!
     }
@@ -583,7 +591,7 @@ void SAL_CALL SlideShowView::mouseEntered( const awt::MouseEvent& e )
     aEvent.maEvent = e;
     aEvent.maEvent.Source = static_cast< ::cppu::OWeakObject* >( this );
 
-    if( mpMouseListeners.get() )
+    if (mpMouseListeners)
         mpMouseListeners->notify( aEvent );
     updateimpl( aGuard, mpSlideShow ); // warning: clears guard!
 }
@@ -599,7 +607,7 @@ void SAL_CALL SlideShowView::mouseExited( const awt::MouseEvent& e )
     aEvent.maEvent = e;
     aEvent.maEvent.Source = static_cast< ::cppu::OWeakObject* >( this );
 
-    if( mpMouseListeners.get() )
+    if (mpMouseListeners)
         mpMouseListeners->notify( aEvent );
     updateimpl( aGuard, mpSlideShow ); // warning: clears guard!
 }
@@ -616,7 +624,7 @@ void SAL_CALL SlideShowView::mouseDragged( const awt::MouseEvent& e )
     aEvent.maEvent = e;
     aEvent.maEvent.Source = static_cast< ::cppu::OWeakObject* >( this );
 
-    if( mpMouseMotionListeners.get() )
+    if (mpMouseMotionListeners)
         mpMouseMotionListeners->notify( aEvent );
     updateimpl( aGuard, mpSlideShow ); // warning: clears guard!
 }
@@ -632,7 +640,7 @@ void SAL_CALL SlideShowView::mouseMoved( const awt::MouseEvent& e )
     aEvent.maEvent = e;
     aEvent.maEvent.Source = static_cast< ::cppu::OWeakObject* >( this );
 
-    if( mpMouseMotionListeners.get() )
+    if (mpMouseMotionListeners)
         mpMouseMotionListeners->notify( aEvent );
     updateimpl( aGuard, mpSlideShow ); // warning: clears guard!
 }
@@ -649,18 +657,18 @@ void SlideShowView::init()
     // #i48939# only switch on kind of hacky scroll optimization, when
     // running fullscreen. this minimizes the probability that other
     // windows partially cover the show.
-    if( mbFullScreen )
+    if( !mbFullScreen )
+        return;
+
+    try
     {
-        try
-        {
-            Reference< beans::XPropertySet > xCanvasProps( getCanvas(),
-                                                           uno::UNO_QUERY_THROW );
-            xCanvasProps->setPropertyValue("UnsafeScrolling",
-                uno::makeAny( true ) );
-        }
-        catch( uno::Exception& )
-        {
-        }
+        Reference< beans::XPropertySet > xCanvasProps( getCanvas(),
+                                                       uno::UNO_QUERY_THROW );
+        xCanvasProps->setPropertyValue("UnsafeScrolling",
+            uno::makeAny( true ) );
+    }
+    catch( uno::Exception& )
+    {
     }
 }
 

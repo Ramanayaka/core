@@ -18,25 +18,26 @@
  */
 
 #include <editeng/forbiddencharacterstable.hxx>
+#include <comphelper/processfactory.hxx>
+#include <vcl/svapp.hxx>
 
-#include "forbiuno.hxx"
-#include "docsh.hxx"
+#include <forbiuno.hxx>
+#include <docsh.hxx>
 
 using namespace ::com::sun::star;
 
-static rtl::Reference<SvxForbiddenCharactersTable> lcl_GetForbidden( ScDocShell* pDocSh )
+static std::shared_ptr<SvxForbiddenCharactersTable> lcl_GetForbidden( ScDocShell* pDocSh )
 {
-    rtl::Reference<SvxForbiddenCharactersTable> xRet;
+    std::shared_ptr<SvxForbiddenCharactersTable> xRet;
     if ( pDocSh )
     {
         ScDocument& rDoc = pDocSh->GetDocument();
         xRet = rDoc.GetForbiddenCharacters();
-        if ( !xRet.is() )
+        if (!xRet)
         {
             //  create an empty SvxForbiddenCharactersTable for SvxUnoForbiddenCharsTable,
             //  so changes can be stored.
-
-            xRet = new SvxForbiddenCharactersTable( comphelper::getProcessComponentContext() );
+            xRet = SvxForbiddenCharactersTable::makeForbiddenCharactersTable(comphelper::getProcessComponentContext());
             rDoc.SetForbiddenCharacters( xRet );
         }
     }

@@ -8,8 +8,10 @@
  */
 
 #include <comphelper/processfactory.hxx>
-#include <ucbhelper/contentidentifier.hxx>
+#include <cppuhelper/queryinterface.hxx>
 #include <ucbhelper/contenthelper.hxx>
+#include <ucbhelper/getcomponentcontext.hxx>
+#include <ucbhelper/macros.hxx>
 #include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <com/sun/star/ucb/IllegalIdentifierException.hpp>
 
@@ -104,9 +106,9 @@ void SAL_CALL ContentProvider::release()
 css::uno::Any SAL_CALL ContentProvider::queryInterface( const css::uno::Type & rType )
 {
     css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< lang::XTypeProvider* >(this)),
-                                               (static_cast< lang::XServiceInfo* >(this)),
-                                               (static_cast< css::ucb::XContentProvider* >(this))
+                                               static_cast< lang::XTypeProvider* >(this),
+                                               static_cast< lang::XServiceInfo* >(this),
+                                               static_cast< css::ucb::XContentProvider* >(this)
                                                );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
@@ -116,47 +118,28 @@ XTYPEPROVIDER_IMPL_3( ContentProvider,
                       lang::XServiceInfo,
                       css::ucb::XContentProvider );
 
-XSERVICEINFO_COMMOM_IMPL( ContentProvider,
-                          OUString("com.sun.star.comp.CmisContentProvider") )
-/// @throws css::uno::Exception
-static css::uno::Reference< css::uno::XInterface > SAL_CALL
-ContentProvider_CreateInstance( const css::uno::Reference< css::lang::XMultiServiceFactory> & rSMgr )
+sal_Bool ContentProvider::supportsService(const OUString& sServiceName)
 {
-    css::lang::XServiceInfo* pX =
-        static_cast<css::lang::XServiceInfo*>(new ContentProvider( ucbhelper::getComponentContext(rSMgr) ));
-    return css::uno::Reference< css::uno::XInterface >::query( pX );
+    return cppu::supportsService(this, sServiceName);
 }
-
-css::uno::Sequence< OUString >
-ContentProvider::getSupportedServiceNames_Static()
+OUString ContentProvider::getImplementationName()
 {
-    css::uno::Sequence< OUString > aSNS { "com.sun.star.ucb.CmisContentProvider" };
-    return aSNS;
+    return "com.sun.star.comp.CmisContentProvider";
 }
-
-ONE_INSTANCE_SERVICE_FACTORY_IMPL( ContentProvider );
+css::uno::Sequence< OUString > ContentProvider::getSupportedServiceNames()
+{
+    return { "com.sun.star.ucb.CmisContentProvider" };
+}
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL ucpcmis1_component_getFactory( const sal_Char *pImplName,
-    void *pServiceManager, void * )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_cmis_ContentProvider_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    void * pRet = nullptr;
-
-    uno::Reference< lang::XMultiServiceFactory > xSMgr
-        (static_cast< lang::XMultiServiceFactory * >( pServiceManager ) );
-    uno::Reference< lang::XSingleServiceFactory > xFactory;
-
-    if ( ::cmis::ContentProvider::getImplementationName_Static().equalsAscii( pImplName ) )
-        xFactory = ::cmis::ContentProvider::createServiceFactory( xSMgr );
-
-    if ( xFactory.is() )
-    {
-        xFactory->acquire();
-        pRet = xFactory.get();
-    }
-
-    return pRet;
+    static rtl::Reference<cmis::ContentProvider> g_Instance(new cmis::ContentProvider(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

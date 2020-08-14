@@ -173,6 +173,20 @@ service DataSeries
         this series there.</p>
     */
     [optional, property] long                       AttachedAxisIndex;
+
+    /** This property describes whether the legend entry for the
+        the data series should be shown.
+
+        @since LibreOffice 6.3
+      */
+    [optional, property] boolean                    ShowLegendEntry;
+
+    /** A sequence of indexes denoting which data points shouldn't be
+        shown in the legend.
+
+        @since LibreOffice 7.0
+     */
+    [optional, property] sequence<long>             DeletedLegendEntries;
 };
 
 } ; // chart2

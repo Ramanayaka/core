@@ -17,16 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "formadapter.hxx"
+#include <formadapter.hxx>
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
 #include <comphelper/types.hxx>
 #include <comphelper/enumhelper.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include "dbu_brw.hrc"
-#include "dbustrings.hrc"
+#include <strings.hxx>
 #include <connectivity/dbexception.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <comphelper/sequence.hxx>
 
 using namespace dbaui;
@@ -176,19 +174,19 @@ void SbaXFormAdapter::AttachForm(const Reference< css::sdbc::XRowSet >& xNewMast
 
     m_xMainForm = xNewMaster;
 
-    if (m_xMainForm.is())
-    {
-        StartListening();
+    if (!m_xMainForm.is())
+        return;
 
-        // if our new master is loaded we have to send an 'loaded' event
-        Reference< css::form::XLoadable >  xLoadable(m_xMainForm, UNO_QUERY);
-        if (xLoadable->isLoaded())
-        {
-            css::lang::EventObject aEvt(*this);
-            ::comphelper::OInterfaceIteratorHelper2 aIt(m_aLoadListeners);
-            while (aIt.hasMoreElements())
-                static_cast< css::form::XLoadListener*>(aIt.next())->loaded(aEvt);
-        }
+    StartListening();
+
+    // if our new master is loaded we have to send an 'loaded' event
+    Reference< css::form::XLoadable >  xLoadable(m_xMainForm, UNO_QUERY);
+    if (xLoadable->isLoaded())
+    {
+        css::lang::EventObject aEvt(*this);
+        ::comphelper::OInterfaceIteratorHelper2 aIt(m_aLoadListeners);
+        while (aIt.hasMoreElements())
+            static_cast< css::form::XLoadListener*>(aIt.next())->loaded(aEvt);
     }
 
     // TODO : perhaps _all_ of our listeners should be notified about our new state
@@ -1086,20 +1084,17 @@ void SAL_CALL SbaXFormAdapter::dispose()
     m_aContainerListeners.disposeAndClear(aEvt);
 
     // dispose all children
-    for (   std::vector< Reference< css::form::XFormComponent > >::const_iterator aIter = m_aChildren.begin();
-            aIter != m_aChildren.end();
-            ++aIter
-        )
+    for (auto const& child : m_aChildren)
     {
-        Reference< css::beans::XPropertySet >  xSet(*aIter, UNO_QUERY);
+        Reference< css::beans::XPropertySet >  xSet(child, UNO_QUERY);
         if (xSet.is())
             xSet->removePropertyChangeListener(PROPERTY_NAME, static_cast<css::beans::XPropertyChangeListener*>(this));
 
-        Reference< css::container::XChild >  xChild(*aIter, UNO_QUERY);
+        Reference< css::container::XChild >  xChild(child, UNO_QUERY);
         if (xChild.is())
             xChild->setParent(Reference< XInterface > ());
 
-        Reference< css::lang::XComponent >  xComp(*aIter, UNO_QUERY);
+        Reference< css::lang::XComponent >  xComp(child, UNO_QUERY);
         if (xComp.is())
             xComp->dispose();
     }
@@ -1205,14 +1200,12 @@ Reference< css::beans::XPropertySetInfo > SAL_CALL SbaXFormAdapter::getPropertyS
     if (-1 == m_nNamePropHandle)
     {
         // we need to determine the handle for the NAME property
- Sequence< css::beans::Property> aProps = xReturn->getProperties();
-        const css::beans::Property* pProps = aProps.getConstArray();
-
-        for (sal_Int32 i=0; i<aProps.getLength(); ++i, ++pProps)
+        const Sequence<css::beans::Property> aProps = xReturn->getProperties();
+        for (const css::beans::Property& rProp : aProps)
         {
-            if (pProps->Name == PROPERTY_NAME)
+            if (rProp.Name == PROPERTY_NAME)
             {
-                m_nNamePropHandle = pProps->Handle;
+                m_nNamePropHandle = rProp.Handle;
                 break;
             }
         }
@@ -1233,16 +1226,14 @@ Sequence< Any > SAL_CALL SbaXFormAdapter::getPropertyValues(const Sequence< OUSt
     if (!xSet.is())
         return Sequence< Any>(aPropertyNames.getLength());
 
- Sequence< Any> aReturn = xSet->getPropertyValues(aPropertyNames);
+    Sequence< Any> aReturn = xSet->getPropertyValues(aPropertyNames);
 
     // search for (and fake) the NAME property
-    const OUString* pNames = aPropertyNames.getConstArray();
-    Any* pValues = aReturn.getArray();
     OSL_ENSURE(aReturn.getLength() == aPropertyNames.getLength(), "SAL_CALL SbaXFormAdapter::getPropertyValues : the main form returned an invalid-length sequence !");
-    for (sal_Int32 i=0; i<aPropertyNames.getLength(); ++i, ++pNames, ++pValues)
-        if (*pNames == PROPERTY_NAME)
+    for (sal_Int32 i=0; i<aPropertyNames.getLength(); ++i)
+        if (aPropertyNames[i] == PROPERTY_NAME)
         {
-            (*pValues) <<= m_sName;
+            aReturn[i] <<= m_sName;
             break;
         }
 
@@ -1334,10 +1325,9 @@ Sequence< css::beans::PropertyState> SAL_CALL SbaXFormAdapter::getPropertyStates
         return xState->getPropertyStates(aPropertyName);
 
     // set them all to DEFAULT
-     Sequence< css::beans::PropertyState> aReturn(aPropertyName.getLength());
-    css::beans::PropertyState* pStates = aReturn.getArray();
-    for (sal_Int32 i=0; i<aPropertyName.getLength(); ++i, ++pStates)
-        *pStates = css::beans::PropertyState_DEFAULT_VALUE;
+    Sequence< css::beans::PropertyState> aReturn(aPropertyName.getLength());
+    for (css::beans::PropertyState& rState : aReturn)
+        rState = css::beans::PropertyState_DEFAULT_VALUE;
     return aReturn;
 }
 
@@ -1410,7 +1400,7 @@ void SbaXFormAdapter::implInsert(const Any& aElement, sal_Int32 nIndex, const OU
     m_aChildren.insert(m_aChildren.begin() + nIndex, xElement);
     m_aChildNames.insert(m_aChildNames.begin() + nIndex, sName);
 
-    // listen for a changes of the name
+    // listen for a change of the name
     xElementSet->addPropertyChangeListener(PROPERTY_NAME, static_cast<css::beans::XPropertyChangeListener*>(this));
 
     // we are now the parent of the new element
@@ -1428,9 +1418,9 @@ void SbaXFormAdapter::implInsert(const Any& aElement, sal_Int32 nIndex, const OU
 
 sal_Int32 SbaXFormAdapter::implGetPos(const OUString& rName)
 {
-    std::vector< OUString>::const_iterator aIter = std::find_if(   m_aChildNames.begin(),
+    std::vector< OUString>::const_iterator aIter = std::find(   m_aChildNames.begin(),
                                                                 m_aChildNames.end(),
-                                                                std::bind2nd(std::equal_to< OUString>(),rName));
+                                                                rName);
 
     if(aIter != m_aChildNames.end())
         return aIter - m_aChildNames.begin();
@@ -1493,20 +1483,20 @@ Type SAL_CALL SbaXFormAdapter::getElementType()
 
 sal_Bool SAL_CALL SbaXFormAdapter::hasElements()
 {
-    return m_aChildren.size() > 0;
+    return !m_aChildren.empty();
 }
 
 // css::container::XIndexContainer
 void SAL_CALL SbaXFormAdapter::insertByIndex(sal_Int32 _rIndex, const Any& Element)
 {
-    if ( ( _rIndex < 0 ) || ( (size_t)_rIndex >= m_aChildren.size() ) )
+    if ( ( _rIndex < 0 ) || ( o3tl::make_unsigned(_rIndex) >= m_aChildren.size() ) )
         throw css::lang::IndexOutOfBoundsException();
     implInsert(Element, _rIndex);
 }
 
 void SAL_CALL SbaXFormAdapter::removeByIndex(sal_Int32 _rIndex)
 {
-    if ( ( _rIndex < 0 ) || ( (size_t)_rIndex >= m_aChildren.size() ) )
+    if ( ( _rIndex < 0 ) || ( o3tl::make_unsigned(_rIndex) >= m_aChildren.size() ) )
         throw css::lang::IndexOutOfBoundsException();
 
     Reference< css::form::XFormComponent >  xAffected = *(m_aChildren.begin() + _rIndex);
@@ -1535,7 +1525,7 @@ void SAL_CALL SbaXFormAdapter::removeByIndex(sal_Int32 _rIndex)
 // css::container::XIndexReplace
 void SAL_CALL SbaXFormAdapter::replaceByIndex(sal_Int32 _rIndex, const Any& Element)
 {
-    if ( ( _rIndex < 0 ) || ( (size_t)_rIndex >= m_aChildren.size() ) )
+    if ( ( _rIndex < 0 ) || ( o3tl::make_unsigned(_rIndex) >= m_aChildren.size() ) )
         throw css::lang::IndexOutOfBoundsException();
 
     // extract the form component
@@ -1602,7 +1592,7 @@ sal_Int32 SAL_CALL SbaXFormAdapter::getCount()
 
 Any SAL_CALL SbaXFormAdapter::getByIndex(sal_Int32 _rIndex)
 {
-    if ( ( _rIndex < 0 ) || ( (size_t)_rIndex >= m_aChildren.size() ) )
+    if ( ( _rIndex < 0 ) || ( o3tl::make_unsigned(_rIndex) >= m_aChildren.size() ) )
         throw css::lang::IndexOutOfBoundsException();
 
     Reference< css::form::XFormComponent >  xElement = *(m_aChildren.begin() + _rIndex);
@@ -1629,18 +1619,18 @@ Reference< css::container::XEnumeration > SAL_CALL SbaXFormAdapter::createEnumer
 // css::beans::XPropertyChangeListener
 void SAL_CALL SbaXFormAdapter::propertyChange(const css::beans::PropertyChangeEvent& evt)
 {
-    if (evt.PropertyName == PROPERTY_NAME)
-    {
-        std::vector<  css::uno::Reference< css::form::XFormComponent > >::const_iterator aIter = std::find_if(  m_aChildren.begin(),
-                                                                m_aChildren.end(),
-                                                                std::bind2nd(std::equal_to< css::uno::Reference< css::uno::XInterface > >(),evt.Source));
+    if (evt.PropertyName != PROPERTY_NAME)
+        return;
 
-        if(aIter != m_aChildren.end())
-        {
-            sal_Int32 nPos = aIter - m_aChildren.begin();
-            OSL_ENSURE(*(m_aChildNames.begin() + nPos) == ::comphelper::getString(evt.OldValue), "SAL_CALL SbaXFormAdapter::propertyChange : object has a wrong name !");
-            *(m_aChildNames.begin() + nPos) = ::comphelper::getString(evt.NewValue);
-        }
+    std::vector<  css::uno::Reference< css::form::XFormComponent > >::const_iterator aIter = std::find_if(  m_aChildren.begin(),
+                                                            m_aChildren.end(),
+                                                            [&evt](css::uno::Reference< css::uno::XInterface > const & x) { return x == evt.Source; });
+
+    if(aIter != m_aChildren.end())
+    {
+        sal_Int32 nPos = aIter - m_aChildren.begin();
+        OSL_ENSURE(*(m_aChildNames.begin() + nPos) == ::comphelper::getString(evt.OldValue), "SAL_CALL SbaXFormAdapter::propertyChange : object has a wrong name !");
+        *(m_aChildNames.begin() + nPos) = ::comphelper::getString(evt.NewValue);
     }
 }
 
@@ -1653,7 +1643,7 @@ void SAL_CALL SbaXFormAdapter::disposing(const css::lang::EventObject& Source)
 
     std::vector<  css::uno::Reference< css::form::XFormComponent > >::const_iterator aIter = std::find_if(  m_aChildren.begin(),
                                                                 m_aChildren.end(),
-                                                                std::bind2nd(std::equal_to< css::uno::Reference< css::uno::XInterface > >(),Source.Source));
+                                                                [&Source](css::uno::Reference< css::uno::XInterface > const & x) { return x == Source.Source; });
     if(aIter != m_aChildren.end())
             removeByIndex(aIter - m_aChildren.begin());
 }

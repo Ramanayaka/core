@@ -21,18 +21,23 @@
 
 #include "txtexppr.hxx"
 
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/text/SizeType.hpp>
 #include <com/sun/star/text/WrapTextMode.hpp>
 #include <com/sun/star/text/TextContentAnchorType.hpp>
 #include <com/sun/star/awt/FontUnderline.hpp>
 #include <com/sun/star/text/XChapterNumberingSupplier.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <o3tl/any.hxx>
+#include <sal/log.hxx>
 #include <tools/color.hxx>
 #include <xmloff/txtprmap.hxx>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/maptype.hxx>
+#include <xmloff/namespacemap.hxx>
 #include "XMLSectionFootnoteConfigExport.hxx"
 #include <xmlsdtypes.hxx>
+#include <XMLNumberWithAutoForVoidPropHdl.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -56,7 +61,7 @@ void XMLTextExportPropertySetMapper::handleElementItem(
         pThis->maDropCapExport.exportXML( rProperty.maValue, bDropWholeWord,
                                           sDropCharStyle );
         pThis->bDropWholeWord = false;
-        (pThis->sDropCharStyle).clear();
+        pThis->sDropCharStyle.clear();
         break;
 
     case CTF_TABSTOP:
@@ -144,6 +149,22 @@ void XMLTextExportPropertySetMapper::handleSpecialItem(
 
     switch( getPropertySetMapper()->GetEntryContextId( rProperty.mnIndex ) )
     {
+    case CTF_PAGENUMBEROFFSET:
+        {
+            OUString value;
+            XMLNumberWithAutoForVoidPropHdl const handler;
+            handler.exportXML(value, rProperty.maValue, rUnitConverter);
+            if (GetExport().getSaneDefaultVersion() < SvtSaveOptions::ODFSVER_013
+                && value == "0") // tdf#91306 ODF 1.3 OFFICE-3923
+            {
+                value = "auto";
+            }
+            OUString const name = rNamespaceMap.GetQNameByKey(
+                getPropertySetMapper()->GetEntryNameSpace(rProperty.mnIndex),
+                getPropertySetMapper()->GetEntryXMLName(rProperty.mnIndex));
+            rAttrList.AddAttribute(name, value);
+        }
+        break;
     case CTF_DROPCAPWHOLEWORD:
         SAL_WARN_IF( !!bDropWholeWord, "xmloff", "drop whole word is set already!" );
         pThis->bDropWholeWord = *o3tl::doAccess<bool>(rProperty.maValue);
@@ -224,7 +245,7 @@ void XMLTextExportPropertySetMapper::ContextFontFilter(
     if( pFontPitchState && (pFontPitchState->maValue >>= nTmp ) )
         nPitch = static_cast< FontPitch >( nTmp );
     if( pFontCharsetState && (pFontCharsetState->maValue >>= nTmp ) )
-        eEnc = (rtl_TextEncoding)nTmp;
+        eEnc = static_cast<rtl_TextEncoding>(nTmp);
 
     //Resolves: fdo#67665 The purpose here appears to be to replace
     //FontFamilyName and FontStyleName etc with a single FontName property. The
@@ -307,20 +328,20 @@ void XMLTextExportPropertySetMapper::ContextFontHeightFilter(
             pCharHeightState->maValue.clear();
         }
     }
-    if( pCharDiffHeightState )
+    if( !pCharDiffHeightState )
+        return;
+
+    float nTemp = 0;
+    pCharDiffHeightState->maValue >>= nTemp;
+    if( nTemp == 0. )
     {
-        float nTemp = 0;
-        pCharDiffHeightState->maValue >>= nTemp;
-        if( nTemp == 0. )
-        {
-            pCharDiffHeightState->mnIndex = -1;
-            pCharDiffHeightState->maValue.clear();
-        }
-        else
-        {
-            pCharHeightState->mnIndex = -1;
-            pCharHeightState->maValue.clear();
-        }
+        pCharDiffHeightState->mnIndex = -1;
+        pCharDiffHeightState->maValue.clear();
+    }
+    else
+    {
+        pCharHeightState->mnIndex = -1;
+        pCharHeightState->maValue.clear();
     }
 
 }
@@ -334,20 +355,20 @@ void
 lcl_checkMultiProperty(XMLPropertyState *const pState,
                        XMLPropertyState *const pRelState)
 {
-    if (pState && pRelState)
+    if (!(pState && pRelState))
+        return;
+
+    sal_Int32 nTemp = 0;
+    pRelState->maValue >>= nTemp;
+    if (100 == nTemp)
     {
-        sal_Int32 nTemp = 0;
-        pRelState->maValue >>= nTemp;
-        if (100 == nTemp)
-        {
-            pRelState->mnIndex = -1;
-            pRelState->maValue.clear();
-        }
-        else
-        {
-            pState->mnIndex = -1;
-            pState->maValue.clear();
-        }
+        pRelState->mnIndex = -1;
+        pRelState->maValue.clear();
+    }
+    else
+    {
+        pState->mnIndex = -1;
+        pState->maValue.clear();
     }
 }
 
@@ -445,49 +466,49 @@ void lcl_FilterBorders(
         }
     }
 
-    if( pAllBorderState )
-    {
-        if( pLeftBorderState && pRightBorderState && pTopBorderState && pBottomBorderState )
-        {
-            table::BorderLine2 aLeft, aRight, aTop, aBottom;
+    if( !pAllBorderState )
+        return;
 
-            pLeftBorderState->maValue >>= aLeft;
-            pRightBorderState->maValue >>= aRight;
-            pTopBorderState->maValue >>= aTop;
-            pBottomBorderState->maValue >>= aBottom;
-            if( aLeft.Color == aRight.Color && aLeft.InnerLineWidth == aRight.InnerLineWidth &&
-                aLeft.OuterLineWidth == aRight.OuterLineWidth && aLeft.LineDistance == aRight.LineDistance &&
-                aLeft.LineStyle == aRight.LineStyle &&
-                aLeft.LineWidth == aRight.LineWidth &&
-                aLeft.Color == aTop.Color && aLeft.InnerLineWidth == aTop.InnerLineWidth &&
-                aLeft.OuterLineWidth == aTop.OuterLineWidth && aLeft.LineDistance == aTop.LineDistance &&
-                aLeft.LineStyle == aTop.LineStyle  &&
-                aLeft.LineWidth == aTop.LineWidth  &&
-                aLeft.Color == aBottom.Color && aLeft.InnerLineWidth == aBottom.InnerLineWidth &&
-                aLeft.OuterLineWidth == aBottom.OuterLineWidth && aLeft.LineDistance == aBottom.LineDistance &&
-                aLeft.LineWidth == aBottom.LineWidth &&
-                aLeft.LineStyle == aBottom.LineStyle )
-            {
-                pLeftBorderState->mnIndex = -1;
-                pLeftBorderState->maValue.clear();
-                pRightBorderState->mnIndex = -1;
-                pRightBorderState->maValue.clear();
-                pTopBorderState->mnIndex = -1;
-                pTopBorderState->maValue.clear();
-                pBottomBorderState->mnIndex = -1;
-                pBottomBorderState->maValue.clear();
-            }
-            else
-            {
-                pAllBorderState->mnIndex = -1;
-                pAllBorderState->maValue.clear();
-            }
+    if( pLeftBorderState && pRightBorderState && pTopBorderState && pBottomBorderState )
+    {
+        table::BorderLine2 aLeft, aRight, aTop, aBottom;
+
+        pLeftBorderState->maValue >>= aLeft;
+        pRightBorderState->maValue >>= aRight;
+        pTopBorderState->maValue >>= aTop;
+        pBottomBorderState->maValue >>= aBottom;
+        if( aLeft.Color == aRight.Color && aLeft.InnerLineWidth == aRight.InnerLineWidth &&
+            aLeft.OuterLineWidth == aRight.OuterLineWidth && aLeft.LineDistance == aRight.LineDistance &&
+            aLeft.LineStyle == aRight.LineStyle &&
+            aLeft.LineWidth == aRight.LineWidth &&
+            aLeft.Color == aTop.Color && aLeft.InnerLineWidth == aTop.InnerLineWidth &&
+            aLeft.OuterLineWidth == aTop.OuterLineWidth && aLeft.LineDistance == aTop.LineDistance &&
+            aLeft.LineStyle == aTop.LineStyle  &&
+            aLeft.LineWidth == aTop.LineWidth  &&
+            aLeft.Color == aBottom.Color && aLeft.InnerLineWidth == aBottom.InnerLineWidth &&
+            aLeft.OuterLineWidth == aBottom.OuterLineWidth && aLeft.LineDistance == aBottom.LineDistance &&
+            aLeft.LineWidth == aBottom.LineWidth &&
+            aLeft.LineStyle == aBottom.LineStyle )
+        {
+            pLeftBorderState->mnIndex = -1;
+            pLeftBorderState->maValue.clear();
+            pRightBorderState->mnIndex = -1;
+            pRightBorderState->maValue.clear();
+            pTopBorderState->mnIndex = -1;
+            pTopBorderState->maValue.clear();
+            pBottomBorderState->mnIndex = -1;
+            pBottomBorderState->maValue.clear();
         }
         else
         {
             pAllBorderState->mnIndex = -1;
             pAllBorderState->maValue.clear();
         }
+    }
+    else
+    {
+        pAllBorderState->mnIndex = -1;
+        pAllBorderState->maValue.clear();
     }
 }
 
@@ -671,11 +692,9 @@ void XMLTextExportPropertySetMapper::ContextFilter(
 
     bool bNeedsAnchor = false;
 
-    for( ::std::vector< XMLPropertyState >::iterator aIter = rProperties.begin();
-         aIter != rProperties.end();
-         ++aIter )
+    for( auto& rPropertyState : rProperties )
     {
-        XMLPropertyState *propertyState = &(*aIter);
+        XMLPropertyState *propertyState = &rPropertyState;
         if( propertyState->mnIndex == -1 )
             continue;
 
@@ -935,7 +954,7 @@ void XMLTextExportPropertySetMapper::ContextFilter(
             pHeightMinAbsState->mnIndex = -1;
         }
 
-        // export SizeType::VARIABLE als min-width="0"
+        // export SizeType::VARIABLE as min-width="0"
         if( SizeType::VARIABLE == nSizeType )
             pHeightMinAbsState->maValue <<= static_cast<sal_Int32>( 0 );
     }
@@ -964,7 +983,7 @@ void XMLTextExportPropertySetMapper::ContextFilter(
             pWidthMinAbsState->mnIndex = -1;
         }
 
-        // export SizeType::VARIABLE als min-width="0"
+        // export SizeType::VARIABLE as min-width="0"
         if( SizeType::VARIABLE == nSizeType )
             pWidthMinAbsState->maValue <<= static_cast<sal_Int32>( 0 );
     }
@@ -986,7 +1005,7 @@ void XMLTextExportPropertySetMapper::ContextFilter(
             // no wrapping: disable para-only and contour
             if( pWrapParagraphOnlyState )
                 pWrapParagraphOnlyState->mnIndex = -1;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case WrapTextMode_THROUGH:
             // wrap through: disable only contour
             if( pWrapContourState )
@@ -1130,10 +1149,9 @@ void XMLTextExportPropertySetMapper::ContextFilter(
         pClip11State->mnIndex = -1;
 
     // When both background attributes are available export the visible one
-    if( pCharHighlight && pCharBackground )
+    if (pCharHighlight)
     {
-        assert(pCharBackgroundTransparency); // always together
-        sal_uInt32 nColor = COL_TRANSPARENT;
+        Color nColor = COL_TRANSPARENT;
         pCharHighlight->maValue >>= nColor;
         if( nColor == COL_TRANSPARENT )
         {
@@ -1141,8 +1159,10 @@ void XMLTextExportPropertySetMapper::ContextFilter(
             // and we'd need another property CharHighlightTransparent for that
             pCharHighlight->mnIndex = -1;
         }
-        else
+        // When both background attributes are available export the visible one
+        else if(pCharBackground)
         {
+            assert(pCharBackgroundTransparency); // always together
             pCharBackground->mnIndex = -1;
             pCharBackgroundTransparency->mnIndex = -1;
         }

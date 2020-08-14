@@ -19,13 +19,15 @@
 
 #include "ConfigurationClassifier.hxx"
 
-#include "framework/FrameworkHelper.hxx"
+#include <framework/FrameworkHelper.hxx>
+#include <com/sun/star/drawing/framework/XConfiguration.hpp>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 ConfigurationClassifier::ConfigurationClassifier (
     const Reference<XConfiguration>& rxConfiguration1,
@@ -33,8 +35,7 @@ ConfigurationClassifier::ConfigurationClassifier (
     : mxConfiguration1(rxConfiguration1),
       mxConfiguration2(rxConfiguration2),
       maC1minusC2(),
-      maC2minusC1(),
-      maC1andC2()
+      maC2minusC1()
 {
 }
 
@@ -42,7 +43,6 @@ bool ConfigurationClassifier::Partition()
 {
     maC1minusC2.clear();
     maC2minusC1.clear();
-    maC1andC2.clear();
 
     PartitionResources(
         mxConfiguration1->getResources(nullptr, OUString(), AnchorBindingMode_DIRECT),
@@ -74,13 +74,11 @@ void ConfigurationClassifier::PartitionResources (
     CopyResources(aC2minusC1, mxConfiguration2, maC2minusC1);
 
     // Process the unique resources that belong to both configurations.
-    ResourceIdVector::const_iterator iResource;
-    for (iResource=aC1andC2.begin(); iResource!=aC1andC2.end(); ++iResource)
+    for (const auto& rxResource : aC1andC2)
     {
-        maC1andC2.push_back(*iResource);
         PartitionResources(
-            mxConfiguration1->getResources(*iResource, OUString(), AnchorBindingMode_DIRECT),
-            mxConfiguration2->getResources(*iResource, OUString(), AnchorBindingMode_DIRECT));
+            mxConfiguration1->getResources(rxResource, OUString(), AnchorBindingMode_DIRECT),
+            mxConfiguration2->getResources(rxResource, OUString(), AnchorBindingMode_DIRECT));
     }
 }
 
@@ -91,39 +89,31 @@ void ConfigurationClassifier::ClassifyResources (
     ResourceIdVector& rS2minusS1,
     ResourceIdVector& rS1andS2)
 {
-    // Get arrays from the sequences for faster iteration.
-    const Reference<XResourceId>* aA1 = rS1.getConstArray();
-    const Reference<XResourceId>* aA2 = rS2.getConstArray();
-    sal_Int32 nL1 (rS1.getLength());
-    sal_Int32 nL2 (rS2.getLength());
-
     // Find all elements in rS1 and place them in rS1minusS2 or rS1andS2
     // depending on whether they are in rS2 or not.
-    for (sal_Int32 i=0; i<nL1; ++i)
+    for (const Reference<XResourceId>& rA1 : rS1)
     {
-        bool bFound (false);
-        for (sal_Int32 j=0; j<nL2 && !bFound; ++j)
-            if (aA1[i]->getResourceURL().equals(aA2[j]->getResourceURL()))
-                bFound = true;
+        bool bFound = std::any_of(rS2.begin(), rS2.end(),
+            [&rA1](const Reference<XResourceId>& rA2) {
+                return rA1->getResourceURL() == rA2->getResourceURL(); });
 
         if (bFound)
-            rS1andS2.push_back(aA1[i]);
+            rS1andS2.push_back(rA1);
         else
-            rS1minusS2.push_back(aA1[i]);
+            rS1minusS2.push_back(rA1);
     }
 
     // Find all elements in rS2 that are not in rS1.  The elements that are
     // in both rS1 and rS2 have been handled above and are therefore ignored
     // here.
-    for (sal_Int32 j=0; j<nL2; ++j)
+    for (const Reference<XResourceId>& rA2 : rS2)
     {
-        bool bFound (false);
-        for (sal_Int32 i=0; i<nL1 && !bFound; ++i)
-            if (aA2[j]->getResourceURL().equals(aA1[i]->getResourceURL()))
-                bFound = true;
+        bool bFound = std::any_of(rS1.begin(), rS1.end(),
+            [&rA2](const Reference<XResourceId>& rA1) {
+                return rA2->getResourceURL() == rA1->getResourceURL(); });
 
         if ( ! bFound)
-            rS2minusS1.push_back(aA2[j]);
+            rS2minusS1.push_back(rA2);
     }
 }
 
@@ -133,29 +123,26 @@ void ConfigurationClassifier::CopyResources (
     ResourceIdVector& rTarget)
 {
     // Copy all resources bound to the ones in aC1minusC2Unique to rC1minusC2.
-    ResourceIdVector::const_iterator iResource (rSource.begin());
-    ResourceIdVector::const_iterator iEnd(rSource.end());
-    for ( ; iResource!=iEnd; ++iResource)
+    for (const auto& rxResource : rSource)
     {
         const Sequence<Reference<XResourceId> > aBoundResources (
             rxConfiguration->getResources(
-                *iResource,
+                rxResource,
                 OUString(),
                 AnchorBindingMode_INDIRECT));
         const sal_Int32 nL (aBoundResources.getLength());
 
         rTarget.reserve(rTarget.size() + 1 + nL);
-        rTarget.push_back(*iResource);
+        rTarget.push_back(rxResource);
 
         SAL_INFO("sd.fwk", OSL_THIS_FUNC << ":    copying " <<
-            FrameworkHelper::ResourceIdToString(*iResource));
+            FrameworkHelper::ResourceIdToString(rxResource));
 
-        const Reference<XResourceId>* aA = aBoundResources.getConstArray();
-        for (sal_Int32 i=0; i<nL; ++i)
+        for (const Reference<XResourceId>& rBoundResource : aBoundResources)
         {
-            rTarget.push_back(aA[i]);
+            rTarget.push_back(rBoundResource);
             SAL_INFO("sd.fwk", OSL_THIS_FUNC << ":    copying " <<
-                FrameworkHelper::ResourceIdToString(aA[i]));
+                FrameworkHelper::ResourceIdToString(rBoundResource));
         }
     }
 }
@@ -163,21 +150,20 @@ void ConfigurationClassifier::CopyResources (
 #if DEBUG_SD_CONFIGURATION_TRACE
 
 void ConfigurationClassifier::TraceResourceIdVector (
-    const sal_Char* pMessage,
+    const char* pMessage,
     const ResourceIdVector& rResources)
 {
 
     SAL_INFO("sd.fwk", OSL_THIS_FUNC << ": " << pMessage);
-    ResourceIdVector::const_iterator iResource;
-    for (iResource=rResources.begin(); iResource!=rResources.end(); ++iResource)
+    for (const auto& rxResource : rResources)
     {
-        OUString sResource (FrameworkHelper::ResourceIdToString(*iResource));
+        OUString sResource (FrameworkHelper::ResourceIdToString(rxResource));
         SAL_INFO("sd.fwk", OSL_THIS_FUNC << ": " << sResource);
     }
 }
 
 #endif
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

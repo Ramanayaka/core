@@ -27,12 +27,12 @@
 
 namespace oox { class AttributeList; }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-class SlideTimingContext : public ::oox::core::FragmentHandler2
+class SlideTimingContext final : public ::oox::core::FragmentHandler2
 {
 public:
-    SlideTimingContext( ::oox::core::FragmentHandler2& rParent, TimeNodePtrList & aTimeNodeList ) throw();
+    SlideTimingContext( ::oox::core::FragmentHandler2 const & rParent, TimeNodePtrList & aTimeNodeList ) throw();
     virtual ~SlideTimingContext() throw() override;
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 aElementToken, const AttributeList& rAttribs ) override;
@@ -41,7 +41,7 @@ private:
     TimeNodePtrList & maTimeNodeList;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_PPT_SLIDETIMINGCONTEXT_HXX
 

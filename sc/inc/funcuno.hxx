@@ -24,10 +24,12 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/sheet/XFunctionAccess.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <svl/lstner.hxx>
+#include "document.hxx"
+#include <svl/itemprop.hxx>
 
-class ScDocument;
 class ScDocOptions;
 
 css::uno::Reference< css::uno::XInterface > SAL_CALL
@@ -37,7 +39,7 @@ css::uno::Reference< css::uno::XInterface > SAL_CALL
 class ScTempDocCache
 {
 private:
-    std::unique_ptr<ScDocument> xDoc;
+    ScDocumentUniquePtr xDoc;
     bool            bInUse;
 
 public:
@@ -51,7 +53,7 @@ public:
     void        Clear();
 };
 
-class ScFunctionAccess : public cppu::WeakImplHelper<
+class ScFunctionAccess final : public cppu::WeakImplHelper<
                                         css::sheet::XFunctionAccess,
                                         css::beans::XPropertySet,
                                         css::lang::XServiceInfo>,
@@ -59,7 +61,7 @@ class ScFunctionAccess : public cppu::WeakImplHelper<
 {
 private:
     ScTempDocCache  aDocCache;
-    ScDocOptions*   pOptions;
+    std::unique_ptr<ScDocOptions> pOptions;
     SfxItemPropertyMap aPropertyMap;
     bool            mbArray;
     bool            mbValid;

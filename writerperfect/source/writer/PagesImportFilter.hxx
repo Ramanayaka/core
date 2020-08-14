@@ -10,11 +10,10 @@
 #ifndef INCLUDED_WRITERPERFECT_SOURCE_WRITER_PAGESIMPORTFILTER_HXX
 #define INCLUDED_WRITERPERFECT_SOURCE_WRITER_PAGESIMPORTFILTER_HXX
 
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
-#include "DocumentHandlerForOdt.hxx"
-#include "ImportFilter.hxx"
+#include <DocumentHandlerForOdt.hxx>
+#include <ImportFilter.hxx>
 
 /* This component will be instantiated for both import or export. Whether it calls
  * setSourceDocument or setTargetDocument determines which Impl function the filter
@@ -22,17 +21,21 @@
 class PagesImportFilter : public writerperfect::ImportFilter<OdtGenerator>
 {
 public:
-    explicit PagesImportFilter(const css::uno::Reference< css::uno::XComponentContext > &rxContext)
-        : writerperfect::ImportFilter<OdtGenerator>(rxContext) {}
+    explicit PagesImportFilter(const css::uno::Reference<css::uno::XComponentContext>& rxContext)
+        : writerperfect::ImportFilter<OdtGenerator>(rxContext)
+    {
+    }
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
-    virtual sal_Bool SAL_CALL supportsService(const OUString &ServiceName) override;
-    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+    virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
+    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
 private:
-    virtual bool doDetectFormat(librevenge::RVNGInputStream &rInput, OUString &rTypeName) override;
-    virtual bool doImportDocument(librevenge::RVNGInputStream &rInput, OdtGenerator &rGenerator, utl::MediaDescriptor &rDescriptor) override;
+    virtual bool doDetectFormat(librevenge::RVNGInputStream& rInput, OUString& rTypeName) override;
+    virtual bool doImportDocument(weld::Window* pParent, librevenge::RVNGInputStream& rInput,
+                                  OdtGenerator& rGenerator,
+                                  utl::MediaDescriptor& rDescriptor) override;
 };
 
 #endif

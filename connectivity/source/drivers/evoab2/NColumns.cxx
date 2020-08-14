@@ -20,9 +20,8 @@
 
 #include "NColumns.hxx"
 #include "NTable.hxx"
-#include "NTables.hxx"
-#include "NCatalog.hxx"
 #include <connectivity/sdbcx/VColumn.hxx>
+#include <com/sun/star/sdbc/XRow.hpp>
 
 using namespace connectivity::sdbcx;
 using namespace connectivity;
@@ -47,7 +46,7 @@ sdbcx::ObjectType OEvoabColumns::createObject(const OUString& _rName)
         sTableName,
         _rName);
 
-    sdbcx::ObjectType xRet = nullptr;
+    sdbcx::ObjectType xRet;
     if (xResult.is())
     {
         Reference< XRow > xRow(xResult,UNO_QUERY);

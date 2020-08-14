@@ -13,117 +13,102 @@
  manual changes will be rewritten by the next run of update_pch.sh (which presumably
  also fixes all possible problems, so it's usually better to use it).
 
- Generated on 2015-11-14 14:16:37 using:
+ Generated on 2020-08-12 11:04:54 using:
  ./bin/update_pch reportdesign rptxml --cutoff=2 --exclude:system --exclude:module --include:local
 
  If after updating build fails, use the following command to locate conflicting headers:
- ./bin/update_pch_bisect ./reportdesign/inc/pch/precompiled_rptxml.hxx "/opt/lo/bin/make reportdesign.build" --find-conflicts
+ ./bin/update_pch_bisect ./reportdesign/inc/pch/precompiled_rptxml.hxx "make reportdesign.build" --find-conflicts
 */
 
+#if PCH_LEVEL >= 1
 #include <cassert>
-#include <cstddef>
+#include <cstring>
+#include <limits>
 #include <memory>
-#include <string.h>
-#include <unordered_set>
+#include <new>
+#include <string_view>
+#include <type_traits>
 #include <vector>
+#endif // PCH_LEVEL >= 1
+#if PCH_LEVEL >= 2
 #include <osl/diagnose.h>
-#include <osl/mutex.hxx>
+#include <osl/endian.h>
 #include <rtl/math.hxx>
 #include <rtl/ref.hxx>
+#include <rtl/strbuf.h>
 #include <rtl/strbuf.hxx>
-#include <rtl/string.h>
 #include <rtl/string.hxx>
+#include <rtl/stringconcat.hxx>
 #include <rtl/stringutils.hxx>
 #include <rtl/textenc.h>
-#include <rtl/unload.h>
 #include <rtl/ustrbuf.h>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/config.h>
-#include <sal/macros.h>
+#include <sal/log.hxx>
 #include <sal/types.h>
-#include <salhelper/simplereferenceobject.hxx>
+#include <vcl/dllapi.h>
 #include <vcl/svapp.hxx>
-#include <RptDef.hxx>
+#endif // PCH_LEVEL >= 2
+#if PCH_LEVEL >= 3
+#include <basegfx/color/bcolor.hxx>
 #include <com/sun/star/awt/FontDescriptor.hpp>
-#include <com/sun/star/awt/ImagePosition.hpp>
 #include <com/sun/star/awt/ImageScaleMode.hpp>
-#include <com/sun/star/awt/TextAlign.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XTolerantMultiPropertySet.hpp>
 #include <com/sun/star/chart/XComplexDescriptionAccess.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/chart2/data/XDatabaseDataProvider.hpp>
+#include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XSingleComponentFactory.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/reflection/ProxyFactory.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/report/ForceNewPage.hpp>
 #include <com/sun/star/report/GroupOn.hpp>
 #include <com/sun/star/report/KeepTogether.hpp>
 #include <com/sun/star/report/ReportPrintOption.hpp>
 #include <com/sun/star/report/XFixedLine.hpp>
 #include <com/sun/star/report/XFixedText.hpp>
-#include <com/sun/star/report/XReportControlFormat.hpp>
-#include <com/sun/star/report/XReportControlModel.hpp>
 #include <com/sun/star/report/XShape.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
-#include <com/sun/star/sdb/XOfficeDatabaseDocument.hpp>
-#include <com/sun/star/style/ParagraphAdjust.hpp>
-#include <com/sun/star/style/XStyle.hpp>
 #include <com/sun/star/table/BorderLine2.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/Type.hxx>
-#include <com/sun/star/uno/TypeClass.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/MeasureUnit.hpp>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <comphelper/comphelperdllapi.h>
 #include <comphelper/documentconstants.hxx>
-#include <comphelper/extract.hxx>
 #include <comphelper/genericpropertyset.hxx>
-#include <comphelper/namecontainer.hxx>
+#include <comphelper/propertysetinfo.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <connectivity/dbtools.hxx>
-#include <cppu/unotype.hxx>
-#include <cppuhelper/cppuhelperdllapi.h>
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <sax/tools/converter.hxx>
-#include <tools/debug.hxx>
+#include <o3tl/typed_flags_set.hxx>
+#include <salhelper/simplereferenceobject.hxx>
+#include <tools/color.hxx>
+#include <tools/diagnose_ex.h>
+#include <tools/link.hxx>
 #include <tools/toolsdllapi.h>
-#include <ucbhelper/content.hxx>
 #include <unotools/options.hxx>
 #include <unotools/saveopt.hxx>
 #include <unotools/unotoolsdllapi.h>
 #include <xmloff/ProgressBarHelper.hxx>
-#include <xmloff/XMLConstantsPropertyHandler.hxx>
 #include <xmloff/attrlist.hxx>
 #include <xmloff/dllapi.h>
 #include <xmloff/families.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/maptype.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/prstylei.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/txtprmap.hxx>
 #include <xmloff/xmlement.hxx>
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimppr.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/xmlprhdl.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlstyle.hxx>
+#include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
+#endif // PCH_LEVEL >= 3
+#if PCH_LEVEL >= 4
+#include <RptDef.hxx>
+#include <strings.hxx>
+#endif // PCH_LEVEL >= 4
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

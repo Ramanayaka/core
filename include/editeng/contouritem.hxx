@@ -28,7 +28,7 @@
     This item describes, if contour is employed.
 */
 
-class EDITENG_DLLPUBLIC SvxContourItem : public SfxBoolItem
+class EDITENG_DLLPUBLIC SvxContourItem final : public SfxBoolItem
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -37,20 +37,12 @@ public:
                     const sal_uInt16 nId );
 
     // "pure virtual Methods" from SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion) const override;
+    virtual SvxContourItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
-
-    SvxContourItem& operator=(const SvxContourItem& rCont)
-    {
-        SetValue(rCont.GetValue());
-        return *this;
-    }
+                                  OUString &rText, const IntlWrapper& ) const override;
 };
 
 #endif

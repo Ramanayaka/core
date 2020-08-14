@@ -17,16 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "xlescher.hxx"
+#include <xlescher.hxx>
 
 #include <com/sun/star/drawing/XControlShape.hpp>
 #include <com/sun/star/script/ScriptEventDescriptor.hpp>
-#include <svx/unoapi.hxx>
-#include "document.hxx"
-#include "xestream.hxx"
-#include "xistream.hxx"
-#include "xlroot.hxx"
-#include "xltools.hxx"
+#include <document.hxx>
+#include <xistream.hxx>
+#include <xlroot.hxx>
+#include <xltools.hxx>
 
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::UNO_QUERY;
@@ -58,7 +56,7 @@ double lclGetTwipsScale( MapUnit eMapUnit )
 }
 
 /** Calculates a drawing layer X position (in twips) from an object column position. */
-long lclGetXFromCol( ScDocument& rDoc, SCTAB nScTab, sal_uInt16 nXclCol, sal_uInt16 nOffset, double fScale )
+long lclGetXFromCol( const ScDocument& rDoc, SCTAB nScTab, sal_uInt16 nXclCol, sal_uInt16 nOffset, double fScale )
 {
     SCCOL nScCol = static_cast< SCCOL >( nXclCol );
     return static_cast< long >( fScale * (rDoc.GetColOffset( nScCol, nScTab ) +
@@ -66,7 +64,7 @@ long lclGetXFromCol( ScDocument& rDoc, SCTAB nScTab, sal_uInt16 nXclCol, sal_uIn
 }
 
 /** Calculates a drawing layer Y position (in twips) from an object row position. */
-long lclGetYFromRow( ScDocument& rDoc, SCTAB nScTab, sal_uInt16 nXclRow, sal_uInt16 nOffset, double fScale )
+long lclGetYFromRow( const ScDocument& rDoc, SCTAB nScTab, sal_uInt16 nXclRow, sal_uInt16 nOffset, double fScale )
 {
     SCROW nScRow = static_cast< SCROW >( nXclRow );
     return static_cast< long >( fScale * (rDoc.GetRowOffset( nScRow, nScTab ) +
@@ -75,7 +73,7 @@ long lclGetYFromRow( ScDocument& rDoc, SCTAB nScTab, sal_uInt16 nXclRow, sal_uIn
 
 /** Calculates an object column position from a drawing layer X position (in twips). */
 void lclGetColFromX(
-        ScDocument& rDoc, SCTAB nScTab, sal_uInt16& rnXclCol,
+        const ScDocument& rDoc, SCTAB nScTab, sal_uInt16& rnXclCol,
         sal_uInt16& rnOffset, sal_uInt16 nXclStartCol, sal_uInt16 nXclMaxCol,
         long& rnStartW, long nX, double fScale )
 {
@@ -94,7 +92,7 @@ void lclGetColFromX(
 
 /** Calculates an object row position from a drawing layer Y position (in twips). */
 void lclGetRowFromY(
-        ScDocument& rDoc, SCTAB nScTab, sal_uInt32& rnXclRow,
+        const ScDocument& rDoc, SCTAB nScTab, sal_uInt32& rnXclRow,
         sal_uInt32& rnOffset, sal_uInt32 nXclStartRow, sal_uInt32 nXclMaxRow,
         long& rnStartH, long nY, double fScale )
 {
@@ -102,12 +100,12 @@ void lclGetRowFromY(
     long nTwipsY = static_cast< long >( nY / fScale + 0.5 );
     long nRowH = 0;
     bool bFound = false;
-    for( SCROW nRow = static_cast< SCROW >( nXclStartRow ); static_cast<unsigned>(nRow) <= nXclMaxRow; ++nRow )
+    for( sal_uInt32 nRow = nXclStartRow; nRow <= nXclMaxRow; ++nRow )
     {
         nRowH = rDoc.GetRowHeight( nRow, nScTab );
         if( rnStartH + nRowH > nTwipsY )
         {
-            rnXclRow = static_cast< sal_uInt32 >( nRow );
+            rnXclRow = nRow;
             bFound = true;
             break;
         }
@@ -122,8 +120,8 @@ void lclGetRowFromY(
 void lclMirrorRectangle( tools::Rectangle& rRect )
 {
     long nLeft = rRect.Left();
-    rRect.Left() = -rRect.Right();
-    rRect.Right() = -nLeft;
+    rRect.SetLeft( -rRect.Right() );
+    rRect.SetRight( -nLeft );
 }
 
 sal_uInt16 lclGetEmbeddedScale( long nPageSize, sal_Int32 nPageScale, long nPos, double fPosScale )
@@ -146,10 +144,10 @@ tools::Rectangle XclObjAnchor::GetRect( const XclRoot& rRoot, SCTAB nScTab, MapU
     ScDocument& rDoc = rRoot.GetDoc();
     double fScale = lclGetTwipsScale( eMapUnit );
     tools::Rectangle aRect(
-        lclGetXFromCol( rDoc, nScTab, maFirst.mnCol, mnLX, fScale ),
-        lclGetYFromRow( rDoc, nScTab, maFirst.mnRow, mnTY, fScale ),
-        lclGetXFromCol( rDoc, nScTab, maLast.mnCol,  mnRX + 1, fScale ),
-        lclGetYFromRow( rDoc, nScTab, maLast.mnRow,  mnBY, fScale ) );
+        lclGetXFromCol(rDoc, nScTab, std::min<SCCOL>(maFirst.mnCol, rDoc.MaxCol()), mnLX, fScale),
+        lclGetYFromRow(rDoc, nScTab, std::min<SCROW>(maFirst.mnRow, rDoc.MaxRow()), mnTY, fScale),
+        lclGetXFromCol(rDoc, nScTab, std::min<SCCOL>(maLast.mnCol, rDoc.MaxCol()),  mnRX + 1, fScale),
+        lclGetYFromRow(rDoc, nScTab, std::min<SCROW>(maLast.mnRow, rDoc.MaxRow()),  mnBY, fScale));
 
     // adjust coordinates in mirrored sheets
     if( rDoc.IsLayoutRTL( nScTab ) )
@@ -298,10 +296,10 @@ Reference< XControlModel > XclControlHelper::GetControlModel( Reference< XShape 
 
 namespace {
 
-static const struct
+const struct
 {
-    const sal_Char*     mpcListenerType;
-    const sal_Char*     mpcEventMethod;
+    const char*     mpcListenerType;
+    const char*     mpcEventMethod;
 }
 spTbxListenerData[] =
 {
@@ -330,7 +328,7 @@ bool XclControlHelper::FillMacroDescriptor( ScriptEventDescriptor& rDescriptor,
 }
 
 OUString XclControlHelper::ExtractFromMacroDescriptor(
-        const ScriptEventDescriptor& rDescriptor, XclTbxEventType eEventType, SfxObjectShell* /*pShell*/ )
+        const ScriptEventDescriptor& rDescriptor, XclTbxEventType eEventType )
 {
     if( (!rDescriptor.ScriptCode.isEmpty()) &&
             rDescriptor.ScriptType.equalsIgnoreAsciiCase("Script") &&

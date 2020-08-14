@@ -20,11 +20,11 @@
 #ifndef INCLUDED_OSL_PROFILE_H
 #define INCLUDED_OSL_PROFILE_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
-#include <rtl/ustring.h>
-#include <sal/saldllapi.h>
-#include <sal/types.h>
+#include "rtl/ustring.h"
+#include "sal/saldllapi.h"
+#include "sal/types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,7 +33,7 @@ extern "C" {
 typedef sal_uInt32 oslProfileOption;
 
 #define osl_Profile_DEFAULT     0x0000
-#define osl_Profile_SYSTEM      0x0001    /* use system depended functinality */
+#define osl_Profile_SYSTEM      0x0001    /* use system depended functionality */
 #define osl_Profile_READLOCK    0x0002    /* lock file for reading            */
 #define osl_Profile_WRITELOCK   0x0004    /* lock file for writing            */
 #define osl_Profile_FLUSHWRITE  0x0010    /* writing only with flush          */
@@ -51,7 +51,7 @@ SAL_DLLPUBLIC oslProfile SAL_CALL osl_openProfile(
 
 /** Deprecated API.
     Close the opened profile an flush all data to the disk.
-    @param Profile handle to a opened profile.
+    @param Profile handle to an opened profile.
     @deprecated
 */
 SAL_DLLPUBLIC sal_Bool SAL_CALL osl_closeProfile(
@@ -123,7 +123,7 @@ SAL_DLLPUBLIC sal_Bool SAL_CALL osl_removeProfileEntry(
 
 /** Deprecated API.
     Get all entries belonging to the specified section.
-    @returns Pointer to a array of pointers.
+    @returns Pointer to an array of pointers.
     @deprecated
 */
 SAL_DLLPUBLIC sal_uInt32 SAL_CALL osl_getProfileSectionEntries(
@@ -132,7 +132,7 @@ SAL_DLLPUBLIC sal_uInt32 SAL_CALL osl_getProfileSectionEntries(
 
 /** Deprecated API.
     Get all section entries
-    @retval Pointer to a array of pointers.
+    @retval Pointer to an array of pointers.
     @deprecated
 */
 SAL_DLLPUBLIC sal_uInt32 SAL_CALL osl_getProfileSections(

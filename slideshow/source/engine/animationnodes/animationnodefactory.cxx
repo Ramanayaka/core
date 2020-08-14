@@ -24,29 +24,29 @@
 #include <com/sun/star/animations/XIterateContainer.hpp>
 #include <com/sun/star/presentation/ShapeAnimationSubType.hpp>
 #include <com/sun/star/presentation/ParagraphTarget.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <basegfx/numeric/ftools.hxx>
+#include <sal/log.hxx>
 
-#include "animationnodefactory.hxx"
+#include <animationnodefactory.hxx>
 #include "paralleltimecontainer.hxx"
 #include "sequentialtimecontainer.hxx"
 #include "propertyanimationnode.hxx"
 #include "animationsetnode.hxx"
 #include "animationpathmotionnode.hxx"
+#include "animationphysicsnode.hxx"
 #include "animationcolornode.hxx"
 #include "animationtransformnode.hxx"
 #include "animationtransitionfilternode.hxx"
 #include "animationaudionode.hxx"
 #include "animationcommandnode.hxx"
 #include "nodetools.hxx"
-#include "tools.hxx"
+#include <tools.hxx>
 
 #include <memory>
 
 using namespace ::com::sun::star;
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 namespace {
 
@@ -133,8 +133,8 @@ public:
         // normalize things, which does the right thing
         // here: the subset is only removed after _the
         // last_ animation node releases the shared ptr.
-        aContext.mpMasterShapeSubset.reset(
-            new ShapeSubset( *aContext.mpMasterShapeSubset ) );
+        aContext.mpMasterShapeSubset =
+            std::make_shared<ShapeSubset>( *aContext.mpMasterShapeSubset );
 
         createChild( xChildNode, aContext );
     }
@@ -233,15 +233,15 @@ bool implCreateIteratedNodes(
                 DocTreeNode::NodeType::LogicalParagraph ) > aTarget.Paragraph,
             "implCreateIteratedNodes(): paragraph index out of range" );
 
-        pTargetSubset.reset(
-            new ShapeSubset(
+        pTargetSubset =
+            std::make_shared<ShapeSubset>(
                 pTargetShape,
                 // retrieve index aTarget.Paragraph of
                 // type PARAGRAPH from this shape
                 rTreeNodeSupplier.getTreeNode(
                     aTarget.Paragraph,
                     DocTreeNode::NodeType::LogicalParagraph ),
-                rContext.maContext.mpSubsettableShapeManager ) );
+                rContext.maContext.mpSubsettableShapeManager );
 
         // iterate target is not the whole shape, but only
         // the selected paragraph - subset _must_ be
@@ -263,9 +263,9 @@ bool implCreateIteratedNodes(
     }
     else
     {
-        pTargetSubset.reset(
-            new ShapeSubset( pTargetShape,
-                             rContext.maContext.mpSubsettableShapeManager ));
+        pTargetSubset =
+            std::make_shared<ShapeSubset>( pTargetShape,
+                             rContext.maContext.mpSubsettableShapeManager );
     }
 
     aContext.mpMasterShapeSubset = pTargetSubset;
@@ -397,22 +397,22 @@ bool implCreateIteratedNodes(
                 if( bParagraphTarget )
                 {
                     // create subsets relative to paragraph subset
-                    aContext.mpMasterShapeSubset.reset(
-                        new ShapeSubset(
+                    aContext.mpMasterShapeSubset =
+                        std::make_shared<ShapeSubset>(
                             pTargetSubset,
                             rTreeNodeSupplier.getSubsetTreeNode(
                                 pTargetSubset->getSubset(),
                                 i,
-                                eIterateNodeType ) ) );
+                                eIterateNodeType ) );
                 }
                 else
                 {
                     // create subsets from main shape
-                    aContext.mpMasterShapeSubset.reset(
-                        new ShapeSubset( pTargetSubset,
+                    aContext.mpMasterShapeSubset =
+                        std::make_shared<ShapeSubset>( pTargetSubset,
                                          rTreeNodeSupplier.getTreeNode(
                                              i,
-                                             eIterateNodeType ) ) );
+                                             eIterateNodeType ) );
                 }
 
                 CloningNodeCreator aCreator( rParent, aContext );
@@ -452,61 +452,66 @@ BaseNodeSharedPtr implCreateAnimationNode(
         return pCreatedNode;
 
     case animations::AnimationNodeType::PAR:
-        pCreatedNode = pCreatedContainer = BaseContainerNodeSharedPtr(
-            new ParallelTimeContainer( xNode, rParent, rContext ) );
+        pCreatedNode = pCreatedContainer =
+            std::make_shared<ParallelTimeContainer>( xNode, rParent, rContext );
         break;
 
     case animations::AnimationNodeType::ITERATE:
         // map iterate container to ParallelTimeContainer.
         // the iterating functionality is to be found
         // below, (see method implCreateIteratedNodes)
-        pCreatedNode = pCreatedContainer = BaseContainerNodeSharedPtr(
-            new ParallelTimeContainer( xNode, rParent, rContext ) );
+        pCreatedNode = pCreatedContainer =
+            std::make_shared<ParallelTimeContainer>( xNode, rParent, rContext );
         break;
 
     case animations::AnimationNodeType::SEQ:
-        pCreatedNode = pCreatedContainer = BaseContainerNodeSharedPtr(
-            new SequentialTimeContainer( xNode, rParent, rContext ) );
+        pCreatedNode = pCreatedContainer =
+            std::make_shared<SequentialTimeContainer>( xNode, rParent, rContext );
         break;
 
     case animations::AnimationNodeType::ANIMATE:
-        pCreatedNode.reset( new PropertyAnimationNode(
-                                xNode, rParent, rContext ) );
+        pCreatedNode = std::make_shared<PropertyAnimationNode>(
+                                xNode, rParent, rContext );
         break;
 
     case animations::AnimationNodeType::SET:
-        pCreatedNode.reset( new AnimationSetNode(
-                                xNode, rParent, rContext ) );
+        pCreatedNode = std::make_shared<AnimationSetNode>(
+                                xNode, rParent, rContext );
         break;
 
     case animations::AnimationNodeType::ANIMATEMOTION:
-        pCreatedNode.reset( new AnimationPathMotionNode(
-                                xNode, rParent, rContext ) );
+        pCreatedNode = std::make_shared<AnimationPathMotionNode>(
+                                xNode, rParent, rContext );
         break;
 
     case animations::AnimationNodeType::ANIMATECOLOR:
-        pCreatedNode.reset( new AnimationColorNode(
-                                xNode, rParent, rContext ) );
+        pCreatedNode = std::make_shared<AnimationColorNode>(
+                                xNode, rParent, rContext );
         break;
 
     case animations::AnimationNodeType::ANIMATETRANSFORM:
-        pCreatedNode.reset( new AnimationTransformNode(
-                                xNode, rParent, rContext ) );
+        pCreatedNode = std::make_shared<AnimationTransformNode>(
+                                xNode, rParent, rContext );
+        break;
+
+    case animations::AnimationNodeType::ANIMATEPHYSICS:
+        pCreatedNode = std::make_shared<AnimationPhysicsNode>(
+                                xNode, rParent, rContext );
         break;
 
     case animations::AnimationNodeType::TRANSITIONFILTER:
-        pCreatedNode.reset( new AnimationTransitionFilterNode(
-                                xNode, rParent, rContext ) );
+        pCreatedNode = std::make_shared<AnimationTransitionFilterNode>(
+                                xNode, rParent, rContext );
         break;
 
     case animations::AnimationNodeType::AUDIO:
-        pCreatedNode.reset( new AnimationAudioNode(
-                                xNode, rParent, rContext ) );
+        pCreatedNode = std::make_shared<AnimationAudioNode>(
+                                xNode, rParent, rContext );
         break;
 
     case animations::AnimationNodeType::COMMAND:
-        pCreatedNode.reset( new AnimationCommandNode(
-                                xNode, rParent, rContext ) );
+        pCreatedNode = std::make_shared<AnimationCommandNode>(
+                                xNode, rParent, rContext );
         break;
 
     default:
@@ -580,7 +585,7 @@ AnimationNodeSharedPtr AnimationNodeFactory::createAnimationNode(
 }
 
 #if defined(DBG_UTIL)
-void AnimationNodeFactory::showTree( AnimationNodeSharedPtr& pRootNode )
+void AnimationNodeFactory::showTree( AnimationNodeSharedPtr const & pRootNode )
 {
     if( pRootNode )
         DEBUG_NODES_SHOWTREE( std::dynamic_pointer_cast<BaseContainerNode>(
@@ -588,7 +593,6 @@ void AnimationNodeFactory::showTree( AnimationNodeSharedPtr& pRootNode )
 }
 #endif
 
-} // namespace internal
 } // namespace slideshow
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -14,10 +14,11 @@ $(eval $(call gb_ExternalProject_register_targets,apache_commons_logging,\
 ))
 
 $(call gb_ExternalProject_get_state_target,apache_commons_logging,build) :
+	$(call gb_Trace_StartRange,apache_commons_logging,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 	ANT_OPTS="$$ANT_OPTS -Dfile.encoding=ISO-8859-1" \
 	$(ICECREAM_RUN) "$(ANT)" \
-		-q \
+		$(if $(verbose),-v,-q) \
 		-f build.xml \
 		-Dbuild.label="build-$(LIBO_VERSION_MAJOR).$(LIBO_VERSION_MINOR).$(LIBO_VERSION_MICRO).$(LIBO_VERSION_PATCH)" \
 		-Dant.build.javac.source=$(JAVA_SOURCE_VER) \
@@ -25,5 +26,6 @@ $(call gb_ExternalProject_get_state_target,apache_commons_logging,build) :
 		$(if $(debug),-Dcompile.debug="true",-Dcompile.debug="false") \
 		compile build-jar \
 	)
+	$(call gb_Trace_EndRange,apache_commons_logging,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

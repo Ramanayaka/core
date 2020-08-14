@@ -17,43 +17,42 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "AccessibleDrawDocumentView.hxx"
+#include <AccessibleDrawDocumentView.hxx>
 #include <com/sun/star/drawing/ShapeCollection.hpp>
-#include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/drawing/XDrawView.hpp>
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/frame/XController.hpp>
-#include <com/sun/star/document/XEventBroadcaster.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
+#include <com/sun/star/accessibility/AccessibleRole.hpp>
+#include <com/sun/star/frame/XController.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/view/XSelectionSupplier.hpp>
+#include <cppuhelper/queryinterface.hxx>
 #include <comphelper/processfactory.hxx>
-#include <rtl/ustring.h>
-#include <sfx2/viewfrm.hxx>
+#include <sal/log.hxx>
+#include <tools/debug.hxx>
 
 #include <svx/AccessibleShape.hxx>
-
+#include <svx/ChildrenManager.hxx>
 #include <svx/svdobj.hxx>
-#include <svx/svdmodel.hxx>
 #include <svx/unoapi.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include "Window.hxx"
 #include <vcl/svapp.hxx>
 
-#include "ViewShell.hxx"
-#include "View.hxx"
-#include "DrawDocShell.hxx"
+#include <ViewShell.hxx>
+#include <View.hxx>
+#include <DrawDocShell.hxx>
 #include <drawdoc.hxx>
 #include <algorithm>
-#include "sdpage.hxx"
-#include "slideshow.hxx"
-#include "anminfo.hxx"
+#include <slideshow.hxx>
+#include <anminfo.hxx>
+#include <AccessiblePageShape.hxx>
 
-#include "accessibility.hrc"
-#include "sdresid.hxx"
+#include <strings.hrc>
+#include <sdresid.hxx>
 #include <osl/mutex.hxx>
 
 using namespace ::com::sun::star;
@@ -61,6 +60,8 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::accessibility;
 
 namespace accessibility {
+
+namespace {
 
 struct XShapePosCompareHelper
 {
@@ -76,6 +77,9 @@ struct XShapePosCompareHelper
             return false;
     }
 };
+
+}
+
 //=====  internal  ============================================================
 
 AccessibleDrawDocumentView::AccessibleDrawDocumentView (
@@ -84,8 +88,7 @@ AccessibleDrawDocumentView::AccessibleDrawDocumentView (
     const uno::Reference<frame::XController>& rxController,
     const uno::Reference<XAccessible>& rxParent)
     : AccessibleDocumentViewBase (pSdWindow, pViewShell, rxController, rxParent),
-      mpSdViewSh( pViewShell ),
-      mpChildrenManager (nullptr)
+      mpSdViewSh( pViewShell )
 {
     UpdateAccessibleName();
 }
@@ -104,10 +107,10 @@ void AccessibleDrawDocumentView::Init()
     uno::Reference<drawing::XShapes> xShapeList;
     uno::Reference<drawing::XDrawView> xView (mxController, uno::UNO_QUERY);
     if (xView.is())
-        xShapeList.set( xView->getCurrentPage(), uno::UNO_QUERY);
+        xShapeList = xView->getCurrentPage();
 
     // Create the children manager.
-    mpChildrenManager = new ChildrenManager(this, xShapeList, maShapeTreeInfo, *this);
+    mpChildrenManager.reset(new ChildrenManager(this, xShapeList, maShapeTreeInfo, *this));
 
     rtl::Reference<AccessiblePageShape> xPage(CreateDrawPageShape());
     if (xPage.is())
@@ -128,7 +131,7 @@ void AccessibleDrawDocumentView::ViewForwarderChanged()
 }
 
 /**  The page shape is created on every call at the moment (provided that
-     every thing goes well).
+     everything goes well).
 */
 rtl::Reference<AccessiblePageShape> AccessibleDrawDocumentView::CreateDrawPageShape()
 {
@@ -215,18 +218,16 @@ uno::Reference<XAccessible> SAL_CALL
 
     // Create a copy of the pointer to the children manager and release the
     // mutex before calling any of its methods.
-    ChildrenManager* pChildrenManager = mpChildrenManager;
+    ChildrenManager* pChildrenManager = mpChildrenManager.get();
     aGuard.clear();
 
     // Forward request to children manager.
-    if (pChildrenManager != nullptr)
-    {
-        return pChildrenManager->GetChild (nIndex);
-    }
-    else
+    if (pChildrenManager == nullptr)
         throw lang::IndexOutOfBoundsException (
             "no accessible child with index " + OUString::number(nIndex),
             static_cast<uno::XWeak*>(this));
+
+    return pChildrenManager->GetChild (nIndex);
 }
 
 OUString SAL_CALL
@@ -304,8 +305,7 @@ void SAL_CALL
             // Inform the children manager to forget all children and give
             // him the new ones.
             mpChildrenManager->ClearAccessibleShapeList ();
-            mpChildrenManager->SetShapeList (uno::Reference<drawing::XShapes> (
-                xView->getCurrentPage(), uno::UNO_QUERY));
+            mpChildrenManager->SetShapeList (xView->getCurrentPage());
 
             rtl::Reference<AccessiblePageShape> xPage(CreateDrawPageShape ());
             if (xPage.is())
@@ -352,8 +352,7 @@ void SAL_CALL
                     xSlide = xSlideController->getCurrentSlide();
                     if (xSlide.is())
                     {
-                        mpChildrenManager->SetShapeList (uno::Reference<drawing::XShapes> (
-                                    xSlide, uno::UNO_QUERY));
+                        mpChildrenManager->SetShapeList (xSlide);
                     }
                 }
             }
@@ -377,23 +376,18 @@ void SAL_CALL
 OUString SAL_CALL
     AccessibleDrawDocumentView::getImplementationName()
 {
-    return OUString("AccessibleDrawDocumentView");
+    return "AccessibleDrawDocumentView";
 }
 
 css::uno::Sequence< OUString> SAL_CALL
     AccessibleDrawDocumentView::getSupportedServiceNames()
 {
     ThrowIfDisposed();
-    // Get list of supported service names from base class...
+    const css::uno::Sequence<OUString> vals { "com.sun.star.drawing.AccessibleDrawDocumentView" };
     uno::Sequence<OUString> aServiceNames =
         AccessibleDocumentViewBase::getSupportedServiceNames();
-    sal_Int32 nCount (aServiceNames.getLength());
 
-    // ...and add additional names.
-    aServiceNames.realloc (nCount + 1);
-    aServiceNames[nCount] = "com.sun.star.drawing.AccessibleDrawDocumentView";
-
-    return aServiceNames;
+    return comphelper::concatSequences(aServiceNames, vals);
 }
 
 //=====  XInterface  ==========================================================
@@ -439,7 +433,7 @@ uno::Sequence< sal_Int32 > SAL_CALL
     {
         return aRet;
     }
-    AccessibleShape* pAcc = AccessibleShape::getImplementation( xAccContent );
+    AccessibleShape* pAcc = comphelper::getUnoTunnelImplementation<AccessibleShape>( xAccContent );
     if ( !pAcc )
     {
         return aRet;
@@ -479,19 +473,14 @@ uno::Sequence< sal_Int32 > SAL_CALL
     }
     std::sort( vXShapes.begin(), vXShapes.end(), XShapePosCompareHelper() );
     //get the index of the selected object in the group
-    std::vector< uno::Reference<drawing::XShape> >::iterator aIter;
-    //we start counting position from 1
-    sal_Int32 nPos = 1;
-    for ( aIter = vXShapes.begin(); aIter != vXShapes.end(); ++aIter, nPos++ )
+    auto aIter = std::find_if(vXShapes.begin(), vXShapes.end(),
+        [&xCurShape](const uno::Reference<drawing::XShape>& rxShape) { return rxShape.get() == xCurShape.get(); });
+    if (aIter != vXShapes.end())
     {
-        if ( (*aIter).get() == xCurShape.get() )
-        {
-            sal_Int32* pArray = aRet.getArray();
-            pArray[0] = 1; //it should be 1 based, not 0 based.
-            pArray[1] = vXShapes.size();
-            pArray[2] = nPos;
-            break;
-        }
+        sal_Int32* pArray = aRet.getArray();
+        pArray[0] = 1; //it should be 1 based, not 0 based.
+        pArray[1] = vXShapes.size();
+        pArray[2] = static_cast<sal_Int32>(std::distance(vXShapes.begin(), aIter)) + 1; //we start counting position from 1
     }
     return aRet;
 }
@@ -508,7 +497,7 @@ OUString AccessibleDrawDocumentView::getObjectLink( const uno::Any& rAny )
     {
         return aRet;
     }
-    AccessibleShape* pAcc = AccessibleShape::getImplementation( xAccContent );
+    AccessibleShape* pAcc = comphelper::getUnoTunnelImplementation<AccessibleShape>( xAccContent );
     if ( !pAcc )
     {
         return aRet;
@@ -577,58 +566,6 @@ OUString AccessibleDrawDocumentView::CreateAccessibleName()
     return sName;
 }
 
-/** Create a description for this view.  Use the model's description or URL
-    if a description is not available.
-*/
-OUString
-    AccessibleDrawDocumentView::CreateAccessibleDescription()
-{
-    OUString sDescription;
-
-    uno::Reference<lang::XServiceInfo> xInfo (mxController, uno::UNO_QUERY);
-    if (xInfo.is())
-    {
-        uno::Sequence< OUString > aServices( xInfo->getSupportedServiceNames() );
-        OUString sFirstService = aServices[0];
-        if ( sFirstService == "com.sun.star.drawing.DrawingDocumentDrawView" )
-        {
-            if( aServices.getLength() >= 2 && aServices[1] == "com.sun.star.presentation.PresentationView")
-            {
-                SolarMutexGuard aGuard;
-
-                sDescription = SdResId(SID_SD_A11Y_I_DRAWVIEW_D);
-            }
-            else
-            {
-                SolarMutexGuard aGuard;
-
-                sDescription = SdResId(SID_SD_A11Y_D_DRAWVIEW_D);
-            }
-        }
-        else if ( sFirstService == "com.sun.star.presentation.NotesView" )
-        {
-            SolarMutexGuard aGuard;
-
-            sDescription = SdResId(SID_SD_A11Y_I_NOTESVIEW_D);
-        }
-        else if ( sFirstService == "com.sun.star.presentation.HandoutView" )
-        {
-            SolarMutexGuard aGuard;
-
-            sDescription = SdResId(SID_SD_A11Y_I_HANDOUTVIEW_D);
-        }
-        else
-        {
-            sDescription = sFirstService;
-        }
-    }
-    else
-    {
-        sDescription = "Accessible Draw Document";
-    }
-    return sDescription;
-}
-
 /** Return selection state of specified child
 */
 bool
@@ -649,7 +586,7 @@ bool
 
         if( xShapes.is() )
         {
-            AccessibleShape* pAcc = AccessibleShape::getImplementation( getAccessibleChild( nAccessibleChildIndex ) );
+            AccessibleShape* pAcc = comphelper::getUnoTunnelImplementation<AccessibleShape>( getAccessibleChild( nAccessibleChildIndex ) );
 
             if( pAcc )
             {
@@ -678,78 +615,78 @@ void
     const SolarMutexGuard aSolarGuard;
     uno::Reference< view::XSelectionSupplier >  xSel( mxController, uno::UNO_QUERY );
 
-    if( xSel.is() )
+    if( !xSel.is() )
+        return;
+
+    uno::Any aAny;
+
+    if( ACCESSIBLE_SELECTION_CHILD_ALL == nAccessibleChildIndex )
     {
-        uno::Any aAny;
+        // Select or deselect all children.
 
-        if( ACCESSIBLE_SELECTION_CHILD_ALL == nAccessibleChildIndex )
+        if( !bSelect )
+            xSel->select( aAny );
+        else
         {
-            // Select or deselect all children.
+            uno::Reference< drawing::XShapes > xShapes = drawing::ShapeCollection::create(
+                    comphelper::getProcessComponentContext());
 
-            if( !bSelect )
-                xSel->select( aAny );
-            else
+            for(sal_Int32 i = 0, nCount = getAccessibleChildCount(); i < nCount; ++i )
             {
-                uno::Reference< drawing::XShapes > xShapes = drawing::ShapeCollection::create(
-                        comphelper::getProcessComponentContext());
+                AccessibleShape* pAcc = comphelper::getUnoTunnelImplementation<AccessibleShape>( getAccessibleChild( i ) );
 
-                for(sal_Int32 i = 0, nCount = getAccessibleChildCount(); i < nCount; ++i )
-                {
-                    AccessibleShape* pAcc = AccessibleShape::getImplementation( getAccessibleChild( i ) );
+                if( pAcc && pAcc->GetXShape().is() )
+                    xShapes->add( pAcc->GetXShape() );
+            }
 
-                    if( pAcc && pAcc->GetXShape().is() )
-                        xShapes->add( pAcc->GetXShape() );
-                }
-
-                if( xShapes->getCount() )
-                {
-                    xSel->select( Any(xShapes) );
-                }
+            if( xShapes->getCount() )
+            {
+                xSel->select( Any(xShapes) );
             }
         }
-        else if( nAccessibleChildIndex >= 0 )
+    }
+    else if( nAccessibleChildIndex >= 0 )
+    {
+        // Select or deselect only the child with index
+        // nAccessibleChildIndex.
+
+        AccessibleShape* pAcc = comphelper::getUnoTunnelImplementation<AccessibleShape>(
+            getAccessibleChild( nAccessibleChildIndex ));
+
+        // Add or remove the shape that is made accessible from the
+        // selection of the controller.
+        if( pAcc )
         {
-            // Select or deselect only the child with index
-            // nAccessibleChildIndex.
+            uno::Reference< drawing::XShape > xShape( pAcc->GetXShape() );
 
-            AccessibleShape* pAcc = AccessibleShape::getImplementation(
-                getAccessibleChild( nAccessibleChildIndex ));
-
-            // Add or remove the shape that is made accessible from the
-            // selection of the controller.
-            if( pAcc )
+            if( xShape.is() )
             {
-                uno::Reference< drawing::XShape > xShape( pAcc->GetXShape() );
+                uno::Reference< drawing::XShapes >  xShapes;
+                bool                            bFound = false;
 
-                if( xShape.is() )
+                aAny = xSel->getSelection();
+                aAny >>= xShapes;
+
+                // Search shape to be selected in current selection.
+                if (xShapes.is())
                 {
-                    uno::Reference< drawing::XShapes >  xShapes;
-                    bool                            bFound = false;
-
-                    aAny = xSel->getSelection();
-                    aAny >>= xShapes;
-
-                    // Search shape to be selected in current selection.
-                    if (xShapes.is())
-                    {
-                        sal_Int32 nCount = xShapes->getCount();
-                        for (sal_Int32 i=0; ( i < nCount ) && !bFound; ++i )
-                            if( xShapes->getByIndex( i ) == xShape )
-                                bFound = true;
-                    }
-                    else
-                        // Create an empty selection to add the shape to.
-                        xShapes = drawing::ShapeCollection::create(
-                                comphelper::getProcessComponentContext());
-
-                    // Update the selection.
-                    if( !bFound && bSelect )
-                        xShapes->add( xShape );
-                    else if( bFound && !bSelect )
-                        xShapes->remove( xShape );
-
-                    xSel->select( Any(xShapes) );
+                    sal_Int32 nCount = xShapes->getCount();
+                    for (sal_Int32 i=0; ( i < nCount ) && !bFound; ++i )
+                        if( xShapes->getByIndex( i ) == xShape )
+                            bFound = true;
                 }
+                else
+                    // Create an empty selection to add the shape to.
+                    xShapes = drawing::ShapeCollection::create(
+                            comphelper::getProcessComponentContext());
+
+                // Update the selection.
+                if( !bFound && bSelect )
+                    xShapes->add( xShape );
+                else if( bFound && !bSelect )
+                    xShapes->remove( xShape );
+
+                xSel->select( Any(xShapes) );
             }
         }
     }
@@ -757,23 +694,23 @@ void
 
 void AccessibleDrawDocumentView::Activated()
 {
-    if (mpChildrenManager != nullptr)
+    if (mpChildrenManager == nullptr)
+        return;
+
+    bool bChange = false;
+    // When none of the children has the focus then claim it for the
+    // view.
+    if ( ! mpChildrenManager->HasFocus())
     {
-        bool bChange = false;
-        // When none of the children has the focus then claim it for the
-        // view.
-        if ( ! mpChildrenManager->HasFocus())
-        {
-            SetState (AccessibleStateType::FOCUSED);
-            bChange = true;
-        }
-        else
-            ResetState (AccessibleStateType::FOCUSED);
+        SetState (AccessibleStateType::FOCUSED);
+        bChange = true;
+    }
+    else
+        ResetState (AccessibleStateType::FOCUSED);
     mpChildrenManager->UpdateSelection();
     // if the child gets focus in UpdateSelection(), needs to reset the focus on document.
     if (mpChildrenManager->HasFocus() && bChange)
         ResetState (AccessibleStateType::FOCUSED);
-    }
 }
 
 void AccessibleDrawDocumentView::Deactivated()
@@ -785,12 +722,7 @@ void AccessibleDrawDocumentView::Deactivated()
 
 void AccessibleDrawDocumentView::impl_dispose()
 {
-    if (mpChildrenManager != nullptr)
-    {
-        delete mpChildrenManager;
-        mpChildrenManager = nullptr;
-    }
-
+    mpChildrenManager.reset();
     AccessibleDocumentViewBase::impl_dispose();
 }
 
@@ -799,174 +731,16 @@ void AccessibleDrawDocumentView::impl_dispose()
 */
 void SAL_CALL AccessibleDrawDocumentView::disposing()
 {
-
     // Release resources.
-    if (mpChildrenManager != nullptr)
-    {
-        delete mpChildrenManager;
-        mpChildrenManager = nullptr;
-    }
+    mpChildrenManager.reset();
 
     // Forward call to base classes.
     AccessibleDocumentViewBase::disposing ();
 }
 
-css::uno::Sequence< css::uno::Any >
-        SAL_CALL AccessibleDrawDocumentView::getAccFlowTo(const css::uno::Any& rAny, sal_Int32 nType)
-{
-    SolarMutexGuard g;
-
-    const sal_Int32 SPELLCHECKFLOWTO = 1;
-    const sal_Int32 FINDREPLACEFLOWTO = 2;
-    if ( nType == SPELLCHECKFLOWTO )
-    {
-        uno::Reference< css::drawing::XShape > xShape;
-        rAny >>= xShape;
-        if ( mpChildrenManager && xShape.is() )
-        {
-            uno::Reference < XAccessible > xAcc = mpChildrenManager->GetChild(xShape);
-            uno::Reference < XAccessibleSelection > xAccSelection( xAcc, uno::UNO_QUERY );
-            if ( xAccSelection.is() )
-            {
-                if ( xAccSelection->getSelectedAccessibleChildCount() )
-                {
-                    uno::Reference < XAccessible > xSel = xAccSelection->getSelectedAccessibleChild( 0 );
-                    if ( xSel.is() )
-                    {
-                        uno::Reference < XAccessibleContext > xSelContext( xSel->getAccessibleContext() );
-                        if ( xSelContext.is() )
-                        {
-                            //if in sw we find the selected paragraph here
-                            if ( xSelContext->getAccessibleRole() == AccessibleRole::PARAGRAPH )
-                            {
-                                uno::Sequence<uno::Any> aRet( 1 );
-                                aRet[0] <<= xSel;
-                                return aRet;
-                            }
-                        }
-                    }
-                }
-            }
-            uno::Reference<XAccessible> xPara = GetSelAccContextInTable();
-            if ( xPara.is() )
-            {
-                uno::Sequence<uno::Any> aRet( 1 );
-                aRet[0] <<= xPara;
-                return aRet;
-            }
-        }
-        else
-        {
-            goto Rt;
-        }
-    }
-    else if ( nType == FINDREPLACEFLOWTO )
-    {
-        sal_Int32 nChildCount = getSelectedAccessibleChildCount();
-        if ( nChildCount )
-        {
-            uno::Reference < XAccessible > xSel = getSelectedAccessibleChild( 0 );
-            if ( xSel.is() )
-            {
-                uno::Reference < XAccessibleSelection > xAccChildSelection( xSel, uno::UNO_QUERY );
-                if ( xAccChildSelection.is() )
-                {
-                    if ( xAccChildSelection->getSelectedAccessibleChildCount() )
-                    {
-                        uno::Reference < XAccessible > xChildSel = xAccChildSelection->getSelectedAccessibleChild( 0 );
-                        if ( xChildSel.is() )
-                        {
-                            uno::Reference < XAccessibleContext > xChildSelContext( xChildSel->getAccessibleContext() );
-                            if ( xChildSelContext.is() &&
-                                xChildSelContext->getAccessibleRole() == AccessibleRole::PARAGRAPH )
-                            {
-                                uno::Sequence<uno::Any> aRet( 1 );
-                                aRet[0] <<= xChildSel;
-                                return aRet;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        else
-        {
-            uno::Reference<XAccessible> xPara = GetSelAccContextInTable();
-            if ( xPara.is() )
-            {
-                uno::Sequence<uno::Any> aRet( 1 );
-                aRet[0] <<= xPara;
-                return aRet;
-            }
-        }
-    }
-
-Rt:
-    css::uno::Sequence< uno::Any> aRet;
-    return aRet;
-}
-uno::Reference<XAccessible> AccessibleDrawDocumentView::GetSelAccContextInTable()
-{
-    uno::Reference<XAccessible> xRet;
-    sal_Int32 nCount = mpChildrenManager ? mpChildrenManager->GetChildCount() : 0;
-    if ( nCount )
-    {
-        for ( sal_Int32 i = 0; i < nCount; i++ )
-        {
-            try
-            {
-                uno::Reference<XAccessible> xObj = mpChildrenManager->GetChild(i);
-                if ( xObj.is() )
-                {
-                    uno::Reference<XAccessibleContext> xObjContext( xObj, uno::UNO_QUERY );
-                    if ( xObjContext.is() && xObjContext->getAccessibleRole() == AccessibleRole::TABLE )
-                    {
-                        uno::Reference<XAccessibleSelection> xObjSelection( xObj, uno::UNO_QUERY );
-                        if ( xObjSelection.is() && xObjSelection->getSelectedAccessibleChildCount() )
-                        {
-                            uno::Reference<XAccessible> xCell = xObjSelection->getSelectedAccessibleChild(0);
-                            if ( xCell.is() )
-                            {
-                                uno::Reference<XAccessibleSelection> xCellSel( xCell, uno::UNO_QUERY );
-                                if ( xCellSel.is() && xCellSel->getSelectedAccessibleChildCount() )
-                                {
-                                    uno::Reference<XAccessible> xPara = xCellSel->getSelectedAccessibleChild( 0 );
-                                    if ( xPara.is() )
-                                    {
-                                        uno::Reference<XAccessibleContext> xParaContext( xPara, uno::UNO_QUERY );
-                                        if ( xParaContext.is() &&
-                                            xParaContext->getAccessibleRole() == AccessibleRole::PARAGRAPH )
-                                        {
-                                            xRet = xPara;
-                                            return xRet;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            catch (const lang::IndexOutOfBoundsException&)
-            {
-                uno::Reference<XAccessible> xEmpty;
-                return xEmpty;
-            }
-            catch (const uno::RuntimeException&)
-            {
-                uno::Reference<XAccessible> xEmpty;
-                return xEmpty;
-            }
-        }
-    }
-
-    return xRet;
-}
-
 void AccessibleDrawDocumentView::UpdateAccessibleName()
 {
-    OUString sNewName (CreateAccessibleName());
-    sNewName += ": ";
+    OUString sNewName (CreateAccessibleName() + ": ");
 
     // Add the number of the current slide.
     uno::Reference<drawing::XDrawView> xView (mxController, uno::UNO_QUERY);
@@ -991,11 +765,10 @@ void AccessibleDrawDocumentView::UpdateAccessibleName()
     Reference<drawing::XDrawPagesSupplier> xPagesSupplier (mxModel, UNO_QUERY);
     if (xPagesSupplier.is())
     {
-        Reference<container::XIndexAccess> xPages (xPagesSupplier->getDrawPages(), UNO_QUERY);
+        Reference<container::XIndexAccess> xPages = xPagesSupplier->getDrawPages();
         if (xPages.is())
         {
-            sNewName += " / ";
-            sNewName += OUString::number(xPages->getCount());
+            sNewName += " / " + OUString::number(xPages->getCount());
         }
     }
 

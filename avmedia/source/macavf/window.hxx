@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_MACAVF_WINDOW_HXX
-#define INCLUDED_AVMEDIA_SOURCE_MACAVF_WINDOW_HXX
+#pragma once
 
 #include "macavfcommon.hxx"
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/interfacecontainer.h>
 
-#include "com/sun/star/media/XPlayerWindow.hpp"
+#include <com/sun/star/media/XPlayerWindow.hpp>
 
 
 @interface MyMediaView : NSView
@@ -34,7 +33,7 @@
 - (void) play;
 @end
 
-namespace avmedia { namespace macavf {
+namespace avmedia::macavf {
 
 class Player;
 
@@ -45,8 +44,7 @@ class Window
 {
 public:
 
-            Window( const css::uno::Reference< css::lang::XMultiServiceFactory >& i_rxMgr,
-                    Player& i_rPlayer,
+            Window( Player& i_rPlayer,
                     NSView* i_pParentView
                     );
     virtual ~Window() override;
@@ -85,15 +83,13 @@ public:
     virtual void SAL_CALL removeEventListener( const css::uno::Reference< css::lang::XEventListener >& aListener ) override;
 
     // XServiceInfo
-    virtual ::rtl::OUString SAL_CALL getImplementationName(  ) override;
-    virtual sal_Bool SAL_CALL supportsService( const ::rtl::OUString& ServiceName ) override;
-    virtual css::uno::Sequence< ::rtl::OUString > SAL_CALL getSupportedServiceNames(  ) override;
+    virtual OUString SAL_CALL getImplementationName(  ) override;
+    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
     virtual bool handleObservation( NSString* pKeyPath ) override;
 
 private:
-
-    css::uno::Reference< css::lang::XMultiServiceFactory > mxMgr;
 
     ::osl::Mutex                                maMutex;
     ::cppu::OMultiTypeInterfaceContainerHelper  maListeners;
@@ -107,9 +103,6 @@ private:
     void                                        ImplLayoutVideoWindow();
 };
 
-} // namespace macavf
-} // namespace avmedia
-
-#endif // INCLUDED_AVMEDIA_SOURCE_MACAVF_WINDOW_HXX
+} // namespace avmedia::macavf
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,7 +22,6 @@
 
 #include <editeng/unoviwou.hxx>
 #include <editeng/outliner.hxx>
-#include <editeng/editeng.hxx>
 
 SvxDrawOutlinerViewForwarder::SvxDrawOutlinerViewForwarder( OutlinerView& rOutl ) :
     mrOutlinerView ( rOutl ), maTextShapeTopLeft()
@@ -51,34 +50,6 @@ bool SvxDrawOutlinerViewForwarder::IsValid() const
     return true;
 }
 
-tools::Rectangle SvxDrawOutlinerViewForwarder::GetVisArea() const
-{
-    OutputDevice* pOutDev = mrOutlinerView.GetWindow();
-
-    if( pOutDev )
-    {
-        tools::Rectangle aVisArea = mrOutlinerView.GetVisArea();
-
-        Point aTextOffset( GetTextOffset() );
-        aVisArea.Move( aTextOffset.X(), aTextOffset.Y() );
-
-        // figure out map mode from edit engine
-        Outliner* pOutliner = mrOutlinerView.GetOutliner();
-
-        if( pOutliner )
-        {
-            MapMode aMapMode(pOutDev->GetMapMode());
-            aVisArea = OutputDevice::LogicToLogic( aVisArea,
-                                                   pOutliner->GetRefMapMode(),
-                                                   aMapMode.GetMapUnit() );
-            aMapMode.SetOrigin(Point());
-            return pOutDev->LogicToPixel( aVisArea, aMapMode );
-        }
-    }
-
-    return tools::Rectangle();
-}
-
 Point SvxDrawOutlinerViewForwarder::LogicToPixel( const Point& rPoint, const MapMode& rMapMode ) const
 {
     OutputDevice* pOutDev = mrOutlinerView.GetWindow();
@@ -88,12 +59,12 @@ Point SvxDrawOutlinerViewForwarder::LogicToPixel( const Point& rPoint, const Map
         Point aPoint1( rPoint );
         Point aTextOffset( GetTextOffset() );
 
-        aPoint1.X() += aTextOffset.X();
-        aPoint1.Y() += aTextOffset.Y();
+        aPoint1.AdjustX(aTextOffset.X() );
+        aPoint1.AdjustY(aTextOffset.Y() );
 
         MapMode aMapMode(pOutDev->GetMapMode());
         Point aPoint2( OutputDevice::LogicToLogic( aPoint1, rMapMode,
-                                                   aMapMode.GetMapUnit() ) );
+                                               MapMode(aMapMode.GetMapUnit())));
         aMapMode.SetOrigin(Point());
         return pOutDev->LogicToPixel( aPoint2, aMapMode );
     }
@@ -111,12 +82,12 @@ Point SvxDrawOutlinerViewForwarder::PixelToLogic( const Point& rPoint, const Map
         aMapMode.SetOrigin(Point());
         Point aPoint1( pOutDev->PixelToLogic( rPoint, aMapMode ) );
         Point aPoint2( OutputDevice::LogicToLogic( aPoint1,
-                                                   aMapMode.GetMapUnit(),
+                                               MapMode(aMapMode.GetMapUnit()),
                                                    rMapMode ) );
         Point aTextOffset( GetTextOffset() );
 
-        aPoint2.X() -= aTextOffset.X();
-        aPoint2.Y() -= aTextOffset.Y();
+        aPoint2.AdjustX( -(aTextOffset.X()) );
+        aPoint2.AdjustY( -(aTextOffset.Y()) );
 
         return aPoint2;
     }
@@ -150,7 +121,7 @@ bool SvxDrawOutlinerViewForwarder::Cut()
 
 bool SvxDrawOutlinerViewForwarder::Paste()
 {
-    mrOutlinerView.Paste();
+    mrOutlinerView.PasteSpecial();
     return true;
 }
 

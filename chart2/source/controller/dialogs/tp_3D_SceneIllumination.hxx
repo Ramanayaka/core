@@ -19,49 +19,33 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_DIALOGS_TP_3D_SCENEILLUMINATION_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_DIALOGS_TP_3D_SCENEILLUMINATION_HXX
 
-#include "TimerTriggeredControllerLock.hxx"
-
-#include <com/sun/star/beans/XPropertySet.hpp>
-
-#include <vcl/tabpage.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <svx/dlgctrl.hxx>
+#include <TimerTriggeredControllerLock.hxx>
+#include <vcl/weld.hxx>
 #include <svx/dlgctl3d.hxx>
 
-class SvxColorListBox;
+namespace com::sun::star::beans { class XPropertySet; }
+
+class ColorListBox;
+class LightButton;
 
 namespace chart
 {
 
-class LightButton : public ImageButton
-{
-public:
-    explicit LightButton( vcl::Window* pParent);
-
-    void switchLightOn(bool bOn);
-    bool isLightOn() const { return m_bLightOn;}
-
-private:
-    bool m_bLightOn;
-};
-
 struct LightSourceInfo;
 
-class ThreeD_SceneIllumination_TabPage : public TabPage
+class ThreeD_SceneIllumination_TabPage
 {
 public:
     ThreeD_SceneIllumination_TabPage(
-        vcl::Window* pWindow,
+        weld::Container* pParent, weld::Window* pTopLevel,
         const css::uno::Reference< css::beans::XPropertySet > & xSceneProperties,
         const css::uno::Reference< css::frame::XModel >& xChartModel );
-    virtual ~ThreeD_SceneIllumination_TabPage() override;
-    virtual void dispose() override;
+    ~ThreeD_SceneIllumination_TabPage();
 
 private:
-    DECL_LINK( ClickLightSourceButtonHdl, Button*, void );
-    DECL_LINK( SelectColorHdl, SvxColorListBox&, void );
-    DECL_LINK( ColorDialogHdl, Button*, void );
+    DECL_LINK( ClickLightSourceButtonHdl, weld::Button&, void );
+    DECL_LINK( SelectColorHdl, ColorListBox&, void );
+    DECL_LINK( ColorDialogHdl, weld::Button&, void );
     DECL_LINK( PreviewChangeHdl, SvxLightCtl3D*, void );
     DECL_LINK( PreviewSelectHdl, SvxLightCtl3D*, void );
 
@@ -73,24 +57,7 @@ private:
     void applyLightSourceToModel( sal_uInt32 nLightNumber );
     void applyLightSourcesToModel();
 
-    VclPtr<LightButton> m_pBtn_Light1;
-    VclPtr<LightButton> m_pBtn_Light2;
-    VclPtr<LightButton> m_pBtn_Light3;
-    VclPtr<LightButton> m_pBtn_Light4;
-    VclPtr<LightButton> m_pBtn_Light5;
-    VclPtr<LightButton> m_pBtn_Light6;
-    VclPtr<LightButton> m_pBtn_Light7;
-    VclPtr<LightButton> m_pBtn_Light8;
-
-    VclPtr<SvxColorListBox> m_pLB_LightSource;
-    VclPtr<PushButton>  m_pBtn_LightSource_Color;
-
-    VclPtr<SvxColorListBox> m_pLB_AmbientLight;
-    VclPtr<PushButton>  m_pBtn_AmbientLight_Color;
-
-    VclPtr<SvxLightCtl3D>   m_pCtl_Preview;
-
-    LightSourceInfo* m_pLightSourceInfoList;
+    std::unique_ptr<LightSourceInfo[]> m_pLightSourceInfoList;
 
     css::uno::Reference< css::beans::XPropertySet > m_xSceneProperties;
 
@@ -98,7 +65,29 @@ private:
 
     bool            m_bInCommitToModel;
 
-    css::uno::Reference< css::frame::XModel >       m_xChartModel;
+    css::uno::Reference<css::frame::XModel> m_xChartModel;
+
+    weld::Window* m_pTopLevel;
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    std::unique_ptr<weld::Container> m_xContainer;
+    std::unique_ptr<LightButton> m_xBtn_Light1;
+    std::unique_ptr<LightButton> m_xBtn_Light2;
+    std::unique_ptr<LightButton> m_xBtn_Light3;
+    std::unique_ptr<LightButton> m_xBtn_Light4;
+    std::unique_ptr<LightButton> m_xBtn_Light5;
+    std::unique_ptr<LightButton> m_xBtn_Light6;
+    std::unique_ptr<LightButton> m_xBtn_Light7;
+    std::unique_ptr<LightButton> m_xBtn_Light8;
+    std::unique_ptr<ColorListBox> m_xLB_LightSource;
+    std::unique_ptr<weld::Button> m_xBtn_LightSource_Color;
+    std::unique_ptr<ColorListBox> m_xLB_AmbientLight;
+    std::unique_ptr<weld::Button> m_xBtn_AmbientLight_Color;
+    std::unique_ptr<weld::Scale> m_xHoriScale;
+    std::unique_ptr<weld::Scale> m_xVertScale;
+    std::unique_ptr<weld::Button> m_xBtn_Corner;
+    std::unique_ptr<Svx3DLightControl> m_xPreview;
+    std::unique_ptr<weld::CustomWeld> m_xPreviewWnd;
+    std::unique_ptr<SvxLightCtl3D> m_xCtl_Preview;
 };
 
 } //namespace chart

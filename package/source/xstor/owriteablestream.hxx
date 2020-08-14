@@ -45,22 +45,23 @@
 #include <comphelper/refcountedmutex.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 
-#include <list>
+#include <vector>
 #include <memory>
 
 #include "ocompinstream.hxx"
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class XComponentContext;
-} } } }
+}
 
 namespace package {
-    bool PackageEncryptionDatasEqual( const ::comphelper::SequenceAsHashMap& aHash1, const ::comphelper::SequenceAsHashMap& aHash2 );
+    // all data in aHash1 is contained in aHash2
+    bool PackageEncryptionDataLessOrEqual( const ::comphelper::SequenceAsHashMap& aHash1, const ::comphelper::SequenceAsHashMap& aHash2 );
 }
 
 struct WSInternalData_Impl;
 
-typedef ::std::list< OInputCompStream* > InputStreamsList_Impl;
+typedef ::std::vector< OInputCompStream* > InputStreamsVector_Impl;
 
 struct OStorage_Impl;
 class OWriteStream;
@@ -79,7 +80,7 @@ struct OWriteStream_Impl
     css::uno::Reference< css::io::XStream > m_xCacheStream;
     css::uno::Reference< css::io::XSeekable > m_xCacheSeek;
 
-    InputStreamsList_Impl m_aInputStreamsList;
+    InputStreamsVector_Impl m_aInputStreamsVector;
 
     bool                        m_bHasDataToFlush;    // only modified elements will be sent to the original content
     bool                        m_bFlushed;      // sending the streams is coordinated by the root storage of the package
@@ -161,10 +162,10 @@ public:
 
     void SetToBeCommited() { m_bFlushed = true; }
 
-    bool HasCachedEncryptionData() { return m_bHasCachedEncryptionData; }
+    bool HasCachedEncryptionData() const { return m_bHasCachedEncryptionData; }
     ::comphelper::SequenceAsHashMap& GetCachedEncryptionData() { return m_aEncryptionData; }
 
-    bool IsModified() { return m_bHasDataToFlush || m_bFlushed; }
+    bool IsModified() const { return m_bHasDataToFlush || m_bFlushed; }
 
     bool IsEncrypted();
     void SetDecrypted();
@@ -257,7 +258,7 @@ protected:
 
     void CopyToStreamInternally_Impl( const css::uno::Reference< css::io::XStream >& xStream );
 
-    void ModifyParentUnlockMutex_Impl( ::osl::ResettableMutexGuard& aGuard );
+    void ModifyParentUnlockMutex_Impl(osl::ClearableMutexGuard& aGuard);
 
     void BroadcastTransaction( sal_Int8 nMessage );
 

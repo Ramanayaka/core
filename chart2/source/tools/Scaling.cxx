@@ -17,18 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "Scaling.hxx"
+#include <Scaling.hxx>
 #include <rtl/math.hxx>
-#include "com/sun/star/uno/RuntimeException.hpp"
+#include <com/sun/star/uno/RuntimeException.hpp>
 #include <cppuhelper/supportsservice.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace
 {
 
-static const char lcl_aServiceName_Logarithmic[] = "com.sun.star.chart2.LogarithmicScaling";
-static const char lcl_aServiceName_Exponential[] = "com.sun.star.chart2.ExponentialScaling";
-static const char lcl_aServiceName_Linear[] = "com.sun.star.chart2.LinearScaling";
-static const char lcl_aServiceName_Power[] = "com.sun.star.chart2.PowerScaling";
+const char lcl_aServiceName_Logarithmic[] = "com.sun.star.chart2.LogarithmicScaling";
+const char lcl_aServiceName_Exponential[] = "com.sun.star.chart2.ExponentialScaling";
+const char lcl_aServiceName_Linear[] = "com.sun.star.chart2.LinearScaling";
+const char lcl_aServiceName_Power[] = "com.sun.star.chart2.PowerScaling";
 
 }
 
@@ -56,7 +58,7 @@ LogarithmicScaling::~LogarithmicScaling()
 double SAL_CALL LogarithmicScaling::doScaling( double value )
 {
     double fResult;
-    if( ::rtl::math::isNan( value ) || ::rtl::math::isInf( value ) )
+    if( std::isnan( value ) || std::isinf( value ) )
         ::rtl::math::setNan( & fResult );
     else
         fResult = log( value ) / m_fLogOfBase;
@@ -70,12 +72,12 @@ uno::Reference< XScaling > SAL_CALL LogarithmicScaling::getInverseScaling()
 
 OUString SAL_CALL LogarithmicScaling::getServiceName()
 {
-    return OUString(lcl_aServiceName_Logarithmic);
+    return lcl_aServiceName_Logarithmic;
 }
 
 OUString SAL_CALL LogarithmicScaling::getImplementationName()
 {
-    return OUString(lcl_aServiceName_Logarithmic);
+    return lcl_aServiceName_Logarithmic;
 }
 
 sal_Bool SAL_CALL LogarithmicScaling::supportsService( const OUString& rServiceName )
@@ -105,7 +107,7 @@ ExponentialScaling::~ExponentialScaling()
 double SAL_CALL ExponentialScaling::doScaling( double value )
 {
     double fResult;
-    if( ::rtl::math::isNan( value ) || ::rtl::math::isInf( value ) )
+    if( std::isnan( value ) || std::isinf( value ) )
         ::rtl::math::setNan( & fResult );
     else
         fResult = pow( m_fBase, value );
@@ -119,12 +121,12 @@ uno::Reference< XScaling > SAL_CALL ExponentialScaling::getInverseScaling()
 
 OUString SAL_CALL ExponentialScaling::getServiceName()
 {
-    return OUString(lcl_aServiceName_Exponential);
+    return lcl_aServiceName_Exponential;
 }
 
 OUString SAL_CALL ExponentialScaling::getImplementationName()
 {
-    return OUString(lcl_aServiceName_Exponential);
+    return lcl_aServiceName_Exponential;
 }
 
 sal_Bool SAL_CALL ExponentialScaling::supportsService( const OUString& rServiceName )
@@ -153,7 +155,7 @@ LinearScaling::~LinearScaling()
 double SAL_CALL LinearScaling::doScaling( double value )
 {
     double fResult;
-    if( ::rtl::math::isNan( value ) || ::rtl::math::isInf( value ) )
+    if( std::isnan( value ) || std::isinf( value ) )
         ::rtl::math::setNan( & fResult );
     else
         fResult = m_fOffset + m_fSlope * value;
@@ -172,12 +174,12 @@ uno::Reference< XScaling > SAL_CALL
 
 OUString SAL_CALL LinearScaling::getServiceName()
 {
-    return OUString(lcl_aServiceName_Linear);
+    return lcl_aServiceName_Linear;
 }
 
 OUString SAL_CALL LinearScaling::getImplementationName()
 {
-    return OUString(lcl_aServiceName_Linear) ;
+    return lcl_aServiceName_Linear ;
 }
 
 sal_Bool SAL_CALL LinearScaling::supportsService( const OUString& rServiceName )
@@ -204,7 +206,7 @@ PowerScaling::~PowerScaling()
 double SAL_CALL PowerScaling::doScaling( double value )
 {
     double fResult;
-    if( ::rtl::math::isNan( value ) || ::rtl::math::isInf( value ) )
+    if( std::isnan( value ) || std::isinf( value ) )
         ::rtl::math::setNan( & fResult );
     else
         fResult = pow( value, m_fExponent );
@@ -224,12 +226,12 @@ uno::Reference< XScaling > SAL_CALL
     OUString SAL_CALL
 PowerScaling::getServiceName()
 {
-    return OUString(lcl_aServiceName_Power);
+    return lcl_aServiceName_Power;
 }
 
 OUString SAL_CALL PowerScaling::getImplementationName()
 {
-    return OUString(lcl_aServiceName_Power);
+    return lcl_aServiceName_Power;
 }
 
 sal_Bool SAL_CALL PowerScaling::supportsService( const OUString& rServiceName )
@@ -244,28 +246,28 @@ css::uno::Sequence< OUString > SAL_CALL PowerScaling::getSupportedServiceNames()
 
 } //namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_chart2_LinearScaling_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new chart::LinearScaling );
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_chart2_ExponentialScaling_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new chart::ExponentialScaling );
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_chart2_LogarithmicScaling_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new chart::LogarithmicScaling );
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_chart2_PowerScaling_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {

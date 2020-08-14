@@ -20,11 +20,9 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_FLAT_ECATALOG_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_FLAT_ECATALOG_HXX
 
-#include "file/FCatalog.hxx"
+#include <file/FCatalog.hxx>
 
-namespace connectivity
-{
-    namespace flat
+namespace connectivity::flat
     {
         class OFlatConnection;
         class OFlatCatalog : public file::OFileCatalog
@@ -35,7 +33,7 @@ namespace connectivity
         public:
             OFlatCatalog(OFlatConnection* _pCon);
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_FLAT_ECATALOG_HXX
 

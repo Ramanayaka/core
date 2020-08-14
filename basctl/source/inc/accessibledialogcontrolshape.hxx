@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASCTL_SOURCE_INC_ACCESSIBLEDIALOGCONTROLSHAPE_HXX
-#define INCLUDED_BASCTL_SOURCE_INC_ACCESSIBLEDIALOGCONTROLSHAPE_HXX
+#pragma once
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -39,14 +38,13 @@ class DlgEdObj;
 class DialogWindow;
 
 
-//  class AccessibleDialogControlShape
 
 typedef ::cppu::ImplHelper3<
         css::accessibility::XAccessible,
         css::lang::XServiceInfo,
         css::beans::XPropertyChangeListener > AccessibleDialogControlShape_BASE;
 
-class AccessibleDialogControlShape :    public comphelper::OAccessibleExtendedComponentHelper,
+class AccessibleDialogControlShape final : public comphelper::OAccessibleExtendedComponentHelper,
                                         public AccessibleDialogControlShape_BASE
 {
     friend class AccessibleDialogWindow;
@@ -60,14 +58,13 @@ private:
     css::awt::Rectangle                                            m_aBounds;
     css::uno::Reference< css::beans::XPropertySet >   m_xControlModel;
 
-protected:
-    bool                    IsFocused();
-    bool                    IsSelected();
+    bool                    IsFocused() const;
+    bool                    IsSelected() const;
 
     void                    SetFocused (bool bFocused);
     void                    SetSelected (bool bSelected);
 
-    css::awt::Rectangle     GetBounds();
+    css::awt::Rectangle     GetBounds() const;
     void                    SetBounds( const css::awt::Rectangle& aBounds );
 
     vcl::Window*            GetWindow() const;
@@ -131,7 +128,5 @@ public:
 };
 
 } // namespace basctl
-
-#endif // INCLUDED_BASCTL_SOURCE_INC_ACCESSIBLEDIALOGCONTROLSHAPE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -11,10 +11,10 @@
 #define INCLUDED_SFX2_STYLEPREVIEWRENDERER_HXX
 
 #include <sfx2/dllapi.h>
-#include <vcl/outdev.hxx>
-#include <rsc/rscsfx.hxx>
-#include <svl/style.hxx>
 #include <sfx2/objsh.hxx>
+
+class OutputDevice;
+class SfxStyleSheetBase;
 
 namespace sfx2
 {
@@ -26,7 +26,6 @@ protected:
     OutputDevice& mrOutputDev;
     SfxStyleSheetBase* mpStyle;
     long mnMaxHeight;
-    OUString msRenderText;
 
 public:
     enum class RenderAlign
@@ -42,14 +41,12 @@ public:
         , mrOutputDev(rOutputDev)
         , mpStyle(pStyle)
         , mnMaxHeight(nMaxHeight)
-        , msRenderText()
     {}
 
     virtual ~StylePreviewRenderer()
     {}
 
     virtual bool recalculate() = 0;
-    virtual Size getRenderSize() = 0;
     virtual bool render(const tools::Rectangle& aRectangle, RenderAlign eRenderAlign = RenderAlign::CENTER) = 0;
 };
 

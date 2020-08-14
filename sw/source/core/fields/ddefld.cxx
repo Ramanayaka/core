@@ -20,20 +20,19 @@
 #include <sal/config.h>
 
 #include <o3tl/any.hxx>
+#include <osl/diagnose.h>
 #include <osl/thread.h>
+#include <rtl/ustrbuf.hxx>
 #include <sfx2/linkmgr.hxx>
+#include <sot/exchange.hxx>
 #include <doc.hxx>
 #include <IDocumentLinksAdministration.hxx>
 #include <IDocumentState.hxx>
 #include <IDocumentLayoutAccess.hxx>
 #include <editsh.hxx>
-#include <ndtxt.hxx>
 #include <fmtfld.hxx>
-#include <txtfld.hxx>
 #include <ddefld.hxx>
-#include <swtable.hxx>
 #include <swbaslnk.hxx>
-#include <swddetbl.hxx>
 #include <unofldmid.h>
 #include <hints.hxx>
 #include <calbck.hxx>
@@ -41,6 +40,8 @@
 using namespace ::com::sun::star;
 
 #define DDE_TXT_ENCODING    osl_getThreadTextEncoding()
+
+namespace {
 
 class SwIntrnlRefLink : public SwBaseLink
 {
@@ -56,9 +57,10 @@ public:
         const OUString& rMimeType, const css::uno::Any & rValue ) override;
 
     virtual const SwNode* GetAnchor() const override;
-    virtual bool IsInRange( sal_uLong nSttNd, sal_uLong nEndNd, sal_Int32 nStt = 0,
-                            sal_Int32 nEnd = -1 ) const override;
+    virtual bool IsInRange( sal_uLong nSttNd, sal_uLong nEndNd ) const override;
 };
+
+}
 
 ::sfx2::SvBaseLink::UpdateResult SwIntrnlRefLink::DataChanged( const OUString& rMimeType,
                                 const uno::Any & rValue )
@@ -106,38 +108,35 @@ public:
 
         // Search for fields. If no valid found, disconnect.
         SwMsgPoolItem aUpdateDDE( RES_UPDATEDDETBL );
-        bool bCallModify = false;
         rFieldType.LockModify();
 
-        SwIterator<SwClient,SwFieldType> aIter(rFieldType);
-        for(SwClient* pLast = aIter.First(); pLast; pLast = aIter.Next())
+        std::vector<SwFormatField*> vFields;
+        rFieldType.GatherFields(vFields, false);
+        if(vFields.size())
+        {
+            if(pESh)
+                pESh->StartAllAction();
+            else if(pSh)
+                pSh->StartAction();
+        }
+
+        for(auto pFormatField: vFields)
         {
             // a DDE table or a DDE field attribute in the text
-            if( dynamic_cast<const SwFormatField *>(pLast) == nullptr ||
-                static_cast<SwFormatField*>(pLast)->GetTextField() )
-            {
-                if( !bCallModify )
-                {
-                    if( pESh )
-                        pESh->StartAllAction();
-                    else if( pSh )
-                        pSh->StartAction();
-                }
-                pLast->ModifyNotification( nullptr, &aUpdateDDE );
-                bCallModify = true;
-            }
+            if(pFormatField->GetTextField())
+                pFormatField->UpdateTextNode( nullptr, &aUpdateDDE );
         }
 
         rFieldType.UnlockModify();
 
-        if( bCallModify )
+        if(vFields.size())
         {
-            if( pESh )
+            if(pESh)
                 pESh->EndAllAction();
-            else if( pSh )
+            else if(pSh)
                 pSh->EndAction();
 
-            if( pSh )
+            if(pSh)
                 pSh->GetDoc()->getIDocumentState().SetModified();
         }
     }
@@ -161,105 +160,61 @@ void SwIntrnlRefLink::Closed()
         else
         {
             pSh->StartAction();
-            // am Doc aufrufen ??
+            // to call at the doc ??
             pSh->EndAction();
         }
     }
     SvBaseLink::Closed();
 }
 
+sw::LinkAnchorSearchHint::~LinkAnchorSearchHint() {};
+
 const SwNode* SwIntrnlRefLink::GetAnchor() const
 {
     // here, any anchor of the normal NodesArray should be sufficient
     const SwNode* pNd = nullptr;
-    SwIterator<SwClient,SwFieldType> aIter(rFieldType);
-    for(SwClient* pLast = aIter.First(); pLast; pLast = aIter.Next())
-    {
-        // a DDE table or a DDE field attribute in the text
-        if( dynamic_cast<const SwFormatField *>(pLast) == nullptr)
-        {
-            SwDepend* pDep = static_cast<SwDepend*>(pLast);
-            SwDDETable* pDDETable = static_cast<SwDDETable*>(pDep->GetToTell());
-            pNd = pDDETable->GetTabSortBoxes()[0]->GetSttNd();
-        }
-        else if( static_cast<SwFormatField*>(pLast)->GetTextField() )
-            pNd = static_cast<SwFormatField*>(pLast)->GetTextField()->GetpTextNode();
-
-        if( pNd && &rFieldType.GetDoc()->GetNodes() == &pNd->GetNodes() )
-            break;
-        pNd = nullptr;
-    }
+    rFieldType.CallSwClientNotify(sw::LinkAnchorSearchHint(rFieldType.GetDoc()->GetNodes(), pNd));
     return pNd;
 }
 
-bool SwIntrnlRefLink::IsInRange( sal_uLong nSttNd, sal_uLong nEndNd,
-                                sal_Int32 nStt, sal_Int32 nEnd ) const
+bool SwIntrnlRefLink::IsInRange( sal_uLong nSttNd, sal_uLong nEndNd ) const
 {
-    // here, any anchor of the normal NodesArray should be sufficient
-    SwNodes* pNds = &rFieldType.GetDoc()->GetNodes();
-    SwIterator<SwClient,SwFieldType> aIter(rFieldType);
-    for(SwClient* pLast = aIter.First(); pLast; pLast = aIter.Next())
-    {
-        // a DDE table or a DDE field attribute in the text
-        if( dynamic_cast<const SwFormatField *>(pLast) == nullptr)
-        {
-            SwDepend* pDep = static_cast<SwDepend*>(pLast);
-            SwDDETable* pDDETable = static_cast<SwDDETable*>(pDep->GetToTell());
-            const SwTableNode* pTableNd = pDDETable->GetTabSortBoxes()[0]->
-                            GetSttNd()->FindTableNode();
-            if( pTableNd->GetNodes().IsDocNodes() &&
-                nSttNd < pTableNd->EndOfSectionIndex() &&
-                nEndNd > pTableNd->GetIndex() )
-                return true;
-        }
-        else if( static_cast<SwFormatField*>(pLast)->GetTextField() )
-        {
-            const SwTextField* pTField = static_cast<SwFormatField*>(pLast)->GetTextField();
-            const SwTextNode* pNd = pTField->GetpTextNode();
-            if( pNd && pNds == &pNd->GetNodes() )
-            {
-                sal_uLong nNdPos = pNd->GetIndex();
-                if( nSttNd <= nNdPos && nNdPos <= nEndNd &&
-                    ( nNdPos != nSttNd || pTField->GetStart() >= nStt ) &&
-                    ( nNdPos != nEndNd || pTField->GetStart() < nEnd ))
-                    return true;
-            }
-        }
-    }
-
-    return false;
+    bool bInRange = false;
+    rFieldType.CallSwClientNotify(sw::InRangeSearchHint(
+        nSttNd, nEndNd, bInRange));
+    return bInRange;
 }
 
 SwDDEFieldType::SwDDEFieldType(const OUString& rName,
                                const OUString& rCmd, SfxLinkUpdateMode nUpdateType )
     : SwFieldType( SwFieldIds::Dde ),
-    aName( rName ), pDoc( nullptr ), nRefCnt( 0 )
+    m_aName( rName ), m_pDoc( nullptr ), m_nRefCount( 0 )
 {
-    bCRLFFlag = bDeleted = false;
-    refLink = new SwIntrnlRefLink( *this, nUpdateType );
+    m_bCRLFFlag = m_bDeleted = false;
+    m_RefLink = new SwIntrnlRefLink( *this, nUpdateType );
     SetCmd( rCmd );
 }
 
 SwDDEFieldType::~SwDDEFieldType()
 {
-    if( pDoc && !pDoc->IsInDtor() )
-        pDoc->getIDocumentLinksAdministration().GetLinkManager().Remove( refLink.get() );
-    refLink->Disconnect();
+    if( m_pDoc && !m_pDoc->IsInDtor() )
+        m_pDoc->getIDocumentLinksAdministration().GetLinkManager().Remove( m_RefLink.get() );
+    m_RefLink->Disconnect();
 }
 
-SwFieldType* SwDDEFieldType::Copy() const
+std::unique_ptr<SwFieldType> SwDDEFieldType::Copy() const
 {
-    SwDDEFieldType* pType = new SwDDEFieldType( aName, GetCmd(), GetType() );
-    pType->aExpansion = aExpansion;
-    pType->bCRLFFlag = bCRLFFlag;
-    pType->bDeleted = bDeleted;
-    pType->SetDoc( pDoc );
+    std::unique_ptr<SwDDEFieldType> pType(new SwDDEFieldType( m_aName, GetCmd(), GetType() ));
+    pType->m_aExpansion = m_aExpansion;
+    pType->m_bCRLFFlag = m_bCRLFFlag;
+    pType->m_bDeleted = m_bDeleted;
+    pType->SetDoc( m_pDoc );
     return pType;
 }
 
 OUString SwDDEFieldType::GetName() const
 {
-    return aName;
+    return m_aName;
 }
 
 void SwDDEFieldType::SetCmd( const OUString& _aStr )
@@ -270,50 +225,50 @@ void SwDDEFieldType::SetCmd( const OUString& _aStr )
     {
         aStr = aStr.replaceFirst("  ", " ", &nIndex);
     } while (nIndex>=0);
-    refLink->SetLinkSourceName( aStr );
+    m_RefLink->SetLinkSourceName( aStr );
 }
 
-OUString SwDDEFieldType::GetCmd() const
+OUString const & SwDDEFieldType::GetCmd() const
 {
-    return refLink->GetLinkSourceName();
+    return m_RefLink->GetLinkSourceName();
 }
 
 void SwDDEFieldType::SetDoc( SwDoc* pNewDoc )
 {
-    if( pNewDoc == pDoc )
+    if( pNewDoc == m_pDoc )
         return;
 
-    if( pDoc && refLink.is() )
+    if( m_pDoc && m_RefLink.is() )
     {
-        OSL_ENSURE( !nRefCnt, "How do we get the references?" );
-        pDoc->getIDocumentLinksAdministration().GetLinkManager().Remove( refLink.get() );
+        OSL_ENSURE( !m_nRefCount, "How do we get the references?" );
+        m_pDoc->getIDocumentLinksAdministration().GetLinkManager().Remove( m_RefLink.get() );
     }
 
-    pDoc = pNewDoc;
-    if( pDoc && nRefCnt )
+    m_pDoc = pNewDoc;
+    if( m_pDoc && m_nRefCount )
     {
-        refLink->SetVisible( pDoc->getIDocumentLinksAdministration().IsVisibleLinks() );
-        pDoc->getIDocumentLinksAdministration().GetLinkManager().InsertDDELink( refLink.get() );
+        m_RefLink->SetVisible( m_pDoc->getIDocumentLinksAdministration().IsVisibleLinks() );
+        m_pDoc->getIDocumentLinksAdministration().GetLinkManager().InsertDDELink( m_RefLink.get() );
     }
 }
 
 void SwDDEFieldType::RefCntChgd()
 {
-    if( nRefCnt )
+    if( m_nRefCount )
     {
-        refLink->SetVisible( pDoc->getIDocumentLinksAdministration().IsVisibleLinks() );
-        pDoc->getIDocumentLinksAdministration().GetLinkManager().InsertDDELink( refLink.get() );
-        if( pDoc->getIDocumentLayoutAccess().GetCurrentViewShell() )
-            refLink->Update();
+        m_RefLink->SetVisible( m_pDoc->getIDocumentLinksAdministration().IsVisibleLinks() );
+        m_pDoc->getIDocumentLinksAdministration().GetLinkManager().InsertDDELink( m_RefLink.get() );
+        if( m_pDoc->getIDocumentLayoutAccess().GetCurrentViewShell() )
+            m_RefLink->Update();
     }
     else
     {
         Disconnect();
-        pDoc->getIDocumentLinksAdministration().GetLinkManager().Remove( refLink.get() );
+        m_pDoc->getIDocumentLinksAdministration().GetLinkManager().Remove( m_RefLink.get() );
     }
 }
 
-bool SwDDEFieldType::QueryValue( uno::Any& rVal, sal_uInt16 nWhichId ) const
+void SwDDEFieldType::QueryValue( uno::Any& rVal, sal_uInt16 nWhichId ) const
 {
     sal_Int32 nPart = -1;
     switch( nWhichId )
@@ -325,17 +280,16 @@ bool SwDDEFieldType::QueryValue( uno::Any& rVal, sal_uInt16 nWhichId ) const
         rVal <<= GetType() == SfxLinkUpdateMode::ALWAYS;
         break;
     case FIELD_PROP_PAR5:
-        rVal <<= aExpansion;
+        rVal <<= m_aExpansion;
         break;
     default:
         assert(false);
     }
     if ( nPart>=0 )
         rVal <<= GetCmd().getToken(nPart, sfx2::cTokenSeparator);
-    return true;
 }
 
-bool SwDDEFieldType::PutValue( const uno::Any& rVal, sal_uInt16 nWhichId )
+void SwDDEFieldType::PutValue( const uno::Any& rVal, sal_uInt16 nWhichId )
 {
     sal_Int32 nPart = -1;
     switch( nWhichId )
@@ -349,29 +303,28 @@ bool SwDDEFieldType::PutValue( const uno::Any& rVal, sal_uInt16 nWhichId )
                  SfxLinkUpdateMode::ONCALL );
         break;
     case FIELD_PROP_PAR5:
-        rVal >>= aExpansion;
+        rVal >>= m_aExpansion;
         break;
     default:
         assert(false);
     }
-    if( nPart>=0 )
+    if( nPart<0 )
+        return;
+
+    const OUString sOldCmd( GetCmd() );
+    OUStringBuffer sNewCmd;
+    sal_Int32 nIndex = 0;
+    for (sal_Int32 i=0; i<3; ++i)
     {
-        const OUString sOldCmd( GetCmd() );
-        OUString sNewCmd;
-        sal_Int32 nIndex = 0;
-        for (sal_Int32 i=0; i<3; ++i)
+        OUString sToken = sOldCmd.getToken(0, sfx2::cTokenSeparator, nIndex);
+        if (i==nPart)
         {
-            OUString sToken = sOldCmd.getToken(0, sfx2::cTokenSeparator, nIndex);
-            if (i==nPart)
-            {
-                rVal >>= sToken;
-            }
-            sNewCmd += (i < 2)
-                ? sToken + OUStringLiteral1(sfx2::cTokenSeparator) : sToken;
+            rVal >>= sToken;
         }
-        SetCmd( sNewCmd );
+        sNewCmd.append((i < 2)
+            ? sToken + OUStringChar(sfx2::cTokenSeparator) : sToken);
     }
-    return true;
+    SetCmd( sNewCmd.makeStringAndClear() );
 }
 
 SwDDEField::SwDDEField( SwDDEFieldType* pInitType )
@@ -385,7 +338,7 @@ SwDDEField::~SwDDEField()
         static_cast<SwDDEFieldType*>(GetTyp())->Disconnect();
 }
 
-OUString SwDDEField::Expand() const
+OUString SwDDEField::ExpandImpl(SwRootFrame const*const) const
 {
     OUString aStr = static_cast<SwDDEFieldType*>(GetTyp())->GetExpansion();
     aStr = aStr.replaceAll("\r", "");
@@ -398,9 +351,9 @@ OUString SwDDEField::Expand() const
     return aStr;
 }
 
-SwField* SwDDEField::Copy() const
+std::unique_ptr<SwField> SwDDEField::Copy() const
 {
-    return new SwDDEField(static_cast<SwDDEFieldType*>(GetTyp()));
+    return std::make_unique<SwDDEField>(static_cast<SwDDEFieldType*>(GetTyp()));
 }
 
 /// get field type name

@@ -20,16 +20,21 @@
 #ifndef INCLUDED_SVX_SOURCE_INC_SQLPARSERCLIENT_HXX
 #define INCLUDED_SVX_SOURCE_INC_SQLPARSERCLIENT_HXX
 
-#include "svx/ParseContext.hxx"
+#include <config_options.h>
+#include <svx/ParseContext.hxx>
 
-namespace com { namespace sun { namespace star {
-namespace util {
-    class XNumberFormatter;
+#include <com/sun/star/uno/XComponentContext.hpp>
+
+#include <memory>
+
+namespace com::sun::star {
+    namespace util {
+        class XNumberFormatter;
+    }
+    namespace beans {
+        class XPropertySet;
+    }
 }
-namespace beans {
-    class XPropertySet;
-} } } }
-
 namespace connectivity {
     class OSQLParser;
     class OSQLParseNode;
@@ -39,18 +44,15 @@ namespace svxform
 {
     //= OSQLParserClient
 
-    class SVX_DLLPUBLIC OSQLParserClient : public ::svxform::OParseContextClient
+    class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) OSQLParserClient : public ::svxform::OParseContextClient
     {
-    private:
-        css::uno::Reference< css::uno::XComponentContext > m_xContext;
-
     protected:
         mutable std::shared_ptr< ::connectivity::OSQLParser > m_pParser;
 
         OSQLParserClient(
             const css::uno::Reference< css::uno::XComponentContext >& rxContext);
 
-        std::shared_ptr< ::connectivity::OSQLParseNode > predicateTree(
+        std::unique_ptr< ::connectivity::OSQLParseNode > predicateTree(
                 OUString& _rErrorMessage,
                 const OUString& _rStatement,
                 const css::uno::Reference< css::util::XNumberFormatter >& _rxFormatter,

@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "JAccess.hxx"
-#include "JoinTableView.hxx"
-#include "TableWindow.hxx"
+#include <JAccess.hxx>
+#include <JoinTableView.hxx>
+#include <TableWindow.hxx>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include "JoinDesignView.hxx"
-#include "JoinController.hxx"
-#include "TableConnection.hxx"
+#include <TableConnection.hxx>
+#include <o3tl/safeint.hxx>
 
 namespace dbaui
 {
@@ -40,7 +39,7 @@ namespace dbaui
     }
     OUString SAL_CALL OJoinDesignViewAccess::getImplementationName()
     {
-        return OUString("org.openoffice.comp.dbu.JoinViewAccessibility");
+        return "org.openoffice.comp.dbu.JoinViewAccessibility";
     }
     void OJoinDesignViewAccess::clearTableView()
     {
@@ -62,22 +61,17 @@ namespace dbaui
     {
         Reference< XAccessible > aRet;
         ::osl::MutexGuard aGuard( m_aMutex  );
-        if(i >= 0 && i < getAccessibleChildCount() && m_pTableView )
-        {
-            // check if we should return a table window or a connection
-            sal_Int32 nTableWindowCount = m_pTableView->GetTabWinCount();
-            if( i < nTableWindowCount )
-            {
-                OJoinTableView::OTableWindowMap::const_iterator aIter = m_pTableView->GetTabWinMap().begin();
-                for (sal_Int32 j=i; j; ++aIter,--j)
-                    ;
-                aRet = aIter->second->GetAccessible();
-            }
-            else if( size_t(i - nTableWindowCount) < m_pTableView->getTableConnections().size() )
-                aRet = m_pTableView->getTableConnections()[i - nTableWindowCount]->GetAccessible();
-        }
-        else
+        if(i < 0 || i >= getAccessibleChildCount() || !m_pTableView)
             throw IndexOutOfBoundsException();
+        // check if we should return a table window or a connection
+        sal_Int32 nTableWindowCount = m_pTableView->GetTabWinCount();
+        if( i < nTableWindowCount )
+        {
+            OJoinTableView::OTableWindowMap::const_iterator aIter = std::next(m_pTableView->GetTabWinMap().begin(), i);
+            aRet = aIter->second->GetAccessible();
+        }
+        else if( o3tl::make_unsigned(i - nTableWindowCount) < m_pTableView->getTableConnections().size() )
+            aRet = m_pTableView->getTableConnections()[i - nTableWindowCount]->GetAccessible();
         return aRet;
     }
     sal_Int16 SAL_CALL OJoinDesignViewAccess::getAccessibleRole(  )

@@ -20,7 +20,10 @@
 #include <connectivity/conncleanup.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/sdbc/XRowSet.hpp>
+#include <com/sun/star/sdbc/XConnection.hpp>
 #include <osl/diagnose.h>
+#include <tools/diagnose_ex.h>
 
 
 namespace dbtools
@@ -32,7 +35,7 @@ namespace dbtools
     using namespace css::sdbc;
     using namespace css::lang;
 
-    static const char ACTIVE_CONNECTION_PROPERTY_NAME[] = "ActiveConnection";
+    const char ACTIVE_CONNECTION_PROPERTY_NAME[] = "ActiveConnection";
 
     OAutoConnectionDisposer::OAutoConnectionDisposer(const Reference< XRowSet >& _rxRowSet, const Reference< XConnection >& _rxConnection)
         :m_xRowSet( _rxRowSet )
@@ -53,7 +56,7 @@ namespace dbtools
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "OAutoConnectionDisposer::OAutoConnectionDisposer: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "connectivity.commontools", "OAutoConnectionDisposer::OAutoConnectionDisposer" );
         }
     }
 
@@ -67,7 +70,7 @@ namespace dbtools
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "OAutoConnectionDisposer::startPropertyListening: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "connectivity.commontools", "OAutoConnectionDisposer::startPropertyListening" );
         }
     }
 
@@ -88,7 +91,7 @@ namespace dbtools
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "OAutoConnectionDisposer::stopPropertyListening: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "connectivity.commontools", "OAutoConnectionDisposer::stopPropertyListening" );
         }
     }
 
@@ -103,7 +106,7 @@ namespace dbtools
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "OAutoConnectionDisposer::startRowSetListening: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "connectivity.commontools", "OAutoConnectionDisposer::startRowSetListening" );
         }
         m_bRSListening = true;
     }
@@ -118,7 +121,7 @@ namespace dbtools
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "OAutoConnectionDisposer::stopRowSetListening: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "connectivity.commontools", "OAutoConnectionDisposer::stopRowSetListening" );
         }
         m_bRSListening = false;
     }
@@ -126,51 +129,52 @@ namespace dbtools
 
     void SAL_CALL OAutoConnectionDisposer::propertyChange( const PropertyChangeEvent& _rEvent )
     {
-        if ( _rEvent.PropertyName == ACTIVE_CONNECTION_PROPERTY_NAME )
-        {   // somebody set a new ActiveConnection
+        if ( _rEvent.PropertyName != ACTIVE_CONNECTION_PROPERTY_NAME )
+            return;
 
-            Reference< XConnection > xNewConnection;
-            _rEvent.NewValue >>= xNewConnection;
+// somebody set a new ActiveConnection
 
-            if ( isRowSetListening() )
+        Reference< XConnection > xNewConnection;
+        _rEvent.NewValue >>= xNewConnection;
+
+        if ( isRowSetListening() )
+        {
+            // we're listening at the row set, this means that the row set does not have our
+            // m_xOriginalConnection as active connection anymore
+            // So there are two possibilities
+            // a. somebody sets a new connection which is not our original one
+            // b. somebody sets a new connection, which is exactly the original one
+            // a. we're not interested in a, but in b: In this case, we simply need to move to the state
+            // we had originally: listen for property changes, do not listen for row set changes, and
+            // do not dispose the connection until the row set does not need it anymore
+            if ( xNewConnection.get() == m_xOriginalConnection.get() )
             {
-                // we're listening at the row set, this means that the row set does not have our
-                // m_xOriginalConnection as active connection anymore
-                // So there are two possibilities
-                // a. somebody sets a new connection which is not our original one
-                // b. somebody sets a new connection, which is exactly the original one
-                // a. we're not interested in a, but in b: In this case, we simply need to move to the state
-                // we had originally: listen for property changes, do not listen for row set changes, and
-                // do not dispose the connection until the row set does not need it anymore
-                if ( xNewConnection.get() == m_xOriginalConnection.get() )
-                {
-                    stopRowSetListening();
-                }
+                stopRowSetListening();
             }
-            else
-            {
-                // start listening at the row set. We're allowed to dispose the old connection as soon
-                // as the RowSet changed
+        }
+        else
+        {
+            // start listening at the row set. We're allowed to dispose the old connection as soon
+            // as the RowSet changed
 
-                // Unfortunately, the our database form implementations sometimes fire the change of their
-                // ActiveConnection twice. This is a error in forms/source/component/DatabaseForm.cxx, but
-                // changing this would require incompatible changes we can't do for a while.
-                // So for the moment, we have to live with it here.
-                //
-                // The only scenario where this doubled notification causes problems is when the connection
-                // of the form is reset to the one we're responsible for (m_xOriginalConnection), so we
-                // check this here.
-                //
-                // Yes, this is a HACK :(
-                if ( xNewConnection.get() != m_xOriginalConnection.get() )
-                {
+            // Unfortunately, the our database form implementations sometimes fire the change of their
+            // ActiveConnection twice. This is an error in forms/source/component/DatabaseForm.cxx, but
+            // changing this would require incompatible changes we can't do for a while.
+            // So for the moment, we have to live with it here.
+            //
+            // The only scenario where this doubled notification causes problems is when the connection
+            // of the form is reset to the one we're responsible for (m_xOriginalConnection), so we
+            // check this here.
+            //
+            // Yes, this is a HACK :(
+            if ( xNewConnection.get() != m_xOriginalConnection.get() )
+            {
 #if OSL_DEBUG_LEVEL > 0
-                    Reference< XConnection > xOldConnection;
-                    _rEvent.OldValue >>= xOldConnection;
-                    OSL_ENSURE( xOldConnection.get() == m_xOriginalConnection.get(), "OAutoConnectionDisposer::propertyChange: unexpected (original) property value!" );
+                Reference< XConnection > xOldConnection;
+                _rEvent.OldValue >>= xOldConnection;
+                OSL_ENSURE( xOldConnection.get() == m_xOriginalConnection.get(), "OAutoConnectionDisposer::propertyChange: unexpected (original) property value!" );
 #endif
-                    startRowSetListening();
-                }
+                startRowSetListening();
             }
         }
     }
@@ -200,7 +204,7 @@ namespace dbtools
         }
         catch(Exception&)
         {
-            OSL_FAIL("OAutoConnectionDisposer::clearConnection: caught an exception!");
+            TOOLS_WARN_EXCEPTION("connectivity.commontools", "OAutoConnectionDisposer::clearConnection");
         }
     }
 

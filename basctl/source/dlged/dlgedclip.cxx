@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dlgedclip.hxx"
+#include <dlgedclip.hxx>
 #include <vcl/svapp.hxx>
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/datatransfer/UnsupportedFlavorException.hpp>
@@ -90,8 +90,8 @@ sal_Bool SAL_CALL DlgEdTransferableImpl::isDataFlavorSupported( const DataFlavor
 {
     const SolarMutexGuard aGuard;
 
-    for ( sal_Int32 i = 0; i < m_SeqFlavors.getLength(); i++ )
-        if ( compareDataFlavors( m_SeqFlavors[i] , rFlavor ) )
+    for ( auto const & i : std::as_const(m_SeqFlavors) )
+        if ( compareDataFlavors( i, rFlavor ) )
             return true;
     return false;
 }

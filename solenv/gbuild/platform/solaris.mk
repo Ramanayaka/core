@@ -81,21 +81,12 @@ gb_LinkTarget_LDFLAGS += \
 endif
 
 ifneq ($(HAVE_LD_BSYMBOLIC_FUNCTIONS),)
-gb_LinkTarget_LDFLAGS += \
-	-Wl,--dynamic-list-cpp-new \
-	-Wl,--dynamic-list-cpp-typeinfo \
-	-Wl,-Bsymbolic-functions \
-
+gb_LinkTarget_LDFLAGS += -Wl,-Bsymbolic-functions
 endif
 
 # sun ld doesn't understand -O1 optimize flag
 gb_LINKEROPTFLAGS :=
-
-ifeq ($(gb_SYMBOL),$(true))
-gb_LINKERSTRIPDEBUGFLAGS :=
-else
 gb_LINKERSTRIPDEBUGFLAGS := -Wl,-zredlocsym -Wl,-znoldynsym
-endif
 
 # LinkTarget class
 
@@ -125,7 +116,7 @@ $(call gb_Helper_abbreviate_dirs,\
 		$(if $(SOVERSIONSCRIPT),-Wl$(COMMA)-soname=$(notdir $(1)) \
 			) \
 		$(subst \d,$$,$(RPATH)) \
-		$(T_LDFLAGS) \
+		$(T_USE_LD) $(T_LDFLAGS) \
 		$(foreach object,$(COBJECTS),$(call gb_CObject_get_target,$(object))) \
 		$(foreach object,$(CXXOBJECTS),$(call gb_CxxObject_get_target,$(object))) \
 		$(foreach object,$(ASMOBJECTS),$(call gb_AsmObject_get_target,$(object))) \
@@ -166,8 +157,10 @@ endef
 
 define gb_LinkTarget__command
 $(call gb_Output_announce,$(2),$(true),LNK,4)
+	$(call gb_Trace_StartRange,$(2),LNK)
 $(if $(filter Library CppunitTest Executable,$(TARGETTYPE)),$(call gb_LinkTarget__command_dynamiclink,$(1),$(2)))
 $(if $(filter StaticLibrary,$(TARGETTYPE)),$(call gb_LinkTarget__command_staticlink,$(1)))
+	$(call gb_Trace_EndRange,$(2),LNK)
 endef
 
 
@@ -352,14 +345,16 @@ endif
 
 define gb_UIMenubarTarget__command
 $(call gb_Output_announce,$(2),$(true),UIM,1)
+$(call gb_Trace_StartRange,$(2),UIM)
 cp $(3) $(1)
+$(call gb_Trace_EndRange,$(2),UIM)
 
 endef
 
 gb_UIMenubarTarget_UIMenubarTarget_platform :=
 
 # Python
-gb_Python_PRECOMMAND := $(gb_Helper_set_ld_path) PYTHONHOME="$(INSTDIR)/program/python-core-$(PYTHON_VERSION)" PYTHONPATH="$(INSTDIR)/program/python-core-$(PYTHON_VERSION)/lib:$(INSTDIR)/program/python-core-$(PYTHON_VERSION)/lib/lib-dynload"
+gb_Python_PRECOMMAND := $(gb_Helper_set_ld_path) PYTHONHOME="$(INSTDIR)/program/python-core-$(PYTHON_VERSION)" PYTHONPATH="$${PYPATH:+$$PYPATH:}$(INSTDIR)/program/python-core-$(PYTHON_VERSION)/lib:$(INSTDIR)/program/python-core-$(PYTHON_VERSION)/lib/lib-dynload:$(INSTDIR)/program"
 gb_Python_INSTALLED_EXECUTABLE := /bin/sh $(INSTROOT)/program/python
 # this is passed to gdb as executable when running tests
 gb_Python_INSTALLED_EXECUTABLE_GDB := $(INSTROOT)/program/python.bin

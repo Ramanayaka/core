@@ -20,14 +20,13 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CACHE_SLSPAGECACHE_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CACHE_SLSPAGECACHE_HXX
 
-#include "cache/SlsCacheContext.hxx"
-#include <sal/types.h>
-#include <vcl/bitmap.hxx>
+#include <cache/SlsCacheContext.hxx>
+#include <vcl/bitmapex.hxx>
 #include <memory>
 
 class Size;
 
-namespace sd { namespace slidesorter { namespace cache {
+namespace sd::slidesorter::cache {
 
 class GenericPageCache;
 
@@ -65,7 +64,7 @@ class GenericPageCache;
 class PageCache
 {
 public:
-    /** The page chache is created with a reference to the slide sorter so
+    /** The page cache is created with a reference to the slide sorter so
         that it has access to both the view and the model and so can fill
         itself with requests for all or just the visible pages.
 
@@ -103,15 +102,15 @@ public:
             Returns a bitmap that is either empty, contains a scaled (up or
             down) version or is the requested bitmap.
     */
-    Bitmap GetPreviewBitmap (
+    BitmapEx GetPreviewBitmap (
         const CacheKey aKey,
         const bool bResize);
 
-    Bitmap GetMarkedPreviewBitmap (
+    BitmapEx GetMarkedPreviewBitmap (
         const CacheKey aKey);
     void SetMarkedPreviewBitmap (
         const CacheKey aKey,
-        const Bitmap& rBitmap);
+        const BitmapEx& rBitmap);
 
     /** When the requested preview bitmap does not yet exist or is not
         up-to-date then the rendering of one is scheduled.  Otherwise this
@@ -147,7 +146,7 @@ private:
     std::unique_ptr<GenericPageCache> mpImplementation;
 };
 
-} } } // end of namespace ::sd::slidesorter::cache
+} // end of namespace ::sd::slidesorter::cache
 
 #endif
 

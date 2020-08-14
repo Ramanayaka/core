@@ -24,8 +24,7 @@
 #include <memory>
 #include <list>
 
-#include "address.hxx"
-#include <com/sun/star/uno/Any.h>
+#include <address.hxx>
 #include <com/sun/star/table/CellRangeAddress.hpp>
 #include <com/sun/star/sheet/ConditionOperator.hpp>
 #include <com/sun/star/sheet/ValidationAlertStyle.hpp>
@@ -41,8 +40,8 @@ struct ScMyValidation
     OUString               sName;
     OUString               sErrorMessage;
     OUString               sErrorTitle;
-    OUString               sImputMessage;
-    OUString               sImputTitle;
+    OUString               sInputMessage;
+    OUString               sInputTitle;
     OUString               sFormula1;
     OUString               sFormula2;
     ScAddress              aBaseCell;
@@ -51,39 +50,25 @@ struct ScMyValidation
     css::sheet::ConditionOperator    aOperator;
     sal_Int16                   nShowList;
     bool                        bShowErrorMessage;
-    bool                        bShowImputMessage;
+    bool                        bShowInputMessage;
     bool                        bIgnoreBlanks;
 
                                 ScMyValidation();
-                                ~ScMyValidation();
 
     bool                        IsEqual(const ScMyValidation& aVal) const;
 };
 
-typedef std::vector<ScMyValidation>         ScMyValidationVec;
-
 class ScMyValidationsContainer
 {
 private:
-    ScMyValidationVec      aValidationVec;
-    const OUString         sERRALSTY;
-    const OUString         sIGNOREBL;
-    const OUString         sSHOWLIST;
-    const OUString         sTYPE;
-    const OUString         sSHOWINP;
-    const OUString         sSHOWERR;
-    const OUString         sINPTITLE;
-    const OUString         sINPMESS;
-    const OUString         sERRTITLE;
-    const OUString         sERRMESS;
-
+    std::vector<ScMyValidation> aValidationVec;
 public:
                            ScMyValidationsContainer();
                            ~ScMyValidationsContainer();
     void                   AddValidation(const css::uno::Any& aAny,
                                     sal_Int32& nValidationIndex);
     static OUString        GetCondition(ScXMLExport& rExport, const ScMyValidation& aValidation);
-    static OUString        GetBaseCellAddress(ScDocument* pDoc, const ScAddress& aCell);
+    static OUString        GetBaseCellAddress(const ScDocument* pDoc, const ScAddress& aCell);
     static void            WriteMessage(ScXMLExport& rExport,
                                     const OUString& sTitle, const OUString& sMessage,
                                     const bool bShowMessage, const bool bIsHelpMessage);
@@ -151,7 +136,7 @@ public:
 
     void SetColDefaults(const ScMyDefaultStyleList* pDefaults) { pColDefaults = pDefaults; }
     void Clear();
-    void AddRange(ScMyRowFormatRange& rFormatRange);
+    void AddRange(const ScMyRowFormatRange& rFormatRange);
     bool GetNext(ScMyRowFormatRange& rFormatRange);
     sal_Int32 GetMaxRows() const;
     sal_Int32 GetSize() const { return nSize;}
@@ -174,11 +159,11 @@ struct ScMyFormatRange
 class ScFormatRangeStyles
 {
     typedef std::list<ScMyFormatRange>          ScMyFormatRangeAddresses;
-    typedef std::vector<ScMyFormatRangeAddresses*>  ScMyFormatRangeListVec;
+    typedef std::vector<ScMyFormatRangeAddresses> ScMyFormatRangeListVec;
 
     ScMyFormatRangeListVec      aTables;
-    std::vector<OUString*>      aStyleNames;
-    std::vector<OUString*>      aAutoStyleNames;
+    std::vector<OUString>       aStyleNames;
+    std::vector<OUString>       aAutoStyleNames;
     const ScMyDefaultStyleList* pColDefaults;
 
 public:
@@ -187,7 +172,7 @@ public:
 
     void SetColDefaults(const ScMyDefaultStyleList* pDefaults) { pColDefaults = pDefaults; }
     void AddNewTable(const sal_Int32 nTable);
-    bool AddStyleName(OUString* pString, sal_Int32& rIndex, const bool bIsAutoStyle = true);
+    bool AddStyleName(const OUString& rString, sal_Int32& rIndex, const bool bIsAutoStyle = true);
     sal_Int32 GetIndexOfStyleName(const OUString& rString, const OUString& rPrefix, bool& bIsAutoStyle);
     // does not delete ranges
     sal_Int32 GetStyleNameIndex(const sal_Int32 nTable, const sal_Int32 nColumn, const sal_Int32 nRow,
@@ -199,22 +184,22 @@ public:
                     const sal_Int32 nTable, ScRowFormatRanges* pFormatRanges);
     void AddRangeStyleName(const css::table::CellRangeAddress& rCellRangeAddress, const sal_Int32 nStringIndex,
                     const bool bIsAutoStyle, const sal_Int32 nValidationIndex, const sal_Int32 nNumberFormat);
-    OUString* GetStyleNameByIndex(const sal_Int32 nIndex, const bool bIsAutoStyle);
+    OUString& GetStyleNameByIndex(const sal_Int32 nIndex, const bool bIsAutoStyle);
     void Sort();
 };
 
 class ScColumnRowStylesBase
 {
-    std::vector<OUString*>   aStyleNames;
+    std::vector<OUString>   aStyleNames;
 
 public:
     ScColumnRowStylesBase();
     virtual ~ScColumnRowStylesBase();
 
     virtual void AddNewTable(const sal_Int32 nTable, const sal_Int32 nFields) = 0;
-    sal_Int32 AddStyleName(OUString* pString);
+    sal_Int32 AddStyleName(const OUString & rString);
     sal_Int32 GetIndexOfStyleName(const OUString& rString, const OUString& rPrefix);
-    OUString* GetStyleNameByIndex(const sal_Int32 nIndex);
+    OUString& GetStyleNameByIndex(const sal_Int32 nIndex);
 };
 
 struct ScColumnStyle

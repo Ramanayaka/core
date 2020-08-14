@@ -17,11 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/app.hxx>
-
-#include "ClientView.hxx"
-#include "drawview.hxx"
-#include "sdpage.hxx"
+#include <ClientView.hxx>
+#include <drawview.hxx>
 
 namespace sd {
 
@@ -48,7 +45,7 @@ ClientView::~ClientView()
  * to be overridden and properly handled.
  */
 
-void ClientView::InvalidateOneWin(vcl::Window& rWin)
+void ClientView::InvalidateOneWin(OutputDevice& rWin)
 {
     vcl::Region aRegion;
     CompleteRedraw(&rWin, aRegion);
@@ -59,7 +56,7 @@ void ClientView::InvalidateOneWin(vcl::Window& rWin)
  * to be overridden and properly handled.
  */
 
-void ClientView::InvalidateOneWin(vcl::Window& rWin, const ::tools::Rectangle& rRect)
+void ClientView::InvalidateOneWin(OutputDevice& rWin, const ::tools::Rectangle& rRect)
 {
     CompleteRedraw(&rWin, vcl::Region(rRect));
 }

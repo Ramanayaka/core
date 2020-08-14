@@ -20,13 +20,14 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_OUTLINEVIEWSHELL_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_OUTLINEVIEWSHELL_HXX
 
-#include "DrawDocShell.hxx"
 #include "ViewShell.hxx"
-#include "OutlineView.hxx"
+#include <glob.hxx>
 
 class SdPage;
 class TransferableDataHelper;
 class TransferableClipboardListener;
+
+namespace sd { class OutlineView; }
 
 namespace sd {
 
@@ -113,8 +114,8 @@ public:
 
     ErrCode ReadRtf(SvStream& rInput);
 
-    virtual void WriteUserDataSequence ( css::uno::Sequence < css::beans::PropertyValue >&, bool bBrowse ) override;
-    virtual void ReadUserDataSequence ( const css::uno::Sequence < css::beans::PropertyValue >&, bool bBrowse ) override;
+    virtual void WriteUserDataSequence ( css::uno::Sequence < css::beans::PropertyValue >& ) override;
+    virtual void ReadUserDataSequence ( const css::uno::Sequence < css::beans::PropertyValue >& ) override;
 
     /** this method is called when the visible area of the view from this viewshell is changed */
     virtual void VisAreaChanged(const ::tools::Rectangle& rRect) override;
@@ -129,11 +130,9 @@ public:
     virtual css::uno::Reference<css::accessibility::XAccessible>
         CreateAccessibleDocumentView (::sd::Window* pWindow) override;
 
-    OUString m_StrOldPageName;
-
     /** Update the preview to show the specified page.
     */
-    virtual void UpdatePreview (SdPage* pPage, bool bInit = false) override;
+    virtual void UpdatePreview (SdPage* pPage) override;
 
     virtual css::uno::Reference<css::drawing::XDrawSubController> CreateSubController() override;
 
@@ -145,11 +144,12 @@ public:
     */
     void SetCurrentPage (SdPage* pPage);
 
-    void UpdateTitleObject( SdPage* pPage, Paragraph* pPara );
+    void UpdateTitleObject( SdPage* pPage, Paragraph const * pPara );
     void UpdateOutlineObject( SdPage* pPage, Paragraph* pPara );
 
 private:
-    OutlineView* pOlView;
+    OUString m_StrOldPageName;
+    std::unique_ptr<OutlineView> pOlView;
     SdPage*         pLastPage; // For efficient processing of the preview
     rtl::Reference<TransferableClipboardListener> mxClipEvtLstnr;
     bool            bPastePossible;

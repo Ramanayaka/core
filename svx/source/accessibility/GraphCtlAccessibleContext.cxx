@@ -20,32 +20,27 @@
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
+#include <com/sun/star/accessibility/IllegalAccessibleComponentStateException.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/beans/PropertyChangeEvent.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <o3tl/safeint.hxx>
 #include <osl/mutex.hxx>
 #include <tools/gen.hxx>
-#include <toolkit/helper/convert.hxx>
 #include <svtools/colorcfg.hxx>
 #include <comphelper/accessibleeventnotifier.hxx>
 #include <svx/sdrpaintwindow.hxx>
 
 #include <svx/ShapeTypeHandler.hxx>
 #include <svx/AccessibleShapeInfo.hxx>
-#include "GraphCtlAccessibleContext.hxx"
+#include <GraphCtlAccessibleContext.hxx>
 #include <svx/graphctl.hxx>
-#include <svx/dialogs.hrc>
-#include "accessibility.hrc"
+#include <svx/strings.hrc>
 #include <svx/svdpage.hxx>
-#include <svx/unomod.hxx>
 #include <svx/dialmgr.hxx>
-#include <svx/svdetc.hxx>
 #include <svx/sdrhittesthelper.hxx>
 
 // namespaces
@@ -61,11 +56,9 @@ using namespace ::com::sun::star::accessibility;
 // internal
 /** initialize this component and set default values */
 SvxGraphCtrlAccessibleContext::SvxGraphCtrlAccessibleContext(
-    const Reference< XAccessible >& rxParent,
-    GraphCtrl&                      rRepr ) :
+    GraphCtrl&                   rRepr ) :
 
     SvxGraphCtrlAccessibleContext_Base( m_aMutex ),
-    mxParent( rxParent ),
     mpControl( &rRepr ),
     mpModel (nullptr),
     mpPage (nullptr),
@@ -98,7 +91,7 @@ SvxGraphCtrlAccessibleContext::SvxGraphCtrlAccessibleContext(
     }
 
     maTreeInfo.SetSdrView( mpView );
-    maTreeInfo.SetWindow( mpControl );
+    maTreeInfo.SetDevice(&mpControl->GetDrawingArea()->get_ref_device());
     maTreeInfo.SetViewForwarder( this );
 }
 
@@ -114,7 +107,7 @@ SvxGraphCtrlAccessibleContext::~SvxGraphCtrlAccessibleContext()
 /** returns the XAccessible interface for a given SdrObject.
     Multiple calls for the same SdrObject return the same XAccessible.
 */
-Reference< XAccessible > SAL_CALL SvxGraphCtrlAccessibleContext::getAccessible( const SdrObject* pObj )
+Reference< XAccessible > SvxGraphCtrlAccessibleContext::getAccessible( const SdrObject* pObj )
 {
     Reference<XAccessible> xAccessibleShape;
 
@@ -131,9 +124,10 @@ Reference< XAccessible > SAL_CALL SvxGraphCtrlAccessibleContext::getAccessible( 
         else
         {
             // create a new one and remember in our internal map
-            Reference< XShape > xShape( Reference< XShape >::query( (const_cast<SdrObject*>(pObj))->getUnoShape() ) );
+            Reference< XShape > xShape( Reference< XShape >::query( const_cast<SdrObject*>(pObj)->getUnoShape() ) );
 
-            AccessibleShapeInfo aShapeInfo (xShape,mxParent);
+            css::uno::Reference<css::accessibility::XAccessible> xParent(getAccessibleParent());
+            AccessibleShapeInfo aShapeInfo (xShape,xParent);
             // Create accessible object that corresponds to the descriptor's shape.
             rtl::Reference<AccessibleShape> pAcc(ShapeTypeHandler::Instance().CreateAccessibleObject(
                 aShapeInfo, maTreeInfo));
@@ -176,64 +170,103 @@ Reference< XAccessible > SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleAt
 
     Reference< XAccessible > xAccessible;
 
-    if( mpControl )
-    {
-        Point aPnt( rPoint.X, rPoint.Y );
-        mpControl->PixelToLogic( aPnt );
-
-        SdrObject* pObj = nullptr;
-
-        if(mpView && mpView->GetSdrPageView())
-        {
-            pObj = SdrObjListPrimitiveHit(*mpPage, aPnt, 1, *mpView->GetSdrPageView(), nullptr, false);
-        }
-
-        if( pObj )
-            xAccessible = getAccessible( pObj );
-    }
-    else
+    if( !mpControl )
     {
         throw DisposedException();
     }
 
+    Point aPnt( rPoint.X, rPoint.Y );
+    mpControl->GetDrawingArea()->get_ref_device().PixelToLogic( aPnt );
+
+    SdrObject* pObj = nullptr;
+
+    if(mpView && mpView->GetSdrPageView())
+    {
+        pObj = SdrObjListPrimitiveHit(*mpPage, aPnt, 1, *mpView->GetSdrPageView(), nullptr, false);
+    }
+
+    if( pObj )
+        xAccessible = getAccessible( pObj );
+
     return xAccessible;
 }
 
-
 awt::Rectangle SAL_CALL SvxGraphCtrlAccessibleContext::getBounds()
 {
-    // no guard -> done in GetBoundingBox()
-    tools::Rectangle           aCoreBounds( GetBoundingBox() );
-    awt::Rectangle      aBounds;
-    aBounds.X = aCoreBounds.getX();
-    aBounds.Y = aCoreBounds.getY();
-    aBounds.Width = aCoreBounds.getWidth();
-    aBounds.Height = aCoreBounds.getHeight();
-    return aBounds;
-}
+    const SolarMutexGuard aSolarGuard;
 
+    if (nullptr == mpControl)
+        throw DisposedException();
+
+    const Point         aOutPos;
+    const Size          aOutSize( mpControl->GetOutputSizePixel() );
+    awt::Rectangle      aRet;
+
+    aRet.X = aOutPos.X();
+    aRet.Y = aOutPos.Y();
+    aRet.Width = aOutSize.Width();
+    aRet.Height = aOutSize.Height();
+
+    return aRet;
+}
 
 awt::Point SAL_CALL SvxGraphCtrlAccessibleContext::getLocation()
 {
-    // no guard -> done in GetBoundingBox()
-    tools::Rectangle   aRect( GetBoundingBox() );
-    return awt::Point( aRect.getX(), aRect.getY() );
-}
+    const SolarMutexGuard aSolarGuard;
 
+    if (nullptr == mpControl)
+        throw DisposedException();
+
+    const awt::Rectangle    aRect( getBounds() );
+    awt::Point              aRet;
+
+    aRet.X = aRect.X;
+    aRet.Y = aRect.Y;
+
+    return aRet;
+}
 
 awt::Point SAL_CALL SvxGraphCtrlAccessibleContext::getLocationOnScreen()
 {
-    // no guard -> done in GetBoundingBoxOnScreen()
-    tools::Rectangle   aRect( GetBoundingBoxOnScreen() );
-    return awt::Point( aRect.getX(), aRect.getY() );
-}
+    const SolarMutexGuard aSolarGuard;
 
+    if (nullptr == mpControl)
+        throw DisposedException();
+
+    awt::Point aScreenLoc(0, 0);
+
+    auto xParent(getAccessibleParent());
+    if (xParent)
+    {
+        css::uno::Reference<css::accessibility::XAccessibleContext> xParentContext(xParent->getAccessibleContext());
+        css::uno::Reference<css::accessibility::XAccessibleComponent> xParentComponent(xParentContext, css::uno::UNO_QUERY);
+        OSL_ENSURE( xParentComponent.is(), "ValueSetAcc::getLocationOnScreen: no parent component!" );
+        if ( xParentComponent.is() )
+        {
+            awt::Point aParentScreenLoc( xParentComponent->getLocationOnScreen() );
+            awt::Point aOwnRelativeLoc( getLocation() );
+            aScreenLoc.X = aParentScreenLoc.X + aOwnRelativeLoc.X;
+            aScreenLoc.Y = aParentScreenLoc.Y + aOwnRelativeLoc.Y;
+        }
+    }
+
+    return aScreenLoc;
+}
 
 awt::Size SAL_CALL SvxGraphCtrlAccessibleContext::getSize()
 {
-    // no guard -> done in GetBoundingBox()
-    tools::Rectangle   aRect( GetBoundingBox() );
-    return awt::Size( aRect.getWidth(), aRect.getHeight() );
+    const SolarMutexGuard aSolarGuard;
+
+    if (nullptr == mpControl)
+        throw DisposedException();
+
+    const awt::Rectangle    aRect( getBounds() );
+    awt::Size               aRet;
+
+    aRet.Width = aRect.Width;
+    aRet.Height = aRect.Height;
+
+    return aRet;
 }
 
 // XAccessibleContext
@@ -256,7 +289,7 @@ SdrObject* SvxGraphCtrlAccessibleContext::getSdrObject( sal_Int32 nIndex )
     if( nullptr == mpPage )
         throw DisposedException();
 
-    if( (nIndex < 0) || ( static_cast<size_t>(nIndex) >= mpPage->GetObjCount() ) )
+    if( (nIndex < 0) || ( o3tl::make_unsigned(nIndex) >= mpPage->GetObjCount() ) )
         throw lang::IndexOutOfBoundsException();
 
     return mpPage->GetObj( nIndex );
@@ -286,12 +319,15 @@ Reference< XAccessible > SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleCh
     return getAccessible( getSdrObject( nIndex ) );
 }
 
-
 Reference< XAccessible > SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleParent()
 {
-    return mxParent;
-}
+    ::SolarMutexGuard aGuard;
 
+    if( nullptr == mpControl )
+        throw DisposedException();
+
+    return mpControl->GetDrawingArea()->get_accessible_parent();
+}
 
 sal_Int32 SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleIndexInParent()
 {
@@ -299,9 +335,10 @@ sal_Int32 SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleIndexInParent()
     //  Use a simple but slow solution for now.  Optimize later.
 
     //  Iterate over all the parent's children and search for this object.
-    if( mxParent.is() )
+    css::uno::Reference<css::accessibility::XAccessible> xParent(getAccessibleParent());
+    if (xParent.is())
     {
-        Reference< XAccessibleContext > xParentContext( mxParent->getAccessibleContext() );
+        Reference< XAccessibleContext > xParentContext( xParent->getAccessibleContext() );
         if( xParentContext.is() )
         {
             sal_Int32 nChildCount = xParentContext->getAccessibleChildCount();
@@ -316,11 +353,11 @@ sal_Int32 SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleIndexInParent()
                 }
             }
         }
-   }
+    }
 
-   //   Return -1 to indicate that this object's parent does not know about the
-   //   object.
-   return -1;
+    //   Return -1 to indicate that this object's parent does not know about the
+    //   object.
+    return -1;
 }
 
 
@@ -381,9 +418,10 @@ lang::Locale SAL_CALL SvxGraphCtrlAccessibleContext::getLocale()
 {
     ::SolarMutexGuard aGuard;
 
-    if( mxParent.is() )
+    css::uno::Reference<css::accessibility::XAccessible> xParent(getAccessibleParent());
+    if (xParent.is())
     {
-        Reference< XAccessibleContext > xParentContext( mxParent->getAccessibleContext() );
+        Reference< XAccessibleContext > xParentContext( xParent->getAccessibleContext() );
         if( xParentContext.is() )
             return xParentContext->getLocale();
     }
@@ -407,20 +445,20 @@ void SAL_CALL SvxGraphCtrlAccessibleContext::addAccessibleEventListener( const R
 
 void SAL_CALL SvxGraphCtrlAccessibleContext::removeAccessibleEventListener( const Reference< XAccessibleEventListener >& xListener )
 {
-    if (xListener.is())
-    {
-        ::SolarMutexGuard aGuard;
+    if (!xListener.is())
+        return;
 
-        sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( mnClientId, xListener );
-        if ( !nListenerCount )
-        {
-            // no listeners anymore
-            // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-            // and at least to us not firing any events anymore, in case somebody calls
-            // NotifyAccessibleEvent, again
-            comphelper::AccessibleEventNotifier::revokeClient( mnClientId );
-            mnClientId = 0;
-        }
+    ::SolarMutexGuard aGuard;
+
+    sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( mnClientId, xListener );
+    if ( !nListenerCount )
+    {
+        // no listeners anymore
+        // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
+        // and at least to us not firing any events anymore, in case somebody calls
+        // NotifyAccessibleEvent, again
+        comphelper::AccessibleEventNotifier::revokeClient( mnClientId );
+        mnClientId = 0;
     }
 }
 
@@ -437,20 +475,20 @@ void SAL_CALL SvxGraphCtrlAccessibleContext::grabFocus()
 sal_Int32 SAL_CALL SvxGraphCtrlAccessibleContext::getForeground()
 {
     svtools::ColorConfig aColorConfig;
-    sal_uInt32 nColor = aColorConfig.GetColorValue( svtools::FONTCOLOR ).nColor;
+    Color nColor = aColorConfig.GetColorValue( svtools::FONTCOLOR ).nColor;
     return static_cast<sal_Int32>(nColor);
 }
 
 sal_Int32 SAL_CALL SvxGraphCtrlAccessibleContext::getBackground()
 {
-    sal_uInt32 nColor = Application::GetSettings().GetStyleSettings().GetWindowColor().GetColor();
+    Color nColor = Application::GetSettings().GetStyleSettings().GetWindowColor();
     return static_cast<sal_Int32>(nColor);
 }
 
 // XServiceInfo
 OUString SAL_CALL SvxGraphCtrlAccessibleContext::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.ui.SvxGraphCtrlAccessibleContext" );
+    return "com.sun.star.comp.ui.SvxGraphCtrlAccessibleContext";
 }
 
 sal_Bool SAL_CALL SvxGraphCtrlAccessibleContext::supportsService( const OUString& sServiceName )
@@ -460,13 +498,9 @@ sal_Bool SAL_CALL SvxGraphCtrlAccessibleContext::supportsService( const OUString
 
 Sequence< OUString > SAL_CALL SvxGraphCtrlAccessibleContext::getSupportedServiceNames()
 {
-    Sequence< OUString > aSNs( 3 );
-
-    aSNs[0] = "com.sun.star.accessibility.Accessible";
-    aSNs[1] = "com.sun.star.accessibility.AccessibleContext";
-    aSNs[2] = "com.sun.star.drawing.AccessibleGraphControl";
-
-    return aSNs;
+    return { "com.sun.star.accessibility.Accessible",
+             "com.sun.star.accessibility.AccessibleContext",
+             "com.sun.star.drawing.AccessibleGraphControl" };
 }
 
 // XTypeProvider
@@ -478,7 +512,7 @@ Sequence<sal_Int8> SAL_CALL SvxGraphCtrlAccessibleContext::getImplementationId()
 // XServiceName
 OUString SvxGraphCtrlAccessibleContext::getServiceName()
 {
-    return OUString( "com.sun.star.accessibility.AccessibleContext" );
+    return "com.sun.star.accessibility.AccessibleContext";
 }
 
 // XAccessibleSelection
@@ -564,25 +598,25 @@ void SAL_CALL SvxGraphCtrlAccessibleContext::deselectAccessibleChild( sal_Int32 
 
     checkChildIndexOnSelection( nIndex );
 
-    if( mpView )
+    if( !mpView )
+        return;
+
+    const SdrMarkList& rList = mpView->GetMarkedObjectList();
+
+    SdrObject* pObj = getSdrObject( nIndex );
+    if( !pObj )
+        return;
+
+    SdrMarkList aRefList( rList );
+
+    SdrPageView* pPV = mpView->GetSdrPageView();
+    mpView->UnmarkAllObj( pPV );
+
+    const size_t nCount = aRefList.GetMarkCount();
+    for( size_t nMark = 0; nMark < nCount; ++nMark )
     {
-        const SdrMarkList& rList = mpView->GetMarkedObjectList();
-
-        SdrObject* pObj = getSdrObject( nIndex );
-        if( pObj )
-        {
-            SdrMarkList aRefList( rList );
-
-            SdrPageView* pPV = mpView->GetSdrPageView();
-            mpView->UnmarkAllObj( pPV );
-
-            const size_t nCount = aRefList.GetMarkCount();
-            for( size_t nMark = 0; nMark < nCount; ++nMark )
-            {
-                if( aRefList.GetMark(nMark)->GetMarkedSdrObj() != pObj )
-                    mpView->MarkObj( aRefList.GetMark(nMark)->GetMarkedSdrObj(), pPV );
-            }
-        }
+        if( aRefList.GetMark(nMark)->GetMarkedSdrObj() != pObj )
+            mpView->MarkObj( aRefList.GetMark(nMark)->GetMarkedSdrObj(), pPV );
     }
 }
 
@@ -637,12 +671,9 @@ void SAL_CALL SvxGraphCtrlAccessibleContext::disposing()
     mpPage = nullptr;
 
     {
-        ShapesMapType::iterator I;
-        ShapesMapType::const_iterator endIt = mxShapes.end();
-
-        for (I=mxShapes.begin(); I!=endIt; ++I)
+        for (const auto& rEntry : mxShapes)
         {
-            rtl::Reference<XAccessible> pAcc((*I).second.get());
+            rtl::Reference<XAccessible> pAcc(rEntry.second.get());
             Reference< XComponent > xComp( pAcc.get(), UNO_QUERY );
             if( xComp.is() )
                 xComp->dispose();
@@ -659,54 +690,11 @@ void SAL_CALL SvxGraphCtrlAccessibleContext::disposing()
     }
 }
 
-
-tools::Rectangle SvxGraphCtrlAccessibleContext::GetBoundingBoxOnScreen()
-{
-    ::SolarMutexGuard aGuard;
-
-    if( nullptr == mpControl )
-        throw DisposedException();
-
-    return tools::Rectangle(
-        mpControl->GetAccessibleParentWindow()->OutputToAbsoluteScreenPixel(
-            mpControl->GetPosPixel() ),
-        mpControl->GetSizePixel() );
-}
-
-
-/** Calculate the relative coordinates of the bounding box as difference
-    between the absolute coordinates of the bounding boxes of this control
-    and its parent in the accessibility tree.
-*/
-tools::Rectangle SvxGraphCtrlAccessibleContext::GetBoundingBox()
-{
-    ::SolarMutexGuard aGuard;
-
-    tools::Rectangle aBounds ( 0, 0, 0, 0 );
-
-    vcl::Window* pWindow = mpControl;
-    if (pWindow != nullptr)
-    {
-        aBounds = pWindow->GetWindowExtentsRelative (nullptr);
-        vcl::Window* pParent = pWindow->GetAccessibleParentWindow();
-        if (pParent != nullptr)
-        {
-            tools::Rectangle aParentRect = pParent->GetWindowExtentsRelative (nullptr);
-            aBounds -= aParentRect.TopLeft();
-        }
-    }
-    else
-        throw DisposedException();
-
-    return aBounds;
-}
-
 void SvxGraphCtrlAccessibleContext::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
 {
-    const SdrHint* pSdrHint = dynamic_cast<const SdrHint*>( &rHint );
-
-    if( pSdrHint )
+    if (rHint.GetId() == SfxHintId::ThisIsAnSdrHint)
     {
+        const SdrHint* pSdrHint = static_cast<const SdrHint*>( &rHint );
         switch( pSdrHint->GetKind() )
         {
             case SdrHintKind::ObjectChange:
@@ -754,20 +742,18 @@ tools::Rectangle SvxGraphCtrlAccessibleContext::GetVisibleArea() const
 
     if( mpView && mpView->PaintWindowCount())
     {
-        SdrPaintWindow* pPaintWindow = mpView->GetPaintWindow(0L);
+        SdrPaintWindow* pPaintWindow = mpView->GetPaintWindow(0);
         aVisArea = pPaintWindow->GetVisibleArea();
     }
 
     return aVisArea;
 }
 
-
 Point SvxGraphCtrlAccessibleContext::LogicToPixel (const Point& rPoint) const
 {
     if( mpControl )
     {
-        tools::Rectangle aBBox(mpControl->GetWindowExtentsRelative(nullptr));
-        return mpControl->LogicToPixel (rPoint) + aBBox.TopLeft();
+        return mpControl->GetDrawingArea()->get_ref_device().LogicToPixel (rPoint) + mpControl->GetPositionInDialog();
     }
     else
     {
@@ -775,14 +761,12 @@ Point SvxGraphCtrlAccessibleContext::LogicToPixel (const Point& rPoint) const
     }
 }
 
-
 Size SvxGraphCtrlAccessibleContext::LogicToPixel (const Size& rSize) const
 {
     if( mpControl )
-        return mpControl->LogicToPixel (rSize);
+        return mpControl->GetDrawingArea()->get_ref_device().LogicToPixel(rSize);
     else
         return rSize;
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

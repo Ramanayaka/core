@@ -17,21 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_POLYGON_B2DLINEGEOMETRY_HXX
-#define INCLUDED_BASEGFX_POLYGON_B2DLINEGEOMETRY_HXX
+#pragma once
 
-#include <sal/types.h>
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <com/sun/star/drawing/LineCap.hpp>
 #include <basegfx/basegfxdllapi.h>
+#include <basegfx/polygon/b2dpolygontriangulator.hxx>
 
-
-namespace basegfx
+namespace basegfx::utils
 {
-    namespace tools
-    {
         /** Create line start/end geometry element, mostly arrows and things like that.
 
             @param rCandidate
@@ -75,7 +71,7 @@ namespace basegfx
             bool bStart,
             double fWidth,
             double fCandidateLength, // 0.0 -> calculate self
-            double fDockingPosition = 0.5, // 0->top, 1->bottom
+            double fDockingPosition, // 0->top, 1->bottom
             double* pConsumedLength = nullptr,
             double fShift = 0.0);
 
@@ -124,6 +120,13 @@ namespace basegfx
             the usual fallback to bevel is used. Allowed range is cropped
             to [F_PI .. 0.01 * F_PI].
 
+            Commit 51b5b93092d6231615de470c62494c24e54828a1 needs
+            revert, we need the triangulation for X11 fat line drawing
+
+            @param pTriangles
+            If given, the method will additionally add the created geometry as
+            B2DTriangle's
+
             @return
             The tools::PolyPolygon containing the geometry of the extended line by
             it's line width. Contains bezier segments and edge roundings as
@@ -133,14 +136,12 @@ namespace basegfx
             const B2DPolygon& rCandidate,
             double fHalfLineWidth,
             B2DLineJoin eJoin,
-            css::drawing::LineCap eCap = css::drawing::LineCap_BUTT,
-            double fMaxAllowedAngle = (12.5 * F_PI180),
+            css::drawing::LineCap eCap,
+            double fMaxAllowedAngle = basegfx::deg2rad(12.5),
             double fMaxPartOfEdge = 0.4,
-            double fMiterMinimumAngle = (15.0 * F_PI180));
+            double fMiterMinimumAngle = basegfx::deg2rad(15.0),
+            basegfx::triangulator::B2DTriangleVector* pTriangles = nullptr);
 
-    } // end of namespace tools
-} // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_POLYGON_B2DLINEGEOMETRY_HXX
+} // end of namespace basegfx::utils
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

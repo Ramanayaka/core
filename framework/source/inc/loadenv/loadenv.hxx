@@ -19,19 +19,14 @@
 #ifndef INCLUDED_FRAMEWORK_SOURCE_INC_LOADENV_LOADENV_HXX
 #define INCLUDED_FRAMEWORK_SOURCE_INC_LOADENV_LOADENV_HXX
 
-#include <loadenv/loadenvexception.hxx>
 #include <loadenv/actionlockguard.hxx>
 
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/frame/XComponentLoader.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/URL.hpp>
 #include <rtl/ref.hxx>
 #include <unotools/mediadescriptor.hxx>
-#include <comphelper/sequenceashashmap.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
 
@@ -69,8 +64,6 @@ class QuietInteraction;
     @descr  An instance of this class can be used inside the API calls
             XComponentLoader::loadComponentFromURL() and
             XDispatch::dispatch().
-
-    @author as96863
  */
 class LoadEnv
 {
@@ -106,7 +99,7 @@ public:
 private:
     mutable osl::Mutex m_mutex;
 
-    /** @short  reference to an uno service manager, which must be used
+    /** @short  reference to a uno service manager, which must be used
                 to created on needed services on demand.
      */
     css::uno::Reference< css::uno::XComponentContext > m_xContext;
@@ -200,7 +193,7 @@ public:
     /** @short  initialize a new instance of this load environment.
 
         @param  xContext
-                reference to an uno service manager, which can be used internally
+                reference to a uno service manager, which can be used internally
                 to create on needed services on demand.
 
         @throw  Currently there is no reason to throw such exception!
@@ -224,15 +217,25 @@ public:
                                                                                    sal_Int32                                               nFlags ,
                                                                              const css::uno::Sequence< css::beans::PropertyValue >&        lArgs  );
 
-    /** @short  set some changeable parameters for a new load request.
+    /** @short  start loading of a resource
 
         @descr  The parameter for targeting, the content description, and
                 some environment specifier (UI, dispatch functionality)
-                can be set here ... BEFORE the real load process is started
-                by calling startLoading(). Of course a still running load request
+                can be set here. Of course a still running load request
                 will be detected here and a suitable exception will be thrown.
                 Such constellation can be detected outside by using provided
                 synchronisation methods or callbacks.
+
+                There is no direct return value possible here. Because it depends
+                from the usage of this instance! E.g. for loading a "visible component"
+                a frame with a controller/model inside can be possible. For loading
+                of a "non visible component" only an information about a successfully start
+                can be provided.
+                Further it can't be guaranteed, that the internal process runs synchronous.
+                that's why we prefer using of specialized methods afterwards e.g. to:
+                    - wait till the internal job will be finished
+                      and get the results
+                    - or to let it run without any further control from outside.
 
         @param  sURL
                 points to the resource, which should be loaded.
@@ -256,39 +259,17 @@ public:
 
         @throw  A LoadEnvException e.g. if another load operation is till in progress
                 or initialization of a new one fail by other reasons.
-                The real reason, a suitable message and ID will be given here immidiatly.
+                The real reason, a suitable message and ID will be given here immediately.
 
         @throw  A RuntimeException in case any internal process indicates, that
                 the whole runtime can't be used any longer.
      */
-    void initializeLoading(const OUString&                                           sURL            ,
+    void startLoading(const OUString&                                           sURL            ,
                            const css::uno::Sequence< css::beans::PropertyValue >&    lMediaDescriptor,
                            const css::uno::Reference< css::frame::XFrame >&          xBaseFrame      ,
                            const OUString&                                           sTarget         ,
                                  sal_Int32                                           nSearchFlags    ,
                                  LoadEnvFeatures                                     eFeature        = LoadEnvFeatures::NONE);
-
-    /** @short  start loading of the resource represented by this loadenv instance.
-
-        @descr  There is no direct return value possible here. Because it depends
-                from the usage of this instance! E.g. for loading a "visible component"
-                a frame with a controller/model inside can be possible. For loading
-                of a "non visible component" only an information about a successfully start
-                can be provided.
-                Further it can't be guaranteed, that the internal process runs synchronous.
-                Thats why we preferr using of specialized methods afterwards e.g. to:
-                    - wait till the internal job will be finished
-                      and get the results
-                    - or to let it run without any further control from outside.
-
-        @throw  A LoadEnvException if start of the load process failed (because
-                another is still in progress!).
-                The reason, a suitable message and ID will be given here immidiatly.
-
-        @throw  A RuntimeException in case any internal process indicates, that
-                the whole runtime can't be used any longer.
-     */
-    void startLoading();
 
     /** @short  wait for an already running load request (started by calling
                 startLoading() before).
@@ -296,7 +277,7 @@ public:
         @descr  The timeout parameter can be used to wait some times only
                 or forever. The return value indicates if the load request
                 was finished during the specified timeout period.
-                But it indicates not, if the load request was successfully or not!
+                But it indicates not, if the load request was successful or not!
 
         @param  nTimeout
                 specify a timeout in [ms].
@@ -369,7 +350,7 @@ public:
                 close the frame if it was created before in case loading failed.
 
         @throw  A LoadEnvException only in cases, where an internal error indicates,
-                that the complete load environment seems to be not useable in general.
+                that the complete load environment seems to be not usable in general.
                 In such cases a RuntimeException would be to hard for the outside code :-)
 
         @throw  A RuntimeException in case any internal process indicates, that
@@ -378,6 +359,7 @@ public:
     void impl_reactForLoadingState();
 
 private:
+    void start();
 
     /** @short  tries to detect the type and the filter of the specified content.
 
@@ -454,7 +436,7 @@ private:
                 and could be activated successfully. An empty reference otherwise.
 
         @throw  A LoadEnvException only in cases, where an internal error indicates,
-                that the complete load environment seems to be not useable in general.
+                that the complete load environment seems to be not usable in general.
                 In such cases a RuntimeException would be to hard for the outside code :-)
 
         @throw  A RuntimeException in case any internal process indicates, that
@@ -462,7 +444,7 @@ private:
      */
     css::uno::Reference< css::frame::XFrame > impl_searchAlreadyLoaded();
 
-    /** @short  search for any target frame, which seems to be useable
+    /** @short  search for any target frame, which seems to be usable
                 for this load request.
 
         @descr  Because this special feature is bound to the target specifier "_default"
@@ -478,13 +460,13 @@ private:
                     <li>and(!) this target must not be already used by any other load request.</li>
                 </ul>
 
-                If a suitable target is located it will be locked. Thats why the last rule
-                exists! If this method returns a valid frame reference, it was locked to be useable
+                If a suitable target is located it will be locked. That's why the last rule
+                exists! If this method returns a valid frame reference, it was locked to be usable
                 for this load request only. (Don't forget to reset this state later!)
                 Concurrent LoadEnv instances can synchronize her work be using such locks :-) HOPEFULLY
 
         @throw  A LoadEnvException only in cases, where an internal error indicates,
-                that the complete load environment seems to be not useable in general.
+                that the complete load environment seems to be not usable in general.
                 In such cases a RuntimeException would be to hard for the outside code :-)
 
         @throw  A RuntimeException in case any internal process indicates, that
@@ -493,11 +475,11 @@ private:
     css::uno::Reference< css::frame::XFrame > impl_searchRecycleTarget();
 
     /** @short  because showing of a frame is needed more than once...
-                it's implemented as an separate method .-)
+                it's implemented as a separate method .-)
 
         @descr  Note: Showing of a frame is bound to a special feature...
                 a) If we recycle any existing frame, we must bring it to front.
-                   Showing of such frame is not needed really.. because we recycle
+                   Showing of such frame is not needed really... because we recycle
                    visible frames only!
                 b) If the document was already shown (e.g. by our progress implementation)
                    we do nothing here. The reason behind: The document was already shown...
@@ -547,6 +529,11 @@ private:
      */
     void impl_jumpToMark(const css::uno::Reference< css::frame::XFrame >& xFrame,
                          const css::util::URL&                            aURL  );
+
+    /** @short  determine if this loader has an interactive dialog shown before
+                loading the document.
+     */
+    bool impl_filterHasInteractiveDialog() const;
 };
 
 } // namespace framework

@@ -30,34 +30,38 @@
 #include <string.h>
 #include <ne_xml.h>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include "UCBDeadPropertyValue.hxx"
+#include <memory>
 
 using namespace webdav_ucp;
 using namespace com::sun::star;
 
+namespace {
 
 struct UCBDeadPropertyValueParseContext
 {
-    OUString * pType;
-    OUString * pValue;
+    std::unique_ptr<OUString> pType;
+    std::unique_ptr<OUString> pValue;
 
-    UCBDeadPropertyValueParseContext() : pType( nullptr ), pValue( nullptr ) {}
-    ~UCBDeadPropertyValueParseContext() { delete pType; delete pValue; }
+    UCBDeadPropertyValueParseContext() {}
 };
 
-static const char aTypeString[] = "string";
-static const char aTypeLong[] = "long";
-static const char aTypeShort[] = "short";
-static const char aTypeBoolean[] = "boolean";
-static const char aTypeChar[] = "char";
-static const char aTypeByte[] = "byte";
-static const char aTypeHyper[] = "hyper";
-static const char aTypeFloat[] = "float";
-static const char aTypeDouble[] = "double";
+}
 
-static const char aXMLPre[] = "<ucbprop><type>";
-static const char aXMLMid[] = "</type><value>";
-static const char aXMLEnd[] = "</value></ucbprop>";
+const char aTypeString[] = "string";
+const char aTypeLong[] = "long";
+const char aTypeShort[] = "short";
+const char aTypeBoolean[] = "boolean";
+const char aTypeChar[] = "char";
+const char aTypeByte[] = "byte";
+const char aTypeHyper[] = "hyper";
+const char aTypeFloat[] = "float";
+const char aTypeDouble[] = "double";
+
+const char aXMLPre[] = "<ucbprop><type>";
+const char aXMLMid[] = "</type><value>";
+const char aXMLEnd[] = "</value></ucbprop>";
 
 
 #define STATE_TOP (1)
@@ -67,7 +71,9 @@ static const char aXMLEnd[] = "</value></ucbprop>";
 #define STATE_VALUE     (STATE_TOP + 2)
 
 
-extern "C" int UCBDeadPropertyValue_startelement_callback(
+extern "C" {
+
+static int UCBDeadPropertyValue_startelement_callback(
     void *,
     int parent,
     const char * /*nspace*/,
@@ -95,7 +101,7 @@ extern "C" int UCBDeadPropertyValue_startelement_callback(
 }
 
 
-extern "C" int UCBDeadPropertyValue_chardata_callback(
+static int UCBDeadPropertyValue_chardata_callback(
     void *userdata,
     int state,
     const char *buf,
@@ -110,23 +116,21 @@ extern "C" int UCBDeadPropertyValue_chardata_callback(
             assert( !pCtx->pType &&
                         "UCBDeadPropertyValue_endelement_callback - "
                         "Type already set!" );
-            pCtx->pType
-                = new OUString( buf, len, RTL_TEXTENCODING_ASCII_US );
+            pCtx->pType.reset( new OUString( buf, len, RTL_TEXTENCODING_ASCII_US ) );
             break;
 
         case STATE_VALUE:
             assert( !pCtx->pValue &&
                         "UCBDeadPropertyValue_endelement_callback - "
                         "Value already set!" );
-            pCtx->pValue
-                = new OUString( buf, len, RTL_TEXTENCODING_ASCII_US );
+            pCtx->pValue.reset( new OUString( buf, len, RTL_TEXTENCODING_ASCII_US ) );
             break;
     }
     return 0; // zero to continue, non-zero to abort parsing
 }
 
 
-extern "C" int UCBDeadPropertyValue_endelement_callback(
+static int UCBDeadPropertyValue_endelement_callback(
     void *userdata,
     int state,
     const char *,
@@ -155,6 +159,7 @@ extern "C" int UCBDeadPropertyValue_endelement_callback(
     return 0; // zero to continue, non-zero to abort parsing
 }
 
+}
 
 static OUString encodeValue( const OUString & rValue )
 {
@@ -492,7 +497,7 @@ bool UCBDeadPropertyValue::toXML( const uno::Any & rInData,
     // Encode value! It must not contain XML reserved chars!
     aStringValue = encodeValue( aStringValue );
 
-        rOutData =  aXMLPre;
+    rOutData =  aXMLPre;
     rOutData += aStringType;
     rOutData += aXMLMid;
     rOutData += aStringValue;

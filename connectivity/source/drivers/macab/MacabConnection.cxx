@@ -38,8 +38,7 @@ using namespace com::sun::star::sdbcx;
 IMPLEMENT_SERVICE_INFO(MacabConnection, "com.sun.star.sdbc.drivers.MacabConnection", "com.sun.star.sdbc.Connection")
 
 MacabConnection::MacabConnection(MacabDriver*   _pDriver)
-         : OSubComponent<MacabConnection, MacabConnection_BASE>(static_cast<cppu::OWeakObject*>(_pDriver), this),
-         m_pAddressBook(nullptr),
+         : m_pAddressBook(nullptr),
          m_pDriver(_pDriver)
 {
     m_pDriver->acquire();
@@ -47,23 +46,18 @@ MacabConnection::MacabConnection(MacabDriver*   _pDriver)
 
 MacabConnection::~MacabConnection()
 {
-    if (!isClosed())
-        close();
+    if (!doIsClosed())
+        doClose();
 
     m_pDriver->release();
     m_pDriver = nullptr;
-}
-
-void SAL_CALL MacabConnection::release() throw()
-{
-    release_ChildImpl();
 }
 
 void MacabConnection::construct(const OUString&, const Sequence< PropertyValue >&)
 {
     osl_atomic_increment( &m_refCount );
 
-    // get the Mac OS X shared address book
+    // get the macOS shared address book
     m_pAddressBook = new MacabAddressBook();
 
     osl_atomic_decrement( &m_refCount );
@@ -145,6 +139,11 @@ void SAL_CALL MacabConnection::rollback(  )
 }
 
 sal_Bool SAL_CALL MacabConnection::isClosed(  )
+{
+    return doIsClosed();
+}
+
+bool MacabConnection::doIsClosed()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
@@ -241,6 +240,11 @@ void SAL_CALL MacabConnection::setTypeMap( const Reference< css::container::XNam
 // XCloseable
 void SAL_CALL MacabConnection::close(  )
 {
+    doClose();
+}
+
+void MacabConnection::doClose()
+{
     {
         ::osl::MutexGuard aGuard( m_aMutex );
         checkDisposed(MacabConnection_BASE::rBHelper.bDisposed);
@@ -265,9 +269,9 @@ void MacabConnection::disposing()
     // we noticed that we should be destroyed in near future so we have to dispose our statements
     ::osl::MutexGuard aGuard(m_aMutex);
 
-    for (OWeakRefArray::iterator i = m_aStatements.begin(); m_aStatements.end() != i; ++i)
+    for (auto& rxStatement : m_aStatements)
     {
-        Reference< XComponent > xComp(i->get(), UNO_QUERY);
+        Reference< XComponent > xComp(rxStatement.get(), UNO_QUERY);
         if (xComp.is())
             xComp->dispose();
     }
@@ -279,13 +283,12 @@ void MacabConnection::disposing()
         m_pAddressBook = nullptr;
     }
 
-    m_xMetaData = css::uno::WeakReference< css::sdbc::XDatabaseMetaData>();
+    m_xMetaData.clear();
 
-    dispose_ChildImpl();
     MacabConnection_BASE::disposing();
 }
 
-Reference< XTablesSupplier > SAL_CALL MacabConnection::createCatalog()
+Reference< XTablesSupplier > MacabConnection::createCatalog()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
@@ -304,7 +307,7 @@ MacabAddressBook* MacabConnection::getAddressBook() const
     return m_pAddressBook;
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT void*  SAL_CALL createMacabConnection( void* _pDriver )
+extern "C" SAL_DLLPUBLIC_EXPORT void* createMacabConnection( void* _pDriver )
 {
     MacabConnection* pConnection = new MacabConnection( static_cast< MacabDriver* >( _pDriver ) );
     // by definition, the pointer crossing library boundaries as void ptr is acquired once

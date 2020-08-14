@@ -18,16 +18,11 @@
  */
 
 #include <standard/vclxaccessiblecombobox.hxx>
-#include <standard/vclxaccessiblelist.hxx>
-#include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include <vcl/svapp.hxx>
-#include <vcl/combobox.hxx>
+#include <vcl/window.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::accessibility;
 
 
@@ -37,30 +32,23 @@ VCLXAccessibleComboBox::VCLXAccessibleComboBox (VCLXWindow* pVCLWindow)
 }
 
 
-VCLXAccessibleComboBox::~VCLXAccessibleComboBox()
-{
-}
-
 bool VCLXAccessibleComboBox::IsValid() const
 {
-    return GetWindow().get() != nullptr;
+    return GetWindow();
 }
 
 // XServiceInfo
 
 OUString VCLXAccessibleComboBox::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleComboBox" );
+    return "com.sun.star.comp.toolkit.AccessibleComboBox";
 }
 
 
 Sequence< OUString > VCLXAccessibleComboBox::getSupportedServiceNames()
 {
-    Sequence< OUString > aNames = VCLXAccessibleBox::getSupportedServiceNames();
-    sal_Int32 nLength = aNames.getLength();
-    aNames.realloc( nLength + 1 );
-    aNames[nLength] = "com.sun.star.accessibility.AccessibleComboBox";
-    return aNames;
+    return comphelper::concatSequences(VCLXAccessibleBox::getSupportedServiceNames(),
+                                       Sequence<OUString>{"com.sun.star.accessibility.AccessibleComboBox"});
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

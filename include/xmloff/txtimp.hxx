@@ -22,28 +22,24 @@
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
 #include <sal/types.h>
+#include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Reference.h>
+#include <com/sun/star/uno/Sequence.hxx>
 
 #include <map>
 #include <memory>
 
-#include <xmloff/xmltkmap.hxx>
-#include <rtl/ref.hxx>
 #include <salhelper/simplereferenceobject.hxx>
 
 class XMLTextListsHelper;
 class SvXMLImportContext;
 class SvXMLTokenMap;
 class SvXMLImportPropertyMapper;
-class SvXMLNamespaceMap;
 class SvXMLImport;
 class SvXMLStylesContext;
-class XMLTextListBlockContext;
 class SvxXMLListStyleContext;
 class XMLPropStyleContext;
 class SvI18NMap;
-class XMLSectionImportContext;
-class XMLFontStylesContext;
 template<class A> class XMLPropertyBackpatcher;
 class XMLEventsImportContext;
 
@@ -51,7 +47,7 @@ namespace xmloff {
     struct ParsedRDFaAttributes;
 }
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
 namespace text {
     class XText;
     class XTextCursor;
@@ -60,12 +56,13 @@ namespace text {
     class XFormField;
 }
 namespace frame { class XModel; }
-namespace container { class XNameContainer; class XIndexReplace; class XNameAccess; }
+namespace container { class XNameContainer; class XIndexReplace; }
 namespace beans { class XPropertySet; }
-namespace xml { namespace sax { class XAttributeList; } }
+namespace xml::sax { class XAttributeList; }
 namespace util { struct DateTime; }
-namespace lang { class XMultiServiceFactory; }
-} } }
+}
+
+namespace rtl { template <class reference_type> class Reference; }
 
 enum SwXMLTextElemTokens
 {
@@ -212,6 +209,7 @@ enum XMLTextPElemTokens
     XML_TOK_TEXT_ANNOTATION,
     XML_TOK_TEXT_ANNOTATION_END,
     XML_TOK_TEXT_NAME,
+    XML_TOK_TEXT_RESOLVED,
     XML_TOK_TEXT_SCRIPT,
     XML_TOK_TEXT_TABLE_FORMULA,
     XML_TOK_TEXT_DROP_DOWN,
@@ -247,6 +245,7 @@ enum XMLTextPAttrTokens
     XML_TOK_TEXT_P_TEXTID,
     XML_TOK_TEXT_P_STYLE_NAME,
     XML_TOK_TEXT_P_COND_STYLE_NAME,
+    XML_TOK_TEXT_P_OUTLINE_CONTENT_VISIBLE,
     XML_TOK_TEXT_P_LEVEL,
     XML_TOK_TEXT_P_IS_LIST_HEADER,
     XML_TOK_TEXT_P_RESTART_NUMBERING,
@@ -399,6 +398,8 @@ public:
 
     virtual ~XMLTextImportHelper() override;
 
+    void dispose();
+
     void SetCursor(
             const css::uno::Reference< css::text::XTextCursor >& rCursor );
     void ResetCursor();
@@ -448,18 +449,19 @@ public:
     void DeleteParagraph();
 
     void InsertControlCharacter( sal_Int16 nControl );
-    void InsertTextContent( css::uno::Reference< css::text::XTextContent > & xContent);
+    void InsertTextContent( css::uno::Reference< css::text::XTextContent > const & xContent);
 
     // Add parameter <bOutlineLevelAttrFound> (#i73509#)
     // Add parameter <bSetListAttrs> in order to suppress the handling of the list attributes (#i80724#)
     OUString SetStyleAndAttrs(
-            SvXMLImport& rImport,
+            SvXMLImport const & rImport,
             const css::uno::Reference< css::text::XTextCursor >& rCursor,
             const OUString& rStyleName,
             bool bPara,
             bool bOutlineLevelAttrFound = false,
             sal_Int8 nOutlineLevel = -1,
-            bool bSetListAttrs = true );
+            bool bSetListAttrs = true,
+            bool bOutlineContentVisible = true);
 
     /** Find a suitable name for the given outline level.
      *  If rStyleName is empty, change it to a previously used or default style
@@ -476,7 +478,7 @@ public:
     void SetOutlineStyles( bool bSetEmpty );
 
     void SetHyperlink(
-            SvXMLImport& rImport,
+            SvXMLImport const & rImport,
             const css::uno::Reference< css::text::XTextCursor >& rCursor,
             const OUString& rHRef,
             const OUString& rName,
@@ -485,7 +487,7 @@ public:
             const OUString& rVisitedStyleName,
             XMLEventsImportContext* pEvents);
     void SetRuby(
-            SvXMLImport& rImport,
+            SvXMLImport const & rImport,
             const css::uno::Reference< css::text::XTextCursor >& rCursor,
             const OUString& rStyleName,
             const OUString& rTextStyleName,
@@ -505,6 +507,7 @@ public:
             const OUString& rName ) const;
     XMLPropStyleContext* FindPageMaster(
             const OUString& rName ) const;
+    XMLPropStyleContext* FindDrawingPage(OUString const& rName) const;
 
     const css::uno::Reference< css::container::XNameContainer> & GetParaStyles() const;
 
@@ -547,6 +550,7 @@ public:
     static SvXMLImportPropertyMapper* CreateTableDefaultExtPropMapper(SvXMLImport&);
     static SvXMLImportPropertyMapper* CreateTableRowDefaultExtPropMapper(SvXMLImport&);
     static SvXMLImportPropertyMapper* CreateTableCellExtPropMapper(SvXMLImport&);
+    static SvXMLImportPropertyMapper* CreateDrawingPageExtPropMapper(SvXMLImport&);
 
     SvI18NMap& GetRenameMap();
 
@@ -568,11 +572,11 @@ public:
     OUString FindActiveBookmarkName();
 
     void pushFieldCtx( const OUString& name, const OUString& type );
-    void popFieldCtx();
+    css::uno::Reference<css::text::XFormField> popFieldCtx();
     void addFieldParam( const OUString& name, const OUString& value );
-    void setCurrentFieldParamsTo(css::uno::Reference< css::text::XFormField> &xFormField);
+    void setCurrentFieldParamsTo(css::uno::Reference< css::text::XFormField> const &xFormField);
     OUString getCurrentFieldType();
-    bool hasCurrentFieldCtx();
+    bool hasCurrentFieldCtx() const;
 
 
     /// insert new footnote ID.
@@ -676,14 +680,14 @@ public:
         /// range is not within <text:p>
         bool bIsOutsideOfParagraph);
 
-    virtual void RedlineAdjustStartNodeCursor( bool bStart );
+    virtual void RedlineAdjustStartNodeCursor();
     virtual void SetShowChanges( bool bShowChanges );
     virtual void SetRecordChanges( bool bRecordChanges );
     virtual void SetChangesProtectionKey(
         const css::uno::Sequence<sal_Int8> & rProtectionKey );
 
     /// get the last open redline ID
-    OUString GetOpenRedlineId();
+    OUString const & GetOpenRedlineId() const;
     /// modify the last open redline ID
     void SetOpenRedlineId( OUString const & rId);
     /// reset the last open redline ID
@@ -707,10 +711,15 @@ public:
     void PopListContext();
 
     void SetCellParaStyleDefault(OUString const& rNewValue);
-    OUString const& GetCellParaStyleDefault();
+    OUString const& GetCellParaStyleDefault() const;
 
     void AddCrossRefHeadingMapping(OUString const& rFrom, OUString const& rTo);
     void MapCrossRefHeadingFieldsHorribly();
+
+    void setBookmarkAttributes(OUString const& bookmark, bool hidden, OUString const& condition);
+    bool getBookmarkHidden(OUString const& bookmark) const;
+    const OUString& getBookmarkCondition(OUString const& bookmark) const;
+
 };
 
 #endif

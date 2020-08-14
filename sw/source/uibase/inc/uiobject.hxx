@@ -13,7 +13,10 @@
 #include <memory>
 #include <vcl/uitest/uiobject.hxx>
 
-class SwEditWin;
+#include "edtwin.hxx"
+#include "navipi.hxx"
+
+#include <AnnotationWin.hxx>
 
 class SwEditWinUIObject : public WindowUIObject
 {
@@ -35,6 +38,48 @@ protected:
 private:
 
     VclPtr<SwEditWin> mxEditWin;
+
+};
+
+class SwNavigationPIUIObject : public WindowUIObject
+{
+    VclPtr<SwNavigationPI> mxSwNavigationPI;
+
+public:
+
+    SwNavigationPIUIObject(const VclPtr<SwNavigationPI>& xSwNavigationPI);
+
+    virtual StringMap get_state() override;
+
+    virtual void execute(const OUString& rAction,
+            const StringMap& rParameters) override;
+
+    static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
+
+protected:
+
+    OUString get_name() const override;
+};
+
+// This class handles the Comments as a UIObject to be used in UITest Framework
+class CommentUIObject : public WindowUIObject
+{
+    VclPtr<sw::annotation::SwAnnotationWin> mxCommentUIObject;
+
+public:
+
+    CommentUIObject(const VclPtr<sw::annotation::SwAnnotationWin>& xCommentUIObject);
+
+    virtual StringMap get_state() override;
+
+    virtual void execute(const OUString& rAction,
+            const StringMap& rParameters) override;
+
+    static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
+
+protected:
+
+    OUString get_name() const override;
 
 };
 

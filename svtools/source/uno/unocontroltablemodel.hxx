@@ -17,27 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVTOOLS_SOURCE_UNO_UNOCONTROLTABLEMODEL_HXX
-#define INCLUDED_SVTOOLS_SOURCE_UNO_UNOCONTROLTABLEMODEL_HXX
+#pragma once
 
-#include <svtools/table/tablemodel.hxx>
-#include "table/tablecontrol.hxx"
+#include <table/tablemodel.hxx>
+#include <table/tablesort.hxx>
 
-#include <com/sun/star/awt/grid/XGridControl.hpp>
 #include <com/sun/star/awt/grid/GridDataEvent.hpp>
 #include <com/sun/star/awt/grid/XGridColumnModel.hpp>
 #include <com/sun/star/awt/grid/XGridDataModel.hpp>
-#include <com/sun/star/awt/grid/XGridSelectionListener.hpp>
 #include <com/sun/star/awt/grid/XGridColumn.hpp>
-#include <com/sun/star/util/Color.hpp>
 #include <com/sun/star/style/VerticalAlignment.hpp>
-
-#include <rtl/ref.hxx>
 
 #include <memory>
 
 
-namespace svt { namespace table
+namespace svt::table
 {
 
 
@@ -73,16 +67,16 @@ namespace svt { namespace table
         virtual void                            getCellContent( ColPos const i_col, RowPos const i_row, css::uno::Any& o_cellContent ) override;
         virtual void                            getCellToolTip( ColPos const i_col, RowPos const i_row, css::uno::Any & o_cellToolTip ) override;
         virtual css::uno::Any      getRowHeading( RowPos const i_rowPos ) const override;
-        virtual ::boost::optional< ::Color >    getLineColor() const override;
-        virtual ::boost::optional< ::Color >    getHeaderBackgroundColor() const override;
-        virtual ::boost::optional< ::Color >    getHeaderTextColor() const override;
-        virtual ::boost::optional< ::Color >    getActiveSelectionBackColor() const override;
-        virtual ::boost::optional< ::Color >    getInactiveSelectionBackColor() const override;
-        virtual ::boost::optional< ::Color >    getActiveSelectionTextColor() const override;
-        virtual ::boost::optional< ::Color >    getInactiveSelectionTextColor() const override;
-        virtual ::boost::optional< ::Color >    getTextColor() const override;
-        virtual ::boost::optional< ::Color >    getTextLineColor() const override;
-        virtual ::boost::optional< ::std::vector< ::Color > >
+        virtual ::std::optional< ::Color >    getLineColor() const override;
+        virtual ::std::optional< ::Color >    getHeaderBackgroundColor() const override;
+        virtual ::std::optional< ::Color >    getHeaderTextColor() const override;
+        virtual ::std::optional< ::Color >    getActiveSelectionBackColor() const override;
+        virtual ::std::optional< ::Color >    getInactiveSelectionBackColor() const override;
+        virtual ::std::optional< ::Color >    getActiveSelectionTextColor() const override;
+        virtual ::std::optional< ::Color >    getInactiveSelectionTextColor() const override;
+        virtual ::std::optional< ::Color >    getTextColor() const override;
+        virtual ::std::optional< ::Color >    getTextLineColor() const override;
+        virtual ::std::optional< ::std::vector< ::Color > >
                                                 getRowBackgroundColors() const override;
         virtual css::style::VerticalAlignment
                                                 getVerticalAlign() const override;
@@ -154,9 +148,8 @@ namespace svt { namespace table
     };
 
 
-} } // svt::table
+} // svt::table
 
 
-#endif // INCLUDED_SVTOOLS_SOURCE_UNO_UNOCONTROLTABLEMODEL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

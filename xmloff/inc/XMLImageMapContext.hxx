@@ -24,17 +24,15 @@
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Reference.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XIndexContainer; }
     namespace beans { class XPropertySet; }
-    namespace xml { namespace sax { class XAttributeList; } }
-} } }
+    namespace xml::sax { class XAttributeList; }
+}
 
 
-class XMLImageMapContext : public SvXMLImportContext
+class XMLImageMapContext final : public SvXMLImportContext
 {
-    const OUString sImageMap;
-
     /// the image map to be imported
     css::uno::Reference< css::container::XIndexContainer> xImageMap;
 
@@ -48,11 +46,11 @@ public:
         SvXMLImport& rImport,
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
-        css::uno::Reference< css::beans::XPropertySet> & rPropertySet);
+        css::uno::Reference< css::beans::XPropertySet> const & rPropertySet);
 
     virtual ~XMLImageMapContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;

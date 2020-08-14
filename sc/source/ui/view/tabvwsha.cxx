@@ -17,47 +17,50 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include <svl/stritem.hxx>
-#include <svl/whiter.hxx>
-#include <svl/zformat.hxx>
+#include <com/sun/star/table/BorderLineStyle.hpp>
+
+#include <comphelper/lok.hxx>
 #include <editeng/boxitem.hxx>
-#include <svx/numinf.hxx>
-#include <svl/srchitem.hxx>
-#include <svl/ilstitem.hxx>
-#include <svl/int64item.hxx>
-#include <svx/zoomslideritem.hxx>
+#include <LibreOfficeKit/LibreOfficeKitEnums.h>
+#include <o3tl/temporary.hxx>
 #include <sfx2/bindings.hxx>
+#include <sfx2/lokhelper.hxx>
+#include <sfx2/request.hxx>
+#include <sfx2/sfxdlg.hxx>
 #include <sfx2/sidebar/Sidebar.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <sfx2/dispatch.hxx>
-#include <sfx2/request.hxx>
-#include <vcl/msgbox.hxx>
+#include <svl/ilstitem.hxx>
+#include <svl/int64item.hxx>
+#include <svl/srchitem.hxx>
+#include <svl/srchdefs.hxx>
+#include <svl/stritem.hxx>
+#include <svl/whiter.hxx>
+#include <svx/numinf.hxx>
+#include <svx/zoomslideritem.hxx>
 
-#include "global.hxx"
-#include "attrib.hxx"
-#include "patattr.hxx"
-#include "cellform.hxx"
-#include "document.hxx"
-#include "formulacell.hxx"
-#include "globstr.hrc"
-#include "scmod.hxx"
-#include "inputhdl.hxx"
-#include "inputwin.hxx"
-#include "docsh.hxx"
-#include "viewdata.hxx"
-#include "appoptio.hxx"
-#include "sc.hrc"
-#include "stlpool.hxx"
-#include "tabvwsh.hxx"
-#include "dwfunctr.hxx"
-#include "scabstdlg.hxx"
-#include "compiler.hxx"
-#include "markdata.hxx"
-#include "cellvalue.hxx"
-#include "tokenarray.hxx"
-
-#include <com/sun/star/table/BorderLineStyle.hpp>
+#include <global.hxx>
+#include <appoptio.hxx>
+#include <attrib.hxx>
+#include <cellform.hxx>
+#include <cellvalue.hxx>
+#include <compiler.hxx>
+#include <docsh.hxx>
+#include <document.hxx>
+#include <formulacell.hxx>
+#include <globstr.hrc>
+#include <inputhdl.hxx>
+#include <inputwin.hxx>
+#include <markdata.hxx>
+#include <patattr.hxx>
+#include <sc.hrc>
+#include <scabstdlg.hxx>
+#include <scitems.hxx>
+#include <scmod.hxx>
+#include <scresid.hxx>
+#include <stlpool.hxx>
+#include <tabvwsh.hxx>
+#include <tokenarray.hxx>
+#include <viewdata.hxx>
 
 #include <memory>
 
@@ -65,8 +68,6 @@ using namespace com::sun::star;
 
 bool ScTabViewShell::GetFunction( OUString& rFuncStr, FormulaError nErrCode )
 {
-    OUString aStr;
-
     sal_uInt32 nFuncs = SC_MOD()->GetAppOptions().GetStatusFunc();
     ScViewData& rViewData   = GetViewData();
     ScMarkData& rMark       = rViewData.GetMarkData();
@@ -76,7 +77,7 @@ bool ScTabViewShell::GetFunction( OUString& rFuncStr, FormulaError nErrCode )
     {
         if ( !(nFuncs & (1 << nFunc)) )
             continue;
-        ScSubTotalFunc eFunc = (ScSubTotalFunc)nFunc;
+        ScSubTotalFunc eFunc = static_cast<ScSubTotalFunc>(nFunc);
 
         if (bIgnoreError && (eFunc == SUBTOTAL_FUNC_CNT || eFunc == SUBTOTAL_FUNC_CNT2))
             nErrCode = FormulaError::NONE;
@@ -87,31 +88,30 @@ bool ScTabViewShell::GetFunction( OUString& rFuncStr, FormulaError nErrCode )
             return true;
         }
 
-        sal_uInt16 nGlobStrId = 0;
+        const char* pGlobStrId = nullptr;
         switch (eFunc)
         {
-            case SUBTOTAL_FUNC_AVE:  nGlobStrId = STR_FUN_TEXT_AVG; break;
-            case SUBTOTAL_FUNC_CNT:  nGlobStrId = STR_FUN_TEXT_COUNT; break;
-            case SUBTOTAL_FUNC_CNT2: nGlobStrId = STR_FUN_TEXT_COUNT2; break;
-            case SUBTOTAL_FUNC_MAX:  nGlobStrId = STR_FUN_TEXT_MAX; break;
-            case SUBTOTAL_FUNC_MIN:  nGlobStrId = STR_FUN_TEXT_MIN; break;
-            case SUBTOTAL_FUNC_SUM:  nGlobStrId = STR_FUN_TEXT_SUM; break;
-            case SUBTOTAL_FUNC_SELECTION_COUNT: nGlobStrId = STR_FUN_TEXT_SELECTION_COUNT; break;
+            case SUBTOTAL_FUNC_AVE:  pGlobStrId = STR_FUN_TEXT_AVG; break;
+            case SUBTOTAL_FUNC_CNT:  pGlobStrId = STR_FUN_TEXT_COUNT; break;
+            case SUBTOTAL_FUNC_CNT2: pGlobStrId = STR_FUN_TEXT_COUNT2; break;
+            case SUBTOTAL_FUNC_MAX:  pGlobStrId = STR_FUN_TEXT_MAX; break;
+            case SUBTOTAL_FUNC_MIN:  pGlobStrId = STR_FUN_TEXT_MIN; break;
+            case SUBTOTAL_FUNC_SUM:  pGlobStrId = STR_FUN_TEXT_SUM; break;
+            case SUBTOTAL_FUNC_SELECTION_COUNT: pGlobStrId = STR_FUN_TEXT_SELECTION_COUNT; break;
 
             default:
             {
                 // added to avoid warnings
             }
         }
-        if (nGlobStrId)
+        if (pGlobStrId)
         {
             ScDocument* pDoc        = rViewData.GetDocument();
             SCCOL       nPosX       = rViewData.GetCurX();
             SCROW       nPosY       = rViewData.GetCurY();
             SCTAB       nTab        = rViewData.GetTabNo();
 
-            aStr = ScGlobal::GetRscString(nGlobStrId);
-            aStr += ": ";
+            OUString aStr = ScResId(pGlobStrId) + ": ";
 
             ScAddress aCursor( nPosX, nPosY, nTab );
             double nVal;
@@ -142,7 +142,7 @@ bool ScTabViewShell::GetFunction( OUString& rFuncStr, FormulaError nErrCode )
                 bFirst = false;
             }
             else
-                rFuncStr += ("; " + aStr);
+                rFuncStr += "; " + aStr;
         }
     }
 
@@ -283,10 +283,8 @@ void ScTabViewShell::GetState( SfxItemSet& rSet )
                     if ( pStyleSheet )
                     {
                         SfxItemSet& rStyleSet = pStyleSheet->GetItemSet();
-                        sal_uInt16 nScale = static_cast<const SfxUInt16Item&>(
-                                            rStyleSet.Get(ATTR_PAGE_SCALE)).GetValue();
-                        sal_uInt16 nPages = static_cast<const SfxUInt16Item&>(
-                                            rStyleSet.Get(ATTR_PAGE_SCALETOPAGES)).GetValue();
+                        sal_uInt16 nScale = rStyleSet.Get(ATTR_PAGE_SCALE).GetValue();
+                        sal_uInt16 nPages = rStyleSet.Get(ATTR_PAGE_SCALETOPAGES).GetValue();
                         if ( nScale == 100 && nPages == 0 )
                             rSet.DisableItem( nWhich );
                     }
@@ -300,8 +298,7 @@ void ScTabViewShell::GetState( SfxItemSet& rSet )
                 else
                 {
                     const Fraction& rOldY = GetViewData().GetZoomY();
-                    sal_uInt16 nZoom = (sal_uInt16)(( rOldY.GetNumerator() * 100 )
-                                                / rOldY.GetDenominator());
+                    sal_uInt16 nZoom = static_cast<sal_uInt16>(long( rOldY * 100 ));
                     rSet.Put( SvxZoomItem( SvxZoomType::PERCENT, nZoom, nWhich ) );
                 }
                 break;
@@ -313,7 +310,7 @@ void ScTabViewShell::GetState( SfxItemSet& rSet )
                     else
                     {
                         const Fraction& rOldY = GetViewData().GetZoomY();
-                        sal_uInt16 nCurrentZoom = (sal_uInt16)(( rOldY.GetNumerator() * 100 ) / rOldY.GetDenominator());
+                        sal_uInt16 nCurrentZoom = static_cast<sal_uInt16>(long( rOldY * 100 ));
 
                         if( nCurrentZoom )
                         {
@@ -420,6 +417,15 @@ void ScTabViewShell::GetState( SfxItemSet& rSet )
                             rViewData.GetVSplitMode() == SC_SPLIT_FIX ));
                 break;
 
+            case SID_WINDOW_FIX_COL:
+            case SID_WINDOW_FIX_ROW:
+                {
+                    bool bIsCol = (nWhich == SID_WINDOW_FIX_COL);
+                    sal_Int32 nFreezeIndex = rViewData.GetLOKSheetFreezeIndex(bIsCol);
+                    rSet.Put(SfxInt32Item(nWhich, nFreezeIndex));
+                }
+                break;
+
             case FID_CHG_SHOW:
                 {
                     if ( pDoc->GetChangeTrack() == nullptr || ( pDocShell && pDocShell->IsDocShared() ) )
@@ -428,18 +434,18 @@ void ScTabViewShell::GetState( SfxItemSet& rSet )
                 break;
             case FID_CHG_ACCEPT:
                 {
-                    rSet.Put(SfxBoolItem(FID_CHG_ACCEPT,
-                            pThisFrame->HasChildWindow(FID_CHG_ACCEPT)));
-                    if(pDoc->GetChangeTrack()==nullptr)
+                    if(
+                       ( !pDoc->GetChangeTrack() &&  !pThisFrame->HasChildWindow(FID_CHG_ACCEPT) )
+                       ||
+                       ( pDocShell && pDocShell->IsDocShared() )
+                      )
                     {
-                        if ( !pThisFrame->HasChildWindow(FID_CHG_ACCEPT) )
-                        {
-                            rSet.DisableItem( nWhich);
-                        }
+                        rSet.DisableItem( nWhich);
                     }
-                    if ( pDocShell && pDocShell->IsDocShared() )
+                    else
                     {
-                        rSet.DisableItem( nWhich );
+                        rSet.Put(SfxBoolItem(FID_CHG_ACCEPT,
+                            pThisFrame->HasChildWindow(FID_CHG_ACCEPT)));
                     }
                 }
                 break;
@@ -473,26 +479,27 @@ void ScTabViewShell::ExecuteCellFormatDlg(SfxRequest& rReq, const OString &rName
 {
     ScDocument*             pDoc    = GetViewData().GetDocument();
 
-    SvxBoxItem              aLineOuter( ATTR_BORDER );
-    SvxBoxInfoItem          aLineInner( ATTR_BORDER_INNER );
+    std::shared_ptr<SvxBoxItem> aLineOuter(std::make_shared<SvxBoxItem>(ATTR_BORDER));
+    std::shared_ptr<SvxBoxInfoItem> aLineInner(std::make_shared<SvxBoxInfoItem>(ATTR_BORDER_INNER));
 
     const ScPatternAttr*    pOldAttrs       = GetSelectionPattern();
 
-    std::unique_ptr<SfxItemSet> pOldSet(new SfxItemSet(pOldAttrs->GetItemSet()));
+    auto pOldSet = std::make_shared<SfxItemSet>(pOldAttrs->GetItemSet());
     std::unique_ptr<SvxNumberInfoItem> pNumberInfoItem;
+
+    pOldSet->MergeRange(XATTR_FILLSTYLE, XATTR_FILLCOLOR);
 
     pOldSet->MergeRange(SID_ATTR_BORDER_STYLES, SID_ATTR_BORDER_DEFAULT_WIDTH);
 
     // We only allow these border line types.
-    std::vector<sal_Int32> aBorderStyles;
-    aBorderStyles.reserve(5);
-    aBorderStyles.push_back(table::BorderLineStyle::SOLID);
-    aBorderStyles.push_back(table::BorderLineStyle::DOTTED);
-    aBorderStyles.push_back(table::BorderLineStyle::DASHED);
-    aBorderStyles.push_back(table::BorderLineStyle::FINE_DASHED);
-    aBorderStyles.push_back(table::BorderLineStyle::DASH_DOT);
-    aBorderStyles.push_back(table::BorderLineStyle::DASH_DOT_DOT);
-    aBorderStyles.push_back(table::BorderLineStyle::DOUBLE_THIN);
+    const std::vector<sal_Int32> aBorderStyles{
+        table::BorderLineStyle::SOLID,
+        table::BorderLineStyle::DOTTED,
+        table::BorderLineStyle::DASHED,
+        table::BorderLineStyle::FINE_DASHED,
+        table::BorderLineStyle::DASH_DOT,
+        table::BorderLineStyle::DASH_DOT_DOT,
+        table::BorderLineStyle::DOUBLE_THIN };
 
     SfxIntegerListItem aBorderStylesItem(SID_ATTR_BORDER_STYLES, aBorderStyles);
     pOldSet->Put(aBorderStylesItem);
@@ -503,62 +510,70 @@ void ScTabViewShell::ExecuteCellFormatDlg(SfxRequest& rReq, const OString &rName
 
     // Get border items and put them in the set:
     GetSelectionFrame( aLineOuter, aLineInner );
+
     //Fix border incorrect for RTL fdo#62399
     if( pDoc->IsLayoutRTL( GetViewData().GetTabNo() ) )
     {
-        SvxBoxItem     aNewFrame( aLineOuter );
-        SvxBoxInfoItem aTempInfo( aLineInner );
+        std::unique_ptr<SvxBoxItem> aNewFrame(aLineOuter->Clone());
+        std::unique_ptr<SvxBoxInfoItem> aTempInfo(aLineInner->Clone());
 
-        if ( aLineInner.IsValid(SvxBoxInfoItemValidFlags::LEFT) )
-            aNewFrame.SetLine( aLineOuter.GetLeft(), SvxBoxItemLine::RIGHT );
-        if ( aLineInner.IsValid(SvxBoxInfoItemValidFlags::RIGHT) )
-            aNewFrame.SetLine( aLineOuter.GetRight(), SvxBoxItemLine::LEFT );
+        if ( aLineInner->IsValid(SvxBoxInfoItemValidFlags::LEFT) )
+            aNewFrame->SetLine( aLineOuter->GetLeft(), SvxBoxItemLine::RIGHT );
+        if ( aLineInner->IsValid(SvxBoxInfoItemValidFlags::RIGHT) )
+            aNewFrame->SetLine( aLineOuter->GetRight(), SvxBoxItemLine::LEFT );
 
-        aLineInner.SetValid( SvxBoxInfoItemValidFlags::LEFT, aTempInfo.IsValid(SvxBoxInfoItemValidFlags::RIGHT));
-        aLineInner.SetValid( SvxBoxInfoItemValidFlags::RIGHT, aTempInfo.IsValid(SvxBoxInfoItemValidFlags::LEFT));
+        aLineInner->SetValid( SvxBoxInfoItemValidFlags::LEFT, aTempInfo->IsValid(SvxBoxInfoItemValidFlags::RIGHT));
+        aLineInner->SetValid( SvxBoxInfoItemValidFlags::RIGHT, aTempInfo->IsValid(SvxBoxInfoItemValidFlags::LEFT));
 
-        pOldSet->Put( aNewFrame );
+        pOldSet->Put( *aNewFrame );
     }
     else
-        pOldSet->Put( aLineOuter );
+    {
+        pOldSet->Put( *aLineOuter );
+    }
 
-    pOldSet->Put( aLineInner );
+    pOldSet->Put( *aLineInner );
 
     // Generate NumberFormat Value from Value and Language and box it.
     pOldSet->Put( SfxUInt32Item( ATTR_VALUE_FORMAT,
         pOldAttrs->GetNumberFormat( pDoc->GetFormatTable() ) ) );
 
-    pNumberInfoItem.reset(MakeNumberInfoItem(pDoc, &GetViewData()));
+    pNumberInfoItem = MakeNumberInfoItem(pDoc, &GetViewData());
 
     pOldSet->MergeRange( SID_ATTR_NUMBERFORMAT_INFO, SID_ATTR_NUMBERFORMAT_INFO );
     pOldSet->Put(*pNumberInfoItem );
 
     bInFormatDialog = true;
     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-    OSL_ENSURE(pFact, "ScAbstractFactory create fail!");
 
-    ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateScAttrDlg(GetDialogParent(), pOldSet.get()));
+    VclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateScAttrDlg(GetFrameWeld(), pOldSet.get()));
 
     if (!rName.isEmpty())
         pDlg->SetCurPageId(rName);
-    short nResult = pDlg->Execute();
-    bInFormatDialog = false;
 
-    if ( nResult == RET_OK )
-    {
-        const SfxItemSet* pOutSet = pDlg->GetOutputItemSet();
+    auto pRequest = std::make_shared<SfxRequest>(rReq);
+    rReq.Ignore(); // the 'old' request is not relevant any more
 
-        const SfxPoolItem* pItem=nullptr;
-        if(pOutSet->GetItemState(SID_ATTR_NUMBERFORMAT_INFO,true,&pItem)==SfxItemState::SET)
+    pDlg->StartExecuteAsync([pDlg, pOldSet, pRequest, this](sal_Int32 nResult){
+        bInFormatDialog = false;
+
+        if ( nResult == RET_OK )
         {
+            const SfxItemSet* pOutSet = pDlg->GetOutputItemSet();
 
-            UpdateNumberFormatter(static_cast<const SvxNumberInfoItem&>(*pItem));
+            const SfxPoolItem* pItem=nullptr;
+            if(pOutSet->GetItemState(SID_ATTR_NUMBERFORMAT_INFO,true,&pItem)==SfxItemState::SET)
+            {
+                UpdateNumberFormatter(static_cast<const SvxNumberInfoItem&>(*pItem));
+            }
+
+            ApplyAttributes(pOutSet, pOldSet.get());
+
+            pRequest->Done(*pOutSet);
         }
 
-        ApplyAttributes(pOutSet, pOldSet.get());
-
-        rReq.Done( *pOutSet );
-    }
+        pDlg->disposeOnce();
+    });
 }
 
 bool ScTabViewShell::IsRefInputMode() const
@@ -647,9 +662,8 @@ void ScTabViewShell::UpdateInputHandler( bool bForce /* = sal_False */, bool bSt
 
         if (pDoc->IsTabProtected(nTab))
         {
-            const ScProtectionAttr* pProt = static_cast<const ScProtectionAttr*>(
-                                            pDoc->GetAttr( nPosX,nPosY,nTab,
-                                                           ATTR_PROTECTION));
+            const ScProtectionAttr* pProt = pDoc->GetAttr( nPosX,nPosY,nTab,
+                                                           ATTR_PROTECTION);
             bHideFormula = pProt->GetHideFormula();
             bHideAll     = pProt->GetHideCell();
         }
@@ -678,8 +692,7 @@ void ScTabViewShell::UpdateInputHandler( bool bForce /* = sal_False */, bool bSt
                     // unintentionally interpreted as a number, and to show the
                     // user that it is a string (#35060#).
                     //! also for numberformat "Text"? -> then remove when editing
-                    double fDummy;
-                    if ( pFormatter->IsNumberFormat(aString, nNumFmt, fDummy) )
+                    if ( pFormatter->IsNumberFormat(aString, nNumFmt, o3tl::temporary(double())) )
                         aString = "'" + aString;
                 }
             }
@@ -722,7 +735,22 @@ void ScTabViewShell::ExecuteSave( SfxRequest& rReq )
 
     // Finish entering unless 'DontTerminateEdit' is specified, even if a formula is being processed
     if (bCommitChanges)
+    {
+        if (comphelper::LibreOfficeKit::isActive())
+        {
+            // Normally this isn't needed, but in Calc when editing a cell formula
+            // and manually saving (without changing cells or hitting enter), while
+            // InputEnterHandler will mark the doc as modified (when it is), because
+            // we will save the doc immediately afterwards, the modified state event
+            // is clobbered. To avoid that, we notify all views immediately of the
+            // modified state, apply the modification, then save the document.
+            ScInputHandler* pHdl = GetInputHandler();
+            if (pHdl != nullptr && pHdl->GetModified())
+                SfxLokHelper::notifyAllViews(LOK_CALLBACK_STATE_CHANGED, ".uno:ModifiedStatus=true");
+        }
+
         SC_MOD()->InputEnterHandler();
+    }
 
     if ( GetViewData().GetDocShell()->IsDocShared() )
     {
@@ -750,7 +778,7 @@ void ScTabViewShell::GetSaveState( SfxItemSet& rSet )
     }
 }
 
-void ScTabViewShell::ExecDrawOpt( SfxRequest& rReq )
+void ScTabViewShell::ExecDrawOpt( const SfxRequest& rReq )
 {
     ScViewOptions aViewOptions = GetViewData().GetOptions();
     ScGridOptions aGridOptions = aViewOptions.GetGridOptions();

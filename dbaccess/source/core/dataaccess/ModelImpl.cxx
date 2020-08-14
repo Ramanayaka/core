@@ -17,17 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "commandcontainer.hxx"
-#include "connection.hxx"
-#include "core_resource.hrc"
-#include "core_resource.hxx"
-#include "databasecontext.hxx"
+#include <databasecontext.hxx>
 #include "databasedocument.hxx"
 #include "datasource.hxx"
-#include "dbastrings.hrc"
-#include "ModelImpl.hxx"
-#include "userinformation.hxx"
-#include "sdbcoretools.hxx"
+#include <definitioncontainer.hxx>
+#include <ModelImpl.hxx>
+#include <sdbcoretools.hxx>
 
 #include <com/sun/star/beans/PropertyBag.hpp>
 #include <com/sun/star/container/XSet.hpp>
@@ -35,33 +30,37 @@
 #include <com/sun/star/embed/XTransactedObject.hpp>
 #include <com/sun/star/embed/XTransactionBroadcaster.hpp>
 #include <com/sun/star/embed/StorageFactory.hpp>
-#include <com/sun/star/form/XLoadable.hpp>
 #include <com/sun/star/frame/theGlobalEventBroadcaster.hpp>
+#include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/sdb/BooleanComparisonMode.hpp>
 #include <com/sun/star/script/DocumentScriptLibraryContainer.hpp>
 #include <com/sun/star/script/DocumentDialogLibraryContainer.hpp>
 #include <com/sun/star/util/NumberFormatsSupplier.hpp>
+#include <com/sun/star/security/DocumentDigitalSignatures.hpp>
+#include <com/sun/star/security/XDocumentDigitalSignatures.hpp>
+#include <com/sun/star/task/DocumentMacroConfirmationRequest.hpp>
 
-#include <comphelper/interaction.hxx>
-#include <comphelper/seqstream.hxx>
-#include <comphelper/sequence.hxx>
-#include <connectivity/dbexception.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <rtl/digest.h>
+#include <comphelper/documentinfo.hxx>
+#include <comphelper/storagehelper.hxx>
+#include <comphelper/types.hxx>
+#include <comphelper/processfactory.hxx>
+#include <sfx2/docfile.hxx>
 #include <sfx2/signaturestate.hxx>
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
+#include <osl/file.hxx>
 #include <osl/diagnose.h>
 #include <sal/log.hxx>
-#include <vcl/errcode.hxx>
 #include <tools/urlobj.hxx>
-#include <unotools/sharedunocomponent.hxx>
+#include <unotools/configmgr.hxx>
+#include <unotools/tempfile.hxx>
+#include <i18nlangtag/languagetag.hxx>
 
 #include <algorithm>
 
+using namespace css;
 using namespace ::com::sun::star::document;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdbcx;
@@ -80,32 +79,10 @@ using namespace ::com::sun::star::task;
 using namespace ::com::sun::star::script;
 using namespace ::cppu;
 using namespace ::osl;
-using namespace ::dbtools;
 using namespace ::comphelper;
 
 namespace dbaccess
 {
-
-// VosMutexFacade
-VosMutexFacade::VosMutexFacade( ::osl::Mutex& _rMutex )
-    :m_rMutex( _rMutex )
-{
-}
-
-void VosMutexFacade::acquire()
-{
-    m_rMutex.acquire();
-}
-
-void VosMutexFacade::release()
-{
-    m_rMutex.release();
-}
-
-bool VosMutexFacade::tryToAcquire()
-{
-    return m_rMutex.tryToAcquire();
-}
 
 // DocumentStorageAccess
 class DocumentStorageAccess : public ::cppu::WeakImplHelper<   XDocumentSubStorageSupplier
@@ -180,20 +157,17 @@ void DocumentStorageAccess::dispose()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    for (   NamedStorages::const_iterator loop = m_aExposedStorages.begin();
-            loop != m_aExposedStorages.end();
-            ++loop
-        )
+    for (auto const& exposedStorage : m_aExposedStorages)
     {
         try
         {
-            Reference< XTransactionBroadcaster > xBroadcaster( loop->second, UNO_QUERY );
+            Reference< XTransactionBroadcaster > xBroadcaster(exposedStorage.second, UNO_QUERY);
             if ( xBroadcaster.is() )
                 xBroadcaster->removeTransactionListener( this );
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 
@@ -228,7 +202,7 @@ Reference< XStorage > DocumentStorageAccess::impl_openSubStorage_nothrow( const 
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 
     return xStorage;
@@ -238,19 +212,15 @@ void DocumentStorageAccess::disposeStorages()
 {
     m_bDisposingSubStorages = true;
 
-    NamedStorages::const_iterator aEnd = m_aExposedStorages.end();
-    for (   NamedStorages::iterator aIter = m_aExposedStorages.begin();
-            aIter != aEnd ;
-            ++aIter
-        )
+    for (auto & exposedStorage : m_aExposedStorages)
     {
         try
         {
-            ::comphelper::disposeComponent( aIter->second );
+            ::comphelper::disposeComponent( exposedStorage.second );
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
     m_aExposedStorages.clear();
@@ -262,12 +232,9 @@ void DocumentStorageAccess::commitStorages()
 {
     try
     {
-        for (   NamedStorages::const_iterator aIter = m_aExposedStorages.begin();
-                aIter != m_aExposedStorages.end();
-                ++aIter
-            )
+        for (auto const& exposedStorage : m_aExposedStorages)
         {
-            tools::stor::commitStorageIfWriteable( aIter->second );
+            tools::stor::commitStorageIfWriteable( exposedStorage.second );
         }
     }
     catch(const WrappedTargetException&)
@@ -291,7 +258,7 @@ bool DocumentStorageAccess::commitEmbeddedStorage( bool _bPreventRootCommits )
     }
     catch( Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 
     if ( _bPreventRootCommits )
@@ -308,7 +275,7 @@ Reference< XStorage > SAL_CALL DocumentStorageAccess::getDocumentSubStorage( con
     if ( pos == m_aExposedStorages.end() )
     {
         Reference< XStorage > xResult = impl_openSubStorage_nothrow( aStorageName, _nDesiredMode );
-        pos = m_aExposedStorages.insert( NamedStorages::value_type( aStorageName, xResult ) ).first;
+        pos = m_aExposedStorages.emplace( aStorageName, xResult ).first;
     }
 
     return pos->second;
@@ -322,15 +289,15 @@ Sequence< OUString > SAL_CALL DocumentStorageAccess::getDocumentSubStoragesNames
 
     std::vector< OUString > aNames;
 
-    Sequence< OUString > aElementNames( xRootStor->getElementNames() );
-    for ( sal_Int32 i=0; i<aElementNames.getLength(); ++i )
+    const Sequence< OUString > aElementNames( xRootStor->getElementNames() );
+    for ( OUString const & name : aElementNames )
     {
-        if ( xRootStor->isStorageElement( aElementNames[i] ) )
-            aNames.push_back( aElementNames[i] );
+        if ( xRootStor->isStorageElement( name ) )
+            aNames.push_back( name );
     }
     return aNames.empty()
         ?  Sequence< OUString >()
-        :  Sequence< OUString >( &aNames[0], aNames.size() );
+        :  Sequence< OUString >( aNames.data(), aNames.size() );
 }
 
 void SAL_CALL DocumentStorageAccess::preCommit( const css::lang::EventObject& /*aEvent*/ )
@@ -345,19 +312,19 @@ void SAL_CALL DocumentStorageAccess::commited( const css::lang::EventObject& aEv
     if ( m_pModelImplementation )
         m_pModelImplementation->setModified( true );
 
-    if ( m_pModelImplementation && m_bPropagateCommitToRoot )
-    {
-        Reference< XStorage > xStorage( aEvent.Source, UNO_QUERY );
+    if ( !(m_pModelImplementation && m_bPropagateCommitToRoot) )
+        return;
 
-        // check if this is the dedicated "database" sub storage
-        NamedStorages::const_iterator pos = m_aExposedStorages.find( "database" );
-        if  (   ( pos != m_aExposedStorages.end() )
-            &&  ( pos->second == xStorage )
-            )
-        {
-            // if so, also commit the root storage
-            m_pModelImplementation->commitRootStorage();
-        }
+    Reference< XStorage > xStorage( aEvent.Source, UNO_QUERY );
+
+    // check if this is the dedicated "database" sub storage
+    NamedStorages::const_iterator pos = m_aExposedStorages.find( "database" );
+    if  (   ( pos != m_aExposedStorages.end() )
+        &&  ( pos->second == xStorage )
+        )
+    {
+        // if so, also commit the root storage
+        m_pModelImplementation->commitRootStorage();
     }
 }
 
@@ -378,15 +345,10 @@ void SAL_CALL DocumentStorageAccess::disposing( const css::lang::EventObject& So
     if ( m_bDisposingSubStorages )
         return;
 
-    for (   NamedStorages::const_iterator find = m_aExposedStorages.begin();
-            find != m_aExposedStorages.end();
-            ++find
-        )
-        if ( find->second == Source.Source )
-        {
-            m_aExposedStorages.erase( find );
-            break;
-        }
+    auto find = std::find_if(m_aExposedStorages.begin(), m_aExposedStorages.end(),
+        [&Source](const NamedStorages::value_type& rEntry) { return rEntry.second == Source.Source; });
+    if (find != m_aExposedStorages.end())
+        m_aExposedStorages.erase( find );
 }
 
 // ODatabaseModelImpl
@@ -394,8 +356,6 @@ void SAL_CALL DocumentStorageAccess::disposing( const css::lang::EventObject& So
 ODatabaseModelImpl::ODatabaseModelImpl( const Reference< XComponentContext >& _rxContext, ODatabaseContext& _rDBContext )
             :m_xModel()
             ,m_xDataSource()
-            ,m_aMutex()
-            ,m_aMutexFacade( m_aMutex )
             ,m_aContainer(4)
             ,m_aMacroMode( *this )
             ,m_nImposedMacroExecMode( MacroExecMode::NEVER_EXECUTE )
@@ -404,6 +364,7 @@ ODatabaseModelImpl::ODatabaseModelImpl( const Reference< XComponentContext >& _r
             ,m_aEmbeddedMacros()
             ,m_bModificationLock( false )
             ,m_bDocumentInitialized( false )
+            ,m_nScriptingSignatureState(SignatureState::UNKNOWN)
             ,m_aContext( _rxContext )
             ,m_nLoginTimeout(0)
             ,m_bReadOnly(false)
@@ -411,6 +372,7 @@ ODatabaseModelImpl::ODatabaseModelImpl( const Reference< XComponentContext >& _r
             ,m_bSuppressVersionColumns(true)
             ,m_bModified(false)
             ,m_bDocumentReadOnly(false)
+            ,m_bMacroCallsSeenWhileLoading(false)
             ,m_pSharedConnectionManager(nullptr)
             ,m_nControllerLockCount(0)
 {
@@ -428,8 +390,6 @@ ODatabaseModelImpl::ODatabaseModelImpl(
                     )
             :m_xModel()
             ,m_xDataSource()
-            ,m_aMutex()
-            ,m_aMutexFacade( m_aMutex )
             ,m_aContainer(4)
             ,m_aMacroMode( *this )
             ,m_nImposedMacroExecMode( MacroExecMode::NEVER_EXECUTE )
@@ -438,6 +398,7 @@ ODatabaseModelImpl::ODatabaseModelImpl(
             ,m_aEmbeddedMacros()
             ,m_bModificationLock( false )
             ,m_bDocumentInitialized( false )
+            ,m_nScriptingSignatureState(SignatureState::UNKNOWN)
             ,m_aContext( _rxContext )
             ,m_sName(_rRegistrationName)
             ,m_nLoginTimeout(0)
@@ -446,6 +407,7 @@ ODatabaseModelImpl::ODatabaseModelImpl(
             ,m_bSuppressVersionColumns(true)
             ,m_bModified(false)
             ,m_bDocumentReadOnly(false)
+            ,m_bMacroCallsSeenWhileLoading(false)
             ,m_pSharedConnectionManager(nullptr)
             ,m_nControllerLockCount(0)
 {
@@ -462,14 +424,14 @@ void ODatabaseModelImpl::impl_construct_nothrow()
     try
     {
         // the set of property value types in the bag is limited:
-        Sequence< Type > aAllowedTypes(6);
-        Type* pAllowedType = aAllowedTypes.getArray();
-        *pAllowedType++ = ::cppu::UnoType<sal_Bool>::get();
-        *pAllowedType++ = ::cppu::UnoType<double>::get();
-        *pAllowedType++ = ::cppu::UnoType<OUString>::get();
-        *pAllowedType++ = ::cppu::UnoType<sal_Int32>::get();
-        *pAllowedType++ = ::cppu::UnoType<sal_Int16>::get();
-        *pAllowedType++ = cppu::UnoType<Sequence< Any >>::get();
+        Sequence< Type > aAllowedTypes({
+             cppu::UnoType<sal_Bool>::get(),
+             cppu::UnoType<double>::get(),
+             cppu::UnoType<OUString>::get(),
+             cppu::UnoType<sal_Int32>::get(),
+             cppu::UnoType<sal_Int16>::get(),
+             cppu::UnoType<Sequence< Any >>::get(),
+        });
 
         m_xSettings = PropertyBag::createWithTypes( m_aContext, aAllowedTypes, false/*AllowEmptyPropertyName*/, true/*AutomaticAddition*/ );
 
@@ -501,7 +463,7 @@ void ODatabaseModelImpl::impl_construct_nothrow()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
     m_rDBContext.appendAtTerminateListener(*this);
 }
@@ -510,7 +472,7 @@ namespace
 {
     OUString lcl_getContainerStorageName_throw( ODatabaseModelImpl::ObjectType _eType )
     {
-        const sal_Char* pAsciiName( nullptr );
+        const char* pAsciiName( nullptr );
         switch ( _eType )
         {
         case ODatabaseModelImpl::E_FORM:   pAsciiName = "forms"; break;
@@ -527,22 +489,23 @@ namespace
     {
         bool bSomeDocHasMacros = false;
 
-        for (   ODefinitionContainer_Impl::const_iterator object = _rObjectDefinitions.begin();
-                ( object != _rObjectDefinitions.end() ) && !bSomeDocHasMacros;
-                ++object
-            )
+        for (auto const& objectDefinition : _rObjectDefinitions)
         {
-            const TContentPtr& rDefinition( object->second );
+            const TContentPtr& rDefinition( objectDefinition.second );
             const OUString& rPersistentName( rDefinition->m_aProps.sPersistentName );
 
             if ( rPersistentName.isEmpty() )
             {   // it's a logical sub folder used to organize the real objects
-                const ODefinitionContainer_Impl& rSubFoldersObjectDefinitions( dynamic_cast< const ODefinitionContainer_Impl& >( *rDefinition.get() ) );
+                const ODefinitionContainer_Impl& rSubFoldersObjectDefinitions( dynamic_cast< const ODefinitionContainer_Impl& >( *rDefinition ) );
                 bSomeDocHasMacros = lcl_hasObjectWithMacros_throw( rSubFoldersObjectDefinitions, _rxContainerStorage );
+                if (bSomeDocHasMacros)
+                    break;
                 continue;
             }
 
             bSomeDocHasMacros = ODatabaseModelImpl::objectHasMacros( _rxContainerStorage, rPersistentName );
+            if (bSomeDocHasMacros)
+                break;
         }
         return bSomeDocHasMacros;
     }
@@ -551,7 +514,7 @@ namespace
     {
         bool bSomeDocHasMacros = false;
 
-        const OContentHelper_Impl& rContainerData( *_rModel.getObjectContainer( _eType ).get() );
+        const OContentHelper_Impl& rContainerData( *_rModel.getObjectContainer( _eType ) );
         const ODefinitionContainer_Impl& rObjectDefinitions = dynamic_cast< const ODefinitionContainer_Impl& >( rContainerData );
 
         try
@@ -570,7 +533,7 @@ namespace
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
             // be on the safe side: If we can't reliably determine whether there are macros,
             // assume there actually are. Better this way, than the other way round.
             bSomeDocHasMacros = true;
@@ -597,7 +560,7 @@ bool ODatabaseModelImpl::objectHasMacros( const Reference< XStorage >& _rxContai
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
     return bHasMacros;
 }
@@ -615,7 +578,7 @@ void ODatabaseModelImpl::reset()
     }
 }
 
-void SAL_CALL ODatabaseModelImpl::disposing( const css::lang::EventObject& Source )
+void ODatabaseModelImpl::disposing( const css::lang::EventObject& Source )
 {
     Reference<XConnection> xCon(Source.Source,UNO_QUERY);
     if ( xCon.is() )
@@ -652,10 +615,9 @@ void ODatabaseModelImpl::clearConnections()
     aConnections.swap( m_aConnections );
 
     Reference< XConnection > xConn;
-    OWeakConnectionArray::const_iterator aEnd = aConnections.end();
-    for ( OWeakConnectionArray::const_iterator i = aConnections.begin(); aEnd != i; ++i )
+    for (auto const& connection : aConnections)
     {
-        xConn = *i;
+        xConn = connection;
         if ( xConn.is() )
         {
             try
@@ -664,7 +626,7 @@ void ODatabaseModelImpl::clearConnections()
             }
             catch(const Exception&)
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
             }
         }
     }
@@ -686,17 +648,15 @@ void ODatabaseModelImpl::dispose()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
     m_xDataSource = WeakReference<XDataSource>();
     m_xModel = WeakReference< XModel >();
 
-    std::vector<TContentPtr>::const_iterator aIter = m_aContainer.begin();
-    std::vector<TContentPtr>::const_iterator aEnd = m_aContainer.end();
-    for (;aIter != aEnd ; ++aIter)
+    for (auto const& elem : m_aContainer)
     {
-        if ( aIter->get() )
-            (*aIter)->m_pDataSource = nullptr;
+        if ( elem )
+            elem->m_pDataSource = nullptr;
     }
     m_aContainer.clear();
 
@@ -717,7 +677,7 @@ void ODatabaseModelImpl::dispose()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 
     if ( m_pStorageAccess.is() )
@@ -731,9 +691,8 @@ const Reference< XNumberFormatsSupplier > & ODatabaseModelImpl::getNumberFormats
 {
     if (!m_xNumberFormatsSupplier.is())
     {
-        // the arguments : the locale of the current user
-        UserInformation aUserInfo;
-        Locale aLocale = aUserInfo.getUserLanguage();
+        // the arguments : the work locale of the current user
+        Locale aLocale( LanguageTag::convertToLocale( utl::ConfigManager::getWorkLocale(), false));
 
         m_xNumberFormatsSupplier.set( NumberFormatsSupplier::createWithLocale( m_aContext, aLocale ) );
     }
@@ -799,13 +758,12 @@ void ODatabaseModelImpl::commitRootStorage()
         "ODatabaseModelImpl::commitRootStorage: could not commit the storage!");
 }
 
-Reference< XStorage > ODatabaseModelImpl::getOrCreateRootStorage()
+Reference< XStorage > const & ODatabaseModelImpl::getOrCreateRootStorage()
 {
     if ( !m_xDocumentStorage.is() )
     {
         Reference< XSingleServiceFactory> xStorageFactory = StorageFactory::create( m_aContext );
-        Any aSource;
-        aSource = m_aMediaDescriptor.get( "Stream" );
+        Any aSource = m_aMediaDescriptor.get( "Stream" );
         if ( !aSource.hasValue() )
             aSource = m_aMediaDescriptor.get( "InputStream" );
         if ( !aSource.hasValue() && !m_sDocFileLocation.isEmpty() )
@@ -840,7 +798,7 @@ Reference< XStorage > ODatabaseModelImpl::getOrCreateRootStorage()
                     }
                     catch( const Exception& )
                     {
-                        DBG_UNHANDLED_EXCEPTION();
+                        DBG_UNHANDLED_EXCEPTION("dbaccess");
                     }
                 }
             }
@@ -885,6 +843,26 @@ bool ODatabaseModelImpl::commitEmbeddedStorage( bool _bPreventRootCommits )
 
 bool ODatabaseModelImpl::commitStorageIfWriteable_ignoreErrors( const Reference< XStorage >& _rxStorage )
 {
+    bool bTryToPreserveScriptSignature = false;
+    utl::TempFile aTempFile;
+    aTempFile.EnableKillingFile();
+    OUString sTmpFileUrl = aTempFile.GetURL();
+    SignatureState aSignatureState = getScriptingSignatureState();
+    OUString sLocation = getDocFileLocation();
+    bool bIsEmbedded = sLocation.startsWith("vnd.sun.star.pkg:") && sLocation.endsWith("/EmbeddedDatabase");
+    if (!bIsEmbedded && !sLocation.isEmpty()
+        && (aSignatureState == SignatureState::OK || aSignatureState == SignatureState::NOTVALIDATED
+            || aSignatureState == SignatureState::INVALID
+            || aSignatureState == SignatureState::UNKNOWN))
+    {
+        bTryToPreserveScriptSignature = true;
+        // We need to first save the file (which removes the macro signature), then add the macro signature again.
+        // For that, we need a temporary copy of the original file.
+        osl::File::RC rc = osl::File::copy(sLocation, sTmpFileUrl);
+        if (rc != osl::FileBase::E_None)
+            throw uno::RuntimeException("Could not create temp file");
+    }
+
     bool bSuccess = false;
     try
     {
@@ -892,8 +870,71 @@ bool ODatabaseModelImpl::commitStorageIfWriteable_ignoreErrors( const Reference<
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
+
+    // Preserve script signature if the script has not changed
+    if (bTryToPreserveScriptSignature)
+    {
+        OUString aODFVersion(comphelper::OStorageHelper::GetODFVersionFromStorage(_rxStorage));
+        uno::Reference<security::XDocumentDigitalSignatures> xDDSigns;
+        try
+        {
+            xDDSigns = security::DocumentDigitalSignatures::createWithVersion(
+                comphelper::getProcessComponentContext(), aODFVersion);
+
+            const OUString aScriptSignName
+                = xDDSigns->getScriptingContentSignatureDefaultStreamName();
+
+            if (!aScriptSignName.isEmpty())
+            {
+                Reference<XStorage> xReadOrig
+                    = comphelper::OStorageHelper::GetStorageOfFormatFromURL(
+                        ZIP_STORAGE_FORMAT_STRING, sTmpFileUrl, ElementModes::READ);
+                if (!xReadOrig.is())
+                    throw uno::RuntimeException("Could not read " + sTmpFileUrl);
+                uno::Reference<embed::XStorage> xMetaInf
+                    = xReadOrig->openStorageElement("META-INF", embed::ElementModes::READ);
+
+                uno::Reference<embed::XStorage> xTargetMetaInf
+                    = _rxStorage->openStorageElement("META-INF", embed::ElementModes::READWRITE);
+                if (xMetaInf.is() && xTargetMetaInf.is())
+                {
+                    xMetaInf->copyElementTo(aScriptSignName, xTargetMetaInf, aScriptSignName);
+
+                    uno::Reference<embed::XTransactedObject> xTransact(xTargetMetaInf,
+                                                                        uno::UNO_QUERY);
+                    if (xTransact.is())
+                        xTransact->commit();
+
+                    xTargetMetaInf->dispose();
+
+                    // now check the copied signature
+                    uno::Sequence<security::DocumentSignatureInformation> aInfos
+                        = xDDSigns->verifyScriptingContentSignatures(
+                            _rxStorage, uno::Reference<io::XInputStream>());
+                    SignatureState nState = DocumentSignatures::getSignatureState(aInfos);
+                    if (nState == SignatureState::OK || nState == SignatureState::NOTVALIDATED
+                        || nState == SignatureState::PARTIAL_OK)
+                    {
+                        // commit the ZipStorage from target medium
+                        xTransact.set(_rxStorage, uno::UNO_QUERY);
+                        if (xTransact.is())
+                            xTransact->commit();
+                    }
+                    else
+                    {
+                        SAL_WARN("dbaccess", "An invalid signature was copied!");
+                    }
+                }
+            }
+        }
+        catch (uno::Exception&)
+        {
+            TOOLS_WARN_EXCEPTION("dbaccess", "");
+        }
+    }
+
     return bSuccess;
 }
 
@@ -912,7 +953,7 @@ void ODatabaseModelImpl::setModified( bool _bModified )
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -950,7 +991,7 @@ Reference< XModel > ODatabaseModelImpl::createNewModel_deliverOwnership()
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
 
         if ( bHadModelBefore )
@@ -967,12 +1008,12 @@ Reference< XModel > ODatabaseModelImpl::createNewModel_deliverOwnership()
     return xModel;
 }
 
-void SAL_CALL ODatabaseModelImpl::acquire()
+void ODatabaseModelImpl::acquire()
 {
     osl_atomic_increment(&m_refCount);
 }
 
-void SAL_CALL ODatabaseModelImpl::release()
+void ODatabaseModelImpl::release()
 {
     if ( osl_atomic_decrement(&m_refCount) == 0 )
     {
@@ -1024,9 +1065,9 @@ const AsciiPropertyValue* ODatabaseModelImpl::getDefaultDataSourceSettings()
         AsciiPropertyValue( "IsAutoRetrievingEnabled",    makeAny( false ) ),
         // known LDAP driver settings
         AsciiPropertyValue( "HostName",                   makeAny( OUString() ) ),
-        AsciiPropertyValue( "PortNumber",                 makeAny( (sal_Int32)389 ) ),
+        AsciiPropertyValue( "PortNumber",                 makeAny( sal_Int32(389) ) ),
         AsciiPropertyValue( "BaseDN",                     makeAny( OUString() ) ),
-        AsciiPropertyValue( "MaxRowCount",                makeAny( (sal_Int32)100 ) ),
+        AsciiPropertyValue( "MaxRowCount",                makeAny( sal_Int32(100) ) ),
         // known MySQLNative driver settings
         AsciiPropertyValue( "LocalSocket",                makeAny( OUString() ) ),
         AsciiPropertyValue( "NamedPipe",                  makeAny( OUString() ) ),
@@ -1045,7 +1086,7 @@ const AsciiPropertyValue* ODatabaseModelImpl::getDefaultDataSourceSettings()
         AsciiPropertyValue( "ColumnAliasInOrderBy",       makeAny( true ) ),
         AsciiPropertyValue( "EnableSQL92Check",           makeAny( false ) ),
         AsciiPropertyValue( "BooleanComparisonMode",      makeAny( BooleanComparisonMode::EQUAL_INTEGER ) ),
-        AsciiPropertyValue( "TableTypeFilterMode",        makeAny( (sal_Int32)3 ) ),
+        AsciiPropertyValue( "TableTypeFilterMode",        makeAny( sal_Int32(3) ) ),
         AsciiPropertyValue( "RespectDriverResultSetType", makeAny( false ) ),
         AsciiPropertyValue( "UseSchemaInSelect",          makeAny( true ) ),
         AsciiPropertyValue( "UseCatalogInSelect",         makeAny( true ) ),
@@ -1075,9 +1116,9 @@ TContentPtr& ODatabaseModelImpl::getObjectContainer( ObjectType _eType )
     OSL_PRECOND( _eType >= E_FORM && _eType <= E_TABLE, "ODatabaseModelImpl::getObjectContainer: illegal index!" );
     TContentPtr& rContentPtr = m_aContainer[ _eType ];
 
-    if ( !rContentPtr.get() )
+    if ( !rContentPtr )
     {
-        rContentPtr = TContentPtr( new ODefinitionContainer_Impl );
+        rContentPtr = std::make_shared<ODefinitionContainer_Impl>();
         rContentPtr->m_pDataSource = this;
         rContentPtr->m_aProps.aTitle = lcl_getContainerStorageName_throw( _eType );
     }
@@ -1118,7 +1159,7 @@ Reference< XStorageBasedLibraryContainer > ODatabaseModelImpl::getLibraryContain
 
         rxContainer.set(
             (*Factory)( m_aContext, xDocument ),
-            UNO_QUERY_THROW
+            UNO_SET_THROW
         );
     }
     catch( const RuntimeException& )
@@ -1196,16 +1237,16 @@ namespace
     }
 }
 
-Reference< XStorage > ODatabaseModelImpl::impl_switchToStorage_throw( const Reference< XStorage >& _rxNewRootStorage )
+Reference< XStorage > const & ODatabaseModelImpl::impl_switchToStorage_throw( const Reference< XStorage >& _rxNewRootStorage )
 {
     // stop listening for modifications at the old storage
-    lcl_modifyListening( *this, m_xDocumentStorage.getTyped(), m_pStorageModifyListener, m_aMutexFacade, false );
+    lcl_modifyListening( *this, m_xDocumentStorage.getTyped(), m_pStorageModifyListener, Application::GetSolarMutex(), false );
 
     // set new storage
     m_xDocumentStorage.reset( _rxNewRootStorage, SharedStorage::TakeOwnership );
 
     // start listening for modifications
-    lcl_modifyListening( *this, m_xDocumentStorage.getTyped(), m_pStorageModifyListener, m_aMutexFacade, true );
+    lcl_modifyListening( *this, m_xDocumentStorage.getTyped(), m_pStorageModifyListener, Application::GetSolarMutex(), true );
 
     // forward new storage to Basic and Dialog library containers
     lcl_rebaseScriptStorage_throw( m_xBasicLibraries, m_xDocumentStorage.getTyped() );
@@ -1264,7 +1305,7 @@ sal_Int16 ODatabaseModelImpl::getCurrentMacroExecMode() const
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
     return nCurrentMode;
 }
@@ -1291,17 +1332,17 @@ ODatabaseModelImpl::EmbeddedMacros ODatabaseModelImpl::determineEmbeddedMacros()
     {
         if ( ::sfx2::DocumentMacroMode::storageHasMacros( getOrCreateRootStorage() ) )
         {
-            m_aEmbeddedMacros.reset( eDocumentWideMacros );
+            m_aEmbeddedMacros = eDocumentWideMacros;
         }
         else if (   lcl_hasObjectsWithMacros_nothrow( *this, E_FORM )
                 ||  lcl_hasObjectsWithMacros_nothrow( *this, E_REPORT )
                 )
         {
-            m_aEmbeddedMacros.reset( eSubDocumentMacros );
+            m_aEmbeddedMacros = eSubDocumentMacros;
         }
         else
         {
-            m_aEmbeddedMacros.reset( eNoMacros );
+            m_aEmbeddedMacros = eNoMacros;
         }
     }
     return *m_aEmbeddedMacros;
@@ -1313,6 +1354,11 @@ bool ODatabaseModelImpl::documentStorageHasMacros() const
     return ( *m_aEmbeddedMacros != eNoMacros );
 }
 
+bool ODatabaseModelImpl::macroCallsSeenWhileLoading() const
+{
+    return m_bMacroCallsSeenWhileLoading;
+}
+
 Reference< XEmbeddedScripts > ODatabaseModelImpl::getEmbeddedDocumentScripts() const
 {
     return Reference< XEmbeddedScripts >( getModel_noCreate(), UNO_QUERY );
@@ -1320,14 +1366,62 @@ Reference< XEmbeddedScripts > ODatabaseModelImpl::getEmbeddedDocumentScripts() c
 
 SignatureState ODatabaseModelImpl::getScriptingSignatureState()
 {
-    // no support for signatures at the moment
-    return SignatureState::NOSIGNATURES;
+    return m_nScriptingSignatureState;
 }
 
-bool ODatabaseModelImpl::hasTrustedScriptingSignature( bool /*bAllowUIToAddAuthor*/ )
+bool ODatabaseModelImpl::hasTrustedScriptingSignature(bool bAllowUIToAddAuthor)
 {
-    // no support for signatures at the moment
-    return false;
+    bool bResult = false;
+
+    try
+    {
+        // Don't use m_xDocumentStorage, that somehow has an incomplete storage representation
+        // which leads to signatures not being found
+        Reference<XStorage> xStorage = comphelper::OStorageHelper::GetStorageOfFormatFromURL(
+            ZIP_STORAGE_FORMAT_STRING, m_sDocFileLocation, ElementModes::READ);
+
+        OUString aODFVersion(comphelper::OStorageHelper::GetODFVersionFromStorage(getOrCreateRootStorage()));
+        uno::Reference<security::XDocumentDigitalSignatures> xSigner(
+            security::DocumentDigitalSignatures::createWithVersion(
+                comphelper::getProcessComponentContext(), aODFVersion));
+        uno::Sequence<security::DocumentSignatureInformation> aInfo
+            = xSigner->verifyScriptingContentSignatures(xStorage,
+                                                        uno::Reference<io::XInputStream>());
+
+        if (!aInfo.hasElements())
+            return false;
+
+        m_nScriptingSignatureState = DocumentSignatures::getSignatureState(aInfo);
+        if (m_nScriptingSignatureState == SignatureState::OK
+            || m_nScriptingSignatureState == SignatureState::NOTVALIDATED)
+        {
+            bResult = std::any_of(aInfo.begin(), aInfo.end(),
+                                  [&xSigner](const security::DocumentSignatureInformation& rInfo) {
+                                      return xSigner->isAuthorTrusted(rInfo.Signer);
+                                  });
+        }
+
+        if (!bResult && bAllowUIToAddAuthor)
+        {
+            Reference<XInteractionHandler> xInteraction;
+            xInteraction = m_aMediaDescriptor.getOrDefault("InteractionHandler", xInteraction);
+            if (xInteraction.is())
+            {
+                task::DocumentMacroConfirmationRequest aRequest;
+                aRequest.DocumentURL = m_sDocFileLocation;
+                aRequest.DocumentStorage = xStorage;
+                aRequest.DocumentSignatureInformation = aInfo;
+                aRequest.DocumentVersion = aODFVersion;
+                aRequest.Classification = task::InteractionClassification_QUERY;
+                bResult = SfxMedium::CallApproveHandler(xInteraction, uno::makeAny(aRequest), true);
+            }
+        }
+    }
+    catch (uno::Exception&)
+    {
+    }
+
+    return bResult;
 }
 
 void ODatabaseModelImpl::storageIsModified()
@@ -1337,7 +1431,6 @@ void ODatabaseModelImpl::storageIsModified()
 
 ModelDependentComponent::ModelDependentComponent( const ::rtl::Reference< ODatabaseModelImpl >& _model )
     :m_pImpl( _model )
-    ,m_aMutex( _model->getSharedMutex() )
 {
 }
 

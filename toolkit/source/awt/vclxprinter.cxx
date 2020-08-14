@@ -18,17 +18,17 @@
  */
 
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <toolkit/awt/vclxprinter.hxx>
-#include <toolkit/helper/macros.hxx>
+#include <awt/vclxprinter.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <rtl/uuid.h>
 
 
 #include <vcl/print.hxx>
 #include <vcl/jobset.hxx>
+#include <vcl/oldprintadaptor.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/window.hxx>
 
+#include <rtl/ustrbuf.hxx>
 #include <tools/debug.hxx>
 #include <tools/stream.hxx>
 
@@ -39,28 +39,6 @@
 
 #define PROPERTY_Orientation    0
 #define PROPERTY_Horizontal     1
-
-css::beans::Property* ImplGetProperties( sal_uInt16& rElementCount )
-{
-    static css::beans::Property* pProperties = nullptr;
-    static sal_uInt16 nElements = 0;
-    if( !pProperties )
-    {
-        ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
-        if( !pProperties )
-        {
-            static css::beans::Property aPropTable[] =
-            {
-                css::beans::Property( "Orientation", PROPERTY_Orientation, cppu::UnoType<sal_Int16>::get(), 0 ),
-                css::beans::Property( "Horizontal", PROPERTY_Horizontal, cppu::UnoType<bool>::get(), 0 )
-            };
-            pProperties = aPropTable;
-            nElements = SAL_N_ELEMENTS( aPropTable );
-        }
-    }
-    rElementCount = nElements;
-    return pProperties;
-}
 
 //    ----------------------------------------------------
 //    class VCLXPrinterPropertySet
@@ -104,18 +82,13 @@ css::uno::Reference< css::beans::XPropertySetInfo > VCLXPrinterPropertySet::getP
 
 ::cppu::IPropertyArrayHelper& VCLXPrinterPropertySet::getInfoHelper()
 {
-    static ::cppu::OPropertyArrayHelper* pPropertyArrayHelper = nullptr;
-    if ( !pPropertyArrayHelper )
-    {
-        ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
-        if( !pPropertyArrayHelper )
-        {
-            sal_uInt16 nElements;
-            css::beans::Property* pProps = ImplGetProperties( nElements );
-            pPropertyArrayHelper = new ::cppu::OPropertyArrayHelper( pProps, nElements, false );
-        }
-    }
-    return *pPropertyArrayHelper ;
+    static ::cppu::OPropertyArrayHelper s_PropertyArrayHelper(
+            css::uno::Sequence<css::beans::Property>{
+                    css::beans::Property( "Orientation", PROPERTY_Orientation, cppu::UnoType<sal_Int16>::get(), 0 ),
+                    css::beans::Property( "Horizontal", PROPERTY_Horizontal, cppu::UnoType<bool>::get(), 0 )},
+            false);
+
+    return s_PropertyArrayHelper;
 }
 
 sal_Bool VCLXPrinterPropertySet::convertFastPropertyValue( css::uno::Any & rConvertedValue, css::uno::Any & rOldValue, sal_Int32 nHandle, const css::uno::Any& rValue )
@@ -231,9 +204,8 @@ void VCLXPrinterPropertySet::selectForm( const OUString& rFormDescription )
 {
     ::osl::MutexGuard aGuard( Mutex );
 
-    sal_Int32 nIndex = 0;
     sal_uInt16 nPaperBin = sal::static_int_cast< sal_uInt16 >(
-        rFormDescription.getToken( 3, ';', nIndex ).toInt32());
+        rFormDescription.getToken( 3, ';' ).toInt32());
     GetPrinter()->SetPaperBin( nPaperBin );
 }
 
@@ -280,10 +252,10 @@ sal_Bool VCLXPrinter::start( const OUString& /*rJobName*/, sal_Int16 /*nCopies*/
 {
     ::osl::MutexGuard aGuard( Mutex );
 
-    if (mxPrinter.get())
+    if (mxPrinter)
     {
         maInitJobSetup = mxPrinter->GetJobSetup();
-        mxListener.reset(new vcl::OldStylePrintAdaptor(mxPrinter));
+        mxListener = std::make_shared<vcl::OldStylePrintAdaptor>(mxPrinter, nullptr);
     }
 
     return true;
@@ -293,7 +265,7 @@ void VCLXPrinter::end(  )
 {
     ::osl::MutexGuard aGuard( Mutex );
 
-    if (mxListener.get())
+    if (mxListener)
     {
         Printer::PrintJob(mxListener, maInitJobSetup);
         mxListener.reset();
@@ -311,7 +283,7 @@ css::uno::Reference< css::awt::XDevice > VCLXPrinter::startPage(  )
 {
     ::osl::MutexGuard aGuard( Mutex );
 
-    if (mxListener.get())
+    if (mxListener)
     {
         mxListener->StartPage();
     }
@@ -322,7 +294,7 @@ void VCLXPrinter::endPage(  )
 {
     ::osl::MutexGuard aGuard( Mutex );
 
-    if (mxListener.get())
+    if (mxListener)
     {
         mxListener->EndPage();
     }
@@ -354,7 +326,7 @@ css::uno::Reference< css::awt::XDevice > VCLXInfoPrinter::createDevice(  )
 //    class VCLXPrinterServer
 //    ----------------------------------------------------
 
-// css::awt::XPrinterServer
+// css::awt::XPrinterServer2
 css::uno::Sequence< OUString > VCLXPrinterServer::getPrinterNames(  )
 {
     const std::vector<OUString>& rQueues = Printer::GetPrinterQueues();
@@ -367,23 +339,26 @@ css::uno::Sequence< OUString > VCLXPrinterServer::getPrinterNames(  )
     return aNames;
 }
 
+OUString VCLXPrinterServer::getDefaultPrinterName()
+{
+    return Printer::GetDefaultPrinterName();
+}
+
 css::uno::Reference< css::awt::XPrinter > VCLXPrinterServer::createPrinter( const OUString& rPrinterName )
 {
-    css::uno::Reference< css::awt::XPrinter > xP;
-    xP = new VCLXPrinter( rPrinterName );
+    css::uno::Reference< css::awt::XPrinter > xP = new VCLXPrinter( rPrinterName );
     return xP;
 }
 
 css::uno::Reference< css::awt::XInfoPrinter > VCLXPrinterServer::createInfoPrinter( const OUString& rPrinterName )
 {
-    css::uno::Reference< css::awt::XInfoPrinter > xP;
-    xP = new VCLXInfoPrinter( rPrinterName );
+    css::uno::Reference< css::awt::XInfoPrinter > xP = new VCLXInfoPrinter( rPrinterName );
     return xP;
 }
 
 OUString VCLXPrinterServer::getImplementationName()
 {
-    return OUString("stardiv.Toolkit.VCLXPrinterServer");
+    return "stardiv.Toolkit.VCLXPrinterServer";
 }
 
 sal_Bool VCLXPrinterServer::supportsService(OUString const & ServiceName)
@@ -397,7 +372,7 @@ css::uno::Sequence<OUString> VCLXPrinterServer::getSupportedServiceNames()
         "com.sun.star.awt.PrinterServer", "stardiv.vcl.PrinterServer"};
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_VCLXPrinterServer_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

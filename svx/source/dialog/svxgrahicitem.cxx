@@ -17,25 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/svxgrahicitem.hxx"
-#include "svx/svxids.hrc"
+#include <svx/svxgrahicitem.hxx>
+#include <svx/svxids.hrc>
 
 SvxGraphicItem::SvxGraphicItem( const Graphic& rGraphic )
     : SfxPoolItem( SID_GRAPHIC ), aGraphic( rGraphic )
 {
 
 }
-SvxGraphicItem::SvxGraphicItem( const SvxGraphicItem& rItem)
-    : SfxPoolItem( rItem.Which() ), aGraphic( rItem.aGraphic )
-{
-}
 
 bool SvxGraphicItem::operator==( const SfxPoolItem& rItem) const
 {
-    return static_cast<const SvxGraphicItem&>(rItem).aGraphic == aGraphic;
+    return SfxPoolItem::operator==(rItem) && static_cast<const SvxGraphicItem&>(rItem).aGraphic == aGraphic;
 }
 
-SfxPoolItem* SvxGraphicItem::Clone( SfxItemPool * ) const
+SvxGraphicItem* SvxGraphicItem::Clone( SfxItemPool * ) const
 {
     return new SvxGraphicItem( *this );
 }

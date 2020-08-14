@@ -27,16 +27,18 @@ $(eval $(call gb_Library_set_include,svgio,\
 
 $(eval $(call gb_Library_use_external,svgio,boost_headers))
 
-$(eval $(call gb_Library_set_precompiled_header,svgio,$(SRCDIR)/svgio/inc/pch/precompiled_svgio))
+$(eval $(call gb_Library_set_precompiled_header,svgio,svgio/inc/pch/precompiled_svgio))
 
 $(eval $(call gb_Library_use_sdk_api,svgio))
 
 $(eval $(call gb_Library_use_libraries,svgio,\
     basegfx \
     drawinglayer \
+    comphelper \
     cppu \
     cppuhelper \
     sal \
+    tk \
     tl \
     sax \
     vcl \
@@ -76,7 +78,7 @@ $(eval $(call gb_Library_add_exception_objects,svgio,\
     svgio/source/svgreader/svgtextpathnode \
     svgio/source/svgreader/svgtspannode \
     svgio/source/svgreader/svgusenode \
-    svgio/source/svguno/svguno \
+    svgio/source/svgreader/svgvisitor \
     svgio/source/svguno/xsvgparser \
 ))
 

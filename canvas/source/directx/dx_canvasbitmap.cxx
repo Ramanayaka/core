@@ -43,7 +43,7 @@ namespace dxcanvas
         ENSURE_OR_THROW( mpDevice.is() && mpBitmap,
                          "CanvasBitmap::CanvasBitmap(): Invalid surface or device" );
 
-        maCanvasHelper.setDevice( *mpDevice.get() );
+        maCanvasHelper.setDevice( *mpDevice );
         maCanvasHelper.setTarget( mpBitmap );
     }
 
@@ -55,6 +55,8 @@ namespace dxcanvas
         // forward to parent
         CanvasBitmap_Base::disposeThis();
     }
+
+    namespace {
 
     struct AlphaDIB
     {
@@ -72,6 +74,8 @@ namespace dxcanvas
             }
         }
     };
+
+    }
 
     uno::Any SAL_CALL CanvasBitmap::getFastPropertyValue( sal_Int32 nHandle )
     {
@@ -240,7 +244,7 @@ namespace dxcanvas
 
     OUString SAL_CALL CanvasBitmap::getImplementationName(  )
     {
-        return OUString( "DXCanvas.CanvasBitmap" );
+        return "DXCanvas.CanvasBitmap";
     }
 
     sal_Bool SAL_CALL CanvasBitmap::supportsService( const OUString& ServiceName )

@@ -18,38 +18,38 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <utility>
 
 #include <o3tl/any.hxx>
-#include <o3tl/make_unique.hxx>
 #include <sfx2/printer.hxx>
-#include <vcl/svapp.hxx>
-#include <svtools/ctrltool.hxx>
 #include <svl/itemprop.hxx>
+#include <svl/itemset.hxx>
+#include <vcl/svapp.hxx>
 #include <unotools/localedatawrapper.hxx>
-#include <editeng/paperinf.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/print.hxx>
 #include <toolkit/awt/vclxdevice.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/formula/SymbolDescriptor.hpp>
 #include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/script/XLibraryContainer.hpp>
-#include <xmloff/xmluconv.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <comphelper/propertysetinfo.hxx>
+#include <comphelper/sequence.hxx>
 #include <comphelper/servicehelper.hxx>
+#include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <tools/mapunit.hxx>
+#include <tools/stream.hxx>
 
 #include <unomodel.hxx>
 #include <document.hxx>
 #include <view.hxx>
 #include <symbol.hxx>
 #include <starmath.hrc>
-#include <smdll.hxx>
+#include <strings.hrc>
+#include <smmod.hxx>
 #include "cfgitem.hxx"
 
 using namespace ::cppu;
@@ -152,11 +152,8 @@ SmPrintUIOptions::SmPrintUIOptions()
 }
 
 
-// class SmModel
 
-
-// values from com/sun/star/beans/PropertyAttribute
-#define PROPERTY_NONE        0
+namespace {
 
 enum SmModelPropertyHandles
 {
@@ -219,6 +216,7 @@ enum SmModelPropertyHandles
     HANDLE_PRINTER_NAME,
     HANDLE_PRINTER_SETUP,
     HANDLE_SYMBOLS,
+    HANDLE_SAVE_THUMBNAIL,
     HANDLE_USED_SYMBOLS,
     HANDLE_BASIC_LIBRARIES,
     HANDLE_RUNTIME_UID,
@@ -227,6 +225,8 @@ enum SmModelPropertyHandles
     HANDLE_BASELINE,
     HANDLE_INTEROP_GRAB_BAG,
 };
+
+}
 
 static rtl::Reference<PropertySetInfo> lcl_createModelPropertyInfo ()
 {
@@ -291,15 +291,16 @@ static rtl::Reference<PropertySetInfo> lcl_createModelPropertyInfo ()
         { OUString("RelativeSymbolPrimaryHeight")      , HANDLE_RELATIVE_SYMBOL_PRIMARY_HEIGHT     ,  ::cppu::UnoType<sal_Int16>::get(),                                     PROPERTY_NONE,  DIS_ORNAMENTSIZE      },
         { OUString("RelativeUpperLimitDistance")       , HANDLE_RELATIVE_UPPER_LIMIT_DISTANCE      ,  ::cppu::UnoType<sal_Int16>::get(),                                     PROPERTY_NONE,  DIS_UPPERLIMIT        },
         { OUString("RightMargin")                      , HANDLE_RIGHT_MARGIN                       ,  ::cppu::UnoType<sal_Int16>::get(),                                     PROPERTY_NONE,  DIS_RIGHTSPACE        },
-        { OUString("RuntimeUID")                       , HANDLE_RUNTIME_UID                        ,  cppu::UnoType<OUString>::get(),                      PropertyAttribute::READONLY,  0       },
-        { OUString("Symbols")                          , HANDLE_SYMBOLS                            ,  cppu::UnoType<Sequence < SymbolDescriptor >>::get(),                PROPERTY_NONE,  0                     },
-        { OUString("UserDefinedSymbolsInUse")          , HANDLE_USED_SYMBOLS                       ,  cppu::UnoType<Sequence < SymbolDescriptor >>::get(),                PropertyAttribute::READONLY,  0       },
+        { OUString("RuntimeUID")                       , HANDLE_RUNTIME_UID                        ,  cppu::UnoType<OUString>::get(),                                        PropertyAttribute::READONLY,  0       },
+        { OUString("SaveThumbnail")                    , HANDLE_SAVE_THUMBNAIL                     ,  cppu::UnoType<bool>::get(),                                            PROPERTY_NONE,  0                     },
+        { OUString("Symbols")                          , HANDLE_SYMBOLS                            ,  cppu::UnoType<Sequence < SymbolDescriptor >>::get(),                   PROPERTY_NONE,  0                     },
+        { OUString("UserDefinedSymbolsInUse")          , HANDLE_USED_SYMBOLS                       ,  cppu::UnoType<Sequence < SymbolDescriptor >>::get(),                   PropertyAttribute::READONLY,  0       },
         { OUString("TopMargin")                        , HANDLE_TOP_MARGIN                         ,  ::cppu::UnoType<sal_Int16>::get(),                                     PROPERTY_NONE,  DIS_TOPSPACE          },
         // #i33095# Security Options
-        { OUString("LoadReadonly")                     , HANDLE_LOAD_READONLY                      ,  cppu::UnoType<bool>::get(),                                                 PROPERTY_NONE,  0                     },
+        { OUString("LoadReadonly")                     , HANDLE_LOAD_READONLY                      ,  cppu::UnoType<bool>::get(),                                            PROPERTY_NONE,  0                     },
         // #i972#
         { OUString("BaseLine")                         , HANDLE_BASELINE                           ,  ::cppu::UnoType<sal_Int16>::get(),                                     PROPERTY_NONE,  0                     },
-        { OUString("InteropGrabBag")                   , HANDLE_INTEROP_GRAB_BAG                   ,  cppu::UnoType<uno::Sequence< beans::PropertyValue >>::get(),       PROPERTY_NONE,  0                     },
+        { OUString("InteropGrabBag")                   , HANDLE_INTEROP_GRAB_BAG                   ,  cppu::UnoType<uno::Sequence< beans::PropertyValue >>::get(),           PROPERTY_NONE,  0                     },
         { OUString(), 0, css::uno::Type(), 0, 0 }
     };
     return rtl::Reference<PropertySetInfo>( new PropertySetInfo ( aModelPropertyInfoMap ) );
@@ -319,7 +320,7 @@ uno::Any SAL_CALL SmModel::queryInterface( const uno::Type& rType )
 {
     uno::Any aRet =  ::cppu::queryInterface ( rType,
                                     // OWeakObject interfaces
-                                    dynamic_cast< XInterface* > ( static_cast< XUnoTunnel* > ( this )),
+                                    &dynamic_cast<XInterface&>(static_cast<XUnoTunnel&>(*this)),
                                     static_cast< XWeak* > ( this ),
                                     // PropertySetHelper interfaces
                                     static_cast< XPropertySet* > ( this ),
@@ -344,17 +345,12 @@ void SAL_CALL SmModel::release() throw()
 
 uno::Sequence< uno::Type > SAL_CALL SmModel::getTypes(  )
 {
-    SolarMutexGuard aGuard;
-    uno::Sequence< uno::Type > aTypes = SfxBaseModel::getTypes();
-    sal_Int32 nLen = aTypes.getLength();
-    aTypes.realloc(nLen + 4);
-    uno::Type* pTypes = aTypes.getArray();
-    pTypes[nLen++] = cppu::UnoType<XServiceInfo>::get();
-    pTypes[nLen++] = cppu::UnoType<XPropertySet>::get();
-    pTypes[nLen++] = cppu::UnoType<XMultiPropertySet>::get();
-    pTypes[nLen++] = cppu::UnoType<XRenderable>::get();
-
-    return aTypes;
+    return comphelper::concatSequences(SfxBaseModel::getTypes(),
+        uno::Sequence  {
+            cppu::UnoType<XServiceInfo>::get(),
+            cppu::UnoType<XPropertySet>::get(),
+            cppu::UnoType<XMultiPropertySet>::get(),
+            cppu::UnoType<XRenderable>::get() });
 }
 
 namespace
@@ -369,11 +365,9 @@ const uno::Sequence< sal_Int8 > & SmModel::getUnoTunnelId()
 
 sal_Int64 SAL_CALL SmModel::getSomething( const uno::Sequence< sal_Int8 >& rId )
 {
-    if( rId.getLength() == 16
-        && 0 == memcmp( getUnoTunnelId().getConstArray(),
-                                        rId.getConstArray(), 16 ) )
+    if( isUnoTunnelId<SmModel>(rId) )
     {
-            return sal::static_int_cast< sal_Int64 >(reinterpret_cast< sal_uIntPtr >(this));
+        return sal::static_int_cast< sal_Int64 >(reinterpret_cast< sal_uIntPtr >(this));
     }
 
     return SfxBaseModel::getSomething( rId );
@@ -391,7 +385,7 @@ static sal_Int16 lcl_AnyToINT16(const uno::Any& rAny)
 
 OUString SmModel::getImplementationName()
 {
-    return OUString("com.sun.star.comp.Math.FormulaDocument");
+    return "com.sun.star.comp.Math.FormulaDocument";
 }
 
 sal_Bool SmModel::supportsService(const OUString& rServiceName)
@@ -495,7 +489,7 @@ void SmModel::_setPropertyValues(const PropertyMapEntry** ppEntries, const Any* 
                 if(nVal < 1)
                     throw IllegalArgumentException();
                 Size aSize = aFormat.GetBaseSize();
-                aSize.Height() = SmPtsTo100th_mm(nVal);
+                aSize.setHeight( SmPtsTo100th_mm(nVal) );
                 aFormat.SetBaseSize(aSize);
 
                 // apply base size to fonts
@@ -589,19 +583,17 @@ void SmModel::_setPropertyValues(const PropertyMapEntry** ppEntries, const Any* 
                     if (pPrinter)
                     {
                         OUString sPrinterName;
-                        if (*pValues >>= sPrinterName )
-                        {
-                            if ( !sPrinterName.isEmpty() )
-                            {
-                                VclPtrInstance<SfxPrinter> pNewPrinter( std::unique_ptr<SfxItemSet>(pPrinter->GetOptions().Clone()), sPrinterName );
-                                if (pNewPrinter->IsKnown())
-                                    pDocSh->SetPrinter ( pNewPrinter );
-                                else
-                                    pNewPrinter.disposeAndClear();
-                            }
-                        }
-                        else
+                        if ( !(*pValues >>= sPrinterName) )
                             throw IllegalArgumentException();
+
+                        if ( !sPrinterName.isEmpty() )
+                        {
+                            VclPtrInstance<SfxPrinter> pNewPrinter( pPrinter->GetOptions().Clone(), sPrinterName );
+                            if (pNewPrinter->IsKnown())
+                                pDocSh->SetPrinter ( pNewPrinter );
+                            else
+                                pNewPrinter.disposeAndClear();
+                        }
                     }
                 }
             }
@@ -609,61 +601,55 @@ void SmModel::_setPropertyValues(const PropertyMapEntry** ppEntries, const Any* 
             case HANDLE_PRINTER_SETUP:
             {
                 Sequence < sal_Int8 > aSequence;
-                if ( *pValues >>= aSequence )
-                {
-                    sal_uInt32 nSize = aSequence.getLength();
-                    SvMemoryStream aStream ( aSequence.getArray(), nSize, StreamMode::READ );
-                    aStream.Seek ( STREAM_SEEK_TO_BEGIN );
-                    static sal_uInt16 const nRange[] =
-                    {
-                        SID_PRINTSIZE,       SID_PRINTSIZE,
-                        SID_PRINTZOOM,       SID_PRINTZOOM,
-                        SID_PRINTTITLE,      SID_PRINTTITLE,
-                        SID_PRINTTEXT,       SID_PRINTTEXT,
-                        SID_PRINTFRAME,      SID_PRINTFRAME,
-                        SID_NO_RIGHT_SPACES, SID_NO_RIGHT_SPACES,
-                        SID_SAVE_ONLY_USED_SYMBOLS, SID_SAVE_ONLY_USED_SYMBOLS,
-                        SID_AUTO_CLOSE_BRACKETS,    SID_AUTO_CLOSE_BRACKETS,
-                        0
-                    };
-                    auto pItemSet = o3tl::make_unique<SfxItemSet>( SmDocShell::GetPool(), nRange );
-                    SmModule *pp = SM_MOD();
-                    pp->GetConfig()->ConfigToItemSet(*pItemSet);
-                    VclPtr<SfxPrinter> pPrinter = SfxPrinter::Create ( aStream, std::move(pItemSet) );
-
-                    pDocSh->SetPrinter( pPrinter );
-                }
-                else
+                if ( !(*pValues >>= aSequence) )
                     throw IllegalArgumentException();
+
+                sal_uInt32 nSize = aSequence.getLength();
+                SvMemoryStream aStream ( aSequence.getArray(), nSize, StreamMode::READ );
+                aStream.Seek ( STREAM_SEEK_TO_BEGIN );
+                static sal_uInt16 const nRange[] =
+                {
+                    SID_PRINTSIZE,       SID_PRINTSIZE,
+                    SID_PRINTZOOM,       SID_PRINTZOOM,
+                    SID_PRINTTITLE,      SID_PRINTTITLE,
+                    SID_PRINTTEXT,       SID_PRINTTEXT,
+                    SID_PRINTFRAME,      SID_PRINTFRAME,
+                    SID_NO_RIGHT_SPACES, SID_NO_RIGHT_SPACES,
+                    SID_SAVE_ONLY_USED_SYMBOLS, SID_SAVE_ONLY_USED_SYMBOLS,
+                    SID_AUTO_CLOSE_BRACKETS,    SID_AUTO_CLOSE_BRACKETS,
+                    0
+                };
+                auto pItemSet = std::make_unique<SfxItemSet>( SmDocShell::GetPool(), nRange );
+                SmModule *pp = SM_MOD();
+                pp->GetConfig()->ConfigToItemSet(*pItemSet);
+                VclPtr<SfxPrinter> pPrinter = SfxPrinter::Create ( aStream, std::move(pItemSet) );
+
+                pDocSh->SetPrinter( pPrinter );
             }
             break;
             case HANDLE_SYMBOLS:
             {
                 // this is set
                 Sequence < SymbolDescriptor > aSequence;
-                if ( *pValues >>= aSequence )
-                {
-                    sal_uInt32 nSize = aSequence.getLength();
-                    SmModule *pp = SM_MOD();
-                    SmSymbolManager &rManager = pp->GetSymbolManager();
-                    SymbolDescriptor *pDescriptor = aSequence.getArray();
-                    for (sal_uInt32 i = 0; i < nSize ; i++, pDescriptor++)
-                    {
-                        vcl::Font aFont;
-                        aFont.SetFamilyName ( pDescriptor->sFontName );
-                        aFont.SetCharSet ( static_cast < rtl_TextEncoding > (pDescriptor->nCharSet) );
-                        aFont.SetFamily ( static_cast < FontFamily > (pDescriptor->nFamily ) );
-                        aFont.SetPitch  ( static_cast < FontPitch >  (pDescriptor->nPitch ) );
-                        aFont.SetWeight ( static_cast < FontWeight > (pDescriptor->nWeight ) );
-                        aFont.SetItalic ( static_cast < FontItalic > (pDescriptor->nItalic ) );
-                        SmSym aSymbol ( pDescriptor->sName, aFont, static_cast < sal_Unicode > (pDescriptor->nCharacter),
-                                        pDescriptor->sSymbolSet );
-                        aSymbol.SetExportName ( pDescriptor->sExportName );
-                        rManager.AddOrReplaceSymbol ( aSymbol );
-                    }
-                }
-                else
+                if ( !(*pValues >>= aSequence) )
                     throw IllegalArgumentException();
+
+                SmModule *pp = SM_MOD();
+                SmSymbolManager &rManager = pp->GetSymbolManager();
+                for (const SymbolDescriptor& rDescriptor : std::as_const(aSequence))
+                {
+                    vcl::Font aFont;
+                    aFont.SetFamilyName ( rDescriptor.sFontName );
+                    aFont.SetCharSet ( static_cast < rtl_TextEncoding > (rDescriptor.nCharSet) );
+                    aFont.SetFamily ( static_cast < FontFamily > (rDescriptor.nFamily ) );
+                    aFont.SetPitch  ( static_cast < FontPitch >  (rDescriptor.nPitch ) );
+                    aFont.SetWeight ( static_cast < FontWeight > (rDescriptor.nWeight ) );
+                    aFont.SetItalic ( static_cast < FontItalic > (rDescriptor.nItalic ) );
+                    SmSym aSymbol ( rDescriptor.sName, aFont, static_cast < sal_Unicode > (rDescriptor.nCharacter),
+                                    rDescriptor.sSymbolSet );
+                    aSymbol.SetExportName ( rDescriptor.sExportName );
+                    rManager.AddOrReplaceSymbol ( aSymbol );
+                }
             }
             break;
             // #i33095# Security Options
@@ -678,6 +664,15 @@ void SmModel::_setPropertyValues(const PropertyMapEntry** ppEntries, const Any* 
             }
             case HANDLE_INTEROP_GRAB_BAG:
                 setGrabBagItem(*pValues);
+            break;
+            case HANDLE_SAVE_THUMBNAIL:
+            {
+                if ((*pValues).getValueType() != cppu::UnoType<bool>::get())
+                    throw IllegalArgumentException();
+                bool bThumbnail = false;
+                if (*pValues >>= bThumbnail)
+                    pDocSh->SetUseThumbnailSave(bThumbnail);
+            }
             break;
         }
     }
@@ -812,8 +807,7 @@ void SmModel::_getPropertyValues( const PropertyMapEntry **ppEntries, Any *pValu
                 {
                     SvMemoryStream aStream;
                     pPrinter->Store( aStream );
-                    aStream.Seek ( STREAM_SEEK_TO_END );
-                    sal_uInt32 nSize = aStream.Tell();
+                    sal_uInt32 nSize = aStream.TellEnd();
                     aStream.Seek ( STREAM_SEEK_TO_BEGIN );
                     Sequence < sal_Int8 > aSequence ( nSize );
                     aStream.ReadBytes(aSequence.getArray(), nSize);
@@ -843,21 +837,21 @@ void SmModel::_getPropertyValues( const PropertyMapEntry **ppEntries, Any *pValu
                 Sequence < SymbolDescriptor > aSequence ( aVector.size() );
                 SymbolDescriptor * pDescriptor = aSequence.getArray();
 
-                vector < const SmSym * >::const_iterator aIter = aVector.begin(), aEnd = aVector.end();
-                for(; aIter != aEnd; pDescriptor++, ++aIter)
+                for (const SmSym* pSymbol : aVector)
                 {
-                    pDescriptor->sName = (*aIter)->GetName();
-                    pDescriptor->sExportName = (*aIter)->GetExportName();
-                    pDescriptor->sSymbolSet = (*aIter)->GetSymbolSetName();
-                    pDescriptor->nCharacter = static_cast < sal_Int32 > ((*aIter)->GetCharacter());
+                    pDescriptor->sName = pSymbol->GetName();
+                    pDescriptor->sExportName = pSymbol->GetExportName();
+                    pDescriptor->sSymbolSet = pSymbol->GetSymbolSetName();
+                    pDescriptor->nCharacter = static_cast < sal_Int32 > (pSymbol->GetCharacter());
 
-                    vcl::Font rFont = (*aIter)->GetFace();
+                    vcl::Font rFont = pSymbol->GetFace();
                     pDescriptor->sFontName = rFont.GetFamilyName();
                     pDescriptor->nCharSet  = sal::static_int_cast< sal_Int16 >(rFont.GetCharSet());
                     pDescriptor->nFamily   = sal::static_int_cast< sal_Int16 >(rFont.GetFamilyType());
                     pDescriptor->nPitch    = sal::static_int_cast< sal_Int16 >(rFont.GetPitch());
                     pDescriptor->nWeight   = sal::static_int_cast< sal_Int16 >(rFont.GetWeight());
                     pDescriptor->nItalic   = sal::static_int_cast< sal_Int16 >(rFont.GetItalic());
+                    pDescriptor++;
                 }
                 *pValue <<= aSequence;
             }
@@ -874,7 +868,7 @@ void SmModel::_getPropertyValues( const PropertyMapEntry **ppEntries, Any *pValu
             // #i33095# Security Options
             case HANDLE_LOAD_READONLY :
             {
-                 *pValue <<= pDocSh->IsLoadReadonly();
+                *pValue <<= pDocSh->IsLoadReadonly();
                 break;
             }
             // #i972#
@@ -892,6 +886,11 @@ void SmModel::_getPropertyValues( const PropertyMapEntry **ppEntries, Any *pValu
             }
             case HANDLE_INTEROP_GRAB_BAG:
                 getGrabBagItem(*pValue);
+            break;
+            case HANDLE_SAVE_THUMBNAIL:
+            {
+                *pValue <<= pDocSh->IsUseThumbnailSave();
+            }
             break;
         }
     }
@@ -914,15 +913,15 @@ static Size lcl_GuessPaperSize()
     {
         // in 100th mm
         PaperInfo aInfo( PAPER_A4 );
-        aRes.Width()  = aInfo.getWidth();
-        aRes.Height() = aInfo.getHeight();
+        aRes.setWidth( aInfo.getWidth() );
+        aRes.setHeight( aInfo.getHeight() );
     }
     else
     {
         // in 100th mm
         PaperInfo aInfo( PAPER_LETTER );
-        aRes.Width()  = aInfo.getWidth();
-        aRes.Height() = aInfo.getHeight();
+        aRes.setWidth( aInfo.getWidth() );
+        aRes.setHeight( aInfo.getHeight() );
     }
     return aRes;
 }
@@ -947,7 +946,7 @@ uno::Sequence< beans::PropertyValue > SAL_CALL SmModel::getRenderer(
 
     // if paper size is 0 (usually if no 'real' printer is found),
     // guess the paper size
-    if (aPrtPaperSize.Height() == 0 || aPrtPaperSize.Width() == 0)
+    if (aPrtPaperSize.IsEmpty())
         aPrtPaperSize = lcl_GuessPaperSize();
     awt::Size   aPageSize( aPrtPaperSize.Width(), aPrtPaperSize.Height() );
 
@@ -979,85 +978,84 @@ void SAL_CALL SmModel::render(
 
     // get device to be rendered in
     uno::Reference< awt::XDevice >  xRenderDevice;
-    for (sal_Int32 i = 0, nCount = rxOptions.getLength();  i < nCount;  ++i)
+    for (const auto& rxOption : rxOptions)
     {
-        if( rxOptions[i].Name == "RenderDevice" )
-            rxOptions[i].Value >>= xRenderDevice;
+        if( rxOption.Name == "RenderDevice" )
+            rxOption.Value >>= xRenderDevice;
     }
 
-    if (xRenderDevice.is())
+    if (!xRenderDevice.is())
+        return;
+
+    VCLXDevice*   pDevice = comphelper::getUnoTunnelImplementation<VCLXDevice>( xRenderDevice );
+    VclPtr< OutputDevice> pOut = pDevice ? pDevice->GetOutputDevice()
+                                         : VclPtr< OutputDevice >();
+    if (!pOut)
+        throw RuntimeException();
+
+    pOut->SetMapMode(MapMode(MapUnit::Map100thMM));
+
+    uno::Reference< frame::XModel > xModel;
+    rSelection >>= xModel;
+    if (xModel != pDocSh->GetModel())
+        return;
+
+    //!! when called via API we may not have an active view
+    //!! thus we go and look for a view that can be used.
+    SfxViewShell* pViewSh = SfxViewShell::GetFirst( false /* search non-visible views as well*/, checkSfxViewShell<SmViewShell> );
+    while (pViewSh && pViewSh->GetObjectShell() != pDocSh)
+        pViewSh = SfxViewShell::GetNext( *pViewSh, false /* search non-visible views as well*/, checkSfxViewShell<SmViewShell> );
+    SmViewShell *pView = dynamic_cast< SmViewShell *>( pViewSh );
+    SAL_WARN_IF( !pView, "starmath", "SmModel::render : no SmViewShell found" );
+
+    if (!pView)
+        return;
+
+    SmPrinterAccess aPrinterAccess( *pDocSh );
+    Printer *pPrinter = aPrinterAccess.GetPrinter();
+
+    Size    aPrtPaperSize ( pPrinter->GetPaperSize() );
+    Size    aOutputSize   ( pPrinter->GetOutputSize() );
+    Point   aPrtPageOffset( pPrinter->GetPageOffset() );
+
+    // no real printer ??
+    if (aPrtPaperSize.IsEmpty())
     {
-        VCLXDevice*   pDevice = VCLXDevice::GetImplementation( xRenderDevice );
-        VclPtr< OutputDevice> pOut = pDevice ? pDevice->GetOutputDevice()
-                                             : VclPtr< OutputDevice >();
-        if (!pOut)
-            throw RuntimeException();
-
-        pOut->SetMapMode( MapUnit::Map100thMM );
-
-        uno::Reference< frame::XModel > xModel;
-        rSelection >>= xModel;
-        if (xModel == pDocSh->GetModel())
-        {
-            //!! when called via API we may not have an active view
-            //!! thus we go and look for a view that can be used.
-            SfxViewShell* pViewSh = SfxViewShell::GetFirst( false /* search non-visible views as well*/, checkSfxViewShell<SmViewShell> );
-            while (pViewSh && pViewSh->GetObjectShell() != pDocSh)
-                pViewSh = SfxViewShell::GetNext( *pViewSh, false /* search non-visible views as well*/, checkSfxViewShell<SmViewShell> );
-            SmViewShell *pView = dynamic_cast< SmViewShell *>( pViewSh );
-            SAL_WARN_IF( !pView, "starmath", "SmModel::render : no SmViewShell found" );
-
-            if (pView)
-            {
-                SmPrinterAccess aPrinterAccess( *pDocSh );
-                Printer *pPrinter = aPrinterAccess.GetPrinter();
-
-                Size    aPrtPaperSize ( pPrinter->GetPaperSize() );
-                Size    aOutputSize   ( pPrinter->GetOutputSize() );
-                Point   aPrtPageOffset( pPrinter->GetPageOffset() );
-
-                // no real printer ??
-                if (aPrtPaperSize.Height() == 0 || aPrtPaperSize.Width() == 0)
-                {
-                    aPrtPaperSize = lcl_GuessPaperSize();
-                    // factors from Windows DIN A4
-                    aOutputSize    = Size( static_cast<long>(aPrtPaperSize.Width()  * 0.941),
-                                           static_cast<long>(aPrtPaperSize.Height() * 0.961));
-                    aPrtPageOffset = Point( static_cast<long>(aPrtPaperSize.Width()  * 0.0250),
-                                            static_cast<long>(aPrtPaperSize.Height() * 0.0214));
-                }
-                Point   aZeroPoint;
-                tools::Rectangle OutputRect( aZeroPoint, aOutputSize );
+        aPrtPaperSize = lcl_GuessPaperSize();
+        // factors from Windows DIN A4
+        aOutputSize    = Size( static_cast<long>(aPrtPaperSize.Width()  * 0.941),
+                               static_cast<long>(aPrtPaperSize.Height() * 0.961));
+        aPrtPageOffset = Point( static_cast<long>(aPrtPaperSize.Width()  * 0.0250),
+                                static_cast<long>(aPrtPaperSize.Height() * 0.0214));
+    }
+    tools::Rectangle OutputRect( Point(), aOutputSize );
 
 
-                // set minimum top and bottom border
-                if (aPrtPageOffset.Y() < 2000)
-                    OutputRect.Top() += 2000 - aPrtPageOffset.Y();
-                if ((aPrtPaperSize.Height() - (aPrtPageOffset.Y() + OutputRect.Bottom())) < 2000)
-                    OutputRect.Bottom() -= 2000 - (aPrtPaperSize.Height() -
-                                                (aPrtPageOffset.Y() + OutputRect.Bottom()));
+    // set minimum top and bottom border
+    if (aPrtPageOffset.Y() < 2000)
+        OutputRect.AdjustTop(2000 - aPrtPageOffset.Y() );
+    if ((aPrtPaperSize.Height() - (aPrtPageOffset.Y() + OutputRect.Bottom())) < 2000)
+        OutputRect.AdjustBottom( -(2000 - (aPrtPaperSize.Height() -
+                                    (aPrtPageOffset.Y() + OutputRect.Bottom()))) );
 
-                // set minimum left and right border
-                if (aPrtPageOffset.X() < 2500)
-                    OutputRect.Left() += 2500 - aPrtPageOffset.X();
-                if ((aPrtPaperSize.Width() - (aPrtPageOffset.X() + OutputRect.Right())) < 1500)
-                    OutputRect.Right() -= 1500 - (aPrtPaperSize.Width() -
-                                                (aPrtPageOffset.X() + OutputRect.Right()));
+    // set minimum left and right border
+    if (aPrtPageOffset.X() < 2500)
+        OutputRect.AdjustLeft(2500 - aPrtPageOffset.X() );
+    if ((aPrtPaperSize.Width() - (aPrtPageOffset.X() + OutputRect.Right())) < 1500)
+        OutputRect.AdjustRight( -(1500 - (aPrtPaperSize.Width() -
+                                    (aPrtPageOffset.X() + OutputRect.Right()))) );
 
-                if (!m_pPrintUIOptions)
-                    m_pPrintUIOptions.reset(new SmPrintUIOptions);
-                m_pPrintUIOptions->processProperties( rxOptions );
+    if (!m_pPrintUIOptions)
+        m_pPrintUIOptions.reset(new SmPrintUIOptions);
+    m_pPrintUIOptions->processProperties( rxOptions );
 
-                pView->Impl_Print( *pOut, *m_pPrintUIOptions, OutputRect );
+    pView->Impl_Print( *pOut, *m_pPrintUIOptions, OutputRect );
 
-                // release SmPrintUIOptions when everything is done.
-                // That way, when SmPrintUIOptions is needed again it will read the latest configuration settings in its c-tor.
-                if (m_pPrintUIOptions->getBoolValue( "IsLastPage" ))
-                {
-                    m_pPrintUIOptions.reset();
-                }
-            }
-        }
+    // release SmPrintUIOptions when everything is done.
+    // That way, when SmPrintUIOptions is needed again it will read the latest configuration settings in its c-tor.
+    if (m_pPrintUIOptions->getBoolValue( "IsLastPage" ))
+    {
+        m_pPrintUIOptions.reset();
     }
 }
 
@@ -1070,7 +1068,7 @@ void SAL_CALL SmModel::setParent( const uno::Reference< uno::XInterface >& xPare
     {
         SvGlobalName aSfxIdent( SFX_GLOBAL_CLASSID );
         SfxObjectShell* pDoc = reinterpret_cast<SfxObjectShell *>(xParentTunnel->getSomething(
-                                        uno::Sequence< sal_Int8 >( aSfxIdent.GetByteSequence() ) ) );
+                                        aSfxIdent.GetByteSequence() ) );
         if ( pDoc )
             GetObjectShell()->OnDocumentPrinterChanged( pDoc->GetDocumentPrinter() );
     }
@@ -1079,9 +1077,9 @@ void SAL_CALL SmModel::setParent( const uno::Reference< uno::XInterface >& xPare
 void SmModel::writeFormulaOoxml(
         ::sax_fastparser::FSHelperPtr const pSerializer,
         oox::core::OoxmlVersion const version,
-        oox::drawingml::DocumentType const documentType)
+        oox::drawingml::DocumentType const documentType, sal_Int8 nAlign)
 {
-    static_cast<SmDocShell*>(GetObjectShell())->writeFormulaOoxml(pSerializer, version, documentType);
+    static_cast<SmDocShell*>(GetObjectShell())->writeFormulaOoxml(pSerializer, version, documentType, nAlign);
 }
 
 void SmModel::writeFormulaRtf(OStringBuffer& rBuffer, rtl_TextEncoding nEncoding)

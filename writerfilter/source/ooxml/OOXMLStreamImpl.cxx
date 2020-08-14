@@ -18,15 +18,13 @@
  */
 
 #include "OOXMLStreamImpl.hxx"
-#include "oox/core/fasttokenhandler.hxx"
-#include <iostream>
+#include <oox/core/fasttokenhandler.hxx>
 
 #include <com/sun/star/embed/XHierarchicalStorageAccess.hpp>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
-#include <com/sun/star/xml/sax/Parser.hpp>
+#include <comphelper/storagehelper.hxx>
 
-namespace writerfilter {
-namespace ooxml
+namespace writerfilter::ooxml
 {
 
 using namespace com::sun::star;
@@ -46,7 +44,7 @@ OOXMLStreamImpl::OOXMLStreamImpl
 }
 
 OOXMLStreamImpl::OOXMLStreamImpl
-(OOXMLStreamImpl & rOOXMLStream, StreamType_t nStreamType)
+(OOXMLStreamImpl const & rOOXMLStream, StreamType_t nStreamType)
 : mxContext(rOOXMLStream.mxContext),
   mxStorageStream(rOOXMLStream.mxStorageStream),
   mxStorage(rOOXMLStream.mxStorage),
@@ -59,7 +57,7 @@ OOXMLStreamImpl::OOXMLStreamImpl
 }
 
 OOXMLStreamImpl::OOXMLStreamImpl
-(OOXMLStreamImpl & rOOXMLStream, const OUString & rId)
+(OOXMLStreamImpl const & rOOXMLStream, const OUString & rId)
 : mxContext(rOOXMLStream.mxContext),
   mxStorageStream(rOOXMLStream.mxStorageStream),
   mxStorage(rOOXMLStream.mxStorage),
@@ -94,16 +92,14 @@ bool OOXMLStreamImpl::lcl_getTarget(const uno::Reference<embed::XRelationshipAcc
     if (maIdCache.empty())
     {
         // Cache is empty? Then let's build it!
-        uno::Sequence< uno::Sequence<beans::StringPair> >aSeqs = xRelationshipAccess->getAllRelationships();
-        for (sal_Int32 i = 0; i < aSeqs.getLength(); ++i)
+        const uno::Sequence< uno::Sequence<beans::StringPair> >aSeqs = xRelationshipAccess->getAllRelationships();
+        for (const uno::Sequence<beans::StringPair>& rSeq : aSeqs)
         {
-            const uno::Sequence<beans::StringPair>& rSeq = aSeqs[i];
             OUString aId;
             OUString aTarget;
             bool bExternal = false;
-            for (sal_Int32 j = 0; j < rSeq.getLength(); ++j)
+            for (const beans::StringPair& rPair : rSeq)
             {
-                const beans::StringPair& rPair = rSeq[j];
                 if (rPair.First == sId)
                     aId = rPair.Second;
                 else if (rPair.First == sTarget)
@@ -112,7 +108,7 @@ bool OOXMLStreamImpl::lcl_getTarget(const uno::Reference<embed::XRelationshipAcc
                     bExternal = true;
             }
             // Only cache external targets, internal ones are more complex (see below)
-            if (bExternal)
+            if (bExternal || aTarget.startsWith("#"))
                 maIdCache[aId] = aTarget;
         }
     }
@@ -141,8 +137,6 @@ bool OOXMLStreamImpl::lcl_getTarget(const uno::Reference<embed::XRelationshipAcc
     static const char sThemeType[] = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme";
     static const char sCustomType[] = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml";
     static const char sCustomPropsType[] = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXmlProps";
-    static const char sActiveXType[] = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/control";
-    static const char sActiveXBinType[] = "http://schemas.microsoft.com/office/2006/relationships/activeXControlBinary";
     static const char sGlossaryType[] = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/glossaryDocument";
     static const char sWebSettings[] = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/webSettings";
     static const char sSettingsType[] = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings";
@@ -162,7 +156,6 @@ bool OOXMLStreamImpl::lcl_getTarget(const uno::Reference<embed::XRelationshipAcc
     static const char sThemeTypeStrict[] = "http://purl.oclc.org/ooxml/officeDocument/relationships/theme";
     static const char sCustomTypeStrict[] = "http://purl.oclc.org/ooxml/officeDocument/relationships/customXml";
     static const char sCustomPropsTypeStrict[] = "http://purl.oclc.org/ooxml/officeDocument/relationships/customXmlProps";
-    static const char sActiveXTypeStrict[] = "http://purl.oclc.org/ooxml/officeDocument/relationships/control";
     static const char sGlossaryTypeStrict[] = "http://purl.oclc.org/ooxml/officeDocument/relationships/glossaryDocument";
     static const char sWebSettingsStrict[] = "http://purl.oclc.org/ooxml/officeDocument/relationships/webSettings";
     static const char sSettingsTypeStrict[] = "http://purl.oclc.org/ooxml/officeDocument/relationships/settings";
@@ -227,14 +220,6 @@ bool OOXMLStreamImpl::lcl_getTarget(const uno::Reference<embed::XRelationshipAcc
             sStreamType = sCustomPropsType;
             sStreamTypeStrict = sCustomPropsTypeStrict;
             break;
-        case ACTIVEX:
-            sStreamType = sActiveXType;
-            sStreamTypeStrict = sActiveXTypeStrict;
-            break;
-        case ACTIVEXBIN:
-            sStreamType = sActiveXBinType;
-            sStreamTypeStrict = sActiveXBinType;
-            break;
         case SETTINGS:
             sStreamType = sSettingsType;
             sStreamTypeStrict = sSettingsTypeStrict;
@@ -269,19 +254,15 @@ bool OOXMLStreamImpl::lcl_getTarget(const uno::Reference<embed::XRelationshipAcc
 
     if (xRelationshipAccess.is())
     {
-        uno::Sequence< uno::Sequence< beans::StringPair > >aSeqs =
+        const uno::Sequence< uno::Sequence< beans::StringPair > >aSeqs =
             xRelationshipAccess->getAllRelationships();
 
-        for (sal_Int32 j = 0; j < aSeqs.getLength(); j++)
+        for (const uno::Sequence< beans::StringPair > &rSeq : aSeqs)
         {
-            const uno::Sequence< beans::StringPair > &rSeq = aSeqs[j];
-
             bool bExternalTarget = false;
             OUString sMyTarget;
-            for (sal_Int32 i = 0; i < rSeq.getLength(); i++)
+            for (const beans::StringPair &rPair : rSeq)
             {
-                const beans::StringPair &rPair = rSeq[i];
-
                 if (rPair.First == sType &&
                     ( rPair.Second == sStreamType ||
                       rPair.Second == sStreamTypeStrict ))
@@ -298,8 +279,8 @@ bool OOXMLStreamImpl::lcl_getTarget(const uno::Reference<embed::XRelationshipAcc
                     bFound = true;
                 else if (rPair.First == sTarget)
                 {
-                    // checking item[n].xml or activex[n].xml is not visited already.
-                    if(customTarget != rPair.Second && (sStreamType == sCustomType || sStreamType == sActiveXType || sStreamType == sChartType || sStreamType == sFooterType || sStreamType == sHeaderType))
+                    // checking item[n].xml is not visited already.
+                    if(customTarget != rPair.Second && (sStreamType == sCustomType || sStreamType == sChartType || sStreamType == sFooterType || sStreamType == sHeaderType))
                     {
                         bFound = false;
                     }
@@ -311,7 +292,6 @@ bool OOXMLStreamImpl::lcl_getTarget(const uno::Reference<embed::XRelationshipAcc
                 else if (rPair.First == sTargetMode &&
                          rPair.Second == sExternal)
                     bExternalTarget = true;
-
             }
 
             if (bFound)
@@ -323,15 +303,23 @@ bool OOXMLStreamImpl::lcl_getTarget(const uno::Reference<embed::XRelationshipAcc
                     // 'Target' is a relative Uri, so a 'Target=/path'
                     // with a base Uri of file://base/foo will resolve to
                     // file://base/word. We need something more than some
-                    // simple string concatination here to handle that.
+                    // simple string concatenation here to handle that.
                     uno::Reference<uri::XUriReference> xPart = xFac->parse(sMyTarget);
                     uno::Reference<uri::XUriReference> xAbs = xFac->makeAbsolute(xBase, xPart, true, uri::RelativeUriExcessParentSegments_RETAIN);
-                    rDocumentTarget = xAbs->getPath();
-                    // path will start with the fragment separator. need to
-                    // remove that
-                    rDocumentTarget = rDocumentTarget.copy( 1 );
-                    if(sStreamType == sEmbeddingsType)
-                        embeddingsTarget = rDocumentTarget;
+                    if (!xAbs)
+                    {
+                        //it was invalid gibberish
+                        bFound = false;
+                    }
+                    else
+                    {
+                        rDocumentTarget = xAbs->getPath();
+                        // path will start with the fragment separator. need to
+                        // remove that
+                        rDocumentTarget = rDocumentTarget.copy( 1 );
+                        if(sStreamType == sEmbeddingsType)
+                            embeddingsTarget = rDocumentTarget;
+                    }
                 }
 
                 break;
@@ -360,25 +348,25 @@ void OOXMLStreamImpl::init()
     bool bFound = lcl_getTarget(mxRelationshipAccess,
                                 mnStreamType, msId, msTarget);
 
-    if (bFound)
+    if (!bFound)
+        return;
+
+    sal_Int32 nLastIndex = msTarget.lastIndexOf('/');
+    if (nLastIndex >= 0)
+        msPath = msTarget.copy(0, nLastIndex + 1);
+
+    uno::Reference<embed::XHierarchicalStorageAccess>
+        xHierarchicalStorageAccess(mxStorage, uno::UNO_QUERY);
+
+    if (xHierarchicalStorageAccess.is())
     {
-        sal_Int32 nLastIndex = msTarget.lastIndexOf('/');
-        if (nLastIndex >= 0)
-            msPath = msTarget.copy(0, nLastIndex + 1);
-
-        uno::Reference<embed::XHierarchicalStorageAccess>
-            xHierarchicalStorageAccess(mxStorage, uno::UNO_QUERY);
-
-        if (xHierarchicalStorageAccess.is())
-        {
-            uno::Any aAny(xHierarchicalStorageAccess->
-                          openStreamElementByHierarchicalName
-                          (msTarget, embed::ElementModes::SEEKABLEREAD));
-            aAny >>= mxDocumentStream;
-            // Non-cached ID lookup works by accessing mxDocumentStream as an embed::XRelationshipAccess.
-            // So when it changes, we should empty the cache.
-            maIdCache.clear();
-        }
+        uno::Any aAny(xHierarchicalStorageAccess->
+                      openStreamElementByHierarchicalName
+                      (msTarget, embed::ElementModes::SEEKABLEREAD));
+        aAny >>= mxDocumentStream;
+        // Non-cached ID lookup works by accessing mxDocumentStream as an embed::XRelationshipAccess.
+        // So when it changes, we should empty the cache.
+        maIdCache.clear();
     }
 }
 
@@ -425,7 +413,7 @@ OOXMLDocumentFactory::createStream
     if (nStreamType != OOXMLStream::VBADATA)
     {
         if (OOXMLStreamImpl* pImpl = dynamic_cast<OOXMLStreamImpl *>(pStream.get()))
-            pRet.reset(new OOXMLStreamImpl(*pImpl, nStreamType));
+            pRet = new OOXMLStreamImpl(*pImpl, nStreamType);
     }
     else
     {
@@ -433,7 +421,7 @@ OOXMLDocumentFactory::createStream
         if (OOXMLStreamImpl* pImpl = dynamic_cast<OOXMLStreamImpl *>(pStream.get()))
         {
             std::unique_ptr<OOXMLStreamImpl> pProject(new OOXMLStreamImpl(*pImpl, OOXMLStream::VBAPROJECT));
-            pRet.reset(new OOXMLStreamImpl(*pProject, OOXMLStream::VBADATA));
+            pRet = new OOXMLStreamImpl(*pProject, OOXMLStream::VBADATA);
         }
     }
 
@@ -446,10 +434,10 @@ OOXMLDocumentFactory::createStream
 {
     OOXMLStream::Pointer_t pRet;
     if (OOXMLStreamImpl* pImpl = dynamic_cast<OOXMLStreamImpl *>(pStream.get()))
-        pRet.reset(new OOXMLStreamImpl(*pImpl, rId));
+        pRet = new OOXMLStreamImpl(*pImpl, rId);
     return pRet;
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

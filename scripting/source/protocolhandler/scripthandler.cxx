@@ -27,6 +27,7 @@
 #include <com/sun/star/document/XEmbeddedScripts.hpp>
 #include <com/sun/star/document/XScriptInvocationContext.hpp>
 
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/script/provider/ScriptFrameworkErrorException.hpp>
 #include <com/sun/star/script/provider/XScriptProviderSupplier.hpp>
@@ -44,10 +45,11 @@
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <framework/documentundoguard.hxx>
+#include <officecfg/Office/Common.hxx>
 
-#include "com/sun/star/uno/XComponentContext.hpp"
-#include "com/sun/star/uri/XUriReference.hpp"
-#include "com/sun/star/uri/UriReferenceFactory.hpp"
+#include <com/sun/star/uri/XUriReference.hpp>
+#include <com/sun/star/uri/XVndSunStarScriptUrlReference.hpp>
+#include <com/sun/star/uri/UriReferenceFactory.hpp>
 
 #include <memory>
 
@@ -74,10 +76,9 @@ void SAL_CALL ScriptProtocolHandler::initialize(
 
     // first argument contains a reference to the frame (may be empty or the desktop,
     // but usually it's a "real" frame)
-    if ( aArguments.getLength() && !( aArguments[ 0 ] >>= m_xFrame ) )
+    if ( aArguments.hasElements() && !( aArguments[ 0 ] >>= m_xFrame ) )
     {
-        OUString temp = "ScriptProtocolHandler::initialize: could not extract reference to the frame";
-        throw RuntimeException( temp );
+        throw RuntimeException( "ScriptProtocolHandler::initialize: could not extract reference to the frame" );
     }
 
     ENSURE_OR_THROW( m_xContext.is(), "ScriptProtocolHandler::initialize: No Service Manager available" );
@@ -91,8 +92,7 @@ Reference< XDispatch > SAL_CALL ScriptProtocolHandler::queryDispatch(
     // get scheme of url
 
     Reference< uri::XUriReferenceFactory > xFac = uri::UriReferenceFactory::create( m_xContext );
-    Reference<  uri::XUriReference > uriRef(
-        xFac->parse( aURL.Complete ), UNO_QUERY );
+    Reference<  uri::XUriReference > uriRef = xFac->parse( aURL.Complete );
     if ( uriRef.is() )
     {
         if ( uriRef->getScheme() == "vnd.sun.star.script" )
@@ -110,12 +110,9 @@ const Sequence < DispatchDescriptor >& seqDescriptor )
 {
     sal_Int32 nCount = seqDescriptor.getLength();
     Sequence< Reference< XDispatch > > lDispatcher( nCount );
-    for ( sal_Int32 i = 0; i < nCount; ++i )
-    {
-        lDispatcher[ i ] = this->queryDispatch( seqDescriptor[ i ].FeatureURL,
-                                                seqDescriptor[ i ].FrameName,
-                                                seqDescriptor[ i ].SearchFlags );
-    }
+    std::transform(seqDescriptor.begin(), seqDescriptor.end(), lDispatcher.begin(),
+        [this](const DispatchDescriptor& rDescr) -> Reference<XDispatch> {
+            return queryDispatch(rDescr.FeatureURL, rDescr.FrameName, rDescr.SearchFlags); });
     return lDispatcher;
 }
 
@@ -123,6 +120,8 @@ void SAL_CALL ScriptProtocolHandler::dispatchWithNotification(
     const URL& aURL, const Sequence < PropertyValue >& lArgs,
     const Reference< XDispatchResultListener >& xListener )
 {
+    if (officecfg::Office::Common::Security::Scripting::DisableMacrosExecution::get())
+        return;
 
     bool bSuccess = false;
     Any invokeResult;
@@ -133,8 +132,12 @@ void SAL_CALL ScriptProtocolHandler::dispatchWithNotification(
     {
         try
         {
-            bool bIsDocumentScript = ( aURL.Complete.indexOf( "document" ) !=-1 );
-                // TODO: isn't this somewhat strange? This should be a test for a location=document parameter, shouldn't it?
+            css::uno::Reference<css::uri::XUriReferenceFactory> urifac(
+                css::uri::UriReferenceFactory::create(m_xContext));
+            css::uno::Reference<css::uri::XVndSunStarScriptUrlReference> uri(
+                urifac->parse(aURL.Complete), css::uno::UNO_QUERY_THROW);
+            auto const loc = uri->getParameter("location");
+            bool bIsDocumentScript = loc == "document";
 
             if ( bIsDocumentScript )
             {
@@ -156,12 +159,11 @@ void SAL_CALL ScriptProtocolHandler::dispatchWithNotification(
                         {
                             xListener->dispatchFinished( aEvent ) ;
                         }
-                        catch(RuntimeException & e)
+                        catch(const RuntimeException &)
                         {
-                            SAL_WARN("scripting",
+                            TOOLS_WARN_EXCEPTION("scripting",
                                 "ScriptProtocolHandler::dispatchWithNotification: caught RuntimeException"
-                                "while dispatchFinished with failure of the execution "
-                                << e.Message );
+                                "while dispatchFinished with failure of the execution");
                         }
                     }
                     return;
@@ -181,19 +183,21 @@ void SAL_CALL ScriptProtocolHandler::dispatchWithNotification(
             Sequence< Any > outArgs( 0 );
             Sequence< sal_Int16 > outIndex;
 
-            if ( lArgs.getLength() > 0 )
+            if ( lArgs.hasElements() )
             {
                int argCount = 0;
-               for ( int index = 0; index < lArgs.getLength(); index++ )
+               for ( const auto& rArg : lArgs )
                {
-                   // Sometimes we get a propertyval with name = "Referer"
-                   // this is not an argument to be passed to script, so
-                   // ignore.
-                   if ( lArgs[ index ].Name != "Referer" ||
-                        lArgs[ index ].Name.isEmpty() ) //TODO:???
+                   // Sometimes we get a propertyval with name = "Referer" or "SynchronMode". These
+                   // are not actual arguments to be passed to script, but flags describing the
+                   // call, so ignore. Who thought that passing such "meta-arguments" mixed in with
+                   // real arguments was a good idea?
+                   if ( (rArg.Name != "Referer" &&
+                         rArg.Name != "SynchronMode") ||
+                        rArg.Name.isEmpty() ) //TODO:???
                    {
                        inArgs.realloc( ++argCount );
-                       inArgs[ argCount - 1 ] = lArgs[ index ].Value;
+                       inArgs[ argCount - 1 ] = rArg.Value;
                    }
                }
             }
@@ -206,7 +210,7 @@ void SAL_CALL ScriptProtocolHandler::dispatchWithNotification(
             bSuccess = false;
             while ( !bSuccess )
             {
-                Any aFirstCaughtException;
+                std::exception_ptr aFirstCaughtException;
                 try
                 {
                     invokeResult = xFunc->invoke( inArgs, outIndex, outArgs );
@@ -214,17 +218,17 @@ void SAL_CALL ScriptProtocolHandler::dispatchWithNotification(
                 }
                 catch( const provider::ScriptFrameworkErrorException& se )
                 {
-                    if  ( !aFirstCaughtException.hasValue() )
-                        aFirstCaughtException = ::cppu::getCaughtException();
+                    if  (!aFirstCaughtException)
+                        aFirstCaughtException = std::current_exception();
 
                     if ( se.errorType != provider::ScriptFrameworkErrorType::NO_SUCH_SCRIPT )
                         // the only condition which allows us to retry is if there is no method with the
                         // given name/signature
-                        ::cppu::throwException( aFirstCaughtException );
+                        std::rethrow_exception(aFirstCaughtException);
 
-                    if ( inArgs.getLength() == 0 )
+                    if ( !inArgs.hasElements() )
                         // no chance to retry if we can't strip more in-args
-                        ::cppu::throwException( aFirstCaughtException );
+                        std::rethrow_exception(aFirstCaughtException);
 
                     // strip one argument, then retry
                     inArgs.realloc( inArgs.getLength() - 1 );
@@ -240,60 +244,51 @@ void SAL_CALL ScriptProtocolHandler::dispatchWithNotification(
 
             OUString reason = "ScriptProtocolHandler::dispatch: caught ";
 
-            invokeResult <<= reason.concat( aException.getValueTypeName() ).concat( e.Message );
+            invokeResult <<= reason.concat( aException.getValueTypeName() ).concat( ": " ).concat( e.Message );
 
             bCaughtException = true;
         }
     }
     else
     {
-        OUString reason(
-        "ScriptProtocolHandler::dispatchWithNotification failed, ScriptProtocolHandler not initialised"
+        invokeResult <<= OUString(
+            "ScriptProtocolHandler::dispatchWithNotification failed, ScriptProtocolHandler not initialised"
         );
-        invokeResult <<= reason;
     }
 
     if ( bCaughtException )
     {
         SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
+        pFact->ShowAsyncScriptErrorDialog( nullptr, aException );
+    }
 
-        if ( pFact != nullptr )
-        {
-            ScopedVclPtr<VclAbstractDialog> pDlg(
-                pFact->CreateScriptErrorDialog( aException ));
+    if ( !xListener.is() )
+        return;
 
-            if ( pDlg )
-                pDlg->Execute();
-        }
-       }
+    // always call dispatchFinished(), because we didn't load a document but
+    // executed a macro instead!
+    css::frame::DispatchResultEvent aEvent;
 
-    if ( xListener.is() )
+    aEvent.Source = static_cast< ::cppu::OWeakObject* >( this );
+    aEvent.Result = invokeResult;
+    if ( bSuccess )
     {
-        // always call dispatchFinished(), because we didn't load a document but
-        // executed a macro instead!
-        css::frame::DispatchResultEvent aEvent;
+        aEvent.State = css::frame::DispatchResultState::SUCCESS;
+    }
+    else
+    {
+        aEvent.State = css::frame::DispatchResultState::FAILURE;
+    }
 
-        aEvent.Source = static_cast< ::cppu::OWeakObject* >( this );
-        aEvent.Result = invokeResult;
-        if ( bSuccess )
-        {
-            aEvent.State = css::frame::DispatchResultState::SUCCESS;
-        }
-        else
-        {
-            aEvent.State = css::frame::DispatchResultState::FAILURE;
-        }
-
-        try
-        {
-            xListener->dispatchFinished( aEvent ) ;
-        }
-        catch(const RuntimeException & e)
-        {
-            SAL_WARN("scripting",
-                "ScriptProtocolHandler::dispatchWithNotification: caught RuntimeException"
-                "while dispatchFinished " << e.Message );
-        }
+    try
+    {
+        xListener->dispatchFinished( aEvent ) ;
+    }
+    catch(const RuntimeException &)
+    {
+        TOOLS_WARN_EXCEPTION("scripting",
+            "ScriptProtocolHandler::dispatchWithNotification: caught RuntimeException"
+            "while dispatchFinished" );
     }
 }
 
@@ -328,13 +323,12 @@ ScriptProtocolHandler::getScriptInvocation()
         }
         else
         {
-            Reference< XFrame > xFrame( m_xFrame.get(), UNO_QUERY );
-            if ( xFrame.is() )
+            if ( m_xFrame.is() )
             {
                 SfxFrame* pFrame = nullptr;
                 for ( pFrame = SfxFrame::GetFirst(); pFrame; pFrame = SfxFrame::GetNext( *pFrame ) )
                 {
-                    if ( pFrame->GetFrameInterface() == xFrame )
+                    if ( pFrame->GetFrameInterface() == m_xFrame )
                         break;
                 }
                 SfxObjectShell* pDocShell = pFrame ? pFrame->GetCurrentDocument() : SfxObjectShell::Current();
@@ -395,18 +389,15 @@ void ScriptProtocolHandler::createScriptProvider()
             Any aContext;
             if ( getScriptInvocation() )
                 aContext <<= m_xScriptInvocation;
-            m_xScriptProvider.set( xFac->createScriptProvider( aContext ), UNO_QUERY_THROW );
+            m_xScriptProvider.set( xFac->createScriptProvider( aContext ), UNO_SET_THROW );
         }
-    }
-    catch ( const RuntimeException & e )
-    {
-        OUString temp = "ScriptProtocolHandler::createScriptProvider(),  ";
-        throw RuntimeException( temp.concat( e.Message ) );
     }
     catch ( const Exception & e )
     {
-        OUString temp = "ScriptProtocolHandler::createScriptProvider: ";
-        throw RuntimeException( temp.concat( e.Message ) );
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException(
+            "ScriptProtocolHandler::createScriptProvider: " + e.Message,
+            nullptr, anyEx );
     }
 }
 
@@ -422,7 +413,7 @@ ScriptProtocolHandler::~ScriptProtocolHandler()
 /* XServiceInfo */
 OUString SAL_CALL ScriptProtocolHandler::getImplementationName( )
 {
-    return impl_getStaticImplementationName();
+    return "com.sun.star.comp.ScriptProtocolHandler";
 }
 
 /* XServiceInfo */
@@ -434,82 +425,17 @@ sal_Bool SAL_CALL ScriptProtocolHandler::supportsService(const OUString& sServic
 /* XServiceInfo */
 Sequence< OUString > SAL_CALL ScriptProtocolHandler::getSupportedServiceNames()
 {
-    return impl_getStaticSupportedServiceNames();
-}
-
-/* Helper for XServiceInfo */
-Sequence< OUString > ScriptProtocolHandler::impl_getStaticSupportedServiceNames()
-{
     return {"com.sun.star.frame.ProtocolHandler"};
 }
 
-/* Helper for XServiceInfo */
-OUString ScriptProtocolHandler::impl_getStaticImplementationName()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+scripting_ScriptProtocolHandler_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    return OUString("com.sun.star.comp.ScriptProtocolHandler");
-}
-
-/* Helper for registry */
-Reference< XInterface > SAL_CALL ScriptProtocolHandler::impl_createInstance(
-const Reference< css::lang::XMultiServiceFactory >& xServiceManager )
-{
-    return Reference< XInterface > ( *new ScriptProtocolHandler( comphelper::getComponentContext(xServiceManager) ) );
-}
-
-/* Factory for registration */
-Reference< XSingleServiceFactory > ScriptProtocolHandler::impl_createFactory(
-const Reference< XMultiServiceFactory >& xServiceManager )
-{
-    Reference< XSingleServiceFactory > xReturn (
-        cppu::createSingleFactory( xServiceManager,
-            ScriptProtocolHandler::impl_getStaticImplementationName(),
-            ScriptProtocolHandler::impl_createInstance,
-            ScriptProtocolHandler::impl_getStaticSupportedServiceNames() )
-    );
-    return xReturn;
+    return cppu::acquire(new ScriptProtocolHandler(context));
 }
 
 } // namespace scripting_protocolhandler
-
-extern "C"
-{
-    SAL_DLLPUBLIC_EXPORT void* SAL_CALL protocolhandler_component_getFactory( const sal_Char * pImplementationName ,
-                                         void * pServiceManager ,
-                                         void * pRegistryKey )
-    {
-        (void)pRegistryKey;
-
-        // Set default return value for this operation - if it failed.
-        void * pReturn = nullptr ;
-
-        if (
-            ( pImplementationName != nullptr ) &&
-            ( pServiceManager != nullptr )
-        )
-        {
-            // Define variables which are used in following macros.
-            css::uno::Reference< css::lang::XSingleServiceFactory > xFactory;
-            css::uno::Reference< css::lang::XMultiServiceFactory > xServiceManager(
-                static_cast< css::lang::XMultiServiceFactory* >( pServiceManager ) ) ;
-
-            if ( ::scripting_protocolhandler::ScriptProtocolHandler::impl_getStaticImplementationName().equals(
-                OUString::createFromAscii( pImplementationName ) ) )
-            {
-                xFactory = ::scripting_protocolhandler::ScriptProtocolHandler::impl_createFactory( xServiceManager );
-            }
-
-            // Factory is valid - service was found.
-            if ( xFactory.is() )
-            {
-                xFactory->acquire();
-                pReturn = xFactory.get();
-            }
-        }
-
-        // Return with result of this operation.
-        return pReturn ;
-    }
-} // extern "C"
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

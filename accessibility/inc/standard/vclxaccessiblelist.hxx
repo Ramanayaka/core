@@ -17,18 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLELIST_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLELIST_HXX
+#pragma once
 
 #include <memory>
 #include <vector>
-#include <functional>
-#include <standard/vclxaccessibleedit.hxx>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/accessibility/XAccessibleAction.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <cppuhelper/implbase2.hxx>
+#include <toolkit/awt/vclxaccessiblecomponent.hxx>
 
 typedef ::cppu::ImplHelper2<
     css::accessibility::XAccessible,
@@ -49,7 +44,7 @@ namespace accessibility
     access to their underlying list implementation.  Look into derived
     classes for selection.
 */
-class VCLXAccessibleList
+class VCLXAccessibleList final
     : public VCLXAccessibleComponent,
       public VCLXAccessibleList_BASE
 {
@@ -92,7 +87,7 @@ public:
         getAccessibleContext() override;
 
     // XAccessibleContext
-    virtual sal_Int32 SAL_CALL getAccessibleChildCount() override;
+    virtual sal_Int32 SAL_CALL getAccessibleChildCount() override final;
     css::uno::Reference< css::accessibility::XAccessible> SAL_CALL
         getAccessibleChild (sal_Int32 i) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL
@@ -120,15 +115,15 @@ public:
     virtual void SAL_CALL deselectAccessibleChild( sal_Int32 nSelectedChildIndex ) override;
 
     virtual css::awt::Point SAL_CALL getLocationOnScreen(  ) override;
-    bool    IsInDropDown();
+    bool    IsInDropDown() const;
     void        HandleDropOpen();
     void ProcessWindowEvent (const VclWindowEvent& rVclWindowEvent, bool b_IsDropDownList);
-    void UpdateSelection_Acc (const ::rtl::OUString& sTextOfSelectedItem, bool b_IsDropDownList);
+    void UpdateSelection_Acc (const OUString& sTextOfSelectedItem, bool b_IsDropDownList);
     void UpdateSelection_Impl_Acc (bool b_IsDropDownList);
 
-    static void NotifyListItem(css::uno::Any& val);
+    static void NotifyListItem(css::uno::Any const & val);
     ::accessibility::IComboListBoxHelper* getListBoxHelper() { return m_pListBoxHelper.get(); }
-protected:
+private:
     BoxType     m_aBoxType;
     std::unique_ptr<::accessibility::IComboListBoxHelper> m_pListBoxHelper;
     ListItems   m_aAccessibleChildren;
@@ -142,7 +137,9 @@ protected:
     sal_Int32   m_nCurSelectedPos;
 
 
-    virtual ~VCLXAccessibleList() override;
+    virtual ~VCLXAccessibleList() override = default;
+
+    sal_Int32 implGetAccessibleChildCount();
 
     /** This function is called from the implementation helper during a
         XComponent::dispose call.  Free the list of items and the items themselves.
@@ -170,23 +167,19 @@ protected:
     // VCLXAccessibleComponent
     virtual css::awt::Rectangle implGetBounds(  ) override;
 
-private:
     /** We need to save the accessible parent to return it in getAccessibleParent(),
         because this method of the base class returns the wrong parent.
     */
     css::uno::Reference< css::accessibility::XAccessible >  m_xParent;
 
     void UpdateEntryRange_Impl();
-protected:
     void UpdateSelection_Impl(sal_Int32 nPos = 0);
     bool checkEntrySelected(sal_Int32 _nPos,
                             css::uno::Any& _rNewValue,
                             css::uno::Reference< css::accessibility::XAccessible >& _rxNewAcc);
-private:
     void notifyVisibleStates(bool _bSetNew );
     void UpdateVisibleLineCount();
 };
 
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

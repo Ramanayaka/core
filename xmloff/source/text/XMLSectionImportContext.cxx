@@ -20,15 +20,17 @@
 #include "XMLSectionImportContext.hxx"
 #include "XMLSectionSourceImportContext.hxx"
 #include "XMLSectionSourceDDEImportContext.hxx"
+#include <comphelper/base64.hxx>
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/prstylei.hxx>
 #include <sax/tools/converter.hxx>
 #include <com/sun/star/container/XNamed.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/text/XTextContent.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -46,6 +48,7 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::text;
 using namespace ::xmloff::token;
 
+namespace {
 
 enum XMLSectionToken
 {
@@ -59,7 +62,9 @@ enum XMLSectionToken
     XML_TOK_SECTION_IS_HIDDEN
 };
 
-static const SvXMLTokenMapEntry aSectionTokenMap[] =
+}
+
+const SvXMLTokenMapEntry aSectionTokenMap[] =
 {
     { XML_NAMESPACE_XML , XML_ID, XML_TOK_SECTION_XMLID },
     { XML_NAMESPACE_TEXT, XML_STYLE_NAME, XML_TOK_SECTION_STYLE_NAME },
@@ -116,114 +121,114 @@ void XMLSectionImportContext::StartElement(
     rtl::Reference<XMLTextImportHelper> rHelper = GetImport().GetTextImport();
 
     // valid?
-    if (bValid)
+    if (!bValid)
+        return;
+
+    // create text section (as XPropertySet)
+    Reference<XMultiServiceFactory> xFactory(
+        GetImport().GetModel(),UNO_QUERY);
+    if (!xFactory.is())
+        return;
+
+    Reference<XInterface> xIfc =
+        xFactory->createInstance( bIsIndexHeader ? OUString("com.sun.star.text.IndexHeaderSection")
+                                                 : OUString("com.sun.star.text.TextSection") );
+    if (!xIfc.is())
+        return;
+
+    Reference<XPropertySet> xPropSet(xIfc, UNO_QUERY);
+
+    // save PropertySet (for CreateChildContext)
+    xSectionPropertySet = xPropSet;
+
+    // name
+    Reference<XNamed> xNamed(xPropSet, UNO_QUERY);
+    xNamed->setName(sName);
+
+    // stylename?
+    if (!sStyleName.isEmpty())
     {
-        // create text section (as XPropertySet)
-        Reference<XMultiServiceFactory> xFactory(
-            GetImport().GetModel(),UNO_QUERY);
-        if (xFactory.is())
+        XMLPropStyleContext* pStyle = rHelper->
+            FindSectionStyle(sStyleName);
+
+        if (pStyle != nullptr)
         {
-            Reference<XInterface> xIfc =
-                xFactory->createInstance( bIsIndexHeader ? OUString("com.sun.star.text.IndexHeaderSection")
-                                                         : OUString("com.sun.star.text.TextSection") );
-            if (xIfc.is())
-            {
-                Reference<XPropertySet> xPropSet(xIfc, UNO_QUERY);
-
-                // save PropertySet (for CreateChildContext)
-                xSectionPropertySet = xPropSet;
-
-                // name
-                Reference<XNamed> xNamed(xPropSet, UNO_QUERY);
-                xNamed->setName(sName);
-
-                // stylename?
-                if (!sStyleName.isEmpty())
-                {
-                    XMLPropStyleContext* pStyle = rHelper->
-                        FindSectionStyle(sStyleName);
-
-                    if (pStyle != nullptr)
-                    {
-                        pStyle->FillPropertySet( xPropSet );
-                    }
-                }
-
-                // IsVisible and condition (not for index headers)
-                if (! bIsIndexHeader)
-                {
-                    xPropSet->setPropertyValue( "IsVisible", Any(bIsVisible) );
-
-                    // #97450# hidden sections must be hidden on reload
-                    // For backwards compatibility, set flag only if it is
-                    // present
-                    if( bIsCurrentlyVisibleOK )
-                    {
-                        xPropSet->setPropertyValue( "IsCurrentlyVisible", Any(bIsCurrentlyVisible));
-                    }
-
-                    if (bCondOK)
-                    {
-                        xPropSet->setPropertyValue( "Condition", Any(sCond) );
-                    }
-                }
-
-                // password (only for regular sections)
-                if ( bSequenceOK &&
-                     IsXMLToken(GetLocalName(), XML_SECTION) )
-                {
-                    xPropSet->setPropertyValue("ProtectionKey", Any(aSequence));
-                }
-
-                // protection
-                xPropSet->setPropertyValue( "IsProtected", Any(bProtect) );
-
-                // insert marker, <paragraph>, marker; then insert
-                // section over the first marker character, and delete the
-                // last paragraph (and marker) when closing a section.
-                Reference<XTextRange> xStart =
-                    rHelper->GetCursor()->getStart();
-#ifndef DBG_UTIL
-                OUString sMarkerString(" ");
-#else
-                OUString sMarkerString("X");
-#endif
-                rHelper->InsertString(sMarkerString);
-                rHelper->InsertControlCharacter(
-                    ControlCharacter::APPEND_PARAGRAPH );
-                rHelper->InsertString(sMarkerString);
-
-                // select first marker
-                rHelper->GetCursor()->gotoRange(xStart, false);
-                rHelper->GetCursor()->goRight(1, true);
-
-                // convert section to XTextContent
-                Reference<XTextContent> xTextContent(xSectionPropertySet,
-                                                     UNO_QUERY);
-
-                // and insert (over marker)
-                rHelper->GetText()->insertTextContent(
-                    rHelper->GetCursorAsRange(), xTextContent, true );
-
-                // and delete first marker (in section)
-                rHelper->GetText()->insertString(
-                    rHelper->GetCursorAsRange(), "", true);
-
-                // finally, check for redlines that should start at
-                // the section start node
-                rHelper->RedlineAdjustStartNodeCursor(true); // start ???
-
-                // xml:id for RDF metadata
-                GetImport().SetXmlId(xIfc, sXmlId);
-            }
+            pStyle->FillPropertySet( xPropSet );
         }
     }
+
+    // IsVisible and condition (not for index headers)
+    if (! bIsIndexHeader)
+    {
+        xPropSet->setPropertyValue( "IsVisible", Any(bIsVisible) );
+
+        // #97450# hidden sections must be hidden on reload
+        // For backwards compatibility, set flag only if it is
+        // present
+        if( bIsCurrentlyVisibleOK )
+        {
+            xPropSet->setPropertyValue( "IsCurrentlyVisible", Any(bIsCurrentlyVisible));
+        }
+
+        if (bCondOK)
+        {
+            xPropSet->setPropertyValue( "Condition", Any(sCond) );
+        }
+    }
+
+    // password (only for regular sections)
+    if ( bSequenceOK &&
+         IsXMLToken(GetLocalName(), XML_SECTION) )
+    {
+        xPropSet->setPropertyValue("ProtectionKey", Any(aSequence));
+    }
+
+    // protection
+    xPropSet->setPropertyValue( "IsProtected", Any(bProtect) );
+
+    // insert marker, <paragraph>, marker; then insert
+    // section over the first marker character, and delete the
+    // last paragraph (and marker) when closing a section.
+    Reference<XTextRange> xStart =
+        rHelper->GetCursor()->getStart();
+#ifndef DBG_UTIL
+    OUString sMarkerString(" ");
+#else
+    OUString sMarkerString("X");
+#endif
+    rHelper->InsertString(sMarkerString);
+    rHelper->InsertControlCharacter(
+        ControlCharacter::APPEND_PARAGRAPH );
+    rHelper->InsertString(sMarkerString);
+
+    // select first marker
+    rHelper->GetCursor()->gotoRange(xStart, false);
+    rHelper->GetCursor()->goRight(1, true);
+
+    // convert section to XTextContent
+    Reference<XTextContent> xTextContent(xSectionPropertySet,
+                                         UNO_QUERY);
+
+    // and insert (over marker)
+    rHelper->GetText()->insertTextContent(
+        rHelper->GetCursorAsRange(), xTextContent, true );
+
+    // and delete first marker (in section)
+    rHelper->GetText()->insertString(
+        rHelper->GetCursorAsRange(), "", true);
+
+    // finally, check for redlines that should start at
+    // the section start node
+    rHelper->RedlineAdjustStartNodeCursor(); // start ???
+
+    // xml:id for RDF metadata
+    GetImport().SetXmlId(xIfc, sXmlId);
 }
 
 void XMLSectionImportContext::ProcessAttributes(
     const Reference<XAttributeList> & xAttrList )
 {
-    SvXMLTokenMap aTokenMap(aSectionTokenMap);
+    static const SvXMLTokenMap aTokenMap(aSectionTokenMap);
 
     sal_Int16 nLength = xAttrList->getLength();
     for(sal_Int16 nAttr = 0; nAttr < nLength; nAttr++)
@@ -250,7 +255,7 @@ void XMLSectionImportContext::ProcessAttributes(
                 {
                     OUString sTmp;
                     sal_uInt16 nPrefix = GetImport().GetNamespaceMap().
-                                    GetKeyByAttrName_( sAttr, &sTmp );
+                                    GetKeyByAttrValueQName(sAttr, &sTmp);
                     if( XML_NAMESPACE_OOOW == nPrefix )
                     {
                         sCond = sTmp;
@@ -283,7 +288,7 @@ void XMLSectionImportContext::ProcessAttributes(
                 }
                 break;
             case XML_TOK_SECTION_PROTECTION_KEY:
-                ::sax::Converter::decodeBase64(aSequence, sAttr);
+                ::comphelper::Base64::decode(aSequence, sAttr);
                 bSequenceOK = true;
                 break;
             case XML_TOK_SECTION_PROTECT:
@@ -321,10 +326,10 @@ void XMLSectionImportContext::EndElement()
                                      "", true);
 
     // check for redlines to our endnode
-    rHelper->RedlineAdjustStartNodeCursor(false);
+    rHelper->RedlineAdjustStartNodeCursor();
 }
 
-SvXMLImportContext* XMLSectionImportContext::CreateChildContext(
+SvXMLImportContextRef XMLSectionImportContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList> & xAttrList )
@@ -354,12 +359,7 @@ SvXMLImportContext* XMLSectionImportContext::CreateChildContext(
             XMLTextType::Section );
 
         // if that fails, default context
-        if (nullptr == pContext)
-        {
-            pContext = new SvXMLImportContext( GetImport(),
-                                               nPrefix, rLocalName );
-        }
-        else
+        if (pContext)
             bHasContent = true;
     }
 

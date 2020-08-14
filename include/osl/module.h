@@ -20,11 +20,10 @@
 #ifndef INCLUDED_OSL_MODULE_H
 #define INCLUDED_OSL_MODULE_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
-#include <rtl/tencinfo.h>
-#include <rtl/ustring.h>
-#include <sal/saldllapi.h>
+#include "rtl/ustring.h"
+#include "sal/saldllapi.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,7 +35,7 @@ extern "C" {
 #define SAL_MODULENAME(name) name SAL_DLLEXTENSION
 #endif
 
-#if defined(SAL_W32)
+#if defined(_WIN32)
 #define SAL_MODULENAME_WITH_VERSION(name, version) name version SAL_DLLEXTENSION
 
 #elif defined(SAL_UNX)

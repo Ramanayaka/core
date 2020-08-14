@@ -20,19 +20,19 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_SHEETDATABUFFER_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_SHEETDATABUFFER_HXX
 
-#include <list>
+#include <vector>
 #include <map>
 #include <set>
 
 #include "richstring.hxx"
 #include "worksheethelper.hxx"
+#include "addressconverter.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace util { struct DateTime; }
-} } }
+}
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 /** Stores basic data about cell values and formatting. */
 struct CellModel
@@ -119,7 +119,7 @@ public:
     void                setErrorCell( const CellModel& rModel, sal_uInt8 nErrorCode );
     /** Inserts a formula cell into the sheet. */
     void                setFormulaCell( const CellModel& rModel, const ApiTokenSequence& rTokens );
-    /** Inserts a ISO 8601 date cell into the sheet. */
+    /** Inserts an ISO 8601 date cell into the sheet. */
     void                setDateCell( const CellModel& rModel, const OUString& rDateString );
 
     void                createSharedFormula(
@@ -151,7 +151,6 @@ public:
                             const ScAddress& rCellAddr,
                             const ApiTokenSequence& rTokens );
 private:
-    struct XfIdRowRange;
 
     /** Creates a formula token array representing the shared formula with the
         passed identifier. */
@@ -171,11 +170,10 @@ private:
 private:
     /** Stores cell range address and formula token array of an array formula. */
     typedef std::pair< ScRange, ApiTokenSequence > ArrayFormula;
-    typedef ::std::list< ArrayFormula > ArrayFormulaList;
+    typedef ::std::vector< ArrayFormula > ArrayFormulaVector;
 
     /** Stores cell range address and settings of a table operation. */
     typedef std::pair< ScRange, DataTableModel > TableOperation;
-    typedef ::std::list< TableOperation > TableOperationList;
 
     /** Stores information about a range of rows with equal cell formatting. */
     struct XfIdRowRange
@@ -189,9 +187,7 @@ private:
     };
 
     typedef ::std::pair< sal_Int32, sal_Int32 > XfIdNumFmtKey;
-    typedef ::std::map< XfIdNumFmtKey, ScRangeList > XfIdRangeListMap;
 
-    typedef ::std::pair< sal_Int32, sal_Int32 > RowRange;
     struct RowRangeStyle
     {
         sal_Int32 mnStartRow;
@@ -217,26 +213,27 @@ private:
         explicit            MergedRange( const ScAddress& rAddress, sal_Int32 nHorAlign );
         bool                tryExpand( const ScAddress& rAddress, sal_Int32 nHorAlign );
     };
-    typedef ::std::list< MergedRange > MergedRangeList;
+    typedef ::std::vector< MergedRange > MergedRangeVector;
 
     ColStyles           maStylesPerColumn;      /// Stores cell styles by column ( in row ranges )
     CellBlockBuffer     maCellBlocks;           /// Manages all open cell blocks.
-    ArrayFormulaList    maArrayFormulas;        /// All array formulas in the sheet.
-    TableOperationList  maTableOperations;      /// All table operations in the sheet.
+    ArrayFormulaVector  maArrayFormulas;        /// All array formulas in the sheet.
+    std::vector< TableOperation >
+                        maTableOperations;      /// All table operations in the sheet.
     ::std::map< BinAddress, ApiTokenSequence >
                         maSharedFormulas;       /// Maps shared formula base address to defined name token index.
     ScAddress           maSharedFmlaAddr;       /// Address of a cell containing a pending shared formula.
     ScAddress           maSharedBaseAddr;       /// Base address of the pending shared formula.
     XfIdRowRange        maXfIdRowRange;         /// Cached XF identifier for a range of rows.
-    XfIdRangeListMap    maXfIdRangeLists;       /// Collected XF identifiers for cell rangelists.
-    MergedRangeList     maMergedRanges;         /// Merged cell ranges.
-    MergedRangeList     maCenterFillRanges;     /// Merged cell ranges from 'center across' or 'fill' alignment.
+    std::map< XfIdNumFmtKey, ScRangeList >
+                        maXfIdRangeLists;       /// Collected XF identifiers for cell rangelists.
+    MergedRangeVector   maMergedRanges;         /// Merged cell ranges.
+    MergedRangeVector   maCenterFillRanges;     /// Merged cell ranges from 'center across' or 'fill' alignment.
     bool                mbPendingSharedFmla;    /// True = maSharedFmlaAddr and maSharedBaseAddr are valid.
     std::map< sal_Int32, std::vector< ValueRange > > maXfIdRowRangeList; /// Cached XF identifiers for a ranges of rows, we try and process rowranges with the same XF id together
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

@@ -27,19 +27,17 @@
 // For all metrics. GetPresentation returns for example for
 // Value=2500 a "25mm".
 
-class SVX_DLLPUBLIC SdrMetricItem: public SfxInt32Item {
+class SVXCORE_DLLPUBLIC SdrMetricItem: public SfxInt32Item {
 public:
     SdrMetricItem(sal_uInt16 nId, sal_Int32 nVal):  SfxInt32Item(nId,nVal) {}
-    SdrMetricItem(sal_uInt16 nId, SvStream& rIn): SfxInt32Item(nId,rIn) {}
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool=nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual SdrMetricItem* Clone(SfxItemPool* pPool=nullptr) const override;
     virtual bool HasMetrics() const override;
     virtual void ScaleMetrics(long nMul, long nDiv) override;
 
     virtual bool GetPresentation(SfxItemPresentation ePres,
                                  MapUnit eCoreMetric,
                                  MapUnit ePresMetric,
-                                 OUString& rText, const IntlWrapper * = nullptr) const override;
+                                 OUString& rText, const IntlWrapper&) const override;
 };
 
 

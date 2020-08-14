@@ -23,13 +23,10 @@
 #include <svx/sdr/overlay/overlayobject.hxx>
 
 
-namespace sdr
-{
-    namespace overlay
+namespace sdr::overlay
     {
-        class OverlayLineStriped : public OverlayObjectWithBasePosition
+        class OverlayLineStriped final : public OverlayObjectWithBasePosition
         {
-        protected:
             // second position in pixel
             basegfx::B2DPoint                       maSecondPosition;
 
@@ -48,8 +45,7 @@ namespace sdr
             // react on stripe definition change
             virtual void stripeDefinitionHasChanged() override;
         };
-    } // end of namespace overlay
-} // end of namespace sdr
+} // end of namespace sdr::overlay
 
 
 #endif // INCLUDED_SVX_INC_SDR_OVERLAY_OVERLAYLINE_HXX

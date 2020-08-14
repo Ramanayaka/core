@@ -18,10 +18,9 @@
  */
 #include "vbasections.hxx"
 #include "vbasection.hxx"
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/style/XStyle.hpp>
-#include <docsh.hxx>
-#include <doc.hxx>
 #include "wordvbahelper.hxx"
 #include <cppuhelper/implbase.hxx>
 
@@ -29,6 +28,8 @@ using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
 typedef std::vector< uno::Reference< beans::XPropertySet > > XSectionVec;
+
+namespace {
 
 class SectionEnumeration : public ::cppu::WeakImplHelper< container::XEnumeration >
 {
@@ -65,7 +66,7 @@ public:
     SectionCollectionHelper( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< frame::XModel >& xModel ) : mxParent( xParent ), mxContext( xContext ), mxModel( xModel )
     {
         uno::Reference< style::XStyleFamiliesSupplier > xSytleFamSupp( mxModel, uno::UNO_QUERY_THROW );
-        uno::Reference< container::XNameAccess > xSytleFamNames( xSytleFamSupp->getStyleFamilies(), uno::UNO_QUERY_THROW );
+        uno::Reference< container::XNameAccess > xSytleFamNames( xSytleFamSupp->getStyleFamilies(), uno::UNO_SET_THROW );
         uno::Reference< container::XIndexAccess > xPageStyles( xSytleFamNames->getByName("PageStyles"), uno::UNO_QUERY_THROW );
         sal_Int32 nCount = xPageStyles->getCount();
         for( sal_Int32 index = 0; index < nCount; ++index )
@@ -100,7 +101,7 @@ public:
         if ( Index < 0 || Index >= getCount() )
             throw css::lang::IndexOutOfBoundsException();
 
-        uno::Reference< beans::XPropertySet > xPageProps( mxSections[ Index ], uno::UNO_QUERY_THROW );
+        uno::Reference< beans::XPropertySet > xPageProps( mxSections[ Index ], uno::UNO_SET_THROW );
         return uno::makeAny( uno::Reference< word::XSection >( new SwVbaSection( mxParent,  mxContext, mxModel, xPageProps ) ) );
     }
     virtual uno::Type SAL_CALL getElementType(  ) override
@@ -131,6 +132,8 @@ public:
         return uno::makeAny( uno::Reference< word::XSection > ( new SwVbaSection( m_xParent, m_xContext, mxModel, xPageProps ) ) );
     }
 };
+
+}
 
 SwVbaSections::SwVbaSections( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< frame::XModel >& xModel ): SwVbaSections_BASE( xParent, xContext, uno::Reference< container::XIndexAccess >( new SectionCollectionHelper( xParent, xContext, xModel ) ) ),  mxModel( xModel )
 {
@@ -175,18 +178,16 @@ SwVbaSections::createCollectionObject( const css::uno::Any& aSource )
 OUString
 SwVbaSections::getServiceImplName()
 {
-    return OUString("SwVbaSections");
+    return "SwVbaSections";
 }
 
 css::uno::Sequence<OUString>
 SwVbaSections::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.Sections";
-    }
+        "ooo.vba.word.Sections"
+    };
     return sNames;
 }
 

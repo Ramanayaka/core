@@ -18,17 +18,19 @@
  */
 
 #include <i18nlangtag/lang.h>
+#include <i18nlangtag/languagetag.hxx>
 #include <tools/debug.hxx>
 #include <svl/lngmisc.hxx>
 
-#include <cppuhelper/factory.hxx>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/sequence.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <osl/mutex.hxx>
+#include <sal/log.hxx>
 
 #include "thesdsp.hxx"
-#include "linguistic/lngprops.hxx"
+#include <linguistic/misc.hxx>
 
 using namespace osl;
 using namespace com::sun::star;
@@ -43,17 +45,9 @@ static bool SvcListHasLanguage(
         const Sequence< Reference< XThesaurus > > &rRefs,
         const Locale &rLocale )
 {
-    bool bHasLanguage = false;
-
-    const Reference< XThesaurus > *pRef = rRefs.getConstArray();
-    sal_Int32 nLen = rRefs.getLength();
-    for (sal_Int32 k = 0;  k < nLen  &&  !bHasLanguage;  ++k)
-    {
-        if (pRef[k].is())
-            bHasLanguage = pRef[k]->hasLocale( rLocale );
-    }
-
-    return bHasLanguage;
+    return std::any_of(rRefs.begin(), rRefs.end(),
+        [&rLocale](const Reference<XThesaurus>& rRef) {
+            return rRef.is() && rRef->hasLocale( rLocale ); });
 }
 
 
@@ -81,14 +75,13 @@ Sequence< Locale > SAL_CALL
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
-    Sequence< Locale > aLocales( static_cast< sal_Int32 >(aSvcMap.size()) );
-    Locale *pLocales = aLocales.getArray();
-    ThesSvcByLangMap_t::const_iterator aIt;
-    for (aIt = aSvcMap.begin();  aIt != aSvcMap.end();  ++aIt)
-    {
-        *pLocales++ = LanguageTag::convertToLocale( aIt->first );
-    }
-    return aLocales;
+    std::vector<Locale> aLocales;
+    aLocales.reserve(aSvcMap.size());
+
+    std::transform(aSvcMap.begin(), aSvcMap.end(), std::back_inserter(aLocales),
+        [](ThesSvcByLangMap_t::const_reference elem) { return LanguageTag::convertToLocale(elem.first); });
+
+    return comphelper::containerToSequence(aLocales);
 }
 
 
@@ -104,7 +97,7 @@ sal_Bool SAL_CALL
 Sequence< Reference< XMeaning > > SAL_CALL
     ThesaurusDispatcher::queryMeanings(
             const OUString& rTerm, const Locale& rLocale,
-            const PropertyValues& rProperties )
+            const css::uno::Sequence< ::css::beans::PropertyValue >& rProperties )
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
@@ -120,8 +113,7 @@ Sequence< Reference< XMeaning > > SAL_CALL
 
     if (pEntry)
     {
-        OUString aChkWord( rTerm );
-        aChkWord = aChkWord.replace( SVT_HARD_SPACE, ' ' );
+        OUString aChkWord = rTerm.replace( SVT_HARD_SPACE, ' ' );
         RemoveHyphens( aChkWord );
         if (IsIgnoreControlChars( rProperties, GetPropSet() ))
             RemoveControlChars( aChkWord );
@@ -138,7 +130,7 @@ Sequence< Reference< XMeaning > > SAL_CALL
         {
             const Reference< XThesaurus > *pRef = pEntry->aSvcRefs.getConstArray();
             while (i <= pEntry->nLastTriedSvcIndex
-                   &&  aMeanings.getLength() == 0)
+                   &&  !aMeanings.hasElements())
             {
                 if (pRef[i].is()  &&  pRef[i]->hasLocale( rLocale ))
                     aMeanings = pRef[i]->queryMeanings( aChkWord, rLocale, rProperties );
@@ -147,7 +139,7 @@ Sequence< Reference< XMeaning > > SAL_CALL
         }
 
         // if still no result instantiate new services and try those
-        if (aMeanings.getLength() == 0
+        if (!aMeanings.hasElements()
             &&  pEntry->nLastTriedSvcIndex < nLen - 1)
         {
             const OUString *pImplNames = pEntry->aSvcImplNames.getConstArray();
@@ -160,7 +152,7 @@ Sequence< Reference< XMeaning > > SAL_CALL
             Sequence< Any > aArgs(1);
             aArgs.getArray()[0] <<= GetPropSet();
 
-            while (i < nLen  &&  aMeanings.getLength() == 0)
+            while (i < nLen  &&  !aMeanings.hasElements())
             {
                 // create specific service via it's implementation name
                 Reference< XThesaurus > xThes;
@@ -179,13 +171,13 @@ Sequence< Reference< XMeaning > > SAL_CALL
                 if (xThes.is()  &&  xThes->hasLocale( rLocale ))
                     aMeanings = xThes->queryMeanings( aChkWord, rLocale, rProperties );
 
-                pEntry->nLastTriedSvcIndex = (sal_Int16) i;
+                pEntry->nLastTriedSvcIndex = static_cast<sal_Int16>(i);
                 ++i;
             }
 
             // if language is not supported by any of the services
             // remove it from the list.
-            if (i == nLen  &&  aMeanings.getLength() == 0)
+            if (i == nLen  &&  !aMeanings.hasElements())
             {
                 if (!SvcListHasLanguage( pEntry->aSvcRefs, rLocale ))
                     aSvcMap.erase( nLanguage );
@@ -220,7 +212,7 @@ void ThesaurusDispatcher::SetServiceList( const Locale &rLocale,
         }
         else
         {
-            std::shared_ptr< LangSvcEntries_Thes > pTmpEntry( new LangSvcEntries_Thes( rSvcImplNames ) );
+            auto pTmpEntry = std::make_shared<LangSvcEntries_Thes>( rSvcImplNames );
             pTmpEntry->aSvcRefs = Sequence< Reference < XThesaurus > >( nLen );
             aSvcMap[ nLanguage ] = pTmpEntry;
         }

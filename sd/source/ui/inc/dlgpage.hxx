@@ -21,6 +21,7 @@
 #define INCLUDED_SD_SOURCE_UI_INC_DLGPAGE_HXX
 
 #include <sfx2/tabdlg.hxx>
+#include <svx/xtable.hxx>
 
 class SfxObjectShell;
 enum class ChangeType;
@@ -28,24 +29,21 @@ enum class ChangeType;
 /**
  * Page configuration-tab-dialog
  */
-class SdPageDlg : public SfxTabDialog
+class SdPageDlg : public SfxTabDialogController
 {
 private:
-    const SfxObjectShell* mpDocShell;
+    bool mbIsImpressDoc;
 
     XColorListRef         mpColorList;
     XGradientListRef      mpGradientList;
     XHatchListRef         mpHatchingList;
     XBitmapListRef        mpBitmapList;
     XPatternListRef       mpPatternList;
-    sal_uInt16            mnArea;
-    sal_uInt16            mnPage;
-    sal_uInt16            mnTransparence;
 public:
 
-    SdPageDlg( SfxObjectShell* pDocSh, vcl::Window* pParent, const SfxItemSet* pAttr, bool bAreaPage );
+    SdPageDlg(SfxObjectShell const * pDocSh, weld::Window* pParent, const SfxItemSet* pAttr, bool bAreaPage, bool bIsImpressDoc);
 
-    virtual void PageCreated(sal_uInt16 nId, SfxTabPage& rPage) override;
+    virtual void PageCreated(const OString& rId, SfxTabPage& rPage) override;
 };
 
 #endif // INCLUDED_SD_SOURCE_UI_INC_DLGPAGE_HXX

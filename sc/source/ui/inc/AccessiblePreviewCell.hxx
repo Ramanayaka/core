@@ -35,7 +35,7 @@ public:
     //=====  internal  ========================================================
     ScAccessiblePreviewCell(
         const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-        ScPreviewShell* pViewShell, /* const */ ScAddress& rCellAddress, sal_Int32 nIndex );
+        ScPreviewShell* pViewShell, const ScAddress& rCellAddress, sal_Int32 nIndex );
 
 protected:
     virtual ~ScAccessiblePreviewCell() override;
@@ -73,7 +73,7 @@ public:
 
     ///=====  XTypeProvider  ===================================================
 
-    /** Returns a implementation id.
+    /** Returns an implementation id.
     */
     virtual css::uno::Sequence<sal_Int8> SAL_CALL
         getImplementationId() override;
@@ -85,14 +85,13 @@ protected:
 private:
     ScPreviewShell* mpViewShell;
 
-    accessibility::AccessibleTextHelper* mpTextHelper;
+    std::unique_ptr<accessibility::AccessibleTextHelper> mpTextHelper;
 
     bool IsDefunc(
         const css::uno::Reference<css::accessibility::XAccessibleStateSet>& rxParentStates);
     virtual bool IsEditable(
         const css::uno::Reference<css::accessibility::XAccessibleStateSet>& rxParentStates) override;
-    bool IsOpaque(
-        const css::uno::Reference<css::accessibility::XAccessibleStateSet>& rxParentStates);
+    bool IsOpaque() const;
 
     void CreateTextHelper();
 

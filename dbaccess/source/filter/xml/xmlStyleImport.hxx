@@ -22,15 +22,8 @@
 
 #include <rtl/ustring.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/xmlictxt.hxx>
-#include <xmloff/maptype.hxx>
 #include <xmloff/prstylei.hxx>
 #include <xmloff/xmlimppr.hxx>
-#include <xmloff/XMLTextMasterPageContext.hxx>
-#include <xmloff/XMLTextMasterStylesContext.hxx>
-#include <xmloff/contextid.hxx>
-#include <xmloff/controlpropertyhdl.hxx>
-#include <vector>
 
 namespace dbaxml
 {
@@ -57,7 +50,7 @@ namespace dbaxml
         OTableStyleContext( ODBFilter& rImport, sal_uInt16 nPrfx,
                 const OUString& rLName,
                 const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
-                SvXMLStylesContext& rStyles, sal_uInt16 nFamily );
+                SvXMLStylesContext& rStyles, XmlStyleFamily nFamily );
 
         virtual ~OTableStyleContext() override;
 
@@ -71,9 +64,6 @@ namespace dbaxml
 
     class OTableStylesContext : public SvXMLStylesContext
     {
-        const OUString sTableStyleServiceName;
-        const OUString sColumnStyleServiceName;
-        const OUString sCellStyleServiceName;
         sal_Int32 m_nNumberFormatIndex;
         sal_Int32 m_nMasterPageNameIndex;
         bool bAutoStyles : 1;
@@ -88,7 +78,7 @@ namespace dbaxml
 
         // Create a style context.
         virtual SvXMLStyleContext *CreateStyleStyleChildContext(
-                sal_uInt16 nFamily,
+                XmlStyleFamily nFamily,
                 sal_uInt16 nPrefix,
                 const OUString& rLocalName,
                 const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
@@ -96,20 +86,14 @@ namespace dbaxml
     public:
 
 
-        OTableStylesContext( SvXMLImport& rImport, sal_uInt16 nPrfx ,
-                const OUString& rLName ,
-                const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList,
-                const bool bAutoStyles );
+        OTableStylesContext( SvXMLImport& rImport, bool bAutoStyles );
         virtual ~OTableStylesContext() override;
 
-        virtual void EndElement() override;
+        virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
 
         virtual rtl::Reference < SvXMLImportPropertyMapper > GetImportPropertyMapper(
-                            sal_uInt16 nFamily ) const override;
-        virtual css::uno::Reference <
-                        css::container::XNameContainer >
-            GetStylesContainer( sal_uInt16 nFamily ) const override;
-        virtual OUString GetServiceName( sal_uInt16 nFamily ) const override;
+                            XmlStyleFamily nFamily ) const override;
+        virtual OUString GetServiceName( XmlStyleFamily nFamily ) const override;
 
         sal_Int32 GetIndex(const sal_Int16 nContextID);
     };

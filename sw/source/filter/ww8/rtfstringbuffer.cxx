@@ -8,27 +8,26 @@
 
 #include "rtfstringbuffer.hxx"
 #include "rtfattributeoutput.hxx"
+#include "rtfexport.hxx"
 
 RtfStringBufferValue::RtfStringBufferValue() = default;
 
-RtfStringBufferValue::RtfStringBufferValue(const SwFlyFrameFormat* pFlyFrameFormat, const SwGrfNode* pGrfNode)
-    : m_pFlyFrameFormat(pFlyFrameFormat),
-      m_pGrfNode(pGrfNode)
+RtfStringBufferValue::RtfStringBufferValue(const SwFlyFrameFormat* pFlyFrameFormat,
+                                           const SwGrfNode* pGrfNode)
+    : m_pFlyFrameFormat(pFlyFrameFormat)
+    , m_pGrfNode(pGrfNode)
 {
 }
 
 void RtfStringBufferValue::makeStringAndClear(RtfAttributeOutput* pAttributeOutput)
 {
     if (!isGraphic())
-        pAttributeOutput->m_rExport.Strm().WriteCharPtr(m_aBuffer.makeStringAndClear().getStr());
+        pAttributeOutput->m_rExport.Strm().WriteOString(m_aBuffer.makeStringAndClear());
     else
         pAttributeOutput->FlyFrameGraphic(m_pFlyFrameFormat, m_pGrfNode);
 }
 
-OString RtfStringBufferValue::makeStringAndClear()
-{
-    return m_aBuffer.makeStringAndClear();
-}
+OString RtfStringBufferValue::makeStringAndClear() { return m_aBuffer.makeStringAndClear(); }
 
 bool RtfStringBufferValue::isGraphic() const
 {
@@ -42,7 +41,7 @@ sal_Int32 RtfStringBuffer::getLength() const
     sal_Int32 nRet = 0;
     for (const auto& rValue : m_aValues)
         if (!rValue.isGraphic())
-            nRet += rValue.m_aBuffer.getLength();
+            nRet += rValue.getBuffer().getLength();
     return nRet;
 }
 
@@ -65,18 +64,12 @@ OStringBuffer& RtfStringBuffer::getLastBuffer()
 {
     if (m_aValues.empty() || m_aValues.back().isGraphic())
         m_aValues.emplace_back(RtfStringBufferValue());
-    return m_aValues.back().m_aBuffer;
+    return m_aValues.back().getBuffer();
 }
 
-OStringBuffer* RtfStringBuffer::operator->()
-{
-    return &getLastBuffer();
-}
+OStringBuffer* RtfStringBuffer::operator->() { return &getLastBuffer(); }
 
-void RtfStringBuffer::clear()
-{
-    m_aValues.clear();
-}
+void RtfStringBuffer::clear() { m_aValues.clear(); }
 
 void RtfStringBuffer::append(const SwFlyFrameFormat* pFlyFrameFormat, const SwGrfNode* pGrfNode)
 {

@@ -20,17 +20,14 @@
 #ifndef INCLUDED_FRAMEWORK_INC_DISPATCH_SYSTEMEXEC_HXX
 #define INCLUDED_FRAMEWORK_INC_DISPATCH_SYSTEMEXEC_HXX
 
-#include <macros/xserviceinfo.hxx>
-#include <general.h>
-#include <stdtypes.h>
-
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/frame/XNotifyingDispatch.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/util/URL.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/frame/XStatusListener.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <cppuhelper/implbase.hxx>
 
@@ -48,7 +45,7 @@ namespace framework{
 
     @devstatus      ready to use
 */
-class SystemExec :     public  ::cppu::WeakImplHelper<
+class SystemExec final :  public  ::cppu::WeakImplHelper<
                                    css::lang::XServiceInfo       ,
                                    css::frame::XDispatchProvider ,
                                    css::frame::XNotifyingDispatch > // => XDispatch
@@ -66,12 +63,10 @@ class SystemExec :     public  ::cppu::WeakImplHelper<
                  SystemExec( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
         virtual ~SystemExec(                                                                     ) override;
 
-        // XInterface, XTypeProvider, XServiceInfo
-        DECLARE_XSERVICEINFO_NOFACTORY
-        /* Helper for registry */
-        /// @throws css::uno::Exception
-        static css::uno::Reference< css::uno::XInterface >             SAL_CALL impl_createInstance                ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
-        static css::uno::Reference< css::lang::XSingleServiceFactory > SAL_CALL impl_createFactory                 ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
+        /* interface XServiceInfo */
+        virtual OUString SAL_CALL getImplementationName() override;
+        virtual sal_Bool SAL_CALL supportsService( const OUString& sServiceName ) override;
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
         // XDispatchProvider
         virtual css::uno::Reference< css::frame::XDispatch > SAL_CALL                       queryDispatch  ( const css::util::URL&                                       aURL        ,

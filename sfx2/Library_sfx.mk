@@ -23,7 +23,7 @@ $(eval $(call gb_Library_add_sdi_headers,sfx,sfx2/sdi/sfxslots))
 
 $(eval $(call gb_Library_set_componentfile,sfx,sfx2/util/sfx))
 
-$(eval $(call gb_Library_set_precompiled_header,sfx,$(SRCDIR)/sfx2/inc/pch/precompiled_sfx))
+$(eval $(call gb_Library_set_precompiled_header,sfx,sfx2/inc/pch/precompiled_sfx))
 
 $(eval $(call gb_Library_use_custom_headers,sfx,\
 	officecfg/registry \
@@ -44,21 +44,13 @@ $(eval $(call gb_Library_add_defs,sfx,\
     $(if $(filter TRUE,$(ENABLE_CUPS)),-DENABLE_CUPS) \
 ))
 
-ifeq ($(ENABLE_SYSTRAY_GTK),TRUE)
-$(eval $(call gb_Library_add_defs,sfx,\
-    -DENABLE_QUICKSTART_APPLET \
-    -DENABLE_SYSTRAY_GTK \
-    -DPLUGIN_NAME=libqstart_gtk$(gb_Library_OOOEXT) \
-))
-endif
-
 $(eval $(call gb_Library_use_libraries,sfx,\
     basegfx \
     comphelper \
     cppu \
     cppuhelper \
     drawinglayer \
-    fwe \
+    fwk \
     i18nlangtag \
     i18nutil \
     sal \
@@ -83,6 +75,8 @@ $(eval $(call gb_Library_use_externals,sfx,\
 ))
 
 $(eval $(call gb_Library_add_exception_objects,sfx,\
+    sfx2/source/accessibility/AccessibilityCheck \
+    sfx2/source/accessibility/AccessibilityIssue \
     sfx2/source/appl/app \
     sfx2/source/appl/appbas \
     sfx2/source/appl/appbaslib \
@@ -102,10 +96,11 @@ $(eval $(call gb_Library_add_exception_objects,sfx,\
     sfx2/source/appl/childwin \
     sfx2/source/appl/childwinimpl \
     sfx2/source/appl/fileobj \
+    sfx2/source/appl/flatpak \
     sfx2/source/appl/fwkhelper \
+    sfx2/source/appl/getbasctlfunction \
     sfx2/source/appl/helpdispatch \
     sfx2/source/appl/helpinterceptor \
-    sfx2/source/appl/imestatuswindow \
     sfx2/source/appl/impldde \
     sfx2/source/appl/linkmgr2 \
     sfx2/source/appl/linksrc \
@@ -115,6 +110,7 @@ $(eval $(call gb_Library_add_exception_objects,sfx,\
     sfx2/source/appl/newhelp \
     sfx2/source/appl/opengrf \
     sfx2/source/appl/openuriexternally \
+    sfx2/source/appl/preventduplicateinteraction \
     sfx2/source/appl/sfxhelp \
     sfx2/source/appl/sfxpicklist \
     sfx2/source/appl/shellimpl \
@@ -122,7 +118,6 @@ $(eval $(call gb_Library_add_exception_objects,sfx,\
     sfx2/source/appl/workwin \
     sfx2/source/appl/xpackcreator \
     sfx2/source/bastyp/bitset \
-    sfx2/source/bastyp/dummytypes \
     sfx2/source/bastyp/fltfnc \
     sfx2/source/bastyp/fltlst \
     sfx2/source/bastyp/frmhtml \
@@ -133,6 +128,7 @@ $(eval $(call gb_Library_add_exception_objects,sfx,\
     sfx2/source/bastyp/sfxhtml \
     sfx2/source/bastyp/sfxresid \
     sfx2/source/config/evntconf \
+    sfx2/source/control/asyncfunc \
     sfx2/source/control/bindings \
     sfx2/source/control/ctrlitem \
     sfx2/source/control/ctrlfactoryimpl \
@@ -161,6 +157,8 @@ $(eval $(call gb_Library_add_exception_objects,sfx,\
     sfx2/source/control/emojiview \
     sfx2/source/control/emojicontrol \
     sfx2/source/control/emojipopup \
+    sfx2/source/control/charmapcontrol \
+    sfx2/source/control/charwin \
     sfx2/source/control/unoctitm \
     sfx2/source/dialog/alienwarn \
     sfx2/source/dialog/backingcomp \
@@ -168,12 +166,12 @@ $(eval $(call gb_Library_add_exception_objects,sfx,\
     sfx2/source/dialog/basedlgs \
     sfx2/source/dialog/checkin \
     sfx2/source/dialog/dialoghelper \
+    sfx2/source/dialog/charmappopup \
     sfx2/source/dialog/dinfdlg \
     sfx2/source/dialog/dockwin \
     sfx2/source/dialog/documentfontsdialog \
     sfx2/source/dialog/filedlghelper \
     sfx2/source/dialog/filtergrouping \
-    sfx2/source/dialog/itemconnect \
     sfx2/source/dialog/infobar \
     sfx2/source/dialog/inputdlg \
     sfx2/source/dialog/mailmodel \
@@ -198,9 +196,11 @@ $(eval $(call gb_Library_add_exception_objects,sfx,\
     sfx2/source/dialog/tplpitem \
     sfx2/source/dialog/versdlg \
     sfx2/source/doc/DocumentMetadataAccess \
+    sfx2/source/doc/DocumentSigner \
     sfx2/source/doc/Metadatable \
     sfx2/source/doc/QuerySaveDocument \
     sfx2/source/doc/SfxDocumentMetaData \
+    sfx2/source/doc/autoredactdialog \
     sfx2/source/doc/docfac \
     sfx2/source/doc/docfile \
     sfx2/source/doc/docfilt \
@@ -211,6 +211,7 @@ $(eval $(call gb_Library_add_exception_objects,sfx,\
     sfx2/source/doc/doctempl \
     sfx2/source/doc/doctemplates \
     sfx2/source/doc/doctemplateslocal \
+    sfx2/source/doc/exoticfileloadexception \
     sfx2/source/doc/frmdescr \
     sfx2/source/doc/graphhelp \
     sfx2/source/doc/guisaveas \
@@ -226,10 +227,11 @@ $(eval $(call gb_Library_add_exception_objects,sfx,\
     sfx2/source/doc/oleprops \
     sfx2/source/doc/ownsubfilterservice \
     sfx2/source/doc/printhelper \
-    sfx2/source/doc/querytemplate \
     sfx2/source/doc/docundomanager \
     sfx2/source/doc/sfxbasemodel \
     sfx2/source/doc/sfxmodelfactory \
+    sfx2/source/doc/SfxRedactionHelper \
+    sfx2/source/doc/signaturestate \
     sfx2/source/doc/syspath \
     sfx2/source/doc/zoomitem \
     sfx2/source/doc/templatedlg \
@@ -240,7 +242,9 @@ $(eval $(call gb_Library_add_exception_objects,sfx,\
     sfx2/source/notebookbar/ContextVBox \
     sfx2/source/notebookbar/DropdownBox \
     sfx2/source/notebookbar/PriorityHBox \
+    sfx2/source/notebookbar/PriorityMergedHBox \
     sfx2/source/notebookbar/SfxNotebookBar \
+    sfx2/source/notebookbar/NotebookbarPopup \
     sfx2/source/notebookbar/NotebookbarTabControl \
     sfx2/source/notify/eventsupplier \
     sfx2/source/notify/globalevents \
@@ -275,6 +279,7 @@ $(eval $(call gb_Library_add_exception_objects,sfx,\
     sfx2/source/sidebar/Paint \
     sfx2/source/sidebar/Panel \
     sfx2/source/sidebar/PanelDescriptor \
+    sfx2/source/sidebar/PanelLayout \
     sfx2/source/sidebar/PanelTitleBar \
     sfx2/source/sidebar/ResourceManager \
     sfx2/source/sidebar/TabBar \
@@ -290,13 +295,14 @@ $(eval $(call gb_Library_add_exception_objects,sfx,\
     sfx2/source/statbar/stbitem \
     sfx2/source/styles/StyleManager \
     sfx2/source/toolbox/tbxitem \
-    sfx2/source/uitest/sfx_uiobject \
+    sfx2/source/toolbox/weldutils \
     sfx2/source/view/classificationcontroller \
     sfx2/source/view/classificationhelper \
     sfx2/source/view/frame \
     sfx2/source/view/frame2 \
     sfx2/source/view/frmload \
     sfx2/source/view/ipclient \
+    sfx2/source/view/lokcharthelper \
     sfx2/source/view/lokhelper \
     sfx2/source/view/printer \
     sfx2/source/view/sfxbasecontroller \
@@ -323,6 +329,9 @@ $(eval $(call gb_Library_add_defs,sfx,\
 endif
 
 ifeq ($(OS),MACOSX)
+$(eval $(call gb_Library_add_cxxflags,sfx,\
+    $(gb_OBJCXXFLAGS) \
+))
 $(eval $(call gb_Library_add_objcxxobjects,sfx,\
     sfx2/source/appl/shutdowniconaqua \
 ))
@@ -350,8 +359,5 @@ $(eval $(call gb_Library_use_system_win32_libs,sfx,\
 ))
 
 endif
-
-# Runtime dependency for unit-tests
-$(eval $(call gb_Library_use_restarget,sfx,sfx))
 
 # vim: set noet sw=4 ts=4:

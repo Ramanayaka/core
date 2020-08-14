@@ -17,11 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dpdimsave.hxx"
-#include "dpgroup.hxx"
-#include "dpobject.hxx"
-#include "dputil.hxx"
-#include "document.hxx"
+#include <dpcache.hxx>
+#include <dpdimsave.hxx>
+#include <dpgroup.hxx>
+#include <dpobject.hxx>
+#include <dputil.hxx>
+#include <document.hxx>
 
 #include <com/sun/star/sheet/DataPilotFieldGroupBy.hpp>
 
@@ -30,9 +31,8 @@
 #include <rtl/math.hxx>
 #include <algorithm>
 
-#include "global.hxx"
-#include "scresid.hxx"
-#include "globstr.hrc"
+#include <globstr.hrc>
+#include <scresid.hxx>
 
 using namespace com::sun::star;
 
@@ -50,20 +50,18 @@ void ScDPSaveGroupItem::AddElementsFromGroup( const ScDPSaveGroupItem& rGroup )
 {
     // add all elements of the other group (used for nested grouping)
 
-    for ( std::vector<OUString>::const_iterator aIter(rGroup.aElements.begin());
-                                aIter != rGroup.aElements.end(); ++aIter )
-        aElements.push_back( *aIter );
+    for ( const auto& rElement : rGroup.aElements )
+        aElements.push_back( rElement );
 }
 
 bool ScDPSaveGroupItem::RemoveElement( const OUString& rName )
 {
-    for (std::vector<OUString>::iterator aIter = aElements.begin(); aIter != aElements.end(); ++aIter)
-        if (*aIter == rName)          //TODO: ignore case
-        {
-            aElements.erase(aIter);   // found -> remove
-            return true;                // don't have to look further
-        }
-
+    auto it = std::find(aElements.begin(), aElements.end(), rName); //TODO: ignore case
+    if (it != aElements.end())
+    {
+        aElements.erase(it);
+        return true;
+    }
     return false;   // not found
 }
 
@@ -92,23 +90,22 @@ void ScDPSaveGroupItem::RemoveElementsFromGroups( ScDPSaveGroupDimension& rDimen
     // remove this group's elements from their groups in rDimension
     // (rDimension must be a different dimension from the one which contains this)
 
-    for ( std::vector<OUString>::const_iterator aIter(aElements.begin()); aIter != aElements.end(); ++aIter )
-        rDimension.RemoveFromGroups( *aIter );
+    for ( const auto& rElement : aElements )
+        rDimension.RemoveFromGroups( rElement );
 }
 
 void ScDPSaveGroupItem::ConvertElementsToItems(SvNumberFormatter* pFormatter) const
 {
     maItems.reserve(aElements.size());
-    std::vector<OUString>::const_iterator it = aElements.begin(), itEnd = aElements.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rElement : aElements)
     {
         sal_uInt32 nFormat = 0;
         double fValue;
         ScDPItemData aData;
-        if (pFormatter->IsNumberFormat(*it, nFormat, fValue))
+        if (pFormatter->IsNumberFormat(rElement, nFormat, fValue))
             aData.SetValue(fValue);
         else
-            aData.SetString(*it);
+            aData.SetString(rElement);
 
         maItems.push_back(aData);
     }
@@ -122,9 +119,8 @@ bool ScDPSaveGroupItem::HasInGroup(const ScDPItemData& rItem) const
 void ScDPSaveGroupItem::AddToData(ScDPGroupDimension& rDataDim) const
 {
     ScDPGroupItem aGroup(aGroupName);
-    std::vector<ScDPItemData>::const_iterator it = maItems.begin(), itEnd = maItems.end();
-    for (; it != itEnd; ++it)
-        aGroup.AddElement(*it);
+    for (const auto& rItem : maItems)
+        aGroup.AddElement(rItem);
 
     rDataDim.AddItem(aGroup);
 }
@@ -141,10 +137,6 @@ ScDPSaveGroupDimension::ScDPSaveGroupDimension( const OUString& rSource, const O
     aGroupDimName( rName ),
     aDateInfo( rDateInfo ),
     nDatePart( nPart )
-{
-}
-
-ScDPSaveGroupDimension::~ScDPSaveGroupDimension()
 {
 }
 
@@ -171,13 +163,12 @@ OUString ScDPSaveGroupDimension::CreateGroupName(const OUString& rPrefix)
     while ( nAdd <= nMaxAdd )
     {
         OUString aGroupName = rPrefix + OUString::number( nAdd );
-        bool bExists = false;
 
         // look for existing groups
-        for ( ScDPSaveGroupItemVec::const_iterator aIter(aGroups.begin());
-                                    aIter != aGroups.end() && !bExists; ++aIter )
-            if (aIter->GetGroupName().equals(aGroupName))         //TODO: ignore case
-                bExists = true;
+        bool bExists = std::any_of(aGroups.begin(), aGroups.end(),
+            [&aGroupName](const ScDPSaveGroupItem& rGroup) {
+                return rGroup.GetGroupName() == aGroupName; //TODO: ignore case
+            });
 
         if ( !bExists )
             return aGroupName;          // found a new name
@@ -196,9 +187,12 @@ const ScDPSaveGroupItem* ScDPSaveGroupDimension::GetNamedGroup( const OUString& 
 
 ScDPSaveGroupItem* ScDPSaveGroupDimension::GetNamedGroupAcc( const OUString& rGroupName )
 {
-    for (ScDPSaveGroupItemVec::iterator aIter = aGroups.begin(); aIter != aGroups.end(); ++aIter)
-        if (aIter->GetGroupName().equals(rGroupName))         //TODO: ignore case
-            return &*aIter;
+    auto aIter = std::find_if(aGroups.begin(), aGroups.end(),
+        [&rGroupName](const ScDPSaveGroupItem& rGroup) {
+            return rGroup.GetGroupName() == rGroupName; //TODO: ignore case
+        });
+    if (aIter != aGroups.end())
+        return &*aIter;
 
     return nullptr;        // none found
 }
@@ -231,12 +225,12 @@ void ScDPSaveGroupDimension::RemoveFromGroups( const OUString& rItemName )
 
 void ScDPSaveGroupDimension::RemoveGroup(const OUString& rGroupName)
 {
-    for (ScDPSaveGroupItemVec::iterator aIter = aGroups.begin(); aIter != aGroups.end(); ++aIter)
-        if (aIter->GetGroupName().equals(rGroupName))          //TODO: ignore case
-        {
-            aGroups.erase( aIter );
-            return;                     // don't have to look further
-        }
+    auto aIter = std::find_if(aGroups.begin(), aGroups.end(),
+        [&rGroupName](const ScDPSaveGroupItem& rGroup) {
+            return rGroup.GetGroupName() == rGroupName; //TODO: ignore case
+        });
+    if (aIter != aGroups.end())
+        aGroups.erase( aIter );
 }
 
 bool ScDPSaveGroupDimension::IsEmpty() const
@@ -248,13 +242,8 @@ bool ScDPSaveGroupDimension::HasOnlyHidden(const ScDPUniqueStringSet& rVisible)
 {
     // check if there are only groups that don't appear in the list of visible names
 
-    bool bAllHidden = true;
-    for (ScDPSaveGroupItemVec::const_iterator aIter = aGroups.begin(); aIter != aGroups.end() && bAllHidden; ++aIter)
-    {
-        if (rVisible.count(aIter->GetGroupName()) > 0)
-            bAllHidden = false;
-    }
-    return bAllHidden;
+    return std::none_of(aGroups.begin(), aGroups.end(),
+        [&rVisible](const ScDPSaveGroupItem& rGroup) { return rVisible.count(rGroup.GetGroupName()) > 0; });
 }
 
 void ScDPSaveGroupDimension::Rename( const OUString& rNewName )
@@ -264,25 +253,20 @@ void ScDPSaveGroupDimension::Rename( const OUString& rNewName )
 
 bool ScDPSaveGroupDimension::IsInGroup(const ScDPItemData& rItem) const
 {
-    ScDPSaveGroupItemVec::const_iterator it = aGroups.begin(), itEnd = aGroups.end();
-    for (; it != itEnd; ++it)
-    {
-        if (it->HasInGroup(rItem))
-            return true;
-    }
-    return false;
+    return std::any_of(aGroups.begin(), aGroups.end(),
+        [&rItem](const ScDPSaveGroupItem& rGroup) { return rGroup.HasInGroup(rItem); });
 }
 
 namespace {
 
-inline bool isInteger(double fValue)
+bool isInteger(double fValue)
 {
     return rtl::math::approxEqual(fValue, rtl::math::approxFloor(fValue));
 }
 
 void fillDateGroupDimension(
     ScDPCache& rCache, ScDPNumGroupInfo& rDateInfo, long nSourceDim, long nGroupDim,
-    sal_Int32 nDatePart, SvNumberFormatter* pFormatter)
+    sal_Int32 nDatePart, const SvNumberFormatter* pFormatter)
 {
     // Auto min/max is only used for "Years" part, but the loop is always
     // needed.
@@ -291,10 +275,8 @@ void fillDateGroupDimension(
     bool bFirst = true;
 
     const ScDPCache::ScDPItemDataVec& rItems = rCache.GetDimMemberValues(nSourceDim);
-    ScDPCache::ScDPItemDataVec::const_iterator it = rItems.begin(), itEnd = rItems.end();
-    for (; it != itEnd; ++it)
+    for (const ScDPItemData& rItem : rItems)
     {
-        const ScDPItemData& rItem = *it;
         if (rItem.GetType() != ScDPItemData::Value)
             continue;
 
@@ -358,25 +340,25 @@ void fillDateGroupDimension(
 void ScDPSaveGroupDimension::AddToData( ScDPGroupTableData& rData ) const
 {
     long nSourceIndex = rData.GetDimensionIndex( aSourceDim );
-    if ( nSourceIndex >= 0 )
+    if ( nSourceIndex < 0 )
+        return;
+
+    ScDPGroupDimension aDim( nSourceIndex, aGroupDimName );
+    if ( nDatePart )
     {
-        ScDPGroupDimension aDim( nSourceIndex, aGroupDimName );
-        if ( nDatePart )
-        {
-            // date grouping
+        // date grouping
 
-            aDim.SetDateDimension();
-        }
-        else
-        {
-            // normal (manual) grouping
-
-            for (ScDPSaveGroupItemVec::const_iterator aIter(aGroups.begin()); aIter != aGroups.end(); ++aIter)
-                aIter->AddToData(aDim);
-        }
-
-        rData.AddGroupDimension( aDim );
+        aDim.SetDateDimension();
     }
+    else
+    {
+        // normal (manual) grouping
+
+        for (const auto& rGroup : aGroups)
+            rGroup.AddToData(aDim);
+    }
+
+    rData.AddGroupDimension( aDim );
 }
 
 void ScDPSaveGroupDimension::AddToCache(ScDPCache& rCache) const
@@ -395,26 +377,18 @@ void ScDPSaveGroupDimension::AddToCache(ScDPCache& rCache) const
     }
 
     rCache.ResetGroupItems(nDim, aDateInfo, 0);
+    for (const ScDPSaveGroupItem& rGI : aGroups)
     {
-        ScDPSaveGroupItemVec::const_iterator it = aGroups.begin(), itEnd = aGroups.end();
-        for (; it != itEnd; ++it)
-        {
-            const ScDPSaveGroupItem& rGI = *it;
-            rGI.ConvertElementsToItems(pFormatter);
-            rCache.SetGroupItem(nDim, ScDPItemData(rGI.GetGroupName()));
-        }
+        rGI.ConvertElementsToItems(pFormatter);
+        rCache.SetGroupItem(nDim, ScDPItemData(rGI.GetGroupName()));
     }
 
     const ScDPCache::ScDPItemDataVec& rItems = rCache.GetDimMemberValues(nSourceDim);
+    for (const ScDPItemData& rItem : rItems)
     {
-        ScDPCache::ScDPItemDataVec::const_iterator it = rItems.begin(), itEnd = rItems.end();
-        for (; it != itEnd; ++it)
-        {
-            const ScDPItemData& rItem = *it;
-            if (!IsInGroup(rItem))
-                // Not in any group.  Add as its own group.
-                rCache.SetGroupItem(nDim, rItem);
-        }
+        if (!IsInGroup(rItem))
+            // Not in any group.  Add as its own group.
+            rCache.SetGroupItem(nDim, rItem);
     }
 }
 
@@ -429,10 +403,6 @@ ScDPSaveNumGroupDimension::ScDPSaveNumGroupDimension( const OUString& rName, con
     aDimensionName( rName ),
     aDateInfo( rDateInfo ),
     nDatePart( nPart )
-{
-}
-
-ScDPSaveNumGroupDimension::~ScDPSaveNumGroupDimension()
 {
 }
 
@@ -479,10 +449,8 @@ void ScDPSaveNumGroupDimension::AddToCache(ScDPCache& rCache) const
         bool bFirst = true;
 
         const ScDPCache::ScDPItemDataVec& rItems = rCache.GetDimMemberValues(nDim);
-        ScDPCache::ScDPItemDataVec::const_iterator it = rItems.begin(), itEnd = rItems.end();
-        for (; it != itEnd; ++it)
+        for (const ScDPItemData& rItem : rItems)
         {
-            const ScDPItemData& rItem = *it;
             if (rItem.GetType() != ScDPItemData::Value)
                 continue;
 
@@ -588,10 +556,6 @@ ScDPDimensionSaveData::ScDPDimensionSaveData()
 {
 }
 
-ScDPDimensionSaveData::~ScDPDimensionSaveData()
-{
-}
-
 bool ScDPDimensionSaveData::operator==( const ScDPDimensionSaveData& ) const
 {
     return false;
@@ -635,7 +599,7 @@ void ScDPDimensionSaveData::ReplaceNumGroupDimension( const ScDPSaveNumGroupDime
 {
     ScDPSaveNumGroupDimMap::iterator aIt = maNumGroupDims.find( rGroupDim.GetDimensionName() );
     if( aIt == maNumGroupDims.end() )
-        maNumGroupDims.insert( ScDPSaveNumGroupDimMap::value_type( rGroupDim.GetDimensionName(), rGroupDim ) );
+        maNumGroupDims.emplace( rGroupDim.GetDimensionName(), rGroupDim );
     else
         aIt->second = rGroupDim;
 }
@@ -650,34 +614,19 @@ void ScDPDimensionSaveData::WriteToData( ScDPGroupTableData& rData ) const
     //  rData is assumed to be empty
     //  AddToData also handles date grouping
 
-    for( ScDPSaveGroupDimVec::const_iterator aIt = maGroupDims.begin(), aEnd = maGroupDims.end(); aIt != aEnd; ++aIt )
-        aIt->AddToData( rData );
+    for( const auto& rGroupDim : maGroupDims )
+        rGroupDim.AddToData( rData );
 
-    for( ScDPSaveNumGroupDimMap::const_iterator aIt = maNumGroupDims.begin(), aEnd = maNumGroupDims.end(); aIt != aEnd; ++aIt )
-        aIt->second.AddToData( rData );
-}
-
-namespace {
-
-class AddGroupDimToCache
-{
-    ScDPCache& mrCache;
-public:
-    explicit AddGroupDimToCache(ScDPCache& rCache) : mrCache(rCache) {}
-    void operator() (const ScDPSaveGroupDimension& rDim)
-    {
-        rDim.AddToCache(mrCache);
-    }
-};
-
+    for( const auto& rEntry : maNumGroupDims )
+        rEntry.second.AddToData( rData );
 }
 
 void ScDPDimensionSaveData::WriteToCache(ScDPCache& rCache) const
 {
-    std::for_each(maGroupDims.begin(), maGroupDims.end(), AddGroupDimToCache(rCache));
-    ScDPSaveNumGroupDimMap::const_iterator it = maNumGroupDims.begin(), itEnd = maNumGroupDims.end();
-    for (; it != itEnd; ++it)
-        it->second.AddToCache(rCache);
+    for (const auto& rEntry : maGroupDims)
+        rEntry.AddToCache(rCache);
+    for (const auto& rEntry : maNumGroupDims)
+        rEntry.second.AddToCache(rCache);
 }
 
 const ScDPSaveGroupDimension* ScDPDimensionSaveData::GetGroupDimForBase( const OUString& rBaseDimName ) const
@@ -776,12 +725,12 @@ OUString ScDPDimensionSaveData::CreateGroupDimName(
         OUString aDimName( rSourceName );
         if ( !bUseSource )
             aDimName += OUString::number(nAdd);
-        bool bExists = false;
 
         // look for existing group dimensions
-        for( ScDPSaveGroupDimVec::const_iterator aIt = maGroupDims.begin(), aEnd = maGroupDims.end(); (aIt != aEnd) && !bExists; ++aIt )
-            if( aIt->GetGroupDimName() == aDimName )         //TODO: ignore case
-                bExists = true;
+        bool bExists = std::any_of(maGroupDims.begin(), maGroupDims.end(),
+            [&aDimName](const ScDPSaveGroupDimension& rDim) {
+                return rDim.GetGroupDimName() == aDimName; //TODO: ignore case
+            });
 
         // look for base dimensions that happen to have that name
         if ( !bExists && rObject.IsDimNameInUse( aDimName ) )
@@ -809,7 +758,7 @@ OUString ScDPDimensionSaveData::CreateGroupDimName(
 
 namespace
 {
-    static const sal_uInt16 nDatePartIds[] =
+    const char* aDatePartIds[] =
     {
         STR_DPFIELD_GROUP_BY_SECONDS,
         STR_DPFIELD_GROUP_BY_MINUTES,
@@ -829,13 +778,13 @@ OUString ScDPDimensionSaveData::CreateDateGroupDimName(
     OUString aPartName;
     switch( nDatePart )
     {
-        case SECONDS:  aPartName = ScGlobal::GetRscString( nDatePartIds[0] ); break;
-        case MINUTES:  aPartName = ScGlobal::GetRscString( nDatePartIds[1] ); break;
-        case HOURS:    aPartName = ScGlobal::GetRscString( nDatePartIds[2] ); break;
-        case DAYS:     aPartName = ScGlobal::GetRscString( nDatePartIds[3] ); break;
-        case MONTHS:   aPartName = ScGlobal::GetRscString( nDatePartIds[4] ); break;
-        case QUARTERS: aPartName = ScGlobal::GetRscString( nDatePartIds[5] ); break;
-        case YEARS:    aPartName = ScGlobal::GetRscString( nDatePartIds[6] ); break;
+        case SECONDS:  aPartName = ScResId(aDatePartIds[0]); break;
+        case MINUTES:  aPartName = ScResId(aDatePartIds[1]); break;
+        case HOURS:    aPartName = ScResId(aDatePartIds[2]); break;
+        case DAYS:     aPartName = ScResId(aDatePartIds[3]); break;
+        case MONTHS:   aPartName = ScResId(aDatePartIds[4]); break;
+        case QUARTERS: aPartName = ScResId(aDatePartIds[5]); break;
+        case YEARS:    aPartName = ScResId(aDatePartIds[6]); break;
     }
     OSL_ENSURE(!aPartName.isEmpty(), "ScDPDimensionSaveData::CreateDateGroupDimName - invalid date part");
     return CreateGroupDimName( aPartName, rObject, bAllowSource, pDeletedNames );

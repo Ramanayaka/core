@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/ATable.hxx"
-#include "ado/AIndexes.hxx"
-#include "ado/AColumns.hxx"
-#include "ado/AColumn.hxx"
-#include "ado/AKeys.hxx"
-#include "ado/AConnection.hxx"
+#include <ado/ATable.hxx>
+#include <ado/AIndexes.hxx>
+#include <ado/AColumns.hxx>
+#include <ado/AColumn.hxx>
+#include <ado/AKeys.hxx>
+#include <ado/AConnection.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbcx/KeyType.hpp>
@@ -30,9 +30,9 @@
 #include <cppuhelper/typeprovider.hxx>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
-#include "ado/Awrapado.hxx"
-#include <comphelper/sequence.hxx>
-#include "TConnection.hxx"
+#include <ado/Awrapado.hxx>
+#include <TConnection.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/types.hxx>
 
 using namespace ::comphelper;
@@ -75,7 +75,7 @@ void SAL_CALL OAdoTable::disposing()
 
 void OAdoTable::refreshColumns()
 {
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
 
     WpADOColumns aColumns;
     if ( m_aTable.IsValid() )
@@ -84,15 +84,15 @@ void OAdoTable::refreshColumns()
         aColumns.fillElementNames(aVector);
     }
 
-    if(m_pColumns)
-        m_pColumns->reFill(aVector);
+    if(m_xColumns)
+        m_xColumns->reFill(aVector);
     else
-        m_pColumns = new OColumns(*this,m_aMutex,aVector,aColumns,isCaseSensitive(),m_pCatalog->getConnection());
+        m_xColumns = new OColumns(*this,m_aMutex,aVector,aColumns,isCaseSensitive(),m_pCatalog->getConnection());
 }
 
 void OAdoTable::refreshKeys()
 {
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
 
     WpADOKeys aKeys;
     if(m_aTable.IsValid())
@@ -101,15 +101,15 @@ void OAdoTable::refreshKeys()
         aKeys.fillElementNames(aVector);
     }
 
-    if(m_pKeys)
-        m_pKeys->reFill(aVector);
+    if(m_xKeys)
+        m_xKeys->reFill(aVector);
     else
-        m_pKeys = new OKeys(*this,m_aMutex,aVector,aKeys,isCaseSensitive(),m_pCatalog->getConnection());
+        m_xKeys = new OKeys(*this,m_aMutex,aVector,aKeys,isCaseSensitive(),m_pCatalog->getConnection());
 }
 
 void OAdoTable::refreshIndexes()
 {
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
 
     WpADOIndexes aIndexes;
     if(m_aTable.IsValid())
@@ -118,13 +118,13 @@ void OAdoTable::refreshIndexes()
         aIndexes.fillElementNames(aVector);
     }
 
-    if(m_pIndexes)
-        m_pIndexes->reFill(aVector);
+    if(m_xIndexes)
+        m_xIndexes->reFill(aVector);
     else
-        m_pIndexes = new OIndexes(*this,m_aMutex,aVector,aIndexes,isCaseSensitive(),m_pCatalog->getConnection());
+        m_xIndexes = new OIndexes(*this,m_aMutex,aVector,aIndexes,isCaseSensitive(),m_pCatalog->getConnection());
 }
 
-Sequence< sal_Int8 > OAdoTable::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > OAdoTable::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
@@ -135,7 +135,7 @@ Sequence< sal_Int8 > OAdoTable::getUnoTunnelImplementationId()
 
 sal_Int64 OAdoTable::getSomething( const Sequence< sal_Int8 > & rId )
 {
-    return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    return isUnoTunnelId<OAdoTable>(rId)
                 ? reinterpret_cast< sal_Int64 >( this )
                 : OTable_TYPEDEF::getSomething(rId);
 }
@@ -164,8 +164,8 @@ void SAL_CALL OAdoTable::alterColumnByName( const OUString& colName, const Refer
     checkDisposed(OTableDescriptor_BASE_TYPEDEF::rBHelper.bDisposed);
 
     bool bError = true;
-    OAdoColumn* pColumn = nullptr;
-    if(::comphelper::getImplementation(pColumn,descriptor) && pColumn != nullptr)
+    OAdoColumn* pColumn = comphelper::getUnoTunnelImplementation<OAdoColumn>(descriptor);
+    if(pColumn != nullptr)
     {
         WpADOColumns aColumns = m_aTable.get_Columns();
         bError = !aColumns.Delete(colName);
@@ -174,7 +174,7 @@ void SAL_CALL OAdoTable::alterColumnByName( const OUString& colName, const Refer
     if(bError)
         ADOS::ThrowException(*(m_pCatalog->getConnection()->getConnection()),*this);
 
-    m_pColumns->refresh();
+    m_xColumns->refresh();
     refreshColumns();
 }
 
@@ -184,7 +184,7 @@ void SAL_CALL OAdoTable::alterColumnByIndex( sal_Int32 index, const Reference< X
     checkDisposed(OTableDescriptor_BASE_TYPEDEF::rBHelper.bDisposed);
 
     Reference< XPropertySet > xOld;
-    m_pColumns->getByIndex(index) >>= xOld;
+    m_xColumns->getByIndex(index) >>= xOld;
     if(xOld.is())
         alterColumnByName(getString(xOld->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_NAME))),descriptor);
 }
@@ -215,7 +215,7 @@ void OAdoTable::setFastPropertyValue_NoBroadcast(sal_Int32 nHandle,const Any& rV
                 break;
 
             default:
-                                throw Exception();
+                throw Exception("unknown prop " + OUString::number(nHandle), nullptr);
         }
     }
     OTable_TYPEDEF::setFastPropertyValue_NoBroadcast(nHandle,rValue);

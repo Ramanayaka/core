@@ -17,7 +17,7 @@ $(eval $(call gb_Library_set_include,rptxml,\
 
 $(eval $(call gb_Library_use_external,rptxml,boost_headers))
 
-$(eval $(call gb_Library_set_precompiled_header,rptxml,$(SRCDIR)/reportdesign/inc/pch/precompiled_rptxml))
+$(eval $(call gb_Library_set_precompiled_header,rptxml,reportdesign/inc/pch/precompiled_rptxml))
 
 $(eval $(call gb_Library_use_sdk_api,rptxml))
 
@@ -69,7 +69,6 @@ $(eval $(call gb_Library_add_exception_objects,rptxml,\
     reportdesign/source/filter/xml/xmlReportElement \
     reportdesign/source/filter/xml/xmlReportElementBase \
     reportdesign/source/filter/xml/xmlSection \
-    reportdesign/source/filter/xml/xmlservices \
     reportdesign/source/filter/xml/xmlStyleImport \
     reportdesign/source/filter/xml/xmlSubDocument \
     reportdesign/source/filter/xml/xmlTable \

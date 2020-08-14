@@ -21,34 +21,27 @@
 
 #include <sfx2/tabdlg.hxx>
 
-#include <vcl/fixed.hxx>
-#include <vcl/field.hxx>
-#include <vcl/group.hxx>
-#include <vcl/layout.hxx>
+#include <vcl/weld.hxx>
 
 #include <svx/pagectrl.hxx>
 #include <svx/svxdllapi.h>
+#include <memory>
+
+namespace weld { class CustomWeld; }
 
 namespace svx
 {
-    SVX_DLLPUBLIC bool ShowBorderBackgroundDlg( vcl::Window* pParent, SfxItemSet* pBBSet,
-            bool bEnableBackgroundSelector );
+    SVX_DLLPUBLIC bool ShowBorderBackgroundDlg(weld::Window* pParent, SfxItemSet* pBBSet);
 }
-
-// class  SvxHFPage ------------------------------------------------------
 
 class SVX_DLLPUBLIC SvxHFPage : public SfxTabPage
 {
-    using TabPage::ActivatePage;
-    using TabPage::DeactivatePage;
-
 public:
 
     virtual bool    FillItemSet( SfxItemSet* rOutSet ) override;
     virtual void    Reset( const SfxItemSet* rSet ) override;
 
     virtual         ~SvxHFPage() override;
-    virtual void    dispose() override;
 
     void DisableDeleteQueryBox() { mbDisableQueryBox = true; }
 
@@ -62,37 +55,36 @@ protected:
     virtual void    ActivatePage( const SfxItemSet& rSet ) override;
     virtual DeactivateRC   DeactivatePage( SfxItemSet* pSet ) override;
 
-    SvxHFPage( vcl::Window* pParent, const SfxItemSet& rSet, sal_uInt16 nSetId );
-
-    VclPtr<FixedText>       m_pPageLbl;
-    VclPtr<CheckBox>        m_pTurnOnBox;
-    VclPtr<CheckBox>        m_pCntSharedBox;
-    VclPtr<CheckBox>        m_pCntSharedFirstBox;
-    VclPtr<FixedText>       m_pLMLbl;
-    VclPtr<MetricField>     m_pLMEdit;
-    VclPtr<FixedText>       m_pRMLbl;
-    VclPtr<MetricField>     m_pRMEdit;
-    VclPtr<FixedText>       m_pDistFT;
-    VclPtr<MetricField>     m_pDistEdit;
-    VclPtr<CheckBox>        m_pDynSpacingCB;
-    VclPtr<FixedText>       m_pHeightFT;
-    VclPtr<MetricField>     m_pHeightEdit;
-    VclPtr<CheckBox>        m_pHeightDynBtn;
-    VclPtr<SvxPageWindow>   m_pBspWin;
-    VclPtr<PushButton>      m_pBackgroundBtn;
+    SvxHFPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet, sal_uInt16 nSetId);
 
     sal_uInt16       nId;
-    SfxItemSet*      pBBSet;
+    std::unique_ptr<SfxItemSet> pBBSet;
     bool            mbDisableQueryBox : 1;
     bool            mbEnableDrawingLayerFillStyles : 1;
 
+    SvxPageWindow m_aBspWin;
+    std::unique_ptr<weld::Label> m_xPageLbl;
+    std::unique_ptr<weld::CheckButton> m_xTurnOnBox;
+    std::unique_ptr<weld::CheckButton> m_xCntSharedBox;
+    std::unique_ptr<weld::CheckButton> m_xCntSharedFirstBox;
+    std::unique_ptr<weld::Label> m_xLMLbl;
+    std::unique_ptr<weld::MetricSpinButton>m_xLMEdit;
+    std::unique_ptr<weld::Label> m_xRMLbl;
+    std::unique_ptr<weld::MetricSpinButton> m_xRMEdit;
+    std::unique_ptr<weld::Label> m_xDistFT;
+    std::unique_ptr<weld::MetricSpinButton> m_xDistEdit;
+    std::unique_ptr<weld::CheckButton> m_xDynSpacingCB;
+    std::unique_ptr<weld::Label> m_xHeightFT;
+    std::unique_ptr<weld::MetricSpinButton> m_xHeightEdit;
+    std::unique_ptr<weld::CheckButton> m_xHeightDynBtn;
+    std::unique_ptr<weld::Button> m_xBackgroundBtn;
+    std::unique_ptr<weld::CustomWeld> m_xBspWin;
+
     void            InitHandler();
-    DECL_LINK(TurnOnHdl, Button*, void);
-    DECL_LINK(DistModify, Edit&, void);
-    DECL_LINK(HeightModify, Edit&, void);
-    DECL_LINK(BorderModify, Edit&, void);
-    DECL_LINK(BackgroundHdl, Button*, void);
-    DECL_LINK(RangeFocusHdl, Control&, void);
+    void TurnOn(const weld::ToggleButton* pButton);
+    DECL_LINK(TurnOnHdl, weld::ToggleButton&, void);
+    DECL_LINK(BackgroundHdl, weld::Button&, void);
+    DECL_LINK(ValueChangeHdl, weld::MetricSpinButton&, void);
     void RangeHdl();
     void            UpdateExample();
 
@@ -100,43 +92,39 @@ private:
     SVX_DLLPRIVATE void         ResetBackground_Impl( const SfxItemSet& rSet );
 };
 
-// class SvxHeaderPage ---------------------------------------------------
-
-class SVX_DLLPUBLIC SvxHeaderPage : public SvxHFPage
+class SVX_DLLPUBLIC SvxHeaderPage final : public SvxHFPage
 {
 public:
-    static VclPtr<SfxTabPage> Create( vcl::Window* pParent, const SfxItemSet* rSet );
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet );
     // returns the Which values to the range
     static const sal_uInt16*  GetRanges() { return pRanges; }
-    SVX_DLLPRIVATE SvxHeaderPage( vcl::Window* pParent, const SfxItemSet& rSet );
+    SVX_DLLPRIVATE SvxHeaderPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
 };
 
-// class SvxFooterPage ---------------------------------------------------
-
-class SVX_DLLPUBLIC SvxFooterPage : public SvxHFPage
+class SVX_DLLPUBLIC SvxFooterPage final : public SvxHFPage
 {
 public:
-    static VclPtr<SfxTabPage> Create( vcl::Window* pParent, const SfxItemSet* rSet );
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet );
     static const sal_uInt16*  GetRanges() { return pRanges; }
-    SVX_DLLPRIVATE SvxFooterPage(   vcl::Window* pParent, const SfxItemSet& rSet );
+    SVX_DLLPRIVATE SvxFooterPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
 };
 
-class SVX_DLLPUBLIC DeleteHeaderDialog : public MessageDialog
+class SVX_DLLPUBLIC DeleteHeaderDialog final : public weld::MessageDialogController
 {
 public:
-    DeleteHeaderDialog(vcl::Window *pParent)
-        : MessageDialog(pParent, "DeleteHeaderDialog",
-            "svx/ui/deleteheaderdialog.ui")
+    DeleteHeaderDialog(weld::Widget* pParent)
+        : MessageDialogController(pParent, "svx/ui/deleteheaderdialog.ui",
+                "DeleteHeaderDialog")
     {
     }
 };
 
-class SVX_DLLPUBLIC DeleteFooterDialog : public MessageDialog
+class SVX_DLLPUBLIC DeleteFooterDialog final : public weld::MessageDialogController
 {
 public:
-    DeleteFooterDialog(vcl::Window *pParent)
-        : MessageDialog(pParent, "DeleteFooterDialog",
-            "svx/ui/deletefooterdialog.ui")
+    DeleteFooterDialog(weld::Widget* pParent)
+        : MessageDialogController(pParent, "svx/ui/deletefooterdialog.ui",
+                "DeleteFooterDialog")
     {
     }
 };

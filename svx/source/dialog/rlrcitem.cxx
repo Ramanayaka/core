@@ -18,17 +18,17 @@
  */
 
 #include <svl/rectitem.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
-
-#include <svx/dialogs.hrc>
+#include <svx/svxids.hrc>
 
 #include <svx/ruler.hxx>
 #include <editeng/lrspitem.hxx>
-#include <editeng/ulspitem.hxx>
 #include <editeng/tstpitem.hxx>
-#include "editeng/protitem.hxx"
+#include <editeng/protitem.hxx>
 #include "rlrcitem.hxx"
-#include "svx/rulritem.hxx"
+#include <svx/rulritem.hxx>
 #include <svl/eitem.hxx>
 
 SvxRulerItem::SvxRulerItem(sal_uInt16 _nId, SvxRuler &rRul, SfxBindings &rBindings)
@@ -131,7 +131,7 @@ void SvxRulerItem::StateChanged( sal_uInt16 nSID, SfxItemState eState,
         {
             const SvxLRSpaceItem *pItem = dynamic_cast<const SvxLRSpaceItem*>( pState );
             SAL_WARN_IF(pState != nullptr && pItem == nullptr, "svx.dialog", "SvxLRSpaceItem expected");
-            rRuler.UpdateParaBorder(pItem);
+            rRuler.UpdateParaBorder();
         }
         break;
         case SID_RULER_TEXT_RIGHT_TO_LEFT :

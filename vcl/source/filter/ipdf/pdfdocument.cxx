@@ -14,35 +14,32 @@
 #include <vector>
 
 #include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/security/XCertificate.hpp>
 
-#include <comphelper/processfactory.hxx>
 #include <comphelper/scopeguard.hxx>
 #include <comphelper/string.hxx>
-#include <filter/msfilter/mscodec.hxx>
 #include <rtl/character.hxx>
 #include <rtl/strbuf.hxx>
 #include <rtl/string.hxx>
 #include <sal/log.hxx>
 #include <sal/types.h>
-#include <sax/tools/converter.hxx>
+#include <svl/cryptosign.hxx>
 #include <tools/zcodec.hxx>
-#include <unotools/calendarwrapper.hxx>
-#include <unotools/datetime.hxx>
 #include <vcl/pdfwriter.hxx>
-#include <xmloff/xmluconv.hxx>
-#include <o3tl/make_unique.hxx>
+#include <o3tl/safeint.hxx>
+
+#include <pdf/objectcopier.hxx>
 
 using namespace com::sun::star;
 
-namespace vcl
+namespace vcl::filter
 {
-namespace filter
-{
-
 const int MAX_SIGNATURE_CONTENT_LENGTH = 50000;
 
 class PDFTrailerElement;
 
+namespace
+{
 /// A one-liner comment.
 class PDFCommentElement : public PDFElement
 {
@@ -53,14 +50,18 @@ public:
     explicit PDFCommentElement(PDFDocument& rDoc);
     bool Read(SvStream& rStream) override;
 };
+}
 
 class PDFReferenceElement;
 
+namespace
+{
 /// End of a dictionary: '>>'.
 class PDFEndDictionaryElement : public PDFElement
 {
     /// Offset before the '>>' token.
     sal_uInt64 m_nLocation = 0;
+
 public:
     PDFEndDictionaryElement();
     bool Read(SvStream& rStream) override;
@@ -74,7 +75,7 @@ public:
     bool Read(SvStream& rStream) override;
 };
 
-/// End of a object: 'endobj' keyword.
+/// End of an object: 'endobj' keyword.
 class PDFEndObjectElement : public PDFElement
 {
 public:
@@ -86,6 +87,7 @@ class PDFEndArrayElement : public PDFElement
 {
     /// Location before the ']' token.
     sal_uInt64 m_nOffset = 0;
+
 public:
     PDFEndArrayElement();
     bool Read(SvStream& rStream) override;
@@ -106,6 +108,7 @@ class PDFNullElement : public PDFElement
 public:
     bool Read(SvStream& rStream) override;
 };
+}
 
 /// The trailer singleton is at the end of the doc.
 class PDFTrailerElement : public PDFElement
@@ -122,18 +125,11 @@ public:
     sal_uInt64 GetLocation() const;
 };
 
-XRefEntry::XRefEntry()
-    : m_eType(XRefEntryType::NOT_COMPRESSED),
-      m_nOffset(0),
-      m_bDirty(false)
-{
-}
+XRefEntry::XRefEntry() = default;
 
-PDFDocument::PDFDocument()
-    : m_pTrailer(nullptr),
-      m_pXRefStream(nullptr)
-{
-}
+PDFDocument::PDFDocument() = default;
+
+PDFDocument::~PDFDocument() = default;
 
 bool PDFDocument::RemoveSignature(size_t nPosition)
 {
@@ -146,7 +142,8 @@ bool PDFDocument::RemoveSignature(size_t nPosition)
 
     if (aSignatures.size() != m_aEOFs.size() - 1)
     {
-        SAL_WARN("vcl.filter", "PDFDocument::RemoveSignature: no 1:1 mapping between signatures and incremental updates");
+        SAL_WARN("vcl.filter", "PDFDocument::RemoveSignature: no 1:1 mapping between signatures "
+                               "and incremental updates");
         return false;
     }
 
@@ -158,6 +155,43 @@ bool PDFDocument::RemoveSignature(size_t nPosition)
 
     return m_aEditBuffer.good();
 }
+
+const std::vector<size_t>& PDFDocument::GetEOFs() const { return m_aEOFs; }
+
+sal_Int32 PDFDocument::createObject()
+{
+    sal_Int32 nObject = m_aXRef.size();
+    m_aXRef[nObject] = XRefEntry();
+    return nObject;
+}
+
+bool PDFDocument::updateObject(sal_Int32 nObject)
+{
+    if (o3tl::make_unsigned(nObject) >= m_aXRef.size())
+    {
+        SAL_WARN("vcl.filter", "PDFDocument::updateObject: invalid nObject");
+        return false;
+    }
+
+    XRefEntry aEntry;
+    aEntry.SetOffset(m_aEditBuffer.Tell());
+    aEntry.SetDirty(true);
+    m_aXRef[nObject] = aEntry;
+    return true;
+}
+
+bool PDFDocument::writeBuffer(const void* pBuffer, sal_uInt64 nBytes)
+{
+    std::size_t nWritten = m_aEditBuffer.WriteBytes(pBuffer, nBytes);
+    return nWritten == nBytes;
+}
+
+void PDFDocument::SetSignatureLine(const std::vector<sal_Int8>& rSignatureLine)
+{
+    m_aSignatureLine = rSignatureLine;
+}
+
+void PDFDocument::SetSignaturePage(size_t nPage) { m_nSignaturePage = nPage; }
 
 sal_uInt32 PDFDocument::GetNextSignature()
 {
@@ -179,19 +213,21 @@ sal_uInt32 PDFDocument::GetNextSignature()
     return nRet + 1;
 }
 
-sal_Int32 PDFDocument::WriteSignatureObject(const OUString& rDescription, bool bAdES, sal_uInt64& rLastByteRangeOffset, sal_Int64& rContentOffset)
+sal_Int32 PDFDocument::WriteSignatureObject(const OUString& rDescription, bool bAdES,
+                                            sal_uInt64& rLastByteRangeOffset,
+                                            sal_Int64& rContentOffset)
 {
     // Write signature object.
     sal_Int32 nSignatureId = m_aXRef.size();
     XRefEntry aSignatureEntry;
-    aSignatureEntry.m_nOffset = m_aEditBuffer.Tell();
-    aSignatureEntry.m_bDirty = true;
+    aSignatureEntry.SetOffset(m_aEditBuffer.Tell());
+    aSignatureEntry.SetDirty(true);
     m_aXRef[nSignatureId] = aSignatureEntry;
     OStringBuffer aSigBuffer;
     aSigBuffer.append(nSignatureId);
     aSigBuffer.append(" 0 obj\n");
     aSigBuffer.append("<</Contents <");
-    rContentOffset = aSignatureEntry.m_nOffset + aSigBuffer.getLength();
+    rContentOffset = aSignatureEntry.GetOffset() + aSigBuffer.getLength();
     // Reserve space for the PKCS#7 object.
     OStringBuffer aContentFiller(MAX_SIGNATURE_CONTENT_LENGTH);
     comphelper::string::padToLength(aContentFiller, MAX_SIGNATURE_CONTENT_LENGTH, '0');
@@ -215,7 +251,7 @@ sal_Int32 PDFDocument::WriteSignatureObject(const OUString& rDescription, bool b
     aSigBuffer.append(" ");
     aSigBuffer.append(rContentOffset + MAX_SIGNATURE_CONTENT_LENGTH + 1);
     aSigBuffer.append(" ");
-    rLastByteRangeOffset = aSignatureEntry.m_nOffset + aSigBuffer.getLength();
+    rLastByteRangeOffset = aSignatureEntry.GetOffset() + aSigBuffer.getLength();
     // We don't know how many bytes we need for the last ByteRange value, this
     // should be enough.
     OStringBuffer aByteRangeFiller;
@@ -237,24 +273,140 @@ sal_Int32 PDFDocument::WriteSignatureObject(const OUString& rDescription, bool b
     return nSignatureId;
 }
 
-sal_Int32 PDFDocument::WriteAppearanceObject()
+sal_Int32 PDFDocument::WriteAppearanceObject(tools::Rectangle& rSignatureRectangle)
 {
-    // Write appearance object.
+    PDFDocument aPDFDocument;
+    filter::PDFObjectElement* pPage = nullptr;
+    std::vector<filter::PDFObjectElement*> aContentStreams;
+
+    if (!m_aSignatureLine.empty())
+    {
+        // Parse the PDF data of signature line: we can set the signature rectangle to non-empty
+        // based on it.
+        SvMemoryStream aPDFStream;
+        aPDFStream.WriteBytes(m_aSignatureLine.data(), m_aSignatureLine.size());
+        aPDFStream.Seek(0);
+        if (!aPDFDocument.Read(aPDFStream))
+        {
+            SAL_WARN("vcl.filter",
+                     "PDFDocument::WriteAppearanceObject: failed to read the PDF document");
+            return -1;
+        }
+
+        std::vector<filter::PDFObjectElement*> aPages = aPDFDocument.GetPages();
+        if (aPages.empty())
+        {
+            SAL_WARN("vcl.filter", "PDFDocument::WriteAppearanceObject: no pages");
+            return -1;
+        }
+
+        pPage = aPages[0];
+        if (!pPage)
+        {
+            SAL_WARN("vcl.filter", "PDFDocument::WriteAppearanceObject: no page");
+            return -1;
+        }
+
+        // Calculate the bounding box.
+        PDFElement* pMediaBox = pPage->Lookup("MediaBox");
+        auto pMediaBoxArray = dynamic_cast<PDFArrayElement*>(pMediaBox);
+        if (!pMediaBoxArray || pMediaBoxArray->GetElements().size() < 4)
+        {
+            SAL_WARN("vcl.filter",
+                     "PDFDocument::WriteAppearanceObject: MediaBox is not an array of 4");
+            return -1;
+        }
+        const std::vector<PDFElement*>& rMediaBoxElements = pMediaBoxArray->GetElements();
+        auto pWidth = dynamic_cast<PDFNumberElement*>(rMediaBoxElements[2]);
+        if (!pWidth)
+        {
+            SAL_WARN("vcl.filter", "PDFDocument::WriteAppearanceObject: MediaBox has no width");
+            return -1;
+        }
+        rSignatureRectangle.setWidth(pWidth->GetValue());
+        auto pHeight = dynamic_cast<PDFNumberElement*>(rMediaBoxElements[3]);
+        if (!pHeight)
+        {
+            SAL_WARN("vcl.filter", "PDFDocument::WriteAppearanceObject: MediaBox has no height");
+            return -1;
+        }
+        rSignatureRectangle.setHeight(pHeight->GetValue());
+
+        if (PDFObjectElement* pContentStream = pPage->LookupObject("Contents"))
+        {
+            aContentStreams.push_back(pContentStream);
+        }
+
+        if (aContentStreams.empty())
+        {
+            SAL_WARN("vcl.filter", "PDFDocument::WriteAppearanceObject: no content stream");
+            return -1;
+        }
+    }
+    m_aSignatureLine.clear();
+
+    // Write appearance object: allocate an ID.
     sal_Int32 nAppearanceId = m_aXRef.size();
+    m_aXRef[nAppearanceId] = XRefEntry();
+
+    // Write the object content.
+    SvMemoryStream aEditBuffer;
+    aEditBuffer.WriteUInt32AsString(nAppearanceId);
+    aEditBuffer.WriteCharPtr(" 0 obj\n");
+    aEditBuffer.WriteCharPtr("<</Type/XObject\n/Subtype/Form\n");
+
+    PDFObjectCopier aCopier(*this);
+    if (!aContentStreams.empty())
+    {
+        assert(pPage && "aContentStreams is only filled if there was a pPage");
+        OStringBuffer aBuffer;
+        aCopier.copyPageResources(pPage, aBuffer);
+        aEditBuffer.WriteOString(aBuffer.makeStringAndClear());
+    }
+
+    aEditBuffer.WriteCharPtr("/BBox[0 0 ");
+    aEditBuffer.WriteOString(OString::number(rSignatureRectangle.getWidth()));
+    aEditBuffer.WriteCharPtr(" ");
+    aEditBuffer.WriteOString(OString::number(rSignatureRectangle.getHeight()));
+    aEditBuffer.WriteCharPtr("]\n/Length ");
+
+    // Add the object to the doc-level edit buffer and update the offset.
+    SvMemoryStream aStream;
+    bool bCompressed = false;
+    sal_Int32 nLength = 0;
+    if (!aContentStreams.empty())
+    {
+        nLength = PDFObjectCopier::copyPageStreams(aContentStreams, aStream, bCompressed);
+    }
+    aEditBuffer.WriteOString(OString::number(nLength));
+    if (bCompressed)
+    {
+        aEditBuffer.WriteOString(" /Filter/FlateDecode");
+    }
+
+    aEditBuffer.WriteCharPtr("\n>>\n");
+
+    aEditBuffer.WriteCharPtr("stream\n");
+
+    // Copy the original page streams to the form XObject stream.
+    aStream.Seek(0);
+    aEditBuffer.WriteStream(aStream);
+
+    aEditBuffer.WriteCharPtr("\nendstream\nendobj\n\n");
+
+    aEditBuffer.Seek(0);
     XRefEntry aAppearanceEntry;
-    aAppearanceEntry.m_nOffset = m_aEditBuffer.Tell();
-    aAppearanceEntry.m_bDirty = true;
+    aAppearanceEntry.SetOffset(m_aEditBuffer.Tell());
+    aAppearanceEntry.SetDirty(true);
     m_aXRef[nAppearanceId] = aAppearanceEntry;
-    m_aEditBuffer.WriteUInt32AsString(nAppearanceId);
-    m_aEditBuffer.WriteCharPtr(" 0 obj\n");
-    m_aEditBuffer.WriteCharPtr("<</Type/XObject\n/Subtype/Form\n");
-    m_aEditBuffer.WriteCharPtr("/BBox[0 0 0 0]\n/Length 0\n>>\n");
-    m_aEditBuffer.WriteCharPtr("stream\n\nendstream\nendobj\n\n");
+    m_aEditBuffer.WriteStream(aEditBuffer);
 
     return nAppearanceId;
 }
 
-sal_Int32 PDFDocument::WriteAnnotObject(PDFObjectElement& rFirstPage, sal_Int32 nSignatureId, sal_Int32 nAppearanceId)
+sal_Int32 PDFDocument::WriteAnnotObject(PDFObjectElement const& rFirstPage, sal_Int32 nSignatureId,
+                                        sal_Int32 nAppearanceId,
+                                        const tools::Rectangle& rSignatureRectangle)
 {
     // Decide what identifier to use for the new signature.
     sal_uInt32 nNextSignature = GetNextSignature();
@@ -262,13 +414,17 @@ sal_Int32 PDFDocument::WriteAnnotObject(PDFObjectElement& rFirstPage, sal_Int32 
     // Write the Annot object, references nSignatureId and nAppearanceId.
     sal_Int32 nAnnotId = m_aXRef.size();
     XRefEntry aAnnotEntry;
-    aAnnotEntry.m_nOffset = m_aEditBuffer.Tell();
-    aAnnotEntry.m_bDirty = true;
+    aAnnotEntry.SetOffset(m_aEditBuffer.Tell());
+    aAnnotEntry.SetDirty(true);
     m_aXRef[nAnnotId] = aAnnotEntry;
     m_aEditBuffer.WriteUInt32AsString(nAnnotId);
     m_aEditBuffer.WriteCharPtr(" 0 obj\n");
     m_aEditBuffer.WriteCharPtr("<</Type/Annot/Subtype/Widget/F 132\n");
-    m_aEditBuffer.WriteCharPtr("/Rect[0 0 0 0]\n");
+    m_aEditBuffer.WriteCharPtr("/Rect[0 0 ");
+    m_aEditBuffer.WriteOString(OString::number(rSignatureRectangle.getWidth()));
+    m_aEditBuffer.WriteCharPtr(" ");
+    m_aEditBuffer.WriteOString(OString::number(rSignatureRectangle.getHeight()));
+    m_aEditBuffer.WriteCharPtr("]\n");
     m_aEditBuffer.WriteCharPtr("/FT/Sig\n");
     m_aEditBuffer.WriteCharPtr("/P ");
     m_aEditBuffer.WriteUInt32AsString(rFirstPage.GetObjectValue());
@@ -305,9 +461,9 @@ bool PDFDocument::WritePageObject(PDFObjectElement& rFirstPage, sal_Int32 nAnnot
         }
 
         sal_uInt32 nAnnotsId = pAnnotsObject->GetObjectValue();
-        m_aXRef[nAnnotsId].m_eType = XRefEntryType::NOT_COMPRESSED;
-        m_aXRef[nAnnotsId].m_nOffset = m_aEditBuffer.Tell();
-        m_aXRef[nAnnotsId].m_bDirty = true;
+        m_aXRef[nAnnotsId].SetType(XRefEntryType::NOT_COMPRESSED);
+        m_aXRef[nAnnotsId].SetOffset(m_aEditBuffer.Tell());
+        m_aXRef[nAnnotsId].SetDirty(true);
         m_aEditBuffer.WriteUInt32AsString(nAnnotsId);
         m_aEditBuffer.WriteCharPtr(" 0 obj\n[");
 
@@ -346,8 +502,8 @@ bool PDFDocument::WritePageObject(PDFObjectElement& rFirstPage, sal_Int32 nAnnot
             SAL_WARN("vcl.filter", "PDFDocument::Sign: invalid first page obj id");
             return false;
         }
-        m_aXRef[nFirstPageId].m_nOffset = m_aEditBuffer.Tell();
-        m_aXRef[nFirstPageId].m_bDirty = true;
+        m_aXRef[nFirstPageId].SetOffset(m_aEditBuffer.Tell());
+        m_aXRef[nFirstPageId].SetDirty(true);
         m_aEditBuffer.WriteUInt32AsString(nFirstPageId);
         m_aEditBuffer.WriteCharPtr(" 0 obj\n");
         m_aEditBuffer.WriteCharPtr("<<");
@@ -355,7 +511,9 @@ bool PDFDocument::WritePageObject(PDFObjectElement& rFirstPage, sal_Int32 nAnnot
         if (!pAnnotsArray)
         {
             // No Annots key, just write the key with a single reference.
-            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData()) + rFirstPage.GetDictionaryOffset(), rFirstPage.GetDictionaryLength());
+            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData())
+                                         + rFirstPage.GetDictionaryOffset(),
+                                     rFirstPage.GetDictionaryLength());
             m_aEditBuffer.WriteCharPtr("/Annots[");
             m_aEditBuffer.WriteUInt32AsString(nAnnotId);
             m_aEditBuffer.WriteCharPtr(" 0 R]");
@@ -366,16 +524,23 @@ bool PDFDocument::WritePageObject(PDFObjectElement& rFirstPage, sal_Int32 nAnnot
             PDFDictionaryElement* pDictionary = rFirstPage.GetDictionary();
 
             // Offset right before the end of the Annots array.
-            sal_uInt64 nAnnotsEndOffset = pDictionary->GetKeyOffset("Annots") + pDictionary->GetKeyValueLength("Annots") - 1;
+            sal_uInt64 nAnnotsEndOffset = pDictionary->GetKeyOffset("Annots")
+                                          + pDictionary->GetKeyValueLength("Annots") - 1;
             // Length of beginning of the dictionary -> Annots end.
             sal_uInt64 nAnnotsBeforeEndLength = nAnnotsEndOffset - rFirstPage.GetDictionaryOffset();
-            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData()) + rFirstPage.GetDictionaryOffset(), nAnnotsBeforeEndLength);
+            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData())
+                                         + rFirstPage.GetDictionaryOffset(),
+                                     nAnnotsBeforeEndLength);
             m_aEditBuffer.WriteCharPtr(" ");
             m_aEditBuffer.WriteUInt32AsString(nAnnotId);
             m_aEditBuffer.WriteCharPtr(" 0 R");
             // Length of Annots end -> end of the dictionary.
-            sal_uInt64 nAnnotsAfterEndLength = rFirstPage.GetDictionaryOffset() + rFirstPage.GetDictionaryLength() - nAnnotsEndOffset;
-            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData()) + nAnnotsEndOffset, nAnnotsAfterEndLength);
+            sal_uInt64 nAnnotsAfterEndLength = rFirstPage.GetDictionaryOffset()
+                                               + rFirstPage.GetDictionaryLength()
+                                               - nAnnotsEndOffset;
+            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData())
+                                         + nAnnotsEndOffset,
+                                     nAnnotsAfterEndLength);
         }
         m_aEditBuffer.WriteCharPtr(">>");
         m_aEditBuffer.WriteCharPtr("\nendobj\n\n");
@@ -427,9 +592,9 @@ bool PDFDocument::WriteCatalogObject(sal_Int32 nAnnotId, PDFReferenceElement*& p
         }
 
         sal_uInt32 nAcroFormId = pAcroFormObject->GetObjectValue();
-        m_aXRef[nAcroFormId].m_eType = XRefEntryType::NOT_COMPRESSED;
-        m_aXRef[nAcroFormId].m_nOffset = m_aEditBuffer.Tell();
-        m_aXRef[nAcroFormId].m_bDirty = true;
+        m_aXRef[nAcroFormId].SetType(XRefEntryType::NOT_COMPRESSED);
+        m_aXRef[nAcroFormId].SetOffset(m_aEditBuffer.Tell());
+        m_aXRef[nAcroFormId].SetDirty(true);
         m_aEditBuffer.WriteUInt32AsString(nAcroFormId);
         m_aEditBuffer.WriteCharPtr(" 0 obj\n");
 
@@ -438,7 +603,8 @@ bool PDFDocument::WriteCatalogObject(sal_Int32 nAnnotId, PDFReferenceElement*& p
 
         if (!pAcroFormObject->Lookup("Fields"))
         {
-            SAL_WARN("vcl.filter", "PDFDocument::Sign: AcroForm object without required Fields key");
+            SAL_WARN("vcl.filter",
+                     "PDFDocument::Sign: AcroForm object without required Fields key");
             return false;
         }
 
@@ -450,7 +616,9 @@ bool PDFDocument::WriteCatalogObject(sal_Int32 nAnnotId, PDFReferenceElement*& p
         }
 
         // Offset right before the end of the Fields array.
-        sal_uInt64 nFieldsEndOffset = pAcroFormDictionary->GetKeyOffset("Fields") + pAcroFormDictionary->GetKeyValueLength("Fields") - strlen("]");
+        sal_uInt64 nFieldsEndOffset = pAcroFormDictionary->GetKeyOffset("Fields")
+                                      + pAcroFormDictionary->GetKeyValueLength("Fields")
+                                      - strlen("]");
         // Length of beginning of the object dictionary -> Fields end.
         sal_uInt64 nFieldsBeforeEndLength = nFieldsEndOffset;
         if (pStreamBuffer)
@@ -459,7 +627,9 @@ bool PDFDocument::WriteCatalogObject(sal_Int32 nAnnotId, PDFReferenceElement*& p
         {
             nFieldsBeforeEndLength -= pAcroFormObject->GetDictionaryOffset();
             m_aEditBuffer.WriteCharPtr("<<");
-            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData()) + pAcroFormObject->GetDictionaryOffset(), nFieldsBeforeEndLength);
+            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData())
+                                         + pAcroFormObject->GetDictionaryOffset(),
+                                     nFieldsBeforeEndLength);
         }
 
         // Append our reference at the end of the Fields array.
@@ -471,12 +641,18 @@ bool PDFDocument::WriteCatalogObject(sal_Int32 nAnnotId, PDFReferenceElement*& p
         if (pStreamBuffer)
         {
             sal_uInt64 nFieldsAfterEndLength = pStreamBuffer->GetSize() - nFieldsEndOffset;
-            m_aEditBuffer.WriteBytes(static_cast<const char*>(pStreamBuffer->GetData()) + nFieldsEndOffset, nFieldsAfterEndLength);
+            m_aEditBuffer.WriteBytes(static_cast<const char*>(pStreamBuffer->GetData())
+                                         + nFieldsEndOffset,
+                                     nFieldsAfterEndLength);
         }
         else
         {
-            sal_uInt64 nFieldsAfterEndLength = pAcroFormObject->GetDictionaryOffset() + pAcroFormObject->GetDictionaryLength() - nFieldsEndOffset;
-            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData()) + nFieldsEndOffset, nFieldsAfterEndLength);
+            sal_uInt64 nFieldsAfterEndLength = pAcroFormObject->GetDictionaryOffset()
+                                               + pAcroFormObject->GetDictionaryLength()
+                                               - nFieldsEndOffset;
+            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData())
+                                         + nFieldsEndOffset,
+                                     nFieldsAfterEndLength);
             m_aEditBuffer.WriteCharPtr(">>");
         }
 
@@ -486,15 +662,17 @@ bool PDFDocument::WriteCatalogObject(sal_Int32 nAnnotId, PDFReferenceElement*& p
     {
         // Write the updated Catalog object, references nAnnotId.
         auto pAcroFormDictionary = dynamic_cast<PDFDictionaryElement*>(pAcroForm);
-        m_aXRef[nCatalogId].m_nOffset = m_aEditBuffer.Tell();
-        m_aXRef[nCatalogId].m_bDirty = true;
+        m_aXRef[nCatalogId].SetOffset(m_aEditBuffer.Tell());
+        m_aXRef[nCatalogId].SetDirty(true);
         m_aEditBuffer.WriteUInt32AsString(nCatalogId);
         m_aEditBuffer.WriteCharPtr(" 0 obj\n");
         m_aEditBuffer.WriteCharPtr("<<");
         if (!pAcroFormDictionary)
         {
             // No AcroForm key, assume no signatures.
-            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData()) + pCatalog->GetDictionaryOffset(), pCatalog->GetDictionaryLength());
+            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData())
+                                         + pCatalog->GetDictionaryOffset(),
+                                     pCatalog->GetDictionaryLength());
             m_aEditBuffer.WriteCharPtr("/AcroForm<</Fields[\n");
             m_aEditBuffer.WriteUInt32AsString(nAnnotId);
             m_aEditBuffer.WriteCharPtr(" 0 R\n]/SigFlags 3>>\n");
@@ -517,16 +695,22 @@ bool PDFDocument::WriteCatalogObject(sal_Int32 nAnnotId, PDFReferenceElement*& p
             }
 
             // Offset right before the end of the Fields array.
-            sal_uInt64 nFieldsEndOffset = pAcroFormDictionary->GetKeyOffset("Fields") + pAcroFormDictionary->GetKeyValueLength("Fields") - 1;
+            sal_uInt64 nFieldsEndOffset = pAcroFormDictionary->GetKeyOffset("Fields")
+                                          + pAcroFormDictionary->GetKeyValueLength("Fields") - 1;
             // Length of beginning of the Catalog dictionary -> Fields end.
             sal_uInt64 nFieldsBeforeEndLength = nFieldsEndOffset - pCatalog->GetDictionaryOffset();
-            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData()) + pCatalog->GetDictionaryOffset(), nFieldsBeforeEndLength);
+            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData())
+                                         + pCatalog->GetDictionaryOffset(),
+                                     nFieldsBeforeEndLength);
             m_aEditBuffer.WriteCharPtr(" ");
             m_aEditBuffer.WriteUInt32AsString(nAnnotId);
             m_aEditBuffer.WriteCharPtr(" 0 R");
             // Length of Fields end -> end of the Catalog dictionary.
-            sal_uInt64 nFieldsAfterEndLength = pCatalog->GetDictionaryOffset() + pCatalog->GetDictionaryLength() - nFieldsEndOffset;
-            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData()) + nFieldsEndOffset, nFieldsAfterEndLength);
+            sal_uInt64 nFieldsAfterEndLength = pCatalog->GetDictionaryOffset()
+                                               + pCatalog->GetDictionaryLength() - nFieldsEndOffset;
+            m_aEditBuffer.WriteBytes(static_cast<const char*>(m_aEditBuffer.GetData())
+                                         + nFieldsEndOffset,
+                                     nFieldsAfterEndLength);
         }
         m_aEditBuffer.WriteCharPtr(">>\nendobj\n\n");
     }
@@ -534,7 +718,7 @@ bool PDFDocument::WriteCatalogObject(sal_Int32 nAnnotId, PDFReferenceElement*& p
     return true;
 }
 
-void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement* pRoot)
+void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement const* pRoot)
 {
     if (m_pXRefStream)
     {
@@ -542,8 +726,8 @@ void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement* pRoot)
         // This is a bit meta: the xref stream stores its own offset.
         sal_Int32 nXRefStreamId = m_aXRef.size();
         XRefEntry aXRefStreamEntry;
-        aXRefStreamEntry.m_nOffset = nXRefOffset;
-        aXRefStreamEntry.m_bDirty = true;
+        aXRefStreamEntry.SetOffset(nXRefOffset);
+        aXRefStreamEntry.SetDirty(true);
         m_aXRef[nXRefStreamId] = aXRefStreamEntry;
 
         // Write stream data.
@@ -561,7 +745,7 @@ void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement* pRoot)
         {
             const XRefEntry& rEntry = rXRef.second;
 
-            if (!rEntry.m_bDirty)
+            if (!rEntry.GetDirty())
                 continue;
 
             // Predictor.
@@ -571,17 +755,17 @@ void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement* pRoot)
 
             // First field.
             unsigned char nType = 0;
-            switch (rEntry.m_eType)
+            switch (rEntry.GetType())
             {
-            case XRefEntryType::FREE:
-                nType = 0;
-                break;
-            case XRefEntryType::NOT_COMPRESSED:
-                nType = 1;
-                break;
-            case XRefEntryType::COMPRESSED:
-                nType = 2;
-                break;
+                case XRefEntryType::FREE:
+                    nType = 0;
+                    break;
+                case XRefEntryType::NOT_COMPRESSED:
+                    nType = 1;
+                    break;
+                case XRefEntryType::COMPRESSED:
+                    nType = 2;
+                    break;
             }
             aOrigLine[nPos++] = nType;
 
@@ -591,7 +775,7 @@ void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement* pRoot)
                 size_t nByte = nOffsetLen - i - 1;
                 // Fields requiring more than one byte are stored with the
                 // high-order byte first.
-                unsigned char nCh = (rEntry.m_nOffset & (0xff << (nByte * 8))) >> (nByte * 8);
+                unsigned char nCh = (rEntry.GetOffset() & (0xff << (nByte * 8))) >> (nByte * 8);
                 aOrigLine[nPos++] = nCh;
             }
 
@@ -612,7 +796,8 @@ void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement* pRoot)
         }
 
         m_aEditBuffer.WriteUInt32AsString(nXRefStreamId);
-        m_aEditBuffer.WriteCharPtr(" 0 obj\n<</DecodeParms<</Columns 5/Predictor 12>>/Filter/FlateDecode");
+        m_aEditBuffer.WriteCharPtr(
+            " 0 obj\n<</DecodeParms<</Columns 5/Predictor 12>>/Filter/FlateDecode");
 
         // ID.
         auto pID = dynamic_cast<PDFArrayElement*>(m_pXRefStream->Lookup("ID"));
@@ -637,7 +822,7 @@ void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement* pRoot)
         m_aEditBuffer.WriteCharPtr("/Index [ ");
         for (const auto& rXRef : m_aXRef)
         {
-            if (!rXRef.second.m_bDirty)
+            if (!rXRef.second.GetDirty())
                 continue;
 
             m_aEditBuffer.WriteUInt32AsString(rXRef.first);
@@ -702,8 +887,8 @@ void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement* pRoot)
         for (const auto& rXRef : m_aXRef)
         {
             size_t nObject = rXRef.first;
-            size_t nOffset = rXRef.second.m_nOffset;
-            if (!rXRef.second.m_bDirty)
+            size_t nOffset = rXRef.second.GetOffset();
+            if (!rXRef.second.GetDirty())
                 continue;
 
             m_aEditBuffer.WriteUInt32AsString(nObject);
@@ -765,28 +950,42 @@ void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement* pRoot)
     }
 }
 
-bool PDFDocument::Sign(const uno::Reference<security::XCertificate>& xCertificate, const OUString& rDescription, bool bAdES)
+bool PDFDocument::Sign(const uno::Reference<security::XCertificate>& xCertificate,
+                       const OUString& rDescription, bool bAdES)
 {
     m_aEditBuffer.Seek(STREAM_SEEK_TO_END);
     m_aEditBuffer.WriteCharPtr("\n");
 
     sal_uInt64 nSignatureLastByteRangeOffset = 0;
     sal_Int64 nSignatureContentOffset = 0;
-    sal_Int32 nSignatureId = WriteSignatureObject(rDescription, bAdES, nSignatureLastByteRangeOffset, nSignatureContentOffset);
+    sal_Int32 nSignatureId = WriteSignatureObject(
+        rDescription, bAdES, nSignatureLastByteRangeOffset, nSignatureContentOffset);
 
-    sal_Int32 nAppearanceId = WriteAppearanceObject();
+    tools::Rectangle aSignatureRectangle;
+    sal_Int32 nAppearanceId = WriteAppearanceObject(aSignatureRectangle);
 
     std::vector<PDFObjectElement*> aPages = GetPages();
-    if (aPages.empty() || !aPages[0])
+    if (aPages.empty())
     {
         SAL_WARN("vcl.filter", "PDFDocument::Sign: found no pages");
         return false;
     }
 
-    PDFObjectElement& rFirstPage = *aPages[0];
-    sal_Int32 nAnnotId = WriteAnnotObject(rFirstPage, nSignatureId, nAppearanceId);
+    size_t nPage = 0;
+    if (m_nSignaturePage < aPages.size())
+    {
+        nPage = m_nSignaturePage;
+    }
+    if (!aPages[nPage])
+    {
+        SAL_WARN("vcl.filter", "PDFDocument::Sign: failed to find page #" << nPage);
+        return false;
+    }
 
-    if (!WritePageObject(rFirstPage, nAnnotId))
+    PDFObjectElement& rPage = *aPages[nPage];
+    sal_Int32 nAnnotId = WriteAnnotObject(rPage, nSignatureId, nAppearanceId, aSignatureRectangle);
+
+    if (!WritePageObject(rPage, nAnnotId))
     {
         SAL_WARN("vcl.filter", "PDFDocument::Sign: failed to write the updated Page object");
         return false;
@@ -810,13 +1009,12 @@ bool PDFDocument::Sign(const uno::Reference<security::XCertificate>& xCertificat
     // Finalize the signature, now that we know the total file size.
     // Calculate the length of the last byte range.
     sal_uInt64 nFileEnd = m_aEditBuffer.Tell();
-    sal_Int64 nLastByteRangeLength = nFileEnd - (nSignatureContentOffset + MAX_SIGNATURE_CONTENT_LENGTH + 1);
+    sal_Int64 nLastByteRangeLength
+        = nFileEnd - (nSignatureContentOffset + MAX_SIGNATURE_CONTENT_LENGTH + 1);
     // Write the length to the buffer.
     m_aEditBuffer.Seek(nSignatureLastByteRangeOffset);
-    OStringBuffer aByteRangeBuffer;
-    aByteRangeBuffer.append(nLastByteRangeLength);
-    aByteRangeBuffer.append(" ]");
-    m_aEditBuffer.WriteOString(aByteRangeBuffer.toString());
+    OString aByteRangeBuffer = OString::number(nLastByteRangeLength) + " ]";
+    m_aEditBuffer.WriteOString(aByteRangeBuffer);
 
     // Create the PKCS#7 object.
     css::uno::Sequence<sal_Int8> aDerEncoded = xCertificate->getEncoded();
@@ -837,14 +1035,10 @@ bool PDFDocument::Sign(const uno::Reference<security::XCertificate>& xCertificat
     m_aEditBuffer.ReadBytes(aBuffer2.get(), nBufferSize2);
 
     OStringBuffer aCMSHexBuffer;
-    vcl::PDFWriter::PDFSignContext aSignContext(aCMSHexBuffer);
-    aSignContext.m_pDerEncoded = aDerEncoded.getArray();
-    aSignContext.m_nDerEncoded = aDerEncoded.getLength();
-    aSignContext.m_pByteRange1 = aBuffer1.get();
-    aSignContext.m_nByteRange1 = nBufferSize1;
-    aSignContext.m_pByteRange2 = aBuffer2.get();
-    aSignContext.m_nByteRange2 = nBufferSize2;
-    if (!vcl::PDFWriter::Sign(aSignContext))
+    svl::crypto::Signing aSigning(xCertificate);
+    aSigning.AddDataRange(aBuffer1.get(), nBufferSize1);
+    aSigning.AddDataRange(aBuffer2.get(), nBufferSize2);
+    if (!aSigning.Sign(aCMSHexBuffer))
     {
         SAL_WARN("vcl.filter", "PDFDocument::Sign: PDFWriter::Sign() failed");
         return false;
@@ -865,7 +1059,9 @@ bool PDFDocument::Write(SvStream& rStream)
     return rStream.good();
 }
 
-bool PDFDocument::Tokenize(SvStream& rStream, TokenizeMode eMode, std::vector< std::unique_ptr<PDFElement> >& rElements, PDFObjectElement* pObjectElement)
+bool PDFDocument::Tokenize(SvStream& rStream, TokenizeMode eMode,
+                           std::vector<std::unique_ptr<PDFElement>>& rElements,
+                           PDFObjectElement* pObjectElement)
 {
     // Last seen object token.
     PDFObjectElement* pObject = pObjectElement;
@@ -886,327 +1082,351 @@ bool PDFDocument::Tokenize(SvStream& rStream, TokenizeMode eMode, std::vector< s
     {
         char ch;
         rStream.ReadChar(ch);
-        if (rStream.IsEof())
+        if (rStream.eof())
             break;
 
         switch (ch)
         {
-        case '%':
-        {
-            auto pComment = new PDFCommentElement(*this);
-            rElements.push_back(std::unique_ptr<PDFElement>(pComment));
-            rStream.SeekRel(-1);
-            if (!rElements.back()->Read(rStream))
+            case '%':
             {
-                SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFCommentElement::Read() failed");
-                return false;
-            }
-            if (eMode == TokenizeMode::EOF_TOKEN && !m_aEOFs.empty() && m_aEOFs.back() == rStream.Tell())
-            {
-                // Found EOF and partial parsing requested, we're done.
-                return true;
-            }
-            break;
-        }
-        case '<':
-        {
-            // Dictionary or hex string.
-            rStream.ReadChar(ch);
-            rStream.SeekRel(-2);
-            if (ch == '<')
-            {
-                rElements.push_back(std::unique_ptr<PDFElement>(new PDFDictionaryElement()));
-                ++nDictionaryDepth;
-            }
-            else
-                rElements.push_back(std::unique_ptr<PDFElement>(new PDFHexStringElement));
-            if (!rElements.back()->Read(rStream))
-            {
-                SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFDictionaryElement::Read() failed");
-                return false;
-            }
-            break;
-        }
-        case '>':
-        {
-            rElements.push_back(std::unique_ptr<PDFElement>(new PDFEndDictionaryElement()));
-            --nDictionaryDepth;
-            rStream.SeekRel(-1);
-            if (!rElements.back()->Read(rStream))
-            {
-                SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFEndDictionaryElement::Read() failed");
-                return false;
-            }
-            break;
-        }
-        case '[':
-        {
-            auto pArr = new PDFArrayElement(pObject);
-            rElements.push_back(std::unique_ptr<PDFElement>(pArr));
-            if (nDictionaryDepth == 0 && nArrayDepth == 0)
-            {
-                // The array is attached directly, inform the object.
-                pArray = pArr;
-                if (pObject)
-                {
-                    pObject->SetArray(pArray);
-                    pObject->SetArrayOffset(rStream.Tell());
-                }
-            }
-            ++nArrayDepth;
-            rStream.SeekRel(-1);
-            if (!rElements.back()->Read(rStream))
-            {
-                SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFArrayElement::Read() failed");
-                return false;
-            }
-            break;
-        }
-        case ']':
-        {
-            rElements.push_back(std::unique_ptr<PDFElement>(new PDFEndArrayElement()));
-            --nArrayDepth;
-            if (nArrayDepth == 0)
-                pArray = nullptr;
-            rStream.SeekRel(-1);
-            if (nDictionaryDepth == 0 && nArrayDepth == 0)
-            {
-                if (pObject)
-                {
-                    pObject->SetArrayLength(rStream.Tell() - pObject->GetArrayOffset());
-                }
-            }
-            if (!rElements.back()->Read(rStream))
-            {
-                SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFEndArrayElement::Read() failed");
-                return false;
-            }
-            break;
-        }
-        case '/':
-        {
-            auto pNameElement = new PDFNameElement();
-            rElements.push_back(std::unique_ptr<PDFElement>(pNameElement));
-            rStream.SeekRel(-1);
-            if (!pNameElement->Read(rStream))
-            {
-                SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFNameElement::Read() failed");
-                return false;
-            }
-            if (pObject && pObjectKey && pObjectKey->GetValue() == "Type" && pNameElement->GetValue() == "ObjStm")
-                pObjectStream = pObject;
-            else
-                pObjectKey = pNameElement;
-            break;
-        }
-        case '(':
-        {
-            rElements.push_back(std::unique_ptr<PDFElement>(new PDFLiteralStringElement));
-            rStream.SeekRel(-1);
-            if (!rElements.back()->Read(rStream))
-            {
-                SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFLiteralStringElement::Read() failed");
-                return false;
-            }
-            break;
-        }
-        default:
-        {
-            if (rtl::isAsciiDigit(static_cast<unsigned char>(ch)) || ch == '-')
-            {
-                // Numbering object: an integer or a real.
-                auto pNumberElement = new PDFNumberElement();
-                rElements.push_back(std::unique_ptr<PDFElement>(pNumberElement));
+                auto pComment = new PDFCommentElement(*this);
+                rElements.push_back(std::unique_ptr<PDFElement>(pComment));
                 rStream.SeekRel(-1);
-                if (!pNumberElement->Read(rStream))
+                if (!rElements.back()->Read(rStream))
                 {
-                    SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFNumberElement::Read() failed");
+                    SAL_WARN("vcl.filter",
+                             "PDFDocument::Tokenize: PDFCommentElement::Read() failed");
                     return false;
                 }
-                if (bInStartXRef)
+                if (eMode == TokenizeMode::EOF_TOKEN && !m_aEOFs.empty()
+                    && m_aEOFs.back() == rStream.Tell())
                 {
-                    bInStartXRef = false;
-                    m_aStartXRefs.push_back(pNumberElement->GetValue());
-
-                    auto it = m_aOffsetObjects.find(pNumberElement->GetValue());
-                    if (it != m_aOffsetObjects.end())
-                        m_pXRefStream = it->second;
+                    // Found EOF and partial parsing requested, we're done.
+                    return true;
                 }
-                else if (bInObject && !nDictionaryDepth && !nArrayDepth && pObject)
-                    // Number element inside an object, but outside a
-                    // dictionary / array: remember it.
-                    pObject->SetNumberElement(pNumberElement);
+                break;
             }
-            else if (rtl::isAsciiAlpha(static_cast<unsigned char>(ch)))
+            case '<':
             {
-                // Possible keyword, like "obj".
-                rStream.SeekRel(-1);
-                OString aKeyword = ReadKeyword(rStream);
-
-                bool bObj = aKeyword == "obj";
-                if (bObj || aKeyword == "R")
+                // Dictionary or hex string.
+                rStream.ReadChar(ch);
+                rStream.SeekRel(-2);
+                if (ch == '<')
                 {
-                    size_t nElements = rElements.size();
-                    if (nElements < 2)
+                    rElements.push_back(std::unique_ptr<PDFElement>(new PDFDictionaryElement()));
+                    ++nDictionaryDepth;
+                }
+                else
+                    rElements.push_back(std::unique_ptr<PDFElement>(new PDFHexStringElement));
+                if (!rElements.back()->Read(rStream))
+                {
+                    SAL_WARN("vcl.filter",
+                             "PDFDocument::Tokenize: PDFDictionaryElement::Read() failed");
+                    return false;
+                }
+                break;
+            }
+            case '>':
+            {
+                rElements.push_back(std::unique_ptr<PDFElement>(new PDFEndDictionaryElement()));
+                --nDictionaryDepth;
+                rStream.SeekRel(-1);
+                if (!rElements.back()->Read(rStream))
+                {
+                    SAL_WARN("vcl.filter",
+                             "PDFDocument::Tokenize: PDFEndDictionaryElement::Read() failed");
+                    return false;
+                }
+                break;
+            }
+            case '[':
+            {
+                auto pArr = new PDFArrayElement(pObject);
+                rElements.push_back(std::unique_ptr<PDFElement>(pArr));
+                if (nDictionaryDepth == 0 && nArrayDepth == 0)
+                {
+                    // The array is attached directly, inform the object.
+                    pArray = pArr;
+                    if (pObject)
                     {
-                        SAL_WARN("vcl.filter", "PDFDocument::Tokenize: expected at least two tokens before 'obj' or 'R' keyword");
+                        pObject->SetArray(pArray);
+                        pObject->SetArrayOffset(rStream.Tell());
+                    }
+                }
+                ++nArrayDepth;
+                rStream.SeekRel(-1);
+                if (!rElements.back()->Read(rStream))
+                {
+                    SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFArrayElement::Read() failed");
+                    return false;
+                }
+                break;
+            }
+            case ']':
+            {
+                rElements.push_back(std::unique_ptr<PDFElement>(new PDFEndArrayElement()));
+                --nArrayDepth;
+                if (nArrayDepth == 0)
+                    pArray = nullptr;
+                rStream.SeekRel(-1);
+                if (nDictionaryDepth == 0 && nArrayDepth == 0)
+                {
+                    if (pObject)
+                    {
+                        pObject->SetArrayLength(rStream.Tell() - pObject->GetArrayOffset());
+                    }
+                }
+                if (!rElements.back()->Read(rStream))
+                {
+                    SAL_WARN("vcl.filter",
+                             "PDFDocument::Tokenize: PDFEndArrayElement::Read() failed");
+                    return false;
+                }
+                break;
+            }
+            case '/':
+            {
+                auto pNameElement = new PDFNameElement();
+                rElements.push_back(std::unique_ptr<PDFElement>(pNameElement));
+                rStream.SeekRel(-1);
+                if (!pNameElement->Read(rStream))
+                {
+                    SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFNameElement::Read() failed");
+                    return false;
+                }
+                if (pObject && pObjectKey && pObjectKey->GetValue() == "Type"
+                    && pNameElement->GetValue() == "ObjStm")
+                    pObjectStream = pObject;
+                else
+                    pObjectKey = pNameElement;
+                break;
+            }
+            case '(':
+            {
+                rElements.push_back(std::unique_ptr<PDFElement>(new PDFLiteralStringElement));
+                rStream.SeekRel(-1);
+                if (!rElements.back()->Read(rStream))
+                {
+                    SAL_WARN("vcl.filter",
+                             "PDFDocument::Tokenize: PDFLiteralStringElement::Read() failed");
+                    return false;
+                }
+                break;
+            }
+            default:
+            {
+                if (rtl::isAsciiDigit(static_cast<unsigned char>(ch)) || ch == '-')
+                {
+                    // Numbering object: an integer or a real.
+                    auto pNumberElement = new PDFNumberElement();
+                    rElements.push_back(std::unique_ptr<PDFElement>(pNumberElement));
+                    rStream.SeekRel(-1);
+                    if (!pNumberElement->Read(rStream))
+                    {
+                        SAL_WARN("vcl.filter",
+                                 "PDFDocument::Tokenize: PDFNumberElement::Read() failed");
                         return false;
                     }
-
-                    auto pObjectNumber = dynamic_cast<PDFNumberElement*>(rElements[nElements - 2].get());
-                    auto pGenerationNumber = dynamic_cast<PDFNumberElement*>(rElements[nElements - 1].get());
-                    if (!pObjectNumber || !pGenerationNumber)
+                    if (bInStartXRef)
                     {
-                        SAL_WARN("vcl.filter", "PDFDocument::Tokenize: missing object or generation number before 'obj' or 'R' keyword");
-                        return false;
+                        bInStartXRef = false;
+                        m_aStartXRefs.push_back(pNumberElement->GetValue());
+
+                        auto it = m_aOffsetObjects.find(pNumberElement->GetValue());
+                        if (it != m_aOffsetObjects.end())
+                            m_pXRefStream = it->second;
                     }
+                    else if (bInObject && !nDictionaryDepth && !nArrayDepth && pObject)
+                        // Number element inside an object, but outside a
+                        // dictionary / array: remember it.
+                        pObject->SetNumberElement(pNumberElement);
+                }
+                else if (rtl::isAsciiAlpha(static_cast<unsigned char>(ch)))
+                {
+                    // Possible keyword, like "obj".
+                    rStream.SeekRel(-1);
+                    OString aKeyword = ReadKeyword(rStream);
 
-                    if (bObj)
+                    bool bObj = aKeyword == "obj";
+                    if (bObj || aKeyword == "R")
                     {
-                        pObject = new PDFObjectElement(*this, pObjectNumber->GetValue(), pGenerationNumber->GetValue());
-                        rElements.push_back(std::unique_ptr<PDFElement>(pObject));
-                        m_aOffsetObjects[pObjectNumber->GetLocation()] = pObject;
-                        m_aIDObjects[pObjectNumber->GetValue()] = pObject;
-                        bInObject = true;
+                        size_t nElements = rElements.size();
+                        if (nElements < 2)
+                        {
+                            SAL_WARN("vcl.filter", "PDFDocument::Tokenize: expected at least two "
+                                                   "tokens before 'obj' or 'R' keyword");
+                            return false;
+                        }
+
+                        auto pObjectNumber
+                            = dynamic_cast<PDFNumberElement*>(rElements[nElements - 2].get());
+                        auto pGenerationNumber
+                            = dynamic_cast<PDFNumberElement*>(rElements[nElements - 1].get());
+                        if (!pObjectNumber || !pGenerationNumber)
+                        {
+                            SAL_WARN("vcl.filter", "PDFDocument::Tokenize: missing object or "
+                                                   "generation number before 'obj' or 'R' keyword");
+                            return false;
+                        }
+
+                        if (bObj)
+                        {
+                            pObject = new PDFObjectElement(*this, pObjectNumber->GetValue(),
+                                                           pGenerationNumber->GetValue());
+                            rElements.push_back(std::unique_ptr<PDFElement>(pObject));
+                            m_aOffsetObjects[pObjectNumber->GetLocation()] = pObject;
+                            m_aIDObjects[pObjectNumber->GetValue()] = pObject;
+                            bInObject = true;
+                        }
+                        else
+                        {
+                            auto pReference = new PDFReferenceElement(*this, *pObjectNumber,
+                                                                      *pGenerationNumber);
+                            rElements.push_back(std::unique_ptr<PDFElement>(pReference));
+                            if (pArray)
+                                // Reference is part of a direct (non-dictionary) array, inform the array.
+                                pArray->PushBack(rElements.back().get());
+                            if (bInObject && nDictionaryDepth > 0 && pObject)
+                                // Inform the object about a new in-dictionary reference.
+                                pObject->AddDictionaryReference(pReference);
+                        }
+                        if (!rElements.back()->Read(rStream))
+                        {
+                            SAL_WARN("vcl.filter",
+                                     "PDFDocument::Tokenize: PDFElement::Read() failed");
+                            return false;
+                        }
+                    }
+                    else if (aKeyword == "stream")
+                    {
+                        // Look up the length of the stream from the parent object's dictionary.
+                        size_t nLength = 0;
+                        for (size_t nElement = 0; nElement < rElements.size(); ++nElement)
+                        {
+                            // Iterate in reverse order.
+                            size_t nIndex = rElements.size() - nElement - 1;
+                            PDFElement* pElement = rElements[nIndex].get();
+                            auto pObj = dynamic_cast<PDFObjectElement*>(pElement);
+                            if (!pObj)
+                                continue;
+
+                            PDFElement* pLookup = pObj->Lookup("Length");
+                            auto pReference = dynamic_cast<PDFReferenceElement*>(pLookup);
+                            if (pReference)
+                            {
+                                // Length is provided as a reference.
+                                nLength = pReference->LookupNumber(rStream);
+                                break;
+                            }
+
+                            auto pNumber = dynamic_cast<PDFNumberElement*>(pLookup);
+                            if (pNumber)
+                            {
+                                // Length is provided directly.
+                                nLength = pNumber->GetValue();
+                                break;
+                            }
+
+                            SAL_WARN(
+                                "vcl.filter",
+                                "PDFDocument::Tokenize: found no Length key for stream keyword");
+                            return false;
+                        }
+
+                        PDFDocument::SkipLineBreaks(rStream);
+                        auto pStreamElement = new PDFStreamElement(nLength);
+                        if (pObject)
+                            pObject->SetStream(pStreamElement);
+                        rElements.push_back(std::unique_ptr<PDFElement>(pStreamElement));
+                        if (!rElements.back()->Read(rStream))
+                        {
+                            SAL_WARN("vcl.filter",
+                                     "PDFDocument::Tokenize: PDFStreamElement::Read() failed");
+                            return false;
+                        }
+                    }
+                    else if (aKeyword == "endstream")
+                    {
+                        rElements.push_back(std::unique_ptr<PDFElement>(new PDFEndStreamElement));
+                        if (!rElements.back()->Read(rStream))
+                        {
+                            SAL_WARN("vcl.filter",
+                                     "PDFDocument::Tokenize: PDFEndStreamElement::Read() failed");
+                            return false;
+                        }
+                    }
+                    else if (aKeyword == "endobj")
+                    {
+                        rElements.push_back(std::unique_ptr<PDFElement>(new PDFEndObjectElement));
+                        if (!rElements.back()->Read(rStream))
+                        {
+                            SAL_WARN("vcl.filter",
+                                     "PDFDocument::Tokenize: PDFEndObjectElement::Read() failed");
+                            return false;
+                        }
+                        if (eMode == TokenizeMode::END_OF_OBJECT)
+                        {
+                            // Found endobj and only object parsing was requested, we're done.
+                            return true;
+                        }
+
+                        if (pObjectStream)
+                        {
+                            // We're at the end of an object stream, parse the stored objects.
+                            pObjectStream->ParseStoredObjects();
+                            pObjectStream = nullptr;
+                            pObjectKey = nullptr;
+                        }
+                        bInObject = false;
+                    }
+                    else if (aKeyword == "true" || aKeyword == "false")
+                        rElements.push_back(std::unique_ptr<PDFElement>(
+                            new PDFBooleanElement(aKeyword.toBoolean())));
+                    else if (aKeyword == "null")
+                        rElements.push_back(std::unique_ptr<PDFElement>(new PDFNullElement));
+                    else if (aKeyword == "xref")
+                        // Allow 'f' and 'n' keywords.
+                        bInXRef = true;
+                    else if (bInXRef && (aKeyword == "f" || aKeyword == "n"))
+                    {
+                    }
+                    else if (aKeyword == "trailer")
+                    {
+                        auto pTrailer = new PDFTrailerElement(*this);
+
+                        // Make it possible to find this trailer later by offset.
+                        pTrailer->Read(rStream);
+                        m_aOffsetTrailers[pTrailer->GetLocation()] = pTrailer;
+
+                        // When reading till the first EOF token only, remember
+                        // just the first trailer token.
+                        if (eMode != TokenizeMode::EOF_TOKEN || !m_pTrailer)
+                            m_pTrailer = pTrailer;
+                        rElements.push_back(std::unique_ptr<PDFElement>(pTrailer));
+                    }
+                    else if (aKeyword == "startxref")
+                    {
+                        bInStartXRef = true;
                     }
                     else
                     {
-                        auto pReference = new PDFReferenceElement(*this, *pObjectNumber, *pGenerationNumber);
-                        rElements.push_back(std::unique_ptr<PDFElement>(pReference));
-                        if (pArray)
-                            // Reference is part of a direct (non-dictionary) array, inform the array.
-                            pArray->PushBack(rElements.back().get());
-                        if (bInObject && nDictionaryDepth > 0 && pObject)
-                            // Inform the object about a new in-dictionary reference.
-                            pObject->AddDictionaryReference(pReference);
-                    }
-                    if (!rElements.back()->Read(rStream))
-                    {
-                        SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFElement::Read() failed");
+                        SAL_WARN("vcl.filter", "PDFDocument::Tokenize: unexpected '"
+                                                   << aKeyword << "' keyword at byte position "
+                                                   << rStream.Tell());
                         return false;
                     }
-                }
-                else if (aKeyword == "stream")
-                {
-                    // Look up the length of the stream from the parent object's dictionary.
-                    size_t nLength = 0;
-                    for (size_t nElement = 0; nElement < rElements.size(); ++nElement)
-                    {
-                        // Iterate in reverse order.
-                        size_t nIndex = rElements.size() - nElement - 1;
-                        PDFElement* pElement = rElements[nIndex].get();
-                        auto pObj = dynamic_cast<PDFObjectElement*>(pElement);
-                        if (!pObj)
-                            continue;
-
-                        PDFElement* pLookup = pObj->Lookup("Length");
-                        auto pReference = dynamic_cast<PDFReferenceElement*>(pLookup);
-                        if (pReference)
-                        {
-                            // Length is provided as a reference.
-                            nLength = pReference->LookupNumber(rStream);
-                            break;
-                        }
-
-                        auto pNumber = dynamic_cast<PDFNumberElement*>(pLookup);
-                        if (pNumber)
-                        {
-                            // Length is provided directly.
-                            nLength = pNumber->GetValue();
-                            break;
-                        }
-
-                        SAL_WARN("vcl.filter", "PDFDocument::Tokenize: found no Length key for stream keyword");
-                        return false;
-                    }
-
-                    PDFDocument::SkipLineBreaks(rStream);
-                    auto pStreamElement = new PDFStreamElement(nLength);
-                    if (pObject)
-                        pObject->SetStream(pStreamElement);
-                    rElements.push_back(std::unique_ptr<PDFElement>(pStreamElement));
-                    if (!rElements.back()->Read(rStream))
-                    {
-                        SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFStreamElement::Read() failed");
-                        return false;
-                    }
-                }
-                else if (aKeyword == "endstream")
-                {
-                    rElements.push_back(std::unique_ptr<PDFElement>(new PDFEndStreamElement));
-                    if (!rElements.back()->Read(rStream))
-                    {
-                        SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFEndStreamElement::Read() failed");
-                        return false;
-                    }
-                }
-                else if (aKeyword == "endobj")
-                {
-                    rElements.push_back(std::unique_ptr<PDFElement>(new PDFEndObjectElement));
-                    if (!rElements.back()->Read(rStream))
-                    {
-                        SAL_WARN("vcl.filter", "PDFDocument::Tokenize: PDFEndObjectElement::Read() failed");
-                        return false;
-                    }
-                    if (eMode == TokenizeMode::END_OF_OBJECT)
-                    {
-                        // Found endobj and only object parsing was requested, we're done.
-                        return true;
-                    }
-
-                    if (pObjectStream)
-                    {
-                        // We're at the end of an object stream, parse the stored objects.
-                        pObjectStream->ParseStoredObjects();
-                        pObjectStream = nullptr;
-                        pObjectKey = nullptr;
-                    }
-                    bInObject = false;
-                }
-                else if (aKeyword == "true" || aKeyword == "false")
-                    rElements.push_back(std::unique_ptr<PDFElement>(new PDFBooleanElement(aKeyword.toBoolean())));
-                else if (aKeyword == "null")
-                    rElements.push_back(std::unique_ptr<PDFElement>(new PDFNullElement));
-                else if (aKeyword == "xref")
-                    // Allow 'f' and 'n' keywords.
-                    bInXRef = true;
-                else if (bInXRef && (aKeyword == "f" || aKeyword == "n"))
-                {
-                }
-                else if (aKeyword == "trailer")
-                {
-                    auto pTrailer = new PDFTrailerElement(*this);
-
-                    // Make it possible to find this trailer later by offset.
-                    pTrailer->Read(rStream);
-                    m_aOffsetTrailers[pTrailer->GetLocation()] = pTrailer;
-
-                    // When reading till the first EOF token only, remember
-                    // just the first trailer token.
-                    if (eMode != TokenizeMode::EOF_TOKEN || !m_pTrailer)
-                        m_pTrailer = pTrailer;
-                    rElements.push_back(std::unique_ptr<PDFElement>(pTrailer));
-                }
-                else if (aKeyword == "startxref")
-                {
-                    bInStartXRef = true;
                 }
                 else
                 {
-                    SAL_WARN("vcl.filter", "PDFDocument::Tokenize: unexpected '" << aKeyword << "' keyword at byte position " << rStream.Tell());
-                    return false;
+                    if (!rtl::isAsciiWhiteSpace(static_cast<unsigned char>(ch)))
+                    {
+                        SAL_WARN("vcl.filter", "PDFDocument::Tokenize: unexpected character: "
+                                                   << ch << " at byte position " << rStream.Tell());
+                        return false;
+                    }
                 }
+                break;
             }
-            else
-            {
-                if (!rtl::isAsciiWhiteSpace(static_cast<unsigned char>(ch)))
-                {
-                    SAL_WARN("vcl.filter", "PDFDocument::Tokenize: unexpected character: " << ch << " at byte position " << rStream.Tell());
-                    return false;
-                }
-            }
-            break;
-        }
         }
     }
 
@@ -1224,7 +1444,8 @@ bool PDFDocument::Read(SvStream& rStream)
     std::vector<sal_Int8> aHeader(5);
     rStream.Seek(0);
     rStream.ReadBytes(aHeader.data(), aHeader.size());
-    if (aHeader[0] != '%' || aHeader[1] != 'P' || aHeader[2] != 'D' || aHeader[3] != 'F' || aHeader[4] != '-')
+    if (aHeader[0] != '%' || aHeader[1] != 'P' || aHeader[2] != 'D' || aHeader[3] != 'F'
+        || aHeader[4] != '-')
     {
         SAL_WARN("vcl.filter", "PDFDocument::Read: header mismatch");
         return false;
@@ -1278,8 +1499,10 @@ bool PDFDocument::Read(SvStream& rStream)
         if (pPrev)
             nStartXRef = pPrev->GetValue();
 
-        // Reset state, except object offsets and the edit buffer.
+        // Reset state, except the edit buffer.
         m_aElements.clear();
+        m_aOffsetObjects.clear();
+        m_aIDObjects.clear();
         m_aStartXRefs.clear();
         m_aEOFs.clear();
         m_pTrailer = nullptr;
@@ -1298,13 +1521,13 @@ OString PDFDocument::ReadKeyword(SvStream& rStream)
     OStringBuffer aBuf;
     char ch;
     rStream.ReadChar(ch);
-    if (rStream.IsEof())
+    if (rStream.eof())
         return OString();
     while (rtl::isAsciiAlpha(static_cast<unsigned char>(ch)))
     {
         aBuf.append(ch);
         rStream.ReadChar(ch);
-        if (rStream.IsEof())
+        if (rStream.eof())
             return aBuf.toString();
     }
     rStream.SeekRel(-1);
@@ -1335,11 +1558,9 @@ size_t PDFDocument::FindStartXRef(SvStream& rStream)
         it = std::search(it, aBuf.end(), aPrefix.getStr(), aPrefix.getStr() + aPrefix.getLength());
         if (it == aBuf.end())
             break;
-        else
-        {
-            itLastValid = it;
-            ++it;
-        }
+
+        itLastValid = it;
+        ++it;
     }
     if (itLastValid == aBuf.end())
     {
@@ -1348,9 +1569,10 @@ size_t PDFDocument::FindStartXRef(SvStream& rStream)
     }
 
     rStream.SeekRel(itLastValid - aBuf.begin() + aPrefix.getLength());
-    if (rStream.IsEof())
+    if (rStream.eof())
     {
-        SAL_WARN("vcl.filter", "PDFDocument::FindStartXRef: unexpected end of stream after startxref");
+        SAL_WARN("vcl.filter",
+                 "PDFDocument::FindStartXRef: unexpected end of stream after startxref");
         return 0;
     }
 
@@ -1433,7 +1655,8 @@ void PDFDocument::ReadXRefStream(SvStream& rStream)
 
     if (pFilter->GetValue() != "FlateDecode")
     {
-        SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: unexpected filter: " << pFilter->GetValue());
+        SAL_WARN("vcl.filter",
+                 "PDFDocument::ReadXRefStream: unexpected filter: " << pFilter->GetValue());
         return;
     }
 
@@ -1492,7 +1715,8 @@ void PDFDocument::ReadXRefStream(SvStream& rStream)
                 auto pFirstObject = dynamic_cast<PDFNumberElement*>(rIndexElements[i]);
                 if (!pFirstObject)
                 {
-                    SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: Index has no first object");
+                    SAL_WARN("vcl.filter",
+                             "PDFDocument::ReadXRefStream: Index has no first object");
                     return;
                 }
                 nFirstObject = pFirstObject->GetValue();
@@ -1502,7 +1726,8 @@ void PDFDocument::ReadXRefStream(SvStream& rStream)
             auto pNumberOfObjects = dynamic_cast<PDFNumberElement*>(rIndexElements[i]);
             if (!pNumberOfObjects)
             {
-                SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: Index has no number of objects");
+                SAL_WARN("vcl.filter",
+                         "PDFDocument::ReadXRefStream: Index has no number of objects");
                 return;
             }
             aFirstObjects.push_back(nFirstObject);
@@ -1535,7 +1760,8 @@ void PDFDocument::ReadXRefStream(SvStream& rStream)
 
     if (nPredictor > 1 && nLineLength - 1 != nColumns)
     {
-        SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: /DecodeParms/Columns is inconsistent with /W");
+        SAL_WARN("vcl.filter",
+                 "PDFDocument::ReadXRefStream: /DecodeParms/Columns is inconsistent with /W");
         return;
     }
 
@@ -1556,7 +1782,9 @@ void PDFDocument::ReadXRefStream(SvStream& rStream)
             aStream.ReadBytes(aOrigLine.data(), aOrigLine.size());
             if (nPredictor > 1 && aOrigLine[0] + 10 != nPredictor)
             {
-                SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: in-stream predictor is inconsistent with /DecodeParms/Predictor for object #" << nIndex);
+                SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: in-stream predictor is "
+                                       "inconsistent with /DecodeParms/Predictor for object #"
+                                           << nIndex);
                 return;
             }
 
@@ -1564,17 +1792,18 @@ void PDFDocument::ReadXRefStream(SvStream& rStream)
             {
                 switch (nPredictor)
                 {
-                case 1:
-                    // No prediction.
-                    break;
-                case 12:
-                    // PNG prediction: up (on all rows).
-                    aFilteredLine[i] = aFilteredLine[i] + aOrigLine[i];
-                    break;
-                default:
-                    SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: unexpected predictor: " << nPredictor);
-                    return;
-                    break;
+                    case 1:
+                        // No prediction.
+                        break;
+                    case 12:
+                        // PNG prediction: up (on all rows).
+                        aFilteredLine[i] = aFilteredLine[i] + aOrigLine[i];
+                        break;
+                    default:
+                        SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: unexpected predictor: "
+                                                   << nPredictor);
+                        return;
+                        break;
                 }
             }
 
@@ -1615,17 +1844,17 @@ void PDFDocument::ReadXRefStream(SvStream& rStream)
                     XRefEntry aEntry;
                     switch (nType)
                     {
-                    case 0:
-                        aEntry.m_eType = XRefEntryType::FREE;
-                        break;
-                    case 1:
-                        aEntry.m_eType = XRefEntryType::NOT_COMPRESSED;
-                        break;
-                    case 2:
-                        aEntry.m_eType = XRefEntryType::COMPRESSED;
-                        break;
+                        case 0:
+                            aEntry.SetType(XRefEntryType::FREE);
+                            break;
+                        case 1:
+                            aEntry.SetType(XRefEntryType::NOT_COMPRESSED);
+                            break;
+                        case 2:
+                            aEntry.SetType(XRefEntryType::COMPRESSED);
+                            break;
                     }
-                    aEntry.m_nOffset = nStreamOffset;
+                    aEntry.SetOffset(nStreamOffset);
                     m_aXRef[nIndex] = aEntry;
                 }
             }
@@ -1698,10 +1927,10 @@ void PDFDocument::ReadXRef(SvStream& rStream)
             if (m_aXRef.find(nIndex) == m_aXRef.end())
             {
                 XRefEntry aEntry;
-                aEntry.m_nOffset = aOffset.GetValue();
+                aEntry.SetOffset(aOffset.GetValue());
                 // Initially only the first entry is dirty.
                 if (nIndex == 0)
-                    aEntry.m_bDirty = true;
+                    aEntry.SetDirty(true);
                 m_aXRef[nIndex] = aEntry;
             }
             PDFDocument::SkipWhitespace(rStream);
@@ -1716,7 +1945,7 @@ void PDFDocument::SkipWhitespace(SvStream& rStream)
     while (true)
     {
         rStream.ReadChar(ch);
-        if (rStream.IsEof())
+        if (rStream.eof())
             break;
 
         if (!rtl::isAsciiWhiteSpace(static_cast<unsigned char>(ch)))
@@ -1734,7 +1963,7 @@ void PDFDocument::SkipLineBreaks(SvStream& rStream)
     while (true)
     {
         rStream.ReadChar(ch);
-        if (rStream.IsEof())
+        if (rStream.eof())
             break;
 
         if (ch != '\n' && ch != '\r')
@@ -1748,16 +1977,17 @@ void PDFDocument::SkipLineBreaks(SvStream& rStream)
 size_t PDFDocument::GetObjectOffset(size_t nIndex) const
 {
     auto it = m_aXRef.find(nIndex);
-    if (it == m_aXRef.end() || it->second.m_eType == XRefEntryType::COMPRESSED)
+    if (it == m_aXRef.end() || it->second.GetType() == XRefEntryType::COMPRESSED)
     {
-        SAL_WARN("vcl.filter", "PDFDocument::GetObjectOffset: wanted to look up index #" << nIndex << ", but failed");
+        SAL_WARN("vcl.filter", "PDFDocument::GetObjectOffset: wanted to look up index #"
+                                   << nIndex << ", but failed");
         return 0;
     }
 
-    return it->second.m_nOffset;
+    return it->second.GetOffset();
 }
 
-const std::vector< std::unique_ptr<PDFElement> >& PDFDocument::GetElements()
+const std::vector<std::unique_ptr<PDFElement>>& PDFDocument::GetElements() const
 {
     return m_aElements;
 }
@@ -1772,6 +2002,8 @@ static void visitPages(PDFObjectElement* pPages, std::vector<PDFObjectElement*>&
         return;
     }
 
+    pPages->setVisiting(true);
+
     for (const auto& pKid : pKids->GetElements())
     {
         auto pReference = dynamic_cast<PDFReferenceElement*>(pKid);
@@ -1782,6 +2014,13 @@ static void visitPages(PDFObjectElement* pPages, std::vector<PDFObjectElement*>&
         if (!pKidObject)
             continue;
 
+        // detect if visiting reenters itself
+        if (pKidObject->alreadyVisiting())
+        {
+            SAL_WARN("vcl.filter", "visitPages: loop in hierarchy");
+            continue;
+        }
+
         auto pName = dynamic_cast<PDFNameElement*>(pKidObject->Lookup("Type"));
         if (pName && pName->GetValue() == "Pages")
             // Pages inside pages: recurse.
@@ -1790,6 +2029,8 @@ static void visitPages(PDFObjectElement* pPages, std::vector<PDFObjectElement*>&
             // Found an actual page.
             rRet.push_back(pKidObject);
     }
+
+    pPages->setVisiting(false);
 }
 
 std::vector<PDFObjectElement*> PDFDocument::GetPages()
@@ -1797,7 +2038,6 @@ std::vector<PDFObjectElement*> PDFDocument::GetPages()
     std::vector<PDFObjectElement*> aRet;
 
     PDFReferenceElement* pRoot = nullptr;
-
 
     PDFTrailerElement* pTrailer = nullptr;
     if (!m_aTrailerOffsets.empty())
@@ -1830,7 +2070,8 @@ std::vector<PDFObjectElement*> PDFDocument::GetPages()
     PDFObjectElement* pPages = pCatalog->LookupObject("Pages");
     if (!pPages)
     {
-        SAL_WARN("vcl.filter", "PDFDocument::GetPages: catalog (obj " << pCatalog->GetObjectValue() << ") has no pages");
+        SAL_WARN("vcl.filter", "PDFDocument::GetPages: catalog (obj " << pCatalog->GetObjectValue()
+                                                                      << ") has no pages");
         return aRet;
     }
 
@@ -1839,10 +2080,7 @@ std::vector<PDFObjectElement*> PDFDocument::GetPages()
     return aRet;
 }
 
-void PDFDocument::PushBackEOF(size_t nOffset)
-{
-    m_aEOFs.push_back(nOffset);
-}
+void PDFDocument::PushBackEOF(size_t nOffset) { m_aEOFs.push_back(nOffset); }
 
 std::vector<PDFObjectElement*> PDFDocument::GetSignatureWidgets()
 {
@@ -1895,53 +2133,9 @@ std::vector<PDFObjectElement*> PDFDocument::GetSignatureWidgets()
     return aRet;
 }
 
-int PDFDocument::AsHex(char ch)
+std::vector<unsigned char> PDFDocument::DecodeHexString(PDFHexStringElement const* pElement)
 {
-    int nRet = 0;
-    if (rtl::isAsciiDigit(static_cast<unsigned char>(ch)))
-        nRet = ch - '0';
-    else
-    {
-        if (ch >= 'a' && ch <= 'f')
-            nRet = ch - 'a';
-        else if (ch >= 'A' && ch <= 'F')
-            nRet = ch - 'A';
-        else
-            return -1;
-        nRet += 10;
-    }
-    return nRet;
-}
-
-std::vector<unsigned char> PDFDocument::DecodeHexString(PDFHexStringElement* pElement)
-{
-    std::vector<unsigned char> aRet;
-    const OString& rHex = pElement->GetValue();
-    size_t nHexLen = rHex.getLength();
-    {
-        int nByte = 0;
-        int nCount = 2;
-        for (size_t i = 0; i < nHexLen; ++i)
-        {
-            nByte = nByte << 4;
-            sal_Int8 nParsed = AsHex(rHex[i]);
-            if (nParsed == -1)
-            {
-                SAL_WARN("vcl.filter", "PDFDocument::DecodeHexString: invalid hex value");
-                return aRet;
-            }
-            nByte += nParsed;
-            --nCount;
-            if (!nCount)
-            {
-                aRet.push_back(nByte);
-                nCount = 2;
-                nByte = 0;
-            }
-        }
-    }
-
-    return aRet;
+    return svl::crypto::DecodeHexString(pElement->GetValue());
 }
 
 PDFCommentElement::PDFCommentElement(PDFDocument& rDoc)
@@ -1957,12 +2151,21 @@ bool PDFCommentElement::Read(SvStream& rStream)
     rStream.ReadChar(ch);
     while (true)
     {
-        if (ch == '\n' || ch == '\r' || rStream.IsEof())
+        if (ch == '\n' || ch == '\r' || rStream.eof())
         {
             m_aComment = aBuf.makeStringAndClear();
 
             if (m_aComment.startsWith("%%EOF"))
-                m_rDoc.PushBackEOF(rStream.Tell());
+            {
+                sal_uInt64 nPos = rStream.Tell();
+                if (ch == '\r')
+                {
+                    // If the comment ends with a \r\n, count the \n as well to match Adobe Acrobat
+                    // behavior.
+                    nPos += 1;
+                }
+                m_rDoc.PushBackEOF(nPos);
+            }
 
             SAL_INFO("vcl.filter", "PDFCommentElement::Read: m_aComment is '" << m_aComment << "'");
             return true;
@@ -1982,20 +2185,18 @@ bool PDFNumberElement::Read(SvStream& rStream)
     m_nOffset = rStream.Tell();
     char ch;
     rStream.ReadChar(ch);
-    if (rStream.IsEof())
+    if (rStream.eof())
     {
         return false;
     }
-    if (!rtl::isAsciiDigit(static_cast<unsigned char>(ch)) && ch != '-'
-            && ch != '.')
+    if (!rtl::isAsciiDigit(static_cast<unsigned char>(ch)) && ch != '-' && ch != '.')
     {
         rStream.SeekRel(-1);
         return false;
     }
-    while (!rStream.IsEof())
+    while (!rStream.eof())
     {
-        if (!rtl::isAsciiDigit(static_cast<unsigned char>(ch)) && ch != '-'
-                && ch != '.')
+        if (!rtl::isAsciiDigit(static_cast<unsigned char>(ch)) && ch != '-' && ch != '.')
         {
             rStream.SeekRel(-1);
             m_nLength = rStream.Tell() - m_nOffset;
@@ -2010,29 +2211,15 @@ bool PDFNumberElement::Read(SvStream& rStream)
     return false;
 }
 
-sal_uInt64 PDFNumberElement::GetLocation() const
-{
-    return m_nOffset;
-}
+sal_uInt64 PDFNumberElement::GetLocation() const { return m_nOffset; }
 
-sal_uInt64 PDFNumberElement::GetLength() const
-{
-    return m_nLength;
-}
+sal_uInt64 PDFNumberElement::GetLength() const { return m_nLength; }
 
-PDFBooleanElement::PDFBooleanElement(bool /*bValue*/)
-{
-}
+PDFBooleanElement::PDFBooleanElement(bool /*bValue*/) {}
 
-bool PDFBooleanElement::Read(SvStream& /*rStream*/)
-{
-    return true;
-}
+bool PDFBooleanElement::Read(SvStream& /*rStream*/) { return true; }
 
-bool PDFNullElement::Read(SvStream& /*rStream*/)
-{
-    return true;
-}
+bool PDFNullElement::Read(SvStream& /*rStream*/) { return true; }
 
 bool PDFHexStringElement::Read(SvStream& rStream)
 {
@@ -2046,12 +2233,13 @@ bool PDFHexStringElement::Read(SvStream& rStream)
     rStream.ReadChar(ch);
 
     OStringBuffer aBuf;
-    while (!rStream.IsEof())
+    while (!rStream.eof())
     {
         if (ch == '>')
         {
             m_aValue = aBuf.makeStringAndClear();
-            SAL_INFO("vcl.filter", "PDFHexStringElement::Read: m_aValue length is " << m_aValue.getLength());
+            SAL_INFO("vcl.filter",
+                     "PDFHexStringElement::Read: m_aValue length is " << m_aValue.getLength());
             return true;
         }
         aBuf.append(ch);
@@ -2061,10 +2249,7 @@ bool PDFHexStringElement::Read(SvStream& rStream)
     return false;
 }
 
-const OString& PDFHexStringElement::GetValue() const
-{
-    return m_aValue;
-}
+const OString& PDFHexStringElement::GetValue() const { return m_aValue; }
 
 bool PDFLiteralStringElement::Read(SvStream& rStream)
 {
@@ -2079,13 +2264,23 @@ bool PDFLiteralStringElement::Read(SvStream& rStream)
     nPrevCh = ch;
     rStream.ReadChar(ch);
 
+    // Start with 1 nesting level as we read a '(' above already.
+    int nDepth = 1;
     OStringBuffer aBuf;
-    while (!rStream.IsEof())
+    while (!rStream.eof())
     {
+        if (ch == '(' && nPrevCh != '\\')
+            ++nDepth;
+
         if (ch == ')' && nPrevCh != '\\')
+            --nDepth;
+
+        if (nDepth == 0)
         {
+            // ')' of the outermost '(' is reached.
             m_aValue = aBuf.makeStringAndClear();
-            SAL_INFO("vcl.filter", "PDFLiteralStringElement::Read: m_aValue is '" << m_aValue << "'");
+            SAL_INFO("vcl.filter",
+                     "PDFLiteralStringElement::Read: m_aValue is '" << m_aValue << "'");
             return true;
         }
         aBuf.append(ch);
@@ -2096,10 +2291,7 @@ bool PDFLiteralStringElement::Read(SvStream& rStream)
     return false;
 }
 
-const OString& PDFLiteralStringElement::GetValue() const
-{
-    return m_aValue;
-}
+const OString& PDFLiteralStringElement::GetValue() const { return m_aValue; }
 
 PDFTrailerElement::PDFTrailerElement(PDFDocument& rDoc)
     : m_rDoc(rDoc)
@@ -2120,46 +2312,44 @@ PDFElement* PDFTrailerElement::Lookup(const OString& rDictionaryKey)
     return PDFDictionaryElement::Lookup(m_aDictionary, rDictionaryKey);
 }
 
-sal_uInt64 PDFTrailerElement::GetLocation() const
-{
-    return m_nOffset;
-}
+sal_uInt64 PDFTrailerElement::GetLocation() const { return m_nOffset; }
 
-double PDFNumberElement::GetValue() const
-{
-    return m_fValue;
-}
+double PDFNumberElement::GetValue() const { return m_fValue; }
 
 PDFObjectElement::PDFObjectElement(PDFDocument& rDoc, double fObjectValue, double fGenerationValue)
-    : m_rDoc(rDoc),
-      m_fObjectValue(fObjectValue),
-      m_fGenerationValue(fGenerationValue),
-      m_pNumberElement(nullptr),
-      m_nDictionaryOffset(0),
-      m_nDictionaryLength(0),
-      m_pDictionaryElement(nullptr),
-      m_nArrayOffset(0),
-      m_nArrayLength(0),
-      m_pArrayElement(nullptr),
-      m_pStreamElement(nullptr)
+    : m_rDoc(rDoc)
+    , m_fObjectValue(fObjectValue)
+    , m_fGenerationValue(fGenerationValue)
+    , m_pNumberElement(nullptr)
+    , m_nDictionaryOffset(0)
+    , m_nDictionaryLength(0)
+    , m_pDictionaryElement(nullptr)
+    , m_nArrayOffset(0)
+    , m_nArrayLength(0)
+    , m_pArrayElement(nullptr)
+    , m_pStreamElement(nullptr)
 {
 }
 
 bool PDFObjectElement::Read(SvStream& /*rStream*/)
 {
-    SAL_INFO("vcl.filter", "PDFObjectElement::Read: " << m_fObjectValue << " " << m_fGenerationValue << " obj");
+    SAL_INFO("vcl.filter",
+             "PDFObjectElement::Read: " << m_fObjectValue << " " << m_fGenerationValue << " obj");
     return true;
 }
 
 PDFDictionaryElement::PDFDictionaryElement() = default;
 
-size_t PDFDictionaryElement::Parse(const std::vector< std::unique_ptr<PDFElement> >& rElements, PDFElement* pThis, std::map<OString, PDFElement*>& rDictionary)
+size_t PDFDictionaryElement::Parse(const std::vector<std::unique_ptr<PDFElement>>& rElements,
+                                   PDFElement* pThis, std::map<OString, PDFElement*>& rDictionary)
 {
     // The index of last parsed element, in case of nested dictionaries.
     size_t nRet = 0;
 
     if (!rDictionary.empty())
         return nRet;
+
+    pThis->setParsing(true);
 
     auto pThisObject = dynamic_cast<PDFObjectElement*>(pThis);
     // This is set to non-nullptr here for nested dictionaries only.
@@ -2206,12 +2396,17 @@ size_t PDFDictionaryElement::Parse(const std::vector< std::unique_ptr<PDFElement
                     pThisObject->SetDictionaryOffset(nDictionaryOffset);
                 }
             }
-            else
+            else if (!pDictionary->alreadyParsing())
             {
                 // Nested dictionary.
-                i = PDFDictionaryElement::Parse(rElements, pDictionary, pDictionary->m_aItems);
-                rDictionary[aName] = pDictionary;
-                aName.clear();
+                const size_t nexti
+                    = PDFDictionaryElement::Parse(rElements, pDictionary, pDictionary->m_aItems);
+                if (nexti >= i) // ensure we go forwards and not endlessly loop
+                {
+                    i = nexti;
+                    rDictionary[aName] = pDictionary;
+                    aName.clear();
+                }
             }
         }
 
@@ -2221,7 +2416,8 @@ size_t PDFDictionaryElement::Parse(const std::vector< std::unique_ptr<PDFElement
             {
                 // Last dictionary end, track length and stop parsing.
                 if (pThisObject)
-                    pThisObject->SetDictionaryLength(pEndDictionary->GetLocation() - nDictionaryOffset);
+                    pThisObject->SetDictionaryLength(pEndDictionary->GetLocation()
+                                                     - nDictionaryOffset);
                 nRet = i;
                 break;
             }
@@ -2237,7 +2433,8 @@ size_t PDFDictionaryElement::Parse(const std::vector< std::unique_ptr<PDFElement
                 if (pThisDictionary)
                 {
                     pThisDictionary->SetKeyOffset(aName, nNameOffset);
-                    pThisDictionary->SetKeyValueLength(aName, pNumber->GetLocation() + pNumber->GetLength() - nNameOffset);
+                    pThisDictionary->SetKeyValueLength(
+                        aName, pNumber->GetLocation() + pNumber->GetLength() - nNameOffset);
                 }
                 aName.clear();
                 aNumbers.clear();
@@ -2264,7 +2461,9 @@ size_t PDFDictionaryElement::Parse(const std::vector< std::unique_ptr<PDFElement
                     if (pThisDictionary)
                     {
                         pThisDictionary->SetKeyOffset(aName, nNameOffset);
-                        pThisDictionary->SetKeyValueLength(aName, pName->GetLocation() + pName->GetLength() - nNameOffset);
+                        pThisDictionary->SetKeyValueLength(aName, pName->GetLocation()
+                                                                      + PDFNameElement::GetLength()
+                                                                      - nNameOffset);
                     }
                     aName.clear();
                 }
@@ -2283,12 +2482,9 @@ size_t PDFDictionaryElement::Parse(const std::vector< std::unique_ptr<PDFElement
         auto pEndArr = dynamic_cast<PDFEndArrayElement*>(rElements[i].get());
         if (pArray && pEndArr)
         {
-            if (!aNumbers.empty())
-            {
-                for (auto& pNumber : aNumbers)
-                    pArray->PushBack(pNumber);
-                aNumbers.clear();
-            }
+            for (auto& pNumber : aNumbers)
+                pArray->PushBack(pNumber);
+            aNumbers.clear();
             rDictionary[aName] = pArray;
             if (pThisDictionary)
             {
@@ -2310,7 +2506,8 @@ size_t PDFDictionaryElement::Parse(const std::vector< std::unique_ptr<PDFElement
                 if (pThisDictionary)
                 {
                     pThisDictionary->SetKeyOffset(aName, nNameOffset);
-                    pThisDictionary->SetKeyValueLength(aName, pReference->GetOffset() - nNameOffset);
+                    pThisDictionary->SetKeyValueLength(aName,
+                                                       pReference->GetOffset() - nNameOffset);
                 }
                 aName.clear();
             }
@@ -2380,10 +2577,13 @@ size_t PDFDictionaryElement::Parse(const std::vector< std::unique_ptr<PDFElement
         aNumbers.clear();
     }
 
+    pThis->setParsing(false);
+
     return nRet;
 }
 
-PDFElement* PDFDictionaryElement::Lookup(const std::map<OString, PDFElement*>& rDictionary, const OString& rKey)
+PDFElement* PDFDictionaryElement::Lookup(const std::map<OString, PDFElement*>& rDictionary,
+                                         const OString& rKey)
 {
     auto it = rDictionary.find(rKey);
     if (it == rDictionary.end())
@@ -2394,10 +2594,13 @@ PDFElement* PDFDictionaryElement::Lookup(const std::map<OString, PDFElement*>& r
 
 PDFObjectElement* PDFDictionaryElement::LookupObject(const OString& rDictionaryKey)
 {
-    auto pKey = dynamic_cast<PDFReferenceElement*>(PDFDictionaryElement::Lookup(m_aItems, rDictionaryKey));
+    auto pKey = dynamic_cast<PDFReferenceElement*>(
+        PDFDictionaryElement::Lookup(m_aItems, rDictionaryKey));
     if (!pKey)
     {
-        SAL_WARN("vcl.filter", "PDFDictionaryElement::LookupObject: no such key with reference value: " << rDictionaryKey);
+        SAL_WARN("vcl.filter",
+                 "PDFDictionaryElement::LookupObject: no such key with reference value: "
+                     << rDictionaryKey);
         return nullptr;
     }
 
@@ -2429,17 +2632,15 @@ PDFObjectElement* PDFObjectElement::LookupObject(const OString& rDictionaryKey)
     auto pKey = dynamic_cast<PDFReferenceElement*>(Lookup(rDictionaryKey));
     if (!pKey)
     {
-        SAL_WARN("vcl.filter", "PDFObjectElement::LookupObject: no such key with reference value: " << rDictionaryKey);
+        SAL_WARN("vcl.filter", "PDFObjectElement::LookupObject: no such key with reference value: "
+                                   << rDictionaryKey);
         return nullptr;
     }
 
     return pKey->LookupObject();
 }
 
-double PDFObjectElement::GetObjectValue() const
-{
-    return m_fObjectValue;
-}
+double PDFObjectElement::GetObjectValue() const { return m_fObjectValue; }
 
 void PDFObjectElement::SetDictionaryOffset(sal_uInt64 nDictionaryOffset)
 {
@@ -2454,15 +2655,9 @@ sal_uInt64 PDFObjectElement::GetDictionaryOffset()
     return m_nDictionaryOffset;
 }
 
-void PDFObjectElement::SetArrayOffset(sal_uInt64 nArrayOffset)
-{
-    m_nArrayOffset = nArrayOffset;
-}
+void PDFObjectElement::SetArrayOffset(sal_uInt64 nArrayOffset) { m_nArrayOffset = nArrayOffset; }
 
-sal_uInt64 PDFObjectElement::GetArrayOffset()
-{
-    return m_nArrayOffset;
-}
+sal_uInt64 PDFObjectElement::GetArrayOffset() const { return m_nArrayOffset; }
 
 void PDFDictionaryElement::SetKeyOffset(const OString& rKey, sal_uInt64 nOffset)
 {
@@ -2492,10 +2687,7 @@ sal_uInt64 PDFDictionaryElement::GetKeyValueLength(const OString& rKey) const
     return it->second;
 }
 
-const std::map<OString, PDFElement*>& PDFDictionaryElement::GetItems() const
-{
-    return m_aItems;
-}
+const std::map<OString, PDFElement*>& PDFDictionaryElement::GetItems() const { return m_aItems; }
 
 void PDFObjectElement::SetDictionaryLength(sal_uInt64 nDictionaryLength)
 {
@@ -2510,15 +2702,9 @@ sal_uInt64 PDFObjectElement::GetDictionaryLength()
     return m_nDictionaryLength;
 }
 
-void PDFObjectElement::SetArrayLength(sal_uInt64 nArrayLength)
-{
-    m_nArrayLength = nArrayLength;
-}
+void PDFObjectElement::SetArrayLength(sal_uInt64 nArrayLength) { m_nArrayLength = nArrayLength; }
 
-sal_uInt64 PDFObjectElement::GetArrayLength()
-{
-    return m_nArrayLength;
-}
+sal_uInt64 PDFObjectElement::GetArrayLength() const { return m_nArrayLength; }
 
 PDFDictionaryElement* PDFObjectElement::GetDictionary()
 {
@@ -2537,10 +2723,7 @@ void PDFObjectElement::SetNumberElement(PDFNumberElement* pNumberElement)
     m_pNumberElement = pNumberElement;
 }
 
-PDFNumberElement* PDFObjectElement::GetNumberElement() const
-{
-    return m_pNumberElement;
-}
+PDFNumberElement* PDFObjectElement::GetNumberElement() const { return m_pNumberElement; }
 
 const std::vector<PDFReferenceElement*>& PDFObjectElement::GetDictionaryReferences() const
 {
@@ -2560,25 +2743,16 @@ const std::map<OString, PDFElement*>& PDFObjectElement::GetDictionaryItems()
     return m_aDictionary;
 }
 
-void PDFObjectElement::SetArray(PDFArrayElement* pArrayElement)
-{
-    m_pArrayElement = pArrayElement;
-}
+void PDFObjectElement::SetArray(PDFArrayElement* pArrayElement) { m_pArrayElement = pArrayElement; }
 
 void PDFObjectElement::SetStream(PDFStreamElement* pStreamElement)
 {
     m_pStreamElement = pStreamElement;
 }
 
-PDFStreamElement* PDFObjectElement::GetStream() const
-{
-    return m_pStreamElement;
-}
+PDFStreamElement* PDFObjectElement::GetStream() const { return m_pStreamElement; }
 
-PDFArrayElement* PDFObjectElement::GetArray() const
-{
-    return m_pArrayElement;
-}
+PDFArrayElement* PDFObjectElement::GetArray() const { return m_pArrayElement; }
 
 void PDFObjectElement::ParseStoredObjects()
 {
@@ -2594,7 +2768,8 @@ void PDFObjectElement::ParseStoredObjects()
         if (!pType)
             SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: missing unexpected type");
         else
-            SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: unexpected type: " << pType->GetValue());
+            SAL_WARN("vcl.filter",
+                     "PDFDocument::ReadXRefStream: unexpected type: " << pType->GetValue());
         return;
     }
 
@@ -2604,7 +2779,8 @@ void PDFObjectElement::ParseStoredObjects()
         if (!pFilter)
             SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: missing filter");
         else
-            SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: unexpected filter: " << pFilter->GetValue());
+            SAL_WARN("vcl.filter",
+                     "PDFDocument::ReadXRefStream: unexpected filter: " << pFilter->GetValue());
         return;
     }
 
@@ -2647,8 +2823,7 @@ void PDFObjectElement::ParseStoredObjects()
         return;
     }
 
-    aStream.Seek(STREAM_SEEK_TO_END);
-    nLength = aStream.Tell();
+    nLength = aStream.TellEnd();
     aStream.Seek(0);
     std::vector<size_t> aObjNums;
     std::vector<size_t> aOffsets;
@@ -2659,7 +2834,8 @@ void PDFObjectElement::ParseStoredObjects()
         PDFNumberElement aObjNum;
         if (!aObjNum.Read(aStream))
         {
-            SAL_WARN("vcl.filter", "PDFObjectElement::ParseStoredObjects: failed to read object number");
+            SAL_WARN("vcl.filter",
+                     "PDFObjectElement::ParseStoredObjects: failed to read object number");
             return;
         }
         aObjNums.push_back(aObjNum.GetValue());
@@ -2669,7 +2845,8 @@ void PDFObjectElement::ParseStoredObjects()
         PDFNumberElement aByteOffset;
         if (!aByteOffset.Read(aStream))
         {
-            SAL_WARN("vcl.filter", "PDFObjectElement::ParseStoredObjects: failed to read byte offset");
+            SAL_WARN("vcl.filter",
+                     "PDFObjectElement::ParseStoredObjects: failed to read byte offset");
             return;
         }
         aOffsets.push_back(pFirst->GetValue() + aByteOffset.GetValue());
@@ -2690,7 +2867,7 @@ void PDFObjectElement::ParseStoredObjects()
         size_t nLen = aLengths[nObject];
 
         aStream.Seek(nOffset);
-        m_aStoredElements.push_back(o3tl::make_unique<PDFObjectElement>(m_rDoc, nObjNum, 0));
+        m_aStoredElements.push_back(std::make_unique<PDFObjectElement>(m_rDoc, nObjNum, 0));
         PDFObjectElement* pStored = m_aStoredElements.back().get();
 
         aBuf.clear();
@@ -2698,7 +2875,8 @@ void PDFObjectElement::ParseStoredObjects()
         aStream.ReadBytes(aBuf.data(), aBuf.size());
         SvMemoryStream aStoredStream(aBuf.data(), aBuf.size(), StreamMode::READ);
 
-        m_rDoc.Tokenize(aStoredStream, TokenizeMode::STORED_OBJECT, pStored->GetStoredElements(), pStored);
+        m_rDoc.Tokenize(aStoredStream, TokenizeMode::STORED_OBJECT, pStored->GetStoredElements(),
+                        pStored);
         // This is how references know the object is stored inside this object stream.
         m_rDoc.SetIDObject(nObjNum, pStored);
 
@@ -2710,65 +2888,53 @@ void PDFObjectElement::ParseStoredObjects()
     }
 }
 
-std::vector< std::unique_ptr<PDFElement> >& PDFObjectElement::GetStoredElements()
+std::vector<std::unique_ptr<PDFElement>>& PDFObjectElement::GetStoredElements()
 {
     return m_aElements;
 }
 
-SvMemoryStream* PDFObjectElement::GetStreamBuffer() const
-{
-    return m_pStreamBuffer.get();
-}
+SvMemoryStream* PDFObjectElement::GetStreamBuffer() const { return m_pStreamBuffer.get(); }
 
 void PDFObjectElement::SetStreamBuffer(std::unique_ptr<SvMemoryStream>& pStreamBuffer)
 {
     m_pStreamBuffer = std::move(pStreamBuffer);
 }
 
-PDFDocument& PDFObjectElement::GetDocument()
-{
-    return m_rDoc;
-}
+PDFDocument& PDFObjectElement::GetDocument() { return m_rDoc; }
 
-PDFReferenceElement::PDFReferenceElement(PDFDocument& rDoc, PDFNumberElement& rObject, PDFNumberElement& rGeneration)
-    : m_rDoc(rDoc),
-      m_fObjectValue(rObject.GetValue()),
-      m_fGenerationValue(rGeneration.GetValue()),
-      m_rObject(rObject)
+PDFReferenceElement::PDFReferenceElement(PDFDocument& rDoc, PDFNumberElement& rObject,
+                                         PDFNumberElement const& rGeneration)
+    : m_rDoc(rDoc)
+    , m_fObjectValue(rObject.GetValue())
+    , m_fGenerationValue(rGeneration.GetValue())
+    , m_rObject(rObject)
 {
 }
 
-PDFNumberElement& PDFReferenceElement::GetObjectElement() const
-{
-    return m_rObject;
-}
+PDFNumberElement& PDFReferenceElement::GetObjectElement() const { return m_rObject; }
 
 bool PDFReferenceElement::Read(SvStream& rStream)
 {
-    SAL_INFO("vcl.filter", "PDFReferenceElement::Read: " << m_fObjectValue << " " << m_fGenerationValue << " R");
+    SAL_INFO("vcl.filter",
+             "PDFReferenceElement::Read: " << m_fObjectValue << " " << m_fGenerationValue << " R");
     m_nOffset = rStream.Tell();
     return true;
 }
 
-sal_uInt64 PDFReferenceElement::GetOffset() const
-{
-    return m_nOffset;
-}
+sal_uInt64 PDFReferenceElement::GetOffset() const { return m_nOffset; }
 
 double PDFReferenceElement::LookupNumber(SvStream& rStream) const
 {
     size_t nOffset = m_rDoc.GetObjectOffset(m_fObjectValue);
     if (nOffset == 0)
     {
-        SAL_WARN("vcl.filter", "PDFReferenceElement::LookupNumber: found no offset for object #" << m_fObjectValue);
+        SAL_WARN("vcl.filter", "PDFReferenceElement::LookupNumber: found no offset for object #"
+                                   << m_fObjectValue);
         return 0;
     }
 
     sal_uInt64 nOrigPos = rStream.Tell();
-    comphelper::ScopeGuard g([&]()
-    {
-        rStream.Seek(nOrigPos);
-    });
+    comphelper::ScopeGuard g([&]() { rStream.Seek(nOrigPos); });
 
     rStream.Seek(nOffset);
     {
@@ -2777,7 +2943,8 @@ double PDFReferenceElement::LookupNumber(SvStream& rStream) const
         bool bRet = aNumber.Read(rStream);
         if (!bRet || aNumber.GetValue() != m_fObjectValue)
         {
-            SAL_WARN("vcl.filter", "PDFReferenceElement::LookupNumber: offset points to not matching object");
+            SAL_WARN("vcl.filter",
+                     "PDFReferenceElement::LookupNumber: offset points to not matching object");
             return 0;
         }
     }
@@ -2788,7 +2955,8 @@ double PDFReferenceElement::LookupNumber(SvStream& rStream) const
         bool bRet = aNumber.Read(rStream);
         if (!bRet || aNumber.GetValue() != m_fGenerationValue)
         {
-            SAL_WARN("vcl.filter", "PDFReferenceElement::LookupNumber: offset points to not matching generation");
+            SAL_WARN("vcl.filter",
+                     "PDFReferenceElement::LookupNumber: offset points to not matching generation");
             return 0;
         }
     }
@@ -2798,7 +2966,8 @@ double PDFReferenceElement::LookupNumber(SvStream& rStream) const
         OString aKeyword = PDFDocument::ReadKeyword(rStream);
         if (aKeyword != "obj")
         {
-            SAL_WARN("vcl.filter", "PDFReferenceElement::LookupNumber: offset doesn't point to an obj keyword");
+            SAL_WARN("vcl.filter",
+                     "PDFReferenceElement::LookupNumber: offset doesn't point to an obj keyword");
             return 0;
         }
     }
@@ -2807,7 +2976,8 @@ double PDFReferenceElement::LookupNumber(SvStream& rStream) const
     PDFNumberElement aNumber;
     if (!aNumber.Read(rStream))
     {
-        SAL_WARN("vcl.filter", "PDFReferenceElement::LookupNumber: failed to read referenced number");
+        SAL_WARN("vcl.filter",
+                 "PDFReferenceElement::LookupNumber: failed to read referenced number");
         return 0;
     }
 
@@ -2830,20 +3000,11 @@ PDFObjectElement* PDFDocument::LookupObject(size_t nObjectNumber)
     return nullptr;
 }
 
-SvMemoryStream& PDFDocument::GetEditBuffer()
-{
-    return m_aEditBuffer;
-}
+SvMemoryStream& PDFDocument::GetEditBuffer() { return m_aEditBuffer; }
 
-int PDFReferenceElement::GetObjectValue() const
-{
-    return m_fObjectValue;
-}
+int PDFReferenceElement::GetObjectValue() const { return m_fObjectValue; }
 
-int PDFReferenceElement::GetGenerationValue() const
-{
-    return m_fGenerationValue;
-}
+int PDFReferenceElement::GetGenerationValue() const { return m_fGenerationValue; }
 
 bool PDFDictionaryElement::Read(SvStream& rStream)
 {
@@ -2855,7 +3016,7 @@ bool PDFDictionaryElement::Read(SvStream& rStream)
         return false;
     }
 
-    if (rStream.IsEof())
+    if (rStream.eof())
     {
         SAL_WARN("vcl.filter", "PDFDictionaryElement::Read: unexpected end of file");
         return false;
@@ -2877,10 +3038,7 @@ bool PDFDictionaryElement::Read(SvStream& rStream)
 
 PDFEndDictionaryElement::PDFEndDictionaryElement() = default;
 
-sal_uInt64 PDFEndDictionaryElement::GetLocation() const
-{
-    return m_nLocation;
-}
+sal_uInt64 PDFEndDictionaryElement::GetLocation() const { return m_nLocation; }
 
 bool PDFEndDictionaryElement::Read(SvStream& rStream)
 {
@@ -2893,7 +3051,7 @@ bool PDFEndDictionaryElement::Read(SvStream& rStream)
         return false;
     }
 
-    if (rStream.IsEof())
+    if (rStream.eof())
     {
         SAL_WARN("vcl.filter", "PDFEndDictionaryElement::Read: unexpected end of file");
         return false;
@@ -2911,11 +3069,7 @@ bool PDFEndDictionaryElement::Read(SvStream& rStream)
     return true;
 }
 
-PDFNameElement::PDFNameElement()
-    : m_nLocation(0),
-      m_nLength(0)
-{
-}
+PDFNameElement::PDFNameElement() = default;
 
 bool PDFNameElement::Read(SvStream& rStream)
 {
@@ -2928,7 +3082,7 @@ bool PDFNameElement::Read(SvStream& rStream)
     }
     m_nLocation = rStream.Tell();
 
-    if (rStream.IsEof())
+    if (rStream.eof())
     {
         SAL_WARN("vcl.filter", "PDFNameElement::Read: unexpected end of file");
         return false;
@@ -2937,10 +3091,10 @@ bool PDFNameElement::Read(SvStream& rStream)
     // Read till the first white-space.
     OStringBuffer aBuf;
     rStream.ReadChar(ch);
-    while (!rStream.IsEof())
+    while (!rStream.eof())
     {
-        if (rtl::isAsciiWhiteSpace(static_cast<unsigned char>(ch)) || ch == '/'
-                || ch == '[' || ch == ']' || ch == '<' || ch == '>' || ch == '(')
+        if (rtl::isAsciiWhiteSpace(static_cast<unsigned char>(ch)) || ch == '/' || ch == '['
+            || ch == ']' || ch == '<' || ch == '>' || ch == '(')
         {
             rStream.SeekRel(-1);
             m_aValue = aBuf.makeStringAndClear();
@@ -2954,24 +3108,13 @@ bool PDFNameElement::Read(SvStream& rStream)
     return false;
 }
 
-const OString& PDFNameElement::GetValue() const
-{
-    return m_aValue;
-}
+const OString& PDFNameElement::GetValue() const { return m_aValue; }
 
-sal_uInt64 PDFNameElement::GetLocation() const
-{
-    return m_nLocation;
-}
-
-sal_uInt64 PDFNameElement::GetLength() const
-{
-    return m_nLength;
-}
+sal_uInt64 PDFNameElement::GetLocation() const { return m_nLocation; }
 
 PDFStreamElement::PDFStreamElement(size_t nLength)
-    : m_nLength(nLength),
-      m_nOffset(0)
+    : m_nLength(nLength)
+    , m_nOffset(0)
 {
 }
 
@@ -2986,25 +3129,13 @@ bool PDFStreamElement::Read(SvStream& rStream)
     return rStream.good();
 }
 
-SvMemoryStream& PDFStreamElement::GetMemory()
-{
-    return m_aMemory;
-}
+SvMemoryStream& PDFStreamElement::GetMemory() { return m_aMemory; }
 
-sal_uInt64 PDFStreamElement::GetOffset() const
-{
-    return m_nOffset;
-}
+sal_uInt64 PDFStreamElement::GetOffset() const { return m_nOffset; }
 
-bool PDFEndStreamElement::Read(SvStream& /*rStream*/)
-{
-    return true;
-}
+bool PDFEndStreamElement::Read(SvStream& /*rStream*/) { return true; }
 
-bool PDFEndObjectElement::Read(SvStream& /*rStream*/)
-{
-    return true;
-}
+bool PDFEndObjectElement::Read(SvStream& /*rStream*/) { return true; }
 
 PDFArrayElement::PDFArrayElement(PDFObjectElement* pObject)
     : m_pObject(pObject)
@@ -3029,14 +3160,12 @@ bool PDFArrayElement::Read(SvStream& rStream)
 void PDFArrayElement::PushBack(PDFElement* pElement)
 {
     if (m_pObject)
-        SAL_INFO("vcl.filter", "PDFArrayElement::PushBack: object is " << m_pObject->GetObjectValue());
+        SAL_INFO("vcl.filter",
+                 "PDFArrayElement::PushBack: object is " << m_pObject->GetObjectValue());
     m_aElements.push_back(pElement);
 }
 
-const std::vector<PDFElement*>& PDFArrayElement::GetElements()
-{
-    return m_aElements;
-}
+const std::vector<PDFElement*>& PDFArrayElement::GetElements() const { return m_aElements; }
 
 PDFEndArrayElement::PDFEndArrayElement() = default;
 
@@ -3056,12 +3185,8 @@ bool PDFEndArrayElement::Read(SvStream& rStream)
     return true;
 }
 
-sal_uInt64 PDFEndArrayElement::GetOffset() const
-{
-    return m_nOffset;
-}
+sal_uInt64 PDFEndArrayElement::GetOffset() const { return m_nOffset; }
 
-} // namespace filter
 } // namespace vcl
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,52 +17,31 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <docary.hxx>
-#include <grfsh.hxx>
 #include <wrtsh.hxx>
 #include <view.hxx>
 #include <textsh.hxx>
-#include <viewopt.hxx>
-#include <swundo.hxx>
-#include <shells.hrc>
-#include <caption.hxx>
-#include <vcl/graphicfilter.hxx>
-#include <sfx2/htmlmode.hxx>
 #include <drawdoc.hxx>
 #include <doc.hxx>
 #include <IDocumentDrawModelAccess.hxx>
 #include <docsh.hxx>
-#include <frmfmt.hxx>
-#include <frmmgr.hxx>
-#include <vcl/msgbox.hxx>
 #include <svx/svdomedia.hxx>
-#include <svx/svdview.hxx>
-#include <svx/svdpagv.hxx>
-#include <SwStyleNameMapper.hxx>
 #include <sfx2/filedlghelper.hxx>
-#include <poolfmt.hrc>
 
 #include <sfx2/request.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <svl/stritem.hxx>
 #include <avmedia/mediawindow.hxx>
-#include <vcl/svapp.hxx>
-
-// -> #111827#
-#include <SwRewriter.hxx>
-#include <comcore.hrc>
-// <- #111827#
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::ui::dialogs;
 using namespace ::sfx2;
 
-bool SwTextShell::InsertMediaDlg( SfxRequest& rReq )
+bool SwTextShell::InsertMediaDlg( SfxRequest const & rReq )
 {
     OUString     aURL;
     const SfxItemSet*   pReqArgs = rReq.GetArgs();
-    vcl::Window*             pWindow = &GetView().GetViewFrame()->GetWindow();
+    vcl::Window&        rWindow = GetView().GetViewFrame()->GetWindow();
     bool                bAPI = false, bRet = false;
 
     if( pReqArgs )
@@ -76,21 +55,18 @@ bool SwTextShell::InsertMediaDlg( SfxRequest& rReq )
     }
 
     bool bLink(true);
-    if (bAPI ||
-        ::avmedia::MediaWindow::executeMediaURLDialog(aURL, & bLink))
+    if (bAPI || ::avmedia::MediaWindow::executeMediaURLDialog(rWindow.GetFrameWeld(), aURL, & bLink))
     {
         Size aPrefSize;
 
-        if( pWindow )
-            pWindow->EnterWait();
+        rWindow.EnterWait();
 
         if( !::avmedia::MediaWindow::isMediaURL( aURL, "", true, &aPrefSize ) )
         {
-            if( pWindow )
-                pWindow->LeaveWait();
+            rWindow.LeaveWait();
 
             if( !bAPI )
-                ::avmedia::MediaWindow::executeFormatErrorBox( pWindow );
+                ::avmedia::MediaWindow::executeFormatErrorBox(rWindow.GetFrameWeld());
         }
         else
         {
@@ -100,23 +76,18 @@ bool SwTextShell::InsertMediaDlg( SfxRequest& rReq )
                 rSh.MakeDrawView();
 
             Size            aDocSz( rSh.GetDocSize() );
-               const SwRect&    rVisArea = rSh.VisArea();
+            const SwRect&   rVisArea = rSh.VisArea();
             Point           aPos( rVisArea.Center() );
             Size            aSize;
 
             if( rVisArea.Width() > aDocSz.Width())
-                aPos.X() = aDocSz.Width() / 2 + rVisArea.Left();
+                aPos.setX( aDocSz.Width() / 2 + rVisArea.Left() );
 
             if(rVisArea.Height() > aDocSz.Height())
-                aPos.Y() = aDocSz.Height() / 2 + rVisArea.Top();
+                aPos.setY( aDocSz.Height() / 2 + rVisArea.Top() );
 
             if( aPrefSize.Width() && aPrefSize.Height() )
-            {
-                if( pWindow )
-                    aSize = pWindow->PixelToLogic( aPrefSize, MapUnit::MapTwip );
-                else
-                    aSize = Application::GetDefaultDevice()->PixelToLogic( aPrefSize, MapUnit::MapTwip );
-            }
+                aSize = rWindow.PixelToLogic(aPrefSize, MapMode(MapUnit::MapTwip));
             else
                 aSize = Size( 2835, 2835 );
 
@@ -133,16 +104,16 @@ bool SwTextShell::InsertMediaDlg( SfxRequest& rReq )
                 if (!bRet) { return bRet; }
             }
 
-            SdrMediaObj* pObj = new SdrMediaObj( tools::Rectangle( aPos, aSize ) );
+            SdrMediaObj* pObj = new SdrMediaObj(
+                *rSh.GetDoc()->getIDocumentDrawModelAccess().GetDrawModel(),
+                tools::Rectangle(aPos, aSize));
 
-            pObj->SetModel(rSh.GetDoc()->getIDocumentDrawModelAccess().GetDrawModel()); // set before setURL
             pObj->setURL( realURL, "" );
             rSh.EnterStdMode();
             rSh.SwFEShell::InsertDrawObj( *pObj, aPos );
             bRet = true;
 
-            if( pWindow )
-                pWindow->LeaveWait();
+            rWindow.LeaveWait();
         }
     }
 

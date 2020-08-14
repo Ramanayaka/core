@@ -23,24 +23,25 @@
 
 #include <svl/svldllapi.h>
 #include <svl/poolitem.hxx>
-#include <com/sun/star/uno/Sequence.h>
 #include <memory>
 
-class SfxImpStringList;
+namespace com::sun::star::uno { template <class E> class Sequence; }
 
-class SVL_DLLPUBLIC SfxStringListItem : public SfxPoolItem
+class SVL_DLLPUBLIC SfxStringListItem final : public SfxPoolItem
 {
-protected:
-    std::shared_ptr<SfxImpStringList>   pImpl;
+    std::shared_ptr<std::vector<OUString>> mpList;
 
 public:
     static SfxPoolItem* CreateDefault();
 
     SfxStringListItem();
     SfxStringListItem( sal_uInt16 nWhich, const std::vector<OUString> *pList=nullptr );
-    SfxStringListItem( sal_uInt16 nWhich, SvStream& rStream );
-    SfxStringListItem( const SfxStringListItem& rItem );
     virtual ~SfxStringListItem() override;
+
+    SfxStringListItem(SfxStringListItem const &) = default;
+    SfxStringListItem(SfxStringListItem &&) = default;
+    SfxStringListItem & operator =(SfxStringListItem const &) = delete; // due to SfxPoolItem
+    SfxStringListItem & operator =(SfxStringListItem &&) = delete; // due to SfxPoolItem
 
     std::vector<OUString>&       GetList();
 
@@ -58,10 +59,8 @@ public:
                                              MapUnit eCoreMetric,
                                              MapUnit ePresMetric,
                                              OUString &rText,
-                                             const IntlWrapper * = nullptr ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create( SvStream &, sal_uInt16 nVersion ) const override;
-    virtual SvStream&       Store( SvStream &, sal_uInt16 nItemVersion ) const override;
+                                             const IntlWrapper& ) const override;
+    virtual SfxStringListItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool            PutValue  ( const css::uno::Any& rVal,
                                          sal_uInt8 nMemberId ) override;

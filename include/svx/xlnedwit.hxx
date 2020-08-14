@@ -26,16 +26,13 @@
 #define LINE_END_WIDTH_DEFAULT      (200)
 
 
-// class XLineEndWidthItem
 
 
-class SVX_DLLPUBLIC XLineEndWidthItem : public SfxMetricItem
+class SVXCORE_DLLPUBLIC XLineEndWidthItem final : public SfxMetricItem
 {
 public:
                             XLineEndWidthItem(long nWidth = LINE_END_WIDTH_DEFAULT);
-                            XLineEndWidthItem(SvStream& rIn);
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual XLineEndWidthItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -43,7 +40,7 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                    OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                    OUString &rText, const IntlWrapper& ) const override;
 };
 
 #endif

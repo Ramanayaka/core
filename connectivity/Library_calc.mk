@@ -23,7 +23,7 @@ $(eval $(call gb_Library_set_include,calc,\
 	-I$(WORKDIR)/YaccTarget/connectivity/source/parse \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,calc,$(SRCDIR)/connectivity/inc/pch/precompiled_calc))
+$(eval $(call gb_Library_set_precompiled_header,calc,connectivity/inc/pch/precompiled_calc))
 
 $(eval $(call gb_Library_use_libraries,calc,\
 	cppu \
@@ -39,16 +39,11 @@ $(eval $(call gb_Library_use_libraries,calc,\
 ))
 
 $(eval $(call gb_Library_add_exception_objects,calc,\
-	connectivity/source/drivers/calc/CResultSet \
-	connectivity/source/drivers/calc/CStatement \
-	connectivity/source/drivers/calc/CPreparedStatement \
 	connectivity/source/drivers/calc/CDatabaseMetaData \
 	connectivity/source/drivers/calc/CCatalog \
-	connectivity/source/drivers/calc/CColumns \
 	connectivity/source/drivers/calc/CTable \
 	connectivity/source/drivers/calc/CTables \
 	connectivity/source/drivers/calc/CConnection \
-	connectivity/source/drivers/calc/Cservices \
 	connectivity/source/drivers/calc/CDriver \
 ))
 

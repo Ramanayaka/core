@@ -22,15 +22,13 @@
 #define INCLUDED_SALHELPER_CONDITION_HXX
 
 
-#include <osl/conditn.hxx>
-#include <osl/mutex.hxx>
-#include <salhelper/salhelperdllapi.h>
+#include "osl/conditn.hxx"
+#include "salhelper/salhelperdllapi.h"
+
+namespace osl { class Mutex; }
 
 namespace salhelper
 {
-    class ConditionModifier;
-    class ConditionWaiter;
-
 
     class SALHELPER_DLLPUBLIC Condition
     {

@@ -17,38 +17,31 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "controller/SlsSelectionManager.hxx"
+#include <controller/SlsSelectionManager.hxx>
 
-#include "SlideSorter.hxx"
-#include "controller/SlideSorterController.hxx"
-#include "controller/SlsAnimator.hxx"
-#include "controller/SlsAnimationFunction.hxx"
-#include "controller/SlsCurrentSlideManager.hxx"
-#include "controller/SlsFocusManager.hxx"
-#include "controller/SlsPageSelector.hxx"
-#include "controller/SlsProperties.hxx"
-#include "controller/SlsScrollBarManager.hxx"
-#include "controller/SlsSlotManager.hxx"
-#include "controller/SlsSelectionObserver.hxx"
-#include "model/SlideSorterModel.hxx"
-#include "model/SlsPageEnumerationProvider.hxx"
-#include "model/SlsPageDescriptor.hxx"
-#include "view/SlideSorterView.hxx"
-#include "view/SlsLayouter.hxx"
-#include "drawdoc.hxx"
-#include "drawview.hxx"
-#include "DrawViewShell.hxx"
-#include "ViewShellBase.hxx"
-#include "Window.hxx"
+#include <SlideSorter.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsCurrentSlideManager.hxx>
+#include <controller/SlsFocusManager.hxx>
+#include <controller/SlsPageSelector.hxx>
+#include <controller/SlsSelectionObserver.hxx>
+#include <model/SlideSorterModel.hxx>
+#include <model/SlsPageEnumerationProvider.hxx>
+#include <model/SlsPageDescriptor.hxx>
+#include <view/SlideSorterView.hxx>
+#include <drawdoc.hxx>
+#include <sdpage.hxx>
+#include <drawview.hxx>
+#include <DrawViewShell.hxx>
+#include <ViewShellBase.hxx>
 #include <svx/svxids.hrc>
 #include <com/sun/star/drawing/XMasterPagesSupplier.hpp>
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 
-#include "res_bmp.hrc"
-#include "sdresid.hxx"
-#include "strings.hrc"
-#include "app.hrc"
-#include "glob.hrc"
+
+#include <sdresid.hxx>
+#include <strings.hrc>
+#include <app.hrc>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::drawing;
@@ -57,13 +50,13 @@ using namespace ::sd::slidesorter::model;
 using namespace ::sd::slidesorter::view;
 using namespace ::sd::slidesorter::controller;
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 SelectionManager::SelectionManager (SlideSorter& rSlideSorter)
     : mrSlideSorter(rSlideSorter),
       mrController(rSlideSorter.GetController()),
       mnInsertionPosition(-1),
-      mpSelectionObserver(new SelectionObserver(rSlideSorter))
+      mpSelectionObserver(std::make_shared<SelectionObserver>(rSlideSorter))
 {
 }
 
@@ -109,15 +102,20 @@ void SelectionManager::DeleteSelectedPages (const bool bSelectFollowingPage)
 
     const auto pViewShell = mrSlideSorter.GetViewShell();
     const auto pDrawViewShell = pViewShell ? std::dynamic_pointer_cast<sd::DrawViewShell>(pViewShell->GetViewShellBase().GetMainViewShell()) : nullptr;
-    const auto pDrawView = pDrawViewShell ? dynamic_cast<sd::DrawView*>(pDrawViewShell->GetDrawView()) : nullptr;
+    const auto pDrawView = pDrawViewShell ? pDrawViewShell->GetDrawView() : nullptr;
 
     if (pDrawView)
         pDrawView->BlockPageOrderChangedHint(true);
 
+    // Proper naming for the undo action
+    OUString sUndoComment(SdResId(STR_UNDO_DELETEPAGES));
+    if (mrSlideSorter.GetView().GetDoc().GetDocumentType() == DocumentType::Draw)
+        sUndoComment = SdResId(STR_UNDO_DELETEPAGES_DRAW);
+
     // The actual deletion of the selected pages is done in one of two
     // helper functions.  They are specialized for normal respectively for
     // master pages.
-    mrSlideSorter.GetView().BegUndo (SdResId(STR_UNDO_DELETEPAGES));
+    mrSlideSorter.GetView().BegUndo (sUndoComment);
     if (mrSlideSorter.GetModel().GetEditMode() == EditMode::Page)
         DeleteSelectedNormalPages(aSelectedPages);
     else
@@ -155,10 +153,10 @@ void SelectionManager::DeleteSelectedNormalPages (const ::std::vector<SdPage*>& 
     try
     {
         Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier( mrSlideSorter.GetModel().GetDocument()->getUnoModel(), UNO_QUERY_THROW );
-        Reference<drawing::XDrawPages> xPages( xDrawPagesSupplier->getDrawPages(), UNO_QUERY_THROW );
+        Reference<drawing::XDrawPages> xPages( xDrawPagesSupplier->getDrawPages(), UNO_SET_THROW );
 
-        // Iterate over all pages that where seleted when this method was called
-        // and delete the draw page the notes page.  The iteration is done in
+        // Iterate over all pages that were selected when this method was called
+        // and delete the draw page the notes page. The iteration is done in
         // reverse order so that when one slide is not deleted (to avoid an
         // empty document) the remaining slide is the first one.
         ::std::vector<SdPage*>::const_reverse_iterator aI;
@@ -188,10 +186,10 @@ void SelectionManager::DeleteSelectedMasterPages (const ::std::vector<SdPage*>& 
     try
     {
         Reference<drawing::XMasterPagesSupplier> xDrawPagesSupplier( mrSlideSorter.GetModel().GetDocument()->getUnoModel(), UNO_QUERY_THROW );
-        Reference<drawing::XDrawPages> xPages( xDrawPagesSupplier->getMasterPages(), UNO_QUERY_THROW );
+        Reference<drawing::XDrawPages> xPages( xDrawPagesSupplier->getMasterPages(), UNO_SET_THROW );
 
-        // Iterate over all pages that where seleted when this method was called
-        // and delete the draw page the notes page.  The iteration is done in
+        // Iterate over all pages that were selected when this method was called
+        // and delete the draw page the notes page. The iteration is done in
         // reverse order so that when one slide is not deleted (to avoid an
         // empty document) the remaining slide is the first one.
         ::std::vector<SdPage*>::const_reverse_iterator aI;
@@ -216,35 +214,35 @@ void SelectionManager::DeleteSelectedMasterPages (const ::std::vector<SdPage*>& 
 void SelectionManager::SelectionHasChanged ()
 {
     ViewShell* pViewShell = mrSlideSorter.GetViewShell();
-    if (pViewShell != nullptr)
+    if (pViewShell == nullptr)
+        return;
+
+    pViewShell->Invalidate (SID_EXPAND_PAGE);
+    pViewShell->Invalidate (SID_SUMMARY_PAGE);
+    pViewShell->Invalidate(SID_SHOW_SLIDE);
+    pViewShell->Invalidate(SID_HIDE_SLIDE);
+    pViewShell->Invalidate(SID_DELETE_PAGE);
+    pViewShell->Invalidate(SID_DELETE_MASTER_PAGE);
+    pViewShell->Invalidate(SID_ASSIGN_LAYOUT);
+
+    // StatusBar
+    pViewShell->Invalidate (SID_STATUS_PAGE);
+    pViewShell->Invalidate (SID_STATUS_LAYOUT);
+
+    OSL_ASSERT(mrController.GetCurrentSlideManager());
+    SharedPageDescriptor pDescriptor(mrController.GetCurrentSlideManager()->GetCurrentSlide());
+    if (pDescriptor)
+        pViewShell->UpdatePreview(pDescriptor->GetPage());
+
+    // Tell the selection change listeners that the selection has changed.
+    for (const auto& rLink : maSelectionChangeListeners)
     {
-        pViewShell->Invalidate (SID_EXPAND_PAGE);
-        pViewShell->Invalidate (SID_SUMMARY_PAGE);
-        pViewShell->Invalidate(SID_SHOW_SLIDE);
-        pViewShell->Invalidate(SID_HIDE_SLIDE);
-        pViewShell->Invalidate(SID_DELETE_PAGE);
-        pViewShell->Invalidate(SID_DELETE_MASTER_PAGE);
-        pViewShell->Invalidate(SID_ASSIGN_LAYOUT);
-
-        // StatusBar
-        pViewShell->Invalidate (SID_STATUS_PAGE);
-        pViewShell->Invalidate (SID_STATUS_LAYOUT);
-
-        OSL_ASSERT(mrController.GetCurrentSlideManager());
-        SharedPageDescriptor pDescriptor(mrController.GetCurrentSlideManager()->GetCurrentSlide());
-        if (pDescriptor.get() != nullptr)
-            pViewShell->UpdatePreview(pDescriptor->GetPage());
-
-        // Tell the selection change listeners that the selection has changed.
-        for (auto& rLink : maSelectionChangeListeners)
-        {
-            rLink.Call(nullptr);
-        }
-
-        // Reset the insertion position: until set again it is calculated from
-        // the current selection.
-        mnInsertionPosition = -1;
+        rLink.Call(nullptr);
     }
+
+    // Reset the insertion position: until set again it is calculated from
+    // the current selection.
+    mnInsertionPosition = -1;
 }
 
 void SelectionManager::AddSelectionChangeListener (const Link<LinkParamNone*,void>& rListener)
@@ -304,6 +302,6 @@ void SelectionManager::SetInsertionPosition (const sal_Int32 nInsertionPosition)
         mnInsertionPosition = nInsertionPosition;
 }
 
-} } } // end of namespace ::sd::slidesorter
+} // end of namespace ::sd::slidesorter::controller
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

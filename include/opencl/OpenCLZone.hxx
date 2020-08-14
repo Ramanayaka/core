@@ -10,42 +10,21 @@
 #ifndef INCLUDED_OPENCL_INC_OPENCL_ZONE_HXX
 #define INCLUDED_OPENCL_INC_OPENCL_ZONE_HXX
 
+#include <sal/config.h>
+
 #include <opencl/opencldllapi.h>
 
-// FIXME: post back-port, templatize me and share with OpenGLZone.
-class OPENCL_DLLPUBLIC OpenCLZone
+#include <comphelper/crashzone.hxx>
+
+class OPENCL_DLLPUBLIC OpenCLZone : public CrashZone< OpenCLZone >
 {
-    /// how many times have we entered a CL zone
-    static volatile sal_uInt64 gnEnterCount;
-    /// how many times have we left a new CL zone
-    static volatile sal_uInt64 gnLeaveCount;
-    static volatile bool gbInInitialTest;
-
 public:
-    OpenCLZone()
-    {
-        gnEnterCount++;
-    }
-
-    ~OpenCLZone()
-    {
-        gnLeaveCount++;
-        if (!isInZone())
-            gbInInitialTest = false;
-    }
-
-    static bool isInZone()
-    {
-        return gnEnterCount != gnLeaveCount;
-    }
-
-    static bool isInInitialTest()
-    {
-        return gbInInitialTest;
-    }
-
     static void hardDisable();
-    static void enterInitialTest();
+};
+
+// Used during initial testing of OpenCL.
+class OPENCL_DLLPUBLIC OpenCLInitialZone : public CrashZone< OpenCLInitialZone >
+{
 };
 
 #endif // INCLUDED_OPENCL_INC_OPENCL_ZONE_HXX

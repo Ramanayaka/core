@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_TUPLE_B2I64TUPLE_HXX
-#define INCLUDED_BASEGFX_TUPLE_B2I64TUPLE_HXX
+#pragma once
 
 #include <sal/types.h>
-#include <basegfx/tuple/b2dtuple.hxx>
 #include <basegfx/basegfxdllapi.h>
 
 
@@ -30,14 +28,13 @@ namespace basegfx
     /** Base class for all Points/Vectors with two sal_Int64 values
 
         This class provides all methods common to Point
-        avd Vector classes which are derived from here.
+        and Vector classes which are derived from here.
 
         @derive Use this class to implement Points or Vectors
         which are based on two sal_Int64 values
     */
-    class SAL_WARN_UNUSED BASEGFX_DLLPUBLIC B2I64Tuple
+    class SAL_WARN_UNUSED BASEGFX_DLLPUBLIC B2I64Tuple final
     {
-    protected:
         sal_Int64                                       mnX;
         sal_Int64                                       mnY;
 
@@ -175,7 +172,5 @@ namespace basegfx
     };
 
 } // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_TUPLE_B2I64TUPLE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

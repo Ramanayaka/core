@@ -19,7 +19,7 @@
 
 
 #include "MacabStatement.hxx"
-#include "sqlbison.hxx"
+#include <sqlbison.hxx>
 #include "MacabConnection.hxx"
 #include "MacabAddressBook.hxx"
 #include "MacabDriver.hxx"
@@ -27,10 +27,12 @@
 #include "MacabResultSetMetaData.hxx"
 #include "macabcondition.hxx"
 #include "macaborder.hxx"
-#include "TConnection.hxx"
+#include "macabutilities.hxx"
+#include <TConnection.hxx>
+#include <cppuhelper/typeprovider.hxx>
 #include <connectivity/dbexception.hxx>
-#include "resource/sharedresources.hxx"
-#include "resource/macab_res.hrc"
+#include <resource/sharedresources.hxx>
+#include <strings.hrc>
 
 using namespace connectivity::macab;
 using namespace com::sun::star::uno;
@@ -42,16 +44,13 @@ using namespace com::sun::star::container;
 using namespace com::sun::star::io;
 using namespace com::sun::star::util;
 
-namespace connectivity
+namespace connectivity::macab
 {
-    namespace macab
-    {
-    void impl_throwError(sal_uInt16 _nErrorId)
+    void impl_throwError(const char* pErrorId)
     {
         ::connectivity::SharedResources aResources;
-        const OUString sError( aResources.getResourceString(_nErrorId) );
+        const OUString sError( aResources.getResourceString(pErrorId) );
         ::dbtools::throwGenericSQLException(sError,nullptr);
-    }
     }
 }
 
@@ -402,7 +401,7 @@ Reference< XResultSet > SAL_CALL MacabCommonStatement::executeQuery(
     Reference< XResultSet > xRS = pResult;
     OUString aErr;
 
-    m_pParseTree = m_aParser.parseTree(aErr, sql);
+    m_pParseTree = m_aParser.parseTree(aErr, sql).release();
     if (m_pParseTree == nullptr)
         throw SQLException(aErr, *this, aErr, 0, Any());
 

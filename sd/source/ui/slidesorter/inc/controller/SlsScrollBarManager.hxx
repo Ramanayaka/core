@@ -20,20 +20,19 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSSCROLLBARMANAGER_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_CONTROLLER_SLSSCROLLBARMANAGER_HXX
 
-#include "SlideSorter.hxx"
-
 #include <tools/link.hxx>
 #include <tools/gen.hxx>
 #include <vcl/timer.hxx>
+#include <vcl/scrbar.hxx>
+#include <vcl/vclptr.hxx>
 
 #include <functional>
 
-class ScrollBar;
-class ScrollBarBox;
+namespace sd { class Window; }
 
-namespace sd { namespace slidesorter { class SlideSorter; } }
+namespace sd::slidesorter { class SlideSorter; }
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 /** Manage the horizontal and vertical scroll bars.  Listen for events, set
     their sizes, place them in the window, determine their visibilities.
@@ -180,8 +179,6 @@ private:
         when entered while in drag mode leads to a scrolling of the window.
     */
     Size maScrollBorder;
-    double mnHorizontalScrollFactor;
-    double mnVerticalScrollFactor;
     /** The only task of this little window is to paint the little square at
         the bottom right corner left by the two scroll bars (when both are
         visible).
@@ -247,7 +244,7 @@ private:
     void PlaceFiller (const ::tools::Rectangle& aArea);
 };
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 #endif
 

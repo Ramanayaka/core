@@ -22,10 +22,8 @@
 #include <numeric>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpStrokeAttribute
         {
         public:
@@ -51,7 +49,7 @@ namespace drawinglayer
             const std::vector< double >& getDotDashArray() const { return maDotDashArray; }
             double getFullDotDashLen() const
             {
-                if(0.0 == mfFullDotDashLen && maDotDashArray.size())
+                if(0.0 == mfFullDotDashLen && !maDotDashArray.empty())
                 {
                     // calculate length on demand
                     const double fAccumulated(std::accumulate(maDotDashArray.begin(), maDotDashArray.end(), 0.0));
@@ -87,36 +85,20 @@ namespace drawinglayer
         {
         }
 
-        StrokeAttribute::StrokeAttribute(const StrokeAttribute& rCandidate)
-        :   mpStrokeAttribute(rCandidate.mpStrokeAttribute)
-        {
-        }
+        StrokeAttribute::StrokeAttribute(const StrokeAttribute&) = default;
 
-        StrokeAttribute::StrokeAttribute(StrokeAttribute&& rCandidate)
-        :   mpStrokeAttribute(std::move(rCandidate.mpStrokeAttribute))
-        {
-        }
+        StrokeAttribute::StrokeAttribute(StrokeAttribute&&) = default;
 
-        StrokeAttribute::~StrokeAttribute()
-        {
-        }
+        StrokeAttribute::~StrokeAttribute() = default;
 
         bool StrokeAttribute::isDefault() const
         {
             return mpStrokeAttribute.same_object(theGlobalDefault::get());
         }
 
-        StrokeAttribute& StrokeAttribute::operator=(const StrokeAttribute& rCandidate)
-        {
-            mpStrokeAttribute = rCandidate.mpStrokeAttribute;
-            return *this;
-        }
+        StrokeAttribute& StrokeAttribute::operator=(const StrokeAttribute&) = default;
 
-        StrokeAttribute& StrokeAttribute::operator=(StrokeAttribute&& rCandidate)
-        {
-            mpStrokeAttribute = std::move(rCandidate.mpStrokeAttribute);
-            return *this;
-        }
+        StrokeAttribute& StrokeAttribute::operator=(StrokeAttribute&&) = default;
 
         bool StrokeAttribute::operator==(const StrokeAttribute& rCandidate) const
         {
@@ -136,7 +118,7 @@ namespace drawinglayer
         {
             return mpStrokeAttribute->getFullDotDashLen();
         }
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,7 +22,7 @@
 
 #include <osl/interlck.h>
 #include <osl/mutex.hxx>
-#include <platform.h>
+#include "platform.h"
 
 class OleComponent;
 class OleWrapperAdviseSink : public IAdviseSink
@@ -42,9 +42,9 @@ public:
     STDMETHODIMP_(ULONG) AddRef() override;
     STDMETHODIMP_(ULONG) Release() override;
 
-    STDMETHODIMP_(void)  OnDataChange(LPFORMATETC, LPSTGMEDIUM) override;
+    STDMETHODIMP_(void)  OnDataChange(FORMATETC *, STGMEDIUM *) override;
     STDMETHODIMP_(void)  OnViewChange(DWORD, LONG) override;
-    STDMETHODIMP_(void)  OnRename(LPMONIKER) override;
+    STDMETHODIMP_(void)  OnRename(IMoniker *) override;
     STDMETHODIMP_(void)  OnSave() override;
     STDMETHODIMP_(void)  OnClose() override;
 };

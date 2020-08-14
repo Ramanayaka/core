@@ -28,7 +28,7 @@
 #include <svx/svxdllapi.h>
 
 // SetItem with all ItemSets of fill-attributes
-class SVX_DLLPUBLIC XFillAttrSetItem : public SfxSetItem
+class SVXCORE_DLLPUBLIC XFillAttrSetItem final : public SfxSetItem
 {
 public:
                             XFillAttrSetItem(std::unique_ptr<SfxItemSet>&& pItemSet );
@@ -36,8 +36,7 @@ public:
                             XFillAttrSetItem(const XFillAttrSetItem& rAttr);
                             XFillAttrSetItem(const XFillAttrSetItem& rAttr,
                                              SfxItemPool* pItemPool);
-    virtual SfxPoolItem*    Clone( SfxItemPool* pToPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create( SvStream& rStream, sal_uInt16 nVersion ) const override;
+    virtual XFillAttrSetItem* Clone( SfxItemPool* pToPool = nullptr ) const override;
 };
 
 #endif

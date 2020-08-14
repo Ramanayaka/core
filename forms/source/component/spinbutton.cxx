@@ -19,8 +19,12 @@
 
 #include "spinbutton.hxx"
 #include "scrollbar.hxx"
+#include <comphelper/property.hxx>
 #include <comphelper/streamsection.hxx>
 #include <comphelper/basicio.hxx>
+#include <com/sun/star/form/FormComponentType.hpp>
+#include <property.hxx>
+#include <services.hxx>
 
 
 namespace frm
@@ -61,7 +65,7 @@ namespace frm
 
     OUString SAL_CALL OSpinButtonModel::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.forms.OSpinButtonModel" );
+        return "com.sun.star.comp.forms.OSpinButtonModel";
     }
 
         // note that we're passing OControlModel as "base class". This is because
@@ -70,9 +74,7 @@ namespace frm
         // to benefit from the functionality for binding to spreadsheet cells
     Sequence< OUString > SAL_CALL OSpinButtonModel::getSupportedServiceNames()
     {
-        Sequence< OUString > aOwnNames( 2 );
-        aOwnNames[ 0 ] = FRM_SUN_COMPONENT_SPINBUTTON;
-        aOwnNames[ 1 ] = BINDABLE_INTEGER_VALUE_RANGE;
+        Sequence< OUString > aOwnNames { FRM_SUN_COMPONENT_SPINBUTTON, BINDABLE_INTEGER_VALUE_RANGE };
 
         return ::comphelper::combineSequences(
             getAggregateServiceNames(),
@@ -150,7 +152,7 @@ namespace frm
         switch ( _nHandle )
         {
         case PROPERTY_ID_DEFAULT_SPIN_VALUE:
-            aReturn <<= (sal_Int32)0;
+            aReturn <<= sal_Int32(0);
             break;
 
         default:
@@ -178,13 +180,13 @@ namespace frm
 
     Any OSpinButtonModel::getDefaultForReset() const
     {
-        return makeAny( (sal_Int32)m_nDefaultSpinValue );
+        return makeAny( m_nDefaultSpinValue );
     }
 
 
     OUString SAL_CALL OSpinButtonModel::getServiceName()
     {
-        return OUString(FRM_SUN_COMPONENT_SPINBUTTON);
+        return FRM_SUN_COMPONENT_SPINBUTTON;
     }
 
 
@@ -249,7 +251,7 @@ namespace frm
 
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_forms_OSpinButtonModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

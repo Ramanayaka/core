@@ -21,16 +21,15 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_XECONTENT_HXX
 
 #include <memory>
-#include "rangelst.hxx"
-#include "xlcontent.hxx"
+#include <rangelst.hxx>
 #include "xladdress.hxx"
 #include "xerecord.hxx"
 #include "xeroot.hxx"
 #include "xestring.hxx"
-#include "xeformula.hxx"
 #include "xeextlst.hxx"
+#include "xlformula.hxx"
 
-#include "colorscale.hxx"
+#include <colorscale.hxx>
 
 /* ============================================================================
 Classes to export the big Excel document contents (related to several cells or
@@ -99,7 +98,7 @@ class SvxURLField;
 class XclExpHyperlink : public XclExpRecord
 {
 public:
-    /** Constructs the HLINK record from an URL text field. */
+    /** Constructs the HLINK record from a URL text field. */
     explicit            XclExpHyperlink( const XclExpRoot& rRoot,
                             const SvxURLField& rUrlField, const ScAddress& rScPos );
     virtual             ~XclExpHyperlink() override;
@@ -163,14 +162,13 @@ private:
 
 // Conditional formatting =====================================================
 
-class ScCondFormatEntry;
 class XclExpCFImpl;
 
 /** Represents a CF record that contains one condition of a conditional format. */
 class XclExpCF : public XclExpRecord, protected XclExpRoot
 {
 public:
-    explicit            XclExpCF( const XclExpRoot& rRoot, const ScCondFormatEntry& rFormatEntry, sal_Int32 nPriority );
+    explicit            XclExpCF( const XclExpRoot& rRoot, const ScCondFormatEntry& rFormatEntry, sal_Int32 nPriority, ScAddress aOrigin );
     virtual             ~XclExpCF() override;
 
     virtual void        SaveXml( XclExpXmlStream& rStrm ) override;
@@ -220,8 +218,6 @@ private:
     const Color& mrColor;
 };
 
-class ScConditionalFormat;
-
 /** Represents a CONDFMT record that contains all conditions of a conditional format.
     @descr  Contains the conditions which are stored in CF records. */
 class XclExpCondfmt : public XclExpRecord, protected XclExpRoot
@@ -243,9 +239,8 @@ private:
     virtual void        WriteBody( XclExpStream& rStrm ) override;
 
 private:
-    typedef XclExpRecordList< XclExpRecord > XclExpCFList;
-
-    XclExpCFList        maCFList;       /// List of CF records.
+    XclExpRecordList< XclExpRecord >
+                        maCFList;       /// List of CF records.
     XclRangeList        maXclRanges;    /// Cell ranges for this conditional format.
     OUString            msSeqRef;       /// OOXML Sequence of References
 };

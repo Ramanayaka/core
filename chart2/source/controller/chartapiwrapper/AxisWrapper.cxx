@@ -18,37 +18,38 @@
  */
 
 #include "AxisWrapper.hxx"
-#include "AxisHelper.hxx"
-#include "TitleHelper.hxx"
+#include <AxisHelper.hxx>
+#include <TitleHelper.hxx>
 #include "Chart2ModelContact.hxx"
-#include "macros.hxx"
-#include "WrappedDirectStateProperty.hxx"
+#include <WrappedDirectStateProperty.hxx>
 #include "GridWrapper.hxx"
 #include "TitleWrapper.hxx"
-#include "DisposeHelper.hxx"
+#include <DisposeHelper.hxx>
 #include <unonames.hxx>
 
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/chart/ChartAxisArrangeOrderType.hpp>
 #include <com/sun/star/chart/ChartAxisPosition.hpp>
 #include <com/sun/star/chart/ChartAxisLabelPosition.hpp>
 #include <com/sun/star/chart/ChartAxisMarkPosition.hpp>
+#include <com/sun/star/chart2/XAxis.hpp>
+#include <com/sun/star/chart2/XDiagram.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 
-#include "CharacterProperties.hxx"
-#include "LinePropertiesHelper.hxx"
-#include "UserDefinedProperties.hxx"
+#include <CharacterProperties.hxx>
+#include <LinePropertiesHelper.hxx>
+#include <UserDefinedProperties.hxx>
 #include "WrappedCharacterHeightProperty.hxx"
 #include "WrappedTextRotationProperty.hxx"
 #include "WrappedGapwidthProperty.hxx"
 #include "WrappedScaleProperty.hxx"
-#include "WrappedDefaultProperty.hxx"
 #include "WrappedNumberFormatProperty.hxx"
 #include "WrappedScaleTextProperties.hxx"
 
 #include <algorithm>
-#include <rtl/ustrbuf.hxx>
-#include <rtl/math.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -98,269 +99,240 @@ enum
     PROP_AXIS_GAP_WIDTH,
     PROP_AXIS_DISPLAY_UNITS,
     PROP_AXIS_BUILTINUNIT,
-    PROP_AXIS_TRY_STAGGERING_FIRST
+    PROP_AXIS_TRY_STAGGERING_FIRST,
+    PROP_AXIS_MAJOR_ORIGIN
 };
 
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
     //Properties for scaling:
-    rOutProperties.push_back(
-        Property( "Max",
+    rOutProperties.emplace_back( "Max",
                   PROP_AXIS_MAX,
                   cppu::UnoType<double>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "Min",
+    rOutProperties.emplace_back( "Min",
                   PROP_AXIS_MIN,
                   cppu::UnoType<double>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "StepMain",
+    rOutProperties.emplace_back( "StepMain",
                   PROP_AXIS_STEPMAIN,
                   cppu::UnoType<double>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "StepHelpCount",
+    rOutProperties.emplace_back( "StepHelpCount",
                   PROP_AXIS_STEPHELP_COUNT,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
     //deprecated property use 'StepHelpCount' instead
-    rOutProperties.push_back(
-        Property( "StepHelp",
+    rOutProperties.emplace_back( "StepHelp",
                   PROP_AXIS_STEPHELP,
                   cppu::UnoType<double>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "AutoMax",
+    rOutProperties.emplace_back( "AutoMax",
                   PROP_AXIS_AUTO_MAX,
                   cppu::UnoType<bool>::get(),
                   //#i111967# no PropertyChangeEvent is fired on change so far
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "AutoMin",
+    rOutProperties.emplace_back( "AutoMin",
                   PROP_AXIS_AUTO_MIN,
                   cppu::UnoType<bool>::get(),
                   //#i111967# no PropertyChangeEvent is fired on change so far
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "AutoStepMain",
+    rOutProperties.emplace_back( "AutoStepMain",
                   PROP_AXIS_AUTO_STEPMAIN,
                   cppu::UnoType<bool>::get(),
                   //#i111967# no PropertyChangeEvent is fired on change so far
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "AutoStepHelp",
+    rOutProperties.emplace_back( "AutoStepHelp",
                   PROP_AXIS_AUTO_STEPHELP,
                   cppu::UnoType<bool>::get(),
                   //#i111967# no PropertyChangeEvent is fired on change so far
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "AxisType",
+    rOutProperties.emplace_back( "AxisType",
                   PROP_AXIS_TYPE,
                   cppu::UnoType<sal_Int32>::get(), //type css::chart::ChartAxisType
                   //#i111967# no PropertyChangeEvent is fired on change so far
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "TimeIncrement",
+    rOutProperties.emplace_back( "TimeIncrement",
                   PROP_AXIS_TIME_INCREMENT,
                   cppu::UnoType<css::chart::TimeIncrement>::get(),
                   //#i111967# no PropertyChangeEvent is fired on change so far
-                  beans::PropertyAttribute::MAYBEVOID ));
+                  beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "ExplicitTimeIncrement",
+    rOutProperties.emplace_back( "ExplicitTimeIncrement",
                   PROP_AXIS_EXPLICIT_TIME_INCREMENT,
                   cppu::UnoType<css::chart::TimeIncrement>::get(),
                   beans::PropertyAttribute::READONLY |
-                  beans::PropertyAttribute::MAYBEVOID ));
+                  beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "Logarithmic",
+    rOutProperties.emplace_back( "Logarithmic",
                   PROP_AXIS_LOGARITHMIC,
                   cppu::UnoType<bool>::get(),
                   //#i111967# no PropertyChangeEvent is fired on change so far
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "ReverseDirection",
+    rOutProperties.emplace_back( "ReverseDirection",
                   PROP_AXIS_REVERSEDIRECTION,
                   cppu::UnoType<bool>::get(),
                   //#i111967# no PropertyChangeEvent is fired on change so far
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
     //todo: this property is missing in the API
-    rOutProperties.push_back(
-        Property( "Visible",
+    rOutProperties.emplace_back( "Visible",
                   PROP_AXIS_VISIBLE,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "CrossoverPosition",
+    rOutProperties.emplace_back( "CrossoverPosition",
                   PROP_AXIS_CROSSOVER_POSITION,
                   cppu::UnoType<css::chart::ChartAxisPosition>::get(),
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "CrossoverValue",
+    rOutProperties.emplace_back( "CrossoverValue",
                   PROP_AXIS_CROSSOVER_VALUE,
                   cppu::UnoType<double>::get(),
-                  beans::PropertyAttribute::MAYBEVOID ));
+                  beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "Origin",
+    rOutProperties.emplace_back( "Origin",
                   PROP_AXIS_ORIGIN,
                   cppu::UnoType<double>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "AutoOrigin",
+    rOutProperties.emplace_back( "AutoOrigin",
                   PROP_AXIS_AUTO_ORIGIN,
                   cppu::UnoType<bool>::get(),
                   //#i111967# no PropertyChangeEvent is fired on change so far
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
     //Properties for interval marks:
-    rOutProperties.push_back(
-        Property( "Marks",
+    rOutProperties.emplace_back( "Marks",
                   PROP_AXIS_MARKS,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "HelpMarks",
+    rOutProperties.emplace_back( "HelpMarks",
                   PROP_AXIS_HELPMARKS,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "MarkPosition",
+    rOutProperties.emplace_back( "MarkPosition",
                   PROP_AXIS_MARK_POSITION,
                   cppu::UnoType<css::chart::ChartAxisMarkPosition>::get(),
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
     //Properties for labels:
-    rOutProperties.push_back(
-        Property( "DisplayLabels",
+    rOutProperties.emplace_back( "DisplayLabels",
                   PROP_AXIS_DISPLAY_LABELS,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_NUMFMT,
+    rOutProperties.emplace_back( CHART_UNONAME_NUMFMT,
                   PROP_AXIS_NUMBERFORMAT,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_LINK_TO_SRC_NUMFMT,
+    rOutProperties.emplace_back( CHART_UNONAME_LINK_TO_SRC_NUMFMT,
                   PROP_AXIS_LINK_NUMBERFORMAT_TO_SOURCE,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "LabelPosition",
+    rOutProperties.emplace_back( "LabelPosition",
                   PROP_AXIS_LABEL_POSITION,
                   cppu::UnoType<css::chart::ChartAxisLabelPosition>::get(),
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "TextRotation",
+    rOutProperties.emplace_back( "TextRotation",
                   PROP_AXIS_TEXT_ROTATION,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "ArrangeOrder",
+    rOutProperties.emplace_back( "ArrangeOrder",
                   PROP_AXIS_ARRANGE_ORDER,
                   cppu::UnoType<css::chart::ChartAxisArrangeOrderType>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "TextBreak",
+    rOutProperties.emplace_back( "TextBreak",
                   PROP_AXIS_TEXTBREAK,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "TextCanOverlap",
+    rOutProperties.emplace_back( "TextCanOverlap",
                   PROP_AXIS_CAN_OVERLAP,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "StackedText",
+    rOutProperties.emplace_back( "StackedText",
                   PROP_AXIS_STACKEDTEXT,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
     // Properties related to bar charts:
-    rOutProperties.push_back(
-        Property( "Overlap",
+    rOutProperties.emplace_back( "Overlap",
                   PROP_AXIS_OVERLAP,
                   cppu::UnoType<sal_Int32>::get(),
                   //#i111967# no PropertyChangeEvent is fired on change so far
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "GapWidth",
+    rOutProperties.emplace_back( "GapWidth",
                   PROP_AXIS_GAP_WIDTH,
                   cppu::UnoType<sal_Int32>::get(),
                   //#i111967# no PropertyChangeEvent is fired on change so far
-                  beans::PropertyAttribute::MAYBEDEFAULT ));
+                  beans::PropertyAttribute::MAYBEDEFAULT );
 
     //Properties for display units:
-    rOutProperties.push_back(
-        Property( "DisplayUnits",
+    rOutProperties.emplace_back( "DisplayUnits",
                   PROP_AXIS_DISPLAY_UNITS,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
     //Properties for labels:
-    rOutProperties.push_back(
-        Property( "BuiltInUnit",
+    rOutProperties.emplace_back( "BuiltInUnit",
                   PROP_AXIS_BUILTINUNIT,
                   cppu::UnoType<OUString>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
     // Compatibility option: starting from LibreOffice 5.1 the rotated
     // layout is preferred to staggering for axis labels.
-    rOutProperties.push_back(
-        Property( "TryStaggeringFirst",
+    rOutProperties.emplace_back( "TryStaggeringFirst",
                   PROP_AXIS_TRY_STAGGERING_FIRST,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
+
+    rOutProperties.emplace_back( "MajorOrigin",
+                  PROP_AXIS_MAJOR_ORIGIN,
+                  cppu::UnoType<double>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEVOID );
 }
 
 struct StaticAxisWrapperPropertyArray_Initializer
@@ -394,9 +366,7 @@ struct StaticAxisWrapperPropertyArray : public rtl::StaticAggregate< Sequence< P
 
 } // anonymous namespace
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 AxisWrapper::AxisWrapper(
@@ -491,7 +461,7 @@ Reference< beans::XPropertySet > SAL_CALL AxisWrapper::getMinorGrid()
 // ____ XShape ____
 awt::Point SAL_CALL AxisWrapper::getPosition()
 {
-    awt::Point aResult( m_spChart2ModelContact->GetAxisPosition( this->getAxis() ) );
+    awt::Point aResult( m_spChart2ModelContact->GetAxisPosition( getAxis() ) );
     return aResult;
 }
 
@@ -502,7 +472,7 @@ void SAL_CALL AxisWrapper::setPosition( const awt::Point& /*aPosition*/ )
 
 awt::Size SAL_CALL AxisWrapper::getSize()
 {
-    awt::Size aSize( m_spChart2ModelContact->GetAxisSize( this->getAxis() ) );
+    awt::Size aSize( m_spChart2ModelContact->GetAxisSize( getAxis() ) );
     return aSize;
 }
 
@@ -514,7 +484,7 @@ void SAL_CALL AxisWrapper::setSize( const awt::Size& /*aSize*/ )
 // ____ XShapeDescriptor (base of XShape) ____
 OUString SAL_CALL AxisWrapper::getShapeType()
 {
-    return OUString("com.sun.star.chart.ChartAxis");
+    return "com.sun.star.chart.ChartAxis";
 }
 
 // ____ XNumberFormatsSupplier ____
@@ -581,7 +551,7 @@ void SAL_CALL AxisWrapper::removeEventListener(
 //ReferenceSizePropertyProvider
 void AxisWrapper::updateReferenceSize()
 {
-    Reference< beans::XPropertySet > xProp( this->getAxis(), uno::UNO_QUERY );
+    Reference< beans::XPropertySet > xProp( getAxis(), uno::UNO_QUERY );
     if( xProp.is() )
     {
         if( xProp->getPropertyValue("ReferencePageSize").hasValue() )
@@ -592,7 +562,7 @@ void AxisWrapper::updateReferenceSize()
 Any AxisWrapper::getReferenceSize()
 {
     Any aRet;
-    Reference< beans::XPropertySet > xProp( this->getAxis(), uno::UNO_QUERY );
+    Reference< beans::XPropertySet > xProp( getAxis(), uno::UNO_QUERY );
     if( xProp.is() )
         aRet = xProp->getPropertyValue("ReferencePageSize");
     return aRet;
@@ -621,9 +591,9 @@ Reference< chart2::XAxis > AxisWrapper::getAxis()
                 xProp->setPropertyValue("Show", uno::Any( false ) );
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
     return xAxis;
 }
@@ -631,7 +601,7 @@ Reference< chart2::XAxis > AxisWrapper::getAxis()
 // WrappedPropertySet
 Reference< beans::XPropertySet > AxisWrapper::getInnerPropertySet()
 {
-    return Reference< beans::XPropertySet >( this->getAxis(), uno::UNO_QUERY );
+    return Reference< beans::XPropertySet >( getAxis(), uno::UNO_QUERY );
 }
 
 const Sequence< beans::Property >& AxisWrapper::getPropertySequence()
@@ -639,23 +609,24 @@ const Sequence< beans::Property >& AxisWrapper::getPropertySequence()
     return *StaticAxisWrapperPropertyArray::get();
 }
 
-const std::vector< WrappedProperty* > AxisWrapper::createWrappedProperties()
+std::vector< std::unique_ptr<WrappedProperty> > AxisWrapper::createWrappedProperties()
 {
-    std::vector< ::chart::WrappedProperty* > aWrappedProperties;
+    std::vector< std::unique_ptr<WrappedProperty> > aWrappedProperties;
 
-    aWrappedProperties.push_back( new WrappedTextRotationProperty() );
-    aWrappedProperties.push_back( new WrappedProperty("Marks","MajorTickmarks") );
-    aWrappedProperties.push_back( new WrappedProperty("HelpMarks","MinorTickmarks") );
-    aWrappedProperties.push_back( new WrappedProperty("TextCanOverlap","TextOverlap") );
-    aWrappedProperties.push_back( new WrappedProperty("ArrangeOrder","ArrangeOrder") );
-    aWrappedProperties.push_back( new WrappedProperty("Visible","Show") );
-    aWrappedProperties.push_back( new WrappedDirectStateProperty("DisplayLabels","DisplayLabels") );
-    aWrappedProperties.push_back( new WrappedDirectStateProperty("TryStaggeringFirst","TryStaggeringFirst") );
-    aWrappedProperties.push_back( new WrappedDirectStateProperty("TextBreak","TextBreak") );
-    aWrappedProperties.push_back( new WrappedNumberFormatProperty(m_spChart2ModelContact) );
-    aWrappedProperties.push_back( new WrappedLinkNumberFormatProperty );
-    aWrappedProperties.push_back( new WrappedProperty("StackedText","StackCharacters") );
-    aWrappedProperties.push_back( new WrappedDirectStateProperty("CrossoverPosition","CrossoverPosition") );
+    aWrappedProperties.emplace_back( new WrappedTextRotationProperty() );
+    aWrappedProperties.emplace_back( new WrappedProperty("Marks","MajorTickmarks") );
+    aWrappedProperties.emplace_back( new WrappedProperty("HelpMarks","MinorTickmarks") );
+    aWrappedProperties.emplace_back( new WrappedProperty("TextCanOverlap","TextOverlap") );
+    aWrappedProperties.emplace_back( new WrappedProperty("ArrangeOrder","ArrangeOrder") );
+    aWrappedProperties.emplace_back( new WrappedProperty("Visible","Show") );
+    aWrappedProperties.emplace_back( new WrappedDirectStateProperty("DisplayLabels","DisplayLabels") );
+    aWrappedProperties.emplace_back( new WrappedDirectStateProperty("TryStaggeringFirst","TryStaggeringFirst") );
+    aWrappedProperties.emplace_back( new WrappedDirectStateProperty("TextBreak","TextBreak") );
+    aWrappedProperties.emplace_back( new WrappedNumberFormatProperty(m_spChart2ModelContact) );
+    aWrappedProperties.emplace_back( new WrappedLinkNumberFormatProperty );
+    aWrappedProperties.emplace_back( new WrappedProperty("StackedText","StackCharacters") );
+    aWrappedProperties.emplace_back( new WrappedDirectStateProperty("CrossoverPosition","CrossoverPosition") );
+    aWrappedProperties.emplace_back( new WrappedDirectStateProperty("MajorOrigin","MajorOrigin") );
     {
         WrappedGapwidthProperty* pWrappedGapwidthProperty( new WrappedGapwidthProperty( m_spChart2ModelContact ) );
         WrappedBarOverlapProperty* pWrappedBarOverlapProperty( new WrappedBarOverlapProperty( m_spChart2ModelContact ) );
@@ -667,8 +638,8 @@ const std::vector< WrappedProperty* > AxisWrapper::createWrappedProperties()
             nAxisIndex = 1;
         pWrappedGapwidthProperty->setDimensionAndAxisIndex( nDimensionIndex, nAxisIndex );
         pWrappedBarOverlapProperty->setDimensionAndAxisIndex( nDimensionIndex, nAxisIndex );
-        aWrappedProperties.push_back( pWrappedGapwidthProperty );
-        aWrappedProperties.push_back( pWrappedBarOverlapProperty );
+        aWrappedProperties.emplace_back( pWrappedGapwidthProperty );
+        aWrappedProperties.emplace_back( pWrappedBarOverlapProperty );
     }
 
     WrappedScaleProperty::addWrappedProperties( aWrappedProperties, m_spChart2ModelContact );
@@ -681,7 +652,7 @@ const std::vector< WrappedProperty* > AxisWrapper::createWrappedProperties()
 
 OUString SAL_CALL AxisWrapper::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.Axis");
+    return "com.sun.star.comp.chart.Axis";
 }
 
 sal_Bool SAL_CALL AxisWrapper::supportsService( const OUString& rServiceName )
@@ -698,7 +669,6 @@ css::uno::Sequence< OUString > SAL_CALL AxisWrapper::getSupportedServiceNames()
     };
 }
 
-} //  namespace wrapper
 } //  namespace chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

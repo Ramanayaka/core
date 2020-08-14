@@ -20,11 +20,9 @@
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_SECTIONCOLUMNHANDLER_HXX
 
 #include "LoggedResources.hxx"
-#include <memory>
 #include <vector>
 
-namespace writerfilter {
-namespace dmapper
+namespace writerfilter::dmapper
 {
 struct Column_
 {
@@ -60,7 +58,7 @@ public:
 
 };
 
-}}
+}
 
 #endif
 

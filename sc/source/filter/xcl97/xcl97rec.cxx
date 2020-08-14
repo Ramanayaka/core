@@ -17,41 +17,31 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/svdpool.hxx>
 #include <svx/sdtaitm.hxx>
 #include <svx/svdotext.hxx>
 #include <editeng/editobj.hxx>
 #include <svx/svdoole2.hxx>
 #include <sot/storage.hxx>
 #include <svl/itemset.hxx>
-#include <svx/svdpage.hxx>
 #include <svx/svdocapt.hxx>
 #include <svx/unoapi.hxx>
 #include <editeng/writingmodeitem.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/settings.hxx>
 #include <tools/urlobj.hxx>
 
 #include <rtl/math.hxx>
 #include <rtl/uuid.h>
-#include <svl/zformat.hxx>
-#include "formulacell.hxx"
-#include "drwlayer.hxx"
+#include <sal/log.hxx>
+#include <drwlayer.hxx>
 
-#include "xcl97rec.hxx"
-#include "xcl97esc.hxx"
-#include "editutil.hxx"
-#include "xecontent.hxx"
-#include "xeescher.hxx"
-#include "xestyle.hxx"
-#include "xelink.hxx"
-
-#include "scitems.hxx"
+#include <root.hxx>
+#include <xcl97rec.hxx>
+#include <xcl97esc.hxx>
+#include <xeescher.hxx>
+#include <xehelper.hxx>
+#include <xelink.hxx>
+#include <xlcontent.hxx>
 
 #include <unotools/fltrcfg.hxx>
-#include <editeng/brushitem.hxx>
-#include <editeng/boxitem.hxx>
-#include <editeng/frmdiritem.hxx>
 #include <editeng/adjustitem.hxx>
 #include <editeng/eeitem.hxx>
 #include <filter/msfilter/msoleexp.hxx>
@@ -60,21 +50,19 @@
 
 #include <stdio.h>
 
-#include "document.hxx"
-#include "conditio.hxx"
-#include "rangelst.hxx"
-#include "stlpool.hxx"
-#include "viewopti.hxx"
-#include "scextopt.hxx"
-#include "docoptio.hxx"
-#include "patattr.hxx"
-#include "tabprotection.hxx"
+#include <document.hxx>
+#include <rangelst.hxx>
+#include <docoptio.hxx>
+#include <tabprotection.hxx>
 
 #include <com/sun/star/embed/Aspects.hpp>
+#include <com/sun/star/chart/XChartDocument.hpp>
 #include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
 #include <com/sun/star/chart2/XChartTypeContainer.hpp>
+#include <com/sun/star/chart2/XChartDocument.hpp>
 #include <oox/token/tokens.hxx>
 #include <oox/token/namespaces.hxx>
+#include <oox/token/relationship.hxx>
 #include <oox/export/shapes.hxx>
 #include <oox/export/utils.hxx>
 #include <oox/export/vmlexport.hxx>
@@ -96,10 +84,9 @@ sal_Int32 XclExpObjList::mnVmlCount;
 XclExpObjList::XclExpObjList( const XclExpRoot& rRoot, XclEscherEx& rEscherEx ) :
     XclExpRoot( rRoot ),
     mnScTab( rRoot.GetCurrScTab() ),
-    mrEscherEx( rEscherEx ),
-    pSolverContainer( nullptr )
+    mrEscherEx( rEscherEx )
 {
-    pMsodrawingPerSheet = new XclExpMsoDrawing( rEscherEx );
+    pMsodrawingPerSheet.reset( new XclExpMsoDrawing( rEscherEx ) );
     // open the DGCONTAINER and the patriarch group shape
     mrEscherEx.OpenContainer( ESCHER_DgContainer );
     tools::Rectangle aRect( 0, 0, 0, 0 );
@@ -109,12 +96,12 @@ XclExpObjList::XclExpObjList( const XclExpRoot& rRoot, XclEscherEx& rEscherEx ) 
 
 XclExpObjList::~XclExpObjList()
 {
-    std::for_each(maObjs.begin(), maObjs.end(), std::default_delete<XclObj>());
-    delete pMsodrawingPerSheet;
-    delete pSolverContainer;
+    maObjs.clear();
+    pMsodrawingPerSheet.reset();
+    pSolverContainer.reset();
 }
 
-sal_uInt16 XclExpObjList::Add( XclObj* pObj )
+sal_uInt16 XclExpObjList::Add( std::unique_ptr<XclObj> pObj )
 {
     OSL_ENSURE( maObjs.size() < 0xFFFF, "XclExpObjList::Add: too much for Xcl" );
 
@@ -122,30 +109,31 @@ sal_uInt16 XclExpObjList::Add( XclObj* pObj )
 
     if ( nSize < 0xFFFF )
     {
-        maObjs.push_back(pObj);
-        ++nSize;
-        pObj->SetId( nSize );
+        pObj->SetId( nSize+1 );
         pObj->SetTab( mnScTab );
+        maObjs.push_back(std::move(pObj));
+        ++nSize;
     }
     else
     {
-        delete pObj;
         nSize = 0;
     }
 
     return nSize;
 }
 
-void XclExpObjList::pop_back ()
+std::unique_ptr<XclObj> XclExpObjList::pop_back ()
 {
+    auto ret = std::move(maObjs.back());
     maObjs.pop_back();
+    return ret;
 }
 
 void XclExpObjList::EndSheet()
 {
     // Is there still something in the stream? -> The solver container
     if( mrEscherEx.HasPendingDffData() )
-        pSolverContainer = new XclExpMsoDrawing( mrEscherEx );
+        pSolverContainer.reset( new XclExpMsoDrawing( mrEscherEx ) );
 
     // close the DGCONTAINER created by XclExpObjList ctor MSODRAWING
     mrEscherEx.CloseContainer();
@@ -156,15 +144,25 @@ void XclExpObjList::Save( XclExpStream& rStrm )
     //! Escher must be written, even if there are no objects
     pMsodrawingPerSheet->Save( rStrm );
 
-    std::vector<XclObj*>::iterator pIter;
-    for ( pIter = maObjs.begin(); pIter != maObjs.end(); ++pIter )
-        (*pIter)->Save( rStrm );
+    for ( const auto& rxObj : maObjs )
+        rxObj->Save( rStrm );
 
     if( pSolverContainer )
         pSolverContainer->Save( rStrm );
 }
 
 namespace {
+
+bool IsFormControlObject( const XclObj *rObj )
+{
+    switch( rObj->GetObjType() )
+    {
+        case EXC_OBJTYPE_CHECKBOX:
+            return true;
+        default:
+            return false;
+    }
+}
 
 bool IsVmlObject( const XclObj *rObj )
 {
@@ -179,14 +177,8 @@ bool IsVmlObject( const XclObj *rObj )
 
 sal_Int32 GetVmlObjectCount( XclExpObjList& rList )
 {
-    sal_Int32 nNumVml = 0;
-
-    std::vector<XclObj*>::iterator pIter;
-    for ( pIter = rList.begin(); pIter != rList.end(); ++pIter )
-        if( IsVmlObject( *pIter ) )
-            ++nNumVml;
-
-    return nNumVml;
+    return static_cast<sal_Int32>(std::count_if(rList.begin(), rList.end(),
+        [](const std::unique_ptr<XclObj>& rxObj) { return IsVmlObject( rxObj.get() ); }));
 }
 
 bool IsValidObject( const XclObj& rObj )
@@ -210,18 +202,18 @@ bool IsValidObject( const XclObj& rObj )
         if (!xCooSysContainer.is())
             return false;
 
-        uno::Sequence<uno::Reference<chart2::XCoordinateSystem> > xCooSysSeq = xCooSysContainer->getCoordinateSystems();
-        if (!xCooSysSeq.getLength())
+        const uno::Sequence<uno::Reference<chart2::XCoordinateSystem> > xCooSysSeq = xCooSysContainer->getCoordinateSystems();
+        if (!xCooSysSeq.hasElements())
             return false;
 
-        for (sal_Int32 nCooSys = 0; nCooSys < xCooSysSeq.getLength(); ++nCooSys)
+        for (const auto& rCooSys : xCooSysSeq)
         {
-            Reference<chart2::XChartTypeContainer> xChartTypeCont(xCooSysSeq[nCooSys], uno::UNO_QUERY);
+            Reference<chart2::XChartTypeContainer> xChartTypeCont(rCooSys, uno::UNO_QUERY);
             if (!xChartTypeCont.is())
                 return false;
 
             uno::Sequence<uno::Reference<chart2::XChartType> > xChartTypeSeq = xChartTypeCont->getChartTypes();
-            if (!xChartTypeSeq.getLength())
+            if (!xChartTypeSeq.hasElements())
                 // No chart type.  Not good.
                 return false;
         }
@@ -230,49 +222,100 @@ bool IsValidObject( const XclObj& rObj )
     return true;
 }
 
-void SaveDrawingMLObjects( XclExpObjList& rList, XclExpXmlStream& rStrm, sal_Int32& nDrawingMLCount )
+void SaveDrawingMLObjects( XclExpObjList& rList, XclExpXmlStream& rStrm )
 {
     std::vector<XclObj*> aList;
     aList.reserve(rList.size());
-    std::vector<XclObj*>::iterator it = rList.begin(), itEnd = rList.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rxObj : rList)
     {
-        if (IsVmlObject(*it) || !IsValidObject(**it))
+        if (IsVmlObject(rxObj.get()) || !IsValidObject(*rxObj))
             continue;
 
-        aList.push_back(*it);
+        aList.push_back(rxObj.get());
     }
 
     if (aList.empty())
         return;
 
-    sal_Int32 nDrawing = ++nDrawingMLCount;
+    sal_Int32 nDrawing = XclExpObjList::getNewDrawingUniqueId();
     OUString sId;
     sax_fastparser::FSHelperPtr pDrawing = rStrm.CreateOutputStream(
             XclXmlUtils::GetStreamName( "xl/", "drawings/drawing", nDrawing ),
             XclXmlUtils::GetStreamName( "../", "drawings/drawing", nDrawing ),
             rStrm.GetCurrentStream()->getOutputStream(),
             "application/vnd.openxmlformats-officedocument.drawing+xml",
-            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing",
+            OUStringToOString(oox::getRelationship(Relationship::DRAWING), RTL_TEXTENCODING_UTF8).getStr(),
             &sId );
 
-    rStrm.GetCurrentStream()->singleElement( XML_drawing,
-            FSNS( XML_r, XML_id ),  XclXmlUtils::ToOString( sId ).getStr(),
-            FSEND );
+    rStrm.GetCurrentStream()->singleElement(XML_drawing, FSNS(XML_r, XML_id), sId.toUtf8());
 
     rStrm.PushStream( pDrawing );
     pDrawing->startElement( FSNS( XML_xdr, XML_wsDr ),
-            FSNS( XML_xmlns, XML_xdr ), XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(dmlSpreadDr))).getStr(),
-            FSNS( XML_xmlns, XML_a ),   XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(dml))).getStr(),
-            FSNS( XML_xmlns, XML_r ),   XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(officeRel))).getStr(),
-            FSEND );
+            FSNS(XML_xmlns, XML_xdr), rStrm.getNamespaceURL(OOX_NS(dmlSpreadDr)).toUtf8(),
+            FSNS(XML_xmlns, XML_a),   rStrm.getNamespaceURL(OOX_NS(dml)).toUtf8(),
+            FSNS(XML_xmlns, XML_r),   rStrm.getNamespaceURL(OOX_NS(officeRel)).toUtf8() );
 
-    for (it = aList.begin(), itEnd = aList.end(); it != itEnd; ++it)
-        (*it)->SaveXml(rStrm);
+    sal_Int32 nShapeId = 1000; // unique id of the shape inside one worksheet (not the whole document)
+    for (const auto& rpObj : aList)
+    {
+        // validate shapeId
+        if ( IsFormControlObject( rpObj ) )
+        {
+            XclExpTbxControlObj* pXclExpTbxControlObj = dynamic_cast<XclExpTbxControlObj*>(rpObj);
+            if (pXclExpTbxControlObj)
+            {
+                pXclExpTbxControlObj->setShapeId(++nShapeId);
+            }
+        }
+
+        rpObj->SaveXml(rStrm);
+    }
 
     pDrawing->endElement( FSNS( XML_xdr, XML_wsDr ) );
 
     rStrm.PopStream();
+}
+
+void SaveFormControlObjects(XclExpObjList& rList, XclExpXmlStream& rStrm)
+{
+    bool hasControls = false;
+    for (const auto& rxObj : rList)
+    {
+        if (IsFormControlObject(rxObj.get()))
+        {
+            hasControls = true;
+            break;
+        }
+    }
+
+    if (!hasControls)
+    {
+        return;
+    }
+
+    sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
+
+    rWorksheet->startElement(FSNS(XML_mc, XML_AlternateContent),
+        FSNS(XML_xmlns, XML_mc), rStrm.getNamespaceURL(OOX_NS(mce)).toUtf8());
+    rWorksheet->startElement(FSNS(XML_mc, XML_Choice), XML_Requires, "x14");
+    rWorksheet->startElement(XML_controls);
+
+    for (const auto& rxObj : rList)
+    {
+        if (IsFormControlObject(rxObj.get()))
+        {
+            XclExpTbxControlObj* pXclExpTbxControlObj = dynamic_cast<XclExpTbxControlObj*>(rxObj.get());
+            if (pXclExpTbxControlObj)
+            {
+                const OUString aIdFormControlPr = pXclExpTbxControlObj->SaveControlPropertiesXml(rStrm);
+                pXclExpTbxControlObj->SaveSheetXml(rStrm, aIdFormControlPr);
+            }
+        }
+    }
+
+    rWorksheet->endElement(XML_controls);
+    rWorksheet->endElement(FSNS(XML_mc, XML_Choice));
+    rWorksheet->endElement(FSNS(XML_mc, XML_AlternateContent));
 }
 
 void SaveVmlObjects( XclExpObjList& rList, XclExpXmlStream& rStrm, sal_Int32& nVmlCount )
@@ -287,27 +330,23 @@ void SaveVmlObjects( XclExpObjList& rList, XclExpXmlStream& rStrm, sal_Int32& nV
             XclXmlUtils::GetStreamName( "../", "drawings/vmlDrawing", nDrawing ),
             rStrm.GetCurrentStream()->getOutputStream(),
             "application/vnd.openxmlformats-officedocument.vmlDrawing",
-            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing",
+            OUStringToOString(oox::getRelationship(Relationship::VMLDRAWING), RTL_TEXTENCODING_UTF8).getStr(),
             &sId );
 
-    rStrm.GetCurrentStream()->singleElement( XML_legacyDrawing,
-            FSNS( XML_r, XML_id ),  XclXmlUtils::ToOString( sId ).getStr(),
-            FSEND );
+    rStrm.GetCurrentStream()->singleElement(XML_legacyDrawing, FSNS(XML_r, XML_id), sId.toUtf8());
 
     rStrm.PushStream( pVmlDrawing );
     pVmlDrawing->startElement( XML_xml,
-            FSNS( XML_xmlns, XML_v ),   XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(vml))).getStr(),
-            FSNS( XML_xmlns, XML_o ),   XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(vmlOffice))).getStr(),
-            FSNS( XML_xmlns, XML_x ),   XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(vmlExcel))).getStr(),
-            FSNS( XML_xmlns, XML_w10 ), XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(vmlWord))).getStr(),
-            FSEND );
+            FSNS(XML_xmlns, XML_v),   rStrm.getNamespaceURL(OOX_NS(vml)).toUtf8(),
+            FSNS(XML_xmlns, XML_o),   rStrm.getNamespaceURL(OOX_NS(vmlOffice)).toUtf8(),
+            FSNS(XML_xmlns, XML_x),   rStrm.getNamespaceURL(OOX_NS(vmlExcel)).toUtf8(),
+            FSNS(XML_xmlns, XML_w10), rStrm.getNamespaceURL(OOX_NS(vmlWord)).toUtf8() );
 
-    std::vector<XclObj*>::iterator pIter;
-    for ( pIter = rList.begin(); pIter != rList.end(); ++pIter )
+    for ( const auto& rxObj : rList )
     {
-        if( !IsVmlObject( *pIter ) )
+        if( !IsVmlObject( rxObj.get() ) )
             continue;
-        (*pIter)->SaveXml( rStrm );
+        rxObj->SaveXml( rStrm );
     }
 
     pVmlDrawing->endElement( XML_xml );
@@ -325,8 +364,9 @@ void XclExpObjList::SaveXml( XclExpXmlStream& rStrm )
     if( maObjs.empty())
         return;
 
-    SaveDrawingMLObjects( *this, rStrm, mnDrawingMLCount );
+    SaveDrawingMLObjects( *this, rStrm );
     SaveVmlObjects( *this, rStrm, mnVmlCount );
+    SaveFormControlObjects( *this, rStrm );
 }
 
 void XclExpObjList::ResetCounters()
@@ -340,8 +380,6 @@ void XclExpObjList::ResetCounters()
 XclObj::XclObj( XclExpObjectManager& rObjMgr, sal_uInt16 nObjType, bool bOwnEscher ) :
     XclExpRecord( EXC_ID_OBJ, 26 ),
     mrEscherEx( rObjMgr.GetEscherEx() ),
-    pClientTextbox( nullptr ),
-    pTxo( nullptr ),
     mnObjType( nObjType ),
     nObjId(0),
     nGrbit( 0x6011 ),   // AutoLine, AutoFill, Printable, Locked
@@ -360,11 +398,11 @@ XclObj::~XclObj()
 {
     if ( !bFirstOnSheet )
         delete pMsodrawing;
-    delete pClientTextbox;
-    delete pTxo;
+    pClientTextbox.reset();
+    pTxo.reset();
 }
 
-void XclObj::ImplWriteAnchor( const XclExpRoot& /*rRoot*/, const SdrObject* pSdrObj, const tools::Rectangle* pChildAnchor )
+void XclObj::ImplWriteAnchor( const SdrObject* pSdrObj, const tools::Rectangle* pChildAnchor )
 {
     if( pChildAnchor )
     {
@@ -412,10 +450,10 @@ void XclObj::SetText( const XclExpRoot& rRoot, const SdrTextObj& rObj )
     if ( !pClientTextbox )
     {
         mrEscherEx.UpdateDffFragmentEnd();
-        pClientTextbox = new XclExpMsoDrawing( mrEscherEx );
+        pClientTextbox.reset( new XclExpMsoDrawing( mrEscherEx ) );
         mrEscherEx.AddAtom( 0, ESCHER_ClientTextbox );    // TXO record
         mrEscherEx.UpdateDffFragmentEnd();
-        pTxo = new XclTxo( rRoot, rObj );
+        pTxo.reset( new XclTxo( rRoot, rObj ) );
     }
 }
 
@@ -461,24 +499,24 @@ void XclObj::Save( XclExpStream& rStrm )
 
 void XclObj::WriteSubRecs( XclExpStream& rStrm )
 {
-    if( mnObjType == EXC_OBJTYPE_NOTE )
-    {
-        // FtNts subrecord
-        AddRecSize( 26 );
-        // ft, cb
-        rStrm << EXC_ID_OBJNTS << sal_uInt16(0x0016);
-        sal_uInt8 aGUID[16];
-        rtl_createUuid( aGUID, nullptr, false );
-        // guid
-        rStrm.SetSliceSize( 16 );
-        for( int i = 0; i < 16; i++ )
-            rStrm << aGUID[i];
-        rStrm.SetSliceSize( 0 );
-        // fSharedNote
-        rStrm << sal_uInt16(0);
-        // unused
-        rStrm.WriteZeroBytes( 4 );
-    }
+    if( mnObjType != EXC_OBJTYPE_NOTE )
+        return;
+
+    // FtNts subrecord
+    AddRecSize( 26 );
+    // ft, cb
+    rStrm << EXC_ID_OBJNTS << sal_uInt16(0x0016);
+    sal_uInt8 aGUID[16];
+    rtl_createUuid( aGUID, nullptr, false );
+    // guid
+    rStrm.SetSliceSize( 16 );
+    for( int i = 0; i < 16; i++ )
+        rStrm << aGUID[i];
+    rStrm.SetSliceSize( 0 );
+    // fSharedNote
+    rStrm << sal_uInt16(0);
+    // unused
+    rStrm.WriteZeroBytes( 4 );
 }
 
 void XclObj::SaveTextRecs( XclExpStream& rStrm )
@@ -491,19 +529,35 @@ void XclObj::SaveTextRecs( XclExpStream& rStrm )
         pTxo->Save( rStrm );
 }
 
-  // --- class XclObjComment ------------------------------------------
+// --- class XclObjComment ------------------------------------------
 
-XclObjComment::XclObjComment( XclExpObjectManager& rObjMgr, const tools::Rectangle& rRect, const EditTextObject& rEditObj, SdrCaptionObj* pCaption, bool bVisible, const ScAddress& rAddress, tools::Rectangle &rFrom, tools::Rectangle &rTo ) :
+// tdf#118662 static helper to allow single function access as friend in SdrCaptionObj
+void setSuppressGetBitmapFromXclObjComment(SdrCaptionObj* pSdrCaptionObj, bool bValue)
+{
+    if(nullptr != pSdrCaptionObj)
+    {
+        pSdrCaptionObj->setSuppressGetBitmap(bValue);
+    }
+}
+
+XclObjComment::XclObjComment( XclExpObjectManager& rObjMgr, const tools::Rectangle& rRect, const EditTextObject& rEditObj, SdrCaptionObj* pCaption, bool bVisible, const ScAddress& rAddress, const tools::Rectangle &rFrom, const tools::Rectangle &rTo ) :
     XclObj( rObjMgr, EXC_OBJTYPE_NOTE, true )
             , maScPos( rAddress )
-            , mpCaption( pCaption->Clone() )
+            , mpCaption( pCaption )
             , mbVisible( bVisible )
             , maFrom ( rFrom )
             , maTo ( rTo )
 {
+    // tdf#118662 due to no longer cloning the SdrCaptionObj an old 'hack' using the
+    // fact that no Graphics gets created when a SdrObject is not inserted in a SdrPage
+    // does not work anymore. In SvxShape::GetBitmap that info was used, and here the
+    // SdrCaptionObj was cloned for the only reason to have one not added to a SdrPage.
+    // To emulate old behaviour, use a boolean flag at the SdrCaptionObj.
+    setSuppressGetBitmapFromXclObjComment(mpCaption, true);
+
     ProcessEscherObj( rObjMgr.GetRoot(), rRect, pCaption, bVisible);
     // TXO
-    pTxo = new XclTxo( rObjMgr.GetRoot(), rEditObj, pCaption );
+    pTxo .reset(new XclTxo( rObjMgr.GetRoot(), rEditObj, pCaption ));
 }
 
 static void lcl_FillProps( EscherPropertyContainer& rPropOpt, SdrObject* pCaption, bool bVisible )
@@ -523,22 +577,10 @@ static void lcl_FillProps( EscherPropertyContainer& rPropOpt, SdrObject* pCaptio
             if( !rPropOpt.GetOpt( ESCHER_Prop_FitTextToShape, nValue ) )
                 rPropOpt.AddOpt( ESCHER_Prop_FitTextToShape, 0x00080008 );      // bool field
 
-            if( rPropOpt.GetOpt( ESCHER_Prop_fillColor, nValue ) )
-            {
-                // If the Colour is the same as the 'ToolTip' System colour then
-                // use the default rather than the explicit colour value. This will
-                // be incorrect where user has chosen to use this colour explicity.
-                Color aColor( (sal_uInt8)nValue, (sal_uInt8)( nValue >> 8 ), (sal_uInt8)( nValue >> 16 ) );
-                const StyleSettings& rSett = Application::GetSettings().GetStyleSettings();
-                if( aColor == rSett.GetHelpColor().GetColor() )
-                {
-                    rPropOpt.AddOpt( ESCHER_Prop_fillColor, 0x08000050 );
-                    rPropOpt.AddOpt( ESCHER_Prop_fillBackColor, 0x08000050 );
-                }
-            }
-            else
-                rPropOpt.AddOpt( ESCHER_Prop_fillColor, 0x08000050 );
-
+            // Maybe the colour is the same as the 'ToolTip' System colour, but the tooltip
+            // colour shouldn't have influence on the fill colour of the exported shape
+            if( !rPropOpt.GetOpt( ESCHER_Prop_fillColor, nValue ) )
+                 rPropOpt.AddOpt( ESCHER_Prop_fillColor, 0x08000050 );
             if( !rPropOpt.GetOpt( ESCHER_Prop_fillBackColor, nValue ) )
                 rPropOpt.AddOpt( ESCHER_Prop_fillBackColor, 0x08000050 );
             if( !rPropOpt.GetOpt( ESCHER_Prop_fNoFillHitTest, nValue ) )
@@ -563,7 +605,7 @@ void XclObjComment::ProcessEscherObj( const XclExpRoot& rRoot, const tools::Rect
 
     nGrbit = 0;     // all off: AutoLine, AutoFill, Printable, Locked
     mrEscherEx.OpenContainer( ESCHER_SpContainer );
-    mrEscherEx.AddShape( ESCHER_ShpInst_TextBox, SHAPEFLAG_HAVEANCHOR | SHAPEFLAG_HAVESPT );
+    mrEscherEx.AddShape( ESCHER_ShpInst_TextBox, ShapeFlag::HaveAnchor | ShapeFlag::HaveShapeProperty );
     aPropOpt.Commit( mrEscherEx.GetStream() );
 
     XclExpDffNoteAnchor( rRoot, rRect ).WriteDffData( mrEscherEx );
@@ -573,7 +615,7 @@ void XclObjComment::ProcessEscherObj( const XclExpRoot& rRoot, const tools::Rect
 
     //! Be sure to construct the MSODRAWING ClientTextbox record _after_ the
     //! base OBJ's MSODRAWING record Escher data is completed.
-    pClientTextbox = new XclExpMsoDrawing( mrEscherEx );
+    pClientTextbox.reset( new XclExpMsoDrawing( mrEscherEx ) );
     mrEscherEx.AddAtom( 0, ESCHER_ClientTextbox );    // TXO record
     mrEscherEx.UpdateDffFragmentEnd();
     mrEscherEx.CloseContainer();   // ESCHER_SpContainer
@@ -581,6 +623,8 @@ void XclObjComment::ProcessEscherObj( const XclExpRoot& rRoot, const tools::Rect
 
 XclObjComment::~XclObjComment()
 {
+    // tdf#118662 reset flag
+    setSuppressGetBitmapFromXclObjComment(mpCaption, false);
 }
 
 void XclObjComment::Save( XclExpStream& rStrm )
@@ -588,6 +632,8 @@ void XclObjComment::Save( XclExpStream& rStrm )
     // content of this record
     XclObj::Save( rStrm );
 }
+
+namespace {
 
 class VmlCommentExporter : public VMLExport
 {
@@ -598,7 +644,7 @@ class VmlCommentExporter : public VMLExport
     tools::Rectangle           maTo;
 
 public:
-                        VmlCommentExporter ( const sax_fastparser::FSHelperPtr& p, const ScAddress& aScPos, SdrCaptionObj* pCaption, bool bVisible, tools::Rectangle &aFrom, tools::Rectangle &aTo );
+                        VmlCommentExporter ( const sax_fastparser::FSHelperPtr& p, const ScAddress& aScPos, SdrCaptionObj* pCaption, bool bVisible, const tools::Rectangle &aFrom, const tools::Rectangle &aTo );
 protected:
     virtual void        Commit( EscherPropertyContainer& rProps, const tools::Rectangle& rRect ) override;
     using VMLExport::StartShape;
@@ -607,8 +653,10 @@ protected:
     virtual void        EndShape( sal_Int32 nShapeElement ) override;
 };
 
+}
+
 VmlCommentExporter::VmlCommentExporter( const sax_fastparser::FSHelperPtr& p, const ScAddress& aScPos, SdrCaptionObj* pCaption,
-                                        bool bVisible, tools::Rectangle &aFrom, tools::Rectangle &aTo )
+                                        bool bVisible, const tools::Rectangle &aFrom, const tools::Rectangle &aTo )
     : VMLExport( p )
     , maScPos( aScPos )
     , mpCaption( pCaption )
@@ -641,11 +689,42 @@ void VmlCommentExporter::Commit( EscherPropertyContainer& rProps, const tools::R
 
 sal_Int32 VmlCommentExporter::StartShape()
 {
-    AddShapeAttribute( XML_type, OString( "#_x0000_t202") );
+    AddShapeAttribute( XML_type, "#_x0000_t202" );
 
     sal_Int32 nId = VMLExport::StartShape();
 
     return nId;
+}
+
+static const char* lcl_GetHorizAlignFromItemSetChar(const SfxItemSet& rItemSet)
+{
+    switch (rItemSet.Get(EE_PARA_JUST).GetAdjust())
+    {
+        case SvxAdjust::Center:
+            return "Center";
+        case SvxAdjust::Right:
+            return "Right";
+        case SvxAdjust::Block:
+            return "Justify";
+        default:
+            return "Left";
+    }
+}
+
+static const char* lcl_GetVertAlignFromItemSetChar( const SfxItemSet& rItemSet )
+{
+    switch( rItemSet.Get( SDRATTR_TEXT_VERTADJUST ).GetValue() )
+    {
+        case SDRTEXTVERTADJUST_CENTER:
+            return "Center";
+        case SDRTEXTVERTADJUST_BOTTOM:
+            return "Bottom";
+        case SDRTEXTVERTADJUST_BLOCK:
+            return "Justify";
+        case SDRTEXTVERTADJUST_TOP:
+        default:
+            return "Top";
+    }
 }
 
 void VmlCommentExporter::EndShape( sal_Int32 nShapeElement )
@@ -656,17 +735,21 @@ void VmlCommentExporter::EndShape( sal_Int32 nShapeElement )
                   maFrom.Left(), maFrom.Top(), maFrom.Right(), maFrom.Bottom(),
                   maTo.Left(), maTo.Top(), maTo.Right(), maTo.Bottom() );
 
-    pVmlDrawing->startElement( FSNS( XML_x, XML_ClientData ),
-            XML_ObjectType, "Note",
-            FSEND );
-    pVmlDrawing->singleElement( FSNS( XML_x, XML_MoveWithCells ),
-            FSEND );
-    pVmlDrawing->singleElement( FSNS( XML_x, XML_SizeWithCells ),
-            FSEND );
+    // Getting comment text alignments
+    const char* pVertAlign = lcl_GetVertAlignFromItemSetChar(mpCaption->GetMergedItemSet());
+    const char* pHorizAlign = lcl_GetHorizAlignFromItemSetChar(mpCaption->GetMergedItemSet());
+
+    pVmlDrawing->startElement(FSNS(XML_x, XML_ClientData), XML_ObjectType, "Note");
+    pVmlDrawing->singleElement(FSNS(XML_x, XML_MoveWithCells));
+    pVmlDrawing->singleElement(FSNS(XML_x, XML_SizeWithCells));
     XclXmlUtils::WriteElement( pVmlDrawing, FSNS( XML_x, XML_Anchor ), pAnchor );
     XclXmlUtils::WriteElement( pVmlDrawing, FSNS( XML_x, XML_AutoFill ), "False" );
+    XclXmlUtils::WriteElement( pVmlDrawing, FSNS( XML_x, XML_TextVAlign ), pVertAlign );
+    XclXmlUtils::WriteElement( pVmlDrawing, FSNS( XML_x, XML_TextHAlign ), pHorizAlign );
     XclXmlUtils::WriteElement( pVmlDrawing, FSNS( XML_x, XML_Row ), maScPos.Row() );
-    XclXmlUtils::WriteElement( pVmlDrawing, FSNS( XML_x, XML_Column ), sal_Int32( maScPos.Col() ) );
+    XclXmlUtils::WriteElement( pVmlDrawing, FSNS(XML_x, XML_Column), sal_Int32(maScPos.Col()));
+    if(mbVisible)
+        pVmlDrawing->singleElement(FSNS(XML_x, XML_Visible));
     pVmlDrawing->endElement( FSNS( XML_x, XML_ClientData ) );
 
     VMLExport::EndShape( nShapeElement );
@@ -674,7 +757,7 @@ void VmlCommentExporter::EndShape( sal_Int32 nShapeElement )
 
 void XclObjComment::SaveXml( XclExpXmlStream& rStrm )
 {
-    VmlCommentExporter aCommentExporter( rStrm.GetCurrentStream(), maScPos, mpCaption.get(), mbVisible, maFrom, maTo );
+    VmlCommentExporter aCommentExporter( rStrm.GetCurrentStream(), maScPos, mpCaption, mbVisible, maFrom, maTo );
     aCommentExporter.AddSdrObject( *mpCaption );
 }
 
@@ -690,7 +773,7 @@ XclObjDropDown::XclObjDropDown( XclExpObjectManager& rObjMgr, const ScAddress& r
     SetAutoLine( false );
     nGrbit |= 0x0100;   // undocumented
     mrEscherEx.OpenContainer( ESCHER_SpContainer );
-    mrEscherEx.AddShape( ESCHER_ShpInst_HostControl, SHAPEFLAG_HAVEANCHOR | SHAPEFLAG_HAVESPT );
+    mrEscherEx.AddShape( ESCHER_ShpInst_HostControl, ShapeFlag::HaveAnchor | ShapeFlag::HaveShapeProperty );
     EscherPropertyContainer aPropOpt;
     aPropOpt.AddOpt( ESCHER_Prop_LockAgainstGrouping, 0x01040104 ); // bool field
     aPropOpt.AddOpt( ESCHER_Prop_FitTextToShape, 0x00080008 );      // bool field
@@ -725,7 +808,7 @@ void XclObjDropDown::WriteSubRecs( XclExpStream& rStrm )
     ::insert_value( nDropDownFlags, EXC_OBJ_DROPDOWN_SIMPLE, 0, 2 );
     ::set_flag( nDropDownFlags, EXC_OBJ_DROPDOWN_FILTERED, bIsFiltered );
     rStrm.StartRecord( EXC_ID_OBJLBSDATA, 16 );
-    rStrm   << (sal_uInt32)0 << (sal_uInt16)0 << (sal_uInt16)0x0301 << (sal_uInt16)0
+    rStrm   << sal_uInt32(0) << sal_uInt16(0) << sal_uInt16(0x0301) << sal_uInt16(0)
             << nDropDownFlags << sal_uInt16( 20 ) << sal_uInt16( 130 );
     rStrm.EndRecord();
 }
@@ -736,7 +819,7 @@ static sal_uInt8 lcl_GetHorAlignFromItemSet( const SfxItemSet& rItemSet )
 {
     sal_uInt8 nHorAlign = EXC_OBJ_HOR_LEFT;
 
-    switch( static_cast< const SvxAdjustItem& >( rItemSet.Get( EE_PARA_JUST ) ).GetAdjust() )
+    switch( rItemSet.Get( EE_PARA_JUST ).GetAdjust() )
     {
         case SvxAdjust::Left:   nHorAlign = EXC_OBJ_HOR_LEFT;      break;
         case SvxAdjust::Center: nHorAlign = EXC_OBJ_HOR_CENTER;    break;
@@ -751,18 +834,19 @@ static sal_uInt8 lcl_GetVerAlignFromItemSet( const SfxItemSet& rItemSet )
 {
     sal_uInt8 nVerAlign = EXC_OBJ_VER_TOP;
 
-    switch( static_cast< const SdrTextVertAdjustItem& >( rItemSet.Get( SDRATTR_TEXT_VERTADJUST ) ).GetValue() )
+    switch( rItemSet.Get( SDRATTR_TEXT_VERTADJUST ).GetValue() )
     {
         case SDRTEXTVERTADJUST_TOP:     nVerAlign = EXC_OBJ_VER_TOP;       break;
         case SDRTEXTVERTADJUST_CENTER:  nVerAlign = EXC_OBJ_VER_CENTER;    break;
         case SDRTEXTVERTADJUST_BOTTOM:  nVerAlign = EXC_OBJ_VER_BOTTOM;    break;
         case SDRTEXTVERTADJUST_BLOCK:   nVerAlign = EXC_OBJ_VER_JUSTIFY;   break;
+        default:;
     }
     return nVerAlign;
 }
 
 XclTxo::XclTxo( const OUString& rString, sal_uInt16 nFontIx ) :
-    mpString( new XclExpString( rString ) ),
+    mpString( std::make_shared<XclExpString>( rString ) ),
     mnRotation( EXC_OBJ_ORIENT_NONE ),
     mnHorAlign( EXC_OBJ_HOR_LEFT ),
     mnVerAlign( EXC_OBJ_VER_TOP )
@@ -806,40 +890,40 @@ XclTxo::XclTxo( const XclExpRoot& rRoot, const EditTextObject& rEditObj, SdrObje
     mnHorAlign( EXC_OBJ_HOR_LEFT ),
     mnVerAlign( EXC_OBJ_VER_TOP )
 {
-    if(pCaption)
+    if(!pCaption)
+        return;
+
+    // Excel has one alignment per NoteObject while Calc supports
+    // one alignment per paragraph - use the first paragraph
+    // alignment (if set) as our overall alignment.
+    OUString aParaText( rEditObj.GetText( 0 ) );
+    if( !aParaText.isEmpty() )
     {
-        // Excel has one alignment per NoteObject while Calc supports
-        // one alignment per paragraph - use the first paragraph
-        // alignment (if set) as our overall alignment.
-        OUString aParaText( rEditObj.GetText( 0 ) );
-        if( !aParaText.isEmpty() )
+        const SfxItemSet& aSet( rEditObj.GetParaAttribs( 0));
+        const SfxPoolItem* pItem = nullptr;
+        if( aSet.GetItemState( EE_PARA_JUST, true, &pItem ) == SfxItemState::SET )
         {
-            const SfxItemSet& aSet( rEditObj.GetParaAttribs( 0));
-            const SfxPoolItem* pItem = nullptr;
-            if( aSet.GetItemState( EE_PARA_JUST, true, &pItem ) == SfxItemState::SET )
-            {
-                SvxAdjust eEEAlign = static_cast< const SvxAdjustItem& >( *pItem ).GetAdjust();
-                pCaption->SetMergedItem( SvxAdjustItem( eEEAlign, EE_PARA_JUST ) );
-            }
+            SvxAdjust eEEAlign = static_cast< const SvxAdjustItem& >( *pItem ).GetAdjust();
+            pCaption->SetMergedItem( SvxAdjustItem( eEEAlign, EE_PARA_JUST ) );
         }
-        const SfxItemSet& rItemSet = pCaption->GetMergedItemSet();
-
-        // horizontal alignment
-        SetHorAlign( lcl_GetHorAlignFromItemSet( rItemSet ) );
-
-        // vertical alignment
-        SetVerAlign( lcl_GetVerAlignFromItemSet( rItemSet ) );
-
-        // orientation alignment
-        const SvxWritingModeItem& rItem = static_cast< const SvxWritingModeItem& >( rItemSet.Get( SDRATTR_TEXTDIRECTION ) );
-        if( rItem.GetValue() == css::text::WritingMode_TB_RL )
-            mnRotation = EXC_OBJ_ORIENT_90CW;
     }
+    const SfxItemSet& rItemSet = pCaption->GetMergedItemSet();
+
+    // horizontal alignment
+    SetHorAlign( lcl_GetHorAlignFromItemSet( rItemSet ) );
+
+    // vertical alignment
+    SetVerAlign( lcl_GetVerAlignFromItemSet( rItemSet ) );
+
+    // orientation alignment
+    const SvxWritingModeItem& rItem = rItemSet.Get( SDRATTR_TEXTDIRECTION );
+    if( rItem.GetValue() == css::text::WritingMode_TB_RL )
+        mnRotation = EXC_OBJ_ORIENT_90CW;
 }
 
 void XclTxo::SaveCont( XclExpStream& rStrm )
 {
-    OSL_ENSURE( mpString.get(), "XclTxo::SaveCont - missing string" );
+    OSL_ENSURE( mpString, "XclTxo::SaveCont - missing string" );
 
     // #i96858# do not save existing string formatting if text is empty
     sal_uInt16 nRunLen = mpString->IsEmpty() ? 0 : (8 * mpString->GetFormatsCount());
@@ -859,21 +943,21 @@ void XclTxo::Save( XclExpStream& rStrm )
     ExcRecord::Save( rStrm );
 
     // CONTINUE records are only written if there is some text
-    if( !mpString->IsEmpty() )
-    {
-        // CONTINUE for character array
-        rStrm.StartRecord( EXC_ID_CONT, mpString->GetBufferSize() + 1 );
-        rStrm << static_cast< sal_uInt8 >( mpString->GetFlagField() & EXC_STRF_16BIT ); // only Unicode flag
-        mpString->WriteBuffer( rStrm );
-        rStrm.EndRecord();
+    if( mpString->IsEmpty() )
+        return;
 
-        // CONTINUE for formatting runs
-        rStrm.StartRecord( EXC_ID_CONT, 8 * mpString->GetFormatsCount() );
-        const XclFormatRunVec& rFormats = mpString->GetFormats();
-        for( XclFormatRunVec::const_iterator aIt = rFormats.begin(), aEnd = rFormats.end(); aIt != aEnd; ++aIt )
-            rStrm << aIt->mnChar << aIt->mnFontIdx << sal_uInt32( 0 );
-        rStrm.EndRecord();
-    }
+    // CONTINUE for character array
+    rStrm.StartRecord( EXC_ID_CONT, mpString->GetBufferSize() + 1 );
+    rStrm << static_cast< sal_uInt8 >( mpString->GetFlagField() & EXC_STRF_16BIT ); // only Unicode flag
+    mpString->WriteBuffer( rStrm );
+    rStrm.EndRecord();
+
+    // CONTINUE for formatting runs
+    rStrm.StartRecord( EXC_ID_CONT, 8 * mpString->GetFormatsCount() );
+    const XclFormatRunVec& rFormats = mpString->GetFormats();
+    for( const auto& rFormat : rFormats )
+        rStrm << rFormat.mnChar << rFormat.mnFontIdx << sal_uInt32( 0 );
+    rStrm.EndRecord();
 }
 
 sal_uInt16 XclTxo::GetNum() const
@@ -903,65 +987,65 @@ void XclObjOle::WriteSubRecs( XclExpStream& rStrm )
 {
     // write only as embedded, not linked
     OUString        aStorageName( "MBD" );
-    sal_Char        aBuf[ sizeof(sal_uInt32) * 2 + 1 ];
+    char        aBuf[ sizeof(sal_uInt32) * 2 + 1 ];
     // FIXME Eeek! Is this just a way to get a unique id?
-    sal_uInt32          nPictureId = sal_uInt32(sal_uIntPtr(this) >> 2);
+    sal_uInt32          nPictureId = sal_uInt32(reinterpret_cast<sal_uIntPtr>(this) >> 2);
     sprintf( aBuf, "%08X", static_cast< unsigned int >( nPictureId ) );
     aStorageName += OUString::createFromAscii(aBuf);
     tools::SvRef<SotStorage>    xOleStg = pRootStorage->OpenSotStorage( aStorageName );
-    if( xOleStg.is() )
-    {
-        uno::Reference < embed::XEmbeddedObject > xObj( static_cast<const SdrOle2Obj&>(rOleObj).GetObjRef() );
-        if ( xObj.is() )
-        {
-            // set version to "old" version, because it must be
-            // saved in MS notation.
-            sal_uInt32                  nFl = 0;
-            const SvtFilterOptions& rFltOpts = SvtFilterOptions::Get();
-            if( rFltOpts.IsMath2MathType() )
-                nFl |= OLE_STARMATH_2_MATHTYPE;
+    if( !xOleStg.is() )
+        return;
 
-            if( rFltOpts.IsWriter2WinWord() )
-                nFl |= OLE_STARWRITER_2_WINWORD;
+    uno::Reference < embed::XEmbeddedObject > xObj( static_cast<const SdrOle2Obj&>(rOleObj).GetObjRef() );
+    if ( !xObj.is() )
+        return;
 
-            if( rFltOpts.IsCalc2Excel() )
-                nFl |= OLE_STARCALC_2_EXCEL;
+    // set version to "old" version, because it must be
+    // saved in MS notation.
+    sal_uInt32                  nFl = 0;
+    const SvtFilterOptions& rFltOpts = SvtFilterOptions::Get();
+    if( rFltOpts.IsMath2MathType() )
+        nFl |= OLE_STARMATH_2_MATHTYPE;
 
-            if( rFltOpts.IsImpress2PowerPoint() )
-                nFl |= OLE_STARIMPRESS_2_POWERPOINT;
+    if( rFltOpts.IsWriter2WinWord() )
+        nFl |= OLE_STARWRITER_2_WINWORD;
 
-            SvxMSExportOLEObjects   aOLEExpFilt( nFl );
-            aOLEExpFilt.ExportOLEObject( xObj, *xOleStg );
+    if( rFltOpts.IsCalc2Excel() )
+        nFl |= OLE_STARCALC_2_EXCEL;
 
-            // OBJCF subrecord, undocumented as usual
-            rStrm.StartRecord( EXC_ID_OBJCF, 2 );
-            rStrm << sal_uInt16(0x0002);
-            rStrm.EndRecord();
+    if( rFltOpts.IsImpress2PowerPoint() )
+        nFl |= OLE_STARIMPRESS_2_POWERPOINT;
 
-            // OBJFLAGS subrecord, undocumented as usual
-            rStrm.StartRecord( EXC_ID_OBJFLAGS, 2 );
-            sal_uInt16 nFlags = EXC_OBJ_PIC_MANUALSIZE;
-            ::set_flag( nFlags, EXC_OBJ_PIC_SYMBOL, static_cast<const SdrOle2Obj&>(rOleObj).GetAspect() == embed::Aspects::MSOLE_ICON );
-            rStrm << nFlags;
-            rStrm.EndRecord();
+    SvxMSExportOLEObjects   aOLEExpFilt( nFl );
+    aOLEExpFilt.ExportOLEObject( xObj, *xOleStg );
 
-            // OBJPICTFMLA subrecord, undocumented as usual
-            XclExpString aName( xOleStg->GetUserName() );
-            sal_uInt16 nPadLen = (sal_uInt16)(aName.GetSize() & 0x01);
-            sal_uInt16 nFmlaLen = static_cast< sal_uInt16 >( 12 + aName.GetSize() + nPadLen );
-            sal_uInt16 nSubRecLen = nFmlaLen + 6;
+    // OBJCF subrecord, undocumented as usual
+    rStrm.StartRecord( EXC_ID_OBJCF, 2 );
+    rStrm << sal_uInt16(0x0002);
+    rStrm.EndRecord();
 
-            rStrm.StartRecord( EXC_ID_OBJPICTFMLA, nSubRecLen );
-            rStrm   << nFmlaLen
-                    << sal_uInt16( 5 ) << sal_uInt32( 0 ) << sal_uInt8( 2 )
-                    << sal_uInt32( 0 ) << sal_uInt8( 3 )
-                    << aName;
-            if( nPadLen )
-                rStrm << sal_uInt8( 0 );       // pad byte
-            rStrm << nPictureId;
-            rStrm.EndRecord();
-        }
-    }
+    // OBJFLAGS subrecord, undocumented as usual
+    rStrm.StartRecord( EXC_ID_OBJFLAGS, 2 );
+    sal_uInt16 nFlags = EXC_OBJ_PIC_MANUALSIZE;
+    ::set_flag( nFlags, EXC_OBJ_PIC_SYMBOL, static_cast<const SdrOle2Obj&>(rOleObj).GetAspect() == embed::Aspects::MSOLE_ICON );
+    rStrm << nFlags;
+    rStrm.EndRecord();
+
+    // OBJPICTFMLA subrecord, undocumented as usual
+    XclExpString aName( xOleStg->GetUserName() );
+    sal_uInt16 nPadLen = static_cast<sal_uInt16>(aName.GetSize() & 0x01);
+    sal_uInt16 nFmlaLen = static_cast< sal_uInt16 >( 12 + aName.GetSize() + nPadLen );
+    sal_uInt16 nSubRecLen = nFmlaLen + 6;
+
+    rStrm.StartRecord( EXC_ID_OBJPICTFMLA, nSubRecLen );
+    rStrm   << nFmlaLen
+            << sal_uInt16( 5 ) << sal_uInt32( 0 ) << sal_uInt8( 2 )
+            << sal_uInt32( 0 ) << sal_uInt8( 3 )
+            << aName;
+    if( nPadLen )
+        rStrm << sal_uInt8( 0 );       // pad byte
+    rStrm << nPictureId;
+    rStrm.EndRecord();
 }
 
 void XclObjOle::Save( XclExpStream& rStrm )
@@ -1007,7 +1091,6 @@ ExcBof8_Base::ExcBof8_Base()
     nVers           = 0x0600;
     nRupBuild       = 0x0dbb;
     nRupYear        = 0x07cc;
-    nLowestBiffVer  = 0x00000006;   // Biff8
 }
 void XclObjAny::WriteFromTo( XclExpXmlStream& rStrm, const Reference< XShape >& rShape, SCTAB nTab )
 {
@@ -1021,22 +1104,20 @@ void XclObjAny::WriteFromTo( XclExpXmlStream& rStrm, const Reference< XShape >& 
             aRange.aEnd.Col()-1, aRange.aEnd.Row()-1,
             nTab );
 
-    pDrawing->startElement( FSNS( XML_xdr, XML_from ),
-            FSEND );
-    XclXmlUtils::WriteElement( pDrawing, FSNS( XML_xdr, XML_col ), (sal_Int32) aRange.aStart.Col() );
+    pDrawing->startElement(FSNS(XML_xdr, XML_from));
+    XclXmlUtils::WriteElement( pDrawing, FSNS( XML_xdr, XML_col ), static_cast<sal_Int32>(aRange.aStart.Col()) );
     XclXmlUtils::WriteElement( pDrawing, FSNS( XML_xdr, XML_colOff ),
             oox::drawingml::convertHmmToEmu( aLocation.Left() - aRangeRect.Left() ) );
-    XclXmlUtils::WriteElement( pDrawing, FSNS( XML_xdr, XML_row ), (sal_Int32) aRange.aStart.Row() );
+    XclXmlUtils::WriteElement( pDrawing, FSNS( XML_xdr, XML_row ), static_cast<sal_Int32>(aRange.aStart.Row()) );
     XclXmlUtils::WriteElement( pDrawing, FSNS( XML_xdr, XML_rowOff ),
             oox::drawingml::convertHmmToEmu( aLocation.Top() - aRangeRect.Top() ) );
     pDrawing->endElement( FSNS( XML_xdr, XML_from ) );
 
-    pDrawing->startElement( FSNS( XML_xdr, XML_to ),
-            FSEND );
-    XclXmlUtils::WriteElement( pDrawing, FSNS( XML_xdr, XML_col ), (sal_Int32) aRange.aEnd.Col() );
+    pDrawing->startElement(FSNS(XML_xdr, XML_to));
+    XclXmlUtils::WriteElement( pDrawing, FSNS( XML_xdr, XML_col ), static_cast<sal_Int32>(aRange.aEnd.Col()) );
     XclXmlUtils::WriteElement( pDrawing, FSNS( XML_xdr, XML_colOff ),
             oox::drawingml::convertHmmToEmu( aLocation.Right() - aRangeRect.Right() ) );
-    XclXmlUtils::WriteElement( pDrawing, FSNS( XML_xdr, XML_row ), (sal_Int32) aRange.aEnd.Row() );
+    XclXmlUtils::WriteElement( pDrawing, FSNS( XML_xdr, XML_row ), static_cast<sal_Int32>(aRange.aEnd.Row()) );
     XclXmlUtils::WriteElement( pDrawing, FSNS( XML_xdr, XML_rowOff ),
             oox::drawingml::convertHmmToEmu( aLocation.Bottom() - aRangeRect.Bottom() ) );
     pDrawing->endElement( FSNS( XML_xdr, XML_to ) );
@@ -1048,15 +1129,19 @@ void XclObjAny::WriteFromTo( XclExpXmlStream& rStrm, const XclObjAny& rObj )
 }
 
 static const char*
-GetEditAs( XclObjAny& rObj )
+GetEditAs( const XclObjAny& rObj )
 {
     if( const SdrObject* pShape = EscherEx::GetSdrObject( rObj.GetShape() ) )
     {
-        // OOXTODO: returning "twoCell"
         switch( ScDrawLayer::GetAnchorType( *pShape ) )
         {
-            case SCA_CELL:  return "oneCell";
-            default:        break;
+            case SCA_CELL:
+                return "oneCell";
+            case SCA_CELL_RESIZE:
+                return "twoCell";
+            default:
+            case SCA_PAGE:
+                break; // absolute
         }
     }
     return "absolute";
@@ -1064,7 +1149,7 @@ GetEditAs( XclObjAny& rObj )
 
 namespace {
 
-ScRefFlags parseRange(const OUString& rString, ScRange& rRange, ScDocument* pDoc)
+ScRefFlags parseRange(const OUString& rString, ScRange& rRange, const ScDocument* pDoc)
 {
     // start with the address convention set in the document
     formula::FormulaGrammar::AddressConvention eConv = pDoc->GetAddressConvention();
@@ -1086,7 +1171,7 @@ ScRefFlags parseRange(const OUString& rString, ScRange& rRange, ScDocument* pDoc
     return rRange.Parse(rString, pDoc, formula::FormulaGrammar::CONV_XL_R1C1);
 }
 
-ScRefFlags parseAddress(const OUString& rString, ScAddress& rAddress, ScDocument* pDoc)
+ScRefFlags parseAddress(const OUString& rString, ScAddress& rAddress, const ScDocument* pDoc)
 {
     // start with the address convention set in the document
     formula::FormulaGrammar::AddressConvention eConv = pDoc->GetAddressConvention();
@@ -1108,7 +1193,7 @@ ScRefFlags parseAddress(const OUString& rString, ScAddress& rAddress, ScDocument
     return rAddress.Parse(rString, pDoc, formula::FormulaGrammar::CONV_XL_R1C1);
 }
 
-bool transformURL(const OUString& rOldURL, OUString& rNewURL, ScDocument* pDoc)
+void transformURL(const OUString& rOldURL, OUString& rNewURL, const ScDocument& rDoc)
 {
     if (rOldURL.startsWith("#"))
     {
@@ -1119,54 +1204,45 @@ bool transformURL(const OUString& rOldURL, OUString& rNewURL, ScDocument* pDoc)
 
         ScRange aRange;
         ScAddress aAddress;
-        ScRefFlags nResult = parseRange(aAddressString, aRange, pDoc);
+        ScRefFlags nResult = parseRange(aAddressString, aRange, &rDoc);
         if ( nResult & ScRefFlags::VALID )
         {
-            OUString aString = aRange.Format(nResult, pDoc, formula::FormulaGrammar::CONV_XL_OOX);
+            OUString aString = aRange.Format(rDoc, nResult, formula::FormulaGrammar::CONV_XL_OOX);
             rNewURL = "#" + aString;
-            return true;
+            return;
         }
         else
         {
-            nResult = parseAddress(aAddressString, aAddress, pDoc);
+            nResult = parseAddress(aAddressString, aAddress, &rDoc);
             if( nResult & ScRefFlags::VALID )
             {
-                OUString aString = aAddress.Format(nResult, pDoc, formula::FormulaGrammar::CONV_XL_OOX);
+                OUString aString = aAddress.Format(nResult, &rDoc, formula::FormulaGrammar::CONV_XL_OOX);
                 rNewURL = "#" + aString;
-                return true;
+                return;
             }
         }
     }
 
     rNewURL = rOldURL;
-    return false;
 }
 
-class ScURLTransformer : public oox::drawingml::URLTransformer
+}
+
+ScURLTransformer::ScURLTransformer(ScDocument& rDoc)
+    : mrDoc(rDoc)
 {
-public:
-    explicit ScURLTransformer(ScDocument& rDoc)
-        : mrDoc(rDoc)
-    {
-    }
+}
 
-    virtual OUString getTransformedString(const OUString& rURL) const override
-    {
-        OUString aNewURL;
-        transformURL(rURL, aNewURL, &mrDoc);
-        return aNewURL;
-    }
+OUString ScURLTransformer::getTransformedString(const OUString& rURL) const
+{
+    OUString aNewURL;
+    transformURL(rURL, aNewURL, mrDoc);
+    return aNewURL;
+}
 
-    virtual bool isExternalURL(const OUString& rURL) const override
-    {
-        OUString aNewURL;
-        return transformURL(rURL, aNewURL, &mrDoc);
-    }
-
-private:
-    ScDocument& mrDoc;
-};
-
+bool ScURLTransformer::isExternalURL(const OUString& rURL) const
+{
+    return !rURL.startsWith("#");
 }
 
 void XclObjAny::SaveXml( XclExpXmlStream& rStrm )
@@ -1179,12 +1255,11 @@ void XclObjAny::SaveXml( XclExpXmlStream& rStrm )
     sax_fastparser::FSHelperPtr pDrawing = rStrm.GetCurrentStream();
 
     ShapeExport aDML(XML_xdr, pDrawing, nullptr, &rStrm, drawingml::DOCUMENT_XLSX);
-    std::shared_ptr<oox::drawingml::URLTransformer> pURLTransformer(new ScURLTransformer(*mpDoc));
+    auto pURLTransformer = std::make_shared<ScURLTransformer>(*mpDoc);
     aDML.SetURLTranslator(pURLTransformer);
 
     pDrawing->startElement( FSNS( XML_xdr, XML_twoCellAnchor ), // OOXTODO: oneCellAnchor, absoluteAnchor
-            XML_editAs, GetEditAs( *this ),
-            FSEND );
+            XML_editAs, GetEditAs( *this ) );
     Reference< XPropertySet > xPropSet( mxShape, UNO_QUERY );
     if (xPropSet.is())
     {
@@ -1192,10 +1267,10 @@ void XclObjAny::SaveXml( XclExpXmlStream& rStrm )
         aDML.WriteShape( mxShape );
     }
 
-    pDrawing->singleElement( FSNS( XML_xdr, XML_clientData),
+    pDrawing->singleElement( FSNS( XML_xdr, XML_clientData)
             // OOXTODO: XML_fLocksWithSheet
             // OOXTODO: XML_fPrintsWithSheet
-            FSEND );
+    );
     pDrawing->endElement( FSNS( XML_xdr, XML_twoCellAnchor ) );
 }
 
@@ -1203,7 +1278,8 @@ void ExcBof8_Base::SaveCont( XclExpStream& rStrm )
 {
     rStrm.DisableEncryption();
     rStrm   << nVers << nDocType << nRupBuild << nRupYear
-            << sal_uInt32(0)/*nFileHistory*/ << nLowestBiffVer;
+            << sal_uInt32(0)/*nFileHistory*/
+            << sal_uInt32(0x06) /*nLowestBiffVer = Biff8*/;
 }
 
 sal_uInt16 ExcBof8_Base::GetNum() const
@@ -1232,7 +1308,7 @@ ExcBofW8::ExcBofW8()
 
 // --- class ExcBundlesheet8 -----------------------------------------
 
-ExcBundlesheet8::ExcBundlesheet8( RootData& rRootData, SCTAB _nTab ) :
+ExcBundlesheet8::ExcBundlesheet8( const RootData& rRootData, SCTAB _nTab ) :
     ExcBundlesheetBase( rRootData, static_cast<sal_uInt16>(_nTab) ),
     sUnicodeName( rRootData.pER->GetTabInfo().GetScTabName( _nTab ) )
 {
@@ -1267,15 +1343,14 @@ void ExcBundlesheet8::SaveXml( XclExpXmlStream& rStrm )
             XclXmlUtils::GetStreamName( nullptr, "worksheets/sheet", nTab+1),
             rStrm.GetCurrentStream()->getOutputStream(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml",
-            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet",
+            OUStringToOString(oox::getRelationship(Relationship::WORKSHEET), RTL_TEXTENCODING_UTF8).getStr(),
             &sId );
 
     rStrm.GetCurrentStream()->singleElement( XML_sheet,
-            XML_name,               XclXmlUtils::ToOString( sUnicodeName ).getStr(),
-            XML_sheetId,            OString::number( ( nTab+1 ) ).getStr(),
+            XML_name,               sUnicodeName.toUtf8(),
+            XML_sheetId,            OString::number( ( nTab+1 ) ),
             XML_state,              nGrbit == 0x0000 ? "visible" : "hidden",
-            FSNS( XML_r, XML_id ),  XclXmlUtils::ToOString( sId ).getStr(),
-            FSEND );
+            FSNS( XML_r, XML_id ),  sId.toUtf8() );
 }
 
 // --- class XclObproj -----------------------------------------------
@@ -1316,7 +1391,7 @@ std::size_t XclCodename::GetLen() const
 ExcEScenarioCell::ExcEScenarioCell( sal_uInt16 nC, sal_uInt16 nR, const OUString& rTxt ) :
         nCol( nC ),
         nRow( nR ),
-        sText( rTxt, EXC_STR_DEFAULT, 255 )
+        sText( rTxt, XclStrFlags::NONE, 255 )
 {
 }
 
@@ -1335,10 +1410,9 @@ void ExcEScenarioCell::SaveXml( XclExpXmlStream& rStrm ) const
     rStrm.GetCurrentStream()->singleElement( XML_inputCells,
             // OOXTODO: XML_deleted,
             // OOXTODO: XML_numFmtId,
-            XML_r,      XclXmlUtils::ToOString( ScAddress( nCol, nRow, 0 ) ).getStr(),
+            XML_r,      XclXmlUtils::ToOString( rStrm.GetRoot().GetDoc(), ScAddress( nCol, nRow, 0 ) ),
             // OOXTODO: XML_undone,
-            XML_val,    XclXmlUtils::ToOString( sText ).getStr(),
-            FSEND );
+            XML_val,    XclXmlUtils::ToOString( sText ) );
 }
 
 ExcEScenario::ExcEScenario( const XclExpRoot& rRoot, SCTAB nTab )
@@ -1352,17 +1426,17 @@ ExcEScenario::ExcEScenario( const XclExpRoot& rRoot, SCTAB nTab )
     ScDocument& rDoc = rRoot.GetDoc();
     rDoc.GetName(nTab, aTmp);
     sTmpName = aTmp;
-    sName.Assign( sTmpName, EXC_STR_8BITLENGTH );
+    sName.Assign( sTmpName, XclStrFlags::EightBitLength );
     nRecLen = 8 + sName.GetBufferSize();
 
     rDoc.GetScenarioData( nTab, aTmp, aDummyCol, nFlags );
     sTmpComm = aTmp;
-    sComment.Assign( sTmpComm, EXC_STR_DEFAULT, 255 );
+    sComment.Assign( sTmpComm, XclStrFlags::NONE, 255 );
     if( sComment.Len() )
         nRecLen += sComment.GetSize();
     bProtected = (nFlags & ScScenarioFlags::Protected) != ScScenarioFlags::NONE;
 
-    sUserName.Assign( rRoot.GetUserName(), EXC_STR_DEFAULT, 255 );
+    sUserName.Assign( rRoot.GetUserName(), XclStrFlags::NONE, 255 );
     nRecLen += sUserName.GetSize();
 
     const ScRangeList* pRList = rDoc.GetScenarioRanges( nTab );
@@ -1377,9 +1451,9 @@ ExcEScenario::ExcEScenario( const XclExpRoot& rRoot, SCTAB nTab )
 
     for( size_t nRange = 0; (nRange < pRList->size()) && bContLoop; nRange++ )
     {
-        const ScRange* pRange = (*pRList)[nRange];
-        for( nRow = pRange->aStart.Row(); (nRow <= pRange->aEnd.Row()) && bContLoop; nRow++ )
-            for( nCol = pRange->aStart.Col(); (nCol <= pRange->aEnd.Col()) && bContLoop; nCol++ )
+        const ScRange & rRange = (*pRList)[nRange];
+        for( nRow = rRange.aStart.Row(); (nRow <= rRange.aEnd.Row()) && bContLoop; nRow++ )
+            for( nCol = rRange.aStart.Col(); (nCol <= rRange.aEnd.Col()) && bContLoop; nCol++ )
             {
                 if( rDoc.HasValueData( nCol, nRow, nTab ) )
                 {
@@ -1387,7 +1461,7 @@ ExcEScenario::ExcEScenario( const XclExpRoot& rRoot, SCTAB nTab )
                     sText = ::rtl::math::doubleToUString( fVal,
                             rtl_math_StringFormat_Automatic,
                             rtl_math_DecimalPlaces_Max,
-                            ScGlobal::pLocaleData->getNumDecimalSep()[0],
+                            ScGlobal::getLocaleDataPtr()->getNumDecimalSep()[0],
                             true );
                 }
                 else
@@ -1396,10 +1470,6 @@ ExcEScenario::ExcEScenario( const XclExpRoot& rRoot, SCTAB nTab )
                         static_cast<sal_uInt16>(nRow), sText );
             }
     }
-}
-
-ExcEScenario::~ExcEScenario()
-{
 }
 
 bool ExcEScenario::Append( sal_uInt16 nCol, sal_uInt16 nRow, const OUString& rTxt )
@@ -1419,10 +1489,10 @@ void ExcEScenario::SaveCont( XclExpStream& rStrm )
 
     rStrm   << count                            // number of cells
             << sal_uInt8(bProtected)            // fProtection
-            << (sal_uInt8) 0                    // fHidden
-            << (sal_uInt8) sName.Len()          // length of scen name
-            << (sal_uInt8) sComment.Len()       // length of comment
-            << (sal_uInt8) sUserName.Len();     // length of user name
+            << sal_uInt8(0)                    // fHidden
+            << static_cast<sal_uInt8>(sName.Len())          // length of scen name
+            << static_cast<sal_uInt8>(sComment.Len())       // length of comment
+            << static_cast<sal_uInt8>(sUserName.Len());     // length of user name
     sName.WriteFlagField( rStrm );
     sName.WriteBuffer( rStrm );
 
@@ -1431,11 +1501,10 @@ void ExcEScenario::SaveCont( XclExpStream& rStrm )
     if( sComment.Len() )
         rStrm << sComment;
 
-    std::vector<ExcEScenarioCell>::iterator pIter;
-    for( pIter = aCells.begin(); pIter != aCells.end(); ++pIter )
-        pIter->WriteAddress( rStrm );           // pos of cell
-    for( pIter = aCells.begin(); pIter != aCells.end(); ++pIter )
-        pIter->WriteText( rStrm );              // string content
+    for( const auto& rCell : aCells )
+        rCell.WriteAddress( rStrm );           // pos of cell
+    for( const auto& rCell : aCells )
+        rCell.WriteText( rStrm );              // string content
     rStrm.SetSliceSize( 2 );
     rStrm.WriteZeroBytes( 2 * count );  // date format
 }
@@ -1455,16 +1524,14 @@ void ExcEScenario::SaveXml( XclExpXmlStream& rStrm )
     sax_fastparser::FSHelperPtr& rWorkbook = rStrm.GetCurrentStream();
     rWorkbook->startElement( XML_scenario,
             XML_name,       XclXmlUtils::ToOString( sName ).getStr(),
-            XML_locked,     XclXmlUtils::ToPsz( bProtected ),
+            XML_locked,     ToPsz( bProtected ),
             // OOXTODO: XML_hidden,
             XML_count,      OString::number(  aCells.size() ).getStr(),
             XML_user,       XESTRING_TO_PSZ( sUserName ),
-            XML_comment,    XESTRING_TO_PSZ( sComment ),
-            FSEND );
+            XML_comment,    XESTRING_TO_PSZ( sComment ) );
 
-    std::vector<ExcEScenarioCell>::iterator pIter;
-    for( pIter = aCells.begin(); pIter != aCells.end(); ++pIter )
-        pIter->SaveXml( rStrm );
+    for( const auto& rCell : aCells )
+        rCell.SaveXml( rStrm );
 
     rWorkbook->endElement( XML_scenario );
 }
@@ -1495,10 +1562,10 @@ ExcEScenarioManager::~ExcEScenarioManager()
 
 void ExcEScenarioManager::SaveCont( XclExpStream& rStrm )
 {
-    rStrm   << (sal_uInt16) aScenes.size()  // number of scenarios
+    rStrm   << static_cast<sal_uInt16>(aScenes.size())  // number of scenarios
             << nActive                      // active scen
             << nActive                      // last displayed
-            << (sal_uInt16) 0;              // reference areas
+            << sal_uInt16(0);              // reference areas
 }
 
 void ExcEScenarioManager::Save( XclExpStream& rStrm )
@@ -1517,10 +1584,10 @@ void ExcEScenarioManager::SaveXml( XclExpXmlStream& rStrm )
 
     sax_fastparser::FSHelperPtr& rWorkbook = rStrm.GetCurrentStream();
     rWorkbook->startElement( XML_scenarios,
-            XML_current,    OString::number( nActive ).getStr(),
-            XML_show,       OString::number( nActive ).getStr(),
-            // OOXTODO: XML_sqref,
-            FSEND );
+            XML_current,    OString::number( nActive ),
+            XML_show,       OString::number( nActive )
+            // OOXTODO: XML_sqref
+    );
 
     for( ExcEScenario& rScenario : aScenes )
         rScenario.SaveXml( rStrm );
@@ -1538,11 +1605,15 @@ std::size_t ExcEScenarioManager::GetLen() const
     return 8;
 }
 
+namespace {
+
 struct XclExpTabProtectOption
 {
     ScTableProtection::Option   eOption;
     sal_uInt16                  nMask;
 };
+
+}
 
 XclExpSheetProtectOptions::XclExpSheetProtectOptions( const XclExpRoot& rRoot, SCTAB nTab ) :
     XclExpRecord( 0x0867, 23 )
@@ -1664,9 +1735,7 @@ std::size_t XclCalccount::GetLen() const
 
 void XclCalccount::SaveXml( XclExpXmlStream& rStrm )
 {
-    rStrm.WriteAttributes(
-            XML_iterateCount, OString::number( nCount ).getStr(),
-            FSEND );
+    rStrm.WriteAttributes(XML_iterateCount, OUString::number(nCount));
 }
 
 void XclIteration::SaveCont( XclExpStream& rStrm )
@@ -1691,9 +1760,7 @@ std::size_t XclIteration::GetLen() const
 
 void XclIteration::SaveXml( XclExpXmlStream& rStrm )
 {
-    rStrm.WriteAttributes(
-            XML_iterate, XclXmlUtils::ToPsz( nIter == 1 ),
-            FSEND );
+    rStrm.WriteAttributes(XML_iterate, ToPsz(nIter == 1));
 }
 
 void XclDelta::SaveCont( XclExpStream& rStrm )
@@ -1718,9 +1785,7 @@ std::size_t XclDelta::GetLen() const
 
 void XclDelta::SaveXml( XclExpXmlStream& rStrm )
 {
-    rStrm.WriteAttributes(
-            XML_iterateDelta, OString::number( fDelta ).getStr(),
-            FSEND );
+    rStrm.WriteAttributes(XML_iterateDelta, OUString::number(fDelta));
 }
 
 XclExpFileEncryption::XclExpFileEncryption( const XclExpRoot& rRoot ) :
@@ -1747,7 +1812,7 @@ void XclExpFileEncryption::WriteBody( XclExpStream& rStrm )
     sal_uInt8 pnDocId[16];
     sal_uInt8 pnSalt[16];
     sal_uInt8 pnSaltHash[16];
-    XclExpEncrypterRef xEnc( new XclExpBiff8Encrypter(mrRoot) );
+    XclExpEncrypterRef xEnc = std::make_shared<XclExpBiff8Encrypter>(mrRoot);
     xEnc->GetDocId(pnDocId);
     xEnc->GetSalt(pnSalt);
     xEnc->GetSaltDigest(pnSaltHash);
@@ -1818,7 +1883,7 @@ XclExpFileSharing::XclExpFileSharing( const XclExpRoot& rRoot, sal_uInt16 nPassw
     mbRecommendReadOnly( bRecommendReadOnly )
 {
     if( rRoot.GetBiff() <= EXC_BIFF5 )
-        maUserName.AssignByte( rRoot.GetUserName(), rRoot.GetTextEncoding(), EXC_STR_8BITLENGTH );
+        maUserName.AssignByte( rRoot.GetUserName(), rRoot.GetTextEncoding(), XclStrFlags::EightBitLength );
     else
         maUserName.Assign( rRoot.GetUserName() );
 }
@@ -1862,7 +1927,7 @@ void XclExpProt4RevPass::WriteBody( XclExpStream& rStrm )
     rStrm << static_cast<sal_uInt16>(0x0000);
 }
 
-static const sal_uInt8 nDataRecalcId[] = {
+const sal_uInt8 nDataRecalcId[] = {
     0xC1, 0x01, 0x00, 0x00, 0x54, 0x8D, 0x01, 0x00
 };
 
@@ -1871,7 +1936,7 @@ XclExpRecalcId::XclExpRecalcId() :
 {
 }
 
-static const sal_uInt8 nDataBookExt[] = {
+const sal_uInt8 nDataBookExt[] = {
     0x63, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x15, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x02
@@ -1889,9 +1954,7 @@ XclRefmode::XclRefmode( const ScDocument& rDoc ) :
 
 void XclRefmode::SaveXml( XclExpXmlStream& rStrm )
 {
-    rStrm.WriteAttributes(
-            XML_refMode, GetBool() ? "A1" : "R1C1",
-            FSEND );
+    rStrm.WriteAttributes(XML_refMode, GetBool() ? "A1" : "R1C1");
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

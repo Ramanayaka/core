@@ -20,20 +20,18 @@
 
 #include <sdr/contact/viewcontactofsdrmeasureobj.hxx>
 #include <svx/svdomeas.hxx>
-#include <svx/sdr/primitive2d/sdrattributecreator.hxx>
+#include <sdr/primitive2d/sdrattributecreator.hxx>
 #include <svl/itemset.hxx>
+#include <svx/sdmetitm.hxx>
 #include <svx/sxmbritm.hxx>
-#include <svx/sxmlhitm.hxx>
 #include <svx/sxmtritm.hxx>
 #include <sxmtaitm.hxx>
 #include <sdr/primitive2d/sdrmeasureprimitive2d.hxx>
 #include <svx/sxmtpitm.hxx>
 
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
         ViewContactOfSdrMeasureObj::ViewContactOfSdrMeasureObj(SdrMeasureObj& rMeasureObj)
         :   ViewContactOfTextObj(rMeasureObj)
         {
@@ -46,26 +44,26 @@ namespace sdr
         drawinglayer::primitive2d::Primitive2DContainer ViewContactOfSdrMeasureObj::createViewIndependentPrimitive2DSequence() const
         {
             const SfxItemSet& rItemSet = GetMeasureObj().GetMergedItemSet();
-            const drawinglayer::attribute::SdrLineShadowTextAttribute aAttribute(
-                drawinglayer::primitive2d::createNewSdrLineShadowTextAttribute(
+            const drawinglayer::attribute::SdrLineEffectsTextAttribute aAttribute(
+                drawinglayer::primitive2d::createNewSdrLineEffectsTextAttribute(
                     rItemSet,
                     GetMeasureObj().getText(0)));
 
             // take properties which are the model data.
             const ::basegfx::B2DPoint aStart(GetMeasureObj().GetPoint(0).X(), GetMeasureObj().GetPoint(0).Y());
             const ::basegfx::B2DPoint aEnd(GetMeasureObj().GetPoint(1).X(), GetMeasureObj().GetPoint(1).Y());
-            const double fDistance(static_cast<const SdrMetricItem&>(rItemSet.Get(SDRATTR_MEASURELINEDIST)).GetValue());
-            const double fUpperDistance(static_cast<const SdrMetricItem&>(rItemSet.Get(SDRATTR_MEASUREHELPLINEOVERHANG)).GetValue());
-            const double fLowerDistance(static_cast<const SdrMetricItem&>(rItemSet.Get(SDRATTR_MEASUREHELPLINEDIST)).GetValue());
-            const double fLeftDelta(static_cast<const SdrMetricItem&>(rItemSet.Get(SDRATTR_MEASUREHELPLINE1LEN)).GetValue());
-            const double fRightDelta(static_cast<const SdrMetricItem&>(rItemSet.Get(SDRATTR_MEASUREHELPLINE2LEN)).GetValue());
-            const bool bBelow(static_cast<const SdrMeasureBelowRefEdgeItem&>(rItemSet.Get(SDRATTR_MEASUREBELOWREFEDGE)).GetValue());
-            const bool bTextRotation(static_cast<const SdrMeasureTextRota90Item&>(rItemSet.Get(SDRATTR_MEASURETEXTROTA90)).GetValue());
-            const bool bTextAutoAngle(static_cast<const SdrMeasureTextAutoAngleItem&>(rItemSet.Get(SDRATTR_MEASURETEXTAUTOANGLE)).GetValue());
+            const double fDistance(rItemSet.Get(SDRATTR_MEASURELINEDIST).GetValue());
+            const double fUpperDistance(rItemSet.Get(SDRATTR_MEASUREHELPLINEOVERHANG).GetValue());
+            const double fLowerDistance(rItemSet.Get(SDRATTR_MEASUREHELPLINEDIST).GetValue());
+            const double fLeftDelta(rItemSet.Get(SDRATTR_MEASUREHELPLINE1LEN).GetValue());
+            const double fRightDelta(rItemSet.Get(SDRATTR_MEASUREHELPLINE2LEN).GetValue());
+            const bool bBelow(rItemSet.Get(SDRATTR_MEASUREBELOWREFEDGE).GetValue());
+            const bool bTextRotation(rItemSet.Get(SDRATTR_MEASURETEXTROTA90).GetValue());
+            const bool bTextAutoAngle(rItemSet.Get(SDRATTR_MEASURETEXTAUTOANGLE).GetValue());
             drawinglayer::primitive2d::MeasureTextPosition aMTPHor(drawinglayer::primitive2d::MEASURETEXTPOSITION_AUTOMATIC);
             drawinglayer::primitive2d::MeasureTextPosition aMTPVer(drawinglayer::primitive2d::MEASURETEXTPOSITION_AUTOMATIC);
 
-            switch(static_cast<const SdrMeasureTextHPosItem&>(rItemSet.Get(SDRATTR_MEASURETEXTHPOS)).GetValue())
+            switch(rItemSet.Get(SDRATTR_MEASURETEXTHPOS).GetValue())
             {
                 case css::drawing::MeasureTextHorzPos::MeasureTextHorzPos_LEFTOUTSIDE:
                 {
@@ -88,7 +86,7 @@ namespace sdr
                 }
             }
 
-            switch(static_cast<const SdrMeasureTextVPosItem&>(rItemSet.Get(SDRATTR_MEASURETEXTVPOS)).GetValue())
+            switch(rItemSet.Get(SDRATTR_MEASURETEXTVPOS).GetValue())
             {
                 case css::drawing::MeasureTextVertPos_EAST:
                 {
@@ -124,7 +122,6 @@ namespace sdr
 
             return drawinglayer::primitive2d::Primitive2DContainer { xReference };
         }
-    } // end of namespace contact
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

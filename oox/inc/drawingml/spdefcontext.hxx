@@ -23,19 +23,19 @@
 #include <oox/drawingml/shape.hxx>
 #include <oox/core/contexthandler2.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-class spDefContext : public oox::core::ContextHandler2
+class spDefContext final : public oox::core::ContextHandler2
 {
 public:
-    spDefContext( ::oox::core::ContextHandler2Helper& rParent, Shape& rDefaultObject );
+    spDefContext( ::oox::core::ContextHandler2Helper const & rParent, Shape& rDefaultObject );
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
-protected:
+private:
     Shape& mrDefaultObject;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_SPDEFCONTEXT_HXX
 

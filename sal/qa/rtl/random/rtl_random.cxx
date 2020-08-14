@@ -44,7 +44,7 @@ public:
 
         rtlRandomPool aPool = rtl_random_createPool();
 
-        // LLA: seems to be that an other test is not possible for createPool()
+        // LLA: seems to be that another test is not possible for createPool()
         CPPUNIT_ASSERT_MESSAGE("create failed", aPool != nullptr);
 
         rtl_random_destroyPool(aPool);
@@ -73,7 +73,7 @@ public:
     {
         rtlRandomPool aPool = rtl_random_createPool();
 
-        // LLA: seems to be that an other test is not possible for createPool()
+        // LLA: seems to be that another test is not possible for createPool()
         CPPUNIT_ASSERT_MESSAGE("create failed", aPool != nullptr);
 
         rtl_random_destroyPool(aPool);
@@ -138,6 +138,8 @@ public:
     CPPUNIT_TEST(addBytes_001);
     CPPUNIT_TEST_SUITE_END();
 }; // class addBytes
+
+namespace {
 
 class Statistics
 {
@@ -207,6 +209,8 @@ public:
     sal_Int32 getMaxDeviation() const {return m_nMaxDeviation;}
 
 };
+
+}
 
 class getBytes : public CppUnit::TestFixture
 {

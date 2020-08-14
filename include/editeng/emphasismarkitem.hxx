@@ -19,11 +19,9 @@
 #ifndef INCLUDED_EDITENG_EMPHASISMARKITEM_HXX
 #define INCLUDED_EDITENG_EMPHASISMARKITEM_HXX
 
-#include <vcl/vclenum.hxx>
+#include <tools/fontenum.hxx>
 #include <svl/intitem.hxx>
 #include <editeng/editengdllapi.h>
-
-class SvXMLUnitConverter;
 
 // class SvxEmphasisMarkItem ----------------------------------------------
 
@@ -32,7 +30,7 @@ class SvXMLUnitConverter;
     This item describes the Font emphasis.
 */
 
-class EDITENG_DLLPUBLIC SvxEmphasisMarkItem : public SfxUInt16Item
+class EDITENG_DLLPUBLIC SvxEmphasisMarkItem final : public SfxUInt16Item
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -45,25 +43,16 @@ public:
                                     MapUnit eCoreMetric,
                                     MapUnit ePresMetric,
                                     OUString &rText,
-                                    const IntlWrapper * = nullptr ) const override;
+                                    const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion) const override;
-    virtual sal_uInt16          GetVersion( sal_uInt16 nFileVersion ) const override;
+    virtual SvxEmphasisMarkItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    SvxEmphasisMarkItem& operator=(const SvxEmphasisMarkItem& rItem )
-    {
-        SetValue( rItem.GetValue() );
-        return *this;
-    }
-
     // enum cast
     FontEmphasisMark        GetEmphasisMark() const
-                                { return (FontEmphasisMark)GetValue(); }
+                                { return static_cast<FontEmphasisMark>(GetValue()); }
 };
 
 #endif // INCLUDED_EDITENG_EMPHASISMARKITEM_HXX

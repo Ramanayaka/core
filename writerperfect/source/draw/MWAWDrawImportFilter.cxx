@@ -12,23 +12,21 @@
 #include <cppuhelper/supportsservice.hxx>
 
 #include <libmwaw/libmwaw.hxx>
-#include <libodfgen/libodfgen.hxx>
 
 #include "MWAWDrawImportFilter.hxx"
 
-using com::sun::star::uno::Sequence;
-using com::sun::star::uno::XInterface;
-using com::sun::star::uno::RuntimeException;
-using com::sun::star::uno::XComponentContext;
-
-static bool handleEmbeddedMWAWGraphicObject(const librevenge::RVNGBinaryData &data, OdfDocumentHandler *pHandler,  const OdfStreamType streamType)
+static bool handleEmbeddedMWAWGraphicObject(const librevenge::RVNGBinaryData& data,
+                                            OdfDocumentHandler* pHandler,
+                                            const OdfStreamType streamType)
 {
     OdgGenerator exporter;
     exporter.addDocumentHandler(pHandler, streamType);
     return MWAWDocument::decodeGraphic(data, &exporter);
 }
 
-static bool handleEmbeddedMWAWSpreadsheetObject(const librevenge::RVNGBinaryData &data, OdfDocumentHandler *pHandler,  const OdfStreamType streamType)
+static bool handleEmbeddedMWAWSpreadsheetObject(const librevenge::RVNGBinaryData& data,
+                                                OdfDocumentHandler* pHandler,
+                                                const OdfStreamType streamType)
 {
     OdsGenerator exporter;
     exporter.registerEmbeddedObjectHandler("image/mwaw-odg", &handleEmbeddedMWAWGraphicObject);
@@ -36,84 +34,81 @@ static bool handleEmbeddedMWAWSpreadsheetObject(const librevenge::RVNGBinaryData
     return MWAWDocument::decodeSpreadsheet(data, &exporter);
 }
 
-bool MWAWDrawImportFilter::doImportDocument(librevenge::RVNGInputStream &rInput, OdgGenerator &rGenerator, utl::MediaDescriptor &)
+bool MWAWDrawImportFilter::doImportDocument(weld::Window*, librevenge::RVNGInputStream& rInput,
+                                            OdgGenerator& rGenerator, utl::MediaDescriptor&)
 {
     return MWAWDocument::MWAW_R_OK == MWAWDocument::parse(&rInput, &rGenerator);
 }
 
-bool MWAWDrawImportFilter::doDetectFormat(librevenge::RVNGInputStream &rInput, OUString &rTypeName)
+bool MWAWDrawImportFilter::doDetectFormat(librevenge::RVNGInputStream& rInput, OUString& rTypeName)
 {
     rTypeName.clear();
 
     MWAWDocument::Type docType = MWAWDocument::MWAW_T_UNKNOWN;
     MWAWDocument::Kind docKind = MWAWDocument::MWAW_K_UNKNOWN;
-    const MWAWDocument::Confidence confidence = MWAWDocument::isFileFormatSupported(&rInput, docType, docKind);
+    const MWAWDocument::Confidence confidence
+        = MWAWDocument::isFileFormatSupported(&rInput, docType, docKind);
 
     if (confidence == MWAWDocument::MWAW_C_EXCELLENT)
     {
         switch (docKind)
         {
-        case MWAWDocument::MWAW_K_DRAW:
-            switch (docType)
-            {
-            case MWAWDocument::MWAW_T_CLARISWORKS:
-                rTypeName = "draw_ClarisWorks";
+            case MWAWDocument::MWAW_K_DRAW:
+                switch (docType)
+                {
+                    case MWAWDocument::MWAW_T_CLARISWORKS:
+                        rTypeName = "draw_ClarisWorks";
+                        break;
+                    default:
+                        rTypeName = "MWAW_Drawing";
+                        break;
+                }
+                break;
+            case MWAWDocument::MWAW_K_PAINT:
+                switch (docType)
+                {
+                    case MWAWDocument::MWAW_T_CLARISWORKS:
+                        rTypeName = "draw_ClarisWorks";
+                        break;
+                    default:
+                        rTypeName = "MWAW_Bitmap";
+                        break;
+                }
                 break;
             default:
-                rTypeName = "MWAW_Drawing";
                 break;
-            }
-            break;
-        case MWAWDocument::MWAW_K_PAINT:
-            switch (docType)
-            {
-            case MWAWDocument::MWAW_T_CLARISWORKS:
-                rTypeName = "draw_ClarisWorks";
-                break;
-            default:
-                rTypeName = "MWAW_Bitmap";
-                break;
-            }
-            break;
-        default:
-            break;
         }
     }
 
     return !rTypeName.isEmpty();
 }
 
-void MWAWDrawImportFilter::doRegisterHandlers(OdgGenerator &rGenerator)
+void MWAWDrawImportFilter::doRegisterHandlers(OdgGenerator& rGenerator)
 {
     rGenerator.registerEmbeddedObjectHandler("image/mwaw-odg", &handleEmbeddedMWAWGraphicObject);
-    rGenerator.registerEmbeddedObjectHandler("image/mwaw-ods", &handleEmbeddedMWAWSpreadsheetObject);
+    rGenerator.registerEmbeddedObjectHandler("image/mwaw-ods",
+                                             &handleEmbeddedMWAWSpreadsheetObject);
 }
 
 // XServiceInfo
 OUString SAL_CALL MWAWDrawImportFilter::getImplementationName()
 {
-    return OUString("com.sun.star.comp.Draw.MWAWDrawImportFilter");
+    return "com.sun.star.comp.Draw.MWAWDrawImportFilter";
 }
 
-sal_Bool SAL_CALL MWAWDrawImportFilter::supportsService(const OUString &rServiceName)
+sal_Bool SAL_CALL MWAWDrawImportFilter::supportsService(const OUString& rServiceName)
 {
     return cppu::supportsService(this, rServiceName);
 }
 
-Sequence< OUString > SAL_CALL MWAWDrawImportFilter::getSupportedServiceNames()
+css::uno::Sequence<OUString> SAL_CALL MWAWDrawImportFilter::getSupportedServiceNames()
 {
-    Sequence < OUString > aRet(2);
-    OUString *pArray = aRet.getArray();
-    pArray[0] =  "com.sun.star.document.ImportFilter";
-    pArray[1] =  "com.sun.star.document.ExtendedTypeDetection";
-    return aRet;
+    return { "com.sun.star.document.ImportFilter", "com.sun.star.document.ExtendedTypeDetection" };
 }
 
-extern "C"
-SAL_DLLPUBLIC_EXPORT css::uno::XInterface *SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Draw_MWAWDrawImportFilter_get_implementation(
-    css::uno::XComponentContext *const context,
-    const css::uno::Sequence<css::uno::Any> &)
+    css::uno::XComponentContext* const context, const css::uno::Sequence<css::uno::Any>&)
 {
     return cppu::acquire(new MWAWDrawImportFilter(context));
 }

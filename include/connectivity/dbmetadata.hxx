@@ -20,12 +20,13 @@
 #ifndef INCLUDED_CONNECTIVITY_DBMETADATA_HXX
 #define INCLUDED_CONNECTIVITY_DBMETADATA_HXX
 
-#include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 
 #include <memory>
 #include <connectivity/dbtoolsdllapi.hxx>
 
+namespace com::sun::star::sdbc { class XConnection; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace dbtools
 {
@@ -65,14 +66,14 @@ namespace dbtools
             @throws css::sdbc::SQLException
                 if obtaining the meta data from the connection throws an SQLException
             @throws css::uno::RuntimeException
-                if obtaining the meta data from the connection throws an RuntimeException
+                if obtaining the meta data from the connection throws a RuntimeException
         */
         DatabaseMetaData(
             const css::uno::Reference< css::sdbc::XConnection >& _connection );
         DatabaseMetaData( const DatabaseMetaData& _copyFrom );
         DatabaseMetaData& operator=( const DatabaseMetaData& _copyFrom );
-        DatabaseMetaData( DatabaseMetaData&& _copyFrom );
-        DatabaseMetaData& operator=( DatabaseMetaData&& _copyFrom );
+        DatabaseMetaData(DatabaseMetaData&& _copyFrom) noexcept;
+        DatabaseMetaData& operator=(DatabaseMetaData&& _copyFrom) noexcept;
 
         ~DatabaseMetaData();
 
@@ -134,6 +135,10 @@ namespace dbtools
         /** should date time be escaped like '2001-01-01' => {D '2001-01-01' }
         */
         bool shouldEscapeDateTime() const;
+
+        /** should named parameters (:foo, [foo]) be replaced by unnamed parameters (?)
+        */
+        bool shouldSubstituteParameterNames() const;
 
         /** auto increment columns should be automatically used as primary key.
         */

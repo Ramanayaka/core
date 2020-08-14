@@ -20,6 +20,10 @@
 #include <svl/svdde.hxx>
 #include <rtl/instance.hxx>
 
+struct Conversation
+{
+};
+
 struct DdeDataImp
 {
 };
@@ -36,7 +40,7 @@ DdeData::DdeData(const DdeData&)
 {
 }
 
-DdeData::DdeData(DdeData&&)
+DdeData::DdeData(DdeData&&) noexcept
 {
 }
 
@@ -62,7 +66,7 @@ DdeData& DdeData::operator=(const DdeData&)
     return *this;
 }
 
-DdeData& DdeData::operator=(DdeData&&)
+DdeData& DdeData::operator=(DdeData&&) noexcept
 {
     return *this;
 }
@@ -77,7 +81,9 @@ void const * DdeData::getData() const
   return nullptr;
 }
 
-long DdeConnection::GetError()
+struct DdeImp {};
+
+long DdeConnection::GetError() const
 {
     return 0L;
 }
@@ -85,7 +91,6 @@ long DdeConnection::GetError()
 DdeConnection::DdeConnection( const OUString&, const OUString& )
     : pService(nullptr)
     , pTopic(nullptr)
-    , pImp(nullptr)
 {
 }
 
@@ -93,12 +98,12 @@ DdeConnection::~DdeConnection()
 {
 }
 
-const OUString DdeConnection::GetServiceName()
+OUString DdeConnection::GetServiceName() const
 {
     return OUString();
 }
 
-const OUString DdeConnection::GetTopicName()
+OUString DdeConnection::GetTopicName() const
 {
     return OUString();
 }
@@ -192,7 +197,7 @@ bool DdeTopic::Put( SAL_UNUSED_PARAMETER const DdeData* )
     return false;
 }
 
-const OUString DdeTopic::GetName() const
+OUString DdeTopic::GetName() const
 {
     return OUString();
 }
@@ -200,7 +205,6 @@ const OUString DdeTopic::GetName() const
 DdeService::DdeService( const OUString& )
     : pSysTopic(nullptr)
     , pName(nullptr)
-    , pConv(nullptr)
     , nStatus(0)
 {
 }
@@ -240,7 +244,7 @@ void DdeService::RemoveTopic( SAL_UNUSED_PARAMETER const DdeTopic& )
 {
 }
 
-const OUString DdeService::GetName() const
+OUString DdeService::GetName() const
 {
     return OUString();
 }

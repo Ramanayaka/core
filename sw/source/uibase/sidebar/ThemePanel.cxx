@@ -12,29 +12,21 @@
 
 #include "ThemePanel.hxx"
 
-#include <swtypes.hxx>
-#include <cmdid.h>
-
-#include <svl/intitem.hxx>
-#include <svx/svxids.hrc>
-#include <svx/dlgutil.hxx>
-#include <svx/rulritem.hxx>
-
-#include <sfx2/sidebar/ControlFactory.hxx>
-#include <sfx2/dispatch.hxx>
-#include <sfx2/bindings.hxx>
-#include <sfx2/viewsh.hxx>
 #include <sfx2/objsh.hxx>
 
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 
 #include <editeng/fontitem.hxx>
-#include <editeng/boxitem.hxx>
-#include <editeng/borderline.hxx>
-#include "charatr.hxx"
-#include "charfmt.hxx"
-#include "docstyle.hxx"
-#include "fmtcol.hxx"
-#include "format.hxx"
+#include <vcl/bitmapex.hxx>
+#include <vcl/image.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/virdev.hxx>
+#include <charatr.hxx>
+#include <charfmt.hxx>
+#include <docsh.hxx>
+#include <docstyle.hxx>
+#include <fmtcol.hxx>
+#include <format.hxx>
 
 namespace
 {
@@ -52,18 +44,15 @@ class ColorVariable
 {
 public:
     long mnIndex;
-    Color maColor;
     sal_Int16 mnTintShade;
 
     ColorVariable()
         : mnIndex(-1)
-        , maColor()
         , mnTintShade()
     {}
 
     ColorVariable(long nIndex, sal_Int16 nTintShade)
         : mnIndex(nIndex)
-        , maColor()
         , mnTintShade(nTintShade)
     {}
 };
@@ -85,7 +74,7 @@ public:
         maVariable = aVariable;
     }
 
-    Color getColor(svx::ColorSet& rColorSet)
+    Color getColor(svx::ColorSet const & rColorSet)
     {
         Color aColor;
         if (maVariable.mnIndex > -1)
@@ -95,7 +84,7 @@ public:
         }
         else
         {
-            aColor.SetColor(maVariable.maColor.GetColor());
+            aColor = COL_BLACK;
         }
         return aColor;
     }
@@ -195,10 +184,8 @@ StyleSet setupThemes()
     return aSet;
 }
 
-void changeFont(SwFormat* pFormat, SwDocStyleSheet* pStyle, FontSet& rFontSet)
+void changeFont(SwFormat* pFormat, SwDocStyleSheet const * pStyle, FontSet const & rFontSet)
 {
-    bool bChanged = false;
-
     if (pStyle->GetName() != "Default Style" && pFormat->GetAttrSet().GetItem(RES_CHRATR_FONT, false) == nullptr)
     {
         return;
@@ -211,26 +198,20 @@ void changeFont(SwFormat* pFormat, SwDocStyleSheet* pStyle, FontSet& rFontSet)
     if (ePitch == PITCH_FIXED)
     {
         aFontItem.SetFamilyName(rFontSet.msMonoFont);
-        bChanged = true;
     }
     else
     {
         if (pStyle->GetName() == "Heading")
         {
             aFontItem.SetFamilyName(rFontSet.msHeadingFont);
-            bChanged = true;
         }
         else
         {
             aFontItem.SetFamilyName(rFontSet.msBaseFont);
-            bChanged = true;
         }
     }
 
-    if (bChanged)
-    {
-        pFormat->SetFormatAttr(aFontItem);
-    }
+    pFormat->SetFormatAttr(aFontItem);
 }
 
 /*void changeBorder(SwTextFormatColl* pCollection, SwDocStyleSheet* pStyle, StyleSet& rStyleSet)
@@ -247,7 +228,7 @@ void changeFont(SwFormat* pFormat, SwDocStyleSheet* pStyle, FontSet& rFontSet)
     }
 }*/
 
-void changeColor(SwTextFormatColl* pCollection, svx::ColorSet& rColorSet, StyleRedefinition* pRedefinition)
+void changeColor(SwTextFormatColl* pCollection, svx::ColorSet const & rColorSet, StyleRedefinition* pRedefinition)
 {
     Color aColor = pRedefinition->getColor(rColorSet);
 
@@ -336,7 +317,7 @@ std::vector<FontSet> initFontSets()
 
 FontSet getFontSet(const OUString& rFontVariant, std::vector<FontSet>& aFontSets)
 {
-    for (FontSet & rFontSet : aFontSets)
+    for (const FontSet & rFontSet : aFontSets)
     {
         if (rFontSet.maName == rFontVariant)
             return rFontSet;
@@ -354,9 +335,7 @@ void applyTheme(SfxStyleSheetBasePool* pPool, const OUString& sFontSetName, cons
 
     svx::ColorSet aColorSet = rColorSets.getColorSet(sColorSetName);
 
-    pPool->SetSearchMask(SfxStyleFamily::Para);
-    pStyle = static_cast<SwDocStyleSheet*>(pPool->First());
-
+    pStyle = static_cast<SwDocStyleSheet*>(pPool->First(SfxStyleFamily::Para));
     while (pStyle)
     {
         SwTextFormatColl* pCollection = pStyle->GetCollection();
@@ -373,9 +352,7 @@ void applyTheme(SfxStyleSheetBasePool* pPool, const OUString& sFontSetName, cons
         pStyle = static_cast<SwDocStyleSheet*>(pPool->Next());
     }
 
-    pPool->SetSearchMask(SfxStyleFamily::Char);
-    pStyle = static_cast<SwDocStyleSheet*>(pPool->First());
-
+    pStyle = static_cast<SwDocStyleSheet*>(pPool->First(SfxStyleFamily::Char));
     while (pStyle)
     {
         SwCharFormat* pCharFormat = pStyle->GetCharFormat();
@@ -418,7 +395,7 @@ BitmapEx GenerateColorPreview(const svx::ColorSet& rColorSet)
 
 } // end anonymous namespace
 
-namespace sw { namespace sidebar {
+namespace sw::sidebar {
 
 VclPtr<vcl::Window> ThemePanel::Create (vcl::Window* pParent,
                                         const css::uno::Reference<css::frame::XFrame>& rxFrame)
@@ -434,24 +411,23 @@ VclPtr<vcl::Window> ThemePanel::Create (vcl::Window* pParent,
 ThemePanel::ThemePanel(vcl::Window* pParent,
                        const css::uno::Reference<css::frame::XFrame>& rxFrame)
     : PanelLayout(pParent, "ThemePanel", "modules/swriter/ui/sidebartheme.ui", rxFrame)
+    , mxListBoxFonts(m_xBuilder->weld_tree_view("listbox_fonts"))
+    , mxValueSetColors(new ValueSet(nullptr))
+    , mxValueSetColorsWin(new weld::CustomWeld(*m_xBuilder, "valueset_colors", *mxValueSetColors))
+    , mxApplyButton(m_xBuilder->weld_button("apply"))
     , maColorSets()
 {
-    get(mpListBoxFonts, "listbox_fonts");
-    get(mpValueSetColors, "valueset_colors");
-    get(mpApplyButton, "apply");
+    mxValueSetColors->SetColCount(2);
+    mxValueSetColors->SetLineCount(3);
 
-    mpValueSetColors->SetColCount(2);
-    mpValueSetColors->SetLineCount(4);
-
-    mpApplyButton->SetClickHdl(LINK(this, ThemePanel, ClickHdl));
-    mpListBoxFonts->SetDoubleClickHdl(LINK(this, ThemePanel, DoubleClickHdl));
-    mpValueSetColors->SetDoubleClickHdl(LINK(this, ThemePanel, DoubleClickValueSetHdl));
+    mxApplyButton->connect_clicked(LINK(this, ThemePanel, ClickHdl));
+    mxListBoxFonts->connect_row_activated(LINK(this, ThemePanel, DoubleClickHdl));
+    mxValueSetColors->SetDoubleClickHdl(LINK(this, ThemePanel, DoubleClickValueSetHdl));
 
     std::vector<FontSet> aFontSets = initFontSets();
-    for (FontSet & rFontSet : aFontSets)
-    {
-        mpListBoxFonts->InsertEntry(rFontSet.maName);
-    }
+    for (const FontSet & rFontSet : aFontSets)
+        mxListBoxFonts->append_text(rFontSet.maName);
+    mxListBoxFonts->set_size_request(-1, mxListBoxFonts->get_height_rows(aFontSets.size()));
 
     maColorSets.init();
 
@@ -462,8 +438,15 @@ ThemePanel::ThemePanel(vcl::Window* pParent,
 
         const OUString& aName = rColorSet.getName();
         BitmapEx aPreview = GenerateColorPreview(rColorSet);
-        mpValueSetColors->InsertItem(i, Image(aPreview), aName);
+
+        sal_uInt16 nId = i + 1;
+        mxValueSetColors->InsertItem(nId, Image(aPreview), aName);
     }
+
+    mxValueSetColors->SetOptimalSize();
+
+    if (!aColorSets.empty())
+        mxValueSetColors->SelectItem(1); // ItemId 1, position 0
 }
 
 ThemePanel::~ThemePanel()
@@ -473,47 +456,54 @@ ThemePanel::~ThemePanel()
 
 void ThemePanel::dispose()
 {
-    mpListBoxFonts.clear();
-    mpValueSetColors.clear();
-    mpApplyButton.clear();
+    mxListBoxFonts.reset();
+    mxValueSetColorsWin.reset();
+    mxValueSetColors.reset();
+    mxApplyButton.reset();
 
     PanelLayout::dispose();
 }
 
-IMPL_LINK_NOARG(ThemePanel, ClickHdl, Button*, void)
+IMPL_LINK_NOARG(ThemePanel, ClickHdl, weld::Button&, void)
 {
     DoubleClickHdl();
 }
+
 IMPL_LINK_NOARG(ThemePanel, DoubleClickValueSetHdl, ValueSet*, void)
 {
     DoubleClickHdl();
 }
-IMPL_LINK_NOARG(ThemePanel, DoubleClickHdl, ListBox&, void)
+
+IMPL_LINK_NOARG(ThemePanel, DoubleClickHdl, weld::TreeView&, bool)
 {
     DoubleClickHdl();
+    return true;
 }
+
 void ThemePanel::DoubleClickHdl()
 {
     SwDocShell* pDocSh = static_cast<SwDocShell*>(SfxObjectShell::Current());
-    if (pDocSh)
-    {
-        OUString sEntryFonts = mpListBoxFonts->GetSelectEntry();
-        sal_uInt32 nItemId = mpValueSetColors->GetSelectItemId();
-        OUString sEntryColors = maColorSets.getColorSet(nItemId).getName();
+    if (!pDocSh)
+        return;
 
-        StyleSet aStyleSet = setupThemes();
+    sal_uInt32 nItemId = mxValueSetColors->GetSelectedItemId();
+    if (!nItemId)
+        return;
+    OUString sEntryFonts = mxListBoxFonts->get_selected_text();
+    sal_uInt32 nIndex = nItemId - 1;
+    OUString sEntryColors = maColorSets.getColorSet(nIndex).getName();
 
-        applyTheme(pDocSh->GetStyleSheetPool(), sEntryFonts, sEntryColors, aStyleSet, maColorSets);
-    }
+    StyleSet aStyleSet = setupThemes();
+
+    applyTheme(pDocSh->GetStyleSheetPool(), sEntryFonts, sEntryColors, aStyleSet, maColorSets);
 }
 
 void ThemePanel::NotifyItemUpdate(const sal_uInt16 /*nSId*/,
                                          const SfxItemState /*eState*/,
-                                         const SfxPoolItem* /*pState*/,
-                                         const bool /*bIsEnabled*/)
+                                         const SfxPoolItem* /*pState*/)
 {
 }
 
-}} // end of namespace ::sw::sidebar
+} // end of namespace ::sw::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_VIEWER_MEDIAEVENT_IMPL_HXX
-#define INCLUDED_AVMEDIA_SOURCE_VIEWER_MEDIAEVENT_IMPL_HXX
+#pragma once
 
 #include <avmedia/mediawindow.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -28,9 +27,7 @@
 #include <com/sun/star/awt/XFocusListener.hpp>
 #include <vcl/vclptr.hxx>
 
-namespace avmedia
-{
-    namespace priv
+namespace avmedia::priv
     {
 
         // - MediaEventListenersImpl -
@@ -73,9 +70,7 @@ namespace avmedia
             VclPtr<vcl::Window>     mpNotifyWindow;
             mutable ::osl::Mutex    maMutex;
         };
-    }
-}
 
-#endif
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

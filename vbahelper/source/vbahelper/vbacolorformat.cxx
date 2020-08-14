@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <ooo/vba/msforms/XLineFormat.hpp>
 #include "vbacolorformat.hxx"
 
 using namespace ooo::vba;
@@ -27,7 +26,7 @@ sal_Int32
 MsoColorIndices::getColorIndex( sal_Int32 nIndex )
 {
     const static sal_Int32 COLORINDICES[56] =
-    {   HAPICOLOR_BLACK, HAPICOLOR_WITHE, HAPICOLOR_RED, HAPICOLOR_BRIGHTGREEN, HAPICOLOR_BLUE, HAPICOLOR_YELLOW, HAPICOLOR_PINK,
+    {   HAPICOLOR_BLACK, HAPICOLOR_WHITE, HAPICOLOR_RED, HAPICOLOR_BRIGHTGREEN, HAPICOLOR_BLUE, HAPICOLOR_YELLOW, HAPICOLOR_PINK,
         HAPICOLOR_TURQUOISE, HAPICOLOR_DARKRED, HAPICOLOR_GREEN, HAPICOLOR_DARKBLUE, HAPICOLOR_DARKYELLOW, HAPICOLOR_VIOLET,
         HAPICOLOR_TEAL, HAPICOLOR_GRAY_25_PERCENT, HAPICOLOR_GRAY_50_PERCENT, HAPICOLOR_PERIWINCKLE, HAPICOLOR_PLUM,
         HAPICOLOR_IVORY, HAPICOLOR_LIGHTTURQUOISE, HAPICOLOR_DARKPRUPLE, HAPICOLOR_CORAL, HAPICOLOR_OCEANBLUE, HAPICOLOR_ICEBLUE,
@@ -77,7 +76,7 @@ ScVbaColorFormat::getRGB()
     default:
         throw uno::RuntimeException( "Second parameter of ColorFormat is wrong." );
     }
-    nRGB = OORGBToXLRGB( nRGB );
+    nRGB = OORGBToXLRGB( Color(nRGB) );
     return nRGB;
 }
 
@@ -124,7 +123,7 @@ ScVbaColorFormat::getSchemeColor()
     for( ; i < 56; i++ )
     {
         if( nColor == MsoColorIndices::getColorIndex(i) )
-       break;
+            break;
     }
 
     if( i == 56 ) // this is most likely an error condition
@@ -154,18 +153,16 @@ ScVbaColorFormat::setSchemeColor( sal_Int32 _schemecolor )
 OUString
 ScVbaColorFormat::getServiceImplName()
 {
-    return OUString("ScVbaColorFormat");
+    return "ScVbaColorFormat";
 }
 
 uno::Sequence< OUString >
 ScVbaColorFormat::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.ColorFormat";
-    }
+        "ooo.vba.msforms.ColorFormat"
+    };
     return aServiceNames;
 }
 

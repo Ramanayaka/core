@@ -21,21 +21,10 @@
 
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <rtl/ref.hxx>
-#include "framework/Pane.hxx"
 
 #include <com/sun/star/ui/XUIElementFactory.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
 
-#include <map>
-#include <memory>
-
-namespace sd {
-    class ViewShellBase;
-}
-
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::ui::XUIElementFactory
@@ -46,7 +35,7 @@ class PanelFactory
       public PanelFactoryInterfaceBase
 {
 public:
-    explicit PanelFactory (const css::uno::Reference<css::uno::XComponentContext>& rxContext);
+    explicit PanelFactory ();
     virtual ~PanelFactory() override;
     PanelFactory(const PanelFactory&) = delete;
     PanelFactory& operator=(const PanelFactory&) = delete;
@@ -56,11 +45,11 @@ public:
     // XUIElementFactory
 
     css::uno::Reference<css::ui::XUIElement> SAL_CALL createUIElement (
-        const ::rtl::OUString& rsResourceURL,
+        const OUString& rsResourceURL,
         const css::uno::Sequence<css::beans::PropertyValue>& rArguments) override;
 };
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 #endif
 

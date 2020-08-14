@@ -19,7 +19,6 @@
 #ifndef INCLUDED_SVX_CHRTITEM_HXX
 #define INCLUDED_SVX_CHRTITEM_HXX
 
-#include <com/sun/star/uno/Any.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <svl/eitem.hxx>
@@ -28,7 +27,6 @@
 
 class IntlWrapper;
 class SfxItemPool;
-class SvStream;
 
 enum class SvxChartTextOrder
 {
@@ -38,7 +36,7 @@ enum class SvxChartTextOrder
     Auto
 };
 
-#define CHTXTORDER_COUNT    ((sal_uInt16)SvxChartTextOrder::Auto + 1)
+#define CHTXTORDER_COUNT    (sal_uInt16(SvxChartTextOrder::Auto) + 1)
 
 enum class SvxChartKindError
 {
@@ -52,7 +50,7 @@ enum class SvxChartKindError
     Range
 };
 
-#define CHERROR_COUNT   ((sal_uInt16)SvxChartKindError::Range + 1)
+#define CHERROR_COUNT   (sal_uInt16(SvxChartKindError::Range) + 1)
 
 enum class SvxChartIndicate
 {
@@ -62,7 +60,7 @@ enum class SvxChartIndicate
     Down
 };
 
-#define CHINDICATE_COUNT    ((sal_uInt16)SvxChartIndicate::Down + 1)
+#define CHINDICATE_COUNT    (sal_uInt16(SvxChartIndicate::Down) + 1)
 
 enum class SvxChartRegress
 {
@@ -77,32 +75,26 @@ enum class SvxChartRegress
     Unknown
 };
 
-#define CHREGRESS_COUNT ((sal_uInt16)SvxChartRegress::Unknown + 1)
+#define CHREGRESS_COUNT (sal_uInt16(SvxChartRegress::Unknown) + 1)
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxChartRegressItem : public SfxEnumItem<SvxChartRegress>
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxChartRegressItem final : public SfxEnumItem<SvxChartRegress>
 {
 public:
     SvxChartRegressItem(SvxChartRegress eRegress /*= SvxChartRegress::Linear*/,
                         sal_uInt16 nId );
-    SvxChartRegressItem(SvStream& rIn, sal_uInt16 nId );
 
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual SvxChartRegressItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     sal_uInt16 GetValueCount() const override { return CHREGRESS_COUNT; }
-    sal_uInt16 GetVersion (sal_uInt16 nFileFormatVersion) const override;
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxChartTextOrderItem : public SfxEnumItem<SvxChartTextOrder>
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxChartTextOrderItem final : public SfxEnumItem<SvxChartTextOrder>
 {
 public:
     SvxChartTextOrderItem(SvxChartTextOrder eOrder /*= SvxChartTextOrder::SideBySide*/,
                           sal_uInt16 nId );
-    SvxChartTextOrderItem(SvStream& rIn,
-                          sal_uInt16 nId );
 
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual SvxChartTextOrderItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     virtual bool         QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool         PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -110,39 +102,29 @@ public:
     sal_uInt16 GetValueCount() const override { return CHTXTORDER_COUNT; }
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxChartKindErrorItem : public SfxEnumItem<SvxChartKindError>
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxChartKindErrorItem final : public SfxEnumItem<SvxChartKindError>
 {
 public:
     SvxChartKindErrorItem(SvxChartKindError /*eOrient = SvxChartKindError::NONE*/,
                            sal_uInt16 nId );
-    SvxChartKindErrorItem(SvStream& rIn,
-                           sal_uInt16 nId );
 
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual SvxChartKindErrorItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     sal_uInt16 GetValueCount() const override { return CHERROR_COUNT; }
-
-    sal_uInt16 GetVersion (sal_uInt16 nFileFormatVersion) const override;
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxChartIndicateItem : public SfxEnumItem<SvxChartIndicate>
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxChartIndicateItem final : public SfxEnumItem<SvxChartIndicate>
 {
 public:
     SvxChartIndicateItem(SvxChartIndicate eOrient /*= SvxChartIndicate::NONE*/,
                            sal_uInt16 nId );
-    SvxChartIndicateItem(SvStream& rIn,
-                           sal_uInt16 nId );
 
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual SvxChartIndicateItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     sal_uInt16 GetValueCount() const override { return CHINDICATE_COUNT; }
-
-    sal_uInt16 GetVersion (sal_uInt16 nFileFormatVersion) const override;
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxDoubleItem : public SfxPoolItem
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxDoubleItem final : public SfxPoolItem
 {
     double fVal;
 
@@ -157,12 +139,10 @@ public:
     virtual bool GetPresentation(SfxItemPresentation ePres,
                                  MapUnit eCoreMetric,
                                  MapUnit ePresMetric,
-                                 OUString &rText, const IntlWrapper * = nullptr) const override;
+                                 OUString &rText, const IntlWrapper&) const override;
 
     virtual bool             operator == (const SfxPoolItem&) const override;
-    virtual SfxPoolItem* Clone(SfxItemPool *pPool = nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nVersion) const override;
-    virtual SvStream& Store(SvStream& rOut, sal_uInt16 nItemVersion ) const override;
+    virtual SvxDoubleItem* Clone(SfxItemPool *pPool = nullptr) const override;
 
     double GetValue() const { return fVal; }
 };

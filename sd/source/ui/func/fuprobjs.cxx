@@ -17,29 +17,29 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fuprobjs.hxx"
+#include <fuprobjs.hxx>
 
-#include <vcl/msgbox.hxx>
+#include <svl/stritem.hxx>
 #include <svl/style.hxx>
 #include <editeng/outliner.hxx>
 #include <svl/hint.hxx>
+#include <tools/debug.hxx>
 
-#include "app.hrc"
-#include "res_bmp.hrc"
-#include "strings.hrc"
-#include "glob.hrc"
-#include "prltempl.hrc"
-#include "strings.hxx"
+#include <app.hrc>
 
-#include "sdresid.hxx"
-#include "drawdoc.hxx"
-#include "OutlineViewShell.hxx"
-#include "ViewShell.hxx"
-#include "Window.hxx"
-#include "glob.hxx"
-#include "prlayout.hxx"
-#include "unchss.hxx"
-#include "sdabstdlg.hxx"
+#include <strings.hxx>
+
+#include <drawdoc.hxx>
+#include <sfx2/sfxdlg.hxx>
+#include <DrawDocShell.hxx>
+#include <OutlineView.hxx>
+#include <OutlineViewShell.hxx>
+#include <ViewShell.hxx>
+#include <Window.hxx>
+#include <glob.hxx>
+#include <prlayout.hxx>
+#include <unchss.hxx>
+#include <sdabstdlg.hxx>
 #include <memory>
 
 namespace sd {
@@ -85,17 +85,14 @@ void FuPresentationObjects::DoExecute( SfxRequest& )
     std::vector<Paragraph*> aSelList;
     pOutlinerView->CreateSelectionList(aSelList);
 
-    std::vector<Paragraph*>::const_iterator iter = aSelList.begin();
-    Paragraph* pPara = aSelList.empty() ? nullptr : *iter;
+    Paragraph* pPara = aSelList.empty() ? nullptr : aSelList.front();
 
     nDepth = pOutl->GetDepth(pOutl->GetAbsPos( pPara ) );
     bool bPage = ::Outliner::HasParaFlag( pPara, ParaFlag::ISPAGE );
 
-    while( iter != aSelList.end() )
+    for( const auto& rpPara : aSelList )
     {
-        pPara = *iter;
-
-        nTmp = pOutl->GetDepth( pOutl->GetAbsPos( pPara ) );
+        nTmp = pOutl->GetDepth( pOutl->GetAbsPos( rpPara ) );
 
         if( nDepth != nTmp )
         {
@@ -103,58 +100,53 @@ void FuPresentationObjects::DoExecute( SfxRequest& )
             break;
         }
 
-        if( ::Outliner::HasParaFlag( pPara, ParaFlag::ISPAGE ) != bPage )
+        if( ::Outliner::HasParaFlag( rpPara, ParaFlag::ISPAGE ) != bPage )
         {
             bUnique = false;
             break;
         }
         bUnique = true;
-        ++iter;
     }
 
-    if( bUnique )
+    if( !bUnique )
+        return;
+
+    OUString aStyleName = aLayoutName + SD_LT_SEPARATOR;
+    PresentationObjects ePO;
+
+    if( bPage )
     {
-        OUString aStyleName = aLayoutName + SD_LT_SEPARATOR;
-        PresentationObjects ePO;
+        ePO = PresentationObjects::Title;
+        aStyleName += STR_LAYOUT_TITLE;
+    }
+    else
+    {
+        ePO = static_cast<PresentationObjects>( static_cast<int>(PresentationObjects::Outline_1) + nDepth - 1 );
+        aStyleName += STR_LAYOUT_OUTLINE " "
+            + OUString::number(nDepth);
+    }
 
-        if( bPage )
-        {
-            ePO = PO_TITLE;
-            aStyleName += STR_LAYOUT_TITLE;
-        }
-        else
-        {
-            ePO = (PresentationObjects) ( PO_OUTLINE_1 + nDepth - 1 );
-            aStyleName += STR_LAYOUT_OUTLINE " "
-                + OUString::number(nDepth);
-        }
+    SfxStyleSheetBasePool* pStyleSheetPool = mpDocSh->GetStyleSheetPool();
+    SfxStyleSheetBase* pStyleSheet = pStyleSheetPool->Find( aStyleName, SfxStyleFamily::Page );
+    DBG_ASSERT(pStyleSheet, "StyleSheet missing");
 
-        SfxStyleSheetBasePool* pStyleSheetPool = mpDocSh->GetStyleSheetPool();
-        SfxStyleSheetBase* pStyleSheet = pStyleSheetPool->Find( aStyleName, SD_STYLE_FAMILY_MASTERPAGE );
-        DBG_ASSERT(pStyleSheet, "StyleSheet missing");
+    if( !pStyleSheet )
+        return;
 
-        if( pStyleSheet )
-        {
-            SfxStyleSheetBase& rStyleSheet = *pStyleSheet;
+    SfxStyleSheetBase& rStyleSheet = *pStyleSheet;
 
-            SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
-            if (pFact)
-            {
-                ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSdPresLayoutTemplateDlg( mpDocSh, mpViewShell->GetActiveWindow(),
-                                                                    TAB_PRES_LAYOUT_TEMPLATE, rStyleSheet, ePO, pStyleSheetPool ));
-                if( pDlg->Execute() == RET_OK )
-                {
-                    const SfxItemSet* pOutSet = pDlg->GetOutputItemSet();
-                    // Undo-Action
-                    StyleSheetUndoAction* pAction = new StyleSheetUndoAction
-                                                    (mpDoc, static_cast<SfxStyleSheet*>(pStyleSheet),                                                    pOutSet);
-                    mpDocSh->GetUndoManager()->AddUndoAction(pAction);
+    SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
+    ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSdPresLayoutTemplateDlg(mpDocSh, mpViewShell->GetFrameWeld(),
+                                                        false, rStyleSheet, ePO, pStyleSheetPool));
+    if( pDlg->Execute() == RET_OK )
+    {
+        const SfxItemSet* pOutSet = pDlg->GetOutputItemSet();
+        // Undo-Action
+        mpDocSh->GetUndoManager()->AddUndoAction(
+            std::make_unique<StyleSheetUndoAction>(mpDoc, static_cast<SfxStyleSheet*>(pStyleSheet), pOutSet));
 
-                    pStyleSheet->GetItemSet().Put( *pOutSet );
-                    static_cast<SfxStyleSheet*>( pStyleSheet )->Broadcast( SfxHint( SfxHintId::DataChanged ) );
-                }
-            }
-        }
+        pStyleSheet->GetItemSet().Put( *pOutSet );
+        static_cast<SfxStyleSheet*>( pStyleSheet )->Broadcast( SfxHint( SfxHintId::DataChanged ) );
     }
 }
 

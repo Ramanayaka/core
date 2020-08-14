@@ -21,30 +21,31 @@
 #define INCLUDED_SVX_TRANSFRMHELPER_HXX
 
 #include <basegfx/range/b2drange.hxx>
+#include <tools/fract.hxx>
 #include <tools/fldunit.hxx>
 #include <tools/mapunit.hxx>
+#include <vcl/fieldvalues.hxx>
 
-class SVX_DLLPUBLIC TransfrmHelper
+namespace TransfrmHelper
 {
-public:
-    static void ConvertRect(basegfx::B2DRange& rRange, const sal_uInt16 nDigits, const MapUnit ePoolUnit, const FieldUnit eDlgUnit)
+    inline void ConvertRect(basegfx::B2DRange& rRange, const sal_uInt16 nDigits, const MapUnit ePoolUnit, const FieldUnit eDlgUnit)
     {
         const basegfx::B2DPoint aTopLeft(
-            (double)MetricField::ConvertValue(basegfx::fround(rRange.getMinX()), nDigits, ePoolUnit, eDlgUnit),
-            (double)MetricField::ConvertValue(basegfx::fround(rRange.getMinY()), nDigits, ePoolUnit, eDlgUnit));
+            static_cast<double>(vcl::ConvertValue(basegfx::fround(rRange.getMinX()), nDigits, ePoolUnit, eDlgUnit)),
+            static_cast<double>(vcl::ConvertValue(basegfx::fround(rRange.getMinY()), nDigits, ePoolUnit, eDlgUnit)));
         const basegfx::B2DPoint aBottomRight(
-            (double)MetricField::ConvertValue(basegfx::fround(rRange.getMaxX()), nDigits, ePoolUnit, eDlgUnit),
-            (double)MetricField::ConvertValue(basegfx::fround(rRange.getMaxY()), nDigits, ePoolUnit, eDlgUnit));
+            static_cast<double>(vcl::ConvertValue(basegfx::fround(rRange.getMaxX()), nDigits, ePoolUnit, eDlgUnit)),
+            static_cast<double>(vcl::ConvertValue(basegfx::fround(rRange.getMaxY()), nDigits, ePoolUnit, eDlgUnit)));
 
         rRange = basegfx::B2DRange(aTopLeft, aBottomRight);
     }
 
-    static void ScaleRect(basegfx::B2DRange& rRange, const Fraction& rUIScale)
+    inline void ScaleRect(basegfx::B2DRange& rRange, const Fraction& rUIScale)
     {
         const double fFactor(1.0 / double(rUIScale));
         rRange = basegfx::B2DRange(rRange.getMinimum() * fFactor, rRange.getMaximum() * fFactor);
     }
-};
+}
 
 #endif
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

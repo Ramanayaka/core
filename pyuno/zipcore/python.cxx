@@ -24,16 +24,14 @@
 #include <wchar.h>
 
 #define WIN32_LEAN_AND_MEAN
-#pragma warning(push, 1)
 #include <windows.h>
-#pragma warning(pop)
 
-#include "tools/pathutils.hxx"
+#include <tools/pathutils.hxx>
 
 #define MY_LENGTH(s) (sizeof (s) / sizeof *(s) - 1)
 #define MY_STRING(s) (s), MY_LENGTH(s)
 
-wchar_t * encode(wchar_t * buffer, wchar_t const * text) {
+static wchar_t * encode(wchar_t * buffer, wchar_t const * text) {
     *buffer++ = L'"';
     std::size_t n = 0;
     for (;;) {

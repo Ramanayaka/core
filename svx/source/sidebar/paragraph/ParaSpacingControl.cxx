@@ -19,14 +19,19 @@
 
 #include "ParaSpacingWindow.hxx"
 
+#include <cppuhelper/queryinterface.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/editids.hrc>
 #include <svx/ParaSpacingControl.hxx>
 #include <vcl/toolbox.hxx>
-#include <svl/itempool.hxx>
 #include <sfx2/sfxsids.hrc>
 #include <svl/intitem.hxx>
+#include <comphelper/processfactory.hxx>
+
+#include <com/sun/star/frame/XFrame.hpp>
+#include <com/sun/star/ui/ContextChangeEventMultiplexer.hpp>
+#include <com/sun/star/ui/XContextChangeEventMultiplexer.hpp>
 
 using namespace svx;
 
@@ -66,7 +71,7 @@ void ParaULSpacingControl::StateChanged(sal_uInt16 nSID, SfxItemState eState,
     if(nSID == SID_ATTR_METRIC && pState && eState >= SfxItemState::DEFAULT)
     {
         const SfxUInt16Item* pMetricItem = static_cast<const SfxUInt16Item*>(pState);
-        pWindow->SetUnit((FieldUnit)pMetricItem->GetValue());
+        pWindow->SetUnit(static_cast<FieldUnit>(pMetricItem->GetValue()));
     }
     else if((nSID == SID_ATTR_PARA_ULSPACE
         || nSID == SID_ATTR_PARA_ABOVESPACE
@@ -82,9 +87,9 @@ ParaAboveSpacingControl::ParaAboveSpacingControl(sal_uInt16 nSlotId, sal_uInt16 
 {
 }
 
-VclPtr<vcl::Window> ParaAboveSpacingControl::CreateItemWindow(vcl::Window* pParent)
+VclPtr<InterimItemWindow> ParaAboveSpacingControl::CreateItemWindow(vcl::Window* pParent)
 {
-    VclPtr<ParaAboveSpacingWindow> pWindow = VclPtr<ParaAboveSpacingWindow>::Create(pParent, m_xFrame);
+    VclPtr<ParaAboveSpacingWindow> pWindow = VclPtr<ParaAboveSpacingWindow>::Create(pParent);
     pWindow->Show();
 
     return pWindow;
@@ -97,9 +102,9 @@ ParaBelowSpacingControl::ParaBelowSpacingControl(sal_uInt16 nSlotId, sal_uInt16 
 {
 }
 
-VclPtr<vcl::Window> ParaBelowSpacingControl::CreateItemWindow(vcl::Window* pParent)
+VclPtr<InterimItemWindow> ParaBelowSpacingControl::CreateItemWindow(vcl::Window* pParent)
 {
-    VclPtr<ParaBelowSpacingWindow> pWindow = VclPtr<ParaBelowSpacingWindow>::Create(pParent, m_xFrame);
+    VclPtr<ParaBelowSpacingWindow> pWindow = VclPtr<ParaBelowSpacingWindow>::Create(pParent);
     pWindow->Show();
 
     return pWindow;
@@ -153,7 +158,7 @@ void ParaLRSpacingControl::StateChanged(sal_uInt16 nSID, SfxItemState eState,
     if(nSID == SID_ATTR_METRIC && pState && eState >= SfxItemState::DEFAULT)
     {
         const SfxUInt16Item* pMetricItem = static_cast<const SfxUInt16Item*>(pState);
-        pWindow->SetUnit((FieldUnit)pMetricItem->GetValue());
+        pWindow->SetUnit(static_cast<FieldUnit>(pMetricItem->GetValue()));
     }
     else if(nSID == SID_ATTR_PARA_LRSPACE
          || nSID == SID_ATTR_PARA_LEFTSPACE
@@ -173,7 +178,7 @@ void SAL_CALL ParaLRSpacingControl::notifyContextChangeEvent(const css::ui::Cont
 
     if(pWindow)
     {
-        vcl::EnumContext eContext = vcl::EnumContext(
+        vcl::EnumContext eContext(
                 vcl::EnumContext::GetApplicationEnum(rEvent.ApplicationName),
                 vcl::EnumContext::GetContextEnum(rEvent.ContextName));
         pWindow->SetContext(eContext);
@@ -211,9 +216,9 @@ ParaLeftSpacingControl::ParaLeftSpacingControl(sal_uInt16 nSlotId, sal_uInt16 nI
 {
 }
 
-VclPtr<vcl::Window> ParaLeftSpacingControl::CreateItemWindow(vcl::Window* pParent)
+VclPtr<InterimItemWindow> ParaLeftSpacingControl::CreateItemWindow(vcl::Window* pParent)
 {
-    VclPtr<ParaLeftSpacingWindow> pWindow = VclPtr<ParaLeftSpacingWindow>::Create(pParent, m_xFrame);
+    VclPtr<ParaLeftSpacingWindow> pWindow = VclPtr<ParaLeftSpacingWindow>::Create(pParent);
     pWindow->Show();
 
     return pWindow;
@@ -226,9 +231,9 @@ ParaRightSpacingControl::ParaRightSpacingControl(sal_uInt16 nSlotId, sal_uInt16 
 {
 }
 
-VclPtr<vcl::Window> ParaRightSpacingControl::CreateItemWindow(vcl::Window* pParent)
+VclPtr<InterimItemWindow> ParaRightSpacingControl::CreateItemWindow(vcl::Window* pParent)
 {
-    VclPtr<ParaRightSpacingWindow> pWindow = VclPtr<ParaRightSpacingWindow>::Create(pParent, m_xFrame);
+    VclPtr<ParaRightSpacingWindow> pWindow = VclPtr<ParaRightSpacingWindow>::Create(pParent);
     pWindow->Show();
 
     return pWindow;
@@ -241,9 +246,9 @@ ParaFirstLineSpacingControl::ParaFirstLineSpacingControl(sal_uInt16 nSlotId, sal
 {
 }
 
-VclPtr<vcl::Window> ParaFirstLineSpacingControl::CreateItemWindow(vcl::Window* pParent)
+VclPtr<InterimItemWindow> ParaFirstLineSpacingControl::CreateItemWindow(vcl::Window* pParent)
 {
-    VclPtr<ParaFirstLineSpacingWindow> pWindow = VclPtr<ParaFirstLineSpacingWindow>::Create(pParent, m_xFrame);
+    VclPtr<ParaFirstLineSpacingWindow> pWindow = VclPtr<ParaFirstLineSpacingWindow>::Create(pParent);
     pWindow->Show();
 
     return pWindow;

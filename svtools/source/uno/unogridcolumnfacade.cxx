@@ -20,12 +20,7 @@
 #include "unogridcolumnfacade.hxx"
 #include "unocontroltablemodel.hxx"
 
-#include "table/defaultinputhandler.hxx"
-#include "table/gridtablerenderer.hxx"
-#include "table/tablecontrol.hxx"
-
 #include <com/sun/star/awt/grid/XGridColumn.hpp>
-#include <com/sun/star/view/SelectionType.hpp>
 #include <com/sun/star/awt/grid/XGridColumnListener.hpp>
 
 #include <tools/debug.hxx>
@@ -34,13 +29,11 @@
 #include <cppuhelper/implbase.hxx>
 
 
-namespace svt { namespace table
+namespace svt::table
 {
 
 
     using css::uno::Reference;
-    using css::uno::RuntimeException;
-    using css::uno::UNO_QUERY_THROW;
     using css::awt::grid::XGridColumn;
     using css::uno::Exception;
     using css::awt::grid::XGridColumnListener;
@@ -62,7 +55,7 @@ namespace svt { namespace table
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("svtools.uno");
             }
         }
 
@@ -76,7 +69,7 @@ namespace svt { namespace table
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("svtools.uno");
             }
             return value;
         }
@@ -172,7 +165,7 @@ namespace svt { namespace table
     UnoGridColumnFacade::UnoGridColumnFacade( UnoControlTableModel const & i_owner, Reference< XGridColumn > const & i_gridColumn )
         :m_pOwner( &i_owner )
         ,m_nDataColumnIndex( -1 )
-        ,m_xGridColumn( i_gridColumn, UNO_QUERY_THROW )
+        ,m_xGridColumn( i_gridColumn, css::uno::UNO_SET_THROW )
         ,m_pChangeMultiplexer( new ColumnChangeMultiplexer( *this ) )
     {
         m_xGridColumn->addGridColumnListener( m_pChangeMultiplexer.get() );
@@ -208,7 +201,7 @@ namespace svt { namespace table
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svtools.uno");
         }
     }
 
@@ -240,7 +233,7 @@ namespace svt { namespace table
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svtools.uno");
         }
         return sName;
     }
@@ -256,7 +249,7 @@ namespace svt { namespace table
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svtools.uno");
         }
         return sHelpText;
     }
@@ -311,7 +304,7 @@ namespace svt { namespace table
     }
 
 
-} } // svt::table
+} // svt::table
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

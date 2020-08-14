@@ -24,7 +24,7 @@
 #include <svx/svddef.hxx>
 #include <editeng/eeitem.hxx>
 
-#include "chartview/ChartSfxItemIds.hxx"
+#include <chartview/ChartSfxItemIds.hxx>
 
 #define CHARACTER_WHICHPAIRS \
     EE_ITEMS_START, EE_ITEMS_END,  \
@@ -98,7 +98,8 @@ const sal_uInt16 nDataLabelWhichPairs[] =
     SCHATTR_STYLE_START,SCHATTR_STYLE_END,          /*    59 -    68  sch/schattr.hxx*/ \
     SCHATTR_SYMBOL_BRUSH,SCHATTR_SYMBOL_BRUSH,      /*    94          sch/schattr.hxx*/ \
     SCHATTR_SYMBOL_SIZE,SCHATTR_SYMBOL_SIZE,        /*    97          sch/schattr.hxx*/ \
-    SDRATTR_3D_FIRST, SDRATTR_3D_LAST               /*  1244 -  1334  svx/svddef.hxx */
+    SDRATTR_3D_FIRST, SDRATTR_3D_LAST,              /*  1244 -  1334  svx/svddef.hxx */ \
+    SCHATTR_HIDE_DATA_POINT_LEGEND_ENTRY, SCHATTR_HIDE_DATA_POINT_LEGEND_ENTRY
 
 const sal_uInt16 nDataPointWhichPairs[] =
 {
@@ -130,7 +131,8 @@ const sal_uInt16 nTextLabelWhichPairs[] =
     SCHATTR_CLOCKWISE,SCHATTR_CLOCKWISE, \
     SCHATTR_MISSING_VALUE_TREATMENT,SCHATTR_MISSING_VALUE_TREATMENT, \
     SCHATTR_AVAILABLE_MISSING_VALUE_TREATMENTS,SCHATTR_AVAILABLE_MISSING_VALUE_TREATMENTS, \
-    SCHATTR_INCLUDE_HIDDEN_CELLS,SCHATTR_INCLUDE_HIDDEN_CELLS
+    SCHATTR_INCLUDE_HIDDEN_CELLS,SCHATTR_INCLUDE_HIDDEN_CELLS, \
+    SCHATTR_HIDE_LEGEND_ENTRY,SCHATTR_HIDE_LEGEND_ENTRY
 
 const sal_uInt16 nSeriesOptionsWhichPairs[] =
 {

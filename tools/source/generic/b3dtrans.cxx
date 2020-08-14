@@ -21,6 +21,11 @@
 
 #include <osl/diagnose.h>
 
+    // Near and far clipping planes
+constexpr double gfNearBound = 0.001;
+constexpr double gfFarBound = 1.001;
+
+
 // B3dTransformationSet --------------------------------------------------------
 // Transformations for all 3D output
 
@@ -142,8 +147,6 @@ void B3dTransformationSet::Reset()
 
     mfLeftBound = mfBottomBound = -1.0;
     mfRightBound = mfTopBound = 1.0;
-    mfNearBound = 0.001;
-    mfFarBound = 1.001;
 
     mfRatio = 0.0;
 
@@ -214,8 +217,8 @@ void B3dTransformationSet::CalcViewport()
     if(GetRatio() != 0.0)
     {
         // Compute current aspect ratio of boundaries
-        double fBoundWidth = (double)(maViewportRectangle.GetWidth() + 1);
-        double fBoundHeight = (double)(maViewportRectangle.GetHeight() + 1);
+        double fBoundWidth = static_cast<double>(maViewportRectangle.GetWidth() + 1);
+        double fBoundHeight = static_cast<double>(maViewportRectangle.GetHeight() + 1);
         double fActRatio = 1;
         double fFactor;
 
@@ -250,16 +253,16 @@ void B3dTransformationSet::CalcViewport()
     // OpenGL needs a little more rough additional size to not let
     // the front face vanish. Changed from SMALL_DVALUE to 0.000001,
     // which is 1/10000th, comared with 1/tenth of a million from SMALL_DVALUE.
-    const double fDistPart((mfFarBound - mfNearBound) * 0.0001);
+    const double fDistPart((gfFarBound - gfNearBound) * 0.0001);
 
     // To avoid critical clipping, set Near & Far generously
     if(mbPerspective)
     {
-        Frustum(aNewProjection, fLeft, fRight, fBottom, fTop, mfNearBound - fDistPart, mfFarBound + fDistPart);
+        Frustum(aNewProjection, fLeft, fRight, fBottom, fTop, gfNearBound - fDistPart, gfFarBound + fDistPart);
     }
     else
     {
-        Ortho(aNewProjection, fLeft, fRight, fBottom, fTop, mfNearBound - fDistPart, mfFarBound + fDistPart);
+        Ortho(aNewProjection, fLeft, fRight, fBottom, fTop, gfNearBound - fDistPart, gfFarBound + fDistPart);
     }
 
     // Set to true to guarantee loop termination
@@ -270,13 +273,13 @@ void B3dTransformationSet::CalcViewport()
 
     // fill parameters for ViewportTransformation
     // Translation
-    maTranslate.setX((double)maSetBound.Left() + ((maSetBound.GetWidth() - 1L) / 2.0));
-    maTranslate.setY((double)maSetBound.Top() + ((maSetBound.GetHeight() - 1L) / 2.0));
+    maTranslate.setX(static_cast<double>(maSetBound.Left()) + ((maSetBound.GetWidth() - 1) / 2.0));
+    maTranslate.setY(static_cast<double>(maSetBound.Top()) + ((maSetBound.GetHeight() - 1) / 2.0));
     maTranslate.setZ(ZBUFFER_DEPTH_RANGE / 2.0);
 
     // Scaling
-    maScale.setX((maSetBound.GetWidth() - 1L) / 2.0);
-    maScale.setY((maSetBound.GetHeight() - 1L) / -2.0);
+    maScale.setX((maSetBound.GetWidth() - 1) / 2.0);
+    maScale.setY((maSetBound.GetHeight() - 1) / -2.0);
     maScale.setZ(ZBUFFER_DEPTH_RANGE / 2.0);
 }
 
@@ -331,14 +334,14 @@ void B3dTransformationSet::SetViewportRectangle(tools::Rectangle const & rRect, 
 
 // direct access to various transformations
 
-const basegfx::B3DPoint B3dTransformationSet::WorldToEyeCoor(const basegfx::B3DPoint& rVec)
+basegfx::B3DPoint B3dTransformationSet::WorldToEyeCoor(const basegfx::B3DPoint& rVec)
 {
     basegfx::B3DPoint aVec(rVec);
     aVec *= maOrientation;
     return aVec;
 }
 
-const basegfx::B3DPoint B3dTransformationSet::EyeToWorldCoor(const basegfx::B3DPoint& rVec)
+basegfx::B3DPoint B3dTransformationSet::EyeToWorldCoor(const basegfx::B3DPoint& rVec)
 {
     basegfx::B3DPoint aVec(rVec);
     aVec *= maInvOrientation;
@@ -389,7 +392,6 @@ B3dCamera::B3dCamera(
     double fFocLen, double fBnkAng)
 :   B3dViewport(),
     aPosition(rPos),
-    aCorrectedPosition(rPos),
     aLookAt(rLkAt),
     fFocalLength(fFocLen),
     fBankAngle(fBnkAng)
@@ -422,15 +424,13 @@ void B3dCamera::CalcNewViewportValues()
     aNewVUV.normalize();
     aNewVPN.normalize();
 
-    basegfx::B3DVector aNewToTheRight = aNewVPN;
-    aNewToTheRight = aNewToTheRight.getPerpendicular(aNewVUV);
+    basegfx::B3DVector aNewToTheRight = aNewVPN.getPerpendicular(aNewVUV);
     aNewToTheRight.normalize();
     aNewVUV = aNewToTheRight.getPerpendicular(aNewVPN);
     aNewVUV.normalize();
 
     SetViewportValues(aPosition, aNewVPN, aNewVUV);
-    if(CalcFocalLength())
-        SetViewportValues(aCorrectedPosition, aNewVPN, aNewVUV);
+    CalcFocalLength();
 
     if(fBankAngle != 0.0)
     {
@@ -444,18 +444,16 @@ void B3dCamera::CalcNewViewportValues()
     }
 }
 
-bool B3dCamera::CalcFocalLength()
+void B3dCamera::CalcFocalLength()
 {
     double fWidth = GetDeviceRectangleWidth();
 
     // Adjust focal length based on given position
-    basegfx::B3DPoint aOldPosition;
-    aOldPosition = WorldToEyeCoor(aOldPosition);
+    basegfx::B3DPoint aOldPosition = WorldToEyeCoor({});
     if(fWidth != 0.0)
         fFocalLength = aOldPosition.getZ() / fWidth * 35.0;
     if(fFocalLength < 5.0)
         fFocalLength = 5.0;
-    return false;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

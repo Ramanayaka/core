@@ -22,25 +22,24 @@
 
 class SdDrawDocument;
 
-#include "model/SlsPageEnumeration.hxx"
-#include "model/SlsSharedPageDescriptor.hxx"
+#include <model/SlsSharedPageDescriptor.hxx>
 
-#include "pres.hxx"
-#include <com/sun/star/drawing/XDrawPage.hpp>
+#include <pres.hxx>
 #include <osl/mutex.hxx>
 #include <vcl/region.hxx>
+#include <com/sun/star/uno/Reference.hxx>
 
 #include <vector>
-#include <functional>
 
 class SdrPage;
 class SdPage;
 
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
+namespace sd::slidesorter { class SlideSorter; }
 
-namespace sd { namespace slidesorter { namespace model {
+namespace com::sun::star::container { class XIndexAccess; }
+namespace com::sun::star::drawing { class XDrawPage; }
+
+namespace sd::slidesorter::model {
 
 inline sal_Int32 FromCoreIndex (const sal_uInt16 nCoreIndex) { return (nCoreIndex-1)/2; }
 
@@ -93,7 +92,7 @@ public:
             it is created.  When <FALSE/> then an empty reference is
             returned for missing descriptors.
         @return
-            When the given index is not valid, i.e. lower then zero or
+            When the given index is not valid, i.e. lower than zero or
             larger than or equal to the number of pages then an empty
             reference is returned. Note that the page count may change
             between calls to GetPageCount() and GetPageDescriptor().
@@ -136,7 +135,7 @@ public:
 
     /** Call this method after the document has changed its structure.  This
         will get the model in sync with the SdDrawDocument.  This method
-        tries not to throw away to much information already gathered.  This
+        tries not to throw away too much information already gathered.  This
         is especially important for previews of complex pages that take some
         time to create.
     */
@@ -216,12 +215,13 @@ private:
     void AdaptSize();
 
     SdPage* GetPage (const sal_Int32 nCoreIndex) const;
-    void InsertSlide (SdPage* pPage);
-    void DeleteSlide (const SdPage* pPage);
+    void InsertSlide (SdPage* pPage, bool bMarkSelected);
+    // return if this page was marked as selected before being removed
+    bool DeleteSlide (const SdPage* pPage);
     void UpdateIndices (const sal_Int32 nFirstIndex);
 };
 
-} } } // end of namespace ::sd::slidesorter::model
+} // end of namespace ::sd::slidesorter::model
 
 #endif
 

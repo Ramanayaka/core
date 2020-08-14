@@ -23,7 +23,7 @@
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
-static const OUStringLiteral aStringList[]=
+const OUStringLiteral aStringList[]=
 {
     ".uno:Open",
     ".uno:FormatCellDialog",
@@ -65,18 +65,16 @@ ScVbaDialog::mapIndexToName( sal_Int32 nIndex )
 OUString
 ScVbaDialog::getServiceImplName()
 {
-    return OUString("ScVbaDialog");
+    return "ScVbaDialog";
 }
 
 uno::Sequence< OUString >
 ScVbaDialog::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Dialog";
-    }
+        "ooo.vba.excel.Dialog"
+    };
     return aServiceNames;
 }
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

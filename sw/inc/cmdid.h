@@ -20,25 +20,26 @@
 #ifndef INCLUDED_SW_INC_CMDID_H
 #define INCLUDED_SW_INC_CMDID_H
 
-#include <sfx2/sfx.hrc>
-#include <unomid.h>
+#include <sfx2/sfxsids.hrc>
+#include <svx/svxids.hrc>
+#include <svl/solar.hrc>
 
 #define FN_FILE                 SID_SW_START
-#define FN_EDIT                 (SID_SW_START +  100)
+//#define FN_EDIT                 (SID_SW_START +  100) defined in svxids.hrc
 #define FN_VIEW                 (SID_SW_START +  200)
-#define FN_INSERT               (SID_SW_START +  300)
-#define FN_FORMAT               (SID_SW_START +  400)
-#define FN_EXTRA                (SID_SW_START +  600)
-#define FN_SELECTION            (SID_SW_START +  900)
+//#define FN_INSERT               (SID_SW_START +  300) defined in svxids.hrc
+//#define FN_FORMAT               (SID_SW_START +  400) defined in svxids.hrc
+//#define FN_EXTRA                (SID_SW_START +  600) defined in svxids.hrc
+//#define FN_SELECTION            (SID_SW_START +  900) defined in svxids.hrc
 #define FN_QUERY                (SID_SW_START + 1000)
 #define FN_ENVELP               (SID_SW_START + 1050)
 #define FN_PARAM                (SID_SW_START + 1100)
 #define FN_STAT                 (SID_SW_START + 1180)
-#define FN_PGPREVIEW            (SID_SW_START + 1250)
+//#define FN_PGPREVIEW            (SID_SW_START + 1250) defined in svxids.hrc
 #define FN_FRAME                (SID_SW_START + 1300)
 #define FN_INSERT2              (SID_SW_START + 1400)
 #define FN_FORMAT2              (SID_SW_START + 1600)
-#define FN_EDIT2                (SID_SW_START + 1800)
+//#define FN_EDIT2                (SID_SW_START + 1800) defined in svxids.hrc
 #define FN_QUERY2               (SID_SW_START + 2000)
 #define FN_EXTRA2               (SID_SW_START + 2200)
 #define FN_PARAM2               (SID_SW_START + 2400)
@@ -131,20 +132,23 @@
 #define FN_EDIT_CURRENT_TOX          (FN_EDIT2 + 32) /* edit current index */
 #define FN_EDIT_AUTH_ENTRY_DLG       (FN_EDIT2 + 33) /* edit authorities entry*/
 #define FN_UPDATE_CHARTS             (FN_EDIT2 + 34) /* update all charts */
-
-#define FN_EDIT_HYPERLINK            (FN_EDIT2 + 35)    /* edit hyperlink */
+// free
 #define FN_NUM_CONTINUE              (FN_EDIT2 + 36)    /* continue previous numbering */
 #define FN_REDLINE_ACCEPT_DIRECT     (FN_EDIT2 + 37)    /* accept redline at current position*/
 #define FN_REDLINE_REJECT_DIRECT     (FN_EDIT2 + 38)    /* reject redline at current position*/
-#define FN_REMOVE_HYPERLINK          (FN_EDIT2 + 39)    /* remove hyperlink attribute */
-#define FN_COPY_HYPERLINK_LOCATION   (FN_EDIT2 + 40)    /* copy hyperlink URL to clipboard */
+// free
+// free
 #define FN_REDLINE_NEXT_CHANGE       (FN_EDIT2 + 41)    /* Go to the next change */
 #define FN_REDLINE_PREV_CHANGE       (FN_EDIT2 + 42)    /* Go to the previous change */
+#define FN_REDLINE_ACCEPT_ALL        (FN_EDIT2 + 43)    /* Redlining Accept All*/
+#define FN_REDLINE_REJECT_ALL        (FN_EDIT2 + 44)    /* Redlining Reject All*/
+#define FN_REDLINE_ACCEPT_TONEXT     (FN_EDIT2 + 45)    /* Redlining Accept and jump to next*/
+#define FN_REDLINE_REJECT_TONEXT     (FN_EDIT2 + 46)    /* Redlining Reject and jump to next*/
 
 // Region: Edit
 #define FN_REFRESH_VIEW         (FN_VIEW + 1)   /* Refresh/Redraw */
 
-#define FN_DRAW_WRAP_DLG        (FN_VIEW + 3)   /* Draw Umlauf-Dlg */
+#define FN_DRAW_WRAP_DLG        (FN_VIEW + 3)   /* Draw wrapping dlg */
 #define FN_RULER                (FN_VIEW + 11)  /* Horizontal ruler */
 
 #define FN_VIEW_GRAPHIC         (FN_VIEW + 13)  /* View graphic */
@@ -173,11 +177,17 @@
 #define FN_SET_MODOPT_TBLNUMFMT  (FN_VIEW + 52) /* Number recognition in tables */
 #define FN_HSCROLL_METRIC        (FN_VIEW + 53) /* Metric horizontal scrollbar */
 #define FN_VSCROLL_METRIC        (FN_VIEW + 54) /* Metric vertical scrollbar */
-// 55 is free
-#define FN_NAVIGATION_POPUP     (FN_VIEW + 56)  /* Navigation Popup */
+
+#define FN_NAV_ELEMENT          (FN_VIEW + 55)  /* Navigate By drop down controller */
 #define FN_SCROLL_PREV          (FN_VIEW + 57)  /* uno:ScrollToPrevious */
 #define FN_SCROLL_NEXT          (FN_VIEW + 58)  /* uno:ScrollToNext */
 #define FN_VIEW_HIDE_WHITESPACE (FN_VIEW + 59)  /* Hide header, footer, and pagebreak */
+#define FN_SHOW_INLINETOOLTIPS  (FN_VIEW + 60)  /* Show tooltips for tracked changes */
+#define FN_USE_HEADERFOOTERMENU (FN_VIEW + 61)  /* Show advanced header/footer menu */
+#define FN_VIEW_SHOW_WHITESPACE (FN_VIEW + 62)  /* Show header, footer, and pagebreak */
+
+#define FN_SHOW_OUTLINECONTENTVISIBILITYBUTTON (FN_VIEW + 63)  /* Show outline content visibility toggle button */
+#define FN_TOGGLE_OUTLINE_CONTENT_VISIBILITY   (FN_VIEW + 64)
 
 // Region: Insert
 #define FN_INSERT_BOOKMARK      (FN_INSERT + 2 )  /* Bookmark */
@@ -208,7 +218,6 @@
 #define FN_INSERT_IDX_ENTRY_DLG (FN_INSERT + 35)    /* insert index entry */
 #define FN_INSERT_FRAME_INTERACT_NOCOL (FN_INSERT + 36) /*insert interactive non column frame*/
 
-#define FN_TOOL_ANCHOR          (FN_INSERT + 49)    /* Draw Anchor for object */
 #define FN_TOOL_ANCHOR_PAGE     (FN_INSERT + 50)    /* anchor Draw object to page */
 #define FN_TOOL_ANCHOR_PARAGRAPH (FN_INSERT + 51)   /* anchor Draw object to paragraph */
 #define FN_TOOL_HIERARCHIE      (FN_INSERT + 52)    /* change hierarchy */
@@ -251,6 +260,8 @@
 #define FN_INSERT_FLD_AUTHOR    (FN_INSERT + 98)
 #define FN_INSERT_FOOTNOTE      (FN_INSERT + 99)
 
+#define FN_SET_REMINDER         (FN_INSERT + 100)
+
 // Region: Paste (Part 2)
 #define FN_MAILMERGE_SENDMAIL_CHILDWINDOW (FN_INSERT2 + 5)  /* child window provided by mailmerge */
 
@@ -269,13 +280,28 @@
 #define FN_INSERT_MULTI_TOX         (FN_INSERT2 + 20)   /* insert any TOX */
 #define FN_INSERT_AUTH_ENTRY_DLG    (FN_INSERT2 + 21)   /* insert entry for table of authorities*/
 
+// MSO legacy form fields
+#define FN_INSERT_TEXT_FORMFIELD        (FN_INSERT2 + 22)
+#define FN_INSERT_CHECKBOX_FORMFIELD    (FN_INSERT2 + 23)
+#define FN_INSERT_DROPDOWN_FORMFIELD    (FN_INSERT2 + 24)
+
+// MSO content controls
+#define FN_INSERT_DATE_FORMFIELD        (FN_INSERT2 + 25)
+
+#define FN_PROTECT_FIELDS               (FN_INSERT2 + 26)
+#define FN_PROTECT_BOOKMARKS            (FN_INSERT2 + 27)
+
+// clipboard table content
+#define FN_PASTE_NESTED_TABLE       (FN_INSERT2 + 30)  /* instead of the cell-by-cell copy between source and target tables */
+#define FN_TABLE_PASTE_ROW_BEFORE   (FN_INSERT2 + 31)  /* paste table as new table rows */
+#define FN_TABLE_PASTE_COL_BEFORE   (FN_INSERT2 + 32)  /* paste table as new table columns */
+
 // Region: Format
 #define FN_AUTOFORMAT_APPLY     (FN_FORMAT + 1 ) /* apply autoformat options */
 #define FN_AUTOFORMAT_AUTO      (FN_FORMAT + 2 ) /* apply autoformat during user input */
 #define FN_GROW_FONT_SIZE       (FN_FORMAT + 3 ) /* size */
 #define FN_SHRINK_FONT_SIZE     (FN_FORMAT + 4 ) /* size */
-#define FN_UNDERLINE_DOUBLE     (FN_FORMAT + 5 ) /* double underline */
-#define FN_AUTOFORMAT_REDLINE_APPLY (FN_FORMAT + 6 ) /* apply autoformat with Redlining */
+#define FN_AUTOFORMAT_REDLINE_APPLY (FN_FORMAT + 5 ) /* apply autoformat with Redlining */
 #define FN_SET_SUPER_SCRIPT     (FN_FORMAT + 11) /* superscript */
 #define FN_SET_SUB_SCRIPT       (FN_FORMAT + 12) /* subscript */
 #define FN_SET_SMALL_CAPS       (FN_FORMAT + 13) /* small caps */
@@ -370,7 +396,8 @@
 #define FN_FORMULA_APPLY            (FN_FORMAT + 158)  /* apply formula */
 #define FN_TABLE_UNSET_READ_ONLY    (FN_FORMAT + 159)  /* undo cell protection for table */
 
-#define FN_FRAME_WRAP_IDEAL         (FN_FORMAT + 163)  /* frame ideal wrapping */
+#define FN_FRAME_WRAP_IDEAL         (FN_FORMAT + 162)  /* frame ideal wrapping */
+#define FN_FRAME_WRAPTHRU_TOGGLE    (FN_FORMAT + 163)  /* toggle frame transparent wrapping */
 #define FN_FRAME_WRAPTHRU_TRANSP    (FN_FORMAT + 164)  /* frame transparent wrapping */
 
 #define FN_FRAME_ALIGN_VERT_ROW_TOP     (FN_FORMAT + 165)  /* */
@@ -398,6 +425,8 @@
 #define FN_TABLE_MODE_FIX_PROP      (FN_FORMAT + 190)  /*  -"-  */
 #define FN_TABLE_MODE_VARIABLE      (FN_FORMAT + 191)  /*  -"-  */
 #define FN_TABLE_BOX_TEXTORIENTATION (FN_FORMAT + 192)  /* text orientation of table cells */
+#define SID_ATTR_TABLE_ROW_HEIGHT    (FN_FORMAT + 193)
+#define SID_ATTR_TABLE_COLUMN_WIDTH  (FN_FORMAT2 + 194)
 
 #define FN_TABLE_AUTOSUM            (FN_FORMAT + 195)  /* */
 
@@ -485,6 +514,7 @@
 #define FN_UNO_PARA_STYLE           (FN_EXTRA2 + 9)  // starting here are UNI-Ids for the PropertyMap listed
 #define FN_UNO_PAGE_STYLE           (FN_EXTRA2 + 10)
 
+#define FN_UNO_PARA_NUM_AUTO_FORMAT (FN_EXTRA2 + 11)
 #define FN_UNO_FRAME_STYLE_NAME     (FN_EXTRA2 + 12)
 #define FN_UNO_NUM_START_VALUE      (FN_EXTRA2 + 13)
 #define FN_UNO_NUM_LEVEL            (FN_EXTRA2 + 14)
@@ -513,6 +543,8 @@
 #define FN_UNO_FOOTER                       (FN_EXTRA2 + 38)
 #define FN_UNO_FOOTER_LEFT                  (FN_EXTRA2 + 39)
 #define FN_UNO_FOOTER_RIGHT                 (FN_EXTRA2 + 40)
+#define FN_UNO_TEXT_PARAGRAPH               (FN_EXTRA2 + 41)
+#define FN_UNO_PARENT_TEXT (FN_EXTRA2 + 42)
 #define FN_UNO_FOLLOW_STYLE                 (FN_EXTRA2 + 59)
 
 #define FN_API_CALL                         (FN_EXTRA2 + 60)
@@ -544,7 +576,7 @@
 #define FN_UNO_IS_PIXEL_CONTOUR             (FN_EXTRA2 + 83)
 #define FN_UNO_ALTERNATIVE_TEXT             (FN_EXTRA2 + 84)
 #define FN_UNO_ACTUAL_SIZE                  (FN_EXTRA2 + 85)
-#define FN_UNO_GRAPHIC_U_R_L                (FN_EXTRA2 + 86)
+#define FN_UNO_GRAPHIC_URL                  (FN_EXTRA2 + 86)
 #define FN_UNO_GRAPHIC_FILTER               (FN_EXTRA2 + 87)
 #define FN_UNO_CELL_NAME                    (FN_EXTRA2 + 88)
 #define FN_INSERT_GLOSSARY                  (FN_EXTRA2 + 89)
@@ -585,14 +617,19 @@
 #define FN_MATH_BASELINE_ALIGNMENT          (FN_EXTRA2 + 115)
 
 #define FN_EMBEDDED_OBJECT                  (FN_EXTRA2 + 116)
+#define FN_UNO_DRAW_ASPECT                  (FN_EXTRA2 + 117)
 #define FN_UNO_HEADER_FIRST                 (FN_EXTRA2 + 118)
 #define FN_UNO_FOOTER_FIRST                 (FN_EXTRA2 + 119)
 #define FN_UNO_TABLE_BORDER2                (FN_EXTRA2 + 120)
 
-#define FN_UNO_REPLACEMENT_GRAPHIC_U_R_L    (FN_EXTRA2 + 121)
+// #define free                             (FN_EXTRA2 + 121)
 #define FN_UNO_HIDDEN                       (FN_EXTRA2 + 122)
 #define FN_UNO_STYLE_INTEROP_GRAB_BAG       (FN_EXTRA2 + 123)
 #define FN_UNO_TABLE_TEMPLATE_NAME          (FN_EXTRA2 + 124)
+#define FN_UNO_VISIBLE_AREA_WIDTH           (FN_EXTRA2 + 125)
+#define FN_UNO_VISIBLE_AREA_HEIGHT          (FN_EXTRA2 + 126)
+
+#define FN_UNO_TRANSFORMED_GRAPHIC          (FN_EXTRA2 + 125)
 
 // Area: Help
 // Region: Traveling & Selection
@@ -684,8 +721,13 @@
 #define SID_JUMP_TO_SPECIFIC_PAGE    (FN_SELECTION + 92)
 #define SID_TRACK_CHANGES_BAR       (FN_SELECTION + 93)   /* shows/hides track changes bar */
 
+#define FN_SELECT_SENTENCE          (FN_SELECTION + 94)   /* select paragraph*/
+
+#define FN_TO_NEXT_PAGE             (FN_SELECTION + 95)
+#define FN_TO_PREV_PAGE             (FN_SELECTION + 96)
+
 // QUERY-Block
-#define FN_TXTATR_INET              (FN_QUERY +29)      /* INet-Attribut */
+#define FN_TXTATR_INET              (FN_QUERY +29)      /* INet-Attribute */
 
 #define FN_GET_PRINT_AREA           (FN_QUERY +32)      /* Get attribute for printable area of page */
 #define FN_DB_CONNECTION_ANY            (FN_QUERY2 + 3)
@@ -709,6 +751,7 @@
 #define FN_DELETE_COMMENT           (FN_NOTES+6)
 #define FN_REPLY                    (FN_NOTES+7)
 #define FN_FORMAT_ALL_NOTES         (FN_NOTES+8)
+#define FN_RESOLVE_NOTE             (FN_NOTES+9)
 
 // Region: Parameter
 #define FN_PARAM_MOVE_COUNT         (FN_PARAM+2)
@@ -776,6 +819,8 @@
 #define FN_SHAPE_ENDPOSITION_IN_HORI_L2R   (FN_PARAM2+26)
 #define FN_PARAM_PAM                    (FN_PARAM2+27) /* Point and Mark */
 #define FN_TEXT_BOX                     (FN_PARAM2+28) /* TextBox Property*/
+#define FN_BOOKMARK_HIDDEN              (FN_PARAM2+29) /* Hidden Property of bookmarks*/
+#define FN_BOOKMARK_CONDITION           (FN_PARAM2+30) /* Condition Property of bookmarks*/
 
 // Status: not more than 19!
 #define FN_STAT_PAGE                (FN_STAT + 1)
@@ -809,8 +854,6 @@
 #define FN_UNO_DESCRIPTION              (FN_FRAME + 20)
 
 #define SID_ATTR_PAGE_COLUMN            (FN_SIDEBAR + 0)
-#define SID_ATTR_PAGE_ULSPACE           (FN_SIDEBAR + 1)
-#define SID_ATTR_PAGE_LRSPACE           (FN_SIDEBAR + 2)
 #define SID_ATTR_PAGE_HEADER            (FN_SIDEBAR + 3)
 #define SID_ATTR_PAGE_HEADER_LRMARGIN   (FN_SIDEBAR + 4)
 #define SID_ATTR_PAGE_HEADER_SPACING    (FN_SIDEBAR + 5)

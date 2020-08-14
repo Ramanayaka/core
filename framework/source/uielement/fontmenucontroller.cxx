@@ -19,13 +19,14 @@
 
 #include <uielement/fontmenucontroller.hxx>
 
-#include "services.h"
+#include <services.h>
 
-#include <com/sun/star/awt/XDevice.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/awt/MenuItemStyle.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
+#include <com/sun/star/util/XURLTransformer.hpp>
 
+#include <toolkit/awt/vclxmenu.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
@@ -34,6 +35,7 @@
 #include <rtl/ustrbuf.hxx>
 #include <vcl/mnemonic.hxx>
 #include <osl/mutex.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 //  Defines
 
@@ -54,13 +56,22 @@ static bool lcl_I18nCompareString(const OUString& rStr1, const OUString& rStr2)
 namespace framework
 {
 
-DEFINE_XSERVICEINFO_MULTISERVICE_2      (   FontMenuController                      ,
-                                            OWeakObject                             ,
-                                            SERVICENAME_POPUPMENUCONTROLLER         ,
-                                            IMPLEMENTATIONNAME_FONTMENUCONTROLLER
-                                        )
+// XInterface, XTypeProvider, XServiceInfo
 
-DEFINE_INIT_SERVICE                     (   FontMenuController, {} )
+OUString SAL_CALL FontMenuController::getImplementationName()
+{
+    return "com.sun.star.comp.framework.FontMenuController";
+}
+
+sal_Bool SAL_CALL FontMenuController::supportsService( const OUString& sServiceName )
+{
+    return cppu::supportsService(this, sServiceName);
+}
+
+css::uno::Sequence< OUString > SAL_CALL FontMenuController::getSupportedServiceNames()
+{
+    return { SERVICENAME_POPUPMENUCONTROLLER };
+}
 
 FontMenuController::FontMenuController( const css::uno::Reference< css::uno::XComponentContext >& xContext ) :
     svt::PopupMenuControllerBase( xContext )
@@ -72,10 +83,9 @@ FontMenuController::~FontMenuController()
 }
 
 // private function
-void FontMenuController::fillPopupMenu( const Sequence< OUString >& rFontNameSeq, Reference< css::awt::XPopupMenu >& rPopupMenu )
+void FontMenuController::fillPopupMenu( const Sequence< OUString >& rFontNameSeq, Reference< css::awt::XPopupMenu > const & rPopupMenu )
 {
-    const OUString*    pFontNameArray = rFontNameSeq.getConstArray();
-    VCLXPopupMenu*     pPopupMenu = static_cast<VCLXPopupMenu *>(VCLXMenu::GetImplementation( rPopupMenu ));
+    VCLXPopupMenu*     pPopupMenu = static_cast<VCLXPopupMenu *>(comphelper::getUnoTunnelImplementation<VCLXMenu>( rPopupMenu ));
     PopupMenu*         pVCLPopupMenu = nullptr;
 
     SolarMutexGuard aSolarMutexGuard;
@@ -84,31 +94,30 @@ void FontMenuController::fillPopupMenu( const Sequence< OUString >& rFontNameSeq
     if ( pPopupMenu )
         pVCLPopupMenu = static_cast<PopupMenu *>(pPopupMenu->GetMenu());
 
-    if ( pVCLPopupMenu )
+    if ( !pVCLPopupMenu )
+        return;
+
+    vector<OUString> aVector;
+    aVector.reserve(rFontNameSeq.getLength());
+    for ( OUString const & s : rFontNameSeq )
     {
-        vector<OUString> aVector;
-        aVector.reserve(rFontNameSeq.getLength());
-        for ( sal_Int32 i = 0; i < rFontNameSeq.getLength(); i++ )
-        {
-            aVector.push_back(MnemonicGenerator::EraseAllMnemonicChars(pFontNameArray[i]));
-        }
-        sort(aVector.begin(), aVector.end(), lcl_I18nCompareString );
+        aVector.push_back(MnemonicGenerator::EraseAllMnemonicChars(s));
+    }
+    sort(aVector.begin(), aVector.end(), lcl_I18nCompareString );
 
-        const OUString aFontNameCommandPrefix( ".uno:CharFontName?CharFontName.FamilyName:string=" );
-        const sal_Int16 nCount = (sal_Int16)aVector.size();
-        for ( sal_Int16 i = 0; i < nCount; i++ )
-        {
-            const OUString& rName = aVector[i];
-            m_xPopupMenu->insertItem( i+1, rName, css::awt::MenuItemStyle::RADIOCHECK | css::awt::MenuItemStyle::AUTOCHECK, i );
-            if ( rName == m_aFontFamilyName )
-                m_xPopupMenu->checkItem( i+1, true );
-            // use VCL popup menu pointer to set vital information that are not part of the awt implementation
-            OUStringBuffer aCommandBuffer( aFontNameCommandPrefix );
-            aCommandBuffer.append( INetURLObject::encode( rName, INetURLObject::PART_HTTP_QUERY, INetURLObject::EncodeMechanism::All ));
-            OUString aFontNameCommand = aCommandBuffer.makeStringAndClear();
-            pVCLPopupMenu->SetItemCommand( i+1, aFontNameCommand ); // Store font name into item command.
-        }
-
+    const OUString aFontNameCommandPrefix( ".uno:CharFontName?CharFontName.FamilyName:string=" );
+    const sal_Int16 nCount = static_cast<sal_Int16>(aVector.size());
+    for ( sal_Int16 i = 0; i < nCount; i++ )
+    {
+        const OUString& rName = aVector[i];
+        m_xPopupMenu->insertItem( i+1, rName, css::awt::MenuItemStyle::RADIOCHECK | css::awt::MenuItemStyle::AUTOCHECK, i );
+        if ( rName == m_aFontFamilyName )
+            m_xPopupMenu->checkItem( i+1, true );
+        // use VCL popup menu pointer to set vital information that are not part of the awt implementation
+        OUStringBuffer aCommandBuffer( aFontNameCommandPrefix );
+        aCommandBuffer.append( INetURLObject::encode( rName, INetURLObject::PART_HTTP_QUERY, INetURLObject::EncodeMechanism::All ));
+        OUString aFontNameCommand = aCommandBuffer.makeStringAndClear();
+        pVCLPopupMenu->SetItemCommand( i+1, aFontNameCommand ); // Store font name into item command.
     }
 }
 
@@ -151,36 +160,36 @@ void SAL_CALL FontMenuController::itemActivated( const css::awt::MenuEvent& )
 {
     osl::MutexGuard aLock( m_aMutex );
 
-    if ( m_xPopupMenu.is() )
+    if ( !m_xPopupMenu.is() )
+        return;
+
+    // find new font name and set check mark!
+    sal_uInt16        nChecked = 0;
+    sal_uInt16        nItemCount = m_xPopupMenu->getItemCount();
+    for( sal_uInt16 i = 0; i < nItemCount; i++ )
     {
-        // find new font name and set check mark!
-        sal_uInt16        nChecked = 0;
-        sal_uInt16        nItemCount = m_xPopupMenu->getItemCount();
-        for( sal_uInt16 i = 0; i < nItemCount; i++ )
+        sal_uInt16 nItemId = m_xPopupMenu->getItemId( i );
+
+        if ( m_xPopupMenu->isItemChecked( nItemId ) )
+            nChecked = nItemId;
+
+        OUString aText = m_xPopupMenu->getItemText( nItemId );
+
+        // TODO: must be replaced by implementation of VCL, when available
+        sal_Int32 nIndex = aText.indexOf( '~' );
+        if ( nIndex >= 0 )
+            aText = aText.replaceAt( nIndex, 1, "" );
+        // TODO: must be replaced by implementation of VCL, when available
+
+        if ( aText == m_aFontFamilyName )
         {
-            sal_uInt16 nItemId = m_xPopupMenu->getItemId( i );
-
-            if ( m_xPopupMenu->isItemChecked( nItemId ) )
-                nChecked = nItemId;
-
-            OUString aText = m_xPopupMenu->getItemText( nItemId );
-
-            // TODO: must be replaced by implementation of VCL, when available
-            sal_Int32 nIndex = aText.indexOf( '~' );
-            if ( nIndex >= 0 )
-                aText = aText.replaceAt( nIndex, 1, "" );
-            // TODO: must be replaced by implementation of VCL, when available
-
-            if ( aText == m_aFontFamilyName )
-            {
-                m_xPopupMenu->checkItem( nItemId, true );
-                return;
-            }
+            m_xPopupMenu->checkItem( nItemId, true );
+            return;
         }
-
-        if ( nChecked )
-            m_xPopupMenu->checkItem( nChecked, false );
     }
+
+    if ( nChecked )
+        m_xPopupMenu->checkItem( nChecked, false );
 }
 
 // XPopupMenuController
@@ -208,11 +217,18 @@ void SAL_CALL FontMenuController::updatePopupMenu()
 
     if ( xDispatch.is() )
     {
-        xDispatch->addStatusListener( (static_cast< XStatusListener* >(this)), aTargetURL );
-        xDispatch->removeStatusListener( (static_cast< XStatusListener* >(this)), aTargetURL );
+        xDispatch->addStatusListener( static_cast< XStatusListener* >(this), aTargetURL );
+        xDispatch->removeStatusListener( static_cast< XStatusListener* >(this), aTargetURL );
     }
 }
 
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_FontMenuController_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::FontMenuController(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

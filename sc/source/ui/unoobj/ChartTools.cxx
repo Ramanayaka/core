@@ -8,35 +8,29 @@
  *
  */
 
-#include "ChartTools.hxx"
+#include <ChartTools.hxx>
+#include <docsh.hxx>
+#include <drwlayer.hxx>
 
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/chart2/data/XPivotTableDataProvider.hpp>
-
+#include <com/sun/star/chart2/XChartDocument.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <svx/svditer.hxx>
+#include <svx/svdoole2.hxx>
 #include <svx/svdpage.hxx>
-#include <svx/svdundo.hxx>
-#include <sfx2/app.hxx>
-#include <unotools/moduleoptions.hxx>
-#include <comphelper/classids.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <tools/globname.hxx>
-#include <svx/charthelper.hxx>
-#include <svtools/embedhlp.hxx>
 
 using namespace css;
 
-namespace sc {
-namespace tools {
+namespace sc::tools {
 
 namespace {
 
 uno::Reference<chart2::data::XPivotTableDataProvider>
-getPivotTableDataProvider(SdrOle2Obj* pOleObject)
+getPivotTableDataProvider(const SdrOle2Obj* pOleObject)
 {
     uno::Reference<chart2::data::XPivotTableDataProvider> xPivotTableDataProvider;
 
-    uno::Reference<embed::XEmbeddedObject> xObject = pOleObject->GetObjRef();
+    const uno::Reference<embed::XEmbeddedObject>& xObject = pOleObject->GetObjRef();
     if (xObject.is())
     {
         uno::Reference<chart2::XChartDocument> xChartDoc(xObject->getComponent(), uno::UNO_QUERY);
@@ -49,7 +43,7 @@ getPivotTableDataProvider(SdrOle2Obj* pOleObject)
     return xPivotTableDataProvider;
 }
 
-OUString getAssociatedPivotTableName(SdrOle2Obj* pOleObject)
+OUString getAssociatedPivotTableName(const SdrOle2Obj* pOleObject)
 {
     OUString aPivotTableName;
     uno::Reference<chart2::data::XPivotTableDataProvider> xPivotTableDataProvider;
@@ -73,7 +67,7 @@ ChartIterator::ChartIterator(ScDocShell* pDocShell, SCTAB nTab, ChartSourceType 
     SdrPage* pPage = pDrawLayer->GetPage(sal_uInt16(nTab));
     if (!pPage)
         return;
-    m_pIterator.reset(new SdrObjListIter(*pPage, SdrIterMode::DeepNoGroups));
+    m_pIterator.reset(new SdrObjListIter(pPage, SdrIterMode::DeepNoGroups));
 }
 
 SdrOle2Obj* ChartIterator::next()
@@ -175,6 +169,6 @@ std::vector<SdrOle2Obj*> getAllPivotChartsConntectedTo(OUString const & sPivotTa
     return aObjects;
 }
 
-}} // end sc::tools
+} // end sc::tools
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

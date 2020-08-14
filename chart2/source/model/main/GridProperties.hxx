@@ -22,14 +22,12 @@
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/uno3.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
 
-#include "OPropertySet.hxx"
-#include "MutexContainer.hxx"
-#include "ModifyListenerHelper.hxx"
+#include <OPropertySet.hxx>
+#include <MutexContainer.hxx>
 
 namespace chart
 {
@@ -44,13 +42,12 @@ typedef ::cppu::WeakImplHelper<
     GridProperties_Base;
 }
 
-class GridProperties :
+class GridProperties final :
         public MutexContainer,
         public impl::GridProperties_Base,
         public ::property::OPropertySet
 {
 public:
-    explicit GridProperties( css::uno::Reference< css::uno::XComponentContext > const & xContext );
     explicit GridProperties();
     virtual ~GridProperties() override;
 
@@ -64,7 +61,7 @@ public:
     /// merge XTypeProvider implementations
      DECLARE_XTYPEPROVIDER()
 
-protected:
+private:
     explicit GridProperties( const GridProperties & rOther );
 
     // ____ OPropertySet ____
@@ -97,7 +94,6 @@ protected:
     virtual void firePropertyChangeEvent() override;
     using OPropertySet::disposing;
 
-private:
     css::uno::Reference< css::util::XModifyListener > m_xModifyEventForwarder;
 };
 

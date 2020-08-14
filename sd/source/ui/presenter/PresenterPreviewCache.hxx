@@ -22,12 +22,14 @@
 
 #include <com/sun/star/drawing/XSlidePreviewCache.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include "cache/SlsPageCache.hxx"
+#include <tools/gen.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <memory>
 
-namespace sd { namespace presenter {
+namespace sd::slidesorter::cache { class PageCache; }
+
+namespace sd::presenter {
 
 typedef ::cppu::WeakComponentImplHelper<
     css::lang::XInitialization,
@@ -93,7 +95,7 @@ private:
     void ThrowIfDisposed();
 };
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 #endif
 

@@ -15,7 +15,7 @@ $(eval $(call gb_Library_set_include,acc,\
     -I$(SRCDIR)/accessibility/source/inc \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,acc,$(SRCDIR)/accessibility/inc/pch/precompiled_acc))
+$(eval $(call gb_Library_set_precompiled_header,acc,accessibility/inc/pch/precompiled_acc))
 
 $(eval $(call gb_Library_use_external,acc,boost_headers))
 
@@ -35,6 +35,10 @@ $(eval $(call gb_Library_use_libraries,acc,\
     tl \
     utl \
     vcl \
+))
+
+$(eval $(call gb_Library_add_defs,acc,\
+    -DVCL_INTERNALS \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,acc,\
@@ -65,7 +69,6 @@ $(eval $(call gb_Library_add_exception_objects,acc,\
     accessibility/source/extended/accessibletabbarpagelist \
     accessibility/source/extended/accessibletablistbox \
     accessibility/source/extended/accessibletablistboxtable \
-    accessibility/source/extended/listboxaccessible \
     accessibility/source/extended/textwindowaccessibility \
     accessibility/source/helper/acc_factory \
     accessibility/source/helper/accresmgr \
@@ -84,6 +87,8 @@ $(eval $(call gb_Library_add_exception_objects,acc,\
     accessibility/source/standard/vclxaccessibleedit \
     accessibility/source/standard/vclxaccessiblefixedhyperlink \
     accessibility/source/standard/vclxaccessiblefixedtext \
+    accessibility/source/standard/vclxaccessibleheaderbar \
+    accessibility/source/standard/vclxaccessibleheaderbaritem \
     accessibility/source/standard/vclxaccessiblelist \
     accessibility/source/standard/vclxaccessiblelistbox \
     accessibility/source/standard/vclxaccessiblelistitem \

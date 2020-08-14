@@ -17,44 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/embed/EntryInitModes.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/io/IOException.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 
 #include "xolefactory.hxx"
-#include "oleembobj.hxx"
+#include <oleembobj.hxx>
 
 #include <cppuhelper/supportsservice.hxx>
 
 using namespace ::com::sun::star;
 
 // TODO: do not create OLE objects that represent OOo documents
-
-
-uno::Sequence< OUString > SAL_CALL OleEmbeddedObjectFactory::impl_staticGetSupportedServiceNames()
-{
-    uno::Sequence< OUString > aRet(2);
-    aRet[0] = "com.sun.star.embed.OLEEmbeddedObjectFactory";
-    aRet[1] = "com.sun.star.comp.embed.OLEEmbeddedObjectFactory";
-    return aRet;
-}
-
-
-OUString SAL_CALL OleEmbeddedObjectFactory::impl_staticGetImplementationName()
-{
-    return OUString("com.sun.star.comp.embed.OLEEmbeddedObjectFactory");
-}
-
-
-uno::Reference< uno::XInterface > SAL_CALL OleEmbeddedObjectFactory::impl_staticCreateSelfInstance(
-            const uno::Reference< lang::XMultiServiceFactory >& xServiceManager )
-{
-    return uno::Reference< uno::XInterface >( *new OleEmbeddedObjectFactory( xServiceManager ) );
-}
 
 
 uno::Reference< uno::XInterface > SAL_CALL OleEmbeddedObjectFactory::createInstanceInitFromEntry(
@@ -86,7 +63,7 @@ uno::Reference< uno::XInterface > SAL_CALL OleEmbeddedObjectFactory::createInsta
     }
 
     uno::Reference< uno::XInterface > xResult(
-                    static_cast< ::cppu::OWeakObject* > ( new OleEmbeddedObject( m_xFactory, false ) ),
+                    static_cast< ::cppu::OWeakObject* > ( new OleEmbeddedObject( m_xContext, false ) ),
                     uno::UNO_QUERY );
 
     uno::Reference< embed::XEmbedPersist > xPersist( xResult, uno::UNO_QUERY_THROW );
@@ -96,15 +73,15 @@ uno::Reference< uno::XInterface > SAL_CALL OleEmbeddedObjectFactory::createInsta
                                     aMedDescr,
                                     lObjArgs );
 
-    for ( sal_Int32 nInd = 0; nInd < lObjArgs.getLength(); nInd++ )
+    for ( beans::PropertyValue const & prop : lObjArgs )
     {
-        if ( lObjArgs[nInd].Name == "CloneFrom" )
+        if ( prop.Name == "CloneFrom" )
         {
             try
             {
                 uno::Reference < embed::XEmbeddedObject > xObj;
                 uno::Reference < embed::XEmbeddedObject > xNew( xResult, uno::UNO_QUERY );
-                lObjArgs[nInd].Value >>= xObj;
+                prop.Value >>= xObj;
                 if ( xObj.is() )
                     xNew->setVisualAreaSize( embed::Aspects::MSOLE_CONTENT, xObj->getVisualAreaSize( embed::Aspects::MSOLE_CONTENT ) );
             }
@@ -134,7 +111,7 @@ uno::Reference< uno::XInterface > SAL_CALL OleEmbeddedObjectFactory::createInsta
                                             2 );
 
     uno::Reference< uno::XInterface > xResult(
-                    static_cast< ::cppu::OWeakObject* > ( new OleEmbeddedObject( m_xFactory, false ) ),
+                    static_cast< ::cppu::OWeakObject* > ( new OleEmbeddedObject( m_xContext, false ) ),
                     uno::UNO_QUERY );
 
     uno::Reference< embed::XEmbedPersist > xPersist( xResult, uno::UNO_QUERY_THROW );
@@ -166,7 +143,7 @@ uno::Reference< uno::XInterface > SAL_CALL OleEmbeddedObjectFactory::createInsta
                                             4 );
 
     uno::Reference< uno::XInterface > xResult(
-                    static_cast< ::cppu::OWeakObject* > ( new OleEmbeddedObject( m_xFactory, aClassID, aClassName ) ),
+                    static_cast< ::cppu::OWeakObject* > ( new OleEmbeddedObject( m_xContext, aClassID, aClassName ) ),
                     uno::UNO_QUERY );
 
     uno::Reference< embed::XEmbedPersist > xPersist( xResult, uno::UNO_QUERY_THROW );
@@ -197,7 +174,7 @@ uno::Reference< uno::XInterface > SAL_CALL OleEmbeddedObjectFactory::createInsta
                                             2 );
 
     uno::Reference< uno::XInterface > xResult(
-                static_cast< ::cppu::OWeakObject* > ( new OleEmbeddedObject( m_xFactory, true ) ),
+                static_cast< ::cppu::OWeakObject* > ( new OleEmbeddedObject( m_xContext, true ) ),
                 uno::UNO_QUERY );
 
     uno::Reference< embed::XEmbedPersist > xPersist( xResult, uno::UNO_QUERY_THROW );
@@ -232,7 +209,7 @@ uno::Reference< uno::XInterface > SAL_CALL OleEmbeddedObjectFactory::createInsta
                                             2 );
 
     uno::Reference< uno::XInterface > xResult(
-                static_cast< ::cppu::OWeakObject* > ( new OleEmbeddedObject( m_xFactory, aClassID, aClassName ) ),
+                static_cast< ::cppu::OWeakObject* > ( new OleEmbeddedObject( m_xContext, aClassID, aClassName ) ),
                 uno::UNO_QUERY );
 
     uno::Reference< embed::XEmbedPersist > xPersist( xResult, uno::UNO_QUERY_THROW );
@@ -248,7 +225,7 @@ uno::Reference< uno::XInterface > SAL_CALL OleEmbeddedObjectFactory::createInsta
 
 OUString SAL_CALL OleEmbeddedObjectFactory::getImplementationName()
 {
-    return impl_staticGetImplementationName();
+    return "com.sun.star.comp.embed.OLEEmbeddedObjectFactory";
 }
 
 sal_Bool SAL_CALL OleEmbeddedObjectFactory::supportsService( const OUString& ServiceName )
@@ -259,7 +236,17 @@ sal_Bool SAL_CALL OleEmbeddedObjectFactory::supportsService( const OUString& Ser
 
 uno::Sequence< OUString > SAL_CALL OleEmbeddedObjectFactory::getSupportedServiceNames()
 {
-    return impl_staticGetSupportedServiceNames();
+    return { "com.sun.star.embed.OLEEmbeddedObjectFactory",
+             "com.sun.star.comp.embed.OLEEmbeddedObjectFactory" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+embeddedobj_OleEmbeddedObjectFactory_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    static rtl::Reference<OleEmbeddedObjectFactory> g_Instance(new OleEmbeddedObjectFactory(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

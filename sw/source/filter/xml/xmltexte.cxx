@@ -17,30 +17,32 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <string_view>
+
 #include <comphelper/classids.hxx>
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/embed/XLinkageSupport.hpp>
 #include <com/sun/star/document/XEmbeddedObjectSupplier.hpp>
 #include <xmloff/families.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/txtprmap.hxx>
 #include <xmloff/maptype.hxx>
+#include <xmloff/xmlexppr.hxx>
 
-#include <svx/svdobj.hxx>
-#include <doc.hxx>
 #include <ndole.hxx>
 #include <fmtcntnt.hxx>
-#include <unostyle.hxx>
 #include <unoframe.hxx>
-#include <ndgrf.hxx>
 #include "xmlexp.hxx"
 #include "xmltexte.hxx"
 #include <SwAppletImpl.hxx>
+#include <ndindex.hxx>
 
+#include <sot/exchange.hxx>
 #include <svl/urihelper.hxx>
 #include <sfx2/frmdescr.hxx>
-#include <SwStyleNameMapper.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -51,6 +53,8 @@ using namespace ::com::sun::star::document;
 using namespace ::com::sun::star::io;
 using namespace ::xmloff::token;
 
+namespace {
+
 enum SvEmbeddedObjectTypes
 {
     SV_EMBEDDED_OWN,
@@ -59,6 +63,8 @@ enum SvEmbeddedObjectTypes
     SV_EMBEDDED_PLUGIN,
     SV_EMBEDDED_FRAME
 };
+
+}
 
 SwNoTextNode *SwXMLTextParagraphExport::GetNoTextNode(
     const Reference < XPropertySet >& rPropSet )
@@ -74,12 +80,12 @@ SwNoTextNode *SwXMLTextParagraphExport::GetNoTextNode(
     return  pNdIdx->GetNodes()[pNdIdx->GetIndex() + 1]->GetNoTextNode();
 }
 
+const OUStringLiteral gsEmbeddedObjectProtocol( "vnd.sun.star.EmbeddedObject:" );
+
 SwXMLTextParagraphExport::SwXMLTextParagraphExport(
         SwXMLExport& rExp,
          SvXMLAutoStylePoolP& _rAutoStylePool ) :
     XMLTextParagraphExport( rExp, _rAutoStylePool ),
-    sEmbeddedObjectProtocol( "vnd.sun.star.EmbeddedObject:" ),
-    sGraphicObjectProtocol( "vnd.sun.star.GraphicObject:" ),
     aAppletClassId( SO3_APPLET_CLASSID ),
     aPluginClassId( SO3_PLUGIN_CLASSID ),
     aIFrameClassId( SO3_IFRAME_CLASSID )
@@ -111,13 +117,10 @@ static void lcl_addAspect(
         const XMLPropertyState **pStates,
         const rtl::Reference < XMLPropertySetMapper >& rMapper )
 {
+    sal_Int64 nAspect = rObj.GetViewAspect();
+    if ( nAspect )
     {
-        sal_Int64 nAspect = rObj.GetViewAspect();
-
-        if ( nAspect )
-        {
-            *pStates = new XMLPropertyState( rMapper->FindEntryIndex( CTF_OLE_DRAW_ASPECT ), uno::makeAny( nAspect ) );
-        }
+        *pStates = new XMLPropertyState( rMapper->FindEntryIndex( CTF_OLE_DRAW_ASPECT ), uno::makeAny( nAspect ) );
     }
 }
 
@@ -126,24 +129,22 @@ static void lcl_addOutplaceProperties(
         const XMLPropertyState **pStates,
         const rtl::Reference < XMLPropertySetMapper >& rMapper )
 {
-    {
-        MapMode aMode( MapUnit::Map100thMM ); // the API expects this map mode for the embedded objects
-        Size aSize = rObj.GetSize( &aMode ); // get the size in the requested map mode
+    MapMode aMode( MapUnit::Map100thMM ); // the API expects this map mode for the embedded objects
+    Size aSize = rObj.GetSize( &aMode ); // get the size in the requested map mode
 
-        if( aSize.Width() && aSize.Height() )
-        {
-            *pStates = new XMLPropertyState( rMapper->FindEntryIndex( CTF_OLE_VIS_AREA_LEFT ), Any(0L) );
-            pStates++;
+    if( !(aSize.Width() && aSize.Height()) )
+        return;
 
-            *pStates = new XMLPropertyState( rMapper->FindEntryIndex( CTF_OLE_VIS_AREA_TOP ), Any(0L) );
-            pStates++;
+    *pStates = new XMLPropertyState( rMapper->FindEntryIndex( CTF_OLE_VIS_AREA_LEFT ), Any(sal_Int32(0)) );
+    pStates++;
 
-            *pStates = new XMLPropertyState( rMapper->FindEntryIndex( CTF_OLE_VIS_AREA_WIDTH ), Any((sal_Int32)aSize.Width()) );
-            pStates++;
+    *pStates = new XMLPropertyState( rMapper->FindEntryIndex( CTF_OLE_VIS_AREA_TOP ), Any(sal_Int32(0)) );
+    pStates++;
 
-            *pStates = new XMLPropertyState( rMapper->FindEntryIndex( CTF_OLE_VIS_AREA_HEIGHT ), Any((sal_Int32)aSize.Height()) );
-        }
-    }
+    *pStates = new XMLPropertyState( rMapper->FindEntryIndex( CTF_OLE_VIS_AREA_WIDTH ), Any(static_cast<sal_Int32>(aSize.Width())) );
+    pStates++;
+
+    *pStates = new XMLPropertyState( rMapper->FindEntryIndex( CTF_OLE_VIS_AREA_HEIGHT ), Any(static_cast<sal_Int32>(aSize.Height())) );
 }
 
 static void lcl_addFrameProperties(
@@ -158,16 +159,8 @@ static void lcl_addFrameProperties(
     if ( !xSet.is() )
         return;
 
-    OUString aURL;
-    Any aAny = xSet->getPropertyValue("FrameURL");
-    aAny >>= aURL;
-
-    OUString aName;
-    aAny = xSet->getPropertyValue("FrameName");
-    aAny >>= aName;
-
     bool bIsAutoScroll = false, bIsScrollingMode = false;
-    aAny = xSet->getPropertyValue("FrameIsAutoScroll");
+    Any aAny = xSet->getPropertyValue("FrameIsAutoScroll");
     aAny >>= bIsAutoScroll;
     if ( !bIsAutoScroll )
     {
@@ -236,7 +229,7 @@ void SwXMLTextParagraphExport::_collectTextEmbeddedAutoStyles(
     lcl_addAspect( rObjRef, aStates,
            GetAutoFramePropMapper()->getPropertySetMapper() );
 
-    Add( XML_STYLE_FAMILY_TEXT_FRAME, rPropSet, aStates );
+    Add( XmlStyleFamily::TEXT_FRAME, rPropSet, aStates );
 
     const XMLPropertyState **pStates = aStates;
     while( *pStates )
@@ -282,9 +275,9 @@ void SwXMLTextParagraphExport::_exportTextEmbedded(
     // First the stuff common to each of Applet/Plugin/Floating Frame
     OUString sStyle;
     Any aAny;
-    if( rPropSetInfo->hasPropertyByName( sFrameStyleName ) )
+    if( rPropSetInfo->hasPropertyByName( gsFrameStyleName ) )
     {
-        aAny = rPropSet->getPropertyValue( sFrameStyleName );
+        aAny = rPropSet->getPropertyValue( gsFrameStyleName );
         aAny >>= sStyle;
     }
 
@@ -306,7 +299,7 @@ void SwXMLTextParagraphExport::_exportTextEmbedded(
     lcl_addAspect( rObjRef, aStates,
         GetAutoFramePropMapper()->getPropertySetMapper() );
 
-    const OUString sAutoStyle = Find( XML_STYLE_FAMILY_TEXT_FRAME,
+    const OUString sAutoStyle = Find( XmlStyleFamily::TEXT_FRAME,
                                       rPropSet, sStyle, aStates );
     const XMLPropertyState **pStates = aStates;
     while( *pStates )
@@ -349,7 +342,7 @@ void SwXMLTextParagraphExport::_exportTextEmbedded(
 
             if ( !bIsOwnLink )
             {
-                sURL = sEmbeddedObjectProtocol + rOLEObj.GetCurrentPersistName();
+                sURL = gsEmbeddedObjectProtocol + rOLEObj.GetCurrentPersistName();
             }
 
             sURL = GetExport().AddEmbeddedObject( sURL );
@@ -371,11 +364,11 @@ void SwXMLTextParagraphExport::_exportTextEmbedded(
                         if( aBuffer.isEmpty() )
                         {
                             aBuffer.append( '\'' );
-                            aBuffer.append( sRange.copy( 0, i ) );
+                            aBuffer.append( std::u16string_view(sRange).substr(0, i) );
                         }
                         if( '\'' == c || '\\' == c )
                             aBuffer.append( '\\' );
-                        SAL_FALLTHROUGH;
+                        [[fallthrough]];
                     default:
                         if( !aBuffer.isEmpty() )
                             aBuffer.append( c );
@@ -501,7 +494,7 @@ void SwXMLTextParagraphExport::_exportTextEmbedded(
         case SV_EMBEDDED_OUTPLACE:
             if( rXMLExport.getExportFlags() & SvXMLExportFlags::EMBEDDED )
             {
-                OUString sURL( sEmbeddedObjectProtocol + rOLEObj.GetCurrentPersistName() );
+                OUString sURL( gsEmbeddedObjectProtocol + rOLEObj.GetCurrentPersistName() );
 
                 if ( !( rXMLExport.getExportFlags() & SvXMLExportFlags::OASIS ) )
                     sURL += "?oasis=false";
@@ -567,7 +560,7 @@ void SwXMLTextParagraphExport::_exportTextEmbedded(
     }
     if( SV_EMBEDDED_OUTPLACE==nType || SV_EMBEDDED_OWN==nType )
     {
-        OUString sURL( sGraphicObjectProtocol + rOLEObj.GetCurrentPersistName() );
+        OUString sURL = XML_EMBEDDEDOBJECTGRAPHIC_URL_BASE + rOLEObj.GetCurrentPersistName();
         if( !(rXMLExport.getExportFlags() & SvXMLExportFlags::EMBEDDED) )
         {
             sURL = GetExport().AddEmbeddedObject( sURL );

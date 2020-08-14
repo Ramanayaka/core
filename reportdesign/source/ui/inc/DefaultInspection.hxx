@@ -25,8 +25,6 @@
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <cppuhelper/implbase3.hxx>
 
-#include <memory>
-
 
 namespace rptui
 {
@@ -39,7 +37,7 @@ namespace rptui
                                         ,   css::lang::XServiceInfo
                                         ,   css::lang::XInitialization
                                         >   DefaultComponentInspectorModel_Base;
-    class DefaultComponentInspectorModel : public DefaultComponentInspectorModel_Base
+    class DefaultComponentInspectorModel final : public DefaultComponentInspectorModel_Base
     {
     private:
         ::osl::Mutex                                                                            m_aMutex;
@@ -53,7 +51,7 @@ namespace rptui
 
         DefaultComponentInspectorModel(const DefaultComponentInspectorModel&) = delete;
         DefaultComponentInspectorModel& operator=(const DefaultComponentInspectorModel&) = delete;
-    protected:
+
         virtual ~DefaultComponentInspectorModel() override;
 
         // XServiceInfo
@@ -75,21 +73,11 @@ namespace rptui
         // XInitialization
         virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
 
-    public:
-        // XServiceInfo - static versions
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_static(  );
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL
-                        create(const css::uno::Reference< css::uno::XComponentContext >&);
+        // Service constructors
+        void    createWithHelpSection( sal_Int32 _nMinHelpTextLines, sal_Int32 _nMaxHelpTextLines );
 
     public:
         DefaultComponentInspectorModel( const css::uno::Reference< css::uno::XComponentContext >& _rxContext);
-
-    protected:
-        // Service constructors
-        void    createWithHelpSection( sal_Int32 _nMinHelpTextLines, sal_Int32 _nMaxHelpTextLines );
     };
 
 

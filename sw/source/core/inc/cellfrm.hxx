@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_CELLFRM_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_CELLFRM_HXX
 
-#include <tools/mempool.hxx>
 #include "layfrm.hxx"
 
 class SwTableBox;
@@ -42,8 +41,8 @@ protected:
 public:
     SwCellFrame( const SwTableBox &, SwFrame*, bool bInsertContent );
 
-    virtual bool GetCursorOfst( SwPosition *, Point&, SwCursorMoveState* = nullptr, bool bTestBackground = false ) const override;
-    virtual void Paint( vcl::RenderContext& rRenderContext, SwRect const&,
+    virtual bool GetModelPositionForViewPoint( SwPosition *, Point&, SwCursorMoveState* = nullptr, bool bTestBackground = false ) const override;
+    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const&,
                         SwPrintData const*const pPrintData = nullptr ) const override;
     virtual void CheckDirection( bool bVert ) override;
 
@@ -56,12 +55,14 @@ public:
     SwCellFrame* GetFollowCell() const;
     SwCellFrame* GetPreviousCell() const;
 
+    virtual bool IsLeaveUpperAllowed() const override;
+    virtual bool IsCoveredCell() const override;
+
     // used for rowspan stuff:
     const SwCellFrame& FindStartEndOfRowSpanCell( bool bStart ) const;
     long GetLayoutRowSpan() const;
 
     void dumpAsXmlAttributes(xmlTextWriterPtr writer) const override;
-    DECL_FIXEDMEMPOOL_NEWDEL(SwCellFrame)
 };
 
 #endif

@@ -25,15 +25,16 @@ using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
 /// @throws uno::RuntimeException
-uno::Reference< container::XIndexAccess > createVariablesAccess( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< beans::XPropertyAccess >& xUserDefined )
+static uno::Reference< container::XIndexAccess > createVariablesAccess( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< beans::XPropertyAccess >& xUserDefined )
 {
     // FIXME: the performance is poor?
     XNamedObjectCollectionHelper< word::XVariable >::XNamedVec aVariables;
     const uno::Sequence< beans::PropertyValue > props = xUserDefined->getPropertyValues();
     sal_Int32 nCount = props.getLength();
     aVariables.reserve( nCount );
-    for( sal_Int32 i=0; i < nCount; i++ )
-        aVariables.push_back( uno::Reference< word::XVariable > ( new SwVbaVariable( xParent, xContext, xUserDefined, props[i].Name ) ) );
+    std::transform(props.begin(), props.end(), std::back_inserter(aVariables),
+        [&xParent, &xContext, &xUserDefined](const beans::PropertyValue& rProp) -> uno::Reference< word::XVariable > {
+            return uno::Reference< word::XVariable > ( new SwVbaVariable( xParent, xContext, xUserDefined, rProp.Name ) ); });
 
     uno::Reference< container::XIndexAccess > xVariables( new XNamedObjectCollectionHelper< word::XVariable >( aVariables ) );
     return xVariables;
@@ -78,18 +79,16 @@ SwVbaVariables::Add( const OUString& rName, const uno::Any& rValue )
 OUString
 SwVbaVariables::getServiceImplName()
 {
-    return OUString("SwVbaVariables");
+    return "SwVbaVariables";
 }
 
 css::uno::Sequence<OUString>
 SwVbaVariables::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.Variables";
-    }
+        "ooo.vba.word.Variables"
+    };
     return sNames;
 }
 

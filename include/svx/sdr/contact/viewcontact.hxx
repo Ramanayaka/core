@@ -22,18 +22,18 @@
 
 #include <sal/types.h>
 #include <svx/svxdllapi.h>
-#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
+#include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
 
 class SdrLayerIDSet;
 class SdrPage;
 class SdrObject;
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 class ObjectContact;
 class ViewObjectContact;
 
-class SVX_DLLPUBLIC ViewContact
+class SVXCORE_DLLPUBLIC ViewContact
 {
 private:
     // make ViewObjectContact a friend to exclusively allow it to use
@@ -65,7 +65,7 @@ protected:
     sal_uInt32 getViewObjectContactCount() const { return maViewObjectContactVector.size(); }
     ViewObjectContact* getViewObjectContact(sal_uInt32 a) const { return maViewObjectContactVector[a]; }
 
-    // Create a Object-Specific ViewObjectContact, set ViewContact and
+    // Create an Object-Specific ViewObjectContact, set ViewContact and
     // ObjectContact. Always needs to return something. Default is to create
     // a standard ViewObjectContact containing the given ObjectContact and *this
     virtual ViewObjectContact& CreateObjectSpecificViewObjectContact(ObjectContact& rObjectContact);
@@ -79,9 +79,6 @@ protected:
     // asserted there
     virtual drawinglayer::primitive2d::Primitive2DContainer createViewIndependentPrimitive2DSequence() const;
 
-    // method for flushing View Independent Primitive2DContainer for VOC implementations
-    void flushViewIndependentPrimitive2DSequence() { mxViewIndependentPrimitive2DSequence.clear(); }
-
     // basic constructor. Since this is a base class only, it shall
     // never be called directly
     ViewContact();
@@ -90,7 +87,7 @@ public:
     // basic destructor with needed cleanups
     virtual ~ViewContact();
 
-    // get a Object-specific ViewObjectContact for a specific
+    // get an Object-specific ViewObjectContact for a specific
     // ObjectContact (->View). Always needs to return something.
     ViewObjectContact& GetViewObjectContact(ObjectContact& rObjectContact);
 
@@ -127,10 +124,12 @@ public:
     // add Gluepoints (if available)
     virtual drawinglayer::primitive2d::Primitive2DContainer createGluePointPrimitive2DSequence() const;
 
-    // allow embedding if needed (e.g. for SdrObjects, evtl. Name, Title and description get added). This
+    // Allow embedding if needed (e.g. for SdrObjects, evtl. Name, Title and description get added). This
     // is a helper normally used from getViewIndependentPrimitive2DContainer(), but there is one exception
-    // for 3D scenes
-    virtual drawinglayer::primitive2d::Primitive2DContainer embedToObjectSpecificInformation(const drawinglayer::primitive2d::Primitive2DContainer& rSource) const;
+    // for 3D scenes.
+    // We take the param by value, since, for the common case, we can just std::move into the param, and
+    // std::move the result out, avoiding copying.
+    virtual drawinglayer::primitive2d::Primitive2DContainer embedToObjectSpecificInformation(drawinglayer::primitive2d::Primitive2DContainer rSource) const;
 
     virtual basegfx::B2DRange getRange( const drawinglayer::geometry::ViewInformation2D& rViewInfo2D ) const;
 
@@ -141,7 +140,7 @@ public:
     void flushViewObjectContacts(bool bWithHierarchy = true);
 };
 
-}}
+}
 
 
 #endif // INCLUDED_SVX_SDR_CONTACT_VIEWCONTACT_HXX

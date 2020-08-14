@@ -23,15 +23,13 @@
 #include <sal/types.h>
 #include <vcl/timer.hxx>
 #include <svx/svxdllapi.h>
-#include <o3tl/sorted_vector.hxx>
+#include <vector>
 
 
-namespace sdr
-{
-    namespace animation
+namespace sdr::animation
     {
 
-        class SVX_DLLPUBLIC Event
+        class SVXCORE_DLLPUBLIC Event
         {
             // time of event in ms
             sal_uInt32                                      mnTime;
@@ -49,12 +47,7 @@ namespace sdr
             virtual void Trigger(sal_uInt32 nTime) = 0;
         };
 
-        struct CompareEvent
-        {
-            bool operator()(Event* const& lhs, Event* const& rhs) const;
-        };
-
-        class SVX_DLLPUBLIC Scheduler : public Timer
+        class SVXCORE_DLLPUBLIC Scheduler : public Timer
         {
             // time in ms
             sal_uInt32                                      mnTime;
@@ -62,8 +55,8 @@ namespace sdr
             // next delta time
             sal_uInt32                                      mnDeltaTime;
 
-            // list of events
-            o3tl::sorted_vector<Event*, CompareEvent>       maList;
+            // list of events, sorted by time
+            std::vector<Event*>                             mvEvents;
 
             // Flag which remembers if this timer is paused. Default
             // is false.
@@ -78,7 +71,7 @@ namespace sdr
             virtual void Invoke() override;
 
             // get time
-            SAL_DLLPRIVATE sal_uInt32 GetTime() {  return mnTime; }
+            SAL_DLLPRIVATE sal_uInt32 GetTime() const {  return mnTime; }
 
             // #i38135#
             SAL_DLLPRIVATE void SetTime(sal_uInt32 nTime);
@@ -90,7 +83,7 @@ namespace sdr
             SAL_DLLPRIVATE void checkTimeout();
 
             // insert/remove events, wrapper to EventList methods
-            void InsertEvent(Event* pNew);
+            void InsertEvent(Event& rNew);
             SAL_DLLPRIVATE void RemoveEvent(Event* pOld);
 
             // get/set pause
@@ -98,8 +91,7 @@ namespace sdr
             SAL_DLLPRIVATE void SetPaused(bool bNew);
         };
 
-    } // end of namespace animation
-} // end of namespace sdr
+} // end of namespace sdr::animation
 
 
 #endif // INCLUDED_SVX_SDR_ANIMATION_SCHEDULER_HXX

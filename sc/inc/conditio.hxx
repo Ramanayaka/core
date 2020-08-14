@@ -21,21 +21,23 @@
 #define INCLUDED_SC_INC_CONDITIO_HXX
 
 #include "global.hxx"
+#include <tools/solar.h>
+#include <tools/color.hxx>
 #include "address.hxx"
 #include <formula/grammar.hxx>
 #include "scdllapi.h"
 #include "rangelst.hxx"
+#include "tokenarray.hxx"
 
-#include <svl/hint.hxx>
 #include <svl/listener.hxx>
-#include <svl/broadcast.hxx>
 
-#include <comphelper/stl_types.hxx>
 #include <com/sun/star/sheet/ConditionOperator.hpp>
 
 #include <rtl/math.hxx>
 #include <tools/date.hxx>
+#include <tools/link.hxx>
 
+#include <optional>
 #include <map>
 #include <memory>
 #include <set>
@@ -56,87 +58,167 @@ struct RefUpdateMoveTabContext;
 //  nOptions Flags
 #define SC_COND_NOBLANKS    1
 
-enum ScConditionMode
+enum class ScConditionMode
 {
-    SC_COND_EQUAL,
-    SC_COND_LESS,
-    SC_COND_GREATER,
-    SC_COND_EQLESS,
-    SC_COND_EQGREATER,
-    SC_COND_NOTEQUAL,
-    SC_COND_BETWEEN,
-    SC_COND_NOTBETWEEN,
-    SC_COND_DUPLICATE,
-    SC_COND_NOTDUPLICATE,
-    SC_COND_DIRECT,
-    SC_COND_TOP10,
-    SC_COND_BOTTOM10,
-    SC_COND_TOP_PERCENT,
-    SC_COND_BOTTOM_PERCENT,
-    SC_COND_ABOVE_AVERAGE,
-    SC_COND_BELOW_AVERAGE,
-    SC_COND_ABOVE_EQUAL_AVERAGE,
-    SC_COND_BELOW_EQUAL_AVERAGE,
-    SC_COND_ERROR,
-    SC_COND_NOERROR,
-    SC_COND_BEGINS_WITH,
-    SC_COND_ENDS_WITH,
-    SC_COND_CONTAINS_TEXT,
-    SC_COND_NOT_CONTAINS_TEXT,
-    SC_COND_NONE
+    Equal,
+    Less,
+    Greater,
+    EqLess,
+    EqGreater,
+    NotEqual,
+    Between,
+    NotBetween,
+    Duplicate,
+    NotDuplicate,
+    Direct,
+    Top10,
+    Bottom10,
+    TopPercent,
+    BottomPercent,
+    AboveAverage,
+    BelowAverage,
+    AboveEqualAverage,
+    BelowEqualAverage,
+    Error,
+    NoError,
+    BeginsWith,
+    EndsWith,
+    ContainsText,
+    NotContainsText,
+    NONE
 };
 
-class ScFormulaListener : public SvtListener
+// For use in SAL_DEBUG etc. Output format not guaranteed to be stable.
+template<typename charT, typename traits>
+inline std::basic_ostream<charT, traits> & operator <<(std::basic_ostream<charT, traits> & stream, const ScConditionMode& rMode)
+{
+    switch (rMode)
+    {
+    case ScConditionMode::Equal:
+        stream << "EQUAL";
+        break;
+    case ScConditionMode::Less:
+        stream << "LESS";
+        break;
+    case ScConditionMode::Greater:
+        stream << "GREATER";
+        break;
+    case ScConditionMode::EqLess:
+        stream << "EQLESS";
+        break;
+    case ScConditionMode::EqGreater:
+        stream << "EQGREATER";
+        break;
+    case ScConditionMode::NotEqual:
+        stream << "NOTEQUAL";
+        break;
+    case ScConditionMode::Between:
+        stream << "BETWEEN";
+        break;
+    case ScConditionMode::NotBetween:
+        stream << "NOTBETWEEN";
+        break;
+    case ScConditionMode::Duplicate:
+        stream << "DUPLICATE";
+        break;
+    case ScConditionMode::NotDuplicate:
+        stream << "NOTDUPLICATE";
+        break;
+    case ScConditionMode::Direct:
+        stream << "DIRECT";
+        break;
+    case ScConditionMode::Top10:
+        stream << "TOP10";
+        break;
+    case ScConditionMode::Bottom10:
+        stream << "BOTTOM10";
+        break;
+    case ScConditionMode::TopPercent:
+        stream << "TOPPERCENT";
+        break;
+    case ScConditionMode::BottomPercent:
+        stream << "BOTTOMPERCENT";
+        break;
+    case ScConditionMode::AboveAverage:
+        stream << "ABOVEAVERAGE";
+        break;
+    case ScConditionMode::BelowAverage:
+        stream << "BELOWAVERAGE";
+        break;
+    case ScConditionMode::AboveEqualAverage:
+        stream << "ABOVEEQUALAVERAGE";
+        break;
+    case ScConditionMode::BelowEqualAverage:
+        stream << "BELOWEQUALAVERAGE";
+        break;
+    case ScConditionMode::Error:
+        stream << "ERROR";
+        break;
+    case ScConditionMode::NoError:
+        stream << "NOERROR";
+        break;
+    case ScConditionMode::BeginsWith:
+        stream << "BEGINSWITH";
+        break;
+    case ScConditionMode::EndsWith:
+        stream << "ENDSWITH";
+        break;
+    case ScConditionMode::ContainsText:
+        stream << "CONTAINSTEXT";
+        break;
+    case ScConditionMode::NotContainsText:
+        stream << "NOTCONTAINSTEXT";
+        break;
+    case ScConditionMode::NONE:
+        stream << "NONE";
+        break;
+    default:
+        stream << "?(" << static_cast<int>(rMode) << ")";
+        break;
+    }
+
+    return stream;
+}
+
+class ScFormulaListener final : public SvtListener
 {
 private:
     mutable bool mbDirty;
     ScDocument* mpDoc;
     std::function<void()> maCallbackFunction;
 
-    void startListening(ScTokenArray* pTokens, const ScRange& rPos);
+    void startListening(const ScTokenArray* pTokens, const ScRange& rPos);
+    void startListening(const ScRangeList& rPos);
 
 public:
     explicit ScFormulaListener(ScFormulaCell* pCell);
     explicit ScFormulaListener(ScDocument* pDoc);
+    explicit ScFormulaListener(ScDocument* pDoc, const ScRangeList& rRange);
     virtual ~ScFormulaListener() override;
 
     void Notify( const SfxHint& rHint ) override;
 
     bool NeedsRepaint() const;
 
-    void addTokenArray(ScTokenArray* pTokens, const ScRange& rRange);
+    void addTokenArray(const ScTokenArray* pTokens, const ScRange& rRange);
     void stopListening();
     void setCallback(const std::function<void()>& aCallbackFunction);
+
 };
 
 class ScConditionalFormat;
 struct ScDataBarInfo;
 struct ScIconSetInfo;
 
-namespace condformat
-{
-
-enum ScFormatEntryType
-{
-    CONDITION,
-    COLORSCALE,
-    DATABAR,
-    ICONSET,
-    DATE
-};
-
-}
-
 struct ScCondFormatData
 {
-    ScCondFormatData():
-        pColorScale(nullptr),
-        pDataBar(nullptr),
-        pIconSet(nullptr) {}
+    ScCondFormatData();
+    ScCondFormatData(ScCondFormatData&&);
+    ~ScCondFormatData();
 
-    Color* pColorScale;
-    ScDataBarInfo* pDataBar;
-    ScIconSetInfo* pIconSet;
+    std::optional<Color> mxColorScale;
+    std::unique_ptr<ScDataBarInfo> pDataBar;
+    std::unique_ptr<ScIconSetInfo> pIconSet;
     OUString aStyleName;
 };
 
@@ -146,7 +228,17 @@ public:
     ScFormatEntry(ScDocument* pDoc);
     virtual ~ScFormatEntry() {}
 
-    virtual condformat::ScFormatEntryType GetType() const = 0;
+    enum class Type
+    {
+        Condition,
+        ExtCondition,
+        Colorscale,
+        Databar,
+        Iconset,
+        Date
+    };
+
+    virtual Type GetType() const = 0;
     virtual void UpdateReference( sc::RefUpdateContext& rCxt ) = 0;
     virtual void UpdateInsertTab( sc::RefUpdateInsertTabContext& rCxt ) = 0;
     virtual void UpdateDeleteTab( sc::RefUpdateDeleteTabContext& rCxt ) = 0;
@@ -157,6 +249,7 @@ public:
     virtual void SetParent( ScConditionalFormat* pNew ) = 0;
 
     bool operator==( const ScFormatEntry& ) const;
+    virtual bool IsEqual( const ScFormatEntry&, bool bIgnoreSrcPos ) const;
 
     virtual void startRendering();
     virtual void endRendering();
@@ -165,7 +258,37 @@ protected:
 
 };
 
-class approx_less : public std::binary_function<double, double, bool>
+template<typename charT, typename traits>
+inline std::basic_ostream<charT, traits> & operator <<(std::basic_ostream<charT, traits> & stream, const ScFormatEntry::Type& rType)
+{
+    switch (rType)
+    {
+    case ScFormatEntry::Type::Condition:
+        stream << "Condition";
+        break;
+    case ScFormatEntry::Type::ExtCondition:
+        stream << "ExtCondition";
+        break;
+    case ScFormatEntry::Type::Colorscale:
+        stream << "Colorscale";
+        break;
+    case ScFormatEntry::Type::Databar:
+        stream << "Databar";
+        break;
+    case ScFormatEntry::Type::Iconset:
+        stream << "Iconset";
+        break;
+    case ScFormatEntry::Type::Date:
+        stream << "Date";
+        break;
+    default:
+        stream << "?(" << static_cast<int>(rType) << ")";
+        break;
+    }
+    return stream;
+}
+
+class approx_less
 {
 public:
     bool operator() (double nVal1, double nVal2) const
@@ -186,23 +309,29 @@ class SC_DLLPUBLIC ScConditionEntry : public ScFormatEntry
     double              nVal2;
     OUString              aStrVal1;       // input or calculated
     OUString              aStrVal2;
-    OUString              aStrNmsp1;      // namespace to be used on (re)compilation, e.g. in XML import
-    OUString              aStrNmsp2;      // namespace to be used on (re)compilation, e.g. in XML import
-    formula::FormulaGrammar::Grammar eTempGrammar1;  // grammar to be used on (re)compilation, e.g. in XML import
-    formula::FormulaGrammar::Grammar eTempGrammar2;  // grammar to be used on (re)compilation, e.g. in XML import
+    const OUString      aStrNmsp1;      // namespace to be used on (re)compilation, e.g. in XML import
+    const OUString      aStrNmsp2;      // namespace to be used on (re)compilation, e.g. in XML import
+    const formula::FormulaGrammar::Grammar eTempGrammar1;  // grammar to be used on (re)compilation, e.g. in XML import
+    const formula::FormulaGrammar::Grammar eTempGrammar2;  // grammar to be used on (re)compilation, e.g. in XML import
     bool                bIsStr1;        // for recognition of empty strings
     bool                bIsStr2;
-    ScTokenArray*       pFormula1;      // entered formula
-    ScTokenArray*       pFormula2;
+    std::unique_ptr<ScTokenArray> pFormula1;      // entered formula
+    std::unique_ptr<ScTokenArray> pFormula2;
     ScAddress           aSrcPos;        // source position for formulas
                                         // temporary data:
     OUString              aSrcString;     // formula source position as text during XML import
-    ScFormulaCell*      pFCell1;
-    ScFormulaCell*      pFCell2;
+    std::unique_ptr<ScFormulaCell>  pFCell1;
+    std::unique_ptr<ScFormulaCell>  pFCell2;
     bool                bRelRef1;
     bool                bRelRef2;
     bool                bFirstRun;
     std::unique_ptr<ScFormulaListener> mpListener;
+    Type eConditionType;                //It can be Condition or ExtCondition
+
+    static void SimplifyCompiledFormula( std::unique_ptr<ScTokenArray>& rFormula,
+                                     double& rVal,
+                                     bool& rIsStr,
+                                     OUString& rStrVal );
 
     void    MakeCells( const ScAddress& rPos );
     void    Compile( const OUString& rExpr1, const OUString& rExpr2,
@@ -222,7 +351,8 @@ public:
                                 ScDocument* pDocument, const ScAddress& rPos,
                                 const OUString& rExprNmsp1, const OUString& rExprNmsp2,
                                 formula::FormulaGrammar::Grammar eGrammar1,
-                                formula::FormulaGrammar::Grammar eGrammar2 );
+                                formula::FormulaGrammar::Grammar eGrammar2,
+                                Type eType = Type::Condition );
             ScConditionEntry( ScConditionMode eOper,
                                 const ScTokenArray* pArr1, const ScTokenArray* pArr2,
                                 ScDocument* pDocument, const ScAddress& rPos );
@@ -231,7 +361,7 @@ public:
             ScConditionEntry( ScDocument* pDocument, const ScConditionEntry& r );
     virtual ~ScConditionEntry() override;
 
-    bool            operator== ( const ScConditionEntry& r ) const;
+    bool            IsEqual( const ScFormatEntry& r, bool bIgnoreSrcPos ) const override;
 
     virtual void SetParent( ScConditionalFormat* pNew ) override;
 
@@ -241,6 +371,7 @@ public:
     void SetOperation(ScConditionMode eMode);
     bool            IsIgnoreBlank() const       { return ( nOptions & SC_COND_NOBLANKS ) == 0; }
     void            SetIgnoreBlank(bool bSet);
+    const OUString& GetSrcString() const         { return aSrcString; }
     const ScAddress& GetSrcPos() const           { return aSrcPos; }
 
     ScAddress       GetValidSrcPos() const;     // adjusted to allow textual representation of expressions
@@ -250,12 +381,12 @@ public:
     void            SetFormula1( const ScTokenArray& rArray );
     void            SetFormula2( const ScTokenArray& rArray );
 
-    OUString          GetExpression( const ScAddress& rCursor, sal_uInt16 nPos, sal_uLong nNumFmt = 0,
+    OUString          GetExpression( const ScAddress& rCursor, sal_uInt16 nPos, sal_uInt32 nNumFmt = 0,
                                     const formula::FormulaGrammar::Grammar eGrammar = formula::FormulaGrammar::GRAM_DEFAULT ) const;
 
                     /** Create a flat copy using ScTokenArray copy-ctor with
                         shared tokens. */
-    ScTokenArray*   CreateFlatCopiedTokenArray( sal_uInt16 nPos ) const;
+    std::unique_ptr<ScTokenArray> CreateFlatCopiedTokenArray( sal_uInt16 nPos ) const;
 
     void            CompileAll();
     void            CompileXML();
@@ -266,7 +397,7 @@ public:
 
     bool            MarkUsedExternalReferences() const;
 
-    virtual condformat::ScFormatEntryType GetType() const override { return condformat::CONDITION; }
+    virtual Type GetType() const override { return eConditionType; }
 
     virtual ScFormatEntry* Clone(ScDocument* pDoc) const override;
 
@@ -276,6 +407,7 @@ public:
     virtual void startRendering() override;
 
     bool NeedsRepaint() const;
+    void CalcAll();
 
 protected:
     virtual void    DataChanged() const;
@@ -314,11 +446,10 @@ private:
 };
 
 //  single condition entry for conditional formatting
-class SC_DLLPUBLIC ScCondFormatEntry : public ScConditionEntry
+class SC_DLLPUBLIC ScCondFormatEntry final : public ScConditionEntry
 {
-    OUString                  aStyleName;
-
-    using ScConditionEntry::operator==;
+    OUString aStyleName;
+    Type eCondFormatType = Type::Condition;
 
 public:
             ScCondFormatEntry( ScConditionMode eOper,
@@ -328,7 +459,8 @@ public:
                                 const OUString& rExprNmsp1 = EMPTY_OUSTRING,
                                 const OUString& rExprNmsp2 = EMPTY_OUSTRING,
                                 formula::FormulaGrammar::Grammar eGrammar1 = formula::FormulaGrammar::GRAM_DEFAULT,
-                                formula::FormulaGrammar::Grammar eGrammar2 = formula::FormulaGrammar::GRAM_DEFAULT );
+                                formula::FormulaGrammar::Grammar eGrammar2 = formula::FormulaGrammar::GRAM_DEFAULT,
+                                Type eType = Type::Condition);
             ScCondFormatEntry( ScConditionMode eOper,
                                 const ScTokenArray* pArr1, const ScTokenArray* pArr2,
                                 ScDocument* pDocument, const ScAddress& rPos,
@@ -337,13 +469,14 @@ public:
             ScCondFormatEntry( ScDocument* pDocument, const ScCondFormatEntry& r );
     virtual ~ScCondFormatEntry() override;
 
-    bool            operator== ( const ScCondFormatEntry& r ) const;
+    bool            IsEqual( const ScFormatEntry& r, bool bIgnoreSrcPos ) const override;
 
     const OUString&   GetStyle() const        { return aStyleName; }
     void            UpdateStyleName(const OUString& rNew)  { aStyleName=rNew; }
     virtual ScFormatEntry* Clone(ScDocument* pDoc) const override;
+    virtual Type GetType() const override { return eCondFormatType; }
 
-protected:
+private:
     virtual void    DataChanged() const override;
 };
 
@@ -368,7 +501,7 @@ enum ScCondFormatDateType
 
 }
 
-class SC_DLLPUBLIC ScCondDateFormatEntry : public ScFormatEntry
+class SC_DLLPUBLIC ScCondDateFormatEntry final : public ScFormatEntry
 {
 public:
     ScCondDateFormatEntry(ScDocument* pDoc);
@@ -382,7 +515,7 @@ public:
     const OUString& GetStyleName() const { return maStyleName;}
     void SetStyleName( const OUString& rStyleName );
 
-    virtual condformat::ScFormatEntryType GetType() const override { return condformat::DATE; }
+    virtual Type GetType() const override { return Type::Date; }
     virtual void UpdateReference( sc::RefUpdateContext& ) override {}
     virtual void UpdateInsertTab( sc::RefUpdateInsertTabContext& ) override {}
     virtual void UpdateDeleteTab( sc::RefUpdateDeleteTabContext& ) override {}
@@ -409,8 +542,7 @@ class SC_DLLPUBLIC ScConditionalFormat
     ScDocument*         pDoc;
     sal_uInt32          nKey;               // Index in attributes
 
-    typedef std::vector<std::unique_ptr<ScFormatEntry>> CondFormatContainer;
-    CondFormatContainer maEntries;
+    std::vector<std::unique_ptr<ScFormatEntry>> maEntries;
     ScRangeList maRanges;            // Ranges for conditional format
 
 public:
@@ -420,7 +552,7 @@ public:
      const ScConditionalFormat& operator=(const ScConditionalFormat&) = delete;
 
     // true copy of formulas (for Ref-Undo / between documents)
-    ScConditionalFormat* Clone(ScDocument* pNewDoc = nullptr) const;
+    std::unique_ptr<ScConditionalFormat> Clone(ScDocument* pNewDoc = nullptr) const;
 
     void            AddEntry( ScFormatEntry* pNew );
     void RemoveEntry(size_t nIndex);
@@ -431,6 +563,8 @@ public:
 
     bool IsEmpty() const;
     size_t size() const;
+
+    ScDocument* GetDocument();
 
     void            CompileAll();
     void            CompileXML();
@@ -451,7 +585,7 @@ public:
 
     ScCondFormatData GetData( ScRefCellValue& rCell, const ScAddress& rPos ) const;
 
-    bool            EqualEntries( const ScConditionalFormat& r ) const;
+    bool            EqualEntries( const ScConditionalFormat& r, bool bIgnoreSrcPos = false ) const;
 
     void            DoRepaint();
 
@@ -465,6 +599,27 @@ public:
 
     void startRendering();
     void endRendering();
+
+    // Forced recalculation for formulas
+    void CalcAll();
+};
+
+struct CompareScConditionalFormat
+{
+    using is_transparent = void;
+    bool operator()(std::unique_ptr<ScConditionalFormat> const& lhs,
+                    std::unique_ptr<ScConditionalFormat> const& rhs) const
+    {
+        return (*lhs) < (*rhs);
+    }
+    bool operator()(sal_uInt32 nKey, std::unique_ptr<ScConditionalFormat> const& rpFormat) const
+    {
+        return nKey < rpFormat->GetKey();
+    }
+    bool operator()(std::unique_ptr<ScConditionalFormat> const& rpFormat, sal_uInt32 nKey) const
+    {
+        return rpFormat->GetKey() < nKey;
+    }
 };
 
 //  List of all conditional formats in a sheet
@@ -472,7 +627,7 @@ class SC_DLLPUBLIC ScConditionalFormatList
 {
 private:
     typedef std::set<std::unique_ptr<ScConditionalFormat>,
-        comphelper::UniquePtrValueLess<ScConditionalFormat>> ConditionalFormatContainer;
+                CompareScConditionalFormat> ConditionalFormatContainer;
     ConditionalFormatContainer m_ConditionalFormats;
 
     void operator =(ScConditionalFormatList const &) = delete;
@@ -482,14 +637,15 @@ public:
     ScConditionalFormatList(const ScConditionalFormatList& rList);
     ScConditionalFormatList(ScDocument* pDoc, const ScConditionalFormatList& rList);
 
-    void    InsertNew( ScConditionalFormat* pNew );
+    void    InsertNew( std::unique_ptr<ScConditionalFormat> pNew );
 
     /**
      * Checks that all cond formats have a non empty range.
-     * Deletes empty cond formats.
+     * Deletes empty cond formats. Optionally call rLink
+     * on the empty format before deleting it.
      * @return true if all cond formats were valid
      */
-    bool    CheckAllEntries();
+    bool    CheckAllEntries(const Link<ScConditionalFormat*,void>& rLink = Link<ScConditionalFormat*,void>());
 
     ScConditionalFormat* GetFormat( sal_uInt32 nKey );
     const ScConditionalFormat* GetFormat( sal_uInt32 nKey ) const;
@@ -521,6 +677,7 @@ public:
     const_iterator end() const;
 
     size_t size() const;
+    bool empty() const;
 
     void erase(sal_uLong nIndex);
     void clear();
@@ -529,6 +686,9 @@ public:
     void endRendering();
 
     sal_uInt32 getMaxKey() const;
+
+    /// Forced recalculation of formulas
+    void CalcAll();
 };
 
 #endif

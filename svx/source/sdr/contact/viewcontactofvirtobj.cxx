@@ -19,13 +19,11 @@
 
 #include <svx/sdr/contact/viewcontactofvirtobj.hxx>
 #include <svx/svdovirt.hxx>
-#include <svx/sdr/contact/displayinfo.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
-#include <vcl/outdev.hxx>
 #include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 ViewContactOfVirtObj::ViewContactOfVirtObj(SdrVirtObj& rObj)
 :   ViewContactOfSdrObj(rObj)
@@ -56,7 +54,7 @@ sal_uInt32 ViewContactOfVirtObj::GetObjectCount() const
 
     // As can be seen, with primitives, the problem will be solved using
     // a transformPrimitive, so this solution can stay with primitives.
-    return 0L;
+    return 0;
 }
 
 drawinglayer::primitive2d::Primitive2DContainer ViewContactOfVirtObj::createViewIndependentPrimitive2DSequence() const
@@ -72,7 +70,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfVirtObj::createView
     }
 
     // use method from referenced object to get the Primitive2DContainer
-    const drawinglayer::primitive2d::Primitive2DContainer xSequenceVirtual(
+    const drawinglayer::primitive2d::Primitive2DContainer& xSequenceVirtual(
         GetVirtObj().GetReferencedObj().GetViewContact().getViewIndependentPrimitive2DContainer());
 
     if(!xSequenceVirtual.empty())
@@ -96,7 +94,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewContactOfVirtObj::createView
     }
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
 

@@ -11,32 +11,39 @@
 #define INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFVALUE_HXX
 
 #include <dmapper/resourcemodel.hxx>
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/embed/XEmbeddedObject.hpp>
 
-namespace writerfilter
+namespace com::sun::star
 {
-namespace rtftok
+namespace embed
+{
+class XEmbeddedObject;
+}
+namespace io
+{
+class XInputStream;
+}
+}
+
+namespace writerfilter::rtftok
 {
 class RTFSprms;
 class RTFShape;
 class RTFPicture;
 /// Value of an RTF keyword
-class RTFValue
-    : public Value
+class RTFValue : public Value
 {
 public:
-    using Pointer_t = std::shared_ptr<RTFValue>;
-    RTFValue(int nValue, OUString sValue, RTFSprms rAttributes, RTFSprms rSprms,
+    using Pointer_t = tools::SvRef<RTFValue>;
+    RTFValue(int nValue, OUString sValue, const RTFSprms& rAttributes, const RTFSprms& rSprms,
              css::uno::Reference<css::drawing::XShape> xShape,
              css::uno::Reference<css::io::XInputStream> xStream,
-             css::uno::Reference<css::embed::XEmbeddedObject> xObject,
-             bool bForceString, const RTFShape& aShape, const RTFPicture& rPicture);
+             css::uno::Reference<css::embed::XEmbeddedObject> xObject, bool bForceString,
+             const RTFShape& aShape, const RTFPicture& rPicture);
     RTFValue();
     explicit RTFValue(int nValue);
     RTFValue(OUString sValue, bool bForce = false);
-    explicit RTFValue(RTFSprms rAttributes);
-    RTFValue(RTFSprms rAttributes, RTFSprms rSprms);
+    explicit RTFValue(const RTFSprms& rAttributes);
+    RTFValue(const RTFSprms& rAttributes, const RTFSprms& rSprms);
     explicit RTFValue(css::uno::Reference<css::drawing::XShape> xShape);
     explicit RTFValue(css::uno::Reference<css::io::XInputStream> xStream);
     explicit RTFValue(css::uno::Reference<css::embed::XEmbeddedObject> xObject);
@@ -49,7 +56,7 @@ public:
     css::uno::Any getAny() const override;
     writerfilter::Reference<Properties>::Pointer_t getProperties() override;
     writerfilter::Reference<BinaryObj>::Pointer_t getBinary() override;
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     std::string toString() const override;
 #endif
     RTFValue* Clone();
@@ -58,22 +65,22 @@ public:
     RTFSprms& getSprms();
     RTFShape& getShape() const;
     RTFPicture& getPicture() const;
-    bool equals(RTFValue& rOther);
+    bool equals(const RTFValue& rOther) const;
     RTFValue& operator=(RTFValue const& rOther) = delete;
+
 private:
     int m_nValue = 0;
     OUString m_sValue;
-    std::shared_ptr<RTFSprms> m_pAttributes;
-    std::shared_ptr<RTFSprms> m_pSprms;
+    tools::SvRef<RTFSprms> m_pAttributes;
+    tools::SvRef<RTFSprms> m_pSprms;
     css::uno::Reference<css::drawing::XShape> m_xShape;
     css::uno::Reference<css::io::XInputStream> m_xStream;
     css::uno::Reference<css::embed::XEmbeddedObject> m_xObject;
     bool m_bForceString = false;
-    std::shared_ptr<RTFShape> m_pShape;
-    std::shared_ptr<RTFPicture> m_pPicture;
+    tools::SvRef<RTFShape> m_pShape;
+    tools::SvRef<RTFPicture> m_pPicture;
 };
-} // namespace rtftok
-} // namespace writerfilter
+} // namespace writerfilter::rtftok
 
 #endif // INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFVALUE_HXX
 

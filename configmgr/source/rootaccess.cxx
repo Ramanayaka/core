@@ -24,7 +24,6 @@
 
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/EventObject.hpp>
-#include <com/sun/star/lang/WrappedTargetException.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
@@ -42,11 +41,9 @@
 #include <cppuhelper/weak.hxx>
 #include <osl/mutex.hxx>
 #include <rtl/ref.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 
 #include "broadcaster.hxx"
-#include "childaccess.hxx"
 #include "components.hxx"
 #include "data.hxx"
 #include "lock.hxx"
@@ -78,18 +75,18 @@ void RootAccess::initBroadcaster(
     std::vector< css::util::ElementChange > changes;
     initBroadcasterAndChanges(
         modifications, broadcaster, changesListeners_.empty() ? nullptr : &changes);
-    if (!changes.empty()) {
-        css::util::ChangesSet set(comphelper::containerToSequence(changes));
-        for (ChangesListeners::iterator i(changesListeners_.begin());
-             i != changesListeners_.end(); ++i)
-        {
-            cppu::OWeakObject* pSource = static_cast< cppu::OWeakObject * >(this);
-            css::uno::Reference< css::uno::XInterface > xBase( pSource, css::uno::UNO_QUERY );
-            broadcaster->addChangesNotification(
-                *i,
-                css::util::ChangesEvent(
-                    pSource, css::uno::Any( xBase ), set));
-        }
+    if (changes.empty())
+        return;
+
+    css::util::ChangesSet set(comphelper::containerToSequence(changes));
+    for (auto const& changesListener : changesListeners_)
+    {
+        cppu::OWeakObject* pSource = this;
+        css::uno::Reference< css::uno::XInterface > xBase( pSource, css::uno::UNO_QUERY );
+        broadcaster->addChangesNotification(
+            changesListener,
+            css::util::ChangesEvent(
+                pSource, css::uno::Any( xBase ), set));
     }
 }
 
@@ -181,7 +178,7 @@ sal_Bool RootAccess::hasPendingChanges() {
     return !changes.empty();
 }
 
-css::util::ChangesSet RootAccess::getPendingChanges()
+css::uno::Sequence< ::css::util::ElementChange > RootAccess::getPendingChanges()
 {
     assert(thisIs(IS_UPDATE));
     osl::MutexGuard g(*lock_);
@@ -267,11 +264,10 @@ void RootAccess::addSupportedServiceNames(
 
 void RootAccess::initDisposeBroadcaster(Broadcaster * broadcaster) {
     assert(broadcaster != nullptr);
-    for (ChangesListeners::iterator i(changesListeners_.begin());
-         i != changesListeners_.end(); ++i)
+    for (auto const& changesListener : changesListeners_)
     {
         broadcaster->addDisposeNotification(
-            i->get(),
+            changesListener.get(),
             css::lang::EventObject(static_cast< cppu::OWeakObject * >(this)));
     }
     Access::initDisposeBroadcaster(broadcaster);
@@ -308,7 +304,7 @@ OUString RootAccess::getImplementationName()
     assert(thisIs(IS_ANY));
     osl::MutexGuard g(*lock_);
     checkLocalizedPropertyAccess();
-    return OUString("configmgr.RootAccess");
+    return "configmgr.RootAccess";
 }
 
 }

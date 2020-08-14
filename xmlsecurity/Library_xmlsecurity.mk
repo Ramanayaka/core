@@ -22,7 +22,7 @@ $(eval $(call gb_Library_add_defs,xmlsecurity,\
 
 $(eval $(call gb_Library_use_externals,xmlsecurity,boost_headers))
 
-$(eval $(call gb_Library_set_precompiled_header,xmlsecurity,$(SRCDIR)/xmlsecurity/inc/pch/precompiled_xmlsecurity))
+$(eval $(call gb_Library_set_precompiled_header,xmlsecurity,xmlsecurity/inc/pch/precompiled_xmlsecurity))
 
 $(eval $(call gb_Library_use_sdk_api,xmlsecurity))
 
@@ -33,6 +33,7 @@ $(eval $(call gb_Library_use_libraries,xmlsecurity,\
 	sal \
 	sax \
 	svl \
+	sfx \
 	svt \
 	svxcore \
 	tl \
@@ -41,19 +42,25 @@ $(eval $(call gb_Library_use_libraries,xmlsecurity,\
 	vcl \
 	xo \
 	i18nlangtag \
-	xsec_fw \
 	xsec_xmlsec \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,xmlsecurity,\
 	xmlsecurity/source/component/certificatecontainer \
 	xmlsecurity/source/component/documentdigitalsignatures \
-	xmlsecurity/source/component/registerservices \
 	xmlsecurity/source/dialogs/certificatechooser \
 	xmlsecurity/source/dialogs/certificateviewer \
 	xmlsecurity/source/dialogs/digitalsignaturesdialog \
 	xmlsecurity/source/dialogs/macrosecurity \
-	xmlsecurity/source/dialogs/resourcemanager \
+	xmlsecurity/source/framework/buffernode \
+	xmlsecurity/source/framework/elementcollector \
+	xmlsecurity/source/framework/elementmark \
+	xmlsecurity/source/framework/saxeventkeeperimpl \
+	xmlsecurity/source/framework/securityengine \
+	xmlsecurity/source/framework/signaturecreatorimpl \
+	xmlsecurity/source/framework/signatureengine \
+	xmlsecurity/source/framework/signatureverifierimpl \
+	xmlsecurity/source/framework/xmlsignaturetemplateimpl \
 	xmlsecurity/source/helper/documentsignaturehelper \
 	xmlsecurity/source/helper/documentsignaturemanager \
 	xmlsecurity/source/helper/ooxmlsecparser \
@@ -77,9 +84,11 @@ $(eval $(call gb_Library_add_defs,xmlsecurity,\
 ))
 $(eval $(call gb_Library_use_system_win32_libs,xmlsecurity,\
     crypt32 \
+    Ole32 \
+    Shell32 \
 ))
 else
-ifneq (,$(filter DESKTOP,$(BUILD_TYPE)))
+ifneq (,$(filter DESKTOP,$(BUILD_TYPE))$(filter ANDROID,$(OS)))
 $(eval $(call gb_Library_add_defs,xmlsecurity,\
     -DXMLSEC_CRYPTO_NSS \
 ))

@@ -30,7 +30,6 @@
 #include <com/sun/star/report/XReportComponent.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <cppuhelper/weakref.hxx>
-#include <comphelper/uno3.hxx>
 
 namespace reportdesign
 {
@@ -56,6 +55,7 @@ namespace reportdesign
         ::sal_Int32 m_nBorderColor;
         ::sal_Int16 m_nBorder;
         bool m_bPrintRepeatedValues;
+        bool m_bAutoGrow;
 
         OReportComponentProperties(
                 css::uno::Reference<css::uno::XComponentContext> const& xContext)
@@ -67,6 +67,7 @@ namespace reportdesign
             , m_nBorderColor(0)
             , m_nBorder(2)
             , m_bPrintRepeatedValues(true)
+            , m_bAutoGrow(false)
         {}
         ~OReportComponentProperties();
 

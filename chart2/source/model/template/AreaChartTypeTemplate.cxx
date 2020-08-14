@@ -18,13 +18,15 @@
  */
 
 #include "AreaChartTypeTemplate.hxx"
-#include "macros.hxx"
-#include "servicenames_charttypes.hxx"
-#include "DiagramHelper.hxx"
-#include "DataSeriesHelper.hxx"
-#include "PropertyHelper.hxx"
+#include <servicenames_charttypes.hxx>
+#include <DiagramHelper.hxx>
+#include <DataSeriesHelper.hxx>
+#include <PropertyHelper.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <tools/diagnose_ex.h>
 
 #include <algorithm>
 
@@ -45,12 +47,11 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "Dimension",
+    rOutProperties.emplace_back( "Dimension",
                   PROP_AREA_TEMPLATE_DIMENSION,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 }
 
 struct StaticAreaChartTypeTemplateDefaults_Initializer
@@ -158,9 +159,9 @@ sal_Int32 AreaChartTypeTemplate::getDimension() const
         const_cast< AreaChartTypeTemplate * >( this )->
             getFastPropertyValue( PROP_AREA_TEMPLATE_DIMENSION ) >>= nDim;
     }
-    catch( const beans::UnknownPropertyException & ex )
+    catch( const beans::UnknownPropertyException & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return nDim;
@@ -188,11 +189,10 @@ void SAL_CALL AreaChartTypeTemplate::resetStyles( const Reference< chart2::XDiag
     std::vector< Reference< chart2::XDataSeries > > aSeriesVec(
         DiagramHelper::getDataSeriesFromDiagram( xDiagram ));
     uno::Any aLineStyleAny( drawing::LineStyle_NONE );
-    for( std::vector< Reference< chart2::XDataSeries > >::iterator aIt( aSeriesVec.begin());
-         aIt != aSeriesVec.end(); ++aIt )
+    for (auto const& series : aSeriesVec)
     {
-        Reference< beans::XPropertyState > xState( *aIt, uno::UNO_QUERY );
-        Reference< beans::XPropertySet > xProp( *aIt, uno::UNO_QUERY );
+        Reference< beans::XPropertyState > xState(series, uno::UNO_QUERY);
+        Reference< beans::XPropertySet > xProp(series, uno::UNO_QUERY);
         if( xState.is() &&
             xProp.is() &&
             xProp->getPropertyValue( "BorderStyle") == aLineStyleAny )
@@ -213,9 +213,9 @@ Reference< chart2::XChartType > AreaChartTypeTemplate::getChartTypeForIndex( sal
         xResult.set( xFact->createInstance(
                          CHART2_SERVICE_NAME_CHARTTYPE_AREA ), uno::UNO_QUERY_THROW );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return xResult;

@@ -28,36 +28,37 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 
-#include <svx/unoshprp.hxx>
-#include <editeng/unoipset.hxx>
-
+#include <svl/lstner.hxx>
 #include <comphelper/servicehelper.hxx>
 
 #include <cppuhelper/implbase.hxx>
 
-const SvxItemPropertySet* ImplGetPageBackgroundPropertySet();
 class SdDrawDocument;
+class SdrModel;
 class SfxItemSet;
+class SvxItemPropertySet;
+struct SfxItemPropertySimpleEntry;
 
-class SdUnoPageBackground : public ::cppu::WeakImplHelper<
+const SvxItemPropertySet* ImplGetPageBackgroundPropertySet();
+
+class SdUnoPageBackground final : public ::cppu::WeakImplHelper<
                                     css::beans::XPropertySet,
                                     css::lang::XServiceInfo,
                                     css::beans::XPropertyState,
                                     css::lang::XUnoTunnel>,
                             public SfxListener
 {
-protected:
     const SvxItemPropertySet*  mpPropSet;
     std::unique_ptr<SfxItemSet> mpSet;
     SdrModel*           mpDoc;
 
     const SfxItemPropertySimpleEntry* getPropertyMapEntry( const OUString& rPropertyName ) const throw();
 public:
-    SdUnoPageBackground( SdDrawDocument* pDoc = nullptr, const SfxItemSet* pSet = nullptr) throw();
+    SdUnoPageBackground( SdDrawDocument* pDoc = nullptr, const SfxItemSet* pSet = nullptr);
     virtual ~SdUnoPageBackground() throw() override;
 
     // internal
-    void fillItemSet( SdDrawDocument* pDoc, SfxItemSet& rSet ) throw();
+    void fillItemSet( SdDrawDocument* pDoc, SfxItemSet& rSet );
     virtual void Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
     // uno helper

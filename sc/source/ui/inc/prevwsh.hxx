@@ -20,14 +20,14 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_PREVWSH_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_PREVWSH_HXX
 
-class ScrollBar;
+#include <types.hxx>
+#include <scdllapi.h>
 
-#include "address.hxx"
-#include <sfx2/viewfac.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/zoomitem.hxx>
+#include <vcl/syswin.hxx>
 
-#include "shellids.hxx"
+#include <shellids.hxx>
 
 class ScDocument;
 class ScDocShell;
@@ -35,6 +35,7 @@ class ScPreview;
 struct ScHeaderFieldData;
 class ScPreviewLocationData;
 class CommandEvent;
+class SfxViewFactory;
 
 class SC_DLLPUBLIC ScPreviewShell: public SfxViewShell
 {
@@ -46,12 +47,11 @@ class SC_DLLPUBLIC ScPreviewShell: public SfxViewShell
     VclPtr<ScrollBar>      pVerScroll;
     VclPtr<vcl::Window>    pCorner;
 
-    css::uno::Sequence< css::beans::PropertyValue > aSourceData;  // ViewData
     TriState        nSourceDesignMode;      // form design mode from TabView
     SvxZoomType     eZoom;
     long            nMaxVertPos;
 
-    SfxBroadcaster* pAccessibilityBroadcaster;
+    std::unique_ptr<SfxBroadcaster> pAccessibilityBroadcaster;
     bool            GetPageSize( Size& aPageSize );
 private:
     void            Construct( vcl::Window* pParent );
@@ -62,8 +62,7 @@ private:
 
 protected:
     virtual void    Activate(bool bMDI) override;
-    virtual void    Deactivate(bool bMDI) override;
-    virtual void    AdjustPosSizePixel( const Point &rPos, const Size &rSize ) override;
+    void            AdjustPosSizePixel( const Point &rPos, const Size &rSize );
 
     virtual void    InnerResizePixel( const Point &rOfs, const Size &rSize, bool inplaceEditModeChange ) override;
     virtual void    OuterResizePixel( const Point &rOfs, const Size &rSize ) override;
@@ -106,12 +105,12 @@ public:
     virtual SfxPrinter*     GetPrinter( bool bCreate = false ) override;
     virtual sal_uInt16      SetPrinter( SfxPrinter* pNewPrinter, SfxPrinterChangeFlags nDiffFlags = SFX_PRINTER_ALL ) override;
     virtual bool            HasPrintOptionsPage() const override;
-    virtual VclPtr<SfxTabPage> CreatePrintOptionsPage( vcl::Window *pParent, const SfxItemSet &rOptions ) override;
+    virtual std::unique_ptr<SfxTabPage> CreatePrintOptionsPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rOptions) override;
 
     void            AddAccessibilityObject( SfxListener& rObject );
     void            RemoveAccessibilityObject( SfxListener& rObject );
     void            BroadcastAccessibility( const SfxHint &rHint );
-    bool            HasAccessibilityObjects();
+    bool            HasAccessibilityObjects() const;
 
     const ScPreviewLocationData& GetLocationData();
     ScDocument&     GetDocument();

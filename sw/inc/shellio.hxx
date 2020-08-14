@@ -22,25 +22,19 @@
 #include <memory>
 
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/embed/XStorage.hpp>
-#include <sfx2/docfile.hxx>
-#include <sfx2/fcontnr.hxx>
-#include <sot/formats.hxx>
 #include <sot/storage.hxx>
-#include <svtools/parhtml.hxx>
 #include <tools/date.hxx>
 #include <tools/time.hxx>
 #include <tools/datetime.hxx>
 #include <tools/ref.hxx>
 #include <rtl/ref.hxx>
-#include <swdllapi.h>
-#include <swtypes.hxx>
-#include <docfac.hxx>
-#include <iodetect.hxx>
-#include <IMark.hxx>
+#include <osl/thread.h>
+#include <o3tl/deleter.hxx>
+#include <o3tl/typed_flags_set.hxx>
+#include "swdllapi.h"
+#include "docfac.hxx"
+#include "unocrsr.hxx"
 
-class SfxFilterContainer;
-class SfxFilter;
 class SfxItemPool;
 class SfxItemSet;
 class SfxMedium;
@@ -54,6 +48,8 @@ class SwPaM;
 class SwTextBlocks;
 struct SwPosition;
 struct Writer_Impl;
+namespace sw::mark { class IMark; }
+namespace com::sun::star::embed { class XStorage; }
 
 // Defines the count of chars at which a paragraph read via ASCII/W4W-Reader
 // is forced to wrap. It has to be always greater than 200!!!
@@ -61,31 +57,36 @@ struct Writer_Impl;
 
 class SW_DLLPUBLIC SwAsciiOptions
 {
-    OUString sFont;
-    rtl_TextEncoding eCharSet;
-    LanguageType nLanguage;
-    LineEnd eCRLF_Flag;
+    OUString m_sFont;
+    rtl_TextEncoding m_eCharSet;
+    LanguageType m_nLanguage;
+    LineEnd m_eCRLF_Flag;
+    bool m_bIncludeBOM;   // Whether to include a byte-order-mark in the output.
 
 public:
 
-    const OUString& GetFontName() const { return sFont; }
-    void SetFontName( const OUString& rFont ) { sFont = rFont; }
+    const OUString& GetFontName() const { return m_sFont; }
+    void SetFontName( const OUString& rFont ) { m_sFont = rFont; }
 
-    rtl_TextEncoding GetCharSet() const { return eCharSet; }
-    void SetCharSet( rtl_TextEncoding nVal ) { eCharSet = nVal; }
+    rtl_TextEncoding GetCharSet() const { return m_eCharSet; }
+    void SetCharSet( rtl_TextEncoding nVal ) { m_eCharSet = nVal; }
 
-    LanguageType GetLanguage() const { return nLanguage; }
-    void SetLanguage( LanguageType nVal ) { nLanguage = nVal; }
+    LanguageType GetLanguage() const { return m_nLanguage; }
+    void SetLanguage( LanguageType nVal ) { m_nLanguage = nVal; }
 
-    LineEnd GetParaFlags() const { return eCRLF_Flag; }
-    void SetParaFlags( LineEnd eVal ) { eCRLF_Flag = eVal; }
+    LineEnd GetParaFlags() const { return m_eCRLF_Flag; }
+    void SetParaFlags( LineEnd eVal ) { m_eCRLF_Flag = eVal; }
+
+    bool GetIncludeBOM() const { return m_bIncludeBOM; }
+    void SetIncludeBOM( bool bVal ) { m_bIncludeBOM = bVal; }
 
     void Reset()
     {
-        sFont.clear();
-        eCRLF_Flag = GetSystemLineEnd();
-        eCharSet = ::osl_getThreadTextEncoding();
-        nLanguage = LANGUAGE_SYSTEM;
+        m_sFont.clear();
+        m_eCRLF_Flag = GetSystemLineEnd();
+        m_eCharSet = ::osl_getThreadTextEncoding();
+        m_nLanguage = LANGUAGE_SYSTEM;
+        m_bIncludeBOM = true;
     }
     // for the automatic conversion (mail/news/...)
     void ReadUserData( const OUString& );
@@ -96,19 +97,16 @@ public:
 
 // Base class of possible options for a special reader.
 class Reader;
-// Calls reader with its options, document, cursor etc.
-class SwReader;
-// SwRead is pointer to the read-options base class.
-typedef Reader *SwRead;
 
 class SwgReaderOption
 {
-    SwAsciiOptions aASCIIOpts;
+    SwAsciiOptions m_aASCIIOpts;
     bool m_bFrameFormats;
     bool m_bPageDescs;
     bool m_bTextFormats;
     bool m_bNumRules;
     bool m_bMerge;
+    css::uno::Reference<css::io::XInputStream> m_xInputStream;
 public:
     void ResetAllFormatsOnly() { m_bFrameFormats = m_bPageDescs = m_bTextFormats = m_bNumRules = m_bMerge = false; }
     bool IsFormatsOnly() const { return m_bFrameFormats || m_bPageDescs || m_bTextFormats || m_bNumRules || m_bMerge; }
@@ -128,24 +126,31 @@ public:
     bool IsMerge() const { return m_bMerge; }
     void SetMerge( const bool bNew ) { m_bMerge = bNew; }
 
-    const SwAsciiOptions& GetASCIIOpts() const { return aASCIIOpts; }
-    void SetASCIIOpts( const SwAsciiOptions& rOpts ) { aASCIIOpts = rOpts; }
-    void ResetASCIIOpts() { aASCIIOpts.Reset(); }
+    const SwAsciiOptions& GetASCIIOpts() const { return m_aASCIIOpts; }
+    void SetASCIIOpts( const SwAsciiOptions& rOpts ) { m_aASCIIOpts = rOpts; }
+    void ResetASCIIOpts() { m_aASCIIOpts.Reset(); }
+
+    css::uno::Reference<css::io::XInputStream>& GetInputStream() { return m_xInputStream; }
+    void SetInputStream(css::uno::Reference<css::io::XInputStream>& xInputStream)
+    {
+        m_xInputStream = xInputStream;
+    }
 
     SwgReaderOption()
-        { ResetAllFormatsOnly(); aASCIIOpts.Reset(); }
+        { ResetAllFormatsOnly(); m_aASCIIOpts.Reset(); }
 };
 
+// Calls reader with its options, document, cursor etc.
 class SW_DLLPUBLIC SwReader: public SwDocFac
 {
-    SvStream* pStrm;
-    tools::SvRef<SotStorage> pStg;
-    css::uno::Reference < css::embed::XStorage > xStg;
-    SfxMedium* pMedium;     // Who wants to obtain a Medium (W4W).
+    SvStream* mpStrm;
+    tools::SvRef<SotStorage> mpStg;
+    css::uno::Reference < css::embed::XStorage > mxStg;
+    SfxMedium* mpMedium;     // Who wants to obtain a Medium (W4W).
 
-    SwPaM* pCursor;
-    OUString aFileName;
-    OUString sBaseURL;
+    SwPaM* mpCursor;
+    OUString maFileName;
+    OUString msBaseURL;
     bool mbSkipImages;
 
 public:
@@ -169,16 +174,26 @@ public:
     bool ReadGlossaries( const Reader&, SwTextBlocks&, bool bSaveRelFiles );
 
 protected:
-    void                SetBaseURL( const OUString& rURL ) { sBaseURL = rURL; }
+    void                SetBaseURL( const OUString& rURL ) { msBaseURL = rURL; }
     void                SetSkipImages( bool bSkipImages ) { mbSkipImages = bSkipImages; }
 };
 
-// Special Readers can be both!! (Excel, W4W, .. ).
-#define SW_STREAM_READER    1
-#define SW_STORAGE_READER   2
+typedef std::unique_ptr<SwReader, o3tl::default_delete<SwReader>> SwReaderPtr;
 
-extern "C" SAL_DLLPUBLIC_EXPORT bool SAL_CALL TestImportDOC(SvStream &rStream, const OUString &rFltName);
-extern "C" SAL_DLLPUBLIC_EXPORT bool SAL_CALL TestImportRTF(SvStream &rStream);
+// Special Readers can be both!! (Excel, W4W, .. ).
+enum class SwReaderType {
+    NONE = 0x00,
+    Stream = 0x01,
+    Storage = 0x02
+};
+namespace o3tl {
+    template<> struct typed_flags<SwReaderType> : is_typed_flags<SwReaderType, 0x03> {};
+};
+
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportDOC(SvStream &rStream, const OUString &rFltName);
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportDOCX(SvStream &rStream);
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportRTF(SvStream &rStream);
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportHTML(SvStream &rStream);
 SAL_DLLPUBLIC_EXPORT void FlushFontCache();
 
 class SW_DLLPUBLIC Reader
@@ -186,37 +201,38 @@ class SW_DLLPUBLIC Reader
     friend class SwReader;
     friend bool TestImportDOC(SvStream &rStream, const OUString &rFltName);
     friend bool TestImportRTF(SvStream &rStream);
+    friend bool TestImportHTML(SvStream &rStream);
     rtl::Reference<SwDoc> mxTemplate;
-    OUString aTemplateNm;
+    OUString m_aTemplateName;
 
-    Date aDStamp;
-    tools::Time aTStamp;
-    DateTime aChkDateTime;
+    Date m_aDateStamp;
+    tools::Time m_aTimeStamp;
+    DateTime m_aCheckDateTime;
 
 protected:
-    SvStream* pStrm;
-    tools::SvRef<SotStorage> pStg;
-    css::uno::Reference < css::embed::XStorage > xStg;
-    SfxMedium* pMedium;     // Who wants to obtain a Medium (W4W).
+    SvStream* m_pStream;
+    tools::SvRef<SotStorage> m_pStorage;
+    css::uno::Reference < css::embed::XStorage > m_xStorage;
+    SfxMedium* m_pMedium;     // Who wants to obtain a Medium (W4W).
 
-    SwgReaderOption aOpt;
-    bool bInsertMode : 1;
-    bool bTmplBrowseMode : 1;
-    bool bReadUTF8: 1;      // Interprete stream as UTF-8.
-    bool bBlockMode: 1;
-    bool bOrganizerMode : 1;
-    bool bHasAskTemplateName : 1;
-    bool bIgnoreHTMLComments : 1;
-    bool bSkipImages : 1;
+    SwgReaderOption m_aOption;
+    bool m_bInsertMode : 1;
+    bool m_bTemplateBrowseMode : 1;
+    bool m_bReadUTF8: 1;      // Interpret stream as UTF-8.
+    bool m_bBlockMode: 1;
+    bool m_bOrganizerMode : 1;
+    bool m_bHasAskTemplateName : 1;
+    bool m_bIgnoreHTMLComments : 1;
+    bool m_bSkipImages : 1;
 
-    virtual OUString GetTemplateName() const;
+    virtual OUString GetTemplateName(SwDoc& rDoc) const;
 
 public:
     Reader();
     virtual ~Reader();
 
-    virtual int GetReaderType();
-    SwgReaderOption& GetReaderOpt() { return aOpt; }
+    virtual SwReaderType GetReaderType();
+    SwgReaderOption& GetReaderOpt() { return m_aOption; }
 
     virtual void SetFltName( const OUString& rFltNm );
 
@@ -228,22 +244,22 @@ public:
     static void ResetFrameFormats( SwDoc& rDoc );
 
     // Load filter template, set it and release it again.
-    SwDoc* GetTemplateDoc();
+    SwDoc* GetTemplateDoc(SwDoc& rDoc);
     bool SetTemplate( SwDoc& rDoc );
     void ClearTemplate();
     void SetTemplateName( const OUString& rDir );
     void MakeHTMLDummyTemplateDoc();
 
-    bool IsReadUTF8() const { return bReadUTF8; }
-    void SetReadUTF8( bool bSet ) { bReadUTF8 = bSet; }
+    bool IsReadUTF8() const { return m_bReadUTF8; }
+    void SetReadUTF8( bool bSet ) { m_bReadUTF8 = bSet; }
 
-    bool IsBlockMode() const { return bBlockMode; }
-    void SetBlockMode( bool bSet ) { bBlockMode = bSet; }
+    bool IsBlockMode() const { return m_bBlockMode; }
+    void SetBlockMode( bool bSet ) { m_bBlockMode = bSet; }
 
-    bool IsOrganizerMode() const { return bOrganizerMode; }
-    void SetOrganizerMode( bool bSet ) { bOrganizerMode = bSet; }
+    bool IsOrganizerMode() const { return m_bOrganizerMode; }
+    void SetOrganizerMode( bool bSet ) { m_bOrganizerMode = bSet; }
 
-    void SetIgnoreHTMLComments( bool bSet ) { bIgnoreHTMLComments = bSet; }
+    void SetIgnoreHTMLComments( bool bSet ) { m_bIgnoreHTMLComments = bSet; }
 
     virtual bool HasGlossaries() const;
     virtual bool ReadGlossaries( SwTextBlocks&, bool bSaveRelFiles ) const;
@@ -251,10 +267,10 @@ public:
     // Read the sections of the document, which is equal to the medium.
     // Returns the count of it
     virtual size_t GetSectionList( SfxMedium& rMedium,
-                                   std::vector<OUString*>& rStrings ) const;
+                                   std::vector<OUString>& rStrings) const;
 
-    const tools::SvRef<SotStorage>& getSotStorageRef() { return pStg; };
-    void setSotStorageRef(const tools::SvRef<SotStorage>& pStgRef) { pStg = pStgRef; };
+    const tools::SvRef<SotStorage>& getSotStorageRef() const { return m_pStorage; };
+    void setSotStorageRef(const tools::SvRef<SotStorage>& pStgRef) { m_pStorage = pStgRef; };
 
 private:
     virtual ErrCode Read(SwDoc &, const OUString& rBaseURL, SwPaM &, const OUString &)=0;
@@ -264,7 +280,7 @@ private:
     virtual bool SetStrmStgPtr();
 };
 
-class AsciiReader: public Reader
+class AsciiReader final : public Reader
 {
     friend class SwReader;
     virtual ErrCode Read( SwDoc &, const OUString& rBaseURL, SwPaM &, const OUString &) override;
@@ -274,11 +290,11 @@ public:
 
 class SW_DLLPUBLIC StgReader : public Reader
 {
-    OUString aFltName;
+    OUString m_aFltName;
 
 public:
-    virtual int GetReaderType() override;
-    const OUString& GetFltName() { return aFltName; }
+    virtual SwReaderType GetReaderType() override;
+    const OUString& GetFltName() const { return m_aFltName; }
     virtual void SetFltName( const OUString& r ) override;
 };
 
@@ -289,8 +305,8 @@ class SwImpBlocks;
 
 class SW_DLLPUBLIC SwTextBlocks
 {
-    std::unique_ptr<SwImpBlocks> pImp;
-    ErrCode        nErr;
+    std::unique_ptr<SwImpBlocks> m_pImp;
+    ErrCode        m_nErr;
 
 public:
     SwTextBlocks( const OUString& );
@@ -298,14 +314,12 @@ public:
 
     SwDoc* GetDoc();
     void   ClearDoc();                  // Delete Doc-contents.
-    OUString GetName();
+    OUString GetName() const;
     void   SetName( const OUString& );
-    ErrCode GetError() const { return nErr; }
+    ErrCode const & GetError() const { return m_nErr; }
 
     OUString GetBaseURL() const;
     void   SetBaseURL( const OUString& rURL );
-
-    bool   IsOld() const;
 
     sal_uInt16 GetCount() const;                        // Get count text modules.
     sal_uInt16 GetIndex( const OUString& ) const;       // Get index of short names.
@@ -315,8 +329,6 @@ public:
 
     bool   Delete( sal_uInt16 );
     void   Rename( sal_uInt16, const OUString*, const OUString* );
-    ErrCode CopyBlock( SwTextBlocks& rSource, OUString& rSrcShort,
-                                    const OUString& rLong );
 
     bool   BeginGetDoc( sal_uInt16 );   // Read text modules.
     void   EndGetDoc();                     // Release text modules.
@@ -329,7 +341,7 @@ public:
     bool IsOnlyTextBlock( sal_uInt16 ) const;
     bool IsOnlyTextBlock( const OUString& rShort ) const;
 
-    OUString GetFileName() const;           // Filename of pImp.
+    OUString const & GetFileName() const;           // Filename of pImp.
     bool IsReadOnly() const;            // ReadOnly-flag of pImp.
 
     bool GetMacroTable( sal_uInt16 nIdx, SvxMacroTableDtor& rMacroTable );
@@ -341,9 +353,9 @@ public:
 
 // BEGIN source/filter/basflt/fltini.cxx
 
-extern SwRead ReadAscii, /*ReadSwg, ReadSw3, */ReadHTML, ReadXML;
+extern Reader *ReadAscii, *ReadHTML, *ReadXML;
 
-SW_DLLPUBLIC SwRead SwGetReaderXML();
+SW_DLLPUBLIC Reader* SwGetReaderXML();
 
 // END source/filter/basflt/fltini.cxx
 
@@ -357,8 +369,8 @@ class IDocumentStylePoolAccess;
 class SW_DLLPUBLIC Writer
     : public SvRefBase
 {
-    SwAsciiOptions aAscOpts;
-    OUString       sBaseURL;
+    SwAsciiOptions m_aAsciiOptions;
+    OUString       m_sBaseURL;
 
     void AddFontItem( SfxItemPool& rPool, const SvxFontItem& rFont );
     void AddFontItems_( SfxItemPool& rPool, sal_uInt16 nWhichId );
@@ -370,8 +382,7 @@ class SW_DLLPUBLIC Writer
 
 protected:
 
-    SwPaM* pOrigPam;            // Last Pam that has to be processed.
-    const OUString* pOrigFileName;
+    const OUString* m_pOrigFileName;
 
     void ResetWriter();
     bool CopyNextPam( SwPaM ** );
@@ -380,7 +391,7 @@ protected:
     void PutEditEngFontsInAttrPool();
 
     virtual ErrCode WriteStream() = 0;
-    void                SetBaseURL( const OUString& rURL ) { sBaseURL = rURL; }
+    void                SetBaseURL( const OUString& rURL ) { m_sBaseURL = rURL; }
 
     IDocumentSettingAccess& getIDocumentSettingAccess();
     const IDocumentSettingAccess& getIDocumentSettingAccess() const;
@@ -389,20 +400,22 @@ protected:
     const IDocumentStylePoolAccess& getIDocumentStylePoolAccess() const;
 
 public:
-    SwDoc* pDoc;
-    SwPaM* pCurPam;
-    bool bWriteAll : 1;
-    bool bShowProgress : 1;
-    bool bWriteClipboardDoc : 1;
-    bool bWriteOnlyFirstTable : 1;
-    bool bASCII_ParaAsCR : 1;
-    bool bASCII_ParaAsBlanc : 1;
-    bool bASCII_NoLastLineEnd : 1;
-    bool bUCS2_WithStartChar : 1;
-    bool bExportPargraphNumbering : 1;
+    SwDoc* m_pDoc;
+    SwPaM* m_pOrigPam;            // Last Pam that has to be processed.
+    std::shared_ptr<SwUnoCursor> m_pCurrentPam;
+    bool m_bWriteAll : 1;
+    bool m_bShowProgress : 1;
+    bool m_bWriteClipboardDoc : 1;
+    bool m_bWriteOnlyFirstTable : 1;
+    bool m_bASCII_ParaAsCR : 1;
+    bool m_bASCII_ParaAsBlank : 1;
+    bool m_bASCII_NoLastLineEnd : 1;
+    bool m_bUCS2_WithStartChar : 1;
+    bool m_bExportParagraphNumbering : 1;
 
-    bool bBlock : 1;
-    bool bOrganizerMode : 1;
+    bool m_bBlock : 1;
+    bool m_bOrganizerMode : 1;
+    bool m_bHideDeleteRedlines : 1;
 
     Writer();
     virtual ~Writer() override;
@@ -416,14 +429,14 @@ public:
 
     virtual bool IsStgWriter() const;
 
-    void SetShowProgress( bool bFlag )  { bShowProgress = bFlag; }
+    void SetShowProgress( bool bFlag )  { m_bShowProgress = bFlag; }
 
-    const OUString* GetOrigFileName() const       { return pOrigFileName; }
+    const OUString* GetOrigFileName() const       { return m_pOrigFileName; }
 
-    const SwAsciiOptions& GetAsciiOptions() const { return aAscOpts; }
-    void SetAsciiOptions( const SwAsciiOptions& rOpt ) { aAscOpts = rOpt; }
+    const SwAsciiOptions& GetAsciiOptions() const { return m_aAsciiOptions; }
+    void SetAsciiOptions( const SwAsciiOptions& rOpt ) { m_aAsciiOptions = rOpt; }
 
-    const OUString& GetBaseURL() const { return sBaseURL;}
+    const OUString& GetBaseURL() const { return m_sBaseURL;}
 
     // Look up next bookmark position from bookmark-table.
     sal_Int32 FindPos_Bkmk( const SwPosition& rPos ) const;
@@ -436,7 +449,7 @@ public:
                         std::vector< const ::sw::mark::IMark* >& rArr );
 
     // Create new PaM at position.
-    static SwPaM * NewSwPaM(SwDoc & rDoc,
+    static std::shared_ptr<SwUnoCursor> NewUnoCursor(SwDoc & rDoc,
                             sal_uLong const nStartIdx, sal_uLong const nEndIdx);
 
     // If applicable copy a local file into internet.
@@ -451,7 +464,7 @@ public:
     void SetStream(SvStream *const pStream);
     SvStream& Strm();
 
-    void SetOrganizerMode( bool bSet ) { bOrganizerMode = bSet; }
+    void SetOrganizerMode( bool bSet ) { m_bOrganizerMode = bSet; }
 };
 
 typedef tools::SvRef<Writer> WriterRef;
@@ -460,8 +473,8 @@ typedef tools::SvRef<Writer> WriterRef;
 class SW_DLLPUBLIC StgWriter : public Writer
 {
 protected:
-    tools::SvRef<SotStorage> pStg;
-    css::uno::Reference < css::embed::XStorage > xStg;
+    tools::SvRef<SotStorage> m_pStg;
+    css::uno::Reference < css::embed::XStorage > m_xStg;
 
     // Create error at call.
     virtual ErrCode WriteStream() override;
@@ -478,26 +491,25 @@ public:
     virtual ErrCode Write( SwPaM&, const css::uno::Reference < css::embed::XStorage >&, const OUString*, SfxMedium* = nullptr ) override;
     virtual ErrCode Write( SwPaM&, SotStorage&, const OUString* ) override;
 
-    SotStorage& GetStorage() const       { return *pStg; }
+    SotStorage& GetStorage() const       { return *m_pStg; }
 };
 
 // Interface class for general access on special writers.
 
 class SW_DLLPUBLIC SwWriter
 {
-    SvStream* pStrm;
-    tools::SvRef<SotStorage> pStg;
-    css::uno::Reference < css::embed::XStorage > xStg;
-    SfxMedium* pMedium;
+    SvStream* m_pStrm;
+    css::uno::Reference < css::embed::XStorage > m_xStg;
+    SfxMedium* m_pMedium;
 
-    SwPaM* pOutPam;
-    SwCursorShell *pShell;
-    SwDoc &rDoc;
+    SwPaM* m_pOutPam;
+    SwCursorShell *m_pShell;
+    SwDoc &m_rDoc;
 
-    bool bWriteAll;
+    bool m_bWriteAll;
 
 public:
-    ErrCode Write( WriterRef& rxWriter, const OUString* = nullptr);
+    ErrCode Write( WriterRef const & rxWriter, const OUString* = nullptr);
 
     SwWriter( SvStream&, SwCursorShell &, bool bWriteAll = false );
     SwWriter( SvStream&, SwDoc & );
@@ -545,7 +557,7 @@ namespace SwReaderWriter
 }
 
 void GetRTFWriter( const OUString&, const OUString&, WriterRef& );
-void GetASCWriter( const OUString&, const OUString&, WriterRef& );
+void GetASCWriter(const OUString&, const OUString&, WriterRef&);
 void GetHTMLWriter( const OUString&, const OUString&, WriterRef& );
 void GetXMLWriter( const OUString&, const OUString&, WriterRef& );
 

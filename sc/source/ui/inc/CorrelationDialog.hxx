@@ -18,13 +18,13 @@ class ScCorrelationDialog : public ScMatrixComparisonGenerator
 public:
     ScCorrelationDialog(
         SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow,
-        vcl::Window* pParent, ScViewData* pViewData);
+        weld::Window* pParent, ScViewData* pViewData);
 
-    virtual bool Close() override;
+    virtual void Close() override;
 
 protected:
-    virtual const OUString getLabel() override;
-    virtual const OUString getTemplate() override;
+    virtual OUString getLabel() override;
+    virtual OUString getTemplate() override;
 };
 
 #endif

@@ -20,22 +20,20 @@
 #ifndef INCLUDED_EDITENG_UNOEDSRC_HXX
 #define INCLUDED_EDITENG_UNOEDSRC_HXX
 
-#include <com/sun/star/accessibility/TextSegment.hpp>
-
 #include <i18nlangtag/lang.h>
 #include <rtl/ustring.hxx>
 #include <tools/gen.hxx>
 #include <vcl/mapmod.hxx>
-#include <tools/color.hxx>
 #include <svl/poolitem.hxx>
 #include <editeng/editengdllapi.h>
 #include <editeng/editeng.hxx>
 
-#include <list>
+#include <vector>
 
 struct ESelection;
 struct EFieldInfo;
 struct EBulletInfo;
+class Color;
 class OutputDevice;
 class SfxItemSet;
 class SvxTextForwarder;
@@ -45,7 +43,7 @@ class SvxFieldItem;
 class SfxBroadcaster;
 class SvxUnoTextRangeBase;
 
-typedef std::list< SvxUnoTextRangeBase* > SvxUnoTextRangeBaseList;
+typedef std::vector< SvxUnoTextRangeBase* > SvxUnoTextRangeBaseVec;
 
 /** Wrapper class for unified EditEngine/Outliner access
 
@@ -56,10 +54,16 @@ typedef std::list< SvxUnoTextRangeBase* > SvxUnoTextRangeBaseList;
 class EDITENG_DLLPUBLIC SvxEditSource
 {
 public:
+    SvxEditSource() = default;
+    SvxEditSource(SvxEditSource const &) = default;
+    SvxEditSource(SvxEditSource &&) = default;
+    SvxEditSource & operator =(SvxEditSource const &) = default;
+    SvxEditSource & operator =(SvxEditSource &&) = default;
+
     virtual                 ~SvxEditSource();
 
     /// Returns a new reference to the same object. This is a shallow copy
-    virtual SvxEditSource*      Clone() const = 0;
+    virtual std::unique_ptr<SvxEditSource> Clone() const = 0;
 
     /** Query the text forwarder
 
@@ -111,7 +115,7 @@ public:
         object to inform all created text ranges about changes
         and also allows to re use already created instances.
         All SvxUnoTextRangeBase must remove itself with
-        removeRange() before theire deleted. */
+        removeRange() before they are deleted. */
     virtual void addRange( SvxUnoTextRangeBase* pNewRange );
 
     /** removes the given SvxUnoTextRangeBase from the text
@@ -122,7 +126,7 @@ public:
 
     /** returns a const list of all text ranges that are registered
         for the underlying text object. */
-    virtual const SvxUnoTextRangeBaseList& getRanges() const;
+    virtual const SvxUnoTextRangeBaseVec& getRanges() const;
 };
 
 
@@ -155,8 +159,8 @@ public:
     virtual void        QuickSetAttribs( const SfxItemSet& rSet, const ESelection& rSel ) = 0;
     virtual void        QuickInsertLineBreak( const ESelection& rSel ) = 0;
 
-    virtual OUString    CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, Color*& rpTxtColor, Color*& rpFldColor ) = 0;
-    virtual void         FieldClicked( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos ) = 0;
+    virtual OUString    CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rpTxtColor, std::optional<Color>& rpFldColor ) = 0;
+    virtual void        FieldClicked( const SvxFieldItem& rField ) = 0;
 
     virtual SfxItemPool* GetPool() const = 0;
 
@@ -208,9 +212,6 @@ public:
         Index of paragraph to query bullet info on
      */
     virtual EBulletInfo     GetBulletInfo( sal_Int32 nPara ) const = 0;
-
-    virtual void            SetUpdateModeForAcc(bool) {}
-    virtual bool            GetUpdateModeForAcc() const { return true; }
 
     /** Query the bounding rectangle of the given character
 
@@ -363,7 +364,7 @@ public:
      */
     virtual void            GetLineBoundaries( /*out*/sal_Int32 &rStart, /*out*/sal_Int32 &rEnd, sal_Int32 nParagraph, sal_Int32 nLine ) const = 0;
 
-    /** Query the line number for a index in the paragraphs text
+    /** Query the line number for an index in the paragraphs text
 
         @param nPara[0 .. n-1]
         Index of paragraph to query line length in
@@ -453,15 +454,6 @@ public:
         @return sal_False, if no longer valid
      */
     virtual bool        IsValid() const = 0;
-
-    /** Query visible area of the view containing the text
-
-        @return the visible rectangle of the text, i.e. the part of
-        the EditEngine or Outliner that is currently on screen. The
-        values are already in screen coordinates (pixel), and have to
-        be relative to the EditEngine/Outliner's upper left corner.
-     */
-    virtual tools::Rectangle   GetVisArea() const = 0;
 
     /** Convert from logical, EditEngine-relative coordinates to screen coordinates
 

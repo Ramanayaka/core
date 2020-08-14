@@ -35,7 +35,6 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MORKPARSER_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MORKPARSER_HXX
 
-#include <sal/types.h>
 #include <rtl/ustring.hxx>
 
 #include <string>
@@ -65,7 +64,7 @@ enum MorkErrors
 
 /// Class MorkParser
 
-class LO_DLLPUBLIC_MORK MorkParser
+class LO_DLLPUBLIC_MORK MorkParser final
 {
 public:
 
@@ -92,14 +91,14 @@ public:
     std::string const &getColumn( int oid );
 
     void retrieveLists(std::set<std::string>& lists);
-    void getRecordKeysForListTable(std::string& listName, std::set<int>& records);
+    void getRecordKeysForListTable(std::string const & listName, std::set<int>& records);
 
     void dump();
 
     // All lists
     std::vector<OUString> lists_;
 
-protected: // Members
+private: // Members
 
     void initVars();
 
@@ -115,11 +114,11 @@ protected: // Members
     bool parseComment();
     bool parseCell();
     bool parseTable();
-    bool parseMeta( char c );
+    void parseMeta( char c );
     bool parseRow( int TableId, int TableScope );
-    bool parseGroup();
+    void parseGroup();
 
-protected: // Data
+private: // Data
 
     // Columns in mork means value names
     MorkDict columns_;
@@ -143,7 +142,6 @@ protected: // Data
     // Indicates entity is being parsed
     enum class NP { Columns, Values, Rows } nowParsing_;
 
-private:
     MorkParser(const MorkParser &) = delete;
     MorkParser &operator=(const MorkParser &) = delete;
 

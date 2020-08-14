@@ -12,7 +12,6 @@ $(eval $(call gb_Library_Library,dbtools))
 
 $(eval $(call gb_Library_add_defs,dbtools,\
 	-DOOO_DLLIMPLEMENTATION_DBTOOLS \
-	-DBOOST_SPIRIT_USE_OLD_NAMESPACE \
 ))
 
 $(eval $(call gb_Library_set_componentfile,dbtools,connectivity/source/dbtools/dbtools))
@@ -23,7 +22,7 @@ $(eval $(call gb_Library_set_include,dbtools,\
 	-I$(SRCDIR)/connectivity/source/inc \
 ))
 
-#$(eval $(call gb_Library_set_precompiled_header,dbtools,$(SRCDIR)/connectivity/inc/pch/precompiled_dbtools))
+#$(eval $(call gb_Library_set_precompiled_header,dbtools,connectivity/inc/pch/precompiled_dbtools))
 
 $(eval $(call gb_Library_use_external,dbtools,boost_headers))
 
@@ -41,6 +40,7 @@ $(eval $(call gb_Library_use_libraries,dbtools,\
 	comphelper \
 	i18nlangtag \
 	svt \
+	vcl \
 ))
 
 ifeq ($(filter-out NETBSD MACOSX,$(OS)),)
@@ -76,7 +76,7 @@ $(eval $(call gb_Library_add_exception_objects,dbtools,\
 	connectivity/source/commontools/FDatabaseMetaDataResultSet \
 	connectivity/source/commontools/FDatabaseMetaDataResultSetMetaData \
 	connectivity/source/commontools/FValue \
-	connectivity/source/commontools/ParamterSubstitution \
+	connectivity/source/commontools/ParameterSubstitution \
 	connectivity/source/commontools/RowFunctionParser \
 	connectivity/source/commontools/TColumnsHelper \
 	connectivity/source/commontools/TConnection \

@@ -22,7 +22,6 @@
 #include <com/sun/star/script/browse/BrowseNodeTypes.hpp>
 #include <vcl/svapp.hxx>
 #include <basic/sbx.hxx>
-#include <basic/sbstar.hxx>
 #include <basic/sbmod.hxx>
 #include <basic/sbmeth.hxx>
 
@@ -81,11 +80,11 @@ namespace basprov
             SbxArray* pMethods = m_pModule->GetMethods().get();
             if ( pMethods )
             {
-                sal_Int32 nCount = pMethods->Count();
+                sal_uInt32 nCount = pMethods->Count32();
                 sal_Int32 nRealCount = 0;
-                for ( sal_Int32 i = 0; i < nCount; ++i )
+                for ( sal_uInt32 i = 0; i < nCount; ++i )
                 {
-                    SbMethod* pMethod = static_cast< SbMethod* >( pMethods->Get( static_cast< sal_uInt16 >( i ) ) );
+                    SbMethod* pMethod = static_cast< SbMethod* >( pMethods->Get32( i ) );
                     if ( pMethod && !pMethod->IsHidden() )
                         ++nRealCount;
                 }
@@ -93,11 +92,12 @@ namespace basprov
                 Reference< browse::XBrowseNode >* pChildNodes = aChildNodes.getArray();
 
                 sal_Int32 iTarget = 0;
-                for ( sal_Int32 i = 0; i < nCount; ++i )
+                for ( sal_uInt32 i = 0; i < nCount; ++i )
                 {
-                    SbMethod* pMethod = static_cast< SbMethod* >( pMethods->Get( static_cast< sal_uInt16 >( i ) ) );
+                    SbMethod* pMethod = static_cast< SbMethod* >( pMethods->Get32( i ) );
                     if ( pMethod && !pMethod->IsHidden() )
-                        pChildNodes[iTarget++] = static_cast< browse::XBrowseNode* >( new BasicMethodNodeImpl( m_xContext, m_sScriptingContext, pMethod, m_bIsAppScript ) );
+                        pChildNodes[iTarget++] = new BasicMethodNodeImpl(
+                            m_xContext, m_sScriptingContext, pMethod, m_bIsAppScript);
                 }
             }
         }
@@ -114,7 +114,7 @@ namespace basprov
         if ( m_pModule )
         {
             SbxArray* pMethods = m_pModule->GetMethods().get();
-            if ( pMethods && pMethods->Count() > 0 )
+            if ( pMethods && pMethods->Count32() > 0 )
                 bReturn = true;
         }
 

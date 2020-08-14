@@ -19,16 +19,13 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_COMMONFUNCTORS_HXX
 #define INCLUDED_CHART2_SOURCE_INC_COMMONFUNCTORS_HXX
 
-#include <algorithm>
 #include <o3tl/any.hxx>
 #include <rtl/math.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <rtl/ustring.hxx>
 #include "charttoolsdllapi.hxx"
 
-namespace chart
-{
-namespace CommonFunctors
+namespace chart::CommonFunctors
 {
 
 /** unary function to convert any type T into a css::uno::Any.
@@ -70,13 +67,13 @@ struct OOO_DLLPUBLIC_CHARTTOOLS AnyToString
     {
         if( auto pDouble = o3tl::tryAccess<double>(rAny) )
         {
-            if( ::rtl::math::isNan(*pDouble) )
+            if( std::isnan(*pDouble) )
                 return OUString();
             return ::rtl::math::doubleToUString(
                 * pDouble,
                 rtl_math_StringFormat_Automatic,
                 rtl_math_DecimalPlaces_Max, // use maximum decimal places available
-                sal_Char( '.' ), // decimal separator
+                '.', // decimal separator
                 true // remove trailing zeros
                 );
         }
@@ -119,14 +116,13 @@ struct OOO_DLLPUBLIC_CHARTTOOLS DoubleToOUString
             fNumber,
             rtl_math_StringFormat_Automatic,
             rtl_math_DecimalPlaces_Max, // use maximum decimal places available
-            static_cast< sal_Char >( '.' ),
+            '.',
             true
             );
     }
 };
 
-} //  namespace CommonFunctors
-} //  namespace chart
+} //  namespace chart::CommonFunctors
 
 // INCLUDED_CHART2_SOURCE_INC_COMMONFUNCTORS_HXX
 #endif

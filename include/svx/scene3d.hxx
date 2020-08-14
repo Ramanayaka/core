@@ -22,17 +22,15 @@
 
 #include <svx/camera3d.hxx>
 #include <tools/b3dtrans.hxx>
+#include <svx/svdpage.hxx>
 #include <svx/svxdllapi.h>
 #include <svx/obj3d.hxx>
+#include <svx/svx3ditems.hxx>
+#include <memory>
 
-namespace sdr { namespace properties {
+namespace sdr::properties {
     class BaseProperties;
-    class E3dSceneProperties;
-}}
-
-namespace drawinglayer { namespace geometry {
-    class ViewInformation3D;
-}}
+}
 
 /*************************************************************************
 |*
@@ -40,7 +38,7 @@ namespace drawinglayer { namespace geometry {
 |*
 \************************************************************************/
 
-class E3DSceneGeoData : public E3DObjGeoData
+class E3DSceneGeoData final : public E3DObjGeoData
 {
 public:
     Camera3D                    aCamera;
@@ -56,45 +54,46 @@ class Imp3DDepthRemapper;
 |*
 \************************************************************************/
 
-class SVX_DLLPUBLIC E3dScene : public E3dObject
+class SVXCORE_DLLPUBLIC E3dScene : public E3dObject, public SdrObjList
 {
-private:
-    // to allow sdr::properties::E3dSceneProperties access to StructureChanged()
-    friend class sdr::properties::E3dSceneProperties;
-
 protected:
-    virtual sdr::properties::BaseProperties* CreateObjectSpecificProperties() override;
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
 
     // transformations
     B3dCamera                   aCameraSet;
     Camera3D                    aCamera;
 
-    Imp3DDepthRemapper*         mp3DDepthRemapper;
+    mutable std::unique_ptr<Imp3DDepthRemapper> mp3DDepthRemapper;
 
     // Flag to determine if only selected objects should be drawn
     bool                        bDrawOnlySelected       : 1;
 
-    virtual void NewObjectInserted(const E3dObject* p3DObj) override;
-    virtual void StructureChanged() override;
+    bool mbSkipSettingDirty : 1;
 
     void RebuildLists();
 
     virtual void Notify(SfxBroadcaster &rBC, const SfxHint  &rHint) override;
 
-protected:
     void SetDefaultAttributes();
-
     void ImpCleanup3DDepthMapper();
 
-public:
-    E3dScene();
+    // protected destructor
     virtual ~E3dScene() override;
 
-    virtual void SetBoundRectDirty() override;
+public:
+    E3dScene(SdrModel& rSdrModel);
 
-    // access to cleanup of depth mapper
-    void Cleanup3DDepthMapper() { ImpCleanup3DDepthMapper(); }
+    virtual void StructureChanged() override;
+
+    // derived from SdrObjList
+    virtual SdrPage* getSdrPageFromSdrObjList() const override;
+    virtual SdrObject* getSdrObjectFromSdrObjList() const override;
+
+    // derived from SdrObject
+    virtual SdrObjList* getChildrenOfSdrObject() const override;
+
+    virtual void SetBoundRectDirty() override;
 
     virtual basegfx::B2DPolyPolygon TakeXorPoly() const override;
 
@@ -102,15 +101,15 @@ public:
 
     // Perspective: enum ProjectionType { ProjectionType::Parallel, ProjectionType::Perspective }
     ProjectionType GetPerspective() const
-        { return (ProjectionType) static_cast<const Svx3DPerspectiveItem&>(GetObjectItemSet().Get(SDRATTR_3DSCENE_PERSPECTIVE)).GetValue(); }
+        { return static_cast<ProjectionType>(GetObjectItemSet().Get(SDRATTR_3DSCENE_PERSPECTIVE).GetValue()); }
 
     // Distance:
     double GetDistance() const
-        { return (double)static_cast<const SfxUInt32Item&>(GetObjectItemSet().Get(SDRATTR_3DSCENE_DISTANCE)).GetValue(); }
+        { return static_cast<double>(GetObjectItemSet().Get(SDRATTR_3DSCENE_DISTANCE).GetValue()); }
 
     // Focal length: before cm, now 1/10th mm (*100)
     double GetFocalLength() const
-        { return static_cast<const SfxUInt32Item&>(GetObjectItemSet().Get(SDRATTR_3DSCENE_FOCAL_LENGTH)).GetValue(); }
+        { return GetObjectItemSet().Get(SDRATTR_3DSCENE_FOCAL_LENGTH).GetValue(); }
 
     // set flag to draw only selected
     void SetDrawOnlySelected(bool bNew) { bDrawOnlySelected = bNew; }
@@ -123,12 +122,12 @@ public:
                                                  const Fraction& rYFact) override;
     virtual void    RecalcSnapRect() override;
 
-    virtual E3dScene* GetScene() const override;
+    virtual E3dScene* getRootE3dSceneFromE3dObject() const override;
     void SetCamera(const Camera3D& rNewCamera);
     const Camera3D& GetCamera() const { return aCamera; }
     void removeAllNonSelectedObjects();
 
-    virtual E3dScene* Clone() const override;
+    virtual E3dScene* CloneSdrObject(SdrModel& rTargetModel) const override;
     E3dScene& operator=(const E3dScene&);
 
     virtual SdrObjGeoData *NewGeoData() const override;
@@ -161,6 +160,32 @@ public:
     virtual bool EndCreate(SdrDragStat& rStat, SdrCreateCmd eCmd) override;
     virtual bool BckCreate(SdrDragStat& rStat) override;
     virtual void BrkCreate(SdrDragStat& rStat) override;
+
+    void SuspendReportingDirtyRects();
+    void ResumeReportingDirtyRects();
+    void SetAllSceneRectsDirty();
+
+    // set selection from E3dObject (temporary flag for 3D actions)
+    virtual void SetSelected(bool bNew) override;
+
+    // derived from SdrObjList
+    virtual void NbcInsertObject(SdrObject* pObj, size_t nPos=SAL_MAX_SIZE) override;
+    virtual void InsertObject(SdrObject* pObj, size_t nPos=SAL_MAX_SIZE) override;
+    virtual SdrObject* NbcRemoveObject(size_t nObjNum) override;
+    virtual SdrObject* RemoveObject(size_t nObjNum) override;
+
+    // needed for group functionality
+    virtual void SetRectsDirty(bool bNotMyself = false, bool bRecursive = true) override;
+    virtual void NbcSetLayer(SdrLayerID nLayer) override;
+
+    // react on model/page change
+    virtual void handlePageChange(SdrPage* pOldPage, SdrPage* pNewPage) override;
+
+    virtual SdrObjList* GetSubList() const override;
+    virtual void SetTransformChanged() override;
+
+protected:
+    virtual basegfx::B3DRange RecalcBoundVolume() const override;
 };
 
 #endif // INCLUDED_SVX_SCENE3D_HXX

@@ -22,43 +22,39 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/document/IndexedPropertyValues.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/xforms/XFormsSupplier.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 #include <o3tl/any.hxx>
 #include <sax/tools/converter.hxx>
-#include <svx/svdmodel.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/xmleohlp.hxx>
 #include <svx/xmlgrhlp.hxx>
 #include <editeng/eeitem.hxx>
 #include <svx/svddef.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <editeng/xmlcnitm.hxx>
 #include <xmloff/ProgressBarHelper.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xformsexport.hxx>
 #include <drawdoc.hxx>
-#include <pam.hxx>
-#include <unofreg.hxx>
 #include <doc.hxx>
 #include <swmodule.hxx>
 #include <docsh.hxx>
 #include <viewsh.hxx>
+#include <rootfrm.hxx>
 #include <docstat.hxx>
 #include <swerror.h>
 #include <unotext.hxx>
-#include <xmltexte.hxx>
-#include <xmlexp.hxx>
-#include <sfx2/viewsh.hxx>
+#include "xmltexte.hxx"
+#include "xmlexp.hxx"
+#include "xmlexpit.hxx"
 #include <comphelper/processfactory.hxx>
 #include <docary.hxx>
-#include <editeng/unolingu.hxx>
-#include <editeng/forbiddencharacterstable.hxx>
+#include <frameformats.hxx>
 #include <comphelper/servicehelper.hxx>
 #include <vcl/svapp.hxx>
-#include <osl/mutex.hxx>
 #include <IDocumentSettingAccess.hxx>
 #include <IDocumentDrawModelAccess.hxx>
 #include <IDocumentRedlineAccess.hxx>
@@ -84,10 +80,8 @@ using namespace ::xmloff::token;
 SwXMLExport::SwXMLExport(
     const uno::Reference< uno::XComponentContext >& rContext,
     OUString const & implementationName, SvXMLExportFlags nExportFlags)
-:   SvXMLExport( util::MeasureUnit::INCH, rContext, implementationName, XML_TEXT,
+:   SvXMLExport( rContext, implementationName, util::MeasureUnit::INCH, XML_TEXT,
         nExportFlags ),
-    m_pTableItemMapper( nullptr ),
-    m_pTableLines( nullptr ),
     m_bBlock( false ),
     m_bShowProgress( true ),
     m_bSavedShowChanges( false ),
@@ -125,11 +119,13 @@ ErrCode SwXMLExport::exportDoc( enum XMLTokenEnum eClass )
     }
 
     SwDoc *pDoc = getDoc();
+    if (!pDoc)
+        return ERR_SWG_WRITE_ERROR;
 
     if( getExportFlags() & (SvXMLExportFlags::FONTDECLS|SvXMLExportFlags::STYLES|
                             SvXMLExportFlags::MASTERSTYLES|SvXMLExportFlags::CONTENT))
     {
-        if( getDefaultVersion() > SvtSaveOptions::ODFVER_012 )
+        if (getSaneDefaultVersion() & SvtSaveOptions::ODFSVER_EXTENDED)
         {
             GetNamespaceMap_().Add(
                 GetXMLToken(XML_NP_OFFICE_EXT),
@@ -150,24 +146,18 @@ ErrCode SwXMLExport::exportDoc( enum XMLTokenEnum eClass )
         for( int j=0; j < nWhichIds; ++j )
         {
             const sal_uInt16 nWhichId = aWhichIds[j];
-            const sal_uInt32 nItems = rPool.GetItemCount2( nWhichId );
-            for( sal_uInt32 i = 0; i < nItems; ++i )
+            for (const SfxPoolItem* pItem : rPool.GetItemSurrogates(nWhichId))
             {
-                const SfxPoolItem* const pItem = rPool.GetItem2( nWhichId , i );
-                if( nullptr != pItem )
+                auto pUnknown = dynamic_cast<const SvXMLAttrContainerItem*>( pItem  );
+                OSL_ENSURE( pUnknown, "illegal attribute container item" );
+                if( pUnknown && (pUnknown->GetAttrCount() > 0) )
                 {
-                    const SvXMLAttrContainerItem *pUnknown =
-                                dynamic_cast<const SvXMLAttrContainerItem*>( pItem  );
-                    OSL_ENSURE( pUnknown, "illegal attribute container item" );
-                    if( pUnknown && (pUnknown->GetAttrCount() > 0) )
+                    sal_uInt16 nIdx = pUnknown->GetFirstNamespaceIndex();
+                    while( USHRT_MAX != nIdx )
                     {
-                        sal_uInt16 nIdx = pUnknown->GetFirstNamespaceIndex();
-                        while( USHRT_MAX != nIdx )
-                        {
-                            GetNamespaceMap_().Add( pUnknown->GetPrefix( nIdx ),
-                                                pUnknown->GetNamespace( nIdx ) );
-                            nIdx = pUnknown->GetNextNamespaceIndex( nIdx );
-                        }
+                        GetNamespaceMap_().Add( pUnknown->GetPrefix( nIdx ),
+                                            pUnknown->GetNamespace( nIdx ) );
+                        nIdx = pUnknown->GetNextNamespaceIndex( nIdx );
                     }
                 }
             }
@@ -238,25 +228,23 @@ ErrCode SwXMLExport::exportDoc( enum XMLTokenEnum eClass )
     // we don't need it here.
     // else: keep default pClass that we received
 
-    SvXMLGraphicHelper *pGraphicResolver = nullptr;
-    if( !GetGraphicResolver().is() )
+    rtl::Reference<SvXMLGraphicHelper> xGraphicStorageHandler;
+    if (!GetGraphicStorageHandler().is())
     {
-        pGraphicResolver = SvXMLGraphicHelper::Create( SvXMLGraphicHelperMode::Write );
-        Reference< XGraphicObjectResolver > xGraphicResolver( pGraphicResolver );
-        SetGraphicResolver( xGraphicResolver );
+        xGraphicStorageHandler = SvXMLGraphicHelper::Create(SvXMLGraphicHelperMode::Write, GetImageFilterName());
+        SetGraphicStorageHandler(xGraphicStorageHandler.get());
     }
 
-    SvXMLEmbeddedObjectHelper *pEmbeddedResolver = nullptr;
+    rtl::Reference<SvXMLEmbeddedObjectHelper> xEmbeddedResolver;
     if( !GetEmbeddedResolver().is() )
     {
         SfxObjectShell *pPersist = pDoc->GetPersist();
         if( pPersist )
         {
-            pEmbeddedResolver = SvXMLEmbeddedObjectHelper::Create(
+            xEmbeddedResolver = SvXMLEmbeddedObjectHelper::Create(
                                             *pPersist,
                                             SvXMLEmbeddedObjectHelperMode::Write );
-            Reference< XEmbeddedObjectResolver > xEmbeddedResolver( pEmbeddedResolver );
-            SetEmbeddedResolver( xEmbeddedResolver );
+            SetEmbeddedResolver( Reference<XEmbeddedObjectResolver>( xEmbeddedResolver.get() ) );
         }
     }
 
@@ -277,7 +265,8 @@ ErrCode SwXMLExport::exportDoc( enum XMLTokenEnum eClass )
         }
     }
     RedlineFlags nRedlineFlags = RedlineFlags::NONE;
-    m_bSavedShowChanges = IDocumentRedlineAccess::IsShowChanges( pDoc->getIDocumentRedlineAccess().GetRedlineFlags() );
+    SwRootFrame const*const pLayout(m_pDoc->getIDocumentLayoutAccess().GetCurrentLayout());
+    m_bSavedShowChanges = pLayout == nullptr || !pLayout->IsHideRedlines();
     if( bSaveRedline )
     {
         // now save and switch redline mode
@@ -294,10 +283,12 @@ ErrCode SwXMLExport::exportDoc( enum XMLTokenEnum eClass )
       pDoc->getIDocumentRedlineAccess().SetRedlineFlags( nRedlineFlags );
     }
 
-    if( pGraphicResolver )
-        SvXMLGraphicHelper::Destroy( pGraphicResolver );
-    if( pEmbeddedResolver )
-        SvXMLEmbeddedObjectHelper::Destroy( pEmbeddedResolver );
+    if (xGraphicStorageHandler)
+        xGraphicStorageHandler->dispose();
+    xGraphicStorageHandler.clear();
+    if( xEmbeddedResolver )
+        xEmbeddedResolver->dispose();
+    xEmbeddedResolver.clear();
 
     OSL_ENSURE( !m_pTableLines, "there are table columns infos left" );
 
@@ -306,7 +297,7 @@ ErrCode SwXMLExport::exportDoc( enum XMLTokenEnum eClass )
 
 XMLTextParagraphExport* SwXMLExport::CreateTextParagraphExport()
 {
-    return new SwXMLTextParagraphExport( *this, *GetAutoStylePool().get() );
+    return new SwXMLTextParagraphExport(*this, *GetAutoStylePool());
 }
 
 XMLShapeExport* SwXMLExport::CreateShapeExport()
@@ -315,7 +306,7 @@ XMLShapeExport* SwXMLExport::CreateShapeExport()
     Reference < XDrawPageSupplier > xDPS( GetModel(), UNO_QUERY );
     if( xDPS.is() )
     {
-         Reference < XShapes > xShapes( xDPS->getDrawPage(), UNO_QUERY );
+        Reference < XShapes > xShapes = xDPS->getDrawPage();
         pShapeExport->seekShapes( xShapes );
     }
 
@@ -334,36 +325,34 @@ void SwXMLExport::ExportFontDecls_()
     SvXMLExport::ExportFontDecls_();
 }
 
-#define NUM_EXPORTED_VIEW_SETTINGS 11
 void SwXMLExport::GetViewSettings(Sequence<PropertyValue>& aProps)
 {
-    aProps.realloc( NUM_EXPORTED_VIEW_SETTINGS );
+    aProps.realloc(7);
      // Currently exporting 9 properties
     PropertyValue *pValue = aProps.getArray();
-    sal_Int32 nIndex = 0;
 
     Reference < XIndexContainer > xBox = IndexedPropertyValues::create( comphelper::getProcessComponentContext() );
-    pValue[nIndex].Name = "Views";
-    pValue[nIndex++].Value <<= xBox;
+    pValue[0].Name = "Views";
+    pValue[0].Value <<= xBox;
 
     SwDoc *pDoc = getDoc();
     const tools::Rectangle rRect =
         pDoc->GetDocShell()->GetVisArea( ASPECT_CONTENT );
     bool bTwip = pDoc->GetDocShell()->GetMapUnit ( ) == MapUnit::MapTwip;
 
-   OSL_ENSURE( bTwip, "Map unit for visible area is not in TWIPS!" );
+    OSL_ENSURE( bTwip, "Map unit for visible area is not in TWIPS!" );
 
-    pValue[nIndex].Name = "ViewAreaTop";
-    pValue[nIndex++].Value <<= bTwip ? convertTwipToMm100 ( rRect.Top() ) : rRect.Top();
+    pValue[1].Name = "ViewAreaTop";
+    pValue[1].Value <<= bTwip ? convertTwipToMm100 ( rRect.Top() ) : rRect.Top();
 
-    pValue[nIndex].Name = "ViewAreaLeft";
-    pValue[nIndex++].Value <<= bTwip ? convertTwipToMm100 ( rRect.Left() ) : rRect.Left();
+    pValue[2].Name = "ViewAreaLeft";
+    pValue[2].Value <<= bTwip ? convertTwipToMm100 ( rRect.Left() ) : rRect.Left();
 
-    pValue[nIndex].Name = "ViewAreaWidth";
-    pValue[nIndex++].Value <<= bTwip ? convertTwipToMm100 ( rRect.GetWidth() ) : rRect.GetWidth();
+    pValue[3].Name = "ViewAreaWidth";
+    pValue[3].Value <<= bTwip ? convertTwipToMm100 ( rRect.GetWidth() ) : rRect.GetWidth();
 
-    pValue[nIndex].Name = "ViewAreaHeight";
-    pValue[nIndex++].Value <<= bTwip ? convertTwipToMm100 ( rRect.GetHeight() ) : rRect.GetHeight();
+    pValue[4].Name = "ViewAreaHeight";
+    pValue[4].Value <<= bTwip ? convertTwipToMm100 ( rRect.GetHeight() ) : rRect.GetHeight();
 
     // "show redline mode" cannot simply be read from the document
     // since it gets changed during execution. If it's in the info
@@ -380,16 +369,12 @@ void SwXMLExport::GetViewSettings(Sequence<PropertyValue>& aProps)
         }
     }
 
-    pValue[nIndex].Name = "ShowRedlineChanges";
-    pValue[nIndex++].Value <<= bShowRedlineChanges;
+    pValue[5].Name = "ShowRedlineChanges";
+    pValue[5].Value <<= bShowRedlineChanges;
 
-    pValue[nIndex].Name = "InBrowseMode";
-    pValue[nIndex++].Value <<= pDoc->getIDocumentSettingAccess().get(DocumentSettingId::BROWSE_MODE);
-
-    if ( nIndex < NUM_EXPORTED_VIEW_SETTINGS )
-        aProps.realloc(nIndex);
+    pValue[6].Name = "InBrowseMode";
+    pValue[6].Value <<= pDoc->getIDocumentSettingAccess().get(DocumentSettingId::BROWSE_MODE);
 }
-#undef NUM_EXPORTED_VIEW_SETTINGS
 
 void SwXMLExport::GetConfigurationSettings( Sequence < PropertyValue >& rProps)
 {
@@ -402,7 +387,7 @@ void SwXMLExport::GetConfigurationSettings( Sequence < PropertyValue >& rProps)
     }
 }
 
-sal_Int32 SwXMLExport::GetDocumentSpecificSettings( std::list< SettingsGroup >& _out_rSettings )
+sal_Int32 SwXMLExport::GetDocumentSpecificSettings( std::vector< SettingsGroup >& _out_rSettings )
 {
     // the only doc-specific settings group we know so far are the XForms settings
     uno::Sequence<beans::PropertyValue> aXFormsSettings;
@@ -413,7 +398,7 @@ sal_Int32 SwXMLExport::GetDocumentSpecificSettings( std::list< SettingsGroup >& 
     if ( xXForms.is() )
     {
         getXFormsSettings( xXForms, aXFormsSettings );
-        _out_rSettings.push_back( SettingsGroup( XML_XFORM_MODEL_SETTINGS, aXFormsSettings ) );
+        _out_rSettings.emplace_back( XML_XFORM_MODEL_SETTINGS, aXFormsSettings );
     }
 
     return aXFormsSettings.getLength() + SvXMLExport::GetDocumentSpecificSettings( _out_rSettings );
@@ -464,7 +449,7 @@ void SwXMLExport::ExportContent_()
     if (xPropSet.is())
     {
         Any aAny = xPropSet->getPropertyValue( "TwoDigitYear" );
-        aAny <<= (sal_Int16)1930;
+        aAny <<= sal_Int16(1930);
 
         sal_Int16 nYear = 0;
         aAny >>= nYear;
@@ -496,9 +481,7 @@ const Sequence< sal_Int8 > & SwXMLExport::getUnoTunnelId() throw()
 
 sal_Int64 SAL_CALL SwXMLExport::getSomething( const Sequence< sal_Int8 >& rId )
 {
-    if( rId.getLength() == 16
-        && 0 == memcmp( getUnoTunnelId().getConstArray(),
-                                        rId.getConstArray(), 16 ) )
+    if( isUnoTunnelId<SwXMLExport>(rId) )
     {
         return sal::static_int_cast< sal_Int64 >( reinterpret_cast< sal_IntPtr >(this) );
     }
@@ -510,6 +493,12 @@ SwDoc* SwXMLExport::getDoc()
     if( m_pDoc != nullptr )
         return m_pDoc;
     Reference < XTextDocument > xTextDoc( GetModel(), UNO_QUERY );
+    if (!xTextDoc)
+    {
+        SAL_WARN("sw.filter", "Problem of mismatching filter for export.");
+        return nullptr;
+    }
+
     Reference < XText > xText = xTextDoc->getText();
     Reference<XUnoTunnel> xTextTunnel( xText, UNO_QUERY);
     assert( xTextTunnel.is());
@@ -526,7 +515,7 @@ const SwDoc* SwXMLExport::getDoc() const
     return const_cast< SwXMLExport* >( this )->getDoc();
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLExporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -534,7 +523,7 @@ com_sun_star_comp_Writer_XMLExporter_get_implementation(css::uno::XComponentCont
                 SvXMLExportFlags::ALL));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLStylesExporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -543,7 +532,7 @@ com_sun_star_comp_Writer_XMLStylesExporter_get_implementation(css::uno::XCompone
                 SvXMLExportFlags::FONTDECLS));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLContentExporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -552,7 +541,7 @@ com_sun_star_comp_Writer_XMLContentExporter_get_implementation(css::uno::XCompon
                 SvXMLExportFlags::FONTDECLS));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLMetaExporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -560,7 +549,7 @@ com_sun_star_comp_Writer_XMLMetaExporter_get_implementation(css::uno::XComponent
                 SvXMLExportFlags::META));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLSettingsExporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -568,7 +557,7 @@ com_sun_star_comp_Writer_XMLSettingsExporter_get_implementation(css::uno::XCompo
                 SvXMLExportFlags::SETTINGS));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisExporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -576,7 +565,7 @@ com_sun_star_comp_Writer_XMLOasisExporter_get_implementation(css::uno::XComponen
                 SvXMLExportFlags::ALL | SvXMLExportFlags::OASIS));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisStylesExporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -585,7 +574,7 @@ com_sun_star_comp_Writer_XMLOasisStylesExporter_get_implementation(css::uno::XCo
                 SvXMLExportFlags::FONTDECLS | SvXMLExportFlags::OASIS));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisContentExporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -594,7 +583,7 @@ com_sun_star_comp_Writer_XMLOasisContentExporter_get_implementation(css::uno::XC
                 SvXMLExportFlags::FONTDECLS | SvXMLExportFlags::OASIS));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisMetaExporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -602,7 +591,7 @@ com_sun_star_comp_Writer_XMLOasisMetaExporter_get_implementation(css::uno::XComp
                 SvXMLExportFlags::META | SvXMLExportFlags::OASIS));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisSettingsExporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {

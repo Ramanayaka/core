@@ -17,11 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/axismodel.hxx"
+#include <drawingml/chart/axismodel.hxx>
+#include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 AxisDispUnitsModel::AxisDispUnitsModel() :
     mfCustomUnit( 0.0 )
@@ -36,7 +35,7 @@ AxisModel::AxisModel( sal_Int32 nTypeId, bool bMSO2007Doc ) :
     mnAxisId( -1 ),
     mnAxisPos( XML_TOKEN_INVALID ),
     mnCrossAxisId( -1 ),
-    mnCrossBetween( XML_between ),
+    mnCrossBetween( -1 ),
     mnCrossMode( XML_autoZero ),
     mnLabelAlign( XML_ctr ),
     mnLabelOffset( 100 ),
@@ -59,8 +58,6 @@ AxisModel::~AxisModel()
 {
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -24,12 +24,13 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/frame/XConfigManager.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class XComponentContext;
-} } } }
+}
+
+namespace {
 
 class PathService : public ::cppu::WeakImplHelper< css::frame::XConfigManager, css::lang::XServiceInfo >
 {
@@ -41,7 +42,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
         {
-            return OUString("com.sun.star.comp.svl.PathService");
+            return "com.sun.star.comp.svl.PathService";
         }
 
     virtual sal_Bool SAL_CALL supportsService (
@@ -74,8 +75,9 @@ public:
         {}
 };
 
+}
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_svl_PathService_get_implementation(css::uno::XComponentContext*,
                                                      css::uno::Sequence<css::uno::Any> const &)
 {

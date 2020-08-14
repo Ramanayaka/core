@@ -13,25 +13,22 @@
 #include <map>
 #include <dmapper/resourcemodel.hxx>
 
-namespace writerfilter
-{
-namespace rtftok
+namespace writerfilter::rtftok
 {
 /// Sends tables (e.g. font table) to the domain mapper.
-class RTFReferenceTable
-    : public writerfilter::Reference<Table>
+class RTFReferenceTable : public writerfilter::Reference<Table>
 {
 public:
     using Entries_t = std::map<int, writerfilter::Reference<Properties>::Pointer_t>;
     using Entry_t = std::pair<int, writerfilter::Reference<Properties>::Pointer_t>;
     explicit RTFReferenceTable(Entries_t aEntries);
-    virtual ~RTFReferenceTable();
+    ~RTFReferenceTable() override;
     void resolve(Table& rHandler) override;
+
 private:
     Entries_t m_aEntries;
 };
-} // namespace rtftok
-} // namespace writerfilter
+} // namespace writerfilter::rtftok
 
 #endif // INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFREFERENCETABLE_HXX
 

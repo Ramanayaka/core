@@ -19,32 +19,32 @@
 
 #include <sal/config.h>
 
-#include <o3tl/make_unique.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/printer.hxx>
 #include <sfx2/objface.hxx>
 
 #include "unomodel.hxx"
 
-#include <basdoc.hxx>
-#define basctl_DocShell     // This CANNOT come before basdoc apparently
+#include "basdoc.hxx"
+#define ShellClass_basctl_DocShell
 #include <basslots.hxx>
 #include <sfx2/sfxmodelfactory.hxx>
 #include <svl/itemset.hxx>
 #include <svx/svxids.hrc>
 #include <tools/globname.hxx>
+#include <tools/debug.hxx>
 
 namespace basctl
 {
 
 
-SFX_IMPL_OBJECTFACTORY( DocShell, SvGlobalName(), SfxObjectShellFlags::STD_NORMAL, "sbasic" )
+SFX_IMPL_OBJECTFACTORY( DocShell, SvGlobalName(), "sbasic" )
 
 SFX_IMPL_SUPERCLASS_INTERFACE(basctl_DocShell, SfxObjectShell)
 
 void basctl_DocShell::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterStatusBar(SID_BASICIDE_STATUSBAR);
+    GetStaticInterface()->RegisterStatusBar(StatusBarId::BasicIdeStatusBar);
 }
 
 DocShell::DocShell()
@@ -62,7 +62,7 @@ DocShell::~DocShell()
 SfxPrinter* DocShell::GetPrinter( bool bCreate )
 {
     if ( !pPrinter && bCreate )
-        pPrinter.disposeAndReset(VclPtr<SfxPrinter>::Create(o3tl::make_unique<SfxItemSet>(
+        pPrinter.disposeAndReset(VclPtr<SfxPrinter>::Create(std::make_unique<SfxItemSet>(
             GetPool(), svl::Items<SID_PRINTER_NOTFOUND_WARN, SID_PRINTER_NOTFOUND_WARN>{}
         )));
 
@@ -77,7 +77,7 @@ void DocShell::SetPrinter( SfxPrinter* pPr )
     }
 }
 
-void DocShell::FillClass( SvGlobalName*, SotClipboardFormatId*, OUString*, OUString*, OUString*, sal_Int32, bool bTemplate) const
+void DocShell::FillClass( SvGlobalName*, SotClipboardFormatId*, OUString*, sal_Int32, bool bTemplate) const
 {
     DBG_ASSERT( !bTemplate, "No template for Basic" );
 }

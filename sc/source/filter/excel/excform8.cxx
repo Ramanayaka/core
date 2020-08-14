@@ -17,21 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "excform.hxx"
+#include <excform.hxx>
 
-#include "formulacell.hxx"
-#include "document.hxx"
-#include "rangenam.hxx"
-#include "xltracer.hxx"
-#include "xistream.hxx"
-#include "xihelper.hxx"
-#include "xilink.hxx"
-#include "xiname.hxx"
+#include <document.hxx>
+#include <documentimport.hxx>
+#include <xltracer.hxx>
+#include <xistream.hxx>
+#include <xihelper.hxx>
+#include <xilink.hxx>
+#include <xiname.hxx>
 
-#include "externalrefmgr.hxx"
+#include <externalrefmgr.hxx>
 
-#include <vector>
 #include <cstring>
+
+#include <o3tl/safeint.hxx>
 
 using ::std::vector;
 
@@ -55,7 +55,7 @@ bool extractFilePath(const OUString& rUrl, OUString& rPath)
 
     OUStringBuffer aBuf;
     const sal_Unicode* p = rUrl.getStr();
-    for (size_t i = 0; i < static_cast<size_t>(n); ++i, ++p)
+    for (size_t i = 0; i < o3tl::make_unsigned(n); ++i, ++p)
     {
         if (i < nPrefixLen)
         {
@@ -135,11 +135,11 @@ bool ExcelToSc8::HandleOleLink(sal_uInt16 nXtiIndex, const XclImpExtName& rExtNa
 
 // if bAllowArrays is false stream seeks to first byte after <nFormulaLen>
 // otherwise it will seek to the first byte past additional content after <nFormulaLen>
-ConvErr ExcelToSc8::Convert( const ScTokenArray*& rpTokArray, XclImpStream& aIn, std::size_t nFormulaLen, bool bAllowArrays, const FORMULA_TYPE eFT )
+ConvErr ExcelToSc8::Convert( std::unique_ptr<ScTokenArray>& rpTokArray, XclImpStream& aIn, std::size_t nFormulaLen, bool bAllowArrays, const FORMULA_TYPE eFT )
 {
     bool                    bError = false;
     bool                    bArrayFormula = false;
-    TokenId                 nMerk0;
+    TokenId                 nBuf0;
     const bool              bCondFormat = eFT == FT_CondFormat;
     const bool              bRangeName = eFT == FT_RangeName;
     const bool              bRangeNameOrCond = bRangeName || bCondFormat;
@@ -150,17 +150,11 @@ ConvErr ExcelToSc8::Convert( const ScTokenArray*& rpTokArray, XclImpStream& aIn,
     ScComplexRefData        aCRD;
     ExtensionTypeVec        aExtensions;
 
-    if( eStatus != ConvErr::OK )
-    {
-        aIn.Ignore( nFormulaLen );
-        return eStatus;
-    }
-
     if( nFormulaLen == 0 )
     {
-        aPool.Store( OUString( "-/-" ) );
+        aPool.Store( "-/-" );
         aPool >> aStack;
-        rpTokArray = aPool[ aStack.Get() ];
+        rpTokArray = aPool.GetTokenArray( &GetDocImport().getDoc(), aStack.Get());
         return ConvErr::OK;
     }
 
@@ -184,90 +178,90 @@ ConvErr ExcelToSc8::Convert( const ScTokenArray*& rpTokArray, XclImpStream& aIn,
                 bArrayFormula = true;
                 break;
             case 0x03: // Addition                              [312 264]
-                aStack >> nMerk0;
-                aPool <<  aStack << ocAdd << nMerk0;
+                aStack >> nBuf0;
+                aPool <<  aStack << ocAdd << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x04: // Subtraction                           [313 264]
                 // SECOND-TOP minus TOP
-                aStack >> nMerk0;
-                aPool << aStack << ocSub << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocSub << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x05: // Multiplication                        [313 264]
-                aStack >> nMerk0;
-                aPool << aStack << ocMul << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocMul << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x06: // Division                              [313 264]
                 // divide TOP by SECOND-TOP
-                aStack >> nMerk0;
-                aPool << aStack << ocDiv << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocDiv << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x07: // Exponentiation                        [313 265]
                 // raise SECOND-TOP to power of TOP
-                aStack >> nMerk0;
-                aPool << aStack << ocPow << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocPow << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x08: // Concatenation                         [313 265]
                 // append TOP to SECOND-TOP
-                aStack >> nMerk0;
-                aPool << aStack << ocAmpersand << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocAmpersand << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x09: // Less Than                             [313 265]
                 // SECOND-TOP < TOP
-                aStack >> nMerk0;
-                aPool << aStack << ocLess << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocLess << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x0A: // Less Than or Equal                    [313 265]
                 // SECOND-TOP <= TOP
-                aStack >> nMerk0;
-                aPool << aStack << ocLessEqual << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocLessEqual << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x0B: // Equal                                 [313 265]
                 // SECOND-TOP == TOP
-                aStack >> nMerk0;
-                aPool << aStack << ocEqual << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocEqual << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x0C: // Greater Than or Equal                 [313 265]
                 // SECOND-TOP >= TOP
-                aStack >> nMerk0;
-                aPool << aStack << ocGreaterEqual << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocGreaterEqual << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x0D: // Greater Than                          [313 265]
                 // SECOND-TOP > TOP
-                aStack >> nMerk0;
-                aPool << aStack << ocGreater << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocGreater << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x0E: // Not Equal                             [313 265]
                 // SECOND-TOP != TOP
-                aStack >> nMerk0;
-                aPool << aStack << ocNotEqual << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocNotEqual << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x0F: // Intersection                          [314 265]
-                aStack >> nMerk0;
-                aPool << aStack << ocIntersect << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocIntersect << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x10: // Union                                 [314 265]
                 // ocSep instead of 'ocUnion'
-                aStack >> nMerk0;
-                aPool << aStack << ocSep << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocSep << nBuf0;
                     // doesn't fit exactly, but is more Excel-like
                 aPool >> aStack;
                 break;
             case 0x11: // Range                                 [314 265]
-                aStack >> nMerk0;
-                aPool << aStack << ocRange << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << ocRange << nBuf0;
                 aPool >> aStack;
                 break;
             case 0x12: // Unary Plus                            [312 264]
@@ -326,7 +320,7 @@ ConvErr ExcelToSc8::Convert( const ScTokenArray*& rpTokArray, XclImpStream& aIn,
                         else
                             aSRD.SetColRel(true);
 
-                        aSRD.SetAddress(aAddr, aEingPos);
+                        aSRD.SetAddress(GetDocImport().getDoc().GetSheetLimits(), aAddr, aEingPos);
 
                         aStack << aPool.StoreNlf( aSRD );
 
@@ -340,7 +334,7 @@ ConvErr ExcelToSc8::Convert( const ScTokenArray*& rpTokArray, XclImpStream& aIn,
                         ScAddress aAddr(static_cast<SCCOL>(nCol & 0xFF), static_cast<SCROW>(nRow), aEingPos.Tab());
                         aSRD.InitAddress(aAddr);
                         aSRD.SetColRel(true);
-                        aSRD.SetAddress(aAddr, aEingPos);
+                        aSRD.SetAddress(GetDocImport().getDoc().GetSheetLimits(), aAddr, aEingPos);
 
                         aStack << aPool.StoreNlf( aSRD );
 
@@ -375,18 +369,17 @@ ConvErr ExcelToSc8::Convert( const ScTokenArray*& rpTokArray, XclImpStream& aIn,
                 break;
             case 0x19: // Special Attribute                     [327 279]
             {
-                sal_uInt16 nData(0), nFakt(0);
-                sal_uInt8 nOpt(0);
+                sal_uInt16 nData(0), nFactor(0);
 
-                nOpt = aIn.ReaduInt8();
+                sal_uInt8 nOpt = aIn.ReaduInt8();
                 nData = aIn.ReaduInt16();
-                nFakt = 2;
+                nFactor = 2;
 
                 if( nOpt & 0x04 )
                 {
-                    // nFakt -> skip bytes or words    AttrChoose
+                    // nFactor -> skip bytes or words    AttrChoose
                     nData++;
-                    aIn.Ignore(static_cast<std::size_t>(nData) * nFakt);
+                    aIn.Ignore(static_cast<std::size_t>(nData) * nFactor);
                 }
                 else if( nOpt & 0x10 )                      // AttrSum
                     DoMulArgs( ocSum, 1 );
@@ -428,7 +421,7 @@ ConvErr ExcelToSc8::Convert( const ScTokenArray*& rpTokArray, XclImpStream& aIn,
             case 0x1E: // Integer                               [315 266]
             {
                 sal_uInt16 nUINT16 = aIn.ReaduInt16();
-                aStack << aPool.Store( ( double ) nUINT16 );
+                aStack << aPool.Store( static_cast<double>(nUINT16) );
                 break;
             }
             case 0x1F: // Number                                [315 266]
@@ -725,11 +718,12 @@ ConvErr ExcelToSc8::Convert( const ScTokenArray*& rpTokArray, XclImpStream& aIn,
                             {
                                 TokenId nPar1 = aPool.Store( aApplic );
                                 TokenId nPar2 = aPool.Store( aTopic );
-                                nMerk0 = aPool.Store( pExtName->GetName() );
+                                nBuf0 = aPool.Store( pExtName->GetName() );
                                 aPool   << ocDde << ocOpen << nPar1 << ocSep << nPar2 << ocSep
-                                        << nMerk0 << ocClose;
+                                        << nBuf0 << ocClose;
                                 aPool >> aStack;
                                 pExtName->CreateDdeData( GetDoc(), aApplic, aTopic );
+                                GetDoc().SetLinkFormulaNeedingCheck(true);
                             }
                         }
                         break;
@@ -923,14 +917,14 @@ ConvErr ExcelToSc8::Convert( const ScTokenArray*& rpTokArray, XclImpStream& aIn,
     {
         aPool << ocBad;
         aPool >> aStack;
-        rpTokArray = aPool[ aStack.Get() ];
+        rpTokArray = aPool.GetTokenArray( &GetDocImport().getDoc(), aStack.Get());
         eRet = ConvErr::Ni;
     }
     else if( aIn.GetRecPos() != nEndPos )
     {
         aPool << ocBad;
         aPool >> aStack;
-        rpTokArray = aPool[ aStack.Get() ];
+        rpTokArray = aPool.GetTokenArray( &GetDocImport().getDoc(), aStack.Get());
         eRet = ConvErr::Count;
     }
     else if( bArrayFormula )
@@ -940,7 +934,7 @@ ConvErr ExcelToSc8::Convert( const ScTokenArray*& rpTokArray, XclImpStream& aIn,
     }
     else
     {
-        rpTokArray = aPool[ aStack.Get() ];
+        rpTokArray = aPool.GetTokenArray( &GetDocImport().getDoc(), aStack.Get());
         eRet = ConvErr::OK;
     }
 
@@ -965,12 +959,6 @@ ConvErr ExcelToSc8::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std
 
     ScSingleRefData         aSRD;
     ScComplexRefData            aCRD;
-
-    if( eStatus != ConvErr::OK )
-    {
-        aIn.Ignore( nFormulaLen );
-        return eStatus;
-    }
 
     if( nFormulaLen == 0 )
         return ConvErr::OK;
@@ -1022,18 +1010,17 @@ ConvErr ExcelToSc8::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std
                 break;
             case 0x19: // Special Attribute                     [327 279]
             {
-                sal_uInt16 nData(0), nFakt(0);
-                sal_uInt8 nOpt(0);
+                sal_uInt16 nData(0), nFactor(0);
 
-                nOpt = aIn.ReaduInt8();
+                sal_uInt8 nOpt = aIn.ReaduInt8();
                 nData = aIn.ReaduInt16();
-                nFakt = 2;
+                nFactor = 2;
 
                 if( nOpt & 0x04 )
                 {
-                    // nFakt -> skip bytes or words    AttrChoose
+                    // nFactor -> skip bytes or words    AttrChoose
                     ++nData;
-                    aIn.Ignore(static_cast<std::size_t>(nData) * nFakt);
+                    aIn.Ignore(static_cast<std::size_t>(nData) * nFactor);
                 }
             }
                 break;
@@ -1081,7 +1068,7 @@ ConvErr ExcelToSc8::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std
 
                 ExcRelToScRel8( nRow, nCol, aSRD, bRangeName );
 
-                rRangeList.Append(aSRD.toAbs(aEingPos), nTab);
+                rRangeList.Append(aSRD.toAbs(&GetDocImport().getDoc(), aEingPos), nTab);
             }
                 break;
             case 0x45:
@@ -1111,7 +1098,7 @@ ConvErr ExcelToSc8::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std
                 else if( IsComplRowRange( nRowFirst, nRowLast ) )
                     SetComplRow( aCRD );
 
-                rRangeList.Append(aCRD.toAbs(aEingPos), nTab);
+                rRangeList.Append(aCRD.toAbs(&GetDocImport().getDoc(), aEingPos), nTab);
             }
                 break;
             case 0x46:
@@ -1155,7 +1142,7 @@ ConvErr ExcelToSc8::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std
 
                 ExcRelToScRel8( nRow, nCol, aSRD, bRNorSF );
 
-                rRangeList.Append(aSRD.toAbs(aEingPos), nTab);
+                rRangeList.Append(aSRD.toAbs(&GetDocImport().getDoc(), aEingPos), nTab);
             }
                 break;
             case 0x4D:
@@ -1183,7 +1170,7 @@ ConvErr ExcelToSc8::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std
                 else if( IsComplRowRange( nRowFirst, nRowLast ) )
                     SetComplRow( aCRD );
 
-                rRangeList.Append(aCRD.toAbs(aEingPos), nTab);
+                rRangeList.Append(aCRD.toAbs(&GetDocImport().getDoc(), aEingPos), nTab);
             }
                 break;
             case 0x4E:
@@ -1225,10 +1212,10 @@ ConvErr ExcelToSc8::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std
                         aCRD.Ref1 = aSRD;
                         aCRD.Ref2 = aSRD;
                         aCRD.Ref2.SetAbsTab(nLastScTab);
-                        rRangeList.Append(aCRD.toAbs(aEingPos), nTab);
+                        rRangeList.Append(aCRD.toAbs(&GetDocImport().getDoc(), aEingPos), nTab);
                     }
                     else
-                        rRangeList.Append(aSRD.toAbs(aEingPos), nTab);
+                        rRangeList.Append(aSRD.toAbs(&GetDocImport().getDoc(), aEingPos), nTab);
                 }
             }
                 break;
@@ -1263,7 +1250,7 @@ ConvErr ExcelToSc8::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std
                     else if( IsComplRowRange( nRw1, nRw2 ) )
                         SetComplRow( aCRD );
 
-                    rRangeList.Append(aCRD.toAbs(aEingPos), nTab);
+                    rRangeList.Append(aCRD.toAbs(&GetDocImport().getDoc(), aEingPos), nTab);
                 }
             }
                 break;
@@ -1296,7 +1283,7 @@ ConvErr ExcelToSc8::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std
     return eRet;
 }
 
-void ExcelToSc8::ConvertExternName( const ScTokenArray*& rpArray, XclImpStream& rStrm, std::size_t nFormulaLen,
+void ExcelToSc8::ConvertExternName( std::unique_ptr<ScTokenArray>& rpArray, XclImpStream& rStrm, std::size_t nFormulaLen,
                                        const OUString& rUrl, const vector<OUString>& rTabNames )
 {
     if( !GetDocShell() )
@@ -1310,17 +1297,11 @@ void ExcelToSc8::ConvertExternName( const ScTokenArray*& rpArray, XclImpStream& 
     ScSingleRefData           aSRD;
     ScComplexRefData            aCRD;
 
-    if (eStatus != ConvErr::OK)
-    {
-        rStrm.Ignore(nFormulaLen);
-        return;
-    }
-
     if (nFormulaLen == 0)
     {
-        aPool.Store(OUString("-/-"));
+        aPool.Store("-/-");
         aPool >> aStack;
-        rpArray = aPool[aStack.Get()];
+        rpArray = aPool.GetTokenArray( &GetDocImport().getDoc(), aStack.Get());
         return;
     }
 
@@ -1404,6 +1385,13 @@ void ExcelToSc8::ConvertExternName( const ScTokenArray*& rpArray, XclImpStream& 
                 nRow2 = rStrm.ReaduInt16();
                 nGrbitCol1 = rStrm.ReaduInt16();
                 nGrbitCol2 = rStrm.ReaduInt16();
+
+                if (nExtTab1 >= nTabCount || nExtTab2 >= nTabCount)
+                {
+                    bError = true;
+                    break;
+                }
+
                 ScSingleRefData& rR1 = aCRD.Ref1;
                 ScSingleRefData& rR2 = aCRD.Ref2;
 
@@ -1429,17 +1417,17 @@ void ExcelToSc8::ConvertExternName( const ScTokenArray*& rpArray, XclImpStream& 
     {
         aPool << ocBad;
         aPool >> aStack;
-        rpArray = aPool[ aStack.Get() ];
+        rpArray = aPool.GetTokenArray( &GetDocImport().getDoc(), aStack.Get());
     }
     else if( rStrm.GetRecPos() != nEndPos )
     {
         aPool << ocBad;
         aPool >> aStack;
-        rpArray = aPool[ aStack.Get() ];
+        rpArray = aPool.GetTokenArray( &GetDocImport().getDoc(), aStack.Get());
     }
     else
     {
-        rpArray = aPool[ aStack.Get() ];
+        rpArray = aPool.GetTokenArray( &GetDocImport().getDoc(), aStack.Get());
     }
 
     rStrm.Seek(nEndPos);
@@ -1461,7 +1449,7 @@ void ExcelToSc8::ExcRelToScRel8( sal_uInt16 nRow, sal_uInt16 nC, ScSingleRefData
             if ( nDiff < 0)
             {
                 // relative column references wrap around
-                nRelCol = static_cast<sal_Int16>(256 + (int)nRelCol);
+                nRelCol = static_cast<sal_Int16>(256 + static_cast<int>(nRelCol));
             }
             rSRD.SetRelCol(nRelCol);
         }
@@ -1481,7 +1469,7 @@ void ExcelToSc8::ExcRelToScRel8( sal_uInt16 nRow, sal_uInt16 nC, ScSingleRefData
             rSRD.SetRelRow(nRelRow);
         }
         else
-            rSRD.SetAbsRow(std::min( static_cast<SCROW>(nRow), MAXROW));
+            rSRD.SetAbsRow(std::min( static_cast<SCROW>(nRow), GetDoc().MaxRow()));
     }
     else
     {
@@ -1579,7 +1567,7 @@ void ExcelToSc8::GetAbsRefs( ScRangeList& r, XclImpStream& aIn, std::size_t nLen
                     nCol1 &= 0x3FFF;
                     nCol2 &= 0x3FFF;
                     if( GetAddressConverter().ConvertRange( aScRange, XclRange( nCol1, nRow1, nCol2, nRow2 ), nTab1, nTab2, true ) )
-                        r.Append( aScRange );
+                        r.push_back( aScRange );
                 }
                 break;
             case 0x1C: // Error Value                           [314 266]
@@ -1667,7 +1655,7 @@ void ExcelToSc8::GetAbsRefs( ScRangeList& r, XclImpStream& aIn, std::size_t nLen
                 nOpt = aIn.ReaduInt8();
                 nData = aIn.ReaduInt16();
                 if( nOpt & 0x04 )
-                {// nFakt -> skip bytes or words    AttrChoose
+                {// nFactor -> skip bytes or words    AttrChoose
                     nData++;
                     nSeek = nData * 2;
             }

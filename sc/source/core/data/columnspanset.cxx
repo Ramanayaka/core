@@ -7,17 +7,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "columnspanset.hxx"
-#include "column.hxx"
-#include "table.hxx"
-#include "document.hxx"
-#include "mtvfunctions.hxx"
-#include "markdata.hxx"
-#include "rangelst.hxx"
+#include <columnspanset.hxx>
+#include <column.hxx>
+#include <table.hxx>
+#include <document.hxx>
+#include <mtvfunctions.hxx>
+#include <markdata.hxx>
+#include <rangelst.hxx>
 #include <fstalgorithm.hxx>
 
 #include <algorithm>
 #include <memory>
+
+#include <o3tl/safeint.hxx>
 
 namespace sc {
 
@@ -56,83 +58,72 @@ void ColumnSpanSet::Action::startColumn(SCTAB /*nTab*/, SCCOL /*nCol*/) {}
 
 ColumnSpanSet::ColumnAction::~ColumnAction() {}
 
-ColumnSpanSet::ColumnSpanSet(bool bInit) : mbInit(bInit) {}
+ColumnSpanSet::ColumnSpanSet() {}
 
 ColumnSpanSet::~ColumnSpanSet()
 {
-    DocType::iterator itTab = maDoc.begin(), itTabEnd = maDoc.end();
-    for (; itTab != itTabEnd; ++itTab)
-    {
-        TableType* pTab = *itTab;
-        if (!pTab)
-            continue;
-
-        std::for_each(pTab->begin(), pTab->end(), std::default_delete<ColumnType>());
-        delete pTab;
-    }
 }
 
-ColumnSpanSet::ColumnType& ColumnSpanSet::getColumn(SCTAB nTab, SCCOL nCol)
+ColumnSpanSet::ColumnType& ColumnSpanSet::getColumn(const ScDocument& rDoc, SCTAB nTab, SCCOL nCol)
 {
-    if (static_cast<size_t>(nTab) >= maDoc.size())
-        maDoc.resize(nTab+1, nullptr);
+    if (o3tl::make_unsigned(nTab) >= maTables.size())
+        maTables.resize(nTab+1);
 
-    if (!maDoc[nTab])
-        maDoc[nTab] = new TableType;
+    if (!maTables[nTab])
+        maTables[nTab].reset(new TableType);
 
-    TableType& rTab = *maDoc[nTab];
-    if (static_cast<size_t>(nCol) >= rTab.size())
-        rTab.resize(nCol+1, nullptr);
+    TableType& rTab = *maTables[nTab];
+    if (o3tl::make_unsigned(nCol) >= rTab.size())
+        rTab.resize(nCol+1);
 
     if (!rTab[nCol])
-        rTab[nCol] = new ColumnType(0, MAXROW, mbInit);
+        rTab[nCol].reset(new ColumnType(0, rDoc.MaxRow(), /*bInit*/false));
 
     return *rTab[nCol];
 }
 
-void ColumnSpanSet::set(SCTAB nTab, SCCOL nCol, SCROW nRow, bool bVal)
+void ColumnSpanSet::set(const ScDocument& rDoc, SCTAB nTab, SCCOL nCol, SCROW nRow, bool bVal)
 {
-    if (!ValidTab(nTab) || !ValidCol(nCol) || !ValidRow(nRow))
+    if (!ValidTab(nTab) || !rDoc.ValidCol(nCol) || !rDoc.ValidRow(nRow))
         return;
 
-    ColumnType& rCol = getColumn(nTab, nCol);
+    ColumnType& rCol = getColumn(rDoc, nTab, nCol);
     rCol.miPos = rCol.maSpans.insert(rCol.miPos, nRow, nRow+1, bVal).first;
 }
 
-void ColumnSpanSet::set(SCTAB nTab, SCCOL nCol, SCROW nRow1, SCROW nRow2, bool bVal)
+void ColumnSpanSet::set(const ScDocument& rDoc, SCTAB nTab, SCCOL nCol, SCROW nRow1, SCROW nRow2, bool bVal)
 {
-    if (!ValidTab(nTab) || !ValidCol(nCol) || !ValidRow(nRow1) || !ValidRow(nRow2))
+    if (!ValidTab(nTab) || !rDoc.ValidCol(nCol) || !rDoc.ValidRow(nRow1) || !rDoc.ValidRow(nRow2))
         return;
 
-    ColumnType& rCol = getColumn(nTab, nCol);
+    ColumnType& rCol = getColumn(rDoc, nTab, nCol);
     rCol.miPos = rCol.maSpans.insert(rCol.miPos, nRow1, nRow2+1, bVal).first;
 }
 
-void ColumnSpanSet::set(const ScRange& rRange, bool bVal)
+void ColumnSpanSet::set(const ScDocument& rDoc, const ScRange& rRange, bool bVal)
 {
     for (SCTAB nTab = rRange.aStart.Tab(); nTab <= rRange.aEnd.Tab(); ++nTab)
     {
         for (SCCOL nCol = rRange.aStart.Col(); nCol <= rRange.aEnd.Col(); ++nCol)
         {
-            ColumnType& rCol = getColumn(nTab, nCol);
+            ColumnType& rCol = getColumn(rDoc, nTab, nCol);
             rCol.miPos = rCol.maSpans.insert(rCol.miPos, rRange.aStart.Row(), rRange.aEnd.Row()+1, bVal).first;
         }
     }
 }
 
-void ColumnSpanSet::set( SCTAB nTab, SCCOL nCol, const SingleColumnSpanSet& rSingleSet, bool bVal )
+void ColumnSpanSet::set( const ScDocument& rDoc, SCTAB nTab, SCCOL nCol, const SingleColumnSpanSet& rSingleSet, bool bVal )
 {
     SingleColumnSpanSet::SpansType aSpans;
     rSingleSet.getSpans(aSpans);
-    SingleColumnSpanSet::SpansType::const_iterator it = aSpans.begin(), itEnd = aSpans.end();
-    for (; it != itEnd; ++it)
-        set(nTab, nCol, it->mnRow1, it->mnRow2, bVal);
+    for (const auto& rSpan : aSpans)
+        set(rDoc, nTab, nCol, rSpan.mnRow1, rSpan.mnRow2, bVal);
 }
 
 void ColumnSpanSet::scan(
     const ScDocument& rDoc, SCTAB nTab, SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2, bool bVal)
 {
-    if (!ValidColRow(nCol1, nRow1) || !ValidColRow(nCol2, nRow2))
+    if (!rDoc.ValidColRow(nCol1, nRow1) || !rDoc.ValidColRow(nCol2, nRow2))
         return;
 
     if (nCol1 > nCol2 || nRow1 > nRow2)
@@ -142,9 +133,10 @@ void ColumnSpanSet::scan(
     if (!pTab)
         return;
 
+    nCol2 = pTab->ClampToAllocatedColumns(nCol2);
     for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol)
     {
-        ColumnType& rCol = getColumn(nTab, nCol);
+        ColumnType& rCol = getColumn(rDoc, nTab, nCol);
 
         const CellStoreType& rSrcCells = pTab->aCol[nCol].maCells;
 
@@ -155,12 +147,12 @@ void ColumnSpanSet::scan(
 
 void ColumnSpanSet::executeAction(Action& ac) const
 {
-    for (size_t nTab = 0; nTab < maDoc.size(); ++nTab)
+    for (size_t nTab = 0; nTab < maTables.size(); ++nTab)
     {
-        if (!maDoc[nTab])
+        if (!maTables[nTab])
             continue;
 
-        const TableType& rTab = *maDoc[nTab];
+        const TableType& rTab = *maTables[nTab];
         for (size_t nCol = 0; nCol < rTab.size(); ++nCol)
         {
             if (!rTab[nCol])
@@ -186,13 +178,13 @@ void ColumnSpanSet::executeAction(Action& ac) const
 
 void ColumnSpanSet::executeColumnAction(ScDocument& rDoc, ColumnAction& ac) const
 {
-    for (size_t nTab = 0; nTab < maDoc.size(); ++nTab)
+    for (size_t nTab = 0; nTab < maTables.size(); ++nTab)
     {
-        if (!maDoc[nTab])
+        if (!maTables[nTab])
             continue;
 
-        const TableType& rTab = *maDoc[nTab];
-        for (size_t nCol = 0; nCol < rTab.size(); ++nCol)
+        const TableType& rTab = *maTables[nTab];
+        for (SCCOL nCol = 0; nCol < static_cast<SCCOL>(rTab.size()); ++nCol)
         {
             if (!rTab[nCol])
                 continue;
@@ -201,7 +193,7 @@ void ColumnSpanSet::executeColumnAction(ScDocument& rDoc, ColumnAction& ac) cons
             if (!pTab)
                 continue;
 
-            if (!ValidCol(nCol))
+            if (!rDoc.ValidCol(nCol) || nCol >= pTab->GetAllocatedColumnsCount())
             {
                 // End the loop.
                 nCol = rTab.size();
@@ -219,49 +211,6 @@ void ColumnSpanSet::executeColumnAction(ScDocument& rDoc, ColumnAction& ac) cons
             {
                 nRow2 = it->first-1;
                 ac.execute(nRow1, nRow2, bVal);
-
-                nRow1 = nRow2+1; // for the next iteration.
-                bVal = it->second;
-            }
-        }
-    }
-}
-
-void ColumnSpanSet::executeColumnAction(ScDocument& rDoc, ColumnAction& ac, double& fMem) const
-{
-    for (size_t nTab = 0; nTab < maDoc.size(); ++nTab)
-    {
-        if (!maDoc[nTab])
-            continue;
-
-        const TableType& rTab = *maDoc[nTab];
-        for (size_t nCol = 0; nCol < rTab.size(); ++nCol)
-        {
-            if (!rTab[nCol])
-                continue;
-
-            ScTable* pTab = rDoc.FetchTable(nTab);
-            if (!pTab)
-                continue;
-
-            if (!ValidCol(nCol))
-            {
-                // End the loop.
-                nCol = rTab.size();
-                continue;
-            }
-
-            ScColumn& rColumn = pTab->aCol[nCol];
-            ac.startColumn(&rColumn);
-            ColumnType& rCol = *rTab[nCol];
-            ColumnSpansType::const_iterator it = rCol.maSpans.begin(), itEnd = rCol.maSpans.end();
-            SCROW nRow1, nRow2;
-            nRow1 = it->first;
-            bool bVal = it->second;
-            for (++it; it != itEnd; ++it)
-            {
-                nRow2 = it->first-1;
-                ac.executeSum( nRow1, nRow2, bVal, fMem );
 
                 nRow1 = nRow2+1; // for the next iteration.
                 bVal = it->second;
@@ -296,12 +245,11 @@ SingleColumnSpanSet::SingleColumnSpanSet() : maSpans(0, MAXROWCOUNT, false) {}
 void SingleColumnSpanSet::scan(const ScColumn& rColumn)
 {
     const CellStoreType& rCells = rColumn.maCells;
-    sc::CellStoreType::const_iterator it = rCells.begin(), itEnd = rCells.end();
     SCROW nCurRow = 0;
-    for (;it != itEnd; ++it)
+    for (const auto& rCell : rCells)
     {
-        SCROW nEndRow = nCurRow + it->size; // Last row of current block plus 1.
-        if (it->type != sc::element_type_empty)
+        SCROW nEndRow = nCurRow + rCell.size; // Last row of current block plus 1.
+        if (rCell.type != sc::element_type_empty)
             maSpans.insert_back(nCurRow, nEndRow, true);
 
         nCurRow = nEndRow;
@@ -337,15 +285,15 @@ void SingleColumnSpanSet::scan(const ScRangeList& rRanges, SCTAB nTab, SCCOL nCo
 {
     for (size_t i = 0, n = rRanges.size(); i < n; ++i)
     {
-        const ScRange* p = rRanges[i];
-        if (nTab < p->aStart.Tab() || p->aEnd.Tab() < nTab)
+        const ScRange & rRange = rRanges[i];
+        if (nTab < rRange.aStart.Tab() || rRange.aEnd.Tab() < nTab)
             continue;
 
-        if (nCol < p->aStart.Col() || p->aEnd.Col() < nCol)
+        if (nCol < rRange.aStart.Col() || rRange.aEnd.Col() < nCol)
             // This column is not in this range. Skip it.
             continue;
 
-        maSpans.insert_back(p->aStart.Row(), p->aEnd.Row()+1, true);
+        maSpans.insert_back(rRange.aStart.Row(), rRange.aEnd.Row()+1, true);
     }
 }
 
@@ -360,10 +308,9 @@ void SingleColumnSpanSet::getRows(std::vector<SCROW> &rRows) const
 
     SpansType aRanges;
     getSpans(aRanges);
-    SpansType::const_iterator it = aRanges.begin(), itEnd = aRanges.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rRange : aRanges)
     {
-        for (SCROW nRow = it->mnRow1; nRow <= it->mnRow2; ++nRow)
+        for (SCROW nRow = rRange.mnRow1; nRow <= rRange.mnRow2; ++nRow)
             aRows.push_back(nRow);
     }
 
@@ -383,11 +330,54 @@ void SingleColumnSpanSet::swap( SingleColumnSpanSet& r )
 
 bool SingleColumnSpanSet::empty() const
 {
-    // Empty if there's only the 0..MAXROW span with false.
+    // Empty if there's only the 0..rDoc.MaxRow() span with false.
     ColumnSpansType::const_iterator it = maSpans.begin();
     return (it->first == 0) && !(it->second) && (++it != maSpans.end()) && (it->first == MAXROWCOUNT);
 }
 
+
+void RangeColumnSpanSet::executeColumnAction(ScDocument& rDoc, sc::ColumnSpanSet::ColumnAction& ac) const
+{
+    for (SCTAB nTab = range.aStart.Tab(); nTab <= range.aEnd.Tab(); ++nTab)
+    {
+        ScTable* pTab = rDoc.FetchTable(nTab);
+        if (!pTab)
+            continue;
+
+        SCCOL nEndCol = pTab->ClampToAllocatedColumns(range.aEnd.Col());
+        for (SCCOL nCol = range.aStart.Col(); nCol <= nEndCol; ++nCol)
+        {
+            if (!rDoc.ValidCol(nCol))
+                break;
+
+            ScColumn& rColumn = pTab->aCol[nCol];
+            ac.startColumn(&rColumn);
+            ac.execute( range.aStart.Row(), range.aEnd.Row(), true );
+        }
+    }
 }
+
+void RangeColumnSpanSet::executeColumnAction(ScDocument& rDoc, sc::ColumnSpanSet::ColumnAction& ac, double& fMem) const
+{
+    for (SCTAB nTab = range.aStart.Tab(); nTab <= range.aEnd.Tab(); ++nTab)
+    {
+        ScTable* pTab = rDoc.FetchTable(nTab);
+        if (!pTab)
+            continue;
+
+        SCCOL nEndCol = pTab->ClampToAllocatedColumns(range.aEnd.Col());
+        for (SCCOL nCol = range.aStart.Col(); nCol <= nEndCol; ++nCol)
+        {
+            if (!rDoc.ValidCol(nCol))
+                break;
+
+            ScColumn& rColumn = pTab->aCol[nCol];
+            ac.startColumn(&rColumn);
+            ac.executeSum( range.aStart.Row(), range.aEnd.Row(), true, fMem );
+        }
+    }
+}
+
+} // namespace sc
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

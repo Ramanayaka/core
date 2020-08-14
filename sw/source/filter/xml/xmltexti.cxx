@@ -24,9 +24,11 @@
 #include <com/sun/star/embed/OOoEmbeddedObjectFactory.hpp>
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/task/XInteractionHandler.hpp>
 #include <o3tl/any.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <comphelper/classids.hxx>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <xmloff/prstylei.hxx>
@@ -34,13 +36,12 @@
 #include <xmloff/xmlprmap.hxx>
 #include <xmloff/txtprmap.hxx>
 #include <xmloff/i18nmap.hxx>
-#include "unocrsr.hxx"
-#include "TextCursorHelper.hxx"
-#include "unoframe.hxx"
-#include "doc.hxx"
+#include <xmloff/xmlimppr.hxx>
+#include <TextCursorHelper.hxx>
+#include <unoframe.hxx>
+#include <doc.hxx>
 #include <IDocumentDrawModelAccess.hxx>
 #include <IDocumentContentOperations.hxx>
-#include "unocoll.hxx"
 #include <fmtfsize.hxx>
 #include <fmtanchr.hxx>
 #include <fmtcntnt.hxx>
@@ -53,11 +54,13 @@
 #include <ndole.hxx>
 #include <docsh.hxx>
 #include <sfx2/docfile.hxx>
-#include <calbck.hxx>
 #include <vcl/svapp.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <svtools/embedhlp.hxx>
 #include <svl/urihelper.hxx>
+#include <sfx2/frmdescr.hxx>
+#include <tools/globname.hxx>
+#include <tools/UnitConversion.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -67,15 +70,19 @@ using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::beans;
 using namespace xml::sax;
 
+namespace {
+
 struct XMLServiceMapEntry_Impl
 {
-    const sal_Char *sFilterService;
-    sal_Int32      nFilterServiceLen;
+    const char *sFilterService;
+    sal_Int32   nFilterServiceLen;
 
     sal_uInt32  n1;
     sal_uInt16  n2, n3;
     sal_uInt8   n4, n5, n6, n7, n8, n9, n10, n11;
 };
+
+}
 
 #define SERVICE_MAP_ENTRY( app, s ) \
     { XML_IMPORT_FILTER_##app, sizeof(XML_IMPORT_FILTER_##app)-1, \
@@ -93,7 +100,7 @@ const XMLServiceMapEntry_Impl aServiceMap[] =
 };
 static void lcl_putHeightAndWidth ( SfxItemSet &rItemSet,
         sal_Int32 nHeight, sal_Int32 nWidth,
-        long *pTwipHeight=nullptr, long *pTwipWidth=nullptr )
+        Size *pTwipSize = nullptr )
 {
     if( nWidth > 0 && nHeight > 0 )
     {
@@ -103,16 +110,17 @@ static void lcl_putHeightAndWidth ( SfxItemSet &rItemSet,
         nHeight = convertMm100ToTwip( nHeight );
         if( nHeight < MINFLY )
             nHeight = MINFLY;
-        rItemSet.Put( SwFormatFrameSize( ATT_FIX_SIZE, nWidth, nHeight ) );
+        rItemSet.Put( SwFormatFrameSize( SwFrameSize::Fixed, nWidth, nHeight ) );
     }
 
     SwFormatAnchor aAnchor( RndStdIds::FLY_AT_CHAR );
     rItemSet.Put( aAnchor );
 
-    if( pTwipWidth )
-        *pTwipWidth = nWidth;
-    if( pTwipHeight )
-        *pTwipHeight = nHeight;
+    if( pTwipSize )
+    {
+        pTwipSize->setWidth( nWidth );
+        pTwipSize->setHeight( nHeight);
+    }
 }
 
 static void lcl_setObjectVisualArea( const uno::Reference< embed::XEmbeddedObject >& xObj,
@@ -120,23 +128,23 @@ static void lcl_setObjectVisualArea( const uno::Reference< embed::XEmbeddedObjec
                                     const Size& aVisSize,
                                     const MapUnit& aUnit )
 {
-    if( xObj.is() && nAspect != embed::Aspects::MSOLE_ICON )
-    {
-        // convert the visual area to the objects units
-        MapUnit aObjUnit = VCLUnoHelper::UnoEmbed2VCLMapUnit( xObj->getMapUnit( nAspect ) );
-        Size aObjVisSize = OutputDevice::LogicToLogic( aVisSize, aUnit, aObjUnit );
-        awt::Size aSz;
-        aSz.Width = aObjVisSize.Width();
-        aSz.Height = aObjVisSize.Height();
+    if( !(xObj.is() && nAspect != embed::Aspects::MSOLE_ICON) )
+        return;
 
-        try
-        {
-            xObj->setVisualAreaSize( nAspect, aSz );
-        }
-        catch( uno::Exception& )
-        {
-            OSL_FAIL( "Couldn't set visual area of the object!" );
-        }
+    // convert the visual area to the objects units
+    MapUnit aObjUnit = VCLUnoHelper::UnoEmbed2VCLMapUnit( xObj->getMapUnit( nAspect ) );
+    Size aObjVisSize = OutputDevice::LogicToLogic(aVisSize, MapMode(aUnit), MapMode(aObjUnit));
+    awt::Size aSz;
+    aSz.Width = aObjVisSize.Width();
+    aSz.Height = aObjVisSize.Height();
+
+    try
+    {
+        xObj->setVisualAreaSize( nAspect, aSz );
+    }
+    catch( uno::Exception& )
+    {
+        OSL_FAIL( "Couldn't set visual area of the object!" );
     }
 }
 
@@ -151,14 +159,14 @@ SwXMLTextImportHelper::SwXMLTextImportHelper(
     pRedlineHelper( nullptr )
 {
     uno::Reference<XPropertySet> xDocPropSet( rModel, UNO_QUERY );
-    pRedlineHelper = new XMLRedlineImportHelper(
+    pRedlineHelper = new XMLRedlineImportHelper(rImport,
         bInsertM || bBlockM, xDocPropSet, rInfoSet );
 }
 
 SwXMLTextImportHelper::~SwXMLTextImportHelper()
 {
     // the redline helper destructor sets properties on the document
-    // and may through an exception while doing so... catch this
+    // and may throw an exception while doing so... catch this
     try
     {
         delete pRedlineHelper;
@@ -237,11 +245,11 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOLEObject(
     Size aTwipSize( 0, 0 );
     tools::Rectangle aVisArea( 0, 0, nWidth, nHeight );
     lcl_putHeightAndWidth( aItemSet, nHeight, nWidth,
-                           &aTwipSize.Height(), &aTwipSize.Width() );
+                           &aTwipSize );
 
     SwFrameFormat *pFrameFormat = nullptr;
     SwOLENode *pOLENd = nullptr;
-    if( rHRef.copy( 0, nPos ) == "vnd.sun.star.ServiceName" )
+    if( rHRef.startsWith("vnd.sun.star.ServiceName:") )
     {
         bool bInsert = false;
         SvGlobalName aClassName;
@@ -274,8 +282,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOLEObject(
                 uno::Sequence<beans::PropertyValue> aObjArgs( comphelper::InitPropertySequence({
                         { "DefaultParentBaseURL", Any(GetXMLImport().GetBaseURL()) }
                     }));
-                uno::Reference < embed::XEmbeddedObject > xObj =
-                    uno::Reference < embed::XEmbeddedObject >( xFactory->createInstanceInitNew(
+                uno::Reference < embed::XEmbeddedObject > xObj( xFactory->createInstanceInitNew(
                     aClass, OUString(), xStorage, "DummyName", aObjArgs), uno::UNO_QUERY );
                 if ( xObj.is() )
                 {
@@ -311,7 +318,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOLEObject(
             if( pExistingOLENd )
             {
                 OUString aExistingName = pExistingOLENd->GetOLEObj().GetCurrentPersistName();
-                if ( aExistingName.equals( aObjName ) )
+                if ( aExistingName == aObjName )
                 {
                     OSL_FAIL( "The document contains duplicate object references, means it is partially broken, please let developers know how this document was generated!" );
 
@@ -549,11 +556,11 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOOoLink(
                          RES_FRMATR_END>{} );
     Size aTwipSize( 0, 0 );
     lcl_putHeightAndWidth( aItemSet, nHeight, nWidth,
-                           &aTwipSize.Height(), &aTwipSize.Width() );
+                           &aTwipSize );
 
     // We'll need a (valid) URL. If we don't have do not insert the link and return early.
     // Copy URL into URL object on the way.
-       INetURLObject aURLObj;
+    INetURLObject aURLObj;
     bool bValidURL = !rHRef.isEmpty() &&
                      aURLObj.SetURL( URIHelper::SmartRel2Abs(
                                 INetURLObject( GetXMLImport().GetBaseURL() ), rHRef ) );
@@ -570,16 +577,21 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOOoLink(
         uno::Sequence< beans::PropertyValue > aMediaDescriptor( 1 );
         aMediaDescriptor[0].Name = "URL";
         aMediaDescriptor[0].Value <<= aURLObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-        if ( pDoc->GetDocShell() && pDoc->GetDocShell()->GetMedium() )
+
+        if (SfxMedium* pMedium = pDoc->GetDocShell() ? pDoc->GetDocShell()->GetMedium() : nullptr)
         {
-            uno::Reference< task::XInteractionHandler > xInteraction =
-                                        pDoc->GetDocShell()->GetMedium()->GetInteractionHandler();
+            uno::Reference< task::XInteractionHandler > xInteraction = pMedium->GetInteractionHandler();
             if ( xInteraction.is() )
             {
                 aMediaDescriptor.realloc( 2 );
                 aMediaDescriptor[1].Name = "InteractionHandler";
                 aMediaDescriptor[1].Value <<= xInteraction;
             }
+
+            const auto nLen = aMediaDescriptor.getLength() + 1;
+            aMediaDescriptor.realloc(nLen);
+            aMediaDescriptor[nLen - 1].Name = "Referer";
+            aMediaDescriptor[nLen - 1].Value <<= pMedium->GetName();
         }
 
         uno::Reference < embed::XEmbeddedObject > xObj(
@@ -685,7 +697,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertPlugin(
     // We'll need a (valid) URL, or we need a MIME type. If we don't have
     // either, do not insert plugin and return early. Copy URL into URL object
     // on the way.
-       INetURLObject aURLObj;
+    INetURLObject aURLObj;
 
     bool bValidURL = !rHRef.isEmpty() &&
                      aURLObj.SetURL( URIHelper::SmartRel2Abs( INetURLObject( GetXMLImport().GetBaseURL() ), rHRef ) );
@@ -699,8 +711,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertPlugin(
         // create object with desired ClassId
         uno::Sequence < sal_Int8 > aClass( SvGlobalName( SO3_PLUGIN_CLASSID ).GetByteSequence() );
         uno::Reference < embed::XEmbeddedObjectCreator > xFactory =  embed::EmbeddedObjectCreator::create( ::comphelper::getProcessComponentContext() );
-        uno::Reference < embed::XEmbeddedObject > xObj =
-            uno::Reference < embed::XEmbeddedObject >( xFactory->createInstanceInitNew(
+        uno::Reference < embed::XEmbeddedObject > xObj( xFactory->createInstanceInitNew(
             aClass, OUString(), xStorage, "DummyName",
             uno::Sequence < beans::PropertyValue >() ), uno::UNO_QUERY );
 
@@ -809,14 +820,14 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertFloatingFra
                         {
                             sal_Int32 nVal = SIZE_NOT_SET;
                             rProp.maValue >>= nVal;
-                            aMargin.Width() = nVal;
+                            aMargin.setWidth( nVal );
                         }
                         break;
                     case CTF_FRAME_MARGIN_VERT:
                         {
                             sal_Int32 nVal = SIZE_NOT_SET;
                             rProp.maValue >>= nVal;
-                            aMargin.Height() = nVal;
+                            aMargin.setHeight( nVal );
                         }
                         break;
                     }
@@ -831,8 +842,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertFloatingFra
         // create object with desired ClassId
         uno::Sequence < sal_Int8 > aClass( SvGlobalName( SO3_IFRAME_CLASSID ).GetByteSequence() );
         uno::Reference < embed::XEmbeddedObjectCreator > xFactory = embed::EmbeddedObjectCreator::create( ::comphelper::getProcessComponentContext() );
-        uno::Reference < embed::XEmbeddedObject > xObj =
-            uno::Reference < embed::XEmbeddedObject >( xFactory->createInstanceInitNew(
+        uno::Reference < embed::XEmbeddedObject > xObj( xFactory->createInstanceInitNew(
             aClass, OUString(), xStorage, "DummyName",
             uno::Sequence < beans::PropertyValue >() ), uno::UNO_QUERY );
 
@@ -916,44 +926,41 @@ void SwXMLTextImportHelper::endAppletOrPlugin(
     SwOLEObj& rOLEObj = pOLENd->GetOLEObj();
 
     uno::Reference < embed::XEmbeddedObject > xEmbObj( rOLEObj.GetOleRef() );
-    if ( svt::EmbeddedObjectRef::TryRunningState( xEmbObj ) )
+    if ( !svt::EmbeddedObjectRef::TryRunningState( xEmbObj ) )
+        return;
+
+    uno::Reference < beans::XPropertySet > xSet( xEmbObj->getComponent(), uno::UNO_QUERY );
+    if ( !xSet.is() )
+        return;
+
+    const sal_Int32 nCount = rParamMap.size();
+    uno::Sequence< beans::PropertyValue > aCommandSequence( nCount );
+
+    sal_Int32 nIndex=0;
+    for (const auto& rParam : rParamMap )
     {
-        uno::Reference < beans::XPropertySet > xSet( xEmbObj->getComponent(), uno::UNO_QUERY );
-        if ( xSet.is() )
+        aCommandSequence[nIndex].Name = rParam.first;
+        aCommandSequence[nIndex].Handle = -1;
+        aCommandSequence[nIndex].Value <<= rParam.second;
+        aCommandSequence[nIndex].State = beans::PropertyState_DIRECT_VALUE;
+        ++nIndex;
+    }
+
+    // unfortunately the names of the properties are depending on the object
+    OUString aParaName("AppletCommands");
+    try
+    {
+        xSet->setPropertyValue( aParaName, makeAny( aCommandSequence ) );
+    }
+    catch ( uno::Exception& )
+    {
+        aParaName = "PluginCommands";
+        try
         {
-            const sal_Int32 nCount = rParamMap.size();
-            uno::Sequence< beans::PropertyValue > aCommandSequence( nCount );
-
-            std::map < const OUString, OUString > ::iterator aIter = rParamMap.begin();
-            std::map < const OUString, OUString > ::iterator aEnd = rParamMap.end();
-            sal_Int32 nIndex=0;
-            while (aIter != aEnd )
-            {
-                aCommandSequence[nIndex].Name = (*aIter).first;
-                aCommandSequence[nIndex].Handle = -1;
-                aCommandSequence[nIndex].Value <<= (*aIter).second;
-                aCommandSequence[nIndex].State = beans::PropertyState_DIRECT_VALUE;
-                ++aIter;
-                ++nIndex;
-            }
-
-            // unfortunately the names of the properties are depending on the object
-            OUString aParaName("AppletCommands");
-            try
-            {
-                xSet->setPropertyValue( aParaName, makeAny( aCommandSequence ) );
-            }
-            catch ( uno::Exception& )
-            {
-                aParaName = "PluginCommands";
-                try
-                {
-                    xSet->setPropertyValue( aParaName, makeAny( aCommandSequence ) );
-                }
-                catch ( uno::Exception& )
-                {
-                }
-            }
+            xSet->setPropertyValue( aParaName, makeAny( aCommandSequence ) );
+        }
+        catch ( uno::Exception& )
+        {
         }
     }
 }
@@ -1002,8 +1009,7 @@ void SwXMLTextImportHelper::RedlineSetCursor(
     // else: ignore redline (wasn't added before, else we'd have a helper)
 }
 
-void SwXMLTextImportHelper::RedlineAdjustStartNodeCursor(
-    bool /*bStart*/)
+void SwXMLTextImportHelper::RedlineAdjustStartNodeCursor()
 {
     OUString rId = GetOpenRedlineId();
     if ((nullptr != pRedlineHelper) && !rId.isEmpty())

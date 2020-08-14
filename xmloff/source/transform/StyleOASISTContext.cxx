@@ -17,19 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/xml/sax/SAXParseException.hpp>
 #include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
 #include <sax/tools/converter.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include "PropType.hxx"
 #include "DeepTContext.hxx"
-#include "ProcAttrTContext.hxx"
 #include "TransformerBase.hxx"
 #include "TransformerActions.hxx"
 #include "ActionMapTypesOASIS.hxx"
@@ -42,7 +40,7 @@ using namespace ::xmloff::token;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-static const sal_uInt16 aAttrActionMaps[XML_PROP_TYPE_END] =
+const sal_uInt16 aAttrActionMaps[XML_PROP_TYPE_END] =
 {
     PROP_OASIS_GRAPHIC_ATTR_ACTIONS,
     PROP_OASIS_DRAWING_PAGE_ATTR_ACTIONS,               // DRAWING_PAGE
@@ -65,7 +63,7 @@ class XMLPropertiesTContext_Impl : public XMLPersElemContentTContext
     css::uno::Reference< css::xml::sax::XAttributeList > m_xAttrList;
 
     XMLPropType m_ePropType;
-    bool        m_bControlStyle;
+    bool const  m_bControlStyle;
 
 public:
 
@@ -87,9 +85,9 @@ public:
 
     static XMLPropType GetPropType( const OUString& rLocalName );
 
-    static OUString MergeUnderline( XMLTokenEnum eUnderline,
+    static OUString const & MergeUnderline( XMLTokenEnum eUnderline,
                                            bool bBold, bool bDouble );
-    static OUString MergeLineThrough( XMLTokenEnum eLineThrough,
+    static OUString const & MergeLineThrough( XMLTokenEnum eLineThrough,
                                         bool bBold, bool bDouble,
                                            sal_Unicode c );
 };
@@ -156,7 +154,7 @@ void XMLPropertiesTContext_Impl::StartElement(
             XMLTransformerActions::key_type aKey( nPrefix, aLocalName );
             XMLTransformerActions::const_iterator aIter =
                 pActions->find( aKey );
-            if( !(aIter == pActions->end() ) )
+            if( aIter != pActions->end() )
             {
                 switch( (*aIter).second.m_nActionType )
                 {
@@ -403,7 +401,7 @@ void XMLPropertiesTContext_Impl::StartElement(
                         GetXMLToken(
                             IsXMLToken( rAttrValue, XML_ALWAYS )
                             ? XML_COLUMNSPLIT_AVOID
-                            : XML_COLUMNSPLIT_AUTO ) );
+                            : XML_AUTO ) );
                     break;
 
                 case XML_OPTACTION_CONTROL_TEXT_ALIGN:
@@ -471,30 +469,30 @@ void XMLPropertiesTContext_Impl::StartElement(
                     {
                         // keep original for writer graphic objects
                         // Adapts attribute values (#i49139#)
-                        OUString aNewAttrValue;
+                        OUStringBuffer aNewAttrValue;
                         SvXMLTokenEnumerator aTokenEnum( rAttrValue );
                         OUString aToken;
                         while( aTokenEnum.getNextToken( aToken ) )
                         {
                             if ( !aNewAttrValue.isEmpty() )
                             {
-                                aNewAttrValue += " ";
+                                aNewAttrValue.append(" ");
                             }
 
                             if ( IsXMLToken( aToken, XML_HORIZONTAL_ON_EVEN ) )
                             {
-                                aNewAttrValue += GetXMLToken( XML_HORIZONTAL_ON_LEFT_PAGES );
+                                aNewAttrValue.append(GetXMLToken( XML_HORIZONTAL_ON_LEFT_PAGES ));
                             }
                             else if ( IsXMLToken( aToken, XML_HORIZONTAL_ON_ODD ) )
                             {
-                                aNewAttrValue += GetXMLToken( XML_HORIZONTAL_ON_RIGHT_PAGES );
+                                aNewAttrValue.append(GetXMLToken( XML_HORIZONTAL_ON_RIGHT_PAGES ));
                             }
                             else
                             {
-                                aNewAttrValue += aToken;
+                                aNewAttrValue.append(aToken);
                             }
                         }
-                        pAttrList->AddAttribute( rAttrName, aNewAttrValue );
+                        pAttrList->AddAttribute( rAttrName, aNewAttrValue.makeStringAndClear() );
 
                         // create old draw:mirror for drawing graphic objects
                         const OUString& aAttrValue( GetXMLToken( IsXMLToken( rAttrValue, XML_HORIZONTAL ) ? XML_TRUE : XML_FALSE ) );
@@ -507,7 +505,7 @@ void XMLPropertiesTContext_Impl::StartElement(
                     {
                         sal_Int32 nValue;
                         ::sax::Converter::convertPercent( nValue, rAttrValue );
-                        const double fValue = ((double)nValue) / 100.0;
+                        const double fValue = static_cast<double>(nValue) / 100.0;
                         pAttrList->AddAttribute( rAttrName, OUString::number( fValue ) );
                     }
                     break;
@@ -635,7 +633,7 @@ XMLPropType XMLPropertiesTContext_Impl::GetPropType( const OUString& rLocalName 
     return eProp;
 }
 
-OUString XMLPropertiesTContext_Impl::MergeUnderline(
+OUString const & XMLPropertiesTContext_Impl::MergeUnderline(
             XMLTokenEnum eUnderline, bool bBold, bool bDouble )
 {
     if( bDouble )
@@ -700,7 +698,7 @@ OUString XMLPropertiesTContext_Impl::MergeUnderline(
     return GetXMLToken( eUnderline );
 }
 
-OUString XMLPropertiesTContext_Impl::MergeLineThrough(
+OUString const & XMLPropertiesTContext_Impl::MergeLineThrough(
             XMLTokenEnum eLineThrough, bool bBold, bool bDouble,
                sal_Unicode c )
 {
@@ -803,7 +801,7 @@ void XMLStyleOASISTContext::StartElement(
         XMLTransformerActions::key_type aKey( nPrefix, aLocalName );
         XMLTransformerActions::const_iterator aIter =
             pActions->find( aKey );
-        if( !(aIter == pActions->end() ) )
+        if( aIter != pActions->end() )
         {
             if( !pMutableAttrList )
             {
@@ -835,7 +833,7 @@ void XMLStyleOASISTContext::StartElement(
                 break;
             case XML_ATACTION_DECODE_STYLE_NAME:
                 m_bControlStyle = rAttrValue.startsWith( "ctrl" );
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case XML_ATACTION_DECODE_STYLE_NAME_REF:
                 {
                     OUString aAttrValue( rAttrValue );
@@ -920,7 +918,7 @@ bool XMLStyleOASISTContext::IsPersistent() const
 XMLTransformerActions *XMLStyleOASISTContext::CreateTransformerActions(
         sal_uInt16 nType )
 {
-    XMLTransformerActionInit *pInit = nullptr;
+    XMLTransformerActionInit const *pInit = nullptr;
 
     switch( nType )
     {

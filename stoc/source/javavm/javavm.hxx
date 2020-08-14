@@ -20,7 +20,7 @@
 #ifndef INCLUDED_STOC_SOURCE_JAVAVM_JAVAVM_HXX
 #define INCLUDED_STOC_SOURCE_JAVAVM_JAVAVM_HXX
 
-#include "jvmargs.hxx"
+#include <jni.h>
 
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
@@ -34,10 +34,10 @@
 #include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XContainer; }
     namespace uno { class XComponentContext; }
-} } }
+}
 namespace jvmaccess {
     class UnoVirtualMachine;
     class VirtualMachine;
@@ -105,8 +105,12 @@ public:
     virtual void SAL_CALL
     elementReplaced(css::container::ContainerEvent const & rEvent) override;
 
+    // XComponent
+    virtual void SAL_CALL
+    dispose() override;
+
 private:
-    JavaVirtualMachine(JavaVirtualMachine &) = delete;
+    JavaVirtualMachine(JavaVirtualMachine const &) = delete;
     void operator =(const JavaVirtualMachine&) = delete;
 
     virtual ~JavaVirtualMachine() override;

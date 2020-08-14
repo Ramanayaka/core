@@ -21,12 +21,12 @@
 
 #include <svx/svddef.hxx>
 
-#include <svx/sxfiitm.hxx>
+#include "sxfiitm.hxx"
 
 class SdrResizeXAllItem: public SdrFractionItem {
 public:
     SdrResizeXAllItem(): SdrFractionItem(SDRATTR_RESIZEXALL,Fraction(1,1)) {}
-    virtual SfxPoolItem* Clone(SfxItemPool*) const override
+    virtual SdrResizeXAllItem* Clone(SfxItemPool*) const override
     {
         return new SdrResizeXAllItem(*this);
     }
@@ -35,7 +35,7 @@ public:
 class SdrResizeYAllItem: public SdrFractionItem {
 public:
     SdrResizeYAllItem(): SdrFractionItem(SDRATTR_RESIZEYALL,Fraction(1,1)) {}
-    virtual SfxPoolItem* Clone(SfxItemPool*) const override
+    virtual SdrResizeYAllItem* Clone(SfxItemPool*) const override
     {
         return new SdrResizeYAllItem(*this);
     }

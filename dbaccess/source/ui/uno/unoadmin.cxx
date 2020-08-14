@@ -17,20 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbustrings.hrc"
-#include <toolkit/awt/vclxwindow.hxx>
-#include "dbu_reghelper.hxx"
-#include "unoadmin.hxx"
-#include "dbadmin.hxx"
-#include <comphelper/extract.hxx>
-#include <comphelper/processfactory.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <comphelper/property.hxx>
-#include <vcl/msgbox.hxx>
+#include <unoadmin.hxx>
+#include <dbadmin.hxx>
 
-// --- needed because of the solar mutex
 #include <osl/mutex.hxx>
-#include <vcl/svapp.hxx>
 
 
 namespace dbaui
@@ -42,31 +32,24 @@ namespace dbaui
 
 ODatabaseAdministrationDialog::ODatabaseAdministrationDialog(const Reference< XComponentContext >& _rxORB)
     :ODatabaseAdministrationDialogBase(_rxORB)
-    ,m_pDatasourceItems(nullptr)
     ,m_pItemPool(nullptr)
     ,m_pItemPoolDefaults(nullptr)
-    ,m_pCollection(nullptr)
 {
-
-    m_pCollection = new ::dbaccess::ODsnTypeCollection(_rxORB);
-    ODbAdminDialog::createItemSet(m_pDatasourceItems, m_pItemPool, m_pItemPoolDefaults, m_pCollection);
+    m_pCollection.reset( new ::dbaccess::ODsnTypeCollection(_rxORB) );
+    ODbAdminDialog::createItemSet(m_pDatasourceItems, m_pItemPool, m_pItemPoolDefaults, m_pCollection.get());
 }
 
 ODatabaseAdministrationDialog::~ODatabaseAdministrationDialog()
 {
-    if (m_pDialog)
+    if (m_xDialog)
     {
         ::osl::MutexGuard aGuard(m_aMutex);
-        if (m_pDialog)
+        if (m_xDialog)
         {
             destroyDialog();
             ODbAdminDialog::destroyItemSet(m_pDatasourceItems, m_pItemPool, m_pItemPoolDefaults);
         }
     }
-
-    delete m_pCollection;
-    m_pCollection = nullptr;
-
 }
 
 void ODatabaseAdministrationDialog::implInitialize(const Any& _rValue)

@@ -19,7 +19,6 @@
 
 #include <config_features.h>
 
-#include <string>
 #include <stdlib.h>
 #include <hintids.hxx>
 #include <comphelper/string.hxx>
@@ -27,29 +26,26 @@
 #include <officecfg/Office/Common.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/inputctx.hxx>
-#include <basic/sbxobj.hxx>
 #include <svl/eitem.hxx>
+#include <unotools/configmgr.hxx>
 #include <unotools/lingucfg.hxx>
 #include <unotools/useroptions.hxx>
 #include <sfx2/dispatch.hxx>
-#include <sfx2/request.hxx>
 #include <sfx2/docfile.hxx>
-#include <sfx2/printer.hxx>
-#include <sfx2/app.hxx>
+#include <sfx2/objface.hxx>
+#include <sfx2/request.hxx>
 #include <svx/ruler.hxx>
 #include <svx/srchdlg.hxx>
-#include <editeng/protitem.hxx>
 #include <svx/fmshell.hxx>
 #include <svx/extrusionbar.hxx>
 #include <svx/fontworkbar.hxx>
+#include <svx/fmview.hxx>
 #include <unotxvw.hxx>
 #include <cmdid.h>
 #include <svl/hint.hxx>
 #include <swmodule.hxx>
 #include <inputwin.hxx>
-#include <chartins.hxx>
 #include <uivwimp.hxx>
-#include <uitool.hxx>
 #include <edtwin.hxx>
 #include <textsh.hxx>
 #include <listsh.hxx>
@@ -67,7 +63,6 @@
 #include <navsh.hxx>
 #include <globdoc.hxx>
 #include <scroll.hxx>
-#include <navipi.hxx>
 #include <gloshdl.hxx>
 #include <usrpref.hxx>
 #include <srcview.hxx>
@@ -80,42 +75,31 @@
 #include <IDocumentLayoutAccess.hxx>
 #include <drawdoc.hxx>
 #include <wdocsh.hxx>
-#include <wview.hxx>
-#include <workctrl.hxx>
 #include <wrtsh.hxx>
 #include <barcfg.hxx>
 #include <pview.hxx>
 #include <swdtflvr.hxx>
-#include <view.hrc>
-#include <globdoc.hrc>
-#include <frmui.hrc>
-#include <cfgitems.hxx>
 #include <prtopt.hxx>
-#include <linguistic/lngprops.hxx>
-#include <editeng/unolingu.hxx>
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
+#include <com/sun/star/frame/XLayoutManager.hpp>
 #include <com/sun/star/scanner/ScannerContext.hpp>
 #include <com/sun/star/scanner/XScannerManager2.hpp>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <sax/tools/converter.hxx>
+#include <sal/log.hxx>
 
-#include "formatclipboard.hxx"
+#include <formatclipboard.hxx>
 #include <PostItMgr.hxx>
 #include <annotsh.hxx>
 #include <swruler.hxx>
 
-#include <fldbas.hxx>
-
-#include <unomid.h>
-
 #include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 
-#include <svl/cjkoptions.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <sfx2/lokhelper.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
+#include <svtools/embedhlp.hxx>
+#include <tools/UnitConversion.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -128,14 +112,14 @@ using namespace ::com::sun::star::scanner;
 
 bool bDocSzUpdated = true;
 
-SvxSearchItem*  SwView::m_pSrchItem   = nullptr;
+SvxSearchItem*  SwView::s_pSrchItem   = nullptr;
 
-bool            SwView::m_bExtra      = false;
-bool            SwView::m_bFound      = false;
-bool            SwView::m_bJustOpened = false;
+bool            SwView::s_bExtra      = false;
+bool            SwView::s_bFound      = false;
+bool            SwView::s_bJustOpened = false;
 
-SearchAttrItemList*     SwView::m_pSrchList   = nullptr;
-SearchAttrItemList*     SwView::m_pReplList   = nullptr;
+std::unique_ptr<SearchAttrItemList>  SwView::s_xSearchList;
+std::unique_ptr<SearchAttrItemList>  SwView::s_xReplaceList;
 
 SfxDispatcher &SwView::GetDispatcher()
 {
@@ -178,7 +162,7 @@ void SwView::GotFocus() const
     if ( pAsFormShell )
     {
         pAsFormShell->ForgetActiveControl();
-        const_cast< SwView* >( this )->AttrChangedNotify( m_pWrtShell );
+        const_cast< SwView* >( this )->AttrChangedNotify(nullptr);
     }
     else if ( m_pPostItMgr )
     {
@@ -186,7 +170,7 @@ void SwView::GotFocus() const
         if ( pAsAnnotationShell )
         {
             m_pPostItMgr->SetActiveSidebarWin(nullptr);
-            const_cast< SwView* >( this )->AttrChangedNotify( m_pWrtShell );
+            const_cast< SwView* >( this )->AttrChangedNotify(nullptr);
         }
     }
     if( GetWrtShellPtr() )
@@ -215,7 +199,41 @@ IMPL_LINK_NOARG(SwView, FormControlActivated, LinkParamNone*, void)
         if ( pSdrView && pSdrView->IsTextEdit() )
             pSdrView->SdrEndTextEdit( true );
 
-        AttrChangedNotify( m_pWrtShell );
+        AttrChangedNotify(nullptr);
+    }
+}
+
+namespace
+{
+uno::Reference<frame::XLayoutManager> getLayoutManager(const SfxViewFrame& rViewFrame)
+{
+    uno::Reference<frame::XLayoutManager> xLayoutManager;
+    uno::Reference<beans::XPropertySet> xPropSet(rViewFrame.GetFrame().GetFrameInterface(),
+                                                 uno::UNO_QUERY);
+    if (xPropSet.is())
+    {
+        try
+        {
+            xLayoutManager.set(xPropSet->getPropertyValue("LayoutManager"), uno::UNO_QUERY);
+        }
+        catch (const Exception& e)
+        {
+            SAL_WARN("sw.ui", "Failure getting layout manager: " + e.Message);
+        }
+    }
+    return xLayoutManager;
+}
+}
+
+void SwView::ShowUIElement(const OUString& sElementURL) const
+{
+    if (auto xLayoutManager = getLayoutManager(*GetViewFrame()))
+    {
+        if (!xLayoutManager->getElement(sElementURL).is())
+        {
+            xLayoutManager->createElement(sElementURL);
+            xLayoutManager->showElement(sElementURL);
+        }
     }
 }
 
@@ -236,8 +254,8 @@ void SwView::SelectShell()
     m_pLastTableFormat = pCurTableFormat;
 
     //SEL_TBL and SEL_TBL_CELLS can be ORed!
-    SelectionType nNewSelectionType = (m_pWrtShell->GetSelectionType()
-                                & ~SelectionType::TableCell);
+    SelectionType nNewSelectionType = m_pWrtShell->GetSelectionType()
+                                & ~SelectionType::TableCell;
 
     if ( m_pFormShell && m_pFormShell->IsActiveControl() )
         nNewSelectionType |= SelectionType::FormControl;
@@ -420,6 +438,10 @@ void SwView::SelectShell()
             GetEditWin().SetInputContext( aCntxt );
         }
 
+        // Show Mail Merge toolbar initially for documents with Database fields
+        if (!m_bInitOnceCompleted && GetWrtShell().IsAnyDatabaseFieldInDoc())
+            ShowUIElement("private:resource/toolbar/mailmerge");
+
         // Activate the toolbar to the new selection which also was active last time.
         // Before a flush () must be, but does not affect the UI according to MBA and
         // is not a performance problem.
@@ -444,6 +466,8 @@ void SwView::SelectShell()
         m_pWrtShell->UpdateTable();
 
     GetViewImpl()->GetUNOObject_Impl()->NotifySelChanged();
+
+    m_bInitOnceCompleted = true;
 }
 
 // Interaction: AttrChangedNotify() and TimeoutHdl.
@@ -460,9 +484,9 @@ extern "C"
     }
 }
 
-IMPL_LINK_NOARG(SwView, AttrChangedNotify, SwCursorShell*, void)
+IMPL_LINK_NOARG(SwView, AttrChangedNotify, LinkParamNone*, void)
 {
-     if ( GetEditWin().IsChainMode() )
+    if ( GetEditWin().IsChainMode() )
         GetEditWin().SetChainMode( false );
 
     //Opt: Not if PaintLocked. During unlock a notify will be once more triggered.
@@ -550,12 +574,13 @@ void SwView::CheckReadonlyState()
             SID_DELETE,                 FN_BACKSPACE,               FN_SHIFT_BACKSPACE,
             SID_UNDO,
             SID_REDO,                   SID_REPEAT,                 SID_PASTE,
-            SID_PASTE_UNFORMATTED,
-            SID_PASTE_SPECIAL,            SID_SBA_BRW_INSERT,
-            SID_BACKGROUND_COLOR,       FN_INSERT_BOOKMARK,
+            SID_PASTE_UNFORMATTED,      FN_PASTE_NESTED_TABLE,      FN_TABLE_PASTE_ROW_BEFORE,
+            FN_TABLE_PASTE_COL_BEFORE,  SID_PASTE_SPECIAL,          SID_SBA_BRW_INSERT,
+            SID_BACKGROUND_COLOR,       FN_INSERT_BOOKMARK,         SID_CHARMAP_CONTROL,
             SID_CHARMAP,                SID_EMOJI_CONTROL,          FN_INSERT_SOFT_HYPHEN,
-            FN_INSERT_HARDHYPHEN,       FN_INSERT_HARD_SPACE,       FN_INSERT_BREAK,
-            FN_INSERT_LINEBREAK,        FN_INSERT_COLUMN_BREAK,     FN_INSERT_BREAK_DLG,
+            FN_INSERT_HARDHYPHEN,       FN_INSERT_HARD_SPACE,       FN_INSERT_NNBSP,
+            FN_INSERT_BREAK,            FN_INSERT_LINEBREAK,        FN_INSERT_COLUMN_BREAK,
+            FN_INSERT_BREAK_DLG,
             FN_DELETE_SENT,             FN_DELETE_BACK_SENT,        FN_DELETE_WORD,
             FN_DELETE_BACK_WORD,        FN_DELETE_LINE,             FN_DELETE_BACK_LINE,
             FN_DELETE_PARA,             FN_DELETE_BACK_PARA,        FN_DELETE_WHOLE_LINE,
@@ -568,7 +593,8 @@ void SwView::CheckReadonlyState()
             SID_ATTR_CHAR_COLOR,        SID_ATTR_CHAR_WEIGHT,       SID_ATTR_CHAR_POSTURE,
             SID_ATTR_CHAR_OVERLINE,
             SID_ATTR_CHAR_UNDERLINE,    SID_ATTR_FLASH,             SID_ATTR_CHAR_STRIKEOUT,
-            FN_UNDERLINE_DOUBLE,        SID_ATTR_CHAR_CONTOUR,      SID_ATTR_CHAR_SHADOWED,
+            SID_ULINE_VAL_SINGLE,       SID_ULINE_VAL_DOUBLE,       SID_ULINE_VAL_DOTTED,
+            SID_ATTR_CHAR_CONTOUR,      SID_ATTR_CHAR_SHADOWED,
             SID_ATTR_CHAR_AUTOKERN,     SID_ATTR_CHAR_ESCAPEMENT,   FN_SET_SUPER_SCRIPT,
             FN_SET_SUB_SCRIPT,          SID_ATTR_CHAR_CASEMAP,      SID_ATTR_CHAR_LANGUAGE,
             SID_ATTR_CHAR_KERNING,      SID_CHAR_DLG,               SID_ATTR_CHAR_WORDLINEMODE,
@@ -678,7 +704,6 @@ SwView::SwView( SfxViewFrame *_pFrame, SfxViewShell* pOldSh )
     m_nOldPageNum(0),
     m_pNumRuleNodeFromDoc(nullptr),
     m_pEditWin( VclPtr<SwEditWin>::Create( &_pFrame->GetWindow(), *this ) ),
-    m_pWrtShell(nullptr),
     m_pShell(nullptr),
     m_pFormShell(nullptr),
     m_pHScrollbar(nullptr),
@@ -689,12 +714,8 @@ SwView::SwView( SfxViewFrame *_pFrame, SfxViewShell* pOldSh )
                                 SvxRulerSupportFlags::BORDERS | SvxRulerSupportFlags::REDUCED_METRIC,
                             GetViewFrame()->GetBindings(),
                             WB_VSCROLL |  WB_EXTRAFIELD | WB_BORDER )),
-    m_pTogglePageBtn(nullptr),
-    m_pGlosHdl(nullptr),
-    m_pDrawActual(nullptr),
     m_pLastTableFormat(nullptr),
     m_pFormatClipboard(new SwFormatClipboard()),
-    m_pPostItMgr(nullptr),
     m_nSelectionType( SelectionType::All ),
     m_nPageCnt(0),
     m_nDrawSfxId( USHRT_MAX ),
@@ -704,10 +725,27 @@ SwView::SwView( SfxViewFrame *_pFrame, SfxViewShell* pOldSh )
     m_nRightBorderDistance( 0 ),
     m_eLastSearchCommand( static_cast<SvxSearchCmd>(0xFFFF) ),
     m_bWheelScrollInProgress(false),
+    m_bCenterCursor(false),
+    m_bTopCursor(false),
+    m_bTabColFromDoc(false),
+    m_bTabRowFromDoc(false),
+    m_bSetTabColFromDoc(false),
+    m_bSetTabRowFromDoc(false),
+    m_bAttrChgNotified(false),
+    m_bAttrChgNotifiedWithRegistrations(false),
+    m_bVerbsActive(false),
+    m_bDrawRotate(false),
+    m_bDrawSelMode(true),
+    m_bShowAtResize(true),
+    m_bInOuterResizePixel(false),
+    m_bInInnerResizePixel(false),
+    m_bPasteState(false),
+    m_bPasteSpecialState(false),
     m_bInMailMerge(false),
     m_bInDtor(false),
     m_bOldShellWasPagePreview(false),
     m_bIsPreviewDoubleClick(false),
+    m_bMakeSelectionVisible(false),
     m_nLOKPageUpDownOffset(0)
 {
     static bool bRequestDoubleBuffering = getenv("VCL_DOUBLEBUFFERING_ENABLE");
@@ -721,17 +759,12 @@ SwView::SwView( SfxViewFrame *_pFrame, SfxViewShell* pOldSh )
     // If the view is switch from one to another, the 'old' view is given by
     // parameter <pOldSh>.
 
-    m_bCenterCursor = m_bTopCursor = m_bTabColFromDoc = m_bTabRowFromDoc =
-    m_bSetTabColFromDoc = m_bSetTabRowFromDoc = m_bAttrChgNotified = m_bAttrChgNotifiedWithRegistrations =
-    m_bVerbsActive = m_bDrawRotate = m_bInOuterResizePixel = m_bInInnerResizePixel =
-    m_bPasteState = m_bPasteSpecialState = m_bMakeSelectionVisible = false;
-
-    m_bShowAtResize = m_bDrawSelMode = bDocSzUpdated = true;
+    bDocSzUpdated = true;
 
     CreateScrollbar( true );
     CreateScrollbar( false );
 
-    m_pViewImpl = new SwView_Impl(this);
+    m_pViewImpl.reset(new SwView_Impl(this));
     SetName("View");
     SetWindow( m_pEditWin );
 
@@ -781,11 +814,11 @@ SwView::SwView( SfxViewFrame *_pFrame, SfxViewShell* pOldSh )
     SAL_INFO( "sw.ui", "before create WrtShell" );
     if (SwView *pView = dynamic_cast<SwView*>(pExistingSh))
     {
-        m_pWrtShell = new SwWrtShell(*pView->m_pWrtShell, m_pEditWin, *this);
+        m_pWrtShell.reset(new SwWrtShell(*pView->m_pWrtShell, m_pEditWin, *this));
     }
     else if (SwWrtShell *pWrtShell = dynamic_cast<SwWrtShell*>(rDocSh.GetDoc()->getIDocumentLayoutAccess().GetCurrentViewShell()))
     {
-        m_pWrtShell = new SwWrtShell(*pWrtShell, m_pEditWin, *this);
+        m_pWrtShell.reset(new SwWrtShell(*pWrtShell, m_pEditWin, *this));
     }
     else
     {
@@ -808,7 +841,7 @@ SwView::SwView( SfxViewFrame *_pFrame, SfxViewShell* pOldSh )
             aUsrPref.SetViewLayoutBookMode( false );
             aUsrPref.SetViewLayoutColumns( 1 );
         }
-        m_pWrtShell = new SwWrtShell( rDoc, m_pEditWin, *this, &aUsrPref );
+        m_pWrtShell.reset(new SwWrtShell(rDoc, m_pEditWin, *this, &aUsrPref));
         // creating an SwView from a SwPagePreview needs to
         // add the SwViewShell to the ring of the other SwViewShell(s)
         if(m_bOldShellWasPagePreview)
@@ -833,7 +866,7 @@ SwView::SwView( SfxViewFrame *_pFrame, SfxViewShell* pOldSh )
         }
     }
     SAL_INFO( "sw.ui", "after create WrtShell" );
-    m_pHRuler = VclPtr<SwCommentRuler>::Create(m_pWrtShell, &GetViewFrame()->GetWindow(), m_pEditWin,
+    m_pHRuler = VclPtr<SwCommentRuler>::Create(m_pWrtShell.get(), &GetViewFrame()->GetWindow(), m_pEditWin,
                 SvxRulerSupportFlags::TABS |
                 SvxRulerSupportFlags::PARAGRAPH_MARGINS |
                 SvxRulerSupportFlags::BORDERS |
@@ -866,8 +899,8 @@ SwView::SwView( SfxViewFrame *_pFrame, SfxViewShell* pOldSh )
 
     SfxViewFrame* pViewFrame = GetViewFrame();
 
-    StartListening(*pViewFrame, true);
-    StartListening(rDocSh, true);
+    StartListening(*pViewFrame, DuplicateHandling::Prevent);
+    StartListening(rDocSh, DuplicateHandling::Prevent);
 
     // Set Zoom-factor from HRuler
     Fraction aZoomFract( aUsrPref.GetZoom(), 100 );
@@ -880,14 +913,12 @@ SwView::SwView( SfxViewFrame *_pFrame, SfxViewShell* pOldSh )
     eMetric = pUsrPref->GetVScrollMetric();
     m_pVRuler->SetUnit( eMetric );
 
-        m_pHRuler->SetCharWidth( 371 );  // default character width
-        m_pVRuler->SetLineHeight( 551 );  // default line height
+    m_pHRuler->SetCharWidth( 371 );  // default character width
+    m_pVRuler->SetLineHeight( 551 );  // default line height
 
     // Set DocShell
-    rDocSh.SetView(this);
-    SW_MOD()->SetView( this );
-
-    m_pPostItMgr = new SwPostItMgr(this);
+    m_xGlueDocShell.reset(new SwViewGlueDocShell(*this, rDocSh));
+    m_pPostItMgr.reset(new SwPostItMgr(this));
 
     // Check and process the DocSize. Via the handler, the shell could not
     // be found, because the shell is not known in the SFX management
@@ -904,7 +935,7 @@ SwView::SwView( SfxViewFrame *_pFrame, SfxViewShell* pOldSh )
     SAL_WARN_IF(
         officecfg::Office::Common::Undo::Steps::get() <= 0,
         "sw.ui", "/org.openoffice.Office.Common/Undo/Steps <= 0");
-    if (0 < officecfg::Office::Common::Undo::Steps::get())
+    if (!utl::ConfigManager::IsFuzzing() && 0 < officecfg::Office::Common::Undo::Steps::get())
     {
         m_pWrtShell->DoUndo();
     }
@@ -924,13 +955,13 @@ SwView::SwView( SfxViewFrame *_pFrame, SfxViewShell* pOldSh )
 
     m_pWrtShell->SetUIOptions( aUsrPref );
     m_pWrtShell->SetReadOnlyAvailable( aUsrPref.IsCursorInProtectedArea() );
-    m_pWrtShell->ApplyAccessiblityOptions(SW_MOD()->GetAccessibilityOptions());
+    m_pWrtShell->ApplyAccessibilityOptions(SW_MOD()->GetAccessibilityOptions());
 
     if( m_pWrtShell->GetDoc()->getIDocumentState().IsUpdateExpField() )
     {
         if (m_pWrtShell->GetDoc()->GetDocumentFieldsManager().containsUpdatableFields())
         {
-            SET_CURR_SHELL( m_pWrtShell );
+            CurrShell aCurr(m_pWrtShell.get());
             m_pWrtShell->StartAction();
             m_pWrtShell->CalcLayout();
             m_pWrtShell->GetDoc()->getIDocumentFieldsAccess().UpdateFields(false);
@@ -1007,6 +1038,23 @@ SwView::SwView( SfxViewFrame *_pFrame, SfxViewShell* pOldSh )
     GetViewFrame()->GetWindow().AddChildEventListener( LINK( this, SwView, WindowChildEventListener ) );
 }
 
+SwViewGlueDocShell::SwViewGlueDocShell(SwView& rView, SwDocShell& rDocSh)
+    : m_rView(rView)
+{
+    // Set DocShell
+    rDocSh.SetView(&m_rView);
+    SW_MOD()->SetView(&m_rView);
+}
+
+SwViewGlueDocShell::~SwViewGlueDocShell()
+{
+    SwDocShell* pDocSh = m_rView.GetDocShell();
+    if (pDocSh && pDocSh->GetView() == &m_rView)
+        pDocSh->SetView(nullptr);
+    if (SW_MOD()->GetView() == &m_rView)
+        SW_MOD()->SetView(nullptr);
+}
+
 SwView::~SwView()
 {
     // Notify other LOK views that we are going away.
@@ -1014,19 +1062,17 @@ SwView::~SwView()
     SfxLokHelper::notifyOtherViews(this, LOK_CALLBACK_TEXT_VIEW_SELECTION, "selection", "");
     SfxLokHelper::notifyOtherViews(this, LOK_CALLBACK_GRAPHIC_VIEW_SELECTION, "selection", "EMPTY");
 
+    // Need to remove activated field's button before disposing EditWin.
+    GetWrtShell().getIDocumentMarkAccess()->ClearFieldActivation();
+
     GetViewFrame()->GetWindow().RemoveChildEventListener( LINK( this, SwView, WindowChildEventListener ) );
-    delete m_pPostItMgr;
-    m_pPostItMgr = nullptr;
+    m_pPostItMgr.reset();
 
     m_bInDtor = true;
     m_pEditWin->Hide(); // prevent problems with painting
 
     // Set pointer in SwDocShell to the view again
-    SwDocShell* pDocSh = GetDocShell();
-    if( pDocSh && pDocSh->GetView() == this )
-        pDocSh->SetView( nullptr );
-    if ( SW_MOD()->GetView() == this )
-        SW_MOD()->SetView( nullptr );
+    m_xGlueDocShell.reset();
 
     if( m_aTimer.IsActive() && m_bAttrChgNotifiedWithRegistrations )
         GetViewFrame()->GetBindings().LEAVEREGISTRATIONS();
@@ -1042,16 +1088,13 @@ SwView::~SwView()
     EndListening(*GetViewFrame());
     EndListening(*GetDocShell());
     m_pScrollFill.disposeAndClear();
-    delete m_pWrtShell;
-    m_pWrtShell = nullptr;      // Set to 0, so that it is not accessible by the following dtors cannot.
-    m_pShell = nullptr;
+    m_pWrtShell.reset(); // reset here so that it is not accessible by the following dtors.
     m_pHScrollbar.disposeAndClear();
     m_pVScrollbar.disposeAndClear();
     m_pHRuler.disposeAndClear();
     m_pVRuler.disposeAndClear();
-    m_pTogglePageBtn.disposeAndClear();
-    delete m_pGlosHdl;
-    delete m_pViewImpl;
+    m_pGlosHdl.reset();
+    m_pViewImpl.reset();
 
     // If this was enabled in the ctor for the frame, then disable it here.
     static bool bRequestDoubleBuffering = getenv("VCL_DOUBLEBUFFERING_ENABLE");
@@ -1059,7 +1102,7 @@ SwView::~SwView()
         m_pEditWin->RequestDoubleBuffering(false);
     m_pEditWin.disposeAndClear();
 
-    delete m_pFormatClipboard;
+    m_pFormatClipboard.reset();
 }
 
 SwDocShell* SwView::GetDocShell()
@@ -1094,9 +1137,9 @@ void SwView::WriteUserData( OUString &rUserData, bool bBrowse )
     rUserData += OUString::number( bBrowse ? SAL_MIN_INT32 : rVis.Bottom());
     rUserData += ";";
     rUserData += OUString::number(
-            (sal_uInt16)m_pWrtShell->GetViewOptions()->GetZoomType());//eZoom;
+            static_cast<sal_uInt16>(m_pWrtShell->GetViewOptions()->GetZoomType()));//eZoom;
     rUserData += ";";
-    rUserData += FrameTypeFlags::NONE == m_pWrtShell->GetSelFrameType() ? OUString("0") : OUString("1");
+    rUserData += FrameTypeFlags::NONE == m_pWrtShell->GetSelFrameType() ? OUStringLiteral("0") : OUStringLiteral("1");
 }
 
 // Set CursorPos
@@ -1117,120 +1160,121 @@ static bool lcl_IsOwnDocument( SwView& rView )
 
 void SwView::ReadUserData( const OUString &rUserData, bool bBrowse )
 {
-    if ( comphelper::string::getTokenCount(rUserData, ';') > 1 &&
+    if ( !(rUserData.indexOf(';')>=0 && // more than one token
         // For document without layout only in the onlinelayout or
         // while forward/backward
-         (!m_pWrtShell->IsNewLayout() || m_pWrtShell->GetViewOptions()->getBrowseMode() || bBrowse) )
+         (!m_pWrtShell->IsNewLayout() || m_pWrtShell->GetViewOptions()->getBrowseMode() || bBrowse)) )
+        return;
+
+    bool bIsOwnDocument = lcl_IsOwnDocument( *this );
+
+    CurrShell aCurr(m_pWrtShell.get());
+
+    sal_Int32 nPos = 0;
+
+    // No it is *not* a good idea to call GetToken within Point constr. immediately,
+    // because which parameter is evaluated first?
+    long nX = rUserData.getToken( 0, ';', nPos ).toInt32(),
+         nY = rUserData.getToken( 0, ';', nPos ).toInt32();
+    Point aCursorPos( nX, nY );
+
+    sal_uInt16 nZoomFactor =
+        static_cast< sal_uInt16 >( rUserData.getToken(0, ';', nPos ).toInt32() );
+
+    long nLeft  = rUserData.getToken(0, ';', nPos ).toInt32(),
+         nTop   = rUserData.getToken(0, ';', nPos ).toInt32(),
+         nRight = rUserData.getToken(0, ';', nPos ).toInt32(),
+         nBottom= rUserData.getToken(0, ';', nPos ).toInt32();
+
+    const long nAdd = m_pWrtShell->GetViewOptions()->getBrowseMode() ? DOCUMENTBORDER : DOCUMENTBORDER*2;
+    if ( nBottom > (m_pWrtShell->GetDocSize().Height()+nAdd) )
+        return;
+
+    m_pWrtShell->EnableSmooth( false );
+
+    const tools::Rectangle aVis( nLeft, nTop, nRight, nBottom );
+
+    sal_Int32 nOff = 0;
+    SvxZoomType eZoom;
+    if( !m_pWrtShell->GetViewOptions()->getBrowseMode() )
+        eZoom = static_cast<SvxZoomType>(static_cast<sal_uInt16>(rUserData.getToken(nOff, ';', nPos ).toInt32()));
+    else
     {
-        bool bIsOwnDocument = lcl_IsOwnDocument( *this );
+        eZoom = SvxZoomType::PERCENT;
+        ++nOff;
+    }
 
-        SET_CURR_SHELL(m_pWrtShell);
+    bool bSelectObj = (0 != rUserData.getToken( nOff, ';', nPos ).toInt32())
+                        && m_pWrtShell->IsObjSelectable( aCursorPos );
 
-        sal_Int32 nPos = 0;
-
-        // No it is *no* good idea to call GetToken within Point-Konstr. immediately,
-        // because which parameter is evaluated first?
-        long nX = rUserData.getToken( 0, ';', nPos ).toInt32(),
-             nY = rUserData.getToken( 0, ';', nPos ).toInt32();
-        Point aCursorPos( nX, nY );
-
-        sal_uInt16 nZoomFactor =
-            static_cast< sal_uInt16 >( rUserData.getToken(0, ';', nPos ).toInt32() );
-
-        long nLeft  = rUserData.getToken(0, ';', nPos ).toInt32(),
-             nTop   = rUserData.getToken(0, ';', nPos ).toInt32(),
-             nRight = rUserData.getToken(0, ';', nPos ).toInt32(),
-             nBottom= rUserData.getToken(0, ';', nPos ).toInt32();
-
-        const long nAdd = m_pWrtShell->GetViewOptions()->getBrowseMode() ? DOCUMENTBORDER : DOCUMENTBORDER*2;
-        if ( nBottom <= (m_pWrtShell->GetDocSize().Height()+nAdd) )
+    // restore editing position
+    m_pViewImpl->SetRestorePosition(aCursorPos, bSelectObj);
+    // set flag value to avoid macro execution.
+    bool bSavedFlagValue = m_pWrtShell->IsMacroExecAllowed();
+    m_pWrtShell->SetMacroExecAllowed( false );
+// os: changed: The user data has to be read if the view is switched back from page preview
+// go to the last editing position when opening own files
+    if(m_bOldShellWasPagePreview || bIsOwnDocument)
+    {
+        m_pWrtShell->SwCursorShell::SetCursor( aCursorPos, !bSelectObj );
+        if( bSelectObj )
         {
-            m_pWrtShell->EnableSmooth( false );
-
-            const tools::Rectangle aVis( nLeft, nTop, nRight, nBottom );
-
-            sal_Int32 nOff = 0;
-            SvxZoomType eZoom;
-            if( !m_pWrtShell->GetViewOptions()->getBrowseMode() )
-                eZoom = (SvxZoomType) (sal_uInt16)rUserData.getToken(nOff, ';', nPos ).toInt32();
-            else
-            {
-                eZoom = SvxZoomType::PERCENT;
-                ++nOff;
-            }
-
-            bool bSelectObj = (0 != rUserData.getToken( nOff, ';', nPos ).toInt32())
-                                && m_pWrtShell->IsObjSelectable( aCursorPos );
-
-            // restore editing position
-            m_pViewImpl->SetRestorePosition(aCursorPos, bSelectObj);
-            // set flag value to avoid macro execution.
-            bool bSavedFlagValue = m_pWrtShell->IsMacroExecAllowed();
-            m_pWrtShell->SetMacroExecAllowed( false );
-// os: changed: The user data has to be read if the view is switched back from page preview
-// go to the last editing position when opening own files
-            if(m_bOldShellWasPagePreview || bIsOwnDocument)
-            {
-                m_pWrtShell->SwCursorShell::SetCursor( aCursorPos, !bSelectObj );
-                if( bSelectObj )
-                {
-                    m_pWrtShell->SelectObj( aCursorPos );
-                    m_pWrtShell->EnterSelFrameMode( &aCursorPos );
-                }
-            }
-
-            // reset flag value
-            m_pWrtShell->SetMacroExecAllowed( bSavedFlagValue );
-
-            // set visible area before applying
-            // information from print preview. Otherwise, the applied information
-            // is lost.
-// os: changed: The user data has to be read if the view is switched back from page preview
-// go to the last editing position when opening own files
-            if(m_bOldShellWasPagePreview || bIsOwnDocument )
-            {
-                if ( bBrowse )
-                    SetVisArea( aVis.TopLeft() );
-                else
-                    SetVisArea( aVis );
-            }
-
-            //apply information from print preview - if available
-            if( !m_sNewCursorPos.isEmpty() )
-            {
-                long nXTmp = m_sNewCursorPos.getToken( 0, ';' ).toInt32(),
-                     nYTmp = m_sNewCursorPos.getToken( 1, ';' ).toInt32();
-                Point aCursorPos2( nXTmp, nYTmp );
-                bSelectObj = m_pWrtShell->IsObjSelectable( aCursorPos2 );
-
-                m_pWrtShell->SwCursorShell::SetCursor( aCursorPos2 );
-                if( bSelectObj )
-                {
-                    m_pWrtShell->SelectObj( aCursorPos2 );
-                    m_pWrtShell->EnterSelFrameMode( &aCursorPos2 );
-                }
-                m_pWrtShell->MakeSelVisible();
-                m_sNewCursorPos.clear();
-            }
-            else if(USHRT_MAX != m_nNewPage)
-            {
-                m_pWrtShell->GotoPage(m_nNewPage, true);
-                m_nNewPage = USHRT_MAX;
-            }
-
-            SelectShell();
-
-            m_pWrtShell->StartAction();
-            const SwViewOption* pVOpt = m_pWrtShell->GetViewOptions();
-            if( pVOpt->GetZoom() != nZoomFactor || pVOpt->GetZoomType() != eZoom )
-                SetZoom( eZoom, nZoomFactor);
-
-            m_pWrtShell->LockView( true );
-            m_pWrtShell->EndAction();
-            m_pWrtShell->LockView( false );
-            m_pWrtShell->EnableSmooth( true );
+            m_pWrtShell->SelectObj( aCursorPos );
+            m_pWrtShell->EnterSelFrameMode( &aCursorPos );
         }
     }
+
+    // reset flag value
+    m_pWrtShell->SetMacroExecAllowed( bSavedFlagValue );
+
+    // set visible area before applying
+    // information from print preview. Otherwise, the applied information
+    // is lost.
+// os: changed: The user data has to be read if the view is switched back from page preview
+// go to the last editing position when opening own files
+    if(m_bOldShellWasPagePreview || bIsOwnDocument )
+    {
+        if ( bBrowse )
+            SetVisArea( aVis.TopLeft() );
+        else
+            SetVisArea( aVis );
+    }
+
+    //apply information from print preview - if available
+    if( !m_sNewCursorPos.isEmpty() )
+    {
+        sal_Int32 nIdx{ 0 };
+        const long nXTmp = m_sNewCursorPos.getToken( 0, ';', nIdx ).toInt32();
+        const long nYTmp = m_sNewCursorPos.getToken( 0, ';', nIdx ).toInt32();
+        Point aCursorPos2( nXTmp, nYTmp );
+        bSelectObj = m_pWrtShell->IsObjSelectable( aCursorPos2 );
+
+        m_pWrtShell->SwCursorShell::SetCursor( aCursorPos2 );
+        if( bSelectObj )
+        {
+            m_pWrtShell->SelectObj( aCursorPos2 );
+            m_pWrtShell->EnterSelFrameMode( &aCursorPos2 );
+        }
+        m_pWrtShell->MakeSelVisible();
+        m_sNewCursorPos.clear();
+    }
+    else if(USHRT_MAX != m_nNewPage)
+    {
+        m_pWrtShell->GotoPage(m_nNewPage, true);
+        m_nNewPage = USHRT_MAX;
+    }
+
+    SelectShell();
+
+    m_pWrtShell->StartAction();
+    const SwViewOption* pVOpt = m_pWrtShell->GetViewOptions();
+    if( pVOpt->GetZoom() != nZoomFactor || pVOpt->GetZoomType() != eZoom )
+        SetZoom( eZoom, nZoomFactor);
+
+    m_pWrtShell->LockView( true );
+    m_pWrtShell->EndAction();
+    m_pWrtShell->LockView( false );
+    m_pWrtShell->EnableSmooth( true );
 }
 
 void SwView::ReadUserDataSequence ( const uno::Sequence < beans::PropertyValue >& rSequence )
@@ -1238,229 +1282,228 @@ void SwView::ReadUserDataSequence ( const uno::Sequence < beans::PropertyValue >
     if(GetDocShell()->IsPreview()||m_bIsPreviewDoubleClick)
         return;
     bool bIsOwnDocument = lcl_IsOwnDocument( *this );
-    sal_Int32 nLength = rSequence.getLength();
-    if (nLength)
+    if (!rSequence.hasElements())
+        return;
+
+    CurrShell aCurr(m_pWrtShell.get());
+    const SwRect& rRect = m_pWrtShell->GetCharRect();
+    const tools::Rectangle &rVis = GetVisArea();
+    const SwViewOption* pVOpt = m_pWrtShell->GetViewOptions();
+
+    sal_Int64 nX = rRect.Left(), nY = rRect.Top(), nLeft = rVis.Left(), nTop = rVis.Top();
+    sal_Int64 nRight = nLeft;
+    sal_Int64 nBottom = LONG_MIN;
+    sal_Int16 nZoomType = static_cast< sal_Int16 >(pVOpt->GetZoomType());
+    sal_Int16 nZoomFactor = static_cast < sal_Int16 > (pVOpt->GetZoom());
+    bool bViewLayoutBookMode = pVOpt->IsViewLayoutBookMode();
+    sal_Int16 nViewLayoutColumns = pVOpt->GetViewLayoutColumns();
+
+    bool bSelectedFrame = ( m_pWrtShell->GetSelFrameType() != FrameTypeFlags::NONE ),
+             bGotVisibleLeft = false,
+             bGotVisibleTop = false, bGotVisibleRight = false,
+             bGotVisibleBottom = false, bGotZoomType = false,
+             bGotZoomFactor = false, bGotIsSelectedFrame = false,
+             bGotViewLayoutColumns = false, bGotViewLayoutBookMode = false,
+             bBrowseMode = false, bGotBrowseMode = false;
+
+    for (const beans::PropertyValue& rValue : rSequence)
     {
-        SET_CURR_SHELL(m_pWrtShell);
-        const beans::PropertyValue *pValue = rSequence.getConstArray();
-        const SwRect& rRect = m_pWrtShell->GetCharRect();
-        const tools::Rectangle &rVis = GetVisArea();
-        const SwViewOption* pVOpt = m_pWrtShell->GetViewOptions();
-
-        sal_Int64 nX = rRect.Left(), nY = rRect.Top(), nLeft = rVis.Left(), nTop = rVis.Top();
-        sal_Int64 nRight = LONG_MIN;
-        sal_Int64 nBottom = LONG_MIN;
-        sal_Int16 nZoomType = static_cast< sal_Int16 >(pVOpt->GetZoomType());
-        sal_Int16 nZoomFactor = static_cast < sal_Int16 > (pVOpt->GetZoom());
-        bool bViewLayoutBookMode = pVOpt->IsViewLayoutBookMode();
-        sal_Int16 nViewLayoutColumns = pVOpt->GetViewLayoutColumns();
-
-        bool bSelectedFrame = ( m_pWrtShell->GetSelFrameType() != FrameTypeFlags::NONE ),
-                 bGotVisibleLeft = false,
-                 bGotVisibleTop = false, bGotVisibleRight = false,
-                 bGotVisibleBottom = false, bGotZoomType = false,
-                 bGotZoomFactor = false, bGotIsSelectedFrame = false,
-                 bGotViewLayoutColumns = false, bGotViewLayoutBookMode = false,
-                 bBrowseMode = false, bGotBrowseMode = false;
-
-        for (sal_Int32 i = 0 ; i < nLength; i++)
+        if ( rValue.Name == "ViewLeft" )
         {
-            if ( pValue->Name == "ViewLeft" )
-            {
-               pValue->Value >>= nX;
-               nX = convertMm100ToTwip( nX );
-            }
-            else if ( pValue->Name == "ViewTop" )
-            {
-               pValue->Value >>= nY;
-               nY = convertMm100ToTwip( nY );
-            }
-            else if ( pValue->Name == "VisibleLeft" )
-            {
-               pValue->Value >>= nLeft;
-               nLeft = convertMm100ToTwip( nLeft );
-               bGotVisibleLeft = true;
-            }
-            else if ( pValue->Name == "VisibleTop" )
-            {
-               pValue->Value >>= nTop;
-               nTop = convertMm100ToTwip( nTop );
-               bGotVisibleTop = true;
-            }
-            else if ( pValue->Name == "VisibleRight" )
-            {
-               pValue->Value >>= nRight;
-               nRight = convertMm100ToTwip( nRight );
-               bGotVisibleRight = true;
-            }
-            else if ( pValue->Name == "VisibleBottom" )
-            {
-               pValue->Value >>= nBottom;
-               nBottom = convertMm100ToTwip( nBottom );
-               bGotVisibleBottom = true;
-            }
-            else if ( pValue->Name == "ZoomType" )
-            {
-               pValue->Value >>= nZoomType;
-               bGotZoomType = true;
-            }
-            else if ( pValue->Name == "ZoomFactor" )
-            {
-               pValue->Value >>= nZoomFactor;
-               bGotZoomFactor = true;
-            }
-            else if ( pValue->Name == "ViewLayoutColumns" )
-            {
-               pValue->Value >>= nViewLayoutColumns;
-               bGotViewLayoutColumns = true;
-            }
-            else if ( pValue->Name == "ViewLayoutBookMode" )
-            {
-               bViewLayoutBookMode = *o3tl::doAccess<bool>(pValue->Value);
-               bGotViewLayoutBookMode = true;
-            }
-            else if ( pValue->Name == "IsSelectedFrame" )
-            {
-               pValue->Value >>= bSelectedFrame;
-               bGotIsSelectedFrame = true;
-            }
-            else if (pValue->Name == "ShowOnlineLayout")
-            {
-               pValue->Value >>= bBrowseMode;
-               bGotBrowseMode = true;
-            }
-            // Fallback to common SdrModel processing
-            else GetDocShell()->GetDoc()->getIDocumentDrawModelAccess().GetDrawModel()->ReadUserDataSequenceValue(pValue);
-            pValue++;
+           rValue.Value >>= nX;
+           nX = convertMm100ToTwip( nX );
         }
-        if (bGotBrowseMode)
+        else if ( rValue.Name == "ViewTop" )
         {
-            // delegate further
-            GetViewImpl()->GetUNOObject_Impl()->getViewSettings()->setPropertyValue("ShowOnlineLayout", uno::Any(bBrowseMode));
+           rValue.Value >>= nY;
+           nY = convertMm100ToTwip( nY );
         }
-        if (bGotVisibleBottom)
+        else if ( rValue.Name == "VisibleLeft" )
         {
-            Point aCursorPos( nX, nY );
-            const long nAdd = m_pWrtShell->GetViewOptions()->getBrowseMode() ? DOCUMENTBORDER : DOCUMENTBORDER*2;
-            if (nBottom <= (m_pWrtShell->GetDocSize().Height()+nAdd) )
-            {
-                m_pWrtShell->EnableSmooth( false );
-                const tools::Rectangle aVis( nLeft, nTop, nRight, nBottom );
+           rValue.Value >>= nLeft;
+           nLeft = convertMm100ToTwip( nLeft );
+           bGotVisibleLeft = true;
+        }
+        else if ( rValue.Name == "VisibleTop" )
+        {
+           rValue.Value >>= nTop;
+           nTop = convertMm100ToTwip( nTop );
+           bGotVisibleTop = true;
+        }
+        else if ( rValue.Name == "VisibleRight" )
+        {
+           rValue.Value >>= nRight;
+           nRight = convertMm100ToTwip( nRight );
+           bGotVisibleRight = true;
+        }
+        else if ( rValue.Name == "VisibleBottom" )
+        {
+           rValue.Value >>= nBottom;
+           nBottom = convertMm100ToTwip( nBottom );
+           bGotVisibleBottom = true;
+        }
+        else if ( rValue.Name == "ZoomType" )
+        {
+           rValue.Value >>= nZoomType;
+           bGotZoomType = true;
+        }
+        else if ( rValue.Name == "ZoomFactor" )
+        {
+           rValue.Value >>= nZoomFactor;
+           bGotZoomFactor = true;
+        }
+        else if ( rValue.Name == "ViewLayoutColumns" )
+        {
+           rValue.Value >>= nViewLayoutColumns;
+           bGotViewLayoutColumns = true;
+        }
+        else if ( rValue.Name == "ViewLayoutBookMode" )
+        {
+           bViewLayoutBookMode = *o3tl::doAccess<bool>(rValue.Value);
+           bGotViewLayoutBookMode = true;
+        }
+        else if ( rValue.Name == "IsSelectedFrame" )
+        {
+           rValue.Value >>= bSelectedFrame;
+           bGotIsSelectedFrame = true;
+        }
+        else if (rValue.Name == "ShowOnlineLayout")
+        {
+           rValue.Value >>= bBrowseMode;
+           bGotBrowseMode = true;
+        }
+        // Fallback to common SdrModel processing
+        else
+           GetDocShell()->GetDoc()->getIDocumentDrawModelAccess().GetDrawModel()->ReadUserDataSequenceValue(&rValue);
+    }
+    if (bGotBrowseMode)
+    {
+        // delegate further
+        GetViewImpl()->GetUNOObject_Impl()->getViewSettings()->setPropertyValue("ShowOnlineLayout", uno::Any(bBrowseMode));
+    }
+    if (!bGotVisibleBottom)
+        return;
 
-                SvxZoomType eZoom;
-                if ( !m_pWrtShell->GetViewOptions()->getBrowseMode() )
-                    eZoom = static_cast < SvxZoomType > ( nZoomType );
+    Point aCursorPos( nX, nY );
+    const long nAdd = m_pWrtShell->GetViewOptions()->getBrowseMode() ? DOCUMENTBORDER : DOCUMENTBORDER*2;
+    if (nBottom > (m_pWrtShell->GetDocSize().Height()+nAdd) )
+        return;
+
+    m_pWrtShell->EnableSmooth( false );
+    const tools::Rectangle aVis( nLeft, nTop, nRight, nBottom );
+
+    SvxZoomType eZoom;
+    if ( !m_pWrtShell->GetViewOptions()->getBrowseMode() )
+        eZoom = static_cast < SvxZoomType > ( nZoomType );
+    else
+    {
+        eZoom = SvxZoomType::PERCENT;
+    }
+    if (bGotIsSelectedFrame)
+    {
+        bool bSelectObj = bSelectedFrame && m_pWrtShell->IsObjSelectable( aCursorPos );
+
+        // set flag value to avoid macro execution.
+        bool bSavedFlagValue = m_pWrtShell->IsMacroExecAllowed();
+        m_pWrtShell->SetMacroExecAllowed( false );
+// os: changed: The user data has to be read if the view is switched back from page preview
+// go to the last editing position when opening own files
+        m_pViewImpl->SetRestorePosition(aCursorPos, bSelectObj);
+        if(m_bOldShellWasPagePreview|| bIsOwnDocument)
+        {
+            m_pWrtShell->SwCursorShell::SetCursor( aCursorPos, !bSelectObj );
+
+            // Update the shell to toggle Header/Footer edit if needed
+            bool bInHeader = true;
+            if ( m_pWrtShell->IsInHeaderFooter( &bInHeader ) )
+            {
+                if ( !bInHeader )
+                {
+                    m_pWrtShell->SetShowHeaderFooterSeparator( FrameControlType::Footer, true );
+                    m_pWrtShell->SetShowHeaderFooterSeparator( FrameControlType::Header, false );
+                }
                 else
                 {
-                    eZoom = SvxZoomType::PERCENT;
-                }
-                if (bGotIsSelectedFrame)
-                {
-                    bool bSelectObj = bSelectedFrame && m_pWrtShell->IsObjSelectable( aCursorPos );
-
-                    // set flag value to avoid macro execution.
-                    bool bSavedFlagValue = m_pWrtShell->IsMacroExecAllowed();
-                    m_pWrtShell->SetMacroExecAllowed( false );
-// os: changed: The user data has to be read if the view is switched back from page preview
-// go to the last editing position when opening own files
-                    m_pViewImpl->SetRestorePosition(aCursorPos, bSelectObj);
-                    if(m_bOldShellWasPagePreview|| bIsOwnDocument)
-                    {
-                        m_pWrtShell->SwCursorShell::SetCursor( aCursorPos, !bSelectObj );
-
-                        // Update the shell to toggle Header/Footer edit if needed
-                        bool bInHeader = true;
-                        if ( m_pWrtShell->IsInHeaderFooter( &bInHeader ) )
-                        {
-                            if ( !bInHeader )
-                            {
-                                m_pWrtShell->SetShowHeaderFooterSeparator( Footer, true );
-                                m_pWrtShell->SetShowHeaderFooterSeparator( Header, false );
-                            }
-                            else
-                            {
-                                m_pWrtShell->SetShowHeaderFooterSeparator( Header, true );
-                                m_pWrtShell->SetShowHeaderFooterSeparator( Footer, false );
-                            }
-
-                            // Force repaint
-                            m_pWrtShell->GetWin()->Invalidate();
-                        }
-                        if ( m_pWrtShell->IsInHeaderFooter() != m_pWrtShell->IsHeaderFooterEdit() )
-                            m_pWrtShell->ToggleHeaderFooterEdit();
-
-                        if( bSelectObj )
-                        {
-                            m_pWrtShell->SelectObj( aCursorPos );
-                            m_pWrtShell->EnterSelFrameMode( &aCursorPos );
-                        }
-                    }
-
-                    // reset flag value
-                    m_pWrtShell->SetMacroExecAllowed( bSavedFlagValue );
-                }
-                SelectShell();
-
-                // Set ViewLayoutSettings
-                const bool bSetViewLayoutSettings = bGotViewLayoutColumns && bGotViewLayoutBookMode &&
-                                                    ( pVOpt->GetViewLayoutColumns() != nViewLayoutColumns || pVOpt->IsViewLayoutBookMode() != bViewLayoutBookMode );
-
-                const bool bSetViewSettings = bGotZoomType && bGotZoomFactor &&
-                                              ( pVOpt->GetZoom() != nZoomFactor || pVOpt->GetZoomType() != eZoom );
-
-                // In case we have a 'fixed' view layout of 2 or more columns,
-                // we have to apply the view options *before* starting the action.
-                // Otherwsie the SetZoom function cannot work correctly, because
-                // the view layout hasn't been calculated.
-                const bool bZoomNeedsViewLayout = bSetViewLayoutSettings &&
-                                                  1 < nViewLayoutColumns &&
-                                                  bSetViewSettings &&
-                                                  eZoom != SvxZoomType::PERCENT;
-
-                if ( !bZoomNeedsViewLayout )
-                    m_pWrtShell->StartAction();
-
-                if ( bSetViewLayoutSettings )
-                    SetViewLayout( nViewLayoutColumns, bViewLayoutBookMode, true );
-
-                if ( bZoomNeedsViewLayout )
-                    m_pWrtShell->StartAction();
-
-                if ( bSetViewSettings )
-                    SetZoom( eZoom, nZoomFactor, true );
-
-// os: changed: The user data has to be read if the view is switched back from page preview
-// go to the last editing position when opening own files
-                if(m_bOldShellWasPagePreview||bIsOwnDocument)
-                {
-                    if ( bGotVisibleLeft && bGotVisibleTop )
-                    {
-                        Point aTopLeft(aVis.TopLeft());
-                        // make sure the document is still centered
-                        const SwTwips lBorder = IsDocumentBorder() ? DOCUMENTBORDER : 2 * DOCUMENTBORDER;
-                        SwTwips nEditWidth = GetEditWin().GetOutputSize().Width();
-                        if(nEditWidth > (m_aDocSz.Width() + lBorder ))
-                            aTopLeft.X() = ( m_aDocSz.Width() + lBorder - nEditWidth  ) / 2;
-                        else
-                        {
-                            //check if the values are possible
-                            long nXMax = m_pHScrollbar->GetRangeMax() - m_pHScrollbar->GetVisibleSize();
-                            if( aTopLeft.X() > nXMax )
-                                aTopLeft.X() = nXMax < 0 ? 0 : nXMax;
-                        }
-                        SetVisArea( aTopLeft );
-                    }
-                    else if (bGotVisibleLeft && bGotVisibleTop && bGotVisibleRight && bGotVisibleBottom )
-                        SetVisArea( aVis );
+                    m_pWrtShell->SetShowHeaderFooterSeparator( FrameControlType::Header, true );
+                    m_pWrtShell->SetShowHeaderFooterSeparator( FrameControlType::Footer, false );
                 }
 
-                m_pWrtShell->LockView( true );
-                m_pWrtShell->EndAction();
-                m_pWrtShell->LockView( false );
-                m_pWrtShell->EnableSmooth( true );
+                // Force repaint
+                m_pWrtShell->GetWin()->Invalidate();
+            }
+            if ( m_pWrtShell->IsInHeaderFooter() != m_pWrtShell->IsHeaderFooterEdit() )
+                m_pWrtShell->ToggleHeaderFooterEdit();
+
+            if( bSelectObj )
+            {
+                m_pWrtShell->SelectObj( aCursorPos );
+                m_pWrtShell->EnterSelFrameMode( &aCursorPos );
             }
         }
+
+        // reset flag value
+        m_pWrtShell->SetMacroExecAllowed( bSavedFlagValue );
     }
+    SelectShell();
+
+    // Set ViewLayoutSettings
+    const bool bSetViewLayoutSettings = bGotViewLayoutColumns && bGotViewLayoutBookMode &&
+                                        ( pVOpt->GetViewLayoutColumns() != nViewLayoutColumns || pVOpt->IsViewLayoutBookMode() != bViewLayoutBookMode );
+
+    const bool bSetViewSettings = bGotZoomType && bGotZoomFactor &&
+                                  ( pVOpt->GetZoom() != nZoomFactor || pVOpt->GetZoomType() != eZoom );
+
+    // In case we have a 'fixed' view layout of 2 or more columns,
+    // we have to apply the view options *before* starting the action.
+    // Otherwise the SetZoom function cannot work correctly, because
+    // the view layout hasn't been calculated.
+    const bool bZoomNeedsViewLayout = bSetViewLayoutSettings &&
+                                      1 < nViewLayoutColumns &&
+                                      bSetViewSettings &&
+                                      eZoom != SvxZoomType::PERCENT;
+
+    if ( !bZoomNeedsViewLayout )
+        m_pWrtShell->StartAction();
+
+    if ( bSetViewLayoutSettings )
+        SetViewLayout( nViewLayoutColumns, bViewLayoutBookMode, true );
+
+    if ( bZoomNeedsViewLayout )
+        m_pWrtShell->StartAction();
+
+    if ( bSetViewSettings )
+        SetZoom( eZoom, nZoomFactor, true );
+
+// os: changed: The user data has to be read if the view is switched back from page preview
+// go to the last editing position when opening own files
+    if(m_bOldShellWasPagePreview||bIsOwnDocument)
+    {
+        if ( bGotVisibleLeft && bGotVisibleTop )
+        {
+            Point aTopLeft(aVis.TopLeft());
+            // make sure the document is still centered
+            const SwTwips lBorder = IsDocumentBorder() ? DOCUMENTBORDER : 2 * DOCUMENTBORDER;
+            SwTwips nEditWidth = GetEditWin().GetOutputSize().Width();
+            if(nEditWidth > (m_aDocSz.Width() + lBorder ))
+                aTopLeft.setX( ( m_aDocSz.Width() + lBorder - nEditWidth  ) / 2 );
+            else
+            {
+                //check if the values are possible
+                long nXMax = m_pHScrollbar->GetRangeMax() - m_pHScrollbar->GetVisibleSize();
+                if( aTopLeft.X() > nXMax )
+                    aTopLeft.setX( nXMax < 0 ? 0 : nXMax );
+            }
+            SetVisArea( aTopLeft );
+        }
+        else if (bGotVisibleLeft && bGotVisibleTop && bGotVisibleRight && bGotVisibleBottom )
+            SetVisArea( aVis );
+    }
+
+    m_pWrtShell->LockView( true );
+    m_pWrtShell->EndAction();
+    m_pWrtShell->LockView( false );
+    m_pWrtShell->EnableSmooth( true );
+
 }
 
 void SwView::WriteUserDataSequence ( uno::Sequence < beans::PropertyValue >& rSequence )
@@ -1477,13 +1520,17 @@ void SwView::WriteUserDataSequence ( uno::Sequence < beans::PropertyValue >& rSe
 
     aVector.push_back(comphelper::makePropertyValue("ViewTop", convertTwipToMm100 ( rRect.Top() )));
 
-    aVector.push_back(comphelper::makePropertyValue("VisibleLeft", convertTwipToMm100 ( rVis.Left() )));
+    auto visibleLeft = convertTwipToMm100 ( rVis.Left() );
+    aVector.push_back(comphelper::makePropertyValue("VisibleLeft", visibleLeft));
 
-    aVector.push_back(comphelper::makePropertyValue("VisibleTop", convertTwipToMm100 ( rVis.Top() )));
+    auto visibleTop = convertTwipToMm100 ( rVis.Top() );
+    aVector.push_back(comphelper::makePropertyValue("VisibleTop", visibleTop));
 
-    aVector.push_back(comphelper::makePropertyValue("VisibleRight", convertTwipToMm100 ( rVis.Right() )));
+    auto visibleRight = rVis.IsWidthEmpty() ? visibleLeft : convertTwipToMm100 ( rVis.Right() );
+    aVector.push_back(comphelper::makePropertyValue("VisibleRight", visibleRight));
 
-    aVector.push_back(comphelper::makePropertyValue("VisibleBottom", convertTwipToMm100 ( rVis.Bottom() )));
+    auto visibleBottom = rVis.IsHeightEmpty() ? visibleTop : convertTwipToMm100 ( rVis.Bottom() );
+    aVector.push_back(comphelper::makePropertyValue("VisibleBottom", visibleBottom));
 
     const sal_Int16 nZoomType = static_cast< sal_Int16 >(m_pWrtShell->GetViewOptions()->GetZoomType());
     aVector.push_back(comphelper::makePropertyValue("ZoomType", nZoomType));
@@ -1558,8 +1605,8 @@ OUString SwView::GetSelectionTextParam( bool bCompleteWrds, bool bEraseTrail )
 SwGlossaryHdl* SwView::GetGlosHdl()
 {
     if(!m_pGlosHdl)
-        m_pGlosHdl = new SwGlossaryHdl(GetViewFrame(), m_pWrtShell);
-    return m_pGlosHdl;
+        m_pGlosHdl.reset(new SwGlossaryHdl(GetViewFrame(), m_pWrtShell.get()));
+    return m_pGlosHdl.get();
 }
 
 void SwView::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
@@ -1573,7 +1620,7 @@ void SwView::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
             GetDrawFuncPtr()->Deactivate();
             SetDrawFuncPtr(nullptr);
             LeaveDrawCreate();
-            AttrChangedNotify(m_pWrtShell);
+            AttrChangedNotify(nullptr);
         }
     }
     else
@@ -1599,7 +1646,7 @@ void SwView::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
                     m_pVRuler->SetActive( !bModal );
                 }
 
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
 
             case SfxHintId::TitleChanged:
                 if ( GetDocShell()->IsReadOnly() != GetWrtShell().GetViewOptions()->IsReadonly() )
@@ -1643,6 +1690,20 @@ void SwView::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
                         GetDispatcher().ExecuteList(SID_FM_DESIGN_MODE,
                                 SfxCallMode::SYNCHRON, { &aItem });
                     }
+                }
+                break;
+            case SfxHintId::RedlineChanged:
+                {
+                    static sal_uInt16 const aSlotRedLine[] = {
+                        FN_REDLINE_ACCEPT_DIRECT,
+                        FN_REDLINE_REJECT_DIRECT,
+                        FN_REDLINE_NEXT_CHANGE,
+                        FN_REDLINE_PREV_CHANGE,
+                        FN_REDLINE_ACCEPT_ALL,
+                        FN_REDLINE_REJECT_ALL,
+                        0
+                    };
+                    GetViewFrame()->GetBindings().Invalidate(aSlotRedLine);
                 }
                 break;
 
@@ -1765,6 +1826,20 @@ bool SwView::IsPasteSpecialAllowed()
             m_pViewImpl->AddClipboardListener();
     }
     return m_bPasteSpecialState;
+}
+
+bool SwView::IsPasteSpreadsheet(bool bHasOwnTableCopied)
+{
+    TransferableDataHelper aDataHelper(
+                        TransferableDataHelper::CreateFromSystemClipboard(
+                                                        &GetEditWin()) );
+    if( aDataHelper.GetXTransferable().is() )
+    {
+        if (bHasOwnTableCopied && SwTransferable::IsPasteOwnFormat( aDataHelper ))
+            return true;
+        return aDataHelper.HasFormat( SotClipboardFormatId::SYLK ) || aDataHelper.HasFormat( SotClipboardFormatId::SYLK_BIGCAPS );
+    }
+    return false;
 }
 
 void SwView::NotifyDBChanged()

@@ -22,11 +22,11 @@
 #include <algorithm>
 
 #include <basegfx/range/b2drectangle.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/vector/b2dsize.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
-#include <canvas/spriteredrawmanager.hxx>
+#include <spriteredrawmanager.hxx>
 #include <boost/range/adaptor/reversed.hpp>
 
 namespace canvas
@@ -56,41 +56,41 @@ namespace canvas
             {
                 // only deal with change events from the currently
                 // affected sprite
-                if( rSpriteRecord.mpAffectedSprite == mpAffectedSprite )
+                if( rSpriteRecord.mpAffectedSprite != mpAffectedSprite )
+                    return;
+
+                switch( rSpriteRecord.meChangeType )
                 {
-                    switch( rSpriteRecord.meChangeType )
-                    {
-                        case SpriteRedrawManager::SpriteChangeRecord::ChangeType::move:
-                            if( !mbIsMove )
-                            {
-                                // no move yet - this must be the first one
-                                maMoveStartArea = ::basegfx::B2DRectangle(
-                                    rSpriteRecord.maOldPos,
-                                    rSpriteRecord.maOldPos + rSpriteRecord.maUpdateArea.getRange() );
-                                mbIsMove        = true;
-                            }
+                    case SpriteRedrawManager::SpriteChangeRecord::ChangeType::move:
+                        if( !mbIsMove )
+                        {
+                            // no move yet - this must be the first one
+                            maMoveStartArea = ::basegfx::B2DRectangle(
+                                rSpriteRecord.maOldPos,
+                                rSpriteRecord.maOldPos + rSpriteRecord.maUpdateArea.getRange() );
+                            mbIsMove        = true;
+                        }
 
-                            maMoveEndArea   = rSpriteRecord.maUpdateArea;
-                            break;
+                        maMoveEndArea   = rSpriteRecord.maUpdateArea;
+                        break;
 
-                        case SpriteRedrawManager::SpriteChangeRecord::ChangeType::update:
-                            // update end update area of the
-                            // sprite. Thus, every update() action
-                            // _after_ the last move will correctly
-                            // update the final repaint area. And this
-                            // does not interfere with subsequent
-                            // moves, because moves always perform a
-                            // hard set of maMoveEndArea to their
-                            // stored value
-                            maMoveEndArea.expand( rSpriteRecord.maUpdateArea );
-                            mbIsGenericUpdate = true;
-                            break;
+                    case SpriteRedrawManager::SpriteChangeRecord::ChangeType::update:
+                        // update end update area of the
+                        // sprite. Thus, every update() action
+                        // _after_ the last move will correctly
+                        // update the final repaint area. And this
+                        // does not interfere with subsequent
+                        // moves, because moves always perform a
+                        // hard set of maMoveEndArea to their
+                        // stored value
+                        maMoveEndArea.expand( rSpriteRecord.maUpdateArea );
+                        mbIsGenericUpdate = true;
+                        break;
 
-                        default:
-                            ENSURE_OR_THROW( false,
-                                              "Unexpected case in SpriteUpdater::operator()" );
-                            break;
-                    }
+                    default:
+                        ENSURE_OR_THROW( false,
+                                          "Unexpected case in SpriteUpdater::operator()" );
+                        break;
                 }
             }
 
@@ -234,10 +234,7 @@ namespace canvas
         }
 
         // sort sprites after prio
-        VectorOfSprites aSortedSpriteVector;
-        std::copy( maSprites.begin(),
-                     maSprites.end(),
-                     std::back_insert_iterator< VectorOfSprites >(aSortedSpriteVector) );
+        VectorOfSprites aSortedSpriteVector( maSprites.begin(), maSprites.end() );
         std::sort( aSortedSpriteVector.begin(),
                      aSortedSpriteVector.end(),
                      aSpriteComparator );
@@ -300,7 +297,7 @@ namespace canvas
     }
 
 #if OSL_DEBUG_LEVEL > 0
-    bool impIsEqualB2DRange(const basegfx::B2DRange& rRangeA, const basegfx::B2DRange& rRangeB, double fSmallValue)
+    static bool impIsEqualB2DRange(const basegfx::B2DRange& rRangeA, const basegfx::B2DRange& rRangeB, double fSmallValue)
     {
         return fabs(rRangeB.getMinX() - rRangeA.getMinX()) <= fSmallValue
             && fabs(rRangeB.getMinY() - rRangeA.getMinY()) <= fSmallValue
@@ -308,7 +305,7 @@ namespace canvas
             && fabs(rRangeB.getMaxY() - rRangeA.getMaxY()) <= fSmallValue;
     }
 
-    bool impIsEqualB2DVector(const basegfx::B2DVector& rVecA, const basegfx::B2DVector& rVecB, double fSmallValue)
+    static bool impIsEqualB2DVector(const basegfx::B2DVector& rVecA, const basegfx::B2DVector& rVecB, double fSmallValue)
     {
         return fabs(rVecB.getX() - rVecA.getX()) <= fSmallValue
             && fabs(rVecB.getY() - rVecA.getY()) <= fSmallValue;
@@ -334,7 +331,8 @@ namespace canvas
         const SpriteConnectedRanges::ComponentListType::const_iterator aFirst(
             rUpdateArea.maComponentList.begin() );
         SpriteConnectedRanges::ComponentListType::const_iterator aSecond(
-            aFirst ); ++aSecond;
+            aFirst );
+        ++aSecond;
 
         if( !aFirst->second.isPureMove() ||
             !aSecond->second.isPureMove() ||
@@ -460,7 +458,7 @@ namespace canvas
 
     void SpriteRedrawManager::hideSprite( const Sprite::Reference& rSprite )
     {
-        maSprites.remove( rSprite );
+        maSprites.erase(std::remove(maSprites.begin(), maSprites.end(), rSprite), maSprites.end());
     }
 
     void SpriteRedrawManager::moveSprite( const Sprite::Reference&      rSprite,
@@ -468,19 +466,19 @@ namespace canvas
                                           const ::basegfx::B2DPoint&    rNewPos,
                                           const ::basegfx::B2DVector&   rSpriteSize )
     {
-        maChangeRecords.push_back( SpriteChangeRecord( rSprite,
-                                                       rOldPos,
-                                                       rNewPos,
-                                                       rSpriteSize ) );
+        maChangeRecords.emplace_back( rSprite,
+                                      rOldPos,
+                                      rNewPos,
+                                      rSpriteSize );
     }
 
     void SpriteRedrawManager::updateSprite( const Sprite::Reference&    rSprite,
                                             const ::basegfx::B2DPoint&  rPos,
                                             const ::basegfx::B2DRange&  rUpdateArea )
     {
-        maChangeRecords.push_back( SpriteChangeRecord( rSprite,
-                                                       rPos,
-                                                       rUpdateArea ) );
+        maChangeRecords.emplace_back( rSprite,
+                                      rPos,
+                                      rUpdateArea );
     }
 
 }

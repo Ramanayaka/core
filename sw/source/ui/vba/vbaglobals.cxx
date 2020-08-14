@@ -16,18 +16,11 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <vbahelper/helperdecl.hxx>
-#include "service.hxx"
 #include "vbaglobals.hxx"
-#include <sal/macros.h>
-#include <comphelper/unwrapargs.hxx>
+#include <sal/log.hxx>
 
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <cppuhelper/bootstrap.hxx>
 #include "vbaapplication.hxx"
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -35,19 +28,21 @@ using namespace ::ooo::vba;
 
 SwVbaGlobals::SwVbaGlobals(  uno::Sequence< uno::Any > const& aArgs, uno::Reference< uno::XComponentContext >const& rxContext ) : SwVbaGlobals_BASE( uno::Reference< XHelperInterface >(), rxContext, "WordDocumentContext" )
 {
-    SAL_INFO("sw", "SwVbaGlobals::SwVbaGlobals()");
-    uno::Sequence< beans::PropertyValue > aInitArgs( 2 );
+    SAL_INFO("sw.vba", "SwVbaGlobals::SwVbaGlobals()");
+    uno::Sequence< beans::PropertyValue > aInitArgs( aArgs.getLength() + 1 );
     aInitArgs[ 0 ].Name = "Application";
     aInitArgs[ 0 ].Value <<= getApplication();
-    aInitArgs[ 1 ].Name = "WordDocumentContext";
-    aInitArgs[ 1 ].Value <<= getXSomethingFromArgs< frame::XModel >( aArgs, 0 );
-
+    if ( aArgs.hasElements() )
+    {
+        aInitArgs[ 1 ].Name = "WordDocumentContext";
+        aInitArgs[ 1 ].Value <<= getXSomethingFromArgs< frame::XModel >( aArgs, 0 );
+    }
     init( aInitArgs );
 }
 
 SwVbaGlobals::~SwVbaGlobals()
 {
-    SAL_INFO("sw", "SwVbaGlobals::~SwVbaGlobals");
+    SAL_INFO("sw.vba", "SwVbaGlobals::~SwVbaGlobals");
 }
 
 // XGlobals
@@ -55,11 +50,11 @@ SwVbaGlobals::~SwVbaGlobals()
 uno::Reference<word::XApplication > const &
 SwVbaGlobals::getApplication()
 {
-    SAL_INFO("sw", "In SwVbaGlobals::getApplication");
+    SAL_INFO("sw.vba", "In SwVbaGlobals::getApplication");
     if ( !mxApplication.is() )
          mxApplication.set( new SwVbaApplication( mxContext) );
 
-       return mxApplication;
+    return mxApplication;
 }
 
 uno::Reference<word::XSystem > SAL_CALL
@@ -136,51 +131,35 @@ float SAL_CALL SwVbaGlobals::CentimetersToPoints( float Centimeters )
 OUString
 SwVbaGlobals::getServiceImplName()
 {
-    return OUString("SwVbaGlobals");
+    return "SwVbaGlobals";
 }
 
 uno::Sequence< OUString >
 SwVbaGlobals::getServiceNames()
 {
-        static uno::Sequence< OUString > aServiceNames;
-        if ( aServiceNames.getLength() == 0 )
-        {
-                aServiceNames.realloc( 1 );
-                aServiceNames[ 0 ] = "ooo.vba.word.Globals";
-        }
-        return aServiceNames;
+    return { "ooo.vba.word.Globals" };
 }
 
 uno::Sequence< OUString >
 SwVbaGlobals::getAvailableServiceNames(  )
 {
-    static bool bInit = false;
-    static uno::Sequence< OUString > serviceNames( SwVbaGlobals_BASE::getAvailableServiceNames() );
-    if ( !bInit )
+    static uno::Sequence< OUString > const serviceNames = [&]()
     {
-         OUString names[] = {
-            OUString( "ooo.vba.word.Document" ),
+        uno::Sequence< OUString > tmp = SwVbaGlobals_BASE::getAvailableServiceNames();
+        tmp.realloc( tmp.getLength() + 1 );
+        tmp[ tmp.getLength() - 1 ] = "ooo.vba.word.Document";
 //            #FIXME #TODO make Application a proper service
 //            OUString( "ooo.vba.word.Application" ),
-        };
-        sal_Int32 nWordServices = SAL_N_ELEMENTS( names );
-        sal_Int32 startIndex = serviceNames.getLength();
-        serviceNames.realloc( serviceNames.getLength() + nWordServices );
-        for ( sal_Int32 index = 0; index < nWordServices; ++index )
-             serviceNames[ startIndex + index ] = names[ index ];
-        bInit = true;
-    }
+        return tmp;
+    }();
     return serviceNames;
 }
 
-namespace globals
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+Writer_SwVbaGlobals_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
 {
-namespace sdecl = comphelper::service_decl;
-sdecl::vba_service_class_<SwVbaGlobals, sdecl::with_args<true> > const serviceImpl;
-sdecl::ServiceDecl const serviceDecl(
-    serviceImpl,
-    "SwVbaGlobals",
-    "ooo.vba.word.Globals" );
+    return cppu::acquire(new SwVbaGlobals(args, context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

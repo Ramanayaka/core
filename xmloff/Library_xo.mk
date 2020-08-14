@@ -21,7 +21,7 @@ $(eval $(call gb_Library_Library,xo))
 
 $(eval $(call gb_Library_set_componentfile,xo,xmloff/util/xo))
 
-$(eval $(call gb_Library_set_precompiled_header,xo,$(SRCDIR)/xmloff/inc/pch/precompiled_xo))
+$(eval $(call gb_Library_set_precompiled_header,xo,xmloff/inc/pch/precompiled_xo))
 
 $(eval $(call gb_Library_set_include,xo,\
     -I$(SRCDIR)/xmloff/inc \
@@ -104,9 +104,8 @@ $(eval $(call gb_Library_add_exception_objects,xo,\
     xmloff/source/core/XMLEmbeddedObjectExportFilter \
     xmloff/source/core/XMLEmbeddedObjectImportContext \
     xmloff/source/core/attrlist \
-    xmloff/source/core/facreg \
     xmloff/source/core/i18nmap \
-    xmloff/source/core/nmspmap \
+    xmloff/source/core/namespacemap \
     xmloff/source/core/unoatrcn \
     xmloff/source/core/unointerfacetouniqueidentifiermapper \
     xmloff/source/core/xmlcnimp \
@@ -141,6 +140,8 @@ $(eval $(call gb_Library_add_exception_objects,xo,\
     xmloff/source/draw/sdxmlimp \
     xmloff/source/draw/shapeexport \
     xmloff/source/draw/shapeimport \
+    xmloff/source/draw/SignatureLineContext \
+    xmloff/source/draw/QRCodeContext \
     xmloff/source/draw/xexptran \
     xmloff/source/draw/ximp3dobject \
     xmloff/source/draw/ximp3dscene \
@@ -191,7 +192,7 @@ $(eval $(call gb_Library_add_exception_objects,xo,\
     xmloff/source/script/XMLScriptExportHandler \
     xmloff/source/script/XMLStarBasicContextFactory \
     xmloff/source/script/XMLStarBasicExportHandler \
-    xmloff/source/script/xmlbasici \
+    xmloff/source/script/xmlbasicscript \
     xmloff/source/script/xmlscripti \
     xmloff/source/style/AttributeContainerHandler \
     xmloff/source/style/DashStyle \

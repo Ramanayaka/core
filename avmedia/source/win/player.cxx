@@ -17,37 +17,29 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#if defined _MSC_VER
-#pragma warning(push, 1)
-#pragma warning(disable: 4917)
-#endif
 #include <objbase.h>
 #include <strmif.h>
 #include <control.h>
 #include <uuids.h>
 #include <evcode.h>
-#ifdef _WIN32_WINNT_WINBLUE
-#include <VersionHelpers.h>
-#endif
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 
 #include "player.hxx"
 #include "framegrabber.hxx"
 #include "window.hxx"
 #include <cppuhelper/supportsservice.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
+#include <osl/file.hxx>
 
 #define AVMEDIA_WIN_PLAYER_IMPLEMENTATIONNAME "com.sun.star.comp.avmedia.Player_DirectX"
 #define AVMEDIA_WIN_PLAYER_SERVICENAME "com.sun.star.media.Player_DirectX"
 
 using namespace ::com::sun::star;
 
-namespace avmedia { namespace win {
+namespace avmedia::win {
 
-LRESULT CALLBACK MediaPlayerWndProc_2( HWND hWnd,UINT nMsg, WPARAM nPar1, LPARAM nPar2 )
+static LRESULT CALLBACK MediaPlayerWndProc_2( HWND hWnd,UINT nMsg, WPARAM nPar1, LPARAM nPar2 )
 {
-    Player* pPlayer = reinterpret_cast<Player*>(::GetWindowLongPtr( hWnd, 0 ));
+    Player* pPlayer = reinterpret_cast<Player*>(::GetWindowLongPtrW( hWnd, 0 ));
     bool    bProcessed = true;
 
     if( pPlayer )
@@ -65,29 +57,12 @@ LRESULT CALLBACK MediaPlayerWndProc_2( HWND hWnd,UINT nMsg, WPARAM nPar1, LPARAM
     else
         bProcessed = false;
 
-    return( bProcessed ? 0 : DefWindowProc( hWnd, nMsg, nPar1, nPar2 ) );
+    return( bProcessed ? 0 : DefWindowProcW( hWnd, nMsg, nPar1, nPar2 ) );
 }
 
 
-bool isWindowsVistaOrHigher()
-{
-// the Win32 SDK 8.1 deprecates GetVersionEx()
-#ifdef _WIN32_WINNT_WINBLUE
-    return IsWindowsVistaOrGreater();
-#else
-    // POST: return true if we are at least on Windows Vista
-    OSVERSIONINFO osvi;
-    ZeroMemory(&osvi, sizeof(osvi));
-    osvi.dwOSVersionInfoSize = sizeof(osvi);
-    GetVersionEx(&osvi);
-    return  osvi.dwMajorVersion >= 6;
-#endif
-}
-
-
-Player::Player( const uno::Reference< lang::XMultiServiceFactory >& rxMgr ) :
+Player::Player() :
     Player_BASE(m_aMutex),
-    mxMgr( rxMgr ),
     mpGB( nullptr ),
     mpOMF( nullptr ),
     mpMC( nullptr ),
@@ -104,7 +79,7 @@ Player::Player( const uno::Reference< lang::XMultiServiceFactory >& rxMgr ) :
     mbLooping( false ),
     mbAddWindow( true )
 {
-    ::CoInitialize( nullptr );
+    ::CoInitializeEx( nullptr, COINIT_APARTMENTTHREADED );
 }
 
 
@@ -166,15 +141,14 @@ bool Player::create( const OUString& rURL )
         // Don't use the overlay mixer on Windows Vista
         // It disables the desktop composition as soon as RenderFile is called
         // also causes some other problems: video rendering is not reliable
-        if( !isWindowsVistaOrHigher() && SUCCEEDED( CoCreateInstance( CLSID_OverlayMixer, nullptr, CLSCTX_INPROC_SERVER, IID_IBaseFilter, reinterpret_cast<void**>(&mpOMF) ) ) )
-        {
-            mpGB->AddFilter( mpOMF, L"com_sun_star_media_OverlayMixerFilter" );
 
-            if( !SUCCEEDED( mpOMF->QueryInterface( IID_IDDrawExclModeVideo, reinterpret_cast<void**>(&mpEV) ) ) )
-                mpEV = nullptr;
-        }
+        // tdf#128057: IGraphBuilder::RenderFile seems to fail to handle file URIs properly when
+        // they contain encoded characters like "%23"; so pass system path in that case instead.
+        OUString aFile(rURL);
+        if (aFile.startsWithIgnoreAsciiCase("file:"))
+            osl::FileBase::getSystemPathFromFileURL(rURL, aFile);
 
-        if( SUCCEEDED( hR = mpGB->RenderFile( reinterpret_cast<LPCWSTR>(rURL.getStr()), nullptr ) ) &&
+        if( SUCCEEDED( hR = mpGB->RenderFile( o3tl::toW(aFile.getStr()), nullptr ) ) &&
             SUCCEEDED( hR = mpGB->QueryInterface( IID_IMediaControl, reinterpret_cast<void**>(&mpMC) ) ) &&
             SUCCEEDED( hR = mpGB->QueryInterface( IID_IMediaEventEx, reinterpret_cast<void**>(&mpME) ) ) &&
             SUCCEEDED( hR = mpGB->QueryInterface( IID_IMediaSeeking, reinterpret_cast<void**>(&mpMS) ) ) &&
@@ -252,31 +226,31 @@ void SAL_CALL Player::start(  )
     {
         if ( mbAddWindow )
         {
-            static WNDCLASS* mpWndClass = nullptr;
+            static WNDCLASSW* mpWndClass = nullptr;
             if ( !mpWndClass )
             {
-                mpWndClass = new WNDCLASS;
+                mpWndClass = new WNDCLASSW;
 
                 memset( mpWndClass, 0, sizeof( *mpWndClass ) );
-                mpWndClass->hInstance = GetModuleHandle( nullptr );
+                mpWndClass->hInstance = GetModuleHandleW( nullptr );
                 mpWndClass->cbWndExtra = sizeof( DWORD );
                 mpWndClass->lpfnWndProc = MediaPlayerWndProc_2;
-                mpWndClass->lpszClassName = "com_sun_star_media_Sound_Player";
+                mpWndClass->lpszClassName = L"com_sun_star_media_Sound_Player";
                 mpWndClass->hbrBackground = static_cast<HBRUSH>(::GetStockObject( BLACK_BRUSH ));
                 mpWndClass->hCursor = ::LoadCursor( nullptr, IDC_ARROW );
 
-                ::RegisterClass( mpWndClass );
+                RegisterClassW( mpWndClass );
             }
             if ( !mnFrameWnd )
             {
-                mnFrameWnd = ::CreateWindow( mpWndClass->lpszClassName, nullptr,
-                                           0,
-                                           0, 0, 0, 0,
-                                           nullptr, nullptr, mpWndClass->hInstance, nullptr );
+                mnFrameWnd = CreateWindowW( mpWndClass->lpszClassName, nullptr,
+                                            0,
+                                            0, 0, 0, 0,
+                                            nullptr, nullptr, mpWndClass->hInstance, nullptr );
                 if ( mnFrameWnd )
                 {
                     ::ShowWindow(mnFrameWnd, SW_HIDE);
-                    ::SetWindowLongPtr( mnFrameWnd, 0, reinterpret_cast<LONG_PTR>(this) );
+                    SetWindowLongPtrW( mnFrameWnd, 0, reinterpret_cast<LONG_PTR>(this) );
                     // mpVW->put_Owner( (OAHWND) mnFrameWnd );
                     setNotifyWnd( mnFrameWnd );
                 }
@@ -403,7 +377,7 @@ sal_Int16 SAL_CALL Player::getVolumeDB(  )
 {
     ::osl::MutexGuard aGuard(m_aMutex);
 
-    return( static_cast< sal_Int16 >( mnUnmutedVolume / 100 ) );
+    return static_cast< sal_Int16 >( mnUnmutedVolume / 100 );
 }
 
 
@@ -435,7 +409,7 @@ uno::Reference< ::media::XPlayerWindow > SAL_CALL Player::createPlayerWindow( co
 
     if( mpVW && aSize.Width > 0 && aSize.Height > 0 )
     {
-        ::avmedia::win::Window* pWindow = new ::avmedia::win::Window( mxMgr, *this );
+        ::avmedia::win::Window* pWindow = new ::avmedia::win::Window( *this );
 
         xRet = pWindow;
 
@@ -453,7 +427,7 @@ uno::Reference< media::XFrameGrabber > SAL_CALL Player::createFrameGrabber(  )
 
     if( !maURL.isEmpty() )
     {
-        FrameGrabber* pGrabber = new FrameGrabber( mxMgr );
+        FrameGrabber* pGrabber = new FrameGrabber();
 
         xRet = pGrabber;
 
@@ -467,7 +441,7 @@ uno::Reference< media::XFrameGrabber > SAL_CALL Player::createFrameGrabber(  )
 
 OUString SAL_CALL Player::getImplementationName(  )
 {
-    return OUString( AVMEDIA_WIN_PLAYER_IMPLEMENTATIONNAME );
+    return AVMEDIA_WIN_PLAYER_IMPLEMENTATIONNAME;
 }
 
 
@@ -482,7 +456,7 @@ uno::Sequence< OUString > SAL_CALL Player::getSupportedServiceNames(  )
     return { AVMEDIA_WIN_PLAYER_SERVICENAME };
 }
 
-} // namespace win
-} // namespace avmedia
+} // namespace avmedia::win
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

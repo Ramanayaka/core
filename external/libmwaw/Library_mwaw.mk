@@ -15,7 +15,9 @@ $(eval $(call gb_Library_use_externals,mwaw,\
     revenge \
 ))
 
-$(eval $(call gb_Library_set_warnings_not_errors,mwaw))
+$(eval $(call gb_Library_set_warnings_disabled,mwaw))
+
+$(eval $(call gb_Library_set_precompiled_header,mwaw,external/libmwaw/inc/pch/precompiled_mwaw))
 
 $(eval $(call gb_Library_set_include,mwaw,\
     -I$(call gb_UnpackedTarball_get_dir,libmwaw)/inc \
@@ -26,7 +28,6 @@ $(eval $(call gb_Library_add_defs,mwaw,\
 	-DBUILD_MWAW \
 	-DNDEBUG \
 	-D_WINDLL \
-	-DSHAREDPTR_STD \
 ))
 
 $(eval $(call gb_Library_add_generated_exception_objects,mwaw,\
@@ -58,6 +59,7 @@ $(eval $(call gb_Library_add_generated_exception_objects,mwaw,\
 	UnpackedTarball/libmwaw/src/lib/ClarisWksStyleManager \
 	UnpackedTarball/libmwaw/src/lib/ClarisWksTable \
 	UnpackedTarball/libmwaw/src/lib/ClarisWksText \
+	UnpackedTarball/libmwaw/src/lib/CorelPainterParser \
 	UnpackedTarball/libmwaw/src/lib/CricketDrawParser \
 	UnpackedTarball/libmwaw/src/lib/DocMkrParser \
 	UnpackedTarball/libmwaw/src/lib/DocMkrText \
@@ -118,6 +120,7 @@ $(eval $(call gb_Library_add_generated_exception_objects,mwaw,\
 	UnpackedTarball/libmwaw/src/lib/MWAWSpreadsheetDecoder \
 	UnpackedTarball/libmwaw/src/lib/MWAWSpreadsheetEncoder \
 	UnpackedTarball/libmwaw/src/lib/MWAWSpreadsheetListener \
+	UnpackedTarball/libmwaw/src/lib/MWAWStream \
 	UnpackedTarball/libmwaw/src/lib/MWAWStringStream \
 	UnpackedTarball/libmwaw/src/lib/MWAWSubDocument \
 	UnpackedTarball/libmwaw/src/lib/MWAWTable \
@@ -156,6 +159,7 @@ $(eval $(call gb_Library_add_generated_exception_objects,mwaw,\
 	UnpackedTarball/libmwaw/src/lib/MsWrdStruct \
 	UnpackedTarball/libmwaw/src/lib/MsWrdText \
 	UnpackedTarball/libmwaw/src/lib/MsWrdTextStyles \
+	UnpackedTarball/libmwaw/src/lib/MultiplanParser \
 	UnpackedTarball/libmwaw/src/lib/NisusWrtGraph \
 	UnpackedTarball/libmwaw/src/lib/NisusWrtParser \
 	UnpackedTarball/libmwaw/src/lib/NisusWrtStruct \
@@ -170,10 +174,13 @@ $(eval $(call gb_Library_add_generated_exception_objects,mwaw,\
 	UnpackedTarball/libmwaw/src/lib/PowerPoint7Text \
 	UnpackedTarball/libmwaw/src/lib/RagTime5Chart \
 	UnpackedTarball/libmwaw/src/lib/RagTime5ClusterManager \
+	UnpackedTarball/libmwaw/src/lib/RagTime5Document \
+	UnpackedTarball/libmwaw/src/lib/RagTime5Formula \
 	UnpackedTarball/libmwaw/src/lib/RagTime5Graph \
 	UnpackedTarball/libmwaw/src/lib/RagTime5Layout \
 	UnpackedTarball/libmwaw/src/lib/RagTime5Parser \
 	UnpackedTarball/libmwaw/src/lib/RagTime5Pipeline \
+	UnpackedTarball/libmwaw/src/lib/RagTime5SSParser \
 	UnpackedTarball/libmwaw/src/lib/RagTime5Spreadsheet \
 	UnpackedTarball/libmwaw/src/lib/RagTime5StructManager \
 	UnpackedTarball/libmwaw/src/lib/RagTime5StyleManager \
@@ -185,6 +192,7 @@ $(eval $(call gb_Library_add_generated_exception_objects,mwaw,\
 	UnpackedTarball/libmwaw/src/lib/StyleParser \
 	UnpackedTarball/libmwaw/src/lib/SuperPaintParser \
 	UnpackedTarball/libmwaw/src/lib/TeachTxtParser \
+	UnpackedTarball/libmwaw/src/lib/WingzGraph \
 	UnpackedTarball/libmwaw/src/lib/WingzParser \
 	UnpackedTarball/libmwaw/src/lib/WriteNowEntry \
 	UnpackedTarball/libmwaw/src/lib/WriteNowParser \

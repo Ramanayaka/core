@@ -17,29 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/core/filterdetect.hxx"
+#include <oox/core/filterdetect.hxx>
 
-#include <com/sun/star/io/TempFile.hpp>
 #include <com/sun/star/io/XStream.hpp>
 #include <comphelper/docpasswordhelper.hxx>
 #include <unotools/mediadescriptor.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
-#include "oox/core/fastparser.hxx"
-#include "oox/helper/attributelist.hxx"
-#include "oox/helper/zipstorage.hxx"
-#include "oox/ole/olestorage.hxx"
+#include <oox/core/fastparser.hxx>
+#include <oox/helper/attributelist.hxx>
+#include <oox/helper/zipstorage.hxx>
+#include <oox/ole/olestorage.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
-#include "oox/crypto/DocumentDecryption.hxx"
+#include <oox/crypto/DocumentDecryption.hxx>
 
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
+#include <com/sun/star/beans/NamedValue.hpp>
 
-#include <services.hxx>
+using namespace ::com::sun::star;
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::io;
@@ -55,6 +54,7 @@ using comphelper::DocPasswordVerifierResult;
 FilterDetectDocHandler::FilterDetectDocHandler( const  Reference< XComponentContext >& rxContext, OUString& rFilterName, const OUString& rFileName ) :
     mrFilterName( rFilterName ),
     maFileName(rFileName),
+    maOOXMLVariant( OOXMLVariant::ECMA_Transitional ),
     mxContext( rxContext )
 {
     maContextStack.reserve( 2 );
@@ -143,25 +143,34 @@ void SAL_CALL FilterDetectDocHandler::characters( const OUString& /*aChars*/ )
 void FilterDetectDocHandler::parseRelationship( const AttributeList& rAttribs )
 {
     OUString aType = rAttribs.getString( XML_Type, OUString() );
-    if ( aType == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" // OOXML Transitional
-            || aType == "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument" ) //OOXML strict
+
+    // tdf#131936 Remember filter when opening file as 'Office Open XML Text'
+    if (aType.startsWithIgnoreAsciiCase("http://schemas.openxmlformats.org/officedocument/2006/relationships/metadata/core-properties"))
+        maOOXMLVariant = OOXMLVariant::ISO_Transitional;
+    else if (aType.startsWithIgnoreAsciiCase("http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"))
+        maOOXMLVariant = OOXMLVariant::ECMA_Transitional;
+    else if (aType.startsWithIgnoreAsciiCase("http://purl.oclc.org/ooxml/officeDocument"))
+        maOOXMLVariant = OOXMLVariant::ISO_Strict;
+
+    if ( aType != "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" // OOXML Transitional
+          && aType != "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument" ) //OOXML strict
+        return;
+
+    Reference<XUriReferenceFactory> xFactory = UriReferenceFactory::create( mxContext );
+    try
     {
-        Reference<XUriReferenceFactory> xFactory = UriReferenceFactory::create( mxContext );
-        try
-        {
-             // use '/' to representent the root of the zip package ( and provide a 'file' scheme to
-             // keep the XUriReference implementation happy )
-             Reference< XUriReference > xBase = xFactory->parse( "file:///" );
+         // use '/' to representent the root of the zip package ( and provide a 'file' scheme to
+         // keep the XUriReference implementation happy )
+         Reference< XUriReference > xBase = xFactory->parse( "file:///" );
 
-             Reference< XUriReference > xPart = xFactory->parse(  rAttribs.getString( XML_Target, OUString() ) );
-             Reference< XUriReference > xAbs = xFactory->makeAbsolute(  xBase, xPart, true, RelativeUriExcessParentSegments_RETAIN );
+         Reference< XUriReference > xPart = xFactory->parse(  rAttribs.getString( XML_Target, OUString() ) );
+         Reference< XUriReference > xAbs = xFactory->makeAbsolute(  xBase, xPart, true, RelativeUriExcessParentSegments_RETAIN );
 
-             if ( xAbs.is() )
-                 maTargetPath = xAbs->getPath();
-        }
-        catch( const Exception& )
-        {
-        }
+         if ( xAbs.is() )
+             maTargetPath = xAbs->getPath();
+    }
+    catch( const Exception& )
+    {
     }
 }
 
@@ -170,39 +179,59 @@ OUString FilterDetectDocHandler::getFilterNameFromContentType( const OUString& r
     bool bDocm = rFileName.endsWithIgnoreAsciiCase(".docm");
 
     if( rContentType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml" && !bDocm )
-        return OUString( "writer_MS_Word_2007" );
+    {
+        switch (maOOXMLVariant)
+        {
+            case OOXMLVariant::ISO_Transitional:
+            case OOXMLVariant::ISO_Strict: // Not supported, map to ISO transitional
+                return "writer_OOXML";
+            case OOXMLVariant::ECMA_Transitional:
+                return "writer_MS_Word_2007";
+        }
+    }
 
     if( rContentType == "application/vnd.ms-word.document.macroEnabled.main+xml" || bDocm )
-        return OUString( "writer_MS_Word_2007_VBA" );
+        return "writer_MS_Word_2007_VBA";
 
     if( rContentType == "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml" ||
         rContentType == "application/vnd.ms-word.template.macroEnabledTemplate.main+xml" )
-        return OUString( "writer_MS_Word_2007_Template" );
+    {
+        switch (maOOXMLVariant)
+        {
+            case OOXMLVariant::ISO_Transitional:
+            case OOXMLVariant::ISO_Strict: // Not supported, map to ISO transitional
+                return "writer_OOXML_Text_Template";
+            case OOXMLVariant::ECMA_Transitional:
+                return "writer_MS_Word_2007_Template";
+        }
+    }
 
     if( rContentType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml")
-        return OUString( "MS Excel 2007 XML" );
+        return "MS Excel 2007 XML";
 
     if (rContentType == "application/vnd.ms-excel.sheet.macroEnabled.main+xml")
-        return OUString( "MS Excel 2007 VBA XML" );
+        return "MS Excel 2007 VBA XML";
 
     if( rContentType == "application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml" ||
         rContentType == "application/vnd.ms-excel.template.macroEnabled.main+xml" )
-        return OUString( "MS Excel 2007 XML Template" );
+        return "MS Excel 2007 XML Template";
 
     if ( rContentType == "application/vnd.ms-excel.sheet.binary.macroEnabled.main" )
-        return OUString( "MS Excel 2007 Binary" );
+        return "MS Excel 2007 Binary";
 
-    if( rContentType == "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml" ||
-        rContentType == "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml" )
-        return OUString( "MS PowerPoint 2007 XML" );
+    if (rContentType == "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml")
+        return "MS PowerPoint 2007 XML";
+
+    if (rContentType == "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml")
+        return "MS PowerPoint 2007 XML VBA";
 
     if( rContentType == "application/vnd.openxmlformats-officedocument.presentationml.slideshow.main+xml" ||
         rContentType == "application/vnd.ms-powerpoint.slideshow.macroEnabled.main+xml" )
-        return OUString( "MS PowerPoint 2007 XML AutoPlay" );
+        return "MS PowerPoint 2007 XML AutoPlay";
 
     if( rContentType == "application/vnd.openxmlformats-officedocument.presentationml.template.main+xml" ||
         rContentType == "application/vnd.ms-powerpoint.template.macroEnabled.main+xml" )
-        return OUString( "MS PowerPoint 2007 XML Template" );
+        return "MS PowerPoint 2007 XML Template";
 
     return OUString();
 }
@@ -222,27 +251,8 @@ void FilterDetectDocHandler::parseContentTypesDefault( const AttributeList& rAtt
 
 void FilterDetectDocHandler::parseContentTypesOverride( const AttributeList& rAttribs )
 {
-    if( rAttribs.getString( XML_PartName, OUString() ).equals( maTargetPath ) )
+    if( rAttribs.getString( XML_PartName, OUString() ) == maTargetPath )
         mrFilterName = getFilterNameFromContentType( rAttribs.getString( XML_ContentType, OUString() ), maFileName );
-}
-
-/* Helper for XServiceInfo */
-Sequence< OUString > FilterDetect_getSupportedServiceNames()
-{
-    Sequence<OUString> aServiceNames { "com.sun.star.frame.ExtendedTypeDetection" };
-    return aServiceNames;
-}
-
-/* Helper for XServiceInfo */
-OUString FilterDetect_getImplementationName()
-{
-    return OUString( "com.sun.star.comp.oox.FormatDetector" );
-}
-
-/* Helper for registry */
-Reference< XInterface > SAL_CALL FilterDetect_createInstance( const Reference< XComponentContext >& rxContext )
-{
-    return static_cast< ::cppu::OWeakObject* >( new FilterDetect( rxContext ) );
 }
 
 FilterDetect::FilterDetect( const Reference< XComponentContext >& rxContext ) :
@@ -266,23 +276,31 @@ bool lclIsZipPackage( const Reference< XComponentContext >& rxContext, const Ref
 class PasswordVerifier : public IDocPasswordVerifier
 {
 public:
-    explicit PasswordVerifier( DocumentDecryption& aDecryptor );
+    explicit PasswordVerifier( crypto::DocumentDecryption& aDecryptor );
 
     virtual DocPasswordVerifierResult verifyPassword( const OUString& rPassword, Sequence<NamedValue>& rEncryptionData ) override;
 
     virtual DocPasswordVerifierResult verifyEncryptionData( const Sequence<NamedValue>& rEncryptionData ) override;
 private:
-    DocumentDecryption& mDecryptor;
+    crypto::DocumentDecryption& mDecryptor;
 };
 
-PasswordVerifier::PasswordVerifier( DocumentDecryption& aDecryptor ) :
+PasswordVerifier::PasswordVerifier( crypto::DocumentDecryption& aDecryptor ) :
     mDecryptor(aDecryptor)
 {}
 
 comphelper::DocPasswordVerifierResult PasswordVerifier::verifyPassword( const OUString& rPassword, Sequence<NamedValue>& rEncryptionData )
 {
-    if(mDecryptor.generateEncryptionKey(rPassword))
-        rEncryptionData = mDecryptor.createEncryptionData(rPassword);
+    try
+    {
+        if (mDecryptor.generateEncryptionKey(rPassword))
+            rEncryptionData = mDecryptor.createEncryptionData(rPassword);
+    }
+    catch (...)
+    {
+        // Any exception is a reason to abort
+        return comphelper::DocPasswordVerifierResult::Abort;
+    }
 
     return rEncryptionData.hasElements() ? comphelper::DocPasswordVerifierResult::OK : comphelper::DocPasswordVerifierResult::WrongPassword;
 }
@@ -316,7 +334,7 @@ Reference< XInputStream > FilterDetect::extractUnencryptedPackage( MediaDescript
     {
         try
         {
-            DocumentDecryption aDecryptor(aOleStorage, mxContext);
+            crypto::DocumentDecryption aDecryptor(mxContext, aOleStorage);
 
             if( aDecryptor.readEncryptionInfo() )
             {
@@ -325,35 +343,44 @@ Reference< XInputStream > FilterDetect::extractUnencryptedPackage( MediaDescript
                     feature with password. Try this first before prompting the
                     user for a password. */
                 std::vector<OUString> aDefaultPasswords;
-                aDefaultPasswords.push_back("VelvetSweatshop");
+                aDefaultPasswords.emplace_back("VelvetSweatshop");
 
                 /*  Use the comphelper password helper to request a password.
                     This helper returns either with the correct password
                     (according to the verifier), or with an empty string if
                     user has cancelled the password input dialog. */
                 PasswordVerifier aVerifier( aDecryptor );
-                Sequence<NamedValue> aEncryptionData;
-                aEncryptionData = rMediaDescriptor.requestAndVerifyDocPassword(
+                Sequence<NamedValue> aEncryptionData = rMediaDescriptor.requestAndVerifyDocPassword(
                                                 aVerifier,
                                                 comphelper::DocPasswordRequestType::MS,
                                                 &aDefaultPasswords );
 
-                if( aEncryptionData.getLength() == 0 )
+                if( !aEncryptionData.hasElements() )
                 {
                     rMediaDescriptor[ MediaDescriptor::PROP_ABORTED() ] <<= true;
                 }
                 else
                 {
-                    // create temporary file for unencrypted package
-                    Reference<XStream> xTempFile( TempFile::create(mxContext), UNO_QUERY_THROW );
-                    aDecryptor.decrypt( xTempFile );
+                    // create MemoryStream for unencrypted package - rather not put this in a tempfile
+                    Reference<XStream> const xTempStream(
+                        mxContext->getServiceManager()->createInstanceWithContext(
+                            "com.sun.star.comp.MemoryStream", mxContext),
+                        UNO_QUERY_THROW);
 
-                    // store temp file in media descriptor to keep it alive
-                    rMediaDescriptor.setComponentDataEntry( "DecryptedPackage", Any( xTempFile ) );
+                    // if decryption was unsuccessful (corrupted file or any other reason)
+                    if (!aDecryptor.decrypt(xTempStream))
+                    {
+                        rMediaDescriptor[ MediaDescriptor::PROP_ABORTED() ] <<= true;
+                    }
+                    else
+                    {
+                        // store temp file in media descriptor to keep it alive
+                        rMediaDescriptor.setComponentDataEntry( "DecryptedPackage", Any( xTempStream ) );
 
-                    Reference<XInputStream> xDecryptedInputStream = xTempFile->getInputStream();
-                    if( lclIsZipPackage( mxContext, xDecryptedInputStream ) )
-                        return xDecryptedInputStream;
+                        Reference<XInputStream> xDecryptedInputStream = xTempStream->getInputStream();
+                        if( lclIsZipPackage( mxContext, xDecryptedInputStream ) )
+                            return xDecryptedInputStream;
+                    }
                 }
             }
         }
@@ -368,7 +395,7 @@ Reference< XInputStream > FilterDetect::extractUnencryptedPackage( MediaDescript
 
 OUString SAL_CALL FilterDetect::getImplementationName()
 {
-    return FilterDetect_getImplementationName();
+    return "com.sun.star.comp.oox.FormatDetector";
 }
 
 sal_Bool SAL_CALL FilterDetect::supportsService( const OUString& rServiceName )
@@ -378,7 +405,7 @@ sal_Bool SAL_CALL FilterDetect::supportsService( const OUString& rServiceName )
 
 Sequence< OUString > SAL_CALL FilterDetect::getSupportedServiceNames()
 {
-    return FilterDetect_getSupportedServiceNames();
+    return { "com.sun.star.frame.ExtendedTypeDetection" };
 }
 
 // com.sun.star.document.XExtendedFilterDetection interface -------------------
@@ -440,7 +467,13 @@ OUString SAL_CALL FilterDetect::detect( Sequence< PropertyValue >& rMediaDescSeq
     return aFilterName;
 }
 
-} // namespace core
-} // namespace oox
+} // namespace oox::core
+
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_comp_oox_FormatDetector_get_implementation(uno::XComponentContext* pCtx,
+                                                        uno::Sequence<uno::Any> const& /*rSeq*/)
+{
+    return cppu::acquire(new oox::core::FilterDetect(pCtx));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

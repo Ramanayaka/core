@@ -25,16 +25,17 @@
 
 #include <com/sun/star/table/CellAddress.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
 #include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace sheet { struct FormulaToken; }
     namespace sheet { class XFormulaOpCodeMapper; }
     namespace sheet { class XFormulaParser; }
-} } }
+}
+
+namespace com::sun::star::uno { template <class E> class Sequence; }
 
 namespace formula
 {
@@ -42,6 +43,7 @@ namespace formula
     class IFunctionDescription;
     class FormEditData;
     class FormulaTokenArray;
+    class FormulaCompiler;
 
     class SAL_NO_VTABLE IFunctionManager
     {
@@ -99,22 +101,13 @@ namespace formula
         // parameter
         virtual sal_uInt32 getParameterCount() const = 0;
         virtual sal_uInt32 getVarArgsStart() const = 0;
+        virtual sal_uInt32 getVarArgsLimit() const = 0;
         virtual OUString getParameterName(sal_uInt32 _nPos) const = 0;
         virtual OUString getParameterDescription(sal_uInt32 _nPos) const = 0;
         virtual bool isParameterOptional(sal_uInt32 _nPos) const = 0;
 
     protected:
         ~IFunctionDescription() {}
-    };
-
-    class SAL_NO_VTABLE IFormulaToken
-    {
-    public:
-        virtual bool isFunction() const = 0;
-        virtual sal_uInt32 getArgumentCount() const = 0;
-
-    protected:
-        ~IFormulaToken() {}
     };
 
     class SAL_NO_VTABLE IFormulaEditorHelper
@@ -132,6 +125,17 @@ namespace formula
 
         virtual FormEditData* getFormEditData() const = 0;
         virtual bool calculateValue(const OUString& _sExpression, OUString& _rResult, bool bMatrixFormula) = 0;
+
+        /** Obtain a resident FormulaCompiler instance, created without
+            FormulaTokenArray and reused but being application specific derived.
+         */
+        virtual std::shared_ptr<FormulaCompiler> getCompiler() const = 0;
+
+        /** Create an application specific FormulaCompiler instance with
+            FormulaTokenArray. The FormulaTokenArray had to be created using
+            convertToTokenArray().
+         */
+        virtual std::unique_ptr<FormulaCompiler> createCompiler( FormulaTokenArray& rArray ) const = 0;
 
         virtual void switchBack() = 0;
 

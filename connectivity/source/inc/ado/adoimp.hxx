@@ -21,15 +21,12 @@
 
 #include <com/sun/star/sdbc/SQLException.hpp>
 
-#include "ado_pre_sys_include.h"
 #include <adoctint.h>
-#include "ado_post_sys_include.h"
 
 struct ADOConnection;
-namespace connectivity
+
+namespace connectivity::ado
 {
-    namespace ado
-    {
 
         class WpADOField;
         class OLEString;
@@ -90,8 +87,8 @@ namespace connectivity
         };
 
 
-    }
 }
+
 
 #define ADO_PROP(ItemName)                                          \
         WpADOProperty aProp(aProps.GetItem(ItemName));              \

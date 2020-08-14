@@ -20,56 +20,39 @@
 
 #include <osl/diagnose.hxx>
 #include <tools/diagnose_ex.h>
-#include <canvas/canvastools.hxx>
 #include <cppcanvas/basegfxfactory.hxx>
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/numeric/ftools.hxx>
 
 #include <com/sun/star/awt/SystemPointer.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/drawing/XMasterPageTarget.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/presentation/ParagraphTarget.hpp>
 #include <com/sun/star/presentation/EffectNodeType.hpp>
-#include <com/sun/star/drawing/TextAnimationKind.hpp>
 
-#include <cppuhelper/exc_hlp.hxx>
-#include <comphelper/anytostring.hxx>
-
-#include "slide.hxx"
-#include "slideshowcontext.hxx"
+#include <slide.hxx>
+#include <slideshowcontext.hxx>
 #include "slideanimations.hxx"
-#include "doctreenode.hxx"
-#include "screenupdater.hxx"
-#include "cursormanager.hxx"
-#include "shapeimporter.hxx"
-#include "slideshowexceptions.hxx"
-#include "eventqueue.hxx"
-#include "activitiesqueue.hxx"
+#include <doctreenode.hxx>
+#include <screenupdater.hxx>
+#include <cursormanager.hxx>
+#include <shapeimporter.hxx>
+#include <slideshowexceptions.hxx>
+#include <eventqueue.hxx>
+#include <activitiesqueue.hxx>
 #include "layermanager.hxx"
 #include "shapemanagerimpl.hxx"
-#include "usereventqueue.hxx"
+#include <usereventqueue.hxx>
 #include "userpaintoverlay.hxx"
-#include "event.hxx"
 #include "targetpropertiescreator.hxx"
-#include "tools.hxx"
-
-#include <iterator>
-#include <functional>
-#include <iostream>
+#include <tools.hxx>
+#include <box2dtools.hxx>
 
 using namespace ::com::sun::star;
 
 
-namespace slideshow
-{
-namespace internal
+namespace slideshow::internal
 {
 namespace
 {
@@ -89,6 +72,7 @@ public:
                ActivitiesQueue&                                  rActivitiesQueue,
                UserEventQueue&                                   rUserEventQueue,
                CursorManager&                                    rCursorManager,
+               MediaFileManager&                                 rMediaFileManager,
                const UnoViewContainer&                           rViewContainer,
                const uno::Reference<uno::XComponentContext>&     xContext,
                const ShapeEventListenerMap&                      rShapeListenerMap,
@@ -117,7 +101,6 @@ public:
     virtual void drawPolygons() const override;
     virtual bool isPaintOverlayActive() const override;
     virtual void enablePaintOverlay() override;
-    virtual void disablePaintOverlay() override;
     virtual void update_settings( bool bUserPaintEnabled, RGBColor const& aUserPaintColor, double dUserPaintStrokeWidth ) override;
 
 
@@ -211,6 +194,7 @@ private:
     LayerManagerSharedPtr                               mpLayerManager;
     std::shared_ptr<ShapeManagerImpl>                 mpShapeManager;
     std::shared_ptr<SubsettableShapeManager>          mpSubsettableShapeManager;
+    box2d::utils::Box2DWorldSharedPtr                   mpBox2DWorld;
 
     /// Contains common objects needed throughout the slideshow
     SlideShowContext                                    maContext;
@@ -274,7 +258,7 @@ private:
 };
 
 
-void slideRenderer( SlideImpl* pSlide, const UnoViewSharedPtr& rView )
+void slideRenderer( SlideImpl const * pSlide, const UnoViewSharedPtr& rView )
 {
     // fully clear view content to background color
     rView->clearAll();
@@ -309,6 +293,7 @@ SlideImpl::SlideImpl( const uno::Reference< drawing::XDrawPage >&           xDra
                       ActivitiesQueue&                                      rActivitiesQueue,
                       UserEventQueue&                                       rUserEventQueue,
                       CursorManager&                                        rCursorManager,
+                      MediaFileManager&                                     rMediaFileManager,
                       const UnoViewContainer&                               rViewContainer,
                       const uno::Reference< uno::XComponentContext >&       xComponentContext,
                       const ShapeEventListenerMap&                          rShapeListenerMap,
@@ -322,16 +307,19 @@ SlideImpl::SlideImpl( const uno::Reference< drawing::XDrawPage >&           xDra
     mxDrawPage( xDrawPage ),
     mxDrawPagesSupplier( xDrawPages ),
     mxRootNode( xRootNode ),
-    mpLayerManager( new LayerManager(
+    mpLayerManager( std::make_shared<LayerManager>(
                         rViewContainer,
                         bDisableAnimationZOrder) ),
-    mpShapeManager( new ShapeManagerImpl(
+    mpShapeManager( std::make_shared<ShapeManagerImpl>(
                         rEventMultiplexer,
                         mpLayerManager,
                         rCursorManager,
                         rShapeListenerMap,
-                        rShapeCursorMap)),
+                        rShapeCursorMap,
+                        xDrawPage)),
     mpSubsettableShapeManager( mpShapeManager ),
+    mpBox2DWorld( std::make_shared<box2d::utils::box2DWorld>(
+                        basegfx::B2DSize( getSlideSizeImpl() ) ) ),
     maContext( mpSubsettableShapeManager,
                rEventQueue,
                rEventMultiplexer,
@@ -339,8 +327,10 @@ SlideImpl::SlideImpl( const uno::Reference< drawing::XDrawPage >&           xDra
                rActivitiesQueue,
                rUserEventQueue,
                *this,
+               rMediaFileManager,
                rViewContainer,
-               xComponentContext ),
+               xComponentContext,
+               mpBox2DWorld ),
     mrCursorManager( rCursorManager ),
     maAnimations( maContext,
                   basegfx::B2DSize( getSlideSizeImpl() ) ),
@@ -364,7 +354,7 @@ SlideImpl::SlideImpl( const uno::Reference< drawing::XDrawPage >&           xDra
 {
     // clone already existing views for slide bitmaps
     for( const auto& rView : rViewContainer )
-        this->viewAdded( rView );
+        viewAdded( rView );
 
     // register screen update (LayerManager needs to signal pending
     // updates)
@@ -400,7 +390,7 @@ void SlideImpl::prefetch()
     applyInitialShapeAttributes(mxRootNode);
 }
 
-void SlideImpl::show( bool bSlideBackgoundPainted )
+void SlideImpl::show( bool bSlideBackgroundPainted )
 {
     if( mbActive )
         return; // already active
@@ -425,7 +415,7 @@ void SlideImpl::show( bool bSlideBackgoundPainted )
 
 
     // render slide to screen, if requested
-    if( !bSlideBackgoundPainted )
+    if( !bSlideBackgroundPainted )
     {
         for( const auto& rContext : maContext.mrViewContainer )
             slideRenderer( this, rContext );
@@ -581,9 +571,8 @@ SlideBitmapSharedPtr SlideImpl::getCurrentSlideBitmap( const UnoViewSharedPtr& r
 
 void SlideImpl::viewAdded( const UnoViewSharedPtr& rView )
 {
-    maSlideBitmaps.push_back(
-        std::make_pair( rView,
-                        VectorOfSlideBitmaps(SlideAnimationState_NUM_ENTRIES) ));
+    maSlideBitmaps.emplace_back( rView,
+                        VectorOfSlideBitmaps(SlideAnimationState_NUM_ENTRIES) );
 
     if( mpLayerManager )
         mpLayerManager->viewAdded( rView );
@@ -689,37 +678,34 @@ SlideBitmapSharedPtr SlideImpl::createCurrentSlideBitmap( const UnoViewSharedPtr
     return std::make_shared<SlideBitmap>( pBitmap );
 }
 
-namespace
+class MainSequenceSearcher
 {
-    class MainSequenceSearcher
+public:
+    MainSequenceSearcher()
     {
-    public:
-        MainSequenceSearcher()
+        maSearchKey.Name = "node-type";
+        maSearchKey.Value <<= presentation::EffectNodeType::MAIN_SEQUENCE;
+    }
+
+    void operator()( const uno::Reference< animations::XAnimationNode >& xChildNode )
+    {
+        uno::Sequence< beans::NamedValue > aUserData( xChildNode->getUserData() );
+
+        if( findNamedValue( aUserData, maSearchKey ) )
         {
-            maSearchKey.Name = "node-type";
-            maSearchKey.Value <<= presentation::EffectNodeType::MAIN_SEQUENCE;
+            maMainSequence = xChildNode;
         }
+    }
 
-        void operator()( const uno::Reference< animations::XAnimationNode >& xChildNode )
-        {
-            uno::Sequence< beans::NamedValue > aUserData( xChildNode->getUserData() );
+    const uno::Reference< animations::XAnimationNode >& getMainSequence() const
+    {
+        return maMainSequence;
+    }
 
-            if( findNamedValue( aUserData, maSearchKey ) )
-            {
-                maMainSequence = xChildNode;
-            }
-        }
-
-        const uno::Reference< animations::XAnimationNode >& getMainSequence() const
-        {
-            return maMainSequence;
-        }
-
-    private:
-        beans::NamedValue                               maSearchKey;
-        uno::Reference< animations::XAnimationNode >    maMainSequence;
-    };
-}
+private:
+    beans::NamedValue                               maSearchKey;
+    uno::Reference< animations::XAnimationNode >    maMainSequence;
+};
 
 bool SlideImpl::implPrefetchShow()
 {
@@ -776,7 +762,7 @@ bool SlideImpl::implPrefetchShow()
     }
     catch( uno::Exception& )
     {
-        SAL_WARN( "slideshow", comphelper::anyToString(cppu::getCaughtException()) );
+        TOOLS_WARN_EXCEPTION( "slideshow", "" );
         // TODO(E2): Error handling. For now, bail out
     }
 
@@ -792,10 +778,6 @@ void SlideImpl::enablePaintOverlay()
         mbUserPaintOverlayEnabled = true;
         activatePaintOverlay();
     }
-}
-
-void SlideImpl::disablePaintOverlay()
-{
 }
 
 void SlideImpl::activatePaintOverlay()
@@ -819,16 +801,8 @@ void SlideImpl::drawPolygons() const
 
 void SlideImpl::addPolygons(const PolyPolygonVector& rPolygons)
 {
-    if(!rPolygons.empty())
-    {
-        for( PolyPolygonVector::const_iterator aIter = rPolygons.begin(),
-                 aEnd = rPolygons.end();
-             aIter!=aEnd;
-             ++aIter )
-        {
-            maPolygons.push_back(*aIter);
-        }
-    }
+    for (const auto& rxPolygon : rPolygons)
+        maPolygons.push_back(rxPolygon);
 }
 
 bool SlideImpl::isPaintOverlayActive() const
@@ -849,15 +823,14 @@ void SlideImpl::applyShapeAttributes(
     const css::uno::Reference< css::animations::XAnimationNode >& xRootAnimationNode,
     bool bInitial) const
 {
-    uno::Sequence< animations::TargetProperties > aProps(
+    const uno::Sequence< animations::TargetProperties > aProps(
         TargetPropertiesCreator::createTargetProperties( xRootAnimationNode, bInitial ) );
 
     // apply extracted values to our shapes
-    const ::std::size_t nSize( aProps.getLength() );
-    for( ::std::size_t i=0; i<nSize; ++i )
+    for( const auto& rProp : aProps )
     {
         sal_Int16                         nParaIndex( -1 );
-        uno::Reference< drawing::XShape > xShape( aProps[i].Target,
+        uno::Reference< drawing::XShape > xShape( rProp.Target,
                                                   uno::UNO_QUERY );
 
         if( !xShape.is() )
@@ -865,7 +838,7 @@ void SlideImpl::applyShapeAttributes(
             // not a shape target. Maybe a ParagraphTarget?
             presentation::ParagraphTarget aParaTarget;
 
-            if( (aProps[i].Target >>= aParaTarget) )
+            if( rProp.Target >>= aParaTarget )
             {
                 // yep, ParagraphTarget found - extract shape
                 // and index
@@ -921,14 +894,13 @@ void SlideImpl::applyShapeAttributes(
                 }
             }
 
-            const uno::Sequence< beans::NamedValue >& rShapeProps( aProps[i].Properties );
-            const ::std::size_t nShapePropSize( rShapeProps.getLength() );
-            for( ::std::size_t j=0; j<nShapePropSize; ++j )
+            const uno::Sequence< beans::NamedValue >& rShapeProps( rProp.Properties );
+            for( const auto& rShapeProp : rShapeProps )
             {
                 bool bVisible=false;
-                if( rShapeProps[j].Name.equalsIgnoreAsciiCase("visibility") &&
+                if( rShapeProp.Name.equalsIgnoreAsciiCase("visibility") &&
                     extractValue( bVisible,
-                                  rShapeProps[j].Value,
+                                  rShapeProp.Value,
                                   pShape,
                                   ::basegfx::B2DSize( getSlideSize() ) ))
                 {
@@ -988,8 +960,7 @@ bool SlideImpl::loadShapes()
     if( xMasterPageTarget.is() )
     {
         xMasterPage = xMasterPageTarget->getMasterPage();
-        xMasterPageShapes.set( xMasterPage,
-                               uno::UNO_QUERY );
+        xMasterPageShapes = xMasterPage;
 
         if( xMasterPage.is() && xMasterPageShapes.is() )
         {
@@ -1015,7 +986,10 @@ bool SlideImpl::loadShapes()
                     ShapeSharedPtr const& rShape(
                         aMPShapesFunctor.importShape() );
                     if( rShape )
+                    {
+                        rShape->setIsForeground(false);
                         mpLayerManager->addShape( rShape );
+                    }
                 }
                 addPolygons(aMPShapesFunctor.getPolygons());
 
@@ -1034,7 +1008,7 @@ bool SlideImpl::loadShapes()
             }
             catch( uno::Exception& )
             {
-                SAL_WARN( "slideshow", comphelper::anyToString( cppu::getCaughtException() ) );
+                TOOLS_WARN_EXCEPTION( "slideshow", "" );
                 return false;
             }
         }
@@ -1073,7 +1047,7 @@ bool SlideImpl::loadShapes()
     }
     catch( uno::Exception& )
     {
-        SAL_WARN( "slideshow", comphelper::anyToString( cppu::getCaughtException() ) );
+        TOOLS_WARN_EXCEPTION( "slideshow", "" );
         return false;
     }
 
@@ -1107,6 +1081,7 @@ SlideSharedPtr createSlide( const uno::Reference< drawing::XDrawPage >&         
                             ActivitiesQueue&                                    rActivitiesQueue,
                             UserEventQueue&                                     rUserEventQueue,
                             CursorManager&                                      rCursorManager,
+                            MediaFileManager&                                   rMediaFileManager,
                             const UnoViewContainer&                             rViewContainer,
                             const uno::Reference< uno::XComponentContext >&     xComponentContext,
                             const ShapeEventListenerMap&                        rShapeListenerMap,
@@ -1118,22 +1093,21 @@ SlideSharedPtr createSlide( const uno::Reference< drawing::XDrawPage >&         
                             bool                                                bIntrinsicAnimationsAllowed,
                             bool                                                bDisableAnimationZOrder )
 {
-    std::shared_ptr<SlideImpl> pRet( new SlideImpl( xDrawPage, xDrawPages, xRootNode, rEventQueue,
-                                                      rEventMultiplexer, rScreenUpdater,
-                                                      rActivitiesQueue, rUserEventQueue,
-                                                      rCursorManager, rViewContainer,
-                                                      xComponentContext, rShapeListenerMap,
-                                                      rShapeCursorMap, rPolyPolygonVector, rUserPaintColor,
-                                                      dUserPaintStrokeWidth, bUserPaintEnabled,
-                                                      bIntrinsicAnimationsAllowed,
-                                                      bDisableAnimationZOrder ));
+    auto pRet = std::make_shared<SlideImpl>( xDrawPage, xDrawPages, xRootNode, rEventQueue,
+                                             rEventMultiplexer, rScreenUpdater,
+                                             rActivitiesQueue, rUserEventQueue,
+                                             rCursorManager, rMediaFileManager, rViewContainer,
+                                             xComponentContext, rShapeListenerMap,
+                                             rShapeCursorMap, rPolyPolygonVector, rUserPaintColor,
+                                             dUserPaintStrokeWidth, bUserPaintEnabled,
+                                             bIntrinsicAnimationsAllowed,
+                                             bDisableAnimationZOrder );
 
     rEventMultiplexer.addViewHandler( pRet );
 
     return pRet;
 }
 
-} // namespace internal
 } // namespace slideshow
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

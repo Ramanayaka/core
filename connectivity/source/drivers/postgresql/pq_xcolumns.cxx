@@ -35,14 +35,14 @@
  ************************************************************************/
 
 #include <rtl/ustrbuf.hxx>
-#include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 
-#include <cppuhelper/implbase.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 
 #include "pq_xcolumns.hxx"
 #include "pq_xcolumn.hxx"
@@ -53,16 +53,12 @@ using osl::MutexGuard;
 
 
 using com::sun::star::beans::XPropertySet;
-using com::sun::star::beans::XPropertyChangeListener;
-using com::sun::star::beans::PropertyChangeEvent;
 
 using com::sun::star::uno::Any;
 using com::sun::star::uno::makeAny;
 using com::sun::star::uno::UNO_QUERY;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::RuntimeException;
-
-using com::sun::star::container::NoSuchElementException;
 
 using com::sun::star::sdbc::XRow;
 using com::sun::star::sdbc::XStatement;
@@ -129,7 +125,7 @@ OUString columnMetaData2SDBCX(
     //  3. TABLE_NAME string => table name
     //               => pg_class.relname
     //  4. COLUMN_NAME string => column name
-    //               => pg_attribure.attname
+    //               => pg_attribute.attname
     //  5. DATA_TYPE short => SQL type from java.sql.Types
     //               => pg_type.typname => sdbc.DataType
     //  6. TYPE_NAME string => Data source dependent type name, for a UDT the
@@ -210,7 +206,7 @@ OUString columnMetaData2SDBCX(
 //         pBase->setPropertyValue_NoBroadcast_public(
 //             st.HELP_TEXT, makeAny( xRow->getString( DESCRIPTION ) ) );
 //     else // for key columns, etc. ...
-        pBase->setPropertyValue_NoBroadcast_public(
+    pBase->setPropertyValue_NoBroadcast_public(
             st.DESCRIPTION, makeAny( xRow->getString( DESCRIPTION ) ) );
 
 
@@ -280,15 +276,7 @@ void Columns::refresh()
 {
     try
     {
-        if (isLog(m_pSettings, LogLevel::Info))
-        {
-            OStringBuffer buf;
-            buf.append( "sdbcx.Columns get refreshed for table " );
-            buf.append( OUStringToOString( m_schemaName, ConnectionSettings::encoding ) );
-            buf.append( "." );
-            buf.append( OUStringToOString( m_tableName, ConnectionSettings::encoding ) );
-            log( m_pSettings, LogLevel::Info, buf.makeStringAndClear().getStr() );
-        }
+        SAL_INFO("connectivity.postgresql", "sdbcx.Columns get refreshed for table " << m_schemaName << "." << m_tableName);
         osl::MutexGuard guard( m_xMutex->GetMutex() );
 
         Statics &st = getStatics();
@@ -331,7 +319,9 @@ void Columns::refresh()
     }
     catch ( css::sdbc::SQLException & e )
     {
-        throw RuntimeException( e.Message , e.Context );
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException( e.Message,
+                        nullptr, anyEx );
     }
     fire( RefreshedBroadcaster( *this ) );
 }
@@ -497,7 +487,7 @@ void Columns::appendByDescriptor(
 void Columns::dropByIndex( sal_Int32 index )
 {
     osl::MutexGuard guard( m_xMutex->GetMutex() );
-    if( index < 0 ||  index >= (sal_Int32)m_values.size() )
+    if( index < 0 ||  index >= static_cast<sal_Int32>(m_values.size()) )
     {
         throw css::lang::IndexOutOfBoundsException(
             "COLUMNS: Index out of range (allowed 0 to "

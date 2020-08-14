@@ -18,6 +18,7 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include "methodguard.hxx"
 #include "loghandler.hxx"
@@ -34,9 +35,7 @@
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
-#include <osl/thread.h>
 #include <osl/file.hxx>
-#include <rtl/strbuf.hxx>
 
 #include <memory>
 
@@ -44,7 +43,6 @@ namespace logging
 {
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::logging::LogRecord;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::logging::XLogFormatter;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::uno::XInterface;
@@ -60,6 +58,9 @@ namespace logging
     typedef ::cppu::WeakComponentImplHelper    <   XLogHandler
                                                 ,   XServiceInfo
                                                 >   FileHandler_Base;
+
+    namespace {
+
     class FileHandler   :public ::cppu::BaseMutex
                         ,public FileHandler_Base
     {
@@ -122,6 +123,8 @@ namespace logging
         void    impl_doStringsubstitution_nothrow( OUString& _inout_rURL );
     };
 
+    }
+
     FileHandler::FileHandler(const css::uno::Reference<XComponentContext> &context,
             const css::uno::Sequence<css::uno::Any> &arguments)
         :FileHandler_Base( m_aMutex )
@@ -174,10 +177,12 @@ namespace logging
             m_pFile.reset( new ::osl::File( m_sFileURL ) );
             // check whether the log file already exists
             ::osl::DirectoryItem aFileItem;
-            ::osl::DirectoryItem::get( m_sFileURL, aFileItem );
-            ::osl::FileStatus aStatus( osl_FileStatus_Mask_Validate );
-            if ( ::osl::FileBase::E_None == aFileItem.getFileStatus( aStatus ) )
-                ::osl::File::remove( m_sFileURL );
+            if (osl::FileBase::E_None == ::osl::DirectoryItem::get(m_sFileURL, aFileItem))
+            {
+                ::osl::FileStatus aStatus(osl_FileStatus_Mask_Validate);
+                if (::osl::FileBase::E_None == aFileItem.getFileStatus(aStatus))
+                    ::osl::File::remove(m_sFileURL);
+            }
 
             ::osl::FileBase::RC res = m_pFile->open( osl_File_OpenFlag_Write | osl_File_OpenFlag_Create );
             m_eFileValidity =   res == ::osl::FileBase::E_None
@@ -188,7 +193,7 @@ namespace logging
             {
                 SAL_WARN( "extensions.logging", "FileHandler::impl_prepareFile_nothrow: could not open the designated log file:"
                             "\nURL: " << m_sFileURL
-                            << "\nerror code: " << (sal_Int32)res );
+                            << "\nerror code: " << static_cast<sal_Int32>(res) );
             }
         #endif
             if ( m_eFileValidity == eValid )
@@ -205,7 +210,7 @@ namespace logging
 
     void FileHandler::impl_writeString_nothrow( const OString& _rEntry )
     {
-        OSL_PRECOND( m_pFile.get(), "FileHandler::impl_writeString_nothrow: no file!" );
+        OSL_PRECOND(m_pFile, "FileHandler::impl_writeString_nothrow: no file!");
 
         sal_uInt64 nBytesToWrite( _rEntry.getLength() );
         sal_uInt64 nBytesWritten( 0 );
@@ -225,7 +230,7 @@ namespace logging
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.logging");
         }
     }
 
@@ -303,7 +308,7 @@ namespace logging
     void SAL_CALL FileHandler::flush(  )
     {
         MethodGuard aGuard( *this );
-        if(!m_pFile.get())
+        if (!m_pFile)
         {
             OSL_PRECOND(false, "FileHandler::flush: no file!");
             return;
@@ -330,7 +335,7 @@ namespace logging
 
     OUString SAL_CALL FileHandler::getImplementationName()
     {
-        return OUString("com.sun.star.comp.extensions.FileHandler");
+        return "com.sun.star.comp.extensions.FileHandler";
     }
 
     sal_Bool SAL_CALL FileHandler::supportsService( const OUString& _rServiceName )
@@ -345,7 +350,7 @@ namespace logging
 
 } // namespace logging
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_extensions_FileHandler(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &arguments)

@@ -35,12 +35,14 @@ gb_CliLibrary__get_generated_source = $(WORKDIR)/$(1).cs
 
 # csc has silly problems handling files passed on command line
 define gb_CliLibrary__command
-$(call gb_Output_announce,$(2),$(true),CSC,3)
 	csc \
 		$(call gb_CliLibrary__get_csflags) \
 		$(CLI_CSCFLAGS) \
 		-target:library \
 		-out:$(1) \
+		$(if $(call gb_LinkTarget__symbols_enabled,$(1)),\
+			-debug:pdbonly \
+			-pdb:$(call gb_LinkTarget__get_pdb_filename,$(WORKDIR)/LinkTarget/Library/$(notdir $(1)))) \
 		-keyfile:$(CLI_KEYFILE) \
 		-reference:System.dll \
 		$(foreach assembly,$(CLI_ASSEMBLIES),-reference:$(assembly)) \
@@ -77,12 +79,15 @@ $$(eval $$(call gb_Module_register_target,$(call gb_CliLibrary_get_target,$(1)),
 $(call gb_Helper_make_userfriendly_targets,$(1),CliLibrary)
 
 $(call gb_CliLibrary_get_target,$(1)) :
+	$$(call gb_Output_announce,$(1),$(true),CSC,3)
+	$$(call gb_Trace_StartRange,$(1),CSC)
 	$$(call gb_CliLibrary__command,$$@,$(1))
+	$$(call gb_Trace_EndRange,$(1),CSC)
 
 endef
 
 define gb_CliLibrary_set_configfile
-$(call gb_CliAssembly_set_configfile,$(1),$(2))
+$(call gb_CliAssembly_set_configfile,$(1),$(2),$(3))
 
 endef
 

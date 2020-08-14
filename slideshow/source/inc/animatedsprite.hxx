@@ -20,24 +20,19 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_INC_ANIMATEDSPRITE_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_INC_ANIMATEDSPRITE_HXX
 
-#include <cppcanvas/customsprite.hxx>
-
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/vector/b2dsize.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 
 #include "viewlayer.hxx"
 
-#include <boost/optional.hpp>
+#include <optional>
 #include <memory>
 
 
 /* Definition of AnimatedSprite class */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** This class provides the sprite for animated shapes.
 
@@ -148,16 +143,14 @@ namespace slideshow
 
             double                                                      mnSpritePrio;
             double                                                      mnAlpha;
-            ::boost::optional< ::basegfx::B2DPoint >                    maPosPixel;
-            ::boost::optional< ::basegfx::B2DPolyPolygon >              maClip;
-            ::boost::optional< ::basegfx::B2DHomMatrix >                maTransform;
+            ::std::optional< ::basegfx::B2DPoint >                    maPosPixel;
+            ::std::optional< ::basegfx::B2DPolyPolygon >              maClip;
 
             bool                                                        mbSpriteVisible;
         };
 
         typedef ::std::shared_ptr< AnimatedSprite > AnimatedSpriteSharedPtr;
 
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_ANIMATEDSPRITE_HXX

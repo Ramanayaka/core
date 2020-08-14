@@ -21,14 +21,12 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AVIEWS_HXX
 
 #include <connectivity/sdbcx/VCollection.hxx>
-#include "ado/Awrapadox.hxx"
-#include "ado/ACatalog.hxx"
+#include <ado/Awrapadox.hxx>
+#include <ado/ACatalog.hxx>
 
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
 
         class OViews : public sdbcx::OCollection
         {
@@ -42,14 +40,13 @@ namespace connectivity
             virtual void dropObject(sal_Int32 _nPos,const OUString& _sElementName) override;
         public:
             OViews(OCatalog* _pParent, ::osl::Mutex& _rMutex,
-                const TStringVector &_rVector,
-                WpADOViews& _rCollection,bool _bCase) : sdbcx::OCollection(*_pParent,_bCase,_rMutex,_rVector)
+                const ::std::vector< OUString> &_rVector,
+                WpADOViews const & _rCollection,bool _bCase) : sdbcx::OCollection(*_pParent,_bCase,_rMutex,_rVector)
                 ,m_aCollection(_rCollection)
                 ,m_pCatalog(_pParent)
             {
             }
         };
-    }
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AVIEWS_HXX
 

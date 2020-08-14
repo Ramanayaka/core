@@ -17,29 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_GSTREAMER_GSTPLAYER_HXX
-#define INCLUDED_AVMEDIA_SOURCE_GSTREAMER_GSTPLAYER_HXX
+#pragma once
 
 #include <osl/conditn.hxx>
 #include "gstcommon.hxx"
 
-#include "com/sun/star/media/XPlayer.hpp"
+#include <com/sun/star/media/XPlayer.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 
-#if defined(ENABLE_GTKSINK)
-#    include <gtk/gtk.h>
-#endif
-
 typedef struct _GstVideoOverlay GstVideoOverlay;
 
-namespace avmedia { namespace gstreamer {
+namespace avmedia::gstreamer {
 
 
 typedef ::cppu::WeakComponentImplHelper< css::media::XPlayer,
                                          css::lang::XServiceInfo > GstPlayer_BASE;
 
-class Player : public ::cppu::BaseMutex,
+class Player final : public ::cppu::BaseMutex,
                public GstPlayer_BASE
 {
 public:
@@ -77,15 +72,12 @@ public:
     // ::cppu::OComponentHelper
     virtual void SAL_CALL disposing() final override;
 
-protected:
+private:
     OUString                maURL;
 
     // Add elements and pipeline here
     GstElement*             mpPlaybin;  // the playbin is also a pipeline
     GstElement*             mpVolumeControl;  // the playbin is also a pipeline
-#if defined(ENABLE_GTKSINK)
-    GtkWidget*              mpGtkWidget;
-#endif
     bool                    mbUseGtkSink;
     bool                    mbFakeVideo;
 
@@ -95,11 +87,14 @@ protected:
     bool                    mbLooping;
     bool                    mbInitialized;
 
+    void*                   mpDisplay;
     long                    mnWindowID;
     GstVideoOverlay*        mpXOverlay;
     gint64                  mnDuration;
     int                     mnWidth;
     int                     mnHeight;
+
+    css::awt::Rectangle     maArea;     // Area of the player window.
 
     guint                   mnWatchID;
     bool                    mbWatchID;
@@ -107,9 +102,6 @@ protected:
     osl::Condition          maSizeCondition;
 };
 
-} // namespace gstreamer
-} // namespace avmedia
-
-#endif // INCLUDED_AVMEDIA_SOURCE_GSTREAMER_GSTPLAYER_HXX
+} // namespace avmedia::gstreamer
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

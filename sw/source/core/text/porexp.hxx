@@ -25,40 +25,36 @@
 class SwExpandPortion : public SwTextPortion
 {
 public:
-    SwExpandPortion() { SetWhichPor( POR_EXP ); }
+    SwExpandPortion() { SetWhichPor( PortionType::Expand ); }
     virtual bool Format( SwTextFormatInfo &rInf ) override;
-    virtual sal_Int32 GetCursorOfst( const sal_uInt16 nOfst ) const override;
+    virtual TextFrameIndex GetModelPositionForViewPoint(sal_uInt16 nOfst) const override;
     virtual bool GetExpText( const SwTextSizeInfo &rInf, OUString &rText ) const override;
     virtual SwPosSize GetTextSize( const SwTextSizeInfo &rInfo ) const override;
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
 
     // Accessibility: pass information about this portion to the PortionHandler
     virtual void HandlePortion( SwPortionHandler& rPH ) const override;
-
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 class SwBlankPortion : public SwExpandPortion
 {
-    sal_Unicode cChar;
-    bool bMulti;        // For multiportion brackets
+    sal_Unicode m_cChar;
+    bool m_bMulti;        // For multiportion brackets
 public:
     SwBlankPortion( sal_Unicode cCh, bool bMult = false )
-        : cChar( cCh ), bMulti( bMult )
-        { cChar = cCh; SetLen(1); SetWhichPor( POR_BLANK ); }
+        : m_cChar( cCh ), m_bMulti( bMult )
+        { SetLen(TextFrameIndex(1)); SetWhichPor( PortionType::Blank ); }
 
     virtual SwLinePortion *Compress() override;
     virtual bool GetExpText( const SwTextSizeInfo &rInf, OUString &rText ) const override;
     virtual void FormatEOL( SwTextFormatInfo &rInf ) override;
     virtual bool Format( SwTextFormatInfo &rInf ) override;
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
-    static sal_uInt16 MayUnderflow( const SwTextFormatInfo &rInf, sal_Int32 nIdx,
+    static sal_uInt16 MayUnderflow(const SwTextFormatInfo &rInf, TextFrameIndex nIdx,
         bool bUnderflow );
 
     // Accessibility: pass information about this portion to the PortionHandler
     virtual void HandlePortion( SwPortionHandler& rPH ) const override;
-
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 class SwPostItsPortion : public SwExpandPortion
@@ -71,7 +67,6 @@ public:
     virtual sal_uInt16 GetViewWidth( const SwTextSizeInfo &rInf ) const override;
     virtual bool GetExpText( const SwTextSizeInfo &rInf, OUString &rText ) const override;
     bool IsScript() const { return bScript; }
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 #endif

@@ -19,12 +19,7 @@
 #ifndef INCLUDED_CUI_SOURCE_INC_MULTIPAT_HXX
 #define INCLUDED_CUI_SOURCE_INC_MULTIPAT_HXX
 
-#include <vcl/dialog.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-
-#include "radiobtnbox.hxx"
+#include <vcl/weld.hxx>
 
 // define ----------------------------------------------------------------
 
@@ -36,45 +31,47 @@
 #define CLASSPATH_DELIMITER ';'
 #endif
 
-class SvxMultiPathDialog : public ModalDialog
+class SvxMultiPathDialog : public weld::GenericDialogController
 {
 private:
-    VclPtr<svx::SvxRadioButtonListBox> m_pRadioLB;
-    VclPtr<PushButton>                 m_pAddBtn;
-    VclPtr<PushButton>                 m_pDelBtn;
+    std::unique_ptr<weld::TreeView> m_xRadioLB;
+    std::unique_ptr<weld::Button> m_xAddBtn;
+    std::unique_ptr<weld::Button> m_xDelBtn;
 
-    DECL_LINK(AddHdl_Impl, Button*, void);
-    DECL_LINK(DelHdl_Impl, Button*, void);
-    DECL_LINK(SelectHdl_Impl, SvTreeListBox*, void);
-    DECL_LINK(CheckHdl_Impl, SvTreeListBox*, void);
+    void AppendEntry(const OUString& rText, const OUString& rId);
+    void HandleEntryChecked(int nRow);
+
+    DECL_LINK(AddHdl_Impl, weld::Button&, void);
+    DECL_LINK(DelHdl_Impl, weld::Button&, void);
+    DECL_LINK(SelectHdl_Impl, weld::TreeView&, void);
+    DECL_LINK(CheckHdl_Impl, const weld::TreeView::iter_col&, void);
 
 public:
-    SvxMultiPathDialog(vcl::Window* pParent);
+    SvxMultiPathDialog(weld::Window* pParent);
     virtual ~SvxMultiPathDialog() override;
-    virtual void    dispose() override;
 
     OUString        GetPath() const;
-    void            SetPath( const OUString& rPath );
+    void            SetPath(const OUString& rPath);
+    void            SetTitle(const OUString& rTitle) { m_xDialog->set_title(rTitle); }
 };
 
-class SvxPathSelectDialog : public ModalDialog
+class SvxPathSelectDialog : public weld::GenericDialogController
 {
 private:
-    VclPtr<ListBox>                    m_pPathLB;
-    VclPtr<PushButton>                 m_pAddBtn;
-    VclPtr<PushButton>                 m_pDelBtn;
+    std::unique_ptr<weld::TreeView> m_xPathLB;
+    std::unique_ptr<weld::Button> m_xAddBtn;
+    std::unique_ptr<weld::Button> m_xDelBtn;
 
-    DECL_LINK(AddHdl_Impl, Button*, void);
-    DECL_LINK(DelHdl_Impl, Button*, void);
-    DECL_LINK(SelectHdl_Impl, ListBox&, void);
+    DECL_LINK(AddHdl_Impl, weld::Button&, void);
+    DECL_LINK(DelHdl_Impl, weld::Button&, void);
+    DECL_LINK(SelectHdl_Impl, weld::TreeView&, void);
 
 public:
-    SvxPathSelectDialog(vcl::Window* pParent);
-    virtual ~SvxPathSelectDialog() override;
-    virtual void    dispose() override;
+    SvxPathSelectDialog(weld::Window* pParent);
 
     OUString        GetPath() const;
     void            SetPath( const OUString& rPath );
+    void            SetTitle(const OUString& rTitle) { m_xDialog->set_title(rTitle); }
 };
 
 #endif // INCLUDED_CUI_SOURCE_INC_MULTIPAT_HXX

@@ -17,16 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "tablecontainer.hxx"
-#include "dbastrings.hrc"
-#include "table.hxx"
+#include <apitools.hxx>
+#include <tablecontainer.hxx>
+#include <table.hxx>
+#include <sal/log.hxx>
 #include <comphelper/property.hxx>
 #include <comphelper/processfactory.hxx>
-#include <tools/debug.hxx>
-#include <comphelper/enumhelper.hxx>
-#include "core_resource.hxx"
-#include "core_resource.hrc"
-#include <com/sun/star/sdb/CommandType.hpp>
+#include <core_resource.hxx>
+#include <strings.hrc>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/PropertyState.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
@@ -34,20 +32,15 @@
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <com/sun/star/sdbcx/XTablesSupplier.hpp>
-#include <com/sun/star/sdbc/KeyRule.hpp>
-#include <com/sun/star/sdbcx/KeyType.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <comphelper/types.hxx>
 #include <connectivity/dbtools.hxx>
-#include <comphelper/extract.hxx>
 #include <connectivity/dbexception.hxx>
-#include "TableDeco.hxx"
-#include "sdbcoretools.hxx"
-#include "ContainerMediator.hxx"
-#include "definitioncolumn.hxx"
-#include "objectnameapproval.hxx"
+#include <TableDeco.hxx>
+#include <sdbcoretools.hxx>
+#include <ContainerMediator.hxx>
+#include <objectnameapproval.hxx>
 #include <tools/diagnose_ex.h>
 
 using namespace dbaccess;
@@ -101,10 +94,9 @@ OTableContainer::OTableContainer(::cppu::OWeakObject& _rParent,
                                  bool _bCase,
                                  const Reference< XNameContainer >& _xTableDefinitions,
                                  IRefreshListener*  _pRefreshListener,
-                                 oslInterlockedCount& _nInAppend)
+                                 std::atomic<std::size_t>& _nInAppend)
     :OFilteredContainer(_rParent,_rMutex,_xCon,_bCase,_pRefreshListener,_nInAppend)
     ,m_xTableDefinitions(_xTableDefinitions)
-    ,m_pTableMediator( nullptr )
 {
 }
 
@@ -121,7 +113,7 @@ void OTableContainer::removeMasterContainerListener()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -141,20 +133,20 @@ void lcl_createDefintionObject(const OUString& _rName
                            ,Reference<XPropertySet>& _xTableDefinition
                            ,Reference<XNameAccess>& _xColumnDefinitions)
 {
-    if ( _xTableDefinitions.is() )
+    if ( !_xTableDefinitions.is() )
+        return;
+
+    if ( _xTableDefinitions->hasByName(_rName) )
+        _xTableDefinition.set(_xTableDefinitions->getByName(_rName),UNO_QUERY);
+    else
     {
-        if ( _xTableDefinitions->hasByName(_rName) )
-            _xTableDefinition.set(_xTableDefinitions->getByName(_rName),UNO_QUERY);
-        else
-        {
-            // set as folder
-            _xTableDefinition.set( TableDefinition::createWithName( ::comphelper::getProcessComponentContext(), _rName ), UNO_QUERY);
-            _xTableDefinitions->insertByName(_rName,makeAny(_xTableDefinition));
-        }
-        Reference<XColumnsSupplier> xColumnsSupplier(_xTableDefinition,UNO_QUERY);
-        if ( xColumnsSupplier.is() )
-            _xColumnDefinitions = xColumnsSupplier->getColumns();
+        // set as folder
+        _xTableDefinition = TableDefinition::createWithName( ::comphelper::getProcessComponentContext(), _rName );
+        _xTableDefinitions->insertByName(_rName,makeAny(_xTableDefinition));
     }
+    Reference<XColumnsSupplier> xColumnsSupplier(_xTableDefinition,UNO_QUERY);
+    if ( xColumnsSupplier.is() )
+        _xColumnDefinitions = xColumnsSupplier->getColumns();
 }
 
 }
@@ -268,10 +260,9 @@ ObjectType OTableContainer::appendObject( const OUString& _rForName, const Refer
     }
 
     Reference< XConnection > xConnection( m_xConnection.get(), UNO_QUERY );
-    PContainerApprove pApprove( new ObjectNameApproval( xConnection, ObjectNameApproval::TypeTable ) );
-    pApprove->approveElement( aName, descriptor );
+    PContainerApprove pApprove = std::make_shared<ObjectNameApproval>( xConnection, ObjectNameApproval::TypeTable );
+    pApprove->approveElement( aName );
 
-    try
     {
         EnsureReset aReset(m_nInAppend);
         Reference<XAppend> xAppend(m_xMasterContainer,UNO_QUERY);
@@ -293,10 +284,6 @@ ObjectType OTableContainer::appendObject( const OUString& _rForName, const Refer
                 ::comphelper::disposeComponent(xStmt);
             }
         }
-    }
-    catch(const Exception&)
-    {
-        throw;
     }
 
     Reference<XPropertySet> xTableDefinition;
@@ -335,7 +322,7 @@ ObjectType OTableContainer::appendObject( const OUString& _rForName, const Refer
         PROPERTY_ROW_HEIGHT, PROPERTY_TEXTCOLOR, PROPERTY_TEXTLINECOLOR,
         PROPERTY_TEXTEMPHASIS, PROPERTY_TEXTRELIEF};
     if ( bModified || !lcl_isPropertySetDefaulted(aNames,xTableDefinition) )
-        ::dbaccess::notifyDataSourceModified(m_xTableDefinitions,true);
+        ::dbaccess::notifyDataSourceModified(m_xTableDefinitions);
 
     return createObject( _rForName );
 }
@@ -343,61 +330,54 @@ ObjectType OTableContainer::appendObject( const OUString& _rForName, const Refer
 // XDrop
 void OTableContainer::dropObject(sal_Int32 _nPos, const OUString& _sElementName)
 {
-    try
+    Reference< XDrop > xDrop(m_xMasterContainer,UNO_QUERY);
+    if(xDrop.is())
+        xDrop->dropByName(_sElementName);
+    else
     {
-        Reference< XDrop > xDrop(m_xMasterContainer,UNO_QUERY);
-        if(xDrop.is())
-            xDrop->dropByName(_sElementName);
-        else
+        OUString sCatalog,sSchema,sTable,sComposedName;
+
+        bool bIsView = false;
+        Reference<XPropertySet> xTable(getObject(_nPos),UNO_QUERY);
+        if ( xTable.is() && m_xMetaData.is() )
         {
-            OUString sCatalog,sSchema,sTable,sComposedName;
+            if (m_xMetaData->supportsCatalogsInTableDefinitions())
+                xTable->getPropertyValue(PROPERTY_CATALOGNAME)  >>= sCatalog;
+            if (m_xMetaData->supportsSchemasInTableDefinitions())
+                xTable->getPropertyValue(PROPERTY_SCHEMANAME)   >>= sSchema;
+            xTable->getPropertyValue(PROPERTY_NAME)         >>= sTable;
 
-            bool bIsView = false;
-            Reference<XPropertySet> xTable(getObject(_nPos),UNO_QUERY);
-            if ( xTable.is() && m_xMetaData.is() )
-            {
-                if( m_xMetaData.is() && m_xMetaData->supportsCatalogsInTableDefinitions() )
-                    xTable->getPropertyValue(PROPERTY_CATALOGNAME)  >>= sCatalog;
-                if( m_xMetaData.is() && m_xMetaData->supportsSchemasInTableDefinitions() )
-                    xTable->getPropertyValue(PROPERTY_SCHEMANAME)   >>= sSchema;
-                xTable->getPropertyValue(PROPERTY_NAME)         >>= sTable;
+            sComposedName = ::dbtools::composeTableName( m_xMetaData, sCatalog, sSchema, sTable, true, ::dbtools::EComposeRule::InTableDefinitions );
 
-                sComposedName = ::dbtools::composeTableName( m_xMetaData, sCatalog, sSchema, sTable, true, ::dbtools::EComposeRule::InTableDefinitions );
-
-                OUString sType;
-                xTable->getPropertyValue(PROPERTY_TYPE)         >>= sType;
-                bIsView = sType.equalsIgnoreAsciiCase("VIEW");
-            }
-
-            if(sComposedName.isEmpty())
-                ::dbtools::throwFunctionSequenceException(static_cast<XTypeProvider*>(static_cast<OFilteredContainer*>(this)));
-
-            OUString aSql("DROP ");
-
-            if ( bIsView ) // here we have a view
-                aSql += "VIEW ";
-            else
-                aSql += "TABLE ";
-            aSql += sComposedName;
-            Reference<XConnection> xCon = m_xConnection;
-            OSL_ENSURE(xCon.is(),"Connection is null!");
-            if ( xCon.is() )
-            {
-                Reference< XStatement > xStmt = xCon->createStatement(  );
-                if(xStmt.is())
-                    xStmt->execute(aSql);
-                ::comphelper::disposeComponent(xStmt);
-            }
+            OUString sType;
+            xTable->getPropertyValue(PROPERTY_TYPE)         >>= sType;
+            bIsView = sType.equalsIgnoreAsciiCase("VIEW");
         }
 
-        if ( m_xTableDefinitions.is() && m_xTableDefinitions->hasByName(_sElementName) )
+        if(sComposedName.isEmpty())
+            ::dbtools::throwFunctionSequenceException(static_cast<XTypeProvider*>(static_cast<OFilteredContainer*>(this)));
+
+        OUString aSql("DROP ");
+
+        if ( bIsView ) // here we have a view
+            aSql += "VIEW ";
+        else
+            aSql += "TABLE ";
+        aSql += sComposedName;
+        Reference<XConnection> xCon = m_xConnection;
+        OSL_ENSURE(xCon.is(),"Connection is null!");
+        if ( xCon.is() )
         {
-            m_xTableDefinitions->removeByName(_sElementName);
+            Reference< XStatement > xStmt = xCon->createStatement(  );
+            if(xStmt.is())
+                xStmt->execute(aSql);
+            ::comphelper::disposeComponent(xStmt);
         }
     }
-    catch(const Exception&)
+
+    if ( m_xTableDefinitions.is() && m_xTableDefinitions->hasByName(_sElementName) )
     {
-        throw;
+        m_xTableDefinitions->removeByName(_sElementName);
     }
 }
 
@@ -426,16 +406,14 @@ void SAL_CALL OTableContainer::elementRemoved( const ContainerEvent& /*Event*/ )
 void SAL_CALL OTableContainer::elementReplaced( const ContainerEvent& Event )
 {
     // create a new config entry
-    {
-        OUString sOldComposedName,sNewComposedName;
-        Event.ReplacedElement   >>= sOldComposedName;
-        Event.Accessor          >>= sNewComposedName;
+    OUString sOldComposedName,sNewComposedName;
+    Event.ReplacedElement   >>= sOldComposedName;
+    Event.Accessor          >>= sNewComposedName;
 
-        renameObject(sOldComposedName,sNewComposedName);
-    }
+    renameObject(sOldComposedName,sNewComposedName);
 }
 
-void SAL_CALL OTableContainer::disposing()
+void OTableContainer::disposing()
 {
     OFilteredContainer::disposing();
     // say goodbye to our listeners
@@ -456,7 +434,7 @@ void OTableContainer::addMasterContainerListener()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 

@@ -24,6 +24,9 @@
 #include "mzstring.h"
 
 #ifdef _WIN32
+# if !defined WIN32_LEAN_AND_MEAN
+#  define WIN32_LEAN_AND_MEAN
+# endif
 # include <windows.h>
 #endif
 #include <stdio.h>
@@ -31,12 +34,12 @@
 #include <string.h>
 
 #ifndef _WIN32
-# define wsprintf sprintf
+# define wsprintfA sprintf
 #endif
 
 const int AllocSize = 8;
 
-inline int get_alloc_size(int len)
+static int get_alloc_size(int len)
 {
     return (len + AllocSize - 1) / AllocSize * AllocSize;
 }
@@ -59,6 +62,9 @@ MzString::~MzString()
 
 MzString &MzString::operator=(const MzString &s)
 {
+    if(this == &s)
+        return *this;
+
     int n = s.length();
     if (allocate(n))
     {
@@ -178,7 +184,7 @@ MzString &MzString::operator << (int i)
 {
     char str[80];
 
-    wsprintf(str, "%d", i);
+    wsprintfA(str, "%d", i);
     append(str);
     return *this;
 }
@@ -188,7 +194,7 @@ MzString &MzString::operator << (long l)
 {
     char str[80];
 
-    wsprintf(str, "%ld", l);
+    wsprintfA(str, "%ld", l);
     append(str);
     return *this;
 }

@@ -17,33 +17,31 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fuoaprms.hxx"
+#include <fuoaprms.hxx>
+#include <sdattr.hrc>
 
-#include "sdattr.hxx"
-#include <svx/svdpagv.hxx>
 #include <editeng/colritem.hxx>
 #include <svx/svdundo.hxx>
-#include <vcl/group.hxx>
-#include <vcl/fixed.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/request.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <vcl/msgbox.hxx>
+#include <sfx2/sfxdlg.hxx>
 #include <svl/aeitem.hxx>
-#include "svx/xtable.hxx"
+#include <svl/intitem.hxx>
+#include <svl/stritem.hxx>
+#include <svx/svdopath.hxx>
+#include <tools/debug.hxx>
 
-#include "strings.hrc"
-#include "glob.hrc"
-#include "drawdoc.hxx"
-#include "ViewShell.hxx"
-#include "ViewShellBase.hxx"
-#include "anminfo.hxx"
-#include "unoaprms.hxx"
-#include "sdundogr.hxx"
-#include "View.hxx"
-#include "Window.hxx"
-#include "sdabstdlg.hxx"
-#include "sdresid.hxx"
+#include <strings.hrc>
+#include <drawdoc.hxx>
+#include <ViewShell.hxx>
+#include <ViewShellBase.hxx>
+#include <anminfo.hxx>
+#include <unoaprms.hxx>
+#include <sdundogr.hxx>
+#include <View.hxx>
+#include <sdabstdlg.hxx>
+#include <sdresid.hxx>
 #include <tools/helpers.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <memory>
@@ -76,7 +74,7 @@ rtl::Reference<FuPoor> FuObjectAnimationParameters::Create( ViewShell* pViewSh, 
 
 void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
 {
-    ::svl::IUndoManager* pUndoMgr = mpViewShell->GetViewFrame()->GetObjectShell()->GetUndoManager();
+    SfxUndoManager* pUndoMgr = mpViewShell->GetViewFrame()->GetObjectShell()->GetUndoManager();
 
     const SdrMarkList& rMarkList  = mpView->GetMarkedObjectList();
     const size_t nCount = rMarkList.GetMarkCount();
@@ -289,8 +287,8 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
     {
         SdrObject* pObject1 = rMarkList.GetMark(0)->GetMarkedSdrObj();
         SdrObject* pObject2 = rMarkList.GetMark(1)->GetMarkedSdrObj();
-        SdrObjKind eKind1   = (SdrObjKind)pObject1->GetObjIdentifier();
-        SdrObjKind eKind2   = (SdrObjKind)pObject2->GetObjIdentifier();
+        SdrObjKind eKind1   = static_cast<SdrObjKind>(pObject1->GetObjIdentifier());
+        SdrObjKind eKind2   = static_cast<SdrObjKind>(pObject2->GetObjIdentifier());
         SdAnimationInfo* pInfo1 = SdDrawDocument::GetAnimationInfo(pObject1);
         SdAnimationInfo* pInfo2 = SdDrawDocument::GetAnimationInfo(pObject2);
         pInfo  = nullptr;
@@ -350,21 +348,21 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
             aSet.Put(SfxBoolItem(ATTR_ANIMATION_ACTIVE, false));
 
         if (nEffectSet == ATTR_SET)
-            aSet.Put(SfxAllEnumItem(ATTR_ANIMATION_EFFECT, (sal_uInt16)eEffect));
+            aSet.Put(SfxUInt16Item(ATTR_ANIMATION_EFFECT, static_cast<sal_uInt16>(eEffect)));
         else if (nEffectSet == ATTR_MIXED)
             aSet.InvalidateItem( ATTR_ANIMATION_EFFECT );
         else
-            aSet.Put(SfxAllEnumItem(ATTR_ANIMATION_EFFECT, (sal_uInt16)presentation::AnimationEffect_NONE));
+            aSet.Put(SfxUInt16Item(ATTR_ANIMATION_EFFECT, sal_uInt16(presentation::AnimationEffect_NONE)));
 
         if (nTextEffectSet == ATTR_SET)
-            aSet.Put(SfxAllEnumItem(ATTR_ANIMATION_TEXTEFFECT, (sal_uInt16)eTextEffect));
+            aSet.Put(SfxUInt16Item(ATTR_ANIMATION_TEXTEFFECT, static_cast<sal_uInt16>(eTextEffect)));
         else if (nTextEffectSet == ATTR_MIXED)
             aSet.InvalidateItem( ATTR_ANIMATION_TEXTEFFECT );
         else
-            aSet.Put(SfxAllEnumItem(ATTR_ANIMATION_TEXTEFFECT, (sal_uInt16)presentation::AnimationEffect_NONE));
+            aSet.Put(SfxUInt16Item(ATTR_ANIMATION_TEXTEFFECT, sal_uInt16(presentation::AnimationEffect_NONE)));
 
         if (nSpeedSet == ATTR_SET)
-            aSet.Put(SfxAllEnumItem(ATTR_ANIMATION_SPEED, (sal_uInt16)eSpeed));
+            aSet.Put(SfxUInt16Item(ATTR_ANIMATION_SPEED, static_cast<sal_uInt16>(eSpeed)));
         else
             aSet.InvalidateItem(ATTR_ANIMATION_SPEED);
 
@@ -380,7 +378,7 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
         else if (nFadeColorSet == ATTR_MIXED)
             aSet.InvalidateItem(ATTR_ANIMATION_COLOR);
         else
-            aSet.Put(SvxColorItem(RGB_Color(COL_LIGHTGRAY), ATTR_ANIMATION_COLOR));
+            aSet.Put(SvxColorItem(COL_LIGHTGRAY, ATTR_ANIMATION_COLOR));
 
         if (nInvisibleSet == ATTR_SET)
             aSet.Put(SfxBoolItem(ATTR_ANIMATION_INVISIBLE, bInvisible));
@@ -409,11 +407,11 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
             aSet.Put(SfxBoolItem(ATTR_ANIMATION_PLAYFULL, false));
 
         if (nClickActionSet == ATTR_SET)
-            aSet.Put(SfxAllEnumItem(ATTR_ACTION, (sal_uInt16)eClickAction));
+            aSet.Put(SfxUInt16Item(ATTR_ACTION, static_cast<sal_uInt16>(eClickAction)));
         else if (nClickActionSet == ATTR_MIXED)
             aSet.InvalidateItem(ATTR_ACTION);
         else
-            aSet.Put(SfxAllEnumItem(ATTR_ACTION, (sal_uInt16)presentation::ClickAction_NONE));
+            aSet.Put(SfxUInt16Item(ATTR_ACTION, sal_uInt16(presentation::ClickAction_NONE)));
 
         if (nBookmarkSet == ATTR_SET)
             aSet.Put(SfxStringItem(ATTR_ACTION_FILENAME, aBookmark));
@@ -421,14 +419,14 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
             aSet.InvalidateItem(ATTR_ACTION_FILENAME);
 
         if (nSecondEffectSet == ATTR_SET)
-            aSet.Put(SfxAllEnumItem(ATTR_ACTION_EFFECT, (sal_uInt16)eSecondEffect));
+            aSet.Put(SfxUInt16Item(ATTR_ACTION_EFFECT, static_cast<sal_uInt16>(eSecondEffect)));
         else if (nSecondEffectSet == ATTR_MIXED)
             aSet.InvalidateItem( ATTR_ACTION_EFFECT );
         else
-            aSet.Put(SfxAllEnumItem(ATTR_ACTION_EFFECT, (sal_uInt16)presentation::AnimationEffect_NONE));
+            aSet.Put(SfxUInt16Item(ATTR_ACTION_EFFECT, sal_uInt16(presentation::AnimationEffect_NONE)));
 
         if (nSecondSpeedSet == ATTR_SET)
-            aSet.Put(SfxAllEnumItem(ATTR_ACTION_EFFECTSPEED, (sal_uInt16)eSecondSpeed));
+            aSet.Put(SfxUInt16Item(ATTR_ACTION_EFFECTSPEED, static_cast<sal_uInt16>(eSecondSpeed)));
         else
             aSet.InvalidateItem(ATTR_ACTION_EFFECTSPEED);
 
@@ -447,18 +445,15 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
             aSet.Put(SfxBoolItem(ATTR_ACTION_PLAYFULL, false));
 
         SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
-        ScopedVclPtr<SfxAbstractDialog> pDlg(pFact ? pFact->CreatSdActionDialog(mpViewShell->GetActiveWindow(), &aSet, mpView) : nullptr);
+        ScopedVclPtr<SfxAbstractDialog> pDlg( pFact->CreatSdActionDialog(mpViewShell->GetFrameWeld(), &aSet, mpView) );
 
-        short nResult = pDlg ? pDlg->Execute() : static_cast<short>(RET_CANCEL);
-
-        if( nResult == RET_OK )
-        {
-            rReq.Done( *( pDlg->GetOutputItemSet() ) );
-            pArgs = rReq.GetArgs();
-        }
+        short nResult = pDlg->Execute();
 
         if( nResult != RET_OK )
             return;
+
+        rReq.Done( *( pDlg->GetOutputItemSet() ) );
+        pArgs = rReq.GetArgs();
     }
 
     // evaluation of the ItemSets
@@ -472,8 +467,8 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
 
     if (pArgs->GetItemState(ATTR_ANIMATION_EFFECT) == SfxItemState::SET)
     {
-        eEffect = (presentation::AnimationEffect)static_cast<const SfxAllEnumItem&>( pArgs->
-                    Get(ATTR_ANIMATION_EFFECT)).GetValue();
+        eEffect = static_cast<presentation::AnimationEffect>(static_cast<const SfxUInt16Item&>( pArgs->
+                    Get(ATTR_ANIMATION_EFFECT)).GetValue());
         nEffectSet = ATTR_SET;
     }
     else
@@ -481,8 +476,8 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
 
     if (pArgs->GetItemState(ATTR_ANIMATION_TEXTEFFECT) == SfxItemState::SET)
     {
-        eTextEffect = (presentation::AnimationEffect)static_cast<const SfxAllEnumItem&>( pArgs->
-                        Get(ATTR_ANIMATION_TEXTEFFECT)).GetValue();
+        eTextEffect = static_cast<presentation::AnimationEffect>(static_cast<const SfxUInt16Item&>( pArgs->
+                        Get(ATTR_ANIMATION_TEXTEFFECT)).GetValue());
         nTextEffectSet = ATTR_SET;
     }
     else
@@ -490,8 +485,8 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
 
     if (pArgs->GetItemState(ATTR_ANIMATION_SPEED) == SfxItemState::SET)
     {
-        eSpeed  = (presentation::AnimationSpeed)static_cast<const SfxAllEnumItem&>( pArgs->
-                    Get(ATTR_ANIMATION_SPEED)).GetValue();
+        eSpeed  = static_cast<presentation::AnimationSpeed>(static_cast<const SfxUInt16Item&>( pArgs->
+                    Get(ATTR_ANIMATION_SPEED)).GetValue());
         nSpeedSet = ATTR_SET;
     }
     else
@@ -547,8 +542,8 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
 
     if (pArgs->GetItemState(ATTR_ACTION) == SfxItemState::SET)
     {
-        eClickAction = (presentation::ClickAction)static_cast<const SfxAllEnumItem&>(pArgs->
-                    Get(ATTR_ACTION)).GetValue();
+        eClickAction = static_cast<presentation::ClickAction>(static_cast<const SfxUInt16Item&>(pArgs->
+                    Get(ATTR_ACTION)).GetValue());
         nClickActionSet = ATTR_SET;
     }
     else
@@ -565,8 +560,8 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
 
     if (pArgs->GetItemState(ATTR_ACTION_EFFECT) == SfxItemState::SET)
     {
-        eSecondEffect = (presentation::AnimationEffect)static_cast<const SfxAllEnumItem&>( pArgs->
-                    Get(ATTR_ACTION_EFFECT)).GetValue();
+        eSecondEffect = static_cast<presentation::AnimationEffect>(static_cast<const SfxUInt16Item&>( pArgs->
+                    Get(ATTR_ACTION_EFFECT)).GetValue());
         nSecondEffectSet = ATTR_SET;
     }
     else
@@ -574,8 +569,8 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
 
     if (pArgs->GetItemState(ATTR_ACTION_EFFECTSPEED) == SfxItemState::SET)
     {
-        eSecondSpeed  = (presentation::AnimationSpeed)static_cast<const SfxAllEnumItem&>( pArgs->
-                    Get(ATTR_ACTION_EFFECTSPEED)).GetValue();
+        eSecondSpeed  = static_cast<presentation::AnimationSpeed>(static_cast<const SfxUInt16Item&>( pArgs->
+                    Get(ATTR_ACTION_EFFECTSPEED)).GetValue());
         nSecondSpeedSet = ATTR_SET;
     }
     else
@@ -598,7 +593,7 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
         nSecondPlayFullSet = ATTR_MISSING;
 
     // if any attribute is chosen
-    if (nEffectSet         == ATTR_SET  ||
+    if (!(nEffectSet         == ATTR_SET  ||
         nTextEffectSet     == ATTR_SET  ||
         nSpeedSet          == ATTR_SET  ||
         nAnimationSet      == ATTR_SET  ||
@@ -613,191 +608,191 @@ void FuObjectAnimationParameters::DoExecute( SfxRequest& rReq )
         nSecondEffectSet   == ATTR_SET  ||
         nSecondSpeedSet    == ATTR_SET  ||
         nSecondSoundOnSet  == ATTR_SET  ||
-        nSecondPlayFullSet == ATTR_SET)
+        nSecondPlayFullSet == ATTR_SET))
+        return;
+
+    // String for undo-group and list-action
+    OUString aComment(SdResId(STR_UNDO_ANIMATION));
+
+    // with 'following curves', we have an additional UndoAction
+    // therefore cling? here
+    pUndoMgr->EnterListAction(aComment, aComment, 0, mpViewShell->GetViewShellBase().GetViewShellId());
+
+    // create undo group
+    std::unique_ptr<SdUndoGroup> pUndoGroup(new SdUndoGroup(mpDoc));
+    pUndoGroup->SetComment(aComment);
+
+    // for the path effect, remember some stuff
+    SdrPathObj* pPath       = nullptr;
+    if (eEffect == presentation::AnimationEffect_PATH && nEffectSet == ATTR_SET)
     {
-        // String for undo-group and list-action
-        OUString aComment(SdResId(STR_UNDO_ANIMATION));
+        DBG_ASSERT(nCount == 2, "This effect expects two selected objects");
+        SdrObject* pObject1 = rMarkList.GetMark(0)->GetMarkedSdrObj();
+        SdrObject* pObject2 = rMarkList.GetMark(1)->GetMarkedSdrObj();
+        SdrObjKind eKind1   = static_cast<SdrObjKind>(pObject1->GetObjIdentifier());
+        SdrObjKind eKind2   = static_cast<SdrObjKind>(pObject2->GetObjIdentifier());
+        SdrObject* pRunningObj = nullptr;
 
-        // with 'following curves', we have an additional UndoAction
-        // therefore cling? here
-        pUndoMgr->EnterListAction(aComment, aComment, 0, mpViewShell->GetViewShellBase().GetViewShellId());
-
-        // create undo group
-        SdUndoGroup* pUndoGroup = new SdUndoGroup(mpDoc);
-        pUndoGroup->SetComment(aComment);
-
-        // for the path effect, remember some stuff
-        SdrPathObj* pPath       = nullptr;
-        if (eEffect == presentation::AnimationEffect_PATH && nEffectSet == ATTR_SET)
+        if (pObject1->GetObjInventor() == SdrInventor::Default &&
+            ((eKind1 == OBJ_LINE) ||        // 2 point line
+             (eKind1 == OBJ_PLIN) ||        // Polygon
+             (eKind1 == OBJ_PATHLINE)))     // Bezier curve
         {
-            DBG_ASSERT(nCount == 2, "This effect expects two selected objects");
-            SdrObject* pObject1 = rMarkList.GetMark(0)->GetMarkedSdrObj();
-            SdrObject* pObject2 = rMarkList.GetMark(1)->GetMarkedSdrObj();
-            SdrObjKind eKind1   = (SdrObjKind)pObject1->GetObjIdentifier();
-            SdrObjKind eKind2   = (SdrObjKind)pObject2->GetObjIdentifier();
-            SdrObject* pRunningObj = nullptr;
-
-            if (pObject1->GetObjInventor() == SdrInventor::Default &&
-                ((eKind1 == OBJ_LINE) ||        // 2 point line
-                 (eKind1 == OBJ_PLIN) ||        // Polygon
-                 (eKind1 == OBJ_PATHLINE)))     // Bezier curve
-            {
-                pPath = static_cast<SdrPathObj*>(pObject1);
-                pRunningObj = pObject2;
-            }
-
-            if (pObject2->GetObjInventor() == SdrInventor::Default &&
-                ((eKind2 == OBJ_LINE) ||        // 2 point line
-                 (eKind2 == OBJ_PLIN) ||        // Polygon
-                 (eKind2 == OBJ_PATHLINE)))     // Bezier curve
-            {
-                pPath = static_cast<SdrPathObj*>(pObject2);
-                pRunningObj = pObject1;
-            }
-
-            assert(pRunningObj && pPath && "no curve found");
-
-            // push the running object to the end of the curve
-            if (pRunningObj)
-            {
-                ::tools::Rectangle aCurRect(pRunningObj->GetLogicRect());
-                Point     aCurCenter(aCurRect.Center());
-                const ::basegfx::B2DPolyPolygon& rPolyPolygon = pPath->GetPathPoly();
-                sal_uInt32 nNoOfPolygons(rPolyPolygon.count());
-                const ::basegfx::B2DPolygon aPolygon(rPolyPolygon.getB2DPolygon(nNoOfPolygons - 1L));
-                sal_uInt32 nPoints(aPolygon.count());
-                const ::basegfx::B2DPoint aNewB2DCenter(aPolygon.getB2DPoint(nPoints - 1L));
-                const Point aNewCenter(FRound(aNewB2DCenter.getX()), FRound(aNewB2DCenter.getY()));
-                Size aDistance(aNewCenter.X() - aCurCenter.X(), aNewCenter.Y() - aCurCenter.Y());
-                pRunningObj->Move(aDistance);
-
-                pUndoMgr->AddUndoAction(mpDoc->GetSdrUndoFactory().CreateUndoMoveObject( *pRunningObj, aDistance));
-            }
+            pPath = static_cast<SdrPathObj*>(pObject1);
+            pRunningObj = pObject2;
         }
 
-        for (size_t nObject = 0; nObject < nCount; ++nObject)
+        if (pObject2->GetObjInventor() == SdrInventor::Default &&
+            ((eKind2 == OBJ_LINE) ||        // 2 point line
+             (eKind2 == OBJ_PLIN) ||        // Polygon
+             (eKind2 == OBJ_PATHLINE)))     // Bezier curve
         {
-            SdrObject* pObject = rMarkList.GetMark(nObject)->GetMarkedSdrObj();
-
-            pInfo = SdDrawDocument::GetAnimationInfo(pObject);
-
-            bool bCreated = false;
-            if( !pInfo )
-            {
-                pInfo = SdDrawDocument::GetShapeUserData(*pObject,true);
-                bCreated = true;
-            }
-
-            // path object for 'following curves'?
-            if (eEffect == presentation::AnimationEffect_PATH && pObject == pPath)
-            {
-                SdAnimationPrmsUndoAction* pAction = new SdAnimationPrmsUndoAction
-                                                (mpDoc, pObject, bCreated);
-                pAction->SetActive(pInfo->mbActive, pInfo->mbActive);
-                pAction->SetEffect(pInfo->meEffect, pInfo->meEffect);
-                pAction->SetTextEffect(pInfo->meTextEffect, pInfo->meTextEffect);
-                pAction->SetSpeed(pInfo->meSpeed, pInfo->meSpeed);
-                pAction->SetDim(pInfo->mbDimPrevious, pInfo->mbDimPrevious);
-                pAction->SetDimColor(pInfo->maDimColor, pInfo->maDimColor);
-                pAction->SetDimHide(pInfo->mbDimHide, pInfo->mbDimHide);
-                pAction->SetSoundOn(pInfo->mbSoundOn, pInfo->mbSoundOn);
-                pAction->SetSound(pInfo->maSoundFile, pInfo->maSoundFile);
-                pAction->SetPlayFull(pInfo->mbPlayFull, pInfo->mbPlayFull);
-                pAction->SetClickAction(pInfo->meClickAction, pInfo->meClickAction);
-                pAction->SetBookmark(pInfo->GetBookmark(), pInfo->GetBookmark());
-                pAction->SetVerb(pInfo->mnVerb, pInfo->mnVerb);
-                pAction->SetSecondEffect(pInfo->meSecondEffect, pInfo->meSecondEffect);
-                pAction->SetSecondSpeed(pInfo->meSecondSpeed, pInfo->meSecondSpeed);
-                pAction->SetSecondSoundOn(pInfo->mbSecondSoundOn, pInfo->mbSecondSoundOn);
-                pAction->SetSecondPlayFull(pInfo->mbSecondPlayFull, pInfo->mbSecondPlayFull);
-                pUndoGroup->AddAction(pAction);
-
-            }
-            else
-            {
-
-                // create undo action with old and new sizes
-                SdAnimationPrmsUndoAction* pAction = new SdAnimationPrmsUndoAction
-                                                (mpDoc, pObject, bCreated);
-                pAction->SetActive(pInfo->mbActive, bActive);
-                pAction->SetEffect(pInfo->meEffect, eEffect);
-                pAction->SetTextEffect(pInfo->meTextEffect, eTextEffect);
-                pAction->SetSpeed(pInfo->meSpeed, eSpeed);
-                pAction->SetDim(pInfo->mbDimPrevious, bFadeOut);
-                pAction->SetDimColor(pInfo->maDimColor, aFadeColor);
-                pAction->SetDimHide(pInfo->mbDimHide, bInvisible);
-                pAction->SetSoundOn(pInfo->mbSoundOn, bSoundOn);
-                pAction->SetSound(pInfo->maSoundFile, aSound);
-                pAction->SetPlayFull(pInfo->mbPlayFull, bPlayFull);
-                pAction->SetClickAction(pInfo->meClickAction, eClickAction);
-                pAction->SetBookmark(pInfo->GetBookmark(), aBookmark);
-                pAction->SetVerb(pInfo->mnVerb, (sal_uInt16)pInfo->GetBookmark().toInt32() );
-                pAction->SetSecondEffect(pInfo->meSecondEffect, eSecondEffect);
-                pAction->SetSecondSpeed(pInfo->meSecondSpeed, eSecondSpeed);
-                pAction->SetSecondSoundOn(pInfo->mbSecondSoundOn, bSecondSoundOn);
-                pAction->SetSecondPlayFull(pInfo->mbSecondPlayFull,bSecondPlayFull);
-                pUndoGroup->AddAction(pAction);
-
-                // insert new values at info block of the object
-                if (nAnimationSet == ATTR_SET)
-                    pInfo->mbActive = bActive;
-
-                if (nEffectSet == ATTR_SET)
-                    pInfo->meEffect = eEffect;
-
-                if (nTextEffectSet == ATTR_SET)
-                    pInfo->meTextEffect = eTextEffect;
-
-                if (nSpeedSet == ATTR_SET)
-                    pInfo->meSpeed = eSpeed;
-
-                if (nFadeOutSet == ATTR_SET)
-                    pInfo->mbDimPrevious = bFadeOut;
-
-                if (nFadeColorSet == ATTR_SET)
-                    pInfo->maDimColor = aFadeColor;
-
-                if (nInvisibleSet == ATTR_SET)
-                    pInfo->mbDimHide = bInvisible;
-
-                if (nSoundOnSet == ATTR_SET)
-                    pInfo->mbSoundOn = bSoundOn;
-
-                if (nSoundFileSet == ATTR_SET)
-                    pInfo->maSoundFile = aSound;
-
-                if (nPlayFullSet == ATTR_SET)
-                    pInfo->mbPlayFull = bPlayFull;
-
-                if (nClickActionSet == ATTR_SET)
-                    pInfo->meClickAction = eClickAction;
-
-                if (nBookmarkSet == ATTR_SET)
-                    pInfo->SetBookmark( aBookmark );
-
-                if (nSecondEffectSet == ATTR_SET)
-                    pInfo->meSecondEffect = eSecondEffect;
-
-                if (nSecondSpeedSet == ATTR_SET)
-                    pInfo->meSecondSpeed = eSecondSpeed;
-
-                if (nSecondSoundOnSet == ATTR_SET)
-                    pInfo->mbSecondSoundOn = bSecondSoundOn;
-
-                if (nSecondPlayFullSet == ATTR_SET)
-                    pInfo->mbSecondPlayFull = bSecondPlayFull;
-
-                if (eClickAction == presentation::ClickAction_VERB)
-                    pInfo->mnVerb = (sal_uInt16)aBookmark.toInt32();
-            }
+            pPath = static_cast<SdrPathObj*>(pObject2);
+            pRunningObj = pObject1;
         }
-        // Set the Undo Group in of the Undo Manager
-        pUndoMgr->AddUndoAction(pUndoGroup);
-        pUndoMgr->LeaveListAction();
 
-        // Model changed
-        mpDoc->SetChanged();
+        assert(pRunningObj && pPath && "no curve found");
+
+        // push the running object to the end of the curve
+        if (pRunningObj)
+        {
+            ::tools::Rectangle aCurRect(pRunningObj->GetLogicRect());
+            Point     aCurCenter(aCurRect.Center());
+            const ::basegfx::B2DPolyPolygon& rPolyPolygon = pPath->GetPathPoly();
+            sal_uInt32 nNoOfPolygons(rPolyPolygon.count());
+            const ::basegfx::B2DPolygon& aPolygon(rPolyPolygon.getB2DPolygon(nNoOfPolygons - 1));
+            sal_uInt32 nPoints(aPolygon.count());
+            const ::basegfx::B2DPoint aNewB2DCenter(aPolygon.getB2DPoint(nPoints - 1));
+            const Point aNewCenter(FRound(aNewB2DCenter.getX()), FRound(aNewB2DCenter.getY()));
+            Size aDistance(aNewCenter.X() - aCurCenter.X(), aNewCenter.Y() - aCurCenter.Y());
+            pRunningObj->Move(aDistance);
+
+            pUndoMgr->AddUndoAction(mpDoc->GetSdrUndoFactory().CreateUndoMoveObject( *pRunningObj, aDistance));
+        }
     }
+
+    for (size_t nObject = 0; nObject < nCount; ++nObject)
+    {
+        SdrObject* pObject = rMarkList.GetMark(nObject)->GetMarkedSdrObj();
+
+        pInfo = SdDrawDocument::GetAnimationInfo(pObject);
+
+        bool bCreated = false;
+        if( !pInfo )
+        {
+            pInfo = SdDrawDocument::GetShapeUserData(*pObject,true);
+            bCreated = true;
+        }
+
+        // path object for 'following curves'?
+        if (eEffect == presentation::AnimationEffect_PATH && pObject == pPath)
+        {
+            SdAnimationPrmsUndoAction* pAction = new SdAnimationPrmsUndoAction
+                                            (mpDoc, pObject, bCreated);
+            pAction->SetActive(pInfo->mbActive, pInfo->mbActive);
+            pAction->SetEffect(pInfo->meEffect, pInfo->meEffect);
+            pAction->SetTextEffect(pInfo->meTextEffect, pInfo->meTextEffect);
+            pAction->SetSpeed(pInfo->meSpeed, pInfo->meSpeed);
+            pAction->SetDim(pInfo->mbDimPrevious, pInfo->mbDimPrevious);
+            pAction->SetDimColor(pInfo->maDimColor, pInfo->maDimColor);
+            pAction->SetDimHide(pInfo->mbDimHide, pInfo->mbDimHide);
+            pAction->SetSoundOn(pInfo->mbSoundOn, pInfo->mbSoundOn);
+            pAction->SetSound(pInfo->maSoundFile, pInfo->maSoundFile);
+            pAction->SetPlayFull(pInfo->mbPlayFull, pInfo->mbPlayFull);
+            pAction->SetClickAction(pInfo->meClickAction, pInfo->meClickAction);
+            pAction->SetBookmark(pInfo->GetBookmark(), pInfo->GetBookmark());
+            pAction->SetVerb(pInfo->mnVerb, pInfo->mnVerb);
+            pAction->SetSecondEffect(pInfo->meSecondEffect, pInfo->meSecondEffect);
+            pAction->SetSecondSpeed(pInfo->meSecondSpeed, pInfo->meSecondSpeed);
+            pAction->SetSecondSoundOn(pInfo->mbSecondSoundOn, pInfo->mbSecondSoundOn);
+            pAction->SetSecondPlayFull(pInfo->mbSecondPlayFull, pInfo->mbSecondPlayFull);
+            pUndoGroup->AddAction(pAction);
+
+        }
+        else
+        {
+
+            // create undo action with old and new sizes
+            SdAnimationPrmsUndoAction* pAction = new SdAnimationPrmsUndoAction
+                                            (mpDoc, pObject, bCreated);
+            pAction->SetActive(pInfo->mbActive, bActive);
+            pAction->SetEffect(pInfo->meEffect, eEffect);
+            pAction->SetTextEffect(pInfo->meTextEffect, eTextEffect);
+            pAction->SetSpeed(pInfo->meSpeed, eSpeed);
+            pAction->SetDim(pInfo->mbDimPrevious, bFadeOut);
+            pAction->SetDimColor(pInfo->maDimColor, aFadeColor);
+            pAction->SetDimHide(pInfo->mbDimHide, bInvisible);
+            pAction->SetSoundOn(pInfo->mbSoundOn, bSoundOn);
+            pAction->SetSound(pInfo->maSoundFile, aSound);
+            pAction->SetPlayFull(pInfo->mbPlayFull, bPlayFull);
+            pAction->SetClickAction(pInfo->meClickAction, eClickAction);
+            pAction->SetBookmark(pInfo->GetBookmark(), aBookmark);
+            pAction->SetVerb(pInfo->mnVerb, static_cast<sal_uInt16>(pInfo->GetBookmark().toInt32()) );
+            pAction->SetSecondEffect(pInfo->meSecondEffect, eSecondEffect);
+            pAction->SetSecondSpeed(pInfo->meSecondSpeed, eSecondSpeed);
+            pAction->SetSecondSoundOn(pInfo->mbSecondSoundOn, bSecondSoundOn);
+            pAction->SetSecondPlayFull(pInfo->mbSecondPlayFull,bSecondPlayFull);
+            pUndoGroup->AddAction(pAction);
+
+            // insert new values at info block of the object
+            if (nAnimationSet == ATTR_SET)
+                pInfo->mbActive = bActive;
+
+            if (nEffectSet == ATTR_SET)
+                pInfo->meEffect = eEffect;
+
+            if (nTextEffectSet == ATTR_SET)
+                pInfo->meTextEffect = eTextEffect;
+
+            if (nSpeedSet == ATTR_SET)
+                pInfo->meSpeed = eSpeed;
+
+            if (nFadeOutSet == ATTR_SET)
+                pInfo->mbDimPrevious = bFadeOut;
+
+            if (nFadeColorSet == ATTR_SET)
+                pInfo->maDimColor = aFadeColor;
+
+            if (nInvisibleSet == ATTR_SET)
+                pInfo->mbDimHide = bInvisible;
+
+            if (nSoundOnSet == ATTR_SET)
+                pInfo->mbSoundOn = bSoundOn;
+
+            if (nSoundFileSet == ATTR_SET)
+                pInfo->maSoundFile = aSound;
+
+            if (nPlayFullSet == ATTR_SET)
+                pInfo->mbPlayFull = bPlayFull;
+
+            if (nClickActionSet == ATTR_SET)
+                pInfo->meClickAction = eClickAction;
+
+            if (nBookmarkSet == ATTR_SET)
+                pInfo->SetBookmark( aBookmark );
+
+            if (nSecondEffectSet == ATTR_SET)
+                pInfo->meSecondEffect = eSecondEffect;
+
+            if (nSecondSpeedSet == ATTR_SET)
+                pInfo->meSecondSpeed = eSecondSpeed;
+
+            if (nSecondSoundOnSet == ATTR_SET)
+                pInfo->mbSecondSoundOn = bSecondSoundOn;
+
+            if (nSecondPlayFullSet == ATTR_SET)
+                pInfo->mbSecondPlayFull = bSecondPlayFull;
+
+            if (eClickAction == presentation::ClickAction_VERB)
+                pInfo->mnVerb = static_cast<sal_uInt16>(aBookmark.toInt32());
+        }
+    }
+    // Set the Undo Group in of the Undo Manager
+    pUndoMgr->AddUndoAction(std::move(pUndoGroup));
+    pUndoMgr->LeaveListAction();
+
+    // Model changed
+    mpDoc->SetChanged();
     // not seen, therefore we do not need to invalidate at the bindings
 }
 

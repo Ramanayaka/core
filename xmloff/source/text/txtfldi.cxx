@@ -23,45 +23,44 @@
  *  Import of all text fields except those from txtvfldi.cxx
  *  (variable related text fields and database display fields)
  */
-#include "txtfldi.hxx"
-#include "txtvfldi.hxx"
+#include <txtfldi.hxx>
+#include <txtvfldi.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/xmlnumi.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmlement.hxx>
-#include "XMLStringBufferImportContext.hxx"
+#include <XMLStringBufferImportContext.hxx>
 #include <xmloff/XMLEventsImportContext.hxx>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/text/UserDataPart.hpp>
 #include <com/sun/star/style/NumberingType.hpp>
 #include <com/sun/star/text/PlaceholderType.hpp>
 #include <com/sun/star/text/ReferenceFieldPart.hpp>
 #include <com/sun/star/text/ReferenceFieldSource.hpp>
-#include <com/sun/star/text/XTextField.hpp>
 #include <com/sun/star/text/XTextContent.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/text/XTextFieldsSupplier.hpp>
 #include <com/sun/star/text/XDependentTextField.hpp>
-#include <com/sun/star/text/SetVariableType.hpp>
 #include <com/sun/star/text/FilenameDisplayFormat.hpp>
 #include <com/sun/star/text/ChapterFormat.hpp>
 #include <com/sun/star/text/TemplateDisplayFormat.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/text/BibliographyDataType.hpp>
-#include <com/sun/star/text/BibliographyDataField.hpp>
 #include <com/sun/star/util/XUpdatable.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
+#include <com/sun/star/container/XIndexReplace.hpp>
 
 #include <sax/tools/converter.hxx>
 
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <rtl/math.hxx>
 #include <tools/debug.hxx>
 #include <osl/diagnose.h>
@@ -82,44 +81,44 @@ using namespace ::xmloff::token;
 
 
 // service prefix and service names
-const sal_Char sAPI_textfield_prefix[]  = "com.sun.star.text.TextField.";
-const sal_Char sAPI_fieldmaster_prefix[] = "com.sun.star.text.FieldMaster.";
-const sal_Char sAPI_presentation_prefix[] = "com.sun.star.presentation.TextField.";
+const char sAPI_textfield_prefix[]  = "com.sun.star.text.TextField.";
+const char sAPI_fieldmaster_prefix[] = "com.sun.star.text.FieldMaster.";
+const char sAPI_presentation_prefix[] = "com.sun.star.presentation.TextField.";
 
-const sal_Char sAPI_date_time[]                 = "DateTime";
-const sal_Char sAPI_page_number[]               = "PageNumber";
-const sal_Char sAPI_docinfo_change_date_time[]  = "DocInfo.ChangeDateTime";
-const sal_Char sAPI_docinfo_create_date_time[]  = "DocInfo.CreateDateTime";
-const sal_Char sAPI_docinfo_custom[]            = "DocInfo.Custom";
-const sal_Char sAPI_docinfo_print_date_time[]   = "DocInfo.PrintDateTime";
-const sal_Char sAPI_dde[]                       = "DDE";
-const sal_Char sAPI_url[]                       = "URL";
+const char sAPI_date_time[]                 = "DateTime";
+const char sAPI_page_number[]               = "PageNumber";
+const char sAPI_docinfo_change_date_time[]  = "DocInfo.ChangeDateTime";
+const char sAPI_docinfo_create_date_time[]  = "DocInfo.CreateDateTime";
+const char sAPI_docinfo_custom[]            = "DocInfo.Custom";
+const char sAPI_docinfo_print_date_time[]   = "DocInfo.PrintDateTime";
+const char sAPI_dde[]                       = "DDE";
+const char sAPI_url[]                       = "URL";
 
 // property names
-const sal_Char sAPI_is_fixed[]          = "IsFixed";
-const sal_Char sAPI_content[]           = "Content";
-const sal_Char sAPI_author[]            = "Author";
-const sal_Char sAPI_hint[]              = "Hint";
-const sal_Char sAPI_name[]              = "Name";
-const sal_Char sAPI_sub_type[]          = "SubType";
-const sal_Char sAPI_date_time_value[]   = "DateTimeValue";
-const sal_Char sAPI_number_format[]     = "NumberFormat";
-const sal_Char sAPI_numbering_type[]    = "NumberingType";
-const sal_Char sAPI_offset[]            = "Offset";
-const sal_Char sAPI_condition[]         = "Condition";
-const sal_Char sAPI_set_number[]        = "SetNumber";
-const sal_Char sAPI_file_format[]       = "FileFormat";
-const sal_Char sAPI_is_date[]           = "IsDate";
-const sal_Char sAPI_current_presentation[] = "CurrentPresentation";
-const sal_Char sAPI_is_hidden[]         = "IsHidden";
-const sal_Char sAPI_is_fixed_language[] = "IsFixedLanguage";
+const char sAPI_is_fixed[]          = "IsFixed";
+const char sAPI_content[]           = "Content";
+const char sAPI_author[]            = "Author";
+const char sAPI_hint[]              = "Hint";
+const char sAPI_name[]              = "Name";
+const char sAPI_sub_type[]          = "SubType";
+const char sAPI_date_time_value[]   = "DateTimeValue";
+const char sAPI_number_format[]     = "NumberFormat";
+const char sAPI_numbering_type[]    = "NumberingType";
+const char sAPI_offset[]            = "Offset";
+const char sAPI_condition[]         = "Condition";
+const char sAPI_set_number[]        = "SetNumber";
+const char sAPI_file_format[]       = "FileFormat";
+const char sAPI_is_date[]           = "IsDate";
+const char sAPI_current_presentation[] = "CurrentPresentation";
+const char sAPI_is_hidden[]         = "IsHidden";
+const char sAPI_is_fixed_language[] = "IsFixedLanguage";
 
-const sal_Char sAPI_true[] = "TRUE";
+const char sAPI_true[] = "TRUE";
 
 
 XMLTextFieldImportContext::XMLTextFieldImportContext(
     SvXMLImport& rImport, XMLTextImportHelper& rHlp,
-    const sal_Char* pService,
+    const char* pService,
     sal_uInt16 nPrefix, const OUString& rElementName)
 :   SvXMLImportContext( rImport, nPrefix, rElementName )
 ,   rTextImportHelper(rHlp)
@@ -536,6 +535,8 @@ void XMLTextFieldImportContext::ForceUpdate(
 // XMLSenderFieldImportContext
 
 
+const OUStringLiteral gsPropertyFieldSubType("UserDataType");
+
 XMLSenderFieldImportContext::XMLSenderFieldImportContext(
     SvXMLImport& rImport, XMLTextImportHelper& rHlp,
     sal_uInt16 nPrfx, const OUString& sLocalName,
@@ -543,7 +544,6 @@ XMLSenderFieldImportContext::XMLSenderFieldImportContext(
     : XMLTextFieldImportContext(rImport, rHlp, "ExtendedUser", nPrfx, sLocalName)
     , nSubType(0)
     , sPropertyFixed(sAPI_is_fixed)
-    , sPropertyFieldSubType("UserDataType")
     , sPropertyContent(sAPI_content)
     , bFixed(true)
     , nElementToken(nToken)
@@ -630,30 +630,31 @@ void XMLSenderFieldImportContext::PrepareField(
     const Reference<XPropertySet> & rPropSet)
 {
     // set members
-    rPropSet->setPropertyValue(sPropertyFieldSubType, Any(nSubType));
+    rPropSet->setPropertyValue(gsPropertyFieldSubType, Any(nSubType));
 
     // set fixed
     rPropSet->setPropertyValue(sPropertyFixed, Any(bFixed));
 
     // set content if fixed
-    if (bFixed)
+    if (!bFixed)
+        return;
+
+    // in organizer or styles-only mode: force update
+    if (GetImport().GetTextImport()->IsOrganizerMode() ||
+        GetImport().GetTextImport()->IsStylesOnlyMode()   )
     {
-        // in organizer or styles-only mode: force update
-        if (GetImport().GetTextImport()->IsOrganizerMode() ||
-            GetImport().GetTextImport()->IsStylesOnlyMode()   )
-        {
-            ForceUpdate(rPropSet);
-        }
-        else
-        {
-            rPropSet->setPropertyValue(sPropertyContent, Any(GetContent()));
-        }
+        ForceUpdate(rPropSet);
+    }
+    else
+    {
+        rPropSet->setPropertyValue(sPropertyContent, Any(GetContent()));
     }
 }
 
 
 // XMLAuthorFieldImportContext
 
+const OUStringLiteral gsPropertyAuthorFullName("FullName");
 
 XMLAuthorFieldImportContext::XMLAuthorFieldImportContext(
     SvXMLImport& rImport, XMLTextImportHelper& rHlp,
@@ -661,13 +662,11 @@ XMLAuthorFieldImportContext::XMLAuthorFieldImportContext(
     sal_uInt16 nToken)
 :   XMLSenderFieldImportContext(rImport, rHlp, nPrfx, sLocalName, nToken)
 ,   bAuthorFullName(true)
-,   sServiceAuthor(sAPI_author)
-,   sPropertyAuthorFullName("FullName")
 ,   sPropertyFixed(sAPI_is_fixed)
 ,   sPropertyContent(sAPI_content)
 {
     // overwrite service name from XMLSenderFieldImportContext
-    SetServiceName(sServiceAuthor);
+    SetServiceName(sAPI_author);
 }
 
 void XMLAuthorFieldImportContext::StartElement(
@@ -695,24 +694,24 @@ void XMLAuthorFieldImportContext::PrepareField(
 {
     // set members
     Any aAny;
-    rPropSet->setPropertyValue(sPropertyAuthorFullName, Any(bAuthorFullName));
+    rPropSet->setPropertyValue(gsPropertyAuthorFullName, Any(bAuthorFullName));
 
     rPropSet->setPropertyValue(sPropertyFixed, Any(bFixed));
 
     // set content if fixed
-    if (bFixed)
+    if (!bFixed)
+        return;
+
+    // organizer or styles-only mode: force update
+    if (GetImport().GetTextImport()->IsOrganizerMode() ||
+        GetImport().GetTextImport()->IsStylesOnlyMode()   )
     {
-        // organizer or styles-only mode: force update
-        if (GetImport().GetTextImport()->IsOrganizerMode() ||
-            GetImport().GetTextImport()->IsStylesOnlyMode()   )
-        {
-            ForceUpdate(rPropSet);
-        }
-        else
-        {
-            aAny <<= GetContent();
-            rPropSet->setPropertyValue(sPropertyContent, aAny);
-        }
+        ForceUpdate(rPropSet);
+    }
+    else
+    {
+        aAny <<= GetContent();
+        rPropSet->setPropertyValue(sPropertyContent, aAny);
     }
 }
 
@@ -720,20 +719,21 @@ void XMLAuthorFieldImportContext::PrepareField(
 // page continuation string
 
 
-static SvXMLEnumMapEntry<PageNumberType> const lcl_aSelectPageAttrMap[] =
+SvXMLEnumMapEntry<PageNumberType> const lcl_aSelectPageAttrMap[] =
 {
     { XML_PREVIOUS,      PageNumberType_PREV },
     { XML_CURRENT,       PageNumberType_CURRENT },
     { XML_NEXT,          PageNumberType_NEXT },
-    { XML_TOKEN_INVALID, (PageNumberType)0 },
+    { XML_TOKEN_INVALID, PageNumberType(0) },
 };
+
+const OUStringLiteral gsPropertyUserText("UserText");
 
 XMLPageContinuationImportContext::XMLPageContinuationImportContext(
     SvXMLImport& rImport, XMLTextImportHelper& rHlp, sal_uInt16 nPrfx,
     const OUString& sLocalName)
 :   XMLTextFieldImportContext(rImport, rHlp, sAPI_page_number, nPrfx, sLocalName)
 ,   sPropertySubType(sAPI_sub_type)
-,   sPropertyUserText("UserText")
 ,   sPropertyNumberingType(sAPI_numbering_type)
 ,   eSelectPage(PageNumberType_CURRENT)
 ,   sStringOK(false)
@@ -772,7 +772,7 @@ void XMLPageContinuationImportContext::PrepareField(
     xPropertySet->setPropertyValue(sPropertySubType, Any(eSelectPage));
 
     aAny <<= (sStringOK ? sString : GetContent());
-    xPropertySet->setPropertyValue(sPropertyUserText, aAny);
+    xPropertySet->setPropertyValue(gsPropertyUserText, aAny);
 
     aAny <<= style::NumberingType::CHAR_SPECIAL;
     xPropertySet->setPropertyValue(sPropertyNumberingType, aAny);
@@ -819,7 +819,7 @@ void XMLPageNumberImportContext::ProcessAttribute(
             sal_Int32 nTmp;
             if (::sax::Converter::convertNumber(nTmp, sAttrValue))
             {
-                nPageAdjust = (sal_Int16)nTmp;
+                nPageAdjust = static_cast<sal_Int16>(nTmp);
             }
             break;
         }
@@ -878,12 +878,13 @@ void XMLPageNumberImportContext::PrepareField(
 // Placeholder
 
 
+const OUStringLiteral gsPropertyPlaceholderType("PlaceHolderType");
+const OUStringLiteral gsPropertyPlaceholder("PlaceHolder");
+
 XMLPlaceholderFieldImportContext::XMLPlaceholderFieldImportContext(
     SvXMLImport& rImport, XMLTextImportHelper& rHlp,
     sal_uInt16 nPrfx, const OUString& sLocalName)
 :   XMLTextFieldImportContext(rImport, rHlp, "JumpEdit", nPrfx, sLocalName)
-,   sPropertyPlaceholderType("PlaceHolderType")
-,   sPropertyPlaceholder("PlaceHolder")
 ,   sPropertyHint(sAPI_hint)
 ,   nPlaceholderType(PlaceholderType::TEXT)
 {
@@ -951,14 +952,15 @@ void XMLPlaceholderFieldImportContext::PrepareField(
         --nLength;
     }
     aAny <<= aContent.copy(nStart, nLength);
-    xPropertySet->setPropertyValue(sPropertyPlaceholder, aAny);
+    xPropertySet->setPropertyValue(gsPropertyPlaceholder, aAny);
 
-    xPropertySet->setPropertyValue(sPropertyPlaceholderType, Any(nPlaceholderType));
+    xPropertySet->setPropertyValue(gsPropertyPlaceholderType, Any(nPlaceholderType));
 }
 
 
 // time field
 
+const OUStringLiteral gsPropertyAdjust("Adjust");
 
 XMLTimeFieldImportContext::XMLTimeFieldImportContext(
     SvXMLImport& rImport, XMLTextImportHelper& rHlp,
@@ -968,7 +970,6 @@ XMLTimeFieldImportContext::XMLTimeFieldImportContext(
 ,   sPropertyFixed(sAPI_is_fixed)
 ,   sPropertyDateTimeValue(sAPI_date_time_value)
 ,   sPropertyDateTime(sAPI_date_time)
-,   sPropertyAdjust("Adjust")
 ,   sPropertyIsDate(sAPI_is_date)
 ,   sPropertyIsFixedLanguage(sAPI_is_fixed_language)
 ,   nAdjust(0)
@@ -989,8 +990,7 @@ void XMLTimeFieldImportContext::ProcessAttribute(
     {
         case XML_TOK_TEXTFIELD_TIME_VALUE:
         {
-            if (::sax::Converter::parseTimeOrDateTime(aDateTimeValue, nullptr,
-                        sAttrValue))
+            if (::sax::Converter::parseTimeOrDateTime(aDateTimeValue, sAttrValue))
             {
                 bTimeOK = true;
             }
@@ -1023,7 +1023,7 @@ void XMLTimeFieldImportContext::ProcessAttribute(
             if (::sax::Converter::convertDuration(fTmp, sAttrValue))
             {
                 // convert to minutes
-                nAdjust = (sal_Int32)::rtl::math::approxFloor(fTmp * 60 * 24);
+                nAdjust = static_cast<sal_Int32>(::rtl::math::approxFloor(fTmp * 60 * 24));
             }
             break;
         }
@@ -1044,9 +1044,9 @@ void XMLTimeFieldImportContext::PrepareField(
 
     rPropertySet->setPropertyValue(sPropertyIsDate, Any(bIsDate));
 
-    if (xPropertySetInfo->hasPropertyByName(sPropertyAdjust))
+    if (xPropertySetInfo->hasPropertyByName(gsPropertyAdjust))
     {
-        rPropertySet->setPropertyValue(sPropertyAdjust, Any(nAdjust));
+        rPropertySet->setPropertyValue(gsPropertyAdjust, Any(nAdjust));
     }
 
     // set value
@@ -1108,7 +1108,7 @@ void XMLDateFieldImportContext::ProcessAttribute(
     {
         case XML_TOK_TEXTFIELD_DATE_VALUE:
         {
-            if (::sax::Converter::parseDateTime(aDateTimeValue, nullptr, sAttrValue))
+            if (::sax::Converter::parseDateTime(aDateTimeValue, sAttrValue))
             {
                 bTimeOK = true;
             }
@@ -1136,16 +1136,17 @@ void XMLDateFieldImportContext::ProcessAttribute(
 // database field superclass
 
 
+const OUStringLiteral gsPropertyDataBaseName("DataBaseName");
+const OUStringLiteral gsPropertyDataBaseURL("DataBaseURL");
+const OUStringLiteral gsPropertyTableName("DataTableName");
+const OUStringLiteral gsPropertyDataCommandType("DataCommandType");
+const OUStringLiteral gsPropertyIsVisible("IsVisible");
+
 XMLDatabaseFieldImportContext::XMLDatabaseFieldImportContext(
     SvXMLImport& rImport, XMLTextImportHelper& rHlp,
-    const sal_Char* pServiceName, sal_uInt16 nPrfx,
+    const char* pServiceName, sal_uInt16 nPrfx,
     const OUString& sLocalName, bool bUseDisply)
 :   XMLTextFieldImportContext(rImport, rHlp, pServiceName, nPrfx, sLocalName)
-,   sPropertyDataBaseName("DataBaseName")
-,   sPropertyDataBaseURL("DataBaseURL")
-,   sPropertyTableName("DataTableName")
-,   sPropertyDataCommandType("DataCommandType")
-,   sPropertyIsVisible("IsVisible")
 ,   nCommandType( sdb::CommandType::TABLE )
 ,   bCommandTypeOK(false)
 ,   bDisplay( true )
@@ -1204,7 +1205,7 @@ void XMLDatabaseFieldImportContext::ProcessAttribute(
     }
 }
 
-SvXMLImportContext* XMLDatabaseFieldImportContext::CreateChildContext(
+SvXMLImportContextRef XMLDatabaseFieldImportContext::CreateChildContext(
     sal_uInt16 p_nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList>& xAttrList )
@@ -1241,27 +1242,27 @@ SvXMLImportContext* XMLDatabaseFieldImportContext::CreateChildContext(
 void XMLDatabaseFieldImportContext::PrepareField(
         const Reference<XPropertySet> & xPropertySet)
 {
-    xPropertySet->setPropertyValue(sPropertyTableName, Any(sTableName));
+    xPropertySet->setPropertyValue(gsPropertyTableName, Any(sTableName));
 
     if( bDatabaseNameOK )
     {
-        xPropertySet->setPropertyValue(sPropertyDataBaseName, Any(sDatabaseName));
+        xPropertySet->setPropertyValue(gsPropertyDataBaseName, Any(sDatabaseName));
     }
     else if( bDatabaseURLOK )
     {
-        xPropertySet->setPropertyValue(sPropertyDataBaseURL, Any(sDatabaseURL));
+        xPropertySet->setPropertyValue(gsPropertyDataBaseURL, Any(sDatabaseURL));
     }
 
     // #99980# load/save command type for all fields; also load
     //         old documents without command type
     if( bCommandTypeOK )
     {
-        xPropertySet->setPropertyValue( sPropertyDataCommandType, Any(nCommandType) );
+        xPropertySet->setPropertyValue( gsPropertyDataCommandType, Any(nCommandType) );
     }
 
     if( bUseDisplay && bDisplayOK )
     {
-        xPropertySet->setPropertyValue( sPropertyIsVisible, Any(bDisplay) );
+        xPropertySet->setPropertyValue( gsPropertyIsVisible, Any(bDisplay) );
     }
 }
 
@@ -1291,7 +1292,7 @@ void XMLDatabaseNameImportContext::ProcessAttribute(
 
 XMLDatabaseNextImportContext::XMLDatabaseNextImportContext(
     SvXMLImport& rImport, XMLTextImportHelper& rHlp,
-    const sal_Char* pServiceName, sal_uInt16 nPrfx,
+    const char* pServiceName, sal_uInt16 nPrfx,
     const OUString& sLocalName) :
         XMLDatabaseFieldImportContext(rImport, rHlp, pServiceName,
                                       nPrfx, sLocalName, false),
@@ -1318,7 +1319,7 @@ void XMLDatabaseNextImportContext::ProcessAttribute(
     if (XML_TOK_TEXTFIELD_CONDITION == nAttrToken)
     {
         OUString sTmp;
-        sal_uInt16 nPrefix = GetImport().GetNamespaceMap().GetKeyByAttrName_(
+        sal_uInt16 nPrefix = GetImport().GetNamespaceMap().GetKeyByAttrValueQName(
                                     sAttrValue, &sTmp );
         if( XML_NAMESPACE_OOOW == nPrefix )
         {
@@ -1499,46 +1500,46 @@ void XMLSimpleDocInfoImportContext::PrepareField(
 {
     //  title field in Calc has no Fixed property
     Reference<XPropertySetInfo> xPropertySetInfo(rPropertySet->getPropertySetInfo());
-    if (xPropertySetInfo->hasPropertyByName(sPropertyFixed))
+    if (!xPropertySetInfo->hasPropertyByName(sPropertyFixed))
+        return;
+
+    Any aAny;
+    rPropertySet->setPropertyValue(sPropertyFixed, Any(bFixed));
+
+    // set Content and CurrentPresentation (if fixed)
+    if (!bFixed)
+        return;
+
+    // in organizer-mode or styles-only-mode, only force update
+    if (GetImport().GetTextImport()->IsOrganizerMode() ||
+        GetImport().GetTextImport()->IsStylesOnlyMode()   )
     {
-        Any aAny;
-        rPropertySet->setPropertyValue(sPropertyFixed, Any(bFixed));
+        ForceUpdate(rPropertySet);
+    }
+    else
+    {
+        // set content (author, if that's the name) and current
+        // presentation
+        aAny <<= GetContent();
 
-        // set Content and CurrentPresentation (if fixed)
-        if (bFixed)
+        if (bFixed && bHasAuthor)
         {
-            // in organizer-mode or styles-only-mode, only force update
-            if (GetImport().GetTextImport()->IsOrganizerMode() ||
-                GetImport().GetTextImport()->IsStylesOnlyMode()   )
-            {
-                ForceUpdate(rPropertySet);
-            }
-            else
-            {
-                // set content (author, if that's the name) and current
-                // presentation
-                aAny <<= GetContent();
-
-                if (bFixed && bHasAuthor)
-                {
-                    rPropertySet->setPropertyValue(sPropertyAuthor, aAny);
-                }
-
-                if (bFixed && bHasContent)
-                {
-                    rPropertySet->setPropertyValue(sPropertyContent, aAny);
-                }
-
-                rPropertySet->setPropertyValue(sPropertyCurrentPresentation, aAny);
-            }
+            rPropertySet->setPropertyValue(sPropertyAuthor, aAny);
         }
+
+        if (bFixed && bHasContent)
+        {
+            rPropertySet->setPropertyValue(sPropertyContent, aAny);
+        }
+
+        rPropertySet->setPropertyValue(sPropertyCurrentPresentation, aAny);
     }
 }
 
-const sal_Char* XMLSimpleDocInfoImportContext::MapTokenToServiceName(
+const char* XMLSimpleDocInfoImportContext::MapTokenToServiceName(
     sal_uInt16 nToken)
 {
-    const sal_Char* pServiceName = nullptr;
+    const char* pServiceName = nullptr;
 
     switch(nToken)
     {
@@ -1603,13 +1604,13 @@ const sal_Char* XMLSimpleDocInfoImportContext::MapTokenToServiceName(
 
 // revision field
 
+const OUStringLiteral sPropertyRevision("Revision");
 
 XMLRevisionDocInfoImportContext::XMLRevisionDocInfoImportContext(
     SvXMLImport& rImport, XMLTextImportHelper& rHlp, sal_uInt16 nPrfx,
     const OUString& sLocalName, sal_uInt16 nToken) :
         XMLSimpleDocInfoImportContext(rImport, rHlp, nPrfx, sLocalName,
-                                      nToken, false, false),
-        sPropertyRevision("Revision")
+                                      nToken, false, false)
 {
     bValid = true;
 }
@@ -1621,20 +1622,20 @@ void XMLRevisionDocInfoImportContext::PrepareField(
 
     // set revision number
     // if fixed, if not in organizer-mode, if not in styles-only-mode
-    if (bFixed)
+    if (!bFixed)
+        return;
+
+    if ( GetImport().GetTextImport()->IsOrganizerMode() ||
+         GetImport().GetTextImport()->IsStylesOnlyMode()   )
     {
-        if ( GetImport().GetTextImport()->IsOrganizerMode() ||
-             GetImport().GetTextImport()->IsStylesOnlyMode()   )
+        ForceUpdate(rPropertySet);
+    }
+    else
+    {
+        sal_Int32 nTmp;
+        if (::sax::Converter::convertNumber(nTmp, GetContent()))
         {
-            ForceUpdate(rPropertySet);
-        }
-        else
-        {
-            sal_Int32 nTmp;
-            if (::sax::Converter::convertNumber(nTmp, GetContent()))
-            {
-                rPropertySet->setPropertyValue(sPropertyRevision, Any(nTmp));
-            }
+            rPropertySet->setPropertyValue(sPropertyRevision, Any(nTmp));
         }
     }
 }
@@ -1843,7 +1844,7 @@ void XMLHiddenParagraphImportContext::ProcessAttribute(
     if (XML_TOK_TEXTFIELD_CONDITION == nAttrToken)
     {
         OUString sTmp;
-        sal_uInt16 nPrefix = GetImport().GetNamespaceMap().GetKeyByAttrName_(
+        sal_uInt16 nPrefix = GetImport().GetNamespaceMap().GetKeyByAttrValueQName(
                                     sAttrValue, &sTmp );
         if( XML_NAMESPACE_OOOW == nPrefix )
         {
@@ -1873,6 +1874,9 @@ void XMLHiddenParagraphImportContext::PrepareField(
 
 // import conditional text (<text:conditional-text>)
 
+const OUStringLiteral gsPropertyTrueContent("TrueContent");
+const OUStringLiteral gsPropertyFalseContent("FalseContent");
+const OUStringLiteral gsPropertyIsConditionTrue("IsConditionTrue");
 
 XMLConditionalTextImportContext::XMLConditionalTextImportContext(
     SvXMLImport& rImport, XMLTextImportHelper& rHlp,
@@ -1880,9 +1884,6 @@ XMLConditionalTextImportContext::XMLConditionalTextImportContext(
         XMLTextFieldImportContext(rImport, rHlp, "ConditionalText",
                                   nPrfx, sLocalName),
         sPropertyCondition(sAPI_condition),
-        sPropertyTrueContent("TrueContent"),
-        sPropertyFalseContent("FalseContent"),
-        sPropertyIsConditionTrue("IsConditionTrue"),
         sPropertyCurrentPresentation(sAPI_current_presentation),
         bConditionOK(false),
         bTrueOK(false),
@@ -1901,7 +1902,7 @@ void XMLConditionalTextImportContext::ProcessAttribute(
             {
                 OUString sTmp;
                 sal_uInt16 nPrefix = GetImport().GetNamespaceMap().
-                        GetKeyByAttrName_( sAttrValue, &sTmp );
+                        GetKeyByAttrValueQName(sAttrValue, &sTmp);
                 if( XML_NAMESPACE_OOOW == nPrefix )
                 {
                     sCondition = sTmp;
@@ -1937,9 +1938,9 @@ void XMLConditionalTextImportContext::PrepareField(
     const Reference<XPropertySet> & xPropertySet)
 {
     xPropertySet->setPropertyValue(sPropertyCondition, Any(sCondition));
-    xPropertySet->setPropertyValue(sPropertyFalseContent, Any(sFalseContent));
-    xPropertySet->setPropertyValue(sPropertyTrueContent, Any(sTrueContent));
-    xPropertySet->setPropertyValue(sPropertyIsConditionTrue, Any(bCurrentValue));
+    xPropertySet->setPropertyValue(gsPropertyFalseContent, Any(sFalseContent));
+    xPropertySet->setPropertyValue(gsPropertyTrueContent, Any(sTrueContent));
+    xPropertySet->setPropertyValue(gsPropertyIsConditionTrue, Any(bCurrentValue));
     xPropertySet->setPropertyValue(sPropertyCurrentPresentation, Any(GetContent()));
 }
 
@@ -1971,7 +1972,7 @@ void XMLHiddenTextImportContext::ProcessAttribute(
             {
                 OUString sTmp;
                 sal_uInt16 nPrefix = GetImport().GetNamespaceMap().
-                                        GetKeyByAttrName_( sAttrValue, &sTmp );
+                            GetKeyByAttrValueQName(sAttrValue, &sTmp);
                 if( XML_NAMESPACE_OOOW == nPrefix )
                 {
                     sCondition = sTmp;
@@ -2011,7 +2012,7 @@ void XMLHiddenTextImportContext::PrepareField(
 // file name fields
 
 
-static const SvXMLEnumMapEntry<sal_uInt16> aFilenameDisplayMap[] =
+const SvXMLEnumMapEntry<sal_uInt16> aFilenameDisplayMap[] =
 {
     { XML_PATH,                 FilenameDisplayFormat::PATH },
     { XML_NAME,                 FilenameDisplayFormat::NAME },
@@ -2073,10 +2074,10 @@ void XMLFileNameImportContext::PrepareField(
     Reference<XPropertySetInfo> xPropertySetInfo(
         xPropertySet->getPropertySetInfo());
 
-     if (xPropertySetInfo->hasPropertyByName(sPropertyFixed))
-     {
+    if (xPropertySetInfo->hasPropertyByName(sPropertyFixed))
+    {
          xPropertySet->setPropertyValue(sPropertyFixed, Any(bFixed));
-     }
+    }
 
     if (xPropertySetInfo->hasPropertyByName(sPropertyFileFormat))
     {
@@ -2093,7 +2094,7 @@ void XMLFileNameImportContext::PrepareField(
 // template name field
 
 
-static const SvXMLEnumMapEntry<sal_uInt16> aTemplateDisplayMap[] =
+const SvXMLEnumMapEntry<sal_uInt16> aTemplateDisplayMap[] =
 {
     { XML_FULL,                 TemplateDisplayFormat::FULL },
     { XML_PATH,                 TemplateDisplayFormat::PATH },
@@ -2148,7 +2149,7 @@ void XMLTemplateNameImportContext::PrepareField(
 // import chapter fields
 
 
-static const SvXMLEnumMapEntry<sal_uInt16> aChapterDisplayMap[] =
+const SvXMLEnumMapEntry<sal_uInt16> aChapterDisplayMap[] =
 {
     { XML_NAME,                     ChapterFormat::NAME },
     { XML_NUMBER,                   ChapterFormat::NUMBER },
@@ -2158,13 +2159,14 @@ static const SvXMLEnumMapEntry<sal_uInt16> aChapterDisplayMap[] =
     { XML_TOKEN_INVALID, 0 }
 };
 
+const OUStringLiteral gsPropertyChapterFormat("ChapterFormat");
+const OUStringLiteral gsPropertyLevel("Level");
+
 XMLChapterImportContext::XMLChapterImportContext(
     SvXMLImport& rImport, XMLTextImportHelper& rHlp,
     sal_uInt16 nPrfx, const OUString& sLocalName) :
         XMLTextFieldImportContext(rImport, rHlp, "Chapter",
                                   nPrfx, sLocalName),
-        sPropertyChapterFormat("ChapterFormat"),
-        sPropertyLevel("Level"),
         nFormat(ChapterFormat::NAME_NUMBER),
         nLevel(0)
 {
@@ -2183,7 +2185,7 @@ void XMLChapterImportContext::ProcessAttribute(
             if (SvXMLUnitConverter::convertEnum(nTmp, sAttrValue,
                                                 aChapterDisplayMap))
             {
-                nFormat = (sal_Int16)nTmp;
+                nFormat = static_cast<sal_Int16>(nTmp);
             }
             break;
         }
@@ -2196,7 +2198,7 @@ void XMLChapterImportContext::ProcessAttribute(
                 ))
             {
                 // API numbers 0..9, we number 1..10
-                nLevel = (sal_Int8)nTmp;
+                nLevel = static_cast<sal_Int8>(nTmp);
                 nLevel--;
             }
             break;
@@ -2210,8 +2212,8 @@ void XMLChapterImportContext::ProcessAttribute(
 void XMLChapterImportContext::PrepareField(
         const Reference<XPropertySet> & xPropertySet)
 {
-    xPropertySet->setPropertyValue(sPropertyChapterFormat, Any(nFormat));
-    xPropertySet->setPropertyValue(sPropertyLevel, Any(nLevel));
+    xPropertySet->setPropertyValue(gsPropertyChapterFormat, Any(nFormat));
+    xPropertySet->setPropertyValue(gsPropertyLevel, Any(nLevel));
 }
 
 
@@ -2254,27 +2256,27 @@ void XMLCountFieldImportContext::PrepareField(
     // properties optional
     // (only page count, but do for all to save common implementation)
 
-    if (xPropertySet->getPropertySetInfo()->
+    if (!xPropertySet->getPropertySetInfo()->
         hasPropertyByName(sPropertyNumberingType))
+        return;
+
+    sal_Int16 nNumType;
+    if( bNumberFormatOK )
     {
-        sal_Int16 nNumType;
-        if( bNumberFormatOK )
-        {
-            nNumType= style::NumberingType::ARABIC;
-            GetImport().GetMM100UnitConverter().convertNumFormat( nNumType,
-                                                    sNumberFormat,
-                                                    sLetterSync );
-        }
-        else
-            nNumType = style::NumberingType::PAGE_DESCRIPTOR;
-        xPropertySet->setPropertyValue(sPropertyNumberingType, Any(nNumType));
+        nNumType= style::NumberingType::ARABIC;
+        GetImport().GetMM100UnitConverter().convertNumFormat( nNumType,
+                                                sNumberFormat,
+                                                sLetterSync );
     }
+    else
+        nNumType = style::NumberingType::PAGE_DESCRIPTOR;
+    xPropertySet->setPropertyValue(sPropertyNumberingType, Any(nNumType));
 }
 
-const sal_Char* XMLCountFieldImportContext::MapTokenToServiceName(
+const char* XMLCountFieldImportContext::MapTokenToServiceName(
     sal_uInt16 nToken)
 {
-    const sal_Char* pServiceName = nullptr;
+    const char* pServiceName = nullptr;
 
     switch (nToken)
     {
@@ -2394,7 +2396,7 @@ void XMLPageVarSetFieldImportContext::ProcessAttribute(
         sal_Int32 nTmp(0);
         if (::sax::Converter::convertNumber(nTmp, sAttrValue))
         {
-            nAdjust = (sal_Int16)nTmp;
+            nAdjust = static_cast<sal_Int16>(nTmp);
         }
         break;
     }
@@ -2423,29 +2425,25 @@ XMLMacroFieldImportContext::XMLMacroFieldImportContext(
 {
 }
 
-SvXMLImportContext* XMLMacroFieldImportContext::CreateChildContext(
+SvXMLImportContextRef XMLMacroFieldImportContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
-    const Reference<XAttributeList> & xAttrList )
+    const Reference<XAttributeList> & /*xAttrList*/ )
 {
-    SvXMLImportContext* pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     if ( (nPrefix == XML_NAMESPACE_OFFICE) &&
          IsXMLToken( rLocalName, XML_EVENT_LISTENERS ) )
     {
         // create events context and remember it!
-        pContext = new XMLEventsImportContext(
+        xEventContext = new XMLEventsImportContext(
             GetImport(), nPrefix, rLocalName );
-        xEventContext = pContext;
         bValid = true;
+        return xEventContext;
     }
-    else
-        pContext = SvXMLImportContext::CreateChildContext(
-            nPrefix, rLocalName, xAttrList);
 
-    return pContext;
+    return xContext;
 }
-
 
 void XMLMacroFieldImportContext::ProcessAttribute(
     sal_uInt16 nAttrToken,
@@ -2481,29 +2479,27 @@ void XMLMacroFieldImportContext::PrepareField(
     if ( xEventContext.is() )
     {
         // get event sequence
-        XMLEventsImportContext* pEvents =
-            static_cast<XMLEventsImportContext*>(xEventContext.get());
+        XMLEventsImportContext* pEvents = xEventContext.get();
         Sequence<PropertyValue> aValues;
         pEvents->GetEventSequence( "OnClick", aValues );
 
-        sal_Int32 nLength = aValues.getLength();
-        for( sal_Int32 i = 0; i < nLength; i++ )
+        for( const auto& rValue : std::as_const(aValues) )
         {
-            if ( aValues[i].Name == "ScriptType" )
+            if ( rValue.Name == "ScriptType" )
             {
                 // ignore ScriptType
             }
-            else if ( aValues[i].Name == "Library" )
+            else if ( rValue.Name == "Library" )
             {
-                aValues[i].Value >>= sLibraryName;
+                rValue.Value >>= sLibraryName;
             }
-            else if ( aValues[i].Name == "MacroName" )
+            else if ( rValue.Name == "MacroName" )
             {
-                aValues[i].Value >>= sMacroName;
+                rValue.Value >>= sMacroName;
             }
-            if ( aValues[i].Name == "Script" )
+            if ( rValue.Name == "Script" )
             {
-                aValues[i].Value >>= sScriptURL;
+                rValue.Value >>= sScriptURL;
             }
         }
     }
@@ -2550,7 +2546,7 @@ XMLReferenceFieldImportContext::XMLReferenceFieldImportContext(
 {
 }
 
-static SvXMLEnumMapEntry<sal_uInt16> const lcl_aReferenceTypeTokenMap[] =
+SvXMLEnumMapEntry<sal_uInt16> const lcl_aReferenceTypeTokenMap[] =
 {
     { XML_PAGE,         ReferenceFieldPart::PAGE},
     { XML_CHAPTER,      ReferenceFieldPart::CHAPTER },
@@ -2628,6 +2624,9 @@ void XMLReferenceFieldImportContext::ProcessAttribute(
 
             break;
         }
+        case XML_TOK_TEXTFIELD_REFERENCE_LANGUAGE:
+            sLanguage = sAttrValue;
+            break;
     }
 
     // bValid: we need proper element type and name
@@ -2641,6 +2640,7 @@ void XMLReferenceFieldImportContext::PrepareField(
 
     xPropertySet->setPropertyValue("ReferenceFieldSource", Any(nSource));
 
+    xPropertySet->setPropertyValue("ReferenceFieldLanguage", Any(sLanguage));
     switch (nElementToken)
     {
         case XML_TOK_TEXT_REFERENCE_REF:
@@ -2663,6 +2663,7 @@ void XMLReferenceFieldImportContext::PrepareField(
 
 // field declarations container
 
+namespace {
 
 enum DdeFieldDeclAttrs
 {
@@ -2673,7 +2674,9 @@ enum DdeFieldDeclAttrs
     XML_TOK_DDEFIELD_UPDATE
 };
 
-static const SvXMLTokenMapEntry aDdeDeclAttrTokenMap[] =
+}
+
+const SvXMLTokenMapEntry aDdeDeclAttrTokenMap[] =
 {
     { XML_NAMESPACE_OFFICE, XML_NAME, XML_TOK_DDEFIELD_NAME },
     { XML_NAMESPACE_OFFICE, XML_DDE_APPLICATION, XML_TOK_DDEFIELD_APPLICATION },
@@ -2686,28 +2689,23 @@ static const SvXMLTokenMapEntry aDdeDeclAttrTokenMap[] =
 
 XMLDdeFieldDeclsImportContext::XMLDdeFieldDeclsImportContext(
     SvXMLImport& rImport, sal_uInt16 nPrfx, const OUString& sLocalName) :
-        SvXMLImportContext(rImport, nPrfx, sLocalName),
-        aTokenMap(aDdeDeclAttrTokenMap)
+        SvXMLImportContext(rImport, nPrfx, sLocalName)
 {
 }
 
-SvXMLImportContext * XMLDdeFieldDeclsImportContext::CreateChildContext(
+SvXMLImportContextRef XMLDdeFieldDeclsImportContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
-    const Reference<XAttributeList> & xAttrList )
+    const Reference<XAttributeList> & /*xAttrList*/ )
 {
     if ( (XML_NAMESPACE_TEXT == nPrefix) &&
          (IsXMLToken(rLocalName, XML_DDE_CONNECTION_DECL)) )
     {
+        static const SvXMLTokenMap aTokenMap(aDdeDeclAttrTokenMap);
         return new XMLDdeFieldDeclImportContext(GetImport(), nPrefix,
                                                 rLocalName, aTokenMap);
     }
-    else
-    {
-        return SvXMLImportContext::CreateChildContext(nPrefix,
-                                                      rLocalName,
-                                                      xAttrList);
-    }
+    return nullptr;
 }
 
 
@@ -2779,59 +2777,54 @@ void XMLDdeFieldDeclImportContext::StartElement(
     }
 
     // valid data?
-    if (bNameOK && bCommandApplicationOK && bCommandTopicOK && bCommandItemOK)
+    if (!(bNameOK && bCommandApplicationOK && bCommandTopicOK && bCommandItemOK))
+        return;
+
+    // create DDE TextFieldMaster
+    Reference<XMultiServiceFactory> xFactory(GetImport().GetModel(),
+                                             UNO_QUERY);
+    if( !xFactory.is() )
+        return;
+
+    /* #i6432# There might be multiple occurrences of one DDE
+       declaration if it is used in more than one of
+       header/footer/body. createInstance will throw an exception if we
+       try to create the second, third, etc. instance of such a
+       declaration. Thus we ignore the exception. Otherwise this will
+       lead to an unloadable document. */
+    try
     {
-        // make service name
-        OUStringBuffer sBuf;
-        sBuf.append(sAPI_fieldmaster_prefix);
-        sBuf.append(sAPI_dde);
-
-        // create DDE TextFieldMaster
-        Reference<XMultiServiceFactory> xFactory(GetImport().GetModel(),
-                                                 UNO_QUERY);
-        if( xFactory.is() )
+        Reference<XInterface> xIfc =
+            xFactory->createInstance(OUStringLiteral(sAPI_fieldmaster_prefix) + sAPI_dde);
+        if( xIfc.is() )
         {
-            /* #i6432# There might be multiple occurrences of one DDE
-               declaration if it is used in more than one of
-               header/footer/body. createInstance will throw an exception if we
-               try to create the second, third, etc. instance of such a
-               declaration. Thus we ignore the exception. Otherwise this will
-               lead to an unloadable document. */
-            try
+            Reference<XPropertySet> xPropSet( xIfc, UNO_QUERY );
+            if (xPropSet.is() &&
+                xPropSet->getPropertySetInfo()->hasPropertyByName(
+                                                                  "DDECommandType"))
             {
-                Reference<XInterface> xIfc =
-                    xFactory->createInstance(sBuf.makeStringAndClear());
-                if( xIfc.is() )
-                {
-                    Reference<XPropertySet> xPropSet( xIfc, UNO_QUERY );
-                    if (xPropSet.is() &&
-                        xPropSet->getPropertySetInfo()->hasPropertyByName(
-                                                                          "DDECommandType"))
-                    {
-                        xPropSet->setPropertyValue(sAPI_name, Any(sName));
+                xPropSet->setPropertyValue(sAPI_name, Any(sName));
 
-                        xPropSet->setPropertyValue("DDECommandType", Any(sCommandApplication));
+                xPropSet->setPropertyValue("DDECommandType", Any(sCommandApplication));
 
-                        xPropSet->setPropertyValue("DDECommandFile", Any(sCommandTopic));
+                xPropSet->setPropertyValue("DDECommandFile", Any(sCommandTopic));
 
-                        xPropSet->setPropertyValue("DDECommandElement",
-                                                   Any(sCommandItem));
+                xPropSet->setPropertyValue("DDECommandElement",
+                                           Any(sCommandItem));
 
-                        xPropSet->setPropertyValue("IsAutomaticUpdate",
-                                                   Any(bUpdate));
-                    }
-                    // else: ignore (can't get XPropertySet, or DDE
-                    //               properties are not supported)
-                }
-                // else: ignore
+                xPropSet->setPropertyValue("IsAutomaticUpdate",
+                                           Any(bUpdate));
             }
-            catch (const Exception&)
-            {
-                //ignore
-            }
+            // else: ignore (can't get XPropertySet, or DDE
+            //               properties are not supported)
         }
         // else: ignore
     }
+    catch (const Exception&)
+    {
+        //ignore
+    }
+    // else: ignore
     // else: ignore
 }
 
@@ -2862,51 +2855,45 @@ void XMLDdeFieldImportContext::ProcessAttribute(
 
 void XMLDdeFieldImportContext::EndElement()
 {
-    if (bValid)
+    if (!bValid)
+        return;
+
+    // find master
+    OUString sMasterName = OUStringLiteral(sAPI_fieldmaster_prefix) + sAPI_dde + "." + sName;
+
+    Reference<XTextFieldsSupplier> xTextFieldsSupp(GetImport().GetModel(),
+                                                   UNO_QUERY);
+    Reference<container::XNameAccess> xFieldMasterNameAccess =
+        xTextFieldsSupp->getTextFieldMasters();
+
+    if (!xFieldMasterNameAccess->hasByName(sMasterName))
+        return;
+
+    Reference<XPropertySet> xMaster;
+    Any aAny = xFieldMasterNameAccess->getByName(sMasterName);
+    aAny >>= xMaster;
+    //apply the content to the master
+    xMaster->setPropertyValue( sPropertyContent, uno::makeAny( GetContent()));
+    // master exists: create text field and attach
+    Reference<XPropertySet> xField;
+    OUString sFieldName = OUStringLiteral(sAPI_textfield_prefix) + sAPI_dde;
+    if (!CreateField(xField, sFieldName))
+        return;
+
+    Reference<XDependentTextField> xDepTextField(xField,UNO_QUERY);
+    xDepTextField->attachTextFieldMaster(xMaster);
+
+    // attach field to document
+    Reference<XTextContent> xTextContent(xField, UNO_QUERY);
+    if (xTextContent.is())
     {
-        // find master
-        OUStringBuffer sBuf;
-        sBuf.append(sAPI_fieldmaster_prefix);
-        sBuf.append(sAPI_dde);
-        sBuf.append('.');
-        sBuf.append(sName);
-        OUString sMasterName = sBuf.makeStringAndClear();
+        GetImportHelper().InsertTextContent(xTextContent);
 
-        Reference<XTextFieldsSupplier> xTextFieldsSupp(GetImport().GetModel(),
-                                                       UNO_QUERY);
-        Reference<container::XNameAccess> xFieldMasterNameAccess(
-            xTextFieldsSupp->getTextFieldMasters(), UNO_QUERY);
-
-        if (xFieldMasterNameAccess->hasByName(sMasterName))
-        {
-            Reference<XPropertySet> xMaster;
-            Any aAny = xFieldMasterNameAccess->getByName(sMasterName);
-            aAny >>= xMaster;
-            //apply the content to the master
-            xMaster->setPropertyValue( sPropertyContent, uno::makeAny( GetContent()));
-            // master exists: create text field and attach
-            Reference<XPropertySet> xField;
-            sBuf.append(sAPI_textfield_prefix);
-            sBuf.append(sAPI_dde);
-            if (CreateField(xField, sBuf.makeStringAndClear()))
-            {
-                Reference<XDependentTextField> xDepTextField(xField,UNO_QUERY);
-                xDepTextField->attachTextFieldMaster(xMaster);
-
-                // attach field to document
-                Reference<XTextContent> xTextContent(xField, UNO_QUERY);
-                if (xTextContent.is())
-                {
-                    GetImportHelper().InsertTextContent(xTextContent);
-
-                    // we're lucky. nothing else to prepare.
-                }
-                // else: fail, because text content could not be created
-            }
-            // else: fail, because field could not be created
-        }
-        // else: fail, because no master was found (faulty document?!)
+        // we're lucky. nothing else to prepare.
     }
+    // else: fail, because text content could not be created
+    // else: fail, because field could not be created
+    // else: fail, because no master was found (faulty document?!)
     // not valid: ignore
 }
 
@@ -3030,7 +3017,7 @@ XMLBibliographyFieldImportContext::XMLBibliographyFieldImportContext(
 }
 
 // TODO: this is the same map as is used in the text field export
-static SvXMLEnumMapEntry<sal_uInt16> const aBibliographyDataTypeMap[] =
+SvXMLEnumMapEntry<sal_uInt16> const aBibliographyDataTypeMap[] =
 {
     { XML_ARTICLE,          BibliographyDataType::ARTICLE },
     { XML_BOOK,             BibliographyDataType::BOOK },
@@ -3089,7 +3076,7 @@ void XMLBibliographyFieldImportContext::StartElement(
                     nTmp, xAttrList->getValueByIndex(i),
                     aBibliographyDataTypeMap))
                 {
-                    aAny <<= (sal_Int16)nTmp;
+                    aAny <<= static_cast<sal_Int16>(nTmp);
                     aValue.Value = aAny;
 
                     aValues.push_back(aValue);
@@ -3131,10 +3118,10 @@ void XMLBibliographyFieldImportContext::PrepareField(
     xPropertySet->setPropertyValue("Fields", Any(aValueSequence));
 }
 
-const sal_Char* XMLBibliographyFieldImportContext::MapBibliographyFieldName(
+const char* XMLBibliographyFieldImportContext::MapBibliographyFieldName(
     const OUString& sName)
 {
-    const sal_Char* pName = nullptr;
+    const char* pName = nullptr;
 
     if (IsXMLToken(sName, XML_IDENTIFIER))
     {
@@ -3299,9 +3286,11 @@ void XMLAnnotationImportContext::ProcessAttribute(
 {
     if (nToken == XML_TOK_TEXT_NAME)
         aName = rValue;
+    if (nToken == XML_TOK_TEXT_RESOLVED)
+        aResolved = rValue;
 }
 
-SvXMLImportContext* XMLAnnotationImportContext::CreateChildContext(
+SvXMLImportContextRef XMLAnnotationImportContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList >& xAttrList )
@@ -3316,11 +3305,13 @@ SvXMLImportContext* XMLAnnotationImportContext::CreateChildContext(
             pContext = new XMLStringBufferImportContext(GetImport(), nPrefix,
                                             rLocalName, aDateBuffer);
     }
-    else if( XML_NAMESPACE_TEXT == nPrefix || XML_NAMESPACE_LO_EXT == nPrefix )
+    else if (((XML_NAMESPACE_TEXT == nPrefix || XML_NAMESPACE_LO_EXT == nPrefix)
+                 && IsXMLToken(rLocalName, XML_SENDER_INITIALS))
+             || (XML_NAMESPACE_META == nPrefix
+                 && IsXMLToken(rLocalName, XML_CREATOR_INITIALS)))
     {
-        if( IsXMLToken( rLocalName, XML_SENDER_INITIALS ) )
-            pContext = new XMLStringBufferImportContext(GetImport(), nPrefix,
-                                            rLocalName, aInitialsBuffer);
+        pContext = new XMLStringBufferImportContext(GetImport(), nPrefix,
+                                        rLocalName, aInitialsBuffer);
     }
 
     if( !pContext )
@@ -3418,9 +3409,8 @@ void XMLAnnotationImportContext::EndElement()
                 uno::Reference<text::XTextCursor> xCursor =
                     xText->createTextCursorByRange(GetImportHelper().GetCursorAsRange());
                 xCursor->gotoRange(xPrevField->getAnchor(), true);
-                uno::Reference<text::XTextRange> xTextRange(xCursor, uno::UNO_QUERY);
 
-                xText->insertTextContent(xTextRange, xPrevField, !xCursor->isCollapsed());
+                xText->insertTextContent(xCursor, xPrevField, !xCursor->isCollapsed());
             }
         }
         else
@@ -3460,8 +3450,13 @@ void XMLAnnotationImportContext::PrepareField(
     OUString sInitials( aInitialsBuffer.makeStringAndClear() );
     xPropertySet->setPropertyValue("Initials", makeAny(sInitials));
 
+    //import resolved flag
+    bool bTmp(false);
+    (void)::sax::Converter::convertBool(bTmp, aResolved);
+    xPropertySet->setPropertyValue("Resolved", makeAny(bTmp));
+
     util::DateTime aDateTime;
-    if (::sax::Converter::parseDateTime(aDateTime, nullptr,
+    if (::sax::Converter::parseDateTime(aDateTime,
                                             aDateBuffer.makeStringAndClear()))
     {
         /*
@@ -3479,7 +3474,7 @@ void XMLAnnotationImportContext::PrepareField(
     if ( sBuffer.getLength() )
     {
         // delete last paragraph mark (if necessary)
-        if (sal_Char(0x0a) == sBuffer[sBuffer.getLength()-1])
+        if (char(0x0a) == sBuffer[sBuffer.getLength()-1])
             sBuffer = sBuffer.copy(0, sBuffer.getLength()-1);
         xPropertySet->setPropertyValue(sAPI_content, makeAny(sBuffer));
     }
@@ -3639,7 +3634,7 @@ static bool lcl_ProcessLabel( const SvXMLImport& rImport,
     return bValid;
 }
 
-SvXMLImportContext* XMLDropDownFieldImportContext::CreateChildContext(
+SvXMLImportContextRef XMLDropDownFieldImportContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList>& xAttrList )

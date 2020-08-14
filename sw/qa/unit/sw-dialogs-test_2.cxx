@@ -10,12 +10,13 @@
 #include <sal/config.h>
 #include <test/screenshot_test.hxx>
 #include <rtl/bootstrap.hxx>
-#include <rtl/strbuf.hxx>
-#include <osl/file.hxx>
-#include <sfx2/app.hxx>
+#include <osl/module.hxx>
+#include <tools/svlibrary.h>
 #include <vcl/abstdlg.hxx>
 
-#include <swabstdlg.hxx>
+#include <swdll.hxx>
+
+class SwAbstractDialogFactory;
 
 using namespace ::com::sun::star;
 
@@ -56,6 +57,7 @@ SwDialogsTest2::SwDialogsTest2()
 void SwDialogsTest2::setUp()
 {
     ScreenshotTest::setUp();
+    SwGlobals::ensure();
     // Make sure the swui library's global pSwResMgr is initialized
     // (alternatively to dynamically loading the library, SwCreateDialogFactory
     // could be declared in an include file and this CppunitTest link against

@@ -17,13 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "VLegendSymbolFactory.hxx"
-#include "macros.hxx"
-#include "PropertyMapper.hxx"
-#include "AbstractShapeFactory.hxx"
-#include "ObjectIdentifier.hxx"
-#include <com/sun/star/drawing/LineStyle.hpp>
+#include <VLegendSymbolFactory.hxx>
+#include <PropertyMapper.hxx>
+#include <ShapeFactory.hxx>
+#include <com/sun/star/drawing/Position3D.hpp>
 #include <com/sun/star/chart2/Symbol.hpp>
+#include <com/sun/star/drawing/XShapes.hpp>
+#include <com/sun/star/drawing/Direction3D.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Reference;
@@ -101,7 +104,7 @@ Reference< drawing::XShape > VLegendSymbolFactory::createSymbol(
     if( ! (rSymbolContainer.is() && xShapeFactory.is()))
         return xResult;
 
-    AbstractShapeFactory* pShapeFactory = AbstractShapeFactory::getOrCreateShapeFactory(xShapeFactory);
+    ShapeFactory* pShapeFactory = ShapeFactory::getOrCreateShapeFactory(xShapeFactory);
     xResult.set( pShapeFactory->createGroup2D( rSymbolContainer ), uno::UNO_QUERY );
 
     Reference< drawing::XShapes > xResultGroup( xResult, uno::UNO_QUERY );
@@ -109,13 +112,12 @@ Reference< drawing::XShape > VLegendSymbolFactory::createSymbol(
         return xResult;
 
     // add an invisible square box to maintain aspect ratio
-    Reference< drawing::XShape > xBound( pShapeFactory->createInvisibleRectangle(
-                xResultGroup, rEntryKeyAspectRatio  ));
+    pShapeFactory->createInvisibleRectangle( xResultGroup, rEntryKeyAspectRatio );
 
     // create symbol
     try
     {
-        if( eStyle == LegendSymbolStyle_LINE )
+        if( eStyle == LegendSymbolStyle::Line )
         {
             Reference< drawing::XShape > xLine =
                 pShapeFactory->createLine( xResultGroup, awt::Size( rEntryKeyAspectRatio.Width, 0 ),
@@ -132,7 +134,7 @@ Reference< drawing::XShape > VLegendSymbolFactory::createSymbol(
             {
                 drawing::Direction3D aSymbolSize( nSize, nSize, 0 );
                 drawing::Position3D aPos( rEntryKeyAspectRatio.Width/2.0, rEntryKeyAspectRatio.Height/2.0, 0 );
-                AbstractShapeFactory* pFactory = AbstractShapeFactory::getOrCreateShapeFactory( xShapeFactory );
+                ShapeFactory* pFactory = ShapeFactory::getOrCreateShapeFactory( xShapeFactory );
                 if( aSymbol.Style == chart2::SymbolStyle_STANDARD )
                 {
                     // take series color as fill color
@@ -162,7 +164,7 @@ Reference< drawing::XShape > VLegendSymbolFactory::createSymbol(
                 }
             }
         }
-        else if( eStyle == LegendSymbolStyle_CIRCLE )
+        else if( eStyle == LegendSymbolStyle::Circle )
         {
             sal_Int32 nSize = std::min( rEntryKeyAspectRatio.Width, rEntryKeyAspectRatio.Height );
             Reference< drawing::XShape > xShape =
@@ -173,7 +175,7 @@ Reference< drawing::XShape > VLegendSymbolFactory::createSymbol(
                 lcl_setPropertiesToShape( xLegendEntryProperties, xShape, ePropertyType, awt::Size(0,0) ); // PropertyType::FilledSeries );
             }
         }
-        else // eStyle == LegendSymbolStyle_BOX
+        else // eStyle == LegendSymbolStyle::Box
         {
             tNameSequence aPropNames;
             tAnySequence aPropValues;
@@ -186,9 +188,9 @@ Reference< drawing::XShape > VLegendSymbolFactory::createSymbol(
                         aPropNames, aPropValues );
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return xResult;

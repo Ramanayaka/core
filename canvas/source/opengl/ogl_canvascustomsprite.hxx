@@ -11,17 +11,13 @@
 #define INCLUDED_CANVAS_SOURCE_OPENGL_OGL_CANVASCUSTOMSPRITE_HXX
 
 #include <cppuhelper/compbase.hxx>
-#include <comphelper/uno3.hxx>
 
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/rendering/XCustomSprite.hpp>
 #include <com/sun/star/rendering/XPolyPolygon2D.hpp>
 
 #include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/vector/b2isize.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
 
-#include <canvas/base/basemutexhelper.hxx>
+#include <base/basemutexhelper.hxx>
 
 #include "ogl_spritecanvas.hxx"
 #include "ogl_canvashelper.hxx"

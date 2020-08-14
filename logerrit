@@ -2,15 +2,15 @@
 
 #GERRITHOST=gerrit.libreoffice.org
 GERRITHOST=logerrit
-GERRITURL=ssh://$GERRITHOST/core
+GERRITURL="ssh://$GERRITHOST/core"
 
 get_SHA_for_change() {
-    SHA=$(ssh ${GERRITHOST?} gerrit query --all-approvals change:$1|grep ref|tail -1|cut -d: -f2)
+    SHA=$(ssh "${GERRITHOST?}" gerrit query --all-approvals change:"$1" | grep ref | tail -1 | cut -d: -f2 | sed 's/^ *//')
 }
 
 submit() {
-        TYPE=$1
-        BRANCH=$2
+        BRANCH=$1
+        TYPE=${2:-''}
         if test -z "$BRANCH"
         then
             BRANCH=$(git symbolic-ref HEAD 2> /dev/null)
@@ -22,12 +22,14 @@ submit() {
             fi
             echo "no branch specified, guessing current branch $BRANCH"
         fi
-        git push $GERRITURL HEAD:refs/$TYPE/$BRANCH
+        git push "$GERRITURL" "HEAD:refs/for/$BRANCH$TYPE"
 }
 
 logerrit() {
         echo "Host logerrit gerrit.libreoffice.org"
-        echo "    IdentityFile ~/.ssh/id_rsa"
+        if test -n "${2-}" && test -f "$HOME/.ssh/id_$2"; then
+            echo "    IdentityFile ~/.ssh/id_$2"
+        fi
         echo "    User $1"
         echo "    Port 29418"
         echo "    HostName gerrit.libreoffice.org"
@@ -45,21 +47,25 @@ case "$1" in
         echo
         echo " --- for submitters:"
         echo "             submit [BRANCH]         submit your change for review"
-        echo "             submit-draft [BRANCH]   submit your change as draft"
+        echo "             submit-private [BRANCH] submit your change as private"
+        echo "             submit-wip [BRANCH]     submit your change as work-in-progress"
         echo "             nextchange [BRANCH]     reset branch to the remote to start with the next change"
-        echo "             testfeature [BRANCH]    trigger a test of a feature branch on gerrit"
-        echo "Note: drafts are only visibly to yourself and those that you explicitly add as reviewers."
+        echo "             testfeature [BRANCH] [CHANGEID]"
+        echo "                                     trigger a test of a feature branch on gerrit"
+        echo
+        echo "Note: private changes are only visibly to yourself and those that you explicitly add as reviewers."
+        echo "For full documentation, see https://gerrit.libreoffice.org/Documentation/intro-user.html#private-changes"
         echo
         echo " --- for reviewers:"
         echo "             checkout CHANGEID       checkout the changes for review"
         echo "             pull CHANGEID           pull (and merge) the changes on current branch"
         echo "             cherry-pick CHANGEID    cherry-pick the change on current branch"
         echo "             patch CHANGEID          show the change as a patch"
-        echo "             query ....              query for changes for review on project core"
+        echo "             query ...               query for changes for review on project core"
         echo "             <any other gerrit command>"
         echo
         echo "advanced users should consider using git review instead:"
-        echo "http://wiki.documentfoundation.org/Development/GitReview"
+        echo "https://wiki.documentfoundation.org/Development/GitReview"
         exit
     ;;
     setup)
@@ -72,50 +78,55 @@ case "$1" in
 	ssh_home="$HOME/.ssh";
 	ssh_key=
 	created_ssh=
-	if ! test -d $ssh_home; then
+	if ! test -d "$ssh_home"; then
 	    echo "It appears that you have no ssh setup, running ssh-keygen to create that:"
-	    mkdir $ssh_home
-	    chmod 0700 $ssh_home
+	    mkdir -m0700 "$ssh_home"
 	    created_ssh=TRUE
 	    echo
 	    echo "Hit enter to generate an ssh key - you will need to enter a pass-phrase"
 	    echo
-	    read
-	    ssh-keygen -t rsa -f "$ssh_home/id_rsa"
+	    read -r
+	    ssh-keygen -t rsa -f "$ssh_home/id_rsa" # default type as of OpenSSH 8.1
 	fi
-	if test -d $ssh_home; then
-	    if test -f "$ssh_home/id_rsa.pub"; then
-		ssh_key=$(cat $ssh_home/id_rsa.pub);
-	    elif test -f "$ssh_home/id_dsa.pub"; then
-		ssh_key=$(cat $ssh_home/id_dsa.pub);
-	    fi
-	fi
-        echo "Please go to https://gerrit.libreoffice.org/ and:"
-        echo "- press the 'register' button in the top right corner"
-        echo "- after login set yourself a username (its recommended to use your IRC-nick)"
-	if test "z$ssh_key" = "z"; then
-            echo "- add your public ssh-key into the ssh keys settings."
-	else
-	    echo "- paste the key below into the 'Add SSH Public Key' box."
-	    echo
-	    echo "$ssh_key"
-	    echo
-	fi
+    if test -d "$ssh_home"; then
+        # order algos based on the PubkeyAcceptedKeyTypes option from OpenSSH 8.1
+        for ssh_key_type in ecdsa ed25519 rsa; do
+            pk="$ssh_home/id_${ssh_key_type}.pub"
+            ssh_key=""
+            if test -f "$pk" && ssh_key="$(< "$pk")" && test -n "$ssh_key"; then
+                break
+            fi
+        done
+    fi
+    echo "Please go to https://gerrit.libreoffice.org/ and click the \"Sign in\" link"
+    echo "at the top right of the page. You'll be sent to our Single Sign-On portal"
+    echo "for authentication (create an account if needs be), and automatically"
+    echo "redirected back to gerrit afterwards."
+    echo
+    echo "Visit https://gerrit.libreoffice.org/settings/#SSHKeys and paste the public"
+    if test -z "$ssh_key"; then
+        echo "part of your SSH key in the 'New SSH key' form."
+    else
+        echo "key below in the 'New SSH key' form."
         echo
-        echo "Note that you need to register additional email addresses, if you want to"
-        echo "commit from them. Additional emails must be confirmed with repling to the"
-        echo "invitation mail it sends you."
+        printf '%s\n' "$ssh_key"
         echo
-        read -p 'Which user name did you choose? ' GERRITUSER
-	if test "z$created_ssh" = "z"; then
-            echo
-            echo "Please now add the following to your ~/.ssh/config, creating the file if needed:"
-            echo
-	    logerrit $GERRITUSER
-            echo
-        else
-	    echo "Automatically creating your ssh config"
-	    (logerrit $GERRITUSER) > "$ssh_home/config"
+    fi
+    echo
+    echo "Note that you need to register additional email addresses, if you want to"
+    echo "commit from them. Each additional email address must be confirmed by"
+    echo "following the verification link sent to it."
+    echo
+        read -r -p 'Which user name did you choose? ' GERRITUSER
+	if test -z "$created_ssh"; then
+        echo
+        echo "Please now add the following to your ~/.ssh/config, creating the file if needed:"
+        echo
+        logerrit "$GERRITUSER" ${ssh_key:+"$ssh_key_type"}
+        echo
+    else
+        echo "Automatically creating your ssh config"
+        logerrit "$GERRITUSER" ${ssh_key:+"$ssh_key_type"} >"$ssh_home/config"
 	fi
 	# setup the remote properly ...
 	git config remote.origin.pushurl ssh://logerrit/core
@@ -124,20 +135,27 @@ case "$1" in
         ./g -z
     ;;
     test)
-        if test -n "$(ssh $GERRITHOST 2>&1|grep "Welcome to Gerrit Code Review")"
+        if test -n "$(ssh "$GERRITHOST" 2>&1|grep "Welcome to Gerrit Code Review")"
         then
             echo "Your gerrit setup was successful!"
         else
-            echo "There seems to be trouble."
-            echo "please have the output of: ssh -vvvv logerrit"
+            echo "There seems to be trouble. Please have the output of:"
+            echo "ssh -vvvv $GERRITHOST"
             echo "at hand when looking for help."
         fi
     ;;
     submit)
-        submit 'for' $2
+        submit "$2"
+    ;;
+    submit-private)
+        submit "$2" '%private'
+    ;;
+    submit-wip)
+        submit "$2" '%wip'
     ;;
     submit-draft)
-        submit drafts $2
+        echo "Please use submit-private instead of submit-draft."
+        exit 1
     ;;
     nextchange)
         if test -n "$(git status -s -uno)"
@@ -152,7 +170,7 @@ case "$1" in
             CHANGEID="NOCHANGEID"
         fi
         BACKUPBRANCH=backup/$CHANGEID-$(date +%F-%H%M%S)
-        git branch $BACKUPBRANCH
+        git branch "$BACKUPBRANCH"
         echo "current state backed up as $BACKUPBRANCH"
         BRANCH=$2
         if test -z "$BRANCH"
@@ -166,14 +184,14 @@ case "$1" in
             fi
             echo "no branch specified, guessing current branch $BRANCH"
         fi
-        git reset --hard remotes/origin/$BRANCH
+        git reset --hard "remotes/origin/$BRANCH"
     ;;
     checkout)
-        get_SHA_for_change $2
-        git fetch $GERRITURL $SHA && git checkout FETCH_HEAD
+        get_SHA_for_change "$2"
+        git fetch "$GERRITURL" "$SHA" && git checkout FETCH_HEAD
     ;;
     review)
-        echo "'./logerrit review' has be removed as obsolete."
+        echo "'./logerrit review' has been removed as obsolete."
         echo "Please use either:"
         echo " - git-review:              https://wiki.documentfoundation.org/Development/GitReview"
         echo " - or the web-UI directly:  https://gerrit.libreoffice.org/"
@@ -181,22 +199,30 @@ case "$1" in
         exit 1;
     ;;
     pull)
-        get_SHA_for_change $2
-        git pull $GERRITURL $SHA
+        get_SHA_for_change "$2"
+        git pull "$GERRITURL" "$SHA"
     ;;
     cherry-pick)
-        get_SHA_for_change $2
-        git fetch $GERRITURL $SHA && git cherry-pick FETCH_HEAD
+        get_SHA_for_change "$2"
+        git fetch "$GERRITURL" "$SHA" && git cherry-pick FETCH_HEAD
     ;;
     patch)
-        get_SHA_for_change $2
-        git fetch $GERRITURL $SHA && git format-patch -1 --stdout FETCH_HEAD
+        get_SHA_for_change "$2"
+        git fetch "$GERRITURL" "$SHA" && git format-patch -1 --stdout FETCH_HEAD
     ;;
     query)
         shift
-        ssh ${GERRITHOST?} gerrit query project:core "$@"
+        ssh "${GERRITHOST?}" gerrit query project:core "${@@Q}"
     ;;
     testfeature)
+        CHANGEID=${3#I}
+        if test -n "$3" -a \( ${#3} -ne 41 -o -n "${CHANGEID//[0-9a-f]/}" \)
+        then
+            echo "${3} is not a valid Gerrit change id"
+            exit 1
+        fi
+        CHANGEID=$3
+
         BRANCH=$2
         if test -z "$BRANCH"
         then
@@ -213,25 +239,37 @@ case "$1" in
         WORKDIR=$(mktemp -d)
         if test -z "$WORKDIR"
         then
-            echo "could no create work directory."
+            echo "could not create work directory."
             exit 1
         fi
-        echo workdir at $WORKDIR
-        git clone -s "$(dirname $0)" $WORKDIR/core
-        pushd $WORKDIR/core
+        echo "workdir at $WORKDIR"
+        git clone -s "$(dirname "$0")" "$WORKDIR/core"
+
+        pushd "$WORKDIR/core" || { echo "Changing directory failed."; exit 1; }
         echo "noop commit: trigger test build for branch feature/$BRANCH" > ../commitmsg
         echo >> ../commitmsg
         echo "branch is at:" >> ../commitmsg
+        echo >> ../commitmsg
         git log -1|sed -e "s/Change-Id:/XXXXXX:/" >> ../commitmsg
-        git fetch git://gerrit.libreoffice.org/core.git feature/$BRANCH && \
+        if test -n "$CHANGEID"
+        then
+            echo >> ../commitmsg
+            echo "Change-Id: $CHANGEID" >> ../commitmsg
+        fi
+        git fetch https://git.libreoffice.org/core "feature/$BRANCH" && \
             git checkout -b featuretst FETCH_HEAD && \
-            cp -a .git-hooks/* .git/hooks
+            cp -a .git-hooks/* .git/hooks && \
             git commit --allow-empty -F ../commitmsg && \
-            git push $GERRITURL HEAD:refs/for/feature/$BRANCH
-        popd
-        rm -rf $WORKDIR/core
+            git push "$GERRITURL" "HEAD:refs/for/feature/$BRANCH"
+        popd || { echo "Changing directory failed."; exit 1; }
+
+        rm -rf "$WORKDIR/core"
+        rm -f "$WORKDIR/commitmsg"
+        rmdir "$WORKDIR"
     ;;
     *)
-        ssh ${GERRITHOST?} gerrit "$@"
+        ssh "${GERRITHOST?}" gerrit "${@@Q}"
     ;;
 esac
+
+# vim: set noet sw=4 ts=4:

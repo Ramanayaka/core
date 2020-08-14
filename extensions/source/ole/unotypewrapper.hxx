@@ -19,11 +19,11 @@
 #ifndef INCLUDED_EXTENSIONS_SOURCE_OLE_UNOTYPEWRAPPER_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_OLE_UNOTYPEWRAPPER_HXX
 
-#include <wincrap.hxx>
+#include "wincrap.hxx"
 
 #include "comifaces.hxx"
 
-/* creates an UnoTypWrapper and sets the Name property to the value
+/* creates a UnoTypWrapper and sets the Name property to the value
    specified by sTypeName.
    Returns true if the object could be created and initialized.
  */

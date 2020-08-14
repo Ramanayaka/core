@@ -20,18 +20,16 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_DRAWDOCSHELL_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_DRAWDOCSHELL_HXX
 
-#include <o3tl/array_view.hxx>
+#include <o3tl/span.hxx>
 #include <sfx2/docfac.hxx>
 #include <sfx2/objsh.hxx>
+#include <svl/style.hxx>
 
-#include <vcl/jobset.hxx>
-#include "glob.hxx"
-#include "sdmod.hxx"
-#include "pres.hxx"
-#include "sddllapi.h"
+#include <glob.hxx>
+#include <pres.hxx>
+#include <sddllapi.h>
 #include "fupoor.hxx"
 
-class SfxStyleSheetBasePool;
 class FontList;
 class SdDrawDocument;
 class SdPage;
@@ -61,18 +59,18 @@ public:
     DrawDocShell (
         SfxObjectCreateMode eMode,
         bool bSdDataObj,
-        DocumentType=DocumentType::Impress);
+        DocumentType);
 
     DrawDocShell (
         SfxModelFlags nModelCreationFlags,
         bool bSdDataObj,
-        DocumentType=DocumentType::Impress);
+        DocumentType);
 
     DrawDocShell (
         SdDrawDocument* pDoc,
         SfxObjectCreateMode eMode,
         bool bSdDataObj,
-        DocumentType=DocumentType::Impress);
+        DocumentType);
     virtual ~DrawDocShell() override;
 
     void                    UpdateRefDevice();
@@ -93,15 +91,15 @@ public:
     virtual bool            SaveAs( SfxMedium &rMedium  ) override;
 
     virtual ::tools::Rectangle       GetVisArea(sal_uInt16 nAspect) const override;
-    virtual void            Draw(OutputDevice*, const JobSetup& rSetup, sal_uInt16 nAspect = ASPECT_CONTENT) override;
-    virtual ::svl::IUndoManager*
-                            GetUndoManager() override;
+    virtual void            Draw(OutputDevice*, const JobSetup& rSetup, sal_uInt16 nAspect) override;
+    virtual SfxUndoManager* GetUndoManager() override;
     virtual Printer*        GetDocumentPrinter() override;
     virtual void            OnDocumentPrinterChanged(Printer* pNewPrinter) override;
     virtual SfxStyleSheetBasePool* GetStyleSheetPool() override;
-    virtual void            FillClass(SvGlobalName* pClassName, SotClipboardFormatId* pFormat, OUString* pAppName, OUString* pFullTypeName, OUString* pShortTypeName, sal_Int32 nFileFormat, bool bTemplate = false ) const override;
+    virtual void            FillClass(SvGlobalName* pClassName, SotClipboardFormatId* pFormat, OUString* pFullTypeName, sal_Int32 nFileFormat, bool bTemplate = false ) const override;
     virtual void            SetModified( bool = true ) override;
-    virtual VclPtr<SfxDocumentInfoDialog> CreateDocumentInfoDialog( const SfxItemSet &rSet ) override;
+    virtual std::shared_ptr<SfxDocumentInfoDialog> CreateDocumentInfoDialog(weld::Window* pParent,
+                                                                            const SfxItemSet &rSet) override;
 
     using SfxObjectShell::GetVisArea;
     using SfxShell::GetViewShell;
@@ -126,15 +124,12 @@ public:
     void                    GetState(SfxItemSet&);
 
     void                    Connect(sd::ViewShell* pViewSh);
-    void                    Disconnect(sd::ViewShell* pViewSh);
+    void                    Disconnect(sd::ViewShell const * pViewSh);
     void                    UpdateTablePointers();
 
-    bool                    GotoBookmark(const OUString& rBookmark);
+    void                    GotoBookmark(const OUString& rBookmark);
 
-    bool                    IsMarked(  SdrObject* pObject  );
-    // Optionally realize multi-selection of objects
-    bool                    GetObjectIsmarked(const OUString& rBookmark, bool bRealizeMultiSelectionOfObjects);
-    Bitmap                  GetPagePreviewBitmap(SdPage* pPage);
+    BitmapEx                GetPagePreviewBitmap(SdPage* pPage);
 
     /** checks, if the given name is a valid new name for a slide
 
@@ -151,9 +146,9 @@ public:
                 a default name of a not-yet-existing slide (e.g. 'Slide 17'),
                 sal_True is returned, but rName is set to an empty string.
      */
-    bool                    CheckPageName(vcl::Window* pWin, OUString& rName );
+    bool                    CheckPageName(weld::Window* pWin, OUString& rName );
 
-    void                    SetSlotFilter(bool bEnable = false, o3tl::array_view<sal_uInt16> pSIDs = o3tl::array_view<sal_uInt16>()) { mbFilterEnable = bEnable; mpFilterSIDs = pSIDs; }
+    void                    SetSlotFilter(bool bEnable = false, o3tl::span<sal_uInt16 const> pSIDs = o3tl::span<sal_uInt16 const>()) { mbFilterEnable = bEnable; mpFilterSIDs = pSIDs; }
     void                    ApplySlotFilter() const;
 
     SfxStyleFamily          GetStyleFamily() const { return mnStyleFamily; }
@@ -212,14 +207,14 @@ public:
 protected:
 
     SdDrawDocument*         mpDoc;
-    SfxUndoManager*         mpUndoManager;
+    std::unique_ptr<SfxUndoManager> mpUndoManager;
     VclPtr<SfxPrinter>      mpPrinter;
     ::sd::ViewShell*        mpViewShell;
-    FontList*               mpFontList;
+    std::unique_ptr<FontList> mpFontList;
     rtl::Reference<FuPoor> mxDocShellFunction;
     DocumentType            meDocType;
     SfxStyleFamily          mnStyleFamily;
-    o3tl::array_view<sal_uInt16>
+    o3tl::span<sal_uInt16 const>
                             mpFilterSIDs;
     bool                    mbFilterEnable;
     bool                    mbSdDataObj;
@@ -228,7 +223,6 @@ protected:
 
     bool                    mbOwnDocument;          // if true, we own mpDoc and will delete it in our d'tor
     void                    Construct(bool bClipboard);
-    virtual void            InPlaceActivate( bool bActive ) override;
 private:
     static void setEditMode(DrawViewShell* pDrawViewShell, bool isMasterPage);
 };

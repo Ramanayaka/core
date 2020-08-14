@@ -22,8 +22,7 @@
 #include <unx/saldisp.hxx>
 #include <unx/x11/x11sys.hxx>
 
-#include <vcl/msgbox.hxx>
-#include <vcl/button.hxx>
+#include <vcl/weld.hxx>
 
 #include <svdata.hxx>
 
@@ -42,28 +41,28 @@ X11SalSystem::~X11SalSystem()
 // for the moment only handle xinerama case
 unsigned int X11SalSystem::GetDisplayScreenCount()
 {
-    SalDisplay* pSalDisp = vcl_sal::getSalDisplay(GetGenericData());
+    SalDisplay* pSalDisp = vcl_sal::getSalDisplay(GetGenericUnixSalData());
     return pSalDisp->IsXinerama() ? pSalDisp->GetXineramaScreens().size() :
            pSalDisp->GetXScreenCount();
 }
 
 bool X11SalSystem::IsUnifiedDisplay()
 {
-    SalDisplay* pSalDisp = vcl_sal::getSalDisplay(GetGenericData());
+    SalDisplay* pSalDisp = vcl_sal::getSalDisplay(GetGenericUnixSalData());
     unsigned int nScreenCount = pSalDisp->GetXScreenCount();
     return pSalDisp->IsXinerama() || (nScreenCount == 1);
 }
 
 unsigned int X11SalSystem::GetDisplayBuiltInScreen()
 {
-    SalDisplay* pSalDisp = vcl_sal::getSalDisplay(GetGenericData());
+    SalDisplay* pSalDisp = vcl_sal::getSalDisplay(GetGenericUnixSalData());
     return pSalDisp->GetDefaultXScreen().getXScreen();
 }
 
 tools::Rectangle X11SalSystem::GetDisplayScreenPosSizePixel( unsigned int nScreen )
 {
     tools::Rectangle aRet;
-    SalDisplay* pSalDisp = vcl_sal::getSalDisplay(GetGenericData());
+    SalDisplay* pSalDisp = vcl_sal::getSalDisplay(GetGenericUnixSalData());
     if( pSalDisp->IsXinerama() )
     {
         const std::vector< tools::Rectangle >& rScreens = pSalDisp->GetXineramaScreens();
@@ -84,33 +83,23 @@ tools::Rectangle X11SalSystem::GetDisplayScreenPosSizePixel( unsigned int nScree
     return aRet;
 }
 
-int X11SalSystem::ShowNativeDialog( const OUString& rTitle, const OUString& rMessage, const std::list< OUString >& rButtons, int nDefButton )
+int X11SalSystem::ShowNativeDialog( const OUString& rTitle, const OUString& rMessage, const std::vector< OUString >& rButtons )
 {
-    int nRet = -1;
-
     ImplSVData* pSVData = ImplGetSVData();
     if( pSVData->mpIntroWindow )
         pSVData->mpIntroWindow->Hide();
 
-    ScopedVclPtrInstance<WarningBox> aWarn(nullptr, WB_STDWORK, rMessage);
-    aWarn->SetText( rTitle );
-    aWarn->Clear();
+    std::unique_ptr<weld::MessageDialog> xWarn(Application::CreateMessageDialog(nullptr,
+                                               VclMessageType::Warning, VclButtonsType::NONE,
+                                               rMessage));
+    xWarn->set_title(rTitle);
 
     sal_uInt16 nButton = 0;
-    for( std::list< OUString >::const_iterator it = rButtons.begin(); it != rButtons.end(); ++it )
-    {
-            aWarn->AddButton( *it, nButton+1, nButton == (sal_uInt16)nDefButton ? ButtonDialogFlags::Default : ButtonDialogFlags::NONE );
-            nButton++;
-    }
-    aWarn->SetFocusButton( (sal_uInt16)nDefButton+1 );
+    for (auto const& button : rButtons)
+        xWarn->add_button(button, nButton++);
+    xWarn->set_default_response(0);
 
-    nRet = ((int)aWarn->Execute()) - 1;
-
-    // normalize behaviour, actually this should never happen
-    if( nRet < -1 || nRet >= int(rButtons.size()) )
-        nRet = -1;
-
-    return nRet;
+    return xWarn->run();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

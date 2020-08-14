@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.20.0 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
+<!-- Generated with glade 3.20.4 -->
+<interface domain="svx">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkAdjustment" id="compression-adjustment">
     <property name="lower">1</property>
     <property name="upper">9</property>
-    <property name="value">9</property>
+    <property name="value">6</property>
     <property name="step_increment">1</property>
     <property name="page_increment">1</property>
   </object>
@@ -16,32 +16,12 @@
     <property name="step_increment">100</property>
     <property name="page_increment">100</property>
   </object>
-  <object class="GtkListStore" id="interpolation-method-store">
-    <columns>
-      <!-- column-name scale-method-name -->
-      <column type="gchararray"/>
-    </columns>
-    <data>
-      <row>
-        <col id="0" translatable="yes">None</col>
-      </row>
-      <row>
-        <col id="0" translatable="yes">Bilinear</col>
-      </row>
-      <row>
-        <col id="0" translatable="yes">Bicubic</col>
-      </row>
-      <row>
-        <col id="0" translatable="yes">Lanczos</col>
-      </row>
-    </data>
-  </object>
   <object class="GtkAdjustment" id="quality-adjustment">
     <property name="lower">1</property>
     <property name="upper">99</property>
-    <property name="value">90</property>
+    <property name="value">80</property>
     <property name="step_increment">1</property>
-    <property name="page_increment">10</property>
+    <property name="page_increment">5</property>
   </object>
   <object class="GtkAdjustment" id="width-adjustment">
     <property name="lower">1</property>
@@ -53,9 +33,11 @@
   <object class="GtkDialog" id="CompressGraphicDialog">
     <property name="can_focus">False</property>
     <property name="border_width">6</property>
-    <property name="title" translatable="yes">Compress Image</property>
+    <property name="title" translatable="yes" context="compressgraphicdialog|CompressGraphicDialog">Compress Image</property>
     <property name="resizable">False</property>
     <property name="modal">True</property>
+    <property name="default_width">0</property>
+    <property name="default_height">9</property>
     <property name="type_hint">dialog</property>
     <child internal-child="vbox">
       <object class="GtkBox" id="dialog-vbox1">
@@ -147,14 +129,19 @@
                         <property name="column_spacing">6</property>
                         <child>
                           <object class="GtkRadioButton" id="radio-jpeg">
-                            <property name="label" translatable="yes">JPEG Quality</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|radio-jpeg">JPEG Quality</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
-                            <property name="tooltip_text" translatable="yes">Lossy compression</property>
+                            <property name="tooltip_text" translatable="yes" context="compressgraphicdialog|radio-jpeg|tooltip_text">Lossy compression</property>
+                            <property name="use_underline">True</property>
                             <property name="xalign">0</property>
                             <property name="draw_indicator">True</property>
                             <property name="group">radio-lossless</property>
+                            <accessibility>
+                              <relation type="label-for" target="scale-quality"/>
+                              <relation type="label-for" target="spin-quality"/>
+                            </accessibility>
                           </object>
                           <packing>
                             <property name="left_attach">0</property>
@@ -163,14 +150,19 @@
                         </child>
                         <child>
                           <object class="GtkRadioButton" id="radio-lossless">
-                            <property name="label" translatable="yes">PNG Compression</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|radio-lossless">PNG Compression</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
-                            <property name="tooltip_text" translatable="yes">Lossless compression</property>
+                            <property name="tooltip_text" translatable="yes" context="compressgraphicdialog|radio-lossless|tooltip_text">Lossless compression</property>
+                            <property name="use_underline">True</property>
                             <property name="xalign">0</property>
                             <property name="active">True</property>
                             <property name="draw_indicator">True</property>
+                            <accessibility>
+                              <relation type="label-for" target="scale-compression"/>
+                              <relation type="label-for" target="spin-compression"/>
+                            </accessibility>
                           </object>
                           <packing>
                             <property name="left_attach">0</property>
@@ -197,6 +189,9 @@
                                     <property name="digits">0</property>
                                     <property name="draw_value">False</property>
                                     <property name="value_pos">right</property>
+                                    <accessibility>
+                                      <relation type="labelled-by" target="radio-jpeg"/>
+                                    </accessibility>
                                   </object>
                                   <packing>
                                     <property name="left_attach">0</property>
@@ -207,11 +202,12 @@
                                   <object class="GtkSpinButton" id="spin-quality">
                                     <property name="visible">True</property>
                                     <property name="can_focus">True</property>
-                                    <property name="invisible_char">•</property>
-                                    <property name="text" translatable="no">90</property>
+                                    <property name="activates_default">True</property>
                                     <property name="adjustment">quality-adjustment</property>
                                     <property name="numeric">True</property>
-                                    <property name="value">90</property>
+                                    <accessibility>
+                                      <relation type="labelled-by" target="radio-jpeg"/>
+                                    </accessibility>
                                   </object>
                                   <packing>
                                     <property name="left_attach">1</property>
@@ -245,6 +241,9 @@
                                     <property name="digits">0</property>
                                     <property name="draw_value">False</property>
                                     <property name="value_pos">right</property>
+                                    <accessibility>
+                                      <relation type="labelled-by" target="radio-lossless"/>
+                                    </accessibility>
                                   </object>
                                   <packing>
                                     <property name="left_attach">0</property>
@@ -255,11 +254,14 @@
                                   <object class="GtkSpinButton" id="spin-compression">
                                     <property name="visible">True</property>
                                     <property name="can_focus">True</property>
-                                    <property name="invisible_char">•</property>
-                                    <property name="text" translatable="no">9</property>
+                                    <property name="activates_default">True</property>
+                                    <property name="text">6</property>
                                     <property name="adjustment">compression-adjustment</property>
                                     <property name="numeric">True</property>
-                                    <property name="value">9</property>
+                                    <property name="value">6</property>
+                                    <accessibility>
+                                      <relation type="labelled-by" target="radio-lossless"/>
+                                    </accessibility>
                                   </object>
                                   <packing>
                                     <property name="left_attach">1</property>
@@ -282,7 +284,7 @@
                   <object class="GtkLabel" id="label2">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Compression</property>
+                    <property name="label" translatable="yes" context="compressgraphicdialog|label2">Compression</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -315,10 +317,11 @@
                         <property name="column_spacing">12</property>
                         <child>
                           <object class="GtkCheckButton" id="checkbox-reduce-resolution">
-                            <property name="label" translatable="yes">Reduce image resolution</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|checkbox-reduce-resolution">Reduce image resolution</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">False</property>
+                            <property name="use_underline">True</property>
                             <property name="xalign">0</property>
                             <property name="draw_indicator">True</property>
                           </object>
@@ -332,7 +335,7 @@
                           <object class="GtkLabel" id="label3">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">Width:</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|label3">Width:</property>
                             <property name="use_underline">True</property>
                             <property name="mnemonic_widget">spin-new-width</property>
                             <property name="width_chars">14</property>
@@ -347,7 +350,7 @@
                           <object class="GtkLabel" id="label4">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">Height:</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|label4">Height:</property>
                             <property name="use_underline">True</property>
                             <property name="mnemonic_widget">spin-new-height</property>
                             <property name="width_chars">14</property>
@@ -362,7 +365,7 @@
                           <object class="GtkLabel" id="label5">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">Resolution:</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|label5">Resolution:</property>
                             <property name="use_underline">True</property>
                             <property name="mnemonic_widget">combo-resolution</property>
                             <property name="width_chars">14</property>
@@ -377,7 +380,7 @@
                           <object class="GtkLabel" id="label12">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">Interpolation:</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|label12">Interpolation:</property>
                             <property name="use_underline">True</property>
                             <property name="mnemonic_widget">interpolation-method-combo</property>
                             <property name="width_chars">14</property>
@@ -392,7 +395,8 @@
                           <object class="GtkSpinButton" id="spin-new-width">
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
-                            <property name="text" translatable="no">1</property>
+                            <property name="activates_default">True</property>
+                            <property name="text">1</property>
                             <property name="adjustment">width-adjustment</property>
                             <property name="numeric">True</property>
                             <property name="value">1</property>
@@ -406,7 +410,8 @@
                           <object class="GtkSpinButton" id="spin-new-height">
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
-                            <property name="text" translatable="no">1</property>
+                            <property name="activates_default">True</property>
+                            <property name="text">1</property>
                             <property name="adjustment">height-adjustment</property>
                             <property name="numeric">True</property>
                             <property name="value">1</property>
@@ -422,8 +427,6 @@
                             <property name="can_focus">False</property>
                             <property name="has_entry">True</property>
                             <items>
-                              <item>50</item>
-                              <item>75</item>
                               <item>96</item>
                               <item>150</item>
                               <item>200</item>
@@ -433,6 +436,7 @@
                             <child internal-child="entry">
                               <object class="GtkEntry">
                                 <property name="can_focus">True</property>
+                                <property name="activates_default">True</property>
                               </object>
                             </child>
                           </object>
@@ -442,10 +446,15 @@
                           </packing>
                         </child>
                         <child>
-                          <object class="GtkComboBox" id="interpolation-method-combo">
+                          <object class="GtkComboBoxText" id="interpolation-method-combo">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="model">interpolation-method-store</property>
+                            <items>
+                              <item translatable="yes" context="compressgraphicdialog|interpolation-method-store">None</item>
+                              <item translatable="yes" context="compressgraphicdialog|interpolation-method-store">Bilinear</item>
+                              <item translatable="yes" context="compressgraphicdialog|interpolation-method-store">Bicubic</item>
+                              <item translatable="yes" context="compressgraphicdialog|interpolation-method-store">Lanczos</item>
+                            </items>
                           </object>
                           <packing>
                             <property name="left_attach">1</property>
@@ -456,7 +465,7 @@
                           <object class="GtkLabel" id="label13">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">px</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|label13">px</property>
                             <property name="xalign">0</property>
                           </object>
                           <packing>
@@ -468,7 +477,7 @@
                           <object class="GtkLabel" id="label14">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">px</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|label14">px</property>
                             <property name="xalign">0</property>
                           </object>
                           <packing>
@@ -480,7 +489,7 @@
                           <object class="GtkLabel" id="label16">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">DPI</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|label16">DPI</property>
                             <property name="xalign">0</property>
                           </object>
                           <packing>
@@ -499,7 +508,7 @@
                   <object class="GtkLabel" id="label22">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Resolution</property>
+                    <property name="label" translatable="yes" context="compressgraphicdialog|label22">Resolution</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -531,101 +540,15 @@
                         <property name="row_spacing">6</property>
                         <property name="column_spacing">6</property>
                         <child>
-                          <object class="GtkLabel" id="label7">
-                            <property name="visible">True</property>
-                            <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">Actual dimensions:</property>
-                            <property name="single_line_mode">True</property>
-                            <property name="xalign">0</property>
-                          </object>
-                          <packing>
-                            <property name="left_attach">0</property>
-                            <property name="top_attach">1</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkLabel" id="label-original-size">
-                            <property name="visible">True</property>
-                            <property name="can_focus">False</property>
-                            <property name="hexpand">True</property>
-                            <property name="label">???</property>
-                            <property name="xalign">0</property>
-                          </object>
-                          <packing>
-                            <property name="left_attach">1</property>
-                            <property name="top_attach">1</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkLabel" id="label8">
-                            <property name="visible">True</property>
-                            <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">Apparent dimensions:</property>
-                            <property name="xalign">0</property>
-                          </object>
-                          <packing>
-                            <property name="left_attach">0</property>
-                            <property name="top_attach">2</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkLabel" id="label9">
-                            <property name="visible">True</property>
-                            <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">Image size:</property>
-                            <property name="xalign">0</property>
-                          </object>
-                          <packing>
-                            <property name="left_attach">0</property>
-                            <property name="top_attach">3</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkLabel" id="label-view-size">
-                            <property name="visible">True</property>
-                            <property name="can_focus">False</property>
-                            <property name="hexpand">True</property>
-                            <property name="label">???</property>
-                            <property name="xalign">0</property>
-                          </object>
-                          <packing>
-                            <property name="left_attach">1</property>
-                            <property name="top_attach">2</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkLabel" id="label-image-capacity">
-                            <property name="visible">True</property>
-                            <property name="can_focus">False</property>
-                            <property name="hexpand">True</property>
-                            <property name="label">???</property>
-                            <property name="xalign">0</property>
-                          </object>
-                          <packing>
-                            <property name="left_attach">1</property>
-                            <property name="top_attach">3</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkLabel" id="label-new-capacity">
-                            <property name="visible">True</property>
-                            <property name="can_focus">False</property>
-                            <property name="hexpand">True</property>
-                            <property name="label">???</property>
-                            <property name="xalign">0</property>
-                          </object>
-                          <packing>
-                            <property name="left_attach">1</property>
-                            <property name="top_attach">4</property>
-                          </packing>
-                        </child>
-                        <child>
                           <object class="GtkLabel" id="label15">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="label" translatable="yes">Type:</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|label15">Type:</property>
                             <property name="single_line_mode">True</property>
                             <property name="xalign">0</property>
+                            <accessibility>
+                              <relation type="label-for" target="label-graphic-type"/>
+                            </accessibility>
                           </object>
                           <packing>
                             <property name="left_attach">0</property>
@@ -639,6 +562,9 @@
                             <property name="hexpand">True</property>
                             <property name="label">???</property>
                             <property name="xalign">0</property>
+                            <accessibility>
+                              <relation type="labelled-by" target="label15"/>
+                            </accessibility>
                           </object>
                           <packing>
                             <property name="left_attach">1</property>
@@ -646,15 +572,128 @@
                           </packing>
                         </child>
                         <child>
+                          <object class="GtkLabel" id="label7">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|label7">Actual dimensions:</property>
+                            <property name="single_line_mode">True</property>
+                            <property name="xalign">0</property>
+                            <accessibility>
+                                <relation type="label-for" target="label-original-size"/>
+                            </accessibility>
+                          </object>
+                          <packing>
+                            <property name="left_attach">0</property>
+                            <property name="top_attach">1</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="label-original-size">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <property name="hexpand">True</property>
+                            <property name="label">???</property>
+                            <property name="xalign">0</property>
+                            <accessibility>
+                                <relation type="labelled-by" target="label7"/>
+                            </accessibility>
+                          </object>
+                          <packing>
+                            <property name="left_attach">1</property>
+                            <property name="top_attach">1</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="label8">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|label8">Apparent dimensions:</property>
+                            <property name="xalign">0</property>
+                            <accessibility>
+                                <relation type="label-for" target="label-view-size"/>
+                            </accessibility>
+                          </object>
+                          <packing>
+                            <property name="left_attach">0</property>
+                            <property name="top_attach">2</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="label-view-size">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <property name="hexpand">True</property>
+                            <property name="label">???</property>
+                            <property name="xalign">0</property>
+                            <accessibility>
+                                <relation type="labelled-by" target="label8"/>
+                            </accessibility>
+                          </object>
+                          <packing>
+                            <property name="left_attach">1</property>
+                            <property name="top_attach">2</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="label9">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|label9">Image size:</property>
+                            <property name="xalign">0</property>
+                            <accessibility>
+                                <relation type="label-for" target="label-image-capacity"/>
+                            </accessibility>
+                          </object>
+                          <packing>
+                            <property name="left_attach">0</property>
+                            <property name="top_attach">3</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="label-image-capacity">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <property name="hexpand">True</property>
+                            <property name="label">???</property>
+                            <property name="xalign">0</property>
+                            <accessibility>
+                                <relation type="labelled-by" target="label9"/>
+                            </accessibility>
+                          </object>
+                          <packing>
+                            <property name="left_attach">1</property>
+                            <property name="top_attach">3</property>
+                          </packing>
+                        </child>
+                        <child>
                           <object class="GtkButton" id="calculate">
-                            <property name="label" translatable="yes">Calculate New Size:</property>
+                            <property name="label" translatable="yes" context="compressgraphicdialog|calculate">Calculate New Size:</property>
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="receives_default">True</property>
                             <property name="halign">start</property>
+                            <accessibility>
+                              <relation type="label-for" target="label-new-capacity"/>
+                            </accessibility>
                           </object>
                           <packing>
                             <property name="left_attach">0</property>
+                            <property name="top_attach">4</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="label-new-capacity">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <property name="hexpand">True</property>
+                            <property name="label">???</property>
+                            <property name="xalign">0</property>
+                            <accessibility>
+                              <relation type="labelled-by" target="calculate"/>
+                            </accessibility>
+                          </object>
+                          <packing>
+                            <property name="left_attach">1</property>
                             <property name="top_attach">4</property>
                           </packing>
                         </child>
@@ -666,7 +705,7 @@
                   <object class="GtkLabel" id="label1">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="label" translatable="yes">Image Information</property>
+                    <property name="label" translatable="yes" context="compressgraphicdialog|label1">Image Information</property>
                     <attributes>
                       <attribute name="weight" value="bold"/>
                     </attributes>
@@ -689,8 +728,12 @@
       </object>
     </child>
     <action-widgets>
-      <action-widget response="0">ok</action-widget>
-      <action-widget response="0">cancel</action-widget>
+      <action-widget response="-5">ok</action-widget>
+      <action-widget response="-6">cancel</action-widget>
+      <action-widget response="-11">help</action-widget>
     </action-widgets>
+    <child>
+      <placeholder/>
+    </child>
   </object>
 </interface>

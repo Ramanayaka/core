@@ -19,16 +19,16 @@
 #ifndef INCLUDED_CPPUHELPER_WEAKAGG_HXX
 #define INCLUDED_CPPUHELPER_WEAKAGG_HXX
 
-#include <cppuhelper/weak.hxx>
-#include <cppuhelper/weakref.hxx>
-#include <com/sun/star/uno/XAggregation.hpp>
-#include <cppuhelper/cppuhelperdllapi.h>
+#include "cppuhelper/weak.hxx"
+#include "cppuhelper/weakref.hxx"
+#include "com/sun/star/uno/XAggregation.hpp"
+#include "cppuhelper/cppuhelperdllapi.h"
 
 
 namespace cppu
 {
 
-/** Base class to implement an UNO object supporting weak references, i.e. the object can be held
+/** Base class to implement a UNO object supporting weak references, i.e. the object can be held
     weakly (by a css::uno::WeakReference) and aggregation, i.e. the object can be
     aggregated by another (delegator).
     This implementation copes with reference counting.  Upon last release(), the virtual dtor

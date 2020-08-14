@@ -13,41 +13,43 @@
  manual changes will be rewritten by the next run of update_pch.sh (which presumably
  also fixes all possible problems, so it's usually better to use it).
 
- Generated on 2015-11-14 14:16:28 using:
+ Generated on 2020-08-12 11:04:27 using:
  ./bin/update_pch connectivity dbtools --cutoff=2 --exclude:system --exclude:module --include:local
 
  If after updating build fails, use the following command to locate conflicting headers:
- ./bin/update_pch_bisect ./connectivity/inc/pch/precompiled_dbtools.hxx "/opt/lo/bin/make connectivity.build" --find-conflicts
+ ./bin/update_pch_bisect ./connectivity/inc/pch/precompiled_dbtools.hxx "make connectivity.build" --find-conflicts
 */
 
+#if PCH_LEVEL >= 1
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
-#include <cstdlib>
 #include <functional>
 #include <iterator>
-#include <map>
+#include <limits>
 #include <memory>
 #include <new>
+#include <optional>
 #include <ostream>
 #include <set>
-#include <sstream>
-#include <stdlib.h>
 #include <string.h>
-#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
-#include <boost/optional.hpp>
+#endif // PCH_LEVEL >= 1
+#if PCH_LEVEL >= 2
 #include <osl/diagnose.h>
+#include <osl/mutex.h>
 #include <osl/mutex.hxx>
 #include <osl/thread.h>
-#include <rtl/alloc.h>
+#include <rtl/character.hxx>
 #include <rtl/digest.h>
-#include <rtl/instance.hxx>
+#include <rtl/locale.h>
 #include <rtl/math.hxx>
 #include <rtl/process.h>
 #include <rtl/ref.hxx>
 #include <rtl/string.hxx>
+#include <rtl/stringconcat.hxx>
 #include <rtl/stringutils.hxx>
 #include <rtl/tencinfo.h>
 #include <rtl/textenc.h>
@@ -56,12 +58,13 @@
 #include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <sal/config.h>
-#include <sal/detail/log.h>
 #include <sal/log.hxx>
 #include <sal/macros.h>
 #include <sal/saldllapi.h>
 #include <sal/types.h>
-#include <salhelper/simplereferenceobject.hxx>
+#endif // PCH_LEVEL >= 2
+#if PCH_LEVEL >= 3
+#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XChild.hpp>
@@ -71,14 +74,13 @@
 #include <com/sun/star/i18n/LocaleData.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/lang/EventObject.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/lang/XEventListener.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XSingleComponentFactory.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/sdb/BooleanComparisonMode.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/sdb/ErrorCondition.hpp>
@@ -86,89 +88,108 @@
 #include <com/sun/star/sdb/SQLContext.hpp>
 #include <com/sun/star/sdb/XColumn.hpp>
 #include <com/sun/star/sdb/XColumnUpdate.hpp>
-#include <com/sun/star/sdb/XInteractionSupplyParameters.hpp>
 #include <com/sun/star/sdb/XParametersSupplier.hpp>
 #include <com/sun/star/sdb/XQueriesSupplier.hpp>
-#include <com/sun/star/sdb/XSingleSelectQueryAnalyzer.hpp>
 #include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
+#include <com/sun/star/sdb/tools/XIndexAlteration.hpp>
+#include <com/sun/star/sdb/tools/XKeyAlteration.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/DriverManager.hpp>
-#include <com/sun/star/sdbc/IndexType.hpp>
 #include <com/sun/star/sdbc/KeyRule.hpp>
-#include <com/sun/star/sdbc/ProcedureResult.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
-#include <com/sun/star/sdbc/SQLWarning.hpp>
+#include <com/sun/star/sdbc/XBlob.hpp>
+#include <com/sun/star/sdbc/XCloseable.hpp>
+#include <com/sun/star/sdbc/XColumnLocate.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
+#include <com/sun/star/sdbc/XDataSource.hpp>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-#include <com/sun/star/sdbc/XDriverAccess.hpp>
+#include <com/sun/star/sdbc/XDatabaseMetaData2.hpp>
 #include <com/sun/star/sdbc/XParameters.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
+#include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XRowSet.hpp>
+#include <com/sun/star/sdbc/XWarningsSupplier.hpp>
 #include <com/sun/star/sdbcx/KeyType.hpp>
-#include <com/sun/star/sdbcx/PrivilegeObject.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
 #include <com/sun/star/sdbcx/XDataDefinitionSupplier.hpp>
+#include <com/sun/star/sdbcx/XDataDescriptorFactory.hpp>
 #include <com/sun/star/sdbcx/XGroupsSupplier.hpp>
 #include <com/sun/star/sdbcx/XKeysSupplier.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/sdbcx/XUsersSupplier.hpp>
 #include <com/sun/star/task/XInteractionRequest.hpp>
 #include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/uno/XInterface.hpp>
+#include <com/sun/star/uno/XAggregation.hpp>
 #include <com/sun/star/util/Date.hpp>
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/NumberFormat.hpp>
 #include <com/sun/star/util/NumberFormatter.hpp>
 #include <com/sun/star/util/Time.hpp>
+#include <com/sun/star/util/XCancellable.hpp>
 #include <com/sun/star/util/XNumberFormatTypes.hpp>
 #include <com/sun/star/util/XNumberFormatter.hpp>
+#include <comphelper/IdPropArrayHelper.hxx>
 #include <comphelper/broadcasthelper.hxx>
 #include <comphelper/comphelperdllapi.h>
 #include <comphelper/enumhelper.hxx>
 #include <comphelper/extract.hxx>
 #include <comphelper/numbers.hxx>
-#include <comphelper/officeresourcebundle.hxx>
-#include <comphelper/processfactory.hxx>
-#include <comphelper/propagg.hxx>
 #include <comphelper/proparrhlp.hxx>
 #include <comphelper/property.hxx>
+#include <comphelper/propertycontainer.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/sequenceashashmap.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/types.hxx>
 #include <comphelper/uno3.hxx>
+#include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/cppuhelperdllapi.h>
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/interfacecontainer.h>
 #include <cppuhelper/propshlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/weak.hxx>
 #include <i18nlangtag/i18nlangtagdllapi.h>
 #include <i18nlangtag/lang.h>
+#include <o3tl/any.hxx>
 #include <o3tl/functional.hxx>
+#include <o3tl/safeint.hxx>
+#include <o3tl/typed_flags_set.hxx>
+#include <resource/sharedresources.hxx>
+#include <salhelper/simplereferenceobject.hxx>
+#include <sdbcx/VIndexColumn.hxx>
+#include <sdbcx/VKey.hxx>
+#include <sdbcx/VKeyColumn.hxx>
 #include <tools/diagnose_ex.h>
 #include <tools/toolsdllapi.h>
+#include <unotools/resmgr.hxx>
 #include <unotools/sharedunocomponent.hxx>
 #include <unotools/unotoolsdllapi.h>
+#endif // PCH_LEVEL >= 3
+#if PCH_LEVEL >= 4
+#include <FDatabaseMetaDataResultSet.hxx>
+#include <FDatabaseMetaDataResultSetMetaData.hxx>
+#include <ParameterCont.hxx>
+#include <ParameterSubstitution.hxx>
+#include <RowFunctionParser.hxx>
+#include <TConnection.hxx>
+#include <TIndex.hxx>
+#include <TIndexColumns.hxx>
+#include <TKey.hxx>
+#include <TKeyColumns.hxx>
 #include <connectivity/CommonTools.hxx>
 #include <connectivity/DriversConfig.hxx>
 #include <connectivity/FValue.hxx>
 #include <connectivity/IParseContext.hxx>
-#include <connectivity/OSubComponent.hxx>
 #include <connectivity/PColumn.hxx>
-#include <connectivity/ParameterCont.hxx>
-#include <connectivity/TIndex.hxx>
-#include <connectivity/TIndexColumns.hxx>
-#include <connectivity/TKey.hxx>
-#include <connectivity/TKeyColumns.hxx>
 #include <connectivity/TTableHelper.hxx>
 #include <connectivity/conncleanup.hxx>
 #include <connectivity/dbcharset.hxx>
@@ -184,14 +205,11 @@
 #include <connectivity/sdbcx/VCollection.hxx>
 #include <connectivity/sdbcx/VColumn.hxx>
 #include <connectivity/sdbcx/VDescriptor.hxx>
-#include <connectivity/sdbcx/VIndex.hxx>
-#include <connectivity/sdbcx/VIndexColumn.hxx>
-#include <connectivity/sdbcx/VKey.hxx>
-#include <connectivity/sdbcx/VKeyColumn.hxx>
 #include <connectivity/sdbcx/VTable.hxx>
 #include <connectivity/sqlerror.hxx>
 #include <connectivity/sqlnode.hxx>
 #include <connectivity/sqlparse.hxx>
 #include <connectivity/statementcomposer.hxx>
+#endif // PCH_LEVEL >= 4
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

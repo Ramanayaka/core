@@ -33,7 +33,7 @@
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <comphelper/refcountedmutex.hxx>
 
-#include <HashMaps.hxx>
+#include "HashMaps.hxx"
 #include <osl/file.h>
 #include <vector>
 #include <memory>
@@ -41,13 +41,13 @@
 class ZipOutputStream;
 class ZipPackageFolder;
 class ZipFile;
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XNameContainer; }
     namespace io { class XStream; class XOutputStream; class XInputStream; class XSeekable; class XActiveDataStreamer; }
     namespace lang { class XMultiServiceFactory; }
     namespace uno { class XComponentContext; }
     namespace task { class XInteractionHandler; }
-} } }
+}
 
 enum InitialisationMode
 {
@@ -57,7 +57,7 @@ enum InitialisationMode
     e_IMode_XStream
 };
 
-class ZipPackage : public cppu::WeakImplHelper
+class ZipPackage final : public cppu::WeakImplHelper
                     <
                        css::lang::XInitialization,
                        css::lang::XSingleServiceFactory,
@@ -68,11 +68,11 @@ class ZipPackage : public cppu::WeakImplHelper
                        css::beans::XPropertySet
                     >
 {
-protected:
     rtl::Reference<comphelper::RefCountedMutex> m_aMutexHolder;
 
     css::uno::Sequence< css::beans::NamedValue > m_aStorageEncryptionKeys;
     css::uno::Sequence< sal_Int8 > m_aEncryptionKey;
+    css::uno::Sequence< css::uno::Sequence< css::beans::NamedValue > > m_aGpgProps;
 
     FolderHash        m_aRecent;
     OUString   m_aURL;
@@ -99,6 +99,7 @@ protected:
     const css::uno::Reference < css::uno::XComponentContext > m_xContext;
 
     std::unique_ptr<ZipFile> m_pZipFile;
+    bool m_bDisableFileSync = false;
 
     bool isLocalFile() const;
 
@@ -129,7 +130,7 @@ public:
     rtl::Reference<comphelper::RefCountedMutex>& GetSharedMutexRef() { return m_aMutexHolder; }
 
     void ConnectTo( const css::uno::Reference< css::io::XInputStream >& xInStream );
-    const css::uno::Sequence< sal_Int8 > GetEncryptionKey();
+    css::uno::Sequence< sal_Int8 > GetEncryptionKey();
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -146,7 +147,7 @@ public:
     // XUnoTunnel
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
     /// @throws css::uno::RuntimeException
-    static css::uno::Sequence < sal_Int8 > getUnoTunnelImplementationId();
+    static css::uno::Sequence < sal_Int8 > getUnoTunnelId();
     // XPropertySet
     virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo(  ) override;
     virtual void SAL_CALL setPropertyValue( const OUString& aPropertyName, const css::uno::Any& aValue ) override;
@@ -160,11 +161,6 @@ public:
     virtual OUString SAL_CALL getImplementationName(  ) override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
-
-    // Uno componentiseralation
-    static OUString static_getImplementationName();
-    static css::uno::Sequence < OUString > static_getSupportedServiceNames();
-    static css::uno::Reference < css::lang::XSingleServiceFactory > createServiceFactory( css::uno::Reference < css::lang::XMultiServiceFactory > const & rServiceFactory );
 };
 #endif
 

@@ -19,49 +19,29 @@
 
 
 #include <memory>
-#include <toolkit/awt/vclxgraphics.hxx>
+#include <awt/vclxgraphics.hxx>
 #include <toolkit/awt/vclxdevice.hxx>
-#include <toolkit/awt/vclxfont.hxx>
 #include <toolkit/helper/macros.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
-#include <rtl/uuid.h>
 
 #include <vcl/svapp.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/image.hxx>
 #include <vcl/gradient.hxx>
+#include <vcl/metric.hxx>
 #include <tools/debug.hxx>
 
 using namespace com::sun::star;
 
 
-//  class VCLXGraphics
-
-
-// uno::XInterface
-uno::Any VCLXGraphics::queryInterface( const uno::Type & rType )
-{
-    uno::Any aRet = ::cppu::queryInterface( rType,
-                                        (static_cast< css::awt::XGraphics* >(this)),
-                                        (static_cast< css::lang::XTypeProvider* >(this)),
-                                        (static_cast< css::lang::XUnoTunnel* >(this)) );
-    return (aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType ));
-}
 
 // lang::XUnoTunnel
-IMPL_XUNOTUNNEL( VCLXGraphics )
-
-// lang::XTypeProvider
-IMPL_XTYPEPROVIDER_START( VCLXGraphics )
-    cppu::UnoType<awt::XGraphics>::get()
-IMPL_XTYPEPROVIDER_END
+UNO3_GETIMPLEMENTATION_IMPL( VCLXGraphics );
 
 VCLXGraphics::VCLXGraphics()
     : mpOutputDevice(nullptr)
     , meRasterOp(RasterOp::OverPaint)
-    , mpClipRegion(nullptr)
 {
 }
 
@@ -70,16 +50,12 @@ VCLXGraphics::~VCLXGraphics()
     std::vector< VCLXGraphics* > *pLst = mpOutputDevice ? mpOutputDevice->GetUnoGraphicsList() : nullptr;
     if ( pLst )
     {
-        for( std::vector< VCLXGraphics* >::iterator it = pLst->begin(); it != pLst->end(); ++it )
-        {
-            if( *it == this ) {
-                pLst->erase( it );
-                break;
-            }
-        }
+        auto it = std::find(pLst->begin(), pLst->end(), this);
+        if (it != pLst->end())
+            pLst->erase( it );
     }
 
-    delete mpClipRegion;
+    mpClipRegion.reset();
 
     SolarMutexGuard g;
     mpOutputDevice.reset();
@@ -122,30 +98,30 @@ void VCLXGraphics::initAttrs()
 
 void VCLXGraphics::InitOutputDevice( InitOutDevFlags nFlags )
 {
-    if(mpOutputDevice)
+    if(!mpOutputDevice)
+        return;
+
+    SolarMutexGuard aVclGuard;
+
+    if ( nFlags & InitOutDevFlags::FONT )
     {
-        SolarMutexGuard aVclGuard;
-
-        if ( nFlags & InitOutDevFlags::FONT )
-        {
-            mpOutputDevice->SetFont( maFont );
-            mpOutputDevice->SetTextColor( maTextColor );
-            mpOutputDevice->SetTextFillColor( maTextFillColor );
-        }
-
-        if ( nFlags & InitOutDevFlags::COLORS )
-        {
-            mpOutputDevice->SetLineColor( maLineColor );
-            mpOutputDevice->SetFillColor( maFillColor );
-        }
-
-        mpOutputDevice->SetRasterOp( meRasterOp );
-
-        if( mpClipRegion )
-            mpOutputDevice->SetClipRegion( *mpClipRegion );
-        else
-            mpOutputDevice->SetClipRegion();
+        mpOutputDevice->SetFont( maFont );
+        mpOutputDevice->SetTextColor( maTextColor );
+        mpOutputDevice->SetTextFillColor( maTextFillColor );
     }
+
+    if ( nFlags & InitOutDevFlags::COLORS )
+    {
+        mpOutputDevice->SetLineColor( maLineColor );
+        mpOutputDevice->SetFillColor( maFillColor );
+    }
+
+    mpOutputDevice->SetRasterOp( meRasterOp );
+
+    if( mpClipRegion )
+        mpOutputDevice->SetClipRegion( *mpClipRegion );
+    else
+        mpOutputDevice->SetClipRegion();
 }
 
 uno::Reference< awt::XDevice > VCLXGraphics::getDevice()
@@ -192,46 +168,45 @@ void VCLXGraphics::setTextColor( sal_Int32 nColor )
 {
     SolarMutexGuard aGuard;
 
-    maTextColor = Color( (sal_uInt32)nColor );
+    maTextColor = Color( nColor );
 }
 
 void VCLXGraphics::setTextFillColor( sal_Int32 nColor )
 {
     SolarMutexGuard aGuard;
 
-    maTextFillColor = Color( (sal_uInt32)nColor );
+    maTextFillColor = Color( nColor );
 }
 
 void VCLXGraphics::setLineColor( sal_Int32 nColor )
 {
     SolarMutexGuard aGuard;
 
-    maLineColor = Color( (sal_uInt32)nColor );
+    maLineColor = Color( nColor );
 }
 
 void VCLXGraphics::setFillColor( sal_Int32 nColor )
 {
     SolarMutexGuard aGuard;
 
-    maFillColor = Color( (sal_uInt32)nColor );
+    maFillColor = Color( nColor );
 }
 
 void VCLXGraphics::setRasterOp( awt::RasterOperation eROP )
 {
     SolarMutexGuard aGuard;
 
-    meRasterOp = (RasterOp)eROP;
+    meRasterOp = static_cast<RasterOp>(eROP);
 }
 
 void VCLXGraphics::setClipRegion( const uno::Reference< awt::XRegion >& rxRegion )
 {
     SolarMutexGuard aGuard;
 
-    delete mpClipRegion;
     if ( rxRegion.is() )
-        mpClipRegion = new vcl::Region( VCLUnoHelper::GetRegion( rxRegion ) );
+        mpClipRegion.reset( new vcl::Region( VCLUnoHelper::GetRegion( rxRegion ) ) );
     else
-        mpClipRegion = nullptr;
+        mpClipRegion.reset();
 }
 
 void VCLXGraphics::intersectClipRegion( const uno::Reference< awt::XRegion >& rxRegion )
@@ -242,7 +217,7 @@ void VCLXGraphics::intersectClipRegion( const uno::Reference< awt::XRegion >& rx
     {
         vcl::Region aRegion( VCLUnoHelper::GetRegion( rxRegion ) );
         if ( !mpClipRegion )
-            mpClipRegion = new vcl::Region( aRegion );
+            mpClipRegion.reset( new vcl::Region( aRegion ) );
         else
             mpClipRegion->Intersect( aRegion );
     }
@@ -284,7 +259,7 @@ void VCLXGraphics::copy( const uno::Reference< awt::XDevice >& rxSource, sal_Int
 
     if ( mpOutputDevice )
     {
-        VCLXDevice* pFromDev = VCLXDevice::GetImplementation( rxSource );
+        VCLXDevice* pFromDev = comphelper::getUnoTunnelImplementation<VCLXDevice>( rxSource );
         DBG_ASSERT( pFromDev, "VCLXGraphics::copy - invalid device" );
         if ( pFromDev )
         {
@@ -299,32 +274,32 @@ void VCLXGraphics::draw( const uno::Reference< awt::XDisplayBitmap >& rxBitmapHa
 {
     SolarMutexGuard aGuard;
 
-    if( mpOutputDevice )
+    if( !mpOutputDevice )
+        return;
+
+    InitOutputDevice( InitOutDevFlags::NONE);
+    uno::Reference< awt::XBitmap > xBitmap( rxBitmapHandle, uno::UNO_QUERY );
+    BitmapEx aBmpEx = VCLUnoHelper::GetBitmap( xBitmap );
+
+    Point aPos(nDestX - nSourceX, nDestY - nSourceY);
+    Size aSz = aBmpEx.GetSizePixel();
+
+    if(nDestWidth != nSourceWidth)
     {
-        InitOutputDevice( InitOutDevFlags::NONE);
-        uno::Reference< awt::XBitmap > xBitmap( rxBitmapHandle, uno::UNO_QUERY );
-        BitmapEx aBmpEx = VCLUnoHelper::GetBitmap( xBitmap );
-
-        Point aPos(nDestX - nSourceX, nDestY - nSourceY);
-          Size aSz = aBmpEx.GetSizePixel();
-
-        if(nDestWidth != nSourceWidth)
-        {
-            float zoomX = (float)nDestWidth / (float)nSourceWidth;
-            aSz.Width() = (long) ((float)aSz.Width() * zoomX);
-        }
-
-        if(nDestHeight != nSourceHeight)
-        {
-            float zoomY = (float)nDestHeight / (float)nSourceHeight;
-            aSz.Height() = (long) ((float)aSz.Height() * zoomY);
-        }
-
-        if(nSourceX || nSourceY || aSz.Width() != nSourceWidth || aSz.Height() != nSourceHeight)
-            mpOutputDevice->IntersectClipRegion(vcl::Region(tools::Rectangle(nDestX, nDestY, nDestX + nDestWidth - 1, nDestY + nDestHeight - 1)));
-
-        mpOutputDevice->DrawBitmapEx( aPos, aSz, aBmpEx );
+        float zoomX = static_cast<float>(nDestWidth) / static_cast<float>(nSourceWidth);
+        aSz.setWidth( static_cast<long>(static_cast<float>(aSz.Width()) * zoomX) );
     }
+
+    if(nDestHeight != nSourceHeight)
+    {
+        float zoomY = static_cast<float>(nDestHeight) / static_cast<float>(nSourceHeight);
+        aSz.setHeight( static_cast<long>(static_cast<float>(aSz.Height()) * zoomY) );
+    }
+
+    if(nSourceX || nSourceY || aSz.Width() != nSourceWidth || aSz.Height() != nSourceHeight)
+        mpOutputDevice->IntersectClipRegion(vcl::Region(tools::Rectangle(nDestX, nDestY, nDestX + nDestWidth - 1, nDestY + nDestHeight - 1)));
+
+    mpOutputDevice->DrawBitmapEx( aPos, aSz, aBmpEx );
 }
 
 void VCLXGraphics::drawPixel( sal_Int32 x, sal_Int32 y )
@@ -400,7 +375,7 @@ void VCLXGraphics::drawPolyPolygon( const uno::Sequence< uno::Sequence< sal_Int3
     if( mpOutputDevice )
     {
         InitOutputDevice( InitOutDevFlags::COLORS );
-        sal_uInt16 nPolys = (sal_uInt16) DataX.getLength();
+        sal_uInt16 nPolys = static_cast<sal_uInt16>(DataX.getLength());
         tools::PolyPolygon aPolyPoly( nPolys );
         for ( sal_uInt16 n = 0; n < nPolys; n++ )
             aPolyPoly[n] = VCLUnoHelper::CreatePolygon( DataX.getConstArray()[n], DataY.getConstArray()[n] );
@@ -457,19 +432,19 @@ void VCLXGraphics::drawGradient( sal_Int32 x, sal_Int32 y, sal_Int32 width, sal_
 {
     SolarMutexGuard aGuard;
 
-    if( mpOutputDevice )
-    {
-        InitOutputDevice( InitOutDevFlags::COLORS );
-        Gradient aGradient((GradientStyle)rGradient.Style, rGradient.StartColor, rGradient.EndColor);
-        aGradient.SetAngle(rGradient.Angle);
-        aGradient.SetBorder(rGradient.Border);
-        aGradient.SetOfsX(rGradient.XOffset);
-        aGradient.SetOfsY(rGradient.YOffset);
-        aGradient.SetStartIntensity(rGradient.StartIntensity);
-        aGradient.SetEndIntensity(rGradient.EndIntensity);
-        aGradient.SetSteps(rGradient.StepCount);
-        mpOutputDevice->DrawGradient( tools::Rectangle( Point( x, y ), Size( width, height ) ), aGradient );
-    }
+    if( !mpOutputDevice )
+        return;
+
+    InitOutputDevice( InitOutDevFlags::COLORS );
+    Gradient aGradient(static_cast<GradientStyle>(rGradient.Style), Color(rGradient.StartColor), Color(rGradient.EndColor));
+    aGradient.SetAngle(rGradient.Angle);
+    aGradient.SetBorder(rGradient.Border);
+    aGradient.SetOfsX(rGradient.XOffset);
+    aGradient.SetOfsY(rGradient.YOffset);
+    aGradient.SetStartIntensity(rGradient.StartIntensity);
+    aGradient.SetEndIntensity(rGradient.EndIntensity);
+    aGradient.SetSteps(rGradient.StepCount);
+    mpOutputDevice->DrawGradient( tools::Rectangle( Point( x, y ), Size( width, height ) ), aGradient );
 }
 
 void VCLXGraphics::drawText( sal_Int32 x, sal_Int32 y, const OUString& rText )

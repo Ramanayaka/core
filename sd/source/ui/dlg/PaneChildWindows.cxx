@@ -17,19 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "PaneChildWindows.hxx"
-#include "PaneDockingWindow.hxx"
-#include "ViewShellBase.hxx"
-#include "framework/FrameworkHelper.hxx"
-#include "app.hrc"
-#include "strings.hrc"
-#include "sdresid.hxx"
+#include <PaneChildWindows.hxx>
+#include <PaneDockingWindow.hxx>
+#include <ViewShellBase.hxx>
+#include <framework/FrameworkHelper.hxx>
+#include <app.hrc>
+#include <strings.hrc>
+#include <sdresid.hxx>
 
-#include <sfx2/app.hxx>
-#include <sfx2/dockwin.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
-#include <tools/diagnose_ex.h>
 
 namespace sd {
 
@@ -43,16 +40,18 @@ PaneChildWindow::PaneChildWindow (
     sal_uInt16 nId,
     SfxBindings* pBindings,
     SfxChildWinInfo* pInfo,
-    const sal_uInt16 nTitleBarResId)
+    const char* pTitleBarResId)
     : SfxChildWindow (pParentWindow, nId)
 {
     SetWindow( VclPtr<PaneDockingWindow>::Create(
         pBindings,
         this,
         pParentWindow,
-        SdResId(nTitleBarResId)));
+        SdResId(pTitleBarResId)));
     SetAlignment(SfxChildAlignment::LEFT);
-    static_cast<SfxDockingWindow*>(GetWindow())->Initialize(pInfo);
+    SfxDockingWindow* pDockingWindow = static_cast<SfxDockingWindow*>(GetWindow());
+    pDockingWindow->EnableInput();
+    pDockingWindow->Initialize(pInfo);
     SetHideNotDelete(true);
 
     ViewShellBase* pBase = ViewShellBase::GetViewShellBase(pBindings->GetDispatcher()->GetFrame());

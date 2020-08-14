@@ -25,30 +25,24 @@
 #include <com/sun/star/beans/PropertyValues.hpp>
 #include <com/sun/star/frame/XTerminateListener.hpp>
 #include <com/sun/star/lang/Locale.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/linguistic2/XDictionaryEntry.hpp>
-#include <com/sun/star/linguistic2/XSearchableDictionaryList.hpp>
-#include <com/sun/star/linguistic2/XHyphenatedWord.hpp>
-#include <com/sun/star/linguistic2/XLinguProperties.hpp>
 
 #include <cppuhelper/implbase.hxx>
-#include <unotools/pathoptions.hxx>
 #include <i18nlangtag/lang.h>
 #include <rtl/ustring.hxx>
-#include <unotools/charclass.hxx>
-#include <osl/thread.h>
-#include <osl/mutex.hxx>
 #include <linguistic/lngdllapi.h>
 
-namespace com { namespace sun { namespace star { namespace beans {
-    class XPropertySet;
-    class XFastPropertySet;
-}}}}
+#include <vector>
 
-namespace com { namespace sun { namespace star { namespace frame {
-    class XDesktop2;
-}}}}
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::frame { class XDesktop2; }
+namespace com::sun::star::linguistic2 { class XDictionary; }
+namespace com::sun::star::linguistic2 { class XDictionaryEntry; }
+namespace com::sun::star::linguistic2 { class XHyphenatedWord; }
+namespace com::sun::star::linguistic2 { class XLinguProperties; }
+namespace com::sun::star::linguistic2 { class XSearchableDictionaryList; }
+namespace osl { class Mutex; }
 
+class CharClass;
 class LocaleDataWrapper;
 
 
@@ -107,9 +101,9 @@ LNG_DLLPUBLIC bool LinguIsUnspecified( LanguageType nLanguage );
 LNG_DLLPUBLIC bool LinguIsUnspecified( const OUString & rBcp47 );
 
 std::vector< LanguageType >
-    LocaleSeqToLangVec( css::uno::Sequence< css::lang::Locale > &rLocaleSeq );
+    LocaleSeqToLangVec( css::uno::Sequence< css::lang::Locale > const &rLocaleSeq );
 css::uno::Sequence<sal_Int16>
-    LocaleSeqToLangSeq( css::uno::Sequence< css::lang::Locale > &rLocaleSeq );
+    LocaleSeqToLangSeq( css::uno::Sequence< css::lang::Locale > const &rLocaleSeq );
 
 // checks if file pointed to by rURL is readonly
 // and may also check return if such a file exists or not
@@ -122,7 +116,7 @@ bool    FileExists( const OUString &rURL );
 OUString     GetDictionaryWriteablePath();
 std::vector< OUString > GetDictionaryPaths();
 
-/// @returns an URL for a new and writable dictionary rDicName.
+/// @returns a URL for a new and writable dictionary rDicName.
 ///     The URL will point to the path given by 'GetDictionaryWriteablePath'
 LNG_DLLPUBLIC OUString  GetWritableDictionaryURL( const OUString &rDicName );
 
@@ -131,13 +125,13 @@ LNG_DLLPUBLIC sal_Int32 GetPosInWordToCheck( const OUString &rTxt, sal_Int32 nPo
 css::uno::Reference< css::linguistic2::XHyphenatedWord >
             RebuildHyphensAndControlChars(
                 const OUString &rOrigWord,
-                css::uno::Reference< css::linguistic2::XHyphenatedWord > &rxHyphWord );
+                css::uno::Reference< css::linguistic2::XHyphenatedWord > const &rxHyphWord );
 
 
 LNG_DLLPUBLIC bool        IsUpper( const OUString &rText, sal_Int32 nPos, sal_Int32 nLen, LanguageType nLanguage );
 
 inline bool        IsUpper( const OUString &rText, LanguageType nLanguage )     { return IsUpper( rText, 0, rText.getLength(), nLanguage ); }
-LNG_DLLPUBLIC CapType SAL_CALL capitalType(const OUString&, CharClass *);
+LNG_DLLPUBLIC CapType capitalType(const OUString&, CharClass const *);
 
 OUString      ToLower( const OUString &rText, LanguageType nLanguage );
 LNG_DLLPUBLIC bool      HasDigits( const OUString &rText );
@@ -163,7 +157,7 @@ css::uno::Reference<
             bool bSearchPosDics, bool bSearchSpellEntry );
 
 LNG_DLLPUBLIC DictionaryError AddEntryToDic(
-    css::uno::Reference< css::linguistic2::XDictionary >  &rxDic,
+    css::uno::Reference< css::linguistic2::XDictionary > const &rxDic,
     const OUString &rWord, bool bIsNeg,
     const OUString &rRplcTxt,
     bool bStripDot = true );

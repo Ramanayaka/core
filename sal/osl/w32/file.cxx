@@ -17,24 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#define UNICODE
-#define _UNICODE
 #include <systools/win32/uwinapi.h>
 
 #include <osl/file.hxx>
-#include <osl/diagnose.h>
 #include <rtl/alloc.h>
 #include <rtl/byteseq.h>
-#include <rtl/ustring.hxx>
+#include <sal/log.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
+#include <o3tl/typed_flags_set.hxx>
 
 #include "file-impl.hxx"
 #include "file_url.hxx"
 #include "file_error.hxx"
 
-#include <cstdio>
+#include <atomic>
+#include <cassert>
 #include <algorithm>
 #include <limits>
-#include <tchar.h>
 
 #ifdef max /* conflict w/ std::numeric_limits<T>::max() */
 #undef max
@@ -43,6 +42,24 @@
 #undef min
 #endif
 
+namespace {
+
+/** State
+ */
+enum class StateBits
+{
+    Seekable  = 1, /*< open() sets, iff regular file */
+    Readable  = 2, /*< open() sets, read() requires */
+    Writeable = 4, /*< open() sets, write() requires */
+    Modified  = 8  /* write() sets, flush() resets */
+};
+
+}
+
+template<> struct o3tl::typed_flags<StateBits>: o3tl::is_typed_flags<StateBits, 0xF> {};
+
+namespace {
+
 /** File handle implementation.
 */
 struct FileHandle_Impl
@@ -50,20 +67,12 @@ struct FileHandle_Impl
     CRITICAL_SECTION m_mutex;
     HANDLE           m_hFile;
 
-    /** State
-     */
-    enum StateBits
-    {
-        STATE_SEEKABLE  = 1, /*< open() sets, iff regular file */
-        STATE_READABLE  = 2, /*< open() sets, read() requires */
-        STATE_WRITEABLE = 4, /*< open() sets, write() requires */
-        STATE_MODIFIED  = 8  /* write() sets, flush() resets */
-    };
-    int           m_state;
+    StateBits m_state;
 
     sal_uInt64    m_size;    /*< file size */
     LONGLONG      m_offset;  /*< physical offset from begin of file */
-    LONGLONG      m_filepos; /*< logical offset from begin of file */
+    // m_filepos is hit hard in some situations, where the overhead of a mutex starts to show up, so use an atomic
+    std::atomic<LONGLONG> m_filepos; /*< logical offset from begin of file */
 
     LONGLONG      m_bufptr;  /*< buffer offset from begin of file */
     SIZE_T        m_buflen;  /*< buffer filled [0, m_bufsiz - 1] */
@@ -121,27 +130,6 @@ struct FileHandle_Impl
 
     oslFileError syncFile();
 
-    /** Buffer cache / allocator.
-     */
-    class Allocator
-    {
-        rtl_cache_type * m_cache;
-        SIZE_T           m_bufsiz;
-
-        Allocator(Allocator const &) = delete;
-        Allocator & operator= (Allocator const &) = delete;
-
-    public:
-        static Allocator & get();
-
-        void allocate(sal_uInt8 ** ppBuffer, SIZE_T * pnSize);
-        void deallocate(sal_uInt8 * pBuffer);
-
-    protected:
-        Allocator();
-        ~Allocator();
-    };
-
     /** Guard.
      */
     class Guard
@@ -154,92 +142,50 @@ struct FileHandle_Impl
     };
 };
 
-FileHandle_Impl::Allocator& FileHandle_Impl::Allocator::get()
-{
-    static Allocator g_aBufferAllocator;
-    return g_aBufferAllocator;
-}
-
-FileHandle_Impl::Allocator::Allocator()
-    : m_cache  (nullptr),
-      m_bufsiz (0)
-{
-    SIZE_T const pagesize = FileHandle_Impl::getpagesize();
-    m_cache = rtl_cache_create(
-        "osl_file_buffer_cache", pagesize, 0, nullptr, nullptr, nullptr,
-        nullptr, nullptr, 0);
-    if (m_cache)
-        m_bufsiz = pagesize;
-}
-
-FileHandle_Impl::Allocator::~Allocator()
-{
-    rtl_cache_destroy(m_cache);
-    m_cache = nullptr;
-}
-
-void FileHandle_Impl::Allocator::allocate (sal_uInt8 **ppBuffer, SIZE_T * pnSize)
-{
-    SAL_WARN_IF((!ppBuffer) || (!pnSize), "sal.osl", "FileHandle_Impl::Allocator::allocate(): contract violation");
-    assert((ppBuffer) && (pnSize));
-    *ppBuffer = static_cast< sal_uInt8* >(rtl_cache_alloc(m_cache));
-
-    *pnSize = m_bufsiz;
-}
-
-void FileHandle_Impl::Allocator::deallocate (sal_uInt8 * pBuffer)
-{
-    if (pBuffer)
-        rtl_cache_free (m_cache, pBuffer);
 }
 
 FileHandle_Impl::Guard::Guard(LPCRITICAL_SECTION pMutex)
     : m_mutex (pMutex)
 {
-    SAL_WARN_IF(!(m_mutex), "sal.osl", "FileHandle_Impl::Guard::Guard(): null pointer.");
-    assert(m_mutex);
+    assert(pMutex);
     ::EnterCriticalSection (m_mutex);
 }
 
 FileHandle_Impl::Guard::~Guard()
 {
-    SAL_WARN_IF(!(m_mutex), "sal.osl", "FileHandle_Impl::Guard::~Guard(): null pointer.");
-    assert(m_mutex);
     ::LeaveCriticalSection (m_mutex);
 }
 
 FileHandle_Impl::FileHandle_Impl(HANDLE hFile)
     : m_hFile   (hFile),
-      m_state   (STATE_READABLE | STATE_WRITEABLE),
+      m_state   (StateBits::Readable | StateBits::Writeable),
       m_size    (0),
       m_offset  (0),
       m_filepos (0),
       m_bufptr  (-1),
       m_buflen  (0),
-      m_bufsiz  (0),
+      m_bufsiz  (getpagesize()),
       m_buffer  (nullptr)
 {
     ::InitializeCriticalSection (&m_mutex);
-    Allocator::get().allocate (&m_buffer, &m_bufsiz);
-    if (m_buffer)
-        memset (m_buffer, 0, m_bufsiz);
+    m_buffer = static_cast<sal_uInt8 *>(calloc(m_bufsiz, 1));
 }
 
 FileHandle_Impl::~FileHandle_Impl()
 {
-    Allocator::get().deallocate(m_buffer);
+    free(m_buffer);
     m_buffer = nullptr;
     ::DeleteCriticalSection (&m_mutex);
 }
 
 void * FileHandle_Impl::operator new(size_t n)
 {
-    return rtl_allocateMemory(n);
+    return malloc(n);
 }
 
 void FileHandle_Impl::operator delete(void * p, size_t)
 {
-    rtl_freeMemory(p);
+    free(p);
 }
 
 SIZE_T FileHandle_Impl::getpagesize()
@@ -251,7 +197,7 @@ SIZE_T FileHandle_Impl::getpagesize()
 
 sal_uInt64 FileHandle_Impl::getPos() const
 {
-    return sal::static_int_cast< sal_uInt64 >(m_filepos);
+    return sal::static_int_cast< sal_uInt64 >(m_filepos.load());
 }
 
 oslFileError FileHandle_Impl::setPos(sal_uInt64 uPos)
@@ -262,7 +208,7 @@ oslFileError FileHandle_Impl::setPos(sal_uInt64 uPos)
 
 sal_uInt64 FileHandle_Impl::getSize() const
 {
-    LONGLONG bufend = std::max((LONGLONG)(0), m_bufptr) + m_buflen;
+    LONGLONG bufend = std::max(LONGLONG(0), m_bufptr) + m_buflen;
     return std::max(m_size, sal::static_int_cast< sal_uInt64 >(bufend));
 }
 
@@ -289,12 +235,12 @@ oslFileError FileHandle_Impl::readAt(
     DWORD        nBytesRequested,
     sal_uInt64 * pBytesRead)
 {
-    SAL_WARN_IF(!(m_state & STATE_SEEKABLE), "sal.osl", "FileHandle_Impl::readAt(): not seekable");
-    if (!(m_state & STATE_SEEKABLE))
+    SAL_WARN_IF(!(m_state & StateBits::Seekable), "sal.osl", "FileHandle_Impl::readAt(): not seekable");
+    if (!(m_state & StateBits::Seekable))
         return osl_File_E_SPIPE;
 
-    SAL_WARN_IF(!(m_state & STATE_READABLE), "sal.osl", "FileHandle_Impl::readAt(): not readable");
-    if (!(m_state & STATE_READABLE))
+    SAL_WARN_IF(!(m_state & StateBits::Readable), "sal.osl", "FileHandle_Impl::readAt(): not readable");
+    if (!(m_state & StateBits::Readable))
         return osl_File_E_BADF;
 
     if (nOffset != m_offset)
@@ -320,12 +266,12 @@ oslFileError FileHandle_Impl::writeAt(
     DWORD        nBytesToWrite,
     sal_uInt64 * pBytesWritten)
 {
-    SAL_WARN_IF(!(m_state & STATE_SEEKABLE), "sal.osl", "FileHandle_Impl::writeAt(): not seekable");
-    if (!(m_state & STATE_SEEKABLE))
+    SAL_WARN_IF(!(m_state & StateBits::Seekable), "sal.osl", "FileHandle_Impl::writeAt(): not seekable");
+    if (!(m_state & StateBits::Seekable))
         return osl_File_E_SPIPE;
 
-    SAL_WARN_IF(!(m_state & STATE_WRITEABLE), "sal.osl", "FileHandle_Impl::writeAt(): not writeable");
-    if (!(m_state & STATE_WRITEABLE))
+    SAL_WARN_IF(!(m_state & StateBits::Writeable), "sal.osl", "FileHandle_Impl::writeAt(): not writeable");
+    if (!(m_state & StateBits::Writeable))
         return osl_File_E_BADF;
 
     if (nOffset != m_offset)
@@ -358,7 +304,7 @@ oslFileError FileHandle_Impl::readFileAt(
         return osl_File_E_OVERFLOW;
     DWORD nBytesRequested = sal::static_int_cast< DWORD >(uBytesRequested);
 
-    if ((m_state & STATE_SEEKABLE) == 0)
+    if (!(m_state & StateBits::Seekable))
     {
         // not seekable (pipe)
         DWORD dwDone = 0;
@@ -378,7 +324,7 @@ oslFileError FileHandle_Impl::readFileAt(
         for (*pBytesRead = 0; nBytesRequested > 0;)
         {
             LONGLONG const bufptr = (nOffset / m_bufsiz) * m_bufsiz;
-            SIZE_T   const bufpos = (nOffset % m_bufsiz);
+            SIZE_T   const bufpos = nOffset % m_bufsiz;
 
             if (bufptr != m_bufptr)
             {
@@ -416,7 +362,7 @@ oslFileError FileHandle_Impl::readFileAt(
                 return osl_File_E_None;
             }
 
-            SIZE_T const bytes = std::min(m_buflen - bufpos, (SIZE_T) nBytesRequested);
+            SIZE_T const bytes = std::min(m_buflen - bufpos, static_cast<SIZE_T>(nBytesRequested));
             memcpy(&(buffer[*pBytesRead]), &(m_buffer[bufpos]), bytes);
             nBytesRequested -= bytes;
             *pBytesRead += bytes;
@@ -437,7 +383,7 @@ oslFileError FileHandle_Impl::writeFileAt(
         return osl_File_E_OVERFLOW;
     DWORD nBytesToWrite = sal::static_int_cast< DWORD >(uBytesToWrite);
 
-    if ((m_state & STATE_SEEKABLE) == 0)
+    if (!(m_state & StateBits::Seekable))
     {
         // not seekable (pipe)
         DWORD dwDone = 0;
@@ -457,7 +403,7 @@ oslFileError FileHandle_Impl::writeFileAt(
         for (*pBytesWritten = 0; nBytesToWrite > 0;)
         {
             LONGLONG const bufptr = (nOffset / m_bufsiz) * m_bufsiz;
-            SIZE_T   const bufpos = (nOffset % m_bufsiz);
+            SIZE_T   const bufpos = nOffset % m_bufsiz;
             if (bufptr != m_bufptr)
             {
                 // flush current buffer
@@ -491,14 +437,14 @@ oslFileError FileHandle_Impl::writeFileAt(
                 m_buflen = sal::static_int_cast< SIZE_T >(uDone);
             }
 
-            SIZE_T const bytes = std::min(m_bufsiz - bufpos, (SIZE_T) nBytesToWrite);
+            SIZE_T const bytes = std::min(m_bufsiz - bufpos, static_cast<SIZE_T>(nBytesToWrite));
             memcpy(&(m_buffer[bufpos]), &(buffer[*pBytesWritten]), bytes);
             nBytesToWrite -= bytes;
             *pBytesWritten += bytes;
             nOffset += bytes;
 
             m_buflen = std::max(m_buflen, bufpos + bytes);
-            m_state |= STATE_MODIFIED;
+            m_state |= StateBits::Modified;
         }
         return osl_File_E_None;
     }
@@ -541,7 +487,7 @@ oslFileError FileHandle_Impl::readLineAt(
         if (curpos >= m_buflen)
         {
             /* buffer examined */
-            if ((curpos - bufpos) > 0)
+            if (curpos > bufpos) // actually, curpos can't become less than bufpos, so != could do
             {
                 /* flush buffer to sequence */
                 result = writeSequence_Impl(
@@ -655,7 +601,7 @@ oslFileError FileHandle_Impl::writeSequence_Impl(
 oslFileError FileHandle_Impl::syncFile()
 {
     oslFileError result = osl_File_E_None;
-    if (m_state & STATE_MODIFIED)
+    if (m_state & StateBits::Modified)
     {
         sal_uInt64 uDone = 0;
         result = writeAt(m_bufptr, m_buffer, m_buflen, &uDone);
@@ -663,12 +609,12 @@ oslFileError FileHandle_Impl::syncFile()
             return result;
         if (uDone != m_buflen)
             return osl_File_E_IO;
-        m_state &= ~STATE_MODIFIED;
+        m_state &= ~StateBits::Modified;
     }
     return result;
 }
 
-extern "C" oslFileHandle SAL_CALL osl_createFileHandleFromOSHandle(
+extern "C" oslFileHandle osl_createFileHandleFromOSHandle(
     HANDLE     hFile,
     sal_uInt32 uFlags)
 {
@@ -681,7 +627,7 @@ extern "C" oslFileHandle SAL_CALL osl_createFileHandleFromOSHandle(
     if (GetFileType(hFile) == FILE_TYPE_DISK)
     {
         /* mark seekable */
-        pImpl->m_state |= FileHandle_Impl::STATE_SEEKABLE;
+        pImpl->m_state |= StateBits::Seekable;
 
         /* init current size */
         LARGE_INTEGER uSize = { { 0, 0 } };
@@ -690,9 +636,9 @@ extern "C" oslFileHandle SAL_CALL osl_createFileHandleFromOSHandle(
     }
 
     if (!(uFlags & osl_File_OpenFlag_Read))
-        pImpl->m_state &= ~FileHandle_Impl::STATE_READABLE;
+        pImpl->m_state &= ~StateBits::Readable;
     if (!(uFlags & osl_File_OpenFlag_Write))
-        pImpl->m_state &= ~FileHandle_Impl::STATE_WRITEABLE;
+        pImpl->m_state &= ~StateBits::Writeable;
 
     SAL_WARN_IF(
         !((uFlags & osl_File_OpenFlag_Read) || (uFlags & osl_File_OpenFlag_Write)),
@@ -719,7 +665,7 @@ oslFileError SAL_CALL osl_openFile(
         dwShare  |= FILE_SHARE_WRITE;
 
     if (uFlags & osl_File_OpenFlag_NoLock)
-        dwShare  |= FILE_SHARE_WRITE;
+        dwShare  |= FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 
     if (uFlags & osl_File_OpenFlag_Create)
         dwCreation |= CREATE_NEW;
@@ -727,7 +673,7 @@ oslFileError SAL_CALL osl_openFile(
         dwCreation |= OPEN_EXISTING;
 
     HANDLE hFile = CreateFileW(
-        SAL_W(rtl_uString_getStr(strSysPath)),
+        o3tl::toW(rtl_uString_getStr(strSysPath)),
         dwAccess, dwShare, nullptr, dwCreation, 0, nullptr);
 
     // @@@ ERROR HANDLING @@@
@@ -783,6 +729,14 @@ oslFileError SAL_CALL osl_closeFile(oslFileHandle Handle)
     return result;
 }
 
+namespace {
+
+// coverity[result_independent_of_operands] - crossplatform requirement
+template<typename T> bool exceedsMaxSIZE_T(T n)
+{ return n > std::numeric_limits< SIZE_T >::max(); }
+
+}
+
 oslFileError SAL_CALL osl_mapFile(
     oslFileHandle Handle,
     void**        ppAddr,
@@ -809,12 +763,11 @@ oslFileError SAL_CALL osl_mapFile(
         return osl_File_E_INVAL;
     *ppAddr = nullptr;
 
-    static SIZE_T const nLimit = std::numeric_limits< SIZE_T >::max();
-    if (uLength > nLimit)
+    if (exceedsMaxSIZE_T(uLength))
         return osl_File_E_OVERFLOW;
     SIZE_T const nLength = sal::static_int_cast< SIZE_T >(uLength);
 
-    FileMapping aMap(::CreateFileMapping(pImpl->m_hFile, nullptr, SEC_COMMIT | PAGE_READONLY, 0, 0, nullptr));
+    FileMapping aMap(::CreateFileMappingW(pImpl->m_hFile, nullptr, SEC_COMMIT | PAGE_READONLY, 0, 0, nullptr));
     if (!IsValidHandle(aMap.m_handle))
         return oslTranslateFileError(GetLastError());
 
@@ -836,19 +789,18 @@ oslFileError SAL_CALL osl_mapFile(
          * Pagein, touching first byte of each memory page.
          * Note: volatile disables optimizing the loop away.
          */
-        BYTE * pData(static_cast<BYTE*>(*ppAddr));
+        BYTE volatile * pData(static_cast<BYTE*>(*ppAddr));
         SIZE_T nSize(nLength);
 
-        volatile BYTE c = 0;
         while (nSize > dwPageSize)
         {
-            c ^= pData[0];
+            pData[0];
             pData += dwPageSize;
             nSize -= dwPageSize;
         }
         if (nSize > 0)
         {
-            c ^= pData[0];
+            pData[0];
         }
     }
     return osl_File_E_None;
@@ -928,6 +880,19 @@ oslFileError SAL_CALL osl_writeFile(
     return result;
 }
 
+LONGLONG const g_limit_longlong = std::numeric_limits< LONGLONG >::max();
+
+namespace {
+
+// coverity[result_independent_of_operands] - crossplatform requirement
+template<typename T> bool exceedsMaxLONGLONG(T n)
+{ return n > g_limit_longlong; }
+
+template<typename T> bool exceedsMinLONGLONG(T n)
+{ return n < std::numeric_limits<LONGLONG>::min(); }
+
+}
+
 oslFileError SAL_CALL osl_readFileAt(
     oslFileHandle Handle,
     sal_uInt64    uOffset,
@@ -939,11 +904,10 @@ oslFileError SAL_CALL osl_readFileAt(
 
     if ((!pImpl) || !IsValidHandle(pImpl->m_hFile) || (!pBuffer) || (!pBytesRead))
         return osl_File_E_INVAL;
-    if ((pImpl->m_state & FileHandle_Impl::STATE_SEEKABLE) == 0)
+    if (!(pImpl->m_state & StateBits::Seekable))
         return osl_File_E_SPIPE;
 
-    static sal_uInt64 const g_limit_longlong = std::numeric_limits< LONGLONG >::max();
-    if (g_limit_longlong < uOffset)
+    if (exceedsMaxLONGLONG(uOffset))
         return osl_File_E_OVERFLOW;
     LONGLONG const nOffset = sal::static_int_cast< LONGLONG >(uOffset);
 
@@ -963,11 +927,10 @@ oslFileError SAL_CALL osl_writeFileAt(
 
     if ((!pImpl) || !IsValidHandle(pImpl->m_hFile) || (!pBuffer) || (!pBytesWritten))
         return osl_File_E_INVAL;
-    if ((pImpl->m_state & FileHandle_Impl::STATE_SEEKABLE) == 0)
+    if (!(pImpl->m_state & StateBits::Seekable))
         return osl_File_E_SPIPE;
 
-    static sal_uInt64 const g_limit_longlong = std::numeric_limits< LONGLONG >::max();
-    if (g_limit_longlong < uOffset)
+    if (exceedsMaxLONGLONG(uOffset))
         return osl_File_E_OVERFLOW;
     LONGLONG const nOffset = sal::static_int_cast< LONGLONG >(uOffset);
 
@@ -994,8 +957,9 @@ oslFileError SAL_CALL osl_getFilePos(oslFileHandle Handle, sal_uInt64 *pPos)
     if ((!pImpl) || !IsValidHandle(pImpl->m_hFile) || (!pPos))
         return osl_File_E_INVAL;
 
-    FileHandle_Impl::Guard lock(&(pImpl->m_mutex));
+    // no need to lock because pos is atomic
     *pPos = pImpl->getPos();
+
     return osl_File_E_None;
 }
 
@@ -1005,8 +969,7 @@ oslFileError SAL_CALL osl_setFilePos(oslFileHandle Handle, sal_uInt32 uHow, sal_
     if ((!pImpl) || !IsValidHandle(pImpl->m_hFile))
         return osl_File_E_INVAL;
 
-    static sal_Int64 const g_limit_longlong = std::numeric_limits< LONGLONG >::max();
-    if (g_limit_longlong < uOffset)
+    if (exceedsMaxLONGLONG(uOffset) || exceedsMinLONGLONG(uOffset))
         return osl_File_E_OVERFLOW;
     LONGLONG nPos = 0, nOffset = sal::static_int_cast< LONGLONG >(uOffset);
 
@@ -1022,7 +985,8 @@ oslFileError SAL_CALL osl_setFilePos(oslFileHandle Handle, sal_uInt32 uHow, sal_
             nPos = sal::static_int_cast< LONGLONG >(pImpl->getPos());
             if ((nOffset < 0) && (nPos < -1*nOffset))
                 return osl_File_E_INVAL;
-            if (g_limit_longlong < nPos + nOffset)
+            assert(nPos >= 0);
+            if (nOffset > g_limit_longlong - nPos)
                 return osl_File_E_OVERFLOW;
             break;
 
@@ -1030,7 +994,8 @@ oslFileError SAL_CALL osl_setFilePos(oslFileHandle Handle, sal_uInt32 uHow, sal_
             nPos = sal::static_int_cast< LONGLONG >(pImpl->getSize());
             if ((nOffset < 0) && (nPos < -1*nOffset))
                 return osl_File_E_INVAL;
-            if (g_limit_longlong < nPos + nOffset)
+            assert(nPos >= 0);
+            if (nOffset > g_limit_longlong - nPos)
                 return osl_File_E_OVERFLOW;
             break;
 
@@ -1059,11 +1024,10 @@ oslFileError SAL_CALL osl_setFileSize(oslFileHandle Handle, sal_uInt64 uSize)
 
     if ((!pImpl) || !IsValidHandle(pImpl->m_hFile))
         return osl_File_E_INVAL;
-    if ((pImpl->m_state & FileHandle_Impl::STATE_WRITEABLE) == 0)
+    if (!(pImpl->m_state & StateBits::Writeable))
         return osl_File_E_BADF;
 
-    static sal_uInt64 const g_limit_longlong = std::numeric_limits< LONGLONG >::max();
-    if (g_limit_longlong < uSize)
+    if (exceedsMaxLONGLONG(uSize))
         return osl_File_E_OVERFLOW;
 
     FileHandle_Impl::Guard lock(&(pImpl->m_mutex));
@@ -1083,7 +1047,7 @@ oslFileError SAL_CALL osl_removeFile(rtl_uString* strPath)
 
     if (error == osl_File_E_None)
     {
-        if (DeleteFile(SAL_W(rtl_uString_getStr(strSysPath))))
+        if (DeleteFileW(o3tl::toW(rtl_uString_getStr(strSysPath))))
             error = osl_File_E_None;
         else
             error = oslTranslateFileError(GetLastError());
@@ -1103,8 +1067,8 @@ oslFileError SAL_CALL osl_copyFile(rtl_uString* strPath, rtl_uString *strDestPat
 
     if (error == osl_File_E_None)
     {
-        LPCWSTR src = SAL_W(rtl_uString_getStr(strSysPath));
-        LPCWSTR dst = SAL_W(rtl_uString_getStr(strSysDestPath));
+        LPCWSTR src = o3tl::toW(rtl_uString_getStr(strSysPath));
+        LPCWSTR dst = o3tl::toW(rtl_uString_getStr(strSysDestPath));
 
         if (CopyFileW(src, dst, FALSE))
             error = osl_File_E_None;
@@ -1130,13 +1094,47 @@ oslFileError SAL_CALL osl_moveFile(rtl_uString* strPath, rtl_uString *strDestPat
 
     if (error == osl_File_E_None)
     {
-        LPCWSTR src = SAL_W(rtl_uString_getStr(strSysPath));
-        LPCWSTR dst = SAL_W(rtl_uString_getStr(strSysDestPath));
+        LPCWSTR src = o3tl::toW(rtl_uString_getStr(strSysPath));
+        LPCWSTR dst = o3tl::toW(rtl_uString_getStr(strSysDestPath));
 
-        if (MoveFileEx(src, dst, MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH | MOVEFILE_REPLACE_EXISTING))
+        if (MoveFileExW(src, dst, MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH | MOVEFILE_REPLACE_EXISTING))
             error = osl_File_E_None;
         else
             error = oslTranslateFileError(GetLastError());
+    }
+
+    if (strSysPath)
+        rtl_uString_release(strSysPath);
+    if (strSysDestPath)
+        rtl_uString_release(strSysDestPath);
+
+    return error;
+}
+
+oslFileError SAL_CALL osl_replaceFile(rtl_uString* strPath, rtl_uString* strDestPath)
+{
+    rtl_uString *strSysPath = nullptr, *strSysDestPath = nullptr;
+    oslFileError    error = osl_getSystemPathFromFileURL_(strPath, &strSysPath, false);
+
+    if (error == osl_File_E_None)
+        error = osl_getSystemPathFromFileURL_(strDestPath, &strSysDestPath, false);
+
+    if (error == osl_File_E_None)
+    {
+        LPCWSTR src = o3tl::toW(rtl_uString_getStr(strSysPath));
+        LPCWSTR dst = o3tl::toW(rtl_uString_getStr(strSysDestPath));
+
+        if (!ReplaceFileW(dst, src, nullptr,
+                          REPLACEFILE_WRITE_THROUGH | REPLACEFILE_IGNORE_MERGE_ERRORS
+                              | REPLACEFILE_IGNORE_ACL_ERRORS,
+                          nullptr, nullptr))
+        {
+            DWORD dwError = GetLastError();
+            if (dwError == ERROR_FILE_NOT_FOUND) // no strDestPath file?
+                error = osl_moveFile(strPath, strDestPath);
+            else
+                error = oslTranslateFileError(dwError);
+        }
     }
 
     if (strSysPath)

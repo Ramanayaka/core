@@ -16,23 +16,21 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <svx/dialogs.hrc>
+
 #include <svx/dialmgr.hxx>
 #include <svx/pagenumberlistbox.hxx>
 #include <editeng/numitem.hxx>
-#include <tools/resary.hxx>
-#include <vcl/builderfactory.hxx>
 #include <com/sun/star/style/NumberingType.hpp>
+#include <numberingtype.hrc>
 
-PageNumberListBox::PageNumberListBox(vcl::Window* pParent)
-    : ListBox( pParent, WB_BORDER | WB_DROPDOWN)
+SvxPageNumberListBox::SvxPageNumberListBox(std::unique_ptr<weld::ComboBox> pControl)
+    : m_xControl(std::move(pControl))
 {
-    ResStringArray aPaperAry( ResId(RID_SVXSTRARY_NUMBERINGTYPE, DIALOG_MGR()) );
-    sal_uInt32 nCnt = aPaperAry.Count();
+    m_xControl->set_size_request(150, -1);
 
-    for ( sal_uInt32 i = 0; i < nCnt; ++i )
+    for (size_t i = 0; i < SAL_N_ELEMENTS(RID_SVXSTRARY_NUMBERINGTYPE); ++i)
     {
-        sal_uInt16 nData = aPaperAry.GetValue(i);
+        sal_uInt16 nData = RID_SVXSTRARY_NUMBERINGTYPE[i].second;
         switch (nData)
         {
             // String list array is also used in Writer and contains strings
@@ -40,41 +38,15 @@ PageNumberListBox::PageNumberListBox(vcl::Window* pParent)
             case css::style::NumberingType::CHAR_SPECIAL:
             case css::style::NumberingType::BITMAP:
             case css::style::NumberingType::BITMAP | LINK_TOKEN:
-            break;
+                break;
             default:
-                {
-                    OUString aStr = aPaperAry.GetString(i);
-                    sal_Int32 nPos = InsertEntry( aStr );
-                    SetEntryData( nPos, reinterpret_cast<void*>((sal_uLong)nData) );
-                }
+            {
+                OUString aStr = SvxResId(RID_SVXSTRARY_NUMBERINGTYPE[i].first);
+                m_xControl->append(OUString::number(nData), aStr);
+                break;
+            }
         }
     }
-    SetDropDownLineCount(6);
-}
-
-VCL_BUILDER_FACTORY(PageNumberListBox);
-
-void PageNumberListBox::SetSelection( sal_uInt16 nPos )
-{
-    sal_Int32 nEntryCount = GetEntryCount();
-    sal_Int32 nSelPos = LISTBOX_ENTRY_NOTFOUND;
-
-    for (sal_Int32 i = 0; i < nEntryCount; ++i )
-    {
-        sal_uInt16 nTmp = (sal_uInt16)reinterpret_cast<sal_uLong>(GetEntryData(i));
-
-        if ( nTmp == nPos )
-        {
-            nSelPos = i;
-            break;
-        }
-    }
-    SelectEntryPos( ( nSelPos != LISTBOX_ENTRY_NOTFOUND ) ? nSelPos : LISTBOX_ENTRY_NOTFOUND );
-}
-
-Size PageNumberListBox::GetOptimalSize() const
-{
-    return Size(150, ListBox::GetOptimalSize().Height());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

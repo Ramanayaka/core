@@ -21,17 +21,11 @@
 #define INCLUDED_SVX_XMLEXCHG_HXX
 
 #include <rtl/ustring.hxx>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include <svx/svxdllapi.h>
 
-namespace com {
-    namespace sun {
-        namespace star {
-            namespace beans {
-                class SAL_NO_VTABLE XPropertySet;
-            }
-        }
-    }
+namespace com::sun::star::beans {
+    class SAL_NO_VTABLE XPropertySet;
 }
 
 
@@ -42,7 +36,7 @@ namespace svx
     //= OXFormsDescriptor
 
 
-    struct SVX_DLLPUBLIC OXFormsDescriptor {
+    struct SVXCORE_DLLPUBLIC OXFormsDescriptor {
 
         OUString szName;
         OUString szServiceName;
@@ -61,9 +55,7 @@ namespace svx
 
     //= OXFormsTransferable
 
-    class SVX_DLLPUBLIC OXFormsTransferable : public TransferableHelper {
-
-        protected:
+    class SVXCORE_DLLPUBLIC OXFormsTransferable final : public TransferDataContainer {
 
             // TransferableHelper overridables
             virtual void        AddSupportedFormats() override;

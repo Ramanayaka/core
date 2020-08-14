@@ -17,20 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "QueryTextView.hxx"
-#include "querycontainerwindow.hxx"
-#include "QueryViewSwitch.hxx"
-#include "sqledit.hxx"
-#include "undosqledit.hxx"
-#include "browserids.hxx"
-#include "querycontroller.hxx"
-#include "dbu_qry.hrc"
-#include "dbustrings.hrc"
-#include <toolkit/helper/vclunohelper.hxx>
-#include <vcl/split.hxx>
-#include <vcl/svapp.hxx>
-#include <comphelper/types.hxx>
-#include "QueryDesignView.hxx"
+#include <QueryTextView.hxx>
+#include <querycontainerwindow.hxx>
+#include <sqledit.hxx>
+#include <undosqledit.hxx>
+#include <QueryDesignView.hxx>
 
 using namespace dbaui;
 using namespace ::com::sun::star::uno;
@@ -71,17 +62,17 @@ void OQueryTextView::Resize()
     m_pEdit->SetSizePixel( GetOutputSizePixel() );
 }
 
-OUString OQueryTextView::getStatement()
+OUString OQueryTextView::getStatement() const
 {
     return m_pEdit->GetText();
 }
 
 void OQueryTextView::clear()
 {
-    OSqlEditUndoAct* pUndoAct = new OSqlEditUndoAct( m_pEdit );
+    std::unique_ptr<OSqlEditUndoAct> pUndoAct(new OSqlEditUndoAct( m_pEdit ));
 
     pUndoAct->SetOriginalText( m_pEdit->GetText() );
-    getContainerWindow()->getDesignView()->getController().addUndoActionAndInvalidate( pUndoAct );
+    getContainerWindow()->getDesignView()->getController().addUndoActionAndInvalidate( std::move(pUndoAct) );
 
     m_pEdit->SetText(OUString());
 }
@@ -97,7 +88,7 @@ void OQueryTextView::copy()
         m_pEdit->Copy();
 }
 
-bool OQueryTextView::isCutAllowed()
+bool OQueryTextView::isCutAllowed() const
 {
     return !m_pEdit->GetSelected().isEmpty();
 }

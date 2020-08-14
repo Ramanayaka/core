@@ -19,15 +19,15 @@
 #ifndef INCLUDED_CHART2_SOURCE_MODEL_MAIN_TITLE_HXX
 #define INCLUDED_CHART2_SOURCE_MODEL_MAIN_TITLE_HXX
 
-#include "ModifyListenerHelper.hxx"
-#include "OPropertySet.hxx"
-#include "MutexContainer.hxx"
+#include <OPropertySet.hxx>
+#include <MutexContainer.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/uno3.hxx>
 #include <com/sun/star/chart2/XTitle.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
+#include <com/sun/star/util/XModifyBroadcaster.hpp>
+#include <com/sun/star/util/XModifyListener.hpp>
 
 namespace chart
 {
@@ -43,13 +43,13 @@ typedef ::cppu::WeakImplHelper<
     Title_Base;
 }
 
-class Title :
+class Title final :
     public MutexContainer,
     public impl::Title_Base,
     public ::property::OPropertySet
 {
 public:
-    explicit Title( css::uno::Reference< css::uno::XComponentContext > const & xContext );
+    explicit Title();
     virtual ~Title() override;
 
     /// XServiceInfo declarations
@@ -62,7 +62,7 @@ public:
     /// merge XTypeProvider implementations
      DECLARE_XTYPEPROVIDER()
 
-protected:
+private:
     explicit Title( const Title & rOther );
 
     // ____ OPropertySet ____
@@ -102,7 +102,6 @@ protected:
 
     void fireModifyEvent();
 
-private:
     css::uno::Sequence< css::uno::Reference< css::chart2::XFormattedString > > m_aStrings;
 
     css::uno::Reference< css::util::XModifyListener > m_xModifyEventForwarder;

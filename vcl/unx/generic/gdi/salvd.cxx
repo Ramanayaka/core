@@ -20,43 +20,48 @@
 #include <vcl/sysdata.hxx>
 
 #include <X11/Xlib.h>
-#include <X11/Xutil.h>
 #include <X11/extensions/Xrender.h>
 
 #include <unx/saldisp.hxx>
 #include <unx/salinst.h>
 #include <unx/salgdi.h>
-#include <unx/salunx.h>
 #include <unx/salvd.h>
 #include <unx/x11/xlimits.hxx>
-
-#include <salinst.hxx>
 
 #include <vcl/opengl/OpenGLHelper.hxx>
 #include <opengl/x11/salvd.hxx>
 
-SalVirtualDevice* X11SalInstance::CreateX11VirtualDevice(SalGraphics* pGraphics,
+#include <config_features.h>
+#include <vcl/skia/SkiaHelper.hxx>
+#if HAVE_FEATURE_SKIA
+#include <skia/x11/salvd.hxx>
+#endif
+
+std::unique_ptr<SalVirtualDevice> X11SalInstance::CreateX11VirtualDevice(SalGraphics const * pGraphics,
         long &nDX, long &nDY, DeviceFormat eFormat, const SystemGraphicsData *pData,
-        X11SalGraphics* pNewGraphics)
+        std::unique_ptr<X11SalGraphics> pNewGraphics)
 {
     assert(pNewGraphics);
-    if (OpenGLHelper::isVCLOpenGLEnabled())
-        return new X11OpenGLSalVirtualDevice( pGraphics, nDX, nDY, eFormat, pData, pNewGraphics );
+#if HAVE_FEATURE_SKIA
+    if (SkiaHelper::isVCLSkiaEnabled())
+        return std::unique_ptr<SalVirtualDevice>(new X11SkiaSalVirtualDevice( pGraphics, nDX, nDY, pData, std::move(pNewGraphics) ));
     else
-        return new X11SalVirtualDevice(pGraphics, nDX, nDY, eFormat, pData, pNewGraphics);
+#endif
+    if (OpenGLHelper::isVCLOpenGLEnabled())
+        return std::unique_ptr<SalVirtualDevice>(new X11OpenGLSalVirtualDevice( pGraphics, nDX, nDY, pData, std::move(pNewGraphics) ));
+    else
+        return std::unique_ptr<SalVirtualDevice>(new X11SalVirtualDevice(pGraphics, nDX, nDY, eFormat, pData, std::move(pNewGraphics)));
 }
 
-SalVirtualDevice* X11SalInstance::CreateVirtualDevice(SalGraphics* pGraphics,
+std::unique_ptr<SalVirtualDevice> X11SalInstance::CreateVirtualDevice(SalGraphics* pGraphics,
         long &nDX, long &nDY, DeviceFormat eFormat, const SystemGraphicsData *pData)
 {
-    return CreateX11VirtualDevice(pGraphics, nDX, nDY, eFormat, pData, new X11SalGraphics());
+    return CreateX11VirtualDevice(pGraphics, nDX, nDY, eFormat, pData, std::make_unique<X11SalGraphics>());
 }
 
 void X11SalGraphics::Init( X11SalVirtualDevice *pDevice, SalColormap* pColormap,
                            bool bDeleteColormap )
 {
-    SalColormap *pOrigDeleteColormap = m_pDeleteColormap;
-
     SalDisplay *pDisplay  = pDevice->GetDisplay();
     m_nXScreen = pDevice->GetXScreenNumber();
 
@@ -67,15 +72,15 @@ void X11SalGraphics::Init( X11SalVirtualDevice *pDevice, SalColormap* pColormap,
     {
         m_pColormap = pColormap;
         if( bDeleteColormap )
-            m_pDeleteColormap = pColormap;
+            m_pDeleteColormap.reset(pColormap);
     }
     else if( nDeviceDepth == nVisualDepth )
         m_pColormap = &pDisplay->GetColormap( m_nXScreen );
     else if( nDeviceDepth == 1 )
-        m_pColormap = m_pDeleteColormap = new SalColormap();
-
-    if (m_pDeleteColormap != pOrigDeleteColormap)
-        delete pOrigDeleteColormap;
+    {
+        m_pDeleteColormap.reset(new SalColormap());
+        m_pColormap = m_pDeleteColormap.get();
+    }
 
     m_pVDev      = pDevice;
     m_pFrame     = nullptr;
@@ -88,10 +93,10 @@ void X11SalGraphics::Init( X11SalVirtualDevice *pDevice, SalColormap* pColormap,
     mxImpl->Init();
 }
 
-X11SalVirtualDevice::X11SalVirtualDevice(SalGraphics* pGraphics, long &nDX, long &nDY,
+X11SalVirtualDevice::X11SalVirtualDevice(SalGraphics const * pGraphics, long &nDX, long &nDY,
                                          DeviceFormat eFormat, const SystemGraphicsData *pData,
-                                         X11SalGraphics* pNewGraphics) :
-    pGraphics_(pNewGraphics),
+                                         std::unique_ptr<X11SalGraphics> pNewGraphics) :
+    pGraphics_(std::move(pNewGraphics)),
     m_nXScreen(0),
     bGraphics_(false)
 {
@@ -110,7 +115,7 @@ X11SalVirtualDevice::X11SalVirtualDevice(SalGraphics* pGraphics, long &nDX, long
 
     }
 
-    pDisplay_               = vcl_sal::getSalDisplay(GetGenericData());
+    pDisplay_               = vcl_sal::getSalDisplay(GetGenericUnixSalData());
     nDepth_                 = nBitCount;
 
     if( pData && pData->hDrawable != None )
@@ -128,8 +133,8 @@ X11SalVirtualDevice::X11SalVirtualDevice(SalGraphics* pGraphics, long &nDX, long
                 break;
             nScreen++;
         }
-        nDX_ = (long)w;
-        nDY_ = (long)h;
+        nDX_ = static_cast<long>(w);
+        nDY_ = static_cast<long>(h);
         nDX = nDX_;
         nDY = nDY_;
         m_nXScreen = SalX11Screen( nScreen );
@@ -140,8 +145,8 @@ X11SalVirtualDevice::X11SalVirtualDevice(SalGraphics* pGraphics, long &nDX, long
     {
         nDX_ = nDX;
         nDY_ = nDY;
-        m_nXScreen = pGraphics ? static_cast<X11SalGraphics*>(pGraphics)->GetScreenNumber() :
-                                 vcl_sal::getSalDisplay(GetGenericData())->GetDefaultXScreen();
+        m_nXScreen = pGraphics ? static_cast<X11SalGraphics const *>(pGraphics)->GetScreenNumber() :
+                                 vcl_sal::getSalDisplay(GetGenericUnixSalData())->GetDefaultXScreen();
         hDrawable_ = limitXCreatePixmap( GetXDisplay(),
                                          pDisplay_->GetDrawable( m_nXScreen ),
                                          nDX_, nDY_,
@@ -157,7 +162,7 @@ X11SalVirtualDevice::X11SalVirtualDevice(SalGraphics* pGraphics, long &nDX, long
             pColormap = new SalColormap( pDisplay_, pXRenderFormat->colormap, m_nXScreen );
         else
             pColormap = new SalColormap( nBitCount );
-         bDeleteColormap = true;
+        bDeleteColormap = true;
     }
     else if( nBitCount != pDisplay_->GetVisual( m_nXScreen ).GetDepth() )
     {
@@ -171,8 +176,7 @@ X11SalVirtualDevice::X11SalVirtualDevice(SalGraphics* pGraphics, long &nDX, long
 
 X11SalVirtualDevice::~X11SalVirtualDevice()
 {
-    delete pGraphics_;
-    pGraphics_ = nullptr;
+    pGraphics_.reset();
 
     if( GetDrawable() && !bExternPixmap_ )
         XFreePixmap( GetXDisplay(), GetDrawable() );
@@ -186,7 +190,7 @@ SalGraphics* X11SalVirtualDevice::AcquireGraphics()
     if( pGraphics_ )
         bGraphics_ = true;
 
-    return pGraphics_;
+    return pGraphics_.get();
 }
 
 void X11SalVirtualDevice::ReleaseGraphics( SalGraphics* )

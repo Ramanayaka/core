@@ -21,11 +21,13 @@
 
 #include <svtools/svtdllapi.h>
 #include <sal/types.h>
-#include <tools/link.hxx>
-#include <osl/mutex.hxx>
 #include <rtl/ustring.hxx>
 #include <unotools/options.hxx>
 #include <memory>
+
+namespace osl { class Mutex; }
+template <typename Arg, typename Ret> class Link;
+class LinkParamNone;
 
 /*-************************************************************************************************************
     @short          forward declaration to our private date container implementation
@@ -44,7 +46,7 @@ enum class ToolBoxButtonSize;
     @devstatus      ready to use
 *//*-*************************************************************************************************************/
 
-class SVT_DLLPUBLIC SvtMiscOptions: public utl::detail::Options
+class SVT_DLLPUBLIC SvtMiscOptions final : public utl::detail::Options
 {
     public:
          SvtMiscOptions();
@@ -95,7 +97,7 @@ class SVT_DLLPUBLIC SvtMiscOptions: public utl::detail::Options
         /*-****************************************************************************************************
             @short      return a reference to a static mutex
             @descr      These class is partially threadsafe (for de-/initialization only).
-                        All access methods are'nt safe!
+                        All access methods aren't safe!
                         We create a static mutex only for one ime and use at different times.
             @return     A reference to a static mutex member.
         *//*-*****************************************************************************************************/

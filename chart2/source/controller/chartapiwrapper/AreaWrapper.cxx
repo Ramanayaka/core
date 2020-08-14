@@ -18,15 +18,15 @@
  */
 
 #include "AreaWrapper.hxx"
-#include "macros.hxx"
 #include "Chart2ModelContact.hxx"
-#include "WrappedDirectStateProperty.hxx"
-#include <com/sun/star/drawing/FillStyle.hpp>
+#include <WrappedDirectStateProperty.hxx>
+#include <com/sun/star/chart2/XChartDocument.hpp>
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
-#include "LinePropertiesHelper.hxx"
-#include "FillProperties.hxx"
-#include "UserDefinedProperties.hxx"
+#include <LinePropertiesHelper.hxx>
+#include <FillProperties.hxx>
+#include <UserDefinedProperties.hxx>
 
 #include <algorithm>
 
@@ -68,9 +68,7 @@ struct StaticAreaWrapperPropertyArray : public rtl::StaticAggregate< Sequence< P
 
 } // anonymous namespace
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 AreaWrapper::AreaWrapper(const std::shared_ptr<Chart2ModelContact>& spChart2ModelContact)
@@ -106,7 +104,7 @@ void SAL_CALL AreaWrapper::setSize( const awt::Size& /*aSize*/ )
 // ____ XShapeDescriptor (base of XShape) ____
 OUString SAL_CALL AreaWrapper::getShapeType()
 {
-    return OUString( "com.sun.star.chart.ChartArea" );
+    return "com.sun.star.chart.ChartArea";
 }
 
 // ____ XComponent ____
@@ -115,7 +113,7 @@ void SAL_CALL AreaWrapper::dispose()
     Reference< uno::XInterface > xSource( static_cast< ::cppu::OWeakObject* >( this ) );
     m_aEventListenerContainer.disposeAndClear( lang::EventObject( xSource ) );
 
-    MutexGuard aGuard( GetMutex());
+    MutexGuard aGuard( m_aMutex);
     clearWrappedPropertySet();
 }
 
@@ -146,18 +144,18 @@ const Sequence< beans::Property >& AreaWrapper::getPropertySequence()
     return *StaticAreaWrapperPropertyArray::get();
 }
 
-const std::vector< WrappedProperty* > AreaWrapper::createWrappedProperties()
+std::vector< std::unique_ptr<WrappedProperty> > AreaWrapper::createWrappedProperties()
 {
-    std::vector< ::chart::WrappedProperty* > aWrappedProperties;
+    std::vector< std::unique_ptr<WrappedProperty> > aWrappedProperties;
 
-    aWrappedProperties.push_back( new WrappedDirectStateProperty("LineStyle","LineStyle") );
+    aWrappedProperties.emplace_back( new WrappedDirectStateProperty("LineStyle","LineStyle") );
 
     return aWrappedProperties;
 }
 
 OUString SAL_CALL AreaWrapper::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.Area");
+    return "com.sun.star.comp.chart.Area";
 }
 
 sal_Bool SAL_CALL AreaWrapper::supportsService( const OUString& rServiceName )
@@ -174,7 +172,6 @@ css::uno::Sequence< OUString > SAL_CALL AreaWrapper::getSupportedServiceNames()
         "com.sun.star.drawing.LineProperties" };
 }
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

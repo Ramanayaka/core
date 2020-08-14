@@ -18,6 +18,9 @@
  */
 
 #ifdef _WIN32
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #endif
 
@@ -29,29 +32,30 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <sal/log.hxx>
 #include <sal/types.h>
-#include "cppunittester/protectorfactory.hxx"
-#include "osl/module.h"
-#include "osl/module.hxx"
-#include "osl/thread.h"
-#include "rtl/character.hxx"
-#include "rtl/process.h"
-#include "rtl/string.h"
-#include "rtl/string.hxx"
-#include "rtl/textcvt.h"
-#include "rtl/ustring.hxx"
-#include "sal/main.h"
+#include <cppunittester/protectorfactory.hxx>
+#include <osl/module.h>
+#include <osl/module.hxx>
+#include <osl/thread.h>
+#include <rtl/character.hxx>
+#include <rtl/process.h>
+#include <rtl/string.h>
+#include <rtl/string.hxx>
+#include <rtl/textcvt.h>
+#include <rtl/ustring.hxx>
+#include <sal/main.h>
 
-#include "cppunit/CompilerOutputter.h"
-#include "cppunit/Exception.h"
-#include "cppunit/TestFailure.h"
-#include "cppunit/TestResult.h"
-#include "cppunit/TestResultCollector.h"
-#include "cppunit/TestRunner.h"
-#include "cppunit/extensions/TestFactoryRegistry.h"
-#include "cppunit/plugin/PlugInManager.h"
-#include "cppunit/plugin/DynamicLibraryManagerException.h"
-#include "cppunit/portability/Stream.h"
+#include <cppunit/CompilerOutputter.h>
+#include <cppunit/Exception.h>
+#include <cppunit/TestFailure.h>
+#include <cppunit/TestResult.h>
+#include <cppunit/TestResultCollector.h>
+#include <cppunit/TestRunner.h>
+#include <cppunit/extensions/TestFactoryRegistry.h>
+#include <cppunit/plugin/PlugInManager.h>
+#include <cppunit/plugin/DynamicLibraryManagerException.h>
+#include <cppunit/portability/Stream.h>
 
 #include <memory>
 #include <boost/algorithm/string.hpp>
@@ -68,14 +72,14 @@ void usageFailure() {
     std::exit(EXIT_FAILURE);
 }
 
-rtl::OUString getArgument(sal_Int32 index) {
-    rtl::OUString arg;
+OUString getArgument(sal_Int32 index) {
+    OUString arg;
     osl_getCommandArg(index, &arg.pData);
     return arg;
 }
 
-std::string convertLazy(rtl::OUString const & s16) {
-    rtl::OString s8(rtl::OUStringToOString(s16, osl_getThreadTextEncoding()));
+std::string convertLazy(OUString const & s16) {
+    OString s8(OUStringToOString(s16, osl_getThreadTextEncoding()));
     static_assert(sizeof (sal_Int32) <= sizeof (std::string::size_type), "must be at least the same size");
         // ensure following cast is legitimate
     return std::string(
@@ -175,8 +179,6 @@ private:
     }
 };
 
-namespace {
-
 struct test_name_compare
 {
     explicit test_name_compare(const std::string& rName):
@@ -204,15 +206,13 @@ bool addRecursiveTests(const std::vector<std::string>& test_names, CppUnit::Test
     {
         CppUnit::Test* pNewTest = pTest->getChildTestAt(i);
         ret |= addRecursiveTests(test_names, pNewTest, rRunner);
-        if (std::find_if(test_names.begin(), test_names.end(), test_name_compare(pNewTest->getName())) != test_names.end())
+        if (std::any_of(test_names.begin(), test_names.end(), test_name_compare(pNewTest->getName())))
         {
             rRunner.addTest(pNewTest);
             ret = true;
         }
     }
     return ret;
-}
-
 }
 
 //Allow the whole uniting testing framework to be run inside a "Protector"
@@ -336,8 +336,8 @@ public:
 
 double get_time(timeval* time)
 {
-    double nTime = (double)time->tv_sec;
-    nTime += ((double)time->tv_usec)/1000000.0;
+    double nTime = static_cast<double>(time->tv_sec);
+    nTime += static_cast<double>(time->tv_usec)/1000000.0;
     return nTime;
 }
 
@@ -398,7 +398,7 @@ SAL_IMPLEMENT_MAIN()
         sal_uInt32 index = 0;
         while (index < osl_getCommandArgCount())
         {
-            rtl::OUString arg = getArgument(index);
+            OUString arg = getArgument(index);
             if (arg.startsWith("-env:CPPUNITTESTTARGET=", &path))
             {
                 ++index;
@@ -413,13 +413,13 @@ SAL_IMPLEMENT_MAIN()
             {
                 if (testlib.empty())
                 {
-                    testlib = rtl::OUStringToOString(arg, osl_getThreadTextEncoding()).getStr();
+                    testlib = OUStringToOString(arg, osl_getThreadTextEncoding()).getStr();
                     args += testlib;
                 }
                 else
                 {
                     args += ' ';
-                    args += rtl::OUStringToOString(arg, osl_getThreadTextEncoding()).getStr();
+                    args += OUStringToOString(arg, osl_getThreadTextEncoding()).getStr();
                 }
                 ++index;
                 continue;
@@ -427,8 +427,8 @@ SAL_IMPLEMENT_MAIN()
             if (osl_getCommandArgCount() - index < 3) {
                 usageFailure();
             }
-            rtl::OUString lib(getArgument(index + 1));
-            rtl::OUString sym(getArgument(index + 2));
+            OUString lib(getArgument(index + 1));
+            OUString sym(getArgument(index + 2));
 #ifndef DISABLE_DYNLOADING
             osl::Module mod(lib, SAL_LOADMODULE_GLOBAL);
             oslGenericFunction fn = mod.getFunctionSymbol(sym);

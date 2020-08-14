@@ -19,40 +19,32 @@
 #ifndef INCLUDED_SC_SOURCE_UI_VBA_VBARANGE_HXX
 #define INCLUDED_SC_SOURCE_UI_VBA_VBARANGE_HXX
 
-#include <com/sun/star/container/XEnumerationAccess.hpp>
-
 #include <ooo/vba/excel/XRange.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
-#include <ooo/vba/excel/XFont.hpp>
-#include <ooo/vba/excel/XComment.hpp>
-#include <ooo/vba/XCollection.hpp>
-#include <ooo/vba/excel/XlPasteType.hpp>
-#include <ooo/vba/excel/XlPasteSpecialOperation.hpp>
 
-#include <comphelper/proparrhlp.hxx>
-#include <comphelper/propertycontainer.hxx>
 #include <com/sun/star/awt/Point.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/sheet/FillDateMode.hpp>
 #include <com/sun/star/sheet/FillMode.hpp>
 #include <com/sun/star/sheet/FillDirection.hpp>
-#include <com/sun/star/sheet/XSpreadsheet.hpp>
-#include <com/sun/star/sheet/XSheetCellRangeContainer.hpp>
 
 #include "vbaformat.hxx"
-#include "address.hxx"
+#include <address.hxx>
 #include <formula/grammar.hxx>
-#include <svl/itemset.hxx>
 
+namespace com::sun::star::sheet { class XSheetCellRangeContainer; }
+namespace com::sun::star::table { class XCell; }
+namespace com::sun::star::table { class XCellRange; }
+namespace com::sun::star::table { struct CellRangeAddress; }
+namespace com::sun::star::lang { class XServiceInfo; }
+namespace ooo::vba { class XCollection; }
+namespace ooo::vba::excel { class XComment; }
+namespace ooo::vba::excel { class XFont; }
+
+class SfxItemSet;
 class ScCellRangesBase;
 class ScCellRangeObj;
 class ScDocShell;
 class ScDocument;
 class ScRangeList;
-class ScRange;
-
-typedef ScVbaFormat< ov::excel::XRange > ScVbaRange_BASE;
 
 class ArrayVisitor
 {
@@ -72,9 +64,11 @@ class ValueGetter : public ArrayVisitor
 {
 
 public:
-    virtual void processValue( sal_Int32 x, sal_Int32 y, const css::uno::Any& aValue ) = 0;
+    virtual void processValue( const css::uno::Any& aValue ) = 0;
     virtual const css::uno::Any& getValue() const = 0;
 };
+
+typedef ScVbaFormat< ov::excel::XRange > ScVbaRange_BASE;
 
 class ScVbaRange : public ScVbaRange_BASE
 {
@@ -121,7 +115,7 @@ class ScVbaRange : public ScVbaRange_BASE
      /// @throws css::script::BasicErrorException
      css::uno::Reference< ov::excel::XRange > SpecialCellsImpl( sal_Int32 nType, const css::uno::Any& _oValue);
     /// @throws css::uno::RuntimeException
-    css::awt::Point getPosition();
+    css::awt::Point getPosition() const;
 
     /** Fires a Worksheet_Change event for this range or range list. */
     void fireChangeEvent();
@@ -160,7 +154,7 @@ public:
 
     virtual ~ScVbaRange() override;
      virtual css::uno::Reference< ov::XHelperInterface > thisHelperIface() override { return this; }
-    bool isSingleCellRange();
+    bool isSingleCellRange() const;
 
     /// @throws css::uno::RuntimeException
     static css::uno::Reference< ov::excel::XRange > getRangeObjectForName(
@@ -170,6 +164,7 @@ public:
 
     /// @throws css::uno::RuntimeException
     static css::uno::Reference< ov::excel::XRange > CellsHelper(
+        const ScDocument* pDoc,
         const css::uno::Reference< ov::XHelperInterface >& xParent,
         const css::uno::Reference< css::uno::XComponentContext >& xContext,
         const css::uno::Reference< css::table::XCellRange >& xRange,
@@ -297,7 +292,7 @@ public:
     // XDefaultMethod
     OUString SAL_CALL getDefaultMethodName(  ) override;
         // XDefaultProperty
-        OUString SAL_CALL getDefaultPropertyName(  ) override { return OUString("Value"); }
+        OUString SAL_CALL getDefaultPropertyName(  ) override { return "Value"; }
 
 // #TODO completely rewrite ScVbaRange, it's become a hackfest
 // it needs to be closer to ScCellRangeBase in that the underlying
@@ -308,7 +303,7 @@ public:
 //     * we shouldn't need hacks like this below
     /// @throws css::uno::RuntimeException
     static css::uno::Reference< ov::excel::XRange > ApplicationRange( const css::uno::Reference< css::uno::XComponentContext >& xContext, const css::uno::Any &Cell1, const css::uno::Any &Cell2 );
-    static bool getCellRangesForAddress(ScRefFlags &rResFlags, const OUString& sAddress, ScDocShell* pDocSh, ScRangeList& rCellRanges, formula::FormulaGrammar::AddressConvention& eConv, char cDelimiter );
+    static bool getCellRangesForAddress(ScRefFlags &rResFlags, const OUString& sAddress, ScDocShell* pDocSh, ScRangeList& rCellRanges, formula::FormulaGrammar::AddressConvention eConv, char cDelimiter );
     virtual sal_Bool SAL_CALL GoalSeek( const css::uno::Any& Goal, const css::uno::Reference< ov::excel::XRange >& ChangingCell ) override;
     virtual css::uno::Reference< ov::excel::XRange > SAL_CALL SpecialCells( const css::uno::Any& _oType, const css::uno::Any& _oValue) override;
     // XErrorQuery
@@ -319,7 +314,7 @@ public:
 };
 
 /// @throws css::uno::RuntimeException
-bool getScRangeListForAddress( const OUString& sName, ScDocShell* pDocSh, ScRange& refRange,
+bool getScRangeListForAddress( const OUString& sName, ScDocShell* pDocSh, const ScRange& refRange,
                                ScRangeList& aCellRanges,
                                formula::FormulaGrammar::AddressConvention aConv = formula::FormulaGrammar::CONV_XL_A1 );
 

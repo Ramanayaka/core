@@ -19,7 +19,6 @@
 
 #include <sal/config.h>
 
-#include <o3tl/make_unique.hxx>
 #include <sdr/properties/connectorproperties.hxx>
 #include <svl/itemset.hxx>
 #include <svl/style.hxx>
@@ -28,14 +27,12 @@
 #include <svx/svdoedge.hxx>
 
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         // create a new itemset
         std::unique_ptr<SfxItemSet> ConnectorProperties::CreateObjectSpecificItemSet(SfxItemPool& rPool)
         {
-            return o3tl::make_unique<SfxItemSet>(
+            return std::make_unique<SfxItemSet>(
                 rPool,
                 svl::Items<
                     // Ranges from SdrAttrObj, SdrEdgeObj:
@@ -60,9 +57,9 @@ namespace sdr
         {
         }
 
-        BaseProperties& ConnectorProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> ConnectorProperties::Clone(SdrObject& rObj) const
         {
-            return *(new ConnectorProperties(*this, rObj));
+            return std::unique_ptr<BaseProperties>(new ConnectorProperties(*this, rObj));
         }
 
         void ConnectorProperties::ItemSetChanged(const SfxItemSet& rSet)
@@ -78,15 +75,13 @@ namespace sdr
 
         void ConnectorProperties::SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr)
         {
-            SdrEdgeObj& rObj = static_cast<SdrEdgeObj&>(GetSdrObject());
-
-            // call parent
+            // call parent (always first thing to do, may create the SfxItemSet)
             TextProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr);
 
             // local changes
+            SdrEdgeObj& rObj = static_cast<SdrEdgeObj&>(GetSdrObject());
             rObj.ImpSetAttrToEdgeInfo();
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

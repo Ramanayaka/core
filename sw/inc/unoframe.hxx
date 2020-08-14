@@ -26,21 +26,22 @@
 #include <com/sun/star/text/XTextFrame.hpp>
 #include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
-#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
 
 #include <cppuhelper/implbase.hxx>
+#include <svl/listener.hxx>
 
-#include <sfx2/objsh.hxx>
+#include "flyenum.hxx"
+#include "frmfmt.hxx"
+#include "unotext.hxx"
 
-#include <flyenum.hxx>
-#include <frmfmt.hxx>
-#include <unotext.hxx>
+#include <memory>
 
 class SdrObject;
 class SwDoc;
 class SwFormat;
-class SwFlyFrameFormat;
+class SfxItemPropertySet;
+namespace com::sun::star::frame { class XModel; }
 
 class BaseFrameProperties_Impl;
 class SwXFrame : public cppu::WeakImplHelper
@@ -53,28 +54,33 @@ class SwXFrame : public cppu::WeakImplHelper
     css::container::XNamed,
     css::text::XTextContent
 >,
-    public SwClient
+    public SvtListener
 {
 private:
     class Impl;
     ::sw::UnoImplPtr<Impl> m_pImpl;
+    SwFrameFormat* m_pFrameFormat;
 
     const SfxItemPropertySet*       m_pPropSet;
     SwDoc*                          m_pDoc;
 
-    const FlyCntType                eType;
+    const FlyCntType                m_eType;
 
     // Descriptor-interface
-    BaseFrameProperties_Impl*       pProps;
-    bool bIsDescriptor;
+    std::unique_ptr<BaseFrameProperties_Impl> m_pProps;
+    bool m_bIsDescriptor;
     OUString                        m_sName;
 
-    SwPaM*                          m_pCopySource;
+    sal_Int64                       m_nDrawAspect;
+    sal_Int64                       m_nVisibleAreaWidth;
+    sal_Int64                       m_nVisibleAreaHeight;
+    css::uno::Reference<css::text::XText> m_xParentText;
+    void DisposeInternal();
 
 protected:
     css::uno::Reference< css::beans::XPropertySet > mxStyleData;
     css::uno::Reference< css::container::XNameAccess >  mxStyleFamily;
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew) override;
+    virtual void Notify(const SfxHint&) override;
 
     virtual ~SwXFrame() override;
 
@@ -140,23 +146,20 @@ public:
 
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::uno::RuntimeException
-    void attachToRange(const css::uno::Reference< css::text::XTextRange > & xTextRange);
+    void attachToRange(css::uno::Reference<css::text::XTextRange> const& xTextRange,
+            SwPaM const* pCopySource = nullptr);
 
     const SwFrameFormat* GetFrameFormat() const
-    {
-        return dynamic_cast<const SwFrameFormat*>( GetRegisteredIn()  );
-    }
+        { return m_pFrameFormat; }
     SwFrameFormat* GetFrameFormat()
-    {
-        return dynamic_cast< SwFrameFormat*>( GetRegisteredIn() );
-    }
-    FlyCntType      GetFlyCntType()const {return eType;}
+        { return m_pFrameFormat; }
 
-    bool IsDescriptor() const {return bIsDescriptor;}
+    FlyCntType      GetFlyCntType()const {return m_eType;}
+
+    bool IsDescriptor() const {return m_bIsDescriptor;}
     void            ResetDescriptor();
     //copy text from a given source PaM
-    void            SetSelection(SwPaM& rCopySource);
-    static SW_DLLPUBLIC SdrObject *GetOrCreateSdrObject(SwFlyFrameFormat &rFormat);
+    static SdrObject *GetOrCreateSdrObject(SwFlyFrameFormat &rFormat);
 };
 
 typedef cppu::WeakImplHelper
@@ -167,11 +170,10 @@ typedef cppu::WeakImplHelper
 >
 SwXTextFrameBaseClass;
 
-class SwXTextFrame : public SwXTextFrameBaseClass,
+class SwXTextFrame final : public SwXTextFrameBaseClass,
     public SwXText,
     public SwXFrame
 {
-protected:
     friend class SwXFrame; // just for CreateXFrame
 
     virtual const SwStartNode *GetStartNode() const override;
@@ -235,9 +237,6 @@ public:
 
     //XPropertySet
     virtual css::uno::Any SAL_CALL getPropertyValue( const OUString& PropertyName ) override;
-
-    void * SAL_CALL operator new( size_t ) throw();
-    void SAL_CALL operator delete( void * ) throw();
 };
 
 typedef cppu::ImplInheritanceHelper
@@ -245,9 +244,8 @@ typedef cppu::ImplInheritanceHelper
     css::document::XEventsSupplier
 >
 SwXTextGraphicObjectBaseClass;
-class SwXTextGraphicObject : public SwXTextGraphicObjectBaseClass
+class SwXTextGraphicObject final : public SwXTextGraphicObjectBaseClass
 {
-protected:
     friend class SwXFrame; // just for CreateXFrame
 
     virtual ~SwXTextGraphicObject() override;
@@ -267,22 +265,18 @@ public:
 
     // XEventsSupplier
     virtual css::uno::Reference< css::container::XNameReplace > SAL_CALL getEvents(  ) override;
-
-    void * SAL_CALL operator new( size_t ) throw();
-    void SAL_CALL operator delete( void * ) throw();
 };
 
-class SwOLENode;
 typedef cppu::ImplInheritanceHelper
 <   SwXFrame,
     css::document::XEmbeddedObjectSupplier2,
     css::document::XEventsSupplier
 > SwXTextEmbeddedObjectBaseClass;
 
-class SwXTextEmbeddedObject : public SwXTextEmbeddedObjectBaseClass
+class SwXTextEmbeddedObject final : public SwXTextEmbeddedObjectBaseClass
 {
     css::uno::Reference<css::util::XModifyListener> m_xOLEListener;
-protected:
+
     friend class SwXFrame; // just for CreateXFrame
 
     virtual ~SwXTextEmbeddedObject() override;
@@ -309,14 +303,12 @@ public:
 
     // XEventsSupplier
     virtual css::uno::Reference< css::container::XNameReplace > SAL_CALL getEvents(  ) override;
-    void * SAL_CALL operator new( size_t ) throw();
-    void SAL_CALL operator delete( void * ) throw();
 };
 
-class SwXOLEListener : public cppu::WeakImplHelper<css::util::XModifyListener>,
-    public SwClient
+class SwXOLEListener final : public cppu::WeakImplHelper<css::util::XModifyListener>, public SvtListener
 {
-    css::uno::Reference< css::frame::XModel > xOLEModel;
+    SwFormat* m_pOLEFormat;
+    css::uno::Reference<css::frame::XModel> m_xOLEModel;
 
 public:
     SwXOLEListener(SwFormat& rOLEFormat, css::uno::Reference< css::frame::XModel > const & xOLE);
@@ -328,8 +320,7 @@ public:
 // css::util::XModifyListener
     virtual void SAL_CALL modified( const css::lang::EventObject& aEvent ) override;
 
-protected:
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew) override;
+    virtual void Notify( const SfxHint& ) override;
 };
 
 #endif

@@ -19,29 +19,28 @@
 
 #include <sal/config.h>
 
-#include <o3tl/make_unique.hxx>
 #include <sdr/properties/measureproperties.hxx>
 #include <svl/itemset.hxx>
 #include <svl/style.hxx>
 #include <svx/svddef.hxx>
 #include <editeng/eeitem.hxx>
 #include <svx/svdomeas.hxx>
+#include <svx/xlineit0.hxx>
 #include <svx/xlnstit.hxx>
 #include <svx/xlnstwit.hxx>
 #include <svx/xlnedit.hxx>
 #include <svx/xlnedwit.hxx>
+#include <svx/sdynitm.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         // create a new itemset
         std::unique_ptr<SfxItemSet> MeasureProperties::CreateObjectSpecificItemSet(SfxItemPool& rPool)
         {
-            return o3tl::make_unique<SfxItemSet>(
+            return std::make_unique<SfxItemSet>(
                 rPool,
                 svl::Items<
                     // Ranges from SdrAttrObj, SdrMeasureObj:
@@ -67,9 +66,9 @@ namespace sdr
         {
         }
 
-        BaseProperties& MeasureProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> MeasureProperties::Clone(SdrObject& rObj) const
         {
-            return *(new MeasureProperties(*this, rObj));
+            return std::unique_ptr<BaseProperties>(new MeasureProperties(*this, rObj));
         }
 
         void MeasureProperties::ItemSetChanged(const SfxItemSet& rSet)
@@ -85,18 +84,18 @@ namespace sdr
 
         void MeasureProperties::SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr)
         {
+            // call parent (always first thing to do, may create the SfxItemSet)
+            TextProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr);
+
+            // local changes
             // get access to dimension line object
             SdrMeasureObj& rObj = static_cast<SdrMeasureObj&>(GetSdrObject());
 
-            // local changes
-
             // mark dimension line text as changed (dirty) in the dimension line object
             rObj.SetTextDirty();
+
             // tdf#98525 ask the dimension line object to redraw the changed text
             rObj.UndirtyText();
-
-            // call parent
-            TextProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr);
         }
 
         void MeasureProperties::ForceDefaultAttributes()
@@ -124,7 +123,6 @@ namespace sdr
             mpItemSet->Put(XLineEndWidthItem(200));
             mpItemSet->Put(XLineStyleItem(css::drawing::LineStyle_SOLID));
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

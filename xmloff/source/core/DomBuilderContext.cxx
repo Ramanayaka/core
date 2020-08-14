@@ -18,9 +18,9 @@
  */
 
 
-#include "DomBuilderContext.hxx"
+#include <DomBuilderContext.hxx>
 
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmlerror.hxx>
 
@@ -33,6 +33,7 @@
 #include <com/sun/star/xml/dom/NodeType.hpp>
 
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 #include <comphelper/processfactory.hxx>
 
@@ -74,7 +75,7 @@ DomBuilderContext::DomBuilderContext( SvXMLImport& rImport,
 DomBuilderContext::DomBuilderContext( SvXMLImport& rImport,
                                       sal_uInt16 nPrefix,
                                       const OUString& rLocalName,
-                                      Reference<XNode>& xParent ) :
+                                      Reference<XNode> const & xParent ) :
     SvXMLImportContext( rImport, nPrefix, rLocalName ),
     mxNode( lcl_createElement( rImport, nPrefix, rLocalName, xParent ) )
 {
@@ -93,7 +94,7 @@ Reference<XDocument> DomBuilderContext::getTree()
     return mxNode->getOwnerDocument();
 }
 
-SvXMLImportContext* DomBuilderContext::CreateChildContext(
+SvXMLImportContextRef DomBuilderContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList>& )
@@ -120,8 +121,8 @@ void DomBuilderContext::StartElement(
         // namespace handling: determine namespace & namespace key
         OUString sNamespace;
         sal_uInt16 nNamespaceKey =
-            GetImport().GetNamespaceMap().GetKeyByAttrName_(
-                rName, nullptr, nullptr, &sNamespace );
+            GetImport().GetNamespaceMap().GetKeyByAttrName(
+                rName, nullptr, nullptr, &sNamespace);
 
         // create attribute node and set value
         Reference<XElement> xElement( mxNode, UNO_QUERY_THROW );

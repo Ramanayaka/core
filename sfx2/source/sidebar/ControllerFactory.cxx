@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/sidebar/ControllerFactory.hxx>
-#include <sfx2/sidebar/Tools.hxx>
+#include <sidebar/ControllerFactory.hxx>
+#include <sidebar/Tools.hxx>
 
 #include <com/sun/star/frame/XToolbarController.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
@@ -27,15 +27,15 @@
 
 #include <framework/sfxhelperfunctions.hxx>
 #include <vcl/commandinfoprovider.hxx>
+#include <vcl/weldutils.hxx>
 #include <svtools/generictoolboxcontroller.hxx>
 #include <comphelper/processfactory.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 
 using namespace css;
 using namespace css::uno;
-using ::rtl::OUString;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 Reference<frame::XToolbarController> ControllerFactory::CreateToolBoxController(
     ToolBox* pToolBox,
@@ -44,14 +44,14 @@ Reference<frame::XToolbarController> ControllerFactory::CreateToolBoxController(
     const Reference<frame::XFrame>& rxFrame,
     const Reference<frame::XController>& rxController,
     const Reference<awt::XWindow>& rxParentWindow,
-    const sal_Int32 nWidth)
+    const sal_Int32 nWidth, bool bSideBar)
 {
     Reference<frame::XToolbarController> xController (
         CreateToolBarController(
-            pToolBox,
+            VCLUnoHelper::GetInterface(pToolBox),
             rsCommandName,
             rxFrame, rxController,
-            nWidth));
+            nWidth, bSideBar));
 
     bool bFactoryHasController( xController.is() );
 
@@ -125,10 +125,12 @@ Reference<frame::XToolbarController> ControllerFactory::CreateToolBoxController(
         // Add tooltip.
         if (xController.is())
         {
+            auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(rsCommandName,
+                vcl::CommandInfoProvider::GetModuleIdentifier(rxFrame));
             const OUString sTooltip (vcl::CommandInfoProvider::GetTooltipForCommand(
-                    rsCommandName,
-                    rxFrame));
-            pToolBox->SetQuickHelpText(nItemId, sTooltip);
+                    rsCommandName, aProperties, rxFrame));
+            if (pToolBox->GetQuickHelpText(nItemId).isEmpty())
+                pToolBox->SetQuickHelpText(nItemId, sTooltip);
             pToolBox->EnableItem(nItemId);
         }
     }
@@ -136,12 +138,50 @@ Reference<frame::XToolbarController> ControllerFactory::CreateToolBoxController(
     return xController;
 }
 
+Reference<frame::XToolbarController> ControllerFactory::CreateToolBoxController(
+    weld::Toolbar& rToolbar, weld::Builder& rBuilder,
+    const OUString& rsCommandName,
+    const Reference<frame::XFrame>& rxFrame, bool bSideBar)
+{
+    css::uno::Reference<css::awt::XWindow> xWidget(new weld::TransportAsXWindow(&rToolbar, &rBuilder));
+
+    Reference<frame::XToolbarController> xController(
+        CreateToolBarController(
+            xWidget,
+            rsCommandName,
+            rxFrame, rxFrame->getController(),
+            -1, bSideBar));
+
+    if (!xController.is())
+    {
+        xController.set(
+            static_cast<XWeak*>(new svt::GenericToolboxController(
+                    ::comphelper::getProcessComponentContext(),
+                    rxFrame,
+                    rToolbar,
+                    rsCommandName)),
+            UNO_QUERY);
+    }
+
+    if (xController.is())
+    {
+        xController->createItemWindow(xWidget);
+
+        Reference<util::XUpdatable> xUpdatable(xController, UNO_QUERY);
+        if (xUpdatable.is())
+            xUpdatable->update();
+    }
+
+    return xController;
+}
+
+
 Reference<frame::XToolbarController> ControllerFactory::CreateToolBarController(
-    ToolBox* pToolBox,
+    const Reference<awt::XWindow>& rxToolbar,
     const OUString& rsCommandName,
     const Reference<frame::XFrame>& rxFrame,
     const Reference<frame::XController>& rxController,
-    const sal_Int32 nWidth)
+    const sal_Int32 nWidth, bool bSideBar)
 {
     try
     {
@@ -167,7 +207,11 @@ Reference<frame::XToolbarController> ControllerFactory::CreateToolBarController(
             aPropertyVector.push_back( makeAny( aPropValue ));
 
             aPropValue.Name = "ParentWindow";
-            aPropValue.Value <<= VCLUnoHelper::GetInterface(pToolBox);
+            aPropValue.Value <<= rxToolbar;
+            aPropertyVector.push_back( makeAny( aPropValue ));
+
+            aPropValue.Name = "IsSidebar";
+            aPropValue.Value <<= bSideBar;
             aPropertyVector.push_back( makeAny( aPropValue ));
 
             if (nWidth > 0)
@@ -193,6 +237,6 @@ Reference<frame::XToolbarController> ControllerFactory::CreateToolBarController(
     return nullptr;
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

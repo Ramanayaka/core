@@ -19,77 +19,71 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_NAVIPI_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_NAVIPI_HXX
 
-#include <vcl/lstbox.hxx>
-#include <vcl/toolbox.hxx>
 #include <vcl/idle.hxx>
 #include <svl/lstner.hxx>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include <sfx2/childwin.hxx>
 #include <sfx2/ctrlitem.hxx>
 #include <sfx2/tbxctrl.hxx>
-#include <svx/sidebar/PanelLayout.hxx>
-#include <conttree.hxx>
+#include <sfx2/sidebar/ControllerItem.hxx>
+#include <sfx2/sidebar/SidebarToolBox.hxx>
+#include <sfx2/weldutils.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
+#include "conttree.hxx"
 #include <ndarr.hxx>
+#include <memory>
 
 class SwWrtShell;
 class SwNavigationPI;
 class SwNavigationChild;
 class SfxBindings;
-class NumEditAction;
-class SwView;
 class SwNavigationConfig;
+class SwView;
 class SfxObjectShellLock;
 class SfxChildWindowContext;
 enum class RegionMode;
 class SpinField;
 
-class SwNavHelpToolBox : public ToolBox
-{
-    VclPtr<SwNavigationPI> m_xDialog;
-    virtual void    MouseButtonDown(const MouseEvent &rEvt) override;
-    virtual void    RequestHelp( const HelpEvent& rHEvt ) override;
-    virtual void    dispose() override;
-public:
-    SwNavHelpToolBox(Window* pParent);
-    void SetDialog(SwNavigationPI* pDialog)
-    {
-        m_xDialog = pDialog;
-    }
-    ~SwNavHelpToolBox() override;
-};
-
-class SwNavigationPI : public PanelLayout,
-                       public SfxControllerItem, public SfxListener
+class SwNavigationPI : public PanelLayout
+                     , public ::sfx2::sidebar::ControllerItem::ItemUpdateReceiverInterface
+                     , public SfxListener
 {
     friend class SwNavigationChild;
     friend class SwContentTree;
     friend class SwGlobalTree;
+    friend class SwNavigationPIUIObject;
 
-    VclPtr<SwNavHelpToolBox>    m_aContentToolBox;
-    VclPtr<ToolBox>             m_aGlobalToolBox;
-    VclPtr<NumEditAction>       m_xEdit;
-    VclPtr<VclContainer>        m_aContentBox;
-    VclPtr<SwContentTree>       m_aContentTree;
-    VclPtr<VclContainer>        m_aGlobalBox;
-    VclPtr<SwGlobalTree>        m_aGlobalTree;
-    VclPtr<ListBox>             m_aDocListBox;
+    ::sfx2::sidebar::ControllerItem m_aDocFullName;
+    ::sfx2::sidebar::ControllerItem m_aPageStats;
+
+    std::unique_ptr<weld::Toolbar> m_xContent1ToolBox;
+    std::unique_ptr<weld::Toolbar> m_xContent2ToolBox;
+    std::unique_ptr<weld::Toolbar> m_xContent3ToolBox;
+    std::unique_ptr<ToolbarUnoDispatcher> m_xContent1Dispatch;
+    std::unique_ptr<weld::Menu> m_xHeadingsMenu;
+    std::unique_ptr<weld::Menu> m_xDragModeMenu;
+    std::unique_ptr<weld::Menu> m_xUpdateMenu;
+    std::unique_ptr<weld::Menu> m_xInsertMenu;
+    std::unique_ptr<weld::Toolbar> m_xGlobalToolBox;
+    std::unique_ptr<weld::SpinButton> m_xEdit;
+    std::unique_ptr<weld::Widget> m_xContentBox;
+    std::unique_ptr<SwContentTree> m_xContentTree;
+    std::unique_ptr<weld::Widget> m_xGlobalBox;
+    std::unique_ptr<SwGlobalTree> m_xGlobalTree;
+    std::unique_ptr<weld::ComboBox> m_xDocListBox;
     Idle                m_aPageChgIdle;
     OUString            m_sContentFileName;
-    OUString            m_aContextArr[3];
     OUString            m_aStatusArr[4];
 
-    SfxObjectShellLock  *m_pxObjectShell;
+    std::unique_ptr<SfxObjectShellLock>  m_pxObjectShell;
     SwView              *m_pContentView;
     SwWrtShell          *m_pContentWrtShell;
     SwView              *m_pActContView;
     SwView              *m_pCreateView;
-    VclPtr<SfxPopupWindow>      m_pPopupWindow;
-    VclPtr<SfxPopupWindow>      m_pFloatingWindow;
 
     SwNavigationConfig  *m_pConfig;
     SfxBindings         &m_rBindings;
 
-    sal_uInt16  m_nAutoMarkIdx;
     RegionMode  m_nRegionMode; // 0 - URL, 1 - region with link 2 - region without link
     Size        m_aExpandedSize;
 
@@ -101,44 +95,50 @@ class SwNavigationPI : public PanelLayout,
     void ZoomIn();
 
     void FillBox();
-    void MakeMark();
 
-    DECL_LINK( DocListBoxSelectHdl, ListBox&, void );
-    DECL_LINK( ToolBoxSelectHdl, ToolBox *, void );
-    DECL_LINK( ToolBoxClickHdl, ToolBox *, void );
-    DECL_LINK( ToolBoxDropdownClickHdl, ToolBox*, void );
-    DECL_LINK( EditAction, NumEditAction&, void );
-    DECL_LINK( EditGetFocus, Control&, void );
-    DECL_LINK( DoneLink, SfxPoolItem *, void );
-    DECL_LINK( MenuSelectHdl, Menu *, bool );
+    DECL_LINK( DocListBoxSelectHdl, weld::ComboBox&, void );
+    DECL_LINK( ToolBoxSelectHdl, const OString&, void );
+    DECL_LINK( ToolBoxClickHdl, const OString&, void );
+    DECL_LINK( ToolBox2DropdownClickHdl, const OString&, void );
+    DECL_LINK( ToolBox3DropdownClickHdl, const OString&, void );
+    DECL_LINK( DoneLink, SfxPoolItem const *, void );
+    DECL_LINK( DropModeMenuSelectHdl, const OString&, void );
+    DECL_LINK( HeadingsMenuSelectHdl, const OString&, void );
+    DECL_LINK( GlobalMenuSelectHdl, const OString&, void );
     DECL_LINK( ChangePageHdl, Timer*, void );
-    DECL_LINK( PageEditModifyHdl, SpinField&, void );
-    DECL_LINK( PopupModeEndHdl, FloatingWindow*, void );
-    DECL_LINK( ClosePopupWindow, SfxPopupWindow *, void );
+    DECL_LINK( PageEditModifyHdl, weld::SpinButton&, void );
+    DECL_LINK( EditActionHdl, weld::Entry&, bool );
+    bool EditAction();
     void UsePage();
-
-    void SetPopupWindow( SfxPopupWindow* );
 
 protected:
 
     // release ObjectShellLock early enough for app end
     virtual void    Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
-    NumEditAction&  GetPageEdit();
     void            ToggleTree();
     void            SetGlobalMode(bool bSet) {m_bGlobalMode = bSet;}
 
 public:
 
-    SwNavigationPI(SfxBindings*, vcl::Window*);
+    static VclPtr<vcl::Window> Create(vcl::Window* pParent,
+            const ::com::sun::star::uno::Reference< ::com::sun::star::frame::XFrame >& rxFrame,
+            SfxBindings* pBindings);
+    SwNavigationPI(vcl::Window* pParent,
+            const ::com::sun::star::uno::Reference< ::com::sun::star::frame::XFrame >& rxFrame,
+            SfxBindings* _pBindings);
     virtual ~SwNavigationPI() override;
     virtual void    dispose() override;
 
     void            UpdateListBox();
-    void            MoveOutline(SwOutlineNodes::size_type nSource, SwOutlineNodes::size_type nTarget, bool bWithCilds);
+    void            MoveOutline(SwOutlineNodes::size_type nSource, SwOutlineNodes::size_type nTarget);
 
-    virtual void    StateChanged( sal_uInt16 nSID, SfxItemState eState,
-                                            const SfxPoolItem* pState ) override;
+    virtual void    NotifyItemUpdate(const sal_uInt16 nSId,
+                                     const SfxItemState eState,
+                                     const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(const sal_uInt16 /*nSId*/,
+                                 boost::property_tree::ptree& /*rState*/) override {};
 
     virtual void    StateChanged(StateChangedType nStateChange) override;
 
@@ -155,7 +155,8 @@ public:
     bool            IsGlobalMode() const {return    m_bGlobalMode;}
 
     SwView*         GetCreateView() const;
-    void            CreateNavigationTool(const tools::Rectangle& rRect, bool bSetFocus, vcl::Window *pParent);
+
+    FactoryFunction GetUITestFactory() const override;
 };
 
 class SwNavigationChild : public SfxChildWindowContext
@@ -166,7 +167,7 @@ public:
                         SfxBindings*  );
 
     //! soon obsolete !
-    static  SfxChildWindowContext* CreateImpl(vcl::Window *pParent,
+    static  std::unique_ptr<SfxChildWindowContext> CreateImpl(vcl::Window *pParent,
                 SfxBindings *pBindings, SfxChildWinInfo* pInfo );
     static  void RegisterChildWindowContext(SfxModule *pMod);
 };

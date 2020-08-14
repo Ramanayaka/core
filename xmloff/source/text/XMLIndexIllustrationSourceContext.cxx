@@ -22,9 +22,7 @@
 #include "XMLIndexTemplateContext.hxx"
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/txtimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <rtl/ustring.hxx>
@@ -50,7 +48,7 @@ XMLIndexIllustrationSourceContext::~XMLIndexIllustrationSourceContext()
 {
 }
 
-SvXMLImportContext* XMLIndexIllustrationSourceContext::CreateChildContext(
+SvXMLImportContextRef XMLIndexIllustrationSourceContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList> & xAttrList )

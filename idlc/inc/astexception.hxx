@@ -19,12 +19,12 @@
 #ifndef INCLUDED_IDLC_INC_ASTEXCEPTION_HXX
 #define INCLUDED_IDLC_INC_ASTEXCEPTION_HXX
 
-#include <aststruct.hxx>
+#include "aststruct.hxx"
 
-class AstException : public AstStruct
+class AstException final : public AstStruct
 {
 public:
-    AstException(const OString& name, AstException* pBaseType, AstScope* pScope)
+    AstException(const OString& name, AstException const * pBaseType, AstScope* pScope)
         : AstStruct(NT_exception, name, pBaseType, pScope)
         {}
 };

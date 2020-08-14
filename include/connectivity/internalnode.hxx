@@ -16,10 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_CONNECTIVITY_INTERNALNODE_HXX
-#define INCLUDED_CONNECTIVITY_INTERNALNODE_HXX
+#pragma once
 
-#include <connectivity/dbtoolsdllapi.hxx>
 #include <connectivity/sqlnode.hxx>
 
 namespace connectivity
@@ -29,10 +27,10 @@ namespace connectivity
 
     /** special node for avoiding memory leaks
     */
-    class OOO_DLLPUBLIC_DBTOOLS OSQLInternalNode : public OSQLParseNode
+    class OSQLInternalNode final : public OSQLParseNode
     {
     public:
-        OSQLInternalNode(const sal_Char* pNewValue,
+        OSQLInternalNode(const char* pNewValue,
                          SQLNodeType eNodeType,
                          sal_uInt32 nNodeID = 0);
         OSQLInternalNode(const OString& _rNewValue,
@@ -45,7 +43,5 @@ namespace connectivity
         virtual ~OSQLInternalNode() override;
     };
 }
-
-#endif // INCLUDED_CONNECTIVITY_INTERNALNODE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

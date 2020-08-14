@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_WRONGSPELLPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_WRONGSPELLPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
@@ -29,15 +28,13 @@
 
 // WrongSpellPrimitive2D class
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** WrongSpellPrimitive2D class
 
             This is a helper primitive to hold evtl. WrongSpell visualisations
             in the sequence of primitives. The primitive holds this information
-            separated form the TextPortions to where it belongs to tot expand the
+            separated from the TextPortions to where it belongs to, to expand the
             TextSimplePortionPrimitive2D more as needed.
 
             A renderer who does not want to visualize this (if contained at all)
@@ -47,7 +44,7 @@ namespace drawinglayer
             The geometric definition defines a line on the X-Axis (no Y-coordinates)
             which will when transformed by Transformation, create the coordinate data.
          */
-        class DRAWINGLAYER_DLLPUBLIC WrongSpellPrimitive2D : public BufferedDecompositionPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC WrongSpellPrimitive2D final : public BufferedDecompositionPrimitive2D
         {
         private:
             /// geometry definition
@@ -58,7 +55,6 @@ namespace drawinglayer
             /// color (usually red)
             basegfx::BColor                                 maColor;
 
-        protected:
             /// create local decomposition
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
 
@@ -80,12 +76,8 @@ namespace drawinglayer
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
-
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_WRONGSPELLPRIMITIVE2D_HXX
+} // end of namespace drawinglayer::primitive2d
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

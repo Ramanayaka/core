@@ -25,18 +25,17 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class XComponentContext;
-} } } }
+}
 
-class FilterDetect : public cppu::WeakImplHelper <
+class FilterDetect final : public cppu::WeakImplHelper <
     css::document::XExtendedFilterDetection,
     css::lang::XInitialization,
     css::lang::XServiceInfo
 >
 {
 
-protected:
     css::uno::Reference< css::uno::XComponentContext > mxCtx;
 
 public:
@@ -56,15 +55,6 @@ public:
 
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 };
-
-OUString SAL_CALL FilterDetect_getImplementationName();
-
-css::uno::Sequence< OUString > SAL_CALL FilterDetect_getSupportedServiceNames();
-
-css::uno::Reference< css::uno::XInterface > SAL_CALL
-    FilterDetect_createInstance(
-        css::uno::Reference<
-            css::uno::XComponentContext > const & context);
 
 #endif
 

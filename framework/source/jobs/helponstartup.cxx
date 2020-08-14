@@ -19,83 +19,68 @@
 
 // include own header
 #include <jobs/helponstartup.hxx>
-#include <loadenv/targethelper.hxx>
 #include <services.h>
+#include <targets.h>
+
+#include <officecfg/Office/Common.hxx>
+#include <officecfg/Setup.hxx>
 
 // include others
-#include <comphelper/configurationhelper.hxx>
 #include <comphelper/sequenceashashmap.hxx>
-#include <unotools/configmgr.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/help.hxx>
-#include <rtl/ustrbuf.hxx>
 
 // include interfaces
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
 #include <com/sun/star/frame/XFramesSupplier.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
+#include <cppuhelper/supportsservice.hxx>
 
 namespace framework{
 
-DEFINE_XSERVICEINFO_MULTISERVICE_2(HelpOnStartup                   ,
-                                      ::cppu::OWeakObject             ,
-                                      SERVICENAME_JOB                 ,
-                                      IMPLEMENTATIONNAME_HELPONSTARTUP)
+// XInterface, XTypeProvider, XServiceInfo
 
-DEFINE_INIT_SERVICE(HelpOnStartup,
-                    {
-                        /*  Attention
-                            I think we don't need any mutex or lock here ... because we are called by our own static method impl_createInstance()
-                            to create a new instance of this class by our own supported service factory.
-                            see macro DEFINE_XSERVICEINFO_MULTISERVICE and "impl_initService()" for further information!
-                        */
-                        // create some needed uno services and cache it
-                        m_xModuleManager = css::frame::ModuleManager::create( m_xContext );
+OUString SAL_CALL HelpOnStartup::getImplementationName()
+{
+    return "com.sun.star.comp.framework.HelpOnStartup";
+}
 
-                        m_xDesktop = css::frame::Desktop::create(m_xContext);
+sal_Bool SAL_CALL HelpOnStartup::supportsService( const OUString& sServiceName )
+{
+    return cppu::supportsService(this, sServiceName);
+}
 
-                        m_xConfig.set(
-                            ::comphelper::ConfigurationHelper::openConfig(
-                                m_xContext,
-                                "/org.openoffice.Setup/Office/Factories",
-                                ::comphelper::EConfigurationModes::ReadOnly),
-                            css::uno::UNO_QUERY_THROW);
-
-                        // ask for office locale
-                        ::comphelper::ConfigurationHelper::readDirectKey(
-                            m_xContext,
-                            "/org.openoffice.Setup",
-                            "L10N",
-                            "ooLocale",
-                            ::comphelper::EConfigurationModes::ReadOnly) >>= m_sLocale;
-
-                        // detect system
-                        ::comphelper::ConfigurationHelper::readDirectKey(
-                            m_xContext,
-                            "/org.openoffice.Office.Common",
-                            "Help",
-                            "System",
-                            ::comphelper::EConfigurationModes::ReadOnly) >>= m_sSystem;
-
-                        // Start listening for disposing events of these services,
-                        // so we can react e.g. for an office shutdown
-                        css::uno::Reference< css::lang::XComponent > xComponent;
-                        xComponent.set(m_xModuleManager, css::uno::UNO_QUERY);
-                        if (xComponent.is())
-                            xComponent->addEventListener(static_cast< css::lang::XEventListener* >(this));
-                        xComponent.set(m_xDesktop, css::uno::UNO_QUERY);
-                        if (xComponent.is())
-                            xComponent->addEventListener(static_cast< css::lang::XEventListener* >(this));
-                        xComponent.set(m_xConfig, css::uno::UNO_QUERY);
-                        if (xComponent.is())
-                            xComponent->addEventListener(static_cast< css::lang::XEventListener* >(this));
-                    }
-                   )
+css::uno::Sequence< OUString > SAL_CALL HelpOnStartup::getSupportedServiceNames()
+{
+    return { SERVICENAME_JOB };
+}
 
 HelpOnStartup::HelpOnStartup(const css::uno::Reference< css::uno::XComponentContext >& xContext)
     : m_xContext    (xContext)
 {
+    // create some needed uno services and cache it
+    m_xModuleManager = css::frame::ModuleManager::create( m_xContext );
+
+    m_xDesktop = css::frame::Desktop::create(m_xContext);
+
+    // ask for office locale
+    m_sLocale = officecfg::Setup::L10N::ooLocale::get(m_xContext);
+
+    // detect system
+    m_sSystem = officecfg::Office::Common::Help::System::get(m_xContext);
+
+    // Start listening for disposing events of these services,
+    // so we can react e.g. for an office shutdown
+    css::uno::Reference< css::lang::XComponent > xComponent;
+    xComponent.set(m_xModuleManager, css::uno::UNO_QUERY);
+    if (xComponent.is())
+        xComponent->addEventListener(static_cast< css::lang::XEventListener* >(this));
+    if (m_xDesktop.is())
+        m_xDesktop->addEventListener(static_cast< css::lang::XEventListener* >(this));
+    xComponent.set(m_xConfig, css::uno::UNO_QUERY);
+    if (xComponent.is())
+        xComponent->addEventListener(static_cast< css::lang::XEventListener* >(this));
 }
 
 HelpOnStartup::~HelpOnStartup()
@@ -139,7 +124,7 @@ css::uno::Any SAL_CALL HelpOnStartup::execute(const css::uno::Sequence< css::bea
             // Note: The help window brings itself to front ...
             Help* pHelp = Application::GetHelp();
             if (pHelp)
-                pHelp->Start(sModuleDependentHelpURL, nullptr);
+                pHelp->Start(sModuleDependentHelpURL, static_cast<vcl::Window*>(nullptr));
         }
     }
 
@@ -267,8 +252,8 @@ bool HelpOnStartup::its_isHelpUrlADefaultOne(const OUString& sHelpURL)
     // check given help url against all default ones
     const css::uno::Sequence< OUString > lModules = xConfig->getElementNames();
     const OUString*                      pModules = lModules.getConstArray();
-          ::sal_Int32                           c        = lModules.getLength();
-          ::sal_Int32                           i        = 0;
+    ::sal_Int32                          c        = lModules.getLength();
+    ::sal_Int32                          i        = 0;
 
     for (i=0; i<c; ++i)
     {
@@ -282,7 +267,7 @@ bool HelpOnStartup::its_isHelpUrlADefaultOne(const OUString& sHelpURL)
             OUString sHelpBaseURL;
             xModuleConfig->getByName("ooSetupFactoryHelpBaseURL") >>= sHelpBaseURL;
             OUString sHelpURLForModule = HelpOnStartup::ist_createHelpURL(sHelpBaseURL, sLocale, sSystem);
-            if (sHelpURL.equals(sHelpURLForModule))
+            if (sHelpURL == sHelpURLForModule)
                 return true;
         }
         catch(const css::uno::RuntimeException&)
@@ -335,16 +320,16 @@ OUString HelpOnStartup::ist_createHelpURL(const OUString& sBaseURL,
                                                  const OUString& sLocale ,
                                                  const OUString& sSystem )
 {
-    OUStringBuffer sHelpURL(256);
-    sHelpURL.append     (sBaseURL    );
-    sHelpURL.append("?Language=");
-    sHelpURL.append     (sLocale     );
-    sHelpURL.append("&System="  );
-    sHelpURL.append     (sSystem     );
-
-    return sHelpURL.makeStringAndClear();
+    return sBaseURL + "?Language=" + sLocale + "&System=" + sSystem;
 }
 
 } // namespace framework
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_HelpOnStartup_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::HelpOnStartup(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

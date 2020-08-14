@@ -17,28 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
+#include <undoblk.hxx>
+#include <document.hxx>
+#include <docsh.hxx>
+#include <tabvwsh.hxx>
+#include <olinetab.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <global.hxx>
+#include <target.hxx>
+#include <columnspanset.hxx>
 
-#include "undoblk.hxx"
-#include "document.hxx"
-#include "docsh.hxx"
-#include "tabvwsh.hxx"
-#include "olinetab.hxx"
-#include "globstr.hrc"
-#include "global.hxx"
-#include "target.hxx"
+#include <undoolk.hxx>
 
-#include "undoolk.hxx"
-
-#include <comphelper/lok.hxx>
-#include <sfx2/lokhelper.hxx>
+#include <svx/svdundo.hxx>
 
 /** Change column widths or row heights */
 ScUndoWidthOrHeight::ScUndoWidthOrHeight( ScDocShell* pNewDocShell,
                 const ScMarkData& rMark,
                 SCCOLROW nNewStart, SCTAB nNewStartTab, SCCOLROW nNewEnd, SCTAB nNewEndTab,
-                ScDocument* pNewUndoDoc, const std::vector<sc::ColRowSpan>& rRanges,
-                ScOutlineTable* pNewUndoTab,
+                ScDocumentUniquePtr pNewUndoDoc, const std::vector<sc::ColRowSpan>& rRanges,
+                std::unique_ptr<ScOutlineTable> pNewUndoTab,
                 ScSizeMode eNewMode, sal_uInt16 nNewSizeTwips, bool bNewWidth ) :
     ScSimpleUndo( pNewDocShell ),
     aMarkData( rMark ),
@@ -46,22 +45,21 @@ ScUndoWidthOrHeight::ScUndoWidthOrHeight( ScDocShell* pNewDocShell,
     nEnd( nNewEnd ),
     nStartTab( nNewStartTab ),
     nEndTab( nNewEndTab ),
-    pUndoDoc( pNewUndoDoc ),
-    pUndoTab( pNewUndoTab ),
+    pUndoDoc( std::move(pNewUndoDoc) ),
+    pUndoTab( std::move(pNewUndoTab) ),
     maRanges(rRanges),
     nNewSize( nNewSizeTwips ),
     bWidth( bNewWidth ),
-    eMode( eNewMode ),
-    pDrawUndo( nullptr )
+    eMode( eNewMode )
 {
     pDrawUndo = GetSdrUndoAction( &pDocShell->GetDocument() );
 }
 
 ScUndoWidthOrHeight::~ScUndoWidthOrHeight()
 {
-    delete pUndoDoc;
-    delete pUndoTab;
-    DeleteSdrUndoAction( pDrawUndo );
+    pUndoDoc.reset();
+    pUndoTab.reset();
+    pDrawUndo.reset();
 }
 
 OUString ScUndoWidthOrHeight::GetComment() const
@@ -69,12 +67,12 @@ OUString ScUndoWidthOrHeight::GetComment() const
     // [ "optimal " ] "Column width" | "row height"
     return ( bWidth ?
         ( ( eMode == SC_SIZE_OPTIMAL )?
-        ScGlobal::GetRscString( STR_UNDO_OPTCOLWIDTH ) :
-        ScGlobal::GetRscString( STR_UNDO_COLWIDTH )
+        ScResId( STR_UNDO_OPTCOLWIDTH ) :
+        ScResId( STR_UNDO_COLWIDTH )
         ) :
         ( ( eMode == SC_SIZE_OPTIMAL )?
-        ScGlobal::GetRscString( STR_UNDO_OPTROWHEIGHT ) :
-        ScGlobal::GetRscString( STR_UNDO_ROWHEIGHT )
+        ScResId( STR_UNDO_OPTROWHEIGHT ) :
+        ScResId( STR_UNDO_ROWHEIGHT )
         ) );
 }
 
@@ -94,45 +92,49 @@ void ScUndoWidthOrHeight::Undo()
 
     //! outlines from all tables?
     if (pUndoTab)                                           // Outlines are included when saving ?
-        rDoc.SetOutlineTable( nStartTab, pUndoTab );
+        rDoc.SetOutlineTable( nStartTab, pUndoTab.get() );
 
     ScTabViewShell* pViewShell = ScTabViewShell::GetActiveViewShell();
     SCTAB nTabCount = rDoc.GetTableCount();
-    ScMarkData::iterator itr = aMarkData.begin(), itrEnd = aMarkData.end();
-    for (; itr != itrEnd && *itr < nTabCount; ++itr)
+    for (const auto& rTab : aMarkData)
     {
+        if (rTab >= nTabCount)
+            break;
+
+        if (pViewShell)
+            pViewShell->OnLOKSetWidthOrHeight(nStart, bWidth);
+
         if (bWidth) // Width
         {
-            pUndoDoc->CopyToDocument(static_cast<SCCOL>(nStart), 0, *itr,
-                                     static_cast<SCCOL>(nEnd), MAXROW, *itr, InsertDeleteFlags::NONE,
+            pUndoDoc->CopyToDocument(static_cast<SCCOL>(nStart), 0, rTab,
+                                     static_cast<SCCOL>(nEnd), rDoc.MaxRow(), rTab, InsertDeleteFlags::NONE,
                                      false, rDoc);
-            rDoc.UpdatePageBreaks( *itr );
-            pDocShell->PostPaint( static_cast<SCCOL>(nPaintStart), 0, *itr,
-                    MAXCOL, MAXROW, *itr, PaintPartFlags::Grid | PaintPartFlags::Top );
+            rDoc.UpdatePageBreaks( rTab );
+            pDocShell->PostPaint( static_cast<SCCOL>(nPaintStart), 0, rTab,
+                    rDoc.MaxCol(), rDoc.MaxRow(), rTab, PaintPartFlags::Grid | PaintPartFlags::Top );
         }
         else        // Height
         {
-            pUndoDoc->CopyToDocument(0, nStart, *itr, MAXCOL, nEnd, *itr, InsertDeleteFlags::NONE, false, rDoc);
-            rDoc.UpdatePageBreaks( *itr );
-            pDocShell->PostPaint( 0, nPaintStart, *itr, MAXCOL, MAXROW, *itr, PaintPartFlags::Grid | PaintPartFlags::Left );
+            pUndoDoc->CopyToDocument(0, nStart, rTab, rDoc.MaxCol(), nEnd, rTab, InsertDeleteFlags::NONE, false, rDoc);
+            rDoc.UpdatePageBreaks( rTab );
+            pDocShell->PostPaint( 0, nPaintStart, rTab, rDoc.MaxCol(), rDoc.MaxRow(), rTab, PaintPartFlags::Grid | PaintPartFlags::Left );
         }
     }
 
-    DoSdrUndoAction( pDrawUndo, &rDoc );
+    DoSdrUndoAction( pDrawUndo.get(), &rDoc );
 
     if (pViewShell)
     {
-        pViewShell->UpdateScrollBars();
-
         SCTAB nCurrentTab = pViewShell->GetViewData().GetTabNo();
+        bool bAffectsVisibility = (eMode != SC_SIZE_ORIGINAL && eMode != SC_SIZE_VISOPT);
+        ScTabViewShell::notifyAllViewsSheetGeomInvalidation(
+                pViewShell, bWidth /* bColumns */, !bWidth /* bRows */,
+                true /* bSizes*/, bAffectsVisibility /* bHidden */, bAffectsVisibility /* bFiltered */,
+                false /* bGroups */, nCurrentTab);
+        pViewShell->UpdateScrollBars(bWidth ? COLUMN_HEADER : ROW_HEADER);
+
         if ( nCurrentTab < nStartTab || nCurrentTab > nEndTab )
             pViewShell->SetTabNo( nStartTab );
-
-        if (comphelper::LibreOfficeKit::isActive())
-        {
-            OString aPayload = bWidth ? "column" : "row";
-            ScTabViewShell::notifyAllViewsHeaderInvalidation(aPayload, pViewShell->GetViewData().GetTabNo());
-        }
     }
 
     EndUndo();
@@ -141,6 +143,8 @@ void ScUndoWidthOrHeight::Undo()
 void ScUndoWidthOrHeight::Redo()
 {
     BeginRedo();
+
+    ScDocument& rDoc = pDocShell->GetDocument();
 
     bool bPaintAll = false;
     if (eMode==SC_SIZE_OPTIMAL)
@@ -163,7 +167,7 @@ void ScUndoWidthOrHeight::Redo()
 
     // paint grid if selection was changed directly at the MarkData
     if (bPaintAll)
-        pDocShell->PostPaint( 0, 0, nStartTab, MAXCOL, MAXROW, nEndTab, PaintPartFlags::Grid );
+        pDocShell->PostPaint( 0, 0, nStartTab, rDoc.MaxCol(), rDoc.MaxRow(), nEndTab, PaintPartFlags::Grid );
 
     EndRedo();
 }

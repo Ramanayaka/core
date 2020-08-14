@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cstddef>
 #include <cstring>
 
-#include "rtl/tencinfo.h"
+#include <rtl/tencinfo.h>
 
 #include "gettextencodingdata.hxx"
 #include "tenchelp.hxx"
@@ -102,10 +102,12 @@ static bool Impl_matchString( const char* pCompStr, const char* pMatchStr )
 
 /* ======================================================================= */
 
+namespace {
+
 struct ImplStrCharsetDef
 {
     const char*             mpCharsetStr;
-    rtl_TextEncoding            meTextEncoding;
+    rtl_TextEncoding        meTextEncoding;
 };
 
 struct ImplStrFirstPartCharsetDef
@@ -113,6 +115,8 @@ struct ImplStrFirstPartCharsetDef
     const char*             mpCharsetStr;
     const ImplStrCharsetDef*    mpSecondPartTab;
 };
+
+}
 
 /* ======================================================================= */
 
@@ -205,7 +209,7 @@ rtl_TextEncoding SAL_CALL rtl_getTextEncodingFromUnixCharset( const char* pUnixC
 
     /* All Identifiers in the tables are lower case The function search */
     /* for the first matching string in the tables. */
-    /* Sort order: unique (first 14, than 1), important */
+    /* Sort order: unique (first 14, then 1), important */
 
     static ImplStrCharsetDef const aUnixCharsetISOTab[] =
     {
@@ -433,7 +437,7 @@ rtl_TextEncoding SAL_CALL rtl_getTextEncodingFromUnixCharset( const char* pUnixC
         pTempBuf++;
     }
 
-    /* Parttrenner gefunden */
+    /* found part separator */
     if ( pSecondPart )
     {
         /* Search for the part tab */
@@ -522,7 +526,7 @@ rtl_TextEncoding SAL_CALL rtl_getTextEncodingFromMimeCharset( const char* pMimeC
     /* All Identifiers are in lower case and contain only alphanumeric */
     /* characters. The function search for the first matching string in */
     /* the table. */
-    /* Sort order: unique (first iso885914, than iso88591), important */
+    /* Sort order: unique (first iso885914, then iso88591), important */
     static ImplStrCharsetDef const aMimeCharsetTab[] =
     {
         { "unicode11utf7", RTL_TEXTENCODING_UTF7 },
@@ -826,6 +830,7 @@ rtl_getTextEncodingFromWindowsCodePage(sal_uInt32 nCodePage)
 {
     switch (nCodePage)
     {
+    case 42: return RTL_TEXTENCODING_SYMBOL;
     case 437: return RTL_TEXTENCODING_IBM_437;
     case 708: return RTL_TEXTENCODING_ISO_8859_6;
     case 737: return RTL_TEXTENCODING_IBM_737;
@@ -902,6 +907,7 @@ rtl_getWindowsCodePageFromTextEncoding(rtl_TextEncoding nEncoding)
 {
     switch (nEncoding)
     {
+    case RTL_TEXTENCODING_SYMBOL: return 42;
     case RTL_TEXTENCODING_IBM_437: return 437;
  /* case RTL_TEXTENCODING_ISO_8859_6: return 708; */
     case RTL_TEXTENCODING_IBM_737: return 737;

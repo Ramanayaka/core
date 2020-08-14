@@ -25,12 +25,11 @@
 #include <ibase.h>
 
 #include <cppuhelper/implbase.hxx>
+#include <rtl/ref.hxx>
 
 #include <com/sun/star/sdbc/XResultSetMetaData.hpp>
 
-namespace connectivity
-{
-    namespace firebird
+namespace connectivity::firebird
     {
         typedef ::cppu::WeakImplHelper< css::sdbc::XResultSetMetaData>
                 OResultSetMetaData_BASE;
@@ -45,6 +44,7 @@ namespace connectivity
 
             /// @throws css::sdbc::SQLException
             void verifyValidColumn(sal_Int32 column);
+            OUString getCharacterSet(sal_Int32 nIndex);
         public:
             // a constructor, which is required for returning objects:
             OResultSetMetaData(Connection* pConnection,
@@ -61,21 +61,21 @@ namespace connectivity
             virtual sal_Int32 SAL_CALL isNullable(sal_Int32 column) override;
             virtual sal_Bool SAL_CALL isSigned(sal_Int32 column) override;
             virtual sal_Int32 SAL_CALL getColumnDisplaySize(sal_Int32 column) override;
-            virtual ::rtl::OUString SAL_CALL getColumnLabel(sal_Int32 column) override;
-            virtual ::rtl::OUString SAL_CALL getColumnName(sal_Int32 column) override;
-            virtual ::rtl::OUString SAL_CALL getSchemaName(sal_Int32 column) override;
+            virtual OUString SAL_CALL getColumnLabel(sal_Int32 column) override;
+            virtual OUString SAL_CALL getColumnName(sal_Int32 column) override;
+            virtual OUString SAL_CALL getSchemaName(sal_Int32 column) override;
             virtual sal_Int32 SAL_CALL getPrecision(sal_Int32 column) override;
             virtual sal_Int32 SAL_CALL getScale(sal_Int32 column) override;
-            virtual ::rtl::OUString SAL_CALL getTableName(sal_Int32 column) override;
-            virtual ::rtl::OUString SAL_CALL getCatalogName(sal_Int32 column) override;
+            virtual OUString SAL_CALL getTableName(sal_Int32 column) override;
+            virtual OUString SAL_CALL getCatalogName(sal_Int32 column) override;
             virtual sal_Int32 SAL_CALL getColumnType(sal_Int32 column) override;
-            virtual ::rtl::OUString SAL_CALL getColumnTypeName(sal_Int32 column) override;
+            virtual OUString SAL_CALL getColumnTypeName(sal_Int32 column) override;
             virtual sal_Bool SAL_CALL isReadOnly(sal_Int32 column) override;
             virtual sal_Bool SAL_CALL isWritable(sal_Int32 column) override;
             virtual sal_Bool SAL_CALL isDefinitelyWritable(sal_Int32 column) override;
-            virtual ::rtl::OUString SAL_CALL getColumnServiceName(sal_Int32 column) override;
+            virtual OUString SAL_CALL getColumnServiceName(sal_Int32 column) override;
         };
-    }
+
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_RESULTSETMETADATA_HXX

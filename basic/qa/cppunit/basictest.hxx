@@ -24,6 +24,7 @@ class MacroSnippet
 {
 private:
     bool mbError;
+    ErrCode maErrCode;
     BasicDLL maDll; // we need a dll instance for resource manager etc.
     SbModuleRef mpMod;
     StarBASICRef mpBasic;
@@ -45,7 +46,8 @@ public:
 
     DECL_LINK( BasicErrorHdl, StarBASIC *, bool );
 
-    bool HasError();
+    bool HasError() const;
+    const ErrCode& getError() const;
 };
 
 #endif

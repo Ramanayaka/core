@@ -20,26 +20,25 @@
 #ifndef INCLUDED_SVX_SOURCE_INC_XMLXTEXP_HXX
 #define INCLUDED_SVX_SOURCE_INC_XMLXTEXP_HXX
 
-#include "xmloff/xmlexp.hxx"
+#include <xmloff/xmlexp.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace frame { class XModel; }
     namespace uno { template<class X> class Reference; }
     namespace uno { class XInterface; }
     namespace container { class XNameContainer; }
-    namespace document { class XGraphicObjectResolver; }
-    namespace xml { namespace sax { class XDocumentHandler; } }
-} } }
+    namespace document { class XGraphicStorageHandler; }
+    namespace xml::sax { class XDocumentHandler; }
+}
 
 class SvxXMLXTableExportComponent : public SvXMLExport
 {
 public:
     SvxXMLXTableExportComponent(
         const css::uno::Reference< css::uno::XComponentContext >& xContext,
-        const OUString& rFileName,
         const css::uno::Reference< css::xml::sax::XDocumentHandler > & xHandler,
         const css::uno::Reference< css::container::XNameContainer > & xTable,
-        css::uno::Reference< css::document::XGraphicObjectResolver >& xGrfResolver);
+        css::uno::Reference<css::document::XGraphicStorageHandler> const & xGraphicStorageHandler);
 
     virtual ~SvxXMLXTableExportComponent() override;
 

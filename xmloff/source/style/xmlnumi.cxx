@@ -20,6 +20,8 @@
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/awt/FontDescriptor.hpp>
 #include <com/sun/star/text/HoriOrientation.hpp>
 #include <com/sun/star/text/VertOrientation.hpp>
@@ -29,19 +31,23 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/style/XStyle.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
+#include <com/sun/star/awt/XBitmap.hpp>
+#include <com/sun/star/style/NumberingType.hpp>
+#include <com/sun/star/container/XIndexReplace.hpp>
 
 #include <o3tl/any.hxx>
-#include <o3tl/make_unique.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <osl/diagnose.h>
 
 #include <tools/fontenum.hxx>
+#include <tools/color.hxx>
 
 #include <sax/tools/converter.hxx>
 
 #include <xmloff/xmltkmap.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/XMLBase64ImportContext.hxx>
 #include <xmloff/xmltoken.hxx>
@@ -67,6 +73,8 @@ using namespace ::com::sun::star::io;
 
 class SvxXMLListLevelStyleContext_Impl;
 
+namespace {
+
 class SvxXMLListLevelStyleAttrContext_Impl : public SvXMLImportContext
 {
     SvxXMLListLevelStyleContext_Impl&   rListLevel;
@@ -79,15 +87,13 @@ public:
               const Reference< xml::sax::XAttributeList >& xAttrList,
             SvxXMLListLevelStyleContext_Impl& rLLevel   );
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 nPrefix, const OUString& rLocalName,
             const Reference< xml::sax::XAttributeList > & xAttrList ) override;
 };
 
 class SvxXMLListLevelStyleLabelAlignmentAttrContext_Impl : public SvXMLImportContext
 {
-    SvxXMLListLevelStyleContext_Impl&   rListLevel;
-
 public:
 
     SvxXMLListLevelStyleLabelAlignmentAttrContext_Impl(
@@ -113,6 +119,8 @@ enum SvxXMLTextListLevelStyleAttrTokens
     XML_TOK_TEXT_LEVEL_ATTR_START_VALUE,
     XML_TOK_TEXT_LEVEL_ATTR_DISPLAY_LEVELS
 };
+
+}
 
 static const SvXMLTokenMapEntry* lcl_getLevelAttrTokenMap()
 {
@@ -140,9 +148,7 @@ static const SvXMLTokenMapEntry* lcl_getLevelAttrTokenMap()
 
 class SvxXMLListLevelStyleContext_Impl : public SvXMLImportContext
 {
-    friend class SvxXMLListLevelStyleAttrContext_Impl;
-    const OUString      sStarBats;
-    const OUString      sStarMath;
+    friend SvxXMLListLevelStyleAttrContext_Impl;
 
     OUString            sPrefix;
     OUString            sSuffix;
@@ -173,7 +179,7 @@ class SvxXMLListLevelStyleContext_Impl : public SvXMLImportContext
     sal_Unicode         cBullet;
 
     sal_Int16           nRelSize;
-    sal_Int32           m_nColor;
+    Color               m_nColor;
 
     sal_Int16           ePosAndSpaceMode;
     sal_Int16           eLabelFollowedBy;
@@ -187,7 +193,7 @@ class SvxXMLListLevelStyleContext_Impl : public SvXMLImportContext
     bool            bHasColor : 1;
 
     void SetRelSize( sal_Int16 nRel ) { nRelSize = nRel; }
-    void SetColor( sal_Int32 nColor )
+    void SetColor( Color nColor )
         { m_nColor = nColor; bHasColor = true; }
     void SetSpaceBefore( sal_Int32 nSet ) { nSpaceBefore = nSet; }
     void SetMinLabelWidth( sal_Int32 nSet ) { nMinLabelWidth = nSet; }
@@ -214,7 +220,7 @@ public:
             const OUString& rLName,
             const Reference< xml::sax::XAttributeList > & xAttrList );
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 nPrefix, const OUString& rLocalName,
             const Reference< xml::sax::XAttributeList > & xAttrList ) override;
 
@@ -243,15 +249,16 @@ public:
     }
 };
 
+const OUStringLiteral gsStarBats( "StarBats"  );
+const OUStringLiteral gsStarMath( "StarMath"  );
+
 SvxXMLListLevelStyleContext_Impl::SvxXMLListLevelStyleContext_Impl(
         SvXMLImport& rImport, sal_uInt16 nPrfx,
         const OUString& rLName,
         const Reference< xml::sax::XAttributeList > & xAttrList )
 
 :   SvXMLImportContext( rImport, nPrfx, rLName )
-,   sStarBats( "StarBats"  )
-,   sStarMath( "StarMath"  )
-,   sNumFormat( OUString("1") )
+,   sNumFormat( "1" )
 ,   nLevel( -1 )
 ,   nSpaceBefore( 0 )
 ,   nMinLabelWidth( 0 )
@@ -301,7 +308,7 @@ SvxXMLListLevelStyleContext_Impl::SvxXMLListLevelStyleContext_Impl(
         {
         case XML_TOK_TEXT_LEVEL_ATTR_LEVEL:
             nLevel = rValue.toInt32();
-            if( nLevel >= 1L )
+            if( nLevel >= 1 )
                 nLevel--;
             else
                 nLevel = 0;
@@ -342,7 +349,7 @@ SvxXMLListLevelStyleContext_Impl::SvxXMLListLevelStyleContext_Impl(
                 sal_Int32 nTmp = rValue.toInt32();
                 nNumStartValue =
                     (nTmp < 0) ? 1 : ( (nTmp>SHRT_MAX) ? SHRT_MAX
-                                                        : (sal_Int16)nTmp );
+                                                        : static_cast<sal_Int16>(nTmp) );
             }
             break;
         case XML_TOK_TEXT_LEVEL_ATTR_DISPLAY_LEVELS:
@@ -351,14 +358,14 @@ SvxXMLListLevelStyleContext_Impl::SvxXMLListLevelStyleContext_Impl(
                 sal_Int32 nTmp = rValue.toInt32();
                 nNumDisplayLevels =
                     (nTmp < 1) ? 1 : ( (nTmp>SHRT_MAX) ? SHRT_MAX
-                                                        : (sal_Int16)nTmp );
+                                                        : static_cast<sal_Int16>(nTmp) );
             }
             break;
         }
     }
 }
 
-SvXMLImportContext *SvxXMLListLevelStyleContext_Impl::CreateChildContext(
+SvXMLImportContextRef SvxXMLListLevelStyleContext_Impl::CreateChildContext(
         sal_uInt16 nPrefix, const OUString& rLocalName,
         const Reference< xml::sax::XAttributeList > & xAttrList )
 {
@@ -384,10 +391,6 @@ SvXMLImportContext *SvxXMLListLevelStyleContext_Impl::CreateChildContext(
                                                     rLocalName, xAttrList,
                                                     xBase64Stream );
         }
-    }
-    if( !pContext )
-    {
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
     }
 
     return pContext;
@@ -470,7 +473,7 @@ Sequence<beans::PropertyValue> SvxXMLListLevelStyleContext_Impl::GetProperties()
         pProps[nPos++].Value <<= nFirstLineOffset;
 
         pProps[nPos].Name = "SymbolTextDistance";
-        pProps[nPos++].Value <<= (sal_Int16)nMinLabelDist;
+        pProps[nPos++].Value <<= static_cast<sal_Int16>(nMinLabelDist);
 
         pProps[nPos].Name = "PositionAndSpaceMode";
         pProps[nPos++].Value <<= ePosAndSpaceMode;
@@ -484,7 +487,7 @@ Sequence<beans::PropertyValue> SvxXMLListLevelStyleContext_Impl::GetProperties()
         pProps[nPos++].Value <<= nIndentAt;
 
         OUString sDisplayTextStyleName = GetImport().GetStyleDisplayName(
-                                XML_STYLE_FAMILY_TEXT_TEXT, sTextStyleName  );
+                                XmlStyleFamily::TEXT_TEXT, sTextStyleName  );
         pProps[nPos].Name = "CharStyleName";
         pProps[nPos++].Value <<= sDisplayTextStyleName;
 
@@ -500,12 +503,12 @@ Sequence<beans::PropertyValue> SvxXMLListLevelStyleContext_Impl::GetProperties()
                 aFDesc.CharSet = eBulletFontEncoding;
                 aFDesc.Weight = WEIGHT_DONTKNOW;
                 bool bStarSymbol = false;
-                if( aFDesc.Name.equalsIgnoreAsciiCase( sStarBats ) )
+                if( aFDesc.Name.equalsIgnoreAsciiCase( gsStarBats ) )
                 {
                     cBullet = GetImport().ConvStarBatsCharToStarSymbol( cBullet );
                     bStarSymbol = true;
                 }
-                else if( aFDesc.Name.equalsIgnoreAsciiCase( sStarMath ) )
+                else if( aFDesc.Name.equalsIgnoreAsciiCase( gsStarMath ) )
                 {
                     cBullet = GetImport().ConvStarMathCharToStarSymbol( cBullet );
                     bStarSymbol = true;
@@ -516,10 +519,8 @@ Sequence<beans::PropertyValue> SvxXMLListLevelStyleContext_Impl::GetProperties()
 
             // Must append 'cBullet' even if it is zero
             // if 'bBullet' is true and 'cBullet' is zero - BulletChar property must be 0.
-            OUStringBuffer sTmp(1);
-            sTmp.append( cBullet );
             pProps[nPos].Name = "BulletChar";
-            pProps[nPos++].Value <<= sTmp.makeStringAndClear();
+            pProps[nPos++].Value <<= OUString( cBullet );
 
             pProps[nPos].Name = "BulletFont";
             pProps[nPos++].Value <<= aFDesc;
@@ -528,23 +529,27 @@ Sequence<beans::PropertyValue> SvxXMLListLevelStyleContext_Impl::GetProperties()
 
         if( bImage )
         {
-            OUString sStr( sImageURL );
-            if( !sImageURL.isEmpty() )
+            uno::Reference<graphic::XGraphic> xGraphic;
+            if (!sImageURL.isEmpty())
             {
-                sStr = GetImport().ResolveGraphicObjectURL( sImageURL, false );
+                xGraphic = GetImport().loadGraphicByURL(sImageURL);
             }
             else if( xBase64Stream.is() )
             {
-                sStr = GetImport().ResolveGraphicObjectURLFromBase64( xBase64Stream );
+                xGraphic = GetImport().loadGraphicFromBase64(xBase64Stream);
             }
 
-            if( !sStr.isEmpty() )
+            uno::Reference<awt::XBitmap> xBitmap;
+            if (xGraphic.is())
+                xBitmap.set(xGraphic, uno::UNO_QUERY);
+
+            if (xBitmap.is())
             {
-                pProps[nPos].Name = "GraphicURL";
-                pProps[nPos++].Value <<= sStr;
+                pProps[nPos].Name = "GraphicBitmap";
+                pProps[nPos++].Value <<= xBitmap;
             }
 
-            awt::Size aSize( nImageWidth, nImageHeight );
+            awt::Size aSize(nImageWidth, nImageHeight);
             pProps[nPos].Name = "GraphicSize";
             pProps[nPos++].Value <<= aSize;
 
@@ -579,6 +584,8 @@ Sequence<beans::PropertyValue> SvxXMLListLevelStyleContext_Impl::GetProperties()
     return aPropSeq;
 }
 
+namespace {
+
 enum SvxXMLStyleAttributesAttrTokens
 {
     XML_TOK_STYLE_ATTRIBUTES_ATTR_SPACE_BEFORE,
@@ -600,6 +607,8 @@ enum SvxXMLStyleAttributesAttrTokens
     XML_TOK_STYLE_ATTRIBUTES_ATTR_FONT_SIZE,
     XML_TOK_STYLE_ATTRIBUTES_ATTR_POSITION_AND_SPACE_MODE
 };
+
+}
 
 static const SvXMLTokenMapEntry* lcl_getStyleAttributesAttrTokenMap()
 {
@@ -733,19 +742,19 @@ SvxXMLListLevelStyleAttrContext_Impl::SvxXMLListLevelStyleAttrContext_Impl(
                 sal_Int32 nColor(0);
                 if (::sax::Converter::convertColor( nColor, rValue ))
                 {
-                    rListLevel.SetColor( nColor );
+                    rListLevel.SetColor( Color(nColor) );
                 }
             }
             break;
         case XML_TOK_STYLE_ATTRIBUTES_ATTR_WINDOW_FONT_COLOR:
             {
                 if( IsXMLToken( rValue, XML_TRUE ) )
-                    rListLevel.SetColor( (sal_Int32)0xffffffff );
+                    rListLevel.SetColor( Color(0xffffffff) );
             }
             break;
         case XML_TOK_STYLE_ATTRIBUTES_ATTR_FONT_SIZE:
             if (::sax::Converter::convertPercent( nVal, rValue ))
-                rListLevel.SetRelSize( (sal_Int16)nVal );
+                rListLevel.SetRelSize( static_cast<sal_Int16>(nVal) );
             break;
         case XML_TOK_STYLE_ATTRIBUTES_ATTR_POSITION_AND_SPACE_MODE:
             {
@@ -769,29 +778,28 @@ SvxXMLListLevelStyleAttrContext_Impl::SvxXMLListLevelStyleAttrContext_Impl(
             {
                 OUString sTmp;
                 sal_Int16 nTmp = 0;
-                ::std::vector< XMLPropertyState >::iterator i;
-                for( i = aProps.begin(); i != aProps.end(); ++i )
+                for( const auto& rProp : aProps )
                 {
-                    switch( i->mnIndex )
+                    switch( rProp.mnIndex )
                     {
                     case 0:
-                        i->maValue >>= sTmp;
+                        rProp.maValue >>= sTmp;
                         rListLevel.SetBulletFontName( sTmp);
                         break;
                     case 1:
-                        i->maValue >>= sTmp;
+                        rProp.maValue >>= sTmp;
                         rListLevel.SetBulletFontStyleName( sTmp );
                         break;
                     case 2:
-                        i->maValue >>= nTmp;
+                        rProp.maValue >>= nTmp;
                         rListLevel.SetBulletFontFamily( nTmp );
                         break;
                     case 3:
-                        i->maValue >>= nTmp;
+                        rProp.maValue >>= nTmp;
                         rListLevel.SetBulletFontPitch( nTmp );
                         break;
                     case 4:
-                        i->maValue >>= nTmp;
+                        rProp.maValue >>= nTmp;
                         rListLevel.SetBulletFontEncoding( nTmp );
                         break;
                     }
@@ -887,7 +895,7 @@ SvxXMLListLevelStyleAttrContext_Impl::SvxXMLListLevelStyleAttrContext_Impl(
     rListLevel.SetImageVertOrient( eVertOrient );
 }
 
-SvXMLImportContext* SvxXMLListLevelStyleAttrContext_Impl::CreateChildContext(
+SvXMLImportContextRef SvxXMLListLevelStyleAttrContext_Impl::CreateChildContext(
         sal_uInt16 nPrefix, const OUString& rLocalName,
         const Reference< xml::sax::XAttributeList > & xAttrList )
 {
@@ -901,13 +909,11 @@ SvXMLImportContext* SvxXMLListLevelStyleAttrContext_Impl::CreateChildContext(
                                                              xAttrList,
                                                              rListLevel );
     }
-    if( !pContext )
-    {
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
-    }
 
     return pContext;
 }
+
+namespace {
 
 enum SvxXMLStyleAttributesLabelAlignmentAttrTokens
 {
@@ -916,11 +922,16 @@ enum SvxXMLStyleAttributesLabelAlignmentAttrTokens
     XML_TOK_STYLE_ATTRIBUTES_ATTR_FIRST_LINE_INDENT,
     XML_TOK_STYLE_ATTRIBUTES_ATTR_INDENT_AT
 };
+
+}
+
 static const SvXMLTokenMapEntry* lcl_getStyleAlignmentAttributesAttrTokenMap()
 {
     static const SvXMLTokenMapEntry aStyleAlignmentAttributesAttrTokenMap[] =
     {
         { XML_NAMESPACE_TEXT, XML_LABEL_FOLLOWED_BY,
+                XML_TOK_STYLE_ATTRIBUTES_ATTR_LABEL_FOLLOWED_BY },
+        { XML_NAMESPACE_LO_EXT, XML_LABEL_FOLLOWED_BY,
                 XML_TOK_STYLE_ATTRIBUTES_ATTR_LABEL_FOLLOWED_BY },
         { XML_NAMESPACE_TEXT, XML_LIST_TAB_STOP_POSITION,
                 XML_TOK_STYLE_ATTRIBUTES_ATTR_LISTTAB_STOP_POSITION },
@@ -938,13 +949,13 @@ SvxXMLListLevelStyleLabelAlignmentAttrContext_Impl::SvxXMLListLevelStyleLabelAli
         const OUString& rLName,
         const Reference< xml::sax::XAttributeList > & xAttrList,
         SvxXMLListLevelStyleContext_Impl& rLLevel ) :
-    SvXMLImportContext( rImport, nPrfx, rLName ),
-    rListLevel( rLLevel )
+    SvXMLImportContext( rImport, nPrfx, rLName )
 {
     static const SvXMLTokenMap aTokenMap( lcl_getStyleAlignmentAttributesAttrTokenMap() );
     SvXMLUnitConverter& rUnitConv = GetImport().GetMM100UnitConverter();
 
     sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
+    sal_Int16 eLabelFollowedBy = LabelFollow::LISTTAB;
     for( sal_Int16 i=0; i < nAttrCount; i++ )
     {
         const OUString& rAttrName = xAttrList->getNameByIndex( i );
@@ -959,28 +970,32 @@ SvxXMLListLevelStyleLabelAlignmentAttrContext_Impl::SvxXMLListLevelStyleLabelAli
         {
         case XML_TOK_STYLE_ATTRIBUTES_ATTR_LABEL_FOLLOWED_BY:
             {
-                sal_Int16 eLabelFollowedBy = LabelFollow::LISTTAB;
+                if( eLabelFollowedBy == LabelFollow::NEWLINE)
+                    //NewLine from LO_EXT has precedence over other values of the Non LO_EXT namespace
+                    break;
                 if( IsXMLToken( rValue, XML_SPACE ) )
                     eLabelFollowedBy = LabelFollow::SPACE;
                 else if( IsXMLToken( rValue, XML_NOTHING ) )
                     eLabelFollowedBy = LabelFollow::NOTHING;
-                rListLevel.SetLabelFollowedBy( eLabelFollowedBy );
+                else if( IsXMLToken( rValue, XML_NEWLINE ) )
+                    eLabelFollowedBy = LabelFollow::NEWLINE;
             }
             break;
         case XML_TOK_STYLE_ATTRIBUTES_ATTR_LISTTAB_STOP_POSITION:
             if (rUnitConv.convertMeasureToCore(nVal, rValue, 0, SHRT_MAX))
-                rListLevel.SetListtabStopPosition( nVal );
+                rLLevel.SetListtabStopPosition( nVal );
             break;
         case XML_TOK_STYLE_ATTRIBUTES_ATTR_FIRST_LINE_INDENT:
             if (rUnitConv.convertMeasureToCore(nVal, rValue, SHRT_MIN, SHRT_MAX))
-                rListLevel.SetFirstLineIndent( nVal );
+                rLLevel.SetFirstLineIndent( nVal );
             break;
         case XML_TOK_STYLE_ATTRIBUTES_ATTR_INDENT_AT:
             if (rUnitConv.convertMeasureToCore(nVal, rValue, SHRT_MIN, SHRT_MAX))
-                rListLevel.SetIndentAt( nVal );
+                rLLevel.SetIndentAt( nVal );
             break;
         }
     }
+    rLLevel.SetLabelFollowedBy( eLabelFollowedBy );
 }
 
 void SvxXMLListStyleContext::SetAttribute( sal_uInt16 nPrefixKey,
@@ -998,15 +1013,26 @@ void SvxXMLListStyleContext::SetAttribute( sal_uInt16 nPrefixKey,
     }
 }
 
+const OUStringLiteral sIsPhysical( "IsPhysical"  );
+const OUStringLiteral sNumberingRules( "NumberingRules"  );
+const OUStringLiteral sIsContinuousNumbering( "IsContinuousNumbering"  );
+
 SvxXMLListStyleContext::SvxXMLListStyleContext( SvXMLImport& rImport,
         sal_uInt16 nPrfx,
         const OUString& rLName,
         const Reference< xml::sax::XAttributeList > & xAttrList,
         bool bOutl )
-:   SvXMLStyleContext( rImport, nPrfx, rLName, xAttrList, bOutl ? XML_STYLE_FAMILY_TEXT_OUTLINE : XML_STYLE_FAMILY_TEXT_LIST )
-,   sIsPhysical( "IsPhysical"  )
-,   sNumberingRules( "NumberingRules"  )
-,   sIsContinuousNumbering( "IsContinuousNumbering"  )
+:   SvXMLStyleContext( rImport, nPrfx, rLName, xAttrList, bOutl ? XmlStyleFamily::TEXT_OUTLINE : XmlStyleFamily::TEXT_LIST )
+,   bConsecutive( false )
+,   bOutline( bOutl )
+{
+}
+
+SvxXMLListStyleContext::SvxXMLListStyleContext( SvXMLImport& rImport,
+        sal_Int32 nElement,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList,
+        bool bOutl )
+:   SvXMLStyleContext( rImport, nElement, xAttrList, bOutl ? XmlStyleFamily::TEXT_OUTLINE : XmlStyleFamily::TEXT_LIST )
 ,   bConsecutive( false )
 ,   bOutline( bOutl )
 {
@@ -1014,12 +1040,12 @@ SvxXMLListStyleContext::SvxXMLListStyleContext( SvXMLImport& rImport,
 
 SvxXMLListStyleContext::~SvxXMLListStyleContext() {}
 
-SvXMLImportContext *SvxXMLListStyleContext::CreateChildContext(
+SvXMLImportContextRef SvxXMLListStyleContext::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const Reference< xml::sax::XAttributeList > & xAttrList )
 {
-    SvXMLImportContext *pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     if( XML_NAMESPACE_TEXT == nPrefix &&
         ( bOutline
@@ -1032,17 +1058,13 @@ SvXMLImportContext *SvxXMLListStyleContext::CreateChildContext(
             new SvxXMLListLevelStyleContext_Impl( GetImport(), nPrefix,
                                                   rLocalName, xAttrList )};
         if( !pLevelStyles )
-            pLevelStyles = o3tl::make_unique<SvxXMLListStyle_Impl>();
+            pLevelStyles = std::make_unique<SvxXMLListStyle_Impl>();
         pLevelStyles->push_back( xLevelStyle );
 
-        pContext = xLevelStyle.get();
-    }
-    else
-    {
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
+        xContext = xLevelStyle.get();
     }
 
-    return pContext;
+    return xContext;
 }
 
 void SvxXMLListStyleContext::FillUnoNumRule(
@@ -1052,12 +1074,9 @@ void SvxXMLListStyleContext::FillUnoNumRule(
     {
         if( pLevelStyles && rNumRule.is() )
         {
-            sal_uInt16 nCount = pLevelStyles->size();
             sal_Int32 l_nLevels = rNumRule->getCount();
-            for( sal_uInt16 i=0; i < nCount; i++ )
+            for (const auto& pLevelStyle : *pLevelStyles)
             {
-                SvxXMLListLevelStyleContext_Impl *pLevelStyle =
-                    (*pLevelStyles)[i].get();
                 sal_Int32 nLevel = pLevelStyle->GetLevel();
                 if( nLevel >= 0 && nLevel < l_nLevels )
                 {
@@ -1155,7 +1174,7 @@ void SvxXMLListStyleContext::CreateAndInsertLate( bool bOverwrite )
             xPropSet->setPropertyValue( "Hidden", uno::makeAny( IsHidden( ) ) );
 
         if( rName != GetName() )
-            GetImport().AddStyleDisplayName( XML_STYLE_FAMILY_TEXT_LIST,
+            GetImport().AddStyleDisplayName( XmlStyleFamily::TEXT_LIST,
                                              GetName(), rName );
 
         Any aAny = xPropSet->getPropertyValue( sNumberingRules );
@@ -1221,7 +1240,7 @@ void SvxXMLListStyleContext::SetDefaultStyle(
     beans::PropertyValue *pProps = aPropSeq.getArray();
 
     pProps->Name = "NumberingType";
-    (pProps++)->Value <<= (sal_Int16)(bOrdered ? NumberingType::ARABIC
+    (pProps++)->Value <<= static_cast<sal_Int16>(bOrdered ? NumberingType::ARABIC
                                                  : NumberingType::CHAR_SPECIAL );
     if( !bOrdered )
     {
@@ -1241,10 +1260,8 @@ void SvxXMLListStyleContext::SetDefaultStyle(
         pProps->Name = "BulletFont";
         (pProps++)->Value <<= aFDesc;
 
-        OUStringBuffer sTmp(1);
-        sTmp.append( (sal_Unicode)(0xF000 + 149) );
         pProps->Name = "BulletChar";
-        (pProps++)->Value <<= sTmp.makeStringAndClear();
+        (pProps++)->Value <<= OUString(sal_Unicode(0xF000 + 149));
         pProps->Name = "CharStyleName";
         (pProps++)->Value <<= OUString( "Numbering Symbols"  );
     }

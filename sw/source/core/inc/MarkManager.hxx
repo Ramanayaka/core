@@ -22,12 +22,15 @@
 
 #include <IMark.hxx>
 #include <IDocumentMarkAccess.hxx>
-#include <unordered_set>
 #include <unordered_map>
+#include <memory>
 
-namespace sw {
-    namespace mark {
-    typedef std::unordered_map<OUString, sal_Int32, OUStringHash> MarkBasenameMapUniqueOffset_t;
+class SwCursorShell;
+
+namespace sw::mark {
+    typedef std::unordered_map<OUString, sal_Int32> MarkBasenameMapUniqueOffset_t;
+
+    class FieldmarkWithDropDownButton;
 
     class MarkManager
         : virtual public IDocumentMarkAccess
@@ -35,11 +38,15 @@ namespace sw {
         public:
             MarkManager(/*[in/out]*/ SwDoc& rDoc);
             // IDocumentMarkAccess
-            virtual ::sw::mark::IMark* makeMark(const SwPaM& rPaM, const OUString& rName, IDocumentMarkAccess::MarkType eMark) override;
+            virtual ::sw::mark::IMark* makeMark(const SwPaM& rPaM,
+                const OUString& rName, IDocumentMarkAccess::MarkType eMark,
+                sw::mark::InsertMode eMode,
+                SwPosition const* pSepPos = nullptr) override;
 
             virtual sw::mark::IFieldmark* makeFieldBookmark( const SwPaM& rPaM,
                 const OUString& rName,
-                const OUString& rType) override;
+                const OUString& rType,
+                SwPosition const* pSepPos = nullptr) override;
             virtual sw::mark::IFieldmark* makeNoTextFieldBookmark( const SwPaM& rPaM,
                 const OUString& rName,
                 const OUString& rType) override;
@@ -58,7 +65,7 @@ namespace sw {
             virtual void deleteMarks(const SwNodeIndex& rStt, const SwNodeIndex& rEnd, std::vector< ::sw::mark::SaveBookmark>* pSaveBkmk, const SwIndex* pSttIdx, const SwIndex* pEndIdx) override;
 
             // deleters
-            virtual std::shared_ptr<ILazyDeleter>
+            virtual std::unique_ptr<ILazyDeleter>
                 deleteMark(const const_iterator_t& ppMark) override;
             virtual void deleteMark(const ::sw::mark::IMark* const pMark) override;
             virtual void clearAllMarks() override;
@@ -70,12 +77,15 @@ namespace sw {
             virtual const_iterator_t findMark(const OUString& rName) const override;
 
             // bookmarks
+            virtual bool isBookmarkDeleted(SwPaM const& rPaM) const override;
             virtual const_iterator_t getBookmarksBegin() const override;
             virtual const_iterator_t getBookmarksEnd() const override;
             virtual sal_Int32 getBookmarksCount() const override;
             virtual const_iterator_t findBookmark(const OUString& rName) const override;
+            virtual const_iterator_t findFirstBookmarkStartsAfter(const SwPosition& rPos) const override;
 
             // Fieldmarks
+            virtual ::sw::mark::IFieldmark* getFieldmarkAt(const SwPosition& rPos) const override;
             virtual ::sw::mark::IFieldmark* getFieldmarkFor(const SwPosition& rPos) const override;
             virtual ::sw::mark::IFieldmark* getFieldmarkBefore(const SwPosition& rPos) const override;
             virtual ::sw::mark::IFieldmark* getFieldmarkAfter(const SwPosition& rPos) const override;
@@ -83,7 +93,13 @@ namespace sw {
             virtual ::sw::mark::IFieldmark* getDropDownFor(const SwPosition &rPos) const override;
             virtual std::vector< ::sw::mark::IFieldmark* > getDropDownsFor(const SwPaM &rPaM) const override;
 
-            void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+            virtual void deleteFieldmarkAt(const SwPosition& rPos) override;
+            virtual ::sw::mark::IFieldmark* changeFormFieldmarkType(::sw::mark::IFieldmark* pFieldmark, const OUString& rNewType) override;
+
+            virtual void NotifyCursorUpdate(const SwCursorShell& rCursorShell) override;
+            virtual void ClearFieldActivation() override;
+
+            void dumpAsXml(xmlTextWriterPtr pWriter) const;
 
             // Annotation Marks
             virtual const_iterator_t getAnnotationMarksBegin() const override;
@@ -91,8 +107,11 @@ namespace sw {
             virtual sal_Int32 getAnnotationMarksCount() const override;
             virtual const_iterator_t findAnnotationMark( const OUString& rName ) const override;
             virtual sw::mark::IMark* getAnnotationMarkFor(const SwPosition& rPos) const override;
+            virtual const_iterator_t findFirstAnnotationStartsAfter(const SwPosition& rPos) const override;
 
             virtual void assureSortedMarkContainers() const override;
+
+            typedef std::vector<sw::mark::MarkBase*> container_t;
 
         private:
 
@@ -101,10 +120,11 @@ namespace sw {
 
             // make names
             OUString getUniqueMarkName(const OUString& rName) const;
-            void sortMarks();
-            void sortSubsetMarks();
 
-            // container for all marks
+            void sortSubsetMarks();
+            void sortMarks();
+
+            // container for all marks, this container owns the objects it points to
             container_t m_vAllMarks;
 
             // additional container for bookmarks
@@ -112,15 +132,16 @@ namespace sw {
             // additional container for fieldmarks
             container_t m_vFieldmarks;
 
-            std::unordered_set<OUString, OUStringHash> m_aMarkNamesSet;
             mutable MarkBasenameMapUniqueOffset_t m_aMarkBasenameMapUniqueOffset;
 
             // container for annotation marks
             container_t m_vAnnotationMarks;
 
             SwDoc * const m_pDoc;
+
+            sw::mark::FieldmarkWithDropDownButton* m_pLastActiveFieldmark;
     };
-    } // namespace mark
+
 }
 
 #endif

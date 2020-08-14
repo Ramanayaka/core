@@ -20,29 +20,26 @@
 #include <collatorImpl.hxx>
 #include <localedata.hxx>
 #include <com/sun/star/i18n/CollatorOptions.hpp>
-#include <com/sun/star/i18n/LocaleData.hpp>
-#include <rtl/ustrbuf.hxx>
-#include <comphelper/processfactory.hxx>
+#include <com/sun/star/i18n/LocaleData2.hpp>
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <numeric>
 
 using namespace com::sun::star;
+using namespace com::sun::star::i18n;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::uno;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 CollatorImpl::CollatorImpl( const Reference < XComponentContext >& rxContext ) : m_xContext(rxContext)
 {
-    mxLocaleData.set( LocaleData::create(rxContext) );
+    mxLocaleData.set( LocaleData2::create(rxContext) );
     cachedItem = nullptr;
 }
 
 CollatorImpl::~CollatorImpl()
 {
-    // Clear lookuptable
-    for (lookupTableItem* p : lookupTable)
-        delete p;
-    lookupTable.clear();
 }
 
 sal_Int32 SAL_CALL
@@ -74,9 +71,10 @@ sal_Int32 SAL_CALL
 CollatorImpl::loadDefaultCollator(const lang::Locale& rLocale, sal_Int32 collatorOptions)
 {
     const Sequence< Implementation > &imp = mxLocaleData->getCollatorImplementations(rLocale);
-    for (sal_Int32 i = 0; i < imp.getLength(); i++)
-        if (imp[i].isDefault)
-            return loadCollatorAlgorithm(imp[i].unoID, rLocale, collatorOptions);
+    auto pImpl = std::find_if(imp.begin(), imp.end(),
+        [](const Implementation& rImp) { return rImp.isDefault; });
+    if (pImpl != imp.end())
+        return loadCollatorAlgorithm(pImpl->unoID, rLocale, collatorOptions);
 
     throw RuntimeException(); // not default is defined
     //return 0;
@@ -88,10 +86,10 @@ CollatorImpl::loadCollatorAlgorithm(const OUString& impl, const lang::Locale& rL
     if (! cachedItem || ! cachedItem->equals(rLocale, impl))
         loadCachedCollator(rLocale, impl);
 
-    if (cachedItem)
-        cachedItem->xC->loadCollatorAlgorithm(cachedItem->algorithm, nLocale = rLocale, collatorOptions);
-    else
+    if (!cachedItem)
         throw RuntimeException(); // impl could not be loaded
+    nLocale = rLocale;
+    cachedItem->xC->loadCollatorAlgorithm(cachedItem->algorithm, nLocale, collatorOptions);
 
     return 0;
 }
@@ -100,9 +98,8 @@ void SAL_CALL
 CollatorImpl::loadCollatorAlgorithmWithEndUserOption(const OUString& impl, const lang::Locale& rLocale,
     const Sequence< sal_Int32 >& collatorOptions)
 {
-    sal_Int32 options = 0;
-    for (sal_Int32 i = 0; i < collatorOptions.getLength(); i++)
-        options |= collatorOptions[i];
+    sal_Int32 options = std::accumulate(collatorOptions.begin(), collatorOptions.end(),
+        sal_Int32(0), [](sal_Int32 nSum, sal_Int32 nOpt) { return nSum | nOpt; });
     loadCollatorAlgorithm(impl, rLocale, options);
 }
 
@@ -112,15 +109,15 @@ CollatorImpl::listCollatorAlgorithms( const lang::Locale& rLocale )
     nLocale = rLocale;
     const Sequence< Implementation > &imp = mxLocaleData->getCollatorImplementations(rLocale);
     Sequence< OUString > list(imp.getLength());
+    auto pBegin = list.begin();
+    auto pId = pBegin;
 
-    for (sal_Int32 i = 0; i < imp.getLength(); i++) {
+    for (const auto& rImpl : imp) {
+        *pId = rImpl.unoID;
         //if the current algorithm is default and the position is not on the first one, then switch
-        if (imp[i].isDefault && i) {
-            list[i] = list[0];
-            list[0] = imp[i].unoID;
-        }
-        else
-            list[i] = imp[i].unoID;
+        if (rImpl.isDefault && pId != pBegin)
+            std::swap(*pBegin, *pId);
+        ++pId;
     }
     return list;
 }
@@ -128,25 +125,25 @@ CollatorImpl::listCollatorAlgorithms( const lang::Locale& rLocale )
 Sequence< sal_Int32 > SAL_CALL
 CollatorImpl::listCollatorOptions( const OUString& /*collatorAlgorithmName*/ )
 {
-    Sequence< OUString > option_str = mxLocaleData->getCollationOptions(nLocale);
+    const Sequence< OUString > option_str = mxLocaleData->getCollationOptions(nLocale);
     Sequence< sal_Int32 > option_int(option_str.getLength());
 
-    for (sal_Int32 i = 0; i < option_str.getLength(); i++)
-        option_int[i] =
-            option_str[i] == "IGNORE_CASE" ?  CollatorOptions::CollatorOptions_IGNORE_CASE :
-            option_str[i] == "IGNORE_KANA" ?  CollatorOptions::CollatorOptions_IGNORE_KANA :
-            option_str[i] == "IGNORE_WIDTH" ?  CollatorOptions::CollatorOptions_IGNORE_WIDTH : 0;
+    std::transform(option_str.begin(), option_str.end(), option_int.begin(), [](const OUString& rOpt) {
+        return rOpt == "IGNORE_CASE" ?  CollatorOptions::CollatorOptions_IGNORE_CASE :
+               rOpt == "IGNORE_KANA" ?  CollatorOptions::CollatorOptions_IGNORE_KANA :
+               rOpt == "IGNORE_WIDTH" ?  CollatorOptions::CollatorOptions_IGNORE_WIDTH : 0; });
 
     return option_int;
 }
 
-bool SAL_CALL
+bool
 CollatorImpl::createCollator(const lang::Locale& rLocale, const OUString& serviceName, const OUString& rSortAlgorithm)
 {
     for (size_t l = 0; l < lookupTable.size(); l++) {
-        cachedItem = lookupTable[l];
-        if (cachedItem->service.equals(serviceName)) {// cross locale sharing
-            lookupTable.push_back(cachedItem = new lookupTableItem(rLocale, rSortAlgorithm, serviceName, cachedItem->xC));
+        cachedItem = lookupTable[l].get();
+        if (cachedItem->service == serviceName) {// cross locale sharing
+            lookupTable.emplace_back(new lookupTableItem(rLocale, rSortAlgorithm, serviceName, cachedItem->xC));
+            cachedItem = lookupTable.back().get();
             return true;
         }
     }
@@ -157,18 +154,19 @@ CollatorImpl::createCollator(const lang::Locale& rLocale, const OUString& servic
         Reference < XCollator > xC;
         xC.set( xI, UNO_QUERY );
         if (xC.is()) {
-            lookupTable.push_back(cachedItem = new lookupTableItem(rLocale, rSortAlgorithm, serviceName, xC));
+            lookupTable.emplace_back(new lookupTableItem(rLocale, rSortAlgorithm, serviceName, xC));
+            cachedItem = lookupTable.back().get();
             return true;
         }
     }
     return false;
 }
 
-void SAL_CALL
+void
 CollatorImpl::loadCachedCollator(const lang::Locale& rLocale, const OUString& rSortAlgorithm)
 {
-    for (lookupTableItem* i : lookupTable) {
-        cachedItem = i;
+    for (const auto& i : lookupTable) {
+        cachedItem = i.get();
         if (cachedItem->equals(rLocale, rSortAlgorithm)) {
             return;
         }
@@ -184,9 +182,9 @@ CollatorImpl::loadCachedCollator(const lang::Locale& rLocale, const OUString& rS
         if (!bLoaded)
         {
             ::std::vector< OUString > aFallbacks( LocaleDataImpl::getFallbackLocaleServiceNames( rLocale));
-            for (::std::vector< OUString >::const_iterator it( aFallbacks.begin()); it != aFallbacks.end(); ++it)
+            for (auto const& fallback : aFallbacks)
             {
-                bLoaded = createCollator( rLocale, *it + "_" + rSortAlgorithm, rSortAlgorithm);
+                bLoaded = createCollator( rLocale, fallback + "_" + rSortAlgorithm, rSortAlgorithm);
                 if (bLoaded)
                     break;
             }
@@ -211,7 +209,7 @@ CollatorImpl::loadCachedCollator(const lang::Locale& rLocale, const OUString& rS
 
 OUString SAL_CALL CollatorImpl::getImplementationName()
 {
-    return OUString("com.sun.star.i18n.Collator");
+    return "com.sun.star.i18n.Collator";
 }
 
 sal_Bool SAL_CALL CollatorImpl::supportsService(const OUString& rServiceName)
@@ -222,18 +220,17 @@ sal_Bool SAL_CALL CollatorImpl::supportsService(const OUString& rServiceName)
 Sequence< OUString > SAL_CALL
 CollatorImpl::getSupportedServiceNames()
 {
-    Sequence< OUString > aRet { "com.sun.star.i18n.Collator" };
-    return aRet;
+    return { "com.sun.star.i18n.Collator" };
 }
 
-} } } }
+}
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_i18n_Collator_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new css::i18n::CollatorImpl(context));
+    return cppu::acquire(new i18npool::CollatorImpl(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

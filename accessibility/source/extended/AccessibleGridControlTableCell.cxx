@@ -17,12 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-
-#include "extended/AccessibleGridControlTableCell.hxx"
-#include <svtools/accessibletable.hxx>
+#include <extended/AccessibleGridControlTableCell.hxx>
+#include <toolkit/helper/convert.hxx>
+#include <vcl/accessibletable.hxx>
+#include <vcl/svapp.hxx>
 #include <tools/gen.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <tools/debug.hxx>
+#include <com/sun/star/accessibility/AccessibleStateType.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
 namespace accessibility
 {
@@ -43,16 +45,16 @@ namespace accessibility
     using namespace ::com::sun::star::uno;
     using ::com::sun::star::accessibility::XAccessible;
     using namespace ::com::sun::star::accessibility;
-    using namespace ::svt;
-    using namespace ::svt::table;
+    using namespace ::vcl;
+    using namespace ::vcl::table;
 
 
     // = AccessibleGridControlCell
 
 
     AccessibleGridControlCell::AccessibleGridControlCell(
-            const css::uno::Reference< css::accessibility::XAccessible >& _rxParent, ::svt::table::IAccessibleTable& _rTable,
-            sal_Int32 _nRowPos, sal_uInt16 _nColPos, ::svt::table::AccessibleTableControlObjType _eType )
+            const css::uno::Reference< css::accessibility::XAccessible >& _rxParent, ::vcl::table::IAccessibleTable& _rTable,
+            sal_Int32 _nRowPos, sal_uInt16 _nColPos, ::vcl::table::AccessibleTableControlObjType _eType )
         :AccessibleGridControlBase( _rxParent, _rTable, _eType )
         ,m_nRowPos( _nRowPos )
         ,m_nColPos( _nColPos )
@@ -68,12 +70,6 @@ namespace accessibility
             aAccName = _rTable.GetAccessibleObjectName( TCTYPE_COLUMNHEADERCELL, 0, _nRowPos );
         implSetName( aAccName );
     }
-
-
-    AccessibleGridControlCell::~AccessibleGridControlCell()
-    {
-    }
-
 
     void SAL_CALL AccessibleGridControlCell::grabFocus()
     {
@@ -102,7 +98,7 @@ namespace accessibility
     }
 
     AccessibleGridControlTableCell::AccessibleGridControlTableCell(const css::uno::Reference<XAccessible >& _rxParent,
-                                ::svt::table::IAccessibleTable& _rTable,
+                                ::vcl::table::IAccessibleTable& _rTable,
                                 sal_Int32 _nRowPos,
                                 sal_uInt16 _nColPos)
         :AccessibleGridControlCell( _rxParent, _rTable, _nRowPos, _nColPos, TCTYPE_TABLECELL )
@@ -121,7 +117,7 @@ namespace accessibility
         return aRet;
     }
 
-    /** Aquires the object (calls acquire() on base class). */
+    /** Acquires the object (calls acquire() on base class). */
     void SAL_CALL AccessibleGridControlTableCell::acquire() throw ()
     {
         AccessibleGridControlCell::acquire();
@@ -158,7 +154,7 @@ namespace accessibility
     */
     OUString SAL_CALL AccessibleGridControlTableCell::getImplementationName()
     {
-        return OUString( "com.sun.star.accessibility.AccessibleGridControlTableCell" );
+        return "com.sun.star.accessibility.AccessibleGridControlTableCell";
     }
 
     /** @return  The count of visible children. */
@@ -236,7 +232,7 @@ namespace accessibility
     {
         SolarMutexGuard aSolarGuard;
 
-        return OCommonAccessibleText::getCharacter( nIndex );
+        return OCommonAccessibleText::implGetCharacter( implGetText(), nIndex );
     }
     css::uno::Sequence< css::beans::PropertyValue > SAL_CALL AccessibleGridControlTableCell::getCharacterAttributes( sal_Int32 nIndex, const css::uno::Sequence< OUString >& )
     {
@@ -253,26 +249,26 @@ namespace accessibility
     {
         SolarMutexGuard aSolarGuard;
 
-        return OCommonAccessibleText::getCharacterCount(  );
+        return implGetText().getLength();
     }
 
     OUString SAL_CALL AccessibleGridControlTableCell::getSelectedText(  )
     {
         SolarMutexGuard aSolarGuard;
 
-        return OCommonAccessibleText::getSelectedText(  );
+        return OUString();
     }
     sal_Int32 SAL_CALL AccessibleGridControlTableCell::getSelectionStart(  )
     {
         SolarMutexGuard aSolarGuard;
 
-        return OCommonAccessibleText::getSelectionStart(  );
+        return 0;
     }
     sal_Int32 SAL_CALL AccessibleGridControlTableCell::getSelectionEnd(  )
     {
         SolarMutexGuard aSolarGuard;
 
-        return OCommonAccessibleText::getSelectionEnd(  );
+        return 0;
     }
     sal_Bool SAL_CALL AccessibleGridControlTableCell::setSelection( sal_Int32 nStartIndex, sal_Int32 nEndIndex )
     {
@@ -287,13 +283,13 @@ namespace accessibility
     {
         SolarMutexGuard aSolarGuard;
 
-        return OCommonAccessibleText::getText(  );
+        return implGetText(  );
     }
     OUString SAL_CALL AccessibleGridControlTableCell::getTextRange( sal_Int32 nStartIndex, sal_Int32 nEndIndex )
     {
         SolarMutexGuard aSolarGuard;
 
-        return OCommonAccessibleText::getTextRange( nStartIndex, nEndIndex );
+        return OCommonAccessibleText::implGetTextRange( implGetText(), nStartIndex, nEndIndex );
     }
     css::accessibility::TextSegment SAL_CALL AccessibleGridControlTableCell::getTextAtIndex( sal_Int32 nIndex, sal_Int16 aTextType )
     {
@@ -322,6 +318,10 @@ namespace accessibility
         checkIndex_Impl( nEndIndex, sText );
 
         //!!! don't know how to put a string into the clipboard
+        return false;
+    }
+    sal_Bool SAL_CALL AccessibleGridControlTableCell::scrollSubstringTo( sal_Int32, sal_Int32, AccessibleScrollType )
+    {
         return false;
     }
 

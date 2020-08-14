@@ -18,8 +18,9 @@
  */
 
 #include "diagramdefinitioncontext.hxx"
-#include "layoutnodecontext.hxx"
+#include "datamodel.hxx"
 #include "datamodelcontext.hxx"
+#include "layoutnodecontext.hxx"
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 
@@ -27,10 +28,10 @@ using namespace ::oox::core;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 // CT_DiagramDefinition
-DiagramDefinitionContext::DiagramDefinitionContext( ContextHandler2Helper& rParent,
+DiagramDefinitionContext::DiagramDefinitionContext( ContextHandler2Helper const & rParent,
                                                     const AttributeList& rAttributes,
                                                     const DiagramLayoutPtr &pLayout )
     : ContextHandler2( rParent )
@@ -67,7 +68,7 @@ DiagramDefinitionContext::onCreateContext( ::sal_Int32 aElement,
         break;
     case DGM_TOKEN( layoutNode ):
     {
-        LayoutNodePtr pNode( new LayoutNode() );
+        LayoutNodePtr pNode = std::make_shared<LayoutNode>(mpLayout->getDiagram());
         mpLayout->getNode() = pNode;
         pNode->setChildOrder( rAttribs.getToken( XML_chOrder, XML_b ) );
         pNode->setMoveWith( rAttribs.getString( XML_moveWith ).get() );
@@ -78,10 +79,10 @@ DiagramDefinitionContext::onCreateContext( ::sal_Int32 aElement,
         // TODO, does not matter for the UI. skip.
         return nullptr;
     case DGM_TOKEN( sampData ):
-        mpLayout->getSampData().reset( new DiagramData );
+        mpLayout->getSampData() = std::make_shared<DiagramData>();
         return new DataModelContext( *this, mpLayout->getSampData() );
     case DGM_TOKEN( styleData ):
-        mpLayout->getStyleData().reset( new DiagramData );
+        mpLayout->getStyleData() = std::make_shared<DiagramData>();
         return new DataModelContext( *this, mpLayout->getStyleData() );
     case DGM_TOKEN( cat ):
     case DGM_TOKEN( catLst ):
@@ -93,6 +94,6 @@ DiagramDefinitionContext::onCreateContext( ::sal_Int32 aElement,
     return this;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

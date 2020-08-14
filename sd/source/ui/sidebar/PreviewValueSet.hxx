@@ -22,15 +22,15 @@
 
 #include <svtools/valueset.hxx>
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 /** Adapt the svtools valueset to the needs of the master page controls.
 */
-class PreviewValueSet
-    : public ValueSet
+class PreviewValueSet : public ValueSet
 {
 public:
-    explicit PreviewValueSet (vcl::Window* pParent);
+    explicit PreviewValueSet();
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
     virtual ~PreviewValueSet() override;
 
     void SetRightMouseClickHandler (const Link<const MouseEvent&,void>& rLink);
@@ -46,20 +46,17 @@ public:
     void Rearrange();
 
 protected:
-    virtual void MouseButtonDown (const MouseEvent& rEvent) override;
+    virtual bool MouseButtonDown (const MouseEvent& rEvent) override;
 
 private:
     Link<const MouseEvent&,void> maRightMouseClickHandler;
     Size maPreviewSize;
-    const int mnBorderWidth;
-    const int mnBorderHeight;
-    const int mnMaxColumnCount;
 
     sal_uInt16 CalculateColumnCount (int nWidth) const;
     sal_uInt16 CalculateRowCount (sal_uInt16 nColumnCount) const;
 };
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 #endif
 

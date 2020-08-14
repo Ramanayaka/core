@@ -40,6 +40,7 @@ $(eval $(call gb_CppunitTest_use_components,cppcanvas_emfplus,\
 	canvas/source/factory/canvasfactory \
 	cppcanvas/source/uno/mtfrenderer \
 	configmgr/source/configmgr \
+	emfio/emfio \
 	extensions/source/scanner/scn \
 	filter/source/config/cache/filterconfig1 \
 	framework/util/fwk \
@@ -51,6 +52,7 @@ $(eval $(call gb_CppunitTest_use_components,cppcanvas_emfplus,\
 	sd/util/sdd \
 	svl/source/fsstor/fsstorage \
 	toolkit/util/tk \
+	vcl/vcl.common \
 	ucb/source/core/ucb1 \
 	ucb/source/ucp/file/ucpfile1 \
 	unoxml/source/service/unoxml \
@@ -59,9 +61,5 @@ $(eval $(call gb_CppunitTest_use_components,cppcanvas_emfplus,\
 ))
 
 $(eval $(call gb_CppunitTest_use_configuration,cppcanvas_emfplus))
-
-$(call gb_CppunitTest_get_target,cppcanvas_emfplus): \
-    $(call gb_AllLangResTarget_get_target,ofa) \
-    $(call gb_AllLangResTarget_get_target,sd)
 
 # vim: set noet sw=4 ts=4:

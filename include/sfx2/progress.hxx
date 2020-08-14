@@ -23,16 +23,11 @@
 #include <sal/config.h>
 #include <sal/types.h>
 #include <sfx2/dllapi.h>
-#include <tools/link.hxx>
 #include <memory>
 
-namespace rtl {
-    class OUString;
-};
+
 class SfxObjectShell;
 struct SfxProgress_Impl;
-struct PlugInLoadStatus;
-struct SvProgressArg;
 
 class SFX2_DLLPUBLIC SfxProgress
 {
@@ -42,12 +37,11 @@ class SFX2_DLLPUBLIC SfxProgress
 
 public:
                             SfxProgress( SfxObjectShell* pObjSh,
-                                         const rtl::OUString& rText,
+                                         const OUString& rText,
                                          sal_uInt32 nRange,
                                          bool bWait = true);
     virtual                 ~SfxProgress();
 
-    void                    SetStateText( sal_uInt32 nVal, const rtl::OUString &rVal );
     void                    SetState( sal_uInt32 nVal, sal_uInt32 nNewRange = 0 );
     sal_uInt32              GetState() const { return nVal; }
 
@@ -55,12 +49,11 @@ public:
     void                    Suspend();
     bool                    IsSuspended() const { return bSuspended; }
 
-    void                    UnLock();
-    void                    Reschedule();
+    static void             Reschedule();
 
     void                    Stop();
 
-    static SfxProgress*     GetActiveProgress( SfxObjectShell *pDocSh = nullptr );
+    static SfxProgress*     GetActiveProgress( SfxObjectShell const *pDocSh = nullptr );
     static void             EnterLock();
     static void             LeaveLock();
 };

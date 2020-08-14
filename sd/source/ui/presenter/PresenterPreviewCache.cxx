@@ -18,19 +18,21 @@
  */
 
 #include "PresenterPreviewCache.hxx"
-#include "facreg.hxx"
 
-#include "cache/SlsCacheContext.hxx"
-#include "tools/IdleDetection.hxx"
-#include "sdpage.hxx"
+#include <cache/SlsPageCache.hxx>
+#include <cache/SlsCacheContext.hxx>
+#include <vcl/bitmapex.hxx>
+#include <sdpage.hxx>
 #include <cppcanvas/vclfactory.hxx>
 #include <com/sun/star/drawing/XDrawPage.hpp>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::sd::slidesorter::cache;
 
-namespace sd { namespace presenter {
+namespace sd::presenter {
 
 class PresenterPreviewCache::PresenterCacheContext : public CacheContext
 {
@@ -48,9 +50,7 @@ public:
     void RemovePreviewCreationNotifyListener (const Reference<drawing::XSlidePreviewCacheListener>& rxListener);
 
     // CacheContext
-    virtual void NotifyPreviewCreation (
-        CacheKey aKey,
-        const Bitmap& rPreview) override;
+    virtual void NotifyPreviewCreation (CacheKey aKey) override;
     virtual bool IsIdle() override;
     virtual bool IsVisible (CacheKey aKey) override;
     virtual const SdrPage* GetPage (CacheKey aKey) override;
@@ -74,8 +74,8 @@ private:
 PresenterPreviewCache::PresenterPreviewCache ()
     : PresenterPreviewCacheInterfaceBase(m_aMutex),
       maPreviewSize(Size(200,200)),
-      mpCacheContext(new PresenterCacheContext()),
-      mpCache(new PageCache(maPreviewSize, Bitmap::HasFastScale(), mpCacheContext))
+      mpCacheContext(std::make_shared<PresenterCacheContext>()),
+      mpCache(std::make_shared<PageCache>(maPreviewSize, Bitmap::HasFastScale(), mpCacheContext))
 {
 }
 
@@ -87,7 +87,7 @@ PresenterPreviewCache::~PresenterPreviewCache()
 
 void SAL_CALL PresenterPreviewCache::initialize (const Sequence<Any>& rArguments)
 {
-    if (rArguments.getLength() != 0)
+    if (rArguments.hasElements())
         throw RuntimeException();
 }
 
@@ -98,7 +98,7 @@ void SAL_CALL PresenterPreviewCache::setDocumentSlides (
     const Reference<XInterface>& rxDocument)
 {
     ThrowIfDisposed();
-    OSL_ASSERT(mpCacheContext.get()!=nullptr);
+    OSL_ASSERT(mpCacheContext != nullptr);
 
     mpCacheContext->SetDocumentSlides(rxSlides, rxDocument);
 }
@@ -108,7 +108,7 @@ void SAL_CALL PresenterPreviewCache::setVisibleRange (
     sal_Int32 nLastVisibleSlideIndex)
 {
     ThrowIfDisposed();
-    OSL_ASSERT(mpCacheContext.get()!=nullptr);
+    OSL_ASSERT(mpCacheContext != nullptr);
 
     mpCacheContext->SetVisibleSlideRange (nFirstVisibleSlideIndex, nLastVisibleSlideIndex);
 }
@@ -117,7 +117,7 @@ void SAL_CALL PresenterPreviewCache::setPreviewSize (
     const css::geometry::IntegerSize2D& rSize)
 {
     ThrowIfDisposed();
-    OSL_ASSERT(mpCache.get()!=nullptr);
+    OSL_ASSERT(mpCache != nullptr);
 
     maPreviewSize = Size(rSize.Width, rSize.Height);
     mpCache->ChangeSize(maPreviewSize, Bitmap::HasFastScale());
@@ -128,7 +128,7 @@ Reference<rendering::XBitmap> SAL_CALL PresenterPreviewCache::getSlidePreview (
     const Reference<rendering::XCanvas>& rxCanvas)
 {
     ThrowIfDisposed();
-    OSL_ASSERT(mpCacheContext.get()!=nullptr);
+    OSL_ASSERT(mpCacheContext != nullptr);
 
     cppcanvas::CanvasSharedPtr pCanvas (
         cppcanvas::VCLFactory::createCanvas(rxCanvas));
@@ -165,14 +165,14 @@ void SAL_CALL PresenterPreviewCache::removePreviewCreationNotifyListener (
 void SAL_CALL PresenterPreviewCache::pause()
 {
     ThrowIfDisposed();
-    OSL_ASSERT(mpCache.get()!=nullptr);
+    OSL_ASSERT(mpCache != nullptr);
     mpCache->Pause();
 }
 
 void SAL_CALL PresenterPreviewCache::resume()
 {
     ThrowIfDisposed();
-    OSL_ASSERT(mpCache.get()!=nullptr);
+    OSL_ASSERT(mpCache != nullptr);
     mpCache->Resume();
 }
 
@@ -233,20 +233,15 @@ void PresenterPreviewCache::PresenterCacheContext::AddPreviewCreationNotifyListe
 void PresenterPreviewCache::PresenterCacheContext::RemovePreviewCreationNotifyListener (
     const Reference<drawing::XSlidePreviewCacheListener>& rxListener)
 {
-    ListenerContainer::iterator iListener;
-    for (iListener=maListeners.begin(); iListener!=maListeners.end(); ++iListener)
-        if (*iListener == rxListener)
-        {
-            maListeners.erase(iListener);
-            return;
-        }
+    auto iListener = std::find(maListeners.begin(), maListeners.end(), rxListener);
+    if (iListener != maListeners.end())
+        maListeners.erase(iListener);
 }
 
 //----- CacheContext ----------------------------------------------------------
 
 void PresenterPreviewCache::PresenterCacheContext::NotifyPreviewCreation (
-    CacheKey aKey,
-    const Bitmap&)
+    CacheKey aKey)
 {
     if ( ! mxSlides.is())
         return;
@@ -282,7 +277,7 @@ const SdrPage* PresenterPreviewCache::PresenterCacheContext::GetPage (CacheKey a
 std::shared_ptr<std::vector<CacheKey> >
     PresenterPreviewCache::PresenterCacheContext::GetEntryList (bool bVisible)
 {
-    std::shared_ptr<std::vector<CacheKey> > pKeys (new std::vector<CacheKey>);
+    auto pKeys = std::make_shared<std::vector<CacheKey>>();
 
     if ( ! mxSlides.is())
         return pKeys;
@@ -341,24 +336,23 @@ void PresenterPreviewCache::PresenterCacheContext::CallListeners (
     const sal_Int32 nIndex)
 {
     ListenerContainer aListeners (maListeners);
-    ListenerContainer::const_iterator iListener;
-    for (iListener=aListeners.begin(); iListener!=aListeners.end(); ++iListener)
+    for (const auto& rxListener : aListeners)
     {
         try
         {
-            (*iListener)->notifyPreviewCreation(nIndex);
+            rxListener->notifyPreviewCreation(nIndex);
         }
         catch (lang::DisposedException&)
         {
-            RemovePreviewCreationNotifyListener(*iListener);
+            RemovePreviewCreationNotifyListener(rxListener);
         }
     }
 }
 
-} } // end of namespace ::sd::presenter
+} // end of namespace ::sd::presenter
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Draw_PresenterPreviewCache_get_implementation(css::uno::XComponentContext*,
                                                                 css::uno::Sequence<css::uno::Any> const &)
 {

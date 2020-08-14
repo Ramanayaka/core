@@ -17,20 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ppt/slidetimingcontext.hxx"
+#include <oox/ppt/slidetimingcontext.hxx>
 
-#include "comphelper/anytostring.hxx"
-#include "cppuhelper/exc_hlp.hxx"
-
-#include <com/sun/star/drawing/XShapes.hpp>
-#include "oox/ppt/backgroundproperties.hxx"
-#include "oox/ppt/slidefragmenthandler.hxx"
-#include "oox/drawingml/shapegroupcontext.hxx"
-#include "oox/helper/attributelist.hxx"
-#include "oox/ppt/timenodelistcontext.hxx"
+#include <oox/helper/attributelist.hxx>
+#include <oox/ppt/timenodelistcontext.hxx>
 #include "buildlistcontext.hxx"
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
 
 
 using namespace ::com::sun::star;
@@ -40,9 +32,9 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-SlideTimingContext::SlideTimingContext( FragmentHandler2& rParent, TimeNodePtrList & aTimeNodeList ) throw()
+SlideTimingContext::SlideTimingContext( FragmentHandler2 const & rParent, TimeNodePtrList & aTimeNodeList ) throw()
     : FragmentHandler2( rParent )
     , maTimeNodeList( aTimeNodeList )
 {
@@ -73,6 +65,6 @@ SlideTimingContext::~SlideTimingContext() throw()
     }
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

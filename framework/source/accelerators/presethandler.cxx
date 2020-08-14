@@ -21,15 +21,11 @@
 
 #include <classes/fwkresid.hxx>
 
-#include "classes/resource.hrc"
-#include <services.h>
+#include <strings.hrc>
 
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/configuration/CorruptedUIConfigurationException.hpp>
-#include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
-#include <com/sun/star/embed/XTransactedObject.hpp>
 #include <com/sun/star/embed/FileSystemStorageFactory.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/util/thePathSettings.hpp>
@@ -37,11 +33,12 @@
 #include <vcl/svapp.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <osl/diagnose.h>
 #include <i18nlangtag/languagetag.hxx>
 
-static const ::sal_Int32 ID_CORRUPT_UICONFIG_SHARE   = 1;
-static const ::sal_Int32 ID_CORRUPT_UICONFIG_USER    = 2;
-static const ::sal_Int32 ID_CORRUPT_UICONFIG_GENERAL = 3;
+const ::sal_Int32 ID_CORRUPT_UICONFIG_SHARE   = 1;
+const ::sal_Int32 ID_CORRUPT_UICONFIG_USER    = 2;
+const ::sal_Int32 ID_CORRUPT_UICONFIG_GENERAL = 3;
 
 namespace framework
 {
@@ -77,25 +74,18 @@ PresetHandler::PresetHandler(const css::uno::Reference< css::uno::XComponentCont
     : m_xContext(xContext)
     , m_eConfigType(E_GLOBAL)
     , m_lDocumentStorages()
-    , m_aLanguageTag(LANGUAGE_USER_PRIV_NOTRANSLATE)
 {
 }
 
 PresetHandler::PresetHandler(const PresetHandler& rCopy)
-    : m_aLanguageTag( rCopy.m_aLanguageTag)
 {
     m_xContext              = rCopy.m_xContext;
     m_eConfigType           = rCopy.m_eConfigType;
-    m_sResourceType         = rCopy.m_sResourceType;
-    m_sModule               = rCopy.m_sModule;
     m_xWorkingStorageShare  = rCopy.m_xWorkingStorageShare;
     m_xWorkingStorageNoLang = rCopy.m_xWorkingStorageNoLang;
     m_xWorkingStorageUser   = rCopy.m_xWorkingStorageUser;
-    m_lPresets              = rCopy.m_lPresets;
-    m_lTargets              = rCopy.m_lTargets;
     m_lDocumentStorages     = rCopy.m_lDocumentStorages;
     m_sRelPathShare         = rCopy.m_sRelPathShare;
-    m_sRelPathNoLang        = rCopy.m_sRelPathNoLang;
     m_sRelPathUser          = rCopy.m_sRelPathUser;
 }
 
@@ -285,19 +275,13 @@ css::uno::Reference< css::embed::XStorage > PresetHandler::getOrCreateRootStorag
     return xStorage;
 }
 
-css::uno::Reference< css::embed::XStorage > PresetHandler::getWorkingStorageShare()
-{
-    SolarMutexGuard g;
-    return m_xWorkingStorageShare;
-}
-
-css::uno::Reference< css::embed::XStorage > PresetHandler::getWorkingStorageUser()
+css::uno::Reference< css::embed::XStorage > PresetHandler::getWorkingStorageUser() const
 {
     SolarMutexGuard g;
     return m_xWorkingStorageUser;
 }
 
-css::uno::Reference< css::embed::XStorage > PresetHandler::getParentStorageShare(const css::uno::Reference< css::embed::XStorage >& /*xChild*/)
+css::uno::Reference< css::embed::XStorage > PresetHandler::getParentStorageShare()
 {
     css::uno::Reference< css::embed::XStorage > xWorking;
     {
@@ -308,7 +292,7 @@ css::uno::Reference< css::embed::XStorage > PresetHandler::getParentStorageShare
     return SharedStorages::get().m_lStoragesShare.getParentStorage(xWorking);
 }
 
-css::uno::Reference< css::embed::XStorage > PresetHandler::getParentStorageUser(const css::uno::Reference< css::embed::XStorage >& /*xChild*/)
+css::uno::Reference< css::embed::XStorage > PresetHandler::getParentStorageUser()
 {
     css::uno::Reference< css::embed::XStorage > xWorking;
     {
@@ -330,9 +314,6 @@ void PresetHandler::connectToResource(      PresetHandler::EConfigType          
     {
         SolarMutexGuard g;
         m_eConfigType   = eConfigType;
-        m_sResourceType = sResource;
-        m_sModule       = sModule;
-        m_aLanguageTag  = rLanguageTag;
     }
 
     css::uno::Reference< css::embed::XStorage > xShare;
@@ -363,13 +344,12 @@ void PresetHandler::connectToResource(      PresetHandler::EConfigType          
     // a) inside share layer we should not create any new structures... We have to use
     //    existing ones only!
     // b) inside user layer we can (SOFT mode!) but sometimes we should not (HARD mode!)
-    //    create new empty structures. We should preferr using of any existing structure.
+    //    create new empty structures. We should prefer using of any existing structure.
     sal_Int32 eShareMode = (css::embed::ElementModes::READ      | css::embed::ElementModes::NOCREATE);
-    sal_Int32 eUserMode  = (css::embed::ElementModes::READWRITE                                     );
+    sal_Int32 eUserMode  = css::embed::ElementModes::READWRITE;
 
     OUStringBuffer sRelPathBuf(1024);
     OUString       sRelPathShare;
-    OUString       sRelPathNoLang;
     OUString       sRelPathUser;
     switch(eConfigType)
     {
@@ -426,7 +406,6 @@ void PresetHandler::connectToResource(      PresetHandler::EConfigType          
 
     // Non-localized global share
     xNoLang = xShare;
-    sRelPathNoLang = sRelPathShare;
 
     if (
         (rLanguageTag != LanguageTag(LANGUAGE_USER_PRIV_NOTRANSLATE)) && // localized level?
@@ -452,60 +431,12 @@ void PresetHandler::connectToResource(      PresetHandler::EConfigType          
         sRelPathUser  = sLocalizedUserPath;
     }
 
-    // read content of level 3 (presets, targets)
-          css::uno::Reference< css::container::XNameAccess > xAccess;
-          css::uno::Sequence< OUString >              lNames;
-    const OUString*                                   pNames;
-          sal_Int32                                          c;
-          sal_Int32                                          i;
-          std::vector<OUString> lPresets;
-          std::vector<OUString> lTargets;
-
-    // read preset names of share layer
-    xAccess.set(xShare, css::uno::UNO_QUERY);
-    if (xAccess.is())
-    {
-        lNames  = xAccess->getElementNames();
-        pNames  = lNames.getConstArray();
-        c       = lNames.getLength();
-
-        for (i=0; i<c; ++i)
-        {
-            OUString sTemp = pNames[i];
-            sal_Int32       nPos  = sTemp.indexOf(".xml");
-            if (nPos > -1)
-                sTemp = sTemp.copy(0,nPos);
-            lPresets.push_back(sTemp);
-        }
-    }
-
-    // read preset names of user layer
-    xAccess.set(xUser, css::uno::UNO_QUERY);
-    if (xAccess.is())
-    {
-        lNames  = xAccess->getElementNames();
-        pNames  = lNames.getConstArray();
-        c       = lNames.getLength();
-
-        for (i=0; i<c; ++i)
-        {
-            OUString sTemp = pNames[i];
-            sal_Int32       nPos  = sTemp.indexOf(".xml");
-            if (nPos > -1)
-                sTemp = sTemp.copy(0,nPos);
-            lTargets.push_back(sTemp);
-        }
-    }
-
     {
         SolarMutexGuard g;
         m_xWorkingStorageShare = xShare;
         m_xWorkingStorageNoLang= xNoLang;
         m_xWorkingStorageUser  = xUser;
-        m_lPresets             = lPresets;
-        m_lTargets             = lTargets;
         m_sRelPathShare        = sRelPathShare;
-        m_sRelPathNoLang       = sRelPathNoLang;
         m_sRelPathUser         = sRelPathUser;
     }
 
@@ -543,11 +474,8 @@ void PresetHandler::copyPresetToTarget(const OUString& sPreset,
        return;
     }
 
-    OUString sPresetFile(sPreset);
-    sPresetFile += ".xml";
-
-    OUString sTargetFile(sTarget);
-    sTargetFile += ".xml";
+    OUString sPresetFile = sPreset + ".xml";
+    OUString sTargetFile = sTarget + ".xml";
 
     // remove existing elements before you try to copy the preset to that location ...
     // Otherwise w will get an ElementExistException inside copyElementTo()!
@@ -574,8 +502,7 @@ css::uno::Reference< css::io::XStream > PresetHandler::openPreset(const OUString
     if (!xFolder.is())
        return css::uno::Reference< css::io::XStream >();
 
-    OUString sFile(sPreset);
-    sFile += ".xml";
+    OUString sFile = sPreset + ".xml";
 
     // inform user about errors (use original exceptions!)
     css::uno::Reference< css::io::XStream > xStream = xFolder->openStreamElement(sFile, css::embed::ElementModes::READ);
@@ -735,13 +662,7 @@ css::uno::Reference< css::embed::XStorage > PresetHandler::impl_openPathIgnoring
     }
     else
     {
-        for (  pFound  = lLocalizedValues.begin();
-               pFound != lLocalizedValues.end();
-             ++pFound                            )
-        {
-            if (*pFound == rLanguageTag)
-                break;
-        }
+        pFound = std::find(lLocalizedValues.begin(), lLocalizedValues.end(), rLanguageTag);
     }
 
     return pFound;
@@ -767,10 +688,8 @@ css::uno::Reference< css::embed::XStorage > PresetHandler::impl_openLocalizedPat
 
     // it doesn't matter, if there is a locale fallback or not
     // If creation of storages is allowed, we do it anyway.
-    // Otherwhise we have no acc config at all, which can make other trouble.
-    OUString sLocalizedPath;
-    sLocalizedPath  = sPath;
-    sLocalizedPath += "/";
+    // Otherwise we have no acc config at all, which can make other trouble.
+    OUString sLocalizedPath = sPath + "/";
     if (pLocaleFolder != lSubFolders.end())
         sLocalizedPath += *pLocaleFolder;
     else
@@ -788,15 +707,14 @@ css::uno::Reference< css::embed::XStorage > PresetHandler::impl_openLocalizedPat
 
 ::std::vector< OUString > PresetHandler::impl_getSubFolderNames(const css::uno::Reference< css::embed::XStorage >& xFolder)
 {
-    css::uno::Reference< css::container::XNameAccess > xAccess(xFolder, css::uno::UNO_QUERY);
-    if (!xAccess.is())
+    if (!xFolder.is())
         return ::std::vector< OUString >();
 
-          ::std::vector< OUString >      lSubFolders;
-    const css::uno::Sequence< OUString > lNames = xAccess->getElementNames();
+    ::std::vector< OUString >      lSubFolders;
+    const css::uno::Sequence< OUString > lNames = xFolder->getElementNames();
     const OUString*                      pNames = lNames.getConstArray();
-          sal_Int32                             c      = lNames.getLength();
-          sal_Int32                             i      = 0;
+    sal_Int32                            c      = lNames.getLength();
+    sal_Int32                            i      = 0;
 
     for (i=0; i<c; ++i)
     {

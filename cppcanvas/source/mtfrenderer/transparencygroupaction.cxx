@@ -22,22 +22,18 @@
 #include <utility>
 
 #include <tools/gen.hxx>
+#include <tools/debug.hxx>
 
 #include <canvas/canvastools.hxx>
 
 #include <com/sun/star/rendering/XBitmap.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
 
-#include <rtl/math.hxx>
-
 #include <vcl/metaact.hxx>
 #include <vcl/bitmapex.hxx>
-#include <vcl/canvastools.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/outdev.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/gdimtf.hxx>
-#include <vcl/gradient.hxx>
 
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/point/b2dpoint.hxx>
@@ -45,21 +41,23 @@
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/tuple/b2dtuple.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
+#include <sal/log.hxx>
 
 #include "transparencygroupaction.hxx"
-#include "outdevstate.hxx"
+#include <outdevstate.hxx>
 #include "mtftools.hxx"
-#include "cppcanvas/vclfactory.hxx"
+#include <cppcanvas/vclfactory.hxx>
 
+#if OSL_DEBUG_LEVEL > 2
+#include <vcl/canvastools.hxx>
+#endif
 
 using namespace ::com::sun::star;
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
         // free support functions
         // ======================
         namespace
@@ -119,7 +117,6 @@ namespace cppcanvas
                 // mxBufferBitmap content
                 CanvasSharedPtr                                     mpCanvas;
                 rendering::RenderState                              maState;
-                const double                                        mnAlpha;
             };
 
 
@@ -150,8 +147,7 @@ namespace cppcanvas
                 mxBufferBitmap(),
                 maLastTransformation(),
                 mpCanvas( rCanvas ),
-                maState(),
-                mnAlpha( 1.0 )
+                maState()
             {
                 tools::initRenderState(maState,rState);
                 implSetupTransform( maState, rDstPoint );
@@ -380,7 +376,7 @@ namespace cppcanvas
                     // tdf#95709
                     // Adjust renderstate clip to modified scale from above
                     ::basegfx::B2DPolyPolygon aClip = ::basegfx::unotools::b2DPolyPolygonFromXPolyPolygon2D(aLocalState.Clip);
-                    aClip.transform(basegfx::tools::createScaleB2DHomMatrix(aScale));
+                    aClip.transform(basegfx::utils::createScaleB2DHomMatrix(aScale));
                     aLocalState.Clip = ::basegfx::unotools::xPolyPolygonFromB2DPolyPolygon(mpCanvas->getUNOCanvas()->getDevice(), aClip);
                 }
 
@@ -399,27 +395,10 @@ namespace cppcanvas
                 aLocalState.DeviceColor = maState.DeviceColor;
 #endif
 
-                if( ::rtl::math::approxEqual(mnAlpha, 1.0) )
-                {
-                    // no further alpha changes necessary -> draw directly
-                    mpCanvas->getUNOCanvas()->drawBitmap( mxBufferBitmap,
-                                                          mpCanvas->getViewState(),
-                                                          aLocalState );
-                }
-                else
-                {
-                    // add alpha modulation value to DeviceColor
-                    uno::Sequence<rendering::ARGBColor> aCols(1);
-                    aCols[0] = rendering::ARGBColor( mnAlpha, 1.0, 1.0, 1.0);
-                    aLocalState.DeviceColor =
-                        mpCanvas->getUNOCanvas()->getDevice()->getDeviceColorSpace()->convertFromARGB(
-                            aCols);
-
-                    mpCanvas->getUNOCanvas()->drawBitmapModulated( mxBufferBitmap,
-                                                                   mpCanvas->getViewState(),
-                                                                   aLocalState );
-                }
-
+                // no further alpha changes necessary -> draw directly
+                mpCanvas->getUNOCanvas()->drawBitmap( mxBufferBitmap,
+                                                      mpCanvas->getViewState(),
+                                                      aLocalState );
                 return true;
             }
 
@@ -472,27 +451,26 @@ namespace cppcanvas
 
             sal_Int32 TransparencyGroupAction::getActionCount() const
             {
-                return mpGroupMtf.get() ? mpGroupMtf->GetActionSize() : 0;
+                return mpGroupMtf ? mpGroupMtf->GetActionSize() : 0;
             }
 
         }
 
-        ActionSharedPtr TransparencyGroupActionFactory::createTransparencyGroupAction( MtfAutoPtr&&                 rGroupMtf,
+        std::shared_ptr<Action> TransparencyGroupActionFactory::createTransparencyGroupAction( MtfAutoPtr&&                 rGroupMtf,
                                                                                        GradientAutoPtr&&            rAlphaGradient,
                                                                                        const ::basegfx::B2DPoint&   rDstPoint,
                                                                                        const ::basegfx::B2DVector&  rDstSize,
                                                                                        const CanvasSharedPtr&       rCanvas,
                                                                                        const OutDevState&           rState )
         {
-            return ActionSharedPtr( new TransparencyGroupAction(std::move(rGroupMtf),
-                                                                std::move(rAlphaGradient),
-                                                                rDstPoint,
-                                                                rDstSize,
-                                                                rCanvas,
-                                                                rState ) );
+            return std::make_shared<TransparencyGroupAction>(std::move(rGroupMtf),
+                                                             std::move(rAlphaGradient),
+                                                             rDstPoint,
+                                                             rDstSize,
+                                                             rCanvas,
+                                                             rState );
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

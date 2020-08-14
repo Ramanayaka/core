@@ -26,7 +26,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <list>
 #include <map>
 #include <vector>
 
@@ -37,7 +36,9 @@
 #include <rtl/ref.hxx>
 #include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 #include <salhelper/simplereferenceobject.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 
 #undef max
 
@@ -51,7 +52,7 @@ using namespace css::uno;
    Missing support for functions returning structs (see TODO in call()).
 
    Missing support for additional data types (64 bit integers, Any, ...; would
-   trigger OSL_ASSERT(false) in various switches).
+   trigger assert(false) in various switches).
 
    It is assumed that the variables passed into SbiDllMgr::Call to represent
    the arguments and return value have types that exactly match the Declare
@@ -116,8 +117,8 @@ public:
     const MarshalData& operator=(const MarshalData&) = delete;
     
     std::vector< char > * newBlob() {
-        blobs_.push_front(std::vector< char >());
-        return &blobs_.front();
+        blobs_.push_back(std::vector< char >());
+        return &blobs_.back();
     }
 
     std::vector< UnmarshalData > unmarshal;
@@ -125,7 +126,7 @@ public:
     std::vector< StringData > unmarshalStrings;
 
 private:
-    std::list< std::vector< char > > blobs_;
+    std::vector< std::vector< char > > blobs_;
 };
 
 std::size_t align(std::size_t address, std::size_t alignment) {
@@ -151,7 +152,7 @@ template< typename T > void add(
 }
 
 std::size_t alignment(SbxVariable * variable) {
-    OSL_ASSERT(variable != 0);
+    assert(variable != 0);
     if ((variable->GetType() & SbxARRAY) == 0) {
         switch (variable->GetType()) {
         case SbxINTEGER:
@@ -165,10 +166,11 @@ std::size_t alignment(SbxVariable * variable) {
         case SbxOBJECT:
             {
                 std::size_t n = 1;
-                SbxArray * props = dynamic_cast<SbxObject*>( variable->GetObject() )->
-                    GetProperties();
-                for (sal_uInt16 i = 0; i < props->Count(); ++i) {
-                    n = std::max(n, alignment(props->Get(i)));
+                SbxObject* pobj = dynamic_cast<SbxObject*>(variable->GetObject());
+                assert(pobj);
+                SbxArray* props = pobj->GetProperties();
+                for (sal_uInt32 i = 0; i < props->Count32(); ++i) {
+                    n = std::max(n, alignment(props->Get32(i)));
                 }
                 return n;
             }
@@ -176,14 +178,15 @@ std::size_t alignment(SbxVariable * variable) {
         case SbxBYTE:
             return 1;
         default:
-            OSL_ASSERT(false);
+            assert(false);
             return 1;
         }
     } else {
         SbxDimArray * arr = dynamic_cast<SbxDimArray*>( variable->GetObject() );
-        int dims = arr->GetDims();
+        assert(arr);
+        sal_Int32 dims = arr->GetDims32();
         std::vector< sal_Int32 > low(dims);
-        for (int i = 0; i < dims; ++i) {
+        for (sal_Int32 i = 0; i < dims; ++i) {
             sal_Int32 up;
             arr->GetDim32(i + 1, low[i], up);
         }
@@ -198,7 +201,7 @@ ErrCode marshal(
 ErrCode marshalString(
     SbxVariable * variable, bool special, MarshalData & data, void ** buffer)
 {
-    OSL_ASSERT(variable != 0 && buffer != 0);
+    assert(variable != 0 && buffer != 0);
     OString str;
     ErrCode e = convert(variable->GetOUString(), &str);
     if (e != ERRCODE_NONE) {
@@ -216,11 +219,12 @@ ErrCode marshalStruct(
     SbxVariable * variable, std::vector< char > & blob, std::size_t offset,
     MarshalData & data)
 {
-    OSL_ASSERT(variable != 0);
-    SbxArray * props = dynamic_cast<SbxObject*>( variable->GetObject() )->
-        GetProperties();
-    for (sal_uInt16 i = 0; i < props->Count(); ++i) {
-        ErrCode e = marshal(false, props->Get(i), false, blob, offset, data);
+    assert(variable != 0);
+    SbxObject* pobj = dynamic_cast<SbxObject*>(variable->GetObject());
+    assert(pobj);
+    SbxArray* props = pobj->GetProperties();
+    for (sal_uInt32 i = 0; i < props->Count32(); ++i) {
+        ErrCode e = marshal(false, props->Get32(i), false, blob, offset, data);
         if (e != ERRCODE_NONE) {
             return e;
         }
@@ -232,12 +236,13 @@ ErrCode marshalArray(
     SbxVariable * variable, std::vector< char > & blob, std::size_t offset,
     MarshalData & data)
 {
-    OSL_ASSERT(variable != 0);
+    assert(variable != 0);
     SbxDimArray * arr = dynamic_cast<SbxDimArray*>( variable->GetObject() );
-    int dims = arr->GetDims();
+    assert(arr);
+    sal_Int32 dims = arr->GetDims32();
     std::vector< sal_Int32 > low(dims);
     std::vector< sal_Int32 > up(dims);
-    for (int i = 0; i < dims; ++i) {
+    for (sal_Int32 i = 0; i < dims; ++i) {
         arr->GetDim32(i + 1, low[i], up[i]);
     }
     for (std::vector< sal_Int32 > idx = low;;) {
@@ -246,7 +251,7 @@ ErrCode marshalArray(
         if (e != ERRCODE_NONE) {
             return e;
         }
-        int i = dims - 1;
+        sal_Int32 i = dims - 1;
         while (idx[i] == up[i]) {
             idx[i] = low[i];
             if (i == 0) {
@@ -264,7 +269,7 @@ ErrCode marshal(
     bool outer, SbxVariable * variable, bool special,
     std::vector< char > & blob, std::size_t offset, MarshalData & data)
 {
-    OSL_ASSERT(variable != 0);
+    assert(variable != 0);
 
     SbxDataType eVarType = variable->GetType();
     bool bByVal = !(variable->GetFlags() & SbxFlagBits::Reference);
@@ -312,7 +317,7 @@ ErrCode marshal(
                 add(blob, variable->GetByte(), outer ? 4 : 1, offset);
                 break;
             default:
-                OSL_ASSERT(false);
+                assert(false);
                 break;
             }
         } else {
@@ -334,12 +339,12 @@ ErrCode marshal(
                 break;
             case SbxSTRING:
                 {
-                    std::vector< char > * blob2 = data.newBlob();
                     void * p;
                     ErrCode e = marshalString(variable, special, data, &p);
                     if (e != ERRCODE_NONE) {
                         return e;
                     }
+                    std::vector< char > * blob2 = data.newBlob();
                     add(*blob2, p, 4, 0);
                     add(blob, address(*blob2), 4, offset);
                     break;
@@ -359,7 +364,7 @@ ErrCode marshal(
                     break;
                 }
             default:
-                OSL_ASSERT(false);
+                assert(false);
                 break;
             }
         } else {
@@ -385,7 +390,7 @@ template< typename T > T read(void const ** pointer) {
 }
 
 void const * unmarshal(SbxVariable * variable, void const * data) {
-    OSL_ASSERT(variable != 0);
+    assert(variable != 0);
     if ((variable->GetType() & SbxARRAY) == 0) {
         switch (variable->GetType()) {
         case SbxINTEGER:
@@ -409,10 +414,11 @@ void const * unmarshal(SbxVariable * variable, void const * data) {
                     align(
                         reinterpret_cast< sal_uIntPtr >(data),
                         alignment(variable)));
-                SbxArray * props = dynamic_cast<SbxObject*>( variable->GetObject() )->
-                    GetProperties();
-                for (sal_uInt16 i = 0; i < props->Count(); ++i) {
-                    data = unmarshal(props->Get(i), data);
+                SbxObject* pobj = dynamic_cast<SbxObject*>(variable->GetObject());
+                assert(pobj);
+                SbxArray* props = pobj->GetProperties();
+                for (sal_uInt32 i = 0; i < props->Count32(); ++i) {
+                    data = unmarshal(props->Get32(i), data);
                 }
                 break;
             }
@@ -423,20 +429,21 @@ void const * unmarshal(SbxVariable * variable, void const * data) {
             variable->PutByte(read< sal_uInt8 >(&data));
             break;
         default:
-            OSL_ASSERT(false);
+            assert(false);
             break;
         }
     } else {
         SbxDimArray * arr = dynamic_cast<SbxDimArray*>( variable->GetObject() );
-        int dims = arr->GetDims();
+        assert(arr);
+        sal_Int32 dims = arr->GetDims32();
         std::vector< sal_Int32 > low(dims);
         std::vector< sal_Int32 > up(dims);
-        for (int i = 0; i < dims; ++i) {
+        for (sal_Int32 i = 0; i < dims; ++i) {
             arr->GetDim32(i + 1, low[i], up[i]);
         }
         for (std::vector< sal_Int32 > idx = low;;) {
             data = unmarshal(arr->Get32(&idx[0]), data);
-            int i = dims - 1;
+            sal_Int32 i = dims - 1;
             while (idx[i] == up[i]) {
                 idx[i] = low[i];
                 if (i == 0) {
@@ -491,9 +498,9 @@ ErrCode call(
     // require similar treatment, too:
     bool special = dll.equalsIgnoreAsciiCase("KERNEL32.DLL") &&
                    (proc.name == OString("GetLogicalDriveStringsA"));
-    for (sal_uInt16 i = 1; i < (arguments == 0 ? 0 : arguments->Count()); ++i) {
+    for (sal_uInt32 i = 1; i < (arguments == 0 ? 0 : arguments->Count32()); ++i) {
         ErrCode e = marshal(
-            true, arguments->Get(i), special && i == 2, stack, stack.size(),
+            true, arguments->Get32(i), special && i == 2, stack, stack.size(),
             data);
         if (e != ERRCODE_NONE) {
             return e;
@@ -541,8 +548,7 @@ ErrCode call(
         break;
     case SbxBOOL:
         result.PutBool(
-            static_cast< sal_Bool >(
-                DllMgr_call32(proc.proc, address(stack), stack.size())));
+            bool(DllMgr_call32(proc.proc, address(stack), stack.size())));
         break;
     case SbxBYTE:
         result.PutByte(
@@ -550,22 +556,20 @@ ErrCode call(
                 DllMgr_call32(proc.proc, address(stack), stack.size())));
         break;
     default:
-        OSL_ASSERT(false);
+        assert(false);
         break;
     }
-    for (sal_uInt16 i = 1; i < (arguments == 0 ? 0 : arguments->Count()); ++i) {
-        arguments->Get(i)->ResetFlag(SbxFlagBits::Reference);
+    for (sal_uInt32 i = 1; i < (arguments == 0 ? 0 : arguments->Count32()); ++i) {
+        arguments->Get32(i)->ResetFlag(SbxFlagBits::Reference);
             //TODO: skipped for errors?!?
     }
-    for (std::vector< UnmarshalData >::iterator i(data.unmarshal.begin());
-         i != data.unmarshal.end(); ++i)
+    for (auto& rUnmarshalData : data.unmarshal)
     {
-        unmarshal(i->variable, i->buffer);
+        unmarshal(rUnmarshalData.variable, rUnmarshalData.buffer);
     }
-    for (std::vector< StringData >::iterator i(data.unmarshalStrings.begin());
-         i != data.unmarshalStrings.end(); ++i)
+    for (const auto& rStringData : data.unmarshalStrings)
     {
-        ErrCode e = unmarshalString(*i, result);
+        ErrCode e = unmarshalString(rStringData, result);
         if (e != ERRCODE_NONE) {
             return e;
         }
@@ -575,7 +579,7 @@ ErrCode call(
 
 ErrCode getProcData(HMODULE handle, OUString const & name, ProcData * proc)
 {
-    OSL_ASSERT(proc != 0);
+    assert(proc != 0);
     if ( !name.isEmpty() && name[0] == '@' ) { //TODO: "@" vs. "#"???
         sal_Int32 n = name.copy(1).toInt32(); //TODO: handle bad input
         if (n <= 0 || n > 0xFFFF) {
@@ -656,7 +660,7 @@ ErrCode Dll::getProc(OUString const & name, ProcData * proc) {
     }
     ErrCode e = getProcData(handle, name, proc);
     if (e == ERRCODE_NONE) {
-        procs.insert(Procs::value_type(name, *proc));
+        procs.emplace(name, *proc);
     }
     return e;
 }
@@ -688,8 +692,8 @@ public:
 Dll * SbiDllMgr::Impl::getDll(OUString const & name) {
     Dlls::iterator i(dlls.find(name));
     if (i == dlls.end()) {
-        i = dlls.insert(Dlls::value_type(name, new Dll)).first;
-        HMODULE h = LoadLibraryW(reinterpret_cast<LPCWSTR>(name.getStr()));
+        i = dlls.emplace(name, new Dll).first;
+        HMODULE h = LoadLibraryW(o3tl::toW(name.getStr()));
         if (h == 0) {
             dlls.erase(i);
             return 0;

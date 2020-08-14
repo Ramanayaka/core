@@ -16,33 +16,61 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <svx/dialogs.hrc>
+
 #include <svx/dialmgr.hxx>
 #include <svx/spacinglistbox.hxx>
-#include <tools/resary.hxx>
-#include <vcl/builderfactory.hxx>
+#include <unotools/localedatawrapper.hxx>
+#include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
+#include <spacing.hrc>
 
-SpacingListBox::SpacingListBox(vcl::Window* pParent)
-    : ListBox( pParent, WB_BORDER | WB_DROPDOWN)
+namespace SpacingListBox
 {
-    ResStringArray aSpacingAry( ResId(RID_SVXSTRARY_SPACING, DIALOG_MGR()) );
-    sal_uInt32 nCnt = aSpacingAry.Count();
-
-    for ( sal_uInt32 i = 0; i < nCnt; ++i )
+    void Fill(SpacingType eType, weld::ComboBox& rComboBox)
     {
-        OUString aStr = aSpacingAry.GetString(i);
-        sal_uInt16 nData = aSpacingAry.GetValue(i);
-        sal_Int32 nPos = InsertEntry( aStr );
-        SetEntryData( nPos, reinterpret_cast<void*>((sal_uLong)nData) );
+        auto nSelected = rComboBox.get_active();
+        if (nSelected == -1)
+            nSelected = 0;
+        rComboBox.clear();
+
+        const LocaleDataWrapper& rLocaleData = Application::GetSettings().GetLocaleDataWrapper();
+        OUString sSuffix;
+
+        const measurement* pResources;
+        switch (eType)
+        {
+            case SpacingType::SPACING_INCH:
+                pResources = RID_SVXSTRARY_SPACING_INCH;
+                sSuffix = weld::MetricSpinButton::MetricToString(FieldUnit::INCH);
+                break;
+            case SpacingType::MARGINS_INCH:
+                pResources = RID_SVXSTRARY_MARGINS_INCH;
+                sSuffix = weld::MetricSpinButton::MetricToString(FieldUnit::INCH);
+                break;
+            case SpacingType::SPACING_CM:
+                pResources = RID_SVXSTRARY_SPACING_CM;
+                sSuffix = " " + weld::MetricSpinButton::MetricToString(FieldUnit::CM);
+                break;
+            default:
+            case SpacingType::MARGINS_CM:
+                sSuffix = " " + weld::MetricSpinButton::MetricToString(FieldUnit::CM);
+                pResources = RID_SVXSTRARY_MARGINS_CM;
+                break;
+        }
+
+        while (pResources->key)
+        {
+            OUString sMeasurement = rLocaleData.getNum(pResources->human, 2, true, false) + sSuffix;
+            OUString aStr = SvxResId(pResources->key).replaceFirst("%1", sMeasurement);
+            sal_uInt32 nData = pResources->twips;
+            rComboBox.append(OUString::number(nData), aStr);
+            ++pResources;
+        }
+
+        rComboBox.set_active(nSelected);
+
+        rComboBox.set_size_request(150, -1);
     }
-    SetDropDownLineCount(8);
-    SelectEntryPos(0);
 }
 
-VCL_BUILDER_FACTORY(SpacingListBox);
-
-Size SpacingListBox::GetOptimalSize() const
-{
-    return Size(150, ListBox::GetOptimalSize().Height());
-}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

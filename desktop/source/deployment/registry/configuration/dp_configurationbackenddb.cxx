@@ -18,14 +18,10 @@
  */
 
 
-#include <rtl/string.h>
-#include <rtl/bootstrap.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <com/sun/star/deployment/DeploymentException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/xml/dom/XDocumentBuilder.hpp>
 #include <com/sun/star/xml/xpath/XXPathAPI.hpp>
-#include "dp_misc.h"
 
 #include "dp_configurationbackenddb.hxx"
 
@@ -37,9 +33,7 @@ using namespace ::com::sun::star::uno;
 #define ROOT_ELEMENT_NAME "configuration-backend-db"
 #define KEY_ELEMENT_NAME "configuration"
 
-namespace dp_registry {
-namespace backend {
-namespace configuration {
+namespace dp_registry::backend::configuration {
 
 ConfigurationBackendDb::ConfigurationBackendDb(
     Reference<XComponentContext> const &  xContext,
@@ -50,22 +44,22 @@ ConfigurationBackendDb::ConfigurationBackendDb(
 
 OUString ConfigurationBackendDb::getDbNSName()
 {
-    return OUString(EXTENSION_REG_NS);
+    return EXTENSION_REG_NS;
 }
 
 OUString ConfigurationBackendDb::getNSPrefix()
 {
-    return OUString(NS_PREFIX);
+    return NS_PREFIX;
 }
 
 OUString ConfigurationBackendDb::getRootElementName()
 {
-    return OUString(ROOT_ELEMENT_NAME);
+    return ROOT_ELEMENT_NAME;
 }
 
 OUString ConfigurationBackendDb::getKeyElementName()
 {
-    return OUString(KEY_ELEMENT_NAME);
+    return KEY_ELEMENT_NAME;
 }
 
 
@@ -96,7 +90,7 @@ void ConfigurationBackendDb::addEntry(OUString const & url, Data const & data)
 }
 
 
-::boost::optional<ConfigurationBackendDb::Data>
+::std::optional<ConfigurationBackendDb::Data>
 ConfigurationBackendDb::getEntry(OUString const & url)
 {
     try
@@ -110,9 +104,9 @@ ConfigurationBackendDb::getEntry(OUString const & url)
         }
         else
         {
-            return ::boost::optional<Data>();
+            return ::std::optional<Data>();
         }
-        return ::boost::optional<Data>(retData);
+        return ::std::optional<Data>(retData);
     }
     catch ( const css::deployment::DeploymentException& )
     {
@@ -127,11 +121,11 @@ ConfigurationBackendDb::getEntry(OUString const & url)
     }
 }
 
-std::list<OUString> ConfigurationBackendDb::getAllDataUrls()
+std::vector<OUString> ConfigurationBackendDb::getAllDataUrls()
 {
     try
     {
-        std::list<OUString> listRet;
+        std::vector<OUString> listRet;
         Reference<css::xml::dom::XDocument> doc = getDocument();
         Reference<css::xml::dom::XNode> root = doc->getFirstChild();
 
@@ -162,8 +156,6 @@ std::list<OUString> ConfigurationBackendDb::getAllDataUrls()
     }
 }
 
-} // namespace configuration
-} // namespace backend
-} // namespace dp_registry
+} // namespace dp_registry::backend::configuration
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -7,21 +7,25 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <config_features.h>
+
 #include <ostream>
 #include <vector>
-std::ostream& operator<<(std::ostream& rStream, const std::vector<long>& rVec);
 
-#include <unotest/filters-test.hxx>
+#if HAVE_MORE_FONTS
+// must be declared before inclusion of test/bootstrapfixture.hxx
+static std::ostream& operator<<(std::ostream& rStream, const std::vector<long>& rVec);
+#endif
 #include <test/bootstrapfixture.hxx>
 
 #include <vcl/wrkwin.hxx>
+#include <vcl/virdev.hxx>
+// workaround MSVC2015 issue with std::unique_ptr
+#include <sallayout.hxx>
+#include <salgdi.hxx>
 
-#include <osl/file.hxx>
-#include <osl/process.h>
-
-#include <config_test.h>
-
-std::ostream& operator<<(std::ostream& rStream, const std::vector<long>& rVec)
+#if HAVE_MORE_FONTS
+static std::ostream& operator<<(std::ostream& rStream, const std::vector<long>& rVec)
 {
     rStream << "{ ";
     for (size_t i = 0; i < rVec.size() - 1; i++)
@@ -30,6 +34,7 @@ std::ostream& operator<<(std::ostream& rStream, const std::vector<long>& rVec)
     rStream << " }";
     return rStream;
 }
+#endif
 
 class VclComplexTextTest : public test::BootstrapFixture
 {
@@ -38,23 +43,19 @@ public:
 
     /// Play with font measuring etc.
     void testArabic();
-#if defined(_WIN32)
+    void testKashida();
     void testTdf95650(); // Windows-only issue
-#endif
 
     CPPUNIT_TEST_SUITE(VclComplexTextTest);
-#if !TEST_FONTS_MISSING
     CPPUNIT_TEST(testArabic);
-#endif
-#if defined(_WIN32)
+    CPPUNIT_TEST(testKashida);
     CPPUNIT_TEST(testTdf95650);
-#endif
     CPPUNIT_TEST_SUITE_END();
 };
 
-#if !TEST_FONTS_MISSING
 void VclComplexTextTest::testArabic()
 {
+#if HAVE_MORE_FONTS
     const unsigned char pOneTwoThreeUTF8[] = {
         0xd9, 0x88, 0xd8, 0xa7, 0xd8, 0xad, 0xd9, 0x90,
         0xd8, 0xaf, 0xd9, 0x92, 0x20, 0xd8, 0xa5, 0xd8,
@@ -80,55 +81,70 @@ void VclComplexTextTest::testArabic()
     long nTextWidth = pOutDev->GetTextArray(aOneTwoThree, aCharWidths.data());
 
     CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
+    // this sporadically returns 75 or 74 on some of the windows tinderboxes eg. tb73
     CPPUNIT_ASSERT_EQUAL(72L, nTextWidth);
     CPPUNIT_ASSERT_EQUAL(nTextWidth, aCharWidths.back());
 
     // text advance width and line height
     CPPUNIT_ASSERT_EQUAL(72L, pOutDev->GetTextWidth(aOneTwoThree));
-    CPPUNIT_ASSERT_EQUAL(13L, pOutDev->GetTextHeight());
+    CPPUNIT_ASSERT_EQUAL(14L, pOutDev->GetTextHeight());
 
     // exact bounding rectangle, not essentially the same as text width/height
-#if defined(MACOSX) || defined(_WIN32)
-    // FIXME: fails on some Linux tinderboxes, might be a FreeType issue.
     tools::Rectangle aBoundRect, aTestRect( 0, 1, 71, 15 );
     pOutDev->GetTextBoundRect(aBoundRect, aOneTwoThree);
-#if defined(_WIN32)
-    // if run on Win7 KVM QXL / Spice GUI, we "miss" the first pixel column?!
-    if ( 1 == aBoundRect.Left() )
-    {
-        long &rLeft = aTestRect.Left();
-        ++rLeft;
-    }
-#endif
     CPPUNIT_ASSERT_EQUAL(aTestRect, aBoundRect);
-#endif
+
+#if 0
+    // FIXME: This seems to be wishful thinking, GetTextRect() does not take
+    // rotation into account.
 
     // normal orientation
     tools::Rectangle aInput;
     tools::Rectangle aRect = pOutDev->GetTextRect( aInput, aOneTwoThree );
 
-    // now rotate 270 degress
+    // now rotate 270 degrees
     vcl::Font aRotated( aFont );
     aRotated.SetOrientation( 2700 );
     pOutDev->SetFont( aRotated );
     tools::Rectangle aRectRot = pOutDev->GetTextRect( aInput, aOneTwoThree );
 
-    // Check that we did do the rotation ...
-#if 0
-    // FIXME: This seems to be wishful thinking, GetTextRect() does not take
-    // rotation into account.
+    // Check that we did do the rotation...
     fprintf( stderr, "%ld %ld %ld %ld\n",
              aRect.GetWidth(), aRect.GetHeight(),
              aRectRot.GetWidth(), aRectRot.GetHeight() );
     CPPUNIT_ASSERT( aRectRot.GetWidth() == aRect.GetHeight() );
     CPPUNIT_ASSERT( aRectRot.GetHeight() == aRect.GetWidth() );
-#else
-    (void)aRect; (void)aRectRot;
+#endif
 #endif
 }
-#endif
 
-#if defined(_WIN32)
+void VclComplexTextTest::testKashida()
+{
+#if HAVE_MORE_FONTS
+    // Cache the glyph list of some Arabic text.
+    ScopedVclPtrInstance<VirtualDevice> pOutputDevice;
+    auto aText
+        = OUString::fromUtf8(u8"ﻊﻨﺻﺭ ﺎﻠﻓﻮﺴﻓﻭﺭ ﻊﻨﺻﺭ ﻒﻟﺰﻳ ﺺﻠﺑ. ﺖﺘﻛﻮﻧ ﺎﻟﺩﻭﺭﺓ ﺎﻟﺭﺎﺒﻋﺓ ﻢﻧ ١٥ ﻊﻨﺻﺭﺍ.");
+    std::unique_ptr<SalLayout> pLayout = pOutputDevice->ImplLayout(
+        aText, 0, aText.getLength(), Point(0, 0), 0, nullptr, SalLayoutFlags::GlyphItemsOnly);
+    const SalLayoutGlyphs* pGlyphs = pLayout->GetGlyphs();
+    if (!pGlyphs)
+        // Failed in some non-interesting ways.
+        return;
+    SalLayoutGlyphs aGlyphs = *pGlyphs;
+
+    // Now lay it out using the cached glyph list.
+    ImplLayoutArgs aLayoutArgs(aText, 0, aText.getLength(), SalLayoutFlags::NONE,
+                               pOutputDevice->GetFont().GetLanguageTag(), nullptr);
+    pLayout = pOutputDevice->GetGraphics()->GetTextLayout(0);
+    CPPUNIT_ASSERT(pLayout->LayoutText(aLayoutArgs, &aGlyphs));
+
+    // Without the accompanying fix in place, this test would have failed with 'assertion failed'.
+    // The kashida justification flag was lost when going via the glyph cache.
+    CPPUNIT_ASSERT(aLayoutArgs.mnFlags & SalLayoutFlags::KashidaJustification);
+#endif
+}
+
 void VclComplexTextTest::testTdf95650()
 {
     const sal_Unicode pTxt[] = {
@@ -146,7 +162,6 @@ void VclComplexTextTest::testTdf95650()
     // Check that the following executes without failing assertion
     pOutDev->ImplLayout(aTxt, 9, 1, Point(), 0, nullptr, SalLayoutFlags::BiDiRtl);
 }
-#endif
 
 CPPUNIT_TEST_SUITE_REGISTRATION(VclComplexTextTest);
 

@@ -25,15 +25,15 @@
 #include <sal/log.hxx>
 
 #include <com/sun/star/uno/genfunc.hxx>
-#include "com/sun/star/uno/RuntimeException.hpp"
+#include <com/sun/star/uno/RuntimeException.hpp>
 #include <config_options.h>
 #include <uno/data.h>
 #include <typelib/typedescription.hxx>
 
-#include "bridge.hxx"
-#include "cppinterfaceproxy.hxx"
-#include "types.hxx"
-#include "vtablefactory.hxx"
+#include <bridge.hxx>
+#include <cppinterfaceproxy.hxx>
+#include <types.hxx>
+#include <vtablefactory.hxx>
 
 #include "abi.hxx"
 #include "call.hxx"
@@ -160,7 +160,8 @@ static typelib_TypeClass cpp2uno_call(
             }
             else if ( bridges::cpp_uno::shared::relatesToInterfaceType( pParamTypeDescr ) ) // is in/inout
             {
-                uno_copyAndConvertData( pUnoArgs[nPos] = alloca( pParamTypeDescr->nSize ),
+                pUnoArgs[nPos] = alloca( pParamTypeDescr->nSize );
+                uno_copyAndConvertData( pUnoArgs[nPos],
                                         pCppStack, pParamTypeDescr,
                                         pThis->getBridge()->getCpp2Uno() );
                 pTempIndices[nTempIndices] = nPos; // has to be reconverted
@@ -362,7 +363,7 @@ typelib_TypeClass cpp_vtable_call(
                         }
                         TYPELIB_DANGER_RELEASE( pTD );
                     }
-                    SAL_FALLTHROUGH; // else perform queryInterface()
+                    [[fallthrough]]; // else perform queryInterface()
                 }
                 default:
                 {
@@ -400,11 +401,11 @@ const int codeSnippetSize = 24;
 // Note: The code snippet we build here must not create a stack frame,
 // otherwise the UNO exceptions stop working thanks to non-existing
 // unwinding info.
-unsigned char * codeSnippet( unsigned char * code,
+static unsigned char * codeSnippet( unsigned char * code,
         sal_Int32 nFunctionIndex, sal_Int32 nVtableOffset,
         bool bHasHiddenParam )
 {
-    sal_uInt64 nOffsetAndIndex = ( ( (sal_uInt64) nVtableOffset ) << 32 ) | ( (sal_uInt64) nFunctionIndex );
+    sal_uInt64 nOffsetAndIndex = ( static_cast<sal_uInt64>(nVtableOffset) << 32 ) | static_cast<sal_uInt64>(nFunctionIndex);
 
     if ( bHasHiddenParam )
         nOffsetAndIndex |= 0x80000000;

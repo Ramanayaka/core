@@ -19,13 +19,13 @@
 #ifndef INCLUDED_CPPUHELPER_TYPEPROVIDER_HXX
 #define INCLUDED_CPPUHELPER_TYPEPROVIDER_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cstddef>
 
-#include <rtl/alloc.h>
-#include <com/sun/star/uno/Sequence.hxx>
-#include <cppuhelper/cppuhelperdllapi.h>
+#include "rtl/alloc.h"
+#include "com/sun/star/uno/Sequence.hxx"
+#include "cppuhelper/cppuhelperdllapi.h"
 
 
 namespace cppu
@@ -51,9 +51,6 @@ public:
         {}
     /// @endcond
 
-    OTypeCollection( const OTypeCollection & rCollection )
-        : _aTypes( rCollection._aTypes )
-        {}
     OTypeCollection(
         const css::uno::Type & rType1,
         const css::uno::Sequence< css::uno::Type > & rAddTypes = css::uno::Sequence< css::uno::Type >() );
@@ -163,6 +160,10 @@ public:
     */
     css::uno::Sequence< css::uno::Type > SAL_CALL getTypes()
         { return _aTypes; }
+#if defined LIBO_INTERNAL_ONLY
+    css::uno::Sequence< css::uno::Type > const & SAL_CALL getTypes() const
+        { return _aTypes; }
+#endif
 };
 
 /** Helper class to implement IDs for XUnoTunnel.  Construct a static object

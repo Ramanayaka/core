@@ -6,24 +6,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-#include <TrackChangesHandler.hxx>
-#include <PropertyMap.hxx>
-#include <ConversionHelper.hxx>
+#include "TrackChangesHandler.hxx"
+#include "PropertyMap.hxx"
+#include "ConversionHelper.hxx"
 #include <ooxml/resourceids.hxx>
 #include <oox/token/tokens.hxx>
 #include <osl/diagnose.h>
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
 using namespace ::com::sun::star;
 using namespace oox;
 
 
 TrackChangesHandler::TrackChangesHandler( sal_Int32 nToken ) :
-LoggedProperties("TrackChangesHandler")
+    LoggedProperties("TrackChangesHandler"),
+    m_pRedlineParams(new RedlineParams)
 {
-    m_pRedlineParams = std::make_shared<RedlineParams>( );
     m_pRedlineParams->m_nToken = nToken;
 }
 
@@ -91,7 +90,6 @@ uno::Sequence<beans::PropertyValue> TrackChangesHandler::getRedlineProperties() 
 
 void TrackChangesHandler::lcl_sprm(Sprm &) {}
 
-} //namespace dmapper
-} //namespace writerfilter
+} //namespace writerfilter::dmapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

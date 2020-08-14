@@ -19,11 +19,11 @@
 #ifndef INCLUDED_XMLOFF_SOURCE_CHART_XMLSYMBOLIMAGECONTEXT_HXX
 #define INCLUDED_XMLOFF_SOURCE_CHART_XMLSYMBOLIMAGECONTEXT_HXX
 
-#include "XMLElementPropertyContext.hxx"
+#include <XMLElementPropertyContext.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XOutputStream; }
-} } }
+}
 
 class XMLSymbolImageContext : public XMLElementPropertyContext
 {
@@ -36,7 +36,7 @@ public:
     virtual ~XMLSymbolImageContext() override;
 
     virtual void StartElement( const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;

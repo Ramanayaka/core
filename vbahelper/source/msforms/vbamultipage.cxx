@@ -25,7 +25,9 @@
 using namespace com::sun::star;
 using namespace ooo::vba;
 
-const OUString SVALUE( "MultiPageValue" );
+const OUStringLiteral SVALUE( "MultiPageValue" );
+
+namespace {
 
 class PagesImpl : public cppu::WeakImplHelper< container::XIndexAccess >
 {
@@ -52,13 +54,15 @@ public:
     }
 };
 
+}
+
 ScVbaMultiPage::ScVbaMultiPage(
         const uno::Reference< ov::XHelperInterface >& xParent,
         const uno::Reference< uno::XComponentContext >& xContext,
         const uno::Reference< uno::XInterface >& xControl,
         const uno::Reference< frame::XModel >& xModel,
-        AbstractGeometryAttributes* pGeomHelper) :
-    MultiPageImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper )
+        std::unique_ptr<ov::AbstractGeometryAttributes> pGeomHelper) :
+    MultiPageImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) )
 {
 }
 
@@ -86,7 +90,7 @@ ScVbaMultiPage::setValue( const sal_Int32 _value )
 OUString
 ScVbaMultiPage::getServiceImplName()
 {
-    return OUString( "ScVbaMultiPage" );
+    return "ScVbaMultiPage";
 }
 
 uno::Any SAL_CALL
@@ -103,12 +107,10 @@ ScVbaMultiPage::Pages( const uno::Any& index )
 uno::Sequence< OUString >
 ScVbaMultiPage::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.MultiPage";
-    }
+        "ooo.vba.msforms.MultiPage"
+    };
     return aServiceNames;
 }
 

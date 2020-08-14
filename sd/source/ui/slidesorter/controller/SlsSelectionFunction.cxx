@@ -20,74 +20,63 @@
 #include <memory>
 #include <sal/config.h>
 
-#include <cstdlib>
+#include <controller/SlsSelectionFunction.hxx>
 
-#include "controller/SlsSelectionFunction.hxx"
-
-#include "SlideSorter.hxx"
-#include "SlideSorterViewShell.hxx"
+#include <SlideSorter.hxx>
+#include <SlideSorterViewShell.hxx>
 #include "SlsDragAndDropContext.hxx"
-#include "controller/SlsTransferableData.hxx"
-#include "controller/SlideSorterController.hxx"
-#include "controller/SlsPageSelector.hxx"
-#include "controller/SlsFocusManager.hxx"
-#include "controller/SlsScrollBarManager.hxx"
-#include "controller/SlsClipboard.hxx"
-#include "controller/SlsCurrentSlideManager.hxx"
-#include "controller/SlsInsertionIndicatorHandler.hxx"
-#include "controller/SlsSelectionManager.hxx"
-#include "controller/SlsProperties.hxx"
-#include "controller/SlsSlotManager.hxx"
-#include "controller/SlsVisibleAreaManager.hxx"
-#include "model/SlideSorterModel.hxx"
-#include "model/SlsPageDescriptor.hxx"
-#include "model/SlsPageEnumerationProvider.hxx"
-#include "view/SlideSorterView.hxx"
-#include "view/SlsLayouter.hxx"
-#include "view/SlsPageObjectLayouter.hxx"
-#include "framework/FrameworkHelper.hxx"
-#include "ViewShellBase.hxx"
-#include "DrawController.hxx"
-#include "Window.hxx"
-#include "sdpage.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-#include "sdxfer.hxx"
-#include "ViewShell.hxx"
-#include "FrameView.hxx"
-#include "app.hrc"
-#include "sdresid.hxx"
-#include "strings.hrc"
-#include <sfx2/viewfrm.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsPageSelector.hxx>
+#include <controller/SlsFocusManager.hxx>
+#include <controller/SlsScrollBarManager.hxx>
+#include <controller/SlsClipboard.hxx>
+#include <controller/SlsCurrentSlideManager.hxx>
+#include <controller/SlsInsertionIndicatorHandler.hxx>
+#include <controller/SlsSelectionManager.hxx>
+#include <controller/SlsProperties.hxx>
+#include <controller/SlsVisibleAreaManager.hxx>
+#include <model/SlideSorterModel.hxx>
+#include <model/SlsPageDescriptor.hxx>
+#include <model/SlsPageEnumerationProvider.hxx>
+#include <view/SlideSorterView.hxx>
+#include <view/SlsLayouter.hxx>
+#include <framework/FrameworkHelper.hxx>
+#include <Window.hxx>
+#include <sdpage.hxx>
+#include <drawdoc.hxx>
+#include <sdxfer.hxx>
+#include <ViewShell.hxx>
+#include <FrameView.hxx>
+#include <app.hrc>
+#include <o3tl/deleter.hxx>
 #include <sfx2/dispatch.hxx>
-#include <svx/svdpagv.hxx>
-#include <vcl/msgbox.hxx>
-#include <svx/svxids.hrc>
-#include <boost/optional.hpp>
+#include <vcl/ptrstyle.hxx>
+#include <optional>
+#include <sdmod.hxx>
 
 namespace {
-static const sal_uInt32 SINGLE_CLICK             (0x00000001);
-static const sal_uInt32 DOUBLE_CLICK             (0x00000002);
-static const sal_uInt32 LEFT_BUTTON              (0x00000010);
-static const sal_uInt32 RIGHT_BUTTON             (0x00000020);
-static const sal_uInt32 MIDDLE_BUTTON            (0x00000040);
-static const sal_uInt32 BUTTON_DOWN              (0x00000100);
-static const sal_uInt32 BUTTON_UP                (0x00000200);
-static const sal_uInt32 MOUSE_MOTION             (0x00000400);
-static const sal_uInt32 MOUSE_DRAG               (0x00000800);
+const sal_uInt32 SINGLE_CLICK             (0x00000001);
+const sal_uInt32 DOUBLE_CLICK             (0x00000002);
+const sal_uInt32 LEFT_BUTTON              (0x00000010);
+const sal_uInt32 RIGHT_BUTTON             (0x00000020);
+const sal_uInt32 MIDDLE_BUTTON            (0x00000040);
+const sal_uInt32 BUTTON_DOWN              (0x00000100);
+const sal_uInt32 BUTTON_UP                (0x00000200);
+const sal_uInt32 MOUSE_MOTION             (0x00000400);
+const sal_uInt32 MOUSE_DRAG               (0x00000800);
 // The rest leaves the lower 16 bit untouched so that it can be used with
 // key codes.
-static const sal_uInt32 OVER_SELECTED_PAGE       (0x00010000);
-static const sal_uInt32 OVER_UNSELECTED_PAGE     (0x00020000);
-static const sal_uInt32 SHIFT_MODIFIER           (0x00200000);
-static const sal_uInt32 CONTROL_MODIFIER         (0x00400000);
+const sal_uInt32 OVER_SELECTED_PAGE       (0x00010000);
+const sal_uInt32 OVER_UNSELECTED_PAGE     (0x00020000);
+const sal_uInt32 SHIFT_MODIFIER           (0x00200000);
+const sal_uInt32 CONTROL_MODIFIER         (0x00400000);
 
 // Some absent events are defined so they can be expressed explicitly.
-static const sal_uInt32 NO_MODIFIER              (0x00000000);
-static const sal_uInt32 NOT_OVER_PAGE            (0x00000000);
+const sal_uInt32 NO_MODIFIER              (0x00000000);
+const sal_uInt32 NOT_OVER_PAGE            (0x00000000);
 
 // Masks
-static const sal_uInt32 MODIFIER_MASK            (SHIFT_MODIFIER | CONTROL_MODIFIER);
+const sal_uInt32 MODIFIER_MASK            (SHIFT_MODIFIER | CONTROL_MODIFIER);
 
 } // end of anonymous namespace
 
@@ -97,7 +86,7 @@ static const sal_uInt32 MODIFIER_MASK            (SHIFT_MODIFIER | CONTROL_MODIF
     case code|SHIFT_MODIFIER:               \
     case code|CONTROL_MODIFIER
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 //===== SelectionFunction::EventDescriptor ====================================
 
@@ -115,12 +104,12 @@ public:
     EventDescriptor (
         sal_uInt32 nEventType,
         const MouseEvent& rEvent,
-        SlideSorter& rSlideSorter);
+        SlideSorter const & rSlideSorter);
     EventDescriptor (
         sal_uInt32 nEventType,
         const AcceptDropEvent& rEvent,
         const sal_Int8 nDragAction,
-        SlideSorter& rSlideSorter);
+        SlideSorter const & rSlideSorter);
 
 private:
     /** Compute a numerical code that describes a mouse event and that can
@@ -185,6 +174,8 @@ private:
     const bool mbIsMouseOverIndicatorAllowed;
 };
 
+namespace {
+
 /** This is the default handler for processing events.  It activates the
     multi selection or drag-and-drop when the right conditions are met.
 */
@@ -207,7 +198,7 @@ protected:
     virtual bool ProcessDragEvent (SelectionFunction::EventDescriptor& rDescriptor) override;
 
 private:
-    ::boost::optional<Point> maButtonDownLocation;
+    ::std::optional<Point> maButtonDownLocation;
 
     /** Select all pages between and including the selection anchor and the
         specified page.
@@ -226,17 +217,10 @@ public:
     MultiSelectionModeHandler (
         SlideSorter& rSlideSorter,
         SelectionFunction& rSelectionFunction,
-#ifndef MACOSX
-        const Point& rMouseModelPosition);
-#else
         const Point& rMouseModelPosition,
         const sal_uInt32 nEventCode);
-#endif
-    virtual ~MultiSelectionModeHandler() override;
 
-#ifndef MACOSX
-    void Initialize(const sal_uInt32 nEventCode);
-#endif
+    virtual ~MultiSelectionModeHandler() override;
 
     virtual SelectionFunction::Mode GetMode() const override;
     virtual void Abort() override;
@@ -255,7 +239,7 @@ protected:
 private:
     SelectionMode meSelectionMode;
     Point maSecondCorner;
-    Pointer maSavedPointer;
+    PointerStyle maSavedPointer;
     bool mbAutoScrollInstalled;
     sal_Int32 mnAnchorIndex;
     sal_Int32 mnSecondIndex;
@@ -282,18 +266,10 @@ class DragAndDropModeHandler : public SelectionFunction::ModeHandler
 public:
     DragAndDropModeHandler (
         SlideSorter& rSlideSorter,
-#ifndef MACOSX
-        SelectionFunction& rSelectionFunction);
-#else
         SelectionFunction& rSelectionFunction,
         const Point& rMousePosition,
         vcl::Window* pWindow);
-#endif
     virtual ~DragAndDropModeHandler() override;
-
-#ifndef MACOSX
-    void Initialize(const Point& rMousePosition, vcl::Window* pWindow);
-#endif
 
     virtual SelectionFunction::Mode GetMode() const override;
     virtual void Abort() override;
@@ -303,8 +279,10 @@ protected:
     virtual bool ProcessDragEvent (SelectionFunction::EventDescriptor& rDescriptor) override;
 
 private:
-    std::unique_ptr<DragAndDropContext> mpDragAndDropContext;
+    std::unique_ptr<DragAndDropContext, o3tl::default_delete<DragAndDropContext>> mpDragAndDropContext;
 };
+
+}
 
 //===== SelectionFunction =====================================================
 
@@ -321,7 +299,7 @@ SelectionFunction::SelectionFunction (
       mrSlideSorter(rSlideSorter),
       mrController(mrSlideSorter.GetController()),
       mnShiftKeySelectionAnchor(-1),
-      mpModeHandler(new NormalModeHandler(rSlideSorter, *this))
+      mpModeHandler(std::make_shared<NormalModeHandler>(rSlideSorter, *this))
 {
 }
 
@@ -468,7 +446,7 @@ bool SelectionFunction::KeyInput (const KeyEvent& rEvent)
             bResult = true;
             break;
 
-        // Go to next page.  No wrap around..
+        // Go to next page.  No wrap around...
         case KEY_PAGEDOWN:
             GotoNextPage(+1);
             bResult = true;
@@ -610,7 +588,7 @@ void SelectionFunction::GotoNextPage (int nOffset)
 {
     model::SharedPageDescriptor pDescriptor
         = mrController.GetCurrentSlideManager()->GetCurrentSlide();
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
     {
         SdPage* pPage = pDescriptor->GetPage();
         OSL_ASSERT(pPage!=nullptr);
@@ -622,7 +600,7 @@ void SelectionFunction::GotoNextPage (int nOffset)
 
 void SelectionFunction::GotoPage (int nIndex)
 {
-    sal_uInt16 nPageCount = (sal_uInt16)mrSlideSorter.GetModel().GetPageCount();
+    sal_uInt16 nPageCount = static_cast<sal_uInt16>(mrSlideSorter.GetModel().GetPageCount());
 
     if (nIndex >= nPageCount)
         nIndex = nPageCount - 1;
@@ -632,11 +610,11 @@ void SelectionFunction::GotoPage (int nIndex)
     mrController.GetFocusManager().SetFocusedPage(nIndex);
     model::SharedPageDescriptor pNextPageDescriptor (
         mrSlideSorter.GetModel().GetPageDescriptor (nIndex));
-    if (pNextPageDescriptor.get() != nullptr)
+    if (pNextPageDescriptor)
         mpModeHandler->SetCurrentPage(pNextPageDescriptor);
     else
     {
-        OSL_ASSERT(pNextPageDescriptor.get() != nullptr);
+        OSL_ASSERT(pNextPageDescriptor);
     }
     ResetShiftKeySelectionAnchor();
 }
@@ -667,7 +645,7 @@ void SelectionFunction::ProcessEvent (EventDescriptor& rDescriptor)
     pModeHandler->ProcessEvent(rDescriptor);
 }
 
-bool Match (
+static bool Match (
     const sal_uInt32 nEventCode,
     const sal_uInt32 nPositivePattern)
 {
@@ -677,27 +655,15 @@ bool Match (
 void SelectionFunction::SwitchToNormalMode()
 {
     if (mpModeHandler->GetMode() != NormalMode)
-        SwitchMode(std::shared_ptr<ModeHandler>(
-            new NormalModeHandler(mrSlideSorter, *this)));
+        SwitchMode(std::make_shared<NormalModeHandler>(mrSlideSorter, *this));
 }
 
 void SelectionFunction::SwitchToDragAndDropMode (const Point& rMousePosition)
 {
-    if (mpModeHandler->GetMode() != DragAndDropMode)
-    {
-#ifndef MACOSX
-        std::shared_ptr<DragAndDropModeHandler> handler(
-            new DragAndDropModeHandler(mrSlideSorter, *this));
-        SwitchMode(handler);
-        // Delayed initialization, only after mpModeHanler is set, otherwise DND initialization
-        // could already trigger DND events, which would recursively trigger this code again,
-        // and without mpModeHandler set it would again try to set a new handler.
-        handler->Initialize(rMousePosition, mpWindow);
-#else
-        SwitchMode(std::shared_ptr<ModeHandler>(
-            new DragAndDropModeHandler(mrSlideSorter, *this, rMousePosition, mpWindow)));
-#endif
-    }
+    if (mpModeHandler->GetMode() == DragAndDropMode)
+        return;
+
+    SwitchMode(std::make_shared<DragAndDropModeHandler>(mrSlideSorter, *this, rMousePosition, mpWindow));
 }
 
 void SelectionFunction::SwitchToMultiSelectionMode (
@@ -705,19 +671,7 @@ void SelectionFunction::SwitchToMultiSelectionMode (
     const sal_uInt32 nEventCode)
 {
     if (mpModeHandler->GetMode() != MultiSelectionMode)
-#ifndef MACOSX
-    {
-        std::shared_ptr<MultiSelectionModeHandler> handler(
-            new MultiSelectionModeHandler(mrSlideSorter, *this, rMousePosition));
-        SwitchMode(handler);
-        // Delayed initialization, only after mpModeHanler is set, the handle ctor
-        // is non-trivial, so it could possibly recurse just like the DND handler above.
-        handler->Initialize(nEventCode);
-    }
-#else
-        SwitchMode(std::shared_ptr<ModeHandler>(
-            new MultiSelectionModeHandler(mrSlideSorter, *this, rMousePosition, nEventCode)));
-#endif
+        SwitchMode(std::make_shared<MultiSelectionModeHandler>(mrSlideSorter, *this, rMousePosition, nEventCode));
 }
 
 void SelectionFunction::SwitchMode (const std::shared_ptr<ModeHandler>& rpHandler)
@@ -757,7 +711,7 @@ void SelectionFunction::ResetMouseAnchor()
 SelectionFunction::EventDescriptor::EventDescriptor (
     const sal_uInt32 nEventType,
     const MouseEvent& rEvent,
-    SlideSorter& rSlideSorter)
+    SlideSorter const & rSlideSorter)
     : maMousePosition(rEvent.GetPosPixel()),
       maMouseModelPosition(),
       mpHitDescriptor(),
@@ -788,7 +742,7 @@ SelectionFunction::EventDescriptor::EventDescriptor (
     const sal_uInt32 nEventType,
     const AcceptDropEvent& rEvent,
     const sal_Int8 nDragAction,
-    SlideSorter& rSlideSorter)
+    SlideSorter const & rSlideSorter)
     : maMousePosition(rEvent.maPosPixel),
       maMouseModelPosition(),
       mpHitDescriptor(),
@@ -973,19 +927,19 @@ void SelectionFunction::ModeHandler::SwitchView (const model::SharedPageDescript
     // Switch to the draw view.  This is done only when the current
     // view is the main view.
     ViewShell* pViewShell = mrSlideSorter.GetViewShell();
-    if (pViewShell!=nullptr && pViewShell->IsMainViewShell())
+    if (pViewShell==nullptr || !pViewShell->IsMainViewShell())
+        return;
+
+    if (rpDescriptor && rpDescriptor->GetPage()!=nullptr)
     {
-        if (rpDescriptor.get()!=nullptr && rpDescriptor->GetPage()!=nullptr)
-        {
-            mrSlideSorter.GetModel().GetDocument()->SetSelected(rpDescriptor->GetPage(), true);
-            pViewShell->GetFrameView()->SetSelectedPage(
-                (rpDescriptor->GetPage()->GetPageNum()-1)/2);
-        }
-        if (mrSlideSorter.GetViewShellBase() != nullptr)
+        mrSlideSorter.GetModel().GetDocument()->SetSelected(rpDescriptor->GetPage(), true);
+        pViewShell->GetFrameView()->SetSelectedPage(
+            (rpDescriptor->GetPage()->GetPageNum()-1)/2);
+    }
+    if (mrSlideSorter.GetViewShellBase() != nullptr)
         framework::FrameworkHelper::Instance(*mrSlideSorter.GetViewShellBase())->RequestView(
             framework::FrameworkHelper::msImpressViewURL,
             framework::FrameworkHelper::msCenterPaneURL);
-    }
 }
 
 void SelectionFunction::ModeHandler::StartDrag (
@@ -1097,12 +1051,16 @@ bool NormalModeHandler::ProcessButtonDownEvent (
             pInsertionIndicatorHandler->UpdatePosition(
                     rDescriptor.maMousePosition,
                     InsertionIndicatorHandler::MoveMode);
+
             mrSlideSorter.GetController().GetSelectionManager()->SetInsertionPosition(
                 pInsertionIndicatorHandler->GetInsertionPageIndex());
 
             mrSlideSorter.GetViewShell()->GetDispatcher()->Execute(
                 SID_INSERTPAGE,
                 SfxCallMode::ASYNCHRON | SfxCallMode::RECORD);
+
+            pInsertionIndicatorHandler->End(Animator::AM_Immediate);
+
             break;
         }
 
@@ -1159,11 +1117,9 @@ bool NormalModeHandler::ProcessMotionEvent (
         {
             if (maButtonDownLocation)
             {
-                const sal_Int32 nDistance (maButtonDownLocation
-                    ? ::std::max (
-                        std::abs(maButtonDownLocation->X() - rDescriptor.maMousePosition.X()),
-                        std::abs(maButtonDownLocation->Y() - rDescriptor.maMousePosition.Y()))
-                    : 0);
+                const sal_Int32 nDistance(std::max(
+                    std::abs(maButtonDownLocation->X() - rDescriptor.maMousePosition.X()),
+                    std::abs(maButtonDownLocation->Y() - rDescriptor.maMousePosition.Y())));
                 if (nDistance > 3)
                     StartDrag(rDescriptor.maMousePosition);
             }
@@ -1199,32 +1155,32 @@ void NormalModeHandler::RangeSelect (const model::SharedPageDescriptor& rpDescri
     model::SharedPageDescriptor pAnchor (rSelector.GetSelectionAnchor());
     DeselectAllPages();
 
-    if (pAnchor.get() != nullptr)
-    {
-        // Select all pages between the anchor and the given one, including
-        // the two.
-        const sal_uInt16 nAnchorIndex ((pAnchor->GetPage()->GetPageNum()-1) / 2);
-        const sal_uInt16 nOtherIndex ((rpDescriptor->GetPage()->GetPageNum()-1) / 2);
+    if (!pAnchor)
+        return;
 
-        // Iterate over all pages in the range.  Start with the anchor
-        // page.  This way the PageSelector will recognize it again as
-        // anchor (the first selected page after a DeselectAllPages()
-        // becomes the anchor.)
-        const sal_uInt16 nStep ((nAnchorIndex < nOtherIndex) ? +1 : -1);
-        sal_uInt16 nIndex (nAnchorIndex);
-        while (true)
-        {
-            rSelector.SelectPage(nIndex);
-            if (nIndex == nOtherIndex)
-                break;
-            nIndex = nIndex + nStep;
-        }
+    // Select all pages between the anchor and the given one, including
+    // the two.
+    const sal_uInt16 nAnchorIndex ((pAnchor->GetPage()->GetPageNum()-1) / 2);
+    const sal_uInt16 nOtherIndex ((rpDescriptor->GetPage()->GetPageNum()-1) / 2);
+
+    // Iterate over all pages in the range.  Start with the anchor
+    // page.  This way the PageSelector will recognize it again as
+    // anchor (the first selected page after a DeselectAllPages()
+    // becomes the anchor.)
+    const sal_uInt16 nStep ((nAnchorIndex < nOtherIndex) ? +1 : -1);
+    sal_uInt16 nIndex (nAnchorIndex);
+    while (true)
+    {
+        rSelector.SelectPage(nIndex);
+        if (nIndex == nOtherIndex)
+            break;
+        nIndex = nIndex + nStep;
     }
 }
 
 void NormalModeHandler::ResetButtonDownLocation()
 {
-    maButtonDownLocation = ::boost::optional<Point>();
+    maButtonDownLocation = ::std::optional<Point>();
 }
 
 //===== MultiSelectionModeHandler =============================================
@@ -1232,12 +1188,8 @@ void NormalModeHandler::ResetButtonDownLocation()
 MultiSelectionModeHandler::MultiSelectionModeHandler (
     SlideSorter& rSlideSorter,
     SelectionFunction& rSelectionFunction,
-#ifndef MACOSX
-    const Point& rMouseModelPosition)
-#else
     const Point& rMouseModelPosition,
     const sal_uInt32 nEventCode)
-#endif
     : ModeHandler(rSlideSorter, rSelectionFunction, false),
       meSelectionMode(SM_Normal),
       maSecondCorner(rMouseModelPosition),
@@ -1246,14 +1198,8 @@ MultiSelectionModeHandler::MultiSelectionModeHandler (
       mnAnchorIndex(-1),
       mnSecondIndex(-1)
 {
-#ifndef MACOSX
-}
 
-void MultiSelectionModeHandler::Initialize(const sal_uInt32 nEventCode)
-{
-#endif
-    const Pointer aSelectionPointer (PointerStyle::Text);
-    mrSlideSorter.GetContentWindow()->SetPointer(aSelectionPointer);
+    mrSlideSorter.GetContentWindow()->SetPointer(PointerStyle::Text);
     SetSelectionModeFromModifier(nEventCode);
 }
 
@@ -1440,19 +1386,19 @@ void MultiSelectionModeHandler::UpdateSelection()
             maSecondCorner,
             false,
             false));
-    if (nIndexUnderMouse>=0 && nIndexUnderMouse<nPageCount)
+    if (nIndexUnderMouse < 0 || nIndexUnderMouse >= nPageCount)
+        return;
+
+    if (mnAnchorIndex < 0)
+        mnAnchorIndex = nIndexUnderMouse;
+    mnSecondIndex = nIndexUnderMouse;
+
+    Range aRange (mnAnchorIndex, mnSecondIndex);
+    aRange.Justify();
+
+    for (sal_Int32 nIndex=0; nIndex<nPageCount; ++nIndex)
     {
-        if (mnAnchorIndex < 0)
-            mnAnchorIndex = nIndexUnderMouse;
-        mnSecondIndex = nIndexUnderMouse;
-
-        Range aRange (mnAnchorIndex, mnSecondIndex);
-        aRange.Justify();
-
-        for (sal_Int32 nIndex=0; nIndex<nPageCount; ++nIndex)
-        {
-            UpdateSelectionState(rModel.GetPageDescriptor(nIndex), aRange.IsInside(nIndex));
-        }
+        UpdateSelectionState(rModel.GetPageDescriptor(nIndex), aRange.IsInside(nIndex));
     }
 }
 
@@ -1460,21 +1406,11 @@ void MultiSelectionModeHandler::UpdateSelection()
 
 DragAndDropModeHandler::DragAndDropModeHandler (
     SlideSorter& rSlideSorter,
-#ifndef MACOSX
-    SelectionFunction& rSelectionFunction)
-#else
     SelectionFunction& rSelectionFunction,
     const Point& rMousePosition,
     vcl::Window* pWindow)
-#endif
     : ModeHandler(rSlideSorter, rSelectionFunction, false)
 {
-#ifndef MACOSX
-}
-
-void DragAndDropModeHandler::Initialize(const Point& rMousePosition, vcl::Window* pWindow)
-{
-#endif
     SdTransferable* pDragTransferable = SD_MOD()->pTransferDrag;
     if (pDragTransferable==nullptr && mrSlideSorter.GetViewShell() != nullptr)
     {
@@ -1496,7 +1432,7 @@ DragAndDropModeHandler::~DragAndDropModeHandler()
     if (mpDragAndDropContext)
     {
         // Disconnect the substitution handler from this selection function.
-        mpDragAndDropContext->SetTargetSlideSorter(Point(0,0));
+        mpDragAndDropContext->SetTargetSlideSorter();
         mpDragAndDropContext.reset();
     }
     mrSlideSorter.GetController().GetInsertionIndicatorHandler()->End(Animator::AM_Animated);
@@ -1548,6 +1484,6 @@ bool DragAndDropModeHandler::ProcessDragEvent (SelectionFunction::EventDescripto
     return true;
 }
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

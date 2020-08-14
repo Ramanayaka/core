@@ -19,13 +19,7 @@
 
 #include "quickstarter.hxx"
 
-#ifdef _MSC_VER
-#pragma warning(push, 1) /* disable warnings within system headers */
-#endif
 #include <psapi.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
 #include <malloc.h>
 
@@ -92,24 +86,21 @@ std::wstring GetQuickstarterLinkNameW(MSIHANDLE handle)
     return quickstarterlinkname;
 }
 
-inline bool IsValidHandle( HANDLE handle )
+static bool IsValidHandle( HANDLE handle )
 {
     return nullptr != handle && INVALID_HANDLE_VALUE != handle;
 }
 
 static DWORD WINAPI GetModuleFileNameExW_( HANDLE hProcess, HMODULE hModule, PWSTR lpFileName, DWORD nSize )
 {
-    typedef DWORD (WINAPI *FN_PROC)( HANDLE hProcess, HMODULE hModule, LPWSTR lpFileName, DWORD nSize );
-
-    static FN_PROC  lpProc = nullptr;
-
-    if ( !lpProc )
-    {
+    static auto lpProc = []() {
         HMODULE hLibrary = LoadLibraryW(L"PSAPI.DLL");
-
-        if ( hLibrary )
-            lpProc = reinterpret_cast< FN_PROC >(GetProcAddress( hLibrary, "GetModuleFileNameExW" ));
-    }
+        decltype(GetModuleFileNameExW)* pRet = nullptr;
+        if (hLibrary)
+            pRet = reinterpret_cast<decltype(GetModuleFileNameExW)*>(
+                GetProcAddress(hLibrary, "GetModuleFileNameExW"));
+        return pRet;
+    }();
 
     if ( lpProc )
         return lpProc( hProcess, hModule, lpFileName, nSize );

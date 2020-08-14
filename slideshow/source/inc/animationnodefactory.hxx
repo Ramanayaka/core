@@ -21,27 +21,18 @@
 #define INCLUDED_SLIDESHOW_SOURCE_INC_ANIMATIONNODEFACTORY_HXX
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/animations/XAnimationNode.hpp>
 
-#include "subsettableshapemanager.hxx"
+#include <basegfx/vector/b2dvector.hxx>
+
 #include "animationnode.hxx"
 #include "slideshowcontext.hxx"
-#include "eventqueue.hxx"
-#include "activitiesqueue.hxx"
-#include "usereventqueue.hxx"
-
-#include <vector>
 
 
-namespace slideshow
+namespace slideshow::internal::AnimationNodeFactory
 {
-    namespace internal
-    {
-        /* Definition of AnimationNodeFactory class */
+            /* Definition of AnimationNodeFactory class */
 
-        namespace AnimationNodeFactory
-        {
             /** Create an AnimationNode for the given XAnimationNode
              */
             AnimationNodeSharedPtr createAnimationNode( const css::uno::Reference< css::animations::XAnimationNode >& xNode,
@@ -50,13 +41,12 @@ namespace slideshow
 
 
 #if defined(DBG_UTIL)
-            void showTree( AnimationNodeSharedPtr& pRootNode );
+            void showTree( AnimationNodeSharedPtr const & pRootNode );
 # define SHOW_NODE_TREE(a) AnimationNodeFactory::showTree(a)
 #else
 # define SHOW_NODE_TREE(a)
 #endif
-        }
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_ANIMATIONNODEFACTORY_HXX

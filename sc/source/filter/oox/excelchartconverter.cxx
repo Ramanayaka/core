@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "excelchartconverter.hxx"
+#include <excelchartconverter.hxx>
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/chart2/data/XDataProvider.hpp>
 #include <com/sun/star/chart2/data/XDataReceiver.hpp>
 #include <com/sun/star/chart2/data/XSheetDataProvider.hpp>
@@ -28,10 +29,9 @@
 #include <oox/core/filterbase.hxx>
 #include <oox/drawingml/chart/datasourcemodel.hxx>
 #include <oox/helper/containerhelper.hxx>
-#include "formulaparser.hxx"
+#include <formulaparser.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::chart2;
 using namespace ::com::sun::star::chart2::data;
@@ -97,8 +97,11 @@ Reference< XDataSequence > ExcelChartConverter::createDataSequence(
         Matrix< Any > aMatrix( rDataSeq.maData.size(), 1 );
         Matrix< Any >::iterator aMIt = aMatrix.begin();
         // TODO: how to handle missing values in the map?
-        for( DataSequenceModel::AnyMap::const_iterator aDIt = rDataSeq.maData.begin(), aDEnd = rDataSeq.maData.end(); aDIt != aDEnd; ++aDIt, ++aMIt )
-            *aMIt = aDIt->second;
+        for( const auto& rEntry : rDataSeq.maData )
+        {
+            *aMIt = rEntry.second;
+            ++aMIt;
+        }
         OUString aRangeRep = FormulaProcessorBase::generateApiArray( aMatrix );
 
         if (!aRangeRep.isEmpty())
@@ -117,7 +120,6 @@ Reference< XDataSequence > ExcelChartConverter::createDataSequence(
     return xDataSeq;
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

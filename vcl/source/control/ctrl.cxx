@@ -17,15 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <comphelper/processfactory.hxx>
-
 #include <vcl/svapp.hxx>
 #include <vcl/event.hxx>
 #include <vcl/ctrl.hxx>
 #include <vcl/decoview.hxx>
-#include <vcl/salnativewidgets.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/uitest/logger.hxx>
+#include <sal/log.hxx>
 
 #include <textlayout.hxx>
 #include <svdata.hxx>
@@ -37,7 +35,7 @@ void Control::ImplInitControlData()
 {
     mbHasControlFocus       = false;
     mbShowAccelerator       = false;
-    mpControlData   = new ImplControlData;
+    mpControlData.reset(new ImplControlData);
 }
 
 Control::Control( WindowType nType ) :
@@ -60,8 +58,7 @@ Control::~Control()
 
 void Control::dispose()
 {
-    delete mpControlData;
-    mpControlData = nullptr;
+    mpControlData.reset();
     Window::dispose();
 }
 
@@ -107,7 +104,7 @@ ControlLayoutData::ControlLayoutData() : m_pParent( nullptr )
 
 tools::Rectangle ControlLayoutData::GetCharacterBounds( long nIndex ) const
 {
-    return (nIndex >= 0 && nIndex < (long) m_aUnicodeBoundRects.size()) ? m_aUnicodeBoundRects[ nIndex ] : tools::Rectangle();
+    return (nIndex >= 0 && nIndex < static_cast<long>(m_aUnicodeBoundRects.size())) ? m_aUnicodeBoundRects[ nIndex ] : tools::Rectangle();
 }
 
 tools::Rectangle Control::GetCharacterBounds( long nIndex ) const
@@ -236,7 +233,7 @@ bool Control::EventNotify( NotifyEvent& rNEvt )
             {
                 mbHasControlFocus = true;
                 CompatStateChanged( StateChangedType::ControlFocus );
-                if ( ImplCallEventListenersAndHandler( VclEventId::ControlGetFocus, [this] () { maGetFocusHdl.Call(*this); } ) )
+                if ( ImplCallEventListenersAndHandler( VclEventId::ControlGetFocus, {} ) )
                     // been destroyed within the handler
                     return true;
             }
@@ -288,7 +285,7 @@ void Control::AppendLayoutData( const Control& rSubControl ) const
     for( n = 1; n < nLines; n++ )
         mpControlData->mpLayoutData->m_aLineIndices.push_back( rSubControl.mpControlData->mpLayoutData->m_aLineIndices[n] + nCurrentIndex );
     int nRectangles = rSubControl.mpControlData->mpLayoutData->m_aUnicodeBoundRects.size();
-        tools::Rectangle aRel = const_cast<Control&>(rSubControl).GetWindowExtentsRelative( const_cast<Control*>(this) );
+    tools::Rectangle aRel = const_cast<Control&>(rSubControl).GetWindowExtentsRelative( const_cast<Control*>(this) );
     for( n = 0; n < nRectangles; n++ )
     {
         tools::Rectangle aRect = rSubControl.mpControlData->mpLayoutData->m_aUnicodeBoundRects[n];
@@ -297,12 +294,19 @@ void Control::AppendLayoutData( const Control& rSubControl ) const
     }
 }
 
-bool Control::ImplCallEventListenersAndHandler( VclEventId nEvent, std::function<void()> const & callHandler )
+void Control::CallEventListeners( VclEventId nEvent, void* pData)
 {
     VclPtr<Control> xThis(this);
     UITestLogger::getInstance().logAction(xThis, nEvent);
 
-    CallEventListeners( nEvent );
+    vcl::Window::CallEventListeners(nEvent, pData);
+}
+
+bool Control::ImplCallEventListenersAndHandler( VclEventId nEvent, std::function<void()> const & callHandler )
+{
+    VclPtr<Control> xThis(this);
+
+    Control::CallEventListeners( nEvent );
 
     if ( !xThis->IsDisposed() )
     {
@@ -325,7 +329,8 @@ void Control::SetLayoutDataParent( const Control* pParent ) const
 
 void Control::ImplClearLayoutData() const
 {
-    mpControlData->mpLayoutData.reset();
+    if (mpControlData)
+        mpControlData->mpLayoutData.reset();
 }
 
 void Control::ImplDrawFrame( OutputDevice* pDev, tools::Rectangle& rRect )
@@ -383,6 +388,20 @@ void Control::SetReferenceDevice( OutputDevice* _referenceDevice )
 
 OutputDevice* Control::GetReferenceDevice() const
 {
+    // tdf#118377 It can happen that mpReferenceDevice is already disposed and
+    // stays disposed (see task, even when Dialog is closed). I have no idea if
+    // this may be very bad - someone who knows more about lifetime of OutputDevice's
+    // will have to decide.
+    // To secure this, I changed all accesses to mpControlData->mpReferenceDevice to
+    // use Control::GetReferenceDevice() - only use mpControlData->mpReferenceDevice
+    // inside Control::SetReferenceDevice and Control::GetReferenceDevice().
+    // Control::GetReferenceDevice() will now reset mpReferenceDevice if it is already
+    // disposed. This way all usages will do a kind of 'test-and-get' call.
+    if(nullptr != mpControlData->mpReferenceDevice && mpControlData->mpReferenceDevice->isDisposed())
+    {
+        const_cast<Control*>(this)->SetReferenceDevice(nullptr);
+    }
+
     return mpControlData->mpReferenceDevice;
 }
 
@@ -400,8 +419,7 @@ void Control::ApplySettings(vcl::RenderContext& rRenderContext)
 {
     const StyleSettings& rStyleSettings = rRenderContext.GetSettings().GetStyleSettings();
 
-    vcl::Font rFont(GetCanonicalFont(rStyleSettings));
-    ApplyControlFont(rRenderContext, rFont);
+    ApplyControlFont(rRenderContext, GetCanonicalFont(rStyleSettings));
 
     ApplyControlForeground(rRenderContext, GetCanonicalTextColor(rStyleSettings));
     rRenderContext.SetTextFillColor();
@@ -418,23 +436,22 @@ tools::Rectangle Control::DrawControlText( OutputDevice& _rTargetDevice, const t
     OUString rPStr = _rStr;
     DrawTextFlags nPStyle = _nStyle;
 
-    bool accel = ImplGetSVData()->maNWFData.mbEnableAccel;
     bool autoacc = ImplGetSVData()->maNWFData.mbAutoAccel;
 
-    if (!accel || (autoacc && !mbShowAccelerator))
+    if (autoacc && !mbShowAccelerator)
     {
         rPStr = GetNonMnemonicString( _rStr );
         nPStyle &= ~DrawTextFlags::HideMnemonic;
     }
 
-    if ( !mpControlData->mpReferenceDevice || ( mpControlData->mpReferenceDevice == &_rTargetDevice ) )
+    if( !GetReferenceDevice() || ( GetReferenceDevice() == &_rTargetDevice ) )
     {
         const tools::Rectangle aRet = _rTargetDevice.GetTextRect(rRect, rPStr, nPStyle);
         _rTargetDevice.DrawText(aRet, rPStr, nPStyle, _pVector, _pDisplayText);
         return aRet;
     }
 
-    ControlTextRenderer aRenderer( *this, _rTargetDevice, *mpControlData->mpReferenceDevice );
+    ControlTextRenderer aRenderer( *this, _rTargetDevice, *GetReferenceDevice() );
     return aRenderer.DrawText(rRect, rPStr, nPStyle, _pVector, _pDisplayText, i_pDeviceSize);
 }
 
@@ -444,16 +461,15 @@ tools::Rectangle Control::GetControlTextRect( OutputDevice& _rTargetDevice, cons
     OUString rPStr = _rStr;
     DrawTextFlags nPStyle = _nStyle;
 
-    bool accel = ImplGetSVData()->maNWFData.mbEnableAccel;
     bool autoacc = ImplGetSVData()->maNWFData.mbAutoAccel;
 
-    if (!accel || (autoacc && !mbShowAccelerator))
+    if (autoacc && !mbShowAccelerator)
     {
         rPStr = GetNonMnemonicString( _rStr );
         nPStyle &= ~DrawTextFlags::HideMnemonic;
     }
 
-    if ( !mpControlData->mpReferenceDevice || ( mpControlData->mpReferenceDevice == &_rTargetDevice ) )
+    if ( !GetReferenceDevice() || ( GetReferenceDevice() == &_rTargetDevice ) )
     {
         tools::Rectangle aRet = _rTargetDevice.GetTextRect( rRect, rPStr, nPStyle );
         if (o_pDeviceSize)
@@ -463,7 +479,7 @@ tools::Rectangle Control::GetControlTextRect( OutputDevice& _rTargetDevice, cons
         return aRet;
     }
 
-    ControlTextRenderer aRenderer( *this, _rTargetDevice, *mpControlData->mpReferenceDevice );
+    ControlTextRenderer aRenderer( *this, _rTargetDevice, *GetReferenceDevice() );
     return aRenderer.GetTextRect(rRect, rPStr, nPStyle, o_pDeviceSize);
 }
 

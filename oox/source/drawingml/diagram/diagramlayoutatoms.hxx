@@ -22,15 +22,12 @@
 
 #include <map>
 #include <memory>
-#include <array>
 
-#include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/xml/sax/XFastAttributeList.hpp>
 
-#include "oox/drawingml/shape.hxx"
 #include "diagram.hxx"
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 class DiagramLayout;
 typedef std::shared_ptr< DiagramLayout > DiagramLayoutPtr;
@@ -43,7 +40,7 @@ struct IteratorAttr
     // not sure this belong here, but wth
     void loadFromXAttr( const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttributes );
 
-    sal_Int32 mnAxis;
+    std::vector<sal_Int32> maAxis;
     sal_Int32 mnCnt;
     bool  mbHideLastTrans;
     sal_Int32 mnPtType;
@@ -62,74 +59,12 @@ struct ConditionAttr
     sal_Int32 mnArg;
     sal_Int32 mnOp;
     OUString msVal;
+    sal_Int32 mnVal;
 };
 
-struct LayoutAtomVisitor;
-class LayoutAtom;
-
-typedef std::shared_ptr< LayoutAtom > LayoutAtomPtr;
-
-/** abstract Atom for the layout */
-class LayoutAtom
+/// Constraints allow you to specify an ideal (or starting point) size for each shape.
+struct Constraint
 {
-public:
-    virtual ~LayoutAtom() { }
-
-    /** visitor acceptance
-     */
-    virtual void accept( LayoutAtomVisitor& ) = 0;
-
-    void setName( const OUString& sName )
-        { msName = sName; }
-    const OUString& getName() const
-        { return msName; }
-
-    virtual void addChild( const LayoutAtomPtr & pNode )
-        { mpChildNodes.push_back( pNode ); }
-    virtual const std::vector<LayoutAtomPtr>& getChildren() const
-        { return mpChildNodes; }
-
-    // dump for debug
-    void dump(int level = 0);
-protected:
-    std::vector< LayoutAtomPtr > mpChildNodes;
-    OUString                     msName;
-};
-
-class ConstraintAtom
-    : public LayoutAtom
-{
-public:
-    ConstraintAtom() :
-        mnFor(-1), msForName(), mnPointType(-1), mnType(-1), mnRefFor(-1), msRefForName(),
-        mnRefType(-1), mnRefPointType(-1), mfFactor(1.0), mfValue(0.0), mnOperator(0)
-    {}
-
-    virtual void accept( LayoutAtomVisitor& ) override;
-
-    void setFor( sal_Int32 nToken )
-        { mnFor = nToken; }
-    void setForName( const OUString & sName )
-        { msForName = sName; }
-    void setPointType( sal_Int32 nToken )
-        { mnPointType = nToken; }
-    void setType( sal_Int32 nToken )
-        { mnType = nToken; }
-    void setRefFor( sal_Int32 nToken )
-        { mnRefFor = nToken; }
-    void setRefForName( const OUString & sName )
-        { msRefForName = sName; }
-    void setRefType( sal_Int32 nToken )
-        { mnRefType = nToken; }
-    void setRefPointType( sal_Int32 nToken )
-        { mnRefPointType = nToken; }
-    void setFactor( const double& fVal )
-        { mfFactor = fVal; }
-    void setValue( const double& fVal )
-        { mfValue = fVal; }
-    void setOperator( sal_Int32 nToken )
-        { mnOperator = nToken; }
-private:
     sal_Int32 mnFor;
     OUString msForName;
     sal_Int32 mnPointType;
@@ -143,11 +78,99 @@ private:
     sal_Int32 mnOperator;
 };
 
+/// Rules allow you to specify what to do when constraints can't be fully satisfied.
+struct Rule
+{
+    OUString msForName;
+};
+
+typedef std::map<sal_Int32, sal_Int32> LayoutProperty;
+typedef std::map<OUString, LayoutProperty> LayoutPropertyMap;
+
+struct LayoutAtomVisitor;
+class LayoutAtom;
+class LayoutNode;
+
+typedef std::shared_ptr< LayoutAtom > LayoutAtomPtr;
+
+/** abstract Atom for the layout */
+class LayoutAtom
+{
+public:
+    LayoutAtom(LayoutNode& rLayoutNode) : mrLayoutNode(rLayoutNode) {}
+    virtual ~LayoutAtom() { }
+
+    LayoutNode& getLayoutNode()
+        { return mrLayoutNode; }
+
+    /** visitor acceptance
+     */
+    virtual void accept( LayoutAtomVisitor& ) = 0;
+
+    void setName( const OUString& sName )
+        { msName = sName; }
+    const OUString& getName() const
+        { return msName; }
+
+private:
+    void addChild( const LayoutAtomPtr & pNode )
+        { mpChildNodes.push_back( pNode ); }
+    void setParent(const LayoutAtomPtr& pParent) { mpParent = pParent; }
+
+public:
+    const std::vector<LayoutAtomPtr>& getChildren() const
+        { return mpChildNodes; }
+
+    LayoutAtomPtr getParent() const { return mpParent.lock(); }
+
+    static void connect(const LayoutAtomPtr& pParent, const LayoutAtomPtr& pChild)
+    {
+        pParent->addChild(pChild);
+        pChild->setParent(pParent);
+    }
+
+    // dump for debug
+    void dump(int level = 0);
+
+protected:
+    LayoutNode&            mrLayoutNode;
+    std::vector< LayoutAtomPtr > mpChildNodes;
+    std::weak_ptr<LayoutAtom> mpParent;
+    OUString                     msName;
+};
+
+class ConstraintAtom
+    : public LayoutAtom
+{
+public:
+    ConstraintAtom(LayoutNode& rLayoutNode) : LayoutAtom(rLayoutNode) {}
+    virtual void accept( LayoutAtomVisitor& ) override;
+    Constraint& getConstraint()
+        { return maConstraint; }
+    void parseConstraint(std::vector<Constraint>& rConstraints, bool bRequireForName) const;
+private:
+    Constraint maConstraint;
+};
+
+/// Represents one <dgm:rule> element.
+class RuleAtom
+    : public LayoutAtom
+{
+public:
+    RuleAtom(LayoutNode& rLayoutNode) : LayoutAtom(rLayoutNode) {}
+    virtual void accept( LayoutAtomVisitor& ) override;
+    Rule& getRule()
+        { return maRule; }
+    void parseRule(std::vector<Rule>& rRules) const;
+private:
+    Rule maRule;
+};
+
 class AlgAtom
     : public LayoutAtom
 {
 public:
-    AlgAtom() : mnType(0), maMap() {}
+    AlgAtom(LayoutNode& rLayoutNode) : LayoutAtom(rLayoutNode), mnType(0), maMap() {}
 
     typedef std::map<sal_Int32,sal_Int32> ParamMap;
 
@@ -157,11 +180,23 @@ public:
         { mnType = nToken; }
     void addParam( sal_Int32 nType, sal_Int32 nVal )
         { maMap[nType]=nVal; }
+    sal_Int32 getVerticalShapesCount(const ShapePtr& rShape);
     void layoutShape( const ShapePtr& rShape,
-                      const OUString& rName ) const;
+                      const std::vector<Constraint>& rConstraints,
+                      const std::vector<Rule>& rRules );
+
+    void setAspectRatio(double fAspectRatio) { mfAspectRatio = fAspectRatio; }
+
+    double getAspectRatio() const { return mfAspectRatio; }
+
 private:
     sal_Int32 mnType;
     ParamMap  maMap;
+    /// Aspect ratio is not integer, so not part of maMap.
+    double mfAspectRatio = 0;
+
+    /// Determines the connector shape type for conn algorithm
+    sal_Int32 getConnectorType();
 };
 
 typedef std::shared_ptr< AlgAtom > AlgAtomPtr;
@@ -170,14 +205,20 @@ class ForEachAtom
     : public LayoutAtom
 {
 public:
-    explicit ForEachAtom(const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttributes);
+    explicit ForEachAtom(LayoutNode& rLayoutNode, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttributes);
 
     IteratorAttr & iterator()
         { return maIter; }
+    void setRef(const OUString& rsRef)
+        { msRef = rsRef; }
+    const OUString& getRef() const
+        { return msRef; }
     virtual void accept( LayoutAtomVisitor& ) override;
+    LayoutAtomPtr getRefAtom();
 
 private:
     IteratorAttr maIter;
+    OUString msRef;
 };
 
 typedef std::shared_ptr< ForEachAtom > ForEachAtomPtr;
@@ -186,17 +227,17 @@ class ConditionAtom
     : public LayoutAtom
 {
 public:
-    explicit ConditionAtom(const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttributes);
+    explicit ConditionAtom(LayoutNode& rLayoutNode, bool isElse, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttributes);
     virtual void accept( LayoutAtomVisitor& ) override;
-    void readElseBranch()
-        { mbElse=true; }
-    virtual void addChild( const LayoutAtomPtr & pNode ) override;
-    virtual const std::vector<LayoutAtomPtr>& getChildren() const override;
+    bool getDecision(const dgm::Point* pPresPoint) const;
+
 private:
-    bool          mbElse;
+    static bool compareResult(sal_Int32 nOperator, sal_Int32 nFirst, sal_Int32 nSecond);
+    sal_Int32 getNodeCount(const dgm::Point* pPresPoint) const;
+
+    bool          mIsElse;
     IteratorAttr  maIter;
     ConditionAttr maCond;
-    std::vector< LayoutAtomPtr > mpElseChildNodes;
 };
 
 typedef std::shared_ptr< ConditionAtom > ConditionAtomPtr;
@@ -206,6 +247,9 @@ class ChooseAtom
     : public LayoutAtom
 {
 public:
+    ChooseAtom(LayoutNode& rLayoutNode)
+        : LayoutAtom(rLayoutNode)
+    {}
     virtual void accept( LayoutAtomVisitor& ) override;
 };
 
@@ -213,22 +257,11 @@ class LayoutNode
     : public LayoutAtom
 {
 public:
-    enum {
-        VAR_animLvl = 0,
-        VAR_animOne,
-        VAR_bulletEnabled,
-        VAR_chMax,
-        VAR_chPref,
-        VAR_dir,
-        VAR_hierBranch,
-        VAR_orgChart,
-        VAR_resizeHandles
-    };
-    // we know that the array is of fixed size
-    // the use of Any allow having empty values
-    typedef std::array<css::uno::Any, 9> VarMap;
+    typedef std::map<sal_Int32, OUString> VarMap;
 
-    LayoutNode() : mnChildOrder(0) {}
+    LayoutNode(const Diagram& rDgm) : LayoutAtom(*this), mrDgm(rDgm), mnChildOrder(0) {}
+    const Diagram& getDiagram() const
+        { return mrDgm; }
     virtual void accept( LayoutAtomVisitor& ) override;
     VarMap & variables()
         { return mVariables; }
@@ -238,37 +271,50 @@ public:
         { msStyleLabel = sLabel; }
     void setChildOrder( sal_Int32 nOrder )
         { mnChildOrder = nOrder; }
-    void setShape( const ShapePtr& pShape )
-        { mpShape = pShape; }
-    const ShapePtr& getShape() const
-        { return mpShape; }
+    sal_Int32 getChildOrder() const { return mnChildOrder; }
+    void setExistingShape( const ShapePtr& pShape )
+        { mpExistingShape = pShape; }
+    const ShapePtr& getExistingShape() const
+        { return mpExistingShape; }
+    const std::vector<ShapePtr> & getNodeShapes() const
+        { return mpNodeShapes; }
+    void addNodeShape(const ShapePtr& pShape)
+        { mpNodeShapes.push_back(pShape); }
 
     bool setupShape( const ShapePtr& rShape,
-                     const Diagram& rDgm,
-                     sal_uInt32 nIdx ) const;
+                     const dgm::Point* pPresNode,
+                     sal_Int32 nCurrIdx ) const;
+
+    const LayoutNode* getParentLayoutNode() const;
 
 private:
+    const Diagram&               mrDgm;
     VarMap                       mVariables;
     OUString                     msMoveWith;
     OUString                     msStyleLabel;
-    ShapePtr                     mpShape;
+    ShapePtr                     mpExistingShape;
+    std::vector<ShapePtr>        mpNodeShapes;
     sal_Int32                    mnChildOrder;
 };
 
 typedef std::shared_ptr< LayoutNode > LayoutNodePtr;
 
-struct LayoutAtomVisitor
+class ShapeAtom
+    : public LayoutAtom
 {
-    virtual ~LayoutAtomVisitor() {}
-    virtual void visit(ConstraintAtom& rAtom) = 0;
-    virtual void visit(AlgAtom& rAtom) = 0;
-    virtual void visit(ForEachAtom& rAtom) = 0;
-    virtual void visit(ConditionAtom& rAtom) = 0;
-    virtual void visit(ChooseAtom& rAtom) = 0;
-    virtual void visit(LayoutNode& rAtom) = 0;
+public:
+    ShapeAtom(LayoutNode& rLayoutNode, const ShapePtr& pShape) : LayoutAtom(rLayoutNode), mpShapeTemplate(pShape) {}
+    virtual void accept( LayoutAtomVisitor& ) override;
+    const ShapePtr& getShapeTemplate() const
+        { return mpShapeTemplate; }
+
+private:
+    ShapePtr mpShapeTemplate;
 };
 
-} }
+typedef std::shared_ptr< ShapeAtom > ShapeAtomPtr;
+
+}
 
 #endif
 

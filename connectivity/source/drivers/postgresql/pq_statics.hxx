@@ -42,7 +42,6 @@
 
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/sdbc/DataType.hpp>
 
 #include <cppuhelper/propshlp.hxx>
 
@@ -91,8 +90,7 @@ typedef std::vector< ColumnMetaData > ColumnMetaDataVector;
 typedef std::unordered_map
 <
    OUString,
-   sal_Int32,
-   OUStringHash
+   sal_Int32
 > BaseTypeMap;
 
 struct ImplementationStatics
@@ -130,11 +128,11 @@ struct ReflectionImplementations
     struct ImplementationStatics resultSet;
 };
 
-static const sal_Int32 TABLE_INDEX_CATALOG = 0;
-static const sal_Int32 TABLE_INDEX_SCHEMA = 1;
-static const sal_Int32 TABLE_INDEX_NAME = 2;
-static const sal_Int32 TABLE_INDEX_TYPE = 3;
-static const sal_Int32 TABLE_INDEX_REMARKS = 4;
+const sal_Int32 TABLE_INDEX_CATALOG = 0;
+const sal_Int32 TABLE_INDEX_SCHEMA = 1;
+const sal_Int32 TABLE_INDEX_NAME = 2;
+const sal_Int32 TABLE_INDEX_TYPE = 3;
+const sal_Int32 TABLE_INDEX_REMARKS = 4;
 
 struct Statics
 {

@@ -19,13 +19,9 @@
 
 #include <com/sun/star/lang/XComponent.hpp>
 
-#include "createunocustomshow.hxx"
-#include "sdiocmpt.hxx"
-#include "cusshow.hxx"
-#include "sdpage.hxx"
-#include "drawdoc.hxx"
-
-#include <tools/tenccvt.hxx>
+#include <createunocustomshow.hxx>
+#include <cusshow.hxx>
+#include <customshowlist.hxx>
 
 using namespace ::com::sun::star;
 
@@ -97,6 +93,11 @@ void SdCustomShow::ReplacePage( const SdPage* pOldPage, const SdPage* pNewPage )
 void SdCustomShow::SetName(const OUString& rName)
 {
     aName = rName;
+}
+
+void SdCustomShowList::erase(std::vector<std::unique_ptr<SdCustomShow>>::iterator it)
+{
+    mShows.erase(it);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

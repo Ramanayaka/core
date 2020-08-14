@@ -20,16 +20,14 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_XINAME_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_XINAME_HXX
 
-#include "xlname.hxx"
 #include "xiroot.hxx"
 #include "xistream.hxx"
 
-#include "rangenam.hxx"
+#include <rangenam.hxx>
 
 #include <memory>
 #include <vector>
 
-class ScRangeData;
 class ScTokenArray;
 
 /** Represents a defined name. It may be related to a single sheet or global. */
@@ -66,7 +64,6 @@ private:
     OUString            maXclName;      /// Original name read from the file.
     OUString            maScName;       /// Name inserted into the Calc document.
     const ScRangeData*  mpScData;       /// Pointer to Calc defined name (no ownership).
-    sal_Unicode         mcBuiltIn;      /// Excel built-in name index.
     SCTAB               mnScTab;        /// Calc sheet index of local names.
     ScRangeData::Type   meNameType;
     sal_uInt16          mnXclTab;

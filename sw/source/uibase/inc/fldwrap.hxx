@@ -19,15 +19,19 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_FLDWRAP_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_FLDWRAP_HXX
 
+#include <vcl/vclptr.hxx>
+
+#include <swabstdlg.hxx>
+
 #include "chldwrap.hxx"
 class AbstractSwFieldDlg;
 
 class SwFieldDlgWrapper : public SwChildWinWrapper
 {
-public:
     ScopedVclPtr<AbstractSwFieldDlg> pDlgInterface;
-    SwFieldDlgWrapper( vcl::Window* pParent, sal_uInt16 nId,
-                        SfxBindings* pBindings, SfxChildWinInfo* pInfo );
+public:
+    SwFieldDlgWrapper(vcl::Window* pParent, sal_uInt16 nId,
+                      SfxBindings* pBindings, SfxChildWinInfo* pInfo);
 
     SFX_DECL_CHILDWINDOW_WITHID(SwFieldDlgWrapper);
 
@@ -38,10 +42,10 @@ public:
 // field dialog only showing database page to support mail merge
 class SwFieldDataOnlyDlgWrapper : public SwChildWinWrapper
 {
-public:
     ScopedVclPtr<AbstractSwFieldDlg> pDlgInterface;
-    SwFieldDataOnlyDlgWrapper( vcl::Window* pParent, sal_uInt16 nId,
-                        SfxBindings* pBindings, SfxChildWinInfo* pInfo );
+public:
+    SwFieldDataOnlyDlgWrapper(vcl::Window* pParent, sal_uInt16 nId,
+                              SfxBindings* pBindings, SfxChildWinInfo* pInfo);
 
     SFX_DECL_CHILDWINDOW(SwFieldDataOnlyDlgWrapper);
 

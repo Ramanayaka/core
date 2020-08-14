@@ -10,6 +10,7 @@
 #include "ucalc.hxx"
 #include <editutil.hxx>
 #include <cellvalue.hxx>
+#include <editeng/editobj.hxx>
 #include <svl/languageoptions.hxx>
 
 void Test::testColumnFindEditCells()
@@ -26,7 +27,7 @@ void Test::testColumnFindEditCells()
     CPPUNIT_ASSERT_EQUAL_MESSAGE("There should be no edit cells.", SCROW(-1), nResRow);
 
     ScFieldEditEngine& rEE = m_pDoc->GetEditEngine();
-    rEE.SetText("Test");
+    rEE.SetTextCurrentDefaults("Test");
     m_pDoc->SetEditText(ScAddress(0,0,0), rEE.CreateTextObject());
     const EditTextObject* pObj = m_pDoc->GetEditText(ScAddress(0,0,0));
     CPPUNIT_ASSERT_MESSAGE("There should be an edit cell here.", pObj);
@@ -98,20 +99,19 @@ void Test::testSetFormula()
 {
     m_pDoc->InsertTab(0, "Test");
 
-    struct aInputs
+    static struct aInputs
     {
-        const char* aName;
         SCROW nRow;
         SCCOL nCol;
         const char* aFormula1;      // Represents the formula that is input to SetFormula function.
         const char* aFormula2;      // Represents the formula that is actually stored in the cell.
-        formula::FormulaGrammar::Grammar eGram;
+        formula::FormulaGrammar::Grammar const eGram;
 
-    } aTest[] = {
-        { "Rock and Roll" ,5 , 4 , "=SUM($D$2:$F$3)"             ,"=SUM($D$2:$F$3)" , formula::FormulaGrammar::Grammar::GRAM_ENGLISH     },
-        { "Blues"         ,5 , 5 , "=A1-$C2+B$3-$F$4"            ,"=A1-$C2+B$3-$F$4", formula::FormulaGrammar::Grammar::GRAM_NATIVE      },
-        { "Acoustic"      ,6 , 6 , "=A1-$C2+B$3-$F$4"            ,"=A1-$C2+B$3-$F$4", formula::FormulaGrammar::Grammar::GRAM_NATIVE_XL_A1},
-        { "Nursery Rhymes",7 , 8 , "=[.A1]-[.$C2]+[.G$3]-[.$F$4]","=A1-$C2+G$3-$F$4", formula::FormulaGrammar::Grammar::GRAM_ODFF        }
+    } const aTest[] = {
+        { 5 , 4 , "=SUM($D$2:$F$3)"             ,"=SUM($D$2:$F$3)" , formula::FormulaGrammar::Grammar::GRAM_ENGLISH     },
+        { 5 , 5 , "=A1-$C2+B$3-$F$4"            ,"=A1-$C2+B$3-$F$4", formula::FormulaGrammar::Grammar::GRAM_NATIVE      },
+        { 6 , 6 , "=A1-$C2+B$3-$F$4"            ,"=A1-$C2+B$3-$F$4", formula::FormulaGrammar::Grammar::GRAM_NATIVE_XL_A1},
+        { 7 , 8 , "=[.A1]-[.$C2]+[.G$3]-[.$F$4]","=A1-$C2+G$3-$F$4", formula::FormulaGrammar::Grammar::GRAM_ODFF        }
     };
 
     for(size_t i = 0; i < SAL_N_ELEMENTS(aTest); ++i)
@@ -140,7 +140,6 @@ void Test::testMultipleDataCellsInRange()
     CPPUNIT_ASSERT_EQUAL(sc::MultiDataCellState::HasOneCell, aState.meState);
     CPPUNIT_ASSERT_EQUAL(SCCOL(1), aState.mnCol1);
     CPPUNIT_ASSERT_EQUAL(SCROW(2), aState.mnRow1);
-    CPPUNIT_ASSERT_EQUAL(SCTAB(0), aState.mnTab1);
 
     // Set another numeric value to B4.
     m_pDoc->SetValue(ScAddress(1,3,0), 2.0);
@@ -149,7 +148,6 @@ void Test::testMultipleDataCellsInRange()
     CPPUNIT_ASSERT_EQUAL(sc::MultiDataCellState::HasMultipleCells, aState.meState);
     CPPUNIT_ASSERT_EQUAL(SCCOL(1), aState.mnCol1);
     CPPUNIT_ASSERT_EQUAL(SCROW(2), aState.mnRow1);
-    CPPUNIT_ASSERT_EQUAL(SCTAB(0), aState.mnTab1);
 
     // Set the query range to B4:B5.  Now it should only report one cell, with
     // B4 being the first non-empty cell.
@@ -159,7 +157,6 @@ void Test::testMultipleDataCellsInRange()
     CPPUNIT_ASSERT_EQUAL(sc::MultiDataCellState::HasOneCell, aState.meState);
     CPPUNIT_ASSERT_EQUAL(SCCOL(1), aState.mnCol1);
     CPPUNIT_ASSERT_EQUAL(SCROW(3), aState.mnRow1);
-    CPPUNIT_ASSERT_EQUAL(SCTAB(0), aState.mnTab1);
 
     // Set the query range to A1:C3.  The first non-empty cell should be B3.
     aRange = ScRange(0,0,0,2,2,0);
@@ -167,7 +164,6 @@ void Test::testMultipleDataCellsInRange()
     CPPUNIT_ASSERT_EQUAL(sc::MultiDataCellState::HasOneCell, aState.meState);
     CPPUNIT_ASSERT_EQUAL(SCCOL(1), aState.mnCol1);
     CPPUNIT_ASSERT_EQUAL(SCROW(2), aState.mnRow1);
-    CPPUNIT_ASSERT_EQUAL(SCTAB(0), aState.mnTab1);
 
     // Set string cells to D4 and F5, and query D3:F5.  D4 should be the first
     // non-empty cell.
@@ -178,7 +174,6 @@ void Test::testMultipleDataCellsInRange()
     CPPUNIT_ASSERT_EQUAL(sc::MultiDataCellState::HasMultipleCells, aState.meState);
     CPPUNIT_ASSERT_EQUAL(SCCOL(3), aState.mnCol1);
     CPPUNIT_ASSERT_EQUAL(SCROW(3), aState.mnRow1);
-    CPPUNIT_ASSERT_EQUAL(SCTAB(0), aState.mnTab1);
 
     // TODO : add more test cases as needed.
 

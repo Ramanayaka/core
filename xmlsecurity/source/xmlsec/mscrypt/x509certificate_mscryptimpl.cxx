@@ -20,10 +20,12 @@
 #include <string.h>
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 #include <comphelper/servicehelper.hxx>
 #include <comphelper/windowserrorstring.hxx>
+#include <cppuhelper/supportsservice.hxx>
 #include "x509certificate_mscryptimpl.hxx"
-#include "certificateextension_xmlsecimpl.hxx"
+#include <certificateextension_xmlsecimpl.hxx>
 #include "sanextension_mscryptimpl.hxx"
 
 #include "oid.hxx"
@@ -31,16 +33,13 @@
 #include <rtl/locale.h>
 #include <osl/nlsupport.h>
 #include <osl/process.h>
+#include <o3tl/char16_t2wchar_t.hxx>
 
 #include <memory>
 #include <utility>
 #include <vector>
 #include <tools/time.hxx>
-
-// Needed only for Windows XP.
-#ifndef CERT_SHA256_HASH_PROP_ID
-#define CERT_SHA256_HASH_PROP_ID 107
-#endif
+#include <svl/sigstruct.hxx>
 
 using namespace com::sun::star;
 using namespace ::com::sun::star::uno ;
@@ -56,7 +55,7 @@ using ::com::sun::star::util::DateTime ;
     "S" or "CN" (without ""). Do not use spaces at the beginning of the type name.
     If the type name is not found then pair.first and pair.second are -1.
 */
-std::pair< sal_Int32, sal_Int32 >
+static std::pair< sal_Int32, sal_Int32 >
 findTypeInDN(const OUString& rRawString, const OUString& sTypeName)
 {
     std::pair< sal_Int32, sal_Int32 > retVal;
@@ -159,7 +158,7 @@ findTypeInDN(const OUString& rRawString, const OUString& sTypeName)
   strings for type names. Instead it uses OIDs.
  */
 
-OUString replaceTagSWithTagST(OUString const & oldDN)
+static OUString replaceTagSWithTagST(OUString const & oldDN)
 {
     std::pair<sal_Int32, sal_Int32 > pairIndex = findTypeInDN(oldDN, "S");
 
@@ -185,7 +184,7 @@ X509Certificate_MSCryptImpl::~X509Certificate_MSCryptImpl() {
 //Methods from XCertificate
 sal_Int16 SAL_CALL X509Certificate_MSCryptImpl::getVersion() {
     if( m_pCertContext != nullptr && m_pCertContext->pCertInfo != nullptr ) {
-        return ( char )m_pCertContext->pCertInfo->dwVersion ;
+        return static_cast<char>(m_pCertContext->pCertInfo->dwVersion) ;
     } else {
         return -1 ;
     }
@@ -205,9 +204,7 @@ css::uno::Sequence< sal_Int8 > SAL_CALL X509Certificate_MSCryptImpl::getSerialNu
 
 OUString SAL_CALL X509Certificate_MSCryptImpl::getIssuerName() {
     if( m_pCertContext != nullptr && m_pCertContext->pCertInfo != nullptr ) {
-        DWORD cbIssuer ;
-
-        cbIssuer = CertNameToStr(
+        DWORD cchIssuer = CertNameToStrW(
             X509_ASN_ENCODING | PKCS_7_ASN_ENCODING ,
             &( m_pCertContext->pCertInfo->Issuer ),
             CERT_X500_NAME_STR | CERT_NAME_STR_REVERSE_FLAG ,
@@ -215,28 +212,22 @@ OUString SAL_CALL X509Certificate_MSCryptImpl::getIssuerName() {
         ) ;
 
         // Here the cbIssuer count the last 0x00 , take care.
-        if( cbIssuer != 0 ) {
-            auto issuer = std::unique_ptr<char[]>(new char[ cbIssuer ]);
+        if( cchIssuer != 0 ) {
+            auto issuer = std::make_unique<wchar_t[]>(cchIssuer);
 
-            cbIssuer = CertNameToStr(
+            cchIssuer = CertNameToStrW(
                 X509_ASN_ENCODING | PKCS_7_ASN_ENCODING ,
                 &( m_pCertContext->pCertInfo->Issuer ),
                 CERT_X500_NAME_STR | CERT_NAME_STR_REVERSE_FLAG ,
-                issuer.get(), cbIssuer
+                issuer.get(), cchIssuer
             ) ;
 
-            if( cbIssuer <= 0 ) {
+            if( cchIssuer <= 0 ) {
                 throw RuntimeException() ;
             }
 
-            // for correct encoding
-            sal_uInt16 encoding ;
-            rtl_Locale *pLocale = nullptr ;
-            osl_getProcessLocale( &pLocale ) ;
-            encoding = osl_getTextEncodingFromLocale( pLocale ) ;
-
-            if(issuer.get()[cbIssuer-1] == 0) cbIssuer--; //delimit the last 0x00;
-            OUString xIssuer(issuer.get() , cbIssuer ,encoding ) ;
+            if(issuer.get()[cchIssuer -1] == 0) cchIssuer--; //delimit the last 0x00;
+            OUString xIssuer(o3tl::toU(issuer.get()), cchIssuer) ;
 
             return replaceTagSWithTagST(xIssuer);
         } else {
@@ -251,32 +242,29 @@ OUString SAL_CALL X509Certificate_MSCryptImpl::getSubjectName()
 {
     if( m_pCertContext != nullptr && m_pCertContext->pCertInfo != nullptr )
     {
-        DWORD cbSubject ;
-
-        cbSubject = CertNameToStrW(
+        DWORD cchSubject = CertNameToStrW(
             X509_ASN_ENCODING | PKCS_7_ASN_ENCODING ,
             &( m_pCertContext->pCertInfo->Subject ),
             CERT_X500_NAME_STR | CERT_NAME_STR_REVERSE_FLAG ,
             nullptr, 0
         ) ;
 
-        if( cbSubject != 0 )
+        if( cchSubject != 0 )
         {
-            auto subject = std::unique_ptr<wchar_t[]>(new wchar_t[ cbSubject ]);
+            auto subject = std::make_unique<wchar_t[]>(cchSubject);
 
-            cbSubject = CertNameToStrW(
+            cchSubject = CertNameToStrW(
                 X509_ASN_ENCODING | PKCS_7_ASN_ENCODING ,
                 &( m_pCertContext->pCertInfo->Subject ),
                 CERT_X500_NAME_STR | CERT_NAME_STR_REVERSE_FLAG ,
-                subject.get(), cbSubject
+                subject.get(), cchSubject
             ) ;
 
-            if( cbSubject <= 0 ) {
+            if( cchSubject <= 0 ) {
                 throw RuntimeException() ;
             }
 
-            OUString xSubject(
-                reinterpret_cast<const sal_Unicode*>(subject.get()));
+            OUString xSubject(o3tl::toU(subject.get()));
 
             return replaceTagSWithTagST(xSubject);
         } else
@@ -381,8 +369,6 @@ css::uno::Sequence< css::uno::Reference< css::security::XCertificateExtension > 
                 xExtn = reinterpret_cast<CertificateExtension_XmlSecImpl*>(new SanExtensionImpl());
             else
                 xExtn = new CertificateExtension_XmlSecImpl;
-            if( xExtn == nullptr )
-                throw RuntimeException() ;
 
             xExtn->setCertExtn( pExtn->Value.pbData, pExtn->Value.cbData, reinterpret_cast<unsigned char*>(pExtn->pszObjId), strlen( pExtn->pszObjId ), pExtn->fCritical ) ;
 
@@ -406,9 +392,6 @@ css::uno::Reference< css::security::XCertificateExtension > SAL_CALL X509Certifi
             //TODO: Compare the oid
             if( false ) {
                 xExtn = new CertificateExtension_XmlSecImpl;
-                if( xExtn == nullptr )
-                    throw RuntimeException() ;
-
                 xExtn->setCertExtn( pExtn->Value.pbData, pExtn->Value.cbData, reinterpret_cast<unsigned char*>(pExtn->pszObjId), strlen( pExtn->pszObjId ), pExtn->fCritical ) ;
             }
         }
@@ -465,34 +448,9 @@ void X509Certificate_MSCryptImpl::setRawCert( Sequence< sal_Int8 > const & rawCe
 }
 
 /* XUnoTunnel */
-sal_Int64 SAL_CALL X509Certificate_MSCryptImpl::getSomething( const Sequence< sal_Int8 >& aIdentifier ) {
-    if( aIdentifier.getLength() == 16 && 0 == memcmp( getUnoTunnelId().getConstArray(), aIdentifier.getConstArray(), 16 ) ) {
-        return reinterpret_cast<sal_Int64>(this);
-    }
-    return 0 ;
-}
+UNO3_GETIMPLEMENTATION_IMPL(X509Certificate_MSCryptImpl);
 
-/* XUnoTunnel extension */
-
-namespace
-{
-    class theX509Certificate_MSCryptImplUnoTunnelId  : public rtl::Static< UnoTunnelIdInit, theX509Certificate_MSCryptImplUnoTunnelId > {};
-}
-
-const Sequence< sal_Int8>& X509Certificate_MSCryptImpl::getUnoTunnelId() {
-    return theX509Certificate_MSCryptImplUnoTunnelId::get().getSeq();
-}
-
-/* XUnoTunnel extension */
-X509Certificate_MSCryptImpl* X509Certificate_MSCryptImpl::getImplementation( const Reference< XInterface >& rObj ) {
-    Reference< XUnoTunnel > xUT( rObj , UNO_QUERY ) ;
-    if( xUT.is() ) {
-        return reinterpret_cast<X509Certificate_MSCryptImpl*>(xUT->getSomething( getUnoTunnelId() ));
-    } else
-        return nullptr ;
-}
-
-OUString findOIDDescription(char *oid)
+static OUString findOIDDescription(char const *oid)
 {
     OUString ouOID = OUString::createFromAscii( oid );
     for (int i=0; i<nOID; i++)
@@ -507,7 +465,7 @@ OUString findOIDDescription(char *oid)
     return OUString() ;
 }
 
-css::uno::Sequence< sal_Int8 > getThumbprint(const CERT_CONTEXT* pCertContext, DWORD dwPropId)
+static css::uno::Sequence< sal_Int8 > getThumbprint(const CERT_CONTEXT* pCertContext, DWORD dwPropId)
 {
     if( pCertContext != nullptr )
     {
@@ -584,6 +542,21 @@ uno::Sequence<sal_Int8> X509Certificate_MSCryptImpl::getSHA256Thumbprint()
     return getThumbprint(m_pCertContext, CERT_SHA256_HASH_PROP_ID);
 }
 
+svl::crypto::SignatureMethodAlgorithm X509Certificate_MSCryptImpl::getSignatureMethodAlgorithm()
+{
+    svl::crypto::SignatureMethodAlgorithm nRet = svl::crypto::SignatureMethodAlgorithm::RSA;
+
+    if (!m_pCertContext || !m_pCertContext->pCertInfo)
+        return nRet;
+
+    CRYPT_ALGORITHM_IDENTIFIER algorithm = m_pCertContext->pCertInfo->SubjectPublicKeyInfo.Algorithm;
+    OString aObjId(algorithm.pszObjId);
+    if (aObjId == szOID_ECC_PUBLIC_KEY)
+        nRet = svl::crypto::SignatureMethodAlgorithm::ECDSA;
+
+    return nRet;
+}
+
 css::uno::Sequence< sal_Int8 > SAL_CALL X509Certificate_MSCryptImpl::getSHA1Thumbprint()
 {
     return getThumbprint(m_pCertContext, CERT_SHA1_HASH_PROP_ID);
@@ -656,6 +629,24 @@ sal_Int32 SAL_CALL X509Certificate_MSCryptImpl::getCertificateUsage(  )
     }
 
     return usage;
+}
+
+/* XServiceInfo */
+OUString SAL_CALL X509Certificate_MSCryptImpl::getImplementationName()
+{
+    return "com.sun.star.xml.security.gpg.XCertificate_MsCryptImpl";
+}
+
+/* XServiceInfo */
+sal_Bool SAL_CALL X509Certificate_MSCryptImpl::supportsService(const OUString& serviceName)
+{
+    return cppu::supportsService(this, serviceName);
+}
+
+/* XServiceInfo */
+Sequence<OUString> SAL_CALL X509Certificate_MSCryptImpl::getSupportedServiceNames()
+{
+    return { OUString() };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

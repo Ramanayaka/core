@@ -27,6 +27,24 @@
 
 #include <rtl/ustring.hxx>
 
+#include <cppunit/extensions/HelperMacros.h>
+
+static OUString getTempDirectoryURL_()
+{
+    OUString aDir;
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("couldn't get system temp URL",
+        osl::FileBase::E_None, osl::FileBase::getTempDirURL(aDir));
+    return aDir;
+}
+
+static OUString getTempDirectorySys_()
+{
+    OUString aDir;
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("couldn't get system temp directory",
+        osl::FileBase::E_None, osl::FileBase::getSystemPathFromFileURL(getTempDirectoryURL_(), aDir));
+    return aDir;
+}
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -38,9 +56,9 @@ extern "C"
 // so, a common test data repository will be better since it can be
 // shared among all test code
 
-const sal_Char pBuffer_Char[]   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-const sal_Char pBuffer_Number[] = "1234567890";
-const sal_Char pBuffer_Blank[]  = "";
+const char pBuffer_Char[]   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const char pBuffer_Number[] = "1234567890";
+const char pBuffer_Blank[]  = "";
 
 // OS dependent/independent definitions/includes
 // we use FILE_PREFIX for URL prefix,
@@ -65,30 +83,27 @@ const sal_Char pBuffer_Blank[]  = "";
 #   include <errno.h>
 #   include <fcntl.h>
 #   include <sys/stat.h>
-#   if !defined(MACOSX) && !defined(IOS) && !defined(__OpenBSD__) && !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined (DRAGONFLY)
+#   if !defined(MACOSX) && !defined(IOS) && !defined(__OpenBSD__) && !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined (DRAGONFLY) && !defined(HAIKU)
 #       include <sys/statfs.h>
 #   else
 #       include <sys/param.h>
-#       include <sys/mount.h>
+#       ifndef HAIKU
+#           include <sys/mount.h>
+#       endif
 #   endif
 #   if !defined(ANDROID)
 #        include <sys/statvfs.h>
 #   endif
 #   include <sys/types.h>
-#   define TEST_PLATFORM        ""
 #   define TEST_PLATFORM_ROOT   "/"
-#   define TEST_PLATFORM_TEMP   "tmp"
 #   define PATH_LIST_DELIMITER  ":"
 #   define PATH_SEPARATOR       "/"
 #endif
 
 #if defined(_WIN32)                      // Windows
-#       include <tchar.h>
 #       include <io.h>
 #   define PATH_MAX             MAX_PATH
-#   define TEST_PLATFORM        "c:/"
 #   define TEST_PLATFORM_ROOT   "c:/"
-#   define TEST_PLATFORM_TEMP   "temp"
 #   define PATH_LIST_DELIMITER  ";"
 #   define PATH_SEPARATOR       "/"
 #endif
@@ -98,49 +113,49 @@ const sal_Char pBuffer_Blank[]  = "";
 OUString aNullURL( "" );
 OUString aSlashURL( PATH_SEPARATOR );
 OUString aPreURL( FILE_PREFIX );
-OUString aRootURL( FILE_PREFIX TEST_PLATFORM );
+OUString aRootURL( FILE_PREFIX TEST_PLATFORM_ROOT );
 
-OUString aTempDirectoryURL( FILE_PREFIX TEST_PLATFORM TEST_PLATFORM_TEMP );
-OUString aTempDirectorySys( TEST_PLATFORM_ROOT TEST_PLATFORM_TEMP );
-OUString aUserDirectoryURL( FILE_PREFIX TEST_PLATFORM TEST_PLATFORM_TEMP "" );
-OUString aUserDirectorySys( TEST_PLATFORM_ROOT TEST_PLATFORM_TEMP "" );
+OUString aTempDirectorySys(getTempDirectorySys_());
+OUString aTempDirectoryURL(getTempDirectoryURL_());
+OUString aUserDirectorySys( aTempDirectorySys + "" );
+OUString aUserDirectoryURL( aTempDirectoryURL + "" );
 
 // common used URL:temp, canonical, root, relative, link,etc
 
-OUString aCanURL1( FILE_PREFIX TEST_PLATFORM TEST_PLATFORM_TEMP "/canonical.name" );
-rtl::OUString aCanURL2(
+OUString aCanURL1( aTempDirectoryURL +  "/canonical.name" );
+OUString aCanURL2(
     RTL_CONSTASCII_USTRINGPARAM("ca@#;+.,$///78no\0ni..name"));
 OUString aCanURL3( "ca@#;+.,$//tmp/678nonical//name" );
 OUString aCanURL4( "canonical.name" );
 OUString aTmpName1( "tmpdir" );
 OUString aTmpName2( "tmpname" );
-OUString aTmpName3( FILE_PREFIX TEST_PLATFORM TEST_PLATFORM_TEMP "/tmpdir" );
-OUString aTmpName4( FILE_PREFIX TEST_PLATFORM TEST_PLATFORM_TEMP "/tmpdir/tmpname" );
-OUString aTmpName5( FILE_PREFIX TEST_PLATFORM TEST_PLATFORM_TEMP "/tmpdir/../tmpdir/./tmpname" );
-OUString aTmpName6( FILE_PREFIX TEST_PLATFORM TEST_PLATFORM_TEMP "/tmpname" );
-OUString aTmpName7( FILE_PREFIX TEST_PLATFORM TEST_PLATFORM_TEMP "/noaccess" );
-OUString aTmpName8( FILE_PREFIX TEST_PLATFORM TEST_PLATFORM_TEMP "/tmpname/tmpdir" );
-OUString aTmpName9( FILE_PREFIX TEST_PLATFORM TEST_PLATFORM_TEMP "/tmpdir/../tmpdir/./" );
-OUString aTmpName10(RTL_CONSTASCII_USTRINGPARAM( FILE_PREFIX TEST_PLATFORM TEST_PLATFORM_TEMP "/\xE6\x9C\xAA\xE5\x91\xBD\xE5\x90\x8Dzhgb18030" ));
+OUString aTmpName3( aTempDirectoryURL + "/tmpdir" );
+OUString aTmpName4( aTempDirectoryURL + "/tmpdir/tmpname" );
+OUString aTmpName5( aTempDirectoryURL + "/tmpdir/../tmpdir/./tmpname" );
+OUString aTmpName6( aTempDirectoryURL + "/tmpname" );
+OUString aTmpName7( aTempDirectoryURL + "/noaccess" );
+OUString aTmpName8( aTempDirectoryURL + "/tmpname/tmpdir" );
+OUString aTmpName9( aTempDirectoryURL + "/tmpdir/../tmpdir/./" );
+OUString aTmpName10(aTempDirectoryURL + "/\xE6\x9C\xAA\xE5\x91\xBD\xE5\x90\x8Dzhgb18030");
 
 OUString aRelURL1( "relative/file1" );
 OUString aRelURL2( "relative/./file2" );
 OUString aRelURL3( "relative/../file3" );
 OUString aRelURL4( "././relative/../file4" );
-OUString aRelURL5( TEST_PLATFORM_TEMP "/./../" TEST_PLATFORM_TEMP );
-OUString aLnkURL1( FILE_PREFIX TEST_PLATFORM TEST_PLATFORM_TEMP "/link.file" );
+OUString aRelURL5( aTempDirectoryURL + "/./../"     );
+OUString aLnkURL1( aTempDirectoryURL + "/link.file" );
 OUString aHidURL1( ".hiddenfile" );
 
 // common used System Path:temp, root,etc
 
 OUString aRootSys( TEST_PLATFORM_ROOT );
-OUString aSysPath1( TEST_PLATFORM_ROOT TEST_PLATFORM_TEMP "/system.path" );
-OUString aSysPath2( TEST_PLATFORM_ROOT TEST_PLATFORM_TEMP "/system/path" );
-OUString aSysPath3( TEST_PLATFORM_ROOT TEST_PLATFORM_TEMP "/tmpdir" );
-OUString aSysPath4( TEST_PLATFORM_ROOT TEST_PLATFORM_TEMP "/tmpname" );
-OUString aSysPath5(RTL_CONSTASCII_USTRINGPARAM( TEST_PLATFORM_ROOT TEST_PLATFORM_TEMP "/\xE6\x9C\xAA\xE5\x91\xBD\xE5\x90\x8Dzhgb18030" ));
-OUString aSysPathLnk( TEST_PLATFORM_ROOT TEST_PLATFORM_TEMP "/link.file" );
-OUString aFifoSys( TEST_PLATFORM_ROOT TEST_PLATFORM_TEMP "/tmpdir/fifo" );
+OUString aSysPath1( aTempDirectorySys + "/system.path" );
+OUString aSysPath2( aTempDirectorySys + "/system/path" );
+OUString aSysPath3( aTempDirectorySys + "/tmpdir" );
+OUString aSysPath4( aTempDirectorySys + "/tmpname" );
+OUString aSysPath5( aTempDirectorySys + "/\xE6\x9C\xAA\xE5\x91\xBD\xE5\x90\x8Dzhgb18030" );
+OUString aSysPathLnk( aTempDirectorySys + "/link.file" );
+OUString aFifoSys( aTempDirectorySys + "/tmpdir/fifo" );
 
 // FileType URL, we pick some canonical file in corresponding system for test:
 // socket, link, etc.

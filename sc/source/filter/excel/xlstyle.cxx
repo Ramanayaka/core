@@ -17,38 +17,41 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "xlstyle.hxx"
+#include <xlstyle.hxx>
 #include <com/sun/star/awt/FontFamily.hpp>
 #include <com/sun/star/awt/FontSlant.hpp>
+#include <com/sun/star/awt/FontStrikeout.hpp>
 #include <com/sun/star/awt/FontUnderline.hpp>
 #include <com/sun/star/i18n/ScriptType.hpp>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/font.hxx>
 #include <sal/macros.h>
+#include <sal/log.hxx>
 #include <rtl/tencinfo.h>
 #include <svtools/colorcfg.hxx>
 #include <vcl/unohelp.hxx>
 #include <editeng/svxfont.hxx>
-#include "global.hxx"
-#include "xlroot.hxx"
+#include <global.hxx>
+#include <xlroot.hxx>
+#include <xltools.hxx>
 // Color data =================================================================
 
 /** Standard EGA colors, bright. */
 #define EXC_PALETTE_EGA_COLORS_LIGHT \
-            0x000000, 0xFFFFFF, 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF, 0x00FFFF
+            Color(0x000000), Color(0xFFFFFF), Color(0xFF0000), Color(0x00FF00), Color(0x0000FF), Color(0xFFFF00), Color(0xFF00FF), Color(0x00FFFF)
 /** Standard EGA colors, dark. */
 #define EXC_PALETTE_EGA_COLORS_DARK \
-            0x800000, 0x008000, 0x000080, 0x808000, 0x800080, 0x008080, 0xC0C0C0, 0x808080
+            Color(0x800000), Color(0x008000), Color(0x000080), Color(0x808000), Color(0x800080), Color(0x008080), Color(0xC0C0C0), Color(0x808080)
 
 /** Default color table for BIFF2. */
-static const ColorData spnDefColorTable2[] =
+const Color spnDefColorTable2[] =
 {
 /*  0 */    EXC_PALETTE_EGA_COLORS_LIGHT
 };
 
 /** Default color table for BIFF3/BIFF4. */
-static const ColorData spnDefColorTable3[] =
+const Color spnDefColorTable3[] =
 {
 /*  0 */    EXC_PALETTE_EGA_COLORS_LIGHT,
 /*  8 */    EXC_PALETTE_EGA_COLORS_LIGHT,
@@ -56,29 +59,29 @@ static const ColorData spnDefColorTable3[] =
 };
 
 /** Default color table for BIFF5/BIFF7. */
-static const ColorData spnDefColorTable5[] =
+const Color spnDefColorTable5[] =
 {
 /*  0 */    EXC_PALETTE_EGA_COLORS_LIGHT,
 /*  8 */    EXC_PALETTE_EGA_COLORS_LIGHT,
 /* 16 */    EXC_PALETTE_EGA_COLORS_DARK,
-/* 24 */    0x8080FF, 0x802060, 0xFFFFC0, 0xA0E0E0, 0x600080, 0xFF8080, 0x0080C0, 0xC0C0FF,
-/* 32 */    0x000080, 0xFF00FF, 0xFFFF00, 0x00FFFF, 0x800080, 0x800000, 0x008080, 0x0000FF,
-/* 40 */    0x00CFFF, 0x69FFFF, 0xE0FFE0, 0xFFFF80, 0xA6CAF0, 0xDD9CB3, 0xB38FEE, 0xE3E3E3,
-/* 48 */    0x2A6FF9, 0x3FB8CD, 0x488436, 0x958C41, 0x8E5E42, 0xA0627A, 0x624FAC, 0x969696,
-/* 56 */    0x1D2FBE, 0x286676, 0x004500, 0x453E01, 0x6A2813, 0x85396A, 0x4A3285, 0x424242
+/* 24 */    Color(0x8080FF), Color(0x802060), Color(0xFFFFC0), Color(0xA0E0E0), Color(0x600080), Color(0xFF8080), Color(0x0080C0), Color(0xC0C0FF),
+/* 32 */    Color(0x000080), Color(0xFF00FF), Color(0xFFFF00), Color(0x00FFFF), Color(0x800080), Color(0x800000), Color(0x008080), Color(0x0000FF),
+/* 40 */    Color(0x00CFFF), Color(0x69FFFF), Color(0xE0FFE0), Color(0xFFFF80), Color(0xA6CAF0), Color(0xDD9CB3), Color(0xB38FEE), Color(0xE3E3E3),
+/* 48 */    Color(0x2A6FF9), Color(0x3FB8CD), Color(0x488436), Color(0x958C41), Color(0x8E5E42), Color(0xA0627A), Color(0x624FAC), Color(0x969696),
+/* 56 */    Color(0x1D2FBE), Color(0x286676), Color(0x004500), Color(0x453E01), Color(0x6A2813), Color(0x85396A), Color(0x4A3285), Color(0x424242)
 };
 
 /** Default color table for BIFF8. */
-static const ColorData spnDefColorTable8[] =
+const Color spnDefColorTable8[] =
 {
 /*  0 */    EXC_PALETTE_EGA_COLORS_LIGHT,
 /*  8 */    EXC_PALETTE_EGA_COLORS_LIGHT,
 /* 16 */    EXC_PALETTE_EGA_COLORS_DARK,
-/* 24 */    0x9999FF, 0x993366, 0xFFFFCC, 0xCCFFFF, 0x660066, 0xFF8080, 0x0066CC, 0xCCCCFF,
-/* 32 */    0x000080, 0xFF00FF, 0xFFFF00, 0x00FFFF, 0x800080, 0x800000, 0x008080, 0x0000FF,
-/* 40 */    0x00CCFF, 0xCCFFFF, 0xCCFFCC, 0xFFFF99, 0x99CCFF, 0xFF99CC, 0xCC99FF, 0xFFCC99,
-/* 48 */    0x3366FF, 0x33CCCC, 0x99CC00, 0xFFCC00, 0xFF9900, 0xFF6600, 0x666699, 0x969696,
-/* 56 */    0x003366, 0x339966, 0x003300, 0x333300, 0x993300, 0x993366, 0x333399, 0x333333
+/* 24 */    Color(0x9999FF), Color(0x993366), Color(0xFFFFCC), Color(0xCCFFFF), Color(0x660066), Color(0xFF8080), Color(0x0066CC), Color(0xCCCCFF),
+/* 32 */    Color(0x000080), Color(0xFF00FF), Color(0xFFFF00), Color(0x00FFFF), Color(0x800080), Color(0x800000), Color(0x008080), Color(0x0000FF),
+/* 40 */    Color(0x00CCFF), Color(0xCCFFFF), Color(0xCCFFCC), Color(0xFFFF99), Color(0x99CCFF), Color(0xFF99CC), Color(0xCC99FF), Color(0xFFCC99),
+/* 48 */    Color(0x3366FF), Color(0x33CCCC), Color(0x99CC00), Color(0xFFCC00), Color(0xFF9900), Color(0xFF6600), Color(0x666699), Color(0x969696),
+/* 56 */    Color(0x003366), Color(0x339966), Color(0x003300), Color(0x333300), Color(0x993300), Color(0x993366), Color(0x333399), Color(0x333333)
 };
 
 #undef EXC_PALETTE_EGA_COLORS_LIGHT
@@ -89,9 +92,9 @@ XclDefaultPalette::XclDefaultPalette( const XclRoot& rRoot ) :
     mnTableSize( 0 )
 {
     const StyleSettings& rSett = Application::GetSettings().GetStyleSettings();
-    mnWindowText = rSett.GetWindowTextColor().GetColor();
-    mnWindowBack = rSett.GetWindowColor().GetColor();
-    mnFaceColor = rSett.GetFaceColor().GetColor();
+    mnWindowText = rSett.GetWindowTextColor();
+    mnWindowBack = rSett.GetWindowColor();
+    mnFaceColor = rSett.GetFaceColor();
     // Don't use the system HelpBack and HelpText colours as it causes problems
     // with modern gnome. This is because mnNoteText and mnNoteBack are used
     // when colour indices ( instead of real colours ) are specified.
@@ -106,8 +109,8 @@ XclDefaultPalette::XclDefaultPalette( const XclRoot& rRoot ) :
     // ) lessens the chance of the one colour being an unsuitable combination
     // because by default the note text is black and the note background is
     // a light yellow colour ( very similar to Excel's normal defaults )
-    mnNoteText =  svtools::ColorConfig::GetDefaultColor( svtools::FONTCOLOR ).GetColor();
-    mnNoteBack =  svtools::ColorConfig::GetDefaultColor( svtools::CALCNOTESBACKGROUND ).GetColor();
+    mnNoteText =  svtools::ColorConfig::GetDefaultColor( svtools::FONTCOLOR );
+    mnNoteBack =  svtools::ColorConfig::GetDefaultColor( svtools::CALCNOTESBACKGROUND );
 
     // default colors
     switch( rRoot.GetBiff() )
@@ -134,9 +137,9 @@ XclDefaultPalette::XclDefaultPalette( const XclRoot& rRoot ) :
     }
 }
 
-ColorData XclDefaultPalette::GetDefColorData( sal_uInt16 nXclIndex ) const
+Color XclDefaultPalette::GetDefColor( sal_uInt16 nXclIndex ) const
 {
-    ColorData nColor;
+    Color nColor;
     if( nXclIndex < mnTableSize )
         nColor = mpnColorTable[ nXclIndex ];
     else switch( nXclIndex )
@@ -153,7 +156,7 @@ ColorData XclDefaultPalette::GetDefColorData( sal_uInt16 nXclIndex ) const
         case EXC_COLOR_NOTETEXT:        nColor = mnNoteText;    break;
         case EXC_COLOR_FONTAUTO:        nColor = COL_AUTO;      break;
         default:
-            SAL_WARN("sc",  "XclDefaultPalette::GetDefColorData - unknown default color index: " << nXclIndex );
+            SAL_WARN("sc",  "XclDefaultPalette::GetDefColor - unknown default color index: " << nXclIndex );
             nColor = COL_AUTO;
     }
     return nColor;
@@ -186,7 +189,7 @@ void XclFontData::Clear()
 {
     maName.clear();
     maStyle.clear();
-    maColor.SetColor( COL_AUTO );
+    maColor = COL_AUTO;
     mnHeight = 0;
     mnWeight = EXC_FONTWGHT_DONTKNOW;
     mnEscapem = EXC_FONTESC_NONE;
@@ -531,41 +534,41 @@ bool operator==( const XclFontData& rLeft, const XclFontData& rRight )
 namespace {
 
 /** Property names for common font settings. */
-const sal_Char *const sppcPropNamesChCommon[] =
+const char *const sppcPropNamesChCommon[] =
 {
     "CharUnderline", "CharStrikeout", "CharColor", "CharContoured", "CharShadowed", nullptr
 };
 /** Property names for Western font settings. */
-const sal_Char *const sppcPropNamesChWstrn[] =
+const char *const sppcPropNamesChWstrn[] =
 {
     "CharFontName", "CharHeight", "CharPosture", "CharWeight", nullptr
 };
 /** Property names for Asian font settings. */
-const sal_Char *const sppcPropNamesChAsian[] =
+const char *const sppcPropNamesChAsian[] =
 {
     "CharFontNameAsian", "CharHeightAsian", "CharPostureAsian", "CharWeightAsian", nullptr
 };
 /** Property names for Complex font settings. */
-const sal_Char *const sppcPropNamesChCmplx[] =
+const char *const sppcPropNamesChCmplx[] =
 {
     "CharFontNameComplex", "CharHeightComplex", "CharPostureComplex", "CharWeightComplex", nullptr
 };
 /** Property names for escapement. */
-const sal_Char *const sppcPropNamesChEscapement[] =
+const char *const sppcPropNamesChEscapement[] =
 {
     "CharEscapement", "CharEscapementHeight", nullptr
 };
 const sal_Int8 EXC_API_ESC_HEIGHT           = 58;   /// Default escapement font height.
 
 /** Property names for Western font settings without font name. */
-const sal_Char *const *const sppcPropNamesChWstrnNoName = sppcPropNamesChWstrn + 1;
+const char *const *const sppcPropNamesChWstrnNoName = sppcPropNamesChWstrn + 1;
 /** Property names for Asian font settings without font name. */
-const sal_Char *const *const sppcPropNamesChAsianNoName = sppcPropNamesChAsian + 1;
+const char *const *const sppcPropNamesChAsianNoName = sppcPropNamesChAsian + 1;
 /** Property names for Complex font settings without font name. */
-const sal_Char *const *const sppcPropNamesChCmplxNoName = sppcPropNamesChCmplx + 1;
+const char *const *const sppcPropNamesChCmplxNoName = sppcPropNamesChCmplx + 1;
 
 /** Property names for font settings in form controls. */
-const sal_Char *const sppcPropNamesControl[] =
+const char *const sppcPropNamesControl[] =
 {
     "FontName", "FontFamily", "FontCharset", "FontHeight", "FontSlant",
     "FontWeight", "FontLineStyle", "FontStrikeout", "TextColor", nullptr
@@ -659,8 +662,8 @@ void XclFontPropSetHelper::ReadFontProperties( XclFontData& rFontData,
         case EXC_FONTPROPSET_CONTROL:
         {
             OUString aApiFontName;
-            float fApiHeight, fApiWeight;
-            sal_Int16 nApiFamily, nApiCharSet, nApiPosture, nApiUnderl, nApiStrikeout;
+            float fApiHeight(0.0), fApiWeight(0.0);
+            sal_Int16 nApiFamily(0), nApiCharSet(0), nApiPosture(0), nApiUnderl(0), nApiStrikeout(0);
 
             // read font properties
             maHlpControl.ReadFromPropertySet( rPropSet );
@@ -768,7 +771,7 @@ constexpr LanguageType PRV_LANGUAGE_ASIAN_PRIM = primary(LANGUAGE_CHINESE);
 struct XclBuiltInFormat
 {
     sal_uInt16          mnXclNumFmt;    /// Excel built-in index.
-    const sal_Char*     mpFormat;       /// Format string, may be 0 (meOffset used then).
+    const char*         mpFormat;       /// Format string, may be 0 (meOffset used then).
     NfIndexTableOffset  meOffset;       /// SvNumberFormatter format index, if mpFormat==0.
     sal_uInt16          mnXclReuseFmt;  /// Use this Excel format, if meOffset==PRV_NF_INDEX_REUSE.
 };
@@ -818,7 +821,7 @@ struct XclBuiltInFormat
 #define UTF8_KO_SEC     "\354\264\210"
 
 /** Default number format table. Last parent of all other tables, used for unknown languages. */
-static const XclBuiltInFormat spBuiltInFormats_DONTKNOW[] =
+const XclBuiltInFormat spBuiltInFormats_DONTKNOW[] =
 {
     EXC_NUMFMT_OFFSET(   0, NF_NUMBER_STANDARD ),       // General
     EXC_NUMFMT_OFFSET(   1, NF_NUMBER_INT ),            // 0
@@ -911,7 +914,7 @@ static const XclBuiltInFormat spBuiltInFormats_DONTKNOW[] =
 // ENGLISH --------------------------------------------------------------------
 
 /** Base table for English locales. */
-static const XclBuiltInFormat spBuiltInFormats_ENGLISH[] =
+const XclBuiltInFormat spBuiltInFormats_ENGLISH[] =
 {
     EXC_NUMFMT_STRING(  15, "DD-MMM-YY" ),
     EXC_NUMFMT_STRING(  16, "DD-MMM" ),
@@ -922,7 +925,7 @@ static const XclBuiltInFormat spBuiltInFormats_ENGLISH[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_ENGLISH_UK[] =
+const XclBuiltInFormat spBuiltInFormats_ENGLISH_UK[] =
 {
     EXC_NUMFMT_STRING(  63, UTF8_POUND_UK "#,##0;-" UTF8_POUND_UK "#,##0" ),
     EXC_NUMFMT_STRING(  64, UTF8_POUND_UK "#,##0;[RED]-" UTF8_POUND_UK "#,##0" ),
@@ -931,7 +934,7 @@ static const XclBuiltInFormat spBuiltInFormats_ENGLISH_UK[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_ENGLISH_EIRE[] =
+const XclBuiltInFormat spBuiltInFormats_ENGLISH_EIRE[] =
 {
     EXC_NUMFMT_STRING(  63, UTF8_EURO "#,##0;-" UTF8_EURO "#,##0" ),
     EXC_NUMFMT_STRING(  64, UTF8_EURO "#,##0;[RED]-" UTF8_EURO "#,##0" ),
@@ -940,7 +943,7 @@ static const XclBuiltInFormat spBuiltInFormats_ENGLISH_EIRE[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_ENGLISH_US[] =
+const XclBuiltInFormat spBuiltInFormats_ENGLISH_US[] =
 {
     EXC_NUMFMT_STRING(  14, "M/D/YYYY" ),
     EXC_NUMFMT_STRING(  15, "D-MMM-YY" ),
@@ -959,7 +962,7 @@ static const XclBuiltInFormat spBuiltInFormats_ENGLISH_US[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_ENGLISH_CAN[] =
+const XclBuiltInFormat spBuiltInFormats_ENGLISH_CAN[] =
 {
     EXC_NUMFMT_STRING(  20, "h:mm" ),
     EXC_NUMFMT_STRING(  21, "h:mm:ss" ),
@@ -971,7 +974,7 @@ static const XclBuiltInFormat spBuiltInFormats_ENGLISH_CAN[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_ENGLISH_AUS[] =
+const XclBuiltInFormat spBuiltInFormats_ENGLISH_AUS[] =
 {
     EXC_NUMFMT_STRING(  14, "D/MM/YYYY" ),
     EXC_NUMFMT_STRING(  15, "D-MMM-YY" ),
@@ -986,7 +989,7 @@ static const XclBuiltInFormat spBuiltInFormats_ENGLISH_AUS[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_ENGLISH_SAFRICA[] =
+const XclBuiltInFormat spBuiltInFormats_ENGLISH_SAFRICA[] =
 {
     EXC_NUMFMT_STRING(  14, "YYYY/MM/DD" ),
     EXC_NUMFMT_OFFSET(  18, NF_TIME_HHMMAMPM ),
@@ -1002,7 +1005,7 @@ static const XclBuiltInFormat spBuiltInFormats_ENGLISH_SAFRICA[] =
 // FRENCH ---------------------------------------------------------------------
 
 /** Base table for French locales. */
-static const XclBuiltInFormat spBuiltInFormats_FRENCH[] =
+const XclBuiltInFormat spBuiltInFormats_FRENCH[] =
 {
     EXC_NUMFMT_STRING(  15, "DD-MMM-YY" ),
     EXC_NUMFMT_STRING(  16, "DD-MMM" ),
@@ -1012,7 +1015,7 @@ static const XclBuiltInFormat spBuiltInFormats_FRENCH[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_FRENCH_FRANCE[] =
+const XclBuiltInFormat spBuiltInFormats_FRENCH_FRANCE[] =
 {
     EXC_NUMFMT_STRING(  22, "DD/MM/YYYY hh:mm" ),
     EXC_NUMFMT_STRING(  37, "#,##0\\ _" UTF8_EURO ";-#,##0\\ _" UTF8_EURO ),
@@ -1026,7 +1029,7 @@ static const XclBuiltInFormat spBuiltInFormats_FRENCH_FRANCE[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_FRENCH_CANADIAN[] =
+const XclBuiltInFormat spBuiltInFormats_FRENCH_CANADIAN[] =
 {
     EXC_NUMFMT_STRING(  22, "YYYY-MM-DD hh:mm" ),
     EXC_NUMFMT_STRING(  37, "#,##0\\ _$_-;#,##0\\ _$-" ),
@@ -1040,7 +1043,7 @@ static const XclBuiltInFormat spBuiltInFormats_FRENCH_CANADIAN[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_FRENCH_SWISS[] =
+const XclBuiltInFormat spBuiltInFormats_FRENCH_SWISS[] =
 {
     EXC_NUMFMT_STRING(  15, "DD.MMM.YY" ),
     EXC_NUMFMT_STRING(  16, "DD.MMM" ),
@@ -1053,7 +1056,7 @@ static const XclBuiltInFormat spBuiltInFormats_FRENCH_SWISS[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_FRENCH_BELGIAN[] =
+const XclBuiltInFormat spBuiltInFormats_FRENCH_BELGIAN[] =
 {
     EXC_NUMFMT_STRING(  14, "D/MM/YYYY" ),
     EXC_NUMFMT_STRING(  15, "D-MMM-YY" ),
@@ -1067,7 +1070,7 @@ static const XclBuiltInFormat spBuiltInFormats_FRENCH_BELGIAN[] =
 // GERMAN ---------------------------------------------------------------------
 
 /** Base table for German locales. */
-static const XclBuiltInFormat spBuiltInFormats_GERMAN[] =
+const XclBuiltInFormat spBuiltInFormats_GERMAN[] =
 {
     EXC_NUMFMT_STRING(  15, "DD. MMM YY" ),
     EXC_NUMFMT_STRING(  16, "DD. MMM" ),
@@ -1078,7 +1081,7 @@ static const XclBuiltInFormat spBuiltInFormats_GERMAN[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_GERMAN_GERMANY[] =
+const XclBuiltInFormat spBuiltInFormats_GERMAN_GERMANY[] =
 {
     EXC_NUMFMT_STRING(  37, "#,##0 _" UTF8_EURO ";-#,##0 _" UTF8_EURO ),
     EXC_NUMFMT_STRING(  38, "#,##0 _" UTF8_EURO ";[RED]-#,##0 _" UTF8_EURO ),
@@ -1091,7 +1094,7 @@ static const XclBuiltInFormat spBuiltInFormats_GERMAN_GERMANY[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_GERMAN_AUSTRIAN[] =
+const XclBuiltInFormat spBuiltInFormats_GERMAN_AUSTRIAN[] =
 {
     EXC_NUMFMT_STRING(  15, "DD.MMM.YY" ),
     EXC_NUMFMT_STRING(  16, "DD.MMM" ),
@@ -1103,7 +1106,7 @@ static const XclBuiltInFormat spBuiltInFormats_GERMAN_AUSTRIAN[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_GERMAN_SWISS[] =
+const XclBuiltInFormat spBuiltInFormats_GERMAN_SWISS[] =
 {
     EXC_NUMFMT_STRING(  63, "\"SFr. \"#,##0;\"SFr. \"-#,##0" ),
     EXC_NUMFMT_STRING(  64, "\"SFr. \"#,##0;[RED]\"SFr. \"-#,##0" ),
@@ -1112,7 +1115,7 @@ static const XclBuiltInFormat spBuiltInFormats_GERMAN_SWISS[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_GERMAN_LUXEMBOURG[] =
+const XclBuiltInFormat spBuiltInFormats_GERMAN_LUXEMBOURG[] =
 {
     EXC_NUMFMT_STRING(  15, "DD.MMM.YY" ),
     EXC_NUMFMT_STRING(  16, "DD.MMM" ),
@@ -1128,7 +1131,7 @@ static const XclBuiltInFormat spBuiltInFormats_GERMAN_LUXEMBOURG[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_GERMAN_LIECHTENSTEIN[] =
+const XclBuiltInFormat spBuiltInFormats_GERMAN_LIECHTENSTEIN[] =
 {
     EXC_NUMFMT_STRING(  63, "\"CHF \"#,##0;\"CHF \"-#,##0" ),
     EXC_NUMFMT_STRING(  64, "\"CHF \"#,##0;[RED]\"CHF \"-#,##0" ),
@@ -1139,7 +1142,7 @@ static const XclBuiltInFormat spBuiltInFormats_GERMAN_LIECHTENSTEIN[] =
 
 // ITALIAN --------------------------------------------------------------------
 
-static const XclBuiltInFormat spBuiltInFormats_ITALIAN_ITALY[] =
+const XclBuiltInFormat spBuiltInFormats_ITALIAN_ITALY[] =
 {
     EXC_NUMFMT_STRING(  15, "DD-MMM-YY" ),
     EXC_NUMFMT_STRING(  16, "DD-MMM" ),
@@ -1156,7 +1159,7 @@ static const XclBuiltInFormat spBuiltInFormats_ITALIAN_ITALY[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_ITALIAN_SWISS[] =
+const XclBuiltInFormat spBuiltInFormats_ITALIAN_SWISS[] =
 {
     EXC_NUMFMT_STRING(  15, "DD.MMM.YY" ),
     EXC_NUMFMT_STRING(  16, "DD.MMM" ),
@@ -1173,7 +1176,7 @@ static const XclBuiltInFormat spBuiltInFormats_ITALIAN_SWISS[] =
 
 // SWEDISH --------------------------------------------------------------------
 
-static const XclBuiltInFormat spBuiltInFormats_SWEDISH_SWEDEN[] =
+const XclBuiltInFormat spBuiltInFormats_SWEDISH_SWEDEN[] =
 {
     EXC_NUMFMT_STRING(  15, "DD-MMM-YY" ),
     EXC_NUMFMT_STRING(  16, "DD-MMM" ),
@@ -1192,7 +1195,7 @@ static const XclBuiltInFormat spBuiltInFormats_SWEDISH_SWEDEN[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_SWEDISH_FINLAND[] =
+const XclBuiltInFormat spBuiltInFormats_SWEDISH_FINLAND[] =
 {
     EXC_NUMFMT_STRING(   9, "0 %" ),
     EXC_NUMFMT_STRING(  10, "0.00 %" ),
@@ -1216,7 +1219,7 @@ static const XclBuiltInFormat spBuiltInFormats_SWEDISH_FINLAND[] =
 // ASIAN ----------------------------------------------------------------------
 
 /** Base table for Asian locales. */
-static const XclBuiltInFormat spBuiltInFormats_ASIAN[] =
+const XclBuiltInFormat spBuiltInFormats_ASIAN[] =
 {
     EXC_NUMFMT_STRING(  18, "h:mm AM/PM" ),
     EXC_NUMFMT_STRING(  19, "h:mm:ss AM/PM" ),
@@ -1240,7 +1243,7 @@ static const XclBuiltInFormat spBuiltInFormats_ASIAN[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_JAPANESE[] =
+const XclBuiltInFormat spBuiltInFormats_JAPANESE[] =
 {
     EXC_NUMFMT_STRING(  14, "YYYY/M/D" ),
     EXC_NUMFMT_STRING(  15, "D-MMM-YY" ),
@@ -1262,7 +1265,7 @@ static const XclBuiltInFormat spBuiltInFormats_JAPANESE[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_KOREAN[] =
+const XclBuiltInFormat spBuiltInFormats_KOREAN[] =
 {
     EXC_NUMFMT_STRING(  14, "YYYY-MM-DD" ),
     EXC_NUMFMT_STRING(  15, "DD-MMM-YY" ),
@@ -1284,7 +1287,7 @@ static const XclBuiltInFormat spBuiltInFormats_KOREAN[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_CHINESE_SIMPLIFIED[] =
+const XclBuiltInFormat spBuiltInFormats_CHINESE_SIMPLIFIED[] =
 {
     EXC_NUMFMT_STRING(  14, "YYYY-M-D" ),
     EXC_NUMFMT_STRING(  15, "D-MMM-YY" ),
@@ -1308,7 +1311,7 @@ static const XclBuiltInFormat spBuiltInFormats_CHINESE_SIMPLIFIED[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_CHINESE_TRADITIONAL[] =
+const XclBuiltInFormat spBuiltInFormats_CHINESE_TRADITIONAL[] =
 {
     EXC_NUMFMT_STRING(  15, "D-MMM-YY" ),
     EXC_NUMFMT_STRING(  16, "D-MMM" ),
@@ -1339,7 +1342,7 @@ static const XclBuiltInFormat spBuiltInFormats_CHINESE_TRADITIONAL[] =
 
 // OTHER ----------------------------------------------------------------------
 
-static const XclBuiltInFormat spBuiltInFormats_HEBREW[] =
+const XclBuiltInFormat spBuiltInFormats_HEBREW[] =
 {
     EXC_NUMFMT_STRING(  15, "DD-MMMM-YY" ),
     EXC_NUMFMT_STRING(  16, "DD-MMMM" ),
@@ -1353,7 +1356,7 @@ static const XclBuiltInFormat spBuiltInFormats_HEBREW[] =
     EXC_NUMFMT_ENDTABLE()
 };
 
-static const XclBuiltInFormat spBuiltInFormats_THAI[] =
+const XclBuiltInFormat spBuiltInFormats_THAI[] =
 {
     EXC_NUMFMT_STRING(  14, "D/M/YYYY" ),
     EXC_NUMFMT_STRING(  15, "D-MMM-YY" ),
@@ -1401,7 +1404,7 @@ struct XclBuiltInFormatTable
     const XclBuiltInFormat* mpFormats;      /// The number format table.
 };
 
-static const XclBuiltInFormatTable spBuiltInFormatTables[] =
+const XclBuiltInFormatTable spBuiltInFormatTables[] =
 {   //  language                        parent language             format table
     {   LANGUAGE_DONTKNOW,              LANGUAGE_NONE,              spBuiltInFormats_DONTKNOW               },
 
@@ -1496,8 +1499,7 @@ void XclNumFmtBuffer::InsertBuiltinFormats()
     }
 
     // insert the default formats in the format map, from root parent to system language
-    typedef ::std::map< sal_uInt16, sal_uInt16 > XclReuseMap;
-    XclReuseMap aReuseMap;
+    std::map< sal_uInt16, sal_uInt16 > aReuseMap;
     for( XclBuiltInVec::reverse_iterator aVIt = aBuiltInVec.rbegin(), aVEnd = aBuiltInVec.rend(); aVIt != aVEnd; ++aVIt )
     {
         // put LANGUAGE_SYSTEM for all entries in default table
@@ -1522,8 +1524,8 @@ void XclNumFmtBuffer::InsertBuiltinFormats()
     }
 
     // copy reused number formats
-    for( XclReuseMap::const_iterator aRIt = aReuseMap.begin(), aREnd = aReuseMap.end(); aRIt != aREnd; ++aRIt )
-        maFmtMap[ aRIt->first ] = maFmtMap[ aRIt->second ];
+    for( const auto& [rXclNumFmt, rXclReuseFmt] : aReuseMap )
+        maFmtMap[ rXclNumFmt ] = maFmtMap[ rXclReuseFmt ];
 }
 
 // Cell formatting data (XF) ==================================================
@@ -1576,14 +1578,14 @@ SvxCellJustifyMethod XclCellAlign::GetScHorJustifyMethod() const
 
 SvxCellVerJustify XclCellAlign::GetScVerAlign() const
 {
-    SvxCellVerJustify eVerJust = SVX_VER_JUSTIFY_STANDARD;
+    SvxCellVerJustify eVerJust = SvxCellVerJustify::Standard;
     switch( mnVerAlign )
     {
-        case EXC_XF_VER_TOP:        eVerJust = SVX_VER_JUSTIFY_TOP;         break;
-        case EXC_XF_VER_CENTER:     eVerJust = SVX_VER_JUSTIFY_CENTER;      break;
-        case EXC_XF_VER_BOTTOM:     eVerJust = SVX_VER_JUSTIFY_STANDARD;    break;
+        case EXC_XF_VER_TOP:        eVerJust = SvxCellVerJustify::Top;         break;
+        case EXC_XF_VER_CENTER:     eVerJust = SvxCellVerJustify::Center;      break;
+        case EXC_XF_VER_BOTTOM:     eVerJust = SvxCellVerJustify::Standard;    break;
         case EXC_XF_VER_JUSTIFY:
-        case EXC_XF_VER_DISTRIB:    eVerJust = SVX_VER_JUSTIFY_BLOCK;       break;
+        case EXC_XF_VER_DISTRIB:    eVerJust = SvxCellVerJustify::Block;       break;
         default:    OSL_FAIL( "XclCellAlign::GetScVerAlign - unknown vertical alignment" );
     }
     return eVerJust;
@@ -1626,10 +1628,10 @@ void XclCellAlign::SetScVerAlign( SvxCellVerJustify eVerJust )
 {
     switch( eVerJust )
     {
-        case SVX_VER_JUSTIFY_STANDARD:  mnVerAlign = EXC_XF_VER_BOTTOM; break;
-        case SVX_VER_JUSTIFY_TOP:       mnVerAlign = EXC_XF_VER_TOP;    break;
-        case SVX_VER_JUSTIFY_CENTER:    mnVerAlign = EXC_XF_VER_CENTER; break;
-        case SVX_VER_JUSTIFY_BOTTOM:    mnVerAlign = EXC_XF_VER_BOTTOM; break;
+        case SvxCellVerJustify::Standard:  mnVerAlign = EXC_XF_VER_BOTTOM; break;
+        case SvxCellVerJustify::Top:       mnVerAlign = EXC_XF_VER_TOP;    break;
+        case SvxCellVerJustify::Center:    mnVerAlign = EXC_XF_VER_CENTER; break;
+        case SvxCellVerJustify::Bottom:    mnVerAlign = EXC_XF_VER_BOTTOM; break;
         default:                        mnVerAlign = EXC_XF_VER_BOTTOM;
             OSL_FAIL( "XclCellAlign::SetScVerAlign - unknown vertical alignment" );
     }

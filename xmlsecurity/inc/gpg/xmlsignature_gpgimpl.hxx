@@ -22,21 +22,21 @@
 
 #include <sal/config.h>
 #include <rtl/ustring.hxx>
-#include <xsecgpgdllapi.h>
+#include <xsecxmlsecdllapi.h>
 
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/uno/Exception.hpp>
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/xml/crypto/XXMLSignature.hpp>
-#include <com/sun/star/xml/crypto/XXMLSignatureTemplate.hpp>
-#include <com/sun/star/xml/crypto/XXMLSecurityContext.hpp>
 
-class XSECGPG_DLLPUBLIC XMLSignature_GpgImpl : public ::cppu::WeakImplHelper<
+namespace com::sun::star::xml::crypto { class XXMLSignatureTemplate; }
+namespace com::sun::star::xml::crypto { class XXMLSecurityContext; }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
+
+
+class XSECXMLSEC_DLLPUBLIC XMLSignature_GpgImpl final : public ::cppu::WeakImplHelper<
     css::xml::crypto::XXMLSignature ,
     css::lang::XServiceInfo >
 {
@@ -72,9 +72,7 @@ class XSECGPG_DLLPUBLIC XMLSignature_GpgImpl : public ::cppu::WeakImplHelper<
 
         //Helper for registry
         /// @throws css::uno::RuntimeException
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL impl_createInstance( const css::uno::Reference< css::lang::XMultiServiceFactory >& aServiceManager ) ;
-
-        static css::uno::Reference< css::lang::XSingleServiceFactory > impl_createFactory( const css::uno::Reference< css::lang::XMultiServiceFactory >& aServiceManager ) ;
+        static css::uno::Reference< css::uno::XInterface > impl_createInstance( const css::uno::Reference< css::lang::XMultiServiceFactory >& aServiceManager ) ;
 } ;
 
 #endif // INCLUDED_XMLSECURITY_SOURCE_GPG_XMLSIGNATURE_GPGIMPL_HXX

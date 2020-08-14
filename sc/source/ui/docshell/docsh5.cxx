@@ -22,36 +22,38 @@
 
 #include <cassert>
 
-#include "scitems.hxx"
-#include <vcl/msgbox.hxx>
-#include <vcl/waitobj.hxx>
+#include <osl/diagnose.h>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/bindings.hxx>
+#include <unotools/charclass.hxx>
 
 #include <com/sun/star/script/vba/XVBACompatibility.hpp>
 
-#include "docsh.hxx"
-#include "global.hxx"
-#include "globstr.hrc"
-#include "globalnames.hxx"
-#include "undodat.hxx"
-#include "undotab.hxx"
-#include "undoblk.hxx"
-#include "dpobject.hxx"
-#include "dpshttab.hxx"
-#include "dbdocfun.hxx"
-#include "consoli.hxx"
-#include "dbdata.hxx"
-#include "progress.hxx"
-#include "olinetab.hxx"
-#include "patattr.hxx"
-#include "attrib.hxx"
-#include "docpool.hxx"
-#include "uiitems.hxx"
-#include "sc.hrc"
-#include "waitoff.hxx"
-#include "sizedev.hxx"
-#include "clipparam.hxx"
+#include <docsh.hxx>
+#include <global.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <globalnames.hxx>
+#include <undodat.hxx>
+#include <undotab.hxx>
+#include <undoblk.hxx>
+#include <dpobject.hxx>
+#include <dpshttab.hxx>
+#include <dbdocfun.hxx>
+#include <consoli.hxx>
+#include <dbdata.hxx>
+#include <progress.hxx>
+#include <olinetab.hxx>
+#include <patattr.hxx>
+#include <attrib.hxx>
+#include <docpool.hxx>
+#include <uiitems.hxx>
+#include <sc.hrc>
+#include <waitoff.hxx>
+#include <sizedev.hxx>
+#include <clipparam.hxx>
 #include <rowheightcontext.hxx>
 #include <refupdatecontext.hxx>
 
@@ -66,26 +68,29 @@ using ::std::vector;
 
 //  former viewfunc/dbfunc methods
 
-void ScDocShell::ErrorMessage( sal_uInt16 nGlobStrId )
+void ScDocShell::ErrorMessage(const char* pGlobStrId)
 {
     //! StopMarking at the (active) view?
 
-    vcl::Window* pParent = GetActiveDialogParent();
-    ScWaitCursorOff aWaitOff( pParent );
-    bool bFocus = pParent && pParent->HasFocus();
+    weld::Window* pParent = GetActiveDialogParent();
+    weld::WaitObject aWaitOff( pParent );
+    bool bFocus = pParent && pParent->has_focus();
 
-    if(nGlobStrId==STR_PROTECTIONERR)
+    if (pGlobStrId && strcmp(pGlobStrId, STR_PROTECTIONERR) == 0)
     {
-        if(IsReadOnly())
+        if (IsReadOnly())
         {
-            nGlobStrId=STR_READONLYERR;
+            pGlobStrId = STR_READONLYERR;
         }
     }
 
-    ScopedVclPtrInstance< InfoBox > aBox( pParent, ScGlobal::GetRscString( nGlobStrId ) );
-    aBox->Execute();
+    std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(pParent,
+                                                  VclMessageType::Info, VclButtonsType::Ok,
+                                                  ScResId(pGlobStrId)));
+    xInfoBox->run();
+
     if (bFocus)
-        pParent->GrabFocus();
+        pParent->grab_focus();
 }
 
 bool ScDocShell::IsEditable() const
@@ -93,18 +98,18 @@ bool ScDocShell::IsEditable() const
     // import into read-only document is possible - must be extended if other filters use api
     // #i108547# MSOOXML filter uses "IsChangeReadOnlyEnabled" property
 
-    return !IsReadOnly() || aDocument.IsImportingXML() || aDocument.IsChangeReadOnlyEnabled();
+    return !IsReadOnly() || m_aDocument.IsImportingXML() || m_aDocument.IsChangeReadOnlyEnabled();
 }
 
 void ScDocShell::DBAreaDeleted( SCTAB nTab, SCCOL nX1, SCROW nY1, SCCOL nX2 )
 {
     ScDocShellModificator aModificator( *this );
     // the auto-filter is in the first row of the area
-    aDocument.RemoveFlagsTab( nX1, nY1, nX2, nY1, nTab, ScMF::Auto );
+    m_aDocument.RemoveFlagsTab( nX1, nY1, nX2, nY1, nTab, ScMF::Auto );
     PostPaint( nX1, nY1, nTab, nX2, nY1, nTab, PaintPartFlags::Grid );
     // No SetDocumentModified, as the unnamed database range might have to be restored later.
     // The UNO hint is broadcast directly instead, to keep UNO objects in valid state.
-    aDocument.BroadcastUno( SfxHint( SfxHintId::DataChanged ) );
+    m_aDocument.BroadcastUno( SfxHint( SfxHintId::DataChanged ) );
 }
 
 ScDBData* ScDocShell::GetDBData( const ScRange& rMarked, ScGetDBMode eMode, ScGetDBSelection eSel )
@@ -120,8 +125,8 @@ ScDBData* ScDocShell::GetDBData( const ScRange& rMarked, ScGetDBMode eMode, ScGe
     SCROW nEndRow = rMarked.aEnd.Row();
     //  Not simply GetDBAtCursor: The continuous data range for "unnamed" (GetDataArea) may be
     //  located next to the cursor; so a named DB range needs to be searched for there as well.
-    ScDBCollection* pColl = aDocument.GetDBCollection();
-    ScDBData* pData = aDocument.GetDBAtArea( nTab, nStartCol, nStartRow, nEndCol, nEndRow );
+    ScDBCollection* pColl = m_aDocument.GetDBCollection();
+    ScDBData* pData = m_aDocument.GetDBAtArea( nTab, nStartCol, nStartRow, nEndCol, nEndRow );
     if (!pData)
         pData = pColl->GetDBNearCursor(nCol, nRow, nTab );
 
@@ -161,7 +166,7 @@ ScDBData* ScDocShell::GetDBData( const ScRange& rMarked, ScGetDBMode eMode, ScGe
                     nEndCol = nStartCol;
                     nEndRow = nStartRow;
                 }
-                aDocument.GetDataArea( nTab, nStartCol, nStartRow, nEndCol, nEndRow, false, bOnlyDown );
+                m_aDocument.GetDataArea( nTab, nStartCol, nStartRow, nEndCol, nEndRow, false, bOnlyDown );
                 if ( nOldCol1 != nStartCol || nOldCol2 != nEndCol || nOldRow1 != nStartRow )
                     bUseThis = false;               // doesn't fit at all
                 else if ( nOldRow2 != nEndRow )
@@ -210,34 +215,45 @@ ScDBData* ScDocShell::GetDBData( const ScRange& rMarked, ScGetDBMode eMode, ScGe
                 nEndCol = nStartCol;
                 nEndRow = nStartRow;
             }
-            aDocument.GetDataArea( nTab, nStartCol, nStartRow, nEndCol, nEndRow, false, bOnlyDown );
+            m_aDocument.GetDataArea( nTab, nStartCol, nStartRow, nEndCol, nEndRow, false, bOnlyDown );
         }
 
-        bool bHasHeader = aDocument.HasColHeader( nStartCol,nStartRow, nEndCol,nEndRow, nTab );
+        bool bHasHeader = m_aDocument.HasColHeader( nStartCol,nStartRow, nEndCol,nEndRow, nTab );
 
-        ScDBData* pNoNameData = aDocument.GetAnonymousDBData(nTab);
+        ScDBData* pNoNameData = m_aDocument.GetAnonymousDBData(nTab);
         if ( eMode != SC_DB_IMPORT && pNoNameData)
         {
             // Do not reset AutoFilter range during temporary operations on
             // other ranges, use the document global temporary anonymous range
             // instead. But, if AutoFilter is to be toggled then do use the
             // sheet-local DB range.
+            bool bSheetLocal = true;
             if (eMode != SC_DB_AUTOFILTER && pNoNameData->HasAutoFilter())
             {
-                pNoNameData = aDocument.GetAnonymousDBData();
+                bSheetLocal = false;
+                pNoNameData = m_aDocument.GetAnonymousDBData();
                 if (!pNoNameData)
                 {
-                    pNoNameData = new ScDBData( STR_DB_LOCAL_NONAME,
-                            nTab, nStartCol, nStartRow, nEndCol, nEndRow, true, bHasHeader);
-                    aDocument.SetAnonymousDBData( pNoNameData);
+                    m_aDocument.SetAnonymousDBData( std::unique_ptr<ScDBData>(new ScDBData( STR_DB_LOCAL_NONAME,
+                            nTab, nStartCol, nStartRow, nEndCol, nEndRow, true, bHasHeader) ) );
+                    pNoNameData = m_aDocument.GetAnonymousDBData();
                 }
+                // ScDocShell::CancelAutoDBRange() would restore the
+                // sheet-local anonymous DBData from pOldAutoDBRange, unset so
+                // that won't happen with data of a previous sheet-local
+                // DBData.
+                m_pOldAutoDBRange.reset();
             }
-
-            if ( !pOldAutoDBRange )
+            else if (!m_pOldAutoDBRange)
             {
                 // store the old unnamed database range with its settings for undo
                 // (store at the first change, get the state before all changes)
-                pOldAutoDBRange = new ScDBData( *pNoNameData );
+                m_pOldAutoDBRange.reset( new ScDBData( *pNoNameData ) );
+            }
+            else if (m_pOldAutoDBRange->GetTab() != pNoNameData->GetTab())
+            {
+                // Different sheet-local unnamed DB range than the previous one.
+                *m_pOldAutoDBRange = *pNoNameData;
             }
 
             SCCOL nOldX1;                                   // take old range away cleanly
@@ -255,7 +271,10 @@ ScDBData* ScDocShell::GetDBData( const ScRange& rMarked, ScGetDBMode eMode, ScGe
                     nStartCol <= nOldY2 && nOldY1 <= nEndCol)
                 bHasHeader = true;
 
-            DBAreaDeleted( nOldTab, nOldX1, nOldY1, nOldX2 );
+            // Remove AutoFilter button flags only for sheet-local DB range,
+            // not if a temporary is used.
+            if (bSheetLocal)
+                DBAreaDeleted( nOldTab, nOldX1, nOldY1, nOldX2 );
 
             pNoNameData->SetSortParam( ScSortParam() );             // reset parameter
             pNoNameData->SetQueryParam( ScQueryParam() );
@@ -268,47 +287,46 @@ ScDBData* ScDocShell::GetDBData( const ScRange& rMarked, ScGetDBMode eMode, ScGe
         }
         else
         {
-            ScDBCollection* pUndoColl = nullptr;
+            std::unique_ptr<ScDBCollection> pUndoColl;
 
-            OUString aNewName;
             if (eMode==SC_DB_IMPORT)
             {
-                aDocument.PreprocessDBDataUpdate();
-                pUndoColl = new ScDBCollection( *pColl );   // Undo for import range
+                m_aDocument.PreprocessDBDataUpdate();
+                pUndoColl.reset( new ScDBCollection( *pColl ) );   // Undo for import range
 
-                OUString aImport = ScGlobal::GetRscString( STR_DBNAME_IMPORT );
+                OUString aImport = ScResId( STR_DBNAME_IMPORT );
                 long nCount = 0;
                 const ScDBData* pDummy = nullptr;
                 ScDBCollection::NamedDBs& rDBs = pColl->getNamedDBs();
+                OUString aNewName;
                 do
                 {
                     ++nCount;
-                    aNewName = aImport;
-                    aNewName += OUString::number( nCount );
-                    pDummy = rDBs.findByUpperName(ScGlobal::pCharClass->uppercase(aNewName));
+                    aNewName = aImport + OUString::number( nCount );
+                    pDummy = rDBs.findByUpperName(ScGlobal::getCharClassPtr()->uppercase(aNewName));
                 }
                 while (pDummy);
                 pNoNameData = new ScDBData( aNewName, nTab,
                                 nStartCol,nStartRow, nEndCol,nEndRow,
                                 true, bHasHeader );
-                bool ins = rDBs.insert(pNoNameData);
+                bool ins = rDBs.insert(std::unique_ptr<ScDBData>(pNoNameData));
                 assert(ins); (void)ins;
             }
             else
             {
-                aNewName = STR_DB_LOCAL_NONAME;
-                pNoNameData = new ScDBData(aNewName , nTab,
+                pNoNameData = new ScDBData(STR_DB_LOCAL_NONAME, nTab,
                                 nStartCol,nStartRow, nEndCol,nEndRow,
                                 true, bHasHeader );
-                aDocument.SetAnonymousDBData(nTab, pNoNameData);
+                m_aDocument.SetAnonymousDBData(nTab, std::unique_ptr<ScDBData>(pNoNameData));
             }
 
             if ( pUndoColl )
             {
-                aDocument.CompileHybridFormula();
+                m_aDocument.CompileHybridFormula();
 
-                ScDBCollection* pRedoColl = new ScDBCollection( *pColl );
-                GetUndoManager()->AddUndoAction( new ScUndoDBData( this, pUndoColl, pRedoColl ) );
+                GetUndoManager()->AddUndoAction( std::make_unique<ScUndoDBData>( this,
+                        std::move(pUndoColl),
+                        std::make_unique<ScDBCollection>( *pColl ) ) );
             }
 
             //  no longer needed to register new range at the Sba
@@ -325,7 +343,7 @@ ScDBData* ScDocShell::GetDBData( const ScRange& rMarked, ScGetDBMode eMode, ScGe
 
 ScDBData* ScDocShell::GetAnonymousDBData(const ScRange& rRange)
 {
-    ScDBCollection* pColl = aDocument.GetDBCollection();
+    ScDBCollection* pColl = m_aDocument.GetDBCollection();
     if (!pColl)
         return nullptr;
 
@@ -335,7 +353,7 @@ ScDBData* ScDocShell::GetAnonymousDBData(const ScRange& rRange)
 
     if (!pData->HasHeader())
     {
-        bool bHasHeader = aDocument.HasColHeader(
+        bool bHasHeader = m_aDocument.HasColHeader(
                 rRange.aStart.Col(), rRange.aStart.Row(), rRange.aEnd.Col(), rRange.aEnd.Row(), rRange.aStart.Tab());
         pData->SetHeader(bHasHeader);
     }
@@ -343,45 +361,42 @@ ScDBData* ScDocShell::GetAnonymousDBData(const ScRange& rRange)
     return pData;
 }
 
-ScDBData* ScDocShell::GetOldAutoDBRange()
+std::unique_ptr<ScDBData> ScDocShell::GetOldAutoDBRange()
 {
-    ScDBData* pRet = pOldAutoDBRange;
-    pOldAutoDBRange = nullptr;
-    return pRet;                    // has to be deleted by caller!
+    return std::move(m_pOldAutoDBRange);
 }
 
 void ScDocShell::CancelAutoDBRange()
 {
     // called when dialog is cancelled
 //moggi:TODO
-    if ( pOldAutoDBRange )
+    if ( !m_pOldAutoDBRange )
+        return;
+
+    SCTAB nTab = GetCurTab();
+    ScDBData* pDBData = m_aDocument.GetAnonymousDBData(nTab);
+    if ( pDBData )
     {
-        SCTAB nTab = GetCurTab();
-        ScDBData* pDBData = aDocument.GetAnonymousDBData(nTab);
-        if ( pDBData )
+        SCCOL nRangeX1;
+        SCROW nRangeY1;
+        SCCOL nRangeX2;
+        SCROW nRangeY2;
+        SCTAB nRangeTab;
+        pDBData->GetArea( nRangeTab, nRangeX1, nRangeY1, nRangeX2, nRangeY2 );
+        DBAreaDeleted( nRangeTab, nRangeX1, nRangeY1, nRangeX2 );
+
+        *pDBData = *m_pOldAutoDBRange;    // restore old settings
+
+        if ( m_pOldAutoDBRange->HasAutoFilter() )
         {
-            SCCOL nRangeX1;
-            SCROW nRangeY1;
-            SCCOL nRangeX2;
-            SCROW nRangeY2;
-            SCTAB nRangeTab;
-            pDBData->GetArea( nRangeTab, nRangeX1, nRangeY1, nRangeX2, nRangeY2 );
-            DBAreaDeleted( nRangeTab, nRangeX1, nRangeY1, nRangeX2 );
-
-            *pDBData = *pOldAutoDBRange;    // restore old settings
-
-            if ( pOldAutoDBRange->HasAutoFilter() )
-            {
-                // restore AutoFilter buttons
-                pOldAutoDBRange->GetArea( nRangeTab, nRangeX1, nRangeY1, nRangeX2, nRangeY2 );
-                aDocument.ApplyFlagsTab( nRangeX1, nRangeY1, nRangeX2, nRangeY1, nRangeTab, ScMF::Auto );
-                PostPaint( nRangeX1, nRangeY1, nRangeTab, nRangeX2, nRangeY1, nRangeTab, PaintPartFlags::Grid );
-            }
+            // restore AutoFilter buttons
+            m_pOldAutoDBRange->GetArea( nRangeTab, nRangeX1, nRangeY1, nRangeX2, nRangeY2 );
+            m_aDocument.ApplyFlagsTab( nRangeX1, nRangeY1, nRangeX2, nRangeY1, nRangeTab, ScMF::Auto );
+            PostPaint( nRangeX1, nRangeY1, nRangeTab, nRangeX2, nRangeY1, nRangeTab, PaintPartFlags::Grid );
         }
-
-        delete pOldAutoDBRange;
-        pOldAutoDBRange = nullptr;
     }
+
+    m_pOldAutoDBRange.reset();
 }
 
         //  adjust height
@@ -391,15 +406,15 @@ bool ScDocShell::AdjustRowHeight( SCROW nStartRow, SCROW nEndRow, SCTAB nTab )
 {
     ScSizeDeviceProvider aProv(this);
     Fraction aZoom(1,1);
-    sc::RowHeightContext aCxt(aProv.GetPPTX(), aProv.GetPPTY(), aZoom, aZoom, aProv.GetDevice());
-    bool bChange = aDocument.SetOptimalHeight(aCxt, nStartRow,nEndRow, nTab);
+    sc::RowHeightContext aCxt(m_aDocument.MaxRow(), aProv.GetPPTX(), aProv.GetPPTY(), aZoom, aZoom, aProv.GetDevice());
+    bool bChange = m_aDocument.SetOptimalHeight(aCxt, nStartRow,nEndRow, nTab);
 
     if (bChange)
     {
         // tdf#76183: recalculate objects' positions
-        aDocument.SetDrawPageSize(nTab);
+        m_aDocument.SetDrawPageSize(nTab);
 
-        PostPaint( 0,nStartRow,nTab, MAXCOL,MAXROW,nTab, PaintPartFlags::Grid|PaintPartFlags::Left );
+        PostPaint( 0,nStartRow,nTab, m_aDocument.MaxCol(),m_aDocument.MaxRow(),nTab, PaintPartFlags::Grid|PaintPartFlags::Left );
     }
 
     return bChange;
@@ -411,25 +426,25 @@ void ScDocShell::UpdateAllRowHeights( const ScMarkData* pTabMark )
 
     ScSizeDeviceProvider aProv(this);
     Fraction aZoom(1,1);
-    sc::RowHeightContext aCxt(aProv.GetPPTX(), aProv.GetPPTY(), aZoom, aZoom, aProv.GetDevice());
-    aDocument.UpdateAllRowHeights(aCxt, pTabMark);
+    sc::RowHeightContext aCxt(m_aDocument.MaxRow(), aProv.GetPPTX(), aProv.GetPPTY(), aZoom, aZoom, aProv.GetDevice());
+    m_aDocument.UpdateAllRowHeights(aCxt, pTabMark);
 }
 
 void ScDocShell::UpdatePendingRowHeights( SCTAB nUpdateTab, bool bBefore )
 {
-    bool bIsUndoEnabled = aDocument.IsUndoEnabled();
-    aDocument.EnableUndo( false );
-    aDocument.LockStreamValid( true );      // ignore draw page size (but not formula results)
+    bool bIsUndoEnabled = m_aDocument.IsUndoEnabled();
+    m_aDocument.EnableUndo( false );
+    m_aDocument.LockStreamValid( true );      // ignore draw page size (but not formula results)
     if ( bBefore )          // check all sheets up to nUpdateTab
     {
-        SCTAB nTabCount = aDocument.GetTableCount();
+        SCTAB nTabCount = m_aDocument.GetTableCount();
         if ( nUpdateTab >= nTabCount )
             nUpdateTab = nTabCount-1;     // nUpdateTab is inclusive
 
-        ScMarkData aUpdateSheets;
+        ScMarkData aUpdateSheets(m_aDocument.GetSheetLimits());
         SCTAB nTab;
         for (nTab=0; nTab<=nUpdateTab; ++nTab)
-            if ( aDocument.IsPendingRowHeights( nTab ) )
+            if ( m_aDocument.IsPendingRowHeights( nTab ) )
                 aUpdateSheets.SelectTable( nTab, true );
 
         if (aUpdateSheets.GetSelectCount())
@@ -438,26 +453,26 @@ void ScDocShell::UpdatePendingRowHeights( SCTAB nUpdateTab, bool bBefore )
         for (nTab=0; nTab<=nUpdateTab; ++nTab)
             if ( aUpdateSheets.GetTableSelect( nTab ) )
             {
-                aDocument.UpdatePageBreaks( nTab );
-                aDocument.SetPendingRowHeights( nTab, false );
+                m_aDocument.UpdatePageBreaks( nTab );
+                m_aDocument.SetPendingRowHeights( nTab, false );
             }
     }
     else                    // only nUpdateTab
     {
-        if ( aDocument.IsPendingRowHeights( nUpdateTab ) )
+        if ( m_aDocument.IsPendingRowHeights( nUpdateTab ) )
         {
-            AdjustRowHeight( 0, MAXROW, nUpdateTab );
-            aDocument.UpdatePageBreaks( nUpdateTab );
-            aDocument.SetPendingRowHeights( nUpdateTab, false );
+            AdjustRowHeight( 0, m_aDocument.MaxRow(), nUpdateTab );
+            m_aDocument.UpdatePageBreaks( nUpdateTab );
+            m_aDocument.SetPendingRowHeights( nUpdateTab, false );
         }
     }
-    aDocument.LockStreamValid( false );
-    aDocument.EnableUndo( bIsUndoEnabled );
+    m_aDocument.LockStreamValid( false );
+    m_aDocument.EnableUndo( bIsUndoEnabled );
 }
 
 void ScDocShell::RefreshPivotTables( const ScRange& rSource )
 {
-    ScDPCollection* pColl = aDocument.GetDPCollection();
+    ScDPCollection* pColl = m_aDocument.GetDPCollection();
     if (!pColl)
         return;
 
@@ -472,21 +487,15 @@ void ScDocShell::RefreshPivotTables( const ScRange& rSource )
     }
 }
 
-static OUString lcl_GetAreaName( ScDocument* pDoc, ScArea* pArea )
+static OUString lcl_GetAreaName( ScDocument* pDoc, const ScArea* pArea )
 {
-    OUString aName;
-    bool bOk = false;
     ScDBData* pData = pDoc->GetDBAtArea( pArea->nTab, pArea->nColStart, pArea->nRowStart,
                                                         pArea->nColEnd, pArea->nRowEnd );
     if (pData)
-    {
-        aName = pData->GetName();
-        bOk = true;
-    }
+        return pData->GetName();
 
-    if (!bOk)
-        pDoc->GetName( pArea->nTab, aName );
-
+    OUString aName;
+    pDoc->GetName( pArea->nTab, aName );
     return aName;
 }
 
@@ -500,31 +509,32 @@ void ScDocShell::DoConsolidate( const ScConsolidateParam& rParam, bool bRecord )
     bool bErr = false;
     for (nPos=0; nPos<rParam.nDataAreaCount; nPos++)
     {
-        ScArea* pArea = rParam.ppDataAreas[nPos];
-        nColSize = std::max( nColSize, SCCOL( pArea->nColEnd - pArea->nColStart + 1 ) );
-        nRowSize = std::max( nRowSize, SCROW( pArea->nRowEnd - pArea->nRowStart + 1 ) );
+        ScArea const & rArea = rParam.pDataAreas[nPos];
+        nColSize = std::max( nColSize, SCCOL( rArea.nColEnd - rArea.nColStart + 1 ) );
+        nRowSize = std::max( nRowSize, SCROW( rArea.nRowEnd - rArea.nRowStart + 1 ) );
 
                                         // test if source data were moved
         if (rParam.bReferenceData)
-            if (pArea->nTab == rParam.nTab && pArea->nRowEnd >= rParam.nRow)
+            if (rArea.nTab == rParam.nTab && rArea.nRowEnd >= rParam.nRow)
                 bErr = true;
     }
 
     if (bErr)
     {
-        ScopedVclPtrInstance<InfoBox> aBox( GetActiveDialogParent(),
-                ScGlobal::GetRscString( STR_CONSOLIDATE_ERR1 ) );
-        aBox->Execute();
+        std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(GetActiveDialogParent(),
+                                                      VclMessageType::Info, VclButtonsType::Ok,
+                                                      ScResId(STR_CONSOLIDATE_ERR1)));
+        xInfoBox->run();
         return;
     }
 
     //      execute
 
-    WaitObject aWait( GetActiveDialogParent() );
+    weld::WaitObject aWait( GetActiveDialogParent() );
     ScDocShellModificator aModificator( *this );
 
     ScRange aOldDest;
-    ScDBData* pDestData = aDocument.GetDBAtCursor( rParam.nCol, rParam.nRow, rParam.nTab, ScDBDataPortion::TOP_LEFT );
+    ScDBData* pDestData = m_aDocument.GetDBAtCursor( rParam.nCol, rParam.nRow, rParam.nTab, ScDBDataPortion::TOP_LEFT );
     if (pDestData)
         pDestData->GetArea(aOldDest);
 
@@ -533,23 +543,23 @@ void ScDocShell::DoConsolidate( const ScConsolidateParam& rParam, bool bRecord )
     if ( rParam.bByCol || rParam.bByRow )
         for (nPos=0; nPos<rParam.nDataAreaCount; nPos++)
         {
-            ScArea* pArea = rParam.ppDataAreas[nPos];
-            aData.AddFields( &aDocument, pArea->nTab, pArea->nColStart, pArea->nRowStart,
-                                                        pArea->nColEnd, pArea->nRowEnd );
+            ScArea const & rArea = rParam.pDataAreas[nPos];
+            aData.AddFields( &m_aDocument, rArea.nTab, rArea.nColStart, rArea.nRowStart,
+                                                       rArea.nColEnd, rArea.nRowEnd );
         }
     aData.DoneFields();
     for (nPos=0; nPos<rParam.nDataAreaCount; nPos++)
     {
-        ScArea* pArea = rParam.ppDataAreas[nPos];
-        aData.AddData( &aDocument, pArea->nTab, pArea->nColStart, pArea->nRowStart,
-                                                    pArea->nColEnd, pArea->nRowEnd );
-        aData.AddName( lcl_GetAreaName(&aDocument,pArea) );
+        ScArea const & rArea = rParam.pDataAreas[nPos];
+        aData.AddData( &m_aDocument, rArea.nTab, rArea.nColStart, rArea.nRowStart,
+                                                 rArea.nColEnd, rArea.nRowEnd );
+        aData.AddName( lcl_GetAreaName(&m_aDocument, &rArea) );
     }
 
     aData.GetSize( nColSize, nRowSize );
     if (bRecord && nColSize > 0 && nRowSize > 0)
     {
-        ScDBData* pUndoData = pDestData ? new ScDBData(*pDestData) : nullptr;
+        std::unique_ptr<ScDBData> pUndoData(pDestData ? new ScDBData(*pDestData) : nullptr);
 
         SCTAB nDestTab = rParam.nTab;
         ScArea aDestArea( rParam.nTab, rParam.nCol, rParam.nRow,
@@ -559,65 +569,65 @@ void ScDocShell::DoConsolidate( const ScConsolidateParam& rParam, bool bRecord )
 
         if (rParam.bReferenceData)
         {
-            SCTAB nTabCount = aDocument.GetTableCount();
+            SCTAB nTabCount = m_aDocument.GetTableCount();
             SCROW nInsertCount = aData.GetInsertCount();
 
             // old outlines
-            ScOutlineTable* pTable = aDocument.GetOutlineTable( nDestTab );
-            ScOutlineTable* pUndoTab = pTable ? new ScOutlineTable( *pTable ) : nullptr;
+            ScOutlineTable* pTable = m_aDocument.GetOutlineTable( nDestTab );
+            std::unique_ptr<ScOutlineTable> pUndoTab(pTable ? new ScOutlineTable( *pTable ) : nullptr);
 
-            ScDocument* pUndoDoc = new ScDocument( SCDOCMODE_UNDO );
-            pUndoDoc->InitUndo( &aDocument, 0, nTabCount-1, false, true );
+            ScDocumentUniquePtr pUndoDoc(new ScDocument( SCDOCMODE_UNDO ));
+            pUndoDoc->InitUndo( &m_aDocument, 0, nTabCount-1, false, true );
 
             // row state
-            aDocument.CopyToDocument(0, 0, nDestTab, MAXCOL, MAXROW, nDestTab,
+            m_aDocument.CopyToDocument(0, 0, nDestTab, m_aDocument.MaxCol(), m_aDocument.MaxRow(), nDestTab,
                                      InsertDeleteFlags::NONE, false, *pUndoDoc);
 
             // all formulas
-            aDocument.CopyToDocument(0, 0, 0, MAXCOL, MAXROW, nTabCount-1,
+            m_aDocument.CopyToDocument(0, 0, 0, m_aDocument.MaxCol(), m_aDocument.MaxRow(), nTabCount-1,
                                      InsertDeleteFlags::FORMULA, false, *pUndoDoc);
 
             // complete output rows
-            aDocument.CopyToDocument(0, aDestArea.nRowStart, nDestTab,
-                                     MAXCOL,aDestArea.nRowEnd, nDestTab,
+            m_aDocument.CopyToDocument(0, aDestArea.nRowStart, nDestTab,
+                                     m_aDocument.MaxCol(),aDestArea.nRowEnd, nDestTab,
                                      InsertDeleteFlags::ALL, false, *pUndoDoc);
 
             // old output range
             if (pDestData)
-                aDocument.CopyToDocument(aOldDest, InsertDeleteFlags::ALL, false, *pUndoDoc);
+                m_aDocument.CopyToDocument(aOldDest, InsertDeleteFlags::ALL, false, *pUndoDoc);
 
             GetUndoManager()->AddUndoAction(
-                    new ScUndoConsolidate( this, aDestArea, rParam, pUndoDoc,
-                                            true, nInsertCount, pUndoTab, pUndoData ) );
+                    std::make_unique<ScUndoConsolidate>( this, aDestArea, rParam, std::move(pUndoDoc),
+                                            true, nInsertCount, std::move(pUndoTab), std::move(pUndoData) ) );
         }
         else
         {
-            ScDocument* pUndoDoc = new ScDocument( SCDOCMODE_UNDO );
-            pUndoDoc->InitUndo( &aDocument, aDestArea.nTab, aDestArea.nTab );
+            ScDocumentUniquePtr pUndoDoc(new ScDocument( SCDOCMODE_UNDO ));
+            pUndoDoc->InitUndo( &m_aDocument, aDestArea.nTab, aDestArea.nTab );
 
-            aDocument.CopyToDocument(aDestArea.nColStart, aDestArea.nRowStart, aDestArea.nTab,
+            m_aDocument.CopyToDocument(aDestArea.nColStart, aDestArea.nRowStart, aDestArea.nTab,
                                      aDestArea.nColEnd, aDestArea.nRowEnd, aDestArea.nTab,
                                      InsertDeleteFlags::ALL, false, *pUndoDoc);
 
             // old output range
             if (pDestData)
-                aDocument.CopyToDocument(aOldDest, InsertDeleteFlags::ALL, false, *pUndoDoc);
+                m_aDocument.CopyToDocument(aOldDest, InsertDeleteFlags::ALL, false, *pUndoDoc);
 
             GetUndoManager()->AddUndoAction(
-                    new ScUndoConsolidate( this, aDestArea, rParam, pUndoDoc,
-                                            false, 0, nullptr, pUndoData ) );
+                    std::make_unique<ScUndoConsolidate>( this, aDestArea, rParam, std::move(pUndoDoc),
+                                            false, 0, nullptr, std::move(pUndoData) ) );
         }
     }
 
     if (pDestData)                                      // delete / adjust destination range
     {
-        aDocument.DeleteAreaTab(aOldDest, InsertDeleteFlags::CONTENTS);
+        m_aDocument.DeleteAreaTab(aOldDest, InsertDeleteFlags::CONTENTS);
         pDestData->SetArea( rParam.nTab, rParam.nCol, rParam.nRow,
                             rParam.nCol + nColSize - 1, rParam.nRow + nRowSize - 1 );
         pDestData->SetHeader( rParam.bByRow );
     }
 
-    aData.OutputToDocument( &aDocument, rParam.nCol, rParam.nRow, rParam.nTab );
+    aData.OutputToDocument( &m_aDocument, rParam.nCol, rParam.nRow, rParam.nTab );
 
     SCCOL nPaintStartCol = rParam.nCol;
     SCROW nPaintStartRow = rParam.nRow;
@@ -631,8 +641,8 @@ void ScDocShell::DoConsolidate( const ScConsolidateParam& rParam, bool bRecord )
     if (rParam.bReferenceData)
     {
         nPaintStartCol = 0;
-        nPaintEndCol = MAXCOL;
-        nPaintEndRow = MAXROW;
+        nPaintEndCol = m_aDocument.MaxCol();
+        nPaintEndRow = m_aDocument.MaxRow();
         nPaintFlags |= PaintPartFlags::Left | PaintPartFlags::Size;
     }
     if (pDestData)
@@ -649,29 +659,29 @@ void ScDocShell::DoConsolidate( const ScConsolidateParam& rParam, bool bRecord )
 
 void ScDocShell::UseScenario( SCTAB nTab, const OUString& rName, bool bRecord )
 {
-    if (!aDocument.IsScenario(nTab))
+    if (!m_aDocument.IsScenario(nTab))
     {
-        SCTAB   nTabCount = aDocument.GetTableCount();
+        SCTAB   nTabCount = m_aDocument.GetTableCount();
         SCTAB   nSrcTab = SCTAB_MAX;
         SCTAB   nEndTab = nTab;
         OUString aCompare;
-        while ( nEndTab+1 < nTabCount && aDocument.IsScenario(nEndTab+1) )
+        while ( nEndTab+1 < nTabCount && m_aDocument.IsScenario(nEndTab+1) )
         {
             ++nEndTab;
             if (nSrcTab > MAXTAB)           // still searching for the scenario?
             {
-                aDocument.GetName( nEndTab, aCompare );
-                if (aCompare.equals(rName))
+                m_aDocument.GetName( nEndTab, aCompare );
+                if (aCompare == rName)
                     nSrcTab = nEndTab;      // found
             }
         }
         if (ValidTab(nSrcTab))
         {
-            if ( aDocument.TestCopyScenario( nSrcTab, nTab ) )          // test cell protection
+            if ( m_aDocument.TestCopyScenario( nSrcTab, nTab ) )          // test cell protection
             {
                 ScDocShellModificator aModificator( *this );
-                ScMarkData aScenMark;
-                aDocument.MarkScenario( nSrcTab, nTab, aScenMark );
+                ScMarkData aScenMark(m_aDocument.GetSheetLimits());
+                m_aDocument.MarkScenario( nSrcTab, nTab, aScenMark );
                 ScRange aMultiRange;
                 aScenMark.GetMultiMarkArea( aMultiRange );
                 SCCOL nStartCol = aMultiRange.aStart.Col();
@@ -681,10 +691,10 @@ void ScDocShell::UseScenario( SCTAB nTab, const OUString& rName, bool bRecord )
 
                 if (bRecord)
                 {
-                    ScDocument* pUndoDoc = new ScDocument( SCDOCMODE_UNDO );
-                    pUndoDoc->InitUndo( &aDocument, nTab,nEndTab );             // also all scenarios
+                    ScDocumentUniquePtr pUndoDoc(new ScDocument( SCDOCMODE_UNDO ));
+                    pUndoDoc->InitUndo( &m_aDocument, nTab,nEndTab );             // also all scenarios
                     //  shown table:
-                    aDocument.CopyToDocument(nStartCol, nStartRow, nTab,
+                    m_aDocument.CopyToDocument(nStartCol, nStartRow, nTab,
                                              nEndCol, nEndRow, nTab, InsertDeleteFlags::ALL,
                                              true, *pUndoDoc, &aScenMark);
                     //  scenarios
@@ -694,49 +704,51 @@ void ScDocShell::UseScenario( SCTAB nTab, const OUString& rName, bool bRecord )
                         OUString aComment;
                         Color  aColor;
                         ScScenarioFlags nScenFlags;
-                        aDocument.GetScenarioData( i, aComment, aColor, nScenFlags );
+                        m_aDocument.GetScenarioData( i, aComment, aColor, nScenFlags );
                         pUndoDoc->SetScenarioData( i, aComment, aColor, nScenFlags );
-                        bool bActive = aDocument.IsActiveScenario( i );
+                        bool bActive = m_aDocument.IsActiveScenario( i );
                         pUndoDoc->SetActiveScenario( i, bActive );
                         //  At copy-back scenarios also contents
                         if ( nScenFlags & ScScenarioFlags::TwoWay )
-                            aDocument.CopyToDocument(0, 0, i, MAXCOL, MAXROW, i,
+                            m_aDocument.CopyToDocument(0, 0, i, m_aDocument.MaxCol(), m_aDocument.MaxRow(), i,
                                                      InsertDeleteFlags::ALL, false, *pUndoDoc );
                     }
 
                     GetUndoManager()->AddUndoAction(
-                        new ScUndoUseScenario( this, aScenMark,
+                        std::make_unique<ScUndoUseScenario>( this, aScenMark,
                                         ScArea( nTab,nStartCol,nStartRow,nEndCol,nEndRow ),
-                                        pUndoDoc, rName ) );
+                                        std::move(pUndoDoc), rName ) );
                 }
 
-                aDocument.CopyScenario( nSrcTab, nTab );
+                m_aDocument.CopyScenario( nSrcTab, nTab );
 
                 sc::SetFormulaDirtyContext aCxt;
-                aDocument.SetAllFormulasDirty(aCxt);
+                m_aDocument.SetAllFormulasDirty(aCxt);
 
                 //  paint all, because the active scenario may be modified in other ranges;
                 //! only if there are visible frames?
-                PostPaint( 0,0,nTab, MAXCOL,MAXROW,nTab, PaintPartFlags::Grid );
+                PostPaint( 0,0,nTab, m_aDocument.MaxCol(),m_aDocument.MaxRow(),nTab, PaintPartFlags::Grid );
                 aModificator.SetDocumentModified();
             }
             else
             {
-                ScopedVclPtrInstance<InfoBox> aBox( GetActiveDialogParent(),
-                    ScGlobal::GetRscString( STR_PROTECTIONERR ) );
-                aBox->Execute();
+                std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(GetActiveDialogParent(),
+                                                              VclMessageType::Info, VclButtonsType::Ok,
+                                                              ScResId(STR_PROTECTIONERR)));
+                xInfoBox->run();
             }
         }
         else
         {
-            ScopedVclPtrInstance<InfoBox> aBox(GetActiveDialogParent(),
-                ScGlobal::GetRscString( STR_SCENARIO_NOTFOUND ) );
-            aBox->Execute();
+            std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(GetActiveDialogParent(),
+                                                          VclMessageType::Info, VclButtonsType::Ok,
+                                                          ScResId(STR_SCENARIO_NOTFOUND)));
+            xInfoBox->run();
         }
     }
     else
     {
-        OSL_FAIL( "UseScenario on Szenario-Sheet" );
+        OSL_FAIL( "UseScenario on Scenario-Sheet" );
     }
 }
 
@@ -745,24 +757,24 @@ void ScDocShell::ModifyScenario( SCTAB nTab, const OUString& rName, const OUStri
 {
     //  Undo
     OUString aOldName;
-    aDocument.GetName( nTab, aOldName );
+    m_aDocument.GetName( nTab, aOldName );
     OUString aOldComment;
     Color aOldColor;
     ScScenarioFlags nOldFlags;
-    aDocument.GetScenarioData( nTab, aOldComment, aOldColor, nOldFlags );
+    m_aDocument.GetScenarioData( nTab, aOldComment, aOldColor, nOldFlags );
     GetUndoManager()->AddUndoAction(
-        new ScUndoScenarioFlags(this, nTab,
+        std::make_unique<ScUndoScenarioFlags>(this, nTab,
                 aOldName, rName, aOldComment, rComment,
                 aOldColor, rColor, nOldFlags, nFlags) );
 
     //  execute
     ScDocShellModificator aModificator( *this );
-    aDocument.RenameTab( nTab, rName );
-    aDocument.SetScenarioData( nTab, rComment, rColor, nFlags );
+    m_aDocument.RenameTab( nTab, rName );
+    m_aDocument.SetScenarioData( nTab, rComment, rColor, nFlags );
     PostPaintGridAll();
     aModificator.SetDocumentModified();
 
-    if (!aOldName.equals(rName))
+    if (aOldName != rName)
         SfxGetpApp()->Broadcast( SfxHint( SfxHintId::ScTablesChanged ) );
 
     SfxBindings* pBindings = GetViewBindings();
@@ -778,7 +790,7 @@ SCTAB ScDocShell::MakeScenario( SCTAB nTab, const OUString& rName, const OUStrin
     if (rMark.IsMultiMarked())
     {
         SCTAB nNewTab = nTab + 1;
-        while (aDocument.IsScenario(nNewTab))
+        while (m_aDocument.IsScenario(nNewTab))
             ++nNewTab;
 
         bool bCopyAll = ( (nFlags & ScScenarioFlags::CopyAll) != ScScenarioFlags::NONE );
@@ -789,43 +801,43 @@ SCTAB ScDocShell::MakeScenario( SCTAB nTab, const OUString& rName, const OUStrin
         ScDocShellModificator aModificator( *this );
 
         if (bRecord)
-            aDocument.BeginDrawUndo();      // drawing layer must do its own undo actions
+            m_aDocument.BeginDrawUndo();      // drawing layer must do its own undo actions
 
-        if (aDocument.CopyTab( nTab, nNewTab, pCopyMark ))
+        if (m_aDocument.CopyTab( nTab, nNewTab, pCopyMark ))
         {
             if (bRecord)
             {
                 GetUndoManager()->AddUndoAction(
-                        new ScUndoMakeScenario( this, nTab, nNewTab,
+                        std::make_unique<ScUndoMakeScenario>( this, nTab, nNewTab,
                                                 rName, rComment, rColor, nFlags, rMark ));
             }
 
-            aDocument.RenameTab( nNewTab, rName);
-            aDocument.SetScenario( nNewTab, true );
-            aDocument.SetScenarioData( nNewTab, rComment, rColor, nFlags );
+            m_aDocument.RenameTab( nNewTab, rName);
+            m_aDocument.SetScenario( nNewTab, true );
+            m_aDocument.SetScenarioData( nNewTab, rComment, rColor, nFlags );
 
             ScMarkData aDestMark = rMark;
             aDestMark.SelectOneTable( nNewTab );
 
             //!     test for filter / buttons / merging
 
-            ScPatternAttr aProtPattern( aDocument.GetPool() );
+            ScPatternAttr aProtPattern( m_aDocument.GetPool() );
             aProtPattern.GetItemSet().Put( ScProtectionAttr( true ) );
-            aDocument.ApplyPatternAreaTab( 0,0, MAXCOL,MAXROW, nNewTab, aProtPattern );
+            m_aDocument.ApplyPatternAreaTab( 0,0, m_aDocument.MaxCol(),m_aDocument.MaxRow(), nNewTab, aProtPattern );
 
-            ScPatternAttr aPattern( aDocument.GetPool() );
+            ScPatternAttr aPattern( m_aDocument.GetPool() );
             aPattern.GetItemSet().Put( ScMergeFlagAttr( ScMF::Scenario ) );
             aPattern.GetItemSet().Put( ScProtectionAttr( true ) );
-            aDocument.ApplySelectionPattern( aPattern, aDestMark );
+            m_aDocument.ApplySelectionPattern( aPattern, aDestMark );
 
             if (!bCopyAll)
-                aDocument.SetVisible( nNewTab, false );
+                m_aDocument.SetVisible( nNewTab, false );
 
             //  this is the active scenario, then
-            aDocument.CopyScenario( nNewTab, nTab, true );  // sal_True - don't copy anything from scenario
+            m_aDocument.CopyScenario( nNewTab, nTab, true );  // sal_True - don't copy anything from scenario
 
             if (nFlags & ScScenarioFlags::ShowFrame)
-                PostPaint( 0,0,nTab, MAXCOL,MAXROW,nTab, PaintPartFlags::Grid );  // paint frames
+                PostPaint( 0,0,nTab, m_aDocument.MaxCol(),m_aDocument.MaxRow(),nTab, PaintPartFlags::Grid );  // paint frames
             PostPaintExtras();                                          // table tab
             aModificator.SetDocumentModified();
 
@@ -848,16 +860,16 @@ sal_uLong ScDocShell::TransferTab( ScDocShell& rSrcDocShell, SCTAB nSrcPos,
 
     // set the transferred area to the copyparam to make adjusting formulas possible
     ScClipParam aParam;
-    ScRange aRange(0, 0, nSrcPos, MAXCOL, MAXROW, nSrcPos);
-    aParam.maRanges.Append(aRange);
+    ScRange aRange(0, 0, nSrcPos, m_aDocument.MaxCol(), m_aDocument.MaxRow(), nSrcPos);
+    aParam.maRanges.push_back(aRange);
     rSrcDoc.SetClipParam(aParam);
 
-    sal_uLong nErrVal =  aDocument.TransferTab( &rSrcDoc, nSrcPos, nDestPos,
+    sal_uLong nErrVal =  m_aDocument.TransferTab( &rSrcDoc, nSrcPos, nDestPos,
                     bInsertNew );       // no insert
 
     // TransferTab doesn't copy drawing objects with bInsertNew=FALSE
     if ( nErrVal > 0 && !bInsertNew)
-        aDocument.TransferDrawPage( &rSrcDoc, nSrcPos, nDestPos );
+        m_aDocument.TransferDrawPage( &rSrcDoc, nSrcPos, nDestPos );
 
     if(nErrVal>0 && rSrcDoc.IsScenario( nSrcPos ))
     {
@@ -866,18 +878,18 @@ sal_uLong ScDocShell::TransferTab( ScDocShell& rSrcDocShell, SCTAB nSrcPos,
         ScScenarioFlags nFlags;
 
         rSrcDoc.GetScenarioData( nSrcPos, aComment,aColor, nFlags);
-        aDocument.SetScenario(nDestPos,true);
-        aDocument.SetScenarioData(nDestPos,aComment,aColor,nFlags);
+        m_aDocument.SetScenario(nDestPos,true);
+        m_aDocument.SetScenarioData(nDestPos,aComment,aColor,nFlags);
         bool bActive = rSrcDoc.IsActiveScenario(nSrcPos);
-        aDocument.SetActiveScenario(nDestPos, bActive );
+        m_aDocument.SetActiveScenario(nDestPos, bActive );
 
         bool bVisible = rSrcDoc.IsVisible(nSrcPos);
-        aDocument.SetVisible(nDestPos,bVisible );
+        m_aDocument.SetVisible(nDestPos,bVisible );
 
     }
 
     if ( nErrVal > 0 && rSrcDoc.IsTabProtected( nSrcPos ) )
-        aDocument.SetTabProtection(nDestPos, rSrcDoc.GetTabProtection(nSrcPos));
+        m_aDocument.SetTabProtection(nDestPos, rSrcDoc.GetTabProtection(nSrcPos));
     if ( bNotifyAndPaint )
     {
             Broadcast( ScTablesHint( SC_TAB_INSERTED, nDestPos ) );
@@ -893,17 +905,17 @@ bool ScDocShell::MoveTable( SCTAB nSrcTab, SCTAB nDestTab, bool bCopy, bool bRec
 
     // #i92477# be consistent with ScDocFunc::InsertTable: any index past the last sheet means "append"
     // #i101139# nDestTab must be the target position, not APPEND (for CopyTabProtection etc.)
-    if ( nDestTab >= aDocument.GetTableCount() )
-        nDestTab = aDocument.GetTableCount();
+    if ( nDestTab >= m_aDocument.GetTableCount() )
+        nDestTab = m_aDocument.GetTableCount();
 
     if (bCopy)
     {
         if (bRecord)
-            aDocument.BeginDrawUndo();          // drawing layer must do its own undo actions
+            m_aDocument.BeginDrawUndo();          // drawing layer must do its own undo actions
 
         OUString sSrcCodeName;
-        aDocument.GetCodeName( nSrcTab, sSrcCodeName );
-        if (!aDocument.CopyTab( nSrcTab, nDestTab ))
+        m_aDocument.GetCodeName( nSrcTab, sSrcCodeName );
+        if (!m_aDocument.CopyTab( nSrcTab, nDestTab ))
         {
             //! EndDrawUndo?
             return false;
@@ -914,18 +926,18 @@ bool ScDocShell::MoveTable( SCTAB nSrcTab, SCTAB nDestTab, bool bCopy, bool bRec
             if ( nDestTab <= nSrcTab )
                 ++nAdjSource;               // new position of source table after CopyTab
 
-            if ( aDocument.IsTabProtected( nAdjSource ) )
-                aDocument.CopyTabProtection(nAdjSource, nDestTab);
+            if ( m_aDocument.IsTabProtected( nAdjSource ) )
+                m_aDocument.CopyTabProtection(nAdjSource, nDestTab);
 
             if (bRecord)
             {
                 unique_ptr< vector<SCTAB> > pSrcList(new vector<SCTAB>(1, nSrcTab));
                 unique_ptr< vector<SCTAB> > pDestList(new vector<SCTAB>(1, nDestTab));
                 GetUndoManager()->AddUndoAction(
-                        new ScUndoCopyTab(this, pSrcList.release(), pDestList.release()));
+                        std::make_unique<ScUndoCopyTab>(this, std::move(pSrcList), std::move(pDestList)));
             }
 
-            bool bVbaEnabled = aDocument.IsInVBAMode();
+            bool bVbaEnabled = m_aDocument.IsInVBAMode();
             if ( bVbaEnabled )
             {
                 OUString aLibName( "Standard" );
@@ -939,8 +951,7 @@ bool ScDocShell::MoveTable( SCTAB nSrcTab, SCTAB nDestTab, bool bCopy, bool bRec
 
                 SCTAB nTabToUse = nDestTab;
                 if ( nDestTab == SC_TAB_APPEND )
-                    nTabToUse = aDocument.GetMaxTableNumber() - 1;
-                OUString sCodeName;
+                    nTabToUse = m_aDocument.GetMaxTableNumber() - 1;
                 OUString sSource;
                 try
                 {
@@ -958,14 +969,14 @@ bool ScDocShell::MoveTable( SCTAB nSrcTab, SCTAB nDestTab, bool bCopy, bool bRec
                 catch ( const css::uno::Exception& )
                 {
                 }
-                VBA_InsertModule( aDocument, nTabToUse, sCodeName, sSource );
+                VBA_InsertModule( m_aDocument, nTabToUse, sSource );
             }
         }
         Broadcast( ScTablesHint( SC_TAB_COPIED, nSrcTab, nDestTab ) );
     }
     else
     {
-        if ( aDocument.GetChangeTrack() )
+        if ( m_aDocument.GetChangeTrack() )
             return false;
 
         if ( nSrcTab<nDestTab && nDestTab!=SC_TAB_APPEND )
@@ -977,10 +988,10 @@ bool ScDocShell::MoveTable( SCTAB nSrcTab, SCTAB nDestTab, bool bCopy, bool bRec
             return true;    // nothing to do, but valid
         }
 
-        ScProgress* pProgress = new ScProgress(this, ScGlobal::GetRscString(STR_UNDO_MOVE_TAB),
-                                                aDocument.GetCodeCount(), true);
-        bool bDone = aDocument.MoveTab( nSrcTab, nDestTab, pProgress );
-        delete pProgress;
+        std::unique_ptr<ScProgress> pProgress(new ScProgress(this, ScResId(STR_UNDO_MOVE_TAB),
+                                                m_aDocument.GetCodeCount(), true));
+        bool bDone = m_aDocument.MoveTab( nSrcTab, nDestTab, pProgress.get() );
+        pProgress.reset();
         if (!bDone)
         {
             return false;
@@ -990,7 +1001,7 @@ bool ScDocShell::MoveTable( SCTAB nSrcTab, SCTAB nDestTab, bool bCopy, bool bRec
             unique_ptr< vector<SCTAB> > pSrcList(new vector<SCTAB>(1, nSrcTab));
             unique_ptr< vector<SCTAB> > pDestList(new vector<SCTAB>(1, nDestTab));
             GetUndoManager()->AddUndoAction(
-                    new ScUndoMoveTab(this, pSrcList.release(), pDestList.release()));
+                    std::make_unique<ScUndoMoveTab>(this, std::move(pSrcList), std::move(pDestList)));
         }
 
         Broadcast( ScTablesHint( SC_TAB_MOVED, nSrcTab, nDestTab ) );

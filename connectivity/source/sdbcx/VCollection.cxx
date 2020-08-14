@@ -23,15 +23,16 @@
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <connectivity/sdbcx/VCollection.hxx>
 #include <connectivity/sdbcx/VDescriptor.hxx>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <connectivity/dbexception.hxx>
 #include <comphelper/enumhelper.hxx>
-#include <comphelper/container.hxx>
 #include <comphelper/types.hxx>
 #include <comphelper/property.hxx>
-#include "TConnection.hxx"
-#include <rtl/ustrbuf.hxx>
-#include "resource/common_res.hrc"
-#include "resource/sharedresources.hxx"
+#include <comphelper/servicehelper.hxx>
+#include <cppuhelper/exc_hlp.hxx>
+#include <TConnection.hxx>
+#include <strings.hrc>
+#include <resource/sharedresources.hxx>
 
 using namespace connectivity::sdbcx;
 using namespace connectivity;
@@ -102,13 +103,13 @@ namespace
             m_aElements.push_back(m_aNameMap.insert(m_aNameMap.begin(), ObjectEntry(_sName,_xObject)));
         }
 
-        virtual void reFill(const TStringVector &_rVector) override
+        virtual void reFill(const ::std::vector< OUString> &_rVector) override
         {
-            OSL_ENSURE(!m_aNameMap.size(),"OCollection::reFill: collection isn't empty");
+            OSL_ENSURE(m_aNameMap.empty(),"OCollection::reFill: collection isn't empty");
             m_aElements.reserve(_rVector.size());
 
-            for(TStringVector::const_iterator i=_rVector.begin(); i != _rVector.end();++i)
-                m_aElements.push_back(m_aNameMap.insert(m_aNameMap.begin(), ObjectEntry(*i,ObjectType())));
+            for (auto const& elem : _rVector)
+                m_aElements.push_back(m_aNameMap.insert(m_aNameMap.begin(), ObjectEntry(elem,ObjectType())));
         }
 
         virtual bool rename(const OUString& _sOldName, const OUString& _sNewName) override
@@ -139,9 +140,11 @@ namespace
             Sequence< OUString > aNameList(m_aElements.size());
 
             OUString* pStringArray = aNameList.getArray();
-            typename std::vector< ObjectIter >::const_iterator aEnd = m_aElements.end();
-            for(typename std::vector< ObjectIter >::const_iterator aIter = m_aElements.begin(); aIter != aEnd;++aIter,++pStringArray)
-                *pStringArray = (*aIter)->first;
+            for(const auto& rIter : m_aElements)
+            {
+                *pStringArray = rIter->first;
+                ++pStringArray;
+            }
 
             return aNameList;
         }
@@ -165,13 +168,13 @@ namespace
 
         virtual void disposeElements() override
         {
-            for( ObjectIter aIter = m_aNameMap.begin(); aIter != m_aNameMap.end(); ++aIter)
+            for (auto & name : m_aNameMap)
             {
-                Reference<XComponent> xComp(aIter->second.get(),UNO_QUERY);
+                Reference<XComponent> xComp(name.second.get(),UNO_QUERY);
                 if ( xComp.is() )
                 {
                     ::comphelper::disposeComponent(xComp);
-                    (*aIter).second = T();
+                    name.second = T();
                 }
             }
             m_aElements.clear();
@@ -217,7 +220,7 @@ IMPLEMENT_SERVICE_INFO(OCollection,"com.sun.star.sdbcx.VContainer" , "com.sun.st
 OCollection::OCollection(::cppu::OWeakObject& _rParent
                          , bool _bCase
                          , ::osl::Mutex& _rMutex
-                         , const TStringVector &_rVector
+                         , const ::std::vector< OUString> &_rVector
                          , bool _bUseIndexOnly
                          , bool _bUseHardRef)
                      :m_aContainerListeners(_rMutex)
@@ -335,7 +338,7 @@ void SAL_CALL OCollection::refresh(  )
     m_aRefreshListeners.notifyEach( &XRefreshListener::refreshed, aEvt );
 }
 
-void OCollection::reFill(const TStringVector &_rVector)
+void OCollection::reFill(const ::std::vector< OUString> &_rVector)
 {
     m_pElements->reFill(_rVector);
 }
@@ -370,7 +373,7 @@ void SAL_CALL OCollection::appendByDescriptor( const Reference< XPropertySet >& 
     if ( !xNewlyCreated.is() )
         throw RuntimeException();
 
-    ODescriptor* pDescriptor = ODescriptor::getImplementation( xNewlyCreated );
+    ODescriptor* pDescriptor = comphelper::getUnoTunnelImplementation<ODescriptor>( xNewlyCreated );
     if ( pDescriptor )
         pDescriptor->setNew( false );
 
@@ -534,6 +537,7 @@ ObjectType OCollection::getObject(sal_Int32 _nIndex)
         }
         catch(const SQLException& e)
         {
+            css::uno::Any anyEx = cppu::getCaughtException();
             try
             {
                 dropImpl(_nIndex,false);
@@ -541,7 +545,7 @@ ObjectType OCollection::getObject(sal_Int32 _nIndex)
             catch(const Exception& )
             {
             }
-            throw WrappedTargetException(e.Message,static_cast<XTypeProvider*>(this),makeAny(e));
+            throw WrappedTargetException(e.Message,static_cast<XTypeProvider*>(this),anyEx);
         }
         m_pElements->setObject(_nIndex,xName);
     }

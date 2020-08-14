@@ -19,48 +19,58 @@
 #ifndef INCLUDED_SVX_LINECTRL_HXX
 #define INCLUDED_SVX_LINECTRL_HXX
 
-
-#include <svtools/valueset.hxx>
-#include <svl/lstner.hxx>
 #include <sfx2/tbxctrl.hxx>
+#include <svtools/popupwindowcontroller.hxx>
 #include <svx/svxdllapi.h>
-#include <svx/xtable.hxx>
+#include <memory>
+
+namespace svx {
+    class ToolboxButtonLineStyleUpdater;
+}
 
 class XLineStyleItem;
 class XLineDashItem;
-class SvxLineBox;
-class SvxMetricField;
 
+typedef std::function<bool(const OUString&, const css::uno::Any&)> LineStyleSelectFunction;
 
 // SvxLineStyleController:
-
-
-class SVX_DLLPUBLIC SvxLineStyleToolBoxControl : public SfxToolBoxControl
+class SVXCORE_DLLPUBLIC SvxLineStyleToolBoxControl final : public svt::PopupWindowController
 {
 private:
-    XLineStyleItem*     pStyleItem;
-    XLineDashItem*      pDashItem;
+    std::unique_ptr<svx::ToolboxButtonLineStyleUpdater> m_xBtnUpdater;
 
-    bool                bUpdate;
+    LineStyleSelectFunction m_aLineStyleSelectFunction;
 
 public:
-    SFX_DECL_TOOLBOX_CONTROL();
+    SvxLineStyleToolBoxControl( const css::uno::Reference<css::uno::XComponentContext>& rContext );
 
-    SvxLineStyleToolBoxControl( sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx );
+    // XInitialization
+    virtual void SAL_CALL initialize( const css::uno::Sequence<css::uno::Any>& rArguments ) override;
+
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
+
+    virtual void SAL_CALL execute(sal_Int16 nKeyModifier) override;
+    virtual void SAL_CALL statusChanged(const css::frame::FeatureStateEvent& rEvent) override;
+
     virtual ~SvxLineStyleToolBoxControl() override;
 
-    virtual void        StateChanged( sal_uInt16 nSID, SfxItemState eState,
-                                      const SfxPoolItem* pState ) override;
-    void                Update( const SfxPoolItem* pState );
-    virtual VclPtr<vcl::Window> CreateItemWindow( vcl::Window *pParent ) override;
-};
+    void setLineStyleSelectFunction(const LineStyleSelectFunction& aLineStyleSelectFunction);
+    void dispatchLineStyleCommand(const OUString& rCommand, const css::uno::Sequence<css::beans::PropertyValue>& rArgs);
 
+private:
+    virtual std::unique_ptr<WeldToolbarPopup> weldPopupWindow() override;
+    virtual VclPtr<vcl::Window> createVclPopupWindow( vcl::Window* pParent ) override;
+
+};
 
 // SvxLineWidthController:
 
-
-class SVX_DLLPUBLIC SvxLineWidthToolBoxControl : public SfxToolBoxControl
+class SVX_DLLPUBLIC SvxLineWidthToolBoxControl final : public SfxToolBoxControl
 {
+    static MapUnit GetCoreMetric();
+
 public:
     SFX_DECL_TOOLBOX_CONTROL();
 
@@ -69,7 +79,7 @@ public:
 
     virtual void        StateChanged( sal_uInt16 nSID, SfxItemState eState,
                                       const SfxPoolItem* pState ) override;
-    virtual VclPtr<vcl::Window> CreateItemWindow( vcl::Window *pParent ) override;
+    virtual VclPtr<InterimItemWindow> CreateItemWindow( vcl::Window *pParent ) override;
 };
 
 #endif

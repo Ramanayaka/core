@@ -17,14 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "statusindicator.hxx"
+#include <statusindicator.hxx>
 
-#include <com/sun/star/awt/WindowAttribute.hpp>
+#include <com/sun/star/awt/PosSize.hpp>
+#include <com/sun/star/awt/XFixedText.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/typeprovider.hxx>
 
-#include "progressbar.hxx"
+#include <progressbar.hxx>
 
 using namespace ::cppu;
 using namespace ::osl;
@@ -33,7 +34,12 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::task;
 
-namespace unocontrols{
+#define FIXEDTEXT_SERVICENAME                   "com.sun.star.awt.UnoControlFixedText"
+#define FIXEDTEXT_MODELNAME                     "com.sun.star.awt.UnoControlFixedTextModel"
+#define CONTROLNAME_TEXT                        "Text" // identifier the control in container
+#define CONTROLNAME_PROGRESSBAR                 "ProgressBar" //              -||-
+
+namespace unocontrols {
 
 //  construct/destruct
 
@@ -42,7 +48,7 @@ StatusIndicator::StatusIndicator( const css::uno::Reference< XComponentContext >
 {
     // It's not allowed to work with member in this method (refcounter !!!)
     // But with a HACK (++refcount) its "OK" :-(
-    ++m_refCount;
+    osl_atomic_increment(&m_refCount);
 
     // Create instances for fixedtext and progress ...
     m_xText.set( rxContext->getServiceManager()->createInstanceWithContext( FIXEDTEXT_SERVICENAME, rxContext ), UNO_QUERY );
@@ -61,7 +67,7 @@ StatusIndicator::StatusIndicator( const css::uno::Reference< XComponentContext >
     // (progressbar take automatically its own defaults)
     m_xText->setText( "" );
 
-    --m_refCount;
+    osl_atomic_decrement(&m_refCount);
 }
 
 StatusIndicator::~StatusIndicator() {}
@@ -76,13 +82,13 @@ Any SAL_CALL StatusIndicator::queryInterface( const Type& rType )
     css::uno::Reference< XInterface > xDel = BaseContainerControl::impl_getDelegator();
     if ( xDel.is() )
     {
-        // If an delegator exist, forward question to his queryInterface.
-        // Delegator will ask his own queryAggregation!
+        // If a delegator exists, forward question to its queryInterface.
+        // Delegator will ask its own queryAggregation!
         aReturn = xDel->queryInterface( rType );
     }
     else
     {
-        // If an delegator unknown, forward question to own queryAggregation.
+        // If a delegator is unknown, forward question to own queryAggregation.
         aReturn = queryAggregation( rType );
     }
 
@@ -301,7 +307,7 @@ void SAL_CALL StatusIndicator::dispose ()
     removeControl( xTextControl     );
     removeControl( m_xProgressBar.get() );
 
-    // do'nt use "...->clear ()" or "... = XFixedText ()"
+    // don't use "...->clear ()" or "... = XFixedText ()"
     // when other hold a reference at this object !!!
     xTextControl->dispose();
     m_xProgressBar->dispose();
@@ -337,74 +343,56 @@ void SAL_CALL StatusIndicator::setPosSize (
     }
 }
 
-//  impl but public method to register service
-
-const Sequence< OUString > StatusIndicator::impl_getStaticSupportedServiceNames()
-{
-    return css::uno::Sequence<OUString>();
-}
-
-//  impl but public method to register service
-
-const OUString StatusIndicator::impl_getStaticImplementationName()
-{
-    return OUString("stardiv.UnoControls.StatusIndicator");
-}
-
 //  protected method
 
-WindowDescriptor* StatusIndicator::impl_getWindowDescriptor( const css::uno::Reference< XWindowPeer >& xParentPeer )
+WindowDescriptor StatusIndicator::impl_getWindowDescriptor( const css::uno::Reference< XWindowPeer >& xParentPeer )
 {
-    // - used from "createPeer()" to set the values of an css::awt::WindowDescriptor !!!
-    // - if you will change the descriptor-values, you must override this virtuell function
-    // - the caller must release the memory for this dynamical descriptor !!!
+    WindowDescriptor aDescriptor;
 
-    WindowDescriptor* pDescriptor = new WindowDescriptor;
+    aDescriptor.Type               =   WindowClass_SIMPLE;
+    aDescriptor.WindowServiceName  =   "floatingwindow";
+    aDescriptor.ParentIndex        =   -1;
+    aDescriptor.Parent             =   xParentPeer;
+    aDescriptor.Bounds             =   getPosSize ();
 
-    pDescriptor->Type               =   WindowClass_SIMPLE;
-    pDescriptor->WindowServiceName  =   "floatingwindow";
-    pDescriptor->ParentIndex        =   -1;
-    pDescriptor->Parent             =   xParentPeer;
-    pDescriptor->Bounds             =   getPosSize ();
-
-    return pDescriptor;
+    return aDescriptor;
 }
 
 //  protected method
 
 void StatusIndicator::impl_paint ( sal_Int32 nX, sal_Int32 nY, const css::uno::Reference< XGraphics > & rGraphics )
 {
-    // This paint method is not buffered !!
-    // Every request paint the completely control. ( but only, if peer exist )
-     if ( rGraphics.is () )
-    {
-        MutexGuard  aGuard (m_aMutex);
+    // This paint method is not buffered!
+    // Every request paint the completely control. (But only, if peer exist)
+    if ( !rGraphics.is () )
+        return;
 
-        // background = gray
-        css::uno::Reference< XWindowPeer > xPeer( impl_getPeerWindow(), UNO_QUERY );
-        if( xPeer.is() )
-            xPeer->setBackground( STATUSINDICATOR_BACKGROUNDCOLOR );
+    MutexGuard  aGuard (m_aMutex);
 
-        // FixedText background = gray
-        css::uno::Reference< XControl > xTextControl( m_xText, UNO_QUERY );
-        xPeer = xTextControl->getPeer();
-        if( xPeer.is() )
-            xPeer->setBackground( STATUSINDICATOR_BACKGROUNDCOLOR );
+    // background = gray
+    css::uno::Reference< XWindowPeer > xPeer( impl_getPeerWindow(), UNO_QUERY );
+    if( xPeer.is() )
+        xPeer->setBackground( STATUSINDICATOR_BACKGROUNDCOLOR );
 
-        // Progress background = gray
-        xPeer = m_xProgressBar->getPeer();
-        if( xPeer.is() )
-            xPeer->setBackground( STATUSINDICATOR_BACKGROUNDCOLOR );
+    // FixedText background = gray
+    css::uno::Reference< XControl > xTextControl( m_xText, UNO_QUERY );
+    xPeer = xTextControl->getPeer();
+    if( xPeer.is() )
+        xPeer->setBackground( STATUSINDICATOR_BACKGROUNDCOLOR );
 
-        // paint shadow border
-        rGraphics->setLineColor ( STATUSINDICATOR_LINECOLOR_BRIGHT                          );
-        rGraphics->drawLine     ( nX, nY, impl_getWidth(), nY               );
-        rGraphics->drawLine     ( nX, nY, nX             , impl_getHeight() );
+    // Progress background = gray
+    xPeer = m_xProgressBar->getPeer();
+    if( xPeer.is() )
+        xPeer->setBackground( STATUSINDICATOR_BACKGROUNDCOLOR );
 
-        rGraphics->setLineColor ( STATUSINDICATOR_LINECOLOR_SHADOW                                                              );
-        rGraphics->drawLine     ( impl_getWidth()-1, impl_getHeight()-1, impl_getWidth()-1, nY                  );
-        rGraphics->drawLine     ( impl_getWidth()-1, impl_getHeight()-1, nX               , impl_getHeight()-1  );
-    }
+    // paint shadow border
+    rGraphics->setLineColor ( STATUSINDICATOR_LINECOLOR_BRIGHT                          );
+    rGraphics->drawLine     ( nX, nY, impl_getWidth(), nY               );
+    rGraphics->drawLine     ( nX, nY, nX             , impl_getHeight() );
+
+    rGraphics->setLineColor ( STATUSINDICATOR_LINECOLOR_SHADOW                                                              );
+    rGraphics->drawLine     ( impl_getWidth()-1, impl_getHeight()-1, impl_getWidth()-1, nY                  );
+    rGraphics->drawLine     ( impl_getWidth()-1, impl_getHeight()-1, nX               , impl_getHeight()-1  );
 }
 
 //  protected method
@@ -456,5 +444,12 @@ void StatusIndicator::impl_recalcLayout ( const WindowEvent& aEvent )
 }
 
 }   // namespace unocontrols
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+stardiv_UnoControls_StatusIndicator_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new unocontrols::StatusIndicator(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

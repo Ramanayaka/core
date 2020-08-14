@@ -17,20 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/XPropertyTable.hxx"
+#include <XPropertyTable.hxx>
 
 #include <vcl/virdev.hxx>
-#include <svl/itemset.hxx>
-#include <sfx2/docfile.hxx>
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
 #include <svx/dialmgr.hxx>
 #include <svx/xtable.hxx>
-#include <svx/xpool.hxx>
-#include <svx/xbtmpit.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
-
-#include <o3tl/make_unique.hxx>
+#include <vcl/BitmapTools.hxx>
 
 using namespace com::sun::star;
 
@@ -48,42 +44,42 @@ uno::Reference< container::XNameContainer > XPatternList::createInstance()
 bool XPatternList::Create()
 {
     OUStringBuffer aStr(SvxResId(RID_SVXSTR_PATTERN));
-    sal_uInt16 aArray[64];
-    Bitmap aBitmap;
+    std::array<sal_uInt8,64> aArray;
+    BitmapEx aBitmap;
     const sal_Int32 nLen(aStr.getLength() - 1);
 
-    memset(aArray, 0, sizeof(aArray));
+    aArray.fill(0);
 
     // white/white bitmap
     aStr.append(" 1");
-    aBitmap = createHistorical8x8FromArray(aArray, RGB_Color(COL_WHITE), RGB_Color(COL_WHITE));
-    Insert(o3tl::make_unique<XBitmapEntry>(Graphic(aBitmap), aStr.toString()));
+    aBitmap = vcl::bitmap::createHistorical8x8FromArray(aArray, COL_WHITE, COL_WHITE);
+    Insert(std::make_unique<XBitmapEntry>(Graphic(aBitmap), aStr.toString()));
 
     // black/white bitmap
     aArray[ 0] = 1; aArray[ 9] = 1; aArray[18] = 1; aArray[27] = 1;
     aArray[36] = 1; aArray[45] = 1; aArray[54] = 1; aArray[63] = 1;
     aStr[nLen] = '2';
-    aBitmap = createHistorical8x8FromArray(aArray, RGB_Color(COL_BLACK), RGB_Color(COL_WHITE));
-    Insert(o3tl::make_unique<XBitmapEntry>(Graphic(aBitmap), aStr.toString()));
+    aBitmap = vcl::bitmap::createHistorical8x8FromArray(aArray, COL_BLACK, COL_WHITE);
+    Insert(std::make_unique<XBitmapEntry>(Graphic(aBitmap), aStr.toString()));
 
     // lightred/white bitmap
     aArray[ 7] = 1; aArray[14] = 1; aArray[21] = 1; aArray[28] = 1;
     aArray[35] = 1; aArray[42] = 1; aArray[49] = 1; aArray[56] = 1;
     aStr[nLen] = '3';
-    aBitmap = createHistorical8x8FromArray(aArray, RGB_Color(COL_LIGHTRED), RGB_Color(COL_WHITE));
-    Insert(o3tl::make_unique<XBitmapEntry>(Graphic(aBitmap), aStr.toString()));
+    aBitmap = vcl::bitmap::createHistorical8x8FromArray(aArray, COL_LIGHTRED, COL_WHITE);
+    Insert(std::make_unique<XBitmapEntry>(Graphic(aBitmap), aStr.toString()));
 
     // lightblue/white bitmap
     aArray[24] = 1; aArray[25] = 1; aArray[26] = 1;
     aArray[29] = 1; aArray[30] = 1; aArray[31] = 1;
     aStr[nLen] = '4';
-    aBitmap = createHistorical8x8FromArray(aArray, RGB_Color(COL_LIGHTBLUE), RGB_Color(COL_WHITE));
-    Insert(o3tl::make_unique<XBitmapEntry>(Graphic(aBitmap), aStr.toString()));
+    aBitmap = vcl::bitmap::createHistorical8x8FromArray(aArray, COL_LIGHTBLUE, COL_WHITE);
+    Insert(std::make_unique<XBitmapEntry>(Graphic(aBitmap), aStr.toString()));
 
     return true;
 }
 
-Bitmap XPatternList::CreateBitmap( long nIndex, const Size& rSize ) const
+BitmapEx XPatternList::CreateBitmap( long nIndex, const Size& rSize ) const
 {
     assert( nIndex < Count() );
 
@@ -132,21 +128,21 @@ Bitmap XPatternList::CreateBitmap( long nIndex, const Size& rSize ) const
                 }
             }
         }
-        rBitmapEx = pVirtualDevice->GetBitmap(Point(0, 0), rSize);
-        return rBitmapEx.GetBitmap();
+        rBitmapEx = pVirtualDevice->GetBitmapEx(Point(0, 0), rSize);
+        return rBitmapEx;
     }
     else
-        return Bitmap();
+        return BitmapEx();
 }
 
-Bitmap XPatternList::CreateBitmapForUI( long nIndex )
+BitmapEx XPatternList::CreateBitmapForUI( long nIndex )
 {
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
     const Size& rSize = rStyleSettings.GetListBoxPreviewDefaultPixelSize();
     return CreateBitmap(nIndex, rSize);
 }
 
-Bitmap XPatternList::GetBitmapForPreview( long nIndex, const Size& rSize )
+BitmapEx XPatternList::GetBitmapForPreview( long nIndex, const Size& rSize )
 {
     return CreateBitmap(nIndex, rSize);
 }

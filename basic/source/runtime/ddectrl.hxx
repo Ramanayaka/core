@@ -17,11 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASIC_SOURCE_RUNTIME_DDECTRL_HXX
-#define INCLUDED_BASIC_SOURCE_RUNTIME_DDECTRL_HXX
+#pragma once
 
 #include <tools/link.hxx>
-#include <basic/sberrors.hxx>
+#include <vcl/errcode.hxx>
+
+#include <memory>
+#include <vector>
 
 class DdeConnection;
 class DdeData;
@@ -30,9 +32,9 @@ class SbiDdeControl
 {
 private:
     DECL_LINK( Data, const DdeData*, void );
-    static ErrCode GetLastErr( DdeConnection* );
+    static ErrCode GetLastErr( const DdeConnection* );
     size_t GetFreeChannel();
-    std::vector<DdeConnection*> aConvList;
+    std::vector<std::unique_ptr<DdeConnection>> aConvList;
     OUString aData;
 
 public:
@@ -48,7 +50,5 @@ public:
     ErrCode Execute( size_t nChannel, const OUString& rCommand );
     ErrCode Poke( size_t nChannel, const OUString& rItem, const OUString& rData );
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

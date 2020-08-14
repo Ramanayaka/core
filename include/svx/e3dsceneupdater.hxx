@@ -21,13 +21,14 @@
 #define INCLUDED_SVX_E3DSCENEUPDATER_HXX
 
 #include <svx/svxdllapi.h>
+#include <memory>
 
 class SdrObject;
 class E3dScene;
 
-namespace drawinglayer { namespace geometry {
+namespace drawinglayer::geometry {
     class ViewInformation3D;
-}}
+}
 
 /** Helper for 3d object changes affecting 2d geometry
 
@@ -43,24 +44,24 @@ namespace drawinglayer { namespace geometry {
    use it. This is only desirable if changes to the scene's content
    are intended to change the scene's 2D geometry attributes
 */
-class SVX_DLLPUBLIC E3DModifySceneSnapRectUpdater
+class SVXCORE_DLLPUBLIC E3DModifySceneSnapRectUpdater
 {
     // the scene which may be changed. This gets set to the outmost scene
     // of the to-be-changed 3D object when the scene has a 3d transformation
     // stack at construction time. In all other cases it's set to zero and
     // no action needs to be taken
-    E3dScene*                                   mpScene;
+    E3dScene*       mpScene;
 
     // the 3d transformation stack at the time of construction, valid when
     // mpScene is not zero
-    drawinglayer::geometry::ViewInformation3D*  mpViewInformation3D;
+    std::unique_ptr<drawinglayer::geometry::ViewInformation3D>  mpViewInformation3D;
 
 public:
     // the constructor evaluates and sets the members at construction time
-    E3DModifySceneSnapRectUpdater(const SdrObject* pObject);
+    E3DModifySceneSnapRectUpdater(const SdrObject* mpObject);
 
     // the destructor will take action if mpScene is not zero and modify the
-    // 2D geomeztry of the target scene
+    // 2D geometry of the target scene
     ~E3DModifySceneSnapRectUpdater();
 };
 

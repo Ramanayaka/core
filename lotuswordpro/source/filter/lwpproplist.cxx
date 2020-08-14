@@ -60,7 +60,7 @@
 
 #include "lwpproplist.hxx"
 
-LwpPropListElement::LwpPropListElement(LwpObjectHeader &objHdr, LwpSvStream *pStrm)
+LwpPropListElement::LwpPropListElement(LwpObjectHeader const &objHdr, LwpSvStream *pStrm)
 :LwpDLVList(objHdr,pStrm)
 {
 }
@@ -80,7 +80,7 @@ void LwpPropListElement::Read()
 
 bool LwpPropListElement::IsNamed(const OUString& name)
 {
-    return name.equals(m_Name.str());
+    return name == m_Name.str();
 }
 
 OUString LwpPropList::GetNamedProperty(const OUString& name)

@@ -20,24 +20,20 @@
 
 #include "datatyperepository.hxx"
 #include "datatypes.hxx"
-#include "frm_resource.hrc"
-#include "frm_resource.hxx"
-#include "frm_strings.hxx"
-#include "property.hrc"
+#include <strings.hrc>
+#include <frm_resource.hxx>
+#include <frm_strings.hxx>
+#include <property.hxx>
 
 #include <com/sun/star/container/ElementExistException.hpp>
 #include <com/sun/star/util/VetoException.hpp>
+#include <com/sun/star/xsd/DataTypeClass.hpp>
 #include <comphelper/enumhelper.hxx>
-
-#include <functional>
-#include <algorithm>
-#include <o3tl/functional.hxx>
 
 namespace xforms
 {
 
     using ::com::sun::star::uno::Reference;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Any;
     using ::com::sun::star::uno::Type;
     using ::com::sun::star::uno::makeAny;
@@ -46,7 +42,6 @@ namespace xforms
     using ::com::sun::star::container::NoSuchElementException;
     using ::com::sun::star::container::ElementExistException;
     using ::com::sun::star::container::XEnumeration;
-    using ::com::sun::star::lang::WrappedTargetException;
     using ::com::sun::star::xsd::XDataType;
     using namespace frm;
 

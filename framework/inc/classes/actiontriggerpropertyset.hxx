@@ -28,8 +28,7 @@
 #include <com/sun/star/awt/XBitmap.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <framework/fwedllapi.h>
+#include <framework/fwkdllapi.h>
 
 #define SERVICENAME_ACTIONTRIGGER "com.sun.star.ui.ActionTrigger"
 #define IMPLEMENTATIONNAME_ACTIONTRIGGER "com.sun.star.comp.ui.ActionTrigger"
@@ -37,7 +36,7 @@
 namespace framework
 {
 
-class ActionTriggerPropertySet :  private cppu::BaseMutex,
+class ActionTriggerPropertySet final : private cppu::BaseMutex,
                                     public css::lang::XServiceInfo ,
                                     public css::lang::XTypeProvider,
                                     public ::cppu::OBroadcastHelper             ,
@@ -45,22 +44,22 @@ class ActionTriggerPropertySet :  private cppu::BaseMutex,
                                     public ::cppu::OWeakObject
 {
     public:
-        FWE_DLLPUBLIC ActionTriggerPropertySet();
-        FWE_DLLPUBLIC virtual ~ActionTriggerPropertySet() override;
+        ActionTriggerPropertySet();
+        virtual ~ActionTriggerPropertySet() override;
 
         // XInterface
-        virtual FWE_DLLPUBLIC css::uno::Any SAL_CALL queryInterface( const css::uno::Type& aType ) override;
-        virtual FWE_DLLPUBLIC void SAL_CALL acquire() throw () override;
-        virtual FWE_DLLPUBLIC void SAL_CALL release() throw () override;
+        virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& aType ) override;
+        virtual void SAL_CALL acquire() throw () override;
+        virtual void SAL_CALL release() throw () override;
 
         // XServiceInfo
-        virtual FWE_DLLPUBLIC OUString SAL_CALL getImplementationName(  ) override;
-        virtual FWE_DLLPUBLIC sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
-        virtual FWE_DLLPUBLIC css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
+        virtual OUString SAL_CALL getImplementationName(  ) override;
+        virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
         // XTypeProvider
-        virtual FWE_DLLPUBLIC css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
-        virtual FWE_DLLPUBLIC css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) override;
+        virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
+        virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) override;
 
     private:
 
@@ -80,7 +79,7 @@ class ActionTriggerPropertySet :  private cppu::BaseMutex,
 
         virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo() override;
 
-        static const css::uno::Sequence< css::beans::Property > impl_getStaticPropertyDescriptor();
+        static css::uno::Sequence< css::beans::Property > impl_getStaticPropertyDescriptor();
 
         //  helper
 

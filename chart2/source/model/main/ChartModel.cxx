@@ -17,25 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ChartModel.hxx"
-#include "servicenames.hxx"
-#include "MediaDescriptorHelper.hxx"
-#include "macros.hxx"
-#include "DataSourceHelper.hxx"
-#include "ChartModelHelper.hxx"
-#include "DiagramHelper.hxx"
-#include "DisposeHelper.hxx"
-#include "ControllerLockGuard.hxx"
-#include "ObjectIdentifier.hxx"
+#include <ChartModel.hxx>
+#include <servicenames.hxx>
+#include <DataSourceHelper.hxx>
+#include <ChartModelHelper.hxx>
+#include <DisposeHelper.hxx>
+#include <ControllerLockGuard.hxx>
+#include <ObjectIdentifier.hxx>
 #include "PageBackground.hxx"
-#include "CloneHelper.hxx"
-#include "NameContainer.hxx"
+#include <CloneHelper.hxx>
+#include <NameContainer.hxx>
 #include "UndoManager.hxx"
-#include "ChartView.hxx"
-#include "PopupRequest.hxx"
-#include <svx/charthelper.hxx>
-
-#include <vcl/openglwin.hxx>
+#include <ChartView.hxx>
+#include <PopupRequest.hxx>
+#include <ModifyListenerHelper.hxx>
 
 #include <com/sun/star/chart/ChartDataRowSource.hpp>
 #include <com/sun/star/chart2/data/XPivotTableDataProvider.hpp>
@@ -48,30 +43,23 @@
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
-#include <com/sun/star/embed/XEmbedObjectCreator.hpp>
-#include <com/sun/star/embed/XEmbedPersist.hpp>
-#include <com/sun/star/embed/EmbedStates.hpp>
-#include <com/sun/star/embed/XComponentSupplier.hpp>
-#include <com/sun/star/embed/XStorage.hpp>
 #include <com/sun/star/embed/EmbedMapUnits.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
-#include <com/sun/star/awt/Gradient.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/datatransfer/UnsupportedFlavorException.hpp>
 #include <com/sun/star/datatransfer/XTransferable.hpp>
-#include <com/sun/star/drawing/Hatch.hpp>
-#include <com/sun/star/drawing/LineDash.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/document/DocumentProperties.hpp>
-#include <com/sun/star/chart2/XTimeBased.hpp>
+#include <com/sun/star/util/CloseVetoException.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
+#include <com/sun/star/chart2/XChartTypeTemplate.hpp>
 
+#include <sal/log.hxx>
 #include <svl/zforlist.hxx>
+#include <tools/diagnose_ex.h>
+#include <libxml/xmlwriter.h>
 
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::Reference;
-using ::com::sun::star::uno::RuntimeException;
 using ::com::sun::star::uno::Any;
 using ::osl::MutexGuard;
 
@@ -81,9 +69,9 @@ using namespace ::chart::CloneHelper;
 
 namespace
 {
-const OUString lcl_aGDIMetaFileMIMEType(
+const OUStringLiteral lcl_aGDIMetaFileMIMEType(
     "application/x-openoffice-gdimetafile;windows_formatname=\"GDIMetaFile\"");
-const OUString lcl_aGDIMetaFileMIMETypeHighContrast(
+const OUStringLiteral lcl_aGDIMetaFileMIMETypeHighContrast(
     "application/x-openoffice-highcontrast-gdimetafile;windows_formatname=\"GDIMetaFile\"");
 
 } // anonymous namespace
@@ -100,21 +88,15 @@ ChartModel::ChartModel(uno::Reference<uno::XComponentContext > const & xContext)
     , m_nInLoad(0)
     , m_bUpdateNotificationsPending(false)
     , mbTimeBased(false)
-    , m_pUndoManager( nullptr )
     , m_aControllers( m_aModelMutex )
     , m_nControllerLockCount(0)
     , m_xContext( xContext )
     , m_aVisualAreaSize( ChartModelHelper::getDefaultPageSize() )
-    , m_xDataProvider( nullptr )
-    , m_xInternalDataProvider( nullptr )
     , m_xPageBackground( new PageBackground )
     , m_xXMLNamespaceMap( createNameContainer( ::cppu::UnoType<OUString>::get(),
-                "com.sun.star.xml.NamespaceMap", "com.sun.star.comp.chart.XMLNameSpaceMap" ), uno::UNO_QUERY)
+                "com.sun.star.xml.NamespaceMap", "com.sun.star.comp.chart.XMLNameSpaceMap" ) )
     , mnStart(0)
     , mnEnd(0)
-#if HAVE_FEATURE_OPENGL
-    , mpOpenGLWindow(nullptr)
-#endif
 {
     osl_atomic_increment(&m_refCount);
     {
@@ -134,7 +116,7 @@ ChartModel::ChartModel(uno::Reference<uno::XComponentContext > const & xContext)
 }
 
 ChartModel::ChartModel( const ChartModel & rOther )
-    : impl::ChartModel_Base()
+    : impl::ChartModel_Base(rOther)
     , m_aLifeTimeManager( this, this )
     , m_bReadOnly( rOther.m_bReadOnly )
     , m_bModified( rOther.m_bModified )
@@ -148,17 +130,14 @@ ChartModel::ChartModel( const ChartModel & rOther )
     , m_xContext( rOther.m_xContext )
     // @note: the old model aggregate must not be shared with other models if it
     // is, you get mutex deadlocks
-    , m_xOldModelAgg( nullptr ) //rOther.m_xOldModelAgg )
-    , m_xStorage( nullptr ) //rOther.m_xStorage )
+    //, m_xOldModelAgg( nullptr ) //rOther.m_xOldModelAgg )
+    // m_xStorage( nullptr ) //rOther.m_xStorage )
     , m_aVisualAreaSize( rOther.m_aVisualAreaSize )
     , m_aGraphicObjectVector( rOther.m_aGraphicObjectVector )
     , m_xDataProvider( rOther.m_xDataProvider )
     , m_xInternalDataProvider( rOther.m_xInternalDataProvider )
     , mnStart(rOther.mnStart)
     , mnEnd(rOther.mnEnd)
-#if HAVE_FEATURE_OPENGL
-    , mpOpenGLWindow(nullptr)
-#endif
 {
     osl_atomic_increment(&m_refCount);
     {
@@ -262,7 +241,7 @@ uno::Reference< frame::XController > ChartModel::impl_getCurrentController()
     return uno::Reference< frame::XController > ();
 }
 
-void SAL_CALL ChartModel::impl_notifyCloseListeners()
+void ChartModel::impl_notifyCloseListeners()
 {
     ::cppu::OInterfaceContainerHelper* pIC = m_aLifeTimeManager.m_aListenerContainer
         .getContainer( cppu::UnoType<util::XCloseListener>::get());
@@ -282,35 +261,35 @@ void SAL_CALL ChartModel::impl_notifyCloseListeners()
 void ChartModel::impl_adjustAdditionalShapesPositionAndSize( const awt::Size& aVisualAreaSize )
 {
     uno::Reference< beans::XPropertySet > xProperties( static_cast< ::cppu::OWeakObject* >( this ), uno::UNO_QUERY );
-    if ( xProperties.is() )
+    if ( !xProperties.is() )
+        return;
+
+    uno::Reference< drawing::XShapes > xShapes;
+    xProperties->getPropertyValue( "AdditionalShapes" ) >>= xShapes;
+    if ( !xShapes.is() )
+        return;
+
+    sal_Int32 nCount = xShapes->getCount();
+    for ( sal_Int32 i = 0; i < nCount; ++i )
     {
-        uno::Reference< drawing::XShapes > xShapes;
-        xProperties->getPropertyValue( "AdditionalShapes" ) >>= xShapes;
-        if ( xShapes.is() )
+        Reference< drawing::XShape > xShape;
+        if ( xShapes->getByIndex( i ) >>= xShape )
         {
-            sal_Int32 nCount = xShapes->getCount();
-            for ( sal_Int32 i = 0; i < nCount; ++i )
+            if ( xShape.is() )
             {
-                Reference< drawing::XShape > xShape;
-                if ( xShapes->getByIndex( i ) >>= xShape )
-                {
-                    if ( xShape.is() )
-                    {
-                        awt::Point aPos( xShape->getPosition() );
-                        awt::Size aSize( xShape->getSize() );
+                awt::Point aPos( xShape->getPosition() );
+                awt::Size aSize( xShape->getSize() );
 
-                        double fWidth = static_cast< double >( aVisualAreaSize.Width ) / m_aVisualAreaSize.Width;
-                        double fHeight = static_cast< double >( aVisualAreaSize.Height ) / m_aVisualAreaSize.Height;
+                double fWidth = static_cast< double >( aVisualAreaSize.Width ) / m_aVisualAreaSize.Width;
+                double fHeight = static_cast< double >( aVisualAreaSize.Height ) / m_aVisualAreaSize.Height;
 
-                        aPos.X = static_cast< long >( aPos.X * fWidth );
-                        aPos.Y = static_cast< long >( aPos.Y * fHeight );
-                        aSize.Width = static_cast< long >( aSize.Width * fWidth );
-                        aSize.Height = static_cast< long >( aSize.Height * fHeight );
+                aPos.X = static_cast< long >( aPos.X * fWidth );
+                aPos.Y = static_cast< long >( aPos.Y * fHeight );
+                aSize.Width = static_cast< long >( aSize.Width * fWidth );
+                aSize.Height = static_cast< long >( aSize.Height * fHeight );
 
-                        xShape->setPosition( aPos );
-                        xShape->setSize( aSize );
-                    }
-                }
+                xShape->setPosition( aPos );
+                xShape->setSize( aSize );
             }
         }
     }
@@ -320,7 +299,7 @@ void ChartModel::impl_adjustAdditionalShapesPositionAndSize( const awt::Size& aV
 
 OUString SAL_CALL ChartModel::getImplementationName()
 {
-    return OUString(CHART_MODEL_SERVICE_IMPLEMENTATION_NAME);
+    return CHART_MODEL_SERVICE_IMPLEMENTATION_NAME;
 }
 
 sal_Bool SAL_CALL ChartModel::supportsService( const OUString& rServiceName )
@@ -548,6 +527,13 @@ void SAL_CALL ChartModel::dispose()
     if ( m_xDiagram.is() )
         ModifyListenerHelper::removeListener( m_xDiagram, this );
 
+    if ( m_xDataProvider.is() )
+    {
+        Reference<util::XModifyBroadcaster> xModifyBroadcaster( m_xDataProvider, uno::UNO_QUERY );
+        if ( xModifyBroadcaster.is() )
+            xModifyBroadcaster->removeModifyListener( this );
+    }
+
     m_xDataProvider.clear();
     m_xInternalDataProvider.clear();
     m_xNumberFormatsSupplier.clear();
@@ -626,16 +612,11 @@ void SAL_CALL ChartModel::close( sal_Bool bDeliverOwnership )
     //the listeners have had no veto
     //check whether we self can close
     {
-        util::CloseVetoException aVetoException = util::CloseVetoException(
+        util::CloseVetoException aVetoException(
                         "the model itself could not be closed",
                         static_cast< ::cppu::OWeakObject* >(this) );
 
-        if( m_aLifeTimeManager.g_close_isNeedToCancelLongLastingCalls( bDeliverOwnership, aVetoException ) )
-        {
-            m_aLifeTimeManager.g_close_endTryClose( bDeliverOwnership );
-            throw aVetoException;
-        }
-
+        m_aLifeTimeManager.g_close_isNeedToCancelLongLastingCalls( bDeliverOwnership, aVetoException );
     }
     m_aLifeTimeManager.g_close_endTryClose_doClose();
 
@@ -650,15 +631,9 @@ uno::Sequence< uno::Type > SAL_CALL ChartModel::getTypes()
     if( (m_xOldModelAgg->queryAggregation( cppu::UnoType<decltype(xAggTypeProvider)>::get()) >>= xAggTypeProvider)
         && xAggTypeProvider.is())
     {
-        uno::Sequence< uno::Type > aOwnTypes( impl::ChartModel_Base::getTypes());
-        uno::Sequence< uno::Type > aAggTypes( xAggTypeProvider->getTypes());
-        uno::Sequence< uno::Type > aResult( aOwnTypes.getLength() + aAggTypes.getLength());
-        sal_Int32 i=0;
-        for( ;i<aOwnTypes.getLength(); ++i )
-            aResult[i] = aOwnTypes[i];
-        for( sal_Int32 j=0; i<aResult.getLength(); ++j, ++i)
-            aResult[i] = aAggTypes[j];
-        return aResult;
+        return comphelper::concatSequences(
+            impl::ChartModel_Base::getTypes(),
+            xAggTypeProvider->getTypes());
     }
 
     return impl::ChartModel_Base::getTypes();
@@ -754,6 +729,27 @@ void SAL_CALL ChartModel::createInternalDataProvider( sal_Bool bCloneExistingDat
         m_xDataProvider.set( m_xInternalDataProvider );
     }
     setModified( true );
+}
+
+void ChartModel::removeDataProviders()
+{
+    if (m_xInternalDataProvider.is())
+        m_xInternalDataProvider.clear();
+    if (m_xDataProvider.is())
+        m_xDataProvider.clear();
+}
+
+void ChartModel::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    xmlTextWriterStartElement(pWriter, BAD_CAST("ChartModel"));
+    xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
+
+    if (mxChartView.is())
+    {
+        mxChartView->dumpAsXml(pWriter);
+    }
+
+    xmlTextWriterEndElement(pWriter);
 }
 
 sal_Bool SAL_CALL ChartModel::hasInternalDataProvider()
@@ -857,9 +853,9 @@ void SAL_CALL ChartModel::setArguments( const Sequence< beans::PropertyValue >& 
         {
             throw;
         }
-        catch (const uno::Exception& ex)
+        catch (const uno::Exception&)
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
         unlockControllers();
     }
@@ -880,7 +876,7 @@ Reference< chart2::data::XRangeHighlighter > SAL_CALL ChartModel::getRangeHighli
 {
     if( ! m_xRangeHighlighter.is())
     {
-        uno::Reference< view::XSelectionSupplier > xSelSupp( this->getCurrentController(), uno::UNO_QUERY );
+        uno::Reference< view::XSelectionSupplier > xSelSupp( getCurrentController(), uno::UNO_QUERY );
         if( xSelSupp.is() )
             m_xRangeHighlighter.set( ChartModelHelper::createRangeHighlighter( xSelSupp ));
     }
@@ -929,11 +925,6 @@ void SAL_CALL ChartModel::createDefaultChart()
     insertDefaultChart();
 }
 
-sal_Bool SAL_CALL ChartModel::isOpenGLChart()
-{
-    return ChartHelper::isGL3DDiagram(m_xDiagram);
-}
-
 // ____ XTitled ____
 uno::Reference< chart2::XTitle > SAL_CALL ChartModel::getTitleObject()
 {
@@ -966,9 +957,9 @@ uno::Any SAL_CALL ChartModel::queryInterface( const uno::Type& aType )
             if( m_xOldModelAgg.is())
                 aResult = m_xOldModelAgg->queryAggregation( aType );
         }
-        catch (const uno::Exception& ex)
+        catch (const uno::Exception&)
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -1029,7 +1020,7 @@ embed::VisualRepresentation SAL_CALL ChartModel::getPreferredVisualRepresentatio
 
         //get view from old api wrapper
         Reference< datatransfer::XTransferable > xTransferable(
-            this->createInstance( CHART_VIEW_SERVICE_NAME ), uno::UNO_QUERY );
+            createInstance( CHART_VIEW_SERVICE_NAME ), uno::UNO_QUERY );
         if( xTransferable.is() )
         {
             datatransfer::DataFlavor aDataFlavor( lcl_aGDIMetaFileMIMEType,
@@ -1045,9 +1036,9 @@ embed::VisualRepresentation SAL_CALL ChartModel::getPreferredVisualRepresentatio
 
         aResult.Data <<= aMetafile;
     }
-    catch (const uno::Exception& ex)
+    catch (const uno::Exception&)
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return aResult;
@@ -1064,28 +1055,24 @@ embed::VisualRepresentation SAL_CALL ChartModel::getPreferredVisualRepresentatio
 uno::Any SAL_CALL ChartModel::getTransferData( const datatransfer::DataFlavor& aFlavor )
 {
     uno::Any aResult;
-    if( this->isDataFlavorSupported( aFlavor ))
-    {
-        try
-        {
-            //get view from old api wrapper
-            Reference< datatransfer::XTransferable > xTransferable(
-                this->createInstance( CHART_VIEW_SERVICE_NAME ), uno::UNO_QUERY );
-            if( xTransferable.is() &&
-                xTransferable->isDataFlavorSupported( aFlavor ))
-            {
-                aResult = xTransferable->getTransferData( aFlavor );
-            }
-        }
-        catch (const uno::Exception& ex)
-        {
-            ASSERT_EXCEPTION( ex );
-        }
-    }
-    else
-    {
+    if( !isDataFlavorSupported( aFlavor ) )
         throw datatransfer::UnsupportedFlavorException(
             aFlavor.MimeType, static_cast< ::cppu::OWeakObject* >( this ));
+
+    try
+    {
+        //get view from old api wrapper
+        Reference< datatransfer::XTransferable > xTransferable(
+            createInstance( CHART_VIEW_SERVICE_NAME ), uno::UNO_QUERY );
+        if( xTransferable.is() &&
+            xTransferable->isDataFlavorSupported( aFlavor ))
+        {
+            aResult = xTransferable->getTransferData( aFlavor );
+        }
+    }
+    catch (const uno::Exception&)
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return aResult;
@@ -1104,7 +1091,7 @@ Sequence< datatransfer::DataFlavor > SAL_CALL ChartModel::getTransferDataFlavors
 
 sal_Bool SAL_CALL ChartModel::isDataFlavorSupported( const datatransfer::DataFlavor& aFlavor )
 {
-    return aFlavor.MimeType.equals(lcl_aGDIMetaFileMIMETypeHighContrast);
+    return aFlavor.MimeType == lcl_aGDIMetaFileMIMETypeHighContrast;
 }
 
 namespace
@@ -1112,7 +1099,7 @@ namespace
 enum eServiceType
 {
     SERVICE_DASH_TABLE,
-    SERVICE_GARDIENT_TABLE,
+    SERVICE_GRADIENT_TABLE,
     SERVICE_HATCH_TABLE,
     SERVICE_BITMAP_TABLE,
     SERVICE_TRANSP_GRADIENT_TABLE,
@@ -1126,7 +1113,7 @@ tServiceNameMap & lcl_getStaticServiceNameMap()
 {
     static tServiceNameMap aServiceNameMap{
         {"com.sun.star.drawing.DashTable",                    SERVICE_DASH_TABLE},
-        {"com.sun.star.drawing.GradientTable",                SERVICE_GARDIENT_TABLE},
+        {"com.sun.star.drawing.GradientTable",                SERVICE_GRADIENT_TABLE},
         {"com.sun.star.drawing.HatchTable",                   SERVICE_HATCH_TABLE},
         {"com.sun.star.drawing.BitmapTable",                  SERVICE_BITMAP_TABLE},
         {"com.sun.star.drawing.TransparencyGradientTable",    SERVICE_TRANSP_GRADIENT_TABLE},
@@ -1146,7 +1133,7 @@ Reference< uno::XInterface > SAL_CALL ChartModel::createInstance( const OUString
         switch( (*aIt).second )
         {
             case SERVICE_DASH_TABLE:
-            case SERVICE_GARDIENT_TABLE:
+            case SERVICE_GRADIENT_TABLE:
             case SERVICE_HATCH_TABLE:
             case SERVICE_BITMAP_TABLE:
             case SERVICE_TRANSP_GRADIENT_TABLE:
@@ -1190,7 +1177,7 @@ Reference< uno::XInterface > SAL_CALL ChartModel::createInstance( const OUString
 Reference< uno::XInterface > SAL_CALL ChartModel::createInstanceWithArguments(
             const OUString& rServiceSpecifier , const Sequence< Any >& Arguments )
 {
-    OSL_ENSURE( Arguments.getLength(), "createInstanceWithArguments: Warning: Arguments are ignored" );
+    OSL_ENSURE( Arguments.hasElements(), "createInstanceWithArguments: Warning: Arguments are ignored" );
     return createInstance( rServiceSpecifier );
 }
 
@@ -1228,8 +1215,7 @@ Reference< util::XNumberFormatsSupplier > const & ChartModel::getNumberFormatsSu
 // ____ XUnoTunnel ___
 ::sal_Int64 SAL_CALL ChartModel::getSomething( const Sequence< ::sal_Int8 >& aIdentifier )
 {
-    if( aIdentifier.getLength() == 16 && memcmp( SvNumberFormatsSupplierObj::getUnoTunnelId().getConstArray(),
-                                                         aIdentifier.getConstArray(), 16 ) == 0 )
+    if( isUnoTunnelId<SvNumberFormatsSupplierObj>(aIdentifier) )
     {
         Reference< lang::XUnoTunnel > xTunnel( getNumberFormatsSupplier(), uno::UNO_QUERY );
         if( xTunnel.is() )
@@ -1282,7 +1268,7 @@ uno::Sequence< Reference< chart2::data::XLabeledDataSequence > > SAL_CALL ChartM
 OUString SAL_CALL ChartModel::dump()
 {
     uno::Reference< qa::XDumper > xDumper(
-            this->createInstance( CHART_VIEW_SERVICE_NAME ), uno::UNO_QUERY );
+            createInstance( CHART_VIEW_SERVICE_NAME ), uno::UNO_QUERY );
     if (xDumper.is())
         return xDumper->dump();
 
@@ -1296,16 +1282,6 @@ void ChartModel::setTimeBasedRange(sal_Int32 nStart, sal_Int32 nEnd)
     mbTimeBased = true;
 }
 
-void ChartModel::setWindow( const sal_uInt64 nWindowPtr )
-{
-#if HAVE_FEATURE_OPENGL
-    OpenGLWindow* pWindow = reinterpret_cast<OpenGLWindow*>(nWindowPtr);
-    mpOpenGLWindow = pWindow;
-#else
-    (void)nWindowPtr;
-#endif
-}
-
 void ChartModel::update()
 {
     if(!mxChartView.is())
@@ -1314,9 +1290,6 @@ void ChartModel::update()
     }
     mxChartView->setViewDirty();
     mxChartView->update();
-#if HAVE_FEATURE_OPENGL
-    mxChartView->updateOpenGLWindow();
-#endif
 }
 
 bool ChartModel::isDataFromSpreadsheet()
@@ -1324,7 +1297,7 @@ bool ChartModel::isDataFromSpreadsheet()
     return !isDataFromPivotTable() && !hasInternalDataProvider();
 }
 
-bool ChartModel::isDataFromPivotTable()
+bool ChartModel::isDataFromPivotTable() const
 {
     uno::Reference<chart2::data::XPivotTableDataProvider> xPivotTableDataProvider(m_xDataProvider, uno::UNO_QUERY);
     return xPivotTableDataProvider.is();
@@ -1332,7 +1305,7 @@ bool ChartModel::isDataFromPivotTable()
 
 }  // namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_ChartModel_get_implementation(css::uno::XComponentContext *context,
         css::uno::Sequence<css::uno::Any> const &)
 {

@@ -23,23 +23,16 @@
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/document/XImporter.hpp>
-#include <com/sun/star/document/XExporter.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/report/XReportDefinition.hpp>
 #include <com/sun/star/report/XSection.hpp>
 #include <com/sun/star/report/XReportControlModel.hpp>
 #include <com/sun/star/report/XFormattedField.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
-#include <osl/diagnose.h>
-#include <unotools/tempfile.hxx>
-#include <unotools/localfilehelper.hxx>
-#include <unotools/ucbstreamhelper.hxx>
 #include <xmloff/xmlexp.hxx>
-#include <xmloff/xmlimp.hxx>
+#include <xmloff/xmlexppr.hxx>
+#include <xmloff/prhdlfac.hxx>
+#include <xmloff/xmlprmap.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <memory>
 
@@ -56,8 +49,6 @@ using namespace css::report;
 using namespace css::io;
 using namespace css::xml::sax;
 
-
-#define PROGRESS_BAR_STEP 20
 
 class ORptExport : public SvXMLExport
 {
@@ -84,9 +75,8 @@ public:
         {}
     };
     typedef ::std::pair< OUString ,OUString> TStringPair;
-    typedef ::std::vector< OUString>                         TStringVec;
     typedef ::std::map< Reference<XPropertySet> ,OUString >  TPropertyStyleMap;
-    typedef ::std::map< Reference<XPropertySet> ,  TStringVec>      TGridStyleMap;
+    typedef ::std::map< Reference<XPropertySet> ,  std::vector<OUString>>      TGridStyleMap;
     typedef ::std::vector< TCell >                                  TRow;
     typedef ::std::vector< ::std::pair< bool, TRow > >              TGrid;
     typedef ::std::map< Reference<XPropertySet> ,TGrid >            TSectionsGrid;
@@ -101,7 +91,6 @@ private:
 
     OUString                                 m_sTableStyle;
     OUString                                 m_sCellStyle;
-    OUString                                 m_sColumnStyle;
     rtl::Reference < SvXMLExportPropertyMapper>       m_xTableStylesExportPropertySetMapper;
     rtl::Reference < SvXMLExportPropertyMapper>       m_xCellStylesExportPropertySetMapper;
     rtl::Reference < SvXMLExportPropertyMapper>       m_xColumnStylesExportPropertySetMapper;
@@ -132,7 +121,8 @@ private:
     void                    exportAutoStyle(const Reference<XSection>& _xProp);
     void                    exportReportComponentAutoStyles(const Reference<XSection>& _xProp);
     void                    collectComponentStyles();
-    void                    collectStyleNames(sal_Int32 _nFamily,const ::std::vector< sal_Int32>& _aSize, ORptExport::TStringVec& _rStyleNames);
+    void                    collectStyleNames(XmlStyleFamily _nFamily,const ::std::vector< sal_Int32>& _aSize, std::vector<OUString>& _rStyleNames);
+    void                    collectStyleNames(XmlStyleFamily _nFamily,const ::std::vector< sal_Int32>& _aSize, const ::std::vector< sal_Int32>& _aSizeAutoGrow, std::vector<OUString>& _rStyleNames);
     void                    exportParagraph(const Reference< XReportControlModel >& _xReportElement);
     bool                    exportFormula(enum ::xmloff::token::XMLTokenEnum eName,const OUString& _sFormula);
     void                    exportGroupsExpressionAsFunction(const Reference< XGroups>& _xGroups);
@@ -155,13 +145,6 @@ public:
 
     ORptExport(const Reference< XComponentContext >& _rxContext, OUString const & implementationName, SvXMLExportFlags nExportFlag);
 
-    /// @throws css::uno::RuntimeException
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-    /// @throws css::uno::RuntimeException
-    static OUString getImplementationName_Static();
-    static css::uno::Reference< css::uno::XInterface > SAL_CALL
-        create(css::uno::Reference< css::uno::XComponentContext > const & xContext);
-
     // XExporter
     virtual void SAL_CALL setSourceDocument( const css::uno::Reference< css::lang::XComponent >& xDoc ) override;
 
@@ -170,79 +153,6 @@ public:
     const rtl::Reference < XMLPropertySetMapper >& GetCellStylePropertyMapper() const { return m_xCellStylesPropertySetMapper;}
 };
 
-/** Exports only settings
- * \ingroup reportdesign_source_filter_xml
- *
- */
-class ORptExportHelper
-{
-public:
-    /// @throws css::uno::RuntimeException
-    static OUString getImplementationName_Static(  );
-    /// @throws css::uno::RuntimeException
-    static Sequence< OUString > getSupportedServiceNames_Static(  );
-    static css::uno::Reference< css::uno::XInterface > SAL_CALL
-        create(css::uno::Reference< css::uno::XComponentContext > const & xContext);
-};
-
-/** Exports only content
- * \ingroup reportdesign_source_filter_xml
- *
- */
-class ORptContentExportHelper
-{
-public:
-    /// @throws css::uno::RuntimeException
-    static OUString getImplementationName_Static(  );
-    /// @throws css::uno::RuntimeException
-    static Sequence< OUString > getSupportedServiceNames_Static(  );
-    static css::uno::Reference< css::uno::XInterface > SAL_CALL
-        create(css::uno::Reference< css::uno::XComponentContext > const & xContext);
-};
-
-/** Exports only styles
- * \ingroup reportdesign_source_filter_xml
- *
- */
-class ORptStylesExportHelper
-{
-public:
-    /// @throws css::uno::RuntimeException
-    static OUString getImplementationName_Static(  );
-    /// @throws css::uno::RuntimeException
-    static Sequence< OUString > getSupportedServiceNames_Static(  );
-    static css::uno::Reference< css::uno::XInterface > SAL_CALL
-        create(css::uno::Reference< css::uno::XComponentContext > const & xContext);
-};
-
-/** Exports only meta data
- * \ingroup reportdesign_source_filter_xml
- *
- */
-class ORptMetaExportHelper
-{
-public:
-    /// @throws css::uno::RuntimeException
-    static OUString getImplementationName_Static(  );
-    /// @throws css::uno::RuntimeException
-    static Sequence< OUString > getSupportedServiceNames_Static(  );
-    static css::uno::Reference< css::uno::XInterface > SAL_CALL
-        create(css::uno::Reference< css::uno::XComponentContext > const & xContext);
-};
-/** Exports all
- * \ingroup reportdesign_source_filter_xml
- *
- */
-class ODBFullExportHelper
-{
-public:
-    /// @throws css::uno::RuntimeException
-    static OUString getImplementationName_Static(  );
-    /// @throws css::uno::RuntimeException
-    static Sequence< OUString > getSupportedServiceNames_Static(  );
-    static css::uno::Reference< css::uno::XInterface > SAL_CALL
-        create(css::uno::Reference< css::uno::XComponentContext > const & xContext);
-};
 
 } // rptxml
 

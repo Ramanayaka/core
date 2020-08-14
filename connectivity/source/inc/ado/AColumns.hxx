@@ -23,12 +23,10 @@
 #include <connectivity/sdbcx/VCollection.hxx>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
 #include <connectivity/sdbcx/IRefreshable.hxx>
-#include "ado/Awrapadox.hxx"
+#include <ado/Awrapadox.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         class OConnection;
         class OColumns : public sdbcx::OCollection
         {
@@ -44,7 +42,7 @@ namespace connectivity
         public:
             OColumns(   ::cppu::OWeakObject& _rParent,
                         ::osl::Mutex& _rMutex,
-                        const TStringVector &_rVector,
+                        const ::std::vector< OUString> &_rVector,
                         const WpADOColumns& _rCollection,
                         bool _bCase,
                         OConnection* _pConnection) : sdbcx::OCollection(_rParent,_bCase,_rMutex,_rVector)
@@ -54,7 +52,6 @@ namespace connectivity
             }
 
         };
-    }
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ACOLUMNS_HXX
 

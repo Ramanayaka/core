@@ -17,57 +17,36 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/dispatch.hxx>
-#include <vcl/msgbox.hxx>
-#include <svx/svdpagv.hxx>
-#include <sfx2/request.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <svl/style.hxx>
 #include <editeng/outliner.hxx>
-#include <svx/view3d.hxx>
-#include <svx/svxids.hrc>
 #include <svx/svdotext.hxx>
-#include <svx/svdograf.hxx>
-#include <svx/svdogrp.hxx>
-#include <svx/svdorect.hxx>
 #include <svl/poolitem.hxx>
 #include <editeng/eeitem.hxx>
-#include <editeng/bulletitem.hxx>
-#include <svl/itempool.hxx>
 #include <editeng/numitem.hxx>
 #include <svl/whiter.hxx>
+#include <sal/log.hxx>
+#include <tools/debug.hxx>
 
-#include <sfx2/viewfrm.hxx>
-#include <sfx2/objface.hxx>
-#include "stlsheet.hxx"
-
-#include <svx/svdoutl.hxx>
-#include <svx/svdstr.hrc>
+#include <svx/svdundo.hxx>
+#include <svx/strings.hrc>
 #include <svx/dialmgr.hxx>
 
-#include "glob.hrc"
-#include "strings.hrc"
-#include "View.hxx"
-#include "sdattr.hxx"
-#include "drawview.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-#include "sdpage.hxx"
-#include "ViewShellBase.hxx"
-#include "DrawViewShell.hxx"
-#include "pres.hxx"
-#include "sdresid.hxx"
-#include "Window.hxx"
-#include "unchss.hxx"
-#include "FrameView.hxx"
-#include "anminfo.hxx"
-#include "slideshow.hxx"
-#include <vcl/virdev.hxx>
-#include <svx/sdrpaintwindow.hxx>
-#include <svx/sdr/contact/viewobjectcontact.hxx>
-#include <svx/sdr/contact/viewcontact.hxx>
-#include <svx/sdr/contact/displayinfo.hxx>
+#include <strings.hrc>
+#include <View.hxx>
+#include <drawview.hxx>
+#include <drawdoc.hxx>
+#include <DrawDocShell.hxx>
+#include <sdpage.hxx>
+#include <ViewShellBase.hxx>
+#include <DrawViewShell.hxx>
+#include <pres.hxx>
+#include <sdresid.hxx>
+#include <unchss.hxx>
+#include <slideshow.hxx>
 
-#include "undo/undomanager.hxx"
+#include <undo/undomanager.hxx>
 
 using namespace ::com::sun::star;
 
@@ -79,19 +58,20 @@ namespace sd {
  * that there is no page a page is created.
  */
 
-DrawView::DrawView( DrawDocShell* pDocSh, OutputDevice* pOutDev, DrawViewShell* pShell)
-: ::sd::View(*pDocSh->GetDoc(), pOutDev, pShell)
-, mpDocShell(pDocSh)
-, mpDrawViewShell(pShell)
-, mpVDev(nullptr)
-, mnPOCHSmph(0)
+DrawView::DrawView(
+    DrawDocShell* pDocSh,
+    OutputDevice* pOutDev,
+    DrawViewShell* pShell)
+:   ::sd::View(*pDocSh->GetDoc(), pOutDev, pShell)
+    ,mpDocShell(pDocSh)
+    ,mpDrawViewShell(pShell)
+    ,mnPOCHSmph(0)
 {
     SetCurrentObj(OBJ_RECT);
 }
 
 DrawView::~DrawView()
 {
-    mpVDev.disposeAndClear();
 }
 
 /**
@@ -129,16 +109,42 @@ void DrawView::ModelHasChanged()
  */
 
 bool DrawView::SetAttributes(const SfxItemSet& rSet,
-                             bool bReplaceAll)
+                             bool bReplaceAll, bool bSlide, bool bMaster)
 {
     bool bOk = false;
 
-    // is there a masterpage edit?
-    if ( mpDrawViewShell && mpDrawViewShell->GetEditMode() == EditMode::MasterPage )
+    if (mpDrawViewShell && bMaster)
     {
         SfxStyleSheetBasePool* pStShPool = mrDoc.GetStyleSheetPool();
         SdPage& rPage = *mpDrawViewShell->getCurrentPage();
-        SdrTextObj* pEditObject = static_cast< SdrTextObj* >( GetTextEditObject() );
+        SdrPage& rMasterPage = rPage.TRG_GetMasterPage();
+        size_t nObjCount = rMasterPage.GetObjCount();
+        for (size_t nObj = 0; nObj < nObjCount; ++nObj)
+        {
+            SdrObject* pObject = rMasterPage.GetObj(nObj);
+            SetMasterAttributes(pObject, rPage, rSet, pStShPool, bOk, bMaster, bSlide);
+        }
+        return bOk;
+    }
+    if (mpDrawViewShell && bSlide)
+    {
+        SfxStyleSheetBasePool* pStShPool = mrDoc.GetStyleSheetPool();
+        SdPage& rPage = *mpDrawViewShell->getCurrentPage();
+        size_t nObjCount = rPage.GetObjCount();
+        for (size_t nObj = 0; nObj < nObjCount; ++nObj)
+        {
+            SdrObject* pObject = rPage.GetObj(nObj);
+            SetMasterAttributes(pObject, rPage, rSet, pStShPool, bOk, bMaster, bSlide);
+        }
+        return bOk;
+    }
+
+    // is there a masterpage edit?
+    if ( mpDrawViewShell && (mpDrawViewShell->GetEditMode() == EditMode::MasterPage) )
+    {
+        SfxStyleSheetBasePool* pStShPool = mrDoc.GetStyleSheetPool();
+        SdPage& rPage = *mpDrawViewShell->getCurrentPage();
+        SdrTextObj* pEditObject = GetTextEditObject();
 
         if (pEditObject)
         {
@@ -151,8 +157,8 @@ bool DrawView::SetAttributes(const SfxItemSet& rSet,
                 sal_uInt16 eObjKind = pEditObject->GetObjIdentifier();
                 PresObjKind ePresObjKind = rPage.GetPresObjKind(pEditObject);
 
-                if ( ePresObjKind == PRESOBJ_TITLE ||
-                     ePresObjKind == PRESOBJ_NOTES )
+                if ( ePresObjKind == PresObjKind::Title ||
+                     ePresObjKind == PresObjKind::Notes )
                 {
                     // Presentation object (except outline)
                     SfxStyleSheet* pSheet = rPage.GetStyleSheetForPresObj( ePresObjKind );
@@ -163,8 +169,8 @@ bool DrawView::SetAttributes(const SfxItemSet& rSet,
                     aTempSet.ClearInvalidItems();
 
                     // Undo-Action
-                    StyleSheetUndoAction* pAction = new StyleSheetUndoAction(&mrDoc, pSheet, &aTempSet);
-                    mpDocSh->GetUndoManager()->AddUndoAction(pAction);
+                    mpDocSh->GetUndoManager()->AddUndoAction(
+                        std::make_unique<StyleSheetUndoAction>(&mrDoc, pSheet, &aTempSet));
 
                     pSheet->GetItemSet().Put(aTempSet);
                     pSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
@@ -196,7 +202,7 @@ bool DrawView::SetAttributes(const SfxItemSet& rSet,
                         sal_Int16 nDepth = pOutliner->GetDepth( nParaPos );
                         OUString aName = rPage.GetLayoutName() + " " +
                             OUString::number((nDepth <= 0) ? 1 : nDepth + 1);
-                        SfxStyleSheet* pSheet = static_cast<SfxStyleSheet*>(pStShPool->Find(aName, SD_STYLE_FAMILY_MASTERPAGE));
+                        SfxStyleSheet* pSheet = static_cast<SfxStyleSheet*>(pStShPool->Find(aName, SfxStyleFamily::Page));
                         //We have no stylesheet if we access outline level 10
                         //in the master preview, there is no true style backing
                         //that entry
@@ -214,8 +220,8 @@ bool DrawView::SetAttributes(const SfxItemSet& rSet,
                             }
 
                             // Undo-Action
-                            StyleSheetUndoAction* pAction = new StyleSheetUndoAction(&mrDoc, pSheet, &aTempSet);
-                            mpDocSh->GetUndoManager()->AddUndoAction(pAction);
+                            mpDocSh->GetUndoManager()->AddUndoAction(
+                                std::make_unique<StyleSheetUndoAction>(&mrDoc, pSheet, &aTempSet));
 
                             pSheet->GetItemSet().Put(aTempSet);
                             pSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
@@ -226,7 +232,7 @@ bool DrawView::SetAttributes(const SfxItemSet& rSet,
                             {
                                 OUString aSheetName = rPage.GetLayoutName() + " " +
                                     OUString::number((nChild <= 0) ? 1 : nChild + 1);
-                                SfxStyleSheet* pOutlSheet = static_cast< SfxStyleSheet* >(pStShPool->Find(aSheetName, SD_STYLE_FAMILY_MASTERPAGE));
+                                SfxStyleSheet* pOutlSheet = static_cast< SfxStyleSheet* >(pStShPool->Find(aSheetName, SfxStyleFamily::Page));
 
                                 if( pOutlSheet )
                                     pOutlSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
@@ -271,88 +277,7 @@ bool DrawView::SetAttributes(const SfxItemSet& rSet,
             for (size_t nMark = 0; nMark < nMarkCount; ++nMark)
             {
                 SdrObject*  pObject = rList.GetMark(nMark)->GetMarkedSdrObj();
-                SdrInventor nInv    = pObject->GetObjInventor();
-
-                if (nInv == SdrInventor::Default)
-                {
-                    sal_uInt16 eObjKind = pObject->GetObjIdentifier();
-                    PresObjKind ePresObjKind = rPage.GetPresObjKind(pObject);
-
-                    if (ePresObjKind == PRESOBJ_TITLE ||
-                        ePresObjKind == PRESOBJ_NOTES)
-                    {
-                        // Presentation object (except outline)
-                        SfxStyleSheet* pSheet = rPage.GetStyleSheetForPresObj( ePresObjKind );
-                        DBG_ASSERT(pSheet, "StyleSheet not found");
-
-                        SfxItemSet aTempSet( pSheet->GetItemSet() );
-                        aTempSet.Put( rSet );
-                        aTempSet.ClearInvalidItems();
-
-                        // Undo-Action
-                        StyleSheetUndoAction* pAction = new StyleSheetUndoAction(&mrDoc, pSheet, &aTempSet);
-                        mpDocSh->GetUndoManager()->AddUndoAction(pAction);
-
-                        pSheet->GetItemSet().Put(aTempSet,false);
-                        pSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
-                        bOk = true;
-                    }
-                    else if (eObjKind == OBJ_OUTLINETEXT)
-                    {
-                        // Presentation object outline
-                        for (sal_uInt16 nLevel = 9; nLevel > 0; nLevel--)
-                        {
-                            OUString aName = rPage.GetLayoutName() + " " +
-                                OUString::number(nLevel);
-                            SfxStyleSheet* pSheet = static_cast<SfxStyleSheet*>(pStShPool->
-                                                Find(aName, SD_STYLE_FAMILY_MASTERPAGE));
-                            DBG_ASSERT(pSheet, "StyleSheet not found");
-
-                            SfxItemSet aTempSet( pSheet->GetItemSet() );
-
-                            if( nLevel > 1 )
-                            {
-                                // for all levels over 1, clear all items that will be
-                                // hard set to level 1
-                                SfxWhichIter aWhichIter(rSet);
-                                sal_uInt16 nWhich(aWhichIter.FirstWhich());
-                                while( nWhich )
-                                {
-                                    if( SfxItemState::SET == rSet.GetItemState( nWhich ) )
-                                        aTempSet.ClearItem( nWhich );
-                                    nWhich = aWhichIter.NextWhich();
-                                }
-
-                            }
-                            else
-                            {
-                                // put the items hard into level one
-                                aTempSet.Put( rSet );
-                            }
-
-                            aTempSet.ClearInvalidItems();
-
-                            // Undo-Action
-                            StyleSheetUndoAction* pAction = new StyleSheetUndoAction(&mrDoc, pSheet, &aTempSet);
-                            mpDocSh->GetUndoManager()->AddUndoAction(pAction);
-
-                            pSheet->GetItemSet().Set(aTempSet,false);
-                            pSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
-                        }
-
-                        // remove all hard set items from shape that are now set in style
-                        SfxWhichIter aWhichIter(rSet);
-                        sal_uInt16 nWhich(aWhichIter.FirstWhich());
-                        while( nWhich )
-                        {
-                            if( SfxItemState::SET == rSet.GetItemState( nWhich ) )
-                                pObject->ClearMergedItem( nWhich );
-                            nWhich = aWhichIter.NextWhich();
-                        }
-
-                        bOk = true;
-                    }
-                }
+                SetMasterAttributes(pObject, rPage, rSet, pStShPool, bOk, bMaster, bSlide);
             }
 
             if(!bOk)
@@ -367,13 +292,123 @@ bool DrawView::SetAttributes(const SfxItemSet& rSet,
     return bOk;
 }
 
+void DrawView::SetMasterAttributes( SdrObject* pObject, const SdPage& rPage, SfxItemSet rSet, SfxStyleSheetBasePool* pStShPool, bool& bOk, bool bMaster, bool bSlide )
+{
+    SdrInventor nInv    = pObject->GetObjInventor();
+
+    if (nInv != SdrInventor::Default)
+        return;
+
+    sal_uInt16 eObjKind = pObject->GetObjIdentifier();
+    PresObjKind ePresObjKind = rPage.GetPresObjKind(pObject);
+    if (bSlide && eObjKind == OBJ_TEXT)
+    {
+        // Presentation object (except outline)
+        SfxStyleSheet* pSheet = rPage.GetTextStyleSheetForObject(pObject);
+        DBG_ASSERT(pSheet, "StyleSheet not found");
+
+        SfxItemSet aTempSet( pSheet->GetItemSet() );
+        aTempSet.Put( rSet );
+        aTempSet.ClearInvalidItems();
+
+        // Undo-Action
+        mpDocSh->GetUndoManager()->AddUndoAction(
+            std::make_unique<StyleSheetUndoAction>(&mrDoc, pSheet, &aTempSet));
+
+        pSheet->GetItemSet().Put(aTempSet,false);
+        pSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
+        bOk = true;
+    }
+
+    if (!bSlide &&
+        (ePresObjKind == PresObjKind::Title ||
+         ePresObjKind == PresObjKind::Notes))
+    {
+        // Presentation object (except outline)
+        SfxStyleSheet* pSheet = rPage.GetStyleSheetForPresObj( ePresObjKind );
+        DBG_ASSERT(pSheet, "StyleSheet not found");
+
+        SfxItemSet aTempSet( pSheet->GetItemSet() );
+        aTempSet.Put( rSet );
+        aTempSet.ClearInvalidItems();
+
+        // Undo-Action
+        mpDocSh->GetUndoManager()->AddUndoAction(
+            std::make_unique<StyleSheetUndoAction>(&mrDoc, pSheet, &aTempSet));
+
+        pSheet->GetItemSet().Put(aTempSet,false);
+        pSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
+        bOk = true;
+    }
+    else if (eObjKind == OBJ_OUTLINETEXT)
+    {
+        if (bMaster)
+        {
+            // Presentation object outline
+            for (sal_uInt16 nLevel = 9; nLevel > 0; nLevel--)
+            {
+                OUString aName = rPage.GetLayoutName() + " " +
+                    OUString::number(nLevel);
+                SfxStyleSheet* pSheet = static_cast<SfxStyleSheet*>(pStShPool->
+                                    Find(aName, SfxStyleFamily::Page));
+                DBG_ASSERT(pSheet, "StyleSheet not found");
+
+                SfxItemSet aTempSet( pSheet->GetItemSet() );
+
+                if( nLevel > 1 )
+                {
+                    // for all levels over 1, clear all items that will be
+                    // hard set to level 1
+                    SfxWhichIter aWhichIter(rSet);
+                    sal_uInt16 nWhich(aWhichIter.FirstWhich());
+                    while( nWhich )
+                    {
+                        if( SfxItemState::SET == rSet.GetItemState( nWhich ) )
+                            aTempSet.ClearItem( nWhich );
+                        nWhich = aWhichIter.NextWhich();
+                    }
+
+                }
+                else
+                {
+                    // put the items hard into level one
+                    aTempSet.Put( rSet );
+                }
+
+                aTempSet.ClearInvalidItems();
+
+                // Undo-Action
+                mpDocSh->GetUndoManager()->AddUndoAction(
+                    std::make_unique<StyleSheetUndoAction>(&mrDoc, pSheet, &aTempSet));
+
+                pSheet->GetItemSet().Set(aTempSet,false);
+                pSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
+            }
+
+            // remove all hard set items from shape that are now set in style
+            SfxWhichIter aWhichIter(rSet);
+            sal_uInt16 nWhich(aWhichIter.FirstWhich());
+            while( nWhich )
+            {
+                if( SfxItemState::SET == rSet.GetItemState( nWhich ) )
+                    pObject->ClearMergedItem( nWhich );
+                nWhich = aWhichIter.NextWhich();
+            }
+        }
+        else
+            pObject->SetMergedItemSet(rSet);
+
+        bOk = true;
+    }
+}
+
 /**
  * Notify for change of site arrangement
  */
 
 void DrawView::Notify(SfxBroadcaster& rBC, const SfxHint& rHint)
 {
-    if ( mpDrawViewShell && dynamic_cast<const SdrHint*>(&rHint) )
+    if ( mpDrawViewShell && rHint.GetId() == SfxHintId::ThisIsAnSdrHint )
     {
         SdrHintKind eHintKind = static_cast<const SdrHint&>(rHint).GetKind();
 
@@ -421,7 +456,7 @@ void DrawView::BlockPageOrderChangedHint(bool bBlock)
 }
 
 /**
- * If presentation objects are selected, intercept stylesheet-positing at
+ * If presentation objects are selected, intercept stylesheet-positioning at
  * masterpage.
  */
 
@@ -434,8 +469,10 @@ bool DrawView::SetStyleSheet(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAtt
     {
         if (IsPresObjSelected(false))
         {
-            ScopedVclPtrInstance<InfoBox>(mpDrawViewShell->GetActiveWindow(),
-                    SdResId(STR_ACTION_NOTPOSSIBLE))->Execute();
+            std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(mpDrawViewShell->GetFrameWeld(),
+                                                          VclMessageType::Info, VclButtonsType::Ok,
+                                                          SdResId(STR_ACTION_NOTPOSSIBLE)));
+            xInfoBox->run();
             bResult = false;
         }
         else
@@ -454,13 +491,8 @@ bool DrawView::SetStyleSheet(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAtt
  * Paint-method: Redirect event to the view
  */
 
-void DrawView::CompleteRedraw(OutputDevice* pOutDev, const vcl::Region& rReg, sdr::contact::ViewObjectContactRedirector* pRedirector /*=0L*/)
+void DrawView::CompleteRedraw(OutputDevice* pOutDev, const vcl::Region& rReg, sdr::contact::ViewObjectContactRedirector* pRedirector /*=0*/)
 {
-    if( mpVDev )
-    {
-        mpVDev.disposeAndClear();
-    }
-
     bool bStandardPaint = true;
 
     SdDrawDocument* pDoc = mpDocShell->GetDoc();
@@ -536,22 +568,22 @@ void DrawView::DeleteMarked()
             SdrObject* pObj = aList.GetMark(nMark)->GetMarkedSdrObj();
             if( pObj && !pObj->IsEmptyPresObj() && pObj->GetUserCall() )
             {
-                pPage = static_cast< SdPage* >( pObj->GetPage() );
+                pPage = static_cast< SdPage* >( pObj->getSdrPageFromSdrObject() );
                 if (pPage)
                 {
                     PresObjKind ePresObjKind(pPage->GetPresObjKind(pObj));
                     switch( ePresObjKind )
                     {
-                    case PRESOBJ_NONE:
+                    case PresObjKind::NONE:
                         continue; // ignore it
-                    case PRESOBJ_GRAPHIC:
-                    case PRESOBJ_OBJECT:
-                    case PRESOBJ_CHART:
-                    case PRESOBJ_ORGCHART:
-                    case PRESOBJ_TABLE:
-                    case PRESOBJ_CALC:
-                    case PRESOBJ_MEDIA:
-                        ePresObjKind = PRESOBJ_OUTLINE;
+                    case PresObjKind::Graphic:
+                    case PresObjKind::Object:
+                    case PresObjKind::Chart:
+                    case PresObjKind::OrgChart:
+                    case PresObjKind::Table:
+                    case PresObjKind::Calc:
+                    case PresObjKind::Media:
+                        ePresObjKind = PresObjKind::Outline;
                         break;
                     default:
                         break;

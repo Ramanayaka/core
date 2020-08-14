@@ -21,23 +21,18 @@
 #define INCLUDED_SC_SOURCE_UI_INC_NAVIPI_HXX
 
 #include <vector>
-#include <vcl/toolbox.hxx>
-#include <vcl/field.hxx>
-#include <vcl/lstbox.hxx>
 #include <vcl/idle.hxx>
-#include <svl/poolitem.hxx>
 #include <svl/lstner.hxx>
 #include <sfx2/childwin.hxx>
-#include <svx/sidebar/PanelLayout.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
 #include "content.hxx"
-#include <svtools/svmedit.hxx>
 
+class SfxPoolItem;
 class ScTabViewShell;
 class ScViewData;
 class ScArea;
 class ScScenarioWindow;
 class ScNavigatorControllerItem;
-class ScNavigatorDialogWrapper;
 class ScNavigatorDlg;
 class ScNavigatorSettings;
 
@@ -49,20 +44,21 @@ enum NavListMode { NAV_LMODE_NONE       = 0x4000,
                    NAV_LMODE_AREAS      = 0x2000,
                    NAV_LMODE_SCENARIOS  = 0x400 };
 
-class ScScenarioListBox : public ListBox
+class ScScenarioWindow
 {
 public:
-    explicit            ScScenarioListBox( ScScenarioWindow& rParent );
-    virtual             ~ScScenarioListBox() override;
-
-    void                UpdateEntries( const std::vector<OUString> &aNewEntryList );
-
-protected:
-    virtual void        Select() override;
-    virtual void        DoubleClick() override;
-    virtual bool        EventNotify( NotifyEvent& rNEvt ) override;
+    ScScenarioWindow(weld::Builder& rBuilder, const OUString& rQH_List, const OUString& rQH_Comment);
+    ~ScScenarioWindow();
+    void NotifyState(const SfxPoolItem* pState);
+    void SetComment(const OUString& rComment)
+    {
+        m_xEdComment->set_text(rComment);
+    }
 
 private:
+    std::unique_ptr<weld::TreeView> m_xLbScenario;
+    std::unique_ptr<weld::TextView> m_xEdComment;
+
     struct ScenarioEntry
     {
         OUString            maName;
@@ -71,137 +67,53 @@ private:
 
         explicit     ScenarioEntry() : mbProtected( false ) {}
     };
-    typedef ::std::vector< ScenarioEntry > ScenarioList;
 
-private:
-    const ScenarioEntry* GetSelectedEntry() const;
+    std::vector< ScenarioEntry > m_aEntries;
 
-    void                ExecuteScenarioSlot( sal_uInt16 nSlotId );
-    void                SelectScenario();
-    void                EditScenario();
-    void                DeleteScenario();
+    void UpdateEntries(const std::vector<OUString> &rNewEntryList);
+    void SelectScenario();
+    void ExecuteScenarioSlot(sal_uInt16 nSlotId);
+    void EditScenario();
+    void DeleteScenario();
+    const ScenarioEntry* GetSelectedScenarioEntry() const;
 
-private:
-    ScScenarioWindow&   mrParent;
-    ScenarioList        maEntries;
-};
-
-class ScScenarioWindow : public vcl::Window
-{
-public:
-    ScScenarioWindow(vcl::Window* pParent, const OUString& rQH_List, const OUString& rQH_Comment);
-    virtual ~ScScenarioWindow() override;
-    virtual void dispose() override;
-    void NotifyState(const SfxPoolItem* pState);
-    void SetComment(const OUString& rComment)
-    {
-        aEdComment->SetText(rComment);
-    }
-
-protected:
-    virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-    virtual void    Resize() override;
-
-private:
-    VclPtr<ScScenarioListBox>   aLbScenario;
-    VclPtr<MultiLineEdit>       aEdComment;
-};
-
-class ColumnEdit : public SpinField
-{
-public:
-    ColumnEdit(Window* pParent, WinBits nWinBits);
-    ~ColumnEdit() override;
-    void SetNavigatorDlg(ScNavigatorDlg *pNaviDlg)
-    {
-        xDlg = pNaviDlg;
-    }
-    SCCOL   GetCol() { return nCol; }
-    void    SetCol( SCCOL nColNo );
-
-protected:
-    virtual bool    EventNotify( NotifyEvent& rNEvt ) override;
-    virtual void    LoseFocus() override;
-    virtual void    Up() override;
-    virtual void    Down() override;
-    virtual void    First() override;
-    virtual void    Last() override;
-    virtual void    dispose() override;
-
-private:
-    VclPtr<ScNavigatorDlg> xDlg;
-    SCCOL           nCol;
-
-    void EvalText();
-    void ExecuteCol();
-    static SCCOL AlphaToNum    ( OUString& rStr );
-    static SCCOL NumStrToAlpha ( OUString& rStr );
-    static SCCOL NumToAlpha    ( SCCOL nColNo, OUString& rStr );
-};
-
-class RowEdit : public NumericField
-{
-public:
-    RowEdit(Window* pParent, WinBits nWinBits);
-    ~RowEdit() override;
-    void SetNavigatorDlg(ScNavigatorDlg *pNaviDlg)
-    {
-        xDlg = pNaviDlg;
-    }
-    SCROW   GetRow() { return (SCROW)GetValue(); }
-    void    SetRow(SCROW nRow) { SetValue(nRow); }
-
-protected:
-    virtual bool    EventNotify( NotifyEvent& rNEvt ) override;
-    virtual Size    GetOptimalSize() const override;
-    virtual void    LoseFocus() override;
-    virtual void    dispose() override;
-
-private:
-    VclPtr<ScNavigatorDlg> xDlg;
-
-    void    ExecuteRow();
+    DECL_LINK(SelectHdl, weld::TreeView&, void);
+    DECL_LINK(DoubleClickHdl, weld::TreeView&, bool);
+    DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
+    DECL_LINK(ContextMenuHdl, const CommandEvent&, bool);
 };
 
 class ScNavigatorDlg : public PanelLayout, public SfxListener
 {
 friend class ScNavigatorControllerItem;
 friend class ScNavigatorDialogWrapper;
-friend class ColumnEdit;
-friend class RowEdit;
 friend class ScContentTree;
+friend class ScNavigatorDlgUIObject;
 
 private:
+    static constexpr int CTRL_ITEMS = 4;
+
     SfxBindings&        rBindings;      // must be first member
 
-    VclPtr<ColumnEdit> aEdCol;
-    VclPtr<RowEdit> aEdRow;
-    VclPtr<ToolBox> aTbxCmd;
-    VclPtr<VclContainer> aContentBox;
-    VclPtr<ScContentTree> aLbEntries;
-    VclPtr<VclContainer> aScenarioBox;
-    VclPtr<ScScenarioWindow> aWndScenarios;
-    VclPtr<ListBox> aLbDocuments;
+    std::unique_ptr<weld::SpinButton> m_xEdCol;
+    std::unique_ptr<weld::SpinButton> m_xEdRow;
+    std::unique_ptr<weld::Toolbar> m_xTbxCmd1;
+    std::unique_ptr<weld::Toolbar> m_xTbxCmd2;
+    std::unique_ptr<ScContentTree> m_xLbEntries;
+    std::unique_ptr<weld::Widget> m_xScenarioBox;
+    std::unique_ptr<ScScenarioWindow> m_xWndScenarios;
+    std::unique_ptr<weld::ComboBox> m_xLbDocuments;
+    std::unique_ptr<weld::Menu> m_xDragModeMenu;
 
     Size            aExpandedSize;
     Idle            aContentIdle;
 
-    OUString        aTitleBase;
-    OUString        aStrDragMode;
-    OUString        aStrDisplay;
     OUString        aStrActive;
     OUString        aStrNotActive;
     OUString        aStrHidden;
     OUString        aStrActiveWin;
 
-    sal_uInt16      nZoomId;
-    sal_uInt16      nChangeRootId;
-    sal_uInt16      nDragModeId;
-    sal_uInt16      nScenarioId;
-    sal_uInt16      nDownId;
-    sal_uInt16      nUpId;
-    sal_uInt16      nDataId;
-    ScArea*         pMarkArea;
+    std::unique_ptr<ScArea> pMarkArea;
     ScViewData*     pViewData;
 
     NavListMode     eListMode;
@@ -210,12 +122,17 @@ private:
     SCROW           nCurRow;
     SCTAB           nCurTab;
 
-    ScNavigatorControllerItem** ppBoundItems;
+    std::array<std::unique_ptr<ScNavigatorControllerItem>,CTRL_ITEMS> mvBoundItems;
 
     DECL_LINK(TimeHdl, Timer*, void);
-    DECL_LINK(DocumentSelectHdl, ListBox&, void);
-    DECL_LINK(ToolBoxSelectHdl, ToolBox*, void);
-    DECL_LINK(ToolBoxDropdownClickHdl, ToolBox*, void);
+    DECL_LINK(DocumentSelectHdl, weld::ComboBox&, void);
+    DECL_LINK(ExecuteRowHdl, weld::Entry&, bool);
+    DECL_LINK(ExecuteColHdl, weld::Entry&, bool);
+    DECL_LINK(ToolBoxSelectHdl, const OString&, void);
+    DECL_LINK(ToolBoxDropdownClickHdl, const OString&, void);
+    DECL_LINK(MenuSelectHdl, const OString&, void);
+    DECL_LINK(FormatRowOutputHdl, weld::SpinButton&, void);
+    DECL_LINK(ParseRowInputHdl, int*, bool);
 
     void    UpdateButtons();
     void    SetCurrentCell( SCCOL nCol, SCROW Row );
@@ -224,10 +141,12 @@ private:
     void    SetCurrentTableStr( const OUString& rName );
     void    SetCurrentObject( const OUString& rName );
     void    SetCurrentDoc( const OUString& rDocName );
+    void    UpdateSelection();
 
     static ScTabViewShell*  GetTabViewShell();
     static ScNavigatorSettings* GetNavigatorSettings();
-    bool                    GetViewData();
+    ScViewData*             GetViewData();
+
 
     void    UpdateColumn    ( const SCCOL* pCol = nullptr );
     void    UpdateRow       ( const SCROW* pRow = nullptr );
@@ -243,10 +162,6 @@ private:
     void    SetDropMode(sal_uInt16 nNew);
     sal_uInt16  GetDropMode() const         { return nDropMode; }
 
-    const OUString& GetStrDragMode() const    { return aStrDragMode; }
-    const OUString& GetStrDisplay() const     { return aStrDisplay; }
-
-    void    CheckDataArea   ();
     void    MarkDataArea    ();
     void    UnmarkDataArea  ();
     void    StartOfDataArea ();
@@ -262,6 +177,8 @@ public:
     virtual void Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
     virtual void StateChanged(StateChangedType nStateChange) override;
+
+    FactoryFunction GetUITestFactory() const override;
 };
 
 class ScNavigatorDialogWrapper: public SfxChildWindowContext

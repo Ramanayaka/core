@@ -21,7 +21,6 @@
 #include "connector.hxx"
 #include <com/sun/star/io/IOException.hpp>
 #include <rtl/ustrbuf.hxx>
-#include <exception>
 
 using namespace ::osl;
 using namespace ::com::sun::star::uno;
@@ -31,9 +30,9 @@ using namespace ::com::sun::star::connection;
 
 namespace stoc_connector {
     template<class T>
-    void notifyListeners(SocketConnection * pCon, bool * notified, T t)
+    static void notifyListeners(SocketConnection * pCon, bool * notified, T t)
     {
-          XStreamListener_hash_set listeners;
+        XStreamListener_hash_set listeners;
 
         {
             ::osl::MutexGuard guard(pCon->_mutex);
@@ -54,6 +53,8 @@ namespace stoc_connector {
         xStreamListener->started();
     }
 
+    namespace {
+
     struct callError {
         const Any & any;
 
@@ -61,6 +62,8 @@ namespace stoc_connector {
 
         void operator () (const Reference<XStreamListener>& xStreamListener);
     };
+
+    }
 
     callError::callError(const Any & aAny)
         : any(aAny)
@@ -113,7 +116,7 @@ namespace stoc_connector {
         buf.append( ",localHost=" );
         buf.append( m_socket.getLocalHost( ) );
 
-        m_sDescription += buf.makeStringAndClear();
+        m_sDescription += buf;
     }
 
     sal_Int32 SocketConnection::read( Sequence < sal_Int8 > & aReadBytes , sal_Int32 nBytesToRead )
@@ -130,8 +133,8 @@ namespace stoc_connector {
 
             if(i != nBytesToRead && m_socket.getError() != osl_Socket_E_None)
             {
-                OUString message("ctr_socket.cxx:SocketConnection::read: error - ");
-                message += m_socket.getErrorAsString();
+                OUString message = "ctr_socket.cxx:SocketConnection::read: error - " +
+                    m_socket.getErrorAsString();
 
                 IOException ioException(message, static_cast<XConnection *>(this));
 
@@ -147,9 +150,7 @@ namespace stoc_connector {
         }
         else
         {
-            OUString message("ctr_socket.cxx:SocketConnection::read: error - connection already closed");
-
-            IOException ioException(message, static_cast<XConnection *>(this));
+            IOException ioException("ctr_socket.cxx:SocketConnection::read: error - connection already closed", static_cast<XConnection *>(this));
 
             Any any;
             any <<= ioException;
@@ -166,8 +167,8 @@ namespace stoc_connector {
         {
             if( m_socket.write( seq.getConstArray() , seq.getLength() ) != seq.getLength() )
             {
-                OUString message("ctr_socket.cxx:SocketConnection::write: error - ");
-                message += m_socket.getErrorAsString();
+                OUString message = "ctr_socket.cxx:SocketConnection::write: error - " +
+                    m_socket.getErrorAsString();
 
                 IOException ioException(message, static_cast<XConnection *>(this));
 
@@ -181,9 +182,7 @@ namespace stoc_connector {
         }
         else
         {
-            OUString message("ctr_socket.cxx:SocketConnection::write: error - connection already closed");
-
-            IOException ioException(message, static_cast<XConnection *>(this));
+            IOException ioException("ctr_socket.cxx:SocketConnection::write: error - connection already closed", static_cast<XConnection *>(this));
 
             Any any;
             any <<= ioException;

@@ -15,22 +15,21 @@
 #include <vcl/syschild.hxx>
 #include <vcl/sysdata.hxx>
 
-#include <vcl/pngwrite.hxx>
-#include <vcl/bitmapaccess.hxx>
-#include <vcl/graph.hxx>
-
 #include <osl/thread.hxx>
+#include <sal/log.hxx>
 
-#include "svdata.hxx"
-#include "salgdi.hxx"
-#include "salinst.hxx"
+#include <svdata.hxx>
+#include <salgdi.hxx>
+#include <salinst.hxx>
 
 #include <opengl/framebuffer.hxx>
 #include <opengl/program.hxx>
 #include <opengl/texture.hxx>
 #include <opengl/zone.hxx>
 
-#include "opengl/RenderState.hxx"
+#include <opengl/RenderState.hxx>
+
+#include <config_features.h>
 
 using namespace com::sun::star;
 
@@ -53,7 +52,6 @@ OpenGLContext::OpenGLContext():
     mbInitialized(false),
     mnRefCount(0),
     mbRequestLegacyContext(false),
-    mbUseDoubleBufferedRendering(true),
     mbVCLOnly(false),
     mnFramebufferCount(0),
     mpCurrentFramebuffer(nullptr),
@@ -61,7 +59,6 @@ OpenGLContext::OpenGLContext():
     mpLastFramebuffer(nullptr),
     mpCurrentProgram(nullptr),
     mpRenderState(new RenderState),
-    mnPainting(0),
     mpPrevContext(nullptr),
     mpNextContext(nullptr)
 {
@@ -115,11 +112,6 @@ rtl::Reference<OpenGLContext> OpenGLContext::Create()
 void OpenGLContext::requestLegacyContext()
 {
     mbRequestLegacyContext = true;
-}
-
-void OpenGLContext::requestSingleBufferedRendering()
-{
-    mbUseDoubleBufferedRendering = false;
 }
 
 #ifdef DBG_UTIL
@@ -236,35 +228,19 @@ bool OpenGLContext::init( vcl::Window* pParent )
     return ImplInit();
 }
 
-bool OpenGLContext::init(SystemChildWindow* pChildWindow)
-{
-    if(mbInitialized)
-        return true;
-
-    if( !pChildWindow )
-        return false;
-
-    OpenGLZone aZone;
-
-    mpWindow = pChildWindow->GetParent();
-    m_pChildWindow = pChildWindow;
-    initWindow();
-    return ImplInit();
-}
-
 bool OpenGLContext::ImplInit()
 {
     VCL_GL_INFO("OpenGLContext not implemented for this platform");
     return false;
 }
 
-OUString getGLString(GLenum eGlEnum)
+static OUString getGLString(GLenum eGlEnum)
 {
     OUString sString;
     const GLubyte* pString = glGetString(eGlEnum);
     if (pString)
     {
-        sString = OUString::createFromAscii(reinterpret_cast<const sal_Char*>(pString));
+        sString = OUString::createFromAscii(reinterpret_cast<const char*>(pString));
     }
 
     CHECK_GL_ERROR();
@@ -334,26 +310,21 @@ void OpenGLContext::restoreDefaultFramebuffer()
 
 void OpenGLContext::setWinPosAndSize(const Point &rPos, const Size& rSize)
 {
-    if(m_xWindow)
+    if (m_xWindow)
         m_xWindow->SetPosSizePixel(rPos, rSize);
-    if( m_pChildWindow )
+    if (m_pChildWindow)
         m_pChildWindow->SetPosSizePixel(rPos, rSize);
 
     GLWindow& rGLWin = getModifiableOpenGLWindow();
     rGLWin.Width = rSize.Width();
     rGLWin.Height = rSize.Height();
+    adjustToNewSize();
 }
 
-void OpenGLContext::setWinSize(const Size& rSize)
+void OpenGLContext::adjustToNewSize()
 {
-    if(m_xWindow)
-        m_xWindow->SetSizePixel(rSize);
-    if( m_pChildWindow )
-        m_pChildWindow->SetSizePixel(rSize);
-
-    GLWindow& rGLWin = getModifiableOpenGLWindow();
-    rGLWin.Width = rSize.Width();
-    rGLWin.Height = rSize.Height();
+    const GLWindow& rGLWin = getOpenGLWindow();
+    glViewport(0, 0, rGLWin.Width, rGLWin.Height);
 }
 
 void OpenGLContext::InitChildWindow(SystemChildWindow *pChildWindow)
@@ -365,9 +336,8 @@ void OpenGLContext::InitChildWindow(SystemChildWindow *pChildWindow)
     pChildWindow->SetControlBackground();
 }
 
-bool OpenGLContext::initWindow()
+void OpenGLContext::initWindow()
 {
-    return false;
 }
 
 void OpenGLContext::destroyCurrentContext()
@@ -381,9 +351,6 @@ void OpenGLContext::reset()
         return;
 
     OpenGLZone aZone;
-
-    // don't reset a context in the middle of stack frames rendering to it
-    assert( mnPainting == 0 );
 
     // reset the clip region
     maClipRegion.SetEmpty();
@@ -401,6 +368,7 @@ void OpenGLContext::reset()
             delete pFramebuffer;
             pFramebuffer = pPrevFramebuffer;
         }
+        mnFramebufferCount = 0;
         mpFirstFramebuffer = nullptr;
         mpLastFramebuffer = nullptr;
     }
@@ -423,9 +391,7 @@ void OpenGLContext::reset()
 
 SystemWindowData OpenGLContext::generateWinData(vcl::Window* /*pParent*/, bool /*bRequestLegacyContext*/)
 {
-    SystemWindowData aWinData;
-    memset(&aWinData, 0, sizeof(aWinData));
-    return aWinData;
+    return {};
 }
 
 bool OpenGLContext::isCurrent()
@@ -484,8 +450,19 @@ void OpenGLContext::prepareForYield()
 
     SAL_INFO("vcl.opengl", "Unbinding contexts in preparation for yield");
 
-    if( pCurrentCtx->isCurrent() )
-        pCurrentCtx->resetCurrent();
+    // Find the first context that is current and reset it.
+    // Usually the last context is the current, but not in case a new
+    // OpenGLContext is created already but not yet initialized.
+    while (pCurrentCtx.is())
+    {
+        if (pCurrentCtx->isCurrent())
+        {
+            pCurrentCtx->resetCurrent();
+            break;
+        }
+
+        pCurrentCtx = pCurrentCtx->mpPrevContext;
+    }
 
     assert (!hasCurrent());
 }
@@ -506,8 +483,10 @@ rtl::Reference<OpenGLContext> OpenGLContext::getVCLContext(bool bMakeIfNecessary
     if (pDefWindow)
     {
         // create our magic fallback window context.
+#if HAVE_FEATURE_OPENGL
         xContext = pDefWindow->GetGraphics()->GetOpenGLContext();
         assert(xContext.is());
+#endif
     }
     else
         xContext = pContext;
@@ -605,12 +584,7 @@ const SystemChildWindow* OpenGLContext::getChildWindow() const
     return m_pChildWindow;
 }
 
-bool OpenGLContext::supportMultiSampling() const
-{
-    return getOpenGLWindow().bMultiSampleSupported;
-}
-
-bool OpenGLContext::BindFramebuffer( OpenGLFramebuffer* pFramebuffer )
+void OpenGLContext::BindFramebuffer( OpenGLFramebuffer* pFramebuffer )
 {
     OpenGLZone aZone;
 
@@ -622,13 +596,11 @@ bool OpenGLContext::BindFramebuffer( OpenGLFramebuffer* pFramebuffer )
             OpenGLFramebuffer::Unbind();
         mpCurrentFramebuffer = pFramebuffer;
     }
-
-    return true;
 }
 
-bool OpenGLContext::AcquireDefaultFramebuffer()
+void OpenGLContext::AcquireDefaultFramebuffer()
 {
-    return BindFramebuffer( nullptr );
+    BindFramebuffer( nullptr );
 }
 
 OpenGLFramebuffer* OpenGLContext::AcquireFramebuffer( const OpenGLTexture& rTexture )
@@ -779,7 +751,7 @@ void OpenGLContext::ReleaseFramebuffers()
     BindFramebuffer( nullptr );
 }
 
-OpenGLProgram* OpenGLContext::GetProgram( const OUString& rVertexShader, const OUString& rFragmentShader, const rtl::OString& preamble )
+OpenGLProgram* OpenGLContext::GetProgram( const OUString& rVertexShader, const OUString& rFragmentShader, const OString& preamble )
 {
     OpenGLZone aZone;
 
@@ -787,7 +759,7 @@ OpenGLProgram* OpenGLContext::GetProgram( const OUString& rVertexShader, const O
     // based on only the names and the preamble. We don't expect
     // shader source files to change during the lifetime of a
     // LibreOffice process.
-    rtl::OString aNameBasedKey = OUStringToOString(rVertexShader + "+" + rFragmentShader, RTL_TEXTENCODING_UTF8) + "+" + preamble;
+    OString aNameBasedKey = OUStringToOString(rVertexShader + "+" + rFragmentShader, RTL_TEXTENCODING_UTF8) + "+" + preamble;
     if( !aNameBasedKey.isEmpty() )
     {
         ProgramCollection::iterator it = maPrograms.find( aNameBasedKey );
@@ -799,7 +771,7 @@ OpenGLProgram* OpenGLContext::GetProgram( const OUString& rVertexShader, const O
     // LibreOffice process instances) based on a hash of their source
     // code, as the source code can and will change between
     // LibreOffice versions even if the shader names don't change.
-    rtl::OString aPersistentKey = OpenGLHelper::GetDigest( rVertexShader, rFragmentShader, preamble );
+    OString aPersistentKey = OpenGLHelper::GetDigest( rVertexShader, rFragmentShader, preamble );
     std::shared_ptr<OpenGLProgram> pProgram = std::make_shared<OpenGLProgram>();
     if( !pProgram->Load( rVertexShader, rFragmentShader, preamble, aPersistentKey ) )
         return nullptr;
@@ -832,16 +804,6 @@ OpenGLProgram* OpenGLContext::UseProgram( const OUString& rVertexShader, const O
     mpCurrentProgram->Use();
 
     return mpCurrentProgram;
-}
-
-void OpenGLContext::UseNoProgram()
-{
-    if( mpCurrentProgram == nullptr )
-        return;
-
-    mpCurrentProgram = nullptr;
-    glUseProgram( 0 );
-    CHECK_GL_ERROR();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

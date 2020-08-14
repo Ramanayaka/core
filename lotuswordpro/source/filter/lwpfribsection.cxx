@@ -59,29 +59,23 @@
  ************************************************************************/
 
 #include "lwpfribsection.hxx"
-#include "lwpfribbreaks.hxx"
 #include "lwpstory.hxx"
 #include "lwpsection.hxx"
-#include "xfilter/xfstylemanager.hxx"
-#include "xfilter/xfsectionstyle.hxx"
-#include "xfilter/xfsection.hxx"
-#include "xfilter/xfindex.hxx"
+#include <xfilter/xfstylemanager.hxx>
+#include <xfilter/xfsectionstyle.hxx>
+#include <xfilter/xfsection.hxx>
+#include <xfilter/xfindex.hxx>
 #include "lwpfribptr.hxx"
-#include "lwpglobalmgr.hxx"
+#include <lwpglobalmgr.hxx>
 
 LwpFribSection::LwpFribSection(LwpPara *pPara)
-     : LwpFrib(pPara),m_pMasterPage(nullptr)
+     : LwpFrib(pPara)
 {
 
 }
 
 LwpFribSection::~LwpFribSection()
 {
-    if(m_pMasterPage)
-    {
-        delete m_pMasterPage;
-        m_pMasterPage = nullptr;
-    }
 }
 
 /**
@@ -111,7 +105,7 @@ void LwpFribSection::RegisterSectionStyle()
     LwpPageLayout* pLayout = GetPageLayout();
     if(pLayout)
     {
-        m_pMasterPage = new LwpMasterPage(m_pPara, pLayout);
+        m_pMasterPage.reset( new LwpMasterPage(m_pPara, pLayout) );
         m_pMasterPage->RegisterMasterPage(this);
     }
 }
@@ -137,8 +131,8 @@ void LwpFribSection::SetSectionName()
  */
 LwpPageLayout* LwpFribSection::GetPageLayout()
 {
-    if(GetSection())
-        return GetSection()->GetPageLayout();
+    if (LwpSection* pSection = GetSection())
+        return pSection->GetPageLayout();
     return nullptr;
 }
 
@@ -259,9 +253,9 @@ void LwpMasterPage::RegisterMasterPage(LwpFrib* pFrib)
     m_bNewSection = false;
     //sal_Bool bSectionColumns = sal_False;
 
-    XFParaStyle* pOverStyle = new XFParaStyle;
-    *pOverStyle = *(m_pPara->GetXFParaStyle());
-    pOverStyle->SetStyleName("");
+    std::unique_ptr<XFParaStyle> xOverStyle(new XFParaStyle);
+    *xOverStyle = *(m_pPara->GetXFParaStyle());
+    xOverStyle->SetStyleName("");
 
     LwpLayout::UseWhenType eUserType = m_pLayout->GetUseWhenType();
     switch(eUserType)
@@ -289,7 +283,7 @@ void LwpMasterPage::RegisterMasterPage(LwpFrib* pFrib)
                 m_pLayout = pStory->GetCurrentLayout();
                 m_bNewSection = IsNeedSection();
                 //bSectionColumns = m_bNewSection;
-                pOverStyle->SetMasterPage( m_pLayout->GetStyleName());
+                xOverStyle->SetMasterPage(m_pLayout->GetStyleName());
                 RegisterFillerPageStyle();
             }
             break;
@@ -304,40 +298,36 @@ void LwpMasterPage::RegisterMasterPage(LwpFrib* pFrib)
         return;
 
     pStory->SetTabLayout(m_pLayout);
-    m_pPara->RegisterTabStyle(pOverStyle);
+    m_pPara->RegisterTabStyle(xOverStyle.get());
 
     XFStyleManager* pXFStyleManager = LwpGlobalMgr::GetInstance()->GetXFStyleManager();
-    m_StyleName = pXFStyleManager->AddStyle(pOverStyle).m_pStyle->GetStyleName();
+    m_StyleName = pXFStyleManager->AddStyle(std::move(xOverStyle)).m_pStyle->GetStyleName();
     //register section style here
-    if(m_bNewSection)
-    {
-        XFSectionStyle* pSectStyle= new XFSectionStyle();
-        //set margin
-        pStory = dynamic_cast<LwpStory*>(m_pPara->GetStoryID().obj().get());
-        LwpPageLayout* pCurrentLayout = pStory ? pStory->GetCurrentLayout() : nullptr;
-        if (pCurrentLayout)
-        {
-            double fLeft = m_pLayout->GetMarginsValue(MARGIN_LEFT) - pCurrentLayout->GetMarginsValue(MARGIN_LEFT);
-            double fRight = m_pLayout->GetMarginsValue(MARGIN_RIGHT) - pCurrentLayout->GetMarginsValue(MARGIN_RIGHT);
-            pSectStyle->SetMarginLeft(fLeft);
-            pSectStyle->SetMarginRight(fRight);
-        }
+    if(!m_bNewSection)
+        return;
 
-        //if(bSectionColumns)
-        //{
-            //set columns
-            XFColumns* pColumns = m_pLayout->GetXFColumns();
-            if(pColumns)
-            {
-                pSectStyle->SetColumns(pColumns);
-            }
-        //}
-        m_SectionStyleName = pXFStyleManager->AddStyle(pSectStyle).m_pStyle->GetStyleName();
+    std::unique_ptr<XFSectionStyle> pSectStyle(new XFSectionStyle());
+    //set margin
+    pStory = dynamic_cast<LwpStory*>(m_pPara->GetStoryID().obj().get());
+    LwpPageLayout* pCurrentLayout = pStory ? pStory->GetCurrentLayout() : nullptr;
+    if (pCurrentLayout)
+    {
+        double fLeft = m_pLayout->GetMarginsValue(MARGIN_LEFT) - pCurrentLayout->GetMarginsValue(MARGIN_LEFT);
+        double fRight = m_pLayout->GetMarginsValue(MARGIN_RIGHT) - pCurrentLayout->GetMarginsValue(MARGIN_RIGHT);
+        pSectStyle->SetMarginLeft(fLeft);
+        pSectStyle->SetMarginRight(fRight);
     }
+
+    XFColumns* pColumns = m_pLayout->GetXFColumns();
+    if(pColumns)
+    {
+        pSectStyle->SetColumns(pColumns);
+    }
+    m_SectionStyleName = pXFStyleManager->AddStyle(std::move(pSectStyle)).m_pStyle->GetStyleName();
 }
 
 /**
- * @descr:  Whether it need create a new section
+ * @descr:  Whether it needs to create a new section
  *
  */
 bool LwpMasterPage::IsNeedSection()
@@ -438,12 +428,12 @@ void LwpMasterPage::RegisterFillerPageStyle()
     {
         if(m_pLayout->HasFillerPageText(m_pPara->GetFoundry()))
         {
-            XFParaStyle* pPagebreakStyle = new XFParaStyle;
+            std::unique_ptr<XFParaStyle> pPagebreakStyle(new XFParaStyle);
             *pPagebreakStyle = *(m_pPara->GetXFParaStyle());
             pPagebreakStyle->SetStyleName("");
             pPagebreakStyle->SetBreaks(enumXFBreakAftPage);
             XFStyleManager* pXFStyleManager = LwpGlobalMgr::GetInstance()->GetXFStyleManager();
-            m_FillerPageStyleName= pXFStyleManager->AddStyle(pPagebreakStyle).m_pStyle->GetStyleName();
+            m_FillerPageStyleName= pXFStyleManager->AddStyle(std::move(pPagebreakStyle)).m_pStyle->GetStyleName();
         }
     }
 }

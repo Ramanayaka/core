@@ -21,7 +21,6 @@
 
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/script/XTypeConverter.hpp>
-#include <com/sun/star/ucb/XContentProvider.hpp>
 #include <cppuhelper/implbase.hxx>
 
 namespace fileaccess {
@@ -102,8 +101,12 @@ namespace fileaccess {
         osl::Mutex                                         m_aMutex;
         css::uno::Sequence< css::uno::Any >                m_aValueMap;
         bool                                               m_nWasNull;
-        TaskManager*                                             m_pMyShell;
+        TaskManager*                                       m_pMyShell;
         css::uno::Reference< css::script::XTypeConverter > m_xTypeConverter;
+
+        bool isIndexOutOfBounds( sal_Int32 nIndex );
+        template<typename T>
+        T getValue(sal_Int32 columnIndex);
     };
 
 } // end namespace fileaccess

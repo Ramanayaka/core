@@ -22,8 +22,9 @@
 
 #include "storagestream.hxx"
 
-#include <com/sun/star/xml/sax/Parser.hpp>
+#include <com/sun/star/xml/sax/XParser.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 
 #include <memory>
@@ -43,8 +44,7 @@ namespace dbaccess
         );
         virtual ~StorageXMLOutputStream() override;
 
-        // StorageOutputStream overridables
-        virtual void close() override;
+        void    close();
 
         void    addAttribute( const OUString& i_rName, const OUString& i_rValue ) const;
 

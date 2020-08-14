@@ -21,9 +21,7 @@
 #include <connectivity/TColumnsHelper.hxx>
 #include <connectivity/sdbcx/VColumn.hxx>
 
-namespace connectivity
-{
-    namespace mysql
+namespace connectivity::mysql
     {
         class OMySQLColumns : public OColumnsHelper
         {
@@ -32,15 +30,14 @@ namespace connectivity
         public:
             OMySQLColumns(  ::cppu::OWeakObject& _rParent
                             ,::osl::Mutex& _rMutex
-                            ,const TStringVector &_rVector
+                            ,const ::std::vector< OUString> &_rVector
                         );
         };
 
         class OMySQLColumn;
-        typedef sdbcx::OColumn OMySQLColumn_BASE;
         typedef ::comphelper::OIdPropertyArrayUsageHelper<OMySQLColumn> OMySQLColumn_PROP;
 
-        class OMySQLColumn :    public OMySQLColumn_BASE,
+        class OMySQLColumn :    public sdbcx::OColumn,
                                 public OMySQLColumn_PROP
         {
             OUString m_sAutoIncrement;
@@ -54,7 +51,7 @@ namespace connectivity
 
             virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_MYSQL_YCOLUMNS_HXX
 

@@ -20,15 +20,16 @@
 #ifndef INCLUDED_BASIC_SBUNO_HXX
 #define INCLUDED_BASIC_SBUNO_HXX
 
-#include <com/sun/star/beans/Property.hpp>
-#include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Type.hxx>
-#include <basic/sbxobj.hxx>
+#include <basic/sbxvar.hxx>
 #include <basic/basicdllapi.h>
 
-namespace com { namespace sun { namespace star { namespace uno { class Any; }}}}
+namespace com::sun::star::uno { class Any; }
+namespace com::sun::star::beans { struct Property; }
 
-// Returns a SbxObject that wrapps an Uno Interface
+class SbxObject;
+
+// Returns a SbxObject that wraps a Uno Interface
 // Implementation in basic/source/classes/sbunoobj.cxx
 BASIC_DLLPUBLIC SbxObjectRef GetSbUnoObject( const OUString& aName, const css::uno::Any& aUnoObj_ );
 
@@ -37,7 +38,7 @@ BASIC_DLLPUBLIC void createAllObjectProperties( SbxObject* pObj );
 BASIC_DLLPUBLIC void SetSbUnoObjectDfltPropName( SbxObject* pObj );
 
 BASIC_DLLPUBLIC css::uno::Any sbxToUnoValue( const SbxValue* pVar );
-BASIC_DLLPUBLIC css::uno::Any sbxToUnoValue( const SbxValue* pVar, const css::uno::Type& rType, css::beans::Property* pUnoProperty = nullptr );
+css::uno::Any sbxToUnoValue( const SbxValue* pVar, const css::uno::Type& rType, css::beans::Property const * pUnoProperty = nullptr );
 
 BASIC_DLLPUBLIC void unoToSbxValue( SbxVariable* pVar, const css::uno::Any& aValue );
 

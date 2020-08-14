@@ -21,7 +21,7 @@
 
 #include "datacolumn.hxx"
 #include "RowSetRow.hxx"
-#include "columnsettings.hxx"
+#include <columnsettings.hxx>
 
 #include <connectivity/CommonTools.hxx>
 #include <comphelper/proparrhlp.hxx>
@@ -70,7 +70,7 @@ namespace dbaccess
         virtual void SAL_CALL getFastPropertyValue( css::uno::Any& rValue, sal_Int32 nHandle ) const override;
         virtual void SAL_CALL setFastPropertyValue_NoBroadcast(sal_Int32 nHandle,const css::uno::Any& rValue ) override;
 
-        virtual void fireValueChange(const ::connectivity::ORowSetValue& _rOldValue) override;
+        void fireValueChange(const ::connectivity::ORowSetValue& _rOldValue);
     protected:
         using ODataColumn::getFastPropertyValue;
     };
@@ -92,7 +92,7 @@ namespace dbaccess
                         );
         virtual ~ORowSetDataColumns() override;
         // only the name is identical to ::cppu::OComponentHelper
-        virtual void SAL_CALL disposing() override;
+        virtual void disposing() override;
         void assign(const ::rtl::Reference< ::connectivity::OSQLColumns>& _rColumns,const std::vector< OUString> &_rVector);
     };
 }

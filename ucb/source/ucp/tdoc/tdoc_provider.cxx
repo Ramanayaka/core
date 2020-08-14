@@ -24,17 +24,16 @@
 
  *************************************************************************/
 
-#include "rtl/ustrbuf.hxx"
 #include <osl/diagnose.h>
 
-#include "com/sun/star/container/XNameAccess.hpp"
-#include "com/sun/star/embed/InvalidStorageException.hpp"
-#include "com/sun/star/embed/StorageWrappedTargetException.hpp"
-#include "com/sun/star/embed/XStorage.hpp"
-#include "com/sun/star/io/IOException.hpp"
-#include "com/sun/star/ucb/IllegalIdentifierException.hpp"
-#include "comphelper/processfactory.hxx"
-#include "ucbhelper/contentidentifier.hxx"
+#include <com/sun/star/embed/InvalidStorageException.hpp>
+#include <com/sun/star/embed/StorageWrappedTargetException.hpp>
+#include <com/sun/star/io/IOException.hpp>
+#include <com/sun/star/ucb/IllegalIdentifierException.hpp>
+#include <cppuhelper/queryinterface.hxx>
+#include <ucbhelper/contentidentifier.hxx>
+#include <ucbhelper/getcomponentcontext.hxx>
+#include <ucbhelper/macros.hxx>
 
 #include "tdoc_provider.hxx"
 #include "tdoc_content.hxx"
@@ -82,10 +81,11 @@ void SAL_CALL ContentProvider::release()
 css::uno::Any SAL_CALL ContentProvider::queryInterface( const css::uno::Type & rType )
 {
     css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< lang::XTypeProvider* >(this)),
-                                               (static_cast< lang::XServiceInfo* >(this)),
-                                               (static_cast< ucb::XContentProvider* >(this)),
-                                               (static_cast< frame::XTransientDocumentsDocumentContentFactory* >(this))
+                                               static_cast< lang::XTypeProvider* >(this),
+                                               static_cast< lang::XServiceInfo* >(this),
+                                               static_cast< ucb::XContentProvider* >(this),
+                                               static_cast< frame::XTransientDocumentsDocumentContentIdentifierFactory* >(this),
+                                               static_cast< frame::XTransientDocumentsDocumentContentFactory* >(this)
                                                );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
@@ -93,38 +93,40 @@ css::uno::Any SAL_CALL ContentProvider::queryInterface( const css::uno::Type & r
 // XTypeProvider methods.
 
 
-XTYPEPROVIDER_IMPL_4( ContentProvider,
+XTYPEPROVIDER_IMPL_5( ContentProvider,
                       lang::XTypeProvider,
                       lang::XServiceInfo,
                       ucb::XContentProvider,
+                      frame::XTransientDocumentsDocumentContentIdentifierFactory,
                       frame::XTransientDocumentsDocumentContentFactory );
 
 
 // XServiceInfo methods.
-
-XSERVICEINFO_COMMOM_IMPL( ContentProvider,
-                          OUString( "com.sun.star.comp.ucb.TransientDocumentsContentProvider" ) )
-/// @throws css::uno::Exception
-static css::uno::Reference< css::uno::XInterface > SAL_CALL
-ContentProvider_CreateInstance( const css::uno::Reference< css::lang::XMultiServiceFactory> & rSMgr )
+OUString SAL_CALL ContentProvider::getImplementationName()
 {
-    css::lang::XServiceInfo* pX =
-        static_cast<css::lang::XServiceInfo*>(new ContentProvider( ucbhelper::getComponentContext(rSMgr) ));
-    return css::uno::Reference< css::uno::XInterface >::query( pX );
+    return "com.sun.star.comp.ucb.TransientDocumentsContentProvider";
 }
 
-css::uno::Sequence< OUString >
-ContentProvider::getSupportedServiceNames_Static()
+sal_Bool SAL_CALL ContentProvider::supportsService( const OUString& ServiceName )
 {
-    css::uno::Sequence< OUString > aSNS { "com.sun.star.ucb.TransientDocumentsContentProvider" };
-    return aSNS;
+    return cppu::supportsService( this, ServiceName );
 }
+
+css::uno::Sequence< OUString > SAL_CALL ContentProvider::getSupportedServiceNames()
+{
+    return { "com.sun.star.ucb.TransientDocumentsContentProvider" };
+}
+
 
 // Service factory implementation.
 
 
-ONE_INSTANCE_SERVICE_FACTORY_IMPL( ContentProvider );
-
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_tdoc_ContentProvider_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new ContentProvider(context));
+}
 
 // XContentProvider methods.
 
@@ -161,63 +163,66 @@ ContentProvider::queryContent(
 }
 
 
-// XTransientDocumentsDocumentContentFactory methods.
+// XTransientDocumentsDocumentContentIdentifierFactory methods.
 
-
-// virtual
-uno::Reference< ucb::XContent > SAL_CALL
-ContentProvider::createDocumentContent(
-        const uno::Reference< frame::XModel >& Model )
+uno::Reference<ucb::XContentIdentifier> SAL_CALL
+ContentProvider::createDocumentContentIdentifier(
+        uno::Reference<frame::XModel> const& xModel)
 {
     // model -> id -> content identifier -> queryContent
-    if ( m_xDocsMgr.is() )
-    {
-        OUString aDocId = tdoc_ucp::OfficeDocumentsManager::queryDocumentId( Model );
-        if ( !aDocId.isEmpty() )
-        {
-            OUStringBuffer aBuffer;
-            aBuffer.append( TDOC_URL_SCHEME ":/" );
-            aBuffer.append( aDocId );
-
-            uno::Reference< ucb::XContentIdentifier > xId
-                = new ::ucbhelper::ContentIdentifier( aBuffer.makeStringAndClear() );
-
-            osl::MutexGuard aGuard( m_aMutex );
-
-            // Check, if a content with given id already exists...
-            uno::Reference< ucb::XContent > xContent
-                = queryExistingContent( xId ).get();
-
-            if ( !xContent.is() )
-            {
-                // Create a new content.
-                xContent = Content::create( m_xContext, this, xId );
-            }
-
-            if ( xContent.is() )
-                return xContent;
-
-            // no content.
-            throw lang::IllegalArgumentException(
-                "Illegal Content Identifier!",
-                static_cast< cppu::OWeakObject * >( this ),
-                1 );
-        }
-        else
-        {
-            throw lang::IllegalArgumentException(
-                "Unable to obtain document id from model!",
-                static_cast< cppu::OWeakObject * >( this ),
-                1 );
-        }
-     }
-     else
+    if ( !m_xDocsMgr.is() )
      {
         throw lang::IllegalArgumentException(
             "No Document Manager!",
             static_cast< cppu::OWeakObject * >( this ),
             1 );
      }
+
+    OUString aDocId = tdoc_ucp::OfficeDocumentsManager::queryDocumentId(xModel);
+    if ( aDocId.isEmpty() )
+    {
+        throw lang::IllegalArgumentException(
+            "Unable to obtain document id from model!",
+            static_cast< cppu::OWeakObject * >( this ),
+            1 );
+    }
+
+    OUString aBuffer = TDOC_URL_SCHEME ":/" + aDocId;
+
+    uno::Reference< ucb::XContentIdentifier > xId
+        = new ::ucbhelper::ContentIdentifier( aBuffer );
+    return xId;
+}
+
+// XTransientDocumentsDocumentContentFactory methods.
+
+uno::Reference< ucb::XContent > SAL_CALL
+ContentProvider::createDocumentContent(
+        uno::Reference<frame::XModel> const& xModel)
+{
+    uno::Reference<ucb::XContentIdentifier> const xId(
+            createDocumentContentIdentifier(xModel));
+
+    osl::MutexGuard aGuard( m_aMutex );
+
+    // Check, if a content with given id already exists...
+    uno::Reference< ucb::XContent > xContent
+        = queryExistingContent( xId ).get();
+
+    if ( !xContent.is() )
+    {
+        // Create a new content.
+        xContent = Content::create( m_xContext, this, xId );
+    }
+
+    if ( xContent.is() )
+        return xContent;
+
+    // no content.
+    throw lang::IllegalArgumentException(
+        "Illegal Content Identifier!",
+        static_cast< cppu::OWeakObject * >( this ),
+        1 );
 }
 
 
@@ -232,17 +237,14 @@ void ContentProvider::notifyDocumentClosed( const OUString & rDocId )
     ::ucbhelper::ContentRefList aAllContents;
     queryExistingContents( aAllContents );
 
-    ::ucbhelper::ContentRefList::const_iterator it  = aAllContents.begin();
-    ::ucbhelper::ContentRefList::const_iterator end = aAllContents.end();
-
     // Notify all content objects related to the closed doc.
 
     bool bFoundDocumentContent = false;
     rtl::Reference< Content > xRoot;
 
-    while ( it != end )
+    for ( const auto& rContent : aAllContents )
     {
-        Uri aUri( (*it)->getIdentifier()->getContentIdentifier() );
+        Uri aUri( rContent->getIdentifier()->getContentIdentifier() );
         OSL_ENSURE( aUri.isValid(),
                     "ContentProvider::notifyDocumentClosed - Invalid URI!" );
 
@@ -250,7 +252,7 @@ void ContentProvider::notifyDocumentClosed( const OUString & rDocId )
         {
             if ( aUri.isRoot() )
             {
-                xRoot = static_cast< Content * >( (*it).get() );
+                xRoot = static_cast< Content * >( rContent.get() );
             }
             else if ( aUri.isDocument() )
             {
@@ -269,12 +271,10 @@ void ContentProvider::notifyDocumentClosed( const OUString & rDocId )
         {
             // Inform content.
             rtl::Reference< Content > xContent
-                = static_cast< Content * >( (*it).get() );
+                = static_cast< Content * >( rContent.get() );
 
             xContent->notifyDocumentClosed();
         }
-
-        ++it;
     }
 
     if ( xRoot.is() )
@@ -295,28 +295,23 @@ void ContentProvider::notifyDocumentOpened( const OUString & rDocId )
     ::ucbhelper::ContentRefList aAllContents;
     queryExistingContents( aAllContents );
 
-    ::ucbhelper::ContentRefList::const_iterator it  = aAllContents.begin();
-    ::ucbhelper::ContentRefList::const_iterator end = aAllContents.end();
-
     // Find root content. If instantiated let it propagate document insertion.
 
-    while ( it != end )
+    for ( const auto& rContent : aAllContents )
     {
-        Uri aUri( (*it)->getIdentifier()->getContentIdentifier() );
+        Uri aUri( rContent->getIdentifier()->getContentIdentifier() );
         OSL_ENSURE( aUri.isValid(),
                     "ContentProvider::notifyDocumentOpened - Invalid URI!" );
 
         if ( aUri.isRoot() )
         {
             rtl::Reference< Content > xRoot
-                = static_cast< Content * >( (*it).get() );
+                = static_cast< Content * >( rContent.get() );
             xRoot->notifyChildInserted( rDocId );
 
             // Done.
             break;
         }
-
-        ++it;
     }
 }
 
@@ -535,15 +530,8 @@ bool ContentProvider::queryNamesOfChildren(
 
                 if ( xStorage.is() )
                 {
-                    uno::Reference< container::XNameAccess > xNA(
-                        xStorage, uno::UNO_QUERY );
-
-                    OSL_ENSURE( xNA.is(), "Got no css.container.XNameAccess!" );
-                    if ( xNA.is() )
-                    {
-                        rNames = xNA->getElementNames();
-                        return true;
-                    }
+                    rNames = xStorage->getElementNames();
+                    return true;
                 }
             }
             catch ( embed::InvalidStorageException const & )

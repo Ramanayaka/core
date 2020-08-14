@@ -8,7 +8,7 @@
 
 $(eval $(call gb_Library_Library,configmgr))
 
-$(eval $(call gb_Library_set_precompiled_header,configmgr,$(SRCDIR)/configmgr/inc/pch/precompiled_configmgr))
+$(eval $(call gb_Library_set_precompiled_header,configmgr,configmgr/inc/pch/precompiled_configmgr))
 
 $(eval $(call gb_Library_add_exception_objects,configmgr, \
     configmgr/source/access \
@@ -33,7 +33,6 @@ $(eval $(call gb_Library_add_exception_objects,configmgr, \
     configmgr/source/readwriteaccess \
     configmgr/source/rootaccess \
     configmgr/source/rootnode \
-    configmgr/source/services \
     configmgr/source/setnode \
     configmgr/source/type \
     configmgr/source/update \
@@ -60,6 +59,7 @@ $(eval $(call gb_Library_use_libraries,configmgr, \
     cppuhelper \
     sal \
     salhelper \
+    tl \
     xmlreader \
     i18nlangtag \
 ))

@@ -22,28 +22,20 @@
 
 #include <utility>
 
-#include "editsrc.hxx"
+#include <editsrc.hxx>
 
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
 #include <editeng/unofored.hxx>
 #include <vcl/svapp.hxx>
-#include <svx/svdpage.hxx>
-#include <svx/svditer.hxx>
 #include <svx/svdocapt.hxx>
 #include <editeng/outlobj.hxx>
 #include <editeng/editobj.hxx>
 #include <editeng/outliner.hxx>
-#include "textuno.hxx"
-#include "editutil.hxx"
-#include "docsh.hxx"
-#include "docfunc.hxx"
-#include "hints.hxx"
-#include "patattr.hxx"
-#include "drwlayer.hxx"
-#include "userdat.hxx"
-#include "postit.hxx"
-#include "AccessibleText.hxx"
+#include <textuno.hxx>
+#include <editutil.hxx>
+#include <docsh.hxx>
+#include <hints.hxx>
+#include <postit.hxx>
+#include <AccessibleText.hxx>
 
 ScHeaderFooterEditSource::ScHeaderFooterEditSource(ScHeaderFooterTextData& rData) :
     mrTextData(rData) {}
@@ -55,9 +47,9 @@ ScEditEngineDefaulter* ScHeaderFooterEditSource::GetEditEngine()
     return mrTextData.GetEditEngine();
 }
 
-SvxEditSource* ScHeaderFooterEditSource::Clone() const
+std::unique_ptr<SvxEditSource> ScHeaderFooterEditSource::Clone() const
 {
-    return new ScHeaderFooterEditSource(mrTextData);
+    return std::unique_ptr<SvxEditSource>(new ScHeaderFooterEditSource(mrTextData));
 }
 
 SvxTextForwarder* ScHeaderFooterEditSource::GetTextForwarder()
@@ -77,9 +69,9 @@ ScCellEditSource::~ScCellEditSource()
 {
 }
 
-SvxEditSource* ScCellEditSource::Clone() const
+std::unique_ptr<SvxEditSource> ScCellEditSource::Clone() const
 {
-    return new ScCellEditSource(pCellTextData->GetDocShell(), pCellTextData->GetCellPos());
+    return std::unique_ptr<SvxEditSource>(new ScCellEditSource(pCellTextData->GetDocShell(), pCellTextData->GetCellPos()));
 }
 
 SvxTextForwarder* ScCellEditSource::GetTextForwarder()
@@ -110,8 +102,6 @@ ScEditEngineDefaulter* ScCellEditSource::GetEditEngine()
 ScAnnotationEditSource::ScAnnotationEditSource(ScDocShell* pDocSh, const ScAddress& rP) :
     pDocShell( pDocSh ),
     aCellPos( rP ),
-    pEditEngine( nullptr ),
-    pForwarder( nullptr ),
     bDataValid( false )
 {
     if (pDocShell)
@@ -125,13 +115,13 @@ ScAnnotationEditSource::~ScAnnotationEditSource()
     if (pDocShell)
         pDocShell->GetDocument().RemoveUnoObject(*this);
 
-    delete pForwarder;
-    delete pEditEngine;
+    pForwarder.reset();
+    pEditEngine.reset();
 }
 
-SvxEditSource* ScAnnotationEditSource::Clone() const
+std::unique_ptr<SvxEditSource> ScAnnotationEditSource::Clone() const
 {
-    return new ScAnnotationEditSource( pDocShell, aCellPos );
+    return std::unique_ptr<SvxEditSource>(new ScAnnotationEditSource( pDocShell, aCellPos ));
 }
 
 SdrObject* ScAnnotationEditSource::GetCaptionObj()
@@ -147,51 +137,51 @@ SvxTextForwarder* ScAnnotationEditSource::GetTextForwarder()
         // notes don't have fields
         if ( pDocShell )
         {
-            pEditEngine = new ScNoteEditEngine( pDocShell->GetDocument().GetNoteEngine() );
+            pEditEngine.reset( new ScNoteEditEngine( pDocShell->GetDocument().GetNoteEngine() ) );
         }
         else
         {
             SfxItemPool* pEnginePool = EditEngine::CreatePool();
             pEnginePool->FreezeIdRanges();
-            pEditEngine = new ScEditEngineDefaulter( pEnginePool, true );
+            pEditEngine.reset( new ScEditEngineDefaulter( pEnginePool, true ) );
         }
-        pForwarder = new SvxEditEngineForwarder(*pEditEngine);
+        pForwarder.reset( new SvxEditEngineForwarder(*pEditEngine) );
     }
 
     if (bDataValid)
-        return pForwarder;
+        return pForwarder.get();
 
     if ( pDocShell )
         if ( ScPostIt* pNote = pDocShell->GetDocument().GetNote(aCellPos) )
             if ( const EditTextObject* pEditObj = pNote->GetEditTextObject() )
-                pEditEngine->SetText( *pEditObj );      // incl. Umbrueche
+                pEditEngine->SetTextCurrentDefaults( *pEditObj );      // incl. breaks (line, etc.)
 
     bDataValid = true;
-    return pForwarder;
+    return pForwarder.get();
 }
 
 void ScAnnotationEditSource::UpdateData()
 {
-    if ( pDocShell && pEditEngine )
+    if ( !(pDocShell && pEditEngine) )
+        return;
+
+    ScDocShellModificator aModificator( *pDocShell );
+
+    if( SdrObject* pObj = GetCaptionObj() )
     {
-        ScDocShellModificator aModificator( *pDocShell );
-
-        if( SdrObject* pObj = GetCaptionObj() )
-        {
-            EditTextObject* pEditObj = pEditEngine->CreateTextObject();
-            OutlinerParaObject* pOPO = new OutlinerParaObject( *pEditObj );
-            delete pEditObj;
-            pOPO->SetOutlinerMode( OutlinerMode::TextObject );
-            pObj->NbcSetOutlinerParaObject( pOPO );
-            pObj->ActionChanged();
-        }
-
-        //! Undo !!!
-
-        aModificator.SetDocumentModified();
-
-        // SetDocumentModified will reset bDataValid
+        std::unique_ptr<EditTextObject> pEditObj = pEditEngine->CreateTextObject();
+        std::unique_ptr<OutlinerParaObject> pOPO( new OutlinerParaObject( *pEditObj ) );
+        pEditObj.reset();
+        pOPO->SetOutlinerMode( OutlinerMode::TextObject );
+        pObj->NbcSetOutlinerParaObject( std::move(pOPO) );
+        pObj->ActionChanged();
     }
+
+    //! Undo !!!
+
+    aModificator.SetDocumentModified();
+
+    // SetDocumentModified will reset bDataValid
 }
 
 void ScAnnotationEditSource::Notify( SfxBroadcaster&, const SfxHint& rHint )
@@ -207,8 +197,8 @@ void ScAnnotationEditSource::Notify( SfxBroadcaster&, const SfxHint& rHint )
         {
             pDocShell = nullptr;
 
-            DELETEZ( pForwarder );
-            DELETEZ( pEditEngine );     // EditEngine uses document's pool
+            pForwarder.reset();
+            pEditEngine.reset();     // EditEngine uses document's pool
         }
         else if ( nId == SfxHintId::DataChanged )
             bDataValid = false;                     // text must be retrieved again
@@ -227,9 +217,9 @@ ScSimpleEditSource::~ScSimpleEditSource()
 {
 }
 
-SvxEditSource* ScSimpleEditSource::Clone() const
+std::unique_ptr<SvxEditSource> ScSimpleEditSource::Clone() const
 {
-    return new ScSimpleEditSource( pForwarder );
+    return std::unique_ptr<SvxEditSource>(new ScSimpleEditSource( pForwarder ));
 }
 
 SvxTextForwarder* ScSimpleEditSource::GetTextForwarder()
@@ -251,9 +241,9 @@ ScAccessibilityEditSource::~ScAccessibilityEditSource()
 {
 }
 
-SvxEditSource* ScAccessibilityEditSource::Clone() const
+std::unique_ptr<SvxEditSource> ScAccessibilityEditSource::Clone() const
 {
-    return new ScAccessibilityEditSource(::std::unique_ptr < ScAccessibleTextData > (mpAccessibleTextData->Clone()));
+    return std::unique_ptr<SvxEditSource>(new ScAccessibilityEditSource(::std::unique_ptr < ScAccessibleTextData > (mpAccessibleTextData->Clone())));
 }
 
 SvxTextForwarder* ScAccessibilityEditSource::GetTextForwarder()

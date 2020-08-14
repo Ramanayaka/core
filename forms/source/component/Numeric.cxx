@@ -18,7 +18,10 @@
  */
 
 #include "Numeric.hxx"
-#include <comphelper/processfactory.hxx>
+#include <services.hxx>
+#include <property.hxx>
+#include <comphelper/types.hxx>
+#include <com/sun/star/form/FormComponentType.hpp>
 
 namespace frm
 {
@@ -26,7 +29,6 @@ namespace frm
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -117,7 +119,7 @@ void ONumericModel::describeFixedProperties( Sequence< Property >& _rProps ) con
 
 OUString SAL_CALL ONumericModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_NUMERICFIELD);  // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_NUMERICFIELD;  // old (non-sun) name for compatibility !
 }
 
 
@@ -173,14 +175,14 @@ void ONumericModel::resetNoBroadcast()
 
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_ONumericModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new frm::ONumericModel(component));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_ONumericControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

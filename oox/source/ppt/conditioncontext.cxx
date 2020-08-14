@@ -19,14 +19,11 @@
 
 #include "conditioncontext.hxx"
 
-#include "comphelper/anytostring.hxx"
-#include "cppuhelper/exc_hlp.hxx"
-
 #include <com/sun/star/animations/AnimationEndSync.hpp>
 #include <com/sun/star/animations/EventTrigger.hpp>
 
-#include "oox/helper/attributelist.hxx"
-#include "oox/ppt/animationspersist.hxx"
+#include <oox/helper/attributelist.hxx>
+#include <oox/ppt/animationspersist.hxx>
 #include "animationtypes.hxx"
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
@@ -38,11 +35,11 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::animations;
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-    CondContext::CondContext( FragmentHandler2& rParent, const Reference< XFastAttributeList >& xAttribs,
+    CondContext::CondContext( FragmentHandler2 const & rParent, const Reference< XFastAttributeList >& xAttribs,
                 const TimeNodePtr & pNode, AnimationCondition & aValue )
-        :  TimeNodeContext( rParent, PPT_TOKEN( cond ), xAttribs, pNode )
+        :  TimeNodeContext( rParent, PPT_TOKEN( cond ), pNode )
         , maCond( aValue )
     {
         maEvent.Trigger =  EventTrigger::NONE;
@@ -99,7 +96,7 @@ namespace oox { namespace ppt {
 
     CondContext::~CondContext( ) throw( )
     {
-        if( maCond.mnType == 0 )
+        if( maCond.mnType == 0 || maCond.mnType == PPT_TOKEN(tn))
         {
             maCond.maValue = (maEvent.Trigger == EventTrigger::NONE) ? maEvent.Offset : makeAny( maEvent );
         }
@@ -136,8 +133,8 @@ namespace oox { namespace ppt {
         case PPT_TOKEN( tn ):
         {
             maCond.mnType = aElementToken;
-            sal_uInt32 nId = rAttribs.getUnsigned( XML_val, 0 );
-            maCond.maValue <<= nId;
+            // Convert the node id string to XAnimationNode later
+            maEvent.Source <<= rAttribs.getString(XML_val, OUString());
             return this;
         }
         case PPT_TOKEN( tgtEl ):
@@ -153,11 +150,10 @@ namespace oox { namespace ppt {
 
     /** CT_TLTimeConditionList */
     CondListContext::CondListContext(
-            FragmentHandler2& rParent, sal_Int32  aElement,
-            const Reference< XFastAttributeList >& xAttribs,
+            FragmentHandler2 const & rParent, sal_Int32  aElement,
             const TimeNodePtr & pNode,
             AnimationConditionList & aCond )
-        : TimeNodeContext( rParent, aElement, xAttribs, pNode )
+        : TimeNodeContext( rParent, aElement, pNode )
         , maConditions( aCond )
     {
     }
@@ -173,7 +169,7 @@ namespace oox { namespace ppt {
         {
         case PPT_TOKEN( cond ):
             // add a condition to the list
-            maConditions.push_back( AnimationCondition() );
+            maConditions.emplace_back( );
             return new CondContext( *this, rAttribs.getFastAttributeList(), mpNode, maConditions.back() );
         default:
             break;
@@ -181,6 +177,6 @@ namespace oox { namespace ppt {
         return this;
     }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

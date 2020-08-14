@@ -23,11 +23,12 @@
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <ooo/vba/office/MsoShapeType.hpp>
 
-#include <vbahelper/vbahelper.hxx>
 #include <vbahelper/vbashaperange.hxx>
 #include <vbahelper/vbashape.hxx>
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
+
+namespace {
 
 class VbShapeRangeEnumHelper : public EnumerationHelper_BASE
 {
@@ -50,6 +51,8 @@ public:
 
 };
 
+}
+
 ScVbaShapeRange::ScVbaShapeRange( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< container::XIndexAccess >& xShapes, const uno::Reference< drawing::XDrawPage >& xDrawPage, const uno::Reference< frame::XModel >& xModel  ) : ScVbaShapeRange_BASE( xParent, xContext, xShapes ), m_xDrawPage( xDrawPage ), m_xModel( xModel )
 {
 }
@@ -66,7 +69,7 @@ uno::Reference< msforms::XShape > SAL_CALL
 ScVbaShapeRange::Group()
 {
     uno::Reference< drawing::XShapeGrouper > xShapeGrouper( m_xDrawPage, uno::UNO_QUERY_THROW );
-    uno::Reference< drawing::XShapeGroup > xShapeGroup( xShapeGrouper->group( getShapes() ), uno::UNO_QUERY_THROW );
+    uno::Reference< drawing::XShapeGroup > xShapeGroup( xShapeGrouper->group( getShapes() ), uno::UNO_SET_THROW );
     uno::Reference< drawing::XShape > xShape( xShapeGroup, uno::UNO_QUERY_THROW );
     return uno::Reference< msforms::XShape >( new ScVbaShape( getParent(), mxContext, xShape, getShapes(), m_xModel, office::MsoShapeType::msoGroup ) );
 }
@@ -394,24 +397,22 @@ ScVbaShapeRange:: createCollectionObject( const css::uno::Any& aSource )
     // #TODO  #FIXME Shape parent should always be the sheet the shapes belong
     // to
     uno::Reference< msforms::XShape > xVbShape( new ScVbaShape( uno::Reference< XHelperInterface >(), mxContext, xShape, getShapes(), m_xModel, ScVbaShape::getType( xShape ) ) );
-        return uno::makeAny( xVbShape );
+    return uno::makeAny( xVbShape );
 }
 
 OUString
 ScVbaShapeRange::getServiceImplName()
 {
-    return OUString("ScVbaShapeRange");
+    return "ScVbaShapeRange";
 }
 
 uno::Sequence< OUString >
 ScVbaShapeRange::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msform.ShapeRange";
-    }
+        "ooo.vba.msform.ShapeRange"
+    };
     return aServiceNames;
 }
 

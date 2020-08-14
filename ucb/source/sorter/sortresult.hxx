@@ -22,9 +22,7 @@
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/sdbc/XCloseable.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XResultSetMetaData.hpp>
@@ -37,6 +35,7 @@
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ref.hxx>
 #include <deque>
+#include <memory>
 
 namespace comphelper {
     class OInterfaceContainerHelper2;
@@ -51,37 +50,37 @@ class   PropertyChangeListeners_Impl;
 
 class SortedEntryList
 {
-    std::deque < SortListData* > maData;
+    std::deque < std::unique_ptr<SortListData> > maData;
 
 public:
-                         SortedEntryList(){}
-                        ~SortedEntryList(){ Clear(); }
+                        SortedEntryList();
+                        ~SortedEntryList();
 
-    sal_uInt32          Count() const { return (sal_uInt32) maData.size(); }
+    sal_uInt32          Count() const { return static_cast<sal_uInt32>(maData.size()); }
 
     void                Clear();
-    void                Insert( SortListData *pEntry, sal_IntPtr nPos );
-    SortListData*       Remove( sal_IntPtr nPos );
+    void                Insert( std::unique_ptr<SortListData> pEntry, sal_IntPtr nPos );
+    std::unique_ptr<SortListData> Remove( sal_IntPtr nPos );
     SortListData*       GetData( sal_IntPtr nPos );
+    void                Move( sal_IntPtr nOldPos, sal_IntPtr nNewPos );
 
-    sal_IntPtr                operator [] ( sal_IntPtr nPos ) const;
+    sal_IntPtr          operator [] ( sal_IntPtr nPos ) const;
 };
 
 
 class EventList
 {
-    std::deque < css::ucb::ListAction* > maData;
+    std::deque < std::unique_ptr<css::ucb::ListAction> > maData;
 
 public:
                      EventList(){}
-                    ~EventList(){ Clear(); }
 
-    sal_uInt32      Count() { return (sal_uInt32) maData.size(); }
+    sal_uInt32      Count() { return static_cast<sal_uInt32>(maData.size()); }
 
     void            AddEvent( sal_IntPtr nType, sal_IntPtr nPos );
-    void            Insert( css::ucb::ListAction *pAction ) { maData.push_back( pAction ); }
+    void            Insert( std::unique_ptr<css::ucb::ListAction> pAction ) { maData.push_back( std::move(pAction) ); }
     void            Clear();
-    css::ucb::ListAction*     GetAction( sal_IntPtr nIndex ) { return maData[ nIndex ]; }
+    css::ucb::ListAction*     GetAction( sal_IntPtr nIndex ) { return maData[ nIndex ].get(); }
 };
 
 
@@ -99,8 +98,8 @@ class SortedResultSet: public cppu::WeakImplHelper <
     css::beans::XPropertySet >
 {
     comphelper::OInterfaceContainerHelper2 *mpDisposeEventListeners;
-    PropertyChangeListeners_Impl    *mpPropChangeListeners;
-    PropertyChangeListeners_Impl    *mpVetoChangeListeners;
+    std::unique_ptr<PropertyChangeListeners_Impl>    mpPropChangeListeners;
+    std::unique_ptr<PropertyChangeListeners_Impl>    mpVetoChangeListeners;
 
     css::uno::Reference < css::sdbc::XResultSet >            mxOriginal;
     css::uno::Reference < css::sdbc::XResultSet >            mxOther;
@@ -120,11 +119,11 @@ class SortedResultSet: public cppu::WeakImplHelper <
 private:
     /// @throws css::sdbc::SQLException
     /// @throws css::uno::RuntimeException
-    sal_IntPtr          FindPos( SortListData *pEntry, sal_IntPtr nStart, sal_IntPtr nEnd );
+    sal_IntPtr          FindPos( SortListData const *pEntry, sal_IntPtr nStart, sal_IntPtr nEnd );
     /// @throws css::sdbc::SQLException
     /// @throws css::uno::RuntimeException
-    sal_IntPtr          Compare( SortListData *pOne,
-                                 SortListData *pTwo );
+    sal_IntPtr          Compare( SortListData const *pOne,
+                                 SortListData const *pTwo );
     void                BuildSortInfo( const css::uno::Reference< css::sdbc::XResultSet >& aResult,
                                        const css::uno::Sequence < css::ucb::NumberedSortingInfo > &xSortInfo,
                                        const css::uno::Reference< css::ucb::XAnyCompareFactory > &xCompFac );
@@ -133,7 +132,7 @@ private:
     static sal_IntPtr   CompareImpl( const css::uno::Reference < css::sdbc::XResultSet >& xResultOne,
                                      const css::uno::Reference < css::sdbc::XResultSet >& xResultTwo,
                                      sal_IntPtr nIndexOne, sal_IntPtr nIndexTwo,
-                                     SortInfo* pSortInfo );
+                                     SortInfo const * pSortInfo );
     /// @throws css::sdbc::SQLException
     /// @throws css::uno::RuntimeException
     sal_IntPtr          CompareImpl( const css::uno::Reference < css::sdbc::XResultSet >& xResultOne,

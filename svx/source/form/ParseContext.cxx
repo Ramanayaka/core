@@ -19,15 +19,17 @@
 
 
 #include <sal/macros.h>
-#include "svx/ParseContext.hxx"
-#include "svx/fmresids.hrc"
+#include <svx/ParseContext.hxx>
+#include <svx/strings.hrc>
 
 #include <svx/dialmgr.hxx>
 
+#include <i18nlangtag/languagetag.hxx>
 #include <unotools/syslocale.hxx>
-#include <tools/resary.hxx>
 #include <vcl/svapp.hxx>
+#include <osl/diagnose.h>
 #include <osl/mutex.hxx>
+#include <fmstring.hrc>
 
 using namespace svxform;
 using namespace ::connectivity;
@@ -35,10 +37,8 @@ using namespace ::connectivity;
 OSystemParseContext::OSystemParseContext()
     : IParseContext()
 {
-    SolarMutexGuard aGuard;
-    ResStringArray aLocalizedKeywords(ResId(RID_RSC_SQL_INTERNATIONAL, DIALOG_MGR()));
-    for (sal_uInt32 i = 0; i < aLocalizedKeywords.Count(); ++i)
-        m_aLocalizedKeywords.push_back(aLocalizedKeywords.GetString(i));
+    for (size_t i = 0; i < SAL_N_ELEMENTS(RID_RSC_SQL_INTERNATIONAL); ++i)
+        m_aLocalizedKeywords.push_back(SvxResId(RID_RSC_SQL_INTERNATIONAL[i]));
 }
 
 OSystemParseContext::~OSystemParseContext()
@@ -187,11 +187,9 @@ OParseContextClient::OParseContextClient()
 
 OParseContextClient::~OParseContextClient()
 {
-    {
-        ::osl::MutexGuard aGuard( getSafteyMutex() );
-        if ( 0 == osl_atomic_decrement( &getCounter() ) )
-            delete getSharedContext(nullptr,true);
-    }
+    ::osl::MutexGuard aGuard( getSafteyMutex() );
+    if ( 0 == osl_atomic_decrement( &getCounter() ) )
+        delete getSharedContext(nullptr,true);
 }
 
 const OSystemParseContext* OParseContextClient::getParseContext() const

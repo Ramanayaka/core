@@ -34,7 +34,7 @@ from com.sun.star.ucb.TransferCommandOperation import COPY
 
 # This class is used to copy the content of a folder to
 # another folder.
-# There is an incosistency with argument order.
+# There is an inconsistency with argument order.
 # It should be always: dir,filename.
 class UCB(object):
 
@@ -46,13 +46,6 @@ class UCB(object):
         self.ucb = xmsf.createInstanceWithArguments("com.sun.star.ucb.UniversalContentBroker", ())
         self.fa = FileAccess(xmsf)
         self.xmsf = xmsf
-
-    def deleteDirContent(self, folder):
-        if (not self.fa.exists(folder, True)):
-          return
-        l = self.listFiles(folder, None)
-        for i in range(len(l)):
-            self.delete(FileAccess.connectURLs(folder, l[i]))
 
     def delete(self, filename):
         # System.out.println("UCB.delete(" + filename)
@@ -70,14 +63,6 @@ class UCB(object):
         if (not self.fa.exists(targetDir, True)):
           self.fa.xInterface.createFolder(targetDir)
         self.executeCommand(self.ucb, "globalTransfer", self.copyArg(sourceDir, filename, targetDir, targetName))
-
-    # @deprecated
-    # @param sourceDir
-    # @param filename
-    # @param targetDir
-    # @throws Exception
-    def copy3(self, sourceDir, filename, targetDir):
-        self.copy2(sourceDir, filename, targetDir, "")
 
     # target name can be PropertyNames.EMPTY_STRING, in which case the name stays lige the source name
     # @param sourceDir
@@ -147,24 +132,6 @@ class UCB(object):
                 if (not verifier.verify(files[i])):
                     files.pop(i) # FIXME !!! dangerous
         return files
-
-    def getContentProperty(self, content, propName, classType):
-        pv = [Property()]
-        pv[0].Name = propName
-        pv[0].Handle = -1
-
-        row = self.executeCommand(content, "getPropertyValues",
-                                  uno.Any("[]com.sun.star.beans.Property", tuple(pv)))
-        if (isinstance(classType, str)):
-           return row.getString(1)
-        elif (isinstance(classType, bool)):
-            return True if (row.getBoolean(1)) else False
-        elif (isinstance(classType, int)):
-            return row.getInt(1)
-        elif (isinstance(classType, int)):
-            return row.getShort(1)
-        else:
-            return None
 
     def getContent(self, path):
         try:

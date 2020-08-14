@@ -17,28 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "viewcontainer.hxx"
-#include "dbastrings.hrc"
-#include "core_resource.hxx"
-#include "core_resource.hrc"
-#include "View.hxx"
+#include <apitools.hxx>
+#include <viewcontainer.hxx>
+#include <View.hxx>
 
-#include <comphelper/enumhelper.hxx>
 #include <comphelper/types.hxx>
 #include <connectivity/dbtools.hxx>
-#include <comphelper/extract.hxx>
 #include <connectivity/dbexception.hxx>
-#include <rtl/ustrbuf.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-#include <com/sun/star/sdbc/KeyRule.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <com/sun/star/sdbcx/XTablesSupplier.hpp>
-#include <com/sun/star/sdbcx/KeyType.hpp>
 
 using namespace dbaccess;
 using namespace dbtools;
@@ -62,7 +50,7 @@ OViewContainer::OViewContainer(::cppu::OWeakObject& _rParent
                                  ,const Reference< XConnection >& _xCon
                                  ,bool _bCase
                                  ,IRefreshListener* _pRefreshListener
-                                 ,oslInterlockedCount& _nInAppend)
+                                 ,std::atomic<std::size_t>& _nInAppend)
     :OFilteredContainer(_rParent,_rMutex,_xCon,_bCase,_pRefreshListener,_nInAppend)
     ,m_bInElementRemoved(false)
 {
@@ -133,18 +121,14 @@ ObjectType OViewContainer::appendObject( const OUString& _rForName, const Refere
     }
     else
     {
-        OUString sComposedName = ::dbtools::composeTableName( m_xMetaData, descriptor, ::dbtools::EComposeRule::InTableDefinitions, false, false, true );
+        OUString sComposedName = ::dbtools::composeTableName( m_xMetaData, descriptor, ::dbtools::EComposeRule::InTableDefinitions, true );
         if(sComposedName.isEmpty())
             ::dbtools::throwFunctionSequenceException(static_cast<XTypeProvider*>(static_cast<OFilteredContainer*>(this)));
 
         OUString sCommand;
         descriptor->getPropertyValue(PROPERTY_COMMAND) >>= sCommand;
 
-        OUStringBuffer aSQL;
-        aSQL.append( "CREATE VIEW " );
-        aSQL.append     ( sComposedName );
-        aSQL.append( " AS " );
-        aSQL.append     ( sCommand );
+        OUString aSQL = "CREATE VIEW " + sComposedName + " AS " + sCommand;
 
         Reference<XConnection> xCon = m_xConnection;
         OSL_ENSURE(xCon.is(),"Connection is null!");
@@ -152,7 +136,7 @@ ObjectType OViewContainer::appendObject( const OUString& _rForName, const Refere
         {
             ::utl::SharedUNOComponent< XStatement > xStmt( xCon->createStatement() );
             if ( xStmt.is() )
-                xStmt->execute( aSQL.makeStringAndClear() );
+                xStmt->execute( aSQL );
         }
     }
 
@@ -162,39 +146,38 @@ ObjectType OViewContainer::appendObject( const OUString& _rForName, const Refere
 // XDrop
 void OViewContainer::dropObject(sal_Int32 _nPos, const OUString& _sElementName)
 {
-    if ( !m_bInElementRemoved )
+    if ( m_bInElementRemoved )
+        return;
+
+    Reference< XDrop > xDrop(m_xMasterContainer,UNO_QUERY);
+    if(xDrop.is())
+        xDrop->dropByName(_sElementName);
+    else
     {
-        Reference< XDrop > xDrop(m_xMasterContainer,UNO_QUERY);
-        if(xDrop.is())
-            xDrop->dropByName(_sElementName);
-        else
+        OUString sCatalog,sSchema,sTable,sComposedName;
+
+        Reference<XPropertySet> xTable(getObject(_nPos),UNO_QUERY);
+        if ( xTable.is() )
         {
-            OUString sCatalog,sSchema,sTable,sComposedName;
+            xTable->getPropertyValue(PROPERTY_CATALOGNAME)  >>= sCatalog;
+            xTable->getPropertyValue(PROPERTY_SCHEMANAME)   >>= sSchema;
+            xTable->getPropertyValue(PROPERTY_NAME)         >>= sTable;
 
-            Reference<XPropertySet> xTable(getObject(_nPos),UNO_QUERY);
-            if ( xTable.is() )
-            {
-                xTable->getPropertyValue(PROPERTY_CATALOGNAME)  >>= sCatalog;
-                xTable->getPropertyValue(PROPERTY_SCHEMANAME)   >>= sSchema;
-                xTable->getPropertyValue(PROPERTY_NAME)         >>= sTable;
+            sComposedName = ::dbtools::composeTableName( m_xMetaData, sCatalog, sSchema, sTable, true, ::dbtools::EComposeRule::InTableDefinitions );
+        }
 
-                sComposedName = ::dbtools::composeTableName( m_xMetaData, sCatalog, sSchema, sTable, true, ::dbtools::EComposeRule::InTableDefinitions );
-            }
+        if(sComposedName.isEmpty())
+            ::dbtools::throwFunctionSequenceException(static_cast<XTypeProvider*>(static_cast<OFilteredContainer*>(this)));
 
-            if(sComposedName.isEmpty())
-                ::dbtools::throwFunctionSequenceException(static_cast<XTypeProvider*>(static_cast<OFilteredContainer*>(this)));
-
-            OUString aSql("DROP VIEW ");
-            aSql += sComposedName;
-            Reference<XConnection> xCon = m_xConnection;
-            OSL_ENSURE(xCon.is(),"Connection is null!");
-            if ( xCon.is() )
-            {
-                Reference< XStatement > xStmt = xCon->createStatement(  );
-                if(xStmt.is())
-                    xStmt->execute(aSql);
-                ::comphelper::disposeComponent(xStmt);
-            }
+        OUString aSql = "DROP VIEW " + sComposedName;
+        Reference<XConnection> xCon = m_xConnection;
+        OSL_ENSURE(xCon.is(),"Connection is null!");
+        if ( xCon.is() )
+        {
+            Reference< XStatement > xStmt = xCon->createStatement(  );
+            if(xStmt.is())
+                xStmt->execute(aSql);
+            ::comphelper::disposeComponent(xStmt);
         }
     }
 }
@@ -220,20 +203,20 @@ void SAL_CALL OViewContainer::elementRemoved( const ContainerEvent& Event )
 {
     ::osl::MutexGuard aGuard(m_rMutex);
     OUString sName;
-    if ( (Event.Accessor >>= sName) && hasByName(sName) )
+    if ( !((Event.Accessor >>= sName) && hasByName(sName)) )
+        return;
+
+    m_bInElementRemoved = true;
+    try
     {
-        m_bInElementRemoved = true;
-        try
-        {
-            dropByName(sName);
-        }
-        catch(Exception&)
-        {
-            m_bInElementRemoved = false;
-            throw;
-        }
-        m_bInElementRemoved = false;
+        dropByName(sName);
     }
+    catch(Exception&)
+    {
+        m_bInElementRemoved = false;
+        throw;
+    }
+    m_bInElementRemoved = false;
 }
 
 void SAL_CALL OViewContainer::disposing( const css::lang::EventObject& /*Source*/ )
@@ -247,7 +230,7 @@ void SAL_CALL OViewContainer::elementReplaced( const ContainerEvent& /*Event*/ )
 OUString OViewContainer::getTableTypeRestriction() const
 {
     // no restriction at all (other than the ones provided externally)
-    return OUString( "VIEW"  );
+    return "VIEW";
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

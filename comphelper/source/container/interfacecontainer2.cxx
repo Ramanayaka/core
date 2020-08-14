@@ -18,10 +18,7 @@
  */
 
 
-#include <cppuhelper/interfacecontainer.hxx>
 #include <comphelper/interfacecontainer2.hxx>
-#include <cppuhelper/queryinterface.hxx>
-#include <cppuhelper/propshlp.hxx>
 
 #include <osl/diagnose.h>
 #include <osl/mutex.hxx>
@@ -39,13 +36,13 @@ namespace comphelper
 {
 
 OInterfaceIteratorHelper2::OInterfaceIteratorHelper2( OInterfaceContainerHelper2 & rCont_ )
-    : rCont( rCont_ )
+    : rCont( rCont_ ),
+      bIsList( rCont_.bIsList )
 {
     MutexGuard aGuard( rCont.rMutex );
     if( rCont.bInUse )
         // worst case, two iterators at the same time
         rCont.copyAndResetInUse();
-    bIsList = rCont_.bIsList;
     aData = rCont_.aData;
     if( bIsList )
     {
@@ -105,7 +102,7 @@ void OInterfaceIteratorHelper2::remove()
     if( bIsList )
     {
         OSL_ASSERT( nRemain >= 0 &&
-                    nRemain < (sal_Int32)aData.pAsVector->size() );
+                    nRemain < static_cast<sal_Int32>(aData.pAsVector->size()) );
         rCont.removeInterface(  (*aData.pAsVector)[nRemain] );
     }
     else
@@ -149,7 +146,7 @@ std::vector< Reference<XInterface> > OInterfaceContainerHelper2::getElements() c
         rVec = *aData.pAsVector;
     else if( aData.pAsInterface )
     {
-        rVec.push_back( Reference<XInterface>( aData.pAsInterface ) );
+        rVec.emplace_back( aData.pAsInterface );
     }
     return rVec;
 }
@@ -159,7 +156,7 @@ void OInterfaceContainerHelper2::copyAndResetInUse()
     OSL_ENSURE( bInUse, "OInterfaceContainerHelper2 not in use" );
     if( bInUse )
     {
-        // this should be the worst case. If a iterator is active
+        // this should be the worst case. If an iterator is active
         // and a new Listener is added.
         if( bIsList )
             aData.pAsVector = new std::vector< Reference< XInterface > >( *aData.pAsVector );
@@ -210,30 +207,17 @@ sal_Int32 OInterfaceContainerHelper2::removeInterface( const Reference<XInterfac
 
     if( bIsList )
     {
-        sal_Int32 nLen = aData.pAsVector->size();
-        sal_Int32 i;
-        for( i = 0; i < nLen; i++ )
-        {
-            // It is not valid to compare the pointer directly, but it's faster.
-            if( (*aData.pAsVector)[i].get() == rListener.get() )
-            {
-                aData.pAsVector->erase(aData.pAsVector->begin()+i);
-                break;
-            }
-        }
+        // It is not valid to compare the pointer directly, but it's faster.
+        auto it = std::find_if(aData.pAsVector->begin(), aData.pAsVector->end(),
+            [&rListener](const css::uno::Reference<css::uno::XInterface>& rItem) {
+                return rItem.get() == rListener.get(); });
 
         // interface not found, use the correct compare method
-        if( i == nLen )
-        {
-            for( i = 0; i < nLen; i++ )
-            {
-                if( (*aData.pAsVector)[i] == rListener )
-                {
-                    aData.pAsVector->erase(aData.pAsVector->begin()+i);
-                    break;
-                }
-            }
-        }
+        if (it == aData.pAsVector->end())
+            it = std::find(aData.pAsVector->begin(), aData.pAsVector->end(), rListener);
+
+        if (it != aData.pAsVector->end())
+            aData.pAsVector->erase(it);
 
         if( aData.pAsVector->size() == 1 )
         {
@@ -287,18 +271,17 @@ void OInterfaceContainerHelper2::disposeAndClear( const EventObject & rEvt )
 
 void OInterfaceContainerHelper2::clear()
 {
-    ClearableMutexGuard aGuard( rMutex );
-    OInterfaceIteratorHelper2 aIt( *this );
+    MutexGuard aGuard( rMutex );
     // Release container, in case new entries come while disposing
     OSL_ENSURE( !bIsList || bInUse, "OInterfaceContainerHelper2 not in use" );
-    if( !bIsList && aData.pAsInterface )
+    if (bInUse)
+        copyAndResetInUse();
+    if (bIsList)
+        delete aData.pAsVector;
+    else if (aData.pAsInterface)
         aData.pAsInterface->release();
-    // set the member to null, use the iterator to delete the values
     aData.pAsInterface = nullptr;
     bIsList = false;
-    bInUse = false;
-    // release mutex before aIt destructor call
-    aGuard.clear();
 }
 
 

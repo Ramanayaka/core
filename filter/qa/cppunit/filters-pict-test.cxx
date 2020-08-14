@@ -10,14 +10,11 @@
 #include <unotest/filters-test.hxx>
 #include <test/bootstrapfixture.hxx>
 #include <vcl/FilterConfigItem.hxx>
-#include <test/mtfxmldump.hxx>
 #include <test/xmltesttools.hxx>
 #include <tools/stream.hxx>
+#include <vcl/gdimtf.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/metaactiontypes.hxx>
-
-#include <osl/file.hxx>
-#include <osl/process.h>
 
 #include "../../source/graphicfilter/ipict/ipict.hxx"
 
@@ -86,14 +83,14 @@ void PictFilterTest::testDontClipTooMuch()
     MetafileXmlDump dumper;
     dumper.filterAllActionTypes();
     dumper.filterActionType(MetaActionType::CLIPREGION, false);
-    xmlDocPtr pDoc = dumper.dumpAndParse(aGDIMetaFile);
+    xmlDocUniquePtr pDoc = dumpAndParse(dumper, aGDIMetaFile);
 
     CPPUNIT_ASSERT (pDoc);
 
     assertXPath(pDoc, "/metafile/clipregion[5]", "top", "0");
     assertXPath(pDoc, "/metafile/clipregion[5]", "left", "0");
-    assertXPath(pDoc, "/metafile/clipregion[5]", "bottom", "-32767");
-    assertXPath(pDoc, "/metafile/clipregion[5]", "right", "-32767");
+    assertXPath(pDoc, "/metafile/clipregion[5]", "bottom", "empty");
+    assertXPath(pDoc, "/metafile/clipregion[5]", "right", "empty");
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(PictFilterTest);

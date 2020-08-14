@@ -25,17 +25,12 @@
 namespace hierarchy_ucp {
 
 
-#define HIERARCHY_URL_SCHEME          "vnd.sun.star.hier"
-#define HIERARCHY_URL_SCHEME_LENGTH   17
-
-
 class HierarchyUri
 {
     mutable OUString m_aUri;
     mutable OUString m_aParentUri;
     mutable OUString m_aService;
     mutable OUString m_aPath;
-    mutable OUString m_aName;
     mutable bool            m_bValid;
 
 private:
@@ -66,8 +61,7 @@ public:
 inline bool HierarchyUri::isRootFolder() const
 {
     init();
-    return ( ( m_aPath.getLength() == 1 ) &&
-             ( m_aPath.getStr()[ 0 ] == u'/' ) );
+    return m_aPath == "/";
 }
 }
 

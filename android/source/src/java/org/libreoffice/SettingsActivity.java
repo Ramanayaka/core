@@ -12,6 +12,7 @@ import android.app.Activity;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.preference.PreferenceFragment;
+import android.preference.PreferenceGroup;
 
 public class SettingsActivity extends Activity {
     @Override
@@ -29,6 +30,11 @@ public class SettingsActivity extends Activity {
         public void onCreate(Bundle savedInstanceState) {
             super.onCreate(savedInstanceState);
             addPreferencesFromResource(R.xml.libreoffice_preferences);
+            if(!BuildConfig.ALLOW_EDITING) {
+                PreferenceGroup generalGroup = (PreferenceGroup) findPreference("PREF_CATEGORY_GENERAL");
+                generalGroup.removePreference(generalGroup.findPreference("ENABLE_EXPERIMENTAL"));
+                generalGroup.removePreference(generalGroup.findPreference("ENABLE_DEVELOPER"));
+            }
         }
 
         @Override
@@ -48,6 +54,9 @@ public class SettingsActivity extends Activity {
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
             SettingsListenerModel.getInstance().changePreferenceState(sharedPreferences, key);
+            if(key.equals("DISPLAY_LANGUAGE")){
+                getActivity().recreate();
+            }
         }
     }
 }

@@ -9,24 +9,14 @@
 
 boost_patches :=
 
-#http://gcc.gnu.org/bugzilla/show_bug.cgi?id=47679
-boost_patches += boost.gcc47679.patch
-
 #https://svn.boost.org/trac/boost/ticket/6142
 boost_patches += boost.6142.warnings.patch.1
 
-# https://svn.boost.org/trac/boost/ticket/9885
-boost_patches += boost.multi_array.C4510.warnings.patch
 # https://svn.boost.org/trac/boost/ticket/9903
 boost_patches += boost.utility.Wundef.warnings.patch
 
-boost_patches += boost.type_index.Wundef.warnings.patch
-
-boost_patches += boost.auto_link.patch
-
 boost_patches += boost.noiconv.patch
 
-boost_patches += ubsan.patch.0
 boost_patches += rtti.patch.0
 
 # https://svn.boost.org/trac/boost/ticket/11505
@@ -38,6 +28,18 @@ boost_patches += clang-cl.patch.0
 
 boost_patches += boost_1_60_0.undef.warning.patch
 boost_patches += boost_1_63_0.undef.warning.patch.1
+
+boost_patches += boost-android-unified.patch.1
+
+boost_patches += windows-no-utf8-locales.patch.0
+
+boost_patches += gcc9.patch.0
+
+boost_patches += msvc2017.patch.0
+
+# boost/format/alt_sstream_impl.hpp part covered by <https://github.com/boostorg/format/pull/70>
+# "Removed deprecated std::allocator<void>":
+boost_patches += c++20-allocator.patch.0
 
 $(eval $(call gb_UnpackedTarball_UnpackedTarball,boost))
 

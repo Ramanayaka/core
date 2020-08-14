@@ -13,6 +13,7 @@
 #include <set>
 
 #include "check.hxx"
+#include "compat.hxx"
 #include "plugin.hxx"
 
 namespace {
@@ -28,11 +29,9 @@ char const * kindName(Expr::NullPointerConstantKind kind) {
     case Expr::NPCK_GNUNull:
         return "GNUNull";
     case Expr::NPCK_NotNull:
-        assert(false); // cannot happen
-        // fall through
-    default:
-        std::abort();
+        break; // cannot happen
     }
+    llvm_unreachable("unknown null pointer kind");
 }
 
 bool isAnyKindOfPointerType(QualType type) {
@@ -51,10 +50,11 @@ bool isNullPointerCast(CastExpr const * expr) {
 }
 
 class Nullptr:
-    public RecursiveASTVisitor<Nullptr>, public loplugin::RewritePlugin
+    public loplugin::FilteringRewritePlugin<Nullptr>
 {
 public:
-    explicit Nullptr(InstantiationData const & data): RewritePlugin(data) {}
+    explicit Nullptr(loplugin::InstantiationData const & data):
+        FilteringRewritePlugin(data) {}
 
     void run() override
     { TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()); }
@@ -72,6 +72,8 @@ public:
     bool TraverseConstructorInitializer(CXXCtorInitializer * init);
 
     bool TraverseLinkageSpecDecl(LinkageSpecDecl * decl);
+
+    bool TraverseInitListExpr(InitListExpr * expr, DataRecursionQueue * queue = nullptr);
 
     // bool shouldVisitTemplateInstantiations() const { return true; }
 
@@ -119,7 +121,7 @@ bool Nullptr::VisitImplicitCastExpr(CastExpr const * expr) {
         case Expr::NPCK_ZeroLiteral:
             report(
                 DiagnosticsEngine::Warning,
-                "suspicious ValueDependentIsNull %0", expr->getLocStart())
+                "suspicious ValueDependentIsNull %0", compat::getBeginLoc(expr))
                 << kindName(k) << expr->getSourceRange();
             break;
         default:
@@ -229,9 +231,15 @@ bool Nullptr::TraverseLinkageSpecDecl(LinkageSpecDecl * decl) {
     return ret;
 }
 
+bool Nullptr::TraverseInitListExpr(InitListExpr * expr, DataRecursionQueue * queue) {
+    return WalkUpFromInitListExpr(expr)
+        && TraverseSynOrSemInitListExpr(
+            expr->isSemanticForm() ? expr : expr->getSemanticForm(), queue);
+}
+
 bool Nullptr::isInLokIncludeFile(SourceLocation spellingLocation) const {
     return loplugin::hasPathnamePrefix(
-        compiler.getSourceManager().getFilename(spellingLocation),
+        getFilenameOfLocation(spellingLocation),
         SRCDIR "/include/LibreOfficeKit/");
 }
 
@@ -302,7 +310,7 @@ void Nullptr::handleNull(
     SourceLocation loc;
     for (;;) {
         e = e->IgnoreImpCasts();
-        loc = e->getLocStart();
+        loc = compat::getBeginLoc(e);
         while (compiler.getSourceManager().isMacroArgExpansion(loc)) {
             loc = compiler.getSourceManager().getImmediateMacroCallerLoc(loc);
         }
@@ -316,8 +324,7 @@ void Nullptr::handleNull(
                     // ellipsis, cast to void*
                     return;
                 }
-                loc = compiler.getSourceManager()
-                    .getImmediateExpansionRange(loc).first;
+                loc = compat::getImmediateExpansionRange(compiler.getSourceManager(), loc).first;
                 if (ignoreLocation(
                         compiler.getSourceManager().getSpellingLoc(loc)))
                 {
@@ -368,7 +375,7 @@ void Nullptr::rewriteOrWarn(
     Expr::NullPointerConstantKind nullPointerKind, char const * replacement)
 {
     if (rewriter != nullptr) {
-        SourceLocation locStart(expr->getLocStart());
+        SourceLocation locStart(compat::getBeginLoc(expr));
         while (compiler.getSourceManager().isMacroArgExpansion(locStart)) {
             locStart = compiler.getSourceManager()
                 .getImmediateMacroCallerLoc(locStart);
@@ -380,10 +387,10 @@ void Nullptr::rewriteOrWarn(
                     compiler.getLangOpts())
                 == "NULL"))
         {
-            locStart = compiler.getSourceManager().getImmediateExpansionRange(
-                locStart).first;
+            locStart = compat::getImmediateExpansionRange(compiler.getSourceManager(), locStart)
+                .first;
         }
-        SourceLocation locEnd(expr->getLocEnd());
+        SourceLocation locEnd(compat::getEndLoc(expr));
         while (compiler.getSourceManager().isMacroArgExpansion(locEnd)) {
             locEnd = compiler.getSourceManager()
                 .getImmediateMacroCallerLoc(locEnd);
@@ -395,21 +402,20 @@ void Nullptr::rewriteOrWarn(
                     compiler.getLangOpts())
                 == "NULL"))
         {
-            locEnd = compiler.getSourceManager().getImmediateExpansionRange(
-                locEnd).first;
+            locEnd = compat::getImmediateExpansionRange(compiler.getSourceManager(), locEnd).first;
         }
         if (replaceText(SourceRange(compiler.getSourceManager().getSpellingLoc(locStart), compiler.getSourceManager().getSpellingLoc(locEnd)), replacement)) {
             return;
         }
     }
     if (castKind == nullptr) {
-        report(DiagnosticsEngine::Warning, "%0 -> %1", expr->getLocStart())
+        report(DiagnosticsEngine::Warning, "%0 -> %1", compat::getBeginLoc(expr))
             << kindName(nullPointerKind) << replacement
             << expr->getSourceRange();
     } else {
         report(
             DiagnosticsEngine::Warning, "%0 ValueDependentIsNotNull %1 -> %2",
-            expr->getLocStart())
+            compat::getBeginLoc(expr))
             << castKind << kindName(nullPointerKind) << replacement
             << expr->getSourceRange();
     }

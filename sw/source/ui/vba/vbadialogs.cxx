@@ -35,18 +35,16 @@ SwVbaDialogs::Item( const uno::Any &aItem )
 OUString
 SwVbaDialogs::getServiceImplName()
 {
-    return OUString("SwVbaDialogs");
+    return "SwVbaDialogs";
 }
 
 uno::Sequence< OUString >
 SwVbaDialogs::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Dialogs";
-    }
+        "ooo.vba.word.Dialogs"
+    };
     return aServiceNames;
 }
 

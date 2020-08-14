@@ -22,16 +22,13 @@
 
 #include <com/sun/star/rendering/XBitmapCanvas.hpp>
 #include <com/sun/star/rendering/XBitmap.hpp>
-#include <basegfx/vector/b2dsize.hxx>
 #include <cppcanvas/bitmapcanvas.hxx>
 
-#include <implcanvas.hxx>
+#include "implcanvas.hxx"
 
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
         // share Canvas implementation from ImplCanvas
         class ImplBitmapCanvas : public virtual BitmapCanvas, protected virtual ImplCanvas
         {
@@ -39,20 +36,19 @@ namespace cppcanvas
             explicit ImplBitmapCanvas( const css::uno::Reference< css::rendering::XBitmapCanvas >& rCanvas );
             virtual ~ImplBitmapCanvas() override;
 
+            ImplBitmapCanvas(ImplBitmapCanvas const &) = default;
+            ImplBitmapCanvas(ImplBitmapCanvas &&) = default;
+            ImplBitmapCanvas & operator =(ImplBitmapCanvas const &) = delete; // due to const mxBitmapCanvas
+            ImplBitmapCanvas & operator =(ImplBitmapCanvas &&) = delete; // due to const mxBitmapCanvas
+
             virtual ::basegfx::B2ISize      getSize() const override;
 
             virtual CanvasSharedPtr         clone() const override;
 
-            // take compiler-provided default copy constructor
-            //ImplBitmapCanvas(const ImplBitmapCanvas&);
-
         private:
-            ImplBitmapCanvas& operator=( const ImplBitmapCanvas& ) = delete;
-
             const css::uno::Reference< css::rendering::XBitmapCanvas >    mxBitmapCanvas;
             const css::uno::Reference< css::rendering::XBitmap >          mxBitmap;
         };
-    }
 }
 
 #endif // INCLUDED_CPPCANVAS_SOURCE_WRAPPER_IMPLBITMAPCANVAS_HXX

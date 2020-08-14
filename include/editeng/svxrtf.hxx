@@ -29,26 +29,13 @@
 #include <deque>
 #include <vector>
 #include <map>
-#include <utility>
 #include <memory>
 
 namespace vcl { class Font; }
 class Color;
-class Graphic;
-class DateTime;
 struct SvxRTFStyleType;
 class SvxRTFItemStackType;
 class SvxRTFItemStackList : public std::vector<std::unique_ptr<SvxRTFItemStackType>> {};
-
-namespace com { namespace sun { namespace star {
-    namespace document {
-        class XDocumentProperties;
-    }
-    namespace util {
-        struct DateTime;
-    }
-} } }
-
 
 // Mapper-Classes for the various requirements on Document positions
 //        Swg - NodePosition is a SwIndex, which is used internally
@@ -61,7 +48,6 @@ class EditNodeIdx
 public:
     EditNodeIdx(EditEngine* pEE, ContentNode* pNd);
     sal_Int32   GetIdx() const;
-    EditNodeIdx* Clone() const;  // Cloning itself
     ContentNode* GetNode() { return mpNode; }
 private:
     EditEngine*   mpEditEngine;
@@ -82,25 +68,21 @@ public:
     sal_Int32   GetCntIdx() const;
 
     // clone
-    EditPosition* Clone() const;
+    std::unique_ptr<EditPosition> Clone() const;
 
     // clone NodeIndex
-    EditNodeIdx* MakeNodeIdx() const;
+    std::unique_ptr<EditNodeIdx> MakeNodeIdx() const;
 };
 
 typedef std::map<short, std::unique_ptr<vcl::Font>> SvxRTFFontTbl;
 typedef std::map<sal_uInt16, std::unique_ptr<SvxRTFStyleType>> SvxRTFStyleTbl;
 
-// SvxRTFItemStack can't be "std::stack< SvxRTFItemStackType* >" type, because
-// the methods are using operator[] in sw/source/filter/rtf/rtftbl.cxx file
-typedef std::deque< SvxRTFItemStackType* > SvxRTFItemStack;
-
 // own helper classes for the RTF Parser
 struct SvxRTFStyleType
 {
-    SfxItemSet aAttrSet;        // the attributes of Style (+ derivate!)
+    SfxItemSet aAttrSet;        // the attributes of Style (+ derivated!)
     OUString sName;
-    sal_uInt16 nBasedOn, nNext;
+    sal_uInt16 nBasedOn;
     sal_uInt8 nOutlineNo;
 
     SvxRTFStyleType( SfxItemPool& rPool, const sal_uInt16* pWhichRange );
@@ -181,20 +163,18 @@ class EDITENG_DLLPUBLIC SvxRTFParser : public SvRTFParser
     std::deque< Color* >  aColorTbl;
     SvxRTFFontTbl         m_FontTable;
     SvxRTFStyleTbl        m_StyleTable;
-    SvxRTFItemStack       aAttrStack;
+    std::deque< std::unique_ptr<SvxRTFItemStackType> >  aAttrStack;
     SvxRTFItemStackList   m_AttrSetList;
 
     RTFPlainAttrMapIds aPlainMap;
     RTFPardAttrMapIds aPardMap;
     std::vector<sal_uInt16> aWhichMap;
-    OUString  sBaseURL;
 
-    EditPosition* pInsPos;
+    std::unique_ptr<EditPosition> pInsPos;
     SfxItemPool* pAttrPool;
-    Color*  pDfltColor;
-    vcl::Font*   pDfltFont;
-    css::uno::Reference< css::document::XDocumentProperties> m_xDocProps;
-    SfxItemSet *pRTFDefaults;
+    std::unique_ptr<Color>  pDfltColor;
+    std::unique_ptr<vcl::Font>   pDfltFont;
+    std::unique_ptr<SfxItemSet> pRTFDefaults;
 
     int     nDfltFont;
 
@@ -203,7 +183,6 @@ class EDITENG_DLLPUBLIC SvxRTFParser : public SvRTFParser
     bool    bIsSetDfltTab : 1;      // sal_True - DefTab was loaded
     bool    bChkStyleAttr : 1;      // sal_True - StyleSheets are evaluated
     bool    bCalcValue : 1;         // sal_True - Twip values adapt to App
-    bool    bReadDocInfo : 1;       // sal_True - DocInfo to read
     bool    bIsLeftToRightDef : 1;  // sal_True - in LeftToRight char run def.
                                         // sal_False - in RightToLeft char run def.
     bool    bIsInReadStyleTab : 1;  // sal_True - in ReadStyleTable
@@ -252,11 +231,6 @@ protected:
     void ReadAttr( int nToken, SfxItemSet* pSet );
     void ReadTabAttr( int nToken, SfxItemSet& rSet );
 
-    // Read Document-Info
-    css::util::DateTime GetDateTimeStamp( );
-    OUString& GetTextToEndGroup( OUString& rStr );
-    void ReadInfo();
-
     inline SfxItemSet& GetAttrSet();
     // no text yet inserted? (SttPos from the top stack entry!)
     bool IsAttrSttPos();
@@ -270,14 +244,12 @@ protected:
                                  sal_Int32& rCntPos )=0;
     virtual void SetAttrInDoc( SvxRTFItemStackType &rSet );
     // for Tokens, which are not evaluated in ReadAttr
-    virtual void UnknownAttrToken( int nToken, SfxItemSet* pSet );
+    virtual void UnknownAttrToken( int nToken );
 
     // if no-one would like to have any twips
     virtual void CalcValue();
 
-    SvxRTFParser( SfxItemPool& rAttrPool,
-                    SvStream& rIn,
-                    css::uno::Reference< css::document::XDocumentProperties> const & i_xDocProps );
+    SvxRTFParser( SfxItemPool& rAttrPool, SvStream& rIn );
     virtual ~SvxRTFParser() override;
 
     void SetNewDoc( bool bFlag )        { bNewDoc = bFlag; }
@@ -318,14 +290,15 @@ public:
 
 // The stack for the attributes:
 // this class may only be used by SvxRTFParser!
-class EDITENG_DLLPUBLIC SvxRTFItemStackType
+class SvxRTFItemStackType
 {
     friend class SvxRTFParser;
 
     SfxItemSet   aAttrSet;
-    EditNodeIdx  *pSttNd, *pEndNd;
+    std::unique_ptr<EditNodeIdx> pSttNd;
+    EditNodeIdx  *pEndNd;
     sal_Int32    nSttCnt, nEndCnt;
-    SvxRTFItemStackList* m_pChildList;
+    std::unique_ptr<SvxRTFItemStackList> m_pChildList;
     sal_uInt16   nStyleNo;
 
     SvxRTFItemStackType(SvxRTFItemStackType const&) = delete;
@@ -336,18 +309,16 @@ class EDITENG_DLLPUBLIC SvxRTFItemStackType
 
     void Add(std::unique_ptr<SvxRTFItemStackType>);
     void Compress( const SvxRTFParser& );
+    void DropChildList();
 
 public:
-    SvxRTFItemStackType( const SvxRTFItemStackType&, const EditPosition&,
-                        bool bCopyAttr );
+    SvxRTFItemStackType(const SvxRTFItemStackType&, const EditPosition&,
+                        bool bCopyAttr);
     ~SvxRTFItemStackType();
     //cmc, I'm very suspicious about SetStartPos, it doesn't change
     //its children's starting position, and the implementation looks
     //bad, consider this deprecated.
     void SetStartPos( const EditPosition& rPos );
-
-    void MoveFullNode(const EditNodeIdx &rOldNode,
-        const EditNodeIdx &rNewNode);
 
     const EditNodeIdx& GetSttNode() const { return *pSttNd; }
     const EditNodeIdx& GetEndNode() const { return *pEndNd; }
@@ -368,7 +339,7 @@ public:
 
 inline const Color& SvxRTFParser::GetColor( size_t nId ) const
 {
-    Color* pColor = pDfltColor;
+    Color* pColor = pDfltColor.get();
     if( nId < aColorTbl.size() )
         pColor = aColorTbl[ nId ];
     return *pColor;
@@ -377,8 +348,14 @@ inline const Color& SvxRTFParser::GetColor( size_t nId ) const
 inline SfxItemSet& SvxRTFParser::GetAttrSet()
 {
     SvxRTFItemStackType* pTmp;
-    if( bNewGroup || nullptr == ( pTmp = aAttrStack.empty() ? nullptr : aAttrStack.back()) )
+    if( bNewGroup || aAttrStack.empty() )
         pTmp = GetAttrSet_();
+    else
+    {
+        pTmp = aAttrStack.back().get();
+        if ( pTmp == nullptr )
+            pTmp = GetAttrSet_();
+    }
     return pTmp->aAttrSet;
 }
 

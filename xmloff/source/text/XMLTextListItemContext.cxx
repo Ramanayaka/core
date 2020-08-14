@@ -18,16 +18,18 @@
  */
 
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include "txtparai.hxx"
-#include "txtlists.hxx"
+#include <txtlists.hxx>
 #include "XMLTextListBlockContext.hxx"
 #include <xmloff/txtimp.hxx>
 #include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/style/XStyle.hpp>
 #include <xmloff/xmlnumi.hxx>
+#include <xmloff/ProgressBarHelper.hxx>
 #include "XMLTextListItemContext.hxx"
 
 
@@ -64,7 +66,7 @@ XMLTextListItemContext::XMLTextListItemContext(
         {
             sal_Int32 nTmp = rValue.toInt32();
             if( nTmp >= 0 && nTmp <= SHRT_MAX )
-                nStartValue = (sal_Int16)nTmp;
+                nStartValue = static_cast<sal_Int16>(nTmp);
         }
         else if ( nPrefix == XML_NAMESPACE_TEXT &&
                   IsXMLToken( aLocalName, XML_STYLE_OVERRIDE ) )
@@ -73,7 +75,7 @@ XMLTextListItemContext::XMLTextListItemContext(
             if ( !sListStyleOverrideName.isEmpty() )
             {
                 OUString sDisplayStyleName(
-                        GetImport().GetStyleDisplayName( XML_STYLE_FAMILY_TEXT_LIST,
+                        GetImport().GetStyleDisplayName( XmlStyleFamily::TEXT_LIST,
                                                          sListStyleOverrideName ) );
                 const Reference < container::XNameContainer >& rNumStyles =
                                                     rTxtImp.GetNumberingStyles();
@@ -128,7 +130,7 @@ void XMLTextListItemContext::EndElement()
     rTxtImport.GetTextListHelper().SetListItem( nullptr );
 }
 
-SvXMLImportContext *XMLTextListItemContext::CreateChildContext(
+SvXMLImportContextRef XMLTextListItemContext::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const Reference< xml::sax::XAttributeList > & xAttrList )
@@ -141,7 +143,7 @@ SvXMLImportContext *XMLTextListItemContext::CreateChildContext(
     {
     case XML_TOK_TEXT_H:
         bHeading = true;
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case XML_TOK_TEXT_P:
         pContext = new XMLParaContext( GetImport(),
                                        nPrefix, rLocalName,
@@ -158,9 +160,6 @@ SvXMLImportContext *XMLTextListItemContext::CreateChildContext(
                                                 (mnSubListCount > 1) );
         break;
     }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }

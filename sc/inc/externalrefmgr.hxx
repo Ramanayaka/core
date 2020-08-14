@@ -20,40 +20,32 @@
 #ifndef INCLUDED_SC_INC_EXTERNALREFMGR_HXX
 #define INCLUDED_SC_INC_EXTERNALREFMGR_HXX
 
-#include "global.hxx"
 #include "address.hxx"
+#include "document.hxx"
 #include <sfx2/objsh.hxx>
 #include <sfx2/lnkbase.hxx>
-#include <sfx2/event.hxx>
 #include <tools/time.hxx>
 #include <vcl/timer.hxx>
 #include <svl/zforlist.hxx>
 #include <svl/lstner.hxx>
 #include "types.hxx"
 #include "rangelst.hxx"
-#include <formula/token.hxx>
 #include <osl/mutex.hxx>
+#include <formula/types.hxx>
+#include <tools/solar.h>
 
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <list>
 #include <set>
+#include <o3tl/sorted_vector.hxx>
 #include <formula/ExternalReferenceHelper.hxx>
 
-class ScDocument;
 class ScTokenArray;
-namespace vcl { class Window; }
+namespace weld { class Window; }
+
 class ScFormulaCell;
-
-class ScExternalRefCache;
-
-namespace svl {
-
-class SharedStringPool;
-
-}
 
 namespace sc {
 
@@ -61,16 +53,16 @@ class ColumnSpanSet;
 
 }
 
-class ScExternalRefLink : public ::sfx2::SvBaseLink
+class ScExternalRefLink final : public ::sfx2::SvBaseLink
 {
 public:
-    ScExternalRefLink(ScDocument* pDoc, sal_uInt16 nFileId, const OUString& rFilter);
+    ScExternalRefLink(ScDocument* pDoc, sal_uInt16 nFileId);
     virtual ~ScExternalRefLink() override;
 
     virtual void Closed() override;
     virtual ::sfx2::SvBaseLink::UpdateResult DataChanged(
         const OUString& rMimeType, const css::uno::Any & rValue) override;
-    virtual void Edit(vcl::Window* pParent, const Link<SvBaseLink&,void>& rEndEditHdl) override;
+    virtual void Edit(weld::Window* pParent, const Link<SvBaseLink&,void>& rEndEditHdl) override;
 
     void SetDoReferesh(bool b);
 
@@ -79,7 +71,6 @@ private:
     ScExternalRefLink(const ScExternalRefLink&) = delete;
 
     sal_uInt16  mnFileId;
-    OUString    maFilterName;
     ScDocument* mpDoc;
     bool        mbDoRefresh;
 };
@@ -104,7 +95,7 @@ public:
     struct CellFormat
     {
         bool      mbIsSet;
-        short     mnType;
+        SvNumFormatType mnType;
         sal_uLong mnIndex;
 
         explicit CellFormat();
@@ -189,7 +180,7 @@ public:
     };
 
     typedef std::shared_ptr<Table> TableTypeRef;
-    typedef std::unordered_map< OUString, size_t, OUStringHash>
+    typedef std::unordered_map< OUString, size_t>
         TableNameIndexMap;
 
     ScExternalRefCache();
@@ -216,7 +207,7 @@ public:
      *
      * @return a new token array instance.  Note that <i>the caller must
      *         manage the life cycle of the returned instance</i>, which is
-     *         guaranteed if the TokenArrayRef is properly used..
+     *         guaranteed if the TokenArrayRef is properly used...
      */
     ScExternalRefCache::TokenArrayRef getCellRangeData(
         sal_uInt16 nFileId, const OUString& rTabName, const ScRange& rRange);
@@ -265,7 +256,7 @@ public:
      * cached data, not the cached range metadata stored separately in the
      * Table.
      */
-    void getAllCachedDataSpans( sal_uInt16 nFileId, sc::ColumnSpanSet& rSet ) const;
+    void getAllCachedDataSpans( const ScDocument& rSrcDoc, sal_uInt16 nFileId, sc::ColumnSpanSet& rSet ) const;
 
     bool getSrcDocTable( const ScDocument& rSrcDoc, const OUString& rTabName, SCTAB& rTab, sal_uInt16 nFileId ) const;
 
@@ -308,6 +299,9 @@ public:
      */
     void clearCacheTables(sal_uInt16 nFileId);
 
+    // Get the fake doc used to pass to methods that need an ScDocument in order to do row/col validation
+    const ScDocument* getFakeDoc() const { return mxFakeDoc.get(); }
+
 private:
     struct RangeHash
     {
@@ -315,13 +309,20 @@ private:
         {
             const ScAddress& s = rRange.aStart;
             const ScAddress& e = rRange.aEnd;
-            return s.Tab() + s.Col() + s.Row() + e.Tab() + e.Col() + e.Row();
+            size_t hash = 17;
+            hash = hash * 37 + s.Tab();
+            hash = hash * 37 + s.Col();
+            hash = hash * 37 + s.Row();
+            hash = hash * 37 + e.Tab();
+            hash = hash * 37 + e.Col();
+            hash = hash * 37 + e.Row();
+            return hash;
         }
     };
 
-    typedef std::unordered_map<OUString, TokenArrayRef, OUStringHash> RangeNameMap;
+    typedef std::unordered_map<OUString, TokenArrayRef> RangeNameMap;
     typedef std::unordered_map<ScRange, TokenArrayRef, RangeHash> RangeArrayMap;
-    typedef std::unordered_map<OUString, OUString, OUStringHash> NamePairMap;
+    typedef std::unordered_map<OUString, OUString> NamePairMap;
 
     /** Represents data cached for a single external document. */
     struct DocItem
@@ -358,9 +359,10 @@ private:
 private:
     mutable osl::Mutex maMtxDocs;
     mutable DocDataType maDocs;
+    ScDocumentUniquePtr mxFakeDoc; // just to have something to pass to the methods that need to validate columns/rows
 };
 
-class SC_DLLPUBLIC ScExternalRefManager : public formula::ExternalReferenceHelper, public SfxListener
+class SC_DLLPUBLIC ScExternalRefManager final : public formula::ExternalReferenceHelper, public SfxListener
 {
 public:
 
@@ -374,20 +376,12 @@ public:
      * link to a certain external file is updated, the notify() method gets
      * called.
      */
-    class LinkListener
+    class SAL_DLLPRIVATE LinkListener
     {
     public:
         LinkListener();
-        virtual ~LinkListener() = 0;
+        virtual ~LinkListener() COVERITY_NOEXCEPT_FALSE = 0;
         virtual void notify(sal_uInt16 nFileId, LinkUpdateType eType) = 0;
-
-        struct Hash
-        {
-            size_t operator() (const LinkListener* p) const
-            {
-                return reinterpret_cast<size_t>(p);
-            }
-        };
     };
 
     /**
@@ -398,7 +392,7 @@ public:
     class SC_DLLPUBLIC ApiGuard
     {
     public:
-        ApiGuard(ScDocument* pDoc);
+        ApiGuard(const ScDocument* pDoc);
         ~ApiGuard();
     private:
         ScExternalRefManager* mpMgr;
@@ -420,12 +414,12 @@ private:
 
     typedef std::unordered_map<sal_uInt16, SvNumberFormatterMergeMap> NumFmtMap;
 
-    typedef std::unordered_set<LinkListener*, LinkListener::Hash>  LinkListeners;
+    typedef o3tl::sorted_vector<LinkListener*>                     LinkListeners;
     typedef std::unordered_map<sal_uInt16, LinkListeners>          LinkListenerMap;
 
 public:
     /** Source document meta-data container. */
-    struct SrcFileData
+    struct SAL_DLLPRIVATE SrcFileData
     {
         OUString maFileName;      /// original file name as loaded from the file.
         OUString maRealFileName;  /// file name created from the relative name.
@@ -591,12 +585,12 @@ public:
     /**
      * It returns a pointer to the name of the URI associated with a given
      * external file ID.  In case the original document has moved, it returns
-     * an URI adjusted for the relocation.
+     * a URI adjusted for the relocation.
      *
      * @param nFileId file ID for an external document
      * @param bForceOriginal If true, it always returns the original document
      *                       URI even if the referring document has relocated.
-     *                       If false, it returns an URI adjusted for
+     *                       If false, it returns a URI adjusted for
      *                       relocated document.
      *
      * @return const OUString* external document URI.
@@ -745,7 +739,7 @@ private:
      * @return range token array
      */
     ScExternalRefCache::TokenArrayRef getDoubleRefTokensFromSrcDoc(
-        ScDocument* pSrcDoc, const OUString& rTabName, ScRange& rRange,
+        const ScDocument* pSrcDoc, const OUString& rTabName, ScRange& rRange,
         ::std::vector<ScExternalRefCache::SingleRangeData>& rCacheData);
 
     /**
@@ -761,7 +755,7 @@ private:
      * @return range name token array
      */
     static ScExternalRefCache::TokenArrayRef getRangeNameTokensFromSrcDoc(
-        sal_uInt16 nFileId, ScDocument* pSrcDoc, OUString& rName);
+        sal_uInt16 nFileId, const ScDocument* pSrcDoc, OUString& rName);
 
     ScDocument* getInMemorySrcDocument(sal_uInt16 nFileId);
     ScDocument* getSrcDocument(sal_uInt16 nFileId);

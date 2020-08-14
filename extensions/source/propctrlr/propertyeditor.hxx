@@ -20,62 +20,54 @@
 #ifndef INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_PROPERTYEDITOR_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_PROPERTYEDITOR_HXX
 
+#include "browserpage.hxx"
 #include "pcrcommon.hxx"
 
 #include <com/sun/star/inspection/XPropertyControl.hpp>
-#include <vcl/tabctrl.hxx>
-#include <vcl/vclptr.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <vcl/weld.hxx>
 #include <map>
 
 namespace pcr
 {
-
     class IPropertyLineListener;
     class IPropertyControlObserver;
     class OBrowserPage;
     struct OLineDescriptor;
     class OBrowserListBox;
 
-
     //= OPropertyEditor
-
-    class OPropertyEditor : public Control
+    class OPropertyEditor final
     {
     private:
         typedef std::map< OUString, sal_uInt16 >   MapStringToPageId;
-        struct HiddenPage
+        struct PropertyPage
         {
-            sal_uInt16  nPos;
-            VclPtr<TabPage>    pPage;
-            HiddenPage() : nPos( 0 ), pPage( nullptr ) { }
-            HiddenPage( sal_uInt16 _nPos, TabPage* _pPage ) : nPos( _nPos ), pPage( _pPage ) { }
+            sal_uInt16 nPos;
+            OUString sLabel;
+            std::unique_ptr<OBrowserPage> xPage;
+            PropertyPage();
+            PropertyPage(sal_uInt16 nPagePos, const OUString& rLabel, std::unique_ptr<OBrowserPage> pPage);
         };
 
-    private:
-        VclPtr<TabControl>          m_aTabControl;
+        std::unique_ptr<weld::Container> m_xContainer;
+        std::unique_ptr<weld::Notebook> m_xTabControl;
+        // controls initially have this parent before they are moved
+        std::unique_ptr<weld::Container> m_xControlHoldingParent;
+        css::uno::Reference<css::uno::XComponentContext> m_xContext;
         IPropertyLineListener*      m_pListener;
         IPropertyControlObserver*   m_pObserver;
         sal_uInt16                  m_nNextId;
         Link<LinkParamNone*,void>   m_aPageActivationHandler;
         bool                        m_bHasHelpSection;
-        sal_Int32                   m_nMinHelpLines;
-        sal_Int32                   m_nMaxHelpLines;
 
-        MapStringToPageId                       m_aPropertyPageIds;
-        std::map< sal_uInt16, HiddenPage >    m_aHiddenPages;
-
-    protected:
-        void                        Resize() override;
-        void                        GetFocus() override;
+        MapStringToPageId           m_aPropertyPageIds;
+        std::map<sal_uInt16, PropertyPage> m_aShownPages;
+        std::map<sal_uInt16, PropertyPage> m_aHiddenPages;
 
     public:
-        explicit                    OPropertyEditor (vcl::Window* pParent);
-
-                                    virtual ~OPropertyEditor() override;
-        virtual void                dispose() override;
-
-        void                        EnableUpdate();
-        void                        DisableUpdate();
+        explicit OPropertyEditor(css::uno::Reference<css::uno::XComponentContext>& rContext, weld::Builder& rBuilder);
+        ~OPropertyEditor();
 
         void                        SetLineListener( IPropertyLineListener* );
         void                        SetControlObserver( IPropertyControlObserver* );
@@ -83,13 +75,12 @@ namespace pcr
         void                        EnableHelpSection( bool _bEnable );
         bool                        HasHelpSection() const { return m_bHasHelpSection; }
         void                        SetHelpText( const OUString& _rHelpText );
-        void                        SetHelpLineLimites( sal_Int32 _nMinLines, sal_Int32 _nMaxLines );
 
         void                        SetHelpId( const OString& sHelpId );
         sal_uInt16                  AppendPage( const OUString& r, const OString& _rHelpId );
         void                        SetPage( sal_uInt16 );
         void                        RemovePage(sal_uInt16 nID);
-        sal_uInt16                  GetCurPage();
+        sal_uInt16                  GetCurPage() const;
         void                        ClearAll();
 
         void                        SetPropertyValue(const OUString& _rEntryName, const css::uno::Any& _rValue, bool _bUnknownValue );
@@ -107,23 +98,22 @@ namespace pcr
 
         void                        setPageActivationHandler(const Link<LinkParamNone*,void>& _rHdl) { m_aPageActivationHandler = _rHdl; }
 
-        sal_Int32                   getMinimumWidth();
-        sal_Int32                   getMinimumHeight();
+        Size                        get_preferred_size() const;
+
+        weld::Container*            getWidget() const { return m_xTabControl.get(); }
+
+        void                        Show() { m_xTabControl->show(); }
+        void                        Hide() { m_xTabControl->hide(); }
+        void                        GrabFocus() { m_xTabControl->grab_focus(); }
 
         void                        CommitModified();
 
-    protected:
-        using Window::SetHelpText;
-        using Window::Update;
-
     private:
-        OBrowserPage* getPage( sal_uInt16& _rPageId );
-        const OBrowserPage* getPage( sal_uInt16& _rPageId ) const;
+        OBrowserPage* getPage( sal_uInt16 _rPageId );
+        const OBrowserPage* getPage( sal_uInt16 _rPageId ) const;
 
         OBrowserPage* getPage( const OUString& _rPropertyName );
         const OBrowserPage* getPage( const OUString& _rPropertyName ) const;
-
-        void Update(const std::mem_fun_t<void,OBrowserListBox>& _aUpdateFunction);
 
         typedef void (OPropertyEditor::*PageOperation)( OBrowserPage&, const void* );
         void    forEachPage( PageOperation _pOperation );
@@ -132,11 +122,9 @@ namespace pcr
         void    setPageControlObserver( OBrowserPage& _rPage, const void* );
         void    enableHelpSection( OBrowserPage& _rPage, const void* );
         static void setHelpSectionText( OBrowserPage& _rPage, const void* _pPointerToOUString );
-        void    setHelpLineLimits( OBrowserPage& _rPage, const void* );
 
-    protected:
-        DECL_LINK(OnPageDeactivate, TabControl*, bool);
-        DECL_LINK(OnPageActivate, TabControl*, void);
+        DECL_LINK(OnPageDeactivate, const OString&, bool);
+        DECL_LINK(OnPageActivate, const OString&, void);
     };
 
 

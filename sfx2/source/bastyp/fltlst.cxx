@@ -23,8 +23,7 @@
 #include <com/sun/star/document/FilterConfigRefresh.hpp>
 #include <comphelper/processfactory.hxx>
 
-#include <sfx2/sfxuno.hxx>
-#include <sfx2/docfac.hxx>
+#include <sfx2/fcontnr.hxx>
 
 #include <vcl/svapp.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -34,6 +33,7 @@
 
 using namespace ::com::sun::star;
 
+namespace {
 
 class SfxRefreshListener : public ::cppu::WeakImplHelper<css::util::XRefreshListener>
 {
@@ -59,6 +59,8 @@ class SfxRefreshListener : public ::cppu::WeakImplHelper<css::util::XRefreshList
         }
 };
 
+}
+
 /*-************************************************************************************************************
     @short          ctor
     @descr          These initialize an instance of a SfxFilterListener class. Created object listen automatically
@@ -79,9 +81,9 @@ class SfxRefreshListener : public ::cppu::WeakImplHelper<css::util::XRefreshList
     @threadsafe     yes
 *//*-*************************************************************************************************************/
 SfxFilterListener::SfxFilterListener()
+    : m_xFilterCache(document::FilterConfigRefresh::create( comphelper::getProcessComponentContext() ) ),
+      m_xFilterCacheListener(new SfxRefreshListener(this))
 {
-    m_xFilterCache = document::FilterConfigRefresh::create( comphelper::getProcessComponentContext() );
-    m_xFilterCacheListener = new SfxRefreshListener(this);
     m_xFilterCache->addRefreshListener( m_xFilterCacheListener );
 }
 
@@ -89,7 +91,7 @@ SfxFilterListener::~SfxFilterListener()
 {
 }
 
-void SAL_CALL SfxFilterListener::refreshed( const lang::EventObject& aSource )
+void SfxFilterListener::refreshed( const lang::EventObject& aSource )
 {
     SolarMutexGuard aGuard;
     uno::Reference< util::XRefreshable > xContainer( aSource.Source, uno::UNO_QUERY );
@@ -102,7 +104,7 @@ void SAL_CALL SfxFilterListener::refreshed( const lang::EventObject& aSource )
     }
 }
 
-void SAL_CALL SfxFilterListener::disposing( const lang::EventObject& aSource )
+void SfxFilterListener::disposing( const lang::EventObject& aSource )
 {
     SolarMutexGuard aGuard;
     uno::Reference< util::XRefreshable > xNotifier( aSource.Source, uno::UNO_QUERY );

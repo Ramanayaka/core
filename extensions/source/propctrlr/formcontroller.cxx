@@ -18,23 +18,14 @@
  */
 
 #include "formcontroller.hxx"
+#include "modulepcr.hxx"
 #include "pcrcommon.hxx"
-#include "pcrservices.hxx"
 #include "formstrings.hxx"
 #include "defaultforminspection.hxx"
-#include "propctrlr.hrc"
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/util/VetoException.hpp>
 #include <cppuhelper/typeprovider.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-
-
-extern "C" void SAL_CALL createRegistryInfo_FormController()
-{
-    ::pcr::OAutoRegistration< ::pcr::FormController > aFormControllerRegistration;
-    ::pcr::OAutoRegistration< ::pcr::DialogController > aDialogControllerRegistration;
-}
 
 
 namespace pcr
@@ -46,7 +37,6 @@ namespace pcr
     using ::com::sun::star::uno::TypeClass_STRING;
     using ::com::sun::star::uno::XComponentContext;
     using ::com::sun::star::inspection::XObjectInspectorModel;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::UNO_QUERY_THROW;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::uno::XInterface;
@@ -55,7 +45,6 @@ namespace pcr
     using ::com::sun::star::beans::Property;
     using ::com::sun::star::uno::Any;
     using ::com::sun::star::lang::IllegalArgumentException;
-    using ::com::sun::star::uno::Exception;
     using ::com::sun::star::uno::Type;
     using ::com::sun::star::util::VetoException;
     using ::com::sun::star::beans::PropertyVetoException;
@@ -67,11 +56,14 @@ namespace pcr
     //= FormController
 
 
-    FormController::FormController( const Reference< XComponentContext >& _rxContext, ServiceDescriptor _aServiceDescriptor,
+    FormController::FormController( const Reference< XComponentContext >& _rxContext,
+            const OUString& sImplementationName,
+            const css::uno::Sequence<OUString>& aSupportedServiceNames,
             bool _bUseFormFormComponentHandlers )
         :OPropertyBrowserController( _rxContext )
         ,FormController_PropertyBase1( m_aBHelper )
-        ,m_aServiceDescriptor( _aServiceDescriptor )
+        ,m_sImplementationName( sImplementationName )
+        ,m_aSupportedServiceNames( aSupportedServiceNames )
     {
         osl_atomic_increment( &m_refCount );
         {
@@ -109,38 +101,16 @@ namespace pcr
 
     OUString SAL_CALL FormController::getImplementationName(  )
     {
-        return m_aServiceDescriptor.GetImplementationName();
+        return m_sImplementationName;
     }
 
 
     Sequence< OUString > SAL_CALL FormController::getSupportedServiceNames(  )
     {
-        Sequence< OUString > aSupported( m_aServiceDescriptor.GetSupportedServiceNames() );
+        Sequence< OUString > aSupported( m_aSupportedServiceNames );
         aSupported.realloc( aSupported.getLength() + 1 );
         aSupported[ aSupported.getLength() - 1 ] = "com.sun.star.inspection.ObjectInspector";
         return aSupported;
-    }
-
-
-    OUString FormController::getImplementationName_static(  )
-    {
-        return OUString("org.openoffice.comp.extensions.FormController");
-    }
-
-
-    Sequence< OUString > FormController::getSupportedServiceNames_static(  )
-    {
-        Sequence< OUString > aSupported { "com.sun.star.form.PropertyBrowserController" };
-        return aSupported;
-    }
-
-
-    Reference< XInterface > SAL_CALL FormController::Create(const Reference< XComponentContext >& _rxContext )
-    {
-        ServiceDescriptor aService;
-        aService.GetImplementationName = &FormController::getImplementationName_static;
-        aService.GetSupportedServiceNames = &FormController::getSupportedServiceNames_static;
-        return *(new FormController( _rxContext, aService, true ) );
     }
 
 
@@ -246,32 +216,27 @@ namespace pcr
     }
 
 
-    //= DialogController
-
-
-    OUString DialogController::getImplementationName_static(  )
-    {
-        return OUString("org.openoffice.comp.extensions.DialogController");
-    }
-
-
-    Sequence< OUString > DialogController::getSupportedServiceNames_static(  )
-    {
-        Sequence< OUString > aSupported { "com.sun.star.awt.PropertyBrowserController" };
-        return aSupported;
-    }
-
-
-    Reference< XInterface > SAL_CALL DialogController::Create(const Reference< XComponentContext >& _rxContext)
-    {
-        ServiceDescriptor aService;
-        aService.GetImplementationName = &DialogController::getImplementationName_static;
-        aService.GetSupportedServiceNames = &DialogController::getSupportedServiceNames_static;
-        return *(new FormController( _rxContext, aService, false ) );
-    }
-
 
 } // namespace pcr
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_propctrlr_FormController_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new pcr::FormController( context,
+                "org.openoffice.comp.extensions.FormController",
+                { "com.sun.star.form.PropertyBrowserController" },
+                true ) );
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_propctrlr_DialogController_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new pcr::FormController( context,
+            "org.openoffice.comp.extensions.DialogController",
+            { "com.sun.star.awt.PropertyBrowserController" },
+            false ) );
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

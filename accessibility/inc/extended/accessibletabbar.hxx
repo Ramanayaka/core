@@ -17,13 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABBAR_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABBAR_HXX
+#pragma once
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase2.hxx>
-#include "extended/accessibletabbarbase.hxx"
+#include <extended/accessibletabbarbase.hxx>
 
 #include <vector>
 
@@ -36,22 +35,19 @@ namespace accessibility
 {
 
 
-    //  class AccessibleTabBar
 
 
     typedef ::cppu::ImplHelper2<
         css::accessibility::XAccessible,
         css::lang::XServiceInfo > AccessibleTabBar_BASE;
 
-    class AccessibleTabBar :    public AccessibleTabBarBase,
+    class AccessibleTabBar final : public AccessibleTabBarBase,
                                 public AccessibleTabBar_BASE
     {
-    private:
         typedef std::vector< css::uno::Reference< css::accessibility::XAccessible > > AccessibleChildren;
 
         AccessibleChildren      m_aAccessibleChildren;
 
-    protected:
         virtual void            ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
         void            FillAccessibleStateSet( utl::AccessibleStateSetHelper& rStateSet );
 
@@ -63,7 +59,6 @@ namespace accessibility
 
     public:
         AccessibleTabBar( TabBar* pTabBar );
-        virtual ~AccessibleTabBar() override;
 
         // XInterface
         DECLARE_XINTERFACE()
@@ -107,6 +102,5 @@ namespace accessibility
 }   // namespace accessibility
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLETABBAR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

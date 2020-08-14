@@ -10,8 +10,9 @@
 #ifndef INCLUDED_FILTER_SOURCE_XSLTFILTER_LIBXSLTTRANSFORMER_HXX
 #define INCLUDED_FILTER_SOURCE_XSLTFILTER_LIBXSLTTRANSFORMER_HXX
 
-#include <list>
+#include <deque>
 #include <map>
+#include <mutex>
 
 #include <libxml/parser.h>
 #include <libxml/tree.h>
@@ -26,7 +27,7 @@
 
 #include <salhelper/thread.hxx>
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/io/XStreamListener.hpp>
@@ -39,7 +40,6 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::uno;
 
-using ::std::list;
 using ::std::map;
 
 #define EXT_MODULE_OLE_URI "http://libreoffice.org/2011/xslt/ole"
@@ -58,10 +58,10 @@ namespace XSLT
     {
     public:
         Reader(LibXSLTTransformer* transformer);
-        int SAL_CALL read(char * buffer, int len);
-        int SAL_CALL write(const char * buffer, int len);
+        int read(char * buffer, int len);
+        int write(const char * buffer, int len);
         void forceStateStopped();
-        int SAL_CALL closeOutput();
+        void closeOutput();
 
     private:
         virtual ~Reader() override;
@@ -71,14 +71,16 @@ namespace XSLT
         LibXSLTTransformer* m_transformer;
         Sequence<sal_Int8> m_readBuf;
         Sequence<sal_Int8> m_writeBuf;
+
+        std::mutex m_mutex;
         xsltTransformContextPtr m_tcontext;
 
         virtual void execute() override;
-        static void SAL_CALL registerExtensionModule();
+        static void registerExtensionModule();
     };
 
     /*
-     * LibXSLTTransformer provides an transforming pipe service to XSLTFilter.
+     * LibXSLTTransformer provides a transforming pipe service to XSLTFilter.
      *
      * It implements XActiveDataSource, XActiveDataSink and XActiveDataControl
      * to consume data. It also notifies upstream of important events such as
@@ -91,7 +93,7 @@ namespace XSLT
      *
      * See Reader below.
      */
-    class LibXSLTTransformer : public WeakImplHelper<css::xml::xslt::XXSLTTransformer>
+    class LibXSLTTransformer : public WeakImplHelper<css::xml::xslt::XXSLTTransformer, css::lang::XServiceInfo>
     {
     private:
         static const char* const PARAM_SOURCE_URL;
@@ -107,7 +109,7 @@ namespace XSLT
 
         css::uno::Reference<XOutputStream> m_rOutputStream;
 
-        typedef ::std::list<css::uno::Reference<XStreamListener> > ListenerList;
+        typedef ::std::deque<css::uno::Reference<XStreamListener> > ListenerList;
 
         ListenerList m_listeners;
 
@@ -131,6 +133,11 @@ namespace XSLT
         // ctor...
         LibXSLTTransformer(const css::uno::Reference<css::uno::XComponentContext> &r);
 
+        //  XServiceInfo
+        virtual sal_Bool SAL_CALL supportsService(const OUString& sServiceName) override;
+        virtual OUString SAL_CALL getImplementationName() override;
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+
         // XActiveDataSink
         virtual void SAL_CALL
         setInputStream(const css::uno::Reference<XInputStream>& inputStream) override;
@@ -153,20 +160,20 @@ namespace XSLT
         virtual void SAL_CALL
         initialize(const Sequence<Any>& params) override;
 
-        void SAL_CALL
+        void
         done();
 
-        void SAL_CALL
+        void
         error(const OUString& msg);
 
-        const OString& SAL_CALL
-        getStyleSheetURL() { return m_styleSheetURL; }
+        const OString&
+        getStyleSheetURL() const { return m_styleSheetURL; }
 
-        const ::std::map<const char*, OString>& SAL_CALL
-        getParameters() { return m_parameters; }
+        const ::std::map<const char*, OString>&
+        getParameters() const { return m_parameters; }
 
-        const css::uno::Reference<css::uno::XComponentContext>& SAL_CALL
-        getComponentContext() {
+        const css::uno::Reference<css::uno::XComponentContext>&
+        getComponentContext() const {
             return m_xContext;
         }
 

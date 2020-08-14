@@ -20,11 +20,15 @@
 #ifndef INCLUDED_CONNECTIVITY_WARNINGSCONTAINER_HXX
 #define INCLUDED_CONNECTIVITY_WARNINGSCONTAINER_HXX
 
-#include <com/sun/star/sdbc/XWarningsSupplier.hpp>
-#include <com/sun/star/sdb/SQLContext.hpp>
-
 #include <connectivity/dbtoolsdllapi.hxx>
 
+#include <com/sun/star/uno/Reference.hxx>
+
+namespace com::sun::star::sdbc { class SQLException; }
+namespace com::sun::star::sdbc { class SQLWarning; }
+namespace com::sun::star::sdbc { class XWarningsSupplier; }
+namespace com::sun::star::sdb { class SQLContext; }
+namespace com::sun::star::uno { class XInterface; }
 
 namespace dbtools
 {
@@ -59,7 +63,7 @@ namespace dbtools
         */
         void appendWarning(
             const OUString& _rWarning,
-            const sal_Char* _pAsciiSQLState,
+            const char* _pAsciiSQLState,
             const css::uno::Reference< css::uno::XInterface >& _rxContext );
 
         void appendWarning(const css::sdbc::SQLException& _rWarning);
@@ -67,8 +71,8 @@ namespace dbtools
         void appendWarning(const css::sdb::SQLContext& _rContext);
 
         // XWarningsSupplier equivalents
-        css::uno::Any SAL_CALL getWarnings(  ) const;
-        void SAL_CALL clearWarnings(  );
+        css::uno::Any getWarnings(  ) const;
+        void clearWarnings(  );
     };
 
 

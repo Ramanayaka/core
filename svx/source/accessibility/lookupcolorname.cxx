@@ -17,22 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
-#include "com/sun/star/container/XNameAccess.hpp"
-#include "com/sun/star/container/XNameContainer.hpp"
-#include "com/sun/star/drawing/ColorTable.hpp"
-#include "com/sun/star/lang/XMultiServiceFactory.hpp"
-#include "com/sun/star/uno/Any.hxx"
-#include "com/sun/star/uno/Reference.hxx"
-#include "com/sun/star/uno/RuntimeException.hpp"
-#include "com/sun/star/uno/Sequence.hxx"
-#include "comphelper/processfactory.hxx"
-#include "rtl/ustring.h"
-#include "rtl/ustring.hxx"
+#include <com/sun/star/container/XNameAccess.hpp>
+#include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/drawing/ColorTable.hpp>
+#include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/uno/RuntimeException.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
+#include <comphelper/processfactory.hxx>
+#include <rtl/ustring.hxx>
 #include <vcl/svapp.hxx>
 
-#include <lookupcolorname.hxx>
+#include "lookupcolorname.hxx"
 #include <unordered_map>
 
 namespace {
@@ -76,23 +74,25 @@ ColorNameMap::ColorNameMap() {
     }
 
     // Fill the map to convert from numerical color values to names.
-    if (xNA.is())
-        for (long int i=0; i<aNames.getLength(); i++)
+    if (!xNA.is())
+        return;
+
+    for (const auto& rName : std::as_const(aNames))
+    {
+        // Get the numerical value for the i-th color name.
+        try
         {
-            // Get the numerical value for the i-th color name.
-            try
-            {
-                css::uno::Any aColor = xNA->getByName(aNames[i]);
-                long nColor = 0;
-                aColor >>= nColor;
-                map_[nColor] = aNames[i];
-            }
-            catch (css::uno::RuntimeException const&)
-            {
-                // Ignore the exception: the color who lead to the exception
-                // is not included into the map.
-            }
+            css::uno::Any aColor = xNA->getByName(rName);
+            long nColor = 0;
+            aColor >>= nColor;
+            map_[nColor] = rName;
         }
+        catch (css::uno::RuntimeException const&)
+        {
+            // Ignore the exception: the color who lead to the exception
+            // is not included into the map.
+        }
+    }
 }
 
 OUString ColorNameMap::lookUp(long color) const {
@@ -101,10 +101,7 @@ OUString ColorNameMap::lookUp(long color) const {
         return i->second;
     }
     // Did not find the given color; return its RGB tuple representation:
-    OUStringBuffer buf;
-    buf.append('#');
-    buf.append(color, 16);
-    return buf.makeStringAndClear();
+    return "#" + OUString::number(color, 16);
 }
 
 struct theColorNameMap: public rtl::Static< ColorNameMap, theColorNameMap > {};

@@ -19,9 +19,7 @@
 #include <com/sun/star/lang/ServiceNotRegisteredException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/beans/IntrospectionException.hpp>
 #include <com/sun/star/beans/theIntrospection.hpp>
 #include <com/sun/star/beans/MethodConcept.hpp>
@@ -37,10 +35,14 @@
 // InvocationToAllListenerMapper
 #include <com/sun/star/script/XInvocation.hpp>
 #include <comphelper/processfactory.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/weak.hxx>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <rtl/ref.hxx>
+
+namespace com::sun::star::lang { class XMultiServiceFactory; }
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::registry;
@@ -52,14 +54,13 @@ using namespace cppu;
 using namespace osl;
 
 
-#define SERVICENAME "com.sun.star.script.EventAttacher"
-#define IMPLNAME    "com.sun.star.comp.EventAttacher"
-
 namespace comp_EventAttacher {
 
 
 //  class InvocationToAllListenerMapper
 //  helper class to map XInvocation to XAllListener
+
+namespace {
 
 class InvocationToAllListenerMapper : public WeakImplHelper< XInvocation >
 {
@@ -81,9 +82,10 @@ private:
     Any                          m_Helper;
 };
 
+}
 
 // Function to replace AllListenerAdapterService::createAllListerAdapter
-Reference< XInterface > createAllListenerAdapter
+static Reference< XInterface > createAllListenerAdapter
 (
     const Reference< XInvocationAdapterFactory2 >& xInvocationAdapterFactory,
     const Reference< XIdlClass >& xListenerType,
@@ -94,8 +96,8 @@ Reference< XInterface > createAllListenerAdapter
     Reference< XInterface > xAdapter;
     if( xInvocationAdapterFactory.is() && xListenerType.is() && xListener.is() )
     {
-       Reference< XInvocation > xInvocationToAllListenerMapper =
-            static_cast<XInvocation*>(new InvocationToAllListenerMapper( xListenerType, xListener, Helper ));
+        Reference< XInvocation > xInvocationToAllListenerMapper =
+            new InvocationToAllListenerMapper(xListenerType, xListener, Helper);
         Type aListenerType( xListenerType->getTypeClass(), xListenerType->getName());
         Sequence<Type> arg2(1);
         arg2[0] = aListenerType;
@@ -134,7 +136,7 @@ Any SAL_CALL InvocationToAllListenerMapper::invoke(const OUString& FunctionName,
     Reference< XIdlClass > xReturnType = xMethod->getReturnType();
     Sequence< Reference< XIdlClass > > aExceptionSeq = xMethod->getExceptionTypes();
     if( ( xReturnType.is() && xReturnType->getTypeClass() != TypeClass_VOID ) ||
-        aExceptionSeq.getLength() > 0 )
+        aExceptionSeq.hasElements() )
     {
         bApproveFiring = true;
     }
@@ -198,6 +200,8 @@ sal_Bool SAL_CALL InvocationToAllListenerMapper::hasProperty(const OUString& Nam
 //  class EventAttacherImpl
 //  represents an implementation of the EventAttacher service
 
+namespace {
+
 class EventAttacherImpl : public WeakImplHelper < XEventAttacher2, XInitialization, XServiceInfo >
 {
 public:
@@ -207,7 +211,6 @@ public:
     virtual OUString SAL_CALL getImplementationName(  ) override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
-    static Sequence< OUString > SAL_CALL getSupportedServiceNames_Static(  );
 
     // XInitialization
     virtual void SAL_CALL initialize( const Sequence< Any >& aArguments ) override;
@@ -268,6 +271,7 @@ private:
     Reference< XInvocationAdapterFactory2 >  getInvocationAdapterService();
 };
 
+}
 
 EventAttacherImpl::EventAttacherImpl( const Reference< XComponentContext >& rxContext )
     : m_xContext( rxContext )
@@ -275,19 +279,9 @@ EventAttacherImpl::EventAttacherImpl( const Reference< XComponentContext >& rxCo
 }
 
 /// @throws Exception
-Reference< XInterface > SAL_CALL EventAttacherImpl_CreateInstance( const Reference< XMultiServiceFactory >& rSMgr )
-{
-    XEventAttacher *pEventAttacher = static_cast<XEventAttacher*>(new EventAttacherImpl( comphelper::getComponentContext(rSMgr) ));
-
-    Reference< XInterface > xRet(pEventAttacher, UNO_QUERY);
-
-    return xRet;
-}
-
-
 OUString SAL_CALL EventAttacherImpl::getImplementationName(  )
 {
-    return OUString(  IMPLNAME  );
+    return "com.sun.star.comp.EventAttacher";
 }
 
 sal_Bool SAL_CALL EventAttacherImpl::supportsService( const OUString& ServiceName )
@@ -297,28 +291,20 @@ sal_Bool SAL_CALL EventAttacherImpl::supportsService( const OUString& ServiceNam
 
 Sequence<OUString> SAL_CALL EventAttacherImpl::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_Static();
-}
-
-
-Sequence<OUString> SAL_CALL EventAttacherImpl::getSupportedServiceNames_Static(  )
-{
-    OUString aStr(  SERVICENAME  );
-    return Sequence< OUString >( &aStr, 1 );
+    return { "com.sun.star.script.EventAttacher" };
 }
 
 void SAL_CALL EventAttacherImpl::initialize(const Sequence< Any >& Arguments)
 {
     // get services from the argument list
-    const Any * pArray = Arguments.getConstArray();
-    for( sal_Int32 i = 0; i < Arguments.getLength(); i++ )
+    for( const Any& arg : Arguments )
     {
-        if( pArray[i].getValueType().getTypeClass() != TypeClass_INTERFACE )
+        if( arg.getValueType().getTypeClass() != TypeClass_INTERFACE )
             throw IllegalArgumentException();
 
         // InvocationAdapter service ?
         Reference< XInvocationAdapterFactory2 > xALAS;
-        pArray[i] >>= xALAS;
+        arg >>= xALAS;
         if( xALAS.is() )
         {
             Guard< Mutex > aGuard( m_aMutex );
@@ -326,7 +312,7 @@ void SAL_CALL EventAttacherImpl::initialize(const Sequence< Any >& Arguments)
         }
         // Introspection service ?
         Reference< XIntrospection > xI;
-        pArray[i] >>= xI;
+        arg >>= xI;
         if( xI.is() )
         {
             Guard< Mutex > aGuard( m_aMutex );
@@ -334,7 +320,7 @@ void SAL_CALL EventAttacherImpl::initialize(const Sequence< Any >& Arguments)
         }
         // Reflection service ?
         Reference< XIdlReflection > xIdlR;
-        pArray[i] >>= xIdlR;
+        arg >>= xIdlR;
         if( xIdlR.is() )
         {
             Guard< Mutex > aGuard( m_aMutex );
@@ -342,7 +328,7 @@ void SAL_CALL EventAttacherImpl::initialize(const Sequence< Any >& Arguments)
         }
         // Converter Service ?
         Reference< XTypeConverter > xC;
-        pArray[i] >>= xC;
+        arg >>= xC;
         if( xC.is() )
         {
             Guard< Mutex > aGuard( m_aMutex );
@@ -403,6 +389,7 @@ Reference< XTypeConverter > EventAttacherImpl::getConverter()
     return m_xConverter;
 }
 
+namespace {
 
 // Implementation of an EventAttacher-related AllListeners, which brings
 // a few Events to a general AllListener
@@ -430,6 +417,7 @@ private:
     Reference< XAllListener >   m_AllListener;
 };
 
+}
 
 FilterAllListenerImpl::FilterAllListenerImpl( EventAttacherImpl * pEA_, const OUString& EventMethod_,
                                               const Reference< XAllListener >& AllListener_ )
@@ -482,10 +470,9 @@ void FilterAllListenerImpl::convertToEventReturn( Any & rRet, const Type & rRetT
     else if( !rRet.getValueType().equals( rRetType ) )
     {
         Reference< XTypeConverter > xConverter = m_pEA->getConverter();
-        if( xConverter.is() )
-            rRet = xConverter->convertTo( rRet, rRetType );
-        else
+        if( !xConverter.is() )
             throw CannotConvertException(); // TODO TypeConversionException
+        rRet = xConverter->convertTo( rRet, rRetType );
     }
 }
 
@@ -511,9 +498,10 @@ Any SAL_CALL FilterAllListenerImpl::approveFiring( const AllEventObject& Event )
                 convertToEventReturn( aRet, aRetType );
             }
         }
-        catch( const CannotConvertException& e )
+        catch( const CannotConvertException& )
         {
-            throw InvocationTargetException( OUString(), Reference< XInterface >(), Any(&e, cppu::UnoType<CannotConvertException>::get()) );
+            css::uno::Any anyEx = cppu::getCaughtException();
+            throw InvocationTargetException( OUString(), Reference< XInterface >(), anyEx );
         }
     }
     return aRet;
@@ -575,7 +563,7 @@ Reference<XEventListener> EventAttacherImpl::attachListenerForTarget(
     const OUString& aListenerType,
     const OUString& aAddListenerParam)
 {
-    Reference< XEventListener > xRet = nullptr;
+    Reference< XEventListener > xRet;
 
     // Construct the name of the addListener-Method.
     sal_Int32 nIndex = aListenerType.lastIndexOf('.');
@@ -590,12 +578,9 @@ Reference<XEventListener> EventAttacherImpl::attachListenerForTarget(
     OUString aAddListenerName = "add" + aListenerName;
 
     // Send Methods to the correct addListener-Method
-    Sequence< Reference< XIdlMethod > > aMethodSeq = xAccess->getMethods( MethodConcept::LISTENER );
-    const Reference< XIdlMethod >* pMethods = aMethodSeq.getConstArray();
-    for (sal_Int32 i = 0, n = aMethodSeq.getLength(); i < n ; ++i)
+    const Sequence< Reference< XIdlMethod > > aMethodSeq = xAccess->getMethods( MethodConcept::LISTENER );
+    for (const Reference< XIdlMethod >& rxMethod : aMethodSeq)
     {
-        const Reference< XIdlMethod >& rxMethod = pMethods[i];
-
         // Is it the correct method?
         OUString aMethName = rxMethod->getName();
 
@@ -729,8 +714,8 @@ Reference< XEventListener > EventAttacherImpl::attachSingleEventListener
 )
 {
     // Subscribe FilterListener
-    Reference< XAllListener > aFilterListener = static_cast<XAllListener*>(
-        new FilterAllListenerImpl( this, EventMethod, AllListener ));
+    Reference<XAllListener> aFilterListener
+        = new FilterAllListenerImpl(this, EventMethod, AllListener);
     return attachListener( xObject, aFilterListener, Helper, ListenerType, AddListenerParam);
 }
 
@@ -845,8 +830,8 @@ Sequence< Reference<XEventListener> > EventAttacherImpl::attachMultipleEventList
     Sequence< Reference<XAllListener> > aFilterListeners(nCount);
     for (sal_Int32 i = 0; i < nCount; ++i)
     {
-        aFilterListeners[i] = static_cast<XAllListener*>(
-            new FilterAllListenerImpl(this, aListeners[i].EventMethod, aListeners[i].AllListener));
+        aFilterListeners[i]
+            = new FilterAllListenerImpl(this, aListeners[i].EventMethod, aListeners[i].AllListener);
     }
 
     return attachListeners(xObject, aFilterListeners, aListeners);
@@ -854,30 +839,13 @@ Sequence< Reference<XEventListener> > EventAttacherImpl::attachMultipleEventList
 
 }
 
-extern "C"
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+eventattacher_EventAttacher(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-SAL_DLLPUBLIC_EXPORT void * SAL_CALL evtatt_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * )
-{
-    void * pRet = nullptr;
-
-    if (pServiceManager && rtl_str_compare( pImplName, IMPLNAME ) == 0)
-    {
-        Reference< XSingleServiceFactory > xFactory( createOneInstanceFactory(
-            static_cast< XMultiServiceFactory * >( pServiceManager ),
-            IMPLNAME,
-            ::comp_EventAttacher::EventAttacherImpl_CreateInstance,
-            ::comp_EventAttacher::EventAttacherImpl::getSupportedServiceNames_Static() ) );
-
-        if (xFactory.is())
-        {
-            xFactory->acquire();
-            pRet = xFactory.get();
-        }
-    }
-
-    return pRet;
-}
+    static rtl::Reference<comp_EventAttacher::EventAttacherImpl> instance(new comp_EventAttacher::EventAttacherImpl(context));
+    instance->acquire();
+    return static_cast<cppu::OWeakObject*>(instance.get());
 }
 
 

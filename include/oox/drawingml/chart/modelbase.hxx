@@ -29,9 +29,7 @@
 
 namespace oox { class AttributeList; }
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 template< typename ModelType >
 class ModelRef : public std::shared_ptr< ModelType >
@@ -42,15 +40,15 @@ public:
 
     bool         is() const { return this->get() != 0; }
 
-    ModelType&   create() { this->reset( new ModelType ); return **this; }
+    ModelType&   create() { (*this) = std::make_shared<ModelType>(); return **this; }
     template< typename Param1Type >
-    ModelType&   create( const Param1Type& rParam1 ) { this->reset( new ModelType( rParam1 ) ); return **this; }
+    ModelType&   create( const Param1Type& rParam1 ) { (*this) = std::make_shared<ModelType>( rParam1 ); return **this; }
     template< typename Param1Type, typename Param2Type >
-    ModelType&   create( const Param1Type& rParam1, const Param2Type& rParam2 ) { this->reset( new ModelType( rParam1, rParam2 ) ); return **this; }
+    ModelType&   create( const Param1Type& rParam1, const Param2Type& rParam2 ) { (*this) = std::make_shared<ModelType>( rParam1, rParam2 ); return **this; }
 
-    ModelType&   getOrCreate() { if( !*this ) this->reset( new ModelType ); return **this; }
+    ModelType&   getOrCreate() { if( !*this ) (*this) = std::make_shared<ModelType>(); return **this; }
     template< typename Param1Type >
-    ModelType&   getOrCreate( const Param1Type& rParam1 ) { if( !*this ) this->reset( new ModelType( rParam1 ) ); return **this; }
+    ModelType&   getOrCreate( const Param1Type& rParam1 ) { if( !*this ) (*this) = std::make_shared<ModelType>( rParam1 ); return **this; }
 };
 
 template< typename ModelType >
@@ -62,14 +60,20 @@ public:
 
                  ModelVector() {}
 
-    ModelType&   create() { return append( new ModelType ); }
+    ModelType&   create() { return append( std::make_shared<ModelType>() ); }
     template< typename Param1Type >
-    ModelType&   create( const Param1Type& rParam1 ) { return append( new ModelType( rParam1 ) ); }
+    ModelType&   create( const Param1Type& rParam1 ) { return append( std::make_shared<ModelType>( rParam1 ) ); }
     template< typename Param1Type, typename Param2Type >
-    ModelType&   create( const Param1Type& rParam1, const Param2Type& rParam2 ) { return append( new ModelType( rParam1, rParam2 ) ); }
+    ModelType&   create( const Param1Type& rParam1, const Param2Type& rParam2 ) { return append( std::make_shared<ModelType>( rParam1, rParam2 ) ); }
 
 private:
-    ModelType&   append( ModelType* pModel ) { this->push_back( value_type( pModel ) ); return *pModel; }
+    ModelType&   append( std::shared_ptr<ModelType> pModel )
+    {
+        assert(pModel);
+        auto pTmp = pModel.get();
+        this->push_back( std::move(pModel) );
+        return *pTmp;
+    }
 };
 
 template< typename KeyType, typename ModelType >
@@ -115,9 +119,7 @@ struct LayoutModel
                         ~LayoutModel();
 };
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

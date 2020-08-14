@@ -12,6 +12,8 @@
 
 #include <svtools/svtdllapi.h>
 
+#include <com/sun/star/uno/Sequence.hxx>
+
 #include <rtl/ustring.hxx>
 
 /** Localize a URI to one of the foundation's webservices
@@ -21,6 +23,9 @@
     part is appended to the URI (like "en", or "fr", or "es")
  */
 SVT_DLLPUBLIC void localizeWebserviceURI( OUString& io_rURI );
+
+OUString SVT_DLLPUBLIC getInstalledLocaleForLanguage(css::uno::Sequence<OUString> const & installed, OUString const & locale);
+OUString SVT_DLLPUBLIC getInstalledLocaleForSystemUILanguage(css::uno::Sequence<OUString> const & installed, bool bRequestInstallIfMissing, const OUString& rPreferredLocale = OUString());
 
 #endif
 

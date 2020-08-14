@@ -23,7 +23,6 @@
 #include <com/sun/star/text/XTextViewCursorSupplier.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/text/XTextTable.hpp>
-#include <com/sun/star/text/XTextTablesSupplier.hpp>
 #include <com/sun/star/table/XTableRows.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include "vbaborders.hxx"
@@ -36,7 +35,7 @@ using namespace ::com::sun::star;
 
 SwVbaTable::SwVbaTable(  const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext, const uno::Reference< text::XTextDocument >& rDocument, const  uno::Reference< text::XTextTable >& xTextTable) : SwVbaTable_BASE( rParent, rContext ), mxTextDocument( rDocument )
 {
-    mxTextTable.set( xTextTable, uno::UNO_QUERY_THROW );
+    mxTextTable.set( xTextTable, uno::UNO_SET_THROW );
 }
 
 uno::Reference< word::XRange > SAL_CALL
@@ -91,7 +90,7 @@ SwVbaTable::Borders( const uno::Any& index )
 uno::Any SAL_CALL
 SwVbaTable::Rows( const uno::Any& index )
 {
-    uno::Reference< table::XTableRows > xTableRows( mxTextTable->getRows(), uno::UNO_QUERY_THROW );
+    uno::Reference< table::XTableRows > xTableRows( mxTextTable->getRows(), uno::UNO_SET_THROW );
     uno::Reference< XCollection > xCol( new SwVbaRows( this, mxContext, mxTextTable, xTableRows ) );
     if ( index.hasValue() )
         return xCol->Item( index, uno::Any() );
@@ -101,7 +100,7 @@ SwVbaTable::Rows( const uno::Any& index )
 uno::Any SAL_CALL
 SwVbaTable::Columns( const uno::Any& index )
 {
-    uno::Reference< table::XTableColumns > xTableColumns( mxTextTable->getColumns(), uno::UNO_QUERY_THROW );
+    uno::Reference< table::XTableColumns > xTableColumns( mxTextTable->getColumns(), uno::UNO_SET_THROW );
     uno::Reference< XCollection > xCol( new SwVbaColumns( this, mxContext, mxTextTable, xTableColumns ) );
     if ( index.hasValue() )
         return xCol->Item( index, uno::Any() );
@@ -112,18 +111,16 @@ SwVbaTable::Columns( const uno::Any& index )
 OUString
 SwVbaTable::getServiceImplName()
 {
-    return OUString("SwVbaTable");
+    return "SwVbaTable";
 }
 
 uno::Sequence<OUString>
 SwVbaTable::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Table";
-    }
+        "ooo.vba.word.Table"
+    };
     return aServiceNames;
 }
 

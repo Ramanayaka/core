@@ -7,13 +7,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "dpresfilter.hxx"
-#include "global.hxx"
+#include <dpresfilter.hxx>
+#include <global.hxx>
 
 #include <unotools/charclass.hxx>
 #include <rtl/math.hxx>
+#include <sal/log.hxx>
+#include <boost/functional/hash.hpp>
 
 #include <com/sun/star/sheet/DataPilotFieldFilter.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
 
 using namespace com::sun::star;
 using namespace std;
@@ -26,8 +29,10 @@ ScDPResultFilterContext::ScDPResultFilterContext() :
 
 size_t ScDPResultTree::NamePairHash::operator() (const NamePairType& rPair) const
 {
-    OUStringHash aHash;
-    return aHash(rPair.first) + aHash(rPair.second);
+    std::size_t seed = 0;
+    boost::hash_combine(seed, rPair.first.hashCode());
+    boost::hash_combine(seed, rPair.second.hashCode());
+    return seed;
 }
 
 ScDPResultTree::DimensionNode::DimensionNode() {}
@@ -58,26 +63,19 @@ void ScDPResultTree::DimensionNode::dump(int nLevel) const
 
 ScDPResultTree::MemberNode::MemberNode() {}
 
-ScDPResultTree::MemberNode::~MemberNode()
-{
-    DimensionsType::iterator it = maChildDimensions.begin(), itEnd = maChildDimensions.end();
-    for (; it != itEnd; ++it)
-        delete it->second;
-}
+ScDPResultTree::MemberNode::~MemberNode() {}
 
 #if DEBUG_PIVOT_TABLE
 void ScDPResultTree::MemberNode::dump(int nLevel) const
 {
     string aIndent(nLevel*2, ' ');
-    ValuesType::const_iterator itVal = maValues.begin(), itValEnd = maValues.end();
-    for (; itVal != itValEnd; ++itVal)
-        cout << aIndent << "value: " << *itVal << endl;
+    for (const auto& rValue : maValues)
+        cout << aIndent << "value: " << rValue << endl;
 
-    DimensionsType::const_iterator it = maChildDimensions.begin(), itEnd = maChildDimensions.end();
-    for (; it != itEnd; ++it)
+    for (const auto& [rName, rxDim] : maChildDimensions)
     {
-        cout << aIndent << "dimension: " << it->first << endl;
-        it->second->dump(nLevel+1);
+        cout << aIndent << "dimension: " << rName << endl;
+        rxDim->dump(nLevel+1);
     }
 }
 #endif
@@ -96,10 +94,8 @@ void ScDPResultTree::add(
     const OUString* pMemName = nullptr;
     MemberNode* pMemNode = mpRoot.get();
 
-    std::vector<ScDPResultFilter>::const_iterator itFilter = rFilters.begin(), itFilterEnd = rFilters.end();
-    for (; itFilter != itFilterEnd; ++itFilter)
+    for (const ScDPResultFilter& filter : rFilters)
     {
-        const ScDPResultFilter& filter = *itFilter;
         if (filter.mbDataLayout)
             continue;
 
@@ -107,35 +103,30 @@ void ScDPResultTree::add(
             maPrimaryDimName = filter.maDimName;
 
         // See if this dimension exists.
-        DimensionsType& rDims = pMemNode->maChildDimensions;
-        OUString aUpperName = ScGlobal::pCharClass->uppercase(filter.maDimName);
-        DimensionsType::iterator itDim = rDims.find(aUpperName);
+        auto& rDims = pMemNode->maChildDimensions;
+        OUString aUpperName = ScGlobal::getCharClassPtr()->uppercase(filter.maDimName);
+        auto itDim = rDims.find(aUpperName);
         if (itDim == rDims.end())
         {
             // New dimension.  Insert it.
-            std::pair<DimensionsType::iterator, bool> r =
-                rDims.insert(DimensionsType::value_type(aUpperName, new DimensionNode));
-
-            if (!r.second)
-                // Insertion failed!
-                return;
-
+            auto r = rDims.emplace(aUpperName, std::make_unique<DimensionNode>());
+            assert(r.second);
             itDim = r.first;
         }
 
         pDimName = &itDim->first;
 
         // Now, see if this dimension member exists.
-        DimensionNode* pDim = itDim->second;
+        DimensionNode* pDim = itDim->second.get();
         MembersType& rMembersValueNames = pDim->maChildMembersValueNames;
-        aUpperName = ScGlobal::pCharClass->uppercase(filter.maValueName);
+        aUpperName = ScGlobal::getCharClassPtr()->uppercase(filter.maValueName);
         MembersType::iterator itMem = rMembersValueNames.find(aUpperName);
         if (itMem == rMembersValueNames.end())
         {
             // New member.  Insert it.
-            std::shared_ptr<MemberNode> pNode( new MemberNode);
+            auto pNode = std::make_shared<MemberNode>();
             std::pair<MembersType::iterator, bool> r =
-                rMembersValueNames.insert( MembersType::value_type(aUpperName, pNode));
+                rMembersValueNames.emplace(aUpperName, pNode);
 
             if (!r.second)
                 // Insertion failed!
@@ -148,13 +139,13 @@ void ScDPResultTree::add(
             if (!filter.maValue.isEmpty() && filter.maValue != filter.maValueName)
             {
                 MembersType& rMembersValues = pDim->maChildMembersValues;
-                aUpperName = ScGlobal::pCharClass->uppercase(filter.maValue);
+                aUpperName = ScGlobal::getCharClassPtr()->uppercase(filter.maValue);
                 MembersType::iterator itMemVal = rMembersValues.find(aUpperName);
                 if (itMemVal == rMembersValues.end())
                 {
                     // New member.  Insert it.
                     std::pair<MembersType::iterator, bool> it =
-                        rMembersValues.insert( MembersType::value_type(aUpperName, pNode));
+                        rMembersValues.emplace(aUpperName, pNode);
                     // If insertion failed do not bail out anymore.
                     SAL_WARN_IF( !it.second, "sc.core", "ScDPResultTree::add - rMembersValues.insert failed");
                 }
@@ -168,14 +159,14 @@ void ScDPResultTree::add(
     if (pDimName && pMemName)
     {
         NamePairType aNames(
-            ScGlobal::pCharClass->uppercase(*pDimName),
-            ScGlobal::pCharClass->uppercase(*pMemName));
+            ScGlobal::getCharClassPtr()->uppercase(*pDimName),
+            ScGlobal::getCharClassPtr()->uppercase(*pMemName));
 
         LeafValuesType::iterator it = maLeafValues.find(aNames);
         if (it == maLeafValues.end())
         {
             // This name pair doesn't exist.  Associate a new value for it.
-            maLeafValues.insert(LeafValuesType::value_type(aNames, fVal));
+            maLeafValues.emplace(aNames, fVal);
         }
         else
         {
@@ -208,26 +199,24 @@ void ScDPResultTree::clear()
 const ScDPResultTree::ValuesType* ScDPResultTree::getResults(
     const uno::Sequence<sheet::DataPilotFieldFilter>& rFilters) const
 {
-    const sheet::DataPilotFieldFilter* p = rFilters.getConstArray();
-    const sheet::DataPilotFieldFilter* pEnd = p + static_cast<size_t>(rFilters.getLength());
     const MemberNode* pMember = mpRoot.get();
-    for (; p != pEnd; ++p)
+    for (const sheet::DataPilotFieldFilter& rFilter : rFilters)
     {
-        DimensionsType::const_iterator itDim = pMember->maChildDimensions.find(
-            ScGlobal::pCharClass->uppercase(p->FieldName));
+        auto itDim = pMember->maChildDimensions.find(
+            ScGlobal::getCharClassPtr()->uppercase(rFilter.FieldName));
 
         if (itDim == pMember->maChildDimensions.end())
             // Specified dimension not found.
             return nullptr;
 
-        const DimensionNode* pDim = itDim->second;
+        const DimensionNode* pDim = itDim->second.get();
         MembersType::const_iterator itMem( pDim->maChildMembersValueNames.find(
-                    ScGlobal::pCharClass->uppercase( p->MatchValueName)));
+                    ScGlobal::getCharClassPtr()->uppercase( rFilter.MatchValueName)));
 
         if (itMem == pDim->maChildMembersValueNames.end())
         {
             // Specified member name not found, try locale independent value.
-            itMem = pDim->maChildMembersValues.find( ScGlobal::pCharClass->uppercase( p->MatchValue));
+            itMem = pDim->maChildMembersValues.find( ScGlobal::getCharClassPtr()->uppercase( rFilter.MatchValue));
 
             if (itMem == pDim->maChildMembersValues.end())
                 // Specified member not found.
@@ -245,8 +234,8 @@ const ScDPResultTree::ValuesType* ScDPResultTree::getResults(
         const MemberNode* pFieldMember = pMember;
         while (pFieldMember->maChildDimensions.size() == 1)
         {
-            DimensionsType::const_iterator itDim( pFieldMember->maChildDimensions.begin());
-            const DimensionNode* pDim = itDim->second;
+            auto itDim( pFieldMember->maChildDimensions.begin());
+            const DimensionNode* pDim = itDim->second.get();
             if (pDim->maChildMembersValueNames.size() != 1)
                 break;  // while
             pFieldMember = pDim->maChildMembersValueNames.begin()->second.get();
@@ -261,8 +250,8 @@ const ScDPResultTree::ValuesType* ScDPResultTree::getResults(
 double ScDPResultTree::getLeafResult(const css::sheet::DataPilotFieldFilter& rFilter) const
 {
     NamePairType aPair(
-        ScGlobal::pCharClass->uppercase(rFilter.FieldName),
-        ScGlobal::pCharClass->uppercase(rFilter.MatchValueName));
+        ScGlobal::getCharClassPtr()->uppercase(rFilter.FieldName),
+        ScGlobal::getCharClassPtr()->uppercase(rFilter.MatchValueName));
 
     LeafValuesType::const_iterator it = maLeafValues.find(aPair);
     if (it != maLeafValues.end())

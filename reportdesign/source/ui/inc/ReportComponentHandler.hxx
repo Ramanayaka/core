@@ -27,8 +27,6 @@
 #include <com/sun/star/inspection/XPropertyHandler.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-#include <memory>
-
 
 namespace rptui
 {
@@ -43,15 +41,6 @@ namespace rptui
         private ::cppu::BaseMutex,
         public ReportComponentHandler_Base
     {
-    public:
-        // XServiceInfo - static versions
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_static(  );
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL
-                        create(const css::uno::Reference< css::uno::XComponentContext >&);
-
     public:
         explicit ReportComponentHandler(css::uno::Reference< css::uno::XComponentContext > const & context);
 
@@ -85,8 +74,8 @@ namespace rptui
     protected:
         virtual ~ReportComponentHandler() override {}
     private:
-        ReportComponentHandler(ReportComponentHandler &) = delete;
-        void operator =(ReportComponentHandler &) = delete;
+        ReportComponentHandler(ReportComponentHandler const &) = delete;
+        void operator =(ReportComponentHandler const &) = delete;
 
 
         // override WeakComponentImplHelperBase::disposing()

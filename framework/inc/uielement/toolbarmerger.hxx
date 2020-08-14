@@ -20,19 +20,12 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_TOOLBARMERGER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_TOOLBARMERGER_HXX
 
-#include <uielement/comboboxtoolbarcontroller.hxx>
-#include <uielement/imagebuttontoolbarcontroller.hxx>
-#include <uielement/togglebuttontoolbarcontroller.hxx>
-#include <uielement/buttontoolbarcontroller.hxx>
-#include <uielement/spinfieldtoolbarcontroller.hxx>
-#include <uielement/edittoolbarcontroller.hxx>
-#include <uielement/dropdownboxtoolbarcontroller.hxx>
 #include <uielement/commandinfo.hxx>
 
 #include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
-#include <svtools/toolboxcontroller.hxx>
-
+#include <cppuhelper/weak.hxx>
 #include <rtl/ustring.hxx>
 #include <vcl/toolbox.hxx>
 
@@ -42,7 +35,6 @@ namespace framework
 struct AddonsParams
 {
     OUString aImageId;
-    OUString aTarget;
     OUString aControlType;
     sal_uInt16 nWidth;
 };
@@ -62,7 +54,6 @@ typedef ::std::vector< AddonToolbarItem > AddonToolbarItemContainer;
 
 struct ReferenceToolbarPathInfo
 {
-    VclPtr<ToolBox>    pToolbar;
     ToolBox::ImplToolItems::size_type nPos;
     bool               bResult;
 };
@@ -72,7 +63,7 @@ class ToolBarMerger
     public:
         static bool       IsCorrectContext( const OUString& aContext, const OUString& aModuleIdentifier );
 
-        static bool       ConvertSeqSeqToVector( const css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue > >& rSequence,
+        static void       ConvertSeqSeqToVector( const css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue > >& rSequence,
                                                  AddonToolbarItemContainer& rContainer );
 
         static void       ConvertSequenceToValues( const css::uno::Sequence< css::beans::PropertyValue >& rSequence,
@@ -84,7 +75,7 @@ class ToolBarMerger
                                                    OUString& rControlType,
                                                    sal_uInt16& rWidth );
 
-        static ReferenceToolbarPathInfo FindReferencePoint( ToolBox* pToolbar,
+        static ReferenceToolbarPathInfo FindReferencePoint( const ToolBox* pToolbar,
                                                             const OUString& rReferencePoint );
 
         static bool       ProcessMergeOperation( ToolBox*                  pToolbar,
@@ -104,7 +95,7 @@ class ToolBarMerger
                                                 const OUString&           rMergeFallback,
                                                 const AddonToolbarItemContainer& rItems );
 
-        static bool       MergeItems( ToolBox*                  pToolbar,
+        static void       MergeItems( ToolBox*                  pToolbar,
                                       ToolBox::ImplToolItems::size_type nPos,
                                       sal_uInt16                nModIndex,
                                       sal_uInt16&               rItemId,
@@ -112,14 +103,14 @@ class ToolBarMerger
                                       const OUString&           rModuleIdentifier,
                                       const AddonToolbarItemContainer& rAddonToolbarItems );
 
-        static bool       ReplaceItem( ToolBox*                  pToolbar,
+        static void       ReplaceItem( ToolBox*                  pToolbar,
                                        ToolBox::ImplToolItems::size_type nPos,
                                        sal_uInt16&               rItemId,
                                        CommandToInfoMap&         rCommandMap,
                                        const OUString&           rModuleIdentifier,
                                        const AddonToolbarItemContainer& rAddonToolbarItems );
 
-        static bool       RemoveItems( ToolBox*           pToolbar,
+        static void       RemoveItems( ToolBox*           pToolbar,
                                        ToolBox::ImplToolItems::size_type nPos,
                                        const OUString&    rMergeCommandParameter );
 

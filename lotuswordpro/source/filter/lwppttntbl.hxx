@@ -62,7 +62,9 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPPTTNTBL_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPPTTNTBL_HXX
 
-static const sal_uInt8 s_pLwpPatternTab[][8] = {                //Id  Name
+#include <sal/types.h>
+
+const sal_uInt8 s_pLwpPatternTab[][8] = {                //Id  Name
     { 0xDF, 0xAF, 0x77, 0x77, 0x77, 0x77, 0xFA, 0xFD },//0  Transparent
     { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },//1  SolidForeground
     { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },//2  SolidBackground

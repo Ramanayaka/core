@@ -18,9 +18,9 @@
 #   --JAVAOBJECTS
 #   --PYTHONOBJECTS
 #
-# Add black listed modules a json files (--BLACKLIST)
+# Add black listed modules a json files (--DENYLIST)
 #
-# Reduce number of blacklisted modules
+# Reduce number of denylisted modules
 
 ifneq ($(filter gbuildtojson,$(MAKECMDGOALS)),)
 
@@ -60,6 +60,7 @@ $(call gb_Executable_get_command,gbuildtojson) \
 --lexobjects=$(call var2file,$(shell $(gb_MKTEMP)),100,$(LEXOBJECTS)) \
 --gencobjects=$(call var2file,$(shell $(gb_MKTEMP)),100,$(GENCOBJECTS)) \
 --gencxxobjects=$(call var2file,$(shell $(gb_MKTEMP)),100,$(GENCXXOBJECTS)) \
+--gencxxclrobjects=$(call var2file,$(shell $(gb_MKTEMP)),100,$(GENCXXCLROBJECTS)) \
 --cobjects=$(call var2file,$(shell $(gb_MKTEMP)),100,$(COBJECTS)) \
 --javaobjects=$(call var2file,$(shell $(gb_MKTEMP)),100,$(JAVAOBJECTS)) \
 --pythonobjects=$(call var2file,$(shell $(gb_MKTEMP)),100,$(PYTHONOBJECTS)) \
@@ -102,7 +103,7 @@ define gb_LinkTarget_add_cobject
 $(call gb_LinkTarget_get_target,$(1)) : COBJECTS += $(2)
 
 endef
-define gb_LinkTarget_add_cxxobject
+define gb_LinkTarget_add_cxxobject_internal
 $(call gb_LinkTarget_get_target,$(1)) : CXXOBJECTS += $(2)
 
 endef
@@ -110,8 +111,12 @@ define gb_LinkTarget_add_generated_c_object
 $(call gb_LinkTarget_get_target,$(1)) : GENCOBJECTS += $(2)
 
 endef
-define gb_LinkTarget_add_generated_cxx_object
+define gb_LinkTarget_add_generated_cxx_object_internal
 $(call gb_LinkTarget_get_target,$(1)) : GENCXXOBJECTS += $(2)
+
+endef
+define gb_LinkTarget_add_generated_cxxclrobject
+$(call gb_LinkTarget_get_target,$(1)) : GENCXXCLROBJECTS += $(2)
 
 endef
 define gb_LinkTarget_add_objcobject
@@ -146,7 +151,6 @@ gb_WinResTarget_add_defs =
 gb_LinkTarget_set_nativeres =
 gb_LinkTarget_add_nativeres =
 gb_Library_set_componentfile =
-gb_LinkTarget_use_restarget =
 
 #$(call gb_Library_get_exports_target,%):
 $(WORKDIR)/LinkTarget/Library/%.exports:
@@ -182,17 +186,17 @@ endef
 
 gb_Module_add_l10n_target =
 
-gb_GbuildToJson_BLACKLISTEDMODULES := connectivity compilerplugins cli_ure dictionaries bridges helpcompiler helpcontent2 icon-themes jurt sal shell cppu cppuhelper cpputools extensions external i18npool javaunohelper lingucomponent odk scaddins solenv stoc tools translations udkapi unoidl
+gb_GbuildToJson_DENYLISTEDMODULES := cli_ure jurt external
 
 define gb_Module__add_moduledir_impl
-include $(patsubst $(1):%,%,$(filter $(1):%,$(gb_Module_MODULELOCATIONS)))/$(2)/Module_$(2).mk
+include $(patsubst $(1):%,%,$(filter $(1):%,$(gb_Module_MODULELOCATIONS)))/$(2)/Module_$(notdir $(2)).mk
 $(call gb_Module_get_target,$(1)) : $$(firstword $$(gb_Module_TARGETSTACK))
 gb_Module_TARGETSTACK := $$(wordlist 2,$$(words $$(gb_Module_TARGETSTACK)),$$(gb_Module_TARGETSTACK))
 
 endef
 
 define gb_Module_add_moduledir
-$(if $(filter $(gb_GbuildToJson_BLACKLISTEDMODULES),$(2)),,$(call gb_Module__add_moduledir_impl,$(1),$(2)))
+$(if $(filter $(gb_GbuildToJson_DENYLISTEDMODULES),$(2)),,$(call gb_Module__add_moduledir_impl,$(1),$(2)))
 
 endef
 

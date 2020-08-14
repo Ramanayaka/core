@@ -22,7 +22,6 @@
 
 #include <sal/types.h>
 #include <osl/endian.h>
-#include <comphelper/fileformat.h>
 
 /** Intermediate type to solve type clash with Windows headers.
  Should be removed as soon as all code parts have been reviewed
@@ -32,8 +31,6 @@
 typedef sal_uIntPtr    sal_uLong; /* Replaces type ULONG */
 
 // misc. macros to leverage platform and compiler differences
-
-#define DELETEZ( p )    ( delete p,p = NULL )
 
 // solar binary types
 
@@ -47,25 +44,29 @@ typedef sal_uInt8   SVBT64[8];
 
 #ifdef __cplusplus
 
-inline sal_uInt16 SVBT16ToShort( const SVBT16 p ) { return static_cast<sal_uInt16>
-                                                     ((sal_uInt16)p[0]
-                                                   + ((sal_uInt16)p[1] <<  8)); }
+inline sal_uInt16 SVBT16ToUInt16( const SVBT16 p ) { return static_cast<sal_uInt16>
+                                                     (static_cast<sal_uInt16>(p[0])
+                                                   + (static_cast<sal_uInt16>(p[1]) <<  8)); }
+inline sal_Int16 SVBT16ToInt16( const SVBT16 p ) { return sal_Int16(SVBT16ToUInt16(p)); }
 inline sal_uInt32 SVBT32ToUInt32 ( const SVBT32 p ) { return static_cast<sal_uInt32>
-                                                     ((sal_uInt32)p[0]
-                                                   + ((sal_uInt32)p[1] <<  8)
-                                                   + ((sal_uInt32)p[2] << 16)
-                                                   + ((sal_uInt32)p[3] << 24)); }
+                                                     (static_cast<sal_uInt32>(p[0])
+                                                   + (static_cast<sal_uInt32>(p[1]) <<  8)
+                                                   + (static_cast<sal_uInt32>(p[2]) << 16)
+                                                   + (static_cast<sal_uInt32>(p[3]) << 24)); }
 #if defined OSL_LITENDIAN
-inline double   SVBT64ToDouble( const SVBT64 p ) { double n;
-                                                    reinterpret_cast<sal_uInt8*>(&n)[0] = p[0];
-                                                    reinterpret_cast<sal_uInt8*>(&n)[1] = p[1];
-                                                    reinterpret_cast<sal_uInt8*>(&n)[2] = p[2];
-                                                    reinterpret_cast<sal_uInt8*>(&n)[3] = p[3];
-                                                    reinterpret_cast<sal_uInt8*>(&n)[4] = p[4];
-                                                    reinterpret_cast<sal_uInt8*>(&n)[5] = p[5];
-                                                    reinterpret_cast<sal_uInt8*>(&n)[6] = p[6];
-                                                    reinterpret_cast<sal_uInt8*>(&n)[7] = p[7];
-                                                    return n; }
+inline double   SVBT64ToDouble( const SVBT64 p )
+{
+    double n;
+    reinterpret_cast<sal_uInt8*>(&n)[0] = p[0];
+    reinterpret_cast<sal_uInt8*>(&n)[1] = p[1];
+    reinterpret_cast<sal_uInt8*>(&n)[2] = p[2];
+    reinterpret_cast<sal_uInt8*>(&n)[3] = p[3];
+    reinterpret_cast<sal_uInt8*>(&n)[4] = p[4];
+    reinterpret_cast<sal_uInt8*>(&n)[5] = p[5];
+    reinterpret_cast<sal_uInt8*>(&n)[6] = p[6];
+    reinterpret_cast<sal_uInt8*>(&n)[7] = p[7];
+    return n;
+}
 #else
 inline double   SVBT64ToDouble( const SVBT64 p ) { double n;
                                                     reinterpret_cast<sal_uInt8*>(&n)[0] = p[7];
@@ -79,12 +80,19 @@ inline double   SVBT64ToDouble( const SVBT64 p ) { double n;
                                                     return n; }
 #endif
 
-inline void     ShortToSVBT16( sal_uInt16 n, SVBT16 p ) { p[0] = (sal_uInt8) n;
-                                                      p[1] = (sal_uInt8)(n >>  8); }
-inline void     UInt32ToSVBT32 ( sal_uInt32  n, SVBT32 p ) { p[0] = (sal_uInt8) n;
-                                                      p[1] = (sal_uInt8)(n >>  8);
-                                                      p[2] = (sal_uInt8)(n >> 16);
-                                                      p[3] = (sal_uInt8)(n >> 24); }
+inline void     ShortToSVBT16( sal_uInt16 n, SVBT16 p )
+{
+    p[0] = static_cast<sal_uInt8>(n);
+    p[1] = static_cast<sal_uInt8>(n >>  8);
+}
+inline void     UInt32ToSVBT32 ( sal_uInt32  n, SVBT32 p )
+{
+    p[0] = static_cast<sal_uInt8>(n);
+    p[1] = static_cast<sal_uInt8>(n >>  8);
+    p[2] = static_cast<sal_uInt8>(n >> 16);
+    p[3] = static_cast<sal_uInt8>(n >> 24);
+}
+inline void     Int32ToSVBT32 ( sal_Int32  n, SVBT32 p ) { UInt32ToSVBT32(sal_uInt32(n), p); }
 #if defined OSL_LITENDIAN
 inline void     DoubleToSVBT64( double n, SVBT64 p ) { p[0] = reinterpret_cast<sal_uInt8*>(&n)[0];
                                                        p[1] = reinterpret_cast<sal_uInt8*>(&n)[1];
@@ -104,16 +112,6 @@ inline void     DoubleToSVBT64( double n, SVBT64 p ) { p[0] = reinterpret_cast<s
                                                        p[6] = reinterpret_cast<sal_uInt8*>(&n)[1];
                                                        p[7] = reinterpret_cast<sal_uInt8*>(&n)[0]; }
 #endif
-#endif
-
-#if defined(_WIN32)
-#define SVLIBRARY( Base ) Base "lo.dll"
-#elif defined MACOSX
-#define SVLIBRARY( Base ) "lib" Base "lo.dylib"
-#elif defined UNX
-#define SVLIBRARY( Base ) "lib" Base "lo.so"
-#else
-  #error unknown platform
 #endif
 
 #endif

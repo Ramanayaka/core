@@ -17,4 +17,13 @@ $(eval $(call gb_Module_add_targets,msc-externals,\
 
 endif
 
+# Install the universal crts (tdf#108580)
+ifneq ($(UCRT_REDISTDIR),)
+
+$(eval $(call gb_Module_add_targets,msc-externals,\
+	Package_ucrt \
+))
+
+endif
+
 # vim: set noet sw=4 ts=4:

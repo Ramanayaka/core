@@ -16,8 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "conditionupdater.hxx"
-#include "reportformula.hxx"
+#include <conditionupdater.hxx>
+#include <reportformula.hxx>
 
 #include <com/sun/star/report/XFormatCondition.hpp>
 
@@ -52,8 +52,7 @@ namespace rptui
 
     void ConditionUpdater::notifyPropertyChange( const PropertyChangeEvent& _rEvent )
     {
-        if ( !impl_lateInit_nothrow() )
-            return;
+        impl_lateInit_nothrow();
 
         Reference< XReportControlModel > xRptControlModel( _rEvent.Source, UNO_QUERY );
         if ( xRptControlModel.is() && _rEvent.PropertyName == "DataField" )
@@ -66,13 +65,12 @@ namespace rptui
     }
 
 
-    bool ConditionUpdater::impl_lateInit_nothrow()
+    void ConditionUpdater::impl_lateInit_nothrow()
     {
         if ( !m_aConditionalExpressions.empty() )
-            return true;
+            return;
 
         ConditionalExpressionFactory::getKnownConditionalExpressions( m_aConditionalExpressions );
-        return true;
     }
 
 
@@ -94,16 +92,13 @@ namespace rptui
                 xFormatCondition.set( _rxRptControlModel->getByIndex( i ), UNO_QUERY_THROW );
                 sFormulaExpression = ReportFormula(xFormatCondition->getFormula()).getExpression();
 
-                for (   ConditionalExpressions::const_iterator loop = m_aConditionalExpressions.begin();
-                        loop != m_aConditionalExpressions.end();
-                        ++loop
-                    )
+                for (const auto& rEntry : m_aConditionalExpressions)
                 {
-                    if ( !loop->second->matchExpression( sFormulaExpression, sOldUnprefixed, sLHS, sRHS ) )
+                    if ( !rEntry.second->matchExpression( sFormulaExpression, sOldUnprefixed, sLHS, sRHS ) )
                         continue;
 
                     // the expression matches -> translate it to the new data source of the report control model
-                    sFormulaExpression = loop->second->assembleExpression( sNewUnprefixed, sLHS, sRHS );
+                    sFormulaExpression = rEntry.second->assembleExpression( sNewUnprefixed, sLHS, sRHS );
                     ReportFormula aFormula(ReportFormula(ReportFormula::Expression, sFormulaExpression));
                     xFormatCondition->setFormula(aFormula.getCompleteFormula());
                     break;
@@ -112,7 +107,7 @@ namespace rptui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("reportdesign");
         }
     }
 

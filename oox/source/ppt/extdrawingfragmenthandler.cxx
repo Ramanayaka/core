@@ -9,15 +9,15 @@
 
 #include "extdrawingfragmenthandler.hxx"
 
+#include <oox/ppt/pptshapegroupcontext.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
 #include <oox/core/xmlfilterbase.hxx>
 
 using namespace ::oox::core;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::uno;
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
 ExtDrawingFragmentHandler::ExtDrawingFragmentHandler( XmlFilterBase& rFilter,
                                                         const OUString& rFragmentPath,
@@ -25,12 +25,11 @@ ExtDrawingFragmentHandler::ExtDrawingFragmentHandler( XmlFilterBase& rFilter,
         const oox::ppt::ShapeLocation   eShapeLocation,
         oox::drawingml::ShapePtr const & pGroupShapePtr,
         oox::drawingml::ShapePtr const & pShapePtr)
-    throw( )
     : FragmentHandler2( rFilter, rFragmentPath ),
      mpSlidePersistPtr (rSlidePersistPtr ),
      meShapeLocation( eShapeLocation ),
      mpGroupShapePtr( pGroupShapePtr ),
-     mpOrgShapePtr( pShapePtr )
+     mpShapePtr( pShapePtr )
 {
 }
 
@@ -50,10 +49,6 @@ ExtDrawingFragmentHandler::onCreateContext( ::sal_Int32 aElement,
     case DSP_TOKEN( drawing ):
         break;
     case DSP_TOKEN( spTree ):
-        mpShapePtr = oox::drawingml::ShapePtr( new PPTShape( meShapeLocation, "com.sun.star.drawing.GroupShape" ) );
-        mpShapePtr->setPosition( mpOrgShapePtr->getPosition() );
-        mpShapePtr->setName( mpOrgShapePtr->getName() );
-
         return new PPTShapeGroupContext(
                 *this, mpSlidePersistPtr, meShapeLocation, mpGroupShapePtr,
                 mpShapePtr );
@@ -64,6 +59,6 @@ ExtDrawingFragmentHandler::onCreateContext( ::sal_Int32 aElement,
     return this;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

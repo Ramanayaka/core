@@ -20,20 +20,22 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_VIEWTABBAR_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_VIEWTABBAR_HXX
 
-#include <com/sun/star/frame/XController.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
 #include <com/sun/star/drawing/framework/TabBarButton.hpp>
 #include <com/sun/star/drawing/framework/XTabBar.hpp>
 #include <com/sun/star/drawing/framework/XToolBar.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
 #include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <vcl/tabctrl.hxx>
 #include <cppuhelper/compbase.hxx>
 #include "MutexOwner.hxx"
 
-#include <memory>
 #include <vector>
+
+namespace com::sun::star::drawing::framework { class XConfigurationController; }
+namespace com::sun::star::drawing::framework { class XResourceId; }
+namespace com::sun::star::drawing::framework { struct ConfigurationChangeEvent; }
+namespace com::sun::star::frame { class XController; }
+namespace vcl { class Window; }
 
 namespace sd {
     class ViewShellBase;
@@ -108,10 +110,12 @@ public:
 
     //----- XUnoTunnel --------------------------------------------------------
 
+    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
+
     virtual sal_Int64 SAL_CALL getSomething (const css::uno::Sequence<sal_Int8>& rId) override;
 
     /** The returned value is calculated as the difference between the
-        total height of the control and the heigh of its first tab page.
+        total height of the control and the height of its first tab page.
         This can be considered a hack.
         This procedure works only when the control is visible.  Calling this
         method when the control is not visible results in returning a
@@ -119,7 +123,7 @@ public:
         To be on the safe side wait for this control to become visible and
         the call this method again.
     */
-    int GetHeight();
+    int GetHeight() const;
 
     void AddTabBarButton (
         const css::drawing::framework::TabBarButton& rButton,
@@ -157,7 +161,6 @@ private:
     static vcl::Window* GetAnchorWindow(
         const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewTabBarId,
         const css::uno::Reference<css::frame::XController>& rxController);
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
 };
 
 } // end of namespace sd

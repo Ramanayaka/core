@@ -22,20 +22,16 @@
 
 #include <com/sun/star/xml/sax/XFastParser.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <cppuhelper/weak.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/lang/XInitialization.hpp>
 
 #include <sax/fastsaxdllapi.h>
 #include <memory>
 
-namespace com { namespace sun { namespace star { namespace xml { namespace sax {
-
-class XFastContextHandler;
-class XFastDocumentHandler;
-class XFastTokenHandler;
-
-}}}}}
+namespace com::sun::star::xml::sax {
+    class XFastDocumentHandler;
+    class XFastTokenHandler;
+}
 
 namespace sax_fastparser {
 
@@ -43,7 +39,7 @@ namespace sax_fastparser {
 class FastSaxParserImpl;
 
 // This class implements the external Parser interface
-class FASTSAX_DLLPUBLIC FastSaxParser
+class FASTSAX_DLLPUBLIC FastSaxParser final
     : public ::cppu::WeakImplHelper<
                 css::lang::XInitialization,
                 css::xml::sax::XFastParser,

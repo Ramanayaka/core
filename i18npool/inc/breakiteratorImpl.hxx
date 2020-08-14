@@ -19,29 +19,21 @@
 #ifndef INCLUDED_I18NPOOL_INC_BREAKITERATORIMPL_HXX
 #define INCLUDED_I18NPOOL_INC_BREAKITERATORIMPL_HXX
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <comphelper/processfactory.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/beans/PropertyValues.hpp>
 #include <com/sun/star/i18n/XBreakIterator.hpp>
-#include <com/sun/star/i18n/WordType.hpp>
-#include <com/sun/star/i18n/BreakType.hpp>
-#include <com/sun/star/i18n/ScriptType.hpp>
-#include <com/sun/star/i18n/CharacterIteratorMode.hpp>
-#include <com/sun/star/i18n/CharType.hpp>
-#include <com/sun/star/i18n/XLocaleData.hpp>
 #include <cppuhelper/implbase.hxx>
 
 #include <vector>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace com::sun::star::uno { class XComponentContext; }
+
+namespace i18npool {
 
 
-//  class BreakIterator
 
 class BreakIteratorImpl : public cppu::WeakImplHelper
 <
-    XBreakIterator,
+    css::i18n::XBreakIterator,
     css::lang::XServiceInfo
 >
 {
@@ -57,11 +49,11 @@ public:
         const css::lang::Locale& nLocale, sal_Int16 nCharacterIteratorMode, sal_Int32 nCount,
         sal_Int32& nDone ) override;
 
-    virtual Boundary SAL_CALL previousWord( const OUString& Text, sal_Int32 nStartPos,
+    virtual css::i18n::Boundary SAL_CALL previousWord( const OUString& Text, sal_Int32 nStartPos,
         const css::lang::Locale& nLocale, sal_Int16 WordType) override;
-    virtual Boundary SAL_CALL nextWord( const OUString& Text, sal_Int32 nStartPos,
+    virtual css::i18n::Boundary SAL_CALL nextWord( const OUString& Text, sal_Int32 nStartPos,
         const css::lang::Locale& nLocale, sal_Int16 WordType) override;
-    virtual Boundary SAL_CALL getWordBoundary( const OUString& Text, sal_Int32 nPos,
+    virtual css::i18n::Boundary SAL_CALL getWordBoundary( const OUString& Text, sal_Int32 nPos,
         const css::lang::Locale& nLocale, sal_Int16 WordType, sal_Bool bDirection ) override;
 
     virtual sal_Bool SAL_CALL isBeginWord( const OUString& Text, sal_Int32 nPos,
@@ -76,9 +68,10 @@ public:
     virtual sal_Int32 SAL_CALL endOfSentence( const OUString& Text, sal_Int32 nStartPos,
         const css::lang::Locale& nLocale ) override;
 
-    virtual LineBreakResults SAL_CALL getLineBreak( const OUString& Text, sal_Int32 nStartPos,
+    virtual css::i18n::LineBreakResults SAL_CALL getLineBreak( const OUString& Text, sal_Int32 nStartPos,
         const css::lang::Locale& nLocale, sal_Int32 nMinBreakPos,
-        const LineBreakHyphenationOptions& hOptions, const LineBreakUserOptions& bOptions ) override;
+        const css::i18n::LineBreakHyphenationOptions& hOptions,
+        const css::i18n::LineBreakUserOptions& bOptions ) override;
 
     virtual sal_Int16 SAL_CALL getScriptType( const OUString& Text, sal_Int32 nPos ) override;
     virtual sal_Int32 SAL_CALL beginOfScript( const OUString& Text, sal_Int32 nStartPos,
@@ -104,33 +97,30 @@ public:
     virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    static sal_Int16 SAL_CALL getScriptClass(sal_uInt32 currentChar);
+    static sal_Int16 getScriptClass(sal_uInt32 currentChar);
 protected:
-    Boundary result; // for word break iterator
+    css::i18n::Boundary result; // for word break iterator
 
 private:
 
     struct lookupTableItem {
-        lookupTableItem(const css::lang::Locale& _aLocale, css::uno::Reference < XBreakIterator >& _xBI) : aLocale(_aLocale), xBI(_xBI) {};
+        lookupTableItem(const css::lang::Locale& _aLocale, css::uno::Reference < XBreakIterator > const & _xBI) : aLocale(_aLocale), xBI(_xBI) {};
         css::lang::Locale aLocale;
         css::uno::Reference < XBreakIterator > xBI;
     };
-    std::vector<lookupTableItem*>                       lookupTable;
+    std::vector<lookupTableItem>                        lookupTable;
     css::lang::Locale                                   aLocale;
     css::uno::Reference < XBreakIterator >              xBI;
     css::uno::Reference < css::uno::XComponentContext > m_xContext;
 
     /// @throws css::uno::RuntimeException
-    bool SAL_CALL createLocaleSpecificBreakIterator( const OUString& aLocaleName );
+    bool createLocaleSpecificBreakIterator( const OUString& aLocaleName );
     /// @throws css::uno::RuntimeException
-    css::uno::Reference < XBreakIterator > SAL_CALL getLocaleSpecificBreakIterator( const css::lang::Locale& rLocale );
+    css::uno::Reference < XBreakIterator > getLocaleSpecificBreakIterator( const css::lang::Locale& rLocale );
 
 };
 
-} // i18n
-} // star
-} // sun
-} // com
+} // i18npool
 
 
 #endif // INCLUDED_I18NPOOL_INC_BREAKITERATORIMPL_HXX

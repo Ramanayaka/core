@@ -26,21 +26,20 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt { struct Size; }
     namespace document { class XEmbeddedObjectResolver; }
     namespace frame { class XModel; }
     namespace lang { class XMultiServiceFactory; }
-} } }
+}
 
 namespace oox { class PropertyMap; }
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 
 /** Contains generic information about an OLE object. */
-struct OOX_DLLPUBLIC OleObjectInfo
+struct OleObjectInfo
 {
     StreamDataSequence  maEmbeddedData;     ///< Data of an embedded OLE object.
     OUString     maTargetLink;       ///< Path to external data for linked OLE object.
@@ -80,8 +79,7 @@ OOX_DLLPUBLIC void SaveInteropProperties(
        OUString const& rProgId, OUString const& rDrawAspect);
 
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 #endif
 

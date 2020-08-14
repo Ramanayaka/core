@@ -9,23 +9,11 @@
 
 #include <test/sheet/xnamedrange.hxx>
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
-#include <com/sun/star/sheet/XSpreadsheet.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
-#include <com/sun/star/sheet/XCellRangeAddressable.hpp>
-#include <com/sun/star/sheet/XCellRangeReferrer.hpp>
-#include <com/sun/star/sheet/XNamedRanges.hpp>
 #include <com/sun/star/sheet/XNamedRange.hpp>
-#include <com/sun/star/table/XCell.hpp>
-#include <com/sun/star/text/XTextRange.hpp>
-
 #include <com/sun/star/table/CellAddress.hpp>
-#include <com/sun/star/table/CellRangeAddress.hpp>
-#include <com/sun/star/sheet/Border.hpp>
 #include <com/sun/star/sheet/NamedRangeFlag.hpp>
 
-#include "cppunit/extensions/HelperMacros.h"
+#include <cppunit/TestAssert.h>
 #include <rtl/ustring.hxx>
 
 using namespace css;
@@ -37,8 +25,7 @@ void XNamedRange::testGetContent()
 {
     uno::Reference< sheet::XNamedRange > xNamedRange = getNamedRange("initial1");
 
-    OUString const aExpectedContent("$Sheet1.$B$1");
-    CPPUNIT_ASSERT_MESSAGE("Wrong expected content for initial1 on GetContent", xNamedRange->getContent().equals(aExpectedContent));
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong expected content for initial1 on GetContent", OUString("$Sheet1.$B$1"), xNamedRange->getContent());
 }
 
 void XNamedRange::testSetContent()
@@ -50,19 +37,18 @@ void XNamedRange::testSetContent()
     // test a cell
     aExpectedContent = "D1";
     xNamedRange->setContent(aExpectedContent);
-    CPPUNIT_ASSERT_MESSAGE("Wrong expected content for initial1 after SetContent a cell", xNamedRange->getContent().equals(aExpectedContent));
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong expected content for initial1 after SetContent a cell", aExpectedContent, xNamedRange->getContent());
 
     // test a cellrange
     aExpectedContent = "D1:D10";
     xNamedRange->setContent(aExpectedContent);
-    CPPUNIT_ASSERT_MESSAGE("Wrong expected content for initial1 after SetContent a cellrange", xNamedRange->getContent().equals(aExpectedContent));
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong expected content for initial1 after SetContent a cellrange", aExpectedContent, xNamedRange->getContent());
 
     // test a formula
     aExpectedContent = "=D10";
     xNamedRange->setContent(aExpectedContent);
     aExpectedContent = "D10";
-    CPPUNIT_ASSERT_MESSAGE("Wrong expected content for initial1 after SetContent a formula", xNamedRange->getContent().equals(aExpectedContent));
-
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong expected content for initial1 after SetContent a formula", aExpectedContent, xNamedRange->getContent());
 }
 
 void XNamedRange::testGetType()
@@ -111,7 +97,7 @@ void XNamedRange::testSetReferencePosition()
 {
     uno::Reference< sheet::XNamedRange > xNamedRange = getNamedRange("initial1");
 
-    table::CellAddress aBaseAddress = table::CellAddress(1,2,3);
+    table::CellAddress aBaseAddress(1,2,3);
 
     xNamedRange->setReferencePosition(aBaseAddress);
 

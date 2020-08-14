@@ -18,20 +18,20 @@
  */
 
 #include <sal/config.h>
-#include <sfx2/docfile.hxx>
+#include <sal/log.hxx>
 
-#include "qproform.hxx"
-#include "qpro.hxx"
-#include "qprostyle.hxx"
+#include <qproform.hxx>
+#include <qpro.hxx>
+#include <qprostyle.hxx>
 
-#include "global.hxx"
-#include "scerrors.hxx"
-#include "docpool.hxx"
-#include "patattr.hxx"
-#include "filter.hxx"
-#include "document.hxx"
-#include "formulacell.hxx"
+#include <scerrors.hxx>
+#include <ftools.hxx>
+#include <document.hxx>
+#include <formulacell.hxx>
 #include <tools/stream.hxx>
+#include <unotools/configmgr.hxx>
+#include <docoptio.hxx>
+#include <scdll.hxx>
 #include <memory>
 
 ErrCode ScQProReader::readSheet( SCTAB nTab, ScDocument* pDoc, ScQProStyle *pStyle )
@@ -49,12 +49,11 @@ ErrCode ScQProReader::readSheet( SCTAB nTab, ScDocument* pDoc, ScQProStyle *pSty
         switch( getId() )
         {
             case 0x000f:{ // Label cell
-                OUString aLabel;
                 mpStream->ReadUChar( nCol ).ReadUChar( nDummy ).ReadUInt16( nRow ).ReadUInt16( nStyle ).ReadUChar( nDummy );
                 sal_uInt16 nLen = getLength();
                 if (nLen >= 7)
                 {
-                    readString( aLabel, nLen - 7 );
+                    OUString aLabel(readString(nLen - 7));
                     nStyle = nStyle >> 3;
                     pStyle->SetFormat( pDoc, nCol, nRow, nTab, nStyle );
                     pDoc->EnsureTable(nTab);
@@ -101,15 +100,20 @@ ErrCode ScQProReader::readSheet( SCTAB nTab, ScDocument* pDoc, ScQProStyle *pSty
                 double nValue;
                 sal_uInt16 nState, nLen;
                 mpStream->ReadUChar( nCol ).ReadUChar( nDummy ).ReadUInt16( nRow ).ReadUInt16( nStyle ).ReadDouble( nValue ).ReadUInt16( nState ).ReadUInt16( nLen );
+                if (!mpStream->good())
+                {
+                    eRet = SCERR_IMPORT_FORMAT;
+                    break;
+                }
                 ScAddress aAddr( nCol, nRow, nTab );
-                const ScTokenArray *pArray;
+                std::unique_ptr<ScTokenArray> pArray;
 
                 QProToSc aConv(*mpStream, pDoc->GetSharedStringPool(), aAddr);
-                if (ConvErr::OK != aConv.Convert( pArray ))
+                if (ConvErr::OK != aConv.Convert( pDoc, pArray ))
                     eRet = SCERR_IMPORT_FORMAT;
                 else
                 {
-                    ScFormulaCell* pFormula = new ScFormulaCell(pDoc, aAddr, *pArray);
+                    ScFormulaCell* pFormula = new ScFormulaCell(pDoc, aAddr, std::move(pArray));
                     nStyle = nStyle >> 3;
                     pFormula->AddRecalcMode( ScRecalcMode::ONLOAD_ONCE );
                     pStyle->SetFormat( pDoc, nCol, nRow, nTab, nStyle );
@@ -123,7 +127,7 @@ ErrCode ScQProReader::readSheet( SCTAB nTab, ScDocument* pDoc, ScQProStyle *pSty
     return eRet;
 }
 
-ErrCode ScFormatFilterPlugin::ScImportQuattroPro(SvStream *pStream, ScDocument *pDoc)
+ErrCode ScFormatFilterPluginImpl::ScImportQuattroPro(SvStream *pStream, ScDocument *pDoc)
 {
     ScQProReader aReader(pStream);
     ErrCode eRet = aReader.import( pDoc );
@@ -136,6 +140,7 @@ ScQProReader::ScQProReader(SvStream* pStream)
     , mnOffset(0)
     , mpStream(pStream)
     , mbEndOfFile(false)
+    , mnMaxTab(utl::ConfigManager::IsFuzzing() ? 128 : MAXTAB)
 {
     if( mpStream )
     {
@@ -150,8 +155,7 @@ ScQProReader::~ScQProReader()
         mpStream->SetBufferSize( 0 );
 }
 
-
-ErrCode ScQProReader::import( ScDocument *pDoc )
+ErrCode ScQProReader::parse( ScDocument *pDoc )
 {
     ErrCode eRet = ERRCODE_NONE;
     sal_uInt16 nVersion;
@@ -173,12 +177,11 @@ ErrCode ScQProReader::import( ScDocument *pDoc )
                 break;
 
             case 0x00ca: // Beginning of sheet
-                if( nTab <= MAXTAB )
+                if (nTab <= mnMaxTab)
                 {
                     if( nTab < 26 )
                     {
-                        OUString aName;
-                        aName += OUStringLiteral1( 'A' + nTab );
+                        OUString aName = OUStringChar( sal_Unicode('A' + nTab) );
                         if (!nTab)
                             pDoc->RenameTab( nTab, aName );
                         else
@@ -210,7 +213,7 @@ ErrCode ScQProReader::import( ScDocument *pDoc )
                 pStyleElement->setFontRecord( j, nFontAttr, nPtSize );
                 sal_uInt16 nLen = getLength();
                 if (nLen >= 4)
-                    readString( aLabel, nLen - 4 );
+                    aLabel = readString(nLen - 4);
                 else
                     eRet = SCERR_IMPORT_FORMAT;
                 pStyleElement->setFontType( j, aLabel );
@@ -219,13 +222,37 @@ ErrCode ScQProReader::import( ScDocument *pDoc )
                 break;
         }
     }
+    return eRet;
+}
+
+ErrCode ScQProReader::import( ScDocument *pDoc )
+{
+    ErrCode eRet = parse(pDoc);
     pDoc->CalcAfterLoad();
     return eRet;
 }
 
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportQPW(SvStream &rStream)
+{
+    ScDLL::Init();
+    ScDocument aDocument;
+    ScDocOptions aDocOpt = aDocument.GetDocOptions();
+    aDocOpt.SetLookUpColRowNames(false);
+    aDocument.SetDocOptions(aDocOpt);
+    aDocument.MakeTable(0);
+    aDocument.EnableExecuteLink(false);
+    aDocument.SetInsertingFromOtherDoc(true);
+    aDocument.SetImportingXML(true);
+    aDocument.SetHardRecalcState(ScDocument::HardRecalcState::ETERNAL);
+
+    ScQProReader aReader(&rStream);
+    ErrCode eRet = aReader.parse(&aDocument);
+    return eRet == ERRCODE_NONE;
+}
+
 bool ScQProReader::recordsLeft()
 {
-    return mpStream && !mpStream->IsEof();
+    return mpStream && mpStream->good();
 }
 
 bool ScQProReader::nextRecord()
@@ -251,7 +278,7 @@ bool ScQProReader::nextRecord()
 #if 1  // rather verbose
     int len = mnLength;
     while (len > 0) {
-        int i, chunk = len < 16 ? len : 16;
+        int i, chunk = std::min(len, 16);
         unsigned char data[16];
         mpStream->Read( data, chunk );
 
@@ -270,12 +297,9 @@ bool ScQProReader::nextRecord()
     return true;
 }
 
-void ScQProReader::readString( OUString &rString, sal_uInt16 nLength )
+OUString ScQProReader::readString(sal_uInt16 nLength)
 {
-    std::unique_ptr<sal_Char[]> pText(new sal_Char[ nLength + 1 ]);
-    nLength = mpStream->ReadBytes(pText.get(), nLength);
-    pText[ nLength ] = 0;
-    rString = OUString( pText.get(), strlen(pText.get()), mpStream->GetStreamCharSet() );
+    return read_uInt8s_ToOUString(*mpStream, nLength, mpStream->GetStreamCharSet());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

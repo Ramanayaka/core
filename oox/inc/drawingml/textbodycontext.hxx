@@ -20,41 +20,41 @@
 #ifndef INCLUDED_OOX_DRAWINGML_TEXTBODYCONTEXT_HXX
 #define INCLUDED_OOX_DRAWINGML_TEXTBODYCONTEXT_HXX
 
-#include <com/sun/star/text/XText.hpp>
-
 #include <drawingml/textbody.hxx>
 #include <drawingml/textrun.hxx>
 #include <oox/core/contexthandler2.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-class TextBodyContext : public ::oox::core::ContextHandler2
+class TextBodyContext final : public ::oox::core::ContextHandler2
 {
 public:
-    TextBodyContext( ::oox::core::ContextHandler2Helper& rParent, TextBody& rTextBody );
+    TextBodyContext( ::oox::core::ContextHandler2Helper const & rParent, TextBody& rTextBody );
+    TextBodyContext(::oox::core::ContextHandler2Helper const& rParent, const ShapePtr& pShapePtr);
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
-protected:
+private:
     TextBody&           mrTextBody;
+    ShapePtr            mpShapePtr;
 };
 
 // CT_RegularTextRun
-class RegularTextRunContext : public ::oox::core::ContextHandler2
+class RegularTextRunContext final : public ::oox::core::ContextHandler2
 {
 public:
-    RegularTextRunContext( ::oox::core::ContextHandler2Helper& rParent, TextRunPtr const & pRunPtr );
+    RegularTextRunContext( ::oox::core::ContextHandler2Helper const & rParent, TextRunPtr const & pRunPtr );
 
     virtual void onEndElement() override;
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
     virtual void onCharacters( const OUString& aChars ) override;
 
-protected:
+private:
     TextRunPtr          mpRunPtr;
     bool                mbIsInText;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_TEXTBODYCONTEXT_HXX
 

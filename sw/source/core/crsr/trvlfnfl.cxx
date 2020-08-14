@@ -17,23 +17,29 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/svdmodel.hxx>
-#include <svx/svdpage.hxx>
 #include <crsrsh.hxx>
 #include <doc.hxx>
 #include <pagefrm.hxx>
 #include <cntfrm.hxx>
 #include <ftnfrm.hxx>
-#include <viewimp.hxx>
 #include <swcrsr.hxx>
-#include <dflyobj.hxx>
 #include <ndtxt.hxx>
-#include <flyfrm.hxx>
 #include <txtfrm.hxx>
 #include <txtftn.hxx>
 #include <ftnidx.hxx>
 #include <viscrs.hxx>
-#include <callnk.hxx>
+#include "callnk.hxx"
+#include <svx/srchdlg.hxx>
+
+bool SwCursorShell::CallCursorShellFN( FNCursorShell fnCursor )
+{
+    SwCallLink aLk( *this ); // watch Cursor-Moves
+    bool bRet = (this->*fnCursor)();
+    if( bRet )
+        UpdateCursor( SwCursorShell::SCROLLWIN | SwCursorShell::CHKRANGE |
+                    SwCursorShell::READONLY );
+    return bRet;
+}
 
 bool SwCursorShell::CallCursorFN( FNCursor fnCursor )
 {
@@ -52,7 +58,7 @@ bool SwCursor::GotoFootnoteText()
     bool bRet = false;
     SwTextNode* pTextNd = GetPoint()->nNode.GetNode().GetTextNode();
 
-    SwTextAttr *const pFootnote( (pTextNd)
+    SwTextAttr *const pFootnote( pTextNd
         ? pTextNd->GetTextAttrForCharAt(
             GetPoint()->nContent.GetIndex(), RES_TXTATR_FTN)
         : nullptr);
@@ -83,13 +89,18 @@ bool SwCursorShell::GotoFootnoteText()
                    GetCursor_()->GetPoint()->nNode.GetNode().GetTextNode() : nullptr;
         if( pTextNd )
         {
-            const SwFrame *pFrame = pTextNd->getLayoutFrame( GetLayout(), &GetCursor_()->GetSttPos(),
-                                                 GetCursor_()->Start() );
+            std::pair<Point, bool> const tmp(GetCursor_()->GetSttPos(), true);
+            const SwFrame *pFrame = pTextNd->getLayoutFrame( GetLayout(),
+                                                 GetCursor_()->Start(), &tmp);
             const SwFootnoteBossFrame* pFootnoteBoss;
             bool bSkip = pFrame && pFrame->IsInFootnote();
-            while( pFrame && nullptr != ( pFootnoteBoss = pFrame->FindFootnoteBossFrame() ) )
+            while( pFrame )
             {
-                if( nullptr != ( pFrame = pFootnoteBoss->FindFootnoteCont() ) )
+                pFootnoteBoss = pFrame->FindFootnoteBossFrame();
+                if (!pFootnoteBoss)
+                    break;
+                pFrame = pFootnoteBoss->FindFootnoteCont();
+                if( pFrame )
                 {
                     if( bSkip )
                         bSkip = false;
@@ -99,11 +110,10 @@ bool SwCursorShell::GotoFootnoteText()
                                                         (pFrame)->ContainsContent();
                         if( pCnt )
                         {
-                            const SwContentNode* pNode = pCnt->GetNode();
-                            GetCursor_()->GetPoint()->nNode = *pNode;
-                            GetCursor_()->GetPoint()->nContent.Assign(
-                                const_cast<SwContentNode*>(pNode),
-                                static_cast<const SwTextFrame*>(pCnt)->GetOfst() );
+                            SwTextFrame const*const pTF(
+                                    static_cast<const SwTextFrame*>(pCnt));
+                            *GetCursor_()->GetPoint() =
+                                    pTF->MapViewToModelPos(pTF->GetOffset());
                             UpdateCursor( SwCursorShell::SCROLLWIN |
                                 SwCursorShell::CHKRANGE | SwCursorShell::READONLY );
                             bRet = true;
@@ -128,10 +138,11 @@ bool SwCursor::GotoFootnoteAnchor()
     if( pSttNd )
     {
         // search in all footnotes in document for this StartIndex
-        const SwTextFootnote* pTextFootnote;
         const SwFootnoteIdxs& rFootnoteArr = pSttNd->GetDoc()->GetFootnoteIdxs();
         for( size_t n = 0; n < rFootnoteArr.size(); ++n )
-            if( nullptr != ( pTextFootnote = rFootnoteArr[ n ])->GetStartNode() &&
+        {
+            const SwTextFootnote* pTextFootnote = rFootnoteArr[ n ];
+            if( nullptr != pTextFootnote->GetStartNode() &&
                 pSttNd == &pTextFootnote->GetStartNode()->GetNode() )
             {
                 SwCursorSaveState aSaveState( *this );
@@ -143,6 +154,7 @@ bool SwCursor::GotoFootnoteAnchor()
                 return !IsSelOvr( SwCursorSelOverFlags::CheckNodeSection |
                                   SwCursorSelOverFlags::Toggle );
             }
+        }
     }
     return false;
 }
@@ -162,13 +174,13 @@ bool SwCursorShell::GotoFootnoteAnchor()
     return bRet;
 }
 
-inline bool CmpLE( const SwTextFootnote& rFootnote, sal_uLong nNd, sal_Int32 nCnt )
+static bool CmpLE( const SwTextFootnote& rFootnote, sal_uLong nNd, sal_Int32 nCnt )
 {
     const sal_uLong nTNd = rFootnote.GetTextNode().GetIndex();
     return nTNd < nNd || ( nTNd == nNd && rFootnote.GetStart() <= nCnt );
 }
 
-inline bool CmpL( const SwTextFootnote& rFootnote, sal_uLong nNd, sal_Int32 nCnt )
+static bool CmpL( const SwTextFootnote& rFootnote, sal_uLong nNd, sal_Int32 nCnt )
 {
     const sal_uLong nTNd = rFootnote.GetTextNode().GetIndex();
     return nTNd < nNd || ( nTNd == nNd && rFootnote.GetStart() < nCnt );
@@ -179,6 +191,12 @@ bool SwCursor::GotoNextFootnoteAnchor()
     const SwFootnoteIdxs& rFootnoteArr = GetDoc()->GetFootnoteIdxs();
     const SwTextFootnote* pTextFootnote = nullptr;
     size_t nPos = 0;
+
+    if( rFootnoteArr.empty() )
+    {
+        SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::NavElementNotFound );
+        return false;
+    }
 
     if( rFootnoteArr.SeekEntry( GetPoint()->nNode, &nPos ))
     {
@@ -220,6 +238,14 @@ bool SwCursor::GotoNextFootnoteAnchor()
     else if( nPos < rFootnoteArr.size() )
         pTextFootnote = rFootnoteArr[ nPos ];
 
+    if (pTextFootnote == nullptr)
+    {
+        pTextFootnote = rFootnoteArr[ 0 ];
+        SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::EndWrapped );
+    }
+    else
+        SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::Empty );
+
     bool bRet = nullptr != pTextFootnote;
     if( bRet )
     {
@@ -238,6 +264,12 @@ bool SwCursor::GotoPrevFootnoteAnchor()
     const SwFootnoteIdxs& rFootnoteArr = GetDoc()->GetFootnoteIdxs();
     const SwTextFootnote* pTextFootnote = nullptr;
     size_t nPos = 0;
+
+    if( rFootnoteArr.empty() )
+    {
+        SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::NavElementNotFound );
+        return false;
+    }
 
     if( rFootnoteArr.SeekEntry( GetPoint()->nNode, &nPos ) )
     {
@@ -277,6 +309,14 @@ bool SwCursor::GotoPrevFootnoteAnchor()
     else if( nPos )
         pTextFootnote = rFootnoteArr[ nPos-1 ];
 
+    if( pTextFootnote == nullptr )
+    {
+        pTextFootnote = rFootnoteArr[ rFootnoteArr.size() - 1 ];
+        SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::StartWrapped );
+    }
+    else
+        SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::Empty );
+
     bool bRet = nullptr != pTextFootnote;
     if( bRet )
     {
@@ -301,39 +341,38 @@ bool SwCursorShell::GotoPrevFootnoteAnchor()
 }
 
 /// jump from border to anchor
-bool SwCursorShell::GotoFlyAnchor()
+void SwCursorShell::GotoFlyAnchor()
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
     const SwFrame* pFrame = GetCurrFrame();
     do {
         pFrame = pFrame->GetUpper();
     } while( pFrame && !pFrame->IsFlyFrame() );
 
     if( !pFrame ) // no FlyFrame
-        return false;
+        return;
 
     SwCallLink aLk( *this ); // watch Cursor-Moves
     SwCursorSaveState aSaveState( *m_pCurrentCursor );
 
     // jump in BodyFrame closest to FlyFrame
     SwRect aTmpRect( m_aCharRect );
-    if( !pFrame->Frame().IsInside( aTmpRect ))
-        aTmpRect = pFrame->Frame();
+    if( !pFrame->getFrameArea().IsInside( aTmpRect ))
+        aTmpRect = pFrame->getFrameArea();
     Point aPt( aTmpRect.Left(), aTmpRect.Top() +
                 ( aTmpRect.Bottom() - aTmpRect.Top() ) / 2 );
-    aPt.setX(aPt.getX() > (pFrame->Frame().Left() + (pFrame->Frame().SSize().Width() / 2 ))
-                ? pFrame->Frame().Right()
-                : pFrame->Frame().Left());
+    aPt.setX(aPt.getX() > (pFrame->getFrameArea().Left() + (pFrame->getFrameArea().SSize().Width() / 2 ))
+                ? pFrame->getFrameArea().Right()
+                : pFrame->getFrameArea().Left());
 
     const SwPageFrame* pPageFrame = pFrame->FindPageFrame();
     const SwContentFrame* pFndFrame = pPageFrame->GetContentPos( aPt, false, true );
-    pFndFrame->GetCursorOfst( m_pCurrentCursor->GetPoint(), aPt );
+    pFndFrame->GetModelPositionForViewPoint( m_pCurrentCursor->GetPoint(), aPt );
 
     bool bRet = !m_pCurrentCursor->IsInProtectTable() && !m_pCurrentCursor->IsSelOvr();
     if( bRet )
         UpdateCursor( SwCursorShell::SCROLLWIN | SwCursorShell::CHKRANGE |
                     SwCursorShell::READONLY );
-    return bRet;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

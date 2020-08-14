@@ -39,7 +39,7 @@ OEvoabCatalog::OEvoabCatalog(OEvoabConnection* _pCon) :
 }
 void OEvoabCatalog::refreshTables()
 {
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
     Sequence< OUString > aTypes { "TABLE" };
     Reference< XResultSet > xResult = m_xMetaData->getTables(
         Any(), "%", "%", aTypes);
@@ -58,7 +58,7 @@ void OEvoabCatalog::refreshTables()
     if(m_pTables)
         m_pTables->reFill(aVector);
     else
-        m_pTables = new OEvoabTables(m_xMetaData,*this,m_aMutex,aVector);
+        m_pTables.reset( new OEvoabTables(m_xMetaData,*this,m_aMutex,aVector) );
 }
 // XTablesSupplier
 Reference< XNameAccess > SAL_CALL  OEvoabCatalog::getTables(  )
@@ -81,7 +81,7 @@ Reference< XNameAccess > SAL_CALL  OEvoabCatalog::getTables(  )
                 // allowed
         }
 
-        return m_pTables;
+        return m_pTables.get();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

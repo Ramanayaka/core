@@ -20,12 +20,12 @@
 #ifndef INCLUDED_CODEMAKER_SOURCE_CPPUMAKER_DUMPUTILS_HXX
 #define INCLUDED_CODEMAKER_SOURCE_CPPUMAKER_DUMPUTILS_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 namespace rtl { class OUString; }
 class FileStream;
 
-namespace codemaker { namespace cppumaker {
+namespace codemaker::cppumaker {
 
 bool dumpNamespaceOpen(
     FileStream & out, rtl::OUString const & entityName, bool fullModuleType);
@@ -35,7 +35,7 @@ bool dumpNamespaceClose(
 
 void dumpTypeIdentifier(FileStream & out, rtl::OUString const & entityName);
 
-} }
+}
 
 #endif
 

@@ -17,24 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/chartspaceconverter.hxx"
+#include <drawingml/chart/chartspaceconverter.hxx>
 
 #include <com/sun/star/chart/MissingValueTreatment.hpp>
 #include <com/sun/star/chart/XChartDocument.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
+#include <com/sun/star/chart2/XChartType.hpp>
+#include <com/sun/star/chart2/XChartTypeContainer.hpp>
+#include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
+#include <com/sun/star/chart2/XDataSeriesContainer.hpp>
 #include <com/sun/star/chart2/XTitled.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
-#include <com/sun/star/drawing/FillStyle.hpp>
-#include "oox/core/xmlfilterbase.hxx"
-#include "oox/drawingml/chart/chartconverter.hxx"
-#include <oox/token/namespaces.hxx>
+#include <oox/core/xmlfilterbase.hxx>
+#include <oox/drawingml/chart/chartconverter.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
-#include <oox/helper/graphichelper.hxx>
-#include "drawingml/chart/chartdrawingfragment.hxx"
-#include "drawingml/chart/chartspacemodel.hxx"
-#include "drawingml/chart/plotareaconverter.hxx"
-#include "drawingml/chart/titleconverter.hxx"
+#include <drawingml/chart/chartdrawingfragment.hxx>
+#include <drawingml/chart/chartspacemodel.hxx>
+#include <drawingml/chart/plotareaconverter.hxx>
+#include <drawingml/chart/titleconverter.hxx>
+#include <ooxresid.hxx>
+#include <strings.hrc>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Reference;
@@ -47,9 +50,7 @@ using ::com::sun::star::drawing::XShapes;
 using ::com::sun::star::chart2::XDiagram;
 using ::com::sun::star::chart2::XTitled;
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::chart2;
@@ -65,6 +66,82 @@ ChartSpaceConverter::ChartSpaceConverter( const ConverterRoot& rParent, ChartSpa
 
 ChartSpaceConverter::~ChartSpaceConverter()
 {
+}
+
+// Formulas with no numeric values and strings are zeroes in OOXML line charts also in the mode DispBlanksAs=gap,
+// unlike in OpenDocument LEAVE_GAP mode. As a workaround, we will use the OpenDocument mode USE_ZERO, if the OOXML
+// line chart has got formulas with no numeric values and strings, but it doesn't have empty cells, showing the
+// same chart as in MSO. (Empty cells need gaps, so in that case, we cannot use this workaround).
+static bool lcl_useWorkaroundForNoGapInOOXML( Reference< chart2::XChartDocument > const & xChartDoc)
+{
+    Reference <chart2::XDiagram > xDiagram = xChartDoc->getFirstDiagram();
+    if ( !xDiagram.is() )
+        return false;
+
+    Reference< chart2::XCoordinateSystemContainer > xCooSysContainer( xDiagram, UNO_QUERY_THROW );
+
+    Sequence< Reference< chart2::XCoordinateSystem > > xCooSysSequence( xCooSysContainer->getCoordinateSystems());
+    if ( !xCooSysSequence.hasElements() )
+        return false;
+
+    Reference< chart2::XChartTypeContainer > xChartTypeContainer( xCooSysSequence[0], UNO_QUERY_THROW );
+
+    Sequence< Reference< chart2::XChartType > > xChartTypeSequence( xChartTypeContainer->getChartTypes() );
+    if ( !xChartTypeSequence.hasElements() )
+        return false;
+
+    const Reference<chart2::XChartType>& xCT = xChartTypeSequence[0];
+
+    if ( xCT->getChartType() != "com.sun.star.chart2.LineChartType" )
+        return false;
+
+    Reference<chart2::XDataSeriesContainer> xDSCont(xCT, uno::UNO_QUERY);
+
+    if (!xDSCont.is())
+        return false;
+
+    const Sequence<uno::Reference<chart2::XDataSeries> > aDataSeriesSeq = xDSCont->getDataSeries();
+
+    bool bHasNoGapBlankValue = false;
+    bool bHasEmptyCell = false;
+
+    for (const auto& rDataSeries : aDataSeriesSeq)
+    {
+        uno::Reference<chart2::data::XDataSource> xDSrc(rDataSeries, uno::UNO_QUERY);
+        if (!xDSrc.is())
+            return false;
+
+        const uno::Sequence<Reference<chart2::data::XLabeledDataSequence> > aDataSeqs = xDSrc->getDataSequences();
+        for (const auto& rDataSeq : aDataSeqs)
+        {
+            Reference<chart2::data::XDataSequence> xValues = rDataSeq->getValues();
+            if(!xValues.is())
+                return false;
+            Reference<beans::XPropertySet> xPropSet(xValues, uno::UNO_QUERY);
+            if (!xPropSet.is())
+                continue;
+
+            OUString aRoleName;
+            xPropSet->getPropertyValue("Role") >>= aRoleName;
+            if (aRoleName == "values-y")
+            {
+                const uno::Sequence<uno::Any> aData = xValues->getData();
+                for (const auto& rVal : aData)
+                {
+                    double fVal;
+                    OUString sStr;
+                    if (rVal >>= fVal)
+                        continue;
+                    else if (rVal >>= sStr)
+                        bHasNoGapBlankValue = true;
+                    else
+                        bHasEmptyCell = true;
+                }
+            }
+        }
+    }
+
+    return bHasNoGapBlankValue && !bHasEmptyCell;
 }
 
 void ChartSpaceConverter::convertFromModel( const Reference< XShapes >& rxExternalPage, const awt::Point& rChartPos )
@@ -96,7 +173,10 @@ void ChartSpaceConverter::convertFromModel( const Reference< XShapes >& rxExtern
     }
 
     // chart title
-    if( !mrModel.mbAutoTitleDel ) try
+    /* tdf#119138 autoTitleDeleted might be omitted by generators other than Excel
+       while providing custom title. mbAutoTitleDel is set only based on the attribute value
+       and the default also varies on whether MSO 2007 or newer is the generator, see tdf#78080 */
+    if( !mrModel.mbAutoTitleDel || mrModel.mxTitle.is() ) try
     {
         /*  If the title model is missing, but the chart shows exactly one
             series, the series title is shown as chart title. */
@@ -104,7 +184,7 @@ void ChartSpaceConverter::convertFromModel( const Reference< XShapes >& rxExtern
         if( mrModel.mxTitle.is() || !aAutoTitle.isEmpty() )
         {
             if( aAutoTitle.isEmpty() )
-                aAutoTitle = "Chart Title";
+                aAutoTitle = OoxResId(STR_DIAGRAM_TITLE);
             Reference< XTitled > xTitled( getChartDocument(), UNO_QUERY_THROW );
             TitleConverter aTitleConv( *this, mrModel.mxTitle.getOrCreate() );
             aTitleConv.convertFromModel( xTitled, aAutoTitle, OBJECTTYPE_CHARTTITLE );
@@ -132,6 +212,11 @@ void ChartSpaceConverter::convertFromModel( const Reference< XShapes >& rxExtern
             case XML_zero:  nMissingValues = USE_ZERO;  break;
             case XML_span:  nMissingValues = CONTINUE;  break;
         }
+
+        // use a workaround, if it's possible for the difference of OOXML and OpenDocument
+        if ( nMissingValues == LEAVE_GAP && lcl_useWorkaroundForNoGapInOOXML(getChartDocument()) )
+            nMissingValues = USE_ZERO;
+
         PropertySet aDiaProp( xDiagram );
         aDiaProp.setProperty( PROP_MissingValueTreatment, nMissingValues );
     }
@@ -205,8 +290,6 @@ void ChartSpaceConverter::convertFromModel( const Reference< XShapes >& rxExtern
     }
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

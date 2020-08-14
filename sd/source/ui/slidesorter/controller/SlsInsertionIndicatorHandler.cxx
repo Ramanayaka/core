@@ -17,25 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "controller/SlsInsertionIndicatorHandler.hxx"
-#include "controller/SlsProperties.hxx"
-#include "view/SlideSorterView.hxx"
-#include "view/SlsLayouter.hxx"
-#include "view/SlsInsertionIndicatorOverlay.hxx"
-#include "model/SlideSorterModel.hxx"
-#include "model/SlsPageEnumerationProvider.hxx"
+#include <controller/SlsInsertionIndicatorHandler.hxx>
+#include <view/SlideSorterView.hxx>
+#include <view/SlsLayouter.hxx>
+#include <view/SlsInsertAnimator.hxx>
+#include <view/SlsInsertionIndicatorOverlay.hxx>
+#include <model/SlideSorterModel.hxx>
+#include <model/SlsPageEnumerationProvider.hxx>
 #include <com/sun/star/datatransfer/dnd/DNDConstants.hpp>
 
-#include "SlideSorter.hxx"
+#include <SlideSorter.hxx>
 
 using namespace ::com::sun::star::datatransfer::dnd::DNDConstants;
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 InsertionIndicatorHandler::InsertionIndicatorHandler (SlideSorter& rSlideSorter)
     : mrSlideSorter(rSlideSorter),
       mpInsertAnimator(),
-      mpInsertionIndicatorOverlay(new view::InsertionIndicatorOverlay(rSlideSorter)),
+      mpInsertionIndicatorOverlay(std::make_shared<view::InsertionIndicatorOverlay>(rSlideSorter)),
       maInsertPosition(),
       meMode(MoveMode),
       mbIsInsertionTrivial(false),
@@ -47,7 +47,7 @@ InsertionIndicatorHandler::InsertionIndicatorHandler (SlideSorter& rSlideSorter)
 {
 }
 
-InsertionIndicatorHandler::~InsertionIndicatorHandler()
+InsertionIndicatorHandler::~InsertionIndicatorHandler() COVERITY_NOEXCEPT_FALSE
 {
 }
 
@@ -78,7 +78,7 @@ void InsertionIndicatorHandler::End (const controller::Animator::AnimationMode e
     meMode = UnknownMode;
 
     mpInsertionIndicatorOverlay->Hide();
-    mpInsertionIndicatorOverlay.reset(new view::InsertionIndicatorOverlay(mrSlideSorter));
+    mpInsertionIndicatorOverlay = std::make_shared<view::InsertionIndicatorOverlay>(mrSlideSorter);
 }
 
 void InsertionIndicatorHandler::ForceShow()
@@ -148,33 +148,30 @@ void InsertionIndicatorHandler::SetPosition (
         maIconSize,
         mrSlideSorter.GetModel()));
 
-    if (maInsertPosition != aInsertPosition
-        || meMode != eMode
-        //        || ! mpInsertionIndicatorOverlay->IsVisible()
-        )
-    {
-        maInsertPosition = aInsertPosition;
-        meMode = eMode;
-        mbIsInsertionTrivial = IsInsertionTrivial(maInsertPosition.GetIndex(), eMode);
-        if (maInsertPosition.GetIndex()>=0 && ! mbIsInsertionTrivial)
-        {
-            mpInsertionIndicatorOverlay->SetLocation(maInsertPosition.GetLocation());
+    if (maInsertPosition == aInsertPosition && meMode == eMode)
+        return;
 
-            GetInsertAnimator()->SetInsertPosition(maInsertPosition);
-            mpInsertionIndicatorOverlay->Show();
-        }
-        else
-        {
-            GetInsertAnimator()->Reset(Animator::AM_Animated);
-            mpInsertionIndicatorOverlay->Hide();
-        }
+    maInsertPosition = aInsertPosition;
+    meMode = eMode;
+    mbIsInsertionTrivial = IsInsertionTrivial(maInsertPosition.GetIndex(), eMode);
+    if (maInsertPosition.GetIndex()>=0 && ! mbIsInsertionTrivial)
+    {
+        mpInsertionIndicatorOverlay->SetLocation(maInsertPosition.GetLocation());
+
+        GetInsertAnimator()->SetInsertPosition(maInsertPosition);
+        mpInsertionIndicatorOverlay->Show();
+    }
+    else
+    {
+        GetInsertAnimator()->Reset(Animator::AM_Animated);
+        mpInsertionIndicatorOverlay->Hide();
     }
 }
 
 std::shared_ptr<view::InsertAnimator> const & InsertionIndicatorHandler::GetInsertAnimator()
 {
     if ( ! mpInsertAnimator)
-        mpInsertAnimator.reset(new view::InsertAnimator(mrSlideSorter));
+        mpInsertAnimator = std::make_shared<view::InsertAnimator>(mrSlideSorter);
     return mpInsertAnimator;
 }
 
@@ -220,7 +217,7 @@ bool InsertionIndicatorHandler::IsInsertionTrivial (
     // to check that the insertion position is not directly in front or
     // directly behind the selection and thus moving the selection there
     // would not change the model.
-    return nInsertionIndex >= nFirstIndex && nInsertionIndex < nLastIndex;
+    return nInsertionIndex >= nFirstIndex && nInsertionIndex <= (nLastIndex+1);
 }
 
 bool InsertionIndicatorHandler::IsInsertionTrivial (const sal_Int8 nDndAction)
@@ -237,11 +234,11 @@ InsertionIndicatorHandler::ForceShowContext::ForceShowContext (
     mpHandler->ForceShow();
 }
 
-InsertionIndicatorHandler::ForceShowContext::~ForceShowContext()
+InsertionIndicatorHandler::ForceShowContext::~ForceShowContext() COVERITY_NOEXCEPT_FALSE
 {
     mpHandler->ForceEnd();
 }
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

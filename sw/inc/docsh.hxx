@@ -20,23 +20,20 @@
 #define INCLUDED_SW_INC_DOCSH_HXX
 
 #include <memory>
+#include <vector>
 #include <rtl/ref.hxx>
-#include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/uno/Sequence.h>
 #include <sfx2/docfac.hxx>
 #include <sfx2/objsh.hxx>
 #include "swdllapi.h"
-#include <shellid.hxx>
+#include "shellid.hxx"
 
 #include <svl/lstner.hxx>
-#include <svtools/embedhlp.hxx>
-#include <LibreOfficeKit/LibreOfficeKitTypes.h>
-
 #include <sfx2/StyleManager.hxx>
+#include <o3tl/deleter.hxx>
 
 class SwDoc;
 class SfxDocumentInfoDialog;
-class SfxStyleSheetBasePool;
 class SfxInPlaceClient;
 class FontList;
 class SwEditShell;
@@ -45,16 +42,23 @@ class SwWrtShell;
 class SwFEShell;
 class Reader;
 class SwReader;
+typedef std::unique_ptr<SwReader, o3tl::default_delete<SwReader>> SwReaderPtr;
 class SwCursorShell;
 class SwSrcView;
 class SwPaM;
 class SwgReaderOption;
-class SwOLEObj;
 class IDocumentDeviceAccess;
-class IDocumentSettingAccess;
 class IDocumentChartDataProviderAccess;
 class SwDocShell;
 class SwDrawModel;
+class SwViewShell;
+namespace svt
+{
+class EmbeddedObjectRef;
+}
+namespace com::sun::star::frame { class XController; }
+namespace ooo::vba { class XSinkCaller; }
+namespace ooo::vba::word { class XDocument; }
 
 // initialize DrawModel (in form of a SwDrawModel) and DocShell (in form of a SwDocShell)
 // as needed, one or both parameters may be zero
@@ -64,9 +68,9 @@ class SW_DLLPUBLIC SwDocShell
     : public SfxObjectShell
     , public SfxListener
 {
-    SwDoc*      m_pDoc;               ///< Document.
+    rtl::Reference< SwDoc >                 m_xDoc;      ///< Document.
     rtl::Reference< SfxStyleSheetBasePool > m_xBasePool; ///< Passing through for formats.
-    FontList*   m_pFontList;          ///< Current Fontlist.
+    std::unique_ptr<FontList> m_pFontList;          ///< Current Fontlist.
     bool        m_IsInUpdateFontList; ///< prevent nested calls of UpdateFontList
 
     std::unique_ptr<sfx2::StyleManager> m_pStyleManager;
@@ -79,13 +83,16 @@ class SW_DLLPUBLIC SwDocShell
     SwView*     m_pView;
     SwWrtShell* m_pWrtShell;
 
-    comphelper::EmbeddedObjectContainer* m_pOLEChildList;
+    std::unique_ptr<comphelper::EmbeddedObjectContainer> m_pOLEChildList;
     sal_Int16   m_nUpdateDocMode;   ///< contains the css::document::UpdateDocMode
     bool        m_IsATemplate;      ///< prevent nested calls of UpdateFontList
 
     bool m_IsRemovedInvisibleContent;
         ///< whether SID_MAIL_PREPAREEXPORT removed content that
         ///< SID_MAIL_EXPORT_FINISHED needs to restore
+
+    css::uno::Reference< ooo::vba::XSinkCaller > mxAutomationDocumentEventsCaller;
+    css::uno::Reference< ooo::vba::word::XDocument> mxAutomationDocumentObject;
 
     /// Methods for access to doc.
     SAL_DLLPRIVATE void                  AddLink();
@@ -110,35 +117,37 @@ class SW_DLLPUBLIC SwDocShell
         override;
 
     /// Make DocInfo known to the Doc.
-    SAL_DLLPRIVATE virtual VclPtr<SfxDocumentInfoDialog> CreateDocumentInfoDialog(const SfxItemSet &) override;
+    SAL_DLLPRIVATE virtual std::shared_ptr<SfxDocumentInfoDialog> CreateDocumentInfoDialog(weld::Window* pParent,
+                                                                                           const SfxItemSet &rSet) override;
     /// OLE-stuff
-    SAL_DLLPRIVATE virtual void          Draw( OutputDevice*, const JobSetup&, sal_uInt16 = ASPECT_CONTENT) override;
+    SAL_DLLPRIVATE virtual void          Draw( OutputDevice*, const JobSetup&, sal_uInt16 nAspect) override;
 
     /// Methods for StyleSheets
 
     /// @param nSlot
     /// Only used for nFamily == SfxStyleFamily::Page. Identifies optional Slot by which the edit is triggered.
     /// Used to activate certain dialog pane
-    SAL_DLLPRIVATE sal_uInt16 Edit(
+    SAL_DLLPRIVATE void Edit(
         const OUString &rName,
         const OUString& rParent,
         const SfxStyleFamily nFamily,
-        sal_uInt16 nMask,
+        SfxStyleSearchBits nMask,
         const bool bNew,
         const OString& sPageId,
-        SwWrtShell* pActShell = nullptr,
-        const bool bBasic = false );
+        SwWrtShell* pActShell,
+        SfxRequest* pRequest = nullptr,
+        sal_uInt16 nSlot = 0);
 
-    SAL_DLLPRIVATE bool                  Delete(const OUString &rName, SfxStyleFamily nFamily);
-    SAL_DLLPRIVATE bool                  Hide(const OUString &rName, SfxStyleFamily nFamily, bool bHidden);
+    SAL_DLLPRIVATE void                  Delete(const OUString &rName, SfxStyleFamily nFamily);
+    SAL_DLLPRIVATE void                  Hide(const OUString &rName, SfxStyleFamily nFamily, bool bHidden);
     SAL_DLLPRIVATE SfxStyleFamily        ApplyStyles(const OUString &rName,
         const SfxStyleFamily nFamily,
         SwWrtShell* pShell,
-        sal_uInt16 nMode = 0);
+        sal_uInt16 nMode);
     SAL_DLLPRIVATE SfxStyleFamily        DoWaterCan( const OUString &rName, SfxStyleFamily nFamily);
-    SAL_DLLPRIVATE SfxStyleFamily        UpdateStyle(const OUString &rName, SfxStyleFamily nFamily, SwWrtShell* pShell);
-    SAL_DLLPRIVATE SfxStyleFamily        MakeByExample(const OUString &rName,
-                                               SfxStyleFamily nFamily, sal_uInt16 nMask, SwWrtShell* pShell);
+    SAL_DLLPRIVATE void                  UpdateStyle(const OUString &rName, SfxStyleFamily nFamily, SwWrtShell* pShell);
+    SAL_DLLPRIVATE void                  MakeByExample(const OUString &rName,
+                                               SfxStyleFamily nFamily, SfxStyleSearchBits nMask, SwWrtShell* pShell);
 
     SAL_DLLPRIVATE void                  SubInitNew();   ///< for InitNew and HtmlSourceMode.
 
@@ -168,7 +177,7 @@ public:
     /// Doc is required for SO data exchange!
     SwDocShell( SfxObjectCreateMode eMode = SfxObjectCreateMode::EMBEDDED );
     SwDocShell( SfxModelFlags i_nSfxCreationFlags );
-    SwDocShell( SwDoc *pDoc, SfxObjectCreateMode eMode = SfxObjectCreateMode::STANDARD );
+    SwDocShell( SwDoc *pDoc, SfxObjectCreateMode eMode );
     virtual ~SwDocShell() override;
 
     /// OLE 2.0-notification.
@@ -181,7 +190,6 @@ public:
     virtual OutputDevice* GetDocumentRefDev() override;
     virtual void      OnDocumentPrinterChanged( Printer * pNewPrinter ) override;
 
-    virtual void            PrepareReload() override;
     virtual void            SetModified( bool = true ) override;
 
     /// Dispatcher
@@ -192,8 +200,8 @@ public:
     void                    StateStyleSheet(SfxItemSet&, SwWrtShell* pSh = nullptr );
 
     /// returns Doc. But be careful!
-    SwDoc*                   GetDoc() { return m_pDoc; }
-    const SwDoc*             GetDoc() const { return m_pDoc; }
+    SwDoc*                   GetDoc() { return m_xDoc.get(); }
+    const SwDoc*             GetDoc() const { return m_xDoc.get(); }
     IDocumentDeviceAccess&          getIDocumentDeviceAccess();
     IDocumentChartDataProviderAccess& getIDocumentChartDataProviderAccess();
 
@@ -225,8 +233,8 @@ public:
                 { return const_cast<SwDocShell*>(this)->GetFEShell(); }
 
     /// For inserting document.
-    Reader* StartConvertFrom(SfxMedium& rMedium, SwReader** ppRdr,
-                            SwCursorShell* pCursorSh = nullptr, SwPaM* pPaM = nullptr);
+    Reader* StartConvertFrom(SfxMedium& rMedium, SwReaderPtr& rpRdr,
+                            SwCursorShell const * pCursorSh = nullptr, SwPaM* pPaM = nullptr);
 
 #if defined(_WIN32)
     virtual bool DdeGetData( const OUString& rItem, const OUString& rMimeType,
@@ -239,13 +247,12 @@ public:
 
     virtual void FillClass( SvGlobalName * pClassName,
                                    SotClipboardFormatId * pClipFormat,
-                                   OUString * pAppName,
                                    OUString * pLongUserName,
-                                   OUString * pUserName,
                                    sal_Int32 nFileFormat,
                                    bool bTemplate = false ) const override;
 
     virtual std::set<Color> GetDocColors() override;
+    sfx::AccessibilityIssueCollection runAccessibilityCheck() override;
 
     virtual void LoadStyles( SfxObjectShell& rSource ) override;
 
@@ -257,7 +264,8 @@ public:
     void FormatPage(
         const OUString& rPage,
         const OString& rPageId,
-        SwWrtShell& rActShell );
+        SwWrtShell& rActShell,
+        SfxRequest* pRequest = nullptr);
 
     // #i59688#
     /** linked graphics are now loaded on demand.
@@ -265,7 +273,6 @@ public:
      the load of document being finished. */
 
     void LoadingFinished();
-    virtual void SetFormatSpecificCompatibilityOptions( const OUString& rFilterTypeName ) override;
 
     /// Cancel transfer (called from SFX).
     virtual void CancelTransfers() override;
@@ -277,8 +284,7 @@ public:
 
     void ToggleLayoutMode(SwView* pView);
 
-    ErrCode LoadStylesFromFile( const OUString& rURL, SwgReaderOption& rOpt,
-                                bool bUnoCall );
+    ErrCode LoadStylesFromFile(const OUString& rURL, SwgReaderOption& rOpt, bool bUnoCall);
     void InvalidateModel();
     void ReactivateModel();
 
@@ -296,7 +302,7 @@ public:
                                 GetController();
 
     SfxInPlaceClient* GetIPClient( const ::svt::EmbeddedObjectRef& xObjRef );
-    SAL_DLLPRIVATE bool IsTemplate() { return m_IsATemplate; }
+    SAL_DLLPRIVATE bool IsTemplate() const { return m_IsATemplate; }
     SAL_DLLPRIVATE void SetIsTemplate( bool bValue ) { m_IsATemplate = bValue; }
 
     virtual const ::sfx2::IXmlIdRegistry* GetXmlIdRegistry() const override;
@@ -308,6 +314,24 @@ public:
     virtual void    SetChangeRecording( bool bActivate ) override;
     virtual void    SetProtectionPassword( const OUString &rPassword ) override;
     virtual bool    GetProtectionHash( /*out*/ css::uno::Sequence< sal_Int8 > &rPasswordHash ) override;
+
+    void RegisterAutomationDocumentEventsCaller(css::uno::Reference< ooo::vba::XSinkCaller > const& xCaller);
+    void CallAutomationDocumentEventSinks(const OUString& Method, css::uno::Sequence< css::uno::Any >& Arguments);
+    void RegisterAutomationDocumentObject(css::uno::Reference< ooo::vba::word::XDocument > const& xDocument);
+
+    // Lock all unlocked views, and returns a guard object which unlocks those views when destructed
+    virtual std::unique_ptr<LockAllViewsGuard> LockAllViews() override;
+
+protected:
+    class LockAllViewsGuard_Impl : public LockAllViewsGuard
+    {
+        std::vector<SwViewShell*> m_aViewWasUnLocked;
+
+    public:
+        explicit LockAllViewsGuard_Impl(SwViewShell* pViewShell);
+        ~LockAllViewsGuard_Impl();
+    };
+
 };
 
 /** Find the right DocShell and create a new one:

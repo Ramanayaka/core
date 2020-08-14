@@ -21,14 +21,16 @@
 #include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <osl/diagnose.h>
 
 #include <doc.hxx>
+#include <IDocumentContentOperations.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <IDocumentFieldsAccess.hxx>
 #include <shellio.hxx>
 #include <pam.hxx>
 #include <swundo.hxx>
-#include <ndtxt.hxx>
 #include <acorrect.hxx>
 #include <crsrsh.hxx>
 #include <docsh.hxx>
@@ -52,12 +54,12 @@ void SwDoc::ReplaceUserDefinedDocumentProperties(
         xDocProps->getUserDefinedProperties());
     uno::Reference<beans::XPropertySet> xTargetUDSet(xTargetUD,
         uno::UNO_QUERY_THROW);
-    uno::Sequence<beans::Property> tgtprops
+    const uno::Sequence<beans::Property> tgtprops
         = xTargetUDSet->getPropertySetInfo()->getProperties();
 
-    for (sal_Int32 i = 0; i < tgtprops.getLength(); ++i) {
+    for (const auto& rTgtProp : tgtprops) {
         try {
-            xTargetUD->removeProperty(tgtprops [i].Name);
+            xTargetUD->removeProperty(rTgtProp.Name);
         } catch (uno::Exception &) {
             // ignore
         }
@@ -65,12 +67,12 @@ void SwDoc::ReplaceUserDefinedDocumentProperties(
 
     uno::Reference<beans::XPropertySetInfo> xSetInfo
         = xSourceUDSet->getPropertySetInfo();
-    uno::Sequence<beans::Property> srcprops = xSetInfo->getProperties();
+    const uno::Sequence<beans::Property> srcprops = xSetInfo->getProperties();
 
-    for (sal_Int32 i = 0; i < srcprops.getLength(); ++i) {
+    for (const auto& rSrcProp : srcprops) {
         try {
-            OUString name = srcprops[i].Name;
-            xTargetUD->addProperty(name, srcprops[i].Attributes,
+            OUString name = rSrcProp.Name;
+            xTargetUD->addProperty(name, rSrcProp.Attributes,
                 xSourceUDSet->getPropertyValue(name));
         } catch (uno::Exception &) {
             // ignore
@@ -165,7 +167,7 @@ bool SwDoc::InsertGlossary( SwTextBlocks& rBlock, const OUString& rEntry,
             aCpyPam.GetPoint()->nNode = pGDoc->GetNodes().GetEndOfContent().GetIndex()-1;
             pContentNd = aCpyPam.GetContentNode();
             aCpyPam.GetPoint()->nContent.Assign(
-                    pContentNd, (pContentNd) ? pContentNd->Len() : 0 );
+                    pContentNd, pContentNd ? pContentNd->Len() : 0 );
 
             GetIDocumentUndoRedo().StartUndo( SwUndoId::INSGLOSSARY, nullptr );
             SwPaM *_pStartCursor = &rPaM, *_pStartCursor2 = _pStartCursor;
@@ -187,7 +189,7 @@ bool SwDoc::InsertGlossary( SwTextBlocks& rBlock, const OUString& rEntry,
                 SwDontExpandItem aACD;
                 aACD.SaveDontExpandItems( rInsPos );
 
-                pGDoc->getIDocumentContentOperations().CopyRange( aCpyPam, rInsPos, /*bCopyAll=*/false, /*bCheckPos=*/true );
+                pGDoc->getIDocumentContentOperations().CopyRange(aCpyPam, rInsPos, SwCopyFlags::CheckPosInFly);
 
                 aACD.RestoreDontExpandItems( rInsPos );
                 if( pShell )

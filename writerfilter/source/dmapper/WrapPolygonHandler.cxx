@@ -18,13 +18,16 @@
  */
 
 #include <com/sun/star/drawing/PointSequence.hpp>
+#include <com/sun/star/text/GraphicCrop.hpp>
 #include <comphelper/sequence.hxx>
+#include <tools/UnitConversion.hxx>
 
 #include <ooxml/resourceids.hxx>
 
-#include "ConversionHelper.hxx"
 #include "WrapPolygonHandler.hxx"
 #include "util.hxx"
+
+#include <sal/log.hxx>
 
 namespace writerfilter {
 
@@ -45,22 +48,22 @@ void WrapPolygon::addPoint(const awt::Point & rPoint)
     mPoints.push_back(rPoint);
 }
 
-WrapPolygon::Points_t::iterator WrapPolygon::begin()
+WrapPolygon::Points_t::const_iterator WrapPolygon::begin() const
 {
     return mPoints.begin();
 }
 
-WrapPolygon::Points_t::iterator WrapPolygon::end()
+WrapPolygon::Points_t::const_iterator WrapPolygon::end() const
 {
     return mPoints.end();
 }
 
-WrapPolygon::Pointer_t WrapPolygon::move(const awt::Point & rPoint)
+WrapPolygon::Pointer_t WrapPolygon::move(const awt::Point & rPoint) const
 {
     WrapPolygon::Pointer_t pResult(new WrapPolygon);
 
-    Points_t::iterator aIt = begin();
-    Points_t::iterator aItEnd = end();
+    Points_t::const_iterator aIt = begin();
+    Points_t::const_iterator aItEnd = end();
 
     while (aIt != aItEnd)
     {
@@ -72,12 +75,12 @@ WrapPolygon::Pointer_t WrapPolygon::move(const awt::Point & rPoint)
     return pResult;
 }
 
-WrapPolygon::Pointer_t WrapPolygon::scale(const Fraction & rFractionX, const Fraction & rFractionY)
+WrapPolygon::Pointer_t WrapPolygon::scale(const Fraction & rFractionX, const Fraction & rFractionY) const
 {
     WrapPolygon::Pointer_t pResult(new WrapPolygon);
 
-    Points_t::iterator aIt = begin();
-    Points_t::iterator aItEnd = end();
+    Points_t::const_iterator aIt = begin();
+    Points_t::const_iterator aItEnd = end();
 
     while (aIt != aItEnd)
     {
@@ -89,19 +92,19 @@ WrapPolygon::Pointer_t WrapPolygon::scale(const Fraction & rFractionX, const Fra
     return pResult;
 }
 
-WrapPolygon::Pointer_t WrapPolygon::correctWordWrapPolygon(const awt::Size & rSrcSize)
+WrapPolygon::Pointer_t WrapPolygon::correctWordWrapPolygon(const awt::Size & rSrcSize) const
 {
     WrapPolygon::Pointer_t pResult;
 
     const long nWrap100Percent = 21600;
 
     Fraction aMove(nWrap100Percent, rSrcSize.Width);
-    aMove = aMove * Fraction(15, 1);
+    aMove = aMove * Fraction(convertTwipToMm100(15), 1);
     awt::Point aMovePoint(aMove.operator long(), 0);
     pResult = move(aMovePoint);
 
-    Fraction aScaleX(nWrap100Percent, Fraction(nWrap100Percent) + aMove);
-    Fraction aScaleY(nWrap100Percent, Fraction(nWrap100Percent) - aMove);
+    Fraction aScaleX = nWrap100Percent / (nWrap100Percent + aMove);
+    Fraction aScaleY = nWrap100Percent / (nWrap100Percent - aMove);
     pResult = pResult->scale(aScaleX, aScaleY);
 
     Fraction aScaleSrcX(rSrcSize.Width, nWrap100Percent);
@@ -111,7 +114,7 @@ WrapPolygon::Pointer_t WrapPolygon::correctWordWrapPolygon(const awt::Size & rSr
     return pResult;
 }
 
-WrapPolygon::Pointer_t WrapPolygon::correctWordWrapPolygonPixel(const awt::Size & rSrcSize)
+WrapPolygon::Pointer_t WrapPolygon::correctWordWrapPolygonPixel(const awt::Size & rSrcSize) const
 {
     WrapPolygon::Pointer_t pResult;
 
@@ -134,9 +137,26 @@ WrapPolygon::Pointer_t WrapPolygon::correctWordWrapPolygonPixel(const awt::Size 
     return pResult;
 }
 
+WrapPolygon::Pointer_t WrapPolygon::correctCrop(const awt::Size& rGraphicSize,
+                                                const text::GraphicCrop& rGraphicCrop) const
+{
+    WrapPolygon::Pointer_t pResult;
+
+    Fraction aScaleX(rGraphicSize.Width - rGraphicCrop.Left - rGraphicCrop.Right,
+                     rGraphicSize.Width);
+    Fraction aScaleY(rGraphicSize.Height - rGraphicCrop.Top - rGraphicCrop.Bottom,
+                     rGraphicSize.Height);
+    pResult = scale(aScaleX, aScaleY);
+
+    awt::Point aMove(rGraphicCrop.Left, rGraphicCrop.Top);
+    pResult = pResult->move(aMove);
+
+    return pResult;
+}
+
 drawing::PointSequenceSequence WrapPolygon::getPointSequenceSequence() const
 {
-    drawing::PointSequenceSequence aPolyPolygon(1L);
+    drawing::PointSequenceSequence aPolyPolygon(1);
     drawing::PointSequence aPolygon = comphelper::containerToSequence(mPoints);
     aPolyPolygon[0] = aPolygon;
     return aPolyPolygon;

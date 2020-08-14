@@ -20,15 +20,14 @@
 #ifndef INCLUDED_SVGIO_INC_SVGUSENODE_HXX
 #define INCLUDED_SVGIO_INC_SVGUSENODE_HXX
 
-#include <svgnode.hxx>
-#include <svgstyleattributes.hxx>
+#include "svgnode.hxx"
+#include "svgstyleattributes.hxx"
+#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <memory>
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
-        class SvgUseNode : public SvgNode
+        class SvgUseNode final : public SvgNode
         {
         private:
             /// use styles
@@ -45,6 +44,8 @@ namespace svgio
             /// link to content. If maXLink is set, the node can be fetched
             // on demand
             OUString               maXLink;
+            /// detect if maXLink causes a loop to ourself during decomposing
+            mutable bool           mbDecomposingSvgNode;
 
         public:
             SvgUseNode(
@@ -67,8 +68,8 @@ namespace svgio
             const SvgNumber& getY() const { return maY; }
 
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGUSENODE_HXX
 

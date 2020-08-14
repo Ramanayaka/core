@@ -18,9 +18,7 @@
  */
 
 #include "vbacombobox.hxx"
-#include <filter/msfilter/msvbahelper.hxx>
-#include <basic/sbstar.hxx>
-#include <basic/sbmod.hxx>
+#include <comphelper/sequence.hxx>
 #include "vbanewfont.hxx"
 #include <ooo/vba/msforms/fmStyle.hpp>
 #include <ooo/vba/msforms/fmDropButtonStyle.hpp>
@@ -28,6 +26,7 @@
 #include <ooo/vba/msforms/fmEnterFieldBehavior.hpp>
 #include <ooo/vba/msforms/fmListStyle.hpp>
 #include <ooo/vba/msforms/fmTextAlign.hpp>
+#include <sal/log.hxx>
 
 using namespace com::sun::star;
 using namespace ooo::vba;
@@ -36,7 +35,8 @@ using namespace ooo::vba;
 //SelectedItems list of integer indexes
 //StringItemList list of items
 
-ScVbaComboBox::ScVbaComboBox( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, AbstractGeometryAttributes* pGeomHelper ) : ComboBoxImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper )
+ScVbaComboBox::ScVbaComboBox( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, std::unique_ptr<ov::AbstractGeometryAttributes> pGeomHelper )
+    : ComboBoxImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) )
 {
     mpListHelper.reset( new ListControlHelper( m_xProps ) );
     try
@@ -66,21 +66,21 @@ void SAL_CALL
 ScVbaComboBox::setListIndex( const uno::Any& _value )
 {
     sal_Int16 nIndex = 0;
-    if( _value >>= nIndex )
-    {
-        sal_Int32 nOldIndex = -1;
-        getListIndex() >>= nOldIndex;
-        uno::Sequence< OUString > sItems;
-        m_xProps->getPropertyValue( "StringItemList" ) >>= sItems;
-        if( ( nIndex >= 0 ) && ( sItems.getLength() > nIndex ) )
-        {
-            OUString sText = sItems[ nIndex ];
-            m_xProps->setPropertyValue( "Text", uno::makeAny( sText ) );
+    if( !(_value >>= nIndex) )
+        return;
 
-            // fire the _Change event
-            if( nOldIndex != nIndex )
-                fireClickEvent();
-        }
+    sal_Int32 nOldIndex = -1;
+    getListIndex() >>= nOldIndex;
+    uno::Sequence< OUString > sItems;
+    m_xProps->getPropertyValue( "StringItemList" ) >>= sItems;
+    if( ( nIndex >= 0 ) && ( sItems.getLength() > nIndex ) )
+    {
+        OUString sText = sItems[ nIndex ];
+        m_xProps->setPropertyValue( "Text", uno::makeAny( sText ) );
+
+        // fire the _Change event
+        if( nOldIndex != nIndex )
+            fireClickEvent();
     }
 }
 
@@ -91,20 +91,19 @@ ScVbaComboBox::getListIndex()
     m_xProps->getPropertyValue( "StringItemList" ) >>= sItems;
     // should really return the item that has focus regardless of
     // it been selected
-    if ( sItems.getLength() > 0 )
+    if ( sItems.hasElements() )
     {
         OUString sText = getText();
-        sal_Int32 nLen = sItems.getLength();
-        for ( sal_Int32 index = 0; !sText.isEmpty() && index < nLen; ++index )
+        if (!sText.isEmpty())
         {
-            if ( sItems[ index ].equals( sText ) )
+            sal_Int32 index = comphelper::findValue(sItems, sText);
+            if (index != -1)
             {
                 SAL_INFO("vbahelper", "getListIndex returning " << index );
                 return uno::makeAny( index );
             }
-
         }
-     }
+    }
     SAL_INFO("vbahelper", "getListIndex returning -1" );
     return uno::makeAny( sal_Int32( -1 ) );
 }
@@ -251,7 +250,7 @@ uno::Reference< msforms::XNewFont > SAL_CALL ScVbaComboBox::getFont()
 OUString
 ScVbaComboBox::getServiceImplName()
 {
-    return OUString("ScVbaComboBox");
+    return "ScVbaComboBox";
 }
 
 sal_Int32 SAL_CALL ScVbaComboBox::getBackColor()
@@ -297,12 +296,10 @@ void SAL_CALL ScVbaComboBox::setLinkedCell( const OUString& _linkedcell )
 uno::Sequence< OUString >
 ScVbaComboBox::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.ComboBox";
-    }
+        "ooo.vba.msforms.ComboBox"
+    };
     return aServiceNames;
 }
 

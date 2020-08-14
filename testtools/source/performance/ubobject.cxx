@@ -47,8 +47,7 @@ namespace benchmark_object
 
 inline static Sequence< OUString > getSupportedServiceNames()
 {
-    OUString aName( SERVICENAME);
-    return Sequence< OUString >( &aName, 1 );
+    return { SERVICENAME };
 }
 
 
@@ -253,7 +252,7 @@ sal_Bool SAL_CALL component_writeInfo(
 }
 
 SAL_DLLPUBLIC_EXPORT void * SAL_CALL component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * pRegistryKey )
+    const char * pImplName, void * pServiceManager, void * pRegistryKey )
 {
     void * pRet = 0;
 

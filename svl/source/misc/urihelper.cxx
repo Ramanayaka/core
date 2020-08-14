@@ -18,6 +18,8 @@
  */
 
 #include <memory>
+#include <string_view>
+
 #include <sal/config.h>
 
 #include <unicode/idna.h>
@@ -44,9 +46,9 @@
 #include <rtl/character.hxx>
 #include <rtl/instance.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
+#include <sal/log.hxx>
 #include <tools/inetmime.hxx>
 #include <unotools/charclass.hxx>
 
@@ -60,7 +62,6 @@ OUString URIHelper::SmartRel2Abs(INetURLObject const & rTheBaseURIRef,
                                  INetURLObject::EncodeMechanism eEncodeMechanism,
                                  INetURLObject::DecodeMechanism eDecodeMechanism,
                                  rtl_TextEncoding eCharset,
-                                 bool bRelativeNonURIs,
                                  FSysStyle eStyle)
 {
     // Backwards compatibility:
@@ -78,7 +79,7 @@ OUString URIHelper::SmartRel2Abs(INetURLObject const & rTheBaseURIRef,
                                                  bIgnoreFragment,
                                                  eEncodeMechanism,
                                                  eCharset,
-                                                 bRelativeNonURIs,
+                                                 false/*bRelativeNonURIs*/,
                                                  eStyle);
         if (bCheckFileExists
             && !bWasAbsolute
@@ -113,7 +114,7 @@ void URIHelper::SetMaybeFileHdl(Link<OUString *, bool> const & rTheMaybeFileHdl)
     MaybeFileHdl::get() = rTheMaybeFileHdl;
 }
 
-Link<OUString *, bool> URIHelper::GetMaybeFileHdl()
+Link<OUString *, bool> const & URIHelper::GetMaybeFileHdl()
 {
     return MaybeFileHdl::get();
 }
@@ -124,7 +125,7 @@ bool isAbsoluteHierarchicalUriReference(
     css::uno::Reference< css::uri::XUriReference > const & uriReference)
 {
     return uriReference.is() && uriReference->isAbsolute()
-        && uriReference->isHierarchical() && !uriReference->hasRelativePath();
+        && !uriReference->hasRelativePath();
 }
 
 // To improve performance, assume that if for any prefix URL of a given
@@ -282,7 +283,7 @@ OUString URIHelper::simpleNormalizedMakeRelative(
 
 namespace {
 
-inline sal_Int32 nextChar(OUString const & rStr, sal_Int32 nPos)
+sal_Int32 nextChar(OUString const & rStr, sal_Int32 nPos)
 {
     return rtl::isHighSurrogate(rStr[nPos])
            && rStr.getLength() - nPos >= 2
@@ -432,7 +433,7 @@ OUString URIHelper::FindFirstURLInText(OUString const & rText,
                                        INetURLObject::EncodeMechanism eMechanism,
                                        rtl_TextEncoding eCharset)
 {
-    if (!(rBegin <= rEnd && rEnd <= rText.getLength()))
+    if (rBegin > rEnd || rEnd > rText.getLength())
         return OUString();
 
     // Search for the first substring of [rBegin..rEnd[ that matches any of the
@@ -741,12 +742,14 @@ OUString URIHelper::resolveIdnaHost(OUString const & url) {
     if (auth.isEmpty())
         return url;
     sal_Int32 hostStart = auth.indexOf('@') + 1;
-    sal_Int32 hostEnd = auth.getLength() - 1;
-    while (hostEnd > hostStart && rtl::isAsciiDigit(auth[hostEnd])) {
+    sal_Int32 hostEnd = auth.getLength();
+    while (hostEnd > hostStart && rtl::isAsciiDigit(auth[hostEnd - 1])) {
         --hostEnd;
     }
-    if (!(hostEnd > hostStart && auth[hostEnd] == ':')) {
-        hostEnd = auth.getLength() - 1;
+    if (hostEnd > hostStart && auth[hostEnd - 1] == ':') {
+        --hostEnd;
+    } else {
+        hostEnd = auth.getLength();
     }
     auto asciiOnly = true;
     for (auto i = hostStart; i != hostEnd; ++i) {
@@ -783,12 +786,11 @@ OUString URIHelper::resolveIdnaHost(OUString const & url) {
         return url;
     }
     OUStringBuffer buf(uri->getScheme());
-    buf.append("://").append(auth.getStr(), hostStart);
+    buf.append("://").append(std::u16string_view(auth).substr(0, hostStart));
     buf.append(
         reinterpret_cast<sal_Unicode const *>(ascii.getBuffer()),
         ascii.length());
-    buf.append(auth.getStr() + hostEnd, auth.getLength() - hostEnd)
-        .append(uri->getPath());
+    buf.append(std::u16string_view(auth).substr(hostEnd)).append(uri->getPath());
     if (uri->hasQuery()) {
         buf.append('?').append(uri->getQuery());
     }

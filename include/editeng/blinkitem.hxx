@@ -23,8 +23,6 @@
 #include <svl/eitem.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
 // class SvxBlinkItem -------------------------------------------------
 
 /*
@@ -32,7 +30,7 @@ class SvXMLUnitConverter;
     This item describes, whether to flash.
 */
 
-class EDITENG_DLLPUBLIC SvxBlinkItem : public SfxBoolItem
+class EDITENG_DLLPUBLIC SvxBlinkItem final : public SfxBoolItem
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -40,18 +38,11 @@ public:
     SvxBlinkItem( const bool bBlink /*= false*/, const sal_uInt16 nId  );
 
     // "pure virtual Methods" from SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion) const override;
+    virtual SvxBlinkItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
-
-    SvxBlinkItem& operator=(const SvxBlinkItem& rBlink) {
-            SetValue(rBlink.GetValue());
-            return *this;
-        }
+                                  OUString &rText, const IntlWrapper& ) const override;
 };
 
 #endif

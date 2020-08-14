@@ -22,19 +22,18 @@
 
 #include <xmloff/xmlictxt.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace text { class XTextCursor; }
     namespace beans { class XPropertySet; }
-} } }
+}
 
-class XMLTextHeaderFooterContext: public SvXMLImportContext
+class XMLTextHeaderFooterContext final : public SvXMLImportContext
 {
     css::uno::Reference< css::text::XTextCursor > xOldTextCursor;
     css::uno::Reference< css::beans::XPropertySet > xPropSet;
 
     const OUString sOn;
     const OUString sShareContent;
-    const OUString sShareContentFirst;
     const OUString sText;
     const OUString sTextFirst;
     const OUString sTextLeft;
@@ -53,7 +52,7 @@ public:
 
     virtual ~XMLTextHeaderFooterContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
             sal_uInt16 nPrefix,
             const OUString& rLocalName,
             const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;

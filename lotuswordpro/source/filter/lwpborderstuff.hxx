@@ -60,7 +60,7 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPBORDERSTUFF_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPBORDERSTUFF_HXX
 
-#include "lwpcolor.hxx"
+#include <lwpcolor.hxx>
 
 class LwpBorderStuff
 {
@@ -81,7 +81,7 @@ public:
 public:
     void    Read(LwpObjectStream *pStrm);
 
-    sal_uInt16  GetSide(){ return m_nSides; }
+    sal_uInt16  GetSide() const { return m_nSides; }
     bool    HasSide(sal_uInt16 side);
     sal_uInt16  GetSideType(sal_uInt16 side);
     LwpColor    GetSideColor(sal_uInt16 side);

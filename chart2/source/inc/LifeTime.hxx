@@ -21,19 +21,17 @@
 
 #include <osl/mutex.hxx>
 #include <osl/conditn.hxx>
-#include <com/sun/star/uno/Exception.hpp>
-#include <cppuhelper/interfacecontainer.hxx>
-#include <com/sun/star/util/CloseVetoException.hpp>
-#include <com/sun/star/util/XCloseListener.hpp>
-#include <com/sun/star/util/XCloseable.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <cppuhelper/weakref.hxx>
+#include <cppuhelper/interfacecontainer.h>
 #include "charttoolsdllapi.hxx"
+
+namespace com::sun::star::lang { class XComponent; }
+namespace com::sun::star::util { class CloseVetoException; }
+namespace com::sun::star::util { class XCloseListener; }
+namespace com::sun::star::util { class XCloseable; }
 
 namespace apphelper
 {
 
-class LifeTimeGuard;
 class OOO_DLLPUBLIC_CHARTTOOLS LifeTimeManager
 {
 friend class LifeTimeGuard;
@@ -57,24 +55,21 @@ protected:
     SAL_DLLPRIVATE void        impl_registerApiCall(bool bLongLastingCall);
     SAL_DLLPRIVATE void        impl_unregisterApiCall(bool bLongLastingCall);
 
-    SAL_DLLPRIVATE void        impl_init();
-
 protected:
     css::lang::XComponent*     m_pComponent;
 
     ::osl::Condition        m_aNoAccessCountCondition;
-    sal_Int32 volatile      m_nAccessCount;
+    sal_Int32               m_nAccessCount;
 
     bool volatile       m_bDisposed;
     bool volatile       m_bInDispose;
 
     ::osl::Condition        m_aNoLongLastingCallCountCondition;
-    sal_Int32 volatile      m_nLongLastingCallCount;
+    sal_Int32               m_nLongLastingCallCount;
 };
 
-class CloseableLifeTimeManager : public LifeTimeManager
+class CloseableLifeTimeManager final : public LifeTimeManager
 {
-protected:
     css::util::XCloseable*         m_pCloseable;
 
     ::osl::Condition    m_aEndTryClosingCondition;
@@ -86,40 +81,32 @@ protected:
     bool volatile       m_bOwnership;
 
 public:
-OOO_DLLPUBLIC_CHARTTOOLS    CloseableLifeTimeManager( css::util::XCloseable* pCloseable
+    CloseableLifeTimeManager( css::util::XCloseable* pCloseable
         , css::lang::XComponent* pComponent );
-OOO_DLLPUBLIC_CHARTTOOLS    virtual ~CloseableLifeTimeManager() override;
+    virtual ~CloseableLifeTimeManager() override;
 
-OOO_DLLPUBLIC_CHARTTOOLS    bool    impl_isDisposedOrClosed( bool bAssert=true );
+    bool    impl_isDisposedOrClosed( bool bAssert=true );
 /// @throws css::uno::Exception
-OOO_DLLPUBLIC_CHARTTOOLS    bool    g_close_startTryClose(bool bDeliverOwnership);
+    bool    g_close_startTryClose(bool bDeliverOwnership);
 /// @throws css::util::CloseVetoException
-OOO_DLLPUBLIC_CHARTTOOLS    bool    g_close_isNeedToCancelLongLastingCalls( bool bDeliverOwnership, css::util::CloseVetoException& ex );
-OOO_DLLPUBLIC_CHARTTOOLS    void    g_close_endTryClose(bool bDeliverOwnership );
-OOO_DLLPUBLIC_CHARTTOOLS    void    g_close_endTryClose_doClose();
+    void    g_close_isNeedToCancelLongLastingCalls( bool bDeliverOwnership, css::util::CloseVetoException const & ex );
+    void    g_close_endTryClose(bool bDeliverOwnership );
+    void    g_close_endTryClose_doClose();
 /// @throws css::uno::RuntimeException
-OOO_DLLPUBLIC_CHARTTOOLS    void    g_addCloseListener( const css::uno::Reference< css::util::XCloseListener > & xListener );
+    void    g_addCloseListener( const css::uno::Reference< css::util::XCloseListener > & xListener );
 
-protected:
+private:
     virtual bool    impl_canStartApiCall() override;
     virtual void    impl_apiCallCountReachedNull() override;
 
     void        impl_setOwnership( bool bDeliverOwnership, bool bMyVeto );
     void        impl_doClose();
-
-    void        impl_init()
-    {
-        m_bClosed = false;
-        m_bInTryClose = false;
-        m_bOwnership = false;
-        m_aEndTryClosingCondition.set();
-    }
 };
 
 /*
 Use this Guard in your ApiCalls to protect access on resources
 which will be released in dispose.
-It's guarantied, that the release of resources only starts if your
+It's guaranteed that the release of resources only starts if your
 guarded call has finished.
 ! It's only partly guaranteed that this resources will not change during the call.
 See the example for details.
@@ -127,7 +114,7 @@ See the example for details.
 This class is to be used as described in the example.
 
 If this guard is used in all api calls of an XCloseable object
-it's guarantied, that the closeable will close itself after finishing the last call
+it's guaranteed that the closeable will close itself after finishing the last call
 if it should do so.
 
   ::ApiCall
@@ -143,7 +130,7 @@ if it should do so.
     //mutex is acquired, call is registered
     {
         //you might access some private members here
-        //but than you need to protect access to these members always like this
+        //but then you need to protect access to these members always like this
         //never call to the outside here
     }
 
@@ -178,7 +165,7 @@ your XComponent::dispose method has to be implemented in the following way:
 
 */
 
-class OOO_DLLPUBLIC_CHARTTOOLS LifeTimeGuard
+class LifeTimeGuard
 {
 
 public:
@@ -206,9 +193,8 @@ private:
 };
 
 template<class T>
-class NegativeGuard
+class NegativeGuard final
 {
-protected:
     T * m_pT;
 public:
 

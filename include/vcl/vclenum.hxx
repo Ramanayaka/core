@@ -20,13 +20,137 @@
 #ifndef INCLUDED_VCL_VCLENUM_HXX
 #define INCLUDED_VCL_VCLENUM_HXX
 
-#include <rsc/rsc-vcl-shared-types.hxx>
 #include <sal/types.h>
-#include <tools/fontenum.hxx>
+#include <o3tl/typed_flags_set.hxx>
+
+enum class SelectionMode { NONE, Single, Range, Multiple };
+
+enum class TimeFieldFormat : sal_Int32 { F_NONE, F_SEC, F_SEC_CS };
+
+enum class MenuItemType { DONTKNOW, STRING, IMAGE, STRINGIMAGE, SEPARATOR };
+
+enum class MenuItemBits : sal_Int16
+{
+    NONE                = 0x0000,
+    CHECKABLE           = 0x0001,
+    RADIOCHECK          = 0x0002,
+    AUTOCHECK           = 0x0004,
+    HELP                = 0x0010,
+    POPUPSELECT         = 0x0020,
+    // These have been said to be a preliminary (sic) solution since 2007
+    NOSELECT            = 0x0040,
+    ICON                = 0x0080,
+    TEXT                = 0x0100,
+};
+namespace o3tl
+{
+    template<> struct typed_flags<MenuItemBits> : is_typed_flags<MenuItemBits, 0x1f7> {};
+}
+
+enum class ToolBoxItemBits
+{
+    NONE                = 0x0000,
+    CHECKABLE           = 0x0001,
+    RADIOCHECK          = 0x0002,
+    AUTOCHECK           = 0x0004,
+    LEFT                = 0x0008,
+    AUTOSIZE            = 0x0010,
+    DROPDOWN            = 0x0020,
+    REPEAT              = 0x0040,
+    DROPDOWNONLY        = 0x00a0, // 0x0080 | DROPDOWN
+    TEXT_ONLY           = 0x0100,
+    ICON_ONLY           = 0x0200
+};
+namespace o3tl
+{
+    template<> struct typed_flags<ToolBoxItemBits> : is_typed_flags<ToolBoxItemBits, 0x3ff> {};
+}
+
+enum class ToolBoxItemType { DONTKNOW, BUTTON, SPACE, SEPARATOR, BREAK };
+
+enum class ButtonType { SYMBOLONLY, TEXT, SYMBOLTEXT };
+
+enum class SymbolType : sal_uInt16
+{
+    DONTKNOW         = 0,
+    IMAGE            = 1,
+    ARROW_UP         = 2,
+    ARROW_DOWN       = 3,
+    ARROW_LEFT       = 4,
+    ARROW_RIGHT      = 5,
+    SPIN_UP          = 6,
+    SPIN_DOWN        = 7,
+    SPIN_LEFT        = 8,
+    SPIN_RIGHT       = 9,
+    FIRST            = 10,
+    LAST             = 11,
+    PREV             = 12,
+    NEXT             = 13,
+    PAGEUP           = 14,
+    PAGEDOWN         = 15,
+    PLAY             = 16,
+    STOP             = 19,
+    CLOSE            = 25,
+    ROLLUP           = 26,
+    ROLLDOWN         = 27,
+    CHECKMARK        = 28,
+    RADIOCHECKMARK   = 29,
+    FLOAT            = 31,
+    DOCK             = 32,
+    HIDE             = 33,
+    HELP             = 34,
+    PLUS             = 35,
+    MENU             = SymbolType::SPIN_DOWN
+};
+
+
+// Border styles for SetBorder()
+enum class WindowBorderStyle : sal_Int16
+{
+    NONE              = 0x0000,
+    NORMAL            = 0x0001,
+    MONO              = 0x0002,
+    MENU              = 0x0010,
+    NWF               = 0x0020,
+    NOBORDER          = 0x1000,
+    REMOVEBORDER      = 0x2000
+};
+namespace o3tl
+{
+    template<> struct typed_flags<WindowBorderStyle> : is_typed_flags<WindowBorderStyle, 0x3033> {};
+}
+
+enum class WindowStateMask {
+    NONE             = 0x0000,
+    X                = 0x0001,
+    Y                = 0x0002,
+    Width            = 0x0004,
+    Height           = 0x0008,
+    State            = 0x0010,
+    Minimized        = 0x0020,
+    MaximizedX       = 0x0100,
+    MaximizedY       = 0x0200,
+    MaximizedWidth   = 0x0400,
+    MaximizedHeight  = 0x0800,
+    Pos              = X | Y,
+    All              = X | Y | Width | Height | MaximizedX | MaximizedY | MaximizedWidth | MaximizedHeight | State | Minimized
+};
+namespace o3tl
+{
+    template<> struct typed_flags<WindowStateMask> : is_typed_flags<WindowStateMask, 0x0f3f> {};
+}
+
+enum class TimeFormat
+{
+    Hour12, Hour24
+};
 
 enum class ExtTimeFieldFormat
 {
-    Short24H, Long24H
+    /** the first 4 of these are only used by base/dbaccess */
+    Short24H, Long24H,
+    Short12H, Long12H,
+    ShortDuration, LongDuration
 };
 
 enum class ExtDateFieldFormat
@@ -68,12 +192,6 @@ enum class LineStyle
 };
 
 enum class RasterOp { OverPaint, Xor, N0, N1, Invert };
-
-enum class FontAutoHint { DontKnow, No, Yes };
-
-enum class FontHinting { DontKnow, No, Yes };
-
-enum class FontHintStyle { NONE, Slight, Medium, Full };
 
 typedef sal_uInt32 sal_UCS4;    // TODO: this should be moved to rtl
 
@@ -123,6 +241,113 @@ enum VclResponseType
     RET_IGNORE  = 5,
     RET_CLOSE   = 7,
     RET_HELP    = 10
+};
+
+enum class VclButtonsType
+{
+    NONE,
+    Ok,
+    Close,
+    Cancel,
+    YesNo,
+    OkCancel
+};
+
+enum class VclMessageType
+{
+    Info,
+    Warning,
+    Question,
+    Error
+};
+
+enum class VclSizeGroupMode
+{
+    NONE,
+    Horizontal,
+    Vertical,
+    Both
+};
+
+enum class VclPolicyType
+{
+    ALWAYS,
+    AUTOMATIC,
+    NEVER
+};
+
+enum class WizardButtonFlags : sal_Int16
+{
+    NONE                = 0x0000,
+    NEXT                = 0x0001,
+    PREVIOUS            = 0x0002,
+    FINISH              = 0x0004,
+    CANCEL              = 0x0008,
+    HELP                = 0x0010,
+};
+
+namespace o3tl
+{
+    template<> struct typed_flags<WizardButtonFlags> : is_typed_flags<WizardButtonFlags, 0x001f> {};
+}
+
+// small, large, size32 force an exact toolbox size for proper alignment
+// DontCare will let the toolbox decide about its size
+enum class ToolBoxButtonSize
+{
+    DontCare,
+    Small,
+    Large,
+    Size32,
+};
+
+enum class WindowStateState {
+    NONE           = 0x0000,
+    Normal         = 0x0001,
+    Minimized      = 0x0002,
+    Maximized      = 0x0004,
+    Rollup         = 0x0008,
+    MaximizedHorz  = 0x0010,
+    MaximizedVert  = 0x0020,
+    FullScreen     = 0x0040,
+    SystemMask     = 0xffff
+};
+namespace o3tl
+{
+    template<> struct typed_flags<WindowStateState> : is_typed_flags<WindowStateState, 0xffff> {};
+}
+
+namespace vcl
+{
+    // The exact sizes of the icons in each size grouping are not necessarily
+    // the exact size indicated by the name, but the upper limit of their size.
+    // e.g. many Size26 icons are often 24x24px and only some 26x26px
+    enum class ImageType
+    {
+        Size16,
+        Size26,
+        Size32,
+        Small = Size16,
+        LAST = Size32,
+    };
+}
+
+enum class DrawFrameStyle
+{
+    NONE                     = 0x0000,
+    In                       = 0x0001,
+    Out                      = 0x0002,
+    Group                    = 0x0003,
+    DoubleIn                 = 0x0004,
+    DoubleOut                = 0x0005,
+    NWF                      = 0x0006,
+};
+
+enum class TxtAlign
+{
+    Left,
+    Center,
+    Right
 };
 
 #endif // INCLUDED_VCL_VCLENUM_HXX

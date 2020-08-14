@@ -22,9 +22,6 @@
 
 #include <osl/mutex.hxx>
 #include <rtl/ustring.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/lang/XSingleComponentFactory.hpp>
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
 
@@ -44,7 +41,7 @@ struct ProviderDetails
     css::uno::Reference< css::lang::XSingleComponentFactory > factory;
     css::uno::Reference< css::script::provider::XScriptProvider > provider;
 };
-typedef std::unordered_map < OUString, ProviderDetails , OUStringHash > ProviderDetails_hash;
+typedef std::unordered_map < OUString, ProviderDetails  > ProviderDetails_hash;
 
 
 class ProviderCache
@@ -55,7 +52,7 @@ public:
      ProviderCache( const css::uno::Reference< css::uno::XComponentContext >& xContext, const css::uno::Sequence< css::uno::Any >& scriptContext );
      /// @throws css::uno::RuntimeException
      ProviderCache( const css::uno::Reference< css::uno::XComponentContext >& xContext, const css::uno::Sequence< css::uno::Any >& scriptContext,
-        const css::uno::Sequence< OUString >& blackList );
+        const css::uno::Sequence< OUString >& denyList );
     ~ProviderCache();
      css::uno::Reference< css::script::provider::XScriptProvider >
          getProvider( const OUString& providerName );
@@ -67,23 +64,10 @@ private:
     void populateCache();
 
     /// @throws css::uno::RuntimeException
-   css::uno::Reference< css::script::provider::XScriptProvider >
+    css::uno::Reference< css::script::provider::XScriptProvider >
         createProvider( ProviderDetails& details );
-    bool isInBlackList( const OUString& serviceName )
-    {
-        if ( m_sBlackList.getLength() > 0 )
-        {
-            for ( sal_Int32 index = 0; index < m_sBlackList.getLength(); index++ )
-            {
-                if ( m_sBlackList[ index ].equals( serviceName ) )
-                {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-    css::uno::Sequence< OUString >  m_sBlackList;
+    bool isInDenyList( const OUString& serviceName );
+    css::uno::Sequence< OUString >  m_sDenyList;
     ProviderDetails_hash  m_hProviderDetailsCache;
     osl::Mutex m_mutex;
     css::uno::Sequence< css::uno::Any >  m_Sctx;

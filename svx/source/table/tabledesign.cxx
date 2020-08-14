@@ -39,12 +39,11 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/sequence.hxx>
 
-#include "svx/unoprov.hxx"
-#include "svx/sdr/table/tabledesign.hxx"
-#include "svx/dialmgr.hxx"
-#include "svx/dialogs.hrc"
+#include <svx/sdr/table/tabledesign.hxx>
+#include <svx/dialmgr.hxx>
+#include <svx/strings.hrc>
 
-#include "celltypes.hxx"
+#include <celltypes.hxx>
 
 #include <vector>
 #include <map>
@@ -61,11 +60,13 @@ using ::osl::MutexGuard;
 using ::osl::ClearableMutexGuard;
 using ::cppu::OInterfaceContainerHelper;
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
 typedef std::map< OUString, sal_Int32 > CellStyleNameMap;
 
 typedef ::cppu::WeakComponentImplHelper< XStyle, XNameReplace, XServiceInfo, XIndexAccess, XModifyBroadcaster, XModifyListener > TableDesignStyleBase;
+
+namespace {
 
 class TableDesignStyle : private ::cppu::BaseMutex, public TableDesignStyleBase
 {
@@ -122,7 +123,11 @@ public:
     Reference< XStyle > maCellStyles[style_count];
 };
 
+}
+
 typedef std::vector< Reference< XStyle > > TableDesignStyleVector;
+
+namespace {
 
 class TableDesignFamily : public ::cppu::WeakImplHelper< XNameContainer, XNamed, XIndexAccess, XSingleServiceFactory,  XServiceInfo, XComponent, XPropertySet >
 {
@@ -177,6 +182,8 @@ public:
     TableDesignStyleVector  maDesigns;
 };
 
+}
+
 TableDesignStyle::TableDesignStyle()
 : TableDesignStyleBase(m_aMutex)
 {
@@ -184,22 +191,19 @@ TableDesignStyle::TableDesignStyle()
 
 const CellStyleNameMap& TableDesignStyle::getCellStyleNameMap()
 {
-    static CellStyleNameMap aMap;
-    if( aMap.empty() )
+    static CellStyleNameMap const aMap
     {
-        CellStyleNameMap aNewMap;
-        aNewMap[ OUString( "first-row" ) ] = first_row_style;
-        aNewMap[ OUString( "last-row" ) ] = last_row_style;
-        aNewMap[ OUString( "first-column" ) ] = first_column_style;
-        aNewMap[ OUString( "last-column" ) ] = last_column_style;
-        aNewMap[ OUString( "body" ) ] = body_style;
-        aNewMap[ OUString( "even-rows" ) ] = even_rows_style;
-        aNewMap[ OUString( "odd-rows" ) ] = odd_rows_style;
-        aNewMap[ OUString( "even-columns" ) ] = even_columns_style;
-        aNewMap[ OUString( "odd-columns" ) ] = odd_columns_style;
-        aNewMap[ OUString( "background" ) ] = background_style;
-        aMap.swap( aNewMap );
-    }
+         { OUString( "first-row" )    , first_row_style },
+         { OUString( "last-row" )     , last_row_style },
+         { OUString( "first-column" ) , first_column_style },
+         { OUString( "last-column" )  , last_column_style },
+         { OUString( "body" )         , body_style },
+         { OUString( "even-rows" )    , even_rows_style },
+         { OUString( "odd-rows" )     , odd_rows_style },
+         { OUString( "even-columns" ) , even_columns_style },
+         { OUString( "odd-columns" )  , odd_columns_style },
+         { OUString( "background" )   , background_style },
+    };
 
     return aMap;
 }
@@ -207,7 +211,7 @@ const CellStyleNameMap& TableDesignStyle::getCellStyleNameMap()
 // XServiceInfo
 OUString SAL_CALL TableDesignStyle::getImplementationName()
 {
-    return OUString("TableDesignStyle");
+    return "TableDesignStyle";
 }
 
 sal_Bool SAL_CALL TableDesignStyle::supportsService( const OUString& ServiceName )
@@ -217,9 +221,7 @@ sal_Bool SAL_CALL TableDesignStyle::supportsService( const OUString& ServiceName
 
 Sequence< OUString > SAL_CALL TableDesignStyle::getSupportedServiceNames()
 {
-    OUString aServiceName("com.sun.star.style.Style");
-    Sequence< OUString > aSeq( &aServiceName, 1 );
-    return aSeq;
+    return { "com.sun.star.style.Style" };
 }
 
 // XStyle
@@ -367,22 +369,22 @@ void SAL_CALL TableDesignStyle::replaceByName( const OUString& rName, const Any&
 
     Reference< XStyle > xOldStyle( maCellStyles[nIndex] );
 
-    if( xNewStyle != xOldStyle )
-    {
-        Reference< XModifyListener > xListener( this );
+    if( xNewStyle == xOldStyle )
+        return;
 
-        // end listening to old style, if possible
-        Reference< XModifyBroadcaster > xOldBroadcaster( xOldStyle, UNO_QUERY );
-        if( xOldBroadcaster.is() )
-            xOldBroadcaster->removeModifyListener( xListener );
+    Reference< XModifyListener > xListener( this );
 
-        // start listening to new style, if possible
-        Reference< XModifyBroadcaster > xNewBroadcaster( xNewStyle, UNO_QUERY );
-        if( xNewBroadcaster.is() )
-            xNewBroadcaster->addModifyListener( xListener );
+    // end listening to old style, if possible
+    Reference< XModifyBroadcaster > xOldBroadcaster( xOldStyle, UNO_QUERY );
+    if( xOldBroadcaster.is() )
+        xOldBroadcaster->removeModifyListener( xListener );
 
-        maCellStyles[nIndex] = xNewStyle;
-    }
+    // start listening to new style, if possible
+    Reference< XModifyBroadcaster > xNewBroadcaster( xNewStyle, UNO_QUERY );
+    if( xNewBroadcaster.is() )
+        xNewBroadcaster->addModifyListener( xListener );
+
+    maCellStyles[nIndex] = xNewStyle;
 }
 
 
@@ -457,7 +459,7 @@ void SAL_CALL TableDesignStyle::disposing( const css::lang::EventObject& )
 // XServiceInfo
 OUString SAL_CALL TableDesignFamily::getImplementationName()
 {
-    return OUString("TableDesignFamily");
+    return "TableDesignFamily";
 }
 
 sal_Bool SAL_CALL TableDesignFamily::supportsService( const OUString& ServiceName )
@@ -467,15 +469,13 @@ sal_Bool SAL_CALL TableDesignFamily::supportsService( const OUString& ServiceNam
 
 Sequence< OUString > SAL_CALL TableDesignFamily::getSupportedServiceNames()
 {
-    OUString aServiceName("com.sun.star.style.StyleFamily");
-    Sequence< OUString > aSeq( &aServiceName, 1 );
-    return aSeq;
+    return { "com.sun.star.style.StyleFamily" };
 }
 
 // XNamed
 OUString SAL_CALL TableDesignFamily::getName()
 {
-    return OUString( "table" );
+    return "table";
 }
 
 void SAL_CALL TableDesignFamily::setName( const OUString& )
@@ -487,13 +487,10 @@ Any SAL_CALL TableDesignFamily::getByName( const OUString& rName )
 {
     SolarMutexGuard aGuard;
 
-    const TableDesignStyleVector::const_iterator aEnd( maDesigns.end() );
-    for( TableDesignStyleVector::const_iterator iter( maDesigns.begin() );
-        iter != aEnd; ++iter)
-    {
-        if( (*iter)->getName() == rName )
-            return Any( (*iter) );
-    }
+    auto iter = std::find_if(maDesigns.begin(), maDesigns.end(),
+        [&rName](const Reference<XStyle>& rpStyle) { return rpStyle->getName() == rName; });
+    if (iter != maDesigns.end())
+        return Any( (*iter) );
 
     throw NoSuchElementException();
 }
@@ -506,10 +503,8 @@ Sequence< OUString > SAL_CALL TableDesignFamily::getElementNames()
     Sequence< OUString > aRet( maDesigns.size() );
     OUString* pNames = aRet.getArray();
 
-    const TableDesignStyleVector::const_iterator aEnd( maDesigns.end() );
-    for( TableDesignStyleVector::const_iterator iter( maDesigns.begin() );
-         iter != aEnd; ++iter)
-        *pNames++ = (*iter)->getName();
+    for( const auto& rpStyle : maDesigns )
+        *pNames++ = rpStyle->getName();
 
     return aRet;
 }
@@ -519,13 +514,8 @@ sal_Bool SAL_CALL TableDesignFamily::hasByName( const OUString& aName )
 {
     SolarMutexGuard aGuard;
 
-    const TableDesignStyleVector::const_iterator aEnd( maDesigns.end() );
-    for( TableDesignStyleVector::const_iterator iter( maDesigns.begin() );
-        iter != aEnd; ++iter)
-        if( (*iter)->getName() == aName )
-            return true;
-
-    return false;
+    return std::any_of(maDesigns.begin(), maDesigns.end(),
+        [&aName](const Reference<XStyle>& rpStyle) { return rpStyle->getName() == aName; });
 }
 
 
@@ -580,11 +570,9 @@ void SAL_CALL TableDesignFamily::insertByName( const OUString& rName, const Any&
         throw IllegalArgumentException();
 
     xStyle->setName( rName );
-    const TableDesignStyleVector::const_iterator aEnd( maDesigns.end() );
-    for( TableDesignStyleVector::const_iterator iter( maDesigns.begin() );
-        iter != aEnd; ++iter)
-        if( (*iter)->getName() == rName )
-            throw ElementExistException();
+    if (std::any_of(maDesigns.begin(), maDesigns.end(),
+            [&rName](const Reference<XStyle>& rpStyle) { return rpStyle->getName() == rName; }))
+        throw ElementExistException();
 
     maDesigns.push_back( xStyle );
 }
@@ -594,17 +582,13 @@ void SAL_CALL TableDesignFamily::removeByName( const OUString& rName )
 {
     SolarMutexGuard aGuard;
 
-    const TableDesignStyleVector::const_iterator aEnd( maDesigns.end() );
-    for( TableDesignStyleVector::iterator iter( maDesigns.begin() );
-        iter != aEnd; ++iter)
+    auto iter = std::find_if(maDesigns.begin(), maDesigns.end(),
+        [&rName](const Reference<XStyle>& rpStyle) { return rpStyle->getName() == rName; });
+    if (iter != maDesigns.end())
     {
-        if( (*iter)->getName() == rName )
-        {
-            maDesigns.erase( iter );
-            return;
-        }
+        maDesigns.erase( iter );
+        return;
     }
-
 
     throw NoSuchElementException();
 }
@@ -621,16 +605,13 @@ void SAL_CALL TableDesignFamily::replaceByName( const OUString& rName, const Any
     if( !xStyle.is() )
         throw IllegalArgumentException();
 
-    const TableDesignStyleVector::const_iterator aEnd( maDesigns.end() );
-    for( TableDesignStyleVector::iterator iter( maDesigns.begin() );
-        iter != aEnd; ++iter)
+    auto iter = std::find_if(maDesigns.begin(), maDesigns.end(),
+        [&rName](const Reference<XStyle>& rpStyle) { return rpStyle->getName() == rName; });
+    if (iter != maDesigns.end())
     {
-        if( (*iter)->getName() == rName )
-        {
-            (*iter) = xStyle;
-            xStyle->setName( rName );
-            return;
-        }
+        (*iter) = xStyle;
+        xStyle->setName( rName );
+        return;
     }
 
     throw NoSuchElementException();
@@ -662,9 +643,9 @@ void SAL_CALL TableDesignFamily::dispose(  )
     TableDesignStyleVector aDesigns;
     aDesigns.swap( maDesigns );
 
-    for( TableDesignStyleVector::iterator iter( aDesigns.begin() ); iter != aDesigns.end(); ++iter )
+    for( const auto& rStyle : aDesigns )
     {
-        Reference< XComponent > xComp( (*iter), UNO_QUERY );
+        Reference< XComponent > xComp( rStyle, UNO_QUERY );
         if( xComp.is() )
             xComp->dispose();
     }
@@ -699,15 +680,13 @@ void TableDesignFamily::setPropertyValue( const OUString& , const Any&  )
 
 Any TableDesignFamily::getPropertyValue( const OUString& PropertyName )
 {
-    if ( PropertyName == "DisplayName" )
-    {
-        OUString sDisplayName( SvxResId( RID_SVXSTR_STYLEFAMILY_TABLEDESIGN ) );
-        return Any( sDisplayName );
-    }
-    else
+    if ( PropertyName != "DisplayName" )
     {
         throw UnknownPropertyException( "unknown property: " + PropertyName, static_cast<OWeakObject *>(this) );
     }
+
+    OUString sDisplayName( SvxResId( RID_SVXSTR_STYLEFAMILY_TABLEDESIGN ) );
+    return Any( sDisplayName );
 }
 
 
@@ -740,6 +719,6 @@ Reference< XNameAccess > CreateTableDesignFamily()
     return new TableDesignFamily;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

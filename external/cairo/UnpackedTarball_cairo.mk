@@ -13,23 +13,24 @@ $(eval $(call gb_UnpackedTarball_set_tarball,cairo,$(CAIRO_TARBALL),,cairo))
 
 $(eval $(call gb_UnpackedTarball_add_patches,cairo,\
 	external/cairo/cairo/cairo-1.10.2.patch \
+	external/cairo/cairo/cairo-libtool-rpath.patch.1 \
 ))
 
-ifeq ($(OS),IOS)
+ifeq ($(OS),iOS)
 $(eval $(call gb_UnpackedTarball_add_patches,cairo,\
 	external/cairo/cairo/cairo-1.10.2.no-atsui.patch \
 	external/cairo/cairo/cairo-1.10.2.ios.patch \
 ))
 endif
 
-ifeq ($(OS),ANDROID)
+# To be applied only when ENABLE_ANDROID_LOK is not defined
+ifeq ($(OS)$(ENABLE_ANDROID_LOK),ANDROID)
 $(eval $(call gb_UnpackedTarball_add_patches,cairo,\
-	external/cairo/cairo/cairo-1.10.2.android.patch \
 	external/cairo/cairo/cairo.GL_RGBA.patch \
 ))
 endif
 
-ifneq (,$(filter ANDROID IOS,$(OS)))
+ifneq (,$(filter ANDROID iOS,$(OS)))
 $(eval $(call gb_UnpackedTarball_add_file,cairo,.,external/cairo/cairo/dummy_pkg_config))
 endif
 

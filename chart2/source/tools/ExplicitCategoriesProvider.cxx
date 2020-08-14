@@ -17,20 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ExplicitCategoriesProvider.hxx"
-#include "DiagramHelper.hxx"
-#include "ChartTypeHelper.hxx"
-#include "AxisHelper.hxx"
-#include "CommonConverters.hxx"
-#include "DataSourceHelper.hxx"
-#include "ChartModelHelper.hxx"
-#include "macros.hxx"
-#include "NumberFormatterWrapper.hxx"
+#include <ExplicitCategoriesProvider.hxx>
+#include <DiagramHelper.hxx>
+#include <ChartTypeHelper.hxx>
+#include <AxisHelper.hxx>
+#include <DataSourceHelper.hxx>
+#include <ChartModel.hxx>
+#include <ChartModelHelper.hxx>
+#include <NumberFormatterWrapper.hxx>
 #include <unonames.hxx>
 
 #include <com/sun/star/chart2/AxisType.hpp>
-#include <com/sun/star/util/NumberFormat.hpp>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
+#include <o3tl/safeint.hxx>
+#include <rtl/math.hxx>
+#include <tools/diagnose_ex.h>
 
 namespace chart
 {
@@ -114,16 +114,16 @@ ExplicitCategoriesProvider::ExplicitCategoriesProvider( const Reference< chart2:
                     }
                 }
             }
-            if( !m_aSplitCategoriesList.getLength() )
+            if( !m_aSplitCategoriesList.hasElements() )
             {
                 m_aSplitCategoriesList.realloc(1);
                 m_aSplitCategoriesList[0]=m_xOriginalCategories;
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -151,16 +151,13 @@ sal_Int32 ExplicitCategoriesProvider::getCategoryLevelCount() const
     return nCount;
 }
 
-std::vector<sal_Int32> lcl_getLimitingBorders( const std::vector< ComplexCategory >& rComplexCategories )
+static std::vector<sal_Int32> lcl_getLimitingBorders( const std::vector< ComplexCategory >& rComplexCategories )
 {
     std::vector<sal_Int32> aLimitingBorders;
-    std::vector< ComplexCategory >::const_iterator aIt( rComplexCategories.begin() );
-    std::vector< ComplexCategory >::const_iterator aEnd( rComplexCategories.end() );
     sal_Int32 nBorderIndex = 0; /*border below the index*/
-    for( ; aIt != aEnd; ++aIt )
+    for (auto const& complexCategory : rComplexCategories)
     {
-        ComplexCategory aComplexCategory(*aIt);
-        nBorderIndex += aComplexCategory.Count;
+        nBorderIndex += complexCategory.Count;
         aLimitingBorders.push_back(nBorderIndex);
     }
     return aLimitingBorders;
@@ -182,7 +179,7 @@ void ExplicitCategoriesProvider::convertCategoryAnysToText( uno::Sequence< OUStr
             xAxis, xCooSysModel, uno::Reference<chart2::XChartDocument>(static_cast< ::cppu::OWeakObject* >(&rModel), uno::UNO_QUERY), false );
     }
 
-    sal_Int32 nLabelColor;
+    Color nLabelColor;
     bool bColorChanged = false;
 
     NumberFormatterWrapper aNumberFormatterWrapper( rModel.getNumberFormatsSupplier() );
@@ -196,7 +193,7 @@ void ExplicitCategoriesProvider::convertCategoryAnysToText( uno::Sequence< OUStr
             double fDouble = 0;
             if( aAny>>=fDouble )
             {
-                if( !::rtl::math::isNan(fDouble) )
+                if( !std::isnan(fDouble) )
                     aText = aNumberFormatterWrapper.getFormattedString(
                         nAxisNumberFormat, fDouble, nLabelColor, bColorChanged );
             }
@@ -212,6 +209,8 @@ void ExplicitCategoriesProvider::convertCategoryAnysToText( uno::Sequence< OUStr
 SplitCategoriesProvider::~SplitCategoriesProvider()
 {
 }
+
+namespace {
 
 class SplitCategoriesProvider_ForLabeledDataSequences : public SplitCategoriesProvider
 {
@@ -235,6 +234,8 @@ private:
     ChartModel& mrModel;
 };
 
+}
+
 sal_Int32 SplitCategoriesProvider_ForLabeledDataSequences::getLevelCount() const
 {
     return m_rSplitCategoriesList.getLength();
@@ -252,7 +253,7 @@ uno::Sequence< OUString > SplitCategoriesProvider_ForLabeledDataSequences::getSt
     return aRet;
 }
 
-std::vector< ComplexCategory > lcl_DataSequenceToComplexCategoryVector(
+static std::vector< ComplexCategory > lcl_DataSequenceToComplexCategoryVector(
     const uno::Sequence< OUString >& rStrings
     , const std::vector<sal_Int32>& rLimitingBorders, bool bCreateSingleCategories )
 {
@@ -266,7 +267,7 @@ std::vector< ComplexCategory > lcl_DataSequenceToComplexCategoryVector(
         const OUString& aCurrent = rStrings[nN];
         if( bCreateSingleCategories || std::find( rLimitingBorders.begin(), rLimitingBorders.end(), nN ) != rLimitingBorders.end() )
         {
-            aResult.push_back( ComplexCategory(aPrevious,nCurrentCount) );
+            aResult.emplace_back(aPrevious,nCurrentCount );
             nCurrentCount=1;
             aPrevious = aCurrent;
         }
@@ -280,29 +281,27 @@ std::vector< ComplexCategory > lcl_DataSequenceToComplexCategoryVector(
                 ++nCurrentCount;
             else
             {
-                aResult.push_back( ComplexCategory(aPrevious,nCurrentCount) );
+                aResult.emplace_back(aPrevious,nCurrentCount );
                 nCurrentCount=1;
                 aPrevious = aCurrent;
             }
         }
     }
     if( nCurrentCount )
-        aResult.push_back( ComplexCategory(aPrevious,nCurrentCount) );
+        aResult.emplace_back(aPrevious,nCurrentCount );
 
     return aResult;
 }
 
-sal_Int32 lcl_getCategoryCount( std::vector< ComplexCategory >& rComplexCategories )
+static sal_Int32 lcl_getCategoryCount( std::vector< ComplexCategory >& rComplexCategories )
 {
     sal_Int32 nCount = 0;
-    std::vector< ComplexCategory >::const_iterator aIt( rComplexCategories.begin() );
-    std::vector< ComplexCategory >::const_iterator aEnd( rComplexCategories.end() );
-    for( ; aIt != aEnd; ++aIt )
-        nCount+=aIt->Count;
+    for (auto const& complexCategory : rComplexCategories)
+        nCount+=complexCategory.Count;
     return nCount;
 }
 
-Sequence< OUString > lcl_getExplicitSimpleCategories(
+static Sequence< OUString > lcl_getExplicitSimpleCategories(
     const SplitCategoriesProvider& rSplitCategoriesProvider,
     std::vector< std::vector< ComplexCategory > >& rComplexCats )
 {
@@ -319,25 +318,22 @@ Sequence< OUString > lcl_getExplicitSimpleCategories(
             rSplitCategoriesProvider.getStringsForLevel(nL), aLimitingBorders, nL==(nLCount-1) ) );
     }
 
-    std::vector< std::vector< ComplexCategory > >::iterator aOuterIt( rComplexCats.begin() );
-    std::vector< std::vector< ComplexCategory > >::const_iterator aOuterEnd( rComplexCats.end() );
-
     //ensure that the category count is the same on each level
     sal_Int32 nMaxCategoryCount = 0;
     {
-        for( aOuterIt=rComplexCats.begin(); aOuterIt != aOuterEnd; ++aOuterIt )
+        for (auto & complexCat : rComplexCats)
         {
-            sal_Int32 nCurrentCount = lcl_getCategoryCount( *aOuterIt );
+            sal_Int32 nCurrentCount = lcl_getCategoryCount(complexCat);
             nMaxCategoryCount = std::max( nCurrentCount, nMaxCategoryCount );
         }
-        for( aOuterIt=rComplexCats.begin(); aOuterIt != aOuterEnd; ++aOuterIt )
+        for (auto & complexCat : rComplexCats)
         {
-            if ( !aOuterIt->empty() )
+            if ( !complexCat.empty() )
             {
-                sal_Int32 nCurrentCount = lcl_getCategoryCount( *aOuterIt );
+                sal_Int32 nCurrentCount = lcl_getCategoryCount(complexCat);
                 if( nCurrentCount< nMaxCategoryCount )
                 {
-                    ComplexCategory& rComplexCategory = aOuterIt->back();
+                    ComplexCategory& rComplexCategory = complexCat.back();
                     rComplexCategory.Count += (nMaxCategoryCount-nCurrentCount);
                 }
             }
@@ -346,17 +342,14 @@ Sequence< OUString > lcl_getExplicitSimpleCategories(
 
     //create a list with an element for every index
     std::vector< std::vector< ComplexCategory > > aComplexCatsPerIndex;
-    for( aOuterIt=rComplexCats.begin() ; aOuterIt != aOuterEnd; ++aOuterIt )
+    for (auto const& complexCat : rComplexCats)
     {
         std::vector< ComplexCategory > aSingleLevel;
-        std::vector< ComplexCategory >::iterator aIt( aOuterIt->begin() );
-        std::vector< ComplexCategory >::const_iterator aEnd( aOuterIt->end() );
-        for( ; aIt != aEnd; ++aIt )
+        for (auto const& elem : complexCat)
         {
-            ComplexCategory aComplexCategory( *aIt );
-            sal_Int32 nCount = aComplexCategory.Count;
+            sal_Int32 nCount = elem.Count;
             while( nCount-- )
-                aSingleLevel.push_back(aComplexCategory);
+                aSingleLevel.push_back(elem);
         }
         aComplexCatsPerIndex.push_back( aSingleLevel );
     }
@@ -364,24 +357,23 @@ Sequence< OUString > lcl_getExplicitSimpleCategories(
     if(nMaxCategoryCount)
     {
         aRet.realloc(nMaxCategoryCount);
-        aOuterEnd = aComplexCatsPerIndex.end();
         for(sal_Int32 nN=0; nN<nMaxCategoryCount; nN++)
         {
-            OUString aText;
-            for( aOuterIt=aComplexCatsPerIndex.begin() ; aOuterIt != aOuterEnd; ++aOuterIt )
+            OUStringBuffer aText;
+            for (auto const& complexCatPerIndex : aComplexCatsPerIndex)
             {
-                if ( static_cast<size_t>(nN) < aOuterIt->size() )
+                if ( o3tl::make_unsigned(nN) < complexCatPerIndex.size() )
                 {
-                    OUString aAddText = (*aOuterIt)[nN].Text;
+                    OUString aAddText = complexCatPerIndex[nN].Text;
                     if( !aAddText.isEmpty() )
                     {
                         if(!aText.isEmpty())
-                            aText += " ";
-                        aText += aAddText;
+                            aText.append(" ");
+                        aText.append(aAddText);
                     }
                 }
             }
-            aRet[nN]=aText;
+            aRet[nN]=aText.makeStringAndClear();
         }
     }
     return aRet;
@@ -394,7 +386,7 @@ Sequence< OUString > ExplicitCategoriesProvider::getExplicitSimpleCategories(
     return lcl_getExplicitSimpleCategories( rSplitCategoriesProvider, aComplexCats );
 }
 
-bool lcl_fillDateCategories( const uno::Reference< data::XDataSequence >& xDataSequence, std::vector< double >& rDateCategories, bool bIsAutoDate, ChartModel& rModel )
+static bool lcl_fillDateCategories( const uno::Reference< data::XDataSequence >& xDataSequence, std::vector< double >& rDateCategories, bool bIsAutoDate, ChartModel& rModel )
 {
     bool bOnlyDatesFound = true;
     bool bAnyDataFound = false;
@@ -447,7 +439,7 @@ bool lcl_fillDateCategories( const uno::Reference< data::XDataSequence >& xDataS
                 bool bContainsNan = false;
                 if( (aAny>>=aTest) && aTest.isEmpty() ) //empty String
                     bContainsEmptyString = true;
-                else if( (aAny>>=fTest) &&  ::rtl::math::isNan(fTest) )
+                else if( (aAny>>=fTest) &&  std::isnan(fTest) )
                     bContainsNan = true;
 
                 if( !bContainsEmptyString && !bContainsNan )
@@ -472,32 +464,32 @@ bool lcl_fillDateCategories( const uno::Reference< data::XDataSequence >& xDataS
 
 void ExplicitCategoriesProvider::init()
 {
-    if( m_bDirty )
-    {
-        m_aComplexCats.clear();//not one per index
-        m_aDateCategories.clear();
+    if( !m_bDirty )
+        return;
 
-        if( m_xOriginalCategories.is() )
+    m_aComplexCats.clear();//not one per index
+    m_aDateCategories.clear();
+
+    if( m_xOriginalCategories.is() )
+    {
+        if( !hasComplexCategories() )
         {
-            if( !hasComplexCategories() )
+            if(m_bIsDateAxis)
             {
-                if(m_bIsDateAxis)
-                {
-                    if( ChartTypeHelper::isSupportingDateAxis( AxisHelper::getChartTypeByIndex( m_xCooSysModel, 0 ), 0 ) )
-                        m_bIsDateAxis = lcl_fillDateCategories( m_xOriginalCategories->getValues(), m_aDateCategories, m_bIsAutoDate, mrModel );
-                    else
-                        m_bIsDateAxis = false;
-                }
-            }
-            else
-            {
-                m_bIsDateAxis = false;
+                if( ChartTypeHelper::isSupportingDateAxis( AxisHelper::getChartTypeByIndex( m_xCooSysModel, 0 ), 0 ) )
+                    m_bIsDateAxis = lcl_fillDateCategories( m_xOriginalCategories->getValues(), m_aDateCategories, m_bIsAutoDate, mrModel );
+                else
+                    m_bIsDateAxis = false;
             }
         }
         else
-            m_bIsDateAxis=false;
-        m_bDirty = false;
+        {
+            m_bIsDateAxis = false;
+        }
     }
+    else
+        m_bIsDateAxis=false;
+    m_bDirty = false;
 }
 
 Sequence< OUString > const & ExplicitCategoriesProvider::getSimpleCategories()
@@ -520,7 +512,7 @@ Sequence< OUString > const & ExplicitCategoriesProvider::getSimpleCategories()
                     SplitCategoriesProvider_ForLabeledDataSequences( m_aSplitCategoriesList, mrModel ), m_aComplexCats );
             }
         }
-        if(!m_aExplicitCategories.getLength())
+        if(!m_aExplicitCategories.hasElements())
             m_aExplicitCategories = DiagramHelper::generateAutomaticCategoriesFromCooSys( m_xCooSysModel );
         m_bIsExplicitCategoriesInited = true;
     }

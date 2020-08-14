@@ -19,7 +19,7 @@
 #ifndef INCLUDED_OSL_SOCKET_HXX
 #define INCLUDED_OSL_SOCKET_HXX
 
-#include <osl/socket_decl.hxx>
+#include "osl/socket_decl.hxx"
 
 namespace osl
 {
@@ -35,7 +35,7 @@ namespace osl
     }
 
 #if defined LIBO_INTERNAL_ONLY
-    SocketAddr::SocketAddr(SocketAddr && other): m_handle(other.m_handle) {
+    SocketAddr::SocketAddr(SocketAddr && other) noexcept : m_handle(other.m_handle) {
         other.m_handle = nullptr;
     }
 #endif
@@ -136,12 +136,12 @@ namespace osl
 
     inline SocketAddr & SAL_CALL SocketAddr::operator= (const SocketAddr& Addr)
     {
-        *this = (Addr.getHandle());
+        *this = Addr.getHandle();
         return *this;
     }
 
 #if defined LIBO_INTERNAL_ONLY
-    SocketAddr & SocketAddr::operator =(SocketAddr && other) {
+    SocketAddr & SocketAddr::operator =(SocketAddr && other) noexcept {
         if (m_handle != nullptr) {
             osl_destroySocketAddr(m_handle);
         }
@@ -242,7 +242,8 @@ namespace osl
 
     inline Socket&  Socket::operator= (const Socket& sock)
     {
-        return (*this) = sock.getHandle();
+        *this = sock.getHandle();
+        return *this;
     }
 
 
@@ -430,11 +431,6 @@ namespace osl
 
     inline StreamSocket::StreamSocket( oslSocket socketHandle )
         : Socket( socketHandle )
-    {}
-
-
-    inline StreamSocket::StreamSocket( const StreamSocket & socket )
-        : Socket( socket )
     {}
 
 

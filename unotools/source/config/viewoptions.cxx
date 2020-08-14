@@ -20,15 +20,16 @@
 #include <unotools/viewoptions.hxx>
 #include <com/sun/star/uno/Any.hxx>
 
-#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
-#include <unotools/configpaths.hxx>
+#include <sal/log.hxx>
+#include <unotools/configmgr.hxx>
 #include <comphelper/configurationhelper.hxx>
 #include <comphelper/processfactory.hxx>
+#include <tools/diagnose_ex.h>
 
 #include "itemholder1.hxx"
 
@@ -54,14 +55,6 @@
                     fclose( pFile );                                                                                                        \
                 }
 #endif // DEBUG_VIEWOPTIONS
-
-#define SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION_PARAM_EXCEPTION)            \
-    {                                                                                                               \
-        OUStringBuffer sMsg(256);                                                                            \
-        sMsg.append("Unexpected exception caught. Original message was:\n\""      );                          \
-        sMsg.append     (SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION_PARAM_EXCEPTION.Message);                          \
-        sMsg.append("\""                                                           );                          \
-    }
 
 //  initialization!
 
@@ -101,9 +94,9 @@ class SvtViewOptionsBase_Impl final
         css::uno::Sequence< css::beans::NamedValue >    GetUserData             ( const OUString&                                sName    );
         void                                            SetUserData             ( const OUString&                                sName    ,
                                                                                   const css::uno::Sequence< css::beans::NamedValue >&   lData    );
-        sal_Int32                                       GetPageID               ( const OUString&                                sName    );
+        OString                                         GetPageID               ( const OUString&                                sName    );
         void                                            SetPageID               ( const OUString&                                sName    ,
-                                                                                        sal_Int32                                       nID      );
+                                                                                  const OString&                                 sID      );
         State                                           GetVisible              ( const OUString&                                sName    );
         void                                            SetVisible              ( const OUString&                                sName    ,
                                                                                         bool                                        bVisible );
@@ -118,7 +111,7 @@ class SvtViewOptionsBase_Impl final
                                                                            bool         bCreateIfMissing);
 
     private:
-        OUString                                    m_sListName;
+        OUString                                           m_sListName;
         css::uno::Reference< css::container::XNameAccess > m_xRoot;
         css::uno::Reference< css::container::XNameAccess > m_xSet;
 
@@ -149,7 +142,7 @@ SvtViewOptionsBase_Impl::SvtViewOptionsBase_Impl( const OUString& sList )
         ,   m_nWriteCount( 0     )
         #endif
 {
-    if (utl::ConfigManager::IsAvoidConfig())
+    if (utl::ConfigManager::IsFuzzing())
         return;
 
     try
@@ -162,12 +155,11 @@ SvtViewOptionsBase_Impl::SvtViewOptionsBase_Impl( const OUString& sList )
         if (m_xRoot.is())
             m_xRoot->getByName(sList) >>= m_xSet;
     }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
             m_xRoot.clear();
             m_xSet.clear();
-
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
         }
 }
 
@@ -187,7 +179,7 @@ SvtViewOptionsBase_Impl::~SvtViewOptionsBase_Impl()
 {
     // don't flush configuration changes here to m_xRoot.
     // That must be done inside every SetXXX() method already !
-    // Here its to late - DisposedExceptions from used configuration access can occur otherwise.
+    // Here it's too late - DisposedExceptions from used configuration access can occur otherwise.
 
     m_xRoot.clear();
     m_xSet.clear();
@@ -216,10 +208,10 @@ bool SvtViewOptionsBase_Impl::Exists( const OUString& sName )
         if (m_xSet.is())
             bExists = m_xSet->hasByName(sName);
     }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
             bExists = false;
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
         }
 
     return bExists;
@@ -247,9 +239,9 @@ void SvtViewOptionsBase_Impl::Delete( const OUString& sName )
     }
     catch(const css::container::NoSuchElementException&)
         { }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
         }
 }
 
@@ -274,10 +266,10 @@ OUString SvtViewOptionsBase_Impl::GetWindowState( const OUString& sName )
         if (xNode.is())
             xNode->getPropertyValue(PROPERTY_WINDOWSTATE) >>= sWindowState;
     }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
             sWindowState.clear();
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
         }
 
     return sWindowState;
@@ -298,9 +290,9 @@ void SvtViewOptionsBase_Impl::SetWindowState( const OUString& sName  ,
         xNode->setPropertyValue(PROPERTY_WINDOWSTATE, css::uno::makeAny(sState));
         ::comphelper::ConfigurationHelper::flush(m_xRoot);
     }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
         }
 }
 
@@ -321,23 +313,19 @@ css::uno::Sequence< css::beans::NamedValue > SvtViewOptionsBase_Impl::GetUserDat
         if (xUserData.is())
         {
             const css::uno::Sequence<OUString> lNames = xUserData->getElementNames();
-            const OUString* pNames = lNames.getConstArray();
             sal_Int32 c = lNames.getLength();
-            sal_Int32 i = 0;
             css::uno::Sequence< css::beans::NamedValue > lUserData(c);
 
-            for (i=0; i<c; ++i)
-            {
-                lUserData[i].Name  = pNames[i];
-                lUserData[i].Value = xUserData->getByName(pNames[i]);
-            }
+            std::transform(lNames.begin(), lNames.end(), lUserData.begin(),
+                [&xUserData](const OUString& rName) -> css::beans::NamedValue {
+                    return { rName, xUserData->getByName(rName) }; });
 
             return lUserData;
         }
     }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
         }
 
     return css::uno::Sequence< css::beans::NamedValue >();
@@ -359,22 +347,19 @@ void SvtViewOptionsBase_Impl::SetUserData( const OUString&                      
         xNode->getByName(PROPERTY_USERDATA) >>= xUserData;
         if (xUserData.is())
         {
-            const css::beans::NamedValue* pData = lData.getConstArray();
-                  sal_Int32               c     = lData.getLength();
-                  sal_Int32               i     = 0;
-            for (i=0; i<c; ++i)
+            for (const css::beans::NamedValue& rData : lData)
             {
-                if (xUserData->hasByName(pData[i].Name))
-                    xUserData->replaceByName(pData[i].Name, pData[i].Value);
+                if (xUserData->hasByName(rData.Name))
+                    xUserData->replaceByName(rData.Name, rData.Value);
                 else
-                    xUserData->insertByName(pData[i].Name, pData[i].Value);
+                    xUserData->insertByName(rData.Name, rData.Value);
             }
         }
         ::comphelper::ConfigurationHelper::flush(m_xRoot);
     }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
         }
 }
 
@@ -399,10 +384,10 @@ css::uno::Any SvtViewOptionsBase_Impl::GetUserItem( const OUString& sName ,
     }
     catch(const css::container::NoSuchElementException&)
         { aItem.clear(); }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
             aItem.clear();
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
         }
 
     return aItem;
@@ -432,38 +417,37 @@ void SvtViewOptionsBase_Impl::SetUserItem( const OUString& sName  ,
         }
         ::comphelper::ConfigurationHelper::flush(m_xRoot);
     }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
         }
 }
 
-sal_Int32 SvtViewOptionsBase_Impl::GetPageID( const OUString& sName )
+OString SvtViewOptionsBase_Impl::GetPageID( const OUString& sName )
 {
     #ifdef DEBUG_VIEWOPTIONS
     ++m_nReadCount;
     #endif
 
-    sal_Int32 nID = 0;
+    OUString sID;
     try
     {
         css::uno::Reference< css::beans::XPropertySet > xNode(
             impl_getSetNode(sName, false),
             css::uno::UNO_QUERY);
         if (xNode.is())
-            xNode->getPropertyValue(PROPERTY_PAGEID) >>= nID;
+            xNode->getPropertyValue(PROPERTY_PAGEID) >>= sID;
     }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
-            nID = 0;
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
         }
 
-    return nID;
+    return sID.toUtf8();
 }
 
 void SvtViewOptionsBase_Impl::SetPageID( const OUString& sName ,
-                                               sal_Int32        nID   )
+                                         const OString& sID )
 {
     #ifdef DEBUG_VIEWOPTIONS
     ++m_nWriteCount;
@@ -474,12 +458,12 @@ void SvtViewOptionsBase_Impl::SetPageID( const OUString& sName ,
         css::uno::Reference< css::beans::XPropertySet > xNode(
             impl_getSetNode(sName, true),
             css::uno::UNO_QUERY_THROW);
-        xNode->setPropertyValue(PROPERTY_PAGEID, css::uno::makeAny(nID));
+        xNode->setPropertyValue(PROPERTY_PAGEID, css::uno::makeAny(OUString::fromUtf8(sID)));
         ::comphelper::ConfigurationHelper::flush(m_xRoot);
     }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
         }
 }
 
@@ -504,9 +488,9 @@ SvtViewOptionsBase_Impl::State SvtViewOptionsBase_Impl::GetVisible( const OUStri
             }
         }
     }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
         }
 
     return eState;
@@ -527,9 +511,9 @@ void SvtViewOptionsBase_Impl::SetVisible( const OUString& sName    ,
         xNode->setPropertyValue(PROPERTY_VISIBLE, css::uno::makeAny(bVisible));
         ::comphelper::ConfigurationHelper::flush(m_xRoot);
     }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
         }
 }
 
@@ -559,10 +543,10 @@ css::uno::Reference< css::uno::XInterface > SvtViewOptionsBase_Impl::impl_getSet
     }
     catch(const css::container::NoSuchElementException&)
         { xNode.clear(); }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
         {
+            TOOLS_WARN_EXCEPTION("unotools", "Unexpected exception");
             xNode.clear();
-            SVTVIEWOPTIONS_LOG_UNEXPECTED_EXCEPTION(ex)
         }
 
     return xNode;
@@ -797,7 +781,7 @@ void SvtViewOptions::SetWindowState( const OUString& sState )
 
 //  public method
 
-sal_Int32 SvtViewOptions::GetPageID() const
+OString SvtViewOptions::GetPageID() const
 {
     // Ready for multithreading
     ::osl::MutexGuard aGuard( GetOwnStaticMutex() );
@@ -806,15 +790,15 @@ sal_Int32 SvtViewOptions::GetPageID() const
     // These call isn't allowed for dialogs, tab-pages or windows!
     OSL_ENSURE( !(m_eViewType==EViewType::Dialog||m_eViewType==EViewType::TabPage||m_eViewType==EViewType::Window), "SvtViewOptions::GetPageID()\nCall not allowed for Dialogs, TabPages or Windows! I do nothing!" );
 
-    sal_Int32 nID = 0;
+    OString sID;
     if( m_eViewType == EViewType::TabDialog )
-        nID = m_pDataContainer_TabDialogs->GetPageID( m_sViewName );
-    return nID;
+        sID = m_pDataContainer_TabDialogs->GetPageID( m_sViewName );
+    return sID;
 }
 
 //  public method
 
-void SvtViewOptions::SetPageID( sal_Int32 nID )
+void SvtViewOptions::SetPageID(const OString& rID)
 {
     // Ready for multithreading
     ::osl::MutexGuard aGuard( GetOwnStaticMutex() );
@@ -824,7 +808,7 @@ void SvtViewOptions::SetPageID( sal_Int32 nID )
     OSL_ENSURE( !(m_eViewType==EViewType::Dialog||m_eViewType==EViewType::TabPage||m_eViewType==EViewType::Window), "SvtViewOptions::SetPageID()\nCall not allowed for Dialogs, TabPages or Windows! I do nothing!" );
 
     if( m_eViewType == EViewType::TabDialog )
-        m_pDataContainer_TabDialogs->SetPageID( m_sViewName, nID );
+        m_pDataContainer_TabDialogs->SetPageID(m_sViewName, rID);
 }
 
 //  public method

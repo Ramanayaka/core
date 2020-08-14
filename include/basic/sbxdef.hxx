@@ -21,9 +21,6 @@
 #ifndef INCLUDED_BASIC_SBXDEF_HXX
 #define INCLUDED_BASIC_SBXDEF_HXX
 
-
-#ifndef __RSC
-#include <vcl/errcode.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
 enum class SbxClassType {         // SBX-class-IDs (order is important!)
@@ -81,6 +78,9 @@ enum SbxDataType {
     SbxVECTOR = 0x1000,  // simple counted array
     SbxARRAY  = 0x2000,  // array
     SbxBYREF  = 0x4000,  // access by reference
+
+    // tdf#79426, tdf#125180
+    SbxMISSING = 0x8000, // Parameter is missing
 };
 
 const sal_uInt32 SBX_TYPE_WITH_EVENTS_FLAG = 0x10000;
@@ -124,42 +124,6 @@ enum class SbxNameType {          // Type of the questioned name of a variable
     ShortTypes,     // Name%(A%,B$)
 };
 
-#endif
-
-
-// New error codes per define
-#define ERRCODE_SBX_SYNTAX              ErrCode(1UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_COMPILER)
-#define ERRCODE_SBX_NOTIMP              ErrCode(2UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_NOTSUPPORTED)
-#define ERRCODE_SBX_OVERFLOW            ErrCode(3UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_SBX)        // overflow
-#define ERRCODE_SBX_BOUNDS              ErrCode(4UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_SBX)        // Invalid array index
-#define ERRCODE_SBX_ZERODIV             ErrCode(5UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_SBX)        // Division by zero
-#define ERRCODE_SBX_CONVERSION          ErrCode(6UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_SBX)        // wrong data type
-#define ERRCODE_SBX_BAD_PARAMETER       ErrCode(7UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_RUNTIME)    // invalid Parameter
-#define ERRCODE_SBX_PROC_UNDEFINED      ErrCode(8UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_RUNTIME)    // Sub or Func not def
-#define ERRCODE_SBX_ERROR               ErrCode(9UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_UNKNOWN)    // generic object error
-#define ERRCODE_SBX_NO_OBJECT           ErrCode(10UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_RUNTIME)   // Object var not object
-#define ERRCODE_SBX_CANNOT_LOAD         ErrCode(11UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_CREATE)    // Object init/load fail
-#define ERRCODE_SBX_BAD_INDEX           ErrCode(12UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_SBX)       // Invalid object index
-#define ERRCODE_SBX_NO_ACTIVE_OBJECT    ErrCode(13UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_ACCESS)    // Object not active
-#define ERRCODE_SBX_BAD_PROP_VALUE      ErrCode(14UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_RUNTIME)   // Bad property value
-#define ERRCODE_SBX_PROP_READONLY       ErrCode(15UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_READ)      // Property is read only
-#define ERRCODE_SBX_PROP_WRITEONLY      ErrCode(16UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_WRITE)     // Property is write only
-#define ERRCODE_SBX_INVALID_OBJECT      ErrCode(17UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_ACCESS)    // Invalid object reference
-#define ERRCODE_SBX_NO_METHOD           ErrCode(18UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_RUNTIME)   // Property or Method unknown
-#define ERRCODE_SBX_INVALID_USAGE_OBJECT ErrCode(19UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_ACCESS)   // Invalid object usage
-#define ERRCODE_SBX_NO_OLE              ErrCode(20UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_ACCESS)    // No OLE-Object
-#define ERRCODE_SBX_BAD_METHOD          ErrCode(21UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_RUNTIME)   // Method not supported
-#define ERRCODE_SBX_OLE_ERROR           ErrCode(22UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_RUNTIME)   // OLE Automation Error
-#define ERRCODE_SBX_BAD_ACTION          ErrCode(23UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_NOTSUPPORTED)  // Action not supported
-#define ERRCODE_SBX_NO_NAMED_ARGS       ErrCode(24UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_RUNTIME)   // No named arguments
-#define ERRCODE_SBX_BAD_LOCALE          ErrCode(25UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_NOTSUPPORTED)  // Locale not supported
-#define ERRCODE_SBX_NAMED_NOT_FOUND     ErrCode(26UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_RUNTIME)   // Unknown named argument
-#define ERRCODE_SBX_NOT_OPTIONAL        ErrCode(27UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_RUNTIME)   // Argument not optional
-#define ERRCODE_SBX_WRONG_ARGS          ErrCode(28UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_SBX)       // Invalid number of arguments
-#define ERRCODE_SBX_NOT_A_COLL          ErrCode(29UL | ERRCODE_AREA_SBX | ERRCODE_CLASS_RUNTIME)   // Object contains no elements
-#define LAST_SBX_ERROR_ID                        29UL
-
-#ifndef __RSC
 
 // Flag-Bits:
 enum class SbxFlagBits {
@@ -195,64 +159,58 @@ namespace o3tl
 
 // List of all creators for Load/Store
 
-#define SBXCR_SBX            0x20584253        // SBX(blank)
+constexpr auto SBXCR_SBX = 0x20584253;        // SBX(blank)
 
 // List of predefined SBX-IDs. New SBX-IDs must be precisely defined so that
 // they are unique within the Stream and appropriate Factory.
 
-#define SBXID_VALUE         0x4E4E  // NN: SbxValue
-#define SBXID_VARIABLE      0x4156  // VA: SbxVariable
-#define SBXID_ARRAY         0x5241  // AR: SbxArray
-#define SBXID_DIMARRAY      0x4944  // DI: SbxDimArray
-#define SBXID_OBJECT        0x424F  // OB: SbxObject
-#define SBXID_COLLECTION    0x4F43  // CO: SbxCollection
-#define SBXID_FIXCOLLECTION 0x4346  // FC: SbxStdCollection
-#define SBXID_METHOD        0x454D  // ME: SbxMethod
-#define SBXID_PROPERTY      0x5250  // PR: SbxProperty
+constexpr auto SBXID_VALUE = 0x4E4E;  // NN: SbxValue
+constexpr auto SBXID_VARIABLE = 0x4156;  // VA: SbxVariable
+constexpr auto SBXID_ARRAY = 0x5241;  // AR: SbxArray
+constexpr auto SBXID_DIMARRAY = 0x4944;  // DI: SbxDimArray
+constexpr auto SBXID_OBJECT = 0x424F;  // OB: SbxObject
+constexpr auto SBXID_COLLECTION = 0x4F43;  // CO: SbxCollection
+constexpr auto SBXID_FIXCOLLECTION = 0x4346;  // FC: SbxStdCollection
+constexpr auto SBXID_METHOD = 0x454D;  // ME: SbxMethod
+constexpr auto SBXID_PROPERTY = 0x5250;  // PR: SbxProperty
 
 // StarBASIC restricts the base data type to different intervals.
 // These intervals are fixed to create 'portability and independent
 // of the implementation. Only type double is greedy and takes
 // what it gets.
 
-#define SbxMAXCHAR  u'\xFFFF'
-#define SbxMINCHAR  (0)
-#define SbxMAXBYTE  ( 255)
-#define SbxMAXINT   ( 32767)
-#define SbxMININT   (-32768)
-#define SbxMAXUINT  ((sal_uInt16) 65535)
-#define SbxMAXLNG   ( 2147483647)
-#define SbxMINLNG   ((sal_Int32)(-2147483647-1))
-#define SbxMAXULNG  ((sal_uInt32) 0xffffffff)
-
-#define SbxMAXSALUINT64     SAL_MAX_UINT64
-#define SbxMAXSALINT64      SAL_MAX_INT64
-#define SbxMINSALINT64      SAL_MIN_INT64
+constexpr auto SbxMAXCHAR = u'\xFFFF';
+constexpr auto SbxMINCHAR = 0;
+constexpr auto SbxMAXBYTE = 255;
+constexpr auto SbxMAXINT = 32767;
+constexpr auto SbxMININT = -32768;
+constexpr sal_uInt16 SbxMAXUINT = 65535;
+constexpr auto SbxMAXLNG = 2147483647;
+constexpr sal_Int32 SbxMINLNG = -2147483647-1;
+constexpr sal_uInt32 SbxMAXULNG = 0xffffffff;
 
         // Currency stored as SbxSALINT64 == sal_Int64
         // value range limits are ~(2^63 - 1)/10000
         // fixed precision has 4 digits right of decimal pt
-#define CURRENCY_FACTOR         (10000)
-#define CURRENCY_FACTOR_SQUARE  (100000000)
+constexpr auto CURRENCY_FACTOR = 10000;
+constexpr auto CURRENCY_FACTOR_SQUARE = 100000000;
 
 // TODO effective MAX/MINCURR limits:
 // true value ( 922337203685477.5807) is too precise for correct comparison to 64bit double
-#define SbxMAXCURR      ( 922337203685477.5807)
-#define SbxMINCURR      (-922337203685477.5808)
+constexpr auto SbxMAXCURR = 922337203685477.5807;
+constexpr auto SbxMINCURR = -922337203685477.5808;
 
-#define SbxMAXSNG       ( 3.402823e+38)
-#define SbxMINSNG       (-3.402823e+38)
-#define SbxMAXSNG2      ( 1.175494351e-38)
-#define SbxMINSNG2      (-1.175494351e-38)
+constexpr auto SbxMAXSNG = 3.402823e+38;
+constexpr auto SbxMINSNG = -3.402823e+38;
+constexpr auto SbxMAXSNG2 = 1.175494351e-38;
+constexpr auto SbxMINSNG2 = -1.175494351e-38;
 
 // Max valid offset index of a Sbx-Array (due to 64K limit)
-#define SBX_MAXINDEX    0x3FF0
-#define SBX_MAXINDEX32  SbxMAXLNG
+constexpr auto SBX_MAXINDEX = 0x3FF0;
+constexpr auto SBX_MAXINDEX32 = SbxMAXLNG;
 
 // The numeric values of sal_True and FALSE
 enum SbxBOOL { SbxFALSE = 0, SbxTRUE = -1 };
-
-#endif //ifndef __RSC
 
 #endif
 

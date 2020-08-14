@@ -23,14 +23,20 @@
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
 #include <sal/types.h>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include <com/sun/star/beans/XTolerantMultiPropertySet.hpp>
+#include <rtl/ustring.hxx>
 
 #include <vector>
 #include <salhelper/simplereferenceobject.hxx>
+
+namespace com::sun::star::beans { class XMultiPropertySet; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::beans { class XPropertySetInfo; }
+namespace com::sun::star::beans { class XTolerantMultiPropertySet; }
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::uno { class Any; }
+namespace com::sun::star::uno { template <typename > class Reference; }
+namespace com::sun::star::uno { template <typename > class Sequence; }
+namespace com::sun::star::xml::sax { class XAttributeList; }
 
 struct XMLPropertyState;
 class XMLPropertySetMapper;
@@ -57,8 +63,8 @@ class XMLOFF_DLLPUBLIC SvXMLImportPropertyMapper : public salhelper::SimpleRefer
 
     SvXMLImport& rImport;   // access to error handling
 
-    SvXMLImportPropertyMapper(SvXMLImportPropertyMapper &) = delete;
-    void operator =(SvXMLImportPropertyMapper &) = delete;
+    SvXMLImportPropertyMapper(SvXMLImportPropertyMapper const &) = delete;
+    SvXMLImportPropertyMapper& operator =(SvXMLImportPropertyMapper const &) = delete;
 
 protected:
 
@@ -72,7 +78,7 @@ public:
             SvXMLImport& rImport);
     virtual ~SvXMLImportPropertyMapper() override;
 
-    // Add a ImportPropertyMapper at the end of the import mapper chain.
+    // Add an ImportPropertyMapper at the end of the import mapper chain.
     // The added mapper MUST not be used outside the Mapper chain any longer,
     // because its PropertyMapper will be replaced.
     void ChainImportMapper(
@@ -136,7 +142,7 @@ public:
         ContextID_Index_Pair* pSpecialContextIds );
 
     /** implementation helper for FillPropertySet: fill an XMultiPropertySet.
-     * If unsuccessul, set return value. */
+     * If unsuccessful, set return value. */
     static bool FillMultiPropertySet_(
         const ::std::vector<XMLPropertyState> & rProperties,
         const css::uno::Reference< css::beans::XMultiPropertySet> & rMultiPropSet,
@@ -148,7 +154,7 @@ public:
         ContextID_Index_Pair* pSpecialContextIds );
 
     /** implementation helper for FillPropertySet: fill an XTolerantMultiPropertySet.
-     * If unsuccessul, set return value. */
+     * If unsuccessful, set return value. */
     static bool FillTolerantMultiPropertySet_(
         const ::std::vector<XMLPropertyState> & rProperties,
         const css::uno::Reference< css::beans::XTolerantMultiPropertySet> & rTolPropSet,

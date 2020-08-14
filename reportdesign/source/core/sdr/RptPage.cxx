@@ -16,64 +16,44 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "RptPage.hxx"
-#include "RptModel.hxx"
-#include "Section.hxx"
-#include "RptObject.hxx"
-#include <svx/unoapi.hxx>
+#include <RptPage.hxx>
+#include <RptModel.hxx>
+#include <Section.hxx>
+#include <RptObject.hxx>
 #include <svx/unoshape.hxx>
-#include "ReportDrawPage.hxx"
+#include <ReportDrawPage.hxx>
 
 namespace rptui
 {
 using namespace ::com::sun::star;
 
-
-OReportPage::OReportPage( OReportModel& _rModel
-                         ,const uno::Reference< report::XSection >& _xSection )
-    :SdrPage( _rModel, false/*bMasterPage*/ )
+OReportPage::OReportPage(
+    OReportModel& _rModel,
+    const uno::Reference< report::XSection >& _xSection)
+:   SdrPage(_rModel, false/*bMasterPage*/)
     ,rModel(_rModel)
     ,m_xSection(_xSection)
-     ,m_bSpecialInsertMode(false)
+    ,m_bSpecialInsertMode(false)
 {
 }
-
-
-OReportPage::OReportPage( const OReportPage& rPage )
-    :SdrPage( rPage )
-    ,rModel(rPage.rModel)
-     ,m_xSection(rPage.m_xSection)
-     ,m_bSpecialInsertMode(rPage.m_bSpecialInsertMode)
-     ,m_aTemporaryObjectList(rPage.m_aTemporaryObjectList)
-{
-}
-
 
 OReportPage::~OReportPage()
 {
 }
 
-
-SdrPage* OReportPage::Clone() const
+SdrPage* OReportPage::CloneSdrPage(SdrModel& rTargetModel) const
 {
-    return Clone(nullptr);
-}
-
-SdrPage* OReportPage::Clone( SdrModel* const pNewModel ) const
-{
-    OReportPage *const pNewPage = new OReportPage( *this );
-    OReportModel* pReportModel = nullptr;
-    if ( pNewModel )
-    {
-        pReportModel = dynamic_cast<OReportModel*>( pNewModel );
-        assert( pReportModel );
-    }
-    pNewPage->lateInit( *this, pReportModel );
-    return pNewPage;
+    OReportModel& rOReportModel(static_cast< OReportModel& >(rTargetModel));
+    OReportPage* pClonedOReportPage(
+        new OReportPage(
+            rOReportModel,
+            m_xSection));
+    pClonedOReportPage->SdrPage::lateInit(*this);
+    return pClonedOReportPage;
 }
 
 
-sal_uLong OReportPage::getIndexOf(const uno::Reference< report::XReportComponent >& _xObject)
+size_t OReportPage::getIndexOf(const uno::Reference< report::XReportComponent >& _xObject)
 {
     const size_t nCount = GetObjCount();
     size_t i = 0;
@@ -86,16 +66,16 @@ sal_uLong OReportPage::getIndexOf(const uno::Reference< report::XReportComponent
             break;
         }
     }
-    return static_cast<sal_uLong>(i);
+    return i;
 }
 
 void OReportPage::removeSdrObject(const uno::Reference< report::XReportComponent >& _xObject)
 {
-    sal_uLong nPos = getIndexOf(_xObject);
+    size_t nPos = getIndexOf(_xObject);
     if ( nPos < GetObjCount() )
     {
         OObjectBase* pBase = dynamic_cast<OObjectBase*>(GetObj(nPos));
-        OSL_ENSURE(pBase,"Why is this not a OObjectBase?");
+        OSL_ENSURE(pBase,"Why is this not an OObjectBase?");
         if ( pBase )
             pBase->EndListening();
         RemoveObject(nPos);
@@ -111,7 +91,7 @@ SdrObject* OReportPage::RemoveObject(size_t nObjNum)
     }
 
     // this code is evil, but what else shall I do
-    reportdesign::OSection* pSection = reportdesign::OSection::getImplementation(m_xSection);
+    reportdesign::OSection* pSection = comphelper::getUnoTunnelImplementation<reportdesign::OSection>(m_xSection);
     uno::Reference< drawing::XShape> xShape(pObj->getUnoShape(),uno::UNO_QUERY);
     pSection->notifyElementRemoved(xShape);
     if (dynamic_cast< const OUnoObject *>( pObj ) !=  nullptr)
@@ -129,11 +109,11 @@ void OReportPage::insertObject(const uno::Reference< report::XReportComponent >&
     OSL_ENSURE(_xObject.is(),"Object is not valid to create a SdrObject!");
     if ( !_xObject.is() )
         return;
-    sal_uLong nPos = getIndexOf(_xObject);
+    size_t nPos = getIndexOf(_xObject);
     if ( nPos < GetObjCount() )
         return; // Object already in list
 
-    SvxShape* pShape = SvxShape::getImplementation( _xObject );
+    SvxShape* pShape = comphelper::getUnoTunnelImplementation<SvxShape>( _xObject );
     OObjectBase* pObject = pShape ? dynamic_cast< OObjectBase* >( pShape->GetSdrObject() ) : nullptr;
     OSL_ENSURE( pObject, "OReportPage::insertObject: no implementation object found for the given shape/component!" );
     if ( pObject )
@@ -146,7 +126,7 @@ uno::Reference< uno::XInterface > OReportPage::createUnoPage()
     return static_cast<cppu::OWeakObject*>( new reportdesign::OReportDrawPage(this,m_xSection) );
 }
 
-void OReportPage::removeTempObject(SdrObject *_pToRemoveObj)
+void OReportPage::removeTempObject(SdrObject const *_pToRemoveObj)
 {
     if (_pToRemoveObj)
     {
@@ -165,12 +145,10 @@ void OReportPage::removeTempObject(SdrObject *_pToRemoveObj)
 void OReportPage::resetSpecialMode()
 {
     const bool bChanged = rModel.IsChanged();
-    ::std::vector<SdrObject*>::const_iterator aIter = m_aTemporaryObjectList.begin();
-    ::std::vector<SdrObject*>::const_iterator aEnd = m_aTemporaryObjectList.end();
 
-    for (; aIter != aEnd; ++aIter)
+    for (const auto& pTemporaryObject : m_aTemporaryObjectList)
     {
-         removeTempObject(*aIter);
+         removeTempObject(pTemporaryObject);
     }
     m_aTemporaryObjectList.clear();
     rModel.SetChanged(bChanged);
@@ -198,7 +176,7 @@ void OReportPage::NbcInsertObject(SdrObject* pObj, size_t nPos)
     }
 
     // this code is evil, but what else shall I do
-    reportdesign::OSection* pSection = reportdesign::OSection::getImplementation(m_xSection);
+    reportdesign::OSection* pSection = comphelper::getUnoTunnelImplementation<reportdesign::OSection>(m_xSection);
     uno::Reference< drawing::XShape> xShape(pObj->getUnoShape(),uno::UNO_QUERY);
     pSection->notifyElementAdded(xShape);
 

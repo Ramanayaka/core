@@ -19,11 +19,9 @@
 
 #include "filrow.hxx"
 #include "filtask.hxx"
-#include "prov.hxx"
 #include <com/sun/star/script/CannotConvertException.hpp>
 #include <com/sun/star/script/Converter.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
-#include <comphelper/processfactory.hxx>
 
 using namespace fileaccess;
 using namespace com::sun::star;
@@ -38,7 +36,7 @@ using namespace css::uno;
 // Function for TypeConverting
 
 template< class _type_ >
-bool convert( TaskManager* pShell,
+static bool convert( TaskManager const * pShell,
                   uno::Reference< script::XTypeConverter >& xConverter,
                   uno::Any& rValue,
                   _type_& aReturn  )
@@ -80,8 +78,7 @@ bool convert( TaskManager* pShell,
 XRow_impl::XRow_impl( TaskManager* pMyShell,const uno::Sequence< uno::Any >& seq )
     : m_aValueMap( seq ),
       m_nWasNull(false),
-      m_pMyShell( pMyShell ),
-      m_xTypeConverter( nullptr )
+      m_pMyShell( pMyShell )
 {
 }
 
@@ -101,24 +98,18 @@ OUString SAL_CALL
 XRow_impl::getString(
              sal_Int32 columnIndex )
 {
-  if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+  if( isIndexOutOfBounds( columnIndex ) )
     throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-  OUString  Value;
-  osl::MutexGuard aGuard( m_aMutex );
-  m_nWasNull = ::convert<OUString>( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-  return Value;
+  return getValue<OUString>(columnIndex);
 }
 
 sal_Bool SAL_CALL
 XRow_impl::getBoolean(
     sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    bool  Value( false );
-    osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<bool>( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-    return Value;
+    return getValue<bool>(columnIndex);
 }
 
 
@@ -126,24 +117,18 @@ sal_Int8 SAL_CALL
 XRow_impl::getByte(
     sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    sal_Int8  Value( 0 );
-    osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<sal_Int8>( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-    return Value;
+    return getValue<sal_Int8>(columnIndex);
 }
 
 sal_Int16 SAL_CALL
 XRow_impl::getShort(
     sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    sal_Int16  Value( 0 );
-    osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<sal_Int16>( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-    return Value;
+    return getValue<sal_Int16>(columnIndex);
 }
 
 
@@ -151,96 +136,72 @@ sal_Int32 SAL_CALL
 XRow_impl::getInt(
           sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    sal_Int32  Value( 0 );
-    osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<sal_Int32>( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-    return Value;
+    return getValue<sal_Int32>(columnIndex);
 }
 
 sal_Int64 SAL_CALL
 XRow_impl::getLong(
            sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    sal_Int64  Value( 0 );
-    osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<sal_Int64>( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-    return Value;
+    return getValue<sal_Int64>(columnIndex);
 }
 
 float SAL_CALL
 XRow_impl::getFloat(
     sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    float  Value( 0 );
-    osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<float>( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-    return Value;
+    return getValue<float>(columnIndex);
 }
 
 double SAL_CALL
 XRow_impl::getDouble(
     sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    double  Value( 0 );
-    osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<double>( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-    return Value;
+    return getValue<double>(columnIndex);
 }
 
 uno::Sequence< sal_Int8 > SAL_CALL
 XRow_impl::getBytes(
     sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    uno::Sequence< sal_Int8 >  Value(0);
-    osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<uno::Sequence< sal_Int8 > >( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-    return Value;
+    return getValue<uno::Sequence< sal_Int8 >>(columnIndex);
 }
 
 util::Date SAL_CALL
 XRow_impl::getDate(
     sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    util::Date  Value;
-    osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<util::Date>( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-    return Value;
+    return getValue<util::Date>(columnIndex);
 }
 
 util::Time SAL_CALL
 XRow_impl::getTime(
     sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    util::Time  Value;
-    osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<util::Time>( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-    return Value;
+    return getValue<util::Time>(columnIndex);
 }
 
 util::DateTime SAL_CALL
 XRow_impl::getTimestamp(
             sal_Int32 columnIndex )
 {
-  if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+  if( isIndexOutOfBounds( columnIndex ) )
     throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-  util::DateTime  Value;
-  osl::MutexGuard aGuard( m_aMutex );
-  m_nWasNull = ::convert<util::DateTime>( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-  return Value;
+  return getValue<util::DateTime>(columnIndex);
 }
 
 
@@ -248,12 +209,9 @@ uno::Reference< io::XInputStream > SAL_CALL
 XRow_impl::getBinaryStream(
                sal_Int32 columnIndex )
 {
-  if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+  if( isIndexOutOfBounds( columnIndex ) )
     throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-  uno::Reference< io::XInputStream >  Value;
-  osl::MutexGuard aGuard( m_aMutex );
-  m_nWasNull = ::convert<uno::Reference< io::XInputStream > >( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-  return Value;
+  return getValue<uno::Reference< io::XInputStream >>(columnIndex);
 }
 
 
@@ -261,12 +219,9 @@ uno::Reference< io::XInputStream > SAL_CALL
 XRow_impl::getCharacterStream(
                   sal_Int32 columnIndex )
 {
-  if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+  if( isIndexOutOfBounds( columnIndex ) )
       throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-  uno::Reference< io::XInputStream > Value;
-  osl::MutexGuard aGuard( m_aMutex );
-  m_nWasNull = ::convert< uno::Reference< io::XInputStream> >( m_pMyShell,m_xTypeConverter,m_aValueMap[ --columnIndex ],Value );
-  return Value;
+  return getValue<uno::Reference< io::XInputStream >>(columnIndex);
 }
 
 
@@ -275,7 +230,7 @@ XRow_impl::getObject(
     sal_Int32 columnIndex,
     const uno::Reference< container::XNameAccess >& )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
     osl::MutexGuard aGuard( m_aMutex );
     uno::Any Value = m_aValueMap[columnIndex - 1];
@@ -287,45 +242,27 @@ uno::Reference< sdbc::XRef > SAL_CALL
 XRow_impl::getRef(
     sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    uno::Reference< sdbc::XRef > Value;
-    osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<uno::Reference< sdbc::XRef> >( m_pMyShell,
-                                                          m_xTypeConverter,
-                                                          m_aValueMap[ --columnIndex ],
-                                                          Value );
-    return Value;
+    return getValue<uno::Reference< sdbc::XRef >>(columnIndex);
 }
 
 uno::Reference< sdbc::XBlob > SAL_CALL
 XRow_impl::getBlob(
            sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    uno::Reference< sdbc::XBlob > Value;
-    osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<uno::Reference< sdbc::XBlob> >( m_pMyShell,
-                                                           m_xTypeConverter,
-                                                           m_aValueMap[ --columnIndex ],
-                                                           Value );
-    return Value;
+    return getValue<uno::Reference< sdbc::XBlob >>(columnIndex);
 }
 
 uno::Reference< sdbc::XClob > SAL_CALL
 XRow_impl::getClob(
            sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    uno::Reference< sdbc::XClob > Value;
-    osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<uno::Reference< sdbc::XClob> >( m_pMyShell,
-                                                           m_xTypeConverter,
-                                                           m_aValueMap[ --columnIndex ],
-                                                           Value );
-    return Value;
+    return getValue<uno::Reference< sdbc::XClob >>(columnIndex);
 }
 
 
@@ -333,15 +270,24 @@ uno::Reference< sdbc::XArray > SAL_CALL
 XRow_impl::getArray(
     sal_Int32 columnIndex )
 {
-    if( columnIndex < 1 || columnIndex > m_aValueMap.getLength() )
+    if( isIndexOutOfBounds( columnIndex ) )
         throw sdbc::SQLException( THROW_WHERE, uno::Reference< uno::XInterface >(), OUString(), 0, uno::Any() );
-    uno::Reference< sdbc::XArray > Value;
+    return getValue<uno::Reference< sdbc::XArray >>(columnIndex);
+}
+
+bool
+XRow_impl::isIndexOutOfBounds(sal_Int32 nIndex)
+{
+    return nIndex < 1 || m_aValueMap.getLength() < nIndex;
+}
+
+template<typename T>
+T XRow_impl::getValue(sal_Int32 columnIndex)
+{
+    T aValue{};
     osl::MutexGuard aGuard( m_aMutex );
-    m_nWasNull = ::convert<uno::Reference< sdbc::XArray> >( m_pMyShell,
-                                                            m_xTypeConverter,
-                                                            m_aValueMap[ --columnIndex ],
-                                                            Value );
-    return Value;
+    m_nWasNull = ::convert<T>( m_pMyShell, m_xTypeConverter, m_aValueMap[ --columnIndex ], aValue );
+    return aValue;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

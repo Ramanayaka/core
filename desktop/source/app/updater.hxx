@@ -12,25 +12,27 @@
 
 #include <rtl/ustring.hxx>
 
-void update();
+bool update();
 
 void update_checker();
 
 class Updater
 {
-private:
-
 public:
-
-    static OUString getUpdateInfoURL();
     static OUString getUpdateInfoLog();
     static OUString getPatchDirURL();
-    static OUString getUpdateDirURL();
+    static OUString getUpdateFileURL();
     static OUString getExecutableDirURL();
+    static OUString getInstallationPath();
+
+    static OUString getBuildID();
+    static OUString getUpdateChannel();
 
     static void log(const OUString& rMessage);
     static void log(const OString& rMessage);
     static void log(const char* pMessage);
+
+    static void removeUpdateFiles();
 };
 
 #endif

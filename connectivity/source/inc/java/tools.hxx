@@ -24,14 +24,9 @@
 #include <com/sun/star/uno/Sequence.h>
 
 #include <jni.h>
-#include "java/sql/SQLException.hxx"
-#include <comphelper/uno3.hxx>
 
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/util/Time.hpp>
-#include <com/sun/star/util/Date.hpp>
-#include <com/sun/star/util/DateTime.hpp>
 
 
 namespace connectivity
@@ -43,19 +38,16 @@ namespace connectivity
 
     /// @throws css::sdbc::SQLException
     /// @throws css::uno::RuntimeException
-    java_util_Properties* createStringPropertyArray(const css::uno::Sequence< css::beans::PropertyValue >& info );
+    std::unique_ptr<java_util_Properties> createStringPropertyArray(const css::uno::Sequence< css::beans::PropertyValue >& info );
 
     jobject convertTypeMapToJavaMap(const css::uno::Reference< css::container::XNameAccess > & _rMap);
 
-    /** return if a exception occurred
+    /** return if an exception occurred
+        the exception will be cleared.
         @param  pEnv
             The native java env
-        @param  _bClear
-            <TRUE/> if the exception should be cleared
-        @return
-            <TRUE/> if an exception is occurred
     */
-    bool isExceptionOccurred(JNIEnv *pEnv,bool _bClear);
+    bool isExceptionOccurred(JNIEnv *pEnv);
 
     jobject createByteInputStream(const css::uno::Reference< css::io::XInputStream >& x,sal_Int32 length);
     jobject createCharArrayReader(const css::uno::Reference< css::io::XInputStream >& x,sal_Int32 length);

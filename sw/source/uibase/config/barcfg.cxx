@@ -20,9 +20,7 @@
 #include <osl/diagnose.h>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <wrtsh.hxx>
-#include "barcfg.hxx"
-
-#include <unomid.h>
+#include <barcfg.hxx>
 
 using namespace utl;
 using namespace com::sun::star::uno;
@@ -35,7 +33,7 @@ using namespace com::sun::star::uno;
 
 SwToolbarConfigItem::SwToolbarConfigItem( bool bWeb ) :
     ConfigItem(bWeb ? OUString("Office.WriterWeb/ObjectBar") : OUString("Office.Writer/ObjectBar"),
-        ConfigItemMode::DelayedUpdate|ConfigItemMode::ReleaseTree)
+        ConfigItemMode::ReleaseTree)
 {
     for(int i = 0; i <= SEL_TYPE_GRAPHIC; ++i)
         aTbxIdArray[i] = -1;
@@ -86,7 +84,7 @@ void SwToolbarConfigItem::SetTopToolbar(SelectionType nSelType, ToolbarId eBarId
     sal_Int32 nProp = lcl_getArrayIndex(nSelType);
     if(nProp >= 0)
     {
-        aTbxIdArray[nProp] = (sal_Int32)eBarId;
+        aTbxIdArray[nProp] = static_cast<sal_Int32>(eBarId);
         SetModified();
     }
 }

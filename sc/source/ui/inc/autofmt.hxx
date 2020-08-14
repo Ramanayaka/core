@@ -20,33 +20,26 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_AUTOFMT_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_AUTOFMT_HXX
 
-#include <vcl/virdev.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/button.hxx>
-#include <vcl/morebtn.hxx>
-#include <vcl/dialog.hxx>
-#include <svtools/scriptedtext.hxx>
 #include <svx/framelinkarray.hxx>
-#include "scdllapi.h"
-#include "viewdata.hxx"
+#include <scdllapi.h>
+#include <vcl/customweld.hxx>
+
+namespace com::sun::star::i18n { class XBreakIterator; }
 
 class ScAutoFormatData;
 class SvxBoxItem;
 class SvxLineItem;
-class ScAutoFmtPreview; // s.u.
 class SvNumberFormatter;
-class ScDocument;
+class VirtualDevice;
+class ScViewData;
 
-enum AutoFmtLine { TOP_LINE, BOTTOM_LINE, LEFT_LINE, RIGHT_LINE };
-
-class SC_DLLPUBLIC ScAutoFmtPreview : public vcl::Window
+class SC_DLLPUBLIC ScAutoFmtPreview : public weld::CustomWidgetController
 {
 public:
-    ScAutoFmtPreview(vcl::Window* pParent);
-    void DetectRTL(ScViewData *pViewData);
+    ScAutoFmtPreview();
+    void DetectRTL(const ScViewData *pViewData);
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
     virtual ~ScAutoFmtPreview() override;
-    virtual void dispose() override;
 
     void NotifyChange( ScAutoFormatData* pNewData );
 
@@ -73,7 +66,7 @@ private:
     const OUString          aStrMid;
     const OUString          aStrSouth;
     const OUString          aStrSum;
-    SvNumberFormatter*      pNumFmt;
+    std::unique_ptr<SvNumberFormatter> pNumFmt;
 
     SAL_DLLPRIVATE void Init();
     SAL_DLLPRIVATE void DoPaint(vcl::RenderContext& rRenderContext);
@@ -92,8 +85,8 @@ private:
     SAL_DLLPRIVATE void DrawString(vcl::RenderContext& rRenderContext, size_t nCol, size_t nRow);
     SAL_DLLPRIVATE void DrawBackground(vcl::RenderContext& rRenderContext);
 
-    SAL_DLLPRIVATE void MakeFonts(sal_uInt16 nIndex, vcl::Font& rFont,
-                                  vcl::Font& rCJKFont, vcl::Font& rCTLFont );
+    SAL_DLLPRIVATE void MakeFonts(vcl::RenderContext const& rRenderContext, sal_uInt16 nIndex,
+                                  vcl::Font& rFont, vcl::Font& rCJKFont, vcl::Font& rCTLFont);
 };
 
 #endif // INCLUDED_SC_SOURCE_UI_INC_AUTOFMT_HXX

@@ -31,13 +31,9 @@
 
 #include "unoview.hxx"
 
-namespace com { namespace sun { namespace star { namespace drawing
-{
-    class XShape;
-} } } }
+namespace com::sun::star::drawing { class XShape; }
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 class EventQueue;
 class UnoViewContainer;
@@ -461,7 +457,7 @@ public:
         @param rView
         View that has changed
     */
-    bool notifyViewChanged( const UnoViewSharedPtr& rView );
+    void notifyViewChanged( const UnoViewSharedPtr& rView );
 
     /** View changed
 
@@ -496,16 +492,14 @@ public:
         This method announces that the given listener was added for
         the specified shape.
      */
-    void notifyShapeListenerAdded( const css::uno::Reference<css::presentation::XShapeEventListener>& xListener,
-                                   const css::uno::Reference<css::drawing::XShape>&                   xShape );
+    void notifyShapeListenerAdded( const css::uno::Reference<css::drawing::XShape>& xShape );
 
     /** A shape event listener was removed
 
         This method announces that the given listener was removed for
         the specified shape.
      */
-    void notifyShapeListenerRemoved( const css::uno::Reference<css::presentation::XShapeEventListener>& xListener,
-                                     const css::uno::Reference<css::drawing::XShape>&                   xShape );
+    void notifyShapeListenerRemoved( const css::uno::Reference<css::drawing::XShape>& xShape );
 
     /** Notify a new user paint color
 
@@ -586,7 +580,7 @@ public:
         anybody. If false is returned, no handler processed
         this event (and probably, nothing will happen at all)
     */
-    bool notifyAnimationStart( const std::shared_ptr<AnimationNode>& rNode );
+    bool notifyAnimationStart( const AnimationNodeSharedPtr& rNode );
 
     /** Notify that the given node leaves its active duration.
 
@@ -602,7 +596,7 @@ public:
         anybody. If false is returned, no handler processed
         this event (and probably, nothing will happen at all)
     */
-    bool notifyAnimationEnd( const std::shared_ptr<AnimationNode>& rNode );
+    bool notifyAnimationEnd( const AnimationNodeSharedPtr& rNode );
 
     /** Notify that the slide animations sequence leaves its
         active duration.
@@ -627,7 +621,7 @@ public:
         anybody. If false is returned, no handler processed
         this event (and probably, nothing will happen at all)
     */
-    bool notifyAudioStopped( const std::shared_ptr<AnimationNode>& rNode );
+    bool notifyAudioStopped( const AnimationNodeSharedPtr& rNode );
 
     /** Notify that the show has entered or exited pause mode
 
@@ -642,13 +636,13 @@ public:
 
         This method is used by XCommand nodes and all sound
         playing nodes should listen for this command and
-        stop theire sounds when its fired.
+        stop their sounds when it's fired.
 
         @return true, if this event was processed by
         anybody. If false is returned, no handler processed
         this event (and probably, nothing will happen at all)
     */
-    bool notifyCommandStopAudio( const std::shared_ptr<AnimationNode>& rNode );
+    bool notifyCommandStopAudio( const AnimationNodeSharedPtr& rNode );
 
     /** Notifies that a hyperlink has been clicked.
     */
@@ -658,8 +652,7 @@ private:
     std::unique_ptr<EventMultiplexerImpl> mpImpl;
 };
 
-} // namespace internal
-} // namespace Presentation
+} // namespace Presentation::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_EVENTMULTIPLEXER_HXX
 

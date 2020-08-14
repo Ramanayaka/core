@@ -18,48 +18,38 @@
  */
 
 #include <dbaccess/genericcontroller.hxx>
-#include <comphelper/uno3.hxx>
 #include <toolkit/awt/vclxwindow.hxx>
-#include "browserids.hxx"
+#include <browserids.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <dbaccess/dataview.hxx>
 #include <tools/diagnose_ex.h>
 #include <osl/diagnose.h>
-#include "dbustrings.hrc"
 #include <vcl/stdtext.hxx>
-#include <comphelper/processfactory.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <framework/titlehelper.hxx>
+#include <connectivity/dbtools.hxx>
 #include <comphelper/sequence.hxx>
-#include <comphelper/extract.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/sdbc/XDataSource.hpp>
 #include <com/sun/star/sdb/DatabaseContext.hpp>
-#include <com/sun/star/sdb/SQLContext.hpp>
-#include <com/sun/star/sdb/XCompletedConnection.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/task/XInteractionHandler.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
-#include "UITools.hxx"
-#include "commontypes.hxx"
 
 #include <com/sun/star/ui/XSidebarProvider.hpp>
-#include <sfx2/sidebar/UnoSidebar.hxx>
 #include <sfx2/userinputinterception.hxx>
 
-#include <vcl/waitobj.hxx>
-#include <svl/urihelper.hxx>
-#include "datasourceconnector.hxx"
-#include <unotools/moduleoptions.hxx>
+#include <datasourceconnector.hxx>
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
 #include <com/sun/star/frame/status/Visibility.hpp>
+#include <com/sun/star/frame/XUntitledNumbers.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
 #include <rtl/ustring.hxx>
-#include <o3tl/functional.hxx>
+#include <sal/log.hxx>
 #include <limits>
 #include <unordered_map>
+#include <set>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -86,32 +76,25 @@ typedef std::unordered_map< sal_Int16, sal_Int16 > CommandHashMap;
 namespace dbaui
 {
 
+namespace {
+
 // UserDefinedFeatures
 class UserDefinedFeatures
 {
 public:
     explicit UserDefinedFeatures( const Reference< XController >& _rxController );
 
-    static FeatureState getState( const URL& _rFeatureURL );
     void            execute( const URL& _rFeatureURL, const Sequence< PropertyValue>& _rArgs );
 
 private:
     css::uno::WeakReference< XController > m_aController;
 };
 
+}
+
 UserDefinedFeatures::UserDefinedFeatures( const Reference< XController >& _rxController )
     :m_aController( _rxController )
 {
-}
-
-FeatureState UserDefinedFeatures::getState( const URL& /*_rFeatureURL*/ )
-{
-    // for now, enable all the time
-    // TODO: we should ask the dispatcher. However, this is laborious, since you cannot ask a dispatcher
-    // directly, but need to add a status listener.
-    FeatureState aState;
-    aState.bEnabled = true;
-    return aState;
 }
 
 void UserDefinedFeatures::execute( const URL& _rFeatureURL, const Sequence< PropertyValue>& _rArgs )
@@ -137,7 +120,7 @@ void UserDefinedFeatures::execute( const URL& _rFeatureURL, const Sequence< Prop
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -183,38 +166,9 @@ OGenericUnoController::OGenericUnoController(const Reference< XComponentContext 
     }
     catch(Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
-
-#ifdef _MSC_VER
-
-#pragma warning(push)
-#pragma warning(disable:4702)
-
-OGenericUnoController::OGenericUnoController()
-    :OGenericUnoController_Base( getMutex() )
-    ,m_pView(nullptr)
-#ifdef DBG_UTIL
-    ,m_bDescribingSupportedFeatures( false )
-#endif
-    ,m_aAsyncInvalidateAll(LINK(this, OGenericUnoController, OnAsyncInvalidateAll))
-    ,m_aAsyncCloseTask(LINK(this, OGenericUnoController, OnAsyncCloseTask))
-    ,m_aCurrentFrame( *this )
-    ,m_bPreview(false)
-    ,m_bReadOnly(false)
-    ,m_bCurrentlyModified(false)
-{
-    SAL_WARN("dbaccess.ui", "OGenericUnoController::OGenericUnoController: illegal call!" );
-    // This ctor only exists because the MSVC compiler complained about an unresolved external
-    // symbol. It should not be used at all. Since using it yields strange runtime problems,
-    // we simply abort here.
-    abort();
-}
-
-#pragma warning(pop)
-
-#endif
 
 OGenericUnoController::~OGenericUnoController()
 {
@@ -244,7 +198,7 @@ bool OGenericUnoController::Construct(vcl::Window* /*pParent*/)
     {
         SAL_WARN("dbaccess.ui","OGenericUnoController::Construct: could not create (or start listening at) the database context!");
         // at least notify the user. Though the whole component does not make any sense without the database context ...
-        ShowServiceNotAvailableError(getView(), "com.sun.star.sdb.DatabaseContext", true);
+        ShowServiceNotAvailableError(getFrameWeld(), "com.sun.star.sdb.DatabaseContext", true);
     }
 
     return true;
@@ -290,7 +244,7 @@ void SAL_CALL OGenericUnoController::initialize( const Sequence< Any >& aArgumen
             throw IllegalArgumentException("need a frame", *this, 1 );
 
         xParent = xFrame->getContainerWindow();
-        VCLXWindow* pParentComponent = VCLXWindow::GetImplementation(xParent);
+        VCLXWindow* pParentComponent = comphelper::getUnoTunnelImplementation<VCLXWindow>(xParent);
         VclPtr< vcl::Window > pParentWin = pParentComponent ? pParentComponent->GetWindow() : VclPtr< vcl::Window >();
         if (!pParentWin)
         {
@@ -374,7 +328,7 @@ Reference<XSidebarProvider> SAL_CALL OGenericUnoController::getSidebar()
 
 OUString SAL_CALL OGenericUnoController::getViewControllerName()
 {
-    return OUString( "Default" );
+    return "Default";
 }
 
 Sequence< PropertyValue > SAL_CALL OGenericUnoController::getCreationArguments()
@@ -405,12 +359,9 @@ namespace
 
     void    lcl_notifyMultipleStates( XStatusListener& _rListener, FeatureStateEvent& _rEvent, const States& _rStates )
     {
-        for (   States::const_iterator state = _rStates.begin();
-                state != _rStates.end();
-                ++state
-            )
+        for (auto const& elem : _rStates)
         {
-            _rEvent.State = *state;
+            _rEvent.State = elem;
             _rListener.statusChanged( _rEvent );
         }
     }
@@ -432,7 +383,7 @@ namespace
         if ( _rFeatureState.aValue.hasValue() )
             _out_rStates.push_back( _rFeatureState.aValue );
         if ( _out_rStates.empty() )
-            _out_rStates.push_back( Any() );
+            _out_rStates.emplace_back( );
     }
 }
 
@@ -470,10 +421,10 @@ void OGenericUnoController::ImplBroadcastFeatureState(const OUString& _rFeature,
 
     // a special listener ?
     if ( xListener.is() )
-        lcl_notifyMultipleStates( *xListener.get(), aEvent, aStates );
+        lcl_notifyMultipleStates( *xListener, aEvent, aStates );
     else
     {   // no -> iterate through all listeners responsible for the URL
-        StringBag aFeatureCommands;
+        std::set<OUString> aFeatureCommands;
         for( const auto& rFeature : m_aSupportedFeatures )
         {
             if( rFeature.second.nFeatureId == nFeat )
@@ -484,18 +435,14 @@ void OGenericUnoController::ImplBroadcastFeatureState(const OUString& _rFeature,
         // we are notifying them, so we must use a copy of m_arrStatusListener, not
         // m_arrStatusListener itself
         Dispatch aNotifyLoop( m_arrStatusListener );
-        Dispatch::iterator iterSearch = aNotifyLoop.begin();
-        Dispatch::const_iterator iterEnd = aNotifyLoop.end();
 
-        while (iterSearch != iterEnd)
+        for (auto const& elem : aNotifyLoop)
         {
-            DispatchTarget& rCurrent = *iterSearch;
-            if ( aFeatureCommands.find( rCurrent.aURL.Complete ) != aFeatureCommands.end() )
+            if ( aFeatureCommands.find( elem.aURL.Complete ) != aFeatureCommands.end() )
             {
-                aEvent.FeatureURL = rCurrent.aURL;
-                lcl_notifyMultipleStates( *rCurrent.xListener.get(), aEvent, aStates );
+                aEvent.FeatureURL = elem.aURL;
+                lcl_notifyMultipleStates( *elem.xListener, aEvent, aStates );
             }
-            ++iterSearch;
         }
     }
 
@@ -506,7 +453,7 @@ bool OGenericUnoController::isFeatureSupported( sal_Int32 _nId )
     SupportedFeatures::const_iterator aFeaturePos = std::find_if(
         m_aSupportedFeatures.begin(),
         m_aSupportedFeatures.end(),
-        std::bind2nd( CompareFeatureById(), _nId )
+        CompareFeatureById(_nId)
     );
 
     return ( m_aSupportedFeatures.end() != aFeaturePos && !aFeaturePos->first.isEmpty());
@@ -539,7 +486,7 @@ void OGenericUnoController::InvalidateFeature_Impl()
             SupportedFeatures::const_iterator aFeaturePos = std::find_if(
                 m_aSupportedFeatures.begin(),
                 m_aSupportedFeatures.end(),
-                std::bind2nd( CompareFeatureById(), aNextFeature.nId )
+                CompareFeatureById( aNextFeature.nId )
             );
 
 #if OSL_DEBUG_LEVEL > 0
@@ -572,12 +519,12 @@ void OGenericUnoController::ImplInvalidateFeature( sal_Int32 _nId, const Referen
 #if OSL_DEBUG_LEVEL > 0
     if ( _nId != -1 )
     {
-        SupportedFeatures::const_iterator aFeaturePos = std::find_if(
+        auto isSupportedFeature = std::any_of(
             m_aSupportedFeatures.begin(),
             m_aSupportedFeatures.end(),
-            std::bind2nd( CompareFeatureById(), _nId )
+            CompareFeatureById( _nId )
         );
-        OSL_ENSURE( aFeaturePos != m_aSupportedFeatures.end(), "OGenericUnoController::ImplInvalidateFeature: invalidating an unsupported feature is suspicious, at least!" );
+        OSL_ENSURE( isSupportedFeature, "OGenericUnoController::ImplInvalidateFeature: invalidating an unsupported feature is suspicious, at least!" );
     }
 #endif
 
@@ -610,12 +557,8 @@ void OGenericUnoController::InvalidateAll()
 void OGenericUnoController::InvalidateAll_Impl()
 {
     // invalidate all supported features
-
-    for (   SupportedFeatures::const_iterator aIter = m_aSupportedFeatures.begin();
-            aIter != m_aSupportedFeatures.end();
-            ++aIter
-        )
-        ImplBroadcastFeatureState( aIter->first, nullptr, true );
+    for (auto const& supportedFeature : m_aSupportedFeatures)
+        ImplBroadcastFeatureState( supportedFeature.first, nullptr, true );
 
     {
         ::osl::MutexGuard aGuard( m_aFeatureMutex);
@@ -660,7 +603,7 @@ Sequence< Reference< XDispatch > > OGenericUnoController::queryDispatches(const 
     if ( nLen )
     {
         aReturn.realloc( nLen );
-                Reference< XDispatch >* pReturn     = aReturn.getArray();
+        Reference< XDispatch >* pReturn     = aReturn.getArray();
         const   Reference< XDispatch >* pReturnEnd  = aReturn.getArray() + nLen;
         const   DispatchDescriptor*     pDescripts  = aDescripts.getConstArray();
 
@@ -722,25 +665,20 @@ void OGenericUnoController::addStatusListener(const Reference< XStatusListener >
 
 void OGenericUnoController::removeStatusListener(const Reference< XStatusListener > & aListener, const URL& _rURL)
 {
-    Dispatch::iterator iterSearch = m_arrStatusListener.begin();
-
-    bool bRemoveForAll = _rURL.Complete.isEmpty();
-    while ( iterSearch != m_arrStatusListener.end() )
+    if (_rURL.Complete.isEmpty())
     {
-        DispatchTarget& rCurrent = *iterSearch;
-        if  (   (rCurrent.xListener == aListener)
-            &&  (   bRemoveForAll
-                ||  (rCurrent.aURL.Complete.equals(_rURL.Complete))
-                )
-            )
-        {
-            iterSearch = m_arrStatusListener.erase(iterSearch);
-            if (!bRemoveForAll)
-                // remove the listener only for the given URL, so we can exit the loop after deletion
-                break;
-        }
-        else
-            ++iterSearch;
+        m_arrStatusListener.erase(std::remove_if(m_arrStatusListener.begin(), m_arrStatusListener.end(),
+            [&aListener](const DispatchTarget& rCurrent) { return rCurrent.xListener == aListener; }),
+            m_arrStatusListener.end());
+    }
+    else
+    {
+        // remove the listener only for the given URL
+        Dispatch::iterator iterSearch = std::find_if(m_arrStatusListener.begin(), m_arrStatusListener.end(),
+            [&aListener, &_rURL](const DispatchTarget& rCurrent) {
+                return (rCurrent.xListener == aListener) && (rCurrent.aURL.Complete == _rURL.Complete); });
+        if (iterSearch != m_arrStatusListener.end())
+            m_arrStatusListener.erase(iterSearch);
     }
 
     OSL_PRECOND( !m_aSupportedFeatures.empty(), "OGenericUnoController::removeStatusListener: shouldn't this be filled at construction time?" );
@@ -760,7 +698,7 @@ void OGenericUnoController::removeStatusListener(const Reference< XStatusListene
     m_aFeaturesToInvalidate.erase(
         std::remove_if(   m_aFeaturesToInvalidate.begin(),
                             m_aFeaturesToInvalidate.end(),
-                            std::bind2nd(FindFeatureListener(),aListener))
+                            FindFeatureListener(aListener))
         ,m_aFeaturesToInvalidate.end());
 }
 
@@ -784,10 +722,9 @@ void OGenericUnoController::disposing()
         EventObject aDisposeEvent;
         aDisposeEvent.Source = static_cast<XWeak*>(this);
         Dispatch aStatusListener = m_arrStatusListener;
-        Dispatch::const_iterator aEnd = aStatusListener.end();
-        for (Dispatch::const_iterator aIter = aStatusListener.begin(); aIter != aEnd; ++aIter)
+        for (auto const& statusListener : aStatusListener)
         {
-            aIter->xListener->disposing(aDisposeEvent);
+            statusListener.xListener->disposing(aDisposeEvent);
         }
         m_arrStatusListener.clear();
     }
@@ -832,7 +769,7 @@ void OGenericUnoController::frameAction(const FrameActionEvent& aEvent)
         m_aCurrentFrame.frameAction( aEvent.Action );
 }
 
-void OGenericUnoController::implDescribeSupportedFeature( const sal_Char* _pAsciiCommandURL,
+void OGenericUnoController::implDescribeSupportedFeature( const char* _pAsciiCommandURL,
         sal_uInt16 _nFeatureId, sal_Int16 _nCommandGroup )
 {
 #ifdef DBG_UTIL
@@ -874,7 +811,10 @@ FeatureState OGenericUnoController::GetState( sal_uInt16 _nId ) const
             aReturn.bEnabled = true;
             break;
         default:
-            aReturn = UserDefinedFeatures::getState( getURLForId( _nId ) );
+            // for now, enable all the time
+            // TODO: we should ask the dispatcher. However, this is laborious, since you cannot ask a dispatcher
+            // directly, but need to add a status listener.
+            aReturn.bEnabled = true;
             break;
     }
 
@@ -899,7 +839,7 @@ URL OGenericUnoController::getURLForId(sal_Int32 _nId) const
         SupportedFeatures::const_iterator aIter = std::find_if(
             m_aSupportedFeatures.begin(),
             m_aSupportedFeatures.end(),
-            std::bind2nd( CompareFeatureById(), _nId )
+            CompareFeatureById( _nId )
         );
 
         if ( m_aSupportedFeatures.end() != aIter && !aIter->first.isEmpty() )
@@ -948,9 +888,9 @@ void OGenericUnoController::stopConnectionListening(const Reference< XConnection
 
 Reference< XConnection > OGenericUnoController::connect( const Reference< XDataSource>& _xDataSource )
 {
-    WaitObject aWaitCursor( getView() );
+    weld::WaitObject aWaitCursor(getFrameWeld());
 
-    ODatasourceConnector aConnector( getORB(), getView(), OUString() );
+    ODatasourceConnector aConnector( getORB(), getFrameWeld(), OUString() );
     Reference< XConnection > xConnection = aConnector.connect( _xDataSource, nullptr );
     startConnectionListening( xConnection );
 
@@ -960,9 +900,9 @@ Reference< XConnection > OGenericUnoController::connect( const Reference< XDataS
 Reference< XConnection > OGenericUnoController::connect( const OUString& _rDataSourceName,
     const OUString& _rContextInformation, ::dbtools::SQLExceptionInfo* _pErrorInfo )
 {
-    WaitObject aWaitCursor( getView() );
+    weld::WaitObject aWaitCursor(getFrameWeld());
 
-    ODatasourceConnector aConnector( getORB(), getView(), _rContextInformation );
+    ODatasourceConnector aConnector( getORB(), getFrameWeld(), _rContextInformation );
     Reference<XConnection> xConnection = aConnector.connect( _rDataSourceName, _pErrorInfo );
     startConnectionListening( xConnection );
 
@@ -981,7 +921,7 @@ void OGenericUnoController::clearView()
 
 void OGenericUnoController::showError(const SQLExceptionInfo& _rInfo)
 {
-    ::dbaui::showError(_rInfo,getView(),getORB());
+    ::dbtools::showError(_rInfo,VCLUnoHelper::GetInterface(getView()),getORB());
 }
 
 Reference< XLayoutManager > OGenericUnoController::getLayoutManager(const Reference< XFrame >& _xFrame)
@@ -1037,7 +977,7 @@ IMPL_LINK_NOARG(OGenericUnoController, OnAsyncCloseTask, void*, void)
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 }
@@ -1111,7 +1051,7 @@ Reference< awt::XWindow> OGenericUnoController::getTopMostContainerWindow() cons
 
         while ( xFrame.is() && !xFrame->isTop() )
         {
-            xFrame.set( xFrame->getCreator(), UNO_QUERY );
+            xFrame = xFrame->getCreator();
         }
         if ( xFrame.is() )
             xWindow = xFrame->getContainerWindow();
@@ -1206,10 +1146,6 @@ bool OGenericUnoController::isCommandEnabled(sal_uInt16 _nCommandId) const
     return GetState( _nCommandId ).bEnabled;
 }
 
-void OGenericUnoController::notifyHiContrastChanged()
-{
-}
-
 bool OGenericUnoController::isDataSourceReadOnly() const
 {
     return false;
@@ -1247,50 +1183,25 @@ bool OGenericUnoController::isCommandEnabled( const OUString& _rCompleteCommandU
 Sequence< ::sal_Int16 > SAL_CALL OGenericUnoController::getSupportedCommandGroups()
 {
     CommandHashMap aCmdHashMap;
-    for (   SupportedFeatures::const_iterator aIter = m_aSupportedFeatures.begin();
-            aIter != m_aSupportedFeatures.end();
-            ++aIter
-        )
-        if ( aIter->second.GroupId != CommandGroup::INTERNAL )
-            aCmdHashMap.insert( CommandHashMap::value_type( aIter->second.GroupId, 0 ));
+    for (auto const& supportedFeature : m_aSupportedFeatures)
+        if ( supportedFeature.second.GroupId != CommandGroup::INTERNAL )
+            aCmdHashMap.emplace( supportedFeature.second.GroupId, 0 );
 
     return comphelper::mapKeysToSequence( aCmdHashMap );
 }
 
-namespace
-{
-    //Current c++0x draft (apparently) has std::identity, but not operator()
-    template<typename T> struct SGI_identity
-    {
-        T& operator()(T& x) const { return x; }
-        const T& operator()(const T& x) const { return x; }
-    };
-}
-
 Sequence< DispatchInformation > SAL_CALL OGenericUnoController::getConfigurableDispatchInformation( ::sal_Int16 CommandGroup )
 {
-    std::list< DispatchInformation > aInformationList;
-    DispatchInformation aDispatchInfo;
-    for (   SupportedFeatures::const_iterator aIter = m_aSupportedFeatures.begin();
-            aIter != m_aSupportedFeatures.end();
-            ++aIter
-        )
+    std::vector< DispatchInformation > aInformationVector;
+    for (auto const& supportedFeature : m_aSupportedFeatures)
     {
-        if ( sal_Int16( aIter->second.GroupId ) == CommandGroup )
+        if ( sal_Int16( supportedFeature.second.GroupId ) == CommandGroup )
         {
-            aDispatchInfo = aIter->second;
-            aInformationList.push_back( aDispatchInfo );
+            aInformationVector.push_back( supportedFeature.second );
         }
     }
 
-    Sequence< DispatchInformation > aInformation( aInformationList.size() );
-    std::transform( aInformationList.begin(),
-        aInformationList.end(),
-        aInformation.getArray(),
-        SGI_identity< DispatchInformation >()
-    );
-
-    return aInformation;
+    return comphelper::containerToSequence( aInformationVector );
 }
 
 void OGenericUnoController::fillSupportedFeatures()
@@ -1308,6 +1219,11 @@ void SAL_CALL OGenericUnoController::dispose()
 {
     SolarMutexGuard aSolarGuard;
     OGenericUnoController_Base::dispose();
+}
+
+weld::Window* OGenericUnoController::getFrameWeld() const
+{
+    return m_pView ? m_pView->GetFrameWeld() : nullptr;
 }
 
 }   // namespace dbaui

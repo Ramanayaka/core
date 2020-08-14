@@ -21,7 +21,6 @@
 #include <standard/vclxaccessibletextfield.hxx>
 #include <standard/vclxaccessibleedit.hxx>
 #include <standard/vclxaccessiblelist.hxx>
-#include <helper/listboxhelper.hxx>
 
 #include <unotools/accessiblestatesethelper.hxx>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
@@ -29,11 +28,9 @@
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <vcl/svapp.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/lstbox.hxx>
-#include <helper/accresmgr.hxx>
-#include <helper/accessiblestrings.hrc>
-#include "strings.hxx"
+#include <vcl/toolkit/combobox.hxx>
+#include <vcl/toolkit/lstbox.hxx>
+#include <strings.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -44,8 +41,7 @@ using namespace ::com::sun::star::accessibility;
 VCLXAccessibleBox::VCLXAccessibleBox (VCLXWindow* pVCLWindow, BoxType aType, bool bIsDropDownBox)
     : VCLXAccessibleComponent (pVCLWindow),
       m_aBoxType (aType),
-      m_bIsDropDownBox (bIsDropDownBox),
-      m_nIndexInParent (DEFAULT_INDEX_IN_PARENT)
+      m_bIsDropDownBox (bIsDropDownBox)
 {
     // Set up the flags that indicate which children this object has.
     m_bHasListChild = true;
@@ -55,10 +51,6 @@ VCLXAccessibleBox::VCLXAccessibleBox (VCLXWindow* pVCLWindow, BoxType aType, boo
         m_bHasTextChild = false;
     else
         m_bHasTextChild = true;
-}
-
-VCLXAccessibleBox::~VCLXAccessibleBox()
-{
 }
 
 void VCLXAccessibleBox::ProcessWindowChildEvent( const VclWindowEvent& rVclWindowEvent )
@@ -269,11 +261,16 @@ Reference< XAccessibleContext > SAL_CALL VCLXAccessibleBox::getAccessibleContext
 
 //=====  XAccessibleContext  ==================================================
 
-sal_Int32 SAL_CALL VCLXAccessibleBox::getAccessibleChildCount()
+sal_Int32 VCLXAccessibleBox::getAccessibleChildCount()
 {
     SolarMutexGuard aSolarGuard;
     ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
 
+    return implGetAccessibleChildCount();
+}
+
+sal_Int32 VCLXAccessibleBox::implGetAccessibleChildCount()
+{
     // Usually a box has a text field and a list of items as its children.
     // Non drop down list boxes have no text field.  Additionally check
     // whether the object is valid.
@@ -297,7 +294,7 @@ Reference<XAccessible> SAL_CALL VCLXAccessibleBox::getAccessibleChild (sal_Int32
     SolarMutexGuard aSolarGuard;
     ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
 
-    if (i<0 || i>=getAccessibleChildCount())
+    if (i<0 || i>=implGetAccessibleChildCount())
         throw IndexOutOfBoundsException();
 
     Reference< XAccessible > xChild;
@@ -355,14 +352,6 @@ sal_Int16 SAL_CALL VCLXAccessibleBox::getAccessibleRole()
         return AccessibleRole::PANEL;
 }
 
-sal_Int32 SAL_CALL VCLXAccessibleBox::getAccessibleIndexInParent()
-{
-    if (m_nIndexInParent != DEFAULT_INDEX_IN_PARENT)
-        return m_nIndexInParent;
-    else
-        return VCLXAccessibleComponent::getAccessibleIndexInParent();
-}
-
 //=====  XAccessibleAction  ===================================================
 
 sal_Int32 SAL_CALL VCLXAccessibleBox::getAccessibleActionCount()
@@ -382,7 +371,7 @@ sal_Bool SAL_CALL VCLXAccessibleBox::doAccessibleAction (sal_Int32 nIndex)
         SolarMutexGuard aSolarGuard;
         ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
 
-        if (nIndex<0 || nIndex>=getAccessibleActionCount())
+        if (nIndex!=0 || !m_bIsDropDownBox)
             throw css::lang::IndexOutOfBoundsException(
                 ("VCLXAccessibleBox::doAccessibleAction: index "
                  + OUString::number(nIndex) + " not among 0.."
@@ -418,13 +407,10 @@ sal_Bool SAL_CALL VCLXAccessibleBox::doAccessibleAction (sal_Int32 nIndex)
 OUString SAL_CALL VCLXAccessibleBox::getAccessibleActionDescription (sal_Int32 nIndex)
 {
     ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
-    if (nIndex<0 || nIndex>=getAccessibleActionCount())
+    if (nIndex!=0 || !m_bIsDropDownBox)
         throw css::lang::IndexOutOfBoundsException();
 
-    if (m_bIsDropDownBox)
-        return OUString(RID_STR_ACC_ACTION_TOGGLEPOPUP);
-
-    return OUString();
+    return RID_STR_ACC_ACTION_TOGGLEPOPUP;
 }
 
 Reference< XAccessibleKeyBinding > VCLXAccessibleBox::getAccessibleActionKeyBinding( sal_Int32 nIndex )
@@ -465,7 +451,7 @@ Any VCLXAccessibleBox::getCurrentValue( )
         {
             if(pList->getSelectedAccessibleChildCount()>0)
             {
-                Reference<XAccessibleContext> xName (pList->getSelectedAccessibleChild((sal_Int32)(0)), UNO_QUERY);
+                Reference<XAccessibleContext> xName (pList->getSelectedAccessibleChild(sal_Int32(0)), UNO_QUERY);
                 if(xName.is())
                 {
                     aAny <<= xName->getAccessibleName();
@@ -484,10 +470,6 @@ sal_Bool VCLXAccessibleBox::setCurrentValue( const Any& aNumber )
 
     OUString  fValue;
     bool bValid = (aNumber >>= fValue);
-    if( bValid )
-    {
-
-    }
     return bValid;
 
 }
@@ -525,11 +507,10 @@ void VCLXAccessibleBox::FillAccessibleStateSet( utl::AccessibleStateSetHelper& r
     }
     else if (m_aBoxType == LISTBOX && m_bIsDropDownBox)
     {
-        sal_Int32 nSelectedEntryCount = 0;
         VclPtr< ListBox > pListBox = GetAs< ListBox >();
         if (pListBox != nullptr && pListBox->GetEntryCount() > 0)
         {
-            nSelectedEntryCount = pListBox->GetSelectEntryCount();
+            sal_Int32 nSelectedEntryCount = pListBox->GetSelectedEntryCount();
             if ( nSelectedEntryCount == 0)
                 rStateSet.AddState(AccessibleStateType::INDETERMINATE);
         }

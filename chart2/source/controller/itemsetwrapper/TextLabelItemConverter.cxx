@@ -24,26 +24,33 @@
 #include <DataSeriesHelper.hxx>
 #include <DiagramHelper.hxx>
 #include <ItemPropertyMap.hxx>
-#include <SchWhichPairs.hxx>
-#include <macros.hxx>
+#include "SchWhichPairs.hxx"
 #include <unonames.hxx>
 
 #include <editeng/brushitem.hxx>
 #include <editeng/sizeitem.hxx>
+#include <svl/eitem.hxx>
 #include <svl/ilstitem.hxx>
 #include <svl/intitem.hxx>
 #include <svl/stritem.hxx>
 #include <svx/tabline.hxx>
+#include <tools/diagnose_ex.h>
+#include <vcl/graph.hxx>
+#include <rtl/math.hxx>
 
+#include <com/sun/star/chart/DataLabelPlacement.hpp>
+#include <com/sun/star/chart2/AxisType.hpp>
 #include <com/sun/star/chart2/DataPointLabel.hpp>
 #include <com/sun/star/chart2/Symbol.hpp>
+#include <com/sun/star/chart2/RelativePosition.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <memory>
 
 using namespace com::sun::star;
 using namespace com::sun::star::chart2;
 using com::sun::star::uno::Reference;
 
-namespace chart { namespace wrapper {
+namespace chart::wrapper {
 
 namespace {
 
@@ -97,7 +104,7 @@ bool numberFormatFromItemToPropertySet(
         return bChanged;
 
     uno::Any aValue;
-    bool bUseSourceFormat = (static_cast<const SfxBoolItem&>(rItemSet.Get(nSourceWhich)).GetValue());
+    bool bUseSourceFormat = static_cast<const SfxBoolItem&>(rItemSet.Get(nSourceWhich)).GetValue();
     if (!bUseSourceFormat)
     {
         SfxItemState aState = rItemSet.GetItemState(nWhichId);
@@ -145,8 +152,9 @@ bool useSourceFormatFromItemToPropertySet(
         return bChanged;
 
     uno::Any aNewValue;
-    bool bUseSourceFormat = (static_cast<const SfxBoolItem&>(
-            rItemSet.Get(nWhichId)).GetValue());
+    bool bUseSourceFormat = static_cast<const SfxBoolItem&>(
+            rItemSet.Get(nWhichId)).GetValue();
+    xPropertySet->setPropertyValue(CHART_UNONAME_LINK_TO_SRC_NUMFMT, uno::Any(bUseSourceFormat));
     if (!bUseSourceFormat)
     {
         SfxItemState aState = rItemSet.GetItemState(nFormatWhich);
@@ -195,7 +203,7 @@ TextLabelItemConverter::TextLabelItemConverter(
     mbDataSeries(bDataSeries),
     mbForbidPercentValue(true)
 {
-    maConverters.push_back(new CharacterPropertyItemConverter(rPropertySet, rItemPool, pRefSize, "ReferencePageSize"));
+    maConverters.emplace_back(new CharacterPropertyItemConverter(rPropertySet, rItemPool, pRefSize, "ReferencePageSize"));
 
     uno::Reference<XDiagram> xDiagram(ChartModelHelper::findDiagram(xChartModel));
     uno::Reference<XChartType> xChartType(DiagramHelper::getChartTypeOfSeries(xDiagram, xSeries));
@@ -209,7 +217,6 @@ TextLabelItemConverter::TextLabelItemConverter(
 
 TextLabelItemConverter::~TextLabelItemConverter()
 {
-    std::for_each(maConverters.begin(), maConverters.end(), std::default_delete<ItemConverter>());
 }
 
 void TextLabelItemConverter::FillItemSet( SfxItemSet& rOutItemSet ) const
@@ -312,22 +319,22 @@ bool TextLabelItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const SfxIte
                 if (mbDataSeries)
                 {
                     Reference<chart2::XDataSeries> xSeries(GetPropertySet(), uno::UNO_QUERY);
-                    if (!aOldValue.equals(aNewValue) ||
+                    if (aOldValue != aNewValue ||
                         DataSeriesHelper::hasAttributedDataPointDifferentValue(xSeries, "LabelSeparator", uno::Any(aOldValue)))
                     {
                         DataSeriesHelper::setPropertyAlsoToAllAttributedDataPoints(xSeries, "LabelSeparator", uno::Any(aNewValue));
                         bChanged = true;
                     }
                 }
-                else if (!aOldValue.equals(aNewValue))
+                else if (aOldValue != aNewValue)
                 {
                     GetPropertySet()->setPropertyValue("LabelSeparator", uno::Any(aNewValue));
                     bChanged = true;
                 }
             }
-            catch (const uno::Exception& e)
+            catch (const uno::Exception&)
             {
-                ASSERT_EXCEPTION(e);
+                TOOLS_WARN_EXCEPTION("chart2", "");
             }
         }
         break;
@@ -355,9 +362,9 @@ bool TextLabelItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const SfxIte
                     bChanged = true;
                 }
             }
-            catch( const uno::Exception& e )
+            catch( const uno::Exception& )
             {
-                ASSERT_EXCEPTION( e );
+                TOOLS_WARN_EXCEPTION("chart2", "" );
             }
         }
         break;
@@ -366,12 +373,9 @@ bool TextLabelItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const SfxIte
             try
             {
                 sal_Int32 nNew = static_cast<const SfxInt32Item&>(rItemSet.Get(nWhichId)).GetValue();
-                sal_Int32 nOld = 0;
-                if (!(GetPropertySet()->getPropertyValue("LabelPlacement") >>= nOld))
-                {
-                    if (maAvailableLabelPlacements.getLength())
-                        nOld = maAvailableLabelPlacements[0];
-                }
+                sal_Int32 nOld = -1;
+                RelativePosition aCustomLabelPosition;
+                GetPropertySet()->getPropertyValue("LabelPlacement") >>= nOld;
                 if (mbDataSeries)
                 {
                     Reference<chart2::XDataSeries> xSeries(GetPropertySet(), uno::UNO_QUERY);
@@ -382,15 +386,16 @@ bool TextLabelItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const SfxIte
                         bChanged = true;
                     }
                 }
-                else if (nOld != nNew)
+                else if (nOld != nNew || (GetPropertySet()->getPropertyValue("CustomLabelPosition") >>= aCustomLabelPosition))
                 {
                     GetPropertySet()->setPropertyValue("LabelPlacement", uno::Any(nNew));
+                    GetPropertySet()->setPropertyValue("CustomLabelPosition", uno::Any());
                     bChanged = true;
                 }
             }
-            catch (const uno::Exception& e)
+            catch (const uno::Exception&)
             {
-                ASSERT_EXCEPTION(e);
+                TOOLS_WARN_EXCEPTION("chart2", "" );
             }
         }
         break;
@@ -545,13 +550,31 @@ void TextLabelItemConverter::FillSpecialItem( sal_uInt16 nWhichId, SfxItemSet& r
         break;
         case SID_ATTR_NUMBERFORMAT_SOURCE:
         {
-            bool bNumberFormatIsSet = GetPropertySet()->getPropertyValue(CHART_UNONAME_NUMFMT).hasValue();
+            bool bUseSourceFormat = false;
+            try
+            {
+                GetPropertySet()->getPropertyValue(CHART_UNONAME_LINK_TO_SRC_NUMFMT) >>= bUseSourceFormat;
+            }
+            catch (const uno::Exception&)
+            {
+                TOOLS_WARN_EXCEPTION("chart2", "");
+            }
+            bool bNumberFormatIsSet = GetPropertySet()->getPropertyValue(CHART_UNONAME_NUMFMT).hasValue() && !bUseSourceFormat;
             rOutItemSet.Put(SfxBoolItem(nWhichId, !bNumberFormatIsSet));
         }
         break;
         case SCHATTR_PERCENT_NUMBERFORMAT_SOURCE:
         {
-            bool bNumberFormatIsSet = (GetPropertySet()->getPropertyValue("PercentageNumberFormat").hasValue());
+            bool bUseSourceFormat = false;
+            try
+            {
+                GetPropertySet()->getPropertyValue(CHART_UNONAME_LINK_TO_SRC_NUMFMT) >>= bUseSourceFormat;
+            }
+            catch (const uno::Exception&)
+            {
+                TOOLS_WARN_EXCEPTION("chart2", "");
+            }
+            bool bNumberFormatIsSet = GetPropertySet()->getPropertyValue("PercentageNumberFormat").hasValue() && !bUseSourceFormat;
             rOutItemSet.Put(SfxBoolItem(nWhichId, !bNumberFormatIsSet));
         }
         break;
@@ -563,9 +586,9 @@ void TextLabelItemConverter::FillSpecialItem( sal_uInt16 nWhichId, SfxItemSet& r
                 GetPropertySet()->getPropertyValue("LabelSeparator") >>= aValue;
                 rOutItemSet.Put(SfxStringItem(nWhichId, aValue));
             }
-            catch (const uno::Exception& e)
+            catch (const uno::Exception&)
             {
-                ASSERT_EXCEPTION(e);
+                TOOLS_WARN_EXCEPTION("chart2", "" );
             }
         }
         break;
@@ -577,9 +600,9 @@ void TextLabelItemConverter::FillSpecialItem( sal_uInt16 nWhichId, SfxItemSet& r
                 GetPropertySet()->getPropertyValue( "TextWordWrap" ) >>= bValue;
                 rOutItemSet.Put( SfxBoolItem( nWhichId, bValue ));
             }
-            catch( const uno::Exception& e )
+            catch( const uno::Exception& )
             {
-                ASSERT_EXCEPTION( e );
+                TOOLS_WARN_EXCEPTION("chart2", "" );
             }
         }
         break;
@@ -588,14 +611,17 @@ void TextLabelItemConverter::FillSpecialItem( sal_uInt16 nWhichId, SfxItemSet& r
             try
             {
                 sal_Int32 nPlacement = 0;
-                if (GetPropertySet()->getPropertyValue("LabelPlacement") >>= nPlacement)
+                RelativePosition aCustomLabelPosition;
+                if (!mbDataSeries && (GetPropertySet()->getPropertyValue("CustomLabelPosition") >>= aCustomLabelPosition))
+                    rOutItemSet.Put(SfxInt32Item(nWhichId, css::chart::DataLabelPlacement::CUSTOM));
+                else if (GetPropertySet()->getPropertyValue("LabelPlacement") >>= nPlacement)
                     rOutItemSet.Put(SfxInt32Item(nWhichId, nPlacement));
-                else if (maAvailableLabelPlacements.getLength())
+                else if (maAvailableLabelPlacements.hasElements())
                     rOutItemSet.Put(SfxInt32Item(nWhichId, maAvailableLabelPlacements[0]));
             }
-            catch (const uno::Exception& e)
+            catch (const uno::Exception&)
             {
-                ASSERT_EXCEPTION(e);
+                TOOLS_WARN_EXCEPTION("chart2", "" );
             }
         }
         break;
@@ -649,6 +675,6 @@ void TextLabelItemConverter::FillSpecialItem( sal_uInt16 nWhichId, SfxItemSet& r
     }
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

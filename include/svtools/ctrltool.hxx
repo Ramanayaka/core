@@ -20,11 +20,12 @@
 #ifndef INCLUDED_SVTOOLS_CTRLTOOL_HXX
 #define INCLUDED_SVTOOLS_CTRLTOOL_HXX
 
+#include <config_options.h>
 #include <svtools/svtdllapi.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <vcl/metric.hxx>
-#include <tools/solar.h>
+#include <vcl/vclptr.hxx>
 
 #include <vector>
 #include <memory>
@@ -150,7 +151,7 @@ private:
     VclPtr<OutputDevice>    mpDev2;
     std::vector<std::unique_ptr<ImplFontListNameInfo>> m_Entries;
 
-    SVT_DLLPRIVATE ImplFontListNameInfo*    ImplFind( const OUString& rSearchName, sal_uLong* pIndex ) const;
+    SVT_DLLPRIVATE ImplFontListNameInfo*    ImplFind( const OUString& rSearchName, sal_uInt32* pIndex ) const;
     SVT_DLLPRIVATE ImplFontListNameInfo*    ImplFindByName( const OUString& rStr ) const;
     SVT_DLLPRIVATE void                     ImplInsertFonts(OutputDevice* pDev, bool bInsertData);
 
@@ -159,7 +160,7 @@ public:
                                       OutputDevice* pDevice2 = nullptr);
                             ~FontList();
 
-    FontList*               Clone() const;
+    std::unique_ptr<FontList> Clone() const;
 
     OUString                GetFontMapText( const FontMetric& rFontMetric ) const;
 
@@ -194,23 +195,23 @@ private:
     FontList&               operator =( const FontList& ) = delete;
 };
 
-class SVT_DLLPUBLIC FontSizeNames
+class UNLESS_MERGELIBS(SVT_DLLPUBLIC) FontSizeNames
 {
 private:
     const struct ImplFSNameItem*    mpArray;
-    sal_uLong                   mnElem;
+    sal_Int32                       mnElem;
 
 public:
                             FontSizeNames( LanguageType eLanguage /* = LANGUAGE_DONTKNOW */ );
 
-    sal_uLong               Count() const { return mnElem; }
+    sal_Int32               Count() const { return mnElem; }
     bool                    IsEmpty() const { return !mnElem; }
 
-    long                    Name2Size( const OUString& ) const;
-    OUString                Size2Name( long ) const;
+    sal_Int32               Name2Size( const OUString& ) const;
+    OUString                Size2Name( sal_Int32 ) const;
 
-    OUString                GetIndexName( sal_uLong nIndex ) const;
-    long                    GetIndexSize( sal_uLong nIndex ) const;
+    OUString                GetIndexName( sal_Int32 nIndex ) const;
+    sal_Int32               GetIndexSize( sal_Int32 nIndex ) const;
 };
 
 #endif // INCLUDED_SVTOOLS_CTRLTOOL_HXX

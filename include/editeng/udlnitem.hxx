@@ -20,11 +20,9 @@
 #define INCLUDED_EDITENG_UDLNITEM_HXX
 
 #include <svl/eitem.hxx>
-#include <vcl/vclenum.hxx>
 #include <tools/color.hxx>
+#include <tools/fontenum.hxx>
 #include <editeng/editengdllapi.h>
-
-class SvXMLUnitConverter;
 
 // class SvxTextLineItem ------------------------------------------------
 
@@ -34,8 +32,6 @@ class EDITENG_DLLPUBLIC SvxTextLineItem : public SfxEnumItem<FontLineStyle>
 {
     Color mColor;
 public:
-    static SfxPoolItem* CreateDefault();
-
     SvxTextLineItem( const FontLineStyle eSt,
                      const sal_uInt16 nId );
 
@@ -43,12 +39,10 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion) const override;
-    virtual OUString   GetValueTextByPos( sal_uInt16 nPos ) const override;
+    virtual SvxTextLineItem* Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual OUString        GetValueTextByPos( sal_uInt16 nPos ) const;
     virtual sal_uInt16      GetValueCount() const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
@@ -60,13 +54,6 @@ public:
     virtual void            SetBoolValue( bool bVal ) override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-
-    SvxTextLineItem& operator=(const SvxTextLineItem& rTextLine)
-        {
-            SetValue( rTextLine.GetValue() );
-            SetColor( rTextLine.GetColor() );
-            return *this;
-        }
 
     // enum cast
     FontLineStyle           GetLineStyle() const
@@ -82,14 +69,15 @@ public:
 
 /* Value container for underline font effects */
 
-class EDITENG_DLLPUBLIC SvxUnderlineItem : public SvxTextLineItem
+class EDITENG_DLLPUBLIC SvxUnderlineItem final : public SvxTextLineItem
 {
 public:
+    static SfxPoolItem* CreateDefault();
+
     SvxUnderlineItem( const FontLineStyle eSt,
                       const sal_uInt16 nId );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
+    virtual SvxUnderlineItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual OUString   GetValueTextByPos( sal_uInt16 nPos ) const override;
 };
 
@@ -97,14 +85,15 @@ public:
 
 /* Value container for overline font effects */
 
-class EDITENG_DLLPUBLIC SvxOverlineItem : public SvxTextLineItem
+class EDITENG_DLLPUBLIC SvxOverlineItem final : public SvxTextLineItem
 {
 public:
+    static SfxPoolItem* CreateDefault();
+
     SvxOverlineItem( const FontLineStyle eSt,
                      const sal_uInt16 nId );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
+    virtual SvxOverlineItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual OUString   GetValueTextByPos( sal_uInt16 nPos ) const override;
 };
 

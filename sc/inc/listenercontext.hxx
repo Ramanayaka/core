@@ -12,6 +12,7 @@
 
 #include "address.hxx"
 #include "columnspanset.hxx"
+#include "mtvelements.hxx"
 
 #include <memory>
 
@@ -20,8 +21,6 @@ class ScTokenArray;
 
 namespace sc {
 
-struct ColumnBlockPosition;
-class ColumnBlockPositionSet;
 class ColumnSet;
 
 class StartListeningContext
@@ -67,7 +66,7 @@ public:
     void purgeEmptyBroadcasters();
 };
 
-class PurgeListenerAction : public ColumnSpanSet::Action
+class PurgeListenerAction final : public ColumnSpanSet::Action
 {
     ScDocument& mrDoc;
     std::unique_ptr<ColumnBlockPosition> mpBlockPos;

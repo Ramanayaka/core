@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "delayedevent.hxx"
+#include "fmcontrolbordermanager.hxx"
 #include "formdispatchinterceptor.hxx"
 #include "sqlparserclient.hxx"
 
@@ -36,15 +37,9 @@
 #include <com/sun/star/awt/XTabController.hpp>
 #include <com/sun/star/awt/XTextComponent.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
-#include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/container/XIndexContainer.hpp>
-#include <com/sun/star/form/DatabaseDeleteEvent.hpp>
 #include <com/sun/star/form/DatabaseParameterEvent.hpp>
-#include <com/sun/star/form/ErrorEvent.hpp>
 #include <com/sun/star/form/validation/XFormComponentValidityListener.hpp>
-#include <com/sun/star/form/XConfirmDeleteBroadcaster.hpp>
 #include <com/sun/star/form/XConfirmDeleteListener.hpp>
-#include <com/sun/star/form/XDatabaseParameterBroadcaster2.hpp>
 #include <com/sun/star/form/XDatabaseParameterListener.hpp>
 #include <com/sun/star/form/runtime/XFormController.hpp>
 #include <com/sun/star/form/runtime/XFilterController.hpp>
@@ -55,18 +50,13 @@
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/frame/XDispatchProviderInterception.hpp>
 #include <com/sun/star/frame/XDispatchProviderInterceptor.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/script/XEventAttacherManager.hpp>
-#include <com/sun/star/sdb/XRowSetApproveBroadcaster.hpp>
 #include <com/sun/star/sdb/XRowSetApproveListener.hpp>
 #include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
-#include <com/sun/star/sdb/XSQLErrorBroadcaster.hpp>
 #include <com/sun/star/sdb/XSQLErrorListener.hpp>
 #include <com/sun/star/sdbc/XRowSetListener.hpp>
 #include <com/sun/star/task/XInteractionHandler.hpp>
-#include <com/sun/star/util/XModeSelector.hpp>
-#include <com/sun/star/util/XModifyBroadcaster.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
 
 #include <comphelper/proparrhlp.hxx>
@@ -79,7 +69,7 @@
 
 #include <cppuhelper/compbase.hxx>
 
-struct FmXTextComponentLess : public ::std::binary_function< css::uno::Reference< css::awt::XTextComponent >, css::uno::Reference< css::awt::XTextComponent> , bool>
+struct FmXTextComponentLess
 {
     bool operator() (const css::uno::Reference< css::awt::XTextComponent >& x, const css::uno::Reference< css::awt::XTextComponent >& y) const
     {
@@ -89,7 +79,6 @@ struct FmXTextComponentLess : public ::std::binary_function< css::uno::Reference
 
 typedef ::std::map< css::uno::Reference< css::awt::XTextComponent >, OUString, FmXTextComponentLess> FmFilterRow;
 typedef ::std::vector< FmFilterRow > FmFilterRows;
-typedef ::std::vector< css::uno::Reference< css::form::runtime::XFormController > > FmFormControllers;
 
 namespace vcl { class Window; }
 
@@ -124,7 +113,7 @@ namespace svxform
                                                     >   FormController_BASE;
 
     class ColumnInfoCache;
-    class FormController :public ::cppu::BaseMutex
+    class FormController final : public ::cppu::BaseMutex
                                         ,public FormController_BASE
                                         ,public ::cppu::OPropertySetHelper
                                         ,public DispatchInterceptor
@@ -157,7 +146,8 @@ namespace svxform
                                     m_aParameterListeners,
                                     m_aFilterListeners;
 
-        FmFormControllers           m_aChildren;
+        std::vector< css::uno::Reference< css::form::runtime::XFormController > >
+                                    m_aChildren;
         FilterComponents            m_aFilterComponents;
         FmFilterRows                m_aFilterRows;
 
@@ -207,7 +197,7 @@ namespace svxform
     public:
         FormController( const css::uno::Reference< css::uno::XComponentContext > & _rxORB );
 
-    protected:
+    private:
         virtual ~FormController() override;
 
     // XInterface
@@ -411,7 +401,6 @@ namespace svxform
             css::uno::Sequence< css::beans::Property >& /* [out] */ _rAggregateProps
             ) const override;
 
-    protected:
         // DispatchInterceptor
         virtual css::uno::Reference< css::frame::XDispatch>
             interceptedQueryDispatch(

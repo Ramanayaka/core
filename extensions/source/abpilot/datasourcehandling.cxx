@@ -18,17 +18,17 @@
  */
 
 
-#include "abpresid.hrc"
+#include <strings.hrc>
 #include "abptypes.hxx"
-#include "componentmodule.hxx"
+#include <componentmodule.hxx>
 #include "datasourcehandling.hxx"
 #include "addresssettings.hxx"
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/sdb/DatabaseContext.hpp>
 #include <com/sun/star/sdb/SQLContext.hpp>
 #include <com/sun/star/sdb/XCompletedConnection.hpp>
@@ -37,15 +37,16 @@
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/task/InteractionHandler.hpp>
-#include <com/sun/star/uno/XNamingService.hpp>
+#include <com/sun/star/uri/UriReferenceFactory.hpp>
+#include <com/sun/star/uri/VndSunStarPkgUrlReferenceFactory.hpp>
 
 #include <comphelper/interaction.hxx>
 #include <comphelper/processfactory.hxx>
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
-#include <unotools/confignode.hxx>
 #include <unotools/sharedunocomponent.hxx>
 #include <vcl/stdtext.hxx>
+#include <vcl/weld.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/docfile.hxx>
 #include <sfx2/viewfrm.hxx>
@@ -55,7 +56,7 @@ namespace
 {
 
 /// Returns the URL of this object shell.
-OUString lcl_getOwnURL(SfxObjectShell* pObjectShell)
+OUString lcl_getOwnURL(SfxObjectShell const * pObjectShell)
 {
     OUString aRet;
 
@@ -63,7 +64,7 @@ OUString lcl_getOwnURL(SfxObjectShell* pObjectShell)
         return aRet;
 
     const INetURLObject& rURLObject = pObjectShell->GetMedium()->GetURLObject();
-    aRet = rURLObject.GetMainURL(INetURLObject::DecodeMechanism::WithCharset);
+    aRet = rURLObject.GetMainURL(INetURLObject::DecodeMechanism::NONE);
     return aRet;
 }
 
@@ -129,7 +130,7 @@ namespace abp
     /// creates and inserts a data source, and sets its URL property to the string given
     static ODataSource lcl_implCreateAndSetURL(
         const Reference< XComponentContext >& _rxORB, const OUString& _rName,
-        const sal_Char* _pInitialAsciiURL )
+        const char* _pInitialAsciiURL )
     {
         ODataSource aReturn( _rxORB );
         try
@@ -158,7 +159,7 @@ namespace abp
         return aReturn;
     }
 
-    void lcl_registerDataSource(
+    static void lcl_registerDataSource(
         const Reference< XComponentContext >& _rxORB, const OUString& _sName,
         const OUString& _sURL )
     {
@@ -174,7 +175,7 @@ namespace abp
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.abpilot");
         }
     }
 
@@ -200,20 +201,17 @@ namespace abp
             // create the UNO context
             m_pImpl->xContext.set( lcl_getDataSourceContext( _rxORB ), UNO_QUERY_THROW );
 
-            if (m_pImpl->xContext.is())
-            {
-                // collect the data source names
-                Sequence< OUString > aDSNames = m_pImpl->xContext->getElementNames();
-                const OUString* pDSNames = aDSNames.getConstArray();
-                const OUString* pDSNamesEnd = pDSNames + aDSNames.getLength();
+            // collect the data source names
+            Sequence< OUString > aDSNames = m_pImpl->xContext->getElementNames();
+            const OUString* pDSNames = aDSNames.getConstArray();
+            const OUString* pDSNamesEnd = pDSNames + aDSNames.getLength();
 
-                for ( ;pDSNames != pDSNamesEnd; ++pDSNames )
-                    m_pImpl->aDataSourceNames.insert( *pDSNames );
-            }
+            for ( ;pDSNames != pDSNamesEnd; ++pDSNames )
+                m_pImpl->aDataSourceNames.insert( *pDSNames );
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "ODataSourceContext::ODataSourceContext: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.abpilot", "ODataSourceContext::ODataSourceContext" );
         }
     }
     ODataSourceContext::~ODataSourceContext()
@@ -229,8 +227,7 @@ namespace abp
         sal_Int32 nPostfix = 1;
         while ( ( m_pImpl->aDataSourceNames.end() != aPos ) && ( nPostfix < 65535 ) )
         {   // there already is a data source with this name
-            sCheck = _rDataSourceName;
-            sCheck += OUString::number( nPostfix++ );
+            sCheck = _rDataSourceName + OUString::number( nPostfix++ );
 
             aPos = m_pImpl->aDataSourceNames.find( sCheck );
         }
@@ -285,9 +282,10 @@ namespace abp
     }
 
 
-    ODataSource ODataSourceContext::createNewDBase( const OUString& _rName)
+    // tdf117101: Spreadsheet by default
+    ODataSource ODataSourceContext::createNewOther( const OUString& _rName)
     {
-        return lcl_implCreateAndSetURL( m_pImpl->xORB, _rName, "sdbc:dbase:" );
+        return lcl_implCreateAndSetURL( m_pImpl->xORB, _rName, "sdbc:calc:" );
     }
 
     struct ODataSourceImpl
@@ -298,31 +296,16 @@ namespace abp
         ::utl::SharedUNOComponent< XConnection >
                                                 xConnection;
         StringBag                               aTables;            // the cached table names
-        OUString                         sName;
-        bool                                bTablesUpToDate;    // table name cache up-to-date?
+        OUString                                sName;
 
         explicit ODataSourceImpl(const Reference< XComponentContext >& _rxORB)
             : xORB(_rxORB)
-            , bTablesUpToDate(false)
         {
         }
-
-        ODataSourceImpl( const ODataSourceImpl& _rSource );
     };
 
 
-    ODataSourceImpl::ODataSourceImpl( const ODataSourceImpl& _rSource )
-        :xORB( _rSource.xORB )
-        ,xDataSource( _rSource.xDataSource )
-        ,xConnection( _rSource.xConnection )
-        ,aTables( _rSource.aTables )
-        ,sName( _rSource.sName )
-        ,bTablesUpToDate( _rSource.bTablesUpToDate )
-    {
-    }
-
     ODataSource::ODataSource( const ODataSource& _rSource )
-        :m_pImpl( nullptr )
     {
         *this = _rSource;
     }
@@ -336,7 +319,7 @@ namespace abp
         return *this;
     }
 
-    ODataSource& ODataSource::operator=( ODataSource&& _rSource )
+    ODataSource& ODataSource::operator=(ODataSource&& _rSource) noexcept
     {
         m_pImpl = std::move(_rSource.m_pImpl);
         return *this;
@@ -367,8 +350,8 @@ namespace abp
             {
                 SfxViewFrame* pFrame = SfxViewFrame::Current();
                 SfxObjectShell* pObjectShell = pFrame ? pFrame->GetObjectShell() : nullptr;
-                OUString aOwnURL = lcl_getOwnURL(pObjectShell);
-                if (aOwnURL.isEmpty() || !rSettings.bEmbedDataSource || !pObjectShell)
+                OUString aOwnURL = lcl_getOwnURL(pObjectShell); // empty if pObjectShell is nullptr
+                if (aOwnURL.isEmpty() || !rSettings.bEmbedDataSource)
                 {
                     // Cannot or should not embed.
                     xStorable->storeAsURL(m_pImpl->sName,Sequence<PropertyValue>());
@@ -377,9 +360,13 @@ namespace abp
                 {
                     // Embed.
                     OUString aStreamRelPath = "EmbeddedDatabase";
-                    OUString sTmpName = "vnd.sun.star.pkg://";
-                    sTmpName += INetURLObject::encode(aOwnURL, INetURLObject::PART_AUTHORITY, INetURLObject::EncodeMechanism::All);
-                    sTmpName += "/" + aStreamRelPath;
+                    auto xContext(comphelper::getProcessComponentContext());
+                    auto xUri = css::uri::UriReferenceFactory::create(xContext)->parse(aOwnURL);
+                    assert(xUri.is());
+                    xUri = css::uri::VndSunStarPkgUrlReferenceFactory::create(xContext)->createVndSunStarPkgUrlReference(xUri);
+                    assert(xUri.is());
+                    OUString const sTmpName = xUri->getUriReference() + "/" + aStreamRelPath;
+                    assert(pObjectShell);
                     uno::Reference<embed::XStorage> xStorage = pObjectShell->GetStorage();
                     uno::Sequence<beans::PropertyValue> aSequence = comphelper::InitPropertySequence(
                     {
@@ -518,12 +505,11 @@ namespace abp
         }
 
         // now the table cache is up-to-date
-        m_pImpl->bTablesUpToDate = true;
         return m_pImpl->aTables;
     }
 
 
-    bool ODataSource::connect( vcl::Window* _pMessageParent )
+    bool ODataSource::connect(weld::Window* _pMessageParent)
     {
         if ( isConnected( ) )
             // nothing to do
@@ -534,9 +520,7 @@ namespace abp
         Reference< XInteractionHandler > xInteractions;
         try
         {
-            xInteractions.set(
-                InteractionHandler::createWithParent(m_pImpl->xORB, nullptr),
-                UNO_QUERY);
+            xInteractions = InteractionHandler::createWithParent(m_pImpl->xORB, nullptr);
         }
         catch(const Exception&)
         {
@@ -577,9 +561,9 @@ namespace abp
             try
             {
                 SQLException aException;
-                  aError >>= aException;
-                  if ( aException.Message.isEmpty() )
-                  {
+                aError >>= aException;
+                if ( aException.Message.isEmpty() )
+                {
                     // prepend some context info
                     SQLContext aDetailedError;
                     aDetailedError.Message = compmodule::ModuleRes(RID_STR_NOCONNECTION);
@@ -587,9 +571,9 @@ namespace abp
                     aDetailedError.NextException = aError;
                     // handle (aka display) the new context info
                     xInteractions->handle( new OInteractionRequest( makeAny( aDetailedError ) ) );
-                  }
-                  else
-                  {
+                }
+                else
+                {
                       // handle (aka display) the original error
                     xInteractions->handle( new OInteractionRequest( makeAny( aException ) ) );
                 }
@@ -607,7 +591,6 @@ namespace abp
         // success
         m_pImpl->xConnection.reset( xConnection );
         m_pImpl->aTables.clear();
-        m_pImpl->bTablesUpToDate = false;
 
         return true;
     }
@@ -617,7 +600,6 @@ namespace abp
     {
         m_pImpl->xConnection.clear();
         m_pImpl->aTables.clear();
-        m_pImpl->bTablesUpToDate = false;
     }
 
 

@@ -11,6 +11,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sw_rtfexport))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sw_rtfexport))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sw_rtfexport, \
     sw/qa/extras/rtfexport/rtfexport \
 ))
@@ -22,6 +24,7 @@ $(eval $(call gb_CppunitTest_use_libraries,sw_rtfexport, \
     sal \
     sfx \
 	sw \
+	swqahelper \
     test \
     unotest \
 	utl \
@@ -36,17 +39,15 @@ $(eval $(call gb_CppunitTest_use_externals,sw_rtfexport,\
 $(eval $(call gb_CppunitTest_set_include,sw_rtfexport,\
     -I$(SRCDIR)/sw/inc \
     -I$(SRCDIR)/sw/source/core/inc \
-	-I$(SRCDIR)/sw/qa/extras/inc \
+	-I$(SRCDIR)/sw/qa/inc \
     $$(INCLUDE) \
 ))
 
-ifeq ($(OS),WNT)
-$(eval $(call gb_CppunitTest_add_cxxflags,sw_rtfexport,\
-	-bigobj \
+$(eval $(call gb_CppunitTest_use_api,sw_rtfexport,\
+	udkapi \
+	offapi \
+	oovbaapi \
 ))
-endif
-
-$(eval $(call gb_CppunitTest_use_sdk_api,sw_rtfexport))
 
 $(eval $(call gb_CppunitTest_use_ure,sw_rtfexport))
 $(eval $(call gb_CppunitTest_use_vcl,sw_rtfexport))

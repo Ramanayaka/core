@@ -20,7 +20,6 @@
 #ifndef INCLUDED_REGISTRY_SOURCE_KEYIMPL_HXX
 #define INCLUDED_REGISTRY_SOURCE_KEYIMPL_HXX
 
-#include <regapi.hxx>
 #include "regimpl.hxx"
 #include <rtl/ustring.hxx>
 
@@ -65,11 +64,11 @@ public:
                          sal_uInt32 vSize);
 
     RegError    setLongListValue(const OUString& valueName,
-                                  sal_Int32* pValueList,
+                                 sal_Int32 const * pValueList,
                                  sal_uInt32 len);
 
     RegError    setStringListValue(const OUString& valueName,
-                                   sal_Char** pValueList,
+                                   char** pValueList,
                                   sal_uInt32 len);
 
     RegError    setUnicodeListValue(const OUString& valueName,
@@ -83,7 +82,7 @@ public:
                                  sal_uInt32* pLen) const;
 
     RegError    getStringListValue(const OUString& valueName,
-                                    sal_Char*** pValueList,
+                                    char*** pValueList,
                                    sal_uInt32* pLen) const;
 
     RegError    getUnicodeListValue(const OUString& valueName,
@@ -91,7 +90,7 @@ public:
                                     sal_uInt32* pLen) const;
 
     RegError    getResolvedKeyName(const OUString& keyName,
-                                   OUString& resolvedName);
+                                   OUString& resolvedName) const;
 
     bool isDeleted() const
         { return m_bDeleted; }
@@ -116,7 +115,7 @@ public:
     const store::OStoreFile& getStoreFile() const
                     { return m_pRegistry->getStoreFile(); }
 
-    store::OStoreDirectory getStoreDir();
+    store::OStoreDirectory getStoreDir() const;
 
     const OUString& getName() const
                     { return m_name; }
@@ -124,11 +123,11 @@ public:
     OUString getFullPath(OUString const & path) const;
 
 private:
-    sal_uInt32              m_refCount;
-    OUString           m_name;
+    sal_uInt32               m_refCount;
+    OUString                 m_name;
     bool                     m_bDeleted:1;
     bool                     m_bModified:1;
-    ORegistry*              m_pRegistry;
+    ORegistry*               m_pRegistry;
 };
 
 #endif

@@ -20,6 +20,10 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABRECORDS_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABRECORDS_HXX
 
+#include <sal/config.h>
+
+#include <vector>
+
 #include "MacabRecord.hxx"
 #include "MacabHeader.hxx"
 
@@ -29,15 +33,13 @@
 #include <postmac.h>
 #include <com/sun/star/util/DateTime.hpp>
 
-namespace connectivity
+namespace connectivity::macab
 {
-    namespace macab
-    {
         /* This struct is for converting CF types to AB types (Core Foundation
          * types to Address Book types).
          */
         struct lcl_CFType {
-            sal_Int32 cf;
+            CFTypeID cf;
             sal_Int32 ab;
         };
 
@@ -56,18 +58,16 @@ namespace connectivity
                 OUString m_sName;
 
                 /* For converting CF types to AB types */
-                sal_Int32 lcl_CFTypesLength;
-                lcl_CFType *lcl_CFTypes;
+                std::vector<lcl_CFType> lcl_CFTypes;
 
                 /* For required properties */
-                CFStringRef *requiredProperties;
-                sal_Int32 numRequiredProperties;
+                std::vector<CFStringRef> requiredProperties;
 
             private:
                 /* All of the private methods are for creating a MacabHeader or a
                  * MacabRecord. They are used by the initialize method that goes
                  * about filling a MacabRecords using all of the records in the
-                 * Mac OS X Address Book.
+                 * macOS Address Book.
                  */
                 void bootstrap_CF_types();
                 void bootstrap_requiredProperties();
@@ -121,7 +121,6 @@ namespace connectivity
                 };
 
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABRECORDS_HXX

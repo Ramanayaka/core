@@ -134,18 +134,18 @@ void SvIdlParser::ReadInclude( SvMetaModule& rModule )
     osl::FileBase::RC searchError = osl::File::searchFileURL(aFullName, rBase.GetPath(), aFullName);
     if( osl::FileBase::E_None != searchError )
     {
-        OStringBuffer aStr("cannot find file:");
-        aStr.append(OUStringToOString(aFullName, RTL_TEXTENCODING_UTF8));
-        throw SvParseException(aStr.makeStringAndClear(), rInStm.GetToken());
+        OString aStr = "cannot find file:" +
+            OUStringToOString(aFullName, RTL_TEXTENCODING_UTF8);
+        throw SvParseException(aStr, rInStm.GetToken());
     }
     osl::FileBase::getSystemPathFromFileURL( aFullName, aFullName );
     rBase.AddDepFile( aFullName );
     SvTokenStream aTokStm( aFullName );
     if( ERRCODE_NONE != aTokStm.GetStream().GetError() )
     {
-        OStringBuffer aStr("cannot open file: ");
-        aStr.append(OUStringToOString(aFullName, RTL_TEXTENCODING_UTF8));
-        throw SvParseException(aStr.makeStringAndClear(), rInStm.GetToken());
+        OString aStr = "cannot open file: " +
+            OUStringToOString(aFullName, RTL_TEXTENCODING_UTF8);
+        throw SvParseException(aStr, rInStm.GetToken());
     }
     // rescue error from old file
     SvIdlError aOldErr = rBase.GetError();
@@ -431,20 +431,20 @@ void SvIdlParser::ReadInterfaceOrShellMethod( SvMetaAttribute& rAttr )
     xT->SetRef(rAttr.GetType() );
     rAttr.aType = xT;
     rAttr.aType->SetType( MetaTypeType::Method );
-    if (!ReadIf(')'))
+    if (ReadIf(')'))
+        return;
+
+    while (true)
     {
-        while (true)
-        {
-            tools::SvRef<SvMetaAttribute> xParamAttr( new SvMetaAttribute() );
-            xParamAttr->aType = ReadKnownType();
-            xParamAttr->SetName( ReadIdentifier() );
-            ReadSlotId(xParamAttr->aSlotId);
-            rAttr.aType->GetAttrList().push_back( xParamAttr.get() );
-            if (!ReadIfDelimiter())
-                break;
-        }
-        Read(')');
+        tools::SvRef<SvMetaAttribute> xParamAttr( new SvMetaAttribute() );
+        xParamAttr->aType = ReadKnownType();
+        xParamAttr->SetName( ReadIdentifier() );
+        ReadSlotId(xParamAttr->aSlotId);
+        rAttr.aType->GetAttrList().push_back( xParamAttr.get() );
+        if (!ReadIfDelimiter())
+            break;
     }
+    Read(')');
 }
 
 void SvIdlParser::ReadSlotId(SvIdentifier& rSlotId)
@@ -476,7 +476,7 @@ SvMetaType * SvIdlParser::ReadKnownType()
     throw SvParseException( rInStm, "wrong typedef: ");
 }
 
-bool SvIdlParser::ReadIfBoolAttribute( SvBOOL& rBool, SvStringHashEntry * pName )
+bool SvIdlParser::ReadIfBoolAttribute( SvBOOL& rBool, SvStringHashEntry const * pName )
 {
     sal_uInt32 nTokPos = rInStm.Tell();
     SvToken& rTok = rInStm.GetToken_Next();
@@ -499,7 +499,7 @@ bool SvIdlParser::ReadIfBoolAttribute( SvBOOL& rBool, SvStringHashEntry * pName 
     return false;
 }
 
-bool SvIdlParser::ReadIfIdAttribute( SvIdentifier& rIdentifier, SvStringHashEntry * pName )
+void SvIdlParser::ReadIfIdAttribute( SvIdentifier& rIdentifier, SvStringHashEntry const * pName )
 {
     sal_uInt32 nTokPos = rInStm.Tell();
     SvToken& rTok = rInStm.GetToken_Next();
@@ -514,10 +514,9 @@ bool SvIdlParser::ReadIfIdAttribute( SvIdentifier& rIdentifier, SvStringHashEntr
             rIdentifier.setString(rTok.GetString());
             rInStm.GetToken_Next();
         }
-        return true;
     }
-    rInStm.Seek( nTokPos );
-    return false;
+    else
+        rInStm.Seek( nTokPos );
 }
 
 void SvIdlParser::ReadDelimiter()
@@ -559,7 +558,7 @@ OString SvIdlParser::ReadString()
 void SvIdlParser::Read(char cChar)
 {
     if( !ReadIf(cChar) )
-        throw SvParseException(rInStm, "expected char '" + OString(cChar) + "'");
+        throw SvParseException(rInStm, "expected char '" + OStringChar(cChar) + "'");
 }
 
 bool SvIdlParser::ReadIf(char cChar)
@@ -572,14 +571,14 @@ bool SvIdlParser::ReadIf(char cChar)
     return false;
 }
 
-void SvIdlParser::Read(SvStringHashEntry* entry)
+void SvIdlParser::Read(SvStringHashEntry const * entry)
 {
     if( !rInStm.GetToken().Is(entry) )
         throw SvParseException("expected " + entry->GetName(), rInStm.GetToken());
     rInStm.GetToken_Next();
 }
 
-bool SvIdlParser::ReadIf(SvStringHashEntry* entry)
+bool SvIdlParser::ReadIf(SvStringHashEntry const * entry)
 {
     if( rInStm.GetToken().Is(entry) )
     {

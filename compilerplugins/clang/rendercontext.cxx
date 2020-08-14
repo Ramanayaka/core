@@ -20,10 +20,11 @@ namespace
 {
 
 class RenderContext:
-    public RecursiveASTVisitor<RenderContext>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<RenderContext>
 {
 public:
-    explicit RenderContext(InstantiationData const & data): Plugin(data) {}
+    explicit RenderContext(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
 
     virtual void run() override {
         TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
@@ -120,7 +121,7 @@ bool RenderContext::VisitCXXMemberCallExpr(const CXXMemberCallExpr* pCXXMemberCa
     report(
         DiagnosticsEngine::Warning,
         "Should be calling OutputDevice method through RenderContext.",
-        pCXXMemberCallExpr->getLocStart())
+        compat::getBeginLoc(pCXXMemberCallExpr))
             << pCXXMemberCallExpr->getSourceRange();
     return true;
 }

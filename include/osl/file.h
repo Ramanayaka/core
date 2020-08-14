@@ -20,11 +20,11 @@
 #ifndef INCLUDED_OSL_FILE_H
 #define INCLUDED_OSL_FILE_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
-#include <osl/time.h>
-#include <rtl/ustring.h>
-#include <sal/saldllapi.h>
+#include "osl/time.h"
+#include "rtl/ustring.h"
+#include "sal/saldllapi.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,7 +34,7 @@ extern "C" {
 
 Main goals and usage hints
 
-The main intention of this interface is to provide an universal portable and
+The main intention of this interface is to provide a universal portable and
 high performance access to file system functionality on any operating
 system.
 
@@ -74,7 +74,7 @@ for a "FileExists". This should only be done when processing a single file
 (i.e. before opening) and NEVER during enumeration of directory contents on
 any step of information processing. This would change the runtime behaviour
 from O(n) to O(n*n/2) on nearly every file system.  On Windows NT reading the
-contents of an directory with 7000 entries and getting full information about
+contents of a directory with 7000 entries and getting full information about
 every file only takes 0.6 seconds. Specifying the flag
 osl_FileStatus_Mask_Validate for each entry will increase the time to 180
 seconds (!!!).
@@ -130,7 +130,9 @@ typedef enum {
     osl_File_E_NOTREADY,        /*!< device not ready                                            */
     osl_File_E_invalidError,    /*!< unmapped error: always last entry in enum!                  */
     osl_File_E_TIMEDOUT,        /*!< socket operation timed out                                  */
-    osl_File_E_NETWORK,
+    osl_File_E_NETWORK,         /*!< unexpected network error occurred (Windows) - could be a
+                                     user session was deleted, or an unexpected network error
+                                     occurred                                                    */
     osl_File_E_FORCE_EQUAL_SIZE = SAL_MAX_ENUM
 } oslFileError;
 
@@ -149,7 +151,7 @@ typedef void *oslDirectoryItem;
     @retval osl_File_E_None on success
     @retval osl_File_E_INVAL the format of the parameters was not valid
     @retval osl_File_E_NOENT the specified path doesn't exist
-    @retval osl_File_E_NOTDIR the specified path is not an directory
+    @retval osl_File_E_NOTDIR the specified path is not a directory
     @retval osl_File_E_NOMEM not enough memory for allocating structures
     @retval osl_File_E_ACCES permission denied
     @retval osl_File_E_MFILE too many open files used by the process
@@ -547,6 +549,8 @@ SAL_DLLPUBLIC oslFileError SAL_CALL osl_getVolumeDeviceMountPath(
 #define osl_VolumeInfo_Mask_DeviceHandle           0x00000080L
 #define osl_VolumeInfo_Mask_FileSystemCaseHandling 0x00000100L
 
+/** @} */
+
 /** Structure containing information about volumes
 
     @see    osl_getVolumeInformation()
@@ -631,7 +635,7 @@ typedef void *oslFileHandle;
 
 /** Open a regular file.
 
-    Open a file. Only regular files can be openend.
+    Open a file. Only regular files can be opened.
 
     @param[in] pustrFileURL
     The full qualified URL of the file to open.
@@ -713,8 +717,8 @@ SAL_DLLPUBLIC oslFileError SAL_CALL osl_openFile(
     @see    osl_openFile()
     @see    osl_getFilePos()
 */
-SAL_DLLPUBLIC oslFileError SAL_CALL osl_setFilePos(
-        oslFileHandle Handle, sal_uInt32 uHow, sal_Int64 uPos ) SAL_WARN_UNUSED_RESULT;
+SAL_WARN_UNUSED_RESULT SAL_DLLPUBLIC oslFileError SAL_CALL osl_setFilePos(
+        oslFileHandle Handle, sal_uInt32 uHow, sal_Int64 uPos );
 
 /** Retrieve the current position of the internal pointer of an open file.
 
@@ -826,7 +830,7 @@ SAL_DLLPUBLIC oslFileError SAL_CALL osl_getFileSize(
                 can mean that the address, length of the file or the
                 file offset are too large or not aligned on a page
                 boundary; on Linux can also mean after Linux 2.6.12
-                that the length was set to 0 (illogical.
+                that the length was set to 0 (illogical).
     @retval osl_File_E_OVERFLOW requested mapping size too large,
                 or the file offset was too large
     @retval osl_File_E_ACCES file descriptor to non-regular file, or
@@ -1294,7 +1298,6 @@ SAL_DLLPUBLIC oslFileError SAL_CALL osl_createDirectoryPath(
     @retval osl_File_E_IO on I/O errors
     @retval osl_File_E_BUSY device or resource busy
     @retval osl_File_E_INTR function call was interrupted
-    @retval osl_File_E_LOOP too many symbolic links encountered
     @retval osl_File_E_MULTIHOP multihop attempted
     @retval osl_File_E_NOLINK link has been severed
     @retval osl_File_E_TXTBSY text file busy
@@ -1392,7 +1395,7 @@ SAL_DLLPUBLIC oslFileError SAL_CALL osl_getCanonicalName(
     Base directory URL to which the relative path is related to.
 
     @param[in] pustrRelativeFileURL
-    An URL of a file or directory relative to the directory path specified by pustrBaseDirectoryURL
+    A URL of a file or directory relative to the directory path specified by pustrBaseDirectoryURL
     or an absolute path.
     If pustrRelativeFileURL denotes an absolute path pustrBaseDirectoryURL will be ignored.
 
@@ -1629,6 +1632,37 @@ SAL_DLLPUBLIC oslFileError SAL_CALL osl_createTempFile(
     rtl_uString*   pustrDirectoryURL,
     oslFileHandle* pHandle,
     rtl_uString**  ppustrTempFileURL);
+
+/** Move a file to a new destination or rename it, taking old file's identity (if exists).
+
+    Moves or renames a file, replacing an existing file if exist. If the old file existed,
+    moved file's metadata, e.g. creation time (on FSes which keep files' creation time) or
+    ACLs, are set to old one's (to keep the old file's identity) - currently this is only
+    implemented fully on Windows; on other platforms, this is mostly equivalent to osl_moveFile.
+
+    @param[in] pustrSourceFileURL
+    Full qualified URL of the source file.
+
+    @param[in] pustrDestFileURL
+    Full qualified URL of the destination file.
+
+    @retval osl_File_E_None on success
+    @retval osl_File_E_INVAL the format of the parameters was not valid
+    @retval osl_File_E_NOMEM not enough memory for allocating structures
+    @retval osl_File_E_ACCES permission denied
+    @retval osl_File_E_PERM operation not permitted
+    @retval osl_File_E_NAMETOOLONG file name too long
+    @retval osl_File_E_NOENT no such file
+    @retval osl_File_E_ROFS read-only file system
+    @retval osl_File_E_BUSY if the implementation internally requires resources that are
+        (temporarily) unavailable
+
+    @see osl_moveFile()
+
+    @since LibreOffice 6.2
+*/
+SAL_DLLPUBLIC oslFileError SAL_CALL osl_replaceFile(rtl_uString* pustrSourceFileURL,
+                                                    rtl_uString* pustrDestFileURL);
 
 #ifdef __cplusplus
 }

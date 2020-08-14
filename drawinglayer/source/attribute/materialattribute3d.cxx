@@ -22,10 +22,8 @@
 #include <rtl/instance.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpMaterialAttribute3D
         {
         public:
@@ -101,20 +99,11 @@ namespace drawinglayer
         {
         }
 
-        MaterialAttribute3D::MaterialAttribute3D(const MaterialAttribute3D& rCandidate)
-        :   mpMaterialAttribute3D(rCandidate.mpMaterialAttribute3D)
-        {
-        }
+        MaterialAttribute3D::MaterialAttribute3D(const MaterialAttribute3D&) = default;
 
-        MaterialAttribute3D::~MaterialAttribute3D()
-        {
-        }
+        MaterialAttribute3D::~MaterialAttribute3D() = default;
 
-        MaterialAttribute3D& MaterialAttribute3D::operator=(const MaterialAttribute3D& rCandidate)
-        {
-            mpMaterialAttribute3D = rCandidate.mpMaterialAttribute3D;
-            return *this;
-        }
+        MaterialAttribute3D& MaterialAttribute3D::operator=(const MaterialAttribute3D&) = default;
 
         bool MaterialAttribute3D::operator==(const MaterialAttribute3D& rCandidate) const
         {
@@ -140,7 +129,7 @@ namespace drawinglayer
         {
             return mpMaterialAttribute3D->getSpecularIntensity();
         }
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

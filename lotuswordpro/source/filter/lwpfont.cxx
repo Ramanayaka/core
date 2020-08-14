@@ -53,13 +53,13 @@
  *
  *
  ************************************************************************/
-#include "lwpglobalmgr.hxx"
-#include "lwpfont.hxx"
-#include "xfilter/xfstylemanager.hxx"
-#include "xfilter/xffontfactory.hxx"
-#include "xfilter/xftextstyle.hxx"
-#include "xfilter/xfdefs.hxx"
-#include "xfilter/xfcolor.hxx"
+#include <lwpglobalmgr.hxx>
+#include <lwpfont.hxx>
+#include <lwpbasetype.hxx>
+#include <xfilter/xfstylemanager.hxx>
+#include <xfilter/xfdefs.hxx>
+#include <xfilter/xfcolor.hxx>
+#include <sal/log.hxx>
 
 void LwpFontAttrEntry::Read(LwpObjectStream *pStrm)
 {
@@ -175,39 +175,39 @@ bool LwpFontAttrEntry::Is(sal_uInt16 Attr)
     return (0 != (m_nAttrBits & Attr));
 }
 
-bool LwpFontAttrEntry::IsBoldOverridden()
+bool LwpFontAttrEntry::IsBoldOverridden() const
 {
     return (0 != (m_nAttrOverrideBits & BOLD));
 }
 
-bool LwpFontAttrEntry::IsItalicOverridden()
+bool LwpFontAttrEntry::IsItalicOverridden() const
 {
     return (0 != (m_nAttrOverrideBits & ITALIC));
 }
-bool LwpFontAttrEntry::IsStrikeThruOverridden()
+bool LwpFontAttrEntry::IsStrikeThruOverridden() const
 {
     return (0 != (m_nAttrOverrideBits & STRIKETHRU));
 }
-bool LwpFontAttrEntry::IsSmallCapsOverridden()
+bool LwpFontAttrEntry::IsSmallCapsOverridden() const
 {
     return (0 != (m_nAttrOverrideBits & SMALLCAPS));
 }
-bool LwpFontAttrEntry::IsSuperOverridden()
+bool LwpFontAttrEntry::IsSuperOverridden() const
 {
     return (0 != (m_nAttrOverrideBits & SUPERSCRIPT));
 
 }
-bool LwpFontAttrEntry::IsSubOverridden()
+bool LwpFontAttrEntry::IsSubOverridden() const
 {
     return (0 != (m_nAttrOverrideBits & SUBSCRIPT));
 
 }
 
-bool LwpFontAttrEntry::IsUnderlineOverridden()
+bool LwpFontAttrEntry::IsUnderlineOverridden() const
 {
     return (0 != (m_nAttrOverrideBits2 & UNDER));
 }
-bool LwpFontAttrEntry::IsCaseOverridden()
+bool LwpFontAttrEntry::IsCaseOverridden() const
 {
     return (0 != (m_nAttrOverrideBits2 & CASE));
 }
@@ -229,9 +229,9 @@ void LwpFontTableEntry::Read(LwpObjectStream *pStrm)
     RegisterFontDecl();
 }
 
-OUString LwpFontTableEntry::GetFaceName()
+OUString const & LwpFontTableEntry::GetFaceName() const
 {
-    return (m_WindowsFaceName.str());
+    return m_WindowsFaceName.str();
 }
 
 void LwpFontTableEntry::RegisterFontDecl()
@@ -244,7 +244,6 @@ void LwpFontTableEntry::RegisterFontDecl()
 
 LwpFontTable::LwpFontTable()
     : m_nCount(0)
-    , m_pFontEntries(nullptr)
 {}
 
 void LwpFontTable::Read(LwpObjectStream *pStrm)
@@ -253,7 +252,7 @@ void LwpFontTable::Read(LwpObjectStream *pStrm)
     m_nCount = pStrm->QuickReaduInt16();
     if(m_nCount>0)
     {
-        m_pFontEntries = new LwpFontTableEntry[m_nCount];
+        m_pFontEntries.reset( new LwpFontTableEntry[m_nCount] );
         for(sal_uInt16 i=0; i<m_nCount; i++)
         {
             m_pFontEntries[i].Read(pStrm);
@@ -270,11 +269,6 @@ OUString LwpFontTable::GetFaceName(sal_uInt16 index) //index: start from 1
 
 LwpFontTable::~LwpFontTable()
 {
-    if(m_pFontEntries)
-    {
-        delete [] m_pFontEntries;
-        m_pFontEntries = nullptr;
-    }
 }
 
 void LwpFontNameEntry::Read(LwpObjectStream *pStrm)
@@ -324,27 +318,27 @@ void LwpFontNameEntry::Override(rtl::Reference<XFFont> const & pFont)
     //  pFont->SetTightness(cTightness);
 }
 
-bool LwpFontNameEntry::IsFaceNameOverridden()
+bool LwpFontNameEntry::IsFaceNameOverridden() const
 {
     return (0 != (m_nOverrideBits & FACENAME));
 }
 
-bool LwpFontNameEntry::IsAltFaceNameOverridden()
+bool LwpFontNameEntry::IsAltFaceNameOverridden() const
 {
     return (0 != (m_nOverrideBits & ALTFACENAME));
 }
 
-bool LwpFontNameEntry::IsPointSizeOverridden()
+bool LwpFontNameEntry::IsPointSizeOverridden() const
 {
     return (0 != (m_nOverrideBits & POINTSIZE));
 }
 
-bool LwpFontNameEntry::IsColorOverridden()
+bool LwpFontNameEntry::IsColorOverridden() const
 {
     return (0 != (m_nOverrideBits & COLOR));
 }
 
-bool LwpFontNameEntry::IsBackgroundColorOverridden()
+bool LwpFontNameEntry::IsBackgroundColorOverridden() const
 {
     return (0 != (m_nOverrideBits & BKCOLOR));
 }
@@ -362,16 +356,10 @@ bool LwpFontNameEntry::IsBackgroundColorOverridden()
 
 LwpFontNameManager::LwpFontNameManager()
     : m_nCount(0)
-    , m_pFontNames(nullptr)
 {}
 
 LwpFontNameManager::~LwpFontNameManager()
 {
-    if(m_pFontNames)
-    {
-        delete [] m_pFontNames;
-        m_pFontNames = nullptr;
-    }
 }
 
 void LwpFontNameManager::Read(LwpObjectStream *pStrm)
@@ -379,7 +367,7 @@ void LwpFontNameManager::Read(LwpObjectStream *pStrm)
     m_nCount = pStrm->QuickReaduInt16();
     if(m_nCount>0)
     {
-        m_pFontNames = new LwpFontNameEntry[m_nCount];
+        m_pFontNames.reset( new LwpFontNameEntry[m_nCount] );
         for(sal_uInt16 i=0; i<m_nCount; i++)
         {
             m_pFontNames[i].Read(pStrm);
@@ -409,7 +397,7 @@ OUString LwpFontNameManager::GetNameByIndex(sal_uInt16 index)
         return OUString();
 
     sal_uInt16 nameindex = m_pFontNames[index-1].GetFaceID();
-    return (m_FontTbl.GetFaceName(nameindex));
+    return m_FontTbl.GetFaceName(nameindex);
 }
 
 void LwpFontAttrManager::Read(LwpObjectStream *pStrm)
@@ -474,7 +462,7 @@ Prerequisite: pStyle has been created and the paragraph properties has been set 
     pStyle->SetFont(pFont);
     pStyle->SetStyleName(styleName);
     XFStyleManager::AddStyle(pStyle);
-    m_StyleList.insert(LwpParaStyleMap::value_type(styleObjID, styleName));
+    m_StyleList.emplace( styleObjID, styleName));
 }*/
 
 /*
@@ -515,7 +503,7 @@ void LwpFontManager::Override(sal_uInt32 fontID, rtl::Reference<XFFont> const & 
 
 OUString LwpFontManager::GetNameByID(sal_uInt32 fontID)
 {
-    return ( m_FNMgr.GetNameByIndex(GetFontNameIndex(fontID)) );//use font id for bullet?
+    return m_FNMgr.GetNameByIndex(GetFontNameIndex(fontID));//use font id for bullet?
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

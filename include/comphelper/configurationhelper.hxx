@@ -20,17 +20,14 @@
 #ifndef INCLUDED_COMPHELPER_CONFIGURATIONHELPER_HXX
 #define INCLUDED_COMPHELPER_CONFIGURATIONHELPER_HXX
 
-#include <com/sun/star/uno/XInterface.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
-#include <com/sun/star/util/XChangesBatch.hpp>
+#include <com/sun/star/uno/Reference.h>
+#include <com/sun/star/uno/Any.hxx>
 #include <rtl/ustring.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <comphelper/comphelperdllapi.h>
 #include <o3tl/typed_flags_set.hxx>
 
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { class XInterface; }
 
 namespace comphelper
 {
@@ -47,9 +44,7 @@ namespace comphelper
         /// configuration will be opened readonly
         ReadOnly = 1,
         /// all localized nodes will be interpreted as XInterface instead of interpreting it as atomic value nodes
-        AllLocales = 2,
-        /// enable lazy writing
-        LazyWrite = 4
+        AllLocales = 2
     };
 
 
@@ -57,7 +52,7 @@ namespace comphelper
 
 namespace o3tl
 {
-    template<> struct typed_flags<comphelper::EConfigurationModes> : is_typed_flags<comphelper::EConfigurationModes, 0x7> {};
+    template<> struct typed_flags<comphelper::EConfigurationModes> : is_typed_flags<comphelper::EConfigurationModes, 0x3> {};
 }
 
 namespace comphelper
@@ -164,7 +159,7 @@ public:
      *  all operations are made relative to this access point.
      *
      *  Further this method must be used only with configuration set's.
-     *  Atomic keys can't be "created" ... they "exists every time".
+     *  Atomic keys can't be "created"... they "exist every time".
      *
      *  @param  xCFG
      *          the configuration root, where sRelPathToSet should be interpreted

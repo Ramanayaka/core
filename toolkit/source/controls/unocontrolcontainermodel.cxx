@@ -18,13 +18,12 @@
  */
 
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <toolkit/controls/unocontrolcontainermodel.hxx>
+#include <controls/unocontrolcontainermodel.hxx>
 #include <toolkit/helper/property.hxx>
-#include <toolkit/helper/servicenames.hxx>
+#include <helper/servicenames.hxx>
 
-#include "helper/unopropertyarrayhelper.hxx"
+#include <helper/unopropertyarrayhelper.hxx>
 
-//  class UnoControlContainerModel
 
 UnoControlContainerModel::UnoControlContainerModel( const css::uno::Reference< css::uno::XComponentContext >& i_factory )
     :UnoControlModel( i_factory )
@@ -42,12 +41,12 @@ UnoControlContainerModel::UnoControlContainerModel( const css::uno::Reference< c
 
 OUString UnoControlContainerModel::getServiceName()
 {
-    return OUString::createFromAscii( szServiceName_UnoControlContainerModel );
+    return "stardiv.vcl.controlmodel.ControlContainer";
 }
 
 OUString UnoControlContainerModel::getImplementationName()
 {
-    return OUString("stardiv.Toolkit.UnoControlContainerModel");
+    return "stardiv.Toolkit.UnoControlContainerModel";
 }
 
 css::uno::Sequence<OUString>
@@ -64,7 +63,7 @@ css::uno::Any UnoControlContainerModel::ImplGetDefaultValue( sal_uInt16 nPropId 
 {
     css::uno::Any aDefault;
     if ( nPropId == BASEPROPERTY_BORDER )
-        aDefault <<= (sal_Int16) 0;
+        aDefault <<= sal_Int16(0);
     else
         aDefault = UnoControlModel::ImplGetDefaultValue( nPropId );
     return aDefault;
@@ -79,18 +78,11 @@ css::uno::Reference< css::beans::XPropertySetInfo > UnoControlContainerModel::ge
 
 ::cppu::IPropertyArrayHelper& UnoControlContainerModel::getInfoHelper()
 {
-    ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
-
-    static UnoPropertyArrayHelper* pHelper = nullptr;
-    if ( !pHelper )
-    {
-        css::uno::Sequence<sal_Int32>  aIDs = ImplGetPropertyIds();
-        pHelper = new UnoPropertyArrayHelper( aIDs );
-    }
-    return *pHelper;
+    static UnoPropertyArrayHelper aHelper( ImplGetPropertyIds() );
+    return aHelper;
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoControlContainerModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

@@ -17,20 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ole/olehelper.hxx"
+#include <oox/ole/olehelper.hxx>
 
 #include <rtl/ustrbuf.hxx>
 #include <sot/storage.hxx>
 #include <osl/diagnose.h>
-#include "oox/helper/binaryinputstream.hxx"
+#include <oox/helper/binaryinputstream.hxx>
 #include <oox/helper/binaryoutputstream.hxx>
-#include "oox/helper/graphichelper.hxx"
+#include <oox/helper/graphichelper.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
-#include "oox/ole/axcontrol.hxx"
-#include "oox/helper/propertymap.hxx"
-#include "oox/helper/propertyset.hxx"
-#include "oox/ole/olestorage.hxx"
+#include <oox/ole/axcontrol.hxx>
+#include <oox/helper/propertymap.hxx>
+#include <oox/helper/propertyset.hxx>
 
 #include <com/sun/star/awt/XControlModel.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -40,13 +39,13 @@
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <tools/globname.hxx>
 #include <unotools/streamwrap.hxx>
 #include <comphelper/processfactory.hxx>
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 using ::com::sun::star::form::XFormComponent;
 using ::com::sun::star::awt::XControlModel;
@@ -74,15 +73,15 @@ const sal_uInt32 OLE_PALETTECOLOR_MASK      = 0x0000FFFF;
 const sal_uInt32 OLE_SYSTEMCOLOR_MASK       = 0x0000FFFF;
 
 /** Swaps the red and blue component of the passed color. */
-inline sal_uInt32 lclSwapRedBlue( sal_uInt32 nColor )
+sal_uInt32 lclSwapRedBlue( sal_uInt32 nColor )
 {
     return static_cast< sal_uInt32 >( (nColor & 0xFF00FF00) | ((nColor & 0x0000FF) << 16) | ((nColor & 0xFF0000) >> 16) );
 }
 
 /** Returns the UNO RGB color from the passed encoded OLE BGR color. */
-inline sal_Int32 lclDecodeBgrColor( sal_uInt32 nOleColor )
+::Color lclDecodeBgrColor( sal_uInt32 nOleColor )
 {
-    return static_cast< sal_Int32 >( lclSwapRedBlue( nOleColor ) & 0xFFFFFF );
+    return ::Color( lclSwapRedBlue( nOleColor ) & 0xFFFFFF );
 }
 
 const sal_uInt32 OLE_STDPIC_ID              = 0x0000746C;
@@ -113,7 +112,7 @@ public:
 
 classIdToGUIDCNamePairMap::classIdToGUIDCNamePairMap()
 {
-    IdCntrlData initialCntrlData[] =
+    static IdCntrlData const initialCntrlData[] =
     {
         // Command button MUST be at index 0
         { FormComponentType::COMMANDBUTTON,
@@ -173,7 +172,7 @@ classIdToGUIDCNamePairMap::classIdToGUIDCNamePairMap()
         }
     };
     int const length = SAL_N_ELEMENTS( initialCntrlData );
-    IdCntrlData* pData = initialCntrlData;
+    IdCntrlData const * pData = initialCntrlData;
     for ( int index = 0; index < length; ++index, ++pData )
         mnIdToGUIDCNamePairMap[ pData->nId ] = pData->aData;
 };
@@ -213,7 +212,7 @@ StdFontInfo::StdFontInfo( const OUString& rName, sal_uInt32 nHeight ) :
 {
 }
 
-sal_Int32 OleHelper::decodeOleColor(
+::Color OleHelper::decodeOleColor(
         const GraphicHelper& rGraphicHelper, sal_uInt32 nOleColor, bool bDefaultColorBgr )
 {
     static const sal_Int32 spnSystemColors[] =
@@ -260,7 +259,7 @@ void OleHelper::exportGuid( BinaryOutputStream& rOStr, const SvGlobalName& rId )
 
 OUString OleHelper::importGuid( BinaryInputStream& rInStrm )
 {
-    OUStringBuffer aBuffer;
+    OUStringBuffer aBuffer(40);
     aBuffer.append( '{' );
     lclAppendHex( aBuffer, rInStrm.readuInt32() );
     aBuffer.append( '-' );
@@ -300,15 +299,12 @@ bool OleHelper::importStdFont( StdFontInfo& orFontInfo, BinaryInputStream& rInSt
     return !rInStrm.isEof() && (nVersion <= 1);
 }
 
-bool OleHelper::importStdPic( StreamDataSequence& orGraphicData, BinaryInputStream& rInStrm, bool bWithGuid )
+bool OleHelper::importStdPic( StreamDataSequence& orGraphicData, BinaryInputStream& rInStrm )
 {
-    if( bWithGuid )
-    {
-        bool bIsStdPic = importGuid( rInStrm ) == OLE_GUID_STDPIC;
-        OSL_ENSURE( bIsStdPic, "OleHelper::importStdPic - unexpected header GUID, expected StdPic" );
-        if( !bIsStdPic )
-            return false;
-    }
+    bool bIsStdPic = importGuid( rInStrm ) == OLE_GUID_STDPIC;
+    OSL_ENSURE( bIsStdPic, "OleHelper::importStdPic - unexpected header GUID, expected StdPic" );
+    if( !bIsStdPic )
+        return false;
 
     sal_uInt32 nStdPicId;
     sal_Int32 nBytes;
@@ -318,7 +314,7 @@ bool OleHelper::importStdPic( StreamDataSequence& orGraphicData, BinaryInputStre
     return !rInStrm.isEof() && (nStdPicId == OLE_STDPIC_ID) && (nBytes > 0) && (rInStrm.readData( orGraphicData, nBytes ) == nBytes);
 }
 
-Reference< css::frame::XFrame > lcl_getFrame( const  Reference< css::frame::XModel >& rxModel )
+static Reference< css::frame::XFrame > lcl_getFrame( const  Reference< css::frame::XModel >& rxModel )
 {
     Reference< css::frame::XFrame > xFrame;
     if ( rxModel.is() )
@@ -329,87 +325,63 @@ Reference< css::frame::XFrame > lcl_getFrame( const  Reference< css::frame::XMod
     return xFrame;
 }
 
-class OleFormCtrlExportHelper final
-{
-    ::oox::ole::EmbeddedControl maControl;
-    ::oox::ole::ControlModelBase* mpModel;
-    ::oox::GraphicHelper maGrfHelper;
-    Reference< XModel > mxDocModel;
-    Reference< XControlModel > mxControlModel;
-
-    OUString maName;
-    OUString maTypeName;
-    OUString maFullName;
-    OUString maGUID;
-public:
-    OleFormCtrlExportHelper( const Reference< XComponentContext >& rxCtx, const Reference< XModel >& xDocModel, const Reference< XControlModel >& xModel );
-    OUString getGUID()
-    {
-        OUString sResult;
-        if ( maGUID.getLength() > 2 )
-            sResult = maGUID.copy(1, maGUID.getLength() - 2 );
-        return sResult;
-    }
-    const OUString& getFullName() { return maFullName; }
-    const OUString& getTypeName() { return maTypeName; }
-    bool isValid() { return mpModel != nullptr; }
-    void exportName( const Reference< XOutputStream >& rxOut );
-    void exportCompObj( const Reference< XOutputStream >& rxOut );
-    void exportControl( const Reference< XOutputStream >& rxOut, const css::awt::Size& rSize );
-};
-OleFormCtrlExportHelper::OleFormCtrlExportHelper(  const Reference< XComponentContext >& rxCtx, const Reference< XModel >& rxDocModel, const Reference< XControlModel >& xCntrlModel ) : maControl( "Unknown" ), mpModel( nullptr ), maGrfHelper( rxCtx, lcl_getFrame( rxDocModel ), StorageRef() ), mxDocModel( rxDocModel ), mxControlModel( xCntrlModel )
+OleFormCtrlExportHelper::OleFormCtrlExportHelper(  const Reference< XComponentContext >& rxCtx, const Reference< XModel >& rxDocModel, const Reference< XControlModel >& xCntrlModel ) : mpModel( nullptr ), maGrfHelper( rxCtx, lcl_getFrame( rxDocModel ), StorageRef() ), mxDocModel( rxDocModel ), mxControlModel( xCntrlModel )
 {
     // try to get the guid
     Reference< css::beans::XPropertySet > xProps( xCntrlModel, UNO_QUERY );
-    if ( xProps.is() )
-    {
-        sal_Int16 nClassId = 0;
-        PropertySet aPropSet( mxControlModel );
-        if ( aPropSet.getProperty( nClassId, PROP_ClassId ) )
-        {
-            /* pseudo ripped from legacy msocximex:
-              "There is a truly horrible thing with EditControls and FormattedField
-              Controls, they both pretend to have an EDITBOX ClassId for compatibility
-              reasons, at some stage in the future hopefully there will be a proper
-              FormulaField ClassId rather than this piggybacking two controls onto the
-              same ClassId, cmc." - when fixed the fake FORMULAFIELD id entry
-              and definition above can be removed/replaced
-            */
-            if ( nClassId == FormComponentType::TEXTFIELD)
-            {
-                Reference< XServiceInfo > xInfo( xCntrlModel,
-                    UNO_QUERY);
-                if (xInfo->
-                    supportsService( "com.sun.star.form.component.FormattedField" ) )
-                    nClassId = FORMULAFIELD;
-            }
-            else if ( nClassId == FormComponentType::COMMANDBUTTON )
-            {
-                bool bToggle = false;
-                if ( aPropSet.getProperty( bToggle, PROP_Toggle ) && bToggle )
-                    nClassId = TOGGLEBUTTON;
-            }
-            else if ( nClassId == FormComponentType::CONTROL )
-            {
-                Reference< XServiceInfo > xInfo( xCntrlModel,
-                    UNO_QUERY);
-                if (xInfo->supportsService("com.sun.star.form.component.ImageControl" ) )
-                    nClassId = FormComponentType::IMAGECONTROL;
-            }
+    if ( !xProps.is() )
+        return;
 
-            GUIDCNamePairMap& cntrlMap = classIdToGUIDCNamePairMap::get();
-            GUIDCNamePairMap::iterator it = cntrlMap.find( nClassId );
-            if ( it != cntrlMap.end() )
-            {
-                aPropSet.getProperty(maName, PROP_Name );
-                maTypeName = OUString::createFromAscii( it->second.sName );
-                maFullName = "Microsoft Forms 2.0 " + maTypeName;
-                maControl =  EmbeddedControl( maName );
-                maGUID = OUString::createFromAscii( it->second.sGUID );
-                mpModel = maControl.createModelFromGuid( maGUID );
-            }
-        }
+    sal_Int16 nClassId = 0;
+    PropertySet aPropSet( mxControlModel );
+    if ( !aPropSet.getProperty( nClassId, PROP_ClassId ) )
+        return;
+
+    /* pseudo ripped from legacy msocximex:
+      "There is a truly horrible thing with EditControls and FormattedField
+      Controls, they both pretend to have an EDITBOX ClassId for compatibility
+      reasons, at some stage in the future hopefully there will be a proper
+      FormulaField ClassId rather than this piggybacking two controls onto the
+      same ClassId, cmc." - when fixed the fake FORMULAFIELD id entry
+      and definition above can be removed/replaced
+    */
+    if ( nClassId == FormComponentType::TEXTFIELD)
+    {
+        Reference< XServiceInfo > xInfo( xCntrlModel,
+            UNO_QUERY);
+        if (xInfo->
+            supportsService( "com.sun.star.form.component.FormattedField" ) )
+            nClassId = FORMULAFIELD;
     }
+    else if ( nClassId == FormComponentType::COMMANDBUTTON )
+    {
+        bool bToggle = false;
+        if ( aPropSet.getProperty( bToggle, PROP_Toggle ) && bToggle )
+            nClassId = TOGGLEBUTTON;
+    }
+    else if ( nClassId == FormComponentType::CONTROL )
+    {
+        Reference< XServiceInfo > xInfo( xCntrlModel,
+            UNO_QUERY);
+        if (xInfo->supportsService("com.sun.star.form.component.ImageControl" ) )
+            nClassId = FormComponentType::IMAGECONTROL;
+    }
+
+    GUIDCNamePairMap& cntrlMap = classIdToGUIDCNamePairMap::get();
+    GUIDCNamePairMap::iterator it = cntrlMap.find( nClassId );
+    if ( it != cntrlMap.end() )
+    {
+        aPropSet.getProperty(maName, PROP_Name );
+        maTypeName = OUString::createFromAscii( it->second.sName );
+        maFullName = "Microsoft Forms 2.0 " + maTypeName;
+        mpControl.reset(new EmbeddedControl( maName ));
+        maGUID = OUString::createFromAscii( it->second.sGUID );
+        mpModel = mpControl->createModelFromGuid( maGUID );
+    }
+}
+
+OleFormCtrlExportHelper::~OleFormCtrlExportHelper()
+{
 }
 
 void OleFormCtrlExportHelper::exportName( const Reference< XOutputStream >& rxOut )
@@ -426,13 +398,14 @@ void OleFormCtrlExportHelper::exportCompObj( const Reference< XOutputStream >& r
         mpModel->exportCompObj( aOut );
 }
 
-void OleFormCtrlExportHelper::exportControl( const Reference< XOutputStream >& rxOut, const Size& rSize )
+void OleFormCtrlExportHelper::exportControl( const Reference< XOutputStream >& rxOut, const Size& rSize, bool bAutoClose )
 {
-    oox::BinaryXOutputStream aOut( rxOut, false );
+    oox::BinaryXOutputStream aOut( rxOut, bAutoClose );
     if ( mpModel )
     {
         ::oox::ole::ControlConverter aConv(  mxDocModel, maGrfHelper );
-        maControl.convertFromProperties( mxControlModel, aConv );
+        if(mpControl)
+            mpControl->convertFromProperties( mxControlModel, aConv );
         mpModel->maSize.first = rSize.Width;
         mpModel->maSize.second = rSize.Height;
         mpModel->exportBinaryModel( aOut );
@@ -463,7 +436,7 @@ MSConvertOCXControls::importControlFromStream( ::oox::BinaryInputStream& rInStrm
 }
 
 bool
-MSConvertOCXControls::ReadOCXCtlsStream( tools::SvRef<SotStorageStream>& rSrc1, Reference< XFormComponent > & rxFormComp,
+MSConvertOCXControls::ReadOCXCtlsStream( tools::SvRef<SotStorageStream> const & rSrc1, Reference< XFormComponent > & rxFormComp,
                                    sal_Int32 nPos,
                                    sal_Int32 nStreamSize)
 {
@@ -512,7 +485,7 @@ bool MSConvertOCXControls::importControlFromStream( ::oox::BinaryInputStream& rI
     return rxFormComp.is();
 }
 
-bool MSConvertOCXControls::ReadOCXStorage( tools::SvRef<SotStorage>& xOleStg,
+bool MSConvertOCXControls::ReadOCXStorage( tools::SvRef<SotStorage> const & xOleStg,
                                   Reference< XFormComponent > & rxFormComp )
 {
     if ( xOleStg.is() )
@@ -560,7 +533,7 @@ bool MSConvertOCXControls::WriteOCXExcelKludgeStream( const css::uno::Reference<
     return true;
 }
 
-bool MSConvertOCXControls::WriteOCXStream( const Reference< XModel >& rxModel, tools::SvRef<SotStorage> &xOleStg,
+bool MSConvertOCXControls::WriteOCXStream( const Reference< XModel >& rxModel, tools::SvRef<SotStorage> const &xOleStg,
     const Reference< XControlModel > &rxControlModel,
     const css::awt::Size& rSize, OUString &rName)
 {
@@ -595,7 +568,6 @@ bool MSConvertOCXControls::WriteOCXStream( const Reference< XModel >& rxModel, t
     return true;
 }
 
-} // namespace ole
 } // namespace oox
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

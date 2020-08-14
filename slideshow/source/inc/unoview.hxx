@@ -25,21 +25,16 @@
 
 #include <vector>
 
-namespace com { namespace sun { namespace star { namespace presentation
-{
-    class XSlideShowView;
-} } } }
+namespace com::sun::star::presentation { class XSlideShowView; }
 
 
 /* Definition of UnoView interface */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** Extend View with UNO interface retrieval.
 
-            This interface extends View with an UNO interface
+            This interface extends View with a UNO interface
             retrieval, to be used for Views which are set from
             external API.
          */
@@ -71,7 +66,7 @@ namespace slideshow
 
         typedef std::shared_ptr< UnoView >      UnoViewSharedPtr;
         typedef std::vector< UnoViewSharedPtr >   UnoViewVector;
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_UNOVIEW_HXX

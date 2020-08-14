@@ -23,20 +23,26 @@
 #include "disposable.hxx"
 #include <com/sun/star/uno/Reference.hxx>
 #include <memory>
+#include <unordered_map>
+#include "tools.hxx"
 
-namespace com {  namespace sun { namespace star { namespace drawing {
-    class XShape;
-} } } }
+namespace com::sun::star::drawing { class XShape; }
 
 /* Definition of ShapeManager interface */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         class HyperlinkArea;
         class AnimatableShape;
         class Shape;
+        typedef std::unordered_map<
+              css::uno::Reference< css::drawing::XShape >,
+              ShapeSharedPtr,
+              hash< css::uno::Reference< css::drawing::XShape > >
+            > XShapeToShapeMap;
+        typedef ::std::shared_ptr< AnimatableShape > AnimatableShapeSharedPtr;
+        typedef ::std::shared_ptr< Shape > ShapeSharedPtr;
+        typedef std::shared_ptr< HyperlinkArea > HyperlinkAreaSharedPtr;
 
         /** ShapeManager interface
 
@@ -55,7 +61,7 @@ namespace slideshow
                 after a corresponding number of leaveAnimationMode()
                 calls.
              */
-            virtual void enterAnimationMode( const std::shared_ptr<AnimatableShape>& rShape ) = 0;
+            virtual void enterAnimationMode( const AnimatableShapeSharedPtr& rShape ) = 0;
 
             /** Notify the ShapeManager that the given Shape is no
                 longer animated.
@@ -66,7 +72,7 @@ namespace slideshow
                 to call this method more often than
                 enterAnimationMode().
              */
-            virtual void leaveAnimationMode( const std::shared_ptr<AnimatableShape>& rShape ) = 0;
+            virtual void leaveAnimationMode( const AnimatableShapeSharedPtr& rShape ) = 0;
 
             /** Notify that a shape needs an update
 
@@ -77,7 +83,7 @@ namespace slideshow
                 @param rShape
                 Shape which needs an update
              */
-            virtual void notifyShapeUpdate( const std::shared_ptr<Shape>& rShape ) = 0;
+            virtual void notifyShapeUpdate( const ShapeSharedPtr& rShape ) = 0;
 
             /** Lookup a Shape from an XShape model object
 
@@ -88,8 +94,15 @@ namespace slideshow
                 The XShape object, for which the representing Shape
                 should be looked up.
              */
-            virtual std::shared_ptr<Shape> lookupShape(
+            virtual ShapeSharedPtr lookupShape(
                 css::uno::Reference< css::drawing::XShape > const & xShape ) const = 0;
+
+            /** Get a map that maps all Shapes with their XShape reference as the key
+             *
+             *  @return an unordered map that contains all shapes in the
+             *  current page with their XShape reference as the key
+             */
+            virtual const XShapeToShapeMap& getXShapeToShapeMap() const = 0;
 
             /** Register given shape as a hyperlink target
 
@@ -98,11 +111,11 @@ namespace slideshow
                 hyperlink region lookup. Must be in absolute user
                 space coordinates.
              */
-            virtual void addHyperlinkArea( const std::shared_ptr<HyperlinkArea>& rArea ) = 0;
+            virtual void addHyperlinkArea( const HyperlinkAreaSharedPtr& rArea ) = 0;
         };
 
         typedef ::std::shared_ptr< ShapeManager > ShapeManagerSharedPtr;
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_SHAPEMANAGER_HXX

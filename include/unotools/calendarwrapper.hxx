@@ -24,26 +24,17 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/i18n/Calendar2.hpp>
-#include <com/sun/star/lang/Locale.hpp>
 #include <unotools/unotoolsdllapi.h>
 
-namespace com { namespace sun { namespace star {
-    namespace uno {
-        class XComponentContext;
-    }
-}}}
-
-namespace com { namespace sun { namespace star {
-    namespace i18n {
-        class XCalendar4;
-    }
-}}}
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::i18n { class XCalendar4; }
+namespace com::sun::star::lang { struct Locale; }
 
 class UNOTOOLS_DLLPUBLIC CalendarWrapper
 {
     css::uno::Reference< css::i18n::XCalendar4 >   xC;
 
-            DateTime            aEpochStart;        // 1Jan1970
+    const DateTime aEpochStart;        // 1Jan1970
 
 public:
                                 CalendarWrapper(
@@ -53,8 +44,30 @@ public:
 
     // wrapper implementations of XCalendar
 
-    void loadDefaultCalendar( const css::lang::Locale& rLocale );
-    void loadCalendar( const OUString& rUniqueID, const css::lang::Locale& rLocale );
+    /** Load the default calendar of a locale.
+
+        This adds a bool bTimeZoneUTC parameter which is not part of the UNO API to
+        facilitate handling of non time zone aware data.
+
+        @param  bTimeZoneUTC
+                Default <TRUE/>. If <FALSE/>, the system's timezone is assigned
+                to the calendar, including all DST quirks like not existing
+                times on DST transition dates when switching to/from DST. As
+                current implementations and number parser/formatter don't store
+                or convert or calculate with time zones it is safer to use UTC,
+                which is not DST afflicted, otherwise surprises are lurking
+                (for example tdf#92503).
+     */
+    void loadDefaultCalendar( const css::lang::Locale& rLocale, bool bTimeZoneUTC = true );
+    /// This adds a bTimeZoneUTC parameter which is not part of the API.
+    void loadCalendar( const OUString& rUniqueID, const css::lang::Locale& rLocale, bool bTimeZoneUTC = true );
+
+    /* XXX NOTE: the time zone taking UNO API functions are not implemented as
+     * wrapper interface as they are not necessary/used so far. These are:
+    void loadDefaultCalendarTZ( const css::lang::Locale& rLocale, const OUString& rTimeZone );
+    void loadCalendarTZ( const OUString& rUniqueID, const css::lang::Locale& rLocale, const OUString& rTimeZone );
+     */
+
     css::uno::Sequence< OUString > getAllCalendars( const css::lang::Locale& rLocale ) const;
     OUString getUniqueID() const;
     /// set UTC date/time
@@ -70,7 +83,6 @@ public:
     void setValue( sal_Int16 nFieldIndex, sal_Int16 nValue );
     bool isValid() const;
     sal_Int16 getValue( sal_Int16 nFieldIndex ) const;
-    void addValue( sal_Int16 nFieldIndex, sal_Int32 nAmount );
     sal_Int16 getFirstDayOfWeek() const;
     sal_Int16 getNumberOfMonthsInYear() const;
     sal_Int16 getNumberOfDaysInWeek() const;

@@ -20,14 +20,12 @@
 #ifndef INCLUDED_SVGIO_INC_SVGGRADIENTNODE_HXX
 #define INCLUDED_SVGIO_INC_SVGGRADIENTNODE_HXX
 
-#include <svgnode.hxx>
-#include <svgstyleattributes.hxx>
+#include "svgnode.hxx"
+#include "svgstyleattributes.hxx"
 #include <drawinglayer/primitive2d/svggradientprimitive2d.hxx>
 #include <memory>
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
         class SvgGradientNode : public SvgNode
         {
@@ -56,6 +54,7 @@ namespace svgio
             /// link to another gradient used as style. If maXLink
             /// is set, the node can be fetched on demand by using
             // tryToFindLink (buffered)
+            mutable bool mbResolvingLink; // protect against infinite link recursion
             OUString               maXLink;
             const SvgGradientNode*      mpXLink;
 
@@ -76,25 +75,25 @@ namespace svgio
             void collectGradientEntries(drawinglayer::primitive2d::SvgGradientEntryVector& aVector) const;
 
             /// x1 content
-            const SvgNumber getX1() const;
+            SvgNumber getX1() const;
 
             /// y1 content
-            const SvgNumber getY1() const;
+            SvgNumber getY1() const;
 
             /// x2 content
-            const SvgNumber getX2() const;
+            SvgNumber getX2() const;
 
             /// y2 content
-            const SvgNumber getY2() const;
+            SvgNumber getY2() const;
 
             /// Cx content
-            const SvgNumber getCx() const;
+            SvgNumber getCx() const;
 
             /// Cy content
-            const SvgNumber getCy() const;
+            SvgNumber getCy() const;
 
             /// R content
-            const SvgNumber getR() const;
+            SvgNumber getR() const;
 
             /// Fx content
             const SvgNumber* getFx() const;
@@ -114,8 +113,8 @@ namespace svgio
             const basegfx::B2DHomMatrix* getGradientTransform() const;
             void setGradientTransform(const basegfx::B2DHomMatrix* pMatrix);
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGGRADIENTNODE_HXX
 

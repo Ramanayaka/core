@@ -61,11 +61,11 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPCONTENT_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPCONTENT_HXX
 
-#include "lwpheader.hxx"
-#include "lwpobj.hxx"
-#include "lwpatomholder.hxx"
+#include <config_lgpl.h>
+#include <lwpobj.hxx>
+#include <lwpatomholder.hxx>
 #include "lwplayout.hxx"
-#include "lwphyperlinkmgr.hxx"
+
 /**
  * @brief
  * Base class of all Lwp content objects
@@ -73,8 +73,8 @@
 class LwpContent : public LwpDLNFVList
 {
 public:
-    LwpContent(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
-protected:
+    LwpContent(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
+private:
     LwpAssociatedLayouts m_LayoutsWithMe;
     sal_uInt16 m_nFlags;
     LwpAtomHolder m_ClassName;
@@ -105,10 +105,10 @@ protected:
     void Read() override;
 public:
     inline LwpAssociatedLayouts& GetLayoutsWithMe();
-    rtl::Reference<LwpVirtualLayout> GetLayout(LwpVirtualLayout* pStartLayout);
-    inline bool IsActive();
+    rtl::Reference<LwpVirtualLayout> GetLayout(LwpVirtualLayout const * pStartLayout);
+    inline bool IsActive() const;
     virtual bool IsTable();
-    inline OUString GetClassName();
+    inline OUString const & GetClassName() const;
     inline LwpContent* GetNextEnumerated();
     bool HasNonEmbeddedLayouts();
     bool IsStyleContent();
@@ -119,7 +119,7 @@ LwpAssociatedLayouts& LwpContent::GetLayoutsWithMe()
     return m_LayoutsWithMe;
 }
 
-inline bool LwpContent::IsActive()
+inline bool LwpContent::IsActive() const
 {
     return !(m_nFlags & CF_DEACTIVATED);
 }
@@ -129,7 +129,7 @@ inline bool LwpContent::IsTable()
     return false;
 }
 
-inline OUString LwpContent::GetClassName()
+inline OUString const & LwpContent::GetClassName() const
 {
     return m_ClassName.str();
 }
@@ -145,7 +145,7 @@ inline LwpContent* LwpContent::GetNextEnumerated()
 class LwpHeadContent : public LwpContent
 {
 public:
-    LwpHeadContent(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpHeadContent(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
 protected:
     void Read() override;
 };

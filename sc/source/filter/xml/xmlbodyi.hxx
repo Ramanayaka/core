@@ -20,12 +20,11 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_XML_XMLBODYI_HXX
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLBODYI_HXX
 
-#include <xmloff/xmlictxt.hxx>
-#include <xmloff/xmlimp.hxx>
-#include "xmlimprt.hxx"
 #include "importcontext.hxx"
 
-#include "tabprotection.hxx"
+#include <tabprotection.hxx>
+
+namespace sax_fastparser { class FastAttributeList; }
 
 class ScXMLChangeTrackingImportHelper;
 
@@ -42,7 +41,7 @@ class ScXMLBodyContext : public ScXMLImportContext
 public:
 
     ScXMLBodyContext( ScXMLImport& rImport,
-                        const css::uno::Reference<css::xml::sax::XFastAttributeList>& xAttrList );
+                        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList );
 
     virtual ~ScXMLBodyContext() override;
 

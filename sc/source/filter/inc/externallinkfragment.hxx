@@ -23,10 +23,7 @@
 #include "excelhandlers.hxx"
 #include "externallinkbuffer.hxx"
 
-namespace oox {
-namespace xls {
-
-class ExternalLink;
+namespace oox::xls {
 
 /** This class implements importing the sheetData element in external sheets.
 
@@ -98,8 +95,7 @@ private:
     sal_Int32           mnResultType;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

@@ -18,10 +18,8 @@
  */
 #include <docsh.hxx>
 #include "wordvbahelper.hxx"
-#include <comphelper/processfactory.hxx>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/text/XTextViewCursorSupplier.hpp>
-#include <com/sun/star/text/XTextTable.hpp>
 #include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
@@ -37,11 +35,7 @@
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
 
-namespace ooo
-{
-namespace vba
-{
-namespace word
+namespace ooo::vba::word
 {
 
 SwDocShell* getDocShell( const uno::Reference< frame::XModel>& xModel )
@@ -76,7 +70,7 @@ uno::Reference< style::XStyle > getCurrentPageStyle( const uno::Reference< frame
     OUString aPageStyleName;
     xProps->getPropertyValue("PageStyleName") >>= aPageStyleName;
     uno::Reference< style::XStyleFamiliesSupplier > xSytleFamSupp( xModel, uno::UNO_QUERY_THROW );
-    uno::Reference< container::XNameAccess > xSytleFamNames( xSytleFamSupp->getStyleFamilies(), uno::UNO_QUERY_THROW );
+    uno::Reference< container::XNameAccess > xSytleFamNames( xSytleFamSupp->getStyleFamilies(), uno::UNO_SET_THROW );
     uno::Reference< container::XNameAccess > xPageStyles( xSytleFamNames->getByName("PageStyles"), uno::UNO_QUERY_THROW );
     uno::Reference< style::XStyle > xStyle( xPageStyles->getByName( aPageStyleName ), uno::UNO_QUERY_THROW );
 
@@ -93,7 +87,7 @@ sal_Int32 getPageCount( const uno::Reference< frame::XModel>& xModel )
 uno::Reference< style::XStyle > getDefaultParagraphStyle( const uno::Reference< frame::XModel >& xModel )
 {
     uno::Reference< style::XStyleFamiliesSupplier > xSytleFamSupp( xModel, uno::UNO_QUERY_THROW );
-    uno::Reference< container::XNameAccess > xSytleFamNames( xSytleFamSupp->getStyleFamilies(), uno::UNO_QUERY_THROW );
+    uno::Reference< container::XNameAccess > xSytleFamNames( xSytleFamSupp->getStyleFamilies(), uno::UNO_SET_THROW );
     uno::Reference< container::XNameAccess > xParaStyles( xSytleFamNames->getByName("ParagraphStyles"), uno::UNO_QUERY_THROW );
     uno::Reference< style::XStyle > xStyle( xParaStyles->getByName("Standard"), uno::UNO_QUERY_THROW );
 
@@ -135,7 +129,7 @@ uno::Reference< text::XText > getCurrentXText( const uno::Reference< frame::XMod
     }
 
     if( xTextContent.is() )
-        xTextRange.set( xTextContent->getAnchor(), uno::UNO_QUERY );
+        xTextRange = xTextContent->getAnchor();
 
     if( !xTextRange.is() )
         xTextRange.set( getXTextViewCursor( xModel ), uno::UNO_QUERY_THROW );
@@ -143,7 +137,7 @@ uno::Reference< text::XText > getCurrentXText( const uno::Reference< frame::XMod
     uno::Reference< text::XText > xText;
     try
     {
-        xText.set( xTextRange->getText(), uno::UNO_QUERY );
+        xText = xTextRange->getText();
     }
     catch (const uno::RuntimeException&)
     {
@@ -168,7 +162,7 @@ bool gotoSelectedObjectAnchor( const uno::Reference< frame::XModel>& xModel )
     uno::Reference< text::XTextContent > xTextContent( xModel->getCurrentSelection(), uno::UNO_QUERY );
     if( xTextContent.is() )
     {
-        uno::Reference< text::XTextRange > xTextRange( xTextContent->getAnchor(), uno::UNO_QUERY_THROW );
+        uno::Reference< text::XTextRange > xTextRange( xTextContent->getAnchor(), uno::UNO_SET_THROW );
         uno::Reference< view::XSelectionSupplier > xSelectSupp( xModel->getCurrentController(), uno::UNO_QUERY_THROW );
         xSelectSupp->select( uno::makeAny( xTextRange ) );
         isObjectSelected = true;
@@ -176,8 +170,6 @@ bool gotoSelectedObjectAnchor( const uno::Reference< frame::XModel>& xModel )
     return isObjectSelected;
 }
 
-} // word
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

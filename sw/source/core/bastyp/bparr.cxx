@@ -17,15 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "bparr.hxx"
+#include <bparr.hxx>
 
 #include <limits.h>
 #include <string.h>
-#include <algorithm>
 
 /** Resize block management by this constant.
     As a result there are approx. 20 * MAXENTRY == 20000 entries available */
-static const sal_uInt16 nBlockGrowSize = 20;
+const sal_uInt16 nBlockGrowSize = 20;
 
 #if OSL_DEBUG_LEVEL > 2
 #define CHECKIDX( p, n, i, c ) CheckIdx( p, n, i, c );
@@ -48,17 +47,18 @@ void CheckIdx( BlockInfo** ppInf, sal_uInt16 nBlock, sal_uLong nSize, sal_uInt16
 
 BigPtrArray::BigPtrArray()
 {
-    m_nCur = 0;
+    m_nBlock = m_nCur = 0;
     m_nSize = 0;
-    m_vpInf.reserve( nBlockGrowSize );
+    m_nMaxBlock = nBlockGrowSize;
+    m_ppInf.reset( new BlockInfo* [ m_nMaxBlock ] );
 }
 
 BigPtrArray::~BigPtrArray()
 {
-    if( m_vpInf.size() )
+    if( m_nBlock )
     {
-        BlockInfo** pp = m_vpInf.data();
-        for( sal_uInt16 n = 0; n < sal_uInt16(m_vpInf.size()); ++n, ++pp )
+        BlockInfo** pp = m_ppInf.get();
+        for( sal_uInt16 n = 0; n < m_nBlock; ++n, ++pp )
         {
             delete *pp;
         }
@@ -72,7 +72,7 @@ void BigPtrArray::Move( sal_uLong from, sal_uLong to )
     if (from != to)
     {
         sal_uInt16 cur = Index2Block( from );
-        BlockInfo* p = m_vpInf[ cur ];
+        BlockInfo* p = m_ppInf[ cur ];
         BigPtrEntry* pElem = p->mvData[ from - p->nStart ];
         Insert( pElem, to ); // insert first, then delete!
         Remove( ( to < from ) ? ( from + 1 ) : from );
@@ -83,7 +83,7 @@ BigPtrEntry* BigPtrArray::operator[]( sal_uLong idx ) const
 {
     assert(idx < m_nSize); // operator[]: Index out of bounds
     m_nCur = Index2Block( idx );
-    BlockInfo* p = m_vpInf[ m_nCur ];
+    BlockInfo* p = m_ppInf[ m_nCur ];
     return p->mvData[ idx - p->nStart ];
 }
 
@@ -91,7 +91,7 @@ BigPtrEntry* BigPtrArray::operator[]( sal_uLong idx ) const
 sal_uInt16 BigPtrArray::Index2Block( sal_uLong pos ) const
 {
     // last used block?
-    BlockInfo* p = m_vpInf[ m_nCur ];
+    BlockInfo* p = m_ppInf[ m_nCur ];
     if( p->nStart <= pos && p->nEnd >= pos )
         return m_nCur;
     // Index = 0?
@@ -99,28 +99,28 @@ sal_uInt16 BigPtrArray::Index2Block( sal_uLong pos ) const
         return 0;
 
     // following one?
-    if( m_nCur < ( m_vpInf.size() - 1 ) )
+    if( m_nCur < ( m_nBlock - 1 ) )
     {
-        p = m_vpInf[ m_nCur+1 ];
+        p = m_ppInf[ m_nCur+1 ];
         if( p->nStart <= pos && p->nEnd >= pos )
             return m_nCur+1;
     }
     // previous one?
     else if( pos < p->nStart && m_nCur > 0 )
     {
-        p = m_vpInf[ m_nCur-1 ];
+        p = m_ppInf[ m_nCur-1 ];
         if( p->nStart <= pos && p->nEnd >= pos )
             return m_nCur-1;
     }
 
     // binary search: always successful
-    sal_uInt16 lower = 0, upper = m_vpInf.size() - 1;
+    sal_uInt16 lower = 0, upper = m_nBlock - 1;
     sal_uInt16 cur = 0;
     for(;;)
     {
         sal_uInt16 n = lower + ( upper - lower ) / 2;
         cur = ( n == cur ) ? n+1 : n;
-        p = m_vpInf[ cur ];
+        p = m_ppInf[ cur ];
         if( p->nStart <= pos && p->nEnd >= pos )
             return cur;
 
@@ -137,9 +137,9 @@ sal_uInt16 BigPtrArray::Index2Block( sal_uLong pos ) const
 */
 void BigPtrArray::UpdIndex( sal_uInt16 pos )
 {
-    BlockInfo** pp = m_vpInf.data() + pos;
+    BlockInfo** pp = m_ppInf.get() + pos;
     sal_uLong idx = (*pp)->nEnd + 1;
-    while( ++pos < m_vpInf.size() )
+    while( ++pos < m_nBlock )
     {
         BlockInfo* p = *++pp;
         p->nStart = idx;
@@ -156,35 +156,65 @@ void BigPtrArray::UpdIndex( sal_uInt16 pos )
 */
 BlockInfo* BigPtrArray::InsBlock( sal_uInt16 pos )
 {
-    BlockInfo* p = new BlockInfo(this);
-    m_vpInf.insert( m_vpInf.begin() + pos, p );
+    if( m_nBlock == m_nMaxBlock )
+    {
+        // than extend the array first
+        BlockInfo** ppNew = new BlockInfo* [ m_nMaxBlock + nBlockGrowSize ];
+        memcpy( ppNew, m_ppInf.get(), m_nMaxBlock * sizeof( BlockInfo* ));
+        m_nMaxBlock += nBlockGrowSize;
+        m_ppInf.reset( ppNew );
+    }
+    if( pos != m_nBlock )
+    {
+        memmove( m_ppInf.get() + pos+1, m_ppInf.get() + pos,
+                 ( m_nBlock - pos ) * sizeof( BlockInfo* ));
+    }
+    ++m_nBlock;
+    BlockInfo* p = new BlockInfo;
+    m_ppInf[ pos ] = p;
 
     if( pos )
-        p->nStart = p->nEnd = m_vpInf[ pos-1 ]->nEnd + 1;
+        p->nStart = p->nEnd = m_ppInf[ pos-1 ]->nEnd + 1;
     else
         p->nStart = p->nEnd = 0;
 
     p->nEnd--;  // no elements
     p->nElem = 0;
+    p->pBigArr = this;
     return p;
+}
+
+void BigPtrArray::BlockDel( sal_uInt16 nDel )
+{
+    m_nBlock = m_nBlock - nDel;
+    if( m_nMaxBlock - m_nBlock > nBlockGrowSize )
+    {
+        // than shrink array
+        nDel = (( m_nBlock / nBlockGrowSize ) + 1 ) * nBlockGrowSize;
+        BlockInfo** ppNew = new BlockInfo* [ nDel ];
+        memcpy( ppNew, m_ppInf.get(), m_nBlock * sizeof( BlockInfo* ));
+        m_ppInf.reset( ppNew );
+        m_nMaxBlock = nDel;
+    }
 }
 
 void BigPtrArray::Insert( BigPtrEntry* pElem, sal_uLong pos )
 {
-    CHECKIDX( ppInf, nBlock, nSize, nCur );
+    CHECKIDX( m_ppInf.get(), m_nBlock, m_nSize, m_nCur );
 
     BlockInfo* p;
     sal_uInt16 cur;
     if( !m_nSize )
     {
         // special case: insert first element
-        p = InsBlock( cur = 0 );
+        cur = 0;
+        p = InsBlock( cur );
     }
     else if( pos == m_nSize )
     {
         // special case: insert at end
-        cur = m_vpInf.size() - 1;
-        p = m_vpInf[ cur ];
+        cur = m_nBlock - 1;
+        p = m_ppInf[ cur ];
         if( p->nElem == MAXENTRY )
             // the last block is full, create a new one
             p = InsBlock( ++cur );
@@ -193,23 +223,26 @@ void BigPtrArray::Insert( BigPtrEntry* pElem, sal_uLong pos )
     {
         // standard case:
         cur = Index2Block( pos );
-        p = m_vpInf[ cur ];
+        p = m_ppInf[ cur ];
     }
 
     if( p->nElem == MAXENTRY )
     {
         // does the last entry fit into the next block?
         BlockInfo* q;
-        if( cur < ( m_vpInf.size() - 1 ) && m_vpInf[ cur+1 ]->nElem < MAXENTRY )
+        if( cur < ( m_nBlock - 1 ) && m_ppInf[ cur+1 ]->nElem < MAXENTRY )
         {
-            q = m_vpInf[ cur+1 ];
+            q = m_ppInf[ cur+1 ];
             if( q->nElem )
             {
                 int nCount = q->nElem;
                 auto pFrom = q->mvData.begin() + nCount;
                 auto pTo   = pFrom + 1;
                 while( nCount-- )
-                    ++( *--pTo = *--pFrom )->m_nOffset;
+                {
+                    *--pTo = *--pFrom;
+                    ++((*pTo)->m_nOffset);
+                }
             }
             q->nStart--;
             q->nEnd--;
@@ -219,7 +252,7 @@ void BigPtrArray::Insert( BigPtrEntry* pElem, sal_uLong pos )
             // If it does not fit, then insert a new block. But if there is more
             // than 50% space in the array then compress first.
             if( /*nBlock == nMaxBlock &&*/
-                m_vpInf.size() > ( m_nSize / ( MAXENTRY / 2 ) ) &&
+                m_nBlock > ( m_nSize / ( MAXENTRY / 2 ) ) &&
                 cur >= Compress() )
             {
                 // Something was moved before the current position and all
@@ -252,7 +285,10 @@ void BigPtrArray::Insert( BigPtrEntry* pElem, sal_uLong pos )
         auto pFrom = p->mvData.begin() + p->nElem;
         auto pTo   = pFrom + 1;
         while( nCount-- )
-            ++( *--pTo = *--pFrom )->m_nOffset;
+        {
+            *--pTo = *--pFrom;
+            ++( *pTo )->m_nOffset;
+        }
     }
     // insert element and update indices
     pElem->m_nOffset = sal_uInt16(pos);
@@ -261,21 +297,21 @@ void BigPtrArray::Insert( BigPtrEntry* pElem, sal_uLong pos )
     p->nEnd++;
     p->nElem++;
     m_nSize++;
-    if( cur != ( m_vpInf.size() - 1 ) ) UpdIndex( cur );
+    if( cur != ( m_nBlock - 1 ) ) UpdIndex( cur );
     m_nCur = cur;
 
-    CHECKIDX( ppInf, nBlock, nSize, nCur );
+    CHECKIDX( m_ppInf.get(), m_nBlock, m_nSize, m_nCur );
 }
 
 void BigPtrArray::Remove( sal_uLong pos, sal_uLong n )
 {
-    CHECKIDX( ppInf, nBlock, nSize, nCur );
+    CHECKIDX( m_ppInf.get(), m_nBlock, m_nSize, m_nCur );
 
     sal_uInt16 nBlkdel = 0;              // deleted blocks
     sal_uInt16 cur = Index2Block( pos ); // current block number
     sal_uInt16 nBlk1 = cur;              // 1st treated block
     sal_uInt16 nBlk1del = USHRT_MAX;     // 1st deleted block
-    BlockInfo* p = m_vpInf[ cur ];
+    BlockInfo* p = m_ppInf[ cur ];
     pos -= p->nStart;
 
     sal_uLong nElem = n;
@@ -309,7 +345,7 @@ void BigPtrArray::Remove( sal_uLong pos, sal_uLong n )
         nElem -= nel;
         if( !nElem )
             break;
-        p = m_vpInf[ ++cur ];
+        p = m_ppInf[ ++cur ];
         pos = 0;
     }
 
@@ -317,16 +353,17 @@ void BigPtrArray::Remove( sal_uLong pos, sal_uLong n )
     if( nBlkdel )
     {
         for( sal_uInt16 i = nBlk1del; i < ( nBlk1del + nBlkdel ); i++ )
-            delete m_vpInf[ i ];
+            delete m_ppInf[ i ];
 
-        m_vpInf.erase( m_vpInf.begin() + nBlk1del, m_vpInf.begin() + nBlk1del + nBlkdel );
-
-        if( ( nBlk1del + nBlkdel ) < sal_uInt16(m_vpInf.size()) )
+        if( ( nBlk1del + nBlkdel ) < m_nBlock )
         {
+            memmove( m_ppInf.get() + nBlk1del, m_ppInf.get() + nBlk1del + nBlkdel,
+                     ( m_nBlock - nBlkdel - nBlk1del ) * sizeof( BlockInfo* ) );
+
             // UpdateIdx updates the successor thus start before first elem
             if( !nBlk1 )
             {
-                p = m_vpInf[ 0 ];
+                p = m_ppInf[ 0 ];
                 p->nStart = 0;
                 p->nEnd = p->nElem-1;
             }
@@ -335,25 +372,26 @@ void BigPtrArray::Remove( sal_uLong pos, sal_uLong n )
                 --nBlk1;
             }
         }
+        BlockDel( nBlkdel ); // blocks were deleted
     }
 
     m_nSize -= n;
-    if( nBlk1 != ( m_vpInf.size() - 1 ) && m_nSize )
+    if( nBlk1 != ( m_nBlock - 1 ) && m_nSize )
         UpdIndex( nBlk1 );
     m_nCur = nBlk1;
 
     // call Compress() if there is more than 50% space in the array
-    if( m_vpInf.size() > ( m_nSize / ( MAXENTRY / 2 ) ) )
+    if( m_nBlock > ( m_nSize / ( MAXENTRY / 2 ) ) )
         Compress();
 
-    CHECKIDX( ppInf, nBlock, nSize, nCur );
+    CHECKIDX( m_ppInf.get(), m_nBlock, m_nSize, m_nCur );
 }
 
 void BigPtrArray::Replace( sal_uLong idx, BigPtrEntry* pElem)
 {
     assert(idx < m_nSize); // Index out of bounds
     m_nCur = Index2Block( idx );
-    BlockInfo* p = m_vpInf[ m_nCur ];
+    BlockInfo* p = m_ppInf[ m_nCur ];
     pElem->m_nOffset = sal_uInt16(idx - p->nStart);
     pElem->m_pBlock = p;
     p->mvData[ idx - p->nStart ] = pElem;
@@ -362,12 +400,12 @@ void BigPtrArray::Replace( sal_uLong idx, BigPtrEntry* pElem)
 /** Compress the array */
 sal_uInt16 BigPtrArray::Compress()
 {
-    CHECKIDX( ppInf, nBlock, nSize, nCur );
+    CHECKIDX( m_ppInf.get(), m_nBlock, m_nSize, m_nCur );
 
     // Iterate over InfoBlock array from beginning to end. If there is a deleted
     // block in between so move all following ones accordingly. The pointer <pp>
     // represents the "old" and <qq> the "new" array.
-    BlockInfo** pp = m_vpInf.data(), **qq = pp;
+    BlockInfo** pp = m_ppInf.get(), **qq = pp;
     BlockInfo* p;
     BlockInfo* pLast(nullptr);                 // last empty block
     sal_uInt16 nLast = 0;                // missing elements
@@ -375,9 +413,9 @@ sal_uInt16 BigPtrArray::Compress()
     sal_uInt16 nFirstChgPos = USHRT_MAX; // at which position was the 1st change?
 
     // convert fill percentage into number of remaining elements
-    short const nMax = MAXENTRY - (long) MAXENTRY * COMPRESSLVL / 100;
+    short const nMax = MAXENTRY - long(MAXENTRY) * COMPRESSLVL / 100;
 
-    for( sal_uInt16 cur = 0; cur < sal_uInt16(m_vpInf.size()); ++cur )
+    for( sal_uInt16 cur = 0; cur < m_nBlock; ++cur )
     {
         p = *pp++;
         sal_uInt16 n = p->nElem;
@@ -392,7 +430,7 @@ sal_uInt16 BigPtrArray::Compress()
             if( USHRT_MAX == nFirstChgPos )
                 nFirstChgPos = cur;
 
-            // Not full yet? Than fill up.
+            // Not full yet? Then fill up.
             if( n > nLast )
                 n = nLast;
 
@@ -415,10 +453,9 @@ sal_uInt16 BigPtrArray::Compress()
             // Is the current block now empty as a result?
             if( !p->nElem )
             {
-                // than remove
+                // then remove
                 delete   p;
                 p = nullptr;
-                *(pp-1) = nullptr;
                 ++nBlkdel;
             }
             else
@@ -450,18 +487,17 @@ sal_uInt16 BigPtrArray::Compress()
 
     // if blocks were deleted shrink BlockInfo array if needed
     if( nBlkdel )
-        m_vpInf.erase( std::remove_if(m_vpInf.begin(), m_vpInf.end(), [](BlockInfo* bi) { return !bi; }),
-                       m_vpInf.end() );
+        BlockDel( nBlkdel );
 
     // and re-index
-    p = m_vpInf[ 0 ];
+    p = m_ppInf[ 0 ];
     p->nEnd = p->nElem - 1;
     UpdIndex( 0 );
 
     if( m_nCur >= nFirstChgPos )
         m_nCur = 0;
 
-    CHECKIDX( ppInf, nBlock, nSize, nCur );
+    CHECKIDX( m_ppInf.get(), m_nBlock, m_nSize, m_nCur );
 
     return nFirstChgPos;
 }

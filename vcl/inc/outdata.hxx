@@ -21,12 +21,6 @@
 #define INCLUDED_VCL_INC_OUTDATA_HXX
 
 #include <tools/color.hxx>
-#include <vcl/salgtype.hxx>
-
-inline SalColor ImplColorToSal( Color aColor )
-{
-    return MAKE_SALCOLOR( aColor.GetRed(), aColor.GetGreen(), aColor.GetBlue() );
-}
 
 inline bool ImplIsColorTransparent( Color aColor )
 {

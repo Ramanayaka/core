@@ -20,6 +20,8 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_QUERYDESIGN_QUERYTABCONNUNDOACTION_HXX
 
 #include "QueryDesignUndoAction.hxx"
+#include "QTableConnection.hxx"
+#include <JoinTableView.hxx>
 
 namespace dbaui
 {
@@ -33,7 +35,7 @@ namespace dbaui
         // am I the only owner of the connection? (changes with every redo and undo)
 
     public:
-        OQueryTabConnUndoAction(OQueryTableView* pOwner, sal_uInt16 nCommentID);
+        OQueryTabConnUndoAction(OQueryTableView* pOwner, const char* pCommentID);
         virtual ~OQueryTabConnUndoAction() override;
 
         virtual void Undo() override = 0;

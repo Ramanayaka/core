@@ -21,10 +21,11 @@
 #define INCLUDED_XMLOFF_INC_XMLBACKGROUNDIMAGEEXPORT_HXX
 
 #include <sal/types.h>
+#include <rtl/ustring.hxx>
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class Any;
-} } } }
+}
 
 class SvXMLExport;
 
@@ -32,10 +33,9 @@ class XMLBackgroundImageExport
 {
     SvXMLExport&        rExport;
 
-protected:
-
-    SvXMLExport& GetExport() { return rExport; }
 public:
+
+    SvXMLExport& GetExport() const { return rExport; }
 
     XMLBackgroundImageExport( SvXMLExport& rExport );
 

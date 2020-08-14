@@ -20,10 +20,13 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 
-#include <vcl/toolbox.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/toolbox.hxx>
+#include <vcl/weldutils.hxx>
 
+#include <svtools/framestatuslistener.hxx>
 #include <svtools/popupwindowcontroller.hxx>
+#include <svtools/toolbarmenu.hxx>
 
 using namespace ::com::sun::star;
 using namespace css::uno;
@@ -37,7 +40,7 @@ class PopupWindowControllerImpl
 {
 public:
     PopupWindowControllerImpl();
-    ~PopupWindowControllerImpl();
+    ~PopupWindowControllerImpl() COVERITY_NOEXCEPT_FALSE;
 
     void SetPopupWindow( vcl::Window* pPopupWindow, ToolBox* pToolBox );
     void SetFloatingWindow();
@@ -52,7 +55,7 @@ PopupWindowControllerImpl::PopupWindowControllerImpl()
 {
 }
 
-PopupWindowControllerImpl::~PopupWindowControllerImpl()
+PopupWindowControllerImpl::~PopupWindowControllerImpl() COVERITY_NOEXCEPT_FALSE
 {
     SetPopupWindow(nullptr,nullptr);
     SetFloatingWindow();
@@ -79,6 +82,9 @@ void PopupWindowControllerImpl::SetFloatingWindow()
     if( mpFloatingWindow )
     {
         mpFloatingWindow->RemoveEventListener( LINK( this, PopupWindowControllerImpl, WindowEventListener ) );
+        // tdf#119390 reparent the window, so focus is restored
+        // to the last focused control of the application window.
+        mpFloatingWindow->SetParentToDefaultWindow();
         mpFloatingWindow.disposeAndClear();
     }
     mpFloatingWindow = mpPopupWindow;
@@ -147,13 +153,12 @@ IMPL_LINK( PopupWindowControllerImpl, WindowEventListener, VclWindowEvent&, rWin
 }
 
 
-// class PopupWindowController
 
 
 PopupWindowController::PopupWindowController( const Reference< uno::XComponentContext >& rxContext,
                                               const Reference< frame::XFrame >& xFrame,
                                               const OUString& aCommandURL )
-: ImplInheritanceHelper( rxContext, xFrame, aCommandURL )
+: PopupWindowController_Base( rxContext, xFrame, aCommandURL )
 , mxImpl( new PopupWindowControllerImpl() )
 {
 }
@@ -171,6 +176,8 @@ sal_Bool SAL_CALL PopupWindowController::supportsService( const OUString& Servic
 // XComponent
 void SAL_CALL PopupWindowController::dispose()
 {
+    mxInterimPopover.clear();
+    mxPopoverContainer.reset();
     mxImpl.reset();
     svt::ToolboxController::dispose();
 }
@@ -178,17 +185,47 @@ void SAL_CALL PopupWindowController::dispose()
 // XStatusListener
 void SAL_CALL PopupWindowController::statusChanged( const frame::FeatureStateEvent& rEvent )
 {
-    svt::ToolboxController::statusChanged(rEvent);
-    enable( rEvent.IsEnabled );
+    SolarMutexGuard aSolarLock;
+
+    bool bValue = false;
+    rEvent.State >>= bValue;
+
+    if (m_pToolbar)
+    {
+        OString sId = m_aCommandURL.toUtf8();
+        m_pToolbar->set_item_active(sId, bValue);
+        m_pToolbar->set_item_sensitive(sId, rEvent.IsEnabled);
+        return;
+    }
+
+    ToolBox* pToolBox = nullptr;
+    sal_uInt16 nItemId = 0;
+    if ( getToolboxId( nItemId, &pToolBox ) )
+    {
+        pToolBox->CheckItem( nItemId, bValue );
+        pToolBox->EnableItem( nItemId, rEvent.IsEnabled );
+    }
+}
+
+std::unique_ptr<WeldToolbarPopup> PopupWindowController::weldPopupWindow()
+{
+    return nullptr;
 }
 
 Reference< awt::XWindow > SAL_CALL PopupWindowController::createPopupWindow()
 {
+    if (m_pToolbar)
+    {
+        mxPopoverContainer->unsetPopover();
+        mxPopoverContainer->setPopover(weldPopupWindow());
+        return Reference<awt::XWindow>();
+    }
+
     VclPtr< ToolBox > pToolBox = dynamic_cast< ToolBox* >( VCLUnoHelper::GetWindow( getParent() ).get() );
     if( pToolBox )
     {
         vcl::Window* pItemWindow = pToolBox->GetItemWindow( pToolBox->GetDownItemId() );
-        VclPtr<vcl::Window> pWin = createPopupWindow( pItemWindow ? pItemWindow : pToolBox );
+        VclPtr<vcl::Window> pWin = createVclPopupWindow( pItemWindow ? pItemWindow : pToolBox );
         if( pWin )
         {
             FloatWinPopupFlags eFloatFlags = FloatWinPopupFlags::GrabFocus |
@@ -201,7 +238,7 @@ Reference< awt::XWindow > SAL_CALL PopupWindowController::createPopupWindow()
             else
                 nWinBits = pWin->GetStyle();
 
-            if ( nWinBits & ( WB_MOVEABLE | WB_SIZEABLE | WB_CLOSEABLE ) )
+            if ( nWinBits & ( WB_SIZEABLE | WB_CLOSEABLE ) )
                 eFloatFlags |= FloatWinPopupFlags::AllowTearOff;
 
             pWin->EnableDocking();
@@ -210,6 +247,27 @@ Reference< awt::XWindow > SAL_CALL PopupWindowController::createPopupWindow()
         }
     }
     return Reference< awt::XWindow >();
+}
+
+void SAL_CALL PopupWindowController::click()
+{
+    if (m_pToolbar)
+    {
+        if (m_pToolbar->get_menu_item_active(m_aCommandURL.toUtf8()))
+            createPopupWindow();
+        else
+            mxPopoverContainer->unsetPopover();
+    }
+
+    svt::ToolboxController::click();
+}
+
+void PopupWindowController::EndPopupMode()
+{
+    if (m_pToolbar)
+        m_pToolbar->set_menu_item_active(m_aCommandURL.toUtf8(), false);
+    else if (mxInterimPopover)
+        mxInterimPopover->EndPopupMode();
 }
 
 }

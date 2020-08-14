@@ -20,16 +20,12 @@
 #ifndef INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERPANECONTAINER_HXX
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERPANECONTAINER_HXX
 
-#include "PresenterTheme.hxx"
-#include <com/sun/star/awt/Point.hpp>
-#include <com/sun/star/awt/Rectangle.hpp>
+#include "PresenterPaneBase.hxx"
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/drawing/XPresenterHelper.hpp>
 #include <com/sun/star/drawing/framework/XResourceId.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
 #include <com/sun/star/drawing/framework/XView.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/util/Color.hpp>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <rtl/ref.hxx>
@@ -38,7 +34,7 @@
 #include <memory>
 #include <vector>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 class PresenterPaneBase;
 class PresenterSprite;
@@ -78,7 +74,6 @@ public:
     class PaneDescriptor
     {
     public:
-        typedef ::std::function<std::shared_ptr<PresenterSprite> ()> SpriteProvider;
         css::uno::Reference<css::drawing::framework::XResourceId> mxPaneId;
         OUString msViewURL;
         ::rtl::Reference<PresenterPaneBase> mxPane;
@@ -89,12 +84,9 @@ public:
         OUString msAccessibleTitleTemplate;
         OUString msTitle;
         ViewInitializationFunction maViewInitialization;
-        SharedBitmapDescriptor mpViewBackground;
         bool mbIsActive;
         bool mbIsOpaque;
-        SpriteProvider maSpriteProvider;
         bool mbIsSprite;
-        css::awt::Point maCalloutAnchorLocation;
 
         void SetActivationState (const bool bIsActive);
     };
@@ -118,8 +110,7 @@ public:
         const css::uno::Reference<css::awt::XWindow>& rxBorderWindow);
 
     SharedPaneDescriptor StoreView (
-        const css::uno::Reference<css::drawing::framework::XView>& rxView,
-        const SharedBitmapDescriptor& rpViewBackground);
+        const css::uno::Reference<css::drawing::framework::XView>& rxView);
 
     SharedPaneDescriptor RemovePane (
         const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId);
@@ -163,7 +154,7 @@ private:
     css::uno::Reference<css::drawing::XPresenterHelper> mxPresenterHelper;
 };
 
-} } // end of namespace ::sdext::presenter
+} // end of namespace ::sdext::presenter
 
 #endif
 

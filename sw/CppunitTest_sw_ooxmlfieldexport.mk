@@ -11,6 +11,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sw_ooxmlfieldexport))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sw_ooxmlfieldexport))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sw_ooxmlfieldexport, \
     sw/qa/extras/ooxmlexport/ooxmlfieldexport \
 ))
@@ -27,19 +29,20 @@ $(eval $(call gb_CppunitTest_use_externals,sw_ooxmlfieldexport,\
 $(eval $(call gb_CppunitTest_set_include,sw_ooxmlfieldexport,\
     -I$(SRCDIR)/sw/inc \
     -I$(SRCDIR)/sw/source/core/inc \
-	-I$(SRCDIR)/sw/qa/extras/inc \
+	-I$(SRCDIR)/sw/qa/inc \
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_CppunitTest_use_sdk_api,sw_ooxmlfieldexport))
+$(eval $(call gb_CppunitTest_use_api,sw_ooxmlfieldexport,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_CppunitTest_use_ure,sw_ooxmlfieldexport))
 $(eval $(call gb_CppunitTest_use_vcl,sw_ooxmlfieldexport))
 
-$(eval $(call gb_CppunitTest_use_components,sw_ooxmlfieldexport,\
-	$(sw_ooxmlexport_components) \
-	filter/source/storagefilterdetect/storagefd \
-))
+$(eval $(call gb_CppunitTest_use_rdb,sw_ooxmlfieldexport,services))
 
 $(eval $(call gb_CppunitTest_use_configuration,sw_ooxmlfieldexport))
 

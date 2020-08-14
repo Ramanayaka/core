@@ -34,7 +34,7 @@
 #include <vbahelper/vbadllapi.h>
 #include <vbahelper/vbahelper.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XEnumeration; }
     namespace container { class XIndexAccess; }
     namespace drawing { class XDrawPage; }
@@ -42,23 +42,22 @@ namespace com { namespace sun { namespace star {
     namespace drawing { class XShapes; }
     namespace frame { class XModel; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
-namespace ooo { namespace vba {
+namespace ooo::vba {
     class XHelperInterface;
     namespace msforms { class XShapeRange; }
-} }
+}
 
 typedef CollTestImplHelper< ov::msforms::XShapes > ScVbaShapes_BASE;
 
-class VBAHELPER_DLLPUBLIC ScVbaShapes : public ScVbaShapes_BASE
+class VBAHELPER_DLLPUBLIC ScVbaShapes final : public ScVbaShapes_BASE
 {
 private:
     css::uno::Reference< css::drawing::XShapes > m_xShapes;
     css::uno::Reference< css::drawing::XDrawPage > m_xDrawPage;
     sal_Int32 m_nNewShapeCount;
     void initBaseCollection();
-protected:
     css::uno::Reference< css::frame::XModel > m_xModel;
     virtual OUString getServiceImplName() override;
     virtual css::uno::Sequence<OUString> getServiceNames() override;
@@ -67,9 +66,9 @@ protected:
     /// @throws css::uno::RuntimeException
     css::uno::Reference< css::drawing::XShape > createShape( const OUString& service );
     /// @throws css::uno::RuntimeException
-    css::uno::Any AddRectangle( sal_Int32 startX, sal_Int32 startY, sal_Int32 nLineWidth, sal_Int32 nLineHeight, const css::uno::Any& rRange );
+    css::uno::Any AddRectangle( sal_Int32 startX, sal_Int32 startY, sal_Int32 nLineWidth, sal_Int32 nLineHeight );
     /// @throws css::uno::RuntimeException
-    css::uno::Any AddEllipse( sal_Int32 startX, sal_Int32 startY, sal_Int32 nLineWidth, sal_Int32 nLineHeight, const css::uno::Any& rRange );
+    css::uno::Any AddEllipse( sal_Int32 startX, sal_Int32 startY, sal_Int32 nLineWidth, sal_Int32 nLineHeight );
     /// @throws css::uno::RuntimeException
     css::uno::Any AddTextboxInWriter( sal_Int32 _nLeft, sal_Int32 _nTop, sal_Int32 _nWidth, sal_Int32 _nHeight );
     OUString createName( const OUString& sName );

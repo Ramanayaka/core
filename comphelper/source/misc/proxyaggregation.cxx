@@ -168,12 +168,11 @@ namespace comphelper
         // dispose our inner context
         // before we do this, remove ourself as listener - else in disposing( EventObject ), we
         // would dispose ourself a second time
-        Reference< XComponent > xComp( m_xInner, UNO_QUERY );
-        if ( xComp.is() )
+        if ( m_xInner.is() )
         {
-            xComp->removeEventListener( this );
-            xComp->dispose();
-            xComp.clear();
+            m_xInner->removeEventListener( this );
+            m_xInner->dispose();
+            m_xInner.clear();
         }
     }
 
@@ -206,14 +205,10 @@ namespace comphelper
 
     Sequence< Type > SAL_CALL OComponentProxyAggregation::getTypes(  )
     {
-        Sequence< Type > aTypes( OComponentProxyAggregationHelper::getTypes() );
-
-        // append XComponent, coming from WeakComponentImplHelperBase
-        sal_Int32 nLen = aTypes.getLength();
-        aTypes.realloc( nLen + 1 );
-        aTypes[ nLen ] = cppu::UnoType<XComponent>::get();
-
-        return aTypes;
+        return comphelper::concatSequences(
+                OComponentProxyAggregationHelper::getTypes(),
+                // append XComponent, coming from WeakComponentImplHelperBase
+                Sequence { cppu::UnoType<XComponent>::get() });
     }
 
 

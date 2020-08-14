@@ -13,19 +13,21 @@
 #include <test/bootstrapfixture.hxx>
 
 #include <osl/thread.hxx>
-#include <salhelper/thread.hxx>
 #include <chrono>
 
 #include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
 #include <vcl/svapp.hxx>
-#include "svdata.hxx"
-#include "salinst.hxx"
+#include <vcl/scheduler.hxx>
+#include <svdata.hxx>
+#include <salinst.hxx>
 
 // #define TEST_WATCHDOG
 
 // Enables timer tests that appear to provoke windows under load unduly.
 //#define TEST_TIMERPRECISION
+
+namespace {
 
 /// Avoid our timer tests just wedging the build if they fail.
 class WatchDog : public osl::Thread
@@ -47,15 +49,17 @@ public:
     }
 };
 
-static WatchDog aWatchDog( 120 ); // random high number in secs
+}
+
+static WatchDog * aWatchDog = new WatchDog( 120 ); // random high number in secs
 
 class TimerTest : public test::BootstrapFixture
 {
 public:
     TimerTest() : BootstrapFixture(true, false) {}
 
-    void testIdleMainloop();
     void testIdle();
+    void testIdleMainloop();
 #ifdef TEST_WATCHDOG
     void testWatchdog();
 #endif
@@ -64,9 +68,13 @@ public:
     void testAutoTimer();
     void testMultiAutoTimers();
 #endif
-    void testRecursiveTimer();
+    void testAutoTimerStop();
+    void testNestedTimer();
     void testSlowTimerCallback();
     void testTriggerIdleFromIdle();
+    void testInvokedReStart();
+    void testPriority();
+    void testRoundRobin();
 
     CPPUNIT_TEST_SUITE(TimerTest);
     CPPUNIT_TEST(testIdle);
@@ -79,9 +87,13 @@ public:
     CPPUNIT_TEST(testAutoTimer);
     CPPUNIT_TEST(testMultiAutoTimers);
 #endif
-    CPPUNIT_TEST(testRecursiveTimer);
+    CPPUNIT_TEST(testAutoTimerStop);
+    CPPUNIT_TEST(testNestedTimer);
     CPPUNIT_TEST(testSlowTimerCallback);
     CPPUNIT_TEST(testTriggerIdleFromIdle);
+    CPPUNIT_TEST(testInvokedReStart);
+    CPPUNIT_TEST(testPriority);
+    CPPUNIT_TEST(testRoundRobin);
 
     CPPUNIT_TEST_SUITE_END();
 };
@@ -94,13 +106,14 @@ void TimerTest::testWatchdog()
 }
 #endif
 
+namespace {
 
 class IdleBool : public Idle
 {
     bool &mrBool;
 public:
     explicit IdleBool( bool &rBool ) :
-        Idle(), mrBool( rBool )
+        Idle( "IdleBool" ), mrBool( rBool )
     {
         SetPriority( TaskPriority::LOWEST );
         Start();
@@ -113,18 +126,18 @@ public:
     }
 };
 
+}
+
 void TimerTest::testIdle()
 {
     bool bTriggered = false;
     IdleBool aTest( bTriggered );
-    Scheduler::ProcessTaskScheduling( true );
+    Scheduler::ProcessEventsToIdle();
     CPPUNIT_ASSERT_MESSAGE("idle triggered", bTriggered);
 }
 
-// tdf#91727
 void TimerTest::testIdleMainloop()
 {
-#ifndef _WIN32
     bool bTriggered = false;
     IdleBool aTest( bTriggered );
     // coverity[loop_top] - Application::Yield allows the timer to fire and toggle bDone
@@ -135,20 +148,20 @@ void TimerTest::testIdleMainloop()
         // can't test this via Application::Yield since this
         // also processes all tasks directly via the scheduler.
         pSVData->maAppData.mnDispatchLevel++;
-        pSVData->mpDefInst->DoYield(true, false, 0);
+        pSVData->mpDefInst->DoYield(true, false);
         pSVData->maAppData.mnDispatchLevel--;
     }
     CPPUNIT_ASSERT_MESSAGE("mainloop idle triggered", bTriggered);
-#endif
 }
 
+namespace {
 
 class TimerBool : public Timer
 {
     bool &mrBool;
 public:
     TimerBool( sal_uLong nMS, bool &rBool ) :
-        Timer(), mrBool( rBool )
+        Timer( "TimerBool" ), mrBool( rBool )
     {
         SetTimeout( nMS );
         Start();
@@ -160,6 +173,8 @@ public:
         Application::EndYield();
     }
 };
+
+}
 
 void TimerTest::testDurations()
 {
@@ -176,23 +191,35 @@ void TimerTest::testDurations()
     }
 }
 
+namespace {
 
 class AutoTimerCount : public AutoTimer
 {
     sal_Int32 &mrCount;
+    const sal_Int32 mnMaxCount;
+
 public:
-    AutoTimerCount( sal_uLong nMS, sal_Int32 &rCount ) :
-        AutoTimer(), mrCount( rCount )
+    AutoTimerCount( sal_uLong nMS, sal_Int32 &rCount,
+                    const sal_Int32 nMaxCount = -1 )
+        : AutoTimer( "AutoTimerCount" )
+        , mrCount( rCount )
+        , mnMaxCount( nMaxCount )
     {
         SetTimeout( nMS );
         Start();
         mrCount = 0;
     }
+
     virtual void Invoke() override
     {
-        mrCount++;
+        ++mrCount;
+        CPPUNIT_ASSERT( mnMaxCount < 0 || mrCount <= mnMaxCount );
+        if ( mrCount == mnMaxCount )
+            Stop();
     }
 };
+
+}
 
 #ifdef TEST_TIMERPRECISION
 
@@ -296,11 +323,24 @@ void TimerTest::testMultiAutoTimers()
 }
 #endif // TEST_TIMERPRECISION
 
+void TimerTest::testAutoTimerStop()
+{
+    sal_Int32 nTimerCount = 0;
+    const sal_Int32 nMaxCount = 5;
+    AutoTimerCount aAutoTimer( 0, nTimerCount, nMaxCount );
+    // coverity[loop_top] - Application::Yield allows the timer to fire and increment TimerCount
+    while (nMaxCount != nTimerCount)
+        Application::Yield();
+    CPPUNIT_ASSERT( !aAutoTimer.IsActive() );
+    CPPUNIT_ASSERT( !Application::Reschedule() );
+}
+
+namespace {
 
 class YieldTimer : public Timer
 {
 public:
-    explicit YieldTimer( sal_uLong nMS ) : Timer()
+    explicit YieldTimer( sal_uLong nMS ) : Timer( "YieldTimer" )
     {
         SetTimeout( nMS );
         Start();
@@ -312,7 +352,9 @@ public:
     }
 };
 
-void TimerTest::testRecursiveTimer()
+}
+
+void TimerTest::testNestedTimer()
 {
     sal_Int32 nCount = 0;
     YieldTimer aCount(5);
@@ -322,13 +364,14 @@ void TimerTest::testRecursiveTimer()
         Application::Yield();
 }
 
+namespace {
 
 class SlowCallbackTimer : public Timer
 {
     bool &mbSlow;
 public:
     SlowCallbackTimer( sal_uLong nMS, bool &bBeenSlow ) :
-        Timer(), mbSlow( bBeenSlow )
+        Timer( "SlowCallbackTimer" ), mbSlow( bBeenSlow )
     {
         SetTimeout( nMS );
         Start();
@@ -340,6 +383,8 @@ public:
         mbSlow = true;
     }
 };
+
+}
 
 void TimerTest::testSlowTimerCallback()
 {
@@ -355,6 +400,7 @@ void TimerTest::testSlowTimerCallback()
         Application::Yield();
 }
 
+namespace {
 
 class TriggerIdleFromIdle : public Idle
 {
@@ -362,7 +408,7 @@ class TriggerIdleFromIdle : public Idle
     TriggerIdleFromIdle* mpOther;
 public:
     explicit TriggerIdleFromIdle( bool* pTriggered, TriggerIdleFromIdle* pOther ) :
-        Idle(), mpTriggered(pTriggered), mpOther(pOther)
+        Idle( "TriggerIdleFromIdle" ), mpTriggered(pTriggered), mpOther(pOther)
     {
     }
     virtual void Invoke() override
@@ -376,6 +422,8 @@ public:
     }
 };
 
+}
+
 void TimerTest::testTriggerIdleFromIdle()
 {
     bool bTriggered1 = false;
@@ -384,8 +432,131 @@ void TimerTest::testTriggerIdleFromIdle()
     TriggerIdleFromIdle aTest1( &bTriggered1, &aTest2 );
     aTest1.Start();
     Application::Yield();
-    CPPUNIT_ASSERT_MESSAGE("idle triggered", bTriggered1);
-    CPPUNIT_ASSERT_MESSAGE("idle triggered", bTriggered2);
+    CPPUNIT_ASSERT_MESSAGE("idle not triggered", bTriggered1);
+    CPPUNIT_ASSERT_MESSAGE("idle not triggered", bTriggered2);
+}
+
+namespace {
+
+class IdleInvokedReStart : public Idle
+{
+    sal_Int32 &mrCount;
+public:
+    IdleInvokedReStart( sal_Int32 &rCount )
+        : Idle( "IdleInvokedReStart" ), mrCount( rCount )
+    {
+        Start();
+    }
+    virtual void Invoke() override
+    {
+        mrCount++;
+        if ( mrCount < 2 )
+            Start();
+    }
+};
+
+}
+
+void TimerTest::testInvokedReStart()
+{
+    sal_Int32 nCount = 0;
+    IdleInvokedReStart aIdle( nCount );
+    Scheduler::ProcessEventsToIdle();
+    CPPUNIT_ASSERT_EQUAL( sal_Int32(2), nCount );
+}
+
+namespace {
+
+class IdleSerializer : public Idle
+{
+    sal_uInt32 mnPosition;
+    sal_uInt32 &mrProcesed;
+public:
+    IdleSerializer(const char *pDebugName, TaskPriority ePrio,
+                   sal_uInt32 nPosition, sal_uInt32 &rProcesed)
+        : Idle( pDebugName )
+        , mnPosition( nPosition )
+        , mrProcesed( rProcesed )
+    {
+        SetPriority(ePrio);
+        Start();
+    }
+    virtual void Invoke() override
+    {
+        ++mrProcesed;
+        CPPUNIT_ASSERT_EQUAL_MESSAGE( "Ignored prio", mnPosition, mrProcesed );
+    }
+};
+
+}
+
+void TimerTest::testPriority()
+{
+    // scope, so tasks are deleted
+    {
+        // Start: 1st Idle low, 2nd high
+        sal_uInt32 nProcessed = 0;
+        IdleSerializer aLowPrioIdle("IdleSerializer LowPrio",
+                                    TaskPriority::LOWEST, 2, nProcessed);
+        IdleSerializer aHighPrioIdle("IdleSerializer HighPrio",
+                                     TaskPriority::HIGHEST, 1, nProcessed);
+        Scheduler::ProcessEventsToIdle();
+        CPPUNIT_ASSERT_EQUAL_MESSAGE( "Not all idles processed", sal_uInt32(2), nProcessed );
+    }
+
+    {
+        // Start: 1st Idle high, 2nd low
+        sal_uInt32 nProcessed = 0;
+        IdleSerializer aHighPrioIdle("IdleSerializer HighPrio",
+                                     TaskPriority::HIGHEST, 1, nProcessed);
+        IdleSerializer aLowPrioIdle("IdleSerializer LowPrio",
+                                    TaskPriority::LOWEST, 2, nProcessed);
+        Scheduler::ProcessEventsToIdle();
+        CPPUNIT_ASSERT_EQUAL_MESSAGE( "Not all idles processed", sal_uInt32(2), nProcessed );
+    }
+}
+
+namespace {
+
+class TestAutoIdleRR : public AutoIdle
+{
+    sal_uInt32 &mrCount;
+
+    DECL_LINK( IdleRRHdl, Timer *, void );
+
+public:
+    TestAutoIdleRR( sal_uInt32 &rCount,
+                    const char *pDebugName )
+        : AutoIdle( pDebugName )
+        , mrCount( rCount )
+    {
+        CPPUNIT_ASSERT_EQUAL( sal_uInt32(0), mrCount );
+        SetInvokeHandler( LINK( this, TestAutoIdleRR, IdleRRHdl ) );
+        Start();
+    }
+};
+
+}
+
+IMPL_LINK_NOARG(TestAutoIdleRR, IdleRRHdl, Timer *, void)
+{
+    ++mrCount;
+    if ( mrCount == 3 )
+        Stop();
+}
+
+void TimerTest::testRoundRobin()
+{
+    sal_uInt32 nCount1 = 0, nCount2 = 0;
+    TestAutoIdleRR aIdle1( nCount1, "TestAutoIdleRR aIdle1" ),
+                   aIdle2( nCount2, "TestAutoIdleRR aIdle2" );
+    while ( Application::Reschedule() )
+    {
+        CPPUNIT_ASSERT( nCount1 == nCount2 || nCount1 - 1 == nCount2 );
+        CPPUNIT_ASSERT( nCount1 <= 3 );
+        CPPUNIT_ASSERT( nCount2 <= 3 );
+    }
+    CPPUNIT_ASSERT( 3 == nCount1 && 3 == nCount2 );
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(TimerTest);

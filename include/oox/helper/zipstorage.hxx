@@ -26,19 +26,19 @@
 #include <oox/helper/storagebase.hxx>
 #include <rtl/ustring.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace embed { class XStorage; }
     namespace io { class XInputStream; }
     namespace io { class XOutputStream; }
     namespace io { class XStream; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
 namespace oox {
 
 
 /** Implements stream access for ZIP storages containing XML streams. */
-class ZipStorage : public StorageBase
+class ZipStorage final : public StorageBase
 {
 public:
     explicit            ZipStorage(

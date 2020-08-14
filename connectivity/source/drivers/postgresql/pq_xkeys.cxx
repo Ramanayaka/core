@@ -34,14 +34,16 @@
  *
  ************************************************************************/
 
+#include <sal/log.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <rtl/strbuf.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XParameters.hpp>
 #include <com/sun/star/sdbc/KeyRule.hpp>
 #include <com/sun/star/sdbcx/KeyType.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 
 #include "pq_xkeys.hxx"
 #include "pq_xkey.hxx"
@@ -56,7 +58,6 @@ using css::beans::XPropertySet;
 using com::sun::star::uno::makeAny;
 using com::sun::star::uno::UNO_QUERY;
 using com::sun::star::uno::Reference;
-using com::sun::star::uno::RuntimeException;
 
 
 using com::sun::star::sdbc::XRow;
@@ -110,13 +111,7 @@ void Keys::refresh()
 {
     try
     {
-        if (isLog(m_pSettings, LogLevel::Info))
-        {
-            OString buf( "sdbcx.Keys get refreshed for table " +
-                         OUStringToOString( m_schemaName, ConnectionSettings::encoding ) +
-                         "." + OUStringToOString( m_tableName, ConnectionSettings::encoding ));
-            log( m_pSettings, LogLevel::Info, buf.getStr() );
-        }
+        SAL_INFO("connectivity.postgresql", "sdbcx.Keys get refreshed for table " << m_schemaName << "." << m_tableName);
 
         osl::MutexGuard guard( m_xMutex->GetMutex() );
         Statics & st = getStatics();
@@ -173,7 +168,7 @@ void Keys::refresh()
             if( css::sdbcx::KeyType::FOREIGN == keyType )
             {
                 OUStringBuffer buf( 128 );
-                buf.append( xRow->getString( 6 ) + "." + xRow->getString( 5 ) );
+                buf.append( xRow->getString( 6 ) ).append( "." ).append( xRow->getString( 5 ) );
                 pKey->setPropertyValue_NoBroadcast_public(
                     st.REFERENCED_TABLE, makeAny( buf.makeStringAndClear() ) );
 
@@ -198,7 +193,9 @@ void Keys::refresh()
     }
     catch ( css::sdbc::SQLException & e )
     {
-        throw RuntimeException( e.Message , e.Context );
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException( e.Message,
+                        e.Context, anyEx );
     }
 
     fire( RefreshedBroadcaster( *this ) );
@@ -225,7 +222,7 @@ void Keys::appendByDescriptor(
 void Keys::dropByIndex( sal_Int32 index )
 {
     osl::MutexGuard guard( m_xMutex->GetMutex() );
-    if( index < 0 ||  index >= (sal_Int32)m_values.size() )
+    if( index < 0 ||  index >= static_cast<sal_Int32>(m_values.size()) )
     {
         throw css::lang::IndexOutOfBoundsException(
             "TABLES: Index out of range (allowed 0 to " + OUString::number(m_values.size() -1)

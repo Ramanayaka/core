@@ -18,31 +18,25 @@
  */
 
 
-#include "dp_script.hrc"
-#include "dp_services.hxx"
+#include <strings.hrc>
 #include "dp_lib_container.h"
-#include "dp_backend.h"
-#include "dp_ucb.h"
-#include <rtl/uri.hxx>
+#include <dp_backend.h>
+#include <dp_ucb.h>
 #include <ucbhelper/content.hxx>
-#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/servicedecl.hxx>
 #include <svl/inettype.hxx>
 #include <com/sun/star/util/XUpdatable.hpp>
 #include <com/sun/star/script/XLibraryContainer3.hpp>
-#include <com/sun/star/util/XMacroExpander.hpp>
 #include <memory>
 #include "dp_scriptbackenddb.hxx"
+#include <cppuhelper/supportsservice.hxx>
 
 using namespace ::dp_misc;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::ucb;
 
-namespace dp_registry {
-namespace backend {
-namespace script {
+namespace dp_registry::backend::script {
 namespace {
 
 typedef ::cppu::ImplInheritanceHelper<
@@ -98,6 +92,11 @@ public:
     BackendImpl( Sequence<Any> const & args,
                  Reference<XComponentContext> const & xComponentContext );
 
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+
     // XUpdatable
     virtual void SAL_CALL update() override;
 
@@ -128,6 +127,7 @@ BackendImpl::PackageImpl::PackageImpl(
             dialogURL, xCmdEnv, myBackend->getComponentContext() );
     }
     if (!scriptURL.isEmpty()) {
+        assert(m_name.pData);
         m_name = LibraryContainer::get_libname(
             scriptURL, xCmdEnv, myBackend->getComponentContext() );
     }
@@ -144,12 +144,12 @@ BackendImpl::BackendImpl(
       m_xBasicLibTypeInfo( new Package::TypeInfo(
                                "application/vnd.sun.star.basic-library",
                                OUString() /* no file filter */,
-                               getResourceString(RID_STR_BASIC_LIB)
+                               DpResId(RID_STR_BASIC_LIB)
                                ) ),
       m_xDialogLibTypeInfo( new Package::TypeInfo(
                                 "application/vnd.sun.star.dialog-library",
                                 OUString() /* no file filter */,
-                                getResourceString(RID_STR_DIALOG_LIB)
+                                DpResId(RID_STR_DIALOG_LIB)
                                 ) ),
       m_typeInfos( 2 )
 {
@@ -166,15 +166,32 @@ BackendImpl::BackendImpl(
     }
 
 }
+
+// XServiceInfo
+OUString BackendImpl::getImplementationName()
+{
+    return "com.sun.star.comp.deployment.script.PackageRegistryBackend";
+}
+
+sal_Bool BackendImpl::supportsService( const OUString& ServiceName )
+{
+    return cppu::supportsService(this, ServiceName);
+}
+
+css::uno::Sequence< OUString > BackendImpl::getSupportedServiceNames()
+{
+    return { BACKEND_SERVICE_NAME };
+}
+
 void BackendImpl::addDataToDb(OUString const & url)
 {
-    if (m_backendDb.get())
+    if (m_backendDb)
         m_backendDb->addEntry(url);
 }
 
 bool BackendImpl::hasActiveEntry(OUString const & url)
 {
-    if (m_backendDb.get())
+    if (m_backendDb)
         return m_backendDb->hasActiveEntry(url);
     return false;
 }
@@ -195,13 +212,13 @@ BackendImpl::getSupportedPackageTypes()
 }
 void BackendImpl::revokeEntryFromDb(OUString const & url)
 {
-    if (m_backendDb.get())
+    if (m_backendDb)
         m_backendDb->revokeEntry(url);
 }
 
 void BackendImpl::packageRemoved(OUString const & url, OUString const & /*mediaType*/)
 {
-    if (m_backendDb.get())
+    if (m_backendDb)
         m_backendDb->removeEntry(url);
 }
 
@@ -233,7 +250,7 @@ Reference<deployment::XPackage> BackendImpl::bindPackage_(
         }
         if (mediaType.isEmpty())
             throw lang::IllegalArgumentException(
-                StrCannotDetectMediaType::get() + url,
+                StrCannotDetectMediaType() + url,
                 static_cast<OWeakObject *>(this), static_cast<sal_Int16>(-1) );
     }
 
@@ -272,7 +289,7 @@ Reference<deployment::XPackage> BackendImpl::bindPackage_(
         }
     }
     throw lang::IllegalArgumentException(
-        StrUnsupportedMediaType::get() + mediaType,
+        StrUnsupportedMediaType() + mediaType,
         static_cast<OWeakObject *>(this),
         static_cast<sal_Int16>(-1) );
 }
@@ -451,15 +468,13 @@ void BackendImpl::PackageImpl::processPackage_(
 
 } // anon namespace
 
-namespace sdecl = comphelper::service_decl;
-sdecl::class_<BackendImpl, sdecl::with_args<true> > serviceBI;
-sdecl::ServiceDecl const serviceDecl(
-    serviceBI,
-    "com.sun.star.comp.deployment.script.PackageRegistryBackend",
-    BACKEND_SERVICE_NAME );
+} // namespace dp_registry::backend::script
 
-} // namespace script
-} // namespace backend
-} // namespace dp_registry
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_deployment_script_PackageRegistryBackend_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
+{
+    return cppu::acquire(new dp_registry::backend::script::BackendImpl(args, context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

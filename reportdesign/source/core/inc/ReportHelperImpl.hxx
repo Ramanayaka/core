@@ -74,6 +74,15 @@ uno::Reference< report::XSection > SAL_CALL clazz::getSection() \
     ::osl::MutexGuard aGuard(m_aMutex); \
     uno::Reference< container::XChild > xParent(getParent(  ),uno::UNO_QUERY); \
     return lcl_getSection(xParent); \
+} \
+sal_Bool SAL_CALL clazz::getAutoGrow() \
+{ \
+    ::osl::MutexGuard aGuard(m_aMutex); \
+    return (arg).m_bAutoGrow; \
+} \
+void SAL_CALL clazz::setAutoGrow(sal_Bool _autogrow) \
+{ \
+    set(PROPERTY_AUTOGROW,static_cast<bool>(_autogrow),(arg).m_bAutoGrow); \
 }
 
 #define REPORTCOMPONENT_IMPL(clazz,arg) \
@@ -153,7 +162,7 @@ void SAL_CALL clazz::setDetailFields( const css::uno::Sequence< OUString >&  )\
 ::sal_Int32 SAL_CALL clazz::getControlBackground() \
 { \
     ::osl::MutexGuard aGuard(m_aMutex); \
-    return varName.m_bBackgroundTransparent ? COL_TRANSPARENT : varName.nBackgroundColor; \
+    return varName.m_bBackgroundTransparent ? sal_Int32(COL_TRANSPARENT) : varName.nBackgroundColor; \
 } \
  \
 void SAL_CALL clazz::setControlBackground( ::sal_Int32 _backgroundcolor )\
@@ -226,12 +235,12 @@ void SAL_CALL clazz::setCharScaleWidth(::sal_Int16 the_value) \
 sal_Int16 SAL_CALL clazz::getParaAdjust() \
 { \
     ::osl::MutexGuard aGuard(m_aMutex); \
-    return (sal_Int16)varName.nAlign; \
+    return static_cast<sal_Int16>(varName.nAlign); \
 } \
  \
 void SAL_CALL clazz::setParaAdjust( sal_Int16 _align ) \
 { \
-    set(PROPERTY_PARAADJUST,(css::style::ParagraphAdjust)_align,varName.nAlign); \
+    set(PROPERTY_PARAADJUST,_align,varName.nAlign); \
 } \
  \
 awt::FontDescriptor SAL_CALL clazz::getFontDescriptor() \

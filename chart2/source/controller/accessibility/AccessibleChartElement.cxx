@@ -18,20 +18,21 @@
  */
 
 #include "AccessibleChartElement.hxx"
-#include "CharacterProperties.hxx"
-#include "ObjectIdentifier.hxx"
-#include "ObjectNameProvider.hxx"
-#include "servicenames.hxx"
-#include "macros.hxx"
+#include <CharacterProperties.hxx>
+#include <ObjectIdentifier.hxx>
+#include <ObjectNameProvider.hxx>
+#include <servicenames.hxx>
 
 #include <com/sun/star/awt/XDevice.hpp>
 #include <com/sun/star/chart2/XTitle.hpp>
+#include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/view/XSelectionSupplier.hpp>
 
-#include <vcl/svapp.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
@@ -39,7 +40,6 @@ using namespace ::com::sun::star::accessibility;
 using ::com::sun::star::uno::UNO_QUERY;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
-using ::com::sun::star::uno::RuntimeException;
 
 namespace chart
 {
@@ -95,20 +95,22 @@ void AccessibleChartElement::InitTextEdit()
         }
     }
 
-    if( m_xTextHelper.is())
-        try
-        {
-            Reference< lang::XInitialization > xInit( m_xTextHelper, uno::UNO_QUERY_THROW );
-            Sequence< uno::Any > aArgs( 3 );
-            aArgs[0] <<= GetInfo().m_aOID.getObjectCID();
-            aArgs[1] <<= Reference< XAccessible >( this );
-            aArgs[2] <<= Reference< awt::XWindow >( GetInfo().m_xWindow );
-            xInit->initialize( aArgs );
-        }
-        catch( const uno::Exception & ex )
-        {
-            ASSERT_EXCEPTION( ex );
-        }
+    if( !m_xTextHelper.is())
+        return;
+
+    try
+    {
+        Reference< lang::XInitialization > xInit( m_xTextHelper, uno::UNO_QUERY_THROW );
+        Sequence< uno::Any > aArgs( 3 );
+        aArgs[0] <<= GetInfo().m_aOID.getObjectCID();
+        aArgs[1] <<= Reference< XAccessible >( this );
+        aArgs[2] <<= Reference< awt::XWindow >( GetInfo().m_xWindow );
+        xInit->initialize( aArgs );
+    }
+    catch( const uno::Exception & )
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2");
+    }
 }
 
 //             Interfaces
@@ -141,7 +143,7 @@ sal_Int32 AccessibleChartElement::ImplGetAccessibleChildCount() const
 // ________ XServiceInfo ________
 OUString SAL_CALL AccessibleChartElement::getImplementationName()
 {
-    return OUString( "AccessibleChartElement" );
+    return "AccessibleChartElement";
 }
 
 // ________ AccessibleChartElement::XAccessibleContext (override) ________

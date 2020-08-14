@@ -21,7 +21,10 @@
 #include <brdwin.hxx>
 #include <window.h>
 #include <salframe.hxx>
+#include <helpwin.hxx>
 
+#include <comphelper/lok.hxx>
+#include <sal/log.hxx>
 #include <vcl/layout.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/wrkwin.hxx>
@@ -29,7 +32,7 @@
 #include <vcl/toolbox.hxx>
 #include <vcl/floatwin.hxx>
 #include <vcl/settings.hxx>
-
+#include <vcl/IDialogRenderable.hxx>
 
 class FloatingWindow::ImplData
 {
@@ -38,6 +41,8 @@ public:
 
     VclPtr<ToolBox> mpBox;
     tools::Rectangle       maItemEdgeClipRect; // used to clip the common edge between a toolbar item and the border of this window
+    Point maPos; // position of the floating window wrt. parent
+    Point maLOKTwipsPos; ///< absolute position of the floating window in the document - in twips (for toplevel floating windows).
 };
 
 FloatingWindow::ImplData::ImplData()
@@ -50,9 +55,9 @@ tools::Rectangle& FloatingWindow::ImplGetItemEdgeClipRect()
     return mpImplData->maItemEdgeClipRect;
 }
 
-void FloatingWindow::ImplInit( vcl::Window* pParent, WinBits nStyle )
+void FloatingWindow::ImplInitFloating( vcl::Window* pParent, WinBits nStyle )
 {
-    mpImplData = new ImplData;
+    mpImplData.reset(new ImplData);
 
     mpWindowImpl->mbFloatWin = true;
     mbInCleanUp = false;
@@ -61,7 +66,7 @@ void FloatingWindow::ImplInit( vcl::Window* pParent, WinBits nStyle )
     SAL_WARN_IF(!pParent, "vcl", "FloatWindow::FloatingWindow(): - pParent == NULL!");
 
     if (!pParent)
-        pParent = ImplGetSVData()->maWinData.mpAppWin;
+        pParent = ImplGetSVData()->maFrameData.mpAppWin;
 
     SAL_WARN_IF(!pParent, "vcl", "FloatWindow::FloatingWindow(): - pParent == NULL and no AppWindow exists");
 
@@ -70,7 +75,7 @@ void FloatingWindow::ImplInit( vcl::Window* pParent, WinBits nStyle )
     {
         mpWindowImpl->mbOverlapWin = true;
         nStyle |= WB_DIALOGCONTROL;
-        SystemWindow::ImplInit(pParent, nStyle, nullptr);
+        ImplInit(pParent, nStyle, nullptr);
     }
     else
     {
@@ -85,12 +90,12 @@ void FloatingWindow::ImplInit( vcl::Window* pParent, WinBits nStyle )
             // nFloatWinStyle |= WB_CLOSEABLE;
             mpWindowImpl->mbFrame = true;
             mpWindowImpl->mbOverlapWin = true;
-            SystemWindow::ImplInit(pParent, nFloatWinStyle & ~WB_BORDER, nullptr);
+            ImplInit(pParent, nFloatWinStyle & ~WB_BORDER, nullptr);
         }
         else
         {
             VclPtr<ImplBorderWindow> pBorderWin;
-            BorderWindowStyle nBorderStyle = BorderWindowStyle::Border | BorderWindowStyle::Float;
+            BorderWindowStyle nBorderStyle = BorderWindowStyle::Float;
 
             if (nStyle & WB_OWNERDRAWDECORATION)
                 nBorderStyle |= BorderWindowStyle::Frame;
@@ -103,7 +108,7 @@ void FloatingWindow::ImplInit( vcl::Window* pParent, WinBits nStyle )
                 nStyle |= WB_CLOSEABLE; // make undecorated floaters closeable
             }
             pBorderWin  = VclPtr<ImplBorderWindow>::Create(pParent, nStyle, nBorderStyle);
-            SystemWindow::ImplInit(pBorderWin, nStyle & ~WB_BORDER, nullptr);
+            ImplInit(pBorderWin, nStyle & ~WB_BORDER, nullptr);
             pBorderWin->mpWindowImpl->mpClientWindow = this;
             pBorderWin->GetBorder(mpWindowImpl->mnLeftBorder, mpWindowImpl->mnTopBorder,
                                   mpWindowImpl->mnRightBorder, mpWindowImpl->mnBottomBorder);
@@ -146,14 +151,13 @@ void FloatingWindow::ImplInitSettings()
 FloatingWindow::FloatingWindow(vcl::Window* pParent, WinBits nStyle) :
     SystemWindow(WindowType::FLOATINGWINDOW)
 {
-    ImplInit(pParent, nStyle);
+    ImplInitFloating(pParent, nStyle);
 }
 
 FloatingWindow::FloatingWindow(vcl::Window* pParent, const OString& rID, const OUString& rUIXMLDescription, const css::uno::Reference<css::frame::XFrame> &rFrame)
     : SystemWindow(WindowType::FLOATINGWINDOW)
     , mpNextFloat(nullptr)
     , mpFirstPopupModeWin(nullptr)
-    , mpImplData(nullptr)
     , mnPostId(nullptr)
     , mnPopupModeFlags(FloatWinPopupFlags::NONE)
     , mnTitle(FloatWinTitleType::Unknown)
@@ -174,8 +178,8 @@ void FloatingWindow::doDeferredInit(WinBits nBits)
 {
     vcl::Window *pParent = mpDialogParent;
     mpDialogParent = nullptr;
-    ImplInit(pParent, nBits);
-    mbIsDefferedInit = false;
+    ImplInitFloating(pParent, nBits);
+    mbIsDeferredInit = false;
 }
 
 void FloatingWindow::ApplySettings(vcl::RenderContext& rRenderContext)
@@ -199,6 +203,8 @@ FloatingWindow::~FloatingWindow()
 
 void FloatingWindow::dispose()
 {
+    ReleaseLOKNotifier();
+
     if (mpImplData)
     {
         if( mbPopupModeCanceled )
@@ -214,8 +220,7 @@ void FloatingWindow::dispose()
         mnPostId = nullptr;
     }
 
-    delete mpImplData;
-    mpImplData = nullptr;
+    mpImplData.reset();
 
     mpNextFloat.clear();
     mpFirstPopupModeWin.clear();
@@ -228,9 +233,9 @@ Point FloatingWindow::CalcFloatingPosition( vcl::Window* pWindow, const tools::R
     return ImplCalcPos( pWindow, rRect, nFlags, rArrangeIndex );
 }
 
-Point FloatingWindow::ImplCalcPos( vcl::Window* pWindow,
-                                   const tools::Rectangle& rRect, FloatWinPopupFlags nFlags,
-                                   sal_uInt16& rArrangeIndex )
+Point FloatingWindow::ImplCalcPos(vcl::Window* pWindow,
+                                  const tools::Rectangle& rRect, FloatWinPopupFlags nFlags,
+                                  sal_uInt16& rArrangeIndex, Point* pLOKTwipsPos)
 {
     // get window position
     Point       aPos;
@@ -238,7 +243,7 @@ Point FloatingWindow::ImplCalcPos( vcl::Window* pWindow,
     tools::Rectangle   aScreenRect = pWindow->ImplGetFrameWindow()->GetDesktopRectPixel();
     FloatingWindow *pFloatingWindow = dynamic_cast<FloatingWindow*>( pWindow );
 
-    // convert....
+    // convert...
     vcl::Window* pW = pWindow;
     if ( pW->mpWindowImpl->mpRealParent )
         pW = pW->mpWindowImpl->mpRealParent;
@@ -260,6 +265,7 @@ Point FloatingWindow::ImplCalcPos( vcl::Window* pWindow,
             Application::GetBestScreen( bRTL ? devRectRTL : devRect ) );
 
     FloatWinPopupFlags nArrangeAry[5];
+    sal_uInt16 nArrangeAttempts = 5;
     Point             e1,e2;  // the common edge between the item rect and the floating window
 
     if ( nFlags & FloatWinPopupFlags::Left )
@@ -282,31 +288,48 @@ Point FloatingWindow::ImplCalcPos( vcl::Window* pWindow,
     {
         nArrangeAry[0]  = FloatWinPopupFlags::Up;
         nArrangeAry[1]  = FloatWinPopupFlags::Down;
-        nArrangeAry[2]  = FloatWinPopupFlags::Right;
-        nArrangeAry[3]  = FloatWinPopupFlags::Left;
-        nArrangeAry[4]  = FloatWinPopupFlags::Up;
+        if (nFlags & FloatWinPopupFlags::NoHorzPlacement)
+        {
+            nArrangeAry[2]  = FloatWinPopupFlags::Up;
+            nArrangeAttempts = 3;
+        }
+        else
+        {
+            nArrangeAry[2]  = FloatWinPopupFlags::Right;
+            nArrangeAry[3]  = FloatWinPopupFlags::Left;
+            nArrangeAry[4]  = FloatWinPopupFlags::Up;
+        }
     }
     else
     {
         nArrangeAry[0]  = FloatWinPopupFlags::Down;
         nArrangeAry[1]  = FloatWinPopupFlags::Up;
-        nArrangeAry[2]  = FloatWinPopupFlags::Right;
-        nArrangeAry[3]  = FloatWinPopupFlags::Left;
-        nArrangeAry[4]  = FloatWinPopupFlags::Down;
+        if (nFlags & FloatWinPopupFlags::NoHorzPlacement)
+        {
+            nArrangeAry[2]  = FloatWinPopupFlags::Down;
+            nArrangeAttempts = 3;
+        }
+        else
+        {
+            nArrangeAry[2]  = FloatWinPopupFlags::Right;
+            nArrangeAry[3]  = FloatWinPopupFlags::Left;
+            nArrangeAry[4]  = FloatWinPopupFlags::Down;
+        }
     }
 
     sal_uInt16 nArrangeIndex = 0;
+    const bool bLOKActive = comphelper::LibreOfficeKit::isActive();
 
-    for ( ; nArrangeIndex < 5; nArrangeIndex++ )
+    for ( ; nArrangeIndex < nArrangeAttempts; nArrangeIndex++ )
     {
         bool bBreak = true;
         switch ( nArrangeAry[nArrangeIndex] )
         {
 
             case FloatWinPopupFlags::Left:
-                aPos.X() = devRect.Left()-aSize.Width()+1;
-                aPos.Y() = devRect.Top();
-                aPos.Y() -= pWindow->mpWindowImpl->mnTopBorder;
+                aPos.setX( devRect.Left()-aSize.Width()+1 );
+                aPos.setY( devRect.Top() );
+                aPos.AdjustY( -(pWindow->mpWindowImpl->mnTopBorder) );
                 if( bRTL )
                 {
                     if( (devRectRTL.Right()+aSize.Width()) > aScreenRect.Right() )
@@ -317,20 +340,20 @@ Point FloatingWindow::ImplCalcPos( vcl::Window* pWindow,
                     if ( aPos.X() < aScreenRect.Left() )
                         bBreak = false;
                 }
-                if( bBreak )
+                if (bBreak || bLOKActive)
                 {
                     e1 = devRect.TopLeft();
                     e2 = devRect.BottomLeft();
                     // set non-zero width
-                    e2.X()++;
+                    e2.AdjustX( 1 );
                     // don't clip corners
-                    e1.Y()++;
-                    e2.Y()--;
+                    e1.AdjustY( 1 );
+                    e2.AdjustY( -1 );
                 }
                 break;
             case FloatWinPopupFlags::Right:
                 aPos     = devRect.TopRight();
-                aPos.Y() -= pWindow->mpWindowImpl->mnTopBorder;
+                aPos.AdjustY( -(pWindow->mpWindowImpl->mnTopBorder) );
                 if( bRTL )
                 {
                     if( (devRectRTL.Left() - aSize.Width()) < aScreenRect.Left() )
@@ -341,50 +364,54 @@ Point FloatingWindow::ImplCalcPos( vcl::Window* pWindow,
                     if ( aPos.X()+aSize.Width() > aScreenRect.Right() )
                         bBreak = false;
                 }
-                if( bBreak )
+                if (bBreak || bLOKActive)
                 {
                     e1 = devRect.TopRight();
                     e2 = devRect.BottomRight();
                     // set non-zero width
-                    e2.X()++;
+                    e2.AdjustX( 1 );
                     // don't clip corners
-                    e1.Y()++;
-                    e2.Y()--;
+                    e1.AdjustY( 1 );
+                    e2.AdjustY( -1 );
                 }
                 break;
             case FloatWinPopupFlags::Up:
-                aPos.X() = devRect.Left();
-                aPos.Y() = devRect.Top()-aSize.Height()+1;
+                aPos.setX( devRect.Left() );
+                aPos.setY( devRect.Top()-aSize.Height()+1 );
                 if ( aPos.Y() < aScreenRect.Top() )
                     bBreak = false;
-                if( bBreak )
+                if (bBreak || bLOKActive)
                 {
                     e1 = devRect.TopLeft();
                     e2 = devRect.TopRight();
                     // set non-zero height
-                    e2.Y()++;
+                    e2.AdjustY( 1 );
                     // don't clip corners
-                    e1.X()++;
-                    e2.X()--;
+                    e1.AdjustX( 1 );
+                    e2.AdjustX( -1 );
                 }
                 break;
             case FloatWinPopupFlags::Down:
                 aPos = devRect.BottomLeft();
                 if ( aPos.Y()+aSize.Height() > aScreenRect.Bottom() )
                     bBreak = false;
-                if( bBreak )
+                if (bBreak || bLOKActive)
                 {
                     e1 = devRect.BottomLeft();
                     e2 = devRect.BottomRight();
                     // set non-zero height
-                    e2.Y()++;
+                    e2.AdjustY( 1 );
                     // don't clip corners
-                    e1.X()++;
-                    e2.X()--;
+                    e1.AdjustX( 1 );
+                    e2.AdjustX( -1 );
                 }
                 break;
             default: break;
         }
+
+        // no further adjustment for LibreOfficeKit
+        if (bLOKActive)
+            break;
 
         // adjust if necessary
         if (bBreak)
@@ -394,9 +421,9 @@ Point FloatingWindow::ImplCalcPos( vcl::Window* pWindow,
             {
                 if ( aPos.Y()+aSize.Height() > aScreenRect.Bottom() )
                 {
-                    aPos.Y() = devRect.Bottom()-aSize.Height()+1;
+                    aPos.setY( devRect.Bottom()-aSize.Height()+1 );
                     if ( aPos.Y() < aScreenRect.Top() )
-                        aPos.Y() = aScreenRect.Top();
+                        aPos.setY( aScreenRect.Top() );
                 }
             }
             else
@@ -404,13 +431,13 @@ Point FloatingWindow::ImplCalcPos( vcl::Window* pWindow,
                 if( bRTL )
                 {
                     if( devRectRTL.Right()-aSize.Width()+1 < aScreenRect.Left() )
-                        aPos.X() -= aScreenRect.Left() - devRectRTL.Right() + aSize.Width() - 1;
+                        aPos.AdjustX( -(aScreenRect.Left() - devRectRTL.Right() + aSize.Width() - 1) );
                 }
                 else if ( aPos.X()+aSize.Width() > aScreenRect.Right() )
                 {
-                    aPos.X() = devRect.Right()-aSize.Width()+1;
+                    aPos.setX( devRect.Right()-aSize.Width()+1 );
                     if ( aPos.X() < aScreenRect.Left() )
-                        aPos.X() = aScreenRect.Left();
+                        aPos.setX( aScreenRect.Left() );
                 }
             }
         }
@@ -418,18 +445,38 @@ Point FloatingWindow::ImplCalcPos( vcl::Window* pWindow,
         if ( bBreak )
             break;
     }
-    if ( nArrangeIndex > 4 )
-        nArrangeIndex = 4;
+    if (nArrangeIndex >= nArrangeAttempts)
+        nArrangeIndex = nArrangeAttempts - 1;
 
     rArrangeIndex = nArrangeIndex;
 
     aPos = pW->AbsoluteScreenToOutputPixel( aPos );
 
     // store a cliprect that can be used to clip the common edge of the itemrect and the floating window
-    if( pFloatingWindow )
+    if( pFloatingWindow && pFloatingWindow->mpImplData->mpBox )
     {
         pFloatingWindow->mpImplData->maItemEdgeClipRect =
             tools::Rectangle( e1, e2 );
+    }
+
+    if (bLOKActive && pLOKTwipsPos)
+    {
+        if (pW->IsMapModeEnabled() || pW->GetMapMode().GetMapUnit() == MapUnit::MapPixel)
+        {
+            // if we use pW->LogicToLogic(aPos, pW->GetMapMode(), MapMode(MapUnit::MapTwip)),
+            // for pixel conversions when map mode is not enabled, we get
+            // a 20 twips per pixel conversion since LogicToLogic uses
+            // a fixed 72 dpi value, instead of a correctly computed output
+            // device dpi or at least the most commonly used 96 dpi value;
+            // and anyway the following is what we already do in
+            // ScGridWindow::LogicInvalidate when map mode is not enabled.
+
+            *pLOKTwipsPos = pW->PixelToLogic(aPos, MapMode(MapUnit::MapTwip));
+        }
+        else
+        {
+            *pLOKTwipsPos = OutputDevice::LogicToLogic(aPos, pW->GetMapMode(), MapMode(MapUnit::MapTwip));
+        }
     }
 
     // caller expects coordinates relative to top-level win
@@ -480,9 +527,10 @@ tools::Rectangle FloatingWindow::ImplConvertToAbsPos(vcl::Window* pReference, co
     return aFloatRect;
 }
 
-FloatingWindow* FloatingWindow::ImplFloatHitTest( vcl::Window* pReference, const Point& rPos, HitTest& rHitTest )
+FloatingWindow* FloatingWindow::ImplFloatHitTest( vcl::Window* pReference, const Point& rPos, bool& rbHitTestInsideRect )
 {
     FloatingWindow* pWin = this;
+    rbHitTestInsideRect = false;
 
     Point aAbsolute(FloatingWindow::ImplConvertToAbsPos(pReference, rPos));
 
@@ -492,12 +540,14 @@ FloatingWindow* FloatingWindow::ImplFloatHitTest( vcl::Window* pReference, const
 
         // use the border window to have the exact position
         vcl::Window *pBorderWin = pWin->GetWindow( GetWindowType::Border );
+        if (!pBorderWin)
+            break;
 
-        Point aPt;  // the top-left corner in output coordinates ie (0,0)
-        tools::Rectangle devRect( pBorderWin->ImplOutputToUnmirroredAbsoluteScreenPixel( tools::Rectangle( aPt, pBorderWin->GetSizePixel()) ) ) ;
+        // the top-left corner in output coordinates ie (0,0)
+        tools::Rectangle devRect( pBorderWin->ImplOutputToUnmirroredAbsoluteScreenPixel( tools::Rectangle( Point(), pBorderWin->GetSizePixel()) ) ) ;
         if ( devRect.IsInside( aAbsolute ) )
         {
-            rHitTest = HITTEST_WINDOW;
+            // inside the window
             return pWin;
         }
 
@@ -507,7 +557,7 @@ FloatingWindow* FloatingWindow::ImplFloatHitTest( vcl::Window* pReference, const
         //       is already in absolute device coordinates
         if ( pWin->maFloatRect.IsInside( aAbsolute ) )
         {
-            rHitTest = HITTEST_RECT;
+            rbHitTestInsideRect = true;
             return pWin;
         }
 
@@ -515,7 +565,6 @@ FloatingWindow* FloatingWindow::ImplFloatHitTest( vcl::Window* pReference, const
     }
     while ( pWin );
 
-    rHitTest = HITTEST_OUTSIDE;
     return nullptr;
 }
 
@@ -584,6 +633,18 @@ bool FloatingWindow::EventNotify( NotifyEvent& rNEvt )
     return bRet;
 }
 
+void FloatingWindow::PixelInvalidate(const tools::Rectangle* /*pRectangle*/)
+{
+    if (VclPtr<vcl::Window> pParent = GetParentWithLOKNotifier())
+    {
+        std::vector<vcl::LOKPayloadItem> aPayload;
+        const tools::Rectangle aRect(Point(0,0), Size(GetSizePixel().Width()+1, GetSizePixel().Height()+1));
+        aPayload.push_back(std::make_pair(OString("rectangle"), aRect.toString()));
+        const vcl::ILibreOfficeKitNotifier* pNotifier = pParent->GetLOKNotifier();
+        pNotifier->notifyWindow(GetLOKWindowId(), "invalidate", aPayload);
+    }
+}
+
 void FloatingWindow::StateChanged( StateChangedType nType )
 {
     if (nType == StateChangedType::InitShow)
@@ -592,6 +653,48 @@ void FloatingWindow::StateChanged( StateChangedType nType )
     }
 
     SystemWindow::StateChanged( nType );
+
+    VclPtr<vcl::Window> pParent = GetParentWithLOKNotifier();
+    if (pParent)
+    {
+        if (nType == StateChangedType::InitShow)
+        {
+            std::vector<vcl::LOKPayloadItem> aItems;
+            if (pParent == this)
+            {
+                // we are a toplevel window, let's so far pretend to be a
+                // dialog - but maybe we'll need a separate type for this
+                // later
+                aItems.emplace_back("type", "dialog");
+                aItems.emplace_back("position", mpImplData->maLOKTwipsPos.toString()); // twips
+            }
+            else
+            {
+                SetLOKNotifier(pParent->GetLOKNotifier());
+                if (dynamic_cast<HelpTextWindow*>(this))
+                    aItems.emplace_back("type", "tooltip");
+                else
+                    aItems.emplace_back("type", "child");
+
+                aItems.emplace_back("parentId", OString::number(pParent->GetLOKWindowId()));
+                if (mbInPopupMode)
+                    aItems.emplace_back("position", mpImplData->maPos.toString()); // pixels
+                else // mpImplData->maPos is not set
+                    aItems.emplace_back("position", GetPosPixel().toString());
+
+            }
+            aItems.emplace_back("size", GetSizePixel().toString());
+            GetLOKNotifier()->notifyWindow(GetLOKWindowId(), "created", aItems);
+        }
+        else if (!IsVisible() && nType == StateChangedType::Visible)
+        {
+            if (const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier())
+            {
+                pNotifier->notifyWindow(GetLOKWindowId(), "close");
+                ReleaseLOKNotifier();
+            }
+        }
+    }
 
     if ( nType == StateChangedType::ControlBackground )
     {
@@ -629,22 +732,22 @@ void FloatingWindow::PopupModeEnd()
 
 void FloatingWindow::SetTitleType( FloatWinTitleType nTitle )
 {
-    if ( (mnTitle != nTitle) && mpWindowImpl->mpBorderWindow )
-    {
-        mnTitle = nTitle;
-        Size aOutSize = GetOutputSizePixel();
-        BorderWindowTitleType nTitleStyle;
-        if ( nTitle == FloatWinTitleType::Normal )
-            nTitleStyle = BorderWindowTitleType::Small;
-        else if ( nTitle == FloatWinTitleType::TearOff )
-            nTitleStyle = BorderWindowTitleType::Tearoff;
-        else if ( nTitle == FloatWinTitleType::Popup )
-            nTitleStyle = BorderWindowTitleType::Popup;
-        else // nTitle == FloatWinTitleType::NONE
-            nTitleStyle = BorderWindowTitleType::NONE;
-        static_cast<ImplBorderWindow*>(mpWindowImpl->mpBorderWindow.get())->SetTitleType( nTitleStyle, aOutSize );
-        static_cast<ImplBorderWindow*>(mpWindowImpl->mpBorderWindow.get())->GetBorder( mpWindowImpl->mnLeftBorder, mpWindowImpl->mnTopBorder, mpWindowImpl->mnRightBorder, mpWindowImpl->mnBottomBorder );
-    }
+    if ( (mnTitle == nTitle) || !mpWindowImpl->mpBorderWindow )
+        return;
+
+    mnTitle = nTitle;
+    Size aOutSize = GetOutputSizePixel();
+    BorderWindowTitleType nTitleStyle;
+    if ( nTitle == FloatWinTitleType::Normal )
+        nTitleStyle = BorderWindowTitleType::Small;
+    else if ( nTitle == FloatWinTitleType::TearOff )
+        nTitleStyle = BorderWindowTitleType::Tearoff;
+    else if ( nTitle == FloatWinTitleType::Popup )
+        nTitleStyle = BorderWindowTitleType::Popup;
+    else // nTitle == FloatWinTitleType::NONE
+        nTitleStyle = BorderWindowTitleType::NONE;
+    static_cast<ImplBorderWindow*>(mpWindowImpl->mpBorderWindow.get())->SetTitleType( nTitleStyle, aOutSize );
+    static_cast<ImplBorderWindow*>(mpWindowImpl->mpBorderWindow.get())->GetBorder( mpWindowImpl->mnLeftBorder, mpWindowImpl->mnTopBorder, mpWindowImpl->mnRightBorder, mpWindowImpl->mnBottomBorder );
 }
 
 void FloatingWindow::StartPopupMode( const tools::Rectangle& rRect, FloatWinPopupFlags nFlags )
@@ -667,8 +770,10 @@ void FloatingWindow::StartPopupMode( const tools::Rectangle& rRect, FloatWinPopu
 
     // compute window position according to flags and arrangement
     sal_uInt16 nArrangeIndex;
-    Point aPos = ImplCalcPos( this, rRect, nFlags, nArrangeIndex );
-    SetPosPixel( aPos );
+    DoInitialLayout();
+    mpImplData->maPos = ImplCalcPos(this, rRect, nFlags, nArrangeIndex, &mpImplData->maLOKTwipsPos);
+    SetPosPixel( mpImplData->maPos );
+    ImplGetFrame()->PositionByToolkit(rRect, nFlags);
 
     // set data and display window
     // convert maFloatRect to absolute device coordinates
@@ -676,10 +781,10 @@ void FloatingWindow::StartPopupMode( const tools::Rectangle& rRect, FloatWinPopu
     // !!! rRect is expected to be in screen coordinates of the parent frame window !!!
     maFloatRect = FloatingWindow::ImplConvertToAbsPos(GetParent(), rRect);
 
-    maFloatRect.Left()     -= 2;
-    maFloatRect.Top()      -= 2;
-    maFloatRect.Right()    += 2;
-    maFloatRect.Bottom()   += 2;
+    maFloatRect.AdjustLeft( -2 );
+    maFloatRect.AdjustTop( -2 );
+    maFloatRect.AdjustRight(2 );
+    maFloatRect.AdjustBottom(2 );
     mnPopupModeFlags        = nFlags;
     mbInPopupMode           = true;
     mbPopupMode             = true;
@@ -689,8 +794,8 @@ void FloatingWindow::StartPopupMode( const tools::Rectangle& rRect, FloatWinPopu
 
     // add FloatingWindow to list of windows that are in popup mode
     ImplSVData* pSVData = ImplGetSVData();
-    mpNextFloat = pSVData->maWinData.mpFirstFloat;
-    pSVData->maWinData.mpFirstFloat = this;
+    mpNextFloat = pSVData->mpWinData->mpFirstFloat;
+    pSVData->mpWinData->mpFirstFloat = this;
     if (nFlags & FloatWinPopupFlags::GrabFocus)
     {
         // force key input even without focus (useful for menus)
@@ -714,10 +819,10 @@ void FloatingWindow::StartPopupMode( ToolBox* pBox, FloatWinPopupFlags nFlags )
 
     // retrieve some data from the ToolBox
     tools::Rectangle aRect = nItemId ? pBox->GetItemRect( nItemId ) : pBox->GetOverflowRect();
-    Point aPos;
+
     // convert to parent's screen coordinates
-    aPos = GetParent()->OutputToScreenPixel( GetParent()->AbsoluteScreenToOutputPixel( pBox->OutputToAbsoluteScreenPixel( aRect.TopLeft() ) ) );
-    aRect.SetPos( aPos );
+    mpImplData->maPos = GetParent()->OutputToScreenPixel( GetParent()->AbsoluteScreenToOutputPixel( pBox->OutputToAbsoluteScreenPixel( aRect.TopLeft() ) ) );
+    aRect.SetPos( mpImplData->maPos );
 
     nFlags |=
         FloatWinPopupFlags::AllMouseButtonClose |
@@ -746,38 +851,41 @@ void FloatingWindow::ImplEndPopupMode( FloatWinPopupEndFlags nFlags, const VclPt
 
     mbInCleanUp = true; // prevent killing this window due to focus change while working with it
 
-    // stop the PopupMode also for all following PopupMode windows
-    while ( pSVData->maWinData.mpFirstFloat && pSVData->maWinData.mpFirstFloat.get() != this )
-        pSVData->maWinData.mpFirstFloat->EndPopupMode( FloatWinPopupEndFlags::Cancel );
+    if (!(nFlags & FloatWinPopupEndFlags::NoCloseChildren))
+    {
+        // stop the PopupMode also for all PopupMode windows created after us
+        std::vector<VclPtr<FloatingWindow>> aCancelFloats;
+        // stop the PopupMode also for all following PopupMode windows
+        for (auto pFloat = pSVData->mpWinData->mpFirstFloat;
+             pFloat != nullptr && pFloat != this;
+             pFloat = pFloat->mpNextFloat)
+            aCancelFloats.push_back(pFloat);
+        for (auto & it : aCancelFloats)
+            it->EndPopupMode(FloatWinPopupEndFlags::Cancel | FloatWinPopupEndFlags::NoCloseChildren);
+    }
 
     // delete window from the list
-    pSVData->maWinData.mpFirstFloat = mpNextFloat;
+    pSVData->mpWinData->mpFirstFloat = mpNextFloat;
     mpNextFloat = nullptr;
 
     FloatWinPopupFlags nPopupModeFlags = mnPopupModeFlags;
+    mbPopupModeTearOff = nFlags & FloatWinPopupEndFlags::TearOff &&
+                         nPopupModeFlags & FloatWinPopupFlags::AllowTearOff;
 
     // hide window again if it was not deleted
-    if ( !(nFlags & FloatWinPopupEndFlags::TearOff) ||
-         !(nPopupModeFlags & FloatWinPopupFlags::AllowTearOff) )
-    {
+    if (!mbPopupModeTearOff)
         Show( false, ShowFlags::NoFocusChange );
 
-        if (HasChildPathFocus() && xFocusId != nullptr)
-        {
-            // restore focus to previous focus window if we still have the focus
-            Window::EndSaveFocus(xFocusId);
-        }
-        else if ( pSVData->maWinData.mpFocusWin && pSVData->maWinData.mpFirstFloat &&
-                  ImplIsWindowOrChild( pSVData->maWinData.mpFocusWin ) )
-        {
-            // maybe pass focus on to a suitable FloatingWindow
-            pSVData->maWinData.mpFirstFloat->GrabFocus();
-        }
-        mbPopupModeTearOff = false;
-    }
-    else
+    if (HasChildPathFocus() && xFocusId != nullptr)
     {
-        mbPopupModeTearOff = true;
+        // restore focus to previous focus window if we still have the focus
+        Window::EndSaveFocus(xFocusId);
+    }
+    else if ( pSVData->mpWinData->mpFocusWin && pSVData->mpWinData->mpFirstFloat &&
+              ImplIsWindowOrChild( pSVData->mpWinData->mpFocusWin ) )
+    {
+        // maybe pass focus on to a suitable FloatingWindow
+        pSVData->mpWinData->mpFirstFloat->GrabFocus();
     }
 
     mbPopupModeCanceled = bool(nFlags & FloatWinPopupEndFlags::Cancel);
@@ -805,9 +913,9 @@ void FloatingWindow::ImplEndPopupMode( FloatWinPopupEndFlags nFlags, const VclPt
     {
         if ( !(nPopupModeFlags & FloatWinPopupFlags::NewLevel) )
         {
-            if ( pSVData->maWinData.mpFirstFloat )
+            if (pSVData->mpWinData->mpFirstFloat)
             {
-                FloatingWindow* pLastLevelFloat = pSVData->maWinData.mpFirstFloat->ImplFindLastLevelFloat();
+                FloatingWindow* pLastLevelFloat = pSVData->mpWinData->mpFirstFloat->ImplFindLastLevelFloat();
                 pLastLevelFloat->EndPopupMode( FloatWinPopupEndFlags::Cancel | FloatWinPopupEndFlags::CloseAll );
             }
         }
@@ -821,10 +929,22 @@ void FloatingWindow::EndPopupMode( FloatWinPopupEndFlags nFlags )
     ImplEndPopupMode(nFlags, mxPrevFocusWin);
 }
 
-void FloatingWindow::AddPopupModeWindow( vcl::Window* pWindow )
+void FloatingWindow::AddPopupModeWindow(vcl::Window* pWindow)
 {
     // !!! up-to-now only 1 window and not yet a list
     mpFirstPopupModeWin = pWindow;
+}
+bool FloatingWindow::UpdatePositionData()
+{
+    auto pWin = ImplGetParent();
+    if (pWin)
+    {
+        // Simulate Move, so the relative position of the floating window will be recalculated
+        pWin->ImplCallMove();
+        return true;
+    }
+
+    return false;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

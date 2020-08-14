@@ -17,18 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/table/tablestyle.hxx"
+#include <drawingml/table/tablestyle.hxx>
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
 TableStyle::TableStyle()
 {
 }
 
-TableStyle::~TableStyle()
-{
 }
-
-} } }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

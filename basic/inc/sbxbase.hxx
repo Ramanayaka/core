@@ -20,9 +20,11 @@
 #ifndef INCLUDED_BASIC_INC_SBXBASE_HXX
 #define INCLUDED_BASIC_INC_SBXBASE_HXX
 
+#include <sal/config.h>
+
+#include <basic/sbxvar.hxx>
 #include <i18nlangtag/lang.h>
-#include <basic/sbxdef.hxx>
-#include <basic/basicdllapi.h>
+#include <vcl/errcode.hxx>
 
 #include <memory>
 #include <vector>
@@ -35,8 +37,9 @@ class SbxBasicFormater;
 struct SbxAppData
 {
     ErrCode             eErrCode;  // Error code
-    std::vector<std::unique_ptr<SbxFactory>>
-                        m_Factories;
+    SbxVariableRef      m_aGlobErr; // Global error object
+    std::vector<SbxFactory*> m_Factories; // these are owned by fields in SbiGlobals
+    tools::SvRef<SvRefBase>  mrImplRepository;
 
     // Pointer to Format()-Command helper class
     std::unique_ptr<SbxBasicFormater>   pBasicFormater;
@@ -50,7 +53,9 @@ struct SbxAppData
     ~SbxAppData();
 };
 
-BASIC_DLLPUBLIC SbxAppData& GetSbxData_Impl();
+SbxAppData& GetSbxData_Impl();
+/** returns true if the SbxAppData is still valid, used to check if we are in shutdown. */
+bool IsSbxData_Impl();
 
 #endif // INCLUDED_BASIC_INC_SBXBASE_HXX
 

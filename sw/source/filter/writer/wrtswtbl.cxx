@@ -19,15 +19,17 @@
 
 #include <memory>
 #include <hintids.hxx>
+#include <editeng/borderline.hxx>
 #include <editeng/boxitem.hxx>
 #include <editeng/brushitem.hxx>
 #include <tools/fract.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 #include <wrtswtbl.hxx>
 #include <swtable.hxx>
 #include <frmfmt.hxx>
 #include <fmtfsize.hxx>
 #include <fmtornt.hxx>
-#include <frmatr.hxx>
 #include <htmltbl.hxx>
 
 using ::editeng::SvxBorderLine;
@@ -83,7 +85,7 @@ sal_uInt32 SwWriteTable::GetBoxWidth( const SwTableBox *pBox )
 {
     const SwFrameFormat *pFormat = pBox->GetFrameFormat();
     const SwFormatFrameSize& aFrameSize=
-        static_cast<const SwFormatFrameSize&>(pFormat->GetFormatAttr( RES_FRM_SIZE ));
+        pFormat->GetFormatAttr( RES_FRM_SIZE );
 
     return sal::static_int_cast<sal_uInt32>(aFrameSize.GetSize().Width());
 }
@@ -191,11 +193,10 @@ const SvxBrushItem *SwWriteTable::GetLineBrush( const SwTableBox *pBox,
 void SwWriteTable::MergeBorders( const SvxBorderLine* pBorderLine,
                                    bool bTable )
 {
-    if( (sal_uInt32)-1 == m_nBorderColor )
+    if( Color(0xffffffff) == m_nBorderColor )
     {
-        Color aGrayColor( COL_GRAY );
-        if( !pBorderLine->GetColor().IsRGBEqual( aGrayColor ) )
-            m_nBorderColor = pBorderLine->GetColor().GetColor();
+        if( !pBorderLine->GetColor().IsRGBEqual( COL_GRAY ) )
+            m_nBorderColor = pBorderLine->GetColor();
     }
 
     if( !m_bCollectBorderWidth )
@@ -228,7 +229,7 @@ sal_uInt16 SwWriteTable::MergeBoxBorders( const SwTableBox *pBox,
     sal_uInt16 nBorderMask = 0;
 
     const SwFrameFormat *pFrameFormat = pBox->GetFrameFormat();
-    const SvxBoxItem& rBoxItem = static_cast<const SvxBoxItem&>(pFrameFormat->GetFormatAttr( RES_BOX ));
+    const SvxBoxItem& rBoxItem = pFrameFormat->GetFormatAttr( RES_BOX );
 
     if( rBoxItem.GetTop() )
     {
@@ -296,7 +297,7 @@ sal_uInt16 SwWriteTable::GetLeftSpace( sal_uInt16 nCol ) const
     {
         nSpace = nSpace + m_nLeftSub;
 
-        const SwWriteTableCol *pCol = m_aCols[nCol];
+        const SwWriteTableCol *pCol = m_aCols[nCol].get();
         if( pCol->HasLeftBorder() )
             nSpace = nSpace + m_nBorder;
     }
@@ -315,7 +316,7 @@ SwWriteTable::GetRightSpace(size_t const nCol, sal_uInt16 nColSpan) const
     {
         nSpace += (m_nCellSpacing + m_nRightSub);
 
-        const SwWriteTableCol *pCol = m_aCols[nCol+nColSpan-1];
+        const SwWriteTableCol *pCol = m_aCols[nCol+nColSpan-1].get();
         if( pCol->HasRightBorder() )
             nSpace = nSpace + m_nBorder;
     }
@@ -335,25 +336,25 @@ sal_uInt16 SwWriteTable::GetAbsWidth( sal_uInt16 nCol, sal_uInt16 nColSpan ) con
     nWidth -= GetLeftSpace( nCol ) + GetRightSpace( nCol, nColSpan );
 
     OSL_ENSURE( nWidth > 0, "Column Width <= 0. OK?" );
-    return nWidth > 0 ? (sal_uInt16)nWidth : 0;
+    return nWidth > 0 ? static_cast<sal_uInt16>(nWidth) : 0;
 }
 
 sal_uInt16 SwWriteTable::GetRelWidth( sal_uInt16 nCol, sal_uInt16 nColSpan ) const
 {
     long nWidth = GetRawWidth( nCol, nColSpan );
 
-    return (sal_uInt16)(long)Fraction( nWidth*256 + GetBaseWidth()/2,
-                                   GetBaseWidth() );
+    return static_cast<sal_uInt16>(static_cast<long>(Fraction( nWidth*256 + GetBaseWidth()/2,
+                                   GetBaseWidth() )));
 }
 
-sal_uInt16 SwWriteTable::GetPrcWidth( sal_uInt16 nCol, sal_uInt16 nColSpan ) const
+sal_uInt16 SwWriteTable::GetPercentWidth( sal_uInt16 nCol, sal_uInt16 nColSpan ) const
 {
     long nWidth = GetRawWidth( nCol, nColSpan );
 
     // Looks funny, but is nothing more than
     // [(100 * nWidth) + .5] without rounding errors
-    return (sal_uInt16)(long)Fraction( nWidth*100 + GetBaseWidth()/2,
-                                   GetBaseWidth() );
+    return static_cast<sal_uInt16>(static_cast<long>(Fraction( nWidth*100 + GetBaseWidth()/2,
+                                   GetBaseWidth() )));
 }
 
 long SwWriteTable::GetAbsHeight(long nRawHeight, size_t const nRow,
@@ -367,7 +368,7 @@ long SwWriteTable::GetAbsHeight(long nRawHeight, size_t const nRow,
     if( nRow==0 )
     {
         nRawHeight -= m_nCellSpacing;
-        pRow = m_aRows[nRow];
+        pRow = m_aRows[nRow].get();
         if( pRow->HasTopBorder() )
             nRawHeight -= m_nBorder;
     }
@@ -376,13 +377,13 @@ long SwWriteTable::GetAbsHeight(long nRawHeight, size_t const nRow,
     if( nRow+nRowSpan==m_aRows.size() )
     {
         if( !pRow || nRowSpan > 1 )
-            pRow = m_aRows[nRow+nRowSpan-1];
+            pRow = m_aRows[nRow+nRowSpan-1].get();
         if( pRow->HasBottomBorder() )
             nRawHeight -= m_nBorder;
     }
 
     OSL_ENSURE( nRawHeight > 0, "Row Height <= 0. OK?" );
-    return nRawHeight > 0 ? nRawHeight : 0;
+    return std::max<long>(nRawHeight, 0);
 }
 
 bool SwWriteTable::ShouldExpandSub(const SwTableBox *pBox, bool /*bExpandedBefore*/,
@@ -432,9 +433,8 @@ void SwWriteTable::CollectTableRowsCols( long nStartRPos,
                 nLineHeight /= nLines - nLine; // divided through the number of remaining sub rows
                 nRPos += nLineHeight;
             }
-            SwWriteTableRow *pRow = new SwWriteTableRow( nRPos, m_bUseLayoutHeights);
-            if( !m_aRows.insert( pRow ).second )
-                delete pRow;
+            std::unique_ptr<SwWriteTableRow> pRow(new SwWriteTableRow( nRPos, m_bUseLayoutHeights));
+            m_aRows.insert( std::move(pRow) );
         }
         else
         {
@@ -444,7 +444,9 @@ void SwWriteTable::CollectTableRowsCols( long nStartRPos,
             nRPos = nStartRPos + nParentLineHeight;
 #if OSL_DEBUG_LEVEL > 0
             SwWriteTableRow aSrchRow( nRPos, m_bUseLayoutHeights );
-            OSL_ENSURE( m_aRows.find( &aSrchRow ) != m_aRows.end(), "Parent-Row not found" );
+            OSL_ENSURE( std::find_if(m_aRows.begin(), m_aRows.end(),
+                            [&](std::unique_ptr<SwWriteTableRow> const & p)
+                            { return *p == aSrchRow; }) != m_aRows.end(), "Parent-Row not found" );
             SwWriteTableRow aRowCheckPos(nCheckPos,m_bUseLayoutHeights);
             SwWriteTableRow aRowRPos(nRPos,m_bUseLayoutHeights);
             OSL_ENSURE( !m_bUseLayoutHeights ||
@@ -467,10 +469,9 @@ void SwWriteTable::CollectTableRowsCols( long nStartRPos,
             if( nBox < nBoxes-1 || (nParentLineWidth==0 && nLine==0)  )
             {
                 nCPos = nCPos + GetBoxWidth( pBox );
-                SwWriteTableCol *pCol = new SwWriteTableCol( nCPos );
+                std::unique_ptr<SwWriteTableCol> pCol(new SwWriteTableCol( nCPos ));
 
-                if( !m_aCols.insert( pCol ).second )
-                    delete pCol;
+                m_aCols.insert( std::move(pCol) );
 
                 if( nBox==nBoxes-1 )
                 {
@@ -561,7 +562,9 @@ void SwWriteTable::FillTableRowsCols( long nStartRPos, sal_uInt16 nStartRow,
         // And their index
         sal_uInt16 nOldRow = nRow;
         SwWriteTableRow aSrchRow( nRPos,m_bUseLayoutHeights );
-        SwWriteTableRows::const_iterator it2 = m_aRows.find( &aSrchRow );
+        SwWriteTableRows::const_iterator it2 = std::find_if(m_aRows.begin(), m_aRows.end(),
+                                                 [&](std::unique_ptr<SwWriteTableRow> const &p)
+                                                 { return *p == aSrchRow; });
 
         // coupled methods out of sync ...
         assert( it2 != m_aRows.end() );
@@ -575,8 +578,8 @@ void SwWriteTable::FillTableRowsCols( long nStartRPos, sal_uInt16 nStartRow,
                 --nOldRow;
         }
 
-        SwWriteTableRow *pRow = m_aRows[nOldRow];
-        SwWriteTableRow *pEndRow = m_aRows[nRow];
+        SwWriteTableRow *pRow = m_aRows[nOldRow].get();
+        SwWriteTableRow *pEndRow = m_aRows[nRow].get();
         if( nLine+1==nNumOfHeaderRows && nParentLineHeight==0 )
             m_nHeadEndRow = nRow;
 
@@ -656,11 +659,12 @@ void SwWriteTable::FillTableRowsCols( long nStartRPos, sal_uInt16 nStartRow,
                 // The new table model may have true row span attributes
                 const long nAttrRowSpan = pBox->getRowSpan();
                 if ( 1 < nAttrRowSpan )
-                    nRowSpan = (sal_uInt16)nAttrRowSpan;
+                    nRowSpan = static_cast<sal_uInt16>(nAttrRowSpan);
                 else if ( nAttrRowSpan < 1 )
                     nRowSpan = 0;
 
-                sal_uInt16 nColSpan = nCol - nOldCol + 1;
+                SAL_WARN_IF(nCol < nOldCol, "sw.filter", "unexpected " << nCol << " < " << nOldCol);
+                sal_uInt16 nColSpan = nCol >= nOldCol ? nCol - nOldCol + 1 : 1;
                 pRow->AddCell( pBox, nOldRow, nOldCol,
                                nRowSpan, nColSpan, nHeight,
                                pBrushItem );
@@ -677,7 +681,7 @@ void SwWriteTable::FillTableRowsCols( long nStartRPos, sal_uInt16 nStartRow,
                     // above can be changed.
                     if (!(nBorderMask & 4) && nOldCol < m_aCols.size())
                     {
-                        SwWriteTableCol *pCol = m_aCols[nOldCol];
+                        SwWriteTableCol *pCol = m_aCols[nOldCol].get();
                         OSL_ENSURE(pCol, "No TableCol found, panic!");
                         if (pCol)
                             pCol->bLeftBorder = false;
@@ -685,7 +689,7 @@ void SwWriteTable::FillTableRowsCols( long nStartRPos, sal_uInt16 nStartRow,
 
                     if (!(nBorderMask & 8))
                     {
-                        SwWriteTableCol *pCol = m_aCols[nCol];
+                        SwWriteTableCol *pCol = m_aCols[nCol].get();
                         OSL_ENSURE(pCol, "No TableCol found, panic!");
                         if (pCol)
                             pCol->bRightBorder = false;
@@ -726,7 +730,7 @@ void SwWriteTable::FillTableRowsCols( long nStartRPos, sal_uInt16 nStartRow,
 
 SwWriteTable::SwWriteTable(const SwTable* pTable, const SwTableLines& rLines, long nWidth,
     sal_uInt32 nBWidth, bool bRel, sal_uInt16 nMaxDepth, sal_uInt16 nLSub, sal_uInt16 nRSub, sal_uInt32 nNumOfRowsToRepeat)
-    : m_pTable(pTable), m_nBorderColor((sal_uInt32)-1), m_nCellSpacing(0), m_nCellPadding(0), m_nBorder(0),
+    : m_pTable(pTable), m_nBorderColor(sal_uInt32(-1)), m_nCellSpacing(0), m_nCellPadding(0), m_nBorder(0),
     m_nInnerBorder(0), m_nBaseWidth(nBWidth), m_nHeadEndRow(USHRT_MAX),
      m_nLeftSub(nLSub), m_nRightSub(nRSub), m_nTabWidth(nWidth), m_bRelWidths(bRel),
     m_bUseLayoutHeights(true),
@@ -740,8 +744,8 @@ SwWriteTable::SwWriteTable(const SwTable* pTable, const SwTableLines& rLines, lo
 
     // First the table structure set. Behind the table is in each
     // case the end of a column
-    SwWriteTableCol *pCol = new SwWriteTableCol( nParentWidth );
-    m_aCols.insert( pCol );
+    std::unique_ptr<SwWriteTableCol> pCol(new SwWriteTableCol( nParentWidth ));
+    m_aCols.insert( std::move(pCol) );
     m_bUseLayoutHeights = true;
     CollectTableRowsCols( 0, 0, 0, nParentWidth, rLines, nMaxDepth - 1 );
 
@@ -759,10 +763,10 @@ SwWriteTable::SwWriteTable(const SwTable* pTable, const SwTableLines& rLines, lo
 }
 
 SwWriteTable::SwWriteTable(const SwTable* pTable, const SwHTMLTableLayout *pLayoutInfo)
-    : m_pTable(pTable), m_nBorderColor((sal_uInt32)-1), m_nCellSpacing(0), m_nCellPadding(0), m_nBorder(0),
+    : m_pTable(pTable), m_nBorderColor(sal_uInt32(-1)), m_nCellSpacing(0), m_nCellPadding(0), m_nBorder(0),
     m_nInnerBorder(0), m_nBaseWidth(pLayoutInfo->GetWidthOption()), m_nHeadEndRow(0),
     m_nLeftSub(0), m_nRightSub(0), m_nTabWidth(pLayoutInfo->GetWidthOption()),
-    m_bRelWidths(pLayoutInfo->HasPrcWidthOption()), m_bUseLayoutHeights(false),
+    m_bRelWidths(pLayoutInfo->HasPercentWidthOption()), m_bUseLayoutHeights(false),
 #ifdef DBG_UTIL
     m_bGetLineHeightCalled(false),
 #endif
@@ -782,8 +786,8 @@ SwWriteTable::SwWriteTable(const SwTable* pTable, const SwHTMLTableLayout *pLayo
     // First set the table structure.
     for( sal_uInt16 nCol=0; nCol<nCols; ++nCol )
     {
-        SwWriteTableCol *pCol =
-            new SwWriteTableCol( (nCol+1)*COL_DFLT_WIDTH );
+        std::unique_ptr<SwWriteTableCol> pCol(
+            new SwWriteTableCol( (nCol+1)*COL_DFLT_WIDTH ));
 
         if( m_bColTags )
         {
@@ -793,22 +797,22 @@ SwWriteTable::SwWriteTable(const SwTable* pTable, const SwHTMLTableLayout *pLayo
                                pLayoutCol->IsRelWidthOption() );
         }
 
-        m_aCols.insert( pCol );
+        m_aCols.insert( std::move(pCol) );
     }
 
     for( sal_uInt16 nRow=0; nRow<nRows; ++nRow )
     {
-        SwWriteTableRow *pRow =
-            new SwWriteTableRow( (nRow+1)*ROW_DFLT_HEIGHT, m_bUseLayoutHeights );
+        std::unique_ptr<SwWriteTableRow> pRow(
+            new SwWriteTableRow( (nRow+1)*ROW_DFLT_HEIGHT, m_bUseLayoutHeights ));
         pRow->nTopBorder = 0;
         pRow->nBottomBorder = 0;
-        m_aRows.insert( pRow );
+        m_aRows.insert( std::move(pRow) );
     }
 
     // And now fill with life
     for( sal_uInt16 nRow=0; nRow<nRows; ++nRow )
     {
-        SwWriteTableRow *pRow = m_aRows[nRow];
+        SwWriteTableRow *pRow = m_aRows[nRow].get();
 
         bool bHeightExported = false;
         for( sal_uInt16 nCol=0; nCol<nCols; nCol++ )
@@ -817,13 +821,13 @@ SwWriteTable::SwWriteTable(const SwTable* pTable, const SwHTMLTableLayout *pLayo
                 pLayoutInfo->GetCell( nRow, nCol );
 
             const SwHTMLTableLayoutCnts *pLayoutCnts =
-                pLayoutCell->GetContents();
+                pLayoutCell->GetContents().get();
 
             // The cell begins actually a row above or further forward?
             if( ( nRow>0 && pLayoutCnts == pLayoutInfo->GetCell(nRow-1,nCol)
-                                                      ->GetContents() ) ||
+                                                      ->GetContents().get() ) ||
                 ( nCol>0 && pLayoutCnts == pLayoutInfo->GetCell(nRow,nCol-1)
-                                                      ->GetContents() ) )
+                                                      ->GetContents().get() ) )
             {
                 continue;
             }
@@ -841,25 +845,25 @@ SwWriteTable::SwWriteTable(const SwTable* pTable, const SwHTMLTableLayout *pLayo
                 pRow->AddCell( pBox, nRow, nCol, nRowSpan, nColSpan,
                                nHeight, pBrushItem );
             pCell->SetWidthOpt( pLayoutCell->GetWidthOption(),
-                                pLayoutCell->IsPrcWidthOption() );
+                                pLayoutCell->IsPercentWidthOption() );
 
             sal_uInt16 nTopBorder = USHRT_MAX, nBottomBorder = USHRT_MAX;
             sal_uInt16 nBorderMask =
             MergeBoxBorders( pBox, nRow, nCol, nRowSpan, nColSpan,
                                 nTopBorder, nBottomBorder );
 
-            SwWriteTableCol *pCol = m_aCols[nCol];
+            SwWriteTableCol *pCol = m_aCols[nCol].get();
             if( !(nBorderMask & 4) )
                 pCol->bLeftBorder = false;
 
-            pCol = m_aCols[nCol+nColSpan-1];
+            pCol = m_aCols[nCol+nColSpan-1].get();
             if( !(nBorderMask & 8) )
                 pCol->bRightBorder = false;
 
             if( !(nBorderMask & 1) )
                 pRow->bTopBorder = false;
 
-            SwWriteTableRow *pEndRow = m_aRows[nRow+nRowSpan-1];
+            SwWriteTableRow *pEndRow = m_aRows[nRow+nRowSpan-1].get();
             if( !(nBorderMask & 2) )
                 pEndRow->bBottomBorder = false;
 

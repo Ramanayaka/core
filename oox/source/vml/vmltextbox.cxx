@@ -17,20 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/vml/vmltextbox.hxx"
+#include <oox/vml/vmltextbox.hxx>
 
 #include <rtl/ustrbuf.hxx>
-#include <svx/unopage.hxx>
+#include <tools/diagnose_ex.h>
 #include <com/sun/star/awt/FontWeight.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/drawing/TextHorizontalAdjust.hpp>
+#include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/text/XTextAppend.hpp>
 #include <com/sun/star/text/WritingMode.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
 #include <comphelper/sequence.hxx>
+#include <comphelper/sequenceashashmap.hxx>
 
-namespace oox {
-namespace vml {
+namespace oox::vml {
 
 using namespace com::sun::star;
 
@@ -57,7 +58,7 @@ TextBox::TextBox(ShapeTypeModel& rTypeModel)
 
 void TextBox::appendPortion( const TextParagraphModel& rParagraph, const TextFontModel& rFont, const OUString& rText )
 {
-    maPortions.push_back( TextPortionModel( rParagraph, rFont, rText ) );
+    maPortions.emplace_back( rParagraph, rFont, rText );
 }
 
 const TextFontModel* TextBox::getFirstFont() const
@@ -68,20 +69,37 @@ const TextFontModel* TextBox::getFirstFont() const
 OUString TextBox::getText() const
 {
     OUStringBuffer aBuffer;
-    for( PortionVector::const_iterator aIt = maPortions.begin(), aEnd = maPortions.end(); aIt != aEnd; ++aIt )
-        aBuffer.append( aIt->maText );
+    for (auto const& portion : maPortions)
+        aBuffer.append( portion.maText );
     return aBuffer.makeStringAndClear();
 }
 
 void TextBox::convert(const uno::Reference<drawing::XShape>& xShape) const
 {
     uno::Reference<text::XTextAppend> xTextAppend(xShape, uno::UNO_QUERY);
-    for (PortionVector::const_iterator aIt = maPortions.begin(), aEnd = maPortions.end(); aIt != aEnd; ++aIt)
+    OUString sParaStyle;
+    bool bAmbiguousStyle = true;
+
+    for (auto const& portion : maPortions)
     {
         beans::PropertyValue aPropertyValue;
         std::vector<beans::PropertyValue> aPropVec;
-        const TextParagraphModel& rParagraph = aIt->maParagraph;
-        const TextFontModel& rFont = aIt->maFont;
+        const TextParagraphModel& rParagraph = portion.maParagraph;
+        const TextFontModel& rFont = portion.maFont;
+        if (rFont.moName.has())
+        {
+            aPropertyValue.Name = "CharFontName";
+            aPropertyValue.Value <<= rFont.moName.get();
+            aPropVec.push_back(aPropertyValue);
+
+            aPropertyValue.Name = "CharFontNameAsian";
+            aPropertyValue.Value <<= rFont.moNameAsian.get();
+            aPropVec.push_back(aPropertyValue);
+
+            aPropertyValue.Name = "CharFontNameComplex";
+            aPropertyValue.Value <<= rFont.moNameComplex.get();
+            aPropVec.push_back(aPropertyValue);
+        }
         if (rFont.mobBold.has())
         {
             aPropertyValue.Name = "CharWeight";
@@ -115,13 +133,46 @@ void TextBox::convert(const uno::Reference<drawing::XShape>& xShape) const
             aPropertyValue.Value <<= eAdjust;
             aPropVec.push_back(aPropertyValue);
         }
+
+        // All paragraphs should be either undefined (default) or the same style,
+        // because it will only  be applied to the entire shape, and not per-paragraph.
+        if (sParaStyle.isEmpty() )
+        {
+            if ( rParagraph.moParaStyleName.has() )
+                sParaStyle = rParagraph.moParaStyleName.get();
+            if ( bAmbiguousStyle )
+                bAmbiguousStyle = false; // both empty parastyle and ambiguous can only be true at the first paragraph
+            else
+                bAmbiguousStyle = rParagraph.moParaStyleName.has(); // ambiguous if both default and specified style used.
+        }
+        else if ( !bAmbiguousStyle )
+        {
+            if ( !rParagraph.moParaStyleName.has() )
+                bAmbiguousStyle = true; // ambiguous if both specified and default style used.
+            else if ( rParagraph.moParaStyleName.get() != sParaStyle )
+                bAmbiguousStyle = true; // ambiguous if two different styles specified.
+        }
         if (rFont.moColor.has())
         {
             aPropertyValue.Name = "CharColor";
             aPropertyValue.Value <<= rFont.moColor.get().toUInt32(16);
             aPropVec.push_back(aPropertyValue);
         }
-        xTextAppend->appendTextPortion(aIt->maText, comphelper::containerToSequence(aPropVec));
+        xTextAppend->appendTextPortion(portion.maText, comphelper::containerToSequence(aPropVec));
+    }
+
+    try
+    {
+        // Track the style in a grabBag for use later when style details are known.
+        comphelper::SequenceAsHashMap aGrabBag;
+        uno::Reference<beans::XPropertySet> xPropertySet(xShape, uno::UNO_QUERY_THROW);
+        aGrabBag.update( xPropertySet->getPropertyValue("CharInteropGrabBag") );
+        aGrabBag["mso-pStyle"] <<= sParaStyle;
+        xPropertySet->setPropertyValue("CharInteropGrabBag", uno::makeAny(aGrabBag.getAsConstPropertyValueList()));
+    }
+    catch (const uno::Exception&)
+    {
+        TOOLS_WARN_EXCEPTION( "oox.vml","convert() grabbag exception" );
     }
 
     // Remove the last character of the shape text, if it would be a newline.
@@ -131,24 +182,23 @@ void TextBox::convert(const uno::Reference<drawing::XShape>& xShape) const
     if (xCursor->getString() == "\n")
         xCursor->setString("");
 
-    if ( maLayoutFlow == "vertical" )
-    {
-        uno::Reference<beans::XPropertySet> xProperties(xShape, uno::UNO_QUERY);
+    if ( maLayoutFlow != "vertical" )
+        return;
 
-        // VML has the text horizontally aligned to left (all the time),
-        // v-text-anchor for vertical alignment, and vertical mode to swap the
-        // two.  drawinglayer supports both horizontal and vertical alignment,
-        // but no vertical mode: we use T->B, R->L instead.
-        // As a result, we need to set horizontal adjustment here to 'right',
-        // that will result in vertical 'top' after writing mode is applied,
-        // which matches the VML behavior.
-        xProperties->setPropertyValue("TextHorizontalAdjust", uno::makeAny(drawing::TextHorizontalAdjust_RIGHT));
+    uno::Reference<beans::XPropertySet> xProperties(xShape, uno::UNO_QUERY);
 
-        xProperties->setPropertyValue( "TextWritingMode", uno::makeAny( text::WritingMode_TB_RL ) );
-    }
+    // VML has the text horizontally aligned to left (all the time),
+    // v-text-anchor for vertical alignment, and vertical mode to swap the
+    // two.  drawinglayer supports both horizontal and vertical alignment,
+    // but no vertical mode: we use T->B, R->L instead.
+    // As a result, we need to set horizontal adjustment here to 'right',
+    // that will result in vertical 'top' after writing mode is applied,
+    // which matches the VML behavior.
+    xProperties->setPropertyValue("TextHorizontalAdjust", uno::makeAny(drawing::TextHorizontalAdjust_RIGHT));
+
+    xProperties->setPropertyValue( "TextWritingMode", uno::makeAny( text::WritingMode_TB_RL ) );
 }
 
-} // namespace vml
-} // namespace oox
+} // namespace oox::vml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

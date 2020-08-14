@@ -17,12 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include "vbatemplate.hxx"
-#include <vbahelper/vbahelper.hxx>
-#include "wordvbahelper.hxx"
 #include "vbaautotextentry.hxx"
 #include <com/sun/star/text/AutoTextContainer.hpp>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/string.hxx>
 #include <tools/urlobj.hxx>
 #include <rtl/character.hxx>
 #include <osl/file.hxx>
@@ -32,7 +29,7 @@ using namespace ::com::sun::star;
 
 static OUString lcl_CheckGroupName( const OUString& rGroupName )
 {
-    OUString sRet;
+    OUStringBuffer sRet;
     //group name should contain only A-Z and a-z and spaces
     for( sal_Int32 i = 0; i < rGroupName.getLength(); i++ )
     {
@@ -40,10 +37,11 @@ static OUString lcl_CheckGroupName( const OUString& rGroupName )
         if (rtl::isAsciiAlphanumeric(cChar) ||
             cChar == '_' || cChar == 0x20)
         {
-            sRet += OUStringLiteral1(cChar);
+            sRet.append(cChar);
         }
     }
-    return comphelper::string::strip(sRet, ' ');
+    sRet.strip(' ');
+    return sRet.makeStringAndClear();
 }
 
 SwVbaTemplate::SwVbaTemplate( const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext, const OUString& rFullUrl )
@@ -98,14 +96,12 @@ SwVbaTemplate::AutoTextEntries( const uno::Any& index )
     OUString sNewGroup = lcl_CheckGroupName( sGroup );
 
     uno::Reference< container::XIndexAccess > xGroup;
-    if( xAutoTextContainer->hasByName( sNewGroup ) )
-    {
-        xGroup.set( xAutoTextContainer->getByName( sNewGroup ), uno::UNO_QUERY_THROW );
-    }
-    else
+    if( !xAutoTextContainer->hasByName( sNewGroup ) )
     {
         throw uno::RuntimeException("Auto Text Entry doesn't exist" );
     }
+
+    xGroup.set( xAutoTextContainer->getByName( sNewGroup ), uno::UNO_QUERY_THROW );
 
     uno::Reference< XCollection > xCol( new SwVbaAutoTextEntries( this, mxContext, xGroup ) );
     if( index.hasValue() )
@@ -116,18 +112,16 @@ SwVbaTemplate::AutoTextEntries( const uno::Any& index )
 OUString
 SwVbaTemplate::getServiceImplName()
 {
-    return OUString("SwVbaTemplate");
+    return "SwVbaTemplate";
 }
 
 uno::Sequence< OUString >
 SwVbaTemplate::getServiceNames()
 {
-        static uno::Sequence< OUString > aServiceNames;
-        if ( aServiceNames.getLength() == 0 )
+        static uno::Sequence< OUString > const aServiceNames
         {
-                aServiceNames.realloc( 1 );
-                aServiceNames[ 0 ] = "ooo.vba.word.Template";
-        }
+            "ooo.vba.word.Template"
+        };
         return aServiceNames;
 }
 

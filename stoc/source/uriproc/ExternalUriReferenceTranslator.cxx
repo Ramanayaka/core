@@ -17,13 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <string_view>
+
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/uno/Exception.hpp>
-#include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/uri/XExternalUriReferenceTranslator.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -36,6 +35,9 @@
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
+
+namespace com::sun::star::uno { class XInterface; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace {
 
@@ -68,7 +70,7 @@ private:
 
 OUString Translator::getImplementationName()
 {
-    return OUString("com.sun.star.comp.uri.ExternalUriReferenceTranslator");
+    return "com.sun.star.comp.uri.ExternalUriReferenceTranslator";
 }
 
 sal_Bool Translator::supportsService(OUString const & serviceName)
@@ -90,8 +92,8 @@ OUString Translator::translateToInternal(
         return externalUriReference;
     }
     sal_Int32 i = RTL_CONSTASCII_LENGTH("file:");
-    OUStringBuffer buf;
-    buf.append(externalUriReference.getStr(), i);
+    OUStringBuffer buf(128);
+    buf.append(std::u16string_view(externalUriReference).substr(0, i));
     // Some environments (e.g., Java) produce illegal file URLs without an
     // authority part; treat them as having an empty authority part:
     if (!externalUriReference.match("//", i))
@@ -138,8 +140,8 @@ OUString Translator::translateToExternal(
         return internalUriReference;
     }
     sal_Int32 i = RTL_CONSTASCII_LENGTH("file://");
-    OUStringBuffer buf;
-    buf.append(internalUriReference.getStr(), i);
+    OUStringBuffer buf(128);
+    buf.append(std::u16string_view(internalUriReference).substr(0, i));
     rtl_TextEncoding encoding = osl_getThreadTextEncoding();
     for (bool path = true;;) {
         sal_Int32 j = i;
@@ -177,7 +179,7 @@ OUString Translator::translateToExternal(
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_uri_ExternalUriReferenceTranslator_get_implementation(css::uno::XComponentContext* ,
         css::uno::Sequence<css::uno::Any> const &)
 {

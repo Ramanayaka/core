@@ -12,18 +12,17 @@
 
 #include <sal/config.h>
 
-#include <list>
+#include <vector>
 
 #include <vcl/dllapi.h>
 
 #include <basegfx/point/b2dpoint.hxx>
 #include <rtl/ustring.hxx>
-#include <tools/color.hxx>
 #include <opengl/texture.hxx>
 
 #include <unordered_map>
 
-typedef std::unordered_map< OString, GLuint, OStringHash > UniformCache;
+class Color;
 
 enum class TextureShaderType
 {
@@ -40,11 +39,12 @@ enum class DrawShaderType
     Line
 };
 
-class VCL_PLUGIN_PUBLIC OpenGLProgram
+class OpenGLProgram
 {
 private:
     GLuint          mnId;
-    UniformCache    maUniformLocations;
+    std::unordered_map< OString, GLuint >
+                    maUniformLocations;
     sal_uInt32      mnEnabledAttribs;
     GLuint          mnPositionAttrib;
     GLuint          mnTexCoordAttrib;
@@ -53,7 +53,7 @@ private:
     GLuint          mnExtrusionVectorsAttrib;
     GLuint          mnVertexColorsAttrib;
 
-    std::list< OpenGLTexture >     maTextures;
+    std::vector< OpenGLTexture >     maTextures;
     bool            mbBlending;
 
     float mfLastWidth;
@@ -69,10 +69,10 @@ public:
     GLuint Id() { return mnId; }
 
     bool Load( const OUString& rVertexShader, const OUString& rFragmentShader,
-               const rtl::OString& preamble, const rtl::OString& rDigest );
-    bool Use();
+               const OString& preamble, const OString& rDigest );
+    void Use();
     void Reuse();
-    bool Clean();
+    void Clean();
 
     void SetVertices( const GLvoid* pData );
     void SetTextureCoord( const GLvoid* pData );
@@ -83,12 +83,12 @@ public:
 
     void SetUniform1f( const OString& rName, GLfloat v1 );
     void SetUniform2f( const OString& rName, GLfloat v1, GLfloat v2 );
-    void SetUniform1fv( const OString& rName, GLsizei nCount, GLfloat* aValues );
-    void SetUniform2fv( const OString& rName, GLsizei nCount, GLfloat* aValues );
+    void SetUniform1fv( const OString& rName, GLsizei nCount, GLfloat const * aValues );
+    void SetUniform2fv( const OString& rName, GLsizei nCount, GLfloat const * aValues );
     void SetUniform1i( const OString& rName, GLint v1 );
     void SetColor( const OString& rName, const Color& rColor );
-    void SetColor( const OString& rName, SalColor nColor, sal_uInt8 nTransparency );
-    void SetColorf( const OString& rName, SalColor nColor, double fTransparency );
+    void SetColor( const OString& rName, Color nColor, sal_uInt8 nTransparency );
+    void SetColorf( const OString& rName, Color nColor, double fTransparency );
     void SetColorWithIntensity( const OString& rName, const Color& rColor, long nFactor );
     void SetTexture( const OString& rName, OpenGLTexture& rTexture );
     void SetTransform( const OString& rName, const OpenGLTexture& rTexture,
@@ -102,7 +102,7 @@ public:
 
     void ApplyMatrix(float fWidth, float fHeight, float fPixelOffset = 0.0f);
 
-    bool DrawTexture( const OpenGLTexture& rTexture );
+    void DrawTexture( const OpenGLTexture& rTexture );
 
     void DrawArrays(GLenum aMode, std::vector<GLfloat>& aVertices);
     void DrawElements(GLenum aMode, GLuint nNumberOfVertices);
@@ -113,7 +113,7 @@ public:
                          GLenum eType, GLboolean bNormalized, GLsizei aStride,
                          const GLvoid* pPointer);
 
-protected:
+private:
     GLuint GetUniformLocation( const OString& rName );
 };
 

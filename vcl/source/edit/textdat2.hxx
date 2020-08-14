@@ -21,9 +21,9 @@
 #define INCLUDED_VCL_SOURCE_EDIT_TEXTDAT2_HXX
 
 #include <vcl/seleng.hxx>
-#include <vcl/virdev.hxx>
 #include <vcl/cursor.hxx>
 #include <vcl/idle.hxx>
+#include <vcl/textdata.hxx>
 
 #include <cstddef>
 #include <limits>
@@ -72,7 +72,7 @@ public:
 class TETextPortionList
 {
 private:
-    std::vector<TETextPortion*> maPortions;
+    std::vector<std::unique_ptr<TETextPortion>> maPortions;
 
 public:
     static constexpr auto npos = std::numeric_limits<std::size_t>::max();
@@ -81,16 +81,16 @@ public:
     ~TETextPortionList();
 
     TETextPortion* operator[]( std::size_t nPos );
-    std::vector<TETextPortion*>::iterator begin();
-    std::vector<TETextPortion*>::const_iterator begin() const;
-    std::vector<TETextPortion*>::iterator end();
-    std::vector<TETextPortion*>::const_iterator end() const;
+    std::vector<std::unique_ptr<TETextPortion>>::iterator begin();
+    std::vector<std::unique_ptr<TETextPortion>>::const_iterator begin() const;
+    std::vector<std::unique_ptr<TETextPortion>>::iterator end();
+    std::vector<std::unique_ptr<TETextPortion>>::const_iterator end() const;
     bool empty() const;
     std::size_t size() const;
-    std::vector<TETextPortion*>::iterator erase( const std::vector<TETextPortion*>::iterator& aIter );
-    std::vector<TETextPortion*>::iterator insert( const std::vector<TETextPortion*>::iterator& aIter,
-                                                  TETextPortion* pTP );
-    void push_back( TETextPortion* pTP );
+    std::vector<std::unique_ptr<TETextPortion>>::iterator erase( const std::vector<std::unique_ptr<TETextPortion>>::iterator& aIter );
+    std::vector<std::unique_ptr<TETextPortion>>::iterator insert( const std::vector<std::unique_ptr<TETextPortion>>::iterator& aIter,
+                                                  std::unique_ptr<TETextPortion> pTP );
+    void push_back( std::unique_ptr<TETextPortion> pTP );
 
     void    Reset();
     std::size_t FindPortion( sal_Int32 nCharPos, sal_Int32& rPortionStart, bool bPreferStartingPortion = false );
@@ -99,11 +99,11 @@ public:
 
 struct TEWritingDirectionInfo
 {
-    sal_uInt8    nType;
+    bool         bLeftToRight;
     sal_Int32    nStartPos;
     sal_Int32    nEndPos;
-    TEWritingDirectionInfo( sal_uInt8 Type, sal_Int32 Start, sal_Int32 End )
-        : nType {Type}
+    TEWritingDirectionInfo( bool LeftToRight, sal_Int32 Start, sal_Int32 End )
+        : bLeftToRight {LeftToRight}
         , nStartPos {Start}
         , nEndPos {End}
     {}
@@ -119,7 +119,7 @@ private:
 
     short               mnStartX;
 
-    bool                mbInvalid;  // fuer geschickte Formatierung/Ausgabe
+    bool                mbInvalid;  // for clever formatting/output
 
 public:
                     TextLine()
@@ -212,15 +212,15 @@ public:
 class TEParaPortions
 {
 private:
-    std::vector<TEParaPortion*> mvData;
+    std::vector<std::unique_ptr<TEParaPortion>> mvData;
 
 public:
                     TEParaPortions() : mvData() {}
                     ~TEParaPortions();
 
     sal_uInt32      Count() const { return static_cast<sal_uInt32>(mvData.size()); }
-    TEParaPortion*  GetObject( sal_uInt32 nIndex ) { return mvData[nIndex]; }
-    void            Insert( TEParaPortion* pObject, sal_uInt32 nPos ) { mvData.insert( mvData.begin()+nPos, pObject ); }
+    TEParaPortion*  GetObject( sal_uInt32 nIndex ) { return mvData[nIndex].get(); }
+    void            Insert( TEParaPortion* pObject, sal_uInt32 nPos ) { mvData.emplace( mvData.begin()+nPos, pObject ); }
     void            Remove( sal_uInt32 nPos ) { mvData.erase( mvData.begin()+nPos ); }
 };
 
@@ -236,7 +236,7 @@ public:
 
     virtual void    CreateAnchor() override;
 
-    virtual bool    SetCursorAtPoint( const Point& rPointPixel, bool bDontSelectAtCursor = false ) override;
+    virtual void    SetCursorAtPoint( const Point& rPointPixel, bool bDontSelectAtCursor = false ) override;
 
     virtual bool    IsSelectionAtPoint( const Point& rPointPixel ) override;
     virtual void    DeselectAll() override;

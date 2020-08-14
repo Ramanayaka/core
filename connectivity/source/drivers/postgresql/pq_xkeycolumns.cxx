@@ -34,12 +34,11 @@
  *
  ************************************************************************/
 
-#include <rtl/ustrbuf.hxx>
-#include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 
 #include "pq_xcolumns.hxx"
 #include "pq_xkeycolumns.hxx"
@@ -56,10 +55,8 @@ using com::sun::star::uno::makeAny;
 using com::sun::star::uno::UNO_QUERY;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::Sequence;
-using com::sun::star::uno::RuntimeException;
 
 using com::sun::star::sdbc::XRow;
-using com::sun::star::sdbc::XStatement;
 using com::sun::star::sdbc::XResultSet;
 using com::sun::star::sdbc::XDatabaseMetaData;
 using com::sun::star::sdbc::SQLException;
@@ -90,15 +87,7 @@ void KeyColumns::refresh()
 {
     try
     {
-        if (isLog(m_pSettings, LogLevel::Info))
-        {
-            OStringBuffer buf;
-            buf.append( "sdbcx.KeyColumns get refreshed for table " );
-            buf.append( OUStringToOString( m_schemaName, ConnectionSettings::encoding ) );
-            buf.append( "." );
-            buf.append( OUStringToOString( m_tableName, ConnectionSettings::encoding ) );
-            log( m_pSettings, LogLevel::Info, buf.makeStringAndClear().getStr() );
-        }
+        SAL_INFO("connectivity.postgresql", "sdbcx.KeyColumns get refreshed for table " << m_schemaName << "." << m_tableName);
 
         osl::MutexGuard guard( m_xMutex->GetMutex() );
 
@@ -149,7 +138,9 @@ void KeyColumns::refresh()
     }
     catch ( css::sdbc::SQLException & e )
     {
-        throw RuntimeException( e.Message , e.Context );
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException( e.Message,
+                        e.Context, anyEx );
     }
 
     fire( RefreshedBroadcaster( *this ) );

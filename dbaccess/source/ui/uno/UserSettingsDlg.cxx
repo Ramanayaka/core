@@ -17,17 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbu_reghelper.hxx"
-#include "uiservices.hxx"
 #include "UserSettingsDlg.hxx"
-#include "UserAdminDlg.hxx"
+#include <UserAdminDlg.hxx>
 #include <comphelper/processfactory.hxx>
+#include <vcl/svapp.hxx>
 
 using namespace dbaui;
 
-extern "C" void SAL_CALL createRegistryInfo_OUserSettingsDialog()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+org_openoffice_comp_dbu_OUserSettingsDialog_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static OMultiInstanceAutoRegistration< OUserSettingsDialog > aAutoRegistration;
+    return cppu::acquire(new OUserSettingsDialog(context));
 }
 
 namespace dbaui
@@ -47,30 +48,14 @@ Sequence<sal_Int8> SAL_CALL OUserSettingsDialog::getImplementationId(  )
     return css::uno::Sequence<sal_Int8>();
 }
 
-Reference< XInterface > SAL_CALL OUserSettingsDialog::Create(const Reference< XMultiServiceFactory >& _rxFactory)
-{
-    return *(new OUserSettingsDialog( comphelper::getComponentContext(_rxFactory) ));
-}
-
 OUString SAL_CALL OUserSettingsDialog::getImplementationName()
 {
-    return getImplementationName_Static();
-}
-
-OUString OUserSettingsDialog::getImplementationName_Static()
-{
-    return OUString("org.openoffice.comp.dbu.OUserSettingsDialog");
+    return "org.openoffice.comp.dbu.OUserSettingsDialog";
 }
 
 css::uno::Sequence<OUString> SAL_CALL OUserSettingsDialog::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
-}
-
-css::uno::Sequence<OUString> OUserSettingsDialog::getSupportedServiceNames_Static()
-{
-    css::uno::Sequence<OUString> aSupported { "com.sun.star.sdb.UserAdministrationDialog" };
-    return aSupported;
+    return { "com.sun.star.sdb.UserAdministrationDialog" };
 }
 
 Reference<XPropertySetInfo>  SAL_CALL OUserSettingsDialog::getPropertySetInfo()
@@ -91,9 +76,9 @@ Reference<XPropertySetInfo>  SAL_CALL OUserSettingsDialog::getPropertySetInfo()
     return new ::cppu::OPropertyArrayHelper(aProps);
 }
 
-VclPtr<Dialog> OUserSettingsDialog::createDialog(vcl::Window* _pParent)
+std::unique_ptr<weld::DialogController> OUserSettingsDialog::createDialog(const css::uno::Reference<css::awt::XWindow>& rParent)
 {
-    return VclPtr<OUserAdminDlg>::Create(_pParent, m_pDatasourceItems, m_aContext, m_aInitialSelection, m_xActiveConnection);
+    return std::make_unique<OUserAdminDlg>(Application::GetFrameWeld(rParent), m_pDatasourceItems.get(), m_aContext, m_aInitialSelection, m_xActiveConnection);
 }
 
 }   // namespace dbaui

@@ -22,10 +22,9 @@
 
 #include <cassert>
 
-#include <sal/types.h>
-#include <rtl/alloc.h>
-#include <osl/diagnose.h>
-#include <osl/interlck.h>
+#include "sal/types.h"
+#include "rtl/alloc.h"
+#include "osl/interlck.h"
 
 namespace salhelper
 {

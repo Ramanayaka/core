@@ -16,26 +16,32 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "svx/sidebar/ValueSetWithTextControl.hxx"
-#include <svx/dialogs.hrc>
-#include <svx/dialmgr.hxx>
+#include <svx/sidebar/ValueSetWithTextControl.hxx>
 #include <sfx2/sidebar/Theme.hxx>
 
-#include <limits.h>
 #include <i18nlangtag/mslangid.hxx>
 #include <svtools/valueset.hxx>
-#include <editeng/brushitem.hxx>
-#include <vcl/graph.hxx>
+#include <vcl/event.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
-ValueSetWithTextControl::ValueSetWithTextControl(Window* pParent, WinBits nBits)
-    : ValueSet( pParent, nBits )
+ValueSetWithTextControl::ValueSetWithTextControl()
+    : ValueSet(nullptr)
 {
-    SetColCount();
 }
 
+void ValueSetWithTextControl::SetDrawingArea(weld::DrawingArea* pDrawingArea)
+{
+    ValueSet::SetDrawingArea(pDrawingArea);
+
+    Size aSize(250, 300);
+    pDrawingArea->set_size_request(aSize.Width(), aSize.Height());
+    SetOutputSizePixel(aSize);
+
+    SetColCount();
+}
 
 void ValueSetWithTextControl::AddItem(
     const OUString& rItemText,
@@ -63,17 +69,17 @@ void ValueSetWithTextControl::UserDraw( const UserDrawEvent& rUDEvt )
     vcl::Font aFont(OutputDevice::GetDefaultFont(DefaultFontType::UI_SANS, MsLangId::getSystemLanguage(), GetDefaultFontFlags::OnlyOne));
     {
         Size aSize = aFont.GetFontSize();
-        aSize.Height() = (nRectHeight*4)/9;
+        aSize.setHeight( (nRectHeight*4)/9 );
         aFont.SetFontSize( aSize );
     }
 
     {
         //draw background
-        if ( GetSelectItemId() == nItemId )
+        if ( GetSelectedItemId() == nItemId )
         {
             tools::Rectangle aBackRect = aRect;
-            aBackRect.Top() += 3;
-            aBackRect.Bottom() -= 2;
+            aBackRect.AdjustTop(3 );
+            aBackRect.AdjustBottom( -2 );
             pDev->SetFillColor( sfx2::sidebar::Theme::GetColor( sfx2::sidebar::Theme::Color_Highlight ) );
             pDev->DrawRect(aBackRect);
         }
@@ -83,26 +89,26 @@ void ValueSetWithTextControl::UserDraw( const UserDrawEvent& rUDEvt )
             pDev->DrawRect(aRect);
         }
 
-        if ( GetSelectItemId() == nItemId )
+        if ( GetSelectedItemId() == nItemId )
         {
             aFont.SetColor( sfx2::sidebar::Theme::GetColor( sfx2::sidebar::Theme::Color_HighlightText ) );
         }
         else
         {
-            aFont.SetColor( GetSettings().GetStyleSettings().GetFieldTextColor() );
+            aFont.SetColor( Application::GetSettings().GetStyleSettings().GetFieldTextColor() );
         }
 
         tools::Rectangle aStrRect = aRect;
-        aStrRect.Top() += nRectHeight/4;
-        aStrRect.Bottom() -= nRectHeight/4;
+        aStrRect.AdjustTop(nRectHeight/4 );
+        aStrRect.AdjustBottom( -(nRectHeight/4) );
 
         const long nRectWidth = aRect.GetWidth();
-        aStrRect.Left() += 8;
-        aStrRect.Right() -= (nRectWidth*2)/3;
+        aStrRect.AdjustLeft(8 );
+        aStrRect.AdjustRight( -((nRectWidth*2)/3) );
         pDev->SetFont(aFont);
         pDev->DrawText(aStrRect, maItems[nItemId-1].maItemText, DrawTextFlags::EndEllipsis);
-        aStrRect.Left() += nRectWidth/3;
-        aStrRect.Right() += (nRectWidth*2)/3;
+        aStrRect.AdjustLeft(nRectWidth/3 );
+        aStrRect.AdjustRight((nRectWidth*2)/3 );
         pDev->DrawText(aStrRect, maItems[nItemId-1].maItemText2, DrawTextFlags::EndEllipsis);
     }
 
@@ -110,6 +116,6 @@ void ValueSetWithTextControl::UserDraw( const UserDrawEvent& rUDEvt )
     pDev->Pop();
 }
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

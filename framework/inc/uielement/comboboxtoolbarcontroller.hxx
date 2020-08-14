@@ -20,7 +20,6 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_COMBOBOXTOOLBARCONTROLLER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_COMBOBOXTOOLBARCONTROLLER_HXX
 
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/frame/ControlCommand.hpp>
 
 #include <uielement/complextoolbarcontroller.hxx>
@@ -32,7 +31,7 @@ namespace framework
 
 class ComboBoxControl;
 
-class ComboboxToolbarController : public ComplexToolbarController
+class ComboboxToolbarController final : public ComplexToolbarController
 
 {
     public:
@@ -52,13 +51,12 @@ class ComboboxToolbarController : public ComplexToolbarController
         void Modify();
         void GetFocus();
         void LoseFocus();
-        bool PreNotify( NotifyEvent& rNEvt );
+        void Activate();
 
-    protected:
+    private:
         virtual void executeControlCommand( const css::frame::ControlCommand& rControlCommand ) override;
         virtual css::uno::Sequence< css::beans::PropertyValue> getExecuteArgs(sal_Int16 KeyModifier) const override;
 
-    private:
         VclPtr<ComboBoxControl>    m_pComboBox;
 };
 

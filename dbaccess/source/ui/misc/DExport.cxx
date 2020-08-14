@@ -17,14 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DExport.hxx"
-#include "moduledbu.hxx"
+#include <DExport.hxx>
+#include <core_resource.hxx>
 
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
-#include <com/sun/star/sdbcx/XDataDescriptorFactory.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <com/sun/star/sdbcx/XAppend.hpp>
-#include <com/sun/star/sdbcx/KeyType.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
@@ -33,36 +30,26 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/NumberFormat.hpp>
 #include <com/sun/star/util/XNumberFormatTypes.hpp>
-#include "dbustrings.hrc"
-#include "dbu_misc.hrc"
+#include <strings.hrc>
+#include <strings.hxx>
 #include <connectivity/dbconversion.hxx>
-#include <osl/thread.h>
+#include <sal/log.hxx>
 #include <sfx2/sfxhtml.hxx>
 #include <svl/numuno.hxx>
 #include <connectivity/dbtools.hxx>
-#include <comphelper/extract.hxx>
-#include "TypeInfo.hxx"
-#include "FieldDescriptions.hxx"
-#include "UITools.hxx"
-#include <unotools/configmgr.hxx>
-#include <tools/debug.hxx>
+#include <TypeInfo.hxx>
+#include <FieldDescriptions.hxx>
+#include <UITools.hxx>
 #include <tools/diagnose_ex.h>
-#include <tools/contnr.hxx>
-#include <i18nlangtag/mslangid.hxx>
 #include <com/sun/star/awt/FontDescriptor.hpp>
-#include "WCopyTable.hxx"
-#include "WExtendPages.hxx"
-#include "WCPage.hxx"
+#include <WCopyTable.hxx>
 #include <unotools/syslocale.hxx>
 #include <svl/zforlist.hxx>
 #include <connectivity/dbexception.hxx>
 #include <connectivity/FValue.hxx>
-#include <com/sun/star/sdbc/SQLWarning.hpp>
-#include <com/sun/star/sdb/SQLContext.hpp>
 #include <com/sun/star/sdb/application/CopyTableOperation.hpp>
-#include "sqlmessage.hxx"
+#include <sqlmessage.hxx>
 #include "UpdateHelperImpl.hxx"
-#include <vcl/msgbox.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 
 using namespace dbaui;
@@ -88,7 +75,7 @@ ODatabaseExport::ODatabaseExport(sal_Int32 nRows,
                                  const OTypeInfoMap* _pInfoMap,
                                  bool _bAutoIncrementEnabled,
                                  SvStream& _rInputStream)
-    :m_vColumns(_rColumnPositions)
+    :m_vColumnPositions(_rColumnPositions)
     ,m_aDestColumns(true)
     ,m_xFormatter(_rxNumberF)
     ,m_xContext(_rxContext)
@@ -111,7 +98,7 @@ ODatabaseExport::ODatabaseExport(sal_Int32 nRows,
 {
     m_nRows += nRows;
     sal_Int32 nCount = 0;
-    for(const std::pair<sal_Int32,sal_Int32> & rPair : m_vColumns)
+    for(const std::pair<sal_Int32,sal_Int32> & rPair : m_vColumnPositions)
         if ( rPair.first != COLUMN_POSITION_NOT_FOUND )
             ++nCount;
 
@@ -179,7 +166,7 @@ ODatabaseExport::ODatabaseExport(const SharedConnection& _rxConnection,
     {
         ::connectivity::ORowSetValue aValue;
         std::vector<sal_Int32> aTypes;
-        std::vector<sal_Bool> aNullable;
+        std::vector<bool> aNullable;
         Reference<XResultSetMetaData> xResultSetMetaData = Reference<XResultSetMetaDataSupplier>(xSet,UNO_QUERY_THROW)->getMetaData();
         Reference<XRow> xRow(xSet,UNO_QUERY_THROW);
         while(xSet->next())
@@ -221,26 +208,24 @@ ODatabaseExport::ODatabaseExport(const SharedConnection& _rxConnection,
                 aValue.fill(nPos,aTypes[nPos],aNullable[nPos],xRow);
                 m_pTypeInfo->nPrecision     = aValue;
                 ++nPos;
-                aValue.fill(nPos,aTypes[nPos],aNullable[nPos],xRow);
-                m_pTypeInfo->aLiteralPrefix = aValue;
+                aValue.fill(nPos,aTypes[nPos],aNullable[nPos],xRow); //LiteralPrefix
                 ++nPos;
-                aValue.fill(nPos,aTypes[nPos],aNullable[nPos],xRow);
-                m_pTypeInfo->aLiteralSuffix = aValue;
+                aValue.fill(nPos,aTypes[nPos],aNullable[nPos],xRow); //LiteralSuffix
                 ++nPos;
                 aValue.fill(nPos,aTypes[nPos],aNullable[nPos],xRow);
                 m_pTypeInfo->aCreateParams  = aValue;
                 ++nPos;
                 aValue.fill(nPos,aTypes[nPos],aNullable[nPos],xRow);
-                m_pTypeInfo->bNullable      = (sal_Int32)aValue == ColumnValue::NULLABLE;
+                m_pTypeInfo->bNullable      = static_cast<sal_Int32>(aValue) == ColumnValue::NULLABLE;
                 ++nPos;
                 aValue.fill(nPos,aTypes[nPos],aNullable[nPos],xRow);
-                m_pTypeInfo->bCaseSensitive = aValue;
+                // bCaseSensitive
                 ++nPos;
                 aValue.fill(nPos,aTypes[nPos],aNullable[nPos],xRow);
                 m_pTypeInfo->nSearchType    = aValue;
                 ++nPos;
                 aValue.fill(nPos,aTypes[nPos],aNullable[nPos],xRow);
-                m_pTypeInfo->bUnsigned      = aValue;
+                // bUnsigned
                 ++nPos;
                 aValue.fill(nPos,aTypes[nPos],aNullable[nPos],xRow);
                 m_pTypeInfo->bCurrency      = aValue;
@@ -280,126 +265,123 @@ ODatabaseExport::ODatabaseExport(const SharedConnection& _rxConnection,
 ODatabaseExport::~ODatabaseExport()
 {
     m_pFormatter = nullptr;
-    ODatabaseExport::TColumns::const_iterator aIter = m_aDestColumns.begin();
-    ODatabaseExport::TColumns::const_iterator aEnd  = m_aDestColumns.end();
-
-    for(;aIter != aEnd;++aIter)
-        delete aIter->second;
+    for (auto const& destColumn : m_aDestColumns)
+        delete destColumn.second;
     m_vDestVector.clear();
     m_aDestColumns.clear();
 }
 
 void ODatabaseExport::insertValueIntoColumn()
 {
-    if(m_nColumnPos < sal_Int32(m_vDestVector.size()))
-    {
-        OFieldDescription* pField = m_vDestVector[m_nColumnPos]->second;
-        if(pField)
-        {
-            sal_Int32 nNewPos = m_bIsAutoIncrement ? m_nColumnPos+1 : m_nColumnPos;
-            OSL_ENSURE((nNewPos) < static_cast<sal_Int32>(m_vColumns.size()),"m_vColumns: Illegal index for vector");
+    if(m_nColumnPos >= sal_Int32(m_vDestVector.size()))
+        return;
 
-            if ( (nNewPos) < static_cast<sal_Int32>(m_vColumns.size() ) )
+    OFieldDescription* pField = m_vDestVector[m_nColumnPos]->second;
+    if(!pField)
+        return;
+
+    sal_Int32 nNewPos = m_bIsAutoIncrement ? m_nColumnPos+1 : m_nColumnPos;
+    OSL_ENSURE(nNewPos < static_cast<sal_Int32>(m_vColumnPositions.size()),"m_vColumnPositions: Illegal index for vector");
+
+    if ( nNewPos < static_cast<sal_Int32>(m_vColumnPositions.size() ) )
+    {
+        sal_Int32 nPos = m_vColumnPositions[nNewPos].first;
+        if ( nPos != COLUMN_POSITION_NOT_FOUND )
+        {
+            if ( m_sTextToken.isEmpty() && pField->IsNullable() )
+                m_pUpdateHelper->updateNull(nPos,pField->GetType());
+            else
             {
-                sal_Int32 nPos = m_vColumns[nNewPos].first;
-                if ( nPos != COLUMN_POSITION_NOT_FOUND )
+                OSL_ENSURE((nNewPos) < static_cast<sal_Int32>(m_vColumnTypes.size()),"Illegal index for vector");
+                if (m_vColumnTypes[nNewPos] != DataType::VARCHAR && m_vColumnTypes[nNewPos] != DataType::CHAR && m_vColumnTypes[nNewPos] != DataType::LONGVARCHAR )
                 {
-                    if ( m_sTextToken.isEmpty() && pField->IsNullable() )
-                        m_pUpdateHelper->updateNull(nPos,pField->GetType());
+                    SAL_INFO("dbaccess.ui", "ODatabaseExport::insertValueIntoColumn != DataType::VARCHAR" );
+                    ensureFormatter();
+                    sal_Int32 nNumberFormat = 0;
+                    double fOutNumber = 0.0;
+                    bool bNumberFormatError = false;
+                    if ( m_pFormatter && !m_sNumToken.isEmpty() )
+                    {
+                        LanguageType eNumLang = LANGUAGE_NONE;
+                        sal_uInt32 nNumberFormat2( nNumberFormat );
+                        fOutNumber = SfxHTMLParser::GetTableDataOptionsValNum(nNumberFormat2,eNumLang,m_sTextToken,m_sNumToken,*m_pFormatter);
+                        if ( eNumLang != LANGUAGE_NONE )
+                        {
+                            nNumberFormat2 = m_pFormatter->GetFormatForLanguageIfBuiltIn( nNumberFormat2, eNumLang );
+                            (void)m_pFormatter->IsNumberFormat( m_sTextToken, nNumberFormat2, fOutNumber );
+                        }
+                        nNumberFormat = static_cast<sal_Int32>(nNumberFormat2);
+                    }
                     else
                     {
-                        OSL_ENSURE((nNewPos) < static_cast<sal_Int32>(m_vColumnTypes.size()),"Illegal index for vector");
-                        if (m_vColumnTypes[nNewPos] != DataType::VARCHAR && m_vColumnTypes[nNewPos] != DataType::CHAR && m_vColumnTypes[nNewPos] != DataType::LONGVARCHAR )
+                        Reference< XNumberFormatsSupplier >  xSupplier = m_xFormatter->getNumberFormatsSupplier();
+                        Reference<XNumberFormatTypes> xNumType(xSupplier->getNumberFormats(),UNO_QUERY);
+                        const sal_Int16 nFormats[] = {
+                            NumberFormat::DATETIME
+                            ,NumberFormat::DATE
+                            ,NumberFormat::TIME
+                            ,NumberFormat::CURRENCY
+                            ,NumberFormat::NUMBER
+                            ,NumberFormat::LOGICAL
+                        };
+                        for (short nFormat : nFormats)
                         {
-                            SAL_INFO("dbaccess.ui", "ODatabaseExport::insertValueIntoColumn != DataType::VARCHAR" );
-                            ensureFormatter();
-                            sal_Int32 nNumberFormat = 0;
-                            double fOutNumber = 0.0;
-                            bool bNumberFormatError = false;
-                            if ( m_pFormatter && !m_sNumToken.isEmpty() )
+                            try
                             {
-                                LanguageType eNumLang = LANGUAGE_NONE;
-                                sal_uInt32 nNumberFormat2( nNumberFormat );
-                                fOutNumber = SfxHTMLParser::GetTableDataOptionsValNum(nNumberFormat2,eNumLang,m_sTextToken,m_sNumToken,*m_pFormatter);
-                                if ( eNumLang != LANGUAGE_NONE )
-                                {
-                                    nNumberFormat2 = m_pFormatter->GetFormatForLanguageIfBuiltIn( nNumberFormat2, eNumLang );
-                                    m_pFormatter->IsNumberFormat( m_sTextToken, nNumberFormat2, fOutNumber );
-                                }
-                                nNumberFormat = static_cast<sal_Int32>(nNumberFormat2);
+                                nNumberFormat = m_xFormatter->detectNumberFormat(xNumType->getStandardFormat(nFormat,m_aLocale),m_sTextToken);
+                                break;
                             }
-                            else
+                            catch(Exception&)
                             {
-                                Reference< XNumberFormatsSupplier >  xSupplier = m_xFormatter->getNumberFormatsSupplier();
-                                Reference<XNumberFormatTypes> xNumType(xSupplier->getNumberFormats(),UNO_QUERY);
-                                const sal_Int16 nFormats[] = {
-                                    NumberFormat::DATETIME
-                                    ,NumberFormat::DATE
-                                    ,NumberFormat::TIME
-                                    ,NumberFormat::CURRENCY
-                                    ,NumberFormat::NUMBER
-                                    ,NumberFormat::LOGICAL
-                                };
-                                for (short nFormat : nFormats)
-                                {
-                                    try
-                                    {
-                                        nNumberFormat = m_xFormatter->detectNumberFormat(xNumType->getStandardFormat(nFormat,m_aLocale),m_sTextToken);
-                                        break;
-                                    }
-                                    catch(Exception&)
-                                    {
-                                    }
-                                }
-                                try
-                                {
-                                    fOutNumber = m_xFormatter->convertStringToNumber(nNumberFormat,m_sTextToken);
-                                }
-                                catch(Exception&)
-                                {
-                                    bNumberFormatError = true;
-                                    m_pUpdateHelper->updateString(nPos,m_sTextToken);
-                                }
                             }
-                            if ( !bNumberFormatError )
-                            {
-                                try
-                                {
-                                    Reference< XNumberFormatsSupplier >  xSupplier = m_xFormatter->getNumberFormatsSupplier();
-                                    Reference< XNumberFormats >         xFormats = xSupplier->getNumberFormats();
-                                    Reference<XPropertySet> xProp = xFormats->getByKey(nNumberFormat);
-                                    sal_Int16 nType = 0;
-                                    xProp->getPropertyValue(PROPERTY_TYPE) >>= nType;
-                                    switch(nType)
-                                    {
-                                        case NumberFormat::DATE:
-                                            m_pUpdateHelper->updateDate(nPos,::dbtools::DBTypeConversion::toDate(fOutNumber,m_aNullDate));
-                                            break;
-                                        case NumberFormat::DATETIME:
-                                            m_pUpdateHelper->updateTimestamp(nPos,::dbtools::DBTypeConversion::toDateTime(fOutNumber,m_aNullDate));
-                                            break;
-                                        case NumberFormat::TIME:
-                                            m_pUpdateHelper->updateTime(nPos,::dbtools::DBTypeConversion::toTime(fOutNumber));
-                                            break;
-                                        default:
-                                            m_pUpdateHelper->updateDouble(nPos,fOutNumber);
-                                    }
-                                }
-                                catch(Exception&)
-                                {
-                                    m_pUpdateHelper->updateString(nPos,m_sTextToken);
-                                }
-                            }
-
                         }
-                        else
+                        try
+                        {
+                            fOutNumber = m_xFormatter->convertStringToNumber(nNumberFormat,m_sTextToken);
+                        }
+                        catch(Exception&)
+                        {
+                            bNumberFormatError = true;
                             m_pUpdateHelper->updateString(nPos,m_sTextToken);
+                        }
                     }
+                    if ( !bNumberFormatError )
+                    {
+                        try
+                        {
+                            Reference< XNumberFormatsSupplier >  xSupplier = m_xFormatter->getNumberFormatsSupplier();
+                            Reference< XNumberFormats >         xFormats = xSupplier->getNumberFormats();
+                            Reference<XPropertySet> xProp = xFormats->getByKey(nNumberFormat);
+                            sal_Int16 nType = 0;
+                            xProp->getPropertyValue(PROPERTY_TYPE) >>= nType;
+                            switch(nType)
+                            {
+                                case NumberFormat::DATE:
+                                    m_pUpdateHelper->updateDate(nPos,::dbtools::DBTypeConversion::toDate(fOutNumber,m_aNullDate));
+                                    break;
+                                case NumberFormat::DATETIME:
+                                    m_pUpdateHelper->updateTimestamp(nPos,::dbtools::DBTypeConversion::toDateTime(fOutNumber,m_aNullDate));
+                                    break;
+                                case NumberFormat::TIME:
+                                    m_pUpdateHelper->updateTime(nPos,::dbtools::DBTypeConversion::toTime(fOutNumber));
+                                    break;
+                                default:
+                                    m_pUpdateHelper->updateDouble(nPos,fOutNumber);
+                            }
+                        }
+                        catch(Exception&)
+                        {
+                            m_pUpdateHelper->updateString(nPos,m_sTextToken);
+                        }
+                    }
+
                 }
+                else
+                    m_pUpdateHelper->updateString(nPos,m_sTextToken);
             }
-            eraseTokens();
         }
     }
+    eraseTokens();
 }
 
 sal_Int16 ODatabaseExport::CheckString(const OUString& aCheckToken, sal_Int16 _nOldNumberFormat)
@@ -549,72 +531,76 @@ sal_Int16 ODatabaseExport::CheckString(const OUString& aCheckToken, sal_Int16 _n
 
 void ODatabaseExport::SetColumnTypes(const TColumnVector* _pList,const OTypeInfoMap* _pInfoMap)
 {
-    if(_pList && _pInfoMap)
+    if(!(_pList && _pInfoMap))
+        return;
+
+    OSL_ENSURE(m_vNumberFormat.size() == m_vColumnSize.size() && m_vColumnSize.size() == _pList->size(),"Illegal columns in list");
+    Reference< XNumberFormatsSupplier > xSupplier = m_xFormatter->getNumberFormatsSupplier();
+    Reference< XNumberFormats >         xFormats = xSupplier->getNumberFormats();
+    sal_Int32 minBothSize = std::min<sal_Int32>(m_vNumberFormat.size(), m_vColumnSize.size());
+    sal_Int32 i = 0;
+    for (auto const& elem : *_pList)
     {
-        OSL_ENSURE(m_vNumberFormat.size() == m_vColumnSize.size() && m_vColumnSize.size() == _pList->size(),"Illegal columns in list");
-        Reference< XNumberFormatsSupplier > xSupplier = m_xFormatter->getNumberFormatsSupplier();
-        Reference< XNumberFormats >         xFormats = xSupplier->getNumberFormats();
-        TColumnVector::const_iterator aIter = _pList->begin();
-        TColumnVector::const_iterator aEnd = _pList->end();
-        for(sal_Int32 i= 0;aIter != aEnd && (i) < static_cast<sal_Int32>(m_vNumberFormat.size()) && (i) < static_cast<sal_Int32>(m_vColumnSize.size()) ;++aIter,++i)
+        if (i >= minBothSize)
+            break;
+
+        sal_Int32 nDataType;
+        sal_Int32 nLength(0),nScale(0);
+        sal_Int16 nType = m_vNumberFormat[i] & ~NumberFormat::DEFINED;
+
+        switch ( nType )
         {
-            sal_Int32 nDataType;
-            sal_Int32 nLength(0),nScale(0);
-            sal_Int16 nType = m_vNumberFormat[i] & ~NumberFormat::DEFINED;
-
-            switch ( nType )
-            {
-                case NumberFormat::ALL:
-                    nDataType  = DataType::DOUBLE;
-                    break;
-                case NumberFormat::DEFINED:
-                    nDataType   = DataType::VARCHAR;
-                    nLength     = ((m_vColumnSize[i] % 10 ) ? m_vColumnSize[i]/ 10 + 1: m_vColumnSize[i]/ 10) * 10;
-                    break;
-                case NumberFormat::DATE:
-                    nDataType  = DataType::DATE;
-                    break;
-                case NumberFormat::TIME:
-                    nDataType  = DataType::TIME;
-                    break;
-                case NumberFormat::DATETIME:
-                    nDataType  = DataType::TIMESTAMP;
-                    break;
-                case NumberFormat::CURRENCY:
-                    nDataType  = DataType::NUMERIC;
-                    nScale      = 4;
-                    nLength     = 19;
-                    break;
-                case NumberFormat::NUMBER:
-                case NumberFormat::SCIENTIFIC:
-                case NumberFormat::FRACTION:
-                case NumberFormat::PERCENT:
-                    nDataType  = DataType::DOUBLE;
-                    break;
-                case NumberFormat::TEXT:
-                case NumberFormat::UNDEFINED:
-                case NumberFormat::LOGICAL:
-                default:
-                    nDataType  = DataType::VARCHAR;
-                    nLength     = ((m_vColumnSize[i] % 10 ) ? m_vColumnSize[i]/ 10 + 1: m_vColumnSize[i]/ 10) * 10;
-                    break;
-            }
-            OTypeInfoMap::const_iterator aFind = _pInfoMap->find(nDataType);
-            if(aFind != _pInfoMap->end())
-            {
-                (*aIter)->second->SetType(aFind->second);
-                (*aIter)->second->SetPrecision(std::min<sal_Int32>(aFind->second->nPrecision,nLength));
-                (*aIter)->second->SetScale(std::min<sal_Int32>(aFind->second->nMaximumScale,nScale));
-
-                sal_Int32 nFormatKey = ::dbtools::getDefaultNumberFormat( nDataType,
-                                    (*aIter)->second->GetScale(),
-                                    (*aIter)->second->IsCurrency(),
-                                    Reference< XNumberFormatTypes>(xFormats,UNO_QUERY),
-                                    m_aLocale);
-
-                (*aIter)->second->SetFormatKey(nFormatKey);
-            }
+            case NumberFormat::ALL:
+                nDataType  = DataType::DOUBLE;
+                break;
+            case NumberFormat::DEFINED:
+                nDataType   = DataType::VARCHAR;
+                nLength     = ((m_vColumnSize[i] % 10 ) ? m_vColumnSize[i]/ 10 + 1: m_vColumnSize[i]/ 10) * 10;
+                break;
+            case NumberFormat::DATE:
+                nDataType  = DataType::DATE;
+                break;
+            case NumberFormat::TIME:
+                nDataType  = DataType::TIME;
+                break;
+            case NumberFormat::DATETIME:
+                nDataType  = DataType::TIMESTAMP;
+                break;
+            case NumberFormat::CURRENCY:
+                nDataType  = DataType::NUMERIC;
+                nScale      = 4;
+                nLength     = 19;
+                break;
+            case NumberFormat::NUMBER:
+            case NumberFormat::SCIENTIFIC:
+            case NumberFormat::FRACTION:
+            case NumberFormat::PERCENT:
+                nDataType  = DataType::DOUBLE;
+                break;
+            case NumberFormat::TEXT:
+            case NumberFormat::UNDEFINED:
+            case NumberFormat::LOGICAL:
+            default:
+                nDataType  = DataType::VARCHAR;
+                nLength     = ((m_vColumnSize[i] % 10 ) ? m_vColumnSize[i]/ 10 + 1: m_vColumnSize[i]/ 10) * 10;
+                break;
         }
+        OTypeInfoMap::const_iterator aFind = _pInfoMap->find(nDataType);
+        if(aFind != _pInfoMap->end())
+        {
+            elem->second->SetType(aFind->second);
+            elem->second->SetPrecision(std::min<sal_Int32>(aFind->second->nPrecision,nLength));
+            elem->second->SetScale(std::min<sal_Int32>(aFind->second->nMaximumScale,nScale));
+
+            sal_Int32 nFormatKey = ::dbtools::getDefaultNumberFormat( nDataType,
+                                elem->second->GetScale(),
+                                elem->second->IsCurrency(),
+                                Reference< XNumberFormatTypes>(xFormats,UNO_QUERY),
+                                m_aLocale);
+
+            elem->second->SetFormatKey(nFormatKey);
+        }
+        ++i;
     }
 }
 
@@ -652,7 +638,7 @@ void ODatabaseExport::CreateDefaultColumn(const OUString& _rColumnName)
     OFieldDescription* pField = new OFieldDescription();
     pField->SetType(m_pTypeInfo);
     pField->SetName(aAlias);
-    pField->SetPrecision(std::min<sal_Int32>((sal_Int32)255,m_pTypeInfo->nPrecision));
+    pField->SetPrecision(std::min<sal_Int32>(sal_Int32(255),m_pTypeInfo->nPrecision));
     pField->SetScale(0);
     pField->SetIsNullable(ColumnValue::NULLABLE);
     pField->SetAutoIncrement(false);
@@ -666,21 +652,19 @@ void ODatabaseExport::CreateDefaultColumn(const OUString& _rColumnName)
         m_aDestColumns.erase(aFind);
     }
 
-    m_vDestVector.push_back(m_aDestColumns.insert(TColumns::value_type(aAlias,pField)).first);
+    m_vDestVector.emplace_back(m_aDestColumns.emplace(aAlias,pField).first);
 }
 
-bool ODatabaseExport::createRowSet()
+void ODatabaseExport::createRowSet()
 {
-    m_pUpdateHelper.reset(new OParameterUpdateHelper(createPreparedStatment(m_xConnection->getMetaData(),m_xTable,m_vColumns)));
-
-    return m_pUpdateHelper.get() != nullptr;
+    m_pUpdateHelper = std::make_shared<OParameterUpdateHelper>(createPreparedStatment(m_xConnection->getMetaData(),m_xTable,m_vColumnPositions));
 }
 
 bool ODatabaseExport::executeWizard(const OUString& _rTableName, const Any& _aTextColor, const FontDescriptor& _rFont)
 {
     bool bHaveDefaultTable =  !m_sDefaultTableName.isEmpty();
     OUString sTableName( bHaveDefaultTable ? m_sDefaultTableName : _rTableName );
-    ScopedVclPtrInstance<OCopyTableWizard> aWizard(
+    OCopyTableWizard aWizard(
         nullptr,
         sTableName,
         bHaveDefaultTable ? CopyTableOperation::AppendData : CopyTableOperation::CopyDefinitionAndData,
@@ -696,14 +680,14 @@ bool ODatabaseExport::executeWizard(const OUString& _rTableName, const Any& _aTe
     bool bError = false;
     try
     {
-        if (aWizard->Execute())
+        if (aWizard.run())
         {
-            switch(aWizard->getOperation())
+            switch(aWizard.getOperation())
             {
                 case CopyTableOperation::CopyDefinitionAndData:
                 case CopyTableOperation::AppendData:
                     {
-                        m_xTable = aWizard->createTable();
+                        m_xTable = aWizard.returnTable();
                         bError = !m_xTable.is();
                         if(m_xTable.is())
                         {
@@ -711,10 +695,10 @@ bool ODatabaseExport::executeWizard(const OUString& _rTableName, const Any& _aTe
                             if(_aTextColor.hasValue())
                                 m_xTable->setPropertyValue(PROPERTY_TEXTCOLOR,_aTextColor);
                         }
-                        m_bIsAutoIncrement  = aWizard->shouldCreatePrimaryKey();
-                        m_vColumns          = aWizard->GetColumnPositions();
-                        m_vColumnTypes      = aWizard->GetColumnTypes();
-                        m_bAppendFirstLine  = !aWizard->UseHeaderLine();
+                        m_bIsAutoIncrement  = aWizard.shouldCreatePrimaryKey();
+                        m_vColumnPositions  = aWizard.GetColumnPositions();
+                        m_vColumnTypes      = aWizard.GetColumnTypes();
+                        m_bAppendFirstLine  = !aWizard.UseHeaderLine();
                     }
                     break;
                 default:
@@ -725,16 +709,16 @@ bool ODatabaseExport::executeWizard(const OUString& _rTableName, const Any& _aTe
             bError = true;
 
         if(!bError)
-            bError = !createRowSet();
+            createRowSet();
     }
     catch( const SQLException&)
     {
-        ::dbaui::showError( ::dbtools::SQLExceptionInfo( ::cppu::getCaughtException() ), aWizard.get(), m_xContext );
+        ::dbtools::showError( ::dbtools::SQLExceptionInfo( ::cppu::getCaughtException() ), aWizard.getDialog()->GetXWindow(), m_xContext );
         bError = true;
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 
     return bError;
@@ -746,10 +730,10 @@ void ODatabaseExport::showErrorDialog(const css::sdbc::SQLException& e)
     {
         OUString aMsg = e.Message
                       + "\n"
-                      + OUString(ModuleRes( STR_QRY_CONTINUE ));
-        ScopedVclPtrInstance< OSQLWarningBox > aBox( nullptr, aMsg, WB_YES_NO | WB_DEF_NO );
+                      + DBA_RES( STR_QRY_CONTINUE );
+        OSQLWarningBox aBox(nullptr, aMsg, MessBoxStyle::YesNo | MessBoxStyle::DefaultNo);
 
-        if (aBox->Execute() == RET_YES)
+        if (aBox.run() == RET_YES)
             m_bDontAskAgain = true;
         else
             m_bError = true;
@@ -758,31 +742,30 @@ void ODatabaseExport::showErrorDialog(const css::sdbc::SQLException& e)
 
 void ODatabaseExport::adjustFormat()
 {
-    if ( !m_sTextToken.isEmpty() )
+    if ( m_sTextToken.isEmpty() )
+        return;
+
+    sal_Int32 nNewPos = m_bIsAutoIncrement ? m_nColumnPos+1 : m_nColumnPos;
+    OSL_ENSURE(nNewPos < static_cast<sal_Int32>(m_vColumnPositions.size()),"Illegal index for vector");
+    if ( nNewPos < static_cast<sal_Int32>(m_vColumnPositions.size()) )
     {
-        sal_Int32 nNewPos = m_bIsAutoIncrement ? m_nColumnPos+1 : m_nColumnPos;
-        OSL_ENSURE((nNewPos) < static_cast<sal_Int32>(m_vColumns.size()),"Illegal index for vector");
-        if ( (nNewPos) < static_cast<sal_Int32>(m_vColumns.size()) )
+        sal_Int32 nColPos = m_vColumnPositions[nNewPos].first;
+        if( nColPos != COLUMN_POSITION_NOT_FOUND)
         {
-            sal_Int32 nColPos = m_vColumns[nNewPos].first;
-            if( nColPos != sal::static_int_cast< long >(CONTAINER_ENTRY_NOTFOUND))
-            {
-                --nColPos;
-                OSL_ENSURE((nColPos) < static_cast<sal_Int32>(m_vNumberFormat.size()),"m_vFormatKey: Illegal index for vector");
-                OSL_ENSURE((nColPos) < static_cast<sal_Int32>(m_vColumnSize.size()),"m_vColumnSize: Illegal index for vector");
-                m_vNumberFormat[nColPos] = CheckString(m_sTextToken,m_vNumberFormat[nColPos]);
-                m_vColumnSize[nColPos] = std::max<sal_Int32>((sal_Int32)m_vColumnSize[nColPos], m_sTextToken.getLength());
-            }
+            --nColPos;
+            OSL_ENSURE((nColPos) < static_cast<sal_Int32>(m_vNumberFormat.size()),"m_vFormatKey: Illegal index for vector");
+            OSL_ENSURE((nColPos) < static_cast<sal_Int32>(m_vColumnSize.size()),"m_vColumnSize: Illegal index for vector");
+            m_vNumberFormat[nColPos] = CheckString(m_sTextToken,m_vNumberFormat[nColPos]);
+            m_vColumnSize[nColPos] = std::max<sal_Int32>(static_cast<sal_Int32>(m_vColumnSize[nColPos]), m_sTextToken.getLength());
         }
-        eraseTokens();
     }
+    eraseTokens();
 }
 
 void ODatabaseExport::eraseTokens()
 {
     m_sTextToken.clear();
     m_sNumToken.clear();
-    m_sValToken.clear();
 }
 
 void ODatabaseExport::ensureFormatter()
@@ -790,8 +773,7 @@ void ODatabaseExport::ensureFormatter()
     if ( !m_pFormatter )
     {
         Reference< XNumberFormatsSupplier >  xSupplier = m_xFormatter->getNumberFormatsSupplier();
-        Reference< XUnoTunnel > xTunnel(xSupplier,UNO_QUERY);
-        SvNumberFormatsSupplierObj* pSupplierImpl = reinterpret_cast<SvNumberFormatsSupplierObj*>(xTunnel->getSomething(SvNumberFormatsSupplierObj::getUnoTunnelId()));
+        auto pSupplierImpl = comphelper::getUnoTunnelImplementation<SvNumberFormatsSupplierObj>(xSupplier);
         m_pFormatter = pSupplierImpl ? pSupplierImpl->GetNumberFormatter() : nullptr;
         Reference<XPropertySet> xNumberFormatSettings = xSupplier->getNumberFormatSettings();
         xNumberFormatSettings->getPropertyValue("NullDate") >>= m_aNullDate;
@@ -802,14 +784,14 @@ Reference< XPreparedStatement > ODatabaseExport::createPreparedStatment( const R
                                                        ,const Reference<XPropertySet>& _xDestTable
                                                        ,const TPositions& _rvColumns)
 {
-    OUString sComposedTableName = ::dbtools::composeTableName( _xMetaData, _xDestTable, ::dbtools::EComposeRule::InDataManipulation, false, false, true );
+    OUString sComposedTableName = ::dbtools::composeTableName( _xMetaData, _xDestTable, ::dbtools::EComposeRule::InDataManipulation, true );
 
-    OUString aSql = "INSERT INTO "
+    OUStringBuffer aSql = "INSERT INTO "
                   + sComposedTableName
                   + " ( ";
 
     // set values and column names
-    OUString aValues(" VALUES ( ");
+    OUStringBuffer aValues(" VALUES ( ");
 
     OUString aQuote;
     if ( _xMetaData.is() )
@@ -819,7 +801,7 @@ Reference< XPreparedStatement > ODatabaseExport::createPreparedStatment( const R
 
     // create sql string and set column types
     Sequence< OUString> aDestColumnNames = xDestColsSup->getColumns()->getElementNames();
-    if ( aDestColumnNames.getLength() == 0 )
+    if ( !aDestColumnNames.hasElements() )
     {
         return Reference< XPreparedStatement > ();
     }
@@ -830,8 +812,8 @@ Reference< XPreparedStatement > ODatabaseExport::createPreparedStatment( const R
     {
         ODatabaseExport::TPositions::const_iterator aFind = std::find_if(_rvColumns.begin(),_rvColumns.end(),
             [j] (const ODatabaseExport::TPositions::value_type& tPos)
-                { return tPos.second == (sal_Int32)(j+1); });
-        if ( _rvColumns.end() != aFind && aFind->second != sal::static_int_cast< long >(CONTAINER_ENTRY_NOTFOUND) && aFind->first != sal::static_int_cast< long >(CONTAINER_ENTRY_NOTFOUND) )
+                { return tPos.second == static_cast<sal_Int32>(j+1); });
+        if ( _rvColumns.end() != aFind && aFind->second != COLUMN_POSITION_NOT_FOUND && aFind->first != COLUMN_POSITION_NOT_FOUND )
         {
             OSL_ENSURE((aFind->first) < static_cast<sal_Int32>(aInsertList.size()),"aInsertList: Illegal index for vector");
             aInsertList[aFind->first] = ::dbtools::quoteName( aQuote,*(pIter+j));
@@ -839,23 +821,22 @@ Reference< XPreparedStatement > ODatabaseExport::createPreparedStatment( const R
     }
 
     // create the sql string
-    std::vector< OUString>::const_iterator aInsertEnd = aInsertList.end();
-    for (std::vector< OUString>::const_iterator aInsertIter = aInsertList.begin(); aInsertIter != aInsertEnd; ++aInsertIter)
+    for (auto const& elem : aInsertList)
     {
-        if ( !aInsertIter->isEmpty() )
+        if ( !elem.isEmpty() )
         {
-            aSql += *aInsertIter;
-            aSql += ",";
-            aValues += "?,";
+            aSql.append(elem);
+            aSql.append(",");
+            aValues.append("?,");
         }
     }
 
-    aSql = aSql.replaceAt(aSql.getLength()-1, 1, ")");
-    aValues = aValues.replaceAt(aValues.getLength()-1, 1, ")");
+    aSql[aSql.getLength()-1] = ')';
+    aValues[aValues.getLength()-1] = ')';
 
-    aSql += aValues;
+    aSql.append(aValues);
     // now create,fill and execute the prepared statement
-    return Reference< XPreparedStatement >(_xMetaData->getConnection()->prepareStatement(aSql));
+    return _xMetaData->getConnection()->prepareStatement(aSql.makeStringAndClear());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

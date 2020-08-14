@@ -19,6 +19,7 @@
 
 #include "rtattributehandler.hxx"
 
+#include <osl/diagnose.h>
 #include <svx/svxids.hrc>
 #include <editeng/eeitem.hxx>
 #include <svl/itemset.hxx>
@@ -67,7 +68,7 @@ namespace frm
 
     void AttributeHandler::putItemForScript( SfxItemSet& _rAttribs, const SfxPoolItem& _rItem, SvtScriptType _nForScriptType ) const
     {
-        SvxScriptSetItem aSetItem( (WhichId)getAttributeId(), *_rAttribs.GetPool() );
+        SvxScriptSetItem aSetItem( static_cast<WhichId>(getAttributeId()), *_rAttribs.GetPool() );
         aSetItem.PutItemForScriptType( _nForScriptType, _rItem );
         _rAttribs.Put( aSetItem.GetItemSet(), false );
     }
@@ -108,7 +109,7 @@ namespace frm
             case SID_ATTR_CHAR_LATIN_WEIGHT:    nWhich = EE_CHAR_WEIGHT;    break;
 
             default:
-                nWhich = _rPool.GetWhich( (SfxSlotId)_nAttributeId );
+                nWhich = _rPool.GetWhich( static_cast<SfxSlotId>(_nAttributeId) );
             }
             return nWhich;
         }
@@ -156,7 +157,7 @@ namespace frm
             break;
 
         default:
-            pReturn = new SlotHandler( (SfxSlotId)_nAttributeId, lcl_implGetWhich( _rEditEnginePool, _nAttributeId ) );
+            pReturn = new SlotHandler( static_cast<SfxSlotId>(_nAttributeId), lcl_implGetWhich( _rEditEnginePool, _nAttributeId ) );
             break;
 
         }
@@ -228,7 +229,7 @@ namespace frm
         if ( 100 == m_nLineSpace )
             aLineSpacing.SetInterLineSpaceRule( SvxInterLineSpaceRule::Off );
         else
-            aLineSpacing.SetPropLineSpace( (sal_uInt8)m_nLineSpace );
+            aLineSpacing.SetPropLineSpace( m_nLineSpace );
 
         _rNewAttribs.Put( aLineSpacing );
     }
@@ -280,7 +281,7 @@ namespace frm
 
         const SfxPoolItem* pItem = _rAttribs.GetItem( getWhich() );
         if ( pItem )
-            aState.setItem( pItem->Clone() );
+            aState.setItem( pItem );
 
         return aState;
     }
@@ -290,14 +291,12 @@ namespace frm
     {
         if ( _pAdditionalArg )
         {
-            SfxPoolItem* pCorrectWich = _pAdditionalArg->Clone();
-            pCorrectWich->SetWhich( getWhich() );
+            std::unique_ptr<SfxPoolItem> pCorrectWich(_pAdditionalArg->CloneSetWhich(getWhich()));
 
             if ( m_bScriptDependent )
                 putItemForScript( _rNewAttribs, *pCorrectWich, _nForScriptType );
             else
-                _rNewAttribs.Put( *pCorrectWich );
-            DELETEZ( pCorrectWich );
+                _rNewAttribs.Put( std::move(pCorrectWich) );
         }
         else
             OSL_FAIL( "SlotHandler::executeAttribute: need attributes to do something!" );
@@ -346,26 +345,26 @@ namespace frm
         const SvxFontHeightItem* pFontHeightItem = dynamic_cast<const SvxFontHeightItem*>( _pAdditionalArg  );
         OSL_ENSURE( pFontHeightItem, "FontSizeHandler::executeAttribute: need a FontHeightItem!" );
 
-        if ( pFontHeightItem )
+        if ( !pFontHeightItem )
+            return;
+
+        sal_uLong nHeight = pFontHeightItem->GetHeight();
+        if ( _rNewAttribs.GetPool()->GetMetric( getWhich() ) != MapUnit::MapTwip )
         {
-            sal_uLong nHeight = pFontHeightItem->GetHeight();
-            if ( _rNewAttribs.GetPool()->GetMetric( getWhich() ) != MapUnit::MapTwip )
-            {
-                nHeight = OutputDevice::LogicToLogic(
-                    Size( 0, nHeight ),
-                    MapMode( MapUnit::MapTwip ),
-                    MapMode( _rNewAttribs.GetPool()->GetMetric( getWhich() ) )
-                ).Height();
-            }
-
-            SvxFontHeightItem aNewItem( nHeight, 100, getWhich() );
-            aNewItem.SetProp( pFontHeightItem->GetProp(), pFontHeightItem->GetPropUnit() );
-
-            if ( ( getAttributeId() == SID_ATTR_CHAR_FONTHEIGHT ) && _nForScriptType != SvtScriptType::NONE)
-                putItemForScript( _rNewAttribs, aNewItem, _nForScriptType );
-            else
-                _rNewAttribs.Put( aNewItem );
+            nHeight = OutputDevice::LogicToLogic(
+                Size( 0, nHeight ),
+                MapMode( MapUnit::MapTwip ),
+                MapMode( _rNewAttribs.GetPool()->GetMetric( getWhich() ) )
+            ).Height();
         }
+
+        SvxFontHeightItem aNewItem( nHeight, 100, getWhich() );
+        aNewItem.SetProp( pFontHeightItem->GetProp(), pFontHeightItem->GetPropUnit() );
+
+        if ( ( getAttributeId() == SID_ATTR_CHAR_FONTHEIGHT ) && _nForScriptType != SvtScriptType::NONE)
+            putItemForScript( _rNewAttribs, aNewItem, _nForScriptType );
+        else
+            _rNewAttribs.Put( aNewItem );
     }
 
     ParagraphDirectionHandler::ParagraphDirectionHandler( AttributeId _nAttributeId )
@@ -433,10 +432,7 @@ namespace frm
         OSL_ENSURE( dynamic_cast<const SfxBoolItem*>( _pAdditionalArg) !=  nullptr, "BooleanHandler::executeAttribute: invalid argument!" );
         if ( _pAdditionalArg )
         {
-            SfxPoolItem* pCorrectWich = _pAdditionalArg->Clone();
-            pCorrectWich->SetWhich( getWhich() );
-            _rNewAttribs.Put( *pCorrectWich );
-            DELETEZ( pCorrectWich );
+            _rNewAttribs.Put( _pAdditionalArg->CloneSetWhich(getWhich()) );
         }
     }
 

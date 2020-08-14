@@ -24,23 +24,25 @@
 
  *************************************************************************/
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/interfacecontainer2.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/ucb/DuplicateProviderException.hpp>
 #include <com/sun/star/ucb/GlobalTransferCommandArgument2.hpp>
 #include <com/sun/star/ucb/UnsupportedCommandException.hpp>
 #include <com/sun/star/ucb/XCommandInfo.hpp>
-#include <com/sun/star/ucb/XContentProvider.hpp>
 #include <com/sun/star/ucb/XContentProviderSupplier.hpp>
-#include <com/sun/star/ucb/XParameterizedContentProvider.hpp>
-#include <com/sun/star/ucb/XContentProviderFactory.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <ucbhelper/cancelcommandexecution.hxx>
+#include <ucbhelper/getcomponentcontext.hxx>
+#include <ucbhelper/macros.hxx>
+#include <rtl/ref.hxx>
 #include "identify.hxx"
 #include "ucbcmds.hxx"
 
@@ -54,6 +56,8 @@ using namespace ucb_impl;
 using namespace com::sun::star;
 using namespace ucbhelper;
 
+static osl::Mutex g_InstanceGuard;
+static rtl::Reference<UniversalContentBroker> g_Instance;
 
 namespace {
 
@@ -172,14 +176,12 @@ bool createContentProviderData(
     ContentProviderData & rInfo)
 {
     // Obtain service name.
-    OUStringBuffer aKeyBuffer (rProvider);
-    aKeyBuffer.append( "/ServiceName" );
 
     OUString aValue;
     try
     {
         if ( !( rxHierNameAccess->getByHierarchicalName(
-                    aKeyBuffer.makeStringAndClear() ) >>= aValue ) )
+                    rProvider +  "/ServiceName" ) >>= aValue ) )
         {
             OSL_FAIL( "UniversalContentBroker::getContentProviderData - "
                         "Error getting item value!" );
@@ -193,11 +195,9 @@ bool createContentProviderData(
     rInfo.ServiceName = aValue;
 
     // Obtain URL Template.
-    aKeyBuffer.append(rProvider);
-    aKeyBuffer.append( "/URLTemplate" );
 
     if ( !( rxHierNameAccess->getByHierarchicalName(
-                aKeyBuffer.makeStringAndClear() ) >>= aValue ) )
+                rProvider + "/URLTemplate" ) >>= aValue ) )
     {
         OSL_FAIL( "UniversalContentBroker::getContentProviderData - "
                     "Error getting item value!" );
@@ -206,11 +206,9 @@ bool createContentProviderData(
     rInfo.URLTemplate = aValue;
 
     // Obtain Arguments.
-    aKeyBuffer.append(rProvider);
-    aKeyBuffer.append( "/Arguments" );
 
     if ( !( rxHierNameAccess->getByHierarchicalName(
-                aKeyBuffer.makeStringAndClear() ) >>= aValue ) )
+                rProvider + "/Arguments" ) >>= aValue ) )
     {
         OSL_FAIL( "UniversalContentBroker::getContentProviderData - "
                     "Error getting item value!" );
@@ -229,7 +227,6 @@ bool createContentProviderData(
 UniversalContentBroker::UniversalContentBroker(
     const Reference< css::uno::XComponentContext >& xContext )
 : m_xContext( xContext ),
-  m_pDisposeEventListeners( nullptr ),
   m_nCommandId( 0 )
 {
     OSL_ENSURE( m_xContext.is(),
@@ -243,50 +240,6 @@ UniversalContentBroker::~UniversalContentBroker()
 }
 
 
-// XInterface methods.
-void SAL_CALL UniversalContentBroker::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-void SAL_CALL UniversalContentBroker::release()
-    throw()
-{
-    OWeakObject::release();
-}
-
-css::uno::Any SAL_CALL UniversalContentBroker::queryInterface( const css::uno::Type & rType )
-{
-    css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< XUniversalContentBroker* >(this)),
-                                               (static_cast< XTypeProvider* >(this)),
-                                               (static_cast< XComponent* >(this)),
-                                               (static_cast< XServiceInfo* >(this)),
-                                               (static_cast< XInitialization* >(this)),
-                                               (static_cast< XContentProviderManager* >(this)),
-                                               (static_cast< XContentProvider* >(this)),
-                                               (static_cast< XContentIdentifierFactory* >(this)),
-                                               (static_cast< XCommandProcessor* >(this))
-                                               );
-    return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
-}
-
-// XTypeProvider methods.
-
-
-XTYPEPROVIDER_IMPL_9( UniversalContentBroker,
-                      XUniversalContentBroker,
-                      XTypeProvider,
-                      XComponent,
-                      XServiceInfo,
-                      XInitialization,
-                      XContentProviderManager,
-                      XContentProvider,
-                      XContentIdentifierFactory,
-                      XCommandProcessor );
-
-
 // XComponent methods.
 
 
@@ -296,12 +249,15 @@ void SAL_CALL UniversalContentBroker::dispose()
     if ( m_pDisposeEventListeners && m_pDisposeEventListeners->getLength() )
     {
         EventObject aEvt;
-        aEvt.Source = (static_cast< XComponent* >(this));
+        aEvt.Source = static_cast< XComponent* >(this);
         m_pDisposeEventListeners->disposeAndClear( aEvt );
     }
 
-     if ( m_xNotifier.is() )
+    if ( m_xNotifier.is() )
         m_xNotifier->removeChangesListener( this );
+
+    osl::MutexGuard aGuard(g_InstanceGuard);
+    g_Instance.clear();
 }
 
 
@@ -329,28 +285,30 @@ void SAL_CALL UniversalContentBroker::removeEventListener(
 
 // XServiceInfo methods.
 
-XSERVICEINFO_COMMOM_IMPL( UniversalContentBroker,
-                          OUString( "com.sun.star.comp.ucb.UniversalContentBroker" ) )
-/// @throws css::uno::Exception
-static css::uno::Reference< css::uno::XInterface > SAL_CALL
-UniversalContentBroker_CreateInstance( const css::uno::Reference< css::lang::XMultiServiceFactory> & rSMgr )
+OUString SAL_CALL UniversalContentBroker::getImplementationName()
 {
-    css::lang::XServiceInfo* pX =
-        static_cast<css::lang::XServiceInfo*>(new UniversalContentBroker( ucbhelper::getComponentContext(rSMgr) ));
-    return css::uno::Reference< css::uno::XInterface >::query( pX );
+    return "com.sun.star.comp.ucb.UniversalContentBroker";
+}
+sal_Bool SAL_CALL UniversalContentBroker::supportsService( const OUString& ServiceName )
+{
+    return cppu::supportsService( this, ServiceName );
+}
+css::uno::Sequence< OUString > SAL_CALL UniversalContentBroker::getSupportedServiceNames()
+{
+    return { "com.sun.star.ucb.UniversalContentBroker" };
 }
 
-css::uno::Sequence< OUString >
-UniversalContentBroker::getSupportedServiceNames_Static()
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_UniversalContentBroker_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
 {
-    css::uno::Sequence< OUString > aSNS { UCB_SERVICE_NAME };
-    return aSNS;
+    osl::MutexGuard aGuard(g_InstanceGuard);
+    if (!g_Instance)
+        g_Instance.set(new UniversalContentBroker(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
-
-// Service factory implementation.
-
-
-ONE_INSTANCE_SERVICE_FACTORY_IMPL( UniversalContentBroker );
 
 
 // XInitialization methods.
@@ -361,9 +319,9 @@ void SAL_CALL UniversalContentBroker::initialize( const css::uno::Sequence< Any 
 {
     {
         osl::MutexGuard aGuard(m_aMutex);
-        if (m_aArguments.getLength() != 0)
+        if (m_aArguments.hasElements())
         {
-            if (aArguments.getLength() != 0
+            if (aArguments.hasElements()
                 && !(m_aArguments.getLength() == 2
                      && aArguments.getLength() == 2
                      && m_aArguments[0] == aArguments[0]
@@ -375,7 +333,7 @@ void SAL_CALL UniversalContentBroker::initialize( const css::uno::Sequence< Any 
             }
             return;
         }
-        if (aArguments.getLength() == 0)
+        if (!aArguments.hasElements())
         {
             m_aArguments.realloc(2);
             m_aArguments[0] <<= OUString("Local");
@@ -461,16 +419,10 @@ void SAL_CALL UniversalContentBroker::deregisterContentProvider(
     {
         ProviderList_Impl & rList = aMapIt->getValue();
 
-        ProviderList_Impl::iterator aListEnd(rList.end());
-        for (ProviderList_Impl::iterator aListIt(rList.begin());
-             aListIt != aListEnd; ++aListIt)
-        {
-            if ((*aListIt).getProvider() == Provider)
-            {
-                rList.erase(aListIt);
-                break;
-            }
-        }
+        auto aListIt = std::find_if(rList.begin(), rList.end(),
+            [&Provider](const ProviderListEntry_Impl& rEntry) { return rEntry.getProvider() == Provider; });
+        if (aListIt != rList.end())
+            rList.erase(aListIt);
 
         if (rList.empty())
             m_aProviders.erase(aMapIt);
@@ -696,14 +648,14 @@ Any SAL_CALL UniversalContentBroker::execute(
 // virtual
 void SAL_CALL UniversalContentBroker::releaseCommandIdentifier(sal_Int32 /*aCommandId*/)
 {
-    // @@@ Not implemeted ( yet).
+    // @@@ Not implemented ( yet).
 }
 
 
 // virtual
 void SAL_CALL UniversalContentBroker::abort( sal_Int32 )
 {
-    // @@@ Not implemeted ( yet).
+    // @@@ Not implemented ( yet).
 }
 
 
@@ -713,42 +665,37 @@ void SAL_CALL UniversalContentBroker::abort( sal_Int32 )
 // virtual
 void SAL_CALL UniversalContentBroker::changesOccurred( const util::ChangesEvent& Event )
 {
-    sal_Int32 nCount = Event.Changes.getLength();
-    if ( nCount )
+    if ( !Event.Changes.hasElements() )
+        return;
+
+    uno::Reference< container::XHierarchicalNameAccess > xHierNameAccess;
+    Event.Base >>= xHierNameAccess;
+
+    OSL_ASSERT( xHierNameAccess.is() );
+
+    ContentProviderDataList aData;
+    for ( const util::ElementChange& rElem : Event.Changes )
     {
-        uno::Reference< container::XHierarchicalNameAccess > xHierNameAccess;
-        Event.Base >>= xHierNameAccess;
+        OUString aKey;
+        rElem.Accessor >>= aKey;
 
-        OSL_ASSERT( xHierNameAccess.is() );
+        ContentProviderData aInfo;
 
-        const util::ElementChange* pElementChanges
-            = Event.Changes.getConstArray();
+        // Removal of UCPs from the configuration leads to changesOccurred
+        // notifications, too, but it is hard to tell for a given
+        // ElementChange whether it is an addition or a removal, so as a
+        // heuristic consider as removals those that cause a
+        // NoSuchElementException in createContentProviderData.
 
-        ContentProviderDataList aData;
-        for ( sal_Int32 n = 0; n < nCount; ++n )
+        // For now, removal of UCPs from the configuration is simply ignored
+        // (and not reflected in the UCB's data structures):
+        if (createContentProviderData(aKey, xHierNameAccess, aInfo))
         {
-            const util::ElementChange& rElem = pElementChanges[ n ];
-            OUString aKey;
-            rElem.Accessor >>= aKey;
-
-            ContentProviderData aInfo;
-
-            // Removal of UCPs from the configuration leads to changesOccurred
-            // notifications, too, but it is hard to tell for a given
-            // ElementChange whether it is an addition or a removal, so as a
-            // heuristic consider as removals those that cause a
-            // NoSuchElementException in createContentProviderData.
-
-            // For now, removal of UCPs from the configuration is simply ignored
-            // (and not reflected in the UCB's data structures):
-            if (createContentProviderData(aKey, xHierNameAccess, aInfo))
-            {
-                aData.push_back(aInfo);
-            }
+            aData.push_back(aInfo);
         }
-
-        prepareAndRegister(aData);
     }
+
+    prepareAndRegister(aData);
 }
 
 
@@ -807,20 +754,18 @@ void UniversalContentBroker::configureUcb()
 void UniversalContentBroker::prepareAndRegister(
     const ContentProviderDataList& rData)
 {
-    ContentProviderDataList::const_iterator aEnd(rData.end());
-    for (ContentProviderDataList::const_iterator aIt(rData.begin());
-         aIt != aEnd; ++aIt)
+    for (const auto& rContentProviderData : rData)
     {
         OUString aProviderArguments;
-        if (fillPlaceholders(aIt->Arguments,
+        if (fillPlaceholders(rContentProviderData.Arguments,
                              m_aArguments,
                              &aProviderArguments))
         {
             registerAtUcb(this,
                           m_xContext,
-                          aIt->ServiceName,
+                          rContentProviderData.ServiceName,
                           aProviderArguments,
-                          aIt->URLTemplate);
+                          rContentProviderData.URLTemplate);
 
         }
         else
@@ -845,7 +790,7 @@ bool UniversalContentBroker::getContentProviderData(
         uno::Reference< lang::XMultiServiceFactory > xConfigProv =
                 configuration::theDefaultProvider::get( m_xContext );
 
-        OUStringBuffer aFullPath;
+        OUStringBuffer aFullPath(128);
         aFullPath.append(
                 "/org.openoffice.ucb.Configuration/ContentProviders"
                 "/['" );
@@ -854,11 +799,10 @@ bool UniversalContentBroker::getContentProviderData(
         makeAndAppendXMLName( aFullPath, rKey2 );
         aFullPath.append( "']/ProviderData" );
 
-        uno::Sequence< uno::Any > aArguments( 1 );
-        beans::PropertyValue      aProperty;
-        aProperty.Name = "nodepath";
-        aProperty.Value <<= aFullPath.makeStringAndClear();
-        aArguments[ 0 ] <<= aProperty;
+        uno::Sequence<uno::Any> aArguments(comphelper::InitAnyPropertySequence(
+        {
+            {"nodepath", uno::Any(aFullPath.makeStringAndClear())}
+        }));
 
         uno::Reference< uno::XInterface > xInterface(
                 xConfigProv->createInstanceWithArguments(
@@ -875,17 +819,15 @@ bool UniversalContentBroker::getContentProviderData(
         uno::Reference< container::XNameAccess > xNameAccess(
                                             xInterface, uno::UNO_QUERY_THROW );
 
-        uno::Sequence< OUString > aElems = xNameAccess->getElementNames();
-        const OUString* pElems = aElems.getConstArray();
-        sal_Int32 nCount = aElems.getLength();
+        const uno::Sequence< OUString > aElems = xNameAccess->getElementNames();
 
-        if ( nCount > 0 )
+        if ( aElems.hasElements() )
         {
             uno::Reference< container::XHierarchicalNameAccess >
                                 xHierNameAccess( xInterface, uno::UNO_QUERY_THROW );
 
             // Iterate over children.
-            for ( sal_Int32 n = 0; n < nCount; ++n )
+            for ( const auto& rElem : aElems )
             {
 
                 try
@@ -895,7 +837,7 @@ bool UniversalContentBroker::getContentProviderData(
 
                     OUStringBuffer aElemBuffer;
                     aElemBuffer.append( "['" );
-                    makeAndAppendXMLName( aElemBuffer, pElems[ n ] );
+                    makeAndAppendXMLName( aElemBuffer, rElem );
                     aElemBuffer.append( "']" );
 
                     OSL_VERIFY(

@@ -23,12 +23,15 @@
 #include <oox/helper/helper.hxx>
 #include <oox/helper/refvector.hxx>
 #include "workbookhelper.hxx"
+#include <com/sun/star/sheet/TableFilterField3.hpp>
 
-namespace com { namespace sun { namespace star {
-    namespace sheet { struct TableFilterField3; }
+namespace com::sun::star {
     namespace sheet { class XDatabaseRange; }
     namespace sheet { class XSheetFilterDescriptor3; }
-} } }
+}
+
+namespace oox { class AttributeList; }
+namespace oox { class SequenceInputStream; }
 
 namespace oox {
 namespace xls {
@@ -167,7 +170,7 @@ public:
     /** Creates and returns the specified filter settings object. */
     template< typename FilterSettingsType >
     FilterSettingsBase& createFilterSettings()
-        { mxSettings.reset( new FilterSettingsType( *this ) ); return *mxSettings; }
+        { mxSettings = std::make_shared<FilterSettingsType>( *this ); return *mxSettings; }
 
     /** Returns converted UNO API filter settings representing all filter
         settings of this column. */

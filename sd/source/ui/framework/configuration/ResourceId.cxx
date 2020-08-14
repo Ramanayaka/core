@@ -17,16 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "framework/ResourceId.hxx"
-#include "framework/FrameworkHelper.hxx"
-#include "tools/SdGlobalResourceContainer.hxx"
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <framework/ResourceId.hxx>
+#include <tools/SdGlobalResourceContainer.hxx>
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <comphelper/processfactory.hxx>
+#include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/weakref.hxx>
 #include <rtl/ref.hxx>
 
-#include <facreg.hxx>
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -41,7 +40,7 @@ using namespace ::com::sun::star::drawing::framework;
 */
 #define USE_OPTIMIZATIONS
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 //===== ResourceId ============================================================
 
@@ -97,8 +96,7 @@ ResourceId::ResourceId (
 {
     maResourceURLs[0] = rsResourceURL;
     maResourceURLs[1] = rsFirstAnchorURL;
-    for (sal_Int32 nIndex=0; nIndex<rAnchorURLs.getLength(); ++nIndex)
-        maResourceURLs[nIndex+2] = rAnchorURLs[nIndex];
+    std::copy(rAnchorURLs.begin(), rAnchorURLs.end(), std::next(maResourceURLs.begin(), 2));
     ParseResourceURL();
 }
 
@@ -119,7 +117,7 @@ OUString SAL_CALL
 util::URL SAL_CALL
     ResourceId::getFullResourceURL()
 {
-    if (mpURL.get() != nullptr)
+    if (mpURL != nullptr)
         return *mpURL;
 
     Reference<util::XURLTransformer> xURLTransformer (mxURLTransformerWeak);
@@ -361,25 +359,21 @@ Reference<XResourceId> SAL_CALL
 
 void SAL_CALL ResourceId::initialize (const Sequence<Any>& aArguments)
 {
-    sal_uInt32 nCount (aArguments.getLength());
-    for (sal_uInt32 nIndex=0; nIndex<nCount; ++nIndex)
+    for (const auto& rArgument : aArguments)
     {
         OUString sResourceURL;
-        if (aArguments[nIndex] >>= sResourceURL)
+        if (rArgument >>= sResourceURL)
             maResourceURLs.push_back(sResourceURL);
         else
         {
             Reference<XResourceId> xAnchor;
-            if (aArguments[nIndex] >>= xAnchor)
+            if (rArgument >>= xAnchor)
             {
                 if (xAnchor.is())
                 {
                     maResourceURLs.push_back(xAnchor->getResourceURL());
                     Sequence<OUString> aAnchorURLs (xAnchor->getAnchorURLs());
-                    for (sal_Int32 nURLIndex=0; nURLIndex<aAnchorURLs.getLength(); ++nURLIndex)
-                    {
-                        maResourceURLs.push_back(aAnchorURLs[nURLIndex]);
-                    }
+                    maResourceURLs.insert( maResourceURLs.end(), aAnchorURLs.begin(), aAnchorURLs.end() );
                 }
             }
         }
@@ -389,7 +383,7 @@ void SAL_CALL ResourceId::initialize (const Sequence<Any>& aArguments)
 
 OUString ResourceId::getImplementationName()
 {
-    return OUString("com.sun.star.comp.Draw.framework.ResourceId");
+    return "com.sun.star.comp.Draw.framework.ResourceId";
 }
 
 sal_Bool ResourceId::supportsService(OUString const & ServiceName)
@@ -433,8 +427,8 @@ bool ResourceId::IsBoundToAnchor (
         sal_uInt32 nCount = paAnchorURLs->getLength();
         while (nOffset < nCount)
         {
-            if ( ! maResourceURLs[nLocalAnchorURLCount - nOffset].equals(
-                (*paAnchorURLs)[nCount - 1 - nOffset]))
+            if ( maResourceURLs[nLocalAnchorURLCount - nOffset] !=
+                (*paAnchorURLs)[nCount - 1 - nOffset] )
             {
                 return false;
             }
@@ -443,7 +437,7 @@ bool ResourceId::IsBoundToAnchor (
     }
     if (bHasFirstAnchorURL)
     {
-        if ( ! psFirstAnchorURL->equals(maResourceURLs[nLocalAnchorURLCount - nOffset]))
+        if ( *psFirstAnchorURL != maResourceURLs[nLocalAnchorURLCount - nOffset] )
             return false;
     }
 
@@ -468,8 +462,8 @@ bool ResourceId::IsBoundToAnchor (
     // id and the given anchor.
     for (sal_uInt32 nOffset=0; nOffset<nAnchorURLCount; ++nOffset)
     {
-        if ( ! maResourceURLs[nLocalAnchorURLCount - nOffset].equals(
-            rAnchorURLs[nAnchorURLCount - 1 - nOffset]))
+        if ( maResourceURLs[nLocalAnchorURLCount - nOffset] !=
+            rAnchorURLs[nAnchorURLCount - 1 - nOffset] )
         {
             return false;
         }
@@ -504,10 +498,10 @@ void ResourceId::ParseResourceURL()
     }
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Draw_framework_ResourceID_get_implementation(css::uno::XComponentContext*,
                                                                css::uno::Sequence<css::uno::Any> const &)
 {

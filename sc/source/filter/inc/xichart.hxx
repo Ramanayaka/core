@@ -20,22 +20,19 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_XICHART_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_XICHART_HXX
 
+#include <salhelper/simplereferenceobject.hxx>
 #include <set>
-#include <list>
 #include <map>
 #include <memory>
 #include <vector>
 
-#include <svl/itemset.hxx>
-
-#include "rangelst.hxx"
-#include "types.hxx"
+#include <types.hxx>
 #include "xlchart.hxx"
 #include "xlstyle.hxx"
 #include "xiescher.hxx"
 #include "xistring.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt
     {
         struct Rectangle;
@@ -68,7 +65,7 @@ namespace com { namespace sun { namespace star {
             class XLabeledDataSequence;
         }
     }
-} } }
+}
 
 struct XclObjLineData;
 struct XclObjFillData;
@@ -85,6 +82,11 @@ class XclImpChRoot : public XclImpRoot
 public:
     explicit            XclImpChRoot( const XclImpRoot& rRoot, XclImpChChart& rChartData );
     virtual             ~XclImpChRoot() override;
+
+    XclImpChRoot(XclImpChRoot const &) = default;
+    XclImpChRoot(XclImpChRoot &&) = default;
+    XclImpChRoot & operator =(XclImpChRoot const &) = delete; // due to XclImpRoot
+    XclImpChRoot & operator =(XclImpChRoot &&) = delete; // due to XclImpRoot
 
     /** Returns this root instance - for code readability in derived classes. */
     const XclImpChRoot& GetChRoot() const { return *this; }
@@ -177,6 +179,12 @@ private:
 class XclImpChGroupBase
 {
 public:
+    XclImpChGroupBase() = default;
+    XclImpChGroupBase(XclImpChGroupBase const &) = default;
+    XclImpChGroupBase(XclImpChGroupBase &&) = default;
+    XclImpChGroupBase & operator =(XclImpChGroupBase const &) = default;
+    XclImpChGroupBase & operator =(XclImpChGroupBase &&) = default;
+
     virtual             ~XclImpChGroupBase();
 
     /** Reads the entire record group.
@@ -213,13 +221,23 @@ private:
 typedef std::shared_ptr< XclImpChFramePos > XclImpChFramePosRef;
 
 /** The CHLINEFORMAT record containing line formatting data. */
-class XclImpChLineFormat
+class XclImpChLineFormat : public salhelper::SimpleReferenceObject
 {
 public:
     /** Creates a new line format object with automatic formatting. */
     explicit     XclImpChLineFormat() {}
     /** Creates a new line format object with the passed formatting. */
     explicit     XclImpChLineFormat( const XclChLineFormat& rLineFmt ) : maData( rLineFmt ) {}
+
+    // this class is stored both ref-counted and by value
+    XclImpChLineFormat(XclImpChLineFormat const & rOther)
+        : salhelper::SimpleReferenceObject(), maData(rOther.maData) {}
+    XclImpChLineFormat(XclImpChLineFormat && rOther)
+        : salhelper::SimpleReferenceObject(), maData(std::move(rOther.maData)) {}
+    XclImpChLineFormat& operator=(XclImpChLineFormat const & rOther)
+        { maData = rOther.maData; return *this; }
+    XclImpChLineFormat& operator=(XclImpChLineFormat && rOther) noexcept
+        { maData = std::move(rOther.maData); return *this; }
 
     /** Reads the CHLINEFORMAT record (basic line properties). */
     void                ReadChLineFormat( XclImpStream& rStrm );
@@ -242,7 +260,7 @@ private:
     XclChLineFormat     maData;             /// Contents of the CHLINEFORMAT record.
 };
 
-typedef std::shared_ptr< XclImpChLineFormat > XclImpChLineFormatRef;
+typedef rtl::Reference< XclImpChLineFormat > XclImpChLineFormatRef;
 
 /** The CHAREAFORMAT record containing simple area formatting data (solid or patterns). */
 class XclImpChAreaFormat
@@ -428,6 +446,12 @@ typedef std::shared_ptr< XclImpChSourceLink > XclImpChSourceLinkRef;
 class XclImpChFontBase
 {
 public:
+    XclImpChFontBase() = default;
+    XclImpChFontBase(XclImpChFontBase const &) = default;
+    XclImpChFontBase(XclImpChFontBase &&) = default;
+    XclImpChFontBase & operator =(XclImpChFontBase const &) = default;
+    XclImpChFontBase & operator =(XclImpChFontBase &&) = default;
+
     virtual             ~XclImpChFontBase();
 
     /** Derived classes return the leading font index for the text object. */
@@ -507,7 +531,7 @@ public:
     /** Converts and writes the contained number format to the passed property set. */
     void                ConvertNumFmt( ScfPropertySet& rPropSet, bool bPercent ) const;
     /** Converts and writes all contained data to the passed data point label property set. */
-    void                ConvertDataLabel( ScfPropertySet& rPropSet, const XclChTypeInfo& rTypeInfo ) const;
+    void                ConvertDataLabel( ScfPropertySet& rPropSet, const XclChTypeInfo& rTypeInfo, const ScfPropertySet* pGlobalPropSet ) const;
     /** Creates a title text object. */
     css::uno::Reference< css::chart2::XTitle >
                         CreateTitle() const;
@@ -665,7 +689,7 @@ public:
     const XclImpChText* GetDataLabel() const { return mxLabel.get(); }
 
     /** Converts and writes the contained data to the passed property set. */
-    void                Convert( ScfPropertySet& rPropSet, const XclChExtTypeInfo& rTypeInfo ) const;
+    void                Convert( ScfPropertySet& rPropSet, const XclChExtTypeInfo& rTypeInfo, const ScfPropertySet* pGlobalPropSet = nullptr ) const;
     /** Writes the line format only, e.g. for trend lines or error bars. */
     void                ConvertLine( ScfPropertySet& rPropSet, XclChObjectType eObjType ) const;
     /** Writes the area format only for the series or a data point. */
@@ -809,6 +833,7 @@ private:
     /** Reads a CHSERERRORBAR record containing error bar settings. */
     void                ReadChSerErrorBar( XclImpStream& rStrm );
 
+    void                ReadChLegendException( XclImpStream& rStrm );
     /** Creates a new CHDATAFORMAT group with the specified point index. */
     XclImpChDataFormatRef CreateDataFormat( sal_uInt16 nPointIdx, sal_uInt16 nFormatIdx );
 
@@ -821,7 +846,6 @@ private:
 private:
     typedef ::std::map<sal_uInt16, XclImpChDataFormatRef> XclImpChDataFormatMap;
     typedef ::std::map<sal_uInt16, XclImpChTextRef>       XclImpChTextMap;
-    typedef ::std::list< XclImpChSerTrendLineRef >        XclImpChSerTrendLineList;
     typedef ::std::map<sal_uInt8, std::unique_ptr<XclImpChSerErrorBar>> XclImpChSerErrorBarMap;
 
     XclChSeries         maData;             /// Contents of the CHSERIES record.
@@ -832,11 +856,12 @@ private:
     XclImpChDataFormatRef mxSeriesFmt;      /// CHDATAFORMAT group for series format.
     XclImpChDataFormatMap maPointFmts;      /// CHDATAFORMAT groups for data point formats.
     XclImpChTextMap     maLabels;           /// Data point labels (CHTEXT groups).
-    XclImpChSerTrendLineList maTrendLines;  /// Trend line settings (CHSERTRENDLINE records).
+    std::vector< XclImpChSerTrendLineRef > maTrendLines;  /// Trend line settings (CHSERTRENDLINE records).
     XclImpChSerErrorBarMap m_ErrorBars;     /// Error bar settings (CHSERERRORBAR records).
     sal_uInt16          mnGroupIdx;         /// Chart type group (CHTYPEGROUP group) this series is assigned to.
     sal_uInt16          mnSeriesIdx;        /// 0-based series index.
     sal_uInt16          mnParentIdx;        /// 0-based index of parent series (trend lines and error bars).
+    bool                mbLabelDeleted;     /// Legend label deleted
 };
 
 typedef std::shared_ptr< XclImpChSeries > XclImpChSeriesRef;
@@ -1039,7 +1064,6 @@ private:
     typedef ::std::vector< XclImpChSeriesRef >               XclImpChSeriesVec;
     typedef ::std::map<sal_uInt16, std::unique_ptr<XclImpChDropBar>> XclImpChDropBarMap;
     typedef ::std::map<sal_uInt16, XclImpChLineFormat> XclImpChLineFormatMap;
-    typedef ::std::set< sal_uInt16 >                         UInt16Set;
 
     XclChTypeGroup      maData;             /// Contents of the CHTYPEGROUP record.
     XclImpChType        maType;             /// Chart type (e.g. CHBAR, CHLINE, ...).
@@ -1051,7 +1075,8 @@ private:
     XclImpChDropBarMap  m_DropBars;         /// Dropbars (CHDROPBAR group).
     XclImpChLineFormatMap m_ChartLines;     /// Global line formats (CHCHARTLINE group).
     XclImpChDataFormatRef mxGroupFmt;       /// Default format for all series (CHDATAFORMAT group).
-    UInt16Set           maUnusedFormats;    /// Contains unused format indexes for automatic colors.
+    std::set< sal_uInt16 >
+                        maUnusedFormats;    /// Contains unused format indexes for automatic colors.
 };
 
 typedef std::shared_ptr< XclImpChTypeGroup > XclImpChTypeGroupRef;

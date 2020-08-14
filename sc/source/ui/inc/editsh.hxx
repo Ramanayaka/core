@@ -21,12 +21,12 @@
 #define INCLUDED_SC_SOURCE_UI_INC_EDITSH_HXX
 
 #include <sfx2/shell.hxx>
-#include <sfx2/module.hxx>
 #include <tools/link.hxx>
+#include <rtl/ref.hxx>
 
-#include "shellids.hxx"
-#include <editeng/editview.hxx>
+#include <shellids.hxx>
 
+class SfxModule;
 class EditView;
 class ScViewData;
 class ScInputHandler;
@@ -63,14 +63,14 @@ public:
     EditView* GetEditView() {return pEditView;}
 
     void    Execute(SfxRequest& rReq);
-    void    ExecuteTrans(SfxRequest& rReq);
+    void    ExecuteTrans(const SfxRequest& rReq);
     void    GetState(SfxItemSet &rSet);
     void    GetClipState(SfxItemSet& rSet);
 
     void    ExecuteAttr(SfxRequest& rReq);
     void    GetAttrState(SfxItemSet &rSet);
 
-    void    ExecuteUndo(SfxRequest& rReq);
+    void    ExecuteUndo(const SfxRequest& rReq);
     void    GetUndoState(SfxItemSet &rSet);
 
     OUString GetSelectionText( bool bWholeWord );

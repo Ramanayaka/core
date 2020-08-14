@@ -18,6 +18,7 @@
  */
 #include "vbachart.hxx"
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/sheet/XCellRangeAddressable.hpp>
 #include <com/sun/star/chart/XAxisXSupplier.hpp>
 #include <com/sun/star/chart/XAxisYSupplier.hpp>
@@ -28,7 +29,6 @@
 #include <com/sun/star/chart/ChartSymbolType.hpp>
 #include <com/sun/star/chart/ChartSolidType.hpp>
 #include <com/sun/star/chart/ChartDataRowSource.hpp>
-#include <com/sun/star/chart/ChartDataCaption.hpp>
 #include <ooo/vba/excel/XlChartType.hpp>
 #include <ooo/vba/excel/XlRowCol.hpp>
 #include <ooo/vba/excel/XlAxisType.hpp>
@@ -39,6 +39,7 @@
 #include "vbarange.hxx"
 #include "vbacharttitle.hxx"
 #include "vbaaxes.hxx"
+#include <document.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
@@ -47,23 +48,23 @@ using namespace ::ooo::vba::excel::XlRowCol;
 using namespace ::ooo::vba::excel::XlAxisType;
 using namespace ::ooo::vba::excel::XlAxisGroup;
 
-const OUString CHART_NAME("Name");
+const OUStringLiteral CHART_NAME("Name");
 // #TODO move this constant to vbaseries.[ch]xx ( when it exists )
-const OUString DEFAULTSERIESPREFIX("Series");
-const OUString DATAROWSOURCE("DataRowSource");
-const OUString UPDOWN("UpDown");
-const OUString VOLUME("Volume");
-const OUString LINES("Lines");
-const OUString SPLINETYPE("SplineType");
-const OUString SYMBOLTYPE("SymbolType");
-const OUString DEEP("Deep");
-const OUString SOLIDTYPE("SolidType");
-const OUString VERTICAL("Vertical");
-const OUString PERCENT("Percent");
-const OUString STACKED("Stacked");
-const OUString DIM3D("Dim3D");
-const OUString HASMAINTITLE("HasMainTitle");
-const OUString HASLEGEND("HasLegend");
+const OUStringLiteral DEFAULTSERIESPREFIX("Series");
+const OUStringLiteral DATAROWSOURCE("DataRowSource");
+const OUStringLiteral UPDOWN("UpDown");
+const OUStringLiteral VOLUME("Volume");
+const OUStringLiteral LINES("Lines");
+const OUStringLiteral SPLINETYPE("SplineType");
+const OUStringLiteral SYMBOLTYPE("SymbolType");
+const OUStringLiteral DEEP("Deep");
+const OUStringLiteral SOLIDTYPE("SolidType");
+const OUStringLiteral VERTICAL("Vertical");
+const OUStringLiteral PERCENT("Percent");
+const OUStringLiteral STACKED("Stacked");
+const OUStringLiteral DIM3D("Dim3D");
+const OUStringLiteral HASMAINTITLE("HasMainTitle");
+const OUStringLiteral HASLEGEND("HasLegend");
 
 ScVbaChart::ScVbaChart( const css::uno::Reference< ov::XHelperInterface >& _xParent, const css::uno::Reference< css::uno::XComponentContext >& _xContext, const css::uno::Reference< css::lang::XComponent >& _xChartComponent, const css::uno::Reference< css::table::XTableChart >& _xTableChart ) : ChartImpl_BASE( _xParent, _xContext ), mxTableChart( _xTableChart )
 {
@@ -220,10 +221,10 @@ ScVbaChart::getChartType()
 void SAL_CALL
 ScVbaChart::setChartType( ::sal_Int32 _nChartType )
 {
-try
-{
-    switch (_nChartType)
+    try
     {
+        switch (_nChartType)
+        {
         case xlColumnClustered:
         case xlColumnStacked:
         case xlColumnStacked100:
@@ -337,10 +338,10 @@ try
             break;
         default:
             throw script::BasicErrorException( OUString(), uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_BASIC_CONVERSION), OUString() );
-    }
+        }
 
-    switch (_nChartType)
-    {
+        switch (_nChartType)
+        {
         case xlLineMarkers:
         case xlLineMarkersStacked:
         case xlLineMarkersStacked100:
@@ -358,10 +359,10 @@ try
                 mxDiagramPropertySet->setPropertyValue(SYMBOLTYPE, uno::makeAny(chart::ChartSymbolType::NONE));
             }
             break;
-    }
+        }
 
-    switch (_nChartType)
-    {
+        switch (_nChartType)
+        {
         case xlConeCol:
         case xlPyramidCol:
         case xlCylinderCol:
@@ -546,15 +547,16 @@ void SAL_CALL
 ScVbaChart::Activate()
 {
     // #TODO how are Chart sheets handled ( I know we don't even consider
-    // them in the worksheets/sheets collections ), but.....???
+    // them in the worksheets/sheets collections ), but...???
     // note: in vba for excel the parent of a Chart sheet is a workbook,
     // e.g. 'ThisWorkbook'
     uno::Reference< XHelperInterface > xParent( getParent() );
     ScVbaChartObject* pChartObj = static_cast< ScVbaChartObject* >( xParent.get() );
-    if ( pChartObj )
-        pChartObj->Activate();
-    else
+    if ( !pChartObj )
         throw script::BasicErrorException( OUString(), uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_BASIC_METHOD_FAILED), "no ChartObject as parent" );
+
+    pChartObj->Activate();
+
 }
 
 void SAL_CALL
@@ -625,11 +627,8 @@ uno::Sequence< OUString >
 ScVbaChart::getDefaultSeriesDescriptions( sal_Int32 _nCount )
 {
     uno::Sequence< OUString > sDescriptions ( _nCount );
-    sal_Int32 nLen = sDescriptions.getLength();
-    for (sal_Int32 i = 0; i < nLen; i++)
-    {
-        sDescriptions[i] = DEFAULTSERIESPREFIX + OUString::number(i+1);
-    }
+    std::generate_n(sDescriptions.begin(), _nCount,
+        [i = 1]() mutable -> OUString { return DEFAULTSERIESPREFIX + OUString::number(i++); });
     return sDescriptions;
 }
 
@@ -970,10 +969,8 @@ ScVbaChart::getStockUpDownValue(sal_Int32 _nUpDown, sal_Int32 _nNotUpDown)
     }
     catch (const uno::Exception&)
     {
-        OUString aTemp;    // temporary needed for g++ 3.3.5
-        script::BasicErrorException( aTemp, uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_BASIC_METHOD_FAILED), OUString() );
+        throw script::BasicErrorException( OUString(), uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_BASIC_METHOD_FAILED), OUString() );
     }
-    return _nNotUpDown;
 }
 
 bool
@@ -988,8 +985,7 @@ ScVbaChart::hasMarkers()
     }
     catch (const uno::Exception&)
     {
-        OUString aTemp;    // temporary needed for g++ 3.3.5
-        script::BasicErrorException( aTemp, uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_BASIC_METHOD_FAILED), OUString() );
+        throw script::BasicErrorException( OUString(), uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_BASIC_METHOD_FAILED), OUString() );
     }
     return bHasMarkers;
 }
@@ -1047,18 +1043,16 @@ ScVbaChart::getAxisPropertySet(sal_Int32 _nAxisType, sal_Int32 _nAxisGroup)
 OUString
 ScVbaChart::getServiceImplName()
 {
-    return OUString("ScVbaChart");
+    return "ScVbaChart";
 }
 
 uno::Sequence< OUString >
 ScVbaChart::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Chart";
-    }
+        "ooo.vba.excel.Chart"
+    };
     return aServiceNames;
 }
 

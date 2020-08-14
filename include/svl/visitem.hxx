@@ -24,29 +24,23 @@
 #include <svl/poolitem.hxx>
 #include <com/sun/star/frame/status/Visibility.hpp>
 
-class SVL_DLLPUBLIC SfxVisibilityItem: public SfxPoolItem
+class SVL_DLLPUBLIC SfxVisibilityItem final : public SfxPoolItem
 {
     css::frame::status::Visibility m_nValue;
 
 public:
 
-    explicit SfxVisibilityItem(sal_uInt16 which, bool bVisible = true):
+    explicit SfxVisibilityItem(sal_uInt16 which, bool bVisible):
         SfxPoolItem(which)
     {
         m_nValue.bVisible = bVisible;
     }
 
-    SfxVisibilityItem(sal_uInt16 which, SvStream & rStream);
-
-    SfxVisibilityItem(const SfxVisibilityItem & rItem):
-        SfxPoolItem(rItem), m_nValue(rItem.m_nValue)
-    {}
-
     virtual bool operator ==(const SfxPoolItem & rItem) const override;
 
     virtual bool GetPresentation(SfxItemPresentation, MapUnit, MapUnit,
                                  OUString & rText,
-                                 const IntlWrapper * = nullptr)
+                                 const IntlWrapper&)
         const override;
 
     virtual bool QueryValue( css::uno::Any& rVal,
@@ -55,11 +49,7 @@ public:
     virtual bool PutValue( const css::uno::Any& rVal,
                            sal_uInt8 nMemberId ) override;
 
-    virtual SfxPoolItem * Create(SvStream & rStream, sal_uInt16) const override;
-
-    virtual SvStream & Store(SvStream & rStream, sal_uInt16) const override;
-
-    virtual SfxPoolItem * Clone(SfxItemPool * = nullptr) const override;
+    virtual SfxVisibilityItem* Clone(SfxItemPool * = nullptr) const override;
 
     bool GetValue() const { return m_nValue.bVisible; }
 };

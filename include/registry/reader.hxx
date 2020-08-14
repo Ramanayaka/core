@@ -28,7 +28,6 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-#include <algorithm>
 #include <new>
 
 namespace typereg {
@@ -58,7 +57,7 @@ public:
      */
     Reader(void const * buffer, sal_uInt32 length)
     {
-        if (!typereg_reader_create(buffer, length, false/*copy*/, TYPEREG_VERSION_1, &m_handle))
+        if (!typereg_reader_create(buffer, length, &m_handle))
         {
             throw std::bad_alloc();
         }
@@ -92,7 +91,7 @@ public:
      */
     Reader & operator =(Reader const & other) {
         Reader temp(other);
-        std::swap(this->m_handle, temp.m_handle);
+        std::swap(m_handle, temp.m_handle);
         return *this;
     }
 
@@ -124,13 +123,13 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getDocumentation() const {
+    OUString getDocumentation() const {
         rtl_uString * s = nullptr;
         typereg_reader_getDocumentation(m_handle, &s);
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -142,13 +141,13 @@ public:
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
        @deprecated
      */
-    rtl::OUString getFileName() const {
+    OUString getFileName() const {
         rtl_uString * s = nullptr;
         typereg_reader_getFileName(m_handle, &s);
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -183,13 +182,13 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getTypeName() const {
+    OUString getTypeName() const {
         rtl_uString * s = nullptr;
         typereg_reader_getTypeName(m_handle, &s);
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -212,13 +211,13 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getSuperTypeName(sal_uInt16 index) const {
+    OUString getSuperTypeName(sal_uInt16 index) const {
         rtl_uString * s = nullptr;
         typereg_reader_getSuperTypeName(m_handle, &s, index);
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -240,13 +239,13 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getFieldDocumentation(sal_uInt16 index) const {
+    OUString getFieldDocumentation(sal_uInt16 index) const {
         rtl_uString * s = nullptr;
         typereg_reader_getFieldDocumentation(m_handle, &s, index);
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -259,13 +258,13 @@ public:
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
        @deprecated
      */
-    rtl::OUString getFieldFileName(sal_uInt16 index) const {
+    OUString getFieldFileName(sal_uInt16 index) const {
         rtl_uString * s = nullptr;
         typereg_reader_getFieldFileName(m_handle, &s, index);
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -288,13 +287,13 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getFieldName(sal_uInt16 index) const {
+    OUString getFieldName(sal_uInt16 index) const {
         rtl_uString * s = nullptr;
         typereg_reader_getFieldName(m_handle, &s, index);
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -306,13 +305,13 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getFieldTypeName(sal_uInt16 index) const {
+    OUString getFieldTypeName(sal_uInt16 index) const {
         rtl_uString * s = nullptr;
         typereg_reader_getFieldTypeName(m_handle, &s, index);
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -353,13 +352,13 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getMethodDocumentation(sal_uInt16 index) const {
+    OUString getMethodDocumentation(sal_uInt16 index) const {
         rtl_uString * s = nullptr;
         typereg_reader_getMethodDocumentation(m_handle, &s, index);
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -382,13 +381,13 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getMethodName(sal_uInt16 index) const {
+    OUString getMethodName(sal_uInt16 index) const {
         rtl_uString * s = nullptr;
         typereg_reader_getMethodName(m_handle, &s, index);
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -400,13 +399,13 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getMethodReturnTypeName(sal_uInt16 index) const {
+    OUString getMethodReturnTypeName(sal_uInt16 index) const {
         rtl_uString * s = nullptr;
         typereg_reader_getMethodReturnTypeName(m_handle, &s, index);
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -451,7 +450,7 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getMethodParameterName(
+    OUString getMethodParameterName(
         sal_uInt16 methodIndex, sal_uInt16 parameterIndex) const
     {
         rtl_uString * s = nullptr;
@@ -460,7 +459,7 @@ public:
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -476,7 +475,7 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getMethodParameterTypeName(
+    OUString getMethodParameterTypeName(
         sal_uInt16 methodIndex, sal_uInt16 parameterIndex) const
     {
         rtl_uString * s = nullptr;
@@ -485,7 +484,7 @@ public:
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -512,7 +511,7 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getMethodExceptionTypeName(
+    OUString getMethodExceptionTypeName(
         sal_uInt16 methodIndex, sal_uInt16 exceptionIndex) const
     {
         rtl_uString * s = nullptr;
@@ -521,7 +520,7 @@ public:
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -544,13 +543,13 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getReferenceDocumentation(sal_uInt16 index) const {
+    OUString getReferenceDocumentation(sal_uInt16 index) const {
         rtl_uString * s = nullptr;
         typereg_reader_getReferenceDocumentation(m_handle, &s, index);
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
     /**
@@ -587,13 +586,13 @@ public:
 
        @exception std::bad_alloc is raised if an out-of-memory condition occurs
      */
-    rtl::OUString getReferenceTypeName(sal_uInt16 index) const {
+    OUString getReferenceTypeName(sal_uInt16 index) const {
         rtl_uString * s = nullptr;
         typereg_reader_getReferenceTypeName(m_handle, &s, index);
         if (s == nullptr) {
             throw std::bad_alloc();
         }
-        return rtl::OUString(s, SAL_NO_ACQUIRE);
+        return OUString(s, SAL_NO_ACQUIRE);
     }
 
 private:

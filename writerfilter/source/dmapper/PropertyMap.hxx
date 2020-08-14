@@ -20,20 +20,21 @@
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_PROPERTYMAP_HXX
 
 #include <rtl/ustring.hxx>
+#include <tools/ref.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/table/BorderLine2.hpp>
 #include <com/sun/star/text/WrapTextMode.hpp>
 #include <com/sun/star/uno/Any.h>
+#include <com/sun/star/drawing/XShape.hpp>
 #include "PropertyIds.hxx"
 #include <memory>
-#include <boost/optional.hpp>
+#include <optional>
 #include <map>
 #include <vector>
-#include "TagLogger.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans {
         struct PropertyValue;
     }
@@ -52,13 +53,13 @@ namespace com { namespace sun { namespace star {
         struct BorderLine2;
         struct ShadowFormat;
     }
-}}}
+}
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
 class  DomainMapper_Impl;
 struct FloatingTableInfo;
+struct AnchoredObjectInfo;
 
 enum BorderPosition
 {
@@ -77,7 +78,7 @@ enum GrabBagType
     CHAR_GRAB_BAG
 };
 
-struct RedlineParams
+struct RedlineParams : public virtual SvRefBase
 {
     OUString  m_sAuthor;
     OUString  m_sDate;
@@ -87,33 +88,48 @@ struct RedlineParams
     css::uno::Sequence< css::beans::PropertyValue > m_aRevertProperties;
 };
 
-typedef std::shared_ptr< RedlineParams > RedlineParamsPtr;
+typedef tools::SvRef< RedlineParams > RedlineParamsPtr;
 
 class PropValue
 {
 private:
     css::uno::Any m_aValue;
     GrabBagType   m_GrabBagType;
+    bool          m_bIsDocDefault;
 
 public:
+    PropValue( const css::uno::Any& rValue, GrabBagType i_GrabBagType, bool bDocDefault )
+        : m_aValue( rValue )
+        , m_GrabBagType( i_GrabBagType )
+        , m_bIsDocDefault( bDocDefault )
+    {
+    }
+
     PropValue( const css::uno::Any& rValue, GrabBagType i_GrabBagType )
         : m_aValue( rValue )
         , m_GrabBagType( i_GrabBagType )
+        , m_bIsDocDefault( false )
     {
     }
 
     PropValue()
         : m_aValue()
         , m_GrabBagType( NO_GRAB_BAG )
+        , m_bIsDocDefault( false )
     {
     }
 
     const css::uno::Any& getValue() const { return m_aValue; }
 
     GrabBagType getGrabBagType() const { return m_GrabBagType; }
+
+    bool getIsDocDefault() const { return m_bIsDocDefault; }
 };
 
-class PropertyMap
+class PropertyMap;
+typedef tools::SvRef< PropertyMap > PropertyMapPtr;
+
+class PropertyMap : public virtual SvRefBase
 {
 private:
     // Cache the property values for the GetPropertyValues() call(s).
@@ -122,6 +138,7 @@ private:
     // marks context as footnote context - ::text( ) events contain either the footnote character or can be ignored
     // depending on sprmCSymbol
     css::uno::Reference< css::text::XFootnote > m_xFootnote;
+    OUString m_sFootnoteCharStyleName;
     std::map< PropertyIds, PropValue >          m_vMap;
     std::vector< RedlineParamsPtr >             m_aRedlines;
 
@@ -129,32 +146,39 @@ public:
     typedef std::pair< PropertyIds, css::uno::Any > Property;
 
     PropertyMap() {}
-    virtual ~PropertyMap() {}
 
     // Sequence: Grab Bags: The CHAR_GRAB_BAG has Name "CharInteropGrabBag" and the PARA_GRAB_BAG has Name "ParaInteropGrabBag"
     // the contained properties are their Value.
     css::uno::Sequence< css::beans::PropertyValue > GetPropertyValues( bool bCharGrabBag = true );
 
+    std::vector< PropertyIds > GetPropertyIds();
+
     // Add property, optionally overwriting existing attributes
-    void Insert( PropertyIds eId, const css::uno::Any& rAny, bool bOverwrite = true, GrabBagType i_GrabBagType = NO_GRAB_BAG );
+    void Insert( PropertyIds eId, const css::uno::Any& rAny, bool bOverwrite = true, GrabBagType i_GrabBagType = NO_GRAB_BAG, bool bDocDefault = false );
 
     // Remove a named property from *this, does nothing if the property id has not been set
     void Erase( PropertyIds eId);
 
-    // Imports properties from pMap, overwriting those with the same PropertyIds as the current map
-    void InsertProps( const std::shared_ptr< PropertyMap >& rMap );
+    // Imports properties from pMap (bOverwrite==false means m_bIsDocDefault=true setting)
+    void InsertProps( const PropertyMapPtr& rMap, const bool bOverwrite = true );
 
     // Returns a copy of the property if it exists, .first is its PropertyIds and .second is its Value (type css::uno::Any)
-    boost::optional< Property > getProperty( PropertyIds eId ) const;
+    std::optional< Property > getProperty( PropertyIds eId ) const;
 
     // Has the property named been set (via Insert)?
     bool isSet( PropertyIds eId ) const;
+    bool isDocDefault( PropertyIds eId ) const;
 
     const css::uno::Reference< css::text::XFootnote >& GetFootnote() const { return m_xFootnote; }
+    const OUString& GetFootnoteStyle() const { return m_sFootnoteCharStyleName; }
 
-    void SetFootnote( const css::uno::Reference< css::text::XFootnote >& xF ) { m_xFootnote = xF; }
+    void SetFootnote(const css::uno::Reference< css::text::XFootnote >& xFootnote, const OUString& sStyleName)
+    {
+        m_xFootnote = xFootnote;
+        m_sFootnoteCharStyleName = sStyleName;
+    }
 
-    virtual void insertTableProperties( const PropertyMap* );
+    virtual void insertTableProperties( const PropertyMap*, const bool bOverwrite = true );
 
     const std::vector< RedlineParamsPtr >& Redlines() const { return m_aRedlines; }
 
@@ -162,7 +186,7 @@ public:
 
     void printProperties();
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     void dumpXml() const;
 #endif
 
@@ -176,12 +200,22 @@ protected:
     }
 };
 
-typedef std::shared_ptr< PropertyMap > PropertyMapPtr;
-
 class SectionPropertyMap : public PropertyMap
 {
+public:
+    enum class BorderApply
+    {
+        ToAllInSection = 0,
+        ToFirstPageInSection = 1,
+        ToAllButFirstInSection = 2
+    };
+    enum class BorderOffsetFrom
+    {
+        Text = 0,
+        Edge = 1,
+    };
 private:
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
     sal_Int32                                       m_nDebugSectionNumber;
 #endif
 
@@ -196,9 +230,10 @@ private:
     css::uno::Reference< css::beans::XPropertySet > m_aFirstPageStyle;
     css::uno::Reference< css::beans::XPropertySet > m_aFollowPageStyle;
 
-    boost::optional< css::table::BorderLine2 >      m_oBorderLines[4];
+    std::optional< css::table::BorderLine2 >      m_oBorderLines[4];
     sal_Int32                                       m_nBorderDistances[4];
-    sal_Int32                                       m_nBorderParams;
+    BorderApply                                     m_eBorderApply;
+    BorderOffsetFrom                                m_eBorderOffsetFrom;
     bool                                            m_bBorderShadows[4];
 
     bool                                            m_bTitlePage;
@@ -211,13 +246,10 @@ private:
     bool                                            m_bSeparatorLineIsOn;
     bool                                            m_bEvenlySpaced;
 
-    bool                                            m_bPageNoRestart;
     sal_Int32                                       m_nPageNumber;
     // Page number type is a value from css::style::NumberingType.
     sal_Int16                                       m_nPageNumberType;
     sal_Int32                                       m_nBreakType;
-    sal_Int32                                       m_nPaperBin;
-    sal_Int32                                       m_nFirstPaperBin;
 
     sal_Int32                                       m_nLeftMargin;
     sal_Int32                                       m_nRightMargin;
@@ -225,8 +257,6 @@ private:
     sal_Int32                                       m_nBottomMargin;
     sal_Int32                                       m_nHeaderTop;
     sal_Int32                                       m_nHeaderBottom;
-
-    sal_Int32                                       m_nDzaGutter;
 
     sal_Int32                                       m_nGridType;
     sal_Int32                                       m_nGridLinePitch;
@@ -238,6 +268,8 @@ private:
     sal_uInt32                                      m_nLnc;
     sal_Int32                                       m_ndxaLnn;
     sal_Int32                                       m_nLnnMin;
+
+    std::vector<css::uno::Reference<css::drawing::XShape>>    m_xRelativeWidthShapes;
 
     // The "Link To Previous" flag indicates whether the header/footer
     // content should be taken from the previous section
@@ -251,6 +283,12 @@ private:
     void ApplyProperties_( const css::uno::Reference< css::beans::XPropertySet >& xStyle );
 
     void DontBalanceTextColumns();
+
+    /// Apply section-specific properties: only valid to use after PageStyle has been determined by InheritOrFinalizePageStyles
+    void ApplySectionProperties( const css::uno::Reference< css::beans::XPropertySet >& xSection, DomainMapper_Impl& rDM_Impl );
+
+    /// Check if document is protected. If so, ensure a section exists, and apply its protected value.
+    void ApplyProtectionProperties( css::uno::Reference< css::beans::XPropertySet >& xSection, DomainMapper_Impl& rDM_Impl );
 
     css::uno::Reference< css::text::XTextColumns > ApplyColumnProperties( const css::uno::Reference< css::beans::XPropertySet >& xFollowPageStyle,
                                                                           DomainMapper_Impl& rDM_Impl);
@@ -275,11 +313,14 @@ private:
                                    PropertyIds eMarginId,
                                    PropertyIds eDistId,
                                    sal_Int32 nDistance,
-                                   sal_Int32 nOffsetFrom,
+                                   BorderOffsetFrom eOffsetFrom,
                                    sal_uInt32 nLineWidth );
 
     // Determines if conversion of a given floating table is wanted or not.
-    bool FloatingTableConversion( DomainMapper_Impl& rDM_Impl, FloatingTableInfo& rInfo );
+    bool FloatingTableConversion( const DomainMapper_Impl& rDM_Impl, FloatingTableInfo& rInfo );
+
+    /// Increases paragraph spacing according to Word 2013+ needs if necessary.
+    void HandleIncreasedAnchoredObjectSpacing(DomainMapper_Impl& rDM_Impl);
 
 public:
     enum PageType
@@ -291,13 +332,13 @@ public:
 
     explicit SectionPropertyMap( bool bIsFirstSection );
 
+    bool IsFirstSection() const { return m_bIsFirstSection; }
+
     void SetStart( const css::uno::Reference< css::text::XTextRange >& xRange ) { m_xStartingRange = xRange; }
 
     const css::uno::Reference< css::text::XTextRange >& GetStartingRange() const { return m_xStartingRange; }
 
-    css::uno::Reference< css::beans::XPropertySet > GetPageStyle( const css::uno::Reference< css::container::XNameContainer >& xStyles,
-                                                                  const css::uno::Reference< css::lang::XMultiServiceFactory >& xTextFactory,
-                                                                  bool bFirst );
+    css::uno::Reference< css::beans::XPropertySet > GetPageStyle( DomainMapper_Impl& rDM_Impl, bool bFirst );
 
     const OUString& GetPageStyleName( bool bFirstPage = false )
     {
@@ -312,7 +353,8 @@ public:
     void InheritOrFinalizePageStyles( DomainMapper_Impl& rDM_Impl );
 
     void SetBorder( BorderPosition ePos, sal_Int32 nLineDistance, const css::table::BorderLine2& rBorderLine, bool bShadow );
-    void SetBorderParams( sal_Int32 nSet ) { m_nBorderParams = nSet; }
+    void SetBorderApply( BorderApply nSet ) { m_eBorderApply = nSet; }
+    void SetBorderOffsetFrom( BorderOffsetFrom nSet ) { m_eBorderOffsetFrom = nSet; }
 
     void      SetColumnCount( sal_Int16 nCount ) { m_nColumnCount = nCount; }
     sal_Int16 ColumnCount() const                { return m_nColumnCount; }
@@ -328,17 +370,17 @@ public:
     void SetPageNumberType( sal_Int32 nSet ) { m_nPageNumberType = nSet; }
     void SetBreakType( sal_Int32 nSet )      { m_nBreakType = nSet; }
     // GetBreakType returns -1 if the breakType has not yet been identified for the section
-    sal_Int32 GetBreakType()                 { return m_nBreakType; }
+    sal_Int32 GetBreakType() const           { return m_nBreakType; }
 
     void SetLeftMargin( sal_Int32 nSet )   { m_nLeftMargin = nSet; }
-    sal_Int32 GetLeftMargin()              { return m_nLeftMargin; }
+    sal_Int32 GetLeftMargin() const        { return m_nLeftMargin; }
     void SetRightMargin( sal_Int32 nSet )  { m_nRightMargin = nSet; }
-    sal_Int32 GetRightMargin()             { return m_nRightMargin; }
+    sal_Int32 GetRightMargin() const       { return m_nRightMargin; }
     void SetTopMargin( sal_Int32 nSet )    { m_nTopMargin = nSet; }
     void SetBottomMargin( sal_Int32 nSet ) { m_nBottomMargin = nSet; }
     void SetHeaderTop( sal_Int32 nSet )    { m_nHeaderTop = nSet; }
     void SetHeaderBottom( sal_Int32 nSet ) { m_nHeaderBottom = nSet; }
-    sal_Int32 GetPageWidth();
+    sal_Int32 GetPageWidth() const;
 
     void SetGridType( sal_Int32 nSet )      { m_nGridType = nSet; }
     void SetGridLinePitch( sal_Int32 nSet ) { m_nGridLinePitch = nSet; }
@@ -350,10 +392,11 @@ public:
     void SetdxaLnn( sal_Int32 nValue ) { m_ndxaLnn = nValue; }
     void SetLnnMin( sal_Int32 nValue ) { m_nLnnMin = nValue; }
 
+    void addRelativeWidthShape( css::uno::Reference<css::drawing::XShape> xShape ) { m_xRelativeWidthShapes.push_back( xShape ); }
+
     // determine which style gets the borders
-    void ApplyBorderToPageStyles( const css::uno::Reference< css::container::XNameContainer >& xStyles,
-                                  const css::uno::Reference< css::lang::XMultiServiceFactory >& xTextFactory,
-                                  sal_Int32 nValue );
+    void ApplyBorderToPageStyles( DomainMapper_Impl &rDM_Impl,
+                                  BorderApply eBorderApply, BorderOffsetFrom eOffsetFrom );
 
     void CloseSectionGroup( DomainMapper_Impl& rDM_Impl );
     // Handling of margins, header and footer for any kind of sections breaks.
@@ -361,7 +404,7 @@ public:
     void ClearHeaderFooterLinkToPrevious( bool bHeader, PageType eType );
 };
 
-class ParagraphProperties
+class ParagraphProperties : public virtual SvRefBase
 {
 private:
     bool                                         m_bFrameMode;
@@ -381,20 +424,26 @@ private:
     sal_Int32                                    m_hRule;          // from ST_HeightRule exact, atLeast, auto
     sal_Int32                                    m_xAlign;         // from ST_XAlign center, inside, left, outside, right
     sal_Int32                                    m_yAlign;         // from ST_YAlign bottom, center, inline, inside, outside, top
-    bool                                         m_bAnchorLock;
     sal_Int8                                     m_nDropCapLength; // number of characters
     OUString                                     m_sParaStyleName;
 
     css::uno::Reference< css::text::XTextRange > m_xStartingRange; // start of a frame
     css::uno::Reference< css::text::XTextRange > m_xEndingRange;   // end of the frame
+    sal_Int32 m_nListId = -1;
 
 public:
     ParagraphProperties();
-    ParagraphProperties( const ParagraphProperties& );
-    virtual ~ParagraphProperties() {}
+
+    ParagraphProperties(ParagraphProperties const &) = default;
+    ParagraphProperties(ParagraphProperties &&) = default;
+    ParagraphProperties & operator =(ParagraphProperties const &) = default;
+    ParagraphProperties & operator =(ParagraphProperties &&) = default;
 
     // Does not compare the starting/ending range, m_sParaStyleName and m_nDropCapLength
     bool operator==( const ParagraphProperties& );
+
+    sal_Int32 GetListId() const          { return m_nListId; }
+    void      SetListId( sal_Int32 nId ) { m_nListId = nId; }
 
     bool IsFrameMode() const             { return m_bFrameMode; }
     void SetFrameMode( bool set = true ) { m_bFrameMode = set; }
@@ -458,7 +507,7 @@ public:
     void ResetFrameProperties();
 };
 
-typedef std::shared_ptr< ParagraphProperties > ParagraphPropertiesPtr;
+typedef tools::SvRef< ParagraphProperties > ParagraphPropertiesPtr;
 
 /*-------------------------------------------------------------------------
     property map of a stylesheet
@@ -472,25 +521,17 @@ class StyleSheetPropertyMap
     , public ParagraphProperties
 {
 private:
-    sal_Int32 mnListId;
     sal_Int16 mnListLevel;
     sal_Int16 mnOutlineLevel;
-    sal_Int32 mnNumId;
 
 public:
     explicit StyleSheetPropertyMap();
-
-    sal_Int32 GetListId() const          { return mnListId; }
-    void      SetListId( sal_Int32 nId ) { mnListId = nId; }
 
     sal_Int16 GetListLevel() const             { return mnListLevel; }
     void      SetListLevel( sal_Int16 nLevel ) { mnListLevel = nLevel; }
 
     sal_Int16 GetOutlineLevel() const             { return mnOutlineLevel; }
     void      SetOutlineLevel( sal_Int16 nLevel ) { if ( nLevel < WW_OUTLINE_MAX ) mnOutlineLevel = nLevel; }
-
-    sal_Int32 GetNumId() const        { return mnNumId; }
-    void      SetNumId(sal_Int32 nId) { mnNumId = nId; }
 };
 
 class ParagraphPropertyMap
@@ -541,13 +582,23 @@ public:
     bool getValue( TablePropertyMapTarget eWhich, sal_Int32& nFill );
     void setValue( TablePropertyMapTarget eWhich, sal_Int32 nSet );
 
-    virtual void insertTableProperties( const PropertyMap* ) override;
+    virtual void insertTableProperties( const PropertyMap*, const bool bOverwrite = true ) override;
 };
 
-typedef std::shared_ptr< TablePropertyMap > TablePropertyMapPtr;
+typedef tools::SvRef< TablePropertyMap > TablePropertyMapPtr;
 
-} // namespace dmapper
-} // namespace writerfilter
+/// Information about a paragraph to be finished after a table end.
+struct TableParagraph
+{
+    css::uno::Reference<css::text::XTextRange> m_rStartParagraph;
+    css::uno::Reference<css::text::XTextRange> m_rEndParagraph;
+    PropertyMapPtr m_pPropertyMap;
+    css::uno::Reference<css::beans::XPropertySet> m_rPropertySet;
+};
+
+typedef std::shared_ptr< std::vector<TableParagraph> > TableParagraphVectorPtr;
+
+} // namespace writerfilter::dmapper
 
 #endif // INCLUDED_WRITERFILTER_SOURCE_DMAPPER_PROPERTYMAP_HXX
 

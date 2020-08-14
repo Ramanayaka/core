@@ -17,10 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLELISTBOXENTRY_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLELISTBOXENTRY_HXX
+#pragma once
 
 #include <deque>
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
@@ -28,25 +28,22 @@
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 #include <com/sun/star/accessibility/XAccessibleAction.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/accessibility/XAccessibleValue.hpp>
 #include <cppuhelper/compbase9.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <comphelper/accessibletexthelper.hxx>
-#include <svtools/treelistentry.hxx>
+#include <vcl/toolkit/treelistentry.hxx>
 #include <tools/gen.hxx>
-#include "extended/listboxaccessible.hxx"
 
 // forward ---------------------------------------------------------------
 
-namespace com { namespace sun { namespace star { namespace awt {
+namespace com::sun::star::awt {
     struct Point;
     struct Rectangle;
     struct Size;
     class XFocusListener;
-} } } }
+}
 
 class SvTreeListBox;
 class SvTreeListEntry;
@@ -54,7 +51,7 @@ class SvTreeListEntry;
 
 namespace accessibility
 {
-
+    class AccessibleListBox;
 
 // class AccessibleListBoxEntry ------------------------------------------
     typedef ::cppu::WeakAggComponentImplHelper9< css::accessibility::XAccessible
@@ -68,27 +65,25 @@ namespace accessibility
                                                 , css::lang::XServiceInfo > AccessibleListBoxEntry_BASE;
 
     /** the class AccessibleListBoxEntry represents the class for an accessible object of a listbox entry */
-    class AccessibleListBoxEntry:public ::cppu::BaseMutex
-                                   ,public AccessibleListBoxEntry_BASE
-                                ,public ::comphelper::OCommonAccessibleText
-                                ,public ListBoxAccessibleBase
+    class AccessibleListBoxEntry final : public ::cppu::BaseMutex
+                                        ,public AccessibleListBoxEntry_BASE
+                                        ,public ::comphelper::OCommonAccessibleText
     {
     friend class AccessibleListBox;
 
     private:
+        VclPtr<SvTreeListBox>               m_pTreeListBox;
         /** The treelistbox control */
         std::deque< sal_Int32 >           m_aEntryPath;
         SvTreeListEntry*                    m_pSvLBoxEntry; // Needed for a11y focused item...
 
 
-    protected:
         /// client id in the AccessibleEventNotifier queue
         sal_uInt32                          m_nClientId;
 
-        css::uno::WeakReference< css::accessibility::XAccessible >
-                                            m_aParent;
+        css::uno::WeakReference<css::accessibility::XAccessible> m_wListBox;
+        AccessibleListBox & m_rListBox;
 
-    private:
         tools::Rectangle               GetBoundingBox_Impl() const;
         tools::Rectangle               GetBoundingBoxOnScreen_Impl() const;
         bool                IsAlive_Impl() const;
@@ -105,15 +100,13 @@ namespace accessibility
 
         void                    NotifyAccessibleEvent( sal_Int16 _nEventId, const css::uno::Any& _aOldValue, const css::uno::Any& _aNewValue );
 
-    protected:
         virtual ~AccessibleListBoxEntry() override;
 
         /** this function is called upon disposing the component
         */
-        virtual void SAL_CALL                   disposing() override;
+        virtual void SAL_CALL   disposing() override;
 
-        // ListBoxAccessible/XComponent
-        virtual void SAL_CALL dispose() final override;
+        DECL_LINK( WindowEventListener, VclWindowEvent&, void );
 
         // OCommonAccessibleText
         virtual OUString                        implGetText() override;
@@ -124,18 +117,19 @@ namespace accessibility
         /** Ctor()
             @param  _rListBox
                 the view control
-            @param  _pEntry
+            @param  rEntry
                 the entry
-            @param  _xParent
-                is our parent accessible object
+            @param rListBox
+                the a11y object for _rListBox
         */
-        AccessibleListBoxEntry( SvTreeListBox& _rListBox, SvTreeListEntry* _pEntry,
-                                const css::uno::Reference< css::accessibility::XAccessible >& _xParent );
+        AccessibleListBoxEntry( SvTreeListBox& _rListBox,
+                                SvTreeListEntry& rEntry,
+                                AccessibleListBox & rListBox);
 
         SvTreeListEntry* GetSvLBoxEntry() const { return m_pSvLBoxEntry; }
 
 
-    protected:
+    private:
         // XTypeProvider
         virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
 
@@ -188,6 +182,7 @@ namespace accessibility
         virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
         virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
         virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+        virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 
         // XAccessibleEventBroadcaster
         virtual void SAL_CALL addAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
@@ -211,16 +206,15 @@ namespace accessibility
         virtual sal_Bool SAL_CALL setCurrentValue( const css::uno::Any& aNumber ) override;
         virtual css::uno::Any SAL_CALL getMaximumValue(  ) override;
         virtual css::uno::Any SAL_CALL getMinimumValue(  ) override;
-    private:
+
         css::uno::Reference< css::accessibility::XAccessible > implGetParentAccessible( ) const;
         SvTreeListEntry* GetRealChild(sal_Int32 nIndex);
-        sal_Int32 GetRoleType();
+        sal_Int32 GetRoleType() const;
     };
 
 
 }// namespace accessibility
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLELISTBOXENTRY_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

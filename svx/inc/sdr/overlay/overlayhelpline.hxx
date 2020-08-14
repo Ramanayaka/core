@@ -24,13 +24,10 @@
 #include <svx/svdhlpln.hxx>
 
 
-namespace sdr
-{
-    namespace overlay
+namespace sdr::overlay
     {
-        class OverlayHelplineStriped : public OverlayObjectWithBasePosition
+        class OverlayHelplineStriped final : public OverlayObjectWithBasePosition
         {
-        protected:
             // remember HelpLineKind
             SdrHelpLineKind                             meKind;
 
@@ -49,8 +46,7 @@ namespace sdr
             // react on stripe definition change
             virtual void stripeDefinitionHasChanged() override;
         };
-    } // end of namespace overlay
-} // end of namespace sdr
+} // end of namespace sdr::overlay
 
 
 #endif // INCLUDED_SVX_INC_SDR_OVERLAY_OVERLAYHELPLINE_HXX

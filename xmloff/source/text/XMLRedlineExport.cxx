@@ -22,6 +22,9 @@
 #include <tools/debug.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/UnknownPropertyException.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
@@ -36,7 +39,7 @@
 #include <sax/tools/converter.hxx>
 
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmluconv.hxx>
 
@@ -56,7 +59,6 @@ using ::com::sun::star::text::XTextSection;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
-using ::std::list;
 
 
 XMLRedlineExport::XMLRedlineExport(SvXMLExport& rExp)
@@ -71,14 +73,6 @@ XMLRedlineExport::XMLRedlineExport(SvXMLExport& rExp)
 
 XMLRedlineExport::~XMLRedlineExport()
 {
-    // delete changes lists
-    for( ChangesMapType::iterator aIter = aChangeMap.begin();
-         aIter != aChangeMap.end();
-         ++aIter )
-    {
-        delete aIter->second;
-    }
-    aChangeMap.clear();
 }
 
 
@@ -129,28 +123,26 @@ void XMLRedlineExport::ExportChangesList(
 
     // look for changes list for this XText
     ChangesMapType::iterator aFind = aChangeMap.find(rText);
-    if (aFind != aChangeMap.end())
+    if (aFind == aChangeMap.end())
+        return;
+
+    ChangesVectorType* pChangesList = aFind->second.get();
+
+    // export only if changes are found
+    if (pChangesList->empty())
+        return;
+
+    // changes container element
+    SvXMLElementExport aChanges(rExport, XML_NAMESPACE_TEXT,
+                                XML_TRACKED_CHANGES,
+                                true, true);
+
+    // iterate over changes list
+    for (auto const& change : *pChangesList)
     {
-        ChangesListType* pChangesList = aFind->second;
-
-        // export only if changes are found
-        if (pChangesList->size() > 0)
-        {
-            // changes container element
-            SvXMLElementExport aChanges(rExport, XML_NAMESPACE_TEXT,
-                                        XML_TRACKED_CHANGES,
-                                        true, true);
-
-            // iterate over changes list
-            for( ChangesListType::iterator aIter = pChangesList->begin();
-                 aIter != pChangesList->end();
-                 ++aIter )
-            {
-                ExportChangedRegion( *aIter );
-            }
-        }
-        // else: changes list empty -> ignore
+        ExportChangedRegion(change);
     }
+    // else: changes list empty -> ignore
     // else: no changes list found -> empty
 }
 
@@ -163,12 +155,12 @@ void XMLRedlineExport::SetCurrentXText(
         ChangesMapType::iterator aIter = aChangeMap.find(rText);
         if (aIter == aChangeMap.end())
         {
-            ChangesListType* pList = new ChangesListType;
-            aChangeMap[rText] = pList;
+            ChangesVectorType* pList = new ChangesVectorType;
+            aChangeMap[rText].reset( pList );
             pCurrentChangesList = pList;
         }
         else
-            pCurrentChangesList = aIter->second;
+            pCurrentChangesList = aIter->second.get();
     }
     else
     {
@@ -187,60 +179,60 @@ void XMLRedlineExport::ExportChangesListElements()
 {
     // get redlines (aka tracked changes) from the model
     Reference<XRedlinesSupplier> xSupplier(rExport.GetModel(), uno::UNO_QUERY);
-    if (xSupplier.is())
+    if (!xSupplier.is())
+        return;
+
+    Reference<XEnumerationAccess> aEnumAccess = xSupplier->getRedlines();
+
+    // redline protection key
+    Reference<XPropertySet> aDocPropertySet( rExport.GetModel(),
+                                             uno::UNO_QUERY );
+    // redlining enabled?
+    bool bEnabled = *o3tl::doAccess<bool>(aDocPropertySet->getPropertyValue(
+                                            "RecordChanges" ));
+
+    // only export if we have redlines or attributes
+    if ( !(aEnumAccess->hasElements() || bEnabled) )
+        return;
+
+
+    // export only if we have changes, but tracking is not enabled
+    if ( !bEnabled != !aEnumAccess->hasElements() )
     {
-        Reference<XEnumerationAccess> aEnumAccess = xSupplier->getRedlines();
+        rExport.AddAttribute(
+            XML_NAMESPACE_TEXT, XML_TRACK_CHANGES,
+            bEnabled ? XML_TRUE : XML_FALSE );
+    }
 
-        // redline protection key
-        Reference<XPropertySet> aDocPropertySet( rExport.GetModel(),
-                                                 uno::UNO_QUERY );
-        // redlining enabled?
-        bool bEnabled = *o3tl::doAccess<bool>(aDocPropertySet->getPropertyValue(
-                                                "RecordChanges" ));
+    // changes container element
+    SvXMLElementExport aChanges(rExport, XML_NAMESPACE_TEXT,
+                                XML_TRACKED_CHANGES,
+                                true, true);
 
-        // only export if we have redlines or attributes
-        if ( aEnumAccess->hasElements() || bEnabled )
+    // get enumeration and iterate over elements
+    Reference<XEnumeration> aEnum = aEnumAccess->createEnumeration();
+    while (aEnum->hasMoreElements())
+    {
+        Any aAny = aEnum->nextElement();
+        Reference<XPropertySet> xPropSet;
+        aAny >>= xPropSet;
+
+        DBG_ASSERT(xPropSet.is(),
+                   "can't get XPropertySet; skipping Redline");
+        if (xPropSet.is())
         {
-
-            // export only if we have changes, but tracking is not enabled
-            if ( !bEnabled != !aEnumAccess->hasElements() )
+            // export only if not in header or footer
+            // (those must be exported with their XText)
+            aAny = xPropSet->getPropertyValue("IsInHeaderFooter");
+            if (! *o3tl::doAccess<bool>(aAny))
             {
-                rExport.AddAttribute(
-                    XML_NAMESPACE_TEXT, XML_TRACK_CHANGES,
-                    bEnabled ? XML_TRUE : XML_FALSE );
-            }
-
-            // changes container element
-            SvXMLElementExport aChanges(rExport, XML_NAMESPACE_TEXT,
-                                        XML_TRACKED_CHANGES,
-                                        true, true);
-
-            // get enumeration and iterate over elements
-            Reference<XEnumeration> aEnum = aEnumAccess->createEnumeration();
-            while (aEnum->hasMoreElements())
-            {
-                Any aAny = aEnum->nextElement();
-                Reference<XPropertySet> xPropSet;
-                aAny >>= xPropSet;
-
-                DBG_ASSERT(xPropSet.is(),
-                           "can't get XPropertySet; skipping Redline");
-                if (xPropSet.is())
-                {
-                    // export only if not in header or footer
-                    // (those must be exported with their XText)
-                    aAny = xPropSet->getPropertyValue("IsInHeaderFooter");
-                    if (! *o3tl::doAccess<bool>(aAny))
-                    {
-                        // and finally, export change
-                        ExportChangedRegion(xPropSet);
-                    }
-                }
-                // else: no XPropertySet -> no export
+                // and finally, export change
+                ExportChangedRegion(xPropSet);
             }
         }
-        // else: no redlines -> no export
+        // else: no XPropertySet -> no export
     }
+    // else: no redlines -> no export
     // else: no XRedlineSupplier -> no export
 }
 
@@ -274,34 +266,34 @@ void XMLRedlineExport::ExportChangesListAutoStyles()
 {
     // get redlines (aka tracked changes) from the model
     Reference<XRedlinesSupplier> xSupplier(rExport.GetModel(), uno::UNO_QUERY);
-    if (xSupplier.is())
+    if (!xSupplier.is())
+        return;
+
+    Reference<XEnumerationAccess> aEnumAccess = xSupplier->getRedlines();
+
+    // only export if we actually have redlines
+    if (!aEnumAccess->hasElements())
+        return;
+
+    // get enumeration and iterate over elements
+    Reference<XEnumeration> aEnum = aEnumAccess->createEnumeration();
+    while (aEnum->hasMoreElements())
     {
-        Reference<XEnumerationAccess> aEnumAccess = xSupplier->getRedlines();
+        Any aAny = aEnum->nextElement();
+        Reference<XPropertySet> xPropSet;
+        aAny >>= xPropSet;
 
-        // only export if we actually have redlines
-        if (aEnumAccess->hasElements())
+        DBG_ASSERT(xPropSet.is(),
+                   "can't get XPropertySet; skipping Redline");
+        if (xPropSet.is())
         {
-            // get enumeration and iterate over elements
-            Reference<XEnumeration> aEnum = aEnumAccess->createEnumeration();
-            while (aEnum->hasMoreElements())
+
+            // export only if not in header or footer
+            // (those must be exported with their XText)
+            aAny = xPropSet->getPropertyValue("IsInHeaderFooter");
+            if (! *o3tl::doAccess<bool>(aAny))
             {
-                Any aAny = aEnum->nextElement();
-                Reference<XPropertySet> xPropSet;
-                aAny >>= xPropSet;
-
-                DBG_ASSERT(xPropSet.is(),
-                           "can't get XPropertySet; skipping Redline");
-                if (xPropSet.is())
-                {
-
-                    // export only if not in header or footer
-                    // (those must be exported with their XText)
-                    aAny = xPropSet->getPropertyValue("IsInHeaderFooter");
-                    if (! *o3tl::doAccess<bool>(aAny))
-                    {
-                        ExportChangeAutoStyle(xPropSet);
-                    }
-                }
+                ExportChangeAutoStyle(xPropSet);
             }
         }
     }
@@ -378,7 +370,7 @@ void XMLRedlineExport::ExportChangedRegion(
         //       be exported there
     }
 
-    // changed change? Hierarchical changes can onl be two levels
+    // changed change? Hierarchical changes can only be two levels
     // deep. Here we check for the second level.
     aAny = rPropSet->getPropertyValue("RedlineSuccessorData");
     Sequence<PropertyValue> aSuccessorData;
@@ -386,10 +378,10 @@ void XMLRedlineExport::ExportChangedRegion(
 
     // if we actually got a hierarchical change, make element and
     // process change info
-    if (aSuccessorData.getLength() > 0)
+    if (aSuccessorData.hasElements())
     {
         // The only change that can be "undone" is an insertion -
-        // after all, you can't re-insert an deletion, but you can
+        // after all, you can't re-insert a deletion, but you can
         // delete an insertion. This assumption is asserted in
         // ExportChangeInfo(Sequence<PropertyValue>&).
         SvXMLElementExport aSecondChangeElem(
@@ -479,11 +471,8 @@ void XMLRedlineExport::ExportChangeInfo(
 {
     OUString sComment;
 
-    sal_Int32 nCount = rPropertyValues.getLength();
-    for(sal_Int32 i = 0; i < nCount; i++)
+    for(const PropertyValue& rVal : rPropertyValues)
     {
-        const PropertyValue& rVal = rPropertyValues[i];
-
         if( rVal.Name == "RedlineAuthor" )
         {
             OUString sTmp;
@@ -545,47 +534,45 @@ void XMLRedlineExport::ExportStartOrEndRedline(
 
     Sequence<PropertyValue> aValues;
     aAny >>= aValues;
-    const PropertyValue* pValues = aValues.getConstArray();
 
     // seek for redline properties
     bool bIsCollapsed = false;
     bool bIsStart = true;
     OUString sId;
     bool bIdOK = false; // have we seen an ID?
-    sal_Int32 nLength = aValues.getLength();
-    for(sal_Int32 i = 0; i < nLength; i++)
+    for(const auto& rValue : std::as_const(aValues))
     {
-        if (pValues[i].Name == "RedlineIdentifier")
+        if (rValue.Name == "RedlineIdentifier")
         {
-            pValues[i].Value >>= sId;
+            rValue.Value >>= sId;
             bIdOK = true;
         }
-        else if (pValues[i].Name == "IsCollapsed")
+        else if (rValue.Name == "IsCollapsed")
         {
-            bIsCollapsed = *o3tl::doAccess<bool>(pValues[i].Value);
+            bIsCollapsed = *o3tl::doAccess<bool>(rValue.Value);
         }
-        else if (pValues[i].Name == "IsStart")
+        else if (rValue.Name == "IsStart")
         {
-            bIsStart = *o3tl::doAccess<bool>(pValues[i].Value);
+            bIsStart = *o3tl::doAccess<bool>(rValue.Value);
         }
     }
 
-    if( bIdOK )
-    {
-        SAL_WARN_IF( sId.isEmpty(), "xmloff", "Redlines must have IDs" );
+    if( !bIdOK )
+        return;
 
-        // TODO: use GetRedlineID or eliminate that function
-        rExport.AddAttribute(XML_NAMESPACE_TEXT, XML_CHANGE_ID,
-                             "ct" + sId);
+    SAL_WARN_IF( sId.isEmpty(), "xmloff", "Redlines must have IDs" );
 
-        // export the element
-        // (whitespace because we're not inside paragraphs)
-        SvXMLElementExport aChangeElem(
-            rExport, XML_NAMESPACE_TEXT,
-            bIsCollapsed ? XML_CHANGE :
-                ( bIsStart ? XML_CHANGE_START : XML_CHANGE_END ),
-            true, true);
-    }
+    // TODO: use GetRedlineID or eliminate that function
+    rExport.AddAttribute(XML_NAMESPACE_TEXT, XML_CHANGE_ID,
+                         "ct" + sId);
+
+    // export the element
+    // (whitespace because we're not inside paragraphs)
+    SvXMLElementExport aChangeElem(
+        rExport, XML_NAMESPACE_TEXT,
+        bIsCollapsed ? XML_CHANGE :
+            ( bIsStart ? XML_CHANGE_START : XML_CHANGE_END ),
+        true, true);
 }
 
 void XMLRedlineExport::ExportStartOrEndRedline(
@@ -620,18 +607,18 @@ void XMLRedlineExport::ExportStartOrEndRedline(
 
 void XMLRedlineExport::WriteComment(const OUString& rComment)
 {
-    if (!rComment.isEmpty())
+    if (rComment.isEmpty())
+        return;
+
+    // iterate over all string-pieces separated by return (0x0a) and
+    // put each inside a paragraph element.
+    SvXMLTokenEnumerator aEnumerator(rComment, char(0x0a));
+    OUString aSubString;
+    while (aEnumerator.getNextToken(aSubString))
     {
-        // iterate over all string-pieces separated by return (0x0a) and
-        // put each inside a paragraph element.
-        SvXMLTokenEnumerator aEnumerator(rComment, sal_Char(0x0a));
-        OUString aSubString;
-        while (aEnumerator.getNextToken(aSubString))
-        {
-            SvXMLElementExport aParagraph(
-                rExport, XML_NAMESPACE_TEXT, XML_P, true, false);
-            rExport.Characters(aSubString);
-        }
+        SvXMLElementExport aParagraph(
+            rExport, XML_NAMESPACE_TEXT, XML_P, true, false);
+        rExport.Characters(aSubString);
     }
 }
 

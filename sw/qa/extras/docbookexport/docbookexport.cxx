@@ -9,12 +9,6 @@
 
 #include <swmodeltestbase.hxx>
 
-#include <swmodule.hxx>
-#include <swdll.hxx>
-#include <usrpref.hxx>
-
-#include <test/xmltesttools.hxx>
-
 class DocbookExportTest : public SwModelTestBase
 {
 public:
@@ -27,7 +21,7 @@ public:
 
 DECLARE_DOCBOOKEXPORT_TEST(testsimple, "simple.docx")
 {
-    xmlDocPtr pDoc = parseXml(maTempFile);
+    xmlDocUniquePtr pDoc = parseXml(maTempFile);
     CPPUNIT_ASSERT(pDoc);
 
     assertXPathContent(pDoc, "/article/para", "aaaa");
@@ -36,7 +30,7 @@ DECLARE_DOCBOOKEXPORT_TEST(testsimple, "simple.docx")
 /* the test actually should crash with this file */
 DECLARE_DOCBOOKEXPORT_TEST(testtdf91095, "tdf91095.docx")
 {
-    xmlDocPtr pDoc = parseXml(maTempFile);
+    xmlDocUniquePtr pDoc = parseXml(maTempFile);
     CPPUNIT_ASSERT(pDoc);
 }
 

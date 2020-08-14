@@ -24,11 +24,12 @@
 #include <undobj.hxx>
 
 class SwHistoryBookmark;
+class SwHistoryNoTextFieldmark;
+class SwHistoryTextFieldmark;
 
-namespace sw {
-    namespace mark {
-        class IMark;
-    }
+namespace sw::mark {
+    class IMark;
+    class IFieldmark;
 }
 
 class SwDoc;
@@ -90,7 +91,61 @@ public:
 
 private:
     virtual SwRewriter GetRewriter() const override;
-    static void Rename( ::sw::UndoRedoContext &, const OUString& sFrom, const OUString& sTo );
+    static void Rename( ::sw::UndoRedoContext const &, const OUString& sFrom, const OUString& sTo );
+    virtual void UndoImpl( ::sw::UndoRedoContext & ) override;
+    virtual void RedoImpl( ::sw::UndoRedoContext & ) override;
+};
+
+/// Handling undo / redo of checkbox and drop-down form field insertion
+class SwUndoInsNoTextFieldmark : public SwUndo
+{
+private:
+    const std::unique_ptr<SwHistoryNoTextFieldmark> m_pHistoryNoTextFieldmark;
+
+public:
+    SwUndoInsNoTextFieldmark(const ::sw::mark::IFieldmark& rFieldmark);
+
+    virtual void UndoImpl( ::sw::UndoRedoContext & ) override;
+    virtual void RedoImpl( ::sw::UndoRedoContext & ) override;
+};
+
+/// Handling undo / redo of checkbox and drop-down form field deletion
+class SwUndoDelNoTextFieldmark : public SwUndo
+{
+private:
+    const std::unique_ptr<SwHistoryNoTextFieldmark> m_pHistoryNoTextFieldmark;
+
+public:
+    SwUndoDelNoTextFieldmark(const ::sw::mark::IFieldmark& rFieldmark);
+    ~SwUndoDelNoTextFieldmark();
+
+    virtual void UndoImpl( ::sw::UndoRedoContext & ) override;
+    virtual void RedoImpl( ::sw::UndoRedoContext & ) override;
+};
+
+/// Handling undo / redo of text form field insertion
+class SwUndoInsTextFieldmark : public SwUndo
+{
+private:
+    const std::unique_ptr<SwHistoryTextFieldmark> m_pHistoryTextFieldmark;
+
+public:
+    SwUndoInsTextFieldmark(const ::sw::mark::IFieldmark& rFieldmark);
+
+    virtual void UndoImpl( ::sw::UndoRedoContext & ) override;
+    virtual void RedoImpl( ::sw::UndoRedoContext & ) override;
+};
+
+/// Handling undo / redo of text form field deletion
+class SwUndoDelTextFieldmark : public SwUndo
+{
+private:
+    const std::unique_ptr<SwHistoryTextFieldmark> m_pHistoryTextFieldmark;
+
+public:
+    SwUndoDelTextFieldmark(const ::sw::mark::IFieldmark& rFieldmark);
+    ~SwUndoDelTextFieldmark();
+
     virtual void UndoImpl( ::sw::UndoRedoContext & ) override;
     virtual void RedoImpl( ::sw::UndoRedoContext & ) override;
 };

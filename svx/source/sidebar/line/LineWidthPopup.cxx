@@ -18,65 +18,65 @@
  */
 #include <svx/sidebar/LineWidthPopup.hxx>
 #include <svx/sidebar/LinePropertyPanelBase.hxx>
+#include <com/sun/star/beans/NamedValue.hpp>
 #include <svx/dialmgr.hxx>
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
 #include <svx/xlnwtit.hxx>
+#include <unotools/localedatawrapper.hxx>
 #include <unotools/viewoptions.hxx>
+#include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
 #include "LineWidthValueSet.hxx"
-#include "bitmaps.hlst"
+#include <bitmaps.hlst>
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
-LineWidthPopup::LineWidthPopup(LinePropertyPanelBase& rParent)
-    : FloatingWindow(&rParent, "FloatingLineProperty", "svx/ui/floatinglineproperty.ui")
-    , m_rParent(rParent)
-    , m_pStr(nullptr)
+LineWidthPopup::LineWidthPopup(weld::Widget* pParent, LinePropertyPanelBase& rParent)
+    : m_rParent(rParent)
     , m_sPt(SvxResId(RID_SVXSTR_PT))
     , m_eMapUnit(MapUnit::MapTwip)
     , m_bVSFocus(true)
     , m_bCustom(false)
     , m_nCustomWidth(0)
-    , m_aIMGCus(BitmapEx(RID_SVXBMP_WIDTH_CUSTOM))
-    , m_aIMGCusGray(BitmapEx(RID_SVXBMP_WIDTH_CUSTOM_GRAY))
+    , m_aIMGCus(StockImage::Yes, RID_SVXBMP_WIDTH_CUSTOM)
+    , m_aIMGCusGray(StockImage::Yes, RID_SVXBMP_WIDTH_CUSTOM_GRAY)
+    , m_xBuilder(Application::CreateBuilder(pParent, "svx/ui/floatinglineproperty.ui"))
+    , m_xTopLevel(m_xBuilder->weld_container("FloatingLineProperty"))
+    , m_xMFWidth(m_xBuilder->weld_metric_spin_button("spin", FieldUnit::POINT))
+    , m_xVSWidth(new LineWidthValueSet())
+    , m_xVSWidthWin(new weld::CustomWeld(*m_xBuilder, "lineset", *m_xVSWidth))
 {
-    get(m_xMFWidth, "spin");
+    m_xTopLevel->connect_focus_in(LINK(this, LineWidthPopup, FocusHdl));
 
-    get(m_xBox, "box");
+    m_xVSWidth->SetStyle(m_xVSWidth->GetStyle() | WB_3DLOOK |  WB_NO_DIRECTSELECT);
 
-    m_xVSWidth = VclPtr<LineWidthValueSet>::Create(m_xBox);
-
-    m_xVSWidth->SetStyle(m_xVSWidth->GetStyle()| WB_3DLOOK |  WB_NO_DIRECTSELECT);
-
-    m_pStr = new OUString[9];
-
-    m_pStr[0] = "0.5";
-    m_pStr[1] = "0.8";
-    m_pStr[2] = "1.0";
-    m_pStr[3] = "1.5";
-    m_pStr[4] = "2.3";
-    m_pStr[5] = "3.0";
-    m_pStr[6] = "4.5";
-    m_pStr[7] = "6.0";
-    m_pStr[8] = SvxResId(RID_SVXSTR_WIDTH_LAST_CUSTOM);
+    maStrUnits[0] = "0.5";
+    maStrUnits[1] = "0.8";
+    maStrUnits[2] = "1.0";
+    maStrUnits[3] = "1.5";
+    maStrUnits[4] = "2.3";
+    maStrUnits[5] = "3.0";
+    maStrUnits[6] = "4.5";
+    maStrUnits[7] = "6.0";
+    maStrUnits[8] = SvxResId(RID_SVXSTR_WIDTH_LAST_CUSTOM);
 
     const LocaleDataWrapper& rLocaleWrapper( Application::GetSettings().GetLocaleDataWrapper() );
     const sal_Unicode cSep = rLocaleWrapper.getNumDecimalSep()[0];
 
     for(int i = 0; i <= 7 ; i++)
     {
-        m_pStr[i] = m_pStr[i].replace('.', cSep);//Modify
-        m_pStr[i] += " ";
-        m_pStr[i] += m_sPt;
+        maStrUnits[i] = maStrUnits[i].replace('.', cSep);//Modify
+        maStrUnits[i] += " ";
+        maStrUnits[i] += m_sPt;
     }
 
     for (sal_uInt16 i = 1 ; i <= 9; ++i)
     {
         m_xVSWidth->InsertItem(i);
-        m_xVSWidth->SetItemText(i, m_pStr[i-1]);
+        m_xVSWidth->SetItemText(i, maStrUnits[i-1]);
     }
 
-    m_xVSWidth->SetUnit(m_pStr);
+    m_xVSWidth->SetUnit(maStrUnits);
     m_xVSWidth->SetItemData(1, reinterpret_cast<void*>(5));
     m_xVSWidth->SetItemData(2, reinterpret_cast<void*>(8));
     m_xVSWidth->SetItemData(3, reinterpret_cast<void*>(10));
@@ -90,33 +90,20 @@ LineWidthPopup::LineWidthPopup(LinePropertyPanelBase& rParent)
     m_xVSWidth->SetSelItem(0);
 
     m_xVSWidth->SetSelectHdl(LINK(this, LineWidthPopup, VSSelectHdl));
-    m_xMFWidth->SetModifyHdl(LINK(this, LineWidthPopup, MFModifyHdl));
-
-    m_xVSWidth->StartSelection();
-    m_xVSWidth->Show();
-}
-
-void LineWidthPopup::dispose()
-{
-    delete[] m_pStr;
-    m_xVSWidth.disposeAndClear();
-    m_xBox.clear();
-    m_xMFWidth.clear();
-    FloatingWindow::dispose();
+    m_xMFWidth->connect_value_changed(LINK(this, LineWidthPopup, MFModifyHdl));
 }
 
 LineWidthPopup::~LineWidthPopup()
 {
-    disposeOnce();
 }
 
-IMPL_LINK(LineWidthPopup, VSSelectHdl, ValueSet*, /*pControl*/, void)
+IMPL_LINK_NOARG(LineWidthPopup, VSSelectHdl, ValueSet*, void)
 {
-    sal_uInt16 iPos = m_xVSWidth->GetSelectItemId();
+    sal_uInt16 iPos = m_xVSWidth->GetSelectedItemId();
     if (iPos >= 1 && iPos <= 8)
     {
-        sal_IntPtr nVal = LogicToLogic(reinterpret_cast<sal_IntPtr>(m_xVSWidth->GetItemData( iPos )), MapUnit::MapPoint, m_eMapUnit);
-        nVal = m_xMFWidth->Denormalize(nVal);
+        sal_IntPtr nVal = OutputDevice::LogicToLogic(reinterpret_cast<sal_IntPtr>(m_xVSWidth->GetItemData( iPos )), MapUnit::MapPoint, m_eMapUnit);
+        nVal = m_xMFWidth->denormalize(nVal);
         XLineWidthItem aWidthItem( nVal );
         m_rParent.setLineWidth(aWidthItem);
         m_rParent.SetWidthIcon(iPos);
@@ -127,8 +114,8 @@ IMPL_LINK(LineWidthPopup, VSSelectHdl, ValueSet*, /*pControl*/, void)
         //modified
         if (m_bCustom)
         {
-            long nVal = LogicToLogic(m_nCustomWidth , MapUnit::MapPoint, m_eMapUnit);
-            nVal = m_xMFWidth->Denormalize(nVal);
+            long nVal = OutputDevice::LogicToLogic(m_nCustomWidth , MapUnit::MapPoint, m_eMapUnit);
+            nVal = m_xMFWidth->denormalize(nVal);
             XLineWidthItem aWidthItem( nVal );
             m_rParent.setLineWidth(aWidthItem);
             m_rParent.SetWidth(nVal);
@@ -138,30 +125,27 @@ IMPL_LINK(LineWidthPopup, VSSelectHdl, ValueSet*, /*pControl*/, void)
             m_xVSWidth->SetNoSelection();     //add , set no selection and keep the last select item
             m_xVSWidth->SetFormat();
             m_xVSWidth->Invalidate();
-            Invalidate();
-            m_xVSWidth->StartSelection();
         }
         //modify end
     }
+
     if ((iPos >= 1 && iPos <= 8) || (iPos == 9 && m_bCustom)) //add
     {
-        EndPopupMode();
+        m_rParent.EndLineWidthPopup();
     }
 }
 
-IMPL_LINK(LineWidthPopup, MFModifyHdl, Edit&, /*rControl*/, void)
+IMPL_LINK_NOARG(LineWidthPopup, MFModifyHdl, weld::MetricSpinButton&, void)
 {
     if (m_xVSWidth->GetSelItem())
     {
         m_xVSWidth->SetSelItem(0);
         m_xVSWidth->SetFormat();
         m_xVSWidth->Invalidate();
-        Invalidate();
-        m_xVSWidth->StartSelection();
     }
-    long nTmp = static_cast<long>(m_xMFWidth->GetValue());
-    long nVal = LogicToLogic( nTmp, MapUnit::MapPoint, m_eMapUnit );
-    sal_Int32 nNewWidth = (short)m_xMFWidth->Denormalize( nVal );
+    long nTmp = static_cast<long>(m_xMFWidth->get_value(FieldUnit::NONE));
+    long nVal = OutputDevice::LogicToLogic( nTmp, MapUnit::MapPoint, m_eMapUnit );
+    sal_Int32 nNewWidth = static_cast<short>(m_xMFWidth->denormalize( nVal ));
     XLineWidthItem aWidthItem(nNewWidth);
     m_rParent.setLineWidth(aWidthItem);
 }
@@ -171,12 +155,12 @@ void LineWidthPopup::SetWidthSelect(long lValue, bool bValuable, MapUnit eMapUni
     m_bVSFocus = true;
     m_xVSWidth->SetSelItem(0);
     m_eMapUnit = eMapUnit;
-    SvtViewOptions aWinOpt( EViewType::Window, SIDEBAR_LINE_WIDTH_GLOBAL_VALUE );
+    SvtViewOptions aWinOpt( EViewType::Window, "PopupPanel_LineWidth" );
     if (aWinOpt.Exists())
     {
         css::uno::Sequence <css::beans::NamedValue> aSeq = aWinOpt.GetUserData();
         OUString aTmp;
-        if ( aSeq.getLength())
+        if ( aSeq.hasElements())
             aSeq[0].Value >>= aTmp;
 
         OUString aWinData( aTmp );
@@ -185,8 +169,8 @@ void LineWidthPopup::SetWidthSelect(long lValue, bool bValuable, MapUnit eMapUni
         m_xVSWidth->SetImage(m_aIMGCus);
         m_xVSWidth->SetCusEnable(true);
 
-        OUString aStrTip( OUString::number( (double)m_nCustomWidth / 10));
-        aStrTip += m_sPt;
+        OUString aStrTip = OUString::number( static_cast<double>(m_nCustomWidth) / 10) +
+            m_sPt;
         m_xVSWidth->SetItemText(9, aStrTip);
     }
     else
@@ -194,25 +178,25 @@ void LineWidthPopup::SetWidthSelect(long lValue, bool bValuable, MapUnit eMapUni
         m_bCustom = false;
         m_xVSWidth->SetImage(m_aIMGCusGray);
         m_xVSWidth->SetCusEnable(false);
-        m_xVSWidth->SetItemText(9, m_pStr[8]);
+        m_xVSWidth->SetItemText(9, maStrUnits[8]);
     }
 
     if (bValuable)
     {
         sal_Int64 nVal = OutputDevice::LogicToLogic(lValue, eMapUnit, MapUnit::Map100thMM );
-        nVal = m_xMFWidth->Normalize(nVal);
-        m_xMFWidth->SetValue( nVal, FUNIT_100TH_MM );
+        nVal = m_xMFWidth->normalize(nVal);
+        m_xMFWidth->set_value( nVal, FieldUnit::MM_100TH );
     }
     else
     {
-        m_xMFWidth->SetText( "" );
+        m_xMFWidth->set_text( "" );
     }
 
-    OUString strCurrValue = m_xMFWidth->GetText();
+    OUString strCurrValue = m_xMFWidth->get_text();
     sal_uInt16 i = 0;
     for(; i < 8; i++)
     {
-        if (strCurrValue == m_pStr[i])
+        if (strCurrValue == maStrUnits[i])
         {
             m_xVSWidth->SetSelItem(i+1);
             break;
@@ -227,14 +211,16 @@ void LineWidthPopup::SetWidthSelect(long lValue, bool bValuable, MapUnit eMapUni
 
     m_xVSWidth->SetFormat();
     m_xVSWidth->Invalidate();
-    m_xVSWidth->StartSelection();
+}
 
+IMPL_LINK_NOARG(LineWidthPopup, FocusHdl, weld::Widget&, void)
+{
     if (m_bVSFocus)
         m_xVSWidth->GrabFocus();
     else
-        m_xMFWidth->GrabFocus();
+        m_xMFWidth->grab_focus();
 }
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

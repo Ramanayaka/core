@@ -21,7 +21,7 @@
 #define INCLUDED_CHART2_SOURCE_VIEW_CHARTTYPES_AREACHART_HXX
 
 #include <memory>
-#include "VSeriesPlotter.hxx"
+#include <VSeriesPlotter.hxx>
 #include <com/sun/star/chart2/CurveStyle.hpp>
 
 namespace chart
@@ -40,12 +40,11 @@ public:
     virtual ~AreaChart() override;
 
     virtual void createShapes() override;
-    virtual void addSeries( VDataSeries* pSeries, sal_Int32 zSlot = -1, sal_Int32 xSlot = -1,sal_Int32 ySlot = -1 ) override;
+    virtual void addSeries( std::unique_ptr<VDataSeries> pSeries, sal_Int32 zSlot, sal_Int32 xSlot, sal_Int32 ySlot ) override;
 
     virtual css::drawing::Direction3D  getPreferredDiagramAspectRatio() const override;
 
     // MinimumAndMaximumSupplier
-    virtual double getMaximumX() override;
     virtual bool isSeparateStackingForDifferentSigns( sal_Int32 nDimensionIndex ) override;
 
     virtual LegendSymbolStyle getLegendSymbolStyle() override;
@@ -54,15 +53,15 @@ public:
 private: //methods
     void impl_createSeriesShapes();
     bool impl_createArea( VDataSeries* pSeries
-                , css::drawing::PolyPolygonShape3D* pSeriesPoly
-                , css::drawing::PolyPolygonShape3D* pPreviousSeriesPoly
-                , PlottingPositionHelper* pPosHelper );
+                , css::drawing::PolyPolygonShape3D const * pSeriesPoly
+                , css::drawing::PolyPolygonShape3D const * pPreviousSeriesPoly
+                , PlottingPositionHelper const * pPosHelper );
     bool impl_createLine( VDataSeries* pSeries
-                , css::drawing::PolyPolygonShape3D* pSeriesPoly
+                , css::drawing::PolyPolygonShape3D const * pSeriesPoly
                 , PlottingPositionHelper* pPosHelper );
     static bool create_stepped_line( css::drawing::PolyPolygonShape3D aStartPoly
                 , css::chart2::CurveStyle eCurveStyle
-                , PlottingPositionHelper* pPosHelper
+                , PlottingPositionHelper const * pPosHelper
                 , css::drawing::PolyPolygonShape3D &aPoly );
 
 private: //member

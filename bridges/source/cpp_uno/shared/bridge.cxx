@@ -18,21 +18,20 @@
  */
 
 
-#include "bridge.hxx"
+#include <bridge.hxx>
 
-#include "cppinterfaceproxy.hxx"
-#include "unointerfaceproxy.hxx"
+#include <cppinterfaceproxy.hxx>
+#include <unointerfaceproxy.hxx>
 
-#include "com/sun/star/uno/XInterface.hpp"
-#include "osl/interlck.h"
-#include "rtl/ustring.h"
-#include "sal/types.h"
-#include "typelib/typedescription.h"
-#include "uno/dispatcher.h"
-#include "uno/environment.h"
-#include "uno/mapping.h"
+#include <com/sun/star/uno/XInterface.hpp>
+#include <rtl/ustring.h>
+#include <sal/types.h>
+#include <typelib/typedescription.h>
+#include <uno/dispatcher.h>
+#include <uno/environment.h>
+#include <uno/mapping.h>
 
-namespace bridges { namespace cpp_uno { namespace shared {
+namespace bridges::cpp_uno::shared {
 
 void freeMapping(uno_Mapping * pMapping)
 {
@@ -60,39 +59,39 @@ void cpp2unoMapping(
             static_cast< uno_Interface * >( *ppUnoI ) );
         *ppUnoI = nullptr;
     }
-    if (pCppI)
+    if (!pCppI)
+        return;
+
+    Bridge * pBridge = static_cast< Bridge::Mapping * >( pMapping )->pBridge;
+
+    // get object id of interface to be wrapped
+    rtl_uString * pOId = nullptr;
+    (*pBridge->pCppEnv->getObjectIdentifier)(
+        pBridge->pCppEnv, &pOId, pCppI );
+    assert(pOId);
+
+    // try to get any known interface from target environment
+    (*pBridge->pUnoEnv->getRegisteredInterface)(
+        pBridge->pUnoEnv, ppUnoI, pOId, pTypeDescr );
+
+    if (! *ppUnoI) // no existing interface, register new proxy interface
     {
-        Bridge * pBridge = static_cast< Bridge::Mapping * >( pMapping )->pBridge;
+        // try to publish a new proxy (refcount initially 1)
+        uno_Interface * pSurrogate
+            = bridges::cpp_uno::shared::UnoInterfaceProxy::create(
+                pBridge,
+                static_cast< ::com::sun::star::uno::XInterface * >( pCppI ),
+                pTypeDescr, pOId );
 
-        // get object id of interface to be wrapped
-        rtl_uString * pOId = nullptr;
-        (*pBridge->pCppEnv->getObjectIdentifier)(
-            pBridge->pCppEnv, &pOId, pCppI );
-        assert(pOId);
+        // proxy may be exchanged during registration
+        (*pBridge->pUnoEnv->registerProxyInterface)(
+            pBridge->pUnoEnv, reinterpret_cast< void ** >( &pSurrogate ),
+            freeUnoInterfaceProxy, pOId,
+            pTypeDescr );
 
-        // try to get any known interface from target environment
-        (*pBridge->pUnoEnv->getRegisteredInterface)(
-            pBridge->pUnoEnv, ppUnoI, pOId, pTypeDescr );
-
-        if (! *ppUnoI) // no existing interface, register new proxy interface
-        {
-            // try to publish a new proxy (refcount initially 1)
-            uno_Interface * pSurrogate
-                = bridges::cpp_uno::shared::UnoInterfaceProxy::create(
-                    pBridge,
-                    static_cast< ::com::sun::star::uno::XInterface * >( pCppI ),
-                    pTypeDescr, pOId );
-
-            // proxy may be exchanged during registration
-            (*pBridge->pUnoEnv->registerProxyInterface)(
-                pBridge->pUnoEnv, reinterpret_cast< void ** >( &pSurrogate ),
-                freeUnoInterfaceProxy, pOId,
-                pTypeDescr );
-
-            *ppUnoI = pSurrogate;
-        }
-        ::rtl_uString_release( pOId );
+        *ppUnoI = pSurrogate;
     }
+    ::rtl_uString_release( pOId );
 }
 
 void uno2cppMapping(
@@ -106,38 +105,38 @@ void uno2cppMapping(
             release();
         *ppCppI = nullptr;
     }
-    if (pUnoI)
+    if (!pUnoI)
+        return;
+
+    Bridge * pBridge = static_cast< Bridge::Mapping * >( pMapping )->pBridge;
+
+    // get object id of uno interface to be wrapped
+    rtl_uString * pOId = nullptr;
+    (*pBridge->pUnoEnv->getObjectIdentifier)(
+        pBridge->pUnoEnv, &pOId, pUnoI );
+    assert(pOId);
+
+    // try to get any known interface from target environment
+    (*pBridge->pCppEnv->getRegisteredInterface)(
+        pBridge->pCppEnv, ppCppI, pOId, pTypeDescr );
+
+    if (! *ppCppI) // no existing interface, register new proxy interface
     {
-        Bridge * pBridge = static_cast< Bridge::Mapping * >( pMapping )->pBridge;
+        // try to publish a new proxy (ref count initially 1)
+        com::sun::star::uno::XInterface * pProxy
+            = bridges::cpp_uno::shared::CppInterfaceProxy::create(
+                pBridge, static_cast< uno_Interface * >( pUnoI ),
+                pTypeDescr, pOId );
 
-        // get object id of uno interface to be wrapped
-        rtl_uString * pOId = nullptr;
-        (*pBridge->pUnoEnv->getObjectIdentifier)(
-            pBridge->pUnoEnv, &pOId, pUnoI );
-        assert(pOId);
+        // proxy may be exchanged during registration
+        (*pBridge->pCppEnv->registerProxyInterface)(
+            pBridge->pCppEnv, reinterpret_cast< void ** >( &pProxy ),
+            freeCppInterfaceProxy, pOId,
+            pTypeDescr );
 
-        // try to get any known interface from target environment
-        (*pBridge->pCppEnv->getRegisteredInterface)(
-            pBridge->pCppEnv, ppCppI, pOId, pTypeDescr );
-
-        if (! *ppCppI) // no existing interface, register new proxy interface
-        {
-            // try to publish a new proxy (ref count initially 1)
-            com::sun::star::uno::XInterface * pProxy
-                = bridges::cpp_uno::shared::CppInterfaceProxy::create(
-                    pBridge, static_cast< uno_Interface * >( pUnoI ),
-                    pTypeDescr, pOId );
-
-            // proxy may be exchanged during registration
-            (*pBridge->pCppEnv->registerProxyInterface)(
-                pBridge->pCppEnv, reinterpret_cast< void ** >( &pProxy ),
-                freeCppInterfaceProxy, pOId,
-                pTypeDescr );
-
-            *ppCppI = pProxy;
-        }
-        ::rtl_uString_release( pOId );
+        *ppCppI = pProxy;
     }
+    ::rtl_uString_release( pOId );
 }
 
 uno_Mapping * Bridge::createMapping(
@@ -145,34 +144,34 @@ uno_Mapping * Bridge::createMapping(
     bool bExportCpp2Uno)
 {
     Bridge * bridge = new Bridge(pCppEnv, pUnoEnv, bExportCpp2Uno);
-    //coverity[leaked_storage]
+    // coverity[leaked_storage] - on purpose
     return bExportCpp2Uno ? &bridge->aCpp2Uno : &bridge->aUno2Cpp;
 }
 
 void Bridge::acquire()
 {
-    if (osl_atomic_increment( &nRef ) == 1)
+    if (++nRef != 1)
+        return;
+
+    if (bExportCpp2Uno)
     {
-        if (bExportCpp2Uno)
-        {
-            uno_Mapping * pMapping = &aCpp2Uno;
-            ::uno_registerMapping(
-                &pMapping, freeMapping, &pCppEnv->aBase,
-                &pUnoEnv->aBase, nullptr );
-        }
-        else
-        {
-            uno_Mapping * pMapping = &aUno2Cpp;
-            ::uno_registerMapping(
-                &pMapping, freeMapping, &pUnoEnv->aBase,
-                &pCppEnv->aBase, nullptr );
-        }
+        uno_Mapping * pMapping = &aCpp2Uno;
+        ::uno_registerMapping(
+            &pMapping, freeMapping, &pCppEnv->aBase,
+            &pUnoEnv->aBase, nullptr );
+    }
+    else
+    {
+        uno_Mapping * pMapping = &aUno2Cpp;
+        ::uno_registerMapping(
+            &pMapping, freeMapping, &pUnoEnv->aBase,
+            &pCppEnv->aBase, nullptr );
     }
 }
 
 void Bridge::release()
 {
-    if (! osl_atomic_decrement( &nRef ))
+    if (! --nRef )
     {
         ::uno_revokeMapping( bExportCpp2Uno ? &aCpp2Uno : &aUno2Cpp );
     }
@@ -206,6 +205,6 @@ Bridge::~Bridge()
     (*pCppEnv->aBase.release)( &pCppEnv->aBase );
 }
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

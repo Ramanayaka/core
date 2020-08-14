@@ -18,15 +18,15 @@
  */
 
 #include <connectivity/sdbcx/VDescriptor.hxx>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/typeprovider.hxx>
 
 #include <algorithm>
-#include <string.h>
 
-namespace connectivity
+namespace connectivity::sdbcx
 {
-    namespace sdbcx
-    {
         using namespace ::com::sun::star::uno;
         using namespace ::com::sun::star::lang;
         using namespace ::com::sun::star::beans;
@@ -46,18 +46,9 @@ namespace connectivity
         // css::lang::XUnoTunnel
         sal_Int64 SAL_CALL ODescriptor::getSomething( const Sequence< sal_Int8 >& rId )
         {
-            return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+            return (isUnoTunnelId<ODescriptor>(rId))
                 ? reinterpret_cast< sal_Int64 >( this )
                 : 0;
-        }
-
-
-        ODescriptor* ODescriptor::getImplementation( const Reference< XInterface >& _rxSomeComp )
-        {
-            Reference< XUnoTunnel > xTunnel( _rxSomeComp, UNO_QUERY );
-            if ( xTunnel.is() )
-                return reinterpret_cast< ODescriptor* >( xTunnel->getSomething( getUnoTunnelImplementationId() ) );
-            return nullptr;
         }
 
 
@@ -96,12 +87,12 @@ namespace connectivity
 
         bool ODescriptor::isNew( const Reference< XInterface >& _rxDescriptor )
         {
-            ODescriptor* pImplementation = getImplementation( _rxDescriptor );
+            ODescriptor* pImplementation = comphelper::getUnoTunnelImplementation<ODescriptor>( _rxDescriptor );
             return pImplementation && pImplementation->isNew();
         }
 
 
-        Sequence< sal_Int8 > ODescriptor::getUnoTunnelImplementationId()
+        Sequence< sal_Int8 > ODescriptor::getUnoTunnelId()
         {
             static ::cppu::OImplementationId implId;
 
@@ -131,7 +122,6 @@ namespace connectivity
             return aTypes.getTypes();
         }
 
-    }
 }
 
 

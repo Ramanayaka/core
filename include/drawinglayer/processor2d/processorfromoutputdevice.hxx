@@ -20,28 +20,27 @@
 #ifndef INCLUDED_DRAWINGLAYER_PROCESSOR2D_PROCESSORFROMOUTPUTDEVICE_HXX
 #define INCLUDED_DRAWINGLAYER_PROCESSOR2D_PROCESSORFROMOUTPUTDEVICE_HXX
 
-#include <drawinglayer/geometry/viewinformation2d.hxx>
 #include <drawinglayer/drawinglayerdllapi.h>
+#include <memory>
 
 class OutputDevice;
 
-namespace drawinglayer { namespace processor2d {
+namespace drawinglayer::processor2d {
     class BaseProcessor2D;
-}}
+}
 
-namespace drawinglayer
-{
-    namespace processor2d
+namespace drawinglayer::geometry { class ViewInformation2D; }
+
+namespace drawinglayer::processor2d
     {
         // create a mating VCL-Processor for given OutputDevice. This includes
         // looking for MetaFile-recording. The returned renderer changes owner,
         // deletion is duty of the caller
-        DRAWINGLAYER_DLLPUBLIC drawinglayer::processor2d::BaseProcessor2D* createBaseProcessor2DFromOutputDevice(
+        DRAWINGLAYER_DLLPUBLIC std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> createBaseProcessor2DFromOutputDevice(
             OutputDevice& rTargetOutDev,
             const drawinglayer::geometry::ViewInformation2D& rViewInformation2D);
 
-    } // end of namespace processor2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::processor2d
 
 #endif // INCLUDED_DRAWINGLAYER_PROCESSOR2D_PROCESSORFROMOUTPUTDEVICE_HXX
 

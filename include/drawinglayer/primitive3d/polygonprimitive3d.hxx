@@ -29,9 +29,7 @@
 #include <drawinglayer/attribute/strokeattribute.hxx>
 
 
-namespace drawinglayer
-{
-    namespace primitive3d
+namespace drawinglayer::primitive3d
     {
         /** PolygonHairlinePrimitive3D class
 
@@ -69,13 +67,11 @@ namespace drawinglayer
             /// provide unique ID
             DeclPrimitive3DIDBlock()
         };
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::primitive3d
 
 
-namespace drawinglayer
-{
-    namespace primitive3d
+namespace drawinglayer::primitive3d
     {
         /** PolygonStrokePrimitive3D class
 
@@ -83,7 +79,7 @@ namespace drawinglayer
             and stroke attributes. It will be decomposed dependent on the definition
             to the needed primitives, e.g. filled Tubes for fat lines.
          */
-        class DRAWINGLAYER_DLLPUBLIC PolygonStrokePrimitive3D : public BufferedDecompositionPrimitive3D
+        class PolygonStrokePrimitive3D final : public BufferedDecompositionPrimitive3D
         {
         private:
             /// the line geometry
@@ -95,7 +91,6 @@ namespace drawinglayer
             /// the line stroking (if used)
             attribute::StrokeAttribute              maStrokeAttribute;
 
-        protected:
             /// local decomposition.
             virtual Primitive3DContainer create3DDecomposition(const geometry::ViewInformation3D& rViewInformation) const override;
 
@@ -117,8 +112,8 @@ namespace drawinglayer
             /// provide unique ID
             DeclPrimitive3DIDBlock()
         };
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::primitive3d
 
 
 #endif //INCLUDED_DRAWINGLAYER_PRIMITIVE3D_POLYGONPRIMITIVE3D_HXX

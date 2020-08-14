@@ -17,31 +17,32 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RegressionCurveHelper.hxx"
-#include "MeanValueRegressionCurveCalculator.hxx"
-#include "LinearRegressionCurveCalculator.hxx"
-#include "PolynomialRegressionCurveCalculator.hxx"
-#include "MovingAverageRegressionCurveCalculator.hxx"
-#include "LogarithmicRegressionCurveCalculator.hxx"
-#include "ExponentialRegressionCurveCalculator.hxx"
-#include "PotentialRegressionCurveCalculator.hxx"
-#include "CommonConverters.hxx"
+#include <RegressionCurveHelper.hxx>
+#include <MeanValueRegressionCurveCalculator.hxx>
+#include <LinearRegressionCurveCalculator.hxx>
+#include <PolynomialRegressionCurveCalculator.hxx>
+#include <MovingAverageRegressionCurveCalculator.hxx>
+#include <LogarithmicRegressionCurveCalculator.hxx>
+#include <ExponentialRegressionCurveCalculator.hxx>
+#include <PotentialRegressionCurveCalculator.hxx>
+#include <CommonConverters.hxx>
 #include "RegressionCurveModel.hxx"
-#include "ChartTypeHelper.hxx"
-#include "ChartModelHelper.hxx"
-#include "macros.hxx"
-#include "PropertyHelper.hxx"
-#include "ResId.hxx"
-#include "Strings.hrc"
-#include "DiagramHelper.hxx"
-#include <com/sun/star/chart2/XChartDocument.hpp>
+#include <ChartTypeHelper.hxx>
+#include <ChartModelHelper.hxx>
+#include <ResId.hxx>
+#include <strings.hrc>
+#include <DiagramHelper.hxx>
+#include <com/sun/star/chart2/AxisType.hpp>
+#include <com/sun/star/chart2/XRegressionCurveCalculator.hpp>
+#include <com/sun/star/chart2/XRegressionCurveContainer.hpp>
+#include <tools/diagnose_ex.h>
+#include <comphelper/property.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
 
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
-using ::com::sun::star::uno::XComponentContext;
 using ::com::sun::star::lang::XServiceName;
 using ::com::sun::star::beans::XPropertySet;
 using ::com::sun::star::uno::Exception;
@@ -198,9 +199,9 @@ void RegressionCurveHelper::initializeCurveCalculator(
                 }
             }
         }
-        catch( const Exception & ex )
+        catch( const Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -216,8 +217,8 @@ void RegressionCurveHelper::initializeCurveCalculator(
     }
 
     if( bXValuesFound && bYValuesFound &&
-        aXValues.getLength() > 0 &&
-        aYValues.getLength() > 0 )
+        aXValues.hasElements() &&
+        aYValues.hasElements() )
         xOutCurveCalculator->recalculateRegression( aXValues, aYValues );
 }
 
@@ -242,17 +243,17 @@ bool RegressionCurveHelper::hasMeanValueLine(
 
     try
     {
-        uno::Sequence< uno::Reference< XRegressionCurve > > aCurves(
+        const uno::Sequence< uno::Reference< XRegressionCurve > > aCurves(
             xRegCnt->getRegressionCurves());
-        for( sal_Int32 i = 0; i < aCurves.getLength(); ++i )
+        for( uno::Reference< XRegressionCurve > const & curve : aCurves )
         {
-            if( isMeanValueLine( aCurves[i] ))
+            if( isMeanValueLine( curve ))
                 return true;
         }
     }
-    catch( const Exception & ex )
+    catch( const Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return false;
@@ -275,17 +276,17 @@ uno::Reference< chart2::XRegressionCurve >
     {
         try
         {
-            uno::Sequence< uno::Reference< XRegressionCurve > > aCurves(
+            const uno::Sequence< uno::Reference< XRegressionCurve > > aCurves(
                 xRegCnt->getRegressionCurves());
-            for( sal_Int32 i = 0; i < aCurves.getLength(); ++i )
+            for( uno::Reference< XRegressionCurve > const & curve : aCurves )
             {
-                if( isMeanValueLine( aCurves[i] ))
-                    return aCurves[i];
+                if( isMeanValueLine( curve ))
+                    return curve;
             }
         }
-        catch( const Exception & ex )
+        catch( const Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -293,7 +294,7 @@ uno::Reference< chart2::XRegressionCurve >
 }
 
 void RegressionCurveHelper::addMeanValueLine(
-    uno::Reference< XRegressionCurveContainer > & xRegCnt,
+    uno::Reference< XRegressionCurveContainer > const & xRegCnt,
     const uno::Reference< XPropertySet > & xSeriesProp )
 {
     if( !xRegCnt.is() ||
@@ -316,20 +317,20 @@ void RegressionCurveHelper::addMeanValueLine(
 }
 
 void RegressionCurveHelper::removeMeanValueLine(
-    Reference< XRegressionCurveContainer > & xRegCnt )
+    Reference< XRegressionCurveContainer > const & xRegCnt )
 {
     if( !xRegCnt.is())
         return;
 
     try
     {
-        Sequence< Reference< XRegressionCurve > > aCurves(
+        const Sequence< Reference< XRegressionCurve > > aCurves(
             xRegCnt->getRegressionCurves());
-        for( sal_Int32 i = 0; i < aCurves.getLength(); ++i )
+        for( Reference< XRegressionCurve > const & curve : aCurves )
         {
-            if( isMeanValueLine( aCurves[i] ))
+            if( isMeanValueLine( curve ))
             {
-                xRegCnt->removeRegressionCurve( aCurves[i] );
+                xRegCnt->removeRegressionCurve( curve );
                 // attention: the iterator i has become invalid now
 
                 // note: assume that there is only one mean-value curve
@@ -338,16 +339,15 @@ void RegressionCurveHelper::removeMeanValueLine(
             }
         }
     }
-    catch( const Exception & ex )
+    catch( const Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
 uno::Reference< chart2::XRegressionCurve > RegressionCurveHelper::addRegressionCurve(
     SvxChartRegress eType,
-    uno::Reference< XRegressionCurveContainer >& xRegressionCurveContainer,
-    const uno::Reference< XComponentContext >& /* xContext */,
+    uno::Reference< XRegressionCurveContainer > const & xRegressionCurveContainer,
     const uno::Reference< beans::XPropertySet >& xPropertySource,
     const uno::Reference< beans::XPropertySet >& xEquationProperties )
 {
@@ -396,85 +396,82 @@ uno::Reference< chart2::XRegressionCurve > RegressionCurveHelper::addRegressionC
     and returns true, if anything was removed
  */
 bool RegressionCurveHelper::removeAllExceptMeanValueLine(
-    uno::Reference< chart2::XRegressionCurveContainer > & xRegCnt )
+    uno::Reference< chart2::XRegressionCurveContainer > const & xRegCnt )
 {
     bool bRemovedSomething = false;
     if( xRegCnt.is())
     {
         try
         {
-            uno::Sequence< uno::Reference< chart2::XRegressionCurve > > aCurves(
+            const uno::Sequence< uno::Reference< chart2::XRegressionCurve > > aCurves(
                 xRegCnt->getRegressionCurves());
             std::vector< uno::Reference< chart2::XRegressionCurve > > aCurvesToDelete;
-            for( sal_Int32 i = 0; i < aCurves.getLength(); ++i )
+            for( uno::Reference< chart2::XRegressionCurve > const & curve : aCurves )
             {
-                if( ! isMeanValueLine( aCurves[i] ))
+                if( ! isMeanValueLine( curve ))
                 {
-                    aCurvesToDelete.push_back( aCurves[ i ] );
+                    aCurvesToDelete.push_back( curve );
                 }
             }
 
-            for( std::vector< uno::Reference< chart2::XRegressionCurve > >::const_iterator aIt = aCurvesToDelete.begin();
-                     aIt != aCurvesToDelete.end(); ++aIt )
+            for (auto const& curveToDelete : aCurvesToDelete)
             {
-                xRegCnt->removeRegressionCurve( *aIt );
+                xRegCnt->removeRegressionCurve(curveToDelete);
                 bRemovedSomething = true;
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
     return bRemovedSomething;
 }
 
 void RegressionCurveHelper::removeEquations(
-        uno::Reference< chart2::XRegressionCurveContainer > & xRegCnt )
+        uno::Reference< chart2::XRegressionCurveContainer > const & xRegCnt )
 {
-    if( xRegCnt.is())
+    if( !xRegCnt.is())
+        return;
+
+    try
     {
-        try
+        const uno::Sequence< uno::Reference< chart2::XRegressionCurve > > aCurves(
+            xRegCnt->getRegressionCurves());
+        for( uno::Reference< chart2::XRegressionCurve >  const & curve : aCurves )
         {
-            uno::Sequence< uno::Reference< chart2::XRegressionCurve > > aCurves(
-                xRegCnt->getRegressionCurves());
-            for( sal_Int32 i = 0; i < aCurves.getLength(); ++i )
+            if( !isMeanValueLine( curve ) )
             {
-                if( !isMeanValueLine( aCurves[i] ) )
+                uno::Reference< chart2::XRegressionCurve > xRegCurve( curve );
+                if( xRegCurve.is() )
                 {
-                    uno::Reference< chart2::XRegressionCurve > xRegCurve( aCurves[ i ] );
-                    if( xRegCurve.is() )
+                    uno::Reference< beans::XPropertySet > xEqProp( xRegCurve->getEquationProperties() ) ;
+                    if( xEqProp.is())
                     {
-                        uno::Reference< beans::XPropertySet > xEqProp( xRegCurve->getEquationProperties() ) ;
-                        if( xEqProp.is())
-                        {
-                            xEqProp->setPropertyValue( "ShowEquation", uno::Any( false ));
-                            xEqProp->setPropertyValue( "XName", uno::Any( OUString("x") ));
-                            xEqProp->setPropertyValue( "YName", uno::Any( OUString("f(x) ") ));
-                            xEqProp->setPropertyValue( "ShowCorrelationCoefficient", uno::Any( false ));
-                        }
+                        xEqProp->setPropertyValue( "ShowEquation", uno::Any( false ));
+                        xEqProp->setPropertyValue( "XName", uno::Any( OUString("x") ));
+                        xEqProp->setPropertyValue( "YName", uno::Any( OUString("f(x) ") ));
+                        xEqProp->setPropertyValue( "ShowCorrelationCoefficient", uno::Any( false ));
                     }
                 }
             }
         }
-        catch( const uno::Exception & ex )
-        {
-            ASSERT_EXCEPTION( ex );
-        }
+    }
+    catch( const uno::Exception & )
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
 uno::Reference< XRegressionCurve > RegressionCurveHelper::changeRegressionCurveType(
     SvxChartRegress eType,
-    uno::Reference< XRegressionCurveContainer > & xRegressionCurveContainer,
-    uno::Reference< XRegressionCurve > & xRegressionCurve,
-    const uno::Reference< XComponentContext > & xContext )
+    uno::Reference< XRegressionCurveContainer > const & xRegressionCurveContainer,
+    uno::Reference< XRegressionCurve > const & xRegressionCurve )
 {
     xRegressionCurveContainer->removeRegressionCurve( xRegressionCurve );
     return RegressionCurveHelper::addRegressionCurve(
             eType,
             xRegressionCurveContainer,
-            xContext,
             uno::Reference< beans::XPropertySet >( xRegressionCurve, uno::UNO_QUERY ),
             xRegressionCurve->getEquationProperties());
 }
@@ -487,19 +484,19 @@ uno::Reference< chart2::XRegressionCurve > RegressionCurveHelper::getFirstCurveN
 
     try
     {
-        uno::Sequence< uno::Reference< chart2::XRegressionCurve > > aCurves(
+        const uno::Sequence< uno::Reference< chart2::XRegressionCurve > > aCurves(
             xRegCnt->getRegressionCurves());
-        for( sal_Int32 i = 0; i < aCurves.getLength(); ++i )
+        for( uno::Reference< chart2::XRegressionCurve > const & curve : aCurves )
         {
-            if( ! isMeanValueLine( aCurves[i] ))
+            if( ! isMeanValueLine( curve ))
             {
-                return aCurves[ i ];
+                return curve;
             }
         }
     }
-    catch( const Exception & ex )
+    catch( const Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return nullptr;
@@ -521,9 +518,9 @@ uno::Reference< chart2::XRegressionCurve > RegressionCurveHelper::getRegressionC
                 return aCurves[aIndex];
         }
     }
-    catch( const Exception & ex )
+    catch( const Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return nullptr;
@@ -571,9 +568,9 @@ SvxChartRegress RegressionCurveHelper::getRegressionType(
             }
         }
     }
-    catch( const Exception & ex )
+    catch( const Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2" );
     }
 
     return eResult;
@@ -586,11 +583,11 @@ SvxChartRegress RegressionCurveHelper::getFirstRegressTypeNotMeanValueLine(
 
     if( xRegCnt.is())
     {
-        Sequence< Reference< XRegressionCurve > > aCurves(
+        const Sequence< Reference< XRegressionCurve > > aCurves(
             xRegCnt->getRegressionCurves());
-        for( sal_Int32 i = 0; i < aCurves.getLength(); ++i )
+        for( Reference< XRegressionCurve > const & curve : aCurves )
         {
-            SvxChartRegress eType = getRegressionType( aCurves[i] );
+            SvxChartRegress eType = getRegressionType( curve );
             if( eType != SvxChartRegress::MeanValue &&
                 eType != SvxChartRegress::Unknown )
             {
@@ -690,17 +687,16 @@ std::vector< Reference< chart2::XRegressionCurve > >
 {
     std::vector< Reference< chart2::XRegressionCurve > > aResult;
     std::vector< Reference< chart2::XDataSeries > > aSeries( DiagramHelper::getDataSeriesFromDiagram( xDiagram ));
-    for( std::vector< Reference< chart2::XDataSeries > >::iterator aIt( aSeries.begin());
-         aIt != aSeries.end(); ++aIt )
+    for (auto const& elem : aSeries)
     {
-        Reference< chart2::XRegressionCurveContainer > xContainer( *aIt, uno::UNO_QUERY );
+        Reference< chart2::XRegressionCurveContainer > xContainer(elem, uno::UNO_QUERY);
         if(xContainer.is())
         {
-            uno::Sequence< uno::Reference< chart2::XRegressionCurve > > aCurves(xContainer->getRegressionCurves());
-            for( sal_Int32 i = 0; i < aCurves.getLength(); ++i )
+            const uno::Sequence< uno::Reference< chart2::XRegressionCurve > > aCurves(xContainer->getRegressionCurves());
+            for( Reference< XRegressionCurve > const & curve : aCurves )
             {
-                if( ! isMeanValueLine( aCurves[i] ))
-                    aResult.push_back( aCurves[i] );
+                if( ! isMeanValueLine( curve ))
+                    aResult.push_back( curve );
             }
         }
     }
@@ -711,19 +707,19 @@ std::vector< Reference< chart2::XRegressionCurve > >
 void RegressionCurveHelper::resetEquationPosition(
     const Reference< chart2::XRegressionCurve > & xCurve )
 {
-    if( xCurve.is())
+    if( !xCurve.is())
+        return;
+
+    try
     {
-        try
-        {
-            const OUString aPosPropertyName( "RelativePosition" );
-            Reference< beans::XPropertySet > xEqProp( xCurve->getEquationProperties()); // since m233: , uno::UNO_SET_THROW );
-            if( xEqProp->getPropertyValue( aPosPropertyName ).hasValue())
-                xEqProp->setPropertyValue( aPosPropertyName, uno::Any());
-        }
-        catch( const uno::Exception & ex )
-        {
-            ASSERT_EXCEPTION( ex );
-        }
+        const OUString aPosPropertyName( "RelativePosition" );
+        Reference< beans::XPropertySet > xEqProp( xCurve->getEquationProperties()); // since m233: , uno::UNO_SET_THROW );
+        if( xEqProp->getPropertyValue( aPosPropertyName ).hasValue())
+            xEqProp->setPropertyValue( aPosPropertyName, uno::Any());
+    }
+    catch( const uno::Exception & )
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2" );
     }
 }
 

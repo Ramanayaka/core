@@ -23,19 +23,18 @@
 #include <svx/sdr/overlay/overlayobject.hxx>
 #include <sal/types.h>
 #include <svx/svxdllapi.h>
+#include <memory>
+#include <vector>
 
 
 class Point;
 
-namespace sdr
-{
-    namespace overlay
+namespace sdr::overlay
     {
-        class SVX_DLLPUBLIC OverlayObjectList
+        class SVXCORE_DLLPUBLIC OverlayObjectList final
         {
-        protected:
             // the vector of OverlayObjects
-            OverlayObjectVector                     maVector;
+            ::std::vector< std::unique_ptr<OverlayObject> > maVector;
 
         public:
             OverlayObjectList() {}
@@ -47,7 +46,7 @@ namespace sdr
             void clear();
 
             // append objects (takes ownership)
-            void append(OverlayObject* pOverlayObject);
+            void append(std::unique_ptr<OverlayObject> pOverlayObject);
 
             // access to objects
             sal_uInt32 count() const { return maVector.size(); }
@@ -62,8 +61,8 @@ namespace sdr
             // calculate BaseRange of all included OverlayObjects and return
             basegfx::B2DRange getBaseRange() const;
         };
-    } // end of namespace overlay
-} // end of namespace sdr
+
+} // end of namespace sdr::overlay
 
 
 #endif // INCLUDED_SVX_SDR_OVERLAY_OVERLAYOBJECTLIST_HXX

@@ -19,22 +19,27 @@
 #ifndef INCLUDED_SC_SOURCE_UI_VBA_EXCELVBAHELPER_HXX
 #define INCLUDED_SC_SOURCE_UI_VBA_EXCELVBAHELPER_HXX
 
-#include <vbahelper/vbahelper.hxx>
-#include "docsh.hxx"
-#include <com/sun/star/sheet/XDatabaseRange.hpp>
-#include <com/sun/star/sheet/XUnnamedDatabaseRanges.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
-#include <com/sun/star/sheet/XSheetCellRangeContainer.hpp>
-#include <com/sun/star/sheet/XSpreadsheet.hpp>
-#include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <ooo/vba/XHelperInterface.hpp>
+#include <vector>
+#include <global.hxx>
+
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::uno { class XComponentContext; }
+
+namespace com::sun::star::sheet { class XDatabaseRange; }
+namespace com::sun::star::sheet { class XUnnamedDatabaseRanges; }
+namespace com::sun::star::table { class XCell; }
+namespace com::sun::star::table { class XCellRange; }
+namespace com::sun::star::sheet { class XSheetCellRangeContainer; }
+namespace com::sun::star::sheet { class XSpreadsheet; }
+namespace com::sun::star::sheet { class XSpreadsheetDocument; }
+namespace ooo::vba { class XHelperInterface; }
 
 class ScCellRangesBase;
+class ScTabViewShell;
+class SfxViewFrame;
 
-namespace ooo {
-namespace vba {
-namespace excel {
+namespace ooo::vba::excel {
 
 // nTabs empty means apply zoom to all sheets
 void implSetZoom( const css::uno::Reference< css::frame::XModel >& xModel, sal_Int16 nZoom, std::vector< SCTAB >& nTabs );
@@ -48,10 +53,10 @@ ScTabViewShell* getCurrentBestViewShell( const css::uno::Reference< css::uno::XC
 SfxViewFrame* getViewFrame( const css::uno::Reference< css::frame::XModel >& xModel );
 
 /// @throws css::uno::RuntimeException
-css::uno::Reference< css::sheet::XUnnamedDatabaseRanges > GetUnnamedDataBaseRanges( ScDocShell* pShell );
+css::uno::Reference< css::sheet::XUnnamedDatabaseRanges > GetUnnamedDataBaseRanges( const ScDocShell* pShell );
 
 /// @throws css::uno::RuntimeException
-css::uno::Reference< css::sheet::XDatabaseRange > GetAutoFiltRange( ScDocShell* pShell, sal_Int16 nSheet );
+css::uno::Reference< css::sheet::XDatabaseRange > GetAutoFiltRange( const ScDocShell* pShell, sal_Int16 nSheet );
 /// @throws css::uno::RuntimeException
 css::uno::Reference< ooo::vba::XHelperInterface > getUnoSheetModuleObj( const css::uno::Reference< css::sheet::XSpreadsheet >& xSheet );
 /// @throws css::uno::RuntimeException
@@ -73,24 +78,22 @@ public:
     static SfxItemSet* GetDataSet( ScCellRangesBase* pRangeObj );
 };
 
-// Extracts a implementation object ( via XUnoTunnel ) from an uno object
-// by default will throw if unsuccessful.
+// Extracts an implementation object (via XUnoTunnel) from a UNO object.
+// Will throw if unsuccessful.
 /// @throws css::uno::RuntimeException
 template < typename ImplObject >
-    ImplObject* getImplFromDocModuleWrapper( const css::uno::Reference< css::uno::XInterface >& rxWrapperIf, bool bThrow = true )
+    ImplObject* getImplFromDocModuleWrapper( const css::uno::Reference< css::uno::XInterface >& rxWrapperIf )
     {
         ImplObject* pObj = nullptr;
         css::uno::Reference< css::lang::XUnoTunnel >  xTunnel( rxWrapperIf, css::uno::UNO_QUERY );
         if ( xTunnel.is() )
             pObj = reinterpret_cast<ImplObject*>( xTunnel->getSomething(ImplObject::getUnoTunnelId()));
-        if ( bThrow && !pObj )
+        if ( !pObj )
             throw css::uno::RuntimeException("Internal error, can't extract implementation object", rxWrapperIf );
         return pObj;
     }
 
-} // namespace excel
-} // namespace vba
-} // namespace ooo
+} // namespace ooo::vba::excel
 
 #endif
 

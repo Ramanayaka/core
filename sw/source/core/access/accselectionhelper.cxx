@@ -18,10 +18,11 @@
  */
 
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
-#include <accselectionhelper.hxx>
+#include "accselectionhelper.hxx"
 
-#include <acccontext.hxx>
+#include "acccontext.hxx"
 #include <accmap.hxx>
+#include <o3tl/safeint.hxx>
 #include <svx/AccessibleShape.hxx>
 #include <viewsh.hxx>
 #include <fesh.hxx>
@@ -31,6 +32,7 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/XAccessibleStateSet.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <fmtanchr.hxx>
 
 using namespace ::com::sun::star::accessibility;
@@ -123,12 +125,8 @@ static bool lcl_getSelectedState(const SwAccessibleChild& aChild,
         if( pRStateSet.is() )
         {
             Sequence<short> aStates = pRStateSet->getStates();
-            sal_Int32 count = aStates.getLength();
-            for( sal_Int32 i = 0; i < count; i++ )
-            {
-                if( aStates[i] == AccessibleStateType::SELECTED)
-                    return true;
-            }
+            if (std::find(aStates.begin(), aStates.end(), AccessibleStateType::SELECTED) != aStates.end())
+                return true;
         }
     }
     return false;
@@ -177,25 +175,21 @@ void SwAccessibleSelectionHelper::selectAllAccessibleChildren(  )
     // the first we can select, and select it.
 
     SwFEShell* pFEShell = GetFEShell();
-    if( pFEShell )
-    {
-        std::list< SwAccessibleChild > aChildren;
-        m_rContext.GetChildren( *(m_rContext.GetMap()), aChildren );
+    if( !pFEShell )
+        return;
 
-        std::list< SwAccessibleChild >::const_iterator aIter = aChildren.begin();
-        std::list< SwAccessibleChild >::const_iterator aEndIter = aChildren.end();
-        while( aIter != aEndIter )
+    std::list< SwAccessibleChild > aChildren;
+    m_rContext.GetChildren( *(m_rContext.GetMap()), aChildren );
+
+    for( const SwAccessibleChild& rChild : aChildren )
+    {
+        const SdrObject* pObj = rChild.GetDrawObject();
+        const SwFrame* pFrame = rChild.GetSwFrame();
+        if( pObj && !(pFrame != nullptr && pFEShell->IsObjSelected()) )
         {
-            const SwAccessibleChild& rChild = *aIter;
-            const SdrObject* pObj = rChild.GetDrawObject();
-            const SwFrame* pFrame = rChild.GetSwFrame();
-            if( pObj && !(pFrame != nullptr && pFEShell->IsObjSelected()) )
-            {
-                m_rContext.Select( const_cast< SdrObject *>( pObj ), nullptr==pFrame );
-                if( pFrame )
-                    break;
-            }
-            ++aIter;
+            m_rContext.Select( const_cast< SdrObject *>( pObj ), nullptr==pFrame );
+            if( pFrame )
+                break;
         }
     }
 }
@@ -223,13 +217,8 @@ sal_Int32 SwAccessibleSelectionHelper::getSelectedAccessibleChildCount(  )
                 std::list< SwAccessibleChild > aChildren;
                 m_rContext.GetChildren( *(m_rContext.GetMap()), aChildren );
 
-                std::list< SwAccessibleChild >::const_iterator aIter =
-                    aChildren.begin();
-                std::list< SwAccessibleChild >::const_iterator aEndIter =
-                    aChildren.end();
-                while( aIter != aEndIter && static_cast<size_t>(nCount) < nSelObjs )
+                for( const SwAccessibleChild& rChild : aChildren )
                 {
-                    const SwAccessibleChild& rChild = *aIter;
                     if( rChild.GetDrawObject() && !rChild.GetSwFrame() &&
                         SwAccessibleFrame::GetParent(rChild, m_rContext.IsInPagePreview())
                            == m_rContext.GetFrame() &&
@@ -237,7 +226,8 @@ sal_Int32 SwAccessibleSelectionHelper::getSelectedAccessibleChildCount(  )
                     {
                         nCount++;
                     }
-                    ++aIter;
+                    if (o3tl::make_unsigned(nCount) >= nSelObjs)
+                        break;
                 }
             }
         }
@@ -247,17 +237,8 @@ sal_Int32 SwAccessibleSelectionHelper::getSelectedAccessibleChildCount(  )
         {
             std::list< SwAccessibleChild > aChildren;
             m_rContext.GetChildren( *(m_rContext.GetMap()), aChildren );
-            std::list< SwAccessibleChild >::const_iterator aIter =
-                aChildren.begin();
-            std::list< SwAccessibleChild >::const_iterator aEndIter =
-                aChildren.end();
-            while( aIter != aEndIter )
-            {
-                const SwAccessibleChild& aChild = *aIter;
-                if( lcl_getSelectedState( aChild, &m_rContext, m_rContext.GetMap() ) )
-                    nCount++;
-                ++aIter;
-            }
+            nCount = static_cast<sal_Int32>(std::count_if(aChildren.begin(), aChildren.end(),
+                [this](const SwAccessibleChild& aChild) { return lcl_getSelectedState(aChild, &m_rContext, m_rContext.GetMap()); }));
         }
     }
     return nCount;
@@ -304,17 +285,14 @@ Reference<XAccessible> SwAccessibleSelectionHelper::getSelectedAccessibleChild(
     else
     {
         const size_t nSelObjs = pFEShell->IsObjSelected();
-        if( 0 == nSelObjs || static_cast<size_t>(nSelectedChildIndex) >= nSelObjs )
+        if( 0 == nSelObjs || o3tl::make_unsigned(nSelectedChildIndex) >= nSelObjs )
             throwIndexOutOfBoundsException();
 
         std::list< SwAccessibleChild > aChildren;
         m_rContext.GetChildren( *(m_rContext.GetMap()), aChildren );
 
-        std::list< SwAccessibleChild >::const_iterator aIter = aChildren.begin();
-        std::list< SwAccessibleChild >::const_iterator aEndIter = aChildren.end();
-        while( aIter != aEndIter && !aChild.IsValid() )
+        for( const SwAccessibleChild& rChild : aChildren )
         {
-            const SwAccessibleChild& rChild = *aIter;
             if( rChild.GetDrawObject() && !rChild.GetSwFrame() &&
                 SwAccessibleFrame::GetParent(rChild, m_rContext.IsInPagePreview()) ==
                     m_rContext.GetFrame() &&
@@ -325,7 +303,8 @@ Reference<XAccessible> SwAccessibleSelectionHelper::getSelectedAccessibleChild(
                 else
                     --nSelectedChildIndex;
             }
-            ++aIter;
+            if (aChild.IsValid())
+                break;
         }
     }
 

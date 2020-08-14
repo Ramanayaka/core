@@ -13,12 +13,11 @@
 #include <com/sun/star/view/XSelectionChangeListener.hpp>
 #include <cppuhelper/implbase.hxx>
 
-#include "ObjectIdentifier.hxx"
+#include <ObjectIdentifier.hxx>
 
 #include <vector>
 
-namespace chart {
-namespace sidebar {
+namespace chart::sidebar {
 
 class ChartSidebarSelectionListenerParent
 {
@@ -26,8 +25,6 @@ public:
     virtual ~ChartSidebarSelectionListenerParent();
 
     virtual void selectionChanged(bool bSelected) = 0;
-
-    virtual void SelectionInvalid() = 0;
 };
 
 class ChartSidebarSelectionListener : public cppu::WeakImplHelper<css::view::XSelectionChangeListener>
@@ -52,7 +49,7 @@ private:
     std::vector<ObjectType> maTypes;
 };
 
-} }
+}
 
 #endif
 

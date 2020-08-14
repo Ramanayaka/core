@@ -18,7 +18,6 @@
  */
 #include "vbaparagraph.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
 #include "vbarange.hxx"
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
@@ -58,20 +57,20 @@ SwVbaParagraph::setStyle( const uno::Any& style )
 OUString
 SwVbaParagraph::getServiceImplName()
 {
-    return OUString("SwVbaParagraph");
+    return "SwVbaParagraph";
 }
 
 uno::Sequence< OUString >
 SwVbaParagraph::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Paragraph";
-    }
+        "ooo.vba.word.Paragraph"
+    };
     return aServiceNames;
 }
+
+namespace {
 
 class ParagraphCollectionHelper : public ::cppu::WeakImplHelper< container::XIndexAccess,
                                                                  container::XEnumerationAccess >
@@ -135,6 +134,8 @@ public:
     }
 };
 
+}
+
 SwVbaParagraphs::SwVbaParagraphs( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< css::uno::XComponentContext > & xContext, const uno::Reference< text::XTextDocument >& xDocument ) : SwVbaParagraphs_BASE( xParent, xContext, new ParagraphCollectionHelper( xDocument ) ), mxTextDocument( xDocument )
 {
 }
@@ -162,18 +163,16 @@ SwVbaParagraphs::createCollectionObject( const css::uno::Any& aSource )
 OUString
 SwVbaParagraphs::getServiceImplName()
 {
-    return OUString("SwVbaParagraphs");
+    return "SwVbaParagraphs";
 }
 
 css::uno::Sequence<OUString>
 SwVbaParagraphs::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.Paragraphs";
-    }
+        "ooo.vba.word.Paragraphs"
+    };
     return sNames;
 }
 

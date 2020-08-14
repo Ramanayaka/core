@@ -18,26 +18,32 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
-#include "service.hxx"
+#include "vbafilterpropsfromformat.hxx"
 #include "vbadocument.hxx"
 #include "vbarange.hxx"
 #include "vbarangehelper.hxx"
 #include "vbadocumentproperties.hxx"
 #include "vbabookmarks.hxx"
+#include "vbamailmerge.hxx"
 #include "vbavariables.hxx"
+#include <comphelper/processfactory.hxx>
 #include <com/sun/star/text/XBookmarksSupplier.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
 #include <com/sun/star/drawing/XControlShape.hpp>
 #include <com/sun/star/form/XFormsSupplier.hpp>
+#include <com/sun/star/frame/XStorable.hpp>
 #include <com/sun/star/document/XRedlinesSupplier.hpp>
+#include <com/sun/star/util/thePathSettings.hpp>
 #include <ooo/vba/XControlProvider.hpp>
 #include <ooo/vba/word/WdProtectionType.hpp>
+#include <ooo/vba/word/WdSaveFormat.hpp>
+#include <ooo/vba/word/XDocumentOutgoing.hpp>
 
-#include <vbahelper/helperdecl.hxx>
-#include <wordvbahelper.hxx>
+#include "wordvbahelper.hxx"
 #include <docsh.hxx>
 #include "vbatemplate.hxx"
 #include "vbaparagraph.hxx"
@@ -58,6 +64,23 @@
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
+namespace {
+
+class SwVbaDocumentOutgoingConnectionPoint : public cppu::WeakImplHelper<XConnectionPoint>
+{
+private:
+    SwVbaDocument* mpDoc;
+
+public:
+    SwVbaDocumentOutgoingConnectionPoint( SwVbaDocument* pDoc );
+
+    // XConnectionPoint
+    sal_uInt32 SAL_CALL Advise(const uno::Reference< XSink >& Sink ) override;
+    void SAL_CALL Unadvise( sal_uInt32 Cookie ) override;
+};
+
+}
+
 SwVbaDocument::SwVbaDocument( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, uno::Reference< frame::XModel > const & xModel ): SwVbaDocument_BASE( xParent, xContext, xModel )
 {
     Initialize();
@@ -74,6 +97,24 @@ SwVbaDocument::~SwVbaDocument()
 void SwVbaDocument::Initialize()
 {
     mxTextDocument.set( getModel(), uno::UNO_QUERY_THROW );
+    word::getDocShell( mxModel )->RegisterAutomationDocumentObject( this );
+}
+
+sal_uInt32
+SwVbaDocument::AddSink( const uno::Reference< XSink >& xSink )
+{
+    word::getDocShell( mxModel )->RegisterAutomationDocumentEventsCaller( uno::Reference< XSinkCaller >(this) );
+    mvSinks.push_back(xSink);
+    return mvSinks.size();
+}
+
+void
+SwVbaDocument::RemoveSink( sal_uInt32 nNumber )
+{
+    if (nNumber < 1 || nNumber > mvSinks.size())
+        return;
+
+    mvSinks[nNumber-1] = uno::Reference< XSink >();
 }
 
 uno::Reference< word::XRange > SAL_CALL
@@ -155,7 +196,7 @@ SwVbaDocument::Bookmarks( const uno::Any& rIndex )
     if (  rIndex.getValueTypeClass() == uno::TypeClass_VOID )
         return uno::makeAny( xBookmarksVba );
 
-    return uno::Any( xBookmarksVba->Item( rIndex, uno::Any() ) );
+    return xBookmarksVba->Item( rIndex, uno::Any() );
 }
 
 uno::Any SAL_CALL
@@ -169,7 +210,7 @@ SwVbaDocument::Variables( const uno::Any& rIndex )
     if (  rIndex.getValueTypeClass() == uno::TypeClass_VOID )
         return uno::makeAny( xVariables );
 
-    return uno::Any( xVariables->Item( rIndex, uno::Any() ) );
+    return xVariables->Item( rIndex, uno::Any() );
 }
 
 uno::Any SAL_CALL
@@ -247,7 +288,7 @@ SwVbaDocument::PageSetup( )
 OUString
 SwVbaDocument::getServiceImplName()
 {
-    return OUString("SwVbaDocument");
+    return "SwVbaDocument";
 }
 
 uno::Any SAL_CALL
@@ -256,7 +297,7 @@ SwVbaDocument::getAttachedTemplate()
     uno::Reference< word::XTemplate > xTemplate;
     uno::Reference<css::document::XDocumentPropertiesSupplier> const xDocPropSupp(
             getModel(), uno::UNO_QUERY_THROW);
-    uno::Reference< css::document::XDocumentProperties > xDocProps( xDocPropSupp->getDocumentProperties(), uno::UNO_QUERY_THROW );
+    uno::Reference< css::document::XDocumentProperties > xDocProps( xDocPropSupp->getDocumentProperties(), uno::UNO_SET_THROW );
     OUString sTemplateUrl = xDocProps->getTemplateURL();
 
     xTemplate = new SwVbaTemplate( this, mxContext, sTemplateUrl );
@@ -282,7 +323,7 @@ SwVbaDocument::setAttachedTemplate( const css::uno::Any& _attachedtemplate )
 
     uno::Reference<css::document::XDocumentPropertiesSupplier> const xDocPropSupp(
             getModel(), uno::UNO_QUERY_THROW );
-    uno::Reference< css::document::XDocumentProperties > xDocProps( xDocPropSupp->getDocumentProperties(), uno::UNO_QUERY_THROW );
+    uno::Reference< css::document::XDocumentProperties > xDocProps( xDocPropSupp->getDocumentProperties(), uno::UNO_SET_THROW );
     xDocProps->setTemplateURL( aURL );
 }
 
@@ -367,6 +408,11 @@ void SAL_CALL SwVbaDocument::setConsecutiveHyphensLimit( ::sal_Int32 _consecutiv
     xParaProps->setPropertyValue("ParaHyphenationMaxHyphens", uno::makeAny( nHyphensLimit ) );
 }
 
+uno::Reference< ooo::vba::word::XMailMerge > SAL_CALL SwVbaDocument::getMailMerge()
+{
+    return uno::Reference< ooo::vba::word::XMailMerge >(SwVbaMailMerge::get(mxParent, mxContext).get());
+}
+
 void SAL_CALL SwVbaDocument::Protect( ::sal_Int32 /*Type*/, const uno::Any& /*NOReset*/, const uno::Any& /*Password*/, const uno::Any& /*UseIRM*/, const uno::Any& /*EnforceStyleLock*/ )
 {
     // Seems not support in Writer
@@ -380,14 +426,12 @@ void SAL_CALL SwVbaDocument::PrintOut( const uno::Any& /*Background*/, const uno
 
 void SAL_CALL SwVbaDocument::PrintPreview(  )
 {
-    OUString url = ".uno:PrintPreview";
-    dispatchRequests( mxModel,url );
+    dispatchRequests( mxModel,".uno:PrintPreview" );
 }
 
 void SAL_CALL SwVbaDocument::ClosePrintPreview(  )
 {
-    OUString url = ".uno:ClosePreview";
-    dispatchRequests( mxModel,url );
+    dispatchRequests( mxModel,".uno:ClosePreview" );
 }
 
 uno::Any SAL_CALL
@@ -412,6 +456,91 @@ SwVbaDocument::Frames( const uno::Any& index )
     return uno::makeAny( xCol );
 }
 
+void SAL_CALL
+SwVbaDocument::SaveAs2000( const uno::Any& FileName, const uno::Any& FileFormat, const uno::Any& /*LockComments*/, const uno::Any& /*Password*/, const uno::Any& /*AddToRecentFiles*/, const uno::Any& /*WritePassword*/, const uno::Any& /*ReadOnlyRecommended*/, const uno::Any& /*EmbedTrueTypeFonts*/, const uno::Any& /*SaveNativePictureFormat*/, const uno::Any& /*SaveFormsData*/, const uno::Any& /*SaveAsAOCELetter*/ )
+{
+    SAL_INFO("sw.vba", "Document.SaveAs2000(FileName:=" << FileName << ",FileFormat:=" << FileFormat << ")");
+
+    // Based on ScVbaWorkbook::SaveAs.
+    OUString sFileName;
+    FileName >>= sFileName;
+    OUString sURL;
+    osl::FileBase::getFileURLFromSystemPath( sFileName, sURL );
+
+    // Detect if there is no path then we need to use the current folder.
+    INetURLObject aURL( sURL );
+    sURL = aURL.GetMainURL( INetURLObject::DecodeMechanism::ToIUri );
+    if( sURL.isEmpty() )
+    {
+        // Need to add cur dir ( of this document ) or else the 'Work' dir
+        sURL = getModel()->getURL();
+
+        if ( sURL.isEmpty() )
+        {
+            // Not path available from 'this' document. Need to add the 'document'/work directory then.
+            // Based on SwVbaOptions::getValueEvent()
+            uno::Reference< util::XPathSettings > xPathSettings = util::thePathSettings::get( comphelper::getProcessComponentContext() );
+            OUString sPathUrl;
+            xPathSettings->getPropertyValue( "Work" ) >>= sPathUrl;
+            // Path could be a multipath, Microsoft doesn't support this feature in Word currently.
+            // Only the last path is from interest.
+            sal_Int32 nIndex = sPathUrl.lastIndexOf( ';' );
+            if( nIndex != -1 )
+            {
+                sPathUrl = sPathUrl.copy( nIndex + 1 );
+            }
+
+            aURL.SetURL( sPathUrl );
+        }
+        else
+        {
+            aURL.SetURL( sURL );
+            aURL.Append( sFileName );
+        }
+        sURL = aURL.GetMainURL( INetURLObject::DecodeMechanism::ToIUri );
+
+    }
+
+    sal_Int32 nFileFormat = word::WdSaveFormat::wdFormatDocument;
+    FileFormat >>= nFileFormat;
+
+    uno::Sequence<  beans::PropertyValue > storeProps(1);
+    storeProps[0].Name = "FilterName" ;
+
+    setFilterPropsFromFormat( nFileFormat, storeProps );
+
+    uno::Reference< frame::XStorable > xStor( getModel(), uno::UNO_QUERY_THROW );
+    xStor->storeAsURL( sURL, storeProps );
+}
+
+void SAL_CALL
+SwVbaDocument::SaveAs( const uno::Any& FileName, const uno::Any& FileFormat, const uno::Any& LockComments, const uno::Any& Password, const uno::Any& AddToRecentFiles, const uno::Any& WritePassword, const uno::Any& ReadOnlyRecommended, const uno::Any& EmbedTrueTypeFonts, const uno::Any& SaveNativePictureFormat, const uno::Any& SaveFormsData, const uno::Any& SaveAsAOCELetter, const uno::Any& /*Encoding*/, const uno::Any& /*InsertLineBreaks*/, const uno::Any& /*AllowSubstitutions*/, const uno::Any& /*LineEnding*/, const uno::Any& /*AddBiDiMarks*/ )
+{
+    return SaveAs2000( FileName, FileFormat, LockComments, Password, AddToRecentFiles, WritePassword, ReadOnlyRecommended, EmbedTrueTypeFonts, SaveNativePictureFormat, SaveFormsData, SaveAsAOCELetter );
+}
+
+void SAL_CALL
+SwVbaDocument::Close( const uno::Any& SaveChanges, const uno::Any& /*OriginalFormat*/, const uno::Any& /*RouteDocument*/ )
+{
+    VbaDocumentBase::Close( SaveChanges, uno::Any(), uno::Any() );
+}
+
+void SAL_CALL
+SwVbaDocument::SavePreviewPngAs( const uno::Any& FileName )
+{
+    OUString sFileName;
+    FileName >>= sFileName;
+    OUString sURL;
+    osl::FileBase::getFileURLFromSystemPath( sFileName, sURL );
+
+    uno::Sequence<  beans::PropertyValue > storeProps(1);
+    storeProps[0].Name = "FilterName" ;
+    storeProps[0].Value <<= OUString("writer_png_Export");
+
+    uno::Reference< frame::XStorable > xStor( getModel(), uno::UNO_QUERY_THROW );
+    xStor->storeToURL( sURL, storeProps );
+}
+
 uno::Any
 SwVbaDocument::getControlShape( const OUString& sName )
 {
@@ -426,8 +555,8 @@ SwVbaDocument::getControlShape( const OUString& sName )
         uno::Reference< drawing::XControlShape > xControlShape( aUnoObj, uno::UNO_QUERY );
         if( xControlShape.is() )
         {
-             uno::Reference< container::XNamed > xNamed( xControlShape->getControl(), uno::UNO_QUERY_THROW );
-            if( sName.equals( xNamed->getName() ))
+            uno::Reference< container::XNamed > xNamed( xControlShape->getControl(), uno::UNO_QUERY_THROW );
+            if( sName == xNamed->getName() )
             {
                 return aUnoObj;
             }
@@ -445,7 +574,7 @@ SwVbaDocument::getIntrospection(  )
 uno::Any SAL_CALL
 SwVbaDocument::invoke( const OUString& aFunctionName, const uno::Sequence< uno::Any >& /*aParams*/, uno::Sequence< ::sal_Int16 >& /*aOutParamIndex*/, uno::Sequence< uno::Any >& /*aOutParam*/ )
 {
-    SAL_INFO("sw", "** will barf " << aFunctionName );
+    SAL_INFO("sw.vba", "** will barf " << aFunctionName );
     throw uno::RuntimeException(); // unsupported operation
 }
 
@@ -459,7 +588,7 @@ SwVbaDocument::getValue( const OUString& aPropertyName )
 {
     uno::Reference< drawing::XControlShape > xControlShape( getControlShape( aPropertyName ), uno::UNO_QUERY_THROW );
 
-    uno::Reference<lang::XMultiComponentFactory > xServiceManager( mxContext->getServiceManager(), uno::UNO_QUERY_THROW );
+    uno::Reference<lang::XMultiComponentFactory > xServiceManager( mxContext->getServiceManager(), uno::UNO_SET_THROW );
     uno::Reference< XControlProvider > xControlProvider( xServiceManager->createInstanceWithContext("ooo.vba.ControlProvider", mxContext ), uno::UNO_QUERY_THROW );
     uno::Reference< msforms::XControl > xControl( xControlProvider->createControl(  xControlShape, getModel() ) );
     return uno::makeAny( xControl );
@@ -481,14 +610,14 @@ SwVbaDocument::hasProperty( const OUString& aName )
 }
 
 uno::Reference< container::XNameAccess >
-SwVbaDocument::getFormControls()
+SwVbaDocument::getFormControls() const
 {
     uno::Reference< container::XNameAccess > xFormControls;
     try
     {
         uno::Reference< drawing::XDrawPageSupplier > xDrawPageSupplier( mxTextDocument, uno::UNO_QUERY_THROW );
         uno::Reference< form::XFormsSupplier >  xFormSupplier( xDrawPageSupplier->getDrawPage(), uno::UNO_QUERY_THROW );
-            uno::Reference< container::XIndexAccess > xIndexAccess( xFormSupplier->getForms(), uno::UNO_QUERY_THROW );
+        uno::Reference< container::XIndexAccess > xIndexAccess( xFormSupplier->getForms(), uno::UNO_QUERY_THROW );
         // get the www-standard container ( maybe we should access the
         // 'www-standard' by name rather than index, this seems an
         // implementation detail
@@ -500,26 +629,89 @@ SwVbaDocument::getFormControls()
     return xFormControls;
 }
 
+// XInterfaceWithIID
+
+OUString SAL_CALL
+SwVbaDocument::getIID()
+{
+    return "{82154424-0FBF-11d4-8313-005004526AB4}";
+}
+
+// XConnectable
+
+OUString SAL_CALL
+SwVbaDocument::GetIIDForClassItselfNotCoclass()
+{
+    return "{82154428-0FBF-11D4-8313-005004526AB4}";
+}
+
+TypeAndIID SAL_CALL
+SwVbaDocument::GetConnectionPoint()
+{
+    TypeAndIID aResult =
+        { word::XDocumentOutgoing::static_type(),
+          "{82154429-0FBF-11D4-8313-005004526AB4}"
+        };
+
+    return aResult;
+}
+
+// XSinkCaller
+
+void SAL_CALL
+SwVbaDocument::CallSinks( const OUString& Method, uno::Sequence< uno::Any >& Arguments )
+{
+    for (auto& i : mvSinks)
+    {
+        if (i.is())
+            i->Call(Method, Arguments);
+    }
+}
+
+uno::Reference<XConnectionPoint> SAL_CALL
+SwVbaDocument::FindConnectionPoint()
+{
+    uno::Reference<XConnectionPoint> xCP(new SwVbaDocumentOutgoingConnectionPoint(this));
+    return xCP;
+}
+
+// SwVbaApplicationOutgoingConnectionPoint
+
+SwVbaDocumentOutgoingConnectionPoint::SwVbaDocumentOutgoingConnectionPoint( SwVbaDocument* pDoc ) :
+    mpDoc(pDoc)
+{
+}
+
+// XConnectionPoint
+
+sal_uInt32 SAL_CALL
+SwVbaDocumentOutgoingConnectionPoint::Advise( const uno::Reference< XSink >& Sink )
+{
+    return mpDoc->AddSink(Sink);
+}
+
+void SAL_CALL
+SwVbaDocumentOutgoingConnectionPoint::Unadvise( sal_uInt32 Cookie )
+{
+    mpDoc->RemoveSink( Cookie );
+}
+
 uno::Sequence< OUString >
 SwVbaDocument::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Document";
-    }
+        "ooo.vba.word.Document"
+    };
     return aServiceNames;
 }
 
-namespace document
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+Writer_SwVbaDocument_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
 {
-namespace sdecl = comphelper::service_decl;
-sdecl::vba_service_class_<SwVbaDocument, sdecl::with_args<true> > const serviceImpl;
-sdecl::ServiceDecl const serviceDecl(
-    serviceImpl,
-    "SwVbaDocument",
-    "ooo.vba.word.Document" );
+    return cppu::acquire(new SwVbaDocument(args, context));
 }
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

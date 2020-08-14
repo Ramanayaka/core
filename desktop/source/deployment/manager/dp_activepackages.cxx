@@ -17,23 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
+#include <config_extensions.h>
 
 #include <sal/config.h>
 
-#include <cstddef>
 #include <utility>
-#include <vector>
 
 #include <osl/diagnose.h>
-#include <rtl/strbuf.hxx>
 #include <rtl/string.hxx>
 #include <rtl/textenc.h>
-#include <rtl/uri.h>
-#include <rtl/uri.hxx>
 #include <rtl/ustring.hxx>
 
-#include "dp_identifier.hxx"
+#include <dp_identifier.hxx>
 #include "dp_activepackages.hxx"
 
 // Old format of database entry:
@@ -47,18 +42,14 @@
 
 namespace {
 
-static char const separator = static_cast< char >(
-    static_cast< unsigned char >(0xFF));
+constexpr const char separator[] = "\xff";
 
 OString oldKey(OUString const & fileName) {
     return OUStringToOString(fileName, RTL_TEXTENCODING_UTF8);
 }
 
 OString newKey(OUString const & id) {
-    OStringBuffer b;
-    b.append(separator);
-    b.append(OUStringToOString(id, RTL_TEXTENCODING_UTF8));
-    return b.makeStringAndClear();
+    return separator + OUStringToOString(id, RTL_TEXTENCODING_UTF8);
 }
 
 ::dp_manager::ActivePackages::Data decodeOldData(
@@ -166,23 +157,20 @@ ActivePackages::Entries ActivePackages::getEntries() const {
     Entries es;
 #if HAVE_FEATURE_EXTENSIONS
     ::dp_misc::t_string2string_map m(m_map.getEntries());
-    for (::dp_misc::t_string2string_map::const_iterator i(m.begin());
-         i != m.end(); ++i)
+    for (auto const& elem : m)
     {
-        if (!i->first.isEmpty() && i->first[0] == separator) {
-            es.push_back(
-                std::make_pair(
+        if (!elem.first.isEmpty() && elem.first[0] == separator[0]) {
+            es.emplace_back(
                     OUString(
-                        i->first.getStr() + 1, i->first.getLength() - 1,
+                        elem.first.getStr() + 1, elem.first.getLength() - 1,
                         RTL_TEXTENCODING_UTF8),
-                    decodeNewData(i->second)));
+                    decodeNewData(elem.second));
         } else {
             OUString fn(
-                OStringToOUString(i->first, RTL_TEXTENCODING_UTF8));
-            es.push_back(
-                std::make_pair(
+                OStringToOUString(elem.first, RTL_TEXTENCODING_UTF8));
+            es.emplace_back(
                     ::dp_misc::generateLegacyIdentifier(fn),
-                    decodeOldData(fn, i->second)));
+                    decodeOldData(fn, elem.second));
         }
     }
 #else
@@ -193,18 +181,17 @@ ActivePackages::Entries ActivePackages::getEntries() const {
 
 void ActivePackages::put(OUString const & id, Data const & data) {
 #if HAVE_FEATURE_EXTENSIONS
-    OStringBuffer b;
-    b.append(
-        OUStringToOString(data.temporaryName, RTL_TEXTENCODING_UTF8));
-    b.append(separator);
-    b.append(OUStringToOString(data.fileName, RTL_TEXTENCODING_UTF8));
-    b.append(separator);
-    b.append(OUStringToOString(data.mediaType, RTL_TEXTENCODING_UTF8));
-    b.append(separator);
-    b.append(OUStringToOString(data.version, RTL_TEXTENCODING_UTF8));
-    b.append(separator);
-    b.append(OUStringToOString(data.failedPrerequisites, RTL_TEXTENCODING_UTF8));
-    m_map.put(newKey(id), b.makeStringAndClear());
+    OString b =
+        OUStringToOString(data.temporaryName, RTL_TEXTENCODING_UTF8) +
+        separator +
+        OUStringToOString(data.fileName, RTL_TEXTENCODING_UTF8) +
+        separator +
+        OUStringToOString(data.mediaType, RTL_TEXTENCODING_UTF8) +
+        separator +
+        OUStringToOString(data.version, RTL_TEXTENCODING_UTF8) +
+        separator +
+        OUStringToOString(data.failedPrerequisites, RTL_TEXTENCODING_UTF8);
+    m_map.put(newKey(id), b);
 #else
     (void) id;
     (void) data;

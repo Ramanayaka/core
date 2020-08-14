@@ -18,10 +18,9 @@
  */
 
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXHEADERBAR_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXHEADERBAR_HXX
+#pragma once
 
-#include "extended/AccessibleBrowseBoxTableBase.hxx"
+#include <extended/AccessibleBrowseBoxTableBase.hxx>
 #include <cppuhelper/implbase1.hxx>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 
@@ -36,7 +35,7 @@ typedef ::cppu::ImplHelper1< css::accessibility::XAccessibleSelection >
     control (row or column header bar). This object supports the
     XAccessibleSelection interface. Selecting a child of this object selects
     complete rows or columns of the data table. */
-class AccessibleBrowseBoxHeaderBar :
+class AccessibleBrowseBoxHeaderBar final :
     public AccessibleBrowseBoxTableBase,
     public AccessibleBrowseBoxHeaderBarImplHelper
 {
@@ -47,10 +46,10 @@ public:
                          BBTYPE_COLUMNHEADERBAR. */
     AccessibleBrowseBoxHeaderBar(
         const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
-        ::svt::IAccessibleTableProvider& rBrowseBox,
-        ::svt::AccessibleBrowseBoxObjType eObjType );
+        ::vcl::IAccessibleTableProvider& rBrowseBox,
+        ::vcl::AccessibleBrowseBoxObjType eObjType );
 
-protected:
+private:
     virtual ~AccessibleBrowseBoxHeaderBar() override;
 
 public:
@@ -143,7 +142,7 @@ public:
     /** Queries for a new interface. */
     css::uno::Any SAL_CALL queryInterface( const css::uno::Type& rType ) override;
 
-    /** Aquires the object (calls acquire() on base class). */
+    /** Acquires the object (calls acquire() on base class). */
     virtual void SAL_CALL acquire() throw () override;
 
     /** Releases the object (calls release() on base class). */
@@ -154,10 +153,10 @@ public:
     /** @return  The name of this class. */
     virtual OUString SAL_CALL getImplementationName() override;
 
-    /** @return  An unique implementation ID. */
+    /** @return  a unique implementation ID. */
     virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
 
-protected:
+private:
     // internal virtual methods
 
     /** @attention  This method requires locked mutex's and a living object.
@@ -204,18 +203,17 @@ protected:
 
 inline bool AccessibleBrowseBoxHeaderBar::isRowBar() const
 {
-    return getType() == ::svt::BBTYPE_ROWHEADERBAR;
+    return getType() == ::vcl::BBTYPE_ROWHEADERBAR;
 }
 
 inline bool AccessibleBrowseBoxHeaderBar::isColumnBar() const
 {
-    return getType() == ::svt::BBTYPE_COLUMNHEADERBAR;
+    return getType() == ::vcl::BBTYPE_COLUMNHEADERBAR;
 }
 
 
 } // namespace accessibility
 
 
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

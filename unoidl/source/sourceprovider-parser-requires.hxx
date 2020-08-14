@@ -10,20 +10,18 @@
 #ifndef INCLUDED_UNOIDL_SOURCE_SOURCEPROVIDER_PARSER_REQUIRES_HXX
 #define INCLUDED_UNOIDL_SOURCE_SOURCEPROVIDER_PARSER_REQUIRES_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <vector>
 
-#include "rtl/string.hxx"
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
-#include "unoidl/unoidl.hxx"
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
 
 #define YYLTYPE int
 
 typedef void * yyscan_t;
 
-namespace unoidl { namespace detail {
+namespace unoidl::detail {
 
 struct SourceProviderEntity;
 
@@ -135,7 +133,7 @@ struct SourceProviderType {
     OUString typedefName;
 };
 
-} }
+}
 
 #endif
 

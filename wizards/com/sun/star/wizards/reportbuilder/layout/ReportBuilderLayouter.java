@@ -87,7 +87,7 @@ abstract public class ReportBuilderLayouter implements IReportBuilderLayouter
     }
 
     /**
-     * The Constructor is protected, this is a abstract class, use Tabular or other to create an instance.
+     * The Constructor is protected, this is an abstract class, use Tabular or other to create an instance.
      * @param _xDefinitionAccess
      * @param _aResource
      */
@@ -707,12 +707,12 @@ abstract public class ReportBuilderLayouter implements IReportBuilderLayouter
 
 
     /**
-     * Insert a already formatted field name into a given section
+     * Insert an already formatted field name into a given section
      *
      * Use 'convertToFieldName(dbfield)' to convert a dbfield name in the right.
      *
      * @param _xSection        in which section the formatted field will store
-     * @param _sFormattedfield as String a dbfield or an other function
+     * @param _sFormattedfield as String a dbfield or another function
      * @param _aRect           .X, .Y are the absolute position (1/100mm) where the formatted field will set
      * @param _nWidth          the width of the field in 1/100mm
      * @param _aSO
@@ -1159,7 +1159,7 @@ abstract public class ReportBuilderLayouter implements IReportBuilderLayouter
     }
 
     /**
-     * Helper Funktion to copy the whole content of _xFromSection to the _xToSection
+     * Helper function to copy the whole content of _xFromSection to the _xToSection
      * @param _xFromSection
      * @param _xToSection
      */

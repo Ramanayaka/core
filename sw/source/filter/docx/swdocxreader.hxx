@@ -21,15 +21,12 @@
 #define INCLUDED_SW_SOURCE_FILTER_DOCX_SWDOCXREADER_HXX
 
 #include <shellio.hxx>
-#include <comphelper/sequenceashashmap.hxx>
-#include <com/sun/star/xml/dom/XDocument.hpp>
-#include <tools/ref.hxx>
 
 /// Wrapper for the UNO DOCX import filter (in writerfilter) for autotext purposes.
 class SwDOCXReader : public StgReader
 {
 public:
-    virtual int GetReaderType() override;
+    virtual SwReaderType GetReaderType() override;
 
     virtual bool HasGlossaries() const override;
     virtual bool ReadGlossaries( SwTextBlocks& rBlocks, bool bSaveRelFiles ) const override;

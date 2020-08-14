@@ -10,9 +10,6 @@
 #include <test/calc_unoapi_test.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/container/XNamed.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/sheet/XDataPilotTable.hpp>
 #include <com/sun/star/sheet/XDataPilotDescriptor.hpp>
 #include <com/sun/star/sheet/XDataPilotTables.hpp>
 #include <com/sun/star/sheet/XDataPilotTablesSupplier.hpp>
@@ -89,7 +86,6 @@ uno::Reference< uno::XInterface > CheckDataPilotField::init()
         return mxObject;
 
     uno::Reference< sheet::XSpreadsheetDocument > xSheetDoc(mxComponent, uno::UNO_QUERY_THROW);
-    CPPUNIT_ASSERT_MESSAGE("no calc document!", xSheetDoc.is());
 
     // the cell range
     table::CellRangeAddress sCellRangeAdress;

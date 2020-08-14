@@ -28,11 +28,9 @@
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
 #include <xmloff/xmltoken.hxx>
 
-class XMLVersionListExport : public SvXMLExport
+class XMLVersionListExport final : public SvXMLExport
 {
 private:
     const css::uno::Sequence < css::util::RevisionTag >& maVersions;
@@ -41,7 +39,7 @@ public:
         const css::uno::Reference< css::uno::XComponentContext >& rContext,
         const css::uno::Sequence < css::util::RevisionTag >& rVersions,
         const OUString &rFileName,
-        css::uno::Reference< css::xml::sax::XDocumentHandler > &rHandler );
+        css::uno::Reference< css::xml::sax::XDocumentHandler > const &rHandler );
 
     ErrCode     exportDoc( enum ::xmloff::token::XMLTokenEnum eClass = ::xmloff::token::XML_TOKEN_INVALID ) override;
     void        ExportAutoStyles_() override {}
@@ -49,18 +47,13 @@ public:
     void        ExportContent_() override {}
 };
 
-class XMLVersionListImport : public SvXMLImport
+class XMLVersionListImport final : public SvXMLImport
 {
 private:
     css::uno::Sequence < css::util::RevisionTag >& maVersions;
 
-protected:
-
-    // This method is called after the namespace map has been updated, but
-    // before a context for the current element has been pushed.
-    virtual SvXMLImportContext *CreateContext( sal_uInt16 nPrefix,
-                    const OUString& rLocalName,
-                    const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
+    virtual SvXMLImportContext *CreateFastContext( sal_Int32 Element,
+        const ::css::uno::Reference< ::css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
 public:
 
@@ -73,31 +66,28 @@ public:
         GetList() { return maVersions; }
 };
 
-class XMLVersionListContext : public SvXMLImportContext
+class XMLVersionListContext final : public SvXMLImportContext
 {
 private:
-    XMLVersionListImport & rLocalRef;
+    XMLVersionListImport & GetImport() { return static_cast<XMLVersionListImport&>(SvXMLImportContext::GetImport()); }
 
 public:
 
-    XMLVersionListContext( XMLVersionListImport& rImport,
-                           sal_uInt16 nPrefix,
-                           const OUString& rLocalName,
-                           const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList );
+    XMLVersionListContext( XMLVersionListImport& rImport );
 
     virtual ~XMLVersionListContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-                           const OUString& rLocalName,
-                           const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;
+    virtual void SAL_CALL startFastElement( sal_Int32 /*nElement*/,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& ) override {}
 
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL
+        createFastChildContext(sal_Int32 nElement,
+            const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttribs) override;
 };
 
-class XMLVersionContext: public SvXMLImportContext
+class XMLVersionContext final : public SvXMLImportContext
 {
 private:
-    XMLVersionListImport&  rLocalRef;
-
     static bool         ParseISODateTimeString(
                                 const OUString& rString,
                                 css::util::DateTime& rDateTime );
@@ -105,14 +95,15 @@ private:
 public:
 
     XMLVersionContext( XMLVersionListImport& rImport,
-                          sal_uInt16 nPrefix,
-                          const OUString& rLocalName,
-                          const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList );
+                          const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList );
+
+    virtual void SAL_CALL startFastElement( sal_Int32 /*nElement*/,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& ) override {}
 
     virtual ~XMLVersionContext() override;
 };
 
-class XMLVersionListPersistence : public ::cppu::WeakImplHelper< css::document::XDocumentRevisionListPersistence, css::lang::XServiceInfo >
+class XMLVersionListPersistence final : public ::cppu::WeakImplHelper< css::document::XDocumentRevisionListPersistence, css::lang::XServiceInfo >
 {
 public:
     virtual css::uno::Sequence< css::util::RevisionTag > SAL_CALL load( const css::uno::Reference< css::embed::XStorage >& Storage ) override;

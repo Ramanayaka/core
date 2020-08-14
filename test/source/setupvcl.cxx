@@ -12,17 +12,16 @@
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/util/XFlushable.hpp>
+#include <com/sun/star/frame/Desktop.hpp>
 #include <comphelper/processfactory.hxx>
-#include <i18nlangtag/lang.h>
 #include <i18nlangtag/languagetag.hxx>
 #include <i18nlangtag/mslangid.hxx>
-#include <test/setupvcl.hxx>
-#include <tools/resmgr.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/syslocaleoptions.hxx>
 #include <vcl/svapp.hxx>
 
-#include <isheadless.hxx>
+#include "isheadless.hxx"
+#include "setupvcl.hxx"
 
 namespace {
 
@@ -39,25 +38,39 @@ IMPL_STATIC_LINK_NOARG(Hook, deinitHook, LinkParamNone *, void) {
     try {
         context = comphelper::getProcessComponentContext();
     } catch (css::uno::RuntimeException &) {}
-    if (context.is()) {
-        css::uno::Reference<css::lang::XMultiServiceFactory> config;
-        try {
-            config = css::configuration::theDefaultProvider::get(context);
-        } catch (css::uno::DeploymentException &) {}
-        if (config.is()) {
-            utl::ConfigManager::storeConfigItems();
-            css::uno::Reference<css::util::XFlushable>(
-                config, css::uno::UNO_QUERY_THROW)->flush();
-        }
-        css::uno::Reference<css::lang::XComponent>(
-            context, css::uno::UNO_QUERY_THROW)->dispose();
-        comphelper::setProcessServiceFactory(nullptr);
+
+    if (!context)
+        return;
+
+    css::uno::Reference<css::lang::XMultiServiceFactory> config;
+    try {
+        config = css::configuration::theDefaultProvider::get(context);
+    } catch (css::uno::DeploymentException &) {}
+    if (config) {
+        utl::ConfigManager::storeConfigItems();
+        css::uno::Reference<css::util::XFlushable>(
+            config, css::uno::UNO_QUERY_THROW)->flush();
     }
+
+    // the desktop has to be terminate() before it can be dispose()
+    css::uno::Reference<css::frame::XDesktop> xDesktop;
+    try {
+        xDesktop = css::frame::Desktop::create(comphelper::getProcessComponentContext());
+    } catch (css::uno::DeploymentException &) {}
+    if (xDesktop)
+        try {
+            xDesktop->terminate();
+        } catch (css::uno::DeploymentException &) {}
+
+    css::uno::Reference<css::lang::XComponent>(
+        context, css::uno::UNO_QUERY_THROW)->dispose();
+
+    comphelper::setProcessServiceFactory(nullptr);
 }
 
 }
 
-void test::setUpVcl() {
+void test::setUpVcl(bool const forceHeadless) {
     // Force locale (and resource files loaded):
     OUString locale;
     if (getenv("LO_TEST_LOCALE") != nullptr)
@@ -65,7 +78,6 @@ void test::setUpVcl() {
     else
         locale = "en-US";
 
-    ResMgr::SetDefaultLocale(LanguageTag(locale));
     SvtSysLocaleOptions localOptions;
     localOptions.SetLocaleConfigString(locale);
     localOptions.SetUILocaleConfigString(locale);
@@ -73,7 +85,7 @@ void test::setUpVcl() {
     MsLangId::setConfiguredSystemUILanguage(tag.getLanguageType(false));
     LanguageTag::setConfiguredSystemLanguage(tag.getLanguageType(false));
     InitVCL();
-    if (isHeadless()) {
+    if (forceHeadless || isHeadless()) {
         Application::EnableHeadlessMode(false);
     }
     Application::setDeInitHook(LINK(nullptr, Hook, deinitHook));

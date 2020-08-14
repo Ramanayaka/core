@@ -22,21 +22,18 @@
 #include <cassert>
 #include <cstddef>
 #include <limits>
+#include <string_view>
 
 #include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XInterface.hpp>
-#include <o3tl/string_view.hxx>
+#include <o3tl/safeint.hxx>
 #include <osl/file.h>
 #include <osl/file.hxx>
 #include <rtl/string.h>
 #include <rtl/string.hxx>
 #include <rtl/textcvt.h>
 #include <rtl/textenc.h>
-#include <rtl/ustrbuf.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <rtl/strbuf.hxx>
 #include <sal/log.hxx>
@@ -60,9 +57,9 @@ class Components;
 
 namespace {
 
-OString convertToUtf8(o3tl::u16string_view text) {
+OString convertToUtf8(std::u16string_view text) {
     OString s;
-    assert(text.size() <= sal_uInt32(std::numeric_limits<sal_Int32>::max()));
+    assert(text.size() <= o3tl::make_unsigned(std::numeric_limits<sal_Int32>::max()));
     if (!rtl_convertUStringToString(
             &s.pData, text.data(), text.size(),
             RTL_TEXTENCODING_UTF8,
@@ -78,19 +75,20 @@ OString convertToUtf8(o3tl::u16string_view text) {
 } // anonymous namespace
 
 TempFile::~TempFile() {
-    if (handle != nullptr) {
-        if (!closed) {
-            oslFileError e = osl_closeFile(handle);
-            if (e != osl_File_E_None) {
-                SAL_WARN("configmgr", "osl_closeFile failed with " << +e);
-            }
+    if (handle == nullptr)
+        return;
+
+    if (!closed) {
+        oslFileError e = osl_closeFile(handle);
+        if (e != osl_File_E_None) {
+            SAL_WARN("configmgr", "osl_closeFile failed with " << +e);
         }
-        osl::FileBase::RC e = osl::File::remove(url);
-        if (e != osl::FileBase::E_None) {
-            SAL_WARN(
-                "configmgr",
-                "osl::File::remove(" << url << ") failed with " << +e);
-        }
+    }
+    osl::FileBase::RC e = osl::File::remove(url);
+    if (e != osl::FileBase::E_None) {
+        SAL_WARN(
+            "configmgr",
+            "osl::File::remove(" << url << ") failed with " << +e);
     }
 }
 
@@ -140,7 +138,7 @@ oslFileError TempFile::flush() {
     return e;
 }
 
-void TempFile::writeString(o3tl::string_view text) {
+void TempFile::writeString(std::string_view text) {
     buffer.append(text.data(), text.size());
     if (buffer.getLength() > 0x10000)
         flush();
@@ -181,13 +179,13 @@ void writeValueContent_(TempFile &handle, const OUString& value) {
 void writeValueContent_(
     TempFile &handle, css::uno::Sequence< sal_Int8 > const & value)
 {
-    for (sal_Int32 i = 0; i < value.getLength(); ++i) {
+    for (const auto & v : value) {
         static char const hexDigit[16] = {
             '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C',
             'D', 'E', 'F' };
         handle.writeString(
-            o3tl::string_view(hexDigit + ((value[i] >> 4) & 0xF), 1));
-        handle.writeString(o3tl::string_view(hexDigit + (value[i] & 0xF), 1));
+            std::string_view(hexDigit + ((v >> 4) & 0xF), 1));
+        handle.writeString(std::string_view(hexDigit + (v & 0xF), 1));
     }
 }
 
@@ -222,9 +220,9 @@ template< typename T > void writeItemListValue(
     handle.writeString(">");
     css::uno::Sequence< T > val;
     value >>= val;
-    for (sal_Int32 i = 0; i < val.getLength(); ++i) {
+    for (const auto & i : val) {
         handle.writeString("<it>");
-        writeValueContent_(handle, val[i]);
+        writeValueContent_(handle, i);
         handle.writeString("</it>");
     }
     handle.writeString("</value>");
@@ -281,7 +279,7 @@ void writeValue(TempFile &handle, Type type, css::uno::Any const & value) {
 
 void writeNode(
     Components & components, TempFile &handle,
-    rtl::Reference< Node > const & parent, o3tl::u16string_view name,
+    rtl::Reference< Node > const & parent, std::u16string_view name,
     rtl::Reference< Node > const & node)
 {
     static xmlreader::Span const typeNames[] = {
@@ -316,7 +314,7 @@ void writeNode(
                 if (type != TYPE_NIL) {
                     handle.writeString(" oor:type=\"");
                     handle.writeString(
-                        o3tl::string_view(
+                        std::string_view(
                             typeNames[type].begin, typeNames[type].length));
                     handle.writeString("\"");
                 }
@@ -334,10 +332,9 @@ void writeNode(
         handle.writeString("<prop oor:name=\"");
         writeAttributeValue(handle, name);
         handle.writeString("\" oor:op=\"fuse\">");
-        for (NodeMap::const_iterator i(node->getMembers().begin());
-             i != node->getMembers().end(); ++i)
+        for (auto const& member : node->getMembers())
         {
-            writeNode(components, handle, node, i->first, i->second);
+            writeNode(components, handle, node, member.first, member.second);
         }
         handle.writeString("</prop>");
         break;
@@ -360,7 +357,7 @@ void writeNode(
                 if (type != TYPE_NIL) {
                     handle.writeString(" oor:type=\"");
                     handle.writeString(
-                        o3tl::string_view(
+                        std::string_view(
                             typeNames[type].begin, typeNames[type].length));
                     handle.writeString("\"");
                 }
@@ -380,10 +377,9 @@ void writeNode(
             handle.writeString("\" oor:op=\"replace");
         }
         handle.writeString("\">");
-        for (NodeMap::const_iterator i(node->getMembers().begin());
-             i != node->getMembers().end(); ++i)
+        for (auto const& member : node->getMembers())
         {
-            writeNode(components, handle, node, i->first, i->second);
+            writeNode(components, handle, node, member.first, member.second);
         }
         handle.writeString("</node>");
         break;
@@ -394,7 +390,7 @@ void writeNode(
 }
 
 // helpers to allow sorting of configmgr::Modifications::Node
-typedef std::pair< const rtl::OUString, configmgr::Modifications::Node > ModNodePairEntry;
+typedef std::pair< const OUString, configmgr::Modifications::Node > ModNodePairEntry;
 struct PairEntrySorter
 {
     bool operator() (const ModNodePairEntry* pValue1, const ModNodePairEntry* pValue2) const
@@ -481,7 +477,7 @@ void writeModifications(
 
 }
 
-void writeAttributeValue(TempFile &handle, o3tl::u16string_view value) {
+void writeAttributeValue(TempFile &handle, std::u16string_view value) {
     std::size_t i = 0;
     std::size_t j = i;
     for (; j != value.size(); ++j) {
@@ -526,7 +522,7 @@ void writeAttributeValue(TempFile &handle, o3tl::u16string_view value) {
     handle.writeString(convertToUtf8(value.substr(i, j - i)));
 }
 
-void writeValueContent(TempFile &handle, o3tl::u16string_view value) {
+void writeValueContent(TempFile &handle, std::u16string_view value) {
     std::size_t i = 0;
     std::size_t j = i;
     for (; j != value.size(); ++j) {

@@ -19,9 +19,10 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_QUERYDESIGN_QUERYDESIGNFIELDUNDOACT_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_QUERYDESIGN_QUERYDESIGNFIELDUNDOACT_HXX
 
-#include "GeneralUndo.hxx"
-#include "dbu_qry.hrc"
+#include <GeneralUndo.hxx>
+#include <strings.hrc>
 #include "SelectionBrowseBox.hxx"
+#include <osl/diagnose.h>
 
 namespace dbaui
 {
@@ -37,7 +38,7 @@ namespace dbaui
         virtual void    Redo() override = 0;
 
     public:
-        OQueryDesignFieldUndoAct(OSelectionBrowseBox* pSelBrwBox, sal_uInt16 nCommentID);
+        OQueryDesignFieldUndoAct(OSelectionBrowseBox* pSelBrwBox, const char* pCommentID);
         virtual ~OQueryDesignFieldUndoAct() override;
 
         void SetColumnPosition(sal_uInt16 _nColumnPosition)
@@ -50,9 +51,8 @@ namespace dbaui
 
     // OTabFieldCellModifiedUndoAct - undo class to change a line of the column description
 
-    class OTabFieldCellModifiedUndoAct : public OQueryDesignFieldUndoAct
+    class OTabFieldCellModifiedUndoAct final : public OQueryDesignFieldUndoAct
     {
-    protected:
         OUString    m_strNextCellContents;
         sal_Int32   m_nCellIndex;
 
@@ -70,9 +70,8 @@ namespace dbaui
 
     // OTabFieldSizedUndoAct - undo class to change the column width
 
-    class OTabFieldSizedUndoAct : public OQueryDesignFieldUndoAct
+    class OTabFieldSizedUndoAct final : public OQueryDesignFieldUndoAct
     {
-    protected:
         long        m_nNextWidth;
 
     public:
@@ -92,7 +91,7 @@ namespace dbaui
         OTableFieldDescRef      pDescr;     // the deleted column description
 
     public:
-        OTabFieldUndoAct(OSelectionBrowseBox* pSelBrwBox, sal_uInt16 nCommentID) : OQueryDesignFieldUndoAct(pSelBrwBox, nCommentID) { }
+        OTabFieldUndoAct(OSelectionBrowseBox* pSelBrwBox, const char* pCommentID) : OQueryDesignFieldUndoAct(pSelBrwBox, pCommentID) { }
 
         void SetTabFieldDescr(OTableFieldDescRef const & pDescription) { pDescr = pDescription; }
     };

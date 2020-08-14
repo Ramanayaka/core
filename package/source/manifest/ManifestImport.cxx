@@ -17,14 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <ManifestImport.hxx>
-#include <ManifestDefines.hxx>
+#include "ManifestImport.hxx"
+#include "ManifestDefines.hxx"
 #include <sax/tools/converter.hxx>
 #include <osl/diagnose.h>
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/xml/crypto/DigestID.hpp>
 #include <com/sun/star/xml/crypto/CipherID.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
+#include <comphelper/base64.hxx>
 #include <comphelper/sequence.hxx>
 
 using namespace com::sun::star::uno;
@@ -32,61 +33,84 @@ using namespace com::sun::star::beans;
 using namespace com::sun::star;
 using namespace std;
 
+
+const OUStringLiteral gsFileEntryElement     ( ELEMENT_FILE_ENTRY );
+const OUStringLiteral gsEncryptionDataElement( ELEMENT_ENCRYPTION_DATA );
+const OUStringLiteral gsAlgorithmElement ( ELEMENT_ALGORITHM );
+const OUStringLiteral gsStartKeyAlgElement   ( ELEMENT_START_KEY_GENERATION );
+const OUStringLiteral gsKeyDerivationElement( ELEMENT_KEY_DERIVATION );
+
+const OUStringLiteral gsMediaTypeAttribute           ( ATTRIBUTE_MEDIA_TYPE );
+const OUStringLiteral gsVersionAttribute             ( ATTRIBUTE_VERSION );
+const OUStringLiteral gsFullPathAttribute            ( ATTRIBUTE_FULL_PATH );
+const OUStringLiteral gsSizeAttribute                ( ATTRIBUTE_SIZE );
+const OUStringLiteral gsSaltAttribute                ( ATTRIBUTE_SALT );
+const OUStringLiteral gsInitialisationVectorAttribute ( ATTRIBUTE_INITIALISATION_VECTOR );
+const OUStringLiteral gsIterationCountAttribute      ( ATTRIBUTE_ITERATION_COUNT );
+const OUStringLiteral gsKeySizeAttribute             ( ATTRIBUTE_KEY_SIZE );
+const OUStringLiteral gsAlgorithmNameAttribute       ( ATTRIBUTE_ALGORITHM_NAME );
+const OUStringLiteral gsStartKeyAlgNameAttribute     ( ATTRIBUTE_START_KEY_GENERATION_NAME );
+const OUStringLiteral gsKeyDerivationNameAttribute   ( ATTRIBUTE_KEY_DERIVATION_NAME );
+const OUStringLiteral gsChecksumAttribute            ( ATTRIBUTE_CHECKSUM );
+const OUStringLiteral gsChecksumTypeAttribute        ( ATTRIBUTE_CHECKSUM_TYPE );
+
+const OUStringLiteral gsKeyInfoElement               ( ELEMENT_ENCRYPTED_KEYINFO );
+const OUStringLiteral gsManifestKeyInfoElement       ( ELEMENT_MANIFEST_KEYINFO );
+const OUStringLiteral gsEncryptedKeyElement          ( ELEMENT_ENCRYPTEDKEY );
+const OUStringLiteral gsEncryptionMethodElement      ( ELEMENT_ENCRYPTIONMETHOD );
+const OUStringLiteral gsPgpDataElement               ( ELEMENT_PGPDATA );
+const OUStringLiteral gsPgpKeyIDElement              ( ELEMENT_PGPKEYID );
+const OUStringLiteral gsPGPKeyPacketElement          ( ELEMENT_PGPKEYPACKET );
+const OUStringLiteral gsAlgorithmAttribute           ( ATTRIBUTE_ALGORITHM );
+const OUStringLiteral gsCipherDataElement            ( ELEMENT_CIPHERDATA );
+const OUStringLiteral gsCipherValueElement           ( ELEMENT_CIPHERVALUE );
+
+const OUStringLiteral gsManifestKeyInfoElement13       ( ELEMENT_MANIFEST13_KEYINFO );
+const OUStringLiteral gsEncryptedKeyElement13          ( ELEMENT_ENCRYPTEDKEY13 );
+const OUStringLiteral gsEncryptionMethodElement13      ( ELEMENT_ENCRYPTIONMETHOD13 );
+const OUStringLiteral gsPgpDataElement13               ( ELEMENT_PGPDATA13 );
+const OUStringLiteral gsPgpKeyIDElement13              ( ELEMENT_PGPKEYID13 );
+const OUStringLiteral gsPGPKeyPacketElement13          ( ELEMENT_PGPKEYPACKET13 );
+const OUStringLiteral gsAlgorithmAttribute13           ( ATTRIBUTE_ALGORITHM13 );
+const OUStringLiteral gsCipherDataElement13            ( ELEMENT_CIPHERDATA13 );
+const OUStringLiteral gsCipherValueElement13           ( ELEMENT_CIPHERVALUE13 );
+
+const OUStringLiteral gsFullPathProperty             ( "FullPath" );
+const OUStringLiteral gsMediaTypeProperty            ( "MediaType" );
+const OUStringLiteral gsVersionProperty              ( "Version" );
+const OUStringLiteral gsIterationCountProperty       ( "IterationCount" );
+const OUStringLiteral gsDerivedKeySizeProperty       ( "DerivedKeySize" );
+const OUStringLiteral gsSaltProperty                 ( "Salt" );
+const OUStringLiteral gsInitialisationVectorProperty ( "InitialisationVector" );
+const OUStringLiteral gsSizeProperty                 ( "Size" );
+const OUStringLiteral gsDigestProperty               ( "Digest" );
+const OUStringLiteral gsEncryptionAlgProperty        ( "EncryptionAlgorithm" );
+const OUStringLiteral gsStartKeyAlgProperty          ( "StartKeyAlgorithm" );
+const OUStringLiteral gsDigestAlgProperty            ( "DigestAlgorithm" );
+
+const OUStringLiteral gsSHA256_URL_ODF12             ( SHA256_URL_ODF12 );
+const OUStringLiteral gsSHA256_URL                   ( SHA256_URL );
+const OUStringLiteral gsSHA1_Name                    ( SHA1_NAME );
+const OUStringLiteral gsSHA1_URL                     ( SHA1_URL );
+
+const OUStringLiteral gsSHA256_1k_URL                ( SHA256_1K_URL );
+const OUStringLiteral gsSHA1_1k_Name                 ( SHA1_1K_NAME );
+const OUStringLiteral gsSHA1_1k_URL                  ( SHA1_1K_URL );
+
+const OUStringLiteral gsBlowfish_Name                ( BLOWFISH_NAME );
+const OUStringLiteral gsBlowfish_URL                 ( BLOWFISH_URL );
+const OUStringLiteral gsAES128_URL                   ( AES128_URL );
+const OUStringLiteral gsAES192_URL                   ( AES192_URL );
+const OUStringLiteral gsAES256_URL                   ( AES256_URL );
+
+const OUStringLiteral gsPBKDF2_Name                  ( PBKDF2_NAME );
+const OUStringLiteral gsPBKDF2_URL                   ( PBKDF2_URL );
+
 ManifestImport::ManifestImport( vector < Sequence < PropertyValue > > & rNewManVector )
     : bIgnoreEncryptData    ( false )
+    , bPgpEncryption ( false )
     , nDerivedKeySize( 0 )
     , rManVector ( rNewManVector )
-
-    , sFileEntryElement     ( ELEMENT_FILE_ENTRY )
-    , sEncryptionDataElement( ELEMENT_ENCRYPTION_DATA )
-    , sAlgorithmElement ( ELEMENT_ALGORITHM )
-    , sStartKeyAlgElement   ( ELEMENT_START_KEY_GENERATION )
-    , sKeyDerivationElement( ELEMENT_KEY_DERIVATION )
-
-    , sMediaTypeAttribute           ( ATTRIBUTE_MEDIA_TYPE )
-    , sVersionAttribute             ( ATTRIBUTE_VERSION )
-    , sFullPathAttribute            ( ATTRIBUTE_FULL_PATH )
-    , sSizeAttribute                ( ATTRIBUTE_SIZE )
-    , sSaltAttribute                ( ATTRIBUTE_SALT )
-    , sInitialisationVectorAttribute ( ATTRIBUTE_INITIALISATION_VECTOR )
-    , sIterationCountAttribute      ( ATTRIBUTE_ITERATION_COUNT )
-    , sKeySizeAttribute             ( ATTRIBUTE_KEY_SIZE )
-    , sAlgorithmNameAttribute       ( ATTRIBUTE_ALGORITHM_NAME )
-    , sStartKeyAlgNameAttribute     ( ATTRIBUTE_START_KEY_GENERATION_NAME )
-    , sKeyDerivationNameAttribute   ( ATTRIBUTE_KEY_DERIVATION_NAME )
-    , sChecksumAttribute            ( ATTRIBUTE_CHECKSUM )
-    , sChecksumTypeAttribute        ( ATTRIBUTE_CHECKSUM_TYPE )
-
-    , sFullPathProperty             ( "FullPath" )
-    , sMediaTypeProperty            ( "MediaType" )
-    , sVersionProperty              ( "Version" )
-    , sIterationCountProperty       ( "IterationCount" )
-    , sDerivedKeySizeProperty       ( "DerivedKeySize" )
-    , sSaltProperty                 ( "Salt" )
-    , sInitialisationVectorProperty ( "InitialisationVector" )
-    , sSizeProperty                 ( "Size" )
-    , sDigestProperty               ( "Digest" )
-    , sEncryptionAlgProperty        ( "EncryptionAlgorithm" )
-    , sStartKeyAlgProperty          ( "StartKeyAlgorithm" )
-    , sDigestAlgProperty            ( "DigestAlgorithm" )
-
-    , sSHA256_URL_ODF12             ( SHA256_URL_ODF12 )
-    , sSHA256_URL                   ( SHA256_URL )
-    , sSHA1_Name                    ( SHA1_NAME )
-    , sSHA1_URL                     ( SHA1_URL )
-
-    , sSHA256_1k_URL                ( SHA256_1K_URL )
-    , sSHA1_1k_Name                 ( SHA1_1K_NAME )
-    , sSHA1_1k_URL                  ( SHA1_1K_URL )
-
-    , sBlowfish_Name                ( BLOWFISH_NAME )
-    , sBlowfish_URL                 ( BLOWFISH_URL )
-    , sAES128_URL                   ( AES128_URL )
-    , sAES192_URL                   ( AES192_URL )
-    , sAES256_URL                   ( AES256_URL )
-
-    , sPBKDF2_Name                  ( PBKDF2_NAME )
-    , sPBKDF2_URL                   ( PBKDF2_URL )
 {
     aStack.reserve( 10 );
 }
@@ -107,23 +131,82 @@ void ManifestImport::doFileEntry(StringHashMap &rConvertedAttribs)
 {
     aSequence.resize(PKG_SIZE_ENCR_MNFST);
 
-    aSequence[PKG_MNFST_FULLPATH].Name = sFullPathProperty;
-    aSequence[PKG_MNFST_FULLPATH].Value <<= rConvertedAttribs[sFullPathAttribute];
-    aSequence[PKG_MNFST_MEDIATYPE].Name = sMediaTypeProperty;
-    aSequence[PKG_MNFST_MEDIATYPE].Value <<= rConvertedAttribs[sMediaTypeAttribute];
+    aSequence[PKG_MNFST_FULLPATH].Name = gsFullPathProperty;
+    aSequence[PKG_MNFST_FULLPATH].Value <<= rConvertedAttribs[gsFullPathAttribute];
+    aSequence[PKG_MNFST_MEDIATYPE].Name = gsMediaTypeProperty;
+    aSequence[PKG_MNFST_MEDIATYPE].Value <<= rConvertedAttribs[gsMediaTypeAttribute];
 
-    OUString sVersion = rConvertedAttribs[sVersionAttribute];
+    OUString sVersion = rConvertedAttribs[gsVersionAttribute];
     if ( sVersion.getLength() ) {
-        aSequence[PKG_MNFST_VERSION].Name = sVersionProperty;
+        aSequence[PKG_MNFST_VERSION].Name = gsVersionProperty;
         aSequence[PKG_MNFST_VERSION].Value <<= sVersion;
     }
 
-    OUString sSize = rConvertedAttribs[sSizeAttribute];
+    OUString sSize = rConvertedAttribs[gsSizeAttribute];
     if ( sSize.getLength() ) {
         sal_Int64 nSize = sSize.toInt64();
-        aSequence[PKG_MNFST_UCOMPSIZE].Name = sSizeProperty;
+        aSequence[PKG_MNFST_UCOMPSIZE].Name = gsSizeProperty;
         aSequence[PKG_MNFST_UCOMPSIZE].Value <<= nSize;
     }
+}
+
+void ManifestImport::doEncryptedKey(StringHashMap &)
+{
+    aKeyInfoSequence.clear();
+    aKeyInfoSequence.resize(3);
+}
+
+void ManifestImport::doEncryptionMethod(StringHashMap &rConvertedAttribs,
+                                        const OUString& rAlgoAttrName)
+{
+    OUString aString = rConvertedAttribs[rAlgoAttrName];
+    if ( aKeyInfoSequence.size() != 3
+         || aString != "http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p" )
+    {
+        bIgnoreEncryptData = true;
+    }
+}
+
+void ManifestImport::doEncryptedCipherValue()
+{
+    if ( aKeyInfoSequence.size() == 3 )
+    {
+        aKeyInfoSequence[2].Name = "CipherValue";
+        uno::Sequence < sal_Int8 > aDecodeBuffer;
+        ::comphelper::Base64::decode(aDecodeBuffer, aCurrentCharacters.toString());
+        aKeyInfoSequence[2].Value <<= aDecodeBuffer;
+        aCurrentCharacters = ""; // consumed
+    }
+    else
+        bIgnoreEncryptData = true;
+}
+
+void ManifestImport::doEncryptedKeyId()
+{
+    if ( aKeyInfoSequence.size() == 3 )
+    {
+        aKeyInfoSequence[0].Name = "KeyId";
+        uno::Sequence < sal_Int8 > aDecodeBuffer;
+        ::comphelper::Base64::decode(aDecodeBuffer, aCurrentCharacters.toString());
+        aKeyInfoSequence[0].Value <<= aDecodeBuffer;
+        aCurrentCharacters = ""; // consumed
+    }
+    else
+        bIgnoreEncryptData = true;
+}
+
+void ManifestImport::doEncryptedKeyPacket()
+{
+    if ( aKeyInfoSequence.size() == 3 )
+    {
+        aKeyInfoSequence[1].Name = "KeyPacket";
+        uno::Sequence < sal_Int8 > aDecodeBuffer;
+        ::comphelper::Base64::decode(aDecodeBuffer, aCurrentCharacters.toString());
+        aKeyInfoSequence[1].Value <<= aDecodeBuffer;
+        aCurrentCharacters = ""; // consumed
+    }
+    else
+        bIgnoreEncryptData = true;
 }
 
 void ManifestImport::doEncryptionData(StringHashMap &rConvertedAttribs)
@@ -131,102 +214,108 @@ void ManifestImport::doEncryptionData(StringHashMap &rConvertedAttribs)
     // If this element exists, then this stream is encrypted and we need
     // to import the initialisation vector, salt and iteration count used
     nDerivedKeySize = 0;
-    OUString aString = rConvertedAttribs[sChecksumTypeAttribute];
-    if ( !bIgnoreEncryptData ) {
-        if ( aString.equals( sSHA1_1k_Name ) || aString.equals( sSHA1_1k_URL ) ) {
-            aSequence[PKG_MNFST_DIGESTALG].Name = sDigestAlgProperty;
-            aSequence[PKG_MNFST_DIGESTALG].Value <<= xml::crypto::DigestID::SHA1_1K;
-        } else if ( aString.equals( sSHA256_1k_URL ) ) {
-            aSequence[PKG_MNFST_DIGESTALG].Name = sDigestAlgProperty;
-            aSequence[PKG_MNFST_DIGESTALG].Value <<= xml::crypto::DigestID::SHA256_1K;
-        } else
-            bIgnoreEncryptData = true;
+    OUString aString = rConvertedAttribs[gsChecksumTypeAttribute];
+    if ( bIgnoreEncryptData )
+        return;
 
-        if ( !bIgnoreEncryptData ) {
-            aString = rConvertedAttribs[sChecksumAttribute];
-            uno::Sequence < sal_Int8 > aDecodeBuffer;
-            ::sax::Converter::decodeBase64(aDecodeBuffer, aString);
-            aSequence[PKG_MNFST_DIGEST].Name = sDigestProperty;
-            aSequence[PKG_MNFST_DIGEST].Value <<= aDecodeBuffer;
-        }
+    if ( aString == gsSHA1_1k_Name || aString == gsSHA1_1k_URL ) {
+        aSequence[PKG_MNFST_DIGESTALG].Name = gsDigestAlgProperty;
+        aSequence[PKG_MNFST_DIGESTALG].Value <<= xml::crypto::DigestID::SHA1_1K;
+    } else if ( aString == gsSHA256_1k_URL ) {
+        aSequence[PKG_MNFST_DIGESTALG].Name = gsDigestAlgProperty;
+        aSequence[PKG_MNFST_DIGESTALG].Value <<= xml::crypto::DigestID::SHA256_1K;
+    } else
+        bIgnoreEncryptData = true;
+
+    if ( !bIgnoreEncryptData ) {
+        aString = rConvertedAttribs[gsChecksumAttribute];
+        uno::Sequence < sal_Int8 > aDecodeBuffer;
+        ::comphelper::Base64::decode(aDecodeBuffer, aString);
+        aSequence[PKG_MNFST_DIGEST].Name = gsDigestProperty;
+        aSequence[PKG_MNFST_DIGEST].Value <<= aDecodeBuffer;
     }
 }
 
 void ManifestImport::doAlgorithm(StringHashMap &rConvertedAttribs)
 {
-    if ( !bIgnoreEncryptData ) {
-        OUString aString = rConvertedAttribs[sAlgorithmNameAttribute];
-        if ( aString.equals( sBlowfish_Name ) || aString.equals( sBlowfish_URL ) ) {
-            aSequence[PKG_MNFST_ENCALG].Name = sEncryptionAlgProperty;
-            aSequence[PKG_MNFST_ENCALG].Value <<= xml::crypto::CipherID::BLOWFISH_CFB_8;
-        } else if ( aString.equals( sAES256_URL ) ) {
-            aSequence[PKG_MNFST_ENCALG].Name = sEncryptionAlgProperty;
-            aSequence[PKG_MNFST_ENCALG].Value <<= xml::crypto::CipherID::AES_CBC_W3C_PADDING;
-            OSL_ENSURE( !nDerivedKeySize || nDerivedKeySize == 32, "Unexpected derived key length!" );
-            nDerivedKeySize = 32;
-        } else if ( aString.equals( sAES192_URL ) ) {
-            aSequence[PKG_MNFST_ENCALG].Name = sEncryptionAlgProperty;
-            aSequence[PKG_MNFST_ENCALG].Value <<= xml::crypto::CipherID::AES_CBC_W3C_PADDING;
-            OSL_ENSURE( !nDerivedKeySize || nDerivedKeySize == 24, "Unexpected derived key length!" );
-            nDerivedKeySize = 24;
-        } else if ( aString.equals( sAES128_URL ) ) {
-            aSequence[PKG_MNFST_ENCALG].Name = sEncryptionAlgProperty;
-            aSequence[PKG_MNFST_ENCALG].Value <<= xml::crypto::CipherID::AES_CBC_W3C_PADDING;
-            OSL_ENSURE( !nDerivedKeySize || nDerivedKeySize == 16, "Unexpected derived key length!" );
-            nDerivedKeySize = 16;
-        } else
-            bIgnoreEncryptData = true;
+    if ( bIgnoreEncryptData )
+        return;
 
-        if ( !bIgnoreEncryptData ) {
-            aString = rConvertedAttribs[sInitialisationVectorAttribute];
-            uno::Sequence < sal_Int8 > aDecodeBuffer;
-            ::sax::Converter::decodeBase64(aDecodeBuffer, aString);
-            aSequence[PKG_MNFST_INIVECTOR].Name = sInitialisationVectorProperty;
-            aSequence[PKG_MNFST_INIVECTOR].Value <<= aDecodeBuffer;
-        }
+    OUString aString = rConvertedAttribs[gsAlgorithmNameAttribute];
+    if ( aString == gsBlowfish_Name || aString == gsBlowfish_URL ) {
+        aSequence[PKG_MNFST_ENCALG].Name = gsEncryptionAlgProperty;
+        aSequence[PKG_MNFST_ENCALG].Value <<= xml::crypto::CipherID::BLOWFISH_CFB_8;
+    } else if ( aString == gsAES256_URL ) {
+        aSequence[PKG_MNFST_ENCALG].Name = gsEncryptionAlgProperty;
+        aSequence[PKG_MNFST_ENCALG].Value <<= xml::crypto::CipherID::AES_CBC_W3C_PADDING;
+        OSL_ENSURE( !nDerivedKeySize || nDerivedKeySize == 32, "Unexpected derived key length!" );
+        nDerivedKeySize = 32;
+    } else if ( aString == gsAES192_URL ) {
+        aSequence[PKG_MNFST_ENCALG].Name = gsEncryptionAlgProperty;
+        aSequence[PKG_MNFST_ENCALG].Value <<= xml::crypto::CipherID::AES_CBC_W3C_PADDING;
+        OSL_ENSURE( !nDerivedKeySize || nDerivedKeySize == 24, "Unexpected derived key length!" );
+        nDerivedKeySize = 24;
+    } else if ( aString == gsAES128_URL ) {
+        aSequence[PKG_MNFST_ENCALG].Name = gsEncryptionAlgProperty;
+        aSequence[PKG_MNFST_ENCALG].Value <<= xml::crypto::CipherID::AES_CBC_W3C_PADDING;
+        OSL_ENSURE( !nDerivedKeySize || nDerivedKeySize == 16, "Unexpected derived key length!" );
+        nDerivedKeySize = 16;
+    } else
+        bIgnoreEncryptData = true;
+
+    if ( !bIgnoreEncryptData ) {
+        aString = rConvertedAttribs[gsInitialisationVectorAttribute];
+        uno::Sequence < sal_Int8 > aDecodeBuffer;
+        ::comphelper::Base64::decode(aDecodeBuffer, aString);
+        aSequence[PKG_MNFST_INIVECTOR].Name = gsInitialisationVectorProperty;
+        aSequence[PKG_MNFST_INIVECTOR].Value <<= aDecodeBuffer;
     }
 }
 
 void ManifestImport::doKeyDerivation(StringHashMap &rConvertedAttribs)
 {
-    if ( !bIgnoreEncryptData ) {
-        OUString aString = rConvertedAttribs[sKeyDerivationNameAttribute];
-        if ( aString.equals( sPBKDF2_Name ) || aString.equals( sPBKDF2_URL ) ) {
-            aString = rConvertedAttribs[sSaltAttribute];
-            uno::Sequence < sal_Int8 > aDecodeBuffer;
-            ::sax::Converter::decodeBase64(aDecodeBuffer, aString);
-            aSequence[PKG_MNFST_SALT].Name = sSaltProperty;
-            aSequence[PKG_MNFST_SALT].Value <<= aDecodeBuffer;
+    if ( bIgnoreEncryptData )
+        return;
 
-            aString = rConvertedAttribs[sIterationCountAttribute];
-            aSequence[PKG_MNFST_ITERATION].Name = sIterationCountProperty;
-            aSequence[PKG_MNFST_ITERATION].Value <<= aString.toInt32();
+    OUString aString = rConvertedAttribs[gsKeyDerivationNameAttribute];
+    if ( aString == gsPBKDF2_Name || aString == gsPBKDF2_URL ) {
+        aString = rConvertedAttribs[gsSaltAttribute];
+        uno::Sequence < sal_Int8 > aDecodeBuffer;
+        ::comphelper::Base64::decode(aDecodeBuffer, aString);
+        aSequence[PKG_MNFST_SALT].Name = gsSaltProperty;
+        aSequence[PKG_MNFST_SALT].Value <<= aDecodeBuffer;
 
-            aString = rConvertedAttribs[sKeySizeAttribute];
-            if ( aString.getLength() ) {
-                sal_Int32 nKey = aString.toInt32();
-                OSL_ENSURE( !nDerivedKeySize || nKey == nDerivedKeySize , "Provided derived key length differs from the expected one!" );
-                nDerivedKeySize = nKey;
-            } else if ( !nDerivedKeySize )
-                nDerivedKeySize = 16;
-            else if ( nDerivedKeySize != 16 )
-                OSL_ENSURE( false, "Default derived key length differs from the expected one!" );
+        aString = rConvertedAttribs[gsIterationCountAttribute];
+        aSequence[PKG_MNFST_ITERATION].Name = gsIterationCountProperty;
+        aSequence[PKG_MNFST_ITERATION].Value <<= aString.toInt32();
 
-            aSequence[PKG_MNFST_DERKEYSIZE].Name = sDerivedKeySizeProperty;
-            aSequence[PKG_MNFST_DERKEYSIZE].Value <<= nDerivedKeySize;
-        } else
+        aString = rConvertedAttribs[gsKeySizeAttribute];
+        if ( aString.getLength() ) {
+            sal_Int32 nKey = aString.toInt32();
+            OSL_ENSURE( !nDerivedKeySize || nKey == nDerivedKeySize , "Provided derived key length differs from the expected one!" );
+            nDerivedKeySize = nKey;
+        } else if ( !nDerivedKeySize )
+            nDerivedKeySize = 16;
+        else if ( nDerivedKeySize != 16 )
+            OSL_ENSURE( false, "Default derived key length differs from the expected one!" );
+
+        aSequence[PKG_MNFST_DERKEYSIZE].Name = gsDerivedKeySizeProperty;
+        aSequence[PKG_MNFST_DERKEYSIZE].Value <<= nDerivedKeySize;
+    } else if ( bPgpEncryption ) {
+        if ( aString != "PGP" )
             bIgnoreEncryptData = true;
-    }
+    } else
+        bIgnoreEncryptData = true;
 }
 
 void ManifestImport::doStartKeyAlg(StringHashMap &rConvertedAttribs)
 {
-    OUString aString = rConvertedAttribs[sStartKeyAlgNameAttribute];
-    if (aString.equals(sSHA256_URL) || aString.equals(sSHA256_URL_ODF12)) {
-        aSequence[PKG_MNFST_STARTALG].Name = sStartKeyAlgProperty;
+    OUString aString = rConvertedAttribs[gsStartKeyAlgNameAttribute];
+    if (aString == gsSHA256_URL || aString == gsSHA256_URL_ODF12) {
+        aSequence[PKG_MNFST_STARTALG].Name = gsStartKeyAlgProperty;
         aSequence[PKG_MNFST_STARTALG].Value <<= xml::crypto::DigestID::SHA256;
-    } else if ( aString.equals( sSHA1_Name ) || aString.equals( sSHA1_URL ) ) {
-        aSequence[PKG_MNFST_STARTALG].Name = sStartKeyAlgProperty;
+    } else if ( aString == gsSHA1_Name || aString == gsSHA1_URL ) {
+        aSequence[PKG_MNFST_STARTALG].Name = gsStartKeyAlgProperty;
         aSequence[PKG_MNFST_STARTALG].Value <<= xml::crypto::DigestID::SHA1;
     } else
         bIgnoreEncryptData = true;
@@ -248,8 +337,12 @@ void SAL_CALL ManifestImport::startElement( const OUString& aName, const uno::Re
         break;
     }
     case 2: {
-        if (aConvertedName == sFileEntryElement) //manifest:file-entry
+        if (aConvertedName == gsFileEntryElement) //manifest:file-entry
             doFileEntry(aConvertedAttribs);
+        else if (aConvertedName == gsManifestKeyInfoElement) //loext:keyinfo
+            ;
+        else if (aConvertedName == gsEncryptedKeyElement13)   //manifest:encrypted-key
+            doEncryptedKey(aConvertedAttribs);
         else
             aStack.back().m_bValid = false;
         break;
@@ -260,8 +353,16 @@ void SAL_CALL ManifestImport::startElement( const OUString& aName, const uno::Re
 
         if (!aIter->m_bValid)
             aStack.back().m_bValid = false;
-        else if (aConvertedName.equals(sEncryptionDataElement))   //manifest:encryption-data
+        else if (aConvertedName == gsEncryptionDataElement)   //manifest:encryption-data
             doEncryptionData(aConvertedAttribs);
+        else if (aConvertedName == gsEncryptedKeyElement)   //loext:encrypted-key
+            doEncryptedKey(aConvertedAttribs);
+        else if (aConvertedName == gsEncryptionMethodElement13)   //manifest:encryption-method
+            doEncryptionMethod(aConvertedAttribs, gsAlgorithmAttribute13);
+        else if (aConvertedName == gsManifestKeyInfoElement13) //manifest:keyinfo
+            ;
+        else if (aConvertedName == gsCipherDataElement13)            //manifest:CipherData
+            ;
         else
             aStack.back().m_bValid = false;
         break;
@@ -272,12 +373,60 @@ void SAL_CALL ManifestImport::startElement( const OUString& aName, const uno::Re
 
         if (!aIter->m_bValid)
             aStack.back().m_bValid = false;
-        else if (aConvertedName.equals(sAlgorithmElement))   //manifest:algorithm,
+        else if (aConvertedName == gsAlgorithmElement)   //manifest:algorithm,
             doAlgorithm(aConvertedAttribs);
-        else if (aConvertedName.equals(sKeyDerivationElement)) //manifest:key-derivation,
+        else if (aConvertedName == gsKeyDerivationElement) //manifest:key-derivation,
             doKeyDerivation(aConvertedAttribs);
-        else if (aConvertedName.equals(sStartKeyAlgElement))   //manifest:start-key-generation
+        else if (aConvertedName == gsStartKeyAlgElement)   //manifest:start-key-generation
             doStartKeyAlg(aConvertedAttribs);
+        else if (aConvertedName == gsEncryptionMethodElement)   //loext:encryption-method
+            doEncryptionMethod(aConvertedAttribs, gsAlgorithmAttribute);
+        else if (aConvertedName == gsKeyInfoElement)            //loext:KeyInfo
+            ;
+        else if (aConvertedName == gsCipherDataElement)            //loext:CipherData
+            ;
+        else if (aConvertedName == gsPgpDataElement13)   //manifest:PGPData
+            ;
+        else if (aConvertedName == gsCipherValueElement13) //manifest:CipherValue
+            // ciphervalue action happens on endElement
+            aCurrentCharacters = "";
+        else
+            aStack.back().m_bValid = false;
+        break;
+    }
+    case 5: {
+        ManifestStack::reverse_iterator aIter = aStack.rbegin();
+        ++aIter;
+
+        if (!aIter->m_bValid)
+            aStack.back().m_bValid = false;
+        else if (aConvertedName == gsPgpDataElement)   //loext:PGPData
+            ;
+        else if (aConvertedName == gsCipherValueElement) //loext:CipherValue
+            // ciphervalue action happens on endElement
+            aCurrentCharacters = "";
+        else if (aConvertedName == gsPgpKeyIDElement13)   //manifest:PGPKeyID
+            // ciphervalue action happens on endElement
+            aCurrentCharacters = "";
+        else if (aConvertedName == gsPGPKeyPacketElement13) //manifest:PGPKeyPacket
+            // ciphervalue action happens on endElement
+            aCurrentCharacters = "";
+        else
+            aStack.back().m_bValid = false;
+        break;
+    }
+    case 6: {
+        ManifestStack::reverse_iterator aIter = aStack.rbegin();
+        ++aIter;
+
+        if (!aIter->m_bValid)
+            aStack.back().m_bValid = false;
+        else if (aConvertedName == gsPgpKeyIDElement)   //loext:PGPKeyID
+            // ciphervalue action happens on endElement
+            aCurrentCharacters = "";
+        else if (aConvertedName == gsPGPKeyPacketElement) //loext:PGPKeyPacket
+            // ciphervalue action happens on endElement
+            aCurrentCharacters = "";
         else
             aStack.back().m_bValid = false;
         break;
@@ -298,25 +447,77 @@ bool isEmpty(const css::beans::PropertyValue &rProp)
 
 void SAL_CALL ManifestImport::endElement( const OUString& aName )
 {
+    size_t nLevel = aStack.size();
+
+    assert(nLevel >= 1);
+
     OUString aConvertedName = ConvertName( aName );
-    if ( !aStack.empty() && aStack.rbegin()->m_aConvertedName.equals( aConvertedName ) ) {
-        if ( aConvertedName.equals( sFileEntryElement ) && aStack.back().m_bValid ) {
-            css::beans::PropertyValue aEmpty;
-            aSequence.erase(std::remove_if(aSequence.begin(), aSequence.end(),
-                                           isEmpty), aSequence.end());
+    if ( aStack.empty() || aStack.rbegin()->m_aConvertedName != aConvertedName )
+        return;
 
-            bIgnoreEncryptData = false;
-            rManVector.push_back ( comphelper::containerToSequence(aSequence) );
-
-            aSequence.clear();
+    if ( aConvertedName == gsFileEntryElement && aStack.back().m_bValid ) {
+        // root folder gets KeyInfo entry if any, for PGP encryption
+        if (!bIgnoreEncryptData && !aKeys.empty() && aSequence[PKG_MNFST_FULLPATH].Value.get<OUString>() == "/" )
+        {
+            aSequence[PKG_SIZE_NOENCR_MNFST].Name = "KeyInfo";
+            aSequence[PKG_SIZE_NOENCR_MNFST].Value <<= comphelper::containerToSequence(aKeys);
         }
+        aSequence.erase(std::remove_if(aSequence.begin(), aSequence.end(),
+                                       isEmpty), aSequence.end());
 
-        aStack.pop_back();
+        bIgnoreEncryptData = false;
+        rManVector.push_back ( comphelper::containerToSequence(aSequence) );
+
+        aSequence.clear();
     }
+    else if ( (aConvertedName == gsEncryptedKeyElement
+               || aConvertedName == gsEncryptedKeyElement13)
+              && aStack.back().m_bValid ) {
+        if ( !bIgnoreEncryptData )
+        {
+            aKeys.push_back( comphelper::containerToSequence(aKeyInfoSequence) );
+            bPgpEncryption = true;
+        }
+        aKeyInfoSequence.clear();
+    }
+
+    // end element handling for elements with cdata
+    switch (nLevel) {
+        case 4: {
+            if (aConvertedName == gsCipherValueElement13) //manifest:CipherValue
+                doEncryptedCipherValue();
+            else
+                aStack.back().m_bValid = false;
+            break;
+        }
+        case 5: {
+            if (aConvertedName == gsCipherValueElement) //loext:CipherValue
+                doEncryptedCipherValue();
+            else if (aConvertedName == gsPgpKeyIDElement13)   //manifest:PGPKeyID
+                doEncryptedKeyId();
+            else if (aConvertedName == gsPGPKeyPacketElement13) //manifest:PGPKeyPacket
+                doEncryptedKeyPacket();
+            else
+                aStack.back().m_bValid = false;
+            break;
+        }
+        case 6: {
+            if (aConvertedName == gsPgpKeyIDElement)   //loext:PGPKeyID
+                doEncryptedKeyId();
+            else if (aConvertedName == gsPGPKeyPacketElement) //loext:PGPKeyPacket
+                doEncryptedKeyPacket();
+            else
+                aStack.back().m_bValid = false;
+            break;
+        }
+    }
+
+    aStack.pop_back();
 }
 
-void SAL_CALL ManifestImport::characters( const OUString& /*aChars*/ )
+void SAL_CALL ManifestImport::characters( const OUString& aChars )
 {
+    aCurrentCharacters.append(aChars);
 }
 
 void SAL_CALL ManifestImport::ignorableWhitespace( const OUString& /*aWhitespaces*/ )
@@ -351,7 +552,7 @@ OUString ManifestImport::PushNameAndNamespaces( const OUString& aName, const uno
                 aNamespaces[aNsName] = aAttrValue;
             } else {
                 // this is no namespace declaration
-                aAttribsStrs.push_back( pair< OUString, OUString >( aAttrName, aAttrValue ) );
+                aAttribsStrs.emplace_back( aAttrName, aAttrValue );
             }
         }
     }
@@ -360,7 +561,7 @@ OUString ManifestImport::PushNameAndNamespaces( const OUString& aName, const uno
     if ( !aConvertedName.getLength() )
         aConvertedName = ConvertName( aName );
 
-    aStack.push_back( ManifestScopeEntry( aConvertedName, aNamespaces ) );
+    aStack.emplace_back( aConvertedName, aNamespaces );
 
     for (const std::pair<OUString,OUString> & rAttribsStr : aAttribsStrs) {
         // convert the attribute names on filling
@@ -387,8 +588,7 @@ OUString ManifestImport::ConvertNameWithNamespace( const OUString& aName, const 
     if ( aIter != aNamespaces.end()
          && ( aIter->second == MANIFEST_NAMESPACE || aIter->second == MANIFEST_OASIS_NAMESPACE ) ) {
         // no check for manifest.xml consistency currently since the old versions have supported inconsistent documents as well
-        aResult = MANIFEST_NSPREFIX;
-        aResult += aPureName;
+        aResult = MANIFEST_NSPREFIX + aPureName;
     }
 
     return aResult;

@@ -20,12 +20,10 @@
 #include "EventOOoTContext.hxx"
 #include "EventMap.hxx"
 #include "MutableAttrList.hxx"
-#include <xmloff/xmlnmspe.hxx>
 #include "ActionMapTypesOOo.hxx"
 #include "AttrTransformerAction.hxx"
 #include "TransformerActions.hxx"
 #include "TransformerBase.hxx"
-#include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
 
 #include <unordered_map>
@@ -35,17 +33,17 @@ using namespace ::com::sun::star::xml::sax;
 using namespace ::xmloff::token;
 
 class XMLTransformerOOoEventMap_Impl:
-    public std::unordered_map< OUString, NameKey_Impl, OUStringHash >
+    public std::unordered_map< OUString, NameKey_Impl >
 {
 public:
 
-    void AddMap( XMLTransformerEventMapEntry *pInit );
+    void AddMap( XMLTransformerEventMapEntry const *pInit );
 
-    XMLTransformerOOoEventMap_Impl( XMLTransformerEventMapEntry *pInit,
-                                       XMLTransformerEventMapEntry *pInit2  );
+    XMLTransformerOOoEventMap_Impl( XMLTransformerEventMapEntry const *pInit,
+                                       XMLTransformerEventMapEntry const *pInit2  );
 };
 
-void XMLTransformerOOoEventMap_Impl::AddMap( XMLTransformerEventMapEntry *pInit )
+void XMLTransformerOOoEventMap_Impl::AddMap( XMLTransformerEventMapEntry const *pInit )
 {
     XMLTransformerOOoEventMap_Impl::key_type aKey;
     XMLTransformerOOoEventMap_Impl::mapped_type aData;
@@ -70,8 +68,8 @@ void XMLTransformerOOoEventMap_Impl::AddMap( XMLTransformerEventMapEntry *pInit 
 }
 
 XMLTransformerOOoEventMap_Impl::XMLTransformerOOoEventMap_Impl(
-        XMLTransformerEventMapEntry *pInit,
-        XMLTransformerEventMapEntry *pInit2 )
+        XMLTransformerEventMapEntry const *pInit,
+        XMLTransformerEventMapEntry const *pInit2 )
 {
     if( pInit )
         AddMap( pInit );
@@ -84,7 +82,8 @@ XMLEventOOoTransformerContext::XMLEventOOoTransformerContext(
         const OUString& rQName,
         bool bPersistent ) :
     XMLPersElemContentTContext( rImp, rQName,
-        rImp.GetNamespaceMap().GetKeyByAttrName( rQName ), XML_EVENT_LISTENER ),
+        rImp.GetNamespaceMap().GetKeyByAttrValueQName(rQName, nullptr),
+        XML_EVENT_LISTENER),
     m_bPersistent( bPersistent )
 {
 }
@@ -147,7 +146,7 @@ void XMLEventOOoTransformerContext::StartElement(
         XMLTransformerActions::key_type aKey( nPrefix, aLocalName );
         XMLTransformerActions::const_iterator aIter =
             pActions->find( aKey );
-        if( !(aIter == pActions->end() ) )
+        if( aIter != pActions->end() )
         {
             if( !pMutableAttrList )
             {
@@ -170,9 +169,9 @@ void XMLEventOOoTransformerContext::StartElement(
                     OUString aAttrValue( rAttrValue );
                     sal_uInt16 nValPrefix =
                         static_cast<sal_uInt16>((*aIter).second.m_nParam1);
-                    if( GetTransformer().AddNamespacePrefix( aAttrValue,
-                                                             nValPrefix ) )
-                        pMutableAttrList->SetValueByIndex( i, aAttrValue );
+                    GetTransformer().AddNamespacePrefix( aAttrValue,
+                                                             nValPrefix );
+                    pMutableAttrList->SetValueByIndex( i, aAttrValue );
                 }
                 break;
             case XML_ATACTION_MACRO_LOCATION:
@@ -198,12 +197,8 @@ void XMLEventOOoTransformerContext::StartElement(
     {
         if( !IsXMLToken( aLocation, XML_APPLICATION ) )
             aLocation = GetXMLToken( XML_DOCUMENT );
-        OUStringBuffer sTmp( aLocation.getLength() + aMacroName.getLength() + 1 );
-        sTmp = aLocation;
-        sTmp.append( ':' );
-        sTmp.append( aMacroName );
-        pMutableAttrList->SetValueByIndex( nMacroName,
-                                           sTmp.makeStringAndClear() );
+        OUString sTmp = aLocation + ":" + aMacroName;
+        pMutableAttrList->SetValueByIndex( nMacroName, sTmp );
     }
 
     if( m_bPersistent )

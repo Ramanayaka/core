@@ -21,11 +21,11 @@ class SotStorage;
 class SvStream;
 class SvMemoryStream;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XNameContainer; }
     namespace frame { class XModel; }
     namespace script { class XLibraryContainer; }
-} } }
+}
 
 class OOX_DLLPUBLIC VbaExport
 {
@@ -39,12 +39,12 @@ public:
 private:
 
     css::uno::Reference<css::container::XNameContainer>
-        getBasicLibrary();
+        getBasicLibrary() const;
 
     css::uno::Reference<css::script::XLibraryContainer>
-        getLibraryContainer();
+        getLibraryContainer() const;
 
-    OUString getProjectName();
+    OUString getProjectName() const;
 
     css::uno::Reference<css::frame::XModel> mxModel;
 };

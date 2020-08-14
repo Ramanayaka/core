@@ -20,10 +20,8 @@
 #include <svx/sdr/contact/displayinfo.hxx>
 
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
         DisplayInfo::DisplayInfo()
         :   maProcessLayers(true), // init layer info with all bits set to draw everything on default
             maRedrawArea(),
@@ -31,10 +29,6 @@ namespace sdr
             mbPageProcessingActive(true),
             mbGhostedDrawModeActive(false),
             mbSubContentActive(false)
-        {
-        }
-
-        DisplayInfo::~DisplayInfo()
         {
         }
 
@@ -89,7 +83,6 @@ namespace sdr
             }
         }
 
-    } // end of namespace contact
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

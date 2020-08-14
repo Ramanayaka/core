@@ -17,14 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TableGrantCtrl.hxx"
+#include <TableGrantCtrl.hxx>
+#include <core_resource.hxx>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/sdbcx/Privilege.hpp>
 #include <com/sun/star/sdbcx/PrivilegeObject.hpp>
 #include <com/sun/star/sdbcx/XUsersSupplier.hpp>
 #include <com/sun/star/sdbcx/XAuthorizable.hpp>
-#include "dbu_control.hrc"
-#include "UITools.hxx"
+#include <connectivity/dbtools.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
+#include <vcl/svapp.hxx>
+#include <osl/diagnose.h>
+#include <strings.hrc>
 
 using namespace ::com::sun::star::accessibility;
 using namespace ::com::sun::star::container;
@@ -45,8 +50,8 @@ const sal_uInt16 COL_DROP       = 8;
 
 
 // OTableGrantControl
-OTableGrantControl::OTableGrantControl( vcl::Window* pParent, WinBits nBits)
-    :EditBrowseBox( pParent, EditBrowseBoxFlags::SMART_TAB_TRAVEL | EditBrowseBoxFlags::NO_HANDLE_COLUMN_CONTENT, nBits )
+OTableGrantControl::OTableGrantControl(const css::uno::Reference<css::awt::XWindow> &rParent)
+    :EditBrowseBox(VCLUnoHelper::GetWindow(rParent), EditBrowseBoxFlags::SMART_TAB_TRAVEL | EditBrowseBoxFlags::NO_HANDLE_COLUMN_CONTENT, WB_TABSTOP)
     ,m_pCheckCell( nullptr )
     ,m_pEdit( nullptr )
     ,m_nDataPos( 0 )
@@ -54,15 +59,15 @@ OTableGrantControl::OTableGrantControl( vcl::Window* pParent, WinBits nBits)
 {
     // insert columns
     sal_uInt16 i=1;
-    InsertDataColumn( i, OUString(ModuleRes(STR_TABLE_PRIV_NAME)  ), 75);
+    InsertDataColumn( i, DBA_RES(STR_TABLE_PRIV_NAME), 75);
     FreezeColumn(i++);
-    InsertDataColumn( i++, OUString(ModuleRes(STR_TABLE_PRIV_SELECT)), 75);
-    InsertDataColumn( i++, OUString(ModuleRes(STR_TABLE_PRIV_INSERT)), 75);
-    InsertDataColumn( i++, OUString(ModuleRes(STR_TABLE_PRIV_DELETE)), 75);
-    InsertDataColumn( i++, OUString(ModuleRes(STR_TABLE_PRIV_UPDATE)), 75);
-    InsertDataColumn( i++, OUString(ModuleRes(STR_TABLE_PRIV_ALTER)), 75);
-    InsertDataColumn( i++, OUString(ModuleRes(STR_TABLE_PRIV_REFERENCE)), 75);
-    InsertDataColumn( i++, OUString(ModuleRes(STR_TABLE_PRIV_DROP)), 75);
+    InsertDataColumn( i++, DBA_RES(STR_TABLE_PRIV_SELECT), 75);
+    InsertDataColumn( i++, DBA_RES(STR_TABLE_PRIV_INSERT), 75);
+    InsertDataColumn( i++, DBA_RES(STR_TABLE_PRIV_DELETE), 75);
+    InsertDataColumn( i++, DBA_RES(STR_TABLE_PRIV_UPDATE), 75);
+    InsertDataColumn( i++, DBA_RES(STR_TABLE_PRIV_ALTER), 75);
+    InsertDataColumn( i++, DBA_RES(STR_TABLE_PRIV_REFERENCE), 75);
+    InsertDataColumn( i++, DBA_RES(STR_TABLE_PRIV_DROP), 75);
 
     while(--i)
         SetColumnWidth(i,GetAutoColumnWidth(i));
@@ -127,12 +132,13 @@ void OTableGrantControl::Init()
     // instantiate ComboBox
     if(!m_pCheckCell)
     {
-        m_pCheckCell    = VclPtr<CheckBoxControl>::Create( &GetDataWindow() );
-        m_pCheckCell->GetBox().EnableTriState(false);
+        m_pCheckCell = VclPtr<CheckBoxControl>::Create( &GetDataWindow() );
+        m_pCheckCell->EnableTriState(false);
 
-        m_pEdit         = VclPtr<Edit>::Create( &GetDataWindow() );
-        m_pEdit->SetReadOnly();
-        m_pEdit->Enable(false);
+        m_pEdit = VclPtr<EditControl>::Create(&GetDataWindow());
+        weld::Entry& rEntry = m_pEdit->get_widget();
+        rEntry.set_editable(false);
+        rEntry.set_sensitive(false);
     }
 
     UpdateTables();
@@ -188,7 +194,7 @@ bool OTableGrantControl::IsTabAllowed(bool bForward) const
 }
 
 #define GRANT_REVOKE_RIGHT(what)                \
-    if(m_pCheckCell->GetBox().IsChecked())      \
+    if (m_pCheckCell->GetBox().get_active())    \
         xAuth->grantPrivileges(sTableName,PrivilegeObject::TABLE,what);\
     else                                        \
         xAuth->revokePrivileges(sTableName,PrivilegeObject::TABLE,what)
@@ -241,10 +247,10 @@ bool OTableGrantControl::SaveModified()
     catch(SQLException& e)
     {
         bErg = false;
-        ::dbaui::showError(::dbtools::SQLExceptionInfo(e),GetParent(),m_xContext);
+        ::dbtools::showError(::dbtools::SQLExceptionInfo(e),VCLUnoHelper::GetInterface(GetParent()),m_xContext);
     }
     if(bErg && Controller().is())
-        Controller()->ClearModified();
+        Controller()->SaveValue();
     if(!bErg)
         UpdateTables();
 
@@ -268,44 +274,44 @@ void OTableGrantControl::InitController( CellControllerRef& /*rController*/, lon
 {
     OUString sTablename = m_aTableNames[nRow];
     // special case for tablename
-    if(nColumnId == COL_TABLE_NAME)
-        m_pEdit->SetText(sTablename);
+    if (nColumnId == COL_TABLE_NAME)
+        m_pEdit->get_widget().set_text(sTablename);
     else
     {
         // get the privileges from the user
         TTablePrivilegeMap::const_iterator aFind = findPrivilege(nRow);
-        m_pCheckCell->GetBox().Check(aFind != m_aPrivMap.end() && isAllowed(nColumnId,aFind->second.nRights));
+        m_pCheckCell->GetBox().set_active(aFind != m_aPrivMap.end() && isAllowed(nColumnId,aFind->second.nRights));
     }
 }
 
 void OTableGrantControl::fillPrivilege(sal_Int32 _nRow) const
 {
 
-    if ( m_xUsers->hasByName(m_sUserName) )
-    {
-        try
-        {
-            Reference<XAuthorizable> xAuth(m_xUsers->getByName(m_sUserName),UNO_QUERY);
-            if ( xAuth.is() )
-            {
-                // get the privileges
-                TPrivileges nRights;
-                nRights.nRights = xAuth->getPrivileges(m_aTableNames[_nRow],PrivilegeObject::TABLE);
-                if(m_xGrantUser.is())
-                    nRights.nWithGrant = m_xGrantUser->getGrantablePrivileges(m_aTableNames[_nRow],PrivilegeObject::TABLE);
-                else
-                    nRights.nWithGrant = 0;
+    if ( !m_xUsers->hasByName(m_sUserName) )
+        return;
 
-                m_aPrivMap[m_aTableNames[_nRow]] = nRights;
-            }
-        }
-        catch(SQLException& e)
+    try
+    {
+        Reference<XAuthorizable> xAuth(m_xUsers->getByName(m_sUserName),UNO_QUERY);
+        if ( xAuth.is() )
         {
-            ::dbaui::showError(::dbtools::SQLExceptionInfo(e),GetParent(),m_xContext);
+            // get the privileges
+            TPrivileges nRights;
+            nRights.nRights = xAuth->getPrivileges(m_aTableNames[_nRow],PrivilegeObject::TABLE);
+            if(m_xGrantUser.is())
+                nRights.nWithGrant = m_xGrantUser->getGrantablePrivileges(m_aTableNames[_nRow],PrivilegeObject::TABLE);
+            else
+                nRights.nWithGrant = 0;
+
+            m_aPrivMap[m_aTableNames[_nRow]] = nRights;
         }
-        catch(Exception& )
-        {
-        }
+    }
+    catch(SQLException& e)
+    {
+        ::dbtools::showError(::dbtools::SQLExceptionInfo(e),VCLUnoHelper::GetInterface(GetParent()),m_xContext);
+    }
+    catch(Exception& )
+    {
     }
 }
 

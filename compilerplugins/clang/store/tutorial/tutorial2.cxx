@@ -23,7 +23,7 @@ namespace loplugin
 {
 
 Tutorial2::Tutorial2( const InstantiationData& data )
-    : Plugin( data )
+    : FilteringPlugin( data )
     {
     }
 
@@ -88,7 +88,7 @@ bool Tutorial2::isReturnFalse( const Stmt* stmt )
     }
 
 // Register the plugin action with the LO plugin handling.
-static Plugin::Registration< Tutorial2 > X( "tutorial2" );
+static Plugin::Registration< Tutorial2 > tutorial2( "tutorial2" );
 
 } // namespace
 

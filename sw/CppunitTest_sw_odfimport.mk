@@ -11,6 +11,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sw_odfimport))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sw_odfimport))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sw_odfimport, \
     sw/qa/extras/odfimport/odfimport \
 ))
@@ -23,6 +25,7 @@ $(eval $(call gb_CppunitTest_use_libraries,sw_odfimport, \
 	svt \
 	sfx \
 	sw \
+	swqahelper \
     test \
     unotest \
     vcl \
@@ -39,51 +42,20 @@ $(eval $(call gb_CppunitTest_set_include,sw_odfimport,\
     -I$(SRCDIR)/sw/inc \
     -I$(SRCDIR)/sw/source/core/inc \
     -I$(SRCDIR)/sw/source/uibase/inc \
-	-I$(SRCDIR)/sw/qa/extras/inc \
+	-I$(SRCDIR)/sw/qa/inc \
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_CppunitTest_use_sdk_api,sw_odfimport))
+$(eval $(call gb_CppunitTest_use_api,sw_odfimport,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_CppunitTest_use_ure,sw_odfimport))
 $(eval $(call gb_CppunitTest_use_vcl,sw_odfimport))
 
-$(eval $(call gb_CppunitTest_use_components,sw_odfimport,\
-	basic/util/sb \
-    comphelper/util/comphelp \
-    configmgr/source/configmgr \
-	embeddedobj/util/embobj \
-    filter/source/config/cache/filterconfig1 \
-    filter/source/storagefilterdetect/storagefd \
-	filter/source/odfflatxml/odfflatxml \
-	filter/source/xmlfilterdetect/xmlfd \
-	filter/source/xmlfilteradaptor/xmlfa \
-    framework/util/fwk \
-    i18npool/util/i18npool \
-	lingucomponent/source/languageguessing/guesslang \
-    linguistic/source/lng \
-    package/util/package2 \
-    package/source/xstor/xstor \
-    sw/util/sw \
-    sw/util/swd \
-    sax/source/expatwrap/expwrap \
-    sfx2/util/sfx \
-    svl/source/fsstor/fsstorage \
-    svtools/util/svt \
-    toolkit/util/tk \
-    ucb/source/core/ucb1 \
-    ucb/source/ucp/file/ucpfile1 \
-    unotools/util/utl \
-    unoxml/source/service/unoxml \
-    uui/util/uui \
-    $(if $(filter-out MACOSX WNT,$(OS)), \
-		$(if $(ENABLE_HEADLESS),, \
-			vcl/vcl.unx \
-		) \
-    ) \
-	$(if $(filter DESKTOP,$(BUILD_TYPE)),xmlhelp/util/ucpchelp1) \
-    xmloff/util/xo \
-))
+$(eval $(call gb_CppunitTest_use_rdb,sw_odfimport,services))
 
 $(eval $(call gb_CppunitTest_use_configuration,sw_odfimport))
 

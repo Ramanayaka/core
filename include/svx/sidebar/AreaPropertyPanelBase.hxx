@@ -20,31 +20,21 @@
 #define INCLUDED_SVX_SOURCE_SIDEBAR_AREA_AREAPROPERTYPANELBASE_HXX
 
 #include <memory>
-#include "AreaTransparencyGradientPopup.hxx"
-#include <vcl/ctrl.hxx>
-#include <sfx2/sidebar/SidebarPanelBase.hxx>
+#include <svx/sidebar/AreaTransparencyGradientPopup.hxx>
 #include <sfx2/sidebar/ControllerItem.hxx>
-#include <sfx2/sidebar/SidebarController.hxx>
-#include <sfx2/sidebar/SidebarToolBox.hxx>
 #include <svx/colorbox.hxx>
 #include <svx/xgrad.hxx>
-#include <svx/itemwin.hxx>
 #include <svx/xfillit0.hxx>
 #include <svx/xflclit.hxx>
 #include <svx/xflgrit.hxx>
 #include <svx/xflhtit.hxx>
 #include <svx/xbtmpit.hxx>
-#include <svx/drawitem.hxx>
-#include <svx/sidebar/PanelLayout.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/field.hxx>
-#include <vcl/slider.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/vclptr.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
 #include <svl/intitem.hxx>
-#include <com/sun/star/ui/XUIElement.hpp>
 #include <svx/svxdllapi.h>
+#include <sfx2/sidebar/Panel.hxx>
 
+class ToolbarUnoDispatcher;
 class XFillFloatTransparenceItem;
 class XFillTransparenceItem;
 class XFillStyleItem;
@@ -53,7 +43,7 @@ class XFillColorItem;
 class XFillHatchItem;
 class XFillBitmapItem;
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
 class SVX_DLLPUBLIC AreaPropertyPanelBase
 :   public PanelLayout,
@@ -69,8 +59,11 @@ public:
     virtual void NotifyItemUpdate(
         const sal_uInt16 nSId,
         const SfxItemState eState,
-        const SfxPoolItem* pState,
-        const bool bIsEnabled) override;
+        const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(
+        const sal_uInt16 /*nSId*/,
+        boost::property_tree::ptree& /*rState*/) override {};
 
     const static sal_Int32 DEFAULT_CENTERX;
     const static sal_Int32 DEFAULT_CENTERY;
@@ -106,10 +99,12 @@ public:
     void updateFillColor(bool bDefaultOrSet, const SfxPoolItem* pState);
     void updateFillBitmap(bool BDisabled, bool bDefaultOrSet, const SfxPoolItem* pState);
 
+private:
+    void Initialize();
+
 protected:
     sal_uInt16                                          meLastXFS;
 
-    sal_Int32                                           mnLastPosGradient;
     sal_Int32                                           mnLastPosHatch;
     sal_Int32                                           mnLastPosBitmap;
     sal_Int32                                           mnLastPosPattern;
@@ -123,20 +118,22 @@ protected:
     XGradient                                           maGradientRect;
 
     //ui controls
-    VclPtr<FixedText>                                          mpColorTextFT;
-    VclPtr<SvxFillTypeBox>                                     mpLbFillType;
-    VclPtr<SvxFillAttrBox>                                     mpLbFillAttr;
-    VclPtr<SvxColorListBox>                                    mpLbFillGradFrom;
-    VclPtr<SvxColorListBox>                                    mpLbFillGradTo;
-    VclPtr<sfx2::sidebar::SidebarToolBox>                      mpToolBoxColor; // for new color picker
-    VclPtr<FixedText>                                          mpTrspTextFT;
-    VclPtr<ListBox>                                            mpLBTransType;
-    VclPtr<MetricField>                                        mpMTRTransparent;
-    VclPtr<Slider>                                             mpSldTransparent;
-    VclPtr<ToolBox>                                            mpBTNGradient;
-    VclPtr<MetricField>                                        mpMTRAngle;
-    VclPtr<ListBox>                                            mpGradientStyle;
-    VclPtr<PushButton>                                         mpBmpImport;
+    std::unique_ptr<weld::Label> mxColorTextFT;
+    std::unique_ptr<weld::ComboBox> mxLbFillType;
+    std::unique_ptr<weld::ComboBox> mxLbFillAttr;
+    std::unique_ptr<ColorListBox> mxLbFillGradFrom;
+    std::unique_ptr<ColorListBox> mxLbFillGradTo;
+    std::unique_ptr<weld::Toolbar> mxToolBoxColor; // for new color picker
+    std::unique_ptr<ToolbarUnoDispatcher> mxColorDispatch;
+    std::unique_ptr<weld::Label> mxTrspTextFT;
+    std::unique_ptr<weld::ComboBox> mxLBTransType;
+    std::unique_ptr<weld::MetricSpinButton> mxMTRTransparent;
+    std::unique_ptr<weld::Scale> mxSldTransparent;
+    std::unique_ptr<weld::Toolbar> mxBTNGradient;
+    std::unique_ptr<weld::MetricSpinButton> mxMTRAngle;
+    std::unique_ptr<weld::ComboBox> mxGradientStyle;
+    std::unique_ptr<weld::Button> mxBmpImport;
+    std::unique_ptr<AreaTransparencyGradientPopup> mxTrGrPopup;
 
     std::unique_ptr< XFillStyleItem >               mpStyleItem;
     std::unique_ptr< XFillColorItem >               mpColorItem;
@@ -144,38 +141,35 @@ protected:
     std::unique_ptr< XFillHatchItem >               mpHatchItem;
     std::unique_ptr< XFillBitmapItem >              mpBitmapItem;
 
-    Image                                               maImgAxial;
-    Image                                               maImgElli;
-    Image                                               maImgQuad;
-    Image                                               maImgRadial;
-    Image                                               maImgSquare;
-    Image                                               maImgLinear;
+    OUString maImgAxial;
+    OUString maImgElli;
+    OUString maImgQuad;
+    OUString maImgRadial;
+    OUString maImgSquare;
+    OUString  maImgLinear;
 
-    VclPtr<AreaTransparencyGradientPopup>           mxTrGrPopup;
+    VclPtr<sfx2::sidebar::Panel>                    mpPanel;
 
     std::unique_ptr< XFillFloatTransparenceItem >   mpFloatTransparenceItem;
     std::unique_ptr< SfxUInt16Item >                mpTransparanceItem;
 
-    DECL_LINK(SelectFillTypeHdl, ListBox&, void );
-    DECL_LINK(SelectFillAttrHdl, ListBox&, void );
-    DECL_LINK(SelectFillColorHdl, SvxColorListBox&, void);
-    DECL_LINK(ChangeGradientAngle, Edit&, void);
-    DECL_LINK(ChangeTrgrTypeHdl_Impl, ListBox&, void);
-    DECL_LINK(ModifyTransparentHdl_Impl, Edit&, void);
-    DECL_LINK(ModifyTransSliderHdl, Slider*, void);
-    DECL_LINK(ClickImportBitmapHdl, Button*, void);
+    DECL_LINK(SelectFillTypeHdl, weld::ComboBox&, void );
+    DECL_LINK(SelectFillAttrHdl, weld::ComboBox&, void );
+    DECL_LINK(SelectFillColorHdl, ColorListBox&, void);
+    DECL_LINK(ChangeGradientAngle, weld::MetricSpinButton&, void);
+    DECL_LINK(ChangeTrgrTypeHdl_Impl, weld::ComboBox&, void);
+    DECL_LINK(ModifyTransparentHdl_Impl, weld::MetricSpinButton&, void);
+    DECL_LINK(ModifyTransSliderHdl, weld::Scale&, void);
+    DECL_LINK(ClickImportBitmapHdl, weld::Button&, void);
+    DECL_LINK(ToolbarHdl_Impl, const OString&, void);
 
-    // for transparency gradient
-    DECL_LINK( ClickTrGrHdl_Impl, ToolBox*, void );
-
-    void Initialize();
     void Update();
     void ImpUpdateTransparencies();
     void SetTransparency(sal_uInt16 nVal);
     void SelectFillAttrHdl_Impl();
 };
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 #endif // INCLUDED_SVX_SOURCE_SIDEBAR_AREA_AREAPROPERTYPANEL_HXX
 

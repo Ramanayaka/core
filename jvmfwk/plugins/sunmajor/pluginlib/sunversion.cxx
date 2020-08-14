@@ -19,15 +19,13 @@
 
 
 #include "sunversion.hxx"
-#include "osl/diagnose.h"
-#include "osl/thread.h"
-#include "osl/process.h"
-#include "osl/security.hxx"
+#include <osl/thread.h>
 #include <rtl/character.hxx>
 #include <string.h>
+#if OSL_DEBUG_LEVEL >= 2
+#include <osl/diagnose.h>
 #include "diagnostics.h"
-using namespace osl;
-
+#endif
 namespace jfw_plugin  { //stoc_javadetect
 
 
@@ -40,19 +38,15 @@ public:
 #endif
 
 SunVersion::SunVersion(const OUString &usVer):
-    m_nUpdateSpecial(0), m_preRelease(Rel_NONE),
-    usVersion(usVer)
+    m_nUpdateSpecial(0), m_preRelease(Rel_NONE)
 {
-    memset(m_arVersionParts, 0, sizeof(m_arVersionParts));
     OString sVersion= OUStringToOString(usVer, osl_getThreadTextEncoding());
     m_bValid = init(sVersion.getStr());
 }
 SunVersion::SunVersion(const char * szVer):
     m_nUpdateSpecial(0), m_preRelease(Rel_NONE)
 {
-    memset(m_arVersionParts, 0, sizeof(m_arVersionParts));
     m_bValid = init(szVer);
-    usVersion= OUString(szVer,strlen(szVer),osl_getThreadTextEncoding());
 }
 
 
@@ -79,16 +73,15 @@ bool SunVersion::init(const char *szVersion)
     {
         if (pCur < pEnd && rtl::isAsciiDigit(static_cast<unsigned char>(*pCur)))
         {
-            if (pCur < pEnd)
-                pCur ++;
+            pCur ++;
             nPartPos ++;
         }
         //if  correct separator then form integer
         else if (
-            ! (nPartPos == 0) // prevents: ".4.1", "..1", part must start with digit
+            (nPartPos != 0) // prevents: ".4.1", "..1", part must start with digit
             && (
                 //separators after maintenance (1.4.1_01, 1.4.1-beta, or 1.4.1)
-                ((pCur == pEnd || *pCur == '_' || *pCur == '-') && (nPart == 2 ))
+                (pCur == pEnd || *pCur == '_' || *pCur == '-')
                 ||
                 //separators between major-minor and minor-maintenance
                 (nPart < 2 && *pCur == '.') )
@@ -97,6 +90,8 @@ bool SunVersion::init(const char *szVersion)
                 pCur + 1 != pEnd
                 || rtl::isAsciiDigit(static_cast<unsigned char>(*pCur))) )
         {
+            bool afterMaint = pCur == pEnd || *pCur == '_' || *pCur == '-';
+
             int len = pCur - pLast;
             if (len >= 127)
                 return false;
@@ -107,6 +102,9 @@ bool SunVersion::init(const char *szVersion)
             pLast = pCur;
 
             m_arVersionParts[nPart] = atoi(buf);
+
+            if (afterMaint)
+                nPart = 2;
             nPart ++;
             nPartPos = 0;
             if (nPart == 3)

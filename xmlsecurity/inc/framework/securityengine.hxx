@@ -29,7 +29,9 @@
 
 #include <cppuhelper/implbase.hxx>
 
-class SecurityEngine : public cppu::WeakImplHelper
+#include <xmlsecuritydllapi.h>
+
+class SAL_DLLPUBLIC_RTTI SecurityEngine : public cppu::WeakImplHelper
 <
     css::xml::crypto::sax::XReferenceResolvedListener,
     css::xml::crypto::sax::XKeyCollector,
@@ -57,12 +59,12 @@ protected:
     /*
      * the id of ElementCollector of the template element.
      * For a signature, the template element is the Signature element,
-     * for a encryption, the EncryptedData/EncryptedKey element is.
+     * for an encryption, the EncryptedData/EncryptedKey element is.
      */
     sal_Int32 m_nIdOfTemplateEC;
 
     /*
-     * remembers how many referenced elements have been bufferred completely,
+     * remembers how many referenced elements have been buffered completely,
      * including the key element, template element, and referenced element of
      * signature.
      */
@@ -126,12 +128,6 @@ protected:
     /// @throws css::uno::RuntimeException
     virtual void notifyResultListener() const
         {};
-
-    /*
-     * checks whether everything is ready.
-     * Any derived class will implement this method respectively.
-     */
-    virtual bool checkReady() const { return true; };
 
 public:
     /* XReferenceResolvedListener */

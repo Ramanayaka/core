@@ -19,27 +19,26 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDSPLINEPROPERTIES_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDSPLINEPROPERTIES_HXX
 
-#include "WrappedProperty.hxx"
-#include "Chart2ModelContact.hxx"
-
+#include <sal/types.h>
 #include <memory>
 #include <vector>
 
-namespace chart
-{
-namespace wrapper
+namespace chart { class WrappedProperty; }
+namespace chart::wrapper { class Chart2ModelContact; }
+namespace com::sun::star::beans { struct Property; }
+
+namespace chart::wrapper
 {
 
 class WrappedSplineProperties
 {
 public:
     static void addProperties( std::vector< css::beans::Property > & rOutProperties );
-    static void addWrappedProperties( std::vector< WrappedProperty* >& rList
+    static void addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList
                                     , const std::shared_ptr< Chart2ModelContact >& spChart2ModelContact );
 };
 
-} //namespace wrapper
-} //namespace chart
+} //namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDSPLINEPROPERTIES_HXX
 #endif

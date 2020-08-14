@@ -20,15 +20,12 @@
 #ifndef INCLUDED_DBACCESS_DBSUBCOMPONENTCONTROLLER_HXX
 #define INCLUDED_DBACCESS_DBSUBCOMPONENTCONTROLLER_HXX
 
-#include <exception>
 #include <memory>
 
-#include <com/sun/star/beans/PropertyVetoException.hpp>
 #include <com/sun/star/document/XScriptInvocationContext.hpp>
 #include <com/sun/star/lang/EventObject.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Type.hxx>
 #include <com/sun/star/util/XModifiable.hpp>
@@ -38,7 +35,7 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { class XPropertySet; }
     namespace beans { struct PropertyValue; }
     namespace document { class XEmbeddedScripts; }
@@ -48,7 +45,7 @@ namespace com { namespace sun { namespace star {
     namespace uno { class XComponentContext; }
     namespace util { class XModifyListener; }
     namespace util { class XNumberFormatter; }
-} } }
+}
 
 namespace dbtools {
     class DatabaseMetaData;
@@ -149,7 +146,7 @@ namespace dbaui
 
         /** returns the number formatter
         */
-        css::uno::Reference< css::util::XNumberFormatter >    getNumberFormatter() const;
+        css::uno::Reference< css::util::XNumberFormatter > const & getNumberFormatter() const;
 
         // css::frame::XController
         virtual sal_Bool SAL_CALL suspend(sal_Bool bSuspend) override;

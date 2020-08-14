@@ -27,8 +27,10 @@
 #include <com/sun/star/task/XInteractionHandler.hpp>
 #include <com/sun/star/task/XStatusIndicator.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <comphelper/docpasswordhelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <comphelper/documentconstants.hxx>
+#include <comphelper/sequence.hxx>
+#include <comphelper/scopeguard.hxx>
 #include <unotools/mediadescriptor.hxx>
 #include <osl/mutex.hxx>
 #include <osl/diagnose.h>
@@ -37,16 +39,15 @@
 #include <memory>
 #include <set>
 
-#include "oox/core/filterbase.hxx"
-#include "oox/helper/binaryinputstream.hxx"
-#include "oox/helper/binaryoutputstream.hxx"
-#include "oox/helper/graphichelper.hxx"
-#include "oox/helper/modelobjecthelper.hxx"
-#include "oox/ole/oleobjecthelper.hxx"
-#include "oox/ole/vbaproject.hxx"
+#include <oox/core/filterbase.hxx>
+#include <oox/helper/binaryinputstream.hxx>
+#include <oox/helper/binaryoutputstream.hxx>
+#include <oox/helper/graphichelper.hxx>
+#include <oox/helper/modelobjecthelper.hxx>
+#include <oox/ole/oleobjecthelper.hxx>
+#include <oox/ole/vbaproject.hxx>
 
-namespace oox {
-namespace core {
+namespace oox::core {
 
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::frame;
@@ -109,8 +110,6 @@ DocumentOpenedGuard::~DocumentOpenedGuard()
         rUrlPool.maUrls.erase( maUrl );
 }
 
-} // namespace
-
 /** Specifies whether this filter is an import or export filter. */
 enum FilterDirection
 {
@@ -118,6 +117,8 @@ enum FilterDirection
     FILTERDIRECTION_IMPORT,
     FILTERDIRECTION_EXPORT
 };
+
+} // namespace
 
 struct FilterBaseImpl
 {
@@ -136,6 +137,8 @@ struct FilterBaseImpl
 
     GraphicHelperRef    mxGraphicHelper;        /// Graphic and graphic object handling.
     ModelObjHelperRef   mxModelObjHelper;       /// Tables to create new named drawing objects.
+    std::map<css::uno::Reference<css::lang::XMultiServiceFactory>, ModelObjHelperRef>
+        mxModelObjHelpers;
     OleObjHelperRef     mxOleObjHelper;         /// OLE object handling.
     VbaProjectRef       mxVbaProject;           /// VBA project manager.
 
@@ -151,20 +154,21 @@ struct FilterBaseImpl
 
     bool mbExportVBA;
 
+    bool mbExportTemplate;
+
     /// @throws RuntimeException
     explicit            FilterBaseImpl( const Reference< XComponentContext >& rxContext );
 
     /// @throws IllegalArgumentException
     void                setDocumentModel( const Reference< XComponent >& rxComponent );
-
-    void                initializeFilter();
 };
 
 FilterBaseImpl::FilterBaseImpl( const Reference< XComponentContext >& rxContext ) :
     meDirection( FILTERDIRECTION_UNKNOWN ),
     meVersion( ECMA_DIALECT ),
     mxComponentContext( rxContext, UNO_SET_THROW ),
-    mbExportVBA(false)
+    mbExportVBA(false),
+    mbExportTemplate(false)
 {
 }
 
@@ -178,18 +182,6 @@ void FilterBaseImpl::setDocumentModel( const Reference< XComponent >& rxComponen
     catch( Exception& )
     {
         throw IllegalArgumentException();
-    }
-}
-
-void FilterBaseImpl::initializeFilter()
-{
-    try
-    {
-        // lock the model controllers
-        mxModel->lockControllers();
-    }
-    catch( Exception& )
-    {
     }
 }
 
@@ -237,11 +229,6 @@ const Reference< XFrame >& FilterBase::getTargetFrame() const
     return mxImpl->mxTargetFrame;
 }
 
-const Reference< XShape >& FilterBase::getParentShape() const
-{
-    return mxImpl->mxParentShape;
-}
-
 const Reference< XStatusIndicator >& FilterBase::getStatusIndicator() const
 {
     return mxImpl->mxStatusIndicator;
@@ -264,7 +251,7 @@ const OUString& FilterBase::getFileUrl() const
 
 namespace {
 
-inline bool lclIsDosDrive( const OUString& rUrl, sal_Int32 nPos = 0 )
+bool lclIsDosDrive( const OUString& rUrl, sal_Int32 nPos = 0 )
 {
     return
         (rUrl.getLength() >= nPos + 3) &&
@@ -329,13 +316,15 @@ OUString FilterBase::getAbsoluteUrl( const OUString& rUrl ) const
     return aUrl;
 }
 
-StorageRef FilterBase::getStorage() const
+StorageRef const & FilterBase::getStorage() const
 {
     return mxImpl->mxStorage;
 }
 
 Reference< XInputStream > FilterBase::openInputStream( const OUString& rStreamName ) const
 {
+    if (!mxImpl->mxStorage)
+        throw RuntimeException();
     return mxImpl->mxStorage->openInputStream( rStreamName );
 }
 
@@ -361,14 +350,22 @@ GraphicHelper& FilterBase::getGraphicHelper() const
 ModelObjectHelper& FilterBase::getModelObjectHelper() const
 {
     if( !mxImpl->mxModelObjHelper )
-        mxImpl->mxModelObjHelper.reset( new ModelObjectHelper( mxImpl->mxModelFactory ) );
+        mxImpl->mxModelObjHelper = std::make_shared<ModelObjectHelper>( mxImpl->mxModelFactory );
     return *mxImpl->mxModelObjHelper;
+}
+
+ModelObjectHelper& FilterBase::getModelObjectHelperForModel(
+    const css::uno::Reference<css::lang::XMultiServiceFactory>& xFactory) const
+{
+    if (!mxImpl->mxModelObjHelpers.count(xFactory))
+        mxImpl->mxModelObjHelpers[xFactory] = std::make_shared<ModelObjectHelper>(xFactory);
+    return *mxImpl->mxModelObjHelpers[xFactory];
 }
 
 OleObjectHelper& FilterBase::getOleObjectHelper() const
 {
     if( !mxImpl->mxOleObjHelper )
-        mxImpl->mxOleObjHelper.reset(new OleObjectHelper(mxImpl->mxModelFactory, mxImpl->mxModel));
+        mxImpl->mxOleObjHelper = std::make_shared<OleObjectHelper>(mxImpl->mxModelFactory, mxImpl->mxModel);
     return *mxImpl->mxOleObjHelper;
 }
 
@@ -379,7 +376,7 @@ VbaProject& FilterBase::getVbaProject() const
     return *mxImpl->mxVbaProject;
 }
 
-bool FilterBase::importBinaryData( StreamDataSequence& orDataSeq, const OUString& rStreamName )
+bool FilterBase::importBinaryData( StreamDataSequence & orDataSeq, const OUString& rStreamName )
 {
     OSL_ENSURE( !rStreamName.isEmpty(), "FilterBase::importBinaryData - empty stream name" );
     if( rStreamName.isEmpty() )
@@ -405,10 +402,7 @@ sal_Bool SAL_CALL FilterBase::supportsService( const OUString& rServiceName )
 
 Sequence< OUString > SAL_CALL FilterBase::getSupportedServiceNames()
 {
-    Sequence< OUString > aServiceNames( 2 );
-    aServiceNames[ 0 ] = "com.sun.star.document.ImportFilter";
-    aServiceNames[ 1 ] = "com.sun.star.document.ExportFilter";
-    return aServiceNames;
+    return { "com.sun.star.document.ImportFilter", "com.sun.star.document.ExportFilter" };
 }
 
 // com.sun.star.lang.XInitialization interface
@@ -423,27 +417,25 @@ void SAL_CALL FilterBase::initialize( const Sequence< Any >& rArgs )
     {
     }
 
-    if (rArgs.getLength() >= 1)
+    if (!rArgs.hasElements())
+        return;
+
+    Sequence<css::beans::PropertyValue> aSeq;
+    rArgs[0] >>= aSeq;
+    for (const auto& rVal : std::as_const(aSeq))
     {
-        Sequence<css::beans::PropertyValue> aSeq;
-        rArgs[0] >>= aSeq;
-        sal_Int32 nLen = aSeq.getLength();
-        for (sal_Int32 i = 0; i < nLen; ++i)
+        if (rVal.Name == "UserData")
         {
-            css::beans::PropertyValue& rVal = aSeq[i];
-            if (rVal.Name == "UserData")
-            {
-                css::uno::Sequence<OUString> aUserDataSeq;
-                rVal.Value >>= aUserDataSeq;
-                sal_Int32 nUserDataSeqLen = aUserDataSeq.getLength();
-                for (sal_Int32 j = 0; j < nUserDataSeqLen; ++j)
-                {
-                    if (aUserDataSeq[j] == "macro-enabled")
-                    {
-                        mxImpl->mbExportVBA = true;
-                    }
-                }
-            }
+            css::uno::Sequence<OUString> aUserDataSeq;
+            rVal.Value >>= aUserDataSeq;
+            if (comphelper::findValue(aUserDataSeq, "macro-enabled") != -1)
+                mxImpl->mbExportVBA = true;
+        }
+        else if (rVal.Name == "Flags")
+        {
+            sal_Int32 nFlags(0);
+            rVal.Value >>= nFlags;
+            mxImpl->mbExportTemplate = bool(static_cast<SfxFilterFlags>(nFlags) & SfxFilterFlags::TEMPLATE);
         }
     }
 }
@@ -476,7 +468,12 @@ sal_Bool SAL_CALL FilterBase::filter( const Sequence< PropertyValue >& rMediaDes
     DocumentOpenedGuard aOpenedGuard( mxImpl->maFileUrl );
     if( aOpenedGuard.isValid() || mxImpl->maFileUrl.isEmpty() )
     {
-        mxImpl->initializeFilter();
+        Reference<XModel> xTempModel = mxImpl->mxModel;
+        xTempModel->lockControllers();
+        comphelper::ScopeGuard const lockControllersGuard([xTempModel]() {
+            xTempModel->unlockControllers();
+        });
+
         switch( mxImpl->meDirection )
         {
             case FILTERDIRECTION_UNKNOWN:
@@ -485,18 +482,17 @@ sal_Bool SAL_CALL FilterBase::filter( const Sequence< PropertyValue >& rMediaDes
                 if( mxImpl->mxInStream.is() )
                 {
                     mxImpl->mxStorage = implCreateStorage( mxImpl->mxInStream );
-                    bRet = mxImpl->mxStorage.get() && importDocument();
+                    bRet = mxImpl->mxStorage && importDocument();
                 }
             break;
             case FILTERDIRECTION_EXPORT:
                 if( mxImpl->mxOutStream.is() )
                 {
                     mxImpl->mxStorage = implCreateStorage( mxImpl->mxOutStream );
-                    bRet = mxImpl->mxStorage.get() && exportDocument() && implFinalizeExport( getMediaDescriptor() );
+                    bRet = mxImpl->mxStorage && exportDocument() && implFinalizeExport( getMediaDescriptor() );
                 }
             break;
         }
-        mxImpl->mxModel->unlockControllers();
     }
     return bRet;
 }
@@ -522,7 +518,7 @@ bool FilterBase::implFinalizeExport( MediaDescriptor& /*rMediaDescriptor*/ )
     return true;
 }
 
-Reference< XStream > FilterBase::getMainDocumentStream( ) const
+Reference< XStream > const & FilterBase::getMainDocumentStream( ) const
 {
     return mxImpl->mxOutStream;
 }
@@ -587,7 +583,11 @@ bool FilterBase::exportVBA() const
     return mxImpl->mbExportVBA;
 }
 
-} // namespace core
-} // namespace oox
+bool FilterBase::isExportTemplate() const
+{
+    return mxImpl->mbExportTemplate;
+}
+
+} // namespace oox::core
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

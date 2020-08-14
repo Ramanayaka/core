@@ -22,18 +22,15 @@
 
 #include <osl/endian.h>
 #include <rtl/ref.hxx>
-#include <tools/solar.h>
 #include <tools/stream.hxx>
-#include <stgelem.hxx>
+#include "stgelem.hxx"
 #include <salhelper/simplereferenceobject.hxx>
 
 #include <memory>
 #include <unordered_map>
-#include <functional>
 
 class UCBStorageStream;
 class StgPage;
-class StgDirEntry;
 class StorageBase;
 
 class StgCache
@@ -56,11 +53,11 @@ class StgCache
 
     void Erase( const rtl::Reference< StgPage >& ); // delete a cache element
     rtl::Reference< StgPage > Create( sal_Int32  ); // create a cached page
-protected:
     SvStream* m_pStrm;                        // physical stream
     bool  m_bMyStream;                        // true: delete stream in dtor
+protected:
     bool  m_bFile;                            // true: file stream
-    sal_Int32 Page2Pos( sal_Int32 );        // page address --> file position
+    sal_Int32 Page2Pos( sal_Int32 ) const;    // page address --> file position
 public:
     StgCache();
     ~StgCache();
@@ -73,14 +70,14 @@ public:
     void  SetStrm( SvStream*, bool );
     void  SetStrm( UCBStorageStream* );
     bool  Good() const                      { return m_nError == ERRCODE_NONE; }
-    ErrCode GetError()                      { return m_nError;    }
-    void  MoveError( StorageBase& );
+    ErrCode const & GetError() const        { return m_nError;    }
+    void  MoveError( StorageBase const & );
     void  SetError( ErrCode );
     void  ResetError();
     bool  Open( const OUString& rName, StreamMode );
     void  Close();
     bool  Read( sal_Int32 nPage, void* pBuf );
-    bool  Write( sal_Int32 nPage, void* pBuf );
+    bool  Write( sal_Int32 nPage, void const * pBuf );
 
     // two routines for accessing FAT pages
     // Assume that the data is a FAT page and get/put FAT data.
@@ -108,9 +105,9 @@ public:
     StgPage& operator=(const StgPage&) = delete;
     static rtl::Reference< StgPage > Create( short nData, sal_Int32 nPage );
 
-    sal_Int32 GetPage()  { return mnPage; }
+    sal_Int32 GetPage() const { return mnPage; }
     void*     GetData()  { return mpData.get(); }
-    short     GetSize()  { return mnSize; }
+    short     GetSize() const { return mnSize; }
 
 public:
     static bool IsPageGreater( const StgPage *pA, const StgPage *pB );
@@ -118,7 +115,7 @@ public:
 
 inline sal_Int32 StgCache::GetFromPage ( const rtl::Reference< StgPage >& rPage, short nOff )
 {
-    if( ( nOff >= (short) ( rPage->GetSize() / sizeof( sal_Int32 ) ) ) || nOff < 0 )
+    if( ( nOff >= static_cast<short>( rPage->GetSize() / sizeof( sal_Int32 ) ) ) || nOff < 0 )
         return -1;
     sal_Int32 n = static_cast<sal_Int32*>(rPage->GetData())[ nOff ];
 #ifdef OSL_BIGENDIAN

@@ -24,7 +24,7 @@
 #include <vcl/outdev.hxx>
 
 #include "srcedtw.hxx"
-#include "shellid.hxx"
+#include <shellid.hxx>
 
 class SwDocShell;
 class SvxSearchItem;
@@ -34,7 +34,7 @@ class SwSrcView: public SfxViewShell
 {
     VclPtr<SwSrcEditWindow> aEditWin;
 
-    SvxSearchItem*      pSearchItem;
+    std::unique_ptr<SvxSearchItem> pSearchItem;
 
     bool                bSourceSaved    :1;
     rtl_TextEncoding    eLoadEncoding;
@@ -65,7 +65,7 @@ public:
     void                SaveContent(const OUString& rTmpFile);
     void                SaveContentTo(SfxMedium& rMed);
 
-    bool                IsModified() {return aEditWin->IsModified();}
+    bool                IsModified() const {return aEditWin->IsModified();}
 
     void            Execute(SfxRequest&);
     void            GetState(SfxItemSet&);

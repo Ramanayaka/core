@@ -16,24 +16,19 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <svtools/accessibleruler.hxx>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <com/sun/star/accessibility/IllegalAccessibleComponentStateException.hpp>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <com/sun/star/beans/PropertyChangeEvent.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
 #include <comphelper/accessibleeventnotifier.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
 #include <toolkit/helper/convert.hxx>
 #include <vcl/svapp.hxx>
 #include <osl/mutex.hxx>
-#include <rtl/uuid.h>
 #include <tools/gen.hxx>
 
 #include <svtools/ruler.hxx>
+#include "accessibleruler.hxx"
 
 using namespace ::cppu;
 using namespace ::osl;
@@ -117,7 +112,7 @@ awt::Size SAL_CALL SvtRulerAccessible::getSize()
     return AWTSize( GetBoundingBox().GetSize() );
 }
 
-bool SAL_CALL SvtRulerAccessible::isVisible()
+bool SvtRulerAccessible::isVisible()
 {
     ::osl::MutexGuard           aGuard( m_aMutex );
 
@@ -167,11 +162,11 @@ sal_Int32 SAL_CALL SvtRulerAccessible::getAccessibleIndexInParent()
                     return i;
             }
         }
-   }
+    }
 
-   //   Return -1 to indicate that this object's parent does not know about the
-   //   object.
-   return -1;
+    //   Return -1 to indicate that this object's parent does not know about the
+    //   object.
+    return -1;
 }
 
 sal_Int16 SAL_CALL SvtRulerAccessible::getAccessibleRole()
@@ -181,8 +176,7 @@ sal_Int16 SAL_CALL SvtRulerAccessible::getAccessibleRole()
 
 OUString SAL_CALL SvtRulerAccessible::getAccessibleDescription()
 {
-    ::osl::MutexGuard   aGuard( m_aMutex );
-    return msDescription;
+    return OUString();
 }
 
 OUString SAL_CALL SvtRulerAccessible::getAccessibleName()
@@ -257,20 +251,20 @@ void SAL_CALL SvtRulerAccessible::addAccessibleEventListener( const uno::Referen
 
 void SAL_CALL SvtRulerAccessible::removeAccessibleEventListener( const uno::Reference< XAccessibleEventListener >& xListener )
 {
-    if (xListener.is() && mnClientId)
-    {
-        ::osl::MutexGuard   aGuard( m_aMutex );
+    if (!(xListener.is() && mnClientId))
+        return;
 
-        sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( mnClientId, xListener );
-        if ( !nListenerCount )
-        {
-            // no listeners anymore
-            // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-            // and at least to us not firing any events anymore, in case somebody calls
-            // NotifyAccessibleEvent, again
-            comphelper::AccessibleEventNotifier::revokeClient( mnClientId );
-            mnClientId = 0;
-        }
+    ::osl::MutexGuard   aGuard( m_aMutex );
+
+    sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( mnClientId, xListener );
+    if ( !nListenerCount )
+    {
+        // no listeners anymore
+        // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
+        // and at least to us not firing any events anymore, in case somebody calls
+        // NotifyAccessibleEvent, again
+        comphelper::AccessibleEventNotifier::revokeClient( mnClientId );
+        mnClientId = 0;
     }
 }
 
@@ -290,7 +284,7 @@ sal_Int32 SvtRulerAccessible::getForeground(  )
     ::osl::MutexGuard   aGuard( m_aMutex );
     ThrowExceptionIfNotAlive();
 
-    return mpRepr->GetControlForeground().GetColor();
+    return sal_Int32(mpRepr->GetControlForeground());
 }
 sal_Int32 SvtRulerAccessible::getBackground(  )
 {
@@ -298,13 +292,13 @@ sal_Int32 SvtRulerAccessible::getBackground(  )
     ::osl::MutexGuard   aGuard( m_aMutex );
     ThrowExceptionIfNotAlive();
 
-    return mpRepr->GetControlBackground().GetColor();
+    return sal_Int32(mpRepr->GetControlBackground());
 }
 
 // XServiceInfo
 OUString SAL_CALL SvtRulerAccessible::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.ui.SvtRulerAccessible" );
+    return "com.sun.star.comp.ui.SvtRulerAccessible";
 }
 
 sal_Bool SAL_CALL SvtRulerAccessible::supportsService( const OUString& sServiceName )
@@ -314,7 +308,7 @@ sal_Bool SAL_CALL SvtRulerAccessible::supportsService( const OUString& sServiceN
 
 Sequence< OUString > SAL_CALL SvtRulerAccessible::getSupportedServiceNames()
 {
-    return Sequence< OUString > { OUString("com.sun.star.accessibility.AccessibleContext") };
+    return { "com.sun.star.accessibility.AccessibleContext" };
 }
 
 //=====  XTypeProvider  =======================================================
@@ -325,19 +319,19 @@ Sequence< sal_Int8 > SAL_CALL SvtRulerAccessible::getImplementationId()
 
 void SAL_CALL SvtRulerAccessible::disposing()
 {
-    if( !rBHelper.bDisposed )
-    {
-        ::osl::MutexGuard   aGuard( m_aMutex );
-        mpRepr = nullptr;      // object dies with representation
+    if( rBHelper.bDisposed )
+        return;
 
-        // Send a disposing to all listeners.
-        if ( mnClientId )
-        {
-            comphelper::AccessibleEventNotifier::revokeClientNotifyDisposing( mnClientId, *this );
-            mnClientId =  0;
-        }
-        mxParent.clear();
+    ::osl::MutexGuard   aGuard( m_aMutex );
+    mpRepr = nullptr;      // object dies with representation
+
+    // Send a disposing to all listeners.
+    if ( mnClientId )
+    {
+        comphelper::AccessibleEventNotifier::revokeClientNotifyDisposing( mnClientId, *this );
+        mnClientId =  0;
     }
+    mxParent.clear();
 }
 
 tools::Rectangle SvtRulerAccessible::GetBoundingBoxOnScreen()

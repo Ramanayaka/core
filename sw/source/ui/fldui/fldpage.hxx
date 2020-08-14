@@ -22,17 +22,14 @@
 #include <sfx2/tabdlg.hxx>
 #include <fldmgr.hxx>
 
-#define FIELD_COLUMN_WIDTH 76
-
-class ListBox;
-class SvTreeListBox;
+#define FIELD_COLUMN_WIDTH 19
 
 const int coLBCount = 3;
 
 class SwFieldPage : public SfxTabPage
 {
     OUString            m_aLstStrArr[ coLBCount ];
-    SwFieldMgr            m_aMgr;
+    SwFieldMgr          m_aMgr;
     SwField             *m_pCurField;
     SwWrtShell*         m_pWrtShell;
     sal_Int32           m_nTypeSel;
@@ -54,35 +51,32 @@ protected:
     SwField*            GetCurField()               { return m_pCurField;}
     SwWrtShell*         GetWrtShell() { return m_pWrtShell;}
 
-    DECL_LINK( ListBoxInsertHdl, ListBox&, void );
-    DECL_LINK( TreeListBoxInsertHdl, SvTreeListBox*, bool );
-    DECL_LINK( NumFormatHdl, ListBox&, void );
-    void                InsertHdl(void *);
+    DECL_LINK( TreeViewInsertHdl, weld::TreeView&, bool );
+    DECL_LINK( NumFormatHdl, weld::TreeView&, bool );
+    void                InsertHdl(weld::Widget*);
 
     void                Init();
-    void                SavePos( const ListBox* pLst1);
-    void                RestorePos( ListBox* pLst1 );
+    void                SavePos( const weld::TreeView& rLst1);
+    void                RestorePos( weld::TreeView& rLst1 );
     void                EnableInsert(bool bEnable);
-    bool         IsFieldEdit() const   { return m_bFieldEdit; }
+    bool                IsFieldEdit() const   { return m_bFieldEdit; }
 
     // insert field
-    void                InsertField(  sal_uInt16 nTypeId,
+    void                InsertField(SwFieldTypesEnum nTypeId,
                                     sal_uInt16 nSubType,
                                     const OUString& rPar1,
                                     const OUString& rPar2,
-                                    sal_uLong nFormatId,
+                                    sal_uInt32 nFormatId,
                                     sal_Unicode cDelim = ' ',
                                     bool bIsAutomaticLanguage = true);
 
-    using SfxTabPage::ActivatePage;
-
 public:
-    SwFieldPage(vcl::Window *pParent, const OString& rID,
-        const OUString& rUIXMLDescription, const SfxItemSet *pAttrSet);
+    SwFieldPage(weld::Container* pPage, weld::DialogController* pController, const OUString& rUIXMLDescription,
+        const OString& rID, const SfxItemSet *pAttrSet);
 
     virtual ~SwFieldPage() override;
 
-    virtual void        ActivatePage() override;
+    virtual void        Activate() override;
 
     SwFieldMgr&    GetFieldMgr()         { return m_aMgr; }
     void                SetWrtShell( SwWrtShell* m_pWrtShell );

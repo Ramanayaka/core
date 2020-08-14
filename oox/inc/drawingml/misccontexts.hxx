@@ -22,28 +22,27 @@
 
 #include <drawingml/colorchoicecontext.hxx>
 
-#include "drawingml/fillproperties.hxx"
+#include <drawingml/fillproperties.hxx>
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 
 /** Context handler that imports the a:solidFill element. */
-class SolidFillContext : public ColorContext
+class SolidFillContext final : public ColorContext
 {
 public:
     explicit            SolidFillContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::ContextHandler2Helper const & rParent,
                             FillProperties& rFillProps );
 };
 
 
 /** Context handler that imports the a:gradFill element. */
-class GradientFillContext : public ::oox::core::ContextHandler2
+class GradientFillContext final : public ::oox::core::ContextHandler2
 {
 public:
     explicit            GradientFillContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::ContextHandler2Helper const & rParent,
                             const ::oox::AttributeList& rAttribs,
                             GradientFillProperties& rGradientProps );
 
@@ -57,11 +56,11 @@ private:
 };
 
 /** Context handler that imports the a:pattFill element. */
-class PatternFillContext : public ::oox::core::ContextHandler2
+class PatternFillContext final : public ::oox::core::ContextHandler2
 {
 public:
     explicit            PatternFillContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::ContextHandler2Helper const & rParent,
                             const ::oox::AttributeList& rAttribs,
                             PatternFillProperties& rPatternProps );
 
@@ -77,11 +76,11 @@ private:
 
 /** Context handler that imports a14:imgProps, a14:imgLayer, a14:imgEffect containers
     and the a14:artistic* effect tags defined in the MS-ODRAWXML extension. */
-class ArtisticEffectContext : public ::oox::core::ContextHandler2
+class ArtisticEffectContext final : public ::oox::core::ContextHandler2
 {
 public:
     explicit            ArtisticEffectContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::ContextHandler2Helper const & rParent,
                             ArtisticEffectProperties& rEffect );
     virtual             ~ArtisticEffectContext() override;
 
@@ -97,11 +96,11 @@ private:
 
 /** Context handler that imports the a:extLst element inside a:blip and its
     children a:ext, which can contain transformations to the bitmap. */
-class BlipExtensionContext : public ::oox::core::ContextHandler2
+class BlipExtensionContext final : public ::oox::core::ContextHandler2
 {
 public:
     explicit            BlipExtensionContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::ContextHandler2Helper const & rParent,
                             BlipFillProperties& rBlipProps );
     virtual             ~BlipExtensionContext() override;
 
@@ -117,11 +116,11 @@ private:
 
 /** Context handler that imports the a:duotone element containing the colors
     of a bitmap duotone transformation. */
-class DuotoneContext : public ::oox::core::ContextHandler2
+class DuotoneContext final : public ::oox::core::ContextHandler2
 {
 public:
     explicit            DuotoneContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::ContextHandler2Helper const & rParent,
                             BlipFillProperties& rBlipProps );
     virtual             ~DuotoneContext() override;
 
@@ -138,11 +137,11 @@ private:
 
 /** Context handler that imports the a:clrChange element containing the colors
     of a bitmap color change transformation. */
-class ColorChangeContext : public ::oox::core::ContextHandler2
+class ColorChangeContext final : public ::oox::core::ContextHandler2
 {
 public:
     explicit            ColorChangeContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::ContextHandler2Helper const & rParent,
                             const ::oox::AttributeList& rAttribs,
                             BlipFillProperties& rBlipProps );
     virtual             ~ColorChangeContext() override;
@@ -159,11 +158,11 @@ private:
 
 /** Context handler that imports the a:blip element containing the fill bitmap
     and bitmap color transformation settings. */
-class BlipContext : public ::oox::core::ContextHandler2
+class BlipContext final : public ::oox::core::ContextHandler2
 {
 public:
     explicit            BlipContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::ContextHandler2Helper const & rParent,
                             const ::oox::AttributeList& rAttribs,
                             BlipFillProperties& rBlipProps );
 
@@ -177,11 +176,11 @@ private:
 };
 
 /** Context handler that imports the a:blipFill element. */
-class BlipFillContext : public ::oox::core::ContextHandler2
+class BlipFillContext final : public ::oox::core::ContextHandler2
 {
 public:
     explicit            BlipFillContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::ContextHandler2Helper const & rParent,
                             const ::oox::AttributeList& rAttribs,
                             BlipFillProperties& rBlipProps );
 
@@ -200,7 +199,7 @@ class FillPropertiesContext : public ::oox::core::ContextHandler2
 {
 public:
     explicit            FillPropertiesContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::ContextHandler2Helper const & rParent,
                             FillProperties& rFillProps );
 
     virtual ::oox::core::ContextHandlerRef
@@ -210,12 +209,12 @@ public:
 
     static ::oox::core::ContextHandlerRef
                         createFillContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::ContextHandler2Helper const & rParent,
                             sal_Int32 nElement,
                             const ::oox::AttributeList& rAttribs,
                             FillProperties& rFillProps );
 
-protected:
+private:
     FillProperties&     mrFillProps;
 };
 
@@ -226,20 +225,19 @@ protected:
     struct. The imported fill properties are converted automatically to the
     best fitting solid color.
  */
-class SimpleFillPropertiesContext : private FillProperties, public FillPropertiesContext
+class SimpleFillPropertiesContext final : private FillProperties, public FillPropertiesContext
 {
 public:
     explicit            SimpleFillPropertiesContext(
-                            ::oox::core::ContextHandler2Helper& rParent,
+                            ::oox::core::ContextHandler2Helper const & rParent,
                             Color& rColor );
     virtual             ~SimpleFillPropertiesContext() override;
 
-protected:
+private:
     Color&              mrColor;
 };
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 #endif
 

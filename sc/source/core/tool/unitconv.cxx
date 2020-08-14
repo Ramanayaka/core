@@ -19,9 +19,9 @@
 
 #include <com/sun/star/uno/Sequence.hxx>
 
-#include "unitconv.hxx"
-#include "global.hxx"
-#include "viewopti.hxx"
+#include <unitconv.hxx>
+#include <global.hxx>
+#include <viewopti.hxx>
 
 using namespace utl;
 using namespace com::sun::star::uno;
@@ -34,19 +34,10 @@ ScUnitConverterData::ScUnitConverterData(
     maIndexString(BuildIndexString(rFromUnit, rToUnit)),
     mfValue(fValue) {}
 
-ScUnitConverterData::ScUnitConverterData( const ScUnitConverterData& r ) :
-    maIndexString(r.maIndexString),
-    mfValue(r.mfValue) {}
-
-ScUnitConverterData::~ScUnitConverterData() {}
-
 OUString ScUnitConverterData::BuildIndexString(
     const OUString& rFromUnit, const OUString& rToUnit )
 {
-    OUStringBuffer aBuf(rFromUnit);
-    aBuf.append(cDelim);
-    aBuf.append(rToUnit);
-    return aBuf.makeStringAndClear();
+    return rFromUnit + OUStringChar(cDelim) + rToUnit;
 }
 
 // ScUnitConverter
@@ -63,49 +54,47 @@ ScUnitConverter::ScUnitConverter()
     ScLinkConfigItem aConfigItem( CFGPATH_UNIT );
 
     // empty node name -> use the config item's path itself
-    Sequence<OUString> aNodeNames = aConfigItem.GetNodeNames( "" );
+    const Sequence<OUString> aNodeNames = aConfigItem.GetNodeNames( "" );
 
     long nNodeCount = aNodeNames.getLength();
-    if ( nNodeCount )
+    if ( !nNodeCount )
+        return;
+
+    Sequence<OUString> aValNames( nNodeCount * 3 );
+    OUString* pValNameArray = aValNames.getArray();
+    const OUString sSlash('/');
+
+    long nIndex = 0;
+    for (const OUString& rNode : aNodeNames)
     {
-        const OUString* pNodeArray = aNodeNames.getConstArray();
-        Sequence<OUString> aValNames( nNodeCount * 3 );
-        OUString* pValNameArray = aValNames.getArray();
-        const OUString sSlash('/');
+        OUString sPrefix = rNode + sSlash;
 
-        long nIndex = 0;
-        for (long i=0; i<nNodeCount; i++)
-        {
-            OUString sPrefix = pNodeArray[i];
-            sPrefix += sSlash;
+        pValNameArray[nIndex++] = sPrefix + CFGSTR_UNIT_FROM;
+        pValNameArray[nIndex++] = sPrefix + CFGSTR_UNIT_TO;
+        pValNameArray[nIndex++] = sPrefix + CFGSTR_UNIT_FACTOR;
+    }
 
-            pValNameArray[nIndex++] = sPrefix + CFGSTR_UNIT_FROM;
-            pValNameArray[nIndex++] = sPrefix + CFGSTR_UNIT_TO;
-            pValNameArray[nIndex++] = sPrefix + CFGSTR_UNIT_FACTOR;
-        }
+    Sequence<Any> aProperties = aConfigItem.GetProperties(aValNames);
 
-        Sequence<Any> aProperties = aConfigItem.GetProperties(aValNames);
+    if (aProperties.getLength() != aValNames.getLength())
+        return;
 
-        if (aProperties.getLength() == aValNames.getLength())
-        {
-            const Any* pProperties = aProperties.getConstArray();
+    const Any* pProperties = aProperties.getConstArray();
 
-            OUString sFromUnit;
-            OUString sToUnit;
-            double fFactor = 0;
+    OUString sFromUnit;
+    OUString sToUnit;
+    double fFactor = 0;
 
-            nIndex = 0;
-            for (long i=0; i<nNodeCount; i++)
-            {
-                pProperties[nIndex++] >>= sFromUnit;
-                pProperties[nIndex++] >>= sToUnit;
-                pProperties[nIndex++] >>= fFactor;
+    nIndex = 0;
+    for (long i=0; i<nNodeCount; i++)
+    {
+        pProperties[nIndex++] >>= sFromUnit;
+        pProperties[nIndex++] >>= sToUnit;
+        pProperties[nIndex++] >>= fFactor;
 
-                ScUnitConverterData aNew(sFromUnit, sToUnit, fFactor);
-                OUString const aIndex = aNew.GetIndexString();
-                maData.insert(std::make_pair(aIndex, aNew));
-            }
-        }
+        ScUnitConverterData aNew(sFromUnit, sToUnit, fFactor);
+        OUString const aIndex = aNew.GetIndexString();
+        maData.insert(std::make_pair(aIndex, aNew));
     }
 }
 

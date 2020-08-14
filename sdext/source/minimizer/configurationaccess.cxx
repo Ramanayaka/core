@@ -23,9 +23,11 @@
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/util/XChangesBatch.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/util/theMacroExpander.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <comphelper/propertysequence.hxx>
 #include <sal/macros.h>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -34,94 +36,93 @@ using namespace ::com::sun::star::container;
 
 static OUString GetPathToConfigurationRoot()
 {
-    return OUString("org.openoffice.Office.PresentationMinimizer");
+    return "org.openoffice.Office.PresentationMinimizer";
 }
 
 void OptimizerSettings::LoadSettingsFromConfiguration( const Reference< XNameAccess >& rSettings )
 {
-    if ( rSettings.is() )
+    if ( !rSettings.is() )
+        return;
+
+    const Sequence< OUString > aElements( rSettings->getElementNames() );
+    for ( const OUString& aPropertyName : aElements )
     {
-        const Sequence< OUString > aElements( rSettings->getElementNames() );
-        for ( int i = 0; i < aElements.getLength(); i++ )
+        try
         {
-            try
+            Any aValue( rSettings->getByName( aPropertyName ) );
+            switch( TKGet( aPropertyName ) )
             {
-                const OUString aPropertyName( aElements[ i ] );
-                Any aValue( rSettings->getByName( aPropertyName ) );
-                switch( TKGet( aPropertyName ) )
-                {
-                    case TK_Name :                      aValue >>= maName; break;
-                    case TK_JPEGCompression :           aValue >>= mbJPEGCompression; break;
-                    case TK_JPEGQuality :               aValue >>= mnJPEGQuality; break;
-                    case TK_RemoveCropArea :            aValue >>= mbRemoveCropArea; break;
-                    case TK_ImageResolution :           aValue >>= mnImageResolution; break;
-                    case TK_EmbedLinkedGraphics :       aValue >>= mbEmbedLinkedGraphics; break;
-                    case TK_OLEOptimization :           aValue >>= mbOLEOptimization; break;
-                    case TK_OLEOptimizationType :       aValue >>= mnOLEOptimizationType; break;
-                    case TK_DeleteUnusedMasterPages :   aValue >>= mbDeleteUnusedMasterPages; break;
-                    case TK_DeleteHiddenSlides :        aValue >>= mbDeleteHiddenSlides; break;
-                    case TK_DeleteNotesPages :          aValue >>= mbDeleteNotesPages ;break;
-                    case TK_SaveAs :                    aValue >>= mbSaveAs; break;
+                case TK_Name :                      aValue >>= maName; break;
+                case TK_JPEGCompression :           aValue >>= mbJPEGCompression; break;
+                case TK_JPEGQuality :               aValue >>= mnJPEGQuality; break;
+                case TK_RemoveCropArea :            aValue >>= mbRemoveCropArea; break;
+                case TK_ImageResolution :           aValue >>= mnImageResolution; break;
+                case TK_EmbedLinkedGraphics :       aValue >>= mbEmbedLinkedGraphics; break;
+                case TK_OLEOptimization :           aValue >>= mbOLEOptimization; break;
+                case TK_OLEOptimizationType :       aValue >>= mnOLEOptimizationType; break;
+                case TK_DeleteUnusedMasterPages :   aValue >>= mbDeleteUnusedMasterPages; break;
+                case TK_DeleteHiddenSlides :        aValue >>= mbDeleteHiddenSlides; break;
+                case TK_DeleteNotesPages :          aValue >>= mbDeleteNotesPages ;break;
+                case TK_SaveAs :                    aValue >>= mbSaveAs; break;
 //                  case TK_SaveAsURL :                 aValue >>= maSaveAsURL; break;      // URL is not saved to configuration
 //                  case TK_FilterName :                aValue >>= maFilterName; break;     // URL is not saved to configuration
-                    case TK_OpenNewDocument :           aValue >>= mbOpenNewDocument; break;
-                    default: break;
-                }
+                case TK_OpenNewDocument :           aValue >>= mbOpenNewDocument; break;
+                default: break;
             }
-            catch (const Exception&)
-            {
-            }
+        }
+        catch (const Exception&)
+        {
         }
     }
 }
 
 void OptimizerSettings::SaveSettingsToConfiguration( const Reference< XNameReplace >& rSettings )
 {
-    if ( rSettings.is() )
-    {
-        OUString pNames[] = {
-            OUString("Name"),
-            OUString("JPEGCompression"),
-            OUString("JPEGQuality"),
-            OUString("RemoveCropArea"),
-            OUString("ImageResolution"),
-            OUString("EmbedLinkedGraphics"),
-            OUString("OLEOptimization"),
-            OUString("OLEOptimizationType"),
-            OUString("DeleteUnusedMasterPages"),
-            OUString("DeleteHiddenSlides"),
-            OUString("DeleteNotesPages"),
-            OUString("SaveAs"),
+    if ( !rSettings.is() )
+        return;
+
+    OUString pNames[] = {
+        OUString("Name"),
+        OUString("JPEGCompression"),
+        OUString("JPEGQuality"),
+        OUString("RemoveCropArea"),
+        OUString("ImageResolution"),
+        OUString("EmbedLinkedGraphics"),
+        OUString("OLEOptimization"),
+        OUString("OLEOptimizationType"),
+        OUString("DeleteUnusedMasterPages"),
+        OUString("DeleteHiddenSlides"),
+        OUString("DeleteNotesPages"),
+        OUString("SaveAs"),
 //          OUString("SaveAsURL"),
 //          OUString("FilterName"),
-            OUString("OpenNewDocument") };
+        OUString("OpenNewDocument") };
 
-        Any pValues[] = {
-            Any( maName ),
-            Any( mbJPEGCompression ),
-            Any( mnJPEGQuality ),
-            Any( mbRemoveCropArea ),
-            Any( mnImageResolution ),
-            Any( mbEmbedLinkedGraphics ),
-            Any( mbOLEOptimization ),
-            Any( mnOLEOptimizationType ),
-            Any( mbDeleteUnusedMasterPages ),
-            Any( mbDeleteHiddenSlides ),
-            Any( mbDeleteNotesPages ),
-            Any( mbSaveAs ),
+    Any pValues[] = {
+        Any( maName ),
+        Any( mbJPEGCompression ),
+        Any( mnJPEGQuality ),
+        Any( mbRemoveCropArea ),
+        Any( mnImageResolution ),
+        Any( mbEmbedLinkedGraphics ),
+        Any( mbOLEOptimization ),
+        Any( mnOLEOptimizationType ),
+        Any( mbDeleteUnusedMasterPages ),
+        Any( mbDeleteHiddenSlides ),
+        Any( mbDeleteNotesPages ),
+        Any( mbSaveAs ),
 //          Any( maSaveAsURL ),
 //          Any( maFilterName ),
-            Any( mbOpenNewDocument ) };
+        Any( mbOpenNewDocument ) };
 
-        for ( int i = 0; i < int(SAL_N_ELEMENTS( pNames )); i++ )
+    for ( int i = 0; i < int(SAL_N_ELEMENTS( pNames )); i++ )
+    {
+        try
         {
-            try
-            {
-                rSettings->replaceByName( pNames[ i ], pValues[ i ] );
-            }
-            catch (const Exception&)
-            {
-            }
+            rSettings->replaceByName( pNames[ i ], pValues[ i ] );
+        }
+        catch (const Exception&)
+        {
         }
     }
 }
@@ -146,10 +147,9 @@ ConfigurationAccess::ConfigurationAccess( const Reference< uno::XComponentContex
     mxContext( rxContext )
 {
     LoadStrings();
-    maSettings.push_back( OptimizerSettings() );
+    maSettings.emplace_back( );
     maSettings.back().maName = "LastUsedSettings";
     LoadConfiguration();
-    maInitialSettings = maSettings;
 };
 
 ConfigurationAccess::~ConfigurationAccess()
@@ -175,11 +175,11 @@ void ConfigurationAccess::LoadStrings()
             if ( xSet.is() )
             {
                 const Sequence< OUString > aElements( xSet->getElementNames() );
-                for ( int i = 0; i < aElements.getLength(); i++ )
+                for ( const auto& rElement : aElements )
                 {
                     try
                     {
-                        OUString aString, aPropertyName( aElements[ i ] );
+                        OUString aString, aPropertyName( rElement );
                         if ( xSet->getByName( aPropertyName ) >>= aString )
                             maStrings[ TKGet( aPropertyName ) ] = aString;
                     }
@@ -215,15 +215,15 @@ void ConfigurationAccess::LoadConfiguration()
             if ( xSet.is() )
             {
                 const Sequence< OUString > aElements( xSet->getElementNames() );
-                for ( int i = 0; i < aElements.getLength(); i++ )
+                for ( const auto& rElement : aElements )
                 {
                     try
                     {
-                        OUString aPath( "Settings/Templates/" + aElements[ i ] );
+                        OUString aPath( "Settings/Templates/" + rElement );
                         Reference< container::XNameAccess > xTemplates( GetConfigurationNode( xRoot, aPath ), UNO_QUERY );
                         if ( xTemplates.is() )
                         {
-                            maSettings.push_back( OptimizerSettings() );
+                            maSettings.emplace_back( );
                             maSettings.back().LoadSettingsFromConfiguration( xTemplates );
                         }
                     }
@@ -246,7 +246,6 @@ void ConfigurationAccess::SaveConfiguration()
     {
         do
         {
-            int i;
             Reference<util::XChangesBatch> xRoot( OpenConfiguration( false ), UNO_QUERY_THROW );
 
             // storing the last used settings
@@ -259,8 +258,8 @@ void ConfigurationAccess::SaveConfiguration()
             Reference< container::XNameContainer > xNameContainer( xSet, UNO_QUERY_THROW );
 
             const Sequence< OUString > aElements( xSet->getElementNames() );
-            for( i = 0; i < aElements.getLength(); i++ )
-                xNameContainer->removeByName( aElements[ i ] );
+            for( const auto& rElement : aElements )
+                xNameContainer->removeByName( rElement );
 
             for( std::vector<OptimizerSettings>::size_type k = 1; k < maSettings.size(); k++ )
             {
@@ -289,14 +288,10 @@ Reference< XInterface > ConfigurationAccess::OpenConfiguration( bool bReadOnly )
     try
     {
         Reference< lang::XMultiServiceFactory > xProvider = configuration::theDefaultProvider::get( mxContext );
-        Sequence< Any > aCreationArguments( 2 );
-        aCreationArguments[0] <<= PropertyValue(
-            "nodepath", 0,
-            makeAny( GetPathToConfigurationRoot() ),
-            PropertyState_DIRECT_VALUE );
-        aCreationArguments[1] <<= beans::PropertyValue(
-            "lazywrite", 0, makeAny( true ),
-            PropertyState_DIRECT_VALUE );
+        uno::Sequence<uno::Any> aCreationArguments(comphelper::InitAnyPropertySequence(
+        {
+            {"nodepath",  uno::Any(GetPathToConfigurationRoot())}
+        }));
         OUString sAccessService;
         if ( bReadOnly )
             sAccessService = "com.sun.star.configuration.ConfigurationAccess";
@@ -331,10 +326,10 @@ Reference< XInterface > ConfigurationAccess::GetConfigurationNode(
             }
         }
     }
-    catch (const Exception& rException)
+    catch (const Exception&)
     {
-        SAL_WARN("sdext.minimizer", "caught exception while getting configuration node "
-                  << sPathToNode << " : " << rException.Message);
+        TOOLS_WARN_EXCEPTION("sdext.minimizer", "caught exception while getting configuration node "
+                  << sPathToNode);
     }
     return xNode;
 }
@@ -469,14 +464,8 @@ Sequence< PropertyValue > ConfigurationAccess::GetConfigurationSequence()
 
 std::vector< OptimizerSettings >::iterator ConfigurationAccess::GetOptimizerSettingsByName( const OUString& rName )
 {
-    std::vector< OptimizerSettings >::iterator aIter( maSettings.begin() + 1 );
-    const std::vector< OptimizerSettings >::const_iterator aEnd( maSettings.end() );
-    for ( ; aIter != aEnd; ++aIter )
-    {
-        if ( aIter->maName == rName )
-            break;
-    }
-    return aIter;
+    return std::find_if(maSettings.begin() + 1, maSettings.end(),
+        [&rName](const OptimizerSettings& rSettings) { return rSettings.maName == rName; });
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

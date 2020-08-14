@@ -7,23 +7,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#if defined __GNUC__ && __GNUC__ >= 7
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated"
-#pragma GCC diagnostic ignored "-Wunused-but-set-parameter"
-#elif defined __clang__ && __cplusplus > 201402L
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdynamic-exception-spec"
-#endif
-#include <libcmis/libcmis.hxx>
-#if defined __GNUC__ && __GNUC__ >= 7
-#pragma GCC diagnostic pop
-#elif defined __clang__ && __cplusplus > 201402L
-#pragma clang diagnostic pop
-#endif
+#include <sal/config.h>
 
-#include <config_oauth2.h>
 #include <rtl/uri.hxx>
+#include <tools/urlobj.hxx>
 
 #include "cmis_url.hxx"
 
@@ -91,7 +78,7 @@ namespace cmis
         if ( !m_sPath.isEmpty( ) )
         {
             sal_Int32 nPos = -1;
-            OUString sEncodedPath;
+            OUStringBuffer sEncodedPath;
             do
             {
                 sal_Int32 nStartPos = nPos + 1;
@@ -103,14 +90,14 @@ namespace cmis
 
                 if ( !sSegment.isEmpty( ) )
                 {
-                    sEncodedPath += "/" + rtl::Uri::encode( sSegment,
+                    sEncodedPath.append("/").append(rtl::Uri::encode( sSegment,
                             rtl_UriCharClassRelSegment,
                             rtl_UriEncodeKeepEscapes,
-                            RTL_TEXTENCODING_UTF8 );
+                            RTL_TEXTENCODING_UTF8 ));
                 }
             }
             while ( nPos != -1 );
-            sUrl += sEncodedPath;
+            sUrl += sEncodedPath.makeStringAndClear();
         } else if ( !m_sId.isEmpty( ) )
         {
             sUrl += "#" + rtl::Uri::encode( m_sId,

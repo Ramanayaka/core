@@ -21,7 +21,9 @@
 #define INCLUDED_STARMATH_SOURCE_EQNOLEFILEHDR_HXX
 
 #include <sal/types.h>
-#include <sot/storage.hxx>
+#include <tools/stream.hxx>
+
+class SotStorage;
 
 #define EQNOLEFILEHDR_SIZE 28
 
@@ -44,7 +46,7 @@ public:
     sal_uInt32   nReserved3; // not used
     sal_uInt32   nReserved4; // not used
 
-    void Read(SotStorageStream *pS)
+    void Read(SvStream* pS)
     {
         pS->ReadUInt16( nCBHdr );
         pS->ReadUInt32( nVersion );
@@ -55,7 +57,7 @@ public:
         pS->ReadUInt32( nReserved3 );
         pS->ReadUInt32( nReserved4 );
     }
-    void Write(SotStorageStream *pS)
+    void Write(SvStream* pS)
     {
         pS->WriteUInt16( nCBHdr );
         pS->WriteUInt32( nVersion );

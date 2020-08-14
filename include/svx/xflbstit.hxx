@@ -23,20 +23,18 @@
 #include <svl/eitem.hxx>
 #include <svx/svxdllapi.h>
 
-class SVX_DLLPUBLIC XFillBmpStretchItem : public SfxBoolItem
+class SVXCORE_DLLPUBLIC XFillBmpStretchItem final : public SfxBoolItem
 {
 public:
                             XFillBmpStretchItem( bool bStretch = true );
-                            XFillBmpStretchItem( SvStream& rIn );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create( SvStream& rIn, sal_uInt16 nVer ) const override;
+    virtual XFillBmpStretchItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 #endif

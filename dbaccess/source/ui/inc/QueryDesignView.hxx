@@ -21,17 +21,17 @@
 
 #include "JoinDesignView.hxx"
 #include <vcl/split.hxx>
-#include "QEnumTypes.hxx"
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include "querycontroller.hxx"
-#include "ConnectionLineData.hxx"
 
 namespace connectivity
 {
     class OSQLParseNode;
 }
-
-class ComboBox;
+namespace weld
+{
+    class ComboBox;
+}
 namespace dbaui
 {
     enum SqlParseError
@@ -77,9 +77,9 @@ namespace dbaui
         virtual ~OQueryDesignView() override;
         virtual void dispose() override;
 
-        bool isCutAllowed();
-        bool isPasteAllowed();
-        bool isCopyAllowed();
+        bool isCutAllowed() const;
+        bool isPasteAllowed() const;
+        bool isCopyAllowed() const;
         void copy();
         void cut();
         void paste();
@@ -106,12 +106,12 @@ namespace dbaui
         const OUString&               getDecimalSeparator() const { return m_sDecimalSep;}
 
         SqlParseError   InsertField( const OTableFieldDescRef& rInfo, bool bActivate = true);
-        bool            HasFieldByAliasName(const OUString& rFieldName, OTableFieldDescRef& rInfo) const;
+        bool            HasFieldByAliasName(const OUString& rFieldName, OTableFieldDescRef const & rInfo) const;
         // called when a table from tabview was deleted
         void TableDeleted(const OUString& rAliasName);
 
         sal_Int32 getColWidth( sal_uInt16 _nColPos) const;
-        void fillValidFields(const OUString& strTableName, ComboBox* pFieldList);
+        void fillValidFields(const OUString& strTableName, weld::ComboBox& rFieldList);
 
         void SaveUIConfig();
         void stopTimer();
@@ -134,7 +134,7 @@ namespace dbaui
                     const css::uno::Sequence< css::beans::PropertyValue >& i_rFieldDescriptions
                 );
 
-        ::connectivity::OSQLParseNode* getPredicateTreeFromEntry(   const OTableFieldDescRef& pEntry,
+        std::unique_ptr<::connectivity::OSQLParseNode> getPredicateTreeFromEntry(   const OTableFieldDescRef& pEntry,
                                                                     const OUString& _sCriteria,
                                                                     OUString& _rsErrorMessage,
                                                                     css::uno::Reference< css::beans::XPropertySet>& _rxColumn) const;

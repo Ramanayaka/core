@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <anchoreddrawobject.hxx>
 #include <ascharanchoredobjectposition.hxx>
 #include <frame.hxx>
 #include <txtfrm.hxx>
 #include <flyfrms.hxx>
 #include <svx/svdobj.hxx>
-#include <dcontact.hxx>
 #include <frmfmt.hxx>
 #include <frmatr.hxx>
 #include <editeng/lrspitem.hxx>
@@ -130,9 +130,9 @@ void SwAsCharAnchoredObjectPosition::CalcPosition()
     // left spacing is only considered, if requested.
     if( mnFlags & AsCharFlags::UlSpace )
     {
-        aAnchorPos.X() += nLRSpaceLeft;
+        aAnchorPos.AdjustX(nLRSpaceLeft );
     }
-    aAnchorPos.Y() += nULSpaceUpper;
+    aAnchorPos.AdjustY(nULSpaceUpper );
 
     // for drawing objects: consider difference between its bounding rectangle
     // and its snapping rectangle by adjusting anchor position.
@@ -147,16 +147,16 @@ void SwAsCharAnchoredObjectPosition::CalcPosition()
 
         if( mnFlags & AsCharFlags::UlSpace )
         {
-            aAnchorPos.X() += aSnapRect.Left() - aObjBoundRect.Left();
+            aAnchorPos.AdjustX(aSnapRect.Left() - aObjBoundRect.Left() );
         }
-        aAnchorPos.Y() += aSnapRect.Top() - aObjBoundRect.Top();
+        aAnchorPos.AdjustY(aSnapRect.Top() - aObjBoundRect.Top() );
     }
 
     // enlarge bounding rectangle of object by its spacing.
-    aObjBoundRect.Left( aObjBoundRect.Left() - nLRSpaceLeft );
-    aObjBoundRect.Width( aObjBoundRect.Width() + nLRSpaceRight );
-    aObjBoundRect.Top( aObjBoundRect.Top() - nULSpaceUpper );
-    aObjBoundRect.Height( aObjBoundRect.Height() + nULSpaceLower );
+    aObjBoundRect.AddLeft( - nLRSpaceLeft );
+    aObjBoundRect.AddWidth( nLRSpaceRight );
+    aObjBoundRect.AddTop( - nULSpaceUpper );
+    aObjBoundRect.AddHeight( nULSpaceLower );
 
     // calculate relative position to given base line.
     const SwFormatVertOrient& rVert = rFrameFormat.GetVertOrient();
@@ -173,14 +173,14 @@ void SwAsCharAnchoredObjectPosition::CalcPosition()
     if( mnFlags & AsCharFlags::Init && nRelPos < 0 && mnLineAscentInclObjs < -nRelPos )
     {
         if( mnFlags & AsCharFlags::Rotate )
-            aAnchorPos.X() -= mnLineAscentInclObjs + nRelPos;
+            aAnchorPos.AdjustX( -(mnLineAscentInclObjs + nRelPos) );
         else
-            aAnchorPos.Y() -= mnLineAscentInclObjs + nRelPos;
+            aAnchorPos.AdjustY( -(mnLineAscentInclObjs + nRelPos) );
     }
 
     // consider BIDI-multiportion by adjusting proposed anchor position
     if( mnFlags & AsCharFlags::Bidi )
-        aAnchorPos.X() -= aObjBoundRect.Width();
+        aAnchorPos.AdjustX( -(aObjBoundRect.Width()) );
 
     // calculate relative position considering rotation and inside rotation
     // reverse direction.
@@ -189,15 +189,15 @@ void SwAsCharAnchoredObjectPosition::CalcPosition()
         if( mnFlags & AsCharFlags::Rotate )
         {
             if( mnFlags & AsCharFlags::Reverse )
-                aRelPos.X() = -nRelPos - aObjBoundRect.Width();
+                aRelPos.setX( -nRelPos - aObjBoundRect.Width() );
             else
             {
-                aRelPos.X() = nRelPos;
-                aRelPos.Y() = -aObjBoundRect.Height();
+                aRelPos.setX( nRelPos );
+                aRelPos.setY( -aObjBoundRect.Height() );
             }
         }
         else
-            aRelPos.Y() = nRelPos;
+            aRelPos.setY( nRelPos );
     }
 
     if( !IsObjFly() )
@@ -224,7 +224,7 @@ void SwAsCharAnchoredObjectPosition::CalcPosition()
             if ( rAnchorFrame.IsRightToLeft() )
             {
                 rAnchorFrame.SwitchLTRtoRTL( aAbsAnchorPos );
-                aAbsAnchorPos.X() -= nObjWidth;
+                aAbsAnchorPos.AdjustX( -nObjWidth );
             }
             if ( rAnchorFrame.IsVertical() )
                 rAnchorFrame.SwitchHorizontalToVertical( aAbsAnchorPos );
@@ -259,13 +259,13 @@ void SwAsCharAnchoredObjectPosition::CalcPosition()
         if ( rAnchorFrame.IsRightToLeft() )
         {
             rAnchorFrame.SwitchLTRtoRTL( aAnchorPos );
-            aAnchorPos.X() -= nObjWidth;
+            aAnchorPos.AdjustX( -nObjWidth );
         }
         if ( rAnchorFrame.IsVertical() )
             rAnchorFrame.SwitchHorizontalToVertical( aAnchorPos );
 
         // #i44347# - keep last object rectangle at anchored object
-       OSL_ENSURE( dynamic_cast<const SwAnchoredDrawObject*>( &GetAnchoredObj() ) !=  nullptr,
+        OSL_ENSURE( dynamic_cast<const SwAnchoredDrawObject*>( &GetAnchoredObj() ) !=  nullptr,
                  "<SwAsCharAnchoredObjectPosition::CalcPosition()> - wrong type of anchored object." );
         SwAnchoredDrawObject& rAnchoredDrawObj =
                         static_cast<SwAnchoredDrawObject&>( GetAnchoredObj() );
@@ -280,7 +280,7 @@ void SwAsCharAnchoredObjectPosition::CalcPosition()
         if ( rAnchorFrame.IsRightToLeft() )
         {
             rAnchorFrame.SwitchLTRtoRTL( aAnchorPos );
-            aAnchorPos.X() -= nObjWidth;
+            aAnchorPos.AdjustX( -nObjWidth );
         }
         if ( rAnchorFrame.IsVertical() )
         {
@@ -301,19 +301,19 @@ void SwAsCharAnchoredObjectPosition::CalcPosition()
                aRelAttr != rFlyInContentFrame.GetCurrRelPos() ) )
         {
             // set new anchor position and relative position
-            SwFlyInContentFrame* pFlyInContentFrame = &(const_cast<SwFlyInContentFrame&>(rFlyInContentFrame));
+            SwFlyInContentFrame* pFlyInContentFrame = &const_cast<SwFlyInContentFrame&>(rFlyInContentFrame);
             pFlyInContentFrame->SetRefPoint( aAnchorPos, aRelAttr, aRelPos );
-            if( nObjWidth != aRectFnSet.GetWidth(pFlyInContentFrame->Frame()) )
+            if( nObjWidth != aRectFnSet.GetWidth(pFlyInContentFrame->getFrameArea()) )
             {
                 // recalculate object bound rectangle, if object width has changed.
                 aObjBoundRect = GetAnchoredObj().GetObjRect();
-                aObjBoundRect.Left( aObjBoundRect.Left() - rLRSpace.GetLeft() );
-                aObjBoundRect.Width( aObjBoundRect.Width() + rLRSpace.GetRight() );
-                aObjBoundRect.Top( aObjBoundRect.Top() - rULSpace.GetUpper() );
-                aObjBoundRect.Height( aObjBoundRect.Height() + rULSpace.GetLower() );
+                aObjBoundRect.AddLeft( - rLRSpace.GetLeft() );
+                aObjBoundRect.AddWidth( rLRSpace.GetRight() );
+                aObjBoundRect.AddTop( - rULSpace.GetUpper() );
+                aObjBoundRect.AddHeight( rULSpace.GetLower() );
             }
         }
-        OSL_ENSURE( aRectFnSet.GetHeight(rFlyInContentFrame.Frame()),
+        OSL_ENSURE( aRectFnSet.GetHeight(rFlyInContentFrame.getFrameArea()),
             "SwAnchoredObjectPosition::CalcPosition(..) - fly frame has an invalid height" );
     }
 

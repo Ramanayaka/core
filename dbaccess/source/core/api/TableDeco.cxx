@@ -17,30 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
-
-#include "TableDeco.hxx"
+#include <TableDeco.hxx>
+#include <apitools.hxx>
 #include <definitioncolumn.hxx>
-#include "dbastrings.hrc"
-#include "core_resource.hxx"
-#include "core_resource.hrc"
+#include <stringconstants.hxx>
+#include <core_resource.hxx>
+#include <strings.hrc>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 #include <cppuhelper/typeprovider.hxx>
-#include <comphelper/enumhelper.hxx>
-#include <comphelper/container.hxx>
-#include <comphelper/sequence.hxx>
 #include <comphelper/property.hxx>
-#include <comphelper/types.hxx>
-#include <com/sun/star/util/XRefreshListener.hpp>
+#include <comphelper/servicehelper.hxx>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/sdbcx/Privilege.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <connectivity/dbtools.hxx>
 #include <connectivity/dbexception.hxx>
-#include <comphelper/extract.hxx>
-#include "ContainerMediator.hxx"
+#include <ContainerMediator.hxx>
 
 using namespace dbaccess;
 using namespace ::com::sun::star::uno;
@@ -67,7 +61,6 @@ ODBTableDecorator::ODBTableDecorator( const Reference< XConnection >& _rxConnect
     ,m_xMetaData( _rxConnection.is() ? _rxConnection->getMetaData() : Reference< XDatabaseMetaData >() )
     ,m_xNumberFormats( _rxNumberFormats )
     ,m_nPrivileges(-1)
-    ,m_pColumns(nullptr)
 {
     ODataSettings::registerPropertiesFor(this);
 }
@@ -112,6 +105,7 @@ sal_Bool SAL_CALL ODBTableDecorator::convertFastPropertyValue(
         case PROPERTY_ID_APPLYFILTER:
         case PROPERTY_ID_FONT:
         case PROPERTY_ID_ROW_HEIGHT:
+        case PROPERTY_ID_AUTOGROW:
         case PROPERTY_ID_TEXTCOLOR:
         case PROPERTY_ID_TEXTLINECOLOR:
         case PROPERTY_ID_TEXTEMPHASIS:
@@ -152,12 +146,13 @@ void ODBTableDecorator::setFastPropertyValue_NoBroadcast(sal_Int32 _nHandle, con
     {
         case PROPERTY_ID_PRIVILEGES:
             SAL_WARN("dbaccess", "Property is readonly!");
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case PROPERTY_ID_FILTER:
         case PROPERTY_ID_ORDER:
         case PROPERTY_ID_APPLYFILTER:
         case PROPERTY_ID_FONT:
         case PROPERTY_ID_ROW_HEIGHT:
+        case PROPERTY_ID_AUTOGROW:
         case PROPERTY_ID_TEXTCOLOR:
         case PROPERTY_ID_TEXTLINECOLOR:
         case PROPERTY_ID_TEXTEMPHASIS:
@@ -231,13 +226,14 @@ void ODBTableDecorator::getFastPropertyValue(Any& _rValue, sal_Int32 _nHandle) c
                     break;
                 }
             }
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
 
         case PROPERTY_ID_FILTER:
         case PROPERTY_ID_ORDER:
         case PROPERTY_ID_APPLYFILTER:
         case PROPERTY_ID_FONT:
         case PROPERTY_ID_ROW_HEIGHT:
+        case PROPERTY_ID_AUTOGROW:
         case PROPERTY_ID_TEXTCOLOR:
         case PROPERTY_ID_TEXTLINECOLOR:
         case PROPERTY_ID_TEXTEMPHASIS:
@@ -315,22 +311,20 @@ void ODBTableDecorator::construct()
     Reference<XPropertySetInfo> xInfo = xProp->getPropertySetInfo();
 
     Sequence< Property > aTableProps = xInfo->getProperties();
-    Property* pIter = aTableProps.getArray();
-    Property* pEnd = pIter + aTableProps.getLength();
-    for (;pIter != pEnd ; ++pIter)
+    for (Property & prop : aTableProps)
     {
-        if (pIter->Name == PROPERTY_CATALOGNAME)
-            pIter->Handle = PROPERTY_ID_CATALOGNAME;
-        else if (pIter->Name == PROPERTY_SCHEMANAME)
-            pIter->Handle = PROPERTY_ID_SCHEMANAME;
-        else if (pIter->Name == PROPERTY_NAME)
-            pIter->Handle = PROPERTY_ID_NAME;
-        else if (pIter->Name == PROPERTY_DESCRIPTION)
-            pIter->Handle = PROPERTY_ID_DESCRIPTION;
-        else if (pIter->Name == PROPERTY_TYPE)
-            pIter->Handle = PROPERTY_ID_TYPE;
-        else if (pIter->Name == PROPERTY_PRIVILEGES)
-            pIter->Handle = PROPERTY_ID_PRIVILEGES;
+        if (prop.Name == PROPERTY_CATALOGNAME)
+            prop.Handle = PROPERTY_ID_CATALOGNAME;
+        else if (prop.Name == PROPERTY_SCHEMANAME)
+            prop.Handle = PROPERTY_ID_SCHEMANAME;
+        else if (prop.Name == PROPERTY_NAME)
+            prop.Handle = PROPERTY_ID_NAME;
+        else if (prop.Name == PROPERTY_DESCRIPTION)
+            prop.Handle = PROPERTY_ID_DESCRIPTION;
+        else if (prop.Name == PROPERTY_TYPE)
+            prop.Handle = PROPERTY_ID_TYPE;
+        else if (prop.Name == PROPERTY_PRIVILEGES)
+            prop.Handle = PROPERTY_ID_PRIVILEGES;
     }
 
     describeProperties(aTableProps);
@@ -379,7 +373,7 @@ Any SAL_CALL ODBTableDecorator::queryInterface( const Type & rType )
 Sequence< Type > SAL_CALL ODBTableDecorator::getTypes(  )
 {
     Reference<XTypeProvider> xTypes(m_xTable,UNO_QUERY);
-    OSL_ENSURE(xTypes.is(),"Table must be a TypePropvider!");
+    OSL_ENSURE(xTypes.is(),"Table must be a TypeProvider!");
     return xTypes->getTypes();
 }
 
@@ -389,12 +383,10 @@ void SAL_CALL ODBTableDecorator::rename( const OUString& _rNewName )
     ::osl::MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(OTableDescriptor_BASE::rBHelper.bDisposed);
     Reference<XRename> xRename(m_xTable,UNO_QUERY);
-    if(xRename.is())
-    {
-        xRename->rename(_rNewName);
-    }
-    else // not supported
+    if(!xRename.is())
         throw SQLException(DBA_RES(RID_STR_NO_TABLE_RENAME),*this,SQLSTATE_GENERAL,1000,Any() );
+    // not supported
+    xRename->rename(_rNewName);
 }
 
 // XAlterTable,
@@ -403,12 +395,9 @@ void SAL_CALL ODBTableDecorator::alterColumnByName( const OUString& _rName, cons
     ::osl::MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(OTableDescriptor_BASE::rBHelper.bDisposed);
     Reference<XAlterTable> xAlter(m_xTable,UNO_QUERY);
-    if(xAlter.is())
-    {
-        xAlter->alterColumnByName(_rName,_rxDescriptor);
-    }
-    else
+    if(!xAlter.is())
         throw SQLException(DBA_RES(RID_STR_COLUMN_ALTER_BY_NAME),*this,SQLSTATE_GENERAL,1000,Any() );
+    xAlter->alterColumnByName(_rName,_rxDescriptor);
     if(m_pColumns)
         m_pColumns->refresh();
 }
@@ -418,28 +407,26 @@ void SAL_CALL ODBTableDecorator::alterColumnByIndex( sal_Int32 _nIndex, const Re
     ::osl::MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(OTableDescriptor_BASE::rBHelper.bDisposed);
     Reference<XAlterTable> xAlter(m_xTable,UNO_QUERY);
-    if(xAlter.is())
-    {
-        xAlter->alterColumnByIndex(_nIndex,_rxDescriptor);
-        if(m_pColumns)
-            m_pColumns->refresh();
-    }
-    else // not supported
+    if(!xAlter.is())
         throw SQLException(DBA_RES(RID_STR_COLUMN_ALTER_BY_INDEX),*this,SQLSTATE_GENERAL,1000,Any() );
+    // not supported
+    xAlter->alterColumnByIndex(_nIndex,_rxDescriptor);
+    if(m_pColumns)
+        m_pColumns->refresh();
 }
 
 Reference< XNameAccess> ODBTableDecorator::getIndexes()
 {
     ::osl::MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(OTableDescriptor_BASE::rBHelper.bDisposed);
-    return Reference< XIndexesSupplier>(m_xTable,UNO_QUERY)->getIndexes();
+    return Reference< XIndexesSupplier>(m_xTable,UNO_QUERY_THROW)->getIndexes();
 }
 
 Reference< XIndexAccess> ODBTableDecorator::getKeys()
 {
     ::osl::MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(OTableDescriptor_BASE::rBHelper.bDisposed);
-    return Reference< XKeysSupplier>(m_xTable,UNO_QUERY)->getKeys();
+    return Reference< XKeysSupplier>(m_xTable,UNO_QUERY_THROW)->getKeys();
 }
 
 Reference< XNameAccess> ODBTableDecorator::getColumns()
@@ -464,7 +451,7 @@ OUString SAL_CALL ODBTableDecorator::getName()
 
 sal_Int64 SAL_CALL ODBTableDecorator::getSomething( const Sequence< sal_Int8 >& rId )
 {
-    if (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    if (isUnoTunnelId<ODBTableDecorator>(rId))
         return reinterpret_cast<sal_Int64>(this);
 
     sal_Int64 nRet = 0;
@@ -474,7 +461,7 @@ sal_Int64 SAL_CALL ODBTableDecorator::getSomething( const Sequence< sal_Int8 >& 
     return nRet;
 }
 
-Sequence< sal_Int8 > ODBTableDecorator::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > ODBTableDecorator::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
@@ -565,7 +552,7 @@ void ODBTableDecorator::refreshColumns()
         OContainerMediator* pMediator = new OContainerMediator( pCol, m_xColumnDefinitions );
         m_xColumnMediator = pMediator;
         pCol->setMediator( pMediator );
-        m_pColumns = pCol;
+        m_pColumns.reset(pCol);
     }
     else
         m_pColumns->reFill(aVector);

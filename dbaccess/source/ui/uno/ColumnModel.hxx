@@ -29,7 +29,8 @@
 #include <comphelper/broadcasthelper.hxx>
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/compbase4.hxx>
-#include "apitools.hxx"
+#include <connectivity/CommonTools.hxx>
+#include <apitools.hxx>
 
 namespace dbaui
 {
@@ -49,7 +50,6 @@ class OColumnControlModel :  public ::comphelper::OMutexAndBroadcastHelper
                             ,public OColumnControlModel_BASE
 {
 
-    css::uno::Reference< css::lang::XMultiServiceFactory> m_xORB;
 // [properties]
     css::uno::Reference< css::sdbc::XConnection>          m_xConnection;
     css::uno::Reference< css::beans::XPropertySet >       m_xColumn;
@@ -64,22 +64,15 @@ class OColumnControlModel :  public ::comphelper::OMutexAndBroadcastHelper
 protected:
 
     virtual ~OColumnControlModel() override;
-    OColumnControlModel(const OColumnControlModel* _pSource
-                        ,const css::uno::Reference< css::lang::XMultiServiceFactory>& _rxFactory);
+    OColumnControlModel(const OColumnControlModel* _pSource);
 public:
-    explicit OColumnControlModel(const css::uno::Reference< css::lang::XMultiServiceFactory>& _rxFactory);
+    explicit OColumnControlModel();
 
 // UNO binding
     DECLARE_XINTERFACE( )
 
 // css::lang::XServiceInfo
     DECLARE_SERVICE_INFO();
-    /// @throws css::uno::RuntimeException
-    static OUString SAL_CALL getImplementationName_Static(  );
-    /// @throws css::uno::RuntimeException
-    static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_Static(  );
-    static css::uno::Reference< css::uno::XInterface >
-    SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
 
     virtual css::uno::Sequence<css::uno::Type> SAL_CALL getTypes() override;
     virtual css::uno::Sequence<sal_Int8> SAL_CALL getImplementationId() override;

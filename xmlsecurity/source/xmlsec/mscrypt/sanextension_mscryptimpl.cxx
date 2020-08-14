@@ -27,6 +27,7 @@
 #include <com/sun/star/security/CertAltNameEntry.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <comphelper/sequence.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 
 #include "sanextension_mscryptimpl.hxx"
 
@@ -68,9 +69,9 @@ css::uno::Sequence< css::security::CertAltNameEntry > SAL_CALL SanExtensionImpl:
         DWORD size;
         CryptDecodeObjectEx(X509_ASN_ENCODING, X509_ALTERNATE_NAME, reinterpret_cast<unsigned char*>(m_xExtnValue.getArray()), m_xExtnValue.getLength(), CRYPT_DECODE_ALLOC_FLAG | CRYPT_DECODE_NOCOPY_FLAG, nullptr,&subjectName, &size);
 
-        auto arrCertAltNameEntry = std::unique_ptr<CertAltNameEntry[]>(new CertAltNameEntry[subjectName->cAltEntry]);
+        auto arrCertAltNameEntry = std::make_unique<CertAltNameEntry[]>(subjectName->cAltEntry);
 
-        for (unsigned int i = 0; i < (unsigned int)subjectName->cAltEntry; i++){
+        for (unsigned int i = 0; i < static_cast<unsigned int>(subjectName->cAltEntry); i++){
           PCERT_ALT_NAME_ENTRY pEntry = &subjectName->rgAltEntry[i];
 
           switch(pEntry->dwAltNameChoice) {
@@ -83,7 +84,7 @@ css::uno::Sequence< css::security::CertAltNameEntry > SAL_CALL SanExtensionImpl:
                     otherNameProp.Name = OUString::createFromAscii(pOtherName->pszObjId);
 
                     Sequence< sal_Int8 > otherName( pOtherName->Value.cbData ) ;
-                    for( unsigned int n = 0; n < (unsigned int) pOtherName->Value.cbData ; n ++ )
+                    for( unsigned int n = 0; n < static_cast<unsigned int>(pOtherName->Value.cbData) ; n ++ )
                         otherName[n] = *( pOtherName->Value.pbData + n ) ;
 
                     otherNameProp.Value <<= otherName;
@@ -93,14 +94,11 @@ css::uno::Sequence< css::security::CertAltNameEntry > SAL_CALL SanExtensionImpl:
                 }
             case CERT_ALT_NAME_RFC822_NAME :
                 arrCertAltNameEntry[i].Type = ExtAltNameType_RFC822_NAME;
-                arrCertAltNameEntry[i].Value <<= OUString(
-                    reinterpret_cast<sal_Unicode const *>(
-                        pEntry->pwszRfc822Name));
+                arrCertAltNameEntry[i].Value <<= OUString(o3tl::toU(pEntry->pwszRfc822Name));
                 break;
             case CERT_ALT_NAME_DNS_NAME :
                 arrCertAltNameEntry[i].Type = ExtAltNameType_DNS_NAME;
-                arrCertAltNameEntry[i].Value <<= OUString(
-                    reinterpret_cast<sal_Unicode const *>(pEntry->pwszDNSName));
+                arrCertAltNameEntry[i].Value <<= OUString(o3tl::toU(pEntry->pwszDNSName));
                 break;
             case CERT_ALT_NAME_DIRECTORY_NAME :
                 {
@@ -109,8 +107,7 @@ css::uno::Sequence< css::security::CertAltNameEntry > SAL_CALL SanExtensionImpl:
                 }
             case CERT_ALT_NAME_URL :
                 arrCertAltNameEntry[i].Type = ExtAltNameType_URL;
-                arrCertAltNameEntry[i].Value <<= OUString(
-                    reinterpret_cast<sal_Unicode const *>(pEntry->pwszURL));
+                arrCertAltNameEntry[i].Value <<= OUString(o3tl::toU(pEntry->pwszURL));
                 break;
             case CERT_ALT_NAME_IP_ADDRESS :
                 {

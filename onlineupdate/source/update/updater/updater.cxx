@@ -63,7 +63,7 @@
 #include <onlineupdate/mozilla/Types.h>
 
 #ifdef _WIN32
-#include <winhelper/windowsStart.hxx>
+#include <comphelper/windowsStart.hxx>
 #include "uachelper.h"
 #include "pathhash.h"
 
@@ -301,14 +301,15 @@ EnvHasValue(const char *name)
 #endif
 
 /**
- * Coverts a relative update path to a full path.
+ * Converts a relative update path to an absolute path related to the working
+ * or install directory. Allocates a new NS_tchar[] based path!
  *
  * @param  relpath
  *         The relative path to convert to a full path.
  * @return valid filesystem full path or nullptr if memory allocation fails.
  */
 static NS_tchar*
-get_full_path(const NS_tchar *relpath)
+new_absolute_path(const NS_tchar *relpath)
 {
     NS_tchar *destpath = sStagedUpdate ? gWorkingDirPath : gInstallDirPath;
     size_t lendestpath = NS_tstrlen(destpath);
@@ -332,6 +333,8 @@ namespace {
 
 bool is_userprofile_in_instdir()
 {
+    return false;
+    /*
     // the algorithm is:
     // 1.) if userprofile path length is smaller than installation dir,
     //      the profile is surely not in instdir
@@ -350,41 +353,42 @@ bool is_userprofile_in_instdir()
         return false;
 
     return NS_tstrncmp(userprofile, gInstallDirPath, installdir_len) == 0;
+    */
 }
 
 }
 
 /**
- * Converts a full update path into a relative path; reverses get_full_path.
+ * Get a pointer in the absolute path, relative to the working or install
+ * directory. Returns itself, if not absolute or outside of the directory.
  *
- * @param  fullpath
- *         The absolute path to convert into a relative path.
+ * @param  abs_path
+ *         An absolute path.
  * return pointer to the location within fullpath where the relative path starts
  *        or fullpath itself if it already looks relative.
  */
 static const NS_tchar*
-get_relative_path(const NS_tchar *fullpath)
+get_relative_offset(const NS_tchar *abs_path)
 {
     // If the path isn't absolute, just return it as-is.
 #ifdef _WIN32
-    if (fullpath[1] != ':' && fullpath[2] != '\\')
+    if (abs_path[1] != ':' && abs_path[2] != '\\')
     {
 #else
-    if (fullpath[0] != '/')
+    if (abs_path[0] != '/')
     {
 #endif
-        return fullpath;
+        return abs_path;
     }
 
     NS_tchar *prefix = sStagedUpdate ? gWorkingDirPath : gInstallDirPath;
 
-    // If the path isn't long enough to be absolute, return it as-is.
-    if (NS_tstrlen(fullpath) <= NS_tstrlen(prefix))
-    {
-        return fullpath;
-    }
-
-    return fullpath + NS_tstrlen(prefix) + 1;
+    size_t len = NS_tstrlen(prefix);
+    if (NS_tstrlen(abs_path) <= len)
+        return abs_path;
+    if (0 != strncmp(abs_path, prefix, len))
+        return abs_path;
+    return abs_path + len + 1;
 }
 
 /**
@@ -705,7 +709,7 @@ static int ensure_copy(const NS_tchar *path, const NS_tchar *dest)
     }
 
     // This block size was chosen pretty arbitrarily but seems like a reasonable
-    // compromise. For example, the optimal block size on a modern OS X machine
+    // compromise. For example, the optimal block size on a modern macOS machine
     // is 100k */
     const int blockSize = 32 * 1024;
     void* buffer = malloc(blockSize);
@@ -727,8 +731,9 @@ static int ensure_copy(const NS_tchar *path, const NS_tchar *dest)
 
         while (written < read)
         {
-            size_t chunkWritten = fwrite(buffer, 1, read - written, outfile);
-            if (chunkWritten <= 0)
+            size_t nCount = read - written;
+            size_t chunkWritten = fwrite(buffer, 1, nCount, outfile);
+            if (chunkWritten != nCount)
             {
                 LOG(("ensure_copy: failed to write the file: " LOG_S ", err: %d",
                      dest, errno));
@@ -1116,8 +1121,8 @@ public:
     void Finish(int status);
 
 private:
-    std::unique_ptr<const NS_tchar> mFile;
-    std::unique_ptr<NS_tchar> mRelPath;
+    std::unique_ptr<const NS_tchar[]> mFile;
+    std::unique_ptr<NS_tchar[]> mRelPath;
     int mSkip;
 };
 
@@ -1133,7 +1138,7 @@ RemoveFile::Parse(NS_tchar *line)
     mRelPath.reset(new NS_tchar[MAXPATHLEN]);
     NS_tstrcpy(mRelPath.get(), validPath);
 
-    mFile.reset(get_full_path(validPath));
+    mFile.reset(new_absolute_path(validPath));
     if (!mFile)
     {
         return PARSE_ERROR;
@@ -1244,8 +1249,8 @@ public:
     virtual void Finish(int status);
 
 private:
-    std::unique_ptr<NS_tchar> mDir;
-    std::unique_ptr<NS_tchar> mRelPath;
+    std::unique_ptr<NS_tchar[]> mDir;
+    std::unique_ptr<NS_tchar[]> mRelPath;
     int mSkip;
 };
 
@@ -1257,10 +1262,11 @@ RemoveDir::Parse(NS_tchar *line)
     NS_tchar* validPath = get_valid_path(&line, true);
     if (!validPath)
         return PARSE_ERROR;
+
     mRelPath.reset(new NS_tchar[MAXPATHLEN]);
     NS_tstrcpy(mRelPath.get(), validPath);
 
-    mDir.reset(get_full_path(validPath));
+    mDir.reset(new_absolute_path(validPath));
     if (!mDir)
     {
         return PARSE_ERROR;
@@ -1368,8 +1374,8 @@ public:
     virtual void Finish(int status);
 
 private:
-    std::unique_ptr<NS_tchar> mFile;
-    std::unique_ptr<NS_tchar> mRelPath;
+    std::unique_ptr<NS_tchar[]> mFile;
+    std::unique_ptr<NS_tchar[]> mRelPath;
     bool mAdded;
     ArchiveReader& mArchiveReader;
 };
@@ -1384,10 +1390,9 @@ AddFile::Parse(NS_tchar *line)
         return PARSE_ERROR;
 
     mRelPath.reset(new NS_tchar[MAXPATHLEN]);
-
     NS_tstrcpy(mRelPath.get(), validPath);
 
-    mFile.reset(get_full_path(validPath));
+    mFile.reset(new_absolute_path(validPath));
     if (!mFile)
     {
         return PARSE_ERROR;
@@ -1583,7 +1588,7 @@ PatchFile::Parse(NS_tchar *line)
     mFileRelPath.reset(new NS_tchar[MAXPATHLEN]);
     NS_tstrcpy(mFileRelPath.get(), validPath);
 
-    mFile.reset(get_full_path(validPath));
+    mFile.reset(new_absolute_path(validPath));
     if (!mFile)
     {
         return PARSE_ERROR;
@@ -1600,8 +1605,9 @@ PatchFile::Prepare()
     // extract the patch to a temporary file
     mPatchIndex = sPatchIndex++;
 
-    NS_tsnprintf(spath, sizeof(spath)/sizeof(spath[0]),
+    int nWrittenBytes = NS_tsnprintf(spath, sizeof(spath)/sizeof(spath[0]),
                  NS_T("%s/updating/%d.patch"), gWorkingDirPath, mPatchIndex);
+    (void) nWrittenBytes;
 
     NS_tremove(spath);
 
@@ -1796,7 +1802,7 @@ public:
     virtual void Finish(int status);
 
 protected:
-    std::unique_ptr<NS_tchar> mTestFile;
+    std::unique_ptr<NS_tchar[]> mTestFile;
 };
 
 AddIfFile::AddIfFile(ArchiveReader& archiveReader):
@@ -1809,7 +1815,7 @@ AddIfFile::Parse(NS_tchar *line)
 {
     // format "<testfile>" "<newfile>"
 
-    mTestFile.reset(get_full_path(get_valid_path(&line)));
+    mTestFile.reset(new_absolute_path(get_valid_path(&line)));
     if (!mTestFile)
         return PARSE_ERROR;
 
@@ -1863,7 +1869,7 @@ public:
     virtual void Finish(int status);
 
 protected:
-    std::unique_ptr<NS_tchar> mTestFile;
+    std::unique_ptr<NS_tchar[]> mTestFile;
 };
 
 AddIfNotFile::AddIfNotFile(ArchiveReader& archiveReader):
@@ -1876,7 +1882,7 @@ AddIfNotFile::Parse(NS_tchar *line)
 {
     // format "<testfile>" "<newfile>"
 
-    mTestFile.reset(get_full_path(get_valid_path(&line)));
+    mTestFile.reset(new_absolute_path(get_valid_path(&line)));
     if (!mTestFile)
         return PARSE_ERROR;
 
@@ -1930,7 +1936,7 @@ public:
     virtual void Finish(int status);
 
 private:
-    std::unique_ptr<NS_tchar> mTestFile;
+    std::unique_ptr<NS_tchar[]> mTestFile;
 };
 
 PatchIfFile::PatchIfFile(ArchiveReader& archiveReader):
@@ -1943,7 +1949,7 @@ PatchIfFile::Parse(NS_tchar *line)
 {
     // format "<testfile>" "<patchfile>" "<filetopatch>"
 
-    mTestFile.reset(get_full_path(get_valid_path(&line)));
+    mTestFile.reset(new_absolute_path(get_valid_path(&line)));
     if (!mTestFile)
         return PARSE_ERROR;
 
@@ -2006,7 +2012,7 @@ LaunchWinPostProcess(const WCHAR *installationDir,
     WCHAR workingDirectory[MAX_PATH + 1] = { L'\0' };
     wcsncpy(workingDirectory, installationDir, MAX_PATH);
 
-    // TODO: moggi: needs adaption for LibreOffice
+    // TODO: moggi: needs adaptation for LibreOffice
     // Most likely we don't have the helper method yet. Check if we really need it.
 
     // Launch helper.exe to perform post processing (e.g. registry and log file
@@ -2153,7 +2159,7 @@ LaunchCallbackApp(const NS_tchar *workingDir,
     execv(argv[0], argv);
 #elif defined(MACOSX)
     LaunchChild(argc, (const char**)argv);
-#elif defined(WNT)
+#elif defined(_WIN32)
     // Do not allow the callback to run when running an update through the
     // service as session 0.  The unelevated updater.exe will do the launching.
     if (!usingService)
@@ -2320,7 +2326,7 @@ CopyInstallDirToDestDir()
 #endif
     copy_recursive_skiplist<SKIPLIST_COUNT> skiplist;
 
-    std::unique_ptr<NS_tchar> pUserProfile(new NS_tchar[MAXPATHLEN]);
+    std::unique_ptr<NS_tchar[]> pUserProfile(new NS_tchar[MAXPATHLEN]);
     NS_tstrcpy(pUserProfile.get(), gPatchDirPath);
     NS_tchar *slash = (NS_tchar *) NS_tstrrchr(pUserProfile.get(), NS_T('/'));
     if (slash)
@@ -2360,7 +2366,7 @@ ProcessReplaceRequest()
     NS_tchar destDir[MAXPATHLEN];
     NS_tsnprintf(destDir, sizeof(destDir)/sizeof(destDir[0]),
                  NS_T("%s/Contents"), gInstallDirPath);
-#elif defined(WNT)
+#elif defined(_WIN32)
     // Windows preserves the case of the file/directory names.  We use the
     // GetLongPathName API in order to get the correct case for the directory
     // name, so that if the user has used a different case when launching the
@@ -2487,8 +2493,9 @@ ProcessReplaceRequest()
     // need to have the last-update.log and backup-update.log files moved from the
     // old installation directory to the new installation directory.
     NS_tchar tmpLog[MAXPATHLEN];
-    NS_tsnprintf(tmpLog, sizeof(tmpLog)/sizeof(tmpLog[0]),
+    int nWrittenBytes = NS_tsnprintf(tmpLog, sizeof(tmpLog)/sizeof(tmpLog[0]),
                  NS_T("%s/updates/last-update.log"), tmpDir);
+    (void) nWrittenBytes;
     if (!NS_taccess(tmpLog, F_OK))
     {
         NS_tchar destLog[MAXPATHLEN];
@@ -2520,7 +2527,7 @@ ProcessReplaceRequest()
     }
 
 #ifdef MACOSX
-    // On OS X, we need to remove the staging directory after its Contents
+    // On macOS, we need to remove the staging directory after its Contents
     // directory has been moved.
     NS_tchar updatedAppDir[MAXPATHLEN];
     NS_tsnprintf(updatedAppDir, sizeof(updatedAppDir)/sizeof(updatedAppDir[0]),
@@ -2555,7 +2562,7 @@ WaitForServiceFinishThread(void* /*param*/)
 static int
 ReadMARChannelIDs(const NS_tchar *path, MARChannelStringTable *results)
 {
-    // TODO: moggi: needs adaption for LibreOffice
+    // TODO: moggi: needs adaptation for LibreOffice
     // Check where this function gets its parameters from
     const unsigned int kNumStrings = 1;
     const char *kUpdaterKeys = "ACCEPTED_MAR_CHANNEL_IDS\0";
@@ -2596,8 +2603,8 @@ GetUpdateFileNames(std::vector<tstring>& fileNames)
         {
             if (NS_tstrncmp(entry->d_name, NS_T("update"), 6) == 0)
             {
-                char *dot = strrchr(entry->d_name, '.');
-                if (dot && !strcmp(dot, ".mar"))
+                NS_tchar *dot = NS_tstrrchr(entry->d_name, NS_T('.'));
+                if (dot && !NS_tstrcmp(dot, NS_T(".mar")))
                 {
                     NS_tchar updatePath[MAXPATHLEN];
                     NS_tsnprintf(updatePath, sizeof(updatePath)/sizeof(updatePath[0]),
@@ -2666,9 +2673,9 @@ CheckSignature(ArchiveReader& archiveReader)
         {
             NS_tchar updateSettingsPath[MAX_TEXT_LEN];
 
-            // TODO: moggi: needs adaption for LibreOffice
+            // TODO: moggi: needs adaptation for LibreOffice
             // These paths need to be adapted for us.
-            NS_tsnprintf(updateSettingsPath,
+            int nWrittenBytes = NS_tsnprintf(updateSettingsPath,
                          sizeof(updateSettingsPath) / sizeof(updateSettingsPath[0]),
 #ifdef MACOSX
                          NS_T("%s/Contents/Resources/update-settings.ini"),
@@ -2676,6 +2683,7 @@ CheckSignature(ArchiveReader& archiveReader)
                          NS_T("%s/update-settings.ini"),
 #endif
                          gWorkingDirPath);
+            (void) nWrittenBytes;
             MARChannelStringTable MARStrings;
             if (ReadMARChannelIDs(updateSettingsPath, &MARStrings) != OK)
             {
@@ -2739,8 +2747,9 @@ UpdateThreadFunc(void * /*param*/)
                 rv = DoUpdate(archiveReader);
             }
             NS_tchar updatingDir[MAXPATHLEN];
-            NS_tsnprintf(updatingDir, sizeof(updatingDir)/sizeof(updatingDir[0]),
+            int nWrittenBytes = NS_tsnprintf(updatingDir, sizeof(updatingDir)/sizeof(updatingDir[0]),
                          NS_T("%s/updating"), gWorkingDirPath);
+            (void) nWrittenBytes;
             ensure_remove_recursive(updatingDir);
         }
     }
@@ -2790,7 +2799,7 @@ UpdateThreadFunc(void * /*param*/)
         {
 #ifdef MACOSX
             // If the update was successful we need to update the timestamp on the
-            // top-level Mac OS X bundle directory so that Mac OS X's Launch Services
+            // top-level macOS bundle directory so that macOS's Launch Services
             // picks up any major changes when the bundle is updated.
             if (!sStagedUpdate && utimes(gInstallDirPath, nullptr) != 0)
             {
@@ -2891,7 +2900,7 @@ int NS_main(int argc, NS_tchar **argv)
     const int callbackIndex = 6;
 
 #ifdef MACOSX
-    // TODO: moggi: needs adaption for LibreOffice
+    // TODO: moggi: needs adaptation for LibreOffice
     bool isElevated =
         strstr(argv[0], "/Library/PrivilegedHelperTools/org.mozilla.updater") != 0;
     if (isElevated)
@@ -2987,7 +2996,7 @@ int NS_main(int argc, NS_tchar **argv)
 
     // Remove everything except close window from the context menu
     {
-        // TODO: moggi: needs adaption for LibreOffice
+        // TODO: moggi: needs adaptation for LibreOffice
         HKEY hkApp = nullptr;
         RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\Applications",
                         0, nullptr, REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr,
@@ -3310,7 +3319,7 @@ int NS_main(int argc, NS_tchar **argv)
             if (useService)
             {
                 WCHAR maintenanceServiceKey[MAX_PATH + 1];
-                // TODO: moggi: needs adaption for LibreOffice
+                // TODO: moggi: needs adaptation for LibreOffice
                 // Most likely the registry part is not correct yet
                 if (CalculateRegistryPathFromFilePath(gInstallDirPath,
                                                       maintenanceServiceKey))
@@ -3348,7 +3357,7 @@ int NS_main(int argc, NS_tchar **argv)
             // on our own.
 
             // If we still want to use the service try to launch the service
-            // comamnd for the update.
+            // command for the update.
             if (useService)
             {
                 // If the update couldn't be started, then set useService to false so
@@ -3820,7 +3829,7 @@ int NS_main(int argc, NS_tchar **argv)
                  "directory: " LOG_S, DELETE_DIR));
         }
     }
-#endif /* WNT */
+#endif /* _WIN32 */
 
 
 #ifdef MACOSX
@@ -4033,7 +4042,7 @@ int add_dir_entries(const NS_tchar *dirpath, ActionList *list)
 
     NS_tsnprintf(searchspec, sizeof(searchspec)/sizeof(searchspec[0]),
                  NS_T("%s*"), dirpath);
-    std::unique_ptr<const NS_tchar> pszSpec(get_full_path(searchspec));
+    std::unique_ptr<const NS_tchar[]> pszSpec(new_absolute_path(searchspec));
 
     hFindFile = FindFirstFileW(pszSpec.get(), &finddata);
     if (hFindFile != INVALID_HANDLE_VALUE)
@@ -4113,7 +4122,7 @@ int add_dir_entries(const NS_tchar *dirpath, ActionList *list)
         char chars[MAXNAMLEN];
     } ent_buf;
     struct dirent* ent;
-    std::unique_ptr<NS_tchar> searchpath(get_full_path(dirpath));
+    std::unique_ptr<NS_tchar[]> searchpath(new_absolute_path(dirpath));
 
     DIR* dir = opendir(searchpath.get());
     if (!dir)
@@ -4154,7 +4163,7 @@ int add_dir_entries(const NS_tchar *dirpath, ActionList *list)
         else
         {
             // Add the file to be removed to the ActionList.
-            NS_tchar *quotedpath = get_quoted_path(get_relative_path(foundpath));
+            NS_tchar *quotedpath = get_quoted_path(get_relative_offset(foundpath));
             if (!quotedpath)
             {
                 closedir(dir);
@@ -4177,7 +4186,7 @@ int add_dir_entries(const NS_tchar *dirpath, ActionList *list)
     closedir(dir);
 
     // Add the directory to be removed to the ActionList.
-    NS_tchar *quotedpath = get_quoted_path(get_relative_path(dirpath));
+    NS_tchar *quotedpath = get_quoted_path(get_relative_offset(dirpath));
     if (!quotedpath)
         return PARSE_ERROR;
 
@@ -4203,7 +4212,7 @@ int add_dir_entries(const NS_tchar *dirpath, ActionList *list)
     int rv = OK;
     FTS *ftsdir;
     FTSENT *ftsdirEntry;
-    std::unique_ptr<NS_tchar> searchpath(get_full_path(dirpath));
+    std::unique_ptr<NS_tchar[]> searchpath(new_absolute_path(dirpath));
 
     // Remove the trailing slash so the paths don't contain double slashes. The
     // existence of the slash has already been checked in DoUpdate.
@@ -4231,7 +4240,7 @@ int add_dir_entries(const NS_tchar *dirpath, ActionList *list)
             case FTS_DEFAULT:
                 LOG(("add_dir_entries: found a non-standard file: " LOG_S,
                      ftsdirEntry->fts_path));
-            // Fall through and try to remove as a file
+            /* Fall through */ // and try to remove as a file
 
             // Files
             case FTS_F:
@@ -4239,7 +4248,7 @@ int add_dir_entries(const NS_tchar *dirpath, ActionList *list)
                 // Add the file to be removed to the ActionList.
                 NS_tsnprintf(foundpath, sizeof(foundpath)/sizeof(foundpath[0]),
                              NS_T("%s"), ftsdirEntry->fts_accpath);
-                quotedpath = get_quoted_path(get_relative_path(foundpath));
+                quotedpath = get_quoted_path(get_relative_offset(foundpath));
                 if (!quotedpath)
                 {
                     rv = UPDATER_QUOTED_PATH_MEM_ERROR;
@@ -4258,7 +4267,7 @@ int add_dir_entries(const NS_tchar *dirpath, ActionList *list)
                 // Add the directory to be removed to the ActionList.
                 NS_tsnprintf(foundpath, sizeof(foundpath)/sizeof(foundpath[0]),
                              NS_T("%s/"), ftsdirEntry->fts_accpath);
-                quotedpath = get_quoted_path(get_relative_path(foundpath));
+                quotedpath = get_quoted_path(get_relative_offset(foundpath));
                 if (!quotedpath)
                 {
                     rv = UPDATER_QUOTED_PATH_MEM_ERROR;
@@ -4381,10 +4390,10 @@ GetManifestContents(const NS_tchar *manifest)
 int AddPreCompleteActions(ActionList *list)
 {
 #ifdef MACOSX
-    std::unique_ptr<NS_tchar> manifestPath(get_full_path(
+    std::unique_ptr<NS_tchar[]> manifestPath(new_absolute_path(
             NS_T("Contents/Resources/precomplete")));
 #else
-    std::unique_ptr<NS_tchar> manifestPath(get_full_path(
+    std::unique_ptr<NS_tchar[]> manifestPath(new_absolute_path(
             NS_T("precomplete")));
 #endif
 
@@ -4448,12 +4457,13 @@ int AddPreCompleteActions(ActionList *list)
 int DoUpdate(ArchiveReader& archiveReader)
 {
     NS_tchar manifest[MAXPATHLEN];
-    NS_tsnprintf(manifest, sizeof(manifest)/sizeof(manifest[0]),
+    int nWrittenBytes = NS_tsnprintf(manifest, sizeof(manifest)/sizeof(manifest[0]),
                  NS_T("%s/updating/update.manifest"), gWorkingDirPath);
+    (void) nWrittenBytes;
     ensure_parent_dir(manifest);
 
     // extract the manifest
-    // TODO: moggi: needs adaption for LibreOffice
+    // TODO: moggi: needs adaptation for LibreOffice
     // Why would we need the manifest? Even if we need it why would we need 2?
     int rv = archiveReader.ExtractFile("updatev3.manifest", manifest);
     if (rv)

@@ -20,14 +20,14 @@
 #ifndef INCLUDED_OSL_THREAD_HXX
 #define INCLUDED_OSL_THREAD_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cassert>
 #include <cstddef>
 
-#include <osl/time.h>
-#include <osl/thread.h>
-#include <rtl/alloc.h>
+#include "osl/time.h"
+#include "osl/thread.h"
+#include "rtl/alloc.h"
 
 namespace osl
 {
@@ -208,7 +208,7 @@ public:
     */
     bool SAL_CALL setData(void *pData)
     {
-           return (osl_setThreadKeyData(m_hKey, pData));
+           return osl_setThreadKeyData(m_hKey, pData);
     }
 
     /** Get the data associated with the data key.

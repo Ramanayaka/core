@@ -22,16 +22,17 @@ $(eval $(call gb_Library_add_defs,ldapbe2,\
 endif
 
 $(eval $(call gb_Library_add_exception_objects,ldapbe2,\
-	extensions/source/config/ldap/componentdef \
 	extensions/source/config/ldap/ldapaccess \
 	extensions/source/config/ldap/ldapuserprofilebe \
 ))
 
 $(eval $(call gb_Library_use_libraries,ldapbe2,\
+	comphelper \
 	cppuhelper \
 	cppu \
 	salhelper \
 	sal \
+	tl \
 ))
 
 ifeq ($(OS),WNT)

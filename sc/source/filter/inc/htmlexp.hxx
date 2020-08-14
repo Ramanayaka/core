@@ -20,12 +20,14 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_HTMLEXP_HXX
 #define INCLUDED_SC_SOURCE_FILTER_INC_HTMLEXP_HXX
 
-#include "global.hxx"
 #include <rtl/textenc.h>
 #include <tools/gen.hxx>
 #include <tools/color.hxx>
+#include <vcl/vclptr.hxx>
 #include <vector>
 #include <memory>
+#include <map>
+#include <svx/xoutbmp.hxx>
 
 #include "expbase.hxx"
 
@@ -39,6 +41,10 @@ class ScDrawLayer;
 class EditTextObject;
 enum class SvtScriptType;
 namespace editeng { class SvxBorderLine; }
+
+namespace sc {
+struct ColumnBlockPosition;
+}
 
 struct ScHTMLStyle
 {   // Defaults from stylesheet
@@ -99,7 +105,7 @@ class ScHTMLExport : public ScExportBase
     static sal_uInt16       nFontSize[SC_HTML_FONTSIZES];
     static const char*  pFontSizeCss[SC_HTML_FONTSIZES];
     static const sal_uInt16 nCellSpacing;
-    static const sal_Char sIndentSource[];
+    static const char sIndentSource[];
 
     typedef std::unique_ptr<std::map<OUString, OUString> > FileNameMapPtr;
     typedef std::vector<ScHTMLGraphEntry> GraphEntryList;
@@ -108,20 +114,18 @@ class ScHTMLExport : public ScExportBase
     ScHTMLStyle      aHTMLStyle;
     OUString         aBaseURL;
     OUString         aStreamPath;
-    OUString         aCId;           // Content-Id for Mail-Export
     VclPtr<OutputDevice> pAppWin;        // for Pixel-work
     FileNameMapPtr   pFileNameMap;        // for CopyLocalFileToINet
     OUString         aNonConvertibleChars;   // collect nonconvertible characters
     rtl_TextEncoding eDestEnc;
     SCTAB            nUsedTables;
     short            nIndent;
-    sal_Char         sIndent[nIndentMax+1];
+    char             sIndent[nIndentMax+1];
     bool             bAll;           // whole document
     bool             bTabHasGraphics;
     bool             bTabAlignedLeft;
     bool             bCalcAsShown;
     bool             bCopyLocalFileToINet;
-    bool             bTableDataWidth;
     bool             bTableDataHeight;
     bool             mbSkipImages;
     /// If HTML header and footer should be written as well, or just the content itself.
@@ -133,7 +137,7 @@ class ScHTMLExport : public ScExportBase
     void WriteHeader();
     void WriteOverview();
     void WriteTables();
-    void WriteCell( SCCOL nCol, SCROW nRow, SCTAB nTab );
+    void WriteCell( sc::ColumnBlockPosition& rBlockPos, SCCOL nCol, SCROW nRow, SCTAB nTab );
     void WriteGraphEntry( ScHTMLGraphEntry* );
     void WriteImage( OUString& rLinkName,
                      const Graphic&, const OString& rImgOptions,
@@ -145,11 +149,6 @@ class ScHTMLExport : public ScExportBase
 
     // copy a local file to internet if needed
     void CopyLocalFileToINet( OUString& rFileNm, const OUString& rTargetNm );
-    bool HasCId()
-    {
-        return !aCId.isEmpty();
-    }
-    void MakeCIdURL( OUString& rURL );
 
     void PrepareGraphics( ScDrawLayer*, SCTAB nTab,
                           SCCOL nStartCol, SCROW nStartRow,
@@ -169,7 +168,7 @@ class ScHTMLExport : public ScExportBase
     Size        MMToPixel( const Size& r100thMMSize );
     void        IncIndent( short nVal );
 
-    const sal_Char* GetIndentStr()
+    const char* GetIndentStr() const
     {
         return sIndent;
     }

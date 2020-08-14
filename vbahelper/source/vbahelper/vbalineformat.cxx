@@ -17,8 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <ooo/vba/office/MsoArrowheadStyle.hpp>
-#include <ooo/vba/office/MsoArrowheadLength.hpp>
-#include <ooo/vba/office/MsoArrowheadWidth.hpp>
 #include <ooo/vba/office/MsoLineDashStyle.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
 #include <com/sun/star/drawing/LineDash.hpp>
@@ -81,15 +79,15 @@ ScVbaLineFormat::convertArrowheadStyleToLineStartEndName( sal_Int32 nArrowheadSt
         case office::MsoArrowheadStyle::msoArrowheadNone:
             return OUString();
         case office::MsoArrowheadStyle::msoArrowheadStealth:
-            return OUString("Arrow concave");
+            return "Arrow concave";
         case office::MsoArrowheadStyle::msoArrowheadOpen:
-            return OUString("Line Arrow");
+            return "Line Arrow";
         case office::MsoArrowheadStyle::msoArrowheadOval:
-            return  OUString("Circle");
+            return  "Circle";
         case office::MsoArrowheadStyle::msoArrowheadDiamond:
-            return OUString("Square 45");
+            return "Square 45";
         case office::MsoArrowheadStyle::msoArrowheadTriangle:
-            return OUString("Arrow");
+            return "Arrow";
         default:
             throw uno::RuntimeException( "Invalid Arrow Style!" );
     }
@@ -427,18 +425,16 @@ ScVbaLineFormat::ForeColor()
 OUString
 ScVbaLineFormat::getServiceImplName()
 {
-    return OUString("ScVbaLineFormat");
+    return "ScVbaLineFormat";
 }
 
 uno::Sequence< OUString >
 ScVbaLineFormat::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msform.LineFormat";
-    }
+        "ooo.vba.msform.LineFormat"
+    };
     return aServiceNames;
 }
 

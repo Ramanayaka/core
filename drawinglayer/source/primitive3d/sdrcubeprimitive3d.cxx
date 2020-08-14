@@ -21,8 +21,7 @@
 #include <basegfx/polygon/b3dpolypolygontools.hxx>
 #include <basegfx/polygon/b3dpolygon.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <drawinglayer/primitive3d/sdrdecompositiontools3d.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <primitive3d/sdrdecompositiontools3d.hxx>
 #include <drawinglayer/primitive3d/drawinglayer_primitivetypes3d.hxx>
 #include <drawinglayer/attribute/sdrfillattribute.hxx>
 #include <drawinglayer/attribute/sdrlineattribute.hxx>
@@ -32,15 +31,13 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         Primitive3DContainer SdrCubePrimitive3D::create3DDecomposition(const geometry::ViewInformation3D& /*rViewInformation*/) const
         {
             const basegfx::B3DRange aUnitRange(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
             Primitive3DContainer aRetval;
-            basegfx::B3DPolyPolygon aFill(basegfx::tools::createCubeFillPolyPolygonFromB3DRange(aUnitRange));
+            basegfx::B3DPolyPolygon aFill(basegfx::utils::createCubeFillPolyPolygonFromB3DRange(aUnitRange));
 
             // normal creation
             if(!getSdrLFSAttribute().getFill().isDefault())
@@ -49,14 +46,14 @@ namespace drawinglayer
                     || css::drawing::NormalsKind_SPHERE == getSdr3DObjectAttribute().getNormalsKind())
                 {
                     // create sphere normals
-                    const basegfx::B3DPoint aCenter(basegfx::tools::getRange(aFill).getCenter());
-                    aFill = basegfx::tools::applyDefaultNormalsSphere(aFill, aCenter);
+                    const basegfx::B3DPoint aCenter(basegfx::utils::getRange(aFill).getCenter());
+                    aFill = basegfx::utils::applyDefaultNormalsSphere(aFill, aCenter);
                 }
 
                 if(getSdr3DObjectAttribute().getNormalsInvert())
                 {
                     // invert normals
-                    aFill = basegfx::tools::invertNormals(aFill);
+                    aFill = basegfx::utils::invertNormals(aFill);
                 }
             }
 
@@ -76,39 +73,39 @@ namespace drawinglayer
                 if(bParallelX || bParallelY)
                 {
                     // apply parallel texture coordinates in X and/or Y
-                    const basegfx::B3DRange aRange(basegfx::tools::getRange(aFill));
-                    aFill = basegfx::tools::applyDefaultTextureCoordinatesParallel(aFill, aRange, bParallelX, bParallelY);
+                    const basegfx::B3DRange aRange(basegfx::utils::getRange(aFill));
+                    aFill = basegfx::utils::applyDefaultTextureCoordinatesParallel(aFill, aRange, bParallelX, bParallelY);
                 }
 
                 if(bSphereX || bSphereY)
                 {
                     // apply spherical texture coordinates in X and/or Y
-                    const basegfx::B3DRange aRange(basegfx::tools::getRange(aFill));
+                    const basegfx::B3DRange aRange(basegfx::utils::getRange(aFill));
                     const basegfx::B3DPoint aCenter(aRange.getCenter());
-                    aFill = basegfx::tools::applyDefaultTextureCoordinatesSphere(aFill, aCenter, bSphereX, bSphereY);
+                    aFill = basegfx::utils::applyDefaultTextureCoordinatesSphere(aFill, aCenter, bSphereX, bSphereY);
                 }
 
                 if(bObjectSpecificX || bObjectSpecificY)
                 {
                     // object-specific
-                    for(sal_uInt32 a(0L); a < aFill.count(); a++)
+                    for(sal_uInt32 a(0); a < aFill.count(); a++)
                     {
                         basegfx::B3DPolygon aTmpPoly(aFill.getB3DPolygon(a));
 
-                        if(aTmpPoly.count() >= 4L)
+                        if(aTmpPoly.count() >= 4)
                         {
-                            for(sal_uInt32 b(0L); b < 4L; b++)
+                            for(sal_uInt32 b(0); b < 4; b++)
                             {
                                 basegfx::B2DPoint aPoint(aTmpPoly.getTextureCoordinate(b));
 
                                 if(bObjectSpecificX)
                                 {
-                                    aPoint.setX((1L == b || 2L == b) ? 1.0 : 0.0);
+                                    aPoint.setX((1 == b || 2 == b) ? 1.0 : 0.0);
                                 }
 
                                 if(bObjectSpecificY)
                                 {
-                                    aPoint.setY((2L == b || 3L == b) ? 1.0 : 0.0);
+                                    aPoint.setY((2 == b || 3 == b) ? 1.0 : 0.0);
                                 }
 
                                 aTmpPoly.setTextureCoordinate(b, aPoint);
@@ -128,9 +125,9 @@ namespace drawinglayer
             // build vector of PolyPolygons
             std::vector< basegfx::B3DPolyPolygon > a3DPolyPolygonVector;
 
-            for(sal_uInt32 a(0L); a < aFill.count(); a++)
+            for(sal_uInt32 a(0); a < aFill.count(); a++)
             {
-                a3DPolyPolygonVector.push_back(basegfx::B3DPolyPolygon(aFill.getB3DPolygon(a)));
+                a3DPolyPolygonVector.emplace_back(aFill.getB3DPolygon(a));
             }
 
             if(!getSdrLFSAttribute().getFill().isDefault())
@@ -157,7 +154,7 @@ namespace drawinglayer
             // add line
             if(!getSdrLFSAttribute().getLine().isDefault())
             {
-                basegfx::B3DPolyPolygon aLine(basegfx::tools::createCubePolyPolygonFromB3DRange(aUnitRange));
+                basegfx::B3DPolyPolygon aLine(basegfx::utils::createCubePolyPolygonFromB3DRange(aUnitRange));
                 const Primitive3DContainer aLines(create3DPolyPolygonLinePrimitives(
                     aLine, getTransform(), getSdrLFSAttribute().getLine()));
                 aRetval.append(aLines);
@@ -197,7 +194,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive3DIDBlock(SdrCubePrimitive3D, PRIMITIVE3D_ID_SDRCUBEPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

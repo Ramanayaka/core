@@ -20,27 +20,36 @@
 #include <com/sun/star/uno/Reference.h>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/linguistic2/LinguServiceManager.hpp>
+#include <com/sun/star/linguistic2/XLinguProperties.hpp>
 #include <com/sun/star/linguistic2/XSpellChecker1.hpp>
 #include <i18nlangtag/languagetag.hxx>
 #include <tools/debug.hxx>
+#include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/sequence.hxx>
 #include <osl/mutex.hxx>
+#include <osl/thread.h>
 #include <unotools/pathoptions.hxx>
 #include <unotools/lingucfg.hxx>
+#include <unotools/resmgr.hxx>
 
 #include <rtl/string.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/textenc.h>
+
+#include <svtools/strings.hrc>
 
 #include "nthesimp.hxx"
 #include <linguistic/misc.hxx>
 #include <linguistic/lngprops.hxx>
 #include "nthesdta.hxx"
 
-#include <list>
+#include <vector>
+#include <numeric>
 #include <set>
 #include <string.h>
 
@@ -63,53 +72,17 @@ static uno::Reference< XLinguServiceManager2 > GetLngSvcMgr_Impl()
 }
 
 Thesaurus::Thesaurus() :
-    aEvtListeners   ( GetLinguMutex() )
+    aEvtListeners   ( GetLinguMutex() ), pPropHelper(nullptr), bDisposing(false),
+    prevLocale(LANGUAGE_DONTKNOW)
 {
-    bDisposing = false;
-    pPropHelper = nullptr;
-    aThes = nullptr;
-    aCharSetInfo = nullptr;
-    aTEncs = nullptr;
-    aTLocs = nullptr;
-    aTNames = nullptr;
-    numthes = 0;
-    prevLocale = LANGUAGE_DONTKNOW;
 }
 
 Thesaurus::~Thesaurus()
 {
-    if (aThes)
-    {
-        for (int i = 0; i < numthes; i++)
-        {
-            if (aThes[i]) delete aThes[i];
-            aThes[i] = nullptr;
-        }
-        delete[] aThes;
-    }
-    aThes = nullptr;
-    if (aCharSetInfo)
-    {
-        for (int i = 0; i < numthes; i++)
-        {
-            if (aCharSetInfo[i]) delete aCharSetInfo[i];
-            aCharSetInfo[i] = nullptr;
-        }
-        delete[] aCharSetInfo;
-    }
-    aCharSetInfo = nullptr;
-    numthes = 0;
-    if (aTEncs) delete[] aTEncs;
-    aTEncs = nullptr;
-    if (aTLocs) delete[] aTLocs;
-    aTLocs = nullptr;
-    if (aTNames) delete[] aTNames;
-    aTNames = nullptr;
-
+    mvThesInfo.clear();
     if (pPropHelper)
     {
         pPropHelper->RemoveAsPropListener();
-        delete pPropHelper;
     }
 }
 
@@ -117,7 +90,7 @@ PropertyHelper_Thesaurus& Thesaurus::GetPropHelper_Impl()
 {
     if (!pPropHelper)
     {
-        Reference< XLinguProperties >   xPropSet( GetLinguProperties(), UNO_QUERY );
+        Reference< XLinguProperties >   xPropSet = GetLinguProperties();
 
         pPropHelper = new PropertyHelper_Thesaurus( static_cast<XThesaurus *>(this), xPropSet );
         pPropHelper->AddAsPropListener();   //! after a reference is established
@@ -131,20 +104,19 @@ Sequence< Locale > SAL_CALL Thesaurus::getLocales()
 
     // this routine should return the locales supported by the installed
     // dictionaries.
-    if (!numthes)
+    if (mvThesInfo.empty())
     {
         SvtLinguConfig aLinguCfg;
 
         // get list of dictionaries-to-use
-        std::list< SvtLinguConfigDictionaryEntry > aDics;
+        std::vector< SvtLinguConfigDictionaryEntry > aDics;
         uno::Sequence< OUString > aFormatList;
         aLinguCfg.GetSupportedDictionaryFormatsFor( "Thesauri",
                 "org.openoffice.lingu.new.Thesaurus", aFormatList );
-        sal_Int32 nLen = aFormatList.getLength();
-        for (sal_Int32 i = 0;  i < nLen;  ++i)
+        for (const auto& rFormat : std::as_const(aFormatList))
         {
             std::vector< SvtLinguConfigDictionaryEntry > aTmpDic(
-                    aLinguCfg.GetActiveDictionariesByFormat( aFormatList[i] ) );
+                    aLinguCfg.GetActiveDictionariesByFormat( rFormat ) );
             aDics.insert( aDics.end(), aTmpDic.begin(), aTmpDic.end() );
         }
 
@@ -156,77 +128,66 @@ Sequence< Locale > SAL_CALL Thesaurus::getLocales()
 
         // to prefer dictionaries with configuration entries we will only
         // use those old style dictionaries that add a language that
-        // is not yet supported by the list od new style dictionaries
+        // is not yet supported by the list of new style dictionaries
         MergeNewStyleDicsAndOldStyleDics( aDics, aOldStyleDics );
 
-        numthes = aDics.size();
-        if (numthes)
+        if (!aDics.empty())
         {
             // get supported locales from the dictionaries-to-use...
-            sal_Int32 k = 0;
             std::set<OUString> aLocaleNamesSet;
-            std::list< SvtLinguConfigDictionaryEntry >::const_iterator aDictIt;
-            for (aDictIt = aDics.begin();  aDictIt != aDics.end();  ++aDictIt)
+            for (auto const& dict : aDics)
             {
-                uno::Sequence< OUString > aLocaleNames( aDictIt->aLocaleNames );
-                sal_Int32 nLen2 = aLocaleNames.getLength();
-                for (k = 0;  k < nLen2;  ++k)
+                for (const auto& rLocaleName : dict.aLocaleNames)
                 {
-                    aLocaleNamesSet.insert( aLocaleNames[k] );
+                    if (!comphelper::LibreOfficeKit::isAllowlistedLanguage(rLocaleName))
+                        continue;
+
+                    aLocaleNamesSet.insert( rLocaleName );
                 }
             }
             // ... and add them to the resulting sequence
-            aSuppLocales.realloc( aLocaleNamesSet.size() );
-            std::set<OUString>::const_iterator aItB;
-            k = 0;
-            for (aItB = aLocaleNamesSet.begin();  aItB != aLocaleNamesSet.end();  ++aItB)
-            {
-                Locale aTmp( LanguageTag::convertToLocale( *aItB ));
-                aSuppLocales[k++] = aTmp;
-            }
+            std::vector<Locale> aLocalesVec;
+            aLocalesVec.reserve(aLocaleNamesSet.size());
+
+            std::transform(aLocaleNamesSet.begin(), aLocaleNamesSet.end(), std::back_inserter(aLocalesVec),
+                [](const OUString& localeName) -> Locale { return LanguageTag::convertToLocale(localeName); });
+
+            aSuppLocales = comphelper::containerToSequence(aLocalesVec);
 
             //! For each dictionary and each locale we need a separate entry.
             //! If this results in more than one dictionary per locale than (for now)
             //! it is undefined which dictionary gets used.
             //! In the future the implementation should support using several dictionaries
             //! for one locale.
-            numthes = 0;
-            for (aDictIt = aDics.begin();  aDictIt != aDics.end();  ++aDictIt)
-                numthes = numthes + aDictIt->aLocaleNames.getLength();
+            sal_Int32 numthes = std::accumulate(aDics.begin(), aDics.end(), 0,
+                [](const sal_Int32 nSum, const SvtLinguConfigDictionaryEntry& dict) {
+                    return nSum + dict.aLocaleNames.getLength(); });
 
             // add dictionary information
-            aThes   = new MyThes* [numthes];
-            aTEncs  = new rtl_TextEncoding [numthes];
-            aTLocs  = new Locale [numthes];
-            aTNames = new OUString [numthes];
-            aCharSetInfo = new CharClass* [numthes];
+            mvThesInfo.resize(numthes);
 
-            k = 0;
-            for (aDictIt = aDics.begin();  aDictIt != aDics.end();  ++aDictIt)
+            sal_Int32 k = 0;
+            for (auto const& dict : aDics)
             {
-                if (aDictIt->aLocaleNames.getLength() > 0 &&
-                    aDictIt->aLocations.getLength() > 0)
+                if (dict.aLocaleNames.hasElements() &&
+                    dict.aLocations.hasElements())
                 {
-                    uno::Sequence< OUString > aLocaleNames( aDictIt->aLocaleNames );
-                    sal_Int32 nLocales = aLocaleNames.getLength();
-
                     // currently only one language per dictionary is supported in the actual implementation...
                     // Thus here we work-around this by adding the same dictionary several times.
                     // Once for each of its supported locales.
-                    for (sal_Int32 i = 0;  i < nLocales;  ++i)
+                    for (const auto& rLocaleName : dict.aLocaleNames)
                     {
-                        LanguageTag aLanguageTag( aDictIt->aLocaleNames[i] );
-                        aThes[k]  = nullptr;
-                        aTEncs[k]  = RTL_TEXTENCODING_DONTKNOW;
-                        aTLocs[k]  = aLanguageTag.getLocale();
-                        aCharSetInfo[k] = new CharClass( aLanguageTag );
+                        LanguageTag aLanguageTag(rLocaleName);
+                        mvThesInfo[k].aEncoding = RTL_TEXTENCODING_DONTKNOW;
+                        mvThesInfo[k].aLocale  = aLanguageTag.getLocale();
+                        mvThesInfo[k].aCharSetInfo.reset( new CharClass( aLanguageTag ) );
                         // also both files have to be in the same directory and the
                         // file names must only differ in the extension (.aff/.dic).
                         // Thus we use the first location only and strip the extension part.
-                        OUString aLocation = aDictIt->aLocations[0];
+                        OUString aLocation = dict.aLocations[0];
                         sal_Int32 nPos = aLocation.lastIndexOf( '.' );
                         aLocation = aLocation.copy( 0, nPos );
-                        aTNames[k] = aLocation;
+                        mvThesInfo[k].aName = aLocation;
 
                         ++k;
                     }
@@ -237,12 +198,7 @@ Sequence< Locale > SAL_CALL Thesaurus::getLocales()
         else
         {
             /* no dictionary found so register no dictionaries */
-            numthes = 0;
-            aThes  = nullptr;
-            aTEncs  = nullptr;
-            aTLocs  = nullptr;
-            aTNames = nullptr;
-            aCharSetInfo = nullptr;
+            mvThesInfo.clear();
             aSuppLocales.realloc(0);
         }
     }
@@ -254,25 +210,15 @@ sal_Bool SAL_CALL Thesaurus::hasLocale(const Locale& rLocale)
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
-    bool bRes = false;
-    if (!aSuppLocales.getLength())
+    if (!aSuppLocales.hasElements())
         getLocales();
-    sal_Int32 nLen = aSuppLocales.getLength();
-    for (sal_Int32 i = 0;  i < nLen;  ++i)
-    {
-        const Locale *pLocale = aSuppLocales.getConstArray();
-        if (rLocale == pLocale[i])
-        {
-            bRes = true;
-            break;
-        }
-    }
-    return bRes;
+
+    return comphelper::findValue(aSuppLocales, rLocale) != -1;
 }
 
 Sequence < Reference < css::linguistic2::XMeaning > > SAL_CALL Thesaurus::queryMeanings(
     const OUString& qTerm, const Locale& rLocale,
-    const PropertyValues& rProperties)
+    const css::uno::Sequence< css::beans::PropertyValue >& rProperties)
 {
     MutexGuard      aGuard( GetLinguMutex() );
 
@@ -313,15 +259,15 @@ Sequence < Reference < css::linguistic2::XMeaning > > SAL_CALL Thesaurus::queryM
     CharClass * pCC = nullptr;
 
     // find the first thesaurus that matches the locale
-    for (int i =0; i < numthes; i++)
+    for (size_t i =0; i < mvThesInfo.size(); i++)
     {
-        if (rLocale == aTLocs[i])
+        if (rLocale == mvThesInfo[i].aLocale)
         {
             // open up and initialize this thesaurus if need be
-            if (!aThes[i])
+            if (!mvThesInfo[i].aThes)
             {
-                OUString datpath = aTNames[i] + ".dat";
-                OUString idxpath = aTNames[i] + ".idx";
+                OUString datpath = mvThesInfo[i].aName + ".dat";
+                OUString idxpath = mvThesInfo[i].aName + ".idx";
                 OUString ndat;
                 OUString nidx;
                 osl::FileBase::getSystemPathFromFileURL(datpath,ndat);
@@ -336,13 +282,12 @@ Sequence < Reference < css::linguistic2::XMeaning > > SAL_CALL Thesaurus::queryM
                 OString aTmpdat(OU2ENC(ndat,osl_getThreadTextEncoding()));
 #endif
 
-                aThes[i] = new MyThes(aTmpidx.getStr(),aTmpdat.getStr());
-                if (aThes[i])
-                    aTEncs[i] = getTextEncodingFromCharset(aThes[i]->get_th_encoding());
+                mvThesInfo[i].aThes.reset( new MyThes(aTmpidx.getStr(),aTmpdat.getStr()) );
+                mvThesInfo[i].aEncoding = getTextEncodingFromCharset(mvThesInfo[i].aThes->get_th_encoding());
             }
-            pTH = aThes[i];
-            eEnc = aTEncs[i];
-            pCC = aCharSetInfo[i];
+            pTH = mvThesInfo[i].aThes.get();
+            eEnc = mvThesInfo[i].aEncoding;
+            pCC = mvThesInfo[i].aCharSetInfo.get();
 
             if (pTH)
                 break;
@@ -376,11 +321,11 @@ Sequence < Reference < css::linguistic2::XMeaning > > SAL_CALL Thesaurus::queryM
         if (stem)
         {
             xTmpRes2 = xSpell->spell( "<?xml?><query type='analyze'><word>" +
-                                      aPTerm + "</word></query>", (sal_uInt16)nLanguage, rProperties );
+                                      aPTerm + "</word></query>", static_cast<sal_uInt16>(nLanguage), rProperties );
             if (xTmpRes2.is())
             {
                 Sequence<OUString>seq = xTmpRes2->getAlternatives();
-                if (seq.getLength() > 0)
+                if (seq.hasElements())
                 {
                     codeTerm = seq[0];
                     stem2 = 1;
@@ -411,13 +356,12 @@ Sequence < Reference < css::linguistic2::XMeaning > > SAL_CALL Thesaurus::queryM
                     // generate synonyms with affixes
                     if (stem && stem2)
                     {
-                        Reference< XSpellAlternatives > xTmpRes;
-                        xTmpRes = xSpell->spell( "<?xml?><query type='generate'><word>" +
-                        sTerm + "</word>" + codeTerm + "</query>", (sal_uInt16)nLanguage, rProperties );
+                        Reference< XSpellAlternatives > xTmpRes = xSpell->spell( "<?xml?><query type='generate'><word>" +
+                            sTerm + "</word>" + codeTerm + "</query>", static_cast<sal_uInt16>(nLanguage), rProperties );
                         if (xTmpRes.is())
                         {
                             Sequence<OUString>seq = xTmpRes->getAlternatives();
-                            if (seq.getLength() > 0)
+                            if (seq.hasElements())
                                 sTerm = seq[0];
                         }
                     }
@@ -465,15 +409,14 @@ Sequence < Reference < css::linguistic2::XMeaning > > SAL_CALL Thesaurus::queryM
         stem = 1;
 
         xSpell.set( xLngSvcMgr->getSpellChecker(), UNO_QUERY );
-        if (!xSpell.is() || !xSpell->isValid( SPELLML_SUPPORT, (sal_uInt16)nLanguage, rProperties ))
+        if (!xSpell.is() || !xSpell->isValid( SPELLML_SUPPORT, static_cast<sal_uInt16>(nLanguage), rProperties ))
             return noMeanings;
-        Reference< XSpellAlternatives > xTmpRes;
-        xTmpRes = xSpell->spell( "<?xml?><query type='stem'><word>" +
-            aRTerm + "</word></query>", (sal_uInt16)nLanguage, rProperties );
+        Reference< XSpellAlternatives > xTmpRes = xSpell->spell( "<?xml?><query type='stem'><word>" +
+            aRTerm + "</word></query>", static_cast<sal_uInt16>(nLanguage), rProperties );
         if (xTmpRes.is())
         {
             Sequence<OUString>seq = xTmpRes->getAlternatives();
-            if (seq.getLength() > 0)
+            if (seq.hasElements())
             {
                 aRTerm = seq[0];  // XXX Use only the first stem
                 continue;
@@ -486,11 +429,11 @@ Sequence < Reference < css::linguistic2::XMeaning > > SAL_CALL Thesaurus::queryM
         if (!pos)
             return noMeanings;
         xTmpRes = xSpell->spell( "<?xml?><query type='stem'><word>" +
-            aRTerm.copy(pos + 1) + "</word></query>", (sal_uInt16)nLanguage, rProperties );
+            aRTerm.copy(pos + 1) + "</word></query>", static_cast<sal_uInt16>(nLanguage), rProperties );
         if (xTmpRes.is())
         {
             Sequence<OUString>seq = xTmpRes->getAlternatives();
-            if (seq.getLength() > 0)
+            if (seq.hasElements())
             {
                 aPTerm = aRTerm.copy(pos + 1);
                 aRTerm = aRTerm.copy(0, pos + 1) + seq[0];
@@ -509,61 +452,57 @@ Sequence < Reference < css::linguistic2::XMeaning > > SAL_CALL Thesaurus::queryM
     return noMeanings;
 }
 
-/// @throws Exception
-Reference< XInterface > SAL_CALL Thesaurus_CreateInstance(
-            const Reference< XMultiServiceFactory > & /*rSMgr*/ )
+OUString SAL_CALL Thesaurus::getServiceDisplayName(const Locale& rLocale)
 {
-    Reference< XInterface > xService = static_cast<cppu::OWeakObject*>(new Thesaurus);
-    return xService;
-}
-
-OUString SAL_CALL Thesaurus::getServiceDisplayName( const Locale& /*rLocale*/ )
-{
-    return OUString( "Mythes Thesaurus" );
+    std::locale loc(Translate::Create("svt", LanguageTag(rLocale)));
+    return Translate::get(STR_DESCRIPTION_MYTHES, loc);
 }
 
 void SAL_CALL Thesaurus::initialize( const Sequence< Any >& rArguments )
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
-    if (!pPropHelper)
-    {
-        sal_Int32 nLen = rArguments.getLength();
-        if (1 == nLen)
-        {
-            Reference< XLinguProperties >   xPropSet;
-            rArguments.getConstArray()[0] >>= xPropSet;
+    if (pPropHelper)
+        return;
 
-            //! Pointer allows for access of the non-UNO functions.
-            //! And the reference to the UNO-functions while increasing
-            //! the ref-count and will implicitly free the memory
-            //! when the object is no longer used.
-            pPropHelper = new PropertyHelper_Thesaurus( static_cast<XThesaurus *>(this), xPropSet );
-            pPropHelper->AddAsPropListener();   //! after a reference is established
-        }
-        else
-            OSL_FAIL( "wrong number of arguments in sequence" );
+    sal_Int32 nLen = rArguments.getLength();
+    // Accept one of two args so we can be compatible with the call site in GetAvailLocales()
+    // linguistic module
+    if (1 == nLen || 2 == nLen)
+    {
+        Reference< XLinguProperties >   xPropSet;
+        rArguments.getConstArray()[0] >>= xPropSet;
+        assert(xPropSet);
+
+        //! Pointer allows for access of the non-UNO functions.
+        //! And the reference to the UNO-functions while increasing
+        //! the ref-count and will implicitly free the memory
+        //! when the object is no longer used.
+        pPropHelper = new PropertyHelper_Thesaurus( static_cast<XThesaurus *>(this), xPropSet );
+        pPropHelper->AddAsPropListener();   //! after a reference is established
     }
+    else
+        OSL_FAIL( "wrong number of arguments in sequence" );
 }
 
-OUString SAL_CALL Thesaurus::makeLowerCase(const OUString& aTerm, CharClass * pCC)
+OUString Thesaurus::makeLowerCase(const OUString& aTerm, CharClass const * pCC)
 {
     if (pCC)
         return pCC->lowercase(aTerm);
     return aTerm;
 }
 
-OUString SAL_CALL Thesaurus::makeUpperCase(const OUString& aTerm, CharClass * pCC)
+OUString Thesaurus::makeUpperCase(const OUString& aTerm, CharClass const * pCC)
 {
     if (pCC)
         return pCC->uppercase(aTerm);
     return aTerm;
 }
 
-OUString SAL_CALL Thesaurus::makeInitCap(const OUString& aTerm, CharClass * pCC)
+OUString Thesaurus::makeInitCap(const OUString& aTerm, CharClass const * pCC)
 {
     sal_Int32 tlen = aTerm.getLength();
-    if ((pCC) && (tlen))
+    if (pCC && tlen)
     {
         OUString bTemp = aTerm.copy(0,1);
         if (tlen > 1)
@@ -614,7 +553,7 @@ void SAL_CALL Thesaurus::removeEventListener( const Reference< XEventListener >&
 // Service specific part
 OUString SAL_CALL Thesaurus::getImplementationName()
 {
-    return getImplementationName_Static();
+    return "org.openoffice.lingu.new.Thesaurus";
 }
 
 sal_Bool SAL_CALL Thesaurus::supportsService( const OUString& ServiceName )
@@ -624,34 +563,16 @@ sal_Bool SAL_CALL Thesaurus::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL Thesaurus::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
+    return { SN_THESAURUS };
 }
 
-Sequence< OUString > Thesaurus::getSupportedServiceNames_Static()
-        throw()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+lingucomponent_Thesaurus_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    Sequence< OUString > aSNS { SN_THESAURUS };
-    return aSNS;
-}
-
-void * SAL_CALL Thesaurus_getFactory( const sal_Char * pImplName,
-            XMultiServiceFactory * pServiceManager  )
-{
-    void * pRet = nullptr;
-    if ( Thesaurus::getImplementationName_Static().equalsAscii( pImplName ) )
-    {
-
-        Reference< XSingleServiceFactory > xFactory =
-            cppu::createOneInstanceFactory(
-                pServiceManager,
-                Thesaurus::getImplementationName_Static(),
-                Thesaurus_CreateInstance,
-                Thesaurus::getSupportedServiceNames_Static());
-        // acquire, because we return an interface pointer instead of a reference
-        xFactory->acquire();
-        pRet = xFactory.get();
-    }
-    return pRet;
+    static rtl::Reference<Thesaurus> g_Instance(new Thesaurus());
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

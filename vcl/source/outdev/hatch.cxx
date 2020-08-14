@@ -19,22 +19,25 @@
 
 #include <cassert>
 
+#include <osl/diagnose.h>
 #include <tools/line.hxx>
+#include <tools/helpers.hxx>
 
 #include <vcl/hatch.hxx>
-#include <vcl/salbtype.hxx>
+#include <vcl/metaact.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/window.hxx>
 
-#include "../gdi/pdfwriter_impl.hxx"
+#include <salgdi.hxx>
 
 #include <memory>
 
 #define HATCH_MAXPOINTS             1024
 
-extern "C" int SAL_CALL HatchCmpFnc( const void* p1, const void* p2 )
+extern "C" {
+
+static int HatchCmpFnc( const void* p1, const void* p2 )
 {
     const long nX1 = static_cast<Point const *>(p1)->X();
     const long nX2 = static_cast<Point const *>(p2)->X();
@@ -44,6 +47,8 @@ extern "C" int SAL_CALL HatchCmpFnc( const void* p1, const void* p2 )
     return ( nX1 > nX2 ? 1 : nX1 == nX2 ? nY1 > nY2 ? 1: nY1 == nY2 ? 0 : -1 : -1 );
 }
 
+}
+
 void OutputDevice::DrawHatch( const tools::PolyPolygon& rPolyPoly, const Hatch& rHatch )
 {
     assert(!is_double_buffered_window());
@@ -51,15 +56,15 @@ void OutputDevice::DrawHatch( const tools::PolyPolygon& rPolyPoly, const Hatch& 
     Hatch aHatch( rHatch );
 
     if ( mnDrawMode & ( DrawModeFlags::BlackLine | DrawModeFlags::WhiteLine |
-                        DrawModeFlags::GrayLine | DrawModeFlags::GhostedLine |
+                        DrawModeFlags::GrayLine |
                         DrawModeFlags::SettingsLine ) )
     {
         Color aColor( rHatch.GetColor() );
 
         if ( mnDrawMode & DrawModeFlags::BlackLine )
-            aColor = Color( COL_BLACK );
+            aColor = COL_BLACK;
         else if ( mnDrawMode & DrawModeFlags::WhiteLine )
-            aColor = Color( COL_WHITE );
+            aColor = COL_WHITE;
         else if ( mnDrawMode & DrawModeFlags::GrayLine )
         {
             const sal_uInt8 cLum = aColor.GetLuminance();
@@ -68,13 +73,6 @@ void OutputDevice::DrawHatch( const tools::PolyPolygon& rPolyPoly, const Hatch& 
         else if( mnDrawMode & DrawModeFlags::SettingsLine )
         {
             aColor = GetSettings().GetStyleSettings().GetFontColor();
-        }
-
-        if ( mnDrawMode & DrawModeFlags::GhostedLine )
-        {
-            aColor = Color( ( aColor.GetRed() >> 1 ) | 0x80,
-                            ( aColor.GetGreen() >> 1 ) | 0x80,
-                            ( aColor.GetBlue() >> 1 ) | 0x80);
         }
 
         aHatch.SetColor( aColor );
@@ -143,71 +141,71 @@ void OutputDevice::DrawHatch( const tools::PolyPolygon& rPolyPoly, const Hatch& 
 {
     assert(!is_double_buffered_window());
 
-    if(rPolyPoly.Count())
+    if(!rPolyPoly.Count())
+        return;
+
+    // #i115630# DrawHatch does not work with beziers included in the polypolygon, take care of that
+    bool bIsCurve(false);
+
+    for(sal_uInt16 a(0); !bIsCurve && a < rPolyPoly.Count(); a++)
     {
-        // #i115630# DrawHatch does not work with beziers included in the polypolygon, take care of that
-        bool bIsCurve(false);
-
-        for(sal_uInt16 a(0); !bIsCurve && a < rPolyPoly.Count(); a++)
+        if(rPolyPoly[a].HasFlags())
         {
-            if(rPolyPoly[a].HasFlags())
-            {
-                bIsCurve = true;
-            }
+            bIsCurve = true;
         }
+    }
 
-        if(bIsCurve)
+    if(bIsCurve)
+    {
+        OSL_ENSURE(false, "DrawHatch does *not* support curves, falling back to AdaptiveSubdivide()...");
+        tools::PolyPolygon aPolyPoly;
+
+        rPolyPoly.AdaptiveSubdivide(aPolyPoly);
+        DrawHatch(aPolyPoly, rHatch, bMtf);
+    }
+    else
+    {
+        tools::Rectangle   aRect( rPolyPoly.GetBoundRect() );
+        const long  nLogPixelWidth = ImplDevicePixelToLogicWidth( 1 );
+        const long  nWidth = ImplDevicePixelToLogicWidth( std::max( ImplLogicWidthToDevicePixel( rHatch.GetDistance() ), 3L ) );
+        std::unique_ptr<Point[]> pPtBuffer(new Point[ HATCH_MAXPOINTS ]);
+        Point       aPt1, aPt2, aEndPt1;
+        Size        aInc;
+
+        // Single hatch
+        aRect.AdjustLeft( -nLogPixelWidth ); aRect.AdjustTop( -nLogPixelWidth ); aRect.AdjustRight(nLogPixelWidth ); aRect.AdjustBottom(nLogPixelWidth );
+        CalcHatchValues( aRect, nWidth, rHatch.GetAngle(), aPt1, aPt2, aInc, aEndPt1 );
+        do
         {
-            OSL_ENSURE(false, "DrawHatch does *not* support curves, falling back to AdaptiveSubdivide()...");
-            tools::PolyPolygon aPolyPoly;
-
-            rPolyPoly.AdaptiveSubdivide(aPolyPoly);
-            DrawHatch(aPolyPoly, rHatch, bMtf);
+            DrawHatchLine( tools::Line( aPt1, aPt2 ), rPolyPoly, pPtBuffer.get(), bMtf );
+            aPt1.AdjustX(aInc.Width() ); aPt1.AdjustY(aInc.Height() );
+            aPt2.AdjustX(aInc.Width() ); aPt2.AdjustY(aInc.Height() );
         }
-        else
-        {
-            tools::Rectangle   aRect( rPolyPoly.GetBoundRect() );
-            const long  nLogPixelWidth = ImplDevicePixelToLogicWidth( 1 );
-            const long  nWidth = ImplDevicePixelToLogicWidth( std::max( ImplLogicWidthToDevicePixel( rHatch.GetDistance() ), 3L ) );
-            std::unique_ptr<Point[]> pPtBuffer(new Point[ HATCH_MAXPOINTS ]);
-            Point       aPt1, aPt2, aEndPt1;
-            Size        aInc;
+        while( ( aPt1.X() <= aEndPt1.X() ) && ( aPt1.Y() <= aEndPt1.Y() ) );
 
-            // Single hatch
-            aRect.Left() -= nLogPixelWidth; aRect.Top() -= nLogPixelWidth; aRect.Right() += nLogPixelWidth; aRect.Bottom() += nLogPixelWidth;
-            CalcHatchValues( aRect, nWidth, rHatch.GetAngle(), aPt1, aPt2, aInc, aEndPt1 );
+        if( ( rHatch.GetStyle() == HatchStyle::Double ) || ( rHatch.GetStyle() == HatchStyle::Triple ) )
+        {
+            // Double hatch
+            CalcHatchValues( aRect, nWidth, rHatch.GetAngle() + 900, aPt1, aPt2, aInc, aEndPt1 );
             do
             {
                 DrawHatchLine( tools::Line( aPt1, aPt2 ), rPolyPoly, pPtBuffer.get(), bMtf );
-                aPt1.X() += aInc.Width(); aPt1.Y() += aInc.Height();
-                aPt2.X() += aInc.Width(); aPt2.Y() += aInc.Height();
+                aPt1.AdjustX(aInc.Width() ); aPt1.AdjustY(aInc.Height() );
+                aPt2.AdjustX(aInc.Width() ); aPt2.AdjustY(aInc.Height() );
             }
             while( ( aPt1.X() <= aEndPt1.X() ) && ( aPt1.Y() <= aEndPt1.Y() ) );
 
-            if( ( rHatch.GetStyle() == HatchStyle::Double ) || ( rHatch.GetStyle() == HatchStyle::Triple ) )
+            if( rHatch.GetStyle() == HatchStyle::Triple )
             {
-                // Double hatch
-                CalcHatchValues( aRect, nWidth, rHatch.GetAngle() + 900, aPt1, aPt2, aInc, aEndPt1 );
+                // Triple hatch
+                CalcHatchValues( aRect, nWidth, rHatch.GetAngle() + 450, aPt1, aPt2, aInc, aEndPt1 );
                 do
                 {
                     DrawHatchLine( tools::Line( aPt1, aPt2 ), rPolyPoly, pPtBuffer.get(), bMtf );
-                    aPt1.X() += aInc.Width(); aPt1.Y() += aInc.Height();
-                    aPt2.X() += aInc.Width(); aPt2.Y() += aInc.Height();
+                    aPt1.AdjustX(aInc.Width() ); aPt1.AdjustY(aInc.Height() );
+                    aPt2.AdjustX(aInc.Width() ); aPt2.AdjustY(aInc.Height() );
                 }
                 while( ( aPt1.X() <= aEndPt1.X() ) && ( aPt1.Y() <= aEndPt1.Y() ) );
-
-                if( rHatch.GetStyle() == HatchStyle::Triple )
-                {
-                    // Triple hatch
-                    CalcHatchValues( aRect, nWidth, rHatch.GetAngle() + 450, aPt1, aPt2, aInc, aEndPt1 );
-                    do
-                    {
-                        DrawHatchLine( tools::Line( aPt1, aPt2 ), rPolyPoly, pPtBuffer.get(), bMtf );
-                        aPt1.X() += aInc.Width(); aPt1.Y() += aInc.Height();
-                        aPt2.X() += aInc.Width(); aPt2.Y() += aInc.Height();
-                    }
-                    while( ( aPt1.X() <= aEndPt1.X() ) && ( aPt1.Y() <= aEndPt1.Y() ) );
-                }
             }
         }
     }
@@ -237,8 +235,8 @@ void OutputDevice::CalcHatchValues( const tools::Rectangle& rRect, long nDist, s
         else
             nOffset = ( nDist - ( ( aRef.Y() - rRect.Top() ) % nDist ) );
 
-        rPt1.Y() -= nOffset;
-        rPt2.Y() -= nOffset;
+        rPt1.AdjustY( -nOffset );
+        rPt2.AdjustY( -nOffset );
     }
     else if( 900 == nAngle )
     {
@@ -252,8 +250,8 @@ void OutputDevice::CalcHatchValues( const tools::Rectangle& rRect, long nDist, s
         else
             nOffset = nDist - ( ( aRef.X() - rRect.Left() ) % nDist );
 
-        rPt1.X() -= nOffset;
-        rPt2.X() -= nOffset;
+        rPt1.AdjustX( -nOffset );
+        rPt2.AdjustX( -nOffset );
     }
     else if( nAngle >= -450 && nAngle <= 450 )
     {
@@ -262,7 +260,8 @@ void OutputDevice::CalcHatchValues( const tools::Rectangle& rRect, long nDist, s
         const long      nYOff = FRound( ( rRect.Right() - rRect.Left() ) * fTan );
         long            nPY;
 
-        rInc = Size( 0, nDist = FRound( nDist / cos( fAngle ) ) );
+        nDist = FRound( nDist / cos( fAngle ) );
+        rInc = Size( 0, nDist );
 
         if( nAngle > 0 )
         {
@@ -284,8 +283,8 @@ void OutputDevice::CalcHatchValues( const tools::Rectangle& rRect, long nDist, s
         else
             nOffset = nDist - ( ( nPY - rPt1.Y() ) % nDist );
 
-        rPt1.Y() -= nOffset;
-        rPt2.Y() -= nOffset;
+        rPt1.AdjustY( -nOffset );
+        rPt2.AdjustY( -nOffset );
     }
     else
     {
@@ -294,7 +293,8 @@ void OutputDevice::CalcHatchValues( const tools::Rectangle& rRect, long nDist, s
         const long   nXOff = FRound( ( rRect.Bottom() - rRect.Top() ) / fTan );
         long         nPX;
 
-        rInc = Size( nDist = FRound( nDist / sin( fAngle ) ), 0 );
+        nDist = FRound( nDist / sin( fAngle ) );
+        rInc = Size( nDist, 0 );
 
         if( nAngle > 0 )
         {
@@ -316,8 +316,8 @@ void OutputDevice::CalcHatchValues( const tools::Rectangle& rRect, long nDist, s
         else
             nOffset = nDist - ( ( nPX - rPt1.X() ) % nDist );
 
-        rPt1.X() -= nOffset;
-        rPt2.X() -= nOffset;
+        rPt1.AdjustX( -nOffset );
+        rPt2.AdjustX( -nOffset );
     }
 }
 
@@ -331,7 +331,7 @@ void OutputDevice::DrawHatchLine( const tools::Line& rLine, const tools::PolyPol
 
     for( long nPoly = 0, nPolyCount = rPolyPoly.Count(); nPoly < nPolyCount; nPoly++ )
     {
-        const tools::Polygon& rPoly = rPolyPoly[ (sal_uInt16) nPoly ];
+        const tools::Polygon& rPoly = rPolyPoly[ static_cast<sal_uInt16>(nPoly) ];
 
         if( rPoly.GetSize() > 1 )
         {
@@ -339,7 +339,7 @@ void OutputDevice::DrawHatchLine( const tools::Line& rLine, const tools::PolyPol
 
             for( long i = 1, nCount = rPoly.GetSize(); i <= nCount; i++ )
             {
-                aCurSegment.SetEnd( rPoly[ (sal_uInt16)( i % nCount ) ] );
+                aCurSegment.SetEnd( rPoly[ static_cast<sal_uInt16>( i % nCount ) ] );
                 nAdd = 0;
 
                 if( rLine.Intersection( aCurSegment, fX, fY ) )
@@ -347,7 +347,7 @@ void OutputDevice::DrawHatchLine( const tools::Line& rLine, const tools::PolyPol
                     if( ( fabs( fX - aCurSegment.GetStart().X() ) <= 0.0000001 ) &&
                         ( fabs( fY - aCurSegment.GetStart().Y() ) <= 0.0000001 ) )
                     {
-                        const tools::Line aPrevSegment( rPoly[ (sal_uInt16)( ( i > 1 ) ? ( i - 2 ) : ( nCount - 1 ) ) ], aCurSegment.GetStart() );
+                        const tools::Line aPrevSegment( rPoly[ static_cast<sal_uInt16>( ( i > 1 ) ? ( i - 2 ) : ( nCount - 1 ) ) ], aCurSegment.GetStart() );
                         const double    fPrevDistance = rLine.GetDistance( aPrevSegment.GetStart() );
                         const double    fCurDistance = rLine.GetDistance( aCurSegment.GetEnd() );
 
@@ -360,7 +360,7 @@ void OutputDevice::DrawHatchLine( const tools::Line& rLine, const tools::PolyPol
                     else if( ( fabs( fX - aCurSegment.GetEnd().X() ) <= 0.0000001 ) &&
                              ( fabs( fY - aCurSegment.GetEnd().Y() ) <= 0.0000001 ) )
                     {
-                        const tools::Line aNextSegment( aCurSegment.GetEnd(), rPoly[ (sal_uInt16)( ( i + 1 ) % nCount ) ] );
+                        const tools::Line aNextSegment( aCurSegment.GetEnd(), rPoly[ static_cast<sal_uInt16>( ( i + 1 ) % nCount ) ] );
 
                         if( ( fabs( rLine.GetDistance( aNextSegment.GetEnd() ) ) <= 0.0000001 ) &&
                             ( rLine.GetDistance( aCurSegment.GetStart() ) > 0.0 ) )
@@ -380,35 +380,30 @@ void OutputDevice::DrawHatchLine( const tools::Line& rLine, const tools::PolyPol
         }
     }
 
-    if( nPCounter > 1 )
+    if( nPCounter <= 1 )
+        return;
+
+    qsort( pPtBuffer, nPCounter, sizeof( Point ), HatchCmpFnc );
+
+    if( nPCounter & 1 )
+        nPCounter--;
+
+    if( bMtf )
     {
-        qsort( pPtBuffer, nPCounter, sizeof( Point ), HatchCmpFnc );
-
-        if( nPCounter & 1 )
-            nPCounter--;
-
-        if( bMtf )
-        {
-            for( long i = 0; i < nPCounter; i += 2 )
-                mpMetaFile->AddAction( new MetaLineAction( pPtBuffer[ i ], pPtBuffer[ i + 1 ] ) );
-        }
-        else
-        {
-            for( long i = 0; i < nPCounter; i += 2 )
-            {
-                if( mpPDFWriter )
-                {
-                    mpPDFWriter->drawLine( pPtBuffer[ i ], pPtBuffer[ i+1 ] );
-                }
-                else
-                {
-                    const Point aPt1( ImplLogicToDevicePixel( pPtBuffer[ i ] ) );
-                    const Point aPt2( ImplLogicToDevicePixel( pPtBuffer[ i + 1 ] ) );
-                    mpGraphics->DrawLine( aPt1.X(), aPt1.Y(), aPt2.X(), aPt2.Y(), this );
-                }
-            }
-        }
+        for( long i = 0; i < nPCounter; i += 2 )
+            mpMetaFile->AddAction( new MetaLineAction( pPtBuffer[ i ], pPtBuffer[ i + 1 ] ) );
     }
+    else
+    {
+        for( long i = 0; i < nPCounter; i += 2 )
+            DrawHatchLine_DrawLine(pPtBuffer[i], pPtBuffer[i+1]);
+    }
+}
+
+void OutputDevice::DrawHatchLine_DrawLine(const Point& rStartPoint, const Point& rEndPoint)
+{
+    Point aPt1{ImplLogicToDevicePixel(rStartPoint)}, aPt2{ImplLogicToDevicePixel(rEndPoint)};
+    mpGraphics->DrawLine(aPt1.X(), aPt1.Y(), aPt2.X(), aPt2.Y(), this);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

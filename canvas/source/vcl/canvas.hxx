@@ -20,8 +20,6 @@
 #ifndef INCLUDED_CANVAS_SOURCE_VCL_CANVAS_HXX
 #define INCLUDED_CANVAS_SOURCE_VCL_CANVAS_HXX
 
-#include <rtl/ref.hxx>
-
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XServiceName.hpp>
@@ -29,22 +27,19 @@
 #include <com/sun/star/rendering/XBitmapCanvas.hpp>
 #include <com/sun/star/rendering/XIntegerBitmap.hpp>
 #include <com/sun/star/rendering/XGraphicDevice.hpp>
-#include <com/sun/star/rendering/XBufferController.hpp>
 
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/uno3.hxx>
 
-#include <canvas/base/basemutexhelper.hxx>
-#include <canvas/base/integerbitmapbase.hxx>
-#include <canvas/base/graphicdevicebase.hxx>
+#include <base/basemutexhelper.hxx>
+#include <base/bitmapcanvasbase.hxx>
+#include <base/integerbitmapbase.hxx>
+#include <base/graphicdevicebase.hxx>
 
 #include "canvashelper.hxx"
 #include "impltools.hxx"
 #include "devicehelper.hxx"
 #include "repainttarget.hxx"
-
-#define CANVAS_SERVICE_NAME        "com.sun.star.rendering.Canvas.VCL"
-#define CANVAS_IMPLEMENTATION_NAME "com.sun.star.comp.rendering.Canvas.VCL"
 
 namespace vclcanvas
 {
@@ -113,8 +108,6 @@ namespace vclcanvas
     private:
         css::uno::Sequence< css::uno::Any >                maArguments;
     };
-
-    typedef ::rtl::Reference< Canvas > CanvasRef;
 }
 
 #endif

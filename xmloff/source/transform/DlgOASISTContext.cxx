@@ -19,7 +19,6 @@
 
 #include "DlgOASISTContext.hxx"
 #include "MutableAttrList.hxx"
-#include <xmloff/xmlnmspe.hxx>
 #include "ActionMapTypesOASIS.hxx"
 #include "AttrTransformerAction.hxx"
 #include "TransformerActions.hxx"
@@ -64,7 +63,7 @@ void XMLDlgOASISTransformerContext::StartElement(
         XMLTransformerActions::const_iterator aIter =
             pActions->find( aKey );
 
-        if( !(aIter == pActions->end() ) )
+        if( aIter != pActions->end() )
         {
             if( !pMutableAttrList )
             {
@@ -77,9 +76,9 @@ void XMLDlgOASISTransformerContext::StartElement(
             {
             case XML_ATACTION_DLG_BORDER:
                 {
-                    if ( !rAttrValue.equals( GetXMLToken( XML_NONE ) ) &&
-                         !rAttrValue.equals( GetXMLToken( XML_SIMPLE ) ) &&
-                         !rAttrValue.equals( GetXMLToken( XML_3D ) ) )
+                    if ( rAttrValue != GetXMLToken( XML_NONE ) &&
+                         rAttrValue != GetXMLToken( XML_SIMPLE ) &&
+                         rAttrValue != GetXMLToken( XML_3D ) )
                     {
                         pMutableAttrList->SetValueByIndex(
                             i, GetXMLToken( XML_NONE ) );

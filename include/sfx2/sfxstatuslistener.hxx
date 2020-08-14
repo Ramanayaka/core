@@ -20,19 +20,20 @@
 #ifndef INCLUDED_SFX2_SFXSTATUSLISTENER_HXX
 #define INCLUDED_SFX2_SFXSTATUSLISTENER_HXX
 
+#include <config_options.h>
 #include <sal/config.h>
 #include <sfx2/dllapi.h>
 #include <svl/poolitem.hxx>
-#include <cppuhelper/weak.hxx>
-#include <osl/conditn.hxx>
-#include <com/sun/star/frame/FeatureStateEvent.hpp>
-#include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/frame/XStatusListener.hpp>
 
 #include <cppuhelper/implbase.hxx>
 
-class SFX2_DLLPUBLIC SfxStatusListener : public cppu::WeakImplHelper<
+namespace com::sun::star::frame { class XDispatch; }
+namespace com::sun::star::frame { class XDispatchProvider; }
+namespace com::sun::star::frame { struct FeatureStateEvent; }
+
+class UNLESS_MERGELIBS(SFX2_DLLPUBLIC) SfxStatusListener : public cppu::WeakImplHelper<
                           css::frame::XStatusListener,
                           css::lang::XComponent>
 {
@@ -46,7 +47,7 @@ class SFX2_DLLPUBLIC SfxStatusListener : public cppu::WeakImplHelper<
         void    UnBind();
         void    ReBind();
 
-        virtual void StateChanged( sal_uInt16 nSID, SfxItemState eState, const SfxPoolItem* pState );
+        virtual void StateChanged( SfxItemState eState, const SfxPoolItem* pState );
 
         // XComponent
         virtual void SAL_CALL dispose() override;

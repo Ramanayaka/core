@@ -26,12 +26,9 @@
 #include "pres.hxx"
 #include <svx/svdobj.hxx>
 #include <tools/color.hxx>
-#include <sddllapi.h>
+#include "sddllapi.h"
 
-class SdrObject;
-class SdrPathObj;
-
-class SD_DLLPUBLIC SdAnimationInfo : public SdrObjUserData
+class SD_DLLPUBLIC SdAnimationInfo final : public SdrObjUserData
 {
 public:
     PresObjKind             mePresObjKind;
@@ -59,13 +56,13 @@ public:
     SdrObject&                  mrObject;
 
     void           SetBookmark( const OUString& rBookmark );
-    OUString       GetBookmark();
+    OUString       GetBookmark() const;
 public:
                             SAL_DLLPRIVATE SdAnimationInfo(SdrObject& rObject);
                             SAL_DLLPRIVATE SdAnimationInfo(const SdAnimationInfo& rAnmInfo, SdrObject& rObject);
     SAL_DLLPRIVATE virtual                 ~SdAnimationInfo() override;
 
-    SAL_DLLPRIVATE virtual SdrObjUserData* Clone(SdrObject* pObject) const override;
+    SAL_DLLPRIVATE virtual std::unique_ptr<SdrObjUserData> Clone(SdrObject* pObject) const override;
 };
 
 #endif // INCLUDED_SD_INC_ANMINFO_HXX

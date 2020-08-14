@@ -21,25 +21,23 @@
 
 #include <rtl/ustring.hxx>
 
-#include <vector>
-
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 class Context
 {
 public:
-    ::rtl::OUString msApplication;
-    ::rtl::OUString msContext;
+    OUString msApplication;
+    OUString msContext;
 
     Context();
     Context (
-        const ::rtl::OUString& rsApplication,
-        const ::rtl::OUString& rsContext);
+        const OUString& rsApplication,
+        const OUString& rsContext);
 
-    /** When two contexts are matched against each other then
+    /** When two contexts are matched against each other, then
         application or context name may have the wildcard value 'any'.
         In order to prefer matches without wildcards over matches with
-        wildcards we introduce a integer evaluation for matches.
+        wildcards we introduce an integer evaluation for matches.
     */
     const static sal_Int32 NoMatch;
     const static sal_Int32 OptimalMatch;
@@ -56,7 +54,7 @@ public:
     bool operator!= (const Context& rOther) const;
 };
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 #endif
 

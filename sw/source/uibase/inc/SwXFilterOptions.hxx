@@ -19,28 +19,30 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_SWXFILTEROPTIONS_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_SWXFILTEROPTIONS_HXX
 
+#include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/beans/XPropertyAccess.hpp>
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
 #include <com/sun/star/document/XImporter.hpp>
 #include <com/sun/star/document/XExporter.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
 
-namespace com { namespace sun { namespace star { namespace io {
-    class XInputStream;
-} } } }
+namespace com::sun::star::io { class XInputStream; }
 
 class SwXFilterOptions : public ::cppu::WeakImplHelper<
                             css::beans::XPropertyAccess,
                             css::ui::dialogs::XExecutableDialog,
                             css::document::XImporter,
                             css::document::XExporter,
+                            css::lang::XInitialization,
                             css::lang::XServiceInfo >
 {
     OUString     sFilterOptions;
 
     css::uno::Reference< css::io::XInputStream > xInputStream;
     css::uno::Reference< css::lang::XComponent > xModel;
+    css::uno::Reference< css::awt::XWindow > xDialogParent;
 
 public:
                             SwXFilterOptions();
@@ -63,6 +65,9 @@ public:
                             // XExporter
     virtual void SAL_CALL   setSourceDocument( const css::uno::Reference<
                                     css::lang::XComponent >& xDoc ) override;
+
+                            // XInitialization
+    virtual void SAL_CALL   initialize(const css::uno::Sequence<css::uno::Any>& rArguments) override;
 
                             // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;

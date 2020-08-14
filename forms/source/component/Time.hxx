@@ -21,7 +21,7 @@
 #define INCLUDED_FORMS_SOURCE_COMPONENT_TIME_HXX
 
 #include "EditBase.hxx"
-#include "limitedformats.hxx"
+#include <limitedformats.hxx>
 
 
 namespace frm
@@ -52,7 +52,7 @@ public:
 
     // css::lang::XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OTimeModel"); }
+    { return "com.sun.star.form.OTimeModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -97,7 +97,7 @@ public:
 
     // css::lang::XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OTimeControl"); }
+    { return "com.sun.star.form.OTimeControl"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 };

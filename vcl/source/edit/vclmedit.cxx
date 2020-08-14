@@ -18,59 +18,27 @@
  */
 
 #include <memory>
+#include <i18nlangtag/languagetag.hxx>
+#include <vcl/commandevent.hxx>
 #include <vcl/builder.hxx>
 #include <vcl/decoview.hxx>
-#include <vcl/svapp.hxx>
-
+#include <vcl/event.hxx>
+#include <vcl/specialchars.hxx>
+#include <vcl/timer.hxx>
 #include <vcl/vclmedit.hxx>
 #include <vcl/xtextedt.hxx>
+#include <vcl/textview.hxx>
+#include <vcl/ptrstyle.hxx>
+
 #include <svl/undo.hxx>
 #include <svl/lstner.hxx>
+#include <vcl/uitest/uiobject.hxx>
 
-#include <svids.hrc>
 #include <vcl/scrbar.hxx>
 #include <vcl/settings.hxx>
-
-class TextWindow : public vcl::Window
-{
-private:
-    VclPtr<Edit>    mxParent;
-    ExtTextEngine*  mpExtTextEngine;
-    TextView*       mpExtTextView;
-
-    bool            mbInMBDown;
-    bool            mbFocusSelectionHide;
-    bool            mbIgnoreTab;
-    bool            mbActivePopup;
-    bool            mbSelectOnTab;
-
-public:
-    explicit        TextWindow(Edit* pParent);
-    virtual         ~TextWindow() override;
-    virtual void    dispose() override;
-
-    ExtTextEngine*  GetTextEngine() const { return mpExtTextEngine; }
-    TextView*       GetTextView() const { return mpExtTextView; }
-
-    virtual void    MouseMove( const MouseEvent& rMEvt ) override;
-    virtual void    MouseButtonDown( const MouseEvent& rMEvt ) override;
-    virtual void    MouseButtonUp( const MouseEvent& rMEvt ) override;
-    virtual void    KeyInput( const KeyEvent& rKEvent ) override;
-
-    virtual void    Command( const CommandEvent& rCEvt ) override;
-
-    virtual void    Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
-    virtual void    Resize() override;
-
-    virtual void    GetFocus() override;
-    virtual void    LoseFocus() override;
-
-    void            SetAutoFocusHide( bool bAutoHide ) { mbFocusSelectionHide = bAutoHide; }
-
-    void            SetIgnoreTab( bool bIgnore ) { mbIgnoreTab = bIgnore; }
-
-    void            DisableSelectionOnFocus() { mbSelectOnTab = false; }
-};
+#include <vcl/weld.hxx>
+#include <osl/diagnose.h>
+#include <tools/json_writer.hxx>
 
 class ImpVclMEdit : public SfxListener
 {
@@ -82,7 +50,6 @@ private:
     VclPtr<ScrollBar>          mpVScrollBar;
     VclPtr<ScrollBarBox>       mpScrollBox;
 
-    Point               maTextWindowOffset;
     long                mnTextWidth;
     mutable Selection   maSelection;
 
@@ -99,7 +66,6 @@ public:
                 virtual ~ImpVclMEdit() override;
 
     void        SetModified( bool bMod );
-    bool        IsModified() const;
 
     void        SetReadOnly( bool bRdOnly );
     bool        IsReadOnly() const;
@@ -107,7 +73,7 @@ public:
     void        SetMaxTextLen(sal_Int32 nLen);
     sal_Int32   GetMaxTextLen() const;
 
-    void        SetMaxTextWidth( sal_uLong nMaxWidth );
+    void        SetMaxTextWidth(long nMaxWidth);
 
     void        InsertText( const OUString& rStr );
     OUString    GetSelected() const;
@@ -141,18 +107,20 @@ public:
     void        InitFromStyle( WinBits nWinStyle );
 
     TextWindow* GetTextWindow() { return mpTextWindow; }
-    ScrollBar*  GetHScrollBar() { return mpHScrollBar; }
-    ScrollBar*  GetVScrollBar() { return mpVScrollBar; }
+    ScrollBar&  GetHScrollBar() { return *mpHScrollBar; }
+    ScrollBar&  GetVScrollBar() { return *mpVScrollBar; }
 };
 
 ImpVclMEdit::ImpVclMEdit( VclMultiLineEdit* pEdt, WinBits nWinStyle )
-    :mpHScrollBar(nullptr)
-    ,mpVScrollBar(nullptr)
-    ,mpScrollBox(nullptr)
+    : pVclMultiLineEdit(pEdt)
+    , mpTextWindow(VclPtr<TextWindow>::Create(pEdt))
+    , mpHScrollBar(VclPtr<ScrollBar>::Create(pVclMultiLineEdit, WB_HSCROLL|WB_DRAG))
+    , mpVScrollBar(VclPtr<ScrollBar>::Create(pVclMultiLineEdit, WB_VSCROLL|WB_DRAG))
+    , mpScrollBox(VclPtr<ScrollBarBox>::Create(pVclMultiLineEdit, WB_SIZEABLE))
+    , mnTextWidth(0)
 {
-    pVclMultiLineEdit = pEdt;
-    mnTextWidth = 0;
-    mpTextWindow = VclPtr<TextWindow>::Create( pEdt );
+    mpVScrollBar->SetScrollHdl( LINK( this, ImpVclMEdit, ScrollHdl ) );
+    mpHScrollBar->SetScrollHdl( LINK( this, ImpVclMEdit, ScrollHdl ) );
     mpTextWindow->Show();
     InitFromStyle( nWinStyle );
     StartListening( *mpTextWindow->GetTextEngine() );
@@ -160,11 +128,11 @@ ImpVclMEdit::ImpVclMEdit( VclMultiLineEdit* pEdt, WinBits nWinStyle )
 
 void ImpVclMEdit::ImpUpdateSrollBarVis( WinBits nWinStyle )
 {
-    const bool bHaveVScroll = (nullptr != mpVScrollBar);
-    const bool bHaveHScroll = (nullptr != mpHScrollBar);
-    const bool bHaveScrollBox = (nullptr != mpScrollBox);
+    const bool bHaveVScroll = mpVScrollBar->IsVisible();
+    const bool bHaveHScroll = mpHScrollBar->IsVisible();
+    const bool bHaveScrollBox = mpScrollBox->IsVisible();
 
-          bool bNeedVScroll = ( nWinStyle & WB_VSCROLL ) == WB_VSCROLL;
+    bool bNeedVScroll = ( nWinStyle & WB_VSCROLL ) == WB_VSCROLL;
     const bool bNeedHScroll = ( nWinStyle & WB_HSCROLL ) == WB_HSCROLL;
 
     const bool bAutoVScroll = ( nWinStyle & WB_AUTOVSCROLL ) == WB_AUTOVSCROLL;
@@ -183,39 +151,19 @@ void ImpVclMEdit::ImpUpdateSrollBarVis( WinBits nWinStyle )
     bool bScrollbarsChanged = false;
     if ( bHaveVScroll != bNeedVScroll )
     {
-        mpVScrollBar.disposeAndClear();
-        mpVScrollBar = bNeedVScroll ? VclPtr<ScrollBar>::Create( pVclMultiLineEdit, WB_VSCROLL|WB_DRAG ) : nullptr;
-
-        if ( bNeedVScroll )
-        {
-            mpVScrollBar->Show();
-            mpVScrollBar->SetScrollHdl( LINK( this, ImpVclMEdit, ScrollHdl ) );
-        }
-
+        mpVScrollBar->Show(bNeedVScroll);
         bScrollbarsChanged = true;
     }
 
     if ( bHaveHScroll != bNeedHScroll )
     {
-        mpHScrollBar.disposeAndClear();
-        mpHScrollBar = bNeedHScroll ? VclPtr<ScrollBar>::Create( pVclMultiLineEdit, WB_HSCROLL|WB_DRAG ) : nullptr;
-
-        if ( bNeedHScroll )
-        {
-            mpHScrollBar->Show();
-            mpHScrollBar->SetScrollHdl( LINK( this, ImpVclMEdit, ScrollHdl ) );
-        }
-
+        mpHScrollBar->Show(bNeedHScroll);
         bScrollbarsChanged = true;
     }
 
     if ( bHaveScrollBox != bNeedScrollBox )
     {
-        mpScrollBox.disposeAndClear();
-        mpScrollBox = bNeedScrollBox ? VclPtr<ScrollBarBox>::Create( pVclMultiLineEdit, WB_SIZEABLE ) : nullptr;
-
-        if ( bNeedScrollBox )
-            mpScrollBox->Show();
+        mpScrollBox->Show(bNeedScrollBox);
     }
 
     if ( bScrollbarsChanged )
@@ -266,46 +214,32 @@ ImpVclMEdit::~ImpVclMEdit()
 
 void ImpVclMEdit::ImpSetScrollBarRanges()
 {
-    if ( mpVScrollBar )
-    {
-        const long nTextHeight = mpTextWindow->GetTextEngine()->GetTextHeight();
-        mpVScrollBar->SetRange( Range( 0, nTextHeight-1 ) );
-    }
-    if ( mpHScrollBar )
-    {
-//      sal_uLong nTextWidth = mpTextWindow->GetTextEngine()->CalcTextWidth();
-        // there is no Notify by width change
-//      sal_uLong nW = Max( (sal_uLong)mpTextWindow->GetOutputSizePixel().Width()*5, (sal_uLong)nTextWidth );
-//      mpHScrollBar->SetRange( Range( 0, (long)nW ) );
-        mpHScrollBar->SetRange( Range( 0, mnTextWidth-1 ) );
-    }
+    const long nTextHeight = mpTextWindow->GetTextEngine()->GetTextHeight();
+    mpVScrollBar->SetRange( Range( 0, nTextHeight-1 ) );
+
+    mpHScrollBar->SetRange( Range( 0, mnTextWidth-1 ) );
 }
 
 void ImpVclMEdit::ImpInitScrollBars()
 {
     static const sal_Unicode sampleChar = { 'x' };
-    if ( mpHScrollBar || mpVScrollBar )
-    {
-        ImpSetScrollBarRanges();
-        Size aCharBox;
-        aCharBox.Width() = mpTextWindow->GetTextWidth( OUString(sampleChar) );
-        aCharBox.Height() = mpTextWindow->GetTextHeight();
-        Size aOutSz = mpTextWindow->GetOutputSizePixel();
-        if ( mpHScrollBar )
-        {
-            mpHScrollBar->SetVisibleSize( aOutSz.Width() );
-            mpHScrollBar->SetPageSize( aOutSz.Width() * 8 / 10 );
-            mpHScrollBar->SetLineSize( aCharBox.Width()*10 );
-            ImpSetHScrollBarThumbPos();
-        }
-        if ( mpVScrollBar )
-        {
-            mpVScrollBar->SetVisibleSize( aOutSz.Height() );
-            mpVScrollBar->SetPageSize( aOutSz.Height() * 8 / 10 );
-            mpVScrollBar->SetLineSize( aCharBox.Height() );
-            mpVScrollBar->SetThumbPos( mpTextWindow->GetTextView()->GetStartDocPos().Y() );
-        }
-    }
+
+    ImpSetScrollBarRanges();
+
+    Size aCharBox;
+    aCharBox.setWidth( mpTextWindow->GetTextWidth( OUString(sampleChar) ) );
+    aCharBox.setHeight( mpTextWindow->GetTextHeight() );
+    Size aOutSz = mpTextWindow->GetOutputSizePixel();
+
+    mpHScrollBar->SetVisibleSize( aOutSz.Width() );
+    mpHScrollBar->SetPageSize( aOutSz.Width() * 8 / 10 );
+    mpHScrollBar->SetLineSize( aCharBox.Width()*10 );
+    ImpSetHScrollBarThumbPos();
+
+    mpVScrollBar->SetVisibleSize( aOutSz.Height() );
+    mpVScrollBar->SetPageSize( aOutSz.Height() * 8 / 10 );
+    mpVScrollBar->SetLineSize( aCharBox.Height() );
+    mpVScrollBar->SetThumbPos( mpTextWindow->GetTextView()->GetStartDocPos().Y() );
 }
 
 void ImpVclMEdit::ImpSetHScrollBarThumbPos()
@@ -349,11 +283,6 @@ void ImpVclMEdit::SetModified( bool bMod )
     mpTextWindow->GetTextEngine()->SetModified( bMod );
 }
 
-bool ImpVclMEdit::IsModified() const
-{
-    return mpTextWindow->GetTextEngine()->IsModified();
-}
-
 void ImpVclMEdit::SetReadOnly( bool bRdOnly )
 {
     mpTextWindow->GetTextView()->SetReadOnly( bRdOnly );
@@ -390,9 +319,9 @@ OUString ImpVclMEdit::GetSelected( LineEnd aSeparator ) const
     return mpTextWindow->GetTextView()->GetSelected( aSeparator );
 }
 
-void ImpVclMEdit::SetMaxTextWidth( sal_uLong nMaxWidth )
+void ImpVclMEdit::SetMaxTextWidth(long nMaxWidth)
 {
-    mpTextWindow->GetTextEngine()->SetMaxTextWidth( nMaxWidth );
+    mpTextWindow->GetTextEngine()->SetMaxTextWidth(nMaxWidth);
 }
 
 void ImpVclMEdit::Resize()
@@ -409,38 +338,36 @@ void ImpVclMEdit::Resize()
         long nSBWidth = pVclMultiLineEdit->GetSettings().GetStyleSettings().GetScrollBarSize();
         nSBWidth = pVclMultiLineEdit->CalcZoom( nSBWidth );
 
-        if ( mpHScrollBar )
-            aSz.Height() -= nSBWidth+1;
-        if ( mpVScrollBar )
-            aSz.Width() -= nSBWidth+1;
+        if (mpHScrollBar->IsVisible())
+            aSz.AdjustHeight( -(nSBWidth+1) );
+        if (mpVScrollBar->IsVisible())
+            aSz.AdjustWidth( -(nSBWidth+1) );
 
-        if ( !mpHScrollBar )
+        if (!mpHScrollBar->IsVisible())
             mpTextWindow->GetTextEngine()->SetMaxTextWidth( aSz.Width() );
         else
             mpHScrollBar->setPosSizePixel( 0, aEditSize.Height()-nSBWidth, aSz.Width(), nSBWidth );
 
-        Point aTextWindowPos( maTextWindowOffset );
-        if ( mpVScrollBar )
+        Point aTextWindowPos;
+        if (mpVScrollBar->IsVisible())
         {
             if( AllSettings::GetLayoutRTL() )
             {
                 mpVScrollBar->setPosSizePixel( 0, 0, nSBWidth, aSz.Height() );
-                aTextWindowPos.X() += nSBWidth;
+                aTextWindowPos.AdjustX(nSBWidth );
             }
             else
                 mpVScrollBar->setPosSizePixel( aEditSize.Width()-nSBWidth, 0, nSBWidth, aSz.Height() );
         }
 
-        if ( mpScrollBox )
+        if (mpScrollBox->IsVisible())
             mpScrollBox->setPosSizePixel( aSz.Width(), aSz.Height(), nSBWidth, nSBWidth );
 
         Size aTextWindowSize( aSz );
-        aTextWindowSize.Width() -= maTextWindowOffset.X();
-        aTextWindowSize.Height() -= maTextWindowOffset.Y();
         if ( aTextWindowSize.Width() < 0 )
-            aTextWindowSize.Width() = 0;
+            aTextWindowSize.setWidth( 0 );
         if ( aTextWindowSize.Height() < 0 )
-            aTextWindowSize.Height() = 0;
+            aTextWindowSize.setHeight( 0 );
 
         Size aOldTextWindowSize( mpTextWindow->GetSizePixel() );
         mpTextWindow->SetPosSizePixel( aTextWindowPos, aTextWindowSize );
@@ -517,9 +444,9 @@ void ImpVclMEdit::Notify( SfxBroadcaster&, const SfxHint& rHint )
     switch (pTextHint->GetId())
     {
         case SfxHintId::TextViewScrolled:
-            if ( mpHScrollBar )
+            if (mpHScrollBar->IsVisible())
                 ImpSetHScrollBarThumbPos();
-            if ( mpVScrollBar )
+            if (mpVScrollBar->IsVisible())
                 mpVScrollBar->SetThumbPos( mpTextWindow->GetTextView()->GetStartDocPos().Y() );
             break;
 
@@ -535,7 +462,7 @@ void ImpVclMEdit::Notify( SfxBroadcaster&, const SfxHint& rHint )
             break;
 
         case SfxHintId::TextFormatted:
-            if ( mpHScrollBar )
+            if (mpHScrollBar->IsVisible())
             {
                 const long nWidth = mpTextWindow->GetTextEngine()->CalcTextWidth();
                 if ( nWidth != mnTextWidth )
@@ -637,10 +564,10 @@ Size ImpVclMEdit::CalcMinimumSize() const
     Size aSz(   mpTextWindow->GetTextEngine()->CalcTextWidth(),
                 mpTextWindow->GetTextEngine()->GetTextHeight() );
 
-    if ( mpHScrollBar )
-        aSz.Height() += mpHScrollBar->GetSizePixel().Height();
-    if ( mpVScrollBar )
-        aSz.Width() += mpVScrollBar->GetSizePixel().Width();
+    if (mpHScrollBar->IsVisible())
+        aSz.AdjustHeight(mpHScrollBar->GetSizePixel().Height() );
+    if (mpVScrollBar->IsVisible())
+        aSz.AdjustWidth(mpVScrollBar->GetSizePixel().Width() );
 
     return aSz;
 }
@@ -651,23 +578,23 @@ Size ImpVclMEdit::CalcBlockSize( sal_uInt16 nColumns, sal_uInt16 nLines ) const
 
     Size aSz;
     Size aCharSz;
-    aCharSz.Width() = mpTextWindow->GetTextWidth( OUString(sampleChar) );
-    aCharSz.Height() = mpTextWindow->GetTextHeight();
+    aCharSz.setWidth( mpTextWindow->GetTextWidth( OUString(sampleChar) ) );
+    aCharSz.setHeight( mpTextWindow->GetTextHeight() );
 
     if ( nLines )
-        aSz.Height() = nLines*aCharSz.Height();
+        aSz.setHeight( nLines*aCharSz.Height() );
     else
-        aSz.Height() = mpTextWindow->GetTextEngine()->GetTextHeight();
+        aSz.setHeight( mpTextWindow->GetTextEngine()->GetTextHeight() );
 
     if ( nColumns )
-        aSz.Width() = nColumns*aCharSz.Width();
+        aSz.setWidth( nColumns*aCharSz.Width() );
     else
-        aSz.Width() = mpTextWindow->GetTextEngine()->CalcTextWidth();
+        aSz.setWidth( mpTextWindow->GetTextEngine()->CalcTextWidth() );
 
-    if ( mpHScrollBar )
-        aSz.Height() += mpHScrollBar->GetSizePixel().Height();
-    if ( mpVScrollBar )
-        aSz.Width() += mpVScrollBar->GetSizePixel().Width();
+    if (mpHScrollBar->IsVisible())
+        aSz.AdjustHeight(mpHScrollBar->GetSizePixel().Height() );
+    if (mpVScrollBar->IsVisible())
+        aSz.AdjustWidth(mpVScrollBar->GetSizePixel().Width() );
 
     return aSz;
 }
@@ -677,27 +604,31 @@ void ImpVclMEdit::GetMaxVisColumnsAndLines( sal_uInt16& rnCols, sal_uInt16& rnLi
     static const sal_Unicode sampleChar = { 'x' };
     Size aOutSz = mpTextWindow->GetOutputSizePixel();
     Size aCharSz( mpTextWindow->GetTextWidth( OUString(sampleChar) ), mpTextWindow->GetTextHeight() );
-    rnCols = (sal_uInt16) (aOutSz.Width()/aCharSz.Width());
-    rnLines = (sal_uInt16) (aOutSz.Height()/aCharSz.Height());
+    rnCols = static_cast<sal_uInt16>(aOutSz.Width()/aCharSz.Width());
+    rnLines = static_cast<sal_uInt16>(aOutSz.Height()/aCharSz.Height());
 }
 
 void ImpVclMEdit::Enable( bool bEnable )
 {
     mpTextWindow->Enable( bEnable );
-    if ( mpHScrollBar )
+    if (mpHScrollBar->IsVisible())
         mpHScrollBar->Enable( bEnable );
-    if ( mpVScrollBar )
+    if (mpVScrollBar->IsVisible())
         mpVScrollBar->Enable( bEnable );
 }
 
 bool ImpVclMEdit::HandleCommand( const CommandEvent& rCEvt )
 {
     bool bDone = false;
-    if ( ( rCEvt.GetCommand() == CommandEventId::Wheel ) ||
-         ( rCEvt.GetCommand() == CommandEventId::StartAutoScroll ) ||
-         ( rCEvt.GetCommand() == CommandEventId::AutoScroll ) )
+    CommandEventId nCommand = rCEvt.GetCommand();
+    if (nCommand == CommandEventId::Wheel ||
+        nCommand == CommandEventId::StartAutoScroll ||
+        nCommand == CommandEventId::AutoScroll ||
+        nCommand == CommandEventId::Gesture)
     {
-        (void)mpTextWindow->HandleScrollCommand( rCEvt, mpHScrollBar, mpVScrollBar );
+        ScrollBar* pHScrollBar = mpHScrollBar->IsVisible() ? mpHScrollBar.get() : nullptr;
+        ScrollBar* pVScrollBar = mpVScrollBar->IsVisible() ? mpVScrollBar.get() : nullptr;
+        mpTextWindow->HandleScrollCommand(rCEvt, pHScrollBar, pVScrollBar);
         bDone = true;
     }
     return bDone;
@@ -713,15 +644,15 @@ TextWindow::TextWindow(Edit* pParent)
     mbActivePopup = false;
     mbSelectOnTab = true;
 
-    SetPointer( Pointer( PointerStyle::Text ) );
+    SetPointer( PointerStyle::Text );
 
-    mpExtTextEngine = new ExtTextEngine;
+    mpExtTextEngine.reset(new ExtTextEngine);
     mpExtTextEngine->SetMaxTextLen(EDIT_NOLIMIT);
     if( pParent->GetStyle() & WB_BORDER )
         mpExtTextEngine->SetLeftMargin( 2 );
     mpExtTextEngine->SetLocale( GetSettings().GetLanguageTag().getLocale() );
-    mpExtTextView = new TextView( mpExtTextEngine, this );
-    mpExtTextEngine->InsertView( mpExtTextView );
+    mpExtTextView.reset(new TextView( mpExtTextEngine.get(), this ));
+    mpExtTextEngine->InsertView( mpExtTextView.get() );
     mpExtTextEngine->EnableUndo( true );
     mpExtTextView->ShowCursor();
 
@@ -738,10 +669,8 @@ TextWindow::~TextWindow()
 void TextWindow::dispose()
 {
     mxParent.clear();
-    delete mpExtTextView;
-    mpExtTextView = nullptr;
-    delete mpExtTextEngine;
-    mpExtTextEngine = nullptr;
+    mpExtTextView.reset();
+    mpExtTextEngine.reset();
     Window::dispose();
 }
 
@@ -777,11 +706,11 @@ void TextWindow::KeyInput( const KeyEvent& rKEvent )
     }
     else if ( (nCode == KEY_S) && rKEvent.GetKeyCode().IsShift() && rKEvent.GetKeyCode().IsMod1() )
     {
-        if ( Edit::GetGetSpecialCharsFunction() )
+        if ( vcl::GetGetSpecialCharsFunction() )
         {
             // to maintain the selection
             mbActivePopup = true;
-            OUString aChars = Edit::GetGetSpecialCharsFunction()( this, GetFont() );
+            OUString aChars = vcl::GetGetSpecialCharsFunction()(GetFrameWeld(), GetFont());
             if (!aChars.isEmpty())
             {
                 mpExtTextView->InsertText( aChars );
@@ -849,7 +778,7 @@ void TextWindow::Command( const CommandEvent& rCEvt )
         pPopup->EnableItem(pPopup->GetItemId("paste"), bEnablePaste);
         pPopup->EnableItem(pPopup->GetItemId("specialchar"), bEnableSpecialChar);
         pPopup->EnableItem(pPopup->GetItemId("undo"), bEnableUndo);
-        pPopup->ShowItem(pPopup->GetItemId("specialchar"), !Edit::GetGetSpecialCharsFunction());
+        pPopup->ShowItem(pPopup->GetItemId("specialchar"), !vcl::GetGetSpecialCharsFunction());
 
         mbActivePopup = true;
         Point aPos = rCEvt.GetMousePosPixel();
@@ -895,7 +824,7 @@ void TextWindow::Command( const CommandEvent& rCEvt )
         }
         else if (sCommand == "specialchar")
         {
-            OUString aChars = Edit::GetGetSpecialCharsFunction()( this, GetFont() );
+            OUString aChars = vcl::GetGetSpecialCharsFunction()(GetFrameWeld(), GetFont());
             if (!aChars.isEmpty())
             {
                 mpExtTextView->InsertText( aChars );
@@ -916,23 +845,23 @@ void TextWindow::Command( const CommandEvent& rCEvt )
 void TextWindow::GetFocus()
 {
     Window::GetFocus();
-    if ( !mbActivePopup )
+    if ( mbActivePopup )
+        return;
+
+    bool bGotoCursor = !mpExtTextView->IsReadOnly();
+    if ( mbFocusSelectionHide && IsReallyVisible()
+            && ( mbSelectOnTab &&
+                (!mbInMBDown || ( GetSettings().GetStyleSettings().GetSelectionOptions() & SelectionOptions::Focus ) )) )
     {
-        bool bGotoCursor = !mpExtTextView->IsReadOnly();
-        if ( mbFocusSelectionHide && IsReallyVisible() && !mpExtTextView->IsReadOnly()
-                && ( mbSelectOnTab &&
-                    (!mbInMBDown || ( GetSettings().GetStyleSettings().GetSelectionOptions() & SelectionOptions::Focus ) )) )
-        {
-            // select everything, but do not scroll
-            bool bAutoScroll = mpExtTextView->IsAutoScroll();
-            mpExtTextView->SetAutoScroll( false );
-            mpExtTextView->SetSelection( TextSelection( TextPaM( 0, 0 ), TextPaM( TEXT_PARA_ALL, TEXT_INDEX_ALL ) ) );
-            mpExtTextView->SetAutoScroll( bAutoScroll );
-            bGotoCursor = false;
-        }
-        mpExtTextView->SetPaintSelection( true );
-        mpExtTextView->ShowCursor( bGotoCursor );
+        // select everything, but do not scroll
+        bool bAutoScroll = mpExtTextView->IsAutoScroll();
+        mpExtTextView->SetAutoScroll( false );
+        mpExtTextView->SetSelection( TextSelection( TextPaM( 0, 0 ), TextPaM( TEXT_PARA_ALL, TEXT_INDEX_ALL ) ) );
+        mpExtTextView->SetAutoScroll( bAutoScroll );
+        bGotoCursor = false;
     }
+    mpExtTextView->SetPaintSelection( true );
+    mpExtTextView->ShowCursor( bGotoCursor );
 }
 
 void TextWindow::LoseFocus()
@@ -947,7 +876,7 @@ VclMultiLineEdit::VclMultiLineEdit( vcl::Window* pParent, WinBits nWinStyle )
     : Edit( pParent, nWinStyle )
 {
     SetType( WindowType::MULTILINEEDIT );
-    pImpVclMEdit = new ImpVclMEdit( this, nWinStyle );
+    pImpVclMEdit.reset(new ImpVclMEdit( this, nWinStyle ));
     ImplInitSettings( true );
     pUpdateDataTimer = nullptr;
 
@@ -962,13 +891,8 @@ VclMultiLineEdit::~VclMultiLineEdit()
 
 void VclMultiLineEdit::dispose()
 {
-    {
-        std::unique_ptr< ImpVclMEdit > xDelete(pImpVclMEdit);
-        pImpVclMEdit = nullptr;
-    }
-    delete pUpdateDataTimer;
-    pUpdateDataTimer = nullptr;
-
+    pImpVclMEdit.reset();
+    pUpdateDataTimer.reset();
     Edit::dispose();
 }
 
@@ -1007,7 +931,7 @@ void VclMultiLineEdit::ApplySettings(vcl::RenderContext& rRenderContext)
     vcl::Font theFont = rRenderContext.GetFont();
     theFont.SetColor(aTextColor);
     if (IsPaintTransparent())
-        theFont.SetFillColor(Color(COL_TRANSPARENT));
+        theFont.SetFillColor(COL_TRANSPARENT);
     else
         theFont.SetFillColor(IsControlBackground() ? GetControlBackground() : rStyleSettings.GetFieldColor());
 
@@ -1055,32 +979,32 @@ void VclMultiLineEdit::ImplInitSettings(bool bBackground)
     vcl::Font TheFont = GetFont();
     TheFont.SetColor(aTextColor);
     if (IsPaintTransparent())
-        TheFont.SetFillColor(Color(COL_TRANSPARENT));
+        TheFont.SetFillColor(COL_TRANSPARENT);
     else
         TheFont.SetFillColor(IsControlBackground() ? GetControlBackground() : rStyleSettings.GetFieldColor());
     pImpVclMEdit->GetTextWindow()->SetFont(TheFont);
     pImpVclMEdit->GetTextWindow()->GetTextEngine()->SetFont(TheFont);
     pImpVclMEdit->GetTextWindow()->SetTextColor(aTextColor);
 
-    if (bBackground)
+    if (!bBackground)
+        return;
+
+    if (IsPaintTransparent())
     {
-        if (IsPaintTransparent())
-        {
-            pImpVclMEdit->GetTextWindow()->SetPaintTransparent(true);
-            pImpVclMEdit->GetTextWindow()->SetBackground();
-            pImpVclMEdit->GetTextWindow()->SetControlBackground();
-            SetBackground();
-            SetControlBackground();
-        }
+        pImpVclMEdit->GetTextWindow()->SetPaintTransparent(true);
+        pImpVclMEdit->GetTextWindow()->SetBackground();
+        pImpVclMEdit->GetTextWindow()->SetControlBackground();
+        SetBackground();
+        SetControlBackground();
+    }
+    else
+    {
+        if (IsControlBackground())
+            pImpVclMEdit->GetTextWindow()->SetBackground(GetControlBackground());
         else
-        {
-            if (IsControlBackground())
-                pImpVclMEdit->GetTextWindow()->SetBackground(GetControlBackground());
-            else
-                pImpVclMEdit->GetTextWindow()->SetBackground(rStyleSettings.GetFieldColor());
-            // also adjust for VclMultiLineEdit as the TextComponent might hide Scrollbars
-            SetBackground(pImpVclMEdit->GetTextWindow()->GetBackground());
-        }
+            pImpVclMEdit->GetTextWindow()->SetBackground(rStyleSettings.GetFieldColor());
+        // also adjust for VclMultiLineEdit as the TextComponent might hide Scrollbars
+        SetBackground(pImpVclMEdit->GetTextWindow()->GetBackground());
     }
 }
 
@@ -1111,7 +1035,6 @@ IMPL_LINK_NOARG(VclMultiLineEdit, ImpUpdateDataHdl, Timer *, void)
 
 void VclMultiLineEdit::UpdateData()
 {
-    aUpdateDataHdlLink.Call( *this );
 }
 
 void VclMultiLineEdit::SetModifyFlag()
@@ -1124,11 +1047,6 @@ void VclMultiLineEdit::ClearModifyFlag()
     pImpVclMEdit->SetModified( false );
 }
 
-bool VclMultiLineEdit::IsModified() const
-{
-    return pImpVclMEdit->IsModified();
-}
-
 void VclMultiLineEdit::EnableUpdateData( sal_uLong nTimeout )
 {
     if ( !nTimeout )
@@ -1137,7 +1055,7 @@ void VclMultiLineEdit::EnableUpdateData( sal_uLong nTimeout )
     {
         if ( !pUpdateDataTimer )
         {
-            pUpdateDataTimer = new Timer("MultiLineEditTimer");
+            pUpdateDataTimer.reset(new Timer("MultiLineEditTimer"));
             pUpdateDataTimer->SetInvokeHandler( LINK( this, VclMultiLineEdit, ImpUpdateDataHdl ) );
         }
         pUpdateDataTimer->SetTimeout( nTimeout );
@@ -1160,6 +1078,9 @@ void VclMultiLineEdit::SetReadOnly( bool bReadOnly )
 
 bool VclMultiLineEdit::IsReadOnly() const
 {
+    if (!pImpVclMEdit)  // might be called from within the dtor, when pImpVclMEdit == NULL is a valid state
+        return true;
+
     return pImpVclMEdit->IsReadOnly();
 }
 
@@ -1168,7 +1089,7 @@ void VclMultiLineEdit::SetMaxTextLen(sal_Int32 nMaxLen)
     pImpVclMEdit->SetMaxTextLen(nMaxLen);
 }
 
-void VclMultiLineEdit::SetMaxTextWidth( sal_uLong nMaxWidth )
+void VclMultiLineEdit::SetMaxTextWidth(long nMaxWidth)
 {
     pImpVclMEdit->SetMaxTextWidth(nMaxWidth );
 }
@@ -1262,8 +1183,8 @@ Size VclMultiLineEdit::CalcMinimumSize() const
 
     sal_Int32 nLeft, nTop, nRight, nBottom;
     static_cast<vcl::Window*>(const_cast<VclMultiLineEdit *>(this))->GetBorder( nLeft, nTop, nRight, nBottom );
-    aSz.Width() += nLeft+nRight;
-    aSz.Height() += nTop+nBottom;
+    aSz.AdjustWidth(nLeft+nRight );
+    aSz.AdjustHeight(nTop+nBottom );
 
     return aSz;
 }
@@ -1282,8 +1203,8 @@ Size VclMultiLineEdit::CalcAdjustedSize( const Size& rPrefSize ) const
     if ( nLines < 1 )
         nLines = 1;
 
-    aSz.Height() = nLines * nLineHeight;
-    aSz.Height() += nTop+nBottom;
+    aSz.setHeight( nLines * nLineHeight );
+    aSz.AdjustHeight(nTop+nBottom );
 
     return aSz;
 }
@@ -1294,8 +1215,8 @@ Size VclMultiLineEdit::CalcBlockSize( sal_uInt16 nColumns, sal_uInt16 nLines ) c
 
     sal_Int32 nLeft, nTop, nRight, nBottom;
     static_cast<vcl::Window*>(const_cast<VclMultiLineEdit *>(this))->GetBorder( nLeft, nTop, nRight, nBottom );
-    aSz.Width() += nLeft+nRight;
-    aSz.Height() += nTop+nBottom;
+    aSz.AdjustWidth(nLeft+nRight );
+    aSz.AdjustHeight(nTop+nBottom );
     return aSz;
 }
 
@@ -1370,12 +1291,12 @@ void VclMultiLineEdit::DataChanged( const DataChangedEvent& rDCEvt )
         Control::DataChanged( rDCEvt );
 }
 
-void VclMultiLineEdit::Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize, DrawFlags nFlags )
+void VclMultiLineEdit::Draw( OutputDevice* pDev, const Point& rPos, DrawFlags nFlags )
 {
     ImplInitSettings(true);
 
     Point aPos = pDev->LogicToPixel( rPos );
-    Size aSize = pDev->LogicToPixel( rSize );
+    Size aSize = GetSizePixel();
 
     vcl::Font aFont = pImpVclMEdit->GetTextWindow()->GetDrawPixelFont(pDev);
     aFont.SetTransparent( true );
@@ -1389,8 +1310,8 @@ void VclMultiLineEdit::Draw( OutputDevice* pDev, const Point& rPos, const Size& 
     // Border/Background
     pDev->SetLineColor();
     pDev->SetFillColor();
-    bool bBorder = !(nFlags & DrawFlags::NoBorder ) && (GetStyle() & WB_BORDER);
-    bool bBackground = !(nFlags & DrawFlags::NoBackground) && IsControlBackground();
+    bool bBorder = (GetStyle() & WB_BORDER);
+    bool bBackground = IsControlBackground();
     if ( bBorder || bBackground )
     {
         tools::Rectangle aRect( aPos, aSize );
@@ -1408,10 +1329,10 @@ void VclMultiLineEdit::Draw( OutputDevice* pDev, const Point& rPos, const Size& 
 
     // contents
     if ( ( nFlags & DrawFlags::Mono ) || ( eOutDevType == OUTDEV_PRINTER ) )
-        pDev->SetTextColor( Color( COL_BLACK ) );
+        pDev->SetTextColor( COL_BLACK );
     else
     {
-        if ( !(nFlags & DrawFlags::NoDisable ) && !IsEnabled() )
+        if ( !IsEnabled() )
         {
             const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
             pDev->SetTextColor( rStyleSettings.GetDisableColor() );
@@ -1424,10 +1345,10 @@ void VclMultiLineEdit::Draw( OutputDevice* pDev, const Point& rPos, const Size& 
 
     OUString aText = GetText();
     Size aTextSz( pDev->GetTextWidth( aText ), pDev->GetTextHeight() );
-    sal_uLong nLines = (sal_uLong) (aSize.Height() / aTextSz.Height());
+    sal_uLong nLines = static_cast<sal_uLong>(aSize.Height() / aTextSz.Height());
     if ( !nLines )
         nLines = 1;
-    aTextSz.Height() = nLines*aTextSz.Height();
+    aTextSz.setHeight( nLines*aTextSz.Height() );
     long nOnePixel = GetDrawPixel( pDev, 1 );
     long nOffX = 3*nOnePixel;
     long nOffY = 2*nOnePixel;
@@ -1437,7 +1358,7 @@ void VclMultiLineEdit::Draw( OutputDevice* pDev, const Point& rPos, const Size& 
     {
         tools::Rectangle aClip( aPos, aSize );
         if ( aTextSz.Height() > aSize.Height() )
-            aClip.Bottom() += aTextSz.Height() - aSize.Height() + 1;  // so that HP-printer does not 'optimize-away'
+            aClip.AdjustBottom(aTextSz.Height() - aSize.Height() + 1 );  // so that HP-printer does not 'optimize-away'
         pDev->IntersectClipRegion( aClip );
     }
 
@@ -1483,38 +1404,38 @@ bool VclMultiLineEdit::PreNotify( NotifyEvent& rNEvt )
                 {
                     case KEY_UP:
                     {
-                        if ( pImpVclMEdit->GetVScrollBar() )
-                            pImpVclMEdit->GetVScrollBar()->DoScrollAction( ScrollType::LineUp );
+                        if ( pImpVclMEdit->GetVScrollBar().IsVisible() )
+                            pImpVclMEdit->GetVScrollBar().DoScrollAction( ScrollType::LineUp );
                     }
                     break;
                     case KEY_DOWN:
                     {
-                        if ( pImpVclMEdit->GetVScrollBar() )
-                            pImpVclMEdit->GetVScrollBar()->DoScrollAction( ScrollType::LineDown );
+                        if ( pImpVclMEdit->GetVScrollBar().IsVisible() )
+                            pImpVclMEdit->GetVScrollBar().DoScrollAction( ScrollType::LineDown );
                     }
                     break;
                     case KEY_PAGEUP :
                     {
-                        if ( pImpVclMEdit->GetVScrollBar() )
-                            pImpVclMEdit->GetVScrollBar()->DoScrollAction( ScrollType::PageUp );
+                        if ( pImpVclMEdit->GetVScrollBar().IsVisible() )
+                            pImpVclMEdit->GetVScrollBar().DoScrollAction( ScrollType::PageUp );
                     }
                     break;
                     case KEY_PAGEDOWN:
                     {
-                        if ( pImpVclMEdit->GetVScrollBar() )
-                            pImpVclMEdit->GetVScrollBar()->DoScrollAction( ScrollType::PageDown );
+                        if ( pImpVclMEdit->GetVScrollBar().IsVisible() )
+                            pImpVclMEdit->GetVScrollBar().DoScrollAction( ScrollType::PageDown );
                     }
                     break;
                     case KEY_LEFT:
                     {
-                        if ( pImpVclMEdit->GetHScrollBar() )
-                            pImpVclMEdit->GetHScrollBar()->DoScrollAction( ScrollType::LineUp );
+                        if ( pImpVclMEdit->GetHScrollBar().IsVisible() )
+                            pImpVclMEdit->GetHScrollBar().DoScrollAction( ScrollType::LineUp );
                     }
                     break;
                     case KEY_RIGHT:
                     {
-                        if ( pImpVclMEdit->GetHScrollBar() )
-                            pImpVclMEdit->GetHScrollBar()->DoScrollAction( ScrollType::LineDown );
+                        if ( pImpVclMEdit->GetHScrollBar().IsVisible() )
+                            pImpVclMEdit->GetHScrollBar().DoScrollAction( ScrollType::LineDown );
                     }
                     break;
                     case KEY_HOME:
@@ -1555,7 +1476,7 @@ TextView* VclMultiLineEdit::GetTextView() const
     return pImpVclMEdit->GetTextWindow()->GetTextView();
 }
 
-ScrollBar* VclMultiLineEdit::GetVScrollBar() const
+ScrollBar& VclMultiLineEdit::GetVScrollBar() const
 {
     return pImpVclMEdit->GetVScrollBar();
 }
@@ -1563,12 +1484,6 @@ ScrollBar* VclMultiLineEdit::GetVScrollBar() const
 void VclMultiLineEdit::EnableFocusSelectionHide( bool bHide )
 {
     pImpVclMEdit->GetTextWindow()->SetAutoFocusHide( bHide );
-}
-
-void VclMultiLineEdit::SetLeftMargin( sal_uInt16 n )
-{
-    if ( GetTextEngine() )
-        GetTextEngine()->SetLeftMargin( n );
 }
 
 void VclMultiLineEdit::SetRightToLeft( bool bRightToLeft )
@@ -1590,6 +1505,32 @@ void VclMultiLineEdit::EnableCursor( bool bEnable )
     GetTextView()->EnableCursor( bEnable );
 }
 
+bool VclMultiLineEdit::CanUp() const
+{
+    TextView* pTextView = GetTextView();
+    const TextSelection& rTextSelection = pTextView->GetSelection();
+    TextPaM aPaM(rTextSelection.GetEnd());
+    return aPaM != pTextView->CursorUp(aPaM);
+}
+
+bool VclMultiLineEdit::CanDown() const
+{
+    TextView* pTextView = GetTextView();
+    const TextSelection& rTextSelection = pTextView->GetSelection();
+    TextPaM aPaM(rTextSelection.GetEnd());
+    return aPaM != pTextView->CursorDown(aPaM);
+}
+
+TextWindow* VclMultiLineEdit::GetTextWindow()
+{
+    return pImpVclMEdit->GetTextWindow();
+}
+
+FactoryFunction VclMultiLineEdit::GetUITestFactory() const
+{
+    return MultiLineEditUIObject::create;
+}
+
 bool VclMultiLineEdit::set_property(const OString &rKey, const OUString &rValue)
 {
     if (rKey == "cursor-visible")
@@ -1599,6 +1540,13 @@ bool VclMultiLineEdit::set_property(const OString &rKey, const OUString &rValue)
     else
         return Edit::set_property(rKey, rValue);
     return true;
+}
+
+void VclMultiLineEdit::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
+{
+    Edit::DumpAsPropertyTree(rJsonWriter);
+
+    rJsonWriter.put("cursor", pImpVclMEdit->GetTextWindow()->GetTextView()->IsCursorEnabled());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

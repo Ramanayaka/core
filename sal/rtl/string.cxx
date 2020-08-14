@@ -17,11 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
-
-#ifdef _MSC_VER
-#pragma warning(disable:4738) // storing 32-bit float result in memory, possible loss of performance
-#endif
+#include <sal/config.h>
 
 #include <cassert>
 #include <cstdlib>
@@ -35,19 +31,19 @@
 #include <rtl/character.hxx>
 #include <rtl/string.h>
 
-#include "rtl/math.h"
+#include <rtl/math.h>
 
 /* ======================================================================= */
 
 /* static data to be referenced by all empty strings
  * the refCount is predefined to 1 and must never become 0 !
  */
-static rtl_String const aImplEmpty_rtl_String =
+rtl_String const aImplEmpty_rtl_String =
 {
     SAL_STRING_STATIC_FLAG|1,
             /* sal_Int32    refCount;   */
     0,      /* sal_Int32    length;     */
-    { 0 }   /* sal_Char     buffer[1];  */
+    { 0 }   /* char     buffer[1];  */
 };
 
 /* ======================================================================= */
@@ -58,8 +54,8 @@ static rtl_String const aImplEmpty_rtl_String =
 
 #define IMPL_RTL_IS_USTRING         0
 
-#define IMPL_RTL_STRCODE            sal_Char
-#define IMPL_RTL_USTRCODE( c )      ((unsigned char)c)
+#define IMPL_RTL_STRCODE            char
+#define IMPL_RTL_USTRCODE( c )      (static_cast<unsigned char>(c))
 #define IMPL_RTL_STRNAME( n )       rtl_str_ ## n
 
 #define IMPL_RTL_STRINGNAME( n )    rtl_string_ ## n
@@ -85,7 +81,7 @@ static rtl_String const aImplEmpty_rtl_String =
 #undef IMPL_RTL_USTRCODE
 #undef RTL_LOG_STRING_BITS
 
-sal_Int32 SAL_CALL rtl_str_valueOfFloat(sal_Char * pStr, float f)
+sal_Int32 SAL_CALL rtl_str_valueOfFloat(char * pStr, float f)
     SAL_THROW_EXTERN_C()
 {
     assert(pStr);
@@ -97,12 +93,12 @@ sal_Int32 SAL_CALL rtl_str_valueOfFloat(sal_Char * pStr, float f)
         true);
     nLen = pResult->length;
     OSL_ASSERT(nLen < RTL_STR_MAX_VALUEOFFLOAT);
-    memcpy(pStr, pResult->buffer, (nLen + 1) * sizeof(sal_Char));
+    memcpy(pStr, pResult->buffer, (nLen + 1) * sizeof(char));
     rtl_string_release(pResult);
     return nLen;
 }
 
-sal_Int32 SAL_CALL rtl_str_valueOfDouble(sal_Char * pStr, double d)
+sal_Int32 SAL_CALL rtl_str_valueOfDouble(char * pStr, double d)
     SAL_THROW_EXTERN_C()
 {
     assert(pStr);
@@ -114,19 +110,19 @@ sal_Int32 SAL_CALL rtl_str_valueOfDouble(sal_Char * pStr, double d)
         0, true);
     nLen = pResult->length;
     OSL_ASSERT(nLen < RTL_STR_MAX_VALUEOFDOUBLE);
-    memcpy(pStr, pResult->buffer, (nLen + 1) * sizeof(sal_Char));
+    memcpy(pStr, pResult->buffer, (nLen + 1) * sizeof(char));
     rtl_string_release(pResult);
     return nLen;
 }
 
-float SAL_CALL rtl_str_toFloat(sal_Char const * pStr) SAL_THROW_EXTERN_C()
+float SAL_CALL rtl_str_toFloat(char const * pStr) SAL_THROW_EXTERN_C()
 {
     assert(pStr);
-    return (float) rtl_math_stringToDouble(pStr, pStr + rtl_str_getLength(pStr),
-                                           '.', 0, nullptr, nullptr);
+    return static_cast<float>(rtl_math_stringToDouble(pStr, pStr + rtl_str_getLength(pStr),
+                                           '.', 0, nullptr, nullptr));
 }
 
-double SAL_CALL rtl_str_toDouble(sal_Char const * pStr) SAL_THROW_EXTERN_C()
+double SAL_CALL rtl_str_toDouble(char const * pStr) SAL_THROW_EXTERN_C()
 {
     assert(pStr);
     return rtl_math_stringToDouble(pStr, pStr + rtl_str_getLength(pStr), '.', 0,
@@ -189,7 +185,7 @@ static int rtl_ImplGetFastUTF8ByteLen( const sal_Unicode* pStr, sal_Int32 nLen )
 
 /* ----------------------------------------------------------------------- */
 
-bool SAL_CALL rtl_impl_convertUStringToString(rtl_String ** pTarget,
+static bool rtl_impl_convertUStringToString(rtl_String ** pTarget,
                                                   sal_Unicode const * pSource,
                                                   sal_Int32 nLength,
                                                   rtl_TextEncoding nEncoding,
@@ -215,15 +211,15 @@ bool SAL_CALL rtl_impl_convertUStringToString(rtl_String ** pTarget,
         sal_Size                    nMaxCharLen;
 
         /* Optimization for UTF-8 - we try to calculate the exact length */
-        /* For all other encoding we try an good estimation */
+        /* For all other encoding we try a good estimation */
         if ( nEncoding == RTL_TEXTENCODING_UTF8 )
         {
             nNewLen = rtl_ImplGetFastUTF8ByteLen( pSource, nLength );
             /* Includes the string only ASCII, then we could copy
                the buffer faster */
-            if ( nNewLen == (sal_Size)nLength )
+            if ( nNewLen == static_cast<sal_Size>(nLength) )
             {
-                sal_Char* pBuffer;
+                char* pBuffer;
                 if ( *pTarget )
                     rtl_string_release( *pTarget );
                 *pTarget = rtl_string_ImplAlloc( nLength );
@@ -235,7 +231,7 @@ bool SAL_CALL rtl_impl_convertUStringToString(rtl_String ** pTarget,
                     OSL_ENSURE( *pSource <= 127,
                                 "rtl_uString2String() - UTF8 test is encoding is wrong" );
 
-                    *pBuffer = (sal_Char)(unsigned char)*pSource;
+                    *pBuffer = static_cast<char>(static_cast<unsigned char>(*pSource));
                     pBuffer++;
                     pSource++;
                     nLength--;
@@ -274,7 +270,7 @@ bool SAL_CALL rtl_impl_convertUStringToString(rtl_String ** pTarget,
                                                    &nInfo, &nSrcChars );
             if (bCheckErrors && (nInfo & RTL_UNICODETOTEXT_INFO_ERROR) != 0)
             {
-                rtl_freeMemory(pTemp);
+                rtl_freeString(pTemp);
                 rtl_destroyUnicodeToTextConverter(hConverter);
                 return false;
             }
@@ -283,7 +279,7 @@ bool SAL_CALL rtl_impl_convertUStringToString(rtl_String ** pTarget,
                 break;
 
             /* Buffer not big enough, try again with enough space */
-            rtl_freeMemory( pTemp );
+            rtl_freeString( pTemp );
 
             /* Try with the max. count of characters with
                additional overhead for replacing functionality */
@@ -298,7 +294,7 @@ bool SAL_CALL rtl_impl_convertUStringToString(rtl_String ** pTarget,
             rtl_String* pTemp2 = rtl_string_ImplAlloc( nDestBytes );
             OSL_ASSERT(pTemp2 != nullptr);
             rtl_str_ImplCopy( pTemp2->buffer, pTemp->buffer, nDestBytes );
-            rtl_freeMemory( pTemp );
+            rtl_freeString( pTemp );
             pTemp = pTemp2;
         }
         else

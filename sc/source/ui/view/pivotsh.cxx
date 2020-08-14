@@ -17,31 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include <svl/srchitem.hxx>
-#include <sfx2/app.hxx>
+#include <scitems.hxx>
 #include <sfx2/objface.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/request.hxx>
 #include <svl/whiter.hxx>
-#include <vcl/msgbox.hxx>
 #include <vcl/EnumContext.hxx>
 
-#include "sc.hrc"
-#include "pivotsh.hxx"
-#include "tabvwsh.hxx"
-#include "docsh.hxx"
-#include "scresid.hxx"
-#include "document.hxx"
-#include "dpobject.hxx"
-#include "dpshttab.hxx"
-#include "dbdocfun.hxx"
-#include "uiitems.hxx"
-#include "scabstdlg.hxx"
+#include <sc.hrc>
+#include <pivotsh.hxx>
+#include <tabvwsh.hxx>
+#include <docsh.hxx>
+#include <document.hxx>
+#include <dpobject.hxx>
+#include <dpshttab.hxx>
+#include <dbdocfun.hxx>
+#include <uiitems.hxx>
+#include <scabstdlg.hxx>
 
-#define ScPivotShell
-#include "scslots.hxx"
-#include <memory>
+#define ShellClass_ScPivotShell
+#include <scslots.hxx>
 
 
 SFX_IMPL_INTERFACE(ScPivotShell, SfxShell)
@@ -57,7 +52,7 @@ ScPivotShell::ScPivotShell( ScTabViewShell* pViewSh ) :
 {
     SetPool( &pViewSh->GetPool() );
     ScViewData& rViewData = pViewSh->GetViewData();
-    ::svl::IUndoManager* pMgr = rViewData.GetSfxDocShell()->GetUndoManager();
+    SfxUndoManager* pMgr = rViewData.GetSfxDocShell()->GetUndoManager();
     SetUndoManager( pMgr );
     if ( !rViewData.GetDocument()->IsUndoEnabled() )
     {
@@ -71,7 +66,7 @@ ScPivotShell::~ScPivotShell()
 {
 }
 
-void ScPivotShell::Execute( SfxRequest& rReq )
+void ScPivotShell::Execute( const SfxRequest& rReq )
 {
     switch ( rReq.GetSlot() )
     {
@@ -104,11 +99,9 @@ void ScPivotShell::Execute( SfxRequest& rReq )
                 aArgSet.Put( ScQueryItem( SCITEM_QUERYDATA, &rViewData, &aQueryParam ) );
 
                 ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-                OSL_ENSURE(pFact, "ScAbstractFactory create fail!");
 
                 ScopedVclPtr<AbstractScPivotFilterDlg> pDlg(pFact->CreateScPivotFilterDlg(
-                    pViewShell->GetDialogParent(), aArgSet, nSrcTab));
-                OSL_ENSURE(pDlg, "Dialog create fail!");
+                    pViewShell->GetFrameWeld(), aArgSet, nSrcTab));
 
                 if( pDlg->Execute() == RET_OK )
                 {

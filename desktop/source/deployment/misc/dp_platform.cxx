@@ -18,8 +18,7 @@
  */
 
 
-#include "dp_misc.h"
-#include "dp_platform.hxx"
+#include <dp_platform.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/instance.hxx>
@@ -35,7 +34,7 @@ namespace
 {
     struct StrOperatingSystem :
         public rtl::StaticWithInit<OUString, StrOperatingSystem> {
-            const OUString operator () () {
+             OUString operator () () {
                 OUString os( "$_OS" );
                 ::rtl::Bootstrap::expandMacros( os );
                 return os;
@@ -44,7 +43,7 @@ namespace
 
     struct StrCPU :
         public rtl::StaticWithInit<OUString, StrCPU> {
-            const OUString operator () () {
+            OUString operator () () {
                 OUString arch( "$_ARCH" );
                 ::rtl::Bootstrap::expandMacros( arch );
                 return arch;
@@ -54,7 +53,7 @@ namespace
 
     struct StrPlatform : public rtl::StaticWithInit<
         OUString, StrPlatform> {
-            const OUString operator () () {
+            OUString operator () () {
                 OUStringBuffer buf;
                 buf.append( StrOperatingSystem::get() );
                 buf.append( '_' );
@@ -77,7 +76,7 @@ namespace
         else if (token == "windows_x86")
             ret = checkOSandCPU("Windows", "x86");
         else if (token == "windows_x86_64")
-            ret = checkOSandCPU("Windows", "x86_64");
+            ret = checkOSandCPU("Windows", "X86_64");
         else if (token == "solaris_sparc")
             ret = checkOSandCPU("Solaris", "SPARC");
         else if (token == "solaris_sparc64")
@@ -190,9 +189,9 @@ bool platform_fits( OUString const & platform_string )
 bool hasValidPlatform( css::uno::Sequence<OUString> const & platformStrings)
 {
     bool ret = false;
-    for (sal_Int32 i  = 0; i < platformStrings.getLength(); i++)
+    for (const OUString& s : platformStrings)
     {
-        if ( isPlatformSupported( platformStrings[i] ))
+        if ( isPlatformSupported( s ) )
         {
             ret = true;
             break;

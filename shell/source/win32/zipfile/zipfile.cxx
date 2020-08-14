@@ -18,16 +18,20 @@
  */
 
 #include "zipexcptn.hxx"
-#include "zipfile.hxx"
-#include "global.hxx"
-#include "types.hxx"
-#include "stream_helper.hxx"
+#include <zipfile.hxx>
+#include <global.hxx>
+#include <types.hxx>
+#include <stream_helper.hxx>
 
 #include <malloc.h>
 #include <algorithm>
 #include <memory>
 
 #include <string.h>
+
+#include <o3tl/safeint.hxx>
+
+#include <zlib.h>
 
 namespace
 {
@@ -130,7 +134,7 @@ std::string readString(StreamInterface *stream, unsigned long size)
 {
     if (!stream || stream->stell() == -1)
         throw IOException(-1);
-    auto tmp = std::unique_ptr<unsigned char[]>(new unsigned char[size]);
+    auto tmp = std::make_unique<unsigned char[]>(size);
     unsigned long numBytesRead = stream->sread(tmp.get(), size);
     if (numBytesRead != size)
     {
@@ -323,6 +327,9 @@ bool isZipStream(StreamInterface *stream)
 
 namespace internal
 {
+
+namespace {
+
 /* for case in-sensitive string comparison */
 struct stricmp
 {
@@ -336,6 +343,9 @@ struct stricmp
 
     std::string str_;
 };
+
+}
+
 } // namespace internal
 
 /** Checks whether a file is a zip file or not
@@ -351,7 +361,7 @@ struct stricmp
             IOException if the specified file doesn't exist
             AccessViolationException if read access to the file is denied
 */
-bool ZipFile::IsZipFile(const std::string& /*FileName*/)
+bool ZipFile::IsZipFile(const Filepath_t& /*FileName*/)
 {
     return true;
 }
@@ -377,7 +387,7 @@ bool ZipFile::IsZipFile(void* /*stream*/)
             IOException if the specified file doesn't exist or is no zip file
             AccessViolationException if read access to the file is denied
 */
-bool ZipFile::IsValidZipFileVersionNumber(const std::string& /*FileName*/)
+bool ZipFile::IsValidZipFileVersionNumber(const Filepath_t& /*FileName*/)
 {
     return true;
 }
@@ -400,12 +410,12 @@ bool ZipFile::IsValidZipFileVersionNumber(void* /* stream*/)
             WrongZipVersionException if the zip file cannot be uncompressed
             with the used zlib version
 */
-ZipFile::ZipFile(const std::string &FileName) :
+ZipFile::ZipFile(const Filepath_t &FileName) :
     m_pStream(nullptr),
     m_bShouldFree(true)
 {
     m_pStream = new FileStream(FileName.c_str());
-    if (m_pStream && !isZipStream(m_pStream))
+    if (!isZipStream(m_pStream))
     {
         delete m_pStream;
         m_pStream = nullptr;
@@ -444,7 +454,7 @@ void ZipFile::GetUncompressedContent(
         return;
     m_pStream->sseek(end.cdir_offset, SEEK_SET);
     CentralDirectoryEntry entry;
-    while (m_pStream->stell() != -1 && (unsigned long)m_pStream->stell() < end.cdir_offset + end.cdir_size)
+    while (m_pStream->stell() != -1 && o3tl::make_unsigned(m_pStream->stell()) < end.cdir_offset + end.cdir_size)
     {
         if (!readCentralDirectoryEntry(m_pStream, entry))
             return;
@@ -464,7 +474,7 @@ void ZipFile::GetUncompressedContent(
     ContentBuffer.clear();
     ContentBuffer = ZipContentBuffer_t(entry.uncompressed_size);
     if (!entry.compression)
-        m_pStream->sread(reinterpret_cast<unsigned char *>(&ContentBuffer[0]), entry.uncompressed_size);
+        m_pStream->sread(reinterpret_cast<unsigned char *>(ContentBuffer.data()), entry.uncompressed_size);
     else
     {
         int ret;
@@ -481,14 +491,14 @@ void ZipFile::GetUncompressedContent(
             return;
 
         std::vector<unsigned char> tmpBuffer(entry.compressed_size);
-        if (entry.compressed_size != m_pStream->sread(&tmpBuffer[0], entry.compressed_size))
+        if (entry.compressed_size != m_pStream->sread(tmpBuffer.data(), entry.compressed_size))
             return;
 
         strm.avail_in = entry.compressed_size;
-        strm.next_in = reinterpret_cast<Bytef *>(&tmpBuffer[0]);
+        strm.next_in = reinterpret_cast<Bytef *>(tmpBuffer.data());
 
         strm.avail_out = entry.uncompressed_size;
-        strm.next_out = reinterpret_cast<Bytef *>(&ContentBuffer[0]);
+        strm.next_out = reinterpret_cast<Bytef *>(ContentBuffer.data());
         ret = inflate(&strm, Z_FINISH);
         switch (ret)
         {
@@ -516,7 +526,7 @@ ZipFile::DirectoryPtr_t ZipFile::GetDirectory() const
         return dir;
     m_pStream->sseek(end.cdir_offset, SEEK_SET);
     CentralDirectoryEntry entry;
-    while (m_pStream->stell() != -1 && (unsigned long)m_pStream->stell() < end.cdir_offset + end.cdir_size)
+    while (m_pStream->stell() != -1 && o3tl::make_unsigned(m_pStream->stell()) < end.cdir_offset + end.cdir_size)
     {
         if (!readCentralDirectoryEntry(m_pStream, entry))
             return dir;
@@ -535,10 +545,8 @@ bool ZipFile::HasContent(const std::string &ContentName) const
     //case in-sensitive as it is not defined that such
     //names must be handled case sensitive
     DirectoryPtr_t dir = GetDirectory();
-    Directory_t::iterator iter =
-        std::find_if(dir->begin(), dir->end(), internal::stricmp(ContentName));
 
-    return (iter != dir->end());
+    return std::any_of(dir->begin(), dir->end(), internal::stricmp(ContentName));
 }
 
 
@@ -555,7 +563,7 @@ long ZipFile::GetFileLongestFileNameLength() const
         return lmax;
     m_pStream->sseek(end.cdir_offset, SEEK_SET);
     CentralDirectoryEntry entry;
-    while (m_pStream->stell() != -1 && (unsigned long)m_pStream->stell() < end.cdir_offset + end.cdir_size)
+    while (m_pStream->stell() != -1 && o3tl::make_unsigned(m_pStream->stell()) < end.cdir_offset + end.cdir_size)
     {
         if (!readCentralDirectoryEntry(m_pStream, entry))
             return lmax;

@@ -17,26 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-/** Attention: stl headers must(!) be included at first. Otherwhise it can make trouble
+/** Attention: stl headers must(!) be included at first. Otherwise it can make trouble
                with solaris headers ...
 */
 #include <vector>
 
 #include <stdio.h>
 
+#include <com/sun/star/xml/sax/SAXException.hpp>
+
 #include <xml/saxnamespacefilter.hxx>
 
 #include <comphelper/attributelist.hxx>
-
-#include <vcl/svapp.hxx>
 
 using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::uno;
 
 namespace framework{
 
-SaxNamespaceFilter::SaxNamespaceFilter( Reference< XDocumentHandler >& rSax1DocumentHandler ) :
-     m_xLocator( nullptr ),
+SaxNamespaceFilter::SaxNamespaceFilter( Reference< XDocumentHandler > const & rSax1DocumentHandler ) :
      xDocumentHandler( rSax1DocumentHandler ),
      m_aXMLAttributeNamespace( "xmlns" ),
      m_aXMLAttributeType( "CDATA" )
@@ -84,12 +83,10 @@ void SAL_CALL SaxNamespaceFilter::startElement(
     try
     {
         // apply namespaces to all remaining attributes
-        for ( ::std::vector< sal_Int16 >::const_iterator i(
-                  aAttributeIndexes.begin());
-              i != aAttributeIndexes.end(); ++i )
+        for (auto const& attributeIndex : aAttributeIndexes)
         {
-            OUString aAttributeName           = xAttribs->getNameByIndex( *i );
-            OUString aValue                   = xAttribs->getValueByIndex( *i );
+            OUString aAttributeName           = xAttribs->getNameByIndex(attributeIndex);
+            OUString aValue                   = xAttribs->getValueByIndex(attributeIndex);
             OUString aNamespaceAttributeName = aXMLNamespaces.applyNSToAttributeName( aAttributeName );
             pNewList->AddAttribute( aNamespaceAttributeName, m_aXMLAttributeType, aValue );
         }

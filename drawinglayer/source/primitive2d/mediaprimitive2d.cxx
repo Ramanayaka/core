@@ -20,8 +20,8 @@
 #include <drawinglayer/primitive2d/mediaprimitive2d.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
-#include <svtools/grfmgr.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
+#include <vcl/GraphicObject.hxx>
 #include <drawinglayer/primitive2d/graphicprimitive2d.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
@@ -29,17 +29,15 @@
 #include <drawinglayer/primitive2d/hiddengeometryprimitive2d.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void MediaPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const
         {
             Primitive2DContainer xRetval;
             xRetval.resize(1);
 
             // create background object
-            basegfx::B2DPolygon aBackgroundPolygon(basegfx::tools::createUnitPolygon());
+            basegfx::B2DPolygon aBackgroundPolygon(basegfx::utils::createUnitPolygon());
             aBackgroundPolygon.transform(getTransform());
             const Primitive2DReference xRefBackground(
                 new PolyPolygonColorPrimitive2D(
@@ -58,7 +56,7 @@ namespace drawinglayer
             if(getDiscreteBorder())
             {
                 const basegfx::B2DVector aDiscreteInLogic(rViewInformation.getInverseObjectToViewTransformation() *
-                    basegfx::B2DVector((double)getDiscreteBorder(), (double)getDiscreteBorder()));
+                    basegfx::B2DVector(static_cast<double>(getDiscreteBorder()), static_cast<double>(getDiscreteBorder())));
                 const double fDiscreteSize(aDiscreteInLogic.getX() + aDiscreteInLogic.getY());
 
                 basegfx::B2DRange aSourceRange(0.0, 0.0, 1.0, 1.0);
@@ -130,7 +128,7 @@ namespace drawinglayer
             if(getDiscreteBorder())
             {
                 const basegfx::B2DVector aDiscreteInLogic(rViewInformation.getInverseObjectToViewTransformation() *
-                    basegfx::B2DVector((double)getDiscreteBorder(), (double)getDiscreteBorder()));
+                    basegfx::B2DVector(static_cast<double>(getDiscreteBorder()), static_cast<double>(getDiscreteBorder())));
                 const double fDiscreteSize(aDiscreteInLogic.getX() + aDiscreteInLogic.getY());
 
                 aRetval.grow(-0.5 * fDiscreteSize);
@@ -142,7 +140,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(MediaPrimitive2D, PRIMITIVE2D_ID_MEDIAPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

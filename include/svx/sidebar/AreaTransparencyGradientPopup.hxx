@@ -19,46 +19,49 @@
 #ifndef INCLUDED_SVX_SOURCE_SIDEBAR_AREA_AREATRANSPARENCYGRADIENTPOPUP_HXX
 #define INCLUDED_SVX_SOURCE_SIDEBAR_AREA_AREATRANSPARENCYGRADIENTPOPUP_HXX
 
-#include <vcl/edit.hxx>
-#include <vcl/field.hxx>
-#include <vcl/floatwin.hxx>
-#include <vcl/toolbox.hxx>
+#include <vcl/weld.hxx>
 
 class XFillFloatTransparenceItem;
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
 class AreaTransparencyGradientControl;
 class AreaPropertyPanelBase;
 
-class AreaTransparencyGradientPopup : public FloatingWindow
+class AreaTransparencyGradientPopup final
 {
 private:
     AreaPropertyPanelBase& mrAreaPropertyPanel;
-    VclPtr<VclContainer>   maCenterGrid;
-    VclPtr<VclContainer>   maAngleGrid;
-    VclPtr<MetricField>    maMtrTrgrCenterX;
-    VclPtr<MetricField>    maMtrTrgrCenterY;
-    VclPtr<MetricField>    maMtrTrgrAngle;
-    VclPtr<ToolBox>        maBtnLeft45;
-    VclPtr<ToolBox>        maBtnRight45;
-    VclPtr<MetricField>    maMtrTrgrStartValue;
-    VclPtr<MetricField>    maMtrTrgrEndValue;
-    VclPtr<MetricField>    maMtrTrgrBorder;
+    std::unique_ptr<weld::Builder> mxBuilder;
+    std::unique_ptr<weld::Container> mxTopLevel;
+    std::unique_ptr<weld::Widget> mxCenterGrid;
+    std::unique_ptr<weld::Widget> mxAngleGrid;
+    std::unique_ptr<weld::MetricSpinButton> mxMtrTrgrCenterX;
+    std::unique_ptr<weld::MetricSpinButton> mxMtrTrgrCenterY;
+    std::unique_ptr<weld::MetricSpinButton> mxMtrTrgrAngle;
+    std::unique_ptr<weld::Toolbar> mxBtnLeft45;
+    std::unique_ptr<weld::Toolbar> mxBtnRight45;
+    std::unique_ptr<weld::MetricSpinButton> mxMtrTrgrStartValue;
+    std::unique_ptr<weld::MetricSpinButton> mxMtrTrgrEndValue;
+    std::unique_ptr<weld::MetricSpinButton> mxMtrTrgrBorder;
 
-    void InitStatus(XFillFloatTransparenceItem* pGradientItem);
+    void InitStatus(XFillFloatTransparenceItem const * pGradientItem);
     void ExecuteValueModify(sal_uInt8 nStartCol, sal_uInt8 nEndCol);
-    DECL_LINK(ModifiedTrgrHdl_Impl, Edit&, void);
-    DECL_LINK(Left_Click45_Impl, ToolBox*, void);
-    DECL_LINK(Right_Click45_Impl, ToolBox*, void);
+    DECL_LINK(ModifiedTrgrHdl_Impl, weld::MetricSpinButton&, void);
+    DECL_LINK(Left_Click45_Impl, const OString&, void);
+    DECL_LINK(Right_Click45_Impl, const OString&, void);
+    DECL_LINK(FocusHdl, weld::Widget&, void);
+
 public:
-    AreaTransparencyGradientPopup(AreaPropertyPanelBase& rPanel);
-    virtual ~AreaTransparencyGradientPopup() override;
-    void Rearrange (XFillFloatTransparenceItem* pItem);
-    virtual void dispose() override;
+    AreaTransparencyGradientPopup(AreaPropertyPanelBase& rPanel, weld::Widget* pParent);
+    ~AreaTransparencyGradientPopup();
+
+    weld::Container* getTopLevel() const { return mxTopLevel.get(); }
+
+    void Rearrange(XFillFloatTransparenceItem const * pItem);
 };
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 #endif
 

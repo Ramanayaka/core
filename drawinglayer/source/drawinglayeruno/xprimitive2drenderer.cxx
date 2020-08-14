@@ -20,32 +20,28 @@
 #include <sal/config.h>
 
 #include <com/sun/star/graphic/XPrimitive2DRenderer.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase2.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/sequence.hxx>
-#include <com/sun/star/xml/sax/XParser.hpp>
-#include <com/sun/star/xml/sax/InputSource.hpp>
-#include <comphelper/processfactory.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
 #include <basegfx/numeric/ftools.hxx>
 #include <vcl/bitmapex.hxx>
-#include <drawinglayer/tools/converters.hxx>
 #include <vcl/canvastools.hxx>
 #include <com/sun/star/geometry/RealRectangle2D.hpp>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 
-#include <xprimitive2drenderer.hxx>
+#include <converters.hxx>
 
 using namespace ::com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::unorenderer
 {
-    namespace unorenderer
-    {
+        namespace {
+
         class XPrimitive2DRenderer:
             public cppu::WeakAggImplHelper2<
                 css::graphic::XPrimitive2DRenderer, css::lang::XServiceInfo>
@@ -70,38 +66,9 @@ namespace drawinglayer
             virtual sal_Bool SAL_CALL supportsService(const OUString&) override;
             virtual uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
         };
-    } // end of namespace unorenderer
-} // end of namespace drawinglayer
 
-
-// uno functions
-
-namespace drawinglayer
-{
-    namespace unorenderer
-    {
-        uno::Sequence< OUString > XPrimitive2DRenderer_getSupportedServiceNames()
-        {
-            return uno::Sequence< OUString > { "com.sun.star.graphic.Primitive2DTools" };
         }
 
-        OUString XPrimitive2DRenderer_getImplementationName()
-        {
-            return OUString( "drawinglayer::unorenderer::XPrimitive2DRenderer" );
-        }
-
-        uno::Reference< uno::XInterface > SAL_CALL XPrimitive2DRenderer_createInstance(const uno::Reference< lang::XMultiServiceFactory >&)
-        {
-            return static_cast< ::cppu::OWeakObject* >(new XPrimitive2DRenderer);
-        }
-    } // end of namespace unorenderer
-} // end of namespace drawinglayer
-
-
-namespace drawinglayer
-{
-    namespace unorenderer
-    {
         XPrimitive2DRenderer::XPrimitive2DRenderer()
         {
         }
@@ -145,7 +112,7 @@ namespace drawinglayer
                     const sal_uInt32 nDiscreteHeight(basegfx::fround((fHeight * fFactor100th_mmToInch) * DPI_Y));
 
                     basegfx::B2DHomMatrix aEmbedding(
-                        basegfx::tools::createTranslateB2DHomMatrix(
+                        basegfx::utils::createTranslateB2DHomMatrix(
                             -aRange.getMinX(),
                             -aRange.getMinY()));
 
@@ -160,7 +127,7 @@ namespace drawinglayer
                     const primitive2d::Primitive2DContainer xEmbedSeq { xEmbedRef };
 
                     BitmapEx aBitmapEx(
-                        tools::convertToBitmapEx(
+                        convertToBitmapEx(
                             xEmbedSeq,
                             aViewInformation2D,
                             nDiscreteWidth,
@@ -169,11 +136,9 @@ namespace drawinglayer
 
                     if(!aBitmapEx.IsEmpty())
                     {
-                        const uno::Reference< rendering::XGraphicDevice > xGraphicDevice;
-
                         aBitmapEx.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
                         aBitmapEx.SetPrefSize(Size(basegfx::fround(fWidth), basegfx::fround(fHeight)));
-                        XBitmap = vcl::unotools::xBitmapFromBitmapEx(xGraphicDevice, aBitmapEx);
+                        XBitmap = vcl::unotools::xBitmapFromBitmapEx(aBitmapEx);
                     }
                 }
             }
@@ -183,7 +148,7 @@ namespace drawinglayer
 
         OUString SAL_CALL XPrimitive2DRenderer::getImplementationName()
         {
-            return(XPrimitive2DRenderer_getImplementationName());
+            return "drawinglayer::unorenderer::XPrimitive2DRenderer";
         }
 
         sal_Bool SAL_CALL XPrimitive2DRenderer::supportsService(const OUString& rServiceName)
@@ -193,10 +158,17 @@ namespace drawinglayer
 
         uno::Sequence< OUString > SAL_CALL XPrimitive2DRenderer::getSupportedServiceNames()
         {
-            return XPrimitive2DRenderer_getSupportedServiceNames();
+            return { "com.sun.star.graphic.Primitive2DTools" };
         }
 
-    } // end of namespace unorenderer
-} // end of namespace drawinglayer
+} // end of namespace
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+drawinglayer_XPrimitive2DRenderer(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new drawinglayer::unorenderer::XPrimitive2DRenderer());
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

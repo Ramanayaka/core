@@ -19,6 +19,10 @@
 
 #include <sal/config.h>
 
+#include <memory>
+
+#include <o3tl/char16_t2wchar_t.hxx>
+
 #include <com/sun/star/rendering/PanoseWeight.hpp>
 #include <com/sun/star/rendering/XSpriteCanvas.hpp>
 #include <cppuhelper/supportsservice.hxx>
@@ -46,29 +50,26 @@ namespace dxcanvas
     }
 
     CanvasFont::CanvasFont( const rendering::FontRequest&                   rFontRequest,
-                            const uno::Sequence< beans::PropertyValue >&    /*extraFontProperties*/,
+                            const uno::Sequence< beans::PropertyValue >&    extraFontProperties,
                             const geometry::Matrix2D&                       fontMatrix ) :
         CanvasFont_Base( m_aMutex ),
         mpGdiPlusUser( GDIPlusUser::createInstance() ),
-        // TODO(F1): extraFontProperties, fontMatrix
         mpFontFamily(),
         mpFont(),
         maFontRequest( rFontRequest ),
+        mnEmphasisMark(0),
         maFontMatrix( fontMatrix )
     {
-        const sal_Int32            nLen(rFontRequest.FontDescription.FamilyName.getLength());
-        const sal_Unicode*         pStr(rFontRequest.FontDescription.FamilyName.getStr());
-        std::vector< sal_Unicode > pStrBuf(nLen+1,0);
-        std::copy(pStr,pStr+nLen,&pStrBuf[0]);
-
-        mpFontFamily.reset( new Gdiplus::FontFamily(reinterpret_cast<LPCWSTR>(&pStrBuf[0]),nullptr) );
+        mpFontFamily = std::make_shared<Gdiplus::FontFamily>(o3tl::toW(rFontRequest.FontDescription.FamilyName.getStr()),nullptr);
         if( !mpFontFamily->IsAvailable() )
-            mpFontFamily.reset( new Gdiplus::FontFamily(L"Arial",nullptr) );
+            mpFontFamily = std::make_shared<Gdiplus::FontFamily>(L"Arial",nullptr);
 
-        mpFont.reset( new Gdiplus::Font( mpFontFamily.get(),
+        mpFont = std::make_shared<Gdiplus::Font>( mpFontFamily.get(),
                                          static_cast<Gdiplus::REAL>(rFontRequest.CellSize),
                                          calcFontStyle( rFontRequest ),
-                                         Gdiplus::UnitWorld ));
+                                         Gdiplus::UnitWorld );
+
+        ::canvas::tools::extractExtraFontProperties(extraFontProperties, mnEmphasisMark);
     }
 
     void SAL_CALL CanvasFont::disposing()
@@ -116,7 +117,7 @@ namespace dxcanvas
 
     OUString SAL_CALL CanvasFont::getImplementationName()
     {
-        return OUString( "DXCanvas::CanvasFont" );
+        return "DXCanvas::CanvasFont";
     }
 
     sal_Bool SAL_CALL CanvasFont::supportsService( const OUString& ServiceName )

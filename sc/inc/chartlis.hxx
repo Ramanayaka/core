@@ -20,11 +20,9 @@
 #ifndef INCLUDED_SC_INC_CHARTLIS_HXX
 #define INCLUDED_SC_INC_CHARTLIS_HXX
 
-#include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
 #include <svl/listener.hxx>
 #include "rangelst.hxx"
-#include "token.hxx"
 #include "externalrefmgr.hxx"
 
 #include <memory>
@@ -33,15 +31,17 @@
 #include <unordered_set>
 #include <vector>
 
+namespace com::sun::star::chart { class XChartData; }
+namespace com::sun::star::chart { class XChartDataChangeEventListener; }
+
+class Timer;
 class ScDocument;
 class ScChartUnoData;
-#include <com/sun/star/chart/XChartData.hpp>
-#include <com/sun/star/chart/XChartDataChangeEventListener.hpp>
 
-class SC_DLLPUBLIC ScChartListener : public SvtListener
+class SC_DLLPUBLIC ScChartListener final : public SvtListener
 {
 public:
-    class ExternalRefListener : public ScExternalRefManager::LinkListener
+    class SAL_DLLPRIVATE ExternalRefListener final : public ScExternalRefManager::LinkListener
     {
     public:
         ExternalRefListener(ScChartListener& rParent, ScDocument* pDoc);
@@ -65,11 +65,10 @@ private:
     std::unique_ptr<std::vector<ScTokenRef> > mpTokens;
 
     OUString maName;
-    ScChartUnoData* pUnoData;
+    std::unique_ptr<ScChartUnoData> pUnoData;
     ScDocument*     mpDoc;
     bool            bUsed:1;  // for ScChartListenerCollection::FreeUnused
     bool            bDirty:1;
-    bool            bSeriesRangesScheduled:1;
 
     ScChartListener& operator=( const ScChartListener& ) = delete;
 
@@ -77,8 +76,8 @@ public:
     ScChartListener( const OUString& rName, ScDocument* pDoc,
                      const ScRangeListRef& rRangeListRef );
     ScChartListener( const OUString& rName, ScDocument* pDoc,
-                     ::std::vector<ScTokenRef>* pTokens );
-    ScChartListener( const ScChartListener& );
+                     std::unique_ptr<::std::vector<ScTokenRef>> pTokens );
+    ScChartListener( const ScChartListener& ) = delete;
     virtual ~ScChartListener() override;
 
     const OUString& GetName() const { return maName;}
@@ -105,10 +104,6 @@ public:
 
     void            UpdateChartIntersecting( const ScRange& rRange );
 
-    // if chart series ranges are to be updated later on (e.g. DeleteTab, InsertTab)
-    void            UpdateScheduledSeriesRanges();
-    void            UpdateSeriesRanges();
-
     ExternalRefListener* GetExtRefListener();
     void            SetUpdateQueue();
 
@@ -124,11 +119,11 @@ public:
     virtual void notify() = 0;
 };
 
-class SC_DLLPUBLIC ScChartListenerCollection
+class SC_DLLPUBLIC ScChartListenerCollection final
 {
 public:
     typedef std::map<OUString, std::unique_ptr<ScChartListener>> ListenersType;
-    typedef std::unordered_set<OUString, OUStringHash> StringSetType;
+    typedef std::unordered_set<OUString> StringSetType;
 private:
     ListenersType m_Listeners;
     enum UpdateStatus
@@ -149,7 +144,6 @@ private:
 
     ScChartListenerCollection& operator=( const ScChartListenerCollection& ) = delete;
 
-protected:
     void Init();
 
 public:
@@ -191,7 +185,6 @@ public:
 
     void            SetRangeDirty( const ScRange& rRange );     // for example rows/columns
 
-    void            UpdateScheduledSeriesRanges();
     void            UpdateChartsContainingTab( SCTAB nTab );
 
     bool operator==( const ScChartListenerCollection& r ) const;

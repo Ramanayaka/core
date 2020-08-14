@@ -20,24 +20,65 @@
 #ifndef INCLUDED_SW_INC_FMTFLD_HXX
 #define INCLUDED_SW_INC_FMTFLD_HXX
 
-#include <com/sun/star/text/XTextField.hpp>
-
 #include <cppuhelper/weakref.hxx>
 #include <svl/poolitem.hxx>
 #include <svl/SfxBroadcaster.hxx>
 
 #include "swdllapi.h"
-#include <calbck.hxx>
+#include "calbck.hxx"
+#include "ndindex.hxx"
+#include "reffld.hxx"
 
 class SwField;
 class SwTextField;
 class SwView;
 class SwFieldType;
+class SwFormatField;
+class IDocumentRedlineAccess;
+namespace com::sun::star::text { class XTextField; }
+
+namespace sw {
+    struct FindFormatForFieldHint final : SfxHint {
+        const SwField* m_pField;
+        SwFormatField*& m_rpFormat;
+        FindFormatForFieldHint(const SwField* pField, SwFormatField*& rpFormat) : m_pField(pField), m_rpFormat(rpFormat) {};
+    };
+    struct FindFormatForPostItIdHint final : SfxHint {
+        const sal_uInt32 m_nPostItId;
+        SwFormatField*& m_rpFormat;
+        FindFormatForPostItIdHint(const sal_uInt32 nPostItId, SwFormatField*& rpFormat) : m_nPostItId(nPostItId), m_rpFormat(rpFormat) {};
+    };
+    struct CollectPostItsHint final : SfxHint {
+        std::vector<SwFormatField*>& m_rvFormatFields;
+        IDocumentRedlineAccess const& m_rIDRA;
+        const bool m_bHideRedlines;
+        CollectPostItsHint(std::vector<SwFormatField*>& rvFormatFields, IDocumentRedlineAccess const& rIDRA, bool bHideRedlines) : m_rvFormatFields(rvFormatFields), m_rIDRA(rIDRA), m_bHideRedlines(bHideRedlines) {};
+    };
+    struct HasHiddenInformationNotesHint final : SfxHint {
+        bool& m_rbHasHiddenInformationNotes;
+        HasHiddenInformationNotesHint(bool& rbHasHiddenInformationNotes) : m_rbHasHiddenInformationNotes(rbHasHiddenInformationNotes) {};
+    };
+    struct GatherNodeIndexHint final : SfxHint {
+        std::vector<sal_uLong>& m_rvNodeIndex;
+        GatherNodeIndexHint(std::vector<sal_uLong>& rvNodeIndex) : m_rvNodeIndex(rvNodeIndex) {};
+    };
+    struct GatherRefFieldsHint final : SfxHint {
+        std::vector<SwGetRefField*>& m_rvRFields;
+        const sal_uInt16 m_nType;
+        GatherRefFieldsHint(std::vector<SwGetRefField*>& rvRFields, const sal_uInt16 nType) : m_rvRFields(rvRFields), m_nType(nType) {};
+    };
+    struct GatherFieldsHint final : SfxHint {
+        const bool m_bCollectOnlyInDocNodes;
+        std::vector<SwFormatField*>& m_rvFields;
+        GatherFieldsHint(std::vector<SwFormatField*>& rvFields, bool bCollectOnlyInDocNodes = true) : m_bCollectOnlyInDocNodes(bCollectOnlyInDocNodes), m_rvFields(rvFields) {};
+    };
+}
+
 
 // ATT_FLD
-class SW_DLLPUBLIC SwFormatField
+class SW_DLLPUBLIC SwFormatField final
     : public SfxPoolItem
-    , public SwModify
+    , public sw::BroadcastingModify
     , public SfxBroadcaster
 {
     friend void InitCore();
@@ -45,14 +86,9 @@ class SW_DLLPUBLIC SwFormatField
 
     css::uno::WeakReference<css::text::XTextField> m_wXTextField;
 
-    SwField* mpField;
+    std::unique_ptr<SwField> mpField;
     SwTextField* mpTextField; // the TextAttribute
 
-    // @@@ copy construction allowed, but copy assignment is not? @@@
-    SwFormatField& operator=(const SwFormatField& rField) = delete;
-
-protected:
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew) override;
     virtual void SwClientNotify( const SwModify& rModify, const SfxHint& rHint ) override;
 
 public:
@@ -60,14 +96,13 @@ public:
     /// Single argument constructors shall be explicit.
     explicit SwFormatField( const SwField &rField );
 
-    /// @@@ copy construction allowed, but copy assignment is not? @@@
     SwFormatField( const SwFormatField& rAttr );
 
     virtual ~SwFormatField() override;
 
     /// "Pure virtual methods" of SfxPoolItem.
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwFormatField*  Clone( SfxItemPool* pPool = nullptr ) const override;
 
     virtual bool GetInfo( SfxPoolItem& rInfo ) const override;
 
@@ -75,11 +110,11 @@ public:
 
     const SwField* GetField() const
     {
-        return mpField;
+        return mpField.get();
     }
     SwField* GetField()
     {
-        return mpField;
+        return mpField.get();
     }
 
     /**
@@ -89,7 +124,7 @@ public:
 
        @attention The current field will be destroyed before setting the new field.
      */
-    void SetField( SwField * pField );
+    void SetField( std::unique_ptr<SwField> pField );
 
     const SwTextField* GetTextField() const
     {
@@ -110,7 +145,9 @@ public:
             { return m_wXTextField; }
     SAL_DLLPRIVATE void SetXTextField(css::uno::Reference<css::text::XTextField> const& xTextField)
             { m_wXTextField = xTextField; }
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
+
+    void UpdateTextNode(const SfxPoolItem* pOld, const SfxPoolItem* pNew);
 };
 
 enum class SwFormatFieldHintWhich
@@ -119,25 +156,26 @@ enum class SwFormatFieldHintWhich
     REMOVED    = 2,
     FOCUS      = 3,
     CHANGED    = 4,
-    LANGUAGE   = 5
+    LANGUAGE   = 5,
+    RESOLVED   = 6
 };
 
-class SW_DLLPUBLIC SwFormatFieldHint : public SfxHint
+class SW_DLLPUBLIC SwFormatFieldHint final : public SfxHint
 {
-    const SwFormatField*   pField;
-    SwFormatFieldHintWhich nWhich;
-    const SwView*     pView;
+    const SwFormatField*   m_pField;
+    SwFormatFieldHintWhich m_nWhich;
+    const SwView*     m_pView;
 
 public:
-    SwFormatFieldHint( const SwFormatField* p, SwFormatFieldHintWhich n, const SwView* pV = nullptr)
-        : pField(p)
-        , nWhich(n)
-        , pView(pV)
+    SwFormatFieldHint( const SwFormatField* pField, SwFormatFieldHintWhich nWhich, const SwView* pView = nullptr)
+        : m_pField(pField)
+        , m_nWhich(nWhich)
+        , m_pView(pView)
     {}
 
-    const SwFormatField* GetField() const { return pField; }
-    SwFormatFieldHintWhich Which() const { return nWhich; }
-    const SwView* GetView() const { return pView; }
+    const SwFormatField* GetField() const { return m_pField; }
+    SwFormatFieldHintWhich Which() const { return m_nWhich; }
+    const SwView* GetView() const { return m_pView; }
 };
 
 #endif

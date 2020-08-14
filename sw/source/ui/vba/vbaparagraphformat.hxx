@@ -21,7 +21,6 @@
 
 #include <ooo/vba/word/XParagraphFormat.hpp>
 #include <vbahelper/vbahelperinterface.hxx>
-#include <com/sun/star/text/XTextDocument.hpp>
 #include <com/sun/star/style/LineSpacing.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
 
@@ -35,8 +34,8 @@ private:
 private:
     static css::style::LineSpacing getOOoLineSpacing( float _lineSpace, sal_Int16 mode );
     css::style::LineSpacing getOOoLineSpacingFromRule( sal_Int32 _linespacingrule );
-    static float getMSWordLineSpacing( css::style::LineSpacing& rLineSpacing );
-    static sal_Int32 getMSWordLineSpacingRule( css::style::LineSpacing& rLineSpacing );
+    static float getMSWordLineSpacing( css::style::LineSpacing const & rLineSpacing );
+    static sal_Int32 getMSWordLineSpacingRule( css::style::LineSpacing const & rLineSpacing );
     /// @throws css::uno::RuntimeException
     sal_Int16 getCharHeight();
     static css::style::ParagraphAdjust getOOoAlignment( sal_Int32 _alignment );

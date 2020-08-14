@@ -34,7 +34,7 @@
  *
  ************************************************************************/
 
-#include <list>
+#include <vector>
 #include <time.h>
 #include <string.h>
 
@@ -44,16 +44,13 @@
 #include "pq_statement.hxx"
 #include "pq_preparedstatement.hxx"
 #include "pq_databasemetadata.hxx"
-#include "pq_xcontainer.hxx"
-#include "pq_statics.hxx"
 #include "pq_xtables.hxx"
 #include "pq_xviews.hxx"
 #include "pq_xusers.hxx"
 
-#include <rtl/ustrbuf.hxx>
-#include <rtl/strbuf.hxx>
 #include <rtl/uuid.h>
 #include <rtl/bootstrap.hxx>
+#include <sal/log.hxx>
 #include <o3tl/enumarray.hxx>
 #include <osl/module.h>
 
@@ -75,11 +72,11 @@ using com::sun::star::script::Converter;
 using com::sun::star::script::XTypeConverter;
 
 using com::sun::star::uno::RuntimeException;
-using com::sun::star::uno::Exception;
 using com::sun::star::uno::Sequence;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::XInterface;
 using com::sun::star::uno::UNO_QUERY;
+using com::sun::star::uno::UNO_QUERY_THROW;
 using com::sun::star::uno::XComponentContext;
 using com::sun::star::uno::Any;
 
@@ -94,6 +91,7 @@ using com::sun::star::sdbc::XDatabaseMetaData;
 namespace pq_sdbc_driver
 {
 
+namespace {
 
 // Helper class for statement lifetime management
 class ClosableReference : public cppu::WeakImplHelper< css::uno::XReference >
@@ -116,46 +114,6 @@ public:
     }
 };
 
-OUString    ConnectionGetImplementationName()
-{
-    return OUString( "org.openoffice.comp.connectivity.pq.Connection.noext" );
-}
-css::uno::Sequence<OUString> ConnectionGetSupportedServiceNames()
-{
-    return Sequence< OUString > { "com.sun.star.sdbc.Connection" };
-}
-
-static LogLevel readLogLevelFromConfiguration()
-{
-    LogLevel nLogLevel = LogLevel::NONE;
-    OUString fileName;
-    osl_getModuleURLFromFunctionAddress(
-        reinterpret_cast<oslGenericFunction>(readLogLevelFromConfiguration), &fileName.pData );
-    fileName = fileName.copy( fileName.lastIndexOf( '/' )+1 );
-#ifdef MACOSX
-    fileName += "../Resources/";
-#endif
-    fileName += "postgresql-sdbc.ini";
-    rtl::Bootstrap bootstrapHandle( fileName );
-
-    OUString str;
-    if( bootstrapHandle.getFrom( "PQ_LOGLEVEL", str ) )
-    {
-        if ( str == "NONE" )
-            nLogLevel = LogLevel::NONE;
-        else if ( str == "ERROR" )
-            nLogLevel = LogLevel::Error;
-        else if ( str == "SQL" )
-            nLogLevel = LogLevel::Sql;
-        else if ( str == "INFO" )
-            nLogLevel = LogLevel::Info;
-        else
-        {
-            fprintf( stderr, "unknown loglevel %s\n",
-                     OUStringToOString( str, RTL_TEXTENCODING_UTF8 ).getStr() );
-        }
-    }
-    return nLogLevel;
 }
 
 Connection::Connection(
@@ -165,82 +123,58 @@ Connection::Connection(
       m_ctx( ctx ) ,
       m_xMutex( refMutex )
 {
-    m_settings.m_nLogLevel = readLogLevelFromConfiguration();
-
-    if (m_settings.m_nLogLevel != LogLevel::NONE)
-    {
-        m_settings.logFile = fopen( "sdbc-pqsql.log", "a" );
-        if( m_settings.logFile )
-        {
-            setvbuf( m_settings.logFile, nullptr, _IONBF, 0 );
-            log(&m_settings, m_settings.m_nLogLevel , "set this loglevel");
-        }
-        else
-        {
-            fprintf( stderr, "Couldn't open sdbc-pqsql.log file\n" );
-        }
-    }
 }
 
 Connection::~Connection()
 {
-    POSTGRE_TRACE( "dtor connection" );
     if( m_settings.pConnection )
     {
         PQfinish( m_settings.pConnection );
         m_settings.pConnection = nullptr;
     }
-    if( m_settings.logFile )
-    {
-        fclose( m_settings.logFile );
-        m_settings.logFile = nullptr;
-    }
 }
-typedef std::list< css::uno::Reference< css::sdbc::XCloseable > > CloseableList;
+typedef std::vector< css::uno::Reference< css::sdbc::XCloseable > > CloseableVector;
 
-typedef std::list< css::uno::Reference< css::lang::XComponent > > DisposeableList;
+typedef std::vector< css::uno::Reference< css::lang::XComponent > > DisposeableVector;
 
 void Connection::close()
 {
-    CloseableList lst;
-    DisposeableList lstDispose;
+    CloseableVector vectorCloseable;
+    DisposeableVector vectorDispose;
     {
         MutexGuard guard( m_xMutex->GetMutex() );
         // silently ignore, if the connection has been closed already
         if( m_settings.pConnection )
         {
-            log(&m_settings, LogLevel::Info, "closing connection");
+            SAL_INFO("connectivity.postgresql", "closing connection");
             PQfinish( m_settings.pConnection );
             m_settings.pConnection = nullptr;
         }
 
-        lstDispose.push_back( Reference< XComponent > ( m_settings.users, UNO_QUERY ) );
-        lstDispose.push_back( Reference< XComponent > ( m_settings.tables , UNO_QUERY ) );
-        lstDispose.push_back( Reference< XComponent > ( m_meta, UNO_QUERY ) );
+        vectorDispose.push_back( Reference< XComponent > ( m_settings.users, UNO_QUERY ) );
+        vectorDispose.push_back( Reference< XComponent > ( m_settings.tables , UNO_QUERY ) );
+        vectorDispose.push_back( Reference< XComponent > ( m_meta, UNO_QUERY ) );
         m_meta.clear();
         m_settings.tables.clear();
         m_settings.users.clear();
 
-        for( WeakHashMap::const_iterator ii = m_myStatements.begin() ;
-             ii != m_myStatements.end() ;
-             ++ii )
+        for (auto const& statement : m_myStatements)
         {
-            Reference< XCloseable > r = ii->second;
+            Reference< XCloseable > r = statement.second;
             if( r.is() )
-                lst.push_back( r );
+                vectorCloseable.push_back( r );
         }
     }
 
     // close all created statements
-    for( CloseableList::iterator ii = lst.begin(); ii != lst.end() ; ++ii )
-        ii->get()->close();
+    for (auto const& elem : vectorCloseable)
+        elem->close();
 
     // close all created statements
-    for( DisposeableList::iterator iiDispose = lstDispose.begin();
-         iiDispose != lstDispose.end() ; ++iiDispose )
+    for (auto const& elem : vectorDispose)
     {
-        if( iiDispose->is() )
-            iiDispose->get()->dispose();
+        if( elem.is() )
+            elem->dispose();
     }
 }
 
@@ -396,6 +330,8 @@ void Connection::clearWarnings()
 {
 }
 
+namespace {
+
 class cstr_vector
 {
     std::vector<char*> values;
@@ -405,12 +341,13 @@ public:
     ~cstr_vector ()
     {
         OSL_ENSURE(values.size() == acquired.size(), "pq_connection: cstr_vector values and acquired size mismatch");
-        std::vector<char*>::iterator pv = values.begin();
         std::vector<bool>::const_iterator pa = acquired.begin();
-        const std::vector<char*>::const_iterator pve = values.end();
-        for( ; pv != pve ; ++pv, ++pa )
+        for( const auto& v : values )
+        {
             if (*pa)
-                free(*pv);
+                free(v);
+            ++pa;
+        }
     }
     void push_back(const char* s, __sal_NoAcquire)
     {
@@ -425,8 +362,10 @@ public:
     // This const_cast is there for compatibility with PostgreSQL <= 9.1;
     // PostgreSQL >= 9.2 has the right const qualifiers in the headers
     // for a return type of "char const*const*".
-    char const** c_array() const { return const_cast <const char**>(&values[0]); }
+    char const** c_array() const { return const_cast <const char**>(values.data()); }
 };
+
+}
 
 static void properties2arrays( const Sequence< PropertyValue > & args,
                                const Reference< XTypeConverter> &tc,
@@ -449,12 +388,12 @@ static void properties2arrays( const Sequence< PropertyValue > & args,
         "requiressl"
     };
 
-    for( int i = 0; i < args.getLength() ; ++i )
+    for( PropertyValue const & prop : args )
     {
         bool append = false;
         for(const char* j : keyword_list)
         {
-            if( args[i].Name.equalsIgnoreAsciiCaseAscii( j ))
+            if( prop.Name.equalsIgnoreAsciiCaseAscii( j ))
             {
                 keywords.push_back( j, SAL_NO_ACQUIRE );
                 append = true;
@@ -465,14 +404,14 @@ static void properties2arrays( const Sequence< PropertyValue > & args,
         if( append )
         {
             OUString value;
-            tc->convertTo( args[i].Value, cppu::UnoType<decltype(value)>::get() ) >>= value;
+            tc->convertTo( prop.Value, cppu::UnoType<decltype(value)>::get() ) >>= value;
             char *v = strdup(OUStringToOString(value, enc).getStr());
             values.push_back ( v );
         }
         else
         {
             // ignore for now
-            SAL_WARN("connectivity.postgresql", "sdbc-postgresql: unknown argument " << args[i].Name );
+            SAL_WARN("connectivity.postgresql", "sdbc-postgresql: unknown argument '" << prop.Name << "' having value: " << prop.Value );
         }
     }
 }
@@ -523,7 +462,7 @@ void Connection::initialize( const Sequence< Any >& aArguments )
         {
             char *err;
             std::shared_ptr<PQconninfoOption> oOpts(PQconninfoParse(o.getStr(), &err), PQconninfoFree);
-            if ( oOpts.get() == nullptr )
+            if (oOpts == nullptr)
             {
                 OUString errorMessage;
                 if ( err != nullptr)
@@ -575,14 +514,7 @@ void Connection::initialize( const Sequence< Any >& aArguments )
     m_settings.catalog = OUString( p, strlen(p), RTL_TEXTENCODING_UTF8);
     m_settings.tc = tc;
 
-    if (isLog(&m_settings, LogLevel::Info))
-    {
-        OUStringBuffer buf( 128 );
-        buf.append( "connection to '" );
-        buf.append( url );
-        buf.append( "' successfully opened" );
-        log(&m_settings, LogLevel::Info, buf.makeStringAndClear());
-    }
+    SAL_INFO("connectivity.postgresql", "connection to '" << url << "' successfully opened");
 }
 
 void Connection::disposing()
@@ -599,41 +531,32 @@ void Connection::checkClosed()
 
 Reference< XNameAccess > Connection::getTables()
 {
-    if (isLog(&m_settings, LogLevel::Info))
-    {
-        log(&m_settings, LogLevel::Info, "Connection::getTables() got called");
-    }
+    SAL_INFO("connectivity.postgresql", "Connection::getTables() got called");
     MutexGuard guard( m_xMutex->GetMutex() );
     if( !m_settings.tables.is() )
         m_settings.tables = Tables::create( m_xMutex, this, &m_settings , &m_settings.pTablesImpl);
     else
         // TODO: how to overcome the performance problem ?
-        Reference< css::util::XRefreshable > ( m_settings.tables, UNO_QUERY )->refresh();
+        Reference< css::util::XRefreshable > ( m_settings.tables, UNO_QUERY_THROW )->refresh();
     return m_settings.tables;
 }
 
 Reference< XNameAccess > Connection::getViews()
 {
-    if (isLog(&m_settings, LogLevel::Info))
-    {
-        log(&m_settings, LogLevel::Info, "Connection::getViews() got called");
-    }
+    SAL_INFO("connectivity.postgresql", "Connection::getViews() got called");
     MutexGuard guard( m_xMutex->GetMutex() );
     if( !m_settings.views.is() )
         m_settings.views = Views::create( m_xMutex, this, &m_settings, &(m_settings.pViewsImpl) );
     else
         // TODO: how to overcome the performance problem ?
-        Reference< css::util::XRefreshable > ( m_settings.views, UNO_QUERY )->refresh();
+        Reference< css::util::XRefreshable > ( m_settings.views, UNO_QUERY_THROW )->refresh();
     return m_settings.views;
 }
 
 
 Reference< XNameAccess > Connection::getUsers()
 {
-    if (isLog(&m_settings, LogLevel::Info))
-    {
-        log(&m_settings, LogLevel::Info, "Connection::getUsers() got called");
-    }
+    SAL_INFO("connectivity.postgresql", "Connection::getUsers() got called");
 
     MutexGuard guard( m_xMutex->GetMutex() );
     if( !m_settings.users.is() )
@@ -641,79 +564,14 @@ Reference< XNameAccess > Connection::getUsers()
     return m_settings.users;
 }
 
-/// @throws Exception
-Reference< XInterface >  ConnectionCreateInstance(
-    const Reference< XComponentContext > & ctx )
+} // end namespace
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+connectivity_postgresql_Connection_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
 {
     ::rtl::Reference< comphelper::RefCountedMutex > ref = new comphelper::RefCountedMutex;
-    return * new Connection( ref, ctx );
-}
-
-
-bool isLog(ConnectionSettings *settings, LogLevel nLevel)
-{
-    return static_cast<int>(settings->m_nLogLevel) >= static_cast<int>(nLevel)
-           && settings->logFile;
-}
-
-void log(ConnectionSettings *settings, LogLevel nLevel, const OUString &logString)
-{
-    log( settings, nLevel, OUStringToOString( logString, ConnectionSettings::encoding ).getStr() );
-}
-void log(ConnectionSettings *settings, LogLevel nLevel, const char *str)
-{
-    if (isLog(settings, nLevel))
-    {
-        static const o3tl::enumarray<LogLevel, const char*> strLevel = {"NONE", "ERROR", "SQL", "INFO"};
-
-        time_t t = ::time( nullptr );
-        char *pString;
-#ifdef SAL_W32
-        pString = asctime( localtime( &t ) );
-#else
-        struct tm timestruc;
-        char timestr[50];
-        memset( timestr, 0 , 50);
-        pString = timestr;
-        ::localtime_r( &t , &timestruc );
-        asctime_r( &timestruc, timestr );
-#endif
-        for( int i = 0 ; pString[i] ; i ++ )
-        {
-            if( pString[i] <= 13 )
-            {
-                pString[i] = 0;
-                break;
-            }
-        }
-        fprintf(settings->logFile, "%s [%s]: %s\n", pString, strLevel[nLevel], str);
-    }
-}
-
-
-}
-
-
-static const struct cppu::ImplementationEntry g_entries[] =
-{
-    {
-        pq_sdbc_driver::ConnectionCreateInstance, pq_sdbc_driver::ConnectionGetImplementationName,
-        pq_sdbc_driver::ConnectionGetSupportedServiceNames, cppu::createSingleComponentFactory,
-        nullptr , 0
-    },
-    { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-};
-
-
-extern "C"
-{
-
-SAL_DLLPUBLIC_EXPORT void * SAL_CALL postgresql_sdbc_impl_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * pRegistryKey )
-{
-    return cppu::component_getFactoryHelper( pImplName, pServiceManager, pRegistryKey , g_entries );
-}
-
+    return cppu::acquire(new pq_sdbc_driver::Connection( ref, context ));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

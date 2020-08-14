@@ -26,7 +26,10 @@
 
 #include <sal/types.h>
 #include <svx/svxdllapi.h>
+#include <svl/typedwhich.hxx>
 
+struct _xmlTextWriter;
+typedef struct _xmlTextWriter* xmlTextWriterPtr;
 class SdrObject;
 class SfxItemSet;
 class SfxPoolItem;
@@ -35,19 +38,41 @@ class Fraction;
 class SfxItemPool;
 class SdrModel;
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
-        class ItemChangeBroadcaster;
-    }
+    class ItemChangeBroadcaster;
 }
 
-namespace sdr
-{
-    namespace properties
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//  BaseProperties
+//      DefaultProperties                   ->SfxItemSet
+//          AttributeProperties             ->SfxStyleSheet
+//              E3dProperties
+//                  E3dCompoundProperties
+//                      E3dExtrudeProperties
+//                      E3dLatheProperties
+//                      E3dSphereProperties
+//                  E3dSceneProperties
+//              TextProperties              ->maVersion
+//                  ConnectorProperties
+//                  CustomShapeProperties
+//                  MeasureProperties
+//                  RectangleProperties
+//                      CaptionProperties
+//                      CircleProperties
+//                      GraphicProperties
+//                      OleProperties
+//                  CellProperties
+//                  TableProperties
+//          GroupProperties
+//      EmptyProperties
+//          PageProperties
+
+namespace sdr::properties
     {
-        class SVX_DLLPUBLIC BaseProperties
+        class SVXCORE_DLLPUBLIC BaseProperties
         {
         private:
             // the owner of this Properties. Set from constructor and not
@@ -55,6 +80,8 @@ namespace sdr
             SdrObject&                                      mrObject;
 
         protected:
+            // apply the correct SfyStyleSheet from SdrObject's SdrModel
+            virtual void applyDefaultStyleSheetFromSdrModel();
 
             // create a new object specific itemset with object specific ranges.
             virtual std::unique_ptr<SfxItemSet> CreateObjectSpecificItemSet(SfxItemPool& pPool) = 0;
@@ -64,7 +91,7 @@ namespace sdr
 
             SdrObject& GetSdrObject();
 
-            // Test changeability for a single item. If a implementation wants to prevent
+            // Test changeability for a single item. If an implementation wants to prevent
             // changing an item it should override this method.
             virtual bool AllowItemChange(const sal_uInt16 nWhich, const SfxPoolItem* pNewItem = nullptr) const = 0;
 
@@ -88,7 +115,7 @@ namespace sdr
 
             // Clone() operator, normally just calls the local copy constructor,
             // see above.
-            virtual BaseProperties& Clone(SdrObject& rObj) const = 0;
+            virtual std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const = 0;
 
             // Get the local ItemSet. This directly returns the local ItemSet of the object. No
             // merging of ItemSets is done for e.g. Group objects.
@@ -140,17 +167,6 @@ namespace sdr
             // Get the installed StyleSheet.
             virtual SfxStyleSheet* GetStyleSheet() const = 0;
 
-            // Scale the local ItemSet as far as it contains metric items.
-            // Override this to do it for hierarchical objects like e.g. groups.
-            virtual void Scale(const Fraction& rScale);
-
-            // Move local items to a new ItemPool.
-            // Override this to do it for hierarchical objects like e.g. groups.
-            virtual void MoveToItemPool(SfxItemPool* pSrcPool, SfxItemPool* pDestPool, SdrModel* pNewModel);
-
-            // Set new model.
-            virtual void SetModel(SdrModel* pOldModel, SdrModel* pNewModel);
-
             // force all attributes which come from styles to hard attributes
             // to be able to live without the style.
             virtual void ForceStyleToHardAttributes();
@@ -164,6 +180,10 @@ namespace sdr
 
             // Just a convenient shortcut for GetObjectItemSet().Get(nWhich).
             const SfxPoolItem& GetItem(const sal_uInt16 nWhich) const;
+            template<class T> const T& GetItem(TypedWhichId<T> nWhich) const
+            {
+                return static_cast<const T&>(GetItem(sal_uInt16(nWhich)));
+            }
 
             // support for convenient broadcasting. Used from SetMergedItemAndBroadcast(),
             // ClearItemAndBroadcast() and SetItemSetAndBroadcast(), see above.
@@ -174,13 +194,14 @@ namespace sdr
             // allow detection of e.g. style sheet or single text attribute changes. The
             // default implementation returns 0 (zero)
             virtual sal_uInt32 getVersion() const;
+
+            virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
         };
 
         // checks the FillStyle item and removes unneeded Gradient, FillBitmap and Hatch items
-        void SVX_DLLPUBLIC CleanupFillProperties( SfxItemSet& rItemSet );
+        void SVXCORE_DLLPUBLIC CleanupFillProperties( SfxItemSet& rItemSet );
 
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace sdr::properties
 
 #endif // INCLUDED_SVX_SDR_PROPERTIES_PROPERTIES_HXX
 

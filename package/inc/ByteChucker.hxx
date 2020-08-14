@@ -27,16 +27,15 @@
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XSeekable; class XOutputStream; }
-} } }
-class ByteChucker
+}
+class ByteChucker final
 {
-protected:
     css::uno::Reference < css::io::XOutputStream > xStream;
     css::uno::Reference < css::io::XSeekable > xSeek;
-    css::uno::Sequence < sal_Int8 > a1Sequence, a2Sequence, a4Sequence;
-    sal_Int8 * const p1Sequence, * const p2Sequence, * const p4Sequence;
+    css::uno::Sequence < sal_Int8 > a2Sequence, a4Sequence;
+    sal_Int8 * const p2Sequence, * const p4Sequence;
 
 public:
     ByteChucker (css::uno::Reference<css::io::XOutputStream> const & xOstream);

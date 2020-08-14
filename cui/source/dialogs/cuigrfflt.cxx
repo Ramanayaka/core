@@ -17,38 +17,38 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/builderfactory.hxx>
-#include <vcl/msgbox.hxx>
-#include <sfx2/viewfrm.hxx>
-#include <sfx2/viewsh.hxx>
-#include <sfx2/objsh.hxx>
-#include <sfx2/request.hxx>
-#include <dialmgr.hxx>
-#include "cuigrfflt.hxx"
-#include <cuires.hrc>
-#include <svx/dialogs.hrc>
+#include <vcl/BitmapMosaicFilter.hxx>
+#include <vcl/BitmapSharpenFilter.hxx>
+#include <vcl/BitmapEmbossGreyFilter.hxx>
+#include <vcl/BitmapSepiaFilter.hxx>
+#include <vcl/BitmapSmoothenFilter.hxx>
+#include <vcl/BitmapSolarizeFilter.hxx>
+#include <vcl/BitmapColorQuantizationFilter.hxx>
+#include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
+#include <osl/diagnose.h>
+#include <tools/helpers.hxx>
+#include <cuigrfflt.hxx>
 
-
-GraphicPreviewWindow::GraphicPreviewWindow(vcl::Window* pParent,
-    const WinBits nStyle)
-    : Control(pParent, nStyle)
-    , mpOrigGraphic(nullptr)
+CuiGraphicPreviewWindow::CuiGraphicPreviewWindow()
+    : mpOrigGraphic(nullptr)
     , mfScaleX(0.0)
     , mfScaleY(0.0)
 {
 }
 
-VCL_BUILDER_FACTORY_CONSTRUCTOR(GraphicPreviewWindow, WB_TABSTOP)
-
-Size GraphicPreviewWindow::GetOptimalSize() const
+void CuiGraphicPreviewWindow::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 {
-    return LogicToPixel(Size(81, 73), MapUnit::MapAppFont);
+    CustomWidgetController::SetDrawingArea(pDrawingArea);
+    OutputDevice &rDevice = pDrawingArea->get_ref_device();
+    maOutputSizePixel = rDevice.LogicToPixel(Size(81, 73), MapMode(MapUnit::MapAppFont));
+    pDrawingArea->set_size_request(maOutputSizePixel.Width(), maOutputSizePixel.Height());
 }
 
-
-void GraphicPreviewWindow::Paint(vcl::RenderContext& rRenderContext, const ::tools::Rectangle& rRect)
+void CuiGraphicPreviewWindow::Paint(vcl::RenderContext& rRenderContext, const ::tools::Rectangle&)
 {
-    Control::Paint(rRenderContext, rRect);
+    rRenderContext.SetBackground(Wallpaper(Application::GetSettings().GetStyleSettings().GetDialogColor()));
+    rRenderContext.Erase();
 
     const Size aOutputSize(GetOutputSizePixel());
 
@@ -68,46 +68,42 @@ void GraphicPreviewWindow::Paint(vcl::RenderContext& rRenderContext, const ::too
     }
 }
 
-
-void GraphicPreviewWindow::SetPreview(const Graphic& rGraphic)
+void CuiGraphicPreviewWindow::SetPreview(const Graphic& rGraphic)
 {
     maPreview = rGraphic;
     Invalidate();
 }
 
-
-void GraphicPreviewWindow::ScaleImageToFit()
+void CuiGraphicPreviewWindow::ScaleImageToFit()
 {
     if (!mpOrigGraphic)
         return;
 
     maScaledOrig = *mpOrigGraphic;
 
-    const Size  aPreviewSize( GetOutputSizePixel() );
-    Size aSizePixel(LogicToPixel(mpOrigGraphic->GetPrefSize(),
-        mpOrigGraphic->GetPrefMapMode()));
-    Size aGrfSize(aSizePixel);
+    const Size aPreviewSize(GetOutputSizePixel());
+    Size aGrfSize(maOrigGraphicSizePixel);
 
     if( mpOrigGraphic->GetType() == GraphicType::Bitmap &&
         aPreviewSize.Width() && aPreviewSize.Height() &&
         aGrfSize.Width() && aGrfSize.Height() )
     {
-        const double fGrfWH = (double) aGrfSize.Width() / aGrfSize.Height();
-        const double fPreWH = (double) aPreviewSize.Width() / aPreviewSize.Height();
+        const double fGrfWH = static_cast<double>(aGrfSize.Width()) / aGrfSize.Height();
+        const double fPreWH = static_cast<double>(aPreviewSize.Width()) / aPreviewSize.Height();
 
         if( fGrfWH < fPreWH )
         {
-            aGrfSize.Width()  = (long) ( aPreviewSize.Height() * fGrfWH );
-            aGrfSize.Height() = aPreviewSize.Height();
+            aGrfSize.setWidth( static_cast<long>( aPreviewSize.Height() * fGrfWH ) );
+            aGrfSize.setHeight( aPreviewSize.Height() );
         }
         else
         {
-            aGrfSize.Width()  = aPreviewSize.Width();
-            aGrfSize.Height() = (long) ( aPreviewSize.Width() / fGrfWH );
+            aGrfSize.setWidth( aPreviewSize.Width() );
+            aGrfSize.setHeight( static_cast<long>( aPreviewSize.Width() / fGrfWH ) );
         }
 
-        mfScaleX = (double) aGrfSize.Width() / aSizePixel.Width();
-        mfScaleY = (double) aGrfSize.Height() / aSizePixel.Height();
+        mfScaleX = static_cast<double>(aGrfSize.Width()) / maOrigGraphicSizePixel.Width();
+        mfScaleY = static_cast<double>(aGrfSize.Height()) / maOrigGraphicSizePixel.Height();
 
         if( !mpOrigGraphic->IsAnimated() )
         {
@@ -121,51 +117,33 @@ void GraphicPreviewWindow::ScaleImageToFit()
     maModifyHdl.Call(nullptr);
 }
 
-
-void GraphicPreviewWindow::Resize()
+void CuiGraphicPreviewWindow::Resize()
 {
-    Control::Resize();
+    maOutputSizePixel = GetOutputSizePixel();
     ScaleImageToFit();
 }
 
-GraphicFilterDialog::GraphicFilterDialog(vcl::Window* pParent,
-    const OUString& rID, const OUString& rUIXMLDescription,
+GraphicFilterDialog::GraphicFilterDialog(weld::Window* pParent,
+    const OUString& rUIXMLDescription, const OString& rID,
     const Graphic& rGraphic)
-    : ModalDialog(pParent, rID, rUIXMLDescription)
-    , maModifyHdl(LINK( this, GraphicFilterDialog, ImplModifyHdl))
-    , maSizePixel(LogicToPixel(rGraphic.GetPrefSize(),
-        rGraphic.GetPrefMapMode()))
+    : GenericDialogController(pParent, rUIXMLDescription, rID)
+    , maModifyHdl(LINK(this, GraphicFilterDialog, ImplModifyHdl))
+    , mxPreview(new weld::CustomWeld(*m_xBuilder, "preview", maPreview))
 {
     bIsBitmap = rGraphic.GetType() == GraphicType::Bitmap;
 
-    maTimer.SetInvokeHandler( LINK( this, GraphicFilterDialog, ImplPreviewTimeoutHdl ) );
-    maTimer.SetTimeout( 5 );
+    maTimer.SetInvokeHandler(LINK(this, GraphicFilterDialog, ImplPreviewTimeoutHdl));
+    maTimer.SetTimeout(5);
 
-    get(mpPreview, "preview");
-    mpPreview->init(&rGraphic, maModifyHdl);
+    maPreview.init(&rGraphic, maModifyHdl);
 }
-
-
-GraphicFilterDialog::~GraphicFilterDialog()
-{
-    disposeOnce();
-}
-
-
-void GraphicFilterDialog::dispose()
-{
-    mpPreview.clear();
-    ModalDialog::dispose();
-}
-
 
 IMPL_LINK_NOARG(GraphicFilterDialog, ImplPreviewTimeoutHdl, Timer *, void)
 {
     maTimer.Stop();
-    mpPreview->SetPreview(GetFilteredGraphic(mpPreview->GetScaledOriginal(),
-        mpPreview->GetScaleX(), mpPreview->GetScaleY()));
+    maPreview.SetPreview(GetFilteredGraphic(maPreview.GetScaledOriginal(),
+        maPreview.GetScaleX(), maPreview.GetScaleY()));
 }
-
 
 IMPL_LINK_NOARG(GraphicFilterDialog, ImplModifyHdl, LinkParamNone*, void)
 {
@@ -176,76 +154,54 @@ IMPL_LINK_NOARG(GraphicFilterDialog, ImplModifyHdl, LinkParamNone*, void)
     }
 }
 
-
-GraphicFilterMosaic::GraphicFilterMosaic( vcl::Window* pParent, const Graphic& rGraphic,
-                                          sal_uInt16 nTileWidth, sal_uInt16 nTileHeight, bool bEnhanceEdges )
-    : GraphicFilterDialog(pParent, "MosaicDialog",
-        "cui/ui/mosaicdialog.ui", rGraphic)
+GraphicFilterMosaic::GraphicFilterMosaic(weld::Window* pParent, const Graphic& rGraphic,
+                                         sal_uInt16 nTileWidth, sal_uInt16 nTileHeight, bool bEnhanceEdges)
+    : GraphicFilterDialog(pParent, "cui/ui/mosaicdialog.ui", "MosaicDialog", rGraphic)
+    , mxMtrWidth(m_xBuilder->weld_metric_spin_button("width", FieldUnit::PIXEL))
+    , mxMtrHeight(m_xBuilder->weld_metric_spin_button("height", FieldUnit::PIXEL))
+    , mxCbxEdges(m_xBuilder->weld_check_button("edges"))
 {
-    get(mpMtrWidth, "width");
-    get(mpMtrHeight, "height");
-    get(mpCbxEdges, "edges");
+    mxMtrWidth->set_value(nTileWidth, FieldUnit::PIXEL);
+    mxMtrWidth->set_max(GetGraphicSizePixel().Width(), FieldUnit::PIXEL);
+    mxMtrWidth->connect_value_changed(LINK(this, GraphicFilterMosaic, EditModifyHdl));
 
-    mpMtrWidth->SetValue( nTileWidth );
-    mpMtrWidth->SetLast( GetGraphicSizePixel().Width() );
-    mpMtrWidth->SetModifyHdl( LINK(this, GraphicFilterMosaic, EditModifyHdl) );
+    mxMtrHeight->set_value(nTileHeight, FieldUnit::PIXEL);
+    mxMtrHeight->set_max(GetGraphicSizePixel().Height(), FieldUnit::PIXEL);
+    mxMtrHeight->connect_value_changed(LINK(this, GraphicFilterMosaic, EditModifyHdl));
 
-    mpMtrHeight->SetValue( nTileHeight );
-    mpMtrHeight->SetLast( GetGraphicSizePixel().Height() );
-    mpMtrHeight->SetModifyHdl( LINK(this, GraphicFilterMosaic, EditModifyHdl) );
+    mxCbxEdges->set_active(bEnhanceEdges);
+    mxCbxEdges->connect_toggled(LINK(this, GraphicFilterMosaic, CheckBoxModifyHdl));
 
-    mpCbxEdges->Check( bEnhanceEdges );
-    mpCbxEdges->SetToggleHdl( LINK(this, GraphicFilterMosaic, CheckBoxModifyHdl) );
-
-    mpMtrWidth->GrabFocus();
+    mxMtrWidth->grab_focus();
 }
 
-
-IMPL_LINK_NOARG(GraphicFilterMosaic, CheckBoxModifyHdl, CheckBox&, void)
+IMPL_LINK_NOARG(GraphicFilterMosaic, CheckBoxModifyHdl, weld::ToggleButton&, void)
 {
     GetModifyHdl().Call(nullptr);
 }
 
-
-IMPL_LINK_NOARG(GraphicFilterMosaic, EditModifyHdl, Edit&, void)
+IMPL_LINK_NOARG(GraphicFilterMosaic, EditModifyHdl, weld::MetricSpinButton&, void)
 {
     GetModifyHdl().Call(nullptr);
 }
-
-
-GraphicFilterMosaic::~GraphicFilterMosaic()
-{
-    disposeOnce();
-}
-
-
-void GraphicFilterMosaic::dispose()
-{
-    mpMtrWidth.clear();
-    mpMtrHeight.clear();
-    mpCbxEdges.clear();
-    GraphicFilterDialog::dispose();
-}
-
 
 Graphic GraphicFilterMosaic::GetFilteredGraphic( const Graphic& rGraphic,
                                                  double fScaleX, double fScaleY )
 {
     Graphic         aRet;
-    long            nTileWidth = static_cast<long>(mpMtrWidth->GetValue());
-    long            nTileHeight = static_cast<long>(mpMtrHeight->GetValue());
+    long            nTileWidth = static_cast<long>(mxMtrWidth->get_value(FieldUnit::PIXEL));
+    long            nTileHeight = static_cast<long>(mxMtrHeight->get_value(FieldUnit::PIXEL));
     const Size      aSize( std::max( FRound( nTileWidth * fScaleX ), 1L ),
                            std::max( FRound( nTileHeight * fScaleY ), 1L ) );
-    BmpFilterParam  aParam( aSize );
 
     if( rGraphic.IsAnimated() )
     {
         Animation aAnim( rGraphic.GetAnimation() );
 
-        if( aAnim.Filter( BmpFilter::Mosaic, &aParam ) )
+        if (BitmapFilter::Filter(aAnim, BitmapMosaicFilter(aSize.getWidth(), aSize.getHeight())))
         {
             if( IsEnhanceEdges() )
-                aAnim.Filter( BmpFilter::Sharpen );
+                (void)BitmapFilter::Filter(aAnim, BitmapSharpenFilter());
 
             aRet = aAnim;
         }
@@ -254,10 +210,10 @@ Graphic GraphicFilterMosaic::GetFilteredGraphic( const Graphic& rGraphic,
     {
         BitmapEx aBmpEx( rGraphic.GetBitmapEx() );
 
-        if( aBmpEx.Filter( BmpFilter::Mosaic, &aParam ) )
+        if (BitmapFilter::Filter(aBmpEx, BitmapMosaicFilter(aSize.getWidth(), aSize.getHeight())))
         {
             if( IsEnhanceEdges() )
-                (void)aBmpEx.Filter( BmpFilter::Sharpen );
+                BitmapFilter::Filter(aBmpEx, BitmapSharpenFilter());
 
             aRet = aBmpEx;
         }
@@ -266,49 +222,30 @@ Graphic GraphicFilterMosaic::GetFilteredGraphic( const Graphic& rGraphic,
     return aRet;
 }
 
-
-GraphicFilterSmooth::GraphicFilterSmooth( vcl::Window* pParent, const Graphic& rGraphic, double nRadius)
-    : GraphicFilterDialog(pParent, "SmoothDialog",
-        "cui/ui/smoothdialog.ui", rGraphic)
+GraphicFilterSmooth::GraphicFilterSmooth(weld::Window* pParent, const Graphic& rGraphic, double nRadius)
+    : GraphicFilterDialog(pParent, "cui/ui/smoothdialog.ui", "SmoothDialog", rGraphic)
+    , mxMtrRadius(m_xBuilder->weld_spin_button("radius"))
 {
-    get(mpMtrRadius, "radius");
-
-    mpMtrRadius->SetValue( nRadius* 10  );
-    mpMtrRadius->SetModifyHdl( LINK(this, GraphicFilterSmooth, EditModifyHdl) );
-    mpMtrRadius->GrabFocus();
+    mxMtrRadius->set_value(nRadius * 10);
+    mxMtrRadius->connect_value_changed(LINK(this, GraphicFilterSmooth, EditModifyHdl));
+    mxMtrRadius->grab_focus();
 }
 
-
-IMPL_LINK_NOARG(GraphicFilterSmooth, EditModifyHdl, Edit&, void)
+IMPL_LINK_NOARG(GraphicFilterSmooth, EditModifyHdl, weld::SpinButton&, void)
 {
     GetModifyHdl().Call(nullptr);
 }
-
-
-GraphicFilterSmooth::~GraphicFilterSmooth()
-{
-    disposeOnce();
-}
-
-
-void GraphicFilterSmooth::dispose()
-{
-    mpMtrRadius.clear();
-    GraphicFilterDialog::dispose();
-}
-
 
 Graphic GraphicFilterSmooth::GetFilteredGraphic( const Graphic& rGraphic, double, double )
 {
     Graphic         aRet;
-    double          nRadius = mpMtrRadius->GetValue() / 10.0;
-    BmpFilterParam  aParam( nRadius );
+    double          nRadius = mxMtrRadius->get_value() / 10.0;
 
     if( rGraphic.IsAnimated() )
     {
         Animation aAnim( rGraphic.GetAnimation() );
 
-        if( aAnim.Filter( BmpFilter::Smooth, &aParam ) )
+        if (BitmapFilter::Filter(aAnim, BitmapSmoothenFilter(nRadius)))
         {
             aRet = aAnim;
         }
@@ -317,7 +254,7 @@ Graphic GraphicFilterSmooth::GetFilteredGraphic( const Graphic& rGraphic, double
     {
         BitmapEx aBmpEx( rGraphic.GetBitmapEx() );
 
-        if( aBmpEx.Filter( BmpFilter::Smooth, &aParam ) )
+        if (BitmapFilter::Filter(aBmpEx, BitmapSmoothenFilter(nRadius)))
         {
             aRet = aBmpEx;
         }
@@ -326,60 +263,39 @@ Graphic GraphicFilterSmooth::GetFilteredGraphic( const Graphic& rGraphic, double
     return aRet;
 }
 
-
-GraphicFilterSolarize::GraphicFilterSolarize( vcl::Window* pParent, const Graphic& rGraphic,
-                                              sal_uInt8 cGreyThreshold, bool bInvert )
-    : GraphicFilterDialog(pParent, "SolarizeDialog",
-        "cui/ui/solarizedialog.ui", rGraphic)
+GraphicFilterSolarize::GraphicFilterSolarize(weld::Window* pParent, const Graphic& rGraphic,
+                                             sal_uInt8 cGreyThreshold, bool bInvert)
+    : GraphicFilterDialog(pParent, "cui/ui/solarizedialog.ui", "SolarizeDialog", rGraphic)
+    , mxMtrThreshold(m_xBuilder->weld_metric_spin_button("value", FieldUnit::PERCENT))
+    , mxCbxInvert(m_xBuilder->weld_check_button("invert"))
 {
-    get(mpMtrThreshold, "value");
-    get(mpCbxInvert, "invert");
+    mxMtrThreshold->set_value(FRound(cGreyThreshold / 2.55), FieldUnit::PERCENT);
+    mxMtrThreshold->connect_value_changed(LINK(this, GraphicFilterSolarize, EditModifyHdl));
 
-    mpMtrThreshold->SetValue( FRound( cGreyThreshold / 2.55 ) );
-    mpMtrThreshold->SetModifyHdl( LINK(this, GraphicFilterSolarize, EditModifyHdl) );
-
-    mpCbxInvert->Check( bInvert );
-    mpCbxInvert->SetToggleHdl( LINK(this, GraphicFilterSolarize, CheckBoxModifyHdl) );
+    mxCbxInvert->set_active(bInvert);
+    mxCbxInvert->connect_toggled(LINK(this, GraphicFilterSolarize, CheckBoxModifyHdl));
 }
 
-
-IMPL_LINK_NOARG(GraphicFilterSolarize, CheckBoxModifyHdl, CheckBox&, void)
+IMPL_LINK_NOARG(GraphicFilterSolarize, CheckBoxModifyHdl, weld::ToggleButton&, void)
 {
     GetModifyHdl().Call(nullptr);
 }
 
-
-IMPL_LINK_NOARG(GraphicFilterSolarize, EditModifyHdl, Edit&, void)
+IMPL_LINK_NOARG(GraphicFilterSolarize, EditModifyHdl, weld::MetricSpinButton&, void)
 {
     GetModifyHdl().Call(nullptr);
 }
-
-
-GraphicFilterSolarize::~GraphicFilterSolarize()
-{
-    disposeOnce();
-}
-
-
-void GraphicFilterSolarize::dispose()
-{
-    mpMtrThreshold.clear();
-    mpCbxInvert.clear();
-    GraphicFilterDialog::dispose();
-}
-
 
 Graphic GraphicFilterSolarize::GetFilteredGraphic( const Graphic& rGraphic, double, double )
 {
     Graphic         aRet;
-    sal_uInt8       nGreyThreshold = (sal_uInt8) FRound( mpMtrThreshold->GetValue() * 2.55 );
-    BmpFilterParam  aParam( nGreyThreshold );
+    sal_uInt8       nGreyThreshold = static_cast<sal_uInt8>(FRound(mxMtrThreshold->get_value(FieldUnit::PERCENT) * 2.55));
 
     if( rGraphic.IsAnimated() )
     {
         Animation aAnim( rGraphic.GetAnimation() );
 
-        if( aAnim.Filter( BmpFilter::Solarize, &aParam ) )
+        if (BitmapFilter::Filter(aAnim, BitmapSolarizeFilter(nGreyThreshold)))
         {
             if( IsInvert() )
                 aAnim.Invert();
@@ -391,7 +307,7 @@ Graphic GraphicFilterSolarize::GetFilteredGraphic( const Graphic& rGraphic, doub
     {
         BitmapEx aBmpEx( rGraphic.GetBitmapEx() );
 
-        if( aBmpEx.Filter( BmpFilter::Solarize, &aParam ) )
+        if (BitmapFilter::Filter(aBmpEx, BitmapSolarizeFilter(nGreyThreshold)))
         {
             if( IsInvert() )
                 aBmpEx.Invert();
@@ -403,96 +319,62 @@ Graphic GraphicFilterSolarize::GetFilteredGraphic( const Graphic& rGraphic, doub
     return aRet;
 }
 
-GraphicFilterSepia::GraphicFilterSepia( vcl::Window* pParent, const Graphic& rGraphic,
-                                        sal_uInt16 nSepiaPercent )
-    : GraphicFilterDialog(pParent, "AgingDialog",
-        "cui/ui/agingdialog.ui", rGraphic)
+GraphicFilterSepia::GraphicFilterSepia(weld::Window* pParent, const Graphic& rGraphic,
+                                       sal_uInt16 nSepiaPercent)
+    : GraphicFilterDialog(pParent, "cui/ui/agingdialog.ui", "AgingDialog", rGraphic)
+    , mxMtrSepia(m_xBuilder->weld_metric_spin_button("value", FieldUnit::PERCENT))
 {
-    get(mpMtrSepia, "value");
-
-    mpMtrSepia->SetValue( nSepiaPercent );
-    mpMtrSepia->SetModifyHdl( LINK(this, GraphicFilterSepia, EditModifyHdl) );
+    mxMtrSepia->set_value(nSepiaPercent, FieldUnit::PERCENT);
+    mxMtrSepia->connect_value_changed(LINK(this, GraphicFilterSepia, EditModifyHdl));
 }
 
-IMPL_LINK_NOARG(GraphicFilterSepia, EditModifyHdl, Edit&, void)
+IMPL_LINK_NOARG(GraphicFilterSepia, EditModifyHdl, weld::MetricSpinButton&, void)
 {
     GetModifyHdl().Call(nullptr);
 }
 
-GraphicFilterSepia::~GraphicFilterSepia()
-{
-    disposeOnce();
-}
-
-void GraphicFilterSepia::dispose()
-{
-    mpMtrSepia.clear();
-    GraphicFilterDialog::dispose();
-}
-
-
 Graphic GraphicFilterSepia::GetFilteredGraphic( const Graphic& rGraphic, double, double )
 {
     Graphic         aRet;
-    sal_uInt16      nSepiaPct = sal::static_int_cast< sal_uInt16 >(mpMtrSepia->GetValue());
-    BmpFilterParam  aParam( nSepiaPct );
+    sal_uInt16      nSepiaPct = sal::static_int_cast< sal_uInt16 >(mxMtrSepia->get_value(FieldUnit::PERCENT));
 
     if( rGraphic.IsAnimated() )
     {
         Animation aAnim( rGraphic.GetAnimation() );
 
-        if( aAnim.Filter( BmpFilter::Sepia, &aParam ) )
+        if (BitmapFilter::Filter(aAnim, BitmapSepiaFilter(nSepiaPct)))
             aRet = aAnim;
     }
     else
     {
         BitmapEx aBmpEx( rGraphic.GetBitmapEx() );
 
-        if( aBmpEx.Filter( BmpFilter::Sepia, &aParam ) )
+        if (BitmapFilter::Filter(aBmpEx, BitmapSepiaFilter(nSepiaPct)))
             aRet = aBmpEx;
     }
 
     return aRet;
 }
 
-
-GraphicFilterPoster::GraphicFilterPoster(vcl::Window* pParent, const Graphic& rGraphic,
+GraphicFilterPoster::GraphicFilterPoster(weld::Window* pParent, const Graphic& rGraphic,
                                           sal_uInt16 nPosterCount)
-    : GraphicFilterDialog(pParent, "PosterDialog",
-        "cui/ui/posterdialog.ui", rGraphic)
+    : GraphicFilterDialog(pParent, "cui/ui/posterdialog.ui", "PosterDialog", rGraphic)
+    , mxNumPoster(m_xBuilder->weld_spin_button("value"))
 {
-    get(mpNumPoster, "value");
-
-    mpNumPoster->SetFirst( 2 );
-    mpNumPoster->SetLast( rGraphic.GetBitmapEx().GetBitCount() );
-    mpNumPoster->SetValue( nPosterCount );
-    mpNumPoster->SetModifyHdl( LINK(this, GraphicFilterPoster, EditModifyHdl) );
+    mxNumPoster->set_range(2, rGraphic.GetBitmapEx().GetBitCount());
+    mxNumPoster->set_value(nPosterCount);
+    mxNumPoster->connect_value_changed(LINK(this, GraphicFilterPoster, EditModifyHdl));
 }
 
-
-IMPL_LINK_NOARG(GraphicFilterPoster, EditModifyHdl, Edit&, void)
+IMPL_LINK_NOARG(GraphicFilterPoster, EditModifyHdl, weld::SpinButton&, void)
 {
     GetModifyHdl().Call(nullptr);
 }
 
-
-GraphicFilterPoster::~GraphicFilterPoster()
-{
-    disposeOnce();
-}
-
-
-void GraphicFilterPoster::dispose()
-{
-    mpNumPoster.clear();
-    GraphicFilterDialog::dispose();
-}
-
-
 Graphic GraphicFilterPoster::GetFilteredGraphic( const Graphic& rGraphic, double, double )
 {
     Graphic          aRet;
-    const sal_uInt16 nPosterCount = (sal_uInt16) mpNumPoster->GetValue();
+    const sal_uInt16 nPosterCount = static_cast<sal_uInt16>(mxNumPoster->get_value());
 
     if( rGraphic.IsAnimated() )
     {
@@ -505,15 +387,14 @@ Graphic GraphicFilterPoster::GetFilteredGraphic( const Graphic& rGraphic, double
     {
         BitmapEx aBmpEx( rGraphic.GetBitmapEx() );
 
-        if( aBmpEx.ReduceColors( nPosterCount ) )
+        if (BitmapFilter::Filter(aBmpEx, BitmapColorQuantizationFilter(nPosterCount)))
             aRet = aBmpEx;
     }
 
     return aRet;
 }
 
-
-void EmbossControl::MouseButtonDown( const MouseEvent& rEvt )
+bool EmbossControl::MouseButtonDown( const MouseEvent& rEvt )
 {
     const RectPoint eOldRP = GetActualRP();
 
@@ -521,52 +402,40 @@ void EmbossControl::MouseButtonDown( const MouseEvent& rEvt )
 
     if( GetActualRP() != eOldRP )
         maModifyHdl.Call( nullptr );
+
+    return true;
 }
 
-
-Size EmbossControl::GetOptimalSize() const
+void EmbossControl::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 {
-    return LogicToPixel(Size(77, 60), MapUnit::MapAppFont);
+    SvxRectCtl::SetDrawingArea(pDrawingArea);
+    Size aSize(pDrawingArea->get_ref_device().LogicToPixel(Size(77, 60), MapMode(MapUnit::MapAppFont)));
+    pDrawingArea->set_size_request(aSize.Width(), aSize.Height());
 }
 
-
-VCL_BUILDER_FACTORY(EmbossControl)
-
-
-GraphicFilterEmboss::GraphicFilterEmboss(vcl::Window* pParent,
+GraphicFilterEmboss::GraphicFilterEmboss(weld::Window* pParent,
     const Graphic& rGraphic, RectPoint eLightSource)
-    : GraphicFilterDialog (pParent, "EmbossDialog",
-        "cui/ui/embossdialog.ui", rGraphic)
+    : GraphicFilterDialog(pParent, "cui/ui/embossdialog.ui", "EmbossDialog", rGraphic)
+    , mxCtlLight(new weld::CustomWeld(*m_xBuilder, "lightsource", maCtlLight))
 {
-    get(mpCtlLight, "lightsource");
-    mpCtlLight->SetActualRP(eLightSource);
-    mpCtlLight->SetModifyHdl( GetModifyHdl() );
-    mpCtlLight->GrabFocus();
+    maCtlLight.SetActualRP(eLightSource);
+    maCtlLight.SetModifyHdl( GetModifyHdl() );
+    maCtlLight.GrabFocus();
 }
-
 
 GraphicFilterEmboss::~GraphicFilterEmboss()
 {
-    disposeOnce();
 }
-
-
-void GraphicFilterEmboss::dispose()
-{
-    mpCtlLight.clear();
-    GraphicFilterDialog::dispose();
-}
-
 
 Graphic GraphicFilterEmboss::GetFilteredGraphic( const Graphic& rGraphic, double, double )
 {
     Graphic aRet;
     sal_uInt16  nAzim, nElev;
 
-    switch( mpCtlLight->GetActualRP() )
+    switch (maCtlLight.GetActualRP())
     {
         default:       OSL_FAIL("svx::GraphicFilterEmboss::GetFilteredGraphic(), unknown Reference Point!" );
-                       SAL_FALLTHROUGH;
+                       [[fallthrough]];
         case RectPoint::LT: nAzim = 4500;    nElev = 4500; break;
         case RectPoint::MT: nAzim = 9000;    nElev = 4500; break;
         case RectPoint::RT: nAzim = 13500;   nElev = 4500; break;
@@ -578,20 +447,18 @@ Graphic GraphicFilterEmboss::GetFilteredGraphic( const Graphic& rGraphic, double
         case RectPoint::RB: nAzim = 22500;   nElev = 4500; break;
     }
 
-    BmpFilterParam aParam( nAzim, nElev );
-
     if( rGraphic.IsAnimated() )
     {
         Animation aAnim( rGraphic.GetAnimation() );
 
-        if( aAnim.Filter( BmpFilter::EmbossGrey, &aParam ) )
+        if (BitmapFilter::Filter(aAnim, BitmapEmbossGreyFilter(nAzim, nElev)))
             aRet = aAnim;
     }
     else
     {
         BitmapEx aBmpEx( rGraphic.GetBitmapEx() );
 
-        if( aBmpEx.Filter( BmpFilter::EmbossGrey, &aParam ) )
+        if (BitmapFilter::Filter(aBmpEx, BitmapEmbossGreyFilter(nAzim, nElev)))
             aRet = aBmpEx;
     }
 

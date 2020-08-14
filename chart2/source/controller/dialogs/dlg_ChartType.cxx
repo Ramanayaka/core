@@ -17,14 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dlg_ChartType.hxx"
-#include "ResId.hxx"
-#include "ResourceIds.hrc"
-#include "Strings.hrc"
+#include <dlg_ChartType.hxx>
 #include "tp_ChartType.hxx"
-#include "macros.hxx"
 #include <com/sun/star/chart2/XChartDocument.hpp>
-#include <vcl/layout.hxx>
 
 
 namespace chart
@@ -32,31 +27,23 @@ namespace chart
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
 
-ChartTypeDialog::ChartTypeDialog( vcl::Window* pParent
-                , const uno::Reference< frame::XModel >& xChartModel )
-    : ModalDialog( pParent, "ChartTypeDialog",
-            "modules/schart/ui/charttypedialog.ui")
-    , m_pChartTypeTabPage(nullptr)
+ChartTypeDialog::ChartTypeDialog(weld::Window* pParent,
+                                 const uno::Reference< frame::XModel >& xChartModel)
+    : GenericDialogController(pParent, "modules/schart/ui/charttypedialog.ui", "ChartTypeDialog")
     , m_xChartModel(xChartModel)
+    , m_xContentArea(m_xDialog->weld_content_area())
 {
-    m_pChartTypeTabPage = VclPtr<ChartTypeTabPage>::Create(
-        get_content_area(),
+    m_xChartTypeTabPage = std::make_unique<ChartTypeTabPage>(
+        m_xContentArea.get(), this,
         uno::Reference<XChartDocument>::query(m_xChartModel),
         false/*don't show title description*/);
 
-    m_pChartTypeTabPage->initializePage();
-    m_pChartTypeTabPage->Show();
- }
+    m_xChartTypeTabPage->initializePage();
+}
 
 ChartTypeDialog::~ChartTypeDialog()
 {
-    disposeOnce();
-}
-
-void ChartTypeDialog::dispose()
-{
-    m_pChartTypeTabPage.disposeAndClear();
-    ModalDialog::dispose();
+    m_xChartTypeTabPage.reset();
 }
 
 } //namespace chart

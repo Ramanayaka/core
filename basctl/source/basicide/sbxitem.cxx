@@ -17,7 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sbxitem.hxx"
+#include <sbxitem.hxx>
+#include <sal/log.hxx>
 
 namespace basctl
 {
@@ -52,18 +53,16 @@ SbxItem::SbxItem (
     m_eType(eType)
 { }
 
-SfxPoolItem *SbxItem::Clone(SfxItemPool*) const
+SbxItem* SbxItem::Clone(SfxItemPool*) const
 {
     return new SbxItem(*this);
 }
 
 bool SbxItem::operator==(const SfxPoolItem& rCmp) const
 {
-    SbxItem const* pSbxItem = dynamic_cast<SbxItem const*>(&rCmp);
-    assert(pSbxItem); //no SbxItem!
+    SbxItem const* pSbxItem = static_cast<SbxItem const*>(&rCmp);
     return
         SfxPoolItem::operator==(rCmp) &&
-        pSbxItem &&
         m_aDocument == pSbxItem->m_aDocument &&
         m_aLibName == pSbxItem->m_aLibName &&
         m_aName == pSbxItem->m_aName &&

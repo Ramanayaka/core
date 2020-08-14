@@ -25,23 +25,12 @@ using namespace ::com::sun::star;
 // VCLXAccessibleFixedHyperlink
 
 
-VCLXAccessibleFixedHyperlink::VCLXAccessibleFixedHyperlink( VCLXWindow* pVCLWindow )
-    :VCLXAccessibleTextComponent( pVCLWindow )
-{
-}
-
-
-VCLXAccessibleFixedHyperlink::~VCLXAccessibleFixedHyperlink()
-{
-}
-
-
 // XServiceInfo
 
 
 OUString VCLXAccessibleFixedHyperlink::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleFixedHyperlink" );
+    return "com.sun.star.comp.toolkit.AccessibleFixedHyperlink";
 }
 
 

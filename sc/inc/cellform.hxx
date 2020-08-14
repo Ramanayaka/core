@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SC_INC_CELLFORM_HXX
 #define INCLUDED_SC_INC_CELLFORM_HXX
 
-#include <tools/solar.h>
 #include "scdllapi.h"
 #include <rtl/ustring.hxx>
 
@@ -35,21 +34,21 @@ class SC_DLLPUBLIC ScCellFormat
 public:
 
     static void GetString(
-        ScRefCellValue& rCell, sal_uLong nFormat, OUString& rString,
+        const ScRefCellValue& rCell, sal_uInt32 nFormat, OUString& rString,
         Color** ppColor, SvNumberFormatter& rFormatter, const ScDocument* pDoc, bool bNullVals = true,
         bool bFormula  = false, bool bUseStarFormat = false );
 
     static OUString GetString(
-        ScDocument& rDoc, const ScAddress& rPos, sal_uLong nFormat,
+        ScDocument& rDoc, const ScAddress& rPos, sal_uInt32 nFormat,
         Color** ppColor, SvNumberFormatter& rFormatter, bool bNullVals = true,
         bool bFormula  = false );
 
     static void GetInputString(
-        ScRefCellValue& rCell, sal_uLong nFormat, OUString& rString, SvNumberFormatter& rFormatter,
+        const ScRefCellValue& rCell, sal_uInt32 nFormat, OUString& rString, SvNumberFormatter& rFormatter,
         const ScDocument* pDoc );
 
     static OUString GetOutputString(
-        ScDocument& rDoc, const ScAddress& rPos, ScRefCellValue& rCell );
+        ScDocument& rDoc, const ScAddress& rPos, const ScRefCellValue& rCell );
 };
 
 #endif

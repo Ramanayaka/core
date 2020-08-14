@@ -21,11 +21,9 @@
 #include <com/sun/star/container/XHierarchicalNameReplace.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/lang/XLocalizable.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <comphelper/solarmutex.hxx>
 #include <comphelper/configuration.hxx>
 #include <comphelper/configurationlistener.hxx>
@@ -34,6 +32,8 @@
 #include <rtl/ustring.hxx>
 #include <sal/log.hxx>
 #include <i18nlangtag/languagetag.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace {
 
@@ -55,17 +55,13 @@ OUString getDefaultLocale(
 }
 
 OUString extendLocalizedPath(OUString const & path, OUString const & locale) {
-    OUStringBuffer buf(path);
-    buf.append("/['*");
     SAL_WARN_IF(
         locale.match("*"), "comphelper",
         "Locale \"" << locale << "\" starts with \"*\"");
     assert(locale.indexOf('&') == -1);
     assert(locale.indexOf('"') == -1);
     assert(locale.indexOf('\'') == -1);
-    buf.append(locale);
-    buf.append("']");
-    return buf.makeStringAndClear();
+    return path + "/['*" + locale + "']";
 }
 
 }
@@ -144,7 +140,7 @@ void comphelper::detail::ConfigurationWrapper::setPropertyValue(
     std::shared_ptr< ConfigurationChanges > const & batch,
     OUString const & path, css::uno::Any const & value)
 {
-    assert(batch.get() != nullptr);
+    assert(batch);
     batch->setPropertyValue(path, value);
 }
 
@@ -160,7 +156,7 @@ void comphelper::detail::ConfigurationWrapper::setLocalizedPropertyValue(
     std::shared_ptr< ConfigurationChanges > const & batch,
     OUString const & path, css::uno::Any const & value)
 {
-    assert(batch.get() != nullptr);
+    assert(batch);
     batch->setPropertyValue(path, value);
 }
 
@@ -180,7 +176,7 @@ comphelper::detail::ConfigurationWrapper::getGroupReadWrite(
     std::shared_ptr< ConfigurationChanges > const & batch,
     OUString const & path)
 {
-    assert(batch.get() != nullptr);
+    assert(batch);
     return batch->getGroup(path);
 }
 
@@ -200,7 +196,7 @@ comphelper::detail::ConfigurationWrapper::getSetReadWrite(
     std::shared_ptr< ConfigurationChanges > const & batch,
     OUString const & path)
 {
-    assert(batch.get() != nullptr);
+    assert(batch);
     return batch->getSet(path);
 }
 
@@ -229,10 +225,10 @@ void comphelper::ConfigurationListener::removeListener(ConfigurationListenerProp
 
 void comphelper::ConfigurationListener::dispose()
 {
-    for (auto it = maListeners.begin(); it != maListeners.end(); ++it)
+    for (auto const& listener : maListeners)
     {
-        mxConfig->removePropertyChangeListener( (*it)->maName, this );
-        (*it)->dispose();
+        mxConfig->removePropertyChangeListener( listener->maName, this );
+        listener->dispose();
     }
     maListeners.clear();
 }
@@ -248,17 +244,20 @@ void SAL_CALL comphelper::ConfigurationListener::propertyChange(
     // Code is commonly used inside the SolarMutexGuard
     // so to avoid concurrent writes to the property,
     // and allow fast, lock-less access, guard here.
-    rtl::Reference< comphelper::SolarMutex > xMutexGuard(
-        comphelper::SolarMutex::get() );
+    //
+    // Note that we are abusing rtl::Reference here to do acquire/release because,
+    // unlike osl::Guard, it is tolerant of null pointers, and on some code paths, the
+    // SolarMutex does not exist.
+    rtl::Reference<comphelper::SolarMutex> xMutexGuard( comphelper::SolarMutex::get() );
 
     assert( rEvt.Source == mxConfig );
-    for ( auto it = maListeners.begin(); it != maListeners.end(); ++it )
+    for (auto const& listener : maListeners)
     {
-        if ( (*it)->maName == rEvt.PropertyName )
+        if ( listener->maName == rEvt.PropertyName )
         {
             // ignore rEvt.NewValue - in theory it could be stale => not set.
-            css::uno::Any aValue = mxConfig->getPropertyValue( (*it)->maName );
-            (*it)->setProperty( aValue );
+            css::uno::Any aValue = mxConfig->getPropertyValue( listener->maName );
+            listener->setProperty( aValue );
         }
     }
 }

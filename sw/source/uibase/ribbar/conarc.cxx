@@ -18,12 +18,14 @@
  */
 
 #include <svx/svdobj.hxx>
+#include <svx/svxids.hrc>
+#include <vcl/event.hxx>
 
-#include "view.hxx"
-#include "edtwin.hxx"
-#include "wrtsh.hxx"
-#include "drawbase.hxx"
-#include "conarc.hxx"
+#include <view.hxx>
+#include <edtwin.hxx>
+#include <wrtsh.hxx>
+#include <drawbase.hxx>
+#include <conarc.hxx>
 
 ConstArc::ConstArc(SwWrtShell* pWrtShell, SwEditWin* pEditWin, SwView* pSwView)
     : SwDrawBase(pWrtShell, pEditWin, pSwView), m_nButtonUpCount(0)
@@ -33,11 +35,8 @@ ConstArc::ConstArc(SwWrtShell* pWrtShell, SwEditWin* pEditWin, SwView* pSwView)
 bool ConstArc::MouseButtonDown( const MouseEvent& rMEvt )
 {
     bool bReturn = SwDrawBase::MouseButtonDown(rMEvt);
-    if (bReturn)
-    {
-        if (!m_nButtonUpCount)
-            m_aStartPoint = m_pWin->PixelToLogic(rMEvt.GetPosPixel());
-    }
+    if (bReturn && !m_nButtonUpCount)
+        m_aStartPoint = m_pWin->PixelToLogic(rMEvt.GetPosPixel());
     return bReturn;
 }
 

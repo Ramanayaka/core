@@ -20,19 +20,16 @@
 #include <drawinglayer/primitive2d/fillgradientprimitive2d.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
-#include <drawinglayer/texture/texture.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <texture/texture.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 
 
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void FillGradientPrimitive2D::generateMatricesAndColors(
             std::vector< drawinglayer::texture::B2DHomMatrixAndBColor >& rEntries,
             basegfx::BColor& rOuterColor) const
@@ -158,7 +155,7 @@ namespace drawinglayer
             rContainer.push_back(
                 new PolyPolygonColorPrimitive2D(
                     basegfx::B2DPolyPolygon(
-                        basegfx::tools::createPolygonFromRect(getOutputRange())),
+                        basegfx::utils::createPolygonFromRect(getOutputRange())),
                     rOuterColor));
 
             // create solid fill steps
@@ -187,7 +184,7 @@ namespace drawinglayer
             basegfx::B2DRange aOutmostRange(getOutputRange());
             basegfx::B2DPolyPolygon aCombinedPolyPoly;
 
-            if(rEntries.size())
+            if(!rEntries.empty())
             {
                 // extend aOutmostRange with first polygon
                 basegfx::B2DPolygon aFirstPoly(rUnitPolygon);
@@ -198,41 +195,41 @@ namespace drawinglayer
             }
 
             // add outmost range to combined polypolygon (in 1st place), create first primitive
-            aCombinedPolyPoly.insert(0, basegfx::tools::createPolygonFromRect(aOutmostRange));
+            aCombinedPolyPoly.insert(0, basegfx::utils::createPolygonFromRect(aOutmostRange));
             rContainer.push_back(
                 new PolyPolygonColorPrimitive2D(
                     aCombinedPolyPoly,
                     rOuterColor));
 
-            if(rEntries.size())
+            if(rEntries.empty())
+                return;
+
+            // reuse first polygon, it's the second one
+            aCombinedPolyPoly.remove(0);
+
+            for(size_t a(0); a < rEntries.size() - 1; a++)
             {
-                // reuse first polygon, it's the second one
-                aCombinedPolyPoly.remove(0);
+                // create next inner polygon, combined with last one
+                basegfx::B2DPolygon aNextPoly(rUnitPolygon);
 
-                for(sal_uInt32 a(0); a < rEntries.size() - 1; a++)
-                {
-                    // create next inner polygon, combined with last one
-                    basegfx::B2DPolygon aNextPoly(rUnitPolygon);
+                aNextPoly.transform(rEntries[a + 1].maB2DHomMatrix);
+                aCombinedPolyPoly.append(aNextPoly);
 
-                    aNextPoly.transform(rEntries[a + 1].maB2DHomMatrix);
-                    aCombinedPolyPoly.append(aNextPoly);
-
-                    // create primitive with correct color
-                    rContainer.push_back(
-                        new PolyPolygonColorPrimitive2D(
-                            aCombinedPolyPoly,
-                            rEntries[a].maBColor));
-
-                    // reuse inner polygon, it's the 2nd one
-                    aCombinedPolyPoly.remove(0);
-                }
-
-                // add last inner polygon with last color
+                // create primitive with correct color
                 rContainer.push_back(
                     new PolyPolygonColorPrimitive2D(
                         aCombinedPolyPoly,
-                        rEntries[rEntries.size() - 1].maBColor));
+                        rEntries[a].maBColor));
+
+                // reuse inner polygon, it's the 2nd one
+                aCombinedPolyPoly.remove(0);
             }
+
+            // add last inner polygon with last color
+            rContainer.push_back(
+                new PolyPolygonColorPrimitive2D(
+                    aCombinedPolyPoly,
+                    rEntries[rEntries.size() - 1].maBColor));
         }
 
         void FillGradientPrimitive2D::createFill(Primitive2DContainer& rContainer, bool bOverlapping) const
@@ -245,12 +242,12 @@ namespace drawinglayer
                 case attribute::GradientStyle::Radial:
                 case attribute::GradientStyle::Elliptical:
                 {
-                    aUnitPolygon = basegfx::tools::createPolygonFromCircle(basegfx::B2DPoint(0.0, 0.0), 1.0);
+                    aUnitPolygon = basegfx::utils::createPolygonFromCircle(basegfx::B2DPoint(0.0, 0.0), 1.0);
                     break;
                 }
                 default: // GradientStyle::Linear, attribute::GradientStyle::Axial, attribute::GradientStyle::Square, attribute::GradientStyle::Rect
                 {
-                    aUnitPolygon = basegfx::tools::createPolygonFromRect(basegfx::B2DRange(-1.0, -1.0, 1.0, 1.0));
+                    aUnitPolygon = basegfx::utils::createPolygonFromRect(basegfx::B2DRange(-1.0, -1.0, 1.0, 1.0));
                     break;
                 }
             }
@@ -283,9 +280,7 @@ namespace drawinglayer
 
             if(!getFillGradient().isDefault())
             {
-                static bool bOverlapping(true); // allow to test non-overlapping in the debugger
-
-                createFill(rContainer, bOverlapping);
+                createFill(rContainer, /*bOverlapping*/true);
             }
         }
 
@@ -333,7 +328,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(FillGradientPrimitive2D, PRIMITIVE2D_ID_FILLGRADIENTPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

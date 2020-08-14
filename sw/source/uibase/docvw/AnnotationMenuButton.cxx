@@ -17,26 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <AnnotationMenuButton.hxx>
+#include "AnnotationMenuButton.hxx"
 
-#include <annotation.hrc>
-#include <app.hrc>
-#include <access.hrc>
+#include <strings.hrc>
 
 #include <unotools/useroptions.hxx>
 
-#include <vcl/svapp.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/decoview.hxx>
 #include <vcl/gradient.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/event.hxx>
 
 #include <cmdid.h>
 #include <AnnotationWin.hxx>
+#include <swtypes.hxx>
 
-namespace sw { namespace annotation {
+namespace sw::annotation {
 
-Color ColorFromAlphaColor(const sal_uInt8 aTransparency, const Color& aFront, const Color& aBack)
+static Color ColorFromAlphaColor(const sal_uInt8 aTransparency, const Color& aFront, const Color& aBack)
 {
     return Color(sal_uInt8(aFront.GetRed()   * aTransparency / 255.0 + aBack.GetRed()   * (1 - aTransparency / 255.0)),
                  sal_uInt8(aFront.GetGreen() * aTransparency / 255.0 + aBack.GetGreen() * (1 - aTransparency / 255.0)),
@@ -70,6 +69,8 @@ void AnnotationMenuButton::Select()
     OString sIdent = GetCurItemIdent();
     if (sIdent == "reply")
         mrSidebarWin.ExecuteCommand(FN_REPLY);
+    if (sIdent == "resolve" || sIdent == "unresolve")
+        mrSidebarWin.ExecuteCommand(FN_RESOLVE_NOTE);
     else if (sIdent == "delete")
         mrSidebarWin.ExecuteCommand(FN_DELETE_COMMENT);
     else if (sIdent == "deleteby")
@@ -86,6 +87,8 @@ void AnnotationMenuButton::MouseButtonDown( const MouseEvent& rMEvt )
     if (mrSidebarWin.IsReadOnly())
     {
         pButtonPopup->EnableItem(pButtonPopup->GetItemId("reply"), false);
+        pButtonPopup->EnableItem(pButtonPopup->GetItemId("resolve"), false);
+        pButtonPopup->EnableItem(pButtonPopup->GetItemId("unresolve"), false);
         pButtonPopup->EnableItem(pButtonPopup->GetItemId("delete"), false );
         pButtonPopup->EnableItem(pButtonPopup->GetItemId("deleteby"), false );
         pButtonPopup->EnableItem(pButtonPopup->GetItemId("deleteall"), false );
@@ -93,6 +96,8 @@ void AnnotationMenuButton::MouseButtonDown( const MouseEvent& rMEvt )
     }
     else
     {
+        pButtonPopup->EnableItem(pButtonPopup->GetItemId("resolve"), !mrSidebarWin.IsResolved());
+        pButtonPopup->EnableItem(pButtonPopup->GetItemId("unresolve"), mrSidebarWin.IsResolved());
         pButtonPopup->EnableItem(pButtonPopup->GetItemId("delete"), !mrSidebarWin.IsProtected());
         pButtonPopup->EnableItem(pButtonPopup->GetItemId("deleteby"));
         pButtonPopup->EnableItem(pButtonPopup->GetItemId("deleteall"));
@@ -101,7 +106,7 @@ void AnnotationMenuButton::MouseButtonDown( const MouseEvent& rMEvt )
 
     if (mrSidebarWin.IsProtected())
     {
-        pButtonPopup->EnableItem(FN_REPLY, false);
+        pButtonPopup->EnableItem(pButtonPopup->GetItemId("reply"), false);
     }
     else
     {
@@ -117,11 +122,11 @@ void AnnotationMenuButton::MouseButtonDown( const MouseEvent& rMEvt )
         // do not allow to reply to ourself and no answer possible if this note is in a protected section
         if (sAuthor == mrSidebarWin.GetAuthor())
         {
-            pButtonPopup->EnableItem(FN_REPLY, false);
+            pButtonPopup->EnableItem(pButtonPopup->GetItemId("reply"), false);
         }
         else
         {
-            pButtonPopup->EnableItem(FN_REPLY);
+            pButtonPopup->EnableItem(pButtonPopup->GetItemId("reply"));
         }
     }
 
@@ -169,16 +174,16 @@ void AnnotationMenuButton::Paint(vcl::RenderContext& rRenderContext, const tools
     tools::Rectangle aSymbolRect(aRect);
     // 25% distance to the left and right button border
     const long nBorderDistanceLeftAndRight = ((aSymbolRect.GetWidth() * 250) + 500) / 1000;
-    aSymbolRect.Left() += nBorderDistanceLeftAndRight;
-    aSymbolRect.Right() -= nBorderDistanceLeftAndRight;
+    aSymbolRect.AdjustLeft(nBorderDistanceLeftAndRight );
+    aSymbolRect.AdjustRight( -nBorderDistanceLeftAndRight );
     // 40% distance to the top button border
     const long nBorderDistanceTop = ((aSymbolRect.GetHeight() * 400) + 500) / 1000;
-    aSymbolRect.Top()+=nBorderDistanceTop;
+    aSymbolRect.AdjustTop(nBorderDistanceTop );
     // 15% distance to the bottom button border
     const long nBorderDistanceBottom = ((aSymbolRect.GetHeight() * 150) + 500) / 1000;
-    aSymbolRect.Bottom() -= nBorderDistanceBottom;
+    aSymbolRect.AdjustBottom( -nBorderDistanceBottom );
     DecorationView aDecoView(&rRenderContext);
-    aDecoView.DrawSymbol(aSymbolRect, SymbolType::SPIN_DOWN, (bHighContrast ? Color(COL_WHITE) : Color(COL_BLACK)));
+    aDecoView.DrawSymbol(aSymbolRect, SymbolType::SPIN_DOWN, (bHighContrast ? COL_WHITE : COL_BLACK));
 }
 
 void AnnotationMenuButton::KeyInput(const KeyEvent& rKeyEvt)
@@ -195,6 +200,6 @@ void AnnotationMenuButton::KeyInput(const KeyEvent& rKeyEvt)
     }
 }
 
-}} // end of namespace sw::annotation
+} // end of namespace sw::annotation
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

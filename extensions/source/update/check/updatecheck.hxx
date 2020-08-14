@@ -41,7 +41,7 @@ class UpdateCheck;
 class UpdateCheckInitData {
 
 public:
-    inline rtl::Reference< UpdateCheck > SAL_CALL operator() () const;
+    inline rtl::Reference< UpdateCheck > operator() () const;
 };
 
 class WorkerThread : public osl::Thread
@@ -61,7 +61,7 @@ class UpdateCheck :
     virtual ~UpdateCheck() override;
 
 public:
-    SAL_CALL operator rtl::Reference< UpdateCheckConfigListener > ()
+    operator rtl::Reference< UpdateCheckConfigListener > ()
         { return static_cast< UpdateCheckConfigListener * > (this); }
 
     void initialize(const css::uno::Sequence<css::beans::NamedValue>& rValues,
@@ -169,7 +169,7 @@ private:
     friend class UpdateCheckInitData;
 };
 
-inline rtl::Reference< UpdateCheck > SAL_CALL
+inline rtl::Reference< UpdateCheck >
 UpdateCheckInitData::operator() () const
 {
     return rtl::Reference< UpdateCheck > (new UpdateCheck());

@@ -21,20 +21,15 @@
 #define INCLUDED_FORMS_SOURCE_INC_FORMCOMPONENT_HXX
 
 #include "cloneable.hxx"
-#include "property.hrc"
-#include "property.hxx"
 #include "propertybaghelper.hxx"
 #include "resettable.hxx"
-#include "services.hxx"
 #include "windowstateguard.hxx"
 
 #include <com/sun/star/awt/XControl.hpp>
 #include <com/sun/star/beans/XPropertyAccess.hpp>
 #include <com/sun/star/beans/XPropertyContainer.hpp>
-#include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/form/binding/XBindableValue.hpp>
-#include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/form/validation/XValidatableFormComponent.hpp>
 #include <com/sun/star/form/validation/XValidityConstraintListener.hpp>
 #include <com/sun/star/form/XBoundComponent.hpp>
@@ -42,26 +37,21 @@
 #include <com/sun/star/form/XFormComponent.hpp>
 #include <com/sun/star/form/XLoadListener.hpp>
 #include <com/sun/star/form/XReset.hpp>
-#include <com/sun/star/io/XMarkableStream.hpp>
 #include <com/sun/star/io/XPersistObject.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/sdb/XColumn.hpp>
 #include <com/sun/star/sdb/XColumnUpdate.hpp>
 #include <com/sun/star/sdb/XRowSetChangeListener.hpp>
 #include <com/sun/star/sdbc/XRowSet.hpp>
-#include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
 #include <com/sun/star/uno/XAggregation.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
 #include <com/sun/star/form/XLoadable.hpp>
 
 #include <comphelper/propagg.hxx>
-#include <comphelper/propertybag.hxx>
 #include <comphelper/propmultiplex.hxx>
-#include <comphelper/sequence.hxx>
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/component.hxx>
 #include <cppuhelper/implbase1.hxx>
@@ -69,6 +59,7 @@
 #include <cppuhelper/implbase3.hxx>
 #include <cppuhelper/implbase4.hxx>
 #include <cppuhelper/implbase7.hxx>
+#include <cppuhelper/propshlp.hxx>
 #include <osl/mutex.hxx>
 #include <rtl/ustring.hxx>
 
@@ -91,7 +82,7 @@ namespace frm
 
     //= ControlModelLock
 
-    /** class whose instances lock a OControlModel
+    /** class whose instances lock an OControlModel
 
         Locking here merely means locking the OControlModel's mutex.
 
@@ -249,7 +240,7 @@ protected:
     virtual css::uno::Sequence< css::uno::Type>   _getTypes();
         // overwrite this and call the base class if you have additional types
 
-    css::uno::Sequence< OUString > getAggregateServiceNames();
+    css::uno::Sequence< OUString > getAggregateServiceNames() const;
 
 private:
     void    impl_resetStateGuard_nothrow();
@@ -261,7 +252,6 @@ typedef ::cppu::ImplHelper1 <   css::form::XBoundControl
 class OBoundControl :public OControl
                     ,public OBoundControl_BASE
 {
-protected:
     bool            m_bLocked : 1;
 
 public:
@@ -313,7 +303,7 @@ typedef ::cppu::ImplHelper7 <   css::form::XFormComponent
                             >   OControlModel_BASE;
 
 class OControlModel :public ::cppu::OComponentHelper
-                    ,public OPropertySetAggregationHelper
+                    ,public comphelper::OPropertySetAggregationHelper
                     ,public OControlModel_BASE
                     ,public OCloneableAggregation
                     ,public IPropertyBagHelperContext
@@ -359,7 +349,7 @@ protected:
     );
     virtual ~OControlModel() override;
 
-    /** to be called after a OBoundControlModel (a derivee, respectively) has been cloned
+    /** to be called after an OBoundControlModel (a derivee, respectively) has been cloned
 
         <p>This method contains late initializations which cannot be done in the
         constructor of this base class, since the virtual method of derived classes do
@@ -377,7 +367,7 @@ protected:
     void    doSetDelegator();
     void    doResetDelegator();
 
-    css::uno::Sequence< OUString > getAggregateServiceNames();
+    css::uno::Sequence< OUString > getAggregateServiceNames() const;
 
 public:
     DECLARE_UNO3_AGG_DEFAULTS(OControl, OComponentHelper)
@@ -399,9 +389,9 @@ public:
     virtual css::uno::Sequence<OUString> SAL_CALL     getSupportedServiceNames() override;
     virtual OUString SAL_CALL    getImplementationName() override = 0;
 
-// XSericeInfo - static version(s)
+// XServiceInfo - static version(s)
     /// @throws css::uno::RuntimeException
-    static  css::uno::Sequence<OUString> SAL_CALL     getSupportedServiceNames_Static();
+    static  css::uno::Sequence<OUString> getSupportedServiceNames_Static();
 
 // XPersistObject
     virtual OUString SAL_CALL    getServiceName() override = 0;
@@ -542,12 +532,12 @@ typedef ::cppu::ImplHelper4 <   css::form::XLoadListener
 typedef ::cppu::ImplHelper1 <   css::form::XBoundComponent
                             >   OBoundControlModel_COMMITTING;
 
-// dito
+// ditto
 typedef ::cppu::ImplHelper2 <   css::form::binding::XBindableValue
                             ,   css::util::XModifyListener
                             >   OBoundControlModel_BINDING;
 
-// dito
+// ditto
 typedef ::cppu::ImplHelper2 <   css::form::validation::XValidityConstraintListener
                             ,   css::form::validation::XValidatableFormComponent
                             >   OBoundControlModel_VALIDATION;
@@ -642,7 +632,7 @@ protected:
                                                             // factory to create the aggregate with
         const OUString& _rUnoControlModelTypeName,   // service name of te model to aggregate
         const OUString& _rDefault,                   // service name of the default control
-        const bool _bCommitable,                        // is the control (model) commitable ?
+        const bool _bCommitable,                        // is the control (model) committable?
         const bool _bSupportExternalBinding,            // set to sal_True if you want to support XBindableValue
         const bool _bSupportsValidation                 // set to sal_True if you want to support XValidatable
     );
@@ -977,7 +967,7 @@ public:
 
     // XServiceInfo - static version
     /// @throws css::uno::RuntimeException
-    static  css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames_Static();
+    static  css::uno::Sequence<OUString> getSupportedServiceNames_Static();
 
     // XChild
     virtual void SAL_CALL setParent( const css::uno::Reference< css::uno::XInterface >& Parent ) override;
@@ -1139,9 +1129,9 @@ private:
     */
     void        impl_determineAmbientForm_nothrow();
 
-    /** connects to a value supplier which is an database column.
+    /** connects to a value supplier which is a database column.
 
-        The column is take from our parent, which must be a database form respectively row set.
+        The column is taken from our parent, which must be a database form respectively row set.
 
         @precond The control does not have an external value supplier
 
@@ -1155,7 +1145,7 @@ private:
                     bool  _bFromReload
                 );
 
-    /** disconnects from a value supplier which is an database column
+    /** disconnects from a value supplier which is a database column
 
         @precond The control does not have an external value supplier
         @see impl_connectDatabaseColumn_noNotify

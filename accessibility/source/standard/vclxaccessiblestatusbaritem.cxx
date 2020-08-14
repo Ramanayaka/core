@@ -33,8 +33,9 @@
 #include <vcl/svapp.hxx>
 #include <vcl/unohelp2.hxx>
 #include <vcl/status.hxx>
-#include <vcl/controllayout.hxx>
+#include <vcl/toolkit/controllayout.hxx>
 #include <vcl/settings.hxx>
+#include <i18nlangtag/languagetag.hxx>
 
 using namespace ::com::sun::star::accessibility;
 using namespace ::com::sun::star::uno;
@@ -44,7 +45,6 @@ using namespace ::com::sun::star;
 using namespace ::comphelper;
 
 
-// class VCLXAccessibleStatusBarItem
 
 
 VCLXAccessibleStatusBarItem::VCLXAccessibleStatusBarItem( StatusBar* pStatusBar, sal_uInt16 nItemId )
@@ -55,11 +55,6 @@ VCLXAccessibleStatusBarItem::VCLXAccessibleStatusBarItem( StatusBar* pStatusBar,
     m_sItemName = GetItemName();
     m_sItemText = GetItemText();
     m_bShowing  = IsShowing();
-}
-
-
-VCLXAccessibleStatusBarItem::~VCLXAccessibleStatusBarItem()
-{
 }
 
 
@@ -91,7 +86,7 @@ void VCLXAccessibleStatusBarItem::SetShowing( bool bShowing )
 
 void VCLXAccessibleStatusBarItem::SetItemName( const OUString& sItemName )
 {
-    if ( !m_sItemName.equals( sItemName ) )
+    if ( m_sItemName != sItemName )
     {
         Any aOldValue, aNewValue;
         aOldValue <<= m_sItemName;
@@ -126,13 +121,8 @@ void VCLXAccessibleStatusBarItem::SetItemText( const OUString& sItemText )
 OUString VCLXAccessibleStatusBarItem::GetItemText()
 {
     OUString sText;
-    vcl::ControlLayoutData aLayoutData;
     if ( m_pStatusBar )
-    {
-        tools::Rectangle aItemRect = m_pStatusBar->GetItemRect( m_nItemId );
-        m_pStatusBar->RecordLayoutData( &aLayoutData, aItemRect );
-        sText = aLayoutData.m_aDisplayText;
-    }
+        sText = m_pStatusBar->GetItemText( m_nItemId );
 
     return sText;
 }
@@ -216,7 +206,7 @@ void VCLXAccessibleStatusBarItem::disposing()
 
 OUString VCLXAccessibleStatusBarItem::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleStatusBarItem" );
+    return "com.sun.star.comp.toolkit.AccessibleStatusBarItem";
 }
 
 
@@ -254,14 +244,9 @@ sal_Int32 VCLXAccessibleStatusBarItem::getAccessibleChildCount()
 }
 
 
-Reference< XAccessible > VCLXAccessibleStatusBarItem::getAccessibleChild( sal_Int32 i )
+Reference< XAccessible > VCLXAccessibleStatusBarItem::getAccessibleChild( sal_Int32 )
 {
-    OExternalLockGuard aGuard( this );
-
-    if ( i < 0 || i >= getAccessibleChildCount() )
-        throw IndexOutOfBoundsException();
-
-    return Reference< XAccessible >();
+    throw IndexOutOfBoundsException();
 }
 
 
@@ -444,6 +429,34 @@ OUString VCLXAccessibleStatusBarItem::getToolTipText(  )
 
 // XAccessibleText
 
+OUString VCLXAccessibleStatusBarItem::getText()
+{
+    OExternalLockGuard aGuard( this );
+
+    return GetItemText();
+}
+
+OUString VCLXAccessibleStatusBarItem::getTextRange(sal_Int32 nStartIndex, sal_Int32 nEndIndex)
+{
+    OExternalLockGuard aGuard( this );
+
+    return OCommonAccessibleText::implGetTextRange(GetItemText(), nStartIndex, nEndIndex);
+}
+
+
+sal_Int32 VCLXAccessibleStatusBarItem::getCharacterCount()
+{
+    OExternalLockGuard aGuard( this );
+
+    return GetItemText().getLength();
+}
+
+sal_Unicode VCLXAccessibleStatusBarItem::getCharacter( sal_Int32 nIndex )
+{
+     OExternalLockGuard aGuard( this );
+
+     return OCommonAccessibleText::implGetCharacter( GetItemText(), nIndex );
+}
 
 sal_Int32 VCLXAccessibleStatusBarItem::getCaretPosition()
 {
@@ -457,7 +470,7 @@ sal_Bool VCLXAccessibleStatusBarItem::setCaretPosition( sal_Int32 nIndex )
 {
     OExternalLockGuard aGuard( this );
 
-    if ( !implIsValidRange( nIndex, nIndex, implGetText().getLength() ) )
+    if ( !implIsValidRange( nIndex, nIndex, GetItemText().getLength() ) )
         throw IndexOutOfBoundsException();
 
     return false;
@@ -550,7 +563,7 @@ sal_Bool VCLXAccessibleStatusBarItem::copyText( sal_Int32 nStartIndex, sal_Int32
         Reference< datatransfer::clipboard::XClipboard > xClipboard = m_pStatusBar->GetClipboard();
         if ( xClipboard.is() )
         {
-            OUString sText( getTextRange( nStartIndex, nEndIndex ) );
+            OUString sText( implGetTextRange( GetItemText(), nStartIndex, nEndIndex ) );
 
             vcl::unohelper::TextDataObject* pDataObj = new vcl::unohelper::TextDataObject( sText );
 
@@ -568,5 +581,10 @@ sal_Bool VCLXAccessibleStatusBarItem::copyText( sal_Int32 nStartIndex, sal_Int32
     return bReturn;
 }
 
+
+sal_Bool VCLXAccessibleStatusBarItem::scrollSubstringTo( sal_Int32, sal_Int32, AccessibleScrollType )
+{
+    return false;
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

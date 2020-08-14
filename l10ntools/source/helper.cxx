@@ -7,7 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "helper.hxx"
+#include <helper.hxx>
 
 namespace helper {
 
@@ -121,13 +121,10 @@ OString UnQuotHTML( const OString& rString )
 bool isWellFormedXML( OString const & text )
 {
     xmlDocPtr doc;
-    OString content;
     bool result = true;
 
-    content = "<root>";
-    content += text;
-    content += "</root>";
-    doc = xmlParseMemory(content.getStr(),(int)content.getLength());
+    OString content = "<root>" + text + "</root>";
+    doc = xmlParseMemory(content.getStr(),static_cast<int>(content.getLength()));
     if (doc == nullptr) {
         result = false;
     }
@@ -140,8 +137,7 @@ bool isWellFormedXML( OString const & text )
 OString xmlStrToOString( const xmlChar* pString )
 {
     xmlChar* pTemp = xmlStrdup( pString );
-    OString sResult =
-        static_cast<OString>(reinterpret_cast<sal_Char*>( pTemp ));
+    OString sResult = reinterpret_cast<char*>( pTemp );
     xmlFree( pTemp );
     return sResult;
 }

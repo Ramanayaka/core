@@ -19,9 +19,6 @@
 
 #include <config_folders.h>
 
-#include <cstddef>
-#include <stdio.h>
-
 #include <unotools/bootstrap.hxx>
 
 #include <rtl/ustring.hxx>
@@ -108,8 +105,8 @@ public: // construction and initialization
     const OUString& getImplName() const { return m_aImplName; }
 
 private: // implementation
-    bool initBaseInstallationData(rtl::Bootstrap& _rData);
-    bool initUserInstallationData(rtl::Bootstrap& _rData);
+    bool initBaseInstallationData(rtl::Bootstrap const & _rData);
+    bool initUserInstallationData(rtl::Bootstrap const & _rData);
 };
 
 namespace
@@ -219,7 +216,7 @@ static bool implNormalizeURL(OUString & _sURL, osl::DirectoryItem& aDirItem)
 
     // #109863# sal/osl returns final slash for file URLs contradicting
     // the URL/URI RFCs.
-    if ( !aNormalizedURL.endsWith(OUStringLiteral1(cURLSeparator)) )
+    if ( !aNormalizedURL.endsWith(OUStringChar(cURLSeparator)) )
         _sURL = aNormalizedURL;
     else
         _sURL = aNormalizedURL.copy( 0, aNormalizedURL.getLength()-1 );
@@ -298,11 +295,8 @@ static PathStatus checkStatusAndNormalizeURL(OUString & _sURL)
 
         eStatus = implCheckStatusOfURL(_sURL,aDirItem);
 
-        if (eStatus == Bootstrap::PATH_EXISTS)
-        {
-            if (!implNormalizeURL(_sURL,aDirItem))
-                OSL_FAIL("Unexpected failure getting actual URL for existing object");
-        }
+        if (eStatus == Bootstrap::PATH_EXISTS && !implNormalizeURL(_sURL,aDirItem))
+            OSL_FAIL("Unexpected failure getting actual URL for existing object");
     }
     return eStatus;
 }
@@ -312,7 +306,7 @@ static PathStatus getDerivedPath(
               OUString& _rURL,
               OUString const& _aBaseURL, PathStatus _aBaseStatus,
               OUString const& _sRelativeURL,
-              rtl::Bootstrap& _rData, OUString const& _sBootstrapParameter
+              rtl::Bootstrap const & _rData, OUString const& _sBootstrapParameter
           )
 {
     OUString sDerivedURL;
@@ -324,9 +318,9 @@ static PathStatus getDerivedPath(
     // do we have a base path ?
     if (!_aBaseURL.isEmpty())
     {
-        OSL_PRECOND(!_aBaseURL.endsWith(OUStringLiteral1(cURLSeparator)), "Unexpected: base URL ends in slash");
+        OSL_PRECOND(!_aBaseURL.endsWith(OUStringChar(cURLSeparator)), "Unexpected: base URL ends in slash");
 
-        sDerivedURL = _aBaseURL + OUStringLiteral1(cURLSeparator) + _sRelativeURL;
+        sDerivedURL = _aBaseURL + OUStringChar(cURLSeparator) + _sRelativeURL;
 
         // a derived (nested) URL can only exist or have a lesser status, if the parent exists
         if (aStatus == Bootstrap::PATH_EXISTS)
@@ -354,11 +348,11 @@ static PathStatus getDerivedPath(
     return aStatus;
 }
 
-static inline PathStatus getDerivedPath(
+static PathStatus getDerivedPath(
                       OUString& _rURL,
                       Bootstrap::Impl::PathData const& _aBaseData,
                       OUString const& _sRelativeURL,
-                      rtl::Bootstrap& _rData, OUString const& _sBootstrapParameter
+                      rtl::Bootstrap const & _rData, OUString const& _sBootstrapParameter
               )
 {
     return getDerivedPath(_rURL,_aBaseData.path,_aBaseData.status,_sRelativeURL,_rData,_sBootstrapParameter);
@@ -389,19 +383,20 @@ static OUString getExecutableBaseName()
     return sExecutable;
 }
 
-static inline Bootstrap::PathStatus updateStatus(Bootstrap::Impl::PathData & _rResult)
+static Bootstrap::PathStatus updateStatus(Bootstrap::Impl::PathData & _rResult)
 {
-    return _rResult.status = checkStatusAndNormalizeURL(_rResult.path);
+    _rResult.status = checkStatusAndNormalizeURL(_rResult.path);
+    return _rResult.status;
 }
 
-static Bootstrap::PathStatus implGetBootstrapFile(rtl::Bootstrap& _rData, Bootstrap::Impl::PathData & _rBootstrapFile)
+static Bootstrap::PathStatus implGetBootstrapFile(rtl::Bootstrap const & _rData, Bootstrap::Impl::PathData & _rBootstrapFile)
 {
     _rData.getIniName(_rBootstrapFile.path);
 
     return updateStatus(_rBootstrapFile);
 }
 
-static Bootstrap::PathStatus implGetVersionFile(rtl::Bootstrap& _rData, Bootstrap::Impl::PathData & _rVersionFile)
+static Bootstrap::PathStatus implGetVersionFile(rtl::Bootstrap const & _rData, Bootstrap::Impl::PathData & _rVersionFile)
 {
     _rData.getFrom(BOOTSTRAP_ITEM_VERSIONFILE, _rVersionFile.path);
 
@@ -410,9 +405,9 @@ static Bootstrap::PathStatus implGetVersionFile(rtl::Bootstrap& _rData, Bootstra
 
 // Error reporting
 
-static char const IS_MISSING[] = "is missing";
-static char const IS_INVALID[] = "is corrupt";
-static char const PERIOD[] = ". ";
+char const IS_MISSING[] = "is missing";
+char const IS_INVALID[] = "is corrupt";
+char const PERIOD[] = ". ";
 
 static void addFileError(OUStringBuffer& _rBuf, OUString const& _aPath, AsciiString _sWhat)
 {
@@ -485,7 +480,7 @@ static Bootstrap::FailureCode describeError(OUStringBuffer& _rBuf, Bootstrap::Im
             eErrCode = Bootstrap::INVALID_VERSION_FILE_ENTRY;
             break;
         }
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
 
     case Bootstrap::DATA_MISSING:
         switch (_rData.aVersionINI_.status)
@@ -512,7 +507,7 @@ static Bootstrap::FailureCode describeError(OUStringBuffer& _rBuf, Bootstrap::Im
                     eErrCode = Bootstrap::INVALID_BOOTSTRAP_FILE_ENTRY;
                 break;
 
-            case Bootstrap::DATA_INVALID: OSL_ASSERT(false); SAL_FALLTHROUGH;
+            case Bootstrap::DATA_INVALID: OSL_ASSERT(false); [[fallthrough]];
             case Bootstrap::PATH_VALID:
                 addFileError(_rBuf, _rData.aBootstrapINI_.path, IS_MISSING);
                 eErrCode = Bootstrap::MISSING_BOOTSTRAP_FILE;
@@ -534,31 +529,24 @@ static Bootstrap::FailureCode describeError(OUStringBuffer& _rBuf, Bootstrap::Im
     return eErrCode;
 }
 
-// class Bootstrap
 
 OUString Bootstrap::getProductKey()
 {
-    OUString const csProductKeyItem(BOOTSTRAP_ITEM_PRODUCT_KEY);
-
     OUString const sDefaultProductKey = getExecutableBaseName();
 
-    return data().getBootstrapValue( csProductKeyItem, sDefaultProductKey );
+    return data().getBootstrapValue( BOOTSTRAP_ITEM_PRODUCT_KEY, sDefaultProductKey );
 }
 
 OUString Bootstrap::getProductKey(OUString const& _sDefault)
 {
-    OUString const csProductKeyItem(BOOTSTRAP_ITEM_PRODUCT_KEY);
-
-    return data().getBootstrapValue( csProductKeyItem, _sDefault );
+    return data().getBootstrapValue( BOOTSTRAP_ITEM_PRODUCT_KEY, _sDefault );
 }
 
 OUString Bootstrap::getBuildVersion(OUString const& _sDefault)
 {
-    OUString const csBuildVersionItem(BOOTSTRAP_ITEM_BUILDVERSION);
-
     OUString sBuildVersion;
     // read BuildVersion from version.ini (versionrc)
-    utl::Bootstrap::Impl::getVersionValue( csBuildVersionItem, sBuildVersion, _sDefault );
+    utl::Bootstrap::Impl::getVersionValue( BOOTSTRAP_ITEM_BUILDVERSION, sBuildVersion, _sDefault );
     return sBuildVersion;
 }
 
@@ -585,7 +573,7 @@ Bootstrap::PathStatus Bootstrap::locateBaseInstallation(OUString& _rURL)
     return aPathData.status;
 }
 
-PathStatus Bootstrap::locateUserInstallation(OUString& _rURL)
+Bootstrap::PathStatus Bootstrap::locateUserInstallation(OUString& _rURL)
 {
     Impl::PathData const& aPathData = data().aUserInstall_;
 
@@ -593,7 +581,7 @@ PathStatus Bootstrap::locateUserInstallation(OUString& _rURL)
     return aPathData.status;
 }
 
-PathStatus Bootstrap::locateUserData(OUString& _rURL)
+Bootstrap::PathStatus Bootstrap::locateUserData(OUString& _rURL)
 {
     OUString const csUserDirItem(BOOTSTRAP_ITEM_USERDIR);
 
@@ -605,12 +593,11 @@ PathStatus Bootstrap::locateUserData(OUString& _rURL)
     }
     else
     {
-        OUString const csUserDir(BOOTSTRAP_DIRNAME_USERDIR);
-        return getDerivedPath(_rURL, data().aUserInstall_ ,csUserDir, aData, csUserDirItem);
+        return getDerivedPath(_rURL, data().aUserInstall_ ,BOOTSTRAP_DIRNAME_USERDIR, aData, csUserDirItem);
     }
 }
 
-PathStatus Bootstrap::locateBootstrapFile(OUString& _rURL)
+Bootstrap::PathStatus Bootstrap::locateBootstrapFile(OUString& _rURL)
 {
     Impl::PathData const& aPathData = data().aBootstrapINI_;
 
@@ -618,7 +605,7 @@ PathStatus Bootstrap::locateBootstrapFile(OUString& _rURL)
     return aPathData.status;
 }
 
-PathStatus Bootstrap::locateVersionFile(OUString& _rURL)
+Bootstrap::PathStatus Bootstrap::locateVersionFile(OUString& _rURL)
 {
     Impl::PathData const& aPathData = data().aVersionINI_;
 
@@ -646,14 +633,10 @@ Bootstrap::Status Bootstrap::checkBootstrapStatus(OUString& _rDiagnosticMessage,
     return result;
 }
 
-// class Bootstrap::Impl
 
-bool Bootstrap::Impl::initBaseInstallationData(rtl::Bootstrap& _rData)
+bool Bootstrap::Impl::initBaseInstallationData(rtl::Bootstrap const & _rData)
 {
-    OUString const csBaseInstallItem( BOOTSTRAP_ITEM_BASEINSTALLATION );
-    OUString const csBaseInstallDefault( BOOTSTRAP_DEFAULT_BASEINSTALL );
-
-    _rData.getFrom(csBaseInstallItem, aBaseInstall_.path, csBaseInstallDefault);
+    _rData.getFrom(BOOTSTRAP_ITEM_BASEINSTALLATION, aBaseInstall_.path, BOOTSTRAP_DEFAULT_BASEINSTALL);
 
     bool bResult = (PATH_EXISTS == updateStatus(aBaseInstall_));
 
@@ -662,11 +645,9 @@ bool Bootstrap::Impl::initBaseInstallationData(rtl::Bootstrap& _rData)
     return bResult;
 }
 
-bool Bootstrap::Impl::initUserInstallationData(rtl::Bootstrap& _rData)
+bool Bootstrap::Impl::initUserInstallationData(rtl::Bootstrap const & _rData)
 {
-    OUString const csUserInstallItem( BOOTSTRAP_ITEM_USERINSTALLATION );
-
-    if (_rData.getFrom(csUserInstallItem, aUserInstall_.path))
+    if (_rData.getFrom(BOOTSTRAP_ITEM_USERINSTALLATION, aUserInstall_.path))
     {
         updateStatus(aUserInstall_);
     }
@@ -681,9 +662,7 @@ bool Bootstrap::Impl::initUserInstallationData(rtl::Bootstrap& _rData)
         // look for $BASEINSTALLATION/user only if default UserDir setting is used
         if (! _rData.getFrom(csUserDirItem, sDummy))
         {
-            OUString const csUserDir(BOOTSTRAP_DIRNAME_USERDIR);
-
-            if ( PATH_EXISTS == getDerivedPath(sDummy, aBaseInstall_, csUserDir, _rData, csUserDirItem) )
+            if ( PATH_EXISTS == getDerivedPath(sDummy, aBaseInstall_, BOOTSTRAP_DIRNAME_USERDIR, _rData, csUserDirItem) )
                 aUserInstall_ = aBaseInstall_;
         }
     }

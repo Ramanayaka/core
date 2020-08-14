@@ -22,14 +22,10 @@
 
 #include <com/sun/star/sdbc/XResultSetMetaData.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <vector>
 #include <rtl/ref.hxx>
-#include "MConnection.hxx"
 #include "MTable.hxx"
 
-namespace connectivity
-{
-    namespace mork
+namespace connectivity::mork
     {
 
         //************ Class: ResultSetMetaData
@@ -82,7 +78,7 @@ namespace connectivity
             virtual sal_Bool SAL_CALL isDefinitelyWritable( sal_Int32 column ) override;
             virtual OUString SAL_CALL getColumnServiceName( sal_Int32 column ) override;
         };
-    }
+
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MRESULTSETMETADATA_HXX

@@ -20,18 +20,18 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_CORE_DATAACCESS_COMPONENTDEFINITION_HXX
 #define INCLUDED_DBACCESS_SOURCE_CORE_DATAACCESS_COMPONENTDEFINITION_HXX
 
-#include "commandbase.hxx"
-#include <comphelper/propertycontainer.hxx>
+#include <commandbase.hxx>
 #include <com/sun/star/sdbcx/XRename.hpp>
 #include <cppuhelper/implbase1.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include "datasettings.hxx"
+#include <rtl/ref.hxx>
+#include <datasettings.hxx>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include "ContentHelper.hxx"
-#include "apitools.hxx"
+#include <ContentHelper.hxx>
+#include <apitools.hxx>
 #include <column.hxx>
 
 #include <memory>
@@ -73,7 +73,7 @@ namespace dbaccess
         void insert( const OUString& _rName, const css::uno::Reference< css::beans::XPropertySet >& _rxColumn )
         {
             OSL_PRECOND( m_aColumns.find( _rName ) == m_aColumns.end(), "OComponentDefinition_Impl::insert: there's already an element with this name!" );
-            m_aColumns.insert( Columns::value_type( _rName, _rxColumn ) );
+            m_aColumns.emplace(  _rName, _rxColumn );
         }
     };
 
@@ -85,16 +85,17 @@ class OComponentDefinition  :public OContentHelper
                             ,public OComponentDefinition_BASE
                             ,public ::comphelper::OPropertyArrayUsageHelper< OComponentDefinition >
 {
-protected:
-    rtl::Reference< OColumns >     m_xColumns;
+    // no Reference! see OCollection::acquire
+    std::unique_ptr<OColumns> m_pColumns;
     rtl::Reference<OColumnPropertyListener> m_xColumnPropertyListener;
     bool                        m_bTable;
 
+protected:
     virtual ~OComponentDefinition() override;
     virtual void SAL_CALL disposing() override;
 
-    const   OComponentDefinition_Impl& getDefinition() const { return dynamic_cast< const OComponentDefinition_Impl& >( *m_pImpl.get() ); }
-            OComponentDefinition_Impl& getDefinition()       { return dynamic_cast<       OComponentDefinition_Impl& >( *m_pImpl.get() ); }
+    const   OComponentDefinition_Impl& getDefinition() const { return dynamic_cast< const OComponentDefinition_Impl& >( *m_pImpl ); }
+            OComponentDefinition_Impl& getDefinition()       { return dynamic_cast<       OComponentDefinition_Impl& >( *m_pImpl ); }
 public:
     OComponentDefinition(
         const css::uno::Reference< css::uno::XComponentContext >&,

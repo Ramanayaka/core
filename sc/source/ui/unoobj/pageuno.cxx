@@ -19,8 +19,8 @@
 
 #include <cppuhelper/supportsservice.hxx>
 #include <rtl/ustring.hxx>
-#include "pageuno.hxx"
-#include "shapeuno.hxx"
+#include <pageuno.hxx>
+#include <shapeuno.hxx>
 
 using namespace ::com::sun::star;
 
@@ -44,7 +44,7 @@ uno::Reference<drawing::XShape > ScPageObj::CreateShape( SdrObject *pObj ) const
 
 OUString SAL_CALL ScPageObj::getImplementationName()
 {
-    return OUString("ScPageObj");
+    return "ScPageObj";
 }
 
 sal_Bool SAL_CALL ScPageObj::supportsService( const OUString& rServiceName )
@@ -54,8 +54,7 @@ sal_Bool SAL_CALL ScPageObj::supportsService( const OUString& rServiceName )
 
 uno::Sequence<OUString> SAL_CALL ScPageObj::getSupportedServiceNames()
 {
-    uno::Sequence<OUString> aRet { "com.sun.star.sheet.SpreadsheetDrawPage" };
-    return aRet;
+    return { "com.sun.star.sheet.SpreadsheetDrawPage" };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

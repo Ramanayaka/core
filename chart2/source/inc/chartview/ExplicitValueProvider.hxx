@@ -19,19 +19,25 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_CHARTVIEW_EXPLICITVALUEPROVIDER_HXX
 #define INCLUDED_CHART2_SOURCE_INC_CHARTVIEW_EXPLICITVALUEPROVIDER_HXX
 
-#include "ExplicitScaleValues.hxx"
-
-#include <com/sun/star/chart2/XAxis.hpp>
-#include <com/sun/star/chart2/XCoordinateSystem.hpp>
-#include <com/sun/star/chart2/XDataSeries.hpp>
-#include <com/sun/star/chart2/XDiagram.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/drawing/XShape.hpp>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
-#include "chartviewdllapi.hxx"
-#include "ChartModel.hxx"
+#include <chartview/chartviewdllapi.hxx>
 
 #include <memory>
+
+namespace chart { class ChartModel; }
+namespace chart { struct ExplicitIncrementData; }
+namespace chart { struct ExplicitScaleData; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::chart2 { class XAxis; }
+namespace com::sun::star::chart2 { class XChartDocument; }
+namespace com::sun::star::chart2 { class XCoordinateSystem; }
+namespace com::sun::star::chart2 { class XDataSeries; }
+namespace com::sun::star::chart2 { class XDiagram; }
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::uno { class XInterface; }
+namespace com::sun::star::uno { template <typename > class Reference; }
+namespace com::sun::star::uno { template <typename > class Sequence; }
+namespace com::sun::star::util { class XNumberFormatsSupplier; }
 
 namespace chart
 {
@@ -63,19 +69,12 @@ public:
     virtual std::shared_ptr< DrawModelWrapper > getDrawModelWrapper() = 0;
 
     static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    static ExplicitValueProvider* getExplicitValueProvider( const css::uno::Reference< css::uno::XInterface >& xChartView );
 
     static css::awt::Rectangle
-        addAxisTitleSizes(
+        AddSubtractAxisTitleSizes(
                 ChartModel& rModel
             , const css::uno::Reference< css::uno::XInterface >& xChartView
-            , const css::awt::Rectangle& rExcludingPositionAndSize );
-
-    static css::awt::Rectangle
-        substractAxisTitleSizes(
-                ChartModel& rModel
-            , const css::uno::Reference< css::uno::XInterface >& xChartView
-            , const css::awt::Rectangle& rPositionAndSizeIncludingTitles );
+            , const css::awt::Rectangle& rPositionAndSize, bool bSubtract );
 
     static sal_Int32 getExplicitNumberFormatKeyForAxis(
               const css::uno::Reference< css::chart2::XAxis >& xAxis
@@ -83,10 +82,7 @@ public:
             , const css::uno::Reference< css::chart2::XChartDocument>& xChartDoc);
 
     static sal_Int32 getExplicitNumberFormatKeyForDataLabel(
-            const css::uno::Reference< css::beans::XPropertySet >& xSeriesOrPointProp
-            , const css::uno::Reference< css::chart2::XDataSeries >& xSeries
-            , sal_Int32 nPointIndex /*-1 for whole series*/
-            , const css::uno::Reference< css::chart2::XDiagram >& xDiagram );
+            const css::uno::Reference< css::beans::XPropertySet >& xSeriesOrPointProp );
 
     static sal_Int32 getExplicitPercentageNumberFormatKeyForDataLabel(
             const css::uno::Reference< css::beans::XPropertySet >& xSeriesOrPointProp

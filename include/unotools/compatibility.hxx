@@ -19,14 +19,15 @@
 #ifndef INCLUDED_UNOTOOLS_COMPATIBILITY_HXX
 #define INCLUDED_UNOTOOLS_COMPATIBILITY_HXX
 
-#include <sal/types.h>
-#include <osl/mutex.hxx>
 #include <com/sun/star/uno/Sequence.h>
-#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/uno/Any.hxx>
 #include <unotools/options.hxx>
 #include <unotools/unotoolsdllapi.h>
 #include <rtl/ustring.hxx>
 #include <memory>
+
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace osl { class Mutex; }
 
 /*-************************************************************************************************************
     @descr  Struct to hold information about one compatibility entry
@@ -60,24 +61,24 @@ class UNOTOOLS_DLLPUBLIC SvtCompatibilityEntry
             ProtectForm,
             MsWordTrailingBlanks,
             SubtractFlysAnchoredAtFlys,
+            EmptyDbFieldHidesPara,
 
             /* Should be at the end. Do not remove it. */
             INVALID
         };
 
         SvtCompatibilityEntry();
-        ~SvtCompatibilityEntry();
 
         static OUString getName( const Index rIdx );
 
         static OUString getUserEntryName()
         {
-            return OUString( "_user" );
+            return "_user";
         }
 
         static OUString getDefaultEntryName()
         {
-            return OUString( "_default" );
+            return "_default";
         }
 
         static Index getIndex( const OUString& rName )
@@ -127,7 +128,7 @@ class UNOTOOLS_DLLPUBLIC SvtCompatibilityEntry
             return aValue;
         }
 
-        void setValue( const Index rIdx, css::uno::Any& rValue )
+        void setValue( const Index rIdx, css::uno::Any const & rValue )
         {
             if ( static_cast<size_t>(rIdx) < getElementCount() )
             {
@@ -180,7 +181,7 @@ class SvtCompatibilityOptions_Impl;
     @descr          Make it possible to configure dynamic menu structures of menus like "new" or "wizard".
     @devstatus      ready to use
 *//*-*************************************************************************************************************/
-class UNOTOOLS_DLLPUBLIC SvtCompatibilityOptions: public utl::detail::Options
+class UNOTOOLS_DLLPUBLIC SvtCompatibilityOptions final : public utl::detail::Options
 {
     public:
         SvtCompatibilityOptions();
@@ -221,7 +222,7 @@ class UNOTOOLS_DLLPUBLIC SvtCompatibilityOptions: public utl::detail::Options
         /*-****************************************************************************************************
             @short      return a reference to a static mutex
             @descr      These class is partially threadsafe (for de-/initialization only).
-                        All access methods are'nt safe!
+                        All access methods aren't safe!
                         We create a static mutex only for one ime and use at different times.
             @return     A reference to a static mutex member.
         *//*-*****************************************************************************************************/

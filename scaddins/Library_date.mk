@@ -21,7 +21,14 @@ $(eval $(call gb_Library_Library,date))
 
 $(eval $(call gb_Library_set_componentfile,date,scaddins/source/datefunc/date))
 
+$(eval $(call gb_Library_set_include,date,\
+    $$(INCLUDE) \
+    -I$(SRCDIR)/scaddins/inc \
+))
+
 $(eval $(call gb_Library_use_external,date,boost_headers))
+
+$(eval $(call gb_Library_use_common_precompiled_header,date))
 
 $(eval $(call gb_Library_use_internal_comprehensive_api,date,\
 	offapi \
@@ -33,15 +40,12 @@ $(eval $(call gb_Library_use_libraries,date,\
 	cppu \
 	cppuhelper \
 	sal \
-	tl \
+	utl \
 	i18nlangtag \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,date,\
 	scaddins/source/datefunc/datefunc \
 ))
-
-# Runtime dependency for unit-tests
-$(eval $(call gb_Library_use_restarget,date,date))
 
 # vim: set noet sw=4 ts=4:

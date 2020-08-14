@@ -31,9 +31,7 @@
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/vector/b2isize.hxx>
 
-namespace com { namespace sun { namespace star { namespace rendering {
-    class XCanvasFont;
-} } } }
+namespace com::sun::star::rendering { class XCanvasFont; }
 
 namespace Gdiplus { class Graphics; }
 
@@ -57,7 +55,8 @@ namespace dxcanvas
                        const css::uno::Reference<
                                css::rendering::XCanvasFont >&  rCanvasFont,
                        const css::geometry::Matrix2D&          rFontMatrix,
-                       bool                                                 bAlphaSurface );
+                       bool                                                 bAlphaSurface,
+                       bool bIsRTL);
 
         css::geometry::RealRectangle2D queryTextBounds(
             const css::rendering::StringContext&   rText,

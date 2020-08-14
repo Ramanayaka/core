@@ -24,10 +24,9 @@
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <cppuhelper/weak.hxx>
-#include <ucbhelper/macros.hxx>
+#include <cppuhelper/implbase.hxx>
 #include <memory>
 
 namespace comphelper { class OInterfaceContainerHelper2; }
@@ -35,11 +34,10 @@ namespace comphelper { class OInterfaceContainerHelper2; }
 namespace hierarchy_ucp {
 
 
-class HierarchyDataSource : public cppu::OWeakObject,
-                            public css::lang::XServiceInfo,
-                            public css::lang::XTypeProvider,
-                            public css::lang::XComponent,
-                            public css::lang::XMultiServiceFactory
+class HierarchyDataSource : public cppu::WeakImplHelper<
+                                css::lang::XServiceInfo,
+                                css::lang::XComponent,
+                                css::lang::XMultiServiceFactory>
 {
     osl::Mutex m_aMutex;
     css::uno::Reference< css::uno::XComponentContext >     m_xContext;
@@ -50,27 +48,10 @@ public:
     explicit HierarchyDataSource( const css::uno::Reference< css::uno::XComponentContext > & rxContext );
     virtual ~HierarchyDataSource() override;
 
-    // XInterface
-    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire()
-        throw() override;
-    virtual void SAL_CALL release()
-        throw() override;
-
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    static OUString getImplementationName_Static();
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-
-    static css::uno::Reference< css::lang::XSingleServiceFactory > createServiceFactory( const css::uno::Reference<
-                          css::lang::XMultiServiceFactory >& rxServiceMgr );
-
-    // XTypeProvider
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
 
     // XComponent
     virtual void SAL_CALL dispose() override;
@@ -88,7 +69,7 @@ public:
 
 private:
     /// @throws css::uno::Exception
-    css::uno::Reference< css::uno::XInterface > SAL_CALL createInstanceWithArguments( const OUString & ServiceSpecifier,
+    css::uno::Reference< css::uno::XInterface > createInstanceWithArguments( const OUString & ServiceSpecifier,
                                  const css::uno::Sequence<
                                     css::uno::Any > & Arguments,
                                  bool bCheckArgs );

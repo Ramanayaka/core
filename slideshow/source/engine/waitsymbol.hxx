@@ -21,18 +21,17 @@
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_WAITSYMBOL_HXX
 
 #include <com/sun/star/rendering/XBitmap.hpp>
-#include <cppcanvas/customsprite.hxx>
+#include <cppcanvas/sprite.hxx>
 
-#include "vieweventhandler.hxx"
-#include "screenupdater.hxx"
-#include "eventmultiplexer.hxx"
-#include "unoview.hxx"
+#include <vieweventhandler.hxx>
+#include <screenupdater.hxx>
+#include <eventmultiplexer.hxx>
+#include <unoview.hxx>
 
 #include <memory>
 #include <vector>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 class EventMultiplexer;
 typedef std::shared_ptr<class WaitSymbol> WaitSymbolSharedPtr;
@@ -82,8 +81,7 @@ private:
     bool                                       mbVisible;
 };
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif
 

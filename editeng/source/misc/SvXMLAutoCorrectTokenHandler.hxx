@@ -12,7 +12,7 @@
 
 #include <sal/types.h>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/xml/sax/XFastTokenHandler.hpp>
 #include <com/sun/star/xml/sax/FastToken.hpp>
@@ -30,8 +30,7 @@ enum SvXMLAutoCorrectToken : sal_Int32
     NAME = FastToken::NAMESPACE | XML_NAMESPACE_BLOCKLIST | XML_NAME    //66737
 };
 
-class SvXMLAutoCorrectTokenHandler : public
-        cppu::WeakImplHelper< css::xml::sax::XFastTokenHandler >,
+class SvXMLAutoCorrectTokenHandler :
         public sax_fastparser::FastTokenHandlerBase
 {
 public:

@@ -22,6 +22,8 @@
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
+namespace {
+
 class ListTemplatesEnumWrapper : public EnumerationHelper_BASE
 {
     SwVbaListTemplates* pListTemplates;
@@ -40,6 +42,8 @@ public:
         throw container::NoSuchElementException();
     }
 };
+
+}
 
 SwVbaListTemplates::SwVbaListTemplates( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< text::XTextDocument >& xTextDoc, sal_Int32 nType ) : SwVbaListTemplates_BASE( xParent, xContext, uno::Reference< container::XIndexAccess >() ),  mxTextDocument( xTextDoc ), mnGalleryType( nType )
 {
@@ -84,18 +88,16 @@ SwVbaListTemplates::createCollectionObject( const css::uno::Any& aSource )
 OUString
 SwVbaListTemplates::getServiceImplName()
 {
-    return OUString("SwVbaListTemplates");
+    return "SwVbaListTemplates";
 }
 
 css::uno::Sequence<OUString>
 SwVbaListTemplates::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.ListTemplates";
-    }
+        "ooo.vba.word.ListTemplates"
+    };
     return sNames;
 }
 

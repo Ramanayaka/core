@@ -19,53 +19,46 @@
 
 #include <svx/svditer.hxx>
 #include <svx/svdobj.hxx>
-#include <svx/svdpage.hxx>
-#include <svx/svdpagv.hxx>
 #include <svx/svdview.hxx>
-#include <svx/svdxcgv.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <sfx2/docfile.hxx>
 #include <sfx2/viewfrm.hxx>
+#include <vcl/commandevent.hxx>
 #include <vcl/help.hxx>
 #include <vcl/svapp.hxx>
 #include <tools/urlobj.hxx>
-#include <svl/urlbmk.hxx>
-#include <svtools/svlbitm.hxx>
-#include <svtools/treelistentry.hxx>
-#include <stdlib.h>
+#include <sal/log.hxx>
+#include <unotools/charclass.hxx>
 
-#include "content.hxx"
-#include "navipi.hxx"
-#include "global.hxx"
-#include "docsh.hxx"
-#include "scmod.hxx"
-#include "rangenam.hxx"
-#include "dbdata.hxx"
-#include "tablink.hxx"
-#include "drwlayer.hxx"
-#include "transobj.hxx"
-#include "drwtrans.hxx"
-#include "lnktrans.hxx"
-#include "formulacell.hxx"
-#include "dociter.hxx"
-#include "scres.hrc"
-#include "scresid.hxx"
-#include "globstr.hrc"
-#include "bitmaps.hlst"
-#include "arealink.hxx"
-#include "navicfg.hxx"
-#include "navsett.hxx"
-#include "postit.hxx"
-#include "tabvwsh.hxx"
-#include "drawview.hxx"
-#include "clipparam.hxx"
-#include "markdata.hxx"
-#include <o3tl/make_unique.hxx>
+#include <content.hxx>
+#include <navipi.hxx>
+#include <global.hxx>
+#include <docsh.hxx>
+#include <scmod.hxx>
+#include <rangenam.hxx>
+#include <dbdata.hxx>
+#include <tablink.hxx>
+#include <drwlayer.hxx>
+#include <transobj.hxx>
+#include <drwtrans.hxx>
+#include <lnktrans.hxx>
+#include <strings.hrc>
+#include <scresid.hxx>
+#include <bitmaps.hlst>
+#include <arealink.hxx>
+#include <navicfg.hxx>
+#include <navsett.hxx>
+#include <postit.hxx>
+#include <tabvwsh.hxx>
+#include <drawview.hxx>
+#include <clipparam.hxx>
+#include <markdata.hxx>
+
 using namespace com::sun::star;
 
 //  order of the categories in navigator -------------------------------------
 
-static const ScContentId pTypeList[(int)ScContentId::LAST + 1] =
+const ScContentId pTypeList[int(ScContentId::LAST) + 1] =
 {
     ScContentId::ROOT,            // ROOT (0) has to be at the front
     ScContentId::TABLE,
@@ -78,7 +71,7 @@ static const ScContentId pTypeList[(int)ScContentId::LAST + 1] =
     ScContentId::DRAWING
 };
 
-static const OUStringLiteral aContentBmps[]=
+const OUStringLiteral aContentBmps[]=
 {
     RID_BMP_CONTENT_TABLE,
     RID_BMP_CONTENT_RANGENAME,
@@ -123,106 +116,59 @@ ScDocShell* ScContentTree::GetManualOrCurrent()
 
 //          ScContentTree
 
-ScContentTree::ScContentTree(vcl::Window* pParent, ScNavigatorDlg* pNavigatorDlg)
-    : SvTreeListBox(pParent, WB_BORDER | WB_QUICK_SEARCH)
+ScContentTree::ScContentTree(std::unique_ptr<weld::TreeView> xTreeView, ScNavigatorDlg* pNavigatorDlg)
+    : m_xTreeView(std::move(xTreeView))
+    , m_xScratchIter(m_xTreeView->make_iterator())
+    , m_xTransferObj(new ScLinkTransferObj)
     , pParentWindow(pNavigatorDlg)
     , nRootType(ScContentId::ROOT)
     , bHiddenDoc(false)
     , pHiddenDocument(nullptr)
     , bisInNavigatoeDlg(false)
+    , m_bFreeze(false)
+    , m_nAsyncMouseReleaseId(nullptr)
 {
-    for (sal_uInt16 i = 0; i <= (int)ScContentId::LAST; ++i)
+    for (sal_uInt16 i = 0; i <= int(ScContentId::LAST); ++i)
         pPosList[pTypeList[i]] = i;         // inverse for searching
 
-    pRootNodes[ScContentId::ROOT] = nullptr;
-    for (sal_uInt16 i = 1; i < (int)ScContentId::LAST; ++i)
-        InitRoot((ScContentId)i);
+    m_aRootNodes[ScContentId::ROOT] = nullptr;
+    for (sal_uInt16 i = 1; i < int(ScContentId::LAST); ++i)
+        InitRoot(static_cast<ScContentId>(i));
 
-    SetNodeDefaultImages();
+    m_xTreeView->connect_row_activated(LINK(this, ScContentTree, ContentDoubleClickHdl));
+    m_xTreeView->connect_mouse_release(LINK(this, ScContentTree, MouseReleaseHdl));
+    m_xTreeView->connect_key_press(LINK(this, ScContentTree, KeyInputHdl));
+    m_xTreeView->connect_popup_menu(LINK(this, ScContentTree, CommandHdl));
+    m_xTreeView->connect_query_tooltip(LINK(this, ScContentTree, QueryTooltipHdl));
 
-    SetDoubleClickHdl( LINK( this, ScContentTree, ContentDoubleClickHdl ) );
-}
+    rtl::Reference<TransferDataContainer> xHelper(m_xTransferObj.get());
+    m_xTreeView->enable_drag_source(xHelper, DND_ACTION_COPYMOVE | DND_ACTION_LINK);
 
-Size ScContentTree::GetOptimalSize() const
-{
-    return LogicToPixel(Size(110, 100), MapUnit::MapAppFont);
+    m_xTreeView->connect_drag_begin(LINK(this, ScContentTree, DragBeginHdl));
 }
 
 ScContentTree::~ScContentTree()
 {
-    disposeOnce();
-}
-
-void ScContentTree::dispose()
-{
-    pParentWindow.clear();
-    SvTreeListBox::dispose();
-}
-
-// helper function for  GetEntryAltText and GetEntryLongDescription
-OUString ScContentTree::getAltLongDescText( SvTreeListEntry* pEntry, bool isAltText) const
-{
-
-    ScContentId nType;
-    sal_uLong nChild;
-    GetEntryIndexes( nType, nChild, pEntry );
-    switch( nType )
+    if (m_nAsyncMouseReleaseId)
     {
-    case ScContentId::OLEOBJECT:
-    case ScContentId::GRAPHIC:
-    case ScContentId::DRAWING:
-        {
-            SdrObject* pFound = nullptr;
-            ScDocument* pDoc = ( const_cast< ScContentTree* >(this) )->GetSourceDocument();
-            SdrIterMode eIter = ( nType == ScContentId::DRAWING ) ? SdrIterMode::Flat : SdrIterMode::DeepNoGroups;
-            ScDrawLayer* pDrawLayer = pDoc->GetDrawLayer();
-            SfxObjectShell* pShell = pDoc->GetDocumentShell();
-            if (pDrawLayer && pShell)
-            {
-                sal_uInt16 nTabCount = pDoc->GetTableCount();
-                for (sal_uInt16 nTab=0; nTab<nTabCount; nTab++)
-                {
-                    SdrPage* pPage = pDrawLayer->GetPage(nTab);
-                    DBG_ASSERT(pPage,"Page ?");
-                    if (pPage)
-                    {
-                        SdrObjListIter aIter( *pPage, eIter );
-                        SdrObject* pObject = aIter.Next();
-                        while (pObject)
-                        {
-                            if( ScDrawLayer::GetVisibleName( pObject ) == GetEntryText( pEntry ) )
-                            {
-                                pFound = pObject;
-                                break;
-                            }
-                            pObject = aIter.Next();
-                        }
-                    }
-                }
-            }
-            if( pFound )
-            {
-                if( isAltText )
-                    return pFound->GetTitle();
-                else
-                    return pFound->GetDescription();
-            }
-        }
-        break;
-        default: break;
+        Application::RemoveUserEvent(m_nAsyncMouseReleaseId);
+        m_nAsyncMouseReleaseId = nullptr;
     }
-    return OUString();
+    pParentWindow.clear();
 }
 
-OUString  ScContentTree::GetEntryAltText( SvTreeListEntry* pEntry ) const
+static const char* SCSTR_CONTENT_ARY[] =
 {
-    return getAltLongDescText( pEntry, true );
-}
-
-OUString ScContentTree::GetEntryLongDescription( SvTreeListEntry* pEntry ) const
-{
-    return getAltLongDescText( pEntry, false );
-}
+    SCSTR_CONTENT_ROOT,
+    SCSTR_CONTENT_TABLE,
+    SCSTR_CONTENT_RANGENAME,
+    SCSTR_CONTENT_DBAREA,
+    SCSTR_CONTENT_GRAPHIC,
+    SCSTR_CONTENT_OLEOBJECT,
+    SCSTR_CONTENT_NOTE,
+    SCSTR_CONTENT_AREALINK,
+    SCSTR_CONTENT_DRAWING
+};
 
 void ScContentTree::InitRoot( ScContentId nType )
 {
@@ -231,33 +177,34 @@ void ScContentTree::InitRoot( ScContentId nType )
 
     if ( nRootType != ScContentId::ROOT && nRootType != nType )              // hidden ?
     {
-        pRootNodes[nType] = nullptr;
+        m_aRootNodes[nType] = nullptr;
         return;
     }
 
-    BitmapEx aBitmap(aContentBmps[(int)nType - 1]);
-    Image aImage(aBitmap);
-    OUString aName(ScResId(SCSTR_CONTENT_ROOT + (int)nType));
+    auto const aImage(aContentBmps[static_cast<int>(nType) - 1]);
+    OUString aName(ScResId(SCSTR_CONTENT_ARY[static_cast<int>(nType)]));
     // back to the correct position:
     sal_uInt16 nPos = nRootType != ScContentId::ROOT ? 0 : pPosList[nType]-1;
-    SvTreeListEntry* pNew = InsertEntry( aName, aImage, aImage, nullptr, false, nPos );
-
-    pRootNodes[nType] = pNew;
+    m_aRootNodes[nType] = m_xTreeView->make_iterator();
+    m_xTreeView->insert(nullptr, nPos, &aName, nullptr, nullptr, nullptr, false, m_aRootNodes[nType].get());
+    m_xTreeView->set_image(*m_aRootNodes[nType], aImage);
 }
 
 void ScContentTree::ClearAll()
 {
     //There are one method in Control::SetUpdateMode(), and one override method SvTreeListBox::SetUpdateMode(). Here although
     //SvTreeListBox::SetUpdateMode() is called in refresh method, it only call SvTreeListBox::SetUpdateMode(), not Control::SetUpdateMode().
-    //In SvTreeList::Clear(), Broadcast( LISTACTION_CLEARED ) will be called and finally, it will be trapped into the event yield() loop. And
+    //In m_xTreeView->clear(), Broadcast( LISTACTION_CLEARED ) will be called and finally, it will be trapped into the event yield() loop. And
     //the InitRoot() method won't be called. Then if a user click or press key to update the navigator tree, crash happens.
     //So the solution is to disable the UpdateMode of Control, then call Clear(), then recover the update mode
-    bool bOldUpdate = Control::IsUpdateMode();
-    Control::SetUpdateMode(false);
-    Clear();
-    Control::SetUpdateMode(bOldUpdate);
-    for (sal_uInt16 i=1; i<=(int)ScContentId::LAST; i++)
-        InitRoot((ScContentId)i);
+    bool bWasFrozen = m_bFreeze;
+    if (!bWasFrozen)
+        freeze();
+    m_xTreeView->clear();
+    if (!bWasFrozen)
+        thaw();
+    for (sal_uInt16 i=1; i<=int(ScContentId::LAST); i++)
+        InitRoot(static_cast<ScContentId>(i));
 }
 
 void ScContentTree::ClearType(ScContentId nType)
@@ -266,11 +213,11 @@ void ScContentTree::ClearType(ScContentId nType)
         ClearAll();
     else
     {
-        SvTreeListEntry* pParent = pRootNodes[nType];
-        if ( !pParent || GetChildCount(pParent) )       // not if no children existing
+        weld::TreeIter* pParent = m_aRootNodes[nType].get();
+        if (!pParent || m_xTreeView->iter_has_child(*pParent)) // not if no children existing
         {
             if (pParent)
-                GetModel()->Remove( pParent );          // with all children
+                m_xTreeView->remove(*pParent);          // with all children
             InitRoot( nType );                          // if needed insert anew
         }
     }
@@ -278,16 +225,19 @@ void ScContentTree::ClearType(ScContentId nType)
 
 void ScContentTree::InsertContent( ScContentId nType, const OUString& rValue )
 {
-    SvTreeListEntry* pParent = pRootNodes[nType];
+    weld::TreeIter* pParent = m_aRootNodes[nType].get();
     if (pParent)
-        InsertEntry( rValue, pParent );
+    {
+        m_xTreeView->insert(pParent, -1, &rValue, nullptr, nullptr, nullptr, false, m_xScratchIter.get());
+        m_xTreeView->set_sensitive(*m_xScratchIter, true);
+    }
     else
     {
         OSL_FAIL("InsertContent without parent");
     }
 }
 
-void ScContentTree::GetEntryIndexes( ScContentId& rnRootIndex, sal_uLong& rnChildIndex, SvTreeListEntry* pEntry ) const
+void ScContentTree::GetEntryIndexes(ScContentId& rnRootIndex, sal_uLong& rnChildIndex, const weld::TreeIter* pEntry) const
 {
     rnRootIndex = ScContentId::ROOT;
     rnChildIndex = SC_CONTENT_NOCHILD;
@@ -295,32 +245,37 @@ void ScContentTree::GetEntryIndexes( ScContentId& rnRootIndex, sal_uLong& rnChil
     if( !pEntry )
         return;
 
-    SvTreeListEntry* pParent = GetParent( pEntry );
+    std::unique_ptr<weld::TreeIter> xParent(m_xTreeView->make_iterator(pEntry));
+    if (!m_xTreeView->iter_parent(*xParent))
+        xParent.reset();
     bool bFound = false;
-    for( int i = 1; !bFound && (i <= (int)ScContentId::LAST); ++i )
+    for( int i = 1; !bFound && (i <= int(ScContentId::LAST)); ++i )
     {
-        ScContentId nRoot = (ScContentId)i;
-        if( pEntry == pRootNodes[ nRoot ] )
+        ScContentId nRoot = static_cast<ScContentId>(i);
+        if (!m_aRootNodes[nRoot])
+            continue;
+        if (m_xTreeView->iter_compare(*pEntry, *m_aRootNodes[nRoot]) == 0)
         {
             rnRootIndex = nRoot;
             rnChildIndex = ~0UL;
             bFound = true;
         }
-        else if( pParent && (pParent == pRootNodes[ nRoot ]) )
+        else if (xParent && m_xTreeView->iter_compare(*xParent, *m_aRootNodes[nRoot]) == 0)
         {
             rnRootIndex = nRoot;
 
             // search the entry in all child entries of the parent
             sal_uLong nEntry = 0;
-            SvTreeListEntry* pIterEntry = FirstChild( pParent );
-            while( !bFound && pIterEntry )
+            std::unique_ptr<weld::TreeIter> xIterEntry(m_xTreeView->make_iterator(xParent.get()));
+            bool bIterEntry = m_xTreeView->iter_children(*xIterEntry);
+            while (!bFound && bIterEntry)
             {
-                if ( pEntry == pIterEntry )
+                if (m_xTreeView->iter_compare(*pEntry, *xIterEntry) == 0)
                 {
                     rnChildIndex = nEntry;
                     bFound = true;  // exit the while loop
                 }
-                pIterEntry = NextSibling( pIterEntry );
+                bIterEntry = m_xTreeView->iter_next_sibling(*xIterEntry);
                 ++nEntry;
             }
 
@@ -329,44 +284,46 @@ void ScContentTree::GetEntryIndexes( ScContentId& rnRootIndex, sal_uLong& rnChil
     }
 }
 
-sal_uLong ScContentTree::GetChildIndex( SvTreeListEntry* pEntry ) const
+sal_uLong ScContentTree::GetChildIndex(const weld::TreeIter* pEntry) const
 {
     ScContentId nRoot;
     sal_uLong nChild;
-    GetEntryIndexes( nRoot, nChild, pEntry );
+    GetEntryIndexes(nRoot, nChild, pEntry);
     return nChild;
 }
 
-static OUString lcl_GetDBAreaRange( ScDocument* pDoc, const OUString& rDBName )
+static OUString lcl_GetDBAreaRange( const ScDocument* pDoc, const OUString& rDBName )
 {
     OUString aRet;
     if (pDoc)
     {
         ScDBCollection* pDbNames = pDoc->GetDBCollection();
-        const ScDBData* pData = pDbNames->getNamedDBs().findByUpperName(ScGlobal::pCharClass->uppercase(rDBName));
+        const ScDBData* pData = pDbNames->getNamedDBs().findByUpperName(ScGlobal::getCharClassPtr()->uppercase(rDBName));
         if (pData)
         {
             ScRange aRange;
             pData->GetArea(aRange);
-            aRet = aRange.Format(ScRefFlags::RANGE_ABS_3D, pDoc);
+            aRet = aRange.Format(*pDoc, ScRefFlags::RANGE_ABS_3D);
         }
     }
     return aRet;
 }
 
-IMPL_LINK_NOARG(ScContentTree, ContentDoubleClickHdl, SvTreeListBox*, bool)
+IMPL_LINK_NOARG(ScContentTree, ContentDoubleClickHdl, weld::TreeView&, bool)
 {
     ScContentId nType;
     sal_uLong nChild;
-    SvTreeListEntry* pEntry = GetCurEntry();
-    GetEntryIndexes( nType, nChild, pEntry );
+    std::unique_ptr<weld::TreeIter> xEntry(m_xTreeView->make_iterator());
+    if (!m_xTreeView->get_cursor(xEntry.get()))
+        xEntry.reset();
+    GetEntryIndexes(nType, nChild, xEntry.get());
 
-    if( pEntry && (nType != ScContentId::ROOT) && (nChild != SC_CONTENT_NOCHILD) )
+    if (xEntry && (nType != ScContentId::ROOT) && (nChild != SC_CONTENT_NOCHILD))
     {
         if ( bHiddenDoc )
             return false;               //! later...
 
-        OUString aText( GetEntryText( pEntry ) );
+        OUString aText(m_xTreeView->get_text(*xEntry));
 
         if ( !aManualDoc.isEmpty() )
             pParentWindow->SetCurrentDoc( aManualDoc );
@@ -409,12 +366,12 @@ IMPL_LINK_NOARG(ScContentTree, ContentDoubleClickHdl, SvTreeListBox*, bool)
 
             case ScContentId::AREALINK:
             {
-                const ScAreaLink* pLink = GetLink( nChild );
-                if( pLink )
+                const ScAreaLink* pLink = GetLink(nChild);
+                ScDocument* pSrcDoc = GetSourceDocument();
+                if (pLink && pSrcDoc)
                 {
-                    ScRange aRange = pLink->GetDestArea();
-                    ScDocument* pSrcDoc = GetSourceDocument();
-                    OUString aRangeStr(aRange.Format(ScRefFlags::RANGE_ABS_3D, pSrcDoc, pSrcDoc->GetAddressConvention()));
+                    const ScRange& aRange = pLink->GetDestArea();
+                    OUString aRangeStr(aRange.Format(*pSrcDoc, ScRefFlags::RANGE_ABS_3D, pSrcDoc->GetAddressConvention()));
                     pParentWindow->SetCurrentCellStr( aRangeStr );
                 }
             }
@@ -428,13 +385,25 @@ IMPL_LINK_NOARG(ScContentTree, ContentDoubleClickHdl, SvTreeListBox*, bool)
     return false;
 }
 
-void ScContentTree::MouseButtonDown( const MouseEvent& rMEvt )
+void ScContentTree::LaunchAsyncStoreNavigatorSettings()
 {
-    SvTreeListBox::MouseButtonDown( rMEvt );
+    if (!m_nAsyncMouseReleaseId)
+        m_nAsyncMouseReleaseId = Application::PostUserEvent(LINK(this, ScContentTree, AsyncStoreNavigatorSettings));
+}
+
+IMPL_LINK_NOARG(ScContentTree, MouseReleaseHdl, const MouseEvent&, bool)
+{
+    LaunchAsyncStoreNavigatorSettings();
+    return false;
+}
+
+IMPL_LINK_NOARG(ScContentTree, AsyncStoreNavigatorSettings, void*, void)
+{
+    m_nAsyncMouseReleaseId = nullptr;
     StoreNavigatorSettings();
 }
 
-void ScContentTree::KeyInput( const KeyEvent& rKEvt )
+IMPL_LINK(ScContentTree, KeyInputHdl, const KeyEvent&, rKEvt, bool)
 {
     bool bUsed = false;
 
@@ -449,22 +418,24 @@ void ScContentTree::KeyInput( const KeyEvent& rKEvt )
                 break;
             case 0:
             {
-                SvTreeListEntry* pEntry = GetCurEntry();
-                if( pEntry )
+                std::unique_ptr<weld::TreeIter> xEntry(m_xTreeView->make_iterator());
+                if (!m_xTreeView->get_cursor(xEntry.get()))
+                    xEntry.reset();
+                if (xEntry)
                 {
                     ScContentId nType;
                     sal_uLong nChild;
-                    GetEntryIndexes( nType, nChild, pEntry );
+                    GetEntryIndexes(nType, nChild, xEntry.get());
 
-                    if( (nType != ScContentId::ROOT) && (nChild == SC_CONTENT_NOCHILD) )
+                    if (nType != ScContentId::ROOT && nChild == SC_CONTENT_NOCHILD)
                     {
-                        if ( IsExpanded( pEntry ) )
-                            Collapse( pEntry );
+                        if (m_xTreeView->get_row_expanded(*xEntry))
+                            m_xTreeView->collapse_row(*xEntry);
                         else
-                            Expand( pEntry );
+                            m_xTreeView->expand_row(*xEntry);
                     }
                     else
-                        ContentDoubleClickHdl(nullptr);      // select content as if double clicked
+                        ContentDoubleClickHdl(*m_xTreeView);      // select content as if double clicked
                 }
 
                 bUsed = true;
@@ -480,141 +451,104 @@ void ScContentTree::KeyInput( const KeyEvent& rKEvt )
             bUsed = true;
             ScContentId nType;
             sal_uLong nChild;
-            SvTreeListEntry* pEntry = GetCurEntry();
-            GetEntryIndexes( nType, nChild, pEntry );
-            if( pEntry && (nType != ScContentId::ROOT) && (nChild != SC_CONTENT_NOCHILD) )
+            std::unique_ptr<weld::TreeIter> xEntry(m_xTreeView->make_iterator());
+            if (!m_xTreeView->get_cursor(xEntry.get()))
+                xEntry.reset();
+            GetEntryIndexes(nType, nChild, xEntry.get());
+
+            if (xEntry && (nType != ScContentId::ROOT) && (nChild != SC_CONTENT_NOCHILD))
             {
                 if ( bHiddenDoc )
-                    return ;                //! later...
-                OUString aText( GetEntryText( pEntry ) );
+                    return true;                //! later...
+                OUString aText(m_xTreeView->get_text(*xEntry));
                 sKeyString = aText;
                 if (!aManualDoc.isEmpty())
                     pParentWindow->SetCurrentDoc( aManualDoc );
-                switch( nType )
+                switch (nType)
                 {
                     case ScContentId::OLEOBJECT:
                     case ScContentId::GRAPHIC:
                     case ScContentId::DRAWING:
                     {
-                        vcl::Window* pWindow=reinterpret_cast<vcl::Window*>(GetParent(pEntry));
-                        ScNavigatorDlg* pScNavigatorDlg = static_cast<ScNavigatorDlg*>(pWindow);
-                        ScTabViewShell* pScTabViewShell = nullptr;
                         ScDrawView* pScDrawView = nullptr;
-                        if (pScNavigatorDlg!=nullptr)
-                              pScTabViewShell = ScNavigatorDlg::GetTabViewShell();
-                        if(pScTabViewShell !=nullptr)
-                              pScDrawView =pScTabViewShell->GetViewData().GetScDrawView();
-                        if(pScDrawView!=nullptr)
-                         {
-                            pScDrawView->SelectCurrentViewObject(aText );
+                        ScTabViewShell* pScTabViewShell = ScNavigatorDlg::GetTabViewShell();
+                        if (pScTabViewShell)
+                            pScDrawView = pScTabViewShell->GetViewData().GetScDrawView();
+                        if (pScDrawView)
+                        {
+                            pScDrawView->SelectCurrentViewObject(aText);
                             bool bHasMakredObject = false;
-                            SvTreeListEntry* pParent = pRootNodes[nType];
-                            SvTreeListEntry* pBeginEntry = nullptr;
-                            if( pParent )
-                                pBeginEntry = FirstChild(pParent);
-                            while( pBeginEntry )
+                            weld::TreeIter* pParent = m_aRootNodes[nType].get();
+                            std::unique_ptr<weld::TreeIter> xBeginEntry(m_xTreeView->make_iterator(pParent));
+                            bool bBeginEntry = false;
+                            if (pParent)
+                                bBeginEntry = m_xTreeView->iter_children(*xBeginEntry);
+                            while (bBeginEntry)
                             {
-                                OUString aTempText( GetEntryText( pBeginEntry ) );
-                                 if( pScDrawView->GetObjectIsMarked( pScDrawView->GetObjectByName( aTempText ) ) )
-                                 {
+                                OUString aTempText(m_xTreeView->get_text(*xBeginEntry));
+                                if( pScDrawView->GetObjectIsMarked( pScDrawView->GetObjectByName( aTempText ) ) )
+                                {
                                     bHasMakredObject = true;
                                     break;
-                                  }
-                                pBeginEntry =  Next( pBeginEntry );
+                                }
+                                bBeginEntry = m_xTreeView->iter_next(*xBeginEntry);
                             }
-                            if(  !bHasMakredObject && pScTabViewShell)
+                            if (!bHasMakredObject && pScTabViewShell)
                                 pScTabViewShell->SetDrawShell(false);
-                            ObjectFresh( nType,pEntry );
+                            ObjectFresh(nType, xEntry.get());
                         }
+                        break;
                     }
-                    break;
-                    default: break;
-                 }
+                    default:
+                        break;
+                }
             }
-           }
-       }
-
-    if( !bUsed )
-    {
-        if(aCode.GetCode() == KEY_F5 )
-        {
-            StoreNavigatorSettings();
-            SvTreeListBox::KeyInput(rKEvt);
-        }
-        else
-        {
-            SvTreeListBox::KeyInput(rKEvt);
-            StoreNavigatorSettings();
         }
     }
+
+    if (!bUsed)
+    {
+        if (aCode.GetCode() == KEY_F5)
+            StoreNavigatorSettings();
+        else
+            LaunchAsyncStoreNavigatorSettings();
+    }
+
+    return bUsed;
 }
 
-sal_Int8 ScContentTree::AcceptDrop( const AcceptDropEvent& /* rEvt */ )
-{
-    return DND_ACTION_NONE;
-}
-
-sal_Int8 ScContentTree::ExecuteDrop( const ExecuteDropEvent& /* rEvt */ )
-{
-    return DND_ACTION_NONE;
-}
-
-void ScContentTree::StartDrag( sal_Int8 /* nAction */, const Point& /* rPosPixel */ )
-{
-    DoDrag();
-}
-
-void ScContentTree::DragFinished( sal_Int8 /* nAction */ )
-{
-}
-
-void ScContentTree::Command( const CommandEvent& rCEvt )
+IMPL_LINK(ScContentTree, CommandHdl, const CommandEvent&, rCEvt, bool)
 {
     bool bDone = false;
 
     switch ( rCEvt.GetCommand() )
     {
-        case CommandEventId::StartDrag:
-            //  From within ExecuteDrag you can delete the navigator
-            //  (during switch over to another document type), but this would
-            //  kill the StarView MouseMove handler, who calls Command().
-            //  Therefore async Drag&Drop:
-
-            Application::PostUserEvent( LINK( this, ScContentTree, ExecDragHdl ), nullptr, true );
-
-            bDone = true;
-            break;
-
         case CommandEventId::ContextMenu:
             {
                 //  drag-and-drop mode
-
-                ScopedVclPtrInstance<PopupMenu> aPop;
-                VclBuilder aBuilder(nullptr, VclBuilderContainer::getUIRootDir(), "modules/scalc/ui/dropmenu.ui", "");
-                VclPtr<PopupMenu> aDropMenu(aBuilder.get_menu("menu"));
+                std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xTreeView.get(), "modules/scalc/ui/dropmenu.ui"));
+                std::unique_ptr<weld::Menu> xPop(xBuilder->weld_menu("contextmenu"));
+                std::unique_ptr<weld::Menu> xDropMenu(xBuilder->weld_menu("dragmodesubmenu"));
 
                 switch (pParentWindow->GetDropMode())
                 {
                     case 0:
-                        aDropMenu->CheckItem(aDropMenu->GetItemId("hyperlink"));
+                        xDropMenu->set_active("hyperlink", true);
                         break;
                     case 1:
-                        aDropMenu->CheckItem(aDropMenu->GetItemId("link"));
+                        xDropMenu->set_active("link", true);
                         break;
                     case 2:
-                        aDropMenu->CheckItem(aDropMenu->GetItemId("copy"));
+                        xDropMenu->set_active("copy", true);
                         break;
                 }
 
-                aPop->InsertItem( 1, pParentWindow->GetStrDragMode() );
-                aPop->SetPopupMenu( 1, aDropMenu.get() );
-
                 //  displayed document
-
-                VclPtrInstance<PopupMenu> aDocMenu;
-                aDocMenu->SetMenuFlags( aDocMenu->GetMenuFlags() | MenuFlags::NoAutoMnemonics );
+                std::unique_ptr<weld::Menu> xDocMenu(xBuilder->weld_menu("displaymenu"));
+//TODO                aDocMenu->SetMenuFlags( aDocMenu->GetMenuFlags() | MenuFlags::NoAutoMnemonics );
                 sal_uInt16 i=0;
-                sal_uInt16 nPos=0;
+                OUString sActive;
+                OUString sId;
                 //  loaded documents
                 ScDocShell* pCurrentSh = dynamic_cast<ScDocShell*>( SfxObjectShell::Current()  );
                 SfxObjectShell* pSh = SfxObjectShell::GetFirst();
@@ -629,111 +563,82 @@ void ScContentTree::Command( const CommandEvent& rCEvt )
                         else
                             aEntry += pParentWindow->aStrNotActive;
                         ++i;
-                        aDocMenu->InsertItem(i, aEntry, MenuItemBits::AUTOCHECK | MenuItemBits::RADIOCHECK, OString("document") + OString::number(i));
+                        sId = "document" + OUString::number(i);
+                        xDocMenu->append_radio(sId, aEntry);
                         if ( !bHiddenDoc && aName == aManualDoc )
-                            nPos = i;
+                            sActive = sId;
                     }
                     pSh = SfxObjectShell::GetNext( *pSh );
                 }
                 //  "active window"
                 ++i;
-                aDocMenu->InsertItem(i, pParentWindow->aStrActiveWin, MenuItemBits::AUTOCHECK | MenuItemBits::RADIOCHECK, OString("document") + OString::number(i));
+                sId = "document" + OUString::number(i);
+                xDocMenu->append_radio(sId, pParentWindow->aStrActiveWin);
                 if (!bHiddenDoc && aManualDoc.isEmpty())
-                    nPos = i;
+                    sActive = sId;
                 //  hidden document
                 if ( !aHiddenTitle.isEmpty() )
                 {
-                    OUString aEntry = aHiddenTitle;
-                    aEntry += pParentWindow->aStrHidden;
+                    OUString aEntry = aHiddenTitle + pParentWindow->aStrHidden;
                     ++i;
-                    aDocMenu->InsertItem(i, aEntry, MenuItemBits::AUTOCHECK | MenuItemBits::RADIOCHECK, OString("document") + OString::number(i));
+                    sId = "document" + OUString::number(i);
+                    xDocMenu->append_radio(sId, aEntry);
                     if (bHiddenDoc)
-                        nPos = i;
+                        sActive = sId;
                 }
-                aDocMenu->CheckItem( nPos );
-                aPop->InsertItem( 2, pParentWindow->GetStrDisplay() );
-                aPop->SetPopupMenu( 2, aDocMenu.get() );
+                xDocMenu->set_active(sActive.toUtf8(), true);
 
-                sal_uInt16 nSelected = aPop->Execute(this, rCEvt.GetMousePosPixel());
-                OString sIdent = aPop->GetItemIdent(nSelected);
-
-                if (sIdent.startsWith("document"))
-                {
-                    OUString aName = aDocMenu->GetItemText(aDocMenu->GetItemId(sIdent));
-                    SelectDoc(aName);
-                }
-                else if (sIdent == "hyperlink")
+                OString sIdent = xPop->popup_at_rect(m_xTreeView.get(), tools::Rectangle(rCEvt.GetMousePosPixel(), Size(1, 1)));
+                if (sIdent == "hyperlink")
                     pParentWindow->SetDropMode(0);
                 else if (sIdent == "link")
                     pParentWindow->SetDropMode(1);
                 else if (sIdent == "copy")
                     pParentWindow->SetDropMode(2);
+                else if (sIdent.startsWith("document"))
+                {
+                    OUString aName = xDocMenu->get_label(sIdent);
+                    SelectDoc(aName);
+                }
             }
             break;
             default: break;
     }
 
-    if (!bDone)
-        SvTreeListBox::Command(rCEvt);
+    return bDone;
 }
 
-void ScContentTree::RequestHelp( const HelpEvent& rHEvt )
+IMPL_LINK(ScContentTree, QueryTooltipHdl, const weld::TreeIter&, rEntry, OUString)
 {
-    bool bDone = false;
-    if( rHEvt.GetMode() & HelpEventMode::QUICK )
+    OUString aHelpText;
+
+    std::unique_ptr<weld::TreeIter> xParent(m_xTreeView->make_iterator(&rEntry));
+    if (!m_xTreeView->iter_parent(*xParent))
+        xParent.reset();
+
+    if (!xParent)                                 // Top-Level ?
     {
-        Point aPos( ScreenToOutputPixel( rHEvt.GetMousePosPixel() ));
-        SvTreeListEntry* pEntry = GetEntry( aPos );
-        if ( pEntry )
+        aHelpText = OUString::number(m_xTreeView->iter_n_children(rEntry)) +
+                    " " + m_xTreeView->get_text(rEntry);
+    }
+    else if (m_aRootNodes[ScContentId::NOTE] && m_xTreeView->iter_compare(*xParent, *m_aRootNodes[ScContentId::NOTE]) == 0)
+    {
+        aHelpText = m_xTreeView->get_text(rEntry);     // notes as help text
+    }
+    else if (m_aRootNodes[ScContentId::AREALINK] && m_xTreeView->iter_compare(*xParent, *m_aRootNodes[ScContentId::AREALINK]) == 0)
+    {
+        auto nIndex = GetChildIndex(&rEntry);
+        if (nIndex != SC_CONTENT_NOCHILD)
         {
-            bool bRet = false;
-            OUString aHelpText;
-            SvTreeListEntry* pParent = GetParent(pEntry);
-            if ( !pParent )                                 // Top-Level ?
+            const ScAreaLink* pLink = GetLink(nIndex);
+            if (pLink)
             {
-                aHelpText = OUString::number( GetChildCount(pEntry) ) +
-                            " " + GetEntryText(pEntry);
-                bRet = true;
-            }
-            else if ( pParent == pRootNodes[ScContentId::NOTE] )
-            {
-                aHelpText = GetEntryText(pEntry);           // notes as help text
-                bRet = true;
-            }
-            else if ( pParent == pRootNodes[ScContentId::AREALINK] )
-            {
-                sal_uLong nIndex = GetChildIndex(pEntry);
-                if( nIndex != SC_CONTENT_NOCHILD )
-                {
-                    const ScAreaLink* pLink = GetLink(nIndex);
-                    if (pLink)
-                    {
-                        aHelpText = pLink->GetFile();           // source file as help text
-                        bRet = true;
-                    }
-                }
-            }
-
-            if (bRet)
-            {
-                SvLBoxTab* pTab;
-                SvLBoxString* pItem = static_cast<SvLBoxString*>(GetItem( pEntry, aPos.X(), &pTab ));
-                if( pItem )
-                {
-                    aPos = GetEntryPosition( pEntry );
-                    aPos.X() = GetTabPos( pEntry, pTab );
-                    aPos = OutputToScreenPixel(aPos);
-                    Size aSize( pItem->GetSize( this, pEntry ) );
-
-                    tools::Rectangle aItemRect( aPos, aSize );
-                    Help::ShowQuickHelp( this, aItemRect, aHelpText );
-                    bDone = true;
-                }
+                aHelpText = pLink->GetFile();           // source file as help text
             }
         }
     }
-    if (!bDone)
-        Window::RequestHelp( rHEvt );
+
+    return aHelpText;
 }
 
 ScDocument* ScContentTree::GetSourceDocument()
@@ -751,42 +656,53 @@ ScDocument* ScContentTree::GetSourceDocument()
 }
 
 //Move along and draw "*" sign .
-void ScContentTree::ObjectFresh( ScContentId nType, SvTreeListEntry* pEntry )
+void ScContentTree::ObjectFresh(ScContentId nType, const weld::TreeIter* pEntry)
 {
-    if ( bHiddenDoc && !pHiddenDocument )
+    if (bHiddenDoc && !pHiddenDocument)
         return;     // other document displayed
-      if(nType ==ScContentId::GRAPHIC||nType ==ScContentId::OLEOBJECT||nType ==ScContentId::DRAWING)
+
+    if (!(nType == ScContentId::GRAPHIC || nType == ScContentId::OLEOBJECT || nType == ScContentId::DRAWING))
+        return;
+
+    auto nOldChildren = m_aRootNodes[nType] ? m_xTreeView->iter_n_children(*m_aRootNodes[nType]) : 0;
+    auto nOldPos = m_xTreeView->vadjustment_get_value();
+
+    freeze();
+    ClearType( nType );
+    GetDrawNames( nType/*, nId*/ );
+    thaw();
+
+    auto nNewChildren = m_aRootNodes[nType] ? m_xTreeView->iter_n_children(*m_aRootNodes[nType]) : 0;
+    bool bRestorePos = nOldChildren == nNewChildren;
+
+    if (!pEntry)
+        ApplyNavigatorSettings(bRestorePos, nOldPos);
+    if (!pEntry)
+        return;
+
+    weld::TreeIter* pParent = m_aRootNodes[nType].get();
+    std::unique_ptr<weld::TreeIter> xOldEntry;
+    std::unique_ptr<weld::TreeIter> xBeginEntry(m_xTreeView->make_iterator(pParent));
+    bool bBeginEntry = false;
+    if( pParent )
+        bBeginEntry = m_xTreeView->iter_children(*xBeginEntry);
+    while (bBeginEntry)
+    {
+        OUString aTempText(m_xTreeView->get_text(*xBeginEntry));
+        if (aTempText == sKeyString)
         {
-        SetUpdateMode(false);
-        ClearType( nType );
-        GetDrawNames( nType/*, nId*/ );
-        if( !pEntry )
-            ApplyNavigatorSettings();
-        SetUpdateMode(true);
-        if( pEntry )
-        {
-            SvTreeListEntry* pParent = pRootNodes[nType];
-            SvTreeListEntry* pBeginEntry = nullptr;
-            SvTreeListEntry* pOldEntry = nullptr;
-            if( pParent )
-                pBeginEntry = FirstChild(pParent);
-            while( pBeginEntry )
-            {
-                OUString aTempText( GetEntryText( pBeginEntry ) );
-                if( aTempText ==  sKeyString )
-                {
-                    pOldEntry = pBeginEntry;
-                    break;
-                }
-                pBeginEntry =  Next( pBeginEntry );
-            }
-            if( pOldEntry )
-            {
-                Expand(pParent);
-                Select( pOldEntry );
-            }
+            xOldEntry = m_xTreeView->make_iterator(xBeginEntry.get());
+            break;
         }
-        }
+        bBeginEntry = m_xTreeView->iter_next(*xBeginEntry);
+    }
+    if (xOldEntry)
+    {
+        m_xTreeView->expand_row(*pParent);
+        m_xTreeView->select(*xOldEntry);
+        m_xTreeView->set_cursor(*xOldEntry);
+        StoreNavigatorSettings();
+    }
 }
 
 void ScContentTree::Refresh( ScContentId nType )
@@ -809,7 +725,7 @@ void ScContentTree::Refresh( ScContentId nType )
         if (!DrawNamesChanged(ScContentId::DRAWING))
             return;
 
-    SetUpdateMode(false);
+    freeze();
 
     ClearType( nType );
 
@@ -830,8 +746,9 @@ void ScContentTree::Refresh( ScContentId nType )
     if ( nType == ScContentId::ROOT || nType == ScContentId::AREALINK )
         GetLinkNames();
 
+    thaw();
+
     ApplyNavigatorSettings();
-    SetUpdateMode(true);
 }
 
 void ScContentTree::GetTableNames()
@@ -856,11 +773,7 @@ namespace {
 
 OUString createLocalRangeName(const OUString& rName, const OUString& rTableName)
 {
-    OUStringBuffer aString (rName);
-    aString.append(" (");
-    aString.append(rTableName);
-    aString.append(")");
-    return aString.makeStringAndClear();
+    return rName + " (" + rTableName + ")";
 }
 }
 
@@ -876,14 +789,10 @@ void ScContentTree::GetAreaNames()
     ScRange aDummy;
     std::set<OUString> aSet;
     ScRangeName* pRangeNames = pDoc->GetRangeName();
-    if (!pRangeNames->empty())
+    for (const auto& rEntry : *pRangeNames)
     {
-        ScRangeName::const_iterator itrBeg = pRangeNames->begin(), itrEnd = pRangeNames->end();
-        for (ScRangeName::const_iterator itr = itrBeg; itr != itrEnd; ++itr)
-        {
-            if (itr->second->IsValidReference(aDummy))
-                aSet.insert(itr->second->GetName());
-        }
+        if (rEntry.second->IsValidReference(aDummy))
+            aSet.insert(rEntry.second->GetName());
     }
     for (SCTAB i = 0; i < pDoc->GetTableCount(); ++i)
     {
@@ -892,21 +801,17 @@ void ScContentTree::GetAreaNames()
         {
             OUString aTableName;
             pDoc->GetName(i, aTableName);
-            for (ScRangeName::const_iterator itr = pLocalRangeName->begin(); itr != pLocalRangeName->end(); ++itr)
+            for (const auto& rEntry : *pLocalRangeName)
             {
-                if (itr->second->IsValidReference(aDummy))
-                    aSet.insert(createLocalRangeName(itr->second->GetName(), aTableName));
+                if (rEntry.second->IsValidReference(aDummy))
+                    aSet.insert(createLocalRangeName(rEntry.second->GetName(), aTableName));
             }
         }
     }
 
-    if (!aSet.empty())
+    for (const auto& rItem : aSet)
     {
-        for (std::set<OUString>::iterator itr = aSet.begin();
-                itr != aSet.end(); ++itr)
-        {
-            InsertContent(ScContentId::RANGENAME, *itr);
-        }
+        InsertContent(ScContentId::RANGENAME, rItem);
     }
 }
 
@@ -921,10 +826,9 @@ void ScContentTree::GetDbNames()
 
     ScDBCollection* pDbNames = pDoc->GetDBCollection();
     const ScDBCollection::NamedDBs& rDBs = pDbNames->getNamedDBs();
-    ScDBCollection::NamedDBs::const_iterator itr = rDBs.begin(), itrEnd = rDBs.end();
-    for (; itr != itrEnd; ++itr)
+    for (const auto& rxDB : rDBs)
     {
-        const OUString& aStrName = (*itr)->GetName();
+        const OUString& aStrName = rxDB->GetName();
         InsertContent(ScContentId::DBAREA, aStrName);
     }
 }
@@ -963,40 +867,41 @@ void ScContentTree::GetDrawNames( ScContentId nType )
 
     ScDrawLayer* pDrawLayer = pDoc->GetDrawLayer();
     SfxObjectShell* pShell = pDoc->GetDocumentShell();
-    if (pDrawLayer && pShell)
-    {
-        SCTAB nTabCount = pDoc->GetTableCount();
-        for (SCTAB nTab=0; nTab<nTabCount; nTab++)
-        {
-            SdrPage* pPage = pDrawLayer->GetPage(static_cast<sal_uInt16>(nTab));
-            OSL_ENSURE(pPage,"Page ?");
-            if (pPage)
-            {
-                SdrObjListIter aIter( *pPage, eIter );
-                SdrObject* pObject = aIter.Next();
-                while (pObject)
-                {
-                    if ( IsPartOfType( nType, pObject->GetObjIdentifier() ) )
-                    {
-                        OUString aName = ScDrawLayer::GetVisibleName( pObject );
-                        if (!aName.isEmpty())
-                        {
-                            if( bisInNavigatoeDlg )
-                            {
-                                SvTreeListEntry* pParent = pRootNodes[nType];
-                                if (pParent)
-                                {
-                                    InsertEntry( aName, pParent );
-                                }//end if parent
-                                else
-                                    SAL_WARN("sc", "InsertContent without parent");
-                            }
-                        }
+    if (!(pDrawLayer && pShell))
+        return;
 
+    SCTAB nTabCount = pDoc->GetTableCount();
+    for (SCTAB nTab=0; nTab<nTabCount; nTab++)
+    {
+        SdrPage* pPage = pDrawLayer->GetPage(static_cast<sal_uInt16>(nTab));
+        OSL_ENSURE(pPage,"Page ?");
+        if (pPage)
+        {
+            SdrObjListIter aIter( pPage, eIter );
+            SdrObject* pObject = aIter.Next();
+            while (pObject)
+            {
+                if ( IsPartOfType( nType, pObject->GetObjIdentifier() ) )
+                {
+                    OUString aName = ScDrawLayer::GetVisibleName( pObject );
+                    if (!aName.isEmpty())
+                    {
+                        if( bisInNavigatoeDlg )
+                        {
+                            weld::TreeIter* pParent = m_aRootNodes[nType].get();
+                            if (pParent)
+                            {
+                                m_xTreeView->insert(pParent, -1, &aName, nullptr, nullptr, nullptr, false, m_xScratchIter.get());
+                                m_xTreeView->set_sensitive(*m_xScratchIter, true);
+                            }//end if parent
+                            else
+                                SAL_WARN("sc", "InsertContent without parent");
+                        }
                     }
 
-                    pObject = aIter.Next();
                 }
+
+                pObject = aIter.Next();
             }
         }
     }
@@ -1054,10 +959,10 @@ const ScAreaLink* ScContentTree::GetLink( sal_uLong nIndex )
     for (sal_uInt16 i=0; i<nCount; i++)
     {
         ::sfx2::SvBaseLink* pBase = rLinks[i].get();
-        if (dynamic_cast<const ScAreaLink*>( pBase) !=  nullptr)
+        if (auto pAreaLink = dynamic_cast<const ScAreaLink*>( pBase))
         {
             if (nFound == nIndex)
-                return static_cast<const ScAreaLink*>(pBase);
+                return pAreaLink;
             ++nFound;
         }
     }
@@ -1087,9 +992,8 @@ void ScContentTree::GetNoteStrings()
     // loop over cell notes
     std::vector<sc::NoteEntry> aEntries;
     pDoc->GetAllNoteEntries(aEntries);
-    std::vector<sc::NoteEntry>::const_iterator it = aEntries.begin(), itEnd = aEntries.end();
-    for (; it != itEnd; ++it)
-        InsertContent(ScContentId::NOTE, lcl_NoteString(*it->mpNote));
+    for (const auto& rEntry : aEntries)
+        InsertContent(ScContentId::NOTE, lcl_NoteString(*rEntry.mpNote));
 }
 
 ScAddress ScContentTree::GetNotePos( sal_uLong nIndex )
@@ -1107,28 +1011,28 @@ bool ScContentTree::NoteStringsChanged()
     if (!pDoc)
         return false;
 
-    SvTreeListEntry* pParent = pRootNodes[ScContentId::NOTE];
+    weld::TreeIter* pParent = m_aRootNodes[ScContentId::NOTE].get();
     if (!pParent)
         return false;
 
-    SvTreeListEntry* pEntry = FirstChild( pParent );
+    std::unique_ptr<weld::TreeIter> xEntry(m_xTreeView->make_iterator(pParent));
+    bool bEntry = m_xTreeView->iter_children(*xEntry);
 
     std::vector<sc::NoteEntry> aEntries;
     pDoc->GetAllNoteEntries(aEntries);
-    std::vector<sc::NoteEntry>::const_iterator it = aEntries.begin(), itEnd = aEntries.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rEntry : aEntries)
     {
-        const ScPostIt* pNote = it->mpNote;
-        if (!pEntry)
+        const ScPostIt* pNote = rEntry.mpNote;
+        if (!bEntry)
             return true;
 
-        if (lcl_NoteString(*pNote) != GetEntryText(pEntry))
+        if (lcl_NoteString(*pNote) != m_xTreeView->get_text(*xEntry))
             return true;
 
-        pEntry = NextSibling(pEntry);
+        bEntry = m_xTreeView->iter_next_sibling(*xEntry);
     }
 
-    return pEntry != nullptr;
+    return bEntry;
 }
 
 bool ScContentTree::DrawNamesChanged( ScContentId nType )
@@ -1137,11 +1041,12 @@ bool ScContentTree::DrawNamesChanged( ScContentId nType )
     if (!pDoc)
         return false;
 
-    SvTreeListEntry* pParent = pRootNodes[nType];
+    weld::TreeIter* pParent = m_aRootNodes[nType].get();
     if (!pParent)
         return false;
 
-    SvTreeListEntry* pEntry = FirstChild( pParent );
+    std::unique_ptr<weld::TreeIter> xEntry(m_xTreeView->make_iterator(pParent));
+    bool bEntry = m_xTreeView->iter_children(*xEntry);
 
     // iterate in flat mode for groups
     SdrIterMode eIter = ( nType == ScContentId::DRAWING ) ? SdrIterMode::Flat : SdrIterMode::DeepNoGroups;
@@ -1158,20 +1063,20 @@ bool ScContentTree::DrawNamesChanged( ScContentId nType )
             OSL_ENSURE(pPage,"Page ?");
             if (pPage)
             {
-                SdrObjListIter aIter( *pPage, eIter );
+                SdrObjListIter aIter( pPage, eIter );
                 SdrObject* pObject = aIter.Next();
                 while (pObject && bEqual)
                 {
                     if ( IsPartOfType( nType, pObject->GetObjIdentifier() ) )
                     {
-                        if ( !pEntry )
+                        if ( !bEntry )
                             bEqual = false;
                         else
                         {
-                            if ( ScDrawLayer::GetVisibleName( pObject ) != GetEntryText(pEntry) )
+                            if (ScDrawLayer::GetVisibleName(pObject) != m_xTreeView->get_text(*xEntry))
                                 bEqual = false;
 
-                            pEntry = NextSibling( pEntry );
+                            bEntry = m_xTreeView->iter_next_sibling(*xEntry);
                         }
                     }
                     pObject = aIter.Next();
@@ -1180,13 +1085,13 @@ bool ScContentTree::DrawNamesChanged( ScContentId nType )
         }
     }
 
-    if ( pEntry )
+    if ( bEntry )
         bEqual = false;             // anything else
 
     return !bEqual;
 }
 
-static bool lcl_GetRange( ScDocument* pDoc, ScContentId nType, const OUString& rName, ScRange& rRange )
+static bool lcl_GetRange( const ScDocument* pDoc, ScContentId nType, const OUString& rName, ScRange& rRange )
 {
     bool bFound = false;
 
@@ -1195,7 +1100,7 @@ static bool lcl_GetRange( ScDocument* pDoc, ScContentId nType, const OUString& r
         ScRangeName* pList = pDoc->GetRangeName();
         if (pList)
         {
-            const ScRangeData* p = pList->findByUpperName(ScGlobal::pCharClass->uppercase(rName));
+            const ScRangeData* p = pList->findByUpperName(ScGlobal::getCharClassPtr()->uppercase(rName));
             if (p && p->IsValidReference(rRange))
                 bFound = true;
         }
@@ -1205,7 +1110,7 @@ static bool lcl_GetRange( ScDocument* pDoc, ScContentId nType, const OUString& r
         ScDBCollection* pList = pDoc->GetDBCollection();
         if (pList)
         {
-            const ScDBData* p = pList->getNamedDBs().findByUpperName(ScGlobal::pCharClass->uppercase(rName));
+            const ScDBData* p = pList->getNamedDBs().findByUpperName(ScGlobal::getCharClassPtr()->uppercase(rName));
             if (p)
             {
                 SCTAB nTab;
@@ -1221,8 +1126,10 @@ static bool lcl_GetRange( ScDocument* pDoc, ScContentId nType, const OUString& r
     return bFound;
 }
 
-static void lcl_DoDragObject( ScDocShell* pSrcShell, const OUString& rName, ScContentId nType, vcl::Window* pWin )
+static bool lcl_DoDragObject( ScDocShell* pSrcShell, const OUString& rName, ScContentId nType, weld::TreeView& rTreeView )
 {
+    bool bDisallow = true;
+
     ScDocument& rSrcDoc = pSrcShell->GetDocument();
     ScDrawLayer* pModel = rSrcDoc.GetDrawLayer();
     if (pModel)
@@ -1234,44 +1141,65 @@ static void lcl_DoDragObject( ScDocShell* pSrcShell, const OUString& rName, ScCo
         SdrObject* pObject = pModel->GetNamedObject( rName, nDrawId, nTab );
         if (pObject)
         {
-            SdrView aEditView( pModel );
+            SdrView aEditView(*pModel);
             aEditView.ShowSdrPage(aEditView.GetModel()->GetPage(nTab));
             SdrPageView* pPV = aEditView.GetSdrPageView();
             aEditView.MarkObj(pObject, pPV);
 
-            SdrModel* pDragModel = aEditView.GetMarkedObjModel();
+            // tdf125520 this is a D&D-start potentially with an OLE object. If
+            // so, we need to do similar as e.g. in ScDrawView::BeginDrag so that
+            // the temporary SdrModel for transfer does have a GetPersist() so
+            // that the EmbeddedObjectContainer gets copied. We need no CheckOle
+            // here, test is simpler.
+            ScDocShellRef aDragShellRef;
+            if(OBJ_OLE2 == pObject->GetObjIdentifier())
+            {
+                aDragShellRef = new ScDocShell;     // DocShell needs a Ref immediately
+                aDragShellRef->DoInitNew();
+            }
+
+            ScDrawLayer::SetGlobalDrawPersist(aDragShellRef.get());
+            std::unique_ptr<SdrModel> pDragModel(aEditView.CreateMarkedObjModel());
+            ScDrawLayer::SetGlobalDrawPersist(nullptr);
 
             TransferableObjectDescriptor aObjDesc;
             pSrcShell->FillTransferableObjectDescriptor( aObjDesc );
             aObjDesc.maDisplayName = pSrcShell->GetMedium()->GetURLObject().GetURLNoPass();
             // maSize is set in ScDrawTransferObj ctor
 
-            rtl::Reference<ScDrawTransferObj> pTransferObj = new ScDrawTransferObj( pDragModel, pSrcShell, aObjDesc );
+            rtl::Reference<ScDrawTransferObj> pTransferObj = new ScDrawTransferObj( std::move(pDragModel), pSrcShell, aObjDesc );
 
-            pTransferObj->SetDragSourceObj( pObject, nTab );
+            pTransferObj->SetDragSourceObj( *pObject, nTab );
             pTransferObj->SetDragSourceFlags(ScDragSrc::Navigator);
 
             SC_MOD()->SetDragObject( nullptr, pTransferObj.get() );
-            pWin->ReleaseMouse();
-            pTransferObj->StartDrag( pWin, DND_ACTION_COPYMOVE | DND_ACTION_LINK );
+
+            rtl::Reference<TransferDataContainer> xHelper(pTransferObj.get());
+            rTreeView.enable_drag_source(xHelper, DND_ACTION_COPYMOVE | DND_ACTION_LINK);
+
+            bDisallow = false;
         }
     }
+
+    return bDisallow;
 }
 
-static void lcl_DoDragCells( ScDocShell* pSrcShell, const ScRange& rRange, ScDragSrc nFlags, vcl::Window* pWin )
+static bool lcl_DoDragCells( ScDocShell* pSrcShell, const ScRange& rRange, ScDragSrc nFlags, weld::TreeView& rTreeView )
 {
-    ScMarkData aMark;
+    bool bDisallow = true;
+
+    ScDocument& rSrcDoc = pSrcShell->GetDocument();
+    ScMarkData aMark(rSrcDoc.GetSheetLimits());
     aMark.SelectTable( rRange.aStart.Tab(), true );
     aMark.SetMarkArea( rRange );
 
-    ScDocument& rSrcDoc = pSrcShell->GetDocument();
     if ( !rSrcDoc.HasSelectedBlockMatrixFragment( rRange.aStart.Col(), rRange.aStart.Row(),
                                                    rRange.aEnd.Col(),   rRange.aEnd.Row(),
                                                    aMark ) )
     {
-        ScDocument* pClipDoc = new ScDocument( SCDOCMODE_CLIP );
+        ScDocumentUniquePtr pClipDoc(new ScDocument( SCDOCMODE_CLIP ));
         ScClipParam aClipParam(rRange, false);
-        rSrcDoc.CopyToClip(aClipParam, pClipDoc, &aMark, false, false);
+        rSrcDoc.CopyToClip(aClipParam, pClipDoc.get(), &aMark, false, false);
         // pClipDoc->ExtendMerge( rRange, sal_True );
 
         TransferableObjectDescriptor aObjDesc;
@@ -1279,36 +1207,51 @@ static void lcl_DoDragCells( ScDocShell* pSrcShell, const ScRange& rRange, ScDra
         aObjDesc.maDisplayName = pSrcShell->GetMedium()->GetURLObject().GetURLNoPass();
         // maSize is set in ScTransferObj ctor
 
-        rtl::Reference<ScTransferObj> pTransferObj = new ScTransferObj( pClipDoc, aObjDesc );
+        rtl::Reference<ScTransferObj> pTransferObj = new ScTransferObj( std::move(pClipDoc), aObjDesc );
 
         pTransferObj->SetDragSource( pSrcShell, aMark );
         pTransferObj->SetDragSourceFlags( nFlags );
 
         SC_MOD()->SetDragObject( pTransferObj.get(), nullptr );      // for internal D&D
-        pWin->ReleaseMouse();
-        pTransferObj->StartDrag( pWin, DND_ACTION_COPYMOVE | DND_ACTION_LINK );
+
+        rtl::Reference<TransferDataContainer> xHelper(pTransferObj.get());
+        rTreeView.enable_drag_source(xHelper, DND_ACTION_COPYMOVE | DND_ACTION_LINK);
+
+        bDisallow = false;
     }
+
+    return bDisallow;
 }
 
-void ScContentTree::DoDrag()
+IMPL_LINK(ScContentTree, DragBeginHdl, bool&, rUnsetDragIcon, bool)
 {
-    ScDocumentLoader* pDocLoader = nullptr;
+    rUnsetDragIcon = true;
+
+    StoreNavigatorSettings();
+
+    bool bDisallow = true;
+
+    std::unique_ptr<ScDocumentLoader> pDocLoader;
     bIsInDrag = true;
 
     ScModule* pScMod = SC_MOD();
 
     ScContentId nType;
     sal_uLong nChild;
-    SvTreeListEntry* pEntry = GetCurEntry();
-    GetEntryIndexes( nType, nChild, pEntry );
 
-    if( pEntry &&
+    std::unique_ptr<weld::TreeIter> xEntry(m_xTreeView->make_iterator());
+    if (!m_xTreeView->get_cursor(xEntry.get()))
+        xEntry.reset();
+
+    GetEntryIndexes(nType, nChild, xEntry.get());
+
+    if( xEntry &&
         (nChild != SC_CONTENT_NOCHILD) &&
         (nType != ScContentId::ROOT) &&
         (nType != ScContentId::NOTE) &&
         (nType != ScContentId::AREALINK) )
     {
-        OUString aText( GetEntryText( pEntry ) );
+        OUString aText(m_xTreeView->get_text(*xEntry));
 
         ScDocument* pLocalDoc = nullptr;                   // for URL drop
         OUString aDocName;
@@ -1381,7 +1324,7 @@ void ScContentTree::DoDrag()
                     {
                         OUString aFilter, aOptions;
                         OUString aURL = aHiddenName;
-                        pDocLoader = new ScDocumentLoader( aURL, aFilter, aOptions );
+                        pDocLoader.reset(new ScDocumentLoader( aURL, aFilter, aOptions ));
                         if (!pDocLoader->IsError())
                             pSrcShell = pDocLoader->GetDocShell();
                     }
@@ -1396,7 +1339,7 @@ void ScContentTree::DoDrag()
                             ScRange aRange;
                             if ( lcl_GetRange( &rSrcDoc, nType, aText, aRange ) )
                             {
-                                lcl_DoDragCells( pSrcShell, aRange, ScDragSrc::Navigator, this );
+                                bDisallow = lcl_DoDragCells( pSrcShell, aRange, ScDragSrc::Navigator, *m_xTreeView );
                             }
                         }
                         else if ( nType == ScContentId::TABLE )
@@ -1404,14 +1347,14 @@ void ScContentTree::DoDrag()
                             SCTAB nTab;
                             if ( rSrcDoc.GetTable( aText, nTab ) )
                             {
-                                ScRange aRange( 0,0,nTab, MAXCOL,MAXROW,nTab );
-                                lcl_DoDragCells( pSrcShell, aRange, (ScDragSrc::Navigator | ScDragSrc::Table), this );
+                                ScRange aRange(0, 0, nTab, rSrcDoc.MaxCol(), rSrcDoc.MaxRow(), nTab);
+                                bDisallow = lcl_DoDragCells( pSrcShell, aRange, (ScDragSrc::Navigator | ScDragSrc::Table), *m_xTreeView );
                             }
                         }
                         else if ( nType == ScContentId::GRAPHIC || nType == ScContentId::OLEOBJECT ||
                                     nType == ScContentId::DRAWING )
                         {
-                            lcl_DoDragObject( pSrcShell, aText, nType, this );
+                            bDisallow = lcl_DoDragObject( pSrcShell, aText, nType, *m_xTreeView );
 
                             //  during ExecuteDrag the navigator can be deleted
                             //  -> don't access member anymore !!!
@@ -1423,32 +1366,22 @@ void ScContentTree::DoDrag()
 
         if (bDoLinkTrans)
         {
-            rtl::Reference<ScLinkTransferObj> pTransferObj = new ScLinkTransferObj;
+            if (!aLinkURL.isEmpty())
+                m_xTransferObj->SetLinkURL(aLinkURL, aLinkText);
 
-            if ( !aLinkURL.isEmpty() )
-                pTransferObj->SetLinkURL( aLinkURL, aLinkText );
+            rtl::Reference<TransferDataContainer> xHelper(m_xTransferObj.get());
+            m_xTreeView->enable_drag_source(xHelper, DND_ACTION_COPYMOVE | DND_ACTION_LINK);
 
-            //  SetDragJump / SetDragLink has been done above
-
-            ReleaseMouse();
-            pTransferObj->StartDrag( this, DND_ACTION_COPYMOVE | DND_ACTION_LINK );
+            bDisallow = false;
         }
     }
 
     bIsInDrag = false;              // static member
 
-    delete pDocLoader;              // if document was load for dragging
+    return bDisallow;
 }
 
-IMPL_LINK_NOARG(ScContentTree, ExecDragHdl, void*, void)
-{
-    //  as link, so that async without ImpMouseMoveMsg on the stack also
-    //  the navigator can be deleted
-
-    DoDrag();
-}
-
-bool ScContentTree::LoadFile( const OUString& rUrl )
+void ScContentTree::LoadFile( const OUString& rUrl )
 {
     OUString aDocName = rUrl;
     sal_Int32 nPos = aDocName.indexOf('#');
@@ -1458,32 +1391,21 @@ bool ScContentTree::LoadFile( const OUString& rUrl )
     OUString aURL = aDocName;
     OUString aFilter, aOptions;
     ScDocumentLoader aLoader( aURL, aFilter, aOptions );
-    if ( !aLoader.IsError() )
-    {
-        bHiddenDoc = true;
-        aHiddenName = aDocName;
-        aHiddenTitle = aLoader.GetTitle();
-        pHiddenDocument = aLoader.GetDocument();
+    if ( aLoader.IsError() )
+        return;
 
-        Refresh();                      // get content from loaded document
+    bHiddenDoc = true;
+    aHiddenName = aDocName;
+    aHiddenTitle = aLoader.GetTitle();
+    pHiddenDocument = aLoader.GetDocument();
 
-        pHiddenDocument = nullptr;
+    Refresh();                      // get content from loaded document
 
-        pParentWindow->GetDocNames( &aHiddenTitle );            // fill list
-    }
+    pHiddenDocument = nullptr;
+
+    pParentWindow->GetDocNames( &aHiddenTitle );            // fill list
 
     //  document is closed again by ScDocumentLoader in dtor
-
-    return false;
-}
-
-void ScContentTree::InitWindowBits( bool bButtons )
-{
-    WinBits nFlags = GetStyle() | WB_CLIPCHILDREN | WB_HSCROLL;
-    if (bButtons)
-        nFlags |= WB_HASBUTTONS | WB_HASBUTTONSATROOT;
-
-    SetStyle( nFlags );
 }
 
 void ScContentTree::SetRootType( ScContentId nNew )
@@ -1491,7 +1413,6 @@ void ScContentTree::SetRootType( ScContentId nNew )
     if ( nNew != nRootType )
     {
         nRootType = nNew;
-        InitWindowBits( nNew == ScContentId::ROOT );
         Refresh();
 
         ScNavipiCfg& rCfg = SC_MOD()->GetNavipiCfg();
@@ -1504,13 +1425,23 @@ void ScContentTree::ToggleRoot()        // after selection
     ScContentId nNew = ScContentId::ROOT;
     if ( nRootType == ScContentId::ROOT )
     {
-        SvTreeListEntry* pEntry = GetCurEntry();
-        if (pEntry)
+        std::unique_ptr<weld::TreeIter> xEntry(m_xTreeView->make_iterator());
+        if (m_xTreeView->get_cursor(xEntry.get()))
         {
-            SvTreeListEntry* pParent = GetParent(pEntry);
-            for (sal_uInt16 i=1; i<=(int)ScContentId::LAST; i++)
-                if ( pEntry == pRootNodes[(ScContentId)i] || pParent == pRootNodes[(ScContentId)i] )
-                    nNew = (ScContentId)i;
+            std::unique_ptr<weld::TreeIter> xParent(m_xTreeView->make_iterator(xEntry.get()));
+            if (!m_xTreeView->iter_parent(*xParent))
+                xParent.reset();
+
+            for (sal_uInt16 i=1; i<=int(ScContentId::LAST); i++)
+            {
+                if (!m_aRootNodes[static_cast<ScContentId>(i)])
+                    continue;
+                if ((m_xTreeView->iter_compare(*xEntry, *m_aRootNodes[static_cast<ScContentId>(i)]) == 0) ||
+                    (xParent && m_xTreeView->iter_compare(*xParent, *m_aRootNodes[static_cast<ScContentId>(i)]) == 0))
+                {
+                    nNew = static_cast<ScContentId>(i);
+                }
+            }
         }
     }
 
@@ -1612,37 +1543,87 @@ void ScContentTree::SelectDoc(const OUString& rName)      // rName like shown in
     }
 }
 
-void ScContentTree::ApplyNavigatorSettings()
+void ScContentTree::SelectEntryByName(const ScContentId nRoot, const OUString& rName)
+{
+    weld::TreeIter* pParent = m_aRootNodes[nRoot].get();
+
+    if (pParent || !m_xTreeView->iter_has_child(*pParent))
+        return;
+
+    std::unique_ptr<weld::TreeIter> xEntry(m_xTreeView->make_iterator(pParent));
+    bool bEntry = m_xTreeView->iter_children(*xEntry);
+
+    while (bEntry)
+    {
+        if (m_xTreeView->get_text(*xEntry) == rName)
+        {
+            m_xTreeView->select(*xEntry);
+            m_xTreeView->set_cursor(*xEntry);
+
+            // Scroll to the selected item
+            m_xTreeView->scroll_to_row(*xEntry);
+
+            StoreNavigatorSettings();
+
+            return;
+        }
+        bEntry = m_xTreeView->iter_next(*xEntry);
+    }
+}
+
+void ScContentTree::ApplyNavigatorSettings(bool bRestorePos, int nScrollPos)
 {
     const ScNavigatorSettings* pSettings = ScNavigatorDlg::GetNavigatorSettings();
-    if( pSettings )
+    if( !pSettings )
+        return;
+
+    ScContentId nRootSel = pSettings->GetRootSelected();
+    auto nChildSel = pSettings->GetChildSelected();
+
+    // tdf#133079 ensure Sheet root is selected if nothing
+    // else would be
+    if (nRootSel == ScContentId::ROOT)
     {
-        ScContentId nRootSel = pSettings->GetRootSelected();
-        sal_uLong nChildSel = pSettings->GetChildSelected();
+        nRootSel = ScContentId::TABLE;
+        nChildSel = SC_CONTENT_NOCHILD;
+    }
 
-        for( int i = 1; i <= (int)ScContentId::LAST; ++i )
+    for( int i = 1; i <= int(ScContentId::LAST); ++i )
+    {
+        ScContentId nEntry = static_cast<ScContentId>(i);
+        if( m_aRootNodes[ nEntry ] )
         {
-            ScContentId nEntry = (ScContentId)i;
-            if( pRootNodes[ nEntry ] )
-            {
-                // expand
-                bool bExp = pSettings->IsExpanded( nEntry );
-                if( bExp != IsExpanded( pRootNodes[ nEntry ] ) )
-                {
-                    if( bExp )
-                        Expand( pRootNodes[ nEntry ] );
-                    else
-                        Collapse( pRootNodes[ nEntry ] );
-                }
+            // gray or ungray
+            if (!m_xTreeView->iter_has_child(*m_aRootNodes[nEntry]))
+                m_xTreeView->set_sensitive(*m_aRootNodes[nEntry], false);
+            else
+                m_xTreeView->set_sensitive(*m_aRootNodes[nEntry], true);
 
-                // select
-                if( nRootSel == nEntry )
+            // expand
+            bool bExp = pSettings->IsExpanded( nEntry );
+            if (bExp != m_xTreeView->get_row_expanded(*m_aRootNodes[nEntry]))
+            {
+                if( bExp )
+                    m_xTreeView->expand_row(*m_aRootNodes[nEntry]);
+                else
+                    m_xTreeView->collapse_row(*m_aRootNodes[nEntry]);
+            }
+
+            // select
+            if( nRootSel == nEntry )
+            {
+                if (bRestorePos)
+                    m_xTreeView->vadjustment_set_value(nScrollPos);
+
+                std::unique_ptr<weld::TreeIter> xEntry;
+                if (bExp && (nChildSel != SC_CONTENT_NOCHILD))
                 {
-                    SvTreeListEntry* pEntry = nullptr;
-                    if( bExp && (nChildSel != SC_CONTENT_NOCHILD) )
-                        pEntry = GetEntry( pRootNodes[ nEntry ], nChildSel );
-                    Select( pEntry ? pEntry : pRootNodes[ nEntry ] );
+                    xEntry = m_xTreeView->make_iterator(m_aRootNodes[nEntry].get());
+                    if (!m_xTreeView->iter_children(*xEntry) || !m_xTreeView->iter_nth_sibling(*xEntry, nChildSel))
+                        xEntry.reset();
                 }
+                m_xTreeView->select(xEntry ? *xEntry : *m_aRootNodes[nEntry]);
+                m_xTreeView->set_cursor(xEntry ? *xEntry : *m_aRootNodes[nEntry]);
             }
         }
     }
@@ -1651,29 +1632,26 @@ void ScContentTree::ApplyNavigatorSettings()
 void ScContentTree::StoreNavigatorSettings() const
 {
     ScNavigatorSettings* pSettings = ScNavigatorDlg::GetNavigatorSettings();
-    if( pSettings )
-    {
-        for( int i = 1; i <= (int)ScContentId::LAST; ++i )
-        {
-            ScContentId nEntry = (ScContentId)i;
-            bool bExp = pRootNodes[ nEntry ] && IsExpanded( pRootNodes[ nEntry ] );
-            pSettings->SetExpanded( nEntry, bExp );
-        }
-        ScContentId nRoot;
-        sal_uLong nChild;
-        GetEntryIndexes( nRoot, nChild, GetCurEntry() );
-        pSettings->SetRootSelected( nRoot );
-        pSettings->SetChildSelected( nChild );
-    }
-}
+    if( !pSettings )
+        return;
 
-void ScContentTree::InitEntry(SvTreeListEntry* pEntry,
-    const OUString& rStr, const Image& rImg1, const Image& rImg2, SvLBoxButtonKind eButtonKind)
-{
-    sal_uInt16 nColToHilite = 1; //0==Bitmap;1=="Spalte1";2=="Spalte2"
-    SvTreeListBox::InitEntry( pEntry, rStr, rImg1, rImg2, eButtonKind );
-    SvLBoxString& rCol = static_cast<SvLBoxString&>(pEntry->GetItem( nColToHilite ));
-    pEntry->ReplaceItem(o3tl::make_unique<SvLBoxString>(rCol.GetText()), nColToHilite);
+    for( int i = 1; i <= int(ScContentId::LAST); ++i )
+    {
+        ScContentId nEntry = static_cast<ScContentId>(i);
+        bool bExp = m_aRootNodes[nEntry] && m_xTreeView->get_row_expanded(*m_aRootNodes[nEntry]);
+        pSettings->SetExpanded( nEntry, bExp );
+    }
+
+    std::unique_ptr<weld::TreeIter> xCurEntry(m_xTreeView->make_iterator());
+    if (!m_xTreeView->get_cursor(xCurEntry.get()))
+        xCurEntry.reset();
+
+    ScContentId nRoot;
+    sal_uLong nChild;
+    GetEntryIndexes(nRoot, nChild, xCurEntry.get());
+
+    pSettings->SetRootSelected( nRoot );
+    pSettings->SetChildSelected( nChild );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -15,10 +15,9 @@
 
 #include <svl/lstner.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <vector>
 
-#include "document.hxx"
-
-#include <com/sun/star/chart2/data/LabeledDataSequence.hpp>
+namespace com::sun::star::chart2::data { class XLabeledDataSequence; }
 
 namespace sc
 {
@@ -27,10 +26,10 @@ typedef cppu::WeakImplHelper<css::chart2::data::XDataSource,
                              css::lang::XServiceInfo>
             PivotTableDataSource_Base;
 
-class PivotTableDataSource : public PivotTableDataSource_Base, public SfxListener
+class PivotTableDataSource final : public PivotTableDataSource_Base, public SfxListener
 {
 public:
-    explicit PivotTableDataSource(std::vector<css::uno::Reference<css::chart2::data::XLabeledDataSequence>>& xLabeledSequence);
+    explicit PivotTableDataSource(const std::vector<css::uno::Reference<css::chart2::data::XLabeledDataSequence>>& xLabeledSequence);
     virtual ~PivotTableDataSource() override;
     virtual void Notify(SfxBroadcaster& rBroadcaster, const SfxHint& rHint) override;
 

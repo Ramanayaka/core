@@ -20,21 +20,12 @@
 
 #include "propertysetbase.hxx"
 
-#include <cppuhelper/typeprovider.hxx>
-
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <tools/solar.h>
-
-#include <vector>
 
 using com::sun::star::uno::Any;
-using com::sun::star::uno::Type;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::Exception;
-using com::sun::star::uno::RuntimeException;
 using com::sun::star::lang::IllegalArgumentException;
 using com::sun::star::beans::Property;
 using com::sun::star::beans::XPropertySetInfo;
@@ -44,13 +35,11 @@ PropertyAccessorBase::~PropertyAccessorBase()
 }
 
 PropertySetBase::PropertySetBase( )
-    :m_pProperties( nullptr )
 {
 }
 
 PropertySetBase::~PropertySetBase( )
 {
-    DELETEZ( m_pProperties );
 }
 
 cppu::IPropertyArrayHelper& SAL_CALL PropertySetBase::getInfoHelper()
@@ -58,7 +47,7 @@ cppu::IPropertyArrayHelper& SAL_CALL PropertySetBase::getInfoHelper()
     if ( !m_pProperties )
     {
         OSL_ENSURE( !m_aProperties.empty(), "PropertySetBase::getInfoHelper: no registered properties!" );
-        m_pProperties = new cppu::OPropertyArrayHelper( &m_aProperties[0], m_aProperties.size(), false );
+        m_pProperties.reset(new cppu::OPropertyArrayHelper( m_aProperties.data(), m_aProperties.size(), false ));
     }
     return *m_pProperties;
 }
@@ -71,8 +60,9 @@ Reference< XPropertySetInfo > SAL_CALL PropertySetBase::getPropertySetInfo(  )
 void PropertySetBase::registerProperty( const Property& rProperty,
     const ::rtl::Reference< PropertyAccessorBase >& rAccessor )
 {
-    OSL_ENSURE( rAccessor.get(), "PropertySetBase::registerProperty: invalid property accessor, this will crash!" );
-    m_aAccessors.insert( PropertyAccessors::value_type( rProperty.Handle, rAccessor ) );
+    OSL_ENSURE(rAccessor,
+               "PropertySetBase::registerProperty: invalid property accessor, this will crash!");
+    m_aAccessors.emplace( rProperty.Handle, rAccessor );
 
     OSL_ENSURE( rAccessor->isWriteable()
                 == ( ( rProperty.Attributes & css::beans::PropertyAttribute::READONLY ) == 0 ),
@@ -98,7 +88,7 @@ void PropertySetBase::notifyAndCachePropertyValue( sal_Int32 nHandle )
             // default construct a value of this type
             Any aEmptyValue( nullptr, aProperty.Type );
             // insert into the cache
-            aPos = m_aCache.insert( PropertyValueCache::value_type( nHandle, aEmptyValue ) ).first;
+            aPos = m_aCache.emplace( nHandle, aEmptyValue ).first;
         }
         catch( const Exception& )
         {
@@ -123,14 +113,14 @@ void PropertySetBase::initializePropertyValueCache( sal_Int32 nHandle )
     getFastPropertyValue( aCurrentValue, nHandle );
 
     ::std::pair< PropertyValueCache::iterator, bool > aInsertResult =
-          m_aCache.insert( PropertyValueCache::value_type( nHandle, aCurrentValue ) );
+          m_aCache.emplace( nHandle, aCurrentValue );
     OSL_ENSURE( aInsertResult.second, "PropertySetBase::initializePropertyValueCache: already cached a value for this property!" );
 }
 
 PropertyAccessorBase& PropertySetBase::locatePropertyHandler( sal_Int32 nHandle ) const
 {
     PropertyAccessors::const_iterator aPropertyPos = m_aAccessors.find( nHandle );
-    OSL_ENSURE( aPropertyPos != m_aAccessors.end() && aPropertyPos->second.get(),
+    OSL_ENSURE( aPropertyPos != m_aAccessors.end() && aPropertyPos->second,
         "PropertySetBase::locatePropertyHandler: accessor map is corrupted!" );
         // neither should this be called for handles where there is no accessor, nor should a
         // NULL accessor be in the map

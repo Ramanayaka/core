@@ -19,25 +19,21 @@
 
 #include <drawinglayer/primitive2d/unifiedtransparenceprimitive2d.hxx>
 #include <svx/sdr/overlay/overlaybitmapex.hxx>
-#include <vcl/outdev.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <sdr/overlay/overlaytools.hxx>
 
 
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         drawinglayer::primitive2d::Primitive2DContainer OverlayBitmapEx::createOverlayObjectPrimitive2DSequence()
         {
             drawinglayer::primitive2d::Primitive2DReference aReference(
                 new drawinglayer::primitive2d::OverlayBitmapExPrimitive(
-                    getBitmapEx(),
+                    maBitmapEx,
                     getBasePosition(),
-                    getCenterX(),
-                    getCenterY(),
-                    getShearX(),
-                    getRotation()));
+                    mnCenterX,
+                    mnCenterY,
+                    mfShearX,
+                    mfRotation));
 
             if(basegfx::fTools::more(mfAlpha, 0.0))
             {
@@ -57,7 +53,7 @@ namespace sdr
             double fAlpha,
             double fShearX,
             double fRotation)
-        :   OverlayObjectWithBasePosition(rBasePos, Color(COL_WHITE)),
+        :   OverlayObjectWithBasePosition(rBasePos, COL_WHITE),
             maBitmapEx(rBitmapEx),
             mnCenterX(nCenX),
             mnCenterY(nCenY),
@@ -70,7 +66,7 @@ namespace sdr
         OverlayBitmapEx::~OverlayBitmapEx()
         {
         }
-    } // end of namespace overlay
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

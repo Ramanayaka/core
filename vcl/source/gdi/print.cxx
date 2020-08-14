@@ -18,32 +18,35 @@
  */
 
 #include <sal/types.h>
+#include <sal/log.hxx>
 
-#include <tools/resary.hxx>
 #include <tools/helpers.hxx>
+#include <tools/debug.hxx>
 
+#include <vcl/QueueInfo.hxx>
+#include <vcl/event.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/print.hxx>
 
 #include <comphelper/processfactory.hxx>
 
-#include "salinst.hxx"
-#include "salvd.hxx"
-#include "salgdi.hxx"
-#include "salptype.hxx"
-#include "salprn.hxx"
-#include "svdata.hxx"
-#include "svids.hrc"
-#include "jobset.h"
-#include "outdev.h"
-#include "PhysicalFontCollection.hxx"
-#include "print.h"
+#include <salinst.hxx>
+#include <salvd.hxx>
+#include <salgdi.hxx>
+#include <salptype.hxx>
+#include <salprn.hxx>
+#include <svdata.hxx>
+#include <print.hrc>
+#include <jobset.h>
+#include <outdev.h>
+#include <PhysicalFontCollection.hxx>
+#include <print.h>
 
-#include "com/sun/star/beans/XPropertySet.hpp"
-#include "com/sun/star/configuration/theDefaultProvider.hpp"
-#include "com/sun/star/container/XNameAccess.hpp"
-#include "com/sun/star/lang/XMultiServiceFactory.hpp"
-#include "com/sun/star/uno/Sequence.h"
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/configuration/theDefaultProvider.hpp>
+#include <com/sun/star/container/XNameAccess.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/uno/Sequence.h>
 
 int nImplSysDialog = 0;
 
@@ -102,11 +105,7 @@ PrinterOptions::PrinterOptions() :
 {
 }
 
-PrinterOptions::~PrinterOptions()
-{
-}
-
-bool PrinterOptions::ReadFromConfig( bool i_bFile )
+void PrinterOptions::ReadFromConfig( bool i_bFile )
 {
     bool bSuccess = false;
     // save old state in case something goes wrong
@@ -146,19 +145,19 @@ bool PrinterOptions::ReadFromConfig( bool i_bFile )
                     if( xSet->getPropertyValue("ReduceTransparency") >>= bValue )
                         SetReduceTransparency( bValue );
                     if( xSet->getPropertyValue("ReducedTransparencyMode") >>= nValue )
-                        SetReducedTransparencyMode( (PrinterTransparencyMode)nValue );
+                        SetReducedTransparencyMode( static_cast<PrinterTransparencyMode>(nValue) );
                     if( xSet->getPropertyValue("ReduceGradients") >>= bValue )
                         SetReduceGradients( bValue );
                     if( xSet->getPropertyValue("ReducedGradientMode") >>= nValue )
-                        SetReducedGradientMode( (PrinterGradientMode)nValue );
+                        SetReducedGradientMode( static_cast<PrinterGradientMode>(nValue) );
                     if( xSet->getPropertyValue("ReducedGradientStepCount") >>= nValue )
-                        SetReducedGradientStepCount( (sal_uInt16)nValue );
+                        SetReducedGradientStepCount( static_cast<sal_uInt16>(nValue) );
                     if( xSet->getPropertyValue("ReduceBitmaps") >>= bValue )
                         SetReduceBitmaps( bValue );
                     if( xSet->getPropertyValue("ReducedBitmapMode") >>= nValue )
-                        SetReducedBitmapMode( (PrinterBitmapMode)nValue );
+                        SetReducedBitmapMode( static_cast<PrinterBitmapMode>(nValue) );
                     if( xSet->getPropertyValue("ReducedBitmapResolution") >>= nValue )
-                        SetReducedBitmapResolution( (sal_uInt16)nValue );
+                        SetReducedBitmapResolution( static_cast<sal_uInt16>(nValue) );
                     if( xSet->getPropertyValue("ReducedBitmapIncludesTransparency") >>= bValue )
                         SetReducedBitmapIncludesTransparency( bValue );
                     if( xSet->getPropertyValue("ConvertToGreyscales") >>= bValue )
@@ -180,7 +179,6 @@ bool PrinterOptions::ReadFromConfig( bool i_bFile )
 
     if( ! bSuccess )
         *this = aOldValues;
-    return bSuccess;
 }
 
 bool Printer::DrawTransformBitmapExDirect(
@@ -211,13 +209,13 @@ void Printer::DrawDeviceBitmap( const Point& rDestPt, const Size& rDestSize,
         // bitmap, but perform a full alpha blend against a white
         // background here.
         Bitmap aBmp( rBmpEx.GetBitmap() );
-        aBmp.Blend( rBmpEx.GetAlpha(), Color( COL_WHITE) );
+        aBmp.Blend( rBmpEx.GetAlpha(), COL_WHITE );
         DrawBitmap( rDestPt, rDestSize, rSrcPtPixel, rSrcSizePixel, aBmp );
     }
     else
     {
         Bitmap aBmp( rBmpEx.GetBitmap() ), aMask( rBmpEx.GetMask() );
-        aBmp.Replace( aMask, Color( COL_WHITE ) );
+        aBmp.Replace( aMask, COL_WHITE );
         ImplPrintTransparent( aBmp, aMask, rDestPt, rDestSize, rSrcPtPixel, rSrcSizePixel );
     }
 }
@@ -241,7 +239,7 @@ void Printer::EmulateDrawTransparent ( const tools::PolyPolygon& rPolyPoly,
     mpAlphaVDev = pOldAlphaVDev;
 
     tools::Rectangle       aPolyRect( LogicToPixel( rPolyPoly ).GetBoundRect() );
-    const Size      aDPISize( LogicToPixel( Size( 1, 1 ), MapUnit::MapInch ) );
+    const Size      aDPISize( LogicToPixel(Size(1, 1), MapMode(MapUnit::MapInch)) );
     const long      nBaseExtent = std::max( FRound( aDPISize.Width() / 300. ), 1L );
     long            nMove;
     const sal_uInt16    nTrans = ( nTransparencePercent < 13 ) ? 0 :
@@ -319,6 +317,13 @@ void Printer::CopyArea( const Point& /*rDestPt*/,
     SAL_WARN( "vcl.gdi", "Don't use OutputDevice::CopyArea(...) with printer devices!" );
 }
 
+tools::Rectangle Printer::GetBackgroundComponentBounds() const
+{
+    Point aPageOffset = Point( 0, 0 ) - this->GetPageOffsetPixel();
+    Size aSize  = this->GetPaperSizePixel();
+    return tools::Rectangle( aPageOffset, aSize );
+}
+
 void Printer::SetPrinterOptions( const PrinterOptions& i_rOptions )
 {
     *mpPrinterOptions = i_rOptions;
@@ -330,32 +335,10 @@ bool Printer::HasMirroredGraphics() const
     return false;
 }
 
-// QueueInfo
-QueueInfo::QueueInfo()
-{
-    mnStatus    = PrintQueueFlags::NONE;
-    mnJobs      = 0;
-}
-
-QueueInfo::QueueInfo( const QueueInfo& rInfo ) :
-    maPrinterName( rInfo.maPrinterName ),
-    maDriver( rInfo.maDriver ),
-    maLocation( rInfo.maLocation ),
-    maComment( rInfo.maComment ),
-    mnStatus( rInfo.mnStatus ),
-    mnJobs( rInfo.mnJobs )
-{
-}
-
-QueueInfo::~QueueInfo()
-{
-}
-
 SalPrinterQueueInfo::SalPrinterQueueInfo()
 {
     mnStatus    = PrintQueueFlags::NONE;
     mnJobs      = QUEUE_JOBS_DONTKNOW;
-    mpSysData   = nullptr;
 }
 
 SalPrinterQueueInfo::~SalPrinterQueueInfo()
@@ -364,40 +347,32 @@ SalPrinterQueueInfo::~SalPrinterQueueInfo()
 
 ImplPrnQueueList::~ImplPrnQueueList()
 {
-    ImplSVData*         pSVData = ImplGetSVData();
-    for(ImplPrnQueueData & rQueueInfo : m_aQueueInfos)
-    {
-        delete rQueueInfo.mpQueueInfo;
-        pSVData->mpDefInst->DeletePrinterQueueInfo( rQueueInfo.mpSalQueueInfo );
-    }
 }
 
-void ImplPrnQueueList::Add( SalPrinterQueueInfo* pData )
+void ImplPrnQueueList::Add( std::unique_ptr<SalPrinterQueueInfo> pData )
 {
-    std::unordered_map< OUString, sal_Int32, OUStringHash >::iterator it =
+    std::unordered_map< OUString, sal_Int32 >::iterator it =
         m_aNameToIndex.find( pData->maPrinterName );
     if( it == m_aNameToIndex.end() )
     {
         m_aNameToIndex[ pData->maPrinterName ] = m_aQueueInfos.size();
+        m_aPrinterList.push_back( pData->maPrinterName );
         m_aQueueInfos.push_back( ImplPrnQueueData() );
         m_aQueueInfos.back().mpQueueInfo = nullptr;
-        m_aQueueInfos.back().mpSalQueueInfo = pData;
-        m_aPrinterList.push_back( pData->maPrinterName );
+        m_aQueueInfos.back().mpSalQueueInfo = std::move(pData);
     }
     else // this should not happen, but ...
     {
         ImplPrnQueueData& rData = m_aQueueInfos[ it->second ];
-        delete rData.mpQueueInfo;
-        rData.mpQueueInfo = nullptr;
-        ImplGetSVData()->mpDefInst->DeletePrinterQueueInfo( rData.mpSalQueueInfo );
-        rData.mpSalQueueInfo = pData;
+        rData.mpQueueInfo.reset();
+        rData.mpSalQueueInfo = std::move(pData);
     }
 }
 
 ImplPrnQueueData* ImplPrnQueueList::Get( const OUString& rPrinter )
 {
     ImplPrnQueueData* pData = nullptr;
-    std::unordered_map<OUString,sal_Int32,OUStringHash>::iterator it =
+    std::unordered_map<OUString,sal_Int32>::iterator it =
         m_aNameToIndex.find( rPrinter );
     if( it != m_aNameToIndex.end() )
         pData = &m_aQueueInfos[it->second];
@@ -408,23 +383,17 @@ static void ImplInitPrnQueueList()
 {
     ImplSVData* pSVData = ImplGetSVData();
 
-    pSVData->maGDIData.mpPrinterQueueList = new ImplPrnQueueList;
+    pSVData->maGDIData.mpPrinterQueueList.reset(new ImplPrnQueueList);
 
     static const char* pEnv = getenv( "SAL_DISABLE_PRINTERLIST" );
     if( !pEnv || !*pEnv )
-        pSVData->mpDefInst->GetPrinterQueueInfo( pSVData->maGDIData.mpPrinterQueueList );
+        pSVData->mpDefInst->GetPrinterQueueInfo( pSVData->maGDIData.mpPrinterQueueList.get() );
 }
 
 void ImplDeletePrnQueueList()
 {
     ImplSVData*         pSVData = ImplGetSVData();
-    ImplPrnQueueList*   pPrnList = pSVData->maGDIData.mpPrinterQueueList;
-
-    if ( pPrnList )
-    {
-        delete pPrnList;
-        pSVData->maGDIData.mpPrinterQueueList = nullptr;
-    }
+    pSVData->maGDIData.mpPrinterQueueList.reset();
 }
 
 const std::vector<OUString>& Printer::GetPrinterQueues()
@@ -449,10 +418,10 @@ const QueueInfo* Printer::GetQueueInfo( const OUString& rPrinterName, bool bStat
     if( pInfo )
     {
         if( !pInfo->mpQueueInfo || bStatusUpdate )
-            pSVData->mpDefInst->GetPrinterQueueState( pInfo->mpSalQueueInfo );
+            pSVData->mpDefInst->GetPrinterQueueState( pInfo->mpSalQueueInfo.get() );
 
         if ( !pInfo->mpQueueInfo )
-            pInfo->mpQueueInfo = new QueueInfo;
+            pInfo->mpQueueInfo.reset(new QueueInfo);
 
         pInfo->mpQueueInfo->maPrinterName   = pInfo->mpSalQueueInfo->maPrinterName;
         pInfo->mpQueueInfo->maDriver        = pInfo->mpSalQueueInfo->maDriver;
@@ -460,7 +429,7 @@ const QueueInfo* Printer::GetQueueInfo( const OUString& rPrinterName, bool bStat
         pInfo->mpQueueInfo->maComment       = pInfo->mpSalQueueInfo->maComment;
         pInfo->mpQueueInfo->mnStatus        = pInfo->mpSalQueueInfo->mnStatus;
         pInfo->mpQueueInfo->mnJobs          = pInfo->mpSalQueueInfo->mnJobs;
-        return pInfo->mpQueueInfo;
+        return pInfo->mpQueueInfo.get();
     }
     return nullptr;
 }
@@ -480,7 +449,6 @@ OUString Printer::GetDefaultPrinterName()
 void Printer::ImplInitData()
 {
     mbDevOutput         = false;
-    meOutDevType        = OUTDEV_PRINTER;
     mbDefPrinter        = false;
     mnError             = ERRCODE_NONE;
     mnPageQueueSize     = 0;
@@ -494,7 +462,7 @@ void Printer::ImplInitData()
     mpInfoPrinter       = nullptr;
     mpPrinter           = nullptr;
     mpDisplayDev        = nullptr;
-    mpPrinterOptions    = new PrinterOptions;
+    mpPrinterOptions.reset(new PrinterOptions);
 
     // Add printer to the list
     ImplSVData* pSVData = ImplGetSVData();
@@ -502,8 +470,6 @@ void Printer::ImplInitData()
     mpPrev = nullptr;
     if ( mpNext )
         mpNext->mpPrev = this;
-    else
-        pSVData->maGDIData.mpLastPrinter = this;
     pSVData->maGDIData.mpFirstPrinter = this;
 }
 
@@ -572,7 +538,7 @@ bool Printer::AcquireGraphics() const
 
     if ( mpGraphics )
     {
-        mpGraphics->SetXORMode( (RasterOp::Invert == meRasterOp) || (RasterOp::Xor == meRasterOp) );
+        mpGraphics->SetXORMode( (RasterOp::Invert == meRasterOp) || (RasterOp::Xor == meRasterOp), RasterOp::Invert == meRasterOp );
         mpGraphics->setAntiAliasB2DDraw(bool(mnAntialiasing & AntialiasingFlags::EnableB2dDraw));
     }
 
@@ -591,23 +557,9 @@ void Printer::ImplReleaseFonts()
     mbNewFont = true;
     mbInitFont = true;
 
-    if ( mpFontInstance )
-    {
-        mpFontCache->Release( mpFontInstance );
-        mpFontInstance = nullptr;
-    }
-
-    if ( mpDeviceFontList )
-    {
-        delete mpDeviceFontList;
-        mpDeviceFontList = nullptr;
-    }
-
-    if ( mpDeviceFontSizeList )
-    {
-        delete mpDeviceFontSizeList;
-        mpDeviceFontSizeList = nullptr;
-    }
+    mpFontInstance.clear();
+    mpDeviceFontList.reset();
+    mpDeviceFontSizeList.reset();
 }
 
 void Printer::ReleaseGraphics( bool bRelease )
@@ -676,7 +628,7 @@ void Printer::ImplInit( SalPrinterQueueInfo* pInfo )
         if ( rData.GetPrinterName() != pInfo->maPrinterName ||
              rData.GetDriver() != pInfo->maDriver )
         {
-            rtl_freeMemory( const_cast<sal_uInt8*>(rData.GetDriverData()) );
+            std::free( const_cast<sal_uInt8*>(rData.GetDriverData()) );
             rData.SetDriverData(nullptr);
             rData.SetDriverDataLen(0);
         }
@@ -710,9 +662,9 @@ void Printer::ImplInit( SalPrinterQueueInfo* pInfo )
 
     // Init data
     ImplUpdatePageData();
-    mpFontCollection = new PhysicalFontCollection();
-    mpFontCache = new ImplFontCache();
-    mpGraphics->GetDevFontList( mpFontCollection );
+    mxFontCollection = std::make_shared<PhysicalFontCollection>();
+    mxFontCache = std::make_shared<ImplFontCache>();
+    mpGraphics->GetDevFontList(mxFontCollection.get());
 }
 
 void Printer::ImplInitDisplay()
@@ -724,8 +676,8 @@ void Printer::ImplInitDisplay()
     mpJobGraphics       = nullptr;
 
     mpDisplayDev = VclPtr<VirtualDevice>::Create();
-    mpFontCollection          = pSVData->maGDIData.mpScreenFontList;
-    mpFontCache         = pSVData->maGDIData.mpScreenFontCache;
+    mxFontCollection    = pSVData->maGDIData.mxScreenFontList;
+    mxFontCache         = pSVData->maGDIData.mxScreenFontCache;
     mnDPIX              = mpDisplayDev->mnDPIX;
     mnDPIY              = mpDisplayDev->mnDPIY;
 }
@@ -734,89 +686,86 @@ void Printer::DrawDeviceMask( const Bitmap& rMask, const Color& rMaskColor,
                          const Point& rDestPt, const Size& rDestSize,
                          const Point& rSrcPtPixel, const Size& rSrcSizePixel )
 {
-    Point       aPt;
     Point       aDestPt( LogicToPixel( rDestPt ) );
     Size        aDestSz( LogicToPixel( rDestSize ) );
     tools::Rectangle   aSrcRect( rSrcPtPixel, rSrcSizePixel );
 
     aSrcRect.Justify();
 
-    if( !rMask.IsEmpty() && aSrcRect.GetWidth() && aSrcRect.GetHeight() && aDestSz.Width() && aDestSz.Height() )
+    if( !(!rMask.IsEmpty() && aSrcRect.GetWidth() && aSrcRect.GetHeight() && aDestSz.Width() && aDestSz.Height()) )
+        return;
+
+    Bitmap  aMask( rMask );
+    BmpMirrorFlags nMirrFlags = BmpMirrorFlags::NONE;
+
+    if( aMask.GetBitCount() > 1 )
+        aMask.Convert( BmpConversion::N1BitThreshold );
+
+    // mirrored horizontically
+    if( aDestSz.Width() < 0 )
     {
-        Bitmap  aMask( rMask );
-        BmpMirrorFlags nMirrFlags = BmpMirrorFlags::NONE;
-
-        if( aMask.GetBitCount() > 1 )
-            aMask.Convert( BmpConversion::N1BitThreshold );
-
-        // mirrored horizontically
-        if( aDestSz.Width() < 0 )
-        {
-            aDestSz.Width() = -aDestSz.Width();
-            aDestPt.X() -= ( aDestSz.Width() - 1 );
-            nMirrFlags |= BmpMirrorFlags::Horizontal;
-        }
-
-        // mirrored vertically
-        if( aDestSz.Height() < 0 )
-        {
-            aDestSz.Height() = -aDestSz.Height();
-            aDestPt.Y() -= ( aDestSz.Height() - 1 );
-            nMirrFlags |= BmpMirrorFlags::Vertical;
-        }
-
-        // source cropped?
-        if( aSrcRect != tools::Rectangle( aPt, aMask.GetSizePixel() ) )
-            aMask.Crop( aSrcRect );
-
-        // destination mirrored
-        if( nMirrFlags != BmpMirrorFlags::NONE)
-            aMask.Mirror( nMirrFlags );
-
-        // do painting
-        const long      nSrcWidth = aSrcRect.GetWidth(), nSrcHeight = aSrcRect.GetHeight();
-        long            nX, nY; //, nWorkX, nWorkY, nWorkWidth, nWorkHeight;
-        long*           pMapX = new long[ nSrcWidth + 1 ];
-        long*           pMapY = new long[ nSrcHeight + 1 ];
-        GDIMetaFile*    pOldMetaFile = mpMetaFile;
-        const bool      bOldMap = mbMap;
-
-        mpMetaFile = nullptr;
-        mbMap = false;
-        Push( PushFlags::FILLCOLOR | PushFlags::LINECOLOR );
-        SetLineColor( rMaskColor );
-        SetFillColor( rMaskColor );
-        InitLineColor();
-        InitFillColor();
-
-        // create forward mapping tables
-        for( nX = 0; nX <= nSrcWidth; nX++ )
-            pMapX[ nX ] = aDestPt.X() + FRound( (double) aDestSz.Width() * nX / nSrcWidth );
-
-        for( nY = 0; nY <= nSrcHeight; nY++ )
-            pMapY[ nY ] = aDestPt.Y() + FRound( (double) aDestSz.Height() * nY / nSrcHeight );
-
-        // walk through all rectangles of mask
-        const vcl::Region aWorkRgn(aMask.CreateRegion(COL_BLACK, tools::Rectangle(Point(), aMask.GetSizePixel())));
-        RectangleVector aRectangles;
-        aWorkRgn.GetRegionRectangles(aRectangles);
-
-        for(RectangleVector::const_iterator aRectIter(aRectangles.begin()); aRectIter != aRectangles.end(); ++aRectIter)
-        {
-            const Point aMapPt(pMapX[aRectIter->Left()], pMapY[aRectIter->Top()]);
-            const Size aMapSz(
-                pMapX[aRectIter->Right() + 1] - aMapPt.X(),      // pMapX[L + W] -> L + ((R - L) + 1) -> R + 1
-                pMapY[aRectIter->Bottom() + 1] - aMapPt.Y());    // same for Y
-
-            DrawRect(tools::Rectangle(aMapPt, aMapSz));
-        }
-
-        Pop();
-        delete[] pMapX;
-        delete[] pMapY;
-        mbMap = bOldMap;
-        mpMetaFile = pOldMetaFile;
+        aDestSz.setWidth( -aDestSz.Width() );
+        aDestPt.AdjustX( -( aDestSz.Width() - 1 ) );
+        nMirrFlags |= BmpMirrorFlags::Horizontal;
     }
+
+    // mirrored vertically
+    if( aDestSz.Height() < 0 )
+    {
+        aDestSz.setHeight( -aDestSz.Height() );
+        aDestPt.AdjustY( -( aDestSz.Height() - 1 ) );
+        nMirrFlags |= BmpMirrorFlags::Vertical;
+    }
+
+    // source cropped?
+    if( aSrcRect != tools::Rectangle( Point(), aMask.GetSizePixel() ) )
+        aMask.Crop( aSrcRect );
+
+    // destination mirrored
+    if( nMirrFlags != BmpMirrorFlags::NONE)
+        aMask.Mirror( nMirrFlags );
+
+    // do painting
+    const long      nSrcWidth = aSrcRect.GetWidth(), nSrcHeight = aSrcRect.GetHeight();
+    long            nX, nY; //, nWorkX, nWorkY, nWorkWidth, nWorkHeight;
+    std::unique_ptr<long[]> pMapX( new long[ nSrcWidth + 1 ] );
+    std::unique_ptr<long[]> pMapY( new long[ nSrcHeight + 1 ] );
+    GDIMetaFile*    pOldMetaFile = mpMetaFile;
+    const bool      bOldMap = mbMap;
+
+    mpMetaFile = nullptr;
+    mbMap = false;
+    Push( PushFlags::FILLCOLOR | PushFlags::LINECOLOR );
+    SetLineColor( rMaskColor );
+    SetFillColor( rMaskColor );
+    InitLineColor();
+    InitFillColor();
+
+    // create forward mapping tables
+    for( nX = 0; nX <= nSrcWidth; nX++ )
+        pMapX[ nX ] = aDestPt.X() + FRound( static_cast<double>(aDestSz.Width()) * nX / nSrcWidth );
+
+    for( nY = 0; nY <= nSrcHeight; nY++ )
+        pMapY[ nY ] = aDestPt.Y() + FRound( static_cast<double>(aDestSz.Height()) * nY / nSrcHeight );
+
+    // walk through all rectangles of mask
+    const vcl::Region aWorkRgn(aMask.CreateRegion(COL_BLACK, tools::Rectangle(Point(), aMask.GetSizePixel())));
+    RectangleVector aRectangles;
+    aWorkRgn.GetRegionRectangles(aRectangles);
+
+    for (auto const& rectangle : aRectangles)
+    {
+        const Point aMapPt(pMapX[rectangle.Left()], pMapY[rectangle.Top()]);
+        const Size aMapSz(
+            pMapX[rectangle.Right() + 1] - aMapPt.X(),      // pMapX[L + W] -> L + ((R - L) + 1) -> R + 1
+            pMapY[rectangle.Bottom() + 1] - aMapPt.Y());    // same for Y
+
+        DrawRect(tools::Rectangle(aMapPt, aMapSz));
+    }
+
+    Pop();
+    mbMap = bOldMap;
+    mpMetaFile = pOldMetaFile;
 }
 
 SalPrinterQueueInfo* Printer::ImplGetQueueInfo( const OUString& rPrinterName,
@@ -826,38 +775,38 @@ SalPrinterQueueInfo* Printer::ImplGetQueueInfo( const OUString& rPrinterName,
     if ( !pSVData->maGDIData.mpPrinterQueueList )
         ImplInitPrnQueueList();
 
-    ImplPrnQueueList* pPrnList = pSVData->maGDIData.mpPrinterQueueList;
-    if ( pPrnList && pPrnList->m_aQueueInfos.size() )
+    ImplPrnQueueList* pPrnList = pSVData->maGDIData.mpPrinterQueueList.get();
+    if ( pPrnList && !pPrnList->m_aQueueInfos.empty() )
     {
         // first search for the printer name directly
         ImplPrnQueueData* pInfo = pPrnList->Get( rPrinterName );
         if( pInfo )
-            return pInfo->mpSalQueueInfo;
+            return pInfo->mpSalQueueInfo.get();
 
         // then search case insensitive
-        for(ImplPrnQueueData & rQueueInfo : pPrnList->m_aQueueInfos)
+        for(const ImplPrnQueueData & rQueueInfo : pPrnList->m_aQueueInfos)
         {
             if( rQueueInfo.mpSalQueueInfo->maPrinterName.equalsIgnoreAsciiCase( rPrinterName ) )
-                return rQueueInfo.mpSalQueueInfo;
+                return rQueueInfo.mpSalQueueInfo.get();
         }
 
         // then search for driver name
         if ( pDriver )
         {
-            for(ImplPrnQueueData & rQueueInfo : pPrnList->m_aQueueInfos)
+            for(const ImplPrnQueueData & rQueueInfo : pPrnList->m_aQueueInfos)
             {
                 if( rQueueInfo.mpSalQueueInfo->maDriver == *pDriver )
-                    return rQueueInfo.mpSalQueueInfo;
+                    return rQueueInfo.mpSalQueueInfo.get();
             }
         }
 
         // then the default printer
         pInfo = pPrnList->Get( GetDefaultPrinterName() );
         if( pInfo )
-            return pInfo->mpSalQueueInfo;
+            return pInfo->mpSalQueueInfo.get();
 
         // last chance: the first available printer
-        return pPrnList->m_aQueueInfos[0].mpSalQueueInfo;
+        return pPrnList->m_aQueueInfos[0].mpSalQueueInfo.get();
     }
 
     return nullptr;
@@ -872,8 +821,8 @@ void Printer::ImplUpdatePageData()
     mpGraphics->GetResolution( mnDPIX, mnDPIY );
     mpInfoPrinter->GetPageInfo( &maJobSetup.ImplGetConstData(),
                                 mnOutWidth, mnOutHeight,
-                                maPageOffset.X(), maPageOffset.Y(),
-                                maPaperSize.Width(), maPaperSize.Height() );
+                                maPageOffset,
+                                maPaperSize );
 }
 
 void Printer::ImplUpdateFontList()
@@ -890,6 +839,7 @@ long Printer::GetGradientStepCount( long nMinRect )
 }
 
 Printer::Printer()
+    : OutputDevice(OUTDEV_PRINTER)
 {
     ImplInitData();
     SalPrinterQueueInfo* pInfo = ImplGetQueueInfo( GetDefaultPrinterName(), nullptr );
@@ -903,8 +853,9 @@ Printer::Printer()
         ImplInitDisplay();
 }
 
-Printer::Printer( const JobSetup& rJobSetup ) :
-    maJobSetup( rJobSetup )
+Printer::Printer( const JobSetup& rJobSetup )
+    : OutputDevice(OUTDEV_PRINTER)
+    , maJobSetup(rJobSetup)
 {
     ImplInitData();
     const ImplJobSetup& rConstData = rJobSetup.ImplGetConstData();
@@ -924,6 +875,7 @@ Printer::Printer( const JobSetup& rJobSetup ) :
 }
 
 Printer::Printer( const QueueInfo& rQueueInfo )
+    : OutputDevice(OUTDEV_PRINTER)
 {
     ImplInitData();
     SalPrinterQueueInfo* pInfo = ImplGetQueueInfo( rQueueInfo.GetPrinterName(),
@@ -935,6 +887,7 @@ Printer::Printer( const QueueInfo& rQueueInfo )
 }
 
 Printer::Printer( const OUString& rPrinterName )
+    : OutputDevice(OUTDEV_PRINTER)
 {
     ImplInitData();
     SalPrinterQueueInfo* pInfo = ImplGetQueueInfo( rPrinterName, nullptr );
@@ -954,8 +907,7 @@ void Printer::dispose()
     SAL_WARN_IF( IsPrinting(), "vcl.gdi", "Printer::~Printer() - Job is printing" );
     SAL_WARN_IF( IsJobActive(), "vcl.gdi", "Printer::~Printer() - Job is active" );
 
-    delete mpPrinterOptions;
-    mpPrinterOptions = nullptr;
+    mpPrinterOptions.reset();
 
     ReleaseGraphics();
     if ( mpInfoPrinter )
@@ -967,23 +919,10 @@ void Printer::dispose()
         // OutputDevice Dtor is trying the same thing; that why we need to set
         // the FontEntry to NULL here
         // TODO: consolidate duplicate cleanup by Printer and OutputDevice
-        if ( mpFontInstance )
-        {
-            mpFontCache->Release( mpFontInstance );
-            mpFontInstance = nullptr;
-        }
-        if ( mpDeviceFontList )
-        {
-            delete mpDeviceFontList;
-            mpDeviceFontList = nullptr;
-        }
-        if ( mpDeviceFontSizeList )
-        {
-            delete mpDeviceFontSizeList;
-            mpDeviceFontSizeList = nullptr;
-        }
-        delete mpFontCache;
-        mpFontCache = nullptr;
+        mpFontInstance.clear();
+        mpDeviceFontList.reset();
+        mpDeviceFontSizeList.reset();
+        mxFontCache.reset();
         // font list deleted by OutputDevice dtor
     }
 
@@ -995,12 +934,23 @@ void Printer::dispose()
         pSVData->maGDIData.mpFirstPrinter = mpNext;
     if ( mpNext )
         mpNext->mpPrev = mpPrev;
-    else
-        pSVData->maGDIData.mpLastPrinter = mpPrev;
 
     mpPrev.clear();
     mpNext.clear();
     OutputDevice::dispose();
+}
+
+Size Printer::GetButtonBorderSize()
+{
+    Size aBrdSize(LogicToPixel(Size(20, 20), MapMode(MapUnit::Map100thMM)));
+
+    if (!aBrdSize.Width())
+        aBrdSize.setWidth(1);
+
+    if (!aBrdSize.Height())
+        aBrdSize.setHeight(1);
+
+    return aBrdSize;
 }
 
 sal_uInt32 Printer::GetCapabilities( PrinterCapType nType ) const
@@ -1054,7 +1004,7 @@ bool Printer::SetJobSetup( const JobSetup& rSetup )
     return false;
 }
 
-bool Printer::Setup( vcl::Window* pWindow, bool bPapersizeFromSetup )
+bool Printer::Setup(weld::Window* pWindow, PrinterSetupMode eMode)
 {
     if ( IsDisplayPrinter() )
         return false;
@@ -1064,19 +1014,22 @@ bool Printer::Setup( vcl::Window* pWindow, bool bPapersizeFromSetup )
 
     JobSetup aJobSetup = maJobSetup;
     ImplJobSetup& rData = aJobSetup.ImplGetData();
-    rData.SetPapersizeFromSetup( bPapersizeFromSetup );
-    SalFrame* pFrame;
-    if ( !pWindow )
-        pWindow = ImplGetDefaultWindow();
+    rData.SetPrinterSetupMode( eMode );
+    // TODO: orig page size
+
+    if (!pWindow)
+    {
+        vcl::Window* pDefWin = ImplGetDefaultWindow();
+        pWindow = pDefWin ? pDefWin->GetFrameWeld() : nullptr;
+    }
     if( !pWindow )
         return false;
 
-    pFrame = pWindow->ImplGetFrame();
     ReleaseGraphics();
     ImplSVData* pSVData = ImplGetSVData();
     pSVData->maAppData.mnModalMode++;
     nImplSysDialog++;
-    bool bSetup = mpInfoPrinter->Setup( pFrame, &rData );
+    bool bSetup = mpInfoPrinter->Setup(pWindow, &rData);
     pSVData->maAppData.mnModalMode--;
     nImplSysDialog--;
     if ( bSetup )
@@ -1113,26 +1066,12 @@ bool Printer::SetPrinterProps( const Printer* pPrinter )
         {
             ReleaseGraphics();
             pSVData->mpDefInst->DestroyInfoPrinter( mpInfoPrinter );
-            if ( mpFontInstance )
-            {
-                mpFontCache->Release( mpFontInstance );
-                mpFontInstance = nullptr;
-            }
-            if ( mpDeviceFontList )
-            {
-                delete mpDeviceFontList;
-                mpDeviceFontList = nullptr;
-            }
-            if ( mpDeviceFontSizeList )
-            {
-                delete mpDeviceFontSizeList;
-                mpDeviceFontSizeList = nullptr;
-            }
+            mpFontInstance.clear();
+            mpDeviceFontList.reset();
+            mpDeviceFontSizeList.reset();
             // clean up font list
-            delete mpFontCache;
-            delete mpFontCollection;
-            mpFontCache = nullptr;
-            mpFontCollection = nullptr;
+            mxFontCache.reset();
+            mxFontCollection.reset();
 
             mbInitFont = true;
             mbNewFont = true;
@@ -1156,25 +1095,11 @@ bool Printer::SetPrinterProps( const Printer* pPrinter )
         {
             pSVData->mpDefInst->DestroyInfoPrinter( mpInfoPrinter );
 
-            if ( mpFontInstance )
-            {
-                mpFontCache->Release( mpFontInstance );
-                mpFontInstance = nullptr;
-            }
-            if ( mpDeviceFontList )
-            {
-                delete mpDeviceFontList;
-                mpDeviceFontList = nullptr;
-            }
-            if ( mpDeviceFontSizeList )
-            {
-                delete mpDeviceFontSizeList;
-                mpDeviceFontSizeList = nullptr;
-            }
-            delete mpFontCache;
-            delete mpFontCollection;
-            mpFontCache = nullptr;
-            mpFontCollection = nullptr;
+            mpFontInstance.clear();
+            mpDeviceFontList.reset();
+            mpDeviceFontSizeList.reset();
+            mxFontCache.reset();
+            mxFontCollection.reset();
             mbInitFont = true;
             mbNewFont = true;
             mpInfoPrinter = nullptr;
@@ -1279,17 +1204,34 @@ sal_uInt16 Printer::GetPaperBin() const
     return maJobSetup.ImplGetConstData().GetPaperBin();
 }
 
-// Map user paper format to a available printer paper formats
-void Printer::ImplFindPaperFormatForUserSize( JobSetup& aJobSetup, bool bMatchNearest )
+bool Printer::GetPrinterSettingsPreferred() const
+{
+    return maJobSetup.ImplGetConstData().GetPapersizeFromSetup();
+}
+
+// dear loplugins, DO NOT REMOVE this code
+// it will be used in follow-up commits
+void Printer::SetPrinterSettingsPreferred( bool bPaperSizeFromSetup)
+{
+    if ( maJobSetup.ImplGetConstData().GetPapersizeFromSetup() != bPaperSizeFromSetup )
+    {
+        JobSetup      aJobSetup = maJobSetup;
+        ImplJobSetup& rData = aJobSetup.ImplGetData();
+        rData.SetPapersizeFromSetup(bPaperSizeFromSetup);
+
+        mbNewJobSetup = true;
+        maJobSetup = aJobSetup;
+    }
+}
+
+// Map user paper format to an available printer paper format
+void Printer::ImplFindPaperFormatForUserSize( JobSetup& aJobSetup )
 {
     ImplJobSetup& rData = aJobSetup.ImplGetData();
 
     // The angle that a landscape page will be turned counterclockwise wrt to portrait.
     int     nLandscapeAngle = mpInfoPrinter ? mpInfoPrinter->GetLandscapeAngle( &maJobSetup.ImplGetConstData() ) : 900;
-
     int     nPaperCount     = GetPaperInfoCount();
-    bool    bFound = false;
-
     PaperInfo aInfo(rData.GetPaperWidth(), rData.GetPaperHeight());
 
     // Compare all paper formats and get the appropriate one
@@ -1303,133 +1245,83 @@ void Printer::ImplFindPaperFormatForUserSize( JobSetup& aJobSetup, bool bMatchNe
                 ImplGetPaperFormat( rPaperInfo.getWidth(),
                     rPaperInfo.getHeight() ));
             rData.SetOrientation( Orientation::Portrait );
-            bFound = true;
-            break;
+            return;
         }
     }
 
     // If the printer supports landscape orientation, check paper sizes again
     // with landscape orientation. This is necessary as a printer driver provides
     // all paper sizes with portrait orientation only!!
-    if ( rData.GetPaperFormat() == PAPER_USER &&
+    if ( !(rData.GetPaperFormat() == PAPER_USER &&
          nLandscapeAngle != 0 &&
-         HasSupport( PrinterSupport::SetOrientation ))
-    {
-        const long nRotatedWidth = rData.GetPaperHeight();
-        const long nRotatedHeight = rData.GetPaperWidth();
-        PaperInfo aRotatedInfo(nRotatedWidth, nRotatedHeight);
+         HasSupport( PrinterSupport::SetOrientation )))
+        return;
 
-        for ( int i = 0; i < nPaperCount; i++ )
+    const long nRotatedWidth = rData.GetPaperHeight();
+    const long nRotatedHeight = rData.GetPaperWidth();
+    PaperInfo aRotatedInfo(nRotatedWidth, nRotatedHeight);
+
+    for ( int i = 0; i < nPaperCount; i++ )
+    {
+        const PaperInfo& rPaperInfo = GetPaperInfo( i );
+
+        if ( aRotatedInfo.sloppyEqual( rPaperInfo ) )
         {
-            const PaperInfo& rPaperInfo = GetPaperInfo( i );
-
-            if ( aRotatedInfo.sloppyEqual( rPaperInfo ) )
-            {
-                rData.SetPaperFormat(
-                    ImplGetPaperFormat( rPaperInfo.getWidth(),
-                        rPaperInfo.getHeight() ));
-                rData.SetOrientation( Orientation::Landscape );
-                bFound = true;
-                break;
-            }
+            rData.SetPaperFormat(
+                ImplGetPaperFormat( rPaperInfo.getWidth(),
+                    rPaperInfo.getHeight() ));
+            rData.SetOrientation( Orientation::Landscape );
+            return;
         }
-    }
-
-    if( ! bFound && bMatchNearest )
-    {
-         sal_Int64 nBestMatch = SAL_MAX_INT64;
-         int nBestIndex = 0;
-         Orientation eBestOrientation = Orientation::Portrait;
-         for( int i = 0; i < nPaperCount; i++ )
-         {
-             const PaperInfo& rPaperInfo = GetPaperInfo( i );
-
-             // check portrait match
-             sal_Int64 nDX = rData.GetPaperWidth() - rPaperInfo.getWidth();
-             sal_Int64 nDY = rData.GetPaperHeight() - rPaperInfo.getHeight();
-             sal_Int64 nMatch = nDX*nDX + nDY*nDY;
-             if( nMatch < nBestMatch )
-             {
-                 nBestMatch = nMatch;
-                 nBestIndex = i;
-                 eBestOrientation = Orientation::Portrait;
-             }
-
-             // check landscape match
-             nDX = rData.GetPaperWidth() - rPaperInfo.getHeight();
-             nDY = rData.GetPaperHeight() - rPaperInfo.getWidth();
-             nMatch = nDX*nDX + nDY*nDY;
-             if( nMatch < nBestMatch )
-             {
-                 nBestMatch = nMatch;
-                 nBestIndex = i;
-                 eBestOrientation = Orientation::Landscape;
-             }
-         }
-         const PaperInfo& rBestInfo = GetPaperInfo( nBestIndex );
-         rData.SetPaperFormat(
-            ImplGetPaperFormat( rBestInfo.getWidth(),
-                rBestInfo.getHeight() ));
-         rData.SetOrientation(eBestOrientation);
     }
 }
 
-bool Printer::SetPaper( Paper ePaper )
+void Printer::SetPaper( Paper ePaper )
 {
     if ( mbInPrintPage )
-        return false;
+        return;
 
-    if ( maJobSetup.ImplGetConstData().GetPaperFormat() != ePaper )
+    if ( maJobSetup.ImplGetConstData().GetPaperFormat() == ePaper )
+        return;
+
+    JobSetup      aJobSetup = maJobSetup;
+    ImplJobSetup& rData = aJobSetup.ImplGetData();
+
+    rData.SetPaperFormat( ePaper );
+    if ( ePaper != PAPER_USER )
     {
-        JobSetup      aJobSetup = maJobSetup;
-        ImplJobSetup& rData = aJobSetup.ImplGetData();
-
-        rData.SetPaperFormat( ePaper );
-        if ( ePaper != PAPER_USER )
-        {
-            PaperInfo aInfo(ePaper);
-            rData.SetPaperWidth( aInfo.getWidth() );
-            rData.SetPaperHeight( aInfo.getHeight() );
-        }
-
-        if ( IsDisplayPrinter() )
-        {
-            mbNewJobSetup = true;
-            maJobSetup = aJobSetup;
-            return true;
-        }
-
-        ReleaseGraphics();
-        if ( ePaper == PAPER_USER )
-            ImplFindPaperFormatForUserSize( aJobSetup, false );
-        if ( mpInfoPrinter->SetData( JobSetFlags::PAPERSIZE | JobSetFlags::ORIENTATION, &rData ))
-        {
-            ImplUpdateJobSetupPaper( aJobSetup );
-            mbNewJobSetup = true;
-            maJobSetup = aJobSetup;
-            ImplUpdatePageData();
-            ImplUpdateFontList();
-            return true;
-        }
-        else
-            return false;
+        PaperInfo aInfo(ePaper);
+        rData.SetPaperWidth( aInfo.getWidth() );
+        rData.SetPaperHeight( aInfo.getHeight() );
     }
 
-    return true;
+    if ( IsDisplayPrinter() )
+    {
+        mbNewJobSetup = true;
+        maJobSetup = aJobSetup;
+        return;
+    }
+
+    ReleaseGraphics();
+    if ( ePaper == PAPER_USER )
+        ImplFindPaperFormatForUserSize( aJobSetup );
+    if ( mpInfoPrinter->SetData( JobSetFlags::PAPERSIZE | JobSetFlags::ORIENTATION, &rData ))
+    {
+        ImplUpdateJobSetupPaper( aJobSetup );
+        mbNewJobSetup = true;
+        maJobSetup = aJobSetup;
+        ImplUpdatePageData();
+        ImplUpdateFontList();
+    }
 }
 
 bool Printer::SetPaperSizeUser( const Size& rSize )
-{
-    return SetPaperSizeUser( rSize, false );
-}
-
-bool Printer::SetPaperSizeUser( const Size& rSize, bool bMatchNearest )
 {
     if ( mbInPrintPage )
         return false;
 
     const Size aPixSize = LogicToPixel( rSize );
-    const Size aPageSize = PixelToLogic( aPixSize, MapUnit::Map100thMM );
+    const Size aPageSize = PixelToLogic(aPixSize, MapMode(MapUnit::Map100thMM));
     bool bNeedToChange(maJobSetup.ImplGetConstData().GetPaperWidth() != aPageSize.Width() ||
         maJobSetup.ImplGetConstData().GetPaperHeight() != aPageSize.Height());
 
@@ -1462,7 +1354,7 @@ bool Printer::SetPaperSizeUser( const Size& rSize, bool bMatchNearest )
         }
 
         ReleaseGraphics();
-        ImplFindPaperFormatForUserSize( aJobSetup, bMatchNearest );
+        ImplFindPaperFormatForUserSize( aJobSetup );
 
         // Changing the paper size can also change the orientation!
         if ( mpInfoPrinter->SetData( JobSetFlags::PAPERSIZE | JobSetFlags::ORIENTATION, &rData ))
@@ -1493,40 +1385,30 @@ int Printer::GetPaperInfoCount() const
 OUString Printer::GetPaperName( Paper ePaper )
 {
     ImplSVData* pSVData = ImplGetSVData();
-    if( ! pSVData->mpPaperNames )
+    if( pSVData->maPaperNames.empty() )
     {
-        pSVData->mpPaperNames = new std::unordered_map< int, OUString >;
-        if( ImplGetResMgr() )
+        static const int PaperIndex[] =
         {
-            ResStringArray aPaperStrings( VclResId( RID_STR_PAPERNAMES ) );
-            static const int PaperIndex[] =
-            {
-                PAPER_A0, PAPER_A1, PAPER_A2, PAPER_A3, PAPER_A4, PAPER_A5,
-                PAPER_B4_ISO, PAPER_B5_ISO, PAPER_LETTER, PAPER_LEGAL, PAPER_TABLOID,
-                PAPER_USER, PAPER_B6_ISO, PAPER_ENV_C4, PAPER_ENV_C5, PAPER_ENV_C6, PAPER_ENV_C65,
-                PAPER_ENV_DL, PAPER_SLIDE_DIA, PAPER_C, PAPER_D, PAPER_E,
-                PAPER_EXECUTIVE, PAPER_FANFOLD_LEGAL_DE, PAPER_ENV_MONARCH, PAPER_ENV_PERSONAL,
-                PAPER_ENV_9, PAPER_ENV_10, PAPER_ENV_11, PAPER_ENV_12, PAPER_KAI16,
-                PAPER_KAI32, PAPER_KAI32BIG, PAPER_B4_JIS, PAPER_B5_JIS, PAPER_B6_JIS,
-                PAPER_POSTCARD_JP
-            };
-            OSL_ENSURE( sal_uInt32(SAL_N_ELEMENTS(PaperIndex)) == aPaperStrings.Count(), "localized paper name count wrong" );
-            for( int i = 0; i < int(SAL_N_ELEMENTS(PaperIndex)); i++ )
-                (*pSVData->mpPaperNames)[PaperIndex[i]] = aPaperStrings.GetString(i);
-        }
+            PAPER_A0, PAPER_A1, PAPER_A2, PAPER_A3, PAPER_A4, PAPER_A5, PAPER_B4_ISO, PAPER_B5_ISO,
+            PAPER_LETTER, PAPER_LEGAL, PAPER_TABLOID, PAPER_USER, PAPER_B6_ISO, PAPER_ENV_C4, PAPER_ENV_C5,
+            PAPER_ENV_C6, PAPER_ENV_C65, PAPER_ENV_DL, PAPER_SLIDE_DIA, PAPER_SCREEN_4_3, PAPER_C, PAPER_D,
+            PAPER_E, PAPER_EXECUTIVE, PAPER_FANFOLD_LEGAL_DE, PAPER_ENV_MONARCH, PAPER_ENV_PERSONAL, PAPER_ENV_9,
+            PAPER_ENV_10, PAPER_ENV_11, PAPER_ENV_12, PAPER_KAI16, PAPER_KAI32, PAPER_KAI32BIG, PAPER_B4_JIS,
+            PAPER_B5_JIS, PAPER_B6_JIS, PAPER_LEDGER, PAPER_STATEMENT, PAPER_QUARTO, PAPER_10x14, PAPER_ENV_14,
+            PAPER_ENV_C3, PAPER_ENV_ITALY, PAPER_FANFOLD_US, PAPER_FANFOLD_DE, PAPER_POSTCARD_JP, PAPER_9x11,
+            PAPER_10x11, PAPER_15x11, PAPER_ENV_INVITE, PAPER_A_PLUS, PAPER_B_PLUS, PAPER_LETTER_PLUS, PAPER_A4_PLUS,
+            PAPER_DOUBLEPOSTCARD_JP, PAPER_A6, PAPER_12x11, PAPER_A7, PAPER_A8, PAPER_A9, PAPER_A10, PAPER_B0_ISO,
+            PAPER_B1_ISO, PAPER_B2_ISO, PAPER_B3_ISO, PAPER_B7_ISO, PAPER_B8_ISO, PAPER_B9_ISO, PAPER_B10_ISO,
+            PAPER_ENV_C2, PAPER_ENV_C7, PAPER_ENV_C8, PAPER_ARCHA, PAPER_ARCHB, PAPER_ARCHC, PAPER_ARCHD,
+            PAPER_ARCHE, PAPER_SCREEN_16_9, PAPER_SCREEN_16_10, PAPER_16K_195x270, PAPER_16K_197x273
+        };
+        assert(SAL_N_ELEMENTS(PaperIndex) == SAL_N_ELEMENTS(RID_STR_PAPERNAMES) && "localized paper name count wrong");
+        for (size_t i = 0; i < SAL_N_ELEMENTS(PaperIndex); ++i)
+            pSVData->maPaperNames[PaperIndex[i]] = VclResId(RID_STR_PAPERNAMES[i]);
     }
 
-    std::unordered_map<int,OUString>::const_iterator it = pSVData->mpPaperNames->find( (int)ePaper );
-    return (it != pSVData->mpPaperNames->end()) ? it->second : OUString();
-}
-
-OUString Printer::GetPaperName() const
-{
-    Size  aPageSize = PixelToLogic( GetPaperSizePixel(), MapUnit::Map100thMM );
-    Paper ePaper    = ImplGetPaperFormat( aPageSize.Width(), aPageSize.Height() );
-    if( ePaper == PAPER_USER )
-        ePaper = ImplGetPaperFormat( aPageSize.Height(), aPageSize.Width() );
-    return (ePaper != PAPER_USER) ? GetPaperName( ePaper ) : OUString();
+    std::unordered_map<int,OUString>::const_iterator it = pSVData->maPaperNames.find( static_cast<int>(ePaper) );
+    return (it != pSVData->maPaperNames.end()) ? it->second : OUString();
 }
 
 const PaperInfo& Printer::GetPaperInfo( int nPaper ) const
@@ -1540,40 +1422,46 @@ const PaperInfo& Printer::GetPaperInfo( int nPaper ) const
     return mpInfoPrinter->m_aPaperFormats[nPaper];
 }
 
-bool Printer::SetDuplexMode( DuplexMode eDuplex )
+Size Printer::GetPaperSize( int nPaper )
+{
+    PaperInfo aInfo = GetPaperInfo( nPaper );
+    return PixelToLogic( Size( aInfo.getWidth(), aInfo.getHeight() ) );
+}
+
+void Printer::SetDuplexMode( DuplexMode eDuplex )
 {
     if ( mbInPrintPage )
-        return false;
+        return;
 
-    if ( maJobSetup.ImplGetConstData().GetDuplexMode() != eDuplex )
+    if ( maJobSetup.ImplGetConstData().GetDuplexMode() == eDuplex )
+        return;
+
+    JobSetup      aJobSetup = maJobSetup;
+    ImplJobSetup& rData = aJobSetup.ImplGetData();
+
+    rData.SetDuplexMode( eDuplex );
+
+    if ( IsDisplayPrinter() )
     {
-        JobSetup      aJobSetup = maJobSetup;
-        ImplJobSetup& rData = aJobSetup.ImplGetData();
-
-        rData.SetDuplexMode( eDuplex );
-
-        if ( IsDisplayPrinter() )
-        {
-            mbNewJobSetup = true;
-            maJobSetup = aJobSetup;
-            return true;
-        }
-
-        ReleaseGraphics();
-        if ( mpInfoPrinter->SetData( JobSetFlags::DUPLEXMODE, &rData ) )
-        {
-            ImplUpdateJobSetupPaper( aJobSetup );
-            mbNewJobSetup = true;
-            maJobSetup = aJobSetup;
-            ImplUpdatePageData();
-            ImplUpdateFontList();
-            return true;
-        }
-        else
-            return false;
+        mbNewJobSetup = true;
+        maJobSetup = aJobSetup;
+        return;
     }
 
-    return true;
+    ReleaseGraphics();
+    if ( mpInfoPrinter->SetData( JobSetFlags::DUPLEXMODE, &rData ) )
+    {
+        ImplUpdateJobSetupPaper( aJobSetup );
+        mbNewJobSetup = true;
+        maJobSetup = aJobSetup;
+        ImplUpdatePageData();
+        ImplUpdateFontList();
+    }
+}
+
+DuplexMode Printer::GetDuplexMode() const
+{
+    return maJobSetup.ImplGetConstData().GetDuplexMode();
 }
 
 Paper Printer::GetPaper() const
@@ -1600,22 +1488,21 @@ OUString Printer::GetPaperBinName( sal_uInt16 nPaperBin ) const
         return OUString();
 }
 
-bool Printer::SetCopyCount( sal_uInt16 nCopy, bool bCollate )
+void Printer::SetCopyCount( sal_uInt16 nCopy, bool bCollate )
 {
     mnCopyCount = nCopy;
     mbCollateCopy = bCollate;
-    return true;
 }
 
-ErrCode Printer::ImplSalPrinterErrorCodeToVCL( sal_uLong nError )
+ErrCode Printer::ImplSalPrinterErrorCodeToVCL( SalPrinterError nError )
 {
     ErrCode nVCLError;
     switch ( nError )
     {
-        case 0:
+        case SalPrinterError::NONE:
             nVCLError = ERRCODE_NONE;
             break;
-        case SAL_PRINTER_ERROR_ABORT:
+        case SalPrinterError::Abort:
             nVCLError = PRINTER_ABORT;
             break;
         default:
@@ -1626,11 +1513,10 @@ ErrCode Printer::ImplSalPrinterErrorCodeToVCL( sal_uLong nError )
     return nVCLError;
 }
 
-bool Printer::EndJob()
+void Printer::EndJob()
 {
-    bool bRet = false;
     if ( !IsJobActive() )
-        return bRet;
+        return;
 
     SAL_WARN_IF( mbInPrintPage, "vcl.gdi", "Printer::EndJob() - StartPage() without EndPage() called" );
 
@@ -1641,18 +1527,11 @@ bool Printer::EndJob()
         ReleaseGraphics();
 
         mbPrinting      = false;
-        maJobName.clear();
 
         mbDevOutput = false;
-        bRet = mpPrinter->EndJob();
-        // FIXME: Do not destroy the printer asynchronously as Win95
-        // can't handle destroying a printer object and printing
-        // at the same time
-        ImplGetSVData()->mpDefInst->DestroyPrinter( mpPrinter );
-        mpPrinter = nullptr;
+        mpPrinter->EndJob();
+        mpPrinter.reset();
     }
-
-    return bRet;
 }
 
 void Printer::ImplStartPage()
@@ -1660,21 +1539,21 @@ void Printer::ImplStartPage()
     if ( !IsJobActive() )
         return;
 
-    if ( mpPrinter )
-    {
-        SalGraphics* pGraphics = mpPrinter->StartPage( &maJobSetup.ImplGetData(),
-                                                       mbNewJobSetup );
-        if ( pGraphics )
-        {
-            ReleaseGraphics();
-            mpJobGraphics = pGraphics;
-        }
-        mbDevOutput = true;
+    if ( !mpPrinter )
+        return;
 
-        // PrintJob not aborted ???
-        if ( IsJobActive() )
-            mbInPrintPage = true;
+    SalGraphics* pGraphics = mpPrinter->StartPage( &maJobSetup.ImplGetData(),
+                                                   mbNewJobSetup );
+    if ( pGraphics )
+    {
+        ReleaseGraphics();
+        mpJobGraphics = pGraphics;
     }
+    mbDevOutput = true;
+
+    // PrintJob not aborted ???
+    if ( IsJobActive() )
+        mbInPrintPage = true;
 }
 
 void Printer::ImplEndPage()
@@ -1698,38 +1577,37 @@ void Printer::ImplEndPage()
 void Printer::updatePrinters()
 {
     ImplSVData*         pSVData = ImplGetSVData();
-    ImplPrnQueueList*   pPrnList = pSVData->maGDIData.mpPrinterQueueList;
+    ImplPrnQueueList*   pPrnList = pSVData->maGDIData.mpPrinterQueueList.get();
 
-    if ( pPrnList )
+    if ( !pPrnList )
+        return;
+
+    std::unique_ptr<ImplPrnQueueList> pNewList(new ImplPrnQueueList);
+    pSVData->mpDefInst->GetPrinterQueueInfo( pNewList.get() );
+
+    bool bChanged = pPrnList->m_aQueueInfos.size() != pNewList->m_aQueueInfos.size();
+    for( decltype(pPrnList->m_aQueueInfos)::size_type i = 0; ! bChanged && i < pPrnList->m_aQueueInfos.size(); i++ )
     {
-        ImplPrnQueueList* pNewList = new ImplPrnQueueList;
-        pSVData->mpDefInst->GetPrinterQueueInfo( pNewList );
-
-        bool bChanged = pPrnList->m_aQueueInfos.size() != pNewList->m_aQueueInfos.size();
-        for( decltype(pPrnList->m_aQueueInfos)::size_type i = 0; ! bChanged && i < pPrnList->m_aQueueInfos.size(); i++ )
+        ImplPrnQueueData& rInfo     = pPrnList->m_aQueueInfos[i];
+        ImplPrnQueueData& rNewInfo  = pNewList->m_aQueueInfos[i];
+        if( ! rInfo.mpSalQueueInfo || ! rNewInfo.mpSalQueueInfo || // sanity check
+            rInfo.mpSalQueueInfo->maPrinterName != rNewInfo.mpSalQueueInfo->maPrinterName )
         {
-            ImplPrnQueueData& rInfo     = pPrnList->m_aQueueInfos[i];
-            ImplPrnQueueData& rNewInfo  = pNewList->m_aQueueInfos[i];
-            if( ! rInfo.mpSalQueueInfo || ! rNewInfo.mpSalQueueInfo || // sanity check
-                rInfo.mpSalQueueInfo->maPrinterName != rNewInfo.mpSalQueueInfo->maPrinterName )
-            {
-                bChanged = true;
-            }
+            bChanged = true;
         }
-        if( bChanged )
-        {
-            ImplDeletePrnQueueList();
-            pSVData->maGDIData.mpPrinterQueueList = pNewList;
+    }
+    if( !bChanged )
+        return;
 
-            Application* pApp = GetpApp();
-            if( pApp )
-            {
-                DataChangedEvent aDCEvt( DataChangedEventType::PRINTER );
-                Application::NotifyAllWindows( aDCEvt );
-            }
-        }
-        else
-            delete pNewList;
+    ImplDeletePrnQueueList();
+    pSVData->maGDIData.mpPrinterQueueList = std::move(pNewList);
+
+    Application* pApp = GetpApp();
+    if( pApp )
+    {
+        DataChangedEvent aDCEvt( DataChangedEventType::PRINTER );
+        Application::ImplCallEventListenersApplicationDataChanged(&aDCEvt);
+        Application::NotifyAllWindows( aDCEvt );
     }
 }
 
@@ -1748,24 +1626,14 @@ void Printer::ClipAndDrawGradientMetafile ( const Gradient &rGradient, const too
     Pop();
 }
 
-void Printer::InitFont() const
-{
-    DBG_TESTSOLARMUTEX();
-
-    if (!mpFontInstance)
-        return;
-
-    if ( mbInitFont )
-    {
-        // select font in the device layers
-        mpGraphics->SetFont( &(mpFontInstance->maFontSelData), 0 );
-        mbInitFont = false;
-    }
-}
-
 void Printer::SetFontOrientation( LogicalFontInstance* const pFontEntry ) const
 {
     pFontEntry->mnOrientation = pFontEntry->mxFontMetric->GetOrientation();
+}
+
+vcl::Region Printer::ClipToDeviceBounds(vcl::Region aRegion) const
+{
+    return aRegion;
 }
 
 Bitmap Printer::GetBitmap( const Point& rSrcPt, const Size& rSize ) const

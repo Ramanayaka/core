@@ -18,7 +18,7 @@
  */
 
 
-#include "osx/a11yfactory.h"
+#include <osx/a11yfactory.h>
 
 #include "a11yrolehelper.h"
 
@@ -125,6 +125,7 @@ using namespace ::com::sun::star::uno;
         MAP( AccessibleRole::DOCUMENT_PRESENTATION, NSAccessibilityGroupRole );
         MAP( AccessibleRole::DOCUMENT_SPREADSHEET, NSAccessibilityGroupRole );
         MAP( AccessibleRole::DOCUMENT_TEXT, NSAccessibilityGroupRole );
+        MAP( AccessibleRole::STATIC, NSAccessibilityStaticTextRole );
 
 #undef MAP
         default:
@@ -142,7 +143,7 @@ using namespace ::com::sun::star::uno;
         } else if ( accessibleContext -> getAccessibleParent().is() ) {
             Reference < XAccessibleContext > rxParentContext = accessibleContext -> getAccessibleParent() -> getAccessibleContext();
             if ( rxParentContext.is() ) {
-                NSString * roleParent = (NSString *) [ AquaA11yRoleHelper simpleMapNativeRoleFrom: rxParentContext.get() ];
+                NSString * roleParent = static_cast<NSString *>([ AquaA11yRoleHelper simpleMapNativeRoleFrom: rxParentContext.get() ]);
                 if ( [ roleParent isEqualToString: NSAccessibilityOutlineRole ] ) {
                     [ nativeRole release ];
                     nativeRole = NSAccessibilityRowRole;
@@ -257,6 +258,8 @@ using namespace ::com::sun::star::uno;
         MAP( AccessibleRole::DOCUMENT_SPREADSHEET, @"" );
         MAP( AccessibleRole::DOCUMENT_TEXT, @"" );
 
+        MAP( AccessibleRole::STATIC, @"" );
+
 #undef MAP
         default:
             break;
@@ -265,11 +268,11 @@ using namespace ::com::sun::star::uno;
 }
 
 +(id)getRoleDescriptionFrom: (NSString *) role with: (NSString *) subRole {
-	id roleDescription;
-	if ( [ subRole length ] == 0 )
-		roleDescription = NSAccessibilityRoleDescription( role, nil );
-	else
-		roleDescription = NSAccessibilityRoleDescription( role, subRole );
+    id roleDescription;
+    if ( [ subRole length ] == 0 )
+        roleDescription = NSAccessibilityRoleDescription( role, nil );
+    else
+        roleDescription = NSAccessibilityRoleDescription( role, subRole );
     return roleDescription;
 }
 

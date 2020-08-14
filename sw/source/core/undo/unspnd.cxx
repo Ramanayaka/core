@@ -18,53 +18,54 @@
  */
 
 #include <UndoSplitMove.hxx>
-#include "doc.hxx"
+#include <doc.hxx>
 #include <IDocumentRedlineAccess.hxx>
-#include "pam.hxx"
-#include "swtable.hxx"
-#include "ndtxt.hxx"
-#include "swundo.hxx"
-#include <editeng/formatbreakitem.hxx>
-#include <fmtpdsc.hxx>
+#include <pam.hxx>
+#include <swtable.hxx>
+#include <ndtxt.hxx>
+#include <swundo.hxx>
 #include <frmfmt.hxx>
 #include <UndoCore.hxx>
-#include "rolbck.hxx"
-#include "redline.hxx"
-#include "docary.hxx"
+#include <rolbck.hxx>
+#include <redline.hxx>
+#include <docary.hxx>
 #include <IShellCursorSupplier.hxx>
+#include <osl/diagnose.h>
 
 // SPLITNODE
 
 SwUndoSplitNode::SwUndoSplitNode( SwDoc* pDoc, const SwPosition& rPos,
                                     bool bChkTable )
-    : SwUndo( SwUndoId::SPLITNODE, pDoc ), pHistory( nullptr ), pRedlData( nullptr ), nNode( rPos.nNode.GetIndex() ),
-        nContent( rPos.nContent.GetIndex() ),
-        bTableFlag( false ), bChkTableStt( bChkTable )
+    : SwUndo( SwUndoId::SPLITNODE, pDoc ), m_nNode( rPos.nNode.GetIndex() ),
+        m_nContent( rPos.nContent.GetIndex() ),
+        m_bTableFlag( false ), m_bCheckTableStart( bChkTable )
 {
     SwTextNode *const pTextNd = rPos.nNode.GetNode().GetTextNode();
     OSL_ENSURE( pTextNd, "only for TextNode" );
     if( pTextNd->GetpSwpHints() )
     {
-        pHistory = new SwHistory;
-        pHistory->CopyAttr( pTextNd->GetpSwpHints(), nNode, 0,
+        m_pHistory.reset(new SwHistory);
+        m_pHistory->CopyAttr(pTextNd->GetpSwpHints(), m_nNode, 0,
                             pTextNd->GetText().getLength(), false );
-        if( !pHistory->Count() )
-            DELETEZ( pHistory );
+        if (!m_pHistory->Count())
+        {
+            m_pHistory.reset();
+        }
     }
     // consider Redline
     if( pDoc->getIDocumentRedlineAccess().IsRedlineOn() )
     {
-        pRedlData = new SwRedlineData( nsRedlineType_t::REDLINE_INSERT, pDoc->getIDocumentRedlineAccess().GetRedlineAuthor() );
+        m_pRedlineData.reset( new SwRedlineData( RedlineType::Insert, pDoc->getIDocumentRedlineAccess().GetRedlineAuthor() ) );
         SetRedlineFlags( pDoc->getIDocumentRedlineAccess().GetRedlineFlags() );
     }
 
-    nParRsid = pTextNd->GetParRsid();
+    m_nParRsid = pTextNd->GetParRsid();
 }
 
 SwUndoSplitNode::~SwUndoSplitNode()
 {
-    delete pHistory;
-    delete pRedlData;
+    m_pHistory.reset();
+    m_pRedlineData.reset();
 }
 
 void SwUndoSplitNode::UndoImpl(::sw::UndoRedoContext & rContext)
@@ -72,13 +73,13 @@ void SwUndoSplitNode::UndoImpl(::sw::UndoRedoContext & rContext)
     SwDoc *const pDoc = & rContext.GetDoc();
     SwPaM & rPam( rContext.GetCursorSupplier().CreateNewShellCursor() );
     rPam.DeleteMark();
-    if( bTableFlag )
+    if( m_bTableFlag )
     {
         // than a TextNode was added directly before the current table
         SwNodeIndex& rIdx = rPam.GetPoint()->nNode;
-        rIdx = nNode;
+        rIdx = m_nNode;
         SwTextNode* pTNd;
-        SwNode* pCurrNd = pDoc->GetNodes()[ nNode + 1 ];
+        SwNode* pCurrNd = pDoc->GetNodes()[ m_nNode + 1 ];
         SwTableNode* pTableNd = pCurrNd->FindTableNode();
         if( pCurrNd->IsContentNode() && pTableNd &&
             nullptr != ( pTNd = pDoc->GetNodes()[ pTableNd->GetIndex()-1 ]->GetTextNode() ))
@@ -107,7 +108,7 @@ void SwUndoSplitNode::UndoImpl(::sw::UndoRedoContext & rContext)
     }
     else
     {
-        SwTextNode * pTNd = pDoc->GetNodes()[ nNode ]->GetTextNode();
+        SwTextNode * pTNd = pDoc->GetNodes()[ m_nNode ]->GetTextNode();
         if( pTNd )
         {
             rPam.GetPoint()->nNode = *pTNd;
@@ -119,76 +120,78 @@ void SwUndoSplitNode::UndoImpl(::sw::UndoRedoContext & rContext)
                 ++rPam.GetMark()->nNode;
                 rPam.GetMark()->nContent.Assign( rPam.GetMark()->
                                     nNode.GetNode().GetContentNode(), 0 );
-                pDoc->getIDocumentRedlineAccess().DeleteRedline( rPam, true, USHRT_MAX );
+                pDoc->getIDocumentRedlineAccess().DeleteRedline( rPam, true, RedlineType::Any );
                 rPam.DeleteMark();
             }
 
-            RemoveIdxRel( nNode+1, *rPam.GetPoint() );
+            RemoveIdxRel( m_nNode+1, *rPam.GetPoint() );
 
             pTNd->JoinNext();
-            if( pHistory )
+            if (m_pHistory)
             {
                 rPam.GetPoint()->nContent = 0;
                 rPam.SetMark();
                 rPam.GetPoint()->nContent = pTNd->GetText().getLength();
 
                 pDoc->RstTextAttrs( rPam, true );
-                pHistory->TmpRollback( pDoc, 0, false );
+                m_pHistory->TmpRollback( pDoc, 0, false );
             }
 
-            pDoc->UpdateParRsid( pTNd, nParRsid );
+            pDoc->UpdateParRsid( pTNd, m_nParRsid );
         }
     }
 
     // also set the cursor onto undo section
     rPam.DeleteMark();
-    rPam.GetPoint()->nNode = nNode;
-    rPam.GetPoint()->nContent.Assign( rPam.GetContentNode(), nContent );
+    rPam.GetPoint()->nNode = m_nNode;
+    rPam.GetPoint()->nContent.Assign( rPam.GetContentNode(), m_nContent );
 }
 
 void SwUndoSplitNode::RedoImpl(::sw::UndoRedoContext & rContext)
 {
     SwPaM & rPam( rContext.GetCursorSupplier().CreateNewShellCursor() );
-    rPam.GetPoint()->nNode = nNode;
+    rPam.GetPoint()->nNode = m_nNode;
     SwTextNode * pTNd = rPam.GetNode().GetTextNode();
     OSL_ENSURE(pTNd, "SwUndoSplitNode::RedoImpl(): SwTextNode expected");
-    if (pTNd)
+    if (!pTNd)
+        return;
+
+    rPam.GetPoint()->nContent.Assign( pTNd, m_nContent );
+
+    SwDoc* pDoc = rPam.GetDoc();
+    pDoc->getIDocumentContentOperations().SplitNode( *rPam.GetPoint(), m_bCheckTableStart );
+
+    if (m_pHistory)
     {
-        rPam.GetPoint()->nContent.Assign( pTNd, nContent );
-
-        SwDoc* pDoc = rPam.GetDoc();
-        pDoc->getIDocumentContentOperations().SplitNode( *rPam.GetPoint(), bChkTableStt );
-
-        if( pHistory )
-            pHistory->SetTmpEnd( pHistory->Count() );
-
-        if( ( pRedlData && IDocumentRedlineAccess::IsRedlineOn( GetRedlineFlags() )) ||
-            ( !( RedlineFlags::Ignore & GetRedlineFlags() ) &&
-                !pDoc->getIDocumentRedlineAccess().GetRedlineTable().empty() ))
-        {
-            rPam.SetMark();
-            if( rPam.Move( fnMoveBackward ))
-            {
-                if( pRedlData && IDocumentRedlineAccess::IsRedlineOn( GetRedlineFlags() ))
-                {
-                    RedlineFlags eOld = pDoc->getIDocumentRedlineAccess().GetRedlineFlags();
-                    pDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern(eOld & ~RedlineFlags::Ignore);
-                    pDoc->getIDocumentRedlineAccess().AppendRedline( new SwRangeRedline( *pRedlData, rPam ), true);
-                    pDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld );
-                }
-                else
-                    pDoc->getIDocumentRedlineAccess().SplitRedline( rPam );
-                rPam.Exchange();
-            }
-            rPam.DeleteMark();
-        }
+        m_pHistory->SetTmpEnd(m_pHistory->Count());
     }
+
+    if( !(( m_pRedlineData && IDocumentRedlineAccess::IsRedlineOn( GetRedlineFlags() )) ||
+        ( !( RedlineFlags::Ignore & GetRedlineFlags() ) &&
+            !pDoc->getIDocumentRedlineAccess().GetRedlineTable().empty() )))
+        return;
+
+    rPam.SetMark();
+    if( rPam.Move( fnMoveBackward ))
+    {
+        if( m_pRedlineData && IDocumentRedlineAccess::IsRedlineOn( GetRedlineFlags() ))
+        {
+            RedlineFlags eOld = pDoc->getIDocumentRedlineAccess().GetRedlineFlags();
+            pDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern(eOld & ~RedlineFlags::Ignore);
+            pDoc->getIDocumentRedlineAccess().AppendRedline( new SwRangeRedline( *m_pRedlineData, rPam ), true);
+            pDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld );
+        }
+        else
+            pDoc->getIDocumentRedlineAccess().SplitRedline( rPam );
+        rPam.Exchange();
+    }
+    rPam.DeleteMark();
 }
 
 void SwUndoSplitNode::RepeatImpl(::sw::RepeatContext & rContext)
 {
     rContext.GetDoc().getIDocumentContentOperations().SplitNode(
-        *rContext.GetRepeatPaM().GetPoint(), bChkTableStt );
+        *rContext.GetRepeatPaM().GetPoint(), m_bCheckTableStart );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

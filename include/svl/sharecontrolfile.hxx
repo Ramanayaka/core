@@ -22,19 +22,18 @@
 
 #include <svl/svldllapi.h>
 
-#include <com/sun/star/io/XStream.hpp>
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/io/XOutputStream.hpp>
-#include <com/sun/star/io/XSeekable.hpp>
-#include <com/sun/star/io/XTruncate.hpp>
-
 #include <svl/lockfilecommon.hxx>
-#include <o3tl/enumarray.hxx>
 #include <vector>
+
+namespace com::sun::star::io { class XInputStream; }
+namespace com::sun::star::io { class XOutputStream; }
+namespace com::sun::star::io { class XSeekable; }
+namespace com::sun::star::io { class XStream; }
+namespace com::sun::star::io { class XTruncate; }
 
 namespace svt {
 
-class SVL_DLLPUBLIC ShareControlFile : public LockFileCommon
+class SVL_DLLPUBLIC ShareControlFile final : public LockFileCommon
 {
     css::uno::Reference< css::io::XStream >       m_xStream;
     css::uno::Reference< css::io::XInputStream >  m_xInputStream;
@@ -45,7 +44,7 @@ class SVL_DLLPUBLIC ShareControlFile : public LockFileCommon
     std::vector< LockFileEntry >                  m_aUsersData;
 
     void Close();
-    bool IsValid()
+    bool IsValid() const
     {
         return ( m_xStream.is() && m_xInputStream.is() && m_xOutputStream.is() && m_xSeekable.is() && m_xTruncate.is() );
     }
@@ -54,7 +53,7 @@ public:
 
     // The constructor will throw exception in case the stream can not be opened
     ShareControlFile( const OUString& aOrigURL );
-    ~ShareControlFile();
+    virtual ~ShareControlFile() override;
 
     std::vector< LockFileEntry > GetUsersData();
     void SetUsersDataAndStore( const std::vector< LockFileEntry >& aUserNames );

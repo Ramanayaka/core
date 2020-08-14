@@ -17,16 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "UncachedDataSequence.hxx"
-#include "macros.hxx"
-#include "PropertyHelper.hxx"
-#include "CommonFunctors.hxx"
-#include "ModifyListenerHelper.hxx"
+#include <UncachedDataSequence.hxx>
+#include <CommonFunctors.hxx>
+#include <ModifyListenerHelper.hxx>
 
 #include <cppuhelper/supportsservice.hxx>
 #include <algorithm>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <rtl/math.hxx>
+#include <strings.hrc>
+#include <ResId.hxx>
+#include <com/sun/star/chart2/XInternalDataProvider.hpp>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 
@@ -41,7 +41,7 @@ using ::chart::impl::UncachedDataSequence_Base;
 
 namespace
 {
-static const char lcl_aServiceName[] = "com.sun.star.comp.chart.UncachedDataSequence";
+const char lcl_aServiceName[] = "com.sun.star.comp.chart.UncachedDataSequence";
 
 enum
 {
@@ -126,7 +126,7 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( UncachedDataSequence, UncachedDataSequence_Bas
 // ____ XPropertySet ____
 Reference< beans::XPropertySetInfo > SAL_CALL UncachedDataSequence::getPropertySetInfo()
 {
-    return Reference< beans::XPropertySetInfo >( createPropertySetInfo( getInfoHelper() ) );
+    return createPropertySetInfo( getInfoHelper() );
 }
 
 // ____ ::comphelper::OPropertySetHelper ____
@@ -147,7 +147,7 @@ Reference< beans::XPropertySetInfo > SAL_CALL UncachedDataSequence::getPropertyS
 
 OUString SAL_CALL UncachedDataSequence::getImplementationName()
 {
-    return OUString(lcl_aServiceName);
+    return lcl_aServiceName;
 }
 
 sal_Bool SAL_CALL UncachedDataSequence::supportsService( const OUString& rServiceName )
@@ -211,8 +211,15 @@ OUString SAL_CALL UncachedDataSequence::getSourceRangeRepresentation()
 
 Sequence< OUString > SAL_CALL UncachedDataSequence::generateLabel( chart2::data::LabelOrigin )
 {
-    // auto-generated label is an empty string
-    return Sequence< OUString >(1);
+    // auto-generated label
+    sal_Int32 nSeries = m_aSourceRepresentation.toInt32() + 1;
+    OUString aResString(::chart::SchResId(STR_DATA_UNNAMED_SERIES_WITH_INDEX));
+    const OUString aReplacementStr("%NUMBER");
+    sal_Int32 nIndex = aResString.indexOf(aReplacementStr);
+    OUString aName;
+    if( nIndex != -1 )
+        aName = aResString.replaceAt(nIndex, aReplacementStr.getLength(), OUString::number(nSeries));
+    return Sequence< OUString >( &aName, 1 );
 }
 
 ::sal_Int32 SAL_CALL UncachedDataSequence::getNumberFormatKeyByIndex( ::sal_Int32 )
@@ -298,9 +305,9 @@ void SAL_CALL UncachedDataSequence::addModifyListener( const Reference< util::XM
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -311,9 +318,9 @@ void SAL_CALL UncachedDataSequence::removeModifyListener( const Reference< util:
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 

@@ -206,7 +206,7 @@ int SAL_CALL main( int nArgc, char* Argv[] )
     // threaded apartment we need a message loop to deliver
     // messages to our XTDataObject
     //HRESULT hr = CoInitializeEx( NULL, COINIT_MULTITHREADED );
-    (void)CoInitialize( NULL );
+    (void)CoInitializeEx( NULL, COINIT_APARTMENTTHREADED );
 
     char buff[6];
 
@@ -271,7 +271,7 @@ int SAL_CALL main( int nArgc, char* Argv[] )
     Reference< XComponent > xComponent( g_xFactory, UNO_QUERY );
 
     if ( !xComponent.is() )
-        OSL_FAIL("Error shuting down");
+        OSL_FAIL("Error shutting down");
 
     // Dispose and clear factory
     xComponent->dispose();

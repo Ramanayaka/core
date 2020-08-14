@@ -23,20 +23,15 @@
 #include <uielement/toolbarmanager.hxx>
 
 #include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 
 #include <rtl/ustring.hxx>
-#include <cppuhelper/weak.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 
 class ToolBox;
 
 namespace framework
 {
 
-class AddonsToolBarManager : public ToolBarManager
+class AddonsToolBarManager final : public ToolBarManager
 {
     public:
         AddonsToolBarManager( const css::uno::Reference< css::uno::XComponentContext >& rxContext,
@@ -52,7 +47,7 @@ class AddonsToolBarManager : public ToolBarManager
         using ToolBarManager::FillToolbar;
         void FillToolbar( const css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue > >& rAddonToolbar );
 
-    protected:
+    private:
         DECL_LINK(Click, ToolBox *, void);
         DECL_LINK(DoubleClick, ToolBox *, void);
         DECL_LINK(Select, ToolBox *, void);

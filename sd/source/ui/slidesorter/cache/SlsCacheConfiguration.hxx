@@ -22,10 +22,11 @@
 
 #include <com/sun/star/uno/Any.hxx>
 #include <vcl/timer.hxx>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <memory>
 
-namespace sd { namespace slidesorter { namespace cache {
+namespace com::sun::star::container { class XNameAccess; }
+
+namespace sd::slidesorter::cache {
 
 /** A very simple and easy-to-use access to configuration entries regarding
     the slide sorter cache.
@@ -39,6 +40,8 @@ public:
     */
     static std::shared_ptr<CacheConfiguration> Instance();
 
+    static void Shutdown();
+
     /** Look up the specified value in
         MultiPaneGUI/SlideSorter/PreviewCache.   When the specified value
         does not exist then an empty Any is returned.
@@ -50,7 +53,7 @@ private:
         this weak pointer to avoid creating a new instance.
     */
     static std::weak_ptr<CacheConfiguration> mpWeakInstance;
-    static Timer maReleaseTimer;
+    Timer m_ReleaseTimer;
     css::uno::Reference<css::container::XNameAccess> mxCacheNode;
 
     CacheConfiguration();
@@ -58,7 +61,7 @@ private:
     DECL_STATIC_LINK(CacheConfiguration, TimerCallback, Timer *, void);
 };
 
-} } } // end of namespace ::sd::slidesorter::cache
+} // end of namespace ::sd::slidesorter::cache
 
 #endif
 

@@ -20,6 +20,7 @@
 #ifndef INCLUDED_BASCTL_SOURCE_INC_LAYOUT_HXX
 #define INCLUDED_BASCTL_SOURCE_INC_LAYOUT_HXX
 
+#include "bastypes.hxx"
 #include <vcl/split.hxx>
 #include <vcl/vclptr.hxx>
 
@@ -74,7 +75,7 @@ private:
     // when this window has at first (nonempty) size
     bool bFirstSize;
 
-    // horizontal or vertical splitted strip
+    // horizontal or vertical split strip
     class SplittedSide
     {
     public:

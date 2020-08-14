@@ -22,22 +22,20 @@
 
 #include <sal/config.h>
 
-#include <config_global.h>
 #include <rtl/ref.hxx>
-#include <vcl/vclreferencebase.hxx>
 
 #include <utility>
 #include <type_traits>
 
 #ifdef DBG_UTIL
-#ifndef WNT
+#ifndef _WIN32
 #include <vcl/vclmain.hxx>
 #endif
 #endif
 
-#if !(defined _MSC_VER && _MSC_VER <= 1900 && !defined __clang__)
+class VclReferenceBase;
 
-namespace vcl { namespace detail {
+namespace vcl::detail {
 
 template<typename>
 constexpr bool isIncompleteOrDerivedFromVclReferenceBase(...) { return true; }
@@ -46,9 +44,7 @@ template<typename T> constexpr bool isIncompleteOrDerivedFromVclReferenceBase(
     int (*)[sizeof(T)])
 { return std::is_base_of<VclReferenceBase, T>::value; }
 
-}; }; // namespace detail, namespace vcl
-
-#endif
+} // namespace vcl::detail
 
 /**
  * A thin wrapper around rtl::Reference to implement the acquire and dispose semantics we want for references to vcl::Window subclasses.
@@ -60,12 +56,10 @@ template<typename T> constexpr bool isIncompleteOrDerivedFromVclReferenceBase(
 template <class reference_type>
 class VclPtr
 {
-#if !(defined _MSC_VER && _MSC_VER <= 1900 && !defined __clang__)
     static_assert(
         vcl::detail::isIncompleteOrDerivedFromVclReferenceBase<reference_type>(
             nullptr),
         "template argument type must be derived from VclReferenceBase");
-#endif
 
     ::rtl::Reference<reference_type> m_rInnerRef;
 
@@ -106,7 +100,7 @@ public:
     {
     }
 
-#if defined(DBG_UTIL) && !defined(WNT)
+#if defined(DBG_UTIL) && !defined(_WIN32)
     virtual ~VclPtr()
     {
         assert(m_rInnerRef.get() == nullptr || vclmain::isAlive());
@@ -115,6 +109,10 @@ public:
         assert((!m_rInnerRef.get() || m_rInnerRef->isDisposed() || m_rInnerRef->getRefCount() > 1)
                 && "someone forgot to call dispose()");
     }
+    VclPtr(VclPtr const &) = default;
+    VclPtr(VclPtr &&) = default;
+    VclPtr & operator =(VclPtr const &) = default;
+    VclPtr & operator =(VclPtr &&) = default;
 #endif
 
     /**
@@ -126,7 +124,7 @@ public:
      *
      * @tparam reference_type must be a subclass of vcl::Window
      */
-    template<typename... Arg> static SAL_WARN_UNUSED_RESULT VclPtr< reference_type > Create(Arg &&... arg)
+    template<typename... Arg> [[nodiscard]] static VclPtr< reference_type > Create(Arg &&... arg)
     {
         return VclPtr< reference_type >( new reference_type(std::forward<Arg>(arg)...), SAL_NO_ACQUIRE );
     }
@@ -274,7 +272,7 @@ template<typename T> inline bool operator !=(T * p1, VclPtr<T> const & p2) {
  * @param reference_type must be a subclass of vcl::Window
  */
 template <class reference_type>
-class SAL_WARN_UNUSED VclPtrInstance : public VclPtr<reference_type>
+class SAL_WARN_UNUSED VclPtrInstance final : public VclPtr<reference_type>
 {
 public:
     template<typename... Arg> VclPtrInstance(Arg &&... arg)
@@ -406,7 +404,7 @@ protected:
 #pragma warning(disable: 4521) // " multiple copy constructors specified"
 #endif
 template <class reference_type>
-class SAL_WARN_UNUSED ScopedVclPtrInstance : public ScopedVclPtr<reference_type>
+class SAL_WARN_UNUSED ScopedVclPtrInstance final : public ScopedVclPtr<reference_type>
 {
 public:
     template<typename... Arg> ScopedVclPtrInstance(Arg &&... arg)

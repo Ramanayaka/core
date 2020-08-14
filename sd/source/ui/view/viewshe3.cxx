@@ -19,65 +19,36 @@
 
 #include <config_features.h>
 
-#include "ViewShell.hxx"
-#include "GraphicViewShell.hxx"
-#include "GraphicViewShellBase.hxx"
+#include <ViewShell.hxx>
+#include <ViewShellBase.hxx>
 
 #include <sfx2/viewfrm.hxx>
-#include <svtools/svtools.hrc>
-#include <com/sun/star/lang/Locale.hpp>
+#include <svtools/strings.hrc>
 #include <svtools/svtresid.hxx>
-#include <utility>
-#include <vector>
 
-#include "app.hrc"
-#include "strings.hrc"
-#include "res_bmp.hrc"
-#include "glob.hrc"
-#include "sdabstdlg.hxx"
+#include <app.hrc>
+#include <strings.hrc>
 
-#include "fupoor.hxx"
+#include <sal/log.hxx>
 #include <sfx2/dispatch.hxx>
-#include <svx/prtqry.hxx>
-#include <svx/svdopage.hxx>
-#include <sfx2/progress.hxx>
-#include <svx/svdobj.hxx>
-#include <vcl/msgbox.hxx>
 #include <sfx2/bindings.hxx>
-#include <svx/svdpagv.hxx>
-#include <svx/svdetc.hxx>
-#include <editeng/outliner.hxx>
-#include <editeng/editstat.hxx>
-#include <tools/multisel.hxx>
+#include <svx/svdundo.hxx>
 #include <svl/intitem.hxx>
 #include <svl/style.hxx>
-#include <unotools/localedatawrapper.hxx>
-#include <comphelper/processfactory.hxx>
-#include <rtl/ustrbuf.hxx>
-#include "stlsheet.hxx"
-#include "WindowUpdater.hxx"
-#include "DrawViewShell.hxx"
-#include "OutlineViewShell.hxx"
-#include "drawview.hxx"
+#include <svl/stritem.hxx>
+#include <stlsheet.hxx>
+#include <DrawViewShell.hxx>
 
-#include "sdattr.hxx"
-#include "drawdoc.hxx"
-#include "sdpage.hxx"
-#include "unoaprms.hxx"
-#include "sdundogr.hxx"
-#include "Window.hxx"
-#include "DrawDocShell.hxx"
-#include "FrameView.hxx"
-#include "framework/FrameworkHelper.hxx"
-#include "optsitem.hxx"
-#include "sdresid.hxx"
-#include "undo/undomanager.hxx"
+#include <drawdoc.hxx>
+#include <sdpage.hxx>
+#include <DrawDocShell.hxx>
+#include <sdresid.hxx>
+#include <unokywds.hxx>
 
 #include <svx/svxids.hrc>
 #include <sfx2/request.hxx>
-#include <sfx2/templdlg.hxx>
-#include <svl/aeitem.hxx>
 #include <basic/sbstar.hxx>
+#include <basic/sberrors.hxx>
 #include <xmloff/autolayout.hxx>
 
 using namespace ::com::sun::star;
@@ -100,7 +71,7 @@ void  ViewShell::GetMenuState( SfxItemSet &rSet )
             SfxStyleSheet* pStyleSheet = pDrView->GetStyleSheet();
             if( pStyleSheet )
             {
-                if (pStyleSheet->GetFamily() == SD_STYLE_FAMILY_MASTERPAGE)
+                if (pStyleSheet->GetFamily() == SfxStyleFamily::Page)
                     pStyleSheet = static_cast<SdStyleSheet*>(pStyleSheet)->GetPseudoStyleSheet();
 
                 if( pStyleSheet )
@@ -125,12 +96,12 @@ void  ViewShell::GetMenuState( SfxItemSet &rSet )
 
     if(SfxItemState::DEFAULT == rSet.GetItemState(SID_UNDO))
     {
-        ::svl::IUndoManager* pUndoManager = ImpGetUndoManager();
+        SfxUndoManager* pUndoManager = ImpGetUndoManager();
         if(pUndoManager)
         {
             if(pUndoManager->GetUndoActionCount() != 0)
             {
-                // If an other view created the first undo action, prevent redoing it from this view.
+                // If another view created the first undo action, prevent redoing it from this view.
                 const SfxUndoAction* pAction = pUndoManager->GetUndoAction();
                 if (pAction->GetViewShellId() != GetViewShellBase().GetViewShellId())
                 {
@@ -140,8 +111,8 @@ void  ViewShell::GetMenuState( SfxItemSet &rSet )
                 {
                     // Set the necessary string like in
                     // sfx2/source/view/viewfrm.cxx ver 1.23 ln 1072 ff.
-                    OUString aTmp(SvtResId(STR_UNDO));
-                    aTmp += pUndoManager->GetUndoActionComment();
+                    OUString aTmp = SvtResId(STR_UNDO) +
+                        pUndoManager->GetUndoActionComment();
                     rSet.Put(SfxStringItem(SID_UNDO, aTmp));
                 }
             }
@@ -152,33 +123,32 @@ void  ViewShell::GetMenuState( SfxItemSet &rSet )
         }
     }
 
-    if(SfxItemState::DEFAULT == rSet.GetItemState(SID_REDO))
+    if(SfxItemState::DEFAULT != rSet.GetItemState(SID_REDO))
+        return;
+
+    SfxUndoManager* pUndoManager = ImpGetUndoManager();
+    if(!pUndoManager)
+        return;
+
+    if(pUndoManager->GetRedoActionCount() != 0)
     {
-        ::svl::IUndoManager* pUndoManager = ImpGetUndoManager();
-        if(pUndoManager)
+        // If another view created the first undo action, prevent redoing it from this view.
+        const SfxUndoAction* pAction = pUndoManager->GetRedoAction();
+        if (pAction->GetViewShellId() != GetViewShellBase().GetViewShellId())
         {
-            if(pUndoManager->GetRedoActionCount() != 0)
-            {
-                // If an other view created the first undo action, prevent redoing it from this view.
-                const SfxUndoAction* pAction = pUndoManager->GetRedoAction();
-                if (pAction->GetViewShellId() != GetViewShellBase().GetViewShellId())
-                {
-                    rSet.Put(SfxUInt32Item(SID_REDO, static_cast<sal_uInt32>(SID_REPAIRPACKAGE)));
-                }
-                else
-                {
-                    // Set the necessary string like in
-                    // sfx2/source/view/viewfrm.cxx ver 1.23 ln 1081 ff.
-                    OUString aTmp(SvtResId(STR_REDO));
-                    aTmp += pUndoManager->GetRedoActionComment();
-                    rSet.Put(SfxStringItem(SID_REDO, aTmp));
-                }
-            }
-            else
-            {
-                rSet.DisableItem(SID_REDO);
-            }
+            rSet.Put(SfxUInt32Item(SID_REDO, static_cast<sal_uInt32>(SID_REPAIRPACKAGE)));
         }
+        else
+        {
+            // Set the necessary string like in
+            // sfx2/source/view/viewfrm.cxx ver 1.23 ln 1081 ff.
+            OUString aTmp = SvtResId(STR_REDO) + pUndoManager->GetRedoActionComment();
+            rSet.Put(SfxStringItem(SID_REDO, aTmp));
+        }
+    }
+    else
+    {
+        rSet.DisableItem(SID_REDO);
     }
 }
 
@@ -196,8 +166,8 @@ SdPage* ViewShell::CreateOrDuplicatePage (
     sal_uInt16 nSId = rRequest.GetSlot();
     SdDrawDocument* pDocument = GetDoc();
     SdrLayerAdmin& rLayerAdmin = pDocument->GetLayerAdmin();
-    SdrLayerID aBckgrnd = rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRND));
-    SdrLayerID aBckgrndObj = rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRNDOBJ));
+    SdrLayerID aBckgrnd = rLayerAdmin.GetLayerID(sUNO_LayerName_background);
+    SdrLayerID aBckgrndObj = rLayerAdmin.GetLayerID(sUNO_LayerName_background_objects);
     SdrLayerIDSet aVisibleLayers;
     // Determine the page from which to copy some values, such as layers,
     // size, master page, to the new page.  This is usually the given page.
@@ -244,11 +214,11 @@ SdPage* ViewShell::CreateOrDuplicatePage (
         {
             if (ePageKind == PageKind::Notes)
             {
-                eNotesLayout   = (AutoLayout) pLayout->GetValue ();
+                eNotesLayout   = static_cast<AutoLayout>(pLayout->GetValue ());
             }
             else
             {
-                eStandardLayout   = (AutoLayout) pLayout->GetValue ();
+                eStandardLayout   = static_cast<AutoLayout>(pLayout->GetValue ());
             }
         }
     }
@@ -262,17 +232,17 @@ SdPage* ViewShell::CreateOrDuplicatePage (
         const SfxBoolItem* pIsPageBack = rRequest.GetArg<SfxBoolItem>(ID_VAL_ISPAGEBACK);
         const SfxBoolItem* pIsPageObj = rRequest.GetArg<SfxBoolItem>(ID_VAL_ISPAGEOBJ);
 
-        if (CHECK_RANGE (AUTOLAYOUT_START, (AutoLayout) pLayout->GetValue (), AUTOLAYOUT_END))
+        if (CHECK_RANGE (AUTOLAYOUT_START, static_cast<AutoLayout>(pLayout->GetValue ()), AUTOLAYOUT_END))
         {
             if (ePageKind == PageKind::Notes)
             {
                 aNotesPageName = pPageName->GetValue ();
-                eNotesLayout   = (AutoLayout) pLayout->GetValue ();
+                eNotesLayout   = static_cast<AutoLayout>(pLayout->GetValue ());
             }
             else
             {
                 aStandardPageName = pPageName->GetValue ();
-                eStandardLayout   = (AutoLayout) pLayout->GetValue ();
+                eStandardLayout   = static_cast<AutoLayout>(pLayout->GetValue ());
             }
 
             bIsPageBack = pIsPageBack->GetValue ();
@@ -307,8 +277,12 @@ SdPage* ViewShell::CreateOrDuplicatePage (
     // 2. Create a new page or duplicate an existing one.
     View* pDrView = GetView();
     const bool bUndo = pDrView && pDrView->IsUndoEnabled();
-    if( bUndo )
+    if( bUndo && GetDoc()->GetDocumentType() == DocumentType::Draw)
+        pDrView->BegUndo(SdResId(STR_INSERT_PAGE_DRAW));
+    else if (bUndo)
         pDrView->BegUndo(SdResId(STR_INSERTPAGE));
+
+
 
     sal_uInt16 nNewPageIndex = 0xffff;
     switch (nSId)
@@ -353,7 +327,7 @@ SdPage* ViewShell::CreateOrDuplicatePage (
                             i == nNewPageIndex);
                     }
                     // Move the selected page to the head of the document
-                    pDocument->MovePages ((sal_uInt16)-1);
+                    pDocument->MovePages (sal_uInt16(-1));
                     nNewPageIndex = 0;
                 }
             else

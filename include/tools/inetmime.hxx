@@ -22,7 +22,6 @@
 #include <tools/toolsdllapi.h>
 #include <rtl/character.hxx>
 #include <rtl/string.hxx>
-#include <rtl/strbuf.hxx>
 #include <rtl/ustring.hxx>
 #include <tools/debug.hxx>
 
@@ -71,7 +70,7 @@ struct INetContentTypeParameter
     there will only be one item for the complete parameter, with the attribute
     name lacking any section suffix.
  */
-typedef std::unordered_map<OString, INetContentTypeParameter, OStringHash>
+typedef std::unordered_map<OString, INetContentTypeParameter>
     INetContentTypeParameterList;
 
 
@@ -144,7 +143,7 @@ public:
      */
     static bool equalIgnoreCase(const sal_Unicode * pBegin1,
                                 const sal_Unicode * pEnd1,
-                                const sal_Char * pString2);
+                                const char * pString2);
 
     static bool scanUnsigned(const sal_Unicode *& rBegin,
                              const sal_Unicode * pEnd, bool bLeadingZeroes,
@@ -159,7 +158,7 @@ public:
           token "/" token *(";" token "=" (token / quoted-string))
 
         with intervening linear white space and comments (cf. RFCs 822, 2045).
-        The RFC 2231 extension are supported.  The encoding of rMediaType
+        The RFC 2231 extensions are supported.  The encoding of rMediaType
         should be US-ASCII, but any Unicode values in the range U+0080..U+FFFF
         are interpreted 'as appropriate.'
 
@@ -181,7 +180,7 @@ public:
         parameters will be modified.
      */
     static sal_Unicode const * scanContentType(
-        sal_Unicode const *pBegin, sal_Unicode const * pEnd,
+        OUString const & rStr,
         OUString * pType = nullptr, OUString * pSubType = nullptr,
         INetContentTypeParameterList * pParameters = nullptr);
 
@@ -240,66 +239,6 @@ inline sal_uInt32 INetMIME::getUTF32Character(const sal_Unicode *& rBegin,
         return *rBegin++;
 }
 
-class INetMIMEOutputSink
-{
-private:
-    OStringBuffer m_aBuffer;
-
-    /** Write a sequence of octets.
-
-        @param pBegin  Points to the start of the sequence, must not be null.
-
-        @param pEnd  Points past the end of the sequence, must be >= pBegin.
-     */
-    void writeSequence(const sal_Char * pBegin, const sal_Char * pEnd);
-
-    /** Write a null terminated sequence of octets (without the terminating
-        null).
-
-        @param pOctets  A null terminated sequence of octets, must not be
-        null.
-     */
-    void writeSequence(const sal_Char * pSequence);
-
-public:
-
-    /** Write a single octet.
-
-        @param nOctet  Some octet.
-
-        @return  This instance.
-     */
-    inline INetMIMEOutputSink & operator <<(sal_Char nOctet);
-
-    /** Write a null terminated sequence of octets (without the terminating
-        null).
-
-        @param pOctets  A null terminated sequence of octets, must not be
-        null.
-
-        @return  This instance.
-     */
-    inline INetMIMEOutputSink & operator <<(const sal_Char * pOctets);
-
-    OString takeBuffer()
-    {
-        return m_aBuffer.makeStringAndClear();
-    }
-};
-
-
-inline INetMIMEOutputSink & INetMIMEOutputSink::operator <<(sal_Char nOctet)
-{
-    writeSequence(&nOctet, &nOctet + 1);
-    return *this;
-}
-
-inline INetMIMEOutputSink & INetMIMEOutputSink::operator <<(const sal_Char *
-                                                                pOctets)
-{
-    writeSequence(pOctets);
-    return *this;
-}
 
 #endif
 

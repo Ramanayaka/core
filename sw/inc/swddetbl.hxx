@@ -23,9 +23,10 @@
 
 class SwDDEFieldType;
 
-class SwDDETable : public SwTable
+class SwDDETable final : public SwTable
 {
-    SwDepend aDepend;
+    sw::WriterMultiListener m_aDepends;
+    SwDDEFieldType* m_pDDEType;
 public:
 
     // Ctor moves all lines/boxes from SwTable to it.
@@ -39,7 +40,7 @@ public:
 
     SwDDEFieldType* GetDDEFieldType();
     inline const SwDDEFieldType* GetDDEFieldType() const;
-protected:
+private:
     virtual void Modify( const SfxPoolItem*, const SfxPoolItem* ) override;
     virtual void SwClientNotify( const SwModify&, const SfxHint& ) override;
 };

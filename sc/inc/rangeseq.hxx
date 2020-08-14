@@ -20,11 +20,14 @@
 #ifndef INCLUDED_SC_INC_RANGESEQ_HXX
 #define INCLUDED_SC_INC_RANGESEQ_HXX
 
-#include <com/sun/star/uno/Any.h>
 #include "types.hxx"
+#include <com/sun/star/uno/TypeClass.hpp>
+
+namespace com::sun::star::uno { class Any; }
 
 class SvNumberFormatter;
 class ScDocument;
+class ScMatrix;
 class ScRange;
 
 class ScRangeToSequence
@@ -60,7 +63,7 @@ class ScApiTypeConversion
 {
 public:
 
-    /** Convert an uno::Any to double if possible, including integer types.
+    /** Convert a uno::Any to double if possible, including integer types.
         @param o_fVal
             Out: the double value on successful conversion.
         @param o_eClass

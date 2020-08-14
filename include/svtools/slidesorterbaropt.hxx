@@ -21,11 +21,10 @@
 #define INCLUDED_SVTOOLS_SLIDESORTERBAROPT_HXX
 
 #include <svtools/svtdllapi.h>
-#include <sal/types.h>
-#include <osl/mutex.hxx>
-#include <rtl/ustring.hxx>
 #include <unotools/options.hxx>
 #include <memory>
+
+namespace osl { class Mutex; }
 
 /** forward declaration to our private date container implementation
 
@@ -39,7 +38,7 @@ class SvtSlideSorterBarOptions_Impl;
 
     \attention This class is partially threadsafe.
 */
-class SVT_DLLPUBLIC SvtSlideSorterBarOptions: public utl::detail::Options
+class SVT_DLLPUBLIC SvtSlideSorterBarOptions final : public utl::detail::Options
 {
     public:
         SvtSlideSorterBarOptions();
@@ -63,7 +62,7 @@ class SVT_DLLPUBLIC SvtSlideSorterBarOptions: public utl::detail::Options
         /** return a reference to a static mutex
 
             These class is partially threadsafe (for de-/initialization only).
-            All access methods are'nt safe!
+            All access methods aren't safe!
             We create a static mutex only for one ime and use at different times.
 
             \return     A reference to a static mutex member.*/

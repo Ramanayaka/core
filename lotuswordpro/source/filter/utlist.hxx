@@ -56,8 +56,6 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_UTLIST_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_UTLIST_HXX
 
-#include "ut.hxx"
-
 namespace OpenStormBento
 {
 
@@ -95,13 +93,15 @@ private: // Data
 class CUtList
 {
 public: // Methods
-    CUtList() { cDummyElmt.SetNext(&cDummyElmt);
-      cDummyElmt.SetPrev(&cDummyElmt); }
+    CUtList() {
+        cDummyElmt.SetNext(&cDummyElmt);
+        cDummyElmt.SetPrev(&cDummyElmt);
+    }
     virtual ~CUtList();
     CUtListElmt * GetFirst() { return cDummyElmt.GetNext(); }
     CUtListElmt * GetLast() { return cDummyElmt.GetPrev(); }
     CUtListElmt& GetTerminating() { return cDummyElmt; }
-    CUtListElmt * GetNextOrNULL(CUtListElmt * pCurr);
+    CUtListElmt * GetNextOrNULL(CUtListElmt const * pCurr);
 
     void Destroy();
 

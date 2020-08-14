@@ -20,25 +20,22 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_ODBC_ODATABASEMETADATA_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ODBC_ODATABASEMETADATA_HXX
 
-#include "odbc/OConnection.hxx"
-#include "odbc/odbcbasedllapi.hxx"
-#include "TDatabaseMetaDataBase.hxx"
+#include <odbc/OConnection.hxx>
+#include <odbc/odbcbasedllapi.hxx>
+#include <TDatabaseMetaDataBase.hxx>
 
-namespace connectivity
-{
-    namespace odbc
+namespace connectivity::odbc
     {
 
         //************ Class: ODatabaseMetaData
 
 
-        class OOO_DLLPUBLIC_ODBCBASE ODatabaseMetaData :
+        class OOO_DLLPUBLIC_ODBCBASE ODatabaseMetaData final :
             public ODatabaseMetaDataBase
         {
             SQLHANDLE       m_aConnectionHandle;
             OConnection*    m_pConnection;
-            bool        m_bUseCatalog;
-            bool        m_bOdbc3;
+            bool            m_bUseCatalog;
 
             // cached database information
             virtual OUString    impl_getIdentifierQuoteString_throw(  ) override;
@@ -54,7 +51,6 @@ namespace connectivity
             virtual sal_Int32   impl_getMaxStatements_throw(  ) override;
             virtual sal_Int32   impl_getMaxTablesInSelect_throw(  ) override;
             virtual bool        impl_storesMixedCaseQuotedIdentifiers_throw(  ) override;
-        protected:
             OUString getURLImpl();
             virtual css::uno::Reference< css::sdbc::XResultSet > impl_getTypeInfo_throw() override;
             virtual ~ODatabaseMetaData() override;
@@ -202,7 +198,7 @@ namespace connectivity
             virtual sal_Bool SAL_CALL supportsBatchUpdates(  ) override;
             virtual css::uno::Reference< css::sdbc::XResultSet > SAL_CALL getUDTs( const css::uno::Any& catalog, const OUString& schemaPattern, const OUString& typeNamePattern, const css::uno::Sequence< sal_Int32 >& types ) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ODBC_ODATABASEMETADATA_HXX
 

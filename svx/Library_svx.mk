@@ -35,13 +35,12 @@ $(eval $(call gb_Library_use_custom_headers,svx,\
 
 $(eval $(call gb_Library_add_defs,svx,\
     -DSVX_DLLIMPLEMENTATION \
-    -DBOOST_SPIRIT_USE_OLD_NAMESPACE \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,svx,$(SRCDIR)/svx/inc/pch/precompiled_svx))
+$(eval $(call gb_Library_set_precompiled_header,svx,svx/inc/pch/precompiled_svx))
 
 $(eval $(call gb_Library_use_libraries,svx,\
-    avmedia\
+    $(call gb_Helper_optional,AVMEDIA,avmedia) \
     basegfx \
     sb \
     comphelper \
@@ -53,7 +52,7 @@ $(eval $(call gb_Library_use_libraries,svx,\
         dbtools) \
     drawinglayer \
     editeng \
-    fwe \
+    fwk \
     i18nlangtag \
     i18nutil \
     sal \
@@ -89,7 +88,6 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/accessibility/AccessibleShape \
     svx/source/accessibility/AccessibleShapeInfo \
     svx/source/accessibility/AccessibleShapeTreeInfo \
-    svx/source/accessibility/AccessibleSvxFindReplaceDialog \
     svx/source/accessibility/AccessibleTextEventQueue \
     svx/source/accessibility/AccessibleTextHelper \
     svx/source/accessibility/ChildrenManager \
@@ -106,8 +104,10 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/customshapes/EnhancedCustomShapeEngine \
     svx/source/customshapes/EnhancedCustomShapeFontWork \
     svx/source/customshapes/EnhancedCustomShapeHandle \
+    svx/source/dialog/AccessibilityCheckDialog \
     svx/source/dialog/_bmpmask \
     svx/source/dialog/charmap \
+    svx/source/dialog/searchcharmap \
     svx/source/dialog/connctrl \
     svx/source/dialog/_contdlg \
     svx/source/dialog/contwnd \
@@ -116,15 +116,16 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
 		svx/source/dialog/crashreportdlg \
 		svx/source/dialog/crashreportui) \
     svx/source/dialog/ctredlin \
+    svx/source/dialog/ClassificationCommon \
+    svx/source/dialog/ClassificationDialog \
+    svx/source/dialog/ClassificationEditView \
     svx/source/dialog/databaseregistrationui \
     svx/source/dialog/dialcontrol \
     svx/source/dialog/dlgctl3d \
     svx/source/dialog/dlgctrl \
     svx/source/dialog/docrecovery \
     svx/source/dialog/fntctrl \
-    svx/source/dialog/fontlb \
     svx/source/dialog/fontwork \
-    svx/source/dialog/framelinkarray \
     svx/source/dialog/frmdirlbox \
     svx/source/dialog/frmsel \
     svx/source/dialog/graphctl \
@@ -136,11 +137,9 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/dialog/linkwarn \
     svx/source/dialog/measctrl \
     svx/source/dialog/optgrid \
-    svx/source/dialog/orienthelper \
     svx/source/dialog/pagectrl \
     svx/source/dialog/paraprev \
     svx/source/dialog/passwd \
-    svx/source/dialog/prtqry \
     svx/source/dialog/relfld \
     svx/source/dialog/rlrcitem \
     svx/source/dialog/rubydialog \
@@ -158,10 +157,14 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/dialog/swframeposstrings \
     svx/source/dialog/txencbox \
     svx/source/dialog/txenctab \
+    svx/source/dialog/weldeditview \
+    svx/source/dialog/signaturelinehelper \
     svx/source/engine3d/float3d \
     svx/source/items/algitem \
+    svx/source/items/autoformathelper \
     svx/source/items/hlnkitem \
     svx/source/items/numfmtsh \
+    svx/source/items/legacyitem \
     svx/source/items/numinf \
     svx/source/items/ofaitem \
     svx/source/items/pageitem \
@@ -175,10 +178,10 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/mnuctrls/smarttagmenu \
     svx/source/sidebar/ContextChangeEventMultiplexer \
     svx/source/sidebar/EmptyPanel \
+    svx/source/sidebar/inspector/InspectorTextPanel \
     svx/source/sidebar/nbdtmg \
     svx/source/sidebar/nbdtmgfact	\
     svx/source/sidebar/PanelFactory \
-    svx/source/sidebar/PanelLayout \
     svx/source/sidebar/SelectionAnalyzer \
     svx/source/sidebar/SelectionChangeHandler \
     svx/source/sidebar/text/TextCharacterSpacingControl \
@@ -187,6 +190,7 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/sidebar/text/TextUnderlinePopup \
     svx/source/sidebar/text/TextPropertyPanel \
     svx/source/sidebar/styles/StylesPropertyPanel \
+    svx/source/sidebar/lists/ListsPropertyPanel \
     svx/source/sidebar/paragraph/ParaLineSpacingControl \
     svx/source/sidebar/paragraph/ParaLineSpacingPopup \
     svx/source/sidebar/paragraph/ParaPropertyPanel \
@@ -195,15 +199,16 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/sidebar/area/AreaPropertyPanel \
     svx/source/sidebar/area/AreaPropertyPanelBase \
     svx/source/sidebar/area/AreaTransparencyGradientPopup \
+    svx/source/sidebar/glow/GlowPropertyPanel \
+    svx/source/sidebar/softedge/SoftEdgePropertyPanel \
     svx/source/sidebar/shadow/ShadowPropertyPanel \
     svx/source/sidebar/graphic/GraphicPropertyPanel \
     svx/source/sidebar/line/LinePropertyPanel \
     svx/source/sidebar/line/LinePropertyPanelBase \
     svx/source/sidebar/line/LineWidthValueSet \
     svx/source/sidebar/line/LineWidthPopup \
-    svx/source/sidebar/media/MediaPlaybackPanel \
+    $(call gb_Helper_optional,AVMEDIA,svx/source/sidebar/media/MediaPlaybackPanel) \
     svx/source/sidebar/possize/PosSizePropertyPanel \
-    svx/source/sidebar/possize/SidebarDialControl \
     svx/source/sidebar/shapes/DefaultShapesPanel \
     svx/source/sidebar/shapes/ShapesUtil \
     svx/source/sidebar/tools/ValueSetWithTextControl \
@@ -230,7 +235,7 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/tbxctrls/itemwin \
     svx/source/tbxctrls/layctrl \
     svx/source/tbxctrls/lboxctrl \
-    svx/source/tbxctrls/linectrl \
+    svx/source/tbxctrls/linewidthctrl \
     svx/source/tbxctrls/tbunocontroller \
     svx/source/tbxctrls/tbunosearchcontrollers \
     svx/source/tbxctrls/tbxcolor \

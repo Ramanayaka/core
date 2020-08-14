@@ -21,32 +21,21 @@
 
 #include <connectivity/FValue.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
+#include <osl/diagnose.h>
 
 namespace connectivity
 {
-    class OOO_DLLPUBLIC_DBTOOLS OKeyValue
+    class OOO_DLLPUBLIC_DBTOOLS OKeyValue final
     {
-    private:
         std::vector<ORowSetValueDecoratorRef> m_aKeys;
         sal_Int32 m_nValue;
 
-    protected:
         OKeyValue(sal_Int32 nVal);
     public:
 
         ~OKeyValue();
 
-        static void * SAL_CALL operator new( size_t nSize )
-            { return ::rtl_allocateMemory( nSize ); }
-        static void * SAL_CALL operator new( size_t,void* _pHint )
-            { return _pHint; }
-        static void SAL_CALL operator delete( void * pMem )
-            { ::rtl_freeMemory( pMem ); }
-        static void SAL_CALL operator delete( void *,void* )
-            {  }
-
-        static OKeyValue* createKeyValue(sal_Int32 nVal);
-        //  static OKeyValue* createEmptyKeyValue();
+        static std::unique_ptr<OKeyValue> createKeyValue(sal_Int32 nVal);
 
         void pushKey(const ORowSetValueDecoratorRef& _aValueRef)
         {

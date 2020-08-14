@@ -20,25 +20,25 @@
 #ifndef INCLUDED_UCB_SOURCE_UCP_HIERARCHY_HIERARCHYCONTENT_HXX
 #define INCLUDED_UCB_SOURCE_UCP_HIERARCHY_HIERARCHYCONTENT_HXX
 
-#include <list>
+#include <vector>
 #include <rtl/ref.hxx>
 #include <com/sun/star/ucb/XContentCreator.hpp>
 #include <ucbhelper/contenthelper.hxx>
 #include "hierarchydata.hxx"
 #include "hierarchyprovider.hxx"
 
-namespace com { namespace sun { namespace star { namespace beans {
+namespace com::sun::star::beans {
     struct Property;
     struct PropertyValue;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace sdbc {
+namespace com::sun::star::sdbc {
     class XRow;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace ucb {
+namespace com::sun::star::ucb {
     struct TransferInfo;
-} } } }
+}
 
 namespace hierarchy_ucp
 {
@@ -155,8 +155,8 @@ private:
     makeNewIdentifier( const OUString& rTitle );
 
     typedef rtl::Reference< HierarchyContent > HierarchyContentRef;
-    typedef std::list< HierarchyContentRef > HierarchyContentRefList;
-    void queryChildren( HierarchyContentRefList& rChildren );
+    typedef std::vector< HierarchyContentRef > HierarchyContentRefVector;
+    void queryChildren( HierarchyContentRefVector& rChildren );
 
     bool exchangeIdentity(
                 const css::uno::Reference< css::ucb::XContentIdentifier >& xNewId );

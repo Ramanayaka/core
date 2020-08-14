@@ -17,52 +17,45 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DrawViewShell.hxx"
-#include "PresentationViewShell.hxx"
+#include <DrawViewShell.hxx>
 #include <editeng/outliner.hxx>
 #include <svx/svxids.hrc>
 #include <sfx2/request.hxx>
 #include <sfx2/dispatch.hxx>
 #include <svx/svdpagv.hxx>
-#include <vcl/scrbar.hxx>
-#include <vcl/settings.hxx>
+#include <svx/svdoutl.hxx>
 
-#include <tools/poly.hxx>
+#include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
+#include <sdcommands.h>
+#include <sal/log.hxx>
+
 #include <svx/fmshell.hxx>
 #include <editeng/eeitem.hxx>
-#include <svtools/colorcfg.hxx>
-#include "AccessibleDrawDocumentView.hxx"
+#include <AccessibleDrawDocumentView.hxx>
 
 #include <sfx2/viewfrm.hxx>
-#include "LayerTabBar.hxx"
+#include <LayerTabBar.hxx>
 
-#include "strings.hrc"
-#include "res_bmp.hrc"
-#include "glob.hrc"
-#include "app.hrc"
-#include "helpids.h"
-#include "optsitem.hxx"
-#include "sdmod.hxx"
-#include "FrameView.hxx"
-#include "sdattr.hxx"
-#include "futext.hxx"
-#include "sdpage.hxx"
-#include "stlpool.hxx"
-#include "prntopts.hxx"
-#include "sdresid.hxx"
-#include "Window.hxx"
-#include "drawview.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-#include "Outliner.hxx"
-#include "Client.hxx"
-#include "slideshow.hxx"
-#include "unokywds.hxx"
-#include "SdUnoDrawView.hxx"
-#include "ViewShellBase.hxx"
-#include "FormShellManager.hxx"
-#include "DrawController.hxx"
+#include <app.hrc>
+#include <helpids.h>
+#include <optsitem.hxx>
+#include <sdmod.hxx>
+#include <FrameView.hxx>
+#include <Window.hxx>
+#include <drawview.hxx>
+#include <drawdoc.hxx>
+#include <DrawDocShell.hxx>
+#include <Client.hxx>
+#include <slideshow.hxx>
+#include <unokywds.hxx>
+#include <sdpage.hxx>
+#include <SdUnoDrawView.hxx>
+#include <ViewShellBase.hxx>
+#include <FormShellManager.hxx>
+#include <DrawController.hxx>
 #include <memory>
+#include <comphelper/lok.hxx>
 
 namespace sd {
 
@@ -108,9 +101,6 @@ void DrawViewShell::ArrangeGUIElements()
     // bar.
     int nScrollBarSize = GetParentWindow()->GetSettings().GetStyleSettings().GetScrollBarSize();
     maScrBarWH = Size (nScrollBarSize, nScrollBarSize);
-
-    Point aHPos = maViewPos;
-    aHPos.Y() += maViewSize.Height();
 
     ViewShell::ArrangeGUIElements ();
 
@@ -285,7 +275,7 @@ void DrawViewShell::ReadFrameViewData(FrameView* pView)
         // #i57936# Force mbIsLayerModeActive to false so that ChangeEditMode
         // below does something regarding LayerTabBar content refresh. That refresh
         // is only done when IsLayerModeActive changes. It needs to be done
-        // since e.g. Layer vsisibility was changed above and this may need
+        // since e.g. Layer visibility was changed above and this may need
         // a refresh to show the correct graphical representation
         mbIsLayerModeActive = false;
     }
@@ -348,6 +338,12 @@ void DrawViewShell::WriteFrameViewData()
 
     Size aVisSizePixel = GetActiveWindow()->GetOutputSizePixel();
     ::tools::Rectangle aVisArea = GetActiveWindow()->PixelToLogic( ::tools::Rectangle( Point(0,0), aVisSizePixel) );
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        // aVisArea is nonsensical in the LOK case, use the slide size
+        aVisArea = ::tools::Rectangle(Point(), getCurrentPage()->GetSize());
+    }
+
     mpFrameView->SetVisArea(aVisArea);
 
     if( mePageKind == PageKind::Handout )
@@ -442,11 +438,11 @@ void DrawViewShell::HidePage()
         pFormShell->PrepareClose(false);
 }
 
-void DrawViewShell::WriteUserDataSequence ( css::uno::Sequence < css::beans::PropertyValue >& rSequence, bool bBrowse )
+void DrawViewShell::WriteUserDataSequence ( css::uno::Sequence < css::beans::PropertyValue >& rSequence )
 {
     WriteFrameViewData();
 
-    ViewShell::WriteUserDataSequence( rSequence, bBrowse );
+    ViewShell::WriteUserDataSequence( rSequence );
 
     const sal_Int32 nIndex = rSequence.getLength();
     rSequence.realloc( nIndex + 1 );
@@ -457,27 +453,72 @@ void DrawViewShell::WriteUserDataSequence ( css::uno::Sequence < css::beans::Pro
     GetDocSh()->GetDoc()->WriteUserDataSequence(rSequence);
 }
 
-void DrawViewShell::ReadUserDataSequence ( const css::uno::Sequence < css::beans::PropertyValue >& rSequence, bool bBrowse )
+void DrawViewShell::ReadUserDataSequence ( const css::uno::Sequence < css::beans::PropertyValue >& rSequence )
 {
     WriteFrameViewData();
 
-    ViewShell::ReadUserDataSequence( rSequence, bBrowse );
+    ViewShell::ReadUserDataSequence( rSequence );
 
-    const sal_Int32 nLength = rSequence.getLength();
-    const css::beans::PropertyValue *pValue = rSequence.getConstArray();
-    for (sal_Int32 i = 0 ; i < nLength; i++, pValue++ )
+    for (const css::beans::PropertyValue& rValue : rSequence)
     {
-        if ( pValue->Name == sUNO_View_ZoomOnPage )
+        if ( rValue.Name == sUNO_View_ZoomOnPage )
         {
             bool bZoomPage = false;
-            if( pValue->Value >>= bZoomPage )
+            if( rValue.Value >>= bZoomPage )
             {
                 mbZoomOnPage = bZoomPage;
             }
         }
         // Fallback to common SdrModel processing
-        else GetDocSh()->GetDoc()->ReadUserDataSequenceValue(pValue);
+        else GetDocSh()->GetDoc()->ReadUserDataSequenceValue(&rValue);
     }
+
+    // The parameter rSequence contains the config-items from
+    // <config:config-item-set config:name="ooo:view-settings">. Determine, whether
+    // they contain "VisibleLayers", "PrintableLayers" and "LockedLayers". If not, it
+    // is a foreign document or a new document after transition period and the corresponding
+    // information were read from <draw:layer-set>. In that case we need to bring
+    // the information from model to view.
+    bool bHasVisiPrnLockSettings(false);
+    for ( auto & rPropertyValue : rSequence )
+    {
+        if ( rPropertyValue.Name == sUNO_View_VisibleLayers
+          || rPropertyValue.Name == sUNO_View_PrintableLayers
+          || rPropertyValue.Name == sUNO_View_LockedLayers )
+        {
+            bHasVisiPrnLockSettings = true;
+            break;
+        }
+    }
+    if ( !bHasVisiPrnLockSettings )
+    {
+        const SdrLayerAdmin& rLayerAdmin = GetDocSh()->GetDoc()->GetLayerAdmin();
+        SdrLayerIDSet aSdrLayerIDSet;
+        rLayerAdmin.getVisibleLayersODF( aSdrLayerIDSet );
+        mpFrameView -> SetVisibleLayers( aSdrLayerIDSet );
+        rLayerAdmin.getPrintableLayersODF( aSdrLayerIDSet );
+        mpFrameView -> SetPrintableLayers( aSdrLayerIDSet );
+        rLayerAdmin.getLockedLayersODF( aSdrLayerIDSet );
+        mpFrameView -> SetLockedLayers( aSdrLayerIDSet );
+    }
+    else
+    {
+        // tdf#129898 repair layer "DrawnInSlideshow", which was wrongly written
+        // in LO 6.2 to 6.4. The ODF defaults were corrected when reading draw:layer-set, but
+        // not in reading config settings, because there the name is not known.
+        const SdrLayerAdmin& rLayerAdmin = GetDocSh()->GetDoc()->GetLayerAdmin();
+        if (rLayerAdmin.GetLayer("DrawnInSlideshow"))
+        {
+            SdrLayerIDSet aSdrLayerIDSet;
+            rLayerAdmin.getVisibleLayersODF( aSdrLayerIDSet );
+            mpFrameView -> SetVisibleLayers( aSdrLayerIDSet );
+            rLayerAdmin.getPrintableLayersODF( aSdrLayerIDSet );
+            mpFrameView -> SetPrintableLayers( aSdrLayerIDSet );
+            rLayerAdmin.getLockedLayersODF( aSdrLayerIDSet );
+            mpFrameView -> SetLockedLayers( aSdrLayerIDSet );
+        }
+    }
+
 
     if( mpFrameView->GetPageKind() != mePageKind )
     {
@@ -569,20 +610,20 @@ int DrawViewShell::GetActiveTabLayerIndex() const
 void DrawViewShell::SetActiveTabLayerIndex (int nIndex)
 {
     LayerTabBar* pBar = GetLayerTabControl ();
-    if (pBar != nullptr)
+    if (pBar == nullptr)
+        return;
+
+    // Ignore invalid indices silently.
+    if (nIndex>=0 && nIndex<pBar->GetPageCount())
     {
-        // Ignore invalid indices silently.
-        if (nIndex>=0 && nIndex<pBar->GetPageCount())
-        {
-            // Tell the draw view and the tab control of the new active layer.
-            mpDrawView->SetActiveLayer (pBar->GetPageText (pBar->GetPageId ((sal_uInt16)nIndex)));
-            pBar->SetCurPageId (pBar->GetPageId ((sal_uInt16)nIndex));
-            rtl::Reference<SdUnoDrawView> pUnoDrawView(new SdUnoDrawView (
-                *this,
-                *GetView()));
-            css::uno::Reference< css::drawing::XLayer> rLayer = pUnoDrawView->getActiveLayer();
-            GetViewShellBase().GetDrawController().fireChangeLayer( &rLayer );
-        }
+        // Tell the draw view and the tab control of the new active layer.
+        mpDrawView->SetActiveLayer (pBar->GetLayerName (pBar->GetPageId (static_cast<sal_uInt16>(nIndex))));
+        pBar->SetCurPageId (pBar->GetPageId (static_cast<sal_uInt16>(nIndex)));
+        rtl::Reference<SdUnoDrawView> pUnoDrawView(new SdUnoDrawView (
+            *this,
+            *GetView()));
+        css::uno::Reference< css::drawing::XLayer> rLayer = pUnoDrawView->getActiveLayer();
+        GetViewShellBase().GetDrawController().fireChangeLayer( &rLayer );
     }
 }
 

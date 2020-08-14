@@ -23,32 +23,119 @@
 
 #include <fmtfld.hxx>
 #include <txtfld.hxx>
-#include <docufld.hxx>
 #include <ndtxt.hxx>
-#include <cntfrm.hxx>
 #include <pagefrm.hxx>
 #include <rootfrm.hxx>
 #include <txtfrm.hxx>
-#include <tabfrm.hxx>
 #include <IDocumentRedlineAccess.hxx>
+#include <IDocumentFieldsAccess.hxx>
 #include <redline.hxx>
 #include <scriptinfo.hxx>
-#include <editeng/charhiddenitem.hxx>
 #include <calbck.hxx>
+#include <IMark.hxx>
+#include <sortedobjs.hxx>
+#include <anchoredobject.hxx>
+#include <fmtanchr.hxx>
 
 class Point;
+
+namespace
+{
+/// Checks if pAnnotationMark covers exactly rAnchorPos (the comment anchor).
+bool AnnotationMarkCoversCommentAnchor(const sw::mark::IMark* pAnnotationMark,
+                                       const SwPosition& rAnchorPos)
+{
+    if (!pAnnotationMark)
+    {
+        return false;
+    }
+
+    const SwPosition& rMarkStart = pAnnotationMark->GetMarkStart();
+    const SwPosition& rMarkEnd = pAnnotationMark->GetMarkEnd();
+
+    if (rMarkStart != rAnchorPos)
+    {
+        // This can be the as-char case: the comment placeholder character is exactly between the
+        // annotation mark start and end.
+        SwPosition aPosition(rMarkStart);
+        ++aPosition.nContent;
+        if (aPosition != rAnchorPos)
+        {
+            return false;
+        }
+
+        ++aPosition.nContent;
+        if (aPosition != rMarkEnd)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    if (rMarkStart.nNode != rMarkEnd.nNode)
+    {
+        return false;
+    }
+
+    return rMarkEnd.nContent.GetIndex() == rMarkStart.nContent.GetIndex() + 1;
+}
+
+/**
+ * Finds the first draw object of rTextFrame which has the same anchor position as the start of
+ * rAnnotationMark.
+ */
+SwAnchoredObject* GetAnchoredObjectOfAnnotationMark(const sw::mark::IMark& rAnnotationMark,
+                                                    const SwTextFrame& rTextFrame)
+{
+    const SwSortedObjs* pAnchored = rTextFrame.GetDrawObjs();
+    if (!pAnchored)
+    {
+        return nullptr;
+    }
+
+    for (SwAnchoredObject* pObject : *pAnchored)
+    {
+        SwFrameFormat& rFrameFormat = pObject->GetFrameFormat();
+        const SwPosition* pFrameAnchor = rFrameFormat.GetAnchor().GetContentAnchor();
+        if (!pFrameAnchor)
+        {
+            continue;
+        }
+
+        if (rAnnotationMark.GetMarkStart() == *pFrameAnchor)
+        {
+            return pObject;
+        }
+    }
+
+    return nullptr;
+}
+}
+
+SwSidebarItem::SwSidebarItem(const bool aFocus)
+    : pPostIt(nullptr)
+    , bShow(true)
+    , bFocus(aFocus)
+    , bPendingLayout(false)
+    , mLayoutStatus(SwPostItHelper::INVISIBLE)
+    , maLayoutInfo()
+{
+}
+
+SwSidebarItem::~SwSidebarItem() {}
 
 SwPostItHelper::SwLayoutStatus SwPostItHelper::getLayoutInfos(
     SwLayoutInfo& o_rInfo,
     const SwPosition& rAnchorPos,
-    const SwPosition* pAnnotationStartPos )
+    const sw::mark::IMark* pAnnotationMark )
 {
     SwLayoutStatus aRet = INVISIBLE;
     SwTextNode* pTextNode = rAnchorPos.nNode.GetNode().GetTextNode();
     if ( pTextNode == nullptr )
         return aRet;
 
-    SwIterator<SwTextFrame,SwContentNode> aIter( *pTextNode );
+    SwIterator<SwTextFrame, SwContentNode, sw::IteratorMode::UnwrapMulti> aIter(*pTextNode);
     for( SwTextFrame* pTextFrame = aIter.First(); pTextFrame != nullptr; pTextFrame = aIter.Next() )
     {
         if( !pTextFrame->IsFollow() )
@@ -62,20 +149,36 @@ SwPostItHelper::SwLayoutStatus SwPostItHelper::getLayoutInfos(
                 o_rInfo.mpAnchorFrame = pTextFrame;
                 {
                     DisableCallbackAction a(*pTextFrame->getRootFrame());
-                    pTextFrame->GetCharRect(o_rInfo.mPosition, rAnchorPos, nullptr, false);
+                    bool bPositionFromCommentAnchor = true;
+                    if (AnnotationMarkCoversCommentAnchor(pAnnotationMark, rAnchorPos))
+                    {
+                        SwAnchoredObject* pFrame
+                            = GetAnchoredObjectOfAnnotationMark(*pAnnotationMark, *pTextFrame);
+                        if (pFrame)
+                        {
+                            o_rInfo.mPosition = pFrame->GetObjRect();
+                            bPositionFromCommentAnchor = false;
+                        }
+                    }
+                    if (bPositionFromCommentAnchor)
+                    {
+                        pTextFrame->GetCharRect(o_rInfo.mPosition, rAnchorPos, nullptr, false);
+                    }
+                    o_rInfo.mPositionFromCommentAnchor = bPositionFromCommentAnchor;
                 }
-                if ( pAnnotationStartPos != nullptr )
+                if (pAnnotationMark != nullptr)
                 {
-                    o_rInfo.mnStartNodeIdx = pAnnotationStartPos->nNode.GetIndex();
-                    o_rInfo.mnStartContent = pAnnotationStartPos->nContent.GetIndex();
+                    const SwPosition& rAnnotationStartPos = pAnnotationMark->GetMarkStart();
+                    o_rInfo.mnStartNodeIdx = rAnnotationStartPos.nNode.GetIndex();
+                    o_rInfo.mnStartContent = rAnnotationStartPos.nContent.GetIndex();
                 }
                 else
                 {
                     o_rInfo.mnStartNodeIdx = 0;
                     o_rInfo.mnStartContent = -1;
                 }
-                o_rInfo.mPageFrame = pPage->Frame();
-                o_rInfo.mPagePrtArea = pPage->Prt();
+                o_rInfo.mPageFrame = pPage->getFrameArea();
+                o_rInfo.mPagePrtArea = pPage->getFramePrintArea();
                 o_rInfo.mPagePrtArea.Pos() += o_rInfo.mPageFrame.Pos();
                 o_rInfo.mnPageNumber = pPage->GetPhyPageNum();
                 o_rInfo.meSidebarPosition = pPage->SidebarPosition();
@@ -87,9 +190,9 @@ SwPostItHelper::SwLayoutStatus SwPostItHelper::getLayoutInfos(
                     const SwRangeRedline* pRedline = rIDRA.GetRedline( rAnchorPos, nullptr );
                     if( pRedline )
                     {
-                        if( nsRedlineType_t::REDLINE_INSERT == pRedline->GetType() )
+                        if( RedlineType::Insert == pRedline->GetType() )
                             aRet = INSERTED;
-                        else if( nsRedlineType_t::REDLINE_DELETE == pRedline->GetType() )
+                        else if( RedlineType::Delete == pRedline->GetType() )
                             aRet = DELETED;
                         o_rInfo.mRedlineAuthor = pRedline->GetAuthor();
                     }
@@ -105,7 +208,7 @@ SwPostItHelper::SwLayoutStatus SwPostItHelper::getLayoutInfos(
 
 long SwPostItHelper::getLayoutHeight( const SwRootFrame* pRoot )
 {
-    long nRet = pRoot ? pRoot->Frame().Height() : 0;
+    long nRet = pRoot ? pRoot->getFrameArea().Height() : 0;
     return nRet;
 }
 
@@ -126,7 +229,7 @@ unsigned long SwPostItHelper::getPageInfo( SwRect& rPageFrame, const SwRootFrame
     if( pPage )
     {
         nRet = pPage->GetPhyPageNum();
-        rPageFrame = pPage->Frame();
+        rPageFrame = pPage->getFrameArea();
     }
     return nRet;
 }
@@ -141,16 +244,19 @@ SwPosition SwAnnotationItem::GetAnchorPosition() const
     return aPos;
 }
 
-bool SwAnnotationItem::UseElement()
+bool SwAnnotationItem::UseElement(SwRootFrame const& rLayout,
+        IDocumentRedlineAccess const& rIDRA)
 {
-    return mrFormatField.IsFieldInDoc();
+    return mrFormatField.IsFieldInDoc()
+        && (!rLayout.IsHideRedlines()
+            || !sw::IsFieldDeletedInModel(rIDRA, *mrFormatField.GetTextField()));
 }
 
 VclPtr<sw::annotation::SwAnnotationWin> SwAnnotationItem::GetSidebarWindow(
                                                             SwEditWin& rEditWin,
                                                             SwPostItMgr& aMgr)
 {
-    return VclPtr<sw::annotation::SwAnnotationWin>::Create( rEditWin, WB_DIALOGCONTROL,
+    return VclPtr<sw::annotation::SwAnnotationWin>::Create( rEditWin,
                                                 aMgr,
                                                 *this,
                                                 &mrFormatField );

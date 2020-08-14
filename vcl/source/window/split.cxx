@@ -24,9 +24,9 @@
 #include <vcl/svapp.hxx>
 #include <vcl/syswin.hxx>
 #include <vcl/taskpanelist.hxx>
-#include <vcl/gradient.hxx>
 #include <vcl/lineinfo.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/ptrstyle.hxx>
 
 #include <rtl/instance.hxx>
 
@@ -48,7 +48,7 @@ namespace
     };
 }
 
-// Should only be called from a ImplInit method for initialization or
+// Should only be called from an ImplInit method for initialization or
 // after checking bNew is different from the current mbHorzSplit value.
 // The public method that does that check is Splitter::SetHorizontal().
 void Splitter::ImplInitHorVer(bool bNew)
@@ -61,15 +61,15 @@ void Splitter::ImplInitHorVer(bool bNew)
     if ( mbHorzSplit )
     {
         ePointerStyle = PointerStyle::HSplit;
-        SetSizePixel( Size( rSettings.GetSplitSize(), rSettings.GetScrollBarSize() ) );
+        SetSizePixel( Size( StyleSettings::GetSplitSize(), rSettings.GetScrollBarSize() ) );
     }
     else
     {
         ePointerStyle = PointerStyle::VSplit;
-        SetSizePixel( Size( rSettings.GetScrollBarSize(), rSettings.GetSplitSize() ) );
+        SetSizePixel( Size( rSettings.GetScrollBarSize(), StyleSettings::GetSplitSize() ) );
     }
 
-    SetPointer( Pointer( ePointerStyle ) );
+    SetPointer( ePointerStyle );
 }
 
 void Splitter::ImplInit( vcl::Window* pParent, WinBits nWinStyle )
@@ -94,16 +94,16 @@ void Splitter::ImplSplitMousePos( Point& rPos )
     if ( mbHorzSplit )
     {
         if ( rPos.X() > maDragRect.Right()-1 )
-            rPos.X() = maDragRect.Right()-1;
+            rPos.setX( maDragRect.Right()-1 );
         if ( rPos.X() < maDragRect.Left()+1 )
-            rPos.X() = maDragRect.Left()+1;
+            rPos.setX( maDragRect.Left()+1 );
     }
     else
     {
         if ( rPos.Y() > maDragRect.Bottom()-1 )
-            rPos.Y() = maDragRect.Bottom()-1;
+            rPos.setY( maDragRect.Bottom()-1 );
         if ( rPos.Y() < maDragRect.Top()+1 )
-            rPos.Y() = maDragRect.Top()+1;
+            rPos.setY( maDragRect.Top()+1 );
     }
 }
 
@@ -113,13 +113,13 @@ void Splitter::ImplDrawSplitter()
 
     if ( mbHorzSplit )
     {
-        aInvRect.Left()     = maDragPos.X() - 1;
-        aInvRect.Right()    = maDragPos.X() + 1;
+        aInvRect.SetLeft( maDragPos.X() - 1 );
+        aInvRect.SetRight( maDragPos.X() + 1 );
     }
     else
     {
-        aInvRect.Top()      = maDragPos.Y() - 1;
-        aInvRect.Bottom()   = maDragPos.Y() + 1;
+        aInvRect.SetTop( maDragPos.Y() - 1 );
+        aInvRect.SetBottom( maDragPos.Y() + 1 );
     }
 
     mpRefWin->InvertTracking( mpRefWin->PixelToLogic(aInvRect), ShowTrackFlags::Split );
@@ -133,7 +133,7 @@ Splitter::Splitter( vcl::Window* pParent, WinBits nStyle ) :
     mnStartSplitPos( 0 ),
     mbDragFull( false ),
     mbKbdSplitting( false ),
-    mbInKeyEvent( 0 ),
+    mbInKeyEvent( false ),
     mnKeyboardStepSize( SPLITTER_DEFAULTSTEPSIZE )
 {
     ImplGetWindowImpl()->mbSplitter        = true;
@@ -199,7 +199,7 @@ bool Splitter::ImplSplitterActive()
     bool bActive = true;
     const StyleSettings& rSettings = GetSettings().GetStyleSettings();
     long nA = rSettings.GetScrollBarSize();
-    long nB = rSettings.GetSplitSize();
+    long nB = StyleSettings::GetSplitSize();
 
     Size aSize = GetOutputSize();
     if ( mbHorzSplit )
@@ -224,9 +224,9 @@ void Splitter::MouseButtonDown( const MouseEvent& rMEvt )
             StartSplit();
             Point aPos = rMEvt.GetPosPixel();
             if ( mbHorzSplit )
-                aPos.X() = mnLastSplitPos;
+                aPos.setX( mnLastSplitPos );
             else
-                aPos.Y() = mnLastSplitPos;
+                aPos.setY( mnLastSplitPos );
             ImplSplitMousePos( aPos );
             long nTemp = mnSplitPos;
             if ( mbHorzSplit )
@@ -303,7 +303,7 @@ void Splitter::Tracking( const TrackingEvent& rTEvt )
                 Split();
             }
 
-            GetParent()->Update();
+            GetParent()->PaintImmediately();
         }
         else
         {
@@ -382,16 +382,16 @@ void Splitter::ImplKbdTracking( vcl::KeyCode aKeyCode )
             switch( nCode )
             {
             case KEY_LEFT:
-                aNewPos.X()-=delta;
+                aNewPos.AdjustX( -delta );
                 break;
             case KEY_RIGHT:
-                aNewPos.X()+=delta;
+                aNewPos.AdjustX(delta );
                 break;
             case KEY_UP:
-                aNewPos.Y()-=delta;
+                aNewPos.AdjustY( -delta );
                 break;
             case KEY_DOWN:
-                aNewPos.Y()+=delta;
+                aNewPos.AdjustY(delta );
                 break;
             default:
                 maxiter = 0;    // leave loop
@@ -422,7 +422,7 @@ void Splitter::ImplKbdTracking( vcl::KeyCode aKeyCode )
                 mnLastSplitPos = 0;
                 Split();
             }
-            GetParent()->Update();
+            GetParent()->PaintImmediately();
         }
     }
 }
@@ -510,14 +510,14 @@ void Splitter::ImplRestoreSplitter()
     // set splitter in the center of the ref window
     StartSplit();
     Size aSize = mpRefWin->GetOutputSize();
-    Point aPos = Point( aSize.Width()/2 , aSize.Height()/2);
+    Point aPos( aSize.Width()/2 , aSize.Height()/2);
     if ( mnLastSplitPos != mnSplitPos && mnLastSplitPos > 5 )
     {
         // restore last pos if it was a useful position (>5)
         if ( mbHorzSplit )
-            aPos.X() = mnLastSplitPos;
+            aPos.setX( mnLastSplitPos );
         else
-            aPos.Y() = mnLastSplitPos;
+            aPos.setY( mnLastSplitPos );
     }
 
     ImplSplitMousePos( aPos );
@@ -555,7 +555,7 @@ void Splitter::KeyInput( const KeyEvent& rKEvt )
     if( mbInKeyEvent )
         return;
 
-    mbInKeyEvent = 1;
+    mbInKeyEvent = true;
 
     Splitter *pSibling = ImplFindSibling();
     vcl::KeyCode aKeyCode = rKEvt.GetKeyCode();
@@ -607,9 +607,9 @@ void Splitter::KeyInput( const KeyEvent& rKEvt )
                 StartSplit();
                 Point aPos;
                 if ( mbHorzSplit )
-                    aPos.X() = 0;
+                    aPos.setX( 0 );
                 else
-                    aPos.Y() = 0;
+                    aPos.setY( 0 );
                 ImplSplitMousePos( aPos );
                 long nTemp = mnSplitPos;
                 if ( mbHorzSplit )
@@ -644,27 +644,27 @@ void Splitter::KeyInput( const KeyEvent& rKEvt )
             GrabFocusToDocument();
             break;
     }
-    mbInKeyEvent = 0;
+    mbInKeyEvent = false;
 }
 
 void Splitter::DataChanged( const DataChangedEvent& rDCEvt )
 {
     Window::DataChanged( rDCEvt );
-    if( rDCEvt.GetType() == DataChangedEventType::SETTINGS )
-    {
-        const AllSettings* pOldSettings = rDCEvt.GetOldSettings();
-        if(!pOldSettings)
-            return;
+    if( rDCEvt.GetType() != DataChangedEventType::SETTINGS )
+        return;
 
-        Color oldFaceColor = pOldSettings->GetStyleSettings().GetFaceColor();
-        Color newFaceColor = Application::GetSettings().GetStyleSettings().GetFaceColor();
-        if( oldFaceColor.IsDark() != newFaceColor.IsDark() )
-        {
-            if( newFaceColor.IsDark() )
-                SetBackground( ImplWhiteWall::get() );
-            else
-                SetBackground( ImplBlackWall::get() );
-        }
+    const AllSettings* pOldSettings = rDCEvt.GetOldSettings();
+    if(!pOldSettings)
+        return;
+
+    Color oldFaceColor = pOldSettings->GetStyleSettings().GetFaceColor();
+    Color newFaceColor = Application::GetSettings().GetStyleSettings().GetFaceColor();
+    if( oldFaceColor.IsDark() != newFaceColor.IsDark() )
+    {
+        if( newFaceColor.IsDark() )
+            SetBackground( ImplWhiteWall::get() );
+        else
+            SetBackground( ImplBlackWall::get() );
     }
 }
 
@@ -695,7 +695,7 @@ void Splitter::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&
 
 Size Splitter::GetOptimalSize() const
 {
-    return LogicToPixel(Size(3, 3), MapUnit::MapAppFont);
+    return LogicToPixel(Size(3, 3), MapMode(MapUnit::MapAppFont));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

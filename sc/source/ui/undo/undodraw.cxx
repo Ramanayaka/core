@@ -17,15 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/svdundo.hxx>
-
-#include "undodraw.hxx"
-#include "docsh.hxx"
-#include "tabvwsh.hxx"
+#include <undodraw.hxx>
+#include <docsh.hxx>
+#include <tabvwsh.hxx>
 
 
-ScUndoDraw::ScUndoDraw( SfxUndoAction* pUndo, ScDocShell* pDocSh ) :
-    pDrawUndo( pUndo ),
+ScUndoDraw::ScUndoDraw( std::unique_ptr<SfxUndoAction> pUndo, ScDocShell* pDocSh ) :
+    pDrawUndo( std::move(pUndo) ),
     pDocShell( pDocSh ),
     mnViewShellId( -1 )
 {

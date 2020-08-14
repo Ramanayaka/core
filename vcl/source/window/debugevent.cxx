@@ -8,21 +8,19 @@
  */
 
 #include <comphelper/random.hxx>
-#include <rtl/math.hxx>
 #include <rtl/string.hxx>
-#include <tools/time.hxx>
+#include <sal/log.hxx>
 #include <vcl/keycodes.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/debugevent.hxx>
 #include <vcl/wrkwin.hxx>
 #include <vcl/menu.hxx>
-#include "window.h"
-#include "salwtype.hxx"
-
-#if OSL_DEBUG_LEVEL > 0
+#include <debugevent.hxx>
+#include <window.h>
+#include <salwtype.hxx>
 
 DebugEventInjector::DebugEventInjector( sal_uInt32 nMaxEvents) :
-    mnEventsLeft( nMaxEvents )
+      Timer("debug event injector")
+    , mnEventsLeft( nMaxEvents )
 {
     SetTimeout( 1000 /* ms */ );
     Start();
@@ -47,8 +45,6 @@ vcl::Window *DebugEventInjector::ChooseWindow()
         // select a top window at random
         long nIdx = Application::GetTopWindowCount() * getRandom();
         pParent = Application::GetTopWindow( nIdx );
-        if (!pParent)
-            pParent = static_cast<vcl::Window *>(Application::GetAppWindow());
     }
     assert (pParent != nullptr);
 
@@ -65,7 +61,7 @@ static void CollectMenuItemIds( Menu *pMenu, std::vector< SalMenuEvent > &rIds )
     for (sal_uInt16 i = 0; i < nItems; i++)
     {
         if (pMenu->GetItemType( i ) != MenuItemType::SEPARATOR || getRandom() < 0.01)
-            rIds.push_back( SalMenuEvent( pMenu->GetItemId( i ), pMenu ) );
+            rIds.emplace_back( pMenu->GetItemId( i ), pMenu );
         PopupMenu *pPopup = pMenu->GetPopupMenu( i );
         if (pPopup)
             CollectMenuItemIds( pPopup, rIds );
@@ -102,7 +98,7 @@ void DebugEventInjector::InjectMenuEvent()
     std::vector< SalMenuEvent > aIds;
     CollectMenuItemIds( pMenuBar, aIds );
 
-    SalEvent nEvent = nEvents[ (int)(getRandom() * SAL_N_ELEMENTS( nEvents )) ];
+    SalEvent nEvent = nEvents[ static_cast<int>(getRandom() * SAL_N_ELEMENTS( nEvents )) ];
     SalMenuEvent aEvent = aIds[ getRandom() * aIds.size() ];
     bool bHandled = ImplWindowFrameProc( pSysWin, nEvent, &aEvent);
 
@@ -135,10 +131,10 @@ void DebugEventInjector::InjectTextEvent()
     }
     else
     {
-        struct {
+        static struct {
             sal_uInt16 nCodeStart, nCodeEnd;
-            char       aCharStart;
-        } nTextCodes[] = {
+            char aCharStart;
+        } const nTextCodes[] = {
             { KEY_0, KEY_9, '0' },
             { KEY_A, KEY_Z, 'a' }
         };
@@ -152,12 +148,12 @@ void DebugEventInjector::InjectTextEvent()
     }
 
     if( getRandom() < 0.05 ) // modifier
-        aKeyEvent.mnCode |= (sal_uInt16)( getRandom() * KEY_MODIFIERS_MASK ) & KEY_MODIFIERS_MASK;
+        aKeyEvent.mnCode |= static_cast<sal_uInt16>( getRandom() * KEY_MODIFIERS_MASK ) & KEY_MODIFIERS_MASK;
 
     bool bHandled = ImplWindowFrameProc( pWindow, SalEvent::KeyInput, &aKeyEvent);
 
     SAL_INFO( "vcl.debugevent",
-              "Injected key 0x" << std::hex << (int) aKeyEvent.mnCode << std::dec
+              "Injected key 0x" << std::hex << static_cast<int>(aKeyEvent.mnCode) << std::dec
               << " -> " << bHandled
               << " win " << pWindow );
 
@@ -189,10 +185,10 @@ void DebugEventInjector::InjectKeyNavEdit()
 {
     vcl::Window *pWindow = ChooseWindow();
 
-    struct {
+    static struct {
         double     mnProb;
         sal_uInt16 mnKey;
-    } nWeights[] = {
+    } const nWeights[] = {
         // edit / escape etc. - 50%
         { 0.20, KEY_SPACE },
         { 0.10, KEY_TAB },
@@ -232,14 +228,14 @@ void DebugEventInjector::InjectKeyNavEdit()
     aKeyEvent.mnCode = nKey;
 
     if (getRandom() < 0.15) // modifier
-        aKeyEvent.mnCode |= (sal_uInt16)(getRandom() * KEY_MODIFIERS_MASK) & KEY_MODIFIERS_MASK;
+        aKeyEvent.mnCode |= static_cast<sal_uInt16>(getRandom() * KEY_MODIFIERS_MASK) & KEY_MODIFIERS_MASK;
 
     aKeyEvent.mnCharCode = 0x0; // hopefully unused.
 
     bool bHandled = ImplWindowFrameProc( pWindow, SalEvent::KeyInput, &aKeyEvent );
 
     SAL_INFO( "vcl.debugevent",
-              "Injected edit / move key 0x" << std::hex << (int) aKeyEvent.mnCode << std::dec
+              "Injected edit / move key 0x" << std::hex << static_cast<int>(aKeyEvent.mnCode) << std::dec
               << " -> " << bHandled
               << " win " <<  pWindow );
     ImplWindowFrameProc( pWindow, SalEvent::KeyUp, &aKeyEvent );
@@ -270,7 +266,5 @@ DebugEventInjector *DebugEventInjector::getCreate()
     else
         return nullptr;
 }
-
-#endif // OSL_DEBUG_LEVEL > 0
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

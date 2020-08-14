@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <ZipPackageFolderEnumeration.hxx>
-#include <ContentInfo.hxx>
+#include "ZipPackageFolderEnumeration.hxx"
+#include "ContentInfo.hxx"
 #include <cppuhelper/supportsservice.hxx>
+#include <sal/log.hxx>
 
 using namespace com::sun::star;
 
@@ -55,7 +56,7 @@ uno::Any SAL_CALL ZipPackageFolderEnumeration::nextElement(  )
 
 OUString ZipPackageFolderEnumeration::getImplementationName()
 {
-    return OUString ("ZipPackageFolderEnumeration");
+    return "ZipPackageFolderEnumeration";
 }
 
 uno::Sequence< OUString > ZipPackageFolderEnumeration::getSupportedServiceNames()

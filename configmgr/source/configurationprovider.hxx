@@ -24,34 +24,21 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <cppuhelper/factory.hxx>
-#include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
-    namespace lang { class XSingleComponentFactory; }
+namespace com::sun::star {
     namespace uno {
         class XComponentContext;
         class XInterface;
     }
-} } }
+}
 
-namespace configmgr { namespace configuration_provider {
+namespace configmgr::configuration_provider {
 
 css::uno::Reference< css::uno::XInterface > createDefault(
     css::uno::Reference< css::uno::XComponentContext >
         const & context);
 
-OUString SAL_CALL getImplementationName();
-
-css::uno::Sequence< OUString > SAL_CALL
-getSupportedServiceNames();
-
-css::uno::Reference< css::lang::XSingleComponentFactory >
-SAL_CALL createFactory(
-    cppu::ComponentFactoryFunc, OUString const &,
-    css::uno::Sequence< OUString > const &, rtl_ModuleCount *);
-
-} }
+}
 
 #endif
 

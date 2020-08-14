@@ -20,21 +20,18 @@
 #include <tools/stream.hxx>
 #include <tools/tenccvt.hxx>
 #include <osl/thread.h>
+#include <sal/log.hxx>
 #include <basic/sbx.hxx>
-#include "sb.hxx"
+#include <sb.hxx>
+#include <sbxprop.hxx>
 #include <string.h>
-#include "image.hxx"
+#include <image.hxx>
 #include <codegen.hxx>
 #include <memory>
 
 SbiImage::SbiImage()
 {
-    pStringOff = nullptr;
-    pStrings   = nullptr;
-    pCode      = nullptr;
-    pLegacyPCode = nullptr;
     nFlags     = SbiImageFlags::NONE;
-    nStrings   = 0;
     nStringSize= 0;
     nCodeSize  = 0;
     nLegacyCodeSize  =
@@ -49,20 +46,15 @@ SbiImage::SbiImage()
 
 SbiImage::~SbiImage()
 {
-    Clear();
 }
 
 void SbiImage::Clear()
 {
-    delete[] pStringOff;
-    delete[] pStrings;
-    delete[] pCode;
-    ReleaseLegacyBuffer();
-    pStringOff = nullptr;
-    pStrings   = nullptr;
-    pCode      = nullptr;
+    mvStringOffsets.clear();
+    pStrings.reset();
+    pCode.reset();
+    pLegacyPCode.reset();
     nFlags     = SbiImageFlags::NONE;
-    nStrings   = 0;
     nStringSize= 0;
     nLegacyCodeSize  = 0;
     nCodeSize  = 0;
@@ -71,19 +63,13 @@ void SbiImage::Clear()
     bError     = false;
 }
 
-/**************************************************************************
-*
-*    Service-Routines for Load/Store
-*
-**************************************************************************/
-
-bool SbiGood( SvStream& r )
+static bool SbiGood( SvStream const & r )
 {
-    return !r.IsEof() && r.GetError() == ERRCODE_NONE;
+    return r.good();
 }
 
 // Open Record
-sal_uInt64 SbiOpenRecord( SvStream& r, FileOffset nSignature, sal_uInt16 nElem )
+static sal_uInt64 SbiOpenRecord( SvStream& r, FileOffset nSignature, sal_uInt16 nElem )
 {
     sal_uInt64 nPos = r.Tell();
     r.WriteUInt16( static_cast<sal_uInt16>( nSignature ) )
@@ -92,7 +78,7 @@ sal_uInt64 SbiOpenRecord( SvStream& r, FileOffset nSignature, sal_uInt16 nElem )
 }
 
 // Close Record
-void SbiCloseRecord( SvStream& r, sal_uInt64 nOff )
+static void SbiCloseRecord( SvStream& r, sal_uInt64 nOff )
 {
     sal_uInt64 nPos = r.Tell();
     r.Seek( nOff + 2 );
@@ -100,11 +86,26 @@ void SbiCloseRecord( SvStream& r, sal_uInt64 nOff )
     r.Seek( nPos );
 }
 
-/**************************************************************************
-*
-*    Load/Store
-*
-**************************************************************************/
+constexpr sal_uInt32 nUnicodeDataMagicNumber = 0x556E6920; // "Uni " BE
+
+static bool GetToUnicodePoolData(SvStream& r, sal_uInt64 nLen, sal_uInt64 nNext)
+{
+    const auto nPos = r.Tell();
+    // Check space for legacy data, magic number and Unicode data
+    bool bResult = nPos + nLen + sizeof(sal_uInt32) + nLen * sizeof(sal_Unicode) <= nNext;
+    if (bResult)
+    {
+        r.SeekRel(nLen); // Skip legacy data
+        sal_uInt32 nMagic = 0;
+        r.ReadUInt32(nMagic);
+        if (nMagic != nUnicodeDataMagicNumber)
+        {
+            r.Seek(nPos); // return
+            bResult = false;
+        }
+    }
+    return bResult;
+}
 
 bool SbiImage::Load( SvStream& r, sal_uInt32& nVersion )
 {
@@ -131,7 +132,7 @@ bool SbiImage::Load( SvStream& r, sal_uInt32& nVersion )
         eCharSet = nCharSet;
         eCharSet = GetSOLoadTextEncoding( eCharSet );
         bBadVer  = ( nVersion > B_CURVERSION );
-        nDimBase = (sal_uInt16) lDimBase;
+        nDimBase = static_cast<sal_uInt16>(lDimBase);
     }
 
     bool bLegacy = ( nVersion < B_EXT_IMG_VERSION );
@@ -176,21 +177,20 @@ bool SbiImage::Load( SvStream& r, sal_uInt32& nVersion )
             }
             case FileOffset::PCode:
                 if( bBadVer ) break;
-                pCode = new char[ nLen ];
+                pCode.reset(new char[ nLen ]);
                 nCodeSize = nLen;
-                r.ReadBytes(pCode, nCodeSize);
+                r.ReadBytes(pCode.get(), nCodeSize);
                 if ( bLegacy )
                 {
-                    ReleaseLegacyBuffer(); // release any previously held buffer
-                    nLegacyCodeSize = (sal_uInt16) nCodeSize;
-                    pLegacyPCode = pCode;
+                    nLegacyCodeSize = static_cast<sal_uInt16>(nCodeSize);
+                    pLegacyPCode = std::move(pCode);
 
-                    PCodeBuffConvertor< sal_uInt16, sal_uInt32 > aLegacyToNew( reinterpret_cast<sal_uInt8*>(pLegacyPCode), nLegacyCodeSize );
+                    PCodeBuffConvertor< sal_uInt16, sal_uInt32 > aLegacyToNew( reinterpret_cast<sal_uInt8*>(pLegacyPCode.get()), nLegacyCodeSize );
                     aLegacyToNew.convert();
-                    pCode = reinterpret_cast<char*>(aLegacyToNew.GetBuffer());
+                    pCode.reset(reinterpret_cast<char*>(aLegacyToNew.GetBuffer()));
                     nCodeSize = aLegacyToNew.GetSize();
                     // we don't release the legacy buffer
-                    // right now, thats because the module
+                    // right now, that's because the module
                     // needs it to fix up the method
                     // nStart members. When that is done
                     // the module can release the buffer
@@ -206,6 +206,11 @@ bool SbiImage::Load( SvStream& r, sal_uInt32& nVersion )
                 break;
             case FileOffset::StringPool:
             {
+                // the data layout is: nCount of 32-bit offsets into both legacy 1-byte char stream
+                // and resulting char buffer (1:1 correspondence assumed; 16 of 32 bits used);
+                // 32-bit length N of following 1-byte char stream (16 bits used); N bytes of 1-byte
+                // char stream; then optional magic number and stream of N sal_Unicode characters.
+
                 if( bBadVer ) break;
                 //assuming an empty string with just the lead 32bit len indicator
                 const sal_uInt64 nMinStringSize = 4;
@@ -217,26 +222,32 @@ bool SbiImage::Load( SvStream& r, sal_uInt32& nVersion )
                     nCount = nMaxStrings;
                 }
                 MakeStrings( nCount );
-                short i;
-                for( i = 0; i < nStrings && SbiGood( r ); i++ )
+                for( size_t i = 0; i < mvStringOffsets.size() && SbiGood( r ); i++ )
                 {
                     r.ReadUInt32( nOff );
-                    pStringOff[ i ] = (sal_uInt16) nOff;
+                    mvStringOffsets[ i ] = static_cast<sal_uInt16>(nOff);
                 }
                 r.ReadUInt32( nLen );
                 if( SbiGood( r ) )
                 {
-                    delete [] pStrings;
-                    pStrings = new sal_Unicode[ nLen ];
-                    nStringSize = (sal_uInt16) nLen;
+                    pStrings.reset(new sal_Unicode[ nLen ]);
+                    nStringSize = static_cast<sal_uInt16>(nLen);
 
-                    std::unique_ptr<char[]> pByteStrings(new char[ nLen ]);
-                    r.ReadBytes(pByteStrings.get(), nStringSize);
-                    for( short j = 0; j < nStrings; j++ )
+                    if (GetToUnicodePoolData(r, nLen, nNext))
                     {
-                        sal_uInt16 nOff2 = (sal_uInt16) pStringOff[ j ];
-                        OUString aStr( pByteStrings.get() + nOff2, strlen(pByteStrings.get() + nOff2), eCharSet );
-                        memcpy( pStrings + nOff2, aStr.getStr(), (aStr.getLength() + 1) * sizeof( sal_Unicode ) );
+                        OUString s = read_uInt16s_ToOUString(r, nLen);
+                        memcpy(pStrings.get(), s.getStr(), s.getLength() * sizeof(sal_Unicode));
+                    }
+                    else
+                    {
+                        std::unique_ptr<char[]> pByteStrings(new char[nLen]);
+                        r.ReadBytes(pByteStrings.get(), nLen);
+                        for (size_t j = 0; j < mvStringOffsets.size(); j++)
+                        {
+                            sal_uInt16 nOff2 = static_cast<sal_uInt16>(mvStringOffsets[j]);
+                            OUString aStr(pByteStrings.get() + nOff2, strlen(pByteStrings.get() + nOff2), eCharSet);
+                            memcpy(pStrings.get() + nOff2, aStr.getStr(), (aStr.getLength() + 1) * sizeof(sal_Unicode));
+                        }
                     }
                 }
                 break;
@@ -330,7 +341,7 @@ bool SbiImage::Load( SvStream& r, sal_uInt32& nVersion )
                             }
                         }
 
-                        pTypeMembers->Insert( pTypeElem, pTypeMembers->Count() );
+                        pTypeMembers->Insert32( pTypeElem, pTypeMembers->Count32() );
 
                     }
 
@@ -422,71 +433,76 @@ bool SbiImage::Save( SvStream& r, sal_uInt32 nVer )
         nPos = SbiOpenRecord( r, FileOffset::PCode, 1 );
         if ( bLegacy )
         {
-            ReleaseLegacyBuffer(); // release any previously held buffer
-            PCodeBuffConvertor< sal_uInt32, sal_uInt16 > aNewToLegacy( reinterpret_cast<sal_uInt8*>(pCode), nCodeSize );
+            PCodeBuffConvertor< sal_uInt32, sal_uInt16 > aNewToLegacy( reinterpret_cast<sal_uInt8*>(pCode.get()), nCodeSize );
             aNewToLegacy.convert();
-            pLegacyPCode = reinterpret_cast<char*>(aNewToLegacy.GetBuffer());
+            pLegacyPCode.reset(reinterpret_cast<char*>(aNewToLegacy.GetBuffer()));
             nLegacyCodeSize = aNewToLegacy.GetSize();
-            r.WriteBytes(pLegacyPCode, nLegacyCodeSize);
+            r.WriteBytes(pLegacyPCode.get(), nLegacyCodeSize);
         }
         else
         {
-            r.WriteBytes(pCode, nCodeSize);
+            r.WriteBytes(pCode.get(), nCodeSize);
         }
         SbiCloseRecord( r, nPos );
     }
     // String-Pool?
-    if( nStrings )
+    if( !mvStringOffsets.empty() )
     {
-        nPos = SbiOpenRecord( r, FileOffset::StringPool, nStrings );
+        nPos = SbiOpenRecord( r, FileOffset::StringPool, mvStringOffsets.size() );
         // For every String:
         //  sal_uInt32 Offset of the Strings in the Stringblock
-        short i;
-
-        for( i = 0; i < nStrings && SbiGood( r ); i++ )
+        for( size_t i = 0; i < mvStringOffsets.size() && SbiGood( r ); i++ )
         {
-            r.WriteUInt32( pStringOff[ i ] );
+            r.WriteUInt32( mvStringOffsets[ i ] );
         }
         // Then the String-Block
         std::unique_ptr<char[]> pByteStrings(new char[ nStringSize ]);
-        for( i = 0; i < nStrings; i++ )
+        for( size_t i = 0; i < mvStringOffsets.size(); i++ )
         {
-            sal_uInt16 nOff = (sal_uInt16) pStringOff[ i ];
-            OString aStr(OUStringToOString(OUString(pStrings + nOff), eCharSet));
+            sal_uInt16 nOff = static_cast<sal_uInt16>(mvStringOffsets[ i ]);
+            OString aStr(OUStringToOString(OUString(pStrings.get() + nOff), eCharSet));
             memcpy( pByteStrings.get() + nOff, aStr.getStr(), (aStr.getLength() + 1) * sizeof( char ) );
         }
         r.WriteUInt32( nStringSize );
         r.WriteBytes(pByteStrings.get(), nStringSize);
-
         pByteStrings.reset();
+
+        // Now write magic number and store the same data in UTF-16; this is backward compatible:
+        // old readers will not read this data after having read legacy data, and will proceed
+        // straight to the end of the record. So no version restriction here.
+        r.WriteUInt32(nUnicodeDataMagicNumber);
+        write_uInt16s_FromOUString(r, OUString(pStrings.get(), nStringSize));
+
         SbiCloseRecord( r, nPos );
     }
     // User defined types
     if ( rTypes.is() )
     {
-        sal_uInt16 nTypes = rTypes->Count();
+        sal_uInt32 nTypes = rTypes->Count32();
+        assert(nTypes <= std::numeric_limits<sal_uInt16>::max());
         if (nTypes > 0 )
         {
-            nPos = SbiOpenRecord( r, FileOffset::UserTypes, nTypes );
+            nPos = SbiOpenRecord( r, FileOffset::UserTypes, sal::static_int_cast<sal_uInt16>(nTypes) );
 
-            for (sal_uInt16 i = 0; i < nTypes; i++)
+            for (sal_uInt32 i = 0; i < nTypes; i++)
             {
-                SbxObject* pType = static_cast< SbxObject* > ( rTypes->Get(i) );
+                SbxObject* pType = static_cast< SbxObject* > ( rTypes->Get32(i) );
                 OUString aTypeName = pType->GetClassName();
 
                 r.WriteUniOrByteString( aTypeName, eCharSet );
 
                 SbxArray  *pTypeMembers = pType->GetProperties();
-                sal_uInt16 nTypeMembers = pTypeMembers->Count();
+                sal_uInt32 nTypeMembers = pTypeMembers->Count32();
+                assert(nTypeMembers <= std::numeric_limits<sal_uInt16>::max());
 
-                r.WriteInt16(nTypeMembers);
+                r.WriteInt16(sal::static_int_cast<sal_uInt16>(nTypeMembers));
 
-                for (sal_uInt16 j = 0; j < nTypeMembers; j++)
+                for (sal_uInt32 j = 0; j < nTypeMembers; j++)
                 {
 
-                    SbxProperty* pTypeElem = static_cast< SbxProperty* > ( pTypeMembers->Get(j) );
+                    SbxProperty* pTypeElem = static_cast< SbxProperty* > ( pTypeMembers->Get32(j) );
 
-                    OUString aElemName = pTypeElem->GetName();
+                    const OUString& aElemName = pTypeElem->GetName();
                     r.WriteUniOrByteString( aElemName, eCharSet );
 
                     SbxDataType dataType =   pTypeElem->GetType();
@@ -519,7 +535,7 @@ bool SbiImage::Save( SvStream& r, sal_uInt32 nVer )
                             else
                                 r.WriteInt16(0);
 
-                            sal_Int32 nDims = pArray->GetDims();
+                            sal_Int32 nDims = pArray->GetDims32();
                             r.WriteInt32(nDims);
 
                             for (sal_Int32 d = 0; d < nDims; d++)
@@ -536,7 +552,7 @@ bool SbiImage::Save( SvStream& r, sal_uInt32 nVer )
 
                 }
             }
-        SbiCloseRecord( r, nPos );
+            SbiCloseRecord( r, nPos );
         }
     }
     // Set overall length
@@ -548,61 +564,54 @@ bool SbiImage::Save( SvStream& r, sal_uInt32 nVer )
     return !bError;
 }
 
-/**************************************************************************
-*
-*    Routines called by the compiler
-*
-**************************************************************************/
-
 void SbiImage::MakeStrings( short nSize )
 {
-    nStrings = 0;
     nStringIdx = 0;
     nStringOff = 0;
     nStringSize = 1024;
-    pStrings = new sal_Unicode[ nStringSize ];
-    pStringOff = new sal_uInt32[ nSize ];
-    nStrings = nSize;
-    memset( pStringOff, 0, nSize * sizeof( sal_uInt32 ) );
-    memset( pStrings, 0, nStringSize * sizeof( sal_Unicode ) );
+    pStrings.reset( new sal_Unicode[ nStringSize ]);
+    mvStringOffsets.resize(nSize);
+    if (nSize != 0) {
+        memset( mvStringOffsets.data(), 0, nSize * sizeof( sal_uInt32 ) );
+    }
+    memset( pStrings.get(), 0, nStringSize * sizeof( sal_Unicode ) );
 }
 
 // Add a string to StringPool. The String buffer is dynamically
 // growing in 1K-Steps
 void SbiImage::AddString( const OUString& r )
 {
-    if( nStringIdx >= nStrings )
+    if( nStringIdx >= short(mvStringOffsets.size()) )
     {
         bError = true;
     }
+    if( bError )
+        return;
+
+    sal_Int32  len = r.getLength() + 1;
+    sal_uInt32 needed = nStringOff + len;
+    if( needed > 0xFFFFFF00 )
+    {
+        bError = true;  // out of mem!
+    }
+    else if( needed > nStringSize )
+    {
+        sal_uInt32 nNewLen = needed + 1024;
+        nNewLen &= 0xFFFFFC00;  // trim to 1K border
+        std::unique_ptr<sal_Unicode[]> p(new sal_Unicode[nNewLen]);
+        memcpy( p.get(), pStrings.get(), nStringSize * sizeof( sal_Unicode ) );
+        pStrings = std::move(p);
+        nStringSize = sal::static_int_cast< sal_uInt16 >(nNewLen);
+    }
     if( !bError )
     {
-        sal_Int32  len = r.getLength() + 1;
-        sal_uInt32 needed = nStringOff + len;
-        if( needed > 0xFFFFFF00 )
+        mvStringOffsets[ nStringIdx++ ] = nStringOff;
+        memcpy( pStrings.get() + nStringOff, r.getStr(), len * sizeof( sal_Unicode ) );
+        nStringOff = nStringOff + len;
+        // Last String? The update the size of the buffer
+        if( nStringIdx >= short(mvStringOffsets.size()) )
         {
-            bError = true;  // out of mem!
-        }
-        else if( needed > nStringSize )
-        {
-            sal_uInt32 nNewLen = needed + 1024;
-            nNewLen &= 0xFFFFFC00;  // trim to 1K border
-            sal_Unicode* p = new sal_Unicode[nNewLen];
-            memcpy( p, pStrings, nStringSize * sizeof( sal_Unicode ) );
-            delete[] pStrings;
-            pStrings = p;
-            nStringSize = sal::static_int_cast< sal_uInt16 >(nNewLen);
-        }
-        if( !bError )
-        {
-            pStringOff[ nStringIdx++ ] = nStringOff;
-            memcpy( pStrings + nStringOff, r.getStr(), len * sizeof( sal_Unicode ) );
-            nStringOff = nStringOff + len;
-            // Last String? The update the size of the buffer
-            if( nStringIdx >= nStrings )
-            {
-                nStringSize = nStringOff;
-            }
+            nStringSize = nStringOff;
         }
     }
 }
@@ -611,21 +620,21 @@ void SbiImage::AddString( const OUString& r )
 // The block was fetched by the compiler from class SbBuffer and
 // is already created with new. Additionally it contains all Integers
 // in Big Endian format, so can be directly read/written.
-void SbiImage::AddCode( char* p, sal_uInt32 s )
+void SbiImage::AddCode( std::unique_ptr<char[]> p, sal_uInt32 s )
 {
-    pCode = p;
+    pCode = std::move(p);
     nCodeSize = s;
 }
 
 // Add user type
-void SbiImage::AddType(SbxObject* pObject)
+void SbiImage::AddType(SbxObject const * pObject)
 {
     if( !rTypes.is() )
     {
         rTypes = new SbxArray;
     }
     SbxObject *pCopyObject = new SbxObject(*pObject);
-    rTypes->Insert (pCopyObject,rTypes->Count());
+    rTypes->Insert32 (pCopyObject,rTypes->Count32());
 }
 
 void SbiImage::AddEnum(SbxObject* pObject) // Register enum type
@@ -634,34 +643,25 @@ void SbiImage::AddEnum(SbxObject* pObject) // Register enum type
     {
         rEnums = new SbxArray;
     }
-    rEnums->Insert( pObject, rEnums->Count() );
+    rEnums->Insert32( pObject, rEnums->Count32() );
 }
-
-
-/**************************************************************************
-*
-*    Accessing the image
-*
-**************************************************************************/
 
 // Note: IDs start with 1
 OUString SbiImage::GetString( short nId ) const
 {
-    if( nId && nId <= nStrings )
+    if( nId && nId <= short(mvStringOffsets.size()) )
     {
-        sal_uInt32 nOff = pStringOff[ nId - 1 ];
-        sal_Unicode* pStr = pStrings + nOff;
+        sal_uInt32 nOff = mvStringOffsets[ nId - 1 ];
+        sal_Unicode* pStr = pStrings.get() + nOff;
 
         // #i42467: Special treatment for vbNullChar
         if( *pStr == 0 )
         {
-            sal_uInt32 nNextOff = (nId < nStrings) ? pStringOff[ nId ] : nStringOff;
+            sal_uInt32 nNextOff = (nId < short(mvStringOffsets.size())) ? mvStringOffsets[ nId ] : nStringOff;
             sal_uInt32 nLen = nNextOff - nOff - 1;
             if( nLen == 1 )
             {
-                // Force length 1 and make char 0 afterwards
-                OUString aNullCharStr( u'\0');
-                return aNullCharStr;
+                return OUString( u'\0');
             }
         }
         else
@@ -679,18 +679,17 @@ const SbxObject* SbiImage::FindType (const OUString& aTypeName) const
 
 sal_uInt16 SbiImage::CalcLegacyOffset( sal_Int32 nOffset )
 {
-    return SbiCodeGen::calcLegacyOffSet( reinterpret_cast<sal_uInt8*>(pCode), nOffset ) ;
+    return SbiCodeGen::calcLegacyOffSet( reinterpret_cast<sal_uInt8*>(pCode.get()), nOffset ) ;
 }
 
 sal_uInt32 SbiImage::CalcNewOffset( sal_Int16 nOffset )
 {
-    return SbiCodeGen::calcNewOffSet( reinterpret_cast<sal_uInt8*>(pLegacyPCode), nOffset ) ;
+    return SbiCodeGen::calcNewOffSet( reinterpret_cast<sal_uInt8*>(pLegacyPCode.get()), nOffset ) ;
 }
 
 void  SbiImage::ReleaseLegacyBuffer()
 {
-    delete[] pLegacyPCode;
-    pLegacyPCode = nullptr;
+    pLegacyPCode.reset();
     nLegacyCodeSize = 0;
 }
 

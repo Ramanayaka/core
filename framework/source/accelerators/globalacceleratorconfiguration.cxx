@@ -18,10 +18,8 @@
  */
 
 #include <accelerators/acceleratorconfiguration.hxx>
-#include <accelerators/presethandler.hxx>
+#include <accelerators/keymapping.hxx>
 #include <helper/mischelper.hxx>
-
-#include <acceleratorconst.h>
 
 #include <com/sun/star/util/XChangesNotifier.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -29,8 +27,6 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <rtl/ref.hxx>
-#include <vcl/svapp.hxx>
-#include <i18nlangtag/languagetag.hxx>
 
 using namespace framework;
 
@@ -50,13 +46,13 @@ public:
     /** initialize this instance and fill the internal cache.
 
         @param  xSMGR
-                reference to an uno service manager, which is used internally.
+                reference to a uno service manager, which is used internally.
      */
     explicit GlobalAcceleratorConfiguration(const css::uno::Reference< css::uno::XComponentContext >& xContext);
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.GlobalAcceleratorConfiguration");
+        return "com.sun.star.comp.framework.GlobalAcceleratorConfiguration";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -81,6 +77,8 @@ private:
 GlobalAcceleratorConfiguration::GlobalAcceleratorConfiguration(const css::uno::Reference< css::uno::XComponentContext >& xContext)
     : GlobalAcceleratorConfiguration_BASE(xContext)
 {
+    // force keyboard string registration.
+    KeyMapping::get();
 }
 
 void GlobalAcceleratorConfiguration::fillCache()
@@ -129,7 +127,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_GlobalAcceleratorConfiguration_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

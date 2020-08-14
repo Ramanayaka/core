@@ -21,13 +21,11 @@
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase2.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <rtl/ref.hxx>
 #include <toolkit/helper/mutexandbroadcasthelper.hxx>
-#include <toolkit/helper/servicenames.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -145,23 +143,23 @@ MutableTreeDataModel::MutableTreeDataModel()
 void MutableTreeDataModel::broadcast( broadcast_type eType, const Reference< XTreeNode >& xParentNode, const Reference< XTreeNode >& rNode )
 {
     ::cppu::OInterfaceContainerHelper* pIter = BrdcstHelper.getContainer( cppu::UnoType<XTreeDataModelListener>::get() );
-    if( pIter )
-    {
-        Reference< XInterface > xSource( static_cast< ::cppu::OWeakObject* >( this ) );
-        const Sequence< Reference< XTreeNode > > aNodes { rNode };
-        TreeDataModelEvent aEvent( xSource, aNodes, xParentNode );
+    if( !pIter )
+        return;
 
-        ::cppu::OInterfaceIteratorHelper aListIter(*pIter);
-        while(aListIter.hasMoreElements())
+    Reference< XInterface > xSource( static_cast< ::cppu::OWeakObject* >( this ) );
+    const Sequence< Reference< XTreeNode > > aNodes { rNode };
+    TreeDataModelEvent aEvent( xSource, aNodes, xParentNode );
+
+    ::cppu::OInterfaceIteratorHelper aListIter(*pIter);
+    while(aListIter.hasMoreElements())
+    {
+        XTreeDataModelListener* pListener = static_cast<XTreeDataModelListener*>(aListIter.next());
+        switch( eType )
         {
-            XTreeDataModelListener* pListener = static_cast<XTreeDataModelListener*>(aListIter.next());
-            switch( eType )
-            {
-            case nodes_changed:     pListener->treeNodesChanged(aEvent); break;
-            case nodes_inserted:    pListener->treeNodesInserted(aEvent); break;
-            case nodes_removed:     pListener->treeNodesRemoved(aEvent); break;
-            case structure_changed: pListener->treeStructureChanged(aEvent); break;
-            }
+        case nodes_changed:     pListener->treeNodesChanged(aEvent); break;
+        case nodes_inserted:    pListener->treeNodesInserted(aEvent); break;
+        case nodes_removed:     pListener->treeNodesRemoved(aEvent); break;
+        case structure_changed: pListener->treeStructureChanged(aEvent); break;
         }
     }
 }
@@ -177,25 +175,25 @@ void SAL_CALL MutableTreeDataModel::setRoot( const Reference< XMutableTreeNode >
         throw IllegalArgumentException();
 
     ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
-    if( xNode != mxRootNode )
+    if( xNode == mxRootNode )
+        return;
+
+    if( mxRootNode.is() )
     {
-        if( mxRootNode.is() )
-        {
-            MutableTreeNodeRef xOldImpl( dynamic_cast< MutableTreeNode* >( mxRootNode.get() ) );
-            if( xOldImpl.is() )
-                xOldImpl->mbIsInserted = false;
-        }
-
-        MutableTreeNodeRef xImpl( dynamic_cast< MutableTreeNode* >( xNode.get() ) );
-        if( !xImpl.is() || xImpl->mbIsInserted )
-            throw IllegalArgumentException();
-
-        xImpl->mbIsInserted = true;
-        mxRootNode.set(xImpl.get());
-
-        Reference< XTreeNode > xParentNode;
-        broadcast( structure_changed, xParentNode, mxRootNode );
+        MutableTreeNodeRef xOldImpl( dynamic_cast< MutableTreeNode* >( mxRootNode.get() ) );
+        if( xOldImpl.is() )
+            xOldImpl->mbIsInserted = false;
     }
+
+    MutableTreeNodeRef xImpl( dynamic_cast< MutableTreeNode* >( xNode.get() ) );
+    if( !xImpl.is() || xImpl->mbIsInserted )
+        throw IllegalArgumentException();
+
+    xImpl->mbIsInserted = true;
+    mxRootNode.set(xImpl.get());
+
+    Reference< XTreeNode > xParentNode;
+    broadcast( structure_changed, xParentNode, mxRootNode );
 }
 
 Reference< XTreeNode > SAL_CALL MutableTreeDataModel::getRoot(  )
@@ -239,7 +237,7 @@ void SAL_CALL MutableTreeDataModel::removeEventListener( const Reference< XEvent
 
 OUString SAL_CALL MutableTreeDataModel::getImplementationName(  )
 {
-    return OUString( "toolkit.MutableTreeDataModel" );
+    return "toolkit.MutableTreeDataModel";
 }
 
 sal_Bool SAL_CALL MutableTreeDataModel::supportsService( const OUString& ServiceName )
@@ -264,9 +262,8 @@ MutableTreeNode::MutableTreeNode( const MutableTreeDataModelRef& xModel, const A
 
 MutableTreeNode::~MutableTreeNode()
 {
-    TreeNodeVector::iterator aIter( maChildren.begin() );
-    while( aIter != maChildren.end() )
-        (*aIter++)->setParent(nullptr);
+    for( auto& rChild : maChildren )
+        rChild->setParent(nullptr);
 }
 
 void MutableTreeNode::setParent( MutableTreeNode* pParent )
@@ -325,7 +322,7 @@ void SAL_CALL MutableTreeNode::insertChildByIndex( sal_Int32 nChildIndex, const 
 {
     ::osl::Guard< ::osl::Mutex > aGuard( maMutex );
 
-    if( (nChildIndex < 0) || (nChildIndex > (sal_Int32)maChildren.size()) )
+    if( (nChildIndex < 0) || (nChildIndex > static_cast<sal_Int32>(maChildren.size())) )
         throw IndexOutOfBoundsException();
 
     Reference< XTreeNode > xNode( xChildNode.get() );
@@ -336,8 +333,7 @@ void SAL_CALL MutableTreeNode::insertChildByIndex( sal_Int32 nChildIndex, const 
     xImpl->mbIsInserted = true;
 
     TreeNodeVector::iterator aIter( maChildren.begin() );
-    while( (nChildIndex-- > 0) && (aIter != maChildren.end()) )
-        ++aIter;
+    std::advance(aIter, nChildIndex);
 
     maChildren.insert( aIter, xImpl );
     xImpl->setParent( this );
@@ -349,7 +345,7 @@ void SAL_CALL MutableTreeNode::removeChildByIndex( sal_Int32 nChildIndex )
 {
     ::osl::Guard< ::osl::Mutex > aGuard( maMutex );
 
-    if( (nChildIndex < 0) || (nChildIndex >= (sal_Int32)maChildren.size()) )
+    if( (nChildIndex < 0) || (nChildIndex >= static_cast<sal_Int32>(maChildren.size())) )
         throw IndexOutOfBoundsException();
 
     MutableTreeNodeRef xImpl;
@@ -357,7 +353,7 @@ void SAL_CALL MutableTreeNode::removeChildByIndex( sal_Int32 nChildIndex )
     TreeNodeVector::iterator aIter( maChildren.begin() );
     std::advance(aIter, nChildIndex);
 
-    xImpl = (*aIter);
+    xImpl = *aIter;
     maChildren.erase( aIter );
 
     if( !xImpl.is() )
@@ -439,7 +435,7 @@ Reference< XTreeNode > SAL_CALL MutableTreeNode::getChildAt( sal_Int32 nChildInd
 {
     ::osl::Guard< ::osl::Mutex > aGuard( maMutex );
 
-    if( (nChildIndex < 0) || (nChildIndex >= (sal_Int32)maChildren.size()) )
+    if( (nChildIndex < 0) || (nChildIndex >= static_cast<sal_Int32>(maChildren.size())) )
         throw IndexOutOfBoundsException();
     return getReference( maChildren[nChildIndex].get() );
 }
@@ -447,7 +443,7 @@ Reference< XTreeNode > SAL_CALL MutableTreeNode::getChildAt( sal_Int32 nChildInd
 sal_Int32 SAL_CALL MutableTreeNode::getChildCount(  )
 {
     ::osl::Guard< ::osl::Mutex > aGuard( maMutex );
-    return (sal_Int32)maChildren.size();
+    return static_cast<sal_Int32>(maChildren.size());
 }
 
 Reference< XTreeNode > SAL_CALL MutableTreeNode::getParent(  )
@@ -506,7 +502,7 @@ OUString SAL_CALL MutableTreeNode::getCollapsedGraphicURL(  )
 
 OUString SAL_CALL MutableTreeNode::getImplementationName(  )
 {
-    return OUString( "toolkit.MutableTreeNode" );
+    return "toolkit.MutableTreeNode";
 }
 
 sal_Bool SAL_CALL MutableTreeNode::supportsService( const OUString& ServiceName )
@@ -522,7 +518,7 @@ Sequence< OUString > SAL_CALL MutableTreeNode::getSupportedServiceNames(  )
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_MutableTreeDataModel_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

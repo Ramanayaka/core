@@ -24,8 +24,7 @@
 #include <unordered_map>
 
 
-namespace filter{
-    namespace config{
+namespace filter::config {
 
 
 /** @short      It can be used to split any query string (which can be used at the
@@ -45,9 +44,7 @@ namespace filter{
     @attention  This class is not threadsafe implemented. Because it's not necessary.
                 But you have to make sure that it's not used as such :-)
  */
-class QueryTokenizer : public std::unordered_map< OUString                    ,
-                                                  OUString                    ,
-                                                  OUStringHash >
+class QueryTokenizer : public std::unordered_map< OUString, OUString >
 {
 
     // member
@@ -70,7 +67,7 @@ class QueryTokenizer : public std::unordered_map< OUString                    ,
         /** @short  create a new tokenizer instance with a
                     a new query.
 
-            @descr  The given query is immidiatly analyzed
+            @descr  The given query is immediately analyzed
                     and separated into its token, which can
                     be access by some specialized method later.
 
@@ -86,13 +83,12 @@ class QueryTokenizer : public std::unordered_map< OUString                    ,
 
 
         /** @short  can be used to check if analyzing of given query
-                    was successfully or not.
+                    was successful or not.
          */
         bool valid() const;
 };
 
-    } // namespace config
-} // namespace filter
+} // namespace filter::config
 
 #endif // INCLUDED_FILTER_SOURCE_CONFIG_CACHE_QUERYTOKENIZER_HXX
 

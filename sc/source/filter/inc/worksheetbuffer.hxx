@@ -24,11 +24,11 @@
 #include <oox/helper/refmap.hxx>
 #include <oox/helper/refvector.hxx>
 #include "workbookhelper.hxx"
-#include "documentimport.hxx"
 
+namespace oox { class SequenceInputStream; }
+namespace oox { class AttributeList; }
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 /** Contains data from the 'sheet' element describing a sheet in the workbook. */
 struct SheetInfoModel
@@ -85,8 +85,8 @@ public:
 private:
     struct SheetInfo : public SheetInfoModel
     {
-        OUString     maCalcName;
-        OUString     maCalcQuotedName;
+        OUString            maCalcName;
+        OUString            maCalcQuotedName;
         sal_Int16           mnCalcSheet;
 
         explicit            SheetInfo( const SheetInfoModel& rModel, sal_Int16 nCalcSheet, const OUString& rCalcName );
@@ -100,15 +100,11 @@ private:
     void                insertSheet( const SheetInfoModel& rModel );
 
 private:
-    typedef RefVector< SheetInfo > SheetInfoVector;
-    SheetInfoVector     maSheetInfos;
-
-    typedef RefMap< OUString, SheetInfo, IgnoreCaseCompare > SheetInfoMap;
-    SheetInfoMap        maSheetInfosByName;
+    RefVector< SheetInfo >  maSheetInfos;
+    RefMap< OUString, SheetInfo, IgnoreCaseCompare >  maSheetInfosByName;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

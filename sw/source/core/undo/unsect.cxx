@@ -20,12 +20,17 @@
 #include <memory>
 #include <UndoSection.hxx>
 
+#include <osl/diagnose.h>
+#include <comphelper/scopeguard.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <fmtcntnt.hxx>
 #include <doc.hxx>
 #include <IDocumentLinksAdministration.hxx>
 #include <IDocumentRedlineAccess.hxx>
 #include <IDocumentFieldsAccess.hxx>
+#include <IDocumentLayoutAccess.hxx>
+#include <IDocumentStylePoolAccess.hxx>
+#include <poolfmt.hxx>
 #include <docary.hxx>
 #include <swundo.hxx>
 #include <pam.hxx>
@@ -36,17 +41,18 @@
 #include <redline.hxx>
 #include <doctxm.hxx>
 #include <ftnidx.hxx>
+#include <rootfrm.hxx>
 #include <editsh.hxx>
 /// OD 04.10.2002 #102894#
 /// class Calc needed for calculation of the hidden condition of a section.
 #include <calc.hxx>
 
-static SfxItemSet* lcl_GetAttrSet( const SwSection& rSect )
+static std::unique_ptr<SfxItemSet> lcl_GetAttrSet( const SwSection& rSect )
 {
     // save attributes of the format (columns, color, ...)
     // Content and Protect items are not interesting since they are already
     // stored in Section, thus delete them.
-    SfxItemSet* pAttr = nullptr;
+    std::unique_ptr<SfxItemSet> pAttr;
     if( rSect.GetFormat() )
     {
         sal_uInt16 nCnt = 1;
@@ -55,13 +61,12 @@ static SfxItemSet* lcl_GetAttrSet( const SwSection& rSect )
 
         if( nCnt < rSect.GetFormat()->GetAttrSet().Count() )
         {
-            pAttr = new SfxItemSet( rSect.GetFormat()->GetAttrSet() );
+            pAttr.reset(new SfxItemSet( rSect.GetFormat()->GetAttrSet() ));
             pAttr->ClearItem( RES_PROTECT );
             pAttr->ClearItem( RES_CNTNT );
             if( !pAttr->Count() )
             {
-                delete pAttr;
-                pAttr = nullptr;
+                pAttr.reset();
             }
         }
     }
@@ -70,10 +75,14 @@ static SfxItemSet* lcl_GetAttrSet( const SwSection& rSect )
 
 SwUndoInsSection::SwUndoInsSection(
         SwPaM const& rPam, SwSectionData const& rNewData,
-        SfxItemSet const*const pSet, SwTOXBase const*const pTOXBase)
+        SfxItemSet const*const pSet,
+        std::pair<SwTOXBase const*, sw::RedlineMode> const*const pTOXBase)
     : SwUndo( SwUndoId::INSSECTION, rPam.GetDoc() ), SwUndRng( rPam )
     , m_pSectionData(new SwSectionData(rNewData))
-    , m_pTOXBase( (pTOXBase) ? new SwTOXBase(*pTOXBase) : nullptr )
+    , m_pTOXBase( pTOXBase
+        ? std::make_unique<std::pair<SwTOXBase *, sw::RedlineMode>>(
+            new SwTOXBase(*pTOXBase->first), pTOXBase->second)
+        : nullptr )
     , m_pAttrSet( (pSet && pSet->Count()) ? new SfxItemSet( *pSet ) : nullptr )
     , m_nSectionNodePos(0)
     , m_bSplitAtStart(false)
@@ -83,28 +92,28 @@ SwUndoInsSection::SwUndoInsSection(
     SwDoc& rDoc = *rPam.GetDoc();
     if( rDoc.getIDocumentRedlineAccess().IsRedlineOn() )
     {
-        m_pRedlData.reset(new SwRedlineData( nsRedlineType_t::REDLINE_INSERT,
+        m_pRedlData.reset(new SwRedlineData( RedlineType::Insert,
                                         rDoc.getIDocumentRedlineAccess().GetRedlineAuthor() ));
         SetRedlineFlags( rDoc.getIDocumentRedlineAccess().GetRedlineFlags() );
     }
-        m_pRedlineSaveData.reset( new SwRedlineSaveDatas );
-        if( !FillSaveData( rPam, *m_pRedlineSaveData, false ))
-            m_pRedlineSaveData.reset( nullptr );
+    m_pRedlineSaveData.reset( new SwRedlineSaveDatas );
+    if( !FillSaveData( rPam, *m_pRedlineSaveData, false ))
+            m_pRedlineSaveData.reset();
 
-    if( !rPam.HasMark() )
+    if( rPam.HasMark() )
+        return;
+
+    const SwContentNode* pCNd = rPam.GetPoint()->nNode.GetNode().GetContentNode();
+    if( pCNd && pCNd->HasSwAttrSet() && (
+        !rPam.GetPoint()->nContent.GetIndex() ||
+        rPam.GetPoint()->nContent.GetIndex() == pCNd->Len() ))
     {
-        const SwContentNode* pCNd = rPam.GetPoint()->nNode.GetNode().GetContentNode();
-        if( pCNd && pCNd->HasSwAttrSet() && (
-            !rPam.GetPoint()->nContent.GetIndex() ||
-            rPam.GetPoint()->nContent.GetIndex() == pCNd->Len() ))
+        SfxItemSet aBrkSet( rDoc.GetAttrPool(), aBreakSetRange );
+        aBrkSet.Put( *pCNd->GetpSwAttrSet() );
+        if( aBrkSet.Count() )
         {
-            SfxItemSet aBrkSet( rDoc.GetAttrPool(), aBreakSetRange );
-            aBrkSet.Put( *pCNd->GetpSwAttrSet() );
-            if( aBrkSet.Count() )
-            {
-                m_pHistory.reset( new SwHistory );
-                m_pHistory->CopyFormatAttr( aBrkSet, pCNd->GetIndex() );
-            }
+            m_pHistory.reset( new SwHistory );
+            m_pHistory->CopyFormatAttr( aBrkSet, pCNd->GetIndex() );
         }
     }
 }
@@ -124,12 +133,12 @@ void SwUndoInsSection::UndoImpl(::sw::UndoRedoContext & rContext)
     OSL_ENSURE( pNd, "where is my SectionNode?" );
 
     if( IDocumentRedlineAccess::IsRedlineOn( GetRedlineFlags() ))
-        rDoc.getIDocumentRedlineAccess().DeleteRedline( *pNd, true, USHRT_MAX );
+        rDoc.getIDocumentRedlineAccess().DeleteRedline( *pNd, true, RedlineType::Any );
 
     // no selection?
     SwNodeIndex aIdx( *pNd );
-    if( ( !nEndNode && COMPLETE_STRING == nEndContent ) ||
-        ( nSttNode == nEndNode && nSttContent == nEndContent ))
+    if( ( !m_nEndNode && COMPLETE_STRING == m_nEndContent ) ||
+        ( m_nSttNode == m_nEndNode && m_nSttContent == m_nEndContent ))
         // delete simply all nodes
         rDoc.GetNodes().Delete( aIdx, pNd->EndOfSectionIndex() -
                                         aIdx.GetIndex() );
@@ -140,15 +149,15 @@ void SwUndoInsSection::UndoImpl(::sw::UndoRedoContext & rContext)
     // do we need to consolidate?
     if (m_bSplitAtStart)
     {
-        Join( rDoc, nSttNode );
+        Join( rDoc, m_nSttNode );
     }
 
     if (m_bSplitAtEnd)
     {
-        Join( rDoc, nEndNode );
+        Join( rDoc, m_nEndNode );
     }
 
-    if (m_pHistory.get())
+    if (m_pHistory)
     {
         m_pHistory->TmpRollback( &rDoc, 0, false );
     }
@@ -160,7 +169,7 @@ void SwUndoInsSection::UndoImpl(::sw::UndoRedoContext & rContext)
 
     AddUndoRedoPaM(rContext);
 
-    if( m_pRedlineSaveData.get())
+    if (m_pRedlineSaveData)
         SetSaveData( rDoc, *m_pRedlineSaveData );
 }
 
@@ -170,24 +179,49 @@ void SwUndoInsSection::RedoImpl(::sw::UndoRedoContext & rContext)
     SwPaM & rPam( AddUndoRedoPaM(rContext) );
 
     const SwTOXBaseSection* pUpdateTOX = nullptr;
-    if (m_pTOXBase.get())
+    if (m_pTOXBase)
     {
+        SwRootFrame const* pLayout(nullptr);
+        SwRootFrame * pLayoutToReset(nullptr);
+        comphelper::ScopeGuard g([&]() {
+                if (pLayoutToReset)
+                {
+                    pLayoutToReset->SetHideRedlines(m_pTOXBase->second == sw::RedlineMode::Shown);
+                }
+            });
+        o3tl::sorted_vector<SwRootFrame *> layouts(rDoc.GetAllLayouts());
+        for (SwRootFrame const*const p : layouts)
+        {
+            if ((m_pTOXBase->second == sw::RedlineMode::Hidden) == p->IsHideRedlines())
+            {
+                pLayout = p;
+                break;
+            }
+        }
+        if (!pLayout)
+        {
+            assert(!layouts.empty()); // must have one layout
+            pLayoutToReset = *layouts.begin();
+            pLayoutToReset->SetHideRedlines(m_pTOXBase->second == sw::RedlineMode::Hidden);
+            pLayout = pLayoutToReset;
+        }
         pUpdateTOX = rDoc.InsertTableOf( *rPam.GetPoint(),
-                                        *m_pTOXBase, m_pAttrSet.get(), true);
+            // don't expand: will be done by SwUndoUpdateIndex::RedoImpl()
+            *m_pTOXBase->first, m_pAttrSet.get(), false, pLayout);
     }
     else
     {
         rDoc.InsertSwSection(rPam, *m_pSectionData, nullptr, m_pAttrSet.get());
     }
 
-    if (m_pHistory.get())
+    if (m_pHistory)
     {
         m_pHistory->SetTmpEnd( m_pHistory->Count() );
     }
 
     SwSectionNode *const pSectNd =
         rDoc.GetNodes()[ m_nSectionNodePos ]->GetSectionNode();
-    if (m_pRedlData.get() &&
+    if (m_pRedlData &&
         IDocumentRedlineAccess::IsRedlineOn( GetRedlineFlags()))
     {
         RedlineFlags eOld = rDoc.getIDocumentRedlineAccess().GetRedlineFlags();
@@ -219,10 +253,11 @@ void SwUndoInsSection::RedoImpl(::sw::UndoRedoContext & rContext)
 void SwUndoInsSection::RepeatImpl(::sw::RepeatContext & rContext)
 {
     SwDoc & rDoc = rContext.GetDoc();
-    if (m_pTOXBase.get())
+    if (m_pTOXBase)
     {
         rDoc.InsertTableOf(*rContext.GetRepeatPaM().GetPoint(),
-                                        *m_pTOXBase, m_pAttrSet.get(), true);
+            *m_pTOXBase->first, m_pAttrSet.get(), true,
+            rDoc.getIDocumentLayoutAccess().GetCurrentLayout()); // TODO add shell to RepeatContext?
     }
     else
     {
@@ -244,7 +279,7 @@ void SwUndoInsSection::Join( SwDoc& rDoc, sal_uLong nNode )
     }
     pTextNd->JoinNext();
 
-    if (m_pHistory.get())
+    if (m_pHistory)
     {
         SwIndex aCntIdx( pTextNd, 0 );
         pTextNd->RstTextAttr( aCntIdx, pTextNd->Len(), 0, nullptr, true );
@@ -256,7 +291,7 @@ SwUndoInsSection::SaveSplitNode(SwTextNode *const pTextNd, bool const bAtStart)
 {
     if( pTextNd->GetpSwpHints() )
     {
-        if (!m_pHistory.get())
+        if (!m_pHistory)
         {
             m_pHistory.reset( new SwHistory );
         }
@@ -293,9 +328,9 @@ public:
     virtual void RedoImpl( ::sw::UndoRedoContext & ) override;
 };
 
-SwUndo * MakeUndoDelSection(SwSectionFormat const& rFormat)
+std::unique_ptr<SwUndo> MakeUndoDelSection(SwSectionFormat const& rFormat)
 {
-    return new SwUndoDelSection(rFormat, *rFormat.GetSection(),
+    return std::make_unique<SwUndoDelSection>(rFormat, *rFormat.GetSection(),
                 rFormat.GetContent().GetContentIdx());
 }
 
@@ -318,8 +353,9 @@ void SwUndoDelSection::UndoImpl(::sw::UndoRedoContext & rContext)
 {
     SwDoc & rDoc = rContext.GetDoc();
 
-    if (m_pTOXBase.get())
+    if (m_pTOXBase)
     {
+        // sw_redlinehide: this should work as-is; there will be another undo for the update
         rDoc.InsertTableOf(m_nStartNode, m_nEndNode-2, *m_pTOXBase,
                 m_pAttrSet.get());
     }
@@ -328,7 +364,7 @@ void SwUndoDelSection::UndoImpl(::sw::UndoRedoContext & rContext)
         SwNodeIndex aStt( rDoc.GetNodes(), m_nStartNode );
         SwNodeIndex aEnd( rDoc.GetNodes(), m_nEndNode-2 );
         SwSectionFormat* pFormat = rDoc.MakeSectionFormat();
-        if (m_pAttrSet.get())
+        if (m_pAttrSet)
         {
             pFormat->SetFormatAttr( *m_pAttrSet );
         }
@@ -357,7 +393,7 @@ void SwUndoDelSection::UndoImpl(::sw::UndoRedoContext & rContext)
              !aInsertedSect.GetCondition().isEmpty() )
         {
             SwCalc aCalc( rDoc );
-            rDoc.getIDocumentFieldsAccess().FieldsToCalc(aCalc, pInsertedSectNd->GetIndex(), USHRT_MAX);
+            rDoc.getIDocumentFieldsAccess().FieldsToCalc(aCalc, pInsertedSectNd->GetIndex(), SAL_MAX_INT32);
             bool bRecalcCondHidden =
                     aCalc.Calculate( aInsertedSect.GetCondition() ).GetBool();
             aInsertedSect.SetCondHidden( bRecalcCondHidden );
@@ -378,6 +414,8 @@ void SwUndoDelSection::RedoImpl(::sw::UndoRedoContext & rContext)
     rDoc.DelSectionFormat( pNd->GetSection().GetFormat() );
 }
 
+namespace {
+
 class SwUndoUpdateSection
     : public SwUndo
 {
@@ -395,10 +433,12 @@ public:
     virtual void RedoImpl( ::sw::UndoRedoContext & ) override;
 };
 
-SwUndo *
+}
+
+std::unique_ptr<SwUndo>
 MakeUndoUpdateSection(SwSectionFormat const& rFormat, bool const bOnlyAttr)
 {
-    return new SwUndoUpdateSection(*rFormat.GetSection(),
+    return std::make_unique<SwUndoUpdateSection>(*rFormat.GetSection(),
                 rFormat.GetContent().GetContentIdx(), bOnlyAttr);
 }
 
@@ -423,8 +463,8 @@ void SwUndoUpdateSection::UndoImpl(::sw::UndoRedoContext & rContext)
     SwSection& rNdSect = pSectNd->GetSection();
     SwFormat* pFormat = rNdSect.GetFormat();
 
-    SfxItemSet* pCur = ::lcl_GetAttrSet( rNdSect );
-    if (m_pAttrSet.get())
+    std::unique_ptr<SfxItemSet> pCur = ::lcl_GetAttrSet( rNdSect );
+    if (m_pAttrSet)
     {
         // The Content and Protect items must persist
         const SfxPoolItem* pItem;
@@ -444,34 +484,118 @@ void SwUndoUpdateSection::UndoImpl(::sw::UndoRedoContext & rContext)
         pFormat->ResetFormatAttr( RES_HEADER, RES_OPAQUE );
         pFormat->ResetFormatAttr( RES_SURROUND, RES_FRMATR_END-1 );
     }
-    m_pAttrSet.reset(pCur);
+    m_pAttrSet = std::move(pCur);
 
-    if (!m_bOnlyAttrChanged)
+    if (m_bOnlyAttrChanged)
+        return;
+
+    const bool bUpdate =
+           (!rNdSect.IsLinkType() && m_pSectionData->IsLinkType())
+        || (    !m_pSectionData->GetLinkFileName().isEmpty()
+            &&  (m_pSectionData->GetLinkFileName() !=
+                    rNdSect.GetLinkFileName()));
+
+    // swap stored section data with live section data
+    SwSectionData *const pOld( new SwSectionData(rNdSect) );
+    rNdSect.SetSectionData(*m_pSectionData);
+    m_pSectionData.reset(pOld);
+
+    if( bUpdate )
+        rNdSect.CreateLink( LinkCreateType::Update );
+    else if( SectionType::Content == rNdSect.GetType() && rNdSect.IsConnected() )
     {
-        const bool bUpdate =
-               (!rNdSect.IsLinkType() && m_pSectionData->IsLinkType())
-            || (    !m_pSectionData->GetLinkFileName().isEmpty()
-                &&  (m_pSectionData->GetLinkFileName() !=
-                        rNdSect.GetLinkFileName()));
-
-        // swap stored section data with live section data
-        SwSectionData *const pOld( new SwSectionData(rNdSect) );
-        rNdSect.SetSectionData(*m_pSectionData);
-        m_pSectionData.reset(pOld);
-
-        if( bUpdate )
-            rNdSect.CreateLink( CREATE_UPDATE );
-        else if( CONTENT_SECTION == rNdSect.GetType() && rNdSect.IsConnected() )
-        {
-            rNdSect.Disconnect();
-            rDoc.getIDocumentLinksAdministration().GetLinkManager().Remove( &rNdSect.GetBaseLink() );
-        }
+        rNdSect.Disconnect();
+        rDoc.getIDocumentLinksAdministration().GetLinkManager().Remove( &rNdSect.GetBaseLink() );
     }
 }
 
 void SwUndoUpdateSection::RedoImpl(::sw::UndoRedoContext & rContext)
 {
     UndoImpl(rContext);
+}
+
+
+SwUndoUpdateIndex::SwUndoUpdateIndex(SwTOXBaseSection & rTOX)
+    : SwUndo(SwUndoId::INSSECTION, rTOX.GetFormat()->GetDoc())
+    , m_pSaveSectionOriginal(new SwUndoSaveSection)
+    , m_pSaveSectionUpdated(new SwUndoSaveSection)
+    , m_nStartIndex(rTOX.GetFormat()->GetSectionNode()->GetIndex() + 1)
+{
+    SwDoc & rDoc(*rTOX.GetFormat()->GetDoc());
+    assert(rDoc.GetNodes()[m_nStartIndex-1]->IsSectionNode());
+    assert(rDoc.GetNodes()[rDoc.GetNodes()[m_nStartIndex]->EndOfSectionIndex()-1]->IsTextNode()); // -1 for extra empty node
+    // note: title is optional
+    assert(rDoc.GetNodes()[m_nStartIndex]->IsTextNode()
+        || rDoc.GetNodes()[m_nStartIndex]->IsSectionNode());
+    SwNodeIndex const first(rDoc.GetNodes(), m_nStartIndex);
+    if (first.GetNode().IsSectionNode())
+    {
+        SwSectionFormat & rSectionFormat(*first.GetNode().GetSectionNode()->GetSection().GetFormat());
+        // note: DelSectionFormat will create & append SwUndoDelSection!
+        rDoc.DelSectionFormat(& rSectionFormat); // remove inner section nodes
+    }
+    assert(first.GetNode().IsTextNode()); // invariant: ToX section is *never* empty
+    SwNodeIndex const last(rDoc.GetNodes(), rDoc.GetNodes()[m_nStartIndex]->EndOfSectionIndex() - 2); // skip empty node
+    assert(last.GetNode().IsTextNode());
+    m_pSaveSectionOriginal->SaveSection(SwNodeRange(first, last), false);
+}
+
+SwUndoUpdateIndex::~SwUndoUpdateIndex() = default;
+
+void SwUndoUpdateIndex::TitleSectionInserted(SwSectionFormat & rFormat)
+{
+    SwNodeIndex const tmp(rFormat.GetDoc()->GetNodes(), m_nStartIndex); // title inserted before empty node
+    assert(tmp.GetNode().IsSectionNode());
+    assert(tmp.GetNode().GetSectionNode()->GetSection().GetFormat() == &rFormat);
+    m_pTitleSectionUpdated.reset(static_cast<SwUndoDelSection*>(MakeUndoDelSection(rFormat).release()));
+}
+
+void SwUndoUpdateIndex::UndoImpl(::sw::UndoRedoContext & rContext)
+{
+    SwDoc & rDoc(rContext.GetDoc());
+    if (m_pTitleSectionUpdated)
+    {
+        m_pTitleSectionUpdated->RedoImpl(rContext);
+    }
+    SwNodeIndex const first(rDoc.GetNodes(), m_nStartIndex);
+    assert(first.GetNode().IsTextNode()); // invariant: ToX section is *never* empty
+    SwNodeIndex const last(rDoc.GetNodes(), rDoc.GetNodes()[m_nStartIndex]->EndOfSectionIndex() - 1);
+    assert(last.GetNode().IsTextNode());
+    // dummy node so that SaveSection doesn't remove ToX section...
+    SwTextNode *const pDeletionPrevention = rDoc.GetNodes().MakeTextNode(
+        SwNodeIndex(*rDoc.GetNodes()[m_nStartIndex]->EndOfSectionNode()),
+        rDoc.getIDocumentStylePoolAccess().GetTextCollFromPool(RES_POOLCOLL_TEXT));
+    m_pSaveSectionUpdated->SaveSection(SwNodeRange(first, last), false);
+    m_pSaveSectionOriginal->RestoreSection(&rDoc, first, true);
+    // delete before restoring nested undo, so its node indexes match
+    SwNodeIndex const del(*pDeletionPrevention);
+    SwDoc::CorrAbs(del, del, SwPosition(SwNodeIndex(*rDoc.GetNodes()[m_nStartIndex]->EndOfSectionNode())), true);
+    rDoc.GetNodes().Delete(del);
+    // original title section will be restored by next Undo, see ctor!
+}
+
+void SwUndoUpdateIndex::RedoImpl(::sw::UndoRedoContext & rContext)
+{
+    SwDoc & rDoc(rContext.GetDoc());
+    // original title section was deleted by previous Undo, see ctor!
+    SwNodeIndex const first(rDoc.GetNodes(), m_nStartIndex);
+    assert(first.GetNode().IsTextNode()); // invariant: ToX section is *never* empty
+    SwNodeIndex const last(rDoc.GetNodes(), rDoc.GetNodes()[m_nStartIndex]->EndOfSectionIndex() - 1);
+    assert(last.GetNode().IsTextNode());
+    // dummy node so that SaveSection doesn't remove ToX section...
+    SwTextNode *const pDeletionPrevention = rDoc.GetNodes().MakeTextNode(
+        SwNodeIndex(*rDoc.GetNodes()[m_nStartIndex]->EndOfSectionNode()),
+        rDoc.getIDocumentStylePoolAccess().GetTextCollFromPool(RES_POOLCOLL_TEXT));
+    m_pSaveSectionOriginal->SaveSection(SwNodeRange(first, last), false);
+    m_pSaveSectionUpdated->RestoreSection(&rDoc, first, true);
+    // delete before restoring nested undo, so its node indexes match
+    SwNodeIndex const del(*pDeletionPrevention);
+    SwDoc::CorrAbs(del, del, SwPosition(SwNodeIndex(*rDoc.GetNodes()[m_nStartIndex]->EndOfSectionNode())), true);
+    rDoc.GetNodes().Delete(del);
+    if (m_pTitleSectionUpdated)
+    {
+        m_pTitleSectionUpdated->UndoImpl(rContext);
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

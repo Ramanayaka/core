@@ -17,14 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sqlmessage.hxx"
-#include "uiservices.hxx"
-#include "unosqlmessage.hxx"
-#include "dbu_reghelper.hxx"
-#include "dbustrings.hrc"
+#include <sqlmessage.hxx>
+#include <unosqlmessage.hxx>
+#include <stringconstants.hxx>
+#include <strings.hxx>
 #include <comphelper/processfactory.hxx>
-#include <cppuhelper/typeprovider.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <connectivity/dbexception.hxx>
+#include <vcl/svapp.hxx>
+#include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 
 using namespace dbaui;
 using namespace dbtools;
@@ -32,9 +35,11 @@ using namespace dbtools;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdb;
 
-extern "C" void SAL_CALL createRegistryInfo_OSQLMessageDialog()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+org_openoffice_comp_dbu_OSQLMessageDialog_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static OMultiInstanceAutoRegistration< OSQLMessageDialog > aAutoRegistration;
+    return cppu::acquire(new OSQLMessageDialog(context));
 }
 
 namespace dbaui
@@ -58,30 +63,14 @@ Sequence<sal_Int8> SAL_CALL OSQLMessageDialog::getImplementationId(  )
     return css::uno::Sequence<sal_Int8>();
 }
 
-Reference< XInterface > SAL_CALL OSQLMessageDialog::Create(const Reference< XMultiServiceFactory >& _rxFactory)
-{
-    return *(new OSQLMessageDialog( comphelper::getComponentContext(_rxFactory) ));
-}
-
 OUString SAL_CALL OSQLMessageDialog::getImplementationName()
 {
-    return getImplementationName_Static();
-}
-
-OUString OSQLMessageDialog::getImplementationName_Static()
-{
-    return OUString("org.openoffice.comp.dbu.OSQLMessageDialog");
+    return "org.openoffice.comp.dbu.OSQLMessageDialog";
 }
 
 css::uno::Sequence<OUString> SAL_CALL OSQLMessageDialog::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
-}
-
-css::uno::Sequence<OUString> OSQLMessageDialog::getSupportedServiceNames_Static()
-{
-    css::uno::Sequence<OUString> aSupported { "com.sun.star.sdb.ErrorMessageDialog" };
-    return aSupported;
+    return { "com.sun.star.sdb.ErrorMessageDialog" };
 }
 
 void OSQLMessageDialog::initialize(Sequence<Any> const & args)
@@ -90,10 +79,12 @@ void OSQLMessageDialog::initialize(Sequence<Any> const & args)
     Reference< css::awt::XWindow > parentWindow;
 
     if ((args.getLength() == 3) && (args[0] >>= title) && (args[1] >>= parentWindow)) {
-        Sequence<Any> s(3);
-        s[0] <<= PropertyValue( "Title", -1, makeAny(title), PropertyState_DIRECT_VALUE);
-        s[1] <<= PropertyValue( "ParentWindow", -1, makeAny(parentWindow), PropertyState_DIRECT_VALUE);
-        s[2] <<= PropertyValue( "SQLException", -1, args[2], PropertyState_DIRECT_VALUE);
+        Sequence<Any> s(comphelper::InitAnyPropertySequence(
+        {
+            {"Title", Any(title)},
+            {"ParentWindow", Any(parentWindow)},
+            {"SQLException", args[2]}
+        }));
         OGenericUnoDialog::initialize(s);
     } else {
         OGenericUnoDialog::initialize(args);
@@ -139,13 +130,14 @@ Reference<XPropertySetInfo>  SAL_CALL OSQLMessageDialog::getPropertySetInfo()
     return new ::cppu::OPropertyArrayHelper(aProps);
 }
 
-VclPtr<Dialog> OSQLMessageDialog::createDialog(vcl::Window* _pParent)
+std::unique_ptr<weld::DialogController> OSQLMessageDialog::createDialog(const css::uno::Reference<css::awt::XWindow>& rParent)
 {
+    weld::Window* pParent = Application::GetFrameWeld(rParent);
     if ( m_aException.hasValue() )
-        return VclPtr<OSQLMessageBox>::Create( _pParent, SQLExceptionInfo( m_aException ), WB_OK | WB_DEF_OK, m_sHelpURL );
+        return std::make_unique<OSQLMessageBox>(pParent, SQLExceptionInfo(m_aException), MessBoxStyle::Ok | MessBoxStyle::DefaultOk, m_sHelpURL);
 
     OSL_FAIL("OSQLMessageDialog::createDialog : You should use the SQLException property to specify the error to display!");
-    return VclPtr<OSQLMessageBox>::Create(_pParent, SQLException());
+    return std::make_unique<OSQLMessageBox>(pParent, SQLException());
 }
 
 }   // namespace dbaui

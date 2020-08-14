@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "vbahelper/vbadocumentbase.hxx"
-#include "vbahelper/helperdecl.hxx"
+#include <vbahelper/vbadocumentbase.hxx>
 
+#include <com/sun/star/beans/PropertyVetoException.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
@@ -31,14 +31,13 @@
 #include <com/sun/star/frame/XStorable.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XTitle.hpp>
-#include <com/sun/star/document/XEmbeddedScripts.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <ooo/vba/XApplicationBase.hpp>
 
+#include <comphelper/automationinvokedzone.hxx>
 #include <cppuhelper/exc_hlp.hxx>
-#include <comphelper/unwrapargs.hxx>
 #include <tools/urlobj.hxx>
 #include <osl/file.hxx>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
@@ -55,7 +54,10 @@ VbaDocumentBase::VbaDocumentBase( uno::Sequence< uno::Any> const & args,
 OUString
 VbaDocumentBase::getName()
 {
-    return VbaDocumentBase::getNameFromModel( getModel() );
+    OUString sName = VbaDocumentBase::getNameFromModel( getModel() );
+    SAL_INFO("vbahelper", "VbaDocumentBase::getName: '" << sName << "'");
+
+    return sName;
 }
 
 OUString VbaDocumentBase::getNameFromModel( const uno::Reference< frame::XModel >& xModel )
@@ -86,14 +88,26 @@ VbaDocumentBase::getPath()
        sURL = sURL.copy( 0, sURL.getLength() - aURL.GetLastName().getLength() - 1 );
        ::osl::File::getSystemPathFromFileURL( sURL, sPath );
     }
+    SAL_INFO("vbahelper", "VbaDocumentBase::getPath: '" << sPath << "'");
+
     return sPath;
 }
 
 OUString
 VbaDocumentBase::getFullName()
 {
+    // In the Automation case, follow the specs.
+    if (comphelper::Automation::AutomationInvokedZone::isActive())
+    {
+        // We know that Automation is relevant only on Windows, so hardcode "\\".
+        OUString sPath = getPath() + "\\" + getName();
+        SAL_INFO("vbahelper", "VbaDocumentBase::getFullName: '" << sPath << "'");
+        return sPath;
+    }
+
     OUString sPath = getName();
     //::osl::File::getSystemPathFromFileURL( getModel()->getURL(), sPath );
+    SAL_INFO("vbahelper", "VbaDocumentBase::getFullName: '" << sPath << "'");
     return sPath;
 }
 
@@ -149,43 +163,43 @@ VbaDocumentBase::Close( const uno::Any &rSaveArg, const uno::Any &rFileArg,
     {
     }
 
-    if ( !bUIClose )
-    {
-        // if it is not possible to use UI dispatch, try to close the model directly
-        bool bCloseable = false;
-        uno::Reference< frame::XModel > xModel = getModel();
-        try
-        {
-            uno::Reference< util::XCloseable > xCloseable( xModel, uno::UNO_QUERY );
+    if ( bUIClose )
+        return;
 
-            // use close(boolean DeliverOwnership)
-            // The boolean parameter DeliverOwnership tells objects vetoing the close
-            // process that they may assume ownership if they object the closure by
-            // throwing a CloseVetoException. Here we give up ownership. To be on the
-            // safe side, catch possible veto exception anyway.
-            if ( xCloseable.is() )
-            {
-                bCloseable = true;
-                xCloseable->close(true);
-            }
-        }
-        catch (const uno::Exception &)
+    // if it is not possible to use UI dispatch, try to close the model directly
+    bool bCloseable = false;
+    uno::Reference< frame::XModel > xModel = getModel();
+    try
+    {
+        uno::Reference< util::XCloseable > xCloseable( xModel, uno::UNO_QUERY );
+
+        // use close(boolean DeliverOwnership)
+        // The boolean parameter DeliverOwnership tells objects vetoing the close
+        // process that they may assume ownership if they object the closure by
+        // throwing a CloseVetoException. Here we give up ownership. To be on the
+        // safe side, catch possible veto exception anyway.
+        if ( xCloseable.is() )
         {
-            // vetoed
+            bCloseable = true;
+            xCloseable->close(true);
         }
-        if (!bCloseable)
-        {
-            try {
-                // If close is not supported by this model - try to dispose it.
-                // But if the model disagree with a reset request for the modify state
-                // we shouldn't do so. Otherwhise some strange things can happen.
-                uno::Reference< lang::XComponent > xDisposable ( xModel, uno::UNO_QUERY_THROW );
-                xDisposable->dispose();
-            }
-            catch(const uno::Exception&)
-            {
-            }
-        }
+    }
+    catch (const uno::Exception &)
+    {
+        // vetoed
+    }
+    if (bCloseable)
+        return;
+
+    try {
+        // If close is not supported by this model - try to dispose it.
+        // But if the model disagree with a reset request for the modify state
+        // we shouldn't do so. Otherwise some strange things can happen.
+        uno::Reference< lang::XComponent > xDisposable ( xModel, uno::UNO_QUERY_THROW );
+        xDisposable->dispose();
+    }
+    catch(const uno::Exception&)
+    {
     }
 }
 
@@ -208,13 +222,10 @@ VbaDocumentBase::Unprotect( const uno::Any &aPassword )
     uno::Reference< util::XProtectable > xProt( getModel(), uno::UNO_QUERY_THROW );
     if( !xProt->isProtected() )
         throw uno::RuntimeException("File is already unprotected" );
+    if( aPassword >>= rPassword )
+        xProt->unprotect( rPassword );
     else
-    {
-        if( aPassword >>= rPassword )
-            xProt->unprotect( rPassword );
-        else
-            xProt->unprotect( OUString() );
-    }
+        xProt->unprotect( OUString() );
 }
 
 void
@@ -256,7 +267,7 @@ VbaDocumentBase::Save()
 void
 VbaDocumentBase::Activate()
 {
-    uno::Reference< frame::XFrame > xFrame( getModel()->getCurrentController()->getFrame(), uno::UNO_QUERY_THROW );
+    uno::Reference< frame::XFrame > xFrame( getModel()->getCurrentController()->getFrame(), uno::UNO_SET_THROW );
     xFrame->activate();
 }
 
@@ -283,18 +294,16 @@ VbaDocumentBase::getVBProject()
 OUString
 VbaDocumentBase::getServiceImplName()
 {
-    return OUString( "VbaDocumentBase" );
+    return "VbaDocumentBase";
 }
 
 uno::Sequence< OUString >
 VbaDocumentBase::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.VbaDocumentBase";
-    }
+        "ooo.vba.VbaDocumentBase"
+    };
     return aServiceNames;
 }
 

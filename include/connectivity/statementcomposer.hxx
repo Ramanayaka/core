@@ -20,11 +20,14 @@
 #ifndef INCLUDED_CONNECTIVITY_STATEMENTCOMPOSER_HXX
 #define INCLUDED_CONNECTIVITY_STATEMENTCOMPOSER_HXX
 
-#include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
+#include <rtl/ustring.hxx>
 
 #include <memory>
 #include <connectivity/dbtoolsdllapi.hxx>
+
+namespace com::sun::star::sdbc { class XConnection; }
+namespace com::sun::star::sdb { class XSingleSelectQueryComposer; }
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 
 namespace dbtools
@@ -65,6 +68,7 @@ namespace dbtools
         void    setDisposeComposer( bool _bDoDispose );
 
         void    setFilter( const OUString& _rFilter );
+        void    setHavingClause( const OUString& _rHavingClause );
         void    setOrder( const OUString& _rOrder );
 
         /** returns the composer which has been fed with the current settings
@@ -72,7 +76,7 @@ namespace dbtools
             @throws css::sdbc::SQLException
                 if such an exception occurs while creating the composer
         */
-        css::uno::Reference< css::sdb::XSingleSelectQueryComposer >
+        css::uno::Reference< css::sdb::XSingleSelectQueryComposer > const &
                 getComposer();
 
         /** returns the composer statement

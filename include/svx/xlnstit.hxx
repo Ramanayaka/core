@@ -27,9 +27,8 @@
 class SdrModel;
 
 
-// class XLineStartItem
 
-class SVX_DLLPUBLIC XLineStartItem : public NameOrIndex
+class SVXCORE_DLLPUBLIC XLineStartItem final : public NameOrIndex
 {
     basegfx::B2DPolyPolygon     maPolyPolygon;
 
@@ -39,12 +38,9 @@ public:
             XLineStartItem(const OUString& rName, const basegfx::B2DPolyPolygon& rPolyPolygon);
             XLineStartItem(const basegfx::B2DPolyPolygon& rPolyPolygon);
             XLineStartItem(const XLineStartItem& rItem);
-            XLineStartItem(SvStream& rIn);
 
     virtual bool            operator==(const SfxPoolItem& rItem) const override;
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
-    virtual SvStream&       Store(SvStream& rOut, sal_uInt16 nItemVersion ) const override;
+    virtual XLineStartItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -52,12 +48,12 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     const basegfx::B2DPolyPolygon& GetLineStartValue() const { return maPolyPolygon;}
     void SetLineStartValue(const basegfx::B2DPolyPolygon& rPolyPolygon) { maPolyPolygon = rPolyPolygon; Detach(); }
 
-    XLineStartItem* checkForUniqueItem( SdrModel* pModel ) const;
+    std::unique_ptr<XLineStartItem> checkForUniqueItem( SdrModel* pModel ) const;
 };
 
 #endif

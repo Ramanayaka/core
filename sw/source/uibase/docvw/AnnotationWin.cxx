@@ -19,18 +19,25 @@
 
 #include <AnnotationWin.hxx>
 
-#include <AnnotationMenuButton.hxx>
+#include "AnnotationMenuButton.hxx"
 #include <PostItMgr.hxx>
 
-#include <annotation.hrc>
-#include <cmdid.h>
+#include <strings.hrc>
 
+#include <uiobject.hxx>
+
+#include <vcl/edit.hxx>
 #include <vcl/menu.hxx>
+#include <vcl/scrbar.hxx>
+#include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
 
 #include <svl/undo.hxx>
+#include <unotools/localedatawrapper.hxx>
 #include <unotools/syslocale.hxx>
 #include <svl/languageoptions.hxx>
 
+#include <editeng/eeitem.hxx>
 #include <editeng/postitem.hxx>
 #include <editeng/fhgtitem.hxx>
 #include <editeng/langitem.hxx>
@@ -39,47 +46,43 @@
 #include <editeng/outliner.hxx>
 #include <editeng/editeng.hxx>
 #include <editeng/editobj.hxx>
+#include <editeng/outlobj.hxx>
 
 #include <comphelper/lok.hxx>
 #include <docufld.hxx>
 #include <txtfld.hxx>
 #include <ndtxt.hxx>
 #include <view.hxx>
+#include <viewopt.hxx>
 #include <wrtsh.hxx>
 #include <docsh.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <SwUndoField.hxx>
 #include <edtwin.hxx>
-#include <ShadowOverlayObject.hxx>
-#include <AnchorOverlayObject.hxx>
-#include <OverlayRanges.hxx>
-#include <SidebarTxtControl.hxx>
+#include "ShadowOverlayObject.hxx"
+#include "AnchorOverlayObject.hxx"
+#include "OverlayRanges.hxx"
+#include "SidebarTxtControl.hxx"
 
 #include <memory>
 
-namespace sw { namespace annotation {
+namespace sw::annotation {
 
 SwAnnotationWin::SwAnnotationWin( SwEditWin& rEditWin,
-                                  WinBits nBits,
                                   SwPostItMgr& aMgr,
                                   SwSidebarItem& rSidebarItem,
                                   SwFormatField* aField )
-    : Window(&rEditWin, nBits)
-    , maBuilder(nullptr, VclBuilderContainer::getUIRootDir(), "modules/swriter/ui/annotationmenu.ui", "")
+    : Window(&rEditWin)
+    , maBuilder(nullptr, AllSettings::GetUIRootDir(), "modules/swriter/ui/annotationmenu.ui", "")
     , mrMgr(aMgr)
     , mrView(rEditWin.GetView())
     , mnEventId(nullptr)
-    , mpOutlinerView(nullptr)
-    , mpOutliner(nullptr)
     , mpSidebarTextControl(nullptr)
     , mpVScrollbar(nullptr)
     , mpMetadataAuthor(nullptr)
     , mpMetadataDate(nullptr)
     , mpMenuButton(nullptr)
-    , mpAnchor(nullptr)
-    , mpShadow(nullptr)
-    , mpTextRangeOverlay(nullptr)
     , mColorAnchor()
     , mColorDark()
     , mColorLight()
@@ -89,6 +92,7 @@ SwAnnotationWin::SwAnnotationWin( SwEditWin& rEditWin,
     , mAnchorRect()
     , mPageBorder(0)
     , mbAnchorRectChanged(false)
+    , mbResolvedStateUpdated(false)
     , mbMouseOver(false)
     , mLayoutStatus(SwPostItHelper::INVISIBLE)
     , mbReadonly(false)
@@ -99,6 +103,8 @@ SwAnnotationWin::SwAnnotationWin( SwEditWin& rEditWin,
     , mpField( static_cast<SwPostItField*>(aField->GetField()))
     , mpButtonPopup(nullptr)
 {
+    set_id("Comment"+OUString::number(mpField->GetPostItId()));
+
     mpShadow = sidebarwindows::ShadowOverlayObject::CreateShadowOverlayObject( mrView );
     if ( mpShadow )
     {
@@ -142,23 +148,20 @@ void SwAnnotationWin::dispose()
     }
     mpSidebarTextControl.disposeAndClear();
 
-    if ( mpOutlinerView )
-    {
-        delete mpOutlinerView;
-        mpOutlinerView = nullptr;
-    }
-
-    if (mpOutliner)
-    {
-        delete mpOutliner;
-        mpOutliner = nullptr;
-    }
+    mpOutlinerView.reset();
+    mpOutliner.reset();
 
     if (mpMetadataAuthor)
     {
         mpMetadataAuthor->RemoveEventListener( LINK( this, SwAnnotationWin, WindowEventListener ) );
     }
     mpMetadataAuthor.disposeAndClear();
+
+    if (mpMetadataResolved)
+    {
+        mpMetadataResolved->RemoveEventListener( LINK( this, SwAnnotationWin, WindowEventListener ) );
+    }
+    mpMetadataResolved.disposeAndClear();
 
     if (mpMetadataDate)
     {
@@ -174,14 +177,10 @@ void SwAnnotationWin::dispose()
 
     RemoveEventListener( LINK( this, SwAnnotationWin, WindowEventListener ) );
 
-    sidebarwindows::AnchorOverlayObject::DestroyAnchorOverlayObject( mpAnchor );
-    mpAnchor = nullptr;
+    mpAnchor.reset();
+    mpShadow.reset();
 
-    sidebarwindows::ShadowOverlayObject::DestroyShadowOverlayObject( mpShadow );
-    mpShadow = nullptr;
-
-    delete mpTextRangeOverlay;
-    mpTextRangeOverlay = nullptr;
+    mpTextRangeOverlay.reset();
 
     mpMenuButton.disposeAndClear();
 
@@ -202,7 +201,7 @@ void SwAnnotationWin::SetPostItText()
     //point .e.g. fdo#33599
     mpField = static_cast<SwPostItField*>(mpFormatField->GetField());
     OUString sNewText = mpField->GetPar2();
-    bool bTextUnchanged = sNewText.equals(mpOutliner->GetEditEngine().GetText());
+    bool bTextUnchanged = sNewText == mpOutliner->GetEditEngine().GetText();
     ESelection aOrigSelection(GetOutlinerView()->GetEditView().GetSelection());
 
     // get text from SwPostItField and insert into our textview
@@ -228,16 +227,59 @@ void SwAnnotationWin::SetPostItText()
     Invalidate();
 }
 
+void SwAnnotationWin::SetResolved(bool resolved)
+{
+    bool oldState = IsResolved();
+    static_cast<SwPostItField*>(mpFormatField->GetField())->SetResolved(resolved);
+    const SwViewOption* pVOpt = mrView.GetWrtShellPtr()->GetViewOptions();
+    mrSidebarItem.bShow = !IsResolved() || (pVOpt->IsResolvedPostIts());
+
+    mpTextRangeOverlay.reset();
+
+    if(IsResolved())
+        mpMetadataResolved->Show();
+    else
+        mpMetadataResolved->Hide();
+
+    if(IsResolved() != oldState)
+        mbResolvedStateUpdated = true;
+    UpdateData();
+    Invalidate();
+}
+
+void SwAnnotationWin::ToggleResolved()
+{
+    SetResolved(!IsResolved());
+}
+
+void SwAnnotationWin::ToggleResolvedForThread()
+{
+    GetTopReplyNote()->ToggleResolved();
+    mrMgr.UpdateResolvedStatus(GetTopReplyNote());
+    mrMgr.LayoutPostIts();
+}
+
+bool SwAnnotationWin::IsResolved() const
+{
+    return static_cast<SwPostItField*>(mpFormatField->GetField())->GetResolved();
+}
+
+bool SwAnnotationWin::IsThreadResolved()
+{
+    // Not const because GetTopReplyNote isn't.
+    return GetTopReplyNote()->IsResolved();
+}
+
 void SwAnnotationWin::UpdateData()
 {
-    if ( mpOutliner->IsModified() )
+    if ( mpOutliner->IsModified() || mbResolvedStateUpdated )
     {
         IDocumentUndoRedo & rUndoRedo(
             mrView.GetDocShell()->GetDoc()->GetIDocumentUndoRedo());
         std::unique_ptr<SwField> pOldField;
         if (rUndoRedo.DoesUndo())
         {
-            pOldField.reset(mpField->Copy());
+            pOldField = mpField->Copy();
         }
         mpField->SetPar2(mpOutliner->GetEditEngine().GetText());
         mpField->SetTextObject(mpOutliner->CreateParaObject());
@@ -247,37 +289,41 @@ void SwAnnotationWin::UpdateData()
             SwPosition aPosition( pTextField->GetTextNode() );
             aPosition.nContent = pTextField->GetStart();
             rUndoRedo.AppendUndo(
-                new SwUndoFieldFromDoc(aPosition, *pOldField, *mpField, nullptr, true));
+                std::make_unique<SwUndoFieldFromDoc>(aPosition, *pOldField, *mpField, nullptr, true));
         }
         // so we get a new layout of notes (anchor position is still the same and we would otherwise not get one)
         mrMgr.SetLayout();
         // #i98686# if we have several views, all notes should update their text
-        mpFormatField->Broadcast(SwFormatFieldHint( nullptr, SwFormatFieldHintWhich::CHANGED));
+        if(mbResolvedStateUpdated)
+            mpFormatField->Broadcast(SwFormatFieldHint( nullptr, SwFormatFieldHintWhich::RESOLVED));
+        else
+            mpFormatField->Broadcast(SwFormatFieldHint( nullptr, SwFormatFieldHintWhich::CHANGED));
         mrView.GetDocShell()->SetModified();
     }
     mpOutliner->ClearModifyFlag();
     mpOutliner->GetUndoManager().Clear();
+    mbResolvedStateUpdated = false;
 }
 
 void SwAnnotationWin::Delete()
 {
-    if (mrView.GetWrtShellPtr()->GotoField(*mpFormatField))
+    if (!mrView.GetWrtShellPtr()->GotoField(*mpFormatField))
+        return;
+
+    if ( mrMgr.GetActiveSidebarWin() == this)
     {
-        if ( mrMgr.GetActiveSidebarWin() == this)
+        mrMgr.SetActiveSidebarWin(nullptr);
+        // if the note is empty, the previous line will send a delete event, but we are already there
+        if (mnEventId)
         {
-            mrMgr.SetActiveSidebarWin(nullptr);
-            // if the note is empty, the previous line will send a delete event, but we are already there
-            if (mnEventId)
-            {
-                Application::RemoveUserEvent( mnEventId );
-                mnEventId = nullptr;
-            }
+            Application::RemoveUserEvent( mnEventId );
+            mnEventId = nullptr;
         }
-        // we delete the field directly, the Mgr cleans up the PostIt by listening
-        GrabFocusToDocument();
-        mrView.GetWrtShellPtr()->ClearMark();
-        mrView.GetWrtShellPtr()->DelRight();
     }
+    // we delete the field directly, the Mgr cleans up the PostIt by listening
+    GrabFocusToDocument();
+    mrView.GetWrtShellPtr()->ClearMark();
+    mrView.GetWrtShellPtr()->DelRight();
 }
 
 void SwAnnotationWin::GotoPos()
@@ -356,7 +402,7 @@ VclPtr<MenuButton> SwAnnotationWin::CreateMenuButton()
     return pMenuButton;
 }
 
-void SwAnnotationWin::InitAnswer(OutlinerParaObject* pText)
+void SwAnnotationWin::InitAnswer(OutlinerParaObject const * pText)
 {
     // If tiled annotations is off in lok case, skip adding additional reply text.
     if (comphelper::LibreOfficeKit::isActive() && !comphelper::LibreOfficeKit::isTiledAnnotations())
@@ -400,7 +446,7 @@ void SwAnnotationWin::InitAnswer(OutlinerParaObject* pText)
     std::unique_ptr<SwField> pOldField;
     if (rUndoRedo.DoesUndo())
     {
-        pOldField.reset(mpField->Copy());
+        pOldField = mpField->Copy();
     }
     mpField->SetPar2(mpOutliner->GetEditEngine().GetText());
     mpField->SetTextObject(mpOutliner->CreateParaObject());
@@ -410,7 +456,7 @@ void SwAnnotationWin::InitAnswer(OutlinerParaObject* pText)
         SwPosition aPosition( pTextField->GetTextNode() );
         aPosition.nContent = pTextField->GetStart();
         rUndoRedo.AppendUndo(
-            new SwUndoFieldFromDoc(aPosition, *pOldField, *mpField, nullptr, true));
+            std::make_unique<SwUndoFieldFromDoc>(aPosition, *pOldField, *mpField, nullptr, true));
     }
     mpOutliner->SetModifyHdl( LINK( this, SwAnnotationWin, ModifyHdl ) );
     mpOutliner->ClearModifyFlag();
@@ -424,7 +470,7 @@ void SwAnnotationWin::UpdateText(const OUString& aText)
     UpdateData();
 }
 
-SvxLanguageItem SwAnnotationWin::GetLanguage()
+SvxLanguageItem SwAnnotationWin::GetLanguage() const
 {
     // set initial language for outliner
     SvtScriptType nScriptType = SvtLanguageOptions::GetScriptTypeOfLanguage( mpField->GetLanguage() );
@@ -439,28 +485,33 @@ SvxLanguageItem SwAnnotationWin::GetLanguage()
     return SvxLanguageItem(mpField->GetLanguage(),nLangWhichId);
 }
 
-bool SwAnnotationWin::IsProtected()
+bool SwAnnotationWin::IsProtected() const
 {
     return mbReadonly ||
            GetLayoutStatus() == SwPostItHelper::DELETED ||
            ( mpFormatField && mpFormatField->IsProtect() );
 }
 
-OUString SwAnnotationWin::GetAuthor()
+OUString SwAnnotationWin::GetAuthor() const
 {
     return mpField->GetPar1();
 }
 
-Date SwAnnotationWin::GetDate()
+Date SwAnnotationWin::GetDate() const
 {
     return mpField->GetDate();
 }
 
-tools::Time SwAnnotationWin::GetTime()
+tools::Time SwAnnotationWin::GetTime() const
 {
     return mpField->GetTime();
 }
 
-} } // end of namespace sw::annotation
+FactoryFunction SwAnnotationWin::GetUITestFactory() const
+{
+    return CommentUIObject::create;
+}
+
+} // end of namespace sw::annotation
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

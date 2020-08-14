@@ -23,6 +23,7 @@
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
 
 #include <vcl/svapp.hxx>
+#include <sal/log.hxx>
 
 namespace framework{
 
@@ -108,24 +109,24 @@ void OComponentAccess::impl_collectAllChildComponents(  const css::uno::Referenc
                                                                std::vector< css::uno::Reference< XComponent > >& seqComponents   )
 {
     // If valid node was given ...
-    if( xNode.is() )
+    if( !xNode.is() )
+        return;
+
+    // ... continue collection at these.
+
+    // Get the container of current node, collect the components of existing child frames
+    // and go down to next level in tree (recursive!).
+
+    const css::uno::Reference< XFrames >                xContainer  = xNode->getFrames();
+    const Sequence< css::uno::Reference< XFrame > > seqFrames   = xContainer->queryFrames( FrameSearchFlag::CHILDREN );
+
+    const sal_Int32 nFrameCount = seqFrames.getLength();
+    for( sal_Int32 nFrame=0; nFrame<nFrameCount; ++nFrame )
     {
-        // ... continue collection at these.
-
-        // Get the container of current node, collect the components of existing child frames
-        // and go down to next level in tree (recursive!).
-
-        const css::uno::Reference< XFrames >                xContainer  = xNode->getFrames();
-        const Sequence< css::uno::Reference< XFrame > > seqFrames   = xContainer->queryFrames( FrameSearchFlag::CHILDREN );
-
-        const sal_Int32 nFrameCount = seqFrames.getLength();
-        for( sal_Int32 nFrame=0; nFrame<nFrameCount; ++nFrame )
+        css::uno::Reference< XComponent > xComponent = impl_getFrameComponent( seqFrames[nFrame] );
+        if( xComponent.is() )
         {
-            css::uno::Reference< XComponent > xComponent = impl_getFrameComponent( seqFrames[nFrame] );
-            if( xComponent.is() )
-            {
-                seqComponents.push_back( xComponent );
-            }
+            seqComponents.push_back( xComponent );
         }
     }
     // ... otherwise break a recursive path and go back at current stack!
@@ -140,21 +141,21 @@ css::uno::Reference< XComponent > OComponentAccess::impl_getFrameComponent( cons
     if ( !xController.is() )
     {
         // Controller not exist - use the VCL-component.
-        xComponent.set( xFrame->getComponentWindow(), UNO_QUERY );
+        xComponent = xFrame->getComponentWindow();
     }
     else
     {
         // Does no model exists?
-        css::uno::Reference< XModel > xModel( xController->getModel(), UNO_QUERY );
+        css::uno::Reference< XModel > xModel = xController->getModel();
         if ( xModel.is() )
         {
             // Model exist - use the model as component.
-            xComponent.set( xModel, UNO_QUERY );
+            xComponent = xModel;
         }
         else
         {
             // Model not exist - use the controller as component.
-            xComponent.set( xController, UNO_QUERY );
+            xComponent = xController;
         }
     }
 

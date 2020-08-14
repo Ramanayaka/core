@@ -20,7 +20,12 @@
 #ifndef INCLUDED_COMPHELPER_PROPAGG_HXX
 #define INCLUDED_COMPHELPER_PROPAGG_HXX
 
-#include <com/sun/star/uno/XAggregation.hpp>
+#include <config_options.h>
+#include <com/sun/star/beans/Property.hpp>
+#include <com/sun/star/beans/PropertyState.hpp>
+#include <com/sun/star/beans/XPropertiesChangeListener.hpp>
+#include <com/sun/star/beans/XVetoableChangeListener.hpp>
+#include <com/sun/star/lang/EventObject.hpp>
 #include <comphelper/propstate.hxx>
 #include <comphelper/comphelperdllapi.h>
 
@@ -57,13 +62,12 @@ namespace internal
     };
 
     typedef std::map< sal_Int32, OPropertyAccessor >  PropertyAccessorMap;
-    typedef PropertyAccessorMap::iterator           PropertyAccessorMapIterator;
     typedef PropertyAccessorMap::const_iterator     ConstPropertyAccessorMapIterator;
 }
 
 
 /**
- * used as callback for a OPropertyArrayAggregationHelper
+ * used as callback for an OPropertyArrayAggregationHelper
  */
 class IPropertyInfoService
 {
@@ -80,16 +84,15 @@ protected:
 };
 
 /**
- * used for implementing an cppu::IPropertyArrayHelper for classes
+ * used for implementing a cppu::IPropertyArrayHelper for classes
  * aggregating property sets
  */
 
 #define DEFAULT_AGGREGATE_PROPERTY_ID   10000
 
-class COMPHELPER_DLLPUBLIC OPropertyArrayAggregationHelper: public ::cppu::IPropertyArrayHelper
+class COMPHELPER_DLLPUBLIC OPropertyArrayAggregationHelper final : public ::cppu::IPropertyArrayHelper
 {
     friend class OPropertySetAggregationHelper;
-protected:
 
     std::vector<css::beans::Property>         m_aProperties;
     internal::PropertyAccessorMap             m_aPropertyAccessors;
@@ -99,7 +102,7 @@ public:
         @param  _rProperties    the properties of the object doing the aggregation. These properties
                                 are used without any checks, so the caller has to ensure that the names and
                                 handles are valid.
-        @param  _rAggProperties the properties of the aggregate, usually got via an call to getProperties on the
+        @param  _rAggProperties the properties of the aggregate, usually got via a call to getProperties on the
                                 XPropertySetInfo of the aggregate.
                                 The names of the properties are used without any checks, so the caller has to ensure
                                 that there are no doubles.
@@ -176,7 +179,7 @@ public:
     */
     PropertyOrigin  classifyProperty( const OUString& _rName );
 
-protected:
+private:
     const css::beans::Property* findPropertyByName(const OUString& _rName) const;
 };
 
@@ -192,7 +195,7 @@ namespace internal
  * supports at least XPropertySet and XMultiPropertySet
  *
  */
-class COMPHELPER_DLLPUBLIC OPropertySetAggregationHelper    :public OPropertyStateHelper
+class UNLESS_MERGELIBS(COMPHELPER_DLLPUBLIC) OPropertySetAggregationHelper    :public OPropertyStateHelper
                                     ,public css::beans::XPropertiesChangeListener
                                     ,public css::beans::XVetoableChangeListener
 {

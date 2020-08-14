@@ -17,28 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "LegendItemConverter.hxx"
+#include <LegendItemConverter.hxx>
 #include "SchWhichPairs.hxx"
-#include "macros.hxx"
-#include "ItemPropertyMap.hxx"
-#include "GraphicPropertyItemConverter.hxx"
-#include "CharacterPropertyItemConverter.hxx"
-#include <com/sun/star/chart2/XLegend.hpp>
+#include <GraphicPropertyItemConverter.hxx>
+#include <CharacterPropertyItemConverter.hxx>
 #include <com/sun/star/chart2/LegendPosition.hpp>
 #include <com/sun/star/chart/ChartLegendExpansion.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 
 #include <svl/intitem.hxx>
 #include <svl/eitem.hxx>
+#include <tools/diagnose_ex.h>
 
-#include <functional>
-#include <algorithm>
 #include <memory>
 
 using namespace ::com::sun::star;
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 LegendItemConverter::LegendItemConverter(
@@ -49,17 +44,16 @@ LegendItemConverter::LegendItemConverter(
     const awt::Size* pRefSize ) :
         ItemConverter( rPropertySet, rItemPool )
 {
-    m_aConverters.push_back( new GraphicPropertyItemConverter(
+    m_aConverters.emplace_back( new GraphicPropertyItemConverter(
                                  rPropertySet, rItemPool, rDrawModel, xNamedPropertyContainerFactory,
                                  GraphicObjectType::LineAndFillProperties ));
-    m_aConverters.push_back( new CharacterPropertyItemConverter(
+    m_aConverters.emplace_back( new CharacterPropertyItemConverter(
                                  rPropertySet, rItemPool, pRefSize,
                                  "ReferencePageSize" ));
 }
 
 LegendItemConverter::~LegendItemConverter()
 {
-    std::for_each( m_aConverters.begin(), m_aConverters.end(), std::default_delete<ItemConverter>());
 }
 
 void LegendItemConverter::FillItemSet( SfxItemSet & rOutItemSet ) const
@@ -151,11 +145,28 @@ bool LegendItemConverter::ApplySpecialItem( sal_uInt16 nWhichId, const SfxItemSe
                         bChanged = true;
                     }
                 }
-                catch( const uno::Exception & ex )
+                catch( const uno::Exception & )
                 {
-                    ASSERT_EXCEPTION( ex );
+                    DBG_UNHANDLED_EXCEPTION("chart2");
                 }
             }
+        }
+        break;
+        case SCHATTR_LEGEND_NO_OVERLAY:
+        {
+            const SfxPoolItem* pPoolItem = nullptr;
+            if(rInItemSet.GetItemState(SCHATTR_LEGEND_NO_OVERLAY, true, &pPoolItem) == SfxItemState::SET)
+            {
+                bool bOverlay = !static_cast<const SfxBoolItem *>(pPoolItem)->GetValue();
+                bool bOldOverlay = false;
+                if(!(GetPropertySet()->getPropertyValue("Overlay") >>= bOldOverlay) ||
+                    (bOldOverlay != bOverlay))
+                {
+                    GetPropertySet()->setPropertyValue("Overlay", uno::Any(bOverlay));
+                    bChanged = true;
+                }
+            }
+
         }
         break;
     }
@@ -179,13 +190,19 @@ void LegendItemConverter::FillSpecialItem(
         {
             chart2::LegendPosition eLegendPos( chart2::LegendPosition_LINE_END );
             GetPropertySet()->getPropertyValue( "AnchorPosition" ) >>= eLegendPos;
-            rOutItemSet.Put( SfxInt32Item(SCHATTR_LEGEND_POS, (sal_Int32)eLegendPos ) );
+            rOutItemSet.Put( SfxInt32Item(SCHATTR_LEGEND_POS, static_cast<sal_Int32>(eLegendPos) ) );
+        }
+        break;
+        case SCHATTR_LEGEND_NO_OVERLAY:
+        {
+            bool bOverlay = false;
+            GetPropertySet()->getPropertyValue("Overlay") >>= bOverlay;
+            rOutItemSet.Put(SfxBoolItem(SCHATTR_LEGEND_NO_OVERLAY, !bOverlay));
         }
         break;
    }
 }
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

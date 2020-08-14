@@ -22,9 +22,7 @@
 
 using ::comphelper::PropertyInfo;
 using ::comphelper::ChainablePropertySetInfo;
-using ::com::sun::star::uno::Type;
 using ::com::sun::star::uno::Sequence;
-using ::com::sun::star::uno::RuntimeException;
 using ::com::sun::star::beans::Property;
 using ::com::sun::star::beans::UnknownPropertyException;
 
@@ -47,7 +45,7 @@ ChainablePropertySetInfo::~ChainablePropertySetInfo()
 void ChainablePropertySetInfo::remove( const OUString& aName )
 {
     maMap.erase ( aName );
-    if ( maProperties.getLength() )
+    if ( maProperties.hasElements() )
          maProperties.realloc( 0 );
 }
 
@@ -59,14 +57,15 @@ Sequence< ::Property > SAL_CALL ChainablePropertySetInfo::getProperties()
         maProperties.realloc ( nSize );
         Property* pProperties = maProperties.getArray();
 
-        for (PropertyInfoHash::const_iterator aIter(maMap.begin()), aEnd(maMap.end()); aIter != aEnd; ++aIter, ++pProperties)
+        for (auto const& elem : maMap)
         {
-            PropertyInfo const * pInfo = (*aIter).second;
+            PropertyInfo const * pInfo = elem.second;
 
             pProperties->Name = pInfo->maName;
             pProperties->Handle = pInfo->mnHandle;
             pProperties->Type = pInfo->maType;
             pProperties->Attributes = pInfo->mnAttributes;
+            ++pProperties;
         }
     }
     return maProperties;

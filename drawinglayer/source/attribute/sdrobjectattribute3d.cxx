@@ -22,10 +22,8 @@
 #include <rtl/instance.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpSdr3DObjectAttribute
         {
         public:
@@ -122,20 +120,11 @@ namespace drawinglayer
         {
         }
 
-        Sdr3DObjectAttribute::Sdr3DObjectAttribute(const Sdr3DObjectAttribute& rCandidate)
-        :   mpSdr3DObjectAttribute(rCandidate.mpSdr3DObjectAttribute)
-        {
-        }
+        Sdr3DObjectAttribute::Sdr3DObjectAttribute(const Sdr3DObjectAttribute&) = default;
 
-        Sdr3DObjectAttribute::~Sdr3DObjectAttribute()
-        {
-        }
+        Sdr3DObjectAttribute::~Sdr3DObjectAttribute() = default;
 
-        Sdr3DObjectAttribute& Sdr3DObjectAttribute::operator=(const Sdr3DObjectAttribute& rCandidate)
-        {
-            mpSdr3DObjectAttribute = rCandidate.mpSdr3DObjectAttribute;
-            return *this;
-        }
+        Sdr3DObjectAttribute& Sdr3DObjectAttribute::operator=(const Sdr3DObjectAttribute&) = default;
 
         bool Sdr3DObjectAttribute::operator==(const Sdr3DObjectAttribute& rCandidate) const
         {
@@ -197,7 +186,6 @@ namespace drawinglayer
             return mpSdr3DObjectAttribute->getReducedLineGeometry();
         }
 
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

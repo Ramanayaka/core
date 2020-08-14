@@ -22,8 +22,6 @@
 #include <svl/intitem.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
 // class SvxOrphansItem --------------------------------------------------
 
 /*  [Description]
@@ -31,7 +29,7 @@ class SvXMLUnitConverter;
     This item describes the number of lines for the orphans system.
 */
 
-class EDITENG_DLLPUBLIC SvxOrphansItem: public SfxByteItem
+class EDITENG_DLLPUBLIC SvxOrphansItem final : public SfxByteItem
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -39,20 +37,12 @@ public:
     SvxOrphansItem( const sal_uInt8 nL /*= 0*/, const sal_uInt16 nId  );
 
     // "pure virtual Methods" from SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion ) const override;
+    virtual SvxOrphansItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
-
-    SvxOrphansItem& operator=( const SvxOrphansItem& rOrphans )
-    {
-        SetValue( rOrphans.GetValue() );
-        return *this;
-    }
+                                  OUString &rText, const IntlWrapper& ) const override;
 };
 
 #endif

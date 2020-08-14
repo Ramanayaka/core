@@ -23,14 +23,14 @@ $(eval $(call gb_Library_add_defs,chartcore,\
     -DOOO_DLLIMPLEMENTATION_CHARTVIEW \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,chartcore,$(SRCDIR)/chart2/inc/pch/precompiled_chartcore))
+$(eval $(call gb_Library_set_precompiled_header,chartcore,chart2/inc/pch/precompiled_chartcore))
 
 $(eval $(call gb_Library_use_externals,chartcore,\
 	boost_headers \
-	glm_headers \
+	libxml2 \
 ))
 
-ifeq ($(ENABLE_HEADLESS),)
+ifeq ($(DISABLE_GUI),)
 $(eval $(call gb_Library_use_externals,chartcore,\
     epoxy \
 ))
@@ -49,7 +49,7 @@ $(eval $(call gb_Library_use_libraries,chartcore,\
     cppuhelper \
 	drawinglayer \
 	editeng \
-    fwe \
+    fwk \
     i18nlangtag \
     sal \
 	salhelper \
@@ -92,6 +92,7 @@ $(eval $(call gb_Library_add_exception_objects,chartcore,\
     chart2/source/view/charttypes/BubbleChart \
     chart2/source/view/charttypes/CandleStickChart \
     chart2/source/view/charttypes/CategoryPositionHelper \
+    chart2/source/view/charttypes/ConfigAccess \
     chart2/source/view/charttypes/NetChart \
     chart2/source/view/charttypes/PieChart \
     chart2/source/view/charttypes/Splines \
@@ -109,7 +110,6 @@ $(eval $(call gb_Library_add_exception_objects,chartcore,\
     chart2/source/view/main/PolarLabelPositionHelper \
     chart2/source/view/main/PropertyMapper \
     chart2/source/view/main/ShapeFactory \
-    chart2/source/view/main/AbstractShapeFactory \
     chart2/source/view/main/Stripe \
     chart2/source/view/main/VDataSeries \
     chart2/source/view/main/VLegend \
@@ -119,14 +119,6 @@ $(eval $(call gb_Library_add_exception_objects,chartcore,\
     chart2/source/view/main/VTitle \
     chart2/source/view/main/VButton \
 ))
-ifeq ($(ENABLE_HEADLESS),)
-$(eval $(call gb_Library_add_exception_objects,chartcore,\
-    chart2/source/view/main/3DChartObjects \
-    chart2/source/view/main/GL3DPlotterBase \
-    chart2/source/view/main/GL3DRenderer \
-    chart2/source/view/charttypes/GL3DBarChart \
-))
-endif
 
 # model pieces ...
 $(eval $(call gb_Library_add_exception_objects,chartcore,\
@@ -166,8 +158,6 @@ $(eval $(call gb_Library_add_exception_objects,chartcore,\
     chart2/source/model/template/ColumnLineDataInterpreter \
     chart2/source/model/template/DataInterpreter \
     chart2/source/model/template/FilledNetChartType \
-    chart2/source/model/template/GL3DBarChartType \
-    chart2/source/model/template/GL3DBarChartTypeTemplate \
     chart2/source/model/template/LineChartType \
     chart2/source/model/template/LineChartTypeTemplate \
     chart2/source/model/template/NetChartType \
@@ -216,7 +206,6 @@ $(eval $(call gb_Library_add_exception_objects,chartcore,\
     chart2/source/tools/MediaDescriptorHelper \
     chart2/source/tools/ModifyListenerHelper \
     chart2/source/tools/MovingAverageRegressionCurveCalculator \
-    chart2/source/tools/MutexContainer \
     chart2/source/tools/NameContainer \
     chart2/source/tools/NumberFormatterWrapper \
     chart2/source/tools/ObjectIdentifier \
@@ -234,7 +223,6 @@ $(eval $(call gb_Library_add_exception_objects,chartcore,\
     chart2/source/tools/RelativePositionHelper \
     chart2/source/tools/RelativeSizeHelper \
     chart2/source/tools/ResId \
-    chart2/source/tools/ResourceManager \
     chart2/source/tools/Scaling \
     chart2/source/tools/SceneProperties \
     chart2/source/tools/StatisticsHelper \
@@ -251,5 +239,5 @@ $(eval $(call gb_Library_add_exception_objects,chartcore,\
     chart2/source/tools/WrappedPropertySet \
     chart2/source/tools/XMLRangeHelper \
 ))
- 
+
 # vim: set noet sw=4 ts=4:

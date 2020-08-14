@@ -22,8 +22,8 @@
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
-#include "MutexContainer.hxx"
-#include "OPropertySet.hxx"
+#include <MutexContainer.hxx>
+#include <OPropertySet.hxx>
 
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/uno3.hxx>
@@ -40,7 +40,7 @@ typedef ::cppu::WeakImplHelper<
     StockBar_Base;
 }
 
-class StockBar :
+class StockBar final :
         public MutexContainer,
         public impl::StockBar_Base,
         public ::property::OPropertySet
@@ -52,7 +52,7 @@ public:
     /// merge XInterface implementations
      DECLARE_XINTERFACE()
 
-protected:
+private:
     explicit StockBar( const StockBar & rOther );
 
     // ____ OPropertySet ____
@@ -85,8 +85,6 @@ protected:
     virtual void firePropertyChangeEvent() override;
     using OPropertySet::disposing;
 
-private:
-    const bool m_bRisingCourse;
     css::uno::Reference< css::util::XModifyListener > m_xModifyEventForwarder;
 };
 

@@ -23,9 +23,11 @@
 #include "MasterPageContainer.hxx"
 #include "MasterPageDescriptor.hxx"
 
+#include <vcl/timer.hxx>
+
 #include <memory>
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 /** The queue stores and processes all requests from a MasterPageContainer
     for the creation of previews.
@@ -125,7 +127,7 @@ private:
     DECL_LINK(DelayedPreviewCreation, Timer *, void);
 };
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 #endif
 

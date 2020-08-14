@@ -17,28 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
-#include "hsqldb/HTable.hxx"
-#include "hsqldb/HTables.hxx"
-#include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/sdbc/XResultSet.hpp>
-#include <com/sun/star/sdbcx/KeyType.hpp>
-#include <com/sun/star/sdbc/KeyRule.hpp>
+#include <hsqldb/HTable.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/sdbcx/Privilege.hpp>
 #include <comphelper/property.hxx>
-#include <comphelper/extract.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/types.hxx>
 #include <connectivity/dbtools.hxx>
-#include <connectivity/sdbcx/VColumn.hxx>
 #include <connectivity/TKeys.hxx>
 #include <connectivity/TIndexes.hxx>
-#include <connectivity/TColumnsHelper.hxx>
-#include "hsqldb/HCatalog.hxx"
-#include "hsqldb/HColumns.hxx"
-#include "TConnection.hxx"
+#include <hsqldb/HColumns.hxx>
+#include <TConnection.hxx>
 
 #include <tools/diagnose_ex.h>
 
@@ -109,24 +99,24 @@ void OHSQLTable::construct()
     return *static_cast<OHSQLTable_PROP*>(this)->getArrayHelper(isNew() ? 1 : 0);
 }
 
-sdbcx::OCollection* OHSQLTable::createColumns(const TStringVector& _rNames)
+sdbcx::OCollection* OHSQLTable::createColumns(const ::std::vector< OUString>& _rNames)
 {
     OHSQLColumns* pColumns = new OHSQLColumns(*this,m_aMutex,_rNames);
     pColumns->setParent(this);
     return pColumns;
 }
 
-sdbcx::OCollection* OHSQLTable::createKeys(const TStringVector& _rNames)
+sdbcx::OCollection* OHSQLTable::createKeys(const ::std::vector< OUString>& _rNames)
 {
     return new OKeysHelper(this,m_aMutex,_rNames);
 }
 
-sdbcx::OCollection* OHSQLTable::createIndexes(const TStringVector& _rNames)
+sdbcx::OCollection* OHSQLTable::createIndexes(const ::std::vector< OUString>& _rNames)
 {
     return new OIndexesHelper(this,m_aMutex,_rNames);
 }
 
-Sequence< sal_Int8 > OHSQLTable::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > OHSQLTable::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
@@ -137,7 +127,7 @@ Sequence< sal_Int8 > OHSQLTable::getUnoTunnelImplementationId()
 
 sal_Int64 OHSQLTable::getSomething( const Sequence< sal_Int8 > & rId )
 {
-    return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    return (isUnoTunnelId<OHSQLTable>(rId))
                 ? reinterpret_cast< sal_Int64 >( this )
                 : OTable_TYPEDEF::getSomething(rId);
 }
@@ -154,7 +144,7 @@ void SAL_CALL OHSQLTable::alterColumnByName( const OUString& colName, const Refe
 #endif
         );
 
-    if ( !m_pColumns || !m_pColumns->hasByName(colName) )
+    if ( !m_xColumns || !m_xColumns->hasByName(colName) )
         throw NoSuchElementException(colName,*this);
 
 
@@ -162,7 +152,7 @@ void SAL_CALL OHSQLTable::alterColumnByName( const OUString& colName, const Refe
     {
         // first we have to check what should be altered
         Reference<XPropertySet> xProp;
-        m_pColumns->getByName(colName) >>= xProp;
+        m_xColumns->getByName(colName) >>= xProp;
         // first check the types
         sal_Int32 nOldType = 0,nNewType = 0,nOldPrec = 0,nNewPrec = 0,nOldScale = 0,nNewScale = 0;
         OUString sOldTypeName, sNewTypeName;
@@ -194,7 +184,7 @@ void SAL_CALL OHSQLTable::alterColumnByName( const OUString& colName, const Refe
         // now we should look if the name of the column changed
         OUString sNewColumnName;
         descriptor->getPropertyValue(rProp.getNameByIndex(PROPERTY_ID_NAME)) >>= sNewColumnName;
-        if ( !sNewColumnName.equals(colName) )
+        if ( sNewColumnName != colName )
         {
             const OUString sQuote = getMetaData()->getIdentifierQuoteString(  );
 
@@ -215,7 +205,7 @@ void SAL_CALL OHSQLTable::alterColumnByName( const OUString& colName, const Refe
             ||  bOldAutoIncrement != bAutoIncrement )
         {
             // special handling because they change the type names to distinguish
-            // if a column should be an auto_incmrement one
+            // if a column should be an auto_increment one
             if ( bOldAutoIncrement != bAutoIncrement )
             {
                 /// TODO: insert special handling for auto increment "IDENTITY" and primary key
@@ -237,14 +227,14 @@ void SAL_CALL OHSQLTable::alterColumnByName( const OUString& colName, const Refe
         else if(sOldDefault.isEmpty() && !sNewDefault.isEmpty())
             alterDefaultValue(sNewDefault,sNewColumnName);
 
-        m_pColumns->refresh();
+        m_xColumns->refresh();
     }
     else
     {
-        if(m_pColumns)
+        if(m_xColumns)
         {
-            m_pColumns->dropByName(colName);
-            m_pColumns->appendByDescriptor(descriptor);
+            m_xColumns->dropByName(colName);
+            m_xColumns->appendByDescriptor(descriptor);
         }
     }
 
@@ -264,7 +254,7 @@ void OHSQLTable::alterColumnType(sal_Int32 nNewType,const OUString& _rColName, c
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("connectivity.hsqldb");
     }
 #else
     (void)_rColName;
@@ -301,7 +291,7 @@ void OHSQLTable::dropDefaultValue(const OUString& _rColName)
     executeStatement(sSql);
 }
 
-OUString OHSQLTable::getAlterTableColumnPart()
+OUString OHSQLTable::getAlterTableColumnPart() const
 {
     OUString sSql(  "ALTER TABLE " );
 

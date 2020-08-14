@@ -19,7 +19,7 @@
 
 #include <svx/ChildrenManager.hxx>
 #include "ChildrenManagerImpl.hxx"
-#include <svx/AccessibleShape.hxx>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
@@ -59,11 +59,6 @@ css::uno::Reference<XAccessible> ChildrenManager::GetChild (long nIndex)
     return mpImpl->GetChild (nIndex);
 }
 
-Reference<XAccessible> ChildrenManager::GetChild (const Reference<drawing::XShape>& xShape)
-{
-    return mpImpl->GetChild (xShape);
-}
-
 css::uno::Reference<css::drawing::XShape> ChildrenManager::GetChildShape(long nIndex)
 {
     return mpImpl->GetChildShape(nIndex);
@@ -89,7 +84,7 @@ void ChildrenManager::ClearAccessibleShapeList()
     mpImpl->ClearAccessibleShapeList ();
 }
 
-void ChildrenManager::SetInfo (AccessibleShapeTreeInfo& rShapeTreeInfo)
+void ChildrenManager::SetInfo (AccessibleShapeTreeInfo const & rShapeTreeInfo)
 {
     mpImpl->SetInfo (rShapeTreeInfo);
 }
@@ -99,7 +94,7 @@ void ChildrenManager::UpdateSelection()
     mpImpl->UpdateSelection ();
 }
 
-bool ChildrenManager::HasFocus()
+bool ChildrenManager::HasFocus() const
 {
     return mpImpl->HasFocus ();
 }

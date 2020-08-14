@@ -36,7 +36,7 @@
 
 // comment: Step 1: get the Desktop object from the office
 //          Step 2: open an empty text document
-//          Step 3: enter a example text
+//          Step 3: enter an example text
 //          Step 4: replace some english spelled words with US spelled
 
 
@@ -48,7 +48,7 @@ public class TextReplace {
     public static void main(String args[]) {
         // You need the desktop to create a document
         // The getDesktop method does the UNO bootstrapping, gets the
-        // remote servie manager and the desktop object.
+        // remote service manager and the desktop object.
         com.sun.star.frame.XDesktop xDesktop = null;
         xDesktop = getDesktop();
 
@@ -69,7 +69,7 @@ public class TextReplace {
             xReplaceable = UnoRuntime.queryInterface(
                 com.sun.star.util.XReplaceable.class, xTextDocument);
 
-            // You need a descriptor to set properies for Replace
+            // You need a descriptor to set properties for Replace
             xReplaceDescr = xReplaceable.createReplaceDescriptor();
 
             System.out.println("Change all occurrences of ...");
@@ -119,7 +119,7 @@ public class TextReplace {
             xTextCursor.gotoEnd(false);
             xCPS.setPropertyValue( "CharColor", Integer.valueOf( 0 ) );
 
-            xText.insertString( xTextCursor, "in the alley. Like lightening he darted off to the left and disappeared between the two warehouses almost falling over the trash can lying in the ", false  );
+            xText.insertString( xTextCursor, "in the alley. Like lightning he darted off to the left and disappeared between the two warehouses almost falling over the trash can lying in the ", false  );
 
             xText.insertString( xTextCursor, "centre ", true );
             xCPS = UnoRuntime.queryInterface(

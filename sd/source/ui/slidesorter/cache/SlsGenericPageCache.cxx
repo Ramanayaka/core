@@ -22,12 +22,11 @@
 #include "SlsQueueProcessor.hxx"
 #include "SlsRequestPriorityClass.hxx"
 #include "SlsRequestFactory.hxx"
-#include "cache/SlsPageCacheManager.hxx"
-#include "model/SlideSorterModel.hxx"
-#include "model/SlsPageDescriptor.hxx"
-#include "controller/SlideSorterController.hxx"
+#include "SlsBitmapCache.hxx"
+#include <cache/SlsPageCacheManager.hxx>
+#include <tools/debug.hxx>
 
-namespace sd { namespace slidesorter { namespace cache {
+namespace sd::slidesorter::cache {
 
 GenericPageCache::GenericPageCache (
     const Size& rPreviewSize,
@@ -49,24 +48,24 @@ GenericPageCache::GenericPageCache (
 
 GenericPageCache::~GenericPageCache()
 {
-    if (mpQueueProcessor.get() != nullptr)
+    if (mpQueueProcessor != nullptr)
         mpQueueProcessor->Stop();
     maRequestQueue.Clear();
     mpQueueProcessor.reset();
 
-    if (mpBitmapCache.get() != nullptr)
+    if (mpBitmapCache != nullptr)
         PageCacheManager::Instance()->ReleaseCache(mpBitmapCache);
     mpBitmapCache.reset();
 }
 
 void GenericPageCache::ProvideCacheAndProcessor()
 {
-    if (mpBitmapCache.get() == nullptr)
+    if (mpBitmapCache == nullptr)
         mpBitmapCache = PageCacheManager::Instance()->GetCache(
             mpCacheContext->GetModel(),
             maPreviewSize);
 
-    if (mpQueueProcessor.get() == nullptr)
+    if (mpQueueProcessor == nullptr)
         mpQueueProcessor.reset(new QueueProcessor(
             maRequestQueue,
             mpBitmapCache,
@@ -79,36 +78,36 @@ void GenericPageCache::ChangePreviewSize (
     const Size& rPreviewSize,
     const bool bDoSuperSampling)
 {
-    if (rPreviewSize!=maPreviewSize || bDoSuperSampling!=mbDoSuperSampling)
-    {
-        // A large size may indicate an error of the caller.  After all we
-        // are creating previews.
-        DBG_ASSERT (maPreviewSize.Width()<1000 && maPreviewSize.Height()<1000,
-            "GenericPageCache<>::GetPreviewBitmap(): bitmap requested with large width. "
-            "This may indicate an error.");
+    if (rPreviewSize==maPreviewSize && bDoSuperSampling==mbDoSuperSampling)
+        return;
 
-        if (mpBitmapCache.get() != nullptr)
+    // A large size may indicate an error of the caller.  After all we
+    // are creating previews.
+    DBG_ASSERT (maPreviewSize.Width()<1000 && maPreviewSize.Height()<1000,
+        "GenericPageCache<>::GetPreviewBitmap(): bitmap requested with large width. "
+        "This may indicate an error.");
+
+    if (mpBitmapCache != nullptr)
+    {
+        mpBitmapCache = PageCacheManager::Instance()->ChangeSize(
+            mpBitmapCache, maPreviewSize, rPreviewSize);
+        if (mpQueueProcessor != nullptr)
         {
-            mpBitmapCache = PageCacheManager::Instance()->ChangeSize(
-                mpBitmapCache, maPreviewSize, rPreviewSize);
-            if (mpQueueProcessor.get() != nullptr)
-            {
-                mpQueueProcessor->SetPreviewSize(rPreviewSize, bDoSuperSampling);
-                mpQueueProcessor->SetBitmapCache(mpBitmapCache);
-            }
+            mpQueueProcessor->SetPreviewSize(rPreviewSize, bDoSuperSampling);
+            mpQueueProcessor->SetBitmapCache(mpBitmapCache);
         }
-        maPreviewSize = rPreviewSize;
-        mbDoSuperSampling = bDoSuperSampling;
     }
+    maPreviewSize = rPreviewSize;
+    mbDoSuperSampling = bDoSuperSampling;
 }
 
-Bitmap GenericPageCache::GetPreviewBitmap (
+BitmapEx GenericPageCache::GetPreviewBitmap (
     const CacheKey aKey,
     const bool bResize)
 {
     assert(aKey != nullptr);
 
-    Bitmap aPreview;
+    BitmapEx aPreview;
     bool bMayBeUpToDate = true;
     ProvideCacheAndProcessor();
     const SdrPage* pPage = mpCacheContext->GetPage(aKey);
@@ -120,7 +119,7 @@ Bitmap GenericPageCache::GetPreviewBitmap (
         {
             // Scale the bitmap to the desired size when that is possible,
             // i.e. the bitmap is not empty.
-            if (bResize && aBitmapSize.Width()>0 && aBitmapSize.Height()>0)
+            if (bResize && !aBitmapSize.IsEmpty())
             {
                 aPreview.Scale(maPreviewSize);
             }
@@ -140,21 +139,21 @@ Bitmap GenericPageCache::GetPreviewBitmap (
     return aPreview;
 }
 
-Bitmap GenericPageCache::GetMarkedPreviewBitmap (
+BitmapEx GenericPageCache::GetMarkedPreviewBitmap (
     const CacheKey aKey)
 {
     assert(aKey != nullptr);
 
     ProvideCacheAndProcessor();
     const SdrPage* pPage = mpCacheContext->GetPage(aKey);
-    Bitmap aMarkedPreview (mpBitmapCache->GetMarkedBitmap(pPage));
+    BitmapEx aMarkedPreview (mpBitmapCache->GetMarkedBitmap(pPage));
 
     return aMarkedPreview;
 }
 
 void GenericPageCache::SetMarkedPreviewBitmap (
     const CacheKey aKey,
-    const Bitmap& rMarkedBitmap)
+    const BitmapEx& rMarkedBitmap)
 {
     assert(aKey != nullptr);
 
@@ -179,25 +178,25 @@ void GenericPageCache::RequestPreviewBitmap (
         bIsUpToDate = mpBitmapCache->BitmapIsUpToDate (pPage);
     if (bIsUpToDate)
     {
-        const Bitmap aPreview (mpBitmapCache->GetBitmap(pPage));
+        const BitmapEx aPreview (mpBitmapCache->GetBitmap(pPage));
         if (aPreview.IsEmpty() || aPreview.GetSizePixel()!=maPreviewSize)
               bIsUpToDate = false;
     }
 
-    if ( ! bIsUpToDate)
+    if (  bIsUpToDate)
+        return;
+
+    // No, the bitmap is not up-to-date.  Request a new one.
+    RequestPriorityClass ePriorityClass (NOT_VISIBLE);
+    if (mpCacheContext->IsVisible(aKey))
     {
-        // No, the bitmap is not up-to-date.  Request a new one.
-        RequestPriorityClass ePriorityClass (NOT_VISIBLE);
-        if (mpCacheContext->IsVisible(aKey))
-        {
-            if (mpBitmapCache->HasBitmap(pPage))
-                ePriorityClass = VISIBLE_OUTDATED_PREVIEW;
-            else
-                ePriorityClass = VISIBLE_NO_PREVIEW;
-        }
-        maRequestQueue.AddRequest(aKey, ePriorityClass);
-        mpQueueProcessor->Start(ePriorityClass);
+        if (mpBitmapCache->HasBitmap(pPage))
+            ePriorityClass = VISIBLE_OUTDATED_PREVIEW;
+        else
+            ePriorityClass = VISIBLE_NO_PREVIEW;
     }
+    maRequestQueue.AddRequest(aKey, ePriorityClass);
+    mpQueueProcessor->Start(ePriorityClass);
 }
 
 bool GenericPageCache::InvalidatePreviewBitmap (const CacheKey aKey)
@@ -209,7 +208,7 @@ bool GenericPageCache::InvalidatePreviewBitmap (const CacheKey aKey)
         return pCacheManager->InvalidatePreviewBitmap(
             mpCacheContext->GetModel(),
             aKey);
-    else if (mpBitmapCache.get() != nullptr)
+    else if (mpBitmapCache != nullptr)
         return mpBitmapCache->InvalidateBitmap(mpCacheContext->GetPage(aKey));
     else
         return false;
@@ -217,20 +216,20 @@ bool GenericPageCache::InvalidatePreviewBitmap (const CacheKey aKey)
 
 void GenericPageCache::InvalidateCache ()
 {
-    if (mpBitmapCache)
-    {
-        // When the cache is being invalidated then it makes no sense to
-        // continue creating preview bitmaps.  However, this may be
-        // re-started below.
-        mpQueueProcessor->Stop();
-        maRequestQueue.Clear();
+    if (!mpBitmapCache)
+        return;
 
-        // Mark the previews in the cache as not being up-to-date anymore.
-        // Depending on the given bUpdateCache flag we start to create new
-        // preview bitmaps.
-        mpBitmapCache->InvalidateCache();
-        RequestFactory()(maRequestQueue, mpCacheContext);
-    }
+    // When the cache is being invalidated then it makes no sense to
+    // continue creating preview bitmaps.  However, this may be
+    // re-started below.
+    mpQueueProcessor->Stop();
+    maRequestQueue.Clear();
+
+    // Mark the previews in the cache as not being up-to-date anymore.
+    // Depending on the given bUpdateCache flag we start to create new
+    // preview bitmaps.
+    mpBitmapCache->InvalidateCache();
+    RequestFactory()(maRequestQueue, mpCacheContext);
 }
 
 void GenericPageCache::SetPreciousFlag (
@@ -265,17 +264,17 @@ void GenericPageCache::SetPreciousFlag (
 void GenericPageCache::Pause()
 {
     ProvideCacheAndProcessor();
-    if (mpQueueProcessor.get() != nullptr)
+    if (mpQueueProcessor != nullptr)
         mpQueueProcessor->Pause();
 }
 
 void GenericPageCache::Resume()
 {
     ProvideCacheAndProcessor();
-    if (mpQueueProcessor.get() != nullptr)
+    if (mpQueueProcessor != nullptr)
         mpQueueProcessor->Resume();
 }
 
-} } } // end of namespace ::sd::slidesorter::cache
+} // end of namespace ::sd::slidesorter::cache
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

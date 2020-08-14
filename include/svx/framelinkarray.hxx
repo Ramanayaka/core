@@ -20,16 +20,17 @@
 #ifndef INCLUDED_SVX_FRAMELINKARRAY_HXX
 #define INCLUDED_SVX_FRAMELINKARRAY_HXX
 
-#include <drawinglayer/processor2d/baseprocessor2d.hxx>
-#include <svx/framelink.hxx>
+#include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
 #include <svx/svxdllapi.h>
+#include <svx/rotmodit.hxx>
 #include <memory>
-#include <vector>
 
-namespace svx {
-namespace frame {
+class Color;
+
+namespace svx::frame {
 
 struct ArrayImpl;
+class Style;
 
 /** Stores frame styles of an array of cells, supports merged ranges.
 
@@ -58,7 +59,7 @@ struct ArrayImpl;
     whether to mirror the double frame styles, and whether to swap diagonal
     frame borders.
  */
-class SAL_WARN_UNUSED SVX_DLLPUBLIC Array
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC Array
 {
 public:
     /** Constructs an empty array. */
@@ -67,7 +68,7 @@ public:
     /** Destructs the array. */
                         ~Array();
 
-    // array size and column/row indexes --------------------------------------
+    // array size and column/row indexes
 
     /** Reinitializes the array with the specified size. Clears all styles. */
     void                Initialize( size_t nWidth, size_t nHeight );
@@ -84,7 +85,7 @@ public:
     /** Returns the cell index from the cell address (nCol,nRow). */
     size_t              GetCellIndex( size_t nCol, size_t nRow, bool bRTL) const;
 
-    // cell border styles -----------------------------------------------------
+    // cell border styles
 
     /** Sets the left frame style of the cell (nCol,nRow). Ignores merged ranges. */
     void                SetCellStyleLeft( size_t nCol, size_t nRow, const Style& rStyle );
@@ -118,6 +119,12 @@ public:
 
     /** Sets the bottom frame style of the specified row. Ignores merged ranges. */
     void                SetRowStyleBottom( size_t nRow, const Style& rStyle );
+
+    /** Sets the rotation parameters of the cell (nCol,nRow). Ignores merged ranges. */
+    void                SetCellRotation(size_t nCol, size_t nRow, SvxRotateMode eRotMode, double fOrientation);
+
+    /** Check if at least one cell is rotated */
+    bool                HasCellRotation() const;
 
     /** Returns the left frame style of the cell (nCol,nRow).
         Returns thicker of own left style or right style of the cell to the left.
@@ -191,7 +198,7 @@ public:
             An invisible style for invalid cell addresses. */
     const Style&        GetCellStyleTR( size_t nCol, size_t nRow ) const;
 
-    // cell merging -----------------------------------------------------------
+    // cell merging
 
     /** Inserts a new merged cell range.
         @precond  The range must not intersect other merged ranges. */
@@ -220,12 +227,6 @@ public:
     /** Returns true, if the cell (nCol,nRow) is part of a merged range. */
     bool                IsMerged( size_t nCol, size_t nRow ) const;
 
-    /** Returns true, if the left border of the cell (nCol,nRow) is overlapped by a merged range. */
-    bool                IsMergedOverlappedLeft( size_t nCol, size_t nRow ) const;
-
-    /** Returns true, if the right border of the cell (nCol,nRow) is overlapped by a merged range. */
-    bool                IsMergedOverlappedRight( size_t nCol, size_t nRow ) const;
-
     /** Returns the address of the top-left cell of the merged range that contains (nCol,nRow). */
     void                GetMergedOrigin( size_t& rnFirstCol, size_t& rnFirstRow, size_t nCol, size_t nRow ) const;
 
@@ -233,12 +234,12 @@ public:
     void                GetMergedRange( size_t& rnFirstCol, size_t& rnFirstRow,
                             size_t& rnLastCol, size_t& rnLastRow, size_t nCol, size_t nRow ) const;
 
-    // clipping ---------------------------------------------------------------
+    // clipping
 
     /** Sets a clipping range.
         @descr
             No cell borders outside of this clipping range will be drawn. In
-            difference to simply using the DrawRange() function with the same
+            difference to simply using the CreateB2DPrimitiveRange() function with the same
             range, a clipping range causes the drawing functions to completely
             ignore the frame styles connected from outside. This is used i.e.
             in Calc to print single pages and to draw the print preview.
@@ -246,10 +247,7 @@ public:
             clipped too. This array can handle only one clip range at a time. */
     void                SetClipRange( size_t nFirstCol, size_t nFirstRow, size_t nLastCol, size_t nLastRow );
 
-    /** Returns the rectangle (output coordinates) of the current clipping range. */
-    tools::Rectangle           GetClipRangeRectangle() const;
-
-    // cell coordinates -------------------------------------------------------
+    // cell coordinates
 
     /** Sets the X output coordinate of the left column. */
     void                SetXOffset( long nXOffset );
@@ -291,68 +289,34 @@ public:
     /** Returns the output height of the entire array. */
     long                GetHeight() const;
 
-    /** Returns the top-left output position of the cell (nCol,nRow).
-        Returns output position of top-left corner of merged ranges. */
-    Point               GetCellPosition( size_t nCol, size_t nRow ) const;
+    /** Returns the output range of the cell (nCol,nRow).
+        Returns total output range of merged ranges, if bExpandMerged is true. */
+    basegfx::B2DRange GetCellRange( size_t nCol, size_t nRow, bool bExpandMerged ) const;
 
-    /** Returns the output size of the cell (nCol,nRow).
-        Returns total output size of merged ranges. */
-    Size                GetCellSize( size_t nCol, size_t nRow ) const;
-
-    /** Returns the output rectangle of the cell (nCol,nRow).
-        Returns total output rectangle of merged ranges. */
-    tools::Rectangle           GetCellRect( size_t nCol, size_t nRow ) const;
-
-    // diagonal frame borders -------------------------------------------------
-
-    /** Returns the angle between horizontal and diagonal border of the cell (nCol,nRow).
-        Returns the horizontal angle of merged ranges. */
-    double              GetHorDiagAngle( size_t nCol, size_t nRow ) const;
-
-    /** Returns the angle between vertical and diagonal border of the cell (nCol,nRow).
-        Returns the vertical angle of merged ranges. */
-    double              GetVerDiagAngle( size_t nCol, size_t nRow ) const;
-
-    /** Specifies whether to use polygon clipping to draw diagonal frame borders.
-        @descr
-            If enabled, diagonal frame borders are drawn interrupted, if they are
-            crossed by a double frame border. Polygon clipping is very expensive
-            and should only be used for very small output devices (i.e. in the
-            Border tab page). Default after construction is OFF. */
-    void                SetUseDiagDoubleClipping( bool bSet );
-
-    // mirroring --------------------------------------------------------------
+    // mirroring
 
     /** Mirrors the entire array horizontally. */
     void                MirrorSelfX();
 
-    // drawing ----------------------------------------------------------------
+    // drawing
 
     /** Draws the part of the specified range, that is inside the clipping range.
         @param pForceColor
             If not NULL, only this color will be used to draw all frame borders. */
-    void                DrawRange( drawinglayer::processor2d::BaseProcessor2D* rDev,
-                            size_t nFirstCol, size_t nFirstRow,
-                            size_t nLastCol, size_t nLastRow,
-                            const Color* pForceColor ) const;
-
-    /** Draws the part of the specified range, that is inside the clipping range.
-        @param pForceColor
-            If not NULL, only this color will be used to draw all frame borders. */
-    void                DrawRange( OutputDevice& rDev,
-                            size_t nFirstCol, size_t nFirstRow,
-                            size_t nLastCol, size_t nLastRow ) const;
+    drawinglayer::primitive2d::Primitive2DContainer CreateB2DPrimitiveRange(
+        size_t nFirstCol, size_t nFirstRow,
+        size_t nLastCol, size_t nLastRow,
+        const Color* pForceColor ) const;
 
     /** Draws the part of the array, that is inside the clipping range. */
-    void                DrawArray( OutputDevice& rDev ) const;
-
+    drawinglayer::primitive2d::Primitive2DContainer CreateB2DPrimitiveArray() const;
 
 private:
     std::unique_ptr<ArrayImpl>        mxImpl;
 };
 
 }
-}
+
 
 #endif
 

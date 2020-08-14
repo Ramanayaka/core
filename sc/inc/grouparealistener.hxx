@@ -10,8 +10,7 @@
 #ifndef INCLUDED_SC_GROUPAREALISTENER_HXX
 #define INCLUDED_SC_GROUPAREALISTENER_HXX
 
-#include <address.hxx>
-#include <calcmacros.hxx>
+#include "address.hxx"
 
 #include <svl/listener.hxx>
 
@@ -25,9 +24,10 @@ namespace sc {
 
 class BulkDataHint;
 
-class FormulaGroupAreaListener : public SvtListener
+class FormulaGroupAreaListener final : public SvtListener
 {
     ScRange maRange;
+    const ScDocument& mrDocument;
     const ScColumn* mpColumn;
     SCROW mnTopCellRow;
     SCROW mnGroupLen;

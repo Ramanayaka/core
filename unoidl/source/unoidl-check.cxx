@@ -7,7 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <algorithm>
 #include <cassert>
@@ -15,19 +15,19 @@
 #include <iostream>
 #include <vector>
 
-#include "osl/file.hxx"
-#include "osl/process.h"
-#include "rtl/character.hxx"
-#include "rtl/process.h"
-#include "rtl/ref.hxx"
-#include "rtl/ustring.hxx"
-#include "sal/main.h"
-#include "sal/types.h"
-#include "unoidl/unoidl.hxx"
+#include <osl/file.hxx>
+#include <osl/process.h>
+#include <rtl/character.hxx>
+#include <rtl/process.h>
+#include <rtl/ref.hxx>
+#include <rtl/ustring.hxx>
+#include <sal/main.h>
+#include <sal/types.h>
+#include <unoidl/unoidl.hxx>
 
 namespace unoidl {
 
-bool operator ==(ConstantValue const & lhs, ConstantValue const & rhs) {
+static bool operator ==(ConstantValue const & lhs, ConstantValue const & rhs) {
     if (lhs.type == rhs.type) {
         switch (lhs.type) {
         case ConstantValue::TYPE_BOOLEAN:
@@ -55,11 +55,11 @@ bool operator ==(ConstantValue const & lhs, ConstantValue const & rhs) {
     return false;
 }
 
-bool operator !=(ConstantValue const & lhs, ConstantValue const & rhs) {
+static bool operator !=(ConstantValue const & lhs, ConstantValue const & rhs) {
     return !(lhs == rhs);
 }
 
-bool operator ==(
+static bool operator ==(
     SingleInterfaceBasedServiceEntity::Constructor::Parameter const & lhs,
     SingleInterfaceBasedServiceEntity::Constructor::Parameter const & rhs)
 {
@@ -138,11 +138,11 @@ OUString showDirection(
 {
     switch (direction) {
     case unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN:
-        return OUString("[in]");
+        return "[in]";
     case unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_OUT:
-        return OUString("[out]");
+        return "[out]";
     case unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN_OUT:
-        return OUString("[inout]");
+        return "[inout]";
     default:
         assert(false && "this cannot happen"); for (;;) { std::abort(); }
     }
@@ -178,8 +178,7 @@ void checkMap(
                  ->createCursor()),
                 ignoreUnpublished);
         } else {
-            bool pubA = dynamic_cast<unoidl::PublishableEntity &>(*entA.get())
-                .isPublished();
+            bool pubA = dynamic_cast<unoidl::PublishableEntity&>(*entA).isPublished();
             if (!pubA && ignoreUnpublished) {
                 continue;
             }
@@ -196,9 +195,7 @@ void checkMap(
                     << std::endl;
                 std::exit(EXIT_FAILURE);
             }
-            if (pubA
-                && (!dynamic_cast<unoidl::PublishableEntity &>(*entB.get())
-                    .isPublished()))
+            if (pubA && (!dynamic_cast<unoidl::PublishableEntity&>(*entB).isPublished()))
             {
                 std::cerr
                     << "A published entity " << name << " is not published in B"
@@ -631,7 +628,7 @@ void checkMap(
                                 entB.get()));
                     if (ent2A->getBase() != ent2B->getBase()) {
                         std::cerr
-                            << "single-interface--based servcie " << name
+                            << "single-interface--based service " << name
                             << " base changed from " << ent2A->getBase()
                             << " to " << ent2B->getBase()
                             << std::endl;
@@ -728,11 +725,10 @@ void checkMap(
                         std::exit(EXIT_FAILURE);
                     }
                     for (auto & i: ent2A->getDirectOptionalBaseServices()) {
-                        if (std::find_if(
+                        if (std::none_of(
                                 ent2B->getDirectOptionalBaseServices().begin(),
                                 ent2B->getDirectOptionalBaseServices().end(),
-                                EqualsAnnotation(i.name))
-                            == ent2B->getDirectOptionalBaseServices().end())
+                                EqualsAnnotation(i.name)))
                         {
                             std::cerr
                                 << "accumulation-based service " << name
@@ -789,12 +785,11 @@ void checkMap(
                         std::exit(EXIT_FAILURE);
                     }
                     for (auto & i: ent2A->getDirectOptionalBaseInterfaces()) {
-                        if (std::find_if(
+                        if (std::none_of(
                                 (ent2B->getDirectOptionalBaseInterfaces()
                                  .begin()),
                                 ent2B->getDirectOptionalBaseInterfaces().end(),
-                                EqualsAnnotation(i.name))
-                            == ent2B->getDirectOptionalBaseInterfaces().end())
+                                EqualsAnnotation(i.name)))
                         {
                             std::cerr
                                 << "accumulation-based service " << name

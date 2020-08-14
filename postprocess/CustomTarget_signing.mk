@@ -27,15 +27,17 @@ $(call gb_CustomTarget_get_workdir,postprocess/signing)/signing.done: \
 
 $(call gb_CustomTarget_get_workdir,postprocess/signing)/signing.done:
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),PRL,2)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),PRL)
 ifeq ($(COM),MSC)
 ifneq ($(ENABLE_DBGUTIL),TRUE)
 	EXCLUDELIST=$(shell $(gb_MKTEMP)) && \
 	cat $(SRCDIR)/postprocess/signing/no_signing.txt > $$EXCLUDELIST && \
 	echo "$(foreach lib,$(gb_MERGEDLIBS),$(call gb_Library_get_filename,$(lib)))" | tr ' ' '\n' >> $$EXCLUDELIST && \
-	chmod u+w $(foreach lib,$(MSVC_DLLS),$(INSTDIR)/program/shlxthdl/$(lib)) && \
+	$(if $(BUILD_X64),chmod u+w $(foreach lib,$(MSVC_DLLS),$(INSTDIR)/program/shlxthdl/$(lib)) &&) \
 	$(PERL) $(SRCDIR)/postprocess/signing/signing.pl \
 			-e $$EXCLUDELIST \
 			-l $(subst .done,_log.txt,$@) \
+			$(if $(verbose),-v) \
 			$(if $(PFXFILE),-f $(PFXFILE)) \
 			$(if $(PFXPASSWORD),-p $(PFXPASSWORD)) \
 			$(if $(TIMESTAMPURL),-t $(TIMESTAMPURL)) \
@@ -47,7 +49,6 @@ ifneq ($(ENABLE_DBGUTIL),TRUE)
 			$(INSTDIR)/program/shlxthdl/*.dll \
 			$(INSTDIR)/sdk/cli/*.dll \
 			$(INSTDIR)/sdk/bin/*.exe \
-			$(INSTDIR)/share/extensions/mysql-connector-ooo/*.dll\
 	&& rm $$EXCLUDELIST && touch $@
 else
 	@echo "Doing nothing on non product builds ..."
@@ -55,5 +56,6 @@ endif
 else
 	@echo "Nothing to do, signing is Windows (MSC) only."
 endif
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),PRL)
 
 # vim: set noet sw=4 ts=4:

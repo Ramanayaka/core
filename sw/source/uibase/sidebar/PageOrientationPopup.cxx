@@ -21,26 +21,56 @@
 #include <svx/pageitem.hxx>
 #include <vcl/toolbox.hxx>
 
-SFX_IMPL_TOOLBOX_CONTROL(PageOrientationPopup, SvxPageItem);
-
-PageOrientationPopup::PageOrientationPopup(sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx)
-    : SfxToolBoxControl(nSlotId, nId, rTbx)
+PageOrientationPopup::PageOrientationPopup(const css::uno::Reference<css::uno::XComponentContext>& rContext)
+    : PopupWindowController(rContext, nullptr, OUString())
 {
-    rTbx.SetItemBits(nId, ToolBoxItemBits::DROPDOWNONLY | rTbx.GetItemBits(nId));
+}
+
+void PageOrientationPopup::initialize( const css::uno::Sequence< css::uno::Any >& rArguments )
+{
+    PopupWindowController::initialize(rArguments);
+
+    ToolBox* pToolBox = nullptr;
+    sal_uInt16 nId = 0;
+    if (getToolboxId(nId, &pToolBox))
+        pToolBox->SetItemBits(nId, ToolBoxItemBits::DROPDOWNONLY | pToolBox->GetItemBits(nId));
 }
 
 PageOrientationPopup::~PageOrientationPopup()
 {
 }
 
-VclPtr<SfxPopupWindow> PageOrientationPopup::CreatePopupWindow()
+std::unique_ptr<WeldToolbarPopup> PageOrientationPopup::weldPopupWindow()
 {
-    VclPtr<sw::sidebar::PageOrientationControl> pControl = VclPtr<sw::sidebar::PageOrientationControl>::Create(GetSlotId());
-    pControl->StartPopupMode(&GetToolBox(), FloatWinPopupFlags::GrabFocus);
-    SetPopupWindow(pControl);
-
-    return pControl;
+    return std::make_unique<sw::sidebar::PageOrientationControl>(this, m_pToolbar);
 }
 
+VclPtr<vcl::Window> PageOrientationPopup::createVclPopupWindow( vcl::Window* pParent )
+{
+    mxInterimPopover = VclPtr<InterimToolbarPopup>::Create(getFrameInterface(), pParent,
+        std::make_unique<sw::sidebar::PageOrientationControl>(this, pParent->GetFrameWeld()));
+
+    mxInterimPopover->Show();
+
+    return mxInterimPopover;
+}
+
+OUString PageOrientationPopup::getImplementationName()
+{
+    return "lo.writer.PageOrientationToolBoxControl";
+}
+
+css::uno::Sequence<OUString> PageOrientationPopup::getSupportedServiceNames()
+{
+    return { "com.sun.star.frame.ToolbarController" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+lo_writer_PageOrientationToolBoxControl_get_implementation(
+    css::uno::XComponentContext* rContext,
+    css::uno::Sequence<css::uno::Any> const & )
+{
+    return cppu::acquire(new PageOrientationPopup(rContext));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

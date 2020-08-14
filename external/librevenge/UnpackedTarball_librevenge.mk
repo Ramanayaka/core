@@ -11,21 +11,18 @@ $(eval $(call gb_UnpackedTarball_UnpackedTarball,librevenge))
 
 $(eval $(call gb_UnpackedTarball_set_tarball,librevenge,$(REVENGE_TARBALL)))
 
+$(eval $(call gb_UnpackedTarball_update_autoconf_configs,librevenge))
+
 $(eval $(call gb_UnpackedTarball_set_patchlevel,librevenge,0))
 
-ifeq ($(COM_IS_CLANG),TRUE)
-ifneq ($(filter -fsanitize=%,$(CC)),)
 $(eval $(call gb_UnpackedTarball_add_patches,librevenge, \
-    external/librevenge/ubsan-visibility.patch \
+    external/librevenge/rpath.patch \
 ))
-endif
-endif
 
 ifneq ($(OS),MACOSX)
 ifneq ($(OS),WNT)
 $(eval $(call gb_UnpackedTarball_add_patches,librevenge, \
     external/librevenge/librevenge-bundled-soname.patch.0 \
-    external/librevenge/librevenge-iOS.patch.0 \
 ))
 endif
 endif

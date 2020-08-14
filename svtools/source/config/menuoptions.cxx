@@ -18,7 +18,6 @@
  */
 
 #include <svtools/menuoptions.hxx>
-#include <unotools/configmgr.hxx>
 #include <unotools/configitem.hxx>
 #include <tools/debug.hxx>
 #include <com/sun/star/uno/Any.hxx>
@@ -27,8 +26,6 @@
 #include <vcl/settings.hxx>
 
 #include "itemholder2.hxx"
-
-#include <list>
 
 //  namespaces
 
@@ -53,8 +50,6 @@ using namespace ::com::sun::star::uno   ;
 #define PROPERTYHANDLE_SHOWICONSINMENUES        2
 #define PROPERTYHANDLE_SYSTEMICONSINMENUES      3
 #define PROPERTYHANDLE_SHORTCUTSINCONTEXMENU    4
-
-#include <tools/link.hxx>
 
 //  private declarations!
 
@@ -279,7 +274,7 @@ void SvtMenuOptions_Impl::Notify( const Sequence< OUString >& seqPropertyNames )
             if ( seqValues[nProperty] >>= nContextMenuShortcuts )
                 m_eContextMenuShortcuts = static_cast<TriState>(nContextMenuShortcuts);
         }
-        else assert( false && "SvtMenuOptions_Impl::Notify()\nUnknown property detected ... I can't handle these!\n" );
+        else assert( false && "SvtMenuOptions_Impl::Notify()\nUnknown property detected ... I can't handle these!" );
     }
 
     if ( bMenuSettingsChanged )

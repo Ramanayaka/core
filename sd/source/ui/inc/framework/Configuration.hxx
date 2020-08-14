@@ -20,17 +20,18 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_CONFIGURATION_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_CONFIGURATION_HXX
 
-#include "MutexOwner.hxx"
+#include <MutexOwner.hxx>
 #include <com/sun/star/drawing/framework/XConfiguration.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationControllerBroadcaster.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <cppuhelper/compbase.hxx>
 
 #include <memory>
 
-namespace sd { namespace framework {
+namespace com::sun::star::util { class XCloneable; }
+namespace com::sun::star::drawing::framework { class XConfigurationControllerBroadcaster; }
+
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::drawing::framework::XConfiguration,
@@ -178,7 +179,7 @@ bool AreConfigurationsEquivalent (
         const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration1,
         const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration2);
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

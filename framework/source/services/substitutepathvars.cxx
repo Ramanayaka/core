@@ -19,6 +19,7 @@
 
 #include <config_folders.h>
 
+#include <comphelper/lok.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -38,6 +39,7 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
+#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/util/XStringSubstitution.hpp>
 
 #include <unordered_map>
@@ -80,7 +82,7 @@ struct FixedVariable
 };
 
 // Table with all fixed/predefined variables supported.
-static const FixedVariable aFixedVarTable[PREDEFVAR_COUNT] =
+const FixedVariable aFixedVarTable[PREDEFVAR_COUNT] =
 {
     { "$(inst)",         true  }, // PREDEFVAR_INST
     { "$(prog)",         true  }, // PREDEFVAR_PROG
@@ -139,7 +141,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.PathSubstitution");
+        return "com.sun.star.comp.framework.PathSubstitution";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -179,12 +181,12 @@ protected:
     OUString const & impl_getSubstituteVariableValue( const OUString& variable );
 
 private:
-    typedef std::unordered_map<OUString, PreDefVariable, OUStringHash>
+    typedef std::unordered_map<OUString, PreDefVariable>
         VarNameToIndexMap;
 
     VarNameToIndexMap            m_aPreDefVarMap;         // Mapping from pre-def variable names to enum for array access
     PredefinedPathVariables      m_aPreDefVars;           // All predefined variables
-    std::list<ReSubstFixedVarOrder> m_aReSubstFixedVarOrder; // To speed up resubstitution fixed variables (order for lookup)
+    std::vector<ReSubstFixedVarOrder> m_aReSubstFixedVarOrder; // To speed up resubstitution fixed variables (order for lookup)
     css::uno::Reference< css::uno::XComponentContext > m_xContext;
 };
 
@@ -201,8 +203,7 @@ SubstitutePathVariables::SubstitutePathVariables( const Reference< XComponentCon
         m_aPreDefVars.m_FixedVarNames[i] = OUString::createFromAscii( aFixedVarTable[i].pVarName );
 
         // Create hash map entry
-        m_aPreDefVarMap.insert( VarNameToIndexMap::value_type(
-            m_aPreDefVars.m_FixedVarNames[i], PreDefVariable(i) ) );
+        m_aPreDefVarMap.emplace( m_aPreDefVars.m_FixedVarNames[i], PreDefVariable(i) );
     }
 
     // Sort predefined/fixed variable to path length
@@ -216,11 +217,11 @@ SubstitutePathVariables::SubstitutePathVariables( const Reference< XComponentCon
             // Example: WORK_PATH=c:\test, $(workdirurl)=WORK_PATH => WORK_PATH=$(workdirurl) and this cannot be substituted!
             ReSubstFixedVarOrder aFixedVar;
             aFixedVar.eVariable       = PreDefVariable(i);
-            aFixedVar.nVarValueLength = m_aPreDefVars.m_FixedVar[(sal_Int32)aFixedVar.eVariable].getLength();
+            aFixedVar.nVarValueLength = m_aPreDefVars.m_FixedVar[static_cast<sal_Int32>(aFixedVar.eVariable)].getLength();
             m_aReSubstFixedVarOrder.push_back( aFixedVar );
         }
     }
-    m_aReSubstFixedVarOrder.sort();
+    sort(m_aReSubstFixedVarOrder.begin(),m_aReSubstFixedVarOrder.end());
 }
 
 // XStringSubstitution
@@ -247,7 +248,7 @@ OUString SubstitutePathVariables::GetWorkPath() const
     OUString aWorkPath;
     css::uno::Reference< css::container::XHierarchicalNameAccess > xPaths(officecfg::Office::Paths::Paths::get(m_xContext), css::uno::UNO_QUERY_THROW);
     if (!(xPaths->getByHierarchicalName("['Work']/WritePath") >>= aWorkPath))
-        // fallback in case config layer does not return an useable work dir value.
+        // fallback in case config layer does not return a usable work dir value.
         aWorkPath = GetWorkVariableValue();
 
     return aWorkPath;
@@ -256,16 +257,16 @@ OUString SubstitutePathVariables::GetWorkPath() const
 OUString SubstitutePathVariables::GetWorkVariableValue() const
 {
     OUString aWorkPath;
-    boost::optional<OUString> x(officecfg::Office::Paths::Variables::Work::get(m_xContext));
+    std::optional<OUString> x(officecfg::Office::Paths::Variables::Work::get(m_xContext));
     if (!x)
     {
         // fallback to $HOME in case platform dependent config layer does not return
-        // an usable work dir value.
+        // a usable work dir value.
         osl::Security aSecurity;
         aSecurity.getHomeDir( aWorkPath );
     }
     else
-        aWorkPath = x.get();
+        aWorkPath = *x;
     return aWorkPath;
 }
 
@@ -285,7 +286,7 @@ OUString SubstitutePathVariables::GetPathVariableValue() const
 
     if ( pEnv )
     {
-        const int PATH_EXTEND_FACTOR = 120;
+        const int PATH_EXTEND_FACTOR = 200;
         OUString       aTmp;
         OUString       aPathList( pEnv, strlen( pEnv ), osl_getThreadTextEncoding() );
         OUStringBuffer aPathStrBuffer( aPathList.getLength() * PATH_EXTEND_FACTOR / 100 );
@@ -344,7 +345,7 @@ OUString SubstitutePathVariables::impl_substituteVariable( const OUString& rText
     // Is there something to replace ?
     bool bWorkRetrieved       = false;
     bool bWorkDirURLRetrieved = false;
-    while ( !bSubstitutionCompleted && nDepth < nMaxRecursiveDepth )
+    while (nDepth < nMaxRecursiveDepth)
     {
         while ( ( nPosition != -1 ) && ( nLength > 3 ) ) // "$(" ")"
         {
@@ -352,15 +353,14 @@ OUString SubstitutePathVariables::impl_substituteVariable( const OUString& rText
             sal_Int32     nReplaceLength  = 0;
             OUString aReplacement;
             OUString aSubString      = aWorkText.copy( nPosition, nLength );
-            OUString aSubVarString;
 
             // Path variables are not case sensitive!
-            aSubVarString = aSubString.toAsciiLowerCase();
+            OUString aSubVarString = aSubString.toAsciiLowerCase();
             VarNameToIndexMap::const_iterator pNTOIIter = m_aPreDefVarMap.find( aSubVarString );
             if ( pNTOIIter != m_aPreDefVarMap.end() )
             {
                 // Fixed/Predefined variable found
-                PreDefVariable nIndex = (PreDefVariable)pNTOIIter->second;
+                PreDefVariable nIndex = pNTOIIter->second;
 
                 // Determine variable value and length from array/table
                 if ( nIndex == PREDEFVAR_WORK && !bWorkRetrieved )
@@ -477,11 +477,9 @@ OUString SubstitutePathVariables::impl_substituteVariable( const OUString& rText
             // recursion depth reached!
             if ( bSubstRequired )
             {
-                OUString aMsg( "Endless recursion detected. Cannot substitute variables!" );
-                throw NoSuchElementException( aMsg, static_cast<cppu::OWeakObject *>(this) );
+                throw NoSuchElementException( "Endless recursion detected. Cannot substitute variables!", static_cast<cppu::OWeakObject *>(this) );
             }
-            else
-                aResult = rText;
+            aResult = rText;
         }
         else
         {
@@ -490,8 +488,7 @@ OUString SubstitutePathVariables::impl_substituteVariable( const OUString& rText
             {
                 throw NoSuchElementException( "Unknown variable found!", static_cast<cppu::OWeakObject *>(this) );
             }
-            else
-                aResult = aWorkText;
+            aResult = aWorkText;
         }
     }
 
@@ -592,15 +589,12 @@ OUString const & SubstitutePathVariables::impl_getSubstituteVariableValue( const
     VarNameToIndexMap::const_iterator pNTOIIter = m_aPreDefVarMap.find( ( nPos == -1 ) ? aVariable : rVariable );
 
     // Fixed/Predefined variable
-    if ( pNTOIIter != m_aPreDefVarMap.end() )
-    {
-        PreDefVariable nIndex = (PreDefVariable)pNTOIIter->second;
-        return m_aPreDefVars.m_FixedVar[(sal_Int32)nIndex];
-    }
-    else
+    if ( pNTOIIter == m_aPreDefVarMap.end() )
     {
         throw NoSuchElementException("Unknown variable!", static_cast<cppu::OWeakObject *>(this));
     }
+    PreDefVariable nIndex = pNTOIIter->second;
+    return m_aPreDefVars.m_FixedVar[static_cast<sal_Int32>(nIndex)];
 }
 
 void SubstitutePathVariables::SetPredefinedPathVariables()
@@ -621,7 +615,10 @@ void SubstitutePathVariables::SetPredefinedPathVariables()
     //Therefore we do not assert here.
     // It's not possible to detect when an empty value would actually be used.
     // (note: getenv is a hack to detect if we're running in a unit test)
-    if (aState == ::utl::Bootstrap::PATH_EXISTS || getenv("SRC_ROOT")) {
+    // Also, it's okay to have an empty user installation path in case of LOK
+    if (aState == ::utl::Bootstrap::PATH_EXISTS || getenv("SRC_ROOT") ||
+        (comphelper::LibreOfficeKit::isActive() && aState == ::utl::Bootstrap::PATH_VALID))
+    {
         m_aPreDefVars.m_FixedVar[ PREDEFVAR_USERPATH ] = sVal;
     }
 
@@ -657,7 +654,7 @@ void SubstitutePathVariables::SetPredefinedPathVariables()
 
     // Detect the language type of the current office
     m_aPreDefVars.m_eLanguageType = LANGUAGE_ENGLISH_US;
-    OUString aLocaleStr( utl::ConfigManager::getLocale() );
+    OUString aLocaleStr( utl::ConfigManager::getUILocale() );
     m_aPreDefVars.m_eLanguageType = LanguageTag::convertToLanguageTypeWithFallback( aLocaleStr );
     // We used to have an else branch here with a SAL_WARN, but that
     // always fired in some unit tests when this code was built with
@@ -669,7 +666,7 @@ void SubstitutePathVariables::SetPredefinedPathVariables()
     m_aPreDefVars.m_FixedVar[ PREDEFVAR_VLANG ] = aLocaleStr;
 
     // Set $(langid)
-    m_aPreDefVars.m_FixedVar[ PREDEFVAR_LANGID ] = OUString::number( (sal_uInt16)m_aPreDefVars.m_eLanguageType );
+    m_aPreDefVars.m_FixedVar[ PREDEFVAR_LANGID ] = OUString::number( static_cast<sal_uInt16>(m_aPreDefVars.m_eLanguageType) );
 
     // Set the other pre defined path variables
     // Set $(work)
@@ -708,7 +705,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_PathSubstitution_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

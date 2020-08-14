@@ -8,15 +8,19 @@
  *
  */
 
-#include "test/outputdevice.hxx"
+#include <test/outputdevice.hxx>
 
-namespace vcl {
-namespace test {
+#include <basegfx/matrix/b2dhommatrix.hxx>
+#include <vcl/bitmapaccess.hxx>
+
+#include <list>
+
+namespace vcl::test {
 
 namespace
 {
 
-void drawLineOffset(OutputDevice& rDevice, tools::Rectangle& rRect, int nOffset)
+void drawLineOffset(OutputDevice& rDevice, tools::Rectangle const & rRect, int nOffset)
 {
     Point aLeftTop     (rRect.Left()  + nOffset, rRect.Top()    + nOffset);
     Point aRightTop    (rRect.Right() - nOffset, rRect.Top()    + nOffset);
@@ -31,9 +35,9 @@ void drawLineOffset(OutputDevice& rDevice, tools::Rectangle& rRect, int nOffset)
 
 } // end anonymous namespace
 
-Bitmap OutputDeviceTestLine::setupRectangle()
+Bitmap OutputDeviceTestLine::setupRectangle(bool bEnableAA)
 {
-    initialSetup(13, 13, constBackgroundColor);
+    initialSetup(13, 13, constBackgroundColor, bEnableAA);
 
     mpVirtualDevice->SetLineColor(constLineColor);
     mpVirtualDevice->SetFillColor();
@@ -48,7 +52,7 @@ Bitmap OutputDeviceTestLine::setupDiamond()
 {
     initialSetup(11, 11, constBackgroundColor);
 
-    mpVirtualDevice->SetLineColor(constFillColor);
+    mpVirtualDevice->SetLineColor(constLineColor);
     mpVirtualDevice->SetFillColor();
 
     Point aPoint1, aPoint2, aPoint3, aPoint4;
@@ -109,6 +113,88 @@ Bitmap OutputDeviceTestLine::setupAALines()
     return mpVirtualDevice->GetBitmap(maVDRectangle.TopLeft(), maVDRectangle.GetSize());
 }
 
-}} // end namespace vcl::test
+Bitmap OutputDeviceTestLine::setupDashedLine()
+{
+    initialSetup(13, 13, constBackgroundColor);
+
+    mpVirtualDevice->SetLineColor(constLineColor);
+    mpVirtualDevice->SetFillColor();
+
+    tools::Rectangle rectangle = maVDRectangle;
+    rectangle.shrink(2);
+
+    std::vector stroke({ 2.0, 1.0 });
+    mpVirtualDevice->DrawPolyLineDirect( basegfx::B2DHomMatrix(),
+        basegfx::B2DPolygon{
+            basegfx::B2DPoint(rectangle.getX(), rectangle.getY()),
+            basegfx::B2DPoint(rectangle.getX(), rectangle.getY() + rectangle.getHeight()),
+            basegfx::B2DPoint(rectangle.getX() + rectangle.getWidth(),
+                              rectangle.getY() + rectangle.getHeight()),
+            basegfx::B2DPoint(rectangle.getX() + rectangle.getWidth(), rectangle.getY()),
+            basegfx::B2DPoint(rectangle.getX(), rectangle.getY())},
+        1, 0, &stroke, basegfx::B2DLineJoin::NONE, css::drawing::LineCap_BUTT, basegfx::deg2rad(15.0), true );
+
+    return mpVirtualDevice->GetBitmap(maVDRectangle.TopLeft(), maVDRectangle.GetSize());
+}
+
+TestResult OutputDeviceTestLine::checkDashedLine(Bitmap& rBitmap)
+{
+    TestResult returnValue = TestResult::Passed;
+    for (int i = 0; i < 7; i++)
+    {
+        TestResult eResult = TestResult::Passed;
+        if( i == 2 )
+        {
+            // Build a sequence of pixels for the drawn rectangle border,
+            // check that they alternate appropriately (there should be
+            // normally 2 line, 1 background).
+            std::list< bool > dash; // true - line color, false - background
+            const int width = rBitmap.GetSizePixel().Width();
+            const int height = rBitmap.GetSizePixel().Height();
+            BitmapReadAccess access(rBitmap);
+            for( int x = 2; x < width - 2; ++x )
+                dash.push_back( access.GetPixel( 2, x ) == constLineColor );
+            for( int y = 3; y < height - 3; ++y )
+                dash.push_back( access.GetPixel( y, width - 3 ) == constLineColor );
+            for( int x = width - 3; x >= 2; --x )
+                dash.push_back( access.GetPixel( height - 3, x ) == constLineColor );
+            for( int y = height - 4; y >= 3; --y )
+                dash.push_back( access.GetPixel( y, 2 ) == constLineColor );
+            for( int x = 2; x < width - 2; ++x ) // repeat, to check also the corner
+                dash.push_back( access.GetPixel( 2, x ) == constLineColor );
+            bool last = false;
+            int lastCount = 0;
+            while( !dash.empty())
+            {
+                if( dash.front() == last )
+                {
+                    ++lastCount;
+                    if( lastCount > ( last ? 4 : 3 ))
+                        eResult = TestResult::Failed;
+                    else if( lastCount > ( last ? 3 : 2 ) && eResult != TestResult::Failed)
+                        eResult = TestResult::PassedWithQuirks;
+                }
+                else
+                {
+                    last = dash.front();
+                    lastCount = 1;
+                }
+                dash.pop_front();
+            }
+        }
+        else
+        {
+            eResult = OutputDeviceTestCommon::checkRectangle(rBitmap, i, constBackgroundColor);
+        }
+
+        if (eResult == TestResult::Failed)
+            returnValue = TestResult::Failed;
+        if (eResult == TestResult::PassedWithQuirks && returnValue != TestResult::Failed)
+            returnValue = TestResult::PassedWithQuirks;
+    }
+    return returnValue;
+}
+
+} // end namespace vcl::test
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

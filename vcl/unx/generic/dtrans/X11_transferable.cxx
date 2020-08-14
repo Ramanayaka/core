@@ -17,10 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <X11_transferable.hxx>
+#include "X11_transferable.hxx"
 #include <X11/Xatom.h>
 #include <com/sun/star/datatransfer/UnsupportedFlavorException.hpp>
 #include <com/sun/star/io/IOException.hpp>
+#include <sal/log.hxx>
 
 using namespace com::sun::star::datatransfer;
 using namespace com::sun::star::lang;
@@ -90,12 +91,11 @@ sal_Bool SAL_CALL X11Transferable::isDataFlavorSupported( const DataFlavor& aFla
     }
 
     Sequence< DataFlavor > aFlavors( getTransferDataFlavors() );
-    for( int i = 0; i < aFlavors.getLength(); i++ )
-        if( aFlavor.MimeType.equalsIgnoreAsciiCase( aFlavors.getConstArray()[i].MimeType ) &&
-            aFlavor.DataType == aFlavors.getConstArray()[i].DataType )
-            return true;
-
-    return false;
+    return std::any_of(aFlavors.begin(), aFlavors.end(),
+        [&aFlavor](const DataFlavor& rFlavor) {
+            return aFlavor.MimeType.equalsIgnoreAsciiCase( rFlavor.MimeType )
+                && aFlavor.DataType == rFlavor.DataType;
+        });
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

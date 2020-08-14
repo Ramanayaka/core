@@ -22,7 +22,6 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/text/XTextDocument.hpp>
 #include <com/sun/star/text/XTextViewCursor.hpp>
-#include <com/sun/star/text/XTextViewCursorSupplier.hpp>
 #include <ooo/vba/word/WdBookmarkSortBy.hpp>
 #include "vbarange.hxx"
 #include "wordvbahelper.hxx"
@@ -30,6 +29,8 @@
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
+
+namespace {
 
 class BookmarksEnumeration : public EnumerationHelperImpl
 {
@@ -107,6 +108,8 @@ public:
         return mxIndexAccess->getByIndex( Index );
     }
 };
+
+}
 
 SwVbaBookmarks::SwVbaBookmarks( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< css::uno::XComponentContext > & xContext, const uno::Reference< container::XIndexAccess >& xBookmarks, const uno::Reference< frame::XModel >& xModel ): SwVbaBookmarks_BASE( xParent, xContext, uno::Reference< container::XIndexAccess >( new BookmarkCollectionHelper( xBookmarks ) ) ), mxModel( xModel )
 {
@@ -209,18 +212,16 @@ SwVbaBookmarks::Exists( const OUString& rName )
 OUString
 SwVbaBookmarks::getServiceImplName()
 {
-    return OUString("SwVbaBookmarks");
+    return "SwVbaBookmarks";
 }
 
 css::uno::Sequence<OUString>
 SwVbaBookmarks::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.Bookmarks";
-    }
+        "ooo.vba.word.Bookmarks"
+    };
     return sNames;
 }
 

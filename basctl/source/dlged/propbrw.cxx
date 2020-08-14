@@ -18,27 +18,29 @@
  */
 
 
-#include "propbrw.hxx"
-#include "basidesh.hxx"
-#include "dlgedobj.hxx"
-#include "iderid.hxx"
-#include "baside3.hxx"
+#include <propbrw.hxx>
+#include <basidesh.hxx>
+#include <dlgedobj.hxx>
+#include <iderid.hxx>
+#include <baside3.hxx>
+#include <strings.hrc>
 
-#include "dlgresid.hrc"
-#include "strings.hxx"
-#include <svx/svxids.hrc>
+#include <strings.hxx>
 
-#include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/frame/Frame.hpp>
 #include <com/sun/star/inspection/XObjectInspector.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <comphelper/types.hxx>
+#include <comphelper/processfactory.hxx>
 #include <cppuhelper/component_context.hxx>
+#include <tools/debug.hxx>
 #include <svx/svditer.hxx>
 #include <svx/svdview.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <tools/diagnose_ex.h>
+#include <vcl/layout.hxx>
 #include <vcl/stdtext.hxx>
+#include <vcl/weld.hxx>
 
 #include <memory>
 
@@ -82,6 +84,7 @@ const long WIN_BORDER = 2;
 
 PropBrw::PropBrw (DialogWindowLayout& rLayout_):
     DockingWindow(&rLayout_),
+    m_xContentArea(VclPtr<VclVBox>::Create(this)),
     m_bInitialStateChange(true),
     m_xContextDocument(SfxViewShell::Current() ? SfxViewShell::Current()->GetCurrentDocument() : Reference<XModel>()),
     pView(nullptr)
@@ -90,11 +93,18 @@ PropBrw::PropBrw (DialogWindowLayout& rLayout_):
     SetMinOutputSizePixel(Size(STD_MIN_SIZE_X,STD_MIN_SIZE_Y));
     SetOutputSizePixel(aPropWinSize);
 
+    // turn off WB_CLIPCHILDREN otherwise the bg won't extend "under"
+    // transparent children of the widget
+    m_xContentArea->SetControlBackground(m_xContentArea->GetSettings().GetStyleSettings().GetWindowColor());
+    m_xContentArea->SetBackground(m_xContentArea->GetControlBackground());
+    m_xContentArea->SetStyle(m_xContentArea->GetStyle() & ~WB_CLIPCHILDREN);
+    m_xContentArea->Show();
+
     try
     {
         // create a frame wrapper for myself
         m_xMeAsFrame = frame::Frame::create( comphelper::getProcessComponentContext() );
-        m_xMeAsFrame->initialize( VCLUnoHelper::GetInterface ( this ) );
+        m_xMeAsFrame->initialize(VCLUnoHelper::GetInterface(m_xContentArea));
         m_xMeAsFrame->setName( "form property browser" );  // change name!
     }
     catch (const Exception&)
@@ -123,19 +133,20 @@ void PropBrw::ImplReCreateController()
         // a ComponentContext for the
         ::cppu::ContextEntry_Init aHandlerContextInfo[] =
         {
-            ::cppu::ContextEntry_Init( "DialogParentWindow", Any( VCLUnoHelper::GetInterface ( this ) ) ),
+            ::cppu::ContextEntry_Init( "DialogParentWindow", Any(VCLUnoHelper::GetInterface(this))),
             ::cppu::ContextEntry_Init( "ContextDocument", Any( m_xContextDocument ) )
         };
         Reference< XComponentContext > xInspectorContext(
             ::cppu::createComponentContext( aHandlerContextInfo, SAL_N_ELEMENTS( aHandlerContextInfo ), xOwnContext ) );
 
         // create a property browser controller
-        Reference< XMultiComponentFactory > xFactory( xInspectorContext->getServiceManager(), UNO_QUERY_THROW );
+        Reference< XMultiComponentFactory > xFactory( xInspectorContext->getServiceManager(), UNO_SET_THROW );
         static const char s_sControllerServiceName[] = "com.sun.star.awt.PropertyBrowserController";
         m_xBrowserController.set( xFactory->createInstanceWithContext( s_sControllerServiceName, xInspectorContext ), UNO_QUERY );
         if ( !m_xBrowserController.is() )
         {
-            ShowServiceNotAvailableError( GetParent(), s_sControllerServiceName, true );
+            vcl::Window* pWin = GetParent();
+            ShowServiceNotAvailableError(pWin ? pWin->GetFrameWeld() : nullptr, s_sControllerServiceName, true);
         }
         else
         {
@@ -149,23 +160,16 @@ void PropBrw::ImplReCreateController()
             else
             {
                 xAsXController->attachFrame( Reference<XFrame>(m_xMeAsFrame,UNO_QUERY_THROW) );
-                m_xBrowserComponentWindow = m_xMeAsFrame->getComponentWindow();
-                DBG_ASSERT(m_xBrowserComponentWindow.is(), "PropBrw::PropBrw: attached the controller, but have no component window!");
             }
         }
 
-        Point aPropWinPos = Point( WIN_BORDER, WIN_BORDER );
+        Point aPropWinPos( WIN_BORDER, WIN_BORDER );
         Size  aPropWinSize(STD_WIN_SIZE_X,STD_WIN_SIZE_Y);
-        aPropWinSize.Width() -= (2*WIN_BORDER);
-        aPropWinSize.Height() -= (2*WIN_BORDER);
+        aPropWinSize.AdjustWidth( -(2*WIN_BORDER) );
+        aPropWinSize.AdjustHeight( -(2*WIN_BORDER) );
 
-        if ( m_xBrowserComponentWindow.is() )
-        {
-            m_xBrowserComponentWindow->setPosSize(aPropWinPos.X(), aPropWinPos.Y(), aPropWinSize.Width(), aPropWinSize.Height(),
-                css::awt::PosSize::WIDTH | css::awt::PosSize::HEIGHT |
-                css::awt::PosSize::X | css::awt::PosSize::Y);
-            m_xBrowserComponentWindow->setVisible(true);
-        }
+        VclContainer::setLayoutAllocation(*m_xContentArea, aPropWinPos, aPropWinSize);
+        m_xContentArea->Show();
     }
     catch (const Exception&)
     {
@@ -173,19 +177,15 @@ void PropBrw::ImplReCreateController()
         try
         {
             ::comphelper::disposeComponent(m_xBrowserController);
-            ::comphelper::disposeComponent(m_xBrowserComponentWindow);
         }
         catch(const Exception&)
         {
         }
 
         m_xBrowserController.clear();
-        m_xBrowserComponentWindow.clear();
     }
-
     Resize();
 }
-
 
 PropBrw::~PropBrw()
 {
@@ -196,6 +196,7 @@ void PropBrw::dispose()
 {
     if ( m_xBrowserController.is() )
         ImplDestroyController();
+    m_xContentArea.disposeAndClear();
     DockingWindow::dispose();
 }
 
@@ -217,12 +218,11 @@ void PropBrw::ImplDestroyController()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("basctl");
     }
 
     m_xBrowserController.clear();
 }
-
 
 bool PropBrw::Close()
 {
@@ -233,7 +233,6 @@ bool PropBrw::Close()
 
     return DockingWindow::Close();
 }
-
 
 Sequence< Reference< XInterface > >
     PropBrw::CreateMultiSelectionSequence( const SdrMarkList& _rMarkList )
@@ -249,7 +248,7 @@ Sequence< Reference< XInterface > >
         std::unique_ptr<SdrObjListIter> pGroupIterator;
         if (pCurrent->IsGroupObject())
         {
-            pGroupIterator.reset(new SdrObjListIter(*pCurrent->GetSubList()));
+            pGroupIterator.reset(new SdrObjListIter(pCurrent->GetSubList()));
             pCurrent = pGroupIterator->IsMore() ? pGroupIterator->Next() : nullptr;
         }
 
@@ -285,8 +284,8 @@ void PropBrw::implSetNewObjectSequence
     {
         xObjectInspector->inspect( _rObjectSeq );
 
-        OUString aText = OUString(IDEResId(RID_STR_BRWTITLE_PROPERTIES))
-                       + OUString(IDEResId(RID_STR_BRWTITLE_MULTISELECT));
+        OUString aText = IDEResId(RID_STR_BRWTITLE_PROPERTIES)
+                       + IDEResId(RID_STR_BRWTITLE_MULTISELECT);
         SetText( aText );
     }
 }
@@ -400,6 +399,14 @@ OUString PropBrw::GetHeadlineName( const Reference< XPropertySet >& _rxObject )
         {
             sResId = RID_STR_CLASS_TREECONTROL;
         }
+        else if ( xServiceInfo->supportsService( "com.sun.star.awt.grid.UnoControlGridModel" ) )
+        {
+            sResId = RID_STR_CLASS_GRIDCONTROL;
+        }
+        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlFixedHyperlinkModel" ) )
+        {
+            sResId = RID_STR_CLASS_HYPERLINKCONTROL;
+        }
         else
         {
             sResId = RID_STR_CLASS_CONTROL;
@@ -417,25 +424,6 @@ OUString PropBrw::GetHeadlineName( const Reference< XPropertySet >& _rxObject )
 
     return aName;
 }
-
-
-void PropBrw::Resize()
-{
-    DockingWindow::Resize();
-
-    // adjust size
-    Size aSize_ = GetOutputSizePixel();
-    Size aPropWinSize( aSize_ );
-    aPropWinSize.Width() -= (2*WIN_BORDER);
-    aPropWinSize.Height() -= (2*WIN_BORDER);
-
-    if (m_xBrowserComponentWindow.is())
-    {
-        m_xBrowserComponentWindow->setPosSize(0, 0, aPropWinSize.Width(), aPropWinSize.Height(),
-            css::awt::PosSize::WIDTH | css::awt::PosSize::HEIGHT);
-    }
-}
-
 
 void PropBrw::ImplUpdate( const Reference< XModel >& _rxContextDocument, SdrView* pNewView )
 {
@@ -470,8 +458,7 @@ void PropBrw::ImplUpdate( const Reference< XModel >& _rxContextDocument, SdrView
         // set focus on initialization
         if ( m_bInitialStateChange )
         {
-            if ( m_xBrowserComponentWindow.is() )
-                m_xBrowserComponentWindow->setFocus();
+            m_xContentArea->GrabFocus();
             m_bInitialStateChange = false;
         }
 
@@ -503,7 +490,7 @@ void PropBrw::ImplUpdate( const Reference< XModel >& _rxContextDocument, SdrView
             aNewObjects = CreateMultiSelectionSequence( rMarkList );
         }
 
-        if ( aNewObjects.getLength() )
+        if ( aNewObjects.hasElements() )
             implSetNewObjectSequence( aNewObjects );
         else
             implSetNewObject( xNewObject );
@@ -513,7 +500,7 @@ void PropBrw::ImplUpdate( const Reference< XModel >& _rxContextDocument, SdrView
     catch ( const PropertyVetoException& ) { /* silence */ }
     catch ( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("basctl");
     }
 }
 

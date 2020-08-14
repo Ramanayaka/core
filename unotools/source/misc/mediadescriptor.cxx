@@ -26,31 +26,25 @@
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/stillreadwriteinteraction.hxx>
 
+#include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <com/sun/star/ucb/XContent.hpp>
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/task/XInteractionHandler.hpp>
 #include <com/sun/star/io/XStream.hpp>
 #include <com/sun/star/io/XActiveDataSink.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
-#include <com/sun/star/ucb/InteractiveIOException.hpp>
-#include <com/sun/star/ucb/UnsupportedDataSinkException.hpp>
-#include <com/sun/star/ucb/CommandFailedException.hpp>
-#include <com/sun/star/task/XInteractionAbort.hpp>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
 #include <com/sun/star/uri/XUriReference.hpp>
 #include <com/sun/star/ucb/PostCommandArgument2.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <officecfg/Office/Common.hxx>
-#include <ucbhelper/interceptedinteraction.hxx>
 #include <ucbhelper/content.hxx>
 #include <ucbhelper/commandenvironment.hxx>
 #include <ucbhelper/activedatasink.hxx>
 #include <comphelper/processfactory.hxx>
 #include <tools/urlobj.hxx>
 #include <osl/diagnose.h>
+#include <tools/diagnose_ex.h>
 
 namespace utl {
 
@@ -228,6 +222,12 @@ const OUString& MediaDescriptor::PROP_REFERRER()
     return sProp;
 }
 
+const OUString& MediaDescriptor::PROP_REPLACEABLE()
+{
+    static const OUString sProp("Replaceable");
+    return sProp;
+}
+
 const OUString& MediaDescriptor::PROP_STATUSINDICATOR()
 {
     static const OUString sProp("StatusIndicator");
@@ -324,6 +324,12 @@ const OUString& MediaDescriptor::PROP_DOCUMENTBASEURL()
     return sProp;
 }
 
+const OUString& MediaDescriptor::PROP_SUGGESTEDSAVEASNAME()
+{
+    static const OUString sProp("SuggestedSaveAsName");
+    return sProp;
+}
+
 MediaDescriptor::MediaDescriptor()
     : SequenceAsHashMap()
 {
@@ -336,9 +342,7 @@ MediaDescriptor::MediaDescriptor(const css::uno::Sequence< css::beans::PropertyV
 
 bool MediaDescriptor::isStreamReadOnly() const
 {
-    static bool READONLY_FALLBACK = false;
-
-    bool bReadOnly = READONLY_FALLBACK;
+    bool bReadOnly = false;
 
     // check for explicit readonly state
     const_iterator pIt = find(MediaDescriptor::PROP_READONLY());
@@ -367,7 +371,7 @@ bool MediaDescriptor::isStreamReadOnly() const
         css::uno::Reference< css::ucb::XContent > xContent = getUnpackedValueOrDefault(MediaDescriptor::PROP_UCBCONTENT(), css::uno::Reference< css::ucb::XContent >());
         if (xContent.is())
         {
-            css::uno::Reference< css::ucb::XContentIdentifier > xId(xContent->getIdentifier(), css::uno::UNO_QUERY);
+            css::uno::Reference< css::ucb::XContentIdentifier > xId = xContent->getIdentifier();
             OUString aScheme;
             if (xId.is())
                 aScheme = xId->getContentProviderScheme();
@@ -428,23 +432,23 @@ void MediaDescriptor::setComponentDataEntry( const OUString& rName, const css::u
 void MediaDescriptor::clearComponentDataEntry( const OUString& rName )
 {
     comphelper::SequenceAsHashMap::iterator aPropertyIter = find( PROP_COMPONENTDATA() );
-    if( aPropertyIter != end() )
+    if( aPropertyIter == end() )
+        return;
+
+    css::uno::Any& rCompDataAny = aPropertyIter->second;
+    bool bHasNamedValues = rCompDataAny.has< css::uno::Sequence< css::beans::NamedValue > >();
+    bool bHasPropValues = rCompDataAny.has< css::uno::Sequence< css::beans::PropertyValue > >();
+    OSL_ENSURE( bHasNamedValues || bHasPropValues, "MediaDescriptor::clearComponentDataEntry - incompatible 'ComponentData' property in media descriptor" );
+    if( bHasNamedValues || bHasPropValues )
     {
-        css::uno::Any& rCompDataAny = aPropertyIter->second;
-        bool bHasNamedValues = rCompDataAny.has< css::uno::Sequence< css::beans::NamedValue > >();
-        bool bHasPropValues = rCompDataAny.has< css::uno::Sequence< css::beans::PropertyValue > >();
-        OSL_ENSURE( bHasNamedValues || bHasPropValues, "MediaDescriptor::clearComponentDataEntry - incompatible 'ComponentData' property in media descriptor" );
-        if( bHasNamedValues || bHasPropValues )
-        {
-            // remove the value with the passed name
-            comphelper::SequenceAsHashMap aCompDataMap( rCompDataAny );
-            aCompDataMap.erase( rName );
-            // write back the sequence, or remove it completely if it is empty
-            if( aCompDataMap.empty() )
-                erase( aPropertyIter );
-            else
-                rCompDataAny = aCompDataMap.getAsConstAny( bHasPropValues );
-        }
+        // remove the value with the passed name
+        comphelper::SequenceAsHashMap aCompDataMap( rCompDataAny );
+        aCompDataMap.erase( rName );
+        // write back the sequence, or remove it completely if it is empty
+        if( aCompDataMap.empty() )
+            erase( aPropertyIter );
+        else
+            rCompDataAny = aCompDataMap.getAsConstAny( bHasPropValues );
     }
 }
 
@@ -469,8 +473,9 @@ css::uno::Sequence< css::beans::NamedValue > MediaDescriptor::requestAndVerifyDo
     erase( PROP_PASSWORD() );
     erase( PROP_ENCRYPTIONDATA() );
 
-    // insert valid password into media descriptor (but not a default password)
-    if( (aEncryptionData.getLength() > 0) && !bIsDefaultPassword )
+    // insert encryption info into media descriptor
+    // TODO
+    if( aEncryptionData.hasElements() )
         (*this)[ PROP_ENCRYPTIONDATA() ] <<= aEncryptionData;
 
     return aEncryptionData;
@@ -484,7 +489,7 @@ bool MediaDescriptor::addInputStream()
 /*-----------------------------------------------*/
 bool MediaDescriptor::addInputStreamOwnLock()
 {
-    const bool bLock = !utl::ConfigManager::IsAvoidConfig()
+    const bool bLock = !utl::ConfigManager::IsFuzzing()
         && officecfg::Office::Common::Misc::UseDocumentSystemFileLocking::get();
     return impl_addInputStream(bLock);
 }
@@ -519,11 +524,9 @@ bool MediaDescriptor::impl_addInputStream( bool bLockFile )
 
         return impl_openStreamWithURL( removeFragment(sURL), bLockFile );
     }
-    catch(const css::uno::Exception& ex)
+    catch(const css::uno::Exception&)
     {
-        SAL_WARN(
-            "unotools.misc",
-            "invalid MediaDescriptor detected: " << ex.Message);
+        TOOLS_WARN_EXCEPTION("unotools.misc", "invalid MediaDescriptor detected");
         return false;
     }
 }
@@ -630,25 +633,19 @@ bool MediaDescriptor::impl_openStreamWithURL( const OUString& sURL, bool bLockFi
     }
     catch(const css::uno::RuntimeException&)
         { throw; }
-    catch(const css::ucb::ContentCreationException& e)
+    catch(const css::ucb::ContentCreationException&)
         {
-            SAL_WARN(
-                "unotools.misc",
-                "caught ContentCreationException \"" << e.Message
-                    << "\" while opening <" << sURL << ">");
+            TOOLS_WARN_EXCEPTION("unotools.misc", "url: '" << sURL << "'");
             return false; // TODO error handling
         }
-    catch(const css::uno::Exception& e)
+    catch(const css::uno::Exception&)
         {
-            SAL_WARN(
-                "unotools.misc",
-                "caught Exception \"" << e.Message << "\" while opening <"
-                    << sURL << ">");
+            TOOLS_WARN_EXCEPTION("unotools.misc", "url: '" << sURL << "'");
             return false; // TODO error handling
         }
 
     // try to open the file in read/write mode
-    // (if its allowed to do so).
+    // (if it's allowed to do so).
     // But handle errors in a "hidden mode". Because
     // we try it readonly later - if read/write is not an option.
     css::uno::Reference< css::io::XStream >      xStream;
@@ -674,19 +671,17 @@ bool MediaDescriptor::impl_openStreamWithURL( const OUString& sURL, bool bLockFi
         }
         catch(const css::uno::RuntimeException&)
             { throw; }
-        catch(const css::uno::Exception& e)
+        catch(const css::uno::Exception&)
             {
+                css::uno::Any ex( cppu::getCaughtException() );
                 // ignore exception, if reason was problem reasoned on
-                // open it in WRITEABLE mode! Then we try it READONLY
+                // open it in WRITABLE mode! Then we try it READONLY
                 // later a second time.
                 // All other errors must be handled as real error an
                 // break this method.
                 if (!pInteraction->wasWriteError() || bModeRequestedExplicitly)
                 {
-                    SAL_WARN(
-                        "unotools.misc",
-                        "caught Exception \"" << e.Message
-                            << "\" while opening <" << sURL << ">");
+                    SAL_WARN("unotools.misc","url: '" << sURL << "' " << exceptionToString(ex));
                     // If the protocol is webdav, then we need to treat the stream as readonly, even if the
                     // operation was requested as read/write explicitly (the WebDAV UCB implementation is monodirectional
                     // read or write not both at the same time).
@@ -722,7 +717,7 @@ bool MediaDescriptor::impl_openStreamWithURL( const OUString& sURL, bool bLockFi
                 bool bRequestReadOnly = bReadOnly;
                 aContent.getPropertyValue("IsReadOnly") >>= bReadOnly;
                 if ( bReadOnly && !bRequestReadOnly && bModeRequestedExplicitly )
-                        return false; // the document is explicitly requested with WRITEABLE mode
+                        return false; // the document is explicitly requested with WRITABLE mode
             }
         }
         catch(const css::uno::RuntimeException&)
@@ -747,12 +742,9 @@ bool MediaDescriptor::impl_openStreamWithURL( const OUString& sURL, bool bLockFi
         {
             throw;
         }
-        catch(const css::uno::Exception& e)
+        catch(const css::uno::Exception&)
         {
-            SAL_INFO(
-                "unotools.misc",
-                "caught Exception \"" << e.Message << "\" while opening <"
-                    << sURL << ">");
+            TOOLS_INFO_EXCEPTION("unotools.misc","url: '" << sURL << "'");
             return false;
         }
     }

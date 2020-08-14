@@ -22,22 +22,19 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/rendering/XPolyPolygon2D.hpp>
-#include <com/sun/star/rendering/XGraphicDevice.hpp>
 #include <com/sun/star/rendering/StrokeAttributes.hpp>
 
 #include <cppcanvas/polypolygon.hxx>
 #include <canvasgraphichelper.hxx>
 
-namespace com { namespace sun { namespace star { namespace rendering
+namespace com::sun::star::rendering
 {
     struct RealPoint2D;
-} } } }
+}
 
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
 
         class ImplPolyPolygon : public virtual ::cppcanvas::PolyPolygon, protected CanvasGraphicHelper
         {
@@ -48,9 +45,9 @@ namespace cppcanvas
 
             virtual ~ImplPolyPolygon() override;
 
-            virtual void            setRGBAFillColor( Color::IntSRGBA ) override;
-            virtual void            setRGBALineColor( Color::IntSRGBA ) override;
-            virtual Color::IntSRGBA getRGBALineColor() const override;
+            virtual void            setRGBAFillColor( IntSRGBA ) override;
+            virtual void            setRGBALineColor( IntSRGBA ) override;
+            virtual IntSRGBA getRGBALineColor() const override;
 
             virtual void            setStrokeWidth( const double& rStrokeWidth ) override;
             virtual double          getStrokeWidth() const override;
@@ -74,7 +71,6 @@ namespace cppcanvas
             bool                                                        mbStrokeColorSet;
         };
 
-    }
 }
 
 #endif // INCLUDED_CPPCANVAS_SOURCE_WRAPPER_IMPLPOLYPOLYGON_HXX

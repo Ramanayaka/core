@@ -20,21 +20,21 @@
 #ifndef INCLUDED_EDITENG_UNOLINGU_HXX
 #define INCLUDED_EDITENG_UNOLINGU_HXX
 
-#include <i18nlangtag/lang.h>
 #include <rtl/ustring.hxx>
-#include <com/sun/star/util/Language.hpp>
-#include <com/sun/star/linguistic2/XLinguServiceManager2.hpp>
-#include <com/sun/star/linguistic2/XLinguProperties.hpp>
-#include <com/sun/star/linguistic2/XSpellChecker1.hpp>
-#include <com/sun/star/linguistic2/XHyphenator.hpp>
-#include <com/sun/star/linguistic2/XThesaurus.hpp>
-#include <com/sun/star/linguistic2/XSearchableDictionaryList.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 #include <editeng/editengdllapi.h>
+
+namespace com::sun::star::linguistic2 { class XDictionary; }
+namespace com::sun::star::linguistic2 { class XHyphenator; }
+namespace com::sun::star::linguistic2 { class XLinguProperties; }
+namespace com::sun::star::linguistic2 { class XLinguServiceManager2; }
+namespace com::sun::star::linguistic2 { class XSearchableDictionaryList; }
+namespace com::sun::star::linguistic2 { class XSpellChecker1; }
+namespace com::sun::star::linguistic2 { class XThesaurus; }
 
 class LinguMgrExitLstnr;
 
-namespace vcl { class Window; }
+namespace weld { class Window; }
 namespace linguistic { enum class DictionaryError; }
 
 
@@ -83,16 +83,14 @@ public:
 };
 
 
-namespace com { namespace sun { namespace star { namespace linguistic2 {
+namespace com::sun::star::linguistic2 {
     class XHyphenatedWord;
-}}}}
+}
 
 
 struct SvxAlternativeSpelling
 {
     OUString         aReplacement;
-    css::uno::Reference< css::linguistic2::XHyphenatedWord >
-                    xHyphWord;
     sal_Int16       nChangedPos,
                     nChangedLength;
     bool            bIsAltSpelling;
@@ -121,11 +119,11 @@ private:
 
 public:
     SvxDicListChgClamp( css::uno::Reference<
-        css::linguistic2::XSearchableDictionaryList >  &rxDicList );
+        css::linguistic2::XSearchableDictionaryList > const &rxDicList );
     ~SvxDicListChgClamp();
 };
 
-EDITENG_DLLPUBLIC short SvxDicError( vcl::Window *pParent, linguistic::DictionaryError nError );
+EDITENG_DLLPUBLIC short SvxDicError(weld::Window *pParent, linguistic::DictionaryError nError);
 
 
 #endif

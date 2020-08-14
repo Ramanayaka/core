@@ -17,22 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "initui.hxx"
-#include "view.hxx"
-#include "edtwin.hxx"
-#include "wrtsh.hxx"
-#include "globals.hrc"
-#include <vcl/msgbox.hxx>
-#include <vcl/wrkwin.hxx>
-#include <linguistic/lngprops.hxx>
+#include <view.hxx>
+#include <edtwin.hxx>
+#include <wrtsh.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <com/sun/star/linguistic2/XLinguProperties.hpp>
 #include <swwait.hxx>
 
-#include "hyp.hxx"
-#include "mdiexp.hxx"
-#include "olmenu.hrc"
-
-#include <unomid.h>
+#include <hyp.hxx>
+#include <mdiexp.hxx>
+#include <strings.hrc>
 
 #include <memory>
 
@@ -42,9 +37,9 @@ using namespace ::com::sun::star;
 
 // interactive separation
 SwHyphWrapper::SwHyphWrapper( SwView* pVw,
-            uno::Reference< linguistic2::XHyphenator >  &rxHyph,
+            uno::Reference< linguistic2::XHyphenator > const &rxHyph,
             bool bStart, bool bOther, bool bSelect ) :
-    SvxSpellWrapper( &pVw->GetEditWin(), rxHyph, bStart, bOther ),
+    SvxSpellWrapper( pVw->GetEditWin().GetFrameWeld(), rxHyph, bStart, bOther ),
     pView( pVw ),
     nPageCount( 0 ),
     nPageStart( 0 ),
@@ -53,7 +48,6 @@ SwHyphWrapper::SwHyphWrapper( SwView* pVw,
 {
     uno::Reference< linguistic2::XLinguProperties >  xProp( GetLinguPropertySet() );
     bAutomatic = xProp.is() && xProp->getIsHyphAuto();
-    SetHyphen();
 }
 
 void SwHyphWrapper::SpellStart( SvxSpellArea eSpell )
@@ -77,10 +71,10 @@ void SwHyphWrapper::SpellContinue()
         pWait.reset(new SwWait( *pView->GetDocShell(), true ));
     }
 
-        uno::Reference< uno::XInterface >  xHyphWord = bInSelection ?
+    uno::Reference< uno::XInterface >  xHyphWord = bInSelection ?
                 PSH->HyphContinue( nullptr, nullptr ) :
                 PSH->HyphContinue( &nPageCount, &nPageStart );
-        SetLast( xHyphWord );
+    SetLast( xHyphWord );
 
     // for automatic separation, make actions visible only at the end
     if( bAutomatic )
@@ -119,7 +113,12 @@ SwHyphWrapper::~SwHyphWrapper()
     if( nPageCount )
         ::EndProgress( pView->GetDocShell() );
     if( bInfoBox && !Application::IsHeadlessModeEnabled() )
-        ScopedVclPtrInstance<InfoBox>(&pView->GetEditWin(), SwResId(STR_HYP_OK))->Execute();
+    {
+        std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(pView->GetEditWin().GetFrameWeld(),
+                                                      VclMessageType::Info, VclButtonsType::Ok,
+                                                      SwResId(STR_HYP_OK)));
+        xInfoBox->run();
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -11,76 +11,75 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_RANDOMNUMBERGENERATORDIALOG_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_RANDOMNUMBERGENERATORDIALOG_HXX
 
-#include "global.hxx"
-#include "address.hxx"
+#include <sal/config.h>
+
+#include <optional>
+
+#include <address.hxx>
 #include "anyrefdg.hxx"
+#include "viewdata.hxx"
 
-#include <vcl/fixed.hxx>
-#include <vcl/group.hxx>
-#include <vcl/lstbox.hxx>
-
-#include <boost/optional.hpp>
-
-class ScRandomNumberGeneratorDialog : public ScAnyRefDlg
+class ScRandomNumberGeneratorDialog : public ScAnyRefDlgController
 {
 public:
     ScRandomNumberGeneratorDialog(
         SfxBindings* pB, SfxChildWindow* pCW,
-        vcl::Window* pParent, ScViewData* pViewData );
+        weld::Window* pParent, ScViewData* pViewData );
 
     virtual ~ScRandomNumberGeneratorDialog() override;
-    virtual void dispose() override;
 
-    virtual void SetReference( const ScRange& rRef, ScDocument* pDoc ) override;
+    virtual void SetReference( const ScRange& rRef, ScDocument& rDoc ) override;
     virtual void SetActive() override;
-    virtual bool Close() override;
+    virtual void Close() override;
 
 private:
-    // Widgets
-    VclPtr<FixedText>          mpInputRangeText;
-    VclPtr<formula::RefEdit>   mpInputRangeEdit;
-    VclPtr<formula::RefButton> mpInputRangeButton;
-    VclPtr<ListBox>            mpDistributionCombo;
-    VclPtr<FixedText>          mpParameter1Text;
-    VclPtr<NumericField>       mpParameter1Value;
-    VclPtr<FixedText>          mpParameter2Text;
-    VclPtr<NumericField>       mpParameter2Value;
-    VclPtr<NumericField>       mpSeed;
-    VclPtr<CheckBox>           mpEnableSeed;
-    VclPtr<NumericField>       mpDecimalPlaces;
-    VclPtr<CheckBox>           mpEnableRounding;
-    VclPtr<PushButton>         mpButtonApply;
-    VclPtr<OKButton>           mpButtonOk;
-    VclPtr<CloseButton>        mpButtonClose;
-
     // Data
-    ScViewData*         mpViewData;
-    ScDocument*         mpDoc;
+    ScViewData*                mpViewData;
+    const ScDocument&          mrDoc;
 
     ScRange             maInputRange;
 
     bool                mbDialogLostFocus;
+
+    // Widgets
+    std::unique_ptr<weld::Label> mxInputRangeText;
+    std::unique_ptr<formula::RefEdit>   mxInputRangeEdit;
+    std::unique_ptr<formula::RefButton> mxInputRangeButton;
+    std::unique_ptr<weld::ComboBox> mxDistributionCombo;
+    std::unique_ptr<weld::Label> mxParameter1Text;
+    std::unique_ptr<weld::SpinButton> mxParameter1Value;
+    std::unique_ptr<weld::Label> mxParameter2Text;
+    std::unique_ptr<weld::SpinButton> mxParameter2Value;
+    std::unique_ptr<weld::SpinButton> mxSeed;
+    std::unique_ptr<weld::CheckButton> mxEnableSeed;
+    std::unique_ptr<weld::SpinButton> mxDecimalPlaces;
+    std::unique_ptr<weld::CheckButton> mxEnableRounding;
+    std::unique_ptr<weld::Button> mxButtonApply;
+    std::unique_ptr<weld::Button> mxButtonOk;
+    std::unique_ptr<weld::Button> mxButtonClose;
 
     void Init();
     void GetRangeFromSelection();
 
     template<class RNG>
 
-    void GenerateNumbers(RNG& randomGenerator, const sal_Int16 aDistributionStringId, const boost::optional<sal_Int8> aDecimalPlaces);
+    void GenerateNumbers(RNG& randomGenerator, const char* pDistributionStringId, const std::optional<sal_Int8> aDecimalPlaces);
 
     void SelectGeneratorAndGenerateNumbers();
 
-    DECL_LINK( OkClicked,        Button*, void );
-    DECL_LINK( CloseClicked,     Button*, void );
-    DECL_LINK( ApplyClicked,     Button*, void );
-    DECL_LINK( GetFocusHandler,  Control&, void );
-    DECL_LINK( LoseFocusHandler, Control&, void );
+    DECL_LINK( OkClicked, weld::Button&, void );
+    DECL_LINK( CloseClicked, weld::Button&, void );
+    DECL_LINK( ApplyClicked, weld::Button&, void );
+    DECL_LINK( GetEditFocusHandler,  formula::RefEdit&, void );
+    DECL_LINK( GetButtonFocusHandler,  formula::RefButton&, void );
+    DECL_LINK( LoseEditFocusHandler, formula::RefEdit&, void );
+    DECL_LINK( LoseButtonFocusHandler, formula::RefButton&, void );
 
-    DECL_LINK( InputRangeModified, Edit&, void );
-    DECL_LINK( Parameter1ValueModified, Edit&, void );
-    DECL_LINK( Parameter2ValueModified, Edit&, void );
-    DECL_LINK( DistributionChanged, ListBox&, void );
-    DECL_LINK( CheckChanged, CheckBox&, void );
+    DECL_LINK( InputRangeModified, formula::RefEdit&, void );
+    DECL_LINK( Parameter1ValueModified, weld::SpinButton&, void );
+    DECL_LINK( Parameter2ValueModified, weld::SpinButton&, void );
+    DECL_LINK( DistributionChanged, weld::ComboBox&, void );
+    DECL_LINK( CheckChanged, weld::ToggleButton&, void );
 
 };
 

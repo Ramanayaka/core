@@ -22,34 +22,20 @@
 #include <o3tl/any.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/unoapi.hxx>
-#include <svx/svdoashp.hxx>
 #include <svx/unoshape.hxx>
 #include <vcl/outdev.hxx>
 #include <tools/poly.hxx>
-#include <vcl/bitmapex.hxx>
-#include <vcl/graph.hxx>
 #include <tools/debug.hxx>
+#include <tools/diagnose_ex.h>
+#include <tools/fract.hxx>
 #include <svx/fmdpage.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <com/sun/star/style/VerticalAlignment.hpp>
-#include <com/sun/star/awt/Gradient.hpp>
-#include <com/sun/star/drawing/PointSequence.hpp>
-#include <com/sun/star/drawing/PointSequenceSequence.hpp>
-#include <com/sun/star/drawing/PolyPolygonBezierCoords.hpp>
-#include <com/sun/star/drawing/FlagSequence.hpp>
-#include <com/sun/star/drawing/TextAdjust.hpp>
-#include <com/sun/star/drawing/LineDash.hpp>
+#include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/text/XText.hpp>
+#include <com/sun/star/text/TextContentAnchorType.hpp>
 #include <com/sun/star/drawing/CircleKind.hpp>
-#include <com/sun/star/drawing/FillStyle.hpp>
-#include <com/sun/star/task/XStatusIndicator.hpp>
 #include <comphelper/extract.hxx>
-#include <vcl/fltcall.hxx>
-#include <vcl/cvtgrf.hxx>
 #include <com/sun/star/drawing/HomogenMatrix3.hpp>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans;
@@ -71,7 +57,6 @@ ImplEESdrWriter::ImplEESdrWriter( EscherEx& rEx )
     , mpHostAppData(nullptr)
     , mbIsTitlePossible(false)
     , mpSdrPage( nullptr )
-    , mpSolverContainer( nullptr )
 {
 }
 
@@ -87,9 +72,9 @@ Size ImplEESdrWriter::ImplMapSize( const Size& rSize )
     Size aRetSize( OutputDevice::LogicToLogic( rSize, maMapModeSrc, maMapModeDest ) );
 
     if ( !aRetSize.Width() )
-        aRetSize.Width()++;
+        aRetSize.AdjustWidth( 1 );
     if ( !aRetSize.Height() )
-        aRetSize.Height()++;
+        aRetSize.AdjustHeight( 1 );
     return aRetSize;
 }
 
@@ -106,12 +91,12 @@ void ImplEESdrWriter::ImplFlipBoundingBox( ImplEESdrObject& rObj, EscherProperty
     while ( nAngle > 9000 )
         nAngle = ( 18000 - ( nAngle % 18000 ) );
 
-    double fVal = (double)nAngle * F_PI18000;
+    double fVal = static_cast<double>(nAngle) * F_PI18000;
     double  fCos = cos( fVal );
     double  fSin = sin( fVal );
 
-    double  nWidthHalf = (double) aRect.GetWidth() / 2;
-    double  nHeightHalf = (double) aRect.GetHeight() / 2;
+    double  nWidthHalf = static_cast<double>(aRect.GetWidth()) / 2;
+    double  nHeightHalf = static_cast<double>(aRect.GetHeight()) / 2;
 
     // fdo#70838:
     // when you rotate an object, the top-left corner of its bounding box is moved
@@ -123,7 +108,7 @@ void ImplEESdrWriter::ImplFlipBoundingBox( ImplEESdrObject& rObj, EscherProperty
     double nXDiff = fSin * nHeightHalf + fCos * nWidthHalf  - nWidthHalf;
     double nYDiff = fSin * nWidthHalf  + fCos * nHeightHalf - nHeightHalf;
 
-    aRect.Move( (sal_Int32) nXDiff, (sal_Int32) nYDiff );
+    aRect.Move( static_cast<sal_Int32>(nXDiff), static_cast<sal_Int32>(nYDiff) );
 
     // calculate the proper angle value to be saved
     nAngle = rObj.GetAngle();
@@ -142,15 +127,6 @@ void ImplEESdrWriter::ImplFlipBoundingBox( ImplEESdrObject& rObj, EscherProperty
 }
 
 
-#define ADD_SHAPE( nType, nFlags )                              \
-{                                                               \
-    nShapeType = nType;                                         \
-    nShapeID = mpEscherEx->GenerateShapeId();                   \
-    rObj.SetShapeId( nShapeID );                                \
-    mpEscherEx->AddShape( (sal_uInt32)nType, nFlags, nShapeID );    \
-    rSolverContainer.AddShape( rObj.GetShapeRef(), nShapeID );  \
-}
-
 sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
                                 EscherSolverContainer& rSolverContainer,
                                 const bool bOOxmlExport )
@@ -160,6 +136,14 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
     bool bDontWriteText = false;        // if a metafile is written as shape replacement, then the text is already part of the metafile
     bool bAdditionalText = false;
     sal_uInt32 nGrpShapeID = 0;
+    auto addShape = [this, &rObj, &rSolverContainer, &nShapeID, &nShapeType](sal_uInt16 nType, ShapeFlag nFlags)
+    {
+        nShapeType = nType;
+        nShapeID = mpEscherEx->GenerateShapeId();
+        rObj.SetShapeId( nShapeID );
+        mpEscherEx->AddShape( nType, nFlags, nShapeID );
+        rSolverContainer.AddShape( rObj.GetShapeRef(), nShapeID );
+    };
 
     do {
         mpHostAppData = mpEscherEx->StartShape( rObj.GetShapeRef(), (mpEscherEx->GetGroupLevel() > 1) ? &rObj.GetRect() : nullptr );
@@ -171,7 +155,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
         if( const SdrObject* pSdrObj = rObj.GetSdrObject() )
             if (!pSdrObj->GetName().isEmpty())
                 aShapeName = pSdrObj->GetName();
-        uno::Reference< drawing::XShape> xShape(rObj.GetShapeRef(), uno::UNO_QUERY);
+        uno::Reference< drawing::XShape> xShape = rObj.GetShapeRef();
         if (xShape.is())
         {
             uno::Reference<beans::XPropertySet> xPropertySet(xShape, uno::UNO_QUERY);
@@ -182,12 +166,12 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
                 if ( xPropInfo.is() && xPropInfo->hasPropertyByName( "InteropGrabBag" ) )
                 {
                     xPropertySet->getPropertyValue( "InteropGrabBag" ) >>= aGrabBag;
-                    for (int i=0; i< aGrabBag.getLength();  i++)
+                    for (const beans::PropertyValue& rProp : std::as_const(aGrabBag))
                     {
-                        if (aGrabBag[i].Name == "mso-edit-as")
+                        if (rProp.Name == "mso-edit-as")
                         {
                             OUString rEditAs;
-                            aGrabBag[i].Value >>= rEditAs;
+                            rProp.Value >>= rEditAs;
                             mpEscherEx->SetEditAs(rEditAs);
                             break;
                         }
@@ -195,8 +179,6 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
                 }
             }
         }
-
-        Point aTextRefPoint;
 
         if( rObj.GetType() == "drawing.Group" )
         {
@@ -222,7 +204,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
             }
             break;
         }
-        rObj.SetAngle( rObj.ImplGetInt32PropertyValue( OUString( "RotateAngle" ) ));
+        rObj.SetAngle( rObj.ImplGetInt32PropertyValue( "RotateAngle" ));
 
         if( ( rObj.ImplGetPropertyValue( "IsFontwork" ) &&
             ::cppu::any2bool( rObj.GetUsrAny() ) ) ||
@@ -244,12 +226,9 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
         if ( InteractionInfo* pInteraction = mpHostAppData ? mpHostAppData->GetInteractionInfo():nullptr )
         {
             const std::unique_ptr< SvMemoryStream >& pMemStrm = pInteraction->getHyperlinkRecord();
-            if ( pMemStrm.get() )
+            if (pMemStrm)
             {
-                pMemStrm->ObjectOwnsMemory( false );
-                sal_uInt8 const * pBuf = static_cast<sal_uInt8 const *>(pMemStrm->GetData());
-                sal_uInt32 nSize = pMemStrm->Seek( STREAM_SEEK_TO_END );
-                aPropOpt.AddOpt( ESCHER_Prop_pihlShape, false, nSize, const_cast<sal_uInt8 *>(pBuf), nSize );
+                aPropOpt.AddOpt(ESCHER_Prop_pihlShape, false, 0, *pMemStrm);
             }
             aPropOpt.AddOpt( ESCHER_Prop_fPrint, 0x00080008 );
         }
@@ -257,19 +236,20 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
         if ( rObj.GetType() == "drawing.Custom" )
         {
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
-            sal_uInt32 nMirrorFlags;
+            ShapeFlag nMirrorFlags;
 
             OUString sCustomShapeType;
             MSO_SPT eShapeType = EscherPropertyContainer::GetCustomShapeType( rObj.GetShapeRef(), nMirrorFlags, sCustomShapeType, rObj.GetOOXML() );
             if ( sCustomShapeType == "col-502ad400" || sCustomShapeType == "col-60da8460" )
             {
-                ADD_SHAPE( ESCHER_ShpInst_PictureFrame, 0xa00 );
+                addShape( ESCHER_ShpInst_PictureFrame, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
+
                 if ( aPropOpt.CreateGraphicProperties( rObj.mXPropSet, "MetaFile", false ) )
                 {
                     aPropOpt.AddOpt( ESCHER_Prop_LockAgainstGrouping, 0x800080 );
                     aPropOpt.AddOpt( ESCHER_Prop_fNoFillHitTest, 0x100000 );        // no fill
                     aPropOpt.AddOpt( ESCHER_Prop_fNoLineDrawDash, 0x90000 );        // no linestyle
-                        SdrObject* pObj = GetSdrObjectFromXShape( rObj.GetShapeRef() );
+                    SdrObject* pObj = GetSdrObjectFromXShape( rObj.GetShapeRef() );
                     if ( pObj )
                     {
                         tools::Rectangle aBound = pObj->GetCurrentBoundRect();
@@ -283,9 +263,8 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
             }
             else
             {
-                ADD_SHAPE(
-                    sal::static_int_cast< sal_uInt16 >(eShapeType),
-                    nMirrorFlags | 0xa00 );
+                addShape(sal::static_int_cast< sal_uInt16 >(eShapeType),
+                         nMirrorFlags | ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor);
                 aPropOpt.CreateCustomShapeProperties( eShapeType, rObj.GetShapeRef() );
                 aPropOpt.CreateFillProperties( rObj.mXPropSet, true );
                 if ( rObj.ImplGetText() )
@@ -303,7 +282,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
             if( nRadius )
             {
                 nRadius = ImplMapSize( Size( nRadius, 0 )).Width();
-                ADD_SHAPE( ESCHER_ShpInst_RoundRectangle, 0xa00 );  // Flags: Connector | HasSpt
+                addShape( ESCHER_ShpInst_RoundRectangle, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
                 sal_Int32 nLength = rObj.GetRect().GetWidth();
                 if ( nLength > rObj.GetRect().GetHeight() )
                     nLength = rObj.GetRect().GetHeight();
@@ -316,7 +295,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
             }
             else
             {
-                ADD_SHAPE( ESCHER_ShpInst_Rectangle, 0xa00 );           // Flags: Connector | HasSpt
+                addShape( ESCHER_ShpInst_Rectangle, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
             }
             aPropOpt.CreateFillProperties( rObj.mXPropSet, true );
             if( rObj.ImplGetText() )
@@ -357,7 +336,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
             if ( eCircleKind == CircleKind_FULL )
             {
                 mpEscherEx->OpenContainer( ESCHER_SpContainer );
-                ADD_SHAPE( ESCHER_ShpInst_Ellipse, 0xa00 );         // Flags: Connector | HasSpt
+                addShape( ESCHER_ShpInst_Ellipse, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
                 aPropOpt.CreateFillProperties( rObj.mXPropSet, true );
             }
             else
@@ -371,25 +350,25 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
                 nEndAngle = *o3tl::doAccess<sal_Int32>(rObj.GetUsrAny());
 
                 Point aStart, aEnd, aCenter;
-                aStart.X() = (sal_Int32)( cos( nStartAngle * F_PI18000 ) * 100.0 );
-                aStart.Y() = - (sal_Int32)( sin( nStartAngle * F_PI18000 ) * 100.0 );
-                aEnd.X() = (sal_Int32)( cos( nEndAngle * F_PI18000 ) * 100.0 );
-                aEnd.Y() = - (sal_Int32)( sin( nEndAngle * F_PI18000 ) * 100.0 );
+                aStart.setX( static_cast<sal_Int32>( cos( nStartAngle * F_PI18000 ) * 100.0 ) );
+                aStart.setY( - static_cast<sal_Int32>( sin( nStartAngle * F_PI18000 ) * 100.0 ) );
+                aEnd.setX( static_cast<sal_Int32>( cos( nEndAngle * F_PI18000 ) * 100.0 ) );
+                aEnd.setY( - static_cast<sal_Int32>( sin( nEndAngle * F_PI18000 ) * 100.0 ) );
                 const tools::Rectangle& rRect = aRect100thmm;
-                aCenter.X() = rRect.Left() + ( rRect.GetWidth() / 2 );
-                aCenter.Y() = rRect.Top() + ( rRect.GetHeight() / 2 );
-                aStart.X() += aCenter.X();
-                aStart.Y() += aCenter.Y();
-                aEnd.X() += aCenter.X();
-                aEnd.Y() += aCenter.Y();
+                aCenter.setX( rRect.Left() + ( rRect.GetWidth() / 2 ) );
+                aCenter.setY( rRect.Top() + ( rRect.GetHeight() / 2 ) );
+                aStart.AdjustX(aCenter.X() );
+                aStart.AdjustY(aCenter.Y() );
+                aEnd.AdjustX(aCenter.X() );
+                aEnd.AdjustY(aCenter.Y() );
                 tools::Polygon aPolygon( rRect, aStart, aEnd, ePolyKind );
                 if( rObj.GetAngle() )
                 {
-                    aPolygon.Rotate( rRect.TopLeft(), (sal_uInt16)( rObj.GetAngle() / 10 ) );
+                    aPolygon.Rotate( rRect.TopLeft(), static_cast<sal_uInt16>( rObj.GetAngle() / 10 ) );
                     rObj.SetAngle( 0 );
                 }
                 mpEscherEx->OpenContainer( ESCHER_SpContainer );
-                ADD_SHAPE( ESCHER_ShpInst_NotPrimitive, 0xa00 );        // Flags: Connector | HasSpt
+                addShape( ESCHER_ShpInst_NotPrimitive, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
                 css::awt::Rectangle aNewRect;
                 switch ( ePolyKind )
                 {
@@ -419,11 +398,36 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
         }
         else if ( rObj.GetType() == "drawing.Control" )
         {
-            break;
+            const Reference< XPropertySet > xPropSet = rObj.mXPropSet;
+            const Reference<XPropertySetInfo> xPropInfo = xPropSet.is() ? xPropSet->getPropertySetInfo() : Reference<XPropertySetInfo>();
+            // This code is expected to be called only for DOCX format.
+            if (xPropInfo.is())
+            {
+                bool bInline = false;
+                if (xPropInfo->hasPropertyByName("AnchorType"))
+                {
+                    text::TextContentAnchorType eAnchorType;
+                    xPropSet->getPropertyValue("AnchorType") >>= eAnchorType;
+                    bInline = eAnchorType == text::TextContentAnchorType_AS_CHARACTER;
+                }
+
+                mpEscherEx->OpenContainer( ESCHER_SpContainer );
+                if(bInline)
+                {
+                    addShape( ESCHER_ShpInst_PictureFrame, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
+                }
+                else
+                {
+                    addShape( ESCHER_ShpInst_HostControl, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
+                }
+            }
+            else
+                break;
         }
         else if ( rObj.GetType() == "drawing.Connector" )
         {
-            sal_uInt16 nSpType, nSpFlags;
+            sal_uInt16 nSpType;
+            ShapeFlag nSpFlags;
             css::awt::Rectangle aNewRect;
             if ( ! aPropOpt.CreateConnectorProperties( rObj.GetShapeRef(),
                             rSolverContainer, aNewRect, nSpType, nSpFlags ) )
@@ -432,7 +436,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
                                         ImplMapSize( Size( aNewRect.Width, aNewRect.Height ) ) ) );
 
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
-            ADD_SHAPE( nSpType, nSpFlags );
+            addShape( nSpType, nSpFlags );
         }
         else if ( rObj.GetType() == "drawing.Measure" )
         {
@@ -445,13 +449,13 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
             //i27942: Poly/Lines/Bezier do not support text.
 
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
-            sal_uInt32 nFlags = 0xa00;      // Flags: Connector | HasSpt
+            ShapeFlag nFlags = ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor;
             if( aNewRect.Height < 0 )
-                nFlags |= 0x80;             // Flags: VertMirror
+                nFlags |= ShapeFlag::FlipV;
             if( aNewRect.Width < 0 )
-                nFlags |= 0x40;             // Flags: HorzMirror
+                nFlags |= ShapeFlag::FlipH;
 
-            ADD_SHAPE( ESCHER_ShpInst_Line, nFlags );
+            addShape( ESCHER_ShpInst_Line, nFlags );
             aPropOpt.AddOpt( ESCHER_Prop_shapePath, ESCHER_ShapeComplex );
             aPropOpt.CreateLineProperties( rObj.mXPropSet, false );
             rObj.SetAngle( 0 );
@@ -464,7 +468,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
                 bAdditionalText = true;
             }
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
-            ADD_SHAPE( ESCHER_ShpInst_NotPrimitive, 0xa00 );        // Flags: Connector | HasSpt
+            addShape( ESCHER_ShpInst_NotPrimitive, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
             css::awt::Rectangle aNewRect;
             aPropOpt.CreatePolygonProperties( rObj.mXPropSet, ESCHER_CREATEPOLYGON_POLYPOLYGON, false, aNewRect );
             aPropOpt.CreateFillProperties( rObj.mXPropSet, true );
@@ -475,7 +479,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
             //i27942: Poly/Lines/Bezier do not support text.
 
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
-            ADD_SHAPE( ESCHER_ShpInst_NotPrimitive, 0xa00 );        // Flags: Connector | HasSpt
+            addShape( ESCHER_ShpInst_NotPrimitive, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
             css::awt::Rectangle aNewRect;
             aPropOpt.CreatePolygonProperties( rObj.mXPropSet, ESCHER_CREATEPOLYGON_POLYLINE, false, aNewRect );
             aPropOpt.CreateLineProperties( rObj.mXPropSet, false );
@@ -486,7 +490,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
             //i27942: Poly/Lines/Bezier do not support text.
 
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
-            ADD_SHAPE( ESCHER_ShpInst_NotPrimitive, 0xa00 );        // Flags: Connector | HasSpt
+            addShape( ESCHER_ShpInst_NotPrimitive, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
             css::awt::Rectangle aNewRect;
             aPropOpt.CreatePolygonProperties( rObj.mXPropSet, ESCHER_CREATEPOLYGON_POLYLINE, true, aNewRect );
             aPropOpt.CreateLineProperties( rObj.mXPropSet, false );
@@ -500,7 +504,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
                 bAdditionalText = true;
             }
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
-            ADD_SHAPE( ESCHER_ShpInst_NotPrimitive, 0xa00 );        // Flags: Connector | HasSpt
+            addShape( ESCHER_ShpInst_NotPrimitive, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
             css::awt::Rectangle aNewRect;
             aPropOpt.CreatePolygonProperties( rObj.mXPropSet, ESCHER_CREATEPOLYGON_POLYPOLYGON, true, aNewRect );
             aPropOpt.CreateFillProperties( rObj.mXPropSet, true );
@@ -513,7 +517,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
             // a GraphicObject can also be a ClickMe element
             if( rObj.IsEmptyPresObj() )
             {
-                ADD_SHAPE( ESCHER_ShpInst_Rectangle, 0x220 );               // Flags: HaveAnchor | HaveMaster
+                addShape( ESCHER_ShpInst_Rectangle, ShapeFlag::HaveMaster | ShapeFlag::HaveAnchor );
                 sal_uInt32 nTxtBxId = mpEscherEx->QueryTextID( rObj.GetShapeRef(),
                                                         rObj.GetShapeId() );
                 aPropOpt.AddOpt( ESCHER_Prop_lTxid, nTxtBxId );
@@ -528,8 +532,8 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
                     /* SJ #i34951#: because M. documents are not allowing GraphicObjects containing text, we
                        have to create a simple Rectangle with fill bitmap instead (while not allowing BitmapMode_Repeat).
                     */
-                    ADD_SHAPE( ESCHER_ShpInst_Rectangle, 0xa00 );           // Flags: Connector | HasSpt
-                    if ( aPropOpt.CreateGraphicProperties( rObj.mXPropSet, "GraphicURL", true, true, false ) )
+                    addShape( ESCHER_ShpInst_Rectangle, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
+                    if ( aPropOpt.CreateGraphicProperties( rObj.mXPropSet, "Graphic", true, true, false ) )
                     {
                         aPropOpt.AddOpt( ESCHER_Prop_WrapText, ESCHER_WrapNone );
                         aPropOpt.AddOpt( ESCHER_Prop_AnchorText, ESCHER_AnchorMiddle );
@@ -544,8 +548,8 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
                 }
                 else
                 {
-                    ADD_SHAPE( ESCHER_ShpInst_PictureFrame, 0xa00 );
-                    if ( aPropOpt.CreateGraphicProperties( rObj.mXPropSet, "GraphicURL", false, true, true, bOOxmlExport ) )
+                    addShape( ESCHER_ShpInst_PictureFrame, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
+                    if ( aPropOpt.CreateGraphicProperties( rObj.mXPropSet, "Graphic", false, true, true, bOOxmlExport ) )
                         aPropOpt.AddOpt( ESCHER_Prop_LockAgainstGrouping, 0x800080 );
                 }
             }
@@ -553,7 +557,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
         else if ( rObj.GetType() == "drawing.Text" )
         {
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
-            ADD_SHAPE( ESCHER_ShpInst_TextBox, 0xa00 );
+            addShape( ESCHER_ShpInst_TextBox, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
             aPropOpt.CreateFillProperties( rObj.mXPropSet, true );
             if( rObj.ImplGetText() )
                 aPropOpt.CreateTextProperties( rObj.mXPropSet,
@@ -563,7 +567,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
         else if ( rObj.GetType() == "drawing.Page" )
         {
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
-            ADD_SHAPE( ESCHER_ShpInst_Rectangle, 0xa00 );
+            addShape( ESCHER_ShpInst_Rectangle, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
             aPropOpt.AddOpt( ESCHER_Prop_LockAgainstGrouping, 0x40004 );
             aPropOpt.AddOpt( ESCHER_Prop_fFillOK, 0x100001 );
             aPropOpt.AddOpt( ESCHER_Prop_fNoFillHitTest, 0x110011 );
@@ -579,7 +583,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
             if( rObj.IsEmptyPresObj() )
             {
-                ADD_SHAPE( ESCHER_ShpInst_Rectangle, 0x220 );               // Flags: HaveAnchor | HaveMaster
+                addShape( ESCHER_ShpInst_Rectangle, ShapeFlag::HaveMaster | ShapeFlag::HaveAnchor );
                 sal_uInt32 nTxtBxId = mpEscherEx->QueryTextID( rObj.GetShapeRef(),
                                                         rObj.GetShapeId() );
                 aPropOpt.AddOpt( ESCHER_Prop_lTxid, nTxtBxId );
@@ -590,9 +594,9 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
             else
             {
                 //2do: could be made an option in HostAppData whether OLE object should be written or not
-                bool bAppOLE = true;
-                ADD_SHAPE( ESCHER_ShpInst_PictureFrame,
-                    0xa00 | (bAppOLE ? SHAPEFLAG_OLESHAPE : 0) );
+                const bool bAppOLE = true;
+                addShape( ESCHER_ShpInst_PictureFrame,
+                    ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor | (bAppOLE ? ShapeFlag::OLEShape : ShapeFlag::NONE) );
                 if ( aPropOpt.CreateOLEGraphicProperties( rObj.GetShapeRef() ) )
                 {
                     if ( bAppOLE )
@@ -618,16 +622,16 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
                 break;
 
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
-            ADD_SHAPE( ESCHER_ShpInst_PictureFrame, 0xa00 );
+            addShape( ESCHER_ShpInst_PictureFrame, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
 
-                if ( aPropOpt.CreateGraphicProperties( rObj.mXPropSet, "Bitmap", false ) )
+            if ( aPropOpt.CreateGraphicProperties( rObj.mXPropSet, "Bitmap", false ) )
                 aPropOpt.AddOpt( ESCHER_Prop_LockAgainstGrouping, 0x800080 );
         }
         else if ( rObj.GetType() == "drawing.Caption" )
         {
             rObj.SetAngle( 0 );
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
-            ADD_SHAPE( ESCHER_ShpInst_TextBox, 0xa00 );
+            addShape( ESCHER_ShpInst_TextBox, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
             if ( aPropOpt.CreateGraphicProperties( rObj.mXPropSet, "MetaFile", false ) )
                 aPropOpt.AddOpt( ESCHER_Prop_LockAgainstGrouping, 0x800080 );
         }
@@ -635,7 +639,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
         {
             rObj.SetAngle( 0 );
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
-            ADD_SHAPE( ESCHER_ShpInst_PictureFrame, 0xa00 );
+            addShape( ESCHER_ShpInst_PictureFrame, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
             if ( aPropOpt.CreateGraphicProperties( rObj.mXPropSet, "MetaFile", false ) )
                 aPropOpt.AddOpt( ESCHER_Prop_LockAgainstGrouping, 0x800080 );
         }
@@ -680,7 +684,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
         if( bAdditionalText )
         {
             mpEscherEx->EndShape( nShapeType, nShapeID );
-            ImplWriteAdditionalText( rObj, aTextRefPoint );
+            ImplWriteAdditionalText( rObj );
         }
 
     } while ( false );
@@ -692,8 +696,7 @@ sal_uInt32 ImplEESdrWriter::ImplWriteShape( ImplEESdrObject& rObj,
     return nShapeID;
 }
 
-void ImplEESdrWriter::ImplWriteAdditionalText( ImplEESdrObject& rObj,
-                                                const Point& rTextRefPoint )
+void ImplEESdrWriter::ImplWriteAdditionalText( ImplEESdrObject& rObj )
 {
     sal_uInt32 nShapeID = 0;
     sal_uInt16 nShapeType = 0;
@@ -709,18 +712,18 @@ void ImplEESdrWriter::ImplWriteAdditionalText( ImplEESdrObject& rObj,
         if ( !mpPicStrm )
             mpPicStrm = mpEscherEx->QueryPictureStream();
         EscherPropertyContainer aPropOpt( mpEscherEx->GetGraphicProvider(), mpPicStrm, aRect100thmm );
-        rObj.SetAngle( rObj.ImplGetInt32PropertyValue( OUString( "RotateAngle" )));
+        rObj.SetAngle( rObj.ImplGetInt32PropertyValue( "RotateAngle" ));
         sal_Int32 nAngle = rObj.GetAngle();
         if( rObj.GetType() == "drawing.Line" )
         {
 //2do: this does not work right
             double fDist = hypot( rObj.GetRect().GetWidth(),
                                     rObj.GetRect().GetHeight() );
-            rObj.SetRect( tools::Rectangle( rTextRefPoint,
-                            Point( (sal_Int32)( rTextRefPoint.X() + fDist ), rTextRefPoint.Y() - 1 ) ) );
+            rObj.SetRect( tools::Rectangle( Point(),
+                            Point( static_cast<sal_Int32>( fDist ), -1 ) ) );
 
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
-            mpEscherEx->AddShape( ESCHER_ShpInst_TextBox, 0xa00 );
+            mpEscherEx->AddShape( ESCHER_ShpInst_TextBox, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor );
             if ( rObj.ImplGetText() )
                 aPropOpt.CreateTextProperties( rObj.mXPropSet,
                     mpEscherEx->QueryTextID( rObj.GetShapeRef(),
@@ -738,7 +741,8 @@ void ImplEESdrWriter::ImplWriteAdditionalText( ImplEESdrObject& rObj,
         {
             mpEscherEx->OpenContainer( ESCHER_SpContainer );
             nShapeID = mpEscherEx->GenerateShapeId();
-            mpEscherEx->AddShape( nShapeType = ESCHER_ShpInst_TextBox, 0xa00, nShapeID );
+            nShapeType = ESCHER_ShpInst_TextBox;
+            mpEscherEx->AddShape( nShapeType, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor, nShapeID );
             if ( rObj.ImplGetText() )
                 aPropOpt.CreateTextProperties( rObj.mXPropSet,
                     mpEscherEx->QueryTextID( rObj.GetShapeRef(),
@@ -803,11 +807,9 @@ sal_uInt32 ImplEESdrWriter::ImplEnterAdditionalTextGroup( const Reference< XShap
 }
 
 
-bool ImplEESdrWriter::ImplInitPageValues()
+void ImplEESdrWriter::ImplInitPageValues()
 {
     mbIsTitlePossible = true;       // With more than one title PowerPoint will fail.
-
-    return true;
 }
 
 void ImplEESdrWriter::ImplWritePage(
@@ -815,20 +817,14 @@ void ImplEESdrWriter::ImplWritePage(
 {
     ImplInitPageValues();
 
-    sal_uInt32 nLastPer = 0, nShapes = mXShapes->getCount();
+    const sal_uInt32 nShapes = mXShapes->getCount();
     for( sal_uInt32 n = 0; n < nShapes; ++n )
     {
-        sal_uInt32 nPer = ( 5 * n ) / nShapes;
-        if( nPer != nLastPer )
-        {
-            nLastPer = nPer;
-        }
-
         ImplEESdrObject aObj( *this, *o3tl::doAccess<Reference<XShape>>(
                                     mXShapes->getByIndex( n )) );
         if( aObj.IsValid() )
         {
-            ImplWriteShape( aObj, rSolverContainer );
+            ImplWriteShape( aObj, rSolverContainer, true );
         }
     }
 }
@@ -839,7 +835,6 @@ ImplEESdrWriter::~ImplEESdrWriter()
     Reference<css::lang::XComponent> xComp(mXDrawPage, UNO_QUERY);
     if (xComp.is())
         xComp->dispose();
-    delete mpSolverContainer;
 }
 
 
@@ -856,17 +851,16 @@ bool ImplEESdrWriter::ImplInitPage( const SdrPage& rPage )
         if (xOldDrawPage.is())
             xOldDrawPage->dispose();
         mXDrawPage = pSvxDrawPage = new SvxFmDrawPage( const_cast<SdrPage*>(&rPage) );
-        mXShapes.set( mXDrawPage, UNO_QUERY );
+        mXShapes = mXDrawPage;
         if ( !mXShapes.is() )
             return false;
-        if ( !ImplInitPageValues() )    // ImplEESdrWriter
-            return false;
+        ImplInitPageValues();
         mpSdrPage = &rPage;
 
-        mpSolverContainer = new EscherSolverContainer;
+        mpSolverContainer.reset( new EscherSolverContainer );
     }
     else
-        pSvxDrawPage = SvxDrawPage::getImplementation(mXDrawPage);
+        pSvxDrawPage = comphelper::getUnoTunnelImplementation<SvxDrawPage>(mXDrawPage);
 
     return pSvxDrawPage != nullptr;
 }
@@ -883,10 +877,9 @@ bool ImplEESdrWriter::ImplInitUnoShapes( const Reference< XShapes >& rxShapes )
     mXDrawPage.clear();
     mXShapes = rxShapes;
 
-    if( !ImplInitPageValues() )    // ImplEESdrWriter
-        return false;
+    ImplInitPageValues();
 
-    mpSolverContainer = new EscherSolverContainer;
+    mpSolverContainer.reset( new EscherSolverContainer );
     return true;
 }
 
@@ -906,8 +899,7 @@ void ImplEESdrWriter::ImplFlushSolverContainer()
     if ( mpSolverContainer )
     {
         mpSolverContainer->WriteSolver( mpEscherEx->GetStream() );
-        delete mpSolverContainer;
-        mpSolverContainer = nullptr;
+        mpSolverContainer.reset();
     }
 }
 
@@ -964,12 +956,12 @@ sal_uInt32 EscherEx::QueryTextID( const Reference< XShape >&, sal_uInt32 )
     return 0;
 }
 
-// add an dummy rectangle shape into the escher stream
+// add a dummy rectangle shape into the escher stream
 sal_uInt32 EscherEx::AddDummyShape()
 {
     OpenContainer( ESCHER_SpContainer );
     sal_uInt32 nShapeID = GenerateShapeId();
-    AddShape( ESCHER_ShpInst_Rectangle, 0xa00, nShapeID );
+    AddShape( ESCHER_ShpInst_Rectangle, ShapeFlag::HaveShapeProperty | ShapeFlag::HaveAnchor, nShapeID );
     CloseContainer();
 
     return nShapeID;
@@ -979,7 +971,7 @@ sal_uInt32 EscherEx::AddDummyShape()
 const SdrObject* EscherEx::GetSdrObject( const Reference< XShape >& rShape )
 {
     const SdrObject* pRet = nullptr;
-    const SvxShape* pSvxShape = SvxShape::getImplementation( rShape );
+    const SvxShape* pSvxShape = comphelper::getUnoTunnelImplementation<SvxShape>( rShape );
     DBG_ASSERT( pSvxShape, "EscherEx::GetSdrObject: no SvxShape" );
     if( pSvxShape )
     {
@@ -1000,7 +992,7 @@ ImplEESdrObject::ImplEESdrObject( ImplEESdrWriter& rEx,
     mbEmptyPresObj( false ),
     mbOOXML(bOOXML)
 {
-    SdrPage* pPage = rObj.GetPage();
+    SdrPage* pPage = rObj.getSdrPageFromSdrObject();
     DBG_ASSERT( pPage, "ImplEESdrObject::ImplEESdrObject: no SdrPage" );
     if( pPage && rEx.ImplInitPage( *pPage ) )
     {
@@ -1030,7 +1022,7 @@ ImplEESdrObject::~ImplEESdrObject()
 {
 }
 
-basegfx::B2DRange getUnrotatedGroupBoundRange(const Reference< XShape >& rxShape)
+static basegfx::B2DRange getUnrotatedGroupBoundRange(const Reference< XShape >& rxShape)
 {
     basegfx::B2DRange aRetval;
 
@@ -1136,39 +1128,39 @@ basegfx::B2DRange getUnrotatedGroupBoundRange(const Reference< XShape >& rxShape
 void ImplEESdrObject::Init( ImplEESdrWriter& rEx )
 {
     mXPropSet.set( mXShape, UNO_QUERY );
-    if( mXPropSet.is() )
+    if( !mXPropSet.is() )
+        return;
+
+    // detect name first to make below test (is group) work
+    mType = mXShape->getShapeType();
+    (void)mType.startsWith( "com.sun.star.", &mType );  // strip "com.sun.star."
+    (void)mType.endsWith( "Shape", &mType );  // strip "Shape"
+
+    if(GetType() == "drawing.Group")
     {
-        // detect name first to make below test (is group) work
-        mType = mXShape->getShapeType();
-        (void)mType.startsWith( "com.sun.star.", &mType );  // strip "com.sun.star."
-        (void)mType.endsWith( "Shape", &mType );  // strip "Shape"
+        // if it's a group, the unrotated range is needed for that group
+        const basegfx::B2DRange aUnroatedRange(getUnrotatedGroupBoundRange(mXShape));
+        const Point aNewP(basegfx::fround(aUnroatedRange.getMinX()), basegfx::fround(aUnroatedRange.getMinY()));
+        const Size aNewS(basegfx::fround(aUnroatedRange.getWidth()), basegfx::fround(aUnroatedRange.getHeight()));
 
-        if(GetType() == "drawing.Group")
-        {
-            // if it's a group, the unrotated range is needed for that group
-            const basegfx::B2DRange aUnroatedRange(getUnrotatedGroupBoundRange(mXShape));
-            const Point aNewP(basegfx::fround(aUnroatedRange.getMinX()), basegfx::fround(aUnroatedRange.getMinY()));
-            const Size aNewS(basegfx::fround(aUnroatedRange.getWidth()), basegfx::fround(aUnroatedRange.getHeight()));
-
-            SetRect(rEx.ImplMapPoint(aNewP), rEx.ImplMapSize(aNewS));
-        }
-        else
-        {
-            // if it's no group, use position and size directly, rotated/sheared or not
-            const Point aOldP(mXShape->getPosition().X, mXShape->getPosition().Y);
-            const Size aOldS(mXShape->getSize().Width, mXShape->getSize().Height);
-
-            SetRect(rEx.ImplMapPoint(aOldP), rEx.ImplMapSize(aOldS));
-        }
-
-        if( ImplGetPropertyValue( "IsPresentationObject" ) )
-            mbPresObj = ::cppu::any2bool( mAny );
-
-        if( mbPresObj && ImplGetPropertyValue( "IsEmptyPresentationObject" ) )
-            mbEmptyPresObj = ::cppu::any2bool( mAny );
-
-        mbValid = true;
+        SetRect(rEx.ImplMapPoint(aNewP), rEx.ImplMapSize(aNewS));
     }
+    else
+    {
+        // if it's no group, use position and size directly, rotated/sheared or not
+        const Point aOldP(mXShape->getPosition().X, mXShape->getPosition().Y);
+        const Size aOldS(mXShape->getSize().Width, mXShape->getSize().Height);
+
+        SetRect(rEx.ImplMapPoint(aOldP), rEx.ImplMapSize(aOldS));
+    }
+
+    if( ImplGetPropertyValue( "IsPresentationObject" ) )
+        mbPresObj = ::cppu::any2bool( mAny );
+
+    if( mbPresObj && ImplGetPropertyValue( "IsEmptyPresentationObject" ) )
+        mbEmptyPresObj = ::cppu::any2bool( mAny );
+
+    mbValid = true;
 }
 
 bool ImplEESdrObject::ImplGetPropertyValue( const OUString& rString )
@@ -1211,9 +1203,9 @@ sal_uInt32 ImplEESdrObject::ImplGetText()
         {
             mnTextSize = xXText->getString().getLength();
         }
-        catch (const uno::RuntimeException& e)
+        catch (const uno::RuntimeException&)
         {
-            SAL_WARN("filter.ms", "ImplGetText exception: " << e.Message);
+            TOOLS_WARN_EXCEPTION("filter.ms", "ImplGetText");
         }
     }
     return mnTextSize;

@@ -62,37 +62,37 @@
 
 #include <memory>
 
-#include "lwp9reader.hxx"
+#include <lwpfilehdr.hxx>
 #include "lwpgrfobj.hxx"
 #include "lwpsdwfileloader.hxx"
 #include "bento.hxx"
 
-#include "lwpglobalmgr.hxx"
+#include <lwpglobalmgr.hxx>
+#include <o3tl/numeric.hxx>
 #include "lwpframelayout.hxx"
 
-#include "xfilter/xfframe.hxx"
-#include "xfilter/xfimage.hxx"
-#include "xfilter/xfimagestyle.hxx"
-#include "xfilter/xfstylemanager.hxx"
-#include "xfilter/xfparagraph.hxx"
-#include "xfilter/xfannotation.hxx"
+#include <xfilter/xfframe.hxx>
+#include <xfilter/xfimage.hxx>
+#include <xfilter/xfimagestyle.hxx>
+#include <xfilter/xfstylemanager.hxx>
+#include <xfilter/xfparagraph.hxx>
+#include <xfilter/xfannotation.hxx>
 
 //For chart
-#include "string.h"
+#include <string.h>
 
 #include <osl/thread.h>
+#include <sal/log.hxx>
 
 #define EF_NONE 0x0000
 #define EF_ODMA 0x0002
 
-LwpGraphicObject::LwpGraphicObject(LwpObjectHeader &objHdr, LwpSvStream* pStrm)
+LwpGraphicObject::LwpGraphicObject(LwpObjectHeader const &objHdr, LwpSvStream* pStrm)
     : LwpGraphicOleObject(objHdr, pStrm)
     , m_nCachedBaseLine(0)
     , m_bIsLinked(0)
     , m_bCompressed(0)
 {
-    memset(m_sDataFormat, 0, sizeof(m_sDataFormat));
-    memset(m_sServerContextFormat, 0, sizeof(m_sServerContextFormat));
 }
 
 LwpGraphicObject::~LwpGraphicObject()
@@ -110,7 +110,6 @@ void LwpGraphicObject::Read()
         m_sDataFormat[strsize] = '\0';
     }
     sal_uInt32 nServerContextSize = m_pObjStrm->QuickReaduInt32();
-    unsigned char *pServerContext = nullptr;
     if (nServerContextSize > 0)
     {
         sal_uInt16 nMaxPossibleSize = m_pObjStrm->remainingSize();
@@ -121,16 +120,16 @@ void LwpGraphicObject::Read()
             nServerContextSize = nMaxPossibleSize;
         }
 
-        pServerContext = new unsigned char[nServerContextSize];
-        m_pObjStrm->QuickRead(pServerContext, static_cast<sal_uInt16>(nServerContextSize));
+        std::vector<unsigned char> aServerContext(nServerContextSize);
+        m_pObjStrm->QuickRead(aServerContext.data(), static_cast<sal_uInt16>(nServerContextSize));
         if (nServerContextSize > 44)
         {
-            m_aIPData.nBrightness = pServerContext[14];
-            m_aIPData.nContrast = pServerContext[19];
-            m_aIPData.nEdgeEnchancement = pServerContext[24];
-            m_aIPData.nSmoothing = pServerContext[29];
-            m_aIPData.bInvertImage = (pServerContext[34] == 0x01);
-            m_aIPData.bAutoContrast = (pServerContext[44] == 0x00);
+            m_aIPData.nBrightness = aServerContext[14];
+            m_aIPData.nContrast = aServerContext[19];
+            m_aIPData.nEdgeEnchancement = aServerContext[24];
+            m_aIPData.nSmoothing = aServerContext[29];
+            m_aIPData.bInvertImage = (aServerContext[34] == 0x01);
+            m_aIPData.bAutoContrast = (aServerContext[44] == 0x00);
         }
     }
     m_pObjStrm->QuickReaduInt16(); //disksize
@@ -151,7 +150,6 @@ void LwpGraphicObject::Read()
     }
     m_nCachedBaseLine = m_pObjStrm->QuickReadInt32();
     m_bIsLinked = m_pObjStrm->QuickReadInt16();
-    unsigned char * pFilterContext = nullptr;
 
     if (m_bIsLinked)
     {
@@ -168,8 +166,8 @@ void LwpGraphicObject::Read()
                 nFilterContextSize = nMaxPossibleSize;
             }
 
-            pFilterContext = new unsigned char[nFilterContextSize];
-            m_pObjStrm->QuickRead(pFilterContext, static_cast<sal_uInt16>(nFilterContextSize));
+            std::vector<unsigned char> aFilterContext(nFilterContextSize);
+            m_pObjStrm->QuickRead(aFilterContext.data(), static_cast<sal_uInt16>(nFilterContextSize));
         }
         if (LwpFileHeader::m_nFileRevision >= 0x000b)
         {
@@ -198,19 +196,15 @@ void LwpGraphicObject::Read()
     {
         m_WatermarkName = m_pObjStrm->QuickReadStringPtr();
     }
-
-    delete[] pServerContext;
-    delete[] pFilterContext;
 }
 
 void LwpGraphicObject::XFConvert (XFContentContainer* pCont)
 {
-    if ((m_sServerContextFormat[1]=='s'&&m_sServerContextFormat[2]=='d'&&m_sServerContextFormat[3]=='w'))
+    if (m_sServerContextFormat[1]=='s'&&m_sServerContextFormat[2]=='d'&&m_sServerContextFormat[3]=='w')
     {
-        std::vector< rtl::Reference<XFFrame> >::iterator iter;
-        for (iter = m_vXFDrawObjects.begin(); iter != m_vXFDrawObjects.end(); ++iter)
+        for (auto const& vXFDrawObject : m_vXFDrawObjects)
         {
-            pCont->Add(iter->get());
+            pCont->Add(vXFDrawObject.get());
         }
     }
     else if (IsGrafFormatValid() && !m_vXFDrawObjects.empty())
@@ -224,22 +218,13 @@ void LwpGraphicObject::XFConvert (XFContentContainer* pCont)
         }
         else
         {
-            sal_uInt8* pGrafData = nullptr;
-            sal_uInt32 nDataLen = GetRawGrafData(pGrafData);
-
-            if (pGrafData)
-            {
-                pImage->SetImageData(pGrafData, nDataLen);
-
-                // delete used image data
-                delete [] pGrafData;
-                pGrafData = nullptr;
-            }
+            std::vector<sal_uInt8> aGrafData = GetRawGrafData();
+            pImage->SetImageData(aGrafData.data(), aGrafData.size());
         }
 
         pCont->Add(pImage);
     }
-    else if((m_sServerContextFormat[1]=='t'&&m_sServerContextFormat[2]=='e'&&m_sServerContextFormat[3]=='x'))
+    else if(m_sServerContextFormat[1]=='t'&&m_sServerContextFormat[2]=='e'&&m_sServerContextFormat[3]=='x')
     {
         XFConvertEquation(pCont);
     }
@@ -250,7 +235,7 @@ void LwpGraphicObject::XFConvert (XFContentContainer* pCont)
  *  these formats by Word Pro.
  * @return  sal_True if yes sal_False if not.
  */
-bool LwpGraphicObject::IsGrafFormatValid()
+bool LwpGraphicObject::IsGrafFormatValid() const
 {
     return (m_sServerContextFormat[1]=='b'&& m_sServerContextFormat[2]=='m' && m_sServerContextFormat[3]=='p')
     || (m_sServerContextFormat[1]=='j' && m_sServerContextFormat[2]=='p' && m_sServerContextFormat[3]=='g')
@@ -281,11 +266,11 @@ void LwpGraphicObject::RegisterStyle()
         rtl::Reference<LwpVirtualLayout> xMyLayout(GetLayout(nullptr));
         if (xMyLayout.is() && xMyLayout->IsFrame())
         {
-            XFFrameStyle* pXFFrameStyle = new XFFrameStyle();
+            std::unique_ptr<XFFrameStyle> pXFFrameStyle(new XFFrameStyle());
             pXFFrameStyle->SetXPosType(enumXFFrameXPosFromLeft, enumXFFrameXRelFrame);
             pXFFrameStyle->SetYPosType(enumXFFrameYPosFromTop, enumXFFrameYRelPara);
             XFStyleManager* pXFStyleManager = LwpGlobalMgr::GetInstance()->GetXFStyleManager();
-            m_strStyleName = pXFStyleManager->AddStyle(pXFFrameStyle).m_pStyle->GetStyleName();
+            m_strStyleName = pXFStyleManager->AddStyle(std::move(pXFFrameStyle)).m_pStyle->GetStyleName();
         }
     }
 
@@ -299,12 +284,10 @@ void LwpGraphicObject::CreateDrawObjects()
     // if small file, use the compressed stream for BENTO
     LwpSvStream* pStream = m_pStrm->GetCompressedStream() ?  m_pStrm->GetCompressedStream(): m_pStrm;
 
-    OpenStormBento::LtcBenContainer* pBentoContainer;
+    std::unique_ptr<OpenStormBento::LtcBenContainer> pBentoContainer;
     sal_uLong ulRet = OpenStormBento::BenOpenContainer(pStream, &pBentoContainer);
     if (ulRet != OpenStormBento::BenErr_OK)
         return;
-
-    SvStream* pDrawObjStream = nullptr;
 
     // get graphic object's bento object name
     LwpObjectID& rMyID = GetObjectID();
@@ -312,75 +295,55 @@ void LwpGraphicObject::CreateDrawObjects()
     GetBentoNamebyID(rMyID,  aGrfObjName);
 
     // get bento stream by the name
-    pBentoContainer->CreateGraphicStream(pDrawObjStream, aGrfObjName.c_str());
-    if (pDrawObjStream)
+    std::vector<sal_uInt8> aData = pBentoContainer->GetGraphicData(aGrfObjName.c_str());
+    if (!aData.empty())
     {
-        LwpSdwFileLoader fileLoader(pDrawObjStream, this);
-        fileLoader.CreateDrawObjects(&m_vXFDrawObjects);
+        SvMemoryStream aDrawObjStream(aData.data(), aData.size(), StreamMode::READ);
 
-        delete pDrawObjStream;
-        pDrawObjStream = nullptr;
+        LwpSdwFileLoader fileLoader(&aDrawObjStream, this);
+        fileLoader.CreateDrawObjects(&m_vXFDrawObjects);
     }
 }
 
 /**
  * @descr   create drawing object.
  */
-void LwpGraphicObject::GetBentoNamebyID(LwpObjectID& rMyID, std::string& rName)
+void LwpGraphicObject::GetBentoNamebyID(LwpObjectID const & rMyID, std::string& rName)
 {
     sal_uInt16 nHigh = rMyID.GetHigh();
-    sal_uInt16 nLow = rMyID.GetLow();
+    sal_uInt32 nLow = rMyID.GetLow();
     char pTempStr[32];
     rName = std::string("Gr");
-    sprintf(pTempStr, "%X,%X", nHigh, nLow);
+    sprintf(pTempStr, "%X,%" SAL_PRIXUINT32, nHigh, nLow);
     rName.append(pTempStr);
 }
 
 /**
  * @descr   get the image data read from bento stream according to the VO_GRAPHIC ID.
- * @param   pGrafData   the array to store the image data. the pointer need to be deleted outside.
- * @return  the length of the image data.
+ * @return  the image data.
  */
-sal_uInt32 LwpGraphicObject::GetRawGrafData(sal_uInt8*& pGrafData)
+std::vector<sal_uInt8> LwpGraphicObject::GetRawGrafData()
 {
+    std::vector<sal_uInt8> aGrafData;
+
     // create graphic object
     // if small file, use the compressed stream for BENTO
     LwpSvStream* pStream = m_pStrm->GetCompressedStream() ?  m_pStrm->GetCompressedStream(): m_pStrm;
 
     std::unique_ptr<OpenStormBento::LtcBenContainer> pBentoContainer;
     {
-        OpenStormBento::LtcBenContainer* pTmp(nullptr);
-        sal_uLong ulRet = OpenStormBento::BenOpenContainer(pStream, &pTmp);
-        pBentoContainer.reset(pTmp);
+        sal_uLong ulRet = OpenStormBento::BenOpenContainer(pStream, &pBentoContainer);
         if (ulRet != OpenStormBento::BenErr_OK)
-            return 0;
+            return aGrafData;
     }
-
-    SvStream* pGrafStream = nullptr;
 
     // get graphic object's bento object name
     LwpObjectID& rMyID = GetObjectID();
     std::string aGrfObjName;
     GetBentoNamebyID(rMyID,  aGrfObjName);
 
-    // get bento stream by the name
-    pBentoContainer->CreateGraphicStream(pGrafStream, aGrfObjName.c_str());
-    SvMemoryStream* pMemGrafStream = static_cast<SvMemoryStream*>(pGrafStream);
-
-    if (pMemGrafStream)
-    {
-        // read image data
-        sal_uInt32 nDataLen = pMemGrafStream->GetEndOfData();
-        pGrafData = new sal_uInt8 [nDataLen];
-        pMemGrafStream->ReadBytes(pGrafData, nDataLen);
-
-        delete pMemGrafStream;
-        pMemGrafStream = nullptr;
-
-        return nDataLen;
-    }
-
-    return 0;
+    // get bento stream by the name and read image data
+    return pBentoContainer->GetGraphicData(aGrfObjName.c_str());
 }
 
 /**
@@ -388,13 +351,13 @@ sal_uInt32 LwpGraphicObject::GetRawGrafData(sal_uInt8*& pGrafData)
  * @param   pGrafData   the array to store the image data. the pointer need to be deleted outside.
  * @return  the length of the image data.
  */
-sal_uInt32 LwpGraphicObject::GetGrafData(sal_uInt8*& pGrafData)
+sal_uInt32 LwpGraphicObject::GetGrafData(std::unique_ptr<sal_uInt8[]>& pGrafData)
 {
     // create graphic object
     // if small file, use the compressed stream for BENTO
     LwpSvStream* pStream = m_pStrm->GetCompressedStream() ?  m_pStrm->GetCompressedStream(): m_pStrm;
 
-    OpenStormBento::LtcBenContainer* pBentoContainer;
+    std::unique_ptr<OpenStormBento::LtcBenContainer> pBentoContainer;
     sal_uLong ulRet = OpenStormBento::BenOpenContainer(pStream, &pBentoContainer);
     if (ulRet != OpenStormBento::BenErr_OK)
         return 0;
@@ -412,21 +375,15 @@ sal_uInt32 LwpGraphicObject::GetGrafData(sal_uInt8*& pGrafData)
     // get bento stream by the name
     pGrafStream = pBentoContainer->FindValueStreamWithPropertyName(sDName);
 
-    SvMemoryStream* pMemGrafStream = static_cast<SvMemoryStream*>(pGrafStream);
+    std::unique_ptr<SvMemoryStream> pMemGrafStream(static_cast<SvMemoryStream*>(pGrafStream));
 
     if (pMemGrafStream)
     {
         // read image data
-        sal_uInt32 nPos = pGrafStream->Tell();
-        pGrafStream->Seek(STREAM_SEEK_TO_END);
-        sal_uInt32 nDataLen = pGrafStream->Tell();
-        pGrafStream->Seek(nPos);
+        sal_uInt32 nDataLen = pGrafStream->TellEnd();
 
-        pGrafData = new sal_uInt8 [nDataLen];
-        pMemGrafStream->ReadBytes(pGrafData, nDataLen);
-
-        delete pMemGrafStream;
-        pMemGrafStream = nullptr;
+        pGrafData.reset(new sal_uInt8 [nDataLen]);
+        pMemGrafStream->ReadBytes(pGrafData.get(), nDataLen);
 
         return nDataLen;
     }
@@ -442,18 +399,18 @@ void LwpGraphicObject::CreateGrafObject()
     rtl::Reference<XFImage> pImage = new XFImage();
 
     // set image processing styles
-    XFImageStyle* pImageStyle = new XFImageStyle();
+    std::unique_ptr<XFImageStyle> xImageStyle(new XFImageStyle);
     if (m_sServerContextFormat[1]!='w' || m_sServerContextFormat[2]!='m' || m_sServerContextFormat[3]!='f')
     {
         if (m_aIPData.nBrightness != 50)
         {
-            sal_Int32 nSODCBrightness = (sal_Int32)m_aIPData.nBrightness*2 - 100;
-            pImageStyle->SetBrightness(nSODCBrightness);
+            sal_Int32 nSODCBrightness = static_cast<sal_Int32>(m_aIPData.nBrightness)*2 - 100;
+            xImageStyle->SetBrightness(nSODCBrightness);
         }
         if (m_aIPData.nContrast != 50)
         {
-            sal_Int32 nSODCContrast = (sal_Int32)(80 - (double)m_aIPData.nContrast*1.6);
-            pImageStyle->SetContrast(nSODCContrast);
+            sal_Int32 nSODCContrast = static_cast<sal_Int32>(80 - static_cast<double>(m_aIPData.nContrast)*1.6);
+            xImageStyle->SetContrast(nSODCContrast);
         }
     }
 
@@ -467,8 +424,8 @@ void LwpGraphicObject::CreateGrafObject()
         LwpLayoutGeometry* pFrameGeo = pMyFrameLayout->GetGeometry();
 
         // original image size
-        double fOrgGrafWidth = (double)m_Cache.Width/TWIPS_PER_CM;
-        double fOrgGrafHeight = (double)m_Cache.Height/TWIPS_PER_CM;
+        double fOrgGrafWidth = static_cast<double>(m_Cache.Width)/TWIPS_PER_CM;
+        double fOrgGrafHeight = static_cast<double>(m_Cache.Height)/TWIPS_PER_CM;
 
         // get margin values
         double fLeftMargin = pMyFrameLayout->GetMarginsValue(MARGIN_LEFT);
@@ -478,6 +435,9 @@ void LwpGraphicObject::CreateGrafObject()
 
         if (pMyScale && pFrameGeo)
         {
+            if (fOrgGrafHeight == 0.0 || fOrgGrafWidth == 0.0)
+                throw o3tl::divide_by_zero();
+
             // frame size
             double fFrameWidth = LwpTools::ConvertFromUnitsToMetric(pFrameGeo->GetWidth());
             double fFrameHeight = LwpTools::ConvertFromUnitsToMetric(pFrameGeo->GetHeight());
@@ -499,7 +459,7 @@ void LwpGraphicObject::CreateGrafObject()
             }
             else if (nScalemode & LwpLayoutScale::PERCENTAGE)
             {
-                double fScalePercentage = (double)pMyScale->GetScalePercentage() / 1000;
+                double fScalePercentage = static_cast<double>(pMyScale->GetScalePercentage()) / 1000;
                 fSclGrafWidth = fScalePercentage * fOrgGrafWidth;
                 fSclGrafHeight = fScalePercentage * fOrgGrafHeight;
             }
@@ -512,6 +472,8 @@ void LwpGraphicObject::CreateGrafObject()
                 }
                 else if (nScalemode & LwpLayoutScale::MAINTAIN_ASPECT_RATIO)
                 {
+                    if (fDisFrameHeight == 0.0)
+                        throw o3tl::divide_by_zero();
                     if (fOrgGrafWidth/fOrgGrafHeight >= fDisFrameWidth/fDisFrameHeight)
                     {
                         fSclGrafWidth = fDisFrameWidth;
@@ -542,8 +504,8 @@ void LwpGraphicObject::CreateGrafObject()
             if (pMyFrameLayout->GetScaleCenter() || pMyFrameLayout->GetScaleTile())
             {
                 // set center alignment
-                pImageStyle->SetXPosType(enumXFFrameXPosCenter, enumXFFrameXRelFrame);
-                pImageStyle->SetYPosType(enumXFFrameYPosMiddle, enumXFFrameYRelFrame);
+                xImageStyle->SetXPosType(enumXFFrameXPosCenter, enumXFFrameXRelFrame);
+                xImageStyle->SetYPosType(enumXFFrameYPosMiddle, enumXFFrameYRelFrame);
 
                 // need horizontal crop?
                 double fClipWidth = 0;
@@ -551,6 +513,8 @@ void LwpGraphicObject::CreateGrafObject()
                 bool sal_bCropped = false;
                 if (fSclGrafWidth > fDisFrameWidth)
                 {
+                    if (fXRatio == 0.0)
+                        throw o3tl::divide_by_zero();
                     fClipWidth = (fSclGrafWidth-fDisFrameWidth ) / 2 / fXRatio;
                     sal_bCropped = true;
                 }
@@ -558,13 +522,15 @@ void LwpGraphicObject::CreateGrafObject()
                 // need vertical crop?
                 if (fSclGrafHeight > fDisFrameHeight)
                 {
+                    if (fYRatio == 0.0)
+                        throw o3tl::divide_by_zero();
                     fClipHeight = (fSclGrafHeight-fDisFrameHeight ) / 2 / fYRatio;
                     sal_bCropped = true;
                 }
 
                 if (sal_bCropped)
                 {
-                    pImageStyle->SetClip(fClipWidth, fClipWidth, fClipHeight, fClipHeight);
+                    xImageStyle->SetClip(fClipWidth, fClipWidth, fClipHeight, fClipHeight);
                     pImage->SetWidth(fDisFrameWidth);
                     pImage->SetHeight(fDisFrameHeight);
                 }
@@ -573,8 +539,8 @@ void LwpGraphicObject::CreateGrafObject()
             else
             {
                 // set left-top alignment
-                pImageStyle->SetYPosType(enumXFFrameYPosFromTop, enumXFFrameYRelFrame);
-                pImageStyle->SetXPosType(enumXFFrameXPosFromLeft, enumXFFrameXRelFrame);
+                xImageStyle->SetYPosType(enumXFFrameYPosFromTop, enumXFFrameYRelFrame);
+                xImageStyle->SetXPosType(enumXFFrameXPosFromLeft, enumXFFrameXRelFrame);
 
                 // get image position offset
                 LwpPoint& rOffset = pMyScale->GetOffset();
@@ -603,7 +569,7 @@ void LwpGraphicObject::CreateGrafObject()
                         fBottom = fB;
                     }
                 };
-                LwpRect aFrameRect(-fOffsetX, (fDisFrameWidth-fOffsetX), (-fOffsetY), ((fDisFrameHeight-fOffsetY)));
+                LwpRect aFrameRect(-fOffsetX, (fDisFrameWidth-fOffsetX), (-fOffsetY), (fDisFrameHeight-fOffsetY));
                 LwpRect aImageRect(0, fSclGrafWidth, 0, fSclGrafHeight);
                 LwpRect aCropRect;
 
@@ -635,7 +601,7 @@ void LwpGraphicObject::CreateGrafObject()
                         aCropRect.fBottom = (aImageRect.fBottom - aFrameRect.fBottom) / fYRatio;
                     }
 
-                    pImageStyle->SetClip(aCropRect.fLeft, aCropRect.fRight, aCropRect.fTop, aCropRect.fBottom);
+                    xImageStyle->SetClip(aCropRect.fLeft, aCropRect.fRight, aCropRect.fTop, aCropRect.fBottom);
                     double fPicWidth = fSclGrafWidth - (aCropRect.fLeft+aCropRect.fRight)*fXRatio;
                     double fPicHeight = fSclGrafHeight- (aCropRect.fTop+aCropRect.fBottom)*fYRatio;
                     double fX = fOffsetX > 0 ? fOffsetX : 0.00;
@@ -648,7 +614,7 @@ void LwpGraphicObject::CreateGrafObject()
 
     // set style for the image
     XFStyleManager* pXFStyleManager = LwpGlobalMgr::GetInstance()->GetXFStyleManager();
-    pImage->SetStyleName(pXFStyleManager->AddStyle(pImageStyle).m_pStyle->GetStyleName());
+    pImage->SetStyleName(pXFStyleManager->AddStyle(std::move(xImageStyle)).m_pStyle->GetStyleName());
 
     // set anchor to frame
     pImage->SetAnchorType(enumXFAnchorFrame);
@@ -661,7 +627,7 @@ void LwpGraphicObject::CreateGrafObject()
     }
 
     // insert image object into array
-    m_vXFDrawObjects.push_back(pImage.get());
+    m_vXFDrawObjects.emplace_back(pImage.get());
 
 }
 
@@ -670,62 +636,58 @@ void LwpGraphicObject::CreateGrafObject()
  */
 void LwpGraphicObject::XFConvertEquation(XFContentContainer * pCont)
 {
-    sal_uInt8* pGrafData = nullptr;
+    std::unique_ptr<sal_uInt8[]> pGrafData;
     sal_uInt32 nDataLen = GetGrafData(pGrafData);
-    if(pGrafData)
+    if(!pGrafData)
+        return;
+
+    //convert equation
+    XFParagraph* pXFPara = new XFParagraph;
+    pXFPara->Add("Formula:");
+    //add notes
+    XFAnnotation* pXFNote = new XFAnnotation;
+    //add equation to comment notes
+    XFParagraph* pXFNotePara = new XFParagraph;
+    //equation header text: Times New Roman,
+    //                                18,12,0,0,0,0,0.
+    //                                 .TCIformat{2}
+    //total head length = 45
+    bool bOk = true;
+    sal_uInt32 nBegin = 45;
+    sal_uInt32 nEnd = 0;
+    if (nDataLen >= 1)
+        nEnd = nDataLen - 1;
+    else
+        bOk = false;
+
+    if (bOk && pGrafData[nEnd] == '$' && nEnd > 0 && pGrafData[nEnd-1] != '\\')
     {
-        //convert equation
-        XFParagraph* pXFPara = new XFParagraph;
-        pXFPara->Add("Formula:");
-        //add notes
-        XFAnnotation* pXFNote = new XFAnnotation;
-        //add equation to comment notes
-        XFParagraph* pXFNotePara = new XFParagraph;
-        //equation header text: Times New Roman,
-        //                                18,12,0,0,0,0,0.
-        //                                 .TCIformat{2}
-        //total head length = 45
-        bool bOk = true;
-        sal_uInt32 nBegin = 45;
-        sal_uInt32 nEnd = 0;
-        if (nDataLen >= 1)
-            nEnd = nDataLen - 1;
-        else
-            bOk = false;
-
-        if (bOk && pGrafData[nEnd] == '$' && nEnd > 0 && pGrafData[nEnd-1] != '\\')
-        {
-            //equation body is contained by '$';
-            nBegin++;
-            nEnd--;
-        }
-
-        bOk &= nEnd >= nBegin;
-        if (bOk)
-        {
-            std::unique_ptr<sal_uInt8[]> pEquData( new sal_uInt8[nEnd - nBegin + 1] );
-            for(sal_uInt32 nIndex = 0; nIndex < nEnd - nBegin +1 ; nIndex++)
-            {
-                pEquData[nIndex] = pGrafData[nBegin + nIndex];
-            }
-            pXFNotePara->Add(OUString(reinterpret_cast<char*>(pEquData.get()), (nEnd - nBegin + 1), osl_getThreadTextEncoding()));
-        }
-        pXFNote->Add(pXFNotePara);
-
-        pXFPara->Add(pXFNote);
-        pCont->Add(pXFPara);
-
-        delete [] pGrafData;
-        pGrafData = nullptr;
+        //equation body is contained by '$';
+        nBegin++;
+        nEnd--;
     }
 
+    bOk &= nEnd >= nBegin;
+    if (bOk)
+    {
+        std::unique_ptr<sal_uInt8[]> pEquData( new sal_uInt8[nEnd - nBegin + 1] );
+        for(sal_uInt32 nIndex = 0; nIndex < nEnd - nBegin +1 ; nIndex++)
+        {
+            pEquData[nIndex] = pGrafData[nBegin + nIndex];
+        }
+        pXFNotePara->Add(OUString(reinterpret_cast<char*>(pEquData.get()), (nEnd - nBegin + 1), osl_getThreadTextEncoding()));
+    }
+    pXFNote->Add(pXFNotePara);
+
+    pXFPara->Add(pXFNote);
+    pCont->Add(pXFPara);
 }
 
 void LwpGraphicObject::GetGrafOrgSize(double & rWidth, double & rHeight)
 {
     // original image size
-    rWidth = (double)m_Cache.Width/TWIPS_PER_CM;
-    rHeight = (double)m_Cache.Height/TWIPS_PER_CM;
+    rWidth = static_cast<double>(m_Cache.Width)/TWIPS_PER_CM;
+    rHeight = static_cast<double>(m_Cache.Height)/TWIPS_PER_CM;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

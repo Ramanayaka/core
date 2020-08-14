@@ -20,18 +20,15 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FPREPAREDSTATEMENT_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FPREPAREDSTATEMENT_HXX
 
-#include "file/filedllapi.hxx"
-#include "file/FStatement.hxx"
+#include <file/filedllapi.hxx>
+#include <file/FStatement.hxx>
 #include <com/sun/star/sdbc/XPreparedStatement.hpp>
 #include <com/sun/star/sdbc/XParameters.hpp>
 #include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
-#include <com/sun/star/sdbc/XPreparedBatchExecution.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
-#include "file/FResultSet.hxx"
+#include <file/FResultSet.hxx>
 
-namespace connectivity
-{
-    namespace file
+namespace connectivity::file
     {
 
         class OOO_DLLPUBLIC_FILE SAL_NO_VTABLE OPreparedStatement : public  OStatement_BASE2,
@@ -58,10 +55,10 @@ namespace connectivity
             void checkAndResizeParameters(sal_Int32 parameterIndex);
             void setParameter(sal_Int32 parameterIndex, const ORowSetValue& x);
 
-            sal_uInt32 AddParameter(connectivity::OSQLParseNode * pParameter,
+            sal_uInt32 AddParameter(connectivity::OSQLParseNode const * pParameter,
                                 const css::uno::Reference< css::beans::XPropertySet>& _xCol);
             void scanParameter(OSQLParseNode* pParseNode,std::vector< OSQLParseNode*>& _rParaNodes);
-            void describeColumn(OSQLParseNode* _pParameter,OSQLParseNode* _pNode,const OSQLTable& _xTable);
+            void describeColumn(OSQLParseNode const * _pParameter, OSQLParseNode const * _pNode, const OSQLTable& _xTable);
             void describeParameter();
 
             virtual void parseParamterElem(const OUString& _sColumnName,OSQLParseNode* pRow_Value_Constructor_Elem) override;
@@ -118,7 +115,7 @@ namespace connectivity
             // XResultSetMetaDataSupplier
             virtual css::uno::Reference< css::sdbc::XResultSetMetaData > SAL_CALL getMetaData(  ) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_FILE_FPREPAREDSTATEMENT_HXX
 

@@ -11,10 +11,9 @@
 #include <cppunit/TestAssert.h>
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
-#include <cppunit/plugin/TestPlugIn.h>
 
-#include "xmloff/fasttokenhandler.hxx"
-#include "xmloff/token/tokens.hxx"
+#include <fasttokenhandler.hxx>
+#include <xmloff/token/tokens.hxx>
 #include <xmloff/xmltoken.hxx>
 
 using namespace std;
@@ -63,6 +62,8 @@ void TokenmapTest::test_roundTrip()
 void TokenmapTest::test_listEquality()
 {
     //make sure the two token lists stay in sync
+    // This depends on same order in three places: XMLTokenEnum in include/xmloff/xmltoken.hxx,
+    // aTokenList in xmloff/source/core/xmltoken.cxx, and xmloff/source/token/tokens.txt
     for ( sal_Int32 nToken = 0; nToken < XML_TOKEN_COUNT; ++nToken )
     {
         Sequence< sal_Int8 > rUtf8Name = pTokenMap->getUtf8TokenName(nToken);

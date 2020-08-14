@@ -20,7 +20,9 @@
 #include "Tickmarks_Dates.hxx"
 #include "DateScaling.hxx"
 #include <rtl/math.hxx>
-#include "DateHelper.hxx"
+#include <osl/diagnose.h>
+#include <DateHelper.hxx>
+#include <com/sun/star/chart/TimeUnit.hpp>
 
 namespace chart
 {
@@ -35,23 +37,14 @@ DateTickFactory::DateTickFactory(
           const ExplicitScaleData& rScale, const ExplicitIncrementData& rIncrement )
             : m_aScale( rScale )
             , m_aIncrement( rIncrement )
-            , m_xInverseScaling(nullptr)
 {
     //@todo: make sure that the scale is valid for the scaling
 
     if( m_aScale.Scaling.is() )
     {
         m_xInverseScaling = m_aScale.Scaling->getInverseScaling();
-        OSL_ENSURE( m_xInverseScaling.is(), "each Scaling needs to return a inverse Scaling" );
+        OSL_ENSURE( m_xInverseScaling.is(), "each Scaling needs to return an inverse Scaling" );
     }
-
-    m_fScaledVisibleMin = m_aScale.Minimum;
-    if( m_xInverseScaling.is() )
-        m_fScaledVisibleMin = m_aScale.Scaling->doScaling(m_fScaledVisibleMin);
-
-    m_fScaledVisibleMax = m_aScale.Maximum;
-    if( m_xInverseScaling.is() )
-        m_fScaledVisibleMax = m_aScale.Scaling->doScaling(m_fScaledVisibleMax);
 }
 
 DateTickFactory::~DateTickFactory()
@@ -68,8 +61,8 @@ void DateTickFactory::getAllTicks( TickInfoArraysType& rAllTickInfos, bool bShif
 
     Date aNull(m_aScale.NullDate);
 
-    Date aDate = aNull + static_cast<long>(::rtl::math::approxFloor(m_aScale.Minimum));
-    Date aMaxDate = aNull + static_cast<long>(::rtl::math::approxFloor(m_aScale.Maximum));
+    Date aDate = aNull + static_cast<sal_Int32>(::rtl::math::approxFloor(m_aScale.Minimum));
+    Date aMaxDate = aNull + static_cast<sal_Int32>(::rtl::math::approxFloor(m_aScale.Maximum));
 
     uno::Reference< chart2::XScaling > xScaling(m_aScale.Scaling);
     uno::Reference< chart2::XScaling > xInverseScaling(m_xInverseScaling);
@@ -98,7 +91,7 @@ void DateTickFactory::getAllTicks( TickInfoArraysType& rAllTickInfos, bool bShif
         switch( m_aIncrement.MajorTimeInterval.TimeUnit )
         {
         case DAY:
-            aDate += m_aIncrement.MajorTimeInterval.Number;
+            aDate.AddDays( m_aIncrement.MajorTimeInterval.Number );
             break;
         case YEAR:
             aDate = DateHelper::GetDateSomeYearsAway( aDate, m_aIncrement.MajorTimeInterval.Number );
@@ -111,7 +104,7 @@ void DateTickFactory::getAllTicks( TickInfoArraysType& rAllTickInfos, bool bShif
     }
 
     //create minor date tickinfos
-    aDate = aNull + static_cast<long>(::rtl::math::approxFloor(m_aScale.Minimum));
+    aDate = aNull + static_cast<sal_Int32>(::rtl::math::approxFloor(m_aScale.Minimum));
     while( aDate<= aMaxDate )
     {
         if( bShifted && aDate==aMaxDate )
@@ -129,7 +122,7 @@ void DateTickFactory::getAllTicks( TickInfoArraysType& rAllTickInfos, bool bShif
         switch( m_aIncrement.MinorTimeInterval.TimeUnit )
         {
         case DAY:
-            aDate += m_aIncrement.MinorTimeInterval.Number;
+            aDate.AddDays( m_aIncrement.MinorTimeInterval.Number );
             break;
         case YEAR:
             aDate = DateHelper::GetDateSomeYearsAway( aDate, m_aIncrement.MinorTimeInterval.Number );

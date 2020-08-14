@@ -21,11 +21,11 @@
 #include <pattern/frame.hxx>
 #include <framework/framelistanalyzer.hxx>
 #include <services.h>
-#include <general.h>
 
 #include <com/sun/star/bridge/BridgeFactory.hpp>
 #include <com/sun/star/bridge/XBridgeFactory2.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
+#include <com/sun/star/frame/DispatchResultState.hpp>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/CommandGroup.hpp>
 #include <com/sun/star/frame/StartModule.hpp>
@@ -35,11 +35,11 @@
 #include <com/sun/star/beans/XFastPropertySet.hpp>
 #include <toolkit/helper/vclunohelper.hxx>
 
+#include <osl/diagnose.h>
 #include <vcl/window.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/syswin.hxx>
 #include <unotools/moduleoptions.hxx>
-#include <comphelper/processfactory.hxx>
 
 using namespace com::sun::star;
 
@@ -91,10 +91,7 @@ void SAL_CALL CloseDispatcher::dispatch(const css::util::URL&                   
 
 css::uno::Sequence< sal_Int16 > SAL_CALL CloseDispatcher::getSupportedCommandGroups()
 {
-    css::uno::Sequence< sal_Int16 > lGroups(2);
-    lGroups[0] = css::frame::CommandGroup::VIEW;
-    lGroups[1] = css::frame::CommandGroup::DOCUMENT;
-    return lGroups;
+    return  css::uno::Sequence< sal_Int16 >{css::frame::CommandGroup::VIEW, css::frame::CommandGroup::DOCUMENT};
 }
 
 css::uno::Sequence< css::frame::DispatchInformation > SAL_CALL CloseDispatcher::getConfigurableDispatchInformation(sal_Int16 nCommandGroup)
@@ -137,12 +134,12 @@ void SAL_CALL CloseDispatcher::dispatchWithNotification(const css::util::URL&   
     // SAFE -> ----------------------------------
     SolarMutexClearableGuard aWriteLock;
 
-    // This reference indicates, that we was already called before and
+    // This reference indicates, that we were already called before and
     // our asynchronous process was not finished yet.
-    // We have to reject double calls. Otherwhise we risk,
-    // that we try to close an already closed resource ...
-    // And its no problem to do nothing then. The UI user will try it again, if
-    // non of these jobs was successfully.
+    // We have to reject double calls. Otherwise we risk,
+    // that we try to close an already closed resource...
+    // And it is no problem to do nothing then. The UI user will try it again, if
+    // non of these jobs was successful.
     if (m_xSelfHold.is())
     {
         aWriteLock.clear();
@@ -200,7 +197,7 @@ void SAL_CALL CloseDispatcher::dispatchWithNotification(const css::util::URL&   
     // Do it asynchronous everytimes!
 
     // But don't forget to hold ourselves alive.
-    // We are called back from an environment, which doesn't know an uno reference.
+    // We are called back from an environment, which doesn't know a uno reference.
     // They call us back by using our c++ interface.
 
     m_xResultListener = xListener;
@@ -210,11 +207,11 @@ void SAL_CALL CloseDispatcher::dispatchWithNotification(const css::util::URL&   
     // <- SAFE ----------------------------------
 
     bool bIsSynchron = false;
-    for (sal_Int32 nArgs=0; nArgs<lArguments.getLength(); nArgs++ )
+    for (const css::beans::PropertyValue& rArg : lArguments )
     {
-        if ( lArguments[nArgs].Name == "SynchronMode" )
+        if ( rArg.Name == "SynchronMode" )
         {
-            lArguments[nArgs].Value >>= bIsSynchron;
+            rArg.Value >>= bIsSynchron;
             break;
         }
     }
@@ -291,7 +288,7 @@ IMPL_LINK_NOARG(CloseDispatcher, impl_asyncCallback, LinkParamNone*, void)
     // NOTE: There is a race between checking this and connections being created/destroyed before
     //       we close the frame / terminate the app.
     css::uno::Reference<css::bridge::XBridgeFactory2> bridgeFac( css::bridge::BridgeFactory::create(xContext) );
-    bool bHasActiveConnections = bridgeFac->getExistingBridges().getLength() > 0;
+    bool bHasActiveConnections = bridgeFac->getExistingBridges().hasElements();
 
     // a) If the current frame (where the close dispatch was requested for) does not have
     //    any parent frame ... it will close this frame only. Such frame isn't part of the
@@ -320,11 +317,11 @@ IMPL_LINK_NOARG(CloseDispatcher, impl_asyncCallback, LinkParamNone*, void)
             bTerminateApp = true;
     }
 
-    // d) Otherwhise we have to: close all views to the same document, close the
+    // d) Otherwise we have to: close all views to the same document, close the
     //    document inside our own frame and decide then again, what has to be done!
     else
     {
-        if (implts_prepareFrameForClosing(m_xCloseFrame, true/*bAllowSuspend*/, bCloseAllViewsToo, bControllerSuspended))
+        if (implts_prepareFrameForClosing(m_xCloseFrame, bCloseAllViewsToo, bControllerSuspended))
         {
             // OK; this frame is empty now.
             // Check the environment again to decide, what is the next step.
@@ -382,13 +379,10 @@ IMPL_LINK_NOARG(CloseDispatcher, impl_asyncCallback, LinkParamNone*, void)
         try
         {
             css::uno::Reference< css::beans::XFastPropertySet > xSet( xContext->getServiceManager()->createInstanceWithContext(IMPLEMENTATIONNAME_QUICKLAUNCHER, xContext), css::uno::UNO_QUERY_THROW );
-            if( xSet.is() )
-            {
-                css::uno::Any aVal( xSet->getFastPropertyValue( 0 ) );
-                bool bState = false;
-                if( aVal >>= bState )
-                    bQuickstarterRunning = bState;
-            }
+            css::uno::Any aVal( xSet->getFastPropertyValue( 0 ) );
+            bool bState = false;
+            if( aVal >>= bState )
+                bQuickstarterRunning = bState;
         }
         catch( const css::uno::Exception& )
         {
@@ -401,10 +395,7 @@ IMPL_LINK_NOARG(CloseDispatcher, impl_asyncCallback, LinkParamNone*, void)
     else if (bTerminateApp)
         bSuccess = implts_terminateApplication();
 
-    if (
-        ( ! bSuccess             ) &&
-        (   bControllerSuspended )
-       )
+    if ( ! bSuccess &&  bControllerSuspended )
     {
         css::uno::Reference< css::frame::XController > xController = xCloseFrame->getController();
         if (xController.is())
@@ -421,7 +412,7 @@ IMPL_LINK_NOARG(CloseDispatcher, impl_asyncCallback, LinkParamNone*, void)
     // This method was called asynchronous from our main thread by using a pointer.
     // We reached this method only, by using a reference to ourself :-)
     // Further this member is used to detect still running and not yet finished
-    // asynchronous operations. So its time now to release this reference.
+    // asynchronous operations. So it's time now to release this reference.
     // But hold it temp alive. Otherwise we die before we can finish this method really :-))
     css::uno::Reference< css::uno::XInterface > xTempHold = m_xSelfHold;
     m_xSelfHold.clear();
@@ -432,10 +423,9 @@ IMPL_LINK_NOARG(CloseDispatcher, impl_asyncCallback, LinkParamNone*, void)
     }
 }
 
-bool CloseDispatcher::implts_prepareFrameForClosing(const css::uno::Reference< css::frame::XFrame >& xFrame                ,
-                                                          bool                                   bAllowSuspend         ,
-                                                          bool                                   bCloseAllOtherViewsToo,
-                                                          bool&                                  bControllerSuspended  )
+bool CloseDispatcher::implts_prepareFrameForClosing(const css::uno::Reference< css::frame::XFrame >& xFrame,
+                                                    bool                                   bCloseAllOtherViewsToo,
+                                                    bool&                                  bControllerSuspended  )
 {
     // Frame already dead ... so this view is closed ... is closed ... is ... .-)
     if (! xFrame.is())
@@ -460,14 +450,12 @@ bool CloseDispatcher::implts_prepareFrameForClosing(const css::uno::Reference< c
         size_t i = 0;
         for (i=0; i<c; ++i)
         {
-            if (!fpf::closeIt(aCheck.m_lModelFrames[i], false))
+            if (!fpf::closeIt(aCheck.m_lModelFrames[i]))
                 return false;
         }
     }
 
-    // If allowed - inform user about modified documents or
-    // still running jobs (e.g. printing).
-    if (bAllowSuspend)
+    // Inform user about modified documents or still running jobs (e.g. printing).
     {
         css::uno::Reference< css::frame::XController > xController = xFrame->getController();
         if (xController.is()) // some views don't uses a controller .-( (e.g. the help window)
@@ -499,7 +487,7 @@ bool CloseDispatcher::implts_closeFrame()
     // don't deliver ownership; our "UI user" will try it again if it failed.
     // OK - he will get an empty frame then. But normally an empty frame
     // should be closeable always :-)
-    if (!fpf::closeIt(xFrame, false))
+    if (!fpf::closeIt(xFrame))
         return false;
 
     {
@@ -580,7 +568,7 @@ css::uno::Reference< css::frame::XFrame > CloseDispatcher::static_impl_searchRig
     css::uno::Reference< css::frame::XFrame > xTarget = xFrame;
     while(true)
     {
-        // a) top frames wil be closed
+        // a) top frames will be closed
         if (xTarget->isTop())
             return xTarget;
 
@@ -596,17 +584,14 @@ css::uno::Reference< css::frame::XFrame > CloseDispatcher::static_impl_searchRig
             //     a simple XWindow using the toolkit only .-(
             SolarMutexGuard aSolarLock;
             VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xWindow );
-            if (
-                (pWindow                  ) &&
-                (pWindow->IsSystemWindow())
-               )
+            if ( pWindow && pWindow->IsSystemWindow() )
                 return xTarget;
         }
 
         // c) try to find better results on parent frame
         //    If no parent frame exists (because this frame is used outside the desktop tree)
         //    the given frame must be used directly.
-        css::uno::Reference< css::frame::XFrame > xParent(xTarget->getCreator(), css::uno::UNO_QUERY);
+        css::uno::Reference< css::frame::XFrame > xParent = xTarget->getCreator();
         if ( ! xParent.is())
             return xTarget;
 

@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "propertybaghelper.hxx"
+#include <propertybaghelper.hxx>
 
-#include "property.hxx"
+#include <property.hxx>
 
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/beans/PropertyExistException.hpp>
@@ -30,7 +30,6 @@
 #include <tools/diagnose_ex.h>
 
 #include <comphelper/sequence.hxx>
-#include "rtl/instance.hxx"
 
 
 #define NEW_HANDLE_BASE 10000
@@ -72,7 +71,6 @@ namespace frm
 
     PropertyBagHelper::PropertyBagHelper( IPropertyBagHelperContext& _rContext )
         :m_rContext( _rContext )
-        ,m_pPropertyArrayHelper( nullptr )
         ,m_bDisposed( false )
     {
     }
@@ -208,8 +206,8 @@ namespace frm
         impl_nts_checkDisposed_throw();
 
         // check whether it's removable at all
-        Reference< XMultiPropertySet > xMe( m_rContext.getPropertiesInterface(), UNO_QUERY_THROW );
-        Reference< XPropertySetInfo > xPSI( xMe->getPropertySetInfo(), UNO_QUERY_THROW );
+        Reference< XMultiPropertySet > xMe( m_rContext.getPropertiesInterface(), css::uno::UNO_SET_THROW );
+        Reference< XPropertySetInfo > xPSI( xMe->getPropertySetInfo(), css::uno::UNO_SET_THROW );
         Property aProperty( xPSI->getPropertyByName( _rName ) );
         if ( ( aProperty.Attributes & PropertyAttribute::REMOVABLE ) == 0 )
             throw NotRemoveableException( _rName, xMe );
@@ -240,7 +238,7 @@ namespace frm
         };
 
 
-        struct PropertyValueLessByName : public ::std::binary_function< PropertyValue, PropertyValue, bool >
+        struct PropertyValueLessByName
         {
             bool operator()( const PropertyValue& _lhs, const PropertyValue& _rhs ) const
             {
@@ -255,8 +253,8 @@ namespace frm
         ::osl::MutexGuard aGuard( m_rContext.getMutex() );
         impl_nts_checkDisposed_throw();
 
-        Reference< XMultiPropertySet > xMe( m_rContext.getPropertiesInterface(), UNO_QUERY_THROW );
-        Reference< XPropertySetInfo > xPSI( xMe->getPropertySetInfo(), UNO_QUERY_THROW );
+        Reference< XMultiPropertySet > xMe( m_rContext.getPropertiesInterface(), css::uno::UNO_SET_THROW );
+        Reference< XPropertySetInfo > xPSI( xMe->getPropertySetInfo(), css::uno::UNO_SET_THROW );
 
         Sequence< Property > aProperties( xPSI->getProperties() );
         Sequence< OUString > aPropertyNames( aProperties.getLength() );
@@ -274,7 +272,7 @@ namespace frm
         catch( const RuntimeException& ) { throw; }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
         Sequence< PropertyValue > aPropertyValues( aValues.getLength() );
         PropertyValue* pPropertyValue = aPropertyValues.getArray();
@@ -327,7 +325,7 @@ namespace frm
         ::std::transform( aSortedProps.getConstArray(), aSortedProps.getConstArray() + nPropertyValues,
             aValues.getArray(), SelectValueOfPropertyValue() );
 
-        Reference< XMultiPropertySet > xMe( m_rContext.getPropertiesInterface(), UNO_QUERY_THROW );
+        Reference< XMultiPropertySet > xMe( m_rContext.getPropertiesInterface(), css::uno::UNO_SET_THROW );
 
         aGuard.clear();
         xMe->setPropertyValues( aNames, aValues );

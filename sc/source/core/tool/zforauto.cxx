@@ -21,9 +21,11 @@
 #include <svl/zformat.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <osl/diagnose.h>
 
-#include "zforauto.hxx"
-#include "global.hxx"
+#include <zforauto.hxx>
+#include <global.hxx>
+#include <tools/stream.hxx>
 
 ScNumFormatAbbrev::ScNumFormatAbbrev() :
     sFormatstring   ( "Standard" ),
@@ -32,15 +34,8 @@ ScNumFormatAbbrev::ScNumFormatAbbrev() :
 {
 }
 
-ScNumFormatAbbrev::ScNumFormatAbbrev(const ScNumFormatAbbrev& aFormat) :
-    sFormatstring   (aFormat.sFormatstring),
-    eLanguage       (aFormat.eLanguage),
-    eSysLanguage    (aFormat.eSysLanguage)
-{
-}
-
 ScNumFormatAbbrev::ScNumFormatAbbrev(sal_uInt32 nFormat,
-                                     SvNumberFormatter& rFormatter)
+                                     const SvNumberFormatter& rFormatter)
 {
     PutFormatIndex(nFormat, rFormatter);
 }
@@ -59,11 +54,11 @@ void ScNumFormatAbbrev::Load( SvStream& rStream, rtl_TextEncoding eByteStrSet )
 void ScNumFormatAbbrev::Save( SvStream& rStream, rtl_TextEncoding eByteStrSet ) const
 {
     rStream.WriteUniOrByteString( sFormatstring, eByteStrSet );
-    rStream.WriteUInt16( (sal_uInt16)eSysLanguage ).WriteUInt16( (sal_uInt16)eLanguage );
+    rStream.WriteUInt16( static_cast<sal_uInt16>(eSysLanguage) ).WriteUInt16( static_cast<sal_uInt16>(eLanguage) );
 }
 
 void ScNumFormatAbbrev::PutFormatIndex(sal_uInt32 nFormat,
-                                       SvNumberFormatter& rFormatter)
+                                       const SvNumberFormatter& rFormatter)
 {
     const SvNumberformat* pFormat = rFormatter.GetEntry(nFormat);
     if (pFormat)
@@ -83,7 +78,7 @@ void ScNumFormatAbbrev::PutFormatIndex(sal_uInt32 nFormat,
 
 sal_uInt32 ScNumFormatAbbrev::GetFormatIndex( SvNumberFormatter& rFormatter)
 {
-    short nType;
+    SvNumFormatType nType;
     bool bNewInserted;
     sal_Int32 nCheckPos;
     return rFormatter.GetIndexPuttingAndConverting( sFormatstring, eLanguage,

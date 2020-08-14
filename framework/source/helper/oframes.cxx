@@ -22,6 +22,7 @@
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <vcl/svapp.hxx>
+#include <sal/log.hxx>
 
 namespace framework{
 
@@ -51,7 +52,7 @@ OFrames::OFrames( const   css::uno::Reference< XFrame >&              xOwner    
 
 OFrames::~OFrames()
 {
-    // Reset instance, free memory ....
+    // Reset instance, free memory...
     impl_resetObject();
 }
 
@@ -139,7 +140,7 @@ Sequence< css::uno::Reference< XFrame > > SAL_CALL OFrames::queryFrames( sal_Int
             // Add parent to list ... if any exist!
             if( nSearchFlags & FrameSearchFlag::PARENT )
             {
-                css::uno::Reference< XFrame > xParent( xOwner->getCreator(), UNO_QUERY );
+                css::uno::Reference< XFrame > xParent = xOwner->getCreator();
                 if( xParent.is() )
                 {
                     Sequence< css::uno::Reference< XFrame > > seqParent( 1 );
@@ -163,7 +164,7 @@ Sequence< css::uno::Reference< XFrame > > SAL_CALL OFrames::queryFrames( sal_Int
                 // Protect this instance against recursive calls from parents.
                 m_bRecursiveSearchProtection = true;
                 // Ask parent of my owner for frames and append results to return list.
-                css::uno::Reference< XFramesSupplier > xParent( xOwner->getCreator(), UNO_QUERY );
+                css::uno::Reference< XFramesSupplier > xParent = xOwner->getCreator();
                 // If a parent exist ...
                 if ( xParent.is() )
                 {
@@ -227,8 +228,8 @@ Any SAL_CALL OFrames::getByIndex( sal_Int32 nIndex )
 {
     SolarMutexGuard g;
 
-      sal_uInt32 nCount = m_pFrameContainer->getCount();
-      if ( nIndex < 0 || ( sal::static_int_cast< sal_uInt32 >( nIndex ) >= nCount ))
+    sal_uInt32 nCount = m_pFrameContainer->getCount();
+    if ( nIndex < 0 || ( sal::static_int_cast< sal_uInt32 >( nIndex ) >= nCount ))
           throw IndexOutOfBoundsException("OFrames::getByIndex - Index out of bounds",
                                            static_cast<OWeakObject *>(this) );
 
@@ -286,7 +287,7 @@ void OFrames::impl_resetObject()
     // Attention:
     // Write this for multiple calls - NOT AT THE SAME TIME - but for more than one call again)!
     // It exist two ways to call this method. From destructor and from disposing().
-    // I can't say, which one is the first. Normally the disposing-call - but other way ....
+    // I can't say, which one is the first. Normally the disposing-call - but other way...
 
     // This instance can't work if the weakreference to owner is invalid!
     // Destroy this to reset this object.

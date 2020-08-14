@@ -21,16 +21,10 @@
 #include "NConnection.hxx"
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <connectivity/dbexception.hxx>
-#include <osl/file.hxx>
-#include <osl/security.hxx>
-#include <comphelper/processfactory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/ucb/XContentAccess.hpp>
-#include <com/sun/star/ucb/XCommandEnvironment.hpp>
-#include <ucbhelper/content.hxx>
-#include <signal.h>
-#include "resource/common_res.hrc"
-#include "resource/sharedresources.hxx"
+#include <strings.hrc>
+#include <resource/sharedresources.hxx>
 
 using namespace osl;
 using namespace connectivity::evoab;
@@ -42,8 +36,8 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::ucb;
 
 
-OEvoabDriver::OEvoabDriver(const Reference< XMultiServiceFactory >& _rxFactory) :
-        ODriver_BASE( m_aMutex ), m_xFactory( _rxFactory )
+OEvoabDriver::OEvoabDriver(const Reference< XComponentContext >& _rxContext) :
+        ODriver_BASE( m_aMutex ), m_xContext( _rxContext )
 {
 }
 
@@ -56,9 +50,9 @@ void OEvoabDriver::disposing()
     ::osl::MutexGuard aGuard(m_aMutex);
 
     // when driver will be destroyed so all our connections have to be destroyed as well
-    for (OWeakRefArray::iterator i = m_xConnections.begin(); m_xConnections.end() != i; ++i)
+    for (const auto& rxConnection : m_xConnections)
     {
-        Reference< XComponent > xComp(i->get(), UNO_QUERY);
+        Reference< XComponent > xComp(rxConnection.get(), UNO_QUERY);
         if (xComp.is())
         {
             try
@@ -79,25 +73,12 @@ void OEvoabDriver::disposing()
 
 // static ServiceInfo
 
-OUString OEvoabDriver::getImplementationName_Static(  )
-{
-    return OUString(EVOAB_DRIVER_IMPL_NAME);
-    // this name is referenced in the configuration and in the evoab.xml
-    // Please take care when changing it.
-}
-
-
-Sequence< OUString > OEvoabDriver::getSupportedServiceNames_Static(  )
-{
-    // which service is supported
-    // for more information @see com.sun.star.sdbc.Driver
-    Sequence<OUString> aSNS { "com.sun.star.sdbc.Driver" };
-    return aSNS;
-}
 
 OUString SAL_CALL OEvoabDriver::getImplementationName(  )
 {
-    return getImplementationName_Static();
+    return EVOAB_DRIVER_IMPL_NAME;
+    // this name is referenced in the configuration and in the evoab.xml
+    // Please take care when changing it.
 }
 
 sal_Bool SAL_CALL OEvoabDriver::supportsService( const OUString& _rServiceName )
@@ -107,14 +88,11 @@ sal_Bool SAL_CALL OEvoabDriver::supportsService( const OUString& _rServiceName )
 
 Sequence< OUString > SAL_CALL OEvoabDriver::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_Static();
+    // which service is supported
+    // for more information @see com.sun.star.sdbc.Driver
+    return { "com.sun.star.sdbc.Driver" };
 }
 
-
-css::uno::Reference< css::uno::XInterface >  SAL_CALL connectivity::evoab::OEvoabDriver_CreateInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory)
-{
-    return *(new OEvoabDriver(_rxFactory));
-}
 
 Reference< XConnection > SAL_CALL OEvoabDriver::connect( const OUString& url, const Sequence< PropertyValue >& info )
 {
@@ -127,8 +105,8 @@ Reference< XConnection > SAL_CALL OEvoabDriver::connect( const OUString& url, co
 
     OEvoabConnection* pCon = new OEvoabConnection( *this );
     pCon->construct(url,info);
-        Reference< XConnection > xCon = pCon;
-        m_xConnections.push_back(WeakReferenceHelper(*pCon));
+    Reference< XConnection > xCon = pCon;
+    m_xConnections.push_back(WeakReferenceHelper(*pCon));
 
     return xCon;
 }
@@ -168,5 +146,12 @@ bool OEvoabDriver::acceptsURL_Stat( const OUString& url )
     return ( url == "sdbc:address:evolution:local" || url == "sdbc:address:evolution:groupwise" || url == "sdbc:address:evolution:ldap" ) && EApiInit();
 }
 
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+connectivity_OEvoabDriver_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new OEvoabDriver(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

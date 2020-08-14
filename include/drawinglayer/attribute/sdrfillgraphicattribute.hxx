@@ -32,15 +32,13 @@ namespace basegfx {
     class B2DVector;
 }
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class FillGraphicAttribute;
     class ImpSdrFillGraphicAttribute;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class DRAWINGLAYER_DLLPUBLIC SdrFillGraphicAttribute
         {
@@ -63,10 +61,10 @@ namespace drawinglayer
                 bool bStretch,
                 bool bLogSize);
             SdrFillGraphicAttribute();
-            SdrFillGraphicAttribute(const SdrFillGraphicAttribute& rCandidate);
-            SdrFillGraphicAttribute(SdrFillGraphicAttribute&& rCandidate);
-            SdrFillGraphicAttribute& operator=(const SdrFillGraphicAttribute& rCandidate);
-            SdrFillGraphicAttribute& operator=(SdrFillGraphicAttribute&& rCandidate);
+            SdrFillGraphicAttribute(const SdrFillGraphicAttribute&);
+            SdrFillGraphicAttribute(SdrFillGraphicAttribute&&);
+            SdrFillGraphicAttribute& operator=(const SdrFillGraphicAttribute&);
+            SdrFillGraphicAttribute& operator=(SdrFillGraphicAttribute&&);
             ~SdrFillGraphicAttribute();
 
             // checks if the incarnation is default constructed
@@ -87,8 +85,8 @@ namespace drawinglayer
             // FillGraphicAttribute generator
             FillGraphicAttribute createFillGraphicAttribute(const basegfx::B2DRange& rRange) const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif //INCLUDED_DRAWINGLAYER_ATTRIBUTE_SDRFILLGRAPHICATTRIBUTE_HXX

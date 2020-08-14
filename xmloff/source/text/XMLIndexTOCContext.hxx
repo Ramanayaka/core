@@ -24,10 +24,10 @@
 #include <com/sun/star/uno/Reference.h>
 
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
     namespace beans { class XPropertySet; }
-} } }
+}
 
 
 enum IndexTypeEnum
@@ -43,7 +43,7 @@ enum IndexTypeEnum
     TEXT_INDEX_UNKNOWN
 };
 
-
+class XMLIndexBodyContext;
 /**
  * Import all indices.
  *
@@ -61,7 +61,7 @@ class XMLIndexTOCContext : public SvXMLImportContext
 
     bool bValid;
 
-    SvXMLImportContextRef xBodyContextRef;
+    rtl::Reference<XMLIndexBodyContext> xBodyContextRef;
 
 public:
 
@@ -80,7 +80,7 @@ protected:
 
     virtual void EndElement() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference<css::xml::sax::XAttributeList> & xAttrList ) override;

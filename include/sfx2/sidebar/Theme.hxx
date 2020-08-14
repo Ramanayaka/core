@@ -26,7 +26,6 @@
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <tools/gen.hxx>
-#include <rtl/ref.hxx>
 #include <vcl/wall.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -34,10 +33,8 @@
 #include <map>
 #include <unordered_map>
 
-class SvBorder;
 
-
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 typedef cppu::WeakComponentImplHelper <
     css::beans::XPropertySet,
@@ -49,7 +46,7 @@ class Paint;
 /** Simple collection of colors, gradients, fonts that define the
     look of the sidebar and its controls.
 */
-class SFX2_DLLPUBLIC Theme
+class SFX2_DLLPUBLIC Theme final
     : private ::cppu::BaseMutex,
       public ThemeInterfaceBase
 {
@@ -133,7 +130,7 @@ public:
     static Image GetImage (const ThemeItem eItem);
     static Color GetColor (const ThemeItem eItem);
     static const Paint& GetPaint (const ThemeItem eItem);
-    static const Wallpaper GetWallpaper (const ThemeItem eItem);
+    static Wallpaper GetWallpaper (const ThemeItem eItem);
     static sal_Int32 GetInteger (const ThemeItem eItem);
     static bool GetBoolean (const ThemeItem eItem);
 
@@ -155,27 +152,27 @@ public:
     // beans::XPropertySet
     virtual css::uno::Reference<css::beans::XPropertySetInfo> SAL_CALL getPropertySetInfo() override;
     virtual void SAL_CALL setPropertyValue (
-        const ::rtl::OUString& rsPropertyName,
+        const OUString& rsPropertyName,
         const css::uno::Any& rValue) override;
     virtual css::uno::Any SAL_CALL getPropertyValue (
-        const ::rtl::OUString& rsPropertyName) override;
+        const OUString& rsPropertyName) override;
     virtual void SAL_CALL addPropertyChangeListener(
-        const ::rtl::OUString& rsPropertyName,
+        const OUString& rsPropertyName,
         const css::uno::Reference<css::beans::XPropertyChangeListener>& rxListener) override;
     virtual void SAL_CALL removePropertyChangeListener(
-        const ::rtl::OUString& rsPropertyName,
+        const OUString& rsPropertyName,
         const css::uno::Reference<css::beans::XPropertyChangeListener>& rxListener) override;
     virtual void SAL_CALL addVetoableChangeListener(
-        const ::rtl::OUString& rsPropertyName,
+        const OUString& rsPropertyName,
         const css::uno::Reference<css::beans::XVetoableChangeListener>& rxListener) override;
     virtual void SAL_CALL removeVetoableChangeListener(
-        const ::rtl::OUString& rsPropertyName,
+        const OUString& rsPropertyName,
         const css::uno::Reference<css::beans::XVetoableChangeListener>& rxListener) override;
 
     // beans::XPropertySetInfo
     virtual css::uno::Sequence<css::beans::Property> SAL_CALL getProperties() override;
-    virtual css::beans::Property SAL_CALL getPropertyByName (const ::rtl::OUString& rsName) override;
-    virtual sal_Bool SAL_CALL hasPropertyByName (const ::rtl::OUString& rsName) override;
+    virtual css::beans::Property SAL_CALL getPropertyByName (const OUString& rsName) override;
+    virtual sal_Bool SAL_CALL hasPropertyByName (const OUString& rsName) override;
 
 private:
     static Theme& GetCurrentTheme();
@@ -189,9 +186,9 @@ private:
     bool mbIsHighContrastMode;
     bool mbIsHighContrastModeSetManually;
 
-    typedef std::unordered_map<rtl::OUString,ThemeItem, rtl::OUStringHash> PropertyNameToIdMap;
+    typedef std::unordered_map<OUString,ThemeItem> PropertyNameToIdMap;
     PropertyNameToIdMap maPropertyNameToIdMap;
-    typedef std::vector<rtl::OUString> PropertyIdToNameMap;
+    typedef std::vector<OUString> PropertyIdToNameMap;
     PropertyIdToNameMap maPropertyIdToNameMap;
     typedef ::std::vector<css::uno::Any> RawValueContainer;
     RawValueContainer maRawValues;
@@ -217,7 +214,7 @@ private:
     void SetupPropertyMaps();
     void UpdateTheme();
     static PropertyType GetPropertyType (const ThemeItem eItem);
-    static css::uno::Type GetCppuType (const PropertyType eType);
+    static css::uno::Type const & GetCppuType (const PropertyType eType);
     static sal_Int32 GetIndex (
         const ThemeItem eItem,
         const PropertyType eType);
@@ -241,7 +238,7 @@ private:
 };
 
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 #endif
 

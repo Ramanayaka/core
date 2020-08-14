@@ -18,19 +18,14 @@
  */
 
 #include <svgsymbolnode.hxx>
-#include <drawinglayer/geometry/viewinformation2d.hxx>
-#include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgSymbolNode::SvgSymbolNode(
             SvgDocument& rDocument,
             SvgNode* pParent)
         :   SvgNode(SVGTokenSvg, rDocument, pParent),
             maSvgStyleAttributes(*this),
-            mpViewBox(nullptr),
             maSvgAspectRatio()
         {
         }
@@ -62,12 +57,7 @@ namespace svgio
                 }
                 case SVGTokenViewBox:
                 {
-                    const basegfx::B2DRange aRange(readViewBox(aContent, *this));
-
-                    if(!aRange.isEmpty())
-                    {
-                        setViewBox(&aRange);
-                    }
+                    readViewBox(aContent, *this);
                     break;
                 }
                 case SVGTokenPreserveAspectRatio:
@@ -82,7 +72,6 @@ namespace svgio
             }
         }
 
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

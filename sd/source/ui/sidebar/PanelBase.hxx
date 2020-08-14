@@ -25,14 +25,12 @@
 
 #include <vcl/ctrl.hxx>
 
-#include <memory>
-
 
 namespace sd {
     class ViewShellBase;
 }
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 class PanelBase
     : public Control,
@@ -59,13 +57,12 @@ protected:
         ViewShellBase& rViewShellBase) = 0;
 
 private:
-    css::uno::Reference<css::ui::XSidebar> mxSidebar;
     ViewShellBase& mrViewShellBase;
 
     bool ProvideWrappedControl();
 };
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 #endif
 

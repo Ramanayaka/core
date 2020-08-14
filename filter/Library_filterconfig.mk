@@ -33,7 +33,7 @@ $(eval $(call gb_Library_set_include,filterconfig,\
 ))
 
 $(eval $(call gb_Library_use_libraries,filterconfig,\
-	fwe \
+	fwk \
 	utl \
 	tl \
 	comphelper \
@@ -55,7 +55,6 @@ $(eval $(call gb_Library_add_exception_objects,filterconfig,\
 	filter/source/config/cache/filterfactory \
 	filter/source/config/cache/frameloaderfactory \
 	filter/source/config/cache/querytokenizer \
-	filter/source/config/cache/registration \
 	filter/source/config/cache/typedetection \
 ))
 

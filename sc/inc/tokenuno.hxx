@@ -21,17 +21,16 @@
 #define INCLUDED_SC_INC_TOKENUNO_HXX
 
 #include <memory>
-#include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/sheet/FormulaOpCodeMapEntry.hpp>
-#include <com/sun/star/sheet/FormulaToken.hpp>
 #include <com/sun/star/sheet/XFormulaParser.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <svl/lstner.hxx>
 #include <formula/FormulaOpCodeMapperObj.hxx>
-#include "address.hxx"
 #include "compiler.hxx"
+
+namespace com::sun::star::sheet { struct FormulaOpCodeMapEntry; }
+namespace com::sun::star::sheet { struct FormulaToken; }
 
 class ScTokenArray;
 class ScDocShell;
@@ -43,13 +42,13 @@ public:
                         ScDocument& rDoc,
                         ScTokenArray& rTokenArray,
                         const css::uno::Sequence< css::sheet::FormulaToken >& rSequence );
-    static SC_DLLPUBLIC bool ConvertToTokenSequence(
+    static SC_DLLPUBLIC void ConvertToTokenSequence(
                         const ScDocument& rDoc,
                         css::uno::Sequence< css::sheet::FormulaToken >& rSequence,
                         const ScTokenArray& rTokenArray );
 };
 
-class ScFormulaParserObj : public ::cppu::WeakImplHelper<
+class ScFormulaParserObj final : public ::cppu::WeakImplHelper<
                             css::sheet::XFormulaParser,
                             css::beans::XPropertySet,
                             css::lang::XServiceInfo >,
@@ -101,7 +100,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScFormulaOpCodeMapperObj : public formula::FormulaOpCodeMapperObj
+class ScFormulaOpCodeMapperObj final : public formula::FormulaOpCodeMapperObj
 {
 public:
     ScFormulaOpCodeMapperObj(::std::unique_ptr<formula::FormulaCompiler> && _pCompiler);

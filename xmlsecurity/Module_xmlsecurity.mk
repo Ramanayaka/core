@@ -10,13 +10,11 @@
 $(eval $(call gb_Module_Module,xmlsecurity))
 
 ifeq ($(ENABLE_NSS),TRUE)
-#FIXME: ^^^, get nss&libxmlsec building on ios and android
-#chromium has patches to build statically FWIW
 
 $(eval $(call gb_Module_add_targets,xmlsecurity,\
 	Library_xmlsecurity \
-	Library_xsec_fw \
 	Library_xsec_xmlsec \
+	UIConfig_xmlsec \
 ))
 
 $(eval $(call gb_Module_add_slowcheck_targets,xmlsecurity,\
@@ -25,8 +23,7 @@ $(eval $(call gb_Module_add_slowcheck_targets,xmlsecurity,\
 ))
 
 $(eval $(call gb_Module_add_l10n_targets,xmlsecurity,\
-	AllLangResTarget_xsec \
-	UIConfig_xmlsec \
+	AllLangMoTarget_xsc \
 ))
 
 # failing

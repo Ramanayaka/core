@@ -17,13 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "XMLScriptExportHandler.hxx"
+#include <XMLScriptExportHandler.hxx>
 
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 
 
 using namespace ::com::sun::star::uno;
@@ -31,9 +31,9 @@ using namespace ::xmloff::token;
 
 using ::com::sun::star::beans::PropertyValue;
 
+const OUStringLiteral gsURL("Script");
 
-XMLScriptExportHandler::XMLScriptExportHandler() :
-    sURL("Script")
+XMLScriptExportHandler::XMLScriptExportHandler()
 {
 }
 
@@ -44,7 +44,7 @@ XMLScriptExportHandler::~XMLScriptExportHandler()
 void XMLScriptExportHandler::Export(
     SvXMLExport& rExport,
     const OUString& rEventQName,
-    Sequence<PropertyValue> & rValues,
+    const Sequence<PropertyValue> & rValues,
     bool bUseWhitespace)
 {
 
@@ -53,13 +53,12 @@ void XMLScriptExportHandler::Export(
                              XML_NAMESPACE_OOO, GetXMLToken(XML_SCRIPT) ) );
     rExport.AddAttribute(XML_NAMESPACE_SCRIPT, XML_EVENT_NAME, rEventQName);
 
-    sal_Int32 nCount = rValues.getLength();
-    for(sal_Int32 i = 0; i < nCount; i++)
+    for(const auto& rValue : rValues)
     {
-        if (sURL.equals(rValues[i].Name))
+        if (gsURL == rValue.Name)
         {
             OUString sTmp;
-            rValues[i].Value >>= sTmp;
+            rValue.Value >>= sTmp;
             rExport.AddAttribute(XML_NAMESPACE_XLINK, XML_HREF, sTmp);
 
             // #i110911# xlink:type="simple" is required

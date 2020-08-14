@@ -20,17 +20,16 @@
 #ifndef INCLUDED_XMLSECURITY_INC_FRAMEWORK_SIGNATUREVERIFIERIMPL_HXX
 #define INCLUDED_XMLSECURITY_INC_FRAMEWORK_SIGNATUREVERIFIERIMPL_HXX
 
-#include <com/sun/star/xml/crypto/sax/XSignatureVerifyResultListener.hpp>
 #include <com/sun/star/xml/crypto/sax/XSignatureVerifyResultBroadcaster.hpp>
-#include <com/sun/star/xml/crypto/XXMLSecurityContext.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
 
-#include "xsecfwdllapi.h"
-#include "signatureengine.hxx"
+#include <xmlsecuritydllapi.h>
+#include <framework/signatureengine.hxx>
+
+namespace com::sun::star::xml::crypto::sax { class XSignatureVerifyResultListener; }
+namespace com::sun::star::xml::crypto { class XXMLSecurityContext; }
 
 typedef cppu::ImplInheritanceHelper
 <
@@ -40,7 +39,7 @@ typedef cppu::ImplInheritanceHelper
     css::lang::XServiceInfo
 > SignatureVerifierImpl_Base;
 
-class XSECFW_DLLPUBLIC SignatureVerifierImpl : public SignatureVerifierImpl_Base
+class SignatureVerifierImpl final : public SignatureVerifierImpl_Base
 /****** SignatureVerifier.hxx/CLASS SignatureVerifierImpl *********************
  *
  *   NAME
@@ -55,8 +54,7 @@ private:
     css::uno::Reference< css::xml::crypto::XXMLSecurityContext > m_xXMLSecurityContext;
 
     virtual void notifyResultListener() const override;
-    virtual bool checkReady() const override;
-    virtual void startEngine( const css::uno::Reference< css::xml::crypto::XXMLSignatureTemplate >& xSignatureTemplate) override;
+    virtual void startEngine( const rtl::Reference<XMLSignatureTemplateImpl>& xSignatureTemplate) override;
 
 public:
     explicit SignatureVerifierImpl();
@@ -85,12 +83,7 @@ public:
 OUString SignatureVerifierImpl_getImplementationName();
 
 /// @throws css::uno::RuntimeException
-css::uno::Sequence< OUString > SAL_CALL SignatureVerifierImpl_getSupportedServiceNames(  );
-
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface >
-SAL_CALL SignatureVerifierImpl_createInstance(
-    const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr);
+css::uno::Sequence< OUString > SignatureVerifierImpl_getSupportedServiceNames(  );
 
 #endif
 

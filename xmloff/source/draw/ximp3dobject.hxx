@@ -20,20 +20,14 @@
 #ifndef INCLUDED_XMLOFF_SOURCE_DRAW_XIMP3DOBJECT_HXX
 #define INCLUDED_XMLOFF_SOURCE_DRAW_XIMP3DOBJECT_HXX
 
-#include <xmloff/xmlictxt.hxx>
-#include "sdxmlimp_impl.hxx"
-#include <xmloff/nmspmap.hxx>
 #include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/drawing/HomogenMatrix.hpp>
-#include <com/sun/star/drawing/Direction3D.hpp>
-#include <com/sun/star/drawing/Position3D.hpp>
 #include "ximpshap.hxx"
 
 // common shape context
 
 class SdXML3DObjectContext : public SdXMLShapeContext
 {
-protected:
     // the shape group this object should be created inside
 
     css::drawing::HomogenMatrix mxHomMat;
@@ -45,7 +39,7 @@ public:
         sal_uInt16 nPrfx,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
-        css::uno::Reference< css::drawing::XShapes >& rShapes);
+        css::uno::Reference< css::drawing::XShapes > const & rShapes);
     virtual ~SdXML3DObjectContext() override;
 
     virtual void StartElement(const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList) override;
@@ -63,7 +57,7 @@ public:
     SdXML3DCubeObjectShapeContext( SvXMLImport& rImport, sal_uInt16 nPrfx,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
-        css::uno::Reference< css::drawing::XShapes >& rShapes);
+        css::uno::Reference< css::drawing::XShapes > const & rShapes);
     virtual ~SdXML3DCubeObjectShapeContext() override;
 
     virtual void StartElement(const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList) override;
@@ -81,7 +75,7 @@ public:
     SdXML3DSphereObjectShapeContext( SvXMLImport& rImport, sal_uInt16 nPrfx,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
-        css::uno::Reference< css::drawing::XShapes >& rShapes);
+        css::uno::Reference< css::drawing::XShapes > const & rShapes);
     virtual ~SdXML3DSphereObjectShapeContext() override;
 
     virtual void StartElement(const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList) override;
@@ -99,7 +93,7 @@ public:
     SdXML3DPolygonBasedShapeContext( SvXMLImport& rImport, sal_uInt16 nPrfx,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
-        css::uno::Reference< css::drawing::XShapes >& rShapes);
+        css::uno::Reference< css::drawing::XShapes > const & rShapes);
     virtual ~SdXML3DPolygonBasedShapeContext() override;
 
     virtual void StartElement(const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList) override;
@@ -114,7 +108,7 @@ public:
     SdXML3DLatheObjectShapeContext( SvXMLImport& rImport, sal_uInt16 nPrfx,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
-        css::uno::Reference< css::drawing::XShapes >& rShapes);
+        css::uno::Reference< css::drawing::XShapes > const & rShapes);
     virtual ~SdXML3DLatheObjectShapeContext() override;
 
     virtual void StartElement(const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList) override;
@@ -129,7 +123,7 @@ public:
     SdXML3DExtrudeObjectShapeContext( SvXMLImport& rImport, sal_uInt16 nPrfx,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList,
-        css::uno::Reference< css::drawing::XShapes >& rShapes);
+        css::uno::Reference< css::drawing::XShapes > const & rShapes);
     virtual ~SdXML3DExtrudeObjectShapeContext() override;
 
     virtual void StartElement(const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList) override;

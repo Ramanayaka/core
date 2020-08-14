@@ -22,19 +22,17 @@
 #include <com/sun/star/i18n/UnicodeType.hpp>
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/Date.hpp>
-#include <com/sun/star/util/DateTimeWithTimezone.hpp>
-#include <com/sun/star/util/DateWithTimezone.hpp>
 #include <com/sun/star/util/Duration.hpp>
 #include <com/sun/star/util/Time.hpp>
-#include <com/sun/star/uno/Sequence.hxx>
+#include <optional>
 
 #include <rtl/ustrbuf.hxx>
 #include <rtl/math.hxx>
 #include <sal/log.hxx>
-#include <osl/time.h>
 #include <osl/diagnose.h>
 
 #include <algorithm>
+#include <string_view>
 
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
@@ -44,11 +42,11 @@ using namespace ::com::sun::star::i18n;
 
 namespace sax {
 
-static const sal_Char* const gpsMM = "mm";
-static const sal_Char* const gpsCM = "cm";
-static const sal_Char* const gpsPT = "pt";
-static const sal_Char* const gpsINCH = "in";
-static const sal_Char* const gpsPC = "pc";
+const char* const gpsMM = "mm";
+const char* const gpsCM = "cm";
+const char* const gpsPT = "pt";
+const char* const gpsINCH = "in";
+const char* const gpsPC = "pc";
 
 const sal_Int8 XML_MAXDIGITSCOUNT_TIME = 14;
 
@@ -96,7 +94,7 @@ bool Converter::convertMeasure( sal_Int32& rValue,
         {
             // TODO: check overflow!
             nDiv *= 10;
-            nVal += ( ((double)(rString[nPos] - '0')) / nDiv );
+            nVal += ( static_cast<double>(rString[nPos] - '0') / nDiv );
             nPos++;
         }
     }
@@ -127,8 +125,8 @@ bool Converter::convertMeasure( sal_Int32& rValue,
             OSL_ENSURE( MeasureUnit::TWIP == nTargetUnit || MeasureUnit::POINT == nTargetUnit ||
                         MeasureUnit::MM_100TH == nTargetUnit || MeasureUnit::MM_10TH == nTargetUnit ||
                         MeasureUnit::PIXEL == nTargetUnit, "unit is not supported");
-            const sal_Char *aCmpsL[3] = { nullptr, nullptr, nullptr };
-            const sal_Char *aCmpsU[3] = { nullptr, nullptr, nullptr };
+            const char *aCmpsL[3] = { nullptr, nullptr, nullptr };
+            const char *aCmpsU[3] = { nullptr, nullptr, nullptr };
             double aScales[3] = { 1., 1., 1. };
 
             if( MeasureUnit::TWIP == nTargetUnit )
@@ -221,10 +219,10 @@ bool Converter::convertMeasure( sal_Int32& rValue,
             for( sal_uInt16 i= 0; i < 3; i++ )
             {
                 sal_Int32 nTmp = nPos; // come back to the initial position before each iteration
-                const sal_Char *pL = aCmpsL[i];
+                const char *pL = aCmpsL[i];
                 if( pL )
                 {
-                    const sal_Char *pU = aCmpsU[i];
+                    const char *pU = aCmpsU[i];
                     while( nTmp < nLen && *pL )
                     {
                         sal_Unicode c = rString[nTmp];
@@ -255,12 +253,12 @@ bool Converter::convertMeasure( sal_Int32& rValue,
     if( bNeg )
         nVal = -nVal;
 
-    if( nVal <= (double)nMin )
+    if( nVal <= static_cast<double>(nMin) )
         rValue = nMin;
-    else if( nVal >= (double)nMax )
+    else if( nVal >= static_cast<double>(nMax) )
         rValue = nMax;
     else
-        rValue = (sal_Int32)nVal;
+        rValue = static_cast<sal_Int32>(nVal);
 
     return true;
 }
@@ -281,10 +279,11 @@ void Converter::convertMeasure( OUStringBuffer& rBuffer,
 
         return;
     }
+    sal_Int64 nValue(nMeasure); // extend to 64-bit first to avoid overflow
     // the sign is processed separately
-    if( nMeasure < 0 )
+    if (nValue < 0)
     {
-        nMeasure = -nMeasure;
+        nValue = -nValue;
         rBuffer.append( '-' );
     }
 
@@ -292,7 +291,7 @@ void Converter::convertMeasure( OUStringBuffer& rBuffer,
     long nMul = 1000;
     long nDiv = 1;
     long nFac = 100;
-    const sal_Char* psUnit = nullptr;
+    const char* psUnit = nullptr;
     switch( nSourceUnit )
     {
     case MeasureUnit::TWIP:
@@ -301,7 +300,7 @@ void Converter::convertMeasure( OUStringBuffer& rBuffer,
         case MeasureUnit::MM_100TH:
         case MeasureUnit::MM_10TH:
             OSL_ENSURE( MeasureUnit::INCH == nTargetUnit,"output unit not supported for twip values" );
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case MeasureUnit::MM:
             // 0.01mm = 0.57twip (exactly)
             nMul = 25400;   // 25.4 * 1000
@@ -351,14 +350,14 @@ void Converter::convertMeasure( OUStringBuffer& rBuffer,
     case MeasureUnit::MM_10TH:
     case MeasureUnit::MM_100TH:
         {
-            long nFac2 = (MeasureUnit::MM_100TH == nSourceUnit) ? 100 : 10;
+            int nFac2 = (MeasureUnit::MM_100TH == nSourceUnit) ? 100 : 10;
             switch( nTargetUnit )
             {
             case MeasureUnit::MM_100TH:
             case MeasureUnit::MM_10TH:
                 OSL_ENSURE( MeasureUnit::INCH == nTargetUnit,
                             "output unit not supported for 1/100mm values" );
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case MeasureUnit::MM:
                 // 0.01mm = 1 mm/100 (exactly)
                 nMul = 10;
@@ -402,7 +401,6 @@ void Converter::convertMeasure( OUStringBuffer& rBuffer,
         break;
     }
 
-    sal_Int64 nValue = nMeasure;
     OSL_ENSURE(nValue <= SAL_MAX_INT64 / nMul, "convertMeasure: overflow");
     nValue *= nMul;
     nValue /= nDiv;
@@ -424,28 +422,18 @@ void Converter::convertMeasure( OUStringBuffer& rBuffer,
         rBuffer.appendAscii( psUnit );
 }
 
-static OUString getTrueString()
-{
-    return OUString( "true" );
-}
-
-static OUString getFalseString()
-{
-    return OUString( "false" );
-}
-
 /** convert string to boolean */
 bool Converter::convertBool( bool& rBool, const OUString& rString )
 {
-    rBool = rString == getTrueString();
+    rBool = rString == "true";
 
-    return rBool || (rString == getFalseString());
+    return rBool || (rString == "false");
 }
 
 /** convert boolean to string */
 void Converter::convertBool( OUStringBuffer& rBuffer, bool bValue )
 {
-    rBuffer.append( bValue ? getTrueString() : getFalseString() );
+    rBuffer.append( bValue );
 }
 
 /** convert string to percent */
@@ -475,7 +463,7 @@ void Converter::convertMeasurePx( OUStringBuffer& rBuffer, sal_Int32 nValue )
     rBuffer.append( 'x' );
 }
 
-int lcl_gethex( int nChar )
+static int lcl_gethex( int nChar )
 {
     if( nChar >= '0' && nChar <= '9' )
         return nChar - '0';
@@ -504,34 +492,34 @@ bool Converter::convertColor( sal_Int32& rColor, const OUString& rValue )
     return true;
 }
 
-static const sal_Char aHexTab[] = "0123456789abcdef";
+const char aHexTab[] = "0123456789abcdef";
 
 /** convert color to string */
 void Converter::convertColor( OUStringBuffer& rBuffer, sal_Int32 nColor )
 {
     rBuffer.append( '#' );
 
-    sal_uInt8 nCol = (sal_uInt8)(nColor >> 16);
+    sal_uInt8 nCol = static_cast<sal_uInt8>(nColor >> 16);
     rBuffer.append( sal_Unicode( aHexTab[ nCol >> 4 ] ) );
     rBuffer.append( sal_Unicode( aHexTab[ nCol & 0xf ] ) );
 
-    nCol = (sal_uInt8)(nColor >> 8);
+    nCol = static_cast<sal_uInt8>(nColor >> 8);
     rBuffer.append( sal_Unicode( aHexTab[ nCol >> 4 ] ) );
     rBuffer.append( sal_Unicode( aHexTab[ nCol & 0xf ] ) );
 
-    nCol = (sal_uInt8)nColor;
+    nCol = static_cast<sal_uInt8>(nColor);
     rBuffer.append( sal_Unicode( aHexTab[ nCol >> 4 ] ) );
     rBuffer.append( sal_Unicode( aHexTab[ nCol & 0xf ] ) );
 }
 
 /** convert string to number with optional min and max values */
 bool Converter::convertNumber(  sal_Int32& rValue,
-                                const OUString& rString,
+                                std::u16string_view aString,
                                 sal_Int32 nMin, sal_Int32 nMax )
 {
     rValue = 0;
     sal_Int64 nNumber = 0;
-    bool bRet = convertNumber64(nNumber,rString,nMin,nMax);
+    bool bRet = convertNumber64(nNumber,aString,nMin,nMax);
     if ( bRet )
         rValue = static_cast<sal_Int32>(nNumber);
     return bRet;
@@ -539,38 +527,32 @@ bool Converter::convertNumber(  sal_Int32& rValue,
 
 /** convert string to 64-bit number with optional min and max values */
 bool Converter::convertNumber64( sal_Int64& rValue,
-                                 const OUString& rString,
+                                 std::u16string_view aString,
                                  sal_Int64 nMin, sal_Int64 nMax )
 {
-    bool bNeg = false;
-    rValue = 0;
-
     sal_Int32 nPos = 0;
-    sal_Int32 const nLen = rString.getLength();
+    sal_Int32 const nLen = aString.size();
 
     // skip white space
-    while( (nPos < nLen) && (rString[nPos] <= ' ') )
+    while( (nPos < nLen) && (aString[nPos] <= ' ') )
         nPos++;
 
-    if( nPos < nLen && '-' == rString[nPos] )
+    sal_Int32 nNumberStartPos = nPos;
+
+    if( nPos < nLen && '-' == aString[nPos] )
     {
-        bNeg = true;
         nPos++;
     }
 
     // get number
     while( nPos < nLen &&
-           '0' <= rString[nPos] &&
-           '9' >= rString[nPos] )
+           '0' <= aString[nPos] &&
+           '9' >= aString[nPos] )
     {
-        // TODO: check overflow!
-        rValue *= 10;
-        rValue += (rString[nPos] - u'0');
         nPos++;
     }
 
-    if( bNeg )
-        rValue *= -1;
+    rValue = rtl_ustr_toInt64_WithLength(aString.data() + nNumberStartPos, 10, nPos - nNumberStartPos);
 
     if( rValue < nMin )
         rValue = nMin;
@@ -641,21 +623,25 @@ bool Converter::convertDouble(double& rValue, const OUString& rString)
 }
 
 /** convert number, 10th of degrees with range [0..3600] to SVG angle */
-void Converter::convertAngle(OUStringBuffer& rBuffer, sal_Int16 const nAngle)
+void Converter::convertAngle(OUStringBuffer& rBuffer, sal_Int16 const nAngle,
+        SvtSaveOptions::ODFSaneDefaultVersion const nVersion)
 {
-#if 1
-    // wrong, but backward compatible with OOo/LO < 4.4
-    rBuffer.append(static_cast<sal_Int32>(nAngle));
-#else
-    // maybe in the future... (see other convertAngle)
-    double fAngle(double(nAngle) / 10.0);
-    ::sax::Converter::convertDouble(rBuffer, fAngle);
-    rBuffer.append("deg");
-#endif
+    if (nVersion < SvtSaveOptions::ODFSVER_012 || nVersion == SvtSaveOptions::ODFSVER_012_EXT_COMPAT)
+    {
+        // wrong, but backward compatible with OOo/LO < 4.4
+        rBuffer.append(static_cast<sal_Int32>(nAngle));
+    }
+    else
+    { // OFFICE-3774 tdf#89475 write valid ODF 1.2 angle; needs LO 4.4 to import
+        double fAngle(double(nAngle) / 10.0);
+        ::sax::Converter::convertDouble(rBuffer, fAngle);
+        rBuffer.append("deg");
+    }
 }
 
 /** convert SVG angle to number, 10th of degrees with range [0..3600] */
-bool Converter::convertAngle(sal_Int16& rAngle, OUString const& rString)
+bool Converter::convertAngle(sal_Int16& rAngle, OUString const& rString,
+        bool const isWrongOOo10thDegAngle)
 {
     // ODF 1.1 leaves it undefined what the number means, but ODF 1.2 says it's
     // degrees, while OOo has historically used 10th of degrees :(
@@ -676,11 +662,18 @@ bool Converter::convertAngle(sal_Int16& rAngle, OUString const& rString)
     }
     else if (-1 != rString.indexOf("rad"))
     {
-        nValue = (fValue * 180.0 / M_PI) * 10.0;
+        nValue = basegfx::rad2deg(fValue) * 10.0;
     }
     else // no explicit unit
     {
-        nValue = fValue; // wrong, but backward compatible with OOo/LO < 4.4
+        if (isWrongOOo10thDegAngle)
+        {
+            nValue = fValue; // wrong, but backward compatible with OOo/LO < 7.0
+        }
+        else
+        {
+            nValue = fValue * 10.0; // ODF 1.2
+        }
     }
     // limit to valid range [0..3600]
     nValue = nValue % 3600;
@@ -761,7 +754,7 @@ void Converter::convertDuration(OUStringBuffer& rBuffer,
         if ( aNS.getLength() > 2 )
         {
             rBuffer.append( '.');
-            rBuffer.append( aNS.copy( 2 ) );     // strip "0."
+            rBuffer.append( std::u16string_view(aNS).substr(2) );     // strip "0."
         }
     }
     rBuffer.append( 'S');
@@ -785,7 +778,7 @@ bool Converter::convertDuration(double& rfTime,
     if ( *(pStr++) != 'P' )            // duration must start with "P"
         return false;
 
-    OUString sDoubleStr;
+    OUStringBuffer sDoubleStr;
     bool bSuccess = true;
     bool bDone = false;
     bool bTimePart = false;
@@ -814,7 +807,7 @@ bool Converter::convertDuration(double& rfTime,
                 }
                 else
                 {
-                    sDoubleStr += OUStringLiteral1(c);
+                    sDoubleStr.append(c);
                 }
             }
         }
@@ -877,7 +870,7 @@ bool Converter::convertDuration(double& rfTime,
         double fHour = nHours;
         double fMin = nMins;
         double fSec = nSecs;
-        double fFraction = sDoubleStr.toDouble();
+        double fFraction = sDoubleStr.makeStringAndClear().toDouble();
         double fTempTime = fHour / 24;
         fTempTime += fMin / (24 * 60);
         fTempTime += fSec / (24 * 60 * 60);
@@ -962,32 +955,23 @@ void Converter::convertDuration(OUStringBuffer& rBuffer,
     }
 }
 
+namespace {
+
 enum Result { R_NOTHING, R_OVERFLOW, R_SUCCESS };
+
+}
 
 static Result
 readUnsignedNumber(const OUString & rString,
     sal_Int32 & io_rnPos, sal_Int32 & o_rNumber)
 {
-    bool bOverflow(false);
-    sal_Int64 nTemp(0);
     sal_Int32 nPos(io_rnPos);
 
     while (nPos < rString.getLength())
     {
         const sal_Unicode c = rString[nPos];
-        if (('0' <= c) && (c <= '9'))
-        {
-            nTemp *= 10;
-            nTemp += (c - u'0');
-            if (nTemp >= SAL_MAX_INT32)
-            {
-                bOverflow = true;
-            }
-        }
-        else
-        {
+        if (('0' > c) || (c > '9'))
             break;
-        }
         ++nPos;
     }
 
@@ -997,14 +981,18 @@ readUnsignedNumber(const OUString & rString,
         return R_NOTHING;
     }
 
+    const sal_Int64 nTemp = rtl_ustr_toInt64_WithLength(rString.getStr() + io_rnPos, 10, nPos - io_rnPos);
+
+    const bool bOverflow = (nTemp >= SAL_MAX_INT32);
+
     io_rnPos = nPos;
     o_rNumber = nTemp;
-    return (bOverflow) ? R_OVERFLOW : R_SUCCESS;
+    return bOverflow ? R_OVERFLOW : R_SUCCESS;
 }
 
 static Result
 readUnsignedNumberMaxDigits(int maxDigits,
-                            const ::rtl::OUString & rString, sal_Int32 & io_rnPos,
+                            const OUString & rString, sal_Int32 & io_rnPos,
                             sal_Int32 & o_rNumber)
 {
     bool bOverflow(false);
@@ -1043,7 +1031,7 @@ readUnsignedNumberMaxDigits(int maxDigits,
 
     io_rnPos = nPos;
     o_rNumber = nTemp;
-    return (bOverflow) ? R_OVERFLOW : R_SUCCESS;
+    return bOverflow ? R_OVERFLOW : R_SUCCESS;
 }
 
 static bool
@@ -1063,7 +1051,7 @@ readDurationComponent(const OUString & rString,
     sal_Int32 & io_rnPos, sal_Int32 & io_rnTemp, bool & io_rbTimePart,
     sal_Int32 & o_rnTarget, const sal_Unicode c)
 {
-    if ((io_rnPos < rString.getLength()))
+    if (io_rnPos < rString.getLength())
     {
         if (c == rString[io_rnPos])
         {
@@ -1342,19 +1330,18 @@ static void convertTimeZone(
 /** convert util::DateTime to ISO "time" or "dateTime" string */
 void Converter::convertTimeOrDateTime(
         OUStringBuffer& i_rBuffer,
-        const css::util::DateTime& i_rDateTime,
-        sal_Int16 const* pTimeZoneOffset)
+        const css::util::DateTime& i_rDateTime)
 {
     if (i_rDateTime.Year == 0 ||
         i_rDateTime.Month < 1 || i_rDateTime.Month > 12 ||
         i_rDateTime.Day < 1 || i_rDateTime.Day > 31)
     {
         convertTime(i_rBuffer, i_rDateTime);
-        convertTimeZone(i_rBuffer, i_rDateTime, pTimeZoneOffset);
+        convertTimeZone(i_rBuffer, i_rDateTime, nullptr);
     }
     else
     {
-        convertDateTime(i_rBuffer, i_rDateTime, pTimeZoneOffset, true);
+        convertDateTime(i_rBuffer, i_rDateTime, nullptr, true);
     }
 }
 
@@ -1405,11 +1392,10 @@ void Converter::convertDateTime(
 
 /** convert ISO "date" or "dateTime" string to util::DateTime */
 bool Converter::parseDateTime(   util::DateTime& rDateTime,
-                             boost::optional<sal_Int16> *const pTimeZoneOffset,
                                  const OUString& rString )
 {
     bool isDateTime;
-    return parseDateOrDateTime(nullptr, rDateTime, isDateTime, pTimeZoneOffset,
+    return parseDateOrDateTime(nullptr, rDateTime, isDateTime, nullptr,
             rString);
 }
 
@@ -1575,10 +1561,7 @@ static bool lcl_parseDate(
     if (bSuccess)
     {
         ++nPos;
-    }
 
-    if (bSuccess)
-    {
         bSuccess = readDateTimeComponent(string, nPos, nMonth, 2, true);
         if (!bIgnoreInvalidOrMissingDate)
         {
@@ -1594,10 +1577,7 @@ static bool lcl_parseDate(
     if (bSuccess)
     {
         ++nPos;
-    }
 
-    if (bSuccess)
-    {
         bSuccess = readDateTimeComponent(string, nPos, nDay, 2, true);
         if (!bIgnoreInvalidOrMissingDate)
         {
@@ -1626,7 +1606,7 @@ static bool lcl_parseDate(
 static bool lcl_parseDateTime(
                 util::Date *const pDate, util::DateTime & rDateTime,
                 bool & rbDateTime,
-                boost::optional<sal_Int16> *const pTimeZoneOffset,
+                std::optional<sal_Int16> *const pTimeZoneOffset,
                 const OUString & rString,
                 bool const bIgnoreInvalidOrMissingDate)
 {
@@ -1672,10 +1652,7 @@ static bool lcl_parseDateTime(
         if (bSuccess)
         {
             ++nPos;
-        }
 
-        if (bSuccess)
-        {
             bSuccess = readDateTimeComponent(string, nPos, nMinutes, 2, true);
             bSuccess &= (0 <= nMinutes) && (nMinutes < 60);
             bSuccess &= (nPos < string.getLength()); // not last token
@@ -1687,10 +1664,7 @@ static bool lcl_parseDateTime(
         if (bSuccess)
         {
             ++nPos;
-        }
 
-        if (bSuccess)
-        {
             bSuccess = readDateTimeComponent(string, nPos, nSeconds, 2, true);
             bSuccess &= (0 <= nSeconds) && (nSeconds < 60);
         }
@@ -1768,9 +1742,7 @@ static bool lcl_parseDateTime(
         if (bSuccess)
         {
             ++nPos;
-        }
-        if (bSuccess)
-        {
+
             bSuccess = readDateTimeComponent(
                         string, nPos, nTimezoneMinutes, 2, true);
             bSuccess &= (0 <= nTimezoneMinutes) && (nTimezoneMinutes < 60);
@@ -1788,12 +1760,12 @@ static bool lcl_parseDateTime(
 
     if (bSuccess)
     {
-        sal_Int16 const nTimezoneOffset = ((bHaveTimezoneMinus) ? (-1) : (+1))
+        sal_Int16 const nTimezoneOffset = (bHaveTimezoneMinus ? -1 : +1)
                         * ((nTimezoneHours * 60) + nTimezoneMinutes);
         if (!pDate || bHaveTime) // time is optional
         {
             rDateTime.Year =
-                ((isNegative) ? (-1) : (+1)) * static_cast<sal_Int16>(nYear);
+                (isNegative ? -1 : +1) * static_cast<sal_Int16>(nYear);
             rDateTime.Month = static_cast<sal_uInt16>(nMonth);
             rDateTime.Day = static_cast<sal_uInt16>(nDay);
             rDateTime.Hours = static_cast<sal_uInt16>(nHours);
@@ -1828,7 +1800,7 @@ static bool lcl_parseDateTime(
         else
         {
             pDate->Year =
-                ((isNegative) ? (-1) : (+1)) * static_cast<sal_Int16>(nYear);
+                (isNegative ? -1 : +1) * static_cast<sal_Int16>(nYear);
             pDate->Month = static_cast<sal_uInt16>(nMonth);
             pDate->Day = static_cast<sal_uInt16>(nDay);
             if (bHaveTimezone)
@@ -1859,19 +1831,18 @@ static bool lcl_parseDateTime(
 /** convert ISO "time" or "dateTime" string to util::DateTime */
 bool Converter::parseTimeOrDateTime(
                 util::DateTime & rDateTime,
-                boost::optional<sal_Int16> * pTimeZoneOffset,
                 const OUString & rString)
 {
     bool dummy;
     return lcl_parseDateTime(
-                nullptr, rDateTime, dummy, pTimeZoneOffset, rString, true);
+                nullptr, rDateTime, dummy, nullptr, rString, true);
 }
 
 /** convert ISO "date" or "dateTime" string to util::DateTime or util::Date */
 bool Converter::parseDateOrDateTime(
                 util::Date *const pDate, util::DateTime & rDateTime,
                 bool & rbDateTime,
-                boost::optional<sal_Int16> *const pTimeZoneOffset,
+                std::optional<sal_Int16> *const pTimeZoneOffset,
                 const OUString & rString )
 {
     return lcl_parseDateTime(
@@ -1915,176 +1886,6 @@ sal_Int32 Converter::indexOfComma( const OUString& rStr,
     return -1;
 }
 
-const
-  sal_Char aBase64EncodeTable[] =
-    { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-      'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-      'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
-      'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-      '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/' };
-
-const
-  sal_uInt8 aBase64DecodeTable[]  =
-    {                                            62,255,255,255, 63, // 43-47
-//                                                +               /
-
-     52, 53, 54, 55, 56, 57, 58, 59, 60, 61,255,255,255,  0,255,255, // 48-63
-//    0   1   2   3   4   5   6   7   8   9               =
-
-    255,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, // 64-79
-//        A   B   C   D   E   F   G   H   I   J   K   L   M   N   O
-
-     15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,255,255,255,255,255, // 80-95
-//    P   Q   R   S   T   U   V   W   X   Y   Z
-
-      0, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, // 96-111
-//        a   b   c   d   e   f   g   h   i   j   k   l   m   n   o
-
-     41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51 }; // 112-123
-//    p   q   r   s   t   u   v   w   x   y   z
-
-
-void ThreeByteToFourByte (const sal_Int8* pBuffer, const sal_Int32 nStart, const sal_Int32 nFullLen, OUStringBuffer& sBuffer)
-{
-    sal_Int32 nLen(nFullLen - nStart);
-    if (nLen > 3)
-        nLen = 3;
-    if (nLen == 0)
-    {
-        return;
-    }
-
-    sal_Int32 nBinaer;
-    switch (nLen)
-    {
-        case 1:
-        {
-            nBinaer = ((sal_uInt8)pBuffer[nStart + 0]) << 16;
-        }
-        break;
-        case 2:
-        {
-            nBinaer = (((sal_uInt8)pBuffer[nStart + 0]) << 16) +
-                    (((sal_uInt8)pBuffer[nStart + 1]) <<  8);
-        }
-        break;
-        default:
-        {
-            nBinaer = (((sal_uInt8)pBuffer[nStart + 0]) << 16) +
-                    (((sal_uInt8)pBuffer[nStart + 1]) <<  8) +
-                    ((sal_uInt8)pBuffer[nStart + 2]);
-        }
-        break;
-    }
-
-    sal_Unicode buf[] = { '=', '=', '=', '=' };
-
-    sal_uInt8 nIndex (static_cast<sal_uInt8>((nBinaer & 0xFC0000) >> 18));
-    buf[0] = aBase64EncodeTable [nIndex];
-
-    nIndex = static_cast<sal_uInt8>((nBinaer & 0x3F000) >> 12);
-    buf[1] = aBase64EncodeTable [nIndex];
-    if (nLen > 1)
-    {
-        nIndex = static_cast<sal_uInt8>((nBinaer & 0xFC0) >> 6);
-        buf[2] = aBase64EncodeTable [nIndex];
-        if (nLen > 2)
-        {
-            nIndex = static_cast<sal_uInt8>((nBinaer & 0x3F));
-            buf[3] = aBase64EncodeTable [nIndex];
-        }
-    }
-    sBuffer.append(buf, SAL_N_ELEMENTS(buf));
-}
-
-void Converter::encodeBase64(OUStringBuffer& aStrBuffer, const uno::Sequence<sal_Int8>& aPass)
-{
-    sal_Int32 i(0);
-    sal_Int32 nBufferLength(aPass.getLength());
-    const sal_Int8* pBuffer = aPass.getConstArray();
-    while (i < nBufferLength)
-    {
-        ThreeByteToFourByte (pBuffer, i, nBufferLength, aStrBuffer);
-        i += 3;
-    }
-}
-
-void Converter::decodeBase64(uno::Sequence<sal_Int8>& aBuffer, const OUString& sBuffer)
-{
-    sal_Int32 nCharsDecoded = decodeBase64SomeChars( aBuffer, sBuffer );
-    OSL_ENSURE( nCharsDecoded == sBuffer.getLength(), "some bytes left in base64 decoding!" );
-}
-
-sal_Int32 Converter::decodeBase64SomeChars(
-        uno::Sequence<sal_Int8>& rOutBuffer,
-        const OUString& rInBuffer)
-{
-    sal_Int32 nInBufferLen = rInBuffer.getLength();
-    sal_Int32 nMinOutBufferLen = (nInBufferLen / 4) * 3;
-    if( rOutBuffer.getLength() < nMinOutBufferLen )
-        rOutBuffer.realloc( nMinOutBufferLen );
-
-    const sal_Unicode *pInBuffer = rInBuffer.getStr();
-    sal_Int8 *pOutBuffer = rOutBuffer.getArray();
-    sal_Int8 *pOutBufferStart = pOutBuffer;
-    sal_Int32 nCharsDecoded = 0;
-
-    sal_uInt8 aDecodeBuffer[4];
-    sal_Int32 nBytesToDecode = 0;
-    sal_Int32 nBytesGotFromDecoding = 3;
-    sal_Int32 nInBufferPos= 0;
-    while( nInBufferPos < nInBufferLen )
-    {
-        sal_Unicode cChar = *pInBuffer;
-        if( cChar >= '+' && cChar <= 'z' )
-        {
-            sal_uInt8 nByte = aBase64DecodeTable[cChar-'+'];
-            if( nByte != 255 )
-            {
-                // We have found a valid character!
-                aDecodeBuffer[nBytesToDecode++] = nByte;
-
-                // One '=' character at the end means 2 out bytes
-                // Two '=' characters at the end mean 1 out bytes
-                if( '=' == cChar && nBytesToDecode > 2 )
-                    nBytesGotFromDecoding--;
-                if( 4 == nBytesToDecode )
-                {
-                    // Four characters found, so we may convert now!
-                    sal_uInt32 nOut = (aDecodeBuffer[0] << 18) +
-                                      (aDecodeBuffer[1] << 12) +
-                                      (aDecodeBuffer[2] << 6) +
-                                       aDecodeBuffer[3];
-
-                    *pOutBuffer++  = (sal_Int8)((nOut & 0xff0000) >> 16);
-                    if( nBytesGotFromDecoding > 1 )
-                        *pOutBuffer++  = (sal_Int8)((nOut & 0xff00) >> 8);
-                    if( nBytesGotFromDecoding > 2 )
-                        *pOutBuffer++  = (sal_Int8)(nOut & 0xff);
-                    nCharsDecoded = nInBufferPos + 1;
-                    nBytesToDecode = 0;
-                    nBytesGotFromDecoding = 3;
-                }
-            }
-            else
-            {
-                nCharsDecoded++;
-            }
-        }
-        else
-        {
-            nCharsDecoded++;
-        }
-
-        nInBufferPos++;
-        pInBuffer++;
-    }
-    if( (pOutBuffer - pOutBufferStart) != rOutBuffer.getLength() )
-        rOutBuffer.realloc( pOutBuffer - pOutBufferStart );
-
-    return nCharsDecoded;
-}
-
 double Converter::GetConversionFactor(OUStringBuffer& rUnit, sal_Int16 nSourceUnit, sal_Int16 nTargetUnit)
 {
     double fRetval(1.0);
@@ -2093,7 +1894,7 @@ double Converter::GetConversionFactor(OUStringBuffer& rUnit, sal_Int16 nSourceUn
 
     if(nSourceUnit != nTargetUnit)
     {
-        const sal_Char* psUnit = nullptr;
+        const char* psUnit = nullptr;
 
         switch(nSourceUnit)
         {

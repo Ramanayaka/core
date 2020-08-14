@@ -17,12 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "datauno.hxx"
+#include <datauno.hxx>
 
 #include <svl/hint.hxx>
 #include <svl/zforlist.hxx>
 #include <svl/sharedstringpool.hxx>
 #include <vcl/svapp.hxx>
+#include <unotools/charclass.hxx>
+#include <osl/diagnose.h>
 
 #include <com/sun/star/awt/XBitmap.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
@@ -35,31 +37,29 @@
 #include <com/sun/star/sheet/FilterOperator2.hpp>
 #include <com/sun/star/sheet/TableFilterField2.hpp>
 
-#include "dapiuno.hxx"
-#include "cellsuno.hxx"
-#include "miscuno.hxx"
-#include "targuno.hxx"
-#include "rangeutl.hxx"
-#include "dbdata.hxx"
-#include "docsh.hxx"
-#include "dbdocfun.hxx"
-#include "unonames.hxx"
-#include "globalnames.hxx"
-#include "globstr.hrc"
-#include "convuno.hxx"
-#include "hints.hxx"
-#include "attrib.hxx"
-#include "dpshttab.hxx"
-#include "queryentry.hxx"
-#include "dputil.hxx"
+#include <dapiuno.hxx>
+#include <cellsuno.hxx>
+#include <miscuno.hxx>
+#include <targuno.hxx>
+#include <rangeutl.hxx>
+#include <dbdata.hxx>
+#include <docsh.hxx>
+#include <dbdocfun.hxx>
+#include <unonames.hxx>
+#include <globalnames.hxx>
+#include <convuno.hxx>
+#include <hints.hxx>
+#include <attrib.hxx>
+#include <dpshttab.hxx>
+#include <queryentry.hxx>
+#include <dputil.hxx>
 #include <sortparam.hxx>
+#include <dpobject.hxx>
 
 #include <comphelper/extract.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <svx/dataaccessdescriptor.hxx>
 
-#include <limits>
 #include <memory>
 
 using namespace com::sun::star;
@@ -72,19 +72,19 @@ static const SfxItemPropertyMapEntry* lcl_GetSubTotalPropertyMap()
 
     static const SfxItemPropertyMapEntry aSubTotalPropertyMap_Impl[] =
     {
-        {OUString(SC_UNONAME_BINDFMT),  0,  cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNONAME_CASE),     0,  cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNONAME_ENABSORT), 0,  cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNONAME_ENUSLIST), 0,  cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNONAME_FORMATS),  0,  cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNONAME_INSBRK),   0,  cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNONAME_ISCASE),   0,  cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNONAME_MAXFLD),   0,  cppu::UnoType<sal_Int32>::get(), beans::PropertyAttribute::READONLY, 0},
-        {OUString(SC_UNONAME_SORTASC),  0,  cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNONAME_ULIST),    0,  cppu::UnoType<bool>::get(),       0, 0},
-        {OUString(SC_UNONAME_UINDEX),   0,  cppu::UnoType<sal_Int32>::get(), 0, 0},
-        {OUString(SC_UNONAME_USINDEX),  0,  cppu::UnoType<sal_Int32>::get(), 0, 0},
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        {SC_UNONAME_BINDFMT,  0,  cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNONAME_CASE,     0,  cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNONAME_ENABSORT, 0,  cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNONAME_ENUSLIST, 0,  cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNONAME_FORMATS,  0,  cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNONAME_INSBRK,   0,  cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNONAME_ISCASE,   0,  cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNONAME_MAXFLD,   0,  cppu::UnoType<sal_Int32>::get(), beans::PropertyAttribute::READONLY, 0},
+        {SC_UNONAME_SORTASC,  0,  cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNONAME_ULIST,    0,  cppu::UnoType<bool>::get(),       0, 0},
+        {SC_UNONAME_UINDEX,   0,  cppu::UnoType<sal_Int32>::get(), 0, 0},
+        {SC_UNONAME_USINDEX,  0,  cppu::UnoType<sal_Int32>::get(), 0, 0},
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     return aSubTotalPropertyMap_Impl;
 }
@@ -93,16 +93,16 @@ static const SfxItemPropertyMapEntry* lcl_GetFilterPropertyMap()
 {
     static const SfxItemPropertyMapEntry aFilterPropertyMap_Impl[] =
     {
-        {OUString(SC_UNONAME_CONTHDR),  0,  cppu::UnoType<bool>::get(),                      0, 0},
-        {OUString(SC_UNONAME_COPYOUT),  0,  cppu::UnoType<bool>::get(),                      0, 0},
-        {OUString(SC_UNONAME_ISCASE),   0,  cppu::UnoType<bool>::get(),                      0, 0},
-        {OUString(SC_UNONAME_MAXFLD),   0,  cppu::UnoType<sal_Int32>::get(),                beans::PropertyAttribute::READONLY, 0},
-        {OUString(SC_UNONAME_ORIENT),   0,  cppu::UnoType<table::TableOrientation>::get(),  0, 0},
-        {OUString(SC_UNONAME_OUTPOS),   0,  cppu::UnoType<table::CellAddress>::get(),       0, 0},
-        {OUString(SC_UNONAME_SAVEOUT),  0,  cppu::UnoType<bool>::get(),                      0, 0},
-        {OUString(SC_UNONAME_SKIPDUP),  0,  cppu::UnoType<bool>::get(),                      0, 0},
-        {OUString(SC_UNONAME_USEREGEX), 0,  cppu::UnoType<bool>::get(),                      0, 0},
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        {SC_UNONAME_CONTHDR,  0,  cppu::UnoType<bool>::get(),                      0, 0},
+        {SC_UNONAME_COPYOUT,  0,  cppu::UnoType<bool>::get(),                      0, 0},
+        {SC_UNONAME_ISCASE,   0,  cppu::UnoType<bool>::get(),                      0, 0},
+        {SC_UNONAME_MAXFLD,   0,  cppu::UnoType<sal_Int32>::get(),                beans::PropertyAttribute::READONLY, 0},
+        {SC_UNONAME_ORIENT,   0,  cppu::UnoType<table::TableOrientation>::get(),  0, 0},
+        {SC_UNONAME_OUTPOS,   0,  cppu::UnoType<table::CellAddress>::get(),       0, 0},
+        {SC_UNONAME_SAVEOUT,  0,  cppu::UnoType<bool>::get(),                      0, 0},
+        {SC_UNONAME_SKIPDUP,  0,  cppu::UnoType<bool>::get(),                      0, 0},
+        {SC_UNONAME_USEREGEX, 0,  cppu::UnoType<bool>::get(),                      0, 0},
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     return aFilterPropertyMap_Impl;
 }
@@ -111,21 +111,21 @@ static const SfxItemPropertyMapEntry* lcl_GetDBRangePropertyMap()
 {
     static const SfxItemPropertyMapEntry aDBRangePropertyMap_Impl[] =
     {
-        {OUString(SC_UNONAME_AUTOFLT),  0,  cppu::UnoType<bool>::get(),                      0, 0},
-        {OUString(SC_UNONAME_FLTCRT),   0,  cppu::UnoType<table::CellRangeAddress>::get(),  0, 0},
-        {OUString(SC_UNONAME_FROMSELECT),0, cppu::UnoType<bool>::get(),                      0, 0},
-        {OUString(SC_UNONAME_ISUSER),   0,  cppu::UnoType<bool>::get(),           beans::PropertyAttribute::READONLY, 0 },
-        {OUString(SC_UNONAME_KEEPFORM), 0,  cppu::UnoType<bool>::get(),                      0, 0},
-        {OUString(SC_UNO_LINKDISPBIT),  0,  cppu::UnoType<awt::XBitmap>::get(), beans::PropertyAttribute::READONLY, 0 },
-        {OUString(SC_UNO_LINKDISPNAME), 0,  cppu::UnoType<OUString>::get(), beans::PropertyAttribute::READONLY, 0 },
-        {OUString(SC_UNONAME_MOVCELLS), 0,  cppu::UnoType<bool>::get(),                      0, 0},
-        {OUString(SC_UNONAME_REFPERIOD), 0, cppu::UnoType<sal_Int32>::get(),                0, 0},
-        {OUString(SC_UNONAME_STRIPDAT), 0,  cppu::UnoType<bool>::get(),                      0, 0},
-        {OUString(SC_UNONAME_TOKENINDEX),0, cppu::UnoType<sal_Int32>::get(),     beans::PropertyAttribute::READONLY, 0 },
-        {OUString(SC_UNONAME_USEFLTCRT),0,  cppu::UnoType<bool>::get(),                      0, 0},
-        {OUString(SC_UNONAME_TOTALSROW),0,  cppu::UnoType<bool>::get(),                      0, 0},
-        {OUString(SC_UNONAME_CONTHDR)  ,0,  cppu::UnoType<bool>::get(),                      0, 0},
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        {SC_UNONAME_AUTOFLT,  0,  cppu::UnoType<bool>::get(),                      0, 0},
+        {SC_UNONAME_FLTCRT,   0,  cppu::UnoType<table::CellRangeAddress>::get(),  0, 0},
+        {SC_UNONAME_FROMSELECT,0, cppu::UnoType<bool>::get(),                      0, 0},
+        {SC_UNONAME_ISUSER,   0,  cppu::UnoType<bool>::get(),           beans::PropertyAttribute::READONLY, 0 },
+        {SC_UNONAME_KEEPFORM, 0,  cppu::UnoType<bool>::get(),                      0, 0},
+        {SC_UNO_LINKDISPBIT,  0,  cppu::UnoType<awt::XBitmap>::get(), beans::PropertyAttribute::READONLY, 0 },
+        {SC_UNO_LINKDISPNAME, 0,  cppu::UnoType<OUString>::get(), beans::PropertyAttribute::READONLY, 0 },
+        {SC_UNONAME_MOVCELLS, 0,  cppu::UnoType<bool>::get(),                      0, 0},
+        {SC_UNONAME_REFPERIOD, 0, cppu::UnoType<sal_Int32>::get(),                0, 0},
+        {SC_UNONAME_STRIPDAT, 0,  cppu::UnoType<bool>::get(),                      0, 0},
+        {SC_UNONAME_TOKENINDEX,0, cppu::UnoType<sal_Int32>::get(),     beans::PropertyAttribute::READONLY, 0 },
+        {SC_UNONAME_USEFLTCRT,0,  cppu::UnoType<bool>::get(),                      0, 0},
+        {SC_UNONAME_TOTALSROW,0,  cppu::UnoType<bool>::get(),                      0, 0},
+        {SC_UNONAME_CONTHDR  ,0,  cppu::UnoType<bool>::get(),                      0, 0},
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     return aDBRangePropertyMap_Impl;
 }
@@ -204,11 +204,8 @@ void ScImportDescriptor::FillProperties( uno::Sequence<beans::PropertyValue>& rS
 void ScImportDescriptor::FillImportParam( ScImportParam& rParam, const uno::Sequence<beans::PropertyValue>& rSeq )
 {
     OUString aStrVal;
-    const beans::PropertyValue* pPropArray = rSeq.getConstArray();
-    long nPropCount = rSeq.getLength();
-    for (long i = 0; i < nPropCount; i++)
+    for (const beans::PropertyValue& rProp : rSeq)
     {
-        const beans::PropertyValue& rProp = pPropArray[i];
         OUString aPropName(rProp.Name);
 
         if (aPropName == SC_UNONAME_ISNATIVE)
@@ -231,8 +228,7 @@ void ScImportDescriptor::FillImportParam( ScImportParam& rParam, const uno::Sequ
         else if (aPropName == SC_UNONAME_SRCTYPE)
         {
             //! test for correct enum type?
-            sheet::DataImportMode eMode = (sheet::DataImportMode)
-                                ScUnoHelpFunctions::GetEnumFromAny( rProp.Value );
+            sheet::DataImportMode eMode = static_cast<sheet::DataImportMode>(ScUnoHelpFunctions::GetEnumFromAny( rProp.Value ));
             switch (eMode)
             {
                 case sheet::DataImportMode_NONE:
@@ -324,20 +320,16 @@ void ScSortDescriptor::FillProperties( uno::Sequence<beans::PropertyValue>& rSeq
 
 void ScSortDescriptor::FillSortParam( ScSortParam& rParam, const uno::Sequence<beans::PropertyValue>& rSeq )
 {
-    const beans::PropertyValue* pPropArray = rSeq.getConstArray();
-    long nPropCount = rSeq.getLength();
     sal_Int16 nSortSize = rParam.GetSortKeyCount();
 
-    for (long nProp = 0; nProp < nPropCount; nProp++)
+    for (const beans::PropertyValue& rProp : rSeq)
     {
-        const beans::PropertyValue& rProp = pPropArray[nProp];
         OUString aPropName(rProp.Name);
 
         if (aPropName == SC_UNONAME_ORIENT)
         {
             //! test for correct enum type?
-            table::TableOrientation eOrient = (table::TableOrientation)
-                                ScUnoHelpFunctions::GetEnumFromAny( rProp.Value );
+            table::TableOrientation eOrient = static_cast<table::TableOrientation>(ScUnoHelpFunctions::GetEnumFromAny( rProp.Value ));
             rParam.bByRow = ( eOrient != table::TableOrientation_COLUMNS );
         }
         else if (aPropName == SC_UNONAME_ISSORTCOLUMNS)
@@ -421,8 +413,8 @@ void ScSortDescriptor::FillSortParam( ScSortParam& rParam, const uno::Sequence<b
             if ( rProp.Value >>= aAddress )
             {
                 rParam.nDestTab = aAddress.Sheet;
-                rParam.nDestCol = (SCCOL)aAddress.Column;
-                rParam.nDestRow = (SCROW)aAddress.Row;
+                rParam.nDestCol = static_cast<SCCOL>(aAddress.Column);
+                rParam.nDestRow = static_cast<SCROW>(aAddress.Row);
             }
         }
         else if (aPropName == SC_UNONAME_ISULIST)
@@ -431,7 +423,7 @@ void ScSortDescriptor::FillSortParam( ScSortParam& rParam, const uno::Sequence<b
         {
             sal_Int32 nVal = 0;
             if ( rProp.Value >>= nVal )
-                rParam.nUserIndex = (sal_uInt16)nVal;
+                rParam.nUserIndex = static_cast<sal_uInt16>(nVal);
         }
         else if (aPropName == SC_UNONAME_COLLLOC)
         {
@@ -447,7 +439,7 @@ void ScSortDescriptor::FillSortParam( ScSortParam& rParam, const uno::Sequence<b
 }
 
 ScSubTotalFieldObj::ScSubTotalFieldObj( ScSubTotalDescriptorBase* pDesc, sal_uInt16 nP ) :
-    rParent( *pDesc ),
+    xParent( pDesc ),
     nPos( nP )
 {
     OSL_ENSURE(pDesc, "ScSubTotalFieldObj: Parent is 0");
@@ -463,7 +455,7 @@ sal_Int32 SAL_CALL ScSubTotalFieldObj::getGroupColumn()
 {
     SolarMutexGuard aGuard;
     ScSubTotalParam aParam;
-    rParent.GetData(aParam);
+    xParent->GetData(aParam);
 
     return aParam.nField[nPos];
 }
@@ -472,18 +464,18 @@ void SAL_CALL ScSubTotalFieldObj::setGroupColumn( sal_Int32 nGroupColumn )
 {
     SolarMutexGuard aGuard;
     ScSubTotalParam aParam;
-    rParent.GetData(aParam);
+    xParent->GetData(aParam);
 
-    aParam.nField[nPos] = (SCCOL)nGroupColumn;
+    aParam.nField[nPos] = static_cast<SCCOL>(nGroupColumn);
 
-    rParent.PutData(aParam);
+    xParent->PutData(aParam);
 }
 
 uno::Sequence<sheet::SubTotalColumn> SAL_CALL ScSubTotalFieldObj::getSubTotalColumns()
 {
     SolarMutexGuard aGuard;
     ScSubTotalParam aParam;
-    rParent.GetData(aParam);
+    xParent->GetData(aParam);
 
     SCCOL nCount = aParam.nSubTotals[nPos];
     uno::Sequence<sheet::SubTotalColumn> aSeq(nCount);
@@ -502,7 +494,7 @@ void SAL_CALL ScSubTotalFieldObj::setSubTotalColumns(
 {
     SolarMutexGuard aGuard;
     ScSubTotalParam aParam;
-    rParent.GetData(aParam);
+    xParent->GetData(aParam);
 
     sal_uInt32 nColCount = aSubTotalColumns.getLength();
     if ( nColCount <= sal::static_int_cast<sal_uInt32>(SCCOL_MAX) )
@@ -518,7 +510,7 @@ void SAL_CALL ScSubTotalFieldObj::setSubTotalColumns(
             for (SCCOL i=0; i<nCount; i++)
             {
                 aParam.pSubTotals[nPos][i] = static_cast<SCCOL>(pAry[i].Column);
-                aParam.pFunctions[nPos][i] = ScDPUtil::toSubTotalFunc((ScGeneralFunction)pAry[i].Function);
+                aParam.pFunctions[nPos][i] = ScDPUtil::toSubTotalFunc(static_cast<ScGeneralFunction>(pAry[i].Function));
             }
         }
         else
@@ -529,7 +521,7 @@ void SAL_CALL ScSubTotalFieldObj::setSubTotalColumns(
     }
     //! otherwise exception or so? (too many columns)
 
-    rParent.PutData(aParam);
+    xParent->PutData(aParam);
 }
 
 ScSubTotalDescriptorBase::ScSubTotalDescriptorBase() :
@@ -541,7 +533,7 @@ ScSubTotalDescriptorBase::~ScSubTotalDescriptorBase()
 {
 }
 
-// XSubTotalDesctiptor
+// XSubTotalDescriptor
 
 ScSubTotalFieldObj* ScSubTotalDescriptorBase::GetObjectByIndex_Impl(sal_uInt16 nIndex)
 {
@@ -578,36 +570,35 @@ void SAL_CALL ScSubTotalDescriptorBase::addNew(
 
     sal_uInt32 nColCount = aSubTotalColumns.getLength();
 
-    if ( nPos < MAXSUBTOTAL && nColCount <= sal::static_int_cast<sal_uInt32>(SCCOL_MAX) )
+    if ( nPos >= MAXSUBTOTAL || nColCount > sal::static_int_cast<sal_uInt32>(SCCOL_MAX) )
+        // too many fields / columns
+        throw uno::RuntimeException();      // no other exceptions specified
+
+    aParam.bGroupActive[nPos] = true;
+    aParam.nField[nPos] = static_cast<SCCOL>(nGroupColumn);
+
+    delete aParam.pSubTotals[nPos];
+    delete aParam.pFunctions[nPos];
+
+    SCCOL nCount = static_cast<SCCOL>(nColCount);
+    aParam.nSubTotals[nPos] = nCount;
+    if (nCount != 0)
     {
-        aParam.bGroupActive[nPos] = true;
-        aParam.nField[nPos] = static_cast<SCCOL>(nGroupColumn);
+        aParam.pSubTotals[nPos] = new SCCOL[nCount];
+        aParam.pFunctions[nPos] = new ScSubTotalFunc[nCount];
 
-        delete aParam.pSubTotals[nPos];
-        delete aParam.pFunctions[nPos];
-
-        SCCOL nCount = static_cast<SCCOL>(nColCount);
-        aParam.nSubTotals[nPos] = nCount;
-        if (nCount != 0)
+        const sheet::SubTotalColumn* pAry = aSubTotalColumns.getConstArray();
+        for (SCCOL i=0; i<nCount; i++)
         {
-            aParam.pSubTotals[nPos] = new SCCOL[nCount];
-            aParam.pFunctions[nPos] = new ScSubTotalFunc[nCount];
-
-            const sheet::SubTotalColumn* pAry = aSubTotalColumns.getConstArray();
-            for (SCCOL i=0; i<nCount; i++)
-            {
-                aParam.pSubTotals[nPos][i] = static_cast<SCCOL>(pAry[i].Column);
-                aParam.pFunctions[nPos][i] = ScDPUtil::toSubTotalFunc((ScGeneralFunction)pAry[i].Function);
-            }
-        }
-        else
-        {
-            aParam.pSubTotals[nPos] = nullptr;
-            aParam.pFunctions[nPos] = nullptr;
+            aParam.pSubTotals[nPos][i] = static_cast<SCCOL>(pAry[i].Column);
+            aParam.pFunctions[nPos][i] = ScDPUtil::toSubTotalFunc(static_cast<ScGeneralFunction>(pAry[i].Function));
         }
     }
-    else                                    // too many fields / columns
-        throw uno::RuntimeException();      // no other exceptions specified
+    else
+    {
+        aParam.pSubTotals[nPos] = nullptr;
+        aParam.pFunctions[nPos] = nullptr;
+    }
 
     PutData(aParam);
 }
@@ -639,11 +630,11 @@ sal_Int32 SAL_CALL ScSubTotalDescriptorBase::getCount()
 uno::Any SAL_CALL ScSubTotalDescriptorBase::getByIndex( sal_Int32 nIndex )
 {
     SolarMutexGuard aGuard;
-    uno::Reference<sheet::XSubTotalField> xField(GetObjectByIndex_Impl((sal_uInt16)nIndex));
-    if (xField.is())
-        return uno::makeAny(xField);
-    else
+    uno::Reference<sheet::XSubTotalField> xField(GetObjectByIndex_Impl(static_cast<sal_uInt16>(nIndex)));
+    if (!xField.is())
         throw lang::IndexOutOfBoundsException();
+
+    return uno::makeAny(xField);
 }
 
 uno::Type SAL_CALL ScSubTotalDescriptorBase::getElementType()
@@ -693,7 +684,7 @@ void SAL_CALL ScSubTotalDescriptorBase::setPropertyValue(
     {
         sal_Int32 nVal = 0;
         if ( aValue >>= nVal )
-            aParam.nUserIndex = (sal_uInt16)nVal;
+            aParam.nUserIndex = static_cast<sal_uInt16>(nVal);
     }
     else if (aPropertyName == SC_UNONAME_MAXFLD )
     {
@@ -730,9 +721,9 @@ uno::Any SAL_CALL ScSubTotalDescriptorBase::getPropertyValue( const OUString& aP
     else if (aPropertyName == SC_UNONAME_ULIST || aPropertyName == SC_UNONAME_ENUSLIST )
         aRet <<= aParam.bUserDef;
     else if (aPropertyName == SC_UNONAME_UINDEX || aPropertyName == SC_UNONAME_USINDEX )
-        aRet <<= (sal_Int32) aParam.nUserIndex;
+        aRet <<= static_cast<sal_Int32>(aParam.nUserIndex);
     else if (aPropertyName == SC_UNONAME_MAXFLD )
-        aRet <<= (sal_Int32) MAXSUBTOTAL;
+        aRet <<= sal_Int32(MAXSUBTOTAL);
 
     return aRet;
 }
@@ -741,36 +732,7 @@ SC_IMPL_DUMMY_PROPERTY_LISTENER( ScSubTotalDescriptorBase )
 
 // XUnoTunnel
 
-sal_Int64 SAL_CALL ScSubTotalDescriptorBase::getSomething(
-                const uno::Sequence<sal_Int8 >& rId )
-{
-    if ( rId.getLength() == 16 &&
-          0 == memcmp( getUnoTunnelId().getConstArray(),
-                                    rId.getConstArray(), 16 ) )
-    {
-        return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_IntPtr>(this));
-    }
-    return 0;
-}
-
-namespace
-{
-    class theScSubTotalDescriptorBaseUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theScSubTotalDescriptorBaseUnoTunnelId> {};
-}
-
-const uno::Sequence<sal_Int8>& ScSubTotalDescriptorBase::getUnoTunnelId()
-{
-    return theScSubTotalDescriptorBaseUnoTunnelId::get().getSeq();
-}
-
-ScSubTotalDescriptorBase* ScSubTotalDescriptorBase::getImplementation(const uno::Reference<sheet::XSubTotalDescriptor>& rObj)
-{
-    ScSubTotalDescriptorBase* pRet = nullptr;
-    uno::Reference<lang::XUnoTunnel> xUT(rObj, uno::UNO_QUERY);
-    if (xUT.is())
-        pRet = reinterpret_cast<ScSubTotalDescriptorBase*>(sal::static_int_cast<sal_IntPtr>(xUT->getSomething(getUnoTunnelId())));
-    return pRet;
-}
+UNO3_GETIMPLEMENTATION_IMPL(ScSubTotalDescriptorBase);
 
 ScSubTotalDescriptor::ScSubTotalDescriptor()
 {
@@ -840,29 +802,26 @@ sheet::GeneralFunction SAL_CALL ScConsolidationDescriptor::getFunction()
 void SAL_CALL ScConsolidationDescriptor::setFunction( sheet::GeneralFunction nFunction )
 {
     SolarMutexGuard aGuard;
-    aParam.eFunction = ScDPUtil::toSubTotalFunc((ScGeneralFunction)nFunction);
+    aParam.eFunction = ScDPUtil::toSubTotalFunc(static_cast<ScGeneralFunction>(nFunction));
 }
 
 uno::Sequence<table::CellRangeAddress> SAL_CALL ScConsolidationDescriptor::getSources()
 {
     SolarMutexGuard aGuard;
     sal_uInt16 nCount = aParam.nDataAreaCount;
-    if (!aParam.ppDataAreas)
+    if (!aParam.pDataAreas)
         nCount = 0;
     table::CellRangeAddress aRange;
     uno::Sequence<table::CellRangeAddress> aSeq(nCount);
     table::CellRangeAddress* pAry = aSeq.getArray();
     for (sal_uInt16 i=0; i<nCount; i++)
     {
-        ScArea* pArea = aParam.ppDataAreas[i];
-        if (pArea)
-        {
-            aRange.Sheet        = pArea->nTab;
-            aRange.StartColumn  = pArea->nColStart;
-            aRange.StartRow     = pArea->nRowStart;
-            aRange.EndColumn    = pArea->nColEnd;
-            aRange.EndRow       = pArea->nRowEnd;
-        }
+        ScArea const & rArea = aParam.pDataAreas[i];
+        aRange.Sheet        = rArea.nTab;
+        aRange.StartColumn  = rArea.nColStart;
+        aRange.StartRow     = rArea.nRowStart;
+        aRange.EndColumn    = rArea.nColEnd;
+        aRange.EndRow       = rArea.nRowEnd;
         pAry[i] = aRange;
     }
     return aSeq;
@@ -872,21 +831,18 @@ void SAL_CALL ScConsolidationDescriptor::setSources(
                     const uno::Sequence<table::CellRangeAddress>& aSources )
 {
     SolarMutexGuard aGuard;
-    sal_uInt16 nCount = (sal_uInt16)aSources.getLength();
+    sal_uInt16 nCount = static_cast<sal_uInt16>(aSources.getLength());
     if (nCount)
     {
         const table::CellRangeAddress* pAry = aSources.getConstArray();
-        std::unique_ptr<ScArea*[]> pNew(new ScArea*[nCount]);
+        std::unique_ptr<ScArea[]> pNew(new ScArea[nCount]);
         sal_uInt16 i;
         for (i=0; i<nCount; i++)
-            pNew[i] = new ScArea( pAry[i].Sheet,
+            pNew[i] = ScArea( pAry[i].Sheet,
                     static_cast<SCCOL>(pAry[i].StartColumn), pAry[i].StartRow,
                     static_cast<SCCOL>(pAry[i].EndColumn),   pAry[i].EndRow );
 
-        aParam.SetAreas( pNew.get(), nCount );    // copy everything
-
-        for (i=0; i<nCount; i++)
-            delete pNew[i];
+        aParam.SetAreas( std::move(pNew), nCount );    // copy everything
     }
     else
         aParam.ClearDataAreas();
@@ -906,8 +862,8 @@ void SAL_CALL ScConsolidationDescriptor::setStartOutputPosition(
                                 const table::CellAddress& aStartOutputPosition )
 {
     SolarMutexGuard aGuard;
-    aParam.nCol = (SCCOL)aStartOutputPosition.Column;
-    aParam.nRow = (SCROW)aStartOutputPosition.Row;
+    aParam.nCol = static_cast<SCCOL>(aStartOutputPosition.Column);
+    aParam.nRow = static_cast<SCROW>(aStartOutputPosition.Row);
     aParam.nTab = aStartOutputPosition.Sheet;
 }
 
@@ -1163,12 +1119,12 @@ void fillQueryParam(
             ScQueryEntry::QueryItemsType& rItems = rEntry.GetQueryItems();
             rItems.clear();
             const uno::Sequence<sheet::FilterFieldValue>& rVals = pAry[i].Values;
-            for (sal_Int32 j = 0, n = rVals.getLength(); j < n; ++j)
+            for (const auto& rVal : rVals)
             {
                 ScQueryEntry::Item aItem;
-                aItem.meType   = rVals[j].IsNumeric ? ScQueryEntry::ByValue : ScQueryEntry::ByString;
-                aItem.mfVal    = rVals[j].NumericValue;
-                aItem.maString = rPool.intern(rVals[j].StringValue);
+                aItem.meType   = rVal.IsNumeric ? ScQueryEntry::ByValue : ScQueryEntry::ByString;
+                aItem.mfVal    = rVal.NumericValue;
+                aItem.maString = rPool.intern(rVal.StringValue);
 
                 if (aItem.meType == ScQueryEntry::ByValue)
                 {
@@ -1283,13 +1239,13 @@ uno::Sequence<sheet::TableFilterField3> SAL_CALL ScFilterDescriptorBase::getFilt
             const ScQueryEntry::QueryItemsType& rItems = rEntry.GetQueryItems();
             size_t nItemCount = rItems.size();
             aField.Values.realloc(nItemCount);
-            ScQueryEntry::QueryItemsType::const_iterator itr = rItems.begin(), itrEnd = rItems.end();
-            for (size_t j = 0; itr != itrEnd; ++itr, ++j)
+            size_t j = 0;
+            for (const auto& rItem : rItems)
             {
-                aField.Values[j].IsNumeric = itr->meType != ScQueryEntry::ByString;
-                aField.Values[j].StringValue = itr->maString.getString();
-                aField.Values[j].NumericValue = itr->mfVal;
-
+                aField.Values[j].IsNumeric = rItem.meType != ScQueryEntry::ByString;
+                aField.Values[j].StringValue = rItem.maString.getString();
+                aField.Values[j].NumericValue = rItem.mfVal;
+                ++j;
             }
         }
 
@@ -1415,8 +1371,7 @@ void SAL_CALL ScFilterDescriptorBase::setPropertyValue(
     else if (aPropertyName == SC_UNONAME_ORIENT)
     {
         //! test for correct enum type?
-        table::TableOrientation eOrient = (table::TableOrientation)
-                                ScUnoHelpFunctions::GetEnumFromAny( aValue );
+        table::TableOrientation eOrient = static_cast<table::TableOrientation>(ScUnoHelpFunctions::GetEnumFromAny( aValue ));
         aParam.bByRow = ( eOrient != table::TableOrientation_COLUMNS );
     }
     else if (aPropertyName == SC_UNONAME_OUTPOS)
@@ -1425,8 +1380,8 @@ void SAL_CALL ScFilterDescriptorBase::setPropertyValue(
         if ( aValue >>= aAddress )
         {
             aParam.nDestTab = aAddress.Sheet;
-            aParam.nDestCol = (SCCOL)aAddress.Column;
-            aParam.nDestRow = (SCROW)aAddress.Row;
+            aParam.nDestCol = static_cast<SCCOL>(aAddress.Column);
+            aParam.nDestRow = static_cast<SCROW>(aAddress.Row);
         }
     }
     else if (aPropertyName == SC_UNONAME_SAVEOUT)
@@ -1455,7 +1410,7 @@ uno::Any SAL_CALL ScFilterDescriptorBase::getPropertyValue( const OUString& aPro
     else if (aPropertyName == SC_UNONAME_ISCASE )
         aRet <<= aParam.bCaseSens;
     else if (aPropertyName == SC_UNONAME_MAXFLD )
-        aRet <<= (sal_Int32) aParam.GetEntryCount();
+        aRet <<= static_cast<sal_Int32>(aParam.GetEntryCount());
     else if (aPropertyName == SC_UNONAME_ORIENT )
     {
         table::TableOrientation eOrient = aParam.bByRow ? table::TableOrientation_ROWS :
@@ -1551,18 +1506,18 @@ void ScDataPilotFilterDescriptor::GetData( ScQueryParam& rParam ) const
 
 void ScDataPilotFilterDescriptor::PutData( const ScQueryParam& rParam )
 {
-    if (mxParent.is())
+    if (!mxParent.is())
+        return;
+
+    ScDPObject* pDPObj = mxParent->GetDPObject();
+    if (pDPObj)
     {
-        ScDPObject* pDPObj = mxParent->GetDPObject();
-        if (pDPObj)
-        {
-            ScSheetSourceDesc aSheetDesc(&mxParent->GetDocShell()->GetDocument());
-            if (pDPObj->IsSheetData())
-                aSheetDesc = *pDPObj->GetSheetDesc();
-            aSheetDesc.SetQueryParam(rParam);
-            pDPObj->SetSheetDesc(aSheetDesc);
-            mxParent->SetDPObject(pDPObj);
-        }
+        ScSheetSourceDesc aSheetDesc(&mxParent->GetDocShell()->GetDocument());
+        if (pDPObj->IsSheetData())
+            aSheetDesc = *pDPObj->GetSheetDesc();
+        aSheetDesc.SetQueryParam(rParam);
+        pDPObj->SetSheetDesc(aSheetDesc);
+        mxParent->SetDPObject(pDPObj);
     }
 }
 
@@ -1626,7 +1581,7 @@ ScDBData* ScDatabaseRangeObj::GetDBData_Impl() const
             ScDBCollection* pNames = pDocShell->GetDocument().GetDBCollection();
             if (pNames)
             {
-                ScDBData* p = pNames->getNamedDBs().findByUpperName(ScGlobal::pCharClass->uppercase(aName));
+                ScDBData* p = pNames->getNamedDBs().findByUpperName(ScGlobal::getCharClassPtr()->uppercase(aName));
                 if (p)
                     pRet = p;
             }
@@ -1683,8 +1638,8 @@ void SAL_CALL ScDatabaseRangeObj::setDataArea( const table::CellRangeAddress& aD
     {
         ScDBData aNewData( *pData );
         //! MoveTo ???
-        aNewData.SetArea( aDataArea.Sheet, (SCCOL)aDataArea.StartColumn, (SCROW)aDataArea.StartRow,
-                                           (SCCOL)aDataArea.EndColumn, (SCROW)aDataArea.EndRow );
+        aNewData.SetArea( aDataArea.Sheet, static_cast<SCCOL>(aDataArea.StartColumn), static_cast<SCROW>(aDataArea.StartRow),
+                                           static_cast<SCCOL>(aDataArea.EndColumn), static_cast<SCROW>(aDataArea.EndRow) );
         ScDBDocFunc aFunc(*pDocShell);
         aFunc.ModifyDBData(aNewData);
     }
@@ -1716,49 +1671,49 @@ uno::Sequence<beans::PropertyValue> SAL_CALL ScDatabaseRangeObj::getSortDescript
 void ScDatabaseRangeObj::GetQueryParam(ScQueryParam& rQueryParam) const
 {
     const ScDBData* pData = GetDBData_Impl();
-    if (pData)
-    {
-        pData->GetQueryParam(rQueryParam);
+    if (!pData)
+        return;
 
-        //  FilterDescriptor contains the counted fields inside the area
-        ScRange aDBRange;
-        pData->GetArea(aDBRange);
-        SCCOLROW nFieldStart = rQueryParam.bByRow ? static_cast<SCCOLROW>(aDBRange.aStart.Col()) : static_cast<SCCOLROW>(aDBRange.aStart.Row());
-        SCSIZE nCount = rQueryParam.GetEntryCount();
-        for (SCSIZE i=0; i<nCount; i++)
-        {
-            ScQueryEntry& rEntry = rQueryParam.GetEntry(i);
-            if (rEntry.bDoQuery && rEntry.nField >= nFieldStart)
-                rEntry.nField -= nFieldStart;
-        }
+    pData->GetQueryParam(rQueryParam);
+
+    //  FilterDescriptor contains the counted fields inside the area
+    ScRange aDBRange;
+    pData->GetArea(aDBRange);
+    SCCOLROW nFieldStart = rQueryParam.bByRow ? static_cast<SCCOLROW>(aDBRange.aStart.Col()) : static_cast<SCCOLROW>(aDBRange.aStart.Row());
+    SCSIZE nCount = rQueryParam.GetEntryCount();
+    for (SCSIZE i=0; i<nCount; i++)
+    {
+        ScQueryEntry& rEntry = rQueryParam.GetEntry(i);
+        if (rEntry.bDoQuery && rEntry.nField >= nFieldStart)
+            rEntry.nField -= nFieldStart;
     }
 }
 
 void ScDatabaseRangeObj::SetQueryParam(const ScQueryParam& rQueryParam)
 {
     const ScDBData* pData = GetDBData_Impl();
-    if (pData)
+    if (!pData)
+        return;
+
+    //  FilterDescriptor contains the counted fields inside the area
+    ScQueryParam aParam(rQueryParam);
+    ScRange aDBRange;
+    pData->GetArea(aDBRange);
+    SCCOLROW nFieldStart = aParam.bByRow ? static_cast<SCCOLROW>(aDBRange.aStart.Col()) : static_cast<SCCOLROW>(aDBRange.aStart.Row());
+
+    SCSIZE nCount = aParam.GetEntryCount();
+    for (SCSIZE i=0; i<nCount; i++)
     {
-        //  FilterDescriptor contains the counted fields inside the area
-        ScQueryParam aParam(rQueryParam);
-        ScRange aDBRange;
-        pData->GetArea(aDBRange);
-        SCCOLROW nFieldStart = aParam.bByRow ? static_cast<SCCOLROW>(aDBRange.aStart.Col()) : static_cast<SCCOLROW>(aDBRange.aStart.Row());
-
-        SCSIZE nCount = aParam.GetEntryCount();
-        for (SCSIZE i=0; i<nCount; i++)
-        {
-               ScQueryEntry& rEntry = aParam.GetEntry(i);
-               if (rEntry.bDoQuery)
-                       rEntry.nField += nFieldStart;
-        }
-
-        ScDBData aNewData( *pData );
-        aNewData.SetQueryParam(aParam);
-        aNewData.SetHeader(aParam.bHasHeader);      // not in ScDBData::SetQueryParam
-        ScDBDocFunc aFunc(*pDocShell);
-        aFunc.ModifyDBData(aNewData);
+           ScQueryEntry& rEntry = aParam.GetEntry(i);
+           if (rEntry.bDoQuery)
+                   rEntry.nField += nFieldStart;
     }
+
+    ScDBData aNewData( *pData );
+    aNewData.SetQueryParam(aParam);
+    aNewData.SetHeader(aParam.bHasHeader);      // not in ScDBData::SetQueryParam
+    ScDBDocFunc aFunc(*pDocShell);
+    aFunc.ModifyDBData(aNewData);
 }
 
 uno::Reference<sheet::XSheetFilterDescriptor> SAL_CALL ScDatabaseRangeObj::getFilterDescriptor()
@@ -1770,25 +1725,25 @@ uno::Reference<sheet::XSheetFilterDescriptor> SAL_CALL ScDatabaseRangeObj::getFi
 void ScDatabaseRangeObj::GetSubTotalParam(ScSubTotalParam& rSubTotalParam) const
 {
     const ScDBData* pData = GetDBData_Impl();
-    if (pData)
-    {
-        pData->GetSubTotalParam(rSubTotalParam);
+    if (!pData)
+        return;
 
-        //  FilterDescriptor contains the counted fields inside the area
-        ScRange aDBRange;
-        pData->GetArea(aDBRange);
-        SCCOL nFieldStart = aDBRange.aStart.Col();
-        for (sal_uInt16 i=0; i<MAXSUBTOTAL; i++)
+    pData->GetSubTotalParam(rSubTotalParam);
+
+    //  FilterDescriptor contains the counted fields inside the area
+    ScRange aDBRange;
+    pData->GetArea(aDBRange);
+    SCCOL nFieldStart = aDBRange.aStart.Col();
+    for (sal_uInt16 i=0; i<MAXSUBTOTAL; i++)
+    {
+        if ( rSubTotalParam.bGroupActive[i] )
         {
-            if ( rSubTotalParam.bGroupActive[i] )
-            {
-                if ( rSubTotalParam.nField[i] >= nFieldStart )
-                    rSubTotalParam.nField[i] = sal::static_int_cast<SCCOL>( rSubTotalParam.nField[i] - nFieldStart );
-                for (SCCOL j=0; j<rSubTotalParam.nSubTotals[i]; j++)
-                    if ( rSubTotalParam.pSubTotals[i][j] >= nFieldStart )
-                        rSubTotalParam.pSubTotals[i][j] =
-                            sal::static_int_cast<SCCOL>( rSubTotalParam.pSubTotals[i][j] - nFieldStart );
-            }
+            if ( rSubTotalParam.nField[i] >= nFieldStart )
+                rSubTotalParam.nField[i] = sal::static_int_cast<SCCOL>( rSubTotalParam.nField[i] - nFieldStart );
+            for (SCCOL j=0; j<rSubTotalParam.nSubTotals[i]; j++)
+                if ( rSubTotalParam.pSubTotals[i][j] >= nFieldStart )
+                    rSubTotalParam.pSubTotals[i][j] =
+                        sal::static_int_cast<SCCOL>( rSubTotalParam.pSubTotals[i][j] - nFieldStart );
         }
     }
 }
@@ -1796,28 +1751,28 @@ void ScDatabaseRangeObj::GetSubTotalParam(ScSubTotalParam& rSubTotalParam) const
 void ScDatabaseRangeObj::SetSubTotalParam(const ScSubTotalParam& rSubTotalParam)
 {
     const ScDBData* pData = GetDBData_Impl();
-    if (pData)
-    {
-        //  FilterDescriptor contains the counted fields inside the area
-        ScSubTotalParam aParam(rSubTotalParam);
-        ScRange aDBRange;
-        pData->GetArea(aDBRange);
-        SCCOL nFieldStart = aDBRange.aStart.Col();
-        for (sal_uInt16 i=0; i<MAXSUBTOTAL; i++)
-        {
-            if ( aParam.bGroupActive[i] )
-            {
-                aParam.nField[i] = sal::static_int_cast<SCCOL>( aParam.nField[i] + nFieldStart );
-                for (SCCOL j=0; j<aParam.nSubTotals[i]; j++)
-                    aParam.pSubTotals[i][j] = sal::static_int_cast<SCCOL>( aParam.pSubTotals[i][j] + nFieldStart );
-            }
-        }
+    if (!pData)
+        return;
 
-        ScDBData aNewData( *pData );
-        aNewData.SetSubTotalParam(aParam);
-        ScDBDocFunc aFunc(*pDocShell);
-        aFunc.ModifyDBData(aNewData);
+    //  FilterDescriptor contains the counted fields inside the area
+    ScSubTotalParam aParam(rSubTotalParam);
+    ScRange aDBRange;
+    pData->GetArea(aDBRange);
+    SCCOL nFieldStart = aDBRange.aStart.Col();
+    for (sal_uInt16 i=0; i<MAXSUBTOTAL; i++)
+    {
+        if ( aParam.bGroupActive[i] )
+        {
+            aParam.nField[i] = sal::static_int_cast<SCCOL>( aParam.nField[i] + nFieldStart );
+            for (SCCOL j=0; j<aParam.nSubTotals[i]; j++)
+                aParam.pSubTotals[i][j] = sal::static_int_cast<SCCOL>( aParam.pSubTotals[i][j] + nFieldStart );
+        }
     }
+
+    ScDBData aNewData( *pData );
+    aNewData.SetSubTotalParam(aParam);
+    ScDBDocFunc aFunc(*pDocShell);
+    aFunc.ModifyDBData(aNewData);
 }
 
 uno::Reference<sheet::XSubTotalDescriptor> SAL_CALL ScDatabaseRangeObj::getSubTotalDescriptor()
@@ -1845,34 +1800,34 @@ void SAL_CALL ScDatabaseRangeObj::refresh()
 {
     SolarMutexGuard aGuard;
     ScDBData* pData = GetDBData_Impl();
-    if ( pDocShell && pData )
+    if ( !(pDocShell && pData) )
+        return;
+
+    ScDBDocFunc aFunc(*pDocShell);
+
+    // repeat import?
+    bool bContinue = true;
+    ScImportParam aImportParam;
+    pData->GetImportParam( aImportParam );
+    if (aImportParam.bImport && !pData->HasImportSelection())
     {
-        ScDBDocFunc aFunc(*pDocShell);
-
-        // repeat import?
-        bool bContinue = true;
-        ScImportParam aImportParam;
-        pData->GetImportParam( aImportParam );
-        if (aImportParam.bImport && !pData->HasImportSelection())
-        {
-            SCTAB nTab;
-            SCCOL nDummyCol;
-            SCROW nDummyRow;
-            pData->GetArea( nTab, nDummyCol,nDummyRow,nDummyCol,nDummyRow );
-            bContinue = aFunc.DoImport( nTab, aImportParam, nullptr );   //! Api-Flag as parameter
-        }
-
-        // if no error then internal operations (sort, query, subtotal)
-        if (bContinue)
-            aFunc.RepeatDB( pData->GetName(), true, bIsUnnamed, aTab );
+        SCTAB nTab;
+        SCCOL nDummyCol;
+        SCROW nDummyRow;
+        pData->GetArea( nTab, nDummyCol,nDummyRow,nDummyCol,nDummyRow );
+        bContinue = aFunc.DoImport( nTab, aImportParam, nullptr );   //! Api-Flag as parameter
     }
+
+    // if no error then internal operations (sort, query, subtotal)
+    if (bContinue)
+        aFunc.RepeatDB( pData->GetName(), true, bIsUnnamed, aTab );
 }
 
 void SAL_CALL ScDatabaseRangeObj::addRefreshListener(
                                 const uno::Reference<util::XRefreshListener >& xListener )
 {
     SolarMutexGuard aGuard;
-    aRefreshListeners.push_back( uno::Reference<util::XRefreshListener>( xListener ));
+    aRefreshListeners.emplace_back( xListener );
 
     //  hold one additional ref to keep this object alive as long as there are listeners
     if ( aRefreshListeners.size() == 1 )
@@ -1940,92 +1895,92 @@ void SAL_CALL ScDatabaseRangeObj::setPropertyValue(
 {
     SolarMutexGuard aGuard;
     ScDBData* pData = GetDBData_Impl();
-    if ( pDocShell && pData )
+    if ( !(pDocShell && pData) )
+        return;
+
+    ScDBData aNewData( *pData );
+    bool bDo = true;
+
+    if ( aPropertyName == SC_UNONAME_KEEPFORM )
+        aNewData.SetKeepFmt( ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+    else if ( aPropertyName == SC_UNONAME_MOVCELLS )
+        aNewData.SetDoSize( ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+    else if ( aPropertyName == SC_UNONAME_STRIPDAT )
+        aNewData.SetStripData( ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+    else if (aPropertyName == SC_UNONAME_AUTOFLT )
     {
-        ScDBData aNewData( *pData );
-        bool bDo = true;
-
-        if ( aPropertyName == SC_UNONAME_KEEPFORM )
-            aNewData.SetKeepFmt( ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
-        else if ( aPropertyName == SC_UNONAME_MOVCELLS )
-            aNewData.SetDoSize( ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
-        else if ( aPropertyName == SC_UNONAME_STRIPDAT )
-            aNewData.SetStripData( ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
-        else if (aPropertyName == SC_UNONAME_AUTOFLT )
+        bool bAutoFilter(ScUnoHelpFunctions::GetBoolFromAny( aValue ));
+        aNewData.SetAutoFilter(bAutoFilter);
+        ScRange aRange;
+        aNewData.GetArea(aRange);
+        ScDocument& rDoc = pDocShell->GetDocument();
+        if (bAutoFilter)
+            rDoc.ApplyFlagsTab( aRange.aStart.Col(), aRange.aStart.Row(),
+                                 aRange.aEnd.Col(), aRange.aStart.Row(),
+                                 aRange.aStart.Tab(), ScMF::Auto );
+        else if (!bAutoFilter)
+            rDoc.RemoveFlagsTab(aRange.aStart.Col(), aRange.aStart.Row(),
+                                 aRange.aEnd.Col(), aRange.aStart.Row(),
+                                 aRange.aStart.Tab(), ScMF::Auto );
+        ScRange aPaintRange(aRange.aStart, aRange.aEnd);
+        aPaintRange.aEnd.SetRow(aPaintRange.aStart.Row());
+        pDocShell->PostPaint(aPaintRange, PaintPartFlags::Grid);
+    }
+    else if (aPropertyName == SC_UNONAME_USEFLTCRT )
+    {
+        if (ScUnoHelpFunctions::GetBoolFromAny( aValue ))
         {
-            bool bAutoFilter(ScUnoHelpFunctions::GetBoolFromAny( aValue ));
-            aNewData.SetAutoFilter(bAutoFilter);
+            // only here to set bIsAdvanced in ScDBData
             ScRange aRange;
-            aNewData.GetArea(aRange);
-            ScDocument& rDoc = pDocShell->GetDocument();
-            if (bAutoFilter)
-                rDoc.ApplyFlagsTab( aRange.aStart.Col(), aRange.aStart.Row(),
-                                     aRange.aEnd.Col(), aRange.aStart.Row(),
-                                     aRange.aStart.Tab(), ScMF::Auto );
-            else if (!bAutoFilter)
-                rDoc.RemoveFlagsTab(aRange.aStart.Col(), aRange.aStart.Row(),
-                                     aRange.aEnd.Col(), aRange.aStart.Row(),
-                                     aRange.aStart.Tab(), ScMF::Auto );
-            ScRange aPaintRange(aRange.aStart, aRange.aEnd);
-            aPaintRange.aEnd.SetRow(aPaintRange.aStart.Row());
-            pDocShell->PostPaint(aPaintRange, PaintPartFlags::Grid);
+            (void)aNewData.GetAdvancedQuerySource(aRange);
+            aNewData.SetAdvancedQuerySource(&aRange);
         }
-        else if (aPropertyName == SC_UNONAME_USEFLTCRT )
-        {
-            if (ScUnoHelpFunctions::GetBoolFromAny( aValue ))
-            {
-                // only here to set bIsAdvanced in ScDBData
-                ScRange aRange;
-                (void)aNewData.GetAdvancedQuerySource(aRange);
-                aNewData.SetAdvancedQuerySource(&aRange);
-            }
-            else
-                aNewData.SetAdvancedQuerySource(nullptr);
-        }
-        else if (aPropertyName == SC_UNONAME_FLTCRT )
-        {
-            table::CellRangeAddress aRange;
-            if (aValue >>= aRange)
-            {
-                ScRange aCoreRange;
-                ScUnoConversion::FillScRange(aCoreRange, aRange);
-
-                aNewData.SetAdvancedQuerySource(&aCoreRange);
-            }
-        }
-        else if (aPropertyName == SC_UNONAME_FROMSELECT )
-        {
-            aNewData.SetImportSelection(::cppu::any2bool(aValue));
-        }
-        else if (aPropertyName == SC_UNONAME_REFPERIOD )
-        {
-            sal_Int32 nRefresh = 0;
-            if (aValue >>= nRefresh)
-            {
-                ScDocument& rDoc = pDocShell->GetDocument();
-                aNewData.SetRefreshDelay(nRefresh);
-                if (rDoc.GetDBCollection())
-                {
-                    aNewData.SetRefreshHandler( rDoc.GetDBCollection()->GetRefreshHandler() );
-                    aNewData.SetRefreshControl( &rDoc.GetRefreshTimerControlAddress() );
-                }
-            }
-        }
-        else if (aPropertyName == SC_UNONAME_CONRES )
-        {
-        }
-        else if ( aPropertyName == SC_UNONAME_TOTALSROW )
-            aNewData.SetTotals( ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
-        else if ( aPropertyName == SC_UNONAME_CONTHDR )
-            aNewData.SetHeader( ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
         else
-            bDo = false;
-
-        if (bDo)
+            aNewData.SetAdvancedQuerySource(nullptr);
+    }
+    else if (aPropertyName == SC_UNONAME_FLTCRT )
+    {
+        table::CellRangeAddress aRange;
+        if (aValue >>= aRange)
         {
-            ScDBDocFunc aFunc(*pDocShell);
-            aFunc.ModifyDBData(aNewData);
+            ScRange aCoreRange;
+            ScUnoConversion::FillScRange(aCoreRange, aRange);
+
+            aNewData.SetAdvancedQuerySource(&aCoreRange);
         }
+    }
+    else if (aPropertyName == SC_UNONAME_FROMSELECT )
+    {
+        aNewData.SetImportSelection(::cppu::any2bool(aValue));
+    }
+    else if (aPropertyName == SC_UNONAME_REFPERIOD )
+    {
+        sal_Int32 nRefresh = 0;
+        if (aValue >>= nRefresh)
+        {
+            ScDocument& rDoc = pDocShell->GetDocument();
+            aNewData.SetRefreshDelay(nRefresh);
+            if (rDoc.GetDBCollection())
+            {
+                aNewData.SetRefreshHandler( rDoc.GetDBCollection()->GetRefreshHandler() );
+                aNewData.SetRefreshControl( &rDoc.GetRefreshTimerControlAddress() );
+            }
+        }
+    }
+    else if (aPropertyName == SC_UNONAME_CONRES )
+    {
+    }
+    else if ( aPropertyName == SC_UNONAME_TOTALSROW )
+        aNewData.SetTotals( ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+    else if ( aPropertyName == SC_UNONAME_CONTHDR )
+        aNewData.SetHeader( ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+    else
+        bDo = false;
+
+    if (bDo)
+    {
+        ScDBDocFunc aFunc(*pDocShell);
+        aFunc.ModifyDBData(aNewData);
     }
 }
 
@@ -2114,7 +2069,7 @@ SC_IMPL_DUMMY_PROPERTY_LISTENER( ScDatabaseRangeObj )
 // XServiceInfo
 OUString SAL_CALL ScDatabaseRangeObj::getImplementationName()
 {
-    return OUString( "ScDatabaseRangeObj" );
+    return "ScDatabaseRangeObj";
 }
 
 sal_Bool SAL_CALL ScDatabaseRangeObj::supportsService( const OUString& rServiceName )
@@ -2190,8 +2145,8 @@ void SAL_CALL ScDatabaseRangesObj::addNewByName( const OUString& aName,
     {
         ScDBDocFunc aFunc(*pDocShell);
 
-        ScRange aNameRange( (SCCOL)aRange.StartColumn, (SCROW)aRange.StartRow, aRange.Sheet,
-                            (SCCOL)aRange.EndColumn,   (SCROW)aRange.EndRow,   aRange.Sheet );
+        ScRange aNameRange( static_cast<SCCOL>(aRange.StartColumn), static_cast<SCROW>(aRange.StartRow), aRange.Sheet,
+                            static_cast<SCCOL>(aRange.EndColumn),   static_cast<SCROW>(aRange.EndRow),   aRange.Sheet );
         bDone = aFunc.AddDBRange( aName, aNameRange );
     }
     if (!bDone)
@@ -2225,7 +2180,7 @@ sal_Int32 SAL_CALL ScDatabaseRangesObj::getCount()
 {
     SolarMutexGuard aGuard;
 
-    //! "unbenannt" weglassen ?
+    //! need to omit "unnamed"?
 
     if (pDocShell)
     {
@@ -2243,10 +2198,10 @@ uno::Any SAL_CALL ScDatabaseRangesObj::getByIndex( sal_Int32 nIndex )
         throw lang::IndexOutOfBoundsException();
 
     uno::Reference<sheet::XDatabaseRange> xRange(GetObjectByIndex_Impl(static_cast<size_t>(nIndex)));
-    if (xRange.is())
-        return uno::makeAny(xRange);
-    else
+    if (!xRange.is())
         throw lang::IndexOutOfBoundsException();
+
+    return uno::makeAny(xRange);
 }
 
 uno::Type SAL_CALL ScDatabaseRangesObj::getElementType()
@@ -2267,11 +2222,10 @@ uno::Any SAL_CALL ScDatabaseRangesObj::getByName( const OUString& aName )
 {
     SolarMutexGuard aGuard;
     uno::Reference<sheet::XDatabaseRange> xRange(GetObjectByName_Impl(aName));
-    if (xRange.is())
-        return uno::makeAny(xRange);
-    else
+    if (!xRange.is())
         throw container::NoSuchElementException();
-//    return uno::Any();
+
+    return uno::makeAny(xRange);
 }
 
 uno::Sequence<OUString> SAL_CALL ScDatabaseRangesObj::getElementNames()
@@ -2287,9 +2241,12 @@ uno::Sequence<OUString> SAL_CALL ScDatabaseRangesObj::getElementNames()
         {
             const ScDBCollection::NamedDBs& rDBs = pNames->getNamedDBs();
             uno::Sequence<OUString> aSeq(rDBs.size());
-            ScDBCollection::NamedDBs::const_iterator itr = rDBs.begin(), itrEnd = rDBs.end();
-            for (size_t i = 0; itr != itrEnd; ++itr, ++i)
-                aSeq[i] = (*itr)->GetName();
+            size_t i = 0;
+            for (const auto& rDB : rDBs)
+            {
+                aSeq[i] = rDB->GetName();
+                ++i;
+            }
 
             return aSeq;
         }
@@ -2307,7 +2264,7 @@ sal_Bool SAL_CALL ScDatabaseRangesObj::hasByName( const OUString& aName )
     {
         ScDBCollection* pNames = pDocShell->GetDocument().GetDBCollection();
         if (pNames)
-            return pNames->getNamedDBs().findByUpperName(ScGlobal::pCharClass->uppercase(aName)) != nullptr;
+            return pNames->getNamedDBs().findByUpperName(ScGlobal::getCharClassPtr()->uppercase(aName)) != nullptr;
     }
     return false;
 }
@@ -2348,8 +2305,8 @@ void ScUnnamedDatabaseRangesObj::setByTable( const table::CellRangeAddress& aRan
             throw lang::IndexOutOfBoundsException();
 
         ScDBDocFunc aFunc(*pDocShell);
-        ScRange aUnnamedRange( (SCCOL)aRange.StartColumn, (SCROW)aRange.StartRow, aRange.Sheet,
-                            (SCCOL)aRange.EndColumn,   (SCROW)aRange.EndRow,   aRange.Sheet );
+        ScRange aUnnamedRange( static_cast<SCCOL>(aRange.StartColumn), static_cast<SCROW>(aRange.StartRow), aRange.Sheet,
+                            static_cast<SCCOL>(aRange.EndColumn),   static_cast<SCROW>(aRange.EndRow),   aRange.Sheet );
         bDone = aFunc.AddDBRange( STR_DB_LOCAL_NONAME, aUnnamedRange );
     }
     if (!bDone)
@@ -2359,19 +2316,17 @@ void ScUnnamedDatabaseRangesObj::setByTable( const table::CellRangeAddress& aRan
 uno::Any ScUnnamedDatabaseRangesObj::getByTable( sal_Int32 nTab )
 {
     SolarMutexGuard aGuard;
-    if (pDocShell)
-    {
-        if ( pDocShell->GetDocument().GetTableCount() <= nTab )
-            throw lang::IndexOutOfBoundsException();
-        uno::Reference<sheet::XDatabaseRange> xRange(
-            new ScDatabaseRangeObj(pDocShell, static_cast<SCTAB>(nTab)));
-        if (xRange.is())
-            return uno::makeAny(xRange);
-        else
-            throw container::NoSuchElementException();
-    }
-    else
+    if (!pDocShell)
         throw uno::RuntimeException();
+
+    if ( pDocShell->GetDocument().GetTableCount() <= nTab )
+        throw lang::IndexOutOfBoundsException();
+    uno::Reference<sheet::XDatabaseRange> xRange(
+        new ScDatabaseRangeObj(pDocShell, static_cast<SCTAB>(nTab)));
+    if (!xRange.is())
+        throw container::NoSuchElementException();
+
+    return uno::makeAny(xRange);
 }
 
 sal_Bool ScUnnamedDatabaseRangesObj::hasByTable( sal_Int32 nTab )
@@ -2379,9 +2334,9 @@ sal_Bool ScUnnamedDatabaseRangesObj::hasByTable( sal_Int32 nTab )
     SolarMutexGuard aGuard;
     if (pDocShell)
     {
-         if (pDocShell->GetDocument().GetTableCount() <= nTab)
+        if (pDocShell->GetDocument().GetTableCount() <= nTab)
             throw lang::IndexOutOfBoundsException();
-        if (pDocShell->GetDocument().GetAnonymousDBData((SCTAB) nTab))
+        if (pDocShell->GetDocument().GetAnonymousDBData(static_cast<SCTAB>(nTab)))
             return true;
         return false;
     }

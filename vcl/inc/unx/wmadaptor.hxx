@@ -24,7 +24,6 @@
 #include <tools/gen.hxx>
 
 #include <X11/Xlib.h>
-#include <X11/Xutil.h>
 
 #include <vclpluginapi.h>
 #include "salframe.h"
@@ -35,7 +34,7 @@ class X11SalFrame;
 
 namespace vcl_sal {
 
-class VCLPLUG_GEN_PUBLIC WMAdaptor
+class WMAdaptor
 {
 public:
     enum WMAtom {
@@ -43,6 +42,7 @@ public:
         UTF8_STRING,
 
         // atoms for extended WM hints
+        NET_ACTIVE_WINDOW,
         NET_SUPPORTED,
         NET_SUPPORTING_WM_CHECK,
         NET_WM_NAME,
@@ -159,7 +159,7 @@ public:
     /*
      *  creates a valid WMAdaptor instance for the SalDisplay
      */
-    static WMAdaptor* createWMAdaptor( SalDisplay* );
+    static std::unique_ptr<WMAdaptor> createWMAdaptor( SalDisplay* );
 
     /*
      *  may return an empty string if the window manager could
@@ -195,14 +195,14 @@ public:
     /*
      * set NET_WM_PID
      */
-    void setPID( X11SalFrame* pFrame ) const;
+    void setPID( X11SalFrame const * pFrame ) const;
 
     /*
      * set WM_CLIENT_MACHINE
      */
-    void setClientMachine( X11SalFrame* pFrame ) const;
+    void setClientMachine( X11SalFrame const * pFrame ) const;
 
-    void answerPing( X11SalFrame*, XClientMessageEvent* ) const;
+    void answerPing( X11SalFrame const *, XClientMessageEvent const * ) const;
 
     /*
      *  maximizes frame
@@ -285,7 +285,14 @@ public:
      *  changes the transient hint of a window to reference frame
      *  if reference frame is NULL the root window is used instead
      */
-    void changeReferenceFrame( X11SalFrame* pFrame, X11SalFrame* pReferenceFrame ) const;
+    void changeReferenceFrame( X11SalFrame* pFrame, X11SalFrame const * pReferenceFrame ) const;
+
+    /*
+     *  Requests the change of active window by sending
+     *  _NET_ACTIVE_WINDOW message to the frame. The frame
+     *  has to be mapped
+     */
+    void activateWindow( X11SalFrame const *pFrame, Time nTimestamp );
 };
 
 } // namespace

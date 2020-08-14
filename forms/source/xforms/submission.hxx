@@ -21,12 +21,8 @@
 #define INCLUDED_FORMS_SOURCE_XFORMS_SUBMISSION_HXX
 
 #include <cppuhelper/implbase.hxx>
-#include <propertysetbase.hxx>
-#include <com/sun/star/util/XModifyBroadcaster.hpp>
-#include <com/sun/star/container/XNamed.hpp>
-#include <com/sun/star/xml/dom/events/XEventListener.hpp>
+#include "propertysetbase.hxx"
 #include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <com/sun/star/xml/dom/XNode.hpp>
 #include <com/sun/star/xml/dom/XDocument.hpp>
 #include <com/sun/star/xml/dom/XDocumentFragment.hpp>
 #include <com/sun/star/xml/xpath/XXPathObject.hpp>
@@ -34,17 +30,17 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <computedexpression.hxx>
+#include "computedexpression.hxx"
 
 // forward declaractions
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace xforms { class XModel; }
     namespace uno { class Any; }
     namespace beans { class UnknownPropertyException;
                       class PropertyVetoException; }
     namespace lang { class IllegalArgumentException;
                      class WrappedTargetException; }
-} } }
+}
 namespace xforms { class Model; }
 
 
@@ -158,8 +154,7 @@ public:
     bool doSubmit( const css::uno::Reference< css::task::XInteractionHandler >& aHandler );
 
     // helpers for UNO tunnel
-    static css::uno::Sequence<sal_Int8> getUnoTunnelID();
-    static Submission* getSubmission( const css::uno::Reference<css::beans::XPropertySet>& );
+    static css::uno::Sequence<sal_Int8> getUnoTunnelId();
 
 private:
 

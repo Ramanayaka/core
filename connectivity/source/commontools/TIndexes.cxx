@@ -18,14 +18,17 @@
  */
 
 #include <connectivity/TIndexes.hxx>
-#include <connectivity/TIndex.hxx>
+#include <TIndex.hxx>
+#include <connectivity/TTableHelper.hxx>
+#include <com/sun/star/sdb/tools/XIndexAlteration.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/IndexType.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <connectivity/dbtools.hxx>
-#include <connectivity/TTableHelper.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 #include <comphelper/extract.hxx>
+#include <comphelper/types.hxx>
 #include <rtl/ustrbuf.hxx>
 using namespace connectivity;
 using namespace connectivity::sdbcx;
@@ -146,9 +149,8 @@ sdbcx::ObjectType OIndexesHelper::appendObject( const OUString& _rForName, const
 
         OUString aCatalog,aSchema,aTable;
         dbtools::qualifiedNameComponents(m_pTable->getMetaData(),m_pTable->getName(),aCatalog,aSchema,aTable,::dbtools::EComposeRule::InDataManipulation);
-        OUString aComposedName;
 
-        aComposedName = dbtools::composeTableName(m_pTable->getMetaData(),aCatalog,aSchema,aTable, true, ::dbtools::EComposeRule::InIndexDefinitions);
+        OUString aComposedName = dbtools::composeTableName(m_pTable->getMetaData(),aCatalog,aSchema,aTable, true, ::dbtools::EComposeRule::InIndexDefinitions);
         if (!_rForName.isEmpty() )
         {
             aSql.append( ::dbtools::quoteName( aQuote, _rForName ) );
@@ -211,34 +213,33 @@ sdbcx::ObjectType OIndexesHelper::appendObject( const OUString& _rForName, const
 void OIndexesHelper::dropObject(sal_Int32 /*_nPos*/,const OUString& _sElementName)
 {
     Reference< XConnection> xConnection = m_pTable->getConnection();
-    if( xConnection.is() && !m_pTable->isNew())
+    if( !(xConnection.is() && !m_pTable->isNew()))
+        return;
+
+    if ( m_pTable->getIndexService().is() )
     {
-        if ( m_pTable->getIndexService().is() )
+        m_pTable->getIndexService()->dropIndex(m_pTable,_sElementName);
+    }
+    else
+    {
+        OUString aName,aSchema;
+        sal_Int32 nLen = _sElementName.indexOf('.');
+        if(nLen != -1)
+            aSchema = _sElementName.copy(0,nLen);
+        aName   = _sElementName.copy(nLen+1);
+
+        OUString aSql( "DROP INDEX " );
+
+        OUString aComposedName = dbtools::composeTableName( m_pTable->getMetaData(), m_pTable, ::dbtools::EComposeRule::InIndexDefinitions, true );
+        OUString sIndexName = dbtools::composeTableName( m_pTable->getMetaData(), OUString(), aSchema, aName, true, ::dbtools::EComposeRule::InIndexDefinitions );
+
+        aSql += sIndexName + " ON " + aComposedName;
+
+        Reference< XStatement > xStmt = m_pTable->getConnection()->createStatement(  );
+        if ( xStmt.is() )
         {
-            m_pTable->getIndexService()->dropIndex(m_pTable,_sElementName);
-        }
-        else
-        {
-            OUString aName,aSchema;
-            sal_Int32 nLen = _sElementName.indexOf('.');
-            if(nLen != -1)
-                aSchema = _sElementName.copy(0,nLen);
-            aName   = _sElementName.copy(nLen+1);
-
-            OUString aSql( "DROP INDEX " );
-
-            OUString aComposedName = dbtools::composeTableName( m_pTable->getMetaData(), m_pTable, ::dbtools::EComposeRule::InIndexDefinitions, false, false, true );
-            OUString sIndexName,sTemp;
-            sIndexName = dbtools::composeTableName( m_pTable->getMetaData(), sTemp, aSchema, aName, true, ::dbtools::EComposeRule::InIndexDefinitions );
-
-            aSql += sIndexName + " ON " + aComposedName;
-
-            Reference< XStatement > xStmt = m_pTable->getConnection()->createStatement(  );
-            if ( xStmt.is() )
-            {
-                xStmt->execute(aSql);
-                ::comphelper::disposeComponent(xStmt);
-            }
+            xStmt->execute(aSql);
+            ::comphelper::disposeComponent(xStmt);
         }
     }
 }

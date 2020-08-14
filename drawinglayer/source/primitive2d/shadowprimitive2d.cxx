@@ -21,26 +21,25 @@
 #include <basegfx/color/bcolormodifier.hxx>
 #include <drawinglayer/primitive2d/modifiedcolorprimitive2d.hxx>
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <drawinglayer/primitive2d/transparenceprimitive2d.hxx>
-#include <drawinglayer/primitive2d/unifiedtransparenceprimitive2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 
+#include <sal/log.hxx>
+#include <memory>
 
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         ShadowPrimitive2D::ShadowPrimitive2D(
             const basegfx::B2DHomMatrix& rShadowTransform,
             const basegfx::BColor& rShadowColor,
+            double fShadowBlur,
             const Primitive2DContainer& rChildren)
         :   GroupPrimitive2D(rChildren),
             maShadowTransform(rShadowTransform),
-            maShadowColor(rShadowColor)
+            maShadowColor(rShadowColor),
+            mfShadowBlur(fShadowBlur)
         {
         }
 
@@ -51,7 +50,8 @@ namespace drawinglayer
                 const ShadowPrimitive2D& rCompare = static_cast< const ShadowPrimitive2D& >(rPrimitive);
 
                 return (getShadowTransform() == rCompare.getShadowTransform()
-                    && getShadowColor() == rCompare.getShadowColor());
+                    && getShadowColor() == rCompare.getShadowColor()
+                    && getShadowBlur() == rCompare.getShadowBlur());
             }
 
             return false;
@@ -60,33 +60,33 @@ namespace drawinglayer
         basegfx::B2DRange ShadowPrimitive2D::getB2DRange(const geometry::ViewInformation2D& rViewInformation) const
         {
             basegfx::B2DRange aRetval(getChildren().getB2DRange(rViewInformation));
+            aRetval.grow(getShadowBlur());
             aRetval.transform(getShadowTransform());
             return aRetval;
         }
 
         void ShadowPrimitive2D::get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& /*rViewInformation*/) const
         {
-            if(!getChildren().empty())
-            {
-                // create a modifiedColorPrimitive containing the shadow color and the content
-                const basegfx::BColorModifierSharedPtr aBColorModifier(
-                    new basegfx::BColorModifier_replace(
-                        getShadowColor()));
-                const Primitive2DReference xRefA(
-                    new ModifiedColorPrimitive2D(
-                        getChildren(),
-                        aBColorModifier));
-                const Primitive2DContainer aSequenceB { xRefA };
+            if(getChildren().empty())
+                return;
 
-                // build transformed primitiveVector with shadow offset and add to target
-                rVisitor.append(new TransformPrimitive2D(getShadowTransform(), aSequenceB));
-            }
+            // create a modifiedColorPrimitive containing the shadow color and the content
+            const basegfx::BColorModifierSharedPtr aBColorModifier =
+                std::make_shared<basegfx::BColorModifier_replace>(
+                    getShadowColor());
+            const Primitive2DReference xRefA(
+                new ModifiedColorPrimitive2D(
+                    getChildren(),
+                    aBColorModifier));
+            const Primitive2DContainer aSequenceB { xRefA };
+
+            // build transformed primitiveVector with shadow offset and add to target
+            rVisitor.append(new TransformPrimitive2D(getShadowTransform(), aSequenceB));
         }
 
         // provide unique ID
         ImplPrimitive2DIDBlock(ShadowPrimitive2D, PRIMITIVE2D_ID_SHADOWPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

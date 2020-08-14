@@ -17,20 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEMENUSEPARATOR_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEMENUSEPARATOR_HXX
+#pragma once
 
 #include <standard/accessiblemenuitemcomponent.hxx>
 
 
-//  class VCLXAccessibleMenuSeparator
 
 
-class VCLXAccessibleMenuSeparator : public OAccessibleMenuItemComponent
+class VCLXAccessibleMenuSeparator final : public OAccessibleMenuItemComponent
 {
 public:
     VCLXAccessibleMenuSeparator( Menu* pParent, sal_uInt16 nItemPos );
-    virtual ~VCLXAccessibleMenuSeparator() override;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
@@ -41,6 +38,5 @@ public:
 };
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEMENUSEPARATOR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

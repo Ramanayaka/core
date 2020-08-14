@@ -14,9 +14,7 @@
 
 #include <connectivity/TIndexes.hxx>
 
-namespace connectivity
-{
-    namespace firebird
+namespace connectivity::firebird
     {
 
         /**
@@ -30,15 +28,14 @@ namespace connectivity
         protected:
             // XDrop
             virtual void dropObject(sal_Int32 nPosition,
-                                    const ::rtl::OUString& sIndexName) override;
+                                    const OUString& sIndexName) override;
         public:
             Indexes(Table* pTable,
                     ::osl::Mutex& rMutex,
-                    const std::vector< ::rtl::OUString>& rVector);
+                    const std::vector< OUString>& rVector);
         };
 
-    } // namespace firebird
-} // namespace connectivity
+} // namespace connectivity::firebird
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_INDEXES_HXX
 

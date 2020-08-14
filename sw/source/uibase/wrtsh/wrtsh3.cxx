@@ -19,23 +19,19 @@
 
 #include <svx/svxids.hrc>
 #include <sfx2/app.hxx>
-#include <sfx2/childwin.hxx>
 #include <sfx2/bindings.hxx>
+#include <sfx2/viewfrm.hxx>
 #include <svx/svdmark.hxx>
 #include <svx/svdview.hxx>
-#include <svx/fmglob.hxx>
 #include <svx/svdouno.hxx>
+#include <svx/srchdlg.hxx>
 #include <com/sun/star/form/FormButtonType.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <sfx2/htmlmode.hxx>
-#include "swmodule.hxx"
-#include "wrtsh.hxx"
-#include "view.hxx"
-#include "IMark.hxx"
-#include "doc.hxx"
-#include "wrtsh.hrc"
-
-#include <unomid.h>
+#include <swmodule.hxx>
+#include <wrtsh.hxx>
+#include <view.hxx>
+#include <IMark.hxx>
+#include <doc.hxx>
 
 using namespace ::com::sun::star;
 
@@ -122,7 +118,7 @@ void SwWrtShell::DrawSelChanged( )
 
     bool bOldVal = g_bNoInterrupt;
     g_bNoInterrupt = true;    // Trick to run AttrChangedNotify by timer.
-    GetView().AttrChangedNotify(this);
+    GetView().AttrChangedNotify(nullptr);
     g_bNoInterrupt = bOldVal;
 }
 
@@ -131,7 +127,7 @@ void SwWrtShell::GotoMark( const OUString& rName )
     IDocumentMarkAccess::const_iterator_t ppMark = getIDocumentMarkAccess()->findMark( rName );
     if (ppMark == getIDocumentMarkAccess()->getAllMarksEnd())
         return;
-    MoveBookMark( BOOKMARK_INDEX, ppMark->get() );
+    MoveBookMark( BOOKMARK_INDEX, *ppMark );
 }
 
 void SwWrtShell::GotoMark( const ::sw::mark::IMark* const pMark )
@@ -141,12 +137,44 @@ void SwWrtShell::GotoMark( const ::sw::mark::IMark* const pMark )
 
 bool SwWrtShell::GoNextBookmark()
 {
-    return MoveBookMark( BOOKMARK_NEXT );
+    if ( !getIDocumentMarkAccess()->getBookmarksCount() )
+    {
+        SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::NavElementNotFound );
+        return false;
+    }
+    LockView( true );
+    bool bRet = MoveBookMark( BOOKMARK_NEXT );
+    if ( !bRet )
+    {
+        MoveBookMark( BOOKMARK_INDEX, *getIDocumentMarkAccess()->getBookmarksBegin() );
+        SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::EndWrapped );
+    }
+    else
+        SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::Empty );
+    LockView( false );
+    ShowCursor();
+    return true;
 }
 
 bool SwWrtShell::GoPrevBookmark()
 {
-    return MoveBookMark( BOOKMARK_PREV );
+    if ( !getIDocumentMarkAccess()->getBookmarksCount() )
+    {
+        SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::NavElementNotFound );
+        return false;
+    }
+    LockView( true );
+    bool bRet = MoveBookMark( BOOKMARK_PREV );
+    if ( !bRet )
+    {
+        MoveBookMark( BOOKMARK_INDEX, *( getIDocumentMarkAccess()->getBookmarksEnd() - 1 ) );
+        SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::StartWrapped );
+    }
+    else
+        SvxSearchDialogWrapper::SetSearchLabel( SearchLabel::Empty );
+    LockView( false );
+    ShowCursor();
+    return true;
 }
 
 void SwWrtShell::ExecMacro( const SvxMacro& rMacro, OUString* pRet, SbxArray* pArgs )
@@ -158,7 +186,7 @@ void SwWrtShell::ExecMacro( const SvxMacro& rMacro, OUString* pRet, SbxArray* pA
     }
 }
 
-sal_uInt16 SwWrtShell::CallEvent( sal_uInt16 nEvent, const SwCallMouseEvent& rCallEvent,
+sal_uInt16 SwWrtShell::CallEvent( SvMacroItemId nEvent, const SwCallMouseEvent& rCallEvent,
                                 bool bChkPtr)
 {
     return GetDoc()->CallEvent( nEvent, rCallEvent, bChkPtr );
@@ -180,7 +208,7 @@ bool SwWrtShell::GetURLFromButton( OUString& rURL, OUString& rDescr ) const
             SdrUnoObj* pUnoCtrl = dynamic_cast<SdrUnoObj*>( rMarkList.GetMark(0)->GetMarkedSdrObj() );
             if (pUnoCtrl && SdrInventor::FmForm == pUnoCtrl->GetObjInventor())
             {
-                uno::Reference< awt::XControlModel >  xControlModel = pUnoCtrl->GetUnoControlModel();
+                const uno::Reference< awt::XControlModel >&  xControlModel = pUnoCtrl->GetUnoControlModel();
 
                 OSL_ENSURE( xControlModel.is(), "UNO-Control without Model" );
                 if( !xControlModel.is() )

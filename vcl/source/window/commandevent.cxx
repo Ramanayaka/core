@@ -55,11 +55,6 @@ CommandExtTextInputData::~CommandExtTextInputData()
 {
 }
 
-CommandInputContextData::CommandInputContextData( LanguageType eLang )
-{
-    meLanguage = eLang;
-}
-
 CommandWheelData::CommandWheelData()
 {
     mnDelta         = 0;
@@ -190,5 +185,14 @@ const CommandLongPressData* CommandEvent::GetLongPressData() const
     else
         return nullptr;
 }
+
+const CommandGestureData* CommandEvent::GetGestureData() const
+{
+    if (mnCommand == CommandEventId::Gesture)
+        return static_cast<const CommandGestureData*>(mpData);
+    else
+        return nullptr;
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

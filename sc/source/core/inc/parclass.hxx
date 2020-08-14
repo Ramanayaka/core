@@ -22,7 +22,6 @@
 
 #include <formula/opcode.hxx>
 #include <formula/paramclass.hxx>
-#include <sys/types.h>
 
 /** Activate parameter classification documentation.
 
@@ -64,7 +63,7 @@ public:
                                     ForceArray or ReferenceOrForceArray. */
     static  bool        HasForceArray( OpCode eOp)
                                     {
-                                        return 0 <= (short)eOp &&
+                                        return 0 <= static_cast<short>(eOp) &&
                                             eOp <= SC_OPCODE_LAST_OPCODE_ID &&
                                             pData[eOp].bHasForceArray;
                                     }

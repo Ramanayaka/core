@@ -17,27 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ObjectNameProvider.hxx"
-#include "ResId.hxx"
-#include "Strings.hrc"
-#include "macros.hxx"
-#include "AxisHelper.hxx"
-#include "ChartModelHelper.hxx"
-#include "DiagramHelper.hxx"
-#include "DataSeriesHelper.hxx"
-#include "TitleHelper.hxx"
-#include "AxisIndexDefines.hxx"
-#include "ExplicitCategoriesProvider.hxx"
-#include "CommonConverters.hxx"
-#include "NumberFormatterWrapper.hxx"
-#include "RegressionCurveHelper.hxx"
+#include <ObjectNameProvider.hxx>
+#include <ResId.hxx>
+#include <strings.hrc>
+#include <AxisHelper.hxx>
+#include <ChartModel.hxx>
+#include <ChartModelHelper.hxx>
+#include <DiagramHelper.hxx>
+#include <DataSeriesHelper.hxx>
+#include <TitleHelper.hxx>
+#include <ExplicitCategoriesProvider.hxx>
+#include <CommonConverters.hxx>
+#include <NumberFormatterWrapper.hxx>
+#include <RegressionCurveHelper.hxx>
 #include <rtl/math.hxx>
 #include <rtl/ustring.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
+#include <unotools/localedatawrapper.hxx>
 
 #include <com/sun/star/chart2/XTitle.hpp>
 #include <com/sun/star/chart2/XRegressionCurveContainer.hpp>
+#include <tools/diagnose_ex.h>
 
 namespace chart
 {
@@ -55,7 +56,7 @@ OUString lcl_getDataSeriesName( const OUString& rObjectCID, const Reference< fra
     OUString aRet;
 
     Reference< XDiagram > xDiagram( ChartModelHelper::findDiagram( xChartModel ) );
-    Reference< XDataSeries > xSeries( ObjectIdentifier::getDataSeriesForCID( rObjectCID , xChartModel ), uno::UNO_QUERY );
+    Reference< XDataSeries > xSeries = ObjectIdentifier::getDataSeriesForCID( rObjectCID , xChartModel );
     if( xDiagram.is() && xSeries.is() )
     {
         Reference< XChartType > xChartType( DiagramHelper::getChartTypeOfSeries( xDiagram, xSeries ) );
@@ -106,7 +107,7 @@ OUString lcl_getDataPointValueText( const Reference< XDataSeries >& xSeries, sal
 
     uno::Reference< util::XNumberFormatsSupplier > xNumberFormatsSupplier( xChartModel, uno::UNO_QUERY );
     NumberFormatterWrapper aNumberFormatterWrapper( xNumberFormatsSupplier );
-    sal_Int32 nLabelColor = 0;//dummy
+    Color nLabelColor;//dummy
     bool bColorChanged;//dummy
 
     for(sal_Int32 nN = aDataSequences.getLength();nN--;)
@@ -169,16 +170,16 @@ OUString lcl_getDataPointValueText( const Reference< XDataSeries >& xSeries, sal
                     a_Size = aNumberFormatterWrapper.getFormattedString( nNumberFormatKey, fValue, nLabelColor, bColorChanged );
                 }
             }
-            catch( const uno::Exception& e )
+            catch( const uno::Exception& )
             {
-                ASSERT_EXCEPTION( e );
+                TOOLS_WARN_EXCEPTION("chart2", "" );
             }
         }
     }
 
     if( aX.isEmpty() )
     {
-        ChartModel& rModel = dynamic_cast<ChartModel&>(*xChartModel.get());
+        ChartModel& rModel = dynamic_cast<ChartModel&>(*xChartModel);
         aRet = ExplicitCategoriesProvider::getCategoryByIndex( xCooSys, rModel, nPointIndex );
     }
     else
@@ -220,7 +221,7 @@ OUString ObjectNameProvider::getName( ObjectType eObjectType, bool bPlural )
                 aRet=SchResId(STR_OBJECT_LEGEND);
                 break;
         case OBJECTTYPE_LEGEND_ENTRY:
-                aRet=SchResId(STR_OBJECT_LEGEND_SYMBOL);//@todo change string if we do differenciate symbol and legend entry in future
+                aRet=SchResId(STR_OBJECT_LEGEND_SYMBOL);//@todo change string if we do differentiate symbol and legend entry in future
                 break;
         case OBJECTTYPE_DIAGRAM:
                 aRet=SchResId(STR_OBJECT_DIAGRAM);
@@ -460,7 +461,7 @@ OUString ObjectNameProvider::getGridName( const OUString& rObjectCID
 
 OUString ObjectNameProvider::getHelpText( const OUString& rObjectCID, const Reference< chart2::XChartDocument >& xChartDocument )
 {
-    return getHelpText( rObjectCID, Reference< frame::XModel >( xChartDocument, uno::UNO_QUERY ) );
+    return getHelpText( rObjectCID, Reference< frame::XModel >( xChartDocument ) );
 }
 
 OUString ObjectNameProvider::getHelpText( const OUString& rObjectCID, const Reference< frame::XModel >& xChartModel, bool bVerbose )
@@ -496,7 +497,7 @@ OUString ObjectNameProvider::getHelpText( const OUString& rObjectCID, const Refe
             aRet=SchResId(STR_TIP_DATAPOINT);
 
         Reference< XDiagram > xDiagram( ChartModelHelper::findDiagram( xChartModel ) );
-        Reference< XDataSeries > xSeries( ObjectIdentifier::getDataSeriesForCID( rObjectCID , xChartModel ), uno::UNO_QUERY );
+        Reference< XDataSeries > xSeries = ObjectIdentifier::getDataSeriesForCID( rObjectCID , xChartModel );
         if( xDiagram.is() && xSeries.is() )
         {
             sal_Int32 nPointIndex( ObjectIdentifier::getParticleID(rObjectCID).toInt32() );
@@ -559,7 +560,7 @@ OUString ObjectNameProvider::getHelpText( const OUString& rObjectCID, const Refe
                 {
                     try
                     {
-                        Reference< chart2::XRegressionCurveCalculator > xCalculator( xCurve->getCalculator(), uno::UNO_QUERY_THROW );
+                        Reference< chart2::XRegressionCurveCalculator > xCalculator( xCurve->getCalculator(), uno::UNO_SET_THROW );
                         sal_Int32 aDegree = 2;
                         sal_Int32 aPeriod = 2;
                         bool bForceIntercept = false;
@@ -567,8 +568,7 @@ OUString ObjectNameProvider::getHelpText( const OUString& rObjectCID, const Refe
                         OUString aXName ("x"), aYName ("f(x)");
                         const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
                         const OUString& aNumDecimalSep = rLocaleDataWrapper.getNumDecimalSep();
-                        assert(aNumDecimalSep.getLength() > 0);
-                        sal_Unicode cDecSeparator = aNumDecimalSep.getStr()[0];
+                        sal_Unicode cDecSeparator = aNumDecimalSep[0];
 
                         uno::Reference< beans::XPropertySet > xProperties( xCurve, uno::UNO_QUERY );
                         if ( xProperties.is())
@@ -625,9 +625,9 @@ OUString ObjectNameProvider::getHelpText( const OUString& rObjectCID, const Refe
                                     fR*fR, rtl_math_StringFormat_G, 4, cDecSeparator, true ));
                         }
                     }
-                    catch( const uno::Exception & ex )
+                    catch( const uno::Exception & )
                     {
-                        ASSERT_EXCEPTION( ex );
+                        DBG_UNHANDLED_EXCEPTION("chart2");
                     }
                 }
             }
@@ -663,13 +663,12 @@ OUString ObjectNameProvider::getHelpText( const OUString& rObjectCID, const Refe
                 {
                     try
                     {
-                        Reference< chart2::XRegressionCurveCalculator > xCalculator( xCurve->getCalculator(), uno::UNO_QUERY_THROW );
+                        Reference< chart2::XRegressionCurveCalculator > xCalculator( xCurve->getCalculator(), uno::UNO_SET_THROW );
                         RegressionCurveHelper::initializeCurveCalculator( xCalculator, xSeries, xChartModel );
 
                         const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
                         const OUString& aNumDecimalSep = rLocaleDataWrapper.getNumDecimalSep();
-                        assert(aNumDecimalSep.getLength() > 0);
-                        sal_Unicode cDecSeparator = aNumDecimalSep.getStr()[0];
+                        sal_Unicode cDecSeparator = aNumDecimalSep[0];
 
                         OUString aWildcard( "%AVERAGE_VALUE" );
                         sal_Int32 nIndex = aRet.indexOf( aWildcard );
@@ -695,9 +694,9 @@ OUString ObjectNameProvider::getHelpText( const OUString& rObjectCID, const Refe
                                     fStdDev, rtl_math_StringFormat_G, 4, cDecSeparator, true ));
                         }
                     }
-                    catch( const uno::Exception & ex )
+                    catch( const uno::Exception & )
                     {
-                        ASSERT_EXCEPTION( ex );
+                        DBG_UNHANDLED_EXCEPTION("chart2");
                     }
                 }
             }
@@ -719,14 +718,14 @@ OUString ObjectNameProvider::getSelectedObjectText( const OUString & rObjectCID,
 {
     OUString aRet;
     ObjectType eObjectType( ObjectIdentifier::getObjectType(rObjectCID) );
-    Reference< frame::XModel > xChartModel( xChartDocument, uno::UNO_QUERY );
+    Reference< frame::XModel > xChartModel = xChartDocument;
 
     if( eObjectType == OBJECTTYPE_DATA_POINT )
     {
         aRet = SchResId( STR_STATUS_DATAPOINT_MARKED );
 
         Reference< XDiagram > xDiagram( ChartModelHelper::findDiagram( xChartModel ) );
-        Reference< XDataSeries > xSeries( ObjectIdentifier::getDataSeriesForCID( rObjectCID , xChartModel ), uno::UNO_QUERY );
+        Reference< XDataSeries > xSeries = ObjectIdentifier::getDataSeriesForCID( rObjectCID , xChartModel );
         if( xDiagram.is() && xSeries.is() )
         {
             sal_Int32 nPointIndex( ObjectIdentifier::getParticleID(rObjectCID).toInt32() );
@@ -772,7 +771,7 @@ OUString ObjectNameProvider::getNameForCID(
     const uno::Reference< chart2::XChartDocument >& xChartDocument )
 {
     ObjectType eType( ObjectIdentifier::getObjectType( rObjectCID ));
-    Reference< frame::XModel > xModel( xChartDocument, uno::UNO_QUERY );
+    Reference< frame::XModel > xModel = xChartDocument;
 
     switch( eType )
     {
@@ -841,8 +840,8 @@ OUString ObjectNameProvider::getName_ObjectForSeries(
         const OUString& rSeriesCID,
         const uno::Reference< chart2::XChartDocument >& xChartDocument )
 {
-    uno::Reference< frame::XModel> xChartModel( xChartDocument, uno::UNO_QUERY );
-    Reference< XDataSeries > xSeries( ObjectIdentifier::getDataSeriesForCID( rSeriesCID , xChartModel ), uno::UNO_QUERY );
+    uno::Reference< frame::XModel> xChartModel = xChartDocument;
+    Reference< XDataSeries > xSeries = ObjectIdentifier::getDataSeriesForCID( rSeriesCID , xChartModel );
     if( xSeries.is() )
     {
         OUString aRet = SchResId(STR_OBJECT_FOR_SERIES);

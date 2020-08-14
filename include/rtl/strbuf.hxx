@@ -17,21 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_RTL_STRBUF_HXX
-#define INCLUDED_RTL_STRBUF_HXX
+#pragma once
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cassert>
-#include <cstddef>
 #include <cstring>
 
-#include <rtl/strbuf.h>
-#include <rtl/string.hxx>
-#include <rtl/stringutils.hxx>
+#include "rtl/strbuf.h"
+#include "rtl/string.hxx"
+#include "rtl/stringutils.hxx"
 
 #ifdef LIBO_INTERNAL_ONLY // "RTL_FAST_STRING"
-#include <rtl/stringconcat.hxx>
+#include "rtl/stringconcat.hxx"
 #endif
 
 #ifdef RTL_STRING_UNITTEST
@@ -214,7 +212,7 @@ public:
      @internal
     */
     template< typename T1, typename T2 >
-    OStringBuffer( const OStringConcat< T1, T2 >& c )
+    OStringBuffer( OStringConcat< T1, T2 >&& c )
     {
         const sal_Int32 l = c.length();
         nCapacity = l + 16;
@@ -223,6 +221,15 @@ public:
         *end = '\0';
         pData->length = l;
     }
+
+    /**
+     @overload
+     @internal
+    */
+    template< typename T >
+    OStringBuffer( OStringNumber< T >&& n )
+        : OStringBuffer( OString( n ))
+    {}
 #endif
 
     /** Assign to this a copy of value.
@@ -279,13 +286,21 @@ public:
 #if defined LIBO_INTERNAL_ONLY
     /** @overload @since LibreOffice 5.3 */
     template<typename T1, typename T2>
-    OStringBuffer & operator =(OStringConcat<T1, T2> const & concat) {
+    OStringBuffer & operator =(OStringConcat<T1, T2> && concat) {
         sal_Int32 const n = concat.length();
         if (n >= nCapacity) {
             ensureCapacity(n + 16); //TODO: check for overflow
         }
         *concat.addData(pData->buffer) = 0;
         pData->length = n;
+        return *this;
+    }
+
+    /** @overload @internal */
+    template<typename T>
+    OStringBuffer & operator =(OStringNumber<T> && n)
+    {
+        *this = OStringBuffer( std::move ( n ));
         return *this;
     }
 #endif
@@ -459,7 +474,7 @@ public:
     }
 
     /**
-        Return a OString instance reflecting the current content
+        Return an OString instance reflecting the current content
         of this OStringBuffer.
      */
     const OString toString() const
@@ -516,11 +531,9 @@ public:
         RTL_STRING_CONST_FUNCTION
         assert(
             libreoffice_internal::ConstCharArrayDetector<T>::isValid(literal));
-        rtl_stringbuffer_insert(
-            &pData, &nCapacity, getLength(),
+        return append(
             libreoffice_internal::ConstCharArrayDetector<T>::toPointer(literal),
             libreoffice_internal::ConstCharArrayDetector<T>::length);
-        return *this;
     }
 
     /**
@@ -549,7 +562,7 @@ public:
      @internal
     */
     template< typename T1, typename T2 >
-    OStringBuffer& append( const OStringConcat< T1, T2 >& c )
+    OStringBuffer& append( OStringConcat< T1, T2 >&& c )
     {
         sal_Int32 l = c.length();
         if( l == 0 )
@@ -561,6 +574,17 @@ public:
         pData->length = l;
         return *this;
     }
+
+    /**
+     @overload
+     @internal
+    */
+    template< typename T >
+    OStringBuffer& append( OStringNumber< T >&& c )
+    {
+        return append( c.buf, c.length );
+    }
+
 #endif
 
     /**
@@ -775,11 +799,10 @@ public:
         RTL_STRING_CONST_FUNCTION
         assert(
             libreoffice_internal::ConstCharArrayDetector<T>::isValid(literal));
-        rtl_stringbuffer_insert(
-            &pData, &nCapacity, offset,
+        return insert(
+            offset,
             libreoffice_internal::ConstCharArrayDetector<T>::toPointer(literal),
             libreoffice_internal::ConstCharArrayDetector<T>::length);
-        return *this;
     }
 
     /**
@@ -1012,6 +1035,13 @@ public:
         *pInternalCapacity = &nCapacity;
     }
 
+#if defined LIBO_INTERNAL_ONLY
+    explicit operator OStringView() const
+    {
+        return OStringView(getStr(), getLength());
+    }
+#endif
+
 private:
     /**
         A pointer to the data structure which contains the data.
@@ -1037,8 +1067,5 @@ typedef rtlunittest::OStringBuffer OStringBuffer;
 #if defined LIBO_INTERNAL_ONLY && !defined RTL_STRING_UNITTEST
 using ::rtl::OStringBuffer;
 #endif
-
-#endif // INCLUDED_RTL_STRBUF_HXX
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

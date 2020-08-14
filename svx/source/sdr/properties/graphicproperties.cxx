@@ -19,7 +19,6 @@
 
 #include <sal/config.h>
 
-#include <o3tl/make_unique.hxx>
 #include <sdr/properties/graphicproperties.hxx>
 #include <svl/itemset.hxx>
 #include <svl/style.hxx>
@@ -27,16 +26,38 @@
 #include <editeng/eeitem.hxx>
 #include <svx/svdograf.hxx>
 #include <svx/sdgcpitm.hxx>
+#include <svx/svdmodel.hxx>
+#include <svx/sdgluitm.hxx>
+#include <sdgcoitm.hxx>
+#include <svx/sdggaitm.hxx>
+#include <sdgtritm.hxx>
+#include <sdginitm.hxx>
+#include <svx/sdgmoitm.hxx>
+#include <svx/xfillit0.hxx>
+#include <svx/xlineit0.hxx>
 
-
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
+        void GraphicProperties::applyDefaultStyleSheetFromSdrModel()
+        {
+            SfxStyleSheet* pStyleSheet(GetSdrObject().getSdrModelFromSdrObject().GetDefaultStyleSheetForSdrGrafObjAndSdrOle2Obj());
+
+            if(pStyleSheet)
+            {
+                // do not delete hard attributes when setting dsefault Style
+                SetStyleSheet(pStyleSheet, true);
+            }
+            else
+            {
+                SetMergedItem(XFillStyleItem(com::sun::star::drawing::FillStyle_NONE));
+                SetMergedItem(XLineStyleItem(com::sun::star::drawing::LineStyle_NONE));
+            }
+        }
+
         // create a new itemset
         std::unique_ptr<SfxItemSet> GraphicProperties::CreateObjectSpecificItemSet(SfxItemPool& rPool)
         {
-            return o3tl::make_unique<SfxItemSet>(rPool,
+            return std::make_unique<SfxItemSet>(rPool,
 
                 // range from SdrAttrObj
                 svl::Items<SDRATTR_START, SDRATTR_SHADOW_LAST,
@@ -45,6 +66,8 @@ namespace sdr
 
                 // range from SdrGrafObj
                 SDRATTR_GRAF_FIRST, SDRATTR_GRAF_LAST,
+
+                SDRATTR_GLOW_FIRST, SDRATTR_SOFTEDGE_LAST,
 
                 // range from SdrTextObj
                 EE_ITEMS_START, EE_ITEMS_END>{});
@@ -64,9 +87,9 @@ namespace sdr
         {
         }
 
-        BaseProperties& GraphicProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> GraphicProperties::Clone(SdrObject& rObj) const
         {
-            return *(new GraphicProperties(*this, rObj));
+            return std::unique_ptr<BaseProperties>(new GraphicProperties(*this, rObj));
         }
 
         void GraphicProperties::ItemSetChanged(const SfxItemSet& rSet)
@@ -90,13 +113,12 @@ namespace sdr
 
         void GraphicProperties::SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr)
         {
-            SdrGrafObj& rObj = static_cast<SdrGrafObj&>(GetSdrObject());
+            // call parent (always first thing to do, may create the SfxItemSet)
+            RectangleProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr);
 
             // local changes
+            SdrGrafObj& rObj = static_cast<SdrGrafObj&>(GetSdrObject());
             rObj.SetXPolyDirty();
-
-            // call parent
-            RectangleProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr);
 
             // local changes
             rObj.ImpSetAttrToGrafInfo();
@@ -121,7 +143,6 @@ namespace sdr
             mpItemSet->Put( SdrGrafModeItem( GraphicDrawMode::Standard ) );
             mpItemSet->Put( SdrGrafCropItem( 0, 0, 0, 0 ) );
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

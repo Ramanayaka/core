@@ -17,18 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/container/XIndexReplace.hpp>
 #include <com/sun/star/style/XStyle.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/xmlnumi.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include "XMLTextListItemContext.hxx"
 #include "XMLTextListBlockContext.hxx"
-#include "txtlists.hxx"
+#include <txtlists.hxx>
+#include <sal/log.hxx>
 
 
 using namespace ::com::sun::star;
@@ -72,8 +70,7 @@ XMLTextListBlockContext::XMLTextListBlockContext(
     OUString sParentListStyleName;
     if( mxParentListBlock.is() )
     {
-        XMLTextListBlockContext *pParent =
-                                static_cast<XMLTextListBlockContext *>(mxParentListBlock.get());
+        XMLTextListBlockContext *pParent = mxParentListBlock.get();
         msListStyleName = pParent->msListStyleName;
         sParentListStyleName = msListStyleName;
         mxNumRules = pParent->GetNumRules();
@@ -101,7 +98,6 @@ XMLTextListBlockContext::XMLTextListBlockContext(
         switch( rTokenMap.Get( nPrefix, aLocalName ) )
         {
         case XML_TOK_TEXT_LIST_BLOCK_XMLID:
-            sXmlId = rValue;
 //FIXME: there is no UNO API for lists
             // xml:id is also the list ID (#i92221#)
             if ( mnLevel == 0 ) // root <list> element
@@ -125,108 +121,108 @@ XMLTextListBlockContext::XMLTextListBlockContext(
         }
     }
 
+    // Remember this list block.
+    mrTxtImport.GetTextListHelper().PushListContext( this );
+
     mxNumRules = XMLTextListsHelper::MakeNumRule(GetImport(), mxNumRules,
         sParentListStyleName, msListStyleName,
         mnLevel, &mbRestartNumbering, &mbSetDefaults );
     if( !mxNumRules.is() )
         return;
 
-    if ( mnLevel == 0 ) // root <list> element
+    if ( mnLevel != 0 ) // root <list> element
+        return;
+
+    XMLTextListsHelper& rTextListsHelper( mrTxtImport.GetTextListHelper() );
+    // Inconsistent behavior regarding lists (#i92811#)
+    OUString sListStyleDefaultListId;
     {
-        XMLTextListsHelper& rTextListsHelper( mrTxtImport.GetTextListHelper() );
-        // Inconsistent behavior regarding lists (#i92811#)
-        OUString sListStyleDefaultListId;
+        uno::Reference< beans::XPropertySet > xNumRuleProps( mxNumRules, UNO_QUERY );
+        if ( xNumRuleProps.is() )
         {
-            uno::Reference< beans::XPropertySet > xNumRuleProps( mxNumRules, UNO_QUERY );
-            if ( xNumRuleProps.is() )
+            uno::Reference< beans::XPropertySetInfo > xNumRulePropSetInfo(
+                                        xNumRuleProps->getPropertySetInfo());
+            if (xNumRulePropSetInfo.is() &&
+                xNumRulePropSetInfo->hasPropertyByName(
+                     s_PropNameDefaultListId))
             {
-                uno::Reference< beans::XPropertySetInfo > xNumRulePropSetInfo(
-                                            xNumRuleProps->getPropertySetInfo());
-                if (xNumRulePropSetInfo.is() &&
-                    xNumRulePropSetInfo->hasPropertyByName(
-                         s_PropNameDefaultListId))
+                xNumRuleProps->getPropertyValue(s_PropNameDefaultListId)
+                    >>= sListStyleDefaultListId;
+                SAL_WARN_IF( sListStyleDefaultListId.isEmpty(), "xmloff",
+                            "no default list id found at numbering rules instance. Serious defect." );
+            }
+        }
+    }
+    if ( msListId.isEmpty() )  // no text:id property found
+    {
+        sal_Int32 nUPD( 0 );
+        sal_Int32 nBuild( 0 );
+        const bool bBuildIdFound = GetImport().getBuildIds( nUPD, nBuild );
+        if ( rImport.IsTextDocInOOoFileFormat() ||
+             ( bBuildIdFound && nUPD == 680 ) )
+        {
+            /* handling former documents written by OpenOffice.org:
+               use default list id of numbering rules instance, if existing
+               (#i92811#)
+            */
+            if ( !sListStyleDefaultListId.isEmpty() )
+            {
+                msListId = sListStyleDefaultListId;
+                if ( !bIsContinueNumberingAttributePresent &&
+                     !mbRestartNumbering &&
+                     rTextListsHelper.IsListProcessed( msListId ) )
                 {
-                    xNumRuleProps->getPropertyValue(s_PropNameDefaultListId)
-                        >>= sListStyleDefaultListId;
-                    SAL_WARN_IF( sListStyleDefaultListId.isEmpty(), "xmloff",
-                                "no default list id found at numbering rules instance. Serious defect." );
+                    mbRestartNumbering = true;
                 }
             }
         }
-        if ( msListId.isEmpty() )  // no text:id property found
+        if ( msListId.isEmpty() )
         {
-            sal_Int32 nUPD( 0 );
-            sal_Int32 nBuild( 0 );
-            const bool bBuildIdFound = GetImport().getBuildIds( nUPD, nBuild );
-            if ( rImport.IsTextDocInOOoFileFormat() ||
-                 ( bBuildIdFound && nUPD == 680 ) )
-            {
-                /* handling former documents written by OpenOffice.org:
-                   use default list id of numbering rules instance, if existing
-                   (#i92811#)
-                */
-                if ( !sListStyleDefaultListId.isEmpty() )
-                {
-                    msListId = sListStyleDefaultListId;
-                    if ( !bIsContinueNumberingAttributePresent &&
-                         !mbRestartNumbering &&
-                         rTextListsHelper.IsListProcessed( msListId ) )
-                    {
-                        mbRestartNumbering = true;
-                    }
-                }
-            }
-            if ( msListId.isEmpty() )
-            {
-                // generate a new list id for the list
-                msListId = rTextListsHelper.GenerateNewListId();
-            }
-        }
-
-        if ( bIsContinueNumberingAttributePresent && !mbRestartNumbering &&
-             msContinueListId.isEmpty() )
-        {
-            OUString Last( rTextListsHelper.GetLastProcessedListId() );
-            if ( rTextListsHelper.GetListStyleOfLastProcessedList() == msListStyleName
-                 && Last != msListId )
-            {
-                msContinueListId = Last;
-            }
-        }
-
-        if ( !msContinueListId.isEmpty() )
-        {
-            if ( !rTextListsHelper.IsListProcessed( msContinueListId ) )
-            {
-                msContinueListId.clear();
-            }
-            else
-            {
-                // search continue list chain for master list and
-                // continue the master list.
-                OUString sTmpStr =
-                    rTextListsHelper.GetContinueListIdOfProcessedList( msContinueListId );
-                while ( !sTmpStr.isEmpty() )
-                {
-                    msContinueListId = sTmpStr;
-
-                    sTmpStr =
-                        rTextListsHelper.GetContinueListIdOfProcessedList( msContinueListId );
-                }
-            }
-        }
-
-        if ( !rTextListsHelper.IsListProcessed( msListId ) )
-        {
-            // Inconsistent behavior regarding lists (#i92811#)
-            rTextListsHelper.KeepListAsProcessed(
-                msListId, msListStyleName, msContinueListId,
-                sListStyleDefaultListId );
+            // generate a new list id for the list
+            msListId = rTextListsHelper.GenerateNewListId();
         }
     }
 
-    // Remember this list block.
-    mrTxtImport.GetTextListHelper().PushListContext( this );
+    if ( bIsContinueNumberingAttributePresent && !mbRestartNumbering &&
+         msContinueListId.isEmpty() )
+    {
+        const OUString& Last( rTextListsHelper.GetLastProcessedListId() );
+        if ( rTextListsHelper.GetListStyleOfLastProcessedList() == msListStyleName
+             && Last != msListId )
+        {
+            msContinueListId = Last;
+        }
+    }
+
+    if ( !msContinueListId.isEmpty() )
+    {
+        if ( !rTextListsHelper.IsListProcessed( msContinueListId ) )
+        {
+            msContinueListId.clear();
+        }
+        else
+        {
+            // search continue list chain for master list and
+            // continue the master list.
+            OUString sTmpStr =
+                rTextListsHelper.GetContinueListIdOfProcessedList( msContinueListId );
+            while ( !sTmpStr.isEmpty() )
+            {
+                msContinueListId = sTmpStr;
+
+                sTmpStr =
+                    rTextListsHelper.GetContinueListIdOfProcessedList( msContinueListId );
+            }
+        }
+    }
+
+    if ( !rTextListsHelper.IsListProcessed( msListId ) )
+    {
+        // Inconsistent behavior regarding lists (#i92811#)
+        rTextListsHelper.KeepListAsProcessed(
+            msListId, msListStyleName, msContinueListId,
+            sListStyleDefaultListId );
+    }
 }
 
 XMLTextListBlockContext::~XMLTextListBlockContext()
@@ -237,8 +233,7 @@ void XMLTextListBlockContext::EndElement()
 {
     // Numbering has not to be restarted if it has been restarted within
     // a child list.
-    XMLTextListBlockContext *pParent =
-                                static_cast<XMLTextListBlockContext *>(mxParentListBlock.get());
+    XMLTextListBlockContext *pParent = mxParentListBlock.get();
     if( pParent )
     {
         pParent->mbRestartNumbering = mbRestartNumbering;
@@ -252,7 +247,7 @@ void XMLTextListBlockContext::EndElement()
     mrTxtImport.GetTextListHelper().SetListItem( nullptr );
 }
 
-SvXMLImportContext *XMLTextListBlockContext::CreateChildContext(
+SvXMLImportContextRef XMLTextListBlockContext::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const Reference< xml::sax::XAttributeList > & xAttrList )
@@ -266,7 +261,7 @@ SvXMLImportContext *XMLTextListBlockContext::CreateChildContext(
     {
     case XML_TOK_TEXT_LIST_HEADER:
         bHeader = true;
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case XML_TOK_TEXT_LIST_ITEM:
         pContext = new XMLTextListItemContext( GetImport(), mrTxtImport,
                                                 nPrefix, rLocalName,
@@ -274,8 +269,6 @@ SvXMLImportContext *XMLTextListBlockContext::CreateChildContext(
         break;
     }
 
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }

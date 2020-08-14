@@ -20,10 +20,11 @@
 #ifndef INCLUDED_VCL_DOCKWIN_HXX
 #define INCLUDED_VCL_DOCKWIN_HXX
 
-#include <tools/solar.h>
 #include <vcl/dllapi.h>
+#include <o3tl/deleter.hxx>
 #include <vcl/builder.hxx>
 #include <vcl/floatwin.hxx>
+#include <memory>
 #include <vector>
 
 // data to be sent with docking events
@@ -81,10 +82,10 @@ private:
     VclPtr<FloatingWindow> mpFloatWin;
     VclPtr<vcl::Window>    mpOldBorderWin;
     VclPtr<vcl::Window>    mpParent;
+    Link<FloatingWindow*,void> maPopupModeEndHdl;
     Point           maFloatPos;
     Point           maDockPos;
     Point           maMouseOff;
-    Point           maMouseStart;
     Size            maRollUpOutSize;
     Size            maMinOutSize;
     Size            maMaxOutSize;
@@ -109,17 +110,18 @@ private:
 
                     DECL_LINK( PopupModeEnd, FloatingWindow*, void );
     void            ImplEnableStartDocking()  { mbStartDockingEnabled = true; }
-    bool            ImplStartDockingEnabled() { return mbStartDockingEnabled; }
+    bool            ImplStartDockingEnabled() const { return mbStartDockingEnabled; }
+    void            ImplPreparePopupMode();
 
 public:
     ImplDockingWindowWrapper( const vcl::Window *pWindow );
     ~ImplDockingWindowWrapper();
 
-    vcl::Window*         GetWindow()     { return mpDockingWindow; }
-    bool            ImplStartDocking( const Point& rPos );
+    vcl::Window*    GetWindow()     { return mpDockingWindow; }
+    void            ImplStartDocking( const Point& rPos );
 
     // those methods actually call the corresponding handlers
-    void            StartDocking( const Point& rPos, tools::Rectangle& rRect );
+    void            StartDocking( const Point& rPos, tools::Rectangle const & rRect );
     bool            Docking( const Point& rPos, tools::Rectangle& rRect );
     void            EndDocking( const tools::Rectangle& rRect, bool bFloatMode );
     bool            PrepareToggleFloatingMode();
@@ -132,8 +134,11 @@ public:
     void            Unlock();
     bool            IsLocked() const { return mbLocked;}
 
+    void            StartPopupMode( const tools::Rectangle& rRect, FloatWinPopupFlags nPopupModeFlags );
     void            StartPopupMode( ToolBox* pParentToolBox, FloatWinPopupFlags nPopupModeFlags );
     bool            IsInPopupMode() const;
+
+    void            SetPopupModeEndHdl( const Link<FloatingWindow*,void>& rLink ) { maPopupModeEndHdl = rLink; }
 
     void            TitleButtonClick( TitleButton nButton );
     void            Resizing( Size& rSize );
@@ -164,11 +169,14 @@ public:
 
 class VCL_DLLPUBLIC DockingManager
 {
-    ::std::vector<ImplDockingWindowWrapper *> mDockingWindows;
+    std::vector<std::unique_ptr<ImplDockingWindowWrapper, o3tl::default_delete<ImplDockingWindowWrapper>>> mvDockingWindows;
 
 public:
     DockingManager();
     ~DockingManager();
+
+    DockingManager& operator=( DockingManager const & ) = delete; // MSVC2015 workaround
+    DockingManager( DockingManager const & ) = delete; // MSVC2015 workaround
 
     void AddWindow( const vcl::Window *pWin );
     void RemoveWindow( const vcl::Window *pWin );
@@ -183,15 +191,18 @@ public:
     void Unlock( const vcl::Window *pWin );
     bool IsLocked( const vcl::Window *pWin );
 
+    void    StartPopupMode( const vcl::Window *pWin, const tools::Rectangle& rRect, FloatWinPopupFlags nPopupModeFlags );
     void    StartPopupMode( ToolBox *pParentToolBox, const vcl::Window *pWin );
     void    StartPopupMode( ToolBox *pParentToolBox, const vcl::Window *pWin, FloatWinPopupFlags nPopupModeFlags );
+
+    void    SetPopupModeEndHdl( const vcl::Window *pWindow, const Link<FloatingWindow*,void>& rLink );
 
     bool    IsInPopupMode( const vcl::Window *pWin );
     void    EndPopupMode( const vcl::Window *pWin );
 
     // required because those methods are not virtual in Window (!!!) and must
-    // be availbale from the toolkit
-    void        SetPosSizePixel( vcl::Window *pWin, long nX, long nY,
+    // be available from the toolkit
+    void        SetPosSizePixel( vcl::Window const *pWin, long nX, long nY,
                                 long nWidth, long nHeight,
                                 PosSizeFlags nFlags );
     tools::Rectangle   GetPosSizePixel( const vcl::Window *pWin );
@@ -202,15 +213,14 @@ class VCL_DLLPUBLIC DockingWindow
     : public vcl::Window
     , public VclBuilderContainer
 {
-    class   ImplData;
+    class SAL_DLLPRIVATE ImplData;
 private:
     VclPtr<FloatingWindow> mpFloatWin;
     VclPtr<vcl::Window>    mpOldBorderWin;
-    ImplData*       mpImplData;
+    std::unique_ptr<ImplData> mpImplData;
     Point           maFloatPos;
     Point           maDockPos;
     Point           maMouseOff;
-    Point           maMouseStart;
     Size            maRollUpOutSize;
     Size            maMinOutSize;
     long            mnTrackX;
@@ -235,19 +245,19 @@ private:
                     mbIsCalculatingInitialLayoutSize:1;
 
 protected:
-    bool mbIsDefferedInit;
+    bool mbIsDeferredInit;
     VclPtr<vcl::Window>  mpDialogParent;
 private:
 
     SAL_DLLPRIVATE void    ImplInitDockingWindowData();
-    SAL_DLLPRIVATE void setPosSizeOnContainee(Size aSize, Window &rBox);
+    SAL_DLLPRIVATE void    setPosSizeOnContainee();
     DECL_DLLPRIVATE_LINK( ImplHandleLayoutTimerHdl, Timer*, void );
 
                            DockingWindow (const DockingWindow &) = delete;
                            DockingWindow & operator= (const DockingWindow &) = delete;
 
 protected:
-    SAL_DLLPRIVATE void    SetIdleDebugName( const sal_Char *pDebugName );
+    SAL_DLLPRIVATE void    SetIdleDebugName( const char *pDebugName );
 
     using Window::ImplInit;
     SAL_DLLPRIVATE void    ImplInit( vcl::Window* pParent, WinBits nStyle );
@@ -262,8 +272,9 @@ public:
     bool            isLayoutEnabled() const;
     void            setOptimalLayoutSize();
 
-    SAL_DLLPRIVATE bool    ImplStartDocking( const Point& rPos );
-    SAL_DLLPRIVATE bool    isDeferredInit() const { return mbIsDefferedInit; }
+    //FIXME: is it okay to make this public?
+    void    ImplStartDocking( const Point& rPos );
+    SAL_DLLPRIVATE bool    isDeferredInit() const { return mbIsDeferredInit; }
     virtual        void    doDeferredInit(WinBits nBits);
 protected:
                     DockingWindow( WindowType nType );
@@ -363,7 +374,7 @@ inline void DockingWindow::SetFloatingPos( const Point& rNewPos )
         maFloatPos = rNewPos;
 }
 
-inline void DockingWindow::SetIdleDebugName( const sal_Char *pDebugName )
+inline void DockingWindow::SetIdleDebugName( const char *pDebugName )
 {
     maLayoutIdle.SetDebugName( pDebugName );
 }

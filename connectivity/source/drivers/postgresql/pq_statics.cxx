@@ -39,25 +39,24 @@
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 
-#include <string.h>
-
 using com::sun::star::uno::Sequence;
 using com::sun::star::uno::Any;
 using com::sun::star::uno::Type;
 
 using com::sun::star::beans::PropertyAttribute::READONLY;
-using com::sun::star::beans::PropertyAttribute::BOUND;
 using com::sun::star::beans::Property;
 
 namespace pq_sdbc_driver
 {
 
+namespace {
+
 struct DefColumnMetaData
 {
-    const sal_Char * columnName;
-    const sal_Char * tableName;
-    const sal_Char * schemaTableName;
-    const sal_Char * typeName;
+    const char * columnName;
+    const char * tableName;
+    const char * schemaTableName;
+    const char * typeName;
     sal_Int32 type;
     sal_Int32 precision;
     sal_Int32 scale;
@@ -84,8 +83,10 @@ struct PropertyDefEx : public PropertyDef
     sal_Int32 attribute;
 };
 
+}
+
 static cppu::IPropertyArrayHelper * createPropertyArrayHelper(
-    PropertyDef *props, int count , sal_Int16 attr )
+    PropertyDef const *props, int count , sal_Int16 attr )
 {
     Sequence< Property > seq( count );
     for( int i = 0 ; i < count ; i ++ )
@@ -96,7 +97,7 @@ static cppu::IPropertyArrayHelper * createPropertyArrayHelper(
 }
 
 static cppu::IPropertyArrayHelper * createPropertyArrayHelper(
-    PropertyDefEx *props, int count )
+    PropertyDefEx const *props, int count )
 {
     Sequence< Property > seq( count );
     for( int i = 0 ; i < count ; i ++ )
@@ -108,12 +109,7 @@ static cppu::IPropertyArrayHelper * createPropertyArrayHelper(
 
 Statics & getStatics()
 {
-    static Statics * p;
-    if( ! p )
-    {
-        ::osl::MutexGuard guard( ::osl::Mutex::getGlobalMutex() );
-        if( ! p )
-        {
+    static Statics* p = []() {
             static Statics statics ;
             statics.SYSTEM_TABLE = "SYSTEM TABLE";
             statics.TABLE = "TABLE";
@@ -124,7 +120,6 @@ Statics & getStatics()
             statics.NO_NULLS = "NO_NULLS";
             statics.NULABLE = "NULABLE";
             statics.NULLABLE_UNKNOWN = "NULLABLE_UNKNOWN";
-            statics.cPERCENT = "%";
 
             statics.TYPE = "Type";
             statics.TYPE_NAME = "TypeName";
@@ -245,7 +240,7 @@ Statics & getStatics()
             statics.refl.columnDescriptor.implName =
                 "org.openoffice.comp.pq.sdbcx.ColumnDescriptor";
             statics.refl.columnDescriptor.serviceNames = Sequence< OUString > ( 1 );
-             statics.refl.columnDescriptor.serviceNames[0] =
+            statics.refl.columnDescriptor.serviceNames[0] =
                 "com.sun.star.sdbcx.ColumnDescriptor";
             PropertyDef columnDescDef[] =
                 {
@@ -666,9 +661,8 @@ Statics & getStatics()
                         defTypeInfoMetaData[i].isAutoIncrement ) );
             }
 
-            p = &statics;
-        }
-    }
+            return &statics;
+    }();
     return *p;
 }
 

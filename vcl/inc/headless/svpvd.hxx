@@ -21,8 +21,10 @@
 #define INCLUDED_VCL_INC_HEADLESS_SVPVD_HXX
 
 #include <salvd.hxx>
+#include <vcl/salgtype.hxx>
+#include <basegfx/vector/b2ivector.hxx>
 
-#include <list>
+#include <vector>
 
 class SvpSalGraphics;
 typedef struct _cairo_surface cairo_surface_t;
@@ -30,18 +32,19 @@ typedef struct _cairo_surface cairo_surface_t;
 class VCL_DLLPUBLIC SvpSalVirtualDevice : public SalVirtualDevice
 {
     DeviceFormat                        m_eFormat;
+    cairo_surface_t*                    m_pRefSurface;
     cairo_surface_t*                    m_pSurface;
+    bool                                m_bOwnsSurface; // nearly always true, except for edge case of tdf#127529
     basegfx::B2IVector                  m_aFrameSize;
-    double                              m_fScale;
-    std::list< SvpSalGraphics* >        m_aGraphics;
+    std::vector< SvpSalGraphics* >      m_aGraphics;
+
+    void CreateSurface(long nNewDX, long nNewDY, sal_uInt8 *const pBuffer);
+
+protected:
+    SvpSalGraphics* AddGraphics(SvpSalGraphics* aGraphics);
 
 public:
-    SvpSalVirtualDevice(DeviceFormat eFormat, double fScale)
-        : m_eFormat(eFormat)
-        , m_pSurface(nullptr)
-        , m_fScale(fScale)
-    {
-    }
+    SvpSalVirtualDevice(DeviceFormat eFormat, cairo_surface_t* pRefSurface, cairo_surface_t* pPreExistingTarget);
     virtual ~SvpSalVirtualDevice() override;
 
     // SalVirtualDevice
@@ -52,6 +55,8 @@ public:
     virtual bool        SetSizeUsingBuffer( long nNewDX, long nNewDY,
                                             sal_uInt8 * pBuffer
                                           ) override;
+
+    cairo_surface_t* GetSurface() const { return m_pSurface; }
 
     // SalGeometryProvider
     virtual long GetWidth() const override;

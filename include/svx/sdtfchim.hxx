@@ -19,23 +19,21 @@
 #ifndef INCLUDED_SVX_SDTFCHIM_HXX
 #define INCLUDED_SVX_SDTFCHIM_HXX
 
-#include <svx/svddef.hxx>
+#include <config_options.h>
+#include <svl/eitem.hxx>
+#include <svx/svxdllapi.h>
 
-class SVX_DLLPUBLIC SdrTextFixedCellHeightItem : public SfxBoolItem
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SdrTextFixedCellHeightItem final : public SfxBoolItem
 {
 public:
 
     SdrTextFixedCellHeightItem( bool bUseFixedCellHeight = false );
-    SVX_DLLPRIVATE SdrTextFixedCellHeightItem( SvStream & rStream, sal_uInt16 nVersion );
 
     SVX_DLLPRIVATE virtual bool GetPresentation(SfxItemPresentation ePresentation,
                                                 MapUnit eCoreMetric, MapUnit ePresentationMetric,
-                                                OUString &rText, const IntlWrapper * = nullptr) const override;
+                                                OUString &rText, const IntlWrapper&) const override;
 
-    SVX_DLLPRIVATE virtual SfxPoolItem*     Create( SvStream&, sal_uInt16 nItem ) const override;
-    SVX_DLLPRIVATE virtual SvStream&            Store( SvStream&, sal_uInt16 nVersion ) const override;
-    SVX_DLLPRIVATE virtual SfxPoolItem*     Clone( SfxItemPool* pPool = nullptr ) const override;
-    SVX_DLLPRIVATE virtual  sal_uInt16          GetVersion( sal_uInt16 nFileFormatVersion ) const override;
+    SVX_DLLPRIVATE virtual SdrTextFixedCellHeightItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     SVX_DLLPRIVATE virtual  bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     SVX_DLLPRIVATE virtual  bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;

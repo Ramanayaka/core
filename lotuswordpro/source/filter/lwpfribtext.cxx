@@ -58,23 +58,18 @@
  *  For LWP filter architecture prototype
  ************************************************************************/
 
-#include "lwpglobalmgr.hxx"
+#include <lwpglobalmgr.hxx>
 #include "lwpfribtext.hxx"
 #include "lwpcharsetmgr.hxx"
 #include "lwphyperlinkmgr.hxx"
-#include "lwptools.hxx"
-#include "xfilter/xfstylemanager.hxx"
-#include "xfilter/xftextspan.hxx"
-#include "xfilter/xfbookmark.hxx"
-#include "xfilter/xfentry.hxx"
-#include "xfilter/xftextcontent.hxx"
-#include "xfilter/xfcrossref.hxx"
-#include "xfilter/xfpagenumber.hxx"
-#include "xfilter/xfdocfield.hxx"
-#include "xfilter/xfdatestyle.hxx"
-#include "xfilter/xftimestyle.hxx"
-#include "xfilter/xfdate.hxx"
-#include "xfilter/xfannotation.hxx"
+#include <lwptools.hxx>
+#include <xfilter/xfstylemanager.hxx>
+#include <xfilter/xftextspan.hxx>
+#include <xfilter/xfpagenumber.hxx>
+#include <xfilter/xfdocfield.hxx>
+#include <xfilter/xfdatestyle.hxx>
+#include <xfilter/xftimestyle.hxx>
+#include <xfilter/xfpagecount.hxx>
 
 LwpFribText::LwpFribText( LwpPara *pPara, bool bNoUnicode )
     : LwpFrib(pPara), m_bNoUnicode(bNoUnicode)
@@ -82,23 +77,23 @@ LwpFribText::LwpFribText( LwpPara *pPara, bool bNoUnicode )
 
 void LwpFribText::Read(LwpObjectStream* pObjStrm, sal_uInt16 len)
 {
-    if( len>=1 )
+    if( len<1 )
+        return;
+
+    rtl_TextEncoding rEncode;
+    if(m_bNoUnicode)
     {
-        rtl_TextEncoding rEncode;
-        if(m_bNoUnicode)
-        {
-            rEncode = RTL_TEXTENCODING_ISO_8859_1;
-        }
-        else
-        {
-            if (m_pModifiers && m_pModifiers->CodePage)
-                rEncode = LwpCharSetMgr::GetInstance()->
-                                              GetTextCharEncoding(m_pModifiers->CodePage);
-            else
-                rEncode = LwpCharSetMgr::GetTextCharEncoding();
-        }
-        LwpTools::QuickReadUnicode(pObjStrm, m_Content, len, rEncode);
+        rEncode = RTL_TEXTENCODING_ISO_8859_1;
     }
+    else
+    {
+        if (m_pModifiers && m_pModifiers->CodePage)
+            rEncode = LwpCharSetMgr::GetInstance()->
+                                          GetTextCharEncoding(m_pModifiers->CodePage);
+        else
+            rEncode = LwpCharSetMgr::GetTextCharEncoding();
+    }
+    LwpTools::QuickReadUnicode(pObjStrm, m_Content, len, rEncode);
 }
 
 void LwpFribText::XFConvert(XFContentContainer* pXFPara,LwpStory* pStory)
@@ -177,7 +172,7 @@ void LwpFribDocVar::RegisterStyle(LwpFoundry* pFoundry)
  */
 void LwpFribDocVar::RegisterDefaultTimeStyle()
 {
-    XFDateStyle* pDateStyle = new XFDateStyle;//use the default format
+    std::unique_ptr<XFDateStyle> pDateStyle(new XFDateStyle);//use the default format
 
     pDateStyle->AddMonth();
     pDateStyle->AddText("/");
@@ -192,15 +187,15 @@ void LwpFribDocVar::RegisterDefaultTimeStyle()
     pDateStyle->AddSecond();
 
     XFStyleManager* pXFStyleManager = LwpGlobalMgr::GetInstance()->GetXFStyleManager();
-    m_TimeStyle = pXFStyleManager->AddStyle(pDateStyle).m_pStyle->GetStyleName();
+    m_TimeStyle = pXFStyleManager->AddStyle(std::move(pDateStyle)).m_pStyle->GetStyleName();
 }
 void LwpFribDocVar::RegisterTotalTimeStyle()
 {
-    XFTimeStyle* pTimeStyle = new XFTimeStyle;//use the default format
+    std::unique_ptr<XFTimeStyle> pTimeStyle(new XFTimeStyle);//use the default format
     pTimeStyle->SetTruncate(false);
     pTimeStyle->AddMinute();
     XFStyleManager* pXFStyleManager = LwpGlobalMgr::GetInstance()->GetXFStyleManager();
-    m_TimeStyle = pXFStyleManager->AddStyle(pTimeStyle).m_pStyle->GetStyleName();
+    m_TimeStyle = pXFStyleManager->AddStyle(std::move(pTimeStyle)).m_pStyle->GetStyleName();
 }
 
 /**
@@ -260,7 +255,6 @@ void LwpFribDocVar::XFConvert(XFContentContainer* pXFPara)
         pContent = new XFInitialCreator;
         break;
     case DOCSIZE:
-    {
 /*      pContent = new XFAnnotation;
         XFTextContent* pSpan = new XFTextContent();
         pSpan->SetText("Document Size is Here");
@@ -269,106 +263,56 @@ void LwpFribDocVar::XFConvert(XFContentContainer* pXFPara)
         static_cast<XFAnnotation*>(pContent)->Add(pPara);
         break;
 */
-        OUString text = "<Document Size>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Document Size>");
         return;
-    }
     case SMARTMASTER:
-    {
-        OUString text = "<Smart master>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Smart master>");
         return;
-    }
     case DIVISIONNAME:
-    {
-        OUString text = "<Division name>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Division name>");
         return;
-    }
     case SECTIONNAME:
-    {
-        OUString text = "<Section name>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Section name>");
         return;
-    }
     case VERSIONCREATEBY:
-    {
-        OUString text = "<Version Creat by>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Version Creat by>");
         return;
-    }
     case VERSIONCREATEDATE:
-    {
-        OUString text = "<Version Creat date>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Version Creat date>");
         return;
-    }
     case VERSIONOTHEREDITORS:
-    {
-        OUString text = "<Version other Editors>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Version other Editors>");
         return;
-    }
     case VERSIONNAME:
-    {
-        OUString text = "<Version Name>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Version Name>");
         return;
-    }
     case VERSIONNUMBER:
-    {
-        OUString text = "<Version Numbers>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Version Numbers>");
         return;
-    }
     case ALLVERSIONNAME:
-    {
-        OUString text = "<All Version Name>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<All Version Name>");
         return;
-    }
     case VERSIONREMARK:
-    {
-        OUString text = "<Version Remark>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Version Remark>");
         return;
-    }
     case DOCUMENTCATEGORY:
-    {
-        OUString text = "<Document Category>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Document Category>");
         return;
-    }
     case VERSIONLASTDATE:
-    {
-        OUString text = "<Version Last Modify Date>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Version Last Modify Date>");
         return;
-    }
     case VERSIONLASTEDITOR:
-    {
-        OUString text = "<Version Last Editor>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Version Last Editor>");
         return;
-    }
     case LASTEDIT:
-    {
-        OUString text = "<Last Editor>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Last Editor>");
         return;
-    }
     case OTHEREDITORS:
-    {
-        OUString text = "<Other Editors>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Other Editors>");
         return;
-    }
     case NUMOFREVISION:
-    {
-        OUString text = "<Number of Revision>";
-        LwpFrib::ConvertChars(pXFPara,text);
+        LwpFrib::ConvertChars(pXFPara,"<Number of Revision>");
         return;
-    }
     default:
         return;
     }

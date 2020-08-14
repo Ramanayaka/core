@@ -17,20 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/drawingml/drawingmltypes.hxx"
+#include <oox/drawingml/drawingmltypes.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
-#include "drawingml/textspacing.hxx"
+#include <drawingml/textspacing.hxx>
 #include "textspacingcontext.hxx"
 
 using namespace ::oox::core;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::uno;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-    TextSpacingContext::TextSpacingContext( ContextHandler2Helper& rParent, TextSpacing & aSpacing )
+    TextSpacingContext::TextSpacingContext( ContextHandler2Helper const & rParent, TextSpacing & aSpacing )
         : ContextHandler2( rParent )
         , maSpacing( aSpacing )
     {
@@ -49,6 +49,7 @@ namespace oox { namespace drawingml {
         case A_TOKEN( spcPts ):
             maSpacing.nUnit = TextSpacing::Unit::Points;
             maSpacing.nValue = GetTextSpacingPoint( rAttribs.getString( XML_val ).get() );
+            maSpacing.bExactValue = true;
             break;
         default:
             break;
@@ -57,6 +58,6 @@ namespace oox { namespace drawingml {
         return this;
     }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

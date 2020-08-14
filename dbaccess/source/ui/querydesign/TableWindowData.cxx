@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TableWindowData.hxx"
+#include <TableWindowData.hxx>
 #include <osl/diagnose.h>
 #include <com/sun/star/sdb/XQueriesSupplier.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
@@ -25,6 +25,7 @@
 #include <com/sun/star/sdbcx/XKeysSupplier.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
+#include <com/sun/star/lang/XComponent.hpp>
 
 using namespace dbaui;
 using namespace ::com::sun::star::lang;
@@ -35,7 +36,6 @@ using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 
-// class OTableWindowData
 OTableWindowData::OTableWindowData( const Reference< XPropertySet>& _xTable
                                    ,const OUString& _rComposedName
                                    ,const OUString& rTableName
@@ -89,11 +89,11 @@ bool OTableWindowData::init(const Reference< XConnection  >& _xConnection,bool _
     ::osl::MutexGuard aGuard( m_aMutex );
 
     Reference< XQueriesSupplier > xSupQueries( _xConnection, UNO_QUERY_THROW );
-    Reference< XNameAccess > xQueries( xSupQueries->getQueries(), UNO_QUERY_THROW );
+    Reference< XNameAccess > xQueries( xSupQueries->getQueries(), UNO_SET_THROW );
     bool bIsKnownQuery = _bAllowQueries && xQueries->hasByName( m_sComposedName );
 
     Reference< XTablesSupplier > xSupTables( _xConnection, UNO_QUERY_THROW );
-    Reference< XNameAccess > xTables( xSupTables->getTables(), UNO_QUERY_THROW );
+    Reference< XNameAccess > xTables( xSupTables->getTables(), UNO_SET_THROW );
     bool bIsKnownTable = xTables->hasByName( m_sComposedName );
 
     if ( bIsKnownQuery )
@@ -114,22 +114,22 @@ bool OTableWindowData::init(const Reference< XConnection  >& _xConnection,bool _
 
 void OTableWindowData::listen()
 {
-    if ( m_xTable.is() )
-    {
-        // listen for the object being disposed
-        Reference<XComponent> xComponent( m_xTable, UNO_QUERY );
-        if ( xComponent.is() )
-            startComponentListening( xComponent );
+    if ( !m_xTable.is() )
+        return;
 
-        // obtain the columns
-        Reference< XColumnsSupplier > xColumnsSups( m_xTable, UNO_QUERY);
-        if ( xColumnsSups.is() )
-            m_xColumns = xColumnsSups->getColumns();
+    // listen for the object being disposed
+    Reference<XComponent> xComponent( m_xTable, UNO_QUERY );
+    if ( xComponent.is() )
+        startComponentListening( xComponent );
 
-        Reference<XKeysSupplier> xKeySup(m_xTable,UNO_QUERY);
-        if ( xKeySup.is() )
-            m_xKeys = xKeySup->getKeys();
-    }
+    // obtain the columns
+    Reference< XColumnsSupplier > xColumnsSups( m_xTable, UNO_QUERY);
+    if ( xColumnsSups.is() )
+        m_xColumns = xColumnsSups->getColumns();
+
+    Reference<XKeysSupplier> xKeySup(m_xTable,UNO_QUERY);
+    if ( xKeySup.is() )
+        m_xKeys = xKeySup->getKeys();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

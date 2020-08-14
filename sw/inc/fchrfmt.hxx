@@ -20,17 +20,17 @@
 #define INCLUDED_SW_INC_FCHRFMT_HXX
 
 #include <svl/poolitem.hxx>
-#include <calbck.hxx>
-#include <format.hxx>
-#include <charfmt.hxx>
+#include "calbck.hxx"
+#include "format.hxx"
+#include "charfmt.hxx"
 
 class SwTextCharFormat;
 class IntlWrapper;
 
-class SW_DLLPUBLIC SwFormatCharFormat: public SfxPoolItem, public SwClient
+class SW_DLLPUBLIC SwFormatCharFormat final : public SfxPoolItem, public SwClient
 {
     friend class SwTextCharFormat;
-    SwTextCharFormat* pTextAttr;     ///< My text attribute.
+    SwTextCharFormat* m_pTextAttribute;     ///< My text attribute.
 
 public:
     /// single argument ctors shall be explicit.
@@ -39,10 +39,10 @@ public:
 
     /// @@@ public copy ctor, but no copy assignment?
     SwFormatCharFormat( const SwFormatCharFormat& rAttr );
-protected:
-    virtual void Modify( const SfxPoolItem*, const SfxPoolItem* ) override;
 
 private:
+    virtual void Modify( const SfxPoolItem*, const SfxPoolItem* ) override;
+
     /// @@@ public copy ctor, but no copy assignment?
     SwFormatCharFormat & operator= (const SwFormatCharFormat &) = delete;
 public:
@@ -50,12 +50,12 @@ public:
 
     /// "pure virtual methods" of SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual SwFormatCharFormat* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper*    pIntl = nullptr ) const override;
+                                  const IntlWrapper&    rIntl ) const override;
 
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;

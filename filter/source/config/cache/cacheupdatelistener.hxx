@@ -20,14 +20,11 @@
 #define INCLUDED_FILTER_SOURCE_CONFIG_CACHE_CACHEUPDATELISTENER_HXX
 
 #include "filtercache.hxx"
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/util/XChangesListener.hpp>
-#include <salhelper/singletonref.hxx>
 #include <cppuhelper/implbase.hxx>
 
 
-namespace filter{
-    namespace config{
+namespace filter::config {
 
 
 /** @short      implements a listener, which will update the
@@ -52,7 +49,7 @@ class CacheUpdateListener : public BaseLock // must be the first one to guarante
         /** @short  every instance of this update listener listen on
                     a special sub set of the filter configuration.
                     So it should know, which type of configuration entry
-                    it must put into the filter cache, if the configuration notifys changes ... */
+                    it must put into the filter cache, if the configuration notifies changes ... */
         FilterCache::EItemType m_eConfigType;
 
 
@@ -110,8 +107,7 @@ class CacheUpdateListener : public BaseLock // must be the first one to guarante
         virtual void SAL_CALL disposing(const css::lang::EventObject& aEvent) override;
 };
 
-    } // namespace config
-} // namespace filter
+} // namespace filter::config
 
 #endif // INCLUDED_FILTER_SOURCE_CONFIG_CACHE_CACHEUPDATELISTENER_HXX
 

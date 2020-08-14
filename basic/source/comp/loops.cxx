@@ -18,8 +18,10 @@
  */
 
 
-#include "parser.hxx"
+#include <parser.hxx>
 #include <memory>
+
+#include <basic/sberrors.hxx>
 
 // Single-line IF and Multiline IF
 
@@ -107,6 +109,11 @@ void SbiParser::If()
         bSingleLineIf = true;
         nEndLbl = aGen.Gen( SbiOpcode::JUMPF_, 0 );
         Push( eCurTok );
+        // tdf#128263: update push positions to correctly restore in Next()
+        nPLine = nLine;
+        nPCol1 = nCol1;
+        nPCol2 = nCol2;
+
         while( !bAbort )
         {
             if( !Parse() ) break;
@@ -547,7 +554,7 @@ void SbiParser::Resume()
                 aGen.Gen( SbiOpcode::RESUME_, 0 );
                 break;
             }
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case SYMBOL:
             if( MayBeLabel() )
             {
@@ -556,7 +563,7 @@ void SbiParser::Resume()
                 Next();
                 break;
             }
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         default:
             Error( ERRCODE_BASIC_LABEL_EXPECTED );
     }

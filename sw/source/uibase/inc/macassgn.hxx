@@ -20,6 +20,7 @@
 #define INCLUDED_SW_SOURCE_UIBASE_INC_MACASSGN_HXX
 
 #include <sfx2/evntconf.hxx>
+#include <vcl/weld.hxx>
 
 class SwWrtShell;
 class SvxMacroItem;
@@ -38,8 +39,8 @@ class SwMacroAssignDlg
 {
 public:
     static SfxEventNamesItem AddEvents( DlgEventType eType );
-    static bool INetFormatDlg( vcl::Window* pParent, SwWrtShell& rSh,
-                            SvxMacroItem*& rpINetItem );
+    static bool INetFormatDlg(weld::Window* pParent, SwWrtShell& rSh,
+                              std::unique_ptr<SvxMacroItem>& rpINetItem );
 };
 
 #endif

@@ -17,19 +17,14 @@
 #include <com/sun/star/task/XStatusIndicator.hpp>
 #include <unotools/mediadescriptor.hxx>
 
-namespace writerfilter
-{
-namespace rtftok
+namespace writerfilter::rtftok
 {
 /// The RTFDocument opens and resolves the RTF document.
-class RTFDocument
-    : public writerfilter::Reference<Stream>
+class RTFDocument : public writerfilter::Reference<Stream>
 {
 public:
     /// Pointer to this stream.
-    using Pointer_t = std::shared_ptr<RTFDocument>;
-
-    virtual ~RTFDocument() = default;
+    using Pointer_t = tools::SvRef<RTFDocument>;
 
     /// Resolves this document to a stream handler.
     void resolve(Stream& rHandler) override = 0;
@@ -47,8 +42,7 @@ public:
                    css::uno::Reference<css::task::XStatusIndicator> const& xStatusIndicator,
                    const utl::MediaDescriptor& rMediaDescriptor);
 };
-} // namespace rtftok
-} // namespace writerfilter
+} // namespace writerfilter::rtftok
 
 #endif // INCLUDED_WRITERFILTER_INC_RTFTOK_RTFDOCUMENT_HXX
 

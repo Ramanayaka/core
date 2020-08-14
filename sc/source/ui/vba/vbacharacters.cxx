@@ -18,20 +18,31 @@
  */
 #include "vbacharacters.hxx"
 
-#include "vbaglobals.hxx"
 #include "vbafont.hxx"
+
+#include <com/sun/star/beans/XPropertySet.hpp>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
-ScVbaCharacters::ScVbaCharacters( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const ScVbaPalette& dPalette, const uno::Reference< text::XSimpleText>& xRange,const css::uno::Any& Start, const css::uno::Any& Length, bool Replace  ) : ScVbaCharacters_BASE( xParent, xContext ), m_xSimpleText(xRange), m_aPalette( dPalette),  nLength(-1), nStart(1), bReplace( Replace )
+ScVbaCharacters::ScVbaCharacters( const uno::Reference< XHelperInterface >& xParent,
+                                  const uno::Reference< uno::XComponentContext >& xContext,
+                                  const ScVbaPalette& dPalette,
+                                  const uno::Reference< text::XSimpleText>& xRange,
+                                  const css::uno::Any& Start,
+                                  const css::uno::Any& Length,
+                                  bool Replace  )
+    : ScVbaCharacters_BASE( xParent, xContext ),
+      m_xSimpleText(xRange), m_aPalette( dPalette), bReplace( Replace )
 {
+    sal_Int16 nLength(-1);
+    sal_Int16 nStart(1);
     Start >>= nStart;
     if ( nStart < 1 )
         nStart = 1; // silently correct user error ( as ms )
     nStart--; // OOo is 0 based
     Length >>=nLength;
-    uno::Reference< text::XTextCursor > xTextCursor( m_xSimpleText->createTextCursor(), uno::UNO_QUERY_THROW );
+    uno::Reference< text::XTextCursor > xTextCursor( m_xSimpleText->createTextCursor(), uno::UNO_SET_THROW );
     xTextCursor->collapseToStart();
     if ( nStart )
     {
@@ -99,7 +110,7 @@ ScVbaCharacters::Insert( const OUString& rString )
 void SAL_CALL
 ScVbaCharacters::Delete(  )
 {
-    // #FIXME #TODO is this a bit suspect?, I wonder should the contents
+    // #FIXME #TODO is this a bit suspect? I wonder should the contents
     // of the cell be deleted from the parent ( range )
     m_xSimpleText->setString(OUString());
 }
@@ -107,18 +118,16 @@ ScVbaCharacters::Delete(  )
 OUString
 ScVbaCharacters::getServiceImplName()
 {
-    return OUString("ScVbaCharacters");
+    return "ScVbaCharacters";
 }
 
 uno::Sequence< OUString >
 ScVbaCharacters::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Characters";
-    }
+        "ooo.vba.excel.Characters"
+    };
     return aServiceNames;
 }
 

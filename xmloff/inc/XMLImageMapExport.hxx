@@ -20,13 +20,13 @@
 #ifndef INCLUDED_XMLOFF_INC_XMLIMAGEMAPEXPORT_HXX
 #define INCLUDED_XMLOFF_INC_XMLIMAGEMAPEXPORT_HXX
 
-#include <rtl/ustring.hxx>
+#include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno { template<class X> class Reference; }
     namespace beans { class XPropertySet; }
     namespace container { class XIndexContainer; }
-} } }
+}
 class SvXMLExport;
 
 
@@ -35,18 +35,6 @@ class SvXMLExport;
  */
 class XMLImageMapExport
 {
-    const OUString msBoundary;
-    const OUString msCenter;
-    const OUString msDescription;
-    const OUString msImageMap;
-    const OUString msIsActive;
-    const OUString msName;
-    const OUString msPolygon;
-    const OUString msRadius;
-    const OUString msTarget;
-    const OUString msURL;
-    const OUString msTitle;
-
     SvXMLExport& mrExport;
 
 public:
@@ -68,7 +56,7 @@ public:
         /// the container containing the image map elements
         const css::uno::Reference< css::container::XIndexContainer> & rContainer);
 
-protected:
+private:
 
     /**
      * Export a single, named map entry.

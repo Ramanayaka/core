@@ -22,15 +22,16 @@
 #include <vcl/svapp.hxx>
 
 #include <comphelper/processfactory.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
+#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sd { namespace slidesorter { namespace cache {
+namespace sd::slidesorter::cache {
 
 namespace
 {
@@ -40,28 +41,27 @@ namespace
 }
 
 std::weak_ptr<CacheConfiguration> CacheConfiguration::mpWeakInstance;
-Timer CacheConfiguration::maReleaseTimer;
 
 std::shared_ptr<CacheConfiguration> CacheConfiguration::Instance()
 {
     SolarMutexGuard aSolarGuard;
     CacheConfigSharedPtr &rInstancePtr = theInstance::get();
-    if (rInstancePtr.get() == nullptr)
+    if (!rInstancePtr)
     {
         // Maybe somebody else kept a previously created instance alive.
         if ( ! mpWeakInstance.expired())
             rInstancePtr = std::shared_ptr<CacheConfiguration>(mpWeakInstance);
-        if (rInstancePtr.get() == nullptr)
+        if (!rInstancePtr)
         {
             // We have to create a new instance.
             rInstancePtr.reset(new CacheConfiguration());
             mpWeakInstance = rInstancePtr;
             // Prepare to release this instance in the near future.
-            maReleaseTimer.SetInvokeHandler(
+            rInstancePtr->m_ReleaseTimer.SetInvokeHandler(
                 LINK(rInstancePtr.get(),CacheConfiguration,TimerCallback));
-            maReleaseTimer.SetTimeout(5000 /* 5s */);
-            maReleaseTimer.SetDebugName("sd::CacheConfiguration maReleaseTimer");
-            maReleaseTimer.Start();
+            rInstancePtr->m_ReleaseTimer.SetTimeout(5000 /* 5s */);
+            rInstancePtr->m_ReleaseTimer.SetDebugName("sd::CacheConfiguration maReleaseTimer");
+            rInstancePtr->m_ReleaseTimer.Start();
         }
     }
     return rInstancePtr;
@@ -70,9 +70,6 @@ std::shared_ptr<CacheConfiguration> CacheConfiguration::Instance()
 CacheConfiguration::CacheConfiguration()
 {
     // Get the cache size from configuration.
-    const OUString sPathToImpressConfigurationRoot("/org.openoffice.Office.Impress/");
-    const OUString sPathToNode("MultiPaneGUI/SlideSorter/PreviewCache");
-
     try
     {
         // Obtain access to the configuration.
@@ -80,22 +77,11 @@ CacheConfiguration::CacheConfiguration()
             configuration::theDefaultProvider::get( ::comphelper::getProcessComponentContext() );
 
         // Obtain access to Impress configuration.
-        Sequence<Any> aCreationArguments(3);
-        aCreationArguments[0] <<= beans::PropertyValue(
-            "nodepath",
-            0,
-            makeAny(sPathToImpressConfigurationRoot),
-            beans::PropertyState_DIRECT_VALUE);
-        aCreationArguments[1] <<= beans::PropertyValue(
-            "depth",
-            0,
-            makeAny((sal_Int32)-1),
-            beans::PropertyState_DIRECT_VALUE);
-        aCreationArguments[2] <<= beans::PropertyValue(
-            "lazywrite",
-            0,
-            makeAny(true),
-            beans::PropertyState_DIRECT_VALUE);
+        Sequence<Any> aCreationArguments(comphelper::InitAnyPropertySequence(
+        {
+            {"nodepath", makeAny(OUString("/org.openoffice.Office.Impress/"))},
+            {"depth", makeAny(sal_Int32(-1))}
+        }));
 
         Reference<XInterface> xRoot (xProvider->createInstanceWithArguments(
             "com.sun.star.configuration.ConfigurationAccess",
@@ -107,7 +93,7 @@ CacheConfiguration::CacheConfiguration()
             return;
 
         // Get the node for the slide sorter preview cache.
-        mxCacheNode.set( xHierarchy->getByHierarchicalName(sPathToNode), UNO_QUERY);
+        mxCacheNode.set( xHierarchy->getByHierarchicalName("MultiPaneGUI/SlideSorter/PreviewCache"), UNO_QUERY);
     }
     catch (RuntimeException &)
     {
@@ -140,8 +126,17 @@ IMPL_STATIC_LINK_NOARG(CacheConfiguration, TimerCallback, Timer *, void)
     CacheConfigSharedPtr &rInstancePtr = theInstance::get();
     // Release our reference to the instance.
     rInstancePtr.reset();
+    // note: if there are no other references to the instance, m_ReleaseTimer
+    // will be deleted now
 }
 
-} } } // end of namespace ::sd::slidesorter::cache
+void CacheConfiguration::Shutdown()
+{
+    CacheConfigSharedPtr &rInstancePtr = theInstance::get();
+    rInstancePtr.reset();
+    assert(mpWeakInstance.expired()); // ensure m_ReleaseTimer is destroyed
+}
+
+} // end of namespace ::sd::slidesorter::cache
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

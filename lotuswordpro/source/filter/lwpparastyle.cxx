@@ -61,27 +61,26 @@
 #include <memory>
 
 #include "lwpparastyle.hxx"
-#include "lwpfilehdr.hxx"
-#include "lwpoverride.hxx"
+#include <lwpfilehdr.hxx>
+#include <lwpoverride.hxx>
 #include "lwpparaborderoverride.hxx"
 #include "lwpbreaksoverride.hxx"
 #include "lwpnumberingoverride.hxx"
 #include "lwptaboverride.hxx"
 #include "lwpbackgroundoverride.hxx"
-#include "xfilter/xfdefs.hxx"
-#include "xfilter/xfparastyle.hxx"
-#include "xfilter/xfborders.hxx"
-#include "lwpfont.hxx"
-#include "lwpfoundry.hxx"
+#include <o3tl/safeint.hxx>
+#include <xfilter/xfdefs.hxx>
+#include <xfilter/xfparastyle.hxx>
+#include <xfilter/xfborders.hxx>
+#include <lwpfont.hxx>
+#include <lwpfoundry.hxx>
 #include "lwppiece.hxx"
 #include "lwpshadow.hxx"
 #include "lwpborderstuff.hxx"
 #include "lwpmargins.hxx"
 #include "lwptabrack.hxx"
 
-#include "lwpsilverbullet.hxx"
-
-LwpParaStyle::LwpParaStyle(LwpObjectHeader& objHdr, LwpSvStream* pStrm) :
+LwpParaStyle::LwpParaStyle(LwpObjectHeader const & objHdr, LwpSvStream* pStrm) :
 LwpTextStyle(objHdr, pStrm)
 {
 }
@@ -145,9 +144,8 @@ void LwpParaStyle::Apply(XFParaStyle *pParaStyle)
 {
     assert(pParaStyle);
 
-    LwpVirtualPiece *pPiece = nullptr;
     //alignment:
-    pPiece = dynamic_cast<LwpVirtualPiece*>(m_AlignmentStyle.obj().get());
+    LwpVirtualPiece *pPiece = dynamic_cast<LwpVirtualPiece*>(m_AlignmentStyle.obj().get());
     if( pPiece )
     {
         LwpAlignmentOverride *pAlign = dynamic_cast<LwpAlignmentOverride*>(pPiece->GetOverride());
@@ -326,40 +324,39 @@ void LwpParaStyle::ApplyParaBorder(XFParaStyle* pParaStyle, LwpParaBorderOverrid
 
     //convert to XFBorders object:
     LwpBorderStuff  *pBorderStuff = pBorder->GetBorderStuff();
-    if( pBorderStuff && pBorderStuff->GetSide() != 0 )
+    if( !(pBorderStuff && pBorderStuff->GetSide() != 0) )
+        return;
+
+    XFBorders   *pXFBorders = new XFBorders();
+    pParaStyle->SetBorders(pXFBorders);
+
+    LwpMargins* pMargins = pBorder->GetMargins();
+
+    // apply 4 borders respectively
+    LwpBorderStuff::BorderType pType[] = { LwpBorderStuff::LEFT, LwpBorderStuff::RIGHT,
+        LwpBorderStuff::TOP, LwpBorderStuff::BOTTOM };
+    float pMarginValue[4] = { 0.0, 0.0, 0.0, 0.0 };
+
+    for (sal_uInt8 nC = 0; nC < 4; nC++)
     {
-        XFBorders   *pXFBorders = new XFBorders();
-        pParaStyle->SetBorders(pXFBorders);
-
-        LwpMargins* pMargins = pBorder->GetMargins();
-
-        // apply 4 borders respectively
-        LwpBorderStuff::BorderType pType[] = { LwpBorderStuff::LEFT, LwpBorderStuff::RIGHT,
-            LwpBorderStuff::TOP, LwpBorderStuff::BOTTOM };
-        float pMarginValue[4] = { 0.0, 0.0, 0.0, 0.0 };
-
-        for (sal_uInt8 nC = 0; nC < 4; nC++)
+        if (pBorderStuff->HasSide(pType[nC]))
         {
-            if (pBorderStuff->HasSide(pType[nC]))
+            ApplySubBorder(pBorderStuff, pType[nC], pXFBorders);
+
+            //get border spacing to text content
+            if (pMargins)
             {
-                ApplySubBorder(pBorderStuff, pType[nC], pXFBorders);
-
-                //get border spacing to text content
-                if (pMargins)
-                {
-                    pMarginValue[nC] = static_cast<float>(pMargins->GetMarginsValue(nC));
-                }
+                pMarginValue[nC] = static_cast<float>(pMargins->GetMarginsValue(nC));
             }
-
         }
 
-        //apply border spacing to text content
-        pParaStyle->SetPadding(pMarginValue[0], pMarginValue[1], pMarginValue[2], pMarginValue[3]);
-
     }
+
+    //apply border spacing to text content
+    pParaStyle->SetPadding(pMarginValue[0], pMarginValue[1], pMarginValue[2], pMarginValue[3]);
 }
 
-void LwpParaStyle::ApplyBreaks(XFParaStyle* pParaStyle, LwpBreaksOverride* pBreaks)
+void LwpParaStyle::ApplyBreaks(XFParaStyle* pParaStyle, const LwpBreaksOverride* pBreaks)
 {
     if (pBreaks->IsKeepWithNext())
     {
@@ -383,12 +380,11 @@ void LwpParaStyle::ApplyBreaks(XFParaStyle* pParaStyle, LwpBreaksOverride* pBrea
     }
 }
 
-void LwpParaStyle::ApplyAlignment(XFParaStyle* pParaStyle, LwpAlignmentOverride* pAlign)
+void LwpParaStyle::ApplyAlignment(XFParaStyle* pParaStyle, const LwpAlignmentOverride* pAlign)
 {
     enumXFAlignType alignType = enumXFAlignStart;
-    LwpAlignmentOverride::AlignType type;
+    auto type = pAlign->GetAlignType();
 
-    type = pAlign->GetAlignType();
     pParaStyle->SetNumberRight(false);//to identify its align attribute
     switch(type)
     {
@@ -418,7 +414,7 @@ void LwpParaStyle::ApplyAlignment(XFParaStyle* pParaStyle, LwpAlignmentOverride*
     pParaStyle->SetAlignType(alignType);
 }
 
-void LwpParaStyle::ApplyIndent(LwpPara* pPara, XFParaStyle* pParaStyle, LwpIndentOverride* pIndent)
+void LwpParaStyle::ApplyIndent(LwpPara* pPara, XFParaStyle* pParaStyle, const LwpIndentOverride* pIndent)
 {
     LwpPara* pParentPara;
     if (pPara)
@@ -435,28 +431,25 @@ void LwpParaStyle::ApplyIndent(LwpPara* pPara, XFParaStyle* pParaStyle, LwpInden
         pTotalIndent.reset(pIndent->clone());
 
         //for bullet only
-        if (pPara)
+        if (pPara && pPara->GetBulletFlag())
         {
-            if (pPara->GetBulletFlag())
-            {
-                pTotalIndent->SetMAll(pParentIndent->GetMAll() + pTotalIndent->GetMAll());
-                pTotalIndent->SetMRight(pParentIndent->GetMRight()+ pTotalIndent->GetMRight());
-                pParaStyle->SetMargins(LwpTools::ConvertToMetric(LwpTools::ConvertFromUnits(
-                    pTotalIndent->GetMAll())), pTotalIndent->GetRight());
-                pPara->SetIndent(pTotalIndent.release());
-                return;
-            }
+            pTotalIndent->SetMAll(o3tl::saturating_add(pParentIndent->GetMAll(), pTotalIndent->GetMAll()));
+            pTotalIndent->SetMRight(o3tl::saturating_add(pParentIndent->GetMRight(), pTotalIndent->GetMRight()));
+            pParaStyle->SetMargins(LwpTools::ConvertToMetric(LwpTools::ConvertFromUnits(
+                pTotalIndent->GetMAll())), pTotalIndent->GetRight());
+            pPara->SetIndent(pTotalIndent.release());
+            return;
         }
         sal_uInt16 relative = pParentIndent->GetRelative();
 
         sal_Int32 Amount = pParentIndent->GetMAll();
 
         if (relative == LwpIndentOverride::RELATIVE_FIRST)
-            Amount += pParentIndent->GetMFirst();
+            Amount = o3tl::saturating_add(Amount, pParentIndent->GetMFirst());
         else if (relative == LwpIndentOverride::RELATIVE_REST)
-            Amount += pParentIndent->GetMRest();
-        pTotalIndent->SetMAll(Amount + pTotalIndent->GetMAll());
-        pTotalIndent->SetMRight(pParentIndent->GetMRight()+ pTotalIndent->GetMRight());
+            Amount = o3tl::saturating_add(Amount, pParentIndent->GetMRest());
+        pTotalIndent->SetMAll(o3tl::saturating_add(Amount, pTotalIndent->GetMAll()));
+        pTotalIndent->SetMRight(o3tl::saturating_add(pParentIndent->GetMRight(), pTotalIndent->GetMRight()));
 
         pParaStyle->SetIndent(pTotalIndent->GetFirst());
         pParaStyle->SetMargins(pTotalIndent->GetLeft(), pTotalIndent->GetRight());
@@ -466,15 +459,12 @@ void LwpParaStyle::ApplyIndent(LwpPara* pPara, XFParaStyle* pParaStyle, LwpInden
     else
     {
         pTotalIndent.reset(pIndent->clone());
-        if (pPara)
+        if (pPara && pPara->GetBulletFlag())
         {
-            if (pPara->GetBulletFlag())
-            {
-                pParaStyle->SetMargins(LwpTools::ConvertToMetric(
-                    LwpTools::ConvertFromUnits(pIndent->GetMAll())), pIndent->GetRight());
-                pPara->SetIndent(pTotalIndent.release());
-                return;
-            }
+            pParaStyle->SetMargins(LwpTools::ConvertToMetric(
+                LwpTools::ConvertFromUnits(pIndent->GetMAll())), pIndent->GetRight());
+            pPara->SetIndent(pTotalIndent.release());
+            return;
         }
 
         pParaStyle->SetIndent(pIndent->GetFirst());
@@ -516,8 +506,8 @@ void LwpParaStyle::ApplySpacing(LwpPara* pPara, XFParaStyle* pParaStyle, LwpSpac
         break;
     case LwpSpacingCommonOverride::SPACING_CUSTOM:
     {
-    xftype = enumLHHeight;
-    height =  LwpTools::ConvertToMetric(LwpTools::ConvertFromUnits(sal_Int32(float(multiple)/65536L*amount)));
+        xftype = enumLHHeight;
+        height =  LwpTools::ConvertToMetric(LwpTools::ConvertFromUnits(sal_Int32(float(multiple)/65536L*amount)));
         pParaStyle->SetLineHeight(xftype,height);
     }
         break;
@@ -603,7 +593,7 @@ void LwpParaStyle::ApplyTab(XFParaStyle *pParaStyle, LwpTabOverride *pTabOverRid
             return;
 
         enumXFTab eType = enumXFTabNone;
-        LwpTab::TabType type = pTab->GetTabType();
+        sal_uInt32 type = pTab->GetTabType();
         switch(type)
         {
         case LwpTab::TT_LEFT:
@@ -627,7 +617,7 @@ void LwpParaStyle::ApplyTab(XFParaStyle *pParaStyle, LwpTabOverride *pTabOverRid
 
         //get leader type
         sal_Unicode cLeader = 0x00;
-        LwpTab::LeaderType leader= pTab->GetLeaderType();
+        auto leader= pTab->GetLeaderType();
         switch(leader)
         {
         case LwpTab::TL_NONE:
@@ -672,7 +662,7 @@ void LwpParaStyle::RegisterStyle()
     Apply(xStyle.get());
     //Add style
     LwpStyleManager* pStyleMgr = m_pFoundry->GetStyleManager();
-    pStyleMgr->AddStyle(GetObjectID(), xStyle.release());
+    pStyleMgr->AddStyle(GetObjectID(), std::move(xStyle));
 }
 
 LwpAlignmentOverride* LwpParaStyle::GetAlignment()

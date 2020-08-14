@@ -46,7 +46,7 @@ struct __cxa_exception
     std::type_info *exceptionType;
     void (*exceptionDestructor)(void *);
 
-    std::unexpected_handler unexpectedHandler;
+    void (*unexpectedHandler)(); // std::unexpected_handler dropped from C++17
     std::terminate_handler terminateHandler;
 
     __cxa_exception *nextException;
@@ -77,8 +77,7 @@ extern "C" __cxa_eh_globals *__cxa_get_globals () throw();
 
 void raiseException(
     uno_Any * pUnoExc, uno_Mapping * pUno2Cpp );
-void fillUnoException(
-    __cxa_exception * header, uno_Any *, uno_Mapping * pCpp2Uno );
+void fillUnoException(uno_Any *, uno_Mapping * pCpp2Uno);
 }
 
 namespace axp

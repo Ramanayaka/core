@@ -16,23 +16,19 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SVX_SWFRAMEPOSSTRINGS_HXX
-#define INCLUDED_SVX_SWFRAMEPOSSTRINGS_HXX
+
+#pragma once
 
 #include <rtl/ustring.hxx>
 #include <svx/svxdllapi.h>
-#include <memory>
 
 /*
     contains strings needed for positioning dialogs
     of frames and drawing in Writer
  */
-class ResStringArray;
 class SVX_DLLPUBLIC SvxSwFramePosString
 {
 public:
-    SvxSwFramePosString();
-    ~SvxSwFramePosString();
     enum StringId
     {
         LEFT                       ,
@@ -53,6 +49,7 @@ public:
         MIR_REL_FRM_RIGHT          ,
         REL_PG_FRAME               ,
         REL_PG_PRTAREA             ,
+        REL_PG_PRTAREA_BOTTOM      ,
         REL_BASE                   ,
         REL_CHAR                   ,
         REL_ROW                    ,
@@ -80,11 +77,7 @@ public:
 
         STR_MAX
     };
-    OUString GetString(StringId eId) const;
-
-private:
-    std::unique_ptr<ResStringArray> pImpl;
+    static OUString GetString(StringId eId);
 };
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

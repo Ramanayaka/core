@@ -22,7 +22,6 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/rendering/XColorSpace.hpp>
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/range/b2irectangle.hxx>
 
@@ -31,11 +30,6 @@
 class Point;
 class Size;
 namespace tools { class Rectangle; }
-namespace tools {
-    class Polygon;
-    class PolyPolygon;
-}
-class Bitmap;
 class BitmapEx;
 class Color;
 
@@ -48,34 +42,31 @@ namespace basegfx
     class B2IRange;
 }
 
-namespace com { namespace sun { namespace star { namespace geometry
+namespace com::sun::star::geometry
 {
     struct RealSize2D;
     struct IntegerPoint2D;
     struct IntegerSize2D;
     struct IntegerRectangle2D;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace rendering
+namespace com::sun::star::rendering
 {
-    class  XGraphicDevice;
     class  XBitmap;
-    class  XIntegerBitmap;
     class  XIntegerReadOnlyBitmap;
-} } } }
+}
 
-namespace vcl
+namespace com::sun::star::rendering { class XColorSpace; }
+
+namespace vcl::unotools
 {
-    namespace unotools
-    {
         // Bitmap conversions
 
 
         /** Create an XBitmap from VCL BitmapEx
          */
         css::uno::Reference< css::rendering::XBitmap >
-            VCL_DLLPUBLIC xBitmapFromBitmapEx( const css::uno::Reference< css::rendering::XGraphicDevice >& xGraphicDevice,
-                                               const ::BitmapEx&                                            inputBitmap );
+            VCL_DLLPUBLIC xBitmapFromBitmapEx( const ::BitmapEx& inputBitmap );
 
         /** Create a BitmapEx from an XBitmap
          */
@@ -168,7 +159,7 @@ namespace vcl
         tools::Rectangle                   VCL_DLLPUBLIC rectangleFromB2IRectangle( const basegfx::B2IRange& );
         basegfx::B2IPoint           VCL_DLLPUBLIC b2IPointFromPoint(const Point&);
         basegfx::B2IRectangle       VCL_DLLPUBLIC b2IRectangleFromRectangle(const tools::Rectangle&);
-    }
+
 }
 
 #endif // INCLUDED_VCL_CANVASTOOLS_HXX

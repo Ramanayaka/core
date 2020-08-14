@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_STRUCTURETAGPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_STRUCTURETAGPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
@@ -26,10 +25,8 @@
 #include <vcl/pdfwriter.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** StructureTagPrimitive2D class
 
             This class is used to provide simple support for adding grouped
@@ -42,28 +39,37 @@ namespace drawinglayer
             If a renderer ignores this, it just decomposes to its child
             content.
          */
-        class DRAWINGLAYER_DLLPUBLIC StructureTagPrimitive2D : public GroupPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC StructureTagPrimitive2D final : public GroupPrimitive2D
         {
         private:
             /// the PDF structure element this grouping represents
             vcl::PDFWriter::StructElement           maStructureElement;
 
+            /// flag for background object
+            bool                                    mbBackground;
+            /// flag for image (OBJ_GRAF)
+            bool                                    mbIsImage;
+
         public:
             /// constructor
             StructureTagPrimitive2D(
                 const vcl::PDFWriter::StructElement& rStructureElement,
+                bool bBackground,
+                bool bIsImage,
                 const Primitive2DContainer& rChildren);
 
             /// data read access
             const vcl::PDFWriter::StructElement& getStructureElement() const { return maStructureElement; }
+            bool isBackground() const { return mbBackground; }
+            bool isImage() const { return mbIsImage; }
+
+            /// compare operator
+            virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_STRUCTURETAGPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

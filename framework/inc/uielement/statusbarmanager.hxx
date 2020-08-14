@@ -20,16 +20,12 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_STATUSBARMANAGER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_STATUSBARMANAGER_HXX
 
-#include <stdtypes.h>
-
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XStatusbarController.hpp>
 #include <com/sun/star/frame/XUIControllerFactory.hpp>
-#include <com/sun/star/ui/XUIConfiguration.hpp>
+#include <com/sun/star/ui/XUIConfigurationListener.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 
-#include <rtl/ustring.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/interfacecontainer.hxx>
 #include <vcl/status.hxx>
@@ -95,7 +91,6 @@ class StatusBarManager final: public ::cppu::WeakImplHelper<
                                                                               m_bFrameActionRegistered : 1,
                                                                               m_bUpdateControllers : 1;
         VclPtr<StatusBar>                                                     m_pStatusBar;
-        OUString                                                              m_aModuleIdentifier;
         css::uno::Reference< css::frame::XFrame >                             m_xFrame;
         StatusBarControllerMap                                                m_aControllerMap;
         osl::Mutex                                                            m_mutex;

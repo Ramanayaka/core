@@ -18,7 +18,7 @@ $(eval $(call gb_Library_set_include,dbpool2,\
 	-I$(SRCDIR)/connectivity/source/inc \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,dbpool2,$(SRCDIR)/connectivity/inc/pch/precompiled_dbpool2))
+$(eval $(call gb_Library_set_precompiled_header,dbpool2,connectivity/inc/pch/precompiled_dbpool2))
 
 $(eval $(call gb_Library_use_sdk_api,dbpool2))
 
@@ -29,6 +29,7 @@ $(eval $(call gb_Library_use_libraries,dbpool2,\
 	dbtools \
 	sal \
 	salhelper \
+	tl \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,dbpool2,\
@@ -37,7 +38,6 @@ $(eval $(call gb_Library_add_exception_objects,dbpool2,\
 	connectivity/source/cpool/ZPooledConnection \
 	connectivity/source/cpool/ZConnectionPool \
 	connectivity/source/cpool/ZPoolCollection \
-	connectivity/source/cpool/Zregistration \
 ))
 
 # vim: set noet sw=4 ts=4:

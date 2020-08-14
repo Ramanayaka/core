@@ -20,7 +20,8 @@
 #include <drawinglayer/primitive2d/controlprimitive2d.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <comphelper/processfactory.hxx>
-#include <com/sun/star/awt/XWindow2.hpp>
+#include <com/sun/star/awt/XControl.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/svapp.hxx>
@@ -36,42 +37,41 @@
 #include <toolkit/awt/vclxwindow.hxx>
 #include <vcl/window.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 
 using namespace com::sun::star;
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void ControlPrimitive2D::createXControl()
         {
-            if(!mxXControl.is() && getControlModel().is())
+            if(!(!mxXControl.is() && getControlModel().is()))
+                return;
+
+            uno::Reference< beans::XPropertySet > xSet(getControlModel(), uno::UNO_QUERY);
+
+            if(!xSet.is())
+                return;
+
+            uno::Any aValue(xSet->getPropertyValue("DefaultControl"));
+            OUString aUnoControlTypeName;
+
+            if(!(aValue >>= aUnoControlTypeName))
+                return;
+
+            if(aUnoControlTypeName.isEmpty())
+                return;
+
+            uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+            uno::Reference< awt::XControl > xXControl(
+                xContext->getServiceManager()->createInstanceWithContext(aUnoControlTypeName, xContext), uno::UNO_QUERY);
+
+            if(xXControl.is())
             {
-                uno::Reference< beans::XPropertySet > xSet(getControlModel(), uno::UNO_QUERY);
+                xXControl->setModel(getControlModel());
 
-                if(xSet.is())
-                {
-                    uno::Any aValue(xSet->getPropertyValue("DefaultControl"));
-                    OUString aUnoControlTypeName;
-
-                    if(aValue >>= aUnoControlTypeName)
-                    {
-                        if(!aUnoControlTypeName.isEmpty())
-                        {
-                            uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
-                            uno::Reference< awt::XControl > xXControl(
-                                xContext->getServiceManager()->createInstanceWithContext(aUnoControlTypeName, xContext), uno::UNO_QUERY);
-
-                            if(xXControl.is())
-                            {
-                                xXControl->setModel(getControlModel());
-
-                                // remember XControl
-                                mxXControl = xXControl;
-                            }
-                        }
-                    }
-                }
+                // remember XControl
+                mxXControl = xXControl;
             }
         }
 
@@ -148,7 +148,7 @@ namespace drawinglayer
 
                                     if(xWindowPeer.is())
                                     {
-                                        VCLXWindow* pVCLXWindow = VCLXWindow::GetImplementation(xWindowPeer);
+                                        VCLXWindow* pVCLXWindow = comphelper::getUnoTunnelImplementation<VCLXWindow>(xWindowPeer);
 
                                         if(pVCLXWindow)
                                         {
@@ -173,11 +173,11 @@ namespace drawinglayer
                                     basegfx::B2DVector aScreenZoom(
                                         basegfx::fTools::equalZero(aScale.getX()) ? 1.0 : aDiscreteSize.getX() / aScale.getX(),
                                         basegfx::fTools::equalZero(aScale.getY()) ? 1.0 : aDiscreteSize.getY() / aScale.getY());
-                                    static double fZoomScale(28.0); // do not ask for this constant factor, but it gets the zoom right
+                                    static const double fZoomScale(28.0); // do not ask for this constant factor, but it gets the zoom right
                                     aScreenZoom *= fZoomScale;
 
                                     // set zoom at control view for text scaling
-                                    xControlView->setZoom((float)aScreenZoom.getX(), (float)aScreenZoom.getY());
+                                    xControlView->setZoom(static_cast<float>(aScreenZoom.getX()), static_cast<float>(aScreenZoom.getY()));
                                 }
                             }
 
@@ -187,7 +187,7 @@ namespace drawinglayer
                                 xControlView->draw(0, 0);
 
                                 // get bitmap
-                                const Bitmap aContent(aVirtualDevice->GetBitmap(Point(), aSizePixel));
+                                const BitmapEx aContent(aVirtualDevice->GetBitmapEx(Point(), aSizePixel));
 
                                 // to avoid scaling, use the Bitmap pixel size as primitive size
                                 const Size aBitmapSize(aContent.GetSizePixel());
@@ -202,15 +202,17 @@ namespace drawinglayer
                                 }
 
                                 // short form for scale and translate transformation
-                                const basegfx::B2DHomMatrix aBitmapTransform(basegfx::tools::createScaleTranslateB2DHomMatrix(
+                                const basegfx::B2DHomMatrix aBitmapTransform(basegfx::utils::createScaleTranslateB2DHomMatrix(
                                     aBitmapSizeLogic.getX(), aBitmapSizeLogic.getY(), aTranslate.getX(), aTranslate.getY()));
 
                                 // create primitive
-                                xRetval = new BitmapPrimitive2D(BitmapEx(aContent), aBitmapTransform);
+                                xRetval = new BitmapPrimitive2D(
+                                    VCLUnoHelper::CreateVCLXBitmap(aContent),
+                                    aBitmapTransform);
                             }
                             catch( const uno::Exception& )
                             {
-                                DBG_UNHANDLED_EXCEPTION();
+                                DBG_UNHANDLED_EXCEPTION("drawinglayer");
                             }
                         }
                     }
@@ -225,7 +227,7 @@ namespace drawinglayer
             // create a gray placeholder hairline polygon in object size
             basegfx::B2DRange aObjectRange(0.0, 0.0, 1.0, 1.0);
             aObjectRange.transform(getTransform());
-            const basegfx::B2DPolygon aOutline(basegfx::tools::createPolygonFromRect(aObjectRange));
+            const basegfx::B2DPolygon aOutline(basegfx::utils::createPolygonFromRect(aObjectRange));
             const basegfx::BColor aGrayTone(0xc0 / 255.0, 0xc0 / 255.0, 0xc0 / 255.0);
 
             // The replacement object may also get a text like 'empty group' here later
@@ -355,7 +357,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(ControlPrimitive2D, PRIMITIVE2D_ID_CONTROLPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

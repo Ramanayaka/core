@@ -23,12 +23,9 @@
 
 #include <sal/log.hxx>
 #include <vcl/font.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/lstbox.hxx>
+#include <vcl/weld.hxx>
 #include <tools/fract.hxx>
 #include <deque>
-
 
 inline long SmPtsTo100th_mm(long nNumPts)
     // returns the length (in 100th of mm) that corresponds to the length
@@ -49,8 +46,7 @@ inline Fraction Sm100th_mmToPts(long nNum100th_mm)
     // 'nNum100th_mm' (in 100th of mm).
 {
     SAL_WARN_IF( nNum100th_mm < 0, "starmath", "Ooops..." );
-    Fraction  aTmp (7227L, 254000L);
-    return aTmp *= Fraction(nNum100th_mm);
+    return Fraction(7227L, 254000L) * Fraction(nNum100th_mm);
 }
 
 
@@ -71,7 +67,7 @@ SmViewShell * SmGetActiveView();
 bool    IsItalic( const vcl::Font &rFont );
 bool    IsBold( const vcl::Font &rFont );
 
-class SmFace : public vcl::Font
+class SmFace final : public vcl::Font
 {
     long    nBorderWidth;
 
@@ -133,18 +129,17 @@ public:
 //  SmFontPickListBox
 
 
-class SmFontPickListBox : public SmFontPickList, public ListBox
+class SmFontPickListBox final : public SmFontPickList
 {
-protected:
-    DECL_LINK(SelectHdl, ListBox&, void);
+private:
+    std::unique_ptr<weld::ComboBox> m_xWidget;
+
+    DECL_LINK(SelectHdl, weld::ComboBox&, void);
 
 public:
-    SmFontPickListBox(vcl::Window* pParent, WinBits nBits);
-
+    SmFontPickListBox(std::unique_ptr<weld::ComboBox> pWidget);
     SmFontPickListBox& operator = (const SmFontPickList& rList);
-
     virtual void    Insert(const vcl::Font &rFont) override;
-    using   Window::Update;
 };
 
 #endif

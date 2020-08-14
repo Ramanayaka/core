@@ -19,19 +19,15 @@
 
 #include <comphelper/string.hxx>
 #include <utility>
-#include <vcl/wrkwin.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/svapp.hxx>
 
-#include <eertfpar.hxx>
-#include <impedit.hxx>
+#include "eertfpar.hxx"
+#include "impedit.hxx"
 #include <svl/intitem.hxx>
 #include <editeng/escapementitem.hxx>
 #include <editeng/fhgtitem.hxx>
 #include <editeng/fontitem.hxx>
 #include <editeng/flditem.hxx>
-#include "editeng/editeng.hxx"
+#include <editeng/editeng.hxx>
 
 #include <svtools/rtftoken.h>
 #include <svtools/htmltokn.h>
@@ -44,7 +40,6 @@ HtmlImportInfo::HtmlImportInfo( HtmlImportState eSt, SvParser<HtmlTokenId>* pPrs
     pParser     = pPrsrs;
     eState      = eSt;
     nToken      = HtmlTokenId::NONE;
-    nTokenValue = 0;
 }
 
 HtmlImportInfo::~HtmlImportInfo()
@@ -64,12 +59,13 @@ RtfImportInfo::~RtfImportInfo()
 {
 }
 
+constexpr MapUnit gRTFMapUnit = MapUnit::MapTwip;
+
 EditRTFParser::EditRTFParser(
     SvStream& rIn, EditSelection aSel, SfxItemPool& rAttrPool, EditEngine* pEditEngine) :
-    SvxRTFParser(rAttrPool, rIn, nullptr),
+    SvxRTFParser(rAttrPool, rIn),
     aCurSel(std::move(aSel)),
     mpEditEngine(pEditEngine),
-    aRTFMapMode(MapUnit::MapTwip),
     nDefFont(0),
     bLastActionInsertParaBreak(false)
 {
@@ -233,7 +229,7 @@ void EditRTFParser::NextToken( int nToken )
     }
 }
 
-void EditRTFParser::UnknownAttrToken( int nToken, SfxItemSet* )
+void EditRTFParser::UnknownAttrToken( int nToken )
 {
     // for Tokens which are not evaluated in ReadAttr
     // Actually, only for Calc (RTFTokenHdl), so that RTF_INTBL
@@ -252,7 +248,6 @@ void EditRTFParser::InsertText()
     if (mpEditEngine->IsRtfImportHandlerSet())
     {
         RtfImportInfo aImportInfo(RtfImportState::InsertText, this, mpEditEngine->CreateESelection(aCurSel));
-        aImportInfo.aText = aText;
         mpEditEngine->CallRtfImportHandler(aImportInfo);
     }
     aCurSel = mpEditEngine->InsertText(aCurSel, aText);
@@ -316,17 +311,16 @@ void EditRTFParser::SetAttrInDoc( SvxRTFItemStackType &rSet )
 
     // #i66167# adapt font heights to destination MapUnit if necessary
     const MapUnit eDestUnit = mpEditEngine->GetEditDoc().GetItemPool().GetMetric(0);
-    const MapUnit eSrcUnit  = aRTFMapMode.GetMapUnit();
-    if (eDestUnit != eSrcUnit)
+    if (eDestUnit != gRTFMapUnit)
     {
-        sal_uInt16 aFntHeightIems[3] = { EE_CHAR_FONTHEIGHT, EE_CHAR_FONTHEIGHT_CJK, EE_CHAR_FONTHEIGHT_CTL };
+        sal_uInt16 const aFntHeightIems[3] = { EE_CHAR_FONTHEIGHT, EE_CHAR_FONTHEIGHT_CJK, EE_CHAR_FONTHEIGHT_CTL };
         for (unsigned short aFntHeightIem : aFntHeightIems)
         {
             if (SfxItemState::SET == rSet.GetAttrSet().GetItemState( aFntHeightIem, false, &pItem ))
             {
                 sal_uInt32 nHeight  = static_cast<const SvxFontHeightItem*>(pItem)->GetHeight();
                 long nNewHeight;
-                nNewHeight = OutputDevice::LogicToLogic( (long)nHeight, eSrcUnit, eDestUnit );
+                nNewHeight = OutputDevice::LogicToLogic( static_cast<long>(nHeight), gRTFMapUnit, eDestUnit );
 
                 SvxFontHeightItem aFntHeightItem( nNewHeight, 100, aFntHeightIem );
                 aFntHeightItem.SetProp(
@@ -341,15 +335,19 @@ void EditRTFParser::SetAttrInDoc( SvxRTFItemStackType &rSet )
     {
         // the correct one
         long nEsc = static_cast<const SvxEscapementItem*>(pItem)->GetEsc();
-
+        long nEscFontHeight = 0;
         if( ( DFLT_ESC_AUTO_SUPER != nEsc ) && ( DFLT_ESC_AUTO_SUB != nEsc ) )
         {
             nEsc *= 10; //HalfPoints => Twips was embezzled in RTFITEM.CXX!
             SvxFont aFont;
             mpEditEngine->SeekCursor(aStartPaM.GetNode(), aStartPaM.GetIndex()+1, aFont);
-            nEsc = nEsc * 100 / aFont.GetFontSize().Height();
+            nEscFontHeight = aFont.GetFontSize().Height();
+        }
+        if (nEscFontHeight)
+        {
+            nEsc = nEsc * 100 / nEscFontHeight;
 
-            SvxEscapementItem aEscItem( (short) nEsc, static_cast<const SvxEscapementItem*>(pItem)->GetProportionalHeight(), EE_CHAR_ESCAPEMENT );
+            SvxEscapementItem aEscItem( static_cast<short>(nEsc), static_cast<const SvxEscapementItem*>(pItem)->GetProportionalHeight(), EE_CHAR_ESCAPEMENT );
             rSet.GetAttrSet().Put( aEscItem );
         }
     }
@@ -401,7 +399,7 @@ void EditRTFParser::SetAttrInDoc( SvxRTFItemStackType &rSet )
             mpEditEngine->SetAttribs(
                 EditSelection(aStartPaM, EditPaM(aStartPaM.GetNode(), aStartPaM.GetNode()->Len())), rSet.GetAttrSet());
 
-        // the beginning of the EndNodes....
+        // the beginning of the EndNodes...
         if ( aEndPaM.GetIndex() == aEndPaM.GetNode()->Len() )
             mpEditEngine->SetParaAttribsOnly(nEndNode, rSet.GetAttrSet());
         else
@@ -446,7 +444,7 @@ SvxRTFStyleType* EditRTFParser::FindStyleSheet( const OUString& rName )
     return nullptr;
 }
 
-SfxStyleSheet* EditRTFParser::CreateStyleSheet( SvxRTFStyleType* pRTFStyle )
+SfxStyleSheet* EditRTFParser::CreateStyleSheet( SvxRTFStyleType const * pRTFStyle )
 {
     // Check if a template exists, then it will not be changed!
     SfxStyleSheet* pStyle = static_cast<SfxStyleSheet*>(mpEditEngine->GetStyleSheetPool()->Find( pRTFStyle->sName, SfxStyleFamily::All ));
@@ -494,9 +492,9 @@ void EditRTFParser::CreateStyleSheets()
     // the SvxRTFParser has now created the template...
     if (mpEditEngine->GetStyleSheetPool() && mpEditEngine->IsImportRTFStyleSheetsSet())
     {
-        for (SvxRTFStyleTbl::iterator it = GetStyleTbl().begin(); it != GetStyleTbl().end(); ++it)
+        for (auto const& elem : GetStyleTbl())
         {
-            SvxRTFStyleType* pRTFStyle = it->second.get();
+            SvxRTFStyleType* pRTFStyle = elem.second.get();
             CreateStyleSheet( pRTFStyle );
         }
     }
@@ -505,9 +503,8 @@ void EditRTFParser::CreateStyleSheets()
 void EditRTFParser::CalcValue()
 {
     const MapUnit eDestUnit = aEditMapMode.GetMapUnit();
-    const MapUnit eSrcUnit  = aRTFMapMode.GetMapUnit();
-    if (eDestUnit != eSrcUnit)
-        nTokenValue = OutputDevice::LogicToLogic( nTokenValue, eSrcUnit, eDestUnit );
+    if (eDestUnit != gRTFMapUnit)
+        nTokenValue = OutputDevice::LogicToLogic( nTokenValue, gRTFMapUnit, eDestUnit );
 }
 
 void EditRTFParser::ReadField()
@@ -569,7 +566,7 @@ void EditRTFParser::ReadField()
             if ( aFldRslt.isEmpty() )
                 aFldRslt = aFldInst;
 
-            SvxFieldItem aField( SvxURLField( aFldInst, aFldRslt, SVXURLFORMAT_REPR ), EE_FEATURE_FIELD  );
+            SvxFieldItem aField( SvxURLField( aFldInst, aFldRslt, SvxURLFormat::Repr ), EE_FEATURE_FIELD  );
             aCurSel = mpEditEngine->InsertField(aCurSel, aField);
             mpEditEngine->UpdateFieldsOnly();
             bLastActionInsertParaBreak = false;
@@ -612,22 +609,17 @@ sal_Int32 EditNodeIdx::GetIdx() const
     return mpEditEngine->GetEditDoc().GetPos(mpNode);
 }
 
-EditNodeIdx* EditNodeIdx::Clone() const
-{
-    return new EditNodeIdx(mpEditEngine, mpNode);
-}
-
 EditPosition::EditPosition(EditEngine* pEE, EditSelection* pSel) :
     mpEditEngine(pEE), mpCurSel(pSel) {}
 
-EditPosition* EditPosition::Clone() const
+std::unique_ptr<EditPosition> EditPosition::Clone() const
 {
-    return new EditPosition(mpEditEngine, mpCurSel);
+    return std::unique_ptr<EditPosition>(new EditPosition(mpEditEngine, mpCurSel));
 }
 
-EditNodeIdx* EditPosition::MakeNodeIdx() const
+std::unique_ptr<EditNodeIdx> EditPosition::MakeNodeIdx() const
 {
-    return new EditNodeIdx(mpEditEngine, mpCurSel->Max().GetNode());
+    return std::make_unique<EditNodeIdx>(mpEditEngine, mpCurSel->Max().GetNode());
 }
 
 sal_Int32 EditPosition::GetNodeIdx() const

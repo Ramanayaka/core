@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_ACCESSIBLEMENUBASECOMPONENT_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_ACCESSIBLEMENUBASECOMPONENT_HXX
+#pragma once
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -39,7 +38,6 @@ class AccessibleStateSetHelper;
 }
 
 
-//  class OAccessibleMenuBaseComponent
 
 typedef ::cppu::ImplHelper2<
     css::accessibility::XAccessible,
@@ -84,7 +82,7 @@ protected:
     void                    UpdateAccessibleName( sal_Int32 i );
     void                    UpdateItemText( sal_Int32 i );
 
-    sal_Int32               GetChildCount();
+    sal_Int32               GetChildCount() const;
 
     css::uno::Reference< css::accessibility::XAccessible > GetChild( sal_Int32 i );
     css::uno::Reference< css::accessibility::XAccessible > GetChildAt( const css::awt::Point& rPoint );
@@ -101,8 +99,6 @@ protected:
     void                    DeSelectAll();
     bool                IsChildSelected( sal_Int32 i );
 
-    virtual void            Select();
-    virtual void            DeSelect();
     virtual void            Click();
     virtual bool            IsPopupMenuOpen();
 
@@ -137,6 +133,5 @@ public:
     virtual css::uno::Reference< css::accessibility::XAccessibleStateSet > SAL_CALL getAccessibleStateSet(  ) override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_ACCESSIBLEMENUBASECOMPONENT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

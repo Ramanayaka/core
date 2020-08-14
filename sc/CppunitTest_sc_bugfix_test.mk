@@ -9,6 +9,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sc_bugfix_test))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sc_bugfix_test))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sc_bugfix_test, \
     sc/qa/unit/bugfix-test \
 ))
@@ -61,7 +63,11 @@ $(eval $(call gb_CppunitTest_set_include,sc_bugfix_test,\
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_CppunitTest_use_sdk_api,sc_bugfix_test))
+$(eval $(call gb_CppunitTest_use_api,sc_bugfix_test,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_CppunitTest_use_ure,sc_bugfix_test))
 $(eval $(call gb_CppunitTest_use_vcl,sc_bugfix_test))
@@ -103,24 +109,15 @@ $(eval $(call gb_CppunitTest_use_components,sc_bugfix_test,\
     unoxml/source/rdf/unordf \
     unoxml/source/service/unoxml \
     uui/util/uui \
+    vcl/vcl.common \
     xmloff/util/xo \
     xmlsecurity/util/xmlsecurity \
 ))
 
-ifeq ($(OS),WNT)
-$(eval $(call gb_CppunitTest_use_components,sc_bugfix_test,\
-    xmlsecurity/util/xsec_xmlsec.windows \
-))
-else
 $(eval $(call gb_CppunitTest_use_components,sc_bugfix_test,\
     xmlsecurity/util/xsec_xmlsec \
 ))
-endif
 
 $(eval $(call gb_CppunitTest_use_configuration,sc_bugfix_test))
-
-$(eval $(call gb_CppunitTest_use_packages,sc_bugfix_test,\
-	filter_xslt \
-))
 
 # vim: set noet sw=4 ts=4:

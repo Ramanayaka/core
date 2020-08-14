@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <undlihdl.hxx>
+#include "undlihdl.hxx"
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
+#include <xmloff/xmlement.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
 
@@ -102,7 +103,6 @@ SvXMLEnumMapEntry<sal_uInt16> const pXML_UnderlineWidth_Enum[] =
 };
 
 
-// class XMLUnderlineTypePropHdl
 
 
 XMLUnderlineTypePropHdl::~XMLUnderlineTypePropHdl()
@@ -153,11 +153,11 @@ bool XMLUnderlineTypePropHdl::importXML( const OUString& rStrImpValue, uno::Any&
                 break;
             }
             if( eNewUnderline != eUnderline )
-                rValue <<= (sal_Int16)eNewUnderline;
+                rValue <<= static_cast<sal_Int16>(eNewUnderline);
         }
         else
         {
-            rValue <<= (sal_Int16)eNewUnderline;
+            rValue <<= static_cast<sal_Int16>(eNewUnderline);
         }
     }
 
@@ -184,7 +184,6 @@ bool XMLUnderlineTypePropHdl::exportXML( OUString& rStrExpValue, const uno::Any&
 }
 
 
-// class XMLUnderlineStylePropHdl
 
 
 XMLUnderlineStylePropHdl::~XMLUnderlineStylePropHdl()
@@ -245,11 +244,11 @@ bool XMLUnderlineStylePropHdl::importXML( const OUString& rStrImpValue, uno::Any
                 break;
             }
             if( eNewUnderline != eUnderline )
-                rValue <<= (sal_Int16)eNewUnderline;
+                rValue <<= static_cast<sal_Int16>(eNewUnderline);
         }
         else
         {
-            rValue <<= (sal_Int16)eNewUnderline;
+            rValue <<= static_cast<sal_Int16>(eNewUnderline);
         }
     }
 
@@ -274,7 +273,6 @@ bool XMLUnderlineStylePropHdl::exportXML( OUString& rStrExpValue, const uno::Any
 }
 
 
-// class XMLUnderlineWidthPropHdl
 
 
 XMLUnderlineWidthPropHdl::~XMLUnderlineWidthPropHdl()
@@ -336,11 +334,11 @@ bool XMLUnderlineWidthPropHdl::importXML( const OUString& rStrImpValue, uno::Any
                 break;
             }
             if( eNewUnderline != eUnderline )
-                rValue <<= (sal_Int16)eNewUnderline;
+                rValue <<= static_cast<sal_Int16>(eNewUnderline);
         }
         else
         {
-            rValue <<= (sal_Int16)eNewUnderline;
+            rValue <<= static_cast<sal_Int16>(eNewUnderline);
         }
     }
 

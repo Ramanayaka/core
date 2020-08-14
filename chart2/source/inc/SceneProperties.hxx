@@ -22,9 +22,10 @@
 #include "PropertyHelper.hxx"
 #include "FastPropertyIdRanges.hxx"
 #include "charttoolsdllapi.hxx"
-#include <com/sun/star/beans/Property.hpp>
 
 #include <vector>
+
+namespace com::sun::star::beans { struct Property; }
 
 namespace chart
 {

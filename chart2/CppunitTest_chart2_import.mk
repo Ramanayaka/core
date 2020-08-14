@@ -76,6 +76,7 @@ $(eval $(call gb_CppunitTest_use_components,chart2_import,\
     configmgr/source/configmgr \
     dtrans/util/mcnttype \
     embeddedobj/util/embobj \
+    emfio/emfio \
     eventattacher/source/evtatt \
     filter/source/config/cache/filterconfig1 \
     filter/source/odfflatxml/odfflatxml \
@@ -113,6 +114,7 @@ $(eval $(call gb_CppunitTest_use_components,chart2_import,\
     svx/util/svx \
     svx/util/svxcore \
     toolkit/util/tk \
+    vcl/vcl.common \
     ucb/source/core/ucb1 \
     ucb/source/ucp/file/ucpfile1 \
     ucb/source/ucp/tdoc/ucptdoc1 \
@@ -126,8 +128,5 @@ $(eval $(call gb_CppunitTest_use_components,chart2_import,\
 ))
 
 $(eval $(call gb_CppunitTest_use_configuration,chart2_import))
-
-$(call gb_CppunitTest_get_target,chart2_import): \
-    $(call gb_AllLangResTarget_get_target,sd)
 
 # vim: set noet sw=4 ts=4:

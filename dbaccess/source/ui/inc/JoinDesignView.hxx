@@ -21,7 +21,6 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_JOINDESIGNVIEW_HXX
 
 #include <dbaccess/dataview.hxx>
-#include "QEnumTypes.hxx"
 
 class Splitter;
 
@@ -54,7 +53,7 @@ namespace dbaui
         virtual void initialize() override;
         virtual void KeyInput( const KeyEvent& rEvt ) override;
 
-        void SaveTabWinUIConfig(OTableWindow* pWin);
+        void SaveTabWinUIConfig(OTableWindow const * pWin);
         OJoinController& getController() const { return m_rController; }
         // called when fields are deleted
 

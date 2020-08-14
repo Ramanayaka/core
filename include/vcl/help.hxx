@@ -21,7 +21,6 @@
 #define INCLUDED_VCL_HELP_HXX
 
 #include <rtl/ustring.hxx>
-#include <tools/solar.h>
 #include <vcl/dllapi.h>
 #include <o3tl/typed_flags_set.hxx>
 
@@ -41,8 +40,6 @@ enum class QuickHelpFlags
     Bottom            = 0x0020,
     NoAutoPos         = Left | Center | Right | Top | VCenter | Bottom,
     CtrlText          = 0x0040,
-/// no delay when opening the quick help. Applies to ShowBalloon and ShowQuickHelp
-    NoDelay           = 0x0080,
 /// force balloon-style in ShowPopover and ShowQuickHelp
     TipStyleBalloon   = 0x0100,
     NoEvadePointer    = 0x0200,
@@ -50,11 +47,15 @@ enum class QuickHelpFlags
 };
 namespace o3tl
 {
-    template<> struct typed_flags<QuickHelpFlags> : is_typed_flags<QuickHelpFlags, 0x7ff> {};
+    template<> struct typed_flags<QuickHelpFlags> : is_typed_flags<QuickHelpFlags, 0x77f> {};
 }
 
 #define OOO_HELP_INDEX          ".help:index"
 
+namespace weld
+{
+    class Widget;
+}
 
 class VCL_DLLPUBLIC Help
 {
@@ -62,9 +63,11 @@ public:
                         Help();
     virtual             ~Help();
 
-    virtual bool        Start( const OUString& rHelpId, const vcl::Window* pWindow );
-    virtual bool        SearchKeyword( const OUString& rKeyWord );
-    virtual OUString    GetHelpText( const OUString& aHelpURL, const vcl::Window* pWindow );
+    virtual bool        Start(const OUString& rHelpId, const vcl::Window* pWindow);
+    virtual bool        Start(const OUString& rHelpId, weld::Widget* pWidget);
+    virtual void        SearchKeyword( const OUString& rKeyWord );
+    virtual OUString    GetHelpText(const OUString& aHelpURL, const vcl::Window* pWindow);
+    virtual OUString    GetHelpText(const OUString& aHelpURL, const weld::Widget* pWidget);
 
     static void         EnableContextHelp();
     static void         DisableContextHelp();
@@ -79,7 +82,7 @@ public:
     static void         EnableBalloonHelp();
     static void         DisableBalloonHelp();
     static bool         IsBalloonHelpEnabled();
-    static bool         ShowBalloon( vcl::Window* pParent,
+    static void         ShowBalloon( vcl::Window* pParent,
                                      const Point& rScreenPos,
                                      const tools::Rectangle&,
                                      const OUString& rHelpText );
@@ -87,28 +90,22 @@ public:
     static void         EnableQuickHelp();
     static void         DisableQuickHelp();
     static bool         IsQuickHelpEnabled();
-    static bool         ShowQuickHelp( vcl::Window* pParent,
+    static void         ShowQuickHelp( vcl::Window* pParent,
                                        const tools::Rectangle& rScreenRect,
                                        const OUString& rHelpText,
-                                       const OUString& rLongHelpText,
-                                       QuickHelpFlags nStyle );
-    static bool         ShowQuickHelp( vcl::Window* pParent,
-                                       const tools::Rectangle& rScreenRect,
-                                       const OUString& rHelpText,
-                                       QuickHelpFlags nStyle = QuickHelpFlags::NONE )
-                            { return Help::ShowQuickHelp( pParent, rScreenRect, rHelpText, OUString(), nStyle ); }
+                                       QuickHelpFlags nStyle = QuickHelpFlags::NONE );
 
     static void         HideBalloonAndQuickHelp();
 
-    static sal_uLong    ShowPopover(vcl::Window* pParent,
+    static void*        ShowPopover(vcl::Window* pParent,
                                     const tools::Rectangle& rScreenRect,
                                     const OUString& rText,
                                     QuickHelpFlags nStyle);
-    static void         UpdatePopover(sal_uLong nId,
+    static void         UpdatePopover(void* nId,
                                       vcl::Window* pParent,
                                       const tools::Rectangle& rScreenRect,
                                       const OUString& rText);
-    static void         HidePopover(vcl::Window* pParent, sal_uLong nId);
+    static void         HidePopover(vcl::Window const * pParent, void* nId);
 };
 
 #endif // INCLUDED_VCL_HELP_HXX

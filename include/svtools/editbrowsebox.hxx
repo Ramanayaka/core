@@ -19,27 +19,22 @@
 
 #ifndef INCLUDED_SVTOOLS_EDITBROWSEBOX_HXX
 #define INCLUDED_SVTOOLS_EDITBROWSEBOX_HXX
-#define SVTOOLS_IN_EDITBROWSEBOX_HXX
 
+#include <config_options.h>
 #include <memory>
 #include <svtools/svtdllapi.h>
 #include <tools/ref.hxx>
-#include <vcl/window.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/spinfld.hxx>
 
-#include <vcl/button.hxx>
 #include <svtools/brwbox.hxx>
-#include <vcl/timer.hxx>
 #include <svtools/brwhead.hxx>
-#include <svtools/svmedit.hxx>
-#include <vcl/svapp.hxx>
+#include <tools/lineend.hxx>
+#include <vcl/InterimItemWindow.hxx>
+#include <vcl/weldutils.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
+class BrowserDataWin;
 
 // EditBrowseBoxFlags (EBBF)
-
 enum class EditBrowseBoxFlags
 {
     NONE                       = 0x0000,
@@ -72,12 +67,6 @@ namespace o3tl
     template<> struct typed_flags<EditBrowseBoxFlags> : is_typed_flags<EditBrowseBoxFlags, 0x0f> {};
 }
 
-
-class Edit;
-class SpinField;
-class FormattedField;
-
-
 namespace svt
 {
     class SVT_DLLPUBLIC CellController : public SvRefBase
@@ -85,7 +74,6 @@ namespace svt
         friend class EditBrowseBox;
         Link<LinkParamNone*, void> maModifyHdl;
 
-    protected:
         VclPtr<Control>            pWindow;
         bool                       bSuspended;     // <true> if the window is hidden and disabled
 
@@ -96,15 +84,14 @@ namespace svt
 
         Control& GetWindow() const { return *const_cast< CellController* >( this )->pWindow; }
 
-        virtual void SetModified();
-        virtual void ClearModified() = 0;
-        virtual bool IsModified() const = 0;
+        virtual void SaveValue() = 0;
+        virtual bool IsValueChangedFromSaved() const = 0;
 
         // commit any current changes. Especially, do any reformatting you need (from input formatting
         // to output formatting) here
         virtual void CommitModifications();
 
-        // suspending the controller is not culmulative!
+        // suspending the controller is not cumulative!
                 void        suspend( );
                 void        resume( );
         bool        isSuspended( ) const { return bSuspended; }
@@ -112,7 +99,7 @@ namespace svt
     protected:
         virtual bool MoveAllowed(const KeyEvent& rEvt) const;
         void SetModifyHdl(const Link<LinkParamNone*,void>& rLink) { maModifyHdl = rLink; }
-        virtual bool WantMouseEvent() const;
+        virtual void ActivatingMouseEvent(const BrowserMouseEvent& rEvt, bool bUp);
         virtual void callModifyHdl() { maModifyHdl.Call(nullptr); }
     };
 
@@ -121,7 +108,7 @@ namespace svt
 
     //= IEditImplementation
 
-    class SVT_DLLPUBLIC IEditImplementation
+    class UNLESS_MERGELIBS(SVT_DLLPUBLIC) IEditImplementation
     {
     public:
         virtual ~IEditImplementation() = 0;
@@ -143,269 +130,596 @@ namespace svt
         virtual void                ReplaceSelected( const OUString& _rStr ) = 0;
         virtual OUString            GetSelected( LineEnd aSeparator ) const = 0;
 
-        virtual void                SetModified() = 0;
-        virtual bool                IsModified() const = 0;
-        virtual void                ClearModified() = 0;
-        virtual void                SetModifyHdl( const Link<Edit&,void>& _rLink ) = 0;
-    };
+        virtual bool                IsValueChangedFromSaved() const = 0;
+        virtual void                SaveValue() = 0;
 
+        virtual bool                CanUp() const = 0;
+        virtual bool                CanDown() const = 0;
 
-    //= GenericEditImplementation
+        virtual void                Cut() = 0;
+        virtual void                Copy() = 0;
+        virtual void                Paste() = 0;
 
-    template <class EDIT>
-    class GenericEditImplementation : public IEditImplementation
-    {
-        EDIT&   m_rEdit;
-    public:
-        GenericEditImplementation( EDIT& _rEdit );
-
-        EDIT& GetEditWindow() { return static_cast< EDIT& >( GetControl() ); }
-
-        virtual Control&            GetControl() override;
-
-        virtual OUString            GetText( LineEnd aSeparator ) const override;
-        virtual void                SetText( const OUString& _rStr ) override;
-
-        virtual bool                IsReadOnly() const override;
-        virtual void                SetReadOnly( bool bReadOnly ) override;
-
-        virtual sal_Int32           GetMaxTextLen() const override;
-        virtual void                SetMaxTextLen( sal_Int32 _nMaxLen ) override;
-
-        virtual Selection           GetSelection() const override;
-        virtual void                SetSelection( const Selection& _rSelection ) override;
-
-        virtual void                ReplaceSelected( const OUString& _rStr ) override;
-        virtual OUString            GetSelected( LineEnd aSeparator ) const override;
-
-        virtual void                SetModified() override;
-        virtual bool                IsModified() const override;
-        virtual void                ClearModified() override;
-        virtual void                SetModifyHdl( const Link<Edit&,void>& _rLink ) override;
-    };
-
-    #include <svtools/editimplementation.hxx>
-
-
-    //= MultiLineTextCell
-
-    /** a multi line edit which can be used in a cell of a EditBrowseBox
-    */
-    class SVT_DLLPUBLIC MultiLineTextCell : public MultiLineEdit
-    {
-    public:
-        MultiLineTextCell( vcl::Window* _pParent, WinBits _nStyle )
-            :MultiLineEdit( _pParent, _nStyle )
+        // sets a link to call when the text is changed by the user
+        void SetModifyHdl(const Link<LinkParamNone*,void>& rLink)
         {
+            m_aModify1Hdl = rLink;
+        }
+
+        // sets an additional link to call when the text is changed by the user
+        void SetAuxModifyHdl(const Link<LinkParamNone*,void>& rLink)
+        {
+            m_aModify2Hdl = rLink;
+        }
+
+    private:
+        Link<LinkParamNone*,void> m_aModify1Hdl;
+        Link<LinkParamNone*,void> m_aModify2Hdl;
+
+    protected:
+        void CallModifyHdls()
+        {
+            m_aModify1Hdl.Call(nullptr);
+            m_aModify2Hdl.Call(nullptr);
+        }
+    };
+
+    class SVT_DLLPUBLIC ControlBase : public InterimItemWindow
+    {
+    public:
+        ControlBase(BrowserDataWin* pParent, const OUString& rUIXMLDescription, const OString& rID);
+
+        virtual void SetEditableReadOnly(bool bReadOnly);
+
+        virtual bool ProcessKey(const KeyEvent& rKEvt);
+    protected:
+        DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
+    };
+
+    class SVT_DLLPUBLIC EditControlBase : public ControlBase
+    {
+    public:
+        EditControlBase(BrowserDataWin* pParent);
+
+        virtual void SetEditableReadOnly(bool bReadOnly) override
+        {
+            m_pEntry->set_editable(!bReadOnly);
+        }
+
+        virtual void dispose() override;
+
+        weld::Entry& get_widget() { return *m_pEntry; }
+
+        virtual void connect_changed(const Link<weld::Entry&, void>& rLink) = 0;
+
+    protected:
+        void InitEditControlBase(weld::Entry* pEntry);
+
+    private:
+        weld::Entry* m_pEntry;
+    };
+
+    class SVT_DLLPUBLIC EditControl : public EditControlBase
+    {
+    public:
+        EditControl(BrowserDataWin* pParent);
+
+        virtual void dispose() override;
+
+        virtual void connect_changed(const Link<weld::Entry&, void>& rLink) override
+        {
+            m_xWidget->connect_changed(rLink);
         }
 
     protected:
-        // Window overridables
-        virtual bool PreNotify( NotifyEvent& rNEvt ) override;
-
-        // MultiLineEdit overridables
-        virtual void Modify() override;
-
-    private:
-        bool         dispatchKeyEvent( const KeyEvent& _rEvent );
+        std::unique_ptr<weld::Entry> m_xWidget;
     };
 
-
-    //= concrete edit implementations
-
-    typedef GenericEditImplementation< Edit >             EditImplementation;
-
-    typedef GenericEditImplementation< MultiLineTextCell >  MultiLineEditImplementation_Base;
-    class SVT_DLLPUBLIC MultiLineEditImplementation : public MultiLineEditImplementation_Base
+    class SVT_DLLPUBLIC EntryImplementation : public IEditImplementation
     {
+        EditControlBase& m_rEdit;
+        int m_nMaxTextLen;
+
+        DECL_LINK(ModifyHdl, weld::Entry&, void);
     public:
-        MultiLineEditImplementation( MultiLineTextCell& _rEdit ) : MultiLineEditImplementation_Base( _rEdit )
+        EntryImplementation(EditControlBase& rEdit)
+            : m_rEdit(rEdit)
+            , m_nMaxTextLen(0)
         {
+            m_rEdit.connect_changed(LINK(this, EntryImplementation, ModifyHdl));
         }
 
-        virtual OUString GetText( LineEnd aSeparator ) const override;
+        virtual Control& GetControl() override
+        {
+            return m_rEdit;
+        }
+
+        virtual OUString GetText( LineEnd /*aSeparator*/ ) const override
+        {
+            // ignore the line end - this base implementation does not support it
+            return m_rEdit.get_widget().get_text();
+        }
+
+        virtual void SetText( const OUString& _rStr ) override
+        {
+            return m_rEdit.get_widget().set_text(_rStr);
+        }
+
+        virtual bool IsReadOnly() const override
+        {
+            return !m_rEdit.get_widget().get_editable();
+        }
+
+        virtual void SetReadOnly( bool bReadOnly ) override
+        {
+            m_rEdit.SetEditableReadOnly(bReadOnly);
+        }
+
+        virtual sal_Int32 GetMaxTextLen() const override
+        {
+            return m_nMaxTextLen;
+        }
+
+        virtual void SetMaxTextLen( sal_Int32 nMaxLen ) override
+        {
+            m_nMaxTextLen = nMaxLen;
+            m_rEdit.get_widget().set_max_length(m_nMaxTextLen);
+        }
+
+        virtual Selection GetSelection() const override
+        {
+            int nStartPos, nEndPos;
+            m_rEdit.get_widget().get_selection_bounds(nStartPos, nEndPos);
+            return Selection(nStartPos, nEndPos);
+        }
+
+        virtual void SetSelection( const Selection& rSelection ) override
+        {
+            auto nMin = rSelection.Min();
+            auto nMax = rSelection.Max();
+            m_rEdit.get_widget().select_region(nMin < 0 ? 0 : nMin, nMax == SELECTION_MAX ? -1 : nMax);
+        }
+
+        virtual void ReplaceSelected( const OUString& rStr ) override
+        {
+            m_rEdit.get_widget().replace_selection(rStr);
+        }
+
+        virtual OUString GetSelected( LineEnd /*aSeparator*/ ) const override
+            // ignore the line end - this base implementation does not support it
+        {
+            int nStartPos, nEndPos;
+            weld::Entry& rEntry = m_rEdit.get_widget();
+            rEntry.get_selection_bounds(nStartPos, nEndPos);
+            return rEntry.get_text().copy(nStartPos, nEndPos - nStartPos);
+        }
+
+        virtual bool IsValueChangedFromSaved() const override
+        {
+            return m_rEdit.get_widget().get_value_changed_from_saved();
+        }
+
+        virtual void SaveValue() override
+        {
+            m_rEdit.get_widget().save_value();
+        }
+
+        virtual bool CanUp() const override
+        {
+            return false;
+        }
+
+        virtual bool CanDown() const override
+        {
+            return false;
+        }
+
+        virtual void Cut() override
+        {
+            m_rEdit.get_widget().cut_clipboard();
+        }
+
+        virtual void Copy() override
+        {
+            m_rEdit.get_widget().copy_clipboard();
+        }
+
+        virtual void Paste() override
+        {
+            m_rEdit.get_widget().paste_clipboard();
+        }
+    };
+
+    //= MultiLineTextCell
+
+    /** a multi line edit which can be used in a cell of an EditBrowseBox
+    */
+    class UNLESS_MERGELIBS(SVT_DLLPUBLIC) MultiLineTextCell final : public ControlBase
+    {
+    public:
+        MultiLineTextCell(BrowserDataWin* pParent);
+
+        virtual void SetEditableReadOnly(bool bReadOnly) override
+        {
+            m_xWidget->set_editable(!bReadOnly);
+        }
+
+        virtual void GetFocus() override;
+
+        virtual void dispose() override;
+
+        void connect_changed(const Link<weld::TextView&, void>& rLink)
+        {
+            m_xWidget->connect_changed(rLink);
+        }
+
+        weld::TextView& get_widget() { return *m_xWidget; }
+
+    private:
+        std::unique_ptr<weld::TextView> m_xWidget;
+
+        virtual bool ProcessKey(const KeyEvent& rKEvt) override;
+    };
+
+    class SVT_DLLPUBLIC MultiLineEditImplementation : public IEditImplementation
+    {
+        MultiLineTextCell& m_rEdit;
+        int m_nMaxTextLen;
+
+        DECL_LINK(ModifyHdl, weld::TextView&, void);
+    public:
+        MultiLineEditImplementation(MultiLineTextCell& rEdit)
+            : m_rEdit(rEdit)
+            , m_nMaxTextLen(0)
+        {
+            m_rEdit.connect_changed(LINK(this, MultiLineEditImplementation, ModifyHdl));
+        }
+
+        virtual Control& GetControl() override
+        {
+            return m_rEdit;
+        }
+
+        virtual OUString GetText(LineEnd aSeparator) const override;
+
+        virtual void SetText(const OUString& rStr) override
+        {
+            return m_rEdit.get_widget().set_text(rStr);
+        }
+
+        virtual bool IsReadOnly() const override
+        {
+            return !m_rEdit.get_widget().get_editable();
+        }
+
+        virtual void SetReadOnly( bool bReadOnly ) override
+        {
+            m_rEdit.SetEditableReadOnly(bReadOnly);
+        }
+
+        virtual sal_Int32 GetMaxTextLen() const override
+        {
+            return m_nMaxTextLen;
+        }
+
+        virtual void SetMaxTextLen( sal_Int32 nMaxLen ) override
+        {
+            m_nMaxTextLen = nMaxLen;
+            m_rEdit.get_widget().set_max_length(m_nMaxTextLen);
+        }
+
+        virtual Selection GetSelection() const override
+        {
+            int nStartPos, nEndPos;
+            m_rEdit.get_widget().get_selection_bounds(nStartPos, nEndPos);
+            return Selection(nStartPos, nEndPos);
+        }
+
+        virtual void SetSelection( const Selection& rSelection ) override
+        {
+            auto nMin = rSelection.Min();
+            auto nMax = rSelection.Max();
+            m_rEdit.get_widget().select_region(nMin < 0 ? 0 : nMin, nMax == SELECTION_MAX ? -1 : nMax);
+        }
+
+        virtual void ReplaceSelected( const OUString& rStr ) override
+        {
+            m_rEdit.get_widget().replace_selection(rStr);
+        }
+
         virtual OUString GetSelected( LineEnd aSeparator ) const override;
+
+        virtual bool IsValueChangedFromSaved() const override
+        {
+            return m_rEdit.get_widget().get_value_changed_from_saved();
+        }
+
+        virtual void SaveValue() override
+        {
+            m_rEdit.get_widget().save_value();
+        }
+
+        virtual bool CanUp() const override
+        {
+            return m_rEdit.get_widget().can_move_cursor_with_up();
+        }
+
+        virtual bool CanDown() const override
+        {
+            return m_rEdit.get_widget().can_move_cursor_with_down();
+        }
+
+        virtual void Cut() override
+        {
+            m_rEdit.get_widget().cut_clipboard();
+        }
+
+        virtual void Copy() override
+        {
+            m_rEdit.get_widget().copy_clipboard();
+        }
+
+        virtual void Paste() override
+        {
+            m_rEdit.get_widget().paste_clipboard();
+        }
     };
 
 
     //= EditCellController
-
     class SVT_DLLPUBLIC EditCellController : public CellController
     {
         IEditImplementation*    m_pEditImplementation;
         bool                    m_bOwnImplementation;   // did we create m_pEditImplementation?
 
     public:
-        EditCellController( Edit* _pEdit );
+        EditCellController( EditControlBase* _pEdit );
         EditCellController( IEditImplementation* _pImplementation );
         virtual ~EditCellController( ) override;
 
         const IEditImplementation* GetEditImplementation( ) const { return m_pEditImplementation; }
               IEditImplementation* GetEditImplementation( )       { return m_pEditImplementation; }
 
-        virtual void SetModified() override;
-        virtual bool IsModified() const override;
-        virtual void ClearModified() override;
+        virtual bool IsValueChangedFromSaved() const override;
+        virtual void SaveValue() override;
+
+        void Modify()
+        {
+            ModifyHdl(nullptr);
+        }
 
     protected:
         virtual bool MoveAllowed(const KeyEvent& rEvt) const override;
-    private:
-        DECL_LINK(ModifyHdl, Edit&, void);
-    };
-
-
-    //= SpinCellController
-
-    class SVT_DLLPUBLIC SpinCellController : public CellController
-    {
-    public:
-        SpinCellController(SpinField* pSpinField);
-        const SpinField& GetSpinWindow() const { return static_cast<const SpinField &>(GetWindow()); }
-        SpinField& GetSpinWindow() { return static_cast<SpinField &>(GetWindow()); }
-
-        virtual void SetModified() override;
-        virtual bool IsModified() const override;
-        virtual void ClearModified() override;
-
-    protected:
-        virtual bool MoveAllowed(const KeyEvent& rEvt) const override;
-    private:
-        DECL_LINK(ModifyHdl, Edit&, void);
-    };
-
-
-    //= CheckBoxControl
-
-    class SVT_DLLPUBLIC CheckBoxControl : public Control
-    {
-        VclPtr<CheckBox>             pBox;
-        tools::Rectangle                    aFocusRect;
-        Link<VclPtr<CheckBox>,void>  m_aClickLink;
-        Link<LinkParamNone*,void>    m_aModifyLink;
-
-    public:
-        CheckBoxControl(vcl::Window* pParent);
-        virtual ~CheckBoxControl() override;
-        virtual void dispose() override;
-
-        virtual void GetFocus() override;
-        virtual bool PreNotify(NotifyEvent& rEvt) override;
-        virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rClientRect) override;
-        virtual void Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize, DrawFlags nFlags ) override;
-        virtual void StateChanged( StateChangedType nStateChange ) override;
-        virtual void DataChanged( const DataChangedEvent& _rEvent ) override;
-        virtual void Resize() override;
-
-        void SetClickHdl(const Link<VclPtr<CheckBox>,void>& rHdl) {m_aClickLink = rHdl;}
-
-        void SetModifyHdl(const Link<LinkParamNone*,void>& rHdl) {m_aModifyLink = rHdl;}
-
-        CheckBox&   GetBox() {return *pBox;};
-
-    private:
-        DECL_LINK( OnClick, Button*, void );
-    };
-
-
-    //= CheckBoxCellController
-
-    class SVT_DLLPUBLIC CheckBoxCellController : public CellController
-    {
-    public:
-
-        CheckBoxCellController(CheckBoxControl* pWin);
-        CheckBox& GetCheckBox() const;
-
-        virtual bool IsModified() const override;
-        virtual void ClearModified() override;
-
-    protected:
-        virtual bool WantMouseEvent() const override;
     private:
         DECL_LINK(ModifyHdl, LinkParamNone*, void);
     };
 
+    //= CheckBoxControl
+    class SVT_DLLPUBLIC CheckBoxControl final : public ControlBase
+    {
+        std::unique_ptr<weld::CheckButton> m_xBox;
+        weld::TriStateEnabled m_aModeState;
+        Link<weld::Button&,void> m_aClickLink;
+        Link<LinkParamNone*,void> m_aModify1Hdl;
+        Link<LinkParamNone*,void> m_aModify2Hdl;
+
+    public:
+        CheckBoxControl(BrowserDataWin* pParent);
+        virtual ~CheckBoxControl() override;
+        virtual void dispose() override;
+
+        void SetClickHdl(const Link<weld::Button&,void>& rHdl) {m_aClickLink = rHdl;}
+
+        // sets a link to call when the text is changed by the user
+        void SetModifyHdl(const Link<LinkParamNone*,void>& rHdl)
+        {
+            m_aModify1Hdl = rHdl;
+        }
+
+        // sets an additional link to call when the text is changed by the user
+        void SetAuxModifyHdl(const Link<LinkParamNone*,void>& rLink)
+        {
+            m_aModify2Hdl = rLink;
+        }
+
+        void SetState(TriState eState);
+        TriState GetState() const { return m_xBox->get_state(); }
+
+        void EnableTriState(bool bTriState);
+
+        weld::CheckButton&   GetBox() {return *m_xBox;};
+
+        // for pseudo-click when initially clicking in a cell activates
+        // the cell and performs a state change on the button as if
+        // it was clicked on
+        void Clicked();
+
+    private:
+        DECL_LINK(OnToggle, weld::ToggleButton&, void);
+
+        void CallModifyHdls()
+        {
+            m_aModify1Hdl.Call(nullptr);
+            m_aModify2Hdl.Call(nullptr);
+        }
+    };
+
+    //= CheckBoxCellController
+    class SVT_DLLPUBLIC CheckBoxCellController final : public CellController
+    {
+    public:
+
+        CheckBoxCellController(CheckBoxControl* pWin);
+        weld::CheckButton& GetCheckBox() const;
+
+        virtual bool IsValueChangedFromSaved() const override;
+        virtual void SaveValue() override;
+
+    private:
+        virtual void ActivatingMouseEvent(const BrowserMouseEvent& rEvt, bool bUp) override;
+        DECL_LINK(ModifyHdl, LinkParamNone*, void);
+    };
 
     //= ComboBoxControl
-
-    class SVT_DLLPUBLIC ComboBoxControl : public ComboBox
+    class SVT_DLLPUBLIC ComboBoxControl final : public ControlBase
     {
         friend class ComboBoxCellController;
 
     public:
-        ComboBoxControl(vcl::Window* pParent);
+        ComboBoxControl(BrowserDataWin* pParent);
 
-    protected:
-        virtual bool PreNotify( NotifyEvent& rNEvt ) override;
+        virtual void SetEditableReadOnly(bool bReadOnly) override
+        {
+            m_xWidget->set_entry_editable(!bReadOnly);
+        }
+
+        weld::ComboBox& get_widget() { return *m_xWidget; }
+
+        virtual void dispose() override;
+
+    private:
+        std::unique_ptr<weld::ComboBox> m_xWidget;
     };
 
-
     //= ComboBoxCellController
-
     class SVT_DLLPUBLIC ComboBoxCellController : public CellController
     {
     public:
 
         ComboBoxCellController(ComboBoxControl* pParent);
-        ComboBoxControl& GetComboBox() const { return static_cast<ComboBoxControl &>(GetWindow()); }
+        weld::ComboBox& GetComboBox() const { return static_cast<ComboBoxControl&>(GetWindow()).get_widget(); }
 
-        virtual bool IsModified() const override;
-        virtual void ClearModified() override;
+        virtual bool IsValueChangedFromSaved() const override;
+        virtual void SaveValue() override;
 
     protected:
         virtual bool MoveAllowed(const KeyEvent& rEvt) const override;
     private:
-        DECL_LINK(ModifyHdl, Edit&, void);
+        DECL_LINK(ModifyHdl, weld::ComboBox&, void);
     };
 
-
     //= ListBoxControl
-
-    class SVT_DLLPUBLIC ListBoxControl : public ListBox
+    class SVT_DLLPUBLIC ListBoxControl final : public ControlBase
     {
         friend class ListBoxCellController;
 
     public:
-        ListBoxControl(vcl::Window* pParent);
+        ListBoxControl(BrowserDataWin* pParent);
 
-    protected:
-        virtual bool PreNotify( NotifyEvent& rNEvt ) override;
+        weld::ComboBox& get_widget() { return *m_xWidget; }
+
+        virtual void dispose() override;
+    private:
+        std::unique_ptr<weld::ComboBox> m_xWidget;
     };
 
-
     //= ListBoxCellController
-
     class SVT_DLLPUBLIC ListBoxCellController : public CellController
     {
     public:
 
         ListBoxCellController(ListBoxControl* pParent);
-        const ListBoxControl& GetListBox() const { return static_cast<const ListBoxControl &>(GetWindow()); }
-        ListBoxControl& GetListBox() { return static_cast<ListBoxControl &>(GetWindow()); }
+        weld::ComboBox& GetListBox() const { return static_cast<ListBoxControl&>(GetWindow()).get_widget(); }
 
-        virtual bool IsModified() const override;
-        virtual void ClearModified() override;
+        virtual bool IsValueChangedFromSaved() const override;
+        virtual void SaveValue() override;
 
     protected:
         virtual bool MoveAllowed(const KeyEvent& rEvt) const override;
     private:
-        DECL_LINK(ListBoxSelectHdl, ListBox&, void);
+        DECL_LINK(ListBoxSelectHdl, weld::ComboBox&, void);
     };
 
-
-    //= FormattedFieldCellController
-
-    class SVT_DLLPUBLIC FormattedFieldCellController : public EditCellController
+    class SVT_DLLPUBLIC FormattedControlBase : public EditControlBase
     {
     public:
-        FormattedFieldCellController( FormattedField* _pFormatted );
+        FormattedControlBase(BrowserDataWin* pParent, bool bSpinVariant);
+
+        virtual void dispose() override;
+
+        virtual void connect_changed(const Link<weld::Entry&, void>& rLink) override;
+
+        weld::EntryFormatter& get_formatter();
+
+    protected:
+        bool m_bSpinVariant;
+        std::unique_ptr<weld::Entry> m_xEntry;
+        std::unique_ptr<weld::FormattedSpinButton> m_xSpinButton;
+        std::unique_ptr<weld::EntryFormatter> m_xEntryFormatter;
+
+        void InitFormattedControlBase();
+    };
+
+    class SVT_DLLPUBLIC FormattedControl : public FormattedControlBase
+    {
+    public:
+        FormattedControl(BrowserDataWin* pParent, bool bSpinVariant);
+    };
+
+    class SVT_DLLPUBLIC DoubleNumericControl : public FormattedControlBase
+    {
+    public:
+        DoubleNumericControl(BrowserDataWin* pParent, bool bSpinVariant);
+    };
+
+    class SVT_DLLPUBLIC LongCurrencyControl : public FormattedControlBase
+    {
+    public:
+        LongCurrencyControl(BrowserDataWin* pParent, bool bSpinVariant);
+    };
+
+    class SVT_DLLPUBLIC TimeControl : public FormattedControlBase
+    {
+    public:
+        TimeControl(BrowserDataWin* pParent, bool bSpinVariant);
+    };
+
+    class SVT_DLLPUBLIC DateControl : public FormattedControlBase
+    {
+    public:
+        DateControl(BrowserDataWin* pParent, bool bDropDown);
+
+        void SetDate(const Date& rDate);
+
+        virtual void dispose() override;
+    private:
+        std::unique_ptr<weld::MenuButton> m_xMenuButton;
+        std::unique_ptr<weld::Builder> m_xCalendarBuilder;
+        std::unique_ptr<weld::Widget> m_xTopLevel;
+        std::unique_ptr<weld::Calendar> m_xCalendar;
+        std::unique_ptr<weld::Widget> m_xExtras;
+        std::unique_ptr<weld::Button> m_xTodayBtn;
+        std::unique_ptr<weld::Button> m_xNoneBtn;
+
+        DECL_LINK(ToggleHdl, weld::ToggleButton&, void);
+        DECL_LINK(ActivateHdl, weld::Calendar&, void);
+        DECL_LINK(ImplClickHdl, weld::Button&, void);
+    };
+
+    class SVT_DLLPUBLIC PatternControl final : public EditControl
+    {
+    public:
+        PatternControl(BrowserDataWin* pParent);
+
+        weld::PatternFormatter& get_formatter() { return *m_xEntryFormatter; }
+
+        virtual void connect_changed(const Link<weld::Entry&, void>& rLink) override;
+
+        virtual void dispose() override;
+    private:
+        std::unique_ptr<weld::PatternFormatter> m_xEntryFormatter;
+    };
+
+    //= FormattedFieldCellController
+    class SVT_DLLPUBLIC FormattedFieldCellController final : public EditCellController
+    {
+    public:
+        FormattedFieldCellController( FormattedControlBase* _pFormatted );
 
         virtual void CommitModifications() override;
     };
 
-
     //= EditBrowserHeader
-
     class SVT_DLLPUBLIC EditBrowserHeader : public BrowserHeader
     {
     public:
@@ -418,7 +732,6 @@ namespace svt
 
 
     //= EditBrowseBox
-
     class EditBrowseBoxImpl;
     class SVT_DLLPUBLIC EditBrowseBox: public BrowseBox
     {
@@ -448,25 +761,23 @@ namespace svt
         };
 
     private:
-        EditBrowseBox(EditBrowseBox&) = delete;
-        EditBrowseBox& operator=(EditBrowseBox&) = delete;
+        EditBrowseBox(EditBrowseBox const &) = delete;
+        EditBrowseBox& operator=(EditBrowseBox const &) = delete;
 
         class BrowserMouseEventPtr
         {
-            BrowserMouseEvent* pEvent;
+            std::unique_ptr<BrowserMouseEvent> pEvent;
             bool               bDown;
 
         public:
             BrowserMouseEventPtr()
-                : pEvent(nullptr)
-                , bDown(false)
+                : bDown(false)
             {
             }
-            ~BrowserMouseEventPtr(){Clear();}
 
             bool Is() const {return pEvent != nullptr;}
             bool IsDown() const {return bDown;}
-            const BrowserMouseEvent* operator->() const {return pEvent;}
+            const BrowserMouseEvent* operator->() const {return pEvent.get();}
 
             SVT_DLLPUBLIC void Clear();
             void Set(const BrowserMouseEvent* pEvt, bool bIsDown);
@@ -481,8 +792,8 @@ namespace svt
             // and the asynchronous event the focus has changed, we won't grab it for ourself.
 
         long    nPaintRow;  // row being painted
-        long    nEditRow, nOldEditRow;
-        sal_uInt16  nEditCol, nOldEditCol;
+        long    nEditRow;
+        sal_uInt16  nEditCol;
 
         bool            bHasFocus : 1;
         mutable bool    bPaintStatus : 1;   // paint a status (image) in the handle column
@@ -556,11 +867,11 @@ namespace svt
                                             // return sal_False prevents leaving the cell
         virtual bool SaveRow();         // commit the current row
 
-        virtual bool IsModified() const {return aController.is() && aController->IsModified();}
+        virtual bool IsModified() const {return aController.is() && aController->IsValueChangedFromSaved();}
 
         virtual CellController* GetController(long nRow, sal_uInt16 nCol);
         virtual void InitController(CellControllerRef& rController, long nRow, sal_uInt16 nCol);
-        static void ResizeController(CellControllerRef& rController, const tools::Rectangle&);
+        static void ResizeController(CellControllerRef const & rController, const tools::Rectangle&);
         virtual void DoubleClick(const BrowserMouseEvent&) override;
 
         void ActivateCell() { ActivateCell(GetCurRow(), GetCurColumnId()); }
@@ -571,7 +882,7 @@ namespace svt
         // inserting columns
         // if you don't set a width, this will be calculated automatically
         // if the id isn't set the smallest unused will do it ...
-        virtual sal_uInt16 AppendColumn(const OUString& rName, sal_uInt16 nWidth, sal_uInt16 nPos = HEADERBAR_APPEND, sal_uInt16 nId = (sal_uInt16)-1);
+        virtual sal_uInt16 AppendColumn(const OUString& rName, sal_uInt16 nWidth, sal_uInt16 nPos = HEADERBAR_APPEND, sal_uInt16 nId = sal_uInt16(-1));
 
         // called whenever (Shift)Tab or Enter is pressed. If true is returned, these keys
         // result in traveling to the next or to th previous cell
@@ -585,7 +896,7 @@ namespace svt
             // secure starting of StartEditHdl
 
     public:
-        EditBrowseBox(vcl::Window* pParent, EditBrowseBoxFlags nBrowserFlags, WinBits nBits = WB_TABSTOP, BrowserMode nMode = BrowserMode::NONE );
+        EditBrowseBox(vcl::Window* pParent, EditBrowseBoxFlags nBrowserFlags, WinBits nBits, BrowserMode nMode = BrowserMode::NONE );
         virtual ~EditBrowseBox() override;
         virtual void dispose() override;
 
@@ -623,13 +934,16 @@ namespace svt
         virtual tools::Rectangle GetFieldCharacterBounds(sal_Int32 _nRow,sal_Int32 _nColumnPos,sal_Int32 nIndex) override;
         virtual sal_Int32 GetFieldIndexAtPoint(sal_Int32 _nRow,sal_Int32 _nColumnPos,const Point& _rPoint) override;
 
+        virtual bool ProcessKey(const KeyEvent& rEvt) override;
+
         css::uno::Reference< css::accessibility::XAccessible > CreateAccessibleCheckBoxCell(long _nRow, sal_uInt16 _nColumnPos,const TriState& eState);
+        bool ControlHasFocus() const;
     protected:
         // creates the accessible which wraps the active cell
         void    implCreateActiveAccessible( );
 
     private:
-        virtual void PaintField(OutputDevice& rDev, const tools::Rectangle& rRect,
+        virtual void PaintField(vcl::RenderContext& rDev, const tools::Rectangle& rRect,
                                 sal_uInt16 nColumnId ) const override;
         using Control::ImplInitSettings;
         SVT_DLLPRIVATE void ImplInitSettings( bool bFont, bool bForeground, bool bBackground );
@@ -637,7 +951,6 @@ namespace svt
         inline void EnableAndShow() const;
 
         SVT_DLLPRIVATE void implActivateCellOnMouseEvent(const BrowserMouseEvent& _rEvt, bool _bUp);
-        SVT_DLLPRIVATE void impl_construct();
 
         DECL_DLLPRIVATE_LINK( ModifyHdl, LinkParamNone*, void );
         DECL_DLLPRIVATE_LINK( StartEditHdl, void*, void );
@@ -649,7 +962,6 @@ namespace svt
 }   // namespace svt
 
 
-#undef SVTOOLS_IN_EDITBROWSEBOX_HXX
 #endif // INCLUDED_SVTOOLS_EDITBROWSEBOX_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

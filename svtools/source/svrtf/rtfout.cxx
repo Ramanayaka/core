@@ -19,8 +19,8 @@
 
 #include <tools/debug.hxx>
 #include <tools/stream.hxx>
+#include <tools/solar.h>
 #include <rtl/string.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <svtools/rtfkeywd.hxx>
 #include <svtools/rtfout.hxx>
 
@@ -28,17 +28,17 @@ namespace {
 
 SvStream& Out_Hex( SvStream& rStream, sal_uLong nHex, sal_uInt8 nLen )
 {
-    sal_Char aNToABuf[] = "0000000000000000";
+    char aNToABuf[] = "0000000000000000";
 
-    DBG_ASSERT( nLen < sizeof(aNToABuf), "zu viele Stellen" );
+    DBG_ASSERT( nLen < sizeof(aNToABuf), "too many places" );
     if( nLen >= sizeof(aNToABuf) )
         nLen = (sizeof(aNToABuf)-1);
 
     // set pointer to end of buffer
-    sal_Char* pStr = aNToABuf + (sizeof(aNToABuf)-1);
+    char* pStr = aNToABuf + (sizeof(aNToABuf)-1);
     for( sal_uInt8 n = 0; n < nLen; ++n )
     {
-        *(--pStr) = (sal_Char)(nHex & 0xf ) + 48;
+        *(--pStr) = static_cast<char>(nHex & 0xf ) + 48;
         if( *pStr > '9' )
             *pStr += 39;
         nHex >>= 4;
@@ -58,9 +58,9 @@ SvStream& Out_Hex( SvStream& rStream, sal_uLong nHex, sal_uInt8 nLen )
 // U+1D44E being encoded as UTF-16 surrogate pair "\u-10187?\u-9138?", so
 // sal_Unicode actually works fine here.
 SvStream& Out_Char(SvStream& rStream, sal_Unicode c,
-    int *pUCMode, rtl_TextEncoding eDestEnc, bool bWriteHelpFile)
+    int *pUCMode, rtl_TextEncoding eDestEnc)
 {
-    const sal_Char* pStr = nullptr;
+    const char* pStr = nullptr;
     switch (c)
     {
     case 0x1:
@@ -84,36 +84,33 @@ SvStream& Out_Char(SvStream& rStream, sal_Unicode c,
         pStr = OOO_STRING_SVTOOLS_RTF_TAB;
         break;
     default:
-        if(!bWriteHelpFile)
+        switch(c)
         {
-            switch(c)
-            {
-                case 149:
-                    pStr = OOO_STRING_SVTOOLS_RTF_BULLET;
-                    break;
-                case 150:
-                    pStr = OOO_STRING_SVTOOLS_RTF_ENDASH;
-                    break;
-                case 151:
-                    pStr = OOO_STRING_SVTOOLS_RTF_EMDASH;
-                    break;
-                case 145:
-                    pStr = OOO_STRING_SVTOOLS_RTF_LQUOTE;
-                    break;
-                case 146:
-                    pStr = OOO_STRING_SVTOOLS_RTF_RQUOTE;
-                    break;
-                case 147:
-                    pStr = OOO_STRING_SVTOOLS_RTF_LDBLQUOTE;
-                    break;
-                case 148:
-                    pStr = OOO_STRING_SVTOOLS_RTF_RDBLQUOTE;
-                    break;
-            }
-
-            if (pStr)
+            case 149:
+                pStr = OOO_STRING_SVTOOLS_RTF_BULLET;
+                break;
+            case 150:
+                pStr = OOO_STRING_SVTOOLS_RTF_ENDASH;
+                break;
+            case 151:
+                pStr = OOO_STRING_SVTOOLS_RTF_EMDASH;
+                break;
+            case 145:
+                pStr = OOO_STRING_SVTOOLS_RTF_LQUOTE;
+                break;
+            case 146:
+                pStr = OOO_STRING_SVTOOLS_RTF_RQUOTE;
+                break;
+            case 147:
+                pStr = OOO_STRING_SVTOOLS_RTF_LDBLQUOTE;
+                break;
+            case 148:
+                pStr = OOO_STRING_SVTOOLS_RTF_RDBLQUOTE;
                 break;
         }
+
+        if (pStr)
+            break;
 
         switch (c)
         {
@@ -154,7 +151,7 @@ SvStream& Out_Char(SvStream& rStream, sal_Unicode c,
                             // #i47831# add an additional whitespace, so that
                             // "document whitespaces" are not ignored.;
                             rStream.WriteCharPtr( "\\uc" )
-                               .WriteCharPtr( OString::number(nLen).getStr() ).WriteCharPtr( " " );
+                               .WriteOString( OString::number(nLen) ).WriteCharPtr( " " );
                             *pUCMode = nLen;
                         }
                         rStream.WriteCharPtr( "\\u" )
@@ -182,11 +179,11 @@ SvStream& Out_Char(SvStream& rStream, sal_Unicode c,
 }
 
 SvStream& RTFOutFuncs::Out_String( SvStream& rStream, const OUString& rStr,
-    rtl_TextEncoding eDestEnc, bool bWriteHelpFile)
+    rtl_TextEncoding eDestEnc)
 {
     int nUCMode = 1;
     for (sal_Int32 n = 0; n < rStr.getLength(); ++n)
-        Out_Char(rStream, rStr[n], &nUCMode, eDestEnc, bWriteHelpFile);
+        Out_Char(rStream, rStr[n], &nUCMode, eDestEnc);
     if (nUCMode != 1)
       rStream.WriteCharPtr( "\\uc1" ).WriteCharPtr( " " ); // #i47831# add an additional whitespace, so that "document whitespaces" are not ignored.;
     return rStream;

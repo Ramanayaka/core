@@ -21,14 +21,13 @@
 #define INCLUDED_SD_SOURCE_UI_INC_FUDSPORD_HXX
 
 #include "fupoor.hxx"
-#include <vcl/pointr.hxx>
 
 class SdrDropMarkerOverlay;
 class SdrObject;
 
 namespace sd {
 
-class FuDisplayOrder
+class FuDisplayOrder final
     : public FuPoor
 {
 public:
@@ -43,15 +42,14 @@ public:
     virtual void Activate() override;
     virtual void Deactivate() override;
 
-protected:
+private:
     virtual ~FuDisplayOrder() override;
     void implClearOverlay();
 
-    Pointer                 maPtr;
+    PointerStyle            maPtr;
     SdrObject*              mpRefObj;
-    SdrDropMarkerOverlay*   mpOverlay;
+    std::unique_ptr<SdrDropMarkerOverlay> mpOverlay;
 
-private:
     FuDisplayOrder (
         ViewShell* pViewSh,
         ::sd::Window* pWin,

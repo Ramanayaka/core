@@ -19,28 +19,25 @@
 
 
 #include "Edit.hxx"
+#include <property.hxx>
+#include <services.hxx>
 
+#include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/uno/Type.hxx>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/form/XSubmit.hpp>
 #include <com/sun/star/util/NumberFormat.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/awt/XVclWindowPeer.hpp>
 
 #include <vcl/svapp.hxx>
 #include <vcl/keycodes.hxx>
-#include <tools/wintypes.hxx>
 
-#include <connectivity/dbtools.hxx>
 #include <connectivity/formattedcolumnvalue.hxx>
-#include <connectivity/dbconversion.hxx>
 
+#include <comphelper/property.hxx>
+#include <comphelper/types.hxx>
 #include <tools/diagnose_ex.h>
-
-#include <comphelper/container.hxx>
-#include <comphelper/numbers.hxx>
-#include <comphelper/processfactory.hxx>
+#include <sal/log.hxx>
 
 using namespace dbtools;
 
@@ -49,7 +46,6 @@ namespace frm
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -62,12 +58,8 @@ using namespace ::com::sun::star::form::binding;
 
 Sequence<Type> OEditControl::_getTypes()
 {
-    static Sequence<Type> aTypes;
-    if (!aTypes.getLength())
-    {
         // my two base classes
-        aTypes = concatSequences(OBoundControl::_getTypes(), OEditControl_BASE::getTypes());
-    }
+    static Sequence<Type> const aTypes = concatSequences(OBoundControl::_getTypes(), OEditControl_BASE::getTypes());
     return aTypes;
 }
 
@@ -281,7 +273,7 @@ OEditModel::OEditModel( const OEditModel* _pOriginal, const Reference<XComponent
     // Things as the format key, it's type, and such, depend on the field being part of a loaded form
     // (they're initialized in onConnectedDbColumn). Even if the original object _is_ part of such a form, we ourself
     // certainly aren't, so these members are defaulted. If we're inserted into a form which is already loaded,
-    // they will be set to new values, anyway ....
+    // they will be set to new values, anyway...
 }
 
 
@@ -309,7 +301,7 @@ void OEditModel::disposing()
 
 OUString SAL_CALL OEditModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_EDIT);  // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_EDIT;  // old (non-sun) name for compatibility !
 }
 
 // XServiceInfo
@@ -423,41 +415,35 @@ namespace
                 return;
             }
 
-            Sequence< Property > aSourceProps( xSourceInfo->getProperties() );
-            const Property* pSourceProps = aSourceProps.getConstArray();
-            const Property* pSourcePropsEnd = aSourceProps.getConstArray() + aSourceProps.getLength();
-            while ( pSourceProps != pSourcePropsEnd )
+            const Sequence< Property > aSourceProps( xSourceInfo->getProperties() );
+            for ( auto const & sourceprop : aSourceProps )
             {
-                if ( !xDestInfo->hasPropertyByName( pSourceProps->Name ) )
+                if ( !xDestInfo->hasPropertyByName( sourceprop.Name ) )
                 {
-                    ++pSourceProps;
                     continue;
                 }
 
-                Property aDestProp( xDestInfo->getPropertyByName( pSourceProps->Name ) );
+                Property aDestProp( xDestInfo->getPropertyByName( sourceprop.Name ) );
                 if ( 0 != ( aDestProp.Attributes & PropertyAttribute::READONLY ) )
                 {
-                    ++pSourceProps;
                     continue;
                 }
 
                 try
                 {
-                    _rxDest->setPropertyValue( pSourceProps->Name, _rxSource->getPropertyValue( pSourceProps->Name ) );
+                    _rxDest->setPropertyValue( sourceprop.Name, _rxSource->getPropertyValue( sourceprop.Name ) );
                 }
-                catch(const IllegalArgumentException& e)
+                catch(const IllegalArgumentException&)
                 {
-                    SAL_WARN( "forms.component", "could not transfer the property named '"
-                                << pSourceProps->Name
-                                << "'. " << e.Message );
+                    TOOLS_WARN_EXCEPTION( "forms.component", "could not transfer the property named '"
+                                << sourceprop.Name
+                                << "'" );
                 }
-
-                ++pSourceProps;
             }
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
     }
 }
@@ -516,7 +502,7 @@ void OEditModel::write(const Reference<XObjectOutputStream>& _rxOutStream)
         aCurrentText = m_xAggregateSet->getPropertyValue(PROPERTY_TEXT);
 
         m_xAggregateSet->getPropertyValue(PROPERTY_MAXTEXTLEN) >>= nOldTextLen;
-        m_xAggregateSet->setPropertyValue(PROPERTY_MAXTEXTLEN, makeAny((sal_Int16)0));
+        m_xAggregateSet->setPropertyValue(PROPERTY_MAXTEXTLEN, makeAny(sal_Int16(0)));
     }
 
     OEditBaseModel::write(_rxOutStream);
@@ -526,7 +512,7 @@ void OEditModel::write(const Reference<XObjectOutputStream>& _rxOutStream)
         m_xAggregateSet->setPropertyValue(PROPERTY_MAXTEXTLEN, makeAny(nOldTextLen));
         // and reset the text
         // First we set it to an empty string : Without this the second setPropertyValue would not do anything as it thinks
-        // we aren't changing the prop (it didn't notify the - implicite - change of the text prop while setting the max text len)
+        // we aren't changing the prop (it didn't notify the - implicit - change of the text prop while setting the max text len)
         // This seems to be a bug with in toolkit's EditControl-implementation.
         m_xAggregateSet->setPropertyValue(PROPERTY_TEXT, makeAny(OUString()));
         m_xAggregateSet->setPropertyValue(PROPERTY_TEXT, aCurrentText);
@@ -570,31 +556,31 @@ sal_uInt16 OEditModel::getPersistenceFlags() const
 void OEditModel::onConnectedDbColumn( const Reference< XInterface >& _rxForm )
 {
     Reference< XPropertySet > xField = getField();
-    if ( xField.is() )
+    if ( !xField.is() )
+        return;
+
+    m_pValueFormatter.reset( new ::dbtools::FormattedColumnValue( getContext(), Reference< XRowSet >( _rxForm, UNO_QUERY ), xField ) );
+
+    if ( m_pValueFormatter->getKeyType() == NumberFormat::SCIENTIFIC )
+        return;
+
+    m_bMaxTextLenModified = getINT16(m_xAggregateSet->getPropertyValue(PROPERTY_MAXTEXTLEN)) != 0;
+    if ( !m_bMaxTextLenModified )
     {
-        m_pValueFormatter.reset( new ::dbtools::FormattedColumnValue( getContext(), Reference< XRowSet >( _rxForm, UNO_QUERY ), xField ) );
+        sal_Int32 nFieldLen = 0;
+        xField->getPropertyValue("Precision") >>= nFieldLen;
 
-        if ( m_pValueFormatter->getKeyType() != NumberFormat::SCIENTIFIC )
+        if (nFieldLen > 0 && nFieldLen <= SAL_MAX_INT16)
         {
-            m_bMaxTextLenModified = getINT16(m_xAggregateSet->getPropertyValue(PROPERTY_MAXTEXTLEN)) != 0;
-            if ( !m_bMaxTextLenModified )
-            {
-                sal_Int32 nFieldLen = 0;
-                xField->getPropertyValue("Precision") >>= nFieldLen;
+            Any aVal;
+            aVal <<= static_cast<sal_Int16>(nFieldLen);
+            m_xAggregateSet->setPropertyValue(PROPERTY_MAXTEXTLEN, aVal);
 
-                if (nFieldLen && nFieldLen <= USHRT_MAX)
-                {
-                    Any aVal;
-                    aVal <<= (sal_Int16)nFieldLen;
-                    m_xAggregateSet->setPropertyValue(PROPERTY_MAXTEXTLEN, aVal);
-
-                    m_bMaxTextLenModified = true;
-                }
-            }
-            else
-                m_bMaxTextLenModified = false; // to get sure that the text len won't be set in unloaded
+            m_bMaxTextLenModified = true;
         }
     }
+    else
+        m_bMaxTextLenModified = false; // to get sure that the text len won't be set in unloaded
 }
 
 
@@ -607,7 +593,7 @@ void OEditModel::onDisconnectedDbColumn()
     if ( hasField() && m_bMaxTextLenModified )
     {
         Any aVal;
-        aVal <<= (sal_Int16)0;  // Only if it was 0, I switched it in onConnectedDbColumn
+        aVal <<= sal_Int16(0);  // Only if it was 0, I switched it in onConnectedDbColumn
         m_xAggregateSet->setPropertyValue(PROPERTY_MAXTEXTLEN, aVal);
         m_bMaxTextLenModified = false;
     }
@@ -641,10 +627,11 @@ bool OEditModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
     }
     else
     {
-        OSL_PRECOND( m_pValueFormatter.get(), "OEditModel::commitControlValueToDbColumn: no value formatter!" );
+        OSL_PRECOND(m_pValueFormatter,
+                    "OEditModel::commitControlValueToDbColumn: no value formatter!");
         try
         {
-            if ( m_pValueFormatter.get() )
+            if (m_pValueFormatter)
             {
                 if ( !m_pValueFormatter->setFormattedValue( sNewValue ) )
                     return false;
@@ -664,9 +651,10 @@ bool OEditModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
 
 Any OEditModel::translateDbColumnToControlValue()
 {
-    OSL_PRECOND( m_pValueFormatter.get(), "OEditModel::translateDbColumnToControlValue: no value formatter!" );
+    OSL_PRECOND(m_pValueFormatter,
+                "OEditModel::translateDbColumnToControlValue: no value formatter!");
     Any aRet;
-    if ( m_pValueFormatter.get() )
+    if (m_pValueFormatter)
     {
         OUString sValue( m_pValueFormatter->getFormattedValue() );
         if  (   sValue.isEmpty()
@@ -700,14 +688,14 @@ Any OEditModel::getDefaultForReset() const
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OEditModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new frm::OEditModel(component));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OEditControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

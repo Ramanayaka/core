@@ -20,14 +20,12 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AKEY_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AKEY_HXX
 
-#include <connectivity/sdbcx/VKey.hxx>
+#include <sdbcx/VKey.hxx>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-#include "ado/Awrapadox.hxx"
+#include <ado/Awrapadox.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         typedef sdbcx::OKey OKey_ADO;
 
         class OConnection;
@@ -46,7 +44,7 @@ namespace connectivity
 
             // css::lang::XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
             WpADOKey        getImpl() const { return m_aKey;}
             // map the update/delete rules
@@ -57,7 +55,6 @@ namespace connectivity
             static sal_Int32 MapKeyRule(const KeyTypeEnum& _eNum);
             static KeyTypeEnum Map2KeyRule(sal_Int32 _eNum);
         };
-    }
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AKEY_HXX
 

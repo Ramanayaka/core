@@ -55,11 +55,15 @@
  ************************************************************************/
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <cstring>
 
 #include "first.hxx"
-#include "assert.h"
+#include "bentoid.hxx"
+#include "tocread.hxx"
+#include "ut.hxx"
+#include <assert.h>
 namespace OpenStormBento
 {
 
@@ -80,8 +84,7 @@ CBenTOCReader::ReadLabelAndTOC()
     if (cTOCSize > nLength - TOCOffset)
         return BenErr_ReadPastEndOfTOC;
 
-    if ((Err = cpContainer->SeekToPosition(TOCOffset)) != BenErr_OK)
-        return Err;
+    cpContainer->SeekToPosition(TOCOffset);
 
     cpTOC.reset( new BenByte[cTOCSize] );
     if ((Err = cpContainer->ReadKnownSize(cpTOC.get(), cTOCSize)) != BenErr_OK)
@@ -99,8 +102,7 @@ CBenTOCReader::ReadLabel(unsigned long * pTOCOffset, unsigned long * pTOCSize)
     // If seek fails, then probably because stream is smaller than
     // BEN_LABEL_SIZE and thus can't be Bento container
     BenError Err;
-    if ((Err = cpContainer->SeekFromEnd(-BEN_LABEL_SIZE)) != BenErr_OK)
-        return BenErr_NotBentoContainer;
+    cpContainer->SeekFromEnd(-BEN_LABEL_SIZE);
 
     BenByte Label[BEN_LABEL_SIZE];
     if ((Err = cpContainer->ReadKnownSize(Label, BEN_LABEL_SIZE)) != BenErr_OK)
@@ -113,7 +115,8 @@ CBenTOCReader::ReadLabel(unsigned long * pTOCOffset, unsigned long * pTOCSize)
     BenByte * pCurrLabel = Label + BEN_MAGIC_BYTES_SIZE;
 
     BenWord Flags =
-        UtGetIntelWord(pCurrLabel); pCurrLabel += 2; // Flags
+        UtGetIntelWord(pCurrLabel);
+    pCurrLabel += 2; // Flags
     // Newer files are 0x0101--indicates if big or little endian.  Older
     // files are 0x0 for flags
     if (Flags != 0x0101 && Flags != 0x0)
@@ -171,9 +174,7 @@ CBenTOCReader::SearchForLabel(BenByte * pLabel)
                 UsedBufferSize = CurrOffset;
             else UsedBufferSize = LABEL_READ_BUFFER_SIZE;
 
-            if ((Err = cpContainer->SeekToPosition(CurrOffset - UsedBufferSize))
-              != BenErr_OK)
-                return Err;
+            cpContainer->SeekToPosition(CurrOffset - UsedBufferSize);
 
             if ((Err = cpContainer->ReadKnownSize(Buffer, UsedBufferSize)) !=
               BenErr_OK)
@@ -185,9 +186,8 @@ CBenTOCReader::SearchForLabel(BenByte * pLabel)
         if (memcmp(Buffer + (CurrOffset - BEN_MAGIC_BYTES_SIZE -
           BufferStartOffset), gsBenMagicBytes, BEN_MAGIC_BYTES_SIZE) == 0)
         {
-            if ((Err = cpContainer->SeekToPosition(CurrOffset -
-              BEN_MAGIC_BYTES_SIZE)) != BenErr_OK)
-                return Err;
+            cpContainer->SeekToPosition(CurrOffset -
+              BEN_MAGIC_BYTES_SIZE);
 
             return cpContainer->ReadKnownSize(pLabel, BEN_LABEL_SIZE);
         }
@@ -256,7 +256,7 @@ CBenTOCReader::ReadTOC()
                         return BenErr_NamedObjectError;
 
                     BenContainerPos Pos;
-                    unsigned long Length;
+                    sal_uInt32 Length;
 
                     if ((Err = GetDWord(&Pos)) != BenErr_OK)
                         return Err;
@@ -264,8 +264,7 @@ CBenTOCReader::ReadTOC()
                         return Err;
                     LookAhead = GetCode();
 
-                    if ((Err = cpContainer->SeekToPosition(Pos)) != BenErr_OK)
-                        return Err;
+                    cpContainer->SeekToPosition(Pos);
 
                     const auto nRemainingSize = cpContainer->remainingSize();
                     if (Length > nRemainingSize)
@@ -276,46 +275,43 @@ CBenTOCReader::ReadTOC()
 
                     #define STACK_BUFFER_SIZE 256
                     char sStackBuffer[STACK_BUFFER_SIZE];
-                    char * sAllocBuffer;
+                    std::unique_ptr<char[]> sAllocBuffer;
                     char * sBuffer;
                     if (Length > STACK_BUFFER_SIZE)
                     {
-                        sBuffer = new char[Length];
-                        sAllocBuffer = sBuffer;
+                        sAllocBuffer.reset(new char[Length]);
+                        sBuffer = sAllocBuffer.get();
                     }
                     else
                     {
                         sBuffer = sStackBuffer;
-                        sAllocBuffer = nullptr;
                     }
 
                     if ((Err = cpContainer->ReadKnownSize(sBuffer, Length)) !=
                       BenErr_OK)
                     {
-                        delete[] sAllocBuffer;
                         return Err;
                     }
 
-                    OString sName(sBuffer, Length);
+                    OString sName;
+                    if (Length)
+                        sName = OString(sBuffer, Length - 1);
 
                     CUtListElmt * pPrevNamedObjectListElmt;
                     if (FindNamedObject(&cpContainer->GetNamedObjects(),
                       sName, &pPrevNamedObjectListElmt) != nullptr)
                     {
-                        delete[] sAllocBuffer;
                         return BenErr_DuplicateName;
                     }
 
-                    CBenObject * pPrevObject = static_cast<CBenObject *>( cpContainer->
-                      GetObjects().GetLast());
+                    CUtListElmt* pPrevObject = cpContainer->GetObjects().GetLast();
 
                     if (PropertyID == BEN_PROPID_GLOBAL_PROPERTY_NAME)
                         pObject = new CBenPropertyName(cpContainer, ObjectID,
-                          pPrevObject, sName, pPrevNamedObjectListElmt);
-                    else pObject = new CBenTypeName(cpContainer, ObjectID,
-                      pPrevObject, sName, pPrevNamedObjectListElmt);
-
-                    delete[] sAllocBuffer;
+                           pPrevObject, sName, pPrevNamedObjectListElmt);
+                    else
+                        pObject = new CBenTypeName(cpContainer, ObjectID,
+                           pPrevObject, sName, pPrevNamedObjectListElmt);
                 }
                 else if (PropertyID == BEN_PROPID_OBJ_REFERENCES)
                 {
@@ -394,7 +390,7 @@ CBenTOCReader::ReadSegment(CBenValue * pValue, BenByte * pLookAhead)
 
     bool Immediate = false;
     bool EightByteOffset = false;
-    unsigned long Offset(0), Length(0);
+    sal_uInt32 Offset(0), Length(0);
 
     switch (*pLookAhead)
     {
@@ -453,7 +449,7 @@ CBenTOCReader::ReadSegment(CBenValue * pValue, BenByte * pLookAhead)
         else if (Length != 0)
         {
             assert(Length <= 4);
-            new CBenValueSegment(pValue, ImmData, (unsigned short) Length);
+            new CBenValueSegment(pValue, ImmData, static_cast<unsigned short>(Length));
         }
     }
 

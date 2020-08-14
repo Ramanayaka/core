@@ -17,15 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "GraphicViewShell.hxx"
-#include "LayerTabBar.hxx"
-#include "FrameView.hxx"
+#include <GraphicViewShell.hxx>
+#include <LayerTabBar.hxx>
+#include <FrameView.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <vcl/scrbar.hxx>
-#include <vcl/settings.hxx>
 
-#include <tools/helpers.hxx>
+constexpr sal_Int32 TAB_HEIGHT_MARGIN = 10;
 
 namespace sd {
 
@@ -69,13 +67,13 @@ void GraphicViewShell::ChangeEditMode (
 
 void GraphicViewShell::ArrangeGUIElements()
 {
-    if (mpLayerTabBar.get()!=nullptr && mpLayerTabBar->IsVisible())
+    if (mpLayerTabBar && mpLayerTabBar->IsVisible())
     {
         Size aSize = mpLayerTabBar->GetSizePixel();
         const Size aFrameSize (GetViewFrame()->GetWindow().GetOutputSizePixel());
 
-        aSize.Height() = GetParentWindow()->GetFont().GetFontHeight() + 4;
-        aSize.Width() = aFrameSize.Width();
+        aSize.setHeight(GetParentWindow()->GetFont().GetFontHeight() + TAB_HEIGHT_MARGIN);
+        aSize.setWidth( aFrameSize.Width() );
 
         Point aPos (0, maViewSize.Height() - aSize.Height());
 

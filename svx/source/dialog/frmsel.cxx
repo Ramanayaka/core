@@ -17,22 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <o3tl/safeint.hxx>
 #include <svx/frmsel.hxx>
-#include <vcl/builderfactory.hxx>
+#include <vcl/event.hxx>
+#include <sal/log.hxx>
+#include <tools/debug.hxx>
 
 #include <algorithm>
 #include <math.h>
 #include <frmselimpl.hxx>
 #include <AccessibleFrameSelector.hxx>
-#include <svx/dialmgr.hxx>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
+#include <drawinglayer/processor2d/processor2dtools.hxx>
+#include <drawinglayer/processor2d/baseprocessor2d.hxx>
 
-#include <svx/dialogs.hrc>
-#include "bitmaps.hlst"
-
-#include <tools/rcid.h>
+#include <bitmaps.hlst>
 
 using namespace ::com::sun::star;
 using namespace ::editeng;
@@ -48,7 +52,7 @@ using namespace ::com::sun::star::accessibility;
 
 FrameBorderType GetFrameBorderTypeFromIndex( size_t nIndex )
 {
-    DBG_ASSERT( nIndex < (size_t)FRAMEBORDERTYPE_COUNT,
+    DBG_ASSERT( nIndex < o3tl::make_unsigned(FRAMEBORDERTYPE_COUNT),
         "svx::GetFrameBorderTypeFromIndex - invalid index" );
     return static_cast< FrameBorderType >( nIndex + 1 );
 }
@@ -98,7 +102,7 @@ FrameSelFlags lclGetFlagFromType( FrameBorderType eBorder )
 }
 
 /** Merges the rSource polypolygon into the rDest polypolygon. */
-inline void lclPolyPolyUnion( tools::PolyPolygon& rDest, const tools::PolyPolygon& rSource )
+void lclPolyPolyUnion( tools::PolyPolygon& rDest, const tools::PolyPolygon& rSource )
 {
     const tools::PolyPolygon aTmp( rDest );
     aTmp.GetUnion( rSource, rDest );
@@ -133,8 +137,8 @@ void FrameBorder::SetCoreStyle( const SvxBorderLine* pStyle )
         maCoreStyle = SvxBorderLine();
 
     // from twips to points
-    maUIStyle.Set( maCoreStyle, 0.05, FRAMESEL_GEOM_WIDTH );
-    meState = maUIStyle.Prim() ? FrameBorderState::Show : FrameBorderState::Hide;
+    maUIStyle.Set( &maCoreStyle, FrameBorder::GetDefaultPatternScale(), FRAMESEL_GEOM_WIDTH );
+    meState = maUIStyle.IsUsed() ? FrameBorderState::Show : FrameBorderState::Hide;
 }
 
 void FrameBorder::SetState( FrameBorderState eState )
@@ -151,7 +155,7 @@ void FrameBorder::SetState( FrameBorderState eState )
         break;
         case FrameBorderState::DontCare:
             maCoreStyle = SvxBorderLine();
-            maUIStyle = frame::Style(3, 0, 0, SvxBorderLineStyle::SOLID); //OBJ_FRAMESTYLE_DONTCARE
+            maUIStyle = frame::Style(3, 0, 0, SvxBorderLineStyle::SOLID, FrameBorder::GetDefaultPatternScale()); //OBJ_FRAMESTYLE_DONTCARE
         break;
     }
 }
@@ -228,7 +232,6 @@ FrameSelectorImpl::FrameSelectorImpl( FrameSelector& rFrameSel ) :
     mbBLTR( false ),
     mbFullRepaint( true ),
     mbAutoSelect( true ),
-    mbClicked( false ),
     mbHCMode( false ),
     maChildVec( 8 )
 {
@@ -264,11 +267,9 @@ FrameSelectorImpl::FrameSelectorImpl( FrameSelector& rFrameSel ) :
 FrameSelectorImpl::~FrameSelectorImpl()
 
 {
-    if( mxAccess.is() )
-        mxAccess->Invalidate();
-    for( auto aIt = maChildVec.begin(), aEnd = maChildVec.end(); aIt != aEnd; ++aIt )
-        if( aIt->is() )
-            (*aIt)->Invalidate();
+    for( auto& rpChild : maChildVec )
+        if( rpChild.is() )
+            rpChild->Invalidate();
 }
 
 // initialization
@@ -293,7 +294,7 @@ void FrameSelectorImpl::Initialize( FrameSelFlags nFlags )
 
 void FrameSelectorImpl::InitColors()
 {
-    const StyleSettings& rSettings = mrFrameSel.GetSettings().GetStyleSettings();
+    const StyleSettings& rSettings = Application::GetSettings().GetStyleSettings();
     maBackCol = rSettings.GetFieldColor();
     mbHCMode = rSettings.GetHighContrastMode();
     maArrowCol = rSettings.GetFieldTextColor();
@@ -301,7 +302,7 @@ void FrameSelectorImpl::InitColors()
     maHCLineCol = rSettings.GetLabelTextColor();
 }
 
-static const OUStringLiteral aImageIds[] =
+const OUStringLiteral aImageIds[] =
 {
     RID_SVXBMP_FRMSEL_ARROW1,
     RID_SVXBMP_FRMSEL_ARROW2,
@@ -340,7 +341,7 @@ void FrameSelectorImpl::InitArrowImageList()
     {
         BitmapEx aBmpEx(aImageIds[i]);
         aBmpEx.Replace(pColorAry1, pColorAry2, 3);
-        maArrows.push_back(Image(aBmpEx));
+        maArrows.emplace_back(aBmpEx);
     }
     assert(maArrows.size() == 16);
 
@@ -349,7 +350,7 @@ void FrameSelectorImpl::InitArrowImageList()
 
 void FrameSelectorImpl::InitGlobalGeometry()
 {
-    Size aCtrlSize( mrFrameSel.CalcOutputSize( mrFrameSel.GetSizePixel() ) );
+    Size aCtrlSize(mrFrameSel.GetOutputSizePixel());
     /*  nMinSize is the lower of width and height (control will always be squarish).
         FRAMESEL_GEOM_OUTER is the minimal distance between inner control border
         and any element. */
@@ -362,8 +363,9 @@ void FrameSelectorImpl::InitGlobalGeometry()
     /*  nBetwBordersSize contains the size between an outer and inner frame border (made odd). */
     long nBetwBordersSize = (((nMinSize - nFixedSize) / 2) - 1) | 1;
 
-    /*  The final size of the usable area. */
+    /*  The final size of the usable area. At least do not get negative */
     mnCtrlSize = 2 * nBetwBordersSize + nFixedSize;
+    mnCtrlSize = std::max(mnCtrlSize, static_cast<long>(0));
     mpVirDev->SetOutputSizePixel( Size( mnCtrlSize, mnCtrlSize ) );
 
     /*  Center the virtual device in the control. */
@@ -382,7 +384,6 @@ void FrameSelectorImpl::InitBorderGeometry()
 
     // Frame helper array
     maArray.Initialize( mbVer ? 2 : 1, mbHor ? 2 : 1 );
-    maArray.SetUseDiagDoubleClipping( true );
 
     maArray.SetXOffset( mnLine1 );
     maArray.SetAllColWidths( (mbVer ? mnLine2 : mnLine3) - mnLine1 );
@@ -412,27 +413,32 @@ void FrameSelectorImpl::InitBorderGeometry()
     {
         for( nRow = 0, nRows = maArray.GetRowCount(); nRow < nRows; ++nRow )
         {
-            tools::Rectangle aRect( maArray.GetCellRect( nCol, nRow ) );
-            long nDiagFocusOffsX = frame::GetTLDiagOffset( -mnFocusOffs, mnFocusOffs, maArray.GetHorDiagAngle( nCol, nRow ) );
-            long nDiagFocusOffsY = frame::GetTLDiagOffset( -mnFocusOffs, mnFocusOffs, maArray.GetVerDiagAngle( nCol, nRow ) );
+            const basegfx::B2DRange aCellRange(maArray.GetCellRange( nCol, nRow, true ));
+            const tools::Rectangle aRect(
+                basegfx::fround(aCellRange.getMinX()), basegfx::fround(aCellRange.getMinY()),
+                basegfx::fround(aCellRange.getMaxX()), basegfx::fround(aCellRange.getMaxY()));
+            const double fHorDiagAngle(atan2(fabs(aCellRange.getHeight()), fabs(aCellRange.getWidth())));
+            const double fVerDiagAngle(fHorDiagAngle > 0.0 ? F_PI2 - fHorDiagAngle : 0.0);
+            const long nDiagFocusOffsX(basegfx::fround(-mnFocusOffs / tan(fHorDiagAngle) + mnFocusOffs / sin(fHorDiagAngle)));
+            const long nDiagFocusOffsY(basegfx::fround(-mnFocusOffs / tan(fVerDiagAngle) + mnFocusOffs / sin(fVerDiagAngle)));
 
             std::vector< Point > aFocusVec;
-            aFocusVec.push_back( Point( aRect.Left()  - mnFocusOffs,     aRect.Top()    + nDiagFocusOffsY ) );
-            aFocusVec.push_back( Point( aRect.Left()  - mnFocusOffs,     aRect.Top()    - mnFocusOffs     ) );
-            aFocusVec.push_back( Point( aRect.Left()  + nDiagFocusOffsX, aRect.Top()    - mnFocusOffs     ) );
-            aFocusVec.push_back( Point( aRect.Right() + mnFocusOffs,     aRect.Bottom() - nDiagFocusOffsY ) );
-            aFocusVec.push_back( Point( aRect.Right() + mnFocusOffs,     aRect.Bottom() + mnFocusOffs     ) );
-            aFocusVec.push_back( Point( aRect.Right() - nDiagFocusOffsX, aRect.Bottom() + mnFocusOffs     ) );
-            maTLBR.AddFocusPolygon( tools::Polygon( static_cast< sal_uInt16 >( aFocusVec.size() ), &aFocusVec[ 0 ] ) );
+            aFocusVec.emplace_back( aRect.Left()  - mnFocusOffs,     aRect.Top()    + nDiagFocusOffsY );
+            aFocusVec.emplace_back( aRect.Left()  - mnFocusOffs,     aRect.Top()    - mnFocusOffs     );
+            aFocusVec.emplace_back( aRect.Left()  + nDiagFocusOffsX, aRect.Top()    - mnFocusOffs     );
+            aFocusVec.emplace_back( aRect.Right() + mnFocusOffs,     aRect.Bottom() - nDiagFocusOffsY );
+            aFocusVec.emplace_back( aRect.Right() + mnFocusOffs,     aRect.Bottom() + mnFocusOffs     );
+            aFocusVec.emplace_back( aRect.Right() - nDiagFocusOffsX, aRect.Bottom() + mnFocusOffs     );
+            maTLBR.AddFocusPolygon( tools::Polygon( static_cast< sal_uInt16 >( aFocusVec.size() ), aFocusVec.data() ) );
 
             aFocusVec.clear();
-            aFocusVec.push_back( Point( aRect.Right() + mnFocusOffs,     aRect.Top()    + nDiagFocusOffsY ) );
-            aFocusVec.push_back( Point( aRect.Right() + mnFocusOffs,     aRect.Top()    - mnFocusOffs     ) );
-            aFocusVec.push_back( Point( aRect.Right() - nDiagFocusOffsX, aRect.Top()    - mnFocusOffs     ) );
-            aFocusVec.push_back( Point( aRect.Left()  - mnFocusOffs,     aRect.Bottom() - nDiagFocusOffsY ) );
-            aFocusVec.push_back( Point( aRect.Left()  - mnFocusOffs,     aRect.Bottom() + mnFocusOffs     ) );
-            aFocusVec.push_back( Point( aRect.Left()  + nDiagFocusOffsX, aRect.Bottom() + mnFocusOffs     ) );
-            maBLTR.AddFocusPolygon( tools::Polygon( static_cast< sal_uInt16 >( aFocusVec.size() ), &aFocusVec[ 0 ] ) );
+            aFocusVec.emplace_back( aRect.Right() + mnFocusOffs,     aRect.Top()    + nDiagFocusOffsY );
+            aFocusVec.emplace_back( aRect.Right() + mnFocusOffs,     aRect.Top()    - mnFocusOffs     );
+            aFocusVec.emplace_back( aRect.Right() - nDiagFocusOffsX, aRect.Top()    - mnFocusOffs     );
+            aFocusVec.emplace_back( aRect.Left()  - mnFocusOffs,     aRect.Bottom() - nDiagFocusOffsY );
+            aFocusVec.emplace_back( aRect.Left()  - mnFocusOffs,     aRect.Bottom() + mnFocusOffs     );
+            aFocusVec.emplace_back( aRect.Left()  + nDiagFocusOffsX, aRect.Bottom() + mnFocusOffs     );
+            maBLTR.AddFocusPolygon( tools::Polygon( static_cast< sal_uInt16 >( aFocusVec.size() ), aFocusVec.data() ) );
         }
     }
 
@@ -459,40 +465,39 @@ void FrameSelectorImpl::InitBorderGeometry()
     maBottom.AddClickRect( tools::Rectangle( mnLine1 - nClO, mnLine3 - nClH, mnLine3 + nClO, mnLine3 + nClO ) );
 
     /*  Diagonal frame borders use the remaining space between outer and inner frame borders. */
-    if( mbTLBR || mbBLTR )
-    {
-        for( nCol = 0, nCols = maArray.GetColCount(); nCol < nCols; ++nCol )
-        {
-            for( nRow = 0, nRows = maArray.GetRowCount(); nRow < nRows; ++nRow )
-            {
-                // the usable area between horizonal/vertical frame borders of current quadrant
-                tools::Rectangle aRect( maArray.GetCellRect( nCol, nRow ) );
-                aRect.Left() += nClV + 1;
-                aRect.Right() -= nClV + 1;
-                aRect.Top() += nClH + 1;
-                aRect.Bottom() -= nClH + 1;
+    if( !(mbTLBR || mbBLTR) )
+        return;
 
-                /*  Both diagonal frame borders enabled. */
-                if( mbTLBR && mbBLTR )
-                {
-                    // single areas
-                    Point aMid( aRect.Center() );
-                    maTLBR.AddClickRect( tools::Rectangle( aRect.TopLeft(), aMid ) );
-                    maTLBR.AddClickRect( tools::Rectangle( aMid + Point( 1, 1 ), aRect.BottomRight() ) );
-                    maBLTR.AddClickRect( tools::Rectangle( aRect.Left(), aMid.Y() + 1, aMid.X(), aRect.Bottom() ) );
-                    maBLTR.AddClickRect( tools::Rectangle( aMid.X() + 1, aRect.Top(), aRect.Right(), aMid.Y() ) );
-                    // centered rectangle for both frame borders
-                    tools::Rectangle aMidRect( aRect.TopLeft(), Size( aRect.GetWidth() / 3, aRect.GetHeight() / 3 ) );
-                    aMidRect.Move( (aRect.GetWidth() - aMidRect.GetWidth()) / 2, (aRect.GetHeight() - aMidRect.GetHeight()) / 2 );
-                    maTLBR.AddClickRect( aMidRect );
-                    maBLTR.AddClickRect( aMidRect );
-                }
-                /*  One of the diagonal frame borders enabled - use entire rectangle. */
-                else if( mbTLBR && !mbBLTR )    // top-left to bottom-right only
-                    maTLBR.AddClickRect( aRect );
-                else if( !mbTLBR && mbBLTR )    // bottom-left to top-right only
-                    maBLTR.AddClickRect( aRect );
+    for( nCol = 0, nCols = maArray.GetColCount(); nCol < nCols; ++nCol )
+    {
+        for( nRow = 0, nRows = maArray.GetRowCount(); nRow < nRows; ++nRow )
+        {
+            // the usable area between horizontal/vertical frame borders of current quadrant
+            const basegfx::B2DRange aCellRange(maArray.GetCellRange( nCol, nRow, true ));
+            const tools::Rectangle aRect(
+                basegfx::fround(aCellRange.getMinX()) + nClV + 1, basegfx::fround(aCellRange.getMinY()) + nClH + 1,
+                basegfx::fround(aCellRange.getMaxX()) - nClV + 1, basegfx::fround(aCellRange.getMaxY()) - nClH + 1);
+
+            /*  Both diagonal frame borders enabled. */
+            if( mbTLBR && mbBLTR )
+            {
+                // single areas
+                Point aMid( aRect.Center() );
+                maTLBR.AddClickRect( tools::Rectangle( aRect.TopLeft(), aMid ) );
+                maTLBR.AddClickRect( tools::Rectangle( aMid + Point( 1, 1 ), aRect.BottomRight() ) );
+                maBLTR.AddClickRect( tools::Rectangle( aRect.Left(), aMid.Y() + 1, aMid.X(), aRect.Bottom() ) );
+                maBLTR.AddClickRect( tools::Rectangle( aMid.X() + 1, aRect.Top(), aRect.Right(), aMid.Y() ) );
+                // centered rectangle for both frame borders
+                tools::Rectangle aMidRect( aRect.TopLeft(), Size( aRect.GetWidth() / 3, aRect.GetHeight() / 3 ) );
+                aMidRect.Move( (aRect.GetWidth() - aMidRect.GetWidth()) / 2, (aRect.GetHeight() - aMidRect.GetHeight()) / 2 );
+                maTLBR.AddClickRect( aMidRect );
+                maBLTR.AddClickRect( aMidRect );
             }
+            /*  One of the diagonal frame borders enabled - use entire rectangle. */
+            else if( mbTLBR && !mbBLTR )    // top-left to bottom-right only
+                maTLBR.AddClickRect( aRect );
+            else if( !mbTLBR && mbBLTR )    // bottom-left to top-right only
+                maBLTR.AddClickRect( aRect );
         }
     }
 }
@@ -512,8 +517,6 @@ void FrameSelectorImpl::sizeChanged()
     InitGlobalGeometry();
     InitBorderGeometry();
 
-    // correct background around the used area
-    mrFrameSel.SetBackground( Wallpaper( maBackCol ) );
     DoInvalidate( true );
 }
 
@@ -641,7 +644,7 @@ void FrameSelectorImpl::DrawAllFrameBorders()
             rRightStyle.GetColorSecn(), rRightStyle.GetColorGap(),
             rRightStyle.UseGapColor(),
             rRightStyle.Secn(), rRightStyle.Dist(), rRightStyle.Prim( ),
-            rRightStyle.Type( ) );
+            rRightStyle.Type( ), rRightStyle.PatternScale() );
     maArray.SetColumnStyleRight( mbVer ? 1 : 0, rInvertedRight );
 
     maArray.SetRowStyleTop( 0, maTop.GetUIStyle() );
@@ -653,7 +656,7 @@ void FrameSelectorImpl::DrawAllFrameBorders()
             rHorStyle.GetColorSecn(), rHorStyle.GetColorGap(),
             rHorStyle.UseGapColor(),
             rHorStyle.Secn(), rHorStyle.Dist(), rHorStyle.Prim( ),
-            rHorStyle.Type() );
+            rHorStyle.Type(), rHorStyle.PatternScale() );
         maArray.SetRowStyleTop( 1, rInvertedHor );
     }
 
@@ -663,15 +666,33 @@ void FrameSelectorImpl::DrawAllFrameBorders()
             rBottomStyle.GetColorSecn(), rBottomStyle.GetColorGap(),
             rBottomStyle.UseGapColor(),
             rBottomStyle.Secn(), rBottomStyle.Dist(), rBottomStyle.Prim( ),
-            rBottomStyle.Type() );
+            rBottomStyle.Type(), rBottomStyle.PatternScale() );
     maArray.SetRowStyleBottom( mbHor ? 1 : 0, rInvertedBottom );
 
     for( size_t nCol = 0; nCol < maArray.GetColCount(); ++nCol )
         for( size_t nRow = 0; nRow < maArray.GetRowCount(); ++nRow )
             maArray.SetCellStyleDiag( nCol, nRow, maTLBR.GetUIStyle(), maBLTR.GetUIStyle() );
 
-    // Let the helper array draw itself
-    maArray.DrawArray( *mpVirDev.get() );
+    // This is used in the dialog/control for 'Border' attributes. When using
+    // the original paint below instead of primitives, the advantage currently
+    // is the correct visualization of diagonal line(s) including overlaying,
+    // but the rest is bad. Since the edit views use primitives and the preview
+    // should be 'real' I opt for also changing this to primitives. I will
+    // keep the old solution and add a switch (above) based on a static bool so
+    // that interested people may test this out in the debugger.
+    // This is one more hint to enhance the primitive visualization further to
+    // support diagonals better - that's the way to go.
+    const drawinglayer::geometry::ViewInformation2D aNewViewInformation2D;
+    std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> pProcessor2D(
+        drawinglayer::processor2d::createPixelProcessor2DFromOutputDevice(
+            *mpVirDev,
+            aNewViewInformation2D));
+
+    if (pProcessor2D)
+    {
+        pProcessor2D->process(maArray.CreateB2DPrimitiveArray());
+        pProcessor2D.reset();
+    }
 }
 
 void FrameSelectorImpl::DrawVirtualDevice()
@@ -687,10 +708,10 @@ void FrameSelectorImpl::CopyVirDevToControl(vcl::RenderContext& rRenderContext)
 {
     if (mbFullRepaint)
         DrawVirtualDevice();
-    rRenderContext.DrawBitmap(maVirDevPos, mpVirDev->GetBitmap(Point(0, 0), mpVirDev->GetOutputSizePixel()));
+    rRenderContext.DrawBitmapEx(maVirDevPos, mpVirDev->GetBitmapEx(Point(0, 0), mpVirDev->GetOutputSizePixel()));
 }
 
-void FrameSelectorImpl::DrawAllTrackingRects()
+void FrameSelectorImpl::DrawAllTrackingRects(vcl::RenderContext& rRenderContext)
 {
     tools::PolyPolygon aPPoly;
     if (mrFrameSel.IsAnyBorderSelected())
@@ -704,8 +725,9 @@ void FrameSelectorImpl::DrawAllTrackingRects()
         aPPoly.Insert( tools::Polygon(tools::Rectangle(maVirDevPos, mpVirDev->GetOutputSizePixel())));
 
     aPPoly.Optimize(PolyOptimizeFlags::CLOSE);
+
     for(sal_uInt16 nIdx = 0, nCount = aPPoly.Count(); nIdx < nCount; ++nIdx)
-        mrFrameSel.InvertTracking(aPPoly.GetObject(nIdx), ShowTrackFlags::Small | ShowTrackFlags::TrackWindow);
+        rRenderContext.Invert(aPPoly.GetObject(nIdx), InvertFlags::TrackFrame);
 }
 
 Point FrameSelectorImpl::GetDevPosFromMousePos( const Point& rMousePos ) const
@@ -716,7 +738,7 @@ Point FrameSelectorImpl::GetDevPosFromMousePos( const Point& rMousePos ) const
 void FrameSelectorImpl::DoInvalidate( bool bFullRepaint )
 {
     mbFullRepaint |= bFullRepaint;
-    mrFrameSel.Invalidate( InvalidateFlags::NoErase );
+    mrFrameSel.Invalidate();
 }
 
 // frame border state and style
@@ -727,18 +749,17 @@ void FrameSelectorImpl::SetBorderState( FrameBorder& rBorder, FrameBorderState e
     Any aNew;
     Any& rMod = eState == FrameBorderState::Show ? aNew : aOld;
     rMod <<= AccessibleStateType::CHECKED;
-    Reference< XAccessible > xRet;
+    rtl::Reference< a11y::AccFrameSelectorChild > xRet;
     size_t nVecIdx = static_cast< size_t >( rBorder.GetType() );
     if( GetBorder(rBorder.GetType()).IsEnabled() && (1 <= nVecIdx) && (nVecIdx <= maChildVec.size()) )
         xRet = maChildVec[ --nVecIdx ].get();
-    a11y::AccFrameSelector* pFrameSelector = static_cast<a11y::AccFrameSelector*>(xRet.get());
 
     if( eState == FrameBorderState::Show )
         SetBorderCoreStyle( rBorder, &maCurrStyle );
     else
         rBorder.SetState( eState );
-    if (pFrameSelector)
-            pFrameSelector->NotifyAccessibleEvent( AccessibleEventId::STATE_CHANGED, aOld, aNew );
+    if (xRet.is())
+        xRet->NotifyAccessibleEvent( AccessibleEventId::STATE_CHANGED, aOld, aNew );
     DoInvalidate( true );
 }
 
@@ -797,23 +818,23 @@ bool FrameSelectorImpl::SelectedBordersEqual() const
     return bEqual;
 }
 
-FrameSelector::FrameSelector(vcl::Window* pParent)
-    : Control(pParent, WB_BORDER|WB_TABSTOP)
+FrameSelector::FrameSelector()
 {
-    // not in c'tor init list (avoid warning about usage of *this)
+}
+
+void FrameSelector::SetDrawingArea(weld::DrawingArea* pDrawingArea)
+{
+    CustomWidgetController::SetDrawingArea(pDrawingArea);
+    Size aPrefSize = pDrawingArea->get_ref_device().LogicToPixel(Size(61, 65), MapMode(MapUnit::MapAppFont));
+    pDrawingArea->set_size_request(aPrefSize.Width(), aPrefSize.Height());
     mxImpl.reset( new FrameSelectorImpl( *this ) );
     EnableRTL( false ); // #107808# don't mirror the mouse handling
 }
 
 FrameSelector::~FrameSelector()
 {
-    disposeOnce();
-}
-
-VCL_BUILDER_DECL_FACTORY(SvxFrameSelector)
-{
-    (void)rMap;
-    rRet = VclPtr<FrameSelector>::Create(pParent);
+    if( mxAccess.is() )
+        mxAccess->Invalidate();
 }
 
 void FrameSelector::Initialize( FrameSelFlags nFlags )
@@ -843,15 +864,6 @@ FrameBorderType FrameSelector::GetEnabledBorderType( sal_Int32 nIndex ) const
             eBorder = mxImpl->maEnabBorders[ nVecIdx ]->GetType();
     }
     return eBorder;
-}
-
-sal_Int32 FrameSelector::GetEnabledBorderIndex( FrameBorderType eBorder ) const
-{
-    sal_Int32 nIndex = 0;
-    for( FrameBorderCIter aIt( mxImpl->maEnabBorders ); aIt.Is(); ++aIt, ++nIndex )
-        if( (*aIt)->GetType() == eBorder )
-            return nIndex;
-    return -1;
 }
 
 // frame border state and style
@@ -958,13 +970,12 @@ void FrameSelector::SelectBorder( FrameBorderType eBorder )
     // MT: bFireFox as API parameter is ugly...
     // if (bFocus)
     {
-        Reference< XAccessible > xRet = GetChildAccessible(eBorder);
-        a11y::AccFrameSelector* pFrameSelector = static_cast<a11y::AccFrameSelector*>(xRet.get());
-        if (pFrameSelector)
+        rtl::Reference< a11y::AccFrameSelectorChild > xRet = GetChildAccessible(eBorder);
+        if (xRet.is())
         {
             Any aOldValue, aNewValue;
             aNewValue <<= AccessibleStateType::FOCUSED;
-            pFrameSelector->NotifyAccessibleEvent( AccessibleEventId::STATE_CHANGED, aOldValue, aNewValue );
+            xRet->NotifyAccessibleEvent( AccessibleEventId::STATE_CHANGED, aOldValue, aNewValue );
         }
     }
 }
@@ -1005,21 +1016,20 @@ void FrameSelector::SetColorToSelection( const Color& rColor )
 // accessibility
 Reference< XAccessible > FrameSelector::CreateAccessible()
 {
-    if( !mxImpl->mxAccess.is() )
-        mxImpl->mxAccess = mxImpl->mxAccess =
-            new a11y::AccFrameSelector( *this, FrameBorderType::NONE );
-    return mxImpl->mxAccess.get();
+    if( !mxAccess.is() )
+        mxAccess = new a11y::AccFrameSelector(*this);
+    return mxAccess.get();
 }
 
-Reference< XAccessible > FrameSelector::GetChildAccessible( FrameBorderType eBorder )
+rtl::Reference< a11y::AccFrameSelectorChild > FrameSelector::GetChildAccessible( FrameBorderType eBorder )
 {
-    Reference< XAccessible > xRet;
+    rtl::Reference< a11y::AccFrameSelectorChild > xRet;
     size_t nVecIdx = static_cast< size_t >( eBorder );
     if( IsBorderEnabled( eBorder ) && (1 <= nVecIdx) && (nVecIdx <= mxImpl->maChildVec.size()) )
     {
         --nVecIdx;
         if( !mxImpl->maChildVec[ nVecIdx ].is() )
-            mxImpl->maChildVec[ nVecIdx ] = new a11y::AccFrameSelector( *this, eBorder );
+            mxImpl->maChildVec[ nVecIdx ] = new a11y::AccFrameSelectorChild( *this, eBorder );
         xRet = mxImpl->maChildVec[ nVecIdx ].get();
     }
     return xRet;
@@ -1027,7 +1037,7 @@ Reference< XAccessible > FrameSelector::GetChildAccessible( FrameBorderType eBor
 
 Reference< XAccessible > FrameSelector::GetChildAccessible( sal_Int32 nIndex )
 {
-    return GetChildAccessible( GetEnabledBorderType( nIndex ) );
+    return GetChildAccessible( GetEnabledBorderType( nIndex ) ).get();
 }
 
 Reference< XAccessible > FrameSelector::GetChildAccessible( const Point& rPos )
@@ -1035,16 +1045,8 @@ Reference< XAccessible > FrameSelector::GetChildAccessible( const Point& rPos )
     Reference< XAccessible > xRet;
     for( FrameBorderCIter aIt( mxImpl->maEnabBorders ); !xRet.is() && aIt.Is(); ++aIt )
         if( (*aIt)->ContainsClickPoint( rPos ) )
-            xRet = GetChildAccessible( (*aIt)->GetType() );
+            xRet = GetChildAccessible( (*aIt)->GetType() ).get();
     return xRet;
-}
-
-bool FrameSelector::ContainsClickPoint( const Point& rPos ) const
-{
-    bool bContains = false;
-    for( FrameBorderCIter aIt( mxImpl->maEnabBorders ); !bContains && aIt.Is(); ++aIt )
-        bContains = (*aIt)->ContainsClickPoint( rPos );
-    return bContains;
 }
 
 tools::Rectangle FrameSelector::GetClickBoundRect( FrameBorderType eBorder ) const
@@ -1061,10 +1063,10 @@ void FrameSelector::Paint(vcl::RenderContext& rRenderContext, const tools::Recta
 {
     mxImpl->CopyVirDevToControl(rRenderContext);
     if (HasFocus())
-        mxImpl->DrawAllTrackingRects();
+        mxImpl->DrawAllTrackingRects(rRenderContext);
 }
 
-void FrameSelector::MouseButtonDown( const MouseEvent& rMEvt )
+bool FrameSelector::MouseButtonDown( const MouseEvent& rMEvt )
 {
     /*  Mouse handling:
         * Click on an unselected frame border:
@@ -1098,7 +1100,7 @@ void FrameSelector::MouseButtonDown( const MouseEvent& rMEvt )
         /*  If frame borders are set to "don't care" and the control does not
             support this state, hide them on first mouse click.
             DR 2004-01-30: Why are the borders set to "don't care" then?!? */
-        bool bHideDontCare = !mxImpl->mbClicked && !SupportsDontCareState();
+        bool bHideDontCare = !SupportsDontCareState();
 
         for( FrameBorderIter aIt( mxImpl->maEnabBorders ); aIt.Is(); ++aIt )
         {
@@ -1148,9 +1150,11 @@ void FrameSelector::MouseButtonDown( const MouseEvent& rMEvt )
             GetSelectHdl().Call( nullptr );
         }
     }
+
+    return true;
 }
 
-void FrameSelector::KeyInput( const KeyEvent& rKEvt )
+bool FrameSelector::KeyInput( const KeyEvent& rKEvt )
 {
     bool bHandled = false;
     vcl::KeyCode aKeyCode = rKEvt.GetKeyCode();
@@ -1197,8 +1201,9 @@ void FrameSelector::KeyInput( const KeyEvent& rKEvt )
             break;
         }
     }
-    if( !bHandled )
-        Window::KeyInput(rKEvt);
+    if (bHandled)
+        return true;
+    return CustomWidgetController::KeyInput(rKEvt);
 }
 
 void FrameSelector::GetFocus()
@@ -1208,8 +1213,6 @@ void FrameSelector::GetFocus()
         mxImpl->SelectBorder( *mxImpl->maEnabBorders.front(), true );
 
     mxImpl->DoInvalidate( false );
-    if( mxImpl->mxAccess.is() )
-        mxImpl->mxAccess->NotifyFocusListeners( true );
     if (IsAnyBorderSelected())
     {
         FrameBorderType borderType = FrameBorderType::NONE;
@@ -1233,35 +1236,26 @@ void FrameSelector::GetFocus()
     }
     for( SelFrameBorderIter aIt( mxImpl->maEnabBorders ); aIt.Is(); ++aIt )
             mxImpl->SetBorderState( **aIt, FrameBorderState::Show );
-    Control::GetFocus();
+    CustomWidgetController::GetFocus();
 }
 
 void FrameSelector::LoseFocus()
 {
     mxImpl->DoInvalidate( false );
-    if( mxImpl->mxAccess.is() )
-        mxImpl->mxAccess->NotifyFocusListeners( false );
-    Control::LoseFocus();
+    CustomWidgetController::LoseFocus();
 }
 
-void FrameSelector::DataChanged( const DataChangedEvent& rDCEvt )
+void FrameSelector::StyleUpdated()
 {
-    Control::DataChanged( rDCEvt );
-    if( (rDCEvt.GetType() == DataChangedEventType::SETTINGS) && (rDCEvt.GetFlags() & AllSettingsFlags::STYLE) )
-        mxImpl->InitVirtualDevice();
+    mxImpl->InitVirtualDevice();
+    CustomWidgetController::StyleUpdated();
 }
 
 void FrameSelector::Resize()
 {
-    Control::Resize();
+    CustomWidgetController::Resize();
     mxImpl->sizeChanged();
 }
-
-Size FrameSelector::GetOptimalSize() const
-{
-    return LogicToPixel(Size(61, 65), MapUnit::MapAppFont);
-}
-
 
 template< typename Cont, typename Iter, typename Pred >
 FrameBorderIterBase< Cont, Iter, Pred >::FrameBorderIterBase( container_type& rCont ) :
@@ -1277,7 +1271,6 @@ FrameBorderIterBase< Cont, Iter, Pred >& FrameBorderIterBase< Cont, Iter, Pred >
     do { ++maIt; } while( Is() && !maPred( *maIt ) );
     return *this;
 }
-
 
 }
 

@@ -19,43 +19,41 @@
 
 #include <string.h>
 
+#include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/string.hxx>
-#include <rtl/process.h>
-#include <tools/resary.hxx>
-#include <tools/gen.hxx>
-#include <uno/current_context.hxx>
+#include <tools/diagnose_ex.h>
+#include <unotools/resmgr.hxx>
+#include <sal/log.hxx>
 
-#include <vcl/button.hxx>
-#include <vcl/configsettings.hxx>
+#include <configsettings.hxx>
+#include <vcl/QueueInfo.hxx>
 #include <vcl/dockwin.hxx>
-#include <vcl/layout.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/print.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/wrkwin.hxx>
+#include <vcl/uitest/logger.hxx>
+#include <salframe.hxx>
 #include <scrwnd.hxx>
 #include <helpwin.hxx>
-#include <vcl/dialog.hxx>
-#include "salinst.hxx"
-#include "salframe.hxx"
-#include "salgdi.hxx"
-#include "svdata.hxx"
-#include "window.h"
-#include "salimestatus.hxx"
-#include "salsys.hxx"
-#include "svids.hrc"
+#include <vcl/toolkit/dialog.hxx>
+#include <salinst.hxx>
+#include <salgdi.hxx>
+#include <svdata.hxx>
+#include <salsys.hxx>
+#include <units.hrc>
+#include <print.h>
 
-#include "com/sun/star/accessibility/MSAAService.hpp"
-
-#include "officecfg/Office/Common.hxx"
+#include <com/sun/star/accessibility/MSAAService.hpp>
 
 #include <config_features.h>
 #if HAVE_FEATURE_OPENGL
 #include <vcl/opengl/OpenGLContext.hxx>
 #endif
+#include <basegfx/utils/systemdependentdata.hxx>
+#include <cppuhelper/basemutex.hxx>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
@@ -65,6 +63,14 @@ namespace
 {
     struct private_aImplSVData :
         public rtl::Static<ImplSVData, private_aImplSVData> {};
+    /// Default instance ensures that ImplSVData::mpHelpData is never null.
+    struct private_aImplSVHelpData :
+        public rtl::Static<ImplSVHelpData, private_aImplSVHelpData> {};
+
+    /// Default instance ensures that ImplSVData::mpWinData is never null.
+    struct private_aImplSVWinData :
+        public rtl::Static<ImplSVWinData, private_aImplSVWinData> {};
+
 }
 
 ImplSVData* ImplGetSVData() {
@@ -75,8 +81,8 @@ SalSystem* ImplGetSalSystem()
 {
     ImplSVData* pSVData = ImplGetSVData();
     if( ! pSVData->mpSalSystem )
-        pSVData->mpSalSystem = pSVData->mpDefInst->CreateSalSystem();
-    return pSVData->mpSalSystem;
+        pSVData->mpSalSystem.reset( pSVData->mpDefInst->CreateSalSystem() );
+    return pSVData->mpSalSystem.get();
 }
 
 void ImplDeInitSVData()
@@ -84,41 +90,129 @@ void ImplDeInitSVData()
     ImplSVData* pSVData = ImplGetSVData();
 
     // delete global instance data
-    if( pSVData->mpSettingsConfigItem )
-    {
-        delete pSVData->mpSettingsConfigItem;
-        pSVData->mpSettingsConfigItem = nullptr;
-    }
+    pSVData->mpSettingsConfigItem.reset();
 
-    if( pSVData->mpDockingManager )
-    {
-        delete pSVData->mpDockingManager;
-        pSVData->mpDockingManager = nullptr;
-    }
+    pSVData->mpDockingManager.reset();
 
-    if( pSVData->maCtrlData.mpFieldUnitStrings )
+    pSVData->maCtrlData.maFieldUnitStrings.clear();
+    pSVData->maCtrlData.maCleanUnitStrings.clear();
+    pSVData->maPaperNames.clear();
+}
+
+namespace
+{
+    typedef ::std::map< basegfx::SystemDependentData_SharedPtr, sal_uInt32 > EntryMap;
+
+    class SystemDependentDataBuffer final : public basegfx::SystemDependentDataManager, protected cppu::BaseMutex
     {
-        delete pSVData->maCtrlData.mpFieldUnitStrings;
-        pSVData->maCtrlData.mpFieldUnitStrings = nullptr;
-    }
-    if( pSVData->maCtrlData.mpCleanUnitStrings )
+    private:
+        std::unique_ptr<AutoTimer> maTimer;
+        EntryMap maEntries;
+
+        DECL_LINK(implTimeoutHdl, Timer *, void);
+
+    public:
+        SystemDependentDataBuffer(const char* pDebugName)
+        :   basegfx::SystemDependentDataManager(),
+            maTimer(std::make_unique<AutoTimer>(pDebugName))
+        {
+            maTimer->SetTimeout(1000);
+            maTimer->SetInvokeHandler(LINK(this, SystemDependentDataBuffer, implTimeoutHdl));
+        }
+
+        virtual ~SystemDependentDataBuffer() override
+        {
+            flushAll();
+        }
+
+        void startUsage(basegfx::SystemDependentData_SharedPtr& rData) override
+        {
+            ::osl::MutexGuard aGuard(m_aMutex);
+            EntryMap::iterator aFound(maEntries.find(rData));
+
+            if(aFound == maEntries.end())
+            {
+                if(maTimer && !maTimer->IsActive())
+                {
+                    maTimer->Start();
+                }
+
+                maEntries[rData] = rData->calculateCombinedHoldCyclesInSeconds();
+            }
+        }
+
+        void endUsage(basegfx::SystemDependentData_SharedPtr& rData) override
+        {
+            ::osl::MutexGuard aGuard(m_aMutex);
+            EntryMap::iterator aFound(maEntries.find(rData));
+
+            if(aFound != maEntries.end())
+            {
+                maEntries.erase(aFound);
+            }
+        }
+
+        void touchUsage(basegfx::SystemDependentData_SharedPtr& rData) override
+        {
+            ::osl::MutexGuard aGuard(m_aMutex);
+            EntryMap::iterator aFound(maEntries.find(rData));
+
+            if(aFound != maEntries.end())
+            {
+                aFound->second = rData->calculateCombinedHoldCyclesInSeconds();
+            }
+        }
+
+        void flushAll() override
+        {
+            ::osl::MutexGuard aGuard(m_aMutex);
+
+            if(maTimer)
+            {
+                maTimer->Stop();
+                maTimer.reset();
+            }
+
+            maEntries.clear();
+        }
+    };
+
+    IMPL_LINK_NOARG(SystemDependentDataBuffer, implTimeoutHdl, Timer *, void)
     {
-        delete pSVData->maCtrlData.mpCleanUnitStrings;
-        pSVData->maCtrlData.mpCleanUnitStrings = nullptr;
+        ::osl::MutexGuard aGuard(m_aMutex);
+        EntryMap::iterator aIter(maEntries.begin());
+
+        while(aIter != maEntries.end())
+        {
+            if(aIter->second)
+            {
+                aIter->second--;
+                ++aIter;
+            }
+            else
+            {
+                aIter = maEntries.erase(aIter);
+            }
+        }
+
+        if (maEntries.empty())
+            maTimer->Stop();
     }
-    if( pSVData->mpPaperNames )
-    {
-        delete pSVData->mpPaperNames;
-        pSVData->mpPaperNames = nullptr;
-    }
+}
+
+basegfx::SystemDependentDataManager& ImplGetSystemDependentDataManager()
+{
+    static SystemDependentDataBuffer aSystemDependentDataBuffer("vcl SystemDependentDataBuffer aSystemDependentDataBuffer");
+
+    return aSystemDependentDataBuffer;
 }
 
 /// Returns either the application window, or the default GL context window
 vcl::Window* ImplGetDefaultWindow()
 {
     ImplSVData* pSVData = ImplGetSVData();
-    if ( pSVData->maWinData.mpAppWin )
-        return pSVData->maWinData.mpAppWin;
+    if (pSVData->maFrameData.mpAppWin)
+        return pSVData->maFrameData.mpAppWin;
     else
         return ImplGetDefaultContextWindow();
 }
@@ -149,9 +243,9 @@ vcl::Window *ImplGetDefaultContextWindow()
                     pContext->acquire();
 #endif
             }
-            catch (const css::uno::Exception& e)
+            catch (const css::uno::Exception&)
             {
-                 SAL_WARN("vcl", "unable to create Default Window: " << e.Message);
+                TOOLS_WARN_EXCEPTION("vcl", "unable to create Default Window");
             }
         }
     }
@@ -159,100 +253,74 @@ vcl::Window *ImplGetDefaultContextWindow()
     return pSVData->mpDefaultWin;
 }
 
-ResMgr* ImplGetResMgr()
+const std::locale& ImplGetResLocale()
 {
     ImplSVData* pSVData = ImplGetSVData();
-    if ( !pSVData->mpResMgr )
+    if (!pSVData->mbResLocaleSet || comphelper::LibreOfficeKit::isActive())
     {
-        LanguageTag aLocale( Application::GetSettings().GetUILanguageTag());
-        pSVData->mpResMgr = ResMgr::SearchCreateResMgr( "vcl", aLocale );
-
-        static bool bMessageOnce = false;
-        if( !pSVData->mpResMgr && ! bMessageOnce )
-        {
-            bMessageOnce = true;
-            const char pMsg[] =
-                "Missing vcl resource. This indicates that files vital to localization are missing. "
-                "You might have a corrupt installation.";
-            SAL_WARN("vcl", "" << pMsg);
-            ScopedVclPtrInstance< MessageDialog > aBox( nullptr, pMsg );
-            aBox->Execute();
-        }
+        pSVData->maResLocale = Translate::Create("vcl");
+        pSVData->mbResLocaleSet = true;
     }
-    return pSVData->mpResMgr;
+    return pSVData->maResLocale;
 }
 
-ResId VclResId( sal_Int32 nId )
+OUString VclResId(const char* pId)
 {
-    ResMgr* pMgr = ImplGetResMgr();
-    if( ! pMgr )
-        throw std::bad_alloc();
-
-    return ResId( nId, *pMgr );
+    return Translate::get(pId, ImplGetResLocale());
 }
 
-FieldUnitStringList* ImplGetFieldUnits()
+const FieldUnitStringList& ImplGetFieldUnits()
 {
     ImplSVData* pSVData = ImplGetSVData();
-    if( ! pSVData->maCtrlData.mpFieldUnitStrings )
+    if( pSVData->maCtrlData.maFieldUnitStrings.empty() )
     {
-        ResMgr* pResMgr = ImplGetResMgr();
-        if( pResMgr )
+        sal_uInt32 nUnits = SAL_N_ELEMENTS(SV_FUNIT_STRINGS);
+        pSVData->maCtrlData.maFieldUnitStrings.reserve( nUnits );
+        for (sal_uInt32 i = 0; i < nUnits; i++)
         {
-            ResStringArray aUnits( ResId (SV_FUNIT_STRINGS, *pResMgr) );
-            sal_uInt32 nUnits = aUnits.Count();
-            pSVData->maCtrlData.mpFieldUnitStrings = new FieldUnitStringList;
-            pSVData->maCtrlData.mpFieldUnitStrings->reserve( nUnits );
-            for( sal_uInt32 i = 0; i < nUnits; i++ )
-            {
-                std::pair< OUString, FieldUnit > aElement( aUnits.GetString(i), static_cast<FieldUnit>(aUnits.GetValue(i)) );
-                pSVData->maCtrlData.mpFieldUnitStrings->push_back( aElement );
-            }
+            std::pair<OUString, FieldUnit> aElement(VclResId(SV_FUNIT_STRINGS[i].first), SV_FUNIT_STRINGS[i].second);
+            pSVData->maCtrlData.maFieldUnitStrings.push_back( aElement );
         }
     }
-    return pSVData->maCtrlData.mpFieldUnitStrings;
+    return pSVData->maCtrlData.maFieldUnitStrings;
 }
 
-FieldUnitStringList* ImplGetCleanedFieldUnits()
+const FieldUnitStringList& ImplGetCleanedFieldUnits()
 {
     ImplSVData* pSVData = ImplGetSVData();
-    if( ! pSVData->maCtrlData.mpCleanUnitStrings )
+    if( pSVData->maCtrlData.maCleanUnitStrings.empty() )
     {
-        FieldUnitStringList* pUnits = ImplGetFieldUnits();
-        if( pUnits )
+        const FieldUnitStringList& rUnits = ImplGetFieldUnits();
+        size_t nUnits = rUnits.size();
+        pSVData->maCtrlData.maCleanUnitStrings.reserve(nUnits);
+        for (size_t i = 0; i < nUnits; ++i)
         {
-            size_t nUnits = pUnits->size();
-            pSVData->maCtrlData.mpCleanUnitStrings = new FieldUnitStringList;
-            pSVData->maCtrlData.mpCleanUnitStrings->reserve( nUnits );
-            for( size_t i = 0; i < nUnits; ++i )
-            {
-                OUString aUnit( (*pUnits)[i].first );
-                aUnit = aUnit.replaceAll(" ", "");
-                aUnit = aUnit.toAsciiLowerCase();
-                std::pair< OUString, FieldUnit > aElement( aUnit, (*pUnits)[i].second );
-                pSVData->maCtrlData.mpCleanUnitStrings->push_back( aElement );
-            }
+            OUString aUnit(rUnits[i].first);
+            aUnit = aUnit.replaceAll(" ", "");
+            aUnit = aUnit.toAsciiLowerCase();
+            std::pair<OUString, FieldUnit> aElement(aUnit, rUnits[i].second);
+            pSVData->maCtrlData.maCleanUnitStrings.push_back(aElement);
         }
     }
-    return pSVData->maCtrlData.mpCleanUnitStrings;
+    return pSVData->maCtrlData.maCleanUnitStrings;
 }
 
 DockingManager* ImplGetDockingManager()
 {
     ImplSVData* pSVData = ImplGetSVData();
     if ( !pSVData->mpDockingManager )
-        pSVData->mpDockingManager = new DockingManager();
+        pSVData->mpDockingManager.reset(new DockingManager());
 
-    return pSVData->mpDockingManager;
+    return pSVData->mpDockingManager.get();
 }
 
 BlendFrameCache* ImplGetBlendFrameCache()
 {
     ImplSVData* pSVData = ImplGetSVData();
     if ( !pSVData->mpBlendFrameCache)
-        pSVData->mpBlendFrameCache= new BlendFrameCache();
+        pSVData->mpBlendFrameCache.reset( new BlendFrameCache() );
 
-    return pSVData->mpBlendFrameCache;
+    return pSVData->mpBlendFrameCache.get();
 }
 
 #ifdef _WIN32
@@ -275,10 +343,10 @@ bool ImplInitAccessBridge()
                      = css::accessibility::MSAAService::create(xContext);
                  SAL_INFO("vcl", "got IAccessible2 bridge");
                  return true;
-             } catch (css::uno::DeploymentException & e) {
-                 SAL_WARN(
+             } catch (css::uno::DeploymentException &) {
+                 TOOLS_WARN_EXCEPTION(
                     "vcl",
-                    "got no IAccessible2 bridge" << e.Message);
+                    "got no IAccessible2 bridge");
                  return false;
              }
         }
@@ -293,10 +361,131 @@ void LocaleConfigurationListener::ConfigurationChanged( utl::ConfigurationBroadc
     AllSettings::LocaleSettingsChanged( nHint );
 }
 
+ImplSVWinData* CreateSVWinData()
+{
+    if (!comphelper::LibreOfficeKit::isActive())
+        return nullptr;
+
+    ImplSVWinData* p = new ImplSVWinData;
+
+    ImplSVData* pSVData = ImplGetSVData();
+    assert(pSVData && pSVData->mpWinData);
+
+    p->mpFocusWin = pSVData->mpWinData->mpFocusWin;
+    return p;
+}
+
+void DestroySVWinData(ImplSVWinData* pData)
+{
+    delete pData;
+}
+
+void SetSVWinData(ImplSVWinData* pSVWinData)
+{
+    if (!comphelper::LibreOfficeKit::isActive())
+        return;
+
+    ImplSVData* pSVData = ImplGetSVData();
+    assert(pSVData != nullptr);
+
+    if (pSVData->mpWinData == pSVWinData)
+        return;
+
+    // If current one is the static, clean it up to avoid having lingering references.
+    if (pSVData->mpWinData == &private_aImplSVWinData::get())
+    {
+        pSVData->mpWinData->mpFocusWin.reset();
+    }
+
+    pSVData->mpWinData = pSVWinData;
+    if (pSVData->mpWinData == nullptr)
+    {
+        pSVData->mpWinData = &private_aImplSVWinData::get(); // Never leave it null.
+    }
+}
+
+ImplSVData::ImplSVData()
+{
+    mpHelpData = &private_aImplSVHelpData::get();
+    mpWinData = &private_aImplSVWinData::get();
+}
+
+ImplSVHelpData* CreateSVHelpData()
+{
+    if (!comphelper::LibreOfficeKit::isActive())
+        return nullptr;
+
+    ImplSVHelpData* pNewData = new ImplSVHelpData;
+
+    // Set options set globally
+    ImplSVHelpData& aStaticHelpData = private_aImplSVHelpData::get();
+    pNewData->mbContextHelp = aStaticHelpData.mbContextHelp;
+    pNewData->mbExtHelp = aStaticHelpData.mbExtHelp;
+    pNewData->mbExtHelpMode = aStaticHelpData.mbExtHelpMode;
+    pNewData->mbOldBalloonMode = aStaticHelpData.mbOldBalloonMode;
+    pNewData->mbBalloonHelp = aStaticHelpData.mbBalloonHelp;
+    pNewData->mbQuickHelp = aStaticHelpData.mbQuickHelp;
+
+    return pNewData;
+}
+
+void DestroySVHelpData(ImplSVHelpData* pSVHelpData)
+{
+    if (!comphelper::LibreOfficeKit::isActive())
+        return;
+
+    // Change the SVData's help date if necessary
+    if(ImplGetSVData()->mpHelpData == pSVHelpData)
+    {
+        ImplGetSVData()->mpHelpData = &private_aImplSVHelpData::get();
+    }
+
+    if(pSVHelpData)
+    {
+        ImplDestroyHelpWindow(*pSVHelpData, false);
+        delete pSVHelpData;
+    }
+}
+
+void SetSVHelpData(ImplSVHelpData* pSVHelpData)
+{
+    if (!comphelper::LibreOfficeKit::isActive())
+        return;
+
+    ImplSVData* pSVData = ImplGetSVData();
+    if (pSVData->mpHelpData == pSVHelpData)
+        return;
+
+    // If current one is the static, clean it up to avoid having lingering references.
+    if (pSVData->mpHelpData == &private_aImplSVHelpData::get())
+    {
+        pSVData->mpHelpData->mpHelpWin.reset();
+    }
+
+    pSVData->mpHelpData = pSVHelpData;
+    if (pSVData->mpHelpData == nullptr)
+    {
+        pSVData->mpHelpData = &private_aImplSVHelpData::get(); // Never leave it null.
+    }
+}
+
+ImplSVHelpData& ImplGetSVHelpData()
+{
+    ImplSVData* pSVData = ImplGetSVData();
+    if(pSVData->mpHelpData)
+    {
+        return *pSVData->mpHelpData;
+    }
+    else
+    {
+        return private_aImplSVHelpData::get();
+    }
+}
 
 ImplSVData::~ImplSVData() {}
 ImplSVAppData::~ImplSVAppData() {}
 ImplSVGDIData::~ImplSVGDIData() {}
+ImplSVFrameData::~ImplSVFrameData() {}
 ImplSVWinData::~ImplSVWinData() {}
 ImplSVHelpData::~ImplSVHelpData() {}
 

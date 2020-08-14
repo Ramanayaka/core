@@ -18,20 +18,15 @@
  */
 
 #include <svggnode.hxx>
-#include <drawinglayer/primitive2d/transformprimitive2d.hxx>
-#include <drawinglayer/primitive2d/unifiedtransparenceprimitive2d.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgGNode::SvgGNode(
             SVGToken aType,
             SvgDocument& rDocument,
             SvgNode* pParent)
         :   SvgNode(aType, rDocument, pParent),
-            maSvgStyleAttributes(*this),
-            mpaTransform(nullptr)
+            maSvgStyleAttributes(*this)
         {
             OSL_ENSURE(aType == SVGTokenDefs || aType == SVGTokenG, "SvgGNode should only be used for Group and Defs (!)");
         }
@@ -118,7 +113,6 @@ namespace svgio
                 }
             }
         }
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

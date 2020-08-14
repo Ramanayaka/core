@@ -19,11 +19,11 @@
 
 #include <sal/config.h>
 
-#include "uiservices.hxx"
-#include "unoadmin.hxx"
-#include "dbu_reghelper.hxx"
-#include "advancedsettingsdlg.hxx"
+#include <unoadmin.hxx>
+#include <advancedsettingsdlg.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/proparrhlp.hxx>
+#include <vcl/svapp.hxx>
 
 namespace dbaui
 {
@@ -32,30 +32,23 @@ namespace dbaui
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
 
+    namespace {
+
     // OAdvancedSettingsDialog
     class OAdvancedSettingsDialog
             :public ODatabaseAdministrationDialog
             ,public ::comphelper::OPropertyArrayUsageHelper< OAdvancedSettingsDialog >
     {
 
-    protected:
+    public:
         explicit OAdvancedSettingsDialog(const css::uno::Reference< css::uno::XComponentContext >& _rxORB);
 
-    public:
         // XTypeProvider
         virtual css::uno::Sequence<sal_Int8> SAL_CALL getImplementationId(  ) override;
 
         // XServiceInfo
         virtual OUString SAL_CALL getImplementationName() override;
         virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
-
-        // XServiceInfo - static methods
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static();
-        static css::uno::Reference< css::uno::XInterface >
-                SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
 
         // XPropertySet
         virtual css::uno::Reference< css::beans::XPropertySetInfo>  SAL_CALL getPropertySetInfo() override;
@@ -65,8 +58,10 @@ namespace dbaui
         virtual ::cppu::IPropertyArrayHelper* createArrayHelper( ) const override;
     protected:
     // OGenericUnoDialog overridables
-        virtual VclPtr<Dialog> createDialog(vcl::Window* _pParent) override;
+        virtual std::unique_ptr<weld::DialogController> createDialog(const css::uno::Reference<css::awt::XWindow>& rParent) override;
     };
+
+    }
 
     OAdvancedSettingsDialog::OAdvancedSettingsDialog(const Reference< XComponentContext >& _rxORB)
         :ODatabaseAdministrationDialog(_rxORB)
@@ -77,30 +72,14 @@ namespace dbaui
         return css::uno::Sequence<sal_Int8>();
     }
 
-    Reference< XInterface > SAL_CALL OAdvancedSettingsDialog::Create(const Reference< XMultiServiceFactory >& _rxFactory)
-    {
-        return *(new OAdvancedSettingsDialog( comphelper::getComponentContext(_rxFactory) ));
-    }
-
     OUString SAL_CALL OAdvancedSettingsDialog::getImplementationName()
     {
-        return getImplementationName_Static();
-    }
-
-    OUString OAdvancedSettingsDialog::getImplementationName_Static()
-    {
-        return OUString("org.openoffice.comp.dbu.OAdvancedSettingsDialog");
+        return "org.openoffice.comp.dbu.OAdvancedSettingsDialog";
     }
 
     css::uno::Sequence<OUString> SAL_CALL OAdvancedSettingsDialog::getSupportedServiceNames()
     {
-        return getSupportedServiceNames_Static();
-    }
-
-    css::uno::Sequence<OUString> OAdvancedSettingsDialog::getSupportedServiceNames_Static()
-    {
-        css::uno::Sequence<OUString> aSupported { "com.sun.star.sdb.AdvancedDatabaseSettingsDialog" };
-        return aSupported;
+        return { "com.sun.star.sdb.AdvancedDatabaseSettingsDialog" };
     }
 
     Reference<XPropertySetInfo>  SAL_CALL OAdvancedSettingsDialog::getPropertySetInfo()
@@ -120,16 +99,20 @@ namespace dbaui
         describeProperties(aProps);
         return new ::cppu::OPropertyArrayHelper(aProps);
     }
-    VclPtr<Dialog> OAdvancedSettingsDialog::createDialog(vcl::Window* _pParent)
+
+    std::unique_ptr<weld::DialogController> OAdvancedSettingsDialog::createDialog(const css::uno::Reference<css::awt::XWindow>& rParent)
     {
-        return VclPtr<AdvancedSettingsDialog>::Create(_pParent, m_pDatasourceItems, m_aContext, m_aInitialSelection);
+        return std::make_unique<AdvancedSettingsDialog>(Application::GetFrameWeld(rParent), m_pDatasourceItems.get(),
+                                                        m_aContext, m_aInitialSelection);
     }
 
 }   // namespace dbaui
 
-extern "C" void SAL_CALL createRegistryInfo_OAdvancedSettingsDialog()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+org_openoffice_comp_dbu_OAdvancedSettingsDialog_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static ::dbaui::OMultiInstanceAutoRegistration< ::dbaui::OAdvancedSettingsDialog > aAutoRegistration;
+    return cppu::acquire(new ::dbaui::OAdvancedSettingsDialog(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

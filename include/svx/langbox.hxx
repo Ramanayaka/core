@@ -21,12 +21,10 @@
 
 #include <memory>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/i18n/ScriptType.hpp>
 #include <svx/svxdllapi.h>
-#include <vcl/image.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/combobox.hxx>
+#include <vcl/weld.hxx>
 #include <o3tl/typed_flags_set.hxx>
-
 
 enum class SvxLanguageListFlags
 {
@@ -36,122 +34,20 @@ enum class SvxLanguageListFlags
     CTL               = 0x0004,
     CJK               = 0x0008,
     FBD_CHARS         = 0x0010,
-    SPELL_AVAIL       = 0x0020,
-    HYPH_AVAIL        = 0x0040,
-    THES_AVAIL        = 0x0080,
-    ONLY_KNOWN        = 0x0100,  // list only locales provided by I18N
-    SPELL_USED        = 0x0200,
-    HYPH_USED         = 0x0400,
-    THES_USED         = 0x0800,
-    ALSO_PRIMARY_ONLY = 0x1000,  // Do not exclude primary-only
-                                 // languages that do not form a
-                                 // locale, such as Arabic as
-                                 // opposed to Arabic-Egypt.
+    ONLY_KNOWN        = 0x0020,  // list only locales provided by I18N
+    SPELL_USED        = 0x0040,
 };
 namespace o3tl
 {
-    template<> struct typed_flags<SvxLanguageListFlags> : is_typed_flags<SvxLanguageListFlags, 0x1fff> {};
+    template<> struct typed_flags<SvxLanguageListFlags> : is_typed_flags<SvxLanguageListFlags, 0x007f> {};
 }
 
 // load language strings from resource
-SVX_DLLPUBLIC OUString    GetDicInfoStr( const OUString& rName, const LanguageType nLang, bool bNeg );
+SVXCORE_DLLPUBLIC OUString    GetDicInfoStr( const OUString& rName, const LanguageType nLang, bool bNeg );
 
-class SVX_DLLPUBLIC SvxLanguageBoxBase
-{
-private:
-    SvxLanguageBoxBase(const SvxLanguageBoxBase&) = delete;
-    SvxLanguageBoxBase& operator=(const SvxLanguageBoxBase&) = delete;
-public:
-    explicit SvxLanguageBoxBase();
-    virtual ~SvxLanguageBoxBase();
-
-    void            SetLanguageList( SvxLanguageListFlags nLangList,
-                            bool bHasLangNone, bool bLangNoneIsLangAll = false,
-                            bool bCheckSpellAvail = false );
-
-    void            AddLanguages( const std::vector< LanguageType >& rLanguageTypes, SvxLanguageListFlags nLangList );
-
-    sal_Int32       InsertLanguage( const LanguageType eLangType );
-    void            InsertDefaultLanguage( sal_Int16 nType );
-    void            InsertSystemLanguage();
-    void            InsertLanguage( const LanguageType eLangType,
-                                    bool bCheckEntry );
-    void            RemoveLanguage( const LanguageType eLangType );
-    void            SelectLanguage( const LanguageType eLangType );
-    LanguageType    GetSelectLanguage() const;
-    bool            IsLanguageSelected( const LanguageType eLangType ) const;
-
-    void                SetNoSelectionLBB();
-    void                HideLBB();
-    void                DisableLBB();
-    void                SaveValueLBB();
-    sal_Int32           GetSelectEntryPosLBB() const;
-    void*               GetEntryDataLBB( sal_Int32  nPos ) const;
-    sal_Int32           GetSavedValueLBB() const;
-
-protected:
-    Image                   m_aNotCheckedImage;
-    Image                   m_aCheckedImage;
-    OUString                m_aAllString;
-    std::unique_ptr<css::uno::Sequence< sal_Int16 >>
-                            m_pSpellUsedLang;
-    bool                    m_bHasLangNone;
-    bool                    m_bLangNoneIsLangAll;
-    bool                    m_bWithCheckmark;
-
-    SVX_DLLPRIVATE void                 ImplLanguageBoxBaseInit();
-    SVX_DLLPRIVATE sal_Int32            ImplInsertLanguage(LanguageType, sal_Int32 nPos, sal_Int16 nType);
-    SVX_DLLPRIVATE sal_Int32            ImplTypeToPos( LanguageType eType ) const;
-
-    SVX_DLLPRIVATE virtual sal_Int32    ImplInsertImgEntry( const OUString& rEntry, sal_Int32  nPos, bool bChecked ) = 0;
-    SVX_DLLPRIVATE virtual void         ImplRemoveEntryAt( sal_Int32 nPos ) = 0;
-
-    SVX_DLLPRIVATE virtual void         ImplClear() = 0;
-    SVX_DLLPRIVATE virtual sal_Int32    ImplInsertEntry( const OUString& rEntry, sal_Int32 nPos ) = 0;
-    SVX_DLLPRIVATE virtual void         ImplSetEntryData( sal_Int32 nPos, void* pData ) = 0;
-    SVX_DLLPRIVATE virtual sal_Int32    ImplGetSelectEntryPos() const = 0;
-    SVX_DLLPRIVATE virtual void*        ImplGetEntryData( sal_Int32 nPos ) const = 0;
-    SVX_DLLPRIVATE virtual void         ImplSelectEntryPos( sal_Int32 nPos, bool bSelect ) = 0;
-    SVX_DLLPRIVATE virtual bool         ImplIsEntryPosSelected( sal_Int32 nPos ) const = 0;
-    SVX_DLLPRIVATE virtual sal_Int32    ImplGetEntryPos( const void* pData ) const = 0;
-    SVX_DLLPRIVATE virtual void         ImplSetNoSelection() = 0;
-    SVX_DLLPRIVATE virtual void         ImplHide() = 0;
-    SVX_DLLPRIVATE virtual void         ImplDisable() = 0;
-    SVX_DLLPRIVATE virtual void         ImplSaveValue() = 0;
-    SVX_DLLPRIVATE virtual sal_Int32    ImplGetSavedValue() const = 0;
-};
-
-
-class SVX_DLLPUBLIC SvxLanguageBox : public ListBox, public SvxLanguageBoxBase
+class SVXCORE_DLLPUBLIC SvxLanguageBox
 {
 public:
-    SvxLanguageBox( vcl::Window* pParent, WinBits nBits );
-
-private:
-    SVX_DLLPRIVATE virtual sal_Int32    ImplInsertImgEntry( const OUString& rEntry, sal_Int32  nPos, bool bChecked ) override;
-    SVX_DLLPRIVATE virtual void         ImplRemoveEntryAt( sal_Int32 nPos ) override;
-
-    SVX_DLLPRIVATE virtual void         ImplClear() override;
-    SVX_DLLPRIVATE virtual sal_Int32    ImplInsertEntry( const OUString& rEntry, sal_Int32 nPos ) override;
-    SVX_DLLPRIVATE virtual void         ImplSetEntryData( sal_Int32 nPos, void* pData ) override;
-    SVX_DLLPRIVATE virtual sal_Int32    ImplGetSelectEntryPos() const override;
-    SVX_DLLPRIVATE virtual void*        ImplGetEntryData( sal_Int32 nPos ) const override;
-    SVX_DLLPRIVATE virtual void         ImplSelectEntryPos( sal_Int32 nPos, bool bSelect ) override;
-    SVX_DLLPRIVATE virtual bool         ImplIsEntryPosSelected( sal_Int32 nPos ) const override;
-    SVX_DLLPRIVATE virtual sal_Int32    ImplGetEntryPos( const void* pData ) const override;
-    SVX_DLLPRIVATE virtual void         ImplSetNoSelection() override;
-    SVX_DLLPRIVATE virtual void         ImplHide() override;
-    SVX_DLLPRIVATE virtual void         ImplDisable() override;
-    SVX_DLLPRIVATE virtual void         ImplSaveValue() override;
-    SVX_DLLPRIVATE virtual sal_Int32    ImplGetSavedValue() const override;
-};
-
-
-class SVX_DLLPUBLIC SvxLanguageComboBox : public ComboBox, public SvxLanguageBoxBase
-{
-public:
-    SvxLanguageComboBox( vcl::Window* pParent, WinBits nBits );
-
     enum class EditedAndValid
     {
         No,
@@ -159,32 +55,61 @@ public:
         Invalid
     };
 
-    EditedAndValid      GetEditedAndValid() const { return meEditedAndValid;}
+private:
+    std::unique_ptr<weld::ComboBox> m_xControl;
+    Link<weld::ComboBox&, void> m_aChangeHdl;
+    OUString m_aAllString;
+    std::unique_ptr<css::uno::Sequence<sal_Int16>> m_xSpellUsedLang;
+    LanguageType m_eSavedLanguage;
+    EditedAndValid  m_eEditedAndValid;
+    bool m_bHasLangNone;
+    bool m_bLangNoneIsLangAll;
+    bool m_bWithCheckmark;
+
+    SVX_DLLPRIVATE weld::ComboBoxEntry BuildEntry(const LanguageType nLangType, sal_Int16 nType = css::i18n::ScriptType::WEAK);
+    SVX_DLLPRIVATE void AddLanguages(const std::vector< LanguageType >& rLanguageTypes, SvxLanguageListFlags nLangList,
+                                     std::vector<weld::ComboBoxEntry>& rEntries);
+    SVX_DLLPRIVATE void InsertLanguage(const LanguageType nLangType, sal_Int16 nType);
+
+    SVX_DLLPRIVATE int ImplTypeToPos(LanguageType eType) const;
+    DECL_LINK(ChangeHdl, weld::ComboBox&, void);
+public:
+    SvxLanguageBox(std::unique_ptr<weld::ComboBox> pControl);
+    void            SetLanguageList( SvxLanguageListFlags nLangList,
+                            bool bHasLangNone, bool bLangNoneIsLangAll = false,
+                            bool bCheckSpellAvail = false, bool bDefaultLangExist = false,
+                            LanguageType eDefaultLangType = LANGUAGE_NONE,
+                            sal_Int16 nDefaultType = 0 );
+    void            InsertLanguage(const LanguageType nLangType);
+
+    EditedAndValid      GetEditedAndValid() const { return m_eEditedAndValid;}
     sal_Int32           SaveEditedAsEntry();
 
-
-private:
-    sal_Int32       mnSavedValuePos;
-    EditedAndValid  meEditedAndValid;
-
-    SVX_DLLPRIVATE virtual sal_Int32    ImplInsertImgEntry( const OUString& rEntry, sal_Int32  nPos, bool bChecked ) override;
-    SVX_DLLPRIVATE virtual void         ImplRemoveEntryAt( sal_Int32 nPos ) override;
-
-    SVX_DLLPRIVATE virtual void         ImplClear() override;
-    SVX_DLLPRIVATE virtual sal_Int32    ImplInsertEntry( const OUString& rEntry, sal_Int32 nPos ) override;
-    SVX_DLLPRIVATE virtual void         ImplSetEntryData( sal_Int32 nPos, void* pData ) override;
-    SVX_DLLPRIVATE virtual sal_Int32    ImplGetSelectEntryPos() const override;
-    SVX_DLLPRIVATE virtual void*        ImplGetEntryData( sal_Int32 nPos ) const override;
-    SVX_DLLPRIVATE virtual void         ImplSelectEntryPos( sal_Int32 nPos, bool bSelect ) override;
-    SVX_DLLPRIVATE virtual bool         ImplIsEntryPosSelected( sal_Int32 nPos ) const override;
-    SVX_DLLPRIVATE virtual sal_Int32    ImplGetEntryPos( const void* pData ) const override;
-    SVX_DLLPRIVATE virtual void         ImplSetNoSelection() override;
-    SVX_DLLPRIVATE virtual void         ImplHide() override;
-    SVX_DLLPRIVATE virtual void         ImplDisable() override;
-    SVX_DLLPRIVATE virtual void         ImplSaveValue() override;
-    SVX_DLLPRIVATE virtual sal_Int32    ImplGetSavedValue() const override;
-
-    DECL_LINK( EditModifyHdl, Edit&, void );
+    void connect_changed(const Link<weld::ComboBox&, void>& rLink) { m_aChangeHdl = rLink; }
+    void connect_focus_in(const Link<weld::Widget&, void>& rLink) { m_xControl->connect_focus_in(rLink); }
+    void grab_focus() { m_xControl->grab_focus(); }
+    void save_active_id() { m_eSavedLanguage = get_active_id(); }
+    LanguageType get_saved_active_id() const { return m_eSavedLanguage; }
+    bool get_active_id_changed_from_saved() const { return m_eSavedLanguage != get_active_id(); }
+    void show() { m_xControl->show(); }
+    void hide() { m_xControl->hide(); }
+    void set_visible(bool bShow) { m_xControl->set_visible(bShow); }
+    void set_sensitive(bool bSensitive) { m_xControl->set_sensitive(bSensitive); }
+    void set_active(int nPos) { m_xControl->set_active(nPos); }
+    int get_active() const { return m_xControl->get_active(); }
+    void set_active_id(const LanguageType eLangType);
+    OUString get_active_text() const { return m_xControl->get_active_text(); }
+    bool get_visible() const { return m_xControl->get_visible(); }
+    LanguageType get_active_id() const;
+    int find_id(const LanguageType eLangType) const;
+    LanguageType get_id(int nPos) const;
+    void set_id(int nPos, const LanguageType eLangType);
+    void remove_id(const LanguageType eLangType);
+    void append(const LanguageType eLangType, const OUString& rStr);
+    int find_text(const OUString& rStr) const { return m_xControl->find_text(rStr); }
+    OUString get_text(int nPos) const { return m_xControl->get_text(nPos); }
+    int get_count() const { return m_xControl->get_count(); }
+    weld::ComboBox* get_widget() { return m_xControl.get(); }
 };
 
 #endif

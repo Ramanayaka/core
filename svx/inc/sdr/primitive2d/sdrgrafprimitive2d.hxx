@@ -22,39 +22,36 @@
 
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <svtools/grfmgr.hxx>
-#include <svx/sdr/attribute/sdrlinefillshadowtextattribute.hxx>
+#include <vcl/GraphicObject.hxx>
+#include <sdr/attribute/sdrlinefilleffectstextattribute.hxx>
 
 
 // predefines
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class SdrGrafPrimitive2D : public BufferedDecompositionPrimitive2D
+        class SdrGrafPrimitive2D final : public BufferedDecompositionPrimitive2D
         {
         private:
             ::basegfx::B2DHomMatrix                     maTransform;
-            attribute::SdrLineFillShadowTextAttribute   maSdrLFSTAttribute;
+            attribute::SdrLineFillEffectsTextAttribute   maSdrLFSTAttribute;
             GraphicObject                               maGraphicObject;
             GraphicAttr                                 maGraphicAttr;
 
-        protected:
             // local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
 
         public:
             SdrGrafPrimitive2D(
                 const ::basegfx::B2DHomMatrix& rTransform,
-                const attribute::SdrLineFillShadowTextAttribute& rSdrLFSTAttribute,
+                const attribute::SdrLineFillEffectsTextAttribute& rSdrLFSTAttribute,
                 const GraphicObject& rGraphicObject,
                 const GraphicAttr& rGraphicAttr);
 
             // data access
             const ::basegfx::B2DHomMatrix& getTransform() const { return maTransform; }
-            const attribute::SdrLineFillShadowTextAttribute& getSdrLFSTAttribute() const { return maSdrLFSTAttribute; }
+            const attribute::SdrLineFillEffectsTextAttribute& getSdrLFSTAttribute() const { return maSdrLFSTAttribute; }
             const GraphicObject& getGraphicObject() const { return maGraphicObject; }
             const GraphicAttr& getGraphicAttr() const { return maGraphicAttr; }
             bool isTransparent() const;
@@ -63,10 +60,9 @@ namespace drawinglayer
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             // provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
 #endif // INCLUDED_SVX_INC_SDR_PRIMITIVE2D_SDRGRAFPRIMITIVE2D_HXX

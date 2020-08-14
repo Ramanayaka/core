@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "flat/EColumns.hxx"
-#include "flat/ETable.hxx"
-#include <connectivity/sdbcx/VColumn.hxx>
+#include <flat/EColumns.hxx>
+#include <flat/ETable.hxx>
 
 using namespace connectivity::flat;
 using namespace connectivity;
@@ -33,10 +32,10 @@ using namespace ::com::sun::star::container;
 sdbcx::ObjectType OFlatColumns::createObject(const OUString& _rName)
 {
     OFlatTable* pTable = static_cast<OFlatTable*>(m_pTable);
-    ::rtl::Reference<OSQLColumns> aCols = pTable->getTableColumns();
-    OSQLColumns::Vector::const_iterator aIter = find(aCols->get().begin(),aCols->get().end(),_rName,::comphelper::UStringMixEqual(isCaseSensitive()));
+    const ::rtl::Reference<OSQLColumns>& aCols = pTable->getTableColumns();
+    OSQLColumns::const_iterator aIter = find(aCols->begin(),aCols->end(),_rName,::comphelper::UStringMixEqual(isCaseSensitive()));
     sdbcx::ObjectType xRet;
-    if(aIter != aCols->get().end())
+    if(aIter != aCols->end())
         xRet = sdbcx::ObjectType(*aIter,UNO_QUERY);
     return xRet;
 }

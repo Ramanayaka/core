@@ -18,11 +18,13 @@
  */
 
 #include "ChartModelClone.hxx"
-#include "ChartModelHelper.hxx"
-#include "ControllerLockGuard.hxx"
-#include "DataSourceHelper.hxx"
+#include <ChartModel.hxx>
+#include <ChartModelHelper.hxx>
+#include <ControllerLockGuard.hxx>
+#include <DataSourceHelper.hxx>
 
 #include <com/sun/star/chart2/XAnyDescriptionAccess.hpp>
+#include <com/sun/star/chart2/XInternalDataProvider.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
@@ -68,7 +70,7 @@ namespace chart
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("chart2");
             }
             return xResult;
         }
@@ -99,7 +101,7 @@ namespace chart
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -121,7 +123,7 @@ namespace chart
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
         m_xModelClone.clear();
         m_xDataClone.clear();
@@ -150,7 +152,7 @@ namespace chart
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("chart2");
             }
         }
     }
@@ -190,7 +192,7 @@ namespace chart
             Reference< XChartDocument > xDestination( i_model, UNO_QUERY_THROW );
 
             // propagate the correct flag for plotting of hidden values to the data provider and all used sequences
-            ChartModel& rModel = dynamic_cast<ChartModel&>(*i_model.get());
+            ChartModel& rModel = dynamic_cast<ChartModel&>(*i_model);
             ChartModelHelper::setIncludeHiddenCells(ChartModelHelper::isIncludeHiddenCells( i_modelToCopyFrom ), rModel);
 
             // diagram
@@ -218,11 +220,11 @@ namespace chart
                 Reference< XDataSource > xUsedData( DataSourceHelper::getUsedData( i_model ) );
                 if ( xUsedData.is() && xNewDataProvider.is() )
                 {
-                    Sequence< Reference< XLabeledDataSequence > > aData( xUsedData->getDataSequences() );
-                    for( sal_Int32 i=0; i<aData.getLength(); ++i )
+                    const Sequence< Reference< XLabeledDataSequence > > aData( xUsedData->getDataSequences() );
+                    for( Reference< XLabeledDataSequence > const & labeledDataSeq : aData )
                     {
-                        xNewDataProvider->registerDataSequenceForChanges( aData[i]->getValues() );
-                        xNewDataProvider->registerDataSequenceForChanges( aData[i]->getLabel() );
+                        xNewDataProvider->registerDataSequenceForChanges( labeledDataSeq->getValues() );
+                        xNewDataProvider->registerDataSequenceForChanges( labeledDataSeq->getLabel() );
                     }
                 }
             }
@@ -238,7 +240,7 @@ namespace chart
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 

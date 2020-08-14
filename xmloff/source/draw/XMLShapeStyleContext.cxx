@@ -18,21 +18,25 @@
  */
 
 #include <tools/debug.hxx>
+#include <sal/log.hxx>
 #include <xmloff/XMLShapeStyleContext.hxx>
-#include "XMLShapePropertySetContext.hxx"
+#include <XMLShapePropertySetContext.hxx>
 #include <xmloff/contextid.hxx>
 #include <com/sun/star/drawing/XControlShape.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/drawing/FillStyle.hpp>
+#include <com/sun/star/container/XIndexReplace.hpp>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmlnumi.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <xmloff/xmlprmap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlerror.hxx>
 #include <xmloff/maptype.hxx>
+#include <xmloff/xmlimppr.hxx>
 
-#include "sdpropls.hxx"
+#include <xmlsdtypes.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -50,7 +54,7 @@ XMLShapeStyleContext::XMLShapeStyleContext(
     const OUString& rLName,
     const uno::Reference< xml::sax::XAttributeList >& xAttrList,
     SvXMLStylesContext& rStyles,
-    sal_uInt16 nFamily)
+    XmlStyleFamily nFamily)
 :   XMLPropStyleContext(rImport, nPrfx, rLName, xAttrList, rStyles, nFamily ),
     m_bIsNumRuleAlreadyConverted( false )
 {
@@ -86,12 +90,12 @@ void XMLShapeStyleContext::SetAttribute( sal_uInt16 nPrefixKey, const OUString& 
     }
 }
 
-SvXMLImportContext *XMLShapeStyleContext::CreateChildContext(
+SvXMLImportContextRef XMLShapeStyleContext::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const Reference< xml::sax::XAttributeList > & xAttrList )
 {
-    SvXMLImportContext *pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     if( XML_NAMESPACE_STYLE == nPrefix || XML_NAMESPACE_LO_EXT == nPrefix )
     {
@@ -107,7 +111,7 @@ SvXMLImportContext *XMLShapeStyleContext::CreateChildContext(
             rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap =
                 GetStyles()->GetImportPropertyMapper( GetFamily() );
             if( xImpPrMap.is() )
-                pContext = new XMLShapePropertySetContext( GetImport(), nPrefix,
+                xContext = new XMLShapePropertySetContext( GetImport(), nPrefix,
                                                         rLocalName, xAttrList,
                                                         nFamily,
                                                         GetProperties(),
@@ -115,11 +119,11 @@ SvXMLImportContext *XMLShapeStyleContext::CreateChildContext(
         }
     }
 
-    if( !pContext )
-        pContext = XMLPropStyleContext::CreateChildContext( nPrefix, rLocalName,
+    if (!xContext)
+        xContext = XMLPropStyleContext::CreateChildContext( nPrefix, rLocalName,
                                                           xAttrList );
 
-    return pContext;
+    return xContext;
 }
 
 void XMLShapeStyleContext::FillPropertySet( const Reference< beans::XPropertySet > & rPropSet )
@@ -134,16 +138,12 @@ void XMLShapeStyleContext::FillPropertySet( const Reference< beans::XPropertySet
 
         ::std::vector< XMLPropertyState > &rProperties = GetProperties();
         ::std::vector< XMLPropertyState >::iterator end( rProperties.end() );
-        ::std::vector< XMLPropertyState >::iterator property;
 
         // first, look for the old format, where we had a text:list-style-name
         // attribute in the style:properties element
-        for( property = rProperties.begin(); property != end; ++property )
-        {
+        auto property = std::find_if(rProperties.begin(), end, [&rMapper](XMLPropertyState& rProp) {
             // find properties with context
-            if( (property->mnIndex != -1) && (rMapper->GetEntryContextId( property->mnIndex ) == CTF_SD_NUMBERINGRULES_NAME) )
-                break;
-        }
+            return (rProp.mnIndex != -1) && (rMapper->GetEntryContextId( rProp.mnIndex ) == CTF_SD_NUMBERINGRULES_NAME); });
 
         // if we did not find an old list-style-name in the properties, and we need one
         // because we got a style:list-style attribute in the style-style element
@@ -199,15 +199,15 @@ void XMLShapeStyleContext::FillPropertySet( const Reference< beans::XPropertySet
         { CTF_SD_OLE_VIS_AREA_IMPORT_HEIGHT, -1 },
         { -1, -1 }
     };
-    static const sal_uInt16 aFamilies[] =
+    static const XmlStyleFamily aFamilies[] =
     {
-        XML_STYLE_FAMILY_SD_STROKE_DASH_ID,
-        XML_STYLE_FAMILY_SD_MARKER_ID,
-        XML_STYLE_FAMILY_SD_MARKER_ID,
-        XML_STYLE_FAMILY_SD_GRADIENT_ID,
-        XML_STYLE_FAMILY_SD_GRADIENT_ID,
-        XML_STYLE_FAMILY_SD_HATCH_ID,
-        XML_STYLE_FAMILY_SD_FILL_IMAGE_ID
+        XmlStyleFamily::SD_STROKE_DASH_ID,
+        XmlStyleFamily::SD_MARKER_ID,
+        XmlStyleFamily::SD_MARKER_ID,
+        XmlStyleFamily::SD_GRADIENT_ID,
+        XmlStyleFamily::SD_GRADIENT_ID,
+        XmlStyleFamily::SD_HATCH_ID,
+        XmlStyleFamily::SD_FILL_IMAGE_ID
     };
 
     rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap =
@@ -303,20 +303,21 @@ void XMLShapeStyleContext::FillPropertySet( const Reference< beans::XPropertySet
         }
     }
 
-    if (!m_sControlDataStyleName.isEmpty())
-    {   // we had a data-style-name attribute
+    if (m_sControlDataStyleName.isEmpty())
+        return;
 
-        // set the formatting on the control model of the control shape
-        uno::Reference< drawing::XControlShape > xControlShape(rPropSet, uno::UNO_QUERY);
-        DBG_ASSERT(xControlShape.is(), "XMLShapeStyleContext::FillPropertySet: data style for a non-control shape!");
-        if (xControlShape.is())
+    // we had a data-style-name attribute
+
+    // set the formatting on the control model of the control shape
+    uno::Reference< drawing::XControlShape > xControlShape(rPropSet, uno::UNO_QUERY);
+    DBG_ASSERT(xControlShape.is(), "XMLShapeStyleContext::FillPropertySet: data style for a non-control shape!");
+    if (xControlShape.is())
+    {
+        uno::Reference< beans::XPropertySet > xControlModel(xControlShape->getControl(), uno::UNO_QUERY);
+        DBG_ASSERT(xControlModel.is(), "XMLShapeStyleContext::FillPropertySet: no control model for the shape!");
+        if (xControlModel.is())
         {
-            uno::Reference< beans::XPropertySet > xControlModel(xControlShape->getControl(), uno::UNO_QUERY);
-            DBG_ASSERT(xControlModel.is(), "XMLShapeStyleContext::FillPropertySet: no control model for the shape!");
-            if (xControlModel.is())
-            {
-                GetImport().GetFormImport()->applyControlNumberStyle(xControlModel, m_sControlDataStyleName);
-            }
+            GetImport().GetFormImport()->applyControlNumberStyle(xControlModel, m_sControlDataStyleName);
         }
     }
 }

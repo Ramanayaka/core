@@ -20,7 +20,9 @@
 #include <unoparagraph.hxx>
 
 #include <comphelper/interfacecontainer2.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <osl/diagnose.h>
 
 #include <cmdid.h>
 #include <unomid.h>
@@ -37,24 +39,27 @@
 #include <osl/mutex.hxx>
 #include <vcl/svapp.hxx>
 #include <docsh.hxx>
+#include <swunohelper.hxx>
 
 #include <com/sun/star/beans/SetPropertyTolerantFailed.hpp>
 #include <com/sun/star/beans/GetPropertyTolerantResult.hpp>
 #include <com/sun/star/beans/TolerantPropertySetResultType.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/text/WrapTextMode.hpp>
 #include <com/sun/star/text/TextContentAnchorType.hpp>
-#include <comphelper/servicehelper.hxx>
 
-#include <swunohelper.hxx>
-#include <svx/unobrushitemhelper.hxx>
-#include <editeng/unoipset.hxx>
-#include <svx/xflbstit.hxx>
-#include <svx/xflbmtit.hxx>
 #include <com/sun/star/drawing/BitmapMode.hpp>
+#include <comphelper/servicehelper.hxx>
+#include <editeng/unoipset.hxx>
+#include <svl/listener.hxx>
+#include <svx/unobrushitemhelper.hxx>
+#include <svx/xflbmtit.hxx>
+#include <svx/xflbstit.hxx>
 
 using namespace ::com::sun::star;
 
+namespace {
 
 class SwParaSelection
 {
@@ -63,6 +68,8 @@ public:
     explicit SwParaSelection(SwCursor & rCursor);
     ~SwParaSelection();
 };
+
+}
 
 SwParaSelection::SwParaSelection(SwCursor & rCursor)
     : m_rCursor(rCursor)
@@ -102,47 +109,47 @@ static beans::PropertyState lcl_SwXParagraph_getPropertyState(
                             bool &rAttrSetFetched );
 
 class SwXParagraph::Impl
-    : public SwClient
+    : public SvtListener
 {
 private:
     ::osl::Mutex m_Mutex; // just for OInterfaceContainerHelper2
 
 public:
-    SwXParagraph &              m_rThis;
+    SwXParagraph& m_rThis;
     uno::WeakReference<uno::XInterface> m_wThis;
     ::comphelper::OInterfaceContainerHelper2 m_EventListeners;
-    SfxItemPropertySet const&   m_rPropSet;
-    bool                        m_bIsDescriptor;
-    sal_Int32                   m_nSelectionStartPos;
-    sal_Int32                   m_nSelectionEndPos;
-    OUString             m_sText;
+    SfxItemPropertySet const& m_rPropSet;
+    bool m_bIsDescriptor;
+    sal_Int32 m_nSelectionStartPos;
+    sal_Int32 m_nSelectionEndPos;
+    OUString m_sText;
     uno::Reference<text::XText> m_xParentText;
+    SwTextNode* m_pTextNode;
 
-    Impl(   SwXParagraph & rThis,
-            SwTextNode *const pTextNode = nullptr,
-            uno::Reference< text::XText > const & xParent = nullptr,
+    Impl(SwXParagraph& rThis,
+            SwTextNode* const pTextNode = nullptr, uno::Reference<text::XText> const& xParent = nullptr,
             const sal_Int32 nSelStart = -1, const sal_Int32 nSelEnd = -1)
-        : SwClient(pTextNode)
-        , m_rThis(rThis)
+        : m_rThis(rThis)
         , m_EventListeners(m_Mutex)
         , m_rPropSet(*aSwMapProvider.GetPropertySet(PROPERTY_MAP_PARAGRAPH))
         , m_bIsDescriptor(nullptr == pTextNode)
         , m_nSelectionStartPos(nSelStart)
         , m_nSelectionEndPos(nSelEnd)
         , m_xParentText(xParent)
+        , m_pTextNode(pTextNode)
     {
+        m_pTextNode && StartListening(m_pTextNode->GetNotifier());
     }
 
     SwTextNode* GetTextNode() {
-        return static_cast<SwTextNode*>(GetRegisteredInNonConst());
+        return m_pTextNode;
     }
 
-    SwTextNode & GetTextNodeOrThrow() {
-        SwTextNode *const pTextNode( GetTextNode() );
-        if (!pTextNode) {
+    SwTextNode& GetTextNodeOrThrow() {
+        if (!m_pTextNode) {
             throw uno::RuntimeException("SwXParagraph: disposed or invalid", nullptr);
         }
-        return *pTextNode;
+        return *m_pTextNode;
     }
 
     bool IsDescriptor() const { return m_bIsDescriptor; }
@@ -175,26 +182,23 @@ public:
             const uno::Sequence< OUString >& rPropertyNames,
             bool bDirectValuesOnly);
 protected:
-    // SwClient
-    virtual void Modify(const SfxPoolItem *pOld, const SfxPoolItem *pNew) override;
+    virtual void Notify(const SfxHint& rHint) override;
 
 };
 
-void SwXParagraph::Impl::Modify( const SfxPoolItem *pOld, const SfxPoolItem *pNew )
+void SwXParagraph::Impl::Notify(const SfxHint& rHint)
 {
-    ClientModify(this, pOld, pNew);
-    if (GetRegisteredIn())
+    if(rHint.GetId() == SfxHintId::Dying)
     {
-        return; // core object still alive
+        m_pTextNode = nullptr;
+        uno::Reference<uno::XInterface> const xThis(m_wThis);
+        if (!xThis.is())
+        {   // fdo#72695: if UNO object is already dead, don't revive it with event
+            return;
+        }
+        lang::EventObject const ev(xThis);
+        m_EventListeners.disposeAndClear(ev);
     }
-
-    uno::Reference<uno::XInterface> const xThis(m_wThis);
-    if (!xThis.is())
-    {   // fdo#72695: if UNO object is already dead, don't revive it with event
-        return;
-    }
-    lang::EventObject const ev(xThis);
-    m_EventListeners.disposeAndClear(ev);
 }
 
 SwXParagraph::SwXParagraph()
@@ -249,7 +253,7 @@ SwXParagraph::CreateXParagraph(SwDoc & rDoc, SwTextNode *const pTextNode,
         SwPosition Pos(*pTextNode);
         xParentText.set(::sw::CreateParentXText( rDoc, Pos ));
     }
-    SwXParagraph *const pXPara( (pTextNode)
+    SwXParagraph *const pXPara( pTextNode
             ? new SwXParagraph(xParentText, *pTextNode, nSelStart, nSelEnd)
             : new SwXParagraph);
     // this is why the constructor is private: need to acquire pXPara here
@@ -299,22 +303,8 @@ SwXParagraph::getSomething(const uno::Sequence< sal_Int8 >& rId)
 OUString SAL_CALL
 SwXParagraph::getImplementationName()
 {
-    return OUString("SwXParagraph");
+    return "SwXParagraph";
 }
-
-static char const*const g_ServicesParagraph[] =
-{
-    "com.sun.star.text.TextContent",
-    "com.sun.star.text.Paragraph",
-    "com.sun.star.style.CharacterProperties",
-    "com.sun.star.style.CharacterPropertiesAsian",
-    "com.sun.star.style.CharacterPropertiesComplex",
-    "com.sun.star.style.ParagraphProperties",
-    "com.sun.star.style.ParagraphPropertiesAsian",
-    "com.sun.star.style.ParagraphPropertiesComplex",
-};
-
-static const size_t g_nServicesParagraph(SAL_N_ELEMENTS(g_ServicesParagraph));
 
 sal_Bool SAL_CALL
 SwXParagraph::supportsService(const OUString& rServiceName)
@@ -325,26 +315,35 @@ SwXParagraph::supportsService(const OUString& rServiceName)
 uno::Sequence< OUString > SAL_CALL
 SwXParagraph::getSupportedServiceNames()
 {
-    return ::sw::GetSupportedServiceNamesImpl(
-            g_nServicesParagraph, g_ServicesParagraph);
+    return {
+        "com.sun.star.text.TextContent",
+        "com.sun.star.text.Paragraph",
+        "com.sun.star.style.CharacterProperties",
+        "com.sun.star.style.CharacterPropertiesAsian",
+        "com.sun.star.style.CharacterPropertiesComplex",
+        "com.sun.star.style.ParagraphProperties",
+        "com.sun.star.style.ParagraphPropertiesAsian",
+        "com.sun.star.style.ParagraphPropertiesComplex"
+    };
 }
 
 void
 SwXParagraph::attachToText(SwXText & rParent, SwTextNode & rTextNode)
 {
     OSL_ENSURE(m_pImpl->m_bIsDescriptor, "Paragraph is not a descriptor");
-    if (m_pImpl->m_bIsDescriptor)
+    if (!m_pImpl->m_bIsDescriptor)
+        return;
+
+    m_pImpl->m_bIsDescriptor = false;
+    m_pImpl->EndListeningAll();
+    m_pImpl->StartListening(rTextNode.GetNotifier());
+    rTextNode.SetXParagraph(uno::Reference<text::XTextContent>(this));
+    m_pImpl->m_xParentText = &rParent;
+    if (!m_pImpl->m_sText.isEmpty())
     {
-        m_pImpl->m_bIsDescriptor = false;
-        rTextNode.Add(m_pImpl.get());
-        rTextNode.SetXParagraph(uno::Reference<text::XTextContent>(this));
-        m_pImpl->m_xParentText = &rParent;
-        if (!m_pImpl->m_sText.isEmpty())
-        {
-            try { setString(m_pImpl->m_sText); }
-            catch(...){}
-            (m_pImpl->m_sText).clear();
-        }
+        try { setString(m_pImpl->m_sText); }
+        catch(...){}
+        m_pImpl->m_sText.clear();
     }
 }
 
@@ -448,10 +447,9 @@ void SwXParagraph::Impl::GetSinglePropertyValue_Impl(
     {
         case RES_BACKGROUND:
         {
-            const SvxBrushItem aOriginalBrushItem(getSvxBrushItemFromSourceSet(rSet, RES_BACKGROUND));
-            const sal_uInt8 nMemberId(rEntry.nMemberId & (~SFX_METRIC_ITEM));
+            const std::unique_ptr<SvxBrushItem> aOriginalBrushItem(getSvxBrushItemFromSourceSet(rSet, RES_BACKGROUND));
 
-            if(!aOriginalBrushItem.QueryValue(rAny, nMemberId))
+            if(!aOriginalBrushItem->QueryValue(rAny, rEntry.nMemberId))
             {
                 OSL_ENSURE(false, "Error getting attribute from RES_BACKGROUND (!)");
             }
@@ -461,14 +459,11 @@ void SwXParagraph::Impl::GetSinglePropertyValue_Impl(
         }
         case OWN_ATTR_FILLBMP_MODE:
         {
-            const XFillBmpStretchItem* pStretchItem = dynamic_cast< const XFillBmpStretchItem* >(&rSet.Get(XATTR_FILLBMP_STRETCH));
-            const XFillBmpTileItem* pTileItem = dynamic_cast< const XFillBmpTileItem* >(&rSet.Get(XATTR_FILLBMP_TILE));
-
-            if( pTileItem && pTileItem->GetValue() )
+            if (rSet.Get(XATTR_FILLBMP_TILE).GetValue())
             {
                 rAny <<= drawing::BitmapMode_REPEAT;
             }
-            else if( pStretchItem && pStretchItem->GetValue() )
+            else if (rSet.Get(XATTR_FILLBMP_STRETCH).GetValue())
             {
                 rAny <<= drawing::BitmapMode_STRETCH;
             }
@@ -483,48 +478,48 @@ void SwXParagraph::Impl::GetSinglePropertyValue_Impl(
         default: break;
     }
 
-    if(!bDone)
+    if(bDone)
+        return;
+
+    // fallback to standard get value implementation used before this helper was created
+    m_rPropSet.getPropertyValue(rEntry, rSet, rAny);
+
+    if(rEntry.aType == cppu::UnoType<sal_Int16>::get() && rEntry.aType != rAny.getValueType())
     {
-        // fallback to standard get value implementation used before this helper was created
-        m_rPropSet.getPropertyValue(rEntry, rSet, rAny);
+        // since the sfx uInt16 item now exports a sal_Int32, we may have to fix this here
+        sal_Int32 nValue(0);
 
-        if(rEntry.aType == cppu::UnoType<sal_Int16>::get() && rEntry.aType != rAny.getValueType())
+        if (rAny >>= nValue)
         {
-            // since the sfx uInt16 item now exports a sal_Int32, we may have to fix this here
-            sal_Int32 nValue(0);
-
-            if (rAny >>= nValue)
-            {
-                rAny <<= static_cast<sal_Int16>(nValue);
-            }
+            rAny <<= static_cast<sal_Int16>(nValue);
         }
+    }
 
-        // check for needed metric translation
-        if(rEntry.nMemberId & SFX_METRIC_ITEM)
+    // check for needed metric translation
+    if(!(rEntry.nMoreFlags & PropertyMoreFlags::METRIC_ITEM))
+        return;
+
+    bool bDoIt(true);
+
+    if(XATTR_FILLBMP_SIZEX == rEntry.nWID || XATTR_FILLBMP_SIZEY == rEntry.nWID)
+    {
+        // exception: If these ItemTypes are used, do not convert when these are negative
+        // since this means they are intended as percent values
+        sal_Int32 nValue = 0;
+
+        if(rAny >>= nValue)
         {
-            bool bDoIt(true);
+            bDoIt = nValue > 0;
+        }
+    }
 
-            if(XATTR_FILLBMP_SIZEX == rEntry.nWID || XATTR_FILLBMP_SIZEY == rEntry.nWID)
-            {
-                // exception: If these ItemTypes are used, do not convert when these are negative
-                // since this means they are intended as percent values
-                sal_Int32 nValue = 0;
+    if(bDoIt)
+    {
+        const MapUnit eMapUnit(rSet.GetPool()->GetMetric(rEntry.nWID));
 
-                if(rAny >>= nValue)
-                {
-                    bDoIt = nValue > 0;
-                }
-            }
-
-            if(bDoIt)
-            {
-                const MapUnit eMapUnit(rSet.GetPool()->GetMetric(rEntry.nWID));
-
-                if(eMapUnit != MapUnit::Map100thMM)
-                {
-                    SvxUnoConvertToMM(eMapUnit, rAny);
-                }
-            }
+        if(eMapUnit != MapUnit::Map100thMM)
+        {
+            SvxUnoConvertToMM(eMapUnit, rAny);
         }
     }
 }
@@ -579,13 +574,15 @@ SwXParagraph::getPropertyValues(const uno::Sequence< OUString >& rPropertyNames)
     }
     catch (beans::UnknownPropertyException &)
     {
-        throw uno::RuntimeException("Unknown property exception caught",
-            static_cast<cppu::OWeakObject *>(this));
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException("Unknown property exception caught",
+                static_cast < cppu::OWeakObject * > ( this ), anyEx );
     }
     catch (lang::WrappedTargetException &)
     {
-        throw uno::RuntimeException("WrappedTargetException caught",
-            static_cast<cppu::OWeakObject *>(this));
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException("WrappedTargetException caught",
+                static_cast < cppu::OWeakObject * > ( this ), anyEx );
     }
 
     return aValues;
@@ -713,17 +710,11 @@ SwXParagraph::getPropertyValuesTolerant(
 
     uno::Sequence< beans::GetDirectPropertyTolerantResult > aTmpRes(
         m_pImpl->GetPropertyValuesTolerant_Impl( rPropertyNames, false ) );
-    const beans::GetDirectPropertyTolerantResult *pTmpRes =
-        aTmpRes.getConstArray();
 
     // copy temporary result to final result type
     const sal_Int32 nLen = aTmpRes.getLength();
     uno::Sequence< beans::GetPropertyTolerantResult > aRes( nLen );
-    beans::GetPropertyTolerantResult *pRes = aRes.getArray();
-    for (sal_Int32 i = 0;  i < nLen;  i++)
-    {
-        *pRes++ = *pTmpRes++;
-    }
+    std::copy(aTmpRes.begin(), aTmpRes.end(), aRes.begin());
     return aRes;
 }
 
@@ -752,7 +743,6 @@ SwXParagraph::Impl::GetPropertyValuesTolerant_Impl(
     const SwAttrSet& rValueAttrSet = rTextNode.GetSwAttrSet();
 
     sal_Int32 nProps = rPropertyNames.getLength();
-    const OUString *pProp = rPropertyNames.getConstArray();
 
     uno::Sequence< beans::GetDirectPropertyTolerantResult > aResult( nProps );
     beans::GetDirectPropertyTolerantResult *pResult = aResult.getArray();
@@ -761,17 +751,17 @@ SwXParagraph::Impl::GetPropertyValuesTolerant_Impl(
     // get entry to start with
     const SfxItemPropertyMap &rPropMap = m_rPropSet.getPropertyMap();
 
-    for (sal_Int32 i = 0;  i < nProps;  ++i)
+    for (const OUString& rProp : rPropertyNames)
     {
-        OSL_ENSURE( nIdx < nProps, "index out ouf bounds" );
+        OSL_ENSURE( nIdx < nProps, "index out of bounds" );
         beans::GetDirectPropertyTolerantResult &rResult = pResult[nIdx];
 
         try
         {
-            rResult.Name = pProp[i];
+            rResult.Name = rProp;
 
             SfxItemPropertySimpleEntry const*const pEntry =
-                rPropMap.getByName( pProp[i] );
+                rPropMap.getByName( rProp );
             if (!pEntry)  // property available?
             {
                 rResult.Result =
@@ -794,7 +784,7 @@ SwXParagraph::Impl::GetPropertyValuesTolerant_Impl(
                     // (compare to SwXParagraph::getPropertyValue(s))
                     uno::Any aValue;
                     if (! ::sw::GetDefaultTextContentValue(
-                                aValue, pProp[i], pEntry->nWID ) )
+                                aValue, rProp, pEntry->nWID ) )
                     {
                         SwPosition aPos( rTextNode );
                         SwPaM aPam( aPos );
@@ -1344,7 +1334,9 @@ OUString SAL_CALL SwXParagraph::getString()
     }
     else
     {
-        throw uno::RuntimeException();
+        // Seems object is being disposed or some other problem occurs.
+        // Anyway from user point of view object still exist, so on that level this is not an error
+        SAL_WARN("sw.uno", "getString() for invalid paragraph called. Returning empty string.");
     }
     return aRet;
 }
@@ -1417,7 +1409,7 @@ uno::Reference<frame::XModel> SwXParagraph::GetModel()
     if (pTextNode)
     {
         SwDocShell const*const pShell( pTextNode->GetDoc()->GetDocShell() );
-        return (pShell) ? pShell->GetModel() : nullptr;
+        return pShell ? pShell->GetModel() : nullptr;
     }
     return nullptr;
 }

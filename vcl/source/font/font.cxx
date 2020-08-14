@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sal/macros.h>
 #include <tools/stream.hxx>
 #include <tools/vcompat.hxx>
 #include <tools/gen.hxx>
@@ -26,14 +25,14 @@
 
 #include <vcl/font.hxx>
 
-#include "impfont.hxx"
-#include "fontinstance.hxx"
-#include "fontattributes.hxx"
-#include "sft.hxx"
+#include <impfont.hxx>
+#include <fontattributes.hxx>
+#include <sft.hxx>
 
 #include <algorithm>
 
 #include <rtl/instance.hxx>
+#include <TypeSerializer.hxx>
 
 using namespace vcl;
 
@@ -51,7 +50,7 @@ Font::Font( const vcl::Font& rFont ) : mpImplFont( rFont.mpImplFont )
 {
 }
 
-Font::Font( vcl::Font&& rFont ) : mpImplFont( std::move(rFont.mpImplFont) )
+Font::Font( vcl::Font&& rFont ) noexcept : mpImplFont( std::move(rFont.mpImplFont) )
 {
 }
 
@@ -210,7 +209,7 @@ void Font::SetKerning( FontKerning eKerning )
 
 bool Font::IsKerning() const
 {
-    return !(mpImplFont->meKerning == FontKerning::NONE);
+    return mpImplFont->meKerning != FontKerning::NONE;
 }
 
 void Font::SetWeight( FontWeight eWeight )
@@ -285,7 +284,7 @@ Font& Font::operator=( const vcl::Font& rFont )
     return *this;
 }
 
-Font& Font::operator=( vcl::Font&& rFont )
+Font& Font::operator=( vcl::Font&& rFont ) noexcept
 {
     mpImplFont = std::move(rFont.mpImplFont);
     return *this;
@@ -361,23 +360,24 @@ void Font::GetFontAttributes( FontAttributes& rAttrs ) const
 SvStream& ReadImplFont( SvStream& rIStm, ImplFont& rImplFont )
 {
     VersionCompat   aCompat( rIStm, StreamMode::READ );
-    sal_uInt16      nTmp16;
-    bool            bTmp;
-    sal_uInt8       nTmp8;
+    sal_uInt16      nTmp16(0);
+    bool            bTmp(false);
+    sal_uInt8       nTmp8(0);
 
     rImplFont.SetFamilyName( rIStm.ReadUniOrByteString(rIStm.GetStreamCharSet()) );
     rImplFont.maStyleName = rIStm.ReadUniOrByteString(rIStm.GetStreamCharSet());
-    ReadPair( rIStm, rImplFont.maAverageFontSize );
+    TypeSerializer aSerializer(rIStm);
+    aSerializer.readSize(rImplFont.maAverageFontSize);
 
-    rIStm.ReadUInt16( nTmp16 ); rImplFont.SetCharSet( (rtl_TextEncoding) nTmp16 );
-    rIStm.ReadUInt16( nTmp16 ); rImplFont.SetFamilyType( (FontFamily) nTmp16 );
-    rIStm.ReadUInt16( nTmp16 ); rImplFont.SetPitch( (FontPitch) nTmp16 );
-    rIStm.ReadUInt16( nTmp16 ); rImplFont.SetWeight( (FontWeight) nTmp16 );
-    rIStm.ReadUInt16( nTmp16 ); rImplFont.meUnderline = (FontLineStyle) nTmp16;
-    rIStm.ReadUInt16( nTmp16 ); rImplFont.meStrikeout = (FontStrikeout) nTmp16;
-    rIStm.ReadUInt16( nTmp16 ); rImplFont.SetItalic( (FontItalic) nTmp16 );
+    rIStm.ReadUInt16( nTmp16 ); rImplFont.SetCharSet( static_cast<rtl_TextEncoding>(nTmp16) );
+    rIStm.ReadUInt16( nTmp16 ); rImplFont.SetFamilyType( static_cast<FontFamily>(nTmp16) );
+    rIStm.ReadUInt16( nTmp16 ); rImplFont.SetPitch( static_cast<FontPitch>(nTmp16) );
+    rIStm.ReadUInt16( nTmp16 ); rImplFont.SetWeight( static_cast<FontWeight>(nTmp16) );
+    rIStm.ReadUInt16( nTmp16 ); rImplFont.meUnderline = static_cast<FontLineStyle>(nTmp16);
+    rIStm.ReadUInt16( nTmp16 ); rImplFont.meStrikeout = static_cast<FontStrikeout>(nTmp16);
+    rIStm.ReadUInt16( nTmp16 ); rImplFont.SetItalic( static_cast<FontItalic>(nTmp16) );
     rIStm.ReadUInt16( nTmp16 ); rImplFont.maLanguageTag.reset( LanguageType(nTmp16) );
-    rIStm.ReadUInt16( nTmp16 ); rImplFont.meWidthType = (FontWidth) nTmp16;
+    rIStm.ReadUInt16( nTmp16 ); rImplFont.meWidthType = static_cast<FontWidth>(nTmp16);
 
     rIStm.ReadInt16( rImplFont.mnOrientation );
 
@@ -388,15 +388,15 @@ SvStream& ReadImplFont( SvStream& rIStm, ImplFont& rImplFont )
 
     if( aCompat.GetVersion() >= 2 )
     {
-        rIStm.ReadUChar( nTmp8 );     rImplFont.meRelief = (FontRelief)nTmp8;
+        rIStm.ReadUChar( nTmp8 );     rImplFont.meRelief = static_cast<FontRelief>(nTmp8);
         rIStm.ReadUInt16( nTmp16 );   rImplFont.maCJKLanguageTag.reset( LanguageType(nTmp16) );
         rIStm.ReadCharAsBool( bTmp ); rImplFont.mbVertical = bTmp;
-        rIStm.ReadUInt16( nTmp16 );   rImplFont.meEmphasisMark = (FontEmphasisMark)nTmp16;
+        rIStm.ReadUInt16( nTmp16 );   rImplFont.meEmphasisMark = static_cast<FontEmphasisMark>(nTmp16);
     }
 
     if( aCompat.GetVersion() >= 3 )
     {
-        rIStm.ReadUInt16( nTmp16 ); rImplFont.meOverline = (FontLineStyle) nTmp16;
+        rIStm.ReadUInt16( nTmp16 ); rImplFont.meOverline = static_cast<FontLineStyle>(nTmp16);
     }
 
     // Relief
@@ -408,9 +408,10 @@ SvStream& ReadImplFont( SvStream& rIStm, ImplFont& rImplFont )
 SvStream& WriteImplFont( SvStream& rOStm, const ImplFont& rImplFont )
 {
     VersionCompat aCompat( rOStm, StreamMode::WRITE, 3 );
+    TypeSerializer aSerializer(rOStm);
     rOStm.WriteUniOrByteString( rImplFont.GetFamilyName(), rOStm.GetStreamCharSet() );
     rOStm.WriteUniOrByteString( rImplFont.GetStyleName(), rOStm.GetStreamCharSet() );
-    WritePair( rOStm, rImplFont.maAverageFontSize );
+    aSerializer.writeSize(rImplFont.maAverageFontSize);
 
     rOStm.WriteUInt16( GetStoreCharSet( rImplFont.GetCharSet() ) );
     rOStm.WriteUInt16( rImplFont.GetFamilyTypeNoAsk() );
@@ -419,7 +420,7 @@ SvStream& WriteImplFont( SvStream& rOStm, const ImplFont& rImplFont )
     rOStm.WriteUInt16( rImplFont.meUnderline );
     rOStm.WriteUInt16( rImplFont.meStrikeout );
     rOStm.WriteUInt16( rImplFont.GetItalicNoAsk() );
-    rOStm.WriteUInt16( (sal_uInt16)rImplFont.maLanguageTag.getLanguageType( false) );
+    rOStm.WriteUInt16( static_cast<sal_uInt16>(rImplFont.maLanguageTag.getLanguageType( false)) );
     rOStm.WriteUInt16( rImplFont.GetWidthTypeNoAsk() );
 
     rOStm.WriteInt16( rImplFont.mnOrientation );
@@ -430,10 +431,10 @@ SvStream& WriteImplFont( SvStream& rOStm, const ImplFont& rImplFont )
     rOStm.WriteUChar( static_cast<sal_uInt8>(rImplFont.meKerning) );
 
     // new in version 2
-    rOStm.WriteUChar( (sal_uChar)rImplFont.meRelief );
-    rOStm.WriteUInt16( (sal_uInt16)rImplFont.maCJKLanguageTag.getLanguageType( false) );
+    rOStm.WriteUChar( static_cast<sal_uChar>(rImplFont.meRelief) );
+    rOStm.WriteUInt16( static_cast<sal_uInt16>(rImplFont.maCJKLanguageTag.getLanguageType( false)) );
     rOStm.WriteBool( rImplFont.mbVertical );
-    rOStm.WriteUInt16( (sal_uInt16)rImplFont.meEmphasisMark );
+    rOStm.WriteUInt16( static_cast<sal_uInt16>(rImplFont.meEmphasisMark) );
 
     // new in version 3
     rOStm.WriteUInt16( rImplFont.meOverline );
@@ -457,7 +458,7 @@ namespace
     {
         bool bResult = false;
         TrueTypeFont* pTTF = nullptr;
-        if( OpenTTFontBuffer( i_pBuffer, i_nSize, 0, &pTTF ) == SF_OK )
+        if( OpenTTFontBuffer( i_pBuffer, i_nSize, 0, &pTTF ) == SFErrCodes::Ok )
         {
             TTGlobalFontInfo aInfo;
             GetTTGlobalFontInfo( pTTF, &aInfo );
@@ -543,7 +544,7 @@ namespace
             return rtl_str_compareIgnoreAsciiCase_WithLength( string, string_len, rRight.string, rRight.string_len ) < 0;
         }
     }
-    weight_table[] =
+    const weight_table[] =
     {
         { "black", 5, WEIGHT_BLACK },
         { "bold", 4, WEIGHT_BOLD },
@@ -588,7 +589,8 @@ namespace
             const char* pItalicPos = std::search( pStream, pExecPos, pItalic, pItalic+12 );
             if( pItalicPos != pExecPos )
             {
-                sal_Int32 nItalic = rtl_str_toInt32( pItalicPos+12, 10 );
+                const char* pItalicEnd = pItalicPos + 12;
+                auto nItalic = rtl_str_toInt64_WithLength(pItalicEnd, 10, pExecPos - pItalicEnd);
                 o_rResult.SetItalic( (nItalic != 0) ? ITALIC_NORMAL : ITALIC_NONE );
             }
 
@@ -610,9 +612,9 @@ namespace
                     aEnt.string = pOpen+1;
                     aEnt.string_len = (pClose-pOpen)-1;
                     aEnt.weight = WEIGHT_NORMAL;
-                    const int nEnt = SAL_N_ELEMENTS( weight_table );
-                    WeightSearchEntry* pFound = std::lower_bound( weight_table, weight_table+nEnt, aEnt );
-                    if( pFound != (weight_table+nEnt) )
+                    WeightSearchEntry const * pFound = std::lower_bound( std::begin(weight_table), std::end(weight_table), aEnt );
+                    if( pFound != std::end(weight_table) &&
+                        rtl_str_compareIgnoreAsciiCase_WithLength( pFound->string, pFound->string_len, aEnt.string, aEnt.string_len) == 0 )
                         o_rResult.SetWeight( pFound->weight );
                 }
             }
@@ -702,8 +704,6 @@ void Font::SetQuality( int nQuality ) { mpImplFont->SetQuality( nQuality ); }
 void Font::IncreaseQualityBy( int nQualityAmount ) { mpImplFont->IncreaseQualityBy( nQualityAmount ); }
 void Font::DecreaseQualityBy( int nQualityAmount ) { mpImplFont->DecreaseQualityBy( nQualityAmount ); }
 
-void Font::SetMapNames( OUString const & aMapNames ) { mpImplFont->SetMapNames(aMapNames); }
-
 bool Font::IsOutline() const { return mpImplFont->mbOutline; }
 bool Font::IsShadow() const { return mpImplFont->mbShadow; }
 FontRelief Font::GetRelief() const { return mpImplFont->meRelief; }
@@ -771,7 +771,6 @@ ImplFont::ImplFont( const ImplFont& rImplFont ) :
     mbTransparent( rImplFont.mbTransparent ),
     maColor( rImplFont.maColor ),
     maFillColor( rImplFont.maFillColor ),
-    maMapNames( rImplFont.maMapNames ),
     mbWordLine( rImplFont.mbWordLine ),
     mnOrientation( rImplFont.mnOrientation ),
     mnQuality( rImplFont.mnQuality )

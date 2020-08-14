@@ -16,19 +16,14 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SVTOOLS_SOURCE_CONTNR_TEMPLWIN_HXX
-#define INCLUDED_SVTOOLS_SOURCE_CONTNR_TEMPLWIN_HXX
+#pragma once
 
-#include <tools/resary.hxx>
+#include <rtl/ustring.hxx>
 
-class SvtDocInfoTable_Impl : public ResStringArray
+namespace SvtDocInfoTable_Impl
 {
-public:
-    SvtDocInfoTable_Impl();
-
-    OUString GetString( long nId ) const;
+    OUString GetString(int nId);
 };
 
-#endif // INCLUDED_SVTOOLS_SOURCE_CONTNR_TEMPLWIN_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

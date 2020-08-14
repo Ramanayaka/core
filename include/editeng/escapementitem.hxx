@@ -19,26 +19,25 @@
 #ifndef INCLUDED_EDITENG_ESCAPEMENTITEM_HXX
 #define INCLUDED_EDITENG_ESCAPEMENTITEM_HXX
 
-#include <svl/eitem.hxx>
+#include <svl/cenumitm.hxx>
 #include <editeng/svxenum.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
 // class SvxEscapementItem -----------------------------------------------
 
-#define DFLT_ESC_SUPER   33     // 1/3
-#define DFLT_ESC_SUB    -33     // also 1/3 previously 8/100
+#define DFLT_ESC_SUPER   33     // 42% (100 - DFLT_ESC_PROP) of ascent (~80% of font height) = 33% of total font height
+#define DFLT_ESC_SUB     -8     // 42% of descent (~20% of font height) = -8%. previously -33% (pre-2020), previously 8/100 (pre-2000?)
 #define DFLT_ESC_PROP    58
-#define DFLT_ESC_AUTO_SUPER 101
-#define DFLT_ESC_AUTO_SUB  -101
+#define MAX_ESC_POS      13999
+#define DFLT_ESC_AUTO_SUPER  (MAX_ESC_POS+1)
+#define DFLT_ESC_AUTO_SUB    -DFLT_ESC_AUTO_SUPER
 
 /*  [Description]
 
     This item describes the writing position.
 */
 
-class EDITENG_DLLPUBLIC SvxEscapementItem : public SfxEnumItemInterface
+class EDITENG_DLLPUBLIC SvxEscapementItem final : public SfxEnumItemInterface
 {
     short nEsc;
     sal_uInt8  nProp;
@@ -56,14 +55,12 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                     MapUnit eCoreMetric,
                                     MapUnit ePresMetric,
-                                    OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                    OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion) const override;
+    virtual SvxEscapementItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     void SetEscapement( const SvxEscapement eNew )
     {
@@ -73,16 +70,13 @@ public:
             nProp = 100;
         }
         else
+        {
+            nProp = DFLT_ESC_PROP;
             if( SvxEscapement::Superscript == eNew )
-            {
                 nEsc = DFLT_ESC_SUPER;
-                nProp = DFLT_ESC_PROP;
-            }
             else
-            {
                 nEsc = DFLT_ESC_SUB;
-                nProp = DFLT_ESC_PROP;
-            }
+        }
     }
     SvxEscapement GetEscapement() const { return static_cast< SvxEscapement >( GetEnumValue() ); }
 
@@ -92,15 +86,8 @@ public:
     sal_uInt8 &GetProportionalHeight() { return nProp; }
     sal_uInt8  GetProportionalHeight() const { return nProp; }
 
-    SvxEscapementItem& operator=(const SvxEscapementItem& rEsc)
-        {
-            nEsc  = rEsc.GetEsc();
-            nProp = rEsc.GetProportionalHeight();
-            return *this;
-        }
-
     virtual sal_uInt16      GetValueCount() const override;
-    virtual OUString   GetValueTextByPos( sal_uInt16 nPos ) const override;
+    static OUString         GetValueTextByPos( sal_uInt16 nPos );
     virtual sal_uInt16      GetEnumValue() const override;
     virtual void            SetEnumValue( sal_uInt16 nNewVal ) override;
 };

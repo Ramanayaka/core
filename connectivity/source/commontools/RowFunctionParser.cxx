@@ -29,15 +29,13 @@
 #define BOOST_SPIRIT_DEBUG
 #endif
 #include <boost/spirit/include/classic_core.hpp>
-#include "RowFunctionParser.hxx"
+#include <RowFunctionParser.hxx>
 #include <rtl/ustring.hxx>
-#include <tools/fract.hxx>
 
 
 #if (OSL_DEBUG_LEVEL > 0)
 #include <iostream>
 #endif
-#include <functional>
 #include <algorithm>
 #include <stack>
 
@@ -125,7 +123,7 @@ public:
 // FUNCTION PARSER
 
 
-typedef const sal_Char* StringIteratorT;
+typedef const char* StringIteratorT;
 
 struct ParserContext
 {
@@ -157,7 +155,7 @@ public:
     void operator()( StringIteratorT rFirst,StringIteratorT rSecond) const
     {
         OUString sVal( rFirst, rSecond - rFirst, RTL_TEXTENCODING_UTF8 );
-        mpContext->maOperandStack.push( std::shared_ptr<ExpressionNode>( new ConstantValueExpression( new ORowSetValueDecorator( sVal ) ) ) );
+        mpContext->maOperandStack.push( std::make_shared<ConstantValueExpression>( new ORowSetValueDecorator( sVal ) ) );
     }
 };
 
@@ -174,7 +172,7 @@ public:
     }
     void operator()( sal_Int32 n ) const
     {
-        mpContext->maOperandStack.push( std::shared_ptr<ExpressionNode>( new ConstantValueExpression( new ORowSetValueDecorator( n ) ) ) );
+        mpContext->maOperandStack.push( std::make_shared<ConstantValueExpression>( new ORowSetValueDecorator( n ) ) );
     }
 };
 
@@ -206,13 +204,13 @@ public:
             throw ParseError( "Not enough arguments for binary operator" );
 
         // retrieve arguments
-        std::shared_ptr<ExpressionNode> pSecondArg( rNodeStack.top() );
+        std::shared_ptr<ExpressionNode> pSecondArg( std::move(rNodeStack.top()) );
         rNodeStack.pop();
-        std::shared_ptr<ExpressionNode> pFirstArg( rNodeStack.top() );
+        std::shared_ptr<ExpressionNode> pFirstArg( std::move(rNodeStack.top()) );
         rNodeStack.pop();
 
         // create combined ExpressionNode
-        std::shared_ptr<ExpressionNode> pNode = std::shared_ptr<ExpressionNode>( new BinaryFunctionExpression( meFunct, pFirstArg, pSecondArg ) );
+        auto pNode = std::make_shared<BinaryFunctionExpression>( meFunct, pFirstArg, pSecondArg );
         // check for constness
         rNodeStack.push( pNode );
     }
@@ -231,7 +229,7 @@ public:
     }
     virtual ORowSetValueDecoratorRef evaluate(const ODatabaseMetaDataResultSet::ORow& _aRow ) const override
     {
-        return _aRow[mpArg->evaluate(_aRow )->getValue().getInt32()];
+        return _aRow[mpArg->evaluate(_aRow )->getValue().getUInt32()];
     }
     virtual void fill(const ODatabaseMetaDataResultSet::ORow& /*_aRow*/ ) const override
     {
@@ -253,14 +251,14 @@ public:
 
         ParserContext::OperandStack& rNodeStack( mpContext->maOperandStack );
 
-        if( rNodeStack.size() < 1 )
+        if( rNodeStack.empty() )
             throw ParseError( "Not enough arguments for unary operator" );
 
         // retrieve arguments
-        std::shared_ptr<ExpressionNode> pArg( rNodeStack.top() );
+        std::shared_ptr<ExpressionNode> pArg( std::move(rNodeStack.top()) );
         rNodeStack.pop();
 
-        rNodeStack.push( std::shared_ptr<ExpressionNode>( new UnaryFunctionExpression( pArg ) ) );
+        rNodeStack.push( std::make_shared<UnaryFunctionExpression>( pArg ) );
     }
 };
 
@@ -284,7 +282,7 @@ public:
                                                    ( '-' multiplicative_expression )* )
 
     */
-class ExpressionGrammar : public ::boost::spirit::grammar< ExpressionGrammar >
+class ExpressionGrammar : public ::boost::spirit::classic::grammar< ExpressionGrammar >
 {
 public:
     /** Create an arithmetic expression grammar
@@ -303,14 +301,14 @@ public:
         // grammar definition
         explicit definition( const ExpressionGrammar& self )
         {
-            using ::boost::spirit::space_p;
-            using ::boost::spirit::range_p;
-            using ::boost::spirit::lexeme_d;
-            using ::boost::spirit::ch_p;
-            using ::boost::spirit::int_p;
-            using ::boost::spirit::as_lower_d;
-            using ::boost::spirit::strlit;
-            using ::boost::spirit::inhibit_case;
+            using ::boost::spirit::classic::space_p;
+            using ::boost::spirit::classic::range_p;
+            using ::boost::spirit::classic::lexeme_d;
+            using ::boost::spirit::classic::ch_p;
+            using ::boost::spirit::classic::int_p;
+            using ::boost::spirit::classic::as_lower_d;
+            using ::boost::spirit::classic::strlit;
+            using ::boost::spirit::classic::inhibit_case;
 
 
             typedef inhibit_case<strlit<> > token_t;
@@ -362,7 +360,7 @@ public:
             BOOST_SPIRIT_DEBUG_RULE(andExpression);
         }
 
-        const ::boost::spirit::rule< ScannerT >& start() const
+        const ::boost::spirit::classic::rule< ScannerT >& start() const
         {
             return basicExpression;
         }
@@ -370,11 +368,11 @@ public:
     private:
         // the constituents of the Spirit arithmetic expression grammar.
         // For the sake of readability, without 'ma' prefix.
-        ::boost::spirit::rule< ScannerT >   basicExpression;
-        ::boost::spirit::rule< ScannerT >   unaryFunction;
-        ::boost::spirit::rule< ScannerT >   assignment;
-        ::boost::spirit::rule< ScannerT >   integer,argument;
-        ::boost::spirit::rule< ScannerT >   orExpression,andExpression;
+        ::boost::spirit::classic::rule< ScannerT >   basicExpression;
+        ::boost::spirit::classic::rule< ScannerT >   unaryFunction;
+        ::boost::spirit::classic::rule< ScannerT >   assignment;
+        ::boost::spirit::classic::rule< ScannerT >   integer,argument;
+        ::boost::spirit::classic::rule< ScannerT >   orExpression,andExpression;
     };
 
     const ParserContextSharedPtr& getContext() const
@@ -388,7 +386,7 @@ private:
 
 const ParserContextSharedPtr& getParserContext()
 {
-    static ParserContextSharedPtr lcl_parserContext( new ParserContext );
+    static ParserContextSharedPtr lcl_parserContext = std::make_shared<ParserContext>();
 
     // clear node stack (since we reuse the static object, that's
     // the whole point here)
@@ -400,7 +398,7 @@ const ParserContextSharedPtr& getParserContext()
 
 }
 
-std::shared_ptr<ExpressionNode> FunctionParser::parseFunction( const OUString& _sFunction)
+std::shared_ptr<ExpressionNode> const & FunctionParser::parseFunction( const OUString& _sFunction)
 {
     // TODO(Q1): Check if a combination of the RTL_UNICODETOTEXT_FLAGS_*
     // gives better conversion robustness here (we might want to map space
@@ -411,19 +409,17 @@ std::shared_ptr<ExpressionNode> FunctionParser::parseFunction( const OUString& _
     StringIteratorT aStart( rAsciiFunction.getStr() );
     StringIteratorT aEnd( rAsciiFunction.getStr()+rAsciiFunction.getLength() );
 
-    ParserContextSharedPtr pContext;
-
     // static parser context, because the actual
     // Spirit parser is also a static object
-    pContext = getParserContext();
+    ParserContextSharedPtr pContext = getParserContext();
 
     ExpressionGrammar aExpressionGrammer( pContext );
 
-    const ::boost::spirit::parse_info<StringIteratorT> aParseInfo(
-            ::boost::spirit::parse( aStart,
+    const ::boost::spirit::classic::parse_info<StringIteratorT> aParseInfo(
+            ::boost::spirit::classic::parse( aStart,
                                     aEnd,
                                     aExpressionGrammer,
-                                    ::boost::spirit::space_p ) );
+                                    ::boost::spirit::classic::space_p ) );
 
 #if (OSL_DEBUG_LEVEL > 0)
     std::cout.flush(); // needed to keep stdout and cout in sync

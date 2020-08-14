@@ -18,25 +18,19 @@
  */
 
 #include <stdio.h>
-#include <string.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <unistd.h>
-#include <limits.h>
 
 #include <tools/stream.hxx>
-#include <vector>
+#include <map>
 
 #include <osl/mutex.hxx>
 #include <osl/thread.h>
 #include <sal/log.hxx>
 
-// class FileBase
 #include <osl/file.hxx>
 #include <osl/detail/file.h>
 #include <rtl/instance.hxx>
-#include <rtl/strbuf.hxx>
 
 using namespace osl;
 
@@ -46,51 +40,9 @@ namespace {
 
 struct LockMutex : public rtl::Static< osl::Mutex, LockMutex > {};
 
-struct InternalStreamLock
-{
-    sal_uInt64         m_nStartPos;
-    sal_uInt64         m_nEndPos;
-    SvFileStream*      m_pStream;
-    osl::DirectoryItem m_aItem;
+struct Locks : public rtl::Static< std::map<SvFileStream const *, osl::DirectoryItem>, Locks > {};
 
-    InternalStreamLock( sal_uInt64, sal_uInt64, SvFileStream* );
-    ~InternalStreamLock();
-};
-
-struct LockList : public rtl::Static< std::vector<InternalStreamLock>, LockList > {};
-
-InternalStreamLock::InternalStreamLock(
-    sal_uInt64 const nStart,
-    sal_uInt64 const nEnd,
-    SvFileStream* pStream ) :
-        m_nStartPos( nStart ),
-        m_nEndPos( nEnd ),
-        m_pStream( pStream )
-{
-    osl::DirectoryItem::get( m_pStream->GetFileName(), m_aItem );
-#if OSL_DEBUG_LEVEL > 1
-    OString aFileName(OUStringToOString(m_pStream->GetFileName(),
-                                                  osl_getThreadTextEncoding()));
-    fprintf( stderr, "locked %s", aFileName.getStr() );
-    if( m_nStartPos || m_nEndPos )
-        fprintf(stderr, " [ %ld ... %ld ]", m_nStartPos, m_nEndPos );
-    fprintf( stderr, "\n" );
-#endif
-}
-
-InternalStreamLock::~InternalStreamLock()
-{
-#if OSL_DEBUG_LEVEL > 1
-    OString aFileName(OUStringToOString(m_pStream->GetFileName(),
-                                                  osl_getThreadTextEncoding()));
-    fprintf( stderr, "unlocked %s", aFileName.getStr() );
-    if( m_nStartPos || m_nEndPos )
-        fprintf(stderr, " [ %ld ... %ld ]", m_nStartPos, m_nEndPos );
-    fprintf( stderr, "\n" );
-#endif
-}
-
-bool lockFile( sal_uInt64 const nStart, sal_uInt64 const nEnd, SvFileStream* pStream )
+bool lockFile( SvFileStream* pStream )
 {
     osl::DirectoryItem aItem;
     if (osl::DirectoryItem::get( pStream->GetFileName(), aItem) != osl::FileBase::E_None )
@@ -109,60 +61,32 @@ bool lockFile( sal_uInt64 const nStart, sal_uInt64 const nEnd, SvFileStream* pSt
         return true;
 
     osl::MutexGuard aGuard( LockMutex::get() );
-    std::vector<InternalStreamLock> &rLockList = LockList::get();
-    for( std::vector<InternalStreamLock>::const_iterator i = rLockList.begin();
-         i != rLockList.end(); )
+    auto &rLocks = Locks::get();
+    for( const auto& [rLockStream, rLockItem] : rLocks )
     {
-        if( aItem.isIdenticalTo( i->m_aItem ) )
+        if( aItem.isIdenticalTo( rLockItem ) )
         {
-            bool bDenyByOptions = false;
-            StreamMode nLockMode = i->m_pStream->GetStreamMode();
+            StreamMode nLockMode = rLockStream->GetStreamMode();
             StreamMode nNewMode = pStream->GetStreamMode();
-
-            if( nLockMode & StreamMode::SHARE_DENYALL )
-                bDenyByOptions = true;
-            else if( ( nLockMode & StreamMode::SHARE_DENYWRITE ) &&
-                     ( nNewMode & StreamMode::WRITE ) )
-                bDenyByOptions = true;
-            else if( ( nLockMode &StreamMode::SHARE_DENYREAD ) &&
-                     ( nNewMode & StreamMode::READ ) )
-                bDenyByOptions = true;
+            bool bDenyByOptions = (nLockMode & StreamMode::SHARE_DENYALL) ||
+                ( (nLockMode & StreamMode::SHARE_DENYWRITE) && (nNewMode & StreamMode::WRITE) ) ||
+                ( (nLockMode & StreamMode::SHARE_DENYREAD) && (nNewMode & StreamMode::READ) );
 
             if( bDenyByOptions )
             {
-                if( i->m_nStartPos == 0 && i->m_nEndPos == 0 ) // whole file is already locked
-                    return false;
-                if( nStart == 0 && nEnd == 0) // cannot lock whole file
-                    return false;
-
-                if( ( nStart < i->m_nStartPos && nEnd > i->m_nStartPos ) ||
-                    ( nStart < i->m_nEndPos && nEnd > i->m_nEndPos ) )
-                    return false;
+                return false; // file is already locked
             }
         }
     }
-    rLockList.push_back( InternalStreamLock( nStart, nEnd, pStream ) );
+    rLocks[pStream] = aItem;
     return true;
 }
 
-void unlockFile( sal_uInt64 const nStart, sal_uInt64 const nEnd, SvFileStream const * pStream )
+void unlockFile( SvFileStream const * pStream )
 {
     osl::MutexGuard aGuard( LockMutex::get() );
-    std::vector<InternalStreamLock> &rLockList = LockList::get();
-    for( std::vector<InternalStreamLock>::iterator i = rLockList.begin();
-         i != rLockList.end(); )
-    {
-        if ( i->m_pStream == pStream
-             && ( ( nStart == 0 && nEnd == 0 )
-                  || ( i->m_nStartPos == nStart && i->m_nEndPos == nEnd ) ) )
-        {
-            i = rLockList.erase(i);
-        }
-        else
-        {
-            ++i;
-        }
-    }
+    auto &rLocks = Locks::get();
+    rLocks.erase(pStream);
 }
 
 }
@@ -179,7 +103,7 @@ public:
 
 static ErrCode GetSvError( int nErrno )
 {
-    static struct { int nErr; ErrCode sv; } errArr[] =
+    static struct { int nErr; ErrCode sv; } const errArr[] =
     {
         { 0,            ERRCODE_NONE },
         { EACCES,       SVSTREAM_ACCESS_DENIED },
@@ -187,7 +111,7 @@ static ErrCode GetSvError( int nErrno )
 #if defined(NETBSD) || \
     defined(FREEBSD) || defined(MACOSX) || defined(OPENBSD) || \
     defined(__FreeBSD_kernel__) || defined (AIX) || defined(DRAGONFLY) || \
-    defined(IOS)
+    defined(IOS) || defined(HAIKU)
         { EDEADLK,      SVSTREAM_LOCKING_VIOLATION },
 #else
         { EDEADLOCK,    SVSTREAM_LOCKING_VIOLATION },
@@ -211,7 +135,7 @@ static ErrCode GetSvError( int nErrno )
         { ETXTBSY,      SVSTREAM_ACCESS_DENIED  },
         { EEXIST,       SVSTREAM_CANNOT_MAKE    },
         { ENOSPC,       SVSTREAM_DISK_FULL      },
-        { (int)0xFFFF,  SVSTREAM_GENERALERROR }
+        { int(0xFFFF),  SVSTREAM_GENERALERROR }
     };
 
     ErrCode nRetVal = SVSTREAM_GENERALERROR; // default error
@@ -231,7 +155,7 @@ static ErrCode GetSvError( int nErrno )
 
 static ErrCode GetSvError( oslFileError nErrno )
 {
-    static struct { oslFileError nErr; ErrCode sv; } errArr[] =
+    static struct { oslFileError nErr; ErrCode sv; } const errArr[] =
     {
         { osl_File_E_None,        ERRCODE_NONE },
         { osl_File_E_ACCES,       SVSTREAM_ACCESS_DENIED },
@@ -251,7 +175,7 @@ static ErrCode GetSvError( oslFileError nErrno )
         { osl_File_E_NOTDIR,      SVSTREAM_PATH_NOT_FOUND },
         { osl_File_E_EXIST,       SVSTREAM_CANNOT_MAKE    },
         { osl_File_E_NOSPC,       SVSTREAM_DISK_FULL      },
-        { (oslFileError)0xFFFF,   SVSTREAM_GENERALERROR }
+        { oslFileError(0xFFFF),   SVSTREAM_GENERALERROR }
     };
 
     ErrCode nRetVal = SVSTREAM_GENERALERROR; // default error
@@ -265,7 +189,7 @@ static ErrCode GetSvError( oslFileError nErrno )
         }
         ++i;
     }
-    while( errArr[i].nErr != (oslFileError)0xFFFF );
+    while( errArr[i].nErr != oslFileError(0xFFFF) );
     return nRetVal;
 }
 
@@ -273,7 +197,7 @@ SvFileStream::SvFileStream( const OUString& rFileName, StreamMode nOpenMode )
 {
     bIsOpen             = false;
     m_isWritable        = false;
-    pInstanceData       = new StreamData;
+    pInstanceData.reset(new StreamData);
 
     SetBufferSize( 1024 );
     // convert URL to SystemPath, if necessary
@@ -290,15 +214,13 @@ SvFileStream::SvFileStream()
 {
     bIsOpen             = false;
     m_isWritable        = false;
-    pInstanceData       = new StreamData;
+    pInstanceData.reset(new StreamData);
     SetBufferSize( 1024 );
 }
 
 SvFileStream::~SvFileStream()
 {
     Close();
-
-    delete pInstanceData;
 }
 
 std::size_t SvFileStream::GetData( void* pData, std::size_t nSize )
@@ -308,14 +230,14 @@ std::size_t SvFileStream::GetData( void* pData, std::size_t nSize )
     sal_uInt64 nRead = 0;
     if ( IsOpen() )
     {
-        oslFileError rc = osl_readFile(pInstanceData->rHandle,pData,(sal_uInt64)nSize,&nRead);
+        oslFileError rc = osl_readFile(pInstanceData->rHandle,pData,static_cast<sal_uInt64>(nSize),&nRead);
         if ( rc != osl_File_E_None )
         {
             SetError( ::GetSvError( rc ));
             return -1;
         }
     }
-    return (std::size_t)nRead;
+    return static_cast<std::size_t>(nRead);
 }
 
 std::size_t SvFileStream::PutData( const void* pData, std::size_t nSize )
@@ -325,7 +247,7 @@ std::size_t SvFileStream::PutData( const void* pData, std::size_t nSize )
     sal_uInt64 nWrite = 0;
     if ( IsOpen() )
     {
-        oslFileError rc = osl_writeFile(pInstanceData->rHandle,pData,(sal_uInt64)nSize,&nWrite);
+        oslFileError rc = osl_writeFile(pInstanceData->rHandle,pData,static_cast<sal_uInt64>(nSize),&nWrite);
         if ( rc != osl_File_E_None )
         {
             SetError( ::GetSvError( rc ) );
@@ -334,13 +256,13 @@ std::size_t SvFileStream::PutData( const void* pData, std::size_t nSize )
         else if( !nWrite )
             SetError( SVSTREAM_DISK_FULL );
     }
-    return (std::size_t)nWrite;
+    return static_cast<std::size_t>(nWrite);
 }
 
 sal_uInt64 SvFileStream::SeekPos(sal_uInt64 const nPos)
 {
     // check if a truncated STREAM_SEEK_TO_END was passed
-    assert(nPos != (sal_uInt64)(sal_uInt32)STREAM_SEEK_TO_END);
+    assert(nPos != sal_uInt64(sal_uInt32(STREAM_SEEK_TO_END)));
     if ( IsOpen() )
     {
         oslFileError rc;
@@ -357,7 +279,7 @@ sal_uInt64 SvFileStream::SeekPos(sal_uInt64 const nPos)
         }
         if ( nPos != STREAM_SEEK_TO_END )
             return nPos;
-        rc = osl_getFilePos( pInstanceData->rHandle, &nNewPos );
+        osl_getFilePos( pInstanceData->rHandle, &nNewPos );
         return nNewPos;
     }
     SetError( SVSTREAM_GENERALERROR );
@@ -369,7 +291,7 @@ void SvFileStream::FlushData()
     // does not exist locally
 }
 
-bool SvFileStream::LockRange(sal_uInt64 const nByteOffset, std::size_t nBytes)
+bool SvFileStream::LockFile()
 {
     int nLockMode = 0;
 
@@ -406,11 +328,11 @@ bool SvFileStream::LockRange(sal_uInt64 const nByteOffset, std::size_t nBytes)
     if (!nLockMode)
         return true;
 
-    if( !lockFile( nByteOffset, nByteOffset+nBytes, this ) )
+    if( !lockFile( this ) )
     {
 #if OSL_DEBUG_LEVEL > 1
-        fprintf( stderr, "InternalLock on %s [ %ld ... %ld ] failed\n",
-                 OUStringToOString(aFilename, osl_getThreadTextEncoding()).getStr(), nByteOffset, nByteOffset+nBytes );
+        fprintf( stderr, "InternalLock on %s failed\n",
+                 OUStringToOString(aFilename, osl_getThreadTextEncoding()).getStr() );
 #endif
         return false;
     }
@@ -418,24 +340,12 @@ bool SvFileStream::LockRange(sal_uInt64 const nByteOffset, std::size_t nBytes)
     return true;
 }
 
-bool SvFileStream::UnlockRange(sal_uInt64 const nByteOffset, std::size_t nBytes)
-{
-    if ( ! IsOpen() )
-        return false;
-
-    unlockFile( nByteOffset, nByteOffset+nBytes, this );
-
-    return true;
-}
-
-bool SvFileStream::LockFile()
-{
-  return LockRange( 0UL, 0UL );
-}
-
 void SvFileStream::UnlockFile()
 {
-    UnlockRange( 0UL, 0UL );
+    if ( ! IsOpen() )
+        return;
+
+    unlockFile( this );
 }
 
 void SvFileStream::Open( const OUString& rFilename, StreamMode nOpenMode )
@@ -528,7 +438,7 @@ void SvFileStream::Open( const OUString& rFilename, StreamMode nOpenMode )
 
         if ( !LockFile() ) // whole file
         {
-            rc = osl_closeFile( nHandleTmp );
+            osl_closeFile( nHandleTmp );
             bIsOpen = false;
             m_isWritable = false;
             pInstanceData->rHandle = nullptr;
@@ -544,7 +454,7 @@ void SvFileStream::Close()
 
     if ( IsOpen() )
     {
-        SAL_INFO("tools", aFilename);
+        SAL_INFO("tools", "Closing " << aFilename);
         Flush();
         osl_closeFile( pInstanceData->rHandle );
         pInstanceData->rHandle = nullptr;

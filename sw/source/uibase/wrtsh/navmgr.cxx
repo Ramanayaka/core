@@ -7,16 +7,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "navmgr.hxx"
-#include "wrtsh.hxx"
+#include <navmgr.hxx>
+#include <wrtsh.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/viewfrm.hxx>
+#include <vcl/svapp.hxx>
 #include <cmdid.h>
 #include <view.hxx>
 #include <doc.hxx>
 #include <unocrsr.hxx>
 
 #include <com/sun/star/frame/XLayoutManager.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 
 // This method positions the cursor to the position rPos.
 
@@ -51,7 +53,7 @@ SwNavigationMgr::~SwNavigationMgr()
     SolarMutexGuard g;
     for (auto & it : m_entries)
     {
-        EndListening(it.get()->m_aNotifier);
+        EndListening(it->m_aNotifier);
     }
     m_entries.clear();
 }
@@ -62,14 +64,12 @@ void SwNavigationMgr::Notify(SfxBroadcaster& rBC, const SfxHint& rHint)
     // m_entries if that happens
     if (typeid(rHint) == typeid(sw::UnoCursorHint))
     {
-        for (auto it = m_entries.begin(); it != m_entries.end(); ++it)
+        auto it = std::find_if(m_entries.begin(), m_entries.end(),
+            [&rBC](const sw::UnoCursorPointer& rItem) { return !rItem || &rBC == &rItem->m_aNotifier; });
+        if (it != m_entries.end())
         {
-            if (!it->get() || & rBC == & it->get()->m_aNotifier)
-            {
-                EndListening(rBC);
-                m_entries.erase(it);
-                break;
-            }
+            EndListening(rBC);
+            m_entries.erase(it);
         }
     }
 }
@@ -103,42 +103,42 @@ void SwNavigationMgr::goBack()  {
     // the UI is sometimes not as responsive as we would like it to be :)
     // this check prevents segmentation faults and in this way the class is not relying on the UI
 
-    if (backEnabled()) {
-        /* Trying to get the current cursor */
-        SwPaM* pPaM = m_rMyShell.GetCursor();
-        if (!pPaM) {
-            return;
-        }
-        // This flag will be used to manually refresh the buttons
+    if (!backEnabled())        return;
 
-        bool bForwardWasDisabled = !forwardEnabled();
-
-        // If we're going backwards in our history, but the current location is not
-        // in the history then we need to add *here* to it so that we can "go
-        // forward" to here again.
-
-        if (bForwardWasDisabled) {
-
-            // the cursor consists of two SwPositions: Point and Mark.
-            // We are adding the current Point to the navigation history
-            // so we could later navigate forward to it
-
-            // The addEntry() method returns true iff we should decrement
-            // the index before navigating back
-
-            if (addEntry(*pPaM->GetPoint()) ) {
-                m_nCurrent--;
-            }
-        }
-        m_nCurrent--;
-        // Position cursor to appropriate navigation history entry
-        GotoSwPosition(*m_entries[m_nCurrent]->GetPoint());
-        // Refresh the buttons
-        if (bForwardWasDisabled)
-            m_rMyShell.GetView().GetViewFrame()->GetBindings().Invalidate(FN_NAVIGATION_FORWARD);
-        if (!backEnabled())
-            m_rMyShell.GetView().GetViewFrame()->GetBindings().Invalidate(FN_NAVIGATION_BACK);
+    /* Trying to get the current cursor */
+    SwPaM* pPaM = m_rMyShell.GetCursor();
+    if (!pPaM) {
+        return;
     }
+    // This flag will be used to manually refresh the buttons
+
+    bool bForwardWasDisabled = !forwardEnabled();
+
+    // If we're going backwards in our history, but the current location is not
+    // in the history then we need to add *here* to it so that we can "go
+    // forward" to here again.
+
+    if (bForwardWasDisabled) {
+
+        // the cursor consists of two SwPositions: Point and Mark.
+        // We are adding the current Point to the navigation history
+        // so we could later navigate forward to it
+
+        // The addEntry() method returns true iff we should decrement
+        // the index before navigating back
+
+        if (addEntry(*pPaM->GetPoint()) ) {
+            m_nCurrent--;
+        }
+    }
+    m_nCurrent--;
+    // Position cursor to appropriate navigation history entry
+    GotoSwPosition(*m_entries[m_nCurrent]->GetPoint());
+    // Refresh the buttons
+    if (bForwardWasDisabled)
+        m_rMyShell.GetView().GetViewFrame()->GetBindings().Invalidate(FN_NAVIGATION_FORWARD);
+    if (!backEnabled())
+        m_rMyShell.GetView().GetViewFrame()->GetBindings().Invalidate(FN_NAVIGATION_BACK);
 }
 
 // The goForward() method positions the cursor to the next entry in the navigation history
@@ -149,19 +149,19 @@ void SwNavigationMgr::goForward() {
     // the UI is sometimes not as responsive as we would like it to be :)
     // this check prevents segmentation faults and in this way the class is not relying on the UI
 
-    if (forwardEnabled()) {
-        // This flag will be used to manually refresh the buttons
-        bool bBackWasDisabled = !backEnabled();
-        // The current index is positioned at the current entry in the navigation history
-        // We have to increment it to go to the next entry
-        m_nCurrent++;
-        GotoSwPosition(*m_entries[m_nCurrent]->GetPoint());
-        // Refresh the buttons
-        if (bBackWasDisabled)
-            m_rMyShell.GetView().GetViewFrame()->GetBindings().Invalidate(FN_NAVIGATION_BACK);
-        if (!forwardEnabled())
-            m_rMyShell.GetView().GetViewFrame()->GetBindings().Invalidate(FN_NAVIGATION_FORWARD);
-    }
+    if (!forwardEnabled())        return;
+
+    // This flag will be used to manually refresh the buttons
+    bool bBackWasDisabled = !backEnabled();
+    // The current index is positioned at the current entry in the navigation history
+    // We have to increment it to go to the next entry
+    m_nCurrent++;
+    GotoSwPosition(*m_entries[m_nCurrent]->GetPoint());
+    // Refresh the buttons
+    if (bBackWasDisabled)
+        m_rMyShell.GetView().GetViewFrame()->GetBindings().Invalidate(FN_NAVIGATION_BACK);
+    if (!forwardEnabled())
+        m_rMyShell.GetView().GetViewFrame()->GetBindings().Invalidate(FN_NAVIGATION_FORWARD);
 }
 
 // This method adds the SwPosition rPos to the navigation history

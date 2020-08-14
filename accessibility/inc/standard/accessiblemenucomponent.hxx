@@ -17,15 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_ACCESSIBLEMENUCOMPONENT_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_ACCESSIBLEMENUCOMPONENT_HXX
+#pragma once
 
 #include <standard/accessiblemenubasecomponent.hxx>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <cppuhelper/implbase1.hxx>
 
 
-//  class OAccessibleMenuComponent
 
 typedef ::cppu::ImplHelper1<
     css::accessibility::XAccessibleSelection > OAccessibleMenuComponent_BASE;
@@ -42,9 +40,9 @@ protected:
     // OCommonAccessibleComponent
     virtual css::awt::Rectangle implGetBounds(  ) override;
 
+    using OAccessibleMenuBaseComponent::OAccessibleMenuBaseComponent;
+
 public:
-    OAccessibleMenuComponent( Menu* pMenu );
-    virtual ~OAccessibleMenuComponent() override;
 
     // XInterface
     DECLARE_XINTERFACE()
@@ -84,6 +82,5 @@ public:
     virtual void SAL_CALL deselectAccessibleChild( sal_Int32 nChildIndex ) override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_ACCESSIBLEMENUCOMPONENT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

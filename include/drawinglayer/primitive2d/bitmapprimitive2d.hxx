@@ -17,66 +17,62 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_BITMAPPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_BITMAPPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
-#include <vcl/bitmapex.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 
-
-// BitmapPrimitive2D class
-
-namespace drawinglayer
+namespace com::sun::star::awt
 {
-    namespace primitive2d
-    {
-        /** BitmapPrimitive2D class
+class XBitmap;
+}
 
-            This class is the central primitive for Bitmap-based primitives.
-            It provides RGBA-based bitmaps, currently using a BitmapEx from VCL.
-            This may change in the future to any other, maybe more general base
-            class providing 24bit RGBA.
-         */
-        class DRAWINGLAYER_DLLPUBLIC BitmapPrimitive2D : public BasePrimitive2D
-        {
-        private:
-            /// the RGBA Bitmap-data
-            BitmapEx                                    maBitmapEx;
+namespace drawinglayer::primitive2d
+{
+/** BitmapPrimitive2D class
 
-            /** the object transformation from unit coordinates, defining
-                size, shear, rotate and position
-             */
-            basegfx::B2DHomMatrix                       maTransform;
+    This class is the central primitive for Bitmap-based primitives.
+    To keep it independent of Bitmap implementations, use UNO API
+    XBitmap object as wrapper due to formally used class Bitmap being
+    vcl-dependent and requiring linking against it. Use VCLUnoHelper
+    to convert awt::XBitmap <-> Bitmap
+ */
+class DRAWINGLAYER_DLLPUBLIC BitmapPrimitive2D final : public BasePrimitive2D
+{
+private:
+    /// the Bitmap-data
+    css::uno::Reference<css::awt::XBitmap> maXBitmap;
 
-        public:
-            /// constructor
-            BitmapPrimitive2D(
-                const BitmapEx& rBitmapEx,
-                const basegfx::B2DHomMatrix& rTransform);
+    /** the object transformation from unit coordinates, defining
+        size, shear, rotate and position
+     */
+    basegfx::B2DHomMatrix maTransform;
 
-            /// data read access
-            const BitmapEx& getBitmapEx() const { return maBitmapEx; }
-            const basegfx::B2DHomMatrix& getTransform() const { return maTransform; }
+public:
+    /// constructor
+    BitmapPrimitive2D(const css::uno::Reference<css::awt::XBitmap>& rXBitmap,
+                      const basegfx::B2DHomMatrix& rTransform);
 
-            /// compare operator
-            virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
+    /// data read access
+    const css::uno::Reference<css::awt::XBitmap>& getXBitmap() const { return maXBitmap; }
+    const basegfx::B2DHomMatrix& getTransform() const { return maTransform; }
 
-            /// get range
-            virtual basegfx::B2DRange getB2DRange(const geometry::ViewInformation2D& rViewInformation) const override;
+    /// compare operator
+    virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
-            /// provide unique ID
-            DeclPrimitive2DIDBlock()
+    /// get range
+    virtual basegfx::B2DRange
+    getB2DRange(const geometry::ViewInformation2D& rViewInformation) const override;
 
-            // XAccounting
-            virtual sal_Int64 SAL_CALL estimateUsage() override;
-        };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+    // XAccounting
+    virtual sal_Int64 SAL_CALL estimateUsage() override;
 
+    /// provide unique ID
+    virtual sal_uInt32 getPrimitive2DID() const override;
+};
 
-#endif // INCLUDED_DRAWINGLAYER_PRIMITIVE2D_BITMAPPRIMITIVE2D_HXX
+} // end of namespace drawinglayer::primitive2d
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -33,13 +33,15 @@ class TestXNameContainer(CollectionsTestBase):
         # Given
         spr = self.createBlankSpreadsheet()
         ranges = getSheetCellRangesInstance(spr)
-        new_range = spr.Sheets.getByIndex(0).getCellRangeByPosition(1, 2, 1, 2)
+        new_range = spr.Sheets[0].getCellRangeByPosition(1, 2, 1, 2)
 
         # When
         ranges['foo'] = new_range
 
         # Then
         self.assertEqual(1, len(ranges.ElementNames))
+
+        spr.close(True)
 
     # Tests syntax:
     #    obj[key] = val              # Insert by key
@@ -49,11 +51,13 @@ class TestXNameContainer(CollectionsTestBase):
         # Given
         spr = self.createBlankSpreadsheet()
         ranges = getSheetCellRangesInstance(spr)
-        new_range = spr.Sheets.getByIndex(0).getCellRangeByPosition(1, 2, 1, 2)
+        new_range = spr.Sheets[0].getCellRangeByPosition(1, 2, 1, 2)
 
         # When / Then
         with self.assertRaises(TypeError):
             ranges[12.34] = new_range
+
+        spr.close(True)
 
     # Tests syntax:
     #    obj[key] = val              # Replace by key
@@ -61,8 +65,8 @@ class TestXNameContainer(CollectionsTestBase):
         # Given
         spr = self.createBlankSpreadsheet()
         ranges = getSheetCellRangesInstance(spr)
-        new_range1 = spr.Sheets.getByIndex(0).getCellRangeByPosition(1, 2, 1, 2)
-        new_range2 = spr.Sheets.getByIndex(0).getCellRangeByPosition(6, 6, 6, 6)
+        new_range1 = spr.Sheets[0].getCellRangeByPosition(1, 2, 1, 2)
+        new_range2 = spr.Sheets[0].getCellRangeByPosition(6, 6, 6, 6)
 
         # When
         ranges['foo'] = new_range1
@@ -72,6 +76,8 @@ class TestXNameContainer(CollectionsTestBase):
         self.assertEqual(1, len(ranges.ElementNames))
         read_range = ranges['foo']
         self.assertEqual(6, read_range.CellAddress.Column)
+
+        spr.close(True)
 
     # Tests syntax:
     #    del obj[key]                # Delete by key
@@ -89,6 +95,8 @@ class TestXNameContainer(CollectionsTestBase):
         self.assertEqual(1, len(spr.Sheets))
         self.assertFalse('foo' in spr.Sheets)
 
+        spr.close(True)
+
     # Tests syntax:
     #    del obj[key]                # Delete by key
     # For:
@@ -101,6 +109,8 @@ class TestXNameContainer(CollectionsTestBase):
         with self.assertRaises(KeyError):
             del spr.Sheets['foo']
 
+        spr.close(True)
+
     # Tests syntax:
     #    del obj[key]                # Delete by key
     # For:
@@ -112,6 +122,8 @@ class TestXNameContainer(CollectionsTestBase):
         # When / Then
         with self.assertRaises(TypeError):
             del spr.Sheets[12.34]
+
+        spr.close(True)
 
 
 if __name__ == '__main__':

@@ -20,21 +20,17 @@
 #ifndef INCLUDED_FRAMEWORK_INC_XML_XMLNAMESPACES_HXX
 #define INCLUDED_FRAMEWORK_INC_XML_XMLNAMESPACES_HXX
 
-#include <com/sun/star/xml/sax/SAXException.hpp>
-
 #include <map>
-#include <framework/fwedllapi.h>
+#include <framework/fwkdllapi.h>
+
+#include <rtl/ustring.hxx>
 
 namespace framework
 {
 
-class FWE_DLLPUBLIC XMLNamespaces final
+class XMLNamespaces final
 {
     public:
-        XMLNamespaces();
-        XMLNamespaces( const XMLNamespaces& );
-        ~XMLNamespaces();
-
         /// @throws css::xml::sax::SAXException
         void addNamespace( const OUString& aName, const OUString& aValue );
 
@@ -47,10 +43,9 @@ class FWE_DLLPUBLIC XMLNamespaces final
         typedef ::std::map< OUString, OUString > NamespaceMap;
 
         /// @throws css::xml::sax::SAXException
-        OUString getNamespaceValue( const OUString& aNamespace ) const;
+        OUString const & getNamespaceValue( const OUString& aNamespace ) const;
 
         OUString        m_aDefaultNamespace;
-        OUString        m_aXMLAttributeNamespace;
         NamespaceMap    m_aNamespaceMap;
 };
 

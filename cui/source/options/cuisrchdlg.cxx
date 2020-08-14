@@ -17,69 +17,34 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/wrkwin.hxx>
-#include <vcl/morebtn.hxx>
-#include <vcl/msgbox.hxx>
-#include <svl/slstitm.hxx>
-#include <svl/itemiter.hxx>
-#include <svl/style.hxx>
-#include <unotools/searchopt.hxx>
-#include <sfx2/dispatch.hxx>
-#include <sfx2/objsh.hxx>
-#include <sfx2/module.hxx>
-#include <sfx2/viewsh.hxx>
 #include <sfx2/basedlgs.hxx>
-#include <svl/cjkoptions.hxx>
 
-#include "cuisrchdlg.hxx"
+#include <cuisrchdlg.hxx>
 
-#include <cuires.hrc>
-
-#include <svl/srchitem.hxx>
-#include <svx/pageitem.hxx>
-#include <dialmgr.hxx>
-#include <svx/dlgutil.hxx>
-#include <optjsearch.hxx>
-#include <editeng/brushitem.hxx>
-#include "backgrnd.hxx"
+#include "optjsearch.hxx"
 
 
 // class SvxJSearchOptionsDialog -----------------------------------------
 
-SvxJSearchOptionsDialog::SvxJSearchOptionsDialog(vcl::Window *pParent,
+SvxJSearchOptionsDialog::SvxJSearchOptionsDialog(weld::Window *pParent,
     const SfxItemSet& rOptionsSet, TransliterationFlags nInitialFlags)
-    : SfxSingleTabDialog(pParent, rOptionsSet)
-    , nInitialTlFlags( nInitialFlags )
+    : SfxSingleTabDialogController(pParent, &rOptionsSet)
 {
-    // pPage will be implicitly destroyed by the
+    // m_xPage will be implicitly destroyed by the
     // SfxSingleTabDialog destructor
-    pPage.reset( static_cast<SvxJSearchOptionsPage *>(
-                        SvxJSearchOptionsPage::Create(
-                                get_content_area(), &rOptionsSet ).get() ) );
-    SetTabPage( pPage );    //! implicitly calls pPage->Reset(...)!
-    pPage->EnableSaveOptions(false);
+    SetTabPage(SvxJSearchOptionsPage::Create(get_content_area(), this, &rOptionsSet)); //! implicitly calls m_xPage->Reset(...)!
+    m_pPage = static_cast<SvxJSearchOptionsPage*>(GetTabPage());
+    m_pPage->EnableSaveOptions(false);
+    m_pPage->SetTransliterationFlags(nInitialFlags);
 }
 
 SvxJSearchOptionsDialog::~SvxJSearchOptionsDialog()
 {
-    disposeOnce();
-}
-
-void SvxJSearchOptionsDialog::dispose()
-{
-    pPage.clear();
-    SfxSingleTabDialog::dispose();
-}
-
-void SvxJSearchOptionsDialog::Activate()
-{
-    pPage->SetTransliterationFlags( nInitialTlFlags );
 }
 
 TransliterationFlags SvxJSearchOptionsDialog::GetTransliterationFlags() const
 {
-    return pPage->GetTransliterationFlags();
+    return m_pPage->GetTransliterationFlags();
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

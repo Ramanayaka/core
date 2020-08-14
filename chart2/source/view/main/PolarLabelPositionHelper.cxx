@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "PolarLabelPositionHelper.hxx"
-#include "PlottingPositionHelper.hxx"
-#include "CommonConverters.hxx"
+#include <PolarLabelPositionHelper.hxx>
+#include <PlottingPositionHelper.hxx>
 #include <basegfx/vector/b2dvector.hxx>
 #include <basegfx/vector/b2ivector.hxx>
 
@@ -34,7 +33,7 @@ PolarLabelPositionHelper::PolarLabelPositionHelper(
                     PolarPlottingPositionHelper* pPosHelper
                     , sal_Int32 nDimensionCount
                     , const uno::Reference< drawing::XShapes >& xLogicTarget
-                    , AbstractShapeFactory* pShapeFactory )
+                    , ShapeFactory* pShapeFactory )
                     : LabelPositionHelper( nDimensionCount, xLogicTarget, pShapeFactory )
                     , m_pPosHelper(pPosHelper)
 {
@@ -77,18 +76,18 @@ awt::Point PolarLabelPositionHelper::getLabelScreenPositionAndAlignmentForUnitCi
     else
         fRadius = fUnitCircleInnerRadius + (fUnitCircleOuterRadius-fUnitCircleInnerRadius)/2.0 ;
 
-    awt::Point aRet( this->transformSceneToScreenPosition(
+    awt::Point aRet( transformSceneToScreenPosition(
         m_pPosHelper->transformUnitCircleToScene( fAngleDegree, fRadius, fLogicZ+0.5 ) ) );
 
     if(m_nDimensionCount==3 && nLabelPlacement == css::chart::DataLabelPlacement::OUTSIDE)
     {
         //check whether the upper or the downer edge is more distant from the center
-        //take the farest point to put the label to
+        //take the farthest point to put the label to
 
-        awt::Point aP0( this->transformSceneToScreenPosition(
+        awt::Point aP0( transformSceneToScreenPosition(
             m_pPosHelper->transformUnitCircleToScene( 0, 0, fLogicZ ) ) );
         awt::Point aP1(aRet);
-        awt::Point aP2( this->transformSceneToScreenPosition(
+        awt::Point aP2( transformSceneToScreenPosition(
             m_pPosHelper->transformUnitCircleToScene( fAngleDegree, fRadius, fLogicZ-0.5 ) ) );
 
         ::basegfx::B2DVector aV0( aP0.X, aP0.Y );
@@ -107,7 +106,7 @@ awt::Point PolarLabelPositionHelper::getLabelScreenPositionAndAlignmentForUnitCi
         fDY*=-1.0;//drawing layer has inverse y values
         if( fDX != 0.0 )
         {
-            fAngleDegree = atan(fDY/fDX)*180.0/F_PI;
+            fAngleDegree = basegfx::rad2deg(atan(fDY/fDX));
             if(fDX<0.0)
                 fAngleDegree+=180.0;
         }
@@ -122,10 +121,11 @@ awt::Point PolarLabelPositionHelper::getLabelScreenPositionAndAlignmentForUnitCi
     //set LabelAlignment
     if( !bCenter )
     {
-        while(fAngleDegree>360.0)
-            fAngleDegree-=360.0;
-        while(fAngleDegree<0.0)
-            fAngleDegree+=360.0;
+        // tdf#123504: both 0 and 360 are valid and different values here!
+        while (fAngleDegree > 360.0)
+            fAngleDegree -= 360.0;
+        while (fAngleDegree < 0.0)
+            fAngleDegree += 360.0;
 
         bool bOutside = nLabelPlacement == css::chart::DataLabelPlacement::OUTSIDE;
 
@@ -158,7 +158,7 @@ awt::Point PolarLabelPositionHelper::getLabelScreenPositionAndAlignmentForUnitCi
     //add a scaling independent Offset if requested
     if( nScreenValueOffsetInRadiusDirection != 0)
     {
-        awt::Point aOrigin( this->transformSceneToScreenPosition(
+        awt::Point aOrigin( transformSceneToScreenPosition(
             m_pPosHelper->transformUnitCircleToScene( 0.0, 0.0, fLogicZ+0.5 ) ) );
         basegfx::B2IVector aDirection( aRet.X- aOrigin.X, aRet.Y- aOrigin.Y );
         aDirection.setLength(nScreenValueOffsetInRadiusDirection);

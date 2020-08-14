@@ -20,10 +20,9 @@
 #define INCLUDED_SW_SOURCE_UIBASE_INC_UIITEMS_HXX
 
 #include <memory>
-#include <svl/intitem.hxx>
-#include "swdllapi.h"
-#include "cmdid.h"
-#include "pagedesc.hxx"
+#include <svl/poolitem.hxx>
+#include <swdllapi.h>
+#include <pagedesc.hxx>
 
 class SwNumRule;
 class IntlWrapper;
@@ -36,17 +35,21 @@ class SW_DLLPUBLIC SwPageFootnoteInfoItem : public SfxPoolItem
 
 public:
 
-    SwPageFootnoteInfoItem(SwPageFootnoteInfo& rInfo);
-    SwPageFootnoteInfoItem(const SwPageFootnoteInfoItem& rItem );
+    SwPageFootnoteInfoItem(SwPageFootnoteInfo const & rInfo);
     virtual ~SwPageFootnoteInfoItem() override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    SwPageFootnoteInfoItem(SwPageFootnoteInfoItem const &) = default;
+    SwPageFootnoteInfoItem(SwPageFootnoteInfoItem &&) = default;
+    SwPageFootnoteInfoItem & operator =(SwPageFootnoteInfoItem const &) = delete; // due to SfxPoolItem
+    SwPageFootnoteInfoItem & operator =(SwPageFootnoteInfoItem &&) = delete; // due to SfxPoolItem
+
+    virtual SwPageFootnoteInfoItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper*    pIntl = nullptr ) const override;
+                                  const IntlWrapper& rIntl ) const override;
 
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -60,10 +63,9 @@ class SW_DLLPUBLIC SwPtrItem : public SfxPoolItem
     void* pMisc;
 
 public:
-    SwPtrItem( const sal_uInt16 nId, void* pPtr = nullptr);
-    SwPtrItem( const SwPtrItem& rItem );
+    SwPtrItem( const sal_uInt16 nId, void* pPtr);
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwPtrItem*      Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
 
     void*   GetValue() const        { return pMisc; }
@@ -78,7 +80,7 @@ public:
     SwUINumRuleItem( const SwUINumRuleItem& rItem );
     virtual ~SwUINumRuleItem() override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwUINumRuleItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
 
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
@@ -88,23 +90,14 @@ public:
           SwNumRule* GetNumRule()               { return pRule.get(); }
 };
 
-class SwBackgroundDestinationItem : public SfxUInt16Item
-{
-public:
-    SwBackgroundDestinationItem(sal_uInt16  nWhich, sal_uInt16 nValue);
-
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-};
-
-class SW_DLLPUBLIC SwPaMItem : public SfxPoolItem
+class SwPaMItem : public SfxPoolItem
 {
     SwPaM* m_pPaM;
 
 public:
-    SwPaMItem( const sal_uInt16 nId, SwPaM* pPaM = nullptr);
-    SwPaMItem( const SwPaMItem& rItem );
+    SwPaMItem( const sal_uInt16 nId, SwPaM* pPaM);
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwPaMItem*      Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
 
     SwPaM*   GetValue() const        { return m_pPaM; }

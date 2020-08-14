@@ -19,8 +19,8 @@
 
 #include "ChartPlotAreaOASISTContext.hxx"
 #include "TransformerBase.hxx"
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include "DeepTContext.hxx"
 #include "ActionMapTypesOASIS.hxx"
@@ -31,6 +31,8 @@ using namespace ::com::sun::star;
 using namespace ::xmloff::token;
 
 using ::com::sun::star::uno::Reference;
+
+namespace {
 
 class XMLAxisOASISContext : public XMLPersElemContentTContext
 {
@@ -52,6 +54,8 @@ private:
     ::rtl::Reference< XMLPersAttrListTContext > &   m_rCategoriesContext;
     bool                                            m_bHasCategories;
 };
+
+}
 
 XMLAxisOASISContext::XMLAxisOASISContext(
     XMLTransformerBase& rTransformer,

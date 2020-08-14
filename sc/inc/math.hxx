@@ -21,6 +21,7 @@
 #define INCLUDED_SC_INC_MATH_HXX
 
 #include <formula/errorcodes.hxx>
+#include <rtl/math.hxx>
 
 namespace sc {
 
@@ -52,9 +53,9 @@ inline double divide( const double& fNumerator, const double& fDenominator )
     if (fDenominator == 0.0)
     {
         double fVal;
-        if (rtl::math::isFinite( fNumerator) && fNumerator != 0.0)
+        if (std::isfinite( fNumerator) && fNumerator != 0.0)
         {
-            rtl::math::setInf( &fVal, rtl::math::isSignBitSet( fNumerator));
+            rtl::math::setInf( &fVal, std::signbit( fNumerator));
         }
         else
         {
@@ -64,6 +65,13 @@ inline double divide( const double& fNumerator, const double& fDenominator )
     }
     return fNumerator / fDenominator;
 }
+
+/** Return pow(fVal1,fVal2) with error handling.
+
+    If an error was detected, a coded double error of
+    FormulaError::IllegalFPOperation is returned.
+ */
+double power( const double& fVal1, const double& fVal2 );
 
 }
 

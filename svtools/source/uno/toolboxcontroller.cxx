@@ -27,10 +27,9 @@
 #include <com/sun/star/frame/XLayoutManager.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <vcl/svapp.hxx>
-#include <svtools/imgdef.hxx>
-#include <svtools/miscopt.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/toolbox.hxx>
+#include <vcl/weldutils.hxx>
 #include <comphelper/processfactory.hxx>
 
 const int TOOLBARCONTROLLER_PROPHANDLE_SUPPORTSVISIBLE  = 1;
@@ -56,11 +55,14 @@ ToolboxController::ToolboxController(
     ,   m_bSupportVisible( false )
     ,   m_bInitialized( false )
     ,   m_bDisposed( false )
+    ,   m_bSidebar( false )
     ,   m_nToolBoxId( SAL_MAX_UINT16 )
     ,   m_xFrame( xFrame )
     ,   m_xContext( rxContext )
     ,   m_aCommandURL( aCommandURL )
     ,   m_aListenerContainer( m_aMutex )
+    ,   m_pToolbar(nullptr)
+    ,   m_pBuilder(nullptr)
 {
     OSL_ASSERT( m_xContext.is() );
     registerProperty( TOOLBARCONTROLLER_PROPNAME_SUPPORTSVISIBLE,
@@ -82,8 +84,11 @@ ToolboxController::ToolboxController() :
     ,   m_bSupportVisible(false)
     ,   m_bInitialized( false )
     ,   m_bDisposed( false )
+    ,   m_bSidebar( false )
     ,   m_nToolBoxId( SAL_MAX_UINT16 )
     ,   m_aListenerContainer( m_aMutex )
+    ,   m_pToolbar(nullptr)
+    ,   m_pBuilder(nullptr)
 {
     registerProperty( TOOLBARCONTROLLER_PROPNAME_SUPPORTSVISIBLE,
         TOOLBARCONTROLLER_PROPHANDLE_SUPPORTSVISIBLE,
@@ -149,14 +154,8 @@ void SAL_CALL ToolboxController::release() throw ()
 
 css::uno::Sequence<css::uno::Type> ToolboxController::getTypes()
 {
-    css::uno::Sequence<css::uno::Type> s1(ToolboxController_Base::getTypes());
-    css::uno::Sequence<css::uno::Type> s2(getBaseTypes());
-    sal_Int32 n = s1.getLength();
-    s1.realloc(n + s2.getLength());
-    for (sal_Int32 i = 0; i != s2.getLength(); ++i) {
-        s1[n + i] = s2[i];
-    }
-    return s1;
+    return comphelper::concatSequences(ToolboxController_Base::getTypes(),
+                getBaseTypes());
 }
 
 void SAL_CALL ToolboxController::initialize( const Sequence< Any >& aArguments )
@@ -172,46 +171,55 @@ void SAL_CALL ToolboxController::initialize( const Sequence< Any >& aArguments )
         bInitialized = m_bInitialized;
     }
 
-    if ( !bInitialized )
+    if ( bInitialized )
+        return;
+
+    SolarMutexGuard aSolarMutexGuard;
+    m_bInitialized = true;
+    m_bSupportVisible = false;
+    PropertyValue aPropValue;
+    for ( const auto& rArgument : aArguments )
     {
-        SolarMutexGuard aSolarMutexGuard;
-        m_bInitialized = true;
-        m_bSupportVisible = false;
-        PropertyValue aPropValue;
-        for ( int i = 0; i < aArguments.getLength(); i++ )
+        if ( rArgument >>= aPropValue )
         {
-            if ( aArguments[i] >>= aPropValue )
+            if ( aPropValue.Name == "Frame" )
+                m_xFrame.set(aPropValue.Value,UNO_QUERY);
+            else if ( aPropValue.Name == "CommandURL" )
+                aPropValue.Value >>= m_aCommandURL;
+            else if ( aPropValue.Name == "ServiceManager" )
             {
-                if ( aPropValue.Name == "Frame" )
-                    m_xFrame.set(aPropValue.Value,UNO_QUERY);
-                else if ( aPropValue.Name == "CommandURL" )
-                    aPropValue.Value >>= m_aCommandURL;
-                else if ( aPropValue.Name == "ServiceManager" )
-                {
-                    Reference<XMultiServiceFactory> xMSF(aPropValue.Value, UNO_QUERY);
-                    if (xMSF.is())
-                        m_xContext = comphelper::getComponentContext(xMSF);
-                }
-                else if ( aPropValue.Name == "ParentWindow" )
-                    m_xParentWindow.set(aPropValue.Value,UNO_QUERY);
-                else if ( aPropValue.Name == "ModuleIdentifier" )
-                    aPropValue.Value >>= m_sModuleName;
-                else if ( aPropValue.Name == "Identifier" )
-                    aPropValue.Value >>= m_nToolBoxId;
+                Reference<XMultiServiceFactory> xMSF(aPropValue.Value, UNO_QUERY);
+                if (xMSF.is())
+                    m_xContext = comphelper::getComponentContext(xMSF);
             }
+            else if ( aPropValue.Name == "ParentWindow" )
+                m_xParentWindow.set(aPropValue.Value,UNO_QUERY);
+            else if ( aPropValue.Name == "ModuleIdentifier" )
+                aPropValue.Value >>= m_sModuleName;
+            else if ( aPropValue.Name == "Identifier" )
+                aPropValue.Value >>= m_nToolBoxId;
+            else if ( aPropValue.Name == "IsSidebar" )
+                aPropValue.Value >>= m_bSidebar;
         }
+    }
 
-        try
-        {
-            if ( !m_xUrlTransformer.is() && m_xContext.is() )
-                m_xUrlTransformer = URLTransformer::create( m_xContext );
-        }
-        catch(const Exception&)
-        {
-        }
+    try
+    {
+        if ( !m_xUrlTransformer.is() && m_xContext.is() )
+            m_xUrlTransformer = URLTransformer::create( m_xContext );
+    }
+    catch(const Exception&)
+    {
+    }
 
-        if ( !m_aCommandURL.isEmpty() )
-            m_aListenerMap.insert( URLToDispatchMap::value_type( m_aCommandURL, Reference< XDispatch >() ));
+    if ( !m_aCommandURL.isEmpty() )
+        m_aListenerMap.emplace( m_aCommandURL, Reference< XDispatch >() );
+
+    if (weld::TransportAsXWindow* pTunnel = dynamic_cast<weld::TransportAsXWindow*>(getParent().get()))
+    {
+        m_pToolbar = dynamic_cast<weld::Toolbar*>(pTunnel->getWidget());
+        assert(m_pToolbar && "must be a toolbar");
+        m_pBuilder = pTunnel->getBuilder();
     }
 }
 
@@ -243,15 +251,14 @@ void SAL_CALL ToolboxController::dispose()
 
     SolarMutexGuard aSolarMutexGuard;
     Reference< XStatusListener > xStatusListener( static_cast< OWeakObject* >( this ), UNO_QUERY );
-    URLToDispatchMap::iterator pIter = m_aListenerMap.begin();
-    while ( pIter != m_aListenerMap.end() )
+    for (auto const& listener : m_aListenerMap)
     {
         try
         {
-            Reference< XDispatch > xDispatch( pIter->second );
+            Reference< XDispatch > xDispatch( listener.second );
 
             css::util::URL aTargetURL;
-            aTargetURL.Complete = pIter->first;
+            aTargetURL.Complete = listener.first;
             if ( m_xUrlTransformer.is() )
                 m_xUrlTransformer->parseStrict( aTargetURL );
 
@@ -262,7 +269,6 @@ void SAL_CALL ToolboxController::dispose()
         {
         }
 
-        ++pIter;
     }
 
     m_bDisposed = true;
@@ -288,14 +294,12 @@ void SAL_CALL ToolboxController::disposing( const EventObject& Source )
     if ( m_bDisposed )
         return;
 
-    URLToDispatchMap::iterator pIter = m_aListenerMap.begin();
-    while ( pIter != m_aListenerMap.end() )
+    for (auto & listener : m_aListenerMap)
     {
         // Compare references and release dispatch references if they are equal.
-        Reference< XInterface > xIfac( pIter->second, UNO_QUERY );
+        Reference< XInterface > xIfac(listener.second, UNO_QUERY);
         if ( xSource == xIfac )
-            pIter->second.clear();
-        ++pIter;
+            listener.second.clear();
     }
 
     Reference< XInterface > xIfac( m_xFrame, UNO_QUERY );
@@ -332,25 +336,25 @@ void SAL_CALL ToolboxController::execute( sal_Int16 KeyModifier )
         }
     }
 
-    if ( xDispatch.is() )
+    if ( !xDispatch.is() )
+        return;
+
+    try
     {
-        try
-        {
-            css::util::URL aTargetURL;
-            Sequence<PropertyValue>   aArgs( 1 );
+        css::util::URL aTargetURL;
+        Sequence<PropertyValue>   aArgs( 1 );
 
-            // Provide key modifier information to dispatch function
-            aArgs[0].Name   = "KeyModifier";
-            aArgs[0].Value  <<= KeyModifier;
+        // Provide key modifier information to dispatch function
+        aArgs[0].Name   = "KeyModifier";
+        aArgs[0].Value  <<= KeyModifier;
 
-            aTargetURL.Complete = aCommandURL;
-            if ( m_xUrlTransformer.is() )
-                m_xUrlTransformer->parseStrict( aTargetURL );
-            xDispatch->dispatch( aTargetURL, aArgs );
-        }
-        catch ( DisposedException& )
-        {
-        }
+        aTargetURL.Complete = aCommandURL;
+        if ( m_xUrlTransformer.is() )
+            m_xUrlTransformer->parseStrict( aTargetURL );
+        xDispatch->dispatch( aTargetURL, aArgs );
+    }
+    catch ( DisposedException& )
+    {
     }
 }
 
@@ -391,7 +395,7 @@ void ToolboxController::addStatusListener( const OUString& aCommandURL )
         if ( !m_bInitialized )
         {
             // Put into the unordered_map of status listener. Will be activated when initialized is called
-            m_aListenerMap.insert( URLToDispatchMap::value_type( aCommandURL, Reference< XDispatch >() ));
+            m_aListenerMap.emplace( aCommandURL, Reference< XDispatch >() );
             return;
         }
         else
@@ -422,7 +426,7 @@ void ToolboxController::addStatusListener( const OUString& aCommandURL )
                     }
                 }
                 else
-                    m_aListenerMap.insert( URLToDispatchMap::value_type( aCommandURL, xDispatch ));
+                    m_aListenerMap.emplace( aCommandURL, xDispatch );
             }
         }
     }
@@ -443,25 +447,25 @@ void ToolboxController::removeStatusListener( const OUString& aCommandURL )
     SolarMutexGuard aSolarMutexGuard;
 
     URLToDispatchMap::iterator pIter = m_aListenerMap.find( aCommandURL );
-    if ( pIter != m_aListenerMap.end() )
+    if ( pIter == m_aListenerMap.end() )
+        return;
+
+    Reference< XDispatch > xDispatch( pIter->second );
+    Reference< XStatusListener > xStatusListener( static_cast< OWeakObject* >( this ), UNO_QUERY );
+    m_aListenerMap.erase( pIter );
+
+    try
     {
-        Reference< XDispatch > xDispatch( pIter->second );
-        Reference< XStatusListener > xStatusListener( static_cast< OWeakObject* >( this ), UNO_QUERY );
-        m_aListenerMap.erase( pIter );
+        css::util::URL aTargetURL;
+        aTargetURL.Complete = aCommandURL;
+        if ( m_xUrlTransformer.is() )
+            m_xUrlTransformer->parseStrict( aTargetURL );
 
-        try
-        {
-            css::util::URL aTargetURL;
-            aTargetURL.Complete = aCommandURL;
-            if ( m_xUrlTransformer.is() )
-                m_xUrlTransformer->parseStrict( aTargetURL );
-
-            if ( xDispatch.is() && xStatusListener.is() )
-                xDispatch->removeStatusListener( xStatusListener, aTargetURL );
-        }
-        catch ( Exception& )
-        {
-        }
+        if ( xDispatch.is() && xStatusListener.is() )
+            xDispatch->removeStatusListener( xStatusListener, aTargetURL );
+    }
+    catch ( Exception& )
+    {
     }
 }
 
@@ -481,15 +485,14 @@ void ToolboxController::bindListener()
         if ( m_xContext.is() && xDispatchProvider.is() )
         {
             xStatusListener.set( static_cast< OWeakObject* >( this ), UNO_QUERY );
-            URLToDispatchMap::iterator pIter = m_aListenerMap.begin();
-            while ( pIter != m_aListenerMap.end() )
+            for (auto & listener : m_aListenerMap)
             {
                 css::util::URL aTargetURL;
-                aTargetURL.Complete = pIter->first;
+                aTargetURL.Complete = listener.first;
                 if ( m_xUrlTransformer.is() )
                     m_xUrlTransformer->parseStrict( aTargetURL );
 
-                Reference< XDispatch > xDispatch( pIter->second );
+                Reference< XDispatch > xDispatch(listener.second);
                 if ( xDispatch.is() )
                 {
                     // We already have a dispatch object => we have to requery.
@@ -503,7 +506,7 @@ void ToolboxController::bindListener()
                     }
                 }
 
-                pIter->second.clear();
+                listener.second.clear();
                 xDispatch.clear();
 
                 // Query for dispatch object. Old dispatch will be released with this, too.
@@ -514,46 +517,45 @@ void ToolboxController::bindListener()
                 catch ( Exception& )
                 {
                 }
-                pIter->second = xDispatch;
+                listener.second = xDispatch;
 
                 Listener aListener( aTargetURL, xDispatch );
                 aDispatchVector.push_back( aListener );
-                ++pIter;
             }
         }
     }
 
     // Call without locked mutex as we are called back from dispatch implementation
-    if ( xStatusListener.is() )
+    if ( !xStatusListener.is() )
+        return;
+
+    try
     {
-        try
+        for (Listener & rListener : aDispatchVector)
         {
-            for (Listener & rListener : aDispatchVector)
+            if ( rListener.xDispatch.is() )
+                rListener.xDispatch->addStatusListener( xStatusListener, rListener.aURL );
+            else if ( rListener.aURL.Complete == m_aCommandURL )
             {
-                if ( rListener.xDispatch.is() )
-                    rListener.xDispatch->addStatusListener( xStatusListener, rListener.aURL );
-                else if ( rListener.aURL.Complete == m_aCommandURL )
+                try
                 {
-                    try
-                    {
-                        // Send status changed for the main URL, if we cannot get a valid dispatch object.
-                        // UI disables the button. Catch exception as we release our mutex, it is possible
-                        // that someone else already disposed this instance!
-                        FeatureStateEvent aFeatureStateEvent;
-                        aFeatureStateEvent.IsEnabled = false;
-                        aFeatureStateEvent.FeatureURL = rListener.aURL;
-                        aFeatureStateEvent.State = Any();
-                        xStatusListener->statusChanged( aFeatureStateEvent );
-                    }
-                    catch ( Exception& )
-                    {
-                    }
+                    // Send status changed for the main URL, if we cannot get a valid dispatch object.
+                    // UI disables the button. Catch exception as we release our mutex, it is possible
+                    // that someone else already disposed this instance!
+                    FeatureStateEvent aFeatureStateEvent;
+                    aFeatureStateEvent.IsEnabled = false;
+                    aFeatureStateEvent.FeatureURL = rListener.aURL;
+                    aFeatureStateEvent.State = Any();
+                    xStatusListener->statusChanged( aFeatureStateEvent );
+                }
+                catch ( Exception& )
+                {
                 }
             }
         }
-        catch ( Exception& )
-        {
-        }
+    }
+    catch ( Exception& )
+    {
     }
 }
 
@@ -566,48 +568,32 @@ void ToolboxController::unbindListener()
 
     // Collect all registered command URL's and store them temporary
     Reference< XDispatchProvider > xDispatchProvider( m_xFrame, UNO_QUERY );
-    if ( m_xContext.is() && xDispatchProvider.is() )
+    if ( !(m_xContext.is() && xDispatchProvider.is()) )
+        return;
+
+    Reference< XStatusListener > xStatusListener( static_cast< OWeakObject* >( this ), UNO_QUERY );
+    for (auto & listener : m_aListenerMap)
     {
-        Reference< XStatusListener > xStatusListener( static_cast< OWeakObject* >( this ), UNO_QUERY );
-        URLToDispatchMap::iterator pIter = m_aListenerMap.begin();
-        while ( pIter != m_aListenerMap.end() )
+        css::util::URL aTargetURL;
+        aTargetURL.Complete = listener.first;
+        if ( m_xUrlTransformer.is() )
+            m_xUrlTransformer->parseStrict( aTargetURL );
+
+        Reference< XDispatch > xDispatch(listener.second);
+        if ( xDispatch.is() )
         {
-            css::util::URL aTargetURL;
-            aTargetURL.Complete = pIter->first;
-            if ( m_xUrlTransformer.is() )
-                m_xUrlTransformer->parseStrict( aTargetURL );
-
-            Reference< XDispatch > xDispatch( pIter->second );
-            if ( xDispatch.is() )
+            // We already have a dispatch object => we have to requery.
+            // Release old dispatch object and remove it as listener
+            try
             {
-                // We already have a dispatch object => we have to requery.
-                // Release old dispatch object and remove it as listener
-                try
-                {
-                    xDispatch->removeStatusListener( xStatusListener, aTargetURL );
-                }
-                catch ( Exception& )
-                {
-                }
+                xDispatch->removeStatusListener( xStatusListener, aTargetURL );
             }
-            pIter->second.clear();
-            ++pIter;
+            catch ( Exception& )
+            {
+            }
         }
+        listener.second.clear();
     }
-}
-
-bool ToolboxController::isBound() const
-{
-    SolarMutexGuard aSolarMutexGuard;
-
-    if ( !m_bInitialized )
-        return false;
-
-    URLToDispatchMap::const_iterator pIter = m_aListenerMap.find( m_aCommandURL );
-    if ( pIter != m_aListenerMap.end() )
-        return pIter->second.is();
-
-    return false;
 }
 
 void ToolboxController::updateStatus()
@@ -639,20 +625,20 @@ void ToolboxController::updateStatus( const OUString& aCommandURL )
         }
     }
 
-    if ( xDispatch.is() && xStatusListener.is() )
+    if ( !(xDispatch.is() && xStatusListener.is()) )
+        return;
+
+    // Catch exception as we release our mutex, it is possible that someone else
+    // has already disposed this instance!
+    // Add/remove status listener to get an update status information from the
+    // requested command.
+    try
     {
-        // Catch exception as we release our mutex, it is possible that someone else
-        // has already disposed this instance!
-        // Add/remove status listener to get a update status information from the
-        // requested command.
-        try
-        {
-            xDispatch->addStatusListener( xStatusListener, aTargetURL );
-            xDispatch->removeStatusListener( xStatusListener, aTargetURL );
-        }
-        catch ( Exception& )
-        {
-        }
+        xDispatch->addStatusListener( xStatusListener, aTargetURL );
+        xDispatch->removeStatusListener( xStatusListener, aTargetURL );
+    }
+    catch ( Exception& )
+    {
     }
 }
 
@@ -666,12 +652,12 @@ void ToolboxController::dispatchCommand( const OUString& sCommandURL, const Sequ
         aURL.Complete = sCommandURL;
         getURLTransformer()->parseStrict( aURL );
 
-        Reference< XDispatch > xDispatch( xDispatchProvider->queryDispatch( aURL, sTarget, 0 ), UNO_QUERY_THROW );
+        Reference< XDispatch > xDispatch( xDispatchProvider->queryDispatch( aURL, sTarget, 0 ), UNO_SET_THROW );
 
-        DispatchInfo *pDispatchInfo = new DispatchInfo( xDispatch, aURL, rArgs );
-        if ( !Application::PostUserEvent( LINK(nullptr, ToolboxController, ExecuteHdl_Impl),
-                                          pDispatchInfo ) )
-            delete pDispatchInfo;
+        std::unique_ptr<DispatchInfo> pDispatchInfo(new DispatchInfo( xDispatch, aURL, rArgs ));
+        if ( Application::PostUserEvent( LINK(nullptr, ToolboxController, ExecuteHdl_Impl),
+                                          pDispatchInfo.get() ) )
+            pDispatchInfo.release();
 
     }
     catch( Exception& )

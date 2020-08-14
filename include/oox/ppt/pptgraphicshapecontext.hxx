@@ -27,20 +27,20 @@
 #include <sal/types.h>
 
 namespace oox { class AttributeList; }
-namespace oox { namespace core { class ContextHandler2Helper; } }
+namespace oox::core { class ContextHandler2Helper; }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-class PPTGraphicShapeContext : public ::oox::drawingml::GraphicShapeContext
+class PPTGraphicShapeContext final : public ::oox::drawingml::GraphicShapeContext
 {
     SlidePersistPtr     mpSlidePersistPtr;
 
 public:
-    PPTGraphicShapeContext( ::oox::core::ContextHandler2Helper& rParent, const SlidePersistPtr& rSlidePersistPtr, const oox::drawingml::ShapePtr& pMasterShapePtr, const oox::drawingml::ShapePtr& pShapePtr );
+    PPTGraphicShapeContext( ::oox::core::ContextHandler2Helper const & rParent, const SlidePersistPtr& rSlidePersistPtr, const oox::drawingml::ShapePtr& pMasterShapePtr, const oox::drawingml::ShapePtr& pShapePtr );
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 };
 
-} }
+}
 
 #endif  //  OOX_PPT_PPTGRAPHICSHAPEGROUPCONTEXT_HXX
 

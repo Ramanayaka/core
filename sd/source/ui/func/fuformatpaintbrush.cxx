@@ -20,28 +20,22 @@
 #include <sfx2/request.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
+#include <sfx2/viewfrm.hxx>
 
-#include <svl/itemiter.hxx>
-
-#include <svx/globl3d.hxx>
 #include <svx/svxids.hrc>
 #include <svx/svdotable.hxx>
+#include <svx/svdundo.hxx>
 #include <editeng/outliner.hxx>
-#include <editeng/eeitem.hxx>
-#include <editeng/editeng.hxx>
+#include <vcl/ptrstyle.hxx>
 
-#include "sdmod.hxx"
+#include <fuformatpaintbrush.hxx>
+#include <drawview.hxx>
+#include <DrawViewShell.hxx>
+#include <FrameView.hxx>
+#include <drawdoc.hxx>
+#include <ViewShellBase.hxx>
 
-#include "fuformatpaintbrush.hxx"
-#include "drawview.hxx"
-#include "DrawDocShell.hxx"
-#include "DrawViewShell.hxx"
-#include "FrameView.hxx"
-#include "drawdoc.hxx"
-#include "Outliner.hxx"
-#include "ViewShellBase.hxx"
-
-#include "Window.hxx"
+#include <Window.hxx>
 
 namespace sd {
 
@@ -65,7 +59,7 @@ void FuFormatPaintBrush::DoExecute( SfxRequest& rReq )
     const SfxItemSet *pArgs = rReq.GetArgs();
     if( pArgs && pArgs->Count() >= 1 )
     {
-        mbPermanent = static_cast<const SfxBoolItem &>(pArgs->Get(SID_FORMATPAINTBRUSH)).GetValue();
+        mbPermanent = pArgs->Get(SID_FORMATPAINTBRUSH).GetValue();
     }
 
     if( mpView )
@@ -151,7 +145,7 @@ bool FuFormatPaintBrush::MouseMove(const MouseEvent& rMEvt)
         if ( mpView->IsTextEdit() )
         {
             bReturn = FuText::MouseMove( rMEvt );
-            mpWindow->SetPointer(Pointer(PointerStyle::Fill));
+            mpWindow->SetPointer(PointerStyle::Fill);
         }
         else
         {
@@ -159,9 +153,9 @@ bool FuFormatPaintBrush::MouseMove(const MouseEvent& rMEvt)
             SdrPageView* pPV=nullptr;
             SdrObject* pObj = mpView->PickObj(mpWindow->PixelToLogic( rMEvt.GetPosPixel() ),nHitLog, pPV, SdrSearchOptions::PICKMARKABLE);
             if (pObj && HasContentForThisType(pObj->GetObjInventor(),pObj->GetObjIdentifier()) )
-                mpWindow->SetPointer(Pointer(PointerStyle::Fill));
+                mpWindow->SetPointer(PointerStyle::Fill);
             else
-                mpWindow->SetPointer(Pointer(PointerStyle::Arrow));
+                mpWindow->SetPointer(PointerStyle::Arrow);
         }
     }
     return bReturn;
@@ -169,7 +163,7 @@ bool FuFormatPaintBrush::MouseMove(const MouseEvent& rMEvt)
 
 bool FuFormatPaintBrush::MouseButtonUp(const MouseEvent& rMEvt)
 {
-    if( mxItemSet.get() && mpView && mpView->AreObjectsMarked() )
+    if( mxItemSet && mpView && mpView->AreObjectsMarked() )
     {
         bool bNoCharacterFormats = false;
         bool bNoParagraphFormats = false;
@@ -227,7 +221,7 @@ void FuFormatPaintBrush::Deactivate()
 
 bool FuFormatPaintBrush::HasContentForThisType( SdrInventor nObjectInventor, sal_uInt16 nObjectIdentifier ) const
 {
-    if( mxItemSet.get() == nullptr )
+    if (mxItemSet == nullptr)
         return false;
     if( !mpView || (!SdrObjEditView::SupportsFormatPaintbrush( nObjectInventor, nObjectIdentifier) ) )
         return false;
@@ -237,33 +231,34 @@ bool FuFormatPaintBrush::HasContentForThisType( SdrInventor nObjectInventor, sal
 void FuFormatPaintBrush::Paste( bool bNoCharacterFormats, bool bNoParagraphFormats )
 {
     const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
-    if( mxItemSet.get() && ( rMarkList.GetMarkCount() == 1 ) )
+    if( !(mxItemSet && ( rMarkList.GetMarkCount() == 1 )) )
+        return;
+
+    SdrObject* pObj( nullptr );
+    bool bUndo = mpDoc->IsUndoEnabled();
+
+    if( bUndo && !mpView->GetTextEditOutlinerView() )
+        pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
+
+    // n685123: ApplyFormatPaintBrush itself would store undo information
+    // except in a few cases (?)
+    if( pObj )
     {
-        SdrObject* pObj( nullptr );
-        bool bUndo = mpDoc->IsUndoEnabled();
-
-        if( bUndo && !mpView->GetTextEditOutlinerView() )
-            pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
-
-        // n685123: ApplyFormatPaintBrush itself would store undo information
-        // except in a few cases (?)
-        if( pObj )
-        {
-            OUString sLabel( mpViewShell->GetViewShellBase().RetrieveLabelFromCommand(".uno:FormatPaintbrush" ) );
-            mpDoc->BegUndo( sLabel );
+        OUString sLabel( mpViewShell->GetViewShellBase().RetrieveLabelFromCommand(".uno:FormatPaintbrush" ) );
+        mpDoc->BegUndo( sLabel );
+        if (dynamic_cast< sdr::table::SdrTableObj* >( pObj ) == nullptr)
             mpDoc->AddUndo( mpDoc->GetSdrUndoFactory().CreateUndoAttrObject( *pObj, false, true ) );
-        }
+    }
 
-        mpView->ApplyFormatPaintBrush( *mxItemSet.get(), bNoCharacterFormats, bNoParagraphFormats );
+    mpView->ApplyFormatPaintBrush( *mxItemSet, bNoCharacterFormats, bNoParagraphFormats );
 
-        if( pObj )
-        {
-            mpDoc->EndUndo();
-        }
+    if( pObj )
+    {
+        mpDoc->EndUndo();
     }
 }
 
-/* static */ void FuFormatPaintBrush::GetMenuState( DrawViewShell& rDrawViewShell, SfxItemSet &rSet )
+/* static */ void FuFormatPaintBrush::GetMenuState( DrawViewShell const & rDrawViewShell, SfxItemSet &rSet )
 {
     const SdrMarkList& rMarkList = rDrawViewShell.GetDrawView()->GetMarkedObjectList();
 

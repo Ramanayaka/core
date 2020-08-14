@@ -18,9 +18,6 @@ ColorSet::ColorSet(OUString const & aColorSetName)
     , maColors(12)
 {}
 
-ColorSet::~ColorSet()
-{}
-
 ColorSets::ColorSets()
 {}
 
@@ -43,22 +40,6 @@ void ColorSets::init()
         aColorSet.add(9,  0x2ECC71);
         aColorSet.add(10, 0x1D99F3);
         aColorSet.add(11, 0x3DAEE9);
-        maColorSets.push_back(aColorSet);
-    }
-    {
-        ColorSet aColorSet("Tango");
-        aColorSet.add(0,  0x000000);
-        aColorSet.add(1,  0xFFFFFF);
-        aColorSet.add(2,  0x2E3436);
-        aColorSet.add(3,  0xBABDB6);
-        aColorSet.add(4,  0x3465A4);
-        aColorSet.add(5,  0x73D216);
-        aColorSet.add(6,  0xF57900);
-        aColorSet.add(7,  0x888A85);
-        aColorSet.add(8,  0xEDD400);
-        aColorSet.add(9,  0xEF2929);
-        aColorSet.add(10, 0x75507B);
-        aColorSet.add(11, 0x555753);
         maColorSets.push_back(aColorSet);
     }
     {
@@ -113,7 +94,7 @@ void ColorSets::init()
 
 const ColorSet& ColorSets::getColorSet(const OUString& rName)
 {
-    for (ColorSet & rColorSet : maColorSets)
+    for (const ColorSet & rColorSet : maColorSets)
     {
         if (rColorSet.getName() == rName)
             return rColorSet;

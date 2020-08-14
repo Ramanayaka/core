@@ -21,19 +21,17 @@
 #define INCLUDED_OOX_DRAWINGML_TEXTPARAGRAPHPROPERTIES_HXX
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <drawingml/misccontexts.hxx>
 #include <drawingml/textcharacterproperties.hxx>
-#include <com/sun/star/style/NumberingType.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
 #include <drawingml/textfont.hxx>
 #include <drawingml/textspacing.hxx>
-#include <boost/optional.hpp>
+#include <optional>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace graphic { class XGraphic; }
-} } }
+}
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 class TextParagraphProperties;
 
@@ -58,7 +56,7 @@ public:
     void setBulletSize(sal_Int16 nSize);
     void setFontSize(sal_Int16 nSize);
     void setStyleName( const OUString& rStyleName ) { maStyleName <<= rStyleName; }
-    void setGraphic( css::uno::Reference< css::graphic::XGraphic >& rXGraphic );
+    void setGraphic( css::uno::Reference< css::graphic::XGraphic > const & rXGraphic );
 
     std::shared_ptr< ::oox::drawingml::Color > maBulletColorPtr;
     css::uno::Any               mbBulletColorFollowText;
@@ -80,7 +78,6 @@ class TextParagraphProperties
 public:
 
     TextParagraphProperties();
-    ~TextParagraphProperties();
 
     void                                setLevel( sal_Int16 nLevel ) { mnLevel = nLevel; }
     sal_Int16                           getLevel( ) const { return mnLevel; }
@@ -91,11 +88,14 @@ public:
 
     TextSpacing&                        getParaTopMargin() { return maParaTopMargin; }
     TextSpacing&                        getParaBottomMargin() { return maParaBottomMargin; }
-    boost::optional< sal_Int32 >&       getParaLeftMargin(){ return moParaLeftMargin; }
-    boost::optional< sal_Int32 >&       getFirstLineIndentation(){ return moFirstLineIndentation; }
+    std::optional< sal_Int32 >&       getParaLeftMargin(){ return moParaLeftMargin; }
+    std::optional< sal_Int32 >&       getFirstLineIndentation(){ return moFirstLineIndentation; }
 
-    boost::optional< css::style::ParagraphAdjust >&       getParaAdjust() { return moParaAdjust; }
+    std::optional< css::style::ParagraphAdjust >&       getParaAdjust() { return moParaAdjust; }
     void                                setParaAdjust( css::style::ParagraphAdjust nParaAdjust ) { moParaAdjust = nParaAdjust; }
+
+    TextSpacing&                        getLineSpacing() { return maLineSpacing; }
+    void                                setLineSpacing( const TextSpacing& rLineSpacing ) { maLineSpacing = rLineSpacing; }
 
     void                                apply( const TextParagraphProperties& rSourceProps );
     void                                pushToPropSet( const ::oox::core::XmlFilterBase* pFilterBase,
@@ -122,13 +122,14 @@ protected:
     BulletList                      maBulletList;
     TextSpacing                     maParaTopMargin;
     TextSpacing                     maParaBottomMargin;
-    boost::optional< sal_Int32 >    moParaLeftMargin;
-    boost::optional< sal_Int32 >    moFirstLineIndentation;
-    boost::optional< css::style::ParagraphAdjust >    moParaAdjust;
+    std::optional< sal_Int32 >    moParaLeftMargin;
+    std::optional< sal_Int32 >    moFirstLineIndentation;
+    std::optional< css::style::ParagraphAdjust >    moParaAdjust;
     sal_Int16                       mnLevel;
+    TextSpacing                     maLineSpacing;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_TEXTPARAGRAPHPROPERTIES_HXX
 

@@ -22,14 +22,14 @@
 
 #include <memory>
 #include "AccessibleCellBase.hxx"
-#include "global.hxx"
 #include "viewdata.hxx"
 #include <com/sun/star/accessibility/XAccessibleExtendedAttributes.hpp>
-#include <com/sun/star/accessibility/XAccessibleRelationSet.hpp>
 #include <rtl/ref.hxx>
-#include <unotools/accessiblerelationsethelper.hxx>
 #include <editeng/AccessibleStaticTextBase.hxx>
 #include <comphelper/uno3.hxx>
+
+namespace com::sun::star::accessibility { class XAccessibleRelationSet; }
+namespace utl { class AccessibleRelationSetHelper; }
 
 class ScTabViewShell;
 class ScAccessibleDocument;
@@ -50,7 +50,7 @@ public:
     static rtl::Reference<ScAccessibleCell> create(
         const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
         ScTabViewShell* pViewShell,
-        ScAddress& rCellAddress,
+        const ScAddress& rCellAddress,
         sal_Int32 nIndex,
         ScSplitPos eSplitPos,
         ScAccessibleDocument* pAccDoc);
@@ -59,7 +59,7 @@ private:
     ScAccessibleCell(
         const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
         ScTabViewShell* pViewShell,
-        ScAddress& rCellAddress,
+        const ScAddress& rCellAddress,
         sal_Int32 nIndex,
         ScSplitPos eSplitPos,
         ScAccessibleDocument* pAccDoc);
@@ -145,8 +145,7 @@ private:
         const css::uno::Reference<css::accessibility::XAccessibleStateSet>& rxParentStates);
     virtual bool IsEditable(
         const css::uno::Reference<css::accessibility::XAccessibleStateSet>& rxParentStates) override;
-    bool IsOpaque(
-        const css::uno::Reference<css::accessibility::XAccessibleStateSet>& rxParentStates);
+    bool IsOpaque() const;
     bool IsSelected();
 
     static ScDocument* GetDocument(ScTabViewShell* mpViewShell);
@@ -162,7 +161,7 @@ private:
         const sal_uInt16 aRelationType,
         ::utl::AccessibleRelationSetHelper* pRelationSet);
     bool IsFormulaMode();
-    bool IsDropdown();
+    bool IsDropdown() const;
 };
 
 #endif

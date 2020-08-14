@@ -21,7 +21,6 @@
 #include <editeng/unoedhlp.hxx>
 #include <editeng/editdata.hxx>
 #include <editeng/editeng.hxx>
-#include <o3tl/make_unique.hxx>
 #include <svl/itemset.hxx>
 
 #include <osl/diagnose.h>
@@ -42,7 +41,7 @@ SvxEditSourceHint::SvxEditSourceHint( SfxHintId _nId, sal_uLong nValue, sal_Int3
 }
 
 
-std::unique_ptr<SfxHint> SvxEditSourceHelper::EENotification2Hint( EENotify* aNotify )
+std::unique_ptr<SfxHint> SvxEditSourceHelper::EENotification2Hint( EENotify const * aNotify )
 {
     if( aNotify )
     {
@@ -69,17 +68,9 @@ std::unique_ptr<SfxHint> SvxEditSourceHelper::EENotification2Hint( EENotify* aNo
             case EE_NOTIFY_TEXTVIEWSELECTIONCHANGED:
                 return std::unique_ptr<SfxHint>( new SvxEditSourceHint( SfxHintId::EditSourceSelectionChanged ) );
 
-            case EE_NOTIFY_BLOCKNOTIFICATION_START:
-                return std::unique_ptr<SfxHint>( new TextHint( SfxHintId::TextBlockNotificationStart, 0 ) );
+            case EE_NOTIFY_PROCESSNOTIFICATIONS:
+                return std::unique_ptr<SfxHint>( new TextHint( SfxHintId::TextProcessNotifications ));
 
-            case EE_NOTIFY_BLOCKNOTIFICATION_END:
-                return std::unique_ptr<SfxHint>( new TextHint( SfxHintId::TextBlockNotificationEnd, 0 ) );
-
-            case EE_NOTIFY_INPUT_START:
-                return std::unique_ptr<SfxHint>( new TextHint( SfxHintId::TextInputStart, 0 ) );
-
-            case EE_NOTIFY_INPUT_END:
-                return std::unique_ptr<SfxHint>( new TextHint( SfxHintId::TextInputEnd, 0 ) );
             case EE_NOTIFY_TEXTVIEWSELECTIONCHANGED_ENDD_PARA:
                 return std::unique_ptr<SfxHint>( new SvxEditSourceHintEndPara );
             default:
@@ -88,10 +79,10 @@ std::unique_ptr<SfxHint> SvxEditSourceHelper::EENotification2Hint( EENotify* aNo
         }
     }
 
-    return o3tl::make_unique<SfxHint>( );
+    return std::make_unique<SfxHint>( );
 }
 
-bool SvxEditSourceHelper::GetAttributeRun( sal_Int32& nStartIndex, sal_Int32& nEndIndex, const EditEngine& rEE, sal_Int32 nPara, sal_Int32 nIndex, bool bInCell )
+void SvxEditSourceHelper::GetAttributeRun( sal_Int32& nStartIndex, sal_Int32& nEndIndex, const EditEngine& rEE, sal_Int32 nPara, sal_Int32 nIndex, bool bInCell )
 {
     // IA2 CWS introduced bInCell, but also did many other changes here.
     // Need to verify implementation with AT (IA2 and ATK)
@@ -128,122 +119,120 @@ bool SvxEditSourceHelper::GetAttributeRun( sal_Int32& nStartIndex, sal_Int32& nE
     // find closest index in front of nIndex
     sal_Int32 nCurrIndex;
     sal_Int32 nClosestStartIndex_s = 0, nClosestStartIndex_e = 0;
-    for(std::vector<EECharAttrib>::iterator i = aCharAttribs.begin(); i < aCharAttribs.end(); ++i)
+    for (auto const& charAttrib : aCharAttribs)
     {
-        nCurrIndex = i->nStart;
+        nCurrIndex = charAttrib.nStart;
 
         if( nCurrIndex > nClosestStartIndex_s &&
             nCurrIndex <= nIndex)
         {
             nClosestStartIndex_s = nCurrIndex;
         }
-        nCurrIndex = i->nEnd;
+        nCurrIndex = charAttrib.nEnd;
         if ( nCurrIndex > nClosestStartIndex_e &&
             nCurrIndex < nIndex )
         {
             nClosestStartIndex_e = nCurrIndex;
         }
     }
-    sal_Int32 nClosestStartIndex = nClosestStartIndex_s > nClosestStartIndex_e ? nClosestStartIndex_s : nClosestStartIndex_e;
+    sal_Int32 nClosestStartIndex = std::max(nClosestStartIndex_s, nClosestStartIndex_e);
 
     // find closest index behind of nIndex
     sal_Int32 nClosestEndIndex_s, nClosestEndIndex_e;
     nClosestEndIndex_s = nClosestEndIndex_e = rEE.GetTextLen(nPara);
-    for(std::vector<EECharAttrib>::iterator i = aCharAttribs.begin(); i < aCharAttribs.end(); ++i)
+    for (auto const& charAttrib : aCharAttribs)
     {
-        nCurrIndex = i->nEnd;
+        nCurrIndex = charAttrib.nEnd;
 
         if( nCurrIndex > nIndex &&
             nCurrIndex < nClosestEndIndex_e )
         {
             nClosestEndIndex_e = nCurrIndex;
         }
-        nCurrIndex = i->nStart;
+        nCurrIndex = charAttrib.nStart;
         if ( nCurrIndex > nIndex &&
             nCurrIndex < nClosestEndIndex_s)
         {
             nClosestEndIndex_s = nCurrIndex;
         }
     }
-    sal_Int32 nClosestEndIndex = nClosestEndIndex_s < nClosestEndIndex_e ? nClosestEndIndex_s : nClosestEndIndex_e;
+    sal_Int32 nClosestEndIndex = std::min(nClosestEndIndex_s, nClosestEndIndex_e);
 
     nStartIndex = nClosestStartIndex;
     nEndIndex = nClosestEndIndex;
 
-    if ( bInCell )
-    {
-        EPosition aStartPos( nPara, nStartIndex ), aEndPos( nPara, nEndIndex );
-        sal_Int32 nParaCount = rEE.GetParagraphCount();
-        sal_Int32 nCrrntParaLen = rEE.GetTextLen(nPara);
-        //need to find closest index in front of nIndex in the previous paragraphs
-        if ( aStartPos.nIndex == 0 )
-        {
-            SfxItemSet aCrrntSet = rEE.GetAttribs( nPara, 0, 1, GetAttribsFlags::CHARATTRIBS );
-            for ( sal_Int32 nParaIdx = nPara-1; nParaIdx >= 0; nParaIdx-- )
-            {
-                sal_uInt32 nLen = rEE.GetTextLen(nParaIdx);
-                if ( nLen )
-                {
-                    sal_Int32 nStartIdx, nEndIdx;
-                    GetAttributeRun( nStartIdx, nEndIdx, rEE, nParaIdx, nLen );
-                    SfxItemSet aSet = rEE.GetAttribs( nParaIdx, nLen-1, nLen, GetAttribsFlags::CHARATTRIBS );
-                    if ( aSet == aCrrntSet )
-                    {
-                        aStartPos.nPara = nParaIdx;
-                        aStartPos.nIndex = nStartIdx;
-                        if ( aStartPos.nIndex != 0 )
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        //need find closest index behind nIndex in the following paragraphs
-        if ( aEndPos.nIndex == nCrrntParaLen )
-        {
-            SfxItemSet aCrrntSet = rEE.GetAttribs( nPara, nCrrntParaLen-1, nCrrntParaLen, GetAttribsFlags::CHARATTRIBS );
-            for ( sal_Int32 nParaIdx = nPara+1; nParaIdx < nParaCount; nParaIdx++ )
-            {
-                sal_Int32 nLen = rEE.GetTextLen( nParaIdx );
-                if ( nLen )
-                {
-                    sal_Int32 nStartIdx, nEndIdx;
-                    GetAttributeRun( nStartIdx, nEndIdx, rEE, nParaIdx, 0 );
-                    SfxItemSet aSet = rEE.GetAttribs( nParaIdx, 0, 1, GetAttribsFlags::CHARATTRIBS );
-                    if ( aSet == aCrrntSet )
-                    {
-                        aEndPos.nPara = nParaIdx;
-                        aEndPos.nIndex = nEndIdx;
-                        if ( aEndPos.nIndex != nLen )
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        nStartIndex = 0;
-        if ( aStartPos.nPara > 0 )
-        {
-            for ( sal_Int32 i = 0; i < aStartPos.nPara; i++ )
-            {
-                nStartIndex += rEE.GetTextLen(i)+1;
-            }
-        }
-        nStartIndex += aStartPos.nIndex;
-        nEndIndex = 0;
-        if ( aEndPos.nPara > 0 )
-        {
-           for ( sal_Int32 i = 0; i < aEndPos.nPara; i++ )
-           {
-               nEndIndex += rEE.GetTextLen(i)+1;
-           }
-        }
-        nEndIndex += aEndPos.nIndex;
-    }
+    if ( !bInCell )
+        return;
 
-    return true;
+    EPosition aStartPos( nPara, nStartIndex ), aEndPos( nPara, nEndIndex );
+    sal_Int32 nParaCount = rEE.GetParagraphCount();
+    sal_Int32 nCrrntParaLen = rEE.GetTextLen(nPara);
+    //need to find closest index in front of nIndex in the previous paragraphs
+    if ( aStartPos.nIndex == 0 )
+    {
+        SfxItemSet aCrrntSet = rEE.GetAttribs( nPara, 0, 1, GetAttribsFlags::CHARATTRIBS );
+        for ( sal_Int32 nParaIdx = nPara-1; nParaIdx >= 0; nParaIdx-- )
+        {
+            sal_uInt32 nLen = rEE.GetTextLen(nParaIdx);
+            if ( nLen )
+            {
+                sal_Int32 nStartIdx, nEndIdx;
+                GetAttributeRun( nStartIdx, nEndIdx, rEE, nParaIdx, nLen );
+                SfxItemSet aSet = rEE.GetAttribs( nParaIdx, nLen-1, nLen, GetAttribsFlags::CHARATTRIBS );
+                if ( aSet == aCrrntSet )
+                {
+                    aStartPos.nPara = nParaIdx;
+                    aStartPos.nIndex = nStartIdx;
+                    if ( aStartPos.nIndex != 0 )
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    //need find closest index behind nIndex in the following paragraphs
+    if ( aEndPos.nIndex == nCrrntParaLen )
+    {
+        SfxItemSet aCrrntSet = rEE.GetAttribs( nPara, nCrrntParaLen-1, nCrrntParaLen, GetAttribsFlags::CHARATTRIBS );
+        for ( sal_Int32 nParaIdx = nPara+1; nParaIdx < nParaCount; nParaIdx++ )
+        {
+            sal_Int32 nLen = rEE.GetTextLen( nParaIdx );
+            if ( nLen )
+            {
+                sal_Int32 nStartIdx, nEndIdx;
+                GetAttributeRun( nStartIdx, nEndIdx, rEE, nParaIdx, 0 );
+                SfxItemSet aSet = rEE.GetAttribs( nParaIdx, 0, 1, GetAttribsFlags::CHARATTRIBS );
+                if ( aSet == aCrrntSet )
+                {
+                    aEndPos.nPara = nParaIdx;
+                    aEndPos.nIndex = nEndIdx;
+                    if ( aEndPos.nIndex != nLen )
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    nStartIndex = 0;
+    if ( aStartPos.nPara > 0 )
+    {
+        for ( sal_Int32 i = 0; i < aStartPos.nPara; i++ )
+        {
+            nStartIndex += rEE.GetTextLen(i)+1;
+        }
+    }
+    nStartIndex += aStartPos.nIndex;
+    nEndIndex = 0;
+    if ( aEndPos.nPara > 0 )
+    {
+       for ( sal_Int32 i = 0; i < aEndPos.nPara; i++ )
+       {
+           nEndIndex += rEE.GetTextLen(i)+1;
+       }
+    }
+    nEndIndex += aEndPos.nIndex;
 }
 
 Point SvxEditSourceHelper::EEToUserSpace( const Point& rPoint, const Size& rEESize, bool bIsVertical )

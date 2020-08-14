@@ -20,16 +20,15 @@
 #ifndef INCLUDED_SVX_XGRAD_HXX
 #define INCLUDED_SVX_XGRAD_HXX
 
-#include <svx/xenum.hxx>
 #include <tools/color.hxx>
 #include <svx/svxdllapi.h>
 #include <com/sun/star/awt/GradientStyle.hpp>
+#include <boost/property_tree/ptree_fwd.hpp>
 
 class Gradient;
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC XGradient
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC XGradient final
 {
-protected:
     css::awt::GradientStyle  eStyle;
     Color               aStartColor;
     Color               aEndColor;
@@ -40,6 +39,8 @@ protected:
     sal_uInt16          nIntensStart;
     sal_uInt16          nIntensEnd;
     sal_uInt16          nStepCount;
+
+    static std::string GradientStyleToString(css::awt::GradientStyle eStyle);
 
 public:
     XGradient();
@@ -72,6 +73,9 @@ public:
     sal_uInt16         GetStartIntens() const           { return nIntensStart; }
     sal_uInt16         GetEndIntens() const             { return nIntensEnd; }
     sal_uInt16         GetSteps() const                 { return nStepCount; }
+
+    boost::property_tree::ptree dumpAsJSON() const;
+    static XGradient fromJSON(const OUString& rJSON);
 };
 
 #endif

@@ -20,21 +20,21 @@
 #ifndef INCLUDED_STARMATH_SOURCE_CFGITEM_HXX
 #define INCLUDED_STARMATH_SOURCE_CFGITEM_HXX
 
-#include <deque>
+#include <utility.hxx>
+
 #include <vector>
 
-#include <com/sun/star/beans/PropertyValues.hpp>
-#include <com/sun/star/uno/Sequence.hxx>
-
 #include <rtl/ustring.hxx>
+#include <svl/SfxBroadcaster.hxx>
 #include <unotools/configitem.hxx>
-#include <vcl/timer.hxx>
 
-#include <symbol.hxx>
 #include <types.hxx>
 #include <memory>
 
+namespace com::sun::star::uno { template <class E> class Sequence; }
+
 class SmSym;
+class SmSymbolManager;
 class SmFormat;
 namespace vcl { class Font; }
 struct SmCfgOther;
@@ -52,7 +52,7 @@ struct SmFontFormat
     SmFontFormat();
     explicit SmFontFormat( const vcl::Font &rFont );
 
-    const vcl::Font GetFont() const;
+    vcl::Font       GetFont() const;
     bool            operator == ( const SmFontFormat &rFntFmt ) const;
 };
 
@@ -66,7 +66,7 @@ struct SmFntFmtListEntry
 
 class SmFontFormatList
 {
-    std::deque<SmFntFmtListEntry> aEntries;
+    std::vector<SmFntFmtListEntry> aEntries;
     bool                    bModified;
 
     SmFontFormatList(const SmFontFormatList&) = delete;
@@ -81,17 +81,17 @@ public:
 
     const SmFontFormat *    GetFontFormat( const OUString &rFntFmtId ) const;
     const SmFontFormat *    GetFontFormat( size_t nPos ) const;
-    const OUString          GetFontFormatId( const SmFontFormat &rFntFmt ) const;
-    const OUString          GetFontFormatId( const SmFontFormat &rFntFmt, bool bAdd );
-    const OUString          GetFontFormatId( size_t nPos ) const;
-    const OUString          GetNewFontFormatId() const;
+    OUString                GetFontFormatId( const SmFontFormat &rFntFmt ) const;
+    OUString                GetFontFormatId( const SmFontFormat &rFntFmt, bool bAdd );
+    OUString                GetFontFormatId( size_t nPos ) const;
+    OUString                GetNewFontFormatId() const;
     size_t                  GetCount() const    { return aEntries.size(); }
 
     bool    IsModified() const          { return bModified; }
     void    SetModified( bool bVal )    { bModified = bVal; }
 };
 
-class SmMathConfig : public utl::ConfigItem, public SfxBroadcaster
+class SmMathConfig final : public utl::ConfigItem, public SfxBroadcaster
 {
     std::unique_ptr<SmFormat>         pFormat;
     std::unique_ptr<SmCfgOther>       pOther;
@@ -116,9 +116,8 @@ class SmMathConfig : public utl::ConfigItem, public SfxBroadcaster
                         const OUString &rSymbolName,
                         const OUString &rBaseNode ) const;
 
-    void            SetOtherIfNotEqual( bool &rbItem, bool bNewVal );
+    void    SetOtherIfNotEqual( bool &rbItem, bool bNewVal );
 
-protected:
     void    LoadOther();
     void    SaveOther();
     void    LoadFormat();

@@ -23,13 +23,10 @@
 #include <memory>
 
 #include "cacheitem.hxx"
-#include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/util/URL.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/container/XNameReplace.hpp>
-#include <com/sun/star/util/ChangesEvent.hpp>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Any.h>
 #include <comphelper/documentconstants.hxx>
@@ -38,8 +35,7 @@
 #include <rtl/ustring.hxx>
 
 
-namespace filter{
-    namespace config{
+namespace filter::config {
 
 class CacheUpdateListener;
 
@@ -87,12 +83,12 @@ class FilterCache : public BaseLock
 
             @descr      This cache supports a 2-step load mechanism.
                         First only types (and only some special properties of every type!)
-                        but no filters/frame loaders/content handlers will be readed.
+                        but no filters/frame loaders/content handlers will be read.
                         That should be enough to work with this cache e.g. for loading
                         the first document. After this first document was loaded successfully,
                         a special "load-on-demand-thread" will be started to fill this cache
-                        with ALL other information, which was not readed before.
-                        Thats the second step. All operations on top of this cache will be
+                        with ALL other information, which was not read before.
+                        That's the second step. All operations on top of this cache will be
                         blocked then.
          */
         enum EFillState
@@ -112,7 +108,7 @@ class FilterCache : public BaseLock
 
 
         /** @short      regulate, which properties of a configured item
-                        will be readed.
+                        will be read.
 
             @descr      To perform reading of all configuration items,
                         only standard properties will be handled. At a second
@@ -228,10 +224,10 @@ class FilterCache : public BaseLock
 
 
         /** TODO document me ... */
-        OUStringList m_lChangedTypes;
-        OUStringList m_lChangedFilters;
-        OUStringList m_lChangedFrameLoaders;
-        OUStringList m_lChangedContentHandlers;
+        std::vector<OUString> m_lChangedTypes;
+        std::vector<OUString> m_lChangedFilters;
+        std::vector<OUString> m_lChangedFrameLoaders;
+        std::vector<OUString> m_lChangedContentHandlers;
 
         /// standard property names for filter config keyed by EReadOption
         css::uno::Sequence< OUString > m_aStandardProps[4];
@@ -304,7 +300,7 @@ class FilterCache : public BaseLock
         /** @short      force special fill state of this cache.
 
             @descr      This method checks, if all requested items/properties already
-                        exist. Only missing information will be readed.
+                        exist. Only missing information will be read.
                         Otherwise this method does nothing!
 
                         This method must be called from every user of this cache
@@ -358,7 +354,7 @@ class FilterCache : public BaseLock
                         specify the property set, which must not(!) exist at the searched items
                         as minimum.
 
-            @return     [OUStringList]
+            @return     [std::vector<OUString>]
                         a list of key names, which identify items of the queried sub container.
                         May be an empty list.
 
@@ -366,7 +362,7 @@ class FilterCache : public BaseLock
                         if some input parameter are wrong or the cache itself is not valid
                         any longer, because any operation before damage it.
          */
-        OUStringList getMatchingItemsByProps(      EItemType  eType                ,
+        std::vector<OUString> getMatchingItemsByProps(      EItemType  eType                ,
                                                      const CacheItem& lIProps              ,
                                                      const CacheItem& lEProps = CacheItem()) const;
 
@@ -407,7 +403,7 @@ class FilterCache : public BaseLock
                         specify the sub container of this cache, which should be used for
                         searching. see also EItemType.
 
-            @return     [OUStringList]
+            @return     [std::vector<OUString>]
                         a list of key names, which can be used to access the item properties
                         using some other methods of this cache.
 
@@ -415,7 +411,7 @@ class FilterCache : public BaseLock
                         if some input parameter are wrong or the cache itself is not valid
                         any longer, because any operation before damage it.
          */
-        OUStringList getItemNames(EItemType eType) const;
+        std::vector<OUString> getItemNames(EItemType eType) const;
 
 
         /** @short      check if the required item exist inside this container.
@@ -423,7 +419,7 @@ class FilterCache : public BaseLock
             @attention  This method exists to supports some UNO container interfaces
                         only. (e.g. XNameAccess.hasByName()). But inside multithreaded
                         environments there is no guarantee, that this item still exists, if
-                        its really requested e.g. by calling getItem()!
+                        it's really requested e.g. by calling getItem()!
                         Be aware of some NoSuchElementExistExceptions ...
 
             @param      eType
@@ -561,14 +557,14 @@ class FilterCache : public BaseLock
 
             @param      aURL
                         URL of the content, which type should be detected.
-                        Its already parsed and splitted into its different parts,
+                        It's already parsed and split into its different parts,
                         like e.g.: main, jump marks etcpp.
 
             @param      rFlatTypes
                         used as [out] parameter to add all types, which match to the given
                         URL. Further an information is added for every type. It indicates, how
                         this type is related to the specified URL (means e.g. if it matches
-                        by extension or URLPattern ...).
+                        by extension or URLPattern...).
 
             @attention  Please note: because this cache can be used inside multithreaded
                         environments, such returned key names can point to some already removed
@@ -655,7 +651,7 @@ class FilterCache : public BaseLock
                         and return its value.
 
             @descr      The specified key must be an absolute configuration path,
-                        which can be splitted into its package and relative path tokens.
+                        which can be split into its package and relative path tokens.
 
             @attention  Because this function might opens a new configuration
                         read access for reading one key value only, it should
@@ -663,7 +659,7 @@ class FilterCache : public BaseLock
                         expensive one.
 
             @param      sDirectKey
-                        the absolute configuration path, which should be readed.
+                        the absolute configuration path, which should be read.
 
             @return     [css::uno::Any]
                         the value of the requested key.
@@ -675,7 +671,7 @@ class FilterCache : public BaseLock
 
         /** @short      load the underlying configuration into this cache.
 
-            @descr      Which items should be readed can be regulate by the
+            @descr      Which items should be read can be regulate by the
                         parameter eRequiredState. That provides the possibility
                         to load standard values on startup only and update this
                         cache later on demand with all available information.
@@ -749,7 +745,7 @@ class FilterCache : public BaseLock
                     provides access to the configuration set, which includes all items.
 
             @param  eType
-                    specify, which container item type must be readed.
+                    specify, which container item type must be read.
 
             @param  sItem
                     means the internal name, which can be used to address the item
@@ -821,7 +817,7 @@ class FilterCache : public BaseLock
         static void impl_flushByList(const css::uno::Reference< css::container::XNameAccess >& xSet  ,
                                     EItemType                                           eType ,
                               const CacheItemList&                                      rCache,
-                              const OUStringList&                                       lItems);
+                              const std::vector<OUString>&                              lItems);
 
 
         /** @short  specify, which save operation is necessary for the specified item.
@@ -896,7 +892,7 @@ class FilterCache : public BaseLock
 
 
         /** TODO */
-        static OUStringList impl_tokenizeString(const OUString& sData     ,
+        static std::vector<OUString> impl_tokenizeString(const OUString& sData     ,
                                                sal_Unicode      cSeparator);
 
 
@@ -940,8 +936,7 @@ class FilterCache : public BaseLock
 
 struct TheFilterCache: public rtl::Static<FilterCache, TheFilterCache> {};
 
-    } // namespace config
-} // namespace filter
+} // namespace filter::config
 
 #endif // INCLUDED_FILTER_SOURCE_CONFIG_CACHE_FILTERCACHE_HXX
 

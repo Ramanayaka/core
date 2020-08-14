@@ -18,12 +18,7 @@
  */
 
 
-#include <rtl/string.h>
-#include <cppuhelper/exc_hlp.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/xml/dom/XDocument.hpp>
-#include <com/sun/star/xml/xpath/XXPathAPI.hpp>
-#include "dp_misc.h"
 #include "dp_scriptbackenddb.hxx"
 
 
@@ -34,9 +29,7 @@ using namespace ::com::sun::star::uno;
 #define ROOT_ELEMENT_NAME "script-backend-db"
 #define KEY_ELEMENT_NAME "script"
 
-namespace dp_registry {
-namespace backend {
-namespace script {
+namespace dp_registry::backend::script {
 
 ScriptBackendDb::ScriptBackendDb(
     Reference<XComponentContext> const &  xContext,
@@ -47,27 +40,25 @@ ScriptBackendDb::ScriptBackendDb(
 
 OUString ScriptBackendDb::getDbNSName()
 {
-    return OUString(EXTENSION_REG_NS);
+    return EXTENSION_REG_NS;
 }
 
 OUString ScriptBackendDb::getNSPrefix()
 {
-    return OUString(NS_PREFIX);
+    return NS_PREFIX;
 }
 
 OUString ScriptBackendDb::getRootElementName()
 {
-    return OUString(ROOT_ELEMENT_NAME);
+    return ROOT_ELEMENT_NAME;
 }
 
 OUString ScriptBackendDb::getKeyElementName()
 {
-    return OUString(KEY_ELEMENT_NAME);
+    return KEY_ELEMENT_NAME;
 }
 
 
-} // namespace executable
-} // namespace backend
-} // namespace dp_registry
+} // namespace dp_registry::backend::script
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

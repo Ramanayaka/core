@@ -24,10 +24,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         GroupPrimitive3D::GroupPrimitive3D( const Primitive3DContainer& rChildren )
         :   BasePrimitive3D(),
             maChildren(rChildren)
@@ -35,7 +33,7 @@ namespace drawinglayer
         }
 
         /** The compare opertator uses the Sequence::==operator, so only checking if
-            the rererences are equal. All non-equal references are interpreted as
+            the references are equal. All non-equal references are interpreted as
             non-equal.
          */
         bool GroupPrimitive3D::operator==( const BasePrimitive3D& rPrimitive ) const
@@ -59,7 +57,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive3DIDBlock(GroupPrimitive3D, PRIMITIVE3D_ID_GROUPPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

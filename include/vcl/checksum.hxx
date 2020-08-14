@@ -23,7 +23,6 @@
 
 #include <sal/config.h>
 #include <sal/types.h>
-#include <tools/solar.h>
 #include <vcl/dllapi.h>
 
 #define BITMAP_CHECKSUM_SIZE 8
@@ -60,13 +59,13 @@ extern "C" {
     @param  DatLen [in] data buffer length.
     @return new CRC64 value.
  */
-VCL_DLLPUBLIC sal_uInt64 SAL_CALL vcl_crc64 (
+VCL_DLLPUBLIC sal_uInt64 vcl_crc64 (
     sal_uInt64  Crc,
     const void *Data, sal_uInt32 DatLen
 )   SAL_THROW_EXTERN_C();
 
 
-VCL_DLLPUBLIC const sal_uInt64* vcl_get_crc64_table();
+const sal_uInt64* vcl_get_crc64_table();
 
 }
 
@@ -76,7 +75,7 @@ inline BitmapChecksum vcl_get_checksum (
     sal_uInt32 DatLen
 )
 {
-    return (BitmapChecksum)(vcl_crc64( Checksum, Data, DatLen ));
+    return static_cast<BitmapChecksum>(vcl_crc64( Checksum, Data, DatLen ));
 }
 
 

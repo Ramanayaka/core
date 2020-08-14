@@ -21,6 +21,9 @@ $(eval $(call gb_Library_Library,svl))
 
 $(eval $(call gb_Library_use_externals,svl,\
     boost_headers \
+    $(if $(filter LINUX MACOSX ANDROID %BSD SOLARIS HAIKU,$(OS)), \
+        curl) \
+    dtoa \
     icu_headers \
     icuuc \
     mdds_headers \
@@ -38,13 +41,27 @@ $(eval $(call gb_Library_use_custom_headers,svl,\
 	officecfg/registry \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,svl,$(SRCDIR)/svl/inc/pch/precompiled_svl))
+$(eval $(call gb_Library_set_precompiled_header,svl,svl/inc/pch/precompiled_svl))
 
 $(eval $(call gb_Library_use_sdk_api,svl))
 
 $(eval $(call gb_Library_add_defs,svl,\
     -DSVL_DLLIMPLEMENTATION \
 ))
+
+ifeq ($(TLS),NSS)
+$(eval $(call gb_Library_use_externals,svl,\
+       plc4 \
+       nss3 \
+))
+else
+ifeq ($(TLS),OPENSSL)
+$(eval $(call gb_Library_use_externals,svl,\
+    openssl \
+    openssl_headers \
+))
+endif
+endif
 
 $(eval $(call gb_Library_use_libraries,svl,\
     basegfx \
@@ -62,19 +79,53 @@ $(eval $(call gb_Library_use_libraries,svl,\
     utl \
 ))
 
+$(eval $(call gb_Library_use_system_win32_libs,svl,\
+    advapi32 \
+    crypt32 \
+    gdi32 \
+    gdiplus \
+    imm32 \
+    mpr \
+    ole32 \
+    shell32 \
+    usp10 \
+    uuid \
+    version \
+    winspool \
+    setupapi \
+    shlwapi \
+))
+
+ifeq ($(OS),WNT)
+$(eval $(call gb_Library_add_defs,svl,\
+    -DSVL_CRYPTO_MSCRYPTO \
+))
+$(eval $(call gb_Library_use_system_win32_libs,svl,\
+    crypt32 \
+))
+else
+ifneq (,$(filter DESKTOP,$(BUILD_TYPE))$(filter ANDROID,$(OS)))
+$(eval $(call gb_Library_add_defs,svl,\
+    -DSVL_CRYPTO_NSS \
+))
+$(eval $(call gb_Library_use_externals,svl,\
+    nss3 \
+    plc4 \
+))
+endif # BUILD_TYPE=DESKTOP
+endif
+
 $(eval $(call gb_Library_add_exception_objects,svl,\
     svl/source/config/asiancfg \
     svl/source/config/cjkoptions \
     svl/source/config/ctloptions \
     svl/source/config/itemholder2 \
     svl/source/config/languageoptions \
+    svl/source/crypto/cryptosign \
     svl/source/filepicker/pickerhistory \
-    svl/source/filerec/filerec \
     svl/source/items/aeitem \
     svl/source/items/cenumitm \
     svl/source/items/cintitem \
-    svl/source/items/cntwall \
-    svl/source/items/ctypeitm \
     svl/source/items/custritm \
     svl/source/items/flagitem \
     svl/source/items/globalnameitem \
@@ -89,6 +140,7 @@ $(eval $(call gb_Library_add_exception_objects,svl,\
     svl/source/items/IndexedStyleSheets \
     svl/source/items/itemset \
     svl/source/items/lckbitem \
+    svl/source/items/legacyitem \
     svl/source/items/macitem \
     svl/source/items/poolcach \
     svl/source/items/poolio \
@@ -99,16 +151,17 @@ $(eval $(call gb_Library_add_exception_objects,svl,\
     svl/source/items/sitem \
     svl/source/items/slstitm \
     svl/source/items/srchitem \
+    svl/source/items/stringio \
     svl/source/items/stritem \
     svl/source/items/style \
     svl/source/items/stylepool \
-    svl/source/items/szitem \
     svl/source/items/visitem \
     svl/source/items/whiter \
     svl/source/misc/PasswordHelper \
     svl/source/misc/adrparse \
     $(if $(filter DESKTOP,$(BUILD_TYPE)),\
-        svl/source/misc/documentlockfile) \
+        svl/source/misc/documentlockfile \
+        svl/source/misc/msodocumentlockfile) \
     svl/source/misc/filenotation \
     svl/source/misc/fstathelper \
     svl/source/misc/getstringresource \

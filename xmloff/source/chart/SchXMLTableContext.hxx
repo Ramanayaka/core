@@ -20,20 +20,21 @@
 #define INCLUDED_XMLOFF_SOURCE_CHART_SCHXMLTABLECONTEXT_HXX
 
 #include <xmloff/xmlictxt.hxx>
-#include "SchXMLImport.hxx"
+#include <xmloff/SchXMLImportHelper.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 
 #include <com/sun/star/chart/ChartDataRowSource.hpp>
 
 #include "transporttypes.hxx"
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax {
+namespace com::sun::star {
+    namespace xml::sax {
         class XAttributeList;
-    }}
+    }
     namespace chart {
         class XChartDocument;
-}}}}
+    }
+}
 
 class SchXMLTableContext : public SvXMLImportContext
 {
@@ -53,7 +54,7 @@ public:
                         SchXMLTable& aTable );
     virtual ~SchXMLTableContext() override;
 
-    virtual SvXMLImportContext* CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
@@ -97,7 +98,7 @@ public:
                                SchXMLTable& aTable );
     virtual ~SchXMLTableColumnsContext() override;
 
-    virtual SvXMLImportContext* CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
@@ -131,7 +132,7 @@ public:
                             SchXMLTable& aTable );
     virtual ~SchXMLTableRowsContext() override;
 
-    virtual SvXMLImportContext* CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
@@ -150,7 +151,7 @@ public:
                            SchXMLTable& aTable );
     virtual ~SchXMLTableRowContext() override;
 
-    virtual SvXMLImportContext* CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
@@ -174,7 +175,7 @@ public:
                             SchXMLTable& aTable );
     virtual ~SchXMLTableCellContext() override;
 
-    virtual SvXMLImportContext* CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;

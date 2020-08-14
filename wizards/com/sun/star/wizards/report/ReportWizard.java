@@ -320,7 +320,7 @@ public class ReportWizard extends DatabaseObjectWizard implements XTextListener
         CurTitlesComponent = new TitlesComponent(this, SOTITLEPAGE, 97, 37, 210, 7, slblColumnNames, slblColumnTitles, 34381);
         CurTitlesComponent.addTextListener(this);
         CurGroupFieldHandler = new GroupFieldHandler(m_reportDocument, this);
-        CurSortingComponent = new SortingComponent(this, SOSORTPAGE, 95, 30, 210, 34346);
+        CurSortingComponent = new SortingComponent(this, SOSORTPAGE, 95, 30, 210, 34348);
         CurReportLayouter = new ReportLayouter(xMSF, m_reportDocument, this, isReportBuilderInstalled());
         CurReportFinalizer = new ReportFinalizer(m_reportDocument, this);
         bCloseDocument = true;
@@ -590,7 +590,7 @@ public class ReportWizard extends DatabaseObjectWizard implements XTextListener
         boolean bEnabled = NewItems.length > 0;
         setControlProperty("btnWizardNext", PropertyNames.PROPERTY_ENABLED, Boolean.valueOf(bEnabled));
         setControlProperty("btnWizardFinish", PropertyNames.PROPERTY_ENABLED, Boolean.valueOf(bEnabled));
-        enableRoadmapItems(bEnabled);   // Note: Performancewise this could be improved
+        enableRoadmapItems(bEnabled);   // Note: Performance wise this could be improved
     }
 
     public void textChanged(TextEvent xTextEvent)

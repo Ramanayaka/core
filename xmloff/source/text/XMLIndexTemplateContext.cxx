@@ -26,14 +26,17 @@
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
+#include <xmloff/xmlement.hxx>
 #include <tools/debug.hxx>
 #include <rtl/ustring.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/container/XIndexReplace.hpp>
+#include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 
 
 using namespace ::std;
@@ -54,7 +57,7 @@ XMLIndexTemplateContext::XMLIndexTemplateContext(
     const OUString& rLocalName,
     const SvXMLEnumMapEntry<sal_uInt16>* pLevelNameMap,
     enum XMLTokenEnum eLevelAttrName,
-    const sal_Char** pLevelStylePropMap,
+    const char** pLevelStylePropMap,
     const bool* pAllowedTokenTypes,
     bool bT )
 :   SvXMLImportContext(rImport, nPrfx, rLocalName)
@@ -139,50 +142,50 @@ void XMLIndexTemplateContext::StartElement(
 
 void XMLIndexTemplateContext::EndElement()
 {
-    if (bOutlineLevelOK)
+    if (!bOutlineLevelOK)
+        return;
+
+    const sal_Int32 nCount = aValueVector.size();
+    Sequence<PropertyValues> aValueSequence(nCount);
+    for(sal_Int32 i = 0; i<nCount; i++)
     {
-        const sal_Int32 nCount = aValueVector.size();
-        Sequence<PropertyValues> aValueSequence(nCount);
-        for(sal_Int32 i = 0; i<nCount; i++)
-        {
-            aValueSequence[i] = aValueVector[i];
-        }
+        aValueSequence[i] = aValueVector[i];
+    }
 
-        // get LevelFormat IndexReplace ...
-        Any aAny = rPropertySet->getPropertyValue("LevelFormat");
-        Reference<XIndexReplace> xIndexReplace;
-        aAny >>= xIndexReplace;
+    // get LevelFormat IndexReplace ...
+    Any aAny = rPropertySet->getPropertyValue("LevelFormat");
+    Reference<XIndexReplace> xIndexReplace;
+    aAny >>= xIndexReplace;
 
-        // ... and insert
-        xIndexReplace->replaceByIndex(nOutlineLevel, Any(aValueSequence));
+    // ... and insert
+    xIndexReplace->replaceByIndex(nOutlineLevel, Any(aValueSequence));
 
-        if (bStyleNameOK)
-        {
-            const sal_Char* pStyleProperty =
-                pOutlineLevelStylePropMap[nOutlineLevel];
+    if (!bStyleNameOK)
+        return;
 
-            DBG_ASSERT(nullptr != pStyleProperty, "need property name");
-            if (nullptr != pStyleProperty)
-            {
-                OUString sDisplayStyleName =
-                        GetImport().GetStyleDisplayName(
-                        XML_STYLE_FAMILY_TEXT_PARAGRAPH,
-                        sStyleName );
-                // #i50288#: Check if style exists
-                const Reference < css::container::XNameContainer > & rStyles =
-                    GetImport().GetTextImport()->GetParaStyles();
-                if( rStyles.is() &&
-                    rStyles->hasByName( sDisplayStyleName ) )
-                {
-                    rPropertySet->setPropertyValue(
-                        OUString::createFromAscii(pStyleProperty), css::uno::Any(sDisplayStyleName));
-                }
-            }
-        }
+    const char* pStyleProperty =
+        pOutlineLevelStylePropMap[nOutlineLevel];
+
+    DBG_ASSERT(nullptr != pStyleProperty, "need property name");
+    if (nullptr == pStyleProperty)
+        return;
+
+    OUString sDisplayStyleName =
+            GetImport().GetStyleDisplayName(
+            XmlStyleFamily::TEXT_PARAGRAPH,
+            sStyleName );
+    // #i50288#: Check if style exists
+    const Reference < css::container::XNameContainer > & rStyles =
+        GetImport().GetTextImport()->GetParaStyles();
+    if( rStyles.is() &&
+        rStyles->hasByName( sDisplayStyleName ) )
+    {
+        rPropertySet->setPropertyValue(
+            OUString::createFromAscii(pStyleProperty), css::uno::Any(sDisplayStyleName));
     }
 }
 
-
+namespace {
 /// template token types; used for aTokenTypeMap parameter
 enum TemplateTokenType
 {
@@ -196,6 +199,7 @@ enum TemplateTokenType
     XML_TOK_INDEX_TYPE_BIBLIOGRAPHY
 };
 
+}
 
 SvXMLEnumMapEntry<TemplateTokenType> const aTemplateTokenTypeMap[] =
 {
@@ -207,17 +211,17 @@ SvXMLEnumMapEntry<TemplateTokenType> const aTemplateTokenTypeMap[] =
     { XML_INDEX_ENTRY_LINK_START,   XML_TOK_INDEX_TYPE_LINK_START },
     { XML_INDEX_ENTRY_LINK_END,     XML_TOK_INDEX_TYPE_LINK_END },
     { XML_INDEX_ENTRY_BIBLIOGRAPHY, XML_TOK_INDEX_TYPE_BIBLIOGRAPHY },
-    { XML_TOKEN_INVALID, (TemplateTokenType)0 }
+    { XML_TOKEN_INVALID, TemplateTokenType(0) }
 };
 
-SvXMLImportContext *XMLIndexTemplateContext::CreateChildContext(
+SvXMLImportContextRef XMLIndexTemplateContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
-    const Reference<XAttributeList> & xAttrList )
+    const Reference<XAttributeList> & /*xAttrList*/ )
 {
     SvXMLImportContext* pContext = nullptr;
 
-    if (XML_NAMESPACE_TEXT == nPrefix)
+    if (XML_NAMESPACE_TEXT == nPrefix || XML_NAMESPACE_LO_EXT == nPrefix)
     {
         TemplateTokenType nToken;
         if (SvXMLUnitConverter::convertEnum(nToken, rLocalName,
@@ -281,12 +285,6 @@ SvXMLImportContext *XMLIndexTemplateContext::CreateChildContext(
     }
 
     // ignore unknown
-    if (nullptr == pContext)
-    {
-        return SvXMLImportContext::CreateChildContext(nPrefix, rLocalName,
-                                                      xAttrList);
-    }
-
     return pContext;
 }
 
@@ -311,7 +309,7 @@ const SvXMLEnumMapEntry<sal_uInt16> aSvLevelNameTOCMap[] =
     { XML_TOKEN_INVALID, 0 }
 };
 
-const sal_Char* aLevelStylePropNameTOCMap[] =
+const char* aLevelStylePropNameTOCMap[] =
     { nullptr, "ParaStyleLevel1", "ParaStyleLevel2", "ParaStyleLevel3",
           "ParaStyleLevel4", "ParaStyleLevel5", "ParaStyleLevel6",
           "ParaStyleLevel7", "ParaStyleLevel8", "ParaStyleLevel9",
@@ -336,8 +334,8 @@ const bool aAllowedTokenTypesUser[] =
     true,       // XML_TOK_INDEX_TYPE_TEXT,
     true,       // XML_TOK_INDEX_TYPE_PAGE_NUMBER,
     true,       // XML_TOK_INDEX_TYPE_CHAPTER,
-    false,      // XML_TOK_INDEX_TYPE_LINK_START,
-    false,      // XML_TOK_INDEX_TYPE_LINK_END,
+    true,       // XML_TOK_INDEX_TYPE_LINK_START,
+    true,       // XML_TOK_INDEX_TYPE_LINK_END,
     false       // XML_TOK_INDEX_TYPE_BIBLIOGRAPHY
 };
 
@@ -353,7 +351,7 @@ const SvXMLEnumMapEntry<sal_uInt16> aLevelNameAlphaMap[] =
     { XML_TOKEN_INVALID, 0 }
 };
 
-const sal_Char* aLevelStylePropNameAlphaMap[] =
+const char* aLevelStylePropNameAlphaMap[] =
     { nullptr, "ParaStyleSeparator", "ParaStyleLevel1", "ParaStyleLevel2",
           "ParaStyleLevel3", nullptr };
 
@@ -400,7 +398,7 @@ const SvXMLEnumMapEntry<sal_uInt16> aLevelNameBibliographyMap[] =
 };
 
 // TODO: replace with real property names, when available
-const sal_Char* aLevelStylePropNameBibliographyMap[] =
+const char* aLevelStylePropNameBibliographyMap[] =
 {
     nullptr, "ParaStyleLevel1", "ParaStyleLevel1", "ParaStyleLevel1",
     "ParaStyleLevel1", "ParaStyleLevel1", "ParaStyleLevel1",
@@ -429,7 +427,7 @@ const bool aAllowedTokenTypesBibliography[] =
 // no name map
 const SvXMLEnumMapEntry<sal_uInt16>* aLevelNameTableMap = nullptr;
 
-const sal_Char* aLevelStylePropNameTableMap[] =
+const char* aLevelStylePropNameTableMap[] =
     { nullptr, "ParaStyleLevel1", nullptr };
 
 const bool aAllowedTokenTypesTable[] =
@@ -439,8 +437,8 @@ const bool aAllowedTokenTypesTable[] =
     true,       // XML_TOK_INDEX_TYPE_TEXT,
     true,       // XML_TOK_INDEX_TYPE_PAGE_NUMBER,
     true,       // XML_TOK_INDEX_TYPE_CHAPTER,
-    false,      // XML_TOK_INDEX_TYPE_LINK_START,
-    false,      // XML_TOK_INDEX_TYPE_LINK_END,
+    true,       // XML_TOK_INDEX_TYPE_LINK_START,
+    true,       // XML_TOK_INDEX_TYPE_LINK_END,
     false       // XML_TOK_INDEX_TYPE_BIBLIOGRAPHY
 };
 

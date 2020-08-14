@@ -19,94 +19,147 @@
 
 #include <config_features.h>
 
-#include "svx/txencbox.hxx"
-#include "svx/txenctab.hxx"
-#include <svx/dialogs.hrc>
+#include <svx/txencbox.hxx>
+#include <svx/dialmgr.hxx>
+#include <svx/txenctab.hxx>
 #if HAVE_FEATURE_DBCONNECTIVITY
-#include "svx/dbcharsethelper.hxx"
+#include <dbcharsethelper.hxx>
 #endif
-#include <vcl/builderfactory.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/settings.hxx>
+#include <unotools/syslocale.hxx>
 #include <rtl/tencinfo.h>
-#include <rtl/locale.h>
-#include <rtl/strbuf.hxx>
-#include <osl/nlsupport.h>
+#include <sal/log.hxx>
+#include <txenctab.hrc>
 
-SvxTextEncodingBox::SvxTextEncodingBox( vcl::Window* pParent, WinBits nBits )
-    : ListBox( pParent, nBits )
+namespace
 {
-    m_pEncTable = new SvxTextEncodingTable;
+    std::vector<rtl_TextEncoding> FillFromDbTextEncodingMap(bool bExcludeImportSubsets, sal_uInt32 nExcludeInfoFlags)
+    {
+        std::vector<rtl_TextEncoding> aRet;
+#if !HAVE_FEATURE_DBCONNECTIVITY
+        (void)bExcludeImportSubsets;
+        (void)nExcludeInfoFlags;
+#else
+        rtl_TextEncodingInfo aInfo;
+        aInfo.StructSize = sizeof(rtl_TextEncodingInfo);
+        ::std::vector< rtl_TextEncoding > aEncs;
+        sal_Int32 nCount = svxform::charset_helper::getSupportedTextEncodings( aEncs );
+        for ( sal_Int32 j=0; j<nCount; j++ )
+        {
+            bool bInsert = true;
+            rtl_TextEncoding nEnc = rtl_TextEncoding( aEncs[j] );
+            if ( nExcludeInfoFlags )
+            {
+                if ( !rtl_getTextEncodingInfo( nEnc, &aInfo ) )
+                    bInsert = false;
+                else
+                {
+                    if ( (aInfo.Flags & nExcludeInfoFlags) == 0 )
+                    {
+                        if ( (nExcludeInfoFlags & RTL_TEXTENCODING_INFO_UNICODE) &&
+                                ((nEnc == RTL_TEXTENCODING_UCS2) ||
+                                nEnc == RTL_TEXTENCODING_UCS4) )
+                            bInsert = false;    // InfoFlags don't work for Unicode :-(
+                    }
+                    else
+                        bInsert = false;
+                }
+            }
+            if ( bInsert )
+            {
+                if ( bExcludeImportSubsets )
+                {
+                    switch ( nEnc )
+                    {
+                        // subsets of RTL_TEXTENCODING_GB_18030
+                        case RTL_TEXTENCODING_GB_2312 :
+                        case RTL_TEXTENCODING_GBK :
+                        case RTL_TEXTENCODING_MS_936 :
+                            bInsert = false;
+                        break;
+                    }
+                }
+                // CharsetMap offers a RTL_TEXTENCODING_DONTKNOW for internal use,
+                // makes no sense here and would result in an empty string as list
+                // entry.
+                if ( bInsert && nEnc != RTL_TEXTENCODING_DONTKNOW )
+                    aRet.push_back(nEnc);
+            }
+        }
+#endif
+        return aRet;
+    }
 }
 
-VCL_BUILDER_DECL_FACTORY(SvxTextEncodingBox)
+void SvxTextEncodingBox::FillFromDbTextEncodingMap(
+        bool bExcludeImportSubsets, sal_uInt32 nExcludeInfoFlags )
 {
-    WinBits nWinBits = WB_LEFT|WB_VCENTER|WB_3DLOOK|WB_SIMPLEMODE;
-    bool bDropdown = VclBuilder::extractDropdown(rMap);
-    if (bDropdown)
-        nWinBits |= WB_DROPDOWN;
-    OUString sBorder = VclBuilder::extractCustomProperty(rMap);
-    if (!sBorder.isEmpty())
-        nWinBits |= WB_BORDER;
-    VclPtrInstance<SvxTextEncodingBox> pListBox(pParent, nWinBits);
-    if (bDropdown)
-        pListBox->EnableAutoSize(true);
-    rRet = pListBox;
+    m_xControl->freeze();
+    auto aEncs = ::FillFromDbTextEncodingMap(bExcludeImportSubsets, nExcludeInfoFlags);
+    for (auto nEnc : aEncs)
+        InsertTextEncoding(nEnc);
+    m_xControl->thaw();
+}
+
+void SvxTextEncodingTreeView::FillFromDbTextEncodingMap(
+        bool bExcludeImportSubsets, sal_uInt32 nExcludeInfoFlags )
+{
+    m_xControl->freeze();
+    auto aEncs = ::FillFromDbTextEncodingMap(bExcludeImportSubsets, nExcludeInfoFlags);
+    for (auto nEnc : aEncs)
+        InsertTextEncoding(nEnc);
+    m_xControl->thaw();
+}
+
+SvxTextEncodingBox::SvxTextEncodingBox(std::unique_ptr<weld::ComboBox> pControl)
+    : m_xControl(std::move(pControl))
+{
+    m_xControl->make_sorted();
+}
+
+SvxTextEncodingTreeView::SvxTextEncodingTreeView(std::unique_ptr<weld::TreeView> pControl)
+    : m_xControl(std::move(pControl))
+{
+    m_xControl->make_sorted();
 }
 
 SvxTextEncodingBox::~SvxTextEncodingBox()
 {
-    disposeOnce();
 }
 
-void SvxTextEncodingBox::dispose()
+SvxTextEncodingTreeView::~SvxTextEncodingTreeView()
 {
-    delete m_pEncTable;
-    ListBox::dispose();
 }
 
-sal_Int32 SvxTextEncodingBox::EncodingToPos_Impl( rtl_TextEncoding nEnc ) const
+namespace
 {
-    sal_Int32 nCount = GetEntryCount();
-    for ( sal_Int32 i=0; i<nCount; i++ )
+    std::vector<int> FillFromTextEncodingTable(bool bExcludeImportSubsets, sal_uInt32 nExcludeInfoFlags, sal_uInt32 nButIncludeInfoFlags)
     {
-        if ( nEnc == rtl_TextEncoding( reinterpret_cast<sal_uIntPtr>(GetEntryData(i)) ) )
-            return i;
-    }
-    return LISTBOX_ENTRY_NOTFOUND;
-}
+        std::vector<int> aRet;
 
-
-void SvxTextEncodingBox::FillFromTextEncodingTable(
-        bool bExcludeImportSubsets, sal_uInt32 nExcludeInfoFlags,
-        sal_uInt32 nButIncludeInfoFlags )
-{
-    rtl_TextEncodingInfo aInfo;
-    aInfo.StructSize = sizeof(rtl_TextEncodingInfo);
-    sal_uInt32 nCount = m_pEncTable->Count();
-    for ( sal_uInt32 j=0; j<nCount; j++ )
-    {
-        bool bInsert = true;
-        rtl_TextEncoding nEnc = rtl_TextEncoding( m_pEncTable->GetValue( j ) );
-        if ( nExcludeInfoFlags )
+        rtl_TextEncodingInfo aInfo;
+        aInfo.StructSize = sizeof(rtl_TextEncodingInfo);
+        const sal_uInt32 nCount = SAL_N_ELEMENTS(RID_SVXSTR_TEXTENCODING_TABLE);
+        for (sal_uInt32 j = 0; j < nCount; ++j)
         {
-            if ( !rtl_getTextEncodingInfo( nEnc, &aInfo ) )
-                bInsert = false;
-            else
+            bool bInsert = true;
+            rtl_TextEncoding nEnc = RID_SVXSTR_TEXTENCODING_TABLE[j].second;
+            if ( nExcludeInfoFlags )
             {
-                if ( (aInfo.Flags & nExcludeInfoFlags) == 0 )
-                {
-                    if ( (nExcludeInfoFlags & RTL_TEXTENCODING_INFO_UNICODE) &&
-                            ((nEnc == RTL_TEXTENCODING_UCS2) ||
-                            nEnc == RTL_TEXTENCODING_UCS4) )
-                        bInsert = false;    // InfoFlags don't work for Unicode :-(
-                }
-                else if ( (aInfo.Flags & nButIncludeInfoFlags) == 0 )
+                if ( !rtl_getTextEncodingInfo( nEnc, &aInfo ) )
                     bInsert = false;
+                else
+                {
+                    if ( (aInfo.Flags & nExcludeInfoFlags) == 0 )
+                    {
+                        if ( (nExcludeInfoFlags & RTL_TEXTENCODING_INFO_UNICODE) &&
+                                ((nEnc == RTL_TEXTENCODING_UCS2) ||
+                                nEnc == RTL_TEXTENCODING_UCS4) )
+                            bInsert = false;    // InfoFlags don't work for Unicode :-(
+                    }
+                    else if ( (aInfo.Flags & nButIncludeInfoFlags) == 0 )
+                        bInsert = false;
+                }
             }
-        }
-        if ( bInsert )
-        {
             if ( bExcludeImportSubsets )
             {
                 switch ( nEnc )
@@ -120,68 +173,38 @@ void SvxTextEncodingBox::FillFromTextEncodingTable(
                 }
             }
             if ( bInsert )
-                InsertTextEncoding( nEnc, m_pEncTable->GetString( j ) );
+                aRet.push_back(j);
         }
+        return aRet;
     }
 }
 
+void SvxTextEncodingBox::FillFromTextEncodingTable(
+        bool bExcludeImportSubsets, sal_uInt32 nExcludeInfoFlags,
+        sal_uInt32 nButIncludeInfoFlags )
+{
+    std::vector<int> aRet(::FillFromTextEncodingTable(bExcludeImportSubsets, nExcludeInfoFlags, nButIncludeInfoFlags));
+    m_xControl->freeze();
+    for (auto j : aRet)
+    {
+        rtl_TextEncoding nEnc = RID_SVXSTR_TEXTENCODING_TABLE[j].second;
+        InsertTextEncoding(nEnc, SvxResId(RID_SVXSTR_TEXTENCODING_TABLE[j].first));
+    }
+    m_xControl->thaw();
+}
 
-void SvxTextEncodingBox::FillFromDbTextEncodingMap(
+void SvxTextEncodingTreeView::FillFromTextEncodingTable(
         bool bExcludeImportSubsets, sal_uInt32 nExcludeInfoFlags )
 {
-#if !HAVE_FEATURE_DBCONNECTIVITY
-    (void)bExcludeImportSubsets;
-    (void)nExcludeInfoFlags;
-#else
-    rtl_TextEncodingInfo aInfo;
-    aInfo.StructSize = sizeof(rtl_TextEncodingInfo);
-    ::std::vector< rtl_TextEncoding > aEncs;
-    sal_Int32 nCount = svxform::charset_helper::getSupportedTextEncodings( aEncs );
-    for ( sal_Int32 j=0; j<nCount; j++ )
+    std::vector<int> aRet(::FillFromTextEncodingTable(bExcludeImportSubsets, nExcludeInfoFlags, /*nButIncludeInfoFlags*/0));
+    m_xControl->freeze();
+    for (auto j : aRet)
     {
-        bool bInsert = true;
-        rtl_TextEncoding nEnc = rtl_TextEncoding( aEncs[j] );
-        if ( nExcludeInfoFlags )
-        {
-            if ( !rtl_getTextEncodingInfo( nEnc, &aInfo ) )
-                bInsert = false;
-            else
-            {
-                if ( (aInfo.Flags & nExcludeInfoFlags) == 0 )
-                {
-                    if ( (nExcludeInfoFlags & RTL_TEXTENCODING_INFO_UNICODE) &&
-                            ((nEnc == RTL_TEXTENCODING_UCS2) ||
-                            nEnc == RTL_TEXTENCODING_UCS4) )
-                        bInsert = false;    // InfoFlags don't work for Unicode :-(
-                }
-                else
-                    bInsert = false;
-            }
-        }
-        if ( bInsert )
-        {
-            if ( bExcludeImportSubsets )
-            {
-                switch ( nEnc )
-                {
-                    // subsets of RTL_TEXTENCODING_GB_18030
-                    case RTL_TEXTENCODING_GB_2312 :
-                    case RTL_TEXTENCODING_GBK :
-                    case RTL_TEXTENCODING_MS_936 :
-                        bInsert = false;
-                    break;
-                }
-            }
-            // CharsetMap offers a RTL_TEXTENCODING_DONTKNOW for internal use,
-            // makes no sense here and would result in an empty string as list
-            // entry.
-            if ( bInsert && nEnc != RTL_TEXTENCODING_DONTKNOW )
-                InsertTextEncoding( nEnc );
-        }
+        rtl_TextEncoding nEnc = RID_SVXSTR_TEXTENCODING_TABLE[j].second;
+        InsertTextEncoding(nEnc, SvxResId(RID_SVXSTR_TEXTENCODING_TABLE[j].first));
     }
-#endif
+    m_xControl->thaw();
 }
-
 
 void SvxTextEncodingBox::FillWithMimeAndSelectBest()
 {
@@ -190,42 +213,62 @@ void SvxTextEncodingBox::FillWithMimeAndSelectBest()
     SelectTextEncoding( nEnc );
 }
 
-
 void SvxTextEncodingBox::InsertTextEncoding( const rtl_TextEncoding nEnc,
             const OUString& rEntry )
 {
-    sal_Int32 nAt = InsertEntry( rEntry );
-    SetEntryData( nAt, reinterpret_cast<void*>(nEnc) );
+    m_xControl->append(OUString::number(nEnc), rEntry);
 }
 
+void SvxTextEncodingTreeView::InsertTextEncoding( const rtl_TextEncoding nEnc,
+            const OUString& rEntry )
+{
+    m_xControl->append(OUString::number(nEnc), rEntry);
+}
 
 void SvxTextEncodingBox::InsertTextEncoding( const rtl_TextEncoding nEnc )
 {
-    const OUString& rEntry = m_pEncTable->GetTextString( nEnc );
-    if ( !rEntry.isEmpty() )
+    const OUString& rEntry = SvxTextEncodingTable::GetTextString(nEnc);
+    if (!rEntry.isEmpty())
         InsertTextEncoding( nEnc, rEntry );
     else
         SAL_WARN( "svx.dialog", "SvxTextEncodingBox::InsertTextEncoding: no resource string for text encoding: " << static_cast<sal_Int32>( nEnc ) );
 }
 
+void SvxTextEncodingTreeView::InsertTextEncoding( const rtl_TextEncoding nEnc )
+{
+    const OUString& rEntry = SvxTextEncodingTable::GetTextString(nEnc);
+    if (!rEntry.isEmpty())
+        InsertTextEncoding( nEnc, rEntry );
+    else
+        SAL_WARN( "svx.dialog", "SvxTextEncodingTreeView::InsertTextEncoding: no resource string for text encoding: " << static_cast<sal_Int32>( nEnc ) );
+}
 
 rtl_TextEncoding SvxTextEncodingBox::GetSelectTextEncoding() const
 {
-    sal_Int32 nPos = GetSelectEntryPos();
-
-    if ( nPos != LISTBOX_ENTRY_NOTFOUND )
-        return rtl_TextEncoding( reinterpret_cast<sal_uIntPtr>(GetEntryData(nPos)) );
+    OUString sId(m_xControl->get_active_id());
+    if (!sId.isEmpty())
+        return rtl_TextEncoding(sId.toInt32());
     else
         return RTL_TEXTENCODING_DONTKNOW;
 }
 
+rtl_TextEncoding SvxTextEncodingTreeView::GetSelectTextEncoding() const
+{
+    OUString sId(m_xControl->get_selected_id());
+    if (!sId.isEmpty())
+        return rtl_TextEncoding(sId.toInt32());
+    else
+        return RTL_TEXTENCODING_DONTKNOW;
+}
 
 void SvxTextEncodingBox::SelectTextEncoding( const rtl_TextEncoding nEnc )
 {
-    sal_Int32 nAt = EncodingToPos_Impl( nEnc );
+    m_xControl->set_active_id(OUString::number(nEnc));
+}
 
-    if ( nAt != LISTBOX_ENTRY_NOTFOUND )
-        SelectEntryPos( nAt );
+void SvxTextEncodingTreeView::SelectTextEncoding( const rtl_TextEncoding nEnc )
+{
+    m_xControl->select_id(OUString::number(nEnc));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

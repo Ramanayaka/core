@@ -20,29 +20,29 @@
 #ifndef INCLUDED_EDITENG_UNOIPSET_HXX
 #define INCLUDED_EDITENG_UNOIPSET_HXX
 
-#include <com/sun/star/beans/XPropertySetInfo.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <editeng/editengdllapi.h>
 #include <svl/itemprop.hxx>
+#include <memory>
 #include <vector>
 
-class SdrItemPool;
-class SfxItemSet;
-class SvxShape;
-struct SvxIDPropertyCombine;
+namespace com::sun::star::beans { class XPropertySetInfo; }
 
-#define SFX_METRIC_ITEM                         (0x40)
+class SfxItemSet;
+struct SvxIDPropertyCombine;
 
 class EDITENG_DLLPUBLIC SvxItemPropertySet
 {
     SfxItemPropertyMap          m_aPropertyMap;
     mutable css::uno::Reference<css::beans::XPropertySetInfo> m_xInfo;
-    ::std::vector< SvxIDPropertyCombine* > aCombineList;
+    ::std::vector< std::unique_ptr<SvxIDPropertyCombine> > aCombineList;
     SfxItemPool&                    mrItemPool;
 
 public:
     SvxItemPropertySet( const SfxItemPropertyMapEntry *pMap, SfxItemPool& rPool );
     ~SvxItemPropertySet();
+
+    SvxItemPropertySet& operator=( SvxItemPropertySet const & ) = delete; // MSVC2015 workaround
+    SvxItemPropertySet( SvxItemPropertySet const & ) = delete; // MSVC2015 workaround
 
     // Methods, which work directly with the ItemSet
     static css::uno::Any getPropertyValue( const SfxItemPropertySimpleEntry* pMap, const SfxItemSet& rSet, bool bSearchInParent, bool bDontConvertNegativeValues );
@@ -53,8 +53,8 @@ public:
     void setPropertyValue( const SfxItemPropertySimpleEntry* pMap, const css::uno::Any& rVal ) const;
 
     bool AreThereOwnUsrAnys() const { return ! aCombineList.empty(); }
-    css::uno::Any* GetUsrAnyForID(sal_uInt16 nWID) const;
-    void AddUsrAnyForID(const css::uno::Any& rAny, sal_uInt16 nWID);
+    css::uno::Any* GetUsrAnyForID(SfxItemPropertySimpleEntry const & entry) const;
+    void AddUsrAnyForID(const css::uno::Any& rAny, SfxItemPropertySimpleEntry const & entry);
     void ClearAllUsrAny();
 
     css::uno::Reference< css::beans::XPropertySetInfo > const & getPropertySetInfo() const;

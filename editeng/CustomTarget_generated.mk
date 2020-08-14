@@ -10,17 +10,18 @@
 $(eval $(call gb_CustomTarget_CustomTarget,editeng/generated))
 
 editeng_SRC := $(SRCDIR)/editeng/source/misc
-editeng_PL := $(SRCDIR)/solenv/bin/gentoken.pl
+editeng_PY := $(SRCDIR)/solenv/bin/gentoken.py
 editeng_INC := $(call gb_CustomTarget_get_workdir,editeng/generated)
 
-$(editeng_INC)/tokens.hxx $(editeng_INC)/tokens.gperf : $(editeng_SRC)/tokens.txt $(editeng_PL)
+$(editeng_INC)/tokens.hxx $(editeng_INC)/tokens.gperf : $(editeng_SRC)/tokens.txt $(editeng_PY) \
+        $(call gb_ExternalExecutable_get_dependencies,python)
 	mkdir -p $(editeng_INC)
-	$(PERL) $(editeng_PL) $(editeng_SRC)/tokens.txt $(editeng_INC)/tokens.gperf
+	$(call gb_ExternalExecutable_get_command,python) $(editeng_PY) $(editeng_SRC)/tokens.txt $(editeng_INC)/tokens.gperf
 
 $(editeng_INC)/tokens.cxx : $(editeng_INC)/tokens.gperf
 	$(GPERF) --compare-strncmp --readonly-tables --output-file=$(editeng_INC)/tokens.cxx $(editeng_INC)/tokens.gperf
-	sed -i -e "s/(char\*)0/(char\*)0, XML_TOKEN_INVALID/g" $(editeng_INC)/tokens.cxx
-	sed -i -e "/^#line/d" $(editeng_INC)/tokens.cxx
+	sed -i $(if $(filter MACOSX,$(OS_FOR_BUILD)),'') -e "s/(char\*)0/(char\*)0, XML_TOKEN_INVALID/g" $(editeng_INC)/tokens.cxx
+	sed -i $(if $(filter MACOSX,$(OS_FOR_BUILD)),'') -e "/^#line/d" $(editeng_INC)/tokens.cxx
 
 $(call gb_CustomTarget_get_target,editeng/generated) : $(editeng_INC)/tokens.cxx
 

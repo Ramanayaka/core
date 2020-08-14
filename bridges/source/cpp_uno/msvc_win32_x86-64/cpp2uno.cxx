@@ -25,16 +25,17 @@
 #include <uno/data.h>
 #include <typelib/typedescription.hxx>
 
-#include "bridge.hxx"
-#include "cppinterfaceproxy.hxx"
-#include "types.hxx"
-#include "vtablefactory.hxx"
+#include <bridge.hxx>
+#include <cppinterfaceproxy.hxx>
+#include <types.hxx>
+#include <vtablefactory.hxx>
 
+#include "call.hxx"
 #include "mscx.hxx"
 
 using namespace ::com::sun::star::uno;
 
-static inline typelib_TypeClass cpp2uno_call(
+static typelib_TypeClass cpp2uno_call(
     bridges::cpp_uno::shared::CppInterfaceProxy * pThis,
     const typelib_TypeDescription * pMemberTD,
     typelib_TypeDescriptionReference * pReturnTypeRef, // NULL indicates void return
@@ -240,6 +241,12 @@ extern "C" typelib_TypeClass cpp_vtable_call(
 
     typelib_InterfaceTypeDescription * pTD = pCppI->getTypeDescr();
 
+    SAL_INFO( "bridges", "cpp_vtable_call: pCallStack=[" <<
+            std::hex << pStack[0] << "," << pStack[1] << "," << pStack[2] << ",...], pThis=" <<
+            pThis << ", pCppI=" << pCppI <<
+            std::dec << ", nFunctionIndex=" << nFunctionIndex << ", nVtableOffset=" << nVtableOffset );
+    SAL_INFO( "bridges", "name=" << OUString::unacquired(&pTD->aBase.pTypeName) );
+
     if ( nFunctionIndex >= pTD->nMapFunctionIndexToMemberIndex )
     {
         SAL_WARN(
@@ -259,6 +266,8 @@ extern "C" typelib_TypeClass cpp_vtable_call(
     assert(nMemberPos < pTD->nAllMembers);
 
     TypeDescription aMemberDescr( pTD->ppAllMembers[nMemberPos] );
+
+    SAL_INFO( "bridges", "Calling " << OUString::unacquired(&aMemberDescr.get()->pTypeName) );
 
     typelib_TypeClass eRet;
     switch ( aMemberDescr.get()->eTypeClass )
@@ -338,7 +347,7 @@ extern "C" typelib_TypeClass cpp_vtable_call(
                         }
                         TYPELIB_DANGER_RELEASE( pTD2 );
                     }
-                    SAL_FALLTHROUGH;
+                    [[fallthrough]];
                 }
                 default:
                 {
@@ -374,13 +383,13 @@ extern "C" char privateSnippetExecutor;
 // - Loads functionIndex and vtableOffset into scratch registers
 // - Jumps to privateSnippetExecutor
 
-unsigned char * codeSnippet(
+static unsigned char * codeSnippet(
     unsigned char * code,
     CPPU_CURRENT_NAMESPACE::RegParamKind param_kind[4],
     sal_Int32 nFunctionIndex,
     sal_Int32 nVtableOffset )
 {
-    sal_uInt64 nOffsetAndIndex = ( ( (sal_uInt64) nVtableOffset ) << 32 ) | ( (sal_uInt64) nFunctionIndex );
+    sal_uInt64 nOffsetAndIndex = ( static_cast<sal_uInt64>(nVtableOffset) << 32 ) | static_cast<sal_uInt64>(nFunctionIndex);
     unsigned char *p = code;
 
     // Spill parameters

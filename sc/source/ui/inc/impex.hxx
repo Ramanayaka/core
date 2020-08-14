@@ -20,13 +20,13 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_IMPEX_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_IMPEX_HXX
 
-#include <sot/exchange.hxx>
-#include "global.hxx"
-#include "address.hxx"
+#include <o3tl/deleter.hxx>
+#include <sot/formats.hxx>
+#include <address.hxx>
+#include <tools/stream.hxx>
 
 class ScDocShell;
 class ScDocument;
-class SvStream;
 class ScAsciiOptions;
 
 /**
@@ -44,16 +44,17 @@ struct ScExportTextOptions
     bool mbAddQuotes;
 };
 
-class ScImportExport
+class SC_DLLPUBLIC ScImportExport
 {
     ScDocShell* pDocSh;
     ScDocument* pDoc;
-    ScDocument* pUndoDoc;
+    std::unique_ptr<ScDocument, o3tl::default_delete<ScDocument>> pUndoDoc;
     ScRange     aRange;
     OUString    aStreamPath;
     OUString    aNonConvertibleChars;
     OUString    maFilterOptions;
-    sal_uLong   nSizeLimit;
+    sal_uInt32  nSizeLimit;
+    SCROW       nMaxImportRow;
     sal_Unicode cSep;                   // Separator
     sal_Unicode cStr;                   // String Delimiter
     bool        bFormulas;              // Formula in Text?
@@ -71,7 +72,7 @@ class ScImportExport
                                 // do not need to broadcast after the import.
     ScExportTextOptions mExportTextOptions;
 
-    ScAsciiOptions* pExtOptions;        // extended options
+    std::unique_ptr<ScAsciiOptions> pExtOptions;        // extended options
 
     bool StartPaste();                  // Protect check, set up Undo
     void EndPaste(bool bAutoRowHeight = true);                    // Undo/Redo actions, Repaint
@@ -100,12 +101,12 @@ public:
 
     const ScRange& GetRange() const { return aRange; }
 
-    SC_DLLPUBLIC static void EmbeddedNullTreatment( OUString & rStr );
+    static void EmbeddedNullTreatment( OUString & rStr );
 
     static bool  IsFormatSupported( SotClipboardFormatId nFormat );
     static const sal_Unicode* ScanNextFieldFromString( const sal_Unicode* p,
             OUString& rField, sal_Unicode cStr, const sal_Unicode* pSeps,
-            bool bMergeSeps, bool& rbIsQuoted, bool& rbOverflowCell );
+            bool bMergeSeps, bool& rbIsQuoted, bool& rbOverflowCell, bool bRemoveSpace );
     static  void    WriteUnicodeOrByteString( SvStream& rStrm, const OUString& rString, bool bZero = false );
     static  void    WriteUnicodeOrByteEndl( SvStream& rStrm );
 
@@ -172,9 +173,20 @@ public:
 
     @param rFieldSeparators
     A list of characters that each may act as a field separator.
+    If rcDetectSep was 0 and a separator is detected then it is appended to
+    rFieldSeparators.
 
     @param cFieldQuote
     The quote character used.
+
+    @param rcDetectSep
+    If 0 then attempt to detect a possible space (blank) separator if
+    rFieldSeparators doesn't include it already. This can be necessary because
+    of the "accept broken misquoted CSV fields" feature that tries to ignore
+    trailing blanks after a quoted field and if no separator follows continues
+    to add content to the field assuming the single double quote was in error.
+    If this blank separator is detected it is added to rFieldSeparators and the
+    line is reread with the new separators
 
     check Stream::good() to detect IO problems during read
 
@@ -196,7 +208,7 @@ public:
 
   */
 SC_DLLPUBLIC OUString ReadCsvLine( SvStream &rStream, bool bEmbeddedLineBreak,
-        const OUString& rFieldSeparators, sal_Unicode cFieldQuote );
+        OUString& rFieldSeparators, sal_Unicode cFieldQuote, sal_Unicode& rcDetectSep );
 
 #endif
 

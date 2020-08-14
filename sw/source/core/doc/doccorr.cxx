@@ -20,18 +20,12 @@
 #include <doc.hxx>
 #include <IDocumentLayoutAccess.hxx>
 #include <node.hxx>
-#include <rootfrm.hxx>
 #include <editsh.hxx>
 #include <viscrs.hxx>
-#include <IMark.hxx>
-#include <bookmrk.hxx>
 #include <redline.hxx>
 #include <mvsave.hxx>
 #include <docary.hxx>
 #include <unocrsr.hxx>
-#include <swundo.hxx>
-#include <hints.hxx>
-#include <edimp.hxx>
 
 namespace
 {
@@ -48,7 +42,7 @@ namespace
         return pStartNode;
     }
 
-    inline bool lcl_PosCorrAbs(SwPosition & rPos,
+    bool lcl_PosCorrAbs(SwPosition & rPos,
         const SwPosition& rStart,
         const SwPosition& rEnd,
         const SwPosition& rNewPos)
@@ -61,7 +55,7 @@ namespace
         return false;
     };
 
-    inline bool lcl_PaMCorrAbs(SwPaM & rPam,
+    bool lcl_PaMCorrAbs(SwPaM & rPam,
         const SwPosition& rStart,
         const SwPosition& rEnd,
         const SwPosition& rNewPos)
@@ -72,18 +66,18 @@ namespace
         return bRet;
     };
 
-    inline void lcl_PaMCorrRel1(SwPaM * pPam,
+    void lcl_PaMCorrRel1(SwPaM * pPam,
         SwNode const * const pOldNode,
         const SwPosition& rNewPos,
         const sal_Int32 nCntIdx)
     {
         for(int nb = 0; nb < 2; ++nb)
-            if(&((pPam)->GetBound(bool(nb)).nNode.GetNode()) == pOldNode)
+            if(&(pPam->GetBound(bool(nb)).nNode.GetNode()) == pOldNode)
             {
-                (pPam)->GetBound(bool(nb)).nNode = rNewPos.nNode;
-                (pPam)->GetBound(bool(nb)).nContent.Assign(
+                pPam->GetBound(bool(nb)).nNode = rNewPos.nNode;
+                pPam->GetBound(bool(nb)).nContent.Assign(
                     const_cast<SwIndexReg*>(rNewPos.nContent.GetIdxReg()),
-                    nCntIdx + (pPam)->GetBound(bool(nb)).nContent.GetIndex());
+                    nCntIdx + pPam->GetBound(bool(nb)).nContent.GetIndex());
             }
     }
 }
@@ -106,10 +100,15 @@ void PaMCorrAbs( const SwPaM& rRange,
             const SwCursorShell* pCursorShell = static_cast<const SwCursorShell*>(&rShell);
             SwPaM *_pStackCursor = pCursorShell->GetStackCursor();
             if( _pStackCursor )
-                do {
+                for (;;)
+                {
                     lcl_PaMCorrAbs( *_pStackCursor, aStart, aEnd, aNewPos );
-                } while ( (_pStackCursor != nullptr ) &&
-                    ((_pStackCursor = _pStackCursor->GetNext()) != pCursorShell->GetStackCursor()) );
+                    if( !_pStackCursor )
+                        break;
+                    _pStackCursor = _pStackCursor->GetNext();
+                    if( _pStackCursor == pCursorShell->GetStackCursor() )
+                        break;
+                }
 
             for(SwPaM& rPaM : const_cast<SwShellCursor*>(pCursorShell->GetCursor_())->GetRingContainer())
             {
@@ -147,7 +146,7 @@ void PaMCorrAbs( const SwPaM& rRange,
             dynamic_cast<SwUnoTableCursor *>(pUnoCursor.get());
         if( pUnoTableCursor )
         {
-            for(SwPaM& rPaM : (&pUnoTableCursor->GetSelRing())->GetRingContainer())
+            for(SwPaM& rPaM : pUnoTableCursor->GetSelRing().GetRingContainer())
             {
                 bChange |=
                     lcl_PaMCorrAbs( rPaM, aStart, aEnd, aNewPos );
@@ -172,7 +171,7 @@ void SwDoc::CorrAbs(const SwNodeIndex& rOldNode,
 {
     SwContentNode *const pContentNode( rOldNode.GetNode().GetContentNode() );
     SwPaM const aPam(rOldNode, 0,
-                     rOldNode, (pContentNode) ? pContentNode->Len() : 0);
+                     rOldNode, pContentNode ? pContentNode->Len() : 0);
     SwPosition aNewPos(rNewPos);
     aNewPos.nContent += nOffset;
 
@@ -233,7 +232,7 @@ void SwDoc::CorrAbs(
     {
         SwContentNode *const pContentNode( rEndNode.GetNode().GetContentNode() );
         SwPaM const aPam(rStartNode, 0,
-                         rEndNode, (pContentNode) ? pContentNode->Len() : 0);
+                         rEndNode, pContentNode ? pContentNode->Len() : 0);
         ::PaMCorrAbs(aPam, rNewPos);
     }
 }
@@ -258,10 +257,15 @@ void PaMCorrRel( const SwNodeIndex &rOldNode,
             SwCursorShell* pCursorShell = const_cast<SwCursorShell*>(static_cast<const SwCursorShell*>(&rShell));
             SwPaM *_pStackCursor = pCursorShell->GetStackCursor();
             if( _pStackCursor )
-                do {
+                for (;;)
+                {
                     lcl_PaMCorrRel1( _pStackCursor, pOldNode, aNewPos, nCntIdx );
-                } while ( (_pStackCursor != nullptr ) &&
-                    ((_pStackCursor = _pStackCursor->GetNext()) != pCursorShell->GetStackCursor()) );
+                    if( !_pStackCursor )
+                        break;
+                    _pStackCursor = _pStackCursor->GetNext();
+                    if( _pStackCursor == pCursorShell->GetStackCursor() )
+                        break;
+                }
 
             SwPaM* pStartPaM = pCursorShell->GetCursor_();
             for(SwPaM& rPaM : pStartPaM->GetRingContainer())
@@ -289,7 +293,7 @@ void PaMCorrRel( const SwNodeIndex &rOldNode,
             dynamic_cast<SwUnoTableCursor*>(pUnoCursor.get());
         if( pUnoTableCursor )
         {
-            for(SwPaM& rPaM : (&pUnoTableCursor->GetSelRing())->GetRingContainer())
+            for(SwPaM& rPaM : pUnoTableCursor->GetSelRing().GetRingContainer())
             {
                 lcl_PaMCorrRel1( &rPaM, pOldNode, aNewPos, nCntIdx );
             }

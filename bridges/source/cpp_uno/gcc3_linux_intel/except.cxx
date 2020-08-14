@@ -27,7 +27,7 @@
 #include <sal/log.hxx>
 
 #include <com/sun/star/uno/genfunc.hxx>
-#include "com/sun/star/uno/RuntimeException.hpp"
+#include <com/sun/star/uno/RuntimeException.hpp>
 #include <typelib/typedescription.hxx>
 #include <unordered_map>
 #include "share.hxx"
@@ -84,13 +84,15 @@ static OUString toUNOname( char const * p )
 
 class RTTI
 {
-    typedef std::unordered_map< OUString, type_info *, OUStringHash > t_rtti_map;
+    typedef std::unordered_map< OUString, type_info * > t_rtti_map;
 
     Mutex m_mutex;
     t_rtti_map m_rttis;
     t_rtti_map m_generatedRttis;
 
+#if !defined ANDROID
     void * m_hApp;
+#endif
 
 public:
     RTTI();
@@ -100,13 +102,17 @@ public:
 };
 
 RTTI::RTTI()
+#if !defined ANDROID
     : m_hApp( dlopen(nullptr, RTLD_LAZY) )
+#endif
 {
 }
 
 RTTI::~RTTI()
 {
+#if !defined ANDROID
     dlclose( m_hApp );
+#endif
 }
 
 
@@ -135,7 +141,11 @@ type_info * RTTI::getRTTI( typelib_CompoundTypeDescription *pTypeDescr )
         buf.append( 'E' );
 
         OString symName( buf.makeStringAndClear() );
+#if !defined ANDROID
         rtti = static_cast<type_info *>(dlsym( m_hApp, symName.getStr() ));
+#else
+        rtti = static_cast<type_info *>(dlsym( RTLD_DEFAULT, symName.getStr() ));
+#endif
 
         if (rtti)
         {
@@ -235,17 +245,8 @@ void raiseException( uno_Any * pUnoExc, uno_Mapping * pUno2Cpp )
     // destruct uno exception
     ::uno_any_destruct( pUnoExc, nullptr );
     // avoiding locked counts
-    static RTTI * s_rtti = nullptr;
-    if (! s_rtti)
-    {
-        MutexGuard guard( Mutex::getGlobalMutex() );
-        if (! s_rtti)
-        {
-            static RTTI rtti_data;
-            s_rtti = &rtti_data;
-        }
-    }
-    rtti = s_rtti->getRTTI(reinterpret_cast<typelib_CompoundTypeDescription *>(pTypeDescr));
+    static RTTI rtti_data;
+    rtti = rtti_data.getRTTI(reinterpret_cast<typelib_CompoundTypeDescription*>(pTypeDescr));
     TYPELIB_DANGER_RELEASE( pTypeDescr );
     assert(rtti && "### no rtti for throwing exception!");
     if (! rtti)
@@ -259,8 +260,10 @@ void raiseException( uno_Any * pUnoExc, uno_Mapping * pUno2Cpp )
     __cxxabiv1::__cxa_throw( pCppExc, rtti, deleteException );
 }
 
-void fillUnoException( __cxa_exception * header, uno_Any * pUnoExc, uno_Mapping * pCpp2Uno )
+void fillUnoException(uno_Any * pUnoExc, uno_Mapping * pCpp2Uno)
 {
+    __cxa_exception * header = reinterpret_cast<CPPU_CURRENT_NAMESPACE::__cxa_eh_globals*>(
+                 __cxxabiv1::__cxa_get_globals())->caughtExceptions;
     if (! header)
     {
         RuntimeException aRE( "no exception header!" );
@@ -270,8 +273,10 @@ void fillUnoException( __cxa_exception * header, uno_Any * pUnoExc, uno_Mapping 
         return;
     }
 
+    std::type_info *exceptionType = __cxxabiv1::__cxa_current_exception_type();
+
     typelib_TypeDescription * pExcTypeDescr = nullptr;
-    OUString unoName( toUNOname( header->exceptionType->name() ) );
+    OUString unoName( toUNOname( exceptionType->name() ) );
 #if OSL_DEBUG_LEVEL > 1
     OString cstr_unoName( OUStringToOString( unoName, RTL_TEXTENCODING_ASCII_US ) );
     fprintf( stderr, "> c++ exception occurred: %s\n", cstr_unoName.getStr() );

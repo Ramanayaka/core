@@ -21,7 +21,7 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_UNDODRAW_HXX
 
 #include <undobj.hxx>
-#include <svx/svdundo.hxx>
+#include <memory>
 
 struct SwUndoGroupObjImpl;
 class SdrMark;
@@ -35,11 +35,11 @@ class SwDoc;
 // Undo for Draw Objects
 class SwSdrUndo : public SwUndo
 {
-    SdrUndoAction* pSdrUndo;
-    SdrMarkList* pMarkList; // MarkList for all selected SdrObjects
+    std::unique_ptr<SdrUndoAction> m_pSdrUndo;
+    std::unique_ptr<SdrMarkList> m_pMarkList; // MarkList for all selected SdrObjects
 
 public:
-    SwSdrUndo( SdrUndoAction* , const SdrMarkList* pMarkList, const SwDoc* pDoc );
+    SwSdrUndo( std::unique_ptr<SdrUndoAction> , const SdrMarkList* pMarkList, const SwDoc* pDoc );
 
     virtual ~SwSdrUndo() override;
 
@@ -51,9 +51,9 @@ public:
 
 class SwUndoDrawGroup : public SwUndo
 {
-    SwUndoGroupObjImpl* pObjArr;
-    sal_uInt16 nSize;
-    bool bDelFormat;
+    std::unique_ptr<SwUndoGroupObjImpl[]> m_pObjArray;
+    sal_uInt16 m_nSize;
+    bool m_bDeleteFormat;
 
 public:
     SwUndoDrawGroup( sal_uInt16 nCnt, const SwDoc* pDoc );
@@ -67,7 +67,7 @@ public:
     void SetGroupFormat( SwDrawFrameFormat* );
 };
 
-// Action "ungroup drawing object" is now splitted into three parts - see
+// Action "ungroup drawing object" is now split into three parts - see
 // method <SwDoc::UnGroupSelection(..)>:
 // - creation for <SwDrawFrameFormat> instances for the group members of the
 //   selected group objects
@@ -80,9 +80,9 @@ public:
 //   contact object.
 class SwUndoDrawUnGroup : public SwUndo
 {
-    SwUndoGroupObjImpl* pObjArr;
-    sal_uInt16 nSize;
-    bool bDelFormat;
+    std::unique_ptr<SwUndoGroupObjImpl[]> m_pObjArray;
+    sal_uInt16 m_nSize;
+    bool m_bDeleteFormat;
 
 public:
     SwUndoDrawUnGroup( SdrObjGroup*, const SwDoc* pDoc );
@@ -98,7 +98,7 @@ public:
 class SwUndoDrawUnGroupConnectToLayout : public SwUndo
 {
 private:
-    std::vector< std::pair< SwDrawFrameFormat*, SdrObject* > > aDrawFormatsAndObjs;
+    std::vector< std::pair< SwDrawFrameFormat*, SdrObject* > > m_aDrawFormatsAndObjs;
 
 public:
     SwUndoDrawUnGroupConnectToLayout(const SwDoc* pDoc);
@@ -114,10 +114,9 @@ public:
 
 class SwUndoDrawDelete : public SwUndo
 {
-    SwUndoGroupObjImpl* pObjArr;
-    SdrMarkList* pMarkLst;  // MarkList for all selected SdrObjects
-    sal_uInt16 nSize;
-    bool bDelFormat;
+    std::unique_ptr<SwUndoGroupObjImpl[]> m_pObjArray;
+    std::unique_ptr<SdrMarkList> m_pMarkList;  // MarkList for all selected SdrObjects
+    bool m_bDeleteFormat;
 
 public:
     SwUndoDrawDelete( sal_uInt16 nCnt, const SwDoc* pDoc );

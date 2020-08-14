@@ -20,10 +20,9 @@
 #include <sal/config.h>
 
 #include <memory>
-#include <utility>
 
-#include "AccessibleTextHelper.hxx"
-#include "DrawViewWrapper.hxx"
+#include <AccessibleTextHelper.hxx>
+#include <DrawViewWrapper.hxx>
 
 #include <vcl/svapp.hxx>
 
@@ -32,8 +31,8 @@
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/window.hxx>
 
+#include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <o3tl/make_unique.hxx>
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
@@ -46,7 +45,6 @@ namespace chart
 AccessibleTextHelper::AccessibleTextHelper(
     DrawViewWrapper * pDrawViewWrapper ) :
         impl::AccessibleTextHelper_Base( m_aMutex ),
-        m_pTextHelper( nullptr ),
         m_pDrawViewWrapper( pDrawViewWrapper )
 {}
 
@@ -86,7 +84,7 @@ void SAL_CALL AccessibleTextHelper::initialize( const Sequence< uno::Any >& aArg
             SdrObject * pTextObj = m_pDrawViewWrapper->getNamedSdrObject( aCID );
             if( pTextObj )
             {
-                m_pTextHelper.reset( new ::accessibility::AccessibleTextHelper(o3tl::make_unique<SvxTextEditSource>(*pTextObj, nullptr, *pView, *pWindow)) );
+                m_pTextHelper.reset( new ::accessibility::AccessibleTextHelper(std::make_unique<SvxTextEditSource>(*pTextObj, nullptr, *pView, *pWindow)) );
                 m_pTextHelper->SetEventSource( xEventSource );
             }
         }

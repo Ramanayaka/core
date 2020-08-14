@@ -18,29 +18,29 @@
  */
 
 #include <memory>
-#include <hintids.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <IDocumentContentOperations.hxx>
 #include <editsh.hxx>
-#include <cntfrm.hxx>
 #include <pam.hxx>
 #include <swundo.hxx>
-#include <edimp.hxx>
-#include <IMark.hxx>
-#include <docary.hxx>
+#include <undobj.hxx>
 #include <SwRewriter.hxx>
-#include <globals.hrc>
+#include <osl/diagnose.h>
 
-#include <comcore.hrc>
-#include <list>
+#include <strings.hrc>
+#include <vector>
 
 void SwEditShell::DeleteSel( SwPaM& rPam, bool* pUndo )
 {
     bool bSelectAll = StartsWithTable() && ExtendedSelectedAll();
     // only for selections
-    if( !rPam.HasMark() || *rPam.GetPoint() == *rPam.GetMark())
+    if (!rPam.HasMark()
+        || (*rPam.GetPoint() == *rPam.GetMark()
+            && !IsFlySelectedByCursor(*GetDoc(), *rPam.Start(), *rPam.End())))
+    {
         return;
+    }
 
     // Is the selection in a table? Then delete only the content of the selected boxes.
     // Here, there are two cases:
@@ -99,7 +99,17 @@ void SwEditShell::DeleteSel( SwPaM& rPam, bool* pUndo )
             pNewPam.reset(new SwPaM(*rPam.GetMark(), *rPam.GetPoint()));
             // Selection starts at the first para of the first cell, but we
             // want to delete the table node before the first cell as well.
-            pNewPam->Start()->nNode = pNewPam->Start()->nNode.GetNode().FindTableNode()->GetIndex();
+            while (SwTableNode const* pTableNode =
+                pNewPam->Start()->nNode.GetNode().StartOfSectionNode()->FindTableNode())
+            {
+                pNewPam->Start()->nNode = *pTableNode;
+            }
+            // tdf#133990 ensure section is included in SwUndoDelete
+            while (SwSectionNode const* pSectionNode =
+                pNewPam->Start()->nNode.GetNode().StartOfSectionNode()->FindSectionNode())
+            {
+                pNewPam->Start()->nNode = *pSectionNode;
+            }
             pNewPam->Start()->nContent.Assign(nullptr, 0);
             pPam = pNewPam.get();
         }
@@ -112,10 +122,10 @@ void SwEditShell::DeleteSel( SwPaM& rPam, bool* pUndo )
     rPam.DeleteMark();
 }
 
-long SwEditShell::Delete()
+bool SwEditShell::Delete()
 {
-    SET_CURR_SHELL( this );
-    long nRet = 0;
+    CurrShell aCurr( this );
+    bool bRet = false;
     if ( !HasReadonlySel() || CursorInsideInputField() )
     {
         StartAllAction();
@@ -140,9 +150,14 @@ long SwEditShell::Delete()
             GetDoc()->GetIDocumentUndoRedo().EndUndo(SwUndoId::END, nullptr);
         }
         EndAllAction();
-        nRet = 1;
+        bRet = true;
     }
-    return nRet;
+    else
+    {
+        bRet = RemoveParagraphMetadataFieldAtCursor();
+    }
+
+    return bRet;
 }
 
 bool SwEditShell::Copy( SwEditShell* pDestShell )
@@ -150,10 +165,10 @@ bool SwEditShell::Copy( SwEditShell* pDestShell )
     if( !pDestShell )
         pDestShell = this;
 
-    SET_CURR_SHELL( pDestShell );
+    CurrShell aCurr( pDestShell );
 
     // List of insert positions for smart insert of block selections
-    std::list< std::shared_ptr<SwPosition> > aInsertList;
+    std::vector< std::shared_ptr<SwPosition> > aInsertList;
 
     // Fill list of insert positions
     {
@@ -180,14 +195,14 @@ bool SwEditShell::Copy( SwEditShell* pDestShell )
                 if( nMove )
                 {
                     SwCursor aCursor( *pPos, nullptr);
-                    if( aCursor.UpDown( false, nMove, nullptr, 0 ) )
+                    if (aCursor.UpDown(false, nMove, nullptr, 0, *GetLayout()))
                     {
-                        pInsertPos.reset( new SwPosition( *aCursor.GetPoint() ) );
+                        pInsertPos = std::make_shared<SwPosition>( *aCursor.GetPoint() );
                         aInsertList.push_back( pInsertPos );
                     }
                 }
                 else
-                    pInsertPos.reset( new SwPosition( *pPos ) );
+                    pInsertPos = std::make_shared<SwPosition>( *pPos );
                 ++nMove;
             }
             SwPosition *pTmp = IsBlockMode() ? pInsertPos.get() : pPos;
@@ -205,7 +220,7 @@ bool SwEditShell::Copy( SwEditShell* pDestShell )
     SwNodeIndex aSttNdIdx( pDestShell->GetDoc()->GetNodes() );
     sal_Int32 nSttCntIdx = 0;
     // For block selection this list is filled with the insert positions
-    std::list< std::shared_ptr<SwPosition> >::iterator pNextInsert = aInsertList.begin();
+    auto pNextInsert = aInsertList.begin();
 
     pDestShell->GetDoc()->GetIDocumentUndoRedo().StartUndo( SwUndoId::START, nullptr );
     for(SwPaM& rPaM : GetCursor()->GetRingContainer())
@@ -245,7 +260,7 @@ bool SwEditShell::Copy( SwEditShell* pDestShell )
             bFirstMove = false;
         }
 
-        const bool bSuccess( GetDoc()->getIDocumentContentOperations().CopyRange( rPaM, *pPos, /*bCopyAll=*/false, /*bCheckPos=*/true ) );
+        const bool bSuccess( GetDoc()->getIDocumentContentOperations().CopyRange(rPaM, *pPos, SwCopyFlags::CheckPosInFly) );
         if (!bSuccess)
             continue;
 
@@ -271,16 +286,16 @@ bool SwEditShell::Copy( SwEditShell* pDestShell )
         pDestShell->GetCursor()->DeleteMark();
     }
 #if OSL_DEBUG_LEVEL > 0
-// check if the indices are registered in the correct nodes
-{
-    for(SwPaM& rCmp : pDestShell->GetCursor()->GetRingContainer())
+    // check if the indices are registered in the correct nodes
     {
-        OSL_ENSURE( rCmp.GetPoint()->nContent.GetIdxReg()
-                    == rCmp.GetContentNode(), "Point in wrong Node" );
-        OSL_ENSURE( rCmp.GetMark()->nContent.GetIdxReg()
-                    == rCmp.GetContentNode(false), "Mark in wrong Node" );
+        for(SwPaM& rCmp : pDestShell->GetCursor()->GetRingContainer())
+        {
+            OSL_ENSURE( rCmp.GetPoint()->nContent.GetIdxReg()
+                        == rCmp.GetContentNode(), "Point in wrong Node" );
+            OSL_ENSURE( rCmp.GetMark()->nContent.GetIdxReg()
+                        == rCmp.GetContentNode(false), "Mark in wrong Node" );
+        }
     }
-}
 #endif
 
     // close Undo container here
@@ -301,7 +316,7 @@ bool SwEditShell::Copy( SwEditShell* pDestShell )
  */
 bool SwEditShell::Replace( const OUString& rNewStr, bool bRegExpRplc )
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
 
     bool bRet = false;
     if( !HasReadonlySel() )
@@ -313,7 +328,7 @@ bool SwEditShell::Replace( const OUString& rNewStr, bool bRegExpRplc )
         {
             if( rPaM.HasMark() && *rPaM.GetMark() != *rPaM.GetPoint() )
             {
-                bRet = GetDoc()->getIDocumentContentOperations().ReplaceRange( rPaM, rNewStr, bRegExpRplc )
+                bRet = sw::ReplaceImpl(rPaM, rNewStr, bRegExpRplc, *GetDoc(), GetLayout())
                     || bRet;
                 SaveTableBoxContent( rPaM.GetPoint() );
             }
@@ -336,7 +351,7 @@ bool SwEditShell::DelFullPara()
         // no multi selection
         if( !pCursor->IsMultiSelection() && !HasReadonlySel() )
         {
-            SET_CURR_SHELL( this );
+            CurrShell aCurr( this );
             StartAllAction();
             bRet = GetDoc()->getIDocumentContentOperations().DelFullPara( *pCursor );
             EndAllAction();

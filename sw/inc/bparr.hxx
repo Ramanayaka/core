@@ -23,9 +23,9 @@
 #include <assert.h>
 
 #include <tools/solar.h>
-#include <swdllapi.h>
+#include "swdllapi.h"
 #include <array>
-#include <vector>
+#include <memory>
 
 struct BlockInfo;
 class BigPtrArray;
@@ -37,13 +37,13 @@ class BigPtrEntry
     sal_uInt16  m_nOffset;
 public:
     BigPtrEntry() : m_pBlock(nullptr), m_nOffset(0) {}
-    virtual ~BigPtrEntry() {}
+    virtual ~BigPtrEntry() = default;
 
     inline sal_uLong GetPos() const;
     inline BigPtrArray& GetArray() const;
 };
 
-// 1000 entries per Block = a bit less then 4K
+// 1000 entries per Block = a bit less than 4K
 #define MAXENTRY 1000
 
 // number of entries that may remain free during compression
@@ -54,27 +54,27 @@ public:
 
 struct BlockInfo final
 {
-    BigPtrArray* const
-                 pBigArr;              ///< in this array the block is located
+    BigPtrArray* pBigArr;              ///< in this array the block is located
     std::array<BigPtrEntry*, MAXENTRY>
                  mvData;               ///< data block
     sal_uLong    nStart, nEnd;         ///< start- and end index
     sal_uInt16   nElem;                ///< number of elements
-
-    BlockInfo(BigPtrArray* b) : pBigArr(b) {}
 };
 
 class SW_DLLPUBLIC BigPtrArray
 {
 protected:
-    std::vector<BlockInfo*>
-                    m_vpInf;              ///< block info
+    std::unique_ptr<BlockInfo*[]>
+                    m_ppInf;              ///< block info
     sal_uLong       m_nSize;              ///< number of elements
+    sal_uInt16      m_nMaxBlock;          ///< current max. number of blocks
+    sal_uInt16      m_nBlock;             ///< number of blocks
     mutable
         sal_uInt16  m_nCur;               ///< last used block
 
     sal_uInt16  Index2Block( sal_uLong ) const; ///< block search
     BlockInfo*  InsBlock( sal_uInt16 );         ///< insert block
+    void        BlockDel( sal_uInt16 );         ///< some blocks were deleted
     void        UpdIndex( sal_uInt16 );         ///< recalculate indices
 
     // fill all blocks

@@ -24,7 +24,10 @@
 
 #include "LoggedResources.hxx"
 
-namespace com { namespace sun { namespace star {
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
+
+namespace com::sun::star {
     namespace uno
     {
         class XComponentContext;
@@ -45,11 +48,9 @@ namespace com { namespace sun { namespace star {
     {
         struct PropertyValue;
     }
-}}}
+}
 
-namespace writerfilter
-{
-namespace dmapper
+namespace writerfilter::dmapper
 {
 class GraphicImport_Impl;
 class DomainMapper;
@@ -71,9 +72,11 @@ class GraphicImport : public LoggedProperties, public LoggedTable
     css::uno::Reference<css::text::XTextContent> m_xGraphicObject;
 
     css::uno::Reference<css::drawing::XShape> m_xShape;
-    void ProcessShapeOptions(Value & val);
+    void ProcessShapeOptions(Value const & val);
 
-    css::uno::Reference<css::text::XTextContent > createGraphicObject(const css::beans::PropertyValues& aMediaProperties, const css::uno::Reference<css::beans::XPropertySet>& xShapeProps);
+    css::uno::Reference<css::text::XTextContent>
+            createGraphicObject(css::uno::Reference<css::graphic::XGraphic> const & rxGraphic,
+                                css::uno::Reference<css::beans::XPropertySet> const & xShapeProps);
 
     void putPropertyToFrameGrabBag( const OUString& sPropertyName, const css::uno::Any& aPropertyValue );
 
@@ -88,11 +91,14 @@ public:
     virtual ~GraphicImport() override;
 
     // BinaryObj
-    virtual void data(const sal_uInt8* buffer, size_t len, writerfilter::Reference<Properties>::Pointer_t ref) override;
+    virtual void data(const sal_uInt8* buffer, size_t len) override;
 
     css::uno::Reference<css::text::XTextContent> GetGraphicObject();
-    const css::uno::Reference<css::drawing::XShape>& GetXShapeObject() { return m_xShape;}
+    const css::uno::Reference<css::drawing::XShape>& GetXShapeObject() const { return m_xShape;}
     bool IsGraphic() const;
+    sal_Int32 GetLeftMarginOrig() const;
+
+    com::sun::star::awt::Point GetGraphicObjectPosition();
 
  private:
     // Properties
@@ -100,7 +106,7 @@ public:
     virtual void lcl_sprm(Sprm & sprm) override;
 
     // Table
-    virtual void lcl_entry(int pos, writerfilter::Reference<Properties>::Pointer_t ref) override;
+    virtual void lcl_entry(writerfilter::Reference<Properties>::Pointer_t ref) override;
 
     // Stream
     virtual void lcl_startSectionGroup() override;
@@ -115,16 +121,15 @@ public:
     virtual void lcl_table(Id name,
                            writerfilter::Reference<Table>::Pointer_t ref) override;
     virtual void lcl_substream(Id name, writerfilter::Reference<Stream>::Pointer_t ref) override;
-    virtual void lcl_info(const std::string & info) override;
     virtual void lcl_startShape(css::uno::Reference<css::drawing::XShape> const& xShape) override;
     virtual void lcl_endShape() override;
 
     void handleWrapTextValue(sal_uInt32 nVal);
 };
 
-typedef std::shared_ptr<GraphicImport> GraphicImportPtr;
+typedef tools::SvRef<GraphicImport> GraphicImportPtr;
 
-}}
+}
 
 #endif
 

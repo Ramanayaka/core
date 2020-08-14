@@ -20,10 +20,10 @@
 #include "Splines.hxx"
 #include <rtl/math.hxx>
 #include <osl/diagnose.h>
+#include <com/sun/star/drawing/PolyPolygonShape3D.hpp>
 
 #include <vector>
 #include <algorithm>
-#include <functional>
 #include <memory>
 
 namespace chart
@@ -65,7 +65,7 @@ public:
 
     /** @descr this function corresponds to the function splint in [1].
 
-        [1] Numerical Recipies in C, 2nd edition
+        [1] Numerical Recipes in C, 2nd edition
             William H. Press, et al.,
             Section 3.3, page 116
     */
@@ -88,7 +88,7 @@ private:
 
     /** @descr this function corresponds to the function spline in [1].
 
-        [1] Numerical Recipies in C, 2nd edition
+        [1] Numerical Recipes in C, 2nd edition
             William H. Press, et al.,
             Section 3.3, page 115
     */
@@ -149,7 +149,7 @@ void lcl_SplineCalculation::Calculate()
     std::vector< double > u( n );
     m_aSecDerivY.resize( n + 1, 0.0 );
 
-    if( ::rtl::math::isInf( m_fYp1 ) )
+    if( std::isinf( m_fYp1 ) )
     {
         // natural spline
         m_aSecDerivY[ 0 ] = 0.0;
@@ -158,7 +158,7 @@ void lcl_SplineCalculation::Calculate()
     else
     {
         m_aSecDerivY[ 0 ] = -0.5;
-        double xDiff = ( m_aPoints[ 1 ].first - m_aPoints[ 0 ].first );
+        double xDiff = m_aPoints[ 1 ].first - m_aPoints[ 0 ].first;
         u[ 0 ] = ( 3.0 / xDiff ) *
             ((( m_aPoints[ 1 ].second - m_aPoints[ 0 ].second ) / xDiff ) - m_fYp1 );
     }
@@ -190,10 +190,10 @@ void lcl_SplineCalculation::Calculate()
     double qn = 0.0;
     double un = 0.0;
 
-    if( ! ::rtl::math::isInf( m_fYpN ) )
+    if( ! std::isinf( m_fYpN ) )
     {
         qn = 0.5;
-        double xDiff = ( m_aPoints[ n ].first - m_aPoints[ n - 1 ].first );
+        double xDiff = m_aPoints[ n ].first - m_aPoints[ n - 1 ].first;
         un = ( 3.0 / xDiff ) *
             ( m_fYpN - ( m_aPoints[ n ].second - m_aPoints[ n - 1 ].second ) / xDiff );
     }
@@ -205,7 +205,7 @@ void lcl_SplineCalculation::Calculate()
     // is always true.
     for( lcl_tSizeType k = n; k > 0; --k )
     {
-        ( m_aSecDerivY[ k - 1 ] *= m_aSecDerivY[ k ] ) += u[ k - 1 ];
+        m_aSecDerivY[ k - 1 ] = (m_aSecDerivY[ k - 1 ] * m_aSecDerivY[ k ] ) + u[ k - 1 ];
     }
 }
 
@@ -420,7 +420,7 @@ bool createParameterT(const tPointVecType& rUniquePoints, double* t)
         dx = rUniquePoints[i].first - rUniquePoints[i-1].first;
         dy = rUniquePoints[i].second - rUniquePoints[i-1].second;
         // scaling to avoid underflow or overflow
-        fDiffMax = (fabs(dx)>fabs(dy)) ? fabs(dx) : fabs(dy);
+        fDiffMax = std::max(fabs(dx), fabs(dy));
         if (fDiffMax == 0.0)
         {
             bIsSuccessful = false;
@@ -446,7 +446,7 @@ bool createParameterT(const tPointVecType& rUniquePoints, double* t)
             {
                 dx = rUniquePoints[i].first - rUniquePoints[i-1].first;
                 dy = rUniquePoints[i].second - rUniquePoints[i-1].second;
-                fDiffMax = (fabs(dx)>fabs(dy)) ? fabs(dx) : fabs(dy);
+                fDiffMax = std::max(fabs(dx), fabs(dy));
                 // same as above, so should not be zero
                 dx /= fDiffMax;
                 dy /= fDiffMax;
@@ -583,8 +583,8 @@ void SplineCalculater::CalculateCubicSplines(
 
         // generate a spline for each coordinate. It holds the complete
         // information to calculate each point of the curve
-        lcl_SplineCalculation* aSplineX;
-        lcl_SplineCalculation* aSplineY;
+        std::unique_ptr<lcl_SplineCalculation> aSplineX;
+        std::unique_ptr<lcl_SplineCalculation> aSplineY;
         // lcl_SplineCalculation* aSplineZ; the z-coordinates of all points in
         // a data series are equal. No spline calculation needed, but copy
         // coordinate to output
@@ -594,8 +594,8 @@ void SplineCalculater::CalculateCubicSplines(
             pOldZ[ 0 ] == pOldZ[nMaxIndexPoints] &&
             nMaxIndexPoints >=2 )
         {   // periodic spline
-            aSplineX = new lcl_SplineCalculation( aInputX) ;
-            aSplineY = new lcl_SplineCalculation( aInputY) ;
+            aSplineX.reset(new lcl_SplineCalculation( aInputX));
+            aSplineY.reset(new lcl_SplineCalculation( aInputY));
             // aSplineZ = new lcl_SplineCalculation( aInputZ) ;
         }
         else // generate the kind "natural spline"
@@ -604,8 +604,8 @@ void SplineCalculater::CalculateCubicSplines(
             ::rtl::math::setInf( &fInfty, false );
             double fXDerivation = fInfty;
             double fYDerivation = fInfty;
-            aSplineX = new lcl_SplineCalculation( aInputX, fXDerivation, fXDerivation );
-            aSplineY = new lcl_SplineCalculation( aInputY, fYDerivation, fYDerivation );
+            aSplineX.reset(new lcl_SplineCalculation( aInputX, fXDerivation, fXDerivation ));
+            aSplineY.reset(new lcl_SplineCalculation( aInputY, fYDerivation, fYDerivation ));
         }
 
         // fill result polygon with calculated values
@@ -644,9 +644,6 @@ void SplineCalculater::CalculateCubicSplines(
         pNewX[nNewPointIndex] = pOldX[nMaxIndexPoints];
         pNewY[nNewPointIndex] = pOldY[nMaxIndexPoints];
         pNewZ[nNewPointIndex] = pOldZ[nMaxIndexPoints];
-        delete aSplineX;
-        delete aSplineY;
-        // delete aSplineZ;
     }
 }
 
@@ -747,7 +744,7 @@ void SplineCalculater::CalculateBSplines(
             // find the one interval with u_i <= t_k < u_(i+1)
             // remember u_0 = ... = u_p = 0.0 and u_(m-p) = ... u_m = 1.0 and 0<t_k<1
             lcl_tSizeType i = p;
-            while (!(u[i] <= t[k] && t[k] < u[i+1]))
+            while (u[i] > t[k] || t[k] >= u[i+1])
             {
                 ++i;
             }
@@ -853,9 +850,8 @@ void SplineCalculater::CalculateBSplines(
                     --r;
                 }
             }
-        }   // aPointsIn contains the control points now.
-        if (bIsSuccessful)
-        {
+            // aPointsIn contains the control points now.
+
             // calculate the intermediate points according given resolution
             // using deBoor-Cox algorithm
             lcl_tSizeType nNewSize = nResolution * n + 1;
@@ -876,7 +872,7 @@ void SplineCalculater::CalculateBSplines(
             for ( lcl_tSizeType nTIndex = 0; nTIndex <= n-1; ++nTIndex)
             {
                 for (sal_uInt32 nResolutionStep = 1;
-                     nResolutionStep <= nResolution && !( nTIndex == n-1 && nResolutionStep == nResolution);
+                     nResolutionStep <= nResolution && ( nTIndex != n-1 || nResolutionStep != nResolution);
                      ++nResolutionStep)
                 {
                     lcl_tSizeType nNewIndex = nTIndex * nResolution + nResolutionStep;

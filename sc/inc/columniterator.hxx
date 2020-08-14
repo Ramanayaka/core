@@ -10,11 +10,18 @@
 #ifndef INCLUDED_SC_INC_COLUMNITERATOR_HXX
 #define INCLUDED_SC_INC_COLUMNITERATOR_HXX
 
-#include "column.hxx"
+#include <stddef.h>
+#include "address.hxx"
+#include <mdds/multi_type_vector_types.hpp>
+#include "mtvelements.hxx"
+#include <sal/types.h>
+#include "types.hxx"
+class ScColumn;
+class ScDocument;
+struct ScRefCellValue;
 
 class ScColumnTextWidthIterator
 {
-    sc::CellTextAttrStoreType& mrCellTextAttrs;
     const size_t mnEnd;
     size_t mnCurPos;
     sc::CellTextAttrStoreType::iterator miBlockCur;
@@ -25,7 +32,7 @@ class ScColumnTextWidthIterator
 public:
     ScColumnTextWidthIterator(const ScColumnTextWidthIterator&) = delete;
     const ScColumnTextWidthIterator& operator=(const ScColumnTextWidthIterator&) = delete;
-    ScColumnTextWidthIterator(ScColumn& rCol, SCROW nStartRow, SCROW nEndRow);
+    ScColumnTextWidthIterator(const ScDocument& rDoc, ScColumn& rCol, SCROW nStartRow, SCROW nEndRow);
 
     /**
      * @param rDoc document instance.
@@ -35,7 +42,7 @@ public:
      *                  validity.
      * @param nEndRow end row position.
      */
-    ScColumnTextWidthIterator(ScDocument& rDoc, const ScAddress& rStartPos, SCROW nEndRow);
+    ScColumnTextWidthIterator(const ScDocument& rDoc, const ScAddress& rStartPos, SCROW nEndRow);
 
     void next();
     bool hasCell() const;
@@ -44,7 +51,7 @@ public:
     void setValue(sal_uInt16 nVal);
 
 private:
-    void init(SCROW nStartRow, SCROW nEndRow);
+    void init(const ScDocument& rDoc, SCROW nStartRow, SCROW nEndRow);
     void getDataIterators(size_t nOffsetInBlock);
     void checkEndRow();
 };
@@ -60,6 +67,7 @@ class ColumnIterator
 {
     CellStoreType::const_position_type maPos;
     CellStoreType::const_position_type maPosEnd;
+    bool mbComplete;
 
 public:
     ColumnIterator( const CellStoreType& rCells, SCROW nRow1, SCROW nRow2 );

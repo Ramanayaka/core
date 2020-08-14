@@ -7,20 +7,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <unotest/filters-test.hxx>
 #include <test/bootstrapfixture.hxx>
 
 #include <vcl/wrkwin.hxx>
-#include <vcl/button.hxx>
 #include <vcl/edit.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/field.hxx>
+#include <vcl/toolkit/button.hxx>
+#include <vcl/toolkit/combobox.hxx>
+#include <vcl/toolkit/dialog.hxx>
+#include <vcl/toolkit/field.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/tabctrl.hxx>
-#include <vcl/dialog.hxx>
 #include <vcl/layout.hxx>
-#include <vcl/svapp.hxx>
+#include <vcl/scheduler.hxx>
 #include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 
 class LifecycleTest : public test::BootstrapFixture
@@ -76,12 +76,14 @@ void LifecycleTest::testVirtualDevice()
     VclPtrInstance<VirtualDevice> pVDev3;
     VclPtrInstance<VirtualDevice> pVDev4(DeviceFormat::BITMASK);
     CPPUNIT_ASSERT(!!pVDev && !!pVDev2 && !!pVDev3 && !!pVDev4);
+    pVDev.disposeAndClear();
+    pVDev4.disposeAndClear();
 }
 
 void LifecycleTest::testMultiDispose()
 {
     VclPtrInstance<WorkWindow> xWin(nullptr, WB_APP|WB_STDWORK);
-    CPPUNIT_ASSERT(xWin.get() != nullptr);
+    CPPUNIT_ASSERT(xWin);
     xWin->disposeOnce();
     xWin->disposeOnce();
     xWin->disposeOnce();
@@ -139,10 +141,12 @@ void LifecycleTest::testIsolatedWidgets()
 void LifecycleTest::testParentedWidgets()
 {
     ScopedVclPtrInstance<WorkWindow> xWin(nullptr, WB_APP|WB_STDWORK);
-    CPPUNIT_ASSERT(xWin.get() != nullptr);
+    CPPUNIT_ASSERT(xWin);
     xWin->Show();
     testWidgets(xWin);
 }
+
+namespace {
 
 class DisposableChild : public vcl::Window
 {
@@ -154,10 +158,12 @@ public:
     }
 };
 
+}
+
 void LifecycleTest::testChildDispose()
 {
     VclPtrInstance<WorkWindow> xWin(nullptr, WB_APP|WB_STDWORK);
-    CPPUNIT_ASSERT(xWin.get() != nullptr);
+    CPPUNIT_ASSERT(xWin);
     VclPtrInstance< DisposableChild > xChild( xWin.get() );
     xWin->Show();
     xChild->disposeOnce();
@@ -178,6 +184,8 @@ void LifecycleTest::testPostDispose()
     CPPUNIT_ASSERT(!xWin->GetChild(0));
     CPPUNIT_ASSERT(!xWin->GetWindow(GetWindowType::Parent));
 }
+
+namespace {
 
 class FocusCrashPostDispose : public TabControl
 {
@@ -204,6 +212,8 @@ public:
     }
 };
 
+}
+
 void LifecycleTest::testFocus()
 {
     ScopedVclPtrInstance<WorkWindow> xWin(nullptr, WB_APP|WB_STDWORK);
@@ -211,10 +221,12 @@ void LifecycleTest::testFocus()
     xWin->Show();
     xChild->GrabFocus();
     // process asynchronous ToTop
-    Scheduler::ProcessTaskScheduling( true );
+    Scheduler::ProcessTaskScheduling();
     // FIXME: really awful to test focus issues without showing windows.
     // CPPUNIT_ASSERT(xChild->HasFocus());
 }
+
+namespace {
 
 template <class vcl_type>
 class LeakTestClass : public vcl_type
@@ -254,7 +266,7 @@ public:
         pNew->mpRef = static_cast<void *>(static_cast<vcl::Window *>(pNew->mxRef));
         return pNew;
     }
-    const VclPtr<vcl::Window>& getRef() { return mxRef; }
+    const VclPtr<vcl::Window>& getRef() const { return mxRef; }
     void disposeAndClear()
     {
         mxRef.disposeAndClear();
@@ -272,6 +284,8 @@ public:
         }
     }
 };
+
+}
 
 void LifecycleTest::testLeakage()
 {
@@ -298,10 +312,7 @@ void LifecycleTest::testLeakage()
         aObjects.push_back(LeakTestObject::Create<VclVButtonBox>(xVBox));
     }
 
-#if 0 // FIXME - would be good to get internal paths working.
-    aObjects.push_back(LeakTestObject::Create<ModelessDialog>(xParent, "PrintProgressDialog", "vcl/ui/printprogressdialog.ui"));
-#endif
-    aObjects.push_back(LeakTestObject::Create<ModalDialog>(xParent));
+    aObjects.push_back(LeakTestObject::Create<Dialog>(xParent, "PrintProgressDialog", "vcl/ui/printprogressdialog.ui"));
     xParent.clear();
 
     for (auto i = aObjects.rbegin(); i != aObjects.rend(); ++i)
@@ -324,7 +335,7 @@ void LifecycleTest::testToolkit()
     CPPUNIT_ASSERT(xWindow.is());
 
     // test UNO dispose
-    css::uno::Reference<css::lang::XComponent> xWinComponent(xWindow, css::uno::UNO_QUERY);
+    css::uno::Reference<css::lang::XComponent> xWinComponent = xWindow;
     CPPUNIT_ASSERT(xWinComponent.is());
     CPPUNIT_ASSERT(!pVclWin->getRef()->IsDisposed());
     xWinComponent->dispose();

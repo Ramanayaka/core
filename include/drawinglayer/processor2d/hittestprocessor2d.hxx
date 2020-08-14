@@ -26,18 +26,16 @@
 
 namespace basegfx { class B2DPolygon; }
 namespace basegfx { class B2DPolyPolygon; }
-namespace drawinglayer { namespace primitive2d { class ScenePrimitive2D; }}
+namespace drawinglayer::primitive2d { class ScenePrimitive2D; }
 
-namespace drawinglayer
-{
-    namespace processor2d
+namespace drawinglayer::processor2d
     {
         /** HitTestProcessor2D class
 
-            This processor implements a HitTest with the feeded primitives,
+            This processor implements a HitTest with the fed primitives,
             given tolerance and extras
          */
-        class DRAWINGLAYER_DLLPUBLIC HitTestProcessor2D : public BaseProcessor2D
+        class DRAWINGLAYER_DLLPUBLIC HitTestProcessor2D final : public BaseProcessor2D
         {
         private:
             /// discrete HitTest position
@@ -46,6 +44,13 @@ namespace drawinglayer
             /// discrete HitTolerance
             double                      mfDiscreteHitTolerance;
 
+            /// stack of HitPrimitives, taken care of during HitTest run
+            primitive2d::Primitive2DContainer        maHitStack;
+
+            /// flag if HitStack shall be collected as part of the result, default is false
+            bool                        mbCollectHitStack : 1;
+
+            /// Boolean to flag if a hit was found. If yes, fast exit is taken
             bool                        mbHit : 1;
 
             /// flag to concentrate on text hits only
@@ -55,10 +60,10 @@ namespace drawinglayer
             void processBasePrimitive2D(const primitive2d::BasePrimitive2D& rCandidate) override;
             bool checkHairlineHitWithTolerance(
                 const basegfx::B2DPolygon& rPolygon,
-                double fDiscreteHitTolerance);
+                double fDiscreteHitTolerance) const;
             bool checkFillHitWithTolerance(
                 const basegfx::B2DPolyPolygon& rPolyPolygon,
-                double fDiscreteHitTolerance);
+                double fDiscreteHitTolerance) const;
             void check3DHit(const primitive2d::ScenePrimitive2D& rCandidate);
 
         public:
@@ -69,14 +74,22 @@ namespace drawinglayer
                 bool bHitTextOnly);
             virtual ~HitTestProcessor2D() override;
 
+            /// switch on collecting primitives for a found hit on maHitStack, default is off
+            void collectHitStack(bool bCollect) { mbCollectHitStack = bCollect; }
+
+            /// get HitStack of primitives, first is the one that created the hit, last is the
+            /// top-most
+            const primitive2d::Primitive2DContainer& getHitStack() const { return maHitStack; }
+
             /// data read access
             const basegfx::B2DPoint& getDiscreteHitPosition() const { return maDiscreteHitPosition; }
             double getDiscreteHitTolerance() const { return mfDiscreteHitTolerance; }
+            bool getCollectHitStack() const { return mbCollectHitStack; }
             bool getHit() const { return mbHit; }
             bool getHitTextOnly() const { return mbHitTextOnly; }
         };
-    } // end of namespace processor2d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::processor2d
 
 #endif // INCLUDED_DRAWINGLAYER_PROCESSOR2D_HITTESTPROCESSOR2D_HXX
 

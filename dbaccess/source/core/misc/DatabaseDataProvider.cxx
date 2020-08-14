@@ -17,41 +17,35 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DatabaseDataProvider.hxx"
-#include "dbastrings.hrc"
+#include <DatabaseDataProvider.hxx>
+#include <strings.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/types.hxx>
 #include <comphelper/namedvaluecollection.hxx>
 #include <connectivity/FValue.hxx>
-#include <connectivity/dbtools.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <rtl/math.hxx>
 #include <sal/macros.h>
 #include <tools/diagnose_ex.h>
 
 #include <com/sun/star/task/XInteractionHandler.hpp>
-#include <com/sun/star/sdb/XCompletedExecution.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
-#include <com/sun/star/sdbc/XResultSetMetaData.hpp>
 #include <com/sun/star/sdbc/XColumnLocate.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/chart/ChartDataRowSource.hpp>
 #include <com/sun/star/chart/XChartDataArray.hpp>
-#include <com/sun/star/chart/XDateCategories.hpp>
 
 #include <vector>
-#include <list>
+
+// TODO: update for new HavingClause-aware FilterManager
 
 namespace dbaccess
 {
 using namespace ::com::sun::star;
-using ::com::sun::star::sdbc::SQLException;
 using ::com::sun::star::uno::Reference;
-using ::com::sun::star::uno::RuntimeException;
 
 DatabaseDataProvider::DatabaseDataProvider(uno::Reference< uno::XComponentContext > const & context) :
     TDatabaseDataProvider(m_aMutex),
@@ -85,10 +79,8 @@ DatabaseDataProvider::DatabaseDataProvider(uno::Reference< uno::XComponentContex
 
 void SAL_CALL DatabaseDataProvider::disposing()
 {
-    lang::EventObject aEvt(static_cast<XWeak*>(this));
-
     m_aParameterManager.dispose();   // (to free any references it may have to me)
-    m_aFilterManager.dispose();      // (dito)
+    m_aFilterManager.dispose();      // (ditto)
 
     m_xParent.clear();
     m_xAggregateSet.clear();
@@ -104,15 +96,10 @@ uno::Any DatabaseDataProvider::queryInterface(uno::Type const & type)
     return TDatabaseDataProvider::queryInterface(type);
 }
 
-OUString DatabaseDataProvider::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.dbaccess.DatabaseDataProvider");
-}
-
 // XServiceInfo
 OUString SAL_CALL DatabaseDataProvider::getImplementationName(  )
 {
-    return getImplementationName_Static();
+    return "com.sun.star.comp.dbaccess.DatabaseDataProvider";
 }
 
 sal_Bool SAL_CALL DatabaseDataProvider::supportsService( const OUString& _rServiceName )
@@ -120,20 +107,9 @@ sal_Bool SAL_CALL DatabaseDataProvider::supportsService( const OUString& _rServi
     return cppu::supportsService(this, _rServiceName);
 }
 
-uno::Sequence< OUString > DatabaseDataProvider::getSupportedServiceNames_Static(  )
-{
-    uno::Sequence<OUString> aSNS { "com.sun.star.chart2.data.DatabaseDataProvider" };
-    return aSNS;
-}
-
 uno::Sequence< OUString > SAL_CALL DatabaseDataProvider::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_Static();
-}
-
-uno::Reference< uno::XInterface > DatabaseDataProvider::Create(uno::Reference< uno::XComponentContext > const & context)
-{
-    return *(new DatabaseDataProvider(context)) ;
+    return { "com.sun.star.chart2.data.DatabaseDataProvider" };
 }
 
 // lang::XInitialization:
@@ -199,7 +175,7 @@ uno::Reference< chart2::data::XDataSource > SAL_CALL DatabaseDataProvider::creat
         }
         catch( const uno::Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
 
         ::comphelper::NamedValueCollection aArgs( _aArguments );
@@ -518,7 +494,7 @@ void SAL_CALL DatabaseDataProvider::setApplyFilter( sal_Bool the_value )
         osl::MutexGuard g(m_aMutex);
         m_xAggregateSet->setPropertyValue( PROPERTY_APPLYFILTER,   uno::makeAny( the_value ) );
     }
-    set(PROPERTY_APPLYFILTER,(bool)the_value,m_ApplyFilter);
+    set(PROPERTY_APPLYFILTER,static_cast<bool>(the_value),m_ApplyFilter);
 }
 
 OUString SAL_CALL DatabaseDataProvider::getHavingClause()
@@ -574,7 +550,7 @@ sal_Bool SAL_CALL DatabaseDataProvider::getEscapeProcessing()
 
 void SAL_CALL DatabaseDataProvider::setEscapeProcessing(sal_Bool the_value)
 {
-    set(PROPERTY_ESCAPE_PROCESSING,(bool)the_value,m_EscapeProcessing);
+    set(PROPERTY_ESCAPE_PROCESSING,static_cast<bool>(the_value),m_EscapeProcessing);
 }
 
 ::sal_Int32 SAL_CALL DatabaseDataProvider::getRowLimit()
@@ -661,7 +637,7 @@ void DatabaseDataProvider::impl_fillInternalDataProvider_throw(bool _bHasCategor
     typedef std::vector< ColumnDescription > ColumnDescriptions;
     ColumnDescriptions aColumns;
     bool bFirstColumnIsCategory = _bHasCategories;
-    if ( i_aColumnNames.getLength() )
+    if ( i_aColumnNames.hasElements() )
     {
         // some normalizations ...
         uno::Sequence< OUString > aImposedColumnNames( i_aColumnNames );
@@ -682,7 +658,7 @@ void DatabaseDataProvider::impl_fillInternalDataProvider_throw(bool _bHasCategor
         // column. This, this results in a ColumnDescriptions array like <"", "col2", "col3">, where you'd expect
         // <"col1", "col2", "col3">.
         // Fix this with some heuristics:
-        if ( ( aImposedColumnNames.getLength() > 0 ) && ( !aImposedColumnNames[0].isEmpty() ) )
+        if ( aImposedColumnNames.hasElements() && ( !aImposedColumnNames[0].isEmpty() ) )
         {
             const sal_Int32 nAssumedRowSetColumnIndex = _bHasCategories ? 1 : 0;
             if ( nAssumedRowSetColumnIndex < aRowSetColumnNames.getLength() )
@@ -698,21 +674,21 @@ void DatabaseDataProvider::impl_fillInternalDataProvider_throw(bool _bHasCategor
 
             if ( _bHasCategories && aColumns.empty() )
             {
-                if ( aRowSetColumnNames.getLength() )
-                    aColumns.push_back( ColumnDescription( aRowSetColumnNames[0] ) );
+                if ( aRowSetColumnNames.hasElements() )
+                    aColumns.emplace_back( aRowSetColumnNames[0] );
                 else
-                    aColumns.push_back( ColumnDescription( sColumnName ) );
+                    aColumns.emplace_back( sColumnName );
                 bFirstColumnIsCategory = true;
             }
-            aColumns.push_back( ColumnDescription( sColumnName ) );
+            aColumns.emplace_back( sColumnName );
         }
     }
     if ( aColumns.empty() )
     {
         aColumns.resize( aRowSetColumnNames.getLength() );
         std::transform(
-            aRowSetColumnNames.getConstArray(),
-            aRowSetColumnNames.getConstArray() + aRowSetColumnNames.getLength(),
+            aRowSetColumnNames.begin(),
+            aRowSetColumnNames.end(),
             aColumns.begin(),
             CreateColumnDescription()
        );
@@ -724,20 +700,18 @@ void DatabaseDataProvider::impl_fillInternalDataProvider_throw(bool _bHasCategor
     uno::Reference< sdbc::XResultSetMetaDataSupplier > xSuppMeta( m_xRowSet,uno::UNO_QUERY_THROW );
     uno::Reference< sdbc::XColumnLocate > xColumnLocate( m_xRowSet, uno::UNO_QUERY_THROW );
 
-    for (   ColumnDescriptions::iterator col = aColumns.begin();
-            col != aColumns.end();
-            ++col
-         )
+    sal_Int32 columnIndex = 0;
+    for (auto & column : aColumns)
     {
-        col->nResultSetPosition = xColumnLocate->findColumn( col->sName );
+        column.nResultSetPosition = xColumnLocate->findColumn( column.sName );
 
-        const uno::Reference< beans::XPropertySet > xColumn( xColumns->getByName( col->sName ), uno::UNO_QUERY_THROW );
+        const uno::Reference< beans::XPropertySet > xColumn( xColumns->getByName( column.sName ), uno::UNO_QUERY_THROW );
         const uno::Any aNumberFormat( xColumn->getPropertyValue( PROPERTY_NUMBERFORMAT ) );
-        OSL_VERIFY( xColumn->getPropertyValue( PROPERTY_TYPE ) >>= col->nDataType );
+        OSL_VERIFY( xColumn->getPropertyValue( PROPERTY_TYPE ) >>= column.nDataType );
 
-        const sal_Int32 columnIndex = col - aColumns.begin();
         const OUString sRangeName = OUString::number( columnIndex );
-        m_aNumberFormats.insert( std::map< OUString, uno::Any >::value_type( sRangeName, aNumberFormat ) );
+        m_aNumberFormats.emplace( sRangeName, aNumberFormat );
+        ++columnIndex;
     }
 
     std::vector< OUString > aRowLabels;
@@ -752,15 +726,17 @@ void DatabaseDataProvider::impl_fillInternalDataProvider_throw(bool _bHasCategor
         aRowLabels.push_back( aValue.getString() );
 
         std::vector< double > aRow;
-        for (   ColumnDescriptions::const_iterator col = aColumns.begin();
-                col != aColumns.end();
-                ++col
-            )
+        bool bFirstLoop = true;
+        for (auto const& column : aColumns)
         {
-            if ( bFirstColumnIsCategory && ( col == aColumns.begin() )  )
-                continue;
+            if (bFirstLoop)
+            {
+                bFirstLoop = false;
+                if (bFirstColumnIsCategory)
+                    continue;
+            }
 
-            aValue.fill( col->nResultSetPosition, col->nDataType, xRow );
+            aValue.fill( column.nResultSetPosition, column.nDataType, xRow );
             if ( aValue.isNull() )
             {
                 double nValue;
@@ -799,7 +775,7 @@ void DatabaseDataProvider::impl_fillInternalDataProvider_throw(bool _bHasCategor
     }
 
     uno::Reference< chart::XChartDataArray> xData(m_xInternal,uno::UNO_QUERY);
-    xData->setRowDescriptions(uno::Sequence< OUString >(&(*aRowLabels.begin()),aRowLabels.size()));
+    xData->setRowDescriptions(comphelper::containerToSequence(aRowLabels));
 
     const size_t nOffset = bFirstColumnIsCategory ? 1 : 0;
     uno::Sequence< OUString > aColumnDescriptions( aColumns.size() - nOffset );
@@ -817,7 +793,7 @@ void DatabaseDataProvider::impl_fillInternalDataProvider_throw(bool _bHasCategor
     for(sal_Int32 i= 0;pDataIter != pDataEnd; ++pDataIter,++i )
     {
         if ( !aDataValues[i].empty() )
-            *pDataIter = uno::Sequence< double >(&(*(aDataValues[i]).begin()),(aDataValues[i]).size());
+            *pDataIter = comphelper::containerToSequence(aDataValues[i]);
     }
     xData->setData(aData);
 }
@@ -1085,5 +1061,14 @@ void DatabaseDataProvider::impl_invalidateParameter_nothrow()
 }
 
 } // namespace dbaccess
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_dbaccess_DatabaseDataProvider_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new dbaccess::DatabaseDataProvider(context));
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

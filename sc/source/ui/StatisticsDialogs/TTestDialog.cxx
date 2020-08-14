@@ -9,50 +9,41 @@
  */
 
 #include <memory>
-#include <sfx2/dispatch.hxx>
-#include <svl/zforlist.hxx>
-#include <svl/undo.hxx>
 
-#include "formulacell.hxx"
-#include "rangelst.hxx"
-#include "scitems.hxx"
-#include "docsh.hxx"
-#include "document.hxx"
-#include "uiitems.hxx"
-#include "reffact.hxx"
-#include "docfunc.hxx"
-#include "TableFillingAndNavigationTools.hxx"
-
-#include "TTestDialog.hxx"
+#include <reffact.hxx>
+#include <TableFillingAndNavigationTools.hxx>
+#include <TTestDialog.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
 
 ScTTestDialog::ScTTestDialog(
                     SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow,
-                    vcl::Window* pParent, ScViewData* pViewData ) :
+                    weld::Window* pParent, ScViewData* pViewData ) :
     ScStatisticsTwoVariableDialog(
             pSfxBindings, pChildWindow, pParent, pViewData,
-            "TTestDialog", "modules/scalc/ui/ttestdialog.ui" )
+            "modules/scalc/ui/ttestdialog.ui", "TTestDialog")
 {
-    SetText(ScResId(STR_TTEST));
+    m_xDialog->set_title(ScResId(STR_TTEST));
 }
 
 ScTTestDialog::~ScTTestDialog()
 {}
 
-bool ScTTestDialog::Close()
+void ScTTestDialog::Close()
 {
-    return DoClose( ScTTestDialogWrapper::GetChildWindowId() );
+    DoClose( ScTTestDialogWrapper::GetChildWindowId() );
 }
 
-sal_Int16 ScTTestDialog::GetUndoNameId()
+const char* ScTTestDialog::GetUndoNameId()
 {
     return STR_TTEST_UNDO_NAME;
 }
 
 ScRange ScTTestDialog::ApplyOutput(ScDocShell* pDocShell)
 {
-    AddressWalkerWriter aOutput(mOutputAddress, pDocShell, mDocument,
+    AddressWalkerWriter aOutput(mOutputAddress, pDocShell, &mDocument,
             formula::FormulaGrammar::mergeToGrammar( formula::FormulaGrammar::GRAM_ENGLISH, mAddressDetails.eConv));
-    FormulaTemplate aTemplate(mDocument);
+    FormulaTemplate aTemplate(&mDocument);
 
     std::unique_ptr<DataRangeIterator> pVariable1Iterator;
     if (mGroupedBy == BY_COLUMN)

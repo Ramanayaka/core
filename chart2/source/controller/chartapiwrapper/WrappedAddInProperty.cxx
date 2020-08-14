@@ -18,15 +18,14 @@
  */
 
 #include "WrappedAddInProperty.hxx"
-#include "macros.hxx"
+#include <ChartDocumentWrapper.hxx>
+#include <com/sun/star/util/XRefreshable.hpp>
 
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Any;
 using namespace ::com::sun::star;
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 WrappedAddInProperty::WrappedAddInProperty( ChartDocumentWrapper& rChartDocumentWrapper )
@@ -117,8 +116,6 @@ Any WrappedRefreshAddInAllowedProperty::getPropertyValue( const Reference< beans
     return uno::Any( m_rChartDocumentWrapper.getUpdateAddIn() );
 }
 
-} //namespace wrapper
-
-} //namespace chart
+} //namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

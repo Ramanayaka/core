@@ -20,17 +20,16 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_EFFECTREWINDER_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_EFFECTREWINDER_HXX
 
-#include "animationnode.hxx"
-#include "eventhandler.hxx"
-#include "animationeventhandler.hxx"
-#include "event.hxx"
-#include "screenupdater.hxx"
+#include <animationnode.hxx>
+#include <eventhandler.hxx>
+#include <animationeventhandler.hxx>
+#include <event.hxx>
+#include <screenupdater.hxx>
 
 #include <functional>
 #include <memory>
-#include <vector>
 
-namespace slideshow { namespace internal {
+namespace slideshow::internal {
 
 class EventMultiplexer;
 class EventQueue;
@@ -97,6 +96,9 @@ public:
     */
     void skipAllMainSequenceEffects();
 
+    //FIXME: That is an opengl issue(it doesn't allow to animate some animations), remove that function when opengl fixed.
+    static bool hasBlockedAnimation( const css::uno::Reference<css::animations::XAnimationNode>& xNode);
+
 private:
     EventMultiplexer& mrEventMultiplexer;
     EventQueue& mrEventQueue;
@@ -162,7 +164,7 @@ private:
         const ::std::function<void ()>& rPreviousSlideFunctor);
 };
 
-} } // end of namespace ::slideshow::internal
+} // end of namespace ::slideshow::internal
 
 #endif
 

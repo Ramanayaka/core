@@ -10,11 +10,9 @@
 #include <memory>
 #include <document.hxx>
 #include <clipcontext.hxx>
-#include <formulacell.hxx>
 #include <clipparam.hxx>
 #include <table.hxx>
 #include <tokenarray.hxx>
-#include <editutil.hxx>
 #include <listenercontext.hxx>
 #include <tokenstringcontext.hxx>
 #include <poolhelp.hxx>
@@ -23,12 +21,12 @@
 #include <docpool.hxx>
 #include <columniterator.hxx>
 
-#include "dociter.hxx"
-#include "patattr.hxx"
-#include "refupdatecontext.hxx"
-#include <svl/whiter.hxx>
+#include <refupdatecontext.hxx>
+#include <sal/log.hxx>
 #include <editeng/colritem.hxx>
-#include "scitems.hxx"
+#include <scitems.hxx>
+#include <datamapper.hxx>
+#include <docsh.hxx>
 
 // Add totally brand-new methods to this source file.
 
@@ -188,14 +186,11 @@ std::set<Color> ScDocument::GetDocColors()
     const sal_uInt16 pAttribs[] = {ATTR_BACKGROUND, ATTR_FONT_COLOR};
     for (sal_uInt16 nAttrib : pAttribs)
     {
-        const sal_uInt32 nCount = pPool->GetItemCount2(nAttrib);
-        for (sal_uInt32 j=0; j<nCount; j++)
+        for (const SfxPoolItem* pItem : pPool->GetItemSurrogates(nAttrib))
         {
-            const SvxColorItem *pItem = static_cast<const SvxColorItem*>(pPool->GetItem2(nAttrib, j));
-            if (pItem == nullptr)
-                continue;
-            Color aColor( pItem->GetValue() );
-            if (COL_AUTO != aColor.GetColor())
+            const SvxColorItem *pColorItem = static_cast<const SvxColorItem*>(pItem);
+            Color aColor( pColorItem->GetValue() );
+            if (COL_AUTO != aColor)
                 aDocColors.insert(aColor);
         }
     }
@@ -204,6 +199,7 @@ std::set<Color> ScDocument::GetDocColors()
 
 void ScDocument::SetCalcConfig( const ScCalcConfig& rConfig )
 {
+    ScMutationGuard aGuard(this, ScMutationGuardFlags::CORE);
     maCalcConfig = rConfig;
 }
 
@@ -231,7 +227,7 @@ void ScDocument::SwapNonEmpty( sc::TableValues& rValues )
     if (!rRange.IsValid())
         return;
 
-    std::shared_ptr<sc::ColumnBlockPositionSet> pPosSet(new sc::ColumnBlockPositionSet(*this));
+    auto pPosSet = std::make_shared<sc::ColumnBlockPositionSet>(*this);
     sc::StartListeningContext aStartCxt(*this, pPosSet);
     sc::EndListeningContext aEndCxt(*this, pPosSet);
 
@@ -271,10 +267,9 @@ void ScDocument::PreprocessAllRangeNamesUpdate( const std::map<OUString, std::un
         if (!pNewRangeNames)
             continue;
 
-        for (ScRangeName::iterator it( pOldRangeNames->begin()), itEnd( pOldRangeNames->end());
-                it != itEnd; ++it)
+        for (const auto& rEntry : *pOldRangeNames)
         {
-            ScRangeData* pOldData = it->second.get();
+            ScRangeData* pOldData = rEntry.second.get();
             if (!pOldData)
                 continue;
 
@@ -287,10 +282,9 @@ void ScDocument::PreprocessAllRangeNamesUpdate( const std::map<OUString, std::un
     sc::EndListeningContext aEndListenCxt(*this);
     sc::CompileFormulaContext aCompileCxt(this);
 
-    TableContainer::iterator it = maTabs.begin(), itEnd = maTabs.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rxTab : maTabs)
     {
-        ScTable* p = *it;
+        ScTable* p = rxTab.get();
         p->PreprocessRangeNameUpdate(aEndListenCxt, aCompileCxt);
     }
 }
@@ -300,10 +294,9 @@ void ScDocument::PreprocessRangeNameUpdate()
     sc::EndListeningContext aEndListenCxt(*this);
     sc::CompileFormulaContext aCompileCxt(this);
 
-    TableContainer::iterator it = maTabs.begin(), itEnd = maTabs.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rxTab : maTabs)
     {
-        ScTable* p = *it;
+        ScTable* p = rxTab.get();
         p->PreprocessRangeNameUpdate(aEndListenCxt, aCompileCxt);
     }
 }
@@ -313,10 +306,9 @@ void ScDocument::PreprocessDBDataUpdate()
     sc::EndListeningContext aEndListenCxt(*this);
     sc::CompileFormulaContext aCompileCxt(this);
 
-    TableContainer::iterator it = maTabs.begin(), itEnd = maTabs.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rxTab : maTabs)
     {
-        ScTable* p = *it;
+        ScTable* p = rxTab.get();
         p->PreprocessDBDataUpdate(aEndListenCxt, aCompileCxt);
     }
 }
@@ -325,17 +317,17 @@ void ScDocument::CompileHybridFormula()
 {
     sc::StartListeningContext aStartListenCxt(*this);
     sc::CompileFormulaContext aCompileCxt(this);
-    TableContainer::iterator it = maTabs.begin(), itEnd = maTabs.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rxTab : maTabs)
     {
-        ScTable* p = *it;
+        ScTable* p = rxTab.get();
         p->CompileHybridFormula(aStartListenCxt, aCompileCxt);
     }
 }
 
-void ScDocument::SharePooledResources( ScDocument* pSrcDoc )
+void ScDocument::SharePooledResources( const ScDocument* pSrcDoc )
 {
-    xPoolHelper = pSrcDoc->xPoolHelper;
+    ScMutationGuard aGuard(this, ScMutationGuardFlags::CORE);
+    mxPoolHelper = pSrcDoc->mxPoolHelper;
     mpCellStringPool = pSrcDoc->mpCellStringPool;
 }
 
@@ -375,16 +367,80 @@ void ScDocument::RegroupFormulaCells( SCTAB nTab, SCCOL nCol )
     pTab->RegroupFormulaCells(nCol);
 }
 
-void ScDocument::CollectAllAreaListeners(
-    std::vector<SvtListener*>& rListener, const ScRange& rRange, sc::AreaOverlapType eType )
+void ScDocument::RegroupFormulaCells( const ScRange& rRange )
 {
-    if (!pBASM)
-        return;
+    for( SCTAB tab = rRange.aStart.Tab(); tab <= rRange.aEnd.Tab(); ++tab )
+        for( SCCOL col = rRange.aStart.Col(); col <= rRange.aEnd.Col(); ++col )
+            RegroupFormulaCells( tab, col );
+}
 
-    std::vector<sc::AreaListener> aAL = pBASM->GetAllListeners(rRange, eType);
-    std::vector<sc::AreaListener>::iterator it = aAL.begin(), itEnd = aAL.end();
-    for (; it != itEnd; ++it)
-        rListener.push_back(it->mpListener);
+void ScDocument::DelayFormulaGrouping( bool delay )
+{
+    if( delay )
+    {
+        if( !pDelayedFormulaGrouping )
+            pDelayedFormulaGrouping.reset( new ScRange( ScAddress::INITIALIZE_INVALID ));
+    }
+    else
+    {
+        if( pDelayedFormulaGrouping && pDelayedFormulaGrouping->IsValid())
+            RegroupFormulaCells( *pDelayedFormulaGrouping );
+        pDelayedFormulaGrouping.reset();
+    }
+}
+
+void ScDocument::AddDelayedFormulaGroupingCell( const ScFormulaCell* cell )
+{
+    if( !pDelayedFormulaGrouping->In( cell->aPos ))
+        pDelayedFormulaGrouping->ExtendTo( cell->aPos );
+}
+
+void ScDocument::EnableDelayStartListeningFormulaCells( ScColumn* column, bool delay )
+{
+    if( delay )
+    {
+        if( pDelayedStartListeningFormulaCells.find( column ) == pDelayedStartListeningFormulaCells.end())
+            pDelayedStartListeningFormulaCells[ column ] = std::pair<SCROW, SCROW>( -1, -1 );
+    }
+    else
+    {
+        auto it = pDelayedStartListeningFormulaCells.find( column );
+        if( it != pDelayedStartListeningFormulaCells.end())
+        {
+            if( it->second.first != -1 )
+            {
+                auto pPosSet = std::make_shared<sc::ColumnBlockPositionSet>(*this);
+                sc::StartListeningContext aStartCxt(*this, pPosSet);
+                sc::EndListeningContext aEndCxt(*this, pPosSet);
+                column->StartListeningFormulaCells(aStartCxt, aEndCxt, it->second.first, it->second.second);
+            }
+            pDelayedStartListeningFormulaCells.erase( it );
+        }
+    }
+}
+
+bool ScDocument::IsEnabledDelayStartListeningFormulaCells( ScColumn* column ) const
+{
+    return pDelayedStartListeningFormulaCells.find( column ) != pDelayedStartListeningFormulaCells.end();
+}
+
+bool ScDocument::CanDelayStartListeningFormulaCells( ScColumn* column, SCROW row1, SCROW row2 )
+{
+    auto it = pDelayedStartListeningFormulaCells.find( column );
+    if( it == pDelayedStartListeningFormulaCells.end())
+        return false; // not enabled
+    if( it->second.first == -1 && it->second.second == -1 ) // uninitialized
+        pDelayedStartListeningFormulaCells[ column ] = std::make_pair( row1, row2 );
+    else
+    {
+        if( row1 > it->second.second + 1 || row2 < it->second.first - 1 )
+        { // two non-adjacent ranges, just bail out
+            return false;
+        }
+        it->second.first = std::min( it->second.first, row1 );
+        it->second.second = std::max( it->second.second, row2 );
+    }
+    return true;
 }
 
 bool ScDocument::HasFormulaCell( const ScRange& rRange ) const
@@ -433,10 +489,8 @@ void ScDocument::EndListeningIntersectedGroups(
 void ScDocument::EndListeningGroups( const std::vector<ScAddress>& rPosArray )
 {
     sc::EndListeningContext aCxt(*this);
-    std::vector<ScAddress>::const_iterator it = rPosArray.begin(), itEnd = rPosArray.end();
-    for (; it != itEnd; ++it)
+    for (const ScAddress& rPos : rPosArray)
     {
-        const ScAddress& rPos = *it;
         ScTable* pTab = FetchTable(rPos.Tab());
         if (!pTab)
             return;
@@ -449,10 +503,8 @@ void ScDocument::EndListeningGroups( const std::vector<ScAddress>& rPosArray )
 
 void ScDocument::SetNeedsListeningGroups( const std::vector<ScAddress>& rPosArray )
 {
-    std::vector<ScAddress>::const_iterator it = rPosArray.begin(), itEnd = rPosArray.end();
-    for (; it != itEnd; ++it)
+    for (const ScAddress& rPos : rPosArray)
     {
-        const ScAddress& rPos = *it;
         ScTable* pTab = FetchTable(rPos.Tab());
         if (!pTab)
             return;
@@ -467,14 +519,14 @@ class StartNeededListenersHandler
 {
     std::shared_ptr<sc::StartListeningContext> mpCxt;
 public:
-    explicit StartNeededListenersHandler( ScDocument& rDoc ) : mpCxt(new sc::StartListeningContext(rDoc)) {}
+    explicit StartNeededListenersHandler( ScDocument& rDoc ) : mpCxt(std::make_shared<sc::StartListeningContext>(rDoc)) {}
     explicit StartNeededListenersHandler( ScDocument& rDoc, const std::shared_ptr<const sc::ColumnSet>& rpColSet ) :
-        mpCxt(new sc::StartListeningContext(rDoc))
+        mpCxt(std::make_shared<sc::StartListeningContext>(rDoc))
     {
         mpCxt->setColumnSet( rpColSet);
     }
 
-    void operator() (ScTable* p)
+    void operator() (const ScTableUniquePtr & p)
     {
         if (p)
             p->StartListeners(*mpCxt, false);
@@ -498,7 +550,7 @@ void ScDocument::StartAllListeners( const ScRange& rRange )
     if (IsClipOrUndo() || GetNoListening())
         return;
 
-    std::shared_ptr<sc::ColumnBlockPositionSet> pPosSet(new sc::ColumnBlockPositionSet(*this));
+    auto pPosSet = std::make_shared<sc::ColumnBlockPositionSet>(*this);
     sc::StartListeningContext aStartCxt(*this, pPosSet);
     sc::EndListeningContext aEndCxt(*this, pPosSet);
 
@@ -516,10 +568,9 @@ void ScDocument::StartAllListeners( const ScRange& rRange )
 
 void ScDocument::finalizeOutlineImport()
 {
-    TableContainer::iterator it = maTabs.begin(), itEnd = maTabs.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rxTab : maTabs)
     {
-        ScTable* p = *it;
+        ScTable* p = rxTab.get();
         p->finalizeOutlineImport();
     }
 }
@@ -562,7 +613,7 @@ bool ScDocument::FindRangeNamesReferencingSheet( sc::UpdatedRangeNames& rIndexes
         return false;
 
     bool bRef = !bSameDoc;  // include every name used when copying to other doc
-    if (nRecursion < 126)   // whatever.. 42*3
+    if (nRecursion < 126)   // whatever... 42*3
     {
         formula::FormulaTokenArrayPlainIterator aIter(*pCode);
         for (const formula::FormulaToken* p = aIter.First(); p; p = aIter.Next())
@@ -735,10 +786,13 @@ bool ScDocument::CopyAdjustRangeName( SCTAB& rSheet, sal_uInt16& rIndex, ScRange
         ScDocument& rNewDoc, const ScAddress& rNewPos, const ScAddress& rOldPos, const bool bGlobalNamesToLocal,
         const bool bUsedByFormula ) const
 {
-    const bool bSameDoc = (rNewDoc.GetPool() == const_cast<ScDocument*>(this)->GetPool());
-    if (bSameDoc && ((rSheet < 0 && !bGlobalNamesToLocal) || (rSheet >= 0 && rSheet != rOldPos.Tab())))
+    ScDocument* pThis = const_cast<ScDocument*>(this);
+    const bool bSameDoc = (rNewDoc.GetPool() == pThis->GetPool());
+    if (bSameDoc && ((rSheet < 0 && !bGlobalNamesToLocal) || (rSheet >= 0
+                    && (rSheet != rOldPos.Tab() || (IsClipboard() && pThis->IsCutMode())))))
         // Same doc and global name, if not copied to local name, or
-        // sheet-local name on other sheet stays the same.
+        // sheet-local name on other sheet stays the same. Sheet-local on
+        // same sheet also in a clipboard cut&paste / move operation.
         return false;
 
     // Ensure we don't fiddle with the references until exit.
@@ -879,7 +933,15 @@ bool ScDocument::CopyAdjustRangeName( SCTAB& rSheet, sal_uInt16& rIndex, ScRange
             rpRangeData = copyRangeName( pOldRangeData, rNewDoc, this, rNewPos, rOldPos, bGlobalNamesToLocal,
                     nOldSheet, nNewSheet, bSameDoc);
         }
+
+        if (rpRangeData && !rNewDoc.IsClipOrUndo())
+        {
+            ScDocShell* pDocSh = static_cast<ScDocShell*>(rNewDoc.GetDocumentShell());
+            if (pDocSh)
+                pDocSh->SetAreasChangedNeedBroadcast();
+        }
     }
+
     rSheet = nNewSheet;
     rIndex = rpRangeData ? rpRangeData->GetIndex() : 0;     // 0 means not inserted
     return true;
@@ -898,14 +960,8 @@ bool ScDocument::IsEditActionAllowed(
 bool ScDocument::IsEditActionAllowed(
     sc::ColRowEditAction eAction, const ScMarkData& rMark, SCCOLROW nStart, SCCOLROW nEnd ) const
 {
-    ScMarkData::const_iterator it = rMark.begin(), itEnd = rMark.end();
-    for (; it != itEnd; ++it)
-    {
-        if (!IsEditActionAllowed(eAction, *it, nStart, nEnd))
-            return false;
-    }
-
-    return true;
+    return std::all_of(rMark.begin(), rMark.end(),
+        [this, &eAction, &nStart, &nEnd](const SCTAB& rTab) { return IsEditActionAllowed(eAction, rTab, nStart, nEnd); });
 }
 
 std::unique_ptr<sc::ColumnIterator> ScDocument::GetColumnIterator( SCTAB nTab, SCCOL nCol, SCROW nRow1, SCROW nRow2 ) const
@@ -917,17 +973,100 @@ std::unique_ptr<sc::ColumnIterator> ScDocument::GetColumnIterator( SCTAB nTab, S
     return pTab->GetColumnIterator(nCol, nRow1, nRow2);
 }
 
-void ScDocument::EnsureFormulaCellResults( const ScRange& rRange )
+void ScDocument::CreateColumnIfNotExists( SCTAB nTab, SCCOL nCol )
 {
+    const ScTable* pTab = FetchTable(nTab);
+    if (!pTab)
+        return;
+
+    pTab->CreateColumnIfNotExists(nCol);
+}
+
+bool ScDocument::EnsureFormulaCellResults( const ScRange& rRange, bool bSkipRunning )
+{
+    bool bAnyDirty = false;
     for (SCTAB nTab = rRange.aStart.Tab(); nTab <= rRange.aEnd.Tab(); ++nTab)
     {
         ScTable* pTab = FetchTable(nTab);
         if (!pTab)
             continue;
 
-        pTab->EnsureFormulaCellResults(
-            rRange.aStart.Col(), rRange.aStart.Row(), rRange.aEnd.Col(), rRange.aEnd.Row());
+        bool bRet = pTab->EnsureFormulaCellResults(
+            rRange.aStart.Col(), rRange.aStart.Row(), rRange.aEnd.Col(), rRange.aEnd.Row(), bSkipRunning);
+        bAnyDirty = bAnyDirty || bRet;
     }
+
+    return bAnyDirty;
+}
+
+sc::ExternalDataMapper& ScDocument::GetExternalDataMapper()
+{
+    if (!mpDataMapper)
+        mpDataMapper.reset(new sc::ExternalDataMapper(this));
+
+    return *mpDataMapper;
+}
+
+void ScDocument::StoreTabToCache(SCTAB nTab, SvStream& rStrm) const
+{
+    const ScTable* pTab = FetchTable(nTab);
+    if (!pTab)
+        return;
+
+    pTab->StoreToCache(rStrm);
+}
+
+void ScDocument::RestoreTabFromCache(SCTAB nTab, SvStream& rStrm)
+{
+    ScTable* pTab = FetchTable(nTab);
+    if (!pTab)
+        return;
+
+    pTab->RestoreFromCache(rStrm);
+}
+
+OString ScDocument::dumpSheetGeomData(SCTAB nTab, bool bColumns, SheetGeomType eGeomType)
+{
+    ScTable* pTab = FetchTable(nTab);
+    if (!pTab)
+        return "";
+
+    return pTab->dumpSheetGeomData(bColumns, eGeomType);
+}
+
+SCCOL ScDocument::GetLOKFreezeCol(SCTAB nTab) const
+{
+    const ScTable* pTab = FetchTable(nTab);
+    if (!pTab)
+        return -1;
+
+    return pTab->GetLOKFreezeCol();
+}
+SCROW ScDocument::GetLOKFreezeRow(SCTAB nTab) const
+{
+    const ScTable* pTab = FetchTable(nTab);
+    if (!pTab)
+        return -1;
+
+    return pTab->GetLOKFreezeRow();
+}
+
+bool ScDocument::SetLOKFreezeCol(SCCOL nFreezeCol, SCTAB nTab)
+{
+    ScTable* pTab = FetchTable(nTab);
+    if (!pTab)
+        return false;
+
+    return pTab->SetLOKFreezeCol(nFreezeCol);
+}
+
+bool ScDocument::SetLOKFreezeRow(SCROW nFreezeRow, SCTAB nTab)
+{
+    ScTable* pTab = FetchTable(nTab);
+    if (!pTab)
+        return false;
+
+    return pTab->SetLOKFreezeRow(nFreezeRow);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

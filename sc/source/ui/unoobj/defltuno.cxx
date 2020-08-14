@@ -17,52 +17,51 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <editeng/memberids.hrc>
+#include <editeng/memberids.h>
+#include <editeng/langitem.hxx>
 #include <svl/hint.hxx>
 #include <svl/itemprop.hxx>
-#include <svx/unomid.hxx>
 #include <vcl/svapp.hxx>
 #include <i18nlangtag/languagetag.hxx>
 
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-
-#include "scitems.hxx"
-#include "defltuno.hxx"
-#include "miscuno.hxx"
-#include "docsh.hxx"
-#include "docpool.hxx"
-#include "unonames.hxx"
-#include "docoptio.hxx"
+#include <scitems.hxx>
+#include <defltuno.hxx>
+#include <miscuno.hxx>
+#include <docsh.hxx>
+#include <docpool.hxx>
+#include <unonames.hxx>
+#include <docoptio.hxx>
 
 #include <limits>
 
+class SvxFontItem;
 using namespace ::com::sun::star;
 
 static const SfxItemPropertyMapEntry* lcl_GetDocDefaultsMap()
 {
     static const SfxItemPropertyMapEntry aDocDefaultsMap_Impl[] =
     {
-        {OUString(SC_UNONAME_CFCHARS),  ATTR_FONT,          cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_CHAR_SET },
-        {OUString(SC_UNO_CJK_CFCHARS),  ATTR_CJK_FONT,      cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_CHAR_SET },
-        {OUString(SC_UNO_CTL_CFCHARS),  ATTR_CTL_FONT,      cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_CHAR_SET },
-        {OUString(SC_UNONAME_CFFAMIL),  ATTR_FONT,          cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_FAMILY },
-        {OUString(SC_UNO_CJK_CFFAMIL),  ATTR_CJK_FONT,      cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_FAMILY },
-        {OUString(SC_UNO_CTL_CFFAMIL),  ATTR_CTL_FONT,      cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_FAMILY },
-        {OUString(SC_UNONAME_CFNAME),   ATTR_FONT,          cppu::UnoType<OUString>::get(),    0, MID_FONT_FAMILY_NAME },
-        {OUString(SC_UNO_CJK_CFNAME),   ATTR_CJK_FONT,      cppu::UnoType<OUString>::get(),    0, MID_FONT_FAMILY_NAME },
-        {OUString(SC_UNO_CTL_CFNAME),   ATTR_CTL_FONT,      cppu::UnoType<OUString>::get(),    0, MID_FONT_FAMILY_NAME },
-        {OUString(SC_UNONAME_CFPITCH),  ATTR_FONT,          cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_PITCH },
-        {OUString(SC_UNO_CJK_CFPITCH),  ATTR_CJK_FONT,      cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_PITCH },
-        {OUString(SC_UNO_CTL_CFPITCH),  ATTR_CTL_FONT,      cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_PITCH },
-        {OUString(SC_UNONAME_CFSTYLE),  ATTR_FONT,          cppu::UnoType<OUString>::get(),    0, MID_FONT_STYLE_NAME },
-        {OUString(SC_UNO_CJK_CFSTYLE),  ATTR_CJK_FONT,      cppu::UnoType<OUString>::get(),    0, MID_FONT_STYLE_NAME },
-        {OUString(SC_UNO_CTL_CFSTYLE),  ATTR_CTL_FONT,      cppu::UnoType<OUString>::get(),    0, MID_FONT_STYLE_NAME },
-        {OUString(SC_UNONAME_CLOCAL),   ATTR_FONT_LANGUAGE, cppu::UnoType<lang::Locale>::get(),     0, MID_LANG_LOCALE },
-        {OUString(SC_UNO_CJK_CLOCAL),   ATTR_CJK_FONT_LANGUAGE, cppu::UnoType<lang::Locale>::get(), 0, MID_LANG_LOCALE },
-        {OUString(SC_UNO_CTL_CLOCAL),   ATTR_CTL_FONT_LANGUAGE, cppu::UnoType<lang::Locale>::get(), 0, MID_LANG_LOCALE },
-        {OUString(SC_UNO_STANDARDDEC),              0,      cppu::UnoType<sal_Int16>::get(),        0, 0 },
-        {OUString(SC_UNO_TABSTOPDIS),               0,      cppu::UnoType<sal_Int32>::get(),        0, 0 },
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        {SC_UNONAME_CFCHARS,  ATTR_FONT,          cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_CHAR_SET },
+        {SC_UNO_CJK_CFCHARS,  ATTR_CJK_FONT,      cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_CHAR_SET },
+        {SC_UNO_CTL_CFCHARS,  ATTR_CTL_FONT,      cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_CHAR_SET },
+        {SC_UNONAME_CFFAMIL,  ATTR_FONT,          cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_FAMILY },
+        {SC_UNO_CJK_CFFAMIL,  ATTR_CJK_FONT,      cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_FAMILY },
+        {SC_UNO_CTL_CFFAMIL,  ATTR_CTL_FONT,      cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_FAMILY },
+        {SC_UNONAME_CFNAME,   ATTR_FONT,          cppu::UnoType<OUString>::get(),    0, MID_FONT_FAMILY_NAME },
+        {SC_UNO_CJK_CFNAME,   ATTR_CJK_FONT,      cppu::UnoType<OUString>::get(),    0, MID_FONT_FAMILY_NAME },
+        {SC_UNO_CTL_CFNAME,   ATTR_CTL_FONT,      cppu::UnoType<OUString>::get(),    0, MID_FONT_FAMILY_NAME },
+        {SC_UNONAME_CFPITCH,  ATTR_FONT,          cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_PITCH },
+        {SC_UNO_CJK_CFPITCH,  ATTR_CJK_FONT,      cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_PITCH },
+        {SC_UNO_CTL_CFPITCH,  ATTR_CTL_FONT,      cppu::UnoType<sal_Int16>::get(),        0, MID_FONT_PITCH },
+        {SC_UNONAME_CFSTYLE,  ATTR_FONT,          cppu::UnoType<OUString>::get(),    0, MID_FONT_STYLE_NAME },
+        {SC_UNO_CJK_CFSTYLE,  ATTR_CJK_FONT,      cppu::UnoType<OUString>::get(),    0, MID_FONT_STYLE_NAME },
+        {SC_UNO_CTL_CFSTYLE,  ATTR_CTL_FONT,      cppu::UnoType<OUString>::get(),    0, MID_FONT_STYLE_NAME },
+        {SC_UNONAME_CLOCAL,   ATTR_FONT_LANGUAGE, cppu::UnoType<lang::Locale>::get(),     0, MID_LANG_LOCALE },
+        {SC_UNO_CJK_CLOCAL,   ATTR_CJK_FONT_LANGUAGE, cppu::UnoType<lang::Locale>::get(), 0, MID_LANG_LOCALE },
+        {SC_UNO_CTL_CLOCAL,   ATTR_CTL_FONT_LANGUAGE, cppu::UnoType<lang::Locale>::get(), 0, MID_LANG_LOCALE },
+        {SC_UNO_STANDARDDEC,              0,      cppu::UnoType<sal_Int16>::get(),        0, 0 },
+        {SC_UNO_TABSTOPDIS,               0,      cppu::UnoType<sal_Int32>::get(),        0, 0 },
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     return aDocDefaultsMap_Impl;
 }
@@ -100,8 +99,8 @@ void ScDocDefaultsObj::ItemsChanged()
     if (pDocShell)
     {
         //! if not in XML import, adjust row heights
-
-        pDocShell->PostPaint(ScRange(0, 0, 0, MAXCOL, MAXROW, MAXTAB), PaintPartFlags::Grid);
+        const auto & rDoc = pDocShell->GetDocument();
+        pDocShell->PostPaint(ScRange(0, 0, 0, rDoc.MaxCol(), rDoc.MaxRow(), MAXTAB), PaintPartFlags::Grid);
     }
 }
 
@@ -125,7 +124,7 @@ void SAL_CALL ScDocDefaultsObj::setPropertyValue(
 
     const SfxItemPropertySimpleEntry* pEntry = aPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
     if(!pEntry->nWID)
     {
         if(aPropertyName ==SC_UNO_STANDARDDEC)
@@ -184,13 +183,12 @@ void SAL_CALL ScDocDefaultsObj::setPropertyValue(
     else
     {
         ScDocumentPool* pPool = pDocShell->GetDocument().GetPool();
-        SfxPoolItem* pNewItem = pPool->GetDefaultItem(pEntry->nWID).Clone();
+        std::unique_ptr<SfxPoolItem> pNewItem(pPool->GetDefaultItem(pEntry->nWID).Clone());
 
         if( !pNewItem->PutValue( aValue, pEntry->nMemberId ) )
             throw lang::IllegalArgumentException();
 
         pPool->SetPoolDefaultItem( *pNewItem );
-        delete pNewItem;    // copied in SetPoolDefaultItem
 
         ItemsChanged();
     }
@@ -208,7 +206,7 @@ uno::Any SAL_CALL ScDocDefaultsObj::getPropertyValue( const OUString& aPropertyN
     uno::Any aRet;
     const SfxItemPropertySimpleEntry* pEntry = aPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     if (!pEntry->nWID)
     {
@@ -253,7 +251,7 @@ beans::PropertyState SAL_CALL ScDocDefaultsObj::getPropertyState( const OUString
 
     const SfxItemPropertySimpleEntry* pEntry = aPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     beans::PropertyState eRet = beans::PropertyState_DEFAULT_VALUE;
 
@@ -283,11 +281,9 @@ uno::Sequence<beans::PropertyState> SAL_CALL ScDocDefaultsObj::getPropertyStates
     //  the simple way: call getPropertyState
 
     SolarMutexGuard aGuard;
-    const OUString* pNames = aPropertyNames.getConstArray();
     uno::Sequence<beans::PropertyState> aRet(aPropertyNames.getLength());
-    beans::PropertyState* pStates = aRet.getArray();
-    for(sal_Int32 i = 0; i < aPropertyNames.getLength(); i++)
-        pStates[i] = getPropertyState(pNames[i]);
+    std::transform(aPropertyNames.begin(), aPropertyNames.end(), aRet.begin(),
+        [this](const OUString& rName) -> beans::PropertyState { return getPropertyState(rName); });
     return aRet;
 }
 
@@ -300,7 +296,7 @@ void SAL_CALL ScDocDefaultsObj::setPropertyToDefault( const OUString& aPropertyN
 
     const SfxItemPropertySimpleEntry* pEntry = aPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     if (pEntry->nWID)
     {
@@ -322,7 +318,7 @@ uno::Any SAL_CALL ScDocDefaultsObj::getPropertyDefault( const OUString& aPropert
 
     const SfxItemPropertySimpleEntry* pEntry = aPropertyMap.getByName( aPropertyName );
     if ( !pEntry )
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(aPropertyName);
 
     uno::Any aRet;
     if (pEntry->nWID)

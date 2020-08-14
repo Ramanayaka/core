@@ -22,6 +22,8 @@
 #include <tools/urlobj.hxx>
 #include <unotools/bootstrap.hxx>
 #include <unotools/ucbstreamhelper.hxx>
+#include <sal/log.hxx>
+#include <osl/file.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -29,24 +31,6 @@ using namespace ::com::sun::star::uno;
 
 namespace migration
 {
-    // component operations
-
-
-    OUString WordbookMigration_getImplementationName()
-    {
-        return OUString( "com.sun.star.comp.desktop.migration.Wordbooks" );
-    }
-
-
-    Sequence< OUString > WordbookMigration_getSupportedServiceNames()
-    {
-        return Sequence< OUString > { "com.sun.star.migration.Wordbooks" };
-    }
-
-
-    // WordbookMigration
-
-
     WordbookMigration::WordbookMigration()
     {
     }
@@ -80,12 +64,10 @@ namespace migration
             }
 
             // iterate recursive over subfolders
-            TStringVector::const_iterator aI = aSubDirs.begin();
-            while ( aI != aSubDirs.end() )
+            for (auto const& subDir : aSubDirs)
             {
-                TStringVectorPtr aSubResult = getFiles( *aI );
+                TStringVectorPtr aSubResult = getFiles(subDir);
                 aResult->insert( aResult->end(), aSubResult->begin(), aSubResult->end() );
-                ++aI;
             }
         }
 
@@ -93,7 +75,7 @@ namespace migration
     }
 
 
-    void WordbookMigration::checkAndCreateDirectory( INetURLObject& rDirURL )
+    void WordbookMigration::checkAndCreateDirectory( INetURLObject const & rDirURL )
     {
         ::osl::FileBase::RC aResult = ::osl::Directory::create( rDirURL.GetMainURL( INetURLObject::DecodeMechanism::ToIUri ) );
         if ( aResult == ::osl::FileBase::E_NOENT )
@@ -106,18 +88,18 @@ namespace migration
     }
 
 #define MAX_HEADER_LENGTH 16
-bool IsUserWordbook( const OUString& rFile )
+static bool IsUserWordbook( const OUString& rFile )
 {
     bool bRet = false;
-    SvStream* pStream = ::utl::UcbStreamHelper::CreateStream( rFile, StreamMode::STD_READ );
+    std::unique_ptr<SvStream> pStream = ::utl::UcbStreamHelper::CreateStream( rFile, StreamMode::STD_READ );
     if ( pStream && !pStream->GetError() )
     {
-        static const sal_Char* const pVerOOo7    = "OOoUserDict1";
+        static const char* const pVerOOo7    = "OOoUserDict1";
         sal_uInt64 const nSniffPos = pStream->Tell();
         static std::size_t nVerOOo7Len = sal::static_int_cast< std::size_t >(strlen( pVerOOo7 ));
-        sal_Char pMagicHeader[MAX_HEADER_LENGTH];
+        char pMagicHeader[MAX_HEADER_LENGTH];
         pMagicHeader[ nVerOOo7Len ] = '\0';
-        if ((pStream->ReadBytes(static_cast<void *>(pMagicHeader), nVerOOo7Len) == nVerOOo7Len))
+        if (pStream->ReadBytes(static_cast<void *>(pMagicHeader), nVerOOo7Len) == nVerOOo7Len)
         {
             if ( !strcmp(pMagicHeader, pVerOOo7) )
                 bRet = true;
@@ -128,18 +110,17 @@ bool IsUserWordbook( const OUString& rFile )
                 pStream->ReadUInt16( nLen );
                 if ( nLen < MAX_HEADER_LENGTH )
                 {
-                   pStream->ReadBytes(pMagicHeader, nLen);
-                   pMagicHeader[nLen] = '\0';
+                    pStream->ReadBytes(pMagicHeader, nLen);
+                    pMagicHeader[nLen] = '\0';
                     if ( !strcmp(pMagicHeader, "WBSWG2")
                      ||  !strcmp(pMagicHeader, "WBSWG5")
                      ||  !strcmp(pMagicHeader, "WBSWG6") )
-                    bRet = true;
+                        bRet = true;
                 }
             }
         }
     }
 
-    delete pStream;
     return bRet;
 }
 
@@ -152,24 +133,22 @@ bool IsUserWordbook( const OUString& rFile )
         {
             sTargetDir += "/user/wordbook";
             TStringVectorPtr aFileList = getFiles( m_sSourceDir );
-            TStringVector::const_iterator aI = aFileList->begin();
-            while ( aI != aFileList->end() )
+            for (auto const& elem : *aFileList)
             {
-                if (IsUserWordbook(*aI) )
+                if (IsUserWordbook(elem) )
                 {
-                    OUString sSourceLocalName = aI->copy( m_sSourceDir.getLength() );
+                    OUString sSourceLocalName = elem.copy( m_sSourceDir.getLength() );
                     OUString sTargetName = sTargetDir + sSourceLocalName;
                     INetURLObject aURL( sTargetName );
                     aURL.removeSegment();
                     checkAndCreateDirectory( aURL );
-                    ::osl::FileBase::RC aResult = ::osl::File::copy( *aI, sTargetName );
+                    ::osl::FileBase::RC aResult = ::osl::File::copy( elem, sTargetName );
                     if ( aResult != ::osl::FileBase::E_None )
                     {
                         SAL_WARN( "desktop", "WordbookMigration::copyFiles: cannot copy "
-                                     << *aI << " to " << sTargetName);
+                                     << elem << " to " << sTargetName);
                     }
                 }
-                ++aI;
             }
         }
         else
@@ -184,7 +163,7 @@ bool IsUserWordbook( const OUString& rFile )
 
     OUString WordbookMigration::getImplementationName()
     {
-        return WordbookMigration_getImplementationName();
+        return "com.sun.star.comp.desktop.migration.Wordbooks";
     }
 
 
@@ -196,7 +175,7 @@ bool IsUserWordbook( const OUString& rFile )
 
     Sequence< OUString > WordbookMigration::getSupportedServiceNames()
     {
-        return WordbookMigration_getSupportedServiceNames();
+        return { "com.sun.star.migration.Wordbooks" };
     }
 
 
@@ -238,18 +217,14 @@ bool IsUserWordbook( const OUString& rFile )
         return Any();
     }
 
-
-    // component operations
-
-
-    Reference< XInterface > SAL_CALL WordbookMigration_create(
-        Reference< XComponentContext > const & )
-    {
-        return static_cast< lang::XTypeProvider * >( new WordbookMigration() );
-    }
-
-
 }   // namespace migration
 
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+desktop_WordbookMigration_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new migration::WordbookMigration());
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

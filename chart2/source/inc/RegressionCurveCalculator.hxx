@@ -23,7 +23,9 @@
 #include <rtl/ustrbuf.hxx>
 
 #include <com/sun/star/chart2/XRegressionCurveCalculator.hpp>
-#include <com/sun/star/util/XNumberFormatter.hpp>
+
+namespace com::sun::star::util { class XNumberFormatsSupplier; }
+namespace com::sun::star::util { class XNumberFormatter; }
 
 namespace chart
 {
@@ -52,9 +54,9 @@ protected:
         double fNumber,
         const sal_Int32* pStringLength );
 
-    static void addStringToEquation( OUStringBuffer& aStrEquation, sal_Int32& nLineLength, OUStringBuffer& aAddString, const sal_Int32* pMaxLength );
+    static void addStringToEquation( OUStringBuffer& aStrEquation, sal_Int32& nLineLength, OUStringBuffer const & aAddString, const sal_Int32* pMaxLength );
 
-    double m_fCorrelationCoeffitient;
+    double m_fCorrelationCoefficient;
 
     sal_Int32 mDegree;
     bool  mForceIntercept;

@@ -23,18 +23,18 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <memory>
 
-namespace com { namespace sun { namespace star { namespace drawing
-{
-    class XShape;
-} namespace presentation {
-    class XShapeEventListener;
-} } } }
+namespace com::sun::star {
+    namespace drawing {
+        class XShape;
+    }
+    namespace presentation {
+        class XShapeEventListener;
+    }
+}
 
 /* Definition of ShapeListenerEventHandler interface */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
 
         /** Interface for handling view events.
@@ -48,16 +48,13 @@ namespace slideshow
         public:
             virtual ~ShapeListenerEventHandler() {}
 
-            virtual bool listenerAdded( const css::uno::Reference<css::presentation::XShapeEventListener>& xListener,
-                                        const css::uno::Reference<css::drawing::XShape>&                   xShape ) = 0;
+            virtual bool listenerAdded( const css::uno::Reference<css::drawing::XShape>& xShape ) = 0;
 
-            virtual bool listenerRemoved( const css::uno::Reference<css::presentation::XShapeEventListener>& xListener,
-                                          const css::uno::Reference<css::drawing::XShape>&                   xShape ) = 0;
+            virtual bool listenerRemoved( const css::uno::Reference<css::drawing::XShape>& xShape ) = 0;
         };
 
         typedef ::std::shared_ptr< ShapeListenerEventHandler > ShapeListenerEventHandlerSharedPtr;
 
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_SHAPELISTENEREVENTHANDLER_HXX

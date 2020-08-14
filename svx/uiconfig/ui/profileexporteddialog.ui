@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.20.0 -->
-<interface>
-  <requires lib="gtk+" version="3.20"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="svx">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkDialog" id="ProfileExportedDialog">
     <property name="can_focus">False</property>
     <property name="border_width">6</property>
-    <property name="title" translatable="yes">Profile exported</property>
+    <property name="title" translatable="yes" context="profileexporteddialog|ProfileExportedDialog">Profile exported</property>
     <property name="resizable">False</property>
+    <property name="modal">True</property>
+    <property name="default_width">0</property>
+    <property name="default_height">0</property>
     <property name="type_hint">dialog</property>
+    <child>
+      <placeholder/>
+    </child>
     <child internal-child="vbox">
       <object class="GtkBox" id="dialog-vbox1">
         <property name="can_focus">False</property>
@@ -36,8 +42,8 @@
               </packing>
             </child>
             <child>
-              <object class="GtkButton" id="openfolder">
-                <property name="label" translatable="yes">Open Containing _Folder</property>
+              <object class="GtkButton" id="ok">
+                <property name="label" translatable="yes" context="profileexporteddialog|openfolder">Open Containing _Folder</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="receives_default">True</property>
@@ -61,7 +67,7 @@
           <object class="GtkLabel" id="label">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Your user profile has been exported as “libreoffice-profile.zip”.</property>
+            <property name="label" translatable="yes" context="profileexporteddialog|label">Your user profile has been exported as “libreoffice-profile.zip”.</property>
             <property name="wrap">True</property>
             <property name="max_width_chars">80</property>
             <property name="lines">2</property>
@@ -77,8 +83,8 @@
       </object>
     </child>
     <action-widgets>
-      <action-widget response="0">close</action-widget>
-      <action-widget response="0">openfolder</action-widget>
+      <action-widget response="-7">close</action-widget>
+      <action-widget response="-5">ok</action-widget>
     </action-widgets>
   </object>
 </interface>

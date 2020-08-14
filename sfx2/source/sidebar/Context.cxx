@@ -22,7 +22,7 @@
 #define AnyApplicationName "any"
 #define AnyContextName "any"
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 const sal_Int32 Context::NoMatch = 4;
 const sal_Int32 Context::ApplicationWildcardMatch = 1;
@@ -36,8 +36,8 @@ Context::Context()
 }
 
 Context::Context (
-    const ::rtl::OUString& rsApplication,
-    const ::rtl::OUString& rsContext)
+    const OUString& rsApplication,
+    const OUString& rsContext)
     : msApplication(rsApplication),
       msContext(rsContext)
 {
@@ -54,11 +54,11 @@ sal_Int32 Context::EvaluateMatch (
         bApplicationNameIsAny = false;
     }
 
-    if (rOther.msApplication.equals(msApplication) || bApplicationNameIsAny)
+    if (rOther.msApplication == msApplication || bApplicationNameIsAny)
     {
         // Application name matches.
         const bool bContextNameIsAny (rOther.msContext == AnyContextName);
-        if (rOther.msContext.equals(msContext) || bContextNameIsAny)
+        if (rOther.msContext == msContext || bContextNameIsAny)
         {
             // Context name matches.
             return (bApplicationNameIsAny ? ApplicationWildcardMatch : 0)
@@ -70,16 +70,16 @@ sal_Int32 Context::EvaluateMatch (
 
 bool Context::operator== (const Context& rOther) const
 {
-    return msApplication.equals(rOther.msApplication)
-        && msContext.equals(rOther.msContext);
+    return msApplication == rOther.msApplication
+        && msContext == rOther.msContext;
 }
 
 bool Context::operator!= (const Context& rOther) const
 {
-    return ( ! msApplication.equals(rOther.msApplication))
-        || ( ! msContext.equals(rOther.msContext));
+    return ( msApplication != rOther.msApplication)
+        || ( msContext != rOther.msContext);
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

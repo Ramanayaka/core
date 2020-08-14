@@ -17,21 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/spdefcontext.hxx"
-#include "drawingml/shapepropertiescontext.hxx"
-#include "drawingml/textbody.hxx"
-#include "drawingml/textbodypropertiescontext.hxx"
-#include "drawingml/textliststylecontext.hxx"
+#include <drawingml/spdefcontext.hxx>
+#include <drawingml/shapepropertiescontext.hxx>
+#include <drawingml/textbody.hxx>
+#include <drawingml/textbodypropertiescontext.hxx>
+#include <drawingml/textliststylecontext.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
 
 using namespace ::oox::core;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-spDefContext::spDefContext( ContextHandler2Helper& rParent, Shape& rDefaultObject )
+spDefContext::spDefContext( ContextHandler2Helper const & rParent, Shape& rDefaultObject )
 : ContextHandler2( rParent )
 , mrDefaultObject( rDefaultObject )
 {
@@ -45,7 +44,7 @@ ContextHandlerRef spDefContext::onCreateContext( sal_Int32 aElementToken, const 
             return new ShapePropertiesContext( *this, mrDefaultObject );
         case A_TOKEN( bodyPr ):
         {
-            TextBodyPtr xTextBody( new TextBody );
+            TextBodyPtr xTextBody = std::make_shared<TextBody>();
             mrDefaultObject.setTextBody( xTextBody );
             return new TextBodyPropertiesContext( *this, rAttribs, xTextBody->getTextProperties() );
         }
@@ -58,6 +57,6 @@ ContextHandlerRef spDefContext::onCreateContext( sal_Int32 aElementToken, const 
     return this;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

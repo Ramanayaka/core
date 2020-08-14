@@ -20,6 +20,7 @@
 #include <sal/config.h>
 
 #include <cassert>
+#include <memory>
 #include <typeinfo>
 #include <unordered_map>
 #include <utility>
@@ -34,20 +35,54 @@
 #include <sal/log.hxx>
 #include <typelib/typedescription.h>
 
-#include <rtti.hxx>
-#include <share.hxx>
+#include "rtti.hxx"
+#include "share.hxx"
 
 namespace {
 
+class Generated {
+public:
+    virtual ~Generated() {};
+
+    virtual std::type_info * get() const = 0;
+};
+
+class GeneratedPlain: public Generated {
+public:
+    GeneratedPlain(std::unique_ptr<std::type_info> && info): info_(std::move(info)) {};
+
+    std::type_info * get() const override { return info_.get(); }
+
+private:
+    std::unique_ptr<std::type_info> info_;
+};
+
+class GeneratedPad: public Generated {
+public:
+public:
+    GeneratedPad(std::unique_ptr<char[]> && pad): pad_(std::move(pad)) {};
+
+    ~GeneratedPad() override { get()->~type_info(); }
+
+    std::type_info * get() const override final
+    { return reinterpret_cast<std::type_info *>(pad_.get()); }
+
+private:
+    std::unique_ptr<char[]> pad_;
+};
+
 class RTTI
 {
-    typedef std::unordered_map< OUString, std::type_info *, OUStringHash > t_rtti_map;
+    typedef std::unordered_map< OUString, std::type_info * > t_rtti_map;
 
     osl::Mutex m_mutex;
     t_rtti_map m_rttis;
-    t_rtti_map m_generatedRttis;
+    std::vector<OString> m_rttiNames;
+    std::unordered_map<OUString, std::unique_ptr<Generated>> m_generatedRttis;
 
+#if !defined ANDROID
     void * m_hApp;
+#endif
 
 public:
     RTTI();
@@ -57,13 +92,17 @@ public:
 };
 
 RTTI::RTTI()
+#if !defined ANDROID
     : m_hApp( dlopen( nullptr, RTLD_LAZY ) )
+#endif
 {
 }
 
 RTTI::~RTTI()
 {
+#if !defined ANDROID
     dlclose( m_hApp );
+#endif
 }
 
 std::type_info * RTTI::getRTTI(typelib_TypeDescription const & pTypeDescr)
@@ -91,7 +130,11 @@ std::type_info * RTTI::getRTTI(typelib_TypeDescription const & pTypeDescr)
         buf.append( 'E' );
 
         OString symName( buf.makeStringAndClear() );
+#if !defined ANDROID
         rtti = static_cast<std::type_info *>(dlsym( m_hApp, symName.getStr() ));
+#else
+        rtti = static_cast<std::type_info *>(dlsym( RTLD_DEFAULT, symName.getStr() ));
+#endif
 
         if (rtti)
         {
@@ -102,7 +145,7 @@ std::type_info * RTTI::getRTTI(typelib_TypeDescription const & pTypeDescr)
         else
         {
             // try to lookup the symbol in the generated rtti map
-            t_rtti_map::const_iterator iFind2( m_generatedRttis.find( unoName ) );
+            auto iFind2( m_generatedRttis.find( unoName ) );
             if (iFind2 == m_generatedRttis.end())
             {
                 // we must generate it !
@@ -112,6 +155,7 @@ std::type_info * RTTI::getRTTI(typelib_TypeDescription const & pTypeDescr)
 #if OSL_DEBUG_LEVEL > 1
                 fprintf( stderr,"generated rtti for %s\n", rttiName );
 #endif
+                std::unique_ptr<Generated> newRtti;
                 switch (pTypeDescr.eTypeClass) {
                 case typelib_TypeClass_EXCEPTION:
                     {
@@ -124,13 +168,19 @@ std::type_info * RTTI::getRTTI(typelib_TypeDescription const & pTypeDescr)
                             // ensure availability of base
                             std::type_info * base_rtti = getRTTI(
                                 ctd.pBaseTypeDescription->aBase);
-                            rtti = new __cxxabiv1::__si_class_type_info(
-                                strdup( rttiName ), static_cast<__cxxabiv1::__class_type_info *>(base_rtti) );
+                            m_rttiNames.emplace_back(OString(rttiName));
+                            std::unique_ptr<std::type_info> info(
+                                new __cxxabiv1::__si_class_type_info(
+                                    m_rttiNames.back().getStr(), static_cast<__cxxabiv1::__class_type_info *>(base_rtti) ));
+                            newRtti.reset(new GeneratedPlain(std::move(info)));
                         }
                         else
                         {
                             // this class has no base class
-                            rtti = new __cxxabiv1::__class_type_info( strdup( rttiName ) );
+                            m_rttiNames.emplace_back(OString(rttiName));
+                            std::unique_ptr<std::type_info> info(
+                                new __cxxabiv1::__class_type_info(m_rttiNames.back().getStr()));
+                            newRtti.reset(new GeneratedPlain(std::move(info)));
                         }
                         break;
                     }
@@ -146,26 +196,38 @@ std::type_info * RTTI::getRTTI(typelib_TypeDescription const & pTypeDescr)
                         }
                         switch (itd.nBaseTypes) {
                         case 0:
-                            rtti = new __cxxabiv1::__class_type_info(
-                                strdup(rttiName));
-                            break;
+                            {
+                                m_rttiNames.emplace_back(OString(rttiName));
+                                std::unique_ptr<std::type_info> info(
+                                    new __cxxabiv1::__class_type_info(
+                                        m_rttiNames.back().getStr()));
+                                newRtti.reset(new GeneratedPlain(std::move(info)));
+                                break;
+                            }
                         case 1:
-                            rtti = new __cxxabiv1::__si_class_type_info(
-                                strdup(rttiName),
-                                static_cast<__cxxabiv1::__class_type_info *>(
-                                    bases[0]));
-                            break;
+                            {
+                                m_rttiNames.emplace_back(OString(rttiName));
+                                std::unique_ptr<std::type_info> info(
+                                    new __cxxabiv1::__si_class_type_info(
+                                        m_rttiNames.back().getStr(),
+                                        static_cast<
+                                            __cxxabiv1::__class_type_info *>(
+                                                bases[0])));
+                                newRtti.reset(new GeneratedPlain(std::move(info)));
+                                break;
+                            }
                         default:
                             {
-                                char * pad = new char[
+                                m_rttiNames.emplace_back(OString(rttiName));
+                                auto pad = std::make_unique<char[]>(
                                     sizeof (__cxxabiv1::__vmi_class_type_info)
                                     + ((itd.nBaseTypes - 1)
                                        * sizeof (
-                                           __cxxabiv1::__base_class_type_info))];
+                                           __cxxabiv1::__base_class_type_info)));
                                 __cxxabiv1::__vmi_class_type_info * info
-                                    = new(pad)
+                                    = new(pad.get())
                                         __cxxabiv1::__vmi_class_type_info(
-                                            strdup(rttiName),
+                                            m_rttiNames.back().getStr(),
                                             __cxxabiv1::__vmi_class_type_info::__flags_unknown_mask);
                                 info->__base_count = itd.nBaseTypes;
                                 for (sal_Int32 i = 0; i != itd.nBaseTypes; ++i)
@@ -178,7 +240,7 @@ std::type_info * RTTI::getRTTI(typelib_TypeDescription const & pTypeDescr)
                                         = (__cxxabiv1::__base_class_type_info::__public_mask
                                            | ((8 * i) << __cxxabiv1::__base_class_type_info::__offset_shift));
                                 }
-                                rtti = info;
+                                newRtti.reset(new GeneratedPad(std::move(pad)));
                                 break;
                             }
                         }
@@ -187,15 +249,16 @@ std::type_info * RTTI::getRTTI(typelib_TypeDescription const & pTypeDescr)
                 default:
                     assert(false); // cannot happen
                 }
-                if (rtti != nullptr) {
-                    std::pair< t_rtti_map::iterator, bool > insertion (
-                        m_generatedRttis.insert( t_rtti_map::value_type( unoName, rtti ) ) );
+                rtti = newRtti->get();
+                if (newRtti) {
+                    auto insertion (
+                        m_generatedRttis.emplace(unoName, std::move(newRtti)));
                     SAL_WARN_IF( !insertion.second, "bridges", "key " << unoName << " already in generated rtti map" );
                 }
             }
             else // taking already generated rtti
             {
-                rtti = iFind2->second;
+                rtti = iFind2->second->get();
             }
         }
     }

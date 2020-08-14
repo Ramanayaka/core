@@ -18,16 +18,13 @@
  */
 
 
-#include <string.h>
-
-#include "iprcache.hxx"
-#include "linguistic/misc.hxx"
+#include <iprcache.hxx>
+#include <linguistic/misc.hxx>
 
 #include <com/sun/star/linguistic2/DictionaryListEventFlags.hpp>
 #include <osl/mutex.hxx>
-#include <linguistic/lngprops.hxx>
+#include <unotools/linguprops.hxx>
 
-using namespace utl;
 using namespace osl;
 using namespace com::sun::star;
 using namespace com::sun::star::beans;
@@ -42,7 +39,7 @@ namespace linguistic
 
 #define NUM_FLUSH_PROPS     6
 
-static const struct
+const struct
 {
     const char *pPropName;
     sal_Int32       nPropHdl;
@@ -58,7 +55,7 @@ static const struct
 
 static void lcl_AddAsPropertyChangeListener(
         const Reference< XPropertyChangeListener >& xListener,
-        Reference< XLinguProperties > &rPropSet )
+        Reference< XLinguProperties > const &rPropSet )
 {
     if (xListener.is() && rPropSet.is())
     {
@@ -73,7 +70,7 @@ static void lcl_AddAsPropertyChangeListener(
 
 static void lcl_RemoveAsPropertyChangeListener(
         const Reference< XPropertyChangeListener >& xListener,
-        Reference< XLinguProperties > &rPropSet )
+        Reference< XLinguProperties > const &rPropSet )
 {
     if (xListener.is() && rPropSet.is())
     {
@@ -98,7 +95,7 @@ static bool lcl_IsFlushProperty( sal_Int32 nHandle )
 }
 
 
-void FlushListener::SetDicList( Reference<XSearchableDictionaryList> &rDL )
+void FlushListener::SetDicList( Reference<XSearchableDictionaryList> const &rDL )
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
@@ -114,7 +111,7 @@ void FlushListener::SetDicList( Reference<XSearchableDictionaryList> &rDL )
 }
 
 
-void FlushListener::SetPropSet( Reference< XLinguProperties > &rPS )
+void FlushListener::SetPropSet( Reference< XLinguProperties > const &rPS )
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
@@ -152,19 +149,19 @@ void SAL_CALL FlushListener::processDictionaryListEvent(
 {
     MutexGuard  aGuard( GetLinguMutex() );
 
-    if (rDicListEvent.Source == xDicList)
-    {
-        sal_Int16 nEvt = rDicListEvent.nCondensedEvent;
-        sal_Int16 const nFlushFlags =
-                DictionaryListEventFlags::ADD_NEG_ENTRY     |
-                DictionaryListEventFlags::DEL_POS_ENTRY     |
-                DictionaryListEventFlags::ACTIVATE_NEG_DIC  |
-                DictionaryListEventFlags::DEACTIVATE_POS_DIC;
-        bool bFlush = 0 != (nEvt & nFlushFlags);
+    if (rDicListEvent.Source != xDicList)
+        return;
 
-        if (bFlush)
-            mrSpellCache.Flush();
-    }
+    sal_Int16 nEvt = rDicListEvent.nCondensedEvent;
+    sal_Int16 const nFlushFlags =
+            DictionaryListEventFlags::ADD_NEG_ENTRY     |
+            DictionaryListEventFlags::DEL_POS_ENTRY     |
+            DictionaryListEventFlags::ACTIVATE_NEG_DIC  |
+            DictionaryListEventFlags::DEACTIVATE_POS_DIC;
+    bool bFlush = 0 != (nEvt & nFlushFlags);
+
+    if (bFlush)
+        mrSpellCache.Flush();
 }
 
 

@@ -7,8 +7,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <sfx2/saveastemplatedlg.hxx>
-
 #include <comphelper/processfactory.hxx>
 #include <comphelper/string.hxx>
 #include <comphelper/storagehelper.hxx>
@@ -18,103 +16,89 @@
 #include <sfx2/docfac.hxx>
 #include <sfx2/doctempl.hxx>
 #include <sfx2/docfilt.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/lstbox.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 #include <sot/storage.hxx>
 
 #include <com/sun/star/frame/DocumentTemplates.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
 
-#include "doc.hrc"
+#include <sfx2/strings.hrc>
+
+#include <saveastemplatedlg.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::frame;
 
 // Class SfxSaveAsTemplateDialog --------------------------------------------------
 
-SfxSaveAsTemplateDialog::SfxSaveAsTemplateDialog():
-        ModalDialog(nullptr, "SaveAsTemplateDialog", "sfx/ui/saveastemplatedlg.ui"),
-        msSelectedCategory(OUString()),
-        msTemplateName(OUString()),
-        mnRegionPos(0)
+SfxSaveAsTemplateDialog::SfxSaveAsTemplateDialog(weld::Window* pParent, const uno::Reference<frame::XModel> &rModel)
+    : GenericDialogController(pParent, "sfx/ui/saveastemplatedlg.ui", "SaveAsTemplateDialog")
+    , m_xLBCategory(m_xBuilder->weld_tree_view("categorylb"))
+    , m_xCBXDefault(m_xBuilder->weld_check_button("defaultcb"))
+    , m_xTemplateNameEdit(m_xBuilder->weld_entry("name_entry"))
+    , m_xOKButton(m_xBuilder->weld_button("ok"))
+    , msSelectedCategory(OUString())
+    , msTemplateName(OUString())
+    , mnRegionPos(0)
+    , m_xModel(rModel)
 {
-    get(mpLBCategory, "categorylb");
-    get(mpCBXDefault, "defaultcb");
-    get(mpTemplateNameEdit, "name_entry");
-    get(mpOKButton, "ok");
-
+    m_xLBCategory->append_text(SfxResId(STR_CATEGORY_NONE));
     initialize();
     SetCategoryLBEntries(msCategories);
 
-    mpTemplateNameEdit->SetModifyHdl(LINK(this, SfxSaveAsTemplateDialog, TemplateNameEditHdl));
-    mpLBCategory->SetSelectHdl(LINK(this, SfxSaveAsTemplateDialog, SelectCategoryHdl));
-    mpOKButton->SetClickHdl(LINK(this, SfxSaveAsTemplateDialog, OkClickHdl));
+    m_xTemplateNameEdit->connect_changed(LINK(this, SfxSaveAsTemplateDialog, TemplateNameEditHdl));
+    m_xLBCategory->connect_changed(LINK(this, SfxSaveAsTemplateDialog, SelectCategoryHdl));
+    m_xLBCategory->set_size_request(m_xLBCategory->get_approximate_digit_width() * 32,
+                                    m_xLBCategory->get_height_rows(8));
+    m_xOKButton->connect_clicked(LINK(this, SfxSaveAsTemplateDialog, OkClickHdl));
 
-    mpOKButton->Disable();
-    mpOKButton->SetText(SfxResId(STR_SAVEDOC));
+    m_xOKButton->set_sensitive(false);
+    m_xOKButton->set_label(SfxResId(STR_SAVEDOC));
 }
 
-SfxSaveAsTemplateDialog::~SfxSaveAsTemplateDialog()
+IMPL_LINK_NOARG(SfxSaveAsTemplateDialog, OkClickHdl, weld::Button&, void)
 {
-    disposeOnce();
-}
-
-void SfxSaveAsTemplateDialog::dispose()
-{
-    mpLBCategory.clear();
-    mpTemplateNameEdit.clear();
-    mpOKButton.clear();
-    mpCBXDefault.clear();
-
-    ModalDialog::dispose();
-}
-
-void SfxSaveAsTemplateDialog::setDocumentModel(const uno::Reference<frame::XModel> &rModel)
-{
-    m_xModel = rModel;
-}
-
-IMPL_LINK_NOARG(SfxSaveAsTemplateDialog, OkClickHdl, Button*, void)
-{
-    ScopedVclPtrInstance< MessageDialog > aQueryDlg(this, OUString(), VclMessageType::Question, VclButtonsType::YesNo);
-
+    std::unique_ptr<weld::MessageDialog> xQueryDlg(Application::CreateMessageDialog(m_xDialog.get(), VclMessageType::Question,
+                VclButtonsType::YesNo, OUString()));
     if(!IsTemplateNameUnique())
     {
         OUString sQueryMsg(SfxResId(STR_QMSG_TEMPLATE_OVERWRITE));
         sQueryMsg = sQueryMsg.replaceFirst("$1",msTemplateName);
-        aQueryDlg->set_primary_text(sQueryMsg.replaceFirst("$2", msSelectedCategory));
+        xQueryDlg->set_primary_text(sQueryMsg.replaceFirst("$2", msSelectedCategory));
 
-        if( aQueryDlg->Execute() == RET_NO )
+        if (xQueryDlg->run() == RET_NO)
             return;
     }
 
-    if(SaveTemplate())
-        Close();
+    if (SaveTemplate())
+        m_xDialog->response(RET_OK);
     else
     {
         OUString sText( SfxResId(STR_ERROR_SAVEAS) );
-        ScopedVclPtrInstance<MessageDialog>(this, sText.replaceFirst("$1", msTemplateName))->Execute();
+        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(), VclMessageType::Warning,
+                    VclButtonsType::Ok, sText.replaceFirst("$1", msTemplateName)));
+        xBox->run();
     }
 }
 
-IMPL_LINK_NOARG(SfxSaveAsTemplateDialog, TemplateNameEditHdl, Edit&, void)
+IMPL_LINK_NOARG(SfxSaveAsTemplateDialog, TemplateNameEditHdl, weld::Entry&, void)
 {
-    msTemplateName = comphelper::string::strip(mpTemplateNameEdit->GetText(), ' ');
-    SelectCategoryHdl(*mpLBCategory);
+    msTemplateName = comphelper::string::strip(m_xTemplateNameEdit->get_text(), ' ');
+    SelectCategoryHdl(*m_xLBCategory);
 }
 
-IMPL_LINK_NOARG(SfxSaveAsTemplateDialog, SelectCategoryHdl, ListBox&, void)
+IMPL_LINK_NOARG(SfxSaveAsTemplateDialog, SelectCategoryHdl, weld::TreeView&, void)
 {
-    if(mpLBCategory->GetSelectEntryPos() == 0)
+    if (m_xLBCategory->get_selected_index() == 0)
     {
         msSelectedCategory = OUString();
-        mpOKButton->Disable();
+        m_xOKButton->set_sensitive(false);
     }
     else
     {
-        msSelectedCategory = mpLBCategory->GetSelectEntry();
-        mpOKButton->Enable(!msTemplateName.isEmpty());
+        msSelectedCategory = m_xLBCategory->get_selected_text();
+        m_xOKButton->set_sensitive(!msTemplateName.isEmpty());
     }
 }
 
@@ -128,20 +112,16 @@ void SfxSaveAsTemplateDialog::initialize()
     }
 }
 
-void SfxSaveAsTemplateDialog::SetCategoryLBEntries(std::vector<OUString> aFolderNames)
+void SfxSaveAsTemplateDialog::SetCategoryLBEntries(const std::vector<OUString>& rFolderNames)
 {
-    if (!aFolderNames.empty())
-    {
-        for (size_t i = 0, n = aFolderNames.size(); i < n; ++i)
-            mpLBCategory->InsertEntry(aFolderNames[i], i+1);
-    }
-    mpLBCategory->SelectEntryPos(0);
+    for (size_t i = 0, n = rFolderNames.size(); i < n; ++i)
+        m_xLBCategory->insert_text(i+1, rFolderNames[i]);
+    m_xLBCategory->select(0);
 }
 
 bool SfxSaveAsTemplateDialog::IsTemplateNameUnique()
 {
-    std::vector<OUString>::iterator it;
-    it=find(msCategories.begin(), msCategories.end(), msSelectedCategory);
+    std::vector<OUString>::iterator it=find(msCategories.begin(), msCategories.end(), msSelectedCategory);
     mnRegionPos = std::distance(msCategories.begin(), it);
 
     sal_uInt16 nEntries = maDocTemplates.GetCount(mnRegionPos);
@@ -171,7 +151,7 @@ bool SfxSaveAsTemplateDialog::SaveTemplate()
     if (!bIsSaved)
         return false;
 
-    if ( !sURL.isEmpty() && mpCBXDefault->IsChecked() )
+    if (!sURL.isEmpty() && m_xCBXDefault->get_active())
     {
         OUString aServiceName;
         try

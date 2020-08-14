@@ -14,24 +14,22 @@
 #include "LoggedResources.hxx"
 
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 
-#include <PropertyIds.hxx>
+#include "PropertyIds.hxx"
 
 #include <oox/helper/grabbagstack.hxx>
 
 #include <memory>
-#include <boost/optional.hpp>
+#include <optional>
 
-namespace writerfilter {
-namespace dmapper
+namespace writerfilter::dmapper
 {
 
 /// Class to process all text effects like glow, textOutline, ...
 class TextEffectsHandler : public LoggedProperties
 {
 private:
-    boost::optional<PropertyIds>         maPropertyId;
+    std::optional<PropertyIds>         maPropertyId;
     OUString                             maElementName;
     std::unique_ptr<oox::GrabBagStack> mpGrabBagStack;
 
@@ -45,7 +43,7 @@ public:
     explicit TextEffectsHandler(sal_uInt32 aElementId);
     virtual ~TextEffectsHandler() override;
 
-    const boost::optional<PropertyIds>& getGrabBagPropertyId() { return maPropertyId;}
+    const std::optional<PropertyIds>& getGrabBagPropertyId() const { return maPropertyId;}
 
     css::beans::PropertyValue getInteropGrabBag();
 
@@ -66,9 +64,11 @@ public:
     static OUString getNumFormString(sal_Int32 nType);
     static OUString getNumSpacingString(sal_Int32 nType);
 
+    static sal_uInt8 GetTextFillSolidFillAlpha(const css::beans::PropertyValue& rValue);
+
 };
 
-}}
+}
 
 #endif // INCLUDED_WRITERFILTER_SOURCE_DMAPPER_TEXTEFFECTSHANDLER_HXX
 

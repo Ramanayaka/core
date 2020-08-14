@@ -27,7 +27,6 @@
 #include "chartlis.hxx"
 
 #include <svl/lstner.hxx>
-#include <com/sun/star/chart/ChartDataRowSource.hpp>
 #include <com/sun/star/chart2/data/XDataProvider.hpp>
 #include <com/sun/star/chart2/data/XSheetDataProvider.hpp>
 #include <com/sun/star/chart2/data/XRangeXMLConversion.hpp>
@@ -35,7 +34,6 @@
 #include <com/sun/star/chart2/data/XDataSequence.hpp>
 #include <com/sun/star/chart2/data/XTextualDataSequence.hpp>
 #include <com/sun/star/chart2/data/XNumericalDataSequence.hpp>
-#include <com/sun/star/chart2/data/XLabeledDataSequence.hpp>
 #include <com/sun/star/chart2/data/DataSequenceRole.hpp>
 #include <com/sun/star/chart2/XTimeBased.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -46,15 +44,16 @@
 #include <rtl/ustring.hxx>
 #include <svl/itemprop.hxx>
 
-#include <list>
 #include <memory>
 #include <unordered_set>
 #include <vector>
 
+namespace com::sun::star::chart2::data { class XLabeledDataSequence; }
+
 class ScDocument;
 
 // DataProvider
-class ScChart2DataProvider : public
+class SC_DLLPUBLIC ScChart2DataProvider final : public
                 ::cppu::WeakImplHelper<
                     css::chart2::data::XDataProvider,
                     css::chart2::data::XSheetDataProvider,
@@ -150,7 +149,7 @@ private:
 };
 
 // DataSource
-class ScChart2DataSource : public
+class ScChart2DataSource final : public
                 ::cppu::WeakImplHelper<
                     css::chart2::data::XDataSource,
                     css::lang::XServiceInfo>,
@@ -183,13 +182,12 @@ public:
 private:
 
     ScDocument*                 m_pDocument;
-    typedef std::list < css::uno::Reference< css::chart2::data::XLabeledDataSequence > >  LabeledList;
-    LabeledList                 m_aLabeledSequences;
+    std::vector < css::uno::Reference< css::chart2::data::XLabeledDataSequence > > m_aLabeledSequences;
 
 };
 
 // DataSequence
-class ScChart2DataSequence : public
+class ScChart2DataSequence final : public
                 ::cppu::WeakImplHelper<
                     css::chart2::data::XDataSequence,
                     css::chart2::data::XTextualDataSequence,
@@ -203,7 +201,6 @@ class ScChart2DataSequence : public
 {
 public:
     explicit ScChart2DataSequence( ScDocument* pDoc,
-            const css::uno::Reference< css::chart2::data::XDataProvider >& xDP,
             ::std::vector<ScTokenRef>&& rTokens, bool bIncludeHiddenCells );
 
     virtual ~ScChart2DataSequence() override;
@@ -292,7 +289,7 @@ private:
     DECL_LINK( ValueListenerHdl, const SfxHint&, void );
 
 private:
-    class ExternalRefListener : public ScExternalRefManager::LinkListener
+    class ExternalRefListener final : public ScExternalRefManager::LinkListener
     {
     public:
         ExternalRefListener(ScChart2DataSequence& rParent, ScDocument* pDoc);
@@ -302,7 +299,7 @@ private:
 
         virtual void notify(sal_uInt16 nFileId, ScExternalRefManager::LinkUpdateType eType) override;
         void addFileId(sal_uInt16 nFileId);
-        const std::unordered_set<sal_uInt16>& getAllFileIds() { return maFileIds;}
+        const std::unordered_set<sal_uInt16>& getAllFileIds() const { return maFileIds;}
 
     private:
         ScChart2DataSequence&       mrParent;
@@ -340,7 +337,7 @@ private:
         Item();
     };
 
-    class HiddenRangeListener : public ScChartHiddenRangeListener
+    class HiddenRangeListener final : public ScChartHiddenRangeListener
     {
     public:
         HiddenRangeListener(ScChart2DataSequence& rParent);
@@ -370,19 +367,18 @@ private:
 
     // internals
     typedef std::unique_ptr<std::vector<sal_uInt32> >  RangeIndexMapPtr;
-    typedef std::unique_ptr<ExternalRefListener>       ExtRefListenerPtr;
 
     sal_Int64                   m_nObjectId;
     ScDocument*                 m_pDocument;
     std::vector<ScTokenRef>     m_aTokens;
     RangeIndexMapPtr            m_pRangeIndices;
-    ExtRefListenerPtr           m_pExtRefListener;
-    css::uno::Reference < css::chart2::data::XDataProvider > m_xDataProvider;
+    std::unique_ptr<ExternalRefListener>
+                                m_pExtRefListener;
     SfxItemPropertySet          m_aPropSet;
 
     std::unique_ptr<HiddenRangeListener> m_pHiddenListener;
 
-    ScLinkListener*             m_pValueListener;
+    std::unique_ptr<ScLinkListener>      m_pValueListener;
     XModifyListenerArr_Impl     m_aValueListeners;
 
     bool                        m_bGotDataChangedHint;

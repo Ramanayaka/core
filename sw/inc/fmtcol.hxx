@@ -20,20 +20,21 @@
 #define INCLUDED_SW_INC_FMTCOL_HXX
 
 #include "swdllapi.h"
-#include <frmatr.hxx>
-#include <swtypes.hxx>
+#include "format.hxx"
+#include "hintids.hxx"
 #include <rtl/ustring.hxx>
+#include <tools/solar.h>
 
 #include <vector>
 #include <memory>
 
-class SwDoc;
+class SwAttrPool;
 namespace sw{ class DocumentStylePoolManager; }
 
-class SwFormatColl : public SwFormat
+class SAL_DLLPUBLIC_RTTI SwFormatColl : public SwFormat
 {
 protected:
-    SwFormatColl( SwAttrPool& rPool, const sal_Char* pFormatName,
+    SwFormatColl( SwAttrPool& rPool, const char* pFormatName,
                 const sal_uInt16* pWhichRanges, SwFormatColl* pDerFrom,
                 sal_uInt16 nFormatWhich )
           : SwFormat( rPool, pFormatName, pWhichRanges, pDerFrom, nFormatWhich )
@@ -60,13 +61,13 @@ class SW_DLLPUBLIC SwTextFormatColl: public SwFormatColl
 
     bool mbStayAssignedToListLevelOfOutlineStyle;
 
-protected:
-
     bool mbAssignedToOutlineStyle;
 
     SwTextFormatColl *mpNextTextFormatColl;
 
-    SwTextFormatColl( SwAttrPool& rPool, const sal_Char* pFormatCollName,
+protected:
+
+    SwTextFormatColl( SwAttrPool& rPool, const char* pFormatCollName,
                     SwTextFormatColl* pDerFrom = nullptr,
                     sal_uInt16 nFormatWh = RES_TXTFMTCOLL )
         : SwFormatColl(rPool, pFormatCollName, aTextFormatCollSetRange, pDerFrom, nFormatWh)
@@ -131,14 +132,14 @@ public:
 
     bool AreListLevelIndentsApplicable() const;
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
-class SwGrfFormatColl: public SwFormatColl
+class SwGrfFormatColl final : public SwFormatColl
 {
     friend class SwDoc;
-protected:
-    SwGrfFormatColl( SwAttrPool& rPool, const sal_Char* pFormatCollName,
+
+    SwGrfFormatColl( SwAttrPool& rPool, const char* pFormatCollName,
                     SwGrfFormatColl* pDerFrom = nullptr )
         : SwFormatColl( rPool, pFormatCollName, aGrfFormatCollSetRange,
                     pDerFrom, RES_GRFFMTCOLL )
@@ -149,8 +150,6 @@ protected:
         : SwFormatColl( rPool, rFormatCollName, aGrfFormatCollSetRange,
                     pDerFrom, RES_GRFFMTCOLL )
     {}
-
-public:
 };
 
 // FEATURE::CONDCOLL
@@ -170,7 +169,7 @@ enum class Master_CollCondition
     PARA_IN_ENDNOTE
 };
 
-class SW_DLLPUBLIC SwCollCondition : public SwClient
+class SW_DLLPUBLIC SwCollCondition final : public SwClient
 {
     Master_CollCondition m_nCondition;
     sal_uLong m_nSubCondition;
@@ -200,11 +199,11 @@ public:
 
 using SwFormatCollConditions = std::vector<std::unique_ptr<SwCollCondition>>;
 
-class SW_DLLPUBLIC SwConditionTextFormatColl : public SwTextFormatColl
+class SW_DLLPUBLIC SwConditionTextFormatColl final : public SwTextFormatColl
 {
     friend class SwDoc;
     friend class ::sw::DocumentStylePoolManager;
-protected:
+
     SwFormatCollConditions m_CondColls;
 
     SwConditionTextFormatColl( SwAttrPool& rPool, const OUString &rFormatCollName,
@@ -219,7 +218,7 @@ public:
     const SwCollCondition* HasCondition( const SwCollCondition& rCond ) const;
     const SwFormatCollConditions& GetCondColls() const { return m_CondColls; }
     void InsertCondition( const SwCollCondition& rCond );
-    bool RemoveCondition( const SwCollCondition& rCond );
+    void RemoveCondition( const SwCollCondition& rCond );
 
     void SetConditions( const SwFormatCollConditions& );
 };

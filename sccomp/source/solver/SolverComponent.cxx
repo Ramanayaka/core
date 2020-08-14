@@ -18,7 +18,7 @@
  */
 
 #include "SolverComponent.hxx"
-#include "solver.hrc"
+#include <strings.hrc>
 
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
@@ -26,9 +26,8 @@
 #include <com/sun/star/table/CellAddress.hpp>
 
 #include <cppuhelper/supportsservice.hxx>
-#include <vector>
 
-#include <tools/resmgr.hxx>
+#include <unotools/resmgr.hxx>
 
 using namespace com::sun::star;
 
@@ -42,14 +41,9 @@ using namespace com::sun::star;
 
 //  Resources from tools are used for translated strings
 
-ResMgr* SolverComponent::pSolverResMgr = nullptr;
-
-OUString SolverComponent::GetResourceString( sal_uInt32 nId )
+OUString SolverComponent::GetResourceString(const char* pId)
 {
-    if (!pSolverResMgr)
-        pSolverResMgr = ResMgr::CreateResMgr("solver");
-
-    return ResId(nId, *pSolverResMgr).toString();
+    return Translate::get(pId, Translate::Create("scc"));
 }
 
 size_t ScSolverCellHash::operator()( const css::table::CellAddress& rAddress ) const
@@ -146,24 +140,24 @@ OUString SAL_CALL SolverComponent::getStatusDescription()
 
 OUString SAL_CALL SolverComponent::getPropertyDescription( const OUString& rPropertyName )
 {
-    sal_uInt32 nResId = 0;
+    const char* pResId = nullptr;
     sal_Int32 nHandle = getInfoHelper().getHandleByName( rPropertyName );
     switch (nHandle)
     {
         case PROP_NONNEGATIVE:
-            nResId = RID_PROPERTY_NONNEGATIVE;
+            pResId = RID_PROPERTY_NONNEGATIVE;
             break;
         case PROP_INTEGER:
-            nResId = RID_PROPERTY_INTEGER;
+            pResId = RID_PROPERTY_INTEGER;
             break;
         case PROP_TIMEOUT:
-            nResId = RID_PROPERTY_TIMEOUT;
+            pResId = RID_PROPERTY_TIMEOUT;
             break;
         case PROP_EPSILONLEVEL:
-            nResId = RID_PROPERTY_EPSILONLEVEL;
+            pResId = RID_PROPERTY_EPSILONLEVEL;
             break;
         case PROP_LIMITBBDEPTH:
-            nResId = RID_PROPERTY_LIMITBBDEPTH;
+            pResId = RID_PROPERTY_LIMITBBDEPTH;
             break;
         default:
             {
@@ -171,8 +165,8 @@ OUString SAL_CALL SolverComponent::getPropertyDescription( const OUString& rProp
             }
     }
     OUString aRet;
-    if ( nResId )
-        aRet = SolverComponent::GetResourceString( nResId );
+    if (pResId)
+        aRet = SolverComponent::GetResourceString(pResId);
     return aRet;
 }
 
@@ -254,8 +248,7 @@ sal_Bool SAL_CALL SolverComponent::supportsService( const OUString& rServiceName
 
 uno::Sequence<OUString> SAL_CALL SolverComponent::getSupportedServiceNames()
 {
-    uno::Sequence<OUString> aServiceNames { "com.sun.star.sheet.Solver" };
-    return aServiceNames;
+    return { "com.sun.star.sheet.Solver" };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

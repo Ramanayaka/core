@@ -18,18 +18,18 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 #include <svl/zforlist.hxx>
-#include <sal/macros.h>
 
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/i18nmap.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlmetai.hxx>
 #include <sfx2/objsh.hxx>
-#include <xmloff/xmlnumfi.hxx>
+#include <unotools/streamwrap.hxx>
 #include <xmloff/xmlscripti.hxx>
 #include <xmloff/XMLFontStylesContext.hxx>
 #include <xmloff/DocumentSettingsContext.hxx>
@@ -37,62 +37,69 @@
 #include <xmloff/numehelp.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlerror.hxx>
+#include <xmloff/ProgressBarHelper.hxx>
 
-#include <sax/tools/converter.hxx>
-
-#include <svl/zformat.hxx>
 #include <svl/languageoptions.hxx>
 #include <editeng/editstat.hxx>
 #include <formula/errorcodes.hxx>
+#include <vcl/svapp.hxx>
 
-#include "appluno.hxx"
+#include <appluno.hxx>
 #include "xmlimprt.hxx"
 #include "importcontext.hxx"
-#include "document.hxx"
-#include "docsh.hxx"
-#include "docuno.hxx"
-#include "nameuno.hxx"
+#include <document.hxx>
+#include <docsh.hxx>
+#include <docuno.hxx>
 #include "xmlbodyi.hxx"
 #include "xmlstyli.hxx"
-#include "ViewSettingsSequenceDefines.hxx"
+#include <ViewSettingsSequenceDefines.hxx>
 
-#include "patattr.hxx"
+#include <compiler.hxx>
 
 #include "XMLConverter.hxx"
 #include "XMLDetectiveContext.hxx"
 #include "XMLTableShapeImportHelper.hxx"
 #include "XMLChangeTrackingImportHelper.hxx"
-#include "chgviset.hxx"
+#include <chgviset.hxx>
 #include "XMLStylesImportHelper.hxx"
-#include "sheetdata.hxx"
-#include "rangeutl.hxx"
-#include "postit.hxx"
-#include "formulaparserpool.hxx"
-#include "externalrefmgr.hxx"
-#include "editutil.hxx"
+#include <sheetdata.hxx>
+#include <rangeutl.hxx>
+#include <formulaparserpool.hxx>
+#include <externalrefmgr.hxx>
+#include <editutil.hxx>
 #include "editattributemap.hxx"
-#include "documentimport.hxx"
+#include <documentimport.hxx>
 #include "pivotsource.hxx"
 #include <unonames.hxx>
 #include <numformat.hxx>
+#include <sizedev.hxx>
+#include <scdll.hxx>
+#include "xmlstyle.hxx"
 
+#include <comphelper/base64.hxx>
 #include <comphelper/extract.hxx>
+#include <comphelper/propertysequence.hxx>
+#include <comphelper/processfactory.hxx>
 
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/sheet/XSheetCellRange.hpp>
+#include <com/sun/star/io/IOException.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/document/XActionLockable.hpp>
 #include <com/sun/star/util/MalformedNumberFormatException.hpp>
 #include <com/sun/star/util/NumberFormat.hpp>
 #include <com/sun/star/util/XNumberFormatTypes.hpp>
+#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 #include <com/sun/star/sheet/NamedRangeFlag.hpp>
 #include <com/sun/star/sheet/XLabelRanges.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/sheet/XSheetCellRangeContainer.hpp>
+#include <cellsuno.hxx>
 
 #include <memory>
 #include <utility>
-#include <o3tl/make_unique.hxx>
+
 #define SC_LOCALE           "Locale"
 #define SC_CURRENCYSYMBOL   "CurrencySymbol"
 #define SC_REPEAT_ROW "repeat-row"
@@ -103,94 +110,64 @@ using namespace com::sun::star;
 using namespace ::xmloff::token;
 using namespace ::formula;
 
-OUString SAL_CALL ScXMLImport_getImplementationName() throw()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+Calc_XMLOasisImporter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    return OUString( "com.sun.star.comp.Calc.XMLOasisImporter" );
+    return cppu::acquire(static_cast<cppu::OWeakObject*>(
+        new ScXMLImport(
+            context,
+            "com.sun.star.comp.Calc.XMLOasisImporter",
+            SvXMLImportFlags::ALL,
+            { "com.sun.star.comp.Calc.XMLOasisImporter" } )));
 }
 
-uno::Sequence< OUString > SAL_CALL ScXMLImport_getSupportedServiceNames() throw()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+Calc_XMLOasisMetaImporter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    const OUString aServiceName( ScXMLImport_getImplementationName() );
-    return uno::Sequence< OUString > ( &aServiceName, 1 );
+    return cppu::acquire(static_cast<cppu::OWeakObject*>(
+        new ScXMLImport(
+            context,
+            "com.sun.star.comp.Calc.XMLOasisMetaImporter",
+            SvXMLImportFlags::META,
+            { "com.sun.star.comp.Calc.XMLOasisMetaImporter" }  )));
 }
 
-uno::Reference< uno::XInterface > SAL_CALL ScXMLImport_createInstance(
-    const uno::Reference< lang::XMultiServiceFactory > & rSMgr )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+Calc_XMLOasisStylesImporter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    // return (cppu::OWeakObject*)new ScXMLImport(IMPORT_ALL);
-    return static_cast<cppu::OWeakObject*>(new ScXMLImport( comphelper::getComponentContext(rSMgr), ScXMLImport_getImplementationName(), SvXMLImportFlags::ALL ));
+    return cppu::acquire(static_cast<cppu::OWeakObject*>(
+        new ScXMLImport(
+            context,
+            "com.sun.star.comp.Calc.XMLOasisStylesImporter",
+            SvXMLImportFlags::STYLES|SvXMLImportFlags::AUTOSTYLES|SvXMLImportFlags::MASTERSTYLES|SvXMLImportFlags::FONTDECLS,
+            { "com.sun.star.comp.Calc.XMLOasisStylesImporter" } )));
 }
 
-OUString SAL_CALL ScXMLImport_Meta_getImplementationName() throw()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+Calc_XMLOasisContentImporter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    return OUString( "com.sun.star.comp.Calc.XMLOasisMetaImporter" );
+    return cppu::acquire(static_cast<cppu::OWeakObject*>(new ScXMLImport(
+        context,
+        "com.sun.star.comp.Calc.XMLOasisContentImporter",
+        SvXMLImportFlags::AUTOSTYLES|SvXMLImportFlags::CONTENT|SvXMLImportFlags::SCRIPTS|SvXMLImportFlags::FONTDECLS,
+        uno::Sequence< OUString > { "com.sun.star.comp.Calc.XMLOasisContentImporter" })));
 }
 
-uno::Sequence< OUString > SAL_CALL ScXMLImport_Meta_getSupportedServiceNames() throw()
-{
-    const OUString aServiceName( ScXMLImport_Meta_getImplementationName() );
-    return uno::Sequence< OUString > ( &aServiceName, 1 );
-}
 
-uno::Reference< uno::XInterface > SAL_CALL ScXMLImport_Meta_createInstance(
-    const uno::Reference< lang::XMultiServiceFactory > & rSMgr )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+Calc_XMLOasisSettingsImporter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    // return (cppu::OWeakObject*)new ScXMLImport(IMPORT_META);
-    return static_cast<cppu::OWeakObject*>(new ScXMLImport( comphelper::getComponentContext(rSMgr), ScXMLImport_Meta_getImplementationName(), SvXMLImportFlags::META ));
-}
-
-OUString SAL_CALL ScXMLImport_Styles_getImplementationName() throw()
-{
-    return OUString( "com.sun.star.comp.Calc.XMLOasisStylesImporter" );
-}
-
-uno::Sequence< OUString > SAL_CALL ScXMLImport_Styles_getSupportedServiceNames() throw()
-{
-    const OUString aServiceName( ScXMLImport_Styles_getImplementationName() );
-    return uno::Sequence< OUString > ( &aServiceName, 1 );
-}
-
-uno::Reference< uno::XInterface > SAL_CALL ScXMLImport_Styles_createInstance(
-    const uno::Reference< lang::XMultiServiceFactory > & rSMgr )
-{
-    // return (cppu::OWeakObject*)new ScXMLImport(SvXMLImportFlagsSTYLES|SvXMLImportFlags::AUTOSTYLES|SvXMLImportFlags::MASTERSTYLES|SvXMLImportFlags::FONTDECLS);
-    return static_cast<cppu::OWeakObject*>(new ScXMLImport( comphelper::getComponentContext(rSMgr), ScXMLImport_Styles_getImplementationName(), SvXMLImportFlags::STYLES|SvXMLImportFlags::AUTOSTYLES|SvXMLImportFlags::MASTERSTYLES|SvXMLImportFlags::FONTDECLS));
-}
-
-OUString SAL_CALL ScXMLImport_Content_getImplementationName() throw()
-{
-    return OUString( "com.sun.star.comp.Calc.XMLOasisContentImporter" );
-}
-
-uno::Sequence< OUString > SAL_CALL ScXMLImport_Content_getSupportedServiceNames() throw()
-{
-    const OUString aServiceName( ScXMLImport_Content_getImplementationName() );
-    return uno::Sequence< OUString > ( &aServiceName, 1 );
-}
-
-uno::Reference< uno::XInterface > SAL_CALL ScXMLImport_Content_createInstance(
-    const uno::Reference< lang::XMultiServiceFactory > & rSMgr )
-{
-    // return (cppu::OWeakObject*)new ScXMLImport(SvXMLImportFlags::META|SvXMLImportFlags::STYLES|SvXMLImportFlags::MASTERSTYLES|SvXMLImportFlags::AUTOSTYLES|SvXMLImportFlags::CONTENT|SvXMLImportFlags::SCRIPTS|SvXMLImportFlags::SETTINGS|SvXMLImportFlags::FONTDECLS);
-    return static_cast<cppu::OWeakObject*>(new ScXMLImport( comphelper::getComponentContext(rSMgr), ScXMLImport_Content_getImplementationName(), SvXMLImportFlags::AUTOSTYLES|SvXMLImportFlags::CONTENT|SvXMLImportFlags::SCRIPTS|SvXMLImportFlags::FONTDECLS));
-}
-
-OUString SAL_CALL ScXMLImport_Settings_getImplementationName() throw()
-{
-    return OUString( "com.sun.star.comp.Calc.XMLOasisSettingsImporter" );
-}
-
-uno::Sequence< OUString > SAL_CALL ScXMLImport_Settings_getSupportedServiceNames() throw()
-{
-    const OUString aServiceName( ScXMLImport_Settings_getImplementationName() );
-    return uno::Sequence< OUString > ( &aServiceName, 1 );
-}
-
-uno::Reference< uno::XInterface > SAL_CALL ScXMLImport_Settings_createInstance(
-    const uno::Reference< lang::XMultiServiceFactory > & rSMgr )
-{
-    // return (cppu::OWeakObject*)new ScXMLImport(SvXMLImportFlags::SETTINGS);
-    return static_cast<cppu::OWeakObject*>(new ScXMLImport( comphelper::getComponentContext(rSMgr), ScXMLImport_Settings_getImplementationName(), SvXMLImportFlags::SETTINGS ));
+    return cppu::acquire(static_cast<cppu::OWeakObject*>(
+        new ScXMLImport(
+            context,
+            "com.sun.star.comp.Calc.XMLOasisSettingsImporter",
+            SvXMLImportFlags::SETTINGS,
+            { "com.sun.star.comp.Calc.XMLOasisSettingsImporter" } )));
 }
 
 const SvXMLTokenMap& ScXMLImport::GetTableRowCellAttrTokenMap()
@@ -217,9 +194,11 @@ const SvXMLTokenMap& ScXMLImport::GetTableRowCellAttrTokenMap()
     };
 
     if ( !pTableRowCellAttrTokenMap )
-        pTableRowCellAttrTokenMap = new SvXMLTokenMap( aTableRowCellAttrTokenMap );
+        pTableRowCellAttrTokenMap.reset(new SvXMLTokenMap( aTableRowCellAttrTokenMap ));
     return *pTableRowCellAttrTokenMap;
 }
+
+namespace {
 
 // NB: virtually inherit so we can multiply inherit properly
 //     in ScXMLFlatDocContext_Impl
@@ -229,16 +208,7 @@ protected:
     ScXMLImport& GetScImport() { return static_cast<ScXMLImport&>(GetImport()); }
 
 public:
-    ScXMLDocContext_Impl( ScXMLImport& rImport,
-        sal_uInt16 nPrfx,
-        const OUString& rLName,
-        const uno::Reference<xml::sax::XAttributeList>& xAttrList );
-
     ScXMLDocContext_Impl( ScXMLImport& rImport );
-
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const uno::Reference<xml::sax::XAttributeList>& xAttrList ) override;
 
     virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL
         createFastChildContext( sal_Int32 nElement,
@@ -252,12 +222,6 @@ public:
     virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
 };
 
-ScXMLDocContext_Impl::ScXMLDocContext_Impl( ScXMLImport& rImport, sal_uInt16 nPrfx,
-                                           const OUString& rLName,
-                                           const uno::Reference<xml::sax::XAttributeList>& /* xAttrList */ ) :
-SvXMLImportContext( rImport, nPrfx, rLName )
-{
-
 }
 
 ScXMLDocContext_Impl::ScXMLDocContext_Impl( ScXMLImport& rImport ) :
@@ -265,47 +229,32 @@ SvXMLImportContext( rImport )
 {
 }
 
+namespace {
+
 // context for flat file xml format
 class ScXMLFlatDocContext_Impl
     : public ScXMLDocContext_Impl, public SvXMLMetaDocumentContext
 {
 public:
-    ScXMLFlatDocContext_Impl( ScXMLImport& i_rImport,
-        sal_uInt16 i_nPrefix, const OUString & i_rLName,
-        const uno::Reference<xml::sax::XAttributeList>& i_xAttrList,
-        const uno::Reference<document::XDocumentProperties>& i_xDocProps);
 
     ScXMLFlatDocContext_Impl( ScXMLImport& i_rImport,
-        const uno::Reference<xml::sax::XFastAttributeList>& i_xAttrList,
         const uno::Reference<document::XDocumentProperties>& i_xDocProps);
-
-    virtual SvXMLImportContext *CreateChildContext(
-        sal_uInt16 i_nPrefix, const OUString& i_rLocalName,
-        const uno::Reference<xml::sax::XAttributeList>& i_xAttrList) override;
 
     virtual void SAL_CALL startFastElement (sal_Int32 nElement,
         const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList) override;
 
     virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
 
+    virtual void SAL_CALL characters( const OUString& aChars ) override;
+
     virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL
         createFastChildContext( sal_Int32 nElement,
         const css::uno::Reference<css::xml::sax::XFastAttributeList>& xAttrList ) override;
 };
 
-ScXMLFlatDocContext_Impl::ScXMLFlatDocContext_Impl( ScXMLImport& i_rImport,
-                                                   sal_uInt16 i_nPrefix, const OUString & i_rLName,
-                                                   const uno::Reference<xml::sax::XAttributeList>& i_xAttrList,
-                                                   const uno::Reference<document::XDocumentProperties>& i_xDocProps) :
-SvXMLImportContext(i_rImport, i_nPrefix, i_rLName),
-ScXMLDocContext_Impl(i_rImport, i_nPrefix, i_rLName, i_xAttrList),
-SvXMLMetaDocumentContext(i_rImport, i_nPrefix, i_rLName,
-                         i_xDocProps)
-{
 }
 
 ScXMLFlatDocContext_Impl::ScXMLFlatDocContext_Impl( ScXMLImport& i_rImport,
-                                                   const uno::Reference<xml::sax::XFastAttributeList>& /*i_xAttrList*/,
                                                    const uno::Reference<document::XDocumentProperties>& i_xDocProps) :
 SvXMLImportContext(i_rImport),
 ScXMLDocContext_Impl(i_rImport),
@@ -313,29 +262,14 @@ SvXMLMetaDocumentContext(i_rImport, i_xDocProps)
 {
 }
 
-SvXMLImportContext *ScXMLFlatDocContext_Impl::CreateChildContext(
-    sal_uInt16 i_nPrefix, const OUString& i_rLocalName,
-    const uno::Reference<xml::sax::XAttributeList>& i_xAttrList)
-{
-    // behave like meta base class iff we encounter office:meta
-    const SvXMLTokenMap& rTokenMap = GetScImport().GetDocElemTokenMap();
-    if ( XML_TOK_DOC_META == rTokenMap.Get( i_nPrefix, i_rLocalName ) ) {
-        return SvXMLMetaDocumentContext::CreateChildContext(
-            i_nPrefix, i_rLocalName, i_xAttrList );
-    } else {
-        return ScXMLDocContext_Impl::CreateChildContext(
-            i_nPrefix, i_rLocalName, i_xAttrList );
-    }
-}
-
 uno::Reference< xml::sax::XFastContextHandler > SAL_CALL
     ScXMLFlatDocContext_Impl::createFastChildContext( sal_Int32 nElement,
     const uno::Reference< xml::sax::XFastAttributeList > & xAttrList )
 {
-    if ( nElement != XML_ELEMENT( OFFICE, XML_META ) )
-        return ScXMLDocContext_Impl::createFastChildContext( nElement, xAttrList );
+    if ( nElement == XML_ELEMENT( OFFICE, XML_META ) )
+        return SvXMLMetaDocumentContext::createFastChildContext( nElement, xAttrList );
     else
-        return new SvXMLImportContext( GetImport() );
+        return ScXMLDocContext_Impl::createFastChildContext( nElement, xAttrList );
 }
 
 void SAL_CALL ScXMLFlatDocContext_Impl::startFastElement(sal_Int32 nElement,
@@ -349,6 +283,13 @@ void SAL_CALL ScXMLFlatDocContext_Impl::endFastElement(sal_Int32 nElement)
     SvXMLMetaDocumentContext::endFastElement( nElement );
 }
 
+void SAL_CALL ScXMLFlatDocContext_Impl::characters(const OUString& rChars)
+{
+    SvXMLMetaDocumentContext::characters(rChars);
+}
+
+namespace {
+
 class ScXMLBodyContext_Impl : public ScXMLImportContext
 {
 public:
@@ -359,6 +300,8 @@ public:
         const css::uno::Reference<css::xml::sax::XFastAttributeList>& xAttrList ) override;
 };
 
+}
+
 ScXMLBodyContext_Impl::ScXMLBodyContext_Impl( ScXMLImport& rImport ) :
 ScXMLImportContext( rImport )
 {
@@ -368,52 +311,9 @@ uno::Reference< xml::sax::XFastContextHandler > SAL_CALL
     ScXMLBodyContext_Impl::createFastChildContext( sal_Int32 /*nElement*/,
     const uno::Reference< xml::sax::XFastAttributeList > & xAttrList )
 {
-    return GetScImport().CreateBodyContext( xAttrList );
-}
-
-SvXMLImportContext *ScXMLDocContext_Impl::CreateChildContext( sal_uInt16 nPrefix,
-                                                             const OUString& rLocalName,
-                                                             const uno::Reference<xml::sax::XAttributeList>& xAttrList )
-{
-    SvXMLImportContext *pContext(nullptr);
-
-    const SvXMLTokenMap& rTokenMap(GetScImport().GetDocElemTokenMap());
-    switch( rTokenMap.Get( nPrefix, rLocalName ) )
-    {
-    case XML_TOK_DOC_FONTDECLS:
-        if (GetScImport().getImportFlags() & SvXMLImportFlags::FONTDECLS)
-            pContext = GetScImport().CreateFontDeclsContext(nPrefix, rLocalName, xAttrList);
-        break;
-    case XML_TOK_DOC_STYLES:
-        if (GetScImport().getImportFlags() & SvXMLImportFlags::STYLES)
-            pContext = GetScImport().CreateStylesContext( rLocalName, xAttrList, false);
-        break;
-    case XML_TOK_DOC_AUTOSTYLES:
-        if (GetScImport().getImportFlags() & SvXMLImportFlags::AUTOSTYLES)
-            pContext = GetScImport().CreateStylesContext( rLocalName, xAttrList, true);
-        break;
-    case XML_TOK_DOC_MASTERSTYLES:
-        if (GetScImport().getImportFlags() & SvXMLImportFlags::MASTERSTYLES)
-            pContext = new ScXMLMasterStylesContext( GetImport(), nPrefix, rLocalName,
-            xAttrList );
-        break;
-    case XML_TOK_DOC_META:
-        SAL_INFO("sc", "XML_TOK_DOC_META: should not have come here, maybe document is invalid?");
-        break;
-    case XML_TOK_DOC_SCRIPTS:
-        if (GetScImport().getImportFlags() & SvXMLImportFlags::SCRIPTS)
-            pContext = GetScImport().CreateScriptContext( rLocalName );
-        break;
-    case XML_TOK_DOC_SETTINGS:
-        if (GetScImport().getImportFlags() & SvXMLImportFlags::SETTINGS)
-            pContext = new XMLDocumentSettingsContext(GetScImport(), nPrefix, rLocalName, xAttrList );
-        break;
-    }
-
-    if(!pContext)
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
-
-    return pContext;
+    sax_fastparser::FastAttributeList *pAttribList =
+        &sax_fastparser::castToFastAttributeList( xAttrList );
+    return GetScImport().CreateBodyContext( pAttribList );
 }
 
 uno::Reference< xml::sax::XFastContextHandler > SAL_CALL
@@ -428,14 +328,34 @@ uno::Reference< xml::sax::XFastContextHandler > SAL_CALL
         if (GetScImport().getImportFlags() & SvXMLImportFlags::CONTENT)
             pContext = new ScXMLBodyContext_Impl( GetScImport() );
         break;
-
-        //TODO: handle all other cases
-        default:
-           pContext = new SvXMLImportContext( GetImport() );
+        case XML_ELEMENT( OFFICE, XML_SCRIPTS ):
+        if (GetScImport().getImportFlags() & SvXMLImportFlags::SCRIPTS)
+            pContext = GetScImport().CreateScriptContext();
+        break;
+        case XML_ELEMENT( OFFICE, XML_SETTINGS ):
+        if (GetScImport().getImportFlags() & SvXMLImportFlags::SETTINGS)
+            pContext = new XMLDocumentSettingsContext(GetScImport());
+        break;
+        case XML_ELEMENT(OFFICE, XML_STYLES):
+            if (GetScImport().getImportFlags() & SvXMLImportFlags::STYLES)
+                pContext = GetScImport().CreateStylesContext( false);
+            break;
+        case XML_ELEMENT(OFFICE, XML_AUTOMATIC_STYLES):
+            if (GetScImport().getImportFlags() & SvXMLImportFlags::AUTOSTYLES)
+                pContext = GetScImport().CreateStylesContext( true);
+            break;
+        case XML_ELEMENT(OFFICE, XML_FONT_FACE_DECLS):
+            if (GetScImport().getImportFlags() & SvXMLImportFlags::FONTDECLS)
+                pContext = GetScImport().CreateFontDeclsContext();
+            break;
+        case XML_ELEMENT(OFFICE, XML_MASTER_STYLES):
+            if (GetScImport().getImportFlags() & SvXMLImportFlags::MASTERSTYLES)
+                pContext = new ScXMLMasterStylesContext( GetImport() );
+            break;
+        case XML_ELEMENT(OFFICE, XML_META):
+            SAL_INFO("sc", "XML_ELEMENT(OFFICE, XML_META): should not have come here, maybe document is invalid?");
+            break;
     }
-
-    if(!pContext)
-        pContext = new SvXMLImportContext( GetImport() );
 
     return pContext;
 }
@@ -451,409 +371,6 @@ void SAL_CALL ScXMLDocContext_Impl::endFastElement(sal_Int32 /*nElement*/)
 
 void SAL_CALL ScXMLDocContext_Impl::characters(const OUString &)
 {
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDocElemTokenMap()
-{
-    if( !pDocElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDocTokenMap[] =
-        {
-            { XML_NAMESPACE_OFFICE, XML_FONT_FACE_DECLS,    XML_TOK_DOC_FONTDECLS           },
-            { XML_NAMESPACE_OFFICE, XML_STYLES,             XML_TOK_DOC_STYLES              },
-            { XML_NAMESPACE_OFFICE, XML_AUTOMATIC_STYLES,   XML_TOK_DOC_AUTOSTYLES          },
-            { XML_NAMESPACE_OFFICE, XML_MASTER_STYLES,      XML_TOK_DOC_MASTERSTYLES        },
-            { XML_NAMESPACE_OFFICE, XML_META,               XML_TOK_DOC_META                },
-            { XML_NAMESPACE_OFFICE, XML_SCRIPTS,            XML_TOK_DOC_SCRIPTS             },
-            { XML_NAMESPACE_OFFICE, XML_BODY,               XML_TOK_DOC_BODY                },
-            { XML_NAMESPACE_OFFICE, XML_SETTINGS,           XML_TOK_DOC_SETTINGS            },
-            XML_TOKEN_MAP_END
-        };
-
-        pDocElemTokenMap = new SvXMLTokenMap( aDocTokenMap );
-
-    } // if( !pDocElemTokenMap )
-
-    return *pDocElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetBodyElemTokenMap()
-{
-    if( !pBodyElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aBodyTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_TRACKED_CHANGES,         XML_TOK_BODY_TRACKED_CHANGES        },
-            { XML_NAMESPACE_TABLE, XML_CALCULATION_SETTINGS,    XML_TOK_BODY_CALCULATION_SETTINGS   },
-            { XML_NAMESPACE_TABLE, XML_CONTENT_VALIDATIONS,     XML_TOK_BODY_CONTENT_VALIDATIONS    },
-            { XML_NAMESPACE_TABLE, XML_LABEL_RANGES,            XML_TOK_BODY_LABEL_RANGES           },
-            { XML_NAMESPACE_TABLE, XML_TABLE,                   XML_TOK_BODY_TABLE                  },
-            { XML_NAMESPACE_TABLE, XML_NAMED_EXPRESSIONS,       XML_TOK_BODY_NAMED_EXPRESSIONS      },
-            { XML_NAMESPACE_TABLE, XML_DATABASE_RANGES,         XML_TOK_BODY_DATABASE_RANGES        },
-            { XML_NAMESPACE_TABLE, XML_DATABASE_RANGE,          XML_TOK_BODY_DATABASE_RANGE         },
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_TABLES,       XML_TOK_BODY_DATA_PILOT_TABLES      },
-            { XML_NAMESPACE_TABLE, XML_CONSOLIDATION,           XML_TOK_BODY_CONSOLIDATION          },
-            { XML_NAMESPACE_TABLE, XML_DDE_LINKS,               XML_TOK_BODY_DDE_LINKS              },
-            { XML_NAMESPACE_CALC_EXT, XML_DATA_STREAM_SOURCE,   XML_TOK_BODY_DATA_STREAM_SOURCE     },
-            XML_TOKEN_MAP_END
-        };
-
-        pBodyElemTokenMap = new SvXMLTokenMap( aBodyTokenMap );
-    } // if( !pBodyElemTokenMap )
-
-    return *pBodyElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetContentValidationsElemTokenMap()
-{
-    if( !pContentValidationsElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aContentValidationsElemTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_CONTENT_VALIDATION,  XML_TOK_CONTENT_VALIDATION  },
-            XML_TOKEN_MAP_END
-        };
-
-        pContentValidationsElemTokenMap = new SvXMLTokenMap( aContentValidationsElemTokenMap );
-    } // if( !pContentValidationsElemTokenMap )
-
-    return *pContentValidationsElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetContentValidationElemTokenMap()
-{
-    if( !pContentValidationElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aContentValidationElemTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE,  XML_HELP_MESSAGE,    XML_TOK_CONTENT_VALIDATION_ELEM_HELP_MESSAGE    },
-            { XML_NAMESPACE_TABLE,  XML_ERROR_MESSAGE,   XML_TOK_CONTENT_VALIDATION_ELEM_ERROR_MESSAGE   },
-            { XML_NAMESPACE_TABLE,  XML_ERROR_MACRO,     XML_TOK_CONTENT_VALIDATION_ELEM_ERROR_MACRO     },
-            { XML_NAMESPACE_OFFICE, XML_EVENT_LISTENERS, XML_TOK_CONTENT_VALIDATION_ELEM_EVENT_LISTENERS },
-            XML_TOKEN_MAP_END
-        };
-
-        pContentValidationElemTokenMap = new SvXMLTokenMap( aContentValidationElemTokenMap );
-    } // if( !pContentValidationElemTokenMap )
-
-    return *pContentValidationElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetContentValidationAttrTokenMap()
-{
-    if( !pContentValidationAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aContentValidationAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_NAME,                XML_TOK_CONTENT_VALIDATION_NAME                 },
-            { XML_NAMESPACE_TABLE, XML_CONDITION,           XML_TOK_CONTENT_VALIDATION_CONDITION            },
-            { XML_NAMESPACE_TABLE, XML_BASE_CELL_ADDRESS,   XML_TOK_CONTENT_VALIDATION_BASE_CELL_ADDRESS    },
-            { XML_NAMESPACE_TABLE, XML_ALLOW_EMPTY_CELL,    XML_TOK_CONTENT_VALIDATION_ALLOW_EMPTY_CELL     },
-            { XML_NAMESPACE_TABLE, XML_DISPLAY_LIST,        XML_TOK_CONTENT_VALIDATION_DISPLAY_LIST         },
-            XML_TOKEN_MAP_END
-        };
-
-        pContentValidationAttrTokenMap = new SvXMLTokenMap( aContentValidationAttrTokenMap );
-    } // if( !pContentValidationAttrTokenMap )
-
-    return *pContentValidationAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetContentValidationMessageElemTokenMap()
-{
-    if( !pContentValidationMessageElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aContentValidationMessageElemTokenMap[] =
-        {
-            { XML_NAMESPACE_TEXT, XML_P,    XML_TOK_P   },
-            XML_TOKEN_MAP_END
-        };
-
-        pContentValidationMessageElemTokenMap = new SvXMLTokenMap( aContentValidationMessageElemTokenMap );
-    } // if( !pContentValidationMessageElemTokenMap )
-
-    return *pContentValidationMessageElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetContentValidationHelpMessageAttrTokenMap()
-{
-    if( !pContentValidationHelpMessageAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aContentValidationHelpMessageAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_TITLE,   XML_TOK_HELP_MESSAGE_ATTR_TITLE     },
-            { XML_NAMESPACE_TABLE, XML_DISPLAY, XML_TOK_HELP_MESSAGE_ATTR_DISPLAY   },
-            XML_TOKEN_MAP_END
-        };
-
-        pContentValidationHelpMessageAttrTokenMap = new SvXMLTokenMap( aContentValidationHelpMessageAttrTokenMap );
-    } // if( !pContentValidationHelpMessageAttrTokenMap )
-
-    return *pContentValidationHelpMessageAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetContentValidationErrorMessageAttrTokenMap()
-{
-    if( !pContentValidationErrorMessageAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aContentValidationErrorMessageAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_TITLE,           XML_TOK_ERROR_MESSAGE_ATTR_TITLE        },
-            { XML_NAMESPACE_TABLE, XML_DISPLAY,         XML_TOK_ERROR_MESSAGE_ATTR_DISPLAY      },
-            { XML_NAMESPACE_TABLE, XML_MESSAGE_TYPE,    XML_TOK_ERROR_MESSAGE_ATTR_MESSAGE_TYPE },
-            XML_TOKEN_MAP_END
-        };
-
-        pContentValidationErrorMessageAttrTokenMap = new SvXMLTokenMap( aContentValidationErrorMessageAttrTokenMap );
-    } // if( !pContentValidationErrorMessageAttrTokenMap )
-
-    return *pContentValidationErrorMessageAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetContentValidationErrorMacroAttrTokenMap()
-{
-    if( !pContentValidationErrorMacroAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aContentValidationErrorMacroAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_NAME,    XML_TOK_ERROR_MACRO_ATTR_NAME       },
-            { XML_NAMESPACE_TABLE, XML_EXECUTE, XML_TOK_ERROR_MACRO_ATTR_EXECUTE    },
-            XML_TOKEN_MAP_END
-        };
-
-        pContentValidationErrorMacroAttrTokenMap = new SvXMLTokenMap( aContentValidationErrorMacroAttrTokenMap );
-    } // if( !pContentValidationErrorMacroAttrTokenMap )
-
-    return *pContentValidationErrorMacroAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetCondFormatsTokenMap()
-{
-    if( !pCondFormatsTokenMap )
-    {
-        static const SvXMLTokenMapEntry aCondFormatsElemTokenMap[] =
-        {
-            { XML_NAMESPACE_CALC_EXT, XML_CONDITIONAL_FORMAT, XML_TOK_CONDFORMATS_CONDFORMAT },
-            XML_TOKEN_MAP_END
-        };
-
-        pCondFormatsTokenMap = new SvXMLTokenMap( aCondFormatsElemTokenMap );
-    }
-
-    return *pCondFormatsTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetCondFormatTokenMap()
-{
-    if( !pCondFormatTokenMap )
-    {
-        static const SvXMLTokenMapEntry aCondFormatElemTokenMap[] =
-        {
-            { XML_NAMESPACE_CALC_EXT, XML_COLOR_SCALE, XML_TOK_CONDFORMAT_COLORSCALE },
-            { XML_NAMESPACE_CALC_EXT, XML_DATA_BAR, XML_TOK_CONDFORMAT_DATABAR },
-            { XML_NAMESPACE_CALC_EXT, XML_CONDITION, XML_TOK_CONDFORMAT_CONDITION },
-            { XML_NAMESPACE_CALC_EXT, XML_ICON_SET, XML_TOK_CONDFORMAT_ICONSET },
-            { XML_NAMESPACE_CALC_EXT, XML_DATE_IS, XML_TOK_CONDFORMAT_DATE },
-            XML_TOKEN_MAP_END
-        };
-
-        pCondFormatTokenMap = new SvXMLTokenMap( aCondFormatElemTokenMap );
-    }
-
-    return *pCondFormatTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetCondFormatAttrMap()
-{
-    if( !pCondFormatAttrMap )
-    {
-        static const SvXMLTokenMapEntry aCondFormatAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_CALC_EXT, XML_TARGET_RANGE_ADDRESS, XML_TOK_CONDFORMAT_TARGET_RANGE },
-            XML_TOKEN_MAP_END
-        };
-
-        pCondFormatAttrMap = new SvXMLTokenMap( aCondFormatAttrTokenMap );
-    }
-
-    return *pCondFormatAttrMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetCondDateAttrMap()
-{
-    if( !pCondDateAttrMap )
-    {
-        static const SvXMLTokenMapEntry aCondDateAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_CALC_EXT, XML_DATE, XML_TOK_COND_DATE_VALUE },
-            { XML_NAMESPACE_CALC_EXT, XML_STYLE, XML_TOK_COND_DATE_STYLE },
-            XML_TOKEN_MAP_END
-        };
-
-        pCondDateAttrMap = new SvXMLTokenMap( aCondDateAttrTokenMap );
-    }
-
-    return *pCondDateAttrMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetConditionAttrMap()
-{
-    if( !pConditionAttrMap )
-    {
-        static const SvXMLTokenMapEntry aConditionAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_CALC_EXT, XML_VALUE, XML_TOK_CONDITION_VALUE },
-            { XML_NAMESPACE_CALC_EXT, XML_APPLY_STYLE_NAME, XML_TOK_CONDITION_APPLY_STYLE_NAME },
-            { XML_NAMESPACE_CALC_EXT, XML_BASE_CELL_ADDRESS, XML_TOK_CONDITION_BASE_CELL_ADDRESS },
-            XML_TOKEN_MAP_END
-        };
-
-        pConditionAttrMap = new SvXMLTokenMap( aConditionAttrTokenMap );
-    }
-
-    return *pConditionAttrMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetColorScaleTokenMap()
-{
-    if( !pColorScaleTokenMap )
-    {
-        static const SvXMLTokenMapEntry aColorScaleElemTokenMap[] =
-        {
-            { XML_NAMESPACE_CALC_EXT, XML_COLOR_SCALE_ENTRY, XML_TOK_COLORSCALE_COLORSCALEENTRY },
-            XML_TOKEN_MAP_END
-        };
-
-        pColorScaleTokenMap = new SvXMLTokenMap( aColorScaleElemTokenMap );
-    }
-
-    return *pColorScaleTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetColorScaleEntryAttrMap()
-{
-    if( !pColorScaleEntryAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aColorScaleAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_CALC_EXT, XML_TYPE, XML_TOK_COLORSCALEENTRY_TYPE },
-            { XML_NAMESPACE_CALC_EXT, XML_VALUE, XML_TOK_COLORSCALEENTRY_VALUE },
-            { XML_NAMESPACE_CALC_EXT, XML_COLOR, XML_TOK_COLORSCALEENTRY_COLOR },
-            XML_TOKEN_MAP_END
-        };
-
-        pColorScaleEntryAttrTokenMap = new SvXMLTokenMap( aColorScaleAttrTokenMap );
-    }
-
-    return *pColorScaleEntryAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetFormattingTokenMap()
-{
-    if( !pDataBarTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataBarElemTokenMap[] =
-        {
-            { XML_NAMESPACE_CALC_EXT, XML_DATA_BAR_ENTRY, XML_TOK_DATABAR_DATABARENTRY },
-            { XML_NAMESPACE_CALC_EXT, XML_FORMATTING_ENTRY, XML_TOK_FORMATTING_ENTRY },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataBarTokenMap = new SvXMLTokenMap( aDataBarElemTokenMap );
-    }
-
-    return *pDataBarTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataBarAttrMap()
-{
-    if( !pDataBarAttrMap )
-    {
-        static const SvXMLTokenMapEntry aDataBarAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_CALC_EXT, XML_POSITIVE_COLOR, XML_TOK_DATABAR_POSITIVE_COLOR },
-            { XML_NAMESPACE_CALC_EXT, XML_NEGATIVE_COLOR, XML_TOK_DATABAR_NEGATIVE_COLOR },
-            { XML_NAMESPACE_CALC_EXT, XML_GRADIENT, XML_TOK_DATABAR_GRADIENT },
-            { XML_NAMESPACE_CALC_EXT, XML_AXIS_POSITION, XML_TOK_DATABAR_AXISPOSITION },
-            { XML_NAMESPACE_CALC_EXT, XML_SHOW_VALUE, XML_TOK_DATABAR_SHOWVALUE },
-            { XML_NAMESPACE_CALC_EXT, XML_AXIS_COLOR, XML_TOK_DATABAR_AXISCOLOR },
-            { XML_NAMESPACE_CALC_EXT, XML_MIN_LENGTH, XML_TOK_DATABAR_MINLENGTH },
-            { XML_NAMESPACE_CALC_EXT, XML_MAX_LENGTH, XML_TOK_DATABAR_MAXLENGTH },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataBarAttrMap = new SvXMLTokenMap( aDataBarAttrTokenMap );
-    }
-
-    return *pDataBarAttrMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetIconSetAttrMap()
-{
-    if( !pIconSetAttrMap )
-    {
-        static const SvXMLTokenMapEntry aIconSetAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_CALC_EXT, XML_ICON_SET_TYPE, XML_TOK_ICONSET_TYPE },
-            { XML_NAMESPACE_CALC_EXT, XML_SHOW_VALUE, XML_TOK_ICONSET_SHOWVALUE },
-            XML_TOKEN_MAP_END
-        };
-
-        pIconSetAttrMap = new SvXMLTokenMap( aIconSetAttrTokenMap );
-    }
-
-    return *pIconSetAttrMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataBarEntryAttrMap()
-{
-    if( !pFormattingEntryAttrMap )
-    {
-        static const SvXMLTokenMapEntry aDataBarAttrEntryTokenMap[] =
-        {
-            { XML_NAMESPACE_CALC_EXT, XML_TYPE, XML_TOK_DATABARENTRY_TYPE },
-            { XML_NAMESPACE_CALC_EXT, XML_VALUE, XML_TOK_DATABARENTRY_VALUE },
-            XML_TOKEN_MAP_END
-        };
-
-        pFormattingEntryAttrMap = new SvXMLTokenMap( aDataBarAttrEntryTokenMap );
-    }
-
-    return *pFormattingEntryAttrMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetLabelRangesElemTokenMap()
-{
-    if( !pLabelRangesElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aLabelRangesElemTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_LABEL_RANGE, XML_TOK_LABEL_RANGE_ELEM    },
-            XML_TOKEN_MAP_END
-        };
-
-        pLabelRangesElemTokenMap = new SvXMLTokenMap( aLabelRangesElemTokenMap );
-    } // if( !pLabelRangesElemTokenMap )
-
-    return *pLabelRangesElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetLabelRangeAttrTokenMap()
-{
-    if( !pLabelRangeAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aLabelRangeAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_LABEL_CELL_RANGE_ADDRESS,    XML_TOK_LABEL_RANGE_ATTR_LABEL_RANGE    },
-            { XML_NAMESPACE_TABLE, XML_DATA_CELL_RANGE_ADDRESS,     XML_TOK_LABEL_RANGE_ATTR_DATA_RANGE     },
-            { XML_NAMESPACE_TABLE, XML_ORIENTATION,                 XML_TOK_LABEL_RANGE_ATTR_ORIENTATION    },
-            XML_TOKEN_MAP_END
-        };
-
-        pLabelRangeAttrTokenMap = new SvXMLTokenMap( aLabelRangeAttrTokenMap );
-    } // if( !pLabelRangeAttrTokenMap )
-
-    return *pLabelRangeAttrTokenMap;
 }
 
 const SvXMLTokenMap& ScXMLImport::GetTableElemTokenMap()
@@ -884,34 +401,10 @@ const SvXMLTokenMap& ScXMLImport::GetTableElemTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        pTableElemTokenMap = new SvXMLTokenMap( aTableTokenMap );
+        pTableElemTokenMap.reset(new SvXMLTokenMap( aTableTokenMap ));
     } // if( !pTableElemTokenMap )
 
     return *pTableElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetTableProtectionAttrTokenMap()
-{
-    if (!pTableProtectionElemTokenMap)
-    {
-        static const SvXMLTokenMapEntry aTableProtectionTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_SELECT_PROTECTED_CELLS,      XML_TOK_TABLE_SELECT_PROTECTED_CELLS    },
-            { XML_NAMESPACE_TABLE, XML_SELECT_UNPROTECTED_CELLS,    XML_TOK_TABLE_SELECT_UNPROTECTED_CELLS  },
-            { XML_NAMESPACE_OFFICE_EXT, XML_SELECT_PROTECTED_CELLS, XML_TOK_TABLE_SELECT_PROTECTED_CELLS_EXT    },
-            { XML_NAMESPACE_LO_EXT, XML_SELECT_PROTECTED_CELLS, XML_TOK_TABLE_SELECT_PROTECTED_CELLS_EXT    },
-            { XML_NAMESPACE_OFFICE_EXT, XML_SELECT_UNPROTECTED_CELLS, XML_TOK_TABLE_SELECT_UNPROTECTED_CELLS_EXT  },
-            { XML_NAMESPACE_LO_EXT, XML_SELECT_UNPROTECTED_CELLS, XML_TOK_TABLE_SELECT_UNPROTECTED_CELLS_EXT  },
-            { XML_NAMESPACE_LO_EXT, XML_INSERT_COLUMNS, XML_TOK_TABLE_INSERT_COLUMNS_EXT, },
-            { XML_NAMESPACE_LO_EXT, XML_INSERT_ROWS, XML_TOK_TABLE_INSERT_ROWS_EXT, },
-            { XML_NAMESPACE_LO_EXT, XML_DELETE_COLUMNS, XML_TOK_TABLE_DELETE_COLUMNS_EXT, },
-            { XML_NAMESPACE_LO_EXT, XML_DELETE_ROWS, XML_TOK_TABLE_DELETE_ROWS_EXT, },
-            XML_TOKEN_MAP_END
-        };
-        pTableProtectionElemTokenMap = new SvXMLTokenMap(aTableProtectionTokenMap);
-    }
-
-    return *pTableProtectionElemTokenMap;
 }
 
 const SvXMLTokenMap& ScXMLImport::GetTableRowsElemTokenMap()
@@ -927,96 +420,10 @@ const SvXMLTokenMap& ScXMLImport::GetTableRowsElemTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        pTableRowsElemTokenMap = new SvXMLTokenMap( aTableRowsElemTokenMap );
+        pTableRowsElemTokenMap.reset(new SvXMLTokenMap( aTableRowsElemTokenMap ));
     } // if( !pTableRowsElemTokenMap )
 
     return *pTableRowsElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetTableColsElemTokenMap()
-{
-    if( !pTableColsElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aTableColsElemTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_TABLE_COLUMN_GROUP,      XML_TOK_TABLE_COLS_COL_GROUP    },
-            { XML_NAMESPACE_TABLE, XML_TABLE_HEADER_COLUMNS,    XML_TOK_TABLE_COLS_HEADER_COLS  },
-            { XML_NAMESPACE_TABLE, XML_TABLE_COLUMNS,           XML_TOK_TABLE_COLS_COLS         },
-            { XML_NAMESPACE_TABLE, XML_TABLE_COLUMN,            XML_TOK_TABLE_COLS_COL          },
-            XML_TOKEN_MAP_END
-        };
-
-        pTableColsElemTokenMap = new SvXMLTokenMap( aTableColsElemTokenMap );
-    } // if( !pTableColsElemTokenMap )
-
-    return *pTableColsElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetTableAttrTokenMap()
-{
-    if( !pTableAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aTableAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE,     XML_NAME,           XML_TOK_TABLE_NAME          },
-            { XML_NAMESPACE_TABLE,     XML_STYLE_NAME,     XML_TOK_TABLE_STYLE_NAME    },
-            { XML_NAMESPACE_TABLE, XML_PROTECTED,                   XML_TOK_TABLE_PROTECTED         },
-            { XML_NAMESPACE_TABLE,     XML_PRINT_RANGES,   XML_TOK_TABLE_PRINT_RANGES  },
-            { XML_NAMESPACE_TABLE,     XML_PROTECTION_KEY, XML_TOK_TABLE_PASSWORD      },
-            { XML_NAMESPACE_TABLE, XML_PROTECTION_KEY_DIGEST_ALGORITHM, XML_TOK_TABLE_PASSHASH      },
-            { XML_NAMESPACE_TABLE, XML_PROTECTION_KEY_DIGEST_ALGORITHM_2, XML_TOK_TABLE_PASSHASH_2  },
-            { XML_NAMESPACE_LO_EXT, XML_PROTECTION_KEY_DIGEST_ALGORITHM_2, XML_TOK_TABLE_PASSHASH_2  },
-            { XML_NAMESPACE_TABLE,     XML_PRINT,          XML_TOK_TABLE_PRINT         },
-            XML_TOKEN_MAP_END
-        };
-
-        pTableAttrTokenMap = new SvXMLTokenMap( aTableAttrTokenMap );
-    } // if( !pTableAttrTokenMap )
-
-    return *pTableAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetTableScenarioAttrTokenMap()
-{
-    if( !pTableScenarioAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aTableScenarioAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_DISPLAY_BORDER,      XML_TOK_TABLE_SCENARIO_ATTR_DISPLAY_BORDER  },
-            { XML_NAMESPACE_TABLE, XML_BORDER_COLOR,        XML_TOK_TABLE_SCENARIO_ATTR_BORDER_COLOR    },
-            { XML_NAMESPACE_TABLE, XML_COPY_BACK,           XML_TOK_TABLE_SCENARIO_ATTR_COPY_BACK       },
-            { XML_NAMESPACE_TABLE, XML_COPY_STYLES,         XML_TOK_TABLE_SCENARIO_ATTR_COPY_STYLES     },
-            { XML_NAMESPACE_TABLE, XML_COPY_FORMULAS,       XML_TOK_TABLE_SCENARIO_ATTR_COPY_FORMULAS   },
-            { XML_NAMESPACE_TABLE, XML_IS_ACTIVE,           XML_TOK_TABLE_SCENARIO_ATTR_IS_ACTIVE       },
-            { XML_NAMESPACE_TABLE, XML_SCENARIO_RANGES,     XML_TOK_TABLE_SCENARIO_ATTR_SCENARIO_RANGES },
-            { XML_NAMESPACE_TABLE, XML_COMMENT,             XML_TOK_TABLE_SCENARIO_ATTR_COMMENT         },
-            { XML_NAMESPACE_TABLE, XML_PROTECTED,           XML_TOK_TABLE_SCENARIO_ATTR_PROTECTED       },
-            XML_TOKEN_MAP_END
-        };
-
-        pTableScenarioAttrTokenMap = new SvXMLTokenMap( aTableScenarioAttrTokenMap );
-    } // if( !pTableScenarioAttrTokenMap )
-
-    return *pTableScenarioAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetTableColAttrTokenMap()
-{
-    if( !pTableColAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aTableColAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_STYLE_NAME,                  XML_TOK_TABLE_COL_ATTR_STYLE_NAME       },
-            { XML_NAMESPACE_TABLE, XML_NUMBER_COLUMNS_REPEATED,     XML_TOK_TABLE_COL_ATTR_REPEATED         },
-            { XML_NAMESPACE_TABLE, XML_VISIBILITY,                  XML_TOK_TABLE_COL_ATTR_VISIBILITY       },
-            { XML_NAMESPACE_TABLE, XML_DEFAULT_CELL_STYLE_NAME,    XML_TOK_TABLE_COL_ATTR_DEFAULT_CELL_STYLE_NAME },
-            XML_TOKEN_MAP_END
-        };
-
-        pTableColAttrTokenMap = new SvXMLTokenMap( aTableColAttrTokenMap );
-    } // if( !pTableColAttrTokenMap )
-
-    return *pTableColAttrTokenMap;
 }
 
 const SvXMLTokenMap& ScXMLImport::GetTableRowElemTokenMap()
@@ -1030,7 +437,7 @@ const SvXMLTokenMap& ScXMLImport::GetTableRowElemTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        pTableRowElemTokenMap = new SvXMLTokenMap( aTableRowTokenMap );
+        pTableRowElemTokenMap.reset(new SvXMLTokenMap( aTableRowTokenMap ));
     } // if( !pTableRowElemTokenMap )
 
     return *pTableRowElemTokenMap;
@@ -1050,7 +457,7 @@ const SvXMLTokenMap& ScXMLImport::GetTableRowAttrTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        pTableRowAttrTokenMap = new SvXMLTokenMap( aTableRowAttrTokenMap );
+        pTableRowAttrTokenMap.reset(new SvXMLTokenMap( aTableRowAttrTokenMap ));
     } // if( !pTableRowAttrTokenMap )
 
     return *pTableRowAttrTokenMap;
@@ -1070,7 +477,7 @@ const SvXMLTokenMap& ScXMLImport::GetTableRowCellElemTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        pTableRowCellElemTokenMap = new SvXMLTokenMap( aTableRowCellTokenMap );
+        pTableRowCellElemTokenMap.reset(new SvXMLTokenMap( aTableRowCellTokenMap ));
     } // if( !pTableRowCellElemTokenMap )
 
     return *pTableRowCellElemTokenMap;
@@ -1091,916 +498,12 @@ const SvXMLTokenMap& ScXMLImport::GetTableAnnotationAttrTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        pTableAnnotationAttrTokenMap = new SvXMLTokenMap( aTableAnnotationAttrTokenMap );
+        pTableAnnotationAttrTokenMap.reset(new SvXMLTokenMap( aTableAnnotationAttrTokenMap ));
     } // if( !pTableAnnotationAttrTokenMap )
 
     return *pTableAnnotationAttrTokenMap;
 }
 
-const SvXMLTokenMap& ScXMLImport::GetDetectiveElemTokenMap()
-{
-    if( !pDetectiveElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDetectiveElemTokenMap[]=
-        {
-            { XML_NAMESPACE_TABLE,  XML_HIGHLIGHTED_RANGE,  XML_TOK_DETECTIVE_ELEM_HIGHLIGHTED  },
-            { XML_NAMESPACE_TABLE,  XML_OPERATION,          XML_TOK_DETECTIVE_ELEM_OPERATION    },
-            XML_TOKEN_MAP_END
-        };
-
-        pDetectiveElemTokenMap = new SvXMLTokenMap( aDetectiveElemTokenMap );
-    } // if( !pDetectiveElemTokenMap )
-
-    return *pDetectiveElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDetectiveHighlightedAttrTokenMap()
-{
-    if( !pDetectiveHighlightedAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDetectiveHighlightedAttrTokenMap[]=
-        {
-            { XML_NAMESPACE_TABLE,  XML_CELL_RANGE_ADDRESS,     XML_TOK_DETECTIVE_HIGHLIGHTED_ATTR_CELL_RANGE       },
-            { XML_NAMESPACE_TABLE,  XML_DIRECTION,              XML_TOK_DETECTIVE_HIGHLIGHTED_ATTR_DIRECTION        },
-            { XML_NAMESPACE_TABLE,  XML_CONTAINS_ERROR,         XML_TOK_DETECTIVE_HIGHLIGHTED_ATTR_CONTAINS_ERROR   },
-            { XML_NAMESPACE_TABLE,  XML_MARKED_INVALID,         XML_TOK_DETECTIVE_HIGHLIGHTED_ATTR_MARKED_INVALID   },
-            XML_TOKEN_MAP_END
-        };
-
-        pDetectiveHighlightedAttrTokenMap = new SvXMLTokenMap( aDetectiveHighlightedAttrTokenMap );
-    } // if( !pDetectiveHighlightedAttrTokenMap )
-
-    return *pDetectiveHighlightedAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDetectiveOperationAttrTokenMap()
-{
-    if( !pDetectiveOperationAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDetectiveOperationAttrTokenMap[]=
-        {
-            { XML_NAMESPACE_TABLE,  XML_NAME,   XML_TOK_DETECTIVE_OPERATION_ATTR_NAME   },
-            { XML_NAMESPACE_TABLE,  XML_INDEX,  XML_TOK_DETECTIVE_OPERATION_ATTR_INDEX  },
-            XML_TOKEN_MAP_END
-        };
-
-        pDetectiveOperationAttrTokenMap = new SvXMLTokenMap( aDetectiveOperationAttrTokenMap );
-    } // if( !pDetectiveOperationAttrTokenMap )
-
-    return *pDetectiveOperationAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetTableCellRangeSourceAttrTokenMap()
-{
-    if( !pTableCellRangeSourceAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aTableCellRangeSourceAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE,  XML_NAME,                   XML_TOK_TABLE_CELL_RANGE_SOURCE_ATTR_NAME           },
-            { XML_NAMESPACE_XLINK,  XML_HREF,                   XML_TOK_TABLE_CELL_RANGE_SOURCE_ATTR_HREF           },
-            { XML_NAMESPACE_TABLE,  XML_FILTER_NAME,            XML_TOK_TABLE_CELL_RANGE_SOURCE_ATTR_FILTER_NAME    },
-            { XML_NAMESPACE_TABLE,  XML_FILTER_OPTIONS,         XML_TOK_TABLE_CELL_RANGE_SOURCE_ATTR_FILTER_OPTIONS },
-            { XML_NAMESPACE_TABLE,  XML_LAST_COLUMN_SPANNED,    XML_TOK_TABLE_CELL_RANGE_SOURCE_ATTR_LAST_COLUMN    },
-            { XML_NAMESPACE_TABLE,  XML_LAST_ROW_SPANNED,       XML_TOK_TABLE_CELL_RANGE_SOURCE_ATTR_LAST_ROW       },
-            { XML_NAMESPACE_TABLE,  XML_REFRESH_DELAY,          XML_TOK_TABLE_CELL_RANGE_SOURCE_ATTR_REFRESH_DELAY  },
-            XML_TOKEN_MAP_END
-        };
-
-        pTableCellRangeSourceAttrTokenMap = new SvXMLTokenMap( aTableCellRangeSourceAttrTokenMap );
-    } // if( !pTableCellRangeSourceAttrTokenMap )
-
-    return *pTableCellRangeSourceAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetNamedExpressionsElemTokenMap()
-{
-    if( !pNamedExpressionsElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aNamedExpressionsTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_NAMED_RANGE,             XML_TOK_NAMED_EXPRESSIONS_NAMED_RANGE           },
-            { XML_NAMESPACE_TABLE, XML_NAMED_EXPRESSION,        XML_TOK_NAMED_EXPRESSIONS_NAMED_EXPRESSION  },
-            XML_TOKEN_MAP_END
-        };
-
-        pNamedExpressionsElemTokenMap = new SvXMLTokenMap( aNamedExpressionsTokenMap );
-    } // if( !pNamedExpressionsElemTokenMap )
-
-    return *pNamedExpressionsElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetNamedRangeAttrTokenMap()
-{
-    if( !pNamedRangeAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aNamedRangeAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_NAME,                XML_TOK_NAMED_RANGE_ATTR_NAME               },
-            { XML_NAMESPACE_TABLE, XML_CELL_RANGE_ADDRESS,  XML_TOK_NAMED_RANGE_ATTR_CELL_RANGE_ADDRESS },
-            { XML_NAMESPACE_TABLE, XML_BASE_CELL_ADDRESS,   XML_TOK_NAMED_RANGE_ATTR_BASE_CELL_ADDRESS  },
-            { XML_NAMESPACE_TABLE, XML_RANGE_USABLE_AS,     XML_TOK_NAMED_RANGE_ATTR_RANGE_USABLE_AS    },
-            XML_TOKEN_MAP_END
-        };
-
-        pNamedRangeAttrTokenMap = new SvXMLTokenMap( aNamedRangeAttrTokenMap );
-    } // if( !pNamedRangeAttrTokenMap )
-
-    return *pNamedRangeAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetNamedExpressionAttrTokenMap()
-{
-    if( !pNamedExpressionAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aNamedExpressionAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_NAME,                XML_TOK_NAMED_EXPRESSION_ATTR_NAME              },
-            { XML_NAMESPACE_TABLE, XML_BASE_CELL_ADDRESS,   XML_TOK_NAMED_EXPRESSION_ATTR_BASE_CELL_ADDRESS },
-            { XML_NAMESPACE_TABLE, XML_EXPRESSION,          XML_TOK_NAMED_EXPRESSION_ATTR_EXPRESSION        },
-            XML_TOKEN_MAP_END
-        };
-
-        pNamedExpressionAttrTokenMap = new SvXMLTokenMap( aNamedExpressionAttrTokenMap );
-    } // if( !pNamedExpressionAttrTokenMap )
-
-    return *pNamedExpressionAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDatabaseRangesElemTokenMap()
-{
-    if( !pDatabaseRangesElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDatabaseRangesTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_DATABASE_RANGE,  XML_TOK_DATABASE_RANGE      },
-            XML_TOKEN_MAP_END
-        };
-
-        pDatabaseRangesElemTokenMap = new SvXMLTokenMap( aDatabaseRangesTokenMap );
-    } // if( !pDatabaseRangesElemTokenMap )
-
-    return *pDatabaseRangesElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDatabaseRangeElemTokenMap()
-{
-    if( !pDatabaseRangeElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDatabaseRangeTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_DATABASE_SOURCE_SQL,     XML_TOK_DATABASE_RANGE_SOURCE_SQL       },
-            { XML_NAMESPACE_TABLE, XML_DATABASE_SOURCE_TABLE,   XML_TOK_DATABASE_RANGE_SOURCE_TABLE     },
-            { XML_NAMESPACE_TABLE, XML_DATABASE_SOURCE_QUERY,   XML_TOK_DATABASE_RANGE_SOURCE_QUERY     },
-            { XML_NAMESPACE_TABLE, XML_FILTER,                  XML_TOK_FILTER                          },
-            { XML_NAMESPACE_TABLE, XML_SORT,                    XML_TOK_SORT                            },
-            { XML_NAMESPACE_TABLE, XML_SUBTOTAL_RULES,          XML_TOK_DATABASE_RANGE_SUBTOTAL_RULES   },
-            XML_TOKEN_MAP_END
-        };
-
-        pDatabaseRangeElemTokenMap = new SvXMLTokenMap( aDatabaseRangeTokenMap );
-    } // if( !pDatabaseRangeElemTokenMap )
-
-    return *pDatabaseRangeElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDatabaseRangeAttrTokenMap()
-{
-    if( !pDatabaseRangeAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDatabaseRangeAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_NAME,                    XML_TOK_DATABASE_RANGE_ATTR_NAME                    },
-            { XML_NAMESPACE_TABLE, XML_IS_SELECTION,            XML_TOK_DATABASE_RANGE_ATTR_IS_SELECTION            },
-            { XML_NAMESPACE_TABLE, XML_ON_UPDATE_KEEP_STYLES,   XML_TOK_DATABASE_RANGE_ATTR_ON_UPDATE_KEEP_STYLES   },
-            { XML_NAMESPACE_TABLE, XML_ON_UPDATE_KEEP_SIZE,     XML_TOK_DATABASE_RANGE_ATTR_ON_UPDATE_KEEP_SIZE     },
-            { XML_NAMESPACE_TABLE, XML_HAS_PERSISTENT_DATA,     XML_TOK_DATABASE_RANGE_ATTR_HAS_PERSISTENT_DATA     },
-            { XML_NAMESPACE_TABLE, XML_ORIENTATION,         XML_TOK_DATABASE_RANGE_ATTR_ORIENTATION             },
-            { XML_NAMESPACE_TABLE, XML_CONTAINS_HEADER,     XML_TOK_DATABASE_RANGE_ATTR_CONTAINS_HEADER         },
-            { XML_NAMESPACE_TABLE, XML_DISPLAY_FILTER_BUTTONS,  XML_TOK_DATABASE_RANGE_ATTR_DISPLAY_FILTER_BUTTONS  },
-            { XML_NAMESPACE_TABLE, XML_TARGET_RANGE_ADDRESS,    XML_TOK_DATABASE_RANGE_ATTR_TARGET_RANGE_ADDRESS    },
-            { XML_NAMESPACE_TABLE, XML_REFRESH_DELAY,           XML_TOK_DATABASE_RANGE_ATTR_REFRESH_DELAY           },
-            XML_TOKEN_MAP_END
-        };
-
-        pDatabaseRangeAttrTokenMap = new SvXMLTokenMap( aDatabaseRangeAttrTokenMap );
-    } // if( !pDatabaseRangeAttrTokenMap )
-
-    return *pDatabaseRangeAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDatabaseRangeSourceSQLAttrTokenMap()
-{
-    if( !pDatabaseRangeSourceSQLAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDatabaseRangeSourceSQLAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_DATABASE_NAME,           XML_TOK_SOURCE_SQL_ATTR_DATABASE_NAME       },
-            { XML_NAMESPACE_XLINK, XML_HREF,                    XML_TOK_SOURCE_SQL_ATTR_HREF                },
-            { XML_NAMESPACE_TABLE, XML_CONNECTION_RESOURCE,     XML_TOK_SOURCE_SQL_ATTR_CONNECTION_RESOURCE},
-            { XML_NAMESPACE_TABLE, XML_SQL_STATEMENT,           XML_TOK_SOURCE_SQL_ATTR_SQL_STATEMENT       },
-            { XML_NAMESPACE_TABLE, XML_PARSE_SQL_STATEMENT, XML_TOK_SOURCE_SQL_ATTR_PARSE_SQL_STATEMENT },
-            XML_TOKEN_MAP_END
-        };
-
-        pDatabaseRangeSourceSQLAttrTokenMap = new SvXMLTokenMap( aDatabaseRangeSourceSQLAttrTokenMap );
-    } // if( !pDatabaseRangeSourceSQLAttrTokenMap )
-
-    return *pDatabaseRangeSourceSQLAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDatabaseRangeSourceTableAttrTokenMap()
-{
-    if( !pDatabaseRangeSourceTableAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDatabaseRangeSourceTableAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_DATABASE_NAME,           XML_TOK_SOURCE_TABLE_ATTR_DATABASE_NAME         },
-            { XML_NAMESPACE_XLINK, XML_HREF,                    XML_TOK_SOURCE_TABLE_ATTR_HREF                  },
-            { XML_NAMESPACE_TABLE, XML_CONNECTION_RESOURCE,     XML_TOK_SOURCE_TABLE_ATTR_CONNECTION_RESOURCE  },
-            { XML_NAMESPACE_TABLE, XML_TABLE_NAME,              XML_TOK_SOURCE_TABLE_ATTR_TABLE_NAME            },
-            { XML_NAMESPACE_TABLE, XML_DATABASE_TABLE_NAME,     XML_TOK_SOURCE_TABLE_ATTR_TABLE_NAME            },
-            XML_TOKEN_MAP_END
-        };
-
-        pDatabaseRangeSourceTableAttrTokenMap = new SvXMLTokenMap( aDatabaseRangeSourceTableAttrTokenMap );
-    } // if( !pDatabaseRangeSourceTableAttrTokenMap )
-
-    return *pDatabaseRangeSourceTableAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDatabaseRangeSourceQueryAttrTokenMap()
-{
-    if( !pDatabaseRangeSourceQueryAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDatabaseRangeSourceQueryAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_DATABASE_NAME,           XML_TOK_SOURCE_QUERY_ATTR_DATABASE_NAME         },
-            { XML_NAMESPACE_XLINK, XML_HREF,                    XML_TOK_SOURCE_QUERY_ATTR_HREF                  },
-            { XML_NAMESPACE_TABLE, XML_CONNECTION_RESOURCE,     XML_TOK_SOURCE_QUERY_ATTR_CONNECTION_RESOURCE  },
-            { XML_NAMESPACE_TABLE, XML_QUERY_NAME,              XML_TOK_SOURCE_QUERY_ATTR_QUERY_NAME            },
-            XML_TOKEN_MAP_END
-        };
-
-        pDatabaseRangeSourceQueryAttrTokenMap = new SvXMLTokenMap( aDatabaseRangeSourceQueryAttrTokenMap );
-    } // if( !pDatabaseRangeSourceQueryAttrTokenMap )
-
-    return *pDatabaseRangeSourceQueryAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetFilterElemTokenMap()
-{
-    if( !pFilterElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aFilterTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_FILTER_AND,          XML_TOK_FILTER_AND          },
-            { XML_NAMESPACE_TABLE, XML_FILTER_OR,           XML_TOK_FILTER_OR           },
-            { XML_NAMESPACE_TABLE, XML_FILTER_CONDITION,    XML_TOK_FILTER_CONDITION    },
-            XML_TOKEN_MAP_END
-        };
-
-        pFilterElemTokenMap = new SvXMLTokenMap( aFilterTokenMap );
-    } // if( !pFilterElemTokenMap )
-
-    return *pFilterElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetFilterAttrTokenMap()
-{
-    if( !pFilterAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aFilterAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_TARGET_RANGE_ADDRESS,            XML_TOK_FILTER_ATTR_TARGET_RANGE_ADDRESS            },
-            { XML_NAMESPACE_TABLE, XML_CONDITION_SOURCE_RANGE_ADDRESS,  XML_TOK_FILTER_ATTR_CONDITION_SOURCE_RANGE_ADDRESS  },
-            { XML_NAMESPACE_TABLE, XML_CONDITION_SOURCE,                XML_TOK_FILTER_ATTR_CONDITION_SOURCE                },
-            { XML_NAMESPACE_TABLE, XML_DISPLAY_DUPLICATES,              XML_TOK_FILTER_ATTR_DISPLAY_DUPLICATES              },
-            XML_TOKEN_MAP_END
-        };
-
-        pFilterAttrTokenMap = new SvXMLTokenMap( aFilterAttrTokenMap );
-    } // if( !pFilterAttrTokenMap )
-
-    return *pFilterAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetFilterConditionElemTokenMap()
-{
-    if( !pFilterConditionElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_FILTER_SET_ITEM, XML_TOK_CONDITION_FILTER_SET_ITEM },
-            XML_TOKEN_MAP_END
-        };
-
-        pFilterConditionElemTokenMap = new SvXMLTokenMap( aTokenMap );
-    }
-
-    return *pFilterConditionElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetFilterConditionAttrTokenMap()
-{
-    if( !pFilterConditionAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aFilterConditionAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_FIELD_NUMBER,    XML_TOK_CONDITION_ATTR_FIELD_NUMBER     },
-            { XML_NAMESPACE_TABLE, XML_CASE_SENSITIVE,  XML_TOK_CONDITION_ATTR_CASE_SENSITIVE   },
-            { XML_NAMESPACE_TABLE, XML_DATA_TYPE,       XML_TOK_CONDITION_ATTR_DATA_TYPE        },
-            { XML_NAMESPACE_TABLE, XML_VALUE,           XML_TOK_CONDITION_ATTR_VALUE            },
-            { XML_NAMESPACE_TABLE, XML_OPERATOR,        XML_TOK_CONDITION_ATTR_OPERATOR         },
-            XML_TOKEN_MAP_END
-        };
-
-        pFilterConditionAttrTokenMap = new SvXMLTokenMap( aFilterConditionAttrTokenMap );
-    } // if( !pFilterConditionAttrTokenMap )
-
-    return *pFilterConditionAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetFilterSetItemAttrTokenMap()
-{
-    if( !pFilterSetItemAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_VALUE, XML_TOK_FILTER_SET_ITEM_ATTR_VALUE },
-            XML_TOKEN_MAP_END
-        };
-
-        pFilterSetItemAttrTokenMap = new SvXMLTokenMap( aTokenMap );
-    }
-
-    return *pFilterSetItemAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetSortElemTokenMap()
-{
-    if( !pSortElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aSortTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_SORT_BY, XML_TOK_SORT_SORT_BY    },
-            XML_TOKEN_MAP_END
-        };
-
-        pSortElemTokenMap = new SvXMLTokenMap( aSortTokenMap );
-    } // if( !pSortElemTokenMap )
-
-    return *pSortElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetSortAttrTokenMap()
-{
-    if( !pSortAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aSortAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_BIND_STYLES_TO_CONTENT,  XML_TOK_SORT_ATTR_BIND_STYLES_TO_CONTENT    },
-            { XML_NAMESPACE_TABLE, XML_TARGET_RANGE_ADDRESS,    XML_TOK_SORT_ATTR_TARGET_RANGE_ADDRESS      },
-            { XML_NAMESPACE_TABLE, XML_CASE_SENSITIVE,          XML_TOK_SORT_ATTR_CASE_SENSITIVE            },
-            { XML_NAMESPACE_TABLE, XML_RFC_LANGUAGE_TAG,        XML_TOK_SORT_ATTR_RFC_LANGUAGE_TAG          },
-            { XML_NAMESPACE_TABLE, XML_LANGUAGE,                XML_TOK_SORT_ATTR_LANGUAGE                  },
-            { XML_NAMESPACE_TABLE, XML_SCRIPT,                  XML_TOK_SORT_ATTR_SCRIPT                    },
-            { XML_NAMESPACE_TABLE, XML_COUNTRY,                 XML_TOK_SORT_ATTR_COUNTRY                   },
-            { XML_NAMESPACE_TABLE, XML_ALGORITHM,               XML_TOK_SORT_ATTR_ALGORITHM                 },
-            XML_TOKEN_MAP_END
-        };
-
-        pSortAttrTokenMap = new SvXMLTokenMap( aSortAttrTokenMap );
-    } // if( !pSortAttrTokenMap )
-
-    return *pSortAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetSortSortByAttrTokenMap()
-{
-    if( !pSortSortByAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aSortSortByAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_FIELD_NUMBER,    XML_TOK_SORT_BY_ATTR_FIELD_NUMBER   },
-            { XML_NAMESPACE_TABLE, XML_DATA_TYPE,       XML_TOK_SORT_BY_ATTR_DATA_TYPE      },
-            { XML_NAMESPACE_TABLE, XML_ORDER,           XML_TOK_SORT_BY_ATTR_ORDER          },
-            XML_TOKEN_MAP_END
-        };
-
-        pSortSortByAttrTokenMap = new SvXMLTokenMap( aSortSortByAttrTokenMap );
-    } // if( !pSortSortByAttrTokenMap )
-
-    return *pSortSortByAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDatabaseRangeSubTotalRulesElemTokenMap()
-{
-    if( !pDatabaseRangeSubTotalRulesElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDatabaseRangeSubTotalRulesTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_SORT_GROUPS,     XML_TOK_SUBTOTAL_RULES_SORT_GROUPS      },
-            { XML_NAMESPACE_TABLE, XML_SUBTOTAL_RULE,   XML_TOK_SUBTOTAL_RULES_SUBTOTAL_RULE    },
-            XML_TOKEN_MAP_END
-        };
-
-        pDatabaseRangeSubTotalRulesElemTokenMap = new SvXMLTokenMap( aDatabaseRangeSubTotalRulesTokenMap );
-    } // if( !pDatabaseRangeSubTotalRulesElemTokenMap )
-
-    return *pDatabaseRangeSubTotalRulesElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDatabaseRangeSubTotalRulesAttrTokenMap()
-{
-    if( !pDatabaseRangeSubTotalRulesAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDatabaseRangeSubTotalRulesAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_BIND_STYLES_TO_CONTENT,          XML_TOK_SUBTOTAL_RULES_ATTR_BIND_STYLES_TO_CONTENT      },
-            { XML_NAMESPACE_TABLE, XML_CASE_SENSITIVE,                  XML_TOK_SUBTOTAL_RULES_ATTR_CASE_SENSITIVE              },
-            { XML_NAMESPACE_TABLE, XML_PAGE_BREAKS_ON_GROUP_CHANGE, XML_TOK_SUBTOTAL_RULES_ATTR_PAGE_BREAKS_ON_GROUP_CHANGE },
-            XML_TOKEN_MAP_END
-        };
-
-        pDatabaseRangeSubTotalRulesAttrTokenMap = new SvXMLTokenMap( aDatabaseRangeSubTotalRulesAttrTokenMap );
-    } // if( !pDatabaseRangeSubTotalRulesAttrTokenMap )
-
-    return *pDatabaseRangeSubTotalRulesAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetSubTotalRulesSortGroupsAttrTokenMap()
-{
-    if( !pSubTotalRulesSortGroupsAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aSubTotalRulesSortGroupsAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_DATA_TYPE,   XML_TOK_SORT_GROUPS_ATTR_DATA_TYPE  },
-            { XML_NAMESPACE_TABLE, XML_ORDER,       XML_TOK_SORT_GROUPS_ATTR_ORDER      },
-            XML_TOKEN_MAP_END
-        };
-
-        pSubTotalRulesSortGroupsAttrTokenMap = new SvXMLTokenMap( aSubTotalRulesSortGroupsAttrTokenMap );
-    } // if( !pSubTotalRulesSortGroupsAttrTokenMap )
-
-    return *pSubTotalRulesSortGroupsAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetSubTotalRulesSubTotalRuleElemTokenMap()
-{
-    if( !pSubTotalRulesSubTotalRuleElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aSubTotalRulesSubTotalRuleTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_SUBTOTAL_FIELD,  XML_TOK_SUBTOTAL_RULE_SUBTOTAL_FIELD    },
-            XML_TOKEN_MAP_END
-        };
-
-        pSubTotalRulesSubTotalRuleElemTokenMap = new SvXMLTokenMap( aSubTotalRulesSubTotalRuleTokenMap );
-    } // if( !pSubTotalRulesSubTotalRuleElemTokenMap )
-
-    return *pSubTotalRulesSubTotalRuleElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetSubTotalRulesSubTotalRuleAttrTokenMap()
-{
-    if( !pSubTotalRulesSubTotalRuleAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aSubTotalRulesSubTotalRuleAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_GROUP_BY_FIELD_NUMBER,   XML_TOK_SUBTOTAL_RULE_ATTR_GROUP_BY_FIELD_NUMBER    },
-            XML_TOKEN_MAP_END
-        };
-
-        pSubTotalRulesSubTotalRuleAttrTokenMap = new SvXMLTokenMap( aSubTotalRulesSubTotalRuleAttrTokenMap );
-    } // if( !pSubTotalRulesSubTotalRuleAttrTokenMap )
-
-    return *pSubTotalRulesSubTotalRuleAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetSubTotalRuleSubTotalFieldAttrTokenMap()
-{
-    if( !pSubTotalRuleSubTotalFieldAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aSubTotalRuleSubTotalFieldAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_FIELD_NUMBER,    XML_TOK_SUBTOTAL_FIELD_ATTR_FIELD_NUMBER    },
-            { XML_NAMESPACE_TABLE, XML_FUNCTION,        XML_TOK_SUBTOTAL_FIELD_ATTR_FUNCTION        },
-            XML_TOKEN_MAP_END
-        };
-
-        pSubTotalRuleSubTotalFieldAttrTokenMap = new SvXMLTokenMap( aSubTotalRuleSubTotalFieldAttrTokenMap );
-    } // if( !pSubTotalRuleSubTotalFieldAttrTokenMap )
-
-    return *pSubTotalRuleSubTotalFieldAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotTablesElemTokenMap()
-{
-    if( !pDataPilotTablesElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotTablesElemTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_TABLE,    XML_TOK_DATA_PILOT_TABLE    },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotTablesElemTokenMap = new SvXMLTokenMap( aDataPilotTablesElemTokenMap );
-    } // if( !pDataPilotTablesElemTokenMap )
-
-    return *pDataPilotTablesElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotTableAttrTokenMap()
-{
-    if( !pDataPilotTableAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotTableAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_NAME,                    XML_TOK_DATA_PILOT_TABLE_ATTR_NAME                  },
-            { XML_NAMESPACE_TABLE, XML_APPLICATION_DATA,        XML_TOK_DATA_PILOT_TABLE_ATTR_APPLICATION_DATA      },
-            { XML_NAMESPACE_TABLE, XML_GRAND_TOTAL,             XML_TOK_DATA_PILOT_TABLE_ATTR_GRAND_TOTAL           },
-            { XML_NAMESPACE_TABLE, XML_IGNORE_EMPTY_ROWS,       XML_TOK_DATA_PILOT_TABLE_ATTR_IGNORE_EMPTY_ROWS     },
-            { XML_NAMESPACE_TABLE, XML_IDENTIFY_CATEGORIES,     XML_TOK_DATA_PILOT_TABLE_ATTR_IDENTIFY_CATEGORIES   },
-            { XML_NAMESPACE_TABLE, XML_TARGET_RANGE_ADDRESS,    XML_TOK_DATA_PILOT_TABLE_ATTR_TARGET_RANGE_ADDRESS  },
-            { XML_NAMESPACE_TABLE, XML_BUTTONS,                 XML_TOK_DATA_PILOT_TABLE_ATTR_BUTTONS               },
-            { XML_NAMESPACE_TABLE, XML_SHOW_FILTER_BUTTON,      XML_TOK_DATA_PILOT_TABLE_ATTR_SHOW_FILTER_BUTTON    },
-            { XML_NAMESPACE_TABLE, XML_DRILL_DOWN_ON_DOUBLE_CLICK, XML_TOK_DATA_PILOT_TABLE_ATTR_DRILL_DOWN         },
-    { XML_NAMESPACE_TABLE, XML_HEADER_GRID_LAYOUT,      XML_TOK_DATA_PILOT_TABLE_ATTR_HEADER_GRID_LAYOUT    },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotTableAttrTokenMap = new SvXMLTokenMap( aDataPilotTableAttrTokenMap );
-    } // if( !pDataPilotTableAttrTokenMap )
-
-    return *pDataPilotTableAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotTableElemTokenMap()
-{
-    if( !pDataPilotTableElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotTableElemTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_DATABASE_SOURCE_SQL, XML_TOK_DATA_PILOT_TABLE_ELEM_SOURCE_SQL        },
-            { XML_NAMESPACE_TABLE, XML_DATABASE_SOURCE_TABLE,   XML_TOK_DATA_PILOT_TABLE_ELEM_SOURCE_TABLE      },
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_GRAND_TOTAL,  XML_TOK_DATA_PILOT_TABLE_ELEM_GRAND_TOTAL       },
-            { XML_NAMESPACE_TABLE_EXT, XML_DATA_PILOT_GRAND_TOTAL, XML_TOK_DATA_PILOT_TABLE_ELEM_GRAND_TOTAL_EXT },
-            { XML_NAMESPACE_TABLE, XML_DATABASE_SOURCE_QUERY,   XML_TOK_DATA_PILOT_TABLE_ELEM_SOURCE_QUERY      },
-            { XML_NAMESPACE_TABLE, XML_SOURCE_SERVICE,          XML_TOK_DATA_PILOT_TABLE_ELEM_SOURCE_SERVICE    },
-            { XML_NAMESPACE_TABLE, XML_SOURCE_CELL_RANGE,       XML_TOK_DATA_PILOT_TABLE_ELEM_SOURCE_CELL_RANGE },
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_FIELD,        XML_TOK_DATA_PILOT_TABLE_ELEM_DATA_PILOT_FIELD  },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotTableElemTokenMap = new SvXMLTokenMap( aDataPilotTableElemTokenMap );
-    } // if( !pDataPilotTableElemTokenMap )
-
-    return *pDataPilotTableElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotTableSourceServiceAttrTokenMap()
-{
-    if( !pDataPilotTableSourceServiceAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotTableSourceServiceAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_NAME,                    XML_TOK_SOURCE_SERVICE_ATTR_NAME                },
-            { XML_NAMESPACE_TABLE, XML_SOURCE_NAME,             XML_TOK_SOURCE_SERVICE_ATTR_SOURCE_NAME         },
-            { XML_NAMESPACE_TABLE, XML_OBJECT_NAME,             XML_TOK_SOURCE_SERVICE_ATTR_OBJECT_NAME         },
-            { XML_NAMESPACE_TABLE, XML_USER_NAME,               XML_TOK_SOURCE_SERVICE_ATTR_USER_NAME           },
-            { XML_NAMESPACE_TABLE, XML_PASSWORD,                XML_TOK_SOURCE_SERVICE_ATTR_PASSWORD            },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotTableSourceServiceAttrTokenMap = new SvXMLTokenMap( aDataPilotTableSourceServiceAttrTokenMap );
-    } // if( !pDataPilotTableSourceServiceAttrTokenMap )
-
-    return *pDataPilotTableSourceServiceAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotGrandTotalAttrTokenMap()
-{
-    if (!pDataPilotGrandTotalAttrTokenMap)
-    {
-        static const SvXMLTokenMapEntry aDataPilotGrandTotalAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE,     XML_DISPLAY,      XML_TOK_DATA_PILOT_GRAND_TOTAL_ATTR_DISPLAY          },
-            { XML_NAMESPACE_TABLE,     XML_ORIENTATION,  XML_TOK_DATA_PILOT_GRAND_TOTAL_ATTR_ORIENTATION      },
-            { XML_NAMESPACE_TABLE,     XML_DISPLAY_NAME, XML_TOK_DATA_PILOT_GRAND_TOTAL_ATTR_DISPLAY_NAME     },
-            { XML_NAMESPACE_TABLE_EXT, XML_DISPLAY_NAME, XML_TOK_DATA_PILOT_GRAND_TOTAL_ATTR_DISPLAY_NAME_EXT },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotGrandTotalAttrTokenMap = new SvXMLTokenMap( aDataPilotGrandTotalAttrTokenMap );
-    }
-
-    return *pDataPilotGrandTotalAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotTableSourceCellRangeAttrTokenMap()
-{
-    if( !pDataPilotTableSourceCellRangeAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotTableSourceCellRangeAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_CELL_RANGE_ADDRESS, XML_TOK_SOURCE_CELL_RANGE_ATTR_CELL_RANGE_ADDRESS },
-            { XML_NAMESPACE_TABLE, XML_NAME, XML_TOK_SOURCE_CELL_RANGE_ATTR_NAME },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotTableSourceCellRangeAttrTokenMap = new SvXMLTokenMap( aDataPilotTableSourceCellRangeAttrTokenMap );
-    } // if( !pDataPilotTableSourceCellRangeAttrTokenMap )
-
-    return *pDataPilotTableSourceCellRangeAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotTableSourceCellRangeElemTokenMap()
-{
-    if( !pDataPilotTableSourceCellRangeElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotTableSourceCellRangeElemTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_FILTER,      XML_TOK_SOURCE_CELL_RANGE_ELEM_FILTER},
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotTableSourceCellRangeElemTokenMap = new SvXMLTokenMap( aDataPilotTableSourceCellRangeElemTokenMap );
-    } // if( !pDataPilotTableSourceCellRangeElemTokenMap )
-
-    return *pDataPilotTableSourceCellRangeElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotFieldAttrTokenMap()
-{
-    if( !pDataPilotFieldAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotFieldAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE,     XML_SOURCE_FIELD_NAME,    XML_TOK_DATA_PILOT_FIELD_ATTR_SOURCE_FIELD_NAME    },
-            { XML_NAMESPACE_TABLE,     XML_DISPLAY_NAME,         XML_TOK_DATA_PILOT_FIELD_ATTR_DISPLAY_NAME         },
-            { XML_NAMESPACE_TABLE_EXT, XML_DISPLAY_NAME,         XML_TOK_DATA_PILOT_FIELD_ATTR_DISPLAY_NAME_EXT     },
-            { XML_NAMESPACE_TABLE,     XML_IS_DATA_LAYOUT_FIELD, XML_TOK_DATA_PILOT_FIELD_ATTR_IS_DATA_LAYOUT_FIELD },
-            { XML_NAMESPACE_TABLE,     XML_FUNCTION,             XML_TOK_DATA_PILOT_FIELD_ATTR_FUNCTION             },
-            { XML_NAMESPACE_TABLE,     XML_ORIENTATION,          XML_TOK_DATA_PILOT_FIELD_ATTR_ORIENTATION          },
-            { XML_NAMESPACE_TABLE,     XML_SELECTED_PAGE,        XML_TOK_DATA_PILOT_FIELD_ATTR_SELECTED_PAGE        },
-            { XML_NAMESPACE_LO_EXT,    XML_IGNORE_SELECTED_PAGE, XML_TOK_DATA_PILOT_FIELD_ATTR_IGNORE_SELECTED_PAGE },
-            { XML_NAMESPACE_TABLE,     XML_USED_HIERARCHY,       XML_TOK_DATA_PILOT_FIELD_ATTR_USED_HIERARCHY       },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotFieldAttrTokenMap = new SvXMLTokenMap( aDataPilotFieldAttrTokenMap );
-    } // if( !pDataPilotFieldAttrTokenMap )
-
-    return *pDataPilotFieldAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotFieldElemTokenMap()
-{
-    if( !pDataPilotFieldElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotFieldElemTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_LEVEL,        XML_TOK_DATA_PILOT_FIELD_ELEM_DATA_PILOT_LEVEL      },
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_FIELD_REFERENCE, XML_TOK_DATA_PILOT_FIELD_ELEM_DATA_PILOT_REFERENCE },
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_GROUPS,       XML_TOK_DATA_PILOT_FIELD_ELEM_DATA_PILOT_GROUPS },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotFieldElemTokenMap = new SvXMLTokenMap( aDataPilotFieldElemTokenMap );
-    } // if( !pDataPilotFieldElemTokenMap )
-
-    return *pDataPilotFieldElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotLevelAttrTokenMap()
-{
-    if( !pDataPilotLevelAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotLevelAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_SHOW_EMPTY,              XML_TOK_DATA_PILOT_LEVEL_ATTR_SHOW_EMPTY            },
-            { XML_NAMESPACE_CALC_EXT, XML_REPEAT_ITEM_LABELS, XML_TOK_DATA_PILOT_LEVEL_ATTR_REPEAT_ITEM_LABELS    },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotLevelAttrTokenMap = new SvXMLTokenMap( aDataPilotLevelAttrTokenMap );
-    } // if( !pDataPilotLevelAttrTokenMap )
-
-    return *pDataPilotLevelAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotLevelElemTokenMap()
-{
-    if( !pDataPilotLevelElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotLevelElemTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_SUBTOTALS,    XML_TOK_DATA_PILOT_LEVEL_ELEM_DATA_PILOT_SUBTOTALS  },
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_MEMBERS,      XML_TOK_DATA_PILOT_LEVEL_ELEM_DATA_PILOT_MEMBERS    },
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_DISPLAY_INFO, XML_TOK_DATA_PILOT_FIELD_ELEM_DATA_PILOT_DISPLAY_INFO },
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_SORT_INFO,    XML_TOK_DATA_PILOT_FIELD_ELEM_DATA_PILOT_SORT_INFO  },
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_LAYOUT_INFO,  XML_TOK_DATA_PILOT_FIELD_ELEM_DATA_PILOT_LAYOUT_INFO },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotLevelElemTokenMap = new SvXMLTokenMap( aDataPilotLevelElemTokenMap );
-    } // if( !pDataPilotLevelElemTokenMap )
-
-    return *pDataPilotLevelElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotSubTotalsElemTokenMap()
-{
-    if( !pDataPilotSubTotalsElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotSubTotalsElemTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_SUBTOTAL, XML_TOK_DATA_PILOT_SUBTOTALS_ELEM_DATA_PILOT_SUBTOTAL   },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotSubTotalsElemTokenMap = new SvXMLTokenMap( aDataPilotSubTotalsElemTokenMap );
-    } // if( !pDataPilotSubTotalsElemTokenMap )
-
-    return *pDataPilotSubTotalsElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotSubTotalAttrTokenMap()
-{
-    if( !pDataPilotSubTotalAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotSubTotalAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE,     XML_FUNCTION,     XML_TOK_DATA_PILOT_SUBTOTAL_ATTR_FUNCTION         },
-            { XML_NAMESPACE_TABLE,     XML_DISPLAY_NAME, XML_TOK_DATA_PILOT_SUBTOTAL_ATTR_DISPLAY_NAME     },
-            { XML_NAMESPACE_TABLE_EXT, XML_DISPLAY_NAME, XML_TOK_DATA_PILOT_SUBTOTAL_ATTR_DISPLAY_NAME_EXT },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotSubTotalAttrTokenMap = new SvXMLTokenMap( aDataPilotSubTotalAttrTokenMap );
-    } // if( !pDataPilotSubTotalAttrTokenMap )
-
-    return *pDataPilotSubTotalAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotMembersElemTokenMap()
-{
-    if( !pDataPilotMembersElemTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotMembersElemTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE, XML_DATA_PILOT_MEMBER,       XML_TOK_DATA_PILOT_MEMBERS_ELEM_DATA_PILOT_MEMBER   },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotMembersElemTokenMap = new SvXMLTokenMap( aDataPilotMembersElemTokenMap );
-    } // if( !pDataPilotMembersElemTokenMap )
-
-    return *pDataPilotMembersElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataPilotMemberAttrTokenMap()
-{
-    if( !pDataPilotMemberAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aDataPilotMemberAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE,     XML_NAME,         XML_TOK_DATA_PILOT_MEMBER_ATTR_NAME             },
-            { XML_NAMESPACE_TABLE,     XML_DISPLAY_NAME, XML_TOK_DATA_PILOT_MEMBER_ATTR_DISPLAY_NAME     },
-            { XML_NAMESPACE_TABLE_EXT, XML_DISPLAY_NAME, XML_TOK_DATA_PILOT_MEMBER_ATTR_DISPLAY_NAME_EXT },
-            { XML_NAMESPACE_TABLE,     XML_DISPLAY,      XML_TOK_DATA_PILOT_MEMBER_ATTR_DISPLAY          },
-            { XML_NAMESPACE_TABLE,     XML_SHOW_DETAILS, XML_TOK_DATA_PILOT_MEMBER_ATTR_SHOW_DETAILS     },
-            XML_TOKEN_MAP_END
-        };
-
-        pDataPilotMemberAttrTokenMap = new SvXMLTokenMap( aDataPilotMemberAttrTokenMap );
-    } // if( !pDataPilotMemberAttrTokenMap )
-
-    return *pDataPilotMemberAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetConsolidationAttrTokenMap()
-{
-    if( !pConsolidationAttrTokenMap )
-    {
-        static const SvXMLTokenMapEntry aConsolidationAttrTokenMap[] =
-        {
-            { XML_NAMESPACE_TABLE,  XML_FUNCTION,                       XML_TOK_CONSOLIDATION_ATTR_FUNCTION         },
-            { XML_NAMESPACE_TABLE,  XML_SOURCE_CELL_RANGE_ADDRESSES,    XML_TOK_CONSOLIDATION_ATTR_SOURCE_RANGES    },
-            { XML_NAMESPACE_TABLE,  XML_TARGET_CELL_ADDRESS,            XML_TOK_CONSOLIDATION_ATTR_TARGET_ADDRESS   },
-            { XML_NAMESPACE_TABLE,  XML_USE_LABEL,                      XML_TOK_CONSOLIDATION_ATTR_USE_LABEL        },
-            { XML_NAMESPACE_TABLE,  XML_LINK_TO_SOURCE_DATA,            XML_TOK_CONSOLIDATION_ATTR_LINK_TO_SOURCE   },
-            XML_TOKEN_MAP_END
-        };
-
-        pConsolidationAttrTokenMap = new SvXMLTokenMap( aConsolidationAttrTokenMap );
-    } // if( !pConsolidationAttrTokenMap )
-
-    return *pConsolidationAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetCellTextParaElemTokenMap()
-{
-    if (!pCellTextParaElemTokenMap)
-    {
-        static const SvXMLTokenMapEntry aMap[] =
-        {
-            { XML_NAMESPACE_TEXT, XML_S, XML_TOK_CELL_TEXT_S },
-            { XML_NAMESPACE_TEXT, XML_SPAN, XML_TOK_CELL_TEXT_SPAN },
-            { XML_NAMESPACE_TEXT, XML_SHEET_NAME, XML_TOK_CELL_TEXT_SHEET_NAME },
-            { XML_NAMESPACE_TEXT, XML_DATE, XML_TOK_CELL_TEXT_DATE },
-            { XML_NAMESPACE_TEXT, XML_TITLE, XML_TOK_CELL_TEXT_TITLE },
-            { XML_NAMESPACE_TEXT, XML_A, XML_TOK_CELL_TEXT_URL },
-            XML_TOKEN_MAP_END
-        };
-
-        pCellTextParaElemTokenMap = new SvXMLTokenMap(aMap);
-    }
-    return *pCellTextParaElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetCellTextSpanElemTokenMap()
-{
-    if (!pCellTextSpanElemTokenMap)
-    {
-        static const SvXMLTokenMapEntry aMap[] =
-        {
-            { XML_NAMESPACE_TEXT, XML_SHEET_NAME, XML_TOK_CELL_TEXT_SPAN_ELEM_SHEET_NAME },
-            { XML_NAMESPACE_TEXT, XML_DATE, XML_TOK_CELL_TEXT_SPAN_ELEM_DATE },
-            { XML_NAMESPACE_TEXT, XML_TITLE, XML_TOK_CELL_TEXT_SPAN_ELEM_TITLE },
-            { XML_NAMESPACE_TEXT, XML_A, XML_TOK_CELL_TEXT_SPAN_ELEM_URL },
-            { XML_NAMESPACE_TEXT, XML_S, XML_TOK_CELL_TEXT_SPAN_ELEM_S },
-            XML_TOKEN_MAP_END
-        };
-
-        pCellTextSpanElemTokenMap = new SvXMLTokenMap(aMap);
-    }
-    return *pCellTextSpanElemTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetCellTextSpanAttrTokenMap()
-{
-    if (!pCellTextSpanAttrTokenMap)
-    {
-        static const SvXMLTokenMapEntry aMap[] =
-        {
-            { XML_NAMESPACE_TEXT, XML_STYLE_NAME, XML_TOK_CELL_TEXT_SPAN_ATTR_STYLE_NAME },
-            XML_TOKEN_MAP_END
-        };
-
-        pCellTextSpanAttrTokenMap = new SvXMLTokenMap(aMap);
-    }
-    return *pCellTextSpanAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetCellTextURLAttrTokenMap()
-{
-    if (!pCellTextURLAttrTokenMap)
-    {
-        static const SvXMLTokenMapEntry aMap[] =
-        {
-            { XML_NAMESPACE_XLINK, XML_HREF, XML_TOK_CELL_TEXT_URL_ATTR_UREF },
-            { XML_NAMESPACE_XLINK, XML_TYPE, XML_TOK_CELL_TEXT_URL_ATTR_TYPE },
-            { XML_NAMESPACE_OFFICE, XML_TARGET_FRAME_NAME, XML_TOK_CELL_TEXT_URL_TARGET_FRAME },
-            XML_TOKEN_MAP_END
-        };
-
-        pCellTextURLAttrTokenMap = new SvXMLTokenMap(aMap);
-    }
-    return *pCellTextURLAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetCellTextSAttrTokenMap()
-{
-    if (!pCellTextSAttrTokenMap)
-    {
-        static const SvXMLTokenMapEntry aMap[] =
-        {
-            { XML_NAMESPACE_TEXT, XML_C, XML_TOK_CELL_TEXT_S_ATTR_C },
-            XML_TOKEN_MAP_END
-        };
-
-        pCellTextSAttrTokenMap = new SvXMLTokenMap(aMap);
-    }
-    return *pCellTextSAttrTokenMap;
-}
-
-const SvXMLTokenMap& ScXMLImport::GetDataStreamAttrTokenMap()
-{
-    if (!pDataStreamAttrTokenMap)
-    {
-        static const SvXMLTokenMapEntry aMap[] =
-        {
-            { XML_NAMESPACE_XLINK, XML_HREF, XML_TOK_DATA_STREAM_ATTR_URL },
-            { XML_NAMESPACE_TABLE, XML_TARGET_RANGE_ADDRESS, XML_TOK_DATA_STREAM_ATTR_RANGE },
-            { XML_NAMESPACE_CALC_EXT, XML_EMPTY_LINE_REFRESH, XML_TOK_DATA_STREAM_ATTR_EMPTY_LINE_REFRESH },
-            { XML_NAMESPACE_CALC_EXT, XML_INSERTION_POSITION, XML_TOK_DATA_STREAM_ATTR_INSERTION_POSITION },
-            XML_TOKEN_MAP_END
-        };
-        pDataStreamAttrTokenMap = new SvXMLTokenMap(aMap);
-    }
-    return *pDataStreamAttrTokenMap;
-}
 
 void ScXMLImport::SetPostProcessData( sc::ImportPostProcessData* p )
 {
@@ -2015,31 +518,8 @@ sc::PivotTableSources& ScXMLImport::GetPivotTableSources()
     return *mpPivotSources;
 }
 
-SvXMLImportContext *ScXMLImport::CreateContext( sal_uInt16 nPrefix,
-                                               const OUString& rLocalName,
-                                               const uno::Reference<xml::sax::XAttributeList>& xAttrList )
-{
-    SvXMLImportContext *pContext = nullptr;
-
-    if ( (XML_NAMESPACE_OFFICE == nPrefix) &&
-        ( IsXMLToken(rLocalName, XML_DOCUMENT_META)) ) {
-            pContext = CreateMetaContext(rLocalName);
-    } else if ( (XML_NAMESPACE_OFFICE == nPrefix) &&
-        ( IsXMLToken(rLocalName, XML_DOCUMENT)) ) {
-            uno::Reference<document::XDocumentPropertiesSupplier> xDPS(
-                GetModel(), uno::UNO_QUERY_THROW);
-            // flat OpenDocument file format
-            pContext = new ScXMLFlatDocContext_Impl( *this, nPrefix, rLocalName,
-                xAttrList, xDPS->getDocumentProperties());
-    }
-    else
-        pContext = SvXMLImport::CreateContext( nPrefix, rLocalName, xAttrList );
-
-    return pContext;
-}
-
 SvXMLImportContext *ScXMLImport::CreateFastContext( sal_Int32 nElement,
-        const uno::Reference< xml::sax::XFastAttributeList >& xAttrList )
+        const uno::Reference< xml::sax::XFastAttributeList >& /*xAttrList*/ )
 {
     SvXMLImportContext *pContext = nullptr;
 
@@ -2051,125 +531,37 @@ SvXMLImportContext *ScXMLImport::CreateFastContext( sal_Int32 nElement,
         pContext = new ScXMLDocContext_Impl( *this );
         break;
 
+    case XML_ELEMENT( OFFICE, XML_DOCUMENT_META ):
+        pContext = CreateMetaContext(nElement);
+        break;
+
     case XML_ELEMENT( OFFICE, XML_DOCUMENT ):
     {
         uno::Reference<document::XDocumentPropertiesSupplier> xDPS(
             GetModel(), uno::UNO_QUERY_THROW);
         // flat OpenDocument file format
         pContext = new ScXMLFlatDocContext_Impl( *this,
-            xAttrList, xDPS->getDocumentProperties());
+            xDPS->getDocumentProperties());
         break;
     }
 
-    default:
-        pContext = new SvXMLImportContext( *this );
     }
 
     return pContext;
 }
 
+constexpr OUStringLiteral gsNumberFormat(SC_UNONAME_NUMFMT);
+constexpr OUStringLiteral gsLocale(SC_LOCALE);
+constexpr OUStringLiteral gsCellStyle(SC_UNONAME_CELLSTYL);
+
 ScXMLImport::ScXMLImport(
     const css::uno::Reference< css::uno::XComponentContext >& rContext,
-    OUString const & implementationName, SvXMLImportFlags nImportFlag)
-:   SvXMLImport( rContext, implementationName, nImportFlag ),
+    OUString const & implementationName, SvXMLImportFlags nImportFlag,
+    const css::uno::Sequence< OUString > & sSupportedServiceNames)
+:   SvXMLImport( rContext, implementationName, nImportFlag, sSupportedServiceNames ),
     pDoc( nullptr ),
-    pChangeTrackingImportHelper(nullptr),
-    pStylesImportHelper(nullptr),
-    sNumberFormat(SC_UNONAME_NUMFMT),
-    sLocale(SC_LOCALE),
-    sCellStyle(SC_UNONAME_CELLSTYL),
-    pDocElemTokenMap( nullptr ),
-    pBodyElemTokenMap( nullptr ),
-    pContentValidationsElemTokenMap( nullptr ),
-    pContentValidationElemTokenMap( nullptr ),
-    pContentValidationAttrTokenMap( nullptr ),
-    pContentValidationMessageElemTokenMap( nullptr ),
-    pContentValidationHelpMessageAttrTokenMap( nullptr ),
-    pContentValidationErrorMessageAttrTokenMap( nullptr ),
-    pContentValidationErrorMacroAttrTokenMap( nullptr ),
-    pCondFormatsTokenMap( nullptr ),
-    pCondFormatTokenMap( nullptr ),
-    pCondFormatAttrMap( nullptr ),
-    pCondDateAttrMap( nullptr ),
-    pConditionAttrMap( nullptr ),
-    pColorScaleTokenMap( nullptr ),
-    pColorScaleEntryAttrTokenMap( nullptr ),
-    pDataBarTokenMap( nullptr ),
-    pDataBarAttrMap( nullptr ),
-    pFormattingEntryAttrMap( nullptr ),
-    pIconSetAttrMap( nullptr ),
-    pLabelRangesElemTokenMap( nullptr ),
-    pLabelRangeAttrTokenMap( nullptr ),
-    pTableElemTokenMap( nullptr ),
-    pTableProtectionElemTokenMap(nullptr),
-    pTableRowsElemTokenMap( nullptr ),
-    pTableColsElemTokenMap( nullptr ),
-    pTableScenarioAttrTokenMap( nullptr ),
-    pTableAttrTokenMap( nullptr ),
-    pTableColAttrTokenMap( nullptr ),
-    pTableRowElemTokenMap( nullptr ),
-    pTableRowAttrTokenMap( nullptr ),
-    pTableRowCellElemTokenMap( nullptr ),
-    pTableRowCellAttrTokenMap( nullptr ),
-    pTableAnnotationAttrTokenMap( nullptr ),
-    pDetectiveElemTokenMap( nullptr ),
-    pDetectiveHighlightedAttrTokenMap( nullptr ),
-    pDetectiveOperationAttrTokenMap( nullptr ),
-    pTableCellRangeSourceAttrTokenMap( nullptr ),
-    pNamedExpressionsElemTokenMap( nullptr ),
-    pNamedRangeAttrTokenMap( nullptr ),
-    pNamedExpressionAttrTokenMap( nullptr ),
-    pDatabaseRangesElemTokenMap( nullptr ),
-    pDatabaseRangeElemTokenMap( nullptr ),
-    pDatabaseRangeAttrTokenMap( nullptr ),
-    pDatabaseRangeSourceSQLAttrTokenMap( nullptr ),
-    pDatabaseRangeSourceTableAttrTokenMap( nullptr ),
-    pDatabaseRangeSourceQueryAttrTokenMap( nullptr ),
-    pFilterElemTokenMap( nullptr ),
-    pFilterAttrTokenMap( nullptr ),
-    pFilterConditionElemTokenMap( nullptr ),
-    pFilterConditionAttrTokenMap( nullptr ),
-    pFilterSetItemAttrTokenMap( nullptr ),
-    pSortElemTokenMap( nullptr ),
-    pSortAttrTokenMap( nullptr ),
-    pSortSortByAttrTokenMap( nullptr ),
-    pDatabaseRangeSubTotalRulesElemTokenMap( nullptr ),
-    pDatabaseRangeSubTotalRulesAttrTokenMap( nullptr ),
-    pSubTotalRulesSortGroupsAttrTokenMap( nullptr ),
-    pSubTotalRulesSubTotalRuleElemTokenMap( nullptr ),
-    pSubTotalRulesSubTotalRuleAttrTokenMap( nullptr ),
-    pSubTotalRuleSubTotalFieldAttrTokenMap( nullptr ),
-    pDataPilotTablesElemTokenMap( nullptr ),
-    pDataPilotTableAttrTokenMap( nullptr ),
-    pDataPilotTableElemTokenMap( nullptr ),
-    pDataPilotTableSourceServiceAttrTokenMap( nullptr ),
-    pDataPilotGrandTotalAttrTokenMap(nullptr),
-    pDataPilotTableSourceCellRangeElemTokenMap( nullptr ),
-    pDataPilotTableSourceCellRangeAttrTokenMap( nullptr ),
-    pDataPilotFieldAttrTokenMap( nullptr ),
-    pDataPilotFieldElemTokenMap( nullptr ),
-    pDataPilotLevelAttrTokenMap( nullptr ),
-    pDataPilotLevelElemTokenMap( nullptr ),
-    pDataPilotSubTotalsElemTokenMap( nullptr ),
-    pDataPilotSubTotalAttrTokenMap( nullptr ),
-    pDataPilotMembersElemTokenMap( nullptr ),
-    pDataPilotMemberAttrTokenMap( nullptr ),
-    pConsolidationAttrTokenMap( nullptr ),
-    pCellTextParaElemTokenMap(nullptr),
-    pCellTextSpanElemTokenMap(nullptr),
-    pCellTextSpanAttrTokenMap(nullptr),
-    pCellTextURLAttrTokenMap(nullptr),
-    pCellTextSAttrTokenMap(nullptr),
-    pDataStreamAttrTokenMap(nullptr),
     mpPostProcessData(nullptr),
     aTables(*this),
-    m_pMyNamedExpressions(nullptr),
-    pMyLabelRanges(nullptr),
-    pValidations(nullptr),
-    pDetectiveOpArray(nullptr),
-    pSolarMutexGuard(nullptr),
-    pNumberFormatAttributesExportHelper(nullptr),
-    pStyleNumberFormats(nullptr),
     sPrevStyleName(),
     sPrevCurrency(),
     nSolarMutexLocked(0),
@@ -2182,7 +574,7 @@ ScXMLImport::ScXMLImport(
     mbImportStyles(true),
     mbHasNewCondFormatData(false)
 {
-    pStylesImportHelper = new ScMyStylesImportHelper(*this);
+    pStylesImportHelper.reset(new ScMyStylesImportHelper(*this));
 
     xScPropHdlFactory = new XMLScPropHdlFactory;
     xCellStylesPropertySetMapper = new XMLPropertySetMapper(aXMLScCellStylesProperties, xScPropHdlFactory, false);
@@ -2195,122 +587,33 @@ ScXMLImport::ScXMLImport(
         GetXMLToken( XML_NP_PRESENTATION ),
         GetXMLToken( XML_N_PRESENTATION ),
         XML_NAMESPACE_PRESENTATION );
-
-    // initialize cell type map.
-    const struct { XMLTokenEnum  _token; sal_Int16 _type; } aCellTypePairs[] =
-    {
-        { XML_FLOAT,        util::NumberFormat::NUMBER },
-        { XML_STRING,       util::NumberFormat::TEXT },
-        { XML_TIME,         util::NumberFormat::TIME },
-        { XML_DATE,         util::NumberFormat::DATETIME },
-        { XML_PERCENTAGE,   util::NumberFormat::PERCENT },
-        { XML_CURRENCY,     util::NumberFormat::CURRENCY },
-        { XML_BOOLEAN,      util::NumberFormat::LOGICAL }
-    };
-    for (const auto & aCellTypePair : aCellTypePairs)
-    {
-        aCellTypeMap.insert(
-            CellTypeMap::value_type(
-                GetXMLToken(aCellTypePair._token), aCellTypePair._type));
-    }
 }
 
 ScXMLImport::~ScXMLImport() throw()
 {
     //  delete pI18NMap;
-    delete pDocElemTokenMap;
-    delete pBodyElemTokenMap;
-    delete pContentValidationsElemTokenMap;
-    delete pContentValidationElemTokenMap;
-    delete pContentValidationAttrTokenMap;
-    delete pContentValidationMessageElemTokenMap;
-    delete pContentValidationHelpMessageAttrTokenMap;
-    delete pContentValidationErrorMessageAttrTokenMap;
-    delete pContentValidationErrorMacroAttrTokenMap;
-    delete pCondFormatsTokenMap;
-    delete pCondFormatTokenMap;
-    delete pCondFormatAttrMap;
-    delete pCondDateAttrMap;
-    delete pConditionAttrMap;
-    delete pColorScaleTokenMap;
-    delete pColorScaleEntryAttrTokenMap;
-    delete pDataBarTokenMap;
-    delete pDataBarAttrMap;
-    delete pFormattingEntryAttrMap;
-    delete pLabelRangesElemTokenMap;
-    delete pLabelRangeAttrTokenMap;
-    delete pTableElemTokenMap;
-    delete pTableProtectionElemTokenMap;
-    delete pTableRowsElemTokenMap;
-    delete pTableColsElemTokenMap;
-    delete pTableAttrTokenMap;
-    delete pTableScenarioAttrTokenMap;
-    delete pTableColAttrTokenMap;
-    delete pTableRowElemTokenMap;
-    delete pTableRowAttrTokenMap;
-    delete pTableRowCellElemTokenMap;
-    delete pTableRowCellAttrTokenMap;
-    delete pTableAnnotationAttrTokenMap;
-    delete pDetectiveElemTokenMap;
-    delete pDetectiveHighlightedAttrTokenMap;
-    delete pDetectiveOperationAttrTokenMap;
-    delete pTableCellRangeSourceAttrTokenMap;
-    delete pNamedExpressionsElemTokenMap;
-    delete pNamedRangeAttrTokenMap;
-    delete pNamedExpressionAttrTokenMap;
-    delete pDatabaseRangesElemTokenMap;
-    delete pDatabaseRangeElemTokenMap;
-    delete pDatabaseRangeAttrTokenMap;
-    delete pDatabaseRangeSourceSQLAttrTokenMap;
-    delete pDatabaseRangeSourceTableAttrTokenMap;
-    delete pDatabaseRangeSourceQueryAttrTokenMap;
-    delete pFilterElemTokenMap;
-    delete pFilterAttrTokenMap;
-    delete pFilterConditionElemTokenMap;
-    delete pFilterConditionAttrTokenMap;
-    delete pFilterSetItemAttrTokenMap;
-    delete pSortElemTokenMap;
-    delete pSortAttrTokenMap;
-    delete pSortSortByAttrTokenMap;
-    delete pDatabaseRangeSubTotalRulesElemTokenMap;
-    delete pDatabaseRangeSubTotalRulesAttrTokenMap;
-    delete pSubTotalRulesSortGroupsAttrTokenMap;
-    delete pSubTotalRulesSubTotalRuleElemTokenMap;
-    delete pSubTotalRulesSubTotalRuleAttrTokenMap;
-    delete pSubTotalRuleSubTotalFieldAttrTokenMap;
-    delete pDataPilotTablesElemTokenMap;
-    delete pDataPilotTableAttrTokenMap;
-    delete pDataPilotTableElemTokenMap;
-    delete pDataPilotTableSourceServiceAttrTokenMap;
-    delete pDataPilotTableSourceCellRangeAttrTokenMap;
-    delete pDataPilotTableSourceCellRangeElemTokenMap;
-    delete pDataPilotFieldAttrTokenMap;
-    delete pDataPilotFieldElemTokenMap;
-    delete pDataPilotLevelAttrTokenMap;
-    delete pDataPilotLevelElemTokenMap;
-    delete pDataPilotSubTotalsElemTokenMap;
-    delete pDataPilotSubTotalAttrTokenMap;
-    delete pDataPilotMembersElemTokenMap;
-    delete pDataPilotMemberAttrTokenMap;
-    delete pConsolidationAttrTokenMap;
-    delete pCellTextParaElemTokenMap;
-    delete pCellTextSpanElemTokenMap;
-    delete pCellTextSpanAttrTokenMap;
-    delete pCellTextURLAttrTokenMap;
-    delete pCellTextSAttrTokenMap;
-    delete pDataStreamAttrTokenMap;
+    pTableElemTokenMap.reset();
+    pTableRowsElemTokenMap.reset();
+    pTableRowElemTokenMap.reset();
+    pTableRowAttrTokenMap.reset();
+    pTableRowCellElemTokenMap.reset();
+    pTableRowCellAttrTokenMap.reset();
+    pTableAnnotationAttrTokenMap.reset();
 
-    delete pChangeTrackingImportHelper;
-    delete pNumberFormatAttributesExportHelper;
-    delete pStyleNumberFormats;
-    delete pStylesImportHelper;
+    pChangeTrackingImportHelper.reset();
+    pNumberFormatAttributesExportHelper.reset();
+    pStyleNumberFormats.reset();
+    pStylesImportHelper.reset();
 
-    delete pSolarMutexGuard;
+    m_pMyNamedExpressions.reset();
+    pMyLabelRanges.reset();
+    pValidations.reset();
+    pDetectiveOpArray.reset();
 
-    delete m_pMyNamedExpressions;
-    delete pMyLabelRanges;
-    delete pValidations;
-    delete pDetectiveOpArray;
+    //call SvXMLImport dtor contents before deleting pSolarMutexGuard
+    cleanup();
+
+    pSolarMutexGuard.reset();
 }
 
 void ScXMLImport::initialize( const css::uno::Sequence<css::uno::Any>& aArguments )
@@ -2332,21 +635,19 @@ void ScXMLImport::initialize( const css::uno::Sequence<css::uno::Any>& aArgument
         xInfoSet->getPropertyValue(SC_UNO_ODS_IMPORT_STYLES) >>= mbImportStyles;
 }
 
-SvXMLImportContext *ScXMLImport::CreateFontDeclsContext(const sal_uInt16 nPrefix, const OUString& rLocalName,
-                                                        const uno::Reference<xml::sax::XAttributeList>& xAttrList)
+SvXMLImportContext *ScXMLImport::CreateFontDeclsContext()
 {
     XMLFontStylesContext *pFSContext = new XMLFontStylesContext(
-        *this, nPrefix, rLocalName, xAttrList, osl_getThreadTextEncoding());
+        *this, osl_getThreadTextEncoding());
     SetFontDecls(pFSContext);
     SvXMLImportContext* pContext = pFSContext;
     return pContext;
 }
 
-SvXMLImportContext *ScXMLImport::CreateStylesContext(const OUString& rLocalName,
-                                                     const uno::Reference<xml::sax::XAttributeList>& xAttrList, bool bIsAutoStyle )
+SvXMLImportContext *ScXMLImport::CreateStylesContext( bool bIsAutoStyle )
 {
     SvXMLImportContext* pContext = new XMLTableStylesContext(
-        *this, XML_NAMESPACE_OFFICE, rLocalName, xAttrList, bIsAutoStyle);
+        *this, bIsAutoStyle);
 
     if (bIsAutoStyle)
         SetAutoStyles(static_cast<SvXMLStylesContext*>(pContext));
@@ -2356,13 +657,13 @@ SvXMLImportContext *ScXMLImport::CreateStylesContext(const OUString& rLocalName,
     return pContext;
 }
 
-SvXMLImportContext *ScXMLImport::CreateBodyContext(const uno::Reference<xml::sax::XFastAttributeList>& xAttrList)
+SvXMLImportContext *ScXMLImport::CreateBodyContext(const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList)
 {
-    return new ScXMLBodyContext(*this, xAttrList);
+    return new ScXMLBodyContext(*this, rAttrList);
 }
 
 SvXMLImportContext *ScXMLImport::CreateMetaContext(
-    const OUString& rLocalName )
+    const sal_Int32 /*nElement*/ )
 {
     SvXMLImportContext* pContext = nullptr;
 
@@ -2372,37 +673,25 @@ SvXMLImportContext *ScXMLImport::CreateMetaContext(
             GetModel(), uno::UNO_QUERY_THROW);
         uno::Reference<document::XDocumentProperties> const xDocProps(
             (IsStylesOnlyMode()) ? nullptr : xDPS->getDocumentProperties());
-        pContext = new SvXMLMetaDocumentContext(*this,
-            XML_NAMESPACE_OFFICE, rLocalName,
-            xDocProps);
+        pContext = new SvXMLMetaDocumentContext(*this, xDocProps);
     }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( *this,
-        XML_NAMESPACE_OFFICE, rLocalName );
 
     return pContext;
 }
 
-SvXMLImportContext *ScXMLImport::CreateScriptContext(
-    const OUString& rLocalName )
+SvXMLImportContext *ScXMLImport::CreateScriptContext()
 {
     SvXMLImportContext* pContext = nullptr;
 
     if( !(IsStylesOnlyMode()) )
     {
-        pContext = new XMLScriptContext( *this, rLocalName, GetModel() );
+        pContext = new XMLScriptContext( *this, GetModel() );
     }
-
-    if( !pContext )
-        pContext = new SvXMLImportContext( *this, XML_NAMESPACE_OFFICE,
-        rLocalName );
 
     return pContext;
 }
 
-void ScXMLImport::SetStatistics(
-                                const uno::Sequence<beans::NamedValue> & i_rStats)
+void ScXMLImport::SetStatistics(const uno::Sequence<beans::NamedValue> & i_rStats)
 {
     static const char* s_stats[] =
     { "TableCount", "CellCount", "ObjectCount", nullptr };
@@ -2410,11 +699,11 @@ void ScXMLImport::SetStatistics(
     SvXMLImport::SetStatistics(i_rStats);
 
     sal_uInt32 nCount(0);
-    for (sal_Int32 i = 0; i < i_rStats.getLength(); ++i) {
+    for (const auto& rStat : i_rStats) {
         for (const char** pStat = s_stats; *pStat != nullptr; ++pStat) {
-            if (i_rStats[i].Name.equalsAscii(*pStat)) {
+            if (rStat.Name.equalsAscii(*pStat)) {
                 sal_Int32 val = 0;
-                if (i_rStats[i].Value >>= val) {
+                if (rStat.Value >>= val) {
                     nCount += val;
                 } else {
                     OSL_FAIL("ScXMLImport::SetStatistics: invalid entry");
@@ -2435,13 +724,45 @@ ScDocumentImport& ScXMLImport::GetDoc()
     return *mpDocImport;
 }
 
-sal_Int16 ScXMLImport::GetCellType(const OUString& rStrValue) const
+sal_Int16 ScXMLImport::GetCellType(const char* rStrValue, const sal_Int32 nStrLength)
 {
-    CellTypeMap::const_iterator itr = aCellTypeMap.find(rStrValue);
-    if (itr != aCellTypeMap.end())
-        return itr->second;
+    sal_Int16 nCellType = util::NumberFormat::UNDEFINED;
+    if (rStrValue != nullptr)
+    {
+        switch (rStrValue[0])
+        {
+            case 'b':
+                if (nStrLength == 7 && !strcmp(rStrValue, "boolean"))
+                    nCellType = util::NumberFormat::LOGICAL;
+            break;
+            case 'c':
+                if (nStrLength == 8 && !strcmp(rStrValue, "currency"))
+                    nCellType = util::NumberFormat::CURRENCY;
+            break;
+            case 'd':
+                if (nStrLength == 4 && !strcmp(rStrValue, "date"))
+                    nCellType = util::NumberFormat::DATETIME;
+            break;
+            case 'f':
+                if (nStrLength == 5 && !strcmp(rStrValue, "float"))
+                    nCellType = util::NumberFormat::NUMBER;
+            break;
+            case 'p':
+                if (nStrLength == 10 && !strcmp(rStrValue, "percentage"))
+                    nCellType = util::NumberFormat::PERCENT;
+            break;
+            case 's':
+                if (nStrLength == 6 && !strcmp(rStrValue, "string"))
+                    nCellType = util::NumberFormat::TEXT;
+            break;
+            case 't':
+                if (nStrLength == 4 && !strcmp(rStrValue, "time"))
+                    nCellType = util::NumberFormat::TIME;
+            break;
+        }
+    }
 
-    return util::NumberFormat::UNDEFINED;
+    return nCellType;
 }
 
 XMLShapeImportHelper* ScXMLImport::CreateShapeImport()
@@ -2453,24 +774,15 @@ bool ScXMLImport::GetValidation(const OUString& sName, ScMyImportValidation& aVa
 {
     if (pValidations)
     {
-        bool bFound(false);
-        ScMyImportValidations::iterator aItr(pValidations->begin());
-        ScMyImportValidations::iterator aEndItr(pValidations->end());
-        while(aItr != aEndItr && !bFound)
+        auto aItr = std::find_if(pValidations->begin(), pValidations->end(),
+            [&sName](const ScMyImportValidation& rValidation) { return rValidation.sName == sName; });
+        if (aItr != pValidations->end())
         {
-            if (aItr->sName == sName)
-            {
-                // source position must be set as string,
-                // so sBaseCellAddress no longer has to be converted here
-
-                bFound = true;
-            }
-            else
-                ++aItr;
-        }
-        if (bFound)
+            // source position must be set as string,
+            // so sBaseCellAddress no longer has to be converted here
             aValidation = *aItr;
-        return bFound;
+            return true;
+        }
     }
     return false;
 }
@@ -2483,7 +795,7 @@ void ScXMLImport::AddNamedExpression(SCTAB nTab, ScMyNamedExpression* pNamedExp)
     {
         // No chain exists for this sheet.  Create one.
         ::std::pair<SheetNamedExpMap::iterator, bool> r =
-            m_SheetNamedExpressions.insert(std::make_pair(nTab, o3tl::make_unique<ScMyNamedExpressions>()));
+            m_SheetNamedExpressions.insert(std::make_pair(nTab, std::make_unique<ScMyNamedExpressions>()));
         if (!r.second)
             // insertion failed.
             return;
@@ -2497,8 +809,8 @@ void ScXMLImport::AddNamedExpression(SCTAB nTab, ScMyNamedExpression* pNamedExp)
 ScXMLChangeTrackingImportHelper* ScXMLImport::GetChangeTrackingImportHelper()
 {
     if (!pChangeTrackingImportHelper)
-        pChangeTrackingImportHelper = new ScXMLChangeTrackingImportHelper();
-    return pChangeTrackingImportHelper;
+        pChangeTrackingImportHelper.reset(new ScXMLChangeTrackingImportHelper());
+    return pChangeTrackingImportHelper.get();
 }
 
 void ScXMLImport::InsertStyles()
@@ -2525,189 +837,183 @@ void ScXMLImport::ExamineDefaultStyle()
 
 void ScXMLImport::SetChangeTrackingViewSettings(const css::uno::Sequence<css::beans::PropertyValue>& rChangeProps)
 {
-    if (pDoc)
+    if (!pDoc)
+        return;
+
+    if (!rChangeProps.hasElements())
+        return;
+
+    ScXMLImport::MutexGuard aGuard(*this);
+    sal_Int16 nTemp16(0);
+    std::unique_ptr<ScChangeViewSettings> pViewSettings(new ScChangeViewSettings());
+    for (const auto& rChangeProp : rChangeProps)
     {
-        sal_Int32 nCount(rChangeProps.getLength());
-        if (nCount)
+        OUString sName(rChangeProp.Name);
+        if (sName == "ShowChanges")
+            pViewSettings->SetShowChanges(::cppu::any2bool(rChangeProp.Value));
+        else if (sName == "ShowAcceptedChanges")
+            pViewSettings->SetShowAccepted(::cppu::any2bool(rChangeProp.Value));
+        else if (sName == "ShowRejectedChanges")
+            pViewSettings->SetShowRejected(::cppu::any2bool(rChangeProp.Value));
+        else if (sName == "ShowChangesByDatetime")
+            pViewSettings->SetHasDate(::cppu::any2bool(rChangeProp.Value));
+        else if (sName == "ShowChangesByDatetimeMode")
         {
-            ScXMLImport::MutexGuard aGuard(*this);
-            sal_Int16 nTemp16(0);
-            std::unique_ptr<ScChangeViewSettings> pViewSettings(new ScChangeViewSettings());
-            for (sal_Int32 i = 0; i < nCount; ++i)
+            if (rChangeProp.Value >>= nTemp16)
+                pViewSettings->SetTheDateMode(static_cast<SvxRedlinDateMode>(nTemp16));
+        }
+        else if (sName == "ShowChangesByDatetimeFirstDatetime")
+        {
+            util::DateTime aDateTime;
+            if (rChangeProp.Value >>= aDateTime)
             {
-                OUString sName(rChangeProps[i].Name);
-                if (sName == "ShowChanges")
-                    pViewSettings->SetShowChanges(::cppu::any2bool(rChangeProps[i].Value));
-                else if (sName == "ShowAcceptedChanges")
-                    pViewSettings->SetShowAccepted(::cppu::any2bool(rChangeProps[i].Value));
-                else if (sName == "ShowRejectedChanges")
-                    pViewSettings->SetShowRejected(::cppu::any2bool(rChangeProps[i].Value));
-                else if (sName == "ShowChangesByDatetime")
-                    pViewSettings->SetHasDate(::cppu::any2bool(rChangeProps[i].Value));
-                else if (sName == "ShowChangesByDatetimeMode")
-                {
-                    if (rChangeProps[i].Value >>= nTemp16)
-                        pViewSettings->SetTheDateMode(static_cast<SvxRedlinDateMode>(nTemp16));
-                }
-                else if (sName == "ShowChangesByDatetimeFirstDatetime")
-                {
-                    util::DateTime aDateTime;
-                    if (rChangeProps[i].Value >>= aDateTime)
-                    {
-                        pViewSettings->SetTheFirstDateTime(::DateTime(aDateTime));
-                    }
-                }
-                else if (sName == "ShowChangesByDatetimeSecondDatetime")
-                {
-                    util::DateTime aDateTime;
-                    if (rChangeProps[i].Value >>= aDateTime)
-                    {
-                        pViewSettings->SetTheLastDateTime(::DateTime(aDateTime));
-                    }
-                }
-                else if (sName == "ShowChangesByAuthor")
-                    pViewSettings->SetHasAuthor(::cppu::any2bool(rChangeProps[i].Value));
-                else if (sName == "ShowChangesByAuthorName")
-                {
-                    OUString sOUName;
-                    if (rChangeProps[i].Value >>= sOUName)
-                    {
-                        pViewSettings->SetTheAuthorToShow(sOUName);
-                    }
-                }
-                else if (sName == "ShowChangesByComment")
-                    pViewSettings->SetHasComment(::cppu::any2bool(rChangeProps[i].Value));
-                else if (sName == "ShowChangesByCommentText")
-                {
-                    OUString sOUComment;
-                    if (rChangeProps[i].Value >>= sOUComment)
-                    {
-                        pViewSettings->SetTheComment(sOUComment);
-                    }
-                }
-                else if (sName == "ShowChangesByRanges")
-                    pViewSettings->SetHasRange(::cppu::any2bool(rChangeProps[i].Value));
-                else if (sName == "ShowChangesByRangesList")
-                {
-                    OUString sRanges;
-                    if ((rChangeProps[i].Value >>= sRanges) && !sRanges.isEmpty())
-                    {
-                        ScRangeList aRangeList;
-                        ScRangeStringConverter::GetRangeListFromString(
-                            aRangeList, sRanges, GetDocument(), FormulaGrammar::CONV_OOO);
-                        pViewSettings->SetTheRangeList(aRangeList);
-                    }
-                }
+                pViewSettings->SetTheFirstDateTime(::DateTime(aDateTime));
             }
-            pDoc->SetChangeViewSettings(*pViewSettings);
+        }
+        else if (sName == "ShowChangesByDatetimeSecondDatetime")
+        {
+            util::DateTime aDateTime;
+            if (rChangeProp.Value >>= aDateTime)
+            {
+                pViewSettings->SetTheLastDateTime(::DateTime(aDateTime));
+            }
+        }
+        else if (sName == "ShowChangesByAuthor")
+            pViewSettings->SetHasAuthor(::cppu::any2bool(rChangeProp.Value));
+        else if (sName == "ShowChangesByAuthorName")
+        {
+            OUString sOUName;
+            if (rChangeProp.Value >>= sOUName)
+            {
+                pViewSettings->SetTheAuthorToShow(sOUName);
+            }
+        }
+        else if (sName == "ShowChangesByComment")
+            pViewSettings->SetHasComment(::cppu::any2bool(rChangeProp.Value));
+        else if (sName == "ShowChangesByCommentText")
+        {
+            OUString sOUComment;
+            if (rChangeProp.Value >>= sOUComment)
+            {
+                pViewSettings->SetTheComment(sOUComment);
+            }
+        }
+        else if (sName == "ShowChangesByRanges")
+            pViewSettings->SetHasRange(::cppu::any2bool(rChangeProp.Value));
+        else if (sName == "ShowChangesByRangesList")
+        {
+            OUString sRanges;
+            if ((rChangeProp.Value >>= sRanges) && !sRanges.isEmpty())
+            {
+                ScRangeList aRangeList;
+                ScRangeStringConverter::GetRangeListFromString(
+                    aRangeList, sRanges, GetDocument(), FormulaGrammar::CONV_OOO);
+                pViewSettings->SetTheRangeList(aRangeList);
+            }
         }
     }
+    pDoc->SetChangeViewSettings(*pViewSettings);
 }
 
 void ScXMLImport::SetViewSettings(const uno::Sequence<beans::PropertyValue>& aViewProps)
 {
-    sal_Int32 nCount(aViewProps.getLength());
     sal_Int32 nHeight(0);
     sal_Int32 nLeft(0);
     sal_Int32 nTop(0);
     sal_Int32 nWidth(0);
-    for (sal_Int32 i = 0; i < nCount; ++i)
+    for (const auto& rViewProp : aViewProps)
     {
-        OUString sName(aViewProps[i].Name);
+        OUString sName(rViewProp.Name);
         if (sName == "VisibleAreaHeight")
-            aViewProps[i].Value >>= nHeight;
+            rViewProp.Value >>= nHeight;
         else if (sName == "VisibleAreaLeft")
-            aViewProps[i].Value >>= nLeft;
+            rViewProp.Value >>= nLeft;
         else if (sName == "VisibleAreaTop")
-            aViewProps[i].Value >>= nTop;
+            rViewProp.Value >>= nTop;
         else if (sName == "VisibleAreaWidth")
-            aViewProps[i].Value >>= nWidth;
+            rViewProp.Value >>= nWidth;
         else if (sName == "TrackedChangesViewSettings")
         {
             uno::Sequence<beans::PropertyValue> aChangeProps;
-            if(aViewProps[i].Value >>= aChangeProps)
+            if(rViewProp.Value >>= aChangeProps)
                 SetChangeTrackingViewSettings(aChangeProps);
         }
     }
-    if (nHeight && nWidth)
+    if (!(nHeight && nWidth && GetModel().is()))
+        return;
+
+    ScModelObj* pDocObj(comphelper::getUnoTunnelImplementation<ScModelObj>( GetModel() ));
+    if (!pDocObj)
+        return;
+
+    SfxObjectShell* pEmbeddedObj = pDocObj->GetEmbeddedObject();
+    if (pEmbeddedObj)
     {
-        if (GetModel().is())
-        {
-            ScModelObj* pDocObj(ScModelObj::getImplementation( GetModel() ));
-            if (pDocObj)
-            {
-                SfxObjectShell* pEmbeddedObj = pDocObj->GetEmbeddedObject();
-                if (pEmbeddedObj)
-                {
-                    tools::Rectangle aRect;
-                    aRect.setX( nLeft );
-                    aRect.setY( nTop );
-                    aRect.setWidth( nWidth );
-                    aRect.setHeight( nHeight );
-                    pEmbeddedObj->SetVisArea(aRect);
-                }
-            }
-        }
+        tools::Rectangle aRect;
+        aRect.setX( nLeft );
+        aRect.setY( nTop );
+        aRect.setWidth( nWidth );
+        aRect.setHeight( nHeight );
+        pEmbeddedObj->SetVisArea(aRect);
     }
 }
 
 void ScXMLImport::SetConfigurationSettings(const uno::Sequence<beans::PropertyValue>& aConfigProps)
 {
-    if (GetModel().is())
+    if (!GetModel().is())
+        return;
+
+    uno::Reference <lang::XMultiServiceFactory> xMultiServiceFactory(GetModel(), uno::UNO_QUERY);
+    if (!xMultiServiceFactory.is())
+        return;
+
+    sal_Int32 nCount(aConfigProps.getLength());
+    css::uno::Sequence<css::beans::PropertyValue> aFilteredProps(nCount);
+    sal_Int32 nFilteredPropsLen = 0;
+    for (sal_Int32 i = nCount - 1; i >= 0; --i)
     {
-        uno::Reference <lang::XMultiServiceFactory> xMultiServiceFactory(GetModel(), uno::UNO_QUERY);
-        if (xMultiServiceFactory.is())
+        if (aConfigProps[i].Name == "TrackedChangesProtectionKey")
         {
-            sal_Int32 nCount(aConfigProps.getLength());
-            css::uno::Sequence<css::beans::PropertyValue> aFilteredProps(
-                aConfigProps.getLength());
-            sal_Int32 nFilteredPropsLen = 0;
-            for (sal_Int32 i = nCount - 1; i >= 0; --i)
+            OUString sKey;
+            if (aConfigProps[i].Value >>= sKey)
             {
-                if (aConfigProps[i].Name == "TrackedChangesProtectionKey")
+                uno::Sequence<sal_Int8> aPass;
+                ::comphelper::Base64::decode(aPass, sKey);
+                if (aPass.hasElements())
                 {
-                    OUString sKey;
-                    if (aConfigProps[i].Value >>= sKey)
+                    if (pDoc->GetChangeTrack())
+                        pDoc->GetChangeTrack()->SetProtection(aPass);
+                    else
                     {
-                        uno::Sequence<sal_Int8> aPass;
-                        ::sax::Converter::decodeBase64(aPass, sKey);
-                        if (aPass.getLength())
-                        {
-                            if (pDoc->GetChangeTrack())
-                                pDoc->GetChangeTrack()->SetProtection(aPass);
-                            else
-                            {
-                                std::set<OUString> aUsers;
-                                ScChangeTrack* pTrack = new ScChangeTrack(pDoc, aUsers);
-                                pTrack->SetProtection(aPass);
-                                pDoc->SetChangeTrack(pTrack);
-                            }
-                        }
+                        std::set<OUString> aUsers;
+                        std::unique_ptr<ScChangeTrack> pTrack( new ScChangeTrack(pDoc, aUsers) );
+                        pTrack->SetProtection(aPass);
+                        pDoc->SetChangeTrack(std::move(pTrack));
                     }
-                }
-                // store the following items for later use (after document is loaded)
-                else if ((aConfigProps[i].Name == "VBACompatibilityMode") || (aConfigProps[i].Name == "ScriptConfiguration"))
-                {
-                    uno::Reference< beans::XPropertySet > xImportInfo = getImportInfo();
-                    if (xImportInfo.is())
-                    {
-                        uno::Reference< beans::XPropertySetInfo > xPropertySetInfo = xImportInfo->getPropertySetInfo();
-                        if (xPropertySetInfo.is() && xPropertySetInfo->hasPropertyByName(aConfigProps[i].Name))
-                            xImportInfo->setPropertyValue( aConfigProps[i].Name, aConfigProps[i].Value );
-                    }
-                }
-                if (aConfigProps[i].Name != "LinkUpdateMode")
-                {
-                    aFilteredProps[nFilteredPropsLen++] = aConfigProps[i];
                 }
             }
-            aFilteredProps.realloc(nFilteredPropsLen);
-            uno::Reference <uno::XInterface> xInterface = xMultiServiceFactory->createInstance("com.sun.star.comp.SpreadsheetSettings");
-            uno::Reference <beans::XPropertySet> xProperties(xInterface, uno::UNO_QUERY);
-            if (xProperties.is())
-                SvXMLUnitConverter::convertPropertySet(xProperties, aFilteredProps);
+        }
+        // store the following items for later use (after document is loaded)
+        else if ((aConfigProps[i].Name == "VBACompatibilityMode") || (aConfigProps[i].Name == "ScriptConfiguration"))
+        {
+            uno::Reference< beans::XPropertySet > xImportInfo = getImportInfo();
+            if (xImportInfo.is())
+            {
+                uno::Reference< beans::XPropertySetInfo > xPropertySetInfo = xImportInfo->getPropertySetInfo();
+                if (xPropertySetInfo.is() && xPropertySetInfo->hasPropertyByName(aConfigProps[i].Name))
+                    xImportInfo->setPropertyValue( aConfigProps[i].Name, aConfigProps[i].Value );
+            }
+        }
+        if (aConfigProps[i].Name != "LinkUpdateMode")
+        {
+            aFilteredProps[nFilteredPropsLen++] = aConfigProps[i];
         }
     }
+    aFilteredProps.realloc(nFilteredPropsLen);
+    uno::Reference <uno::XInterface> xInterface = xMultiServiceFactory->createInstance("com.sun.star.comp.SpreadsheetSettings");
+    uno::Reference <beans::XPropertySet> xProperties(xInterface, uno::UNO_QUERY);
+    if (xProperties.is())
+        SvXMLUnitConverter::convertPropertySet(xProperties, aFilteredProps);
 }
 
 sal_Int32 ScXMLImport::SetCurrencySymbol(const sal_Int32 nKey, const OUString& rCurrency)
@@ -2725,7 +1031,7 @@ sal_Int32 ScXMLImport::SetCurrencySymbol(const sal_Int32 nKey, const OUString& r
                 if (xProperties.is())
                 {
                     lang::Locale aLocale;
-                    if (GetDocument() && (xProperties->getPropertyValue(sLocale) >>= aLocale))
+                    if (GetDocument() && (xProperties->getPropertyValue(gsLocale) >>= aLocale))
                     {
                         {
                             ScXMLImport::MutexGuard aGuard(*this);
@@ -2749,10 +1055,9 @@ sal_Int32 ScXMLImport::SetCurrencySymbol(const sal_Int32 nKey, const OUString& r
             }
             catch ( const util::MalformedNumberFormatException& rException )
             {
-                OUString sErrorMessage("Error in Formatstring ");
-                sErrorMessage += sFormatString;
-                sErrorMessage += " at position ";
-                sErrorMessage += OUString::number(rException.CheckPos);
+                OUString sErrorMessage ="Error in Formatstring " +
+                    sFormatString + " at position " +
+                    OUString::number(rException.CheckPos);
                 uno::Sequence<OUString> aSeq { sErrorMessage };
                 uno::Reference<xml::sax::XLocator> xLocator;
                 SetError(XMLERROR_API | XMLERROR_FLAG_ERROR, aSeq, rException.Message, xLocator);
@@ -2778,7 +1083,7 @@ bool ScXMLImport::IsCurrencySymbol(const sal_Int32 nNumberFormat, const OUString
                     OUString sTemp;
                     if ( xNumberPropertySet->getPropertyValue(SC_CURRENCYSYMBOL) >>= sTemp)
                     {
-                        if (sCurrentCurrency.equals(sTemp))
+                        if (sCurrentCurrency == sTemp)
                             return true;
                         // A release that saved an unknown currency may have
                         // saved the currency symbol of the number format
@@ -2787,7 +1092,7 @@ bool ScXMLImport::IsCurrencySymbol(const sal_Int32 nNumberFormat, const OUString
                         // sCurrentCurrency is the ISO code obtained through
                         // XMLNumberFormatAttributesExportHelper::GetCellType()
                         // and sBankSymbol is the currency symbol.
-                        if (sCurrentCurrency.getLength() == 3 && sBankSymbol.equals(sTemp))
+                        if (sCurrentCurrency.getLength() == 3 && sBankSymbol == sTemp)
                             return true;
                         // #i61657# This may be a legacy currency symbol that changed in the meantime.
                         if (SvNumberFormatter::GetLegacyOnlyCurrencyEntry( sCurrentCurrency, sBankSymbol) != nullptr)
@@ -2814,7 +1119,7 @@ bool ScXMLImport::IsCurrencySymbol(const sal_Int32 nNumberFormat, const OUString
     return false;
 }
 
-void ScXMLImport::SetType(uno::Reference <beans::XPropertySet>& rProperties,
+void ScXMLImport::SetType(const uno::Reference <beans::XPropertySet>& rProperties,
                           sal_Int32& rNumberFormat,
                           const sal_Int16 nCellType,
                           const OUString& rCurrency)
@@ -2822,85 +1127,74 @@ void ScXMLImport::SetType(uno::Reference <beans::XPropertySet>& rProperties,
     if (!mbImportStyles)
         return;
 
-    if ((nCellType != util::NumberFormat::TEXT) && (nCellType != util::NumberFormat::UNDEFINED))
-    {
-        if (rNumberFormat == -1)
-            rProperties->getPropertyValue( sNumberFormat ) >>= rNumberFormat;
-        OSL_ENSURE(rNumberFormat != -1, "no NumberFormat");
-        bool bIsStandard;
-        // sCurrentCurrency may be the ISO code abbreviation if the currency
-        // symbol matches such, or if no match found the symbol itself!
-        OUString sCurrentCurrency;
-        sal_Int32 nCurrentCellType(
-            GetNumberFormatAttributesExportHelper()->GetCellType(
-                rNumberFormat, sCurrentCurrency, bIsStandard) & ~util::NumberFormat::DEFINED);
-        if ((nCellType != nCurrentCellType) && !((nCellType == util::NumberFormat::NUMBER &&
-            ((nCurrentCellType == util::NumberFormat::SCIENTIFIC) ||
-            (nCurrentCellType == util::NumberFormat::FRACTION) ||
-            (nCurrentCellType == util::NumberFormat::LOGICAL) ||
-            (nCurrentCellType == 0))) || (nCurrentCellType == util::NumberFormat::TEXT)) && !((nCellType == util::NumberFormat::DATETIME) &&
-            (nCurrentCellType == util::NumberFormat::DATE)))
-        {
-            if (!xNumberFormats.is())
-            {
-                uno::Reference <util::XNumberFormatsSupplier> xNumberFormatsSupplier(GetNumberFormatsSupplier());
-                if (xNumberFormatsSupplier.is())
-                    xNumberFormats.set(xNumberFormatsSupplier->getNumberFormats());
-            }
-            if (xNumberFormats.is())
-            {
-                try
-                {
-                    uno::Reference < beans::XPropertySet> xNumberFormatProperties(xNumberFormats->getByKey(rNumberFormat));
-                    if (xNumberFormatProperties.is())
-                    {
-                        if (nCellType != util::NumberFormat::CURRENCY)
-                        {
-                            lang::Locale aLocale;
-                            if ( xNumberFormatProperties->getPropertyValue(sLocale) >>= aLocale )
-                            {
-                                if (!xNumberFormatTypes.is())
-                                    xNumberFormatTypes.set(uno::Reference <util::XNumberFormatTypes>(xNumberFormats, uno::UNO_QUERY));
-                                rProperties->setPropertyValue( sNumberFormat, uno::makeAny(xNumberFormatTypes->getStandardFormat(nCellType, aLocale)) );
-                            }
-                        }
-                        else if (!rCurrency.isEmpty() && !sCurrentCurrency.isEmpty())
-                        {
-                            if (!sCurrentCurrency.equals(rCurrency))
-                                if (!IsCurrencySymbol(rNumberFormat, sCurrentCurrency, rCurrency))
-                                    rProperties->setPropertyValue( sNumberFormat, uno::makeAny(SetCurrencySymbol(rNumberFormat, rCurrency)));
-                        }
-                    }
-                }
-                catch ( uno::Exception& )
-                {
-                    OSL_FAIL("Numberformat not found");
-                }
-            }
-        }
-        else
-        {
-            if ((nCellType == util::NumberFormat::CURRENCY) && !rCurrency.isEmpty() && !sCurrentCurrency.isEmpty() &&
-                !sCurrentCurrency.equals(rCurrency) && !IsCurrencySymbol(rNumberFormat, sCurrentCurrency, rCurrency))
-                rProperties->setPropertyValue( sNumberFormat, uno::makeAny(SetCurrencySymbol(rNumberFormat, rCurrency)));
-        }
-    }
-}
-
-void ScXMLImport::AddStyleRange(const table::CellRangeAddress& rCellRange)
-{
-    if (!mbImportStyles)
+    if ((nCellType == util::NumberFormat::TEXT) || (nCellType == util::NumberFormat::UNDEFINED))
         return;
 
-    if (!xSheetCellRanges.is() && GetModel().is())
+    if (rNumberFormat == -1)
+        rProperties->getPropertyValue( gsNumberFormat ) >>= rNumberFormat;
+    OSL_ENSURE(rNumberFormat != -1, "no NumberFormat");
+    bool bIsStandard;
+    // sCurrentCurrency may be the ISO code abbreviation if the currency
+    // symbol matches such, or if no match found the symbol itself!
+    OUString sCurrentCurrency;
+    sal_Int32 nCurrentCellType(
+        GetNumberFormatAttributesExportHelper()->GetCellType(
+            rNumberFormat, sCurrentCurrency, bIsStandard) & ~util::NumberFormat::DEFINED);
+    // If the (numeric) cell type (number, currency, date, time, boolean)
+    // is different from the format type then for some combinations we may
+    // have to apply a format, e.g. in case the generator deduced format
+    // from type and did not apply a format but we don't keep a dedicated
+    // type internally. Specifically this is necessary if the cell type is
+    // not number but the format type is (i.e. General). Currency cells
+    // need extra attention, see calls of ScXMLImport::IsCurrencySymbol()
+    // and description within there and ScXMLImport::SetCurrencySymbol().
+    if ((nCellType != nCurrentCellType) &&
+            (nCellType != util::NumberFormat::NUMBER) &&
+            (bIsStandard || (nCellType == util::NumberFormat::CURRENCY)))
     {
-        uno::Reference <lang::XMultiServiceFactory> xMultiServiceFactory(GetModel(), uno::UNO_QUERY);
-        if (xMultiServiceFactory.is())
-            xSheetCellRanges.set(uno::Reference <sheet::XSheetCellRangeContainer>(xMultiServiceFactory->createInstance("com.sun.star.sheet.SheetCellRanges"), uno::UNO_QUERY));
-        OSL_ENSURE(xSheetCellRanges.is(), "didn't get SheetCellRanges");
-
+        if (!xNumberFormats.is())
+        {
+            uno::Reference <util::XNumberFormatsSupplier> xNumberFormatsSupplier(GetNumberFormatsSupplier());
+            if (xNumberFormatsSupplier.is())
+                xNumberFormats.set(xNumberFormatsSupplier->getNumberFormats());
+        }
+        if (xNumberFormats.is())
+        {
+            try
+            {
+                uno::Reference < beans::XPropertySet> xNumberFormatProperties(xNumberFormats->getByKey(rNumberFormat));
+                if (xNumberFormatProperties.is())
+                {
+                    if (nCellType != util::NumberFormat::CURRENCY)
+                    {
+                        lang::Locale aLocale;
+                        if ( xNumberFormatProperties->getPropertyValue(gsLocale) >>= aLocale )
+                        {
+                            if (!xNumberFormatTypes.is())
+                                xNumberFormatTypes.set(uno::Reference <util::XNumberFormatTypes>(xNumberFormats, uno::UNO_QUERY));
+                            rProperties->setPropertyValue( gsNumberFormat, uno::makeAny(xNumberFormatTypes->getStandardFormat(nCellType, aLocale)) );
+                        }
+                    }
+                    else if (!rCurrency.isEmpty() && !sCurrentCurrency.isEmpty())
+                    {
+                        if (sCurrentCurrency != rCurrency)
+                            if (!IsCurrencySymbol(rNumberFormat, sCurrentCurrency, rCurrency))
+                                rProperties->setPropertyValue( gsNumberFormat, uno::makeAny(SetCurrencySymbol(rNumberFormat, rCurrency)));
+                    }
+                }
+            }
+            catch ( uno::Exception& )
+            {
+                OSL_FAIL("Numberformat not found");
+            }
+        }
     }
-    xSheetCellRanges->addRangeAddress(rCellRange, false);
+    else
+    {
+        if ((nCellType == util::NumberFormat::CURRENCY) && !rCurrency.isEmpty() && !sCurrentCurrency.isEmpty() &&
+            sCurrentCurrency != rCurrency && !IsCurrencySymbol(rNumberFormat, sCurrentCurrency, rCurrency))
+            rProperties->setPropertyValue( gsNumberFormat, uno::makeAny(SetCurrencySymbol(rNumberFormat, rCurrency)));
+    }
 }
 
 void ScXMLImport::SetStyleToRanges()
@@ -2917,7 +1211,7 @@ void ScXMLImport::SetStyleToRanges()
             XMLTableStyleContext* pStyle = nullptr;
             if ( pStyles )
                 pStyle = const_cast<XMLTableStyleContext*>(static_cast<const XMLTableStyleContext *>(pStyles->FindStyleChildContext(
-                        XML_STYLE_FAMILY_TABLE_CELL, sPrevStyleName, true)));
+                        XmlStyleFamily::TABLE_CELL, sPrevStyleName, true)));
             if (pStyle)
             {
                 pStyle->FillPropertySet(xProperties);
@@ -2929,28 +1223,28 @@ void ScXMLImport::SetStyleToRanges()
                 sal_uInt64 nKey = 0;
                 if ((aAny >>= nKey) && nKey)
                 {
-                    ScFormatSaveData* pFormatSaveData = ScModelObj::getImplementation(GetModel())->GetFormatSaveData();
+                    ScFormatSaveData* pFormatSaveData = comphelper::getUnoTunnelImplementation<ScModelObj>(GetModel())->GetFormatSaveData();
                     pFormatSaveData->maIDToName.insert(std::pair<sal_uInt64, OUString>(nKey, sPrevStyleName));
                 }
 
                 // store first cell of first range for each style, once per sheet
                 uno::Sequence<table::CellRangeAddress> aAddresses(xSheetCellRanges->getRangeAddresses());
                 pStyle->ApplyCondFormat(aAddresses);
-                if ( aAddresses.getLength() > 0 )
+                if ( aAddresses.hasElements() )
                 {
                     const table::CellRangeAddress& rRange = aAddresses[0];
                     if ( rRange.Sheet != pStyle->GetLastSheet() )
                     {
-                        ScSheetSaveData* pSheetData = ScModelObj::getImplementation(GetModel())->GetSheetSaveData();
+                        ScSheetSaveData* pSheetData = comphelper::getUnoTunnelImplementation<ScModelObj>(GetModel())->GetSheetSaveData();
                         pSheetData->AddCellStyle( sPrevStyleName,
-                            ScAddress( (SCCOL)rRange.StartColumn, (SCROW)rRange.StartRow, (SCTAB)rRange.Sheet ) );
+                            ScAddress( static_cast<SCCOL>(rRange.StartColumn), static_cast<SCROW>(rRange.StartRow), static_cast<SCTAB>(rRange.Sheet) ) );
                         pStyle->SetLastSheet(rRange.Sheet);
                     }
                 }
             }
             else
             {
-                xProperties->setPropertyValue(sCellStyle, uno::makeAny(GetStyleDisplayName( XML_STYLE_FAMILY_TABLE_CELL, sPrevStyleName )));
+                xProperties->setPropertyValue(gsCellStyle, uno::makeAny(GetStyleDisplayName( XmlStyleFamily::TABLE_CELL, sPrevStyleName )));
                 sal_Int32 nNumberFormat(GetStyleNumberFormats()->GetStyleNumberFormat(sPrevStyleName));
                 bool bInsert(nNumberFormat == -1);
                 SetType(xProperties, nNumberFormat, nPrevCellType, sPrevCurrency);
@@ -2970,7 +1264,7 @@ void ScXMLImport::SetStyleToRanges()
     OSL_ENSURE(xSheetCellRanges.is(), "didn't get SheetCellRanges");
 }
 
-void ScXMLImport::SetStyleToRange(const ScRange& rRange, const OUString* pStyleName,
+void ScXMLImport::SetStyleToRanges(const ScRangeList& rRanges, const OUString* pStyleName,
                                   const sal_Int16 nCellType, const OUString* pCurrency)
 {
     if (!mbImportStyles)
@@ -2987,9 +1281,9 @@ void ScXMLImport::SetStyleToRange(const ScRange& rRange, const OUString* pStyleN
             sPrevCurrency.clear();
     }
     else if ((nCellType != nPrevCellType) ||
-        ((pStyleName && !pStyleName->equals(sPrevStyleName)) ||
+        ((pStyleName && *pStyleName != sPrevStyleName) ||
         (!pStyleName && !sPrevStyleName.isEmpty())) ||
-        ((pCurrency && !pCurrency->equals(sPrevCurrency)) ||
+        ((pCurrency && *pCurrency != sPrevCurrency) ||
         (!pCurrency && !sPrevCurrency.isEmpty())))
     {
         SetStyleToRanges();
@@ -3003,13 +1297,16 @@ void ScXMLImport::SetStyleToRange(const ScRange& rRange, const OUString* pStyleN
         else if(!sPrevCurrency.isEmpty())
             sPrevCurrency.clear();
     }
-    table::CellRangeAddress aCellRange;
-    aCellRange.StartColumn = rRange.aStart.Col();
-    aCellRange.StartRow = rRange.aStart.Row();
-    aCellRange.Sheet = rRange.aStart.Tab();
-    aCellRange.EndColumn = rRange.aEnd.Col();
-    aCellRange.EndRow = rRange.aEnd.Row();
-    AddStyleRange(aCellRange);
+
+    if (!xSheetCellRanges.is() && GetModel().is())
+    {
+        uno::Reference <lang::XMultiServiceFactory> xMultiServiceFactory(GetModel(), uno::UNO_QUERY);
+        if (xMultiServiceFactory.is())
+            xSheetCellRanges.set(uno::Reference <sheet::XSheetCellRangeContainer>(xMultiServiceFactory->createInstance("com.sun.star.sheet.SheetCellRanges"), uno::UNO_QUERY));
+        OSL_ENSURE(xSheetCellRanges.is(), "didn't get SheetCellRanges");
+
+    }
+    static_cast<ScCellRangesObj*>(xSheetCellRanges.get())->SetNewRanges(rRanges);
 }
 
 bool ScXMLImport::SetNullDateOnUnitConverter()
@@ -3023,15 +1320,15 @@ bool ScXMLImport::SetNullDateOnUnitConverter()
 XMLNumberFormatAttributesExportHelper* ScXMLImport::GetNumberFormatAttributesExportHelper()
 {
     if (!pNumberFormatAttributesExportHelper)
-        pNumberFormatAttributesExportHelper = new XMLNumberFormatAttributesExportHelper(GetNumberFormatsSupplier());
-    return pNumberFormatAttributesExportHelper;
+        pNumberFormatAttributesExportHelper.reset(new XMLNumberFormatAttributesExportHelper(GetNumberFormatsSupplier()));
+    return pNumberFormatAttributesExportHelper.get();
 }
 
 ScMyStyleNumberFormats* ScXMLImport::GetStyleNumberFormats()
 {
     if (!pStyleNumberFormats)
-        pStyleNumberFormats = new ScMyStyleNumberFormats;
-    return pStyleNumberFormats;
+        pStyleNumberFormats.reset(new ScMyStyleNumberFormats);
+    return pStyleNumberFormats.get();
 }
 
 void ScXMLImport::SetStylesToRangesFinished()
@@ -3067,7 +1364,7 @@ void SAL_CALL ScXMLImport::startDocument()
     SvXMLImport::startDocument();
     if (pDoc && !pDoc->IsImportingXML())
     {
-        ScModelObj::getImplementation(GetModel())->BeforeXMLLoading();
+        comphelper::getUnoTunnelImplementation<ScModelObj>(GetModel())->BeforeXMLLoading();
         bSelfImportingXMLSet = true;
     }
 
@@ -3082,7 +1379,7 @@ void SAL_CALL ScXMLImport::startDocument()
         if (GetModel().is())
         {
             // store initial namespaces, to find the ones that were added from the file later
-            ScSheetSaveData* pSheetData = ScModelObj::getImplementation(GetModel())->GetSheetSaveData();
+            ScSheetSaveData* pSheetData = comphelper::getUnoTunnelImplementation<ScModelObj>(GetModel())->GetSheetSaveData();
             const SvXMLNamespaceMap& rNamespaces = GetNamespaceMap();
             pSheetData->StoreInitialNamespaces(rNamespaces);
         }
@@ -3136,51 +1433,49 @@ sal_Int32 ScXMLImport::GetRangeType(const OUString& sRangeType)
 
 void ScXMLImport::SetLabelRanges()
 {
-    if (pMyLabelRanges)
+    if (!pMyLabelRanges)
+        return;
+
+    uno::Reference <beans::XPropertySet> xPropertySet (GetModel(), uno::UNO_QUERY);
+    if (!xPropertySet.is())
+        return;
+
+    uno::Any aColAny = xPropertySet->getPropertyValue(SC_UNO_COLLABELRNG);
+    uno::Any aRowAny = xPropertySet->getPropertyValue(SC_UNO_ROWLABELRNG);
+
+    uno::Reference< sheet::XLabelRanges > xColRanges;
+    uno::Reference< sheet::XLabelRanges > xRowRanges;
+
+    if ( !(( aColAny >>= xColRanges ) && ( aRowAny >>= xRowRanges )) )
+        return;
+
+    table::CellRangeAddress aLabelRange;
+    table::CellRangeAddress aDataRange;
+
+    for (const auto& rxLabelRange : *pMyLabelRanges)
     {
-        uno::Reference <beans::XPropertySet> xPropertySet (GetModel(), uno::UNO_QUERY);
-        if (xPropertySet.is())
+        sal_Int32 nOffset1(0);
+        sal_Int32 nOffset2(0);
+        FormulaGrammar::AddressConvention eConv = FormulaGrammar::CONV_OOO;
+
+        if (ScRangeStringConverter::GetRangeFromString( aLabelRange, rxLabelRange->sLabelRangeStr, GetDocument(), eConv, nOffset1 ) &&
+            ScRangeStringConverter::GetRangeFromString( aDataRange, rxLabelRange->sDataRangeStr, GetDocument(), eConv, nOffset2 ))
         {
-            uno::Any aColAny = xPropertySet->getPropertyValue(SC_UNO_COLLABELRNG);
-            uno::Any aRowAny = xPropertySet->getPropertyValue(SC_UNO_ROWLABELRNG);
-
-            uno::Reference< sheet::XLabelRanges > xColRanges;
-            uno::Reference< sheet::XLabelRanges > xRowRanges;
-
-            if ( ( aColAny >>= xColRanges ) && ( aRowAny >>= xRowRanges ) )
-            {
-                table::CellRangeAddress aLabelRange;
-                table::CellRangeAddress aDataRange;
-
-                ScMyLabelRanges::iterator aItr = pMyLabelRanges->begin();
-                while (aItr != pMyLabelRanges->end())
-                {
-                    sal_Int32 nOffset1(0);
-                    sal_Int32 nOffset2(0);
-                    FormulaGrammar::AddressConvention eConv = FormulaGrammar::CONV_OOO;
-
-                    if (ScRangeStringConverter::GetRangeFromString( aLabelRange, (*aItr)->sLabelRangeStr, GetDocument(), eConv, nOffset1 ) &&
-                        ScRangeStringConverter::GetRangeFromString( aDataRange, (*aItr)->sDataRangeStr, GetDocument(), eConv, nOffset2 ))
-                    {
-                        if ( (*aItr)->bColumnOrientation )
-                            xColRanges->addNew( aLabelRange, aDataRange );
-                        else
-                            xRowRanges->addNew( aLabelRange, aDataRange );
-                    }
-
-                    delete *aItr;
-                    aItr = pMyLabelRanges->erase(aItr);
-                }
-            }
+            if ( rxLabelRange->bColumnOrientation )
+                xColRanges->addNew( aLabelRange, aDataRange );
+            else
+                xRowRanges->addNew( aLabelRange, aDataRange );
         }
     }
+
+    pMyLabelRanges->clear();
 }
 
 namespace {
 
 class RangeNameInserter
 {
-    ScDocument* mpDoc;
+    ScDocument*  mpDoc;
     ScRangeName& mrRangeName;
 
 public:
@@ -3200,24 +1495,24 @@ public:
         if ( nUnoType & sheet::NamedRangeFlag::COLUMN_HEADER )      nNewType |= ScRangeData::Type::ColHeader;
         if ( nUnoType & sheet::NamedRangeFlag::ROW_HEADER )         nNewType |= ScRangeData::Type::RowHeader;
 
-        if (mpDoc)
+        if (!mpDoc)
+            return;
+
+        // Insert a new name.
+        ScAddress aPos;
+        sal_Int32 nOffset = 0;
+        bool bSuccess = ScRangeStringConverter::GetAddressFromString(
+            aPos, p->sBaseCellAddress, mpDoc, FormulaGrammar::CONV_OOO, nOffset);
+
+        if (bSuccess)
         {
-            // Insert a new name.
-            ScAddress aPos;
-            sal_Int32 nOffset = 0;
-            bool bSuccess = ScRangeStringConverter::GetAddressFromString(
-                aPos, p->sBaseCellAddress, mpDoc, FormulaGrammar::CONV_OOO, nOffset);
+            OUString aContent = p->sContent;
+            if (!p->bIsExpression)
+                ScXMLConverter::ConvertCellRangeAddress(aContent);
 
-            if (bSuccess)
-            {
-                OUString aContent = p->sContent;
-                if (!p->bIsExpression)
-                    ScXMLConverter::ConvertCellRangeAddress(aContent);
-
-                ScRangeData* pData = new ScRangeData(
-                    mpDoc, p->sName, aContent, aPos, nNewType, p->eGrammar);
-                mrRangeName.insert(pData);
-            }
+            ScRangeData* pData = new ScRangeData(
+                mpDoc, p->sName, aContent, aPos, nNewType, p->eGrammar);
+            mrRangeName.insert(pData);
         }
     }
 };
@@ -3288,20 +1583,19 @@ void SAL_CALL ScXMLImport::endDocument()
                     uno::Sequence< beans::PropertyValue > aSeq;
                     if (xIndexAccess->getByIndex(0) >>= aSeq)
                     {
-                        sal_Int32 nCount (aSeq.getLength());
-                        for (sal_Int32 i = 0; i < nCount; ++i)
+                        for (const auto& rProp : std::as_const(aSeq))
                         {
-                            OUString sName(aSeq[i].Name);
+                            OUString sName(rProp.Name);
                             if (sName == SC_ACTIVETABLE)
                             {
                                 OUString sTabName;
-                                if(aSeq[i].Value >>= sTabName)
+                                if(rProp.Value >>= sTabName)
                                 {
                                     SCTAB nTab(0);
                                     if (pDoc->GetTable(sTabName, nTab))
                                     {
                                         pDoc->SetVisibleTab(nTab);
-                                        i = nCount;
+                                        break;
                                     }
                                 }
                             }
@@ -3335,7 +1629,7 @@ void SAL_CALL ScXMLImport::endDocument()
         {
             // set "valid stream" flags after loading (before UpdateRowHeights, so changed formula results
             // in UpdateRowHeights can already clear the flags again)
-            ScSheetSaveData* pSheetData = ScModelObj::getImplementation(GetModel())->GetSheetSaveData();
+            ScSheetSaveData* pSheetData = comphelper::getUnoTunnelImplementation<ScModelObj>(GetModel())->GetSheetSaveData();
 
             SCTAB nTabCount = pDoc->GetTableCount();
             for (SCTAB nTab=0; nTab<nTabCount; ++nTab)
@@ -3345,6 +1639,26 @@ void SAL_CALL ScXMLImport::endDocument()
                     pDoc->SetStreamValid( nTab, true );
             }
         }
+
+        // There are rows with optimal height which need to be updated
+        if (pDoc && !maRecalcRowRanges.empty())
+        {
+            bool bLockHeight = pDoc->IsAdjustHeightLocked();
+            if (bLockHeight)
+            {
+                pDoc->UnlockAdjustHeight();
+            }
+
+            ScSizeDeviceProvider aProv(static_cast<ScDocShell*>(pDoc->GetDocumentShell()));
+            ScDocRowHeightUpdater aUpdater(*pDoc, aProv.GetDevice(), aProv.GetPPTX(), aProv.GetPPTY(), &maRecalcRowRanges);
+            aUpdater.update();
+
+            if (bLockHeight)
+            {
+                pDoc->LockAdjustHeight();
+            }
+        }
+
         aTables.FixupOLEs();
     }
     if (GetModel().is())
@@ -3355,8 +1669,13 @@ void SAL_CALL ScXMLImport::endDocument()
     }
     SvXMLImport::endDocument();
 
+    if (pDoc)
+    {
+        pDoc->BroadcastUno(SfxHint(SfxHintId::ScClearCache));
+    }
+
     if(pDoc && bSelfImportingXMLSet)
-        ScModelObj::getImplementation(GetModel())->AfterXMLLoading();
+        comphelper::getUnoTunnelImplementation<ScModelObj>(GetModel())->AfterXMLLoading();
 }
 
 // XEventListener
@@ -3390,7 +1709,7 @@ void ScXMLImport::LockSolarMutex()
     if (nSolarMutexLocked == 0)
     {
         OSL_ENSURE(!pSolarMutexGuard, "Solar Mutex is locked");
-        pSolarMutexGuard = new SolarMutexGuard();
+        pSolarMutexGuard.reset(new SolarMutexGuard());
     }
     ++nSolarMutexLocked;
 }
@@ -3403,19 +1722,18 @@ void ScXMLImport::UnlockSolarMutex()
         if (nSolarMutexLocked == 0)
         {
             OSL_ENSURE(pSolarMutexGuard, "Solar Mutex is always unlocked");
-            delete pSolarMutexGuard;
-            pSolarMutexGuard = nullptr;
+            pSolarMutexGuard.reset();
         }
     }
 }
 
-sal_Int32 ScXMLImport::GetByteOffset()
+sal_Int32 ScXMLImport::GetByteOffset() const
 {
     sal_Int32 nOffset = -1;
     uno::Reference<xml::sax::XLocator> xLocator = GetLocator();
     uno::Reference<io::XSeekable> xSeek( xLocator, uno::UNO_QUERY );        //! should use different interface
     if ( xSeek.is() )
-        nOffset = (sal_Int32)xSeek->getPosition();
+        nOffset = static_cast<sal_Int32>(xSeek->getPosition());
     return nOffset;
 }
 
@@ -3445,7 +1763,7 @@ void ScXMLImport::ExtractFormulaNamespaceGrammar(
 {
     // parse the attribute value, extract namespace ID, literal namespace, and formula string
     rFormulaNmsp.clear();
-    sal_uInt16 nNsId = GetNamespaceMap().GetKeyByAttrName_( rAttrValue, nullptr, &rFormula, &rFormulaNmsp, false );
+    sal_uInt16 nNsId = GetNamespaceMap().GetKeyByQName(rAttrValue, nullptr, &rFormula, &rFormulaNmsp, SvXMLNamespaceMap::QNameMode::AttrValue);
 
     // check if we have an ODF formula namespace
     if( !bRestrictToExternalNmsp ) switch( nNsId )
@@ -3511,7 +1829,7 @@ ScEditEngineDefaulter* ScXMLImport::GetEditEngine()
     if (!mpEditEngine)
     {
         mpEditEngine.reset(new ScEditEngineDefaulter(pDoc->GetEnginePool()));
-        mpEditEngine->SetRefMapMode(MapUnit::Map100thMM);
+        mpEditEngine->SetRefMapMode(MapMode(MapUnit::Map100thMM));
         mpEditEngine->SetEditTextObjectPool(pDoc->GetEditPool());
         mpEditEngine->SetUpdateMode(false);
         mpEditEngine->EnableUndo(false);
@@ -3529,15 +1847,108 @@ const ScXMLEditAttributeMap& ScXMLImport::GetEditAttributeMap() const
 
 void ScXMLImport::NotifyEmbeddedFontRead()
 {
-    if ( pDoc )
-        pDoc->SetIsUsingEmbededFonts( true );
+    if (pDoc)
+        pDoc->SetEmbedFonts(true);
 }
 
 ScMyImpDetectiveOpArray* ScXMLImport::GetDetectiveOpArray()
 {
     if (!pDetectiveOpArray)
-        pDetectiveOpArray = new ScMyImpDetectiveOpArray();
-    return pDetectiveOpArray;
+        pDetectiveOpArray.reset(new ScMyImpDetectiveOpArray());
+    return pDetectiveOpArray.get();
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportFODS(SvStream &rStream)
+{
+    ScDLL::Init();
+
+    SfxObjectShellLock xDocSh(new ScDocShell);
+    xDocSh->DoInitNew();
+    uno::Reference<frame::XModel> xModel(xDocSh->GetModel());
+
+    uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
+    uno::Reference<io::XInputStream> xStream(new ::utl::OSeekableInputStreamWrapper(rStream));
+    uno::Reference<uno::XInterface> xInterface(xMultiServiceFactory->createInstance("com.sun.star.comp.Writer.XmlFilterAdaptor"), uno::UNO_SET_THROW);
+
+    css::uno::Sequence<OUString> aUserData(7);
+    aUserData[0] = "com.sun.star.comp.filter.OdfFlatXml";
+    aUserData[2] = "com.sun.star.comp.Calc.XMLOasisImporter";
+    aUserData[3] = "com.sun.star.comp.Calc.XMLOasisExporter";
+    aUserData[6] = "true";
+    uno::Sequence<beans::PropertyValue> aAdaptorArgs(comphelper::InitPropertySequence(
+    {
+        { "UserData", uno::Any(aUserData) },
+    }));
+    css::uno::Sequence<uno::Any> aOuterArgs(1);
+    aOuterArgs[0] <<= aAdaptorArgs;
+
+    uno::Reference<lang::XInitialization> xInit(xInterface, uno::UNO_QUERY_THROW);
+    xInit->initialize(aOuterArgs);
+
+    uno::Reference<document::XImporter> xImporter(xInterface, uno::UNO_QUERY_THROW);
+    uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence(
+    {
+        { "InputStream", uno::Any(xStream) },
+        { "URL", uno::Any(OUString("private:stream")) },
+    }));
+    xImporter->setTargetDocument(xModel);
+
+    uno::Reference<document::XFilter> xFilter(xInterface, uno::UNO_QUERY_THROW);
+    //SetLoading hack because the document properties will be re-initted
+    //by the xml filter and during the init, while it's considered uninitialized,
+    //setting a property will inform the document it's modified, which attempts
+    //to update the properties, which throws cause the properties are uninitialized
+    xDocSh->SetLoading(SfxLoadedFlags::NONE);
+    bool ret = xFilter->filter(aArgs);
+    xDocSh->SetLoading(SfxLoadedFlags::ALL);
+
+    xDocSh->DoClose();
+
+    return ret;
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportXLSX(SvStream &rStream)
+{
+    ScDLL::Init();
+
+    SfxObjectShellLock xDocSh(new ScDocShell);
+    xDocSh->DoInitNew();
+    uno::Reference<frame::XModel> xModel(xDocSh->GetModel());
+
+    uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
+    uno::Reference<io::XInputStream> xStream(new utl::OSeekableInputStreamWrapper(rStream));
+
+    uno::Reference<document::XFilter> xFilter(xMultiServiceFactory->createInstance("com.sun.star.comp.oox.xls.ExcelFilter"), uno::UNO_QUERY_THROW);
+
+    uno::Reference<document::XImporter> xImporter(xFilter, uno::UNO_QUERY_THROW);
+    uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence(
+    {
+        { "InputStream", uno::makeAny(xStream) },
+        { "InputMode", uno::makeAny(true) },
+    }));
+    xImporter->setTargetDocument(xModel);
+
+    //SetLoading hack because the document properties will be re-initted
+    //by the xml filter and during the init, while it's considered uninitialized,
+    //setting a property will inform the document it's modified, which attempts
+    //to update the properties, which throws cause the properties are uninitialized
+    xDocSh->SetLoading(SfxLoadedFlags::NONE);
+    bool ret = false;
+    try
+    {
+        ret = xFilter->filter(aArgs);
+    }
+    catch (const css::io::IOException&)
+    {
+    }
+    catch (const css::lang::WrappedTargetRuntimeException&)
+    {
+    }
+    xDocSh->SetLoading(SfxLoadedFlags::ALL);
+
+    xDocSh->DoClose();
+
+    return ret;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

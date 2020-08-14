@@ -23,21 +23,21 @@
 #include <drawingml/textliststyle.hxx>
 #include <oox/core/contexthandler2.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-class TextListStyleContext : public ::oox::core::ContextHandler2
+class TextListStyleContext final : public ::oox::core::ContextHandler2
 {
 public:
-    TextListStyleContext( ::oox::core::ContextHandler2Helper& rParent, TextListStyle& rTextListStyle );
+    TextListStyleContext( ::oox::core::ContextHandler2Helper const & rParent, TextListStyle& rTextListStyle );
     virtual ~TextListStyleContext() override;
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
-protected:
+private:
     TextListStyle& mrTextListStyle;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_TEXTLISTSTYLECONTEXT_HXX
 

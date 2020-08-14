@@ -26,10 +26,10 @@
 class ScStyleSheet;
 class ScDocument;
 
-class SC_DLLPUBLIC ScStyleSheetPool : public SfxStyleSheetPool
+class SC_DLLPUBLIC ScStyleSheetPool final : public SfxStyleSheetPool
 {
 public:
-                        ScStyleSheetPool( SfxItemPool&  rPool,
+                        ScStyleSheetPool( const SfxItemPool& rPool,
                                           ScDocument*   pDocument );
 
     void                SetDocument( ScDocument* pDocument );
@@ -49,26 +49,25 @@ public:
     void                CopyStyleFrom( ScStyleSheetPool* pSrcPool,
                                        const OUString& rName, SfxStyleFamily eFamily );
 
-    bool                HasStandardStyles() { return bHasStandardStyles; }
+    bool                HasStandardStyles() const { return bHasStandardStyles; }
 
     ScStyleSheet*       FindCaseIns( const OUString& rName, SfxStyleFamily eFam );
 
     virtual SfxStyleSheetBase& Make( const OUString&, SfxStyleFamily eFam,
-                                     sal_uInt16 nMask = SFXSTYLEBIT_ALL) override;
+                                     SfxStyleSearchBits nMask = SfxStyleSearchBits::All) override;
 
-    void setAllStandard();
+    void setAllParaStandard();
 
-protected:
+private:
     virtual             ~ScStyleSheetPool() override;
 
     using SfxStyleSheetPool::Create;    // calcwarnings: Create(const SfxStyleSheet&) - ever used?
 
     virtual SfxStyleSheetBase* Create( const OUString&  rName,
                                        SfxStyleFamily   eFamily,
-                                       sal_uInt16       nMask) override;
+                                       SfxStyleSearchBits     nMask) override;
     virtual SfxStyleSheetBase* Create( const SfxStyleSheetBase& rStyle ) override;
 
-private:
     SfxStyleSheetBase*  pActualStyleSheet;
     ScDocument*         pDoc;
     bool                bHasStandardStyles;

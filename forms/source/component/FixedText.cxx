@@ -18,10 +18,12 @@
  */
 
 #include "FixedText.hxx"
-#include "services.hxx"
-#include "property.hrc"
-#include "property.hxx"
-#include <comphelper/processfactory.hxx>
+#include <frm_strings.hxx>
+#include <services.hxx>
+
+#include <com/sun/star/form/FormComponentType.hpp>
+
+#include <comphelper/property.hxx>
 
 
 namespace frm
@@ -29,7 +31,6 @@ namespace frm
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -37,7 +38,7 @@ using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::util;
-
+using namespace comphelper;
 
 OFixedTextModel::OFixedTextModel( const Reference<XComponentContext>& _rxFactory )
         :OControlModel(_rxFactory, VCL_CONTROLMODEL_FIXEDTEXT)
@@ -83,7 +84,7 @@ void OFixedTextModel::describeAggregateProperties( Sequence< Property >& _rAggre
 
 OUString SAL_CALL OFixedTextModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_FIXEDTEXT); // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_FIXEDTEXT; // old (non-sun) name for compatibility !
 }
 
 
@@ -109,7 +110,7 @@ void SAL_CALL OFixedTextModel::read(const Reference<XObjectInputStream>& _rxInSt
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OFixedTextModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

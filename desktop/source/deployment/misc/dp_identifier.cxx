@@ -20,21 +20,19 @@
 
 #include <sal/config.h>
 
-#include <boost/optional.hpp>
+#include <optional>
 #include <com/sun/star/beans/Optional.hpp>
 #include <com/sun/star/deployment/XPackage.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <osl/diagnose.h>
-#include <rtl/string.h>
-#include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
 
-#include "dp_identifier.hxx"
+#include <dp_identifier.hxx>
 
 namespace dp_misc {
 
 OUString generateIdentifier(
-    ::boost::optional< OUString > const & optional,
+    ::std::optional< OUString > const & optional,
     OUString const & fileName)
 {
     return optional ? *optional : generateLegacyIdentifier(fileName);
@@ -50,10 +48,7 @@ OUString getIdentifier(
 }
 
 OUString generateLegacyIdentifier(OUString const & fileName) {
-    OUStringBuffer b;
-    b.append("org.openoffice.legacy.");
-    b.append(fileName);
-    return b.makeStringAndClear();
+    return "org.openoffice.legacy." + fileName;
 }
 
 }

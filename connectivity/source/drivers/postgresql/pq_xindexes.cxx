@@ -34,14 +34,14 @@
  *
  ************************************************************************/
 
+#include <sal/log.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <rtl/strbuf.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XParameters.hpp>
-#include <com/sun/star/sdbc/KeyRule.hpp>
-#include <com/sun/star/sdbcx/KeyType.hpp>
+#include <cppuhelper/exc_hlp.hxx>
 
 #include "pq_xindexes.hxx"
 #include "pq_xindex.hxx"
@@ -58,7 +58,6 @@ using com::sun::star::uno::makeAny;
 using com::sun::star::uno::UNO_QUERY;
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::Sequence;
-using com::sun::star::uno::RuntimeException;
 
 using com::sun::star::container::XEnumerationAccess;
 using com::sun::star::container::XEnumeration;
@@ -70,7 +69,6 @@ using com::sun::star::sdbc::XRow;
 using com::sun::star::sdbc::XResultSet;
 using com::sun::star::sdbc::XParameters;
 using com::sun::star::sdbc::XPreparedStatement;
-using com::sun::star::sdbc::XDatabaseMetaData;
 
 namespace pq_sdbc_driver
 {
@@ -94,15 +92,7 @@ void Indexes::refresh()
 {
     try
     {
-        if (isLog(m_pSettings, LogLevel::Info))
-        {
-            OStringBuffer buf;
-            buf.append( "sdbcx.Indexes get refreshed for table " );
-            buf.append( OUStringToOString( m_schemaName, ConnectionSettings::encoding ) );
-            buf.append( "." );
-            buf.append( OUStringToOString( m_tableName, ConnectionSettings::encoding ) );
-            log( m_pSettings, LogLevel::Info, buf.makeStringAndClear().getStr() );
-        }
+        SAL_INFO("connectivity.postgresql", "sdbcx.Indexes get refreshed for table " << m_schemaName << "." << m_tableName);
 
         osl::MutexGuard guard( m_xMutex->GetMutex() );
         Statics & st = getStatics();
@@ -180,7 +170,9 @@ void Indexes::refresh()
     }
     catch ( css::sdbc::SQLException & e )
     {
-        throw RuntimeException( e.Message , e.Context );
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException( e.Message,
+                        e.Context, anyEx );
     }
 
     fire( RefreshedBroadcaster( *this ) );
@@ -241,7 +233,7 @@ void Indexes::dropByIndex( sal_Int32 index )
 
 
     osl::MutexGuard guard( m_xMutex->GetMutex() );
-    if( index < 0 ||  index >= (sal_Int32)m_values.size() )
+    if( index < 0 ||  index >= static_cast<sal_Int32>(m_values.size()) )
     {
         throw css::lang::IndexOutOfBoundsException(
             "Indexes: Index out of range (allowed 0 to "

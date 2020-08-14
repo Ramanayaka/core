@@ -19,22 +19,21 @@
 
 #include <toolkit/awt/vclxmenu.hxx>
 #include <toolkit/helper/convert.hxx>
-#include <toolkit/helper/macros.hxx>
-#include <toolkit/helper/servicenames.hxx>
+#include <helper/servicenames.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include <rtl/uuid.h>
 #include <osl/mutex.hxx>
-
+#include <tools/debug.hxx>
+#include <vcl/graph.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/keycod.hxx>
 #include <vcl/image.hxx>
-#include <vcl/mnemonic.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/window.hxx>
 
 #include <com/sun/star/awt/KeyModifier.hpp>
 
@@ -58,7 +57,7 @@ VCLXMenu::~VCLXMenu()
     if ( mpMenu )
     {
         mpMenu->RemoveEventListener( LINK( this, VCLXMenu, MenuEventListener ) );
-         mpMenu.disposeAndClear();
+        mpMenu.disposeAndClear();
     }
 }
 
@@ -89,79 +88,79 @@ IMPL_LINK( VCLXMenu, MenuEventListener, VclMenuEvent&, rMenuEvent, void )
 {
     DBG_ASSERT( rMenuEvent.GetMenu() && mpMenu, "Menu???" );
 
-    if ( rMenuEvent.GetMenu() == mpMenu )  // Also called for the root menu
+    if ( rMenuEvent.GetMenu() != mpMenu )  // Also called for the root menu
+        return;
+
+    switch ( rMenuEvent.GetId() )
     {
-        switch ( rMenuEvent.GetId() )
+        case VclEventId::MenuSelect:
         {
-            case VclEventId::MenuSelect:
+            if ( maMenuListeners.getLength() )
             {
-                if ( maMenuListeners.getLength() )
-                {
-                    css::awt::MenuEvent aEvent;
-                    aEvent.Source = static_cast<cppu::OWeakObject*>(this);
-                    aEvent.MenuId = mpMenu->GetCurItemId();
-                    maMenuListeners.itemSelected( aEvent );
-                }
+                css::awt::MenuEvent aEvent;
+                aEvent.Source = static_cast<cppu::OWeakObject*>(this);
+                aEvent.MenuId = mpMenu->GetCurItemId();
+                maMenuListeners.itemSelected( aEvent );
             }
-            break;
-            case VclEventId::ObjectDying:
+        }
+        break;
+        case VclEventId::ObjectDying:
+        {
+            mpMenu = nullptr;
+        }
+        break;
+        case VclEventId::MenuHighlight:
+        {
+            if ( maMenuListeners.getLength() )
             {
-                mpMenu = nullptr;
+                css::awt::MenuEvent aEvent;
+                aEvent.Source = static_cast<cppu::OWeakObject*>(this);
+                aEvent.MenuId = mpMenu->GetCurItemId();
+                maMenuListeners.itemHighlighted( aEvent );
             }
-            break;
-            case VclEventId::MenuHighlight:
+        }
+        break;
+        case VclEventId::MenuActivate:
+        {
+            if ( maMenuListeners.getLength() )
             {
-                if ( maMenuListeners.getLength() )
-                {
-                    css::awt::MenuEvent aEvent;
-                    aEvent.Source = static_cast<cppu::OWeakObject*>(this);
-                    aEvent.MenuId = mpMenu->GetCurItemId();
-                    maMenuListeners.itemHighlighted( aEvent );
-                }
+                css::awt::MenuEvent aEvent;
+                aEvent.Source = static_cast<cppu::OWeakObject*>(this);
+                aEvent.MenuId = mpMenu->GetCurItemId();
+                maMenuListeners.itemActivated( aEvent );
             }
-            break;
-            case VclEventId::MenuActivate:
+        }
+        break;
+        case VclEventId::MenuDeactivate:
+        {
+            if ( maMenuListeners.getLength() )
             {
-                if ( maMenuListeners.getLength() )
-                {
-                    css::awt::MenuEvent aEvent;
-                    aEvent.Source = static_cast<cppu::OWeakObject*>(this);
-                    aEvent.MenuId = mpMenu->GetCurItemId();
-                    maMenuListeners.itemActivated( aEvent );
-                }
+                css::awt::MenuEvent aEvent;
+                aEvent.Source = static_cast<cppu::OWeakObject*>(this);
+                aEvent.MenuId = mpMenu->GetCurItemId();
+                maMenuListeners.itemDeactivated( aEvent );
             }
-            break;
-            case VclEventId::MenuDeactivate:
-            {
-                if ( maMenuListeners.getLength() )
-                {
-                    css::awt::MenuEvent aEvent;
-                    aEvent.Source = static_cast<cppu::OWeakObject*>(this);
-                    aEvent.MenuId = mpMenu->GetCurItemId();
-                    maMenuListeners.itemDeactivated( aEvent );
-                }
-            }
-            break;
+        }
+        break;
 
-            // ignore accessibility events
-            case VclEventId::MenuEnable:
-            case VclEventId::MenuInsertItem:
-            case VclEventId::MenuRemoveItem:
-            case VclEventId::MenuSubmenuActivate:
-            case VclEventId::MenuSubmenuDeactivate:
-            case VclEventId::MenuSubmenuChanged:
-            case VclEventId::MenuDehighlight:
-            case VclEventId::MenuDisable:
-            case VclEventId::MenuItemTextChanged:
-            case VclEventId::MenuItemChecked:
-            case VclEventId::MenuItemUnchecked:
-            case VclEventId::MenuShow:
-            case VclEventId::MenuHide:
-            break;
+        // ignore accessibility events
+        case VclEventId::MenuEnable:
+        case VclEventId::MenuInsertItem:
+        case VclEventId::MenuRemoveItem:
+        case VclEventId::MenuSubmenuActivate:
+        case VclEventId::MenuSubmenuDeactivate:
+        case VclEventId::MenuSubmenuChanged:
+        case VclEventId::MenuDehighlight:
+        case VclEventId::MenuDisable:
+        case VclEventId::MenuItemTextChanged:
+        case VclEventId::MenuItemChecked:
+        case VclEventId::MenuItemUnchecked:
+        case VclEventId::MenuShow:
+        case VclEventId::MenuHide:
+        break;
 
-            default:    OSL_FAIL( "MenuEventListener - Unknown event!" );
-       }
-    }
+        default:    OSL_FAIL( "MenuEventListener - Unknown event!" );
+   }
 }
 
 
@@ -188,11 +187,11 @@ css::uno::Sequence< OUString > SAL_CALL VCLXMenu::getSupportedServiceNames(  )
 
     if ( bIsPopupMenu )
         return css::uno::Sequence<OUString>{
-            OUString::createFromAscii(szServiceName2_PopupMenu),
+            "com.sun.star.awt.PopupMenu",
             "stardiv.vcl.PopupMenu"};
     else
         return css::uno::Sequence<OUString>{
-            OUString::createFromAscii(szServiceName2_MenuBar),
+            "com.sun.star.awt.MenuBar",
             "stardiv.vcl.MenuBar"};
 }
 
@@ -212,24 +211,24 @@ css::uno::Any VCLXMenu::queryInterface(
 
     if ( bIsPopupMenu )
         aRet = ::cppu::queryInterface(  rType,
-                                        (static_cast< css::awt::XMenu* >(static_cast<css::awt::XMenuBar*>(this)) ),
-                                        (static_cast< css::awt::XPopupMenu* >(this)),
-                                        (static_cast< css::lang::XTypeProvider* >(this)),
-                                        (static_cast< css::lang::XServiceInfo* >(this)),
-                                        (static_cast< css::lang::XUnoTunnel* >(this)) );
+                                        static_cast< css::awt::XMenu* >(static_cast<css::awt::XMenuBar*>(this)),
+                                        static_cast< css::awt::XPopupMenu* >(this),
+                                        static_cast< css::lang::XTypeProvider* >(this),
+                                        static_cast< css::lang::XServiceInfo* >(this),
+                                        static_cast< css::lang::XUnoTunnel* >(this) );
     else
         aRet = ::cppu::queryInterface(  rType,
-                                        (static_cast< css::awt::XMenu* >(static_cast<css::awt::XMenuBar*>(this)) ),
-                                        (static_cast< css::awt::XMenuBar* >(this)),
-                                        (static_cast< css::lang::XTypeProvider* >(this)),
-                                        (static_cast< css::lang::XServiceInfo* >(this)),
-                                        (static_cast< css::lang::XUnoTunnel* >(this)) );
+                                        static_cast< css::awt::XMenu* >(static_cast<css::awt::XMenuBar*>(this)),
+                                        static_cast< css::awt::XMenuBar* >(this),
+                                        static_cast< css::lang::XTypeProvider* >(this),
+                                        static_cast< css::lang::XServiceInfo* >(this),
+                                        static_cast< css::lang::XUnoTunnel* >(this) );
 
     return (aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType ));
 }
 
 
-IMPL_XUNOTUNNEL( VCLXMenu )
+UNO3_GETIMPLEMENTATION_IMPL( VCLXMenu );
 
 css::uno::Sequence< css::uno::Type > VCLXMenu::getTypes()
 {
@@ -237,43 +236,21 @@ css::uno::Sequence< css::uno::Type > VCLXMenu::getTypes()
     const bool bIsPopupMenu = IsPopupMenu();
     aGuard.clear();
 
-    static ::cppu::OTypeCollection* pCollectionMenuBar = nullptr;
-    static ::cppu::OTypeCollection* pCollectionPopupMenu = nullptr;
-
     if ( bIsPopupMenu )
     {
-        if( !pCollectionPopupMenu )
-        {
-            ::osl::Guard< ::osl::Mutex > aGlobalGuard( ::osl::Mutex::getGlobalMutex() );
-            if( !pCollectionPopupMenu )
-            {
-                static ::cppu::OTypeCollection collectionPopupMenu(
-                cppu::UnoType<css::lang::XTypeProvider>::get(),
-                cppu::UnoType<css::awt::XMenu>::get(),
-                cppu::UnoType<css::awt::XPopupMenu>::get(),
-                cppu::UnoType<css::lang::XServiceInfo>::get());
-                pCollectionPopupMenu = &collectionPopupMenu;
-            }
-        }
-
-        return (*pCollectionPopupMenu).getTypes();
+        static cppu::OTypeCollection collectionPopupMenu(
+            cppu::UnoType<css::lang::XTypeProvider>::get(), cppu::UnoType<css::awt::XMenu>::get(),
+            cppu::UnoType<css::awt::XPopupMenu>::get(),
+            cppu::UnoType<css::lang::XServiceInfo>::get());
+        return collectionPopupMenu.getTypes();
     }
     else
     {
-        if( !pCollectionMenuBar )
-        {
-            ::osl::Guard< ::osl::Mutex > aGlobalGuard( ::osl::Mutex::getGlobalMutex() );
-            if( !pCollectionMenuBar )
-            {
-                static ::cppu::OTypeCollection collectionMenuBar(
-                cppu::UnoType<css::lang::XTypeProvider>::get(),
-                cppu::UnoType<css::awt::XMenu>::get(),
-                cppu::UnoType<css::awt::XMenuBar>::get(),
-                cppu::UnoType<css::lang::XServiceInfo>::get());
-                pCollectionMenuBar = &collectionMenuBar;
-            }
-        }
-        return (*pCollectionMenuBar).getTypes();
+        static cppu::OTypeCollection collectionMenuBar(
+            cppu::UnoType<css::lang::XTypeProvider>::get(), cppu::UnoType<css::awt::XMenu>::get(),
+            cppu::UnoType<css::awt::XMenuBar>::get(),
+            cppu::UnoType<css::lang::XServiceInfo>::get());
+        return collectionMenuBar.getTypes();
     }
 }
 
@@ -309,7 +286,7 @@ void VCLXMenu::insertItem(
     ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
 
     if ( mpMenu )
-        mpMenu->InsertItem(nItemId, aText, (MenuItemBits)nItemStyle, OString(), nPos);
+        mpMenu->InsertItem(nItemId, aText, static_cast<MenuItemBits>(nItemStyle), OString(), nPos);
 }
 
 void VCLXMenu::removeItem(
@@ -322,11 +299,11 @@ void VCLXMenu::removeItem(
     if (!mpMenu)
         return;
 
-    sal_Int32 nItemCount = (sal_Int32)mpMenu->GetItemCount();
-    if ( ( nCount > 0 ) && ( nPos >= 0 ) && ( nPos < nItemCount ) && ( nItemCount > 0 ))
+    sal_Int32 nItemCount = static_cast<sal_Int32>(mpMenu->GetItemCount());
+    if ((nCount > 0) && (nPos >= 0) && (nPos < nItemCount))
     {
         sal_Int16 nP = sal::static_int_cast< sal_Int16 >(
-            std::min( (int)(nPos+nCount), (int)nItemCount ));
+            std::min( static_cast<int>(nPos+nCount), static_cast<int>(nItemCount) ));
         while( nP-nPos > 0 )
             mpMenu->RemoveItem( --nP );
     }
@@ -408,7 +385,7 @@ void VCLXMenu::setPopupMenu(
     SolarMutexGuard aSolarGuard;
     ::osl::Guard< ::osl::Mutex > aGuard( GetMutex() );
 
-    VCLXMenu* pVCLMenu = VCLXMenu::GetImplementation( rxPopupMenu );
+    VCLXMenu* pVCLMenu = comphelper::getUnoTunnelImplementation<VCLXMenu>( rxPopupMenu );
     DBG_ASSERT( pVCLMenu && pVCLMenu->GetMenu() && pVCLMenu->IsPopupMenu(), "setPopupMenu: Invalid Menu!" );
 
     if ( mpMenu && pVCLMenu && pVCLMenu->GetMenu() && pVCLMenu->IsPopupMenu() )
@@ -581,8 +558,8 @@ namespace
         {
             if ( bResize && ( nCurWidth > nIdeal || nCurHeight > nIdeal ) )
             {
-                sal_Int32 nIdealWidth  = nCurWidth  > nIdeal ? nIdeal : nCurWidth;
-                sal_Int32 nIdealHeight = nCurHeight > nIdeal ? nIdeal : nCurHeight;
+                sal_Int32 nIdealWidth  = std::min(nCurWidth, nIdeal);
+                sal_Int32 nIdealHeight = std::min(nCurHeight, nIdeal);
 
                 ::Size aNewSize( nIdealWidth, nIdealHeight );
 
@@ -603,7 +580,7 @@ namespace
     {
         css::awt::KeyEvent aAWTKey;
         aAWTKey.Modifiers = 0;
-        aAWTKey.KeyCode   = (sal_Int16)aVCLKey.GetCode();
+        aAWTKey.KeyCode   = static_cast<sal_Int16>(aVCLKey.GetCode());
 
         if (aVCLKey.IsShift())
             aAWTKey.Modifiers |= css::awt::KeyModifier::SHIFT;
@@ -623,7 +600,7 @@ namespace
         bool bMod1  = ((aAWTKey.Modifiers & css::awt::KeyModifier::MOD1 ) == css::awt::KeyModifier::MOD1  );
         bool bMod2  = ((aAWTKey.Modifiers & css::awt::KeyModifier::MOD2 ) == css::awt::KeyModifier::MOD2  );
         bool bMod3  = ((aAWTKey.Modifiers & css::awt::KeyModifier::MOD3 ) == css::awt::KeyModifier::MOD3  );
-        sal_uInt16   nKey   = (sal_uInt16)aAWTKey.KeyCode;
+        sal_uInt16   nKey   = static_cast<sal_uInt16>(aAWTKey.KeyCode);
 
         return vcl::KeyCode(nKey, bShift, bMod1, bMod2, bMod3);
     }
@@ -657,7 +634,7 @@ css::awt::MenuItemType SAL_CALL VCLXMenu::getItemType(
         css::awt::MenuItemType_DONTKNOW;
     if ( mpMenu )
     {
-        aMenuItemType = ( (css::awt::MenuItemType) mpMenu->GetItemType( nItemPos ) );
+        aMenuItemType = static_cast<css::awt::MenuItemType>(mpMenu->GetItemType( nItemPos ));
     }
 
     return aMenuItemType;
@@ -849,7 +826,7 @@ VCLXMenuBar::VCLXMenuBar( MenuBar* pMenuBar ) : VCLXMenu( static_cast<Menu *>(pM
 {
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_VCLXMenuBar_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)
@@ -867,7 +844,7 @@ VCLXPopupMenu::VCLXPopupMenu( PopupMenu* pPopMenu ) : VCLXMenu( static_cast<Menu
     ImplAddListener();
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_VCLXPopupMenu_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

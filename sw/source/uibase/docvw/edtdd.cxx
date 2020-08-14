@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <hintids.hxx>
-
 #include <svx/svdview.hxx>
 #include <editeng/outliner.hxx>
 #include <svx/svdobj.hxx>
 #include <sot/exchange.hxx>
 #include <sot/formats.hxx>
 #include <sfx2/bindings.hxx>
+#include <vcl/commandevent.hxx>
 
 #include <sfx2/viewfrm.hxx>
 #include <fmturl.hxx>
@@ -38,7 +37,6 @@
 #include <swmodule.hxx>
 #include <docsh.hxx>
 #include <wdocsh.hxx>
-#include <swundo.hxx>
 
 using namespace ::com::sun::star;
 
@@ -65,6 +63,9 @@ void SwEditWin::StopDDTimer(SwWrtShell *pSh, const Point &rPt)
 
 void SwEditWin::StartDrag( sal_Int8 /*nAction*/, const Point& rPosPixel )
 {
+    if (m_rView.GetObjectShell()->isContentExtractionLocked())
+        return;
+
     SwWrtShell &rSh = m_rView.GetWrtShell();
     if( rSh.GetDrawView() )
     {
@@ -76,60 +77,60 @@ void SwEditWin::StartDrag( sal_Int8 /*nAction*/, const Point& rPosPixel )
         }
     }
 
-    if ( !m_pApplyTempl && !rSh.IsDrawCreate() && !IsDrawAction())
+    if ( !(!m_pApplyTempl && !rSh.IsDrawCreate() && !IsDrawAction()))
+        return;
+
+    bool bStart = false, bDelSelect = false;
+    SdrObject *pObj = nullptr;
+    Point aDocPos( PixelToLogic( rPosPixel ) );
+    if ( !rSh.IsInSelect() && rSh.TestCurrPam( aDocPos, true))
+        //We are not selecting and aren't at a selection
+        bStart = true;
+    else if ( !g_bFrameDrag && rSh.IsSelFrameMode() &&
+                rSh.IsInsideSelectedObj( aDocPos ) &&
+                nullptr == m_pAnchorMarker)
     {
-        bool bStart = false, bDelSelect = false;
-        SdrObject *pObj = nullptr;
-        Point aDocPos( PixelToLogic( rPosPixel ) );
-        if ( !rSh.IsInSelect() && rSh.TestCurrPam( aDocPos, true))
-            //We are not selecting and aren't at a selection
-            bStart = true;
-        else if ( !g_bFrameDrag && rSh.IsSelFrameMode() &&
-                    rSh.IsInsideSelectedObj( aDocPos ) &&
-                    nullptr == m_pAnchorMarker)
-        {
-            //We are not dragging internally and are not at an
-            //object (frame, draw object)
+        //We are not dragging internally and are not at an
+        //object (frame, draw object)
 
-            // #i106131# *and* AnchorDrag is *not* active: When active,
-            // entering global drag mode will destroy the AnchorHdl but
-            // keep the now invalid ptr in place, next access will crash.
-            // It is indeed wrong to enter drag mode when AnchorDrag is
-            // already active
-            bStart = true;
-        }
-        else if( !g_bFrameDrag && m_rView.GetDocShell()->IsReadOnly() &&
-                OBJCNT_NONE != rSh.GetObjCntType( aDocPos, pObj ))
-        {
-            rSh.LockPaint();
-            if( rSh.SelectObj( aDocPos, 0, pObj ))
-                bStart = bDelSelect = true;
-            else
-                rSh.UnlockPaint();
-        }
+        // #i106131# *and* AnchorDrag is *not* active: When active,
+        // entering global drag mode will destroy the AnchorHdl but
+        // keep the now invalid ptr in place, next access will crash.
+        // It is indeed wrong to enter drag mode when AnchorDrag is
+        // already active
+        bStart = true;
+    }
+    else if( !g_bFrameDrag && m_rView.GetDocShell()->IsReadOnly() &&
+            OBJCNT_NONE != rSh.GetObjCntType( aDocPos, pObj ))
+    {
+        rSh.LockPaint();
+        if( rSh.SelectObj( aDocPos, 0, pObj ))
+            bStart = bDelSelect = true;
         else
-        {
-            SwContentAtPos aSwContentAtPos( IsAttrAtPos::InetAttr );
-            bStart = rSh.GetContentAtPos( aDocPos,
-                        aSwContentAtPos );
-        }
+            rSh.UnlockPaint();
+    }
+    else
+    {
+        SwContentAtPos aSwContentAtPos( IsAttrAtPos::InetAttr );
+        bStart = rSh.GetContentAtPos( aDocPos,
+                    aSwContentAtPos );
+    }
 
-        if ( bStart && !m_bIsInDrag )
-        {
-            m_bMBPressed = false;
-            ReleaseMouse();
-            g_bFrameDrag = false;
-            g_bExecuteDrag = true;
-            SwEditWin::m_nDDStartPosY = aDocPos.Y();
-            SwEditWin::m_nDDStartPosX = aDocPos.X();
-            m_aMovePos = aDocPos;
-            StartExecuteDrag();
-            if( bDelSelect )
-            {
-                rSh.UnSelectFrame();
-                rSh.UnlockPaint();
-            }
-        }
+    if ( !(bStart && !m_bIsInDrag) )
+        return;
+
+    m_bMBPressed = false;
+    ReleaseMouse();
+    g_bFrameDrag = false;
+    g_bExecuteDrag = true;
+    SwEditWin::m_nDDStartPosY = aDocPos.Y();
+    SwEditWin::m_nDDStartPosX = aDocPos.X();
+    m_aMovePos = aDocPos;
+    StartExecuteDrag();
+    if( bDelSelect )
+    {
+        rSh.UnSelectFrame();
+        rSh.UnlockPaint();
     }
 }
 
@@ -174,8 +175,7 @@ void SwEditWin::CleanupDropUserMarker()
 {
     if ( m_pUserMarker )
     {
-        delete m_pUserMarker;
-        m_pUserMarker = nullptr;
+        m_pUserMarker.reset();
         m_pUserMarkerObj = nullptr;
     }
 }
@@ -338,13 +338,12 @@ sal_Int8 SwEditWin::AcceptDrop( const AcceptDropEvent& rEvt )
 
     // If the cursor is near the inner boundary
     // we attempt to scroll towards the desired direction.
-    Point aPoint;
-    tools::Rectangle aWin(aPoint,GetOutputSizePixel());
+    tools::Rectangle aWin(Point(), GetOutputSizePixel());
     const int nMargin = 10;
-    aWin.Left() += nMargin;
-    aWin.Top() += nMargin;
-    aWin.Right() -= nMargin;
-    aWin.Bottom() -= nMargin;
+    aWin.AdjustLeft(nMargin );
+    aWin.AdjustTop(nMargin );
+    aWin.AdjustRight( -nMargin );
+    aWin.AdjustBottom( -nMargin );
     if(!aWin.IsInside(aPixPt)) {
         static sal_uInt64 last_tick = 0;
         sal_uInt64 current_tick = tools::Time::GetSystemTicks();
@@ -356,10 +355,10 @@ sal_Int8 SwEditWin::AcceptDrop( const AcceptDropEvent& rEvt )
                 m_bOldIdleSet = true;
             }
             CleanupDropUserMarker();
-            if(aPixPt.X() > aWin.Right()) aPixPt.X() += nMargin;
-            if(aPixPt.X() < aWin.Left()) aPixPt.X() -= nMargin;
-            if(aPixPt.Y() > aWin.Bottom()) aPixPt.Y() += nMargin;
-            if(aPixPt.Y() < aWin.Top()) aPixPt.Y() -= nMargin;
+            if(aPixPt.X() > aWin.Right()) aPixPt.AdjustX(nMargin );
+            if(aPixPt.X() < aWin.Left()) aPixPt.AdjustX( -nMargin );
+            if(aPixPt.Y() > aWin.Bottom()) aPixPt.AdjustY(nMargin );
+            if(aPixPt.Y() < aWin.Top()) aPixPt.AdjustY( -nMargin );
             Point aDocPt(PixelToLogic(aPixPt));
             SwRect rect(aDocPt,Size(1,1));
             rSh.MakeVisible(rect);
@@ -443,7 +442,7 @@ sal_Int8 SwEditWin::AcceptDrop( const AcceptDropEvent& rEvt )
         }
 
         if ( EXCHG_IN_ACTION_DEFAULT != nEventAction )
-            nUserOpt = (sal_Int8)nEventAction;
+            nUserOpt = static_cast<sal_Int8>(nEventAction);
 
         // show DropCursor or UserMarker ?
         if( SotExchangeDest::SWDOC_FREE_AREA_WEB == m_nDropDestination ||
@@ -465,7 +464,7 @@ sal_Int8 SwEditWin::AcceptDrop( const AcceptDropEvent& rEvt )
 
                 if(m_pUserMarkerObj)
                 {
-                    m_pUserMarker = new SdrDropMarkerOverlay( *rSh.GetDrawView(), *m_pUserMarkerObj );
+                    m_pUserMarker.reset(new SdrDropMarkerOverlay( *rSh.GetDrawView(), *m_pUserMarkerObj ));
                 }
             }
         }

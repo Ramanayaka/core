@@ -23,14 +23,11 @@
 #include <sal/config.h>
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <sal/types.h>
 
-namespace com { namespace sun { namespace star { namespace uno {
-    class XInterface;
-} } } }
+namespace com::sun::star::uno { class XInterface; }
 class SdrObject;
 
-css::uno::Reference<css::uno::XInterface> SAL_CALL
+css::uno::Reference<css::uno::XInterface>
 SvxUnoGluePointAccess_createInstance(SdrObject * pObject);
 
 #endif

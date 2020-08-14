@@ -26,12 +26,10 @@
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/frame/XModel2.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <comphelper/processfactory.hxx>
 #include <rtl/instance.hxx>
 
-namespace basic {
-namespace vba {
+namespace basic::vba {
 
 using namespace ::com::sun::star;
 
@@ -42,7 +40,7 @@ namespace {
  */
 uno::Reference< frame::XModuleManager2 > lclCreateModuleManager()
 {
-    uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext(), uno::UNO_QUERY_THROW );
+    uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext(), uno::UNO_SET_THROW );
     return frame::ModuleManager::create(xContext);
 }
 
@@ -166,25 +164,24 @@ void enableContainerWindowsOfAllDocuments( const uno::Reference< frame::XModel >
 
 void registerCurrentDirectory( const uno::Reference< frame::XModel >& rxModel, const OUString& rPath )
 {
-    if( !rPath.isEmpty() )
+    if( rPath.isEmpty() )
+        return;
+
+    CurrDirPool& rPool = StaticCurrDirPool::get();
+    ::osl::MutexGuard aGuard( rPool.maMutex );
+    try
     {
-        CurrDirPool& rPool = StaticCurrDirPool::get();
-        ::osl::MutexGuard aGuard( rPool.maMutex );
-        try
-        {
-            uno::Reference< frame::XModuleManager2 > xModuleManager( lclCreateModuleManager() );
-            OUString aIdentifier = xModuleManager->identify( rxModel );
-            if( !aIdentifier.isEmpty() )
-                rPool.maCurrDirs[ aIdentifier ] = rPath;
-        }
-        catch(const uno::Exception& )
-        {
-        }
+        uno::Reference< frame::XModuleManager2 > xModuleManager( lclCreateModuleManager() );
+        OUString aIdentifier = xModuleManager->identify( rxModel );
+        if( !aIdentifier.isEmpty() )
+            rPool.maCurrDirs[ aIdentifier ] = rPath;
+    }
+    catch(const uno::Exception& )
+    {
     }
 }
 
 
-} // namespace vba
-} // namespace basic
+} // namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,28 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASEGFX_POLYGON_B2DPOLYPOLYGONTOOLS_HXX
-#define INCLUDED_BASEGFX_POLYGON_B2DPOLYPOLYGONTOOLS_HXX
+#pragma once
 
 #include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/vector/b2dvector.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b3dpolypolygon.hxx>
 #include <com/sun/star/drawing/PointSequenceSequence.hpp>
-#include <com/sun/star/drawing/PolyPolygonBezierCoords.hpp>
 #include <vector>
 #include <set>
 #include <basegfx/basegfxdllapi.h>
 
 
+namespace com::sun::star::drawing { struct PolyPolygonBezierCoords; }
+
 namespace basegfx
 {
-    // predefinitions
     class B2DPolyPolygon;
     class B2DRange;
+}
 
-    namespace tools
-    {
+namespace basegfx::utils
+{
         // B2DPolyPolygon tools
 
         // Check and evtl. correct orientations of all contained Polygons so that
@@ -89,7 +87,6 @@ namespace basegfx
             const B2DPolyPolygon& rCandidate,
             const ::std::vector<double>& rDotDashArray,
             B2DPolyPolygon* pLineTarget,
-            B2DPolyPolygon* pGapTarget = nullptr,
             double fFullDashDotLen = 0.0);
 
         // test if point is inside epsilon-range around the given PolyPolygon. Can be used
@@ -229,6 +226,12 @@ namespace basegfx
             polygon is kept; this is needed to read odf files.
             If false, pure svg is used; this is needed for svg import.
 
+            @param bOOXMLMotionPath
+            If set to true, export string format that is acceptable for
+            for animation motion path for PowerPoint: always space delimited,
+            never neglect command char, always end with E, and do not export
+            H or V.
+
             @return the generated SVG-D statement (the XML d attribute
             value alone, without any "<path ...>" or "d="...")
          */
@@ -236,7 +239,8 @@ namespace basegfx
             const B2DPolyPolygon& rPolyPoly,
             bool bUseRelativeCoordinates,
             bool bDetectQuadraticBeziers,
-            bool bHandleRelativeNextPointCompatible);
+            bool bHandleRelativeNextPointCompatible,
+            bool bOOXMLMotionPath = false);
 
         // #i76891# Try to remove existing curve segments if they are simply edges
         BASEGFX_DLLPUBLIC B2DPolyPolygon simplifyCurveSegments(const B2DPolyPolygon& rCandidate);
@@ -259,7 +263,7 @@ namespace basegfx
             are 'lit' for the given number. Return un-lit segments
             otherwise.
          */
-        B2DPolyPolygon createSevenSegmentPolyPolygon(sal_Char cNumber, bool bLitSegments);
+        B2DPolyPolygon createSevenSegmentPolyPolygon(char cNumber, bool bLitSegments);
 
         /** snap some polygon coordinates to discrete coordinates
 
@@ -277,23 +281,18 @@ namespace basegfx
 
         /// converters for css::drawing::PointSequence
         BASEGFX_DLLPUBLIC B2DPolyPolygon UnoPointSequenceSequenceToB2DPolyPolygon(
-            const css::drawing::PointSequenceSequence& rPointSequenceSequenceSource,
-            bool bCheckClosed = true);
+            const css::drawing::PointSequenceSequence& rPointSequenceSequenceSource);
         BASEGFX_DLLPUBLIC void B2DPolyPolygonToUnoPointSequenceSequence(
             const B2DPolyPolygon& rPolyPolygon,
             css::drawing::PointSequenceSequence& rPointSequenceSequenceRetval);
 
         /// converters for css::drawing::PolyPolygonBezierCoords (curved polygons)
         BASEGFX_DLLPUBLIC B2DPolyPolygon UnoPolyPolygonBezierCoordsToB2DPolyPolygon(
-            const css::drawing::PolyPolygonBezierCoords& rPolyPolygonBezierCoordsSource,
-            bool bCheckClosed = true);
+            const css::drawing::PolyPolygonBezierCoords& rPolyPolygonBezierCoordsSource);
         BASEGFX_DLLPUBLIC void B2DPolyPolygonToUnoPolyPolygonBezierCoords(
             const B2DPolyPolygon& rPolyPolygon,
             css::drawing::PolyPolygonBezierCoords& rPolyPolygonBezierCoordsRetval);
 
-    } // end of namespace tools
-} // end of namespace basegfx
-
-#endif // INCLUDED_BASEGFX_POLYGON_B2DPOLYPOLYGONTOOLS_HXX
+} // end of namespace basegfx::utils
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,6 +19,8 @@
 
 #include <sal/config.h>
 
+#include <memory>
+
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -43,19 +45,18 @@ namespace dxcanvas
         mpSpriteCanvas( rRefDevice ),
         mpSurface()
     {
-        ENSURE_OR_THROW( rRefDevice.get(),
+        ENSURE_OR_THROW( rRefDevice,
                          "CanvasCustomSprite::CanvasCustomSprite(): Invalid sprite canvas" );
 
-        mpSurface.reset(
-            new DXSurfaceBitmap(
+        mpSurface = std::make_shared<DXSurfaceBitmap>(
                 ::basegfx::B2IVector(
                     ::canvas::tools::roundUp( rSpriteSize.Width ),
                     ::canvas::tools::roundUp( rSpriteSize.Height )),
                 rSurfaceProxy,
                 rRenderModule,
-                true));
+                true);
 
-        maCanvasHelper.setDevice( *rRefDevice.get() );
+        maCanvasHelper.setDevice( *rRefDevice );
         maCanvasHelper.setTarget( mpSurface );
 
         maSpriteHelper.init( rSpriteSize,
@@ -81,7 +82,7 @@ namespace dxcanvas
 
     OUString SAL_CALL CanvasCustomSprite::getImplementationName()
     {
-        return OUString( "DXCanvas.CanvasCustomSprite" );
+        return "DXCanvas.CanvasCustomSprite";
     }
 
     sal_Bool SAL_CALL CanvasCustomSprite::supportsService( const OUString& ServiceName )

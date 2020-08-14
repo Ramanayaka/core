@@ -19,19 +19,15 @@
 
 #include <sal/config.h>
 
-#include "comphelper_module.hxx"
-#include "comphelper_services.hxx"
-
 #include <osl/mutex.hxx>
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/seqstream.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/io/NotConnectedException.hpp>
 #include <com/sun/star/io/XSequenceOutputStream.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
@@ -77,7 +73,7 @@ SequenceOutputStreamService::SequenceOutputStreamService()
 // com.sun.star.uno.XServiceInfo:
 OUString SAL_CALL SequenceOutputStreamService::getImplementationName()
 {
-    return OUString("com.sun.star.comp.SequenceOutputStreamService");
+    return "com.sun.star.comp.SequenceOutputStreamService";
 }
 
 sal_Bool SAL_CALL SequenceOutputStreamService::supportsService( OUString const & serviceName )
@@ -87,8 +83,7 @@ sal_Bool SAL_CALL SequenceOutputStreamService::supportsService( OUString const &
 
 uno::Sequence< OUString > SAL_CALL SequenceOutputStreamService::getSupportedServiceNames()
 {
-    uno::Sequence<OUString> s { "com.sun.star.io.SequenceOutputStream" };
-    return s;
+    return { "com.sun.star.io.SequenceOutputStream" };
 }
 
 // css::io::XOutputStream:
@@ -99,7 +94,6 @@ void SAL_CALL SequenceOutputStreamService::writeBytes( const uno::Sequence< ::sa
         throw io::NotConnectedException();
 
     m_xOutputStream->writeBytes( aData );
-    m_aSequence = aData;
 }
 
 void SAL_CALL SequenceOutputStreamService::flush()
@@ -134,7 +128,7 @@ uno::Sequence< ::sal_Int8 > SAL_CALL SequenceOutputStreamService::getWrittenByte
 
 } // anonymous namespace
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_SequenceOutputStreamService(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

@@ -17,19 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "Diagram.hxx"
-#include "macros.hxx"
-#include "PropertyHelper.hxx"
+#include <Diagram.hxx>
+#include <PropertyHelper.hxx>
 #include "Wall.hxx"
-#include "UserDefinedProperties.hxx"
-#include "ConfigColorScheme.hxx"
-#include "DiagramHelper.hxx"
-#include "ThreeDHelper.hxx"
-#include "CloneHelper.hxx"
-#include "AxisHelper.hxx"
-#include "SceneProperties.hxx"
-#include "DisposeHelper.hxx"
-#include "BaseGFXHelper.hxx"
+#include <ModifyListenerHelper.hxx>
+#include <UserDefinedProperties.hxx>
+#include <ConfigColorScheme.hxx>
+#include <DiagramHelper.hxx>
+#include <ThreeDHelper.hxx>
+#include <CloneHelper.hxx>
+#include <SceneProperties.hxx>
 #include <unonames.hxx>
 
 #include <basegfx/numeric/ftools.hxx>
@@ -37,14 +34,14 @@
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/chart2/RelativePosition.hpp>
 #include <com/sun/star/chart2/RelativeSize.hpp>
-#include <com/sun/star/drawing/CameraGeometry.hpp>
+#include <com/sun/star/container/NoSuchElementException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
-#include <com/sun/star/drawing/HomogenMatrix.hpp>
 #include <cppuhelper/supportsservice.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <algorithm>
-#include <iterator>
-#include <functional>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans::PropertyAttribute;
@@ -83,121 +80,103 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "RelativePosition",
+    rOutProperties.emplace_back( "RelativePosition",
                   PROP_DIAGRAM_REL_POS,
                   cppu::UnoType<chart2::RelativePosition>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "RelativeSize",
+    rOutProperties.emplace_back( "RelativeSize",
                   PROP_DIAGRAM_REL_SIZE,
                   cppu::UnoType<chart2::RelativeSize>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "PosSizeExcludeAxes",
+    rOutProperties.emplace_back( "PosSizeExcludeAxes",
                   PROP_DIAGRAM_POSSIZE_EXCLUDE_LABELS,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( CHART_UNONAME_SORT_BY_XVALUES,
+    rOutProperties.emplace_back( CHART_UNONAME_SORT_BY_XVALUES,
                   PROP_DIAGRAM_SORT_BY_X_VALUES,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "ConnectBars",
+    rOutProperties.emplace_back( "ConnectBars",
                   PROP_DIAGRAM_CONNECT_BARS,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "GroupBarsPerAxis",
+    rOutProperties.emplace_back( "GroupBarsPerAxis",
                   PROP_DIAGRAM_GROUP_BARS_PER_AXIS,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "IncludeHiddenCells",
+    rOutProperties.emplace_back( "IncludeHiddenCells",
                   PROP_DIAGRAM_INCLUDE_HIDDEN_CELLS,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "StartingAngle",
+    rOutProperties.emplace_back( "StartingAngle",
                   PROP_DIAGRAM_STARTING_ANGLE,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "RightAngledAxes",
+    rOutProperties.emplace_back( "RightAngledAxes",
                   PROP_DIAGRAM_RIGHT_ANGLED_AXES,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 
-    rOutProperties.push_back(
-        Property( "Perspective",
+    rOutProperties.emplace_back( "Perspective",
                   PROP_DIAGRAM_PERSPECTIVE,
                   cppu::UnoType<sal_Int32>::get(),
-                  beans::PropertyAttribute::MAYBEVOID ));
+                  beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "RotationHorizontal",
+    rOutProperties.emplace_back( "RotationHorizontal",
                   PROP_DIAGRAM_ROTATION_HORIZONTAL,
                   cppu::UnoType<sal_Int32>::get(),
-                  beans::PropertyAttribute::MAYBEVOID ));
+                  beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "RotationVertical",
+    rOutProperties.emplace_back( "RotationVertical",
                   PROP_DIAGRAM_ROTATION_VERTICAL,
                   cppu::UnoType<sal_Int32>::get(),
-                  beans::PropertyAttribute::MAYBEVOID ));
+                  beans::PropertyAttribute::MAYBEVOID );
 
-    rOutProperties.push_back(
-        Property( "MissingValueTreatment",
+    rOutProperties.emplace_back( "MissingValueTreatment",
                   PROP_DIAGRAM_MISSING_VALUE_TREATMENT,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEVOID ));
-   rOutProperties.push_back(
-        Property( "3DRelativeHeight",
+                  | beans::PropertyAttribute::MAYBEVOID );
+    rOutProperties.emplace_back( "3DRelativeHeight",
                   PROP_DIAGRAM_3DRELATIVEHEIGHT,
                   cppu::UnoType<sal_Int32>::get(),
-                  beans::PropertyAttribute::MAYBEVOID ));
-   rOutProperties.push_back(
-       Property( "DataTableHBorder",
+                  beans::PropertyAttribute::MAYBEVOID );
+    rOutProperties.emplace_back( "DataTableHBorder",
                PROP_DIAGRAM_DATATABLEHBORDER,
                  cppu::UnoType<bool>::get(),
                  beans::PropertyAttribute::BOUND
-                 | beans::PropertyAttribute::MAYBEDEFAULT ));
-   rOutProperties.push_back(
-       Property( "DataTableVBorder",
+                 | beans::PropertyAttribute::MAYBEDEFAULT );
+    rOutProperties.emplace_back( "DataTableVBorder",
                PROP_DIAGRAM_DATATABLEVBORDER,
                  cppu::UnoType<bool>::get(),
                  beans::PropertyAttribute::BOUND
-                 | beans::PropertyAttribute::MAYBEDEFAULT ));
-   rOutProperties.push_back(
-       Property( "DataTableOutline",
+                 | beans::PropertyAttribute::MAYBEDEFAULT );
+    rOutProperties.emplace_back( "DataTableOutline",
                PROP_DIAGRAM_DATATABLEOUTLINE,
                  cppu::UnoType<bool>::get(),
                  beans::PropertyAttribute::BOUND
-                 | beans::PropertyAttribute::MAYBEDEFAULT ));
-   rOutProperties.push_back(
-        Property( "ExternalData",
+                 | beans::PropertyAttribute::MAYBEDEFAULT );
+    rOutProperties.emplace_back( "ExternalData",
                   PROP_DIAGRAM_EXTERNALDATA,
                   cppu::UnoType<OUString>::get(),
-                  beans::PropertyAttribute::MAYBEVOID ));
+                  beans::PropertyAttribute::MAYBEVOID );
 }
 
 struct StaticDiagramDefaults_Initializer
@@ -222,7 +201,7 @@ private:
         ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_DIAGRAM_DATATABLEOUTLINE, false );
         ::chart::PropertyHelper::setPropertyValueDefault< sal_Int32 >( rOutMap, PROP_DIAGRAM_STARTING_ANGLE, 90 );
         ::chart::PropertyHelper::setPropertyValueDefault< sal_Int32 >( rOutMap, PROP_DIAGRAM_3DRELATIVEHEIGHT, 100 );
-         ::chart::SceneProperties::AddDefaultsToMap( rOutMap );
+        ::chart::SceneProperties::AddDefaultsToMap( rOutMap );
     }
 };
 
@@ -273,33 +252,26 @@ struct StaticDiagramInfo : public rtl::StaticAggregate< uno::Reference< beans::X
 
 /// clones a UNO-sequence of UNO-References
 typedef Reference< chart2::XCoordinateSystem > lcl_tCooSysRef;
-typedef std::map< lcl_tCooSysRef, lcl_tCooSysRef >  lcl_tCooSysMapping;
-typedef std::vector< lcl_tCooSysRef >               lcl_tCooSysVector;
+typedef std::vector< lcl_tCooSysRef >          lcl_tCooSysVector;
 
-lcl_tCooSysMapping lcl_CloneCoordinateSystems(
+void lcl_CloneCoordinateSystems(
         const lcl_tCooSysVector & rSource,
         lcl_tCooSysVector & rDestination )
 {
-    lcl_tCooSysMapping aResult;
-
-    for( lcl_tCooSysVector::const_iterator aIt( rSource.begin());
-         aIt != rSource.end(); ++aIt )
+    for( auto const & i : rSource )
     {
         lcl_tCooSysRef xClone;
-        css::uno::Reference< css::util::XCloneable > xCloneable( *aIt, css::uno::UNO_QUERY );
+        css::uno::Reference< css::util::XCloneable > xCloneable( i, css::uno::UNO_QUERY );
         if( xCloneable.is())
             xClone.set( xCloneable->createClone(), css::uno::UNO_QUERY );
 
         if( xClone.is())
         {
             rDestination.push_back( xClone );
-            aResult.insert( lcl_tCooSysMapping::value_type( *aIt, xClone ));
         }
         else
-            rDestination.push_back( *aIt );
+            rDestination.push_back( i );
     }
-
-    return aResult;
 }
 
 } // anonymous namespace
@@ -322,14 +294,12 @@ Diagram::Diagram( uno::Reference< uno::XComponentContext > const & xContext ) :
 }
 
 Diagram::Diagram( const Diagram & rOther ) :
-        MutexContainer(),
-        impl::Diagram_Base(),
+        impl::Diagram_Base(rOther),
         ::property::OPropertySet( rOther, m_aMutex ),
     m_xContext( rOther.m_xContext ),
     m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder())
 {
-    lcl_tCooSysMapping aCooSysMapping =
-        lcl_CloneCoordinateSystems( rOther.m_aCoordSystems, m_aCoordSystems );
+    lcl_CloneCoordinateSystems( rOther.m_aCoordSystems, m_aCoordSystems );
     ModifyListenerHelper::addListenerToAllElements( m_aCoordSystems, m_xModifyEventForwarder );
 
     m_xWall.set( CloneHelper::CreateRefClone< beans::XPropertySet >()( rOther.m_xWall ));
@@ -354,9 +324,9 @@ Diagram::~Diagram()
         ModifyListenerHelper::removeListener( m_xTitle, m_xModifyEventForwarder );
         ModifyListenerHelper::removeListener( m_xLegend, m_xModifyEventForwarder );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -366,7 +336,7 @@ uno::Reference< beans::XPropertySet > SAL_CALL Diagram::getWall()
     uno::Reference< beans::XPropertySet > xRet;
     bool bAddListener = false;
     {
-        MutexGuard aGuard( GetMutex() );
+        MutexGuard aGuard( m_aMutex );
         if( !m_xWall.is() )
         {
             m_xWall.set( new Wall() );
@@ -384,7 +354,7 @@ uno::Reference< beans::XPropertySet > SAL_CALL Diagram::getFloor()
     uno::Reference< beans::XPropertySet > xRet;
     bool bAddListener = false;
     {
-        MutexGuard aGuard( GetMutex() );
+        MutexGuard aGuard( m_aMutex );
         if( !m_xFloor.is() )
         {
             m_xFloor.set( new Wall() );
@@ -399,7 +369,7 @@ uno::Reference< beans::XPropertySet > SAL_CALL Diagram::getFloor()
 
 uno::Reference< chart2::XLegend > SAL_CALL Diagram::getLegend()
 {
-    MutexGuard aGuard( GetMutex() );
+    MutexGuard aGuard( m_aMutex );
     return m_xLegend;
 }
 
@@ -407,7 +377,7 @@ void SAL_CALL Diagram::setLegend( const uno::Reference< chart2::XLegend >& xNewL
 {
     Reference< chart2::XLegend > xOldLegend;
     {
-        MutexGuard aGuard( GetMutex() );
+        MutexGuard aGuard( m_aMutex );
         if( m_xLegend == xNewLegend )
             return;
         xOldLegend = m_xLegend;
@@ -424,14 +394,14 @@ Reference< chart2::XColorScheme > SAL_CALL Diagram::getDefaultColorScheme()
 {
     Reference< chart2::XColorScheme > xRet;
     {
-        MutexGuard aGuard( GetMutex() );
+        MutexGuard aGuard( m_aMutex );
         xRet = m_xColorScheme;
     }
 
     if( !xRet.is())
     {
         xRet.set( createConfigColorScheme( m_xContext ));
-        MutexGuard aGuard( GetMutex() );
+        MutexGuard aGuard( m_aMutex );
         m_xColorScheme = xRet;
     }
     return xRet;
@@ -440,7 +410,7 @@ Reference< chart2::XColorScheme > SAL_CALL Diagram::getDefaultColorScheme()
 void SAL_CALL Diagram::setDefaultColorScheme( const Reference< chart2::XColorScheme >& xColorScheme )
 {
     {
-        MutexGuard aGuard( GetMutex() );
+        MutexGuard aGuard( m_aMutex );
         m_xColorScheme.set( xColorScheme );
     }
     fireModifyEvent();
@@ -464,7 +434,7 @@ void SAL_CALL Diagram::setDiagramData(
 // ____ XTitled ____
 uno::Reference< chart2::XTitle > SAL_CALL Diagram::getTitleObject()
 {
-    MutexGuard aGuard( GetMutex() );
+    MutexGuard aGuard( m_aMutex );
     return m_xTitle;
 }
 
@@ -472,7 +442,7 @@ void SAL_CALL Diagram::setTitleObject( const uno::Reference< chart2::XTitle >& x
 {
     Reference< chart2::XTitle > xOldTitle;
     {
-        MutexGuard aGuard( GetMutex() );
+        MutexGuard aGuard( m_aMutex );
         if( m_xTitle == xNewTitle )
             return;
         xOldTitle = m_xTitle;
@@ -506,12 +476,12 @@ void SAL_CALL Diagram::addCoordinateSystem(
     const uno::Reference< chart2::XCoordinateSystem >& aCoordSys )
 {
     {
-        MutexGuard aGuard( GetMutex() );
+        MutexGuard aGuard( m_aMutex );
         if( std::find( m_aCoordSystems.begin(), m_aCoordSystems.end(), aCoordSys )
             != m_aCoordSystems.end())
             throw lang::IllegalArgumentException();
 
-        if( m_aCoordSystems.size()>=1 )
+        if( !m_aCoordSystems.empty() )
         {
             OSL_FAIL( "more than one coordinatesystem is not supported yet by the fileformat" );
             return;
@@ -526,7 +496,7 @@ void SAL_CALL Diagram::removeCoordinateSystem(
     const uno::Reference< chart2::XCoordinateSystem >& aCoordSys )
 {
     {
-        MutexGuard aGuard( GetMutex() );
+        MutexGuard aGuard( m_aMutex );
         std::vector< uno::Reference< chart2::XCoordinateSystem > >::iterator
               aIt( std::find( m_aCoordSystems.begin(), m_aCoordSystems.end(), aCoordSys ));
         if( aIt == m_aCoordSystems.end())
@@ -541,7 +511,7 @@ void SAL_CALL Diagram::removeCoordinateSystem(
 
 uno::Sequence< uno::Reference< chart2::XCoordinateSystem > > SAL_CALL Diagram::getCoordinateSystems()
 {
-    MutexGuard aGuard( GetMutex() );
+    MutexGuard aGuard( m_aMutex );
     return comphelper::containerToSequence( m_aCoordSystems );
 }
 
@@ -550,13 +520,13 @@ void SAL_CALL Diagram::setCoordinateSystems(
 {
     tCoordinateSystemContainerType aNew;
     tCoordinateSystemContainerType aOld;
-    if( aCoordinateSystems.getLength()>0 )
+    if( aCoordinateSystems.hasElements() )
     {
         OSL_ENSURE( aCoordinateSystems.getLength()<=1, "more than one coordinatesystem is not supported yet by the fileformat" );
         aNew.push_back( aCoordinateSystems[0] );
     }
     {
-        MutexGuard aGuard( GetMutex() );
+        MutexGuard aGuard( m_aMutex );
         std::swap( aOld, m_aCoordSystems );
         m_aCoordSystems = aNew;
     }
@@ -568,7 +538,7 @@ void SAL_CALL Diagram::setCoordinateSystems(
 // ____ XCloneable ____
 Reference< util::XCloneable > SAL_CALL Diagram::createClone()
 {
-    MutexGuard aGuard( GetMutex() );
+    MutexGuard aGuard( m_aMutex );
     return Reference< util::XCloneable >( new Diagram( *this ));
 }
 
@@ -580,9 +550,9 @@ void SAL_CALL Diagram::addModifyListener( const Reference< util::XModifyListener
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -593,9 +563,9 @@ void SAL_CALL Diagram::removeModifyListener( const Reference< util::XModifyListe
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -706,7 +676,7 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( Diagram, Diagram_Base, ::property::OPropertySe
 // implement XServiceInfo methods basing upon getSupportedServiceNames_Static
 OUString SAL_CALL Diagram::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart2.Diagram");
+    return "com.sun.star.comp.chart2.Diagram";
 }
 
 sal_Bool SAL_CALL Diagram::supportsService( const OUString& rServiceName )
@@ -724,7 +694,7 @@ css::uno::Sequence< OUString > SAL_CALL Diagram::getSupportedServiceNames()
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_Diagram_get_implementation(css::uno::XComponentContext *context,
         css::uno::Sequence<css::uno::Any> const &)
 {

@@ -8,9 +8,9 @@
  *
  */
 
-#include "opengl/RenderList.hxx"
-#include "opengl/VertexUtils.hxx"
-#include "opengl/LineRenderUtils.hxx"
+#include <opengl/RenderList.hxx>
+#include <opengl/VertexUtils.hxx>
+#include <opengl/LineRenderUtils.hxx>
 
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolygontriangulator.hxx>
@@ -127,31 +127,31 @@ void appendPolyLine(vcl::LineBuilder& rBuilder, const basegfx::B2DPolygon& rPoly
         }
     }
 
-    if (!bClosed && nPoints >= 2 && (eLineCap == css::drawing::LineCap_ROUND || eLineCap == css::drawing::LineCap_SQUARE))
+    if (bClosed || nPoints < 2 || (eLineCap != css::drawing::LineCap_ROUND && eLineCap != css::drawing::LineCap_SQUARE))
+        return;
+
+    glm::vec2 aBeginCapPoint1(rPolygon.getB2DPoint(0).getX(), rPolygon.getB2DPoint(0).getY());
+    glm::vec2 aBeginCapPoint2(rPolygon.getB2DPoint(1).getX(), rPolygon.getB2DPoint(1).getY());
+
+    glm::vec2 aEndCapPoint1(rPolygon.getB2DPoint(nPoints - 1).getX(), rPolygon.getB2DPoint(nPoints - 1).getY());
+    glm::vec2 aEndCapPoint2(rPolygon.getB2DPoint(nPoints - 2).getX(), rPolygon.getB2DPoint(nPoints - 2).getY());
+
+    if (eLineCap == css::drawing::LineCap_ROUND)
     {
-        glm::vec2 aBeginCapPoint1(rPolygon.getB2DPoint(0).getX(), rPolygon.getB2DPoint(0).getY());
-        glm::vec2 aBeginCapPoint2(rPolygon.getB2DPoint(1).getX(), rPolygon.getB2DPoint(1).getY());
-
-        glm::vec2 aEndCapPoint1(rPolygon.getB2DPoint(nPoints - 1).getX(), rPolygon.getB2DPoint(nPoints - 1).getY());
-        glm::vec2 aEndCapPoint2(rPolygon.getB2DPoint(nPoints - 2).getX(), rPolygon.getB2DPoint(nPoints - 2).getY());
-
-        if (eLineCap == css::drawing::LineCap_ROUND)
-        {
-            rBuilder.appendRoundLineCapVertices(aBeginCapPoint1, aBeginCapPoint2);
-            rBuilder.appendRoundLineCapVertices(aEndCapPoint1, aEndCapPoint2);
-        }
-        else if (eLineCap == css::drawing::LineCap_SQUARE)
-        {
-            rBuilder.appendSquareLineCapVertices(aBeginCapPoint1, aBeginCapPoint2);
-            rBuilder.appendSquareLineCapVertices(aEndCapPoint1, aEndCapPoint2);
-        }
+        rBuilder.appendRoundLineCapVertices(aBeginCapPoint1, aBeginCapPoint2);
+        rBuilder.appendRoundLineCapVertices(aEndCapPoint1, aEndCapPoint2);
+    }
+    else if (eLineCap == css::drawing::LineCap_SQUARE)
+    {
+        rBuilder.appendSquareLineCapVertices(aBeginCapPoint1, aBeginCapPoint2);
+        rBuilder.appendSquareLineCapVertices(aEndCapPoint1, aEndCapPoint2);
     }
 }
 
-inline void appendTrapezoid(std::vector<Vertex>& rVertices, std::vector<GLuint>& rIndices,
+void appendTrapezoid(std::vector<Vertex>& rVertices, std::vector<GLuint>& rIndices,
                        GLfloat x1, GLfloat y1, GLfloat x2, GLfloat y2,
                        GLfloat x3, GLfloat y3, GLfloat x4, GLfloat y4,
-                       SalColor nColor, GLfloat fTransparency)
+                       Color nColor, GLfloat fTransparency)
 {
     GLubyte nR, nG, nB, nA;
     vcl::vertex::createColor(nColor, fTransparency, nR, nG, nB, nA);
@@ -173,7 +173,7 @@ inline void appendTrapezoid(std::vector<Vertex>& rVertices, std::vector<GLuint>&
 
 void appendRectangle(std::vector<Vertex>& rVertices, std::vector<GLuint>& rIndices,
                      GLfloat x1, GLfloat y1, GLfloat x2, GLfloat y2,
-                     SalColor nColor, GLfloat fTransparency)
+                     Color nColor, GLfloat fTransparency)
 {
     GLubyte nR, nG, nB, nA;
     vcl::vertex::createColor(nColor, fTransparency, nR, nG, nB, nA);
@@ -195,7 +195,7 @@ void appendRectangle(std::vector<Vertex>& rVertices, std::vector<GLuint>& rIndic
 
 } // end anonymous namespace
 
-void RenderList::addDrawPixel(long nX, long nY, SalColor nColor)
+void RenderList::addDrawPixel(long nX, long nY, Color nColor)
 {
     if (nColor == SALCOLOR_NONE)
         return;
@@ -208,7 +208,7 @@ void RenderList::addDrawPixel(long nX, long nY, SalColor nColor)
 }
 
 void RenderList::addDrawRectangle(long nX, long nY, long nWidth, long nHeight, double fTransparency,
-                                  SalColor nLineColor, SalColor nFillColor)
+                                  Color nLineColor, Color nFillColor)
 {
     if (nLineColor == SALCOLOR_NONE && nFillColor == SALCOLOR_NONE)
         return;
@@ -237,26 +237,27 @@ void RenderList::addDrawRectangle(long nX, long nY, long nWidth, long nHeight, d
                     fX1 - 0.5f, fY2 - 0.5f, fX2 + 0.5f, fY2 + 0.5f, nLineColor, fTransparency);
     }
 
-    if (nFillColor != SALCOLOR_NONE)
+    if (nFillColor == SALCOLOR_NONE)
+        return;
+
+    // coverity[copy_paste_error : FALSE] - this is correct nLineColor not nFillColor
+    if (nLineColor == SALCOLOR_NONE)
     {
-        if (nLineColor == SALCOLOR_NONE)
-        {
-            appendRectangle(rRenderParameter.maVertices, rRenderParameter.maIndices,
-                        fX1 - 0.5f, fY1 - 0.5f, fX1 + 0.5f, fY2 + 0.5f, nFillColor, fTransparency);
-            appendRectangle(rRenderParameter.maVertices, rRenderParameter.maIndices,
-                        fX1 - 0.5f, fY1 - 0.5f, fX2 + 0.5f, fY1 + 0.5f, nFillColor, fTransparency);
-            appendRectangle(rRenderParameter.maVertices, rRenderParameter.maIndices,
-                        fX2 - 0.5f, fY1 - 0.5f, fX2 + 0.5f, fY2 + 0.5f, nFillColor, fTransparency);
-            appendRectangle(rRenderParameter.maVertices, rRenderParameter.maIndices,
-                        fX1 - 0.5f, fY2 - 0.5f, fX2 + 0.5f, fY2 + 0.5f, nFillColor, fTransparency);
-        }
-        // Draw rectangle fill with fill color
         appendRectangle(rRenderParameter.maVertices, rRenderParameter.maIndices,
-                        fX1 + 0.5f, fY1 + 0.5f, fX2 - 0.5f, fY2 - 0.5f, nFillColor, fTransparency);
+                    fX1 - 0.5f, fY1 - 0.5f, fX1 + 0.5f, fY2 + 0.5f, nFillColor, fTransparency);
+        appendRectangle(rRenderParameter.maVertices, rRenderParameter.maIndices,
+                    fX1 - 0.5f, fY1 - 0.5f, fX2 + 0.5f, fY1 + 0.5f, nFillColor, fTransparency);
+        appendRectangle(rRenderParameter.maVertices, rRenderParameter.maIndices,
+                    fX2 - 0.5f, fY1 - 0.5f, fX2 + 0.5f, fY2 + 0.5f, nFillColor, fTransparency);
+        appendRectangle(rRenderParameter.maVertices, rRenderParameter.maIndices,
+                    fX1 - 0.5f, fY2 - 0.5f, fX2 + 0.5f, fY2 + 0.5f, nFillColor, fTransparency);
     }
+    // Draw rectangle fill with fill color
+    appendRectangle(rRenderParameter.maVertices, rRenderParameter.maIndices,
+                    fX1 + 0.5f, fY1 + 0.5f, fX2 - 0.5f, fY2 - 0.5f, nFillColor, fTransparency);
 }
 
-void RenderList::addDrawLine(long nX1, long nY1, long nX2, long nY2, SalColor nLineColor, bool bUseAA)
+void RenderList::addDrawLine(long nX1, long nY1, long nX2, long nY2, Color nLineColor, bool bUseAA)
 {
     if (nLineColor == SALCOLOR_NONE)
         return;
@@ -273,7 +274,7 @@ void RenderList::addDrawLine(long nX1, long nY1, long nX2, long nY2, SalColor nL
 }
 
 void RenderList::addDrawPolyPolygon(const basegfx::B2DPolyPolygon& rPolyPolygon, double fTransparency,
-                        SalColor nLineColor, SalColor nFillColor, bool bUseAA)
+                        Color nLineColor, Color nFillColor, bool bUseAA)
 {
     if (rPolyPolygon.count() <= 0)
         return;
@@ -284,17 +285,16 @@ void RenderList::addDrawPolyPolygon(const basegfx::B2DPolyPolygon& rPolyPolygon,
 
     checkOverlapping(rPolyPolygon.getB2DRange());
 
-    RenderParameters& rLineRenderParameter = maRenderEntries.back().maLineParameters;
-    RenderParameters& rTriangleRenderParameter = maRenderEntries.back().maTriangleParameters;
-
     if (nFillColor != SALCOLOR_NONE)
     {
         basegfx::B2DTrapezoidVector aTrapezoidVector;
-        basegfx::tools::trapezoidSubdivide(aTrapezoidVector, rPolyPolygon);
+        basegfx::utils::trapezoidSubdivide(aTrapezoidVector, rPolyPolygon);
 
         if (!aTrapezoidVector.empty())
         {
-            for (basegfx::B2DTrapezoid & rTrapezoid : aTrapezoidVector)
+            RenderParameters& rTriangleRenderParameter = maRenderEntries.back().maTriangleParameters;
+
+            for (const basegfx::B2DTrapezoid & rTrapezoid : aTrapezoidVector)
             {
                 GLfloat topX1 = rTrapezoid.getTopXLeft();
                 GLfloat topX2 = rTrapezoid.getTopXRight();
@@ -312,46 +312,47 @@ void RenderList::addDrawPolyPolygon(const basegfx::B2DPolyPolygon& rPolyPolygon,
         }
     }
 
-    if (nLineColor != SALCOLOR_NONE || bUseAA)
+    if (nLineColor == SALCOLOR_NONE && !bUseAA)
+        return;
+
+    RenderParameters& rLineRenderParameter = maRenderEntries.back().maLineParameters;
+    Color nColor = (nLineColor == SALCOLOR_NONE) ? nFillColor : nLineColor;
+
+    vcl::LineBuilder aBuilder(rLineRenderParameter.maVertices, rLineRenderParameter.maIndices,
+                              nColor, fTransparency, 1.0f, bUseAA);
+
+    for (const basegfx::B2DPolygon& rPolygon : rPolyPolygon)
     {
-        SalColor nColor = (nLineColor == SALCOLOR_NONE) ? nFillColor : nLineColor;
+        basegfx::B2DPolygon aPolygon(rPolygon);
+        if (rPolygon.areControlPointsUsed())
+            aPolygon = rPolygon.getDefaultAdaptiveSubdivision();
 
-        vcl::LineBuilder aBuilder(rLineRenderParameter.maVertices, rLineRenderParameter.maIndices,
-                                  nColor, fTransparency, 1.0f, bUseAA);
+        sal_uInt32 nPoints = aPolygon.count();
+        if (nPoints <= 1)
+            continue;
 
-        for (const basegfx::B2DPolygon& rPolygon : rPolyPolygon)
+        GLfloat x1, y1, x2, y2;
+        sal_uInt32 index1, index2;
+
+        for (sal_uInt32 i = 0; i <= nPoints; ++i)
         {
-            basegfx::B2DPolygon aPolygon(rPolygon);
-            if (rPolygon.areControlPointsUsed())
-                aPolygon = rPolygon.getDefaultAdaptiveSubdivision();
+            index1 =  i      % nPoints;
+            index2 = (i + 1) % nPoints;
 
-            sal_uInt32 nPoints = aPolygon.count();
-            if (nPoints <= 1)
-                continue;
+            x1 = aPolygon.getB2DPoint(index1).getX();
+            y1 = aPolygon.getB2DPoint(index1).getY();
+            x2 = aPolygon.getB2DPoint(index2).getX();
+            y2 = aPolygon.getB2DPoint(index2).getY();
 
-            GLfloat x1, y1, x2, y2;
-            sal_uInt32 index1, index2;
-
-            for (sal_uInt32 i = 0; i <= nPoints; ++i)
-            {
-                index1 = (i)     % nPoints;
-                index2 = (i + 1) % nPoints;
-
-                x1 = aPolygon.getB2DPoint(index1).getX();
-                y1 = aPolygon.getB2DPoint(index1).getY();
-                x2 = aPolygon.getB2DPoint(index2).getX();
-                y2 = aPolygon.getB2DPoint(index2).getY();
-
-                aBuilder.appendLine(glm::vec2(x1, y1), glm::vec2(x2, y2));
-            }
+            aBuilder.appendLine(glm::vec2(x1, y1), glm::vec2(x2, y2));
         }
     }
 }
 
-bool RenderList::addDrawTextureWithMaskColor(OpenGLTexture& rTexture, SalColor nColor, const SalTwoRect& r2Rect)
+void RenderList::addDrawTextureWithMaskColor(OpenGLTexture const & rTexture, Color nColor, const SalTwoRect& r2Rect)
 {
     if (!rTexture)
-        return false;
+        return;
 
     GLfloat fX1 = r2Rect.mnDestX;
     GLfloat fY1 = r2Rect.mnDestY;
@@ -369,14 +370,12 @@ bool RenderList::addDrawTextureWithMaskColor(OpenGLTexture& rTexture, SalColor n
 
     vcl::vertex::addRectangle<GL_TRIANGLES>(rTextureParameter.maVertices, fX1, fY1, fX2, fY2);
     vcl::vertex::addQuadColors<GL_TRIANGLES>(rTextureParameter.maColors, nColor, 0.0f);
-
-    return true;
 }
 
 void RenderList::addDrawPolyLine(const basegfx::B2DPolygon& rPolygon, double fTransparency,
-                                 const basegfx::B2DVector& rLineWidth, basegfx::B2DLineJoin eLineJoin,
+                                 double fLineWidth, basegfx::B2DLineJoin eLineJoin,
                                  css::drawing::LineCap eLineCap, double fMiterMinimumAngle,
-                                 SalColor nLineColor, bool bUseAA)
+                                 Color nLineColor, bool bUseAA)
 {
     if (rPolygon.count() <= 1)
         return;
@@ -385,8 +384,8 @@ void RenderList::addDrawPolyLine(const basegfx::B2DPolygon& rPolygon, double fTr
     if (fTransparency == 1.0)
         return;
 
-    const bool bIsHairline = (rLineWidth.getX() == rLineWidth.getY()) && (rLineWidth.getX() <= 1.2);
-    const float fLineWidth = bIsHairline ? 1.0f : rLineWidth.getX();
+    const bool bIsHairline = fLineWidth <= 1.2;
+    fLineWidth = bIsHairline ? 1.0f : fLineWidth;
 
     basegfx::B2DPolygon aPolygon(rPolygon);
     if (rPolygon.areControlPointsUsed())

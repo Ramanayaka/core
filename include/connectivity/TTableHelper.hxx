@@ -27,12 +27,13 @@
 
 #include <connectivity/dbtoolsdllapi.hxx>
 #include <connectivity/sdbcx/VTable.hxx>
-#include <connectivity/sdbcx/VKey.hxx>
-#include <connectivity/StdTypeDefs.hxx>
-#include <com/sun/star/sdb/tools/XTableRename.hpp>
-#include <com/sun/star/sdb/tools/XTableAlteration.hpp>
-#include <com/sun/star/sdb/tools/XKeyAlteration.hpp>
-#include <com/sun/star/sdb/tools/XIndexAlteration.hpp>
+
+namespace com::sun::star::sdbc { class XConnection; }
+namespace com::sun::star::sdb::tools { class XIndexAlteration; }
+namespace com::sun::star::sdb::tools { class XKeyAlteration; }
+namespace com::sun::star::sdb::tools { class XTableAlteration; }
+namespace com::sun::star::sdb::tools { class XTableRename; }
+namespace connectivity::sdbcx { struct KeyProperties; }
 
 namespace connectivity
 {
@@ -81,27 +82,27 @@ namespace connectivity
     {
         ::std::unique_ptr<OTableHelperImpl> m_pImpl;
 
-        void refreshPrimaryKeys(TStringVector& _rKeys);
-        void refreshForeignKeys(TStringVector& _rKeys);
+        void refreshPrimaryKeys(::std::vector< OUString>& _rKeys);
+        void refreshForeignKeys(::std::vector< OUString>& _rKeys);
 
     protected:
         /** creates the column collection for the table
             @param  _rNames
                 The column names.
         */
-        virtual sdbcx::OCollection* createColumns(const TStringVector& _rNames) = 0;
+        virtual sdbcx::OCollection* createColumns(const ::std::vector< OUString>& _rNames) = 0;
 
         /** creates the key collection for the table
             @param  _rNames
                 The key names.
         */
-        virtual sdbcx::OCollection* createKeys(const TStringVector& _rNames) = 0;
+        virtual sdbcx::OCollection* createKeys(const ::std::vector< OUString>& _rNames) = 0;
 
         /** creates the index collection for the table
             @param  _rNames
                 The index names.
         */
-        virtual sdbcx::OCollection* createIndexes(const TStringVector& _rNames) = 0;
+        virtual sdbcx::OCollection* createIndexes(const ::std::vector< OUString>& _rNames) = 0;
 
         /** this function is called upon disposing the component
         */
@@ -137,7 +138,7 @@ namespace connectivity
             );
 
         virtual css::uno::Reference< css::sdbc::XDatabaseMetaData> getMetaData() const override;
-        css::uno::Reference< css::sdbc::XConnection> getConnection() const;
+        css::uno::Reference< css::sdbc::XConnection> const & getConnection() const;
 
         // XRename
         virtual void SAL_CALL rename( const OUString& newName ) override;
@@ -153,10 +154,10 @@ namespace connectivity
 
         virtual OUString getTypeCreatePattern() const;
 
-        css::uno::Reference< css::sdb::tools::XTableRename>      getRenameService() const;
-        css::uno::Reference< css::sdb::tools::XTableAlteration>  getAlterService() const;
-        css::uno::Reference< css::sdb::tools::XKeyAlteration>    getKeyService() const;
-        css::uno::Reference< css::sdb::tools::XIndexAlteration>  getIndexService() const;
+        css::uno::Reference< css::sdb::tools::XTableRename> const &      getRenameService() const;
+        css::uno::Reference< css::sdb::tools::XTableAlteration> const &  getAlterService() const;
+        css::uno::Reference< css::sdb::tools::XKeyAlteration> const &    getKeyService() const;
+        css::uno::Reference< css::sdb::tools::XIndexAlteration> const &  getIndexService() const;
     };
 }
 #endif // INCLUDED_CONNECTIVITY_TTABLEHELPER_HXX

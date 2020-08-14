@@ -18,18 +18,13 @@
  */
 
 #include "commoncontrol.hxx"
-#include "pcrcommon.hxx"
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
-#include <vcl/combobox.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
 
 
 namespace pcr
 {
 
 
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::inspection::XPropertyControlContext;
     using ::com::sun::star::uno::Exception;
@@ -47,12 +42,12 @@ namespace pcr
     {
     }
 
-    void SAL_CALL CommonBehaviourControlHelper::setControlContext( const Reference< XPropertyControlContext >& _controlcontext )
+    void CommonBehaviourControlHelper::setControlContext( const Reference< XPropertyControlContext >& _controlcontext )
     {
         m_xContext = _controlcontext;
     }
 
-    void SAL_CALL CommonBehaviourControlHelper::notifyModifiedValue(  )
+    void CommonBehaviourControlHelper::notifyModifiedValue(  )
     {
         if ( isModified() && m_xContext.is() )
         {
@@ -63,53 +58,57 @@ namespace pcr
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
             }
         }
     }
 
-
-    void CommonBehaviourControlHelper::autoSizeWindow()
-    {
-        ScopedVclPtrInstance< ComboBox > aComboBox(getVclWindow(), WB_DROPDOWN);
-        aComboBox->SetPosSizePixel(Point(0,0), Size(100,100));
-        getVclWindow()->SetSizePixel(aComboBox->GetSizePixel());
-
-        // TODO/UNOize: why do the controls this themselves? Shouldn't this be the task
-        // of the browser listbox/line?
-    }
-
-
-    void CommonBehaviourControlHelper::activateNextControl() const
-    {
-        try
-        {
-            if ( m_xContext.is() )
-                m_xContext->activateNextControl( &m_rAntiImpl );
-        }
-        catch( const Exception& )
-        {
-            DBG_UNHANDLED_EXCEPTION();
-        }
-    }
-
-
-    IMPL_LINK_NOARG( CommonBehaviourControlHelper, EditModifiedHdl, Edit&, void )
+    void CommonBehaviourControlHelper::editChanged()
     {
         setModified();
     }
 
-    IMPL_LINK_NOARG( CommonBehaviourControlHelper, ModifiedHdl, ListBox&, void )
+    IMPL_LINK_NOARG( CommonBehaviourControlHelper, EditModifiedHdl, weld::Entry&, void )
+    {
+        editChanged();
+    }
+
+    IMPL_LINK_NOARG( CommonBehaviourControlHelper, ModifiedHdl, weld::ComboBox&, void )
+    {
+        setModified();
+        // notify as soon as the Data source is changed, don't wait until we lose focus
+        // because the Content dropdown cannot be populated after it is popped up
+        // and going from Data source direct to Content may give focus-lost to
+        // Content after the popup attempt is made
+        notifyModifiedValue();
+    }
+
+    IMPL_LINK_NOARG( CommonBehaviourControlHelper, MetricModifiedHdl, weld::MetricSpinButton&, void )
     {
         setModified();
     }
 
-    IMPL_LINK_NOARG( CommonBehaviourControlHelper, ColorModifiedHdl, SvxColorListBox&, void )
+    IMPL_LINK_NOARG( CommonBehaviourControlHelper, FormattedModifiedHdl, weld::FormattedSpinButton&, void )
     {
         setModified();
     }
 
-    IMPL_LINK_NOARG( CommonBehaviourControlHelper, GetFocusHdl, Control&, void )
+    IMPL_LINK_NOARG( CommonBehaviourControlHelper, TimeModifiedHdl, weld::FormattedSpinButton&, void )
+    {
+        setModified();
+    }
+
+    IMPL_LINK_NOARG( CommonBehaviourControlHelper, DateModifiedHdl, SvtCalendarBox&, void )
+    {
+        setModified();
+    }
+
+    IMPL_LINK_NOARG( CommonBehaviourControlHelper, ColorModifiedHdl, ColorListBox&, void )
+    {
+        setModified();
+    }
+
+    IMPL_LINK_NOARG( CommonBehaviourControlHelper, GetFocusHdl, weld::Widget&, void )
     {
         try
         {
@@ -118,12 +117,11 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
     }
 
-
-    IMPL_LINK_NOARG( CommonBehaviourControlHelper, LoseFocusHdl, Control&, void )
+    IMPL_LINK_NOARG( CommonBehaviourControlHelper, LoseFocusHdl, weld::Widget&, void )
     {
         // TODO/UNOize: should this be outside the default control's implementations? If somebody
         // has an own control implementation, which does *not* do this - would this be allowed?
@@ -131,8 +129,6 @@ namespace pcr
         notifyModifiedValue();
     }
 
-
 } // namespace pcr
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

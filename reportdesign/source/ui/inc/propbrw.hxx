@@ -20,16 +20,14 @@
 #ifndef INCLUDED_REPORTDESIGN_SOURCE_UI_INC_PROPBRW_HXX
 #define INCLUDED_REPORTDESIGN_SOURCE_UI_INC_PROPBRW_HXX
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/awt/XControlContainer.hpp>
 #include <com/sun/star/frame/XFrame2.hpp>
 #include <com/sun/star/inspection/XObjectInspector.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <svl/SfxBroadcaster.hxx>
 #include <svl/lstner.hxx>
 #include <vcl/dockwin.hxx>
+#include <vcl/layout.hxx>
 #include <svx/svdmark.hxx>
-#include "ModuleHelper.hxx"
 
 namespace rptui
 {
@@ -41,10 +39,10 @@ class OObjectBase;
 // PropBrw
 
 
-class PropBrw : public DockingWindow , public SfxListener, public SfxBroadcaster
+class PropBrw final : public DockingWindow , public SfxListener, public SfxBroadcaster
 {
-private:
-    OModuleClient       m_aModuleClient;
+    VclPtr<VclVBox> m_xContentArea;
+
     css::uno::Reference< css::uno::XComponentContext >
                         m_xInspectorContext;
     css::uno::Reference< css::uno::XComponentContext >
@@ -53,8 +51,6 @@ private:
                         m_xMeAsFrame;
     css::uno::Reference< css::inspection::XObjectInspector >
                         m_xBrowserController;
-    css::uno::Reference< css::awt::XWindow >
-                        m_xBrowserComponentWindow;
     css::uno::Reference< css::uno::XInterface>
                         m_xLastSection; /// is the previously displayed section
     OUString            m_sLastActivePage;
@@ -62,11 +58,9 @@ private:
     OSectionView*       m_pView;
     bool                m_bInitialStateChange;
 
-    PropBrw(PropBrw&) = delete;
-    void operator =(PropBrw&) = delete;
-protected:
+    PropBrw(PropBrw const &) = delete;
+    void operator =(PropBrw const &) = delete;
 
-    virtual void Resize() override;
     virtual bool Close() override;
 
     css::uno::Sequence< css::uno::Reference< css::uno::XInterface> >
@@ -100,8 +94,6 @@ public:
     void                    setCurrentPage(const OUString& _sLastActivePage);
 
     ::Size getMinimumSize() const;
-private:
-    using Window::Update;
 };
 
 } // rptui

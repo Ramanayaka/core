@@ -20,6 +20,7 @@ $(eval $(call gb_ExternalProject_use_externals,libmwaw,\
 ))
 
 $(call gb_ExternalProject_get_state_target,libmwaw,build) :
+	$(call gb_Trace_StartRange,libmwaw,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		export PKG_CONFIG="" \
 		&& ./configure \
@@ -29,14 +30,13 @@ $(call gb_ExternalProject_get_state_target,libmwaw,build) :
 			, \
 				--enable-shared --disable-static \
 			) \
-			--with-sharedptr=c++11 \
 			--without-docs \
 			--disable-tools \
 			--disable-zip \
 			$(if $(ENABLE_DEBUG),--enable-debug,--disable-debug) \
 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
 			--disable-werror \
-			CXXFLAGS="$(CXXFLAGS) $(CXXFLAGS_CXX11)" \
+			CXXFLAGS="$(gb_CXXFLAGS) $(if $(ENABLE_OPTIMIZED),$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS))" \
 			$(if $(filter LINUX,$(OS)),$(if $(SYSTEM_REVENGE),, \
 				'LDFLAGS=-Wl$(COMMA)-z$(COMMA)origin \
 					-Wl$(COMMA)-rpath$(COMMA)\$$$$ORIGIN')) \
@@ -49,5 +49,6 @@ $(call gb_ExternalProject_get_state_target,libmwaw,build) :
 				$(EXTERNAL_WORKDIR)/src/lib/.libs/libmwaw-0.3.3.dylib \
 		) \
 	)
+	$(call gb_Trace_EndRange,libmwaw,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

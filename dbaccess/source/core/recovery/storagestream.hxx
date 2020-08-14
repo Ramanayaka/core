@@ -20,10 +20,7 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_CORE_RECOVERY_STORAGESTREAM_HXX
 #define INCLUDED_DBACCESS_SOURCE_CORE_RECOVERY_STORAGESTREAM_HXX
 
-#include <dbaccess/dbaccessdllapi.h>
-
 #include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
 namespace dbaccess
 {
@@ -39,10 +36,6 @@ namespace dbaccess
             const OUString& i_rStreamName
         );
         virtual ~StorageOutputStream();
-
-        /** simply calls closeOutput on our output stream, override to extend/modify this behavior
-        */
-        virtual void close();
 
     protected:
         const css::uno::Reference< css::io::XOutputStream >&

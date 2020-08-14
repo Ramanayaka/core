@@ -17,18 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TokenWriter.hxx"
-#include <tools/debug.hxx>
+#include <TokenWriter.hxx>
 #include <tools/diagnose_ex.h>
 #include <tools/stream.hxx>
 #include <osl/diagnose.h>
-#include "RtfReader.hxx"
-#include "HtmlReader.hxx"
-#include "dbustrings.hrc"
-#include <comphelper/processfactory.hxx>
-#include <comphelper/string.hxx>
+#include <rtl/tencinfo.h>
+#include <sal/log.hxx>
+#include <i18nlangtag/languagetag.hxx>
+#include <RtfReader.hxx>
+#include <HtmlReader.hxx>
+#include <strings.hxx>
 #include <comphelper/types.hxx>
 #include <connectivity/dbtools.hxx>
+#include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/sdb/DatabaseContext.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
@@ -36,7 +37,6 @@
 #include <com/sun/star/sdbc/XRowSet.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/sdb/XQueriesSupplier.hpp>
-#include <com/sun/star/sdbc/XDataSource.hpp>
 #include <com/sun/star/awt/FontWeight.hpp>
 #include <com/sun/star/awt/FontStrikeout.hpp>
 #include <com/sun/star/awt/FontSlant.hpp>
@@ -49,14 +49,13 @@
 #include <sfx2/frmhtmlw.hxx>
 #include <svl/numuno.hxx>
 #include <vcl/svapp.hxx>
-#include "UITools.hxx"
+#include <UITools.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/settings.hxx>
 #include <svtools/rtfout.hxx>
 #include <svtools/htmlcfg.hxx>
 #include <connectivity/formattedcolumnvalue.hxx>
-#include <unotools/syslocale.hxx>
 #include <memory>
 
 using namespace dbaui;
@@ -83,8 +82,6 @@ ODatabaseImportExport::ODatabaseImportExport(const svx::ODataAccessDescriptor& _
     ,m_xContext(_rM)
     ,m_nCommandType(CommandType::TABLE)
     ,m_bNeedToReInitialize(false)
-    ,m_pReader(nullptr)
-    ,m_pRowMarker(nullptr)
     ,m_bInInitialize(false)
     ,m_bCheckOnly(false)
 {
@@ -105,31 +102,16 @@ ODatabaseImportExport::ODatabaseImportExport( const ::dbtools::SharedConnection&
     ,m_xContext(_rM)
     ,m_nCommandType(css::sdb::CommandType::TABLE)
     ,m_bNeedToReInitialize(false)
-    ,m_pReader(nullptr)
-    ,m_pRowMarker(nullptr)
     ,m_bInInitialize(false)
     ,m_bCheckOnly(false)
 {
     m_eDestEnc = osl_getThreadTextEncoding();
-    try
-    {
-        SvtSysLocale aSysLocale;
-        m_aLocale = aSysLocale.GetLanguageTag().getLocale();
-    }
-    catch(Exception&)
-    {
-    }
 }
 
 ODatabaseImportExport::~ODatabaseImportExport()
 {
     acquire();
-
     dispose();
-
-    if(m_pReader)
-        m_pReader->release();
-    delete m_pRowMarker;
 }
 
 void ODatabaseImportExport::dispose()
@@ -199,7 +181,7 @@ void ODatabaseImportExport::impl_initFromDescriptor( const ODataAccessDescriptor
             m_xRowLocate.set( m_xResultSet, UNO_QUERY );
         }
 
-        if ( m_aSelection.getLength() != 0 )
+        if ( m_aSelection.hasElements() )
         {
             if ( !m_xResultSet.is() )
             {
@@ -208,26 +190,17 @@ void ODatabaseImportExport::impl_initFromDescriptor( const ODataAccessDescriptor
             }
         }
 
-        if ( m_aSelection.getLength() != 0 )
+        if ( m_aSelection.hasElements() )
         {
             if ( m_bBookmarkSelection && !m_xRowLocate.is() )
             {
-                SAL_WARN("dbaccess.ui", "ODatabaseImportExport::impl_initFromDescriptor: no XRowLocate -> no bookmars!" );
+                SAL_WARN("dbaccess.ui", "ODatabaseImportExport::impl_initFromDescriptor: no XRowLocate -> no bookmarks!" );
                 m_aSelection.realloc( 0 );
             }
         }
     }
     else
         initialize();
-
-    try
-    {
-        SvtSysLocale aSysLocale;
-        m_aLocale = aSysLocale.GetLanguageTag().getLocale();
-    }
-    catch(Exception&)
-    {
-    }
 }
 
 void ODatabaseImportExport::initialize()
@@ -295,7 +268,7 @@ void ODatabaseImportExport::initialize()
             {
                 m_xRow.set( m_xResultSet, UNO_QUERY );
                 m_xRowLocate.set( m_xResultSet, UNO_QUERY );
-                m_xResultSetMetaData = Reference<XResultSetMetaDataSupplier>(m_xRow,UNO_QUERY)->getMetaData();
+                m_xResultSetMetaData = Reference<XResultSetMetaDataSupplier>(m_xRow,UNO_QUERY_THROW)->getMetaData();
                 Reference<XColumnsSupplier> xSup(m_xResultSet,UNO_QUERY_THROW);
                 m_xRowSetColumns.set(xSup->getColumns(),UNO_QUERY_THROW);
             }
@@ -345,8 +318,12 @@ bool ORTFImportExport::Write()
 {
     ODatabaseImportExport::Write();
     m_pStream->WriteChar( '{' ).WriteCharPtr( OOO_STRING_SVTOOLS_RTF_RTF );
-    m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_ANSI ).WriteCharPtr( SAL_NEWLINE_STRING );
-    rtl_TextEncoding eDestEnc = RTL_TEXTENCODING_MS_1252;
+    m_pStream->WriteCharPtr(OOO_STRING_SVTOOLS_RTF_ANSI);
+    if (sal_uInt32 nCpg = rtl_getWindowsCodePageFromTextEncoding(m_eDestEnc); nCpg && nCpg != 65001)
+    {
+        m_pStream->WriteCharPtr(OOO_STRING_SVTOOLS_RTF_ANSICPG).WriteUInt32AsString(nCpg);
+    }
+    m_pStream->WriteCharPtr(SAL_NEWLINE_STRING);
 
     bool bBold          = ( css::awt::FontWeight::BOLD     == m_aFont.Weight );
     bool bItalic        = ( css::awt::FontSlant_ITALIC     == m_aFont.Slant );
@@ -358,22 +335,25 @@ bool ORTFImportExport::Write()
         m_xObject->getPropertyValue(PROPERTY_TEXTCOLOR) >>= nColor;
     ::Color aColor(nColor);
 
-    OString aFonts(OUStringToOString(m_aFont.Name, eDestEnc));
+    OString aFonts(OUStringToOString(m_aFont.Name, RTL_TEXTENCODING_MS_1252));
     if (aFonts.isEmpty())
     {
         OUString aName = Application::GetSettings().GetStyleSettings().GetAppFont().GetFamilyName();
-        aFonts = OUStringToOString(aName, eDestEnc);
+        aFonts = OUStringToOString(aName, RTL_TEXTENCODING_MS_1252);
     }
 
     m_pStream->WriteCharPtr( "{\\fonttbl" );
-    sal_Int32 nTokenCount = comphelper::string::getTokenCount(aFonts, ';');
-    for(sal_Int32 j=0; j<nTokenCount; ++j)
+    if (!aFonts.isEmpty())
     {
-        m_pStream->WriteCharPtr( "\\f" );
-        m_pStream->WriteInt32AsString(j);
-        m_pStream->WriteCharPtr( "\\fcharset0\\fnil " );
-        m_pStream->WriteCharPtr( aFonts.getToken(j, ';').getStr() );
-        m_pStream->WriteChar( ';' );
+        sal_Int32 nIdx{0};
+        sal_Int32 nTok{-1}; // to compensate pre-increment
+        do {
+            m_pStream->WriteCharPtr( "\\f" );
+            m_pStream->WriteInt32AsString(++nTok);
+            m_pStream->WriteCharPtr( "\\fcharset0\\fnil " );
+            m_pStream->WriteOString( aFonts.getToken(0, ';', nIdx) );
+            m_pStream->WriteChar( ';' );
+        } while (nIdx>=0);
     }
     m_pStream->WriteChar( '}' ) ;
     m_pStream->WriteCharPtr( SAL_NEWLINE_STRING );
@@ -459,7 +439,7 @@ bool ORTFImportExport::Write()
 
             m_pStream->WriteCharPtr( "\\fs20\\f0\\cf0\\cb2" );
             m_pStream->WriteChar( ' ' );
-            RTFOutFuncs::Out_String(*m_pStream,sColumnName,eDestEnc);
+            RTFOutFuncs::Out_String(*m_pStream, sColumnName, m_eDestEnc);
 
             m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_CELL );
             m_pStream->WriteChar( '}' );
@@ -473,7 +453,7 @@ bool ORTFImportExport::Write()
 
         sal_Int32 k=1;
         sal_Int32 kk=0;
-        if ( m_aSelection.getLength() )
+        if ( m_aSelection.hasElements() )
         {
             const Any* pSelIter = m_aSelection.getConstArray();
             const Any* pEnd   = pSelIter + m_aSelection.getLength();
@@ -511,66 +491,63 @@ bool ORTFImportExport::Write()
     return ((*m_pStream).GetError() == ERRCODE_NONE);
 }
 
-void ORTFImportExport::appendRow(OString* pHorzChar,sal_Int32 _nColumnCount,sal_Int32& k,sal_Int32& kk)
+void ORTFImportExport::appendRow(OString const * pHorzChar,sal_Int32 _nColumnCount,sal_Int32& k,sal_Int32& kk)
 {
-    if(!m_pRowMarker || m_pRowMarker[kk] == k)
+    ++kk;
+    m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TROWD ).WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TRGAPH );
+    m_pStream->WriteInt32AsString(40);
+    m_pStream->WriteCharPtr( SAL_NEWLINE_STRING );
+
+    static char const aCell2[] = "\\clbrdrl\\brdrs\\brdrcf2\\clbrdrt\\brdrs\\brdrcf2\\clbrdrb\\brdrs\\brdrcf2\\clbrdrr\\brdrs\\brdrcf2\\clshdng10000\\clcfpat1\\cellx";
+
+    for ( sal_Int32 i=1; i<=_nColumnCount; ++i )
     {
-        ++kk;
-        m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TROWD ).WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TRGAPH );
-        m_pStream->WriteInt32AsString(40);
+        m_pStream->WriteCharPtr( aCell2 );
+        m_pStream->WriteInt32AsString(i*CELL_X);
         m_pStream->WriteCharPtr( SAL_NEWLINE_STRING );
-
-        static char const aCell2[] = "\\clbrdrl\\brdrs\\brdrcf2\\clbrdrt\\brdrs\\brdrcf2\\clbrdrb\\brdrs\\brdrcf2\\clbrdrr\\brdrs\\brdrcf2\\clshdng10000\\clcfpat1\\cellx";
-
-        for ( sal_Int32 i=1; i<=_nColumnCount; ++i )
-        {
-            m_pStream->WriteCharPtr( aCell2 );
-            m_pStream->WriteInt32AsString(i*CELL_X);
-            m_pStream->WriteCharPtr( SAL_NEWLINE_STRING );
-        }
-
-        const bool bBold            = ( css::awt::FontWeight::BOLD     == m_aFont.Weight );
-        const bool bItalic      = ( css::awt::FontSlant_ITALIC     == m_aFont.Slant );
-        const bool bUnderline       = ( css::awt::FontUnderline::NONE  != m_aFont.Underline );
-        const bool bStrikeout       = ( css::awt::FontStrikeout::NONE  != m_aFont.Strikeout );
-        Reference< XRowSet > xRowSet(m_xRow,UNO_QUERY);
-
-        m_pStream->WriteChar( '{' );
-        m_pStream->WriteCharPtr( "\\trrh-270\\pard\\intbl" );
-        for ( sal_Int32 i=1; i <= _nColumnCount; ++i )
-        {
-            m_pStream->WriteCharPtr( SAL_NEWLINE_STRING );
-            m_pStream->WriteChar( '{' );
-            m_pStream->WriteCharPtr( pHorzChar[i-1].getStr() );
-
-            if ( bBold )        m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_B );
-            if ( bItalic )      m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_I );
-            if ( bUnderline )   m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_UL );
-            if ( bStrikeout )   m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_STRIKE );
-
-            m_pStream->WriteCharPtr( "\\fs20\\f1\\cf0\\cb1 " );
-
-            try
-            {
-                Reference<XPropertySet> xColumn(m_xRowSetColumns->getByIndex(i-1),UNO_QUERY_THROW);
-                dbtools::FormattedColumnValue aFormatedValue(m_xContext,xRowSet,xColumn);
-                OUString sValue = aFormatedValue.getFormattedValue();
-                if ( !sValue.isEmpty() )
-                    RTFOutFuncs::Out_String(*m_pStream,sValue,m_eDestEnc);
-            }
-            catch (Exception&)
-            {
-                SAL_WARN("dbaccess.ui","RTF WRITE!");
-            }
-
-            m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_CELL );
-            m_pStream->WriteChar( '}' );
-            m_pStream->WriteCharPtr( SAL_NEWLINE_STRING );
-            m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_PARD ).WriteCharPtr( OOO_STRING_SVTOOLS_RTF_INTBL );
-        }
-        m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_ROW ).WriteCharPtr( SAL_NEWLINE_STRING );
-        m_pStream->WriteChar( '}' );
     }
+
+    const bool bBold            = ( css::awt::FontWeight::BOLD     == m_aFont.Weight );
+    const bool bItalic      = ( css::awt::FontSlant_ITALIC     == m_aFont.Slant );
+    const bool bUnderline       = ( css::awt::FontUnderline::NONE  != m_aFont.Underline );
+    const bool bStrikeout       = ( css::awt::FontStrikeout::NONE  != m_aFont.Strikeout );
+    Reference< XRowSet > xRowSet(m_xRow,UNO_QUERY);
+
+    m_pStream->WriteChar( '{' );
+    m_pStream->WriteCharPtr( "\\trrh-270\\pard\\intbl" );
+    for ( sal_Int32 i=1; i <= _nColumnCount; ++i )
+    {
+        m_pStream->WriteCharPtr( SAL_NEWLINE_STRING );
+        m_pStream->WriteChar( '{' );
+        m_pStream->WriteOString( pHorzChar[i-1] );
+
+        if ( bBold )        m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_B );
+        if ( bItalic )      m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_I );
+        if ( bUnderline )   m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_UL );
+        if ( bStrikeout )   m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_STRIKE );
+
+        m_pStream->WriteCharPtr( "\\fs20\\f1\\cf0\\cb1 " );
+
+        try
+        {
+            Reference<XPropertySet> xColumn(m_xRowSetColumns->getByIndex(i-1),UNO_QUERY_THROW);
+            dbtools::FormattedColumnValue aFormatedValue(m_xContext,xRowSet,xColumn);
+            OUString sValue = aFormatedValue.getFormattedValue();
+            if ( !sValue.isEmpty() )
+                RTFOutFuncs::Out_String(*m_pStream,sValue,m_eDestEnc);
+        }
+        catch (Exception&)
+        {
+            SAL_WARN("dbaccess.ui","RTF WRITE!");
+        }
+
+        m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_CELL );
+        m_pStream->WriteChar( '}' );
+        m_pStream->WriteCharPtr( SAL_NEWLINE_STRING );
+        m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_PARD ).WriteCharPtr( OOO_STRING_SVTOOLS_RTF_INTBL );
+    }
+    m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_RTF_ROW ).WriteCharPtr( SAL_NEWLINE_STRING );
+    m_pStream->WriteChar( '}' );
     ++k;
 }
 
@@ -580,13 +557,10 @@ bool ORTFImportExport::Read()
     SvParserState eState = SvParserState::Error;
     if ( m_pStream )
     {
-        m_pReader = new ORTFReader((*m_pStream),m_xConnection,m_xFormatter,m_xContext);
-        static_cast<ORTFReader*>(m_pReader)->AddFirstRef();
+        tools::SvRef<ORTFReader> xReader(new ORTFReader((*m_pStream),m_xConnection,m_xFormatter,m_xContext));
         if ( isCheckEnabled() )
-            m_pReader->enableCheckOnly();
-        eState = static_cast<ORTFReader*>(m_pReader)->CallParser();
-        m_pReader->release();
-        m_pReader = nullptr;
+            xReader->enableCheckOnly();
+        eState = xReader->CallParser();
     }
 
     return eState != SvParserState::Error;
@@ -650,14 +624,11 @@ bool OHTMLImportExport::Read()
     SvParserState eState = SvParserState::Error;
     if ( m_pStream )
     {
-        m_pReader = new OHTMLReader((*m_pStream),m_xConnection,m_xFormatter,m_xContext);
-        static_cast<OHTMLReader*>(m_pReader)->AddFirstRef();
+        tools::SvRef<OHTMLReader> xReader(new OHTMLReader((*m_pStream),m_xConnection,m_xFormatter,m_xContext));
         if ( isCheckEnabled() )
-            m_pReader->enableCheckOnly();
-        m_pReader->SetTableName(m_sDefaultTableName);
-        eState = static_cast<OHTMLReader*>(m_pReader)->CallParser();
-        m_pReader->release();
-        m_pReader = nullptr;
+            xReader->enableCheckOnly();
+        xReader->SetTableName(m_sDefaultTableName);
+        eState = xReader->CallParser();
     }
 
     return eState != SvParserState::Error;
@@ -685,7 +656,7 @@ void OHTMLImportExport::WriteBody()
     m_pStream->WriteCharPtr( "<" ).WriteCharPtr( OOO_STRING_SVTOOLS_HTML_style ).WriteCharPtr( " " ).WriteCharPtr( OOO_STRING_SVTOOLS_HTML_O_type ).WriteCharPtr( "=\"text/css\">" );
 
     m_pStream->WriteCharPtr( "<!-- " ); OUT_LF();
-    m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_HTML_body ).WriteCharPtr( " { " ).WriteCharPtr( "font-family: " ).WriteChar( '"' ).WriteCharPtr( OUStringToOString(m_aFont.Name, osl_getThreadTextEncoding()).getStr() ).WriteChar( '\"' );
+    m_pStream->WriteCharPtr( OOO_STRING_SVTOOLS_HTML_body ).WriteCharPtr( " { " ).WriteCharPtr( "font-family: " ).WriteChar( '"' ).WriteOString( OUStringToOString(m_aFont.Name, osl_getThreadTextEncoding()) ).WriteChar( '\"' );
         // TODO : think about the encoding of the font name
     m_pStream->WriteCharPtr( "; " ).WriteCharPtr( "font-size: " );
     m_pStream->WriteInt32AsString(m_aFont.Height);
@@ -716,11 +687,11 @@ void OHTMLImportExport::WriteBody()
 
 void OHTMLImportExport::WriteTables()
 {
-    OString aStrOut  = OOO_STRING_SVTOOLS_HTML_table;
-    aStrOut = aStrOut + " ";
-    aStrOut = aStrOut + OOO_STRING_SVTOOLS_HTML_frame;
-    aStrOut = aStrOut + "=";
-    aStrOut = aStrOut + OOO_STRING_SVTOOLS_HTML_TF_void;
+    OString aStrOut  = OOO_STRING_SVTOOLS_HTML_table
+            " "
+            OOO_STRING_SVTOOLS_HTML_frame
+            "="
+            OOO_STRING_SVTOOLS_HTML_TF_void;
 
     Sequence< OUString> aNames;
     Reference<XNameAccess> xColumns;
@@ -730,7 +701,7 @@ void OHTMLImportExport::WriteTables()
         Reference<XColumnsSupplier> xColSup(m_xObject,UNO_QUERY);
         xColumns = xColSup->getColumns();
         aNames = xColumns->getElementNames();
-        if ( !aNames.getLength() )
+        if ( !aNames.hasElements() )
         {
             sal_Int32 nCount = m_xResultSetMetaData->getColumnCount();
             aNames.realloc(nCount);
@@ -740,21 +711,21 @@ void OHTMLImportExport::WriteTables()
         }
     }
 
-    aStrOut = aStrOut + " ";
-    aStrOut = aStrOut + OOO_STRING_SVTOOLS_HTML_O_align;
-    aStrOut = aStrOut + "=";
-    aStrOut = aStrOut + OOO_STRING_SVTOOLS_HTML_AL_left;
-    aStrOut = aStrOut + " ";
-    aStrOut = aStrOut + OOO_STRING_SVTOOLS_HTML_O_cellspacing;
-    aStrOut = aStrOut + "=";
-    aStrOut = aStrOut + OString::number(nCellSpacing);
-    aStrOut = aStrOut + " ";
-    aStrOut = aStrOut + OOO_STRING_SVTOOLS_HTML_O_cols;
-    aStrOut = aStrOut + "=";
-    aStrOut = aStrOut + OString::number(aNames.getLength());
-    aStrOut = aStrOut + " ";
-    aStrOut = aStrOut + OOO_STRING_SVTOOLS_HTML_O_border;
-    aStrOut = aStrOut + "=1";
+    aStrOut += " "
+            OOO_STRING_SVTOOLS_HTML_O_align
+            "="
+            OOO_STRING_SVTOOLS_HTML_AL_left
+            " "
+            OOO_STRING_SVTOOLS_HTML_O_cellspacing
+            "=" +
+            OString::number(nCellSpacing) +
+            " "
+            OOO_STRING_SVTOOLS_HTML_O_cols
+            "=" +
+            OString::number(aNames.getLength()) +
+            " "
+            OOO_STRING_SVTOOLS_HTML_O_border
+            "=1";
 
     IncIndent(1);
     TAG_ON( aStrOut.getStr() );
@@ -764,7 +735,7 @@ void OHTMLImportExport::WriteTables()
     TAG_ON( OOO_STRING_SVTOOLS_HTML_caption );
     TAG_ON( OOO_STRING_SVTOOLS_HTML_bold );
 
-    m_pStream->WriteCharPtr( OUStringToOString(m_sName, osl_getThreadTextEncoding()).getStr() );
+    m_pStream->WriteOString( OUStringToOString(m_sName, osl_getThreadTextEncoding()) );
         // TODO : think about the encoding of the name
     TAG_OFF( OOO_STRING_SVTOOLS_HTML_bold );
     TAG_OFF( OOO_STRING_SVTOOLS_HTML_caption );
@@ -829,7 +800,6 @@ void OHTMLImportExport::WriteTables()
 
         // 2. and now the data
         Reference< XRowSet > xRowSet(m_xRow,UNO_QUERY);
-        sal_Int32 j=1;
         sal_Int32 kk=0;
         m_xResultSet->beforeFirst(); // set back before the first row
         while(m_xResultSet->next())
@@ -837,33 +807,29 @@ void OHTMLImportExport::WriteTables()
             IncIndent(1);
             TAG_ON_LF( OOO_STRING_SVTOOLS_HTML_tablerow );
 
-            if(!m_pRowMarker || m_pRowMarker[kk] == j)
+            ++kk;
+            for(sal_Int32 i=1;i<=aNames.getLength();++i)
             {
-                ++kk;
-                for(sal_Int32 i=1;i<=aNames.getLength();++i)
-                {
-                    if(i == aNames.getLength())
-                        IncIndent(-1);
+                if(i == aNames.getLength())
+                    IncIndent(-1);
 
-                    OUString aValue;
-                    try
+                OUString aValue;
+                try
+                {
+                    Reference<XPropertySet> xColumn(m_xRowSetColumns->getByIndex(i-1),UNO_QUERY_THROW);
+                    dbtools::FormattedColumnValue aFormatedValue(m_xContext,xRowSet,xColumn);
+                    OUString sValue = aFormatedValue.getFormattedValue();
+                    if (!sValue.isEmpty())
                     {
-                        Reference<XPropertySet> xColumn(m_xRowSetColumns->getByIndex(i-1),UNO_QUERY_THROW);
-                        dbtools::FormattedColumnValue aFormatedValue(m_xContext,xRowSet,xColumn);
-                        OUString sValue = aFormatedValue.getFormattedValue();
-                        if (!sValue.isEmpty())
-                        {
-                            aValue = sValue;
-                        }
+                        aValue = sValue;
                     }
-                    catch( const Exception& )
-                    {
-                        DBG_UNHANDLED_EXCEPTION();
-                    }
-                    WriteCell(pFormat[i-1],pColWidth[i-1],nHeight,pHorJustify[i-1],aValue,OOO_STRING_SVTOOLS_HTML_tabledata);
                 }
+                catch( const Exception& )
+                {
+                    DBG_UNHANDLED_EXCEPTION("dbaccess");
+                }
+                WriteCell(pFormat[i-1],pColWidth[i-1],nHeight,pHorJustify[i-1],aValue,OOO_STRING_SVTOOLS_HTML_tabledata);
             }
-            ++j;
             TAG_OFF_LF( OOO_STRING_SVTOOLS_HTML_tablerow );
         }
     }
@@ -892,22 +858,21 @@ void OHTMLImportExport::WriteCell( sal_Int32 nFormat, sal_Int32 nWidthPixel, sal
     // despite the <TABLE COLS=n> and <COL WIDTH=x> designation necessary,
     // as Netscape is not paying attention to them.
     // column width
-    aStrTD = aStrTD + " ";
-    aStrTD = aStrTD + OOO_STRING_SVTOOLS_HTML_O_width;
-    aStrTD = aStrTD + "=";
-    aStrTD = aStrTD + OString::number(nWidthPixel);
+    aStrTD += " "
+            OOO_STRING_SVTOOLS_HTML_O_width
+            "=" +
+            OString::number(nWidthPixel) +
     // line height
-    aStrTD = aStrTD + " ";
-    aStrTD = aStrTD + OOO_STRING_SVTOOLS_HTML_O_height;
-    aStrTD = aStrTD + "=";
-    aStrTD = aStrTD + OString::number(nHeightPixel);
+            " "
+            OOO_STRING_SVTOOLS_HTML_O_height
+            "=" +
+            OString::number(nHeightPixel) +
+            " "
+            OOO_STRING_SVTOOLS_HTML_O_align
+            "=" +
+            pChar;
 
-    aStrTD = aStrTD + " ";
-    aStrTD = aStrTD + OOO_STRING_SVTOOLS_HTML_O_align;
-    aStrTD = aStrTD + "=";
-    aStrTD = aStrTD + pChar;
-
-    SvNumberFormatsSupplierObj* pSupplierImpl = m_xFormatter.is() ? SvNumberFormatsSupplierObj::getImplementation(m_xFormatter->getNumberFormatsSupplier()) : nullptr;
+    SvNumberFormatsSupplierObj* pSupplierImpl = m_xFormatter.is() ? comphelper::getUnoTunnelImplementation<SvNumberFormatsSupplierObj>(m_xFormatter->getNumberFormatsSupplier()) : nullptr;
     SvNumberFormatter* pFormatter = pSupplierImpl ? pSupplierImpl->GetNumberFormatter() : nullptr;
     if(pFormatter)
     {
@@ -956,23 +921,23 @@ void OHTMLImportExport::WriteCell( sal_Int32 nFormat, sal_Int32 nWidthPixel, sal
 void OHTMLImportExport::FontOn()
 {
 #if OSL_DEBUG_LEVEL > 0
-        m_bCheckFont = true;
+    m_bCheckFont = true;
 #endif
 
     // <FONT FACE="xxx">
-    OString aStrOut  = "<";
-    aStrOut  = aStrOut + OOO_STRING_SVTOOLS_HTML_font;
-    aStrOut  = aStrOut + " ";
-    aStrOut  = aStrOut + OOO_STRING_SVTOOLS_HTML_O_face;
-    aStrOut  = aStrOut + "=";
-    aStrOut  = aStrOut + "\"";
-    aStrOut  = aStrOut + OUStringToOString(m_aFont.Name,osl_getThreadTextEncoding());
+    OString aStrOut  = "<"
+            OOO_STRING_SVTOOLS_HTML_font
+            " "
+            OOO_STRING_SVTOOLS_HTML_O_face
+            "="
+            "\"" +
+            OUStringToOString(m_aFont.Name,osl_getThreadTextEncoding()) +
         // TODO : think about the encoding of the font name
-    aStrOut  = aStrOut + "\"";
-    aStrOut  = aStrOut + " ";
-    aStrOut  = aStrOut + OOO_STRING_SVTOOLS_HTML_O_color;
-    aStrOut  = aStrOut + "=";
-    m_pStream->WriteCharPtr( aStrOut.getStr() );
+            "\""
+            " "
+            OOO_STRING_SVTOOLS_HTML_O_color
+            "=";
+    m_pStream->WriteOString( aStrOut );
 
     sal_Int32 nColor = 0;
     if(m_xObject.is())

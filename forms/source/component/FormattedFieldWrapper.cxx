@@ -20,16 +20,17 @@
 #include "FormattedFieldWrapper.hxx"
 #include "Edit.hxx"
 #include "FormattedField.hxx"
-#include "EditBase.hxx"
-#include "services.hxx"
-#include <comphelper/processfactory.hxx>
+#include <services.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <connectivity/dbtools.hxx>
 #include <tools/debug.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <i18nlangtag/languagetag.hxx>
+#include <com/sun/star/io/XMarkableStream.hpp>
 
+using namespace comphelper;
 using namespace frm;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
@@ -54,7 +55,7 @@ css::uno::Reference<css::uno::XInterface> OFormattedFieldWrapper::createFormatte
 
     if (bActAsFormatted)
     {
-        // instantiate an FormattedModel
+        // instantiate a FormattedModel
         // (instantiate it directly ..., as the OFormattedModel isn't
         // registered for any service names anymore)
         OFormattedModel* pModel = new OFormattedModel(pRef->m_xContext);
@@ -173,12 +174,12 @@ Any SAL_CALL OFormattedFieldWrapper::queryAggregation(const Type& _rType)
 OUString SAL_CALL OFormattedFieldWrapper::getServiceName()
 {
     // return the old compatibility name for an EditModel
-    return OUString(FRM_COMPONENT_EDIT);
+    return FRM_COMPONENT_EDIT;
 }
 
 OUString SAL_CALL OFormattedFieldWrapper::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.forms.OFormattedFieldWrapper_ForcedFormatted");
+    return "com.sun.star.comp.forms.OFormattedFieldWrapper_ForcedFormatted";
 }
 
 sal_Bool SAL_CALL OFormattedFieldWrapper::supportsService( const OUString& _rServiceName )
@@ -237,7 +238,7 @@ void SAL_CALL OFormattedFieldWrapper::read(const Reference<XObjectInputStream>& 
 {
     SolarMutexGuard g;
     if (m_xAggregate.is())
-    {   //  we already did a decision if we're an EditModel or a FormattedModel
+    {   //  we already made a decision if we're an EditModel or a FormattedModel
 
         // if we act as formatted, we have to read the edit part first
         if (m_xFormattedPart.is())
@@ -311,7 +312,7 @@ void OFormattedFieldWrapper::ensureAggregate()
         return;
 
     {
-        // instantiate an EditModel (the only place where we are allowed to decide that we're an FormattedModel
+        // instantiate an EditModel (the only place where we are allowed to decide that we're a FormattedModel
         // is in ::read)
         css::uno::Reference<css::uno::XInterface>  xEditModel = m_xContext->getServiceManager()->createInstanceWithContext(FRM_SUN_COMPONENT_TEXTFIELD, m_xContext);
         if (!xEditModel.is())
@@ -342,7 +343,7 @@ void OFormattedFieldWrapper::ensureAggregate()
     osl_atomic_decrement(&m_refCount);
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OFormattedFieldWrapper_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -352,7 +353,7 @@ com_sun_star_form_OFormattedFieldWrapper_get_implementation(css::uno::XComponent
     return inst.get();
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_forms_OFormattedFieldWrapper_ForcedFormatted_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

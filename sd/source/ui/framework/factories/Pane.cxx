@@ -17,20 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "framework/Pane.hxx"
+#include <framework/Pane.hxx>
 
-#include <vcl/svapp.hxx>
 #include <osl/mutex.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/window.hxx>
 #include <cppcanvas/vclfactory.hxx>
+#include <com/sun/star/rendering/XSpriteCanvas.hpp>
 #include <comphelper/servicehelper.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 Pane::Pane (
     const Reference<XResourceId>& rxPaneId,
@@ -152,8 +152,7 @@ sal_Int64 SAL_CALL Pane::getSomething (const Sequence<sal_Int8>& rId)
 {
     sal_Int64 nResult = 0;
 
-    if (rId.getLength() == 16
-        && memcmp(getUnoTunnelId().getConstArray(), rId.getConstArray(), 16) == 0)
+    if (isUnoTunnelId<Pane>(rId))
     {
         nResult = reinterpret_cast<sal_Int64>(this);
     }
@@ -169,8 +168,8 @@ Reference<rendering::XCanvas> Pane::CreateCanvas()
     {
         ::cppcanvas::SpriteCanvasSharedPtr pCanvas (
             cppcanvas::VCLFactory::createSpriteCanvas(*mpWindow));
-        if (pCanvas.get() != nullptr)
-            xCanvas.set(pCanvas->getUNOSpriteCanvas(), UNO_QUERY);
+        if (pCanvas)
+            xCanvas.set(pCanvas->getUNOSpriteCanvas());
     }
 
     return xCanvas;
@@ -185,6 +184,6 @@ void Pane::ThrowIfDisposed() const
     }
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

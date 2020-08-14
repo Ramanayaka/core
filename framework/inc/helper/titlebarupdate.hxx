@@ -20,16 +20,13 @@
 #ifndef INCLUDED_FRAMEWORK_INC_HELPER_TITLEBARUPDATE_HXX
 #define INCLUDED_FRAMEWORK_INC_HELPER_TITLEBARUPDATE_HXX
 
-#include <general.h>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XFrameActionListener.hpp>
 #include <com/sun/star/frame/XTitleChangeListener.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
-#include <unotools/moduleoptions.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <cppuhelper/weakref.hxx>
 
 namespace framework{
 
@@ -39,7 +36,7 @@ namespace framework{
     @devstatus      draft
     @threadsafe     yes
 *//*-*************************************************************************************************************/
-class TitleBarUpdate : public  ::cppu::WeakImplHelper<
+class TitleBarUpdate final : public  ::cppu::WeakImplHelper<
                                    css::lang::XInitialization
                                  , css::frame::XTitleChangeListener // => XEventListener
                                  , css::frame::XFrameActionListener > // => XEventListener
@@ -53,8 +50,6 @@ class TitleBarUpdate : public  ::cppu::WeakImplHelper<
         {
             /// internal id of this module
             OUString sID;
-            /// localized name for this module
-            OUString sUIName;
             /// configured icon for this module
             ::sal_Int32 nIcon;
         };
@@ -63,7 +58,7 @@ class TitleBarUpdate : public  ::cppu::WeakImplHelper<
 
     private:
 
-        /// may we need an uno service manager to create own services
+        /// may we need a uno service manager to create own services
         css::uno::Reference< css::uno::XComponentContext > m_xContext;
 
         /// reference to the frame which was created by the office himself

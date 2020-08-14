@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/helper/propertymap.hxx"
-#include "oox/helper/helper.hxx"
+#include <oox/helper/propertymap.hxx>
 
 #if OSL_DEBUG_LEVEL > 0
 # include <cstdio>
 # include <com/sun/star/style/LineSpacing.hpp>
-# include <com/sun/star/style/LineSpacingMode.hpp>
 # include <com/sun/star/text/WritingMode.hpp>
 using ::com::sun::star::style::LineSpacing;
 using ::com::sun::star::text::WritingMode;
@@ -48,17 +46,14 @@ using ::com::sun::star::text::WritingMode;
 #include <cppuhelper/implbase.hxx>
 #include <osl/diagnose.h>
 #include <osl/mutex.hxx>
+#include <sal/log.hxx>
 #include <oox/token/properties.hxx>
-#include "oox/token/propertynames.hxx"
+#include <oox/token/propertynames.hxx>
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::uno::Reference;
-using ::com::sun::star::uno::RuntimeException;
 using ::com::sun::star::uno::Sequence;
-using ::com::sun::star::lang::IllegalArgumentException;
-using ::com::sun::star::lang::WrappedTargetException;
 using ::com::sun::star::beans::Property;
 using ::com::sun::star::beans::PropertyValue;
-using ::com::sun::star::beans::PropertyVetoException;
 using ::com::sun::star::beans::UnknownPropertyException;
 using ::com::sun::star::beans::XPropertyChangeListener;
 using ::com::sun::star::beans::XPropertySet;
@@ -138,7 +133,7 @@ Any SAL_CALL GenericPropertySet::getPropertyValue( const OUString& rPropertyName
 {
     PropertyNameMap::iterator aIt = maPropMap.find( rPropertyName );
     if( aIt == maPropMap.end() )
-        throw UnknownPropertyException();
+        throw UnknownPropertyException(rPropertyName);
     return aIt->second;
 }
 
@@ -153,12 +148,13 @@ Sequence< Property > SAL_CALL GenericPropertySet::getProperties()
 {
     Sequence< Property > aSeq( static_cast< sal_Int32 >( maPropMap.size() ) );
     Property* pProperty = aSeq.getArray();
-    for( PropertyNameMap::iterator aIt = maPropMap.begin(), aEnd = maPropMap.end(); aIt != aEnd; ++aIt, ++pProperty )
+    for (auto const& prop : maPropMap)
     {
-        pProperty->Name = aIt->first;
+        pProperty->Name = prop.first;
         pProperty->Handle = 0;
-        pProperty->Type = aIt->second.getValueType();
+        pProperty->Type = prop.second.getValueType();
         pProperty->Attributes = 0;
+        ++pProperty;
     }
     return aSeq;
 }
@@ -167,7 +163,7 @@ Property SAL_CALL GenericPropertySet::getPropertyByName( const OUString& rProper
 {
     PropertyNameMap::iterator aIt = maPropMap.find( rPropertyName );
     if( aIt == maPropMap.end() )
-        throw UnknownPropertyException();
+        throw UnknownPropertyException(rPropertyName);
     Property aProperty;
     aProperty.Name = aIt->first;
     aProperty.Handle = 0;
@@ -230,23 +226,21 @@ const OUString& PropertyMap::getPropertyName( sal_Int32 nPropId )
 
 void PropertyMap::assignAll( const PropertyMap& rPropMap )
 {
-    for( PropertyMapType::const_iterator it=rPropMap.maProperties.begin(); it != rPropMap.maProperties.end(); ++it )
-        maProperties[it->first] = it->second;
+    for (auto const& prop : rPropMap.maProperties)
+        maProperties[prop.first] = prop.second;
 }
 
 Sequence< PropertyValue > PropertyMap::makePropertyValueSequence() const
 {
     Sequence< PropertyValue > aSeq( static_cast< sal_Int32 >( maProperties.size() ) );
-    if( !maProperties.empty() )
+    PropertyValue* pValues = aSeq.getArray();
+    for (auto const& prop : maProperties)
     {
-        PropertyValue* pValues = aSeq.getArray();
-        for( PropertyMapType::const_iterator aIt = maProperties.begin(), aEnd = maProperties.end(); aIt != aEnd; ++aIt, ++pValues )
-        {
-            OSL_ENSURE( (0 <= aIt->first) && (aIt->first < PROP_COUNT), "PropertyMap::makePropertyValueSequence - invalid property identifier" );
-            pValues->Name = (*mpPropNames)[ aIt->first ];
-            pValues->Value = aIt->second;
-            pValues->State = PropertyState_DIRECT_VALUE;
-        }
+        OSL_ENSURE( (0 <= prop.first) && (prop.first < PROP_COUNT), "PropertyMap::makePropertyValueSequence - invalid property identifier" );
+        pValues->Name = (*mpPropNames)[ prop.first ];
+        pValues->Value = prop.second;
+        pValues->State = PropertyState_DIRECT_VALUE;
+        ++pValues;
     }
     return aSeq;
 }
@@ -255,25 +249,26 @@ void PropertyMap::fillSequences( Sequence< OUString >& rNames, Sequence< Any >& 
 {
     rNames.realloc( static_cast< sal_Int32 >( maProperties.size() ) );
     rValues.realloc( static_cast< sal_Int32 >( maProperties.size() ) );
-    if( !maProperties.empty() )
+    if( maProperties.empty() )
+        return;
+
+    OUString* pNames = rNames.getArray();
+    Any* pValues = rValues.getArray();
+    for (auto const& prop : maProperties)
     {
-        OUString* pNames = rNames.getArray();
-        Any* pValues = rValues.getArray();
-        for( PropertyMapType::const_iterator aIt = maProperties.begin(), aEnd = maProperties.end(); aIt != aEnd; ++aIt, ++pNames, ++pValues )
-        {
-            OSL_ENSURE( (0 <= aIt->first) && (aIt->first < PROP_COUNT), "PropertyMap::fillSequences - invalid property identifier" );
-            *pNames = (*mpPropNames)[ aIt->first ];
-            *pValues = aIt->second;
-        }
+        OSL_ENSURE( (0 <= prop.first) && (prop.first < PROP_COUNT), "PropertyMap::fillSequences - invalid property identifier" );
+        *pNames = (*mpPropNames)[ prop.first ];
+        *pValues = prop.second;
+        ++pNames;
+        ++pValues;
     }
 }
 
 void PropertyMap::fillPropertyNameMap(PropertyNameMap& rMap) const
 {
-    for(PropertyMapType::const_iterator itr = maProperties.begin(),
-            itrEnd = maProperties.end(); itr != itrEnd; ++itr)
+    for (auto const& prop : maProperties)
     {
-        rMap.insert(std::pair<OUString, Any>((*mpPropNames)[itr->first], itr->second));
+        rMap.insert(std::pair<OUString, Any>((*mpPropNames)[prop.first], prop.second));
     }
 }
 
@@ -285,24 +280,24 @@ Reference< XPropertySet > PropertyMap::makePropertySet() const
 #if OSL_DEBUG_LEVEL > 0
 static void lclDumpAnyValue( const Any& value)
 {
-        OUString strValue;
-        Sequence< OUString > strArray;
-        Sequence< Any > anyArray;
-        Sequence< PropertyValue > propArray;
-        Sequence< Sequence< PropertyValue > > propArrayArray;
-        Sequence< EnhancedCustomShapeAdjustmentValue > adjArray;
-        Sequence< EnhancedCustomShapeSegment > segArray;
-        Sequence< EnhancedCustomShapeParameterPair > ppArray;
-        EnhancedCustomShapeSegment segment;
-        EnhancedCustomShapeParameterPair pp;
-        EnhancedCustomShapeParameter par;
-        HomogenMatrix3 aMatrix;
-        sal_Int32 intValue = 0;
-        sal_uInt32 uintValue = 0;
-        sal_Int16 int16Value = 0;
-        sal_uInt16 uint16Value = 0;
-        float floatValue = 0;
-        bool boolValue = false;
+    OUString strValue;
+    Sequence< OUString > strArray;
+    Sequence< Any > anyArray;
+    Sequence< PropertyValue > propArray;
+    Sequence< Sequence< PropertyValue > > propArrayArray;
+    Sequence< EnhancedCustomShapeAdjustmentValue > adjArray;
+    Sequence< EnhancedCustomShapeSegment > segArray;
+    Sequence< EnhancedCustomShapeParameterPair > ppArray;
+    EnhancedCustomShapeSegment segment;
+    EnhancedCustomShapeParameterPair pp;
+    EnhancedCustomShapeParameter par;
+    HomogenMatrix3 aMatrix;
+    sal_Int32 intValue = 0;
+    sal_uInt32 uintValue = 0;
+    sal_Int16 int16Value = 0;
+    sal_uInt16 uint16Value = 0;
+    float floatValue = 0;
+    bool boolValue = false;
     LineSpacing spacing;
 //         RectanglePoint pointValue;
     WritingMode aWritingMode;
@@ -310,91 +305,91 @@ static void lclDumpAnyValue( const Any& value)
     TextHorizontalAdjust aTextHorizAdj;
     Reference< XIndexReplace > xNumRule;
 
-        if( value >>= strValue )
+    if( value >>= strValue )
             fprintf (stderr,"\"%s\"\n", USS( strValue ) );
-        else if( value >>= strArray ) {
+    else if( value >>= strArray ) {
             fprintf (stderr,"%s\n", USS(value.getValueTypeName()));
             for( int i=0; i<strArray.getLength(); i++ )
                 fprintf (stderr,"\t\t\t[%3d] \"%s\"\n", i, USS( strArray[i] ) );
-        } else if( value >>= propArray ) {
+    } else if( value >>= propArray ) {
             fprintf (stderr,"%s\n", USS(value.getValueTypeName()));
             for( int i=0; i<propArray.getLength(); i++ ) {
                 fprintf (stderr,"\t\t\t[%3d] %s (%s) ", i, USS( propArray[i].Name ), USS(propArray[i].Value.getValueTypeName()) );
                 lclDumpAnyValue( propArray[i].Value );
             }
-        } else if( value >>= propArrayArray ) {
+    } else if( value >>= propArrayArray ) {
             fprintf (stderr,"%s\n", USS(value.getValueTypeName()));
             for( int i=0; i<propArrayArray.getLength(); i++ ) {
                 fprintf (stderr,"\t\t\t[%3d] ", i);
                 lclDumpAnyValue( makeAny (propArrayArray[i]) );
             }
-        } else if( value >>= anyArray ) {
+    } else if( value >>= anyArray ) {
             fprintf (stderr,"%s\n", USS(value.getValueTypeName()));
             for( int i=0; i<anyArray.getLength(); i++ ) {
                 fprintf (stderr,"\t\t\t[%3d] (%s) ", i, USS(value.getValueTypeName()) );
                 lclDumpAnyValue( anyArray[i] );
             }
-        } else if( value >>= adjArray ) {
+    } else if( value >>= adjArray ) {
             fprintf (stderr,"%s\n", USS(value.getValueTypeName()));
             for( int i=0; i<adjArray.getLength(); i++ ) {
                 fprintf (stderr,"\t\t\t[%3d] (%s) ", i, USS(adjArray[i].Value.getValueTypeName()) );
                 lclDumpAnyValue( adjArray[i].Value );
             }
-        } else if( value >>= segArray ) {
+    } else if( value >>= segArray ) {
             fprintf (stderr,"%s\n", USS(value.getValueTypeName()));
             for( int i=0; i<segArray.getLength(); i++ ) {
                 fprintf (stderr,"\t\t\t[%3d] ", i );
                 lclDumpAnyValue( makeAny( segArray[i] ) );
             }
-        } else if( value >>= ppArray ) {
+    } else if( value >>= ppArray ) {
             fprintf (stderr,"%s\n", USS(value.getValueTypeName()));
             for( int i=0; i<ppArray.getLength(); i++ ) {
                 fprintf (stderr,"\t\t\t[%3d] ", i );
                 lclDumpAnyValue( makeAny( ppArray[i] ) );
             }
-        } else if( value >>= segment ) {
+    } else if( value >>= segment ) {
             fprintf (stderr,"Command: %d Count: %d\n", segment.Command, segment.Count);
-        } else if( value >>= pp ) {
+    } else if( value >>= pp ) {
             fprintf (stderr,"First: ");
             lclDumpAnyValue( makeAny (pp.First) );
             fprintf (stderr,"\t\t\t      Second: ");
             lclDumpAnyValue( makeAny (pp.Second) );
-        } else if( value >>= par ) {
+    } else if( value >>= par ) {
             fprintf (stderr,"Parameter (%s): ", USS(par.Value.getValueTypeName()));
             lclDumpAnyValue( par.Value );
-        } else if( value >>= aMatrix ) {
+    } else if( value >>= aMatrix ) {
             fprintf (stderr,"Matrix\n%f %f %f\n%f %f %f\n%f %f %f\n", aMatrix.Line1.Column1, aMatrix.Line1.Column2, aMatrix.Line1.Column3, aMatrix.Line2.Column1, aMatrix.Line2.Column2, aMatrix.Line2.Column3, aMatrix.Line3.Column1, aMatrix.Line3.Column2, aMatrix.Line3.Column3);
-        } else if( value >>= intValue )
+    } else if( value >>= intValue )
             fprintf (stderr,"%-10" SAL_PRIdINT32 "  (hex: %" SAL_PRIxUINT32 ")\n", intValue, intValue);
-        else if( value >>= uintValue )
+    else if( value >>= uintValue )
             fprintf (stderr,"%-10" SAL_PRIuUINT32 "  (hex: %" SAL_PRIxUINT32 ")\n", uintValue, uintValue);
-        else if( value >>= int16Value )
+    else if( value >>= int16Value )
             fprintf (stderr,"%-10d  (hex: %x)\n", int16Value, int16Value);
-        else if( value >>= uint16Value )
+    else if( value >>= uint16Value )
             fprintf (stderr,"%-10d  (hex: %x)\n", uint16Value, uint16Value);
-        else if( value >>= floatValue )
+    else if( value >>= floatValue )
             fprintf (stderr,"%f\n", floatValue);
-        else if( value >>= boolValue )
+    else if( value >>= boolValue )
             fprintf (stderr,"%-10d  (bool)\n", boolValue);
-        else if( value >>= xNumRule ) {
+    else if( value >>= xNumRule ) {
             fprintf (stderr, "XIndexReplace\n");
             if (xNumRule.is()) {
                 for (int k=0; k<xNumRule->getCount(); k++) {
                     Sequence< PropertyValue > aBulletPropSeq;
                     fprintf (stderr, "level %d\n", k);
                     if (xNumRule->getByIndex (k) >>= aBulletPropSeq) {
-                        for (int j=0; j<aBulletPropSeq.getLength(); j++) {
-                            fprintf(stderr, "%46s = ", USS (aBulletPropSeq[j].Name));
-                            lclDumpAnyValue (aBulletPropSeq[j].Value);
+                        for (const PropertyValue& rProp : std::as_const(aBulletPropSeq)) {
+                            fprintf(stderr, "%46s = ", USS (rProp.Name));
+                            lclDumpAnyValue (rProp.Value);
                         }
                     }
                 }
             } else {
                 fprintf (stderr, "empty reference\n");
             }
-        } else if( value >>= aWritingMode )
+    } else if( value >>= aWritingMode )
             fprintf(stderr, "%d writing mode\n", static_cast<int>(aWritingMode));
-        else if( value >>= aTextVertAdj ) {
+    else if( value >>= aTextVertAdj ) {
             const char* s = "unknown";
             switch( aTextVertAdj ) {
             case TextVerticalAdjust_TOP:
@@ -412,8 +407,8 @@ static void lclDumpAnyValue( const Any& value)
             case TextVerticalAdjust::TextVerticalAdjust_MAKE_FIXED_SIZE:
                 s = "make_fixed_size";
                 break;
-        }
-        fprintf (stderr, "%s\n", s);
+            }
+            fprintf (stderr, "%s\n", s);
     } else if( value >>= aTextHorizAdj ) {
         const char* s = "unknown";
         switch( aTextHorizAdj ) {
@@ -449,18 +444,18 @@ static void lclDumpAnyValue( const Any& value)
 void PropertyMap::dump( const Reference< XPropertySet >& rXPropSet )
 {
     Reference< XPropertySetInfo > info = rXPropSet->getPropertySetInfo ();
-    Sequence< Property > props = info->getProperties ();
+    const Sequence< Property > props = info->getProperties ();
 
     SAL_INFO("oox", "dump props, len: " << props.getLength ());
 
-    for (int i=0; i < props.getLength (); i++) {
-        OString name = OUStringToOString( props [i].Name, RTL_TEXTENCODING_UTF8);
+    for (Property const & prop : props) {
+        OString name = OUStringToOString( prop.Name, RTL_TEXTENCODING_UTF8);
         fprintf (stderr,"%30s = ", name.getStr() );
 
         try {
-            lclDumpAnyValue (rXPropSet->getPropertyValue( props [i].Name ));
+            lclDumpAnyValue (rXPropSet->getPropertyValue( prop.Name ));
         } catch (const Exception&) {
-            fprintf (stderr,"unable to get '%s' value\n", USS(props [i].Name));
+            fprintf (stderr,"unable to get '%s' value\n", USS(prop.Name));
         }
     }
 }
@@ -528,10 +523,11 @@ static const char *lclGetEnhancedParameterType( sal_uInt16 nType )
     return type;
 }
 
-static void printParameterPairData(int level, EnhancedCustomShapeParameterPair &pp)
+static void printParameterPairData(int level, EnhancedCustomShapeParameterPair const &pp)
 {
     // These are always sal_Int32s so lets depend on that for our packing ...
-    sal_Int32 nFirstValue, nSecondValue;
+    sal_Int32 nFirstValue = {};
+    sal_Int32 nSecondValue = {}; // spurious -Werror=maybe-uninitialized
     if (!(pp.First.Value >>= nFirstValue))
         assert (false);
     if (!(pp.Second.Value >>= nSecondValue))
@@ -544,7 +540,7 @@ static void printParameterPairData(int level, EnhancedCustomShapeParameterPair &
     printLevel (level + 1);
     fprintf (stderr, "%s,\n", lclGetEnhancedParameterType(pp.Second.Type));
     printLevel (level + 1);
-    fprintf (stderr, "%d, %d\n", (int)nFirstValue, (int)nSecondValue);
+    fprintf (stderr, "%d, %d\n", static_cast<int>(nFirstValue), static_cast<int>(nSecondValue));
     printLevel (level);
     fprintf (stderr, "}");
 }
@@ -811,9 +807,9 @@ static const char* lclDumpAnyValueCode( const Any& value, int level)
             Sequence< PropertyValue > aBulletPropSeq;
             fprintf (stderr, "level %d\n", k);
             if (xNumRule->getByIndex (k) >>= aBulletPropSeq) {
-                for (int j=0; j<aBulletPropSeq.getLength(); j++) {
-                    fprintf(stderr, "%46s = ", USS (aBulletPropSeq[j].Name));
-                    lclDumpAnyValue (aBulletPropSeq[j].Value);
+                for (const PropertyValue& rProp : std::as_const(aBulletPropSeq)) {
+                    fprintf(stderr, "%46s = ", USS (rProp.Name));
+                    lclDumpAnyValue (rProp.Value);
                 }
             }
         }
@@ -899,28 +895,28 @@ static const char* lclDumpAnyValueCode( const Any& value, int level)
 void PropertyMap::dumpCode( const Reference< XPropertySet >& rXPropSet )
 {
     Reference< XPropertySetInfo > info = rXPropSet->getPropertySetInfo ();
-    Sequence< Property > props = info->getProperties ();
+    const Sequence< Property > props = info->getProperties ();
     const OUString sType = "Type";
 
-    for (int i=0; i < props.getLength (); i++) {
+    for (const Property& rProp : props) {
 
         // ignore Type, it is set elsewhere
-        if (props[i].Name.equals (sType))
+        if (rProp.Name == sType)
             continue;
 
-        OString name = OUStringToOString( props [i].Name, RTL_TEXTENCODING_UTF8);
+        OString name = OUStringToOString( rProp.Name, RTL_TEXTENCODING_UTF8);
         int level = 1;
 
         try {
             printLevel (level);
             fprintf (stderr, "{\n");
-            const char* var = lclDumpAnyValueCode (rXPropSet->getPropertyValue (props [i].Name), level + 1);
+            const char* var = lclDumpAnyValueCode (rXPropSet->getPropertyValue (rProp.Name), level + 1);
             printLevel (level + 1);
             fprintf (stderr,"aPropertyMap.setProperty(PROP_%s, %s);\n", name.getStr(), var);
             printLevel (level);
             fprintf (stderr, "}\n");
         } catch (const Exception&) {
-            fprintf (stderr,"unable to get '%s' value\n", USS(props [i].Name));
+            fprintf (stderr,"unable to get '%s' value\n", USS(rProp.Name));
         }
     }
 }
@@ -928,12 +924,12 @@ void PropertyMap::dumpCode( const Reference< XPropertySet >& rXPropSet )
 void PropertyMap::dumpData(const Reference<XPropertySet>& xPropertySet)
 {
     Reference<XPropertySetInfo> xPropertySetInfo = xPropertySet->getPropertySetInfo();
-    Sequence<Property> aProperties = xPropertySetInfo->getProperties();
+    const Sequence<Property> aProperties = xPropertySetInfo->getProperties();
 
-    for (int i = 0; i < aProperties.getLength(); ++i)
+    for (const Property& rProp : aProperties)
     {
-        std::cerr << aProperties[i].Name << std::endl;
-        std::cerr << comphelper::anyToString(xPropertySet->getPropertyValue(aProperties[i].Name)) << std::endl;
+        std::cerr << rProp.Name << std::endl;
+        std::cerr << comphelper::anyToString(xPropertySet->getPropertyValue(rProp.Name)) << std::endl;
     }
 }
 

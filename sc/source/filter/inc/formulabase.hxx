@@ -21,23 +21,24 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_FORMULABASE_HXX
 
 #include <com/sun/star/beans/Pair.hpp>
-#include <com/sun/star/sheet/FormulaOpCodeMapEntry.hpp>
 #include <com/sun/star/sheet/FormulaToken.hpp>
 #include <com/sun/star/table/CellAddress.hpp>
-#include <com/sun/star/uno/Sequence.hxx>
 #include <oox/helper/propertyset.hxx>
 #include <oox/helper/refvector.hxx>
-#include "addressconverter.hxx"
+#include "workbookhelper.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace lang { class XMultiServiceFactory; }
     namespace sheet { class XFormulaParser; }
-} } }
+}
 
 namespace oox { template< typename Type > class Matrix; }
+namespace com::sun::star::sheet { struct FormulaOpCodeMapEntry; }
+namespace oox { class SequenceInputStream; }
+namespace oox::xls { struct BinAddress; }
+class ScRangeList;
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 // Constants ==================================================================
 
@@ -297,7 +298,7 @@ private:
 class ApiTokenIterator
 {
 public:
-    explicit            ApiTokenIterator( const ApiTokenSequence& rTokens, sal_Int32 nSpacesOpCode, bool bSkipSpaces );
+    explicit            ApiTokenIterator( const ApiTokenSequence& rTokens, sal_Int32 nSpacesOpCode );
     bool         is() const { return mpToken != mpTokenEnd; }
     const ApiToken* operator->() const { return mpToken; }
 
@@ -310,7 +311,6 @@ private:
     const ApiToken*     mpToken;            /// Pointer to current token of the token sequence.
     const ApiToken*     mpTokenEnd;         /// Pointer behind last token of the token sequence.
     const sal_Int32     mnSpacesOpCode;     /// Op-code for whitespace tokens.
-    const bool          mbSkipSpaces;       /// true = Skip whitespace tokens.
 };
 
 // List of API op-codes =======================================================
@@ -537,6 +537,11 @@ public:
     explicit            FunctionProvider(bool bImportFilter);
     virtual             ~FunctionProvider();
 
+    FunctionProvider(FunctionProvider const &) = default;
+    FunctionProvider(FunctionProvider &&) = default;
+    FunctionProvider & operator =(FunctionProvider const &) = delete;
+    FunctionProvider & operator =(FunctionProvider &&) = delete;
+
     /** Returns the function info for an OOXML function name, or 0 on error. */
     const FunctionInfo* getFuncInfoFromOoxFuncName( const OUString& rFuncName ) const;
 
@@ -573,6 +578,11 @@ public:
     explicit            OpCodeProvider(const css::uno::Reference<css::lang::XMultiServiceFactory>& rxModelFactory,
                                        bool bImportFilter);
     virtual             ~OpCodeProvider() override;
+
+    OpCodeProvider(OpCodeProvider const &) = default;
+    OpCodeProvider(OpCodeProvider &&) = default;
+    OpCodeProvider & operator =(OpCodeProvider const &) = delete;
+    OpCodeProvider & operator =(OpCodeProvider &&) = delete;
 
     /** Returns the structure containing all token op-codes for operators and
         special tokens used by the Calc document and its formula parser. */
@@ -766,8 +776,7 @@ public:
                             bool bTrimLeadingSpaces ) const;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

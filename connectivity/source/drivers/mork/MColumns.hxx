@@ -21,17 +21,12 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MCOLUMNS_HXX
 
 #include <connectivity/sdbcx/VCollection.hxx>
-#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-#include <connectivity/sdbcx/IRefreshable.hxx>
 #include "MTable.hxx"
 
-namespace connectivity
-{
-    namespace mork
+namespace connectivity::mork
     {
-        class OColumns : public sdbcx::OCollection
+        class OColumns final : public sdbcx::OCollection
         {
-        protected:
             OTable* m_pTable;
 
             virtual sdbcx::ObjectType createObject(const OUString& _rName) override;
@@ -39,12 +34,12 @@ namespace connectivity
         public:
             OColumns(   OTable* _pTable,
                         ::osl::Mutex& _rMutex,
-                        const TStringVector &_rVector
+                        const ::std::vector< OUString> &_rVector
                         ) : sdbcx::OCollection(*_pTable, true, _rMutex, _rVector)
                 ,m_pTable(_pTable)
             {}
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MCOLUMNS_HXX
 

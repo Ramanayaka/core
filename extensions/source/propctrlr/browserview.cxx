@@ -19,8 +19,7 @@
 
 #include "browserview.hxx"
 #include "propertyeditor.hxx"
-#include "propctrlr.hrc"
-#include <vcl/tabpage.hxx>
+#include <helpids.h>
 #include <memory>
 
 namespace pcr
@@ -28,42 +27,26 @@ namespace pcr
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::lang;
 
-    OPropertyBrowserView::OPropertyBrowserView(vcl::Window* _pParent)
-                  :Window(_pParent, WB_3DLOOK)
-                  ,m_nActivePage(0)
+    OPropertyBrowserView::OPropertyBrowserView(css::uno::Reference<css::uno::XComponentContext>& rContext, weld::Builder& rBuilder)
+        : m_xPropBox(new OPropertyEditor(rContext, rBuilder))
+        , m_nActivePage(0)
     {
-        m_pPropBox = VclPtr<OPropertyEditor>::Create( this );
-        m_pPropBox->SetHelpId(HID_FM_PROPDLG_TABCTR);
-        m_pPropBox->setPageActivationHandler(LINK(this, OPropertyBrowserView, OnPageActivation));
-
-        m_pPropBox->Show();
+        m_xPropBox->SetHelpId(HID_FM_PROPDLG_TABCTR);
+        m_xPropBox->setPageActivationHandler(LINK(this, OPropertyBrowserView, OnPageActivation));
     }
-
 
     IMPL_LINK_NOARG(OPropertyBrowserView, OnPageActivation, LinkParamNone*, void)
     {
-        m_nActivePage = m_pPropBox->GetCurPage();
+        m_nActivePage = m_xPropBox->GetCurPage();
         m_aPageActivationHandler.Call(nullptr);
     }
 
-
     OPropertyBrowserView::~OPropertyBrowserView()
     {
-        disposeOnce();
+        sal_uInt16 nTmpPage = m_xPropBox->GetCurPage();
+        if (nTmpPage)
+            m_nActivePage = nTmpPage;
     }
-
-    void OPropertyBrowserView::dispose()
-    {
-        if(m_pPropBox)
-        {
-            sal_uInt16 nTmpPage = m_pPropBox->GetCurPage();
-            if (nTmpPage)
-                m_nActivePage = nTmpPage;
-        }
-        m_pPropBox.disposeAndClear();
-        vcl::Window::dispose();
-    }
-
 
     void OPropertyBrowserView::activatePage(sal_uInt16 _nPage)
     {
@@ -71,51 +54,11 @@ namespace pcr
         getPropertyBox().SetPage(m_nActivePage);
     }
 
-
-    void OPropertyBrowserView::GetFocus()
+    css::awt::Size OPropertyBrowserView::getMinimumSize() const
     {
-        if (m_pPropBox)
-            m_pPropBox->GrabFocus();
-        else
-            Window::GetFocus();
+        ::Size aSize = m_xPropBox->get_preferred_size();
+        return css::awt::Size(aSize.Width(), aSize.Height());
     }
-
-
-    bool OPropertyBrowserView::EventNotify( NotifyEvent& _rNEvt )
-    {
-        if ( MouseNotifyEvent::KEYINPUT == _rNEvt.GetType() )
-        {
-            sal_uInt16 nKey = _rNEvt.GetKeyEvent()->GetKeyCode().GetCode();
-
-            if ( ( KEY_DELETE == nKey ) || ( KEY_BACKSPACE == nKey ) )
-                // silence this, we don't want to propagate this outside the property
-                // browser, as it will probably do harm there
-                // #i63285#
-                return true;
-        }
-        return Window::EventNotify(_rNEvt);
-    }
-
-
-    void OPropertyBrowserView::Resize()
-    {
-        Size aSize = GetOutputSizePixel();
-        m_pPropBox->SetSizePixel(aSize);
-    }
-
-    css::awt::Size OPropertyBrowserView::getMinimumSize()
-    {
-        Size aSize = GetOutputSizePixel();
-        if( m_pPropBox )
-        {
-            aSize.setHeight( m_pPropBox->getMinimumHeight() );
-            aSize.setWidth( m_pPropBox->getMinimumWidth() );
-        }
-        return css::awt::Size( aSize.Width(), aSize.Height() );
-    }
-
-
 } // namespace pcr
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

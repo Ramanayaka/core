@@ -18,7 +18,6 @@
  */
 #include "vbareplacement.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
@@ -51,18 +50,16 @@ void SAL_CALL SwVbaReplacement::ClearFormatting( )
 OUString
 SwVbaReplacement::getServiceImplName()
 {
-    return OUString("SwVbaReplacement");
+    return "SwVbaReplacement";
 }
 
 uno::Sequence< OUString >
 SwVbaReplacement::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Replacement";
-    }
+        "ooo.vba.word.Replacement"
+    };
     return aServiceNames;
 }
 

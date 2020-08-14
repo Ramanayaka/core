@@ -20,35 +20,35 @@
 #ifndef INCLUDED_SC_INC_MARKMULTI_HXX
 #define INCLUDED_SC_INC_MARKMULTI_HXX
 
-#include "address.hxx"
 #include "segmenttree.hxx"
 #include "markarr.hxx"
 
-#include <map>
+#include <vector>
 
-class ScMultiSel
+class ScRangeList;
+struct ScSheetLimits;
+
+class SC_DLLPUBLIC ScMultiSel
 {
 
 private:
-    typedef std::map<SCCOL, ScMarkArray> MapType;
+    typedef std::vector<ScMarkArray> MapType;
     MapType aMultiSelContainer;
     ScMarkArray aRowSel;
+    const ScSheetLimits& mrSheetLimits;
 
 friend class ScMultiSelIter;
 
 public:
-    ScMultiSel();
-    ScMultiSel( const ScMultiSel& rMultiSel );
+    ScMultiSel(ScSheetLimits const &);
+    ScMultiSel(const ScMultiSel& rMultiSel) = default;
+    ScMultiSel(ScMultiSel&& rMultiSel) = default;
     ~ScMultiSel();
 
     ScMultiSel& operator=(const ScMultiSel& rMultiSel);
-    ScMultiSel& operator=(const ScMultiSel&& rMultiSel) = delete;
+    ScMultiSel& operator=(ScMultiSel&& rMultiSel);
 
-    SCCOL size() const
-    {
-        return static_cast<SCCOL>( aMultiSelContainer.size() );
-    }
-
+    SCCOL GetMultiSelectionCount() const;
     bool HasMarks( SCCOL nCol ) const;
     bool HasOneMark( SCCOL nCol, SCROW& rStartRow, SCROW& rEndRow ) const;
     bool GetMark( SCCOL nCol, SCROW nRow ) const;
@@ -56,13 +56,16 @@ public:
     bool HasEqualRowsMarked( SCCOL nCol1, SCCOL nCol2 ) const;
     SCROW GetNextMarked( SCCOL nCol, SCROW nRow, bool bUp ) const;
     void SetMarkArea( SCCOL nStartCol, SCCOL nEndCol, SCROW nStartRow, SCROW nEndRow, bool bMark );
+    void Set( ScRangeList const & );
     bool IsRowMarked( SCROW nRow ) const;
     bool IsRowRangeMarked( SCROW nStartRow, SCROW nEndRow ) const;
-    bool IsEmpty() const { return ( !aMultiSelContainer.size() && !aRowSel.HasMarks() ); }
+    bool IsEmpty() const { return ( aMultiSelContainer.empty() && !aRowSel.HasMarks() ); }
     ScMarkArray GetMarkArray( SCCOL nCol ) const;
     void Clear();
     void MarkAllCols( SCROW nStartRow, SCROW nEndRow );
     bool HasAnyMarks() const;
+    void ShiftCols(SCCOL nStartCol, long nColOffset);
+    void ShiftRows(SCROW nStartRow, long nRowOffset);
 
     // For faster access from within ScMarkData, instead of creating
     // ScMultiSelIter with ScFlatBoolRowSegments bottleneck.

@@ -23,13 +23,13 @@
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <cppuhelper/implbase.hxx>
 
+namespace com::sun::star::container { class XNameAccess; }
+
 class ScDocument;
 
 class XMLCodeNameProvider : public ::cppu::WeakImplHelper< css::container::XNameAccess >
 {
     ScDocument* mpDoc;
-    OUString msDocName;
-    OUString msCodeNameProp;
 
     static bool _getCodeName( const css::uno::Any& aAny,
                            OUString& rCodeName );

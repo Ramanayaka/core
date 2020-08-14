@@ -17,6 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <utility>
+
 #include <accelerators/acceleratorconfiguration.hxx>
 #include <accelerators/keymapping.hxx>
 #include <accelerators/presethandler.hxx>
@@ -25,22 +29,18 @@
 #include <xml/acceleratorconfigurationreader.hxx>
 #include <xml/acceleratorconfigurationwriter.hxx>
 
-#include <acceleratorconst.h>
-#include <services.h>
-
 #include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/InputSource.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
 #include <com/sun/star/io/IOException.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
 #include <com/sun/star/io/XTruncate.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 
 #include <vcl/svapp.hxx>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/awt/KeyEvent.hpp>
 #include <com/sun/star/awt/KeyModifier.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
@@ -49,6 +49,8 @@
 #include <officecfg/Setup.hxx>
 #include <unotools/configpaths.hxx>
 #include <svtools/acceleratorexecute.hxx>
+#include <sal/log.hxx>
+#include <rtl/ustrbuf.hxx>
 
 #define PRESET_DEFAULT "default"
 #define TARGET_CURRENT "current"
@@ -58,9 +60,9 @@ namespace framework
     const char CFG_ENTRY_SECONDARY[] = "SecondaryKeys";
     const char CFG_PROP_COMMAND[] = "Command";
 
-    OUString lcl_getKeyString(const css::awt::KeyEvent& aKeyEvent)
+    static OUString lcl_getKeyString(const css::awt::KeyEvent& aKeyEvent)
     {
-        const sal_Int32 nBeginIndex = 4; // "KEY_" is the prefix of a identifier...
+        const sal_Int32 nBeginIndex = 4; // "KEY_" is the prefix of an identifier...
         OUStringBuffer sKeyBuffer((KeyMapping::get().mapCodeToIdentifier(aKeyEvent.KeyCode)).copy(nBeginIndex));
 
         if ( (aKeyEvent.Modifiers & css::awt::KeyModifier::SHIFT) == css::awt::KeyModifier::SHIFT )
@@ -78,7 +80,6 @@ namespace framework
 XMLBasedAcceleratorConfiguration::XMLBasedAcceleratorConfiguration(const css::uno::Reference< css::uno::XComponentContext >& xContext)
     : m_xContext      (xContext                     )
     , m_aPresetHandler(xContext                     )
-    , m_pWriteCache   (nullptr                            )
 {
 }
 
@@ -177,7 +178,7 @@ css::uno::Sequence< css::uno::Any > SAL_CALL XMLBasedAcceleratorConfiguration::g
             throw css::lang::IllegalArgumentException(
                     "Empty command strings are not allowed here.",
                     static_cast< ::cppu::OWeakObject* >(this),
-                    (sal_Int16)i);
+                    static_cast<sal_Int16>(i));
 
         if (!rCache.hasCommand(rCommand))
             continue;
@@ -279,11 +280,9 @@ void SAL_CALL XMLBasedAcceleratorConfiguration::store()
 
 void SAL_CALL XMLBasedAcceleratorConfiguration::storeToStorage(const css::uno::Reference< css::embed::XStorage >& xStorage)
 {
-    css::uno::Reference< css::io::XStream > xStream = StorageHolder::openSubStreamWithFallback(
-                                                            xStorage,
-                                                            TARGET_CURRENT,
-                                                            css::embed::ElementModes::READWRITE,
-                                                            false); // False => no fallback from read/write to readonly!
+    // no fallback from read/write to readonly!
+    css::uno::Reference< css::io::XStream > xStream = xStorage->openStreamElement(TARGET_CURRENT, css::embed::ElementModes::READWRITE);
+
     css::uno::Reference< css::io::XOutputStream > xOut;
     if (xStream.is())
         xOut = xStream->getOutputStream();
@@ -372,13 +371,7 @@ void XMLBasedAcceleratorConfiguration::impl_ts_load(const css::uno::Reference< c
     {
         SolarMutexGuard g;
         xContext = m_xContext;
-        if (m_pWriteCache)
-        {
-            // be aware of reentrance problems - use temp variable for calling delete ... :-)
-            AcceleratorCache* pTemp = m_pWriteCache;
-            m_pWriteCache = nullptr;
-            delete pTemp;
-        }
+        m_pWriteCache.reset();
     }
 
     css::uno::Reference< css::io::XSeekable > xSeek(xStream, css::uno::UNO_QUERY);
@@ -416,9 +409,9 @@ void XMLBasedAcceleratorConfiguration::impl_ts_save(const css::uno::Reference< c
         SolarMutexGuard g;
         bChanged = (m_pWriteCache != nullptr);
         if (bChanged)
-            aCache.takeOver(*m_pWriteCache);
+            aCache = *m_pWriteCache;
         else
-            aCache.takeOver(m_aReadCache);
+            aCache = m_aReadCache;
         xContext = m_xContext;
     }
 
@@ -444,11 +437,8 @@ void XMLBasedAcceleratorConfiguration::impl_ts_save(const css::uno::Reference< c
     // and forget the copy-on-write copied cache
     if (bChanged)
     {
-        m_aReadCache.takeOver(*m_pWriteCache);
-        // live with reentrance .-)
-        AcceleratorCache* pTemp = m_pWriteCache;
-        m_pWriteCache = nullptr;
-        delete pTemp;
+        m_aReadCache = *m_pWriteCache;
+        m_pWriteCache.reset();
     }
 }
 
@@ -458,16 +448,13 @@ AcceleratorCache& XMLBasedAcceleratorConfiguration::impl_getCFG(bool bWriteAcces
 
     //create copy of our readonly-cache, if write access is forced ... but
     //not still possible!
-    if (
-        (bWriteAccessRequested) &&
-        (!m_pWriteCache       )
-       )
+    if ( bWriteAccessRequested && !m_pWriteCache )
     {
-        m_pWriteCache = new AcceleratorCache(m_aReadCache);
+        m_pWriteCache.reset(new AcceleratorCache(m_aReadCache));
     }
 
     // in case, we have a writeable cache, we use it for reading too!
-    // Otherwise the API user can't find its own changes ...
+    // Otherwise the API user can't find its own changes...
     if (m_pWriteCache)
         return *m_pWriteCache;
     else
@@ -479,7 +466,7 @@ OUString XMLBasedAcceleratorConfiguration::impl_ts_getLocale() const
     OUString sISOLocale = officecfg::Setup::L10N::ooLocale::get();
 
     if (sISOLocale.isEmpty())
-        return OUString("en-US");
+        return "en-US";
     return sISOLocale;
 }
 
@@ -491,12 +478,9 @@ OUString XMLBasedAcceleratorConfiguration::impl_ts_getLocale() const
 
 XCUBasedAcceleratorConfiguration::XCUBasedAcceleratorConfiguration(const css::uno::Reference< css::uno::XComponentContext >& xContext)
                                 : m_xContext      (xContext                     )
-                                , m_pPrimaryWriteCache(nullptr                        )
-                                , m_pSecondaryWriteCache(nullptr                      )
 {
-    const OUString CFG_ENTRY_ACCELERATORS("org.openoffice.Office.Accelerators");
     m_xCfg.set(
-             ::comphelper::ConfigurationHelper::openConfig( m_xContext, CFG_ENTRY_ACCELERATORS, ::comphelper::EConfigurationModes::AllLocales ),
+             ::comphelper::ConfigurationHelper::openConfig( m_xContext, "org.openoffice.Office.Accelerators", ::comphelper::EConfigurationModes::AllLocales ),
              css::uno::UNO_QUERY );
 }
 
@@ -512,10 +496,8 @@ css::uno::Sequence< css::awt::KeyEvent > SAL_CALL XCUBasedAcceleratorConfigurati
 
     AcceleratorCache::TKeyList lSecondaryKeys = impl_getCFG(false).getAllKeys(); //get keys from SecondaryKeys set
     lKeys.reserve(lKeys.size()+lSecondaryKeys.size());
-    AcceleratorCache::TKeyList::const_iterator pIt;
-    AcceleratorCache::TKeyList::const_iterator pEnd = lSecondaryKeys.end();
-    for ( pIt  = lSecondaryKeys.begin(); pIt != pEnd; ++pIt )
-        lKeys.push_back(*pIt);
+    for (auto const& secondaryKey : lSecondaryKeys)
+        lKeys.push_back(secondaryKey);
 
     return comphelper::containerToSequence(lKeys);
 }
@@ -676,29 +658,16 @@ css::uno::Sequence< css::awt::KeyEvent > SAL_CALL XCUBasedAcceleratorConfigurati
     AcceleratorCache::TKeyList lKeys  = rPrimaryCache.getKeysByCommand(sCommand);
 
     AcceleratorCache::TKeyList lSecondaryKeys = rSecondaryCache.getKeysByCommand(sCommand);
-    AcceleratorCache::TKeyList::const_iterator pIt;
-    for (pIt = lSecondaryKeys.begin(); pIt != lSecondaryKeys.end(); ++pIt)
-        lKeys.push_back(*pIt);
+    for (auto const& secondaryKey : lSecondaryKeys)
+        lKeys.push_back(secondaryKey);
 
     return comphelper::containerToSequence(lKeys);
 }
 
-AcceleratorCache::TKeyList::const_iterator lcl_getPreferredKey(const AcceleratorCache::TKeyList& lKeys)
+static AcceleratorCache::TKeyList::const_iterator lcl_getPreferredKey(const AcceleratorCache::TKeyList& lKeys)
 {
-    AcceleratorCache::TKeyList::const_iterator pIt;
-    for (  pIt  = lKeys.begin ();
-           pIt != lKeys.end   ();
-         ++pIt                  )
-    {
-        const css::awt::KeyEvent& rAWTKey = *pIt;
-        const vcl::KeyCode        aVCLKey = ::svt::AcceleratorExecute::st_AWTKey2VCLKey(rAWTKey);
-        const OUString            sName   = aVCLKey.GetName();
-
-        if (!sName.isEmpty())
-            return pIt;
-    }
-
-    return lKeys.end();
+    return std::find_if(lKeys.begin(), lKeys.end(), [](const css::awt::KeyEvent& rAWTKey) {
+        return !::svt::AcceleratorExecute::st_AWTKey2VCLKey(rAWTKey).GetName().isEmpty(); });
 }
 
 css::uno::Sequence< css::uno::Any > SAL_CALL XCUBasedAcceleratorConfiguration::getPreferredKeyEventsForCommandList(const css::uno::Sequence< OUString >& lCommandList)
@@ -717,7 +686,7 @@ css::uno::Sequence< css::uno::Any > SAL_CALL XCUBasedAcceleratorConfiguration::g
             throw css::lang::IllegalArgumentException(
                     "Empty command strings are not allowed here.",
                     static_cast< ::cppu::OWeakObject* >(this),
-                    (sal_Int16)i);
+                    static_cast<sal_Int16>(i));
 
         if (!rCache.hasCommand(rCommand))
             continue;
@@ -730,7 +699,7 @@ css::uno::Sequence< css::uno::Any > SAL_CALL XCUBasedAcceleratorConfiguration::g
         if (pPreferredKey != lKeys.end ())
         {
             css::uno::Any& rAny = lPreferredOnes[i];
-            rAny <<= *(pPreferredKey);
+            rAny <<= *pPreferredKey;
         }
     }
 
@@ -772,25 +741,13 @@ void SAL_CALL XCUBasedAcceleratorConfiguration::reload()
 
     bPreferred = true;
     m_aPrimaryReadCache = AcceleratorCache();
-    if (m_pPrimaryWriteCache)
-    {
-        // be aware of reentrance problems - use temp variable for calling delete ... :-)
-        AcceleratorCache* pTemp = m_pPrimaryWriteCache;
-        m_pPrimaryWriteCache = nullptr;
-        delete pTemp;
-    }
+    m_pPrimaryWriteCache.reset();
     m_xCfg->getByName(CFG_ENTRY_PRIMARY) >>= xAccess;
     impl_ts_load(bPreferred, xAccess); // load the preferred keys
 
     bPreferred = false;
     m_aSecondaryReadCache = AcceleratorCache();
-    if (m_pSecondaryWriteCache)
-    {
-        // be aware of reentrance problems - use temp variable for calling delete ... :-)
-        AcceleratorCache* pTemp = m_pSecondaryWriteCache;
-        m_pSecondaryWriteCache = nullptr;
-        delete pTemp;
-    }
+    m_pSecondaryWriteCache.reset();
     m_xCfg->getByName(CFG_ENTRY_SECONDARY) >>= xAccess;
     impl_ts_load(bPreferred, xAccess); // load the secondary keys
 }
@@ -802,19 +759,16 @@ void SAL_CALL XCUBasedAcceleratorConfiguration::store()
     SolarMutexGuard g;
 
     bool bPreferred;
-    css::uno::Reference< css::container::XNameAccess > xAccess;
 
     bPreferred = true;
     // on-demand creation of the primary write cache
     impl_getCFG(bPreferred, true);
-    m_xCfg->getByName(CFG_ENTRY_PRIMARY) >>= xAccess;
-    impl_ts_save(bPreferred, xAccess);
+    impl_ts_save(bPreferred);
 
     bPreferred = false;
     // on-demand creation of the secondary write cache
     impl_getCFG(bPreferred, true);
-    m_xCfg->getByName(CFG_ENTRY_SECONDARY) >>= xAccess;
-    impl_ts_save(bPreferred, xAccess);
+    impl_ts_save(bPreferred);
 }
 
 void SAL_CALL XCUBasedAcceleratorConfiguration::storeToStorage(const css::uno::Reference< css::embed::XStorage >& xStorage)
@@ -844,23 +798,22 @@ void SAL_CALL XCUBasedAcceleratorConfiguration::storeToStorage(const css::uno::R
         SolarMutexGuard g;
 
         if (m_pPrimaryWriteCache != nullptr)
-            aCache.takeOver(*m_pPrimaryWriteCache);
+            aCache = *m_pPrimaryWriteCache;
         else
-            aCache.takeOver(m_aPrimaryReadCache);
+            aCache = m_aPrimaryReadCache;
 
         AcceleratorCache::TKeyList lKeys;
-        AcceleratorCache::TKeyList::const_iterator pIt;
         if (m_pSecondaryWriteCache!=nullptr)
         {
             lKeys = m_pSecondaryWriteCache->getAllKeys();
-            for ( pIt=lKeys.begin(); pIt!=lKeys.end(); ++pIt )
-                aCache.setKeyCommandPair(*pIt, m_pSecondaryWriteCache->getCommandByKey(*pIt));
+            for (auto const& lKey : lKeys)
+                aCache.setKeyCommandPair(lKey, m_pSecondaryWriteCache->getCommandByKey(lKey));
         }
         else
         {
             lKeys = m_aSecondaryReadCache.getAllKeys();
-            for ( pIt=lKeys.begin(); pIt!=lKeys.end(); ++pIt )
-                aCache.setKeyCommandPair(*pIt, m_aSecondaryReadCache.getCommandByKey(*pIt));
+            for (auto const& lKey : lKeys)
+                aCache.setKeyCommandPair(lKey, m_aSecondaryReadCache.getCommandByKey(lKey));
         }
     }
 
@@ -897,7 +850,7 @@ void SAL_CALL XCUBasedAcceleratorConfiguration::setStorage(const css::uno::Refer
 sal_Bool SAL_CALL XCUBasedAcceleratorConfiguration::hasStorage()
 {
     SAL_INFO("fwk.accelerators", "XCUBasedAcceleratorConfiguration::hasStorage(): implement this HACK .-)");
-        return false;
+    return false;
 }
 
 void SAL_CALL XCUBasedAcceleratorConfiguration::addConfigurationListener(const css::uno::Reference< css::ui::XUIConfigurationListener >& /*xListener*/)
@@ -951,8 +904,7 @@ void SAL_CALL XCUBasedAcceleratorConfiguration::changesOccurred(const css::util:
 
     css::util::ChangesEvent aReceivedEvents( aEvent );
     const sal_Int32 c = aReceivedEvents.Changes.getLength();
-          sal_Int32 i = 0;
-    for (i=0; i<c; ++i)
+    for (sal_Int32 i=0; i<c; ++i)
     {
         const css::util::ElementChange& aChange  =   aReceivedEvents.Changes[i];
 
@@ -972,10 +924,9 @@ void SAL_CALL XCUBasedAcceleratorConfiguration::changesOccurred(const css::util:
 
         if ( sGlobalModules == CFG_ENTRY_GLOBAL )
         {
-            OUString sModule;
             sKey = ::utl::extractFirstFromConfigurationPath(sPath, &sPath);
             if ( !sKey.isEmpty() && !sPath.isEmpty() )
-                reloadChanged(sPrimarySecondary, sGlobalModules, sModule, sKey);
+                reloadChanged(sPrimarySecondary, sGlobalModules, OUString(), sKey);
         }
         else if ( sGlobalModules == CFG_ENTRY_MODULES )
         {
@@ -996,7 +947,7 @@ void SAL_CALL XCUBasedAcceleratorConfiguration::disposing(const css::lang::Event
 
 void XCUBasedAcceleratorConfiguration::impl_ts_load( bool bPreferred, const css::uno::Reference< css::container::XNameAccess >& xCfg )
 {
-    AcceleratorCache aReadCache = AcceleratorCache();
+    AcceleratorCache aReadCache;
     css::uno::Reference< css::container::XNameAccess > xAccess;
     if ( m_sGlobalOrModules == "Global" )
         xCfg->getByName(CFG_ENTRY_GLOBAL) >>= xAccess;
@@ -1025,29 +976,35 @@ void XCUBasedAcceleratorConfiguration::impl_ts_load( bool bPreferred, const css:
             css::uno::Sequence< OUString > lLocales = xCommand->getElementNames();
             sal_Int32 nLocales = lLocales.getLength();
             ::std::vector< OUString > aLocales;
-            for ( sal_Int32 j=0; j<nLocales; ++j )
+            aLocales.reserve(nLocales);
+            for (sal_Int32 j = 0; j < nLocales; ++j)
                 aLocales.push_back(lLocales[j]);
 
-            ::std::vector< OUString >::const_iterator pFound;
-            for ( pFound = aLocales.begin(); pFound != aLocales.end(); ++pFound )
+            OUString sLocale;
+            for (auto const& locale : aLocales)
             {
-                if ( *pFound == sIsoLang )
+                if ( locale == sIsoLang )
+                {
+                    sLocale = locale;
                     break;
+                }
             }
 
-            if ( pFound == aLocales.end() )
+            if (sLocale.isEmpty())
             {
-                for ( pFound = aLocales.begin(); pFound != aLocales.end(); ++pFound )
+                for (auto const& locale : aLocales)
                 {
-                    if ( *pFound == sDefaultLocale )
+                    if ( locale == sDefaultLocale )
+                    {
+                        sLocale = locale;
                         break;
+                    }
                 }
 
-                if ( pFound == aLocales.end() )
+                if (sLocale.isEmpty())
                     continue;
             }
 
-            OUString sLocale = *pFound;
             OUString sCommand;
             xCommand->getByName(sLocale) >>= sCommand;
             if (sCommand.isEmpty())
@@ -1096,88 +1053,82 @@ void XCUBasedAcceleratorConfiguration::impl_ts_load( bool bPreferred, const css:
     }
 
     if (bPreferred)
-        m_aPrimaryReadCache.takeOver(aReadCache);
+        m_aPrimaryReadCache = std::move(aReadCache);
     else
-        m_aSecondaryReadCache.takeOver(aReadCache);
+        m_aSecondaryReadCache = std::move(aReadCache);
 }
 
-void XCUBasedAcceleratorConfiguration::impl_ts_save(bool bPreferred, const css::uno::Reference< css::container::XNameAccess >& /*xCfg*/)
+void XCUBasedAcceleratorConfiguration::impl_ts_save(bool bPreferred)
 {
     if (bPreferred)
     {
-        AcceleratorCache::TKeyList::const_iterator pIt;
         AcceleratorCache::TKeyList lPrimaryReadKeys  = m_aPrimaryReadCache.getAllKeys();
         AcceleratorCache::TKeyList lPrimaryWriteKeys = m_pPrimaryWriteCache->getAllKeys();
 
-        for ( pIt  = lPrimaryReadKeys.begin(); pIt != lPrimaryReadKeys.end(); ++pIt )
+        for (auto const& primaryReadKey : lPrimaryReadKeys)
         {
-            if (!m_pPrimaryWriteCache->hasKey(*pIt))
-                removeKeyFromConfiguration(*pIt, true);
+            if (!m_pPrimaryWriteCache->hasKey(primaryReadKey))
+                removeKeyFromConfiguration(primaryReadKey, true);
         }
 
-        for ( pIt  = lPrimaryWriteKeys.begin(); pIt != lPrimaryWriteKeys.end(); ++pIt )
+        for (auto const& primaryWriteKey : lPrimaryWriteKeys)
         {
-            OUString sCommand = m_pPrimaryWriteCache->getCommandByKey(*pIt);
-            if (!m_aPrimaryReadCache.hasKey(*pIt))
+            OUString sCommand = m_pPrimaryWriteCache->getCommandByKey(primaryWriteKey);
+            if (!m_aPrimaryReadCache.hasKey(primaryWriteKey))
             {
-                insertKeyToConfiguration(*pIt, sCommand, true);
+                insertKeyToConfiguration(primaryWriteKey, sCommand, true);
             }
             else
             {
-                OUString sReadCommand = m_aPrimaryReadCache.getCommandByKey(*pIt);
+                OUString sReadCommand = m_aPrimaryReadCache.getCommandByKey(primaryWriteKey);
                 if (sReadCommand != sCommand)
-                    insertKeyToConfiguration(*pIt, sCommand, true);
+                    insertKeyToConfiguration(primaryWriteKey, sCommand, true);
             }
         }
 
         // take over all changes into the original container
         SolarMutexGuard g;
-        // coverity[check_after_deref]
+        // coverity[check_after_deref] - confusing but correct
         if (m_pPrimaryWriteCache)
         {
-            m_aPrimaryReadCache.takeOver(*m_pPrimaryWriteCache);
-            AcceleratorCache* pTemp = m_pPrimaryWriteCache;
-            m_pPrimaryWriteCache = nullptr;
-            delete pTemp;
+            m_aPrimaryReadCache = *m_pPrimaryWriteCache;
+            m_pPrimaryWriteCache.reset();
         }
     }
 
     else
     {
-        AcceleratorCache::TKeyList::const_iterator pIt;
         AcceleratorCache::TKeyList lSecondaryReadKeys  = m_aSecondaryReadCache.getAllKeys();
         AcceleratorCache::TKeyList lSecondaryWriteKeys = m_pSecondaryWriteCache->getAllKeys();
 
-        for ( pIt  = lSecondaryReadKeys.begin(); pIt != lSecondaryReadKeys.end(); ++pIt)
+        for (auto const& secondaryReadKey : lSecondaryReadKeys)
         {
-            if (!m_pSecondaryWriteCache->hasKey(*pIt))
-                removeKeyFromConfiguration(*pIt, false);
+            if (!m_pSecondaryWriteCache->hasKey(secondaryReadKey))
+                removeKeyFromConfiguration(secondaryReadKey, false);
         }
 
-        for ( pIt  = lSecondaryWriteKeys.begin(); pIt != lSecondaryWriteKeys.end(); ++pIt )
+        for (auto const& secondaryWriteKey : lSecondaryWriteKeys)
         {
-            OUString sCommand = m_pSecondaryWriteCache->getCommandByKey(*pIt);
-            if (!m_aSecondaryReadCache.hasKey(*pIt))
+            OUString sCommand = m_pSecondaryWriteCache->getCommandByKey(secondaryWriteKey);
+            if (!m_aSecondaryReadCache.hasKey(secondaryWriteKey))
             {
-                insertKeyToConfiguration(*pIt, sCommand, false);
+                insertKeyToConfiguration(secondaryWriteKey, sCommand, false);
             }
             else
             {
-                OUString sReadCommand = m_aSecondaryReadCache.getCommandByKey(*pIt);
+                OUString sReadCommand = m_aSecondaryReadCache.getCommandByKey(secondaryWriteKey);
                 if (sReadCommand != sCommand)
-                    insertKeyToConfiguration(*pIt, sCommand, false);
+                    insertKeyToConfiguration(secondaryWriteKey, sCommand, false);
             }
         }
 
         // take over all changes into the original container
         SolarMutexGuard g;
-        // coverity[check_after_deref]
+        // coverity[check_after_deref] - confusing but correct
         if (m_pSecondaryWriteCache)
         {
-            m_aSecondaryReadCache.takeOver(*m_pSecondaryWriteCache);
-            AcceleratorCache* pTemp = m_pSecondaryWriteCache;
-            m_pSecondaryWriteCache = nullptr;
-            delete pTemp;
+            m_aSecondaryReadCache = *m_pSecondaryWriteCache;
+            m_pSecondaryWriteCache.reset();
         }
     }
 
@@ -1293,8 +1244,8 @@ void XCUBasedAcceleratorConfiguration::reloadChanged( const OUString& sPrimarySe
             aKeyEvent.Modifiers |= css::awt::KeyModifier::MOD1;
         else if ( sToken[i] == "MOD2" )
             aKeyEvent.Modifiers |= css::awt::KeyModifier::MOD2;
-                else if ( sToken[i] == "MOD3" )
-                        aKeyEvent.Modifiers |= css::awt::KeyModifier::MOD3;
+        else if ( sToken[i] == "MOD3" )
+             aKeyEvent.Modifiers |= css::awt::KeyModifier::MOD3;
     }
 
     css::uno::Reference< css::container::XNameAccess > xKey;
@@ -1333,16 +1284,13 @@ AcceleratorCache& XCUBasedAcceleratorConfiguration::impl_getCFG(bool bPreferred,
     {
         //create copy of our readonly-cache, if write access is forced ... but
         //not still possible!
-        if (
-            (bWriteAccessRequested) &&
-            (!m_pPrimaryWriteCache       )
-            )
+        if ( bWriteAccessRequested && !m_pPrimaryWriteCache )
         {
-            m_pPrimaryWriteCache = new AcceleratorCache(m_aPrimaryReadCache);
+            m_pPrimaryWriteCache.reset(new AcceleratorCache(m_aPrimaryReadCache));
         }
 
         // in case, we have a writeable cache, we use it for reading too!
-        // Otherwise the API user can't find its own changes ...
+        // Otherwise the API user can't find its own changes...
         if (m_pPrimaryWriteCache)
             return *m_pPrimaryWriteCache;
         else
@@ -1353,16 +1301,13 @@ AcceleratorCache& XCUBasedAcceleratorConfiguration::impl_getCFG(bool bPreferred,
     {
         //create copy of our readonly-cache, if write access is forced ... but
         //not still possible!
-        if (
-            (bWriteAccessRequested) &&
-            (!m_pSecondaryWriteCache       )
-            )
+        if ( bWriteAccessRequested && !m_pSecondaryWriteCache )
         {
-            m_pSecondaryWriteCache = new AcceleratorCache(m_aSecondaryReadCache);
+            m_pSecondaryWriteCache.reset(new AcceleratorCache(m_aSecondaryReadCache));
         }
 
         // in case, we have a writeable cache, we use it for reading too!
-        // Otherwise the API user can't find its own changes ...
+        // Otherwise the API user can't find its own changes...
         if (m_pSecondaryWriteCache)
             return *m_pSecondaryWriteCache;
         else
@@ -1375,7 +1320,7 @@ OUString XCUBasedAcceleratorConfiguration::impl_ts_getLocale() const
     OUString sISOLocale = officecfg::Setup::L10N::ooLocale::get();
 
     if (sISOLocale.isEmpty())
-        return OUString("en-US");
+        return "en-US";
     return sISOLocale;
 }
 

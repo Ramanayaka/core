@@ -17,47 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/virdev.hxx>
-#include <vcl/metric.hxx>
-#include <vcl/msgbox.hxx>
-#include <unotools/printwarningoptions.hxx>
-#include <svtools/printoptions.hxx>
+#include <tools/debug.hxx>
 
 #include <utility>
-#include <vector>
 
 #include <sfx2/printer.hxx>
-#include <sfx2/printopt.hxx>
-#include "sfxtypes.hxx"
-#include <sfx2/prnmon.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/tabdlg.hxx>
-#include <sfx2/sfxresid.hxx>
-#include "view.hrc"
-
-// struct SfxPrinter_Impl ------------------------------------------------
-
-struct SfxPrinter_Impl
-{
-    bool            mbAll;
-    bool            mbSelection;
-    bool            mbFromTo;
-    bool            mbRange;
-
-    SfxPrinter_Impl() :
-        mbAll       ( true ),
-        mbSelection ( true ),
-        mbFromTo    ( true ),
-        mbRange     ( true ) {}
-};
-
-struct SfxPrintOptDlg_Impl
-{
-    bool        mbHelpDisabled;
-
-    SfxPrintOptDlg_Impl() :
-        mbHelpDisabled  ( false ) {}
-};
+#include "prnmon.hxx"
 
 // class SfxPrinter ------------------------------------------------------
 
@@ -104,7 +71,6 @@ SfxPrinter::SfxPrinter( std::unique_ptr<SfxItemSet>&& pTheOptions ) :
     This constructor creates a default printer.
 */
     pOptions( std::move(pTheOptions) ),
-    pImpl( new SfxPrinter_Impl ),
     bKnown( true )
 {
     assert(pOptions);
@@ -114,8 +80,7 @@ SfxPrinter::SfxPrinter( std::unique_ptr<SfxItemSet>&& pTheOptions ) :
 SfxPrinter::SfxPrinter( std::unique_ptr<SfxItemSet>&& pTheOptions,
                         const JobSetup& rTheOrigJobSetup ) :
     Printer( rTheOrigJobSetup.GetPrinterName() ),
-    pOptions( std::move(pTheOptions) ),
-    pImpl( new SfxPrinter_Impl )
+    pOptions( std::move(pTheOptions) )
 {
     assert(pOptions);
     bKnown = GetName() == rTheOrigJobSetup.GetPrinterName();
@@ -129,7 +94,6 @@ SfxPrinter::SfxPrinter( std::unique_ptr<SfxItemSet>&& pTheOptions,
                         const OUString& rPrinterName ) :
     Printer( rPrinterName ),
     pOptions( std::move(pTheOptions) ),
-    pImpl( new SfxPrinter_Impl ),
     bKnown( GetName() == rPrinterName )
 {
     assert(pOptions);
@@ -140,18 +104,12 @@ SfxPrinter::SfxPrinter( const SfxPrinter& rPrinter ) :
     VclReferenceBase(),
     Printer( rPrinter.GetName() ),
     pOptions( rPrinter.GetOptions().Clone() ),
-    pImpl( new SfxPrinter_Impl ),
     bKnown( rPrinter.IsKnown() )
 {
     assert(pOptions);
     SetJobSetup( rPrinter.GetJobSetup() );
     SetPrinterProps( &rPrinter );
     SetMapMode( rPrinter.GetMapMode() );
-
-    pImpl->mbAll = rPrinter.pImpl->mbAll;
-    pImpl->mbSelection = rPrinter.pImpl->mbSelection;
-    pImpl->mbFromTo = rPrinter.pImpl->mbFromTo;
-    pImpl->mbRange = rPrinter.pImpl->mbRange;
 }
 
 
@@ -159,14 +117,10 @@ VclPtr<SfxPrinter> SfxPrinter::Clone() const
 {
     if ( IsDefPrinter() )
     {
-        VclPtr<SfxPrinter> pNewPrinter = VclPtr<SfxPrinter>::Create( std::unique_ptr<SfxItemSet>(GetOptions().Clone()) );
+        VclPtr<SfxPrinter> pNewPrinter = VclPtr<SfxPrinter>::Create( GetOptions().Clone() );
         pNewPrinter->SetJobSetup( GetJobSetup() );
         pNewPrinter->SetPrinterProps( this );
         pNewPrinter->SetMapMode( GetMapMode() );
-        pNewPrinter->pImpl->mbAll = pImpl->mbAll;
-        pNewPrinter->pImpl->mbSelection =pImpl->mbSelection;
-        pNewPrinter->pImpl->mbFromTo = pImpl->mbFromTo;
-        pNewPrinter->pImpl->mbRange =pImpl->mbRange;
         return pNewPrinter;
     }
     else
@@ -182,7 +136,6 @@ SfxPrinter::~SfxPrinter()
 void SfxPrinter::dispose()
 {
     pOptions.reset();
-    pImpl.reset();
     Printer::dispose();
 }
 
@@ -193,75 +146,44 @@ void SfxPrinter::SetOptions( const SfxItemSet &rNewOptions )
 }
 
 
-SfxPrintOptionsDialog::SfxPrintOptionsDialog(vcl::Window *pParent,
-                                              SfxViewShell *pViewShell,
-                                              const SfxItemSet *pSet)
-
-    : ModalDialog(pParent, "PrinterOptionsDialog",
-        "sfx/ui/printeroptionsdialog.ui")
-    , pDlgImpl(new SfxPrintOptDlg_Impl)
-    , pViewSh(pViewShell)
+SfxPrintOptionsDialog::SfxPrintOptionsDialog(weld::Window *pParent,
+                                             SfxViewShell *pViewShell,
+                                             const SfxItemSet *pSet)
+    : GenericDialogController(pParent, "sfx/ui/printeroptionsdialog.ui", "PrinterOptionsDialog")
     , pOptions(pSet->Clone())
+    , m_xHelpBtn(m_xBuilder->weld_widget("help"))
+    , m_xContainer(m_xDialog->weld_content_area())
+    , m_xPage(pViewShell->CreatePrintOptionsPage(m_xContainer.get(), this, *pOptions)) // Insert TabPage
 {
-    VclContainer *pVBox = get_content_area();
-
-    // Insert TabPage
-    pPage.reset(pViewSh->CreatePrintOptionsPage(pVBox, *pOptions));
-    DBG_ASSERT( pPage, "CreatePrintOptions != SFX_VIEW_HAS_PRINTOPTIONS" );
-    if( pPage )
+    DBG_ASSERT( m_xPage, "CreatePrintOptions != SFX_VIEW_HAS_PRINTOPTIONS" );
+    if (m_xPage)
     {
-        pPage->Reset( pOptions );
-        SetHelpId( pPage->GetHelpId() );
-        pPage->Show();
+        m_xPage->Reset( pOptions.get() );
+        m_xDialog->set_help_id(m_xPage->GetHelpId());
     }
 }
-
 
 SfxPrintOptionsDialog::~SfxPrintOptionsDialog()
 {
-    disposeOnce();
 }
 
-void SfxPrintOptionsDialog::dispose()
+short SfxPrintOptionsDialog::run()
 {
-    pDlgImpl.reset();
-    pPage.disposeAndClear();
-    delete pOptions;
-    ModalDialog::dispose();
-}
-
-
-short SfxPrintOptionsDialog::Execute()
-{
-    if( ! pPage )
+    if (!m_xPage)
         return RET_CANCEL;
 
-    short nRet = ModalDialog::Execute();
-    if ( nRet == RET_OK )
-        pPage->FillItemSet( pOptions );
+    short nRet = GenericDialogController::run();
+
+    if (nRet == RET_OK)
+        m_xPage->FillItemSet( pOptions.get() );
     else
-        pPage->Reset( pOptions );
+        m_xPage->Reset( pOptions.get() );
     return nRet;
 }
 
-
-bool SfxPrintOptionsDialog::EventNotify( NotifyEvent& rNEvt )
-{
-    if ( rNEvt.GetType() == MouseNotifyEvent::KEYINPUT )
-    {
-        if ( rNEvt.GetKeyEvent()->GetKeyCode().GetCode() == KEY_F1 && pDlgImpl->mbHelpDisabled )
-            return true; // help disabled -> <F1> does nothing
-    }
-
-    return ModalDialog::EventNotify( rNEvt );
-}
-
-
 void SfxPrintOptionsDialog::DisableHelp()
 {
-    pDlgImpl->mbHelpDisabled = true;
-
-    get<HelpButton>("help")->Disable();
+    m_xHelpBtn->set_sensitive(false);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

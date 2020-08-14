@@ -19,12 +19,9 @@
 
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/text/XParagraphAppend.hpp>
-#include <com/sun/star/text/XRelativeTextContentRemove.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <o3tl/any.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include "XMLTextHeaderFooterContext.hxx"
-#include <xmloff/XMLTextTableContext.hxx>
+#include <XMLTextHeaderFooterContext.hxx>
 #include <xmloff/xmlimp.hxx>
 
 
@@ -45,7 +42,6 @@ XMLTextHeaderFooterContext::XMLTextHeaderFooterContext( SvXMLImport& rImport, sa
     xPropSet( rPageStylePropSet ),
     sOn( bFooter ? OUString("FooterIsOn") : OUString("HeaderIsOn") ),
     sShareContent( bFooter ? OUString("FooterIsShared") : OUString("HeaderIsShared") ),
-    sShareContentFirst( "FirstIsShared" ),
     sText( bFooter ? OUString("FooterText") : OUString("HeaderText") ),
     sTextFirst(bFooter ? OUString("FooterTextFirst") : OUString("HeaderTextFirst")),
     sTextLeft( bFooter ?  OUString("FooterTextLeft") : OUString("HeaderTextLeft") ),
@@ -53,47 +49,46 @@ XMLTextHeaderFooterContext::XMLTextHeaderFooterContext( SvXMLImport& rImport, sa
     bLeft( bLft ),
     bFirst( bFrst )
 {
+    const OUString sShareContentFirst( "FirstIsShared" );
     // NOTE: if this ever handles XML_DISPLAY attr then beware of fdo#72850 !
-    if( bLeft || bFirst )
+    if( !(bLeft || bFirst) )
+        return;
+
+    Any aAny = xPropSet->getPropertyValue( sOn );
+    bool bOn = *o3tl::doAccess<bool>(aAny);
+
+    if( bOn )
     {
-        Any aAny;
-
-        aAny = xPropSet->getPropertyValue( sOn );
-        bool bOn = *o3tl::doAccess<bool>(aAny);
-
-        if( bOn )
+        if (bLeft)
         {
-            if (bLeft)
+            aAny = xPropSet->getPropertyValue( sShareContent );
+            bool bShared = bool();
+            if (!(aAny >>= bShared))
+                assert(false); // should return a value!
+            if( bShared )
             {
-                aAny = xPropSet->getPropertyValue( sShareContent );
-                bool bShared = bool();
-                if (!(aAny >>= bShared))
-                    assert(false); // should return a value!
-                if( bShared )
-                {
-                    // Don't share headers any longer
-                    xPropSet->setPropertyValue( sShareContent, Any(false) );
-                }
-            }
-            if (bFirst)
-            {
-                aAny = xPropSet->getPropertyValue( sShareContentFirst );
-                bool bSharedFirst = bool();
-                if (!(aAny >>= bSharedFirst))
-                    assert(false); // should return a value!
-                if( bSharedFirst )
-                {
-                    // Don't share first/right headers any longer
-                    xPropSet->setPropertyValue( sShareContentFirst, Any(false) );
-                }
+                // Don't share headers any longer
+                xPropSet->setPropertyValue( sShareContent, Any(false) );
             }
         }
-        else
+        if (bFirst)
         {
-            // If headers or footers are switched off, no content must be
-            // inserted.
-            bInsertContent = false;
+            aAny = xPropSet->getPropertyValue( sShareContentFirst );
+            bool bSharedFirst = bool();
+            if (!(aAny >>= bSharedFirst))
+                assert(false); // should return a value!
+            if( bSharedFirst )
+            {
+                // Don't share first/right headers any longer
+                xPropSet->setPropertyValue( sShareContentFirst, Any(false) );
+            }
         }
+    }
+    else
+    {
+        // If headers or footers are switched off, no content must be
+        // inserted.
+        bInsertContent = false;
     }
 }
 
@@ -101,7 +96,7 @@ XMLTextHeaderFooterContext::~XMLTextHeaderFooterContext()
 {
 }
 
-SvXMLImportContext *XMLTextHeaderFooterContext::CreateChildContext(
+SvXMLImportContextRef XMLTextHeaderFooterContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const uno::Reference< xml::sax::XAttributeList > & xAttrList )
@@ -177,8 +172,6 @@ SvXMLImportContext *XMLTextHeaderFooterContext::CreateChildContext(
                 GetImport(), nPrefix, rLocalName, xAttrList,
                 XMLTextType::HeaderFooter );
     }
-    if( !pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }

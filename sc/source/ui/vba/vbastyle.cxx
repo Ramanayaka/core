@@ -20,11 +20,12 @@
 #include "vbastyle.hxx"
 #include <basic/sberrors.hxx>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
-static const char DISPLAYNAME[] = "DisplayName";
+const char DISPLAYNAME[] = "DisplayName";
 
 uno::Reference< container::XNameAccess >
 ScVbaStyle::getStylesNameContainer( const uno::Reference< frame::XModel >& xModel )
@@ -166,18 +167,16 @@ ScVbaStyle::getMergeCells(  )
 OUString
 ScVbaStyle::getServiceImplName()
 {
-    return OUString("ScVbaStyle");
+    return "ScVbaStyle";
 }
 
 uno::Sequence< OUString >
 ScVbaStyle::getServiceNames()
 {
-        static uno::Sequence< OUString > aServiceNames;
-        if ( aServiceNames.getLength() == 0 )
+        static uno::Sequence< OUString > const aServiceNames
         {
-                aServiceNames.realloc( 1 );
-                aServiceNames[ 0 ] = "ooo.vba.excel.XStyle";
-        }
+            "ooo.vba.excel.XStyle"
+        };
         return aServiceNames;
 }
 

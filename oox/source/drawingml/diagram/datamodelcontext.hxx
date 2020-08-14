@@ -20,27 +20,25 @@
 #ifndef INCLUDED_OOX_SOURCE_DRAWINGML_DIAGRAM_DATAMODELCONTEXT_HXX
 #define INCLUDED_OOX_SOURCE_DRAWINGML_DIAGRAM_DATAMODELCONTEXT_HXX
 
-#include <com/sun/star/drawing/XShapes.hpp>
+#include <oox/core/contexthandler2.hxx>
+#include "datamodel.hxx"
 
-#include "oox/core/contexthandler2.hxx"
-#include "diagram.hxx"
-
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 // CT_DataModel
-class DataModelContext : public ::oox::core::ContextHandler2
+class DataModelContext final : public ::oox::core::ContextHandler2
 {
 public:
-    DataModelContext( ::oox::core::ContextHandler2Helper& rParent, const DiagramDataPtr & pDataModelPtr );
+    DataModelContext( ::oox::core::ContextHandler2Helper const & rParent, const DiagramDataPtr & pDataModelPtr );
     virtual ~DataModelContext() override;
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
-protected:
+private:
     DiagramDataPtr mpDataModel;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_SOURCE_DRAWINGML_DIAGRAM_DATAMODELCONTEXT_HXX
 

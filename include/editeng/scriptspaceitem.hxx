@@ -30,28 +30,19 @@
     used for the user interface.
 */
 
-class EDITENG_DLLPUBLIC SvxScriptSpaceItem : public SfxBoolItem
+class EDITENG_DLLPUBLIC SvxScriptSpaceItem final : public SfxBoolItem
 {
 public:
     SvxScriptSpaceItem( bool bOn /*= false*/,
                         const sal_uInt16 nId  );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual sal_uInt16          GetVersion( sal_uInt16 nFileVersion ) const override;
+    virtual SvxScriptSpaceItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper * = nullptr ) const override;
-
-    SvxScriptSpaceItem& operator=(const SvxScriptSpaceItem& rItem )
-    {
-        SetValue( rItem.GetValue() );
-        return *this;
-    }
-
+                                  const IntlWrapper& ) const override;
 };
 
 #endif

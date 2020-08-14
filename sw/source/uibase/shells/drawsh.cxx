@@ -25,8 +25,7 @@
 #include <sfx2/request.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/objface.hxx>
-#include <svl/itemiter.hxx>
-#include <svl/srchitem.hxx>
+#include <sfx2/viewfrm.hxx>
 #include <svx/extrusionbar.hxx>
 #include <svx/fontworkbar.hxx>
 #include <uitool.hxx>
@@ -34,36 +33,29 @@
 #include <textboxhelper.hxx>
 #include <wview.hxx>
 #include <swmodule.hxx>
-#include <swwait.hxx>
 #include <doc.hxx>
 #include <docsh.hxx>
-#include <docstat.hxx>
-#include <IDocumentStatistics.hxx>
-#include <tools/diagnose_ex.h>
 
 #include <svx/svdoashp.hxx>
-#include <svx/xtable.hxx>
+#include <svx/xfillit0.hxx>
 #include <vcl/EnumContext.hxx>
 #include <svx/svdoole2.hxx>
 #include <sfx2/opengrf.hxx>
 #include <svx/svdograf.hxx>
 #include <svx/svdundo.hxx>
 #include <svx/xbtmpit.hxx>
+#include <svx/sdasitm.hxx>
 
-#include "swundo.hxx"
-#include "wrtsh.hxx"
-#include "cmdid.h"
-#include "globals.hrc"
-#include "helpid.h"
-#include "shells.hrc"
-#include "drwbassh.hxx"
-#include "drawsh.hxx"
+#include <swundo.hxx>
+#include <wrtsh.hxx>
+#include <cmdid.h>
+#include <strings.hrc>
+#include <drwbassh.hxx>
+#include <drawsh.hxx>
 
-#define SwDrawShell
+#define ShellClass_SwDrawShell
 #include <sfx2/msg.hxx>
-#include "swslots.hxx"
-#include "swabstdlg.hxx"
-#include "misc.hrc"
+#include <swslots.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -122,67 +114,67 @@ void SwDrawShell::InsertPictureFromFile(SdrObject& rObject)
     SwWrtShell &rSh = GetShell();
     SdrView* pSdrView = rSh.GetDrawView();
 
-    if(pSdrView)
+    if(!pSdrView)
+        return;
+
+    SvxOpenGraphicDialog aDlg(SwResId(STR_INSERT_GRAPHIC), GetView().GetFrameWeld());
+
+    if (ERRCODE_NONE != aDlg.Execute())
+        return;
+
+    Graphic aGraphic;
+    ErrCode nError = aDlg.GetGraphic(aGraphic);
+
+    if(ERRCODE_NONE != nError)
+        return;
+
+    const bool bAsLink(aDlg.IsAsLink());
+    SdrObject* pResult = &rObject;
+
+    rSh.StartUndo(SwUndoId::PASTE_CLIPBOARD);
+
+    if (SdrGrafObj* pSdrGrafObj = dynamic_cast<SdrGrafObj*>(&rObject))
     {
-        SvxOpenGraphicDialog aDlg(SwResId(STR_INSERT_GRAPHIC));
+        SdrGrafObj* pNewGrafObj(pSdrGrafObj->CloneSdrObject(pSdrGrafObj->getSdrModelFromSdrObject()));
 
-        if(ERRCODE_NONE == aDlg.Execute())
-        {
-            Graphic aGraphic;
-            ErrCode nError = aDlg.GetGraphic(aGraphic);
+        pNewGrafObj->SetGraphic(aGraphic);
 
-            if(ERRCODE_NONE == nError)
-            {
-                const bool bAsLink(aDlg.IsAsLink());
-                SdrObject* pResult = &rObject;
+        // #i123922#  for handling MasterObject and virtual ones correctly, SW
+        // wants us to call ReplaceObject at the page, but that also
+        // triggers the same assertion (I tried it), so stay at the view method
+        pSdrView->ReplaceObjectAtView(&rObject, *pSdrView->GetSdrPageView(), pNewGrafObj);
 
-                rSh.StartUndo(SwUndoId::PASTE_CLIPBOARD);
-
-                if (SdrGrafObj* pSdrGrafObj = dynamic_cast<SdrGrafObj*>(&rObject))
-                {
-                    SdrGrafObj* pNewGrafObj = pSdrGrafObj->Clone();
-
-                    pNewGrafObj->SetGraphic(aGraphic);
-
-                    // #i123922#  for handling MasterObject and virtual ones correctly, SW
-                    // wants us to call ReplaceObject at the page, but that also
-                    // triggers the same assertion (I tried it), so stay at the view method
-                    pSdrView->ReplaceObjectAtView(&rObject, *pSdrView->GetSdrPageView(), pNewGrafObj);
-
-                    OUString aReferer;
-                    SwDocShell *pDocShell = rSh.GetDoc()->GetDocShell();
-                    if (pDocShell->HasName()) {
-                        aReferer = pDocShell->GetMedium()->GetName();
-                    }
-
-                    // set in all cases - the Clone() will have copied an existing link (!)
-                    pNewGrafObj->SetGraphicLink(
-                        bAsLink ? aDlg.GetPath() : OUString(),
-                        aReferer,
-                        bAsLink ? aDlg.GetCurrentFilter() : OUString());
-
-                    pResult = pNewGrafObj;
-                }
-                else // if(rObject.IsClosedObj() && !dynamic_cast< SdrOle2Obj* >(&rObject))
-                {
-                    pSdrView->AddUndo(new SdrUndoAttrObj(rObject));
-
-                    SfxItemSet aSet(pSdrView->GetModel()->GetItemPool(), svl::Items<XATTR_FILLSTYLE, XATTR_FILLBITMAP>{});
-
-                    aSet.Put(XFillStyleItem(drawing::FillStyle_BITMAP));
-                    aSet.Put(XFillBitmapItem(OUString(), aGraphic));
-                    rObject.SetMergedItemSetAndBroadcast(aSet);
-                }
-
-                rSh.EndUndo( SwUndoId::END );
-
-                if(pResult)
-                {
-                    // we are done; mark the modified/new object
-                    pSdrView->MarkObj(pResult, pSdrView->GetSdrPageView());
-                }
-            }
+        OUString aReferer;
+        SwDocShell *pDocShell = rSh.GetDoc()->GetDocShell();
+        if (pDocShell->HasName()) {
+            aReferer = pDocShell->GetMedium()->GetName();
         }
+
+        // set in all cases - the Clone() will have copied an existing link (!)
+        pNewGrafObj->SetGraphicLink(
+            bAsLink ? aDlg.GetPath() : OUString(),
+            aReferer,
+            bAsLink ? aDlg.GetDetectedFilter() : OUString());
+
+        pResult = pNewGrafObj;
+    }
+    else // if(rObject.IsClosedObj() && !dynamic_cast< SdrOle2Obj* >(&rObject))
+    {
+        pSdrView->AddUndo(std::make_unique<SdrUndoAttrObj>(rObject));
+
+        SfxItemSet aSet(pSdrView->GetModel()->GetItemPool(), svl::Items<XATTR_FILLSTYLE, XATTR_FILLBITMAP>{});
+
+        aSet.Put(XFillStyleItem(drawing::FillStyle_BITMAP));
+        aSet.Put(XFillBitmapItem(OUString(), aGraphic));
+        rObject.SetMergedItemSetAndBroadcast(aSet);
+    }
+
+    rSh.EndUndo( SwUndoId::END );
+
+    if(pResult)
+    {
+        // we are done; mark the modified/new object
+        pSdrView->MarkObj(pResult, pSdrView->GetSdrPageView());
     }
 }
 
@@ -225,7 +217,7 @@ void SwDrawShell::Execute(SfxRequest &rReq)
             }
             GetView().FlipDrawSelMode();
             pSdrView->SetFrameDragSingles(GetView().IsDrawSelMode());
-            GetView().AttrChangedNotify(&rSh); // Shell switch
+            GetView().AttrChangedNotify(nullptr); // Shell switch
             break;
 
         case SID_OBJECT_HELL:
@@ -272,7 +264,7 @@ void SwDrawShell::Execute(SfxRequest &rReq)
 
         case SID_FLIP_VERTICAL:
             bMirror = false;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case SID_FLIP_HORIZONTAL:
             rSh.MirrorSelection( bMirror );
             break;
@@ -313,7 +305,7 @@ void SwDrawShell::Execute(SfxRequest &rReq)
             GetView().UpdateWordCount(this, nSlotId);
         }
         break;
-        case SID_EXTRUSION_TOOGLE:
+        case SID_EXTRUSION_TOGGLE:
         case SID_EXTRUSION_TILT_DOWN:
         case SID_EXTRUSION_TILT_UP:
         case SID_EXTRUSION_TILT_LEFT:
@@ -343,7 +335,7 @@ void SwDrawShell::Execute(SfxRequest &rReq)
         case SID_FONTWORK_CHARACTER_SPACING_FLOATER:
         case SID_FONTWORK_ALIGNMENT_FLOATER:
         case SID_FONTWORK_CHARACTER_SPACING_DIALOG:
-            svx::FontworkBar::execute( pSdrView, rReq, rBnd );
+            svx::FontworkBar::execute(*pSdrView, rReq, rBnd);
             rReq.Ignore ();
             break;
 
@@ -497,7 +489,7 @@ void SwDrawShell::GetState(SfxItemSet& rSet)
                     {
                         if (SdrObjCustomShape* pCustomShape = dynamic_cast<SdrObjCustomShape*>( pObj) )
                         {
-                            const SdrCustomShapeGeometryItem& rGeometryItem = static_cast<const SdrCustomShapeGeometryItem&>(pCustomShape->GetMergedItem(SDRATTR_CUSTOMSHAPE_GEOMETRY));
+                            const SdrCustomShapeGeometryItem& rGeometryItem = pCustomShape->GetMergedItem(SDRATTR_CUSTOMSHAPE_GEOMETRY);
                             if (const uno::Any* pAny = rGeometryItem.GetPropertyValueByName("Type"))
                                 // But still disallow fontwork shapes.
                                 bDisable = pAny->get<OUString>().startsWith("fontwork-");
@@ -541,7 +533,7 @@ SwDrawShell::SwDrawShell(SwView &_rView) :
 
 // Edit SfxRequests for FontWork
 
-void SwDrawShell::ExecFormText(SfxRequest& rReq)
+void SwDrawShell::ExecFormText(SfxRequest const & rReq)
 {
     SwWrtShell &rSh = GetShell();
     SdrView*    pDrView = rSh.GetDrawView();
@@ -557,7 +549,7 @@ void SwDrawShell::ExecFormText(SfxRequest& rReq)
         if ( pDrView->IsTextEdit() )
         {
             pDrView->SdrEndTextEdit( true );
-            GetView().AttrChangedNotify(&rSh);
+            GetView().AttrChangedNotify(nullptr);
         }
 
         pDrView->SetAttributes(rSet);

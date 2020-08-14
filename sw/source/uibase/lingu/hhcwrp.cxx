@@ -21,17 +21,15 @@
 #include <view.hxx>
 #include <wrtsh.hxx>
 #include <swundo.hxx>
-#include <globals.hrc>
 #include <splargs.hxx>
 
-#include <vcl/msgbox.hxx>
-#include <editeng/unolingu.hxx>
 #include <editeng/langitem.hxx>
 #include <editeng/fontitem.hxx>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/text/RubyAdjust.hpp>
+#include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <hhcwrp.hxx>
-#include <sdrhhcwrap.hxx>
+#include "sdrhhcwrap.hxx"
 #include <doc.hxx>
 #include <docsh.hxx>
 #include <mdiexp.hxx>
@@ -39,14 +37,9 @@
 #include <index.hxx>
 #include <pam.hxx>
 #include <swcrsr.hxx>
-#include <viscrs.hxx>
 #include <ndtxt.hxx>
 #include <fmtruby.hxx>
 #include <breakit.hxx>
-
-#include <olmenu.hrc>
-
-#include <unomid.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::text;
@@ -61,6 +54,8 @@ static void lcl_ActivateTextShell( SwWrtShell & rWrtSh )
     if( rWrtSh.IsSelFrameMode() || rWrtSh.IsObjSelected() )
         rWrtSh.EnterStdMode();
 }
+
+namespace {
 
 class SwKeepConversionDirectionStateContext
 {
@@ -79,6 +74,8 @@ public:
     }
 };
 
+}
+
 SwHHCWrapper::SwHHCWrapper(
         SwView* pSwView,
         const uno::Reference< uno::XComponentContext >& rxContext,
@@ -88,7 +85,7 @@ SwHHCWrapper::SwHHCWrapper(
         sal_Int32 nConvOptions,
         bool bIsInteractive,
         bool bStart, bool bOther, bool bSelection )
-    : editeng::HangulHanjaConversion( &pSwView->GetEditWin(), rxContext,
+    : editeng::HangulHanjaConversion(pSwView->GetEditWin().GetFrameWeld(), rxContext,
                                 LanguageTag::convertToLocale( nSourceLanguage ),
                                 LanguageTag::convertToLocale( nTargetLanguage ),
                                 pTargetFont,
@@ -97,7 +94,6 @@ SwHHCWrapper::SwHHCWrapper(
     , m_pView( pSwView )
     , m_pWin( &pSwView->GetEditWin() )
     , m_rWrtShell( pSwView->GetWrtShell() )
-    , m_pConvArgs( nullptr )
     , m_nLastPos( 0 )
     , m_nUnitOffset( 0 )
     , m_nPageCount( 0 )
@@ -113,9 +109,9 @@ SwHHCWrapper::SwHHCWrapper(
 
 SwHHCWrapper::~SwHHCWrapper()
 {
-    delete m_pConvArgs;
+    m_pConvArgs.reset();
 
-    SwViewShell::SetCareWin( nullptr );
+    SwViewShell::SetCareDialog(nullptr);
 
     // check for existence of a draw view which means that there are
     // (or previously were) draw objects present in the document.
@@ -140,22 +136,21 @@ SwHHCWrapper::~SwHHCWrapper()
     // finally for chinese translation we need to change the documents
     // default language and font to the new ones to be used.
     LanguageType nTargetLang = GetTargetLanguage();
-    if (IsChinese( nTargetLang ))
+    if (!IsChinese( nTargetLang ))
+        return;
+
+    SwDoc *pDoc = m_pView->GetDocShell()->GetDoc();
+
+    //!! Note: This also effects the default language of text boxes (EditEngine/EditView) !!
+    pDoc->SetDefault( SvxLanguageItem( nTargetLang, RES_CHRATR_CJK_LANGUAGE ) );
+
+    const vcl::Font *pFont = GetTargetFont();
+    if (pFont)
     {
-        SwDoc *pDoc = m_pView->GetDocShell()->GetDoc();
-
-        //!! Note: This also effects the default language of text boxes (EditEngine/EditView) !!
-        pDoc->SetDefault( SvxLanguageItem( nTargetLang, RES_CHRATR_CJK_LANGUAGE ) );
-
-        const vcl::Font *pFont = GetTargetFont();
-        if (pFont)
-        {
-            SvxFontItem aFontItem( pFont->GetFamilyType(), pFont->GetFamilyName(),
-                    pFont->GetStyleName(), pFont->GetPitch(),
-                    pFont->GetCharSet(), RES_CHRATR_CJK_FONT );
-            pDoc->SetDefault( aFontItem );
-        }
-
+        SvxFontItem aFontItem( pFont->GetFamilyType(), pFont->GetFamilyName(),
+                pFont->GetStyleName(), pFont->GetPitch(),
+                pFont->GetCharSet(), RES_CHRATR_CJK_FONT );
+        pDoc->SetDefault( aFontItem );
     }
 }
 
@@ -184,10 +179,10 @@ void SwHHCWrapper::SelectNewUnit_impl( sal_Int32 nUnitStart, sal_Int32 nUnitEnd 
     pCursor->DeleteMark();
 
     m_rWrtShell.Right( CRSR_SKIP_CHARS, /*bExpand*/ false,
-                  (sal_uInt16) (m_nUnitOffset + nUnitStart), true );
+                  static_cast<sal_uInt16>(m_nUnitOffset + nUnitStart), true );
     pCursor->SetMark();
     m_rWrtShell.Right( CRSR_SKIP_CHARS, /*bExpand*/ true,
-                  (sal_uInt16) (nUnitEnd - nUnitStart), true );
+                  static_cast<sal_uInt16>(nUnitEnd - nUnitStart), true );
     // end selection now. Otherwise SHIFT+HOME (extending the selection)
     // won't work when the dialog is closed without any replacement.
     // (see #116346#)
@@ -198,7 +193,7 @@ void SwHHCWrapper::HandleNewUnit(
         const sal_Int32 nUnitStart, const sal_Int32 nUnitEnd )
 {
     OSL_ENSURE( nUnitStart >= 0 && nUnitEnd >= nUnitStart, "wrong arguments" );
-    if (!(0 <= nUnitStart && nUnitStart <= nUnitEnd))
+    if (0 > nUnitStart || nUnitStart > nUnitEnd)
         return;
 
     lcl_ActivateTextShell( m_rWrtShell );
@@ -319,7 +314,7 @@ void SwHHCWrapper::ChangeText_impl( const OUString &rNewText, bool bKeepAttribut
     if (bKeepAttributes)
     {
         // get item set with all relevant attributes
-        sal_uInt16 aRanges[] = {
+        sal_uInt16 const aRanges[] {
                 RES_CHRATR_BEGIN, RES_FRMATR_END,
                 0, 0, 0  };
         SfxItemSet aItemSet( m_rWrtShell.GetAttrPool(), aRanges );
@@ -361,7 +356,7 @@ void SwHHCWrapper::ReplaceUnit(
          LanguageType *pNewUnitLanguage )
 {
     OSL_ENSURE( nUnitStart >= 0 && nUnitEnd >= nUnitStart, "wrong arguments" );
-    if (!(nUnitStart >= 0 && nUnitEnd >= nUnitStart))
+    if (nUnitStart < 0 || nUnitEnd < nUnitStart)
         return;
 
     lcl_ActivateTextShell( m_rWrtShell );
@@ -375,7 +370,7 @@ void SwHHCWrapper::ReplaceUnit(
     OUString aOrigText( m_rWrtShell.GetSelText() );
     OUString aNewText( rReplaceWith );
     OSL_ENSURE( aOrigText == rOrigText, "!! text mismatch !!" );
-    SwFormatRuby *pRuby = nullptr;
+    std::unique_ptr<SwFormatRuby> pRuby;
     bool bRubyBelow = false;
     OUString  aNewOrigText;
     switch (eAction)
@@ -394,24 +389,24 @@ void SwHHCWrapper::ReplaceUnit(
         break;
         case eReplacementAbove  :
         {
-            pRuby = new SwFormatRuby( rReplaceWith );
+            pRuby.reset(new SwFormatRuby( rReplaceWith ));
         }
         break;
         case eOriginalAbove :
         {
-            pRuby = new SwFormatRuby( aOrigText );
+            pRuby.reset(new SwFormatRuby( aOrigText ));
             aNewOrigText = rReplaceWith;
         }
         break;
         case eReplacementBelow :
         {
-            pRuby = new SwFormatRuby( rReplaceWith );
+            pRuby.reset(new SwFormatRuby( rReplaceWith ));
             bRubyBelow = true;
         }
         break;
         case eOriginalBelow :
         {
-            pRuby = new SwFormatRuby( aOrigText );
+            pRuby.reset(new SwFormatRuby( aOrigText ));
             aNewOrigText = rReplaceWith;
             bRubyBelow = true;
         }
@@ -445,12 +440,8 @@ void SwHHCWrapper::ReplaceUnit(
         pRuby->SetPosition( static_cast<sal_uInt16>(bRubyBelow) );
         pRuby->SetAdjustment( RubyAdjust_CENTER );
 
-#if OSL_DEBUG_LEVEL > 1
-        SwPaM *pPaM = m_rWrtShell.GetCursor();
-        (void)pPaM;
-#endif
         m_rWrtShell.SetAttrItem(*pRuby);
-        delete pRuby;
+        pRuby.reset();
         m_rWrtShell.EndUndo( SwUndoId::SETRUBYATTR );
     }
     else
@@ -475,7 +466,7 @@ void SwHHCWrapper::ReplaceUnit(
             OSL_ENSURE( GetTargetLanguage() == LANGUAGE_CHINESE_SIMPLIFIED || GetTargetLanguage() == LANGUAGE_CHINESE_TRADITIONAL,
                     "SwHHCWrapper::ReplaceUnit : unexpected target language" );
 
-            sal_uInt16 aRanges[] = {
+            sal_uInt16 const aRanges[] {
                     RES_CHRATR_CJK_LANGUAGE, RES_CHRATR_CJK_LANGUAGE,
                     RES_CHRATR_CJK_FONT,     RES_CHRATR_CJK_FONT,
                     0, 0, 0  };
@@ -490,7 +481,7 @@ void SwHHCWrapper::ReplaceUnit(
             OSL_ENSURE( pTargetFont, "target font missing?" );
             if (pTargetFont && pNewUnitLanguage)
             {
-                SvxFontItem aFontItem(static_cast<const SvxFontItem&>( aSet.Get( RES_CHRATR_CJK_FONT ) ));
+                SvxFontItem aFontItem( aSet.Get( RES_CHRATR_CJK_FONT ) );
                 aFontItem.SetFamilyName(    pTargetFont->GetFamilyName());
                 aFontItem.SetFamily(        pTargetFont->GetFamilyType());
                 aFontItem.SetStyleName(     pTargetFont->GetStyleName());
@@ -526,9 +517,9 @@ void SwHHCWrapper::Convert()
         if (pSttPos->nNode.GetNode().IsTextNode() &&
             pEndPos->nNode.GetNode().IsTextNode())
         {
-            m_pConvArgs = new SwConversionArgs( GetSourceLanguage(),
+            m_pConvArgs.reset( new SwConversionArgs( GetSourceLanguage(),
                             pSttPos->nNode.GetNode().GetTextNode(), pSttPos->nContent,
-                            pEndPos->nNode.GetNode().GetTextNode(), pEndPos->nContent );
+                            pEndPos->nNode.GetNode().GetTextNode(), pEndPos->nContent ) );
         }
         else    // we are not in the text (maybe a graphic or OLE object is selected) let's start from the top
         {
@@ -542,9 +533,9 @@ void SwHHCWrapper::Convert()
             // just in case we check anyway...
             if (!pTextNode || !pTextNode->IsTextNode())
                 return;
-            m_pConvArgs = new SwConversionArgs( GetSourceLanguage(),
+            m_pConvArgs.reset( new SwConversionArgs( GetSourceLanguage(),
                             pTextNode, pSttPos->nContent,
-                            pTextNode, pSttPos->nContent );
+                            pTextNode, pSttPos->nContent ) );
         }
         OSL_ENSURE( m_pConvArgs->pStartNode && m_pConvArgs->pStartNode->IsTextNode(),
                 "failed to get proper start text node" );
@@ -600,16 +591,16 @@ void SwHHCWrapper::Convert()
     }
 
     if ( m_bIsOtherContent )
-        ConvStart_impl( m_pConvArgs, SvxSpellArea::Other );
+        ConvStart_impl( m_pConvArgs.get(), SvxSpellArea::Other );
     else
     {
         m_bStartChk = false;
-        ConvStart_impl( m_pConvArgs, SvxSpellArea::BodyEnd );
+        ConvStart_impl( m_pConvArgs.get(), SvxSpellArea::BodyEnd );
     }
 
     ConvertDocument();
 
-    ConvEnd_impl( m_pConvArgs );
+    ConvEnd_impl( m_pConvArgs.get() );
 }
 
 bool SwHHCWrapper::ConvNext_impl( )
@@ -632,7 +623,7 @@ bool SwHHCWrapper::ConvNext_impl( )
     if ( m_bIsOtherContent )
     {
         m_bStartChk = false;
-        ConvStart_impl( m_pConvArgs, SvxSpellArea::Body );
+        ConvStart_impl( m_pConvArgs.get(), SvxSpellArea::Body );
         bGoOn = true;
     }
     else if ( m_bStartDone && m_bEndDone )
@@ -640,20 +631,20 @@ bool SwHHCWrapper::ConvNext_impl( )
         // body region done, ask about special region
         if( !m_bIsSelection && m_rWrtShell.HasOtherCnt() )
         {
-            ConvStart_impl( m_pConvArgs, SvxSpellArea::Other );
+            ConvStart_impl( m_pConvArgs.get(), SvxSpellArea::Other );
             m_bIsOtherContent = bGoOn = true;
         }
     }
     else
     {
             m_bStartChk = !m_bStartDone;
-            ConvStart_impl( m_pConvArgs, m_bStartChk ? SvxSpellArea::BodyStart : SvxSpellArea::BodyEnd );
+            ConvStart_impl( m_pConvArgs.get(), m_bStartChk ? SvxSpellArea::BodyStart : SvxSpellArea::BodyEnd );
             bGoOn = true;
     }
     return bGoOn;
 }
 
-bool SwHHCWrapper::FindConvText_impl()
+void SwHHCWrapper::FindConvText_impl()
 {
     //! modified version of SvxSpellWrapper::FindSpellError
 
@@ -664,19 +655,18 @@ bool SwHHCWrapper::FindConvText_impl()
 
     while ( bConv )
     {
-        bFound = ConvContinue_impl( m_pConvArgs );
+        bFound = ConvContinue_impl( m_pConvArgs.get() );
         if (bFound)
         {
             bConv = false;
         }
         else
         {
-            ConvEnd_impl( m_pConvArgs );
+            ConvEnd_impl( m_pConvArgs.get() );
             bConv = ConvNext_impl();
         }
     }
     m_pWin->LeaveWait();
-    return bFound;
 }
 
 void SwHHCWrapper::ConvStart_impl( SwConversionArgs /* [out] */ *pConversionArgs, SvxSpellArea eArea )
@@ -685,7 +675,7 @@ void SwHHCWrapper::ConvStart_impl( SwConversionArgs /* [out] */ *pConversionArgs
     m_pView->SpellStart( eArea, m_bStartDone, m_bEndDone, /* [out] */ pConversionArgs );
 }
 
-void SwHHCWrapper::ConvEnd_impl( SwConversionArgs *pConversionArgs )
+void SwHHCWrapper::ConvEnd_impl( SwConversionArgs const *pConversionArgs )
 {
     m_pView->SpellEnd( pConversionArgs );
 }
@@ -693,7 +683,7 @@ void SwHHCWrapper::ConvEnd_impl( SwConversionArgs *pConversionArgs )
 bool SwHHCWrapper::ConvContinue_impl( SwConversionArgs *pConversionArgs )
 {
     bool bProgress = !m_bIsDrawObj && !m_bIsSelection;
-    (pConversionArgs->aConvText).clear();
+    pConversionArgs->aConvText.clear();
     pConversionArgs->nConvTextLang = LANGUAGE_NONE;
     m_pView->GetWrtShell().SpellContinue( &m_nPageCount, bProgress ? &m_nPageStart : nullptr, pConversionArgs );
     return !pConversionArgs->aConvText.isEmpty();

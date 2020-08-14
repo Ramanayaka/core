@@ -21,7 +21,6 @@
 #include <osl/diagnose.h>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/queryinterface.hxx>
-#include <cppuhelper/weak.hxx>
 #include <cppuhelper/propshlp.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
@@ -35,23 +34,21 @@ using namespace com::sun::star::beans;
 using namespace com::sun::star::lang;
 using namespace cppu;
 
-using ::rtl::OUString;
-
 namespace cppu {
 
 IPropertyArrayHelper::~IPropertyArrayHelper()
 {
 }
 
-inline const css::uno::Type & getPropertyTypeIdentifier( )
+static const css::uno::Type & getPropertyTypeIdentifier( )
 {
     return cppu::UnoType<XPropertyChangeListener>::get();
 }
-inline const css::uno::Type & getPropertiesTypeIdentifier()
+static const css::uno::Type & getPropertiesTypeIdentifier()
 {
     return cppu::UnoType<XPropertiesChangeListener>::get();
 }
-inline const css::uno::Type & getVetoableTypeIdentifier()
+static const css::uno::Type & getVetoableTypeIdentifier()
 {
     return cppu::UnoType<XVetoableChangeListener>::get();
 }
@@ -70,6 +67,8 @@ static int compare_OUString_Property_Impl( const void *arg1, const void *arg2 )
  * The class which implements the PropertySetInfo interface.
  */
 
+namespace {
+
 class OPropertySetHelperInfo_Impl
     : public WeakImplHelper< css::beans::XPropertySetInfo >
 {
@@ -84,6 +83,7 @@ public:
     virtual sal_Bool SAL_CALL hasPropertyByName(const OUString& PropertyName) override;
 };
 
+}
 
 /**
  * Create an object that implements XPropertySetInfo IPropertyArrayHelper.
@@ -112,7 +112,7 @@ Property OPropertySetHelperInfo_Impl::getPropertyByName( const OUString & Proper
                               sizeof( Property ),
                               compare_OUString_Property_Impl ));
     if( !pR ) {
-        throw UnknownPropertyException();
+        throw UnknownPropertyException(PropertyName);
     }
 
     return *pR;
@@ -131,7 +131,6 @@ sal_Bool OPropertySetHelperInfo_Impl::hasPropertyByName( const OUString & Proper
 }
 
 
-//  class PropertySetHelper_Impl
 
 class OPropertySetHelper::Impl {
 
@@ -155,7 +154,6 @@ public:
 };
 
 
-//  class PropertySetHelper
 
 OPropertySetHelper::OPropertySetHelper(
     OBroadcastHelper  & rBHelper_ )
@@ -238,7 +236,7 @@ css::uno::Sequence< css::uno::Type > OPropertySetHelper::getTypes()
 void OPropertySetHelper::disposing()
 {
     // Create an event with this as sender
-    Reference < XPropertySet  > rSource( (static_cast< XPropertySet *  >(this)) , UNO_QUERY );
+    Reference < XPropertySet  > rSource = this;
     EventObject aEvt;
     aEvt.Source = rSource;
 
@@ -251,7 +249,7 @@ void OPropertySetHelper::disposing()
 Reference < XPropertySetInfo > OPropertySetHelper::createPropertySetInfo(
     IPropertyArrayHelper & rProperties )
 {
-    return static_cast< XPropertySetInfo * >( new OPropertySetHelperInfo_Impl( rProperties ) );
+    return new OPropertySetHelperInfo_Impl(rProperties);
 }
 
 // XPropertySet
@@ -286,40 +284,40 @@ void OPropertySetHelper::addPropertyChangeListener(
     MutexGuard aGuard( rBHelper.rMutex );
     OSL_ENSURE( !rBHelper.bInDispose, "do not addPropertyChangeListener in the dispose call" );
     OSL_ENSURE( !rBHelper.bDisposed, "object is disposed" );
-    if( !rBHelper.bInDispose && !rBHelper.bDisposed )
+    if( rBHelper.bInDispose || rBHelper.bDisposed )
+        return;
+
+    // only add listeners if you are not disposed
+    // a listener with no name means all properties
+    if( !rPropertyName.isEmpty() )
     {
-        // only add listeners if you are not disposed
-        // a listener with no name means all properties
-        if( !rPropertyName.isEmpty() )
-        {
-            // get the map table
-            IPropertyArrayHelper & rPH = getInfoHelper();
-            // map the name to the handle
-            sal_Int32 nHandle = rPH.getHandleByName( rPropertyName );
-            if( nHandle == -1 ) {
-                // property not known throw exception
-                throw  UnknownPropertyException() ;
-            }
-
-            sal_Int16 nAttributes;
-            rPH.fillPropertyMembersByHandle( nullptr, &nAttributes, nHandle );
-            if( !(nAttributes & css::beans::PropertyAttribute::BOUND) )
-            {
-                OSL_FAIL( "add listener to an unbound property" );
-                // silent ignore this
-                return;
-            }
-            // add the change listener to the helper container
-
-            aBoundLC.addInterface( nHandle, rxListener );
+        // get the map table
+        IPropertyArrayHelper & rPH = getInfoHelper();
+        // map the name to the handle
+        sal_Int32 nHandle = rPH.getHandleByName( rPropertyName );
+        if( nHandle == -1 ) {
+            // property not known throw exception
+            throw  UnknownPropertyException(rPropertyName);
         }
-        else
-            // add the change listener to the helper container
-            rBHelper.aLC.addInterface(
-                            getPropertyTypeIdentifier(  ),
-                            rxListener
-                                     );
+
+        sal_Int16 nAttributes;
+        rPH.fillPropertyMembersByHandle( nullptr, &nAttributes, nHandle );
+        if( !(nAttributes & css::beans::PropertyAttribute::BOUND) )
+        {
+            OSL_FAIL( "add listener to an unbound property" );
+            // silent ignore this
+            return;
+        }
+        // add the change listener to the helper container
+
+        aBoundLC.addInterface( nHandle, rxListener );
     }
+    else
+        // add the change listener to the helper container
+        rBHelper.aLC.addInterface(
+                        getPropertyTypeIdentifier(  ),
+                        rxListener
+                                 );
 }
 
 
@@ -331,26 +329,26 @@ void OPropertySetHelper::removePropertyChangeListener(
     MutexGuard aGuard( rBHelper.rMutex );
     OSL_ENSURE( !rBHelper.bDisposed, "object is disposed" );
     // all listeners are automatically released in a dispose call
-    if( !rBHelper.bInDispose && !rBHelper.bDisposed )
+    if( rBHelper.bInDispose || rBHelper.bDisposed )
+        return;
+
+    if( !rPropertyName.isEmpty() )
     {
-        if( !rPropertyName.isEmpty() )
-        {
-            // get the map table
-            IPropertyArrayHelper & rPH = getInfoHelper();
-            // map the name to the handle
-            sal_Int32 nHandle = rPH.getHandleByName( rPropertyName );
-            if( nHandle == -1 )
-                // property not known throw exception
-                throw UnknownPropertyException();
-            aBoundLC.removeInterface( nHandle, rxListener );
-        }
-        else {
-            // remove the change listener to the helper container
-            rBHelper.aLC.removeInterface(
-                            getPropertyTypeIdentifier(  ),
-                            rxListener
-                                        );
-        }
+        // get the map table
+        IPropertyArrayHelper & rPH = getInfoHelper();
+        // map the name to the handle
+        sal_Int32 nHandle = rPH.getHandleByName( rPropertyName );
+        if( nHandle == -1 )
+            // property not known throw exception
+            throw UnknownPropertyException(rPropertyName);
+        aBoundLC.removeInterface( nHandle, rxListener );
+    }
+    else {
+        // remove the change listener to the helper container
+        rBHelper.aLC.removeInterface(
+                        getPropertyTypeIdentifier(  ),
+                        rxListener
+                                    );
     }
 }
 
@@ -362,39 +360,39 @@ void OPropertySetHelper::addVetoableChangeListener(
     MutexGuard aGuard( rBHelper.rMutex );
     OSL_ENSURE( !rBHelper.bInDispose, "do not addVetoableChangeListener in the dispose call" );
     OSL_ENSURE( !rBHelper.bDisposed, "object is disposed" );
-    if( !rBHelper.bInDispose && !rBHelper.bDisposed )
-    {
-        // only add listeners if you are not disposed
-        // a listener with no name means all properties
-        if( !rPropertyName.isEmpty() )
-        {
-            // get the map table
-            IPropertyArrayHelper & rPH = getInfoHelper();
-            // map the name to the handle
-            sal_Int32 nHandle = rPH.getHandleByName( rPropertyName );
-            if( nHandle == -1 ) {
-                // property not known throw exception
-                throw UnknownPropertyException();
-            }
+    if( rBHelper.bInDispose || rBHelper.bDisposed )
+        return;
 
-            sal_Int16 nAttributes;
-            rPH.fillPropertyMembersByHandle( nullptr, &nAttributes, nHandle );
-            if( !(nAttributes & PropertyAttribute::CONSTRAINED) )
-            {
-                OSL_FAIL( "addVetoableChangeListener, and property is not constrained" );
-                // silent ignore this
-                return;
-            }
-            // add the vetoable listener to the helper container
-            aVetoableLC.addInterface( nHandle, rxListener );
+    // only add listeners if you are not disposed
+    // a listener with no name means all properties
+    if( !rPropertyName.isEmpty() )
+    {
+        // get the map table
+        IPropertyArrayHelper & rPH = getInfoHelper();
+        // map the name to the handle
+        sal_Int32 nHandle = rPH.getHandleByName( rPropertyName );
+        if( nHandle == -1 ) {
+            // property not known throw exception
+            throw UnknownPropertyException(rPropertyName);
         }
-        else
-            // add the vetoable listener to the helper container
-            rBHelper.aLC.addInterface(
-                                getVetoableTypeIdentifier(  ),
-                                rxListener
-                                     );
+
+        sal_Int16 nAttributes;
+        rPH.fillPropertyMembersByHandle( nullptr, &nAttributes, nHandle );
+        if( !(nAttributes & PropertyAttribute::CONSTRAINED) )
+        {
+            OSL_FAIL( "addVetoableChangeListener, and property is not constrained" );
+            // silent ignore this
+            return;
+        }
+        // add the vetoable listener to the helper container
+        aVetoableLC.addInterface( nHandle, rxListener );
     }
+    else
+        // add the vetoable listener to the helper container
+        rBHelper.aLC.addInterface(
+                            getVetoableTypeIdentifier(  ),
+                            rxListener
+                                 );
 }
 
 // XPropertySet
@@ -405,28 +403,28 @@ void OPropertySetHelper::removeVetoableChangeListener(
     MutexGuard aGuard( rBHelper.rMutex );
     OSL_ENSURE( !rBHelper.bDisposed, "object is disposed" );
     // all listeners are automatically released in a dispose call
-    if( !rBHelper.bInDispose && !rBHelper.bDisposed )
+    if( rBHelper.bInDispose || rBHelper.bDisposed )
+        return;
+
+    if( !rPropertyName.isEmpty() )
     {
-        if( !rPropertyName.isEmpty() )
-        {
-            // get the map table
-            IPropertyArrayHelper & rPH = getInfoHelper();
-            // map the name to the handle
-            sal_Int32 nHandle = rPH.getHandleByName( rPropertyName );
-            if( nHandle == -1 ) {
-                // property not known throw exception
-                throw UnknownPropertyException();
-            }
-            // remove the vetoable listener to the helper container
-            aVetoableLC.removeInterface( nHandle, rxListener );
+        // get the map table
+        IPropertyArrayHelper & rPH = getInfoHelper();
+        // map the name to the handle
+        sal_Int32 nHandle = rPH.getHandleByName( rPropertyName );
+        if( nHandle == -1 ) {
+            // property not known throw exception
+            throw UnknownPropertyException(rPropertyName);
         }
-        else
-            // add the vetoable listener to the helper container
-            rBHelper.aLC.removeInterface(
-                                getVetoableTypeIdentifier( ),
-                                rxListener
-                                        );
+        // remove the vetoable listener to the helper container
+        aVetoableLC.removeInterface( nHandle, rxListener );
     }
+    else
+        // add the vetoable listener to the helper container
+        rBHelper.aLC.removeInterface(
+                            getVetoableTypeIdentifier( ),
+                            rxListener
+                                    );
 }
 
 void OPropertySetHelper::setDependentFastPropertyValue( sal_Int32 i_handle, const css::uno::Any& i_value )
@@ -438,7 +436,7 @@ void OPropertySetHelper::setDependentFastPropertyValue( sal_Int32 i_handle, cons
     IPropertyArrayHelper& rInfo = getInfoHelper();
     if ( !rInfo.fillPropertyMembersByHandle( nullptr, &nAttributes, i_handle ) )
         // unknown property
-        throw UnknownPropertyException();
+        throw UnknownPropertyException(OUString::number(i_handle));
 
     // no need to check for READONLY-ness of the property. The method is intended to be called internally, which
     // implies it might be invoked for properties which are read-only to the instance's clients, but well allowed
@@ -489,7 +487,7 @@ void OPropertySetHelper::setFastPropertyValue( sal_Int32 nHandle, const Any& rVa
     sal_Int16 nAttributes;
     if( !rInfo.fillPropertyMembersByHandle( nullptr, &nAttributes, nHandle ) ) {
         // unknown property
-        throw UnknownPropertyException();
+        throw UnknownPropertyException(OUString::number(nHandle));
     }
     if( nAttributes & PropertyAttribute::READONLY )
         throw PropertyVetoException();
@@ -504,44 +502,44 @@ void OPropertySetHelper::setFastPropertyValue( sal_Int32 nHandle, const Any& rVa
         bChanged = convertFastPropertyValue( aConvertedVal, aOldVal, nHandle, rValue );
         // release guard to fire events
     }
-    if( bChanged )
+    if( !bChanged )
+        return;
+
+    // Is it a constrained property?
+    if( nAttributes & PropertyAttribute::CONSTRAINED )
     {
-        // Is it a constrained property?
-        if( nAttributes & PropertyAttribute::CONSTRAINED )
-        {
-            // In aValue is the converted rValue
-            // fire a constrained event
-            // second parameter NULL means constrained
-            fire( &nHandle, &rValue, &aOldVal, 1, true );
-        }
-
-        {
-            MutexGuard aGuard( rBHelper.rMutex );
-            try
-            {
-                // set the property to the new value
-                setFastPropertyValue_NoBroadcast( nHandle, aConvertedVal );
-            }
-            catch (const css::beans::UnknownPropertyException& )   { throw;    /* allowed to leave */ }
-            catch (const css::beans::PropertyVetoException& )      { throw;    /* allowed to leave */ }
-            catch (const css::lang::IllegalArgumentException& )    { throw;    /* allowed to leave */ }
-            catch (const css::lang::WrappedTargetException& )      { throw;    /* allowed to leave */ }
-            catch (const css::uno::RuntimeException& )             { throw;    /* allowed to leave */ }
-            catch (const css::uno::Exception& e )
-            {
-                // not allowed to leave this method
-                css::lang::WrappedTargetException aWrap;
-                aWrap.Context = static_cast< css::beans::XPropertySet* >( this );
-                aWrap.TargetException <<= e;
-
-                throw aWrap;
-            }
-
-            // release guard to fire events
-        }
-        // file a change event, if the value changed
-        impl_fireAll( &nHandle, &rValue, &aOldVal, 1 );
+        // In aValue is the converted rValue
+        // fire a constrained event
+        // second parameter NULL means constrained
+        fire( &nHandle, &rValue, &aOldVal, 1, true );
     }
+
+    {
+        MutexGuard aGuard( rBHelper.rMutex );
+        try
+        {
+            // set the property to the new value
+            setFastPropertyValue_NoBroadcast( nHandle, aConvertedVal );
+        }
+        catch (const css::beans::UnknownPropertyException& )   { throw;    /* allowed to leave */ }
+        catch (const css::beans::PropertyVetoException& )      { throw;    /* allowed to leave */ }
+        catch (const css::lang::IllegalArgumentException& )    { throw;    /* allowed to leave */ }
+        catch (const css::lang::WrappedTargetException& )      { throw;    /* allowed to leave */ }
+        catch (const css::uno::RuntimeException& )             { throw;    /* allowed to leave */ }
+        catch (const css::uno::Exception& e )
+        {
+            // not allowed to leave this method
+            css::lang::WrappedTargetException aWrap;
+            aWrap.Context = static_cast< css::beans::XPropertySet* >( this );
+            aWrap.TargetException <<= e;
+
+            throw aWrap;
+        }
+
+        // release guard to fire events
+    }
+    // file a change event, if the value changed
+    impl_fireAll( &nHandle, &rValue, &aOldVal, 1 );
 }
 
 // XFastPropertySet
@@ -551,7 +549,7 @@ Any OPropertySetHelper::getFastPropertyValue( sal_Int32 nHandle )
     IPropertyArrayHelper & rInfo = getInfoHelper();
     if( !rInfo.fillPropertyMembersByHandle( nullptr, nullptr, nHandle ) )
         // unknown property
-        throw UnknownPropertyException();
+        throw UnknownPropertyException(OUString::number(nHandle));
 
     Any aRet;
     MutexGuard aGuard( rBHelper.rMutex );
@@ -592,7 +590,7 @@ void OPropertySetHelper::impl_fireAll( sal_Int32* i_handles, const Any* i_newVal
     m_pReserved->m_oldValues.clear();
 
     aGuard.clear();
-    fire( &allHandles[0], &allNewValues[0], &allOldValues[0], additionalEvents + i_count, false );
+    fire( allHandles.data(), allNewValues.data(), allOldValues.data(), additionalEvents + i_count, false );
 }
 
 
@@ -601,7 +599,7 @@ void OPropertySetHelper::fire
     sal_Int32 * pnHandles,
     const Any * pNewValues,
     const Any * pOldValues,
-    sal_Int32 nHandles, // These is the Count of the array
+    sal_Int32 nHandles, // This is the Count of the array
     sal_Bool bVetoable
 )
 {
@@ -615,187 +613,184 @@ void OPropertySetHelper::fire
     }
 
     // Only fire, if one or more properties changed
-    if( nHandles )
+    if( !nHandles )
+        return;
+
+    // create the event sequence of all changed properties
+    Sequence< PropertyChangeEvent > aEvts( nHandles );
+    PropertyChangeEvent * pEvts = aEvts.getArray();
+    Reference < XInterface > xSource( static_cast<XPropertySet *>(this), UNO_QUERY );
+    sal_Int32 i;
+    sal_Int32 nChangesLen = 0;
+    // Loop over all changed properties to fill the event struct
+    for( i = 0; i < nHandles; i++ )
     {
-        // create the event sequence of all changed properties
-        Sequence< PropertyChangeEvent > aEvts( nHandles );
-        PropertyChangeEvent * pEvts = aEvts.getArray();
-        Reference < XInterface > xSource( static_cast<XPropertySet *>(this), UNO_QUERY );
-        sal_Int32 i;
-        sal_Int32 nChangesLen = 0;
-        // Loop over all changed properties to fill the event struct
-        for( i = 0; i < nHandles; i++ )
-        {
-            // Vetoable fire and constrained attribute set or
-            // Change fire and Changed and bound attribute set
-            IPropertyArrayHelper & rInfo = getInfoHelper();
-            sal_Int16   nAttributes;
-            OUString aPropName;
-            rInfo.fillPropertyMembersByHandle( &aPropName, &nAttributes, pnHandles[i] );
+        // Vetoable fire and constrained attribute set or
+        // Change fire and Changed and bound attribute set
+        IPropertyArrayHelper & rInfo = getInfoHelper();
+        sal_Int16   nAttributes;
+        OUString aPropName;
+        rInfo.fillPropertyMembersByHandle( &aPropName, &nAttributes, pnHandles[i] );
 
-            if(
-               (bVetoable && (nAttributes & PropertyAttribute::CONSTRAINED)) ||
-               (!bVetoable && (nAttributes & PropertyAttribute::BOUND))
-              )
-            {
-                pEvts[nChangesLen].Source = xSource;
-                pEvts[nChangesLen].PropertyName = aPropName;
-                pEvts[nChangesLen].PropertyHandle = pnHandles[i];
-                pEvts[nChangesLen].OldValue = pOldValues[i];
-                pEvts[nChangesLen].NewValue = pNewValues[i];
-                nChangesLen++;
-            }
+        if(
+           (bVetoable && (nAttributes & PropertyAttribute::CONSTRAINED)) ||
+           (!bVetoable && (nAttributes & PropertyAttribute::BOUND))
+          )
+        {
+            pEvts[nChangesLen].Source = xSource;
+            pEvts[nChangesLen].PropertyName = aPropName;
+            pEvts[nChangesLen].PropertyHandle = pnHandles[i];
+            pEvts[nChangesLen].OldValue = pOldValues[i];
+            pEvts[nChangesLen].NewValue = pNewValues[i];
+            nChangesLen++;
         }
+    }
 
-        bool bIgnoreRuntimeExceptionsWhileFiring =
-                m_pReserved->m_bIgnoreRuntimeExceptionsWhileFiring;
+    bool bIgnoreRuntimeExceptionsWhileFiring =
+            m_pReserved->m_bIgnoreRuntimeExceptionsWhileFiring;
 
-        // fire the events for all changed properties
-        for( i = 0; i < nChangesLen; i++ )
+    // fire the events for all changed properties
+    for( i = 0; i < nChangesLen; i++ )
+    {
+        // get the listener container for the property name
+        OInterfaceContainerHelper * pLC;
+        if( bVetoable ) // fire change Events?
+            pLC = aVetoableLC.getContainer( pEvts[i].PropertyHandle );
+        else
+            pLC = aBoundLC.getContainer( pEvts[i].PropertyHandle );
+        if( pLC )
         {
-            // get the listener container for the property name
-            OInterfaceContainerHelper * pLC;
-            if( bVetoable ) // fire change Events?
-                pLC = aVetoableLC.getContainer( pEvts[i].PropertyHandle );
-            else
-                pLC = aBoundLC.getContainer( pEvts[i].PropertyHandle );
-            if( pLC )
+            // Iterate over all listeners and send events
+            OInterfaceIteratorHelper aIt( *pLC);
+            while( aIt.hasMoreElements() )
             {
-                // Iterate over all listeners and send events
-                OInterfaceIteratorHelper aIt( *pLC);
-                while( aIt.hasMoreElements() )
+                XInterface * pL = aIt.next();
+                try
                 {
-                    XInterface * pL = aIt.next();
                     try
                     {
-                        try
+                        if( bVetoable ) // fire change Events?
                         {
-                            if( bVetoable ) // fire change Events?
-                            {
-                                static_cast<XVetoableChangeListener *>(pL)->vetoableChange(
-                                    pEvts[i] );
-                            }
-                            else
-                            {
-                                static_cast<XPropertyChangeListener *>(pL)->propertyChange(
-                                    pEvts[i] );
-                            }
+                            static_cast<XVetoableChangeListener *>(pL)->vetoableChange(
+                                pEvts[i] );
                         }
-                        catch (DisposedException & exc)
+                        else
                         {
-                            OSL_ENSURE( exc.Context.is(),
-                                        "DisposedException without Context!" );
-                            if (exc.Context == pL)
-                                aIt.remove();
-                            else
-                                throw;
+                            static_cast<XPropertyChangeListener *>(pL)->propertyChange(
+                                pEvts[i] );
                         }
                     }
-                    catch (RuntimeException & exc)
+                    catch (DisposedException & exc)
                     {
-                        SAL_INFO("cppuhelper", "caught RuntimeException while firing listeners: " << exc.Message);
-                        if (! bIgnoreRuntimeExceptionsWhileFiring)
+                        OSL_ENSURE( exc.Context.is(),
+                                    "DisposedException without Context!" );
+                        if (exc.Context == pL)
+                            aIt.remove();
+                        else
                             throw;
                     }
                 }
-            }
-            // broadcast to all listeners with "" property name
-            if( bVetoable ){
-                // fire change Events?
-                pLC = rBHelper.aLC.getContainer(
-                            getVetoableTypeIdentifier()
-                                                );
-            }
-            else {
-                pLC = rBHelper.aLC.getContainer(
-                            getPropertyTypeIdentifier(  )
-                                                );
-            }
-            if( pLC )
-            {
-                // Iterate over all listeners and send events.
-                OInterfaceIteratorHelper aIt( *pLC);
-                while( aIt.hasMoreElements() )
+                catch (RuntimeException & exc)
                 {
-                    XInterface * pL = aIt.next();
-                    try
-                    {
-                        try
-                        {
-                            if( bVetoable ) // fire change Events?
-                            {
-                                static_cast<XVetoableChangeListener *>(pL)->vetoableChange(
-                                    pEvts[i] );
-                            }
-                            else
-                            {
-                                static_cast<XPropertyChangeListener *>(pL)->propertyChange(
-                                    pEvts[i] );
-                            }
-                        }
-                        catch (DisposedException & exc)
-                        {
-                            OSL_ENSURE( exc.Context.is(),
-                                        "DisposedException without Context!" );
-                            if (exc.Context == pL)
-                                aIt.remove();
-                            else
-                                throw;
-                        }
-                    }
-                    catch (RuntimeException & exc)
-                    {
-                        SAL_INFO("cppuhelper", "caught RuntimeException while firing listeners: " << exc.Message);
-                        if (! bIgnoreRuntimeExceptionsWhileFiring)
-                            throw;
-                    }
+                    SAL_INFO("cppuhelper", "caught RuntimeException while firing listeners: " << exc);
+                    if (! bIgnoreRuntimeExceptionsWhileFiring)
+                        throw;
                 }
             }
         }
-
-        // reduce array to changed properties
-        aEvts.realloc( nChangesLen );
-
-        if( !bVetoable )
+        // broadcast to all listeners with "" property name
+        if( bVetoable ){
+            // fire change Events?
+            pLC = rBHelper.aLC.getContainer(
+                        getVetoableTypeIdentifier()
+                                            );
+        }
+        else {
+            pLC = rBHelper.aLC.getContainer(
+                        getPropertyTypeIdentifier(  )
+                                            );
+        }
+        if( pLC )
         {
-            OInterfaceContainerHelper * pCont = nullptr;
-            pCont = rBHelper.aLC.getContainer(
-                                getPropertiesTypeIdentifier(  )
-                                             );
-            if( pCont )
+            // Iterate over all listeners and send events.
+            OInterfaceIteratorHelper aIt( *pLC);
+            while( aIt.hasMoreElements() )
             {
-                // Here is a Bug, unbound properties are also fired
-                OInterfaceIteratorHelper aIt( *pCont );
-                while( aIt.hasMoreElements() )
+                XInterface * pL = aIt.next();
+                try
                 {
-                    XPropertiesChangeListener * pL =
-                        static_cast<XPropertiesChangeListener *>(aIt.next());
                     try
                     {
-                        try
+                        if( bVetoable ) // fire change Events?
                         {
-                            // fire the hole event sequence to the
-                            // XPropertiesChangeListener's
-                            pL->propertiesChange( aEvts );
+                            static_cast<XVetoableChangeListener *>(pL)->vetoableChange(
+                                pEvts[i] );
                         }
-                        catch (DisposedException & exc)
+                        else
                         {
-                            OSL_ENSURE( exc.Context.is(),
-                                        "DisposedException without Context!" );
-                            if (exc.Context == pL)
-                                aIt.remove();
-                            else
-                                throw;
+                            static_cast<XPropertyChangeListener *>(pL)->propertyChange(
+                                pEvts[i] );
                         }
                     }
-                    catch (RuntimeException & exc)
+                    catch (DisposedException & exc)
                     {
-                        SAL_INFO("cppuhelper", "caught RuntimeException while firing listeners: " << exc.Message);
-                        if (! bIgnoreRuntimeExceptionsWhileFiring)
+                        OSL_ENSURE( exc.Context.is(),
+                                    "DisposedException without Context!" );
+                        if (exc.Context == pL)
+                            aIt.remove();
+                        else
                             throw;
                     }
                 }
+                catch (RuntimeException & exc)
+                {
+                    SAL_INFO("cppuhelper", "caught RuntimeException while firing listeners: " << exc);
+                    if (! bIgnoreRuntimeExceptionsWhileFiring)
+                        throw;
+                }
             }
+        }
+    }
+
+    // reduce array to changed properties
+    aEvts.realloc( nChangesLen );
+
+    if( bVetoable )
+        return;
+
+    auto pCont = rBHelper.aLC.getContainer(getPropertiesTypeIdentifier());
+    if (!pCont)
+        return;
+
+    // Here is a Bug, unbound properties are also fired
+    OInterfaceIteratorHelper aIt( *pCont );
+    while( aIt.hasMoreElements() )
+    {
+        XPropertiesChangeListener * pL =
+            static_cast<XPropertiesChangeListener *>(aIt.next());
+        try
+        {
+            try
+            {
+                // fire the whole event sequence to the
+                // XPropertiesChangeListener's
+                pL->propertiesChange( aEvts );
+            }
+            catch (DisposedException & exc)
+            {
+                OSL_ENSURE( exc.Context.is(),
+                            "DisposedException without Context!" );
+                if (exc.Context == pL)
+                    aIt.remove();
+                else
+                    throw;
+            }
+        }
+        catch (RuntimeException & exc)
+        {
+            SAL_INFO("cppuhelper", "caught RuntimeException while firing listeners: " << exc);
+            if (! bIgnoreRuntimeExceptionsWhileFiring)
+                throw;
         }
     }
 }
@@ -810,15 +805,15 @@ void OPropertySetHelper::setFastPropertyValues(
     OSL_ENSURE( !rBHelper.bInDispose, "do not getFastPropertyValue in the dispose call" );
     OSL_ENSURE( !rBHelper.bDisposed, "object is disposed" );
 
-        // get the map table
-        IPropertyArrayHelper & rPH = getInfoHelper();
+    // get the map table
+    IPropertyArrayHelper & rPH = getInfoHelper();
 
-        std::unique_ptr<Any[]> pConvertedValues(new Any[ nHitCount ]);
-        std::unique_ptr<Any[]> pOldValues(new Any[ nHitCount ]);
-        sal_Int32 n = 0;
-        sal_Int32 i;
+    std::unique_ptr<Any[]> pConvertedValues(new Any[ nHitCount ]);
+    std::unique_ptr<Any[]> pOldValues(new Any[ nHitCount ]);
+    sal_Int32 n = 0;
+    sal_Int32 i;
 
-        {
+    {
         // must lock the mutex outside the loop. So all values are consistent.
         MutexGuard aGuard( rBHelper.rMutex );
         for( i = 0; i < nSeqLen; i++ )
@@ -841,12 +836,12 @@ void OPropertySetHelper::setFastPropertyValues(
             }
         }
         // release guard to fire events
-        }
+    }
 
-        // fire vetoable events
-        fire( pHandles, pConvertedValues.get(), pOldValues.get(), n, true );
+    // fire vetoable events
+    fire( pHandles, pConvertedValues.get(), pOldValues.get(), n, true );
 
-        {
+    {
         // must lock the mutex outside the loop.
         MutexGuard aGuard( rBHelper.rMutex );
         // Loop over all changed properties
@@ -856,10 +851,10 @@ void OPropertySetHelper::setFastPropertyValues(
             setFastPropertyValue_NoBroadcast( pHandles[i], pConvertedValues[i] );
         }
         // release guard to fire events
-        }
+    }
 
-        // fire change events
-        impl_fireAll( pHandles, pConvertedValues.get(), pOldValues.get(), n );
+    // fire change events
+    impl_fireAll( pHandles, pConvertedValues.get(), pOldValues.get(), n );
 }
 
 // XMultiPropertySet
@@ -984,7 +979,7 @@ void OPropertyArrayHelper::init( sal_Bool bSorted )
 
     for( i = 1; i < nElements; i++ )
     {
-        if(  pProperties[i-1].Name >= pProperties[i].Name )
+        if(  pProperties[i-1].Name > pProperties[i].Name )
         {
             if (bSorted) {
                 OSL_FAIL( "Property array is not sorted" );
@@ -992,11 +987,10 @@ void OPropertyArrayHelper::init( sal_Bool bSorted )
             // not sorted
             qsort( aInfos.getArray(), nElements, sizeof( Property ),
                     compare_Property_Impl );
+            pProperties = aInfos.getConstArray();
             break;
         }
     }
-    // may be that the array is resorted
-    pProperties = aInfos.getConstArray();
     for( i = 0; i < nElements; i++ )
         if( pProperties[i].Handle != i )
             return;
@@ -1081,7 +1075,7 @@ Property OPropertyArrayHelper::getPropertyByName(const OUString& aPropertyName)
                               sizeof( Property ),
                               compare_OUString_Property_Impl ));
     if( !pR ) {
-        throw UnknownPropertyException();
+        throw UnknownPropertyException(aPropertyName);
     }
     return *pR;
 }
@@ -1118,7 +1112,7 @@ sal_Int32 OPropertyArrayHelper::fillHandles( sal_Int32 * pHandles, const Sequenc
     for( sal_Int32 i = 0; i < nReqLen; i++ )
     {
         // Calculate logarithm
-        sal_Int32 n = (sal_Int32)(pEnd - pCur);
+        sal_Int32 n = static_cast<sal_Int32>(pEnd - pCur);
         sal_Int32 nLog = 0;
         while( n )
         {

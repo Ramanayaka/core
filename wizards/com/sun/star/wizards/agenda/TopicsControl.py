@@ -27,7 +27,6 @@ from com.sun.star.awt.Key import DOWN, UP, TAB
 from com.sun.star.awt.KeyModifier import SHIFT, MOD1
 
 '''
-@author rpiterman
 This class implements the UI functionality of the topics scroller control.
 <br/>
 During development, there has been a few changes which were not *fully* done
@@ -129,7 +128,7 @@ class TopicsControl(ControlScroller):
     '''
 
     def initializeScrollFields(self, agenda):
-        # create a row for each topic with the given values....
+        # create a row for each topic with the given values...
         for index,item  in enumerate(agenda.cp_Topics.childrenList):
             row = self.newRow(index)
             item.setDataToRow(row)
@@ -458,8 +457,9 @@ class TopicsControl(ControlScroller):
 
     def rowDown(self, guiRow=None, control=None):
         try:
-            if guiRow is None and control is None:
+            if guiRow is None:
                 guiRow = self.lastFocusRow - self.nscrollvalue
+            if control is None:
                 control = self.lastFocusControl
             # only perform if this is not the last row.
             actuallRow = guiRow + self.nscrollvalue
@@ -490,8 +490,9 @@ class TopicsControl(ControlScroller):
 
     def rowUp(self, guiRow=None, control=None):
         try:
-            if guiRow is None and control is None:
+            if guiRow is None:
                 guiRow = self.lastFocusRow - self.nscrollvalue
+            if control is None:
                 control = self.lastFocusControl
             # only perform if this is not the first row
             actuallRow = guiRow + self.nscrollvalue
@@ -554,13 +555,13 @@ class TopicsControl(ControlScroller):
             lowerRow = self.ControlGroupVector[guiRow]
         else:
             # if we scrolled we are done...
-            #otherwise..
+            #otherwise...
             lowerRow = self.ControlGroupVector[guiRow + 1]
 
         self.focus(self.getControl(lowerRow, control))
 
     '''
-    changes the values of the given rows with eachother
+    changes the values of the given rows with each other
     @param row1 one can figure out what this parameter is...
     @param row2 one can figure out what this parameter is...
     '''
@@ -642,7 +643,7 @@ class TopicsControl(ControlScroller):
         elif tmp_switch_var1 == 3:
             return cr.timebox
         else:
-            raise IllegalArgumentException ("No such column");
+            raise Exception("No such column");
 
     '''getControl
     returns a control out of the given row, which is
@@ -823,7 +824,7 @@ class ControlRow(object):
         self.timebox.Model.Enabled = enabled
 
     '''
-    Impelementation of XKeyListener.
+    Implementation of XKeyListener.
     Optionally performs the one of the following:
     cursor up, or down, row up or down
     '''

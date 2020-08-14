@@ -20,15 +20,11 @@
 #include <toolkit/helper/vclunohelper.hxx>
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/awt/PosSize.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
-#include "bibliography.hrc"
-#include <vcl/lstbox.hxx>
-#include <vcl/edit.hxx>
+#include <vcl/taskpanelist.hxx>
 #include <tools/debug.hxx>
 #include "bibbeam.hxx"
-#include "bibview.hxx"
-#include "bibresid.hxx"
 #include "datman.hxx"
 #include "bibtools.hxx"
 
@@ -126,39 +122,39 @@ namespace bib
     {
         m_xGridModel = xGModel;
 
-        if( m_xControlContainer.is())
+        if( !m_xControlContainer.is())
+            return;
+
+        uno::Reference< uno::XComponentContext > xContext = comphelper::getProcessComponentContext();
+
+        if ( !m_xGridModel.is())
+            return;
+
+        uno::Reference< XPropertySet >  xPropSet( m_xGridModel, UNO_QUERY );
+
+        if ( xPropSet.is() && m_xGridModel.is() )
         {
-            uno::Reference< uno::XComponentContext > xContext = comphelper::getProcessComponentContext();
+            uno::Any aAny = xPropSet->getPropertyValue( "DefaultControl" );
+            OUString aControlName;
+            aAny >>= aControlName;
 
-            if ( m_xGridModel.is())
-            {
-                uno::Reference< XPropertySet >  xPropSet( m_xGridModel, UNO_QUERY );
-
-                if ( xPropSet.is() && m_xGridModel.is() )
-                {
-                    uno::Any aAny = xPropSet->getPropertyValue( "DefaultControl" );
-                    OUString aControlName;
-                    aAny >>= aControlName;
-
-                    m_xControl.set( xContext->getServiceManager()->createInstanceWithContext(aControlName, xContext), UNO_QUERY_THROW );
-                    m_xControl->setModel( m_xGridModel );
-                }
-
-                if ( m_xControl.is() )
-                {
-                    // Peer as Child to the FrameWindow
-                    m_xControlContainer->addControl("GridControl", m_xControl);
-                    m_xGridWin.set(m_xControl, UNO_QUERY );
-                    m_xDispatchProviderInterception.set(m_xControl, UNO_QUERY );
-                    m_xGridWin->setVisible( true );
-                    m_xControl->setDesignMode( true );
-                    // initially switch on the design mode - switch it off _after_ loading the form
-
-                    ::Size aSize = GetOutputSizePixel();
-                    m_xGridWin->setPosSize(0, 0, aSize.Width(),aSize.Height(), awt::PosSize::POSSIZE);
-                }
-            }
+            m_xControl.set( xContext->getServiceManager()->createInstanceWithContext(aControlName, xContext), UNO_QUERY_THROW );
+            m_xControl->setModel( m_xGridModel );
         }
+
+        if ( !m_xControl.is() )
+            return;
+
+        // Peer as Child to the FrameWindow
+        m_xControlContainer->addControl("GridControl", m_xControl);
+        m_xGridWin.set(m_xControl, UNO_QUERY );
+        m_xDispatchProviderInterception.set(m_xControl, UNO_QUERY );
+        m_xGridWin->setVisible( true );
+        m_xControl->setDesignMode( true );
+        // initially switch on the design mode - switch it off _after_ loading the form
+
+        ::Size aSize = GetOutputSizePixel();
+        m_xGridWin->setPosSize(0, 0, aSize.Width(),aSize.Height(), awt::PosSize::POSSIZE);
     }
 
     void BibGridwin::disposeGridWin()
@@ -203,9 +199,6 @@ namespace bib
         if ( isFormConnected() )
             disconnectForm();
 
-        if ( m_xToolBarRef.is() )
-            m_xToolBarRef->dispose();
-
         if ( pToolBar )
             pDatMan->SetToolbar(nullptr);
 
@@ -240,7 +233,7 @@ namespace bib
         return xReturn;
     }
 
-    Reference< frame::XDispatchProviderInterception > BibBeamer::getDispatchProviderInterception()
+    Reference< frame::XDispatchProviderInterception > BibBeamer::getDispatchProviderInterception() const
     {
         Reference< frame::XDispatchProviderInterception > xReturn;
         if ( pGridWin )

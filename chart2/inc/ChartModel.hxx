@@ -16,25 +16,19 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_CHART2_INC_CHARTMODEL_HXX
-#define INCLUDED_CHART2_INC_CHARTMODEL_HXX
+#pragma once
 
-#include <config_features.h>
+#include <LifeTime.hxx>
 
-#include "LifeTime.hxx"
-
-#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/frame/XStorable2.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
 #include <com/sun/star/util/XUpdatable.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XUndoManagerSupplier.hpp>
-#include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/embed/XVisualObject.hpp>
 #include <com/sun/star/document/XStorageBasedDocument.hpp>
@@ -42,34 +36,36 @@
 #include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/chart2/data/XDataSource.hpp>
-#include <com/sun/star/chart2/XChartTypeTemplate.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/qa/XDumper.hpp>
-#include <com/sun/star/awt/XRequestCallback.hpp>
 
 // public API
-#include <com/sun/star/chart2/data/XDataProvider.hpp>
 #include <com/sun/star/chart2/data/XDataReceiver.hpp>
 
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/chart2/XTitled.hpp>
-#include <com/sun/star/chart2/X3DChartWindowProvider.hpp>
 
 #include <com/sun/star/frame/XLoadable.hpp>
-#include <com/sun/star/embed/XEmbeddedObject.hpp>
-#include <com/sun/star/embed/XStorage.hpp>
 #include <com/sun/star/datatransfer/XTransferable.hpp>
 
 #include <osl/mutex.hxx>
 #include <rtl/ref.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/interfacecontainer2.hxx>
-#include <svtools/grfmgr.hxx>
+#include <vcl/GraphicObject.hxx>
+#include <sfx2/xmldump.hxx>
 
 #include <memory>
 
+namespace com::sun::star::awt { class XRequestCallback; }
+namespace com::sun::star::chart2 { class XChartTypeTemplate; }
+namespace com::sun::star::chart2::data { class XDataProvider; }
+namespace com::sun::star::document { class XFilter; }
+namespace com::sun::star::embed { class XStorage; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { class XAggregation; }
+
 class SvNumberFormatter;
-class OpenGLWindow;
 
 namespace chart
 {
@@ -101,7 +97,6 @@ typedef cppu::WeakImplHelper<
         ,css::document::XDocumentPropertiesSupplier
         ,css::chart2::data::XDataSource
         ,css::document::XUndoManagerSupplier
-        ,css::chart2::X3DChartWindowProvider
         ,css::util::XUpdatable
         ,css::qa::XDumper
         >
@@ -111,7 +106,7 @@ typedef cppu::WeakImplHelper<
 class UndoManager;
 class ChartView;
 
-class OOO_DLLPUBLIC_CHARTTOOLS ChartModel : public impl::ChartModel_Base
+class OOO_DLLPUBLIC_CHARTTOOLS ChartModel final : public impl::ChartModel_Base, public sfx2::XmlDump
 {
 
 private:
@@ -187,13 +182,13 @@ private:
         impl_getCurrentController();
 
     /// @throws css::uno::RuntimeException
-    void SAL_CALL
+    void
         impl_notifyModifiedListeners();
     /// @throws css::uno::RuntimeException
-    void SAL_CALL
+    void
         impl_notifyCloseListeners();
     /// @throws css::uno::RuntimeException
-    void SAL_CALL
+    void
         impl_notifyStorageChangeListeners();
 
     void impl_store(
@@ -372,8 +367,6 @@ public:
 
     virtual void SAL_CALL createDefaultChart() override;
 
-    virtual sal_Bool SAL_CALL isOpenGLChart() override;
-
     // ____ XDataReceiver (public API) ____
     virtual void SAL_CALL
         attachDataProvider( const css::uno::Reference< css::chart2::data::XDataProvider >& xProvider ) override;
@@ -451,9 +444,6 @@ public:
     // ____ XDataSource ____ allows access to the currently used data and data ranges
     virtual css::uno::Sequence< css::uno::Reference< css::chart2::data::XLabeledDataSequence > > SAL_CALL getDataSequences() override;
 
-    // X3DChartWindowProvider
-    virtual void SAL_CALL setWindow( sal_uInt64 nWindowPtr ) override;
-
     // XUpdatable
     virtual void SAL_CALL update() override;
 
@@ -472,22 +462,18 @@ public:
 
     bool isDataFromSpreadsheet();
 
-    bool isDataFromPivotTable();
+    bool isDataFromPivotTable() const;
 
-#if HAVE_FEATURE_OPENGL
-    OpenGLWindow* getOpenGLWindow() { return mpOpenGLWindow;}
-#endif
+    void removeDataProviders();
+
+    /// See sfx2::XmlDump::dumpAsXml().
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 
 private:
     sal_Int32 mnStart;
     sal_Int32 mnEnd;
-#if HAVE_FEATURE_OPENGL
-    VclPtr<OpenGLWindow> mpOpenGLWindow;
-#endif
 };
 
 }  // namespace chart
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

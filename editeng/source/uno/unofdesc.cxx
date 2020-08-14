@@ -20,6 +20,7 @@
 
 #include <editeng/eeitem.hxx>
 #include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/awt/FontDescriptor.hpp>
 
 #include <editeng/fontitem.hxx>
 #include <editeng/fhgtitem.hxx>
@@ -28,12 +29,13 @@
 #include <editeng/wghtitem.hxx>
 #include <editeng/crossedoutitem.hxx>
 #include <editeng/wrlmitem.hxx>
-#include <editeng/memberids.hrc>
+#include <editeng/memberids.h>
 #include <svl/itempool.hxx>
+#include <vcl/font.hxx>
 #include <vcl/unohelp.hxx>
+#include <tools/gen.hxx>
 
 #include <editeng/unofdesc.hxx>
-#include <editeng/svxfont.hxx>
 
 using namespace ::com::sun::star;
 
@@ -43,15 +45,15 @@ void SvxUnoFontDescriptor::ConvertToFont( const awt::FontDescriptor& rDesc, vcl:
     rFont.SetFamilyName( rDesc.Name );
     rFont.SetStyleName( rDesc.StyleName );
     rFont.SetFontSize( Size( rDesc.Width, rDesc.Height ) );
-    rFont.SetFamily( (FontFamily)rDesc.Family );
-    rFont.SetCharSet( (rtl_TextEncoding)rDesc.CharSet );
-    rFont.SetPitch( (FontPitch)rDesc.Pitch );
-    rFont.SetOrientation( (short)(rDesc.Orientation*10) );
+    rFont.SetFamily( static_cast<FontFamily>(rDesc.Family) );
+    rFont.SetCharSet( static_cast<rtl_TextEncoding>(rDesc.CharSet) );
+    rFont.SetPitch( static_cast<FontPitch>(rDesc.Pitch) );
+    rFont.SetOrientation( static_cast<short>(rDesc.Orientation*10) );
     rFont.SetKerning( rDesc.Kerning ? FontKerning::FontSpecific : FontKerning::NONE );
     rFont.SetWeight( vcl::unohelper::ConvertFontWeight(rDesc.Weight) );
-    rFont.SetItalic( (FontItalic)rDesc.Slant );
-    rFont.SetUnderline( (FontLineStyle)rDesc.Underline );
-    rFont.SetStrikeout( (FontStrikeout)rDesc.Strikeout );
+    rFont.SetItalic( static_cast<FontItalic>(rDesc.Slant) );
+    rFont.SetUnderline( static_cast<FontLineStyle>(rDesc.Underline) );
+    rFont.SetStrikeout( static_cast<FontStrikeout>(rDesc.Strikeout) );
     rFont.SetWordLineMode( rDesc.WordLineMode );
 }
 
@@ -81,15 +83,15 @@ void SvxUnoFontDescriptor::FillItemSet( const awt::FontDescriptor& rDesc, SfxIte
         SvxFontItem aFontItem( EE_CHAR_FONTINFO );
         aFontItem.SetFamilyName( rDesc.Name);
         aFontItem.SetStyleName( rDesc.StyleName);
-        aFontItem.SetFamily( (FontFamily)rDesc.Family);
+        aFontItem.SetFamily( static_cast<FontFamily>(rDesc.Family));
         aFontItem.SetCharSet( rDesc.CharSet );
-        aFontItem.SetPitch( (FontPitch)rDesc.Pitch);
+        aFontItem.SetPitch( static_cast<FontPitch>(rDesc.Pitch));
         rSet.Put(aFontItem);
     }
 
     {
         SvxFontHeightItem aFontHeightItem( 0, 100, EE_CHAR_FONTHEIGHT );
-        aTemp <<= (float)rDesc.Height;
+        aTemp <<= static_cast<float>(rDesc.Height);
         static_cast<SfxPoolItem*>(&aFontHeightItem)->PutValue( aTemp, MID_FONTHEIGHT|CONVERT_TWIPS );
         rSet.Put(aFontHeightItem);
     }
@@ -103,7 +105,7 @@ void SvxUnoFontDescriptor::FillItemSet( const awt::FontDescriptor& rDesc, SfxIte
 
     {
         SvxUnderlineItem aUnderlineItem( LINESTYLE_NONE, EE_CHAR_UNDERLINE );
-        aTemp <<= (sal_Int16)rDesc.Underline;
+        aTemp <<= rDesc.Underline;
         static_cast<SfxPoolItem*>(&aUnderlineItem)->PutValue( aTemp, MID_TL_STYLE );
         rSet.Put( aUnderlineItem );
     }
@@ -132,7 +134,7 @@ void SvxUnoFontDescriptor::FillFromItemSet( const SfxItemSet& rSet, awt::FontDes
 {
     const SfxPoolItem* pItem = nullptr;
     {
-        const SvxFontItem* pFontItem = static_cast<const SvxFontItem*>(&rSet.Get( EE_CHAR_FONTINFO ));
+        const SvxFontItem* pFontItem = &rSet.Get( EE_CHAR_FONTINFO );
         rDesc.Name      = pFontItem->GetFamilyName();
         rDesc.StyleName = pFontItem->GetStyleName();
         rDesc.Family    = sal::static_int_cast< sal_Int16 >(
@@ -172,7 +174,7 @@ void SvxUnoFontDescriptor::FillFromItemSet( const SfxItemSet& rSet, awt::FontDes
             aStrikeOut >>= rDesc.Strikeout;
     }
     {
-        const SvxWordLineModeItem* pWLMItem = static_cast<const SvxWordLineModeItem*>(&rSet.Get( EE_CHAR_WLM ));
+        const SvxWordLineModeItem* pWLMItem = &rSet.Get( EE_CHAR_WLM );
         rDesc.WordLineMode = pWLMItem->GetValue();
     }
 }

@@ -22,16 +22,14 @@
 
 #include <drawingml/chart/chartcontextbase.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 
 struct View3DModel;
 
 /** Handler for a chart plot area context (c:plotArea element).
  */
-class View3DContext : public ContextBase< View3DModel >
+class View3DContext final : public ContextBase< View3DModel >
 {
 public:
     explicit            View3DContext( ::oox::core::ContextHandler2Helper& rParent, View3DModel& rModel );
@@ -46,7 +44,7 @@ struct WallFloorModel;
 /** Handler for a chart wall/floor context (c:backWall, c:floor, c:sideWall
     elements).
  */
-class WallFloorContext : public ContextBase< WallFloorModel >
+class WallFloorContext final : public ContextBase< WallFloorModel >
 {
 public:
     explicit            WallFloorContext( ::oox::core::ContextHandler2Helper& rParent, WallFloorModel& rModel );
@@ -60,7 +58,7 @@ struct DataTableModel;
 
 /** Handler for a data table context (c:dTable element).
  */
-class DataTableContext : public ContextBase< DataTableModel >
+class DataTableContext final : public ContextBase< DataTableModel >
 {
 public:
     explicit            DataTableContext( ::oox::core::ContextHandler2Helper& rParent, DataTableModel& rModel );
@@ -74,7 +72,7 @@ struct PlotAreaModel;
 
 /** Handler for a chart plot area context (c:plotArea element).
  */
-class PlotAreaContext : public ContextBase< PlotAreaModel >
+class PlotAreaContext final : public ContextBase< PlotAreaModel >
 {
 public:
     explicit            PlotAreaContext( ::oox::core::ContextHandler2Helper& rParent, PlotAreaModel& rModel );
@@ -84,9 +82,7 @@ public:
 };
 
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

@@ -32,7 +32,6 @@ $(eval $(call gb_CppunitTest_use_libraries,chart2_export, \
     forui \
     i18nlangtag \
     msfilter \
-    vcl \
     oox \
     sal \
     salhelper \
@@ -54,8 +53,8 @@ $(eval $(call gb_CppunitTest_use_libraries,chart2_export, \
     unotest \
     utl \
     vbahelper \
+    vcl \
     xo \
-    sw \
 ))
 
 $(eval $(call gb_CppunitTest_set_include,chart2_export,\
@@ -78,6 +77,7 @@ $(eval $(call gb_CppunitTest_use_components,chart2_export,\
     dtrans/util/mcnttype \
     dbaccess/util/dba \
     embeddedobj/util/embobj \
+    emfio/emfio \
     eventattacher/source/evtatt \
     filter/source/config/cache/filterconfig1 \
     filter/source/odfflatxml/odfflatxml \
@@ -115,6 +115,7 @@ $(eval $(call gb_CppunitTest_use_components,chart2_export,\
     svx/util/svx \
     svx/util/svxcore \
     toolkit/util/tk \
+    vcl/vcl.common \
     ucb/source/core/ucb1 \
     ucb/source/ucp/file/ucpfile1 \
     ucb/source/ucp/tdoc/ucptdoc1 \
@@ -127,6 +128,12 @@ $(eval $(call gb_CppunitTest_use_components,chart2_export,\
     xmlscript/util/xmlscript \
 ))
 
+$(eval $(call gb_CppunitTest_use_uiconfigs,chart2_export, \
+    modules/swriter \
+))
+
 $(eval $(call gb_CppunitTest_use_configuration,chart2_export))
+
+$(call gb_CppunitTest_get_target,chart2_export): $(call gb_Package_get_target,postprocess_images)
 
 # vim: set noet sw=4 ts=4:

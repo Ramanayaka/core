@@ -21,13 +21,11 @@
 #include "submission.hxx"
 #include "serialization_app_xml.hxx"
 
-#include <osl/diagnose.h>
 #include <rtl/ustring.hxx>
-#include <rtl/string.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/xml/dom/XDocument.hpp>
 #include <com/sun/star/xml/dom/DocumentBuilder.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
@@ -35,7 +33,6 @@
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/task/InteractionHandler.hpp>
-#include <ucbhelper/content.hxx>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::ucb;
@@ -70,8 +67,7 @@ CSubmission::SubmissionResult CSubmission::replace(const OUString& aReplace, con
                 -1, makeAny(true), PropertyState_DIRECT_VALUE);
 
             OUString aURL = m_aURLObj.GetMainURL(INetURLObject::DecodeMechanism::NONE);
-            OUString aTarget = "_default";
-            xLoader->loadComponentFromURL(aURL, aTarget, FrameSearchFlag::ALL, descriptor);
+            xLoader->loadComponentFromURL(aURL, "_default", FrameSearchFlag::ALL, descriptor);
 
             return CSubmission::SUCCESS;
 
@@ -100,8 +96,8 @@ CSubmission::SubmissionResult CSubmission::replace(const OUString& aReplace, con
             // do nothing \o/
             return CSubmission::SUCCESS;
         }
-    } catch (const Exception& e) {
-        SAL_WARN( "forms.xforms", "Exception during replace: " << e.Message);
+    } catch (const Exception&) {
+        TOOLS_WARN_EXCEPTION( "forms.xforms", "Exception during replace");
     }
     return CSubmission::UNKNOWN_ERROR;
 }

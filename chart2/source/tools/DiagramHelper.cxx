@@ -17,25 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DiagramHelper.hxx"
-#include "LegendHelper.hxx"
-#include "PropertyHelper.hxx"
-#include "macros.hxx"
-#include "DataSeriesHelper.hxx"
-#include "AxisHelper.hxx"
-#include "ContainerHelper.hxx"
-#include "ChartTypeHelper.hxx"
-#include "ChartModelHelper.hxx"
-#include "CommonConverters.hxx"
-#include "ExplicitCategoriesProvider.hxx"
-#include "servicenames_charttypes.hxx"
-#include "RelativePositionHelper.hxx"
-#include "ControllerLockGuard.hxx"
-#include "NumberFormatterWrapper.hxx"
+#include <DiagramHelper.hxx>
+#include <DataSeriesHelper.hxx>
+#include <AxisHelper.hxx>
+#include <ChartTypeHelper.hxx>
+#include <ChartModel.hxx>
+#include <ChartModelHelper.hxx>
+#include <ExplicitCategoriesProvider.hxx>
+#include <servicenames_charttypes.hxx>
+#include <RelativePositionHelper.hxx>
+#include <ControllerLockGuard.hxx>
+#include <NumberFormatterWrapper.hxx>
 #include <unonames.hxx>
 
 #include <com/sun/star/chart/MissingValueTreatment.hpp>
-#include <com/sun/star/chart/XChartDocument.hpp>
 #include <com/sun/star/chart/XDiagramPositioning.hpp>
 #include <com/sun/star/chart2/XAnyDescriptionAccess.hpp>
 #include <com/sun/star/chart2/XTitled.hpp>
@@ -43,22 +38,24 @@
 #include <com/sun/star/chart2/XChartTypeTemplate.hpp>
 #include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
 #include <com/sun/star/chart2/XDataSeriesContainer.hpp>
-#include <com/sun/star/chart2/InterpretedData.hpp>
 #include <com/sun/star/chart2/AxisType.hpp>
 #include <com/sun/star/chart2/DataPointGeometry3D.hpp>
 #include <com/sun/star/chart2/RelativePosition.hpp>
 #include <com/sun/star/chart2/RelativeSize.hpp>
+#include <com/sun/star/chart2/StackingDirection.hpp>
 
+#include <com/sun/star/util/CloseVetoException.hpp>
 #include <com/sun/star/util/NumberFormat.hpp>
-#include <com/sun/star/util/XModifiable.hpp>
 #include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 
 #include <unotools/saveopt.hxx>
 #include <rtl/math.hxx>
-#include <svl/zformat.hxx>
+#include <svl/zforlist.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 #include <comphelper/sequence.hxx>
+#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -101,9 +98,9 @@ DiagramHelper::tTemplateWithServiceName
                 bTemplateFound = true;
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -120,12 +117,11 @@ void DiagramHelper::setVertical(
         if (!xCnt.is())
             return;
 
-        Sequence< Reference<XCoordinateSystem> > aCooSys = xCnt->getCoordinateSystems();
+        const Sequence< Reference<XCoordinateSystem> > aCooSys = xCnt->getCoordinateSystems();
         uno::Any aValue;
         aValue <<= bVertical;
-        for( sal_Int32 i=0; i<aCooSys.getLength(); ++i )
+        for( uno::Reference< XCoordinateSystem > const & xCooSys : aCooSys )
         {
-            uno::Reference< XCoordinateSystem > xCooSys( aCooSys[i] );
             Reference< beans::XPropertySet > xProp( xCooSys, uno::UNO_QUERY );
             bool bChanged = false;
             if (xProp.is())
@@ -182,9 +178,9 @@ void DiagramHelper::setVertical(
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -199,11 +195,11 @@ bool DiagramHelper::getVertical( const uno::Reference< chart2::XDiagram > & xDia
     if (!xCnt.is())
         return false;
 
-    Sequence< Reference<XCoordinateSystem> > aCooSys = xCnt->getCoordinateSystems();
+    const Sequence< Reference<XCoordinateSystem> > aCooSys = xCnt->getCoordinateSystems();
 
-    for (sal_Int32 i = 0; i < aCooSys.getLength(); ++i)
+    for (Reference<XCoordinateSystem> const & coords : aCooSys)
     {
-        Reference<beans::XPropertySet> xProp(aCooSys[i], uno::UNO_QUERY);
+        Reference<beans::XPropertySet> xProp(coords, uno::UNO_QUERY);
         if (!xProp.is())
             continue;
 
@@ -255,10 +251,9 @@ void DiagramHelper::setStackMode(
         uno::Reference< XCoordinateSystemContainer > xCooSysContainer( xDiagram, uno::UNO_QUERY );
         if( !xCooSysContainer.is() )
             return;
-        uno::Sequence< uno::Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
-        for( sal_Int32 nCS = 0; nCS < aCooSysList.getLength(); ++nCS )
+        const uno::Sequence< uno::Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
+        for( uno::Reference< XCoordinateSystem > const & xCooSys : aCooSysList )
         {
-            uno::Reference< XCoordinateSystem > xCooSys( aCooSysList[nCS] );
             //set correct percent stacking
             const sal_Int32 nMaximumScaleIndex = xCooSys->getMaximumAxisIndexByDimension(1);
             for(sal_Int32 nI=0; nI<=nMaximumScaleIndex; ++nI)
@@ -282,32 +277,29 @@ void DiagramHelper::setStackMode(
             if( !xChartTypeContainer.is() )
                 continue;
             uno::Sequence< uno::Reference< XChartType > > aChartTypeList( xChartTypeContainer->getChartTypes() );
-            sal_Int32 nMax = aChartTypeList.getLength();
-            if( nMax >= 1 )
-                nMax = 1;
-            for( sal_Int32 nT = 0; nT < nMax; ++nT )
+            if (!aChartTypeList.hasElements())
+                continue;
+
+            uno::Reference< XChartType > xChartType( aChartTypeList[0] );
+
+            //iterate through all series in this chart type
+            uno::Reference< XDataSeriesContainer > xDataSeriesContainer( xChartType, uno::UNO_QUERY );
+            OSL_ASSERT( xDataSeriesContainer.is());
+            if( !xDataSeriesContainer.is() )
+                continue;
+
+            const uno::Sequence< uno::Reference< XDataSeries > > aSeriesList( xDataSeriesContainer->getDataSeries() );
+            for( uno::Reference< XDataSeries > const & dataSeries : aSeriesList )
             {
-                uno::Reference< XChartType > xChartType( aChartTypeList[nT] );
-
-                //iterate through all series in this chart type
-                uno::Reference< XDataSeriesContainer > xDataSeriesContainer( xChartType, uno::UNO_QUERY );
-                OSL_ASSERT( xDataSeriesContainer.is());
-                if( !xDataSeriesContainer.is() )
-                    continue;
-
-                uno::Sequence< uno::Reference< XDataSeries > > aSeriesList( xDataSeriesContainer->getDataSeries() );
-                for( sal_Int32 nS = 0; nS < aSeriesList.getLength(); ++nS )
-                {
-                    Reference< beans::XPropertySet > xProp( aSeriesList[nS], uno::UNO_QUERY );
-                    if(xProp.is())
-                        xProp->setPropertyValue( "StackingDirection", aNewDirection );
-                }
+                Reference< beans::XPropertySet > xProp( dataSeries, uno::UNO_QUERY );
+                if(xProp.is())
+                    xProp->setPropertyValue( "StackingDirection", aNewDirection );
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -322,11 +314,9 @@ StackMode DiagramHelper::getStackMode( const Reference< XDiagram > & xDiagram, b
     uno::Reference< XCoordinateSystemContainer > xCooSysContainer( xDiagram, uno::UNO_QUERY );
     if( !xCooSysContainer.is() )
         return eGlobalStackMode;
-    uno::Sequence< uno::Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
-    for( sal_Int32 nCS = 0; nCS < aCooSysList.getLength(); ++nCS )
+    const uno::Sequence< uno::Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
+    for( uno::Reference< XCoordinateSystem > const & xCooSys : aCooSysList )
     {
-        uno::Reference< XCoordinateSystem > xCooSys( aCooSysList[nCS] );
-
         //iterate through all chart types in the current coordinate system
         uno::Reference< XChartTypeContainer > xChartTypeContainer( xCooSys, uno::UNO_QUERY );
         if( !xChartTypeContainer.is() )
@@ -426,9 +416,9 @@ StackMode DiagramHelper::getStackModeFromChartType(
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return eStackMode;
@@ -444,12 +434,11 @@ sal_Int32 DiagramHelper::getDimension( const Reference< XDiagram > & xDiagram )
         Reference< XCoordinateSystemContainer > xCooSysCnt( xDiagram, uno::UNO_QUERY );
         if( xCooSysCnt.is() )
         {
-            Sequence< Reference< XCoordinateSystem > > aCooSysSeq(
+            const Sequence< Reference< XCoordinateSystem > > aCooSysSeq(
                 xCooSysCnt->getCoordinateSystems());
 
-            for( sal_Int32 i=0; i<aCooSysSeq.getLength(); ++i )
+            for( Reference< XCoordinateSystem > const & xCooSys : aCooSysSeq )
             {
-                Reference< XCoordinateSystem > xCooSys( aCooSysSeq[i] );
                 if(xCooSys.is())
                 {
                     nResult = xCooSys->getDimension();
@@ -458,9 +447,9 @@ sal_Int32 DiagramHelper::getDimension( const Reference< XDiagram > & xDiagram )
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return nResult;
@@ -485,20 +474,18 @@ void DiagramHelper::setDimension(
 
         //change all coordinate systems:
         Reference< XCoordinateSystemContainer > xCooSysContainer( xDiagram, uno::UNO_QUERY_THROW );
-        Sequence< Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
-        for( sal_Int32 nCS = 0; nCS < aCooSysList.getLength(); ++nCS )
+        const Sequence< Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
+        for( Reference<XCoordinateSystem> const & xOldCooSys : aCooSysList )
         {
-            Reference< XCoordinateSystem > xOldCooSys( aCooSysList[nCS], uno::UNO_QUERY );
             Reference< XCoordinateSystem > xNewCooSys;
 
             Reference< XChartTypeContainer > xChartTypeContainer( xOldCooSys, uno::UNO_QUERY );
             if( !xChartTypeContainer.is() )
                 continue;
 
-            Sequence< Reference< XChartType > > aChartTypeList( xChartTypeContainer->getChartTypes() );
-            for( sal_Int32 nT = 0; nT < aChartTypeList.getLength(); ++nT )
+            const Sequence< Reference< XChartType > > aChartTypeList( xChartTypeContainer->getChartTypes() );
+            for( Reference< XChartType > const & xChartType : aChartTypeList )
             {
-                Reference< XChartType > xChartType( aChartTypeList[nT], uno::UNO_QUERY );
                 bIsSupportingOnlyDeepStackingFor3D = ChartTypeHelper::isSupportingOnlyDeepStackingFor3D( xChartType );
                 if(!xNewCooSys.is())
                 {
@@ -520,9 +507,9 @@ void DiagramHelper::setDimension(
         else if( nNewDimensionCount==2 && eStackMode == StackMode::ZStacked )
             DiagramHelper::setStackMode( xDiagram, StackMode::NONE );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -537,27 +524,27 @@ void DiagramHelper::replaceCoordinateSystem(
 
     // update the coordinate-system container
     Reference< XCoordinateSystemContainer > xCont( xDiagram, uno::UNO_QUERY );
-    if( xCont.is())
+    if( !xCont.is())
+        return;
+
+    try
     {
-        try
-        {
-            Reference< chart2::data::XLabeledDataSequence > xCategories = DiagramHelper::getCategoriesFromDiagram( xDiagram );
+        Reference< chart2::data::XLabeledDataSequence > xCategories = DiagramHelper::getCategoriesFromDiagram( xDiagram );
 
-            // move chart types of xCooSysToReplace to xReplacement
-            Reference< XChartTypeContainer > xCTCntCooSys( xCooSysToReplace, uno::UNO_QUERY_THROW );
-            Reference< XChartTypeContainer > xCTCntReplacement( xReplacement, uno::UNO_QUERY_THROW );
-            xCTCntReplacement->setChartTypes( xCTCntCooSys->getChartTypes());
+        // move chart types of xCooSysToReplace to xReplacement
+        Reference< XChartTypeContainer > xCTCntCooSys( xCooSysToReplace, uno::UNO_QUERY_THROW );
+        Reference< XChartTypeContainer > xCTCntReplacement( xReplacement, uno::UNO_QUERY_THROW );
+        xCTCntReplacement->setChartTypes( xCTCntCooSys->getChartTypes());
 
-            xCont->removeCoordinateSystem( xCooSysToReplace );
-            xCont->addCoordinateSystem( xReplacement );
+        xCont->removeCoordinateSystem( xCooSysToReplace );
+        xCont->addCoordinateSystem( xReplacement );
 
-            if( xCategories.is() )
-                DiagramHelper::setCategoriesToDiagram( xCategories, xDiagram );
-        }
-        catch( const uno::Exception & ex )
-        {
-            ASSERT_EXCEPTION( ex );
-        }
+        if( xCategories.is() )
+            DiagramHelper::setCategoriesToDiagram( xCategories, xDiagram );
+    }
+    catch( const uno::Exception & )
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -578,8 +565,6 @@ bool DiagramHelper::attachSeriesToAxis( bool bAttachToMainAxis
 
     //set property at axis
     Reference< beans::XPropertySet > xProp( xDataSeries, uno::UNO_QUERY_THROW );
-    if( !xProp.is() )
-        return bChanged;
 
     sal_Int32 nNewAxisIndex = bAttachToMainAxis ? 0 : 1;
     sal_Int32 nOldAxisIndex = DataSeriesHelper::getAttachedAxisIndex(xDataSeries);
@@ -592,9 +577,9 @@ bool DiagramHelper::attachSeriesToAxis( bool bAttachToMainAxis
             xProp->setPropertyValue( "AttachedAxisIndex", uno::Any( nNewAxisIndex ) );
             bChanged = true;
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -637,31 +622,27 @@ uno::Reference< XChartType > DiagramHelper::getChartTypeOfSeries(
     if( !xCooSysContainer.is())
         return nullptr;
 
-    uno::Sequence< uno::Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
-    for( sal_Int32 nCS = 0; nCS < aCooSysList.getLength(); ++nCS )
+    const uno::Sequence< uno::Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
+    for( uno::Reference< XCoordinateSystem > const & xCooSys : aCooSysList )
     {
-        uno::Reference< XCoordinateSystem > xCooSys( aCooSysList[nCS] );
-
         //iterate through all chart types in the current coordinate system
         uno::Reference< XChartTypeContainer > xChartTypeContainer( xCooSys, uno::UNO_QUERY );
         OSL_ASSERT( xChartTypeContainer.is());
         if( !xChartTypeContainer.is() )
             continue;
-        uno::Sequence< uno::Reference< XChartType > > aChartTypeList( xChartTypeContainer->getChartTypes() );
-        for( sal_Int32 nT = 0; nT < aChartTypeList.getLength(); ++nT )
+        const uno::Sequence< uno::Reference< XChartType > > aChartTypeList( xChartTypeContainer->getChartTypes() );
+        for( uno::Reference< XChartType > const & xChartType : aChartTypeList )
         {
-            uno::Reference< XChartType > xChartType( aChartTypeList[nT] );
-
             //iterate through all series in this chart type
             uno::Reference< XDataSeriesContainer > xDataSeriesContainer( xChartType, uno::UNO_QUERY );
             OSL_ASSERT( xDataSeriesContainer.is());
             if( !xDataSeriesContainer.is() )
                 continue;
 
-            uno::Sequence< uno::Reference< XDataSeries > > aSeriesList( xDataSeriesContainer->getDataSeries() );
-            for( sal_Int32 nS = 0; nS < aSeriesList.getLength(); ++nS )
+            const uno::Sequence< uno::Reference< XDataSeries > > aSeriesList( xDataSeriesContainer->getDataSeries() );
+            for( uno::Reference< XDataSeries > const & dataSeries : aSeriesList )
             {
-                if( xGivenDataSeries==aSeriesList[nS] )
+                if( xGivenDataSeries==dataSeries )
                     return xChartType;
             }
         }
@@ -679,24 +660,23 @@ std::vector< Reference< XDataSeries > >
     {
         Reference< XCoordinateSystemContainer > xCooSysCnt(
             xDiagram, uno::UNO_QUERY_THROW );
-        Sequence< Reference< XCoordinateSystem > > aCooSysSeq(
+        const Sequence< Reference< XCoordinateSystem > > aCooSysSeq(
             xCooSysCnt->getCoordinateSystems());
-        for( sal_Int32 i=0; i<aCooSysSeq.getLength(); ++i )
+        for( Reference< XCoordinateSystem > const & coords : aCooSysSeq )
         {
-            Reference< XChartTypeContainer > xCTCnt( aCooSysSeq[i], uno::UNO_QUERY_THROW );
-            Sequence< Reference< XChartType > > aChartTypeSeq( xCTCnt->getChartTypes());
-            for( sal_Int32 j=0; j<aChartTypeSeq.getLength(); ++j )
+            Reference< XChartTypeContainer > xCTCnt( coords, uno::UNO_QUERY_THROW );
+            const Sequence< Reference< XChartType > > aChartTypeSeq( xCTCnt->getChartTypes());
+            for( Reference< XChartType> const & chartType : aChartTypeSeq )
             {
-                Reference< XDataSeriesContainer > xDSCnt( aChartTypeSeq[j], uno::UNO_QUERY_THROW );
+                Reference< XDataSeriesContainer > xDSCnt( chartType, uno::UNO_QUERY_THROW );
                 Sequence< Reference< XDataSeries > > aSeriesSeq( xDSCnt->getDataSeries() );
-                std::copy( aSeriesSeq.begin(), aSeriesSeq.end(),
-                             std::back_inserter( aResult ));
+                aResult.insert( aResult.end(), aSeriesSeq.begin(), aSeriesSeq.end() );
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return aResult;
@@ -711,17 +691,17 @@ Sequence< Sequence< Reference< XDataSeries > > >
     Reference< XCoordinateSystemContainer > xCooSysContainer( xDiagram, uno::UNO_QUERY );
     if( xCooSysContainer.is() )
     {
-        Sequence< Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
-        for( sal_Int32 nCS = 0; nCS < aCooSysList.getLength(); ++nCS )
+        const Sequence< Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
+        for( Reference< XCoordinateSystem > const & coords : aCooSysList )
         {
             //iterate through all chart types in the current coordinate system
-            Reference< XChartTypeContainer > xChartTypeContainer( aCooSysList[nCS], uno::UNO_QUERY );
+            Reference< XChartTypeContainer > xChartTypeContainer( coords, uno::UNO_QUERY );
             if( !xChartTypeContainer.is() )
                 continue;
-            Sequence< Reference< XChartType > > aChartTypeList( xChartTypeContainer->getChartTypes() );
-            for( sal_Int32 nT = 0; nT < aChartTypeList.getLength(); ++nT )
+            const Sequence< Reference< XChartType > > aChartTypeList( xChartTypeContainer->getChartTypes() );
+            for( Reference< XChartType >  const & chartType : aChartTypeList )
             {
-                Reference< XDataSeriesContainer > xDataSeriesContainer( aChartTypeList[nT], uno::UNO_QUERY );
+                Reference< XDataSeriesContainer > xDataSeriesContainer( chartType, uno::UNO_QUERY );
                 if( !xDataSeriesContainer.is() )
                     continue;
                 aResult.push_back( xDataSeriesContainer->getDataSeries() );
@@ -741,11 +721,11 @@ Reference< XChartType >
     if( ! xCooSysContainer.is())
         return xChartType;
 
-    Sequence< Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
+    const Sequence< Reference< XCoordinateSystem > > aCooSysList( xCooSysContainer->getCoordinateSystems() );
     sal_Int32 nTypesSoFar = 0;
-    for( sal_Int32 nCS = 0; nCS < aCooSysList.getLength(); ++nCS )
+    for( Reference< XCoordinateSystem > const & coords : aCooSysList )
     {
-        Reference< XChartTypeContainer > xChartTypeContainer( aCooSysList[nCS], uno::UNO_QUERY );
+        Reference< XChartTypeContainer > xChartTypeContainer( coords, uno::UNO_QUERY );
         if( !xChartTypeContainer.is() )
             continue;
         Sequence< Reference< XChartType > > aChartTypeList( xChartTypeContainer->getChartTypes() );
@@ -774,11 +754,10 @@ std::vector< Reference< XAxis > > lcl_getAxisHoldingCategoriesFromDiagram(
     {
         Reference< XCoordinateSystemContainer > xCooSysCnt(
             xDiagram, uno::UNO_QUERY_THROW );
-        Sequence< Reference< XCoordinateSystem > > aCooSysSeq(
+        const Sequence< Reference< XCoordinateSystem > > aCooSysSeq(
             xCooSysCnt->getCoordinateSystems());
-        for( sal_Int32 i=0; i<aCooSysSeq.getLength(); ++i )
+        for( Reference< XCoordinateSystem > const & xCooSys : aCooSysSeq )
         {
-            Reference< XCoordinateSystem > xCooSys( aCooSysSeq[i] );
             OSL_ASSERT( xCooSys.is());
             for( sal_Int32 nN = xCooSys->getDimension(); nN--; )
             {
@@ -801,9 +780,9 @@ std::vector< Reference< XAxis > > lcl_getAxisHoldingCategoriesFromDiagram(
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2" );
     }
 
     if( aRet.empty() )
@@ -821,11 +800,10 @@ bool DiagramHelper::isCategoryDiagram(
     {
         Reference< XCoordinateSystemContainer > xCooSysCnt(
             xDiagram, uno::UNO_QUERY_THROW );
-        Sequence< Reference< XCoordinateSystem > > aCooSysSeq(
+        const Sequence< Reference< XCoordinateSystem > > aCooSysSeq(
             xCooSysCnt->getCoordinateSystems());
-        for( sal_Int32 i=0; i<aCooSysSeq.getLength(); ++i )
+        for( Reference< XCoordinateSystem > const & xCooSys : aCooSysSeq )
         {
-            Reference< XCoordinateSystem > xCooSys( aCooSysSeq[i] );
             OSL_ASSERT( xCooSys.is());
             for( sal_Int32 nN = xCooSys->getDimension(); nN--; )
             {
@@ -844,9 +822,9 @@ bool DiagramHelper::isCategoryDiagram(
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return false;
@@ -861,12 +839,8 @@ void DiagramHelper::setCategoriesToDiagram(
     std::vector< Reference< chart2::XAxis > > aCatAxes(
         lcl_getAxisHoldingCategoriesFromDiagram( xDiagram ));
 
-    std::vector< Reference< chart2::XAxis > >::iterator aIt( aCatAxes.begin() );
-    std::vector< Reference< chart2::XAxis > >::const_iterator aEnd( aCatAxes.end() );
-
-    for( aIt = aCatAxes.begin(); aIt != aEnd; ++aIt )
+    for (const Reference< chart2::XAxis >& xCatAxis : aCatAxes)
     {
-        Reference< chart2::XAxis > xCatAxis(*aIt);
         if( xCatAxis.is())
         {
             ScaleData aScaleData( xCatAxis->getScaleData());
@@ -893,12 +867,10 @@ Reference< data::XLabeledDataSequence >
     {
         std::vector< Reference< chart2::XAxis > > aCatAxes(
             lcl_getAxisHoldingCategoriesFromDiagram( xDiagram ));
-        std::vector< Reference< chart2::XAxis > >::iterator aIt( aCatAxes.begin() );
-        std::vector< Reference< chart2::XAxis > >::const_iterator aEnd( aCatAxes.end() );
         //search for first categories
-        if( aIt != aEnd )
+        if (!aCatAxes.empty())
         {
-            Reference< chart2::XAxis > xCatAxis(*aIt);
+            Reference< chart2::XAxis > xCatAxis(aCatAxes[0]);
             if( xCatAxis.is())
             {
                 ScaleData aScaleData( xCatAxis->getScaleData());
@@ -912,50 +884,50 @@ Reference< data::XLabeledDataSequence >
                         {
                             xProp->setPropertyValue( "Role", uno::Any( OUString("categories") ) );
                         }
-                        catch( const uno::Exception & ex )
+                        catch( const uno::Exception & )
                         {
-                            ASSERT_EXCEPTION( ex );
+                            DBG_UNHANDLED_EXCEPTION("chart2");
                         }
                     }
                 }
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return xResult;
 }
 
-void lcl_generateAutomaticCategoriesFromChartType(
+static void lcl_generateAutomaticCategoriesFromChartType(
             Sequence< OUString >& rRet,
             const Reference< XChartType >& xChartType )
 {
     if(!xChartType.is())
         return;
     OUString aMainSeq( xChartType->getRoleOfSequenceForSeriesLabel() );
-        Reference< XDataSeriesContainer > xSeriesCnt( xChartType, uno::UNO_QUERY );
-    if( xSeriesCnt.is() )
+    Reference< XDataSeriesContainer > xSeriesCnt( xChartType, uno::UNO_QUERY );
+    if( !xSeriesCnt.is() )
+        return;
+
+    const Sequence< Reference< XDataSeries > > aSeriesSeq( xSeriesCnt->getDataSeries() );
+    for( Reference< XDataSeries > const & dataSeries : aSeriesSeq )
     {
-        Sequence< Reference< XDataSeries > > aSeriesSeq( xSeriesCnt->getDataSeries() );
-        for( sal_Int32 nS = 0; nS < aSeriesSeq.getLength(); nS++ )
-        {
-            Reference< data::XDataSource > xDataSource( aSeriesSeq[nS], uno::UNO_QUERY );
-            if( !xDataSource.is() )
-                continue;
-            Reference< chart2::data::XLabeledDataSequence > xLabeledSeq(
-                ::chart::DataSeriesHelper::getDataSequenceByRole( xDataSource, aMainSeq ));
-            if( !xLabeledSeq.is() )
-                continue;
-            Reference< chart2::data::XDataSequence > xValueSeq( xLabeledSeq->getValues() );
-            if( !xValueSeq.is() )
-                continue;
-            rRet = xValueSeq->generateLabel( chart2::data::LabelOrigin_LONG_SIDE );
-            if( rRet.getLength() )
-                return;
-        }
+        Reference< data::XDataSource > xDataSource( dataSeries, uno::UNO_QUERY );
+        if( !xDataSource.is() )
+            continue;
+        Reference< chart2::data::XLabeledDataSequence > xLabeledSeq(
+            ::chart::DataSeriesHelper::getDataSequenceByRole( xDataSource, aMainSeq ));
+        if( !xLabeledSeq.is() )
+            continue;
+        Reference< chart2::data::XDataSequence > xValueSeq( xLabeledSeq->getValues() );
+        if( !xValueSeq.is() )
+            continue;
+        rRet = xValueSeq->generateLabel( chart2::data::LabelOrigin_LONG_SIDE );
+        if( rRet.hasElements() )
+            return;
     }
 }
 
@@ -966,11 +938,11 @@ Sequence< OUString > DiagramHelper::generateAutomaticCategoriesFromCooSys( const
     Reference< XChartTypeContainer > xTypeCntr( xCooSys, uno::UNO_QUERY );
     if( xTypeCntr.is() )
     {
-        Sequence< Reference< XChartType > > aChartTypes( xTypeCntr->getChartTypes() );
-        for( sal_Int32 nN=0; nN<aChartTypes.getLength(); nN++ )
+        const Sequence< Reference< XChartType > > aChartTypes( xTypeCntr->getChartTypes() );
+        for( Reference< XChartType > const & chartType : aChartTypes )
         {
-            lcl_generateAutomaticCategoriesFromChartType( aRet, aChartTypes[nN] );
-            if( aRet.getLength() )
+            lcl_generateAutomaticCategoriesFromChartType( aRet, chartType );
+            if( aRet.hasElements() )
                 return aRet;
         }
     }
@@ -1038,9 +1010,9 @@ void lcl_switchToDateCategories( const Reference< XChartDocument >& xChartDoc, c
                 {
                     xKeyProps = xNumberFormats->getByKey( nNumberFormat );
                 }
-                catch( const uno::Exception & ex )
+                catch( const uno::Exception & )
                 {
-                    ASSERT_EXCEPTION( ex );
+                    DBG_UNHANDLED_EXCEPTION("chart2");
                 }
                 sal_Int32 nType = util::NumberFormat::UNDEFINED;
                 if( xKeyProps.is() )
@@ -1050,7 +1022,7 @@ void lcl_switchToDateCategories( const Reference< XChartDocument >& xChartDoc, c
                     //set a date format to the axis
                     const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
                     Sequence<sal_Int32> aKeySeq = xNumberFormats->queryKeys( util::NumberFormat::DATE,  rLocaleDataWrapper.getLanguageTag().getLocale(), true/*bCreate*/ );
-                    if( aKeySeq.getLength() )
+                    if( aKeySeq.hasElements() )
                     {
                         xAxisProps->setPropertyValue(CHART_UNONAME_NUMFMT, uno::Any(aKeySeq[0]));
                     }
@@ -1083,12 +1055,11 @@ void lcl_switchToTextCategories( const Reference< XChartDocument >& xChartDoc, c
 
 void DiagramHelper::switchToDateCategories( const Reference< XChartDocument >& xChartDoc )
 {
-    Reference< frame::XModel > xChartModel( xChartDoc, uno::UNO_QUERY );
-    if(xChartModel.is())
+    if(xChartDoc.is())
     {
-        ControllerLockGuardUNO aCtrlLockGuard( xChartModel );
+        ControllerLockGuardUNO aCtrlLockGuard( xChartDoc );
 
-        Reference< chart2::XCoordinateSystem > xCooSys( ChartModelHelper::getFirstCoordinateSystem( xChartModel ) );
+        Reference< chart2::XCoordinateSystem > xCooSys( ChartModelHelper::getFirstCoordinateSystem( xChartDoc ) );
         if( xCooSys.is() )
         {
             Reference< XAxis > xAxis( xCooSys->getAxisByDimension(0,0) );
@@ -1099,12 +1070,11 @@ void DiagramHelper::switchToDateCategories( const Reference< XChartDocument >& x
 
 void DiagramHelper::switchToTextCategories( const Reference< XChartDocument >& xChartDoc )
 {
-    Reference< frame::XModel > xChartModel( xChartDoc, uno::UNO_QUERY );
-    if(xChartModel.is())
+    if(xChartDoc.is())
     {
-        ControllerLockGuardUNO aCtrlLockGuard( xChartModel );
+        ControllerLockGuardUNO aCtrlLockGuard( xChartDoc );
 
-        Reference< chart2::XCoordinateSystem > xCooSys( ChartModelHelper::getFirstCoordinateSystem( xChartModel ) );
+        Reference< chart2::XCoordinateSystem > xCooSys( ChartModelHelper::getFirstCoordinateSystem( xChartDoc ) );
         if( xCooSys.is() )
         {
             Reference< XAxis > xAxis( xCooSys->getAxisByDimension(0,0) );
@@ -1154,7 +1124,7 @@ sal_Int32 DiagramHelper::getDateNumberFormat( const Reference< util::XNumberForm
         {
             Sequence<sal_Int32> aKeySeq = xNumberFormats->queryKeys( util::NumberFormat::DATE,
                     rLanguageTag.getLocale(), true/*bCreate */);
-            if( aKeySeq.getLength() )
+            if( aKeySeq.hasElements() )
             {
                 nRet = aKeySeq[0];
             }
@@ -1174,7 +1144,7 @@ sal_Int32 DiagramHelper::getDateTimeInputNumberFormat( const Reference< util::XN
         SAL_WARN("chart2", "DiagramHelper::getDateTimeInputNumberFormat - no SvNumberFormatter");
     else
     {
-        short nType;
+        SvNumFormatType nType;
         // Obtain best matching date, time or datetime format.
         nRet = pNumFormatter->GuessDateTimeFormat( nType, fNumber, LANGUAGE_SYSTEM);
         // Obtain the corresponding edit format.
@@ -1191,7 +1161,7 @@ sal_Int32 DiagramHelper::getPercentNumberFormat( const Reference< util::XNumberF
     SvNumberFormatter* pNumFormatter = aNumberFormatterWrapper.getSvNumberFormatter();
     if( pNumFormatter )
     {
-        nRet = pNumFormatter->GetStandardFormat( util::NumberFormat::PERCENT, rLanguageTag.getLanguageType() );
+        nRet = pNumFormatter->GetFormatIndex( NF_PERCENT_INT, rLanguageTag.getLanguageType() );
     }
     else
     {
@@ -1200,8 +1170,12 @@ sal_Int32 DiagramHelper::getPercentNumberFormat( const Reference< util::XNumberF
         {
             Sequence<sal_Int32> aKeySeq = xNumberFormats->queryKeys( util::NumberFormat::PERCENT,
                     rLanguageTag.getLocale(), true/*bCreate*/ );
-            if( aKeySeq.getLength() )
+            if( aKeySeq.hasElements() )
             {
+                // This *assumes* the sequence is sorted as in
+                // NfIndexTableOffset and the first format is the integer 0%
+                // format by chance... which usually is the case, but... anyway,
+                // we usually also have a number formatter so don't reach here.
                 nRet = aKeySeq[0];
             }
         }
@@ -1221,19 +1195,18 @@ Sequence< Reference< XChartType > >
         {
             Reference< XCoordinateSystemContainer > xCooSysCnt(
                 xDiagram, uno::UNO_QUERY_THROW );
-            Sequence< Reference< XCoordinateSystem > > aCooSysSeq(
+            const Sequence< Reference< XCoordinateSystem > > aCooSysSeq(
                 xCooSysCnt->getCoordinateSystems());
-            for( sal_Int32 i=0; i<aCooSysSeq.getLength(); ++i )
+            for( Reference< XCoordinateSystem > const & coords : aCooSysSeq )
             {
-                Reference< XChartTypeContainer > xCTCnt( aCooSysSeq[i], uno::UNO_QUERY_THROW );
+                Reference< XChartTypeContainer > xCTCnt( coords, uno::UNO_QUERY_THROW );
                 Sequence< Reference< XChartType > > aChartTypeSeq( xCTCnt->getChartTypes());
-                std::copy( aChartTypeSeq.begin(), aChartTypeSeq.end(),
-                             std::back_inserter( aResult ));
+                aResult.insert( aResult.end(), aChartTypeSeq.begin(), aChartTypeSeq.end() );
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -1246,8 +1219,8 @@ bool DiagramHelper::areChartTypesCompatible( const Reference< ::chart2::XChartTy
     if( !xFirstType.is() || !xSecondType.is() )
         return false;
 
-    std::vector< OUString > aFirstRoles( ContainerHelper::SequenceToVector( xFirstType->getSupportedMandatoryRoles() ) );
-    std::vector< OUString > aSecondRoles( ContainerHelper::SequenceToVector( xSecondType->getSupportedMandatoryRoles() ) );
+    auto aFirstRoles( comphelper::sequenceToContainer<std::vector< OUString >>( xFirstType->getSupportedMandatoryRoles() ) );
+    auto aSecondRoles( comphelper::sequenceToContainer<std::vector< OUString >>( xSecondType->getSupportedMandatoryRoles() ) );
     std::sort( aFirstRoles.begin(), aFirstRoles.end() );
     std::sort( aSecondRoles.begin(), aSecondRoles.end() );
     return ( aFirstRoles == aSecondRoles );
@@ -1340,7 +1313,8 @@ bool lcl_moveSeriesOrCheckIfMoveIsAllowed(
                             {
                                 sal_Int32 nNewSeriesIndex = nS;
 
-                                if( bForward )
+                                // tdf#34517 Bringing forward means increasing, backwards means decreasing series position
+                                if( !bForward )
                                     nNewSeriesIndex--;
                                 else
                                     nNewSeriesIndex++;
@@ -1395,11 +1369,10 @@ bool lcl_moveSeriesOrCheckIfMoveIsAllowed(
                                             if( xOtherDataSeriesContainer.is() )
                                             {
                                                 uno::Sequence< uno::Reference< XDataSeries > > aOtherSeriesList( xOtherDataSeriesContainer->getDataSeries() );
-                                                sal_Int32 nOtherSeriesIndex = 0;
-                                                if( nOtherSeriesIndex >= 0 && nOtherSeriesIndex < aOtherSeriesList.getLength() )
+                                                if( aOtherSeriesList.hasElements() )
                                                 {
-                                                    uno::Reference< XDataSeries > xExchangeSeries( aOtherSeriesList[nOtherSeriesIndex] );
-                                                    aOtherSeriesList[nOtherSeriesIndex] = xGivenDataSeries;
+                                                    uno::Reference< XDataSeries > xExchangeSeries( aOtherSeriesList[0] );
+                                                    aOtherSeriesList[0] = xGivenDataSeries;
                                                     xOtherDataSeriesContainer->setDataSeries(aOtherSeriesList);
 
                                                     aSeriesList[nOldSeriesIndex]=xExchangeSeries;
@@ -1460,14 +1433,13 @@ bool DiagramHelper::isSupportingFloorAndWall( const Reference<
                 chart2::XDiagram >& xDiagram )
 {
     //pies and donuts currently do not support this because of wrong files from older versions
-    //todo: allow this in future again, if fileversion are available for ole objects (metastream)
+    //todo: allow this in future again, if fileversion is available for OLE objects (metastream)
     //thus the wrong bottom can be removed on import
 
-    Sequence< Reference< chart2::XChartType > > aTypes(
+    const Sequence< Reference< chart2::XChartType > > aTypes(
             ::chart::DiagramHelper::getChartTypesFromDiagram( xDiagram ) );
-    for( sal_Int32 nN = 0; nN < aTypes.getLength(); nN++ )
+    for( Reference< chart2::XChartType > const & xType : aTypes )
     {
-        Reference< chart2::XChartType > xType( aTypes[nN] );
         if( xType.is() && xType->getChartType().match(CHART2_SERVICE_NAME_CHARTTYPE_PIE) )
             return false;
         if( xType.is() && xType->getChartType().match(CHART2_SERVICE_NAME_CHARTTYPE_NET) )
@@ -1506,13 +1478,12 @@ sal_Int32 DiagramHelper::getGeometry3D(
     if( aSeriesVec.empty())
         rbAmbiguous = true;
 
-    for( std::vector< Reference< chart2::XDataSeries > >::const_iterator aIt =
-             aSeriesVec.begin(); aIt != aSeriesVec.end(); ++aIt )
+    for (auto const& series : aSeriesVec)
     {
         try
         {
             sal_Int32 nGeom = 0;
-            Reference< beans::XPropertySet > xProp( *aIt, uno::UNO_QUERY_THROW );
+            Reference< beans::XPropertySet > xProp(series, uno::UNO_QUERY_THROW);
             if( xProp->getPropertyValue( "Geometry3D") >>= nGeom )
             {
                 if( ! rbFound )
@@ -1529,9 +1500,9 @@ sal_Int32 DiagramHelper::getGeometry3D(
                 }
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -1545,11 +1516,10 @@ void DiagramHelper::setGeometry3D(
     std::vector< Reference< chart2::XDataSeries > > aSeriesVec(
         DiagramHelper::getDataSeriesFromDiagram( xDiagram ));
 
-    for( std::vector< Reference< chart2::XDataSeries > >::const_iterator aIt =
-             aSeriesVec.begin(); aIt != aSeriesVec.end(); ++aIt )
+    for (auto const& series : aSeriesVec)
     {
         DataSeriesHelper::setPropertyAlsoToAllAttributedDataPoints(
-            *aIt, "Geometry3D", uno::Any( nNewGeometry ));
+            series, "Geometry3D", uno::Any( nNewGeometry ));
     }
 }
 
@@ -1558,20 +1528,20 @@ sal_Int32 DiagramHelper::getCorrectedMissingValueTreatment(
             const Reference< chart2::XChartType >& xChartType )
 {
     sal_Int32 nResult = css::chart::MissingValueTreatment::LEAVE_GAP;
-    uno::Sequence < sal_Int32 > aAvailableMissingValueTreatments(
+    const uno::Sequence < sal_Int32 > aAvailableMissingValueTreatments(
                 ChartTypeHelper::getSupportedMissingValueTreatments( xChartType ) );
 
     uno::Reference< beans::XPropertySet > xDiaProp( xDiagram, uno::UNO_QUERY );
     if( xDiaProp.is() && (xDiaProp->getPropertyValue( "MissingValueTreatment" ) >>= nResult) )
     {
         //ensure that the set value is supported by this charttype
-        for( sal_Int32 nN = 0; nN < aAvailableMissingValueTreatments.getLength(); nN++ )
-            if( aAvailableMissingValueTreatments[nN] == nResult )
+        for( sal_Int32 n : aAvailableMissingValueTreatments )
+            if( n == nResult )
                 return nResult; //ok
     }
 
     //otherwise use the first supported one
-    if( aAvailableMissingValueTreatments.getLength() )
+    if( aAvailableMissingValueTreatments.hasElements() )
     {
         nResult = aAvailableMissingValueTreatments[0];
         return nResult;
@@ -1603,7 +1573,7 @@ DiagramPositioningMode DiagramHelper::getDiagramPositioningMode( const uno::Refe
     return eMode;
 }
 
-void lcl_ensureRange0to1( double& rValue )
+static void lcl_ensureRange0to1( double& rValue )
 {
     if(rValue<0.0)
         rValue=0.0;
@@ -1690,8 +1660,8 @@ bool DiagramHelper::switchDiagramPositioningToExcludingPositioning(
     ChartModel& rModel, bool bResetModifiedState, bool bConvertAlsoFromAutoPositioning )
 {
     //return true if something was changed
-    const SvtSaveOptions::ODFDefaultVersion nCurrentODFVersion( SvtSaveOptions().GetODFDefaultVersion() );
-    if( nCurrentODFVersion > SvtSaveOptions::ODFVER_012 )
+    const SvtSaveOptions::ODFSaneDefaultVersion nCurrentODFVersion(SvtSaveOptions().GetODFSaneDefaultVersion());
+    if (SvtSaveOptions::ODFSVER_012 < nCurrentODFVersion)
     {
         uno::Reference< css::chart::XDiagramPositioning > xDiagramPositioning( rModel.getFirstDiagram(), uno::UNO_QUERY );
         if( xDiagramPositioning.is() && ( bConvertAlsoFromAutoPositioning || !xDiagramPositioning->isAutomaticDiagramPositioning() )

@@ -21,14 +21,12 @@
 #include <sdr/contact/viewobjectcontactofunocontrol.hxx>
 #include <sdr/contact/viewcontactofunocontrol.hxx>
 #include <svx/sdr/contact/displayinfo.hxx>
-#include <svx/sdr/properties/properties.hxx>
-#include <sdr/contact/objectcontactofpageview.hxx>
+#include <svx/sdr/contact/objectcontactofpageview.hxx>
 #include <svx/sdr/primitive2d/svx_primitivetypes2d.hxx>
 #include <svx/svdouno.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/svdview.hxx>
 #include <svx/sdrpagewindow.hxx>
-#include "svx/sdrpaintwindow.hxx"
 
 #include <com/sun/star/awt/XControl.hpp>
 #include <com/sun/star/awt/XControlModel.hpp>
@@ -41,17 +39,20 @@
 #include <com/sun/star/awt/InvalidateStyle.hpp>
 #include <com/sun/star/util/XModeChangeListener.hpp>
 #include <com/sun/star/util/XModeChangeBroadcaster.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <com/sun/star/container/XContainer.hpp>
 
+#include <vcl/canvastools.hxx>
 #include <vcl/svapp.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/scopeguard.hxx>
-#include <comphelper/sequence.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <tools/diagnose_ex.h>
+#include <tools/debug.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
+#include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <drawinglayer/primitive2d/controlprimitive2d.hxx>
 
 /*
@@ -65,37 +66,37 @@ Below is a list of issues which existed in the past. Whenever you change code he
 verify those issues are still fixed. (Whenever you have some additional time, you're encouraged to write
 an automatic test for one or more of those issues for which this is possible :)
 
-http://www.openoffice.org/issues/show_bug.cgi?id=105992
-zooming documents containg (alive) form controls improperly positions the controls
+https://bz.apache.org/ooo/show_bug.cgi?id=105992
+zooming documents containing (alive) form controls improperly positions the controls
 
-http://www.openoffice.org/issues/show_bug.cgi?id=104362
+https://bz.apache.org/ooo/show_bug.cgi?id=104362
 crash when copy a control
 
-http://www.openoffice.org/issues/show_bug.cgi?id=104544
+https://bz.apache.org/ooo/show_bug.cgi?id=104544
 Gridcontrol duplicated after design view on/off
 
-http://www.openoffice.org/issues/show_bug.cgi?id=102089
+https://bz.apache.org/ooo/show_bug.cgi?id=102089
 print preview shows control elements with property printable=false
 
-http://www.openoffice.org/issues/show_bug.cgi?id=102090
+https://bz.apache.org/ooo/show_bug.cgi?id=102090
 problem with setVisible on TextControl
 
-http://www.openoffice.org/issues/show_bug.cgi?id=103138
+https://bz.apache.org/ooo/show_bug.cgi?id=103138
 loop when insert a control in draw
 
-http://www.openoffice.org/issues/show_bug.cgi?id=101398
+https://bz.apache.org/ooo/show_bug.cgi?id=101398
 initially-displaying a document with many controls is very slow
 
-http://www.openoffice.org/issues/show_bug.cgi?id=72429
+https://bz.apache.org/ooo/show_bug.cgi?id=72429
 repaint error in form wizard in bugdoc database
 
-http://www.openoffice.org/issues/show_bug.cgi?id=72694
+https://bz.apache.org/ooo/show_bug.cgi?id=72694
 form control artifacts when scrolling a text fast
 
 */
 
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 
     using namespace ::com::sun::star::awt::InvalidateStyle;
@@ -108,7 +109,6 @@ namespace sdr { namespace contact {
     using ::com::sun::star::awt::XControl;
     using ::com::sun::star::awt::XControlModel;
     using ::com::sun::star::awt::XControlContainer;
-    using ::com::sun::star::awt::XWindow;
     using ::com::sun::star::awt::XWindow2;
     using ::com::sun::star::awt::XWindowListener;
     using ::com::sun::star::awt::PosSize::POSSIZE;
@@ -127,6 +127,8 @@ namespace sdr { namespace contact {
     using ::com::sun::star::container::XContainer;
     using ::com::sun::star::container::ContainerEvent;
     using ::com::sun::star::uno::Any;
+
+    namespace {
 
     class ControlHolder
     {
@@ -199,7 +201,6 @@ namespace sdr { namespace contact {
         const Reference< XControl >&    getControl() const  { return m_xControl; }
     };
 
-
     bool operator==( const ControlHolder& _rControl, const Reference< XInterface >& _rxCompare )
     {
         return _rControl.getControl() == _rxCompare;
@@ -208,6 +209,8 @@ namespace sdr { namespace contact {
     bool operator==( const ControlHolder& _rControl, const Any& _rxCompare )
     {
         return _rControl == Reference< XInterface >( _rxCompare, UNO_QUERY );
+    }
+
     }
 
     void ControlHolder::setPosSize( const tools::Rectangle& _rPosSize ) const
@@ -236,7 +239,7 @@ namespace sdr { namespace contact {
     void ControlHolder::setZoom( const ::basegfx::B2DVector& _rScale ) const
     {
         // no check whether we're valid, this is the responsibility of the caller
-        m_xControlView->setZoom( (float)_rScale.getX(), (float)_rScale.getY() );
+        m_xControlView->setZoom( static_cast<float>(_rScale.getX()), static_cast<float>(_rScale.getY()) );
     }
 
 
@@ -265,8 +268,8 @@ namespace sdr { namespace contact {
         if ( pWindow )
         {
             const Fraction& rZoom( pWindow->GetZoom() );
-            aZoom.setX( (double)rZoom );
-            aZoom.setY( (double)rZoom );
+            aZoom.setX( static_cast<double>(rZoom) );
+            aZoom.setY( static_cast<double>(rZoom) );
         }
         return aZoom;
     }
@@ -275,7 +278,7 @@ namespace sdr { namespace contact {
 
     /** positions a control, and sets its zoom mode, using a given transformation and output device
      */
-    void adjustControlGeometry_throw( const ControlHolder& _rControl, const tools::Rectangle& _rLogicBoundingRect,
+    static void adjustControlGeometry_throw( const ControlHolder& _rControl, const tools::Rectangle& _rLogicBoundingRect,
         const basegfx::B2DHomMatrix& _rViewTransformation, const ::basegfx::B2DHomMatrix& _rZoomLevelNormalization )
     {
         OSL_PRECOND( _rControl.is(), "UnoControlContactHelper::adjustControlGeometry_throw: illegal control!" );
@@ -298,7 +301,10 @@ namespace sdr { namespace contact {
         ::basegfx::B2DPoint aBottomRight( _rLogicBoundingRect.Right(), _rLogicBoundingRect.Bottom() );
         aBottomRight *= _rViewTransformation;
 
-        const tools::Rectangle aPaintRectPixel( (long)aTopLeft.getX(), (long)aTopLeft.getY(), (long)aBottomRight.getX(), (long)aBottomRight.getY() );
+        const tools::Rectangle aPaintRectPixel(static_cast<long>(std::round(aTopLeft.getX())),
+                                               static_cast<long>(std::round(aTopLeft.getY())),
+                                               static_cast<long>(std::round(aBottomRight.getX())),
+                                               static_cast<long>(std::round(aBottomRight.getY())));
         _rControl.setPosSize( aPaintRectPixel );
 
         // determine the scale from the current view transformation, and the normalization matrix
@@ -311,22 +317,24 @@ namespace sdr { namespace contact {
 
     /** disposes the given control
      */
-    void disposeAndClearControl_nothrow( ControlHolder& _rControl )
+    static void disposeAndClearControl_nothrow( ControlHolder& _rControl )
     {
         try
         {
-            Reference< XComponent > xControlComp( _rControl.getControl(), UNO_QUERY );
+            Reference< XComponent > xControlComp = _rControl.getControl();
             if ( xControlComp.is() )
                 xControlComp->dispose();
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
         _rControl.clear();
     }
 
     }
+
+    namespace {
 
     /** interface encapsulating access to an SdrPageView, stripped down to the methods we really need
      */
@@ -366,6 +374,7 @@ namespace sdr { namespace contact {
         virtual bool    isLayerVisible( SdrLayerID _nLayerID ) const override;
     };
 
+    }
 
     bool SdrPageViewAccess::isDesignMode() const
     {
@@ -387,7 +396,9 @@ namespace sdr { namespace contact {
         return m_rPageView.GetVisibleLayers().IsSet( _nLayerID );
     }
 
-    /** is a ->IPageViewAccess implementation which can be used to create an invisble control for
+    namespace {
+
+    /** is a ->IPageViewAccess implementation which can be used to create an invisible control for
         an arbitrary window
      */
     class InvisibleControlViewAccess : public IPageViewAccess
@@ -408,6 +419,7 @@ namespace sdr { namespace contact {
         virtual bool    isLayerVisible( SdrLayerID _nLayerID ) const override;
     };
 
+    }
 
     bool InvisibleControlViewAccess::isDesignMode() const
     {
@@ -433,6 +445,7 @@ namespace sdr { namespace contact {
         return false;
     }
 
+    namespace {
 
     //= DummyPageViewAccess
 
@@ -458,6 +471,7 @@ namespace sdr { namespace contact {
         virtual bool    isLayerVisible( SdrLayerID _nLayerID ) const override;
     };
 
+    }
 
     bool DummyPageViewAccess::isDesignMode() const
     {
@@ -594,7 +608,7 @@ namespace sdr { namespace contact {
         /// creates an XControl for the given device and SdrUnoObj
         static bool
                 createControlForDevice(
-                    IPageViewAccess& _rPageView,
+                    IPageViewAccess const & _rPageView,
                     const OutputDevice& _rDevice,
                     const SdrUnoObj& _rUnoObject,
                     const basegfx::B2DHomMatrix& _rInitialViewTransformation,
@@ -700,7 +714,7 @@ namespace sdr { namespace contact {
                 We're not disposed.
         */
         static void impl_adjustControlVisibilityToLayerVisibility_throw( const ControlHolder& _rxControl, const SdrUnoObj& _rUnoObject,
-            IPageViewAccess& _rPageView, bool _bIsCurrentlyVisible, bool _bForce );
+            IPageViewAccess const & _rPageView, bool _bIsCurrentlyVisible, bool _bForce );
 
         /** starts or stops listening at various aspects of our control
 
@@ -757,13 +771,15 @@ namespace sdr { namespace contact {
         /** ensures that we have a control for the given PageView/OutputDevice
         */
         bool impl_ensureControl_nothrow(
-                IPageViewAccess& _rPageView,
+                IPageViewAccess const & _rPageView,
                 const OutputDevice& _rDevice,
                 const basegfx::B2DHomMatrix& _rInitialViewTransformation
              );
 
         const OutputDevice& impl_getOutputDevice_throw() const;
     };
+
+    namespace {
 
     class LazyControlCreationPrimitive2D : public ::drawinglayer::primitive2d::BufferedDecompositionPrimitive2D
     {
@@ -798,7 +814,7 @@ namespace sdr { namespace contact {
         virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
         // declare unique ID for this primitive class
-        DeclPrimitive2DIDBlock()
+        virtual sal_uInt32 getPrimitive2DID() const override;
 
         static void getTransformation( const ViewContactOfUnoControl& _rVOC, ::basegfx::B2DHomMatrix& _out_Transformation );
 
@@ -811,12 +827,14 @@ namespace sdr { namespace contact {
 
     private:
         ::rtl::Reference< ViewObjectContactOfUnoControl_Impl >  m_pVOCImpl;
-        /** The geometry is part of the identity of an primitive, so we cannot calculate it on demand
+        /** The geometry is part of the identity of a primitive, so we cannot calculate it on demand
             (since the data the calculation is based on might have changed then), but need to calc
             it at construction time, and remember it.
         */
         ::basegfx::B2DHomMatrix                                 m_aTransformation;
     };
+
+    }
 
     ViewObjectContactOfUnoControl_Impl::ViewObjectContactOfUnoControl_Impl( ViewObjectContactOfUnoControl* _pAntiImpl )
         :m_pAntiImpl( _pAntiImpl )
@@ -840,8 +858,8 @@ namespace sdr { namespace contact {
 
         ::basegfx::B2DHomMatrix aScaleNormalization;
         const MapMode& aCurrentDeviceMapMode( rPageViewDevice.GetMapMode() );
-        aScaleNormalization.set( 0, 0, (double)aCurrentDeviceMapMode.GetScaleX() );
-        aScaleNormalization.set( 1, 1, (double)aCurrentDeviceMapMode.GetScaleY() );
+        aScaleNormalization.set( 0, 0, static_cast<double>(aCurrentDeviceMapMode.GetScaleX()) );
+        aScaleNormalization.set( 1, 1, static_cast<double>(aCurrentDeviceMapMode.GetScaleY()) );
         m_aZoomLevelNormalization *= aScaleNormalization;
 
     #if OSL_DEBUG_LEVEL > 0
@@ -918,12 +936,7 @@ namespace sdr { namespace contact {
             SdrUnoObj* pUnoObject( nullptr );
             if ( getUnoObject( pUnoObject ) )
             {
-                Point aGridOffset = pUnoObject->GetGridOffset();
-                tools::Rectangle aRect( pUnoObject->GetLogicRect() );
-                // Hack for calc, transform position of object according
-                // to current zoom so as objects relative position to grid
-                // appears stable
-                aRect += aGridOffset;
+                const tools::Rectangle aRect( pUnoObject->GetLogicRect() );
                 UnoControlContactHelper::adjustControlGeometry_throw( m_aControl, aRect, _rViewTransformation, m_aZoomLevelNormalization );
             }
             else
@@ -931,7 +944,7 @@ namespace sdr { namespace contact {
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 
@@ -946,7 +959,7 @@ namespace sdr { namespace contact {
         if ( pPageViewContact )
         {
             SdrPageViewAccess aPVAccess( pPageViewContact->GetPageWindow().GetPageView() );
-            const OutputDevice& rDevice( m_pAntiImpl->getPageViewOutputDevice().get() );
+            const OutputDevice& rDevice( *m_pAntiImpl->getPageViewOutputDevice() );
             impl_ensureControl_nothrow(
                 aPVAccess,
                 rDevice,
@@ -969,9 +982,9 @@ namespace sdr { namespace contact {
     {
         // do not use ObjectContact::TryToGetOutputDevice, it would not care for the PageWindow's
         // OriginalPaintWindow
-        boost::optional<const OutputDevice&> oPageOutputDev = m_pAntiImpl->getPageViewOutputDevice();
+        const OutputDevice* oPageOutputDev = m_pAntiImpl->getPageViewOutputDevice();
         if( oPageOutputDev )
-            return oPageOutputDev.get();
+            return *oPageOutputDev;
 
         const OutputDevice* pDevice = m_pAntiImpl->GetObjectContact().TryToGetOutputDevice();
         ENSURE_OR_THROW( pDevice, "no output device -> no control" );
@@ -988,7 +1001,7 @@ namespace sdr { namespace contact {
     }
 
 
-    bool ViewObjectContactOfUnoControl_Impl::impl_ensureControl_nothrow( IPageViewAccess& _rPageView, const OutputDevice& _rDevice,
+    bool ViewObjectContactOfUnoControl_Impl::impl_ensureControl_nothrow( IPageViewAccess const & _rPageView, const OutputDevice& _rDevice,
         const basegfx::B2DHomMatrix& _rInitialViewTransformation )
     {
         if ( m_bCreatingControl )
@@ -997,7 +1010,7 @@ namespace sdr { namespace contact {
             // We once had a situation where this was called reentrantly, which lead to all kind of strange effects. All
             // those affected the grid control, which is the only control so far which is visible in design mode (and
             // not only in alive mode).
-            // Creating the control triggered an Window::Update on some of its child windows, which triggered a
+            // Creating the control triggered a Window::Update on some of its child windows, which triggered a
             // Paint on parent of the grid control (e.g. the SwEditWin), which triggered a reentrant call to this method,
             // which it is not really prepared for.
 
@@ -1051,7 +1064,7 @@ namespace sdr { namespace contact {
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
 
         // start listening at all aspects of the control which are interesting to us ...
@@ -1065,7 +1078,7 @@ namespace sdr { namespace contact {
     }
 
 
-    bool ViewObjectContactOfUnoControl_Impl::createControlForDevice( IPageViewAccess& _rPageView,
+    bool ViewObjectContactOfUnoControl_Impl::createControlForDevice( IPageViewAccess const & _rPageView,
         const OutputDevice& _rDevice, const SdrUnoObj& _rUnoObject, const basegfx::B2DHomMatrix& _rInitialViewTransformation,
         const basegfx::B2DHomMatrix& _rInitialZoomNormalization, ControlHolder& _out_rControl )
     {
@@ -1086,12 +1099,7 @@ namespace sdr { namespace contact {
 
             // knit the model and the control
             _out_rControl.setModel( xControlModel );
-            Point aGridOffset =  _rUnoObject.GetGridOffset();
-            tools::Rectangle aRect( _rUnoObject.GetLogicRect() );
-            // Hack for calc, transform position of object according
-            // to current zoom so as objects relative position to grid
-            // appears stable
-            aRect += aGridOffset;
+            const tools::Rectangle aRect( _rUnoObject.GetLogicRect() );
 
             // proper geometry
             UnoControlContactHelper::adjustControlGeometry_throw(
@@ -1118,7 +1126,7 @@ namespace sdr { namespace contact {
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
 
         if ( !bSuccess )
@@ -1167,7 +1175,7 @@ namespace sdr { namespace contact {
 
 
     void ViewObjectContactOfUnoControl_Impl::impl_adjustControlVisibilityToLayerVisibility_throw( const ControlHolder& _rControl,
-        const SdrUnoObj& _rUnoObject, IPageViewAccess& _rPageView, bool _bIsCurrentlyVisible, bool _bForce )
+        const SdrUnoObj& _rUnoObject, IPageViewAccess const & _rPageView, bool _bIsCurrentlyVisible, bool _bForce )
     {
         // in design mode, there is no problem with the visibility: The XControl is hidden by
         // default, and the Drawing Layer will simply not call our paint routine, if we're in
@@ -1202,7 +1210,7 @@ namespace sdr { namespace contact {
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 
@@ -1233,7 +1241,7 @@ namespace sdr { namespace contact {
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 
@@ -1264,7 +1272,7 @@ namespace sdr { namespace contact {
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 
@@ -1283,7 +1291,7 @@ namespace sdr { namespace contact {
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
         return bIsPrintable;
     }
@@ -1373,12 +1381,12 @@ namespace sdr { namespace contact {
 
         try
         {
-            // if the control is part of a invisible layer, we need to explicitly hide it in alive mode
+            // if the control is part of an invisible layer, we need to explicitly hide it in alive mode
             impl_adjustControlVisibilityToLayerVisibility_throw();
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 
@@ -1456,7 +1464,7 @@ namespace sdr { namespace contact {
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 
@@ -1488,18 +1496,8 @@ namespace sdr { namespace contact {
         // Do use model data directly to create the correct geometry. Do NOT
         // use getBoundRect()/getSnapRect() here; these will use the sequence of
         // primitives themselves in the long run.
-        tools::Rectangle aSdrGeoData( _rVOC.GetSdrUnoObj().GetGeoRect() );
-        Point aGridOffset = _rVOC.GetSdrUnoObj().GetGridOffset();
-        // Hack for calc, transform position of object according
-        // to current zoom so as objects relative position to grid
-        // appears stable
-        aSdrGeoData += aGridOffset;
-        const basegfx::B2DRange aRange(
-            aSdrGeoData.Left(),
-            aSdrGeoData.Top(),
-            aSdrGeoData.Right(),
-            aSdrGeoData.Bottom()
-        );
+        const tools::Rectangle aSdrGeoData( _rVOC.GetSdrUnoObj().GetGeoRect() );
+        const basegfx::B2DRange aRange = vcl::unotools::b2DRectangleFromRectangle(aSdrGeoData);
 
         _out_Transformation.identity();
         _out_Transformation.set( 0, 0, aRange.getWidth() );
@@ -1552,16 +1550,13 @@ namespace sdr { namespace contact {
         if ( !bHadControl && rControl.is() && rControl.isVisible() )
             rControl.invalidate();
 
-        if ( !bHadControl && rControl.is() && rControl.isVisible() )
-            rControl.invalidate();
-
         // check if we already have an XControl.
         if ( !xControlModel.is() || !rControl.is() )
         {
             // use the default mechanism. This will create a ControlPrimitive2D without
             // handing over a XControl. If not even a XControlModel exists, it will
             // create the SdrObject fallback visualisation
-            drawinglayer::primitive2d::Primitive2DContainer aTmp = rViewContactOfUnoControl.getViewIndependentPrimitive2DContainer();
+            const drawinglayer::primitive2d::Primitive2DContainer& aTmp = rViewContactOfUnoControl.getViewIndependentPrimitive2DContainer();
             rContainer.insert(rContainer.end(), aTmp.begin(), aTmp.end());
             return;
         }
@@ -1636,7 +1631,7 @@ namespace sdr { namespace contact {
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 
@@ -1692,7 +1687,30 @@ namespace sdr { namespace contact {
         #endif
 
             if ( !rViewInformation.getViewport().isEmpty() )
-                m_pImpl->positionAndZoomControl( rViewInformation.getObjectToViewTransformation() );
+            {
+                // tdf#121963 check and eventually pre-multiply ViewTransformation
+                // with GridOffset transformation to avoid alternating positions of
+                // FormControls which are victims of the non-linear calc ViewTransformation
+                // aka GridOffset. For other paths (e.g. repaint) this is included already
+                // as part of the object's sequence of B2DPrimitive - representation
+                // (see ViewObjectContact::getPrimitive2DSequence and how getGridOffset is used there)
+                basegfx::B2DHomMatrix aViewTransformation(rViewInformation.getObjectToViewTransformation());
+
+                if(GetObjectContact().supportsGridOffsets())
+                {
+                    const basegfx::B2DVector& rGridOffset(getGridOffset());
+
+                    if(0.0 != rGridOffset.getX() || 0.0 != rGridOffset.getY())
+                    {
+                        // pre-multiply: GridOffset needs to be applied directly to logic model data
+                        // of object coordinates, so multiply GridOffset from right to make it
+                        // work as 1st change - these objects may still be part of groups/hierarchies
+                        aViewTransformation = aViewTransformation * basegfx::utils::createTranslateB2DHomMatrix(rGridOffset);
+                    }
+                }
+
+                m_pImpl->positionAndZoomControl(aViewTransformation);
+            }
         }
 
         return ViewObjectContactOfSdrObj::isPrimitiveVisible( _rDisplayInfo );
@@ -1711,21 +1729,21 @@ namespace sdr { namespace contact {
         ViewObjectContactOfSdrObj::ActionChanged();
         const ControlHolder& rControl(m_pImpl->getExistentControl());
 
-        if(rControl.is() && !rControl.isDesignMode())
+        if(!(rControl.is() && !rControl.isDesignMode()))
+            return;
+
+        // #i93180# if layer visibility has changed and control is in live mode, it is necessary
+        // to correct visibility to make those control vanish on SdrObject LayerID changes
+        const SdrPageView* pSdrPageView = GetObjectContact().TryToGetSdrPageView();
+
+        if(pSdrPageView)
         {
-            // #i93180# if layer visibility has changed and control is in live mode, it is necessary
-            // to correct visibility to make those control vanish on SdrObject LayerID changes
-            const SdrPageView* pSdrPageView = GetObjectContact().TryToGetSdrPageView();
+            const SdrObject& rObject = getSdrObject();
+            const bool bIsLayerVisible( rObject.IsVisible() && pSdrPageView->GetVisibleLayers().IsSet(rObject.GetLayer()));
 
-            if(pSdrPageView)
+            if(rControl.isVisible() != bIsLayerVisible)
             {
-                const SdrObject& rObject = getSdrObject();
-                const bool bIsLayerVisible( rObject.IsVisible() && pSdrPageView->GetVisibleLayers().IsSet(rObject.GetLayer()));
-
-                if(rControl.isVisible() != bIsLayerVisible)
-                {
-                    rControl.setVisible(bIsLayerVisible);
-                }
+                rControl.setVisible(bIsLayerVisible);
             }
         }
     }
@@ -1762,7 +1780,7 @@ namespace sdr { namespace contact {
     }
 
 
-} } // namespace sdr::contact
+} // namespace sdr::contact
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

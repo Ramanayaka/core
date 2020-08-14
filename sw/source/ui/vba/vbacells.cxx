@@ -18,13 +18,13 @@
  */
 #include "vbacells.hxx"
 #include "vbacell.hxx"
-#include "wordvbahelper.hxx"
-#include "vbatablehelper.hxx"
 #include "vbarow.hxx"
 #include <cppuhelper/implbase.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
+
+namespace {
 
 class CellsEnumWrapper : public EnumerationHelper_BASE
 {
@@ -102,6 +102,8 @@ public:
         return new CellsEnumWrapper( this );
     }
 };
+
+}
 
 SwVbaCells::SwVbaCells( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< text::XTextTable >& xTextTable, sal_Int32 nLeft, sal_Int32 nTop, sal_Int32 nRight, sal_Int32 nBottom ) : SwVbaCells_BASE( xParent, xContext, uno::Reference< container::XIndexAccess >( new CellCollectionHelper( xParent, xContext, xTextTable, nLeft, nTop, nRight, nBottom ) ) ), mxTextTable( xTextTable ), mnTop( nTop ), mnBottom( nBottom )
 {
@@ -195,18 +197,16 @@ SwVbaCells::createCollectionObject( const uno::Any& aSource )
 OUString
 SwVbaCells::getServiceImplName()
 {
-    return OUString("SwVbaCells");
+    return "SwVbaCells";
 }
 
 uno::Sequence<OUString>
 SwVbaCells::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.Cells";
-    }
+        "ooo.vba.word.Cells"
+    };
     return sNames;
 }
 

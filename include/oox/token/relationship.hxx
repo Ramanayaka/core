@@ -7,6 +7,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#ifndef INCLUDED_OOX_TOKEN_RELATIONSHIP_HXX
+#define INCLUDED_OOX_TOKEN_RELATIONSHIP_HXX
+
 #include <oox/dllapi.h>
 
 #include <rtl/ustring.hxx>
@@ -18,7 +21,9 @@ enum class Relationship
     ACTIVEXCONTROLBINARY,
     CHART,
     COMMENTS,
+    COMMENTAUTHORS,
     CONTROL,
+    CTRLPROP,
     CUSTOMXML,
     CUSTOMXMLPROPS,
     DIAGRAMCOLORS,
@@ -26,7 +31,9 @@ enum class Relationship
     DIAGRAMDRAWING,
     DIAGRAMLAYOUT,
     DIAGRAMQUICKSTYLE,
+    DRAWING,
     ENDNOTES,
+    EXTERNALLINKPATH,
     FONT,
     FONTTABLE,
     FOOTER,
@@ -36,17 +43,32 @@ enum class Relationship
     HEADER,
     HYPERLINK,
     IMAGE,
+    MEDIA,
+    NOTESMASTER,
+    NOTESSLIDE,
     NUMBERING,
     OFFICEDOCUMENT,
     OLEOBJECT,
     PACKAGE,
     SETTINGS,
+    SHAREDSTRINGS,
+    SLIDE,
+    SLIDELAYOUT,
+    SLIDEMASTER,
     STYLES,
-    THEME
+    THEME,
+    VBAPROJECT,
+    VIDEO,
+    AUDIO,
+    VMLDRAWING,
+    WORDVBADATA,
+    WORKSHEET
 };
 
 OUString OOX_DLLPUBLIC getRelationship(Relationship eRelationship);
 
 }
+
+#endif // INCLUDED_OOX_TOKEN_RELATIONSHIP_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

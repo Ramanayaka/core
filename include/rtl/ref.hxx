@@ -20,11 +20,16 @@
 #ifndef INCLUDED_RTL_REF_HXX
 #define INCLUDED_RTL_REF_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cassert>
+#include <cstddef>
+#include <functional>
+#ifdef LIBO_INTERNAL_ONLY
+#include <type_traits>
+#endif
 
-#include <sal/types.h>
+#include "sal/types.h"
 
 namespace rtl
 {
@@ -75,10 +80,28 @@ public:
 #ifdef LIBO_INTERNAL_ONLY
     /** Move constructor...
      */
-    Reference (Reference<reference_type> && handle)
+    Reference (Reference<reference_type> && handle) noexcept
         : m_pBody (handle.m_pBody)
     {
         handle.m_pBody = nullptr;
+    }
+#endif
+
+#if defined LIBO_INTERNAL_ONLY
+    /** Up-casting conversion constructor: Copies interface reference.
+
+        Does not work for up-casts to ambiguous bases.
+
+        @param rRef another reference
+    */
+    template< class derived_type >
+    inline Reference(
+        const Reference< derived_type > & rRef,
+        std::enable_if_t<std::is_base_of_v<reference_type, derived_type>, int> = 0 )
+        : m_pBody (rRef.get())
+    {
+        if (m_pBody)
+            m_pBody->acquire();
     }
 #endif
 
@@ -249,6 +272,28 @@ public:
 };
 
 } // namespace rtl
+
+#if defined LIBO_INTERNAL_ONLY
+namespace std
+{
+
+/// @cond INTERNAL
+/**
+  Make rtl::Reference hashable by default for use in STL containers.
+
+  @since LibreOffice 6.3
+*/
+template<typename T>
+struct hash<::rtl::Reference<T>>
+{
+    std::size_t operator()(::rtl::Reference<T> const & s) const
+    { return std::size_t(s.get()); }
+};
+/// @endcond
+
+}
+
+#endif
 
 #endif /* ! INCLUDED_RTL_REF_HXX */
 

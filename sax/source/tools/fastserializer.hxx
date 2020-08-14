@@ -25,7 +25,7 @@
 
 #include <sax/fastattribs.hxx>
 #include <sax/fshelper.hxx>
-#include <CachedOutputStream.hxx>
+#include "CachedOutputStream.hxx"
 
 #include <stack>
 #include <map>
@@ -51,7 +51,7 @@ public:
     explicit FastSaxSerializer(const css::uno::Reference< css::io::XOutputStream >& xOutputStream);
     ~FastSaxSerializer();
 
-    css::uno::Reference< css::io::XOutputStream > getOutputStream();
+    css::uno::Reference< css::io::XOutputStream > const & getOutputStream() const;
     /// called by FSHelper to put data in for writeTokenValueList
     TokenValueList& getTokenValueList() { return maTokenValues; }
 
@@ -80,9 +80,9 @@ public:
             from the element.
 
     */
-    void startFastElement( ::sal_Int32 Element, FastAttributeList* pAttrList = nullptr );
+    void startFastElement( ::sal_Int32 Element, FastAttributeList const * pAttrList = nullptr );
 
-    /** receives notification of the end of an known element.
+    /** receives notification of the end of a known element.
         @see startFastElement
      */
     void endFastElement( ::sal_Int32 Element );
@@ -104,7 +104,7 @@ public:
             from the element.
 
     */
-    void singleFastElement( ::sal_Int32 Element, FastAttributeList* pAttrList = nullptr );
+    void singleFastElement( ::sal_Int32 Element, FastAttributeList const * pAttrList = nullptr );
 
     // C++ helpers
     void writeId( ::sal_Int32 Element );
@@ -185,7 +185,7 @@ private:
 #endif
 
         virtual void prepend( const Int8Sequence &rWhat );
-        virtual void append( const Int8Sequence &rWhat ) override;
+        virtual void append( const css::uno::Sequence<sal_Int8> &rWhat ) override;
         void postpone( const Int8Sequence &rWhat );
 
     protected:
@@ -216,7 +216,7 @@ private:
 #endif
 
         virtual void prepend( const Int8Sequence &rWhat ) override;
-        virtual void append( const Int8Sequence &rWhat ) override;
+        virtual void append( const css::uno::Sequence<sal_Int8> &rWhat ) override;
     private:
         void sort();
     };
@@ -237,7 +237,7 @@ private:
 #endif
 
     void writeTokenValueList();
-    void writeFastAttributeList(FastAttributeList& rAttrList);
+    void writeFastAttributeList(FastAttributeList const & rAttrList);
 
     /** Forward the call to the output stream, or write to the stack.
 

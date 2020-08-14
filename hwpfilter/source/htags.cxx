@@ -25,13 +25,14 @@
 #include "hwpfile.h"
 #include "htags.h"
 
-void HyperText::Read(HWPFile & hwpf)
+bool HyperText::Read(HWPFile& hwpf)
 {
-    hwpf.Read1b(filename, 256);
-    hwpf.Read2b(bookmark, 16);
-    hwpf.Read1b(macro, 325);
-    hwpf.Read1b(&type, 1);
-    hwpf.Read1b(reserve, 3);
+    size_t nRead = hwpf.ReadBlock(filename, 256);
+    nRead += hwpf.Read2b(bookmark, 16);
+    nRead += hwpf.ReadBlock(macro, 325);
+    if (hwpf.Read1b(type))
+        ++nRead;
+    nRead += hwpf.ReadBlock(reserve, 3);
     if( type == 2 )
     {
         for( int i = 1; i < 256; i++)
@@ -41,48 +42,42 @@ void HyperText::Read(HWPFile & hwpf)
                 break;
         }
     }
+    return nRead == 617;
 }
-
 
 EmPicture::EmPicture(size_t tsize)
     : size(tsize >= 32 ? tsize - 32 : 0)
 {
-    if (size == 0)
-        data = nullptr;
-    else
-        data = new uchar[size];
+    if (size != 0)
+        data.reset( new uchar[size] );
 }
-#ifdef _WIN32
-#define unlink _unlink
-#endif
+
 EmPicture::~EmPicture()
 {
-    delete[] data;
 };
 
 bool EmPicture::Read(HWPFile & hwpf)
 {
     if (size == 0)
         return false;
-    hwpf.Read1b(name, 16);
-    hwpf.Read1b(type, 16);
+    hwpf.ReadBlock(name, 16);
+    hwpf.ReadBlock(type, 16);
     name[0] = 'H';
     name[1] = 'W';
     name[2] = 'P';
-    return hwpf.ReadBlock(data, size) != 0;
+    return hwpf.ReadBlock(data.get(), size) != 0;
 }
 
 
 OlePicture::OlePicture(int tsize)
     : signature(0)
+#ifdef _WIN32
     , pis(nullptr)
+#endif
 {
     size = tsize - 4;
     if (size <= 0)
         return;
-#ifndef _WIN32
-     pis = new char[size];
-#endif
 };
 
 OlePicture::~OlePicture()
@@ -90,8 +85,6 @@ OlePicture::~OlePicture()
 #ifdef _WIN32
      if( pis )
           pis->Release();
-#else
-     delete[] pis;
 #endif
 };
 
@@ -135,8 +128,7 @@ void OlePicture::Read(HWPFile & hwpf)
     }
     unlink(tname);
 #else
-    if (pis == nullptr || hwpf.ReadBlock(pis, size) == 0)
-        return;
+    hwpf.SkipBlock(size);
 #endif
 }
 

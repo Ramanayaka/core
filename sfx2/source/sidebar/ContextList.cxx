@@ -16,19 +16,13 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <sfx2/sidebar/ContextList.hxx>
+#include <sidebar/ContextList.hxx>
 #include <sfx2/sidebar/Context.hxx>
 
-using ::rtl::OUString;
-
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 ContextList::ContextList()
     : maEntries()
-{
-}
-
-ContextList::~ContextList()
 {
 }
 
@@ -79,7 +73,7 @@ void ContextList::AddContextDescription (
     const bool bIsInitiallyVisible,
     const OUString& rsMenuCommand)
 {
-    maEntries.push_back(Entry());
+    maEntries.emplace_back();
     maEntries.back().maContext = rContext;
     maEntries.back().mbIsInitiallyVisible = bIsInitiallyVisible;
     maEntries.back().msMenuCommand = rsMenuCommand;
@@ -89,22 +83,22 @@ void ContextList::ToggleVisibilityForContext( const Context &rContext, const boo
 {
     ContextList::Entry *pEntry = GetMatch( rContext );
 
-    if ( pEntry )
-    {
-        const sal_Int32 nMatch( rContext.EvaluateMatch( pEntry->maContext ) );
+    if ( !pEntry )
+        return;
 
-        if ( nMatch & Context::ApplicationWildcardMatch )
-        {
-            // Create a separate context list entry for this app if 'any'
-            // is the only context that matches. Toggling the visibility
-            // for 'any' would change it for all apps, not just this one
-            AddContextDescription( rContext, bVisible, OUString() );
-        }
-        else if ( nMatch == Context::OptimalMatch || nMatch == Context::ContextWildcardMatch )
-            pEntry->mbIsInitiallyVisible = bVisible;
+    const sal_Int32 nMatch( rContext.EvaluateMatch( pEntry->maContext ) );
+
+    if ( nMatch & Context::ApplicationWildcardMatch )
+    {
+        // Create a separate context list entry for this app if 'any'
+        // is the only context that matches. Toggling the visibility
+        // for 'any' would change it for all apps, not just this one
+        AddContextDescription( rContext, bVisible, OUString() );
     }
+    else if ( nMatch == Context::OptimalMatch || nMatch == Context::ContextWildcardMatch )
+        pEntry->mbIsInitiallyVisible = bVisible;
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

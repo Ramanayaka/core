@@ -36,6 +36,7 @@ $(eval $(call gb_Library_use_custom_headers,pdffilter,\
 
 $(eval $(call gb_Library_use_libraries,pdffilter,\
 	svt \
+	svx \
 	sfx \
 	tk \
 	vcl \
@@ -48,15 +49,16 @@ $(eval $(call gb_Library_use_libraries,pdffilter,\
 	cppuhelper \
 	cppu \
 	sal \
+	drawinglayer \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,pdffilter,\
 	filter/source/pdf/impdialog \
+	filter/source/pdf/pdfdecomposer \
 	filter/source/pdf/pdfdialog \
 	filter/source/pdf/pdfexport \
 	filter/source/pdf/pdffilter \
 	filter/source/pdf/pdfinteract \
-	filter/source/pdf/pdfuno \
 ))
 
 # vim: set noet sw=4 ts=4:

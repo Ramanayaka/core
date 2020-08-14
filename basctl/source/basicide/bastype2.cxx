@@ -18,21 +18,22 @@
  */
 
 
+#include <basobj.hxx>
 #include <bastypes.hxx>
 #include <bastype2.hxx>
-#include <basidesh.hrc>
+#include <strings.hrc>
 #include <bitmaps.hlst>
 #include <iderid.hxx>
-#include <o3tl/make_unique.hxx>
 #include <tools/urlobj.hxx>
 #include <tools/diagnose_ex.h>
+#include <tools/debug.hxx>
 #include <svtools/imagemgr.hxx>
-#include <svtools/treelistentry.hxx>
 #include <com/sun/star/script/XLibraryContainerPassword.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
 #include <comphelper/processfactory.hxx>
 #include <sfx2/dispatch.hxx>
-#include <vcl/builderfactory.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <vcl/event.hxx>
 
 #include <initializer_list>
 #include <memory>
@@ -157,38 +158,32 @@ EntryDescriptor::EntryDescriptor (
     OSL_ENSURE( m_aDocument.isValid(), "EntryDescriptor::EntryDescriptor: invalid document!" );
 }
 
-TreeListBox::TreeListBox (vcl::Window* pParent, WinBits nStyle)
-    : SvTreeListBox(pParent, nStyle)
-    , m_aNotifier( *this )
+SbTreeListBox::SbTreeListBox(std::unique_ptr<weld::TreeView> xControl, weld::Window* pTopLevel)
+    : m_xControl(std::move(xControl))
+    , m_xScratchIter(m_xControl->make_iterator())
+    , m_pTopLevel(pTopLevel)
+    , m_bFreezeOnFirstAddRemove(false)
+    , m_aNotifier(*this)
 {
-    SetNodeDefaultImages();
-    SetSelectionMode( SelectionMode::Single );
+    m_xControl->connect_row_activated(LINK(this, SbTreeListBox, OpenCurrentHdl));
+    m_xControl->connect_expanding(LINK(this, SbTreeListBox, RequestingChildrenHdl));
     nMode = BrowseMode::All;   // everything
 }
 
-VCL_BUILDER_FACTORY_CONSTRUCTOR(TreeListBox, WB_TABSTOP)
-
-TreeListBox::~TreeListBox ()
-{
-    disposeOnce();
-}
-
-void TreeListBox::dispose()
+SbTreeListBox::~SbTreeListBox()
 {
     m_aNotifier.dispose();
 
-    // destroy user data
-    SvTreeListEntry* pEntry = First();
-    while ( pEntry )
+    bool bValidIter = m_xControl->get_iter_first(*m_xScratchIter);
+    while (bValidIter)
     {
-        delete static_cast<Entry*>( pEntry->GetUserData() );
-        pEntry->SetUserData( nullptr );
-        pEntry = Next( pEntry );
+        Entry* pBasicEntry = reinterpret_cast<Entry*>(m_xControl->get_id(*m_xScratchIter).toInt64());
+        delete pBasicEntry;
+        bValidIter = m_xControl->iter_next(*m_xScratchIter);
     }
-    SvTreeListBox::dispose();
 }
 
-void TreeListBox::ScanEntry( const ScriptDocument& rDocument, LibraryLocation eLocation )
+void SbTreeListBox::ScanEntry( const ScriptDocument& rDocument, LibraryLocation eLocation )
 {
     OSL_ENSURE( rDocument.isAlive(), "TreeListBox::ScanEntry: illegal document!" );
     if ( !rDocument.isAlive() )
@@ -197,27 +192,19 @@ void TreeListBox::ScanEntry( const ScriptDocument& rDocument, LibraryLocation eL
     // can be called multiple times for updating!
 
     // actually test if basic's in the tree already?!
-    SetUpdateMode(false);
-
     // level 1: BasicManager (application, document, ...)
-    SvTreeListEntry* pDocumentRootEntry = FindRootEntry( rDocument, eLocation );
-    if ( pDocumentRootEntry && IsExpanded( pDocumentRootEntry ) )
-        ImpCreateLibEntries( pDocumentRootEntry, rDocument, eLocation );
-    if ( !pDocumentRootEntry )
+    bool bDocumentRootEntry = FindRootEntry(rDocument, eLocation, *m_xScratchIter);
+    if (bDocumentRootEntry && m_xControl->get_row_expanded(*m_xScratchIter))
+        ImpCreateLibEntries(*m_xScratchIter, rDocument, eLocation);
+    if (!bDocumentRootEntry)
     {
-        OUString aRootName( GetRootEntryName( rDocument, eLocation ) );
-        Image aImage;
-        GetRootEntryBitmaps( rDocument, aImage );
-        AddEntry(
-            aRootName,
-            aImage,
-            nullptr, true, o3tl::make_unique<DocumentEntry>(rDocument, eLocation));
+        OUString aRootName(GetRootEntryName(rDocument, eLocation));
+        OUString aImage(GetRootEntryBitmaps(rDocument));
+        AddEntry(aRootName, aImage, nullptr, true, std::make_unique<DocumentEntry>(rDocument, eLocation));
     }
-
-    SetUpdateMode(true);
 }
 
-void TreeListBox::ImpCreateLibEntries( SvTreeListEntry* pDocumentRootEntry, const ScriptDocument& rDocument, LibraryLocation eLocation )
+void SbTreeListBox::ImpCreateLibEntries(const weld::TreeIter& rIter, const ScriptDocument& rDocument, LibraryLocation eLocation)
 {
     // get a sorted list of library names
     Sequence< OUString > aLibNames( rDocument.getLibraryNames() );
@@ -260,26 +247,25 @@ void TreeListBox::ImpCreateLibEntries( SvTreeListEntry* pDocumentRootEntry, cons
                 sId = bLoaded ? OUStringLiteral(RID_BMP_DLGLIB) : OUStringLiteral(RID_BMP_DLGLIBNOTLOADED);
             else
                 sId = bLoaded ? OUStringLiteral(RID_BMP_MODLIB) : OUStringLiteral(RID_BMP_MODLIBNOTLOADED);
-            SvTreeListEntry* pLibRootEntry = FindEntry( pDocumentRootEntry, aLibName, OBJ_TYPE_LIBRARY );
-            if ( pLibRootEntry )
+            std::unique_ptr<weld::TreeIter> xLibRootEntry(m_xControl->make_iterator(&rIter));
+            bool bLibRootEntry = FindEntry(aLibName, OBJ_TYPE_LIBRARY, *xLibRootEntry);
+            if (bLibRootEntry)
             {
-                SetEntryBitmaps(pLibRootEntry, Image(BitmapEx(sId)));
-                if ( IsExpanded(pLibRootEntry))
-                    ImpCreateLibSubEntries( pLibRootEntry, rDocument, aLibName );
+                SetEntryBitmaps(*xLibRootEntry, sId);
+                bool bRowExpanded = m_xControl->get_row_expanded(*xLibRootEntry);
+                bool bRowExpandAttempted = !m_xControl->get_children_on_demand(*xLibRootEntry);
+                if (bRowExpanded || bRowExpandAttempted)
+                    ImpCreateLibSubEntries(*xLibRootEntry, rDocument, aLibName);
             }
             else
             {
-                AddEntry(
-                    aLibName,
-                    Image(BitmapEx(sId)),
-                    pDocumentRootEntry, true,
-                    o3tl::make_unique<Entry>(OBJ_TYPE_LIBRARY));
+                AddEntry(aLibName, sId, &rIter, true, std::make_unique<Entry>(OBJ_TYPE_LIBRARY));
             }
         }
     }
 }
 
-void TreeListBox::ImpCreateLibSubEntries( SvTreeListEntry* pLibRootEntry, const ScriptDocument& rDocument, const OUString& rLibName )
+void SbTreeListBox::ImpCreateLibSubEntries(const weld::TreeIter& rLibRootEntry, const ScriptDocument& rDocument, const OUString& rLibName)
 {
     // modules
     if ( nMode & BrowseMode::Modules )
@@ -291,7 +277,9 @@ void TreeListBox::ImpCreateLibSubEntries( SvTreeListEntry* pLibRootEntry, const 
             try
             {
                 if( rDocument.isInVBAMode() )
-                    ImpCreateLibSubEntriesInVBAMode( pLibRootEntry, rDocument, rLibName );
+                {
+                    ImpCreateLibSubEntriesInVBAMode(rLibRootEntry, rDocument, rLibName);
+                }
                 else
                 {
                     // get a sorted list of module names
@@ -299,17 +287,16 @@ void TreeListBox::ImpCreateLibSubEntries( SvTreeListEntry* pLibRootEntry, const 
                     sal_Int32 nModCount = aModNames.getLength();
                     const OUString* pModNames = aModNames.getConstArray();
 
+                    auto xTreeIter = m_xControl->make_iterator();
+
                     for ( sal_Int32 i = 0 ; i < nModCount ; i++ )
                     {
                         OUString aModName = pModNames[ i ];
-                        SvTreeListEntry* pModuleEntry = FindEntry( pLibRootEntry, aModName, OBJ_TYPE_MODULE );
-                        if ( !pModuleEntry )
+                        m_xControl->copy_iterator(rLibRootEntry, *xTreeIter);
+                        bool bModuleEntry = FindEntry(aModName, OBJ_TYPE_MODULE, *xTreeIter);
+                        if (!bModuleEntry)
                         {
-                            pModuleEntry = AddEntry(
-                                aModName,
-                                Image(BitmapEx(RID_BMP_MODULE)),
-                                pLibRootEntry, false,
-                                o3tl::make_unique<Entry>(OBJ_TYPE_MODULE));
+                            AddEntry(aModName, RID_BMP_MODULE, &rLibRootEntry, false, std::make_unique<Entry>(OBJ_TYPE_MODULE), xTreeIter.get());
                         }
 
                         // methods
@@ -319,18 +306,16 @@ void TreeListBox::ImpCreateLibSubEntries( SvTreeListEntry* pLibRootEntry, const 
                             sal_Int32 nCount = aNames.getLength();
                             const OUString* pNames = aNames.getConstArray();
 
+                            auto xSubTreeIter = m_xControl->make_iterator();
+
                             for ( sal_Int32 j = 0 ; j < nCount ; j++ )
                             {
                                 OUString aName = pNames[ j ];
-                                SvTreeListEntry* pEntry = FindEntry( pModuleEntry, aName, OBJ_TYPE_METHOD );
-                                if ( !pEntry )
+                                m_xControl->copy_iterator(*xTreeIter, *xSubTreeIter);
+                                bool bEntry = FindEntry(aName, OBJ_TYPE_METHOD, *xSubTreeIter);
+                                if (!bEntry)
                                 {
-                                    AddEntry(
-                                        aName,
-                                        Image(BitmapEx(RID_BMP_MACRO)),
-                                        pModuleEntry, false,
-                                        o3tl::make_unique<Entry>(
-                                            OBJ_TYPE_METHOD));
+                                    AddEntry(aName, RID_BMP_MACRO, xTreeIter.get(), false, std::make_unique<Entry>(OBJ_TYPE_METHOD));
                                 }
                             }
                         }
@@ -339,48 +324,47 @@ void TreeListBox::ImpCreateLibSubEntries( SvTreeListEntry* pLibRootEntry, const 
             }
             catch ( const container::NoSuchElementException& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("basctl.basicide");
             }
         }
     }
 
     // dialogs
-    if ( nMode & BrowseMode::Dialogs )
+    if ( !(nMode & BrowseMode::Dialogs) )
+         return;
+
+    Reference< script::XLibraryContainer > xDlgLibContainer( rDocument.getLibraryContainer( E_DIALOGS ) );
+
+    if ( !(xDlgLibContainer.is() && xDlgLibContainer->hasByName( rLibName ) && xDlgLibContainer->isLibraryLoaded( rLibName )) )
+        return;
+
+    try
     {
-         Reference< script::XLibraryContainer > xDlgLibContainer( rDocument.getLibraryContainer( E_DIALOGS ) );
+        // get a sorted list of dialog names
+        Sequence< OUString > aDlgNames( rDocument.getObjectNames( E_DIALOGS, rLibName ) );
+        sal_Int32 nDlgCount = aDlgNames.getLength();
+        const OUString* pDlgNames = aDlgNames.getConstArray();
 
-         if ( xDlgLibContainer.is() && xDlgLibContainer->hasByName( rLibName ) && xDlgLibContainer->isLibraryLoaded( rLibName ) )
-         {
-            try
-            {
-                // get a sorted list of dialog names
-                Sequence< OUString > aDlgNames( rDocument.getObjectNames( E_DIALOGS, rLibName ) );
-                sal_Int32 nDlgCount = aDlgNames.getLength();
-                const OUString* pDlgNames = aDlgNames.getConstArray();
+        auto xTreeIter = m_xControl->make_iterator();
 
-                for ( sal_Int32 i = 0 ; i < nDlgCount ; i++ )
-                {
-                    OUString aDlgName = pDlgNames[ i ];
-                    SvTreeListEntry* pDialogEntry = FindEntry( pLibRootEntry, aDlgName, OBJ_TYPE_DIALOG );
-                    if ( !pDialogEntry )
-                    {
-                        AddEntry(
-                            aDlgName,
-                            Image(BitmapEx(RID_BMP_DIALOG)),
-                            pLibRootEntry, false,
-                            o3tl::make_unique<Entry>(OBJ_TYPE_DIALOG));
-                    }
-                }
-            }
-            catch (const container::NoSuchElementException& )
+        for ( sal_Int32 i = 0 ; i < nDlgCount ; i++ )
+        {
+            OUString aDlgName = pDlgNames[ i ];
+            m_xControl->copy_iterator(rLibRootEntry, *xTreeIter);
+            bool bDialogEntry = FindEntry(aDlgName, OBJ_TYPE_DIALOG, *xTreeIter);
+            if (!bDialogEntry)
             {
-                DBG_UNHANDLED_EXCEPTION();
+                AddEntry(aDlgName, RID_BMP_DIALOG, &rLibRootEntry, false, std::make_unique<Entry>(OBJ_TYPE_DIALOG));
             }
         }
     }
+    catch (const container::NoSuchElementException& )
+    {
+        DBG_UNHANDLED_EXCEPTION("basctl.basicide");
+    }
 }
 
-void TreeListBox::ImpCreateLibSubEntriesInVBAMode( SvTreeListEntry* pLibRootEntry, const ScriptDocument& rDocument, const OUString& rLibName )
+void SbTreeListBox::ImpCreateLibSubEntriesInVBAMode(const weld::TreeIter& rLibRootEntry, const ScriptDocument& rDocument, const OUString& rLibName )
 {
     auto const aEntries = {
         std::make_pair( OBJ_TYPE_DOCUMENT_OBJECTS, IDEResId(RID_STR_DOCUMENT_OBJECTS) ),
@@ -391,24 +375,23 @@ void TreeListBox::ImpCreateLibSubEntriesInVBAMode( SvTreeListEntry* pLibRootEntr
     {
         EntryType eType = iter.first;
         OUString const & aEntryName = iter.second;
-        SvTreeListEntry* pLibSubRootEntry = FindEntry( pLibRootEntry, aEntryName, eType );
-        if( pLibSubRootEntry )
+        std::unique_ptr<weld::TreeIter> xLibSubRootEntry(m_xControl->make_iterator(&rLibRootEntry));
+        bool bLibSubRootEntry = FindEntry(aEntryName, eType, *xLibSubRootEntry);
+        if (bLibSubRootEntry)
         {
-            SetEntryBitmaps(pLibSubRootEntry, Image(BitmapEx(RID_BMP_MODLIB)));
-            if ( IsExpanded( pLibSubRootEntry ) )
-                ImpCreateLibSubSubEntriesInVBAMode( pLibSubRootEntry, rDocument, rLibName );
+            SetEntryBitmaps(*xLibSubRootEntry, RID_BMP_MODLIB);
+            if (m_xControl->get_row_expanded(*xLibSubRootEntry))
+                ImpCreateLibSubSubEntriesInVBAMode(*xLibSubRootEntry, rDocument, rLibName);
         }
         else
         {
-            AddEntry(
-                aEntryName,
-                Image(BitmapEx(RID_BMP_MODLIB)),
-                pLibRootEntry, true, o3tl::make_unique<Entry>(eType));
+            m_xControl->copy_iterator(rLibRootEntry, *xLibSubRootEntry);
+            AddEntry(aEntryName, RID_BMP_MODLIB, xLibSubRootEntry.get(), true, std::make_unique<Entry>(eType));
         }
     }
 }
 
-void TreeListBox::ImpCreateLibSubSubEntriesInVBAMode( SvTreeListEntry* pLibSubRootEntry, const ScriptDocument& rDocument, const OUString& rLibName )
+void SbTreeListBox::ImpCreateLibSubSubEntriesInVBAMode(const weld::TreeIter& rLibSubRootEntry, const ScriptDocument& rDocument, const OUString& rLibName)
 {
     uno::Reference< container::XNameContainer > xLib = rDocument.getOrCreateLibrary( E_SCRIPTS, rLibName );
     if( !xLib.is() )
@@ -421,8 +404,8 @@ void TreeListBox::ImpCreateLibSubSubEntriesInVBAMode( SvTreeListEntry* pLibSubRo
         sal_Int32 nModCount = aModNames.getLength();
         const OUString* pModNames = aModNames.getConstArray();
 
-        EntryDescriptor aDesc( GetEntryDescriptor( pLibSubRootEntry ) );
-        EntryType eCurrentType( aDesc.GetType() );
+        EntryDescriptor aDesc(GetEntryDescriptor(&rLibSubRootEntry));
+        EntryType eCurrentType(aDesc.GetType());
 
         for ( sal_Int32 i = 0 ; i < nModCount ; i++ )
         {
@@ -458,14 +441,13 @@ void TreeListBox::ImpCreateLibSubSubEntriesInVBAMode( SvTreeListEntry* pLibSubRo
                     aEntryName += " (" + sObjName + ")";
                 }
             }
-            SvTreeListEntry* pModuleEntry = FindEntry( pLibSubRootEntry, aEntryName, OBJ_TYPE_MODULE );
-            if ( !pModuleEntry )
+            std::unique_ptr<weld::TreeIter> xModuleEntry(m_xControl->make_iterator(&rLibSubRootEntry));
+            bool bModuleEntry = FindEntry(aEntryName, OBJ_TYPE_MODULE, *xModuleEntry);
+            if (!bModuleEntry)
             {
-                pModuleEntry = AddEntry(
-                    aEntryName,
-                    Image(BitmapEx(RID_BMP_MODULE)),
-                    pLibSubRootEntry, false,
-                    o3tl::make_unique<Entry>(OBJ_TYPE_MODULE));
+                m_xControl->copy_iterator(rLibSubRootEntry, *xModuleEntry);
+                AddEntry(aEntryName, RID_BMP_MODULE, xModuleEntry.get(), false,
+                         std::make_unique<Entry>(OBJ_TYPE_MODULE));
             }
 
             // methods
@@ -478,14 +460,11 @@ void TreeListBox::ImpCreateLibSubSubEntriesInVBAMode( SvTreeListEntry* pLibSubRo
                 for ( sal_Int32 j = 0 ; j < nCount ; j++ )
                 {
                     OUString aName = pNames[ j ];
-                    SvTreeListEntry* pEntry = FindEntry( pModuleEntry, aName, OBJ_TYPE_METHOD );
-                    if ( !pEntry )
+                    std::unique_ptr<weld::TreeIter> xEntry(m_xControl->make_iterator(xModuleEntry.get()));
+                    bool bEntry = FindEntry(aName, OBJ_TYPE_METHOD, *xEntry);
+                    if (!bEntry)
                     {
-                        AddEntry(
-                            aName,
-                            Image(BitmapEx(RID_BMP_MACRO)),
-                            pModuleEntry, false,
-                            o3tl::make_unique<Entry>(OBJ_TYPE_METHOD));
+                        AddEntry(aName, RID_BMP_MACRO, xModuleEntry.get(), false, std::make_unique<Entry>(OBJ_TYPE_METHOD));
                     }
                 }
             }
@@ -493,55 +472,53 @@ void TreeListBox::ImpCreateLibSubSubEntriesInVBAMode( SvTreeListEntry* pLibSubRo
     }
     catch ( const container::NoSuchElementException& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("basctl.basicide");
     }
 }
 
-SvTreeListEntry* TreeListBox::ImpFindEntry( SvTreeListEntry* pParent, const OUString& rText )
+bool SbTreeListBox::ImpFindEntry(weld::TreeIter& rIter, const OUString& rText)
 {
-    sal_uLong nRootPos = 0;
-    SvTreeListEntry* pEntry = pParent ? FirstChild( pParent ) : GetEntry( nRootPos );
-    while ( pEntry )
+    bool bValidIter = m_xControl->iter_children(rIter);
+    while (bValidIter)
     {
-        if (  rText.equals(GetEntryText( pEntry )) )
-            return pEntry;
-
-        pEntry = pParent ? NextSibling( pEntry ) : GetEntry( ++nRootPos );
+        if (rText == m_xControl->get_text(rIter))
+            return true;
+        bValidIter = m_xControl->iter_next_sibling(rIter);
     }
-    return nullptr;
+    return false;
 }
 
-void TreeListBox::onDocumentCreated( const ScriptDocument& /*_rDocument*/ )
+void SbTreeListBox::onDocumentCreated( const ScriptDocument& /*_rDocument*/ )
 {
     UpdateEntries();
 }
 
-void TreeListBox::onDocumentOpened( const ScriptDocument& /*_rDocument*/ )
+void SbTreeListBox::onDocumentOpened( const ScriptDocument& /*_rDocument*/ )
 {
     UpdateEntries();
 }
 
-void TreeListBox::onDocumentSave( const ScriptDocument& /*_rDocument*/ )
+void SbTreeListBox::onDocumentSave( const ScriptDocument& /*_rDocument*/ )
 {
     // not interested in
 }
 
-void TreeListBox::onDocumentSaveDone( const ScriptDocument& /*_rDocument*/ )
+void SbTreeListBox::onDocumentSaveDone( const ScriptDocument& /*_rDocument*/ )
 {
     // not interested in
 }
 
-void TreeListBox::onDocumentSaveAs( const ScriptDocument& /*_rDocument*/ )
+void SbTreeListBox::onDocumentSaveAs( const ScriptDocument& /*_rDocument*/ )
 {
     // not interested in
 }
 
-void TreeListBox::onDocumentSaveAsDone( const ScriptDocument& /*_rDocument*/ )
+void SbTreeListBox::onDocumentSaveAsDone( const ScriptDocument& /*_rDocument*/ )
 {
     UpdateEntries();
 }
 
-void TreeListBox::onDocumentClosed( const ScriptDocument& rDocument )
+void SbTreeListBox::onDocumentClosed( const ScriptDocument& rDocument )
 {
     UpdateEntries();
     // The document is not yet actually deleted, so we need to remove its entry
@@ -549,30 +526,41 @@ void TreeListBox::onDocumentClosed( const ScriptDocument& rDocument )
     RemoveEntry(rDocument);
 }
 
-void TreeListBox::onDocumentTitleChanged( const ScriptDocument& /*_rDocument*/ )
+void SbTreeListBox::onDocumentTitleChanged( const ScriptDocument& /*_rDocument*/ )
 {
     // not interested in
 }
 
-void TreeListBox::onDocumentModeChanged( const ScriptDocument& /*_rDocument*/ )
+void SbTreeListBox::onDocumentModeChanged( const ScriptDocument& /*_rDocument*/ )
 {
     // not interested in
 }
 
-void TreeListBox::UpdateEntries()
+void SbTreeListBox::UpdateEntries()
 {
-    EntryDescriptor aCurDesc( GetEntryDescriptor( FirstSelected() ) );
+    bool bValidIter = m_xControl->get_selected(m_xScratchIter.get());
+    EntryDescriptor aCurDesc(GetEntryDescriptor(bValidIter ? m_xScratchIter.get() : nullptr));
 
     // removing the invalid entries
-    SvTreeListEntry* pLastValid = nullptr;
-    SvTreeListEntry* pEntry = First();
-    while ( pEntry )
+    std::unique_ptr<weld::TreeIter> xLastValid(m_xControl->make_iterator(nullptr));
+    bool bLastValid = false;
+    bValidIter = m_xControl->get_iter_first(*m_xScratchIter);
+    while (bValidIter)
     {
-        if ( IsValidEntry( pEntry ) )
-            pLastValid = pEntry;
+        if (IsValidEntry(*m_xScratchIter))
+        {
+            m_xControl->copy_iterator(*m_xScratchIter, *xLastValid);
+            bLastValid = true;
+        }
         else
-            RemoveEntry(pEntry);
-        pEntry = pLastValid ? Next( pLastValid ) : First();
+            RemoveEntry(*m_xScratchIter);
+        if (bLastValid)
+        {
+            m_xControl->copy_iterator(*xLastValid, *m_xScratchIter);
+            bValidIter = m_xControl->iter_next(*m_xScratchIter);
+        }
+        else
+            bValidIter = m_xControl->get_iter_first(*m_xScratchIter);
     }
 
     ScanAllEntries();
@@ -581,103 +569,63 @@ void TreeListBox::UpdateEntries()
 }
 
 // Removes the entry from the tree.
-void TreeListBox::RemoveEntry (SvTreeListEntry* pEntry)
+void SbTreeListBox::RemoveEntry(const weld::TreeIter& rIter)
 {
+    if (m_bFreezeOnFirstAddRemove)
+    {
+        m_xControl->freeze();
+        m_bFreezeOnFirstAddRemove = false;
+    }
+
     // removing the associated user data
-    delete static_cast<Entry*>(pEntry->GetUserData());
+    Entry* pBasicEntry = reinterpret_cast<Entry*>(m_xControl->get_id(rIter).toInt64());
+    delete pBasicEntry;
     // removing the entry
-    GetModel()->Remove( pEntry );
+    m_xControl->remove(rIter);
 }
 
 // Removes the entry of rDocument.
-void TreeListBox::RemoveEntry (ScriptDocument const& rDocument)
+void SbTreeListBox::RemoveEntry (ScriptDocument const& rDocument)
 {
     // finding the entry of rDocument
-    for (SvTreeListEntry* pEntry = First(); pEntry; pEntry = Next(pEntry))
-        if (rDocument == GetEntryDescriptor(pEntry).GetDocument())
+    bool bValidIter = m_xControl->get_iter_first(*m_xScratchIter);
+    while (bValidIter)
+    {
+        if (rDocument == GetEntryDescriptor(m_xScratchIter.get()).GetDocument())
         {
-            RemoveEntry(pEntry);
+            RemoveEntry(*m_xScratchIter);
             break;
         }
+        bValidIter = m_xControl->iter_next(*m_xScratchIter);
+    }
 }
 
-SvTreeListEntry* TreeListBox::CloneEntry( SvTreeListEntry* pSource )
+bool SbTreeListBox::FindEntry(const OUString& rText, EntryType eType, weld::TreeIter& rIter)
 {
-    SvTreeListEntry* pNew = SvTreeListBox::CloneEntry( pSource );
-    Entry* pUser = static_cast<Entry*>(pSource->GetUserData());
-
-    assert(pUser && "User data?!");
-    DBG_ASSERT( pUser->GetType() != OBJ_TYPE_DOCUMENT, "TreeListBox::CloneEntry: document?!" );
-
-    Entry* pNewUser = new Entry( *pUser );
-    pNew->SetUserData( pNewUser );
-    return pNew;
-}
-
-SvTreeListEntry* TreeListBox::FindEntry( SvTreeListEntry* pParent, const OUString& rText, EntryType eType )
-{
-    sal_uLong nRootPos = 0;
-    SvTreeListEntry* pEntry = pParent ? FirstChild( pParent ) : GetEntry( nRootPos );
-    while ( pEntry )
+    bool bValidIter = m_xControl->iter_children(rIter);
+    while (bValidIter)
     {
-        Entry* pBasicEntry = static_cast<Entry*>(pEntry->GetUserData());
+        Entry* pBasicEntry = reinterpret_cast<Entry*>(m_xControl->get_id(rIter).toInt64());
         assert(pBasicEntry && "FindEntry: no Entry ?!");
-        if ( ( pBasicEntry->GetType() == eType  ) && ( rText.equals(GetEntryText( pEntry )) ) )
-            return pEntry;
-
-        pEntry = pParent ? NextSibling( pEntry ) : GetEntry( ++nRootPos );
+        if (pBasicEntry->GetType() == eType && rText == m_xControl->get_text(rIter))
+            return true;
+        bValidIter = m_xControl->iter_next_sibling(rIter);
     }
-    return nullptr;
+    return false;
 }
 
-bool TreeListBox::ExpandingHdl()
-{
-    // expanding or collapsing?
-    bool bOK = true;
-    if ( GetModel()->GetDepth( GetHdlEntry() ) == 1 )
-    {
-        SvTreeListEntry* pCurEntry = GetCurEntry();
-        EntryDescriptor aDesc( GetEntryDescriptor( pCurEntry ) );
-        ScriptDocument aDocument( aDesc.GetDocument() );
-        OSL_ENSURE( aDocument.isAlive(), "TreeListBox::ExpandingHdl: no document, or document is dead!" );
-        if ( aDocument.isAlive() )
-        {
-            OUString aLibName( aDesc.GetLibName() );
-            OUString aLibSubName( aDesc.GetLibSubName() );
-            OUString aName( aDesc.GetName() );
-            OUString aMethodName( aDesc.GetMethodName() );
-
-            if ( !aLibName.isEmpty() && aLibSubName.isEmpty() && aName.isEmpty() && aMethodName.isEmpty() )
-            {
-                // check password, if library is password protected and not verified
-                Reference< script::XLibraryContainer > xModLibContainer( aDocument.getLibraryContainer( E_SCRIPTS ) );
-                if ( xModLibContainer.is() && xModLibContainer->hasByName( aLibName ) )
-                {
-                    Reference< script::XLibraryContainerPassword > xPasswd( xModLibContainer, UNO_QUERY );
-                    if ( xPasswd.is() && xPasswd->isLibraryPasswordProtected( aLibName ) && !xPasswd->isLibraryPasswordVerified( aLibName ) )
-                    {
-                        OUString aPassword;
-                        bOK = QueryPassword( xModLibContainer, aLibName, aPassword );
-                    }
-                }
-            }
-        }
-    }
-    return bOK;
-}
-
-bool TreeListBox::IsEntryProtected( SvTreeListEntry* pEntry )
+bool SbTreeListBox::IsEntryProtected(const weld::TreeIter* pEntry)
 {
     bool bProtected = false;
-    if ( pEntry && ( GetModel()->GetDepth( pEntry ) == 1 ) )
+    if (pEntry && m_xControl->get_iter_depth(*pEntry) == 1)
     {
-        EntryDescriptor aDesc( GetEntryDescriptor( pEntry ) );
-        ScriptDocument aDocument( aDesc.GetDocument() );
-        OSL_ENSURE( aDocument.isAlive(), "TreeListBox::IsEntryProtected: no document, or document is dead!" );
-        if ( aDocument.isAlive() )
+        EntryDescriptor aDesc(GetEntryDescriptor(pEntry));
+        const ScriptDocument& rDocument( aDesc.GetDocument() );
+        OSL_ENSURE( rDocument.isAlive(), "TreeListBox::IsEntryProtected: no document, or document is dead!" );
+        if ( rDocument.isAlive() )
         {
-            OUString aOULibName( aDesc.GetLibName() );
-            Reference< script::XLibraryContainer > xModLibContainer( aDocument.getLibraryContainer( E_SCRIPTS ) );
+            const OUString& aOULibName( aDesc.GetLibName() );
+            Reference< script::XLibraryContainer > xModLibContainer( rDocument.getLibraryContainer( E_SCRIPTS ) );
             if ( xModLibContainer.is() && xModLibContainer->hasByName( aOULibName ) )
             {
                 Reference< script::XLibraryContainerPassword > xPasswd( xModLibContainer, UNO_QUERY );
@@ -691,29 +639,33 @@ bool TreeListBox::IsEntryProtected( SvTreeListEntry* pEntry )
     return bProtected;
 }
 
-SvTreeListEntry* TreeListBox::AddEntry(
-    OUString const& rText,
-    const Image& rImage,
-    SvTreeListEntry* pParent,
+void SbTreeListBox::AddEntry(
+    const OUString& rText,
+    const OUString& rImage,
+    const weld::TreeIter* pParent,
     bool bChildrenOnDemand,
-    std::unique_ptr<Entry> && aUserData
-)
+    std::unique_ptr<Entry>&& rUserData,
+    weld::TreeIter* pRet)
 {
-    SvTreeListEntry* p = InsertEntry(
-        rText, rImage, rImage, pParent, bChildrenOnDemand, TREELIST_APPEND,
-        aUserData.get()
-    );
-    aUserData.release();
-    return p;
+    if (m_bFreezeOnFirstAddRemove)
+    {
+        m_xControl->freeze();
+        m_bFreezeOnFirstAddRemove= false;
+    }
+    std::unique_ptr<weld::TreeIter> xScratch = pRet ? nullptr : m_xControl->make_iterator();
+    if (!pRet)
+        pRet = xScratch.get();
+    OUString sId(OUString::number(reinterpret_cast<sal_uInt64>(rUserData.release())));
+    m_xControl->insert(pParent, -1, &rText, &sId, nullptr, nullptr, bChildrenOnDemand, pRet);
+    m_xControl->set_image(*pRet, rImage);
 }
 
-void TreeListBox::SetEntryBitmaps( SvTreeListEntry * pEntry, const Image& rImage )
+void SbTreeListBox::SetEntryBitmaps(const weld::TreeIter& rIter, const OUString& rImage)
 {
-    SetExpandedEntryBmp(  pEntry, rImage );
-    SetCollapsedEntryBmp( pEntry, rImage );
+    m_xControl->set_image(rIter, rImage, -1);
 }
 
-LibraryType TreeListBox::GetLibraryType() const
+LibraryType SbTreeListBox::GetLibraryType() const
 {
     LibraryType eType = LibraryType::All;
     if ( ( nMode & BrowseMode::Modules ) && !( nMode & BrowseMode::Dialogs ) )
@@ -723,16 +675,16 @@ LibraryType TreeListBox::GetLibraryType() const
     return eType;
 }
 
-OUString TreeListBox::GetRootEntryName( const ScriptDocument& rDocument, LibraryLocation eLocation ) const
+OUString SbTreeListBox::GetRootEntryName( const ScriptDocument& rDocument, LibraryLocation eLocation ) const
 {
     return rDocument.getTitle( eLocation, GetLibraryType() );
 }
 
-void TreeListBox::GetRootEntryBitmaps( const ScriptDocument& rDocument, Image& rImage )
+OUString SbTreeListBox::GetRootEntryBitmaps(const ScriptDocument& rDocument)
 {
     OSL_ENSURE( rDocument.isValid(), "TreeListBox::GetRootEntryBitmaps: illegal document!" );
-    if ( !rDocument.isValid() )
-        return;
+    if (!rDocument.isValid())
+        return OUString();
 
     if ( rDocument.isDocument() )
     {
@@ -742,47 +694,41 @@ void TreeListBox::GetRootEntryBitmaps( const ScriptDocument& rDocument, Image& r
         try
         {
             OUString sModule( xModuleManager->identify( rDocument.getDocument() ) );
-            Reference< container::XNameAccess > xModuleConfig( xModuleManager, UNO_QUERY );
-            if ( xModuleConfig.is() )
+            Sequence< beans::PropertyValue > aModuleDescr;
+            xModuleManager->getByName( sModule ) >>= aModuleDescr;
+            sal_Int32 nCount = aModuleDescr.getLength();
+            const beans::PropertyValue* pModuleDescr = aModuleDescr.getConstArray();
+            for ( sal_Int32 i = 0; i < nCount; ++i )
             {
-                Sequence< beans::PropertyValue > aModuleDescr;
-                xModuleConfig->getByName( sModule ) >>= aModuleDescr;
-                sal_Int32 nCount = aModuleDescr.getLength();
-                const beans::PropertyValue* pModuleDescr = aModuleDescr.getConstArray();
-                for ( sal_Int32 i = 0; i < nCount; ++i )
+                if ( pModuleDescr[ i ].Name == "ooSetupFactoryEmptyDocumentURL" )
                 {
-                    if ( pModuleDescr[ i ].Name == "ooSetupFactoryEmptyDocumentURL" )
-                    {
-                        pModuleDescr[ i ].Value >>= sFactoryURL;
-                        break;
-                    }
+                    pModuleDescr[ i ].Value >>= sFactoryURL;
+                    break;
                 }
             }
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("basctl.basicide");
         }
 
         if ( !sFactoryURL.isEmpty() )
         {
-            rImage = SvFileInformationManager::GetFileImage( INetURLObject( sFactoryURL ) );
+            return SvFileInformationManager::GetFileImageId(INetURLObject(sFactoryURL));
         }
         else
         {
             // default icon
-            rImage = Image(BitmapEx(RID_BMP_DOCUMENT));
+            return RID_BMP_DOCUMENT;
         }
     }
-    else
-    {
-        rImage = Image(BitmapEx(RID_BMP_INSTALLATION));
-    }
+    return RID_BMP_INSTALLATION;
 }
 
-void TreeListBox::SetCurrentEntry (EntryDescriptor& rDesc)
+void SbTreeListBox::SetCurrentEntry (EntryDescriptor const & rDesc)
 {
-    SvTreeListEntry* pCurEntry = nullptr;
+    bool bCurEntry = false;
+    auto xCurIter = m_xControl->make_iterator();
     EntryDescriptor aDesc = rDesc;
     if ( aDesc.GetType() == OBJ_TYPE_UNKNOWN )
     {
@@ -795,103 +741,99 @@ void TreeListBox::SetCurrentEntry (EntryDescriptor& rDesc)
     ScriptDocument aDocument = aDesc.GetDocument();
     OSL_ENSURE( aDocument.isValid(), "TreeListBox::SetCurrentEntry: invalid document!" );
     LibraryLocation eLocation = aDesc.GetLocation();
-    SvTreeListEntry* pRootEntry = FindRootEntry( aDocument, eLocation );
-    if ( pRootEntry )
+    bool bRootEntry = FindRootEntry(aDocument, eLocation, *m_xScratchIter);
+    if (bRootEntry)
     {
-        pCurEntry = pRootEntry;
-        OUString aLibName( aDesc.GetLibName() );
+        m_xControl->copy_iterator(*m_xScratchIter, *xCurIter);
+        bCurEntry = true;
+        const OUString& aLibName( aDesc.GetLibName() );
         if ( !aLibName.isEmpty() )
         {
-            Expand( pRootEntry );
-            SvTreeListEntry* pLibEntry = FindEntry( pRootEntry, aLibName, OBJ_TYPE_LIBRARY );
-            if ( pLibEntry )
+            m_xControl->expand_row(*m_xScratchIter);
+            auto xLibIter = m_xControl->make_iterator(m_xScratchIter.get());
+            bool bLibEntry = FindEntry(aLibName, OBJ_TYPE_LIBRARY, *xLibIter);
+            if (bLibEntry)
             {
-                pCurEntry = pLibEntry;
-                OUString aLibSubName( aDesc.GetLibSubName() );
+                m_xControl->copy_iterator(*xLibIter, *xCurIter);
+                const OUString& aLibSubName( aDesc.GetLibSubName() );
                 if( !aLibSubName.isEmpty() )
                 {
-                    Expand( pLibEntry );
-                    SvTreeListEntry* pLibSubEntry = ImpFindEntry( pLibEntry, aLibSubName );
-                    if( pLibSubEntry )
+                    m_xControl->expand_row(*xLibIter);
+                    auto xSubLibIter = m_xControl->make_iterator(xLibIter.get());
+                    bool bSubLibEntry = ImpFindEntry(*xSubLibIter, aLibSubName);
+                    if (bSubLibEntry)
                     {
-                        pCurEntry = pLibSubEntry;
+                        m_xControl->copy_iterator(*xSubLibIter, *xCurIter);
                     }
                 }
-                OUString aName( aDesc.GetName() );
+                const OUString& aName( aDesc.GetName() );
                 if ( !aName.isEmpty() )
                 {
-                    Expand( pCurEntry );
+                    m_xControl->expand_row(*xCurIter);
                     EntryType eType = OBJ_TYPE_MODULE;
                     if ( aDesc.GetType() == OBJ_TYPE_DIALOG )
                         eType = OBJ_TYPE_DIALOG;
-                    SvTreeListEntry* pEntry = FindEntry( pCurEntry, aName, eType );
-                    if ( pEntry )
+                    auto xEntryIter = m_xControl->make_iterator(xCurIter.get());
+                    bool bEntry = FindEntry(aName, eType, *xEntryIter);
+                    if (bEntry)
                     {
-                        pCurEntry = pEntry;
-                        OUString aMethodName( aDesc.GetMethodName() );
-                        if ( !aMethodName.isEmpty() )
+                        m_xControl->copy_iterator(*xEntryIter, *xCurIter);
+                        const OUString& aMethodName( aDesc.GetMethodName() );
+                        if (!aMethodName.isEmpty())
                         {
-                            Expand( pEntry );
-                            SvTreeListEntry* pSubEntry = FindEntry( pEntry, aMethodName, OBJ_TYPE_METHOD );
-                            if ( pSubEntry )
+                            m_xControl->expand_row(*xCurIter);
+                            auto xSubEntryIter = m_xControl->make_iterator(xCurIter.get());
+                            bool bSubEntry = FindEntry(aMethodName, OBJ_TYPE_METHOD, *xSubEntryIter);
+                            if (bSubEntry)
                             {
-                                pCurEntry = pSubEntry;
+                                m_xControl->copy_iterator(*xSubEntryIter, *xCurIter);
                             }
                             else
                             {
-                                pSubEntry = FirstChild( pEntry );
-                                if ( pSubEntry )
-                                    pCurEntry = pSubEntry;
+                                m_xControl->copy_iterator(*xCurIter, *xSubEntryIter);
+                                if (m_xControl->iter_children(*xSubEntryIter))
+                                    m_xControl->copy_iterator(*xSubEntryIter, *xCurIter);
                             }
                         }
                     }
                     else
                     {
-                        pEntry = FirstChild( pLibEntry );
-                        if ( pEntry )
-                            pCurEntry = pEntry;
+                        auto xSubEntryIter = m_xControl->make_iterator(xCurIter.get());
+                        if (m_xControl->iter_children(*xSubEntryIter))
+                            m_xControl->copy_iterator(*xSubEntryIter, *xCurIter);
                     }
                 }
             }
             else
             {
-                pLibEntry = FirstChild( pRootEntry );
-                if ( pLibEntry )
-                    pCurEntry = pLibEntry;
+                auto xSubLibIter = m_xControl->make_iterator(m_xScratchIter.get());
+                if (m_xControl->iter_children(*xSubLibIter))
+                    m_xControl->copy_iterator(*xLibIter, *xCurIter);
             }
         }
     }
     else
     {
-        pRootEntry = First();
-        if ( pRootEntry )
-            pCurEntry = pRootEntry;
+        bCurEntry = m_xControl->get_iter_first(*xCurIter);
     }
 
-    SetCurEntry( pCurEntry );
-}
-
-void TreeListBox::MouseButtonDown( const MouseEvent& rMEvt )
-{
-    SvTreeListBox::MouseButtonDown( rMEvt );
-    if ( rMEvt.IsLeft() && ( rMEvt.GetClicks() == 2 ) )
-    {
-        OpenCurrent();
-    }
-}
-
-void TreeListBox::KeyInput( const KeyEvent& rEvt )
-{
-    if ( rEvt.GetKeyCode() == KEY_RETURN && OpenCurrent() )
-    {
+    if (!bCurEntry)
         return;
-    }
-    SvTreeListBox::KeyInput( rEvt );
+
+    m_xControl->set_cursor(*xCurIter);
 }
 
-bool TreeListBox::OpenCurrent()
+IMPL_LINK_NOARG(SbTreeListBox, OpenCurrentHdl, weld::TreeView&, bool)
 {
-    EntryDescriptor aDesc = GetEntryDescriptor(GetCurEntry());
+    bool bValidIter = m_xControl->get_cursor(m_xScratchIter.get());
+    if (!bValidIter)
+        return true;
+    if (!m_xControl->get_row_expanded(*m_xScratchIter))
+        m_xControl->expand_row(*m_xScratchIter);
+    else
+        m_xControl->collapse_row(*m_xScratchIter);
+
+    EntryDescriptor aDesc = GetEntryDescriptor(m_xScratchIter.get());
     switch (aDesc.GetType())
     {
         case OBJ_TYPE_METHOD:
@@ -908,14 +850,13 @@ bool TreeListBox::OpenCurrent()
                     SID_BASICIDE_SHOWSBX, SfxCallMode::SYNCHRON,
                     { &aSbxItem }
                 );
-                return true;
             }
             break;
 
         default:
             break;
     }
-    return false;
+    return true;
 }
 
 } // namespace basctl

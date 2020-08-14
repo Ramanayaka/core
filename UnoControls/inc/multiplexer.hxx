@@ -17,43 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_UNOCONTROLS_INC_MULTIPLEXER_HXX
-#define INCLUDED_UNOCONTROLS_INC_MULTIPLEXER_HXX
+#pragma once
 
 #include <com/sun/star/awt/XKeyListener.hpp>
 #include <com/sun/star/awt/XPaintListener.hpp>
-#include <com/sun/star/awt/KeyEvent.hpp>
-#include <com/sun/star/awt/KeyModifier.hpp>
 #include <com/sun/star/awt/XMouseMotionListener.hpp>
-#include <com/sun/star/awt/FocusEvent.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/awt/XActivateListener.hpp>
-#include <com/sun/star/awt/MouseEvent.hpp>
 #include <com/sun/star/awt/XTopWindowListener.hpp>
-#include <com/sun/star/awt/PaintEvent.hpp>
-#include <com/sun/star/awt/InputEvent.hpp>
-#include <com/sun/star/awt/KeyGroup.hpp>
-#include <com/sun/star/awt/Key.hpp>
-#include <com/sun/star/awt/WindowEvent.hpp>
 #include <com/sun/star/awt/XMouseListener.hpp>
-#include <com/sun/star/awt/KeyFunction.hpp>
-#include <com/sun/star/awt/FocusChangeReason.hpp>
-#include <com/sun/star/awt/MouseButton.hpp>
 #include <com/sun/star/awt/XFocusListener.hpp>
-#include <com/sun/star/awt/XTopWindow.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/PosSize.hpp>
 #include <cppuhelper/weak.hxx>
 #include <cppuhelper/weakref.hxx>
 #include <cppuhelper/interfacecontainer.hxx>
 
-//  "namespaces"
+namespace com::sun::star::awt { class XWindow; }
+namespace com::sun::star::awt { struct KeyEvent; }
+namespace com::sun::star::awt { struct MouseEvent; }
+namespace com::sun::star::awt { struct PaintEvent; }
+namespace com::sun::star::awt { struct WindowEvent; }
 
-namespace unocontrols{
+namespace unocontrols {
 
-//  class
-
-class OMRCListenerMultiplexerHelper : public css::awt::XFocusListener
+class OMRCListenerMultiplexerHelper final : public css::awt::XFocusListener
                                     , public css::awt::XWindowListener
                                     , public css::awt::XKeyListener
                                     , public css::awt::XMouseListener
@@ -62,10 +47,9 @@ class OMRCListenerMultiplexerHelper : public css::awt::XFocusListener
                                     , public css::awt::XTopWindowListener
                                     , public ::cppu::OWeakObject
 {
-
 public:
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      constructor
         @descr      Create a Multiplexer of XWindowEvents.
         @param      rControl    The control. All listeners think that this is the original broadcaster.
@@ -75,7 +59,7 @@ public:
     OMRCListenerMultiplexerHelper(  const   css::uno::Reference< css::awt::XWindow >& xControl    ,
                                     const   css::uno::Reference< css::awt::XWindow >& xPeer       );
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      copy-constructor
         @descr
         @param      rCopyInstance   C++-Reference to instance to make copy from.
@@ -87,7 +71,7 @@ public:
 
     //  XInterface
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      give answer, if interface is supported
         @descr      The interfaces are searched by type.
 
@@ -102,7 +86,7 @@ public:
 
     virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& aType ) override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      increment refcount
         @seealso    XInterface
         @seealso    release()
@@ -111,7 +95,7 @@ public:
 
     virtual void SAL_CALL acquire() throw() override;
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      decrement refcount
         @seealso    XInterface
         @seealso    acquire()
@@ -124,27 +108,27 @@ public:
 
     //  container methods
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      Remove all listeners from the previous set peer and add the needed listeners to rPeer.
         @param      rPeer       The peer from which the original events are dispatched. Null is allowed.
     */
 
     void setPeer( const css::uno::Reference< css::awt::XWindow >& xPeer );
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      Remove all listeners and send a disposing message.
     */
 
     void disposeAndClear();
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      Add the specified listener to the source.
     */
 
     void advise(    const   css::uno::Type&                              aType       ,
                     const   css::uno::Reference< css::uno::XInterface >&  xListener   );
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      Remove the specified listener from the source.
     */
 
@@ -213,11 +197,9 @@ public:
 
     virtual void SAL_CALL windowDeactivated( const css::lang::EventObject& aEvent ) override;
 
-//  protected methods
+private:
 
-protected:
-
-    /**_______________________________________________________________________________________________________
+    /**
         @short      Remove the listener from the peer.
         @param      xPeer   The peer from which the listener is removed.
         @param      rType   The listener type, which specify the type of the listener.
@@ -226,7 +208,7 @@ protected:
     void impl_adviseToPeer( const   css::uno::Reference< css::awt::XWindow >& xPeer   ,
                             const   css::uno::Type&                          aType   );
 
-    /**_______________________________________________________________________________________________________
+    /**
         @short      Add the listener to the peer.
         @param      xPeer   The peer to which the listener is added.
         @param      rType   The listener type, which specify the type of the listener.
@@ -238,16 +220,14 @@ protected:
 //  private variables
 
 private:
-
     ::osl::Mutex                                m_aMutex;
     css::uno::Reference< css::awt::XWindow >      m_xPeer;   /// The source of the events. Normally this is the peer object.
     css::uno::WeakReference< css::awt::XWindow >  m_xControl;
     ::cppu::OMultiTypeInterfaceContainerHelper  m_aListenerHolder;
 
-};  // class OMRCListenerMultiplexerHelper
+};
 
-}   // namespace unocontrols
+}
 
-#endif // INCLUDED_UNOCONTROLS_INC_MULTIPLEXER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

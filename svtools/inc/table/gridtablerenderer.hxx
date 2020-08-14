@@ -17,15 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVTOOLS_INC_TABLE_GRIDTABLERENDERER_HXX
-#define INCLUDED_SVTOOLS_INC_TABLE_GRIDTABLERENDERER_HXX
+#pragma once
 
-#include <svtools/table/tablemodel.hxx>
+#include <table/tablemodel.hxx>
+#include <vcl/image.hxx>
 
 #include <memory>
 
 
-namespace svt { namespace table
+namespace svt::table
 {
 
 
@@ -39,7 +39,7 @@ namespace svt { namespace table
         This class is able to paint a table grid, table headers, and cell
         backgrounds according to the selected/active state of cells.
     */
-    class GridTableRenderer : public ITableRenderer
+    class GridTableRenderer final : public ITableRenderer
     {
     private:
         ::std::unique_ptr< GridTableRenderer_Impl >   m_pImpl;
@@ -66,25 +66,24 @@ namespace svt { namespace table
     public:
         // ITableRenderer overridables
         virtual void    PaintHeaderArea(
-                            OutputDevice& _rDevice, const tools::Rectangle& _rArea,
+                            vcl::RenderContext& _rDevice, const tools::Rectangle& _rArea,
                             bool _bIsColHeaderArea, bool _bIsRowHeaderArea,
                             const StyleSettings& _rStyle ) override;
-        virtual void    PaintColumnHeader( ColPos _nCol, bool _bActive, bool _bSelected,
-                            OutputDevice& _rDevice, const tools::Rectangle& _rArea,
+        virtual void    PaintColumnHeader( ColPos _nCol,
+                            vcl::RenderContext& _rDevice, const tools::Rectangle& _rArea,
                             const StyleSettings& _rStyle ) override;
         virtual void    PrepareRow( RowPos _nRow, bool i_hasControlFocus, bool _bSelected,
-                            OutputDevice& _rDevice, const tools::Rectangle& _rRowArea,
+                            vcl::RenderContext& _rDevice, const tools::Rectangle& _rRowArea,
                             const StyleSettings& _rStyle ) override;
         virtual void    PaintRowHeader(
-                            bool i_hasControlFocus, bool _bSelected,
-                            OutputDevice& _rDevice, const tools::Rectangle& _rArea,
+                            vcl::RenderContext& _rDevice, const tools::Rectangle& _rArea,
                             const StyleSettings& _rStyle ) override;
         virtual void    PaintCell( ColPos const i_col,
                             bool i_hasControlFocus, bool _bSelected,
-                            OutputDevice& _rDevice, const tools::Rectangle& _rArea,
+                            vcl::RenderContext& _rDevice, const tools::Rectangle& _rArea,
                             const StyleSettings& _rStyle ) override;
         virtual void    ShowCellCursor( vcl::Window& _rView, const tools::Rectangle& _rCursorRect) override;
-        virtual void    HideCellCursor( vcl::Window& _rView, const tools::Rectangle& _rCursorRect) override;
+        virtual void    HideCellCursor( vcl::Window& _rView ) override;
         virtual bool    FitsIntoCell(
                             css::uno::Any const & i_cellContent,
                             OutputDevice& i_targetDevice, tools::Rectangle const & i_targetArea
@@ -110,9 +109,8 @@ namespace svt { namespace table
                    );
     };
 
-} } // namespace svt::table
+} // namespace svt::table
 
 
-#endif // INCLUDED_SVTOOLS_INC_TABLE_GRIDTABLERENDERER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

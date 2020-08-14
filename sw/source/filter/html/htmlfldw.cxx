@@ -17,31 +17,33 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/i18n/ScriptType.hpp>
+#include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <comphelper/string.hxx>
 #include <svtools/htmlkywd.hxx>
 #include <svtools/htmlout.hxx>
-#include <svtools/htmltokn.h>
+#include <osl/diagnose.h>
 #include <fmtfld.hxx>
 #include <doc.hxx>
 #include <breakit.hxx>
 #include <ndtxt.hxx>
 #include <txtfld.hxx>
-#include "fldbas.hxx"
-#include "docufld.hxx"
-#include "flddat.hxx"
+#include <fldbas.hxx>
+#include <docufld.hxx>
+#include <flddat.hxx>
+#include <viewopt.hxx>
 #include "htmlfld.hxx"
 #include "wrthtml.hxx"
 #include <rtl/strbuf.hxx>
-#include <css1atr.hxx>
+#include "css1atr.hxx"
+#include "css1kywd.hxx"
 
 using namespace nsSwDocInfoSubType;
 
-const sal_Char *SwHTMLWriter::GetNumFormat( sal_uInt16 nFormat )
+const char *SwHTMLWriter::GetNumFormat( sal_uInt16 nFormat )
 {
-    const sal_Char *pFormatStr = nullptr;
+    const char *pFormatStr = nullptr;
 
-    switch( (SvxNumType)nFormat )
+    switch( static_cast<SvxNumType>(nFormat) )
     {
     case SVX_NUM_CHARS_UPPER_LETTER:    pFormatStr = OOO_STRING_SW_HTML_FF_uletter;    break;
     case SVX_NUM_CHARS_LOWER_LETTER:    pFormatStr = OOO_STRING_SW_HTML_FF_lletter;    break;
@@ -69,7 +71,7 @@ static Writer& OutHTML_SwField( Writer& rWrt, const SwField* pField,
     SwFieldIds nField = pFieldTyp->Which();
     sal_uLong nFormat = pField->GetFormat();
 
-    const sal_Char *pTypeStr=nullptr, // TYPE
+    const char *pTypeStr=nullptr, // TYPE
                       *pSubStr=nullptr,   // SUBTYPE
                    *pFormatStr=nullptr;  // FORMAT (SW)
     OUString aValue;              // VALUE (SW)
@@ -83,7 +85,7 @@ static Writer& OutHTML_SwField( Writer& rWrt, const SwField* pField,
     {
         case SwFieldIds::ExtUser:
             pTypeStr = OOO_STRING_SW_HTML_FT_sender;
-            switch( (SwExtUserSubType)pField->GetSubType() )
+            switch( static_cast<SwExtUserSubType>(pField->GetSubType()) )
             {
                 case EU_COMPANY:    pSubStr = OOO_STRING_SW_HTML_FS_company;        break;
                 case EU_FIRSTNAME:  pSubStr = OOO_STRING_SW_HTML_FS_firstname;  break;
@@ -103,18 +105,18 @@ static Writer& OutHTML_SwField( Writer& rWrt, const SwField* pField,
                 default:
                     ;
             }
-            OSL_ENSURE( pSubStr, "ubekannter Subtyp fuer SwExtUserField" );
+            OSL_ENSURE( pSubStr, "unknown sub type for SwExtUserField" );
             bFixed = static_cast<const SwExtUserField*>(pField)->IsFixed();
             break;
 
         case SwFieldIds::Author:
             pTypeStr = OOO_STRING_SW_HTML_FT_author;
-            switch( (SwAuthorFormat)nFormat & 0xff)
+            switch( static_cast<SwAuthorFormat>(nFormat) & 0xff)
             {
                 case AF_NAME:     pFormatStr = OOO_STRING_SW_HTML_FF_name;     break;
                 case AF_SHORTCUT:  pFormatStr = OOO_STRING_SW_HTML_FF_shortcut;    break;
             }
-            OSL_ENSURE( pFormatStr, "ubekanntes Format fuer SwAuthorField" );
+            OSL_ENSURE( pFormatStr, "unknown format for SwAuthorField" );
             bFixed = static_cast<const SwAuthorField*>(pField)->IsFixed();
             break;
 
@@ -131,24 +133,24 @@ static Writer& OutHTML_SwField( Writer& rWrt, const SwField* pField,
         case SwFieldIds::PageNumber:
             {
                 pTypeStr = OOO_STRING_SW_HTML_FT_page;
-                SwPageNumSubType eSubType = (SwPageNumSubType)pField->GetSubType();
+                SwPageNumSubType eSubType = static_cast<SwPageNumSubType>(pField->GetSubType());
                 switch( eSubType )
                 {
                     case PG_RANDOM:     pSubStr = OOO_STRING_SW_HTML_FS_random;     break;
                     case PG_NEXT:       pSubStr = OOO_STRING_SW_HTML_FS_next;       break;
                     case PG_PREV:       pSubStr = OOO_STRING_SW_HTML_FS_prev;       break;
                 }
-                OSL_ENSURE( pSubStr, "ubekannter Subtyp fuer SwPageNumberField" );
+                OSL_ENSURE( pSubStr, "unknown sub type for SwPageNumberField" );
                 pFormatStr = SwHTMLWriter::GetNumFormat( static_cast< sal_uInt16 >(nFormat) );
 
-                if( (SvxNumType)nFormat==SVX_NUM_CHAR_SPECIAL )
+                if( static_cast<SvxNumType>(nFormat)==SVX_NUM_CHAR_SPECIAL )
                 {
                     aValue = static_cast<const SwPageNumberField *>(pField)->GetUserString();
                 }
                 else
                 {
                     const OUString& rValue = pField->GetPar2();
-                    short nValue = (short)rValue.toInt32();
+                    short nValue = static_cast<short>(rValue.toInt32());
                     if( (eSubType == PG_NEXT && nValue!=1) ||
                         (eSubType == PG_PREV && nValue!=-1) ||
                         (eSubType == PG_RANDOM && nValue!=0) )
@@ -167,8 +169,8 @@ static Writer& OutHTML_SwField( Writer& rWrt, const SwField* pField,
 
                 switch( nSubType )
                 {
-                    case DI_TITEL:      pSubStr = OOO_STRING_SW_HTML_FS_title;  break;
-                    case DI_THEMA:      pSubStr = OOO_STRING_SW_HTML_FS_theme;  break;
+                    case DI_TITLE:      pSubStr = OOO_STRING_SW_HTML_FS_title;  break;
+                    case DI_SUBJECT:    pSubStr = OOO_STRING_SW_HTML_FS_theme;  break;
                     case DI_KEYS:       pSubStr = OOO_STRING_SW_HTML_FS_keys;   break;
                     case DI_COMMENT:    pSubStr = OOO_STRING_SW_HTML_FS_comment; break;
                     case DI_CREATE:     pSubStr = OOO_STRING_SW_HTML_FS_create;     break;
@@ -240,7 +242,7 @@ static Writer& OutHTML_SwField( Writer& rWrt, const SwField* pField,
 
         case SwFieldIds::Filename:
             pTypeStr = OOO_STRING_SW_HTML_FT_filename;
-            switch( (SwFileNameFormat)(nFormat & ~FF_FIXED) )
+            switch( static_cast<SwFileNameFormat>(nFormat & ~FF_FIXED) )
             {
                 case FF_NAME:       pFormatStr = OOO_STRING_SW_HTML_FF_name;       break;
                 case FF_PATHNAME:   pFormatStr = OOO_STRING_SW_HTML_FF_pathname;   break;
@@ -250,16 +252,23 @@ static Writer& OutHTML_SwField( Writer& rWrt, const SwField* pField,
                     ;
             }
             bFixed = static_cast<const SwFileNameField*>(pField)->IsFixed();
-            OSL_ENSURE( pFormatStr, "unbekanntes Format fuer SwFileNameField" );
+            OSL_ENSURE( pFormatStr, "unknown format for SwFileNameField" );
             break;
         default: break;
     }
 
-    // <SDFIELD>-Tag ausgeben
+    // ReqIF-XHTML doesn't allow <sdfield>.
+    if (rHTMLWrt.mbReqIF && pTypeStr)
+    {
+        pTypeStr = nullptr;
+    }
+
+    // Output the <sdfield> tag.
     if( pTypeStr )
     {
         OStringBuffer sOut;
         sOut.append('<');
+        sOut.append(rHTMLWrt.GetNamespace());
         sOut.append(OOO_STRING_SVTOOLS_HTML_sdfield).append(' ').
             append(OOO_STRING_SVTOOLS_HTML_O_type).append('=').
             append(pTypeStr);
@@ -277,7 +286,7 @@ static Writer& OutHTML_SwField( Writer& rWrt, const SwField* pField,
         {
             sOut.append(' ').append(OOO_STRING_SVTOOLS_HTML_O_name).
                 append("=\"");
-            rWrt.Strm().WriteCharPtr( sOut.makeStringAndClear().getStr() );
+            rWrt.Strm().WriteOString( sOut.makeStringAndClear() );
             HTMLOutFuncs::Out_String( rWrt.Strm(), aName, rHTMLWrt.m_eDestEnc, &rHTMLWrt.m_aNonConvertableCharacters );
             sOut.append('\"');
         }
@@ -285,7 +294,7 @@ static Writer& OutHTML_SwField( Writer& rWrt, const SwField* pField,
         {
             sOut.append(' ').append(OOO_STRING_SVTOOLS_HTML_O_value).
                 append("=\"");
-            rWrt.Strm().WriteCharPtr( sOut.makeStringAndClear().getStr() );
+            rWrt.Strm().WriteOString( sOut.makeStringAndClear() );
             HTMLOutFuncs::Out_String( rWrt.Strm(), aValue, rHTMLWrt.m_eDestEnc, &rHTMLWrt.m_aNonConvertableCharacters );
             sOut.append('\"');
         }
@@ -294,7 +303,7 @@ static Writer& OutHTML_SwField( Writer& rWrt, const SwField* pField,
             OSL_ENSURE( nFormat, "number format is 0" );
             sOut.append(HTMLOutFuncs::CreateTableDataOptionsValNum(
                 bNumValue, dNumValue, nFormat,
-                *rHTMLWrt.pDoc->GetNumberFormatter(), rHTMLWrt.m_eDestEnc,
+                *rHTMLWrt.m_pDoc->GetNumberFormatter(), rHTMLWrt.m_eDestEnc,
                 &rHTMLWrt.m_aNonConvertableCharacters));
         }
         if( bFixed )
@@ -302,11 +311,11 @@ static Writer& OutHTML_SwField( Writer& rWrt, const SwField* pField,
             sOut.append(' ').append(OOO_STRING_SVTOOLS_HTML_O_sdfixed);
         }
         sOut.append('>');
-        rWrt.Strm().WriteCharPtr( sOut.makeStringAndClear().getStr() );
+        rWrt.Strm().WriteOString( sOut.makeStringAndClear() );
     }
 
     // output content of the field
-    OUString const sExpand( pField->ExpandField(true) );
+    OUString const sExpand( pField->ExpandField(true, nullptr) );
     bool bNeedsCJKProcessing = false;
     if( !sExpand.isEmpty() )
     {
@@ -326,12 +335,12 @@ static Writer& OutHTML_SwField( Writer& rWrt, const SwField* pField,
     {
         //sequence of (start, end) property ranges we want to
         //query
-        SfxItemSet aScriptItemSet( rWrt.pDoc->GetAttrPool(),
+        SfxItemSet aScriptItemSet( rWrt.m_pDoc->GetAttrPool(),
                                    svl::Items<RES_CHRATR_FONT, RES_CHRATR_FONTSIZE,
                                    RES_CHRATR_POSTURE, RES_CHRATR_POSTURE,
                                    RES_CHRATR_WEIGHT, RES_CHRATR_WEIGHT,
                                    RES_CHRATR_CJK_FONT, RES_CHRATR_CTL_WEIGHT>{} );
-        rTextNd.GetAttr( aScriptItemSet, nFieldPos, nFieldPos+1 );
+        rTextNd.GetParaAttr(aScriptItemSet, nFieldPos, nFieldPos+1);
 
         sal_uInt16 aWesternWhichIds[4] =
             { RES_CHRATR_FONT, RES_CHRATR_FONTSIZE,
@@ -424,15 +433,16 @@ static Writer& OutHTML_SwField( Writer& rWrt, const SwField* pField,
               rHTMLWrt.m_eDestEnc, &rHTMLWrt.m_aNonConvertableCharacters );
     }
 
-    // Off-Tag ausgeben
+    // Output the closing tag.
     if( pTypeStr )
-        HTMLOutFuncs::Out_AsciiTag( rWrt.Strm(), OOO_STRING_SVTOOLS_HTML_sdfield, false );
+        HTMLOutFuncs::Out_AsciiTag( rWrt.Strm(), rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_sdfield, false );
 
     return rWrt;
 }
 
 Writer& OutHTML_SwFormatField( Writer& rWrt, const SfxPoolItem& rHt )
 {
+    SwHTMLWriter& rHTMLWrt = static_cast<SwHTMLWriter&>(rWrt);
     const SwFormatField & rField = static_cast<const SwFormatField&>(rHt);
     const SwField* pField = rField.GetField();
     const SwFieldType* pFieldTyp = pField->GetTyp();
@@ -452,7 +462,7 @@ Writer& OutHTML_SwFormatField( Writer& rWrt, const SfxPoolItem& rHt )
         // not contained in the destination encoding are lost!
         OString sTmp(OUStringToOString(rText,
             static_cast<SwHTMLWriter&>(rWrt).m_eDestEnc));
-        rWrt.Strm().WriteCharPtr( sTmp.getStr() ).WriteChar( '>' );
+        rWrt.Strm().WriteOString( sTmp ).WriteChar( '>' );
     }
     else if( SwFieldIds::Postit == pFieldTyp->Which() )
     {
@@ -473,7 +483,7 @@ Writer& OutHTML_SwFormatField( Writer& rWrt, const SfxPoolItem& rHt )
             // characters not contained in the destination encoding are lost!
             OString sTmp(OUStringToOString(sComment,
                 static_cast<SwHTMLWriter&>(rWrt).m_eDestEnc));
-            rWrt.Strm().WriteCharPtr( sTmp.getStr() );
+            rWrt.Strm().WriteOString( sTmp );
             bWritten = true;
         }
         else if( rComment.getLength() >= 7 &&
@@ -489,7 +499,7 @@ Writer& OutHTML_SwFormatField( Writer& rWrt, const SfxPoolItem& rHt )
                 // lost!
                 OString sTmp(OUStringToOString(sComment,
                     static_cast<SwHTMLWriter&>(rWrt).m_eDestEnc));
-                rWrt.Strm().WriteCharPtr( sTmp.getStr() );
+                rWrt.Strm().WriteOString( sTmp );
                 bWritten = true;
             }
 
@@ -498,17 +508,17 @@ Writer& OutHTML_SwFormatField( Writer& rWrt, const SfxPoolItem& rHt )
         if( !bWritten )
         {
             OUString sComment(convertLineEnd(rComment, GetSystemLineEnd()));
-            OStringBuffer sOut;
             // TODO: ???
-            sOut.append('<').append(OOO_STRING_SVTOOLS_HTML_comment)
-                .append(' ').append(OUStringToOString(sComment,
-                    static_cast<SwHTMLWriter&>(rWrt).m_eDestEnc)).append(" -->");
-            rWrt.Strm().WriteCharPtr( sOut.getStr() );
+            OString sOut =
+                "<" OOO_STRING_SVTOOLS_HTML_comment
+                " " +
+                OUStringToOString(sComment, static_cast<SwHTMLWriter&>(rWrt).m_eDestEnc) +
+                " -->";
+            rWrt.Strm().WriteOString( sOut );
         }
     }
     else if( SwFieldIds::Script == pFieldTyp->Which() )
     {
-        SwHTMLWriter& rHTMLWrt = static_cast<SwHTMLWriter&>(rWrt);
         if( rHTMLWrt.m_bLFPossible )
             rHTMLWrt.OutNewLine( true );
 
@@ -533,8 +543,38 @@ Writer& OutHTML_SwFormatField( Writer& rWrt, const SfxPoolItem& rHt )
         const SwTextField *pTextField = rField.GetTextField();
         OSL_ENSURE( pTextField, "Where is the txt fld?" );
         if( pTextField )
+        {
+            // ReqIF-XHTML doesn't allow specifying a background color.
+            bool bFieldShadings = SwViewOption::IsFieldShadings() && !rHTMLWrt.mbReqIF;
+            if (bFieldShadings)
+            {
+                // If there is a text portion background started already, that should have priority.
+                auto it = rHTMLWrt.maStartedAttributes.find(RES_CHRATR_BACKGROUND);
+                if (it != rHTMLWrt.maStartedAttributes.end())
+                    bFieldShadings = it->second <= 0;
+            }
+
+            if (bFieldShadings)
+            {
+                OStringBuffer sOut;
+                sOut.append("<" + rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_span);
+                sOut.append(" " OOO_STRING_SVTOOLS_HTML_O_style "=\"");
+                sOut.append(sCSS1_P_background);
+                sOut.append(": ");
+
+                Color& rColor = SwViewOption::GetFieldShadingsColor();
+                sOut.append(GetCSS1_Color(rColor));
+                sOut.append("\">");
+                rWrt.Strm().WriteOString(sOut.makeStringAndClear());
+            }
+
             OutHTML_SwField( rWrt, pField, pTextField->GetTextNode(),
                              pTextField->GetStart()  );
+
+            if (bFieldShadings)
+                HTMLOutFuncs::Out_AsciiTag(
+                    rWrt.Strm(), rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_span, false);
+        }
     }
     return rWrt;
 }

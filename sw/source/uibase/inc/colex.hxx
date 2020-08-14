@@ -21,9 +21,9 @@
 
 #include <svx/pagectrl.hxx>
 #include <editeng/paperinf.hxx>
-#include "swdllapi.h"
+#include <swdllapi.h>
+#include <tgrditem.hxx>
 #include <fmtclds.hxx>
-#include "frmatr.hxx"
 
 class SwColMgr;
 class SfxItemSet;
@@ -33,9 +33,8 @@ class SW_DLLPUBLIC SwPageExample : public SvxPageWindow
 protected:
     bool            m_bVertical;
 public:
-    SwPageExample(vcl::Window* pPar)
-        : SvxPageWindow(pPar)
-        , m_bVertical(false)
+    SwPageExample()
+        : m_bVertical(false)
     {
         SetSize(SvxPaperInfo::GetPaperSize(PAPER_A4));
     }
@@ -43,26 +42,20 @@ public:
     void UpdateExample( const SfxItemSet& rSet );
 };
 
-class SwTextGridItem;
-
 class SW_DLLPUBLIC SwPageGridExample : public SwPageExample
 {
-    SwTextGridItem*     pGridItem;
+    std::unique_ptr<SwTextGridItem> pGridItem;
 protected:
     virtual void DrawPage(vcl::RenderContext& rRenderContext,
                           const Point& rPoint,
                           const bool bSecond,
                           const bool bEnabled) override;
 public:
-    SwPageGridExample(vcl::Window* pPar)
-        : SwPageExample(pPar)
-        , pGridItem(nullptr)
-    {}
+    SwPageGridExample();
 
-    virtual ~SwPageGridExample() override;
-    virtual void dispose() override;
     void UpdateExample( const SfxItemSet& rSet );
 };
+
 
 class SW_DLLPUBLIC SwColExample : public SwPageExample
 {
@@ -77,9 +70,8 @@ protected:
                           const bool bEnabled) override;
 
 public:
-    SwColExample(vcl::Window* pPar)
-        : SwPageExample(pPar)
-        , pColMgr(nullptr)
+    SwColExample()
+        : pColMgr(nullptr)
     {
     }
 
@@ -90,7 +82,7 @@ public:
     }
 };
 
-class SW_DLLPUBLIC SwColumnOnlyExample : public vcl::Window
+class SW_DLLPUBLIC SwColumnOnlyExample : public weld::CustomWidgetController
 {
 private:
     Size        m_aWinSize;
@@ -99,14 +91,15 @@ private:
     SwFormatCol    m_aCols;
 
 protected:
+    virtual void Resize() override;
     virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
 
 public:
-    SwColumnOnlyExample(vcl::Window*);
+    SwColumnOnlyExample();
 
     void        SetColumns(const SwFormatCol& rCol);
 
-    virtual Size GetOptimalSize() const override;
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
 };
 
 #endif // INCLUDED_SW_SOURCE_UIBASE_INC_COLEX_HXX

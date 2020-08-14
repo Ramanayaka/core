@@ -27,7 +27,7 @@ $(eval $(call gb_Library_set_include,sb,\
 	-I$(SRCDIR)/basic/source/inc \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,sb,$(SRCDIR)/basic/inc/pch/precompiled_sb))
+$(eval $(call gb_Library_set_precompiled_header,sb,basic/inc/pch/precompiled_sb))
 
 $(eval $(call gb_Library_use_external,sb,boost_headers))
 
@@ -65,13 +65,11 @@ $(eval $(call gb_Library_add_exception_objects,sb,\
 	basic/source/basmgr/basmgr \
 	basic/source/basmgr/vbahelper \
 	basic/source/classes/codecompletecache \
-	basic/source/classes/errobject \
 	basic/source/classes/eventatt \
 	basic/source/classes/global \
 	basic/source/classes/image \
 	basic/source/classes/propacc \
 	basic/source/classes/sb \
-	basic/source/classes/sbintern \
 	basic/source/classes/sbunoobj \
 	basic/source/classes/sbxmod \
 	basic/source/comp/basiccharclass \
@@ -97,17 +95,18 @@ $(eval $(call gb_Library_add_exception_objects,sb,\
 	basic/source/runtime/inputbox \
 	basic/source/runtime/iosys \
 	basic/source/runtime/props \
-	basic/source/runtime/runtime \
 	basic/source/runtime/stdobj \
 	basic/source/runtime/stdobj1 \
+	basic/source/runtime/runtime \
+	basic/source/classes/errobject \
 ))
-
 endif
 
 $(eval $(call gb_Library_add_exception_objects,sb,\
 	basic/source/runtime/basrdll \
 	basic/source/runtime/methods \
 	basic/source/runtime/methods1 \
+	basic/source/classes/sbintern \
 	basic/source/sbx/sbxarray \
 	basic/source/sbx/sbxbool \
 	basic/source/sbx/sbxbyte \
@@ -157,8 +156,5 @@ $(eval $(call gb_Library_add_exception_objects,sb,\
 ))
 endif
 endif
-
-# Runtime dependency for unit-tests
-$(eval $(call gb_Library_use_restarget,sb,sb))
 
 # vim: set noet sw=4 ts=4:

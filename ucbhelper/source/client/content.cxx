@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cassert>
 
@@ -26,27 +26,23 @@
 #include <sal/log.hxx>
 #include <salhelper/simplereferenceobject.hxx>
 #include <cppuhelper/weak.hxx>
+#include <cppuhelper/queryinterface.hxx>
 
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/ucb/CheckinArgument.hpp>
 #include <com/sun/star/ucb/ContentCreationError.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <com/sun/star/ucb/IllegalIdentifierException.hpp>
-#include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/ucb/XCommandInfo.hpp>
 #include <com/sun/star/ucb/XCommandProcessor.hpp>
 #include <com/sun/star/ucb/Command.hpp>
-#include <com/sun/star/ucb/CommandInfo.hpp>
 #include <com/sun/star/ucb/ContentAction.hpp>
 #include <com/sun/star/ucb/OpenCommandArgument2.hpp>
 #include <com/sun/star/ucb/InsertCommandArgument.hpp>
 #include <com/sun/star/ucb/GlobalTransferCommandArgument2.hpp>
-#include <com/sun/star/ucb/NameClash.hpp>
 #include <com/sun/star/ucb/OpenMode.hpp>
 #include <com/sun/star/ucb/XContentCreator.hpp>
 #include <com/sun/star/ucb/XContentEventListener.hpp>
-#include <com/sun/star/ucb/XContentIdentifierFactory.hpp>
-#include <com/sun/star/ucb/XContentProvider.hpp>
-#include <com/sun/star/ucb/XContentProviderManager.hpp>
 #include <com/sun/star/ucb/XDynamicResultSet.hpp>
 #include <com/sun/star/ucb/SortedDynamicResultSetFactory.hpp>
 #include <com/sun/star/ucb/UniversalContentBroker.hpp>
@@ -54,16 +50,17 @@
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/beans/Property.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/beans/UnknownPropertyException.hpp>
-#include <ucbhelper/macros.hxx>
 #include <ucbhelper/content.hxx>
 #include <ucbhelper/activedatasink.hxx>
-#include <ucbhelper/activedatastreamer.hxx>
-#include <ucbhelper/interactionrequest.hxx>
+#include "activedatastreamer.hxx"
 #include <ucbhelper/cancelcommandexecution.hxx>
+
+namespace com::sun::star::ucb { class XCommandEnvironment; }
+namespace com::sun::star::ucb { class XContentProvider; }
+namespace com::sun::star::sdbc { class XResultSet; }
 
 using namespace com::sun::star::container;
 using namespace com::sun::star::beans;
@@ -77,6 +74,8 @@ using namespace com::sun::star::uno;
 namespace ucbhelper
 {
 
+namespace {
+
 class EmptyInputStream : public ::cppu::WeakImplHelper< XInputStream >
 {
 public:
@@ -88,6 +87,8 @@ public:
     virtual sal_Int32 SAL_CALL available() override;
     virtual void SAL_CALL closeInput() override;
 };
+
+}
 
 sal_Int32 EmptyInputStream::readBytes(
     Sequence< sal_Int8 > & data, sal_Int32 )
@@ -117,8 +118,8 @@ void EmptyInputStream::closeInput()
 }
 
 
-// class ContentEventListener_Impl.
 
+namespace {
 
 class ContentEventListener_Impl : public cppu::OWeakObject,
                                       public XContentEventListener
@@ -143,13 +144,13 @@ public:
     virtual void SAL_CALL disposing( const EventObject& Source ) override;
 };
 
+}
 
-// class Content_Impl.
 
 
 class Content_Impl : public salhelper::SimpleReferenceObject
 {
-friend class ContentEventListener_Impl;
+friend ContentEventListener_Impl;
 
     mutable OUString               m_aURL;
     Reference< XComponentContext >      m_xCtx;
@@ -174,7 +175,7 @@ public:
     const OUString&           getURL() const;
     Reference< XContent >          getContent();
     Reference< XCommandProcessor > getCommandProcessor();
-    Reference< XComponentContext > const & getComponentContext()
+    Reference< XComponentContext > const & getComponentContext() const
     { assert(m_xCtx.is()); return m_xCtx; }
 
     Any  executeCommand( const Command& rCommand );
@@ -278,7 +279,7 @@ static Reference< XContent > getContentNoThrow(
     }
     catch ( IllegalIdentifierException const & e )
     {
-        SAL_WARN("ucbhelper", "getContentNoThrow: exception: " << e.Message);
+        SAL_WARN("ucbhelper", "getContentNoThrow: " << e);
     }
 
     return xContent;
@@ -323,7 +324,7 @@ Content::Content( const Content& rOther )
     m_xImpl = rOther.m_xImpl;
 }
 
-Content::Content( Content&& rOther )
+Content::Content( Content&& rOther ) noexcept
 {
     m_xImpl = std::move(rOther.m_xImpl);
 }
@@ -364,7 +365,7 @@ Content& Content::operator=( const Content& rOther )
     return *this;
 }
 
-Content& Content::operator=( Content&& rOther )
+Content& Content::operator=( Content&& rOther ) noexcept
 {
     m_xImpl = std::move(rOther.m_xImpl);
     return *this;
@@ -936,7 +937,7 @@ bool Content::insertNewContent( const OUString& rContentType,
 }
 
 
-bool Content::transferContent( const Content& rSourceContent,
+void Content::transferContent( const Content& rSourceContent,
                                    InsertOperation eOperation,
                                    const OUString & rTitle,
                                    const sal_Int32 nNameClashAction,
@@ -944,7 +945,7 @@ bool Content::transferContent( const Content& rSourceContent,
                                    bool bMajorVersion,
                                    const OUString & rVersionComment,
                                    OUString* pResultURL,
-                                   const OUString & rDocumentId )
+                                   const OUString & rDocumentId ) const
 {
     Reference< XUniversalContentBroker > pBroker(
         UniversalContentBroker::create( m_xImpl->getComponentContext() ) );
@@ -996,7 +997,6 @@ bool Content::transferContent( const Content& rSourceContent,
     Any aRet = pBroker->execute( aCommand, 0, m_xImpl->getEnvironment() );
     if ( pResultURL != nullptr )
         aRet >>= *pResultURL;
-    return true;
 }
 
 
@@ -1007,7 +1007,7 @@ bool Content::isFolder()
         >>= bFolder )
         return bFolder;
 
-     ucbhelper::cancelCommandExecution(
+    ucbhelper::cancelCommandExecution(
          makeAny( UnknownPropertyException(
                     "Unable to retrieve value of property 'IsFolder'!",
                     get() ) ),
@@ -1030,7 +1030,7 @@ bool Content::isDocument()
         >>= bDoc )
         return bDoc;
 
-     ucbhelper::cancelCommandExecution(
+    ucbhelper::cancelCommandExecution(
          makeAny( UnknownPropertyException(
                     "Unable to retrieve value of property 'IsDocument'!",
                     get() ) ),
@@ -1205,7 +1205,7 @@ Reference< XContent > Content_Impl::getContent()
             Reference< XUniversalContentBroker > pBroker(
                 UniversalContentBroker::create( getComponentContext() ) );
 
-            OSL_ENSURE( pBroker->queryContentProviders().getLength(),
+            OSL_ENSURE( pBroker->queryContentProviders().hasElements(),
                         "Content Broker not configured (no providers)!" );
 
             Reference< XContentIdentifier > xId
@@ -1302,8 +1302,8 @@ void SAL_CALL ContentEventListener_Impl::release()
 css::uno::Any SAL_CALL ContentEventListener_Impl::queryInterface( const css::uno::Type & rType )
 {
     css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< XContentEventListener* >(this)),
-                                               (static_cast< XEventListener* >(this))
+                                               static_cast< XContentEventListener* >(this),
+                                               static_cast< XEventListener* >(this)
                                                );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
@@ -1314,21 +1314,21 @@ css::uno::Any SAL_CALL ContentEventListener_Impl::queryInterface( const css::uno
 // virtual
 void SAL_CALL ContentEventListener_Impl::contentEvent( const ContentEvent& evt )
 {
-    if ( evt.Source == m_rContent.m_xContent )
+    if ( evt.Source != m_rContent.m_xContent )
+        return;
+
+    switch ( evt.Action )
     {
-        switch ( evt.Action )
-        {
-            case ContentAction::DELETED:
-                m_rContent.reinit( Reference< XContent >() );
-                break;
+        case ContentAction::DELETED:
+            m_rContent.reinit( Reference< XContent >() );
+            break;
 
-            case ContentAction::EXCHANGED:
-                m_rContent.reinit( evt.Content );
-                break;
+        case ContentAction::EXCHANGED:
+            m_rContent.reinit( evt.Content );
+            break;
 
-            default:
-                break;
-        }
+        default:
+            break;
     }
 }
 

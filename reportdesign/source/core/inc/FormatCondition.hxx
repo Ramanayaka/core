@@ -22,10 +22,11 @@
 #include <cppuhelper/propertysetmixin.hxx>
 #include <com/sun/star/report/XFormatCondition.hpp>
 #include "ReportControlModel.hxx"
+#include <comphelper/uno3.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include "ReportHelperDefines.hxx"
+#include <ReportHelperDefines.hxx>
 
 namespace reportdesign
 {
@@ -48,6 +49,22 @@ namespace reportdesign
         OFormatCondition(const OFormatCondition&) = delete;
         OFormatCondition& operator=(const OFormatCondition&) = delete;
 
+        // internally, we store PROPERTY_PARAADJUST as css::style::ParagraphAdjust, but externally the property is visible as a sal_Int16
+        void set(  const OUString& _sProperty
+                   ,sal_Int16 Value
+                   ,css::style::ParagraphAdjust& _member)
+        {
+            BoundListeners l;
+            {
+                ::osl::MutexGuard aGuard(m_aMutex);
+                if ( static_cast<sal_Int16>(_member) != Value )
+                {
+                    prepareSet(_sProperty, css::uno::makeAny(static_cast<sal_Int16>(_member)), css::uno::makeAny(Value), &l);
+                    _member = static_cast<css::style::ParagraphAdjust>(Value);
+                }
+            }
+            l.notify();
+        }
         template <typename T> void set(  const OUString& _sProperty
                                         ,const T& Value
                                         ,T& _member)
@@ -55,8 +72,11 @@ namespace reportdesign
             BoundListeners l;
             {
                 ::osl::MutexGuard aGuard(m_aMutex);
-                prepareSet(_sProperty, css::uno::makeAny(_member), css::uno::makeAny(Value), &l);
-                _member = Value;
+                if ( _member != Value )
+                {
+                    prepareSet(_sProperty, css::uno::makeAny(_member), css::uno::makeAny(Value), &l);
+                    _member = Value;
+                }
             }
             l.notify();
         }
@@ -67,8 +87,11 @@ namespace reportdesign
             BoundListeners l;
             {
                 ::osl::MutexGuard aGuard(m_aMutex);
-                prepareSet(_sProperty, css::uno::makeAny(_member), css::uno::makeAny(Value), &l);
-                _member = Value;
+                if ( _member != Value )
+                {
+                    prepareSet(_sProperty, css::uno::makeAny(_member), css::uno::makeAny(Value), &l);
+                    _member = Value;
+                }
             }
             l.notify();
         }
@@ -84,12 +107,6 @@ namespace reportdesign
         virtual OUString SAL_CALL getImplementationName(  ) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static();
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL
-            create(css::uno::Reference< css::uno::XComponentContext > const & xContext);
         // css::beans::XPropertySet
         virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo(  ) override;
         virtual void SAL_CALL setPropertyValue( const OUString& aPropertyName, const css::uno::Any& aValue ) override;

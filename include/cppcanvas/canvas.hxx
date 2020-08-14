@@ -21,8 +21,6 @@
 #define INCLUDED_CPPCANVAS_CANVAS_HXX
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <cppcanvas/font.hxx>
-#include <cppcanvas/color.hxx>
 #include <memory>
 
 namespace basegfx
@@ -31,11 +29,11 @@ namespace basegfx
     class B2DPolyPolygon;
 }
 
-namespace com { namespace sun { namespace star { namespace rendering
+namespace com::sun::star::rendering
 {
     class  XCanvas;
     struct ViewState;
-} } } }
+}
 
 
 /* Definition of BitmapCanvas */
@@ -56,18 +54,23 @@ namespace cppcanvas
     class Canvas
     {
     public:
-        enum
-        {
-            /** Extra pixel used when canvas anti-aliases.
+        /** Extra pixel used when canvas anti-aliases.
 
-                Enlarge the bounding box of drawing primitives by this
-                amount in both dimensions, and on both sides of the
-                bounds, to account for extra pixel touched outside the
-                actual primitive bounding box, when the canvas
-                performs anti-aliasing.
-             */
-            ANTIALIASING_EXTRA_SIZE=2
-        };
+            Enlarge the bounding box of drawing primitives by this
+            amount in both dimensions, and on both sides of the
+            bounds, to account for extra pixel touched outside the
+            actual primitive bounding box, when the canvas
+            performs anti-aliasing.
+         */
+        static constexpr auto ANTIALIASING_EXTRA_SIZE=2;
+
+        Canvas() = default;
+        Canvas(Canvas const &) = default;
+        Canvas(Canvas &&) = default;
+        Canvas & operator =(Canvas const &) = default;
+#if !(defined __GNUC__ && !defined __clang__ && __GNUC__ == 8) // bogus -Werror=virtual-move-assign
+        Canvas & operator =(Canvas &&) = default;
+#endif
 
         virtual ~Canvas() {}
 
@@ -82,8 +85,6 @@ namespace cppcanvas
             @return NULL, if no clip is set, otherwise the current clip poly-polygon
          */
         virtual ::basegfx::B2DPolyPolygon const* getClip() const = 0;
-
-        virtual ColorSharedPtr                   createColor() const = 0;
 
         virtual CanvasSharedPtr                  clone() const = 0;
         virtual void                             clear() const = 0;

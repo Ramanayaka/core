@@ -18,7 +18,7 @@
  */
 #include "vbaformatcondition.hxx"
 #include "vbaformatconditions.hxx"
-#include "unonames.hxx"
+#include <unonames.hxx>
 #include <ooo/vba/excel/XlFormatConditionType.hpp>
 #include <basic/sberrors.hxx>
 
@@ -47,7 +47,6 @@ ScVbaFormatCondition::ScVbaFormatCondition( const uno::Reference< XHelperInterfa
 {
         mxSheetConditionalEntries = lcl_getScVbaFormatConditionsPtr( moFormatConditions )->getSheetConditionalEntries();
 
-        mxSheetConditionalEntry = _xSheetConditionalEntry;
         msStyleName = mxStyle->getName();
 }
 
@@ -56,7 +55,7 @@ ScVbaFormatCondition::Delete(  )
 {
     ScVbaFormatConditions* pFormatConditions = lcl_getScVbaFormatConditionsPtr( moFormatConditions );
     pFormatConditions->removeFormatCondition(msStyleName, true);
-        notifyRange();
+    notifyRange();
 }
 
 void SAL_CALL
@@ -109,14 +108,6 @@ ScVbaFormatCondition::retrieveAPIType(sal_Int32 _nVBAType, const uno::Reference<
     return aAPIType;
 }
 
-void
-ScVbaFormatCondition::setFormula1( const uno::Any& _aFormula1)
-{
-    // getA1Formula *SHOULD* detect whether the formula is r1c1 or A1 syntax
-    // and if R1C1 convert to A1
-    ScVbaFormatCondition_BASE::setFormula1( uno::makeAny( ScVbaFormatConditions::getA1Formula(_aFormula1) ) );
-}
-
 ::sal_Int32 SAL_CALL
 ScVbaFormatCondition::Type(  )
 {
@@ -126,12 +117,6 @@ ScVbaFormatCondition::Type(  )
     else
         nReturnType = excel::XlFormatConditionType::xlCellValue;
     return nReturnType;
-}
-
-::sal_Int32
-ScVbaFormatCondition::Operator( bool bVal )
-{
-    return ScVbaFormatCondition_BASE::Operator( bVal );
 }
 
 ::sal_Int32 SAL_CALL
@@ -156,18 +141,16 @@ ScVbaFormatCondition::notifyRange()
 OUString
 ScVbaFormatCondition::getServiceImplName()
 {
-    return OUString("ScVbaFormatCondition");
+    return "ScVbaFormatCondition";
 }
 
 uno::Sequence< OUString >
 ScVbaFormatCondition::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.FormatCondition";
-    }
+        "ooo.vba.excel.FormatCondition"
+    };
     return aServiceNames;
 }
 

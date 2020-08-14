@@ -37,9 +37,8 @@
 
 #include <sfx2/Metadatable.hxx>
 
-#include <unobaseclass.hxx>
+#include "unobaseclass.hxx"
 
-struct SwPosition;
 class SwPaM;
 class SwUnoCursor;
 class SwStartNode;
@@ -61,7 +60,7 @@ typedef ::cppu::ImplInheritanceHelper
 ,   css::text::XTextRange
 > SwXParagraph_Base;
 
-class SwXParagraph
+class SwXParagraph final
     : public SwXParagraph_Base
 {
 
@@ -74,7 +73,7 @@ private:
 
     SwXParagraph(css::uno::Reference< css::text::XText > const & xParent,
             SwTextNode & rTextNode,
-            const sal_Int32 nSelStart, const sal_Int32 nSelEnd = - 1);
+            const sal_Int32 nSelStart, const sal_Int32 nSelEnd);
 
     /// descriptor
     SwXParagraph();

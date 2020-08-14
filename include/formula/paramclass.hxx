@@ -36,6 +36,14 @@ namespace formula
             PopDoubleRefOrSingleRef() should not have this. */
         Reference,
 
+        /** Like Reference but the function accepts also a list of references
+            (ocUnion svRefList) as one argument AND handles the special case of
+            an array of references in array mode. Then the resulting argument
+            for a parameter in JumpMatrix context may be an array of references
+            which then is to be preferred over a result matrix. This final
+            behaviour is the opposite of SuppressedReferenceOrForceArray. */
+        ReferenceOrRefArray,
+
         /** In array formula: convert area reference to array. Function will be
             called only once if no Value type is involved. Functions able to
             handle a svMatrix parameter but not a formula::svDoubleRef parameter as area
@@ -51,8 +59,20 @@ namespace formula
             propagated to subsequent operators and functions being part of a
             parameter of this function. Used with functions that treat
             references separately from arrays, but need the forced array
-            calculation of parameters that are not references.*/
-        ReferenceOrForceArray
+            calculation of parameters that are not references. */
+        ReferenceOrForceArray,
+
+        /** Same as ReferenceOrForceArray but suppressed / not inherited in the
+            compiler's ForceArray context to indicate that a result of
+            Reference in JumpMatrix context should use the result matrix
+            instead of the array of references. Never used as initial parameter
+            classification. */
+        SuppressedReferenceOrForceArray,
+
+        /** A function return forces the caller into array mode for this one
+            call, making it behave like it had ForceArray but not propagated to
+            any further operators in the same parameter. */
+        ForceArrayReturn
     };
 }
 

@@ -21,7 +21,6 @@
 
 #include "TableConnectionData.hxx"
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include "QEnumTypes.hxx"
 
 namespace dbaui
@@ -31,7 +30,7 @@ namespace dbaui
     };
 
     class OConnectionLineData;
-    class ORelationTableConnectionData :    public OTableConnectionData
+    class ORelationTableConnectionData final : public OTableConnectionData
     {
         friend bool operator==(const ORelationTableConnectionData& lhs, const ORelationTableConnectionData& rhs);
 
@@ -46,9 +45,6 @@ namespace dbaui
         bool IsSourcePrimKey()  const { return checkPrimaryKey(getReferencingTable()->getTable(),JTCS_FROM);    }
         bool IsDestPrimKey()    const { return checkPrimaryKey(getReferencedTable()->getTable(),JTCS_TO);       }
 
-    protected:
-        virtual OConnectionLineDataRef CreateLineDataObj() override;
-
         ORelationTableConnectionData& operator=( const ORelationTableConnectionData& rConnData );
     public:
         ORelationTableConnectionData();
@@ -59,7 +55,7 @@ namespace dbaui
         virtual ~ORelationTableConnectionData() override;
 
         virtual void CopyFrom(const OTableConnectionData& rSource) override;
-        virtual OTableConnectionData* NewInstance() const override { return new ORelationTableConnectionData(); }
+        virtual std::shared_ptr<OTableConnectionData> NewInstance() const override { return std::make_shared<ORelationTableConnectionData>(); }
 
         /** Update create a new relation
 
@@ -75,9 +71,9 @@ namespace dbaui
         sal_Int32    GetDeleteRules() const { return m_nDeleteRules; }
         Cardinality  GetCardinality() const { return m_nCardinality; }
 
-        bool        IsConnectionPossible();
+        void        IsConnectionPossible();
         void        ChangeOrientation();
-        bool        DropRelation();
+        void        DropRelation();
     };
 }
 

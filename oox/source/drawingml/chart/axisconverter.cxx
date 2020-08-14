@@ -17,7 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/axisconverter.hxx"
+#include <drawingml/chart/axisconverter.hxx>
+#include <ooxresid.hxx>
+#include <strings.hrc>
 
 #include <com/sun/star/chart/ChartAxisArrangeOrderType.hpp>
 #include <com/sun/star/chart/ChartAxisLabelPosition.hpp>
@@ -32,19 +34,17 @@
 #include <com/sun/star/chart2/XAxis.hpp>
 #include <com/sun/star/chart2/XCoordinateSystem.hpp>
 #include <com/sun/star/chart2/XTitled.hpp>
-#include "drawingml/chart/axismodel.hxx"
-#include "drawingml/chart/titleconverter.hxx"
-#include "drawingml/chart/typegroupconverter.hxx"
-#include "drawingml/lineproperties.hxx"
+#include <drawingml/chart/axismodel.hxx>
+#include <drawingml/chart/titleconverter.hxx>
+#include <drawingml/chart/typegroupconverter.hxx>
+#include <drawingml/lineproperties.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
-#include "comphelper/processfactory.hxx"
+#include <comphelper/processfactory.hxx>
 #include <osl/diagnose.h>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::chart2;
@@ -52,7 +52,7 @@ using namespace ::com::sun::star::uno;
 
 namespace {
 
-inline void lclSetValueOrClearAny( Any& orAny, const OptValue< double >& rofValue )
+void lclSetValueOrClearAny( Any& orAny, const OptValue< double >& rofValue )
 {
     if( rofValue.has() ) orAny <<= rofValue.get(); else orAny.clear();
 }
@@ -116,10 +116,9 @@ bool isPercent( const RefVector<TypeGroupConverter>& rTypeGroups )
     if (rTypeGroups.empty())
         return false;
 
-    RefVector<TypeGroupConverter>::const_iterator it = rTypeGroups.begin(), itEnd = rTypeGroups.end();
-    for (; it != itEnd; ++it)
+    for (auto const& typeGroup : rTypeGroups)
     {
-        TypeGroupConverter& rConv = **it;
+        TypeGroupConverter& rConv = *typeGroup;
         if (!rConv.isPercent())
             return false;
     }
@@ -206,12 +205,20 @@ void AxisConverter::convertFromModel(
                     OSL_ENSURE( (mrModel.mnTypeId == C_TOKEN( catAx )) || (mrModel.mnTypeId == C_TOKEN( dateAx )),
                         "AxisConverter::convertFromModel - unexpected axis model type (must: c:catAx or c:dateAx)" );
                     bool bDateAxis = mrModel.mnTypeId == C_TOKEN( dateAx );
-                    /*  Chart2 requires axis type CATEGORY for automatic
-                        category/date axis (even if it is a date axis
-                        currently). */
-                    aScaleData.AxisType = (bDateAxis && !mrModel.mbAuto) ? cssc2::AxisType::DATE : cssc2::AxisType::CATEGORY;
+                    // tdf#132076: set axis type to date, if it is a date axis!
+                    aScaleData.AxisType = bDateAxis ? cssc2::AxisType::DATE : cssc2::AxisType::CATEGORY;
                     aScaleData.AutoDateAxis = mrModel.mbAuto;
                     aScaleData.Categories = rTypeGroups.front()->createCategorySequence();
+                    /* set default ShiftedCategoryPosition values for some charttype,
+                       because the XML can contain wrong CrossBetween value, if came from MSO */
+                    if( rTypeGroups.front()->is3dChart() && (rTypeInfo.meTypeId == TYPEID_BAR || rTypeInfo.meTypeId == TYPEID_HORBAR || rTypeInfo.meTypeId == TYPEID_STOCK) )
+                        aScaleData.ShiftedCategoryPosition = true;
+                    else if( rTypeInfo.meTypeId == TYPEID_RADARLINE || rTypeInfo.meTypeId == TYPEID_RADARAREA )
+                        aScaleData.ShiftedCategoryPosition = false;
+                    else if( pCrossingAxis->mnCrossBetween != -1 ) /*because of backwards compatibility*/
+                        aScaleData.ShiftedCategoryPosition = pCrossingAxis->mnCrossBetween == XML_between;
+                    else if( rTypeInfo.meTypeCategory == TYPECATEGORY_BAR || rTypeInfo.meTypeId == TYPEID_LINE || rTypeInfo.meTypeId == TYPEID_STOCK )
+                        aScaleData.ShiftedCategoryPosition = true;
                 }
                 else
                 {
@@ -261,8 +268,8 @@ void AxisConverter::convertFromModel(
                 {
                     // do not overlap text unless all labels are visible
                     aAxisProp.setProperty( PROP_TextOverlap, mrModel.mnTickLabelSkip == 1 );
-                    // do not break text into several lines
-                    aAxisProp.setProperty( PROP_TextBreak, false );
+                    // do not break text into several lines unless the rotation is 0 degree
+                    aAxisProp.setProperty( PROP_TextBreak, ObjectFormatter::getTextRotation( mrModel.mxTextProp ) );
                     // do not stagger labels in two lines
                     aAxisProp.setProperty( PROP_ArrangeOrder, cssc::ChartAxisArrangeOrderType_SIDE_BY_SIDE );
                     //! TODO #i58731# show n-th category
@@ -273,7 +280,7 @@ void AxisConverter::convertFromModel(
             case cssc2::AxisType::PERCENT:
             {
                 // scaling algorithm
-                bool bLogScale = lclIsLogarithmicScale( mrModel );
+                const bool bLogScale = lclIsLogarithmicScale( mrModel );
                 if( bLogScale )
                     aScaleData.Scaling = LogarithmicScaling::create( comphelper::getProcessComponentContext() );
                 else
@@ -303,6 +310,11 @@ void AxisConverter::convertFromModel(
                     if( (1.0 <= fCount) && (fCount < 1001.0) )
                         rIntervalCount <<= static_cast< sal_Int32 >( fCount );
                 }
+                else if( !mrModel.mofMinorUnit.has() )
+                {
+                    // tdf#114168 If minor unit is not set then set interval to 5, as MS Excel do.
+                    rIntervalCount <<= static_cast< sal_Int32 >( 5 );
+                }
             }
             break;
             default:
@@ -327,9 +339,10 @@ void AxisConverter::convertFromModel(
         xAxis->setScaleData( aScaleData );
 
         // number format ------------------------------------------------------
-
-        if( (aScaleData.AxisType == cssc2::AxisType::REALNUMBER) || (aScaleData.AxisType == cssc2::AxisType::PERCENT) )
+        if( !mrModel.mbDeleted && aScaleData.AxisType != cssc2::AxisType::SERIES )
+        {
             getFormatter().convertNumberFormat(aAxisProp, mrModel.maNumberFormat, true);
+        }
 
         // position of crossing axis ------------------------------------------
 
@@ -356,7 +369,7 @@ void AxisConverter::convertFromModel(
         {
             Reference< XTitled > xTitled( xAxis, UNO_QUERY_THROW );
             TitleConverter aTitleConv( *this, *mrModel.mxTitle );
-            aTitleConv.convertFromModel( xTitled, "Axis Title", OBJECTTYPE_AXISTITLE, nAxesSetIdx, nAxisIdx );
+            aTitleConv.convertFromModel( xTitled, OoxResId(STR_DIAGRAM_AXISTITLE), OBJECTTYPE_AXISTITLE, nAxesSetIdx, nAxisIdx );
         }
 
         // axis data unit label -----------------------------------------------
@@ -390,15 +403,13 @@ AxisDispUnitsConverter::~AxisDispUnitsConverter()
 void AxisDispUnitsConverter::convertFromModel( const Reference< XAxis >& rxAxis )
 {
     PropertySet aPropSet( rxAxis );
-    if (!(mrModel.mnBuiltInUnit).isEmpty() )
+    if (!mrModel.mnBuiltInUnit.isEmpty() )
     {
         aPropSet.setProperty(PROP_DisplayUnits, true);
         aPropSet.setProperty( PROP_BuiltInUnit, mrModel.mnBuiltInUnit );
     }
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

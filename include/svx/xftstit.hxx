@@ -29,15 +29,13 @@
 |*
 \************************************************************************/
 
-class SVX_DLLPUBLIC XFormTextStartItem : public SfxMetricItem
+class SVXCORE_DLLPUBLIC XFormTextStartItem final : public SfxMetricItem
 {
 public:
                             static SfxPoolItem* CreateDefault();
 
                             XFormTextStartItem(long nStart = 0);
-                            XFormTextStartItem(SvStream& rIn);
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual XFormTextStartItem* Clone(SfxItemPool* pPool = nullptr) const override;
 };
 
 #endif

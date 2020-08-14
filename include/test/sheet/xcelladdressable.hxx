@@ -7,22 +7,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDE_TEST_SHEET_XCELLADDRESSABLE_HXX
-#define INCLUDE_TEST_SHEET_XCELLADDRESSABLE_HXX
+#ifndef INCLUDED_TEST_SHEET_XCELLADDRESSABLE_HXX
+#define INCLUDED_TEST_SHEET_XCELLADDRESSABLE_HXX
 
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <test/testdllapi.hxx>
-
-using namespace css;
-using namespace css::uno;
 
 namespace apitest {
 
 class OOO_DLLPUBLIC_TEST XCellAddressable
 {
 public:
-    virtual uno::Reference< uno::XInterface > init() = 0;
+    virtual css::uno::Reference< css::uno::XInterface > init() = 0;
     virtual ~XCellAddressable(){}
 
     void testGetCellAddress();
@@ -30,6 +27,6 @@ public:
 
 }
 
-#endif // INCLUDE_TEST_SHEET_XCELLADDRESSABLE_HXX
+#endif // INCLUDED_TEST_SHEET_XCELLADDRESSABLE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

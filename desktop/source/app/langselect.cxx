@@ -30,20 +30,20 @@
 #include <i18nlangtag/lang.h>
 #include <i18nlangtag/languagetag.hxx>
 #include <i18nlangtag/mslangid.hxx>
-#include "officecfg/Office/Linguistic.hxx"
-#include "officecfg/Setup.hxx"
-#include "officecfg/System.hxx"
+#include <officecfg/Office/Linguistic.hxx>
+#include <officecfg/Setup.hxx>
+#include <officecfg/System.hxx>
 #include <rtl/ustring.hxx>
-#include <sal/log.hxx>
-#include <sal/types.h>
 #include <svl/languageoptions.hxx>
+#include <svtools/langhelp.hxx>
+#include <tools/diagnose_ex.h>
 
-#include "app.hxx"
+#include <app.hxx>
 
 #include "cmdlineargs.hxx"
 #include "langselect.hxx"
 
-namespace desktop { namespace langselect {
+namespace desktop::langselect {
 
 namespace {
 
@@ -52,47 +52,23 @@ OUString foundLocale;
 void setMsLangIdFallback(OUString const & locale) {
     // #i32939# setting of default document language
     // See #i42730# for rules for determining source of settings
-    if (!locale.isEmpty()) {
-        LanguageType type = LanguageTag::convertToLanguageTypeWithFallback(locale);
-        switch (SvtLanguageOptions::GetScriptTypeOfLanguage(type)) {
-        case SvtScriptType::ASIAN:
-            MsLangId::setConfiguredAsianFallback(type);
-            break;
-        case SvtScriptType::COMPLEX:
-            MsLangId::setConfiguredComplexFallback(type);
-            break;
-        default:
-            MsLangId::setConfiguredWesternFallback(type);
-            break;
-        }
+    if (locale.isEmpty())
+        return;
+
+    LanguageType type = LanguageTag::convertToLanguageTypeWithFallback(locale);
+    switch (SvtLanguageOptions::GetScriptTypeOfLanguage(type)) {
+    case SvtScriptType::ASIAN:
+        MsLangId::setConfiguredAsianFallback(type);
+        break;
+    case SvtScriptType::COMPLEX:
+        MsLangId::setConfiguredComplexFallback(type);
+        break;
+    default:
+        MsLangId::setConfiguredWesternFallback(type);
+        break;
     }
 }
 
-}
-
-OUString getEmergencyLocale() {
-    if (!foundLocale.isEmpty()) {
-        return foundLocale;
-    }
-    try {
-        css::uno::Sequence<OUString> inst(
-            officecfg::Setup::Office::InstalledLocales::get()->
-            getElementNames());
-        OUString locale(
-            getInstalledLocaleForLanguage(
-                inst,
-                officecfg::Office::Linguistic::General::UILocale::get()));
-        if (!locale.isEmpty()) {
-            return locale;
-        }
-        locale = getInstalledLocaleForSystemUILanguage(inst);
-        if (!locale.isEmpty()) {
-            return locale;
-        }
-    } catch (css::uno::Exception & e) {
-        SAL_WARN("desktop.app", "ignoring Exception \"" << e.Message << "\"");
-    }
-    return OUString();
 }
 
 bool prepareLocale() {
@@ -114,10 +90,8 @@ bool prepareLocale() {
                 officecfg::Office::Linguistic::General::UILocale::set(
                     "", batch);
                 batch->commit();
-            } catch (css::uno::Exception & e) {
-                SAL_WARN(
-                    "desktop.app",
-                    "ignoring Exception \"" << e.Message << "\"");
+            } catch (const css::uno::Exception &) {
+                TOOLS_WARN_EXCEPTION("desktop.app", "ignoring");
             }
         }
     }
@@ -130,7 +104,7 @@ bool prepareLocale() {
         }
     }
     if (locale.isEmpty()) {
-        locale = getInstalledLocaleForSystemUILanguage(inst);
+        locale = getInstalledLocaleForSystemUILanguage(inst, true);
     }
     if (locale.isEmpty()) {
         return false;
@@ -149,9 +123,8 @@ bool prepareLocale() {
                 comphelper::ConfigurationChanges::create());
             officecfg::Setup::L10N::ooLocale::set(locale, batch);
             batch->commit();
-        } catch (css::uno::Exception & e) {
-            SAL_WARN(
-                "desktop.app", "ignoring Exception \"" << e.Message << "\"");
+        } catch (const css::uno::Exception &) {
+            TOOLS_WARN_EXCEPTION("desktop.app", "ignoring");
         }
     }
     MsLangId::setConfiguredSystemUILanguage(tag.getLanguageType(false));
@@ -172,6 +145,6 @@ bool prepareLocale() {
     return true;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

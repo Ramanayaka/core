@@ -18,9 +18,7 @@
  */
 
 
-#include <rtl/string.h>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include "dp_misc.h"
 #include "dp_executablebackenddb.hxx"
 
 
@@ -31,9 +29,7 @@ using namespace ::com::sun::star::uno;
 #define ROOT_ELEMENT_NAME "executable-backend-db"
 #define ENTRY_NAME "executable"
 
-namespace dp_registry {
-namespace backend {
-namespace executable {
+namespace dp_registry::backend::executable {
 
 ExecutableBackendDb::ExecutableBackendDb(
     Reference<XComponentContext> const &  xContext,
@@ -44,27 +40,25 @@ ExecutableBackendDb::ExecutableBackendDb(
 
 OUString ExecutableBackendDb::getDbNSName()
 {
-    return OUString(EXTENSION_REG_NS);
+    return EXTENSION_REG_NS;
 }
 
 OUString ExecutableBackendDb::getNSPrefix()
 {
-    return OUString(NS_PREFIX);
+    return NS_PREFIX;
 }
 
 OUString ExecutableBackendDb::getRootElementName()
 {
-    return OUString(ROOT_ELEMENT_NAME);
+    return ROOT_ELEMENT_NAME;
 }
 
 OUString ExecutableBackendDb::getKeyElementName()
 {
-    return OUString(ENTRY_NAME);
+    return ENTRY_NAME;
 }
 
 
-} // namespace executable
-} // namespace backend
-} // namespace dp_registry
+} // namespace dp_registry::backend::executable
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

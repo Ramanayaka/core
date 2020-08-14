@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVTOOLS_SOURCE_INC_HATCHWINDOW_HXX
-#define INCLUDED_SVTOOLS_SOURCE_INC_HATCHWINDOW_HXX
+#pragma once
 
 #include <com/sun/star/embed/XHatchWindow.hpp>
 
 #include <toolkit/awt/vclxwindow.hxx>
-#include <cppuhelper/typeprovider.hxx>
 
 class SvResizeWindow;
 class VCLXHatchWindow : public css::embed::XHatchWindow,
@@ -67,6 +65,5 @@ public:
     virtual void SAL_CALL removeEventListener( const css::uno::Reference< css::lang::XEventListener >& aListener ) override;
 };
 
-#endif // INCLUDED_SVTOOLS_SOURCE_INC_HATCHWINDOW_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

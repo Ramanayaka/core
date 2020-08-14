@@ -25,7 +25,6 @@
 #ifndef INCLUDED_UCB_SOURCE_UCP_FTP_FTPDIRP_HXX
 #define INCLUDED_UCB_SOURCE_UCP_FTP_FTPDIRP_HXX
 
-#include <osl/time.h>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/util/DateTime.hpp>
 
@@ -53,7 +52,7 @@ namespace ftp {
         void SetSec(sal_uInt16 seconds) { Seconds = seconds; }
         void SetNanoSec(sal_uInt32 nanoSec) { NanoSeconds = nanoSec; }
 
-        sal_uInt16 GetMonth() { return Month; }
+        sal_uInt16 GetMonth() const { return Month; }
     };
 
 
@@ -80,7 +79,7 @@ namespace ftp {
         FTPDirentry()
             : m_aDate(),
               m_nMode(INETCOREFTP_FILEMODE_UNKNOWN),
-              m_nSize((sal_uInt32)(-1)) { }
+              m_nSize(sal_uInt32(-1)) { }
 
         void clear() {
             m_aURL.clear();
@@ -104,52 +103,52 @@ namespace ftp {
     public:
         static bool parseDOS (
             FTPDirentry &rEntry,
-            const sal_Char  *pBuffer );
+            const char  *pBuffer );
 
         static bool parseVMS (
             FTPDirentry &rEntry,
-            const sal_Char  *pBuffer );
+            const char  *pBuffer );
 
         static bool parseUNIX (
             FTPDirentry &rEntry,
-            const sal_Char  *pBuffer );
+            const char  *pBuffer );
 
 
     private:
 
         static bool parseUNIX_isSizeField (
-            const sal_Char *pStart,
-            const sal_Char *pEnd,
+            const char *pStart,
+            const char *pEnd,
             sal_uInt32     &rSize);
 
         static bool parseUNIX_isMonthField (
-            const sal_Char *pStart,
-            const sal_Char *pEnd,
+            const char *pStart,
+            const char *pEnd,
             DateTime& rDateTime);
 
         static bool parseUNIX_isDayField (
-            const sal_Char *pStart,
-            const sal_Char *pEnd,
+            const char *pStart,
+            const char *pEnd,
             DateTime& rDateTime);
 
         static bool parseUNIX_isYearTimeField (
-            const sal_Char *pStart,
-            const sal_Char *pEnd,
+            const char *pStart,
+            const char *pEnd,
             DateTime& rDateTime);
 
         static bool parseUNIX_isTime (
-            const sal_Char *pStart,
-            const sal_Char *pEnd,
+            const char *pStart,
+            const char *pEnd,
             sal_uInt16      nHour,
             DateTime& rDateTime);
 
-        static bool setYear (
+        static void setYear (
             DateTime& rDateTime,
             sal_uInt16  nYear);
 
         static bool setPath (
             OUString& rPath,
-            const sal_Char *value,
+            const char *value,
             sal_Int32       length = -1);
     };
 

@@ -19,14 +19,13 @@
 #ifndef INCLUDED_SFX2_SOURCE_SIDEBAR_ASYNCHRONOUSCALL_HXX
 #define INCLUDED_SFX2_SOURCE_SIDEBAR_ASYNCHRONOUSCALL_HXX
 
-#include <tools/solar.h>
 #include <tools/link.hxx>
 
 #include <functional>
 
 struct ImplSVEvent;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 /** A simple asynchronous call via Application::PostUserCall.
 */
@@ -35,12 +34,12 @@ class AsynchronousCall
 public:
     typedef ::std::function<void()> Action;
 
-    AsynchronousCall();
     AsynchronousCall (const Action& rAction);
     ~AsynchronousCall();
 
     void RequestCall();
     void CancelRequest();
+    void Sync();
 
 private:
     Action maAction;
@@ -49,7 +48,7 @@ private:
     DECL_LINK(HandleUserCall, void*, void);
 };
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 #endif
 

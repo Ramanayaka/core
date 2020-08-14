@@ -18,29 +18,25 @@
  */
 
 #include <com/sun/star/i18n/WordType.hpp>
+#include <com/sun/star/linguistic2/XThesaurus.hpp>
 
 #include <hintids.hxx>
 #include <cmdid.h>
-#include <helpid.h>
+#include <comphelper/lok.hxx>
 
 #include <i18nutil/unicode.hxx>
 #include <i18nlangtag/languagetag.hxx>
-#include <svl/languageoptions.hxx>
-#include <editeng/langitem.hxx>
 #include <svtools/langtab.hxx>
 #include <svl/slstitm.hxx>
-#include <svl/grabbagitem.hxx>
-#include <string.h>
 #include <svl/stritem.hxx>
 #include <sfx2/htmlmode.hxx>
 #include <svl/whiter.hxx>
 #include <sfx2/bindings.hxx>
-#include <sfx2/dispatch.hxx>
-#include <sfx2/objitem.hxx>
+#include <sfx2/viewfrm.hxx>
 #include <vcl/unohelp2.hxx>
+#include <vcl/weld.hxx>
 #include <sfx2/request.hxx>
 #include <svl/eitem.hxx>
-#include <svl/macitem.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/colritem.hxx>
 #include <editeng/tstpitem.hxx>
@@ -51,91 +47,85 @@
 #include <IDocumentDrawModelAccess.hxx>
 #include <IDocumentSettingAccess.hxx>
 #include <charfmt.hxx>
-#include <editeng/fontitem.hxx>
 #include <svx/SmartTagItem.hxx>
 #include <fmtinfmt.hxx>
-#include <swwait.hxx>
 #include <wrtsh.hxx>
 #include <wview.hxx>
 #include <swmodule.hxx>
 #include <viewopt.hxx>
 #include <uitool.hxx>
-#include <swevent.hxx>
-#include <pagedesc.hxx>
 #include <textsh.hxx>
 #include <IMark.hxx>
 #include <swdtflvr.hxx>
-#include <docstat.hxx>
-#include <outline.hxx>
-#include <tablemgr.hxx>
 #include <swundo.hxx>
 #include <reffld.hxx>
 #include <docsh.hxx>
-#include <mdiexp.hxx>
 #include <inputwin.hxx>
 #include <chrdlgmodes.hxx>
-#include <pardlg.hxx>
-#include <frmatr.hxx>
 #include <fmtcol.hxx>
 #include <cellatr.hxx>
 #include <edtwin.hxx>
-#include <redlndlg.hxx>
-#include "fldmgr.hxx"
-#include <globals.hrc>
-#include <shells.hrc>
-#include <app.hrc>
-#include <web.hrc>
-#include "paratr.hxx"
+#include <fldmgr.hxx>
+#include <strings.hrc>
+#include <paratr.hxx>
 #include <vcl/svapp.hxx>
 #include <sfx2/app.hxx>
 #include <breakit.hxx>
 #include <SwSmartTagMgr.hxx>
 #include <editeng/acorrcfg.hxx>
-#include "swabstdlg.hxx"
-#include "misc.hrc"
-#include "chrdlg.hrc"
-#include <IDocumentStatistics.hxx>
+#include <swabstdlg.hxx>
 #include <sfx2/sfxdlg.hxx>
-#include <unotools/lingucfg.hxx>
+#include <com/sun/star/container/XNameContainer.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/linguistic2/ProofreadingResult.hpp>
+#include <com/sun/star/linguistic2/XDictionary.hpp>
+#include <com/sun/star/linguistic2/XSpellAlternatives.hpp>
 #include <editeng/unolingu.hxx>
-#include <unotools/syslocaleoptions.hxx>
 #include <doc.hxx>
 #include <drawdoc.hxx>
 #include <view.hxx>
-#include <ndtxt.hxx>
 #include <pam.hxx>
 #include <sfx2/objface.hxx>
 #include <langhelper.hxx>
 #include <uiitems.hxx>
-#include <tools/diagnose_ex.h>
 #include <svx/nbdtmgfact.hxx>
 #include <svx/nbdtmg.hxx>
 #include <SwRewriter.hxx>
-#include <comcore.hrc>
-#include <svx/svdmodel.hxx>
 #include <svx/drawitem.hxx>
 #include <numrule.hxx>
 #include <memory>
+#include <xmloff/odffields.hxx>
+#include <bookmrk.hxx>
+#include <linguistic/misc.hxx>
+#include <editeng/splwrap.hxx>
 
 using namespace ::com::sun::star;
+using namespace com::sun::star::beans;
+using namespace ::com::sun::star::container;
+using namespace com::sun::star::style;
 using namespace svx::sidebar;
 
-void sw_CharDialog( SwWrtShell &rWrtSh, bool bUseDialog, sal_uInt16 nSlot,const SfxItemSet *pArgs, SfxRequest *pReq )
+static void sw_CharDialogResult(const SfxItemSet* pSet, SwWrtShell &rWrtSh, std::shared_ptr<SfxItemSet> const & pCoreSet, bool bSel, bool bSelectionPut, SfxRequest *pReq);
+
+static void sw_CharDialog(SwWrtShell &rWrtSh, bool bUseDialog, sal_uInt16 nSlot, const SfxItemSet *pArgs, SfxRequest *pReq )
 {
     FieldUnit eMetric = ::GetDfltMetric(dynamic_cast<SwWebView*>( &rWrtSh.GetView()) != nullptr );
     SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)));
-    SfxItemSet aCoreSet(
+    auto pCoreSet = std::make_shared<SfxItemSet>(
         rWrtSh.GetView().GetPool(),
         svl::Items<
             RES_CHRATR_BEGIN, RES_CHRATR_END - 1,
             RES_TXTATR_INETFMT, RES_TXTATR_INETFMT,
             RES_BACKGROUND, RES_SHADOW,
+            XATTR_FILLSTYLE, XATTR_FILLCOLOR,
             SID_ATTR_BORDER_INNER, SID_ATTR_BORDER_INNER,
             SID_HTML_MODE, SID_HTML_MODE,
             SID_ATTR_CHAR_WIDTH_FIT_TO_LINE, SID_ATTR_CHAR_WIDTH_FIT_TO_LINE,
-            FN_PARAM_SELECTION, FN_PARAM_SELECTION>{} );
-    rWrtSh.GetCurAttr( aCoreSet );
+            FN_PARAM_SELECTION, FN_PARAM_SELECTION>{});
+    rWrtSh.GetCurAttr(*pCoreSet);
+
     bool bSel = rWrtSh.HasSelection();
     bool bSelectionPut = false;
     if(bSel || rWrtSh.IsInWord())
@@ -147,7 +137,7 @@ void sw_CharDialog( SwWrtShell &rWrtSh, bool bUseDialog, sal_uInt16 nSlot,const 
             if(!rWrtSh.SelectTextAttr( RES_TXTATR_INETFMT ))
                 rWrtSh.SelWrd();
         }
-        aCoreSet.Put(SfxStringItem(FN_PARAM_SELECTION, rWrtSh.GetSelText()));
+        pCoreSet->Put(SfxStringItem(FN_PARAM_SELECTION, rWrtSh.GetSelText()));
         bSelectionPut = true;
         if(!bSel)
         {
@@ -155,123 +145,210 @@ void sw_CharDialog( SwWrtShell &rWrtSh, bool bUseDialog, sal_uInt16 nSlot,const 
             rWrtSh.EndAction();
         }
     }
-        aCoreSet.Put( SfxUInt16Item( SID_ATTR_CHAR_WIDTH_FIT_TO_LINE,
-                    rWrtSh.GetScalingOfSelectedText() ) );
+    pCoreSet->Put(SfxUInt16Item(SID_ATTR_CHAR_WIDTH_FIT_TO_LINE, rWrtSh.GetScalingOfSelectedText()));
 
-    ::ConvertAttrCharToGen(aCoreSet, CONV_ATTR_STD);
+    ::ConvertAttrCharToGen(*pCoreSet);
 
     // Setting the BoxInfo
-    ::PrepareBoxInfo( aCoreSet, rWrtSh );
+    ::PrepareBoxInfo(*pCoreSet, rWrtSh);
 
-    aCoreSet.Put(SfxUInt16Item(SID_HTML_MODE, ::GetHtmlMode(rWrtSh.GetView().GetDocShell())));
-    ScopedVclPtr<SfxAbstractTabDialog> pDlg;
+    pCoreSet->Put(SfxUInt16Item(SID_HTML_MODE, ::GetHtmlMode(rWrtSh.GetView().GetDocShell())));
+    VclPtr<SfxAbstractTabDialog> pDlg;
     if ( bUseDialog && GetActiveView() )
     {
         SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-        OSL_ENSURE(pFact, "SwAbstractDialogFactory fail!");
+        pDlg.reset(pFact->CreateSwCharDlg(rWrtSh.GetView().GetFrameWeld(), rWrtSh.GetView(), *pCoreSet, SwCharDlgMode::Std));
 
-        pDlg.disposeAndReset(pFact->CreateSwCharDlg(rWrtSh.GetView().GetWindow(), rWrtSh.GetView(), aCoreSet, SwCharDlgMode::Std));
-        OSL_ENSURE(pDlg, "Dialog creation failed!");
-        if( FN_INSERT_HYPERLINK == nSlot )
+        if (nSlot == FN_INSERT_HYPERLINK)
             pDlg->SetCurPageId("hyperlink");
-    }
-    if (pDlg && nSlot == SID_CHAR_DLG_EFFECT)
-    {
-        pDlg->SetCurPageId("fonteffects");
-    }
-    else if (pDlg && (nSlot == SID_ATTR_CHAR_FONT || nSlot == SID_CHAR_DLG_FOR_PARAGRAPH))
-    {
-        pDlg->SetCurPageId("font");
-    }
-    else if (pDlg && pReq)
-    {
-        const SfxStringItem* pItem = (*pReq).GetArg<SfxStringItem>(FN_PARAM_1);
-        if (pItem)
-            pDlg->SetCurPageId(OUStringToOString(pItem->GetValue(), RTL_TEXTENCODING_UTF8));
-    }
-
-    const SfxItemSet* pSet = nullptr;
-    if ( !bUseDialog )
-        pSet = pArgs;
-    else if ( pDlg && pDlg->Execute() == RET_OK ) /* #110771# pDlg can be NULL */
-    {
-        pSet = pDlg->GetOutputItemSet();
-    }
-
-    if ( pSet)
-    {
-        SfxItemSet aTmpSet( *pSet );
-        ::ConvertAttrGenToChar(aTmpSet, aCoreSet, CONV_ATTR_STD);
-
-        const SfxPoolItem* pSelectionItem;
-        bool bInsert = false;
-        sal_Int32 nInsert = 0;
-
-        // The old item is for unknown reasons back in the set again.
-        if( !bSelectionPut && SfxItemState::SET == aTmpSet.GetItemState(FN_PARAM_SELECTION, false, &pSelectionItem) )
+        else if (nSlot == SID_CHAR_DLG_EFFECT)
+            pDlg->SetCurPageId("fonteffects");
+        else if (nSlot == SID_CHAR_DLG_FOR_PARAGRAPH)
+            pDlg->SetCurPageId("font");
+        else if (pReq)
         {
-            OUString sInsert = static_cast<const SfxStringItem*>(pSelectionItem)->GetValue();
-            bInsert = !sInsert.isEmpty();
-            if(bInsert)
-            {
-                nInsert = sInsert.getLength();
-                rWrtSh.StartAction();
-                rWrtSh.Insert( sInsert );
-                rWrtSh.SetMark();
-                rWrtSh.ExtendSelection(false, sInsert.getLength());
-                SfxRequest aReq( rWrtSh.GetView().GetViewFrame(), FN_INSERT_STRING );
-                aReq.AppendItem( SfxStringItem( FN_INSERT_STRING, sInsert ) );
-                aReq.Done();
-                SfxRequest aReq1( rWrtSh.GetView().GetViewFrame(), FN_CHAR_LEFT );
-                aReq1.AppendItem( SfxInt32Item(FN_PARAM_MOVE_COUNT, nInsert) );
-                aReq1.AppendItem( SfxBoolItem(FN_PARAM_MOVE_SELECTION, true) );
-                aReq1.Done();
-            }
+            const SfxStringItem* pItem = (*pReq).GetArg<SfxStringItem>(FN_PARAM_1);
+            if (pItem)
+                pDlg->SetCurPageId(OUStringToOString(pItem->GetValue(), RTL_TEXTENCODING_UTF8));
         }
-        aTmpSet.ClearItem(FN_PARAM_SELECTION);
+    }
 
-        SwTextFormatColl* pColl = rWrtSh.GetCurTextFormatColl();
-        if(bSel && rWrtSh.IsSelFullPara() && pColl && pColl->IsAutoUpdateFormat())
-        {
-            rWrtSh.AutoUpdatePara(pColl, aTmpSet);
-        }
-        else
-            rWrtSh.SetAttrSet( aTmpSet );
+    if (bUseDialog)
+    {
+        std::shared_ptr<SfxRequest> pRequest;
         if (pReq)
-            pReq->Done(aTmpSet);
+        {
+            pRequest = std::make_shared<SfxRequest>(*pReq);
+            pReq->Ignore(); // the 'old' request is not relevant any more
+        }
+        pDlg->StartExecuteAsync([pDlg, &rWrtSh, pCoreSet, bSel, bSelectionPut, pRequest](sal_Int32 nResult){
+            if (nResult == RET_OK)
+            {
+                sw_CharDialogResult(pDlg->GetOutputItemSet(), rWrtSh, pCoreSet, bSel, bSelectionPut, pRequest.get());
+            }
+            pDlg->disposeOnce();
+        });
+    }
+    else if (pArgs)
+    {
+        sw_CharDialogResult(pArgs, rWrtSh, pCoreSet, bSel, bSelectionPut, pReq);
+    }
+}
+
+static void sw_CharDialogResult(const SfxItemSet* pSet, SwWrtShell &rWrtSh, std::shared_ptr<SfxItemSet> const & pCoreSet, bool bSel, bool bSelectionPut, SfxRequest *pReq)
+{
+    SfxItemSet aTmpSet( *pSet );
+    ::ConvertAttrGenToChar(aTmpSet, *pCoreSet);
+
+    const SfxPoolItem* pSelectionItem;
+    bool bInsert = false;
+    sal_Int32 nInsert = 0;
+
+    // The old item is for unknown reasons back in the set again.
+    if( !bSelectionPut && SfxItemState::SET == aTmpSet.GetItemState(FN_PARAM_SELECTION, false, &pSelectionItem) )
+    {
+        OUString sInsert = static_cast<const SfxStringItem*>(pSelectionItem)->GetValue();
+        bInsert = !sInsert.isEmpty();
         if(bInsert)
         {
-            SfxRequest aReq1( rWrtSh.GetView().GetViewFrame(), FN_CHAR_RIGHT );
+            nInsert = sInsert.getLength();
+            rWrtSh.StartAction();
+            rWrtSh.Insert( sInsert );
+            rWrtSh.SetMark();
+            rWrtSh.ExtendSelection(false, sInsert.getLength());
+            SfxRequest aReq( rWrtSh.GetView().GetViewFrame(), FN_INSERT_STRING );
+            aReq.AppendItem( SfxStringItem( FN_INSERT_STRING, sInsert ) );
+            aReq.Done();
+            SfxRequest aReq1( rWrtSh.GetView().GetViewFrame(), FN_CHAR_LEFT );
             aReq1.AppendItem( SfxInt32Item(FN_PARAM_MOVE_COUNT, nInsert) );
-            aReq1.AppendItem( SfxBoolItem(FN_PARAM_MOVE_SELECTION, false) );
+            aReq1.AppendItem( SfxBoolItem(FN_PARAM_MOVE_SELECTION, true) );
             aReq1.Done();
-            rWrtSh.SwapPam();
-            rWrtSh.ClearMark();
-            rWrtSh.DontExpandFormat();
-            rWrtSh.EndAction();
+        }
+    }
+    aTmpSet.ClearItem(FN_PARAM_SELECTION);
+
+    SwTextFormatColl* pColl = rWrtSh.GetCurTextFormatColl();
+    if(bSel && rWrtSh.IsSelFullPara() && pColl && pColl->IsAutoUpdateFormat())
+    {
+        rWrtSh.AutoUpdatePara(pColl, aTmpSet);
+    }
+    else
+        rWrtSh.SetAttrSet( aTmpSet );
+    if (pReq)
+        pReq->Done(aTmpSet);
+    if(bInsert)
+    {
+        SfxRequest aReq1( rWrtSh.GetView().GetViewFrame(), FN_CHAR_RIGHT );
+        aReq1.AppendItem( SfxInt32Item(FN_PARAM_MOVE_COUNT, nInsert) );
+        aReq1.AppendItem( SfxBoolItem(FN_PARAM_MOVE_SELECTION, false) );
+        aReq1.Done();
+        rWrtSh.SwapPam();
+        rWrtSh.ClearMark();
+        rWrtSh.DontExpandFormat();
+        rWrtSh.EndAction();
+    }
+
+}
+
+static short lcl_AskRedlineFlags(weld::Window *pWin)
+{
+    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pWin, "modules/swriter/ui/queryredlinedialog.ui"));
+    std::unique_ptr<weld::MessageDialog> xQBox(xBuilder->weld_message_dialog("QueryRedlineDialog"));
+    return xQBox->run();
+}
+
+static void sw_ParagraphDialogResult(SfxItemSet* pSet, SwWrtShell &rWrtSh, SfxRequest& rReq, SwPaM* pPaM)
+{
+    if (!pSet)
+        return;
+
+    rReq.Done( *pSet );
+    ::SfxToSwPageDescAttr( rWrtSh, *pSet );
+    // #i56253#
+    // enclose all undos.
+    // Thus, check conditions, if actions will be performed.
+    const bool bUndoNeeded( pSet->Count() ||
+            SfxItemState::SET == pSet->GetItemState(FN_NUMBER_NEWSTART) ||
+            SfxItemState::SET == pSet->GetItemState(FN_NUMBER_NEWSTART_AT) );
+    if ( bUndoNeeded )
+    {
+        rWrtSh.StartUndo( SwUndoId::INSATTR );
+    }
+    if( pSet->Count() )
+    {
+        rWrtSh.StartAction();
+        const SfxPoolItem* pItem = nullptr;
+        if ( SfxItemState::SET == pSet->GetItemState(FN_DROP_TEXT, false, &pItem) )
+        {
+            if ( !static_cast<const SfxStringItem*>(pItem)->GetValue().isEmpty() )
+                rWrtSh.ReplaceDropText(static_cast<const SfxStringItem*>(pItem)->GetValue(), pPaM);
+        }
+        rWrtSh.SetAttrSet(*pSet, SetAttrMode::DEFAULT, pPaM);
+        rWrtSh.EndAction();
+        SwTextFormatColl* pColl = rWrtSh.GetPaMTextFormatColl(pPaM);
+        if(pColl && pColl->IsAutoUpdateFormat())
+        {
+            rWrtSh.AutoUpdatePara(pColl, *pSet, pPaM);
+        }
+    }
+
+    if( SfxItemState::SET == pSet->GetItemState(FN_NUMBER_NEWSTART) )
+    {
+        //SetNumRuleStart(true) restarts the numbering at the value
+        //that is defined at the starting point of the numbering level
+        //otherwise the SetNodeNumStart() value determines the start
+        //if it's set to something different than USHRT_MAX
+
+        bool bStart = static_cast<const SfxBoolItem&>(pSet->Get(FN_NUMBER_NEWSTART)).GetValue();
+
+        // Default value for restart value has to be USHRT_MAX
+        // in order to indicate that the restart value of the list
+        // style has to be used on restart.
+        sal_uInt16 nNumStart = USHRT_MAX;
+        if( SfxItemState::SET == pSet->GetItemState(FN_NUMBER_NEWSTART_AT) )
+        {
+            nNumStart = static_cast<const SfxUInt16Item&>(pSet->Get(FN_NUMBER_NEWSTART_AT)).GetValue();
+        }
+        rWrtSh.SetNumRuleStart(bStart, pPaM);
+        rWrtSh.SetNodeNumStart(nNumStart);
+    }
+    else if( SfxItemState::SET == pSet->GetItemState(FN_NUMBER_NEWSTART_AT) )
+    {
+        rWrtSh.SetNodeNumStart(static_cast<const SfxUInt16Item&>(pSet->Get(FN_NUMBER_NEWSTART_AT)).GetValue());
+        rWrtSh.SetNumRuleStart(false, pPaM);
+    }
+    // #i56253#
+    if ( bUndoNeeded )
+    {
+        rWrtSh.EndUndo( SwUndoId::INSATTR );
+    }
+}
+
+namespace {
+
+void InsertBreak(SwWrtShell& rWrtSh,
+                 sal_uInt16 nKind,
+                 ::std::optional<sal_uInt16> oPageNumber,
+                 const OUString& rTemplateName)
+{
+    switch ( nKind )
+    {
+        case 1 :
+            rWrtSh.InsertLineBreak(); break;
+        case 2 :
+            rWrtSh.InsertColumnBreak(); break;
+        case 3 :
+        {
+            rWrtSh.StartAllAction();
+            if( !rTemplateName.isEmpty() )
+                rWrtSh.InsertPageBreak( &rTemplateName, oPageNumber );
+            else
+                rWrtSh.InsertPageBreak();
+            rWrtSh.EndAllAction();
         }
     }
 }
 
-static short lcl_AskRedlineFlags(vcl::Window *pWin)
-{
-    ScopedVclPtrInstance<MessBox> aQBox( pWin, 0,
-                    SwResId( STR_REDLINE_TITLE ),
-                    SwResId( STR_REDLINE_MSG ) );
-    aQBox->SetImage( QueryBox::GetStandardImage() );
-    const ButtonDialogFlags nBtnFlags = ButtonDialogFlags::Default |
-                        ButtonDialogFlags::OK |
-                        ButtonDialogFlags::Focus;
-
-    aQBox->AddButton(SwResId(STR_REDLINE_ACCEPT_ALL), RET_OK, nBtnFlags);
-    aQBox->GetPushButton( RET_OK )->SetHelpId(HID_AUTOFORMAT_ACCEPT);
-    aQBox->AddButton(SwResId(STR_REDLINE_REJECT_ALL), RET_CANCEL, ButtonDialogFlags::Cancel);
-    aQBox->GetPushButton( RET_CANCEL )->SetHelpId(HID_AUTOFORMAT_REJECT  );
-    aQBox->AddButton(SwResId(STR_REDLINE_EDIT), 2);
-    aQBox->GetPushButton( 2 )->SetHelpId(HID_AUTOFORMAT_EDIT_CHG);
-    aQBox->SetButtonHelpText( RET_OK, OUString() );
-
-    return aQBox->Execute();
 }
 
 void SwTextShell::Execute(SfxRequest &rReq)
@@ -300,13 +377,26 @@ void SwTextShell::Execute(SfxRequest &rReq)
             OUString sReplacement = aToggle.ReplacementString();
             if( !sReplacement.isEmpty() )
             {
+                if (rWrtSh.HasReadonlySel() && !rWrtSh.CursorInsideInputField())
+                {
+                    // Only break if there's something to do; don't nag with the dialog otherwise
+                    auto xInfo(std::make_unique<weld::GenericDialogController>(
+                        rWrtSh.GetView().GetFrameWeld(), "modules/swriter/ui/inforeadonlydialog.ui",
+                        "InfoReadonlyDialog"));
+                    xInfo->run();
+                    break;
+                }
                 SwRewriter aRewriter;
                 aRewriter.AddRule( UndoArg1, aToggle.StringToReplace() );
                 aRewriter.AddRule( UndoArg2, SwResId(STR_YIELDS) );
                 aRewriter.AddRule( UndoArg3, sReplacement );
                 rWrtSh.StartUndo(SwUndoId::REPLACE, &aRewriter);
                 rWrtSh.GetCursor()->Normalize(false);
+
                 rWrtSh.ClearMark();
+                if( rWrtSh.IsInSelect() )  // cancel any in-progress keyboard selection as well
+                    rWrtSh.EndSelect();
+
                 for( sal_uInt32 i=aToggle.CharsToDelete(); i > 0; --i )
                     rWrtSh.DelLeft();
                 rWrtSh.Insert2( sReplacement );
@@ -333,11 +423,8 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 // open the dialog "Tools/Options/Language Settings - Language"
                 // to set the documents default language
                 SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
-                if (pFact)
-                {
-                    ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateVclDialog( GetView().GetWindow(), SID_LANGUAGE_OPTIONS ));
-                    pDlg->Execute();
-                }
+                ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateVclDialog(GetView().GetFrameWeld(), SID_LANGUAGE_OPTIONS));
+                pDlg->Execute();
             }
             else
             {
@@ -354,8 +441,6 @@ void SwTextShell::Execute(SfxRequest &rReq)
                     const OUString aSelectionLangPrefix("Current_");
                     const OUString aParagraphLangPrefix("Paragraph_");
                     const OUString aDocumentLangPrefix("Default_");
-                    const OUString aStrNone("LANGUAGE_NONE");
-                    const OUString aStrResetLangs("RESET_LANGUAGES");
 
                     SfxItemSet aCoreSet( GetPool(),
                             svl::Items<RES_CHRATR_LANGUAGE,        RES_CHRATR_LANGUAGE,
@@ -401,9 +486,9 @@ void SwTextShell::Execute(SfxRequest &rReq)
                     }
 
                     rWrtSh.StartUndo( ( !bForParagraph && !bForSelection ) ? SwUndoId::SETDEFTATTR : SwUndoId::EMPTY );
-                    if (aNewLangText == aStrNone)
+                    if (aNewLangText == "LANGUAGE_NONE")
                         SwLangHelper::SetLanguage_None( rWrtSh, bForSelection, aCoreSet );
-                    else if (aNewLangText == aStrResetLangs)
+                    else if (aNewLangText == "RESET_LANGUAGES")
                         SwLangHelper::ResetLanguages( rWrtSh );
                     else
                         SwLangHelper::SetLanguage( rWrtSh, aNewLangText, bForSelection, aCoreSet );
@@ -476,10 +561,8 @@ void SwTextShell::Execute(SfxRequest &rReq)
         case FN_INSERT_FOOTNOTE_DLG:
         {
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            OSL_ENSURE(pFact, "Dialog creation failed!");
             ScopedVclPtr<AbstractInsFootNoteDlg> pDlg(pFact->CreateInsFootNoteDlg(
-                GetView().GetWindow(), rWrtSh));
-            OSL_ENSURE(pDlg, "Dialog creation failed!");
+                GetView().GetFrameWeld(), rWrtSh));
             pDlg->SetHelpId(GetStaticInterface()->GetSlot(nSlot)->GetCommand());
             if ( pDlg->Execute() == RET_OK )
             {
@@ -543,12 +626,11 @@ void SwTextShell::Execute(SfxRequest &rReq)
         }
         case FN_INSERT_BREAK_DLG:
         {
-            sal_uInt16 nKind=0;
-            ::boost::optional<sal_uInt16> oPageNumber;
-            OUString aTemplateName;
             if ( pItem )
             {
-                nKind = static_cast<const SfxInt16Item*>(pItem)->GetValue();
+                ::std::optional<sal_uInt16> oPageNumber;
+                OUString aTemplateName;
+                sal_uInt16 nKind = static_cast<const SfxInt16Item*>(pItem)->GetValue();
                 const SfxStringItem* pTemplate = rReq.GetArg<SfxStringItem>(FN_PARAM_1);
                 const SfxUInt16Item* pNumber = rReq.GetArg<SfxUInt16Item>(FN_PARAM_2);
                 const SfxBoolItem* pIsNumberFilled = rReq.GetArg<SfxBoolItem>(FN_PARAM_3);
@@ -556,54 +638,27 @@ void SwTextShell::Execute(SfxRequest &rReq)
                     aTemplateName = pTemplate->GetValue();
                 if ( pNumber && pIsNumberFilled && pIsNumberFilled->GetValue() )
                     oPageNumber = pNumber->GetValue();
+
+                InsertBreak(rWrtSh, nKind, oPageNumber, aTemplateName);
             }
             else
             {
                 SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-                OSL_ENSURE(pFact, "SwAbstractDialogFactory fail!");
 
-                ScopedVclPtr<AbstractSwBreakDlg> pDlg(pFact->CreateSwBreakDlg(GetView().GetWindow(), rWrtSh));
-                OSL_ENSURE(pDlg, "Dialog creation failed!");
-                if ( pDlg->Execute() == RET_OK )
-                {
-                    nKind = pDlg->GetKind();
-                    aTemplateName = pDlg->GetTemplateName();
-                    oPageNumber = pDlg->GetPageNumber();
+                std::shared_ptr<AbstractSwBreakDlg> pAbstractDialog(pFact->CreateSwBreakDlg(GetView().GetFrameWeld(), rWrtSh));
+                std::shared_ptr<weld::DialogController> pDialogController(pAbstractDialog->getDialogController());
 
-                    bool bIsNumberFilled = false;
-                    sal_uInt16 nPageNumber = 0;
+                weld::DialogController::runAsync(pDialogController,
+                    [pAbstractDialog, &rWrtSh] (sal_Int32 nResult) {
+                        if( RET_OK == nResult )
+                        {
+                            sal_uInt16 nKind = pAbstractDialog->GetKind();
+                            OUString aTemplateName = pAbstractDialog->GetTemplateName();
+                            ::std::optional<sal_uInt16> oPageNumber = pAbstractDialog->GetPageNumber();
 
-                    if (oPageNumber)
-                    {
-                        bIsNumberFilled = true;
-                        nPageNumber = oPageNumber.get();
-                    }
-
-                    rReq.AppendItem( SfxInt16Item ( FN_INSERT_BREAK_DLG, nKind ) );
-                    rReq.AppendItem( SfxStringItem( FN_PARAM_1, aTemplateName ) );
-                    rReq.AppendItem( SfxUInt16Item( FN_PARAM_2, nPageNumber ) );
-                    rReq.AppendItem( SfxBoolItem  ( FN_PARAM_3, bIsNumberFilled ) );
-                    rReq.Done();
-                }
-                else
-                    rReq.Ignore();
-            }
-
-            switch ( nKind )
-            {
-                case 1 :
-                    rWrtSh.InsertLineBreak(); break;
-                case 2 :
-                    rWrtSh.InsertColumnBreak(); break;
-                case 3 :
-                {
-                    rWrtSh.StartAllAction();
-                    if( !aTemplateName.isEmpty() )
-                        rWrtSh.InsertPageBreak( &aTemplateName, oPageNumber );
-                    else
-                        rWrtSh.InsertPageBreak();
-                    rWrtSh.EndAllAction();
-                }
+                            InsertBreak(rWrtSh, nKind, oPageNumber, aTemplateName);
+                        }
+                    });
             }
 
             break;
@@ -618,22 +673,45 @@ void SwTextShell::Execute(SfxRequest &rReq)
             else
             {
                 SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-                OSL_ENSURE(pFact, "SwAbstractDialogFactory fail!");
-
-                ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateSwInsertBookmarkDlg( GetView().GetWindow(), rWrtSh, rReq ));
-                OSL_ENSURE(pDlg, "Dialog creation failed!");
-                pDlg->Execute();
+                ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateSwInsertBookmarkDlg(GetView().GetFrameWeld(), rWrtSh));
+                VclAbstractDialog::AsyncContext aContext;
+                aContext.maEndDialogFn = [](sal_Int32){};
+                pDlg->StartExecuteAsync(aContext);
             }
 
             break;
         }
         case FN_DELETE_BOOKMARK:
         {
-            if ( pItem )
+            if (pItem && !rWrtSh.getIDocumentSettingAccess().get(DocumentSettingId::PROTECT_BOOKMARKS))
             {
                 IDocumentMarkAccess* const pMarkAccess = rWrtSh.getIDocumentMarkAccess();
                 pMarkAccess->deleteMark( pMarkAccess->findMark(static_cast<const SfxStringItem*>(pItem)->GetValue()) );
             }
+            break;
+        }
+        case FN_SET_REMINDER:
+        {
+            // collect and sort navigator reminder names
+            IDocumentMarkAccess* const pMarkAccess = rWrtSh.getIDocumentMarkAccess();
+            std::vector< OUString > vNavMarkNames;
+            for(IDocumentMarkAccess::const_iterator_t ppMark = pMarkAccess->getAllMarksBegin();
+                ppMark != pMarkAccess->getAllMarksEnd();
+                ++ppMark)
+            {
+                if( IDocumentMarkAccess::GetType(**ppMark) == IDocumentMarkAccess::MarkType::NAVIGATOR_REMINDER )
+                    vNavMarkNames.push_back((*ppMark)->GetName());
+            }
+            std::sort(vNavMarkNames.begin(), vNavMarkNames.end());
+
+            // we are maxed out so delete the first one
+            // this assumes that IDocumentMarkAccess generates Names in ascending order
+            if(vNavMarkNames.size() == MAX_MARKS)
+                pMarkAccess->deleteMark(pMarkAccess->findMark(vNavMarkNames[0]));
+
+            rWrtSh.SetBookmark(vcl::KeyCode(), OUString(), IDocumentMarkAccess::MarkType::NAVIGATOR_REMINDER);
+            SwView::SetActMark(vNavMarkNames.size() < MAX_MARKS ? vNavMarkNames.size() : MAX_MARKS-1);
+
             break;
         }
         case FN_AUTOFORMAT_REDLINE_APPLY:
@@ -650,16 +728,13 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 pVFrame->ToggleChildWindow(FN_REDLINE_ACCEPT);
 
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            OSL_ENSURE(pFact, "SwAbstractDialogFactory fail!");
+            ScopedVclPtr<AbstractSwModalRedlineAcceptDlg> xDlg(pFact->CreateSwModalRedlineAcceptDlg(GetView().GetEditWin().GetFrameWeld()));
 
-            ScopedVclPtr<AbstractSwModalRedlineAcceptDlg> pDlg(pFact->CreateSwModalRedlineAcceptDlg(&GetView().GetEditWin()));
-            OSL_ENSURE(pDlg, "Dialog creation failed!");
-
-            switch (lcl_AskRedlineFlags(&GetView().GetEditWin()))
+            switch (lcl_AskRedlineFlags(GetView().GetFrameWeld()))
             {
                 case RET_OK:
                 {
-                    pDlg->AcceptAll(true);
+                    xDlg->AcceptAll(true);
                     SfxRequest aReq( pVFrame, FN_AUTOFORMAT_APPLY );
                     aReq.Done();
                     rReq.Ignore();
@@ -667,12 +742,12 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 }
 
                 case RET_CANCEL:
-                    pDlg->AcceptAll(false);
+                    xDlg->AcceptAll(false);
                     rReq.Ignore();
                     break;
 
-                case 2:
-                    pDlg->Execute();
+                case 102:
+                    xDlg->Execute();
                     rReq.Done();
                     break;
             }
@@ -714,7 +789,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
         case FN_SORTING_DLG:
         {
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateVclAbstractDialog( GetView().GetWindow(), rWrtSh, DLG_SORTING ));
+            ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateSwSortingDialog(GetView().GetFrameWeld(), rWrtSh));
             pDlg->Execute();
             rReq.Done();
         }
@@ -735,7 +810,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
         case FN_GOTO_REFERENCE:
         {
             SwField *pField = rWrtSh.GetCurField();
-            if(pField && pField->GetTypeId() == TYP_GETREFFLD)
+            if(pField && pField->GetTypeId() == SwFieldTypesEnum::GetRef)
             {
                 rWrtSh.StartAllAction();
                 rWrtSh.SwCursorShell::GotoRefMark( static_cast<SwGetRefField*>(pField)->GetSetRefName(),
@@ -773,7 +848,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
                     rWrtSh.EnterStdMode();
                 }
 
-                if( !bDelSel && aFieldMgr.GetCurField() && TYP_FORMELFLD == aFieldMgr.GetCurTypeId() )
+                if( !bDelSel && aFieldMgr.GetCurField() && SwFieldTypesEnum::Formel == aFieldMgr.GetCurTypeId() )
                     aFieldMgr.UpdateCurField( aFieldMgr.GetCurField()->GetFormat(), OUString(), sFormula );
                 else if( !sFormula.isEmpty() )
                 {
@@ -788,7 +863,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
                     {
                         SvNumberFormatter* pFormatter = rWrtSh.GetNumberFormatter();
                         const sal_uInt32 nSysNumFormat = pFormatter->GetFormatIndex( NF_NUMBER_STANDARD, LANGUAGE_SYSTEM);
-                        SwInsertField_Data aData(TYP_FORMELFLD, nsSwGetSetExpType::GSE_FORMULA, OUString(), sFormula, nSysNumFormat);
+                        SwInsertField_Data aData(SwFieldTypesEnum::Formel, nsSwGetSetExpType::GSE_FORMULA, OUString(), sFormula, nSysNumFormat);
                         aFieldMgr.InsertField(aData);
                     }
                 }
@@ -814,10 +889,10 @@ void SwTextShell::Execute(SfxRequest &rReq)
             rWrtSh.UnProtectTables();
         }
         break;
-        case FN_EDIT_HYPERLINK:
+        case SID_EDIT_HYPERLINK:
             GetView().GetViewFrame()->SetChildWindow(SID_HYPERLINK_DIALOG, true);
         break;
-        case FN_REMOVE_HYPERLINK:
+        case SID_REMOVE_HYPERLINK:
         {
             bool bSel = rWrtSh.HasSelection();
             if(!bSel)
@@ -847,7 +922,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
             const sal_uInt16 nWhich = GetPool().GetWhich( nSlot );
             if ( pArgs && pArgs->GetItemState( nWhich ) == SfxItemState::SET )
                 bUseDialog = false;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         }
         case SID_CHAR_DLG:
         case SID_CHAR_DLG_EFFECT:
@@ -880,7 +955,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
             const sal_uInt16 nWhich = GetPool().GetWhich( nSlot );
             if ( pArgs && pArgs->GetItemState( nWhich ) == SfxItemState::SET )
                 bUseDialog = false;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         }
         case SID_PARA_DLG:
         {
@@ -940,8 +1015,8 @@ void SwTextShell::Execute(SfxRequest &rReq)
                             ::GetHtmlMode(GetView().GetDocShell())));
 
             // Tabulators: Put DefaultTabs into ItemSet
-            const SvxTabStopItem& rDefTabs = static_cast<const SvxTabStopItem&>(
-                            GetPool().GetDefaultItem(RES_PARATR_TABSTOP));
+            const SvxTabStopItem& rDefTabs =
+                            GetPool().GetDefaultItem(RES_PARATR_TABSTOP);
 
             const sal_uInt16 nDefDist = static_cast<sal_uInt16>(::GetTabDist( rDefTabs ));
             SfxUInt16Item aDefDistItem( SID_ATTR_TABSTOP_DEFAULTS, nDefDist );
@@ -954,7 +1029,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
             // Left border as offset
             //#i24363# tab stops relative to indent
             const long nOff = rWrtSh.getIDocumentSettingAccess().get(DocumentSettingId::TABS_RELATIVE_TO_INDENT) ?
-                static_cast<const SvxLRSpaceItem&>(aCoreSet.Get( RES_LR_SPACE )).GetTextLeft() : 0;
+                aCoreSet.Get( RES_LR_SPACE ).GetTextLeft() : 0;
             SfxInt32Item aOff( SID_ATTR_TABSTOP_OFFSET, nOff );
             aCoreSet.Put( aOff );
 
@@ -973,7 +1048,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
                                         rWrtSh.GetNodeNumStart( pPaM ) );
                 aCoreSet.Put(aStartAt);
             }
-            ScopedVclPtr<SfxAbstractTabDialog> pDlg;
+            VclPtr<SfxAbstractTabDialog> pDlg;
 
             if ( bUseDialog && GetActiveView() )
             {
@@ -982,12 +1057,9 @@ void SwTextShell::Execute(SfxRequest &rReq)
                     sDefPage = OUStringToOString(static_cast<const SfxStringItem*>(pItem)->GetValue(), RTL_TEXTENCODING_UTF8);
 
                 SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-                OSL_ENSURE(pFact, "SwAbstractDialogFactory fail!");
-
-                pDlg.disposeAndReset(pFact->CreateSwParaDlg( GetView().GetWindow(),GetView(), aCoreSet, false, sDefPage ));
-                OSL_ENSURE(pDlg, "Dialog creation failed!");
+                pDlg.reset(pFact->CreateSwParaDlg(GetView().GetFrameWeld(), GetView(), aCoreSet, false, sDefPage));
             }
-            SfxItemSet* pSet = nullptr;
+
             if ( !bUseDialog )
             {
                 if ( nSlot == SID_ATTR_PARA_LRSPACE)
@@ -995,102 +1067,51 @@ void SwTextShell::Execute(SfxRequest &rReq)
                     SvxLRSpaceItem aParaMargin(static_cast<const SvxLRSpaceItem&>(pArgs->Get(nSlot)));
                     aParaMargin.SetWhich( RES_LR_SPACE);
                     aCoreSet.Put(aParaMargin);
-                    pSet = &aCoreSet;
 
-                } else
-                    pSet = const_cast<SfxItemSet*>(pArgs);
-
+                    sw_ParagraphDialogResult(&aCoreSet, rWrtSh, rReq, pPaM);
+                }
+                else
+                    sw_ParagraphDialogResult(const_cast<SfxItemSet*>(pArgs), rWrtSh, rReq, pPaM);
             }
-            else if ( pDlg && pDlg->Execute() == RET_OK )
+            else if (pDlg)
             {
-                // Apply defaults if necessary.
-                pSet = const_cast<SfxItemSet*>(pDlg->GetOutputItemSet());
-                sal_uInt16 nNewDist;
-                if( SfxItemState::SET == pSet->GetItemState( SID_ATTR_TABSTOP_DEFAULTS, false, &pItem ) &&
-                    nDefDist != (nNewDist = static_cast<const SfxUInt16Item*>(pItem)->GetValue()) )
-                {
-                    SvxTabStopItem aDefTabs( 0, 0, SvxTabAdjust::Default, RES_PARATR_TABSTOP );
-                    MakeDefTabs( nNewDist, aDefTabs );
-                    rWrtSh.SetDefault( aDefTabs );
-                    pSet->ClearItem( SID_ATTR_TABSTOP_DEFAULTS );
-                }
+                auto pRequest = std::make_shared<SfxRequest>(rReq);
+                rReq.Ignore(); // the 'old' request is not relevant any more
 
-                if ( SfxItemState::SET == pSet->GetItemState(FN_PARAM_1,false,&pItem) )
-                {
-                    pSet->Put(SfxStringItem(FN_DROP_TEXT, static_cast<const SfxStringItem*>(pItem)->GetValue()));
-                    pSet->ClearItem(FN_PARAM_1);
-                }
-
-                if( SfxItemState::SET == pSet->GetItemState( RES_PARATR_DROP, false, &pItem ))
-                {
-                    OUString sCharStyleName;
-                    if(static_cast<const SwFormatDrop*>(pItem)->GetCharFormat())
-                        sCharStyleName = static_cast<const SwFormatDrop*>(pItem)->GetCharFormat()->GetName();
-                    pSet->Put(SfxStringItem(FN_DROP_CHAR_STYLE_NAME, sCharStyleName));
-                }
-            }
-
-            if ( pSet )
-            {
-                rReq.Done( *pSet );
-                ::SfxToSwPageDescAttr( rWrtSh, *pSet );
-                // #i56253#
-                // enclose all undos.
-                // Thus, check conditions, if actions will be performed.
-                const bool bUndoNeeded( pSet->Count() ||
-                        SfxItemState::SET == pSet->GetItemState(FN_NUMBER_NEWSTART) ||
-                        SfxItemState::SET == pSet->GetItemState(FN_NUMBER_NEWSTART_AT) );
-                if ( bUndoNeeded )
-                {
-                    rWrtSh.StartUndo( SwUndoId::INSATTR );
-                }
-                if( pSet->Count() )
-                {
-                    rWrtSh.StartAction();
-                    if ( SfxItemState::SET == pSet->GetItemState(FN_DROP_TEXT, false, &pItem) )
+                pDlg->StartExecuteAsync([pDlg, &rWrtSh, pRequest, nDefDist](sal_Int32 nResult){
+                    if (nResult == RET_OK)
                     {
-                        if ( !static_cast<const SfxStringItem*>(pItem)->GetValue().isEmpty() )
-                            rWrtSh.ReplaceDropText(static_cast<const SfxStringItem*>(pItem)->GetValue(), pPaM);
-                    }
-                    rWrtSh.SetAttrSet( *pSet, SetAttrMode::DEFAULT, pPaM );
-                    rWrtSh.EndAction();
-                    SwTextFormatColl* pColl = rWrtSh.GetPaMTextFormatColl( pPaM );
-                    if(pColl && pColl->IsAutoUpdateFormat())
-                    {
-                        rWrtSh.AutoUpdatePara(pColl, *pSet, pPaM);
-                    }
-                }
+                        // Apply defaults if necessary.
+                        SfxItemSet* pSet = const_cast<SfxItemSet*>(pDlg->GetOutputItemSet());
+                        sal_uInt16 nNewDist;
+                        const SfxPoolItem* pItem2 = nullptr;
+                        if (SfxItemState::SET == pSet->GetItemState(SID_ATTR_TABSTOP_DEFAULTS, false, &pItem2) &&
+                            nDefDist != (nNewDist = static_cast<const SfxUInt16Item*>(pItem2)->GetValue()) )
+                        {
+                            SvxTabStopItem aDefTabs( 0, 0, SvxTabAdjust::Default, RES_PARATR_TABSTOP );
+                            MakeDefTabs( nNewDist, aDefTabs );
+                            rWrtSh.SetDefault( aDefTabs );
+                            pSet->ClearItem( SID_ATTR_TABSTOP_DEFAULTS );
+                        }
 
-                if( SfxItemState::SET == pSet->GetItemState(FN_NUMBER_NEWSTART) )
-                {
-                    //SetNumRuleStart(true) restarts the numbering at the value
-                    //that is defined at the starting point of the numbering level
-                    //otherwise the SetNodeNumStart() value determines the start
-                    //if it's set to something different than USHRT_MAX
+                        if (SfxItemState::SET == pSet->GetItemState(FN_PARAM_1, false, &pItem2))
+                        {
+                            pSet->Put(SfxStringItem(FN_DROP_TEXT, static_cast<const SfxStringItem*>(pItem2)->GetValue()));
+                            pSet->ClearItem(FN_PARAM_1);
+                        }
 
-                    bool bStart = static_cast<const SfxBoolItem&>(pSet->Get(FN_NUMBER_NEWSTART)).GetValue();
+                        if (SfxItemState::SET == pSet->GetItemState(RES_PARATR_DROP, false, &pItem2))
+                        {
+                            OUString sCharStyleName;
+                            if (static_cast<const SwFormatDrop*>(pItem2)->GetCharFormat())
+                                sCharStyleName = static_cast<const SwFormatDrop*>(pItem2)->GetCharFormat()->GetName();
+                            pSet->Put(SfxStringItem(FN_DROP_CHAR_STYLE_NAME, sCharStyleName));
+                        }
 
-                    // Default value for restart value has to be USHRT_MAX
-                    // in order to indicate that the restart value of the list
-                    // style has to be used on restart.
-                    sal_uInt16 nNumStart = USHRT_MAX;
-                    if( SfxItemState::SET == pSet->GetItemState(FN_NUMBER_NEWSTART_AT) )
-                    {
-                        nNumStart = static_cast<const SfxUInt16Item&>(pSet->Get(FN_NUMBER_NEWSTART_AT)).GetValue();
+                        sw_ParagraphDialogResult(pSet, rWrtSh, *pRequest, rWrtSh.GetCursor());
                     }
-                    rWrtSh.SetNumRuleStart(bStart, pPaM);
-                    rWrtSh.SetNodeNumStart(nNumStart);
-                }
-                else if( SfxItemState::SET == pSet->GetItemState(FN_NUMBER_NEWSTART_AT) )
-                {
-                    rWrtSh.SetNodeNumStart(static_cast<const SfxUInt16Item&>(pSet->Get(FN_NUMBER_NEWSTART_AT)).GetValue());
-                    rWrtSh.SetNumRuleStart(false, pPaM);
-                }
-                // #i56253#
-                if ( bUndoNeeded )
-                {
-                    rWrtSh.EndUndo( SwUndoId::INSATTR );
-                }
+                    pDlg->disposeOnce();
+                });
             }
         }
         break;
@@ -1159,9 +1180,25 @@ void SwTextShell::Execute(SfxRequest &rReq)
 
         case SID_ATTR_CHAR_COLOR2:
         {
+            Color aSet;
+            OUString sColor;
+            const SfxPoolItem* pColorStringItem = nullptr;
+            bool bHasItem = false;
+
             if(pItem)
             {
-                Color aSet = static_cast<const SvxColorItem*>(pItem)->GetValue();
+                aSet = static_cast<const SvxColorItem*>(pItem)->GetValue();
+                bHasItem = true;
+            }
+            else if (pArgs && SfxItemState::SET == pArgs->GetItemState(SID_ATTR_COLOR_STR, false, &pColorStringItem))
+            {
+                sColor = static_cast<const SfxStringItem*>(pColorStringItem)->GetValue();
+                aSet = Color(sColor.toInt32(16));
+                bHasItem = true;
+            }
+
+            if (bHasItem)
+            {
                 SwEditWin& rEditWin = GetView().GetEditWin();
                 rEditWin.SetWaterCanTextColor(aSet);
                 SwApplyTemplate* pApply = rEditWin.GetApplyTemplate();
@@ -1181,7 +1218,23 @@ void SwTextShell::Execute(SfxRequest &rReq)
         case SID_ATTR_CHAR_COLOR_BACKGROUND_EXT:
         case SID_ATTR_CHAR_COLOR_EXT:
         {
-            Color aSet = pItem ? static_cast<const SvxColorItem*>(pItem)->GetValue() : COL_TRANSPARENT;
+            Color aSet;
+            OUString sColor;
+            const SfxPoolItem* pColorStringItem = nullptr;
+
+            if (pArgs && SfxItemState::SET == pArgs->GetItemState(SID_ATTR_COLOR_STR, false, &pColorStringItem))
+            {
+                sColor = static_cast<const SfxStringItem*>(pColorStringItem)->GetValue();
+                if (sColor == "transparent")
+                    aSet = COL_TRANSPARENT;
+                else
+                    aSet = Color(sColor.toInt32(16));
+            }
+            else if (pItem)
+                aSet = static_cast<const SvxColorItem*>(pItem)->GetValue();
+            else
+                aSet = COL_TRANSPARENT;
+
             SwEditWin& rEdtWin = GetView().GetEditWin();
             if (nSlot != SID_ATTR_CHAR_COLOR_EXT)
                 rEdtWin.SetWaterCanTextBackColor(aSet);
@@ -1194,34 +1247,21 @@ void SwTextShell::Execute(SfxRequest &rReq)
             {
                 if (nSlot != SID_ATTR_CHAR_COLOR_EXT)
                 {
-                    rWrtSh.StartUndo( SwUndoId::INSATTR );
-                    rWrtSh.SetAttrItem(
-                        SvxBrushItem( rEdtWin.GetWaterCanTextBackColor(), RES_CHRATR_BACKGROUND) );
+                    SfxItemSet aCoreSet( rWrtSh.GetView().GetPool(), svl::Items<
+                                         RES_CHRATR_BACKGROUND, RES_CHRATR_BACKGROUND>{} );
 
-                    // Remove MS specific highlight when background is set
-                    rWrtSh.SetAttrItem( SvxBrushItem(RES_CHRATR_HIGHLIGHT) );
-
-                    // Remove shading marker
-                    SfxItemSet aCoreSet( rWrtSh.GetView().GetPool(), svl::Items<RES_CHRATR_GRABBAG, RES_CHRATR_GRABBAG>{} );
                     rWrtSh.GetCurAttr( aCoreSet );
 
-                    const SfxPoolItem *pTmpItem;
-                    if( SfxItemState::SET == aCoreSet.GetItemState( RES_CHRATR_GRABBAG, false, &pTmpItem ) )
-                    {
-                        SfxGrabBagItem aGrabBag(*static_cast<const SfxGrabBagItem*>(pTmpItem));
-                        std::map<OUString, css::uno::Any>& rMap = aGrabBag.GetGrabBag();
-                        auto aIterator = rMap.find("CharShadingMarker");
-                        if( aIterator != rMap.end() )
-                        {
-                            aIterator->second <<= false;
-                        }
-                        rWrtSh.SetAttrItem( aGrabBag );
-                    }
-                    rWrtSh.EndUndo( SwUndoId::INSATTR );
+                    // Remove highlight if already set of the same color
+                    const SvxBrushItem& rBrushItem = aCoreSet.Get(RES_CHRATR_BACKGROUND);
+                    if ( aSet == rBrushItem.GetColor() )
+                        aSet = COL_TRANSPARENT;
+
+                    ApplyCharBackground(aSet, rWrtSh);
                 }
                 else
                     rWrtSh.SetAttrItem(
-                        SvxColorItem( rEdtWin.GetWaterCanTextColor(), RES_CHRATR_COLOR) );
+                        SvxColorItem(aSet, RES_CHRATR_COLOR) );
             }
             else if (nSlot == SID_ATTR_CHAR_COLOR_BACKGROUND)
             {
@@ -1299,7 +1339,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
     }
     break;
     case SID_OPEN_HYPERLINK:
-    case FN_COPY_HYPERLINK_LOCATION:
+    case SID_COPY_HYPERLINK_LOCATION:
     {
         SfxItemSet aSet(GetPool(),
                         svl::Items<RES_TXTATR_INETFMT,
@@ -1308,7 +1348,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
         if(SfxItemState::SET <= aSet.GetItemState( RES_TXTATR_INETFMT ))
         {
             const SwFormatINetFormat& rINetFormat = dynamic_cast<const SwFormatINetFormat&>( aSet.Get(RES_TXTATR_INETFMT) );
-            if( nSlot == FN_COPY_HYPERLINK_LOCATION )
+            if( nSlot == SID_COPY_HYPERLINK_LOCATION )
             {
                 ::uno::Reference< datatransfer::clipboard::XClipboard > xClipboard = GetView().GetEditWin().GetClipboard();
                 vcl::unohelper::TextDataObject::CopyStringTo(
@@ -1350,6 +1390,204 @@ void SwTextShell::Execute(SfxRequest &rReq)
         GetView().UpdateWordCount(this, nSlot);
     }
     break;
+    case FN_PROTECT_FIELDS:
+    case FN_PROTECT_BOOKMARKS:
+    {
+        IDocumentSettingAccess& rIDSA = rWrtSh.getIDocumentSettingAccess();
+        DocumentSettingId aSettingId = nSlot == FN_PROTECT_FIELDS
+                                           ? DocumentSettingId::PROTECT_FIELDS
+                                           : DocumentSettingId::PROTECT_BOOKMARKS;
+        rIDSA.set(aSettingId, !rIDSA.get(aSettingId));
+        // Invalidate so that toggle state gets updated
+        SfxViewFrame* pViewFrame = GetView().GetViewFrame();
+        pViewFrame->GetBindings().Invalidate(nSlot);
+        pViewFrame->GetBindings().Update(nSlot);
+    }
+    break;
+    case SID_FM_CTL_PROPERTIES:
+    {
+        SwPosition aPos(*GetShell().GetCursor()->GetPoint());
+        sw::mark::IFieldmark* pFieldBM = GetShell().getIDocumentMarkAccess()->getFieldmarkFor(aPos);
+        if ( !pFieldBM )
+        {
+            --aPos.nContent;
+            pFieldBM = GetShell().getIDocumentMarkAccess()->getFieldmarkFor(aPos);
+        }
+
+        if ( pFieldBM && pFieldBM->GetFieldname() == ODF_FORMDROPDOWN )
+        {
+            SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
+            ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateDropDownFormFieldDialog(rWrtSh.GetView().GetFrameWeld(), pFieldBM));
+            if (pDlg->Execute() == RET_OK)
+            {
+                pFieldBM->Invalidate();
+                rWrtSh.InvalidateWindows( rWrtSh.GetView().GetVisArea() );
+                rWrtSh.UpdateCursor(); // cursor position might be invalid
+                // Hide the button here and make it visible later, to make transparent background work with SAL_USE_VCLPLUGIN=gen
+                dynamic_cast<::sw::mark::DropDownFieldmark&>(*pFieldBM).HideButton();
+            }
+        }
+        else if ( pFieldBM && pFieldBM->GetFieldname() == ODF_FORMDATE )
+        {
+            SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
+            sw::mark::DateFieldmark& rDateField = dynamic_cast<sw::mark::DateFieldmark&>(*pFieldBM);
+            ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateDateFormFieldDialog(rWrtSh.GetView().GetFrameWeld(), &rDateField, GetView().GetDocShell()->GetDoc()));
+            if (pDlg->Execute() == RET_OK)
+            {
+                rDateField.Invalidate();
+                rWrtSh.InvalidateWindows( rWrtSh.GetView().GetVisArea() );
+                rWrtSh.UpdateCursor(); // cursor position might be invalid
+                // Hide the button here and make it visible later, to make transparent background work with SAL_USE_VCLPLUGIN=gen
+                rDateField.HideButton();
+            }
+        }
+        else
+        {
+            SfxRequest aReq( GetView().GetViewFrame(), SID_FM_CTL_PROPERTIES );
+            aReq.AppendItem( SfxBoolItem( SID_FM_CTL_PROPERTIES, true ) );
+            rWrtSh.GetView().GetFormShell()->Execute( aReq );
+        }
+    }
+    break;
+    case SID_SPELLCHECK_IGNORE:
+    {
+        SwPaM *pPaM = rWrtSh.GetCursor();
+        if (pPaM)
+            SwEditShell::IgnoreGrammarErrorAt( *pPaM );
+    }
+    break;
+    case SID_SPELLCHECK_IGNORE_ALL:
+    {
+        OUString sApplyText;
+        const SfxStringItem* pItem2 = rReq.GetArg<SfxStringItem>(FN_PARAM_1);
+        if (pItem2)
+            sApplyText = pItem2->GetValue();
+
+        if(sApplyText == "Grammar")
+        {
+            linguistic2::ProofreadingResult aGrammarCheckRes;
+            sal_Int32 nErrorInResult = -1;
+            uno::Sequence< OUString > aSuggestions;
+            sal_Int32 nErrorPosInText = -1;
+            SwRect aToFill;
+            bool bCorrectionRes = rWrtSh.GetGrammarCorrection( aGrammarCheckRes, nErrorPosInText, nErrorInResult, aSuggestions, nullptr, aToFill );
+            if(bCorrectionRes)
+            {
+                try {
+                    uno::Reference< linguistic2::XDictionary > xDictionary = LinguMgr::GetIgnoreAllList();
+                    aGrammarCheckRes.xProofreader->ignoreRule(
+                        aGrammarCheckRes.aErrors[ nErrorInResult ].aRuleIdentifier,
+                            aGrammarCheckRes.aLocale );
+                    // refresh the layout of the actual paragraph (faster)
+                    SwPaM *pPaM = rWrtSh.GetCursor();
+                    if (pPaM)
+                        SwEditShell::IgnoreGrammarErrorAt( *pPaM );
+                    // refresh the layout of all paragraphs (workaround to launch a dictionary event)
+                    xDictionary->setActive(false);
+                    xDictionary->setActive(true);
+                }
+                catch( const uno::Exception& )
+                {
+                }
+            }
+        }
+        else if (sApplyText == "Spelling")
+        {
+            SwRect aToFill;
+            uno::Reference< linguistic2::XSpellAlternatives >  xSpellAlt( rWrtSh.GetCorrection(nullptr, aToFill) );
+            uno::Reference< linguistic2::XDictionary > xDictionary = LinguMgr::GetIgnoreAllList();
+            OUString sWord(xSpellAlt->getWord());
+            linguistic::DictionaryError nAddRes = linguistic::AddEntryToDic( xDictionary,
+                    sWord, false, OUString() );
+            if (linguistic::DictionaryError::NONE != nAddRes && !xDictionary->getEntry(sWord).is())
+            {
+                SvxDicError(rWrtSh.GetView().GetFrameWeld(), nAddRes);
+            }
+        }
+    }
+    break;
+    case SID_SPELLCHECK_APPLY_SUGGESTION:
+    {
+        OUString sApplyText;
+        const SfxStringItem* pItem2 = rReq.GetArg<SfxStringItem>(FN_PARAM_1);
+        if (pItem2)
+            sApplyText = pItem2->GetValue();
+
+        const OUString sSpellingRule("Spelling_");
+        const OUString sGrammarRule("Grammar_");
+
+        bool bGrammar = false;
+        sal_Int32 nPos = 0;
+        uno::Reference< linguistic2::XSpellAlternatives >  xSpellAlt;
+        if(-1 != (nPos = sApplyText.indexOf( sGrammarRule )))
+        {
+            sApplyText = sApplyText.replaceAt(nPos, sGrammarRule.getLength(), "");
+            bGrammar = true;
+        }
+        else if (-1 != (nPos = sApplyText.indexOf( sSpellingRule )))
+        {
+            sApplyText = sApplyText.replaceAt(nPos, sSpellingRule.getLength(), "");
+            SwRect aToFill;
+            xSpellAlt.set(rWrtSh.GetCorrection(nullptr, aToFill));
+            bGrammar = false;
+        }
+
+        if (!bGrammar && !xSpellAlt.is())
+            return;
+
+        bool bOldIns = rWrtSh.IsInsMode();
+        rWrtSh.SetInsMode();
+
+        OUString aTmp( sApplyText );
+        OUString aOrig( bGrammar ? OUString() : xSpellAlt->getWord() );
+
+        // if original word has a trailing . (likely the end of a sentence)
+        // and the replacement text hasn't, then add it to the replacement
+        if (!aTmp.isEmpty() && !aOrig.isEmpty() &&
+            aOrig.endsWith(".") && /* !IsAlphaNumeric ??*/
+            !aTmp.endsWith("."))
+        {
+            aTmp += ".";
+        }
+
+        SwRewriter aRewriter;
+
+        aRewriter.AddRule(UndoArg1, rWrtSh.GetCursorDescr());
+        aRewriter.AddRule(UndoArg2, SwResId(STR_YIELDS));
+
+        OUString aTmpStr = SwResId(STR_START_QUOTE) +
+            aTmp + SwResId(STR_END_QUOTE);
+        aRewriter.AddRule(UndoArg3, aTmpStr);
+
+        rWrtSh.StartUndo(SwUndoId::UI_REPLACE, &aRewriter);
+        rWrtSh.StartAction();
+        rWrtSh.DelLeft();
+
+        rWrtSh.Insert( aTmp );
+
+        /* #102505# EndAction/EndUndo moved down since insertion
+           of temporary auto correction is now undoable two and
+           must reside in the same undo group.*/
+
+        // record only if it's NOT already present in autocorrection
+        SvxAutoCorrect* pACorr = SvxAutoCorrCfg::Get().GetAutoCorrect();
+
+        OUString aOrigWord( bGrammar ? OUString() : xSpellAlt->getWord() ) ;
+        OUString aNewWord( sApplyText );
+        SvxPrepareAutoCorrect( aOrigWord, aNewWord );
+
+        if (xSpellAlt.is())
+            pACorr->PutText( aOrigWord, aNewWord, LanguageTag( xSpellAlt->getLocale() ).getLanguageType() );
+
+        /* #102505# EndAction/EndUndo moved down since insertion
+           of temporary auto correction is now undoable two and
+           must reside in the same undo group.*/
+        rWrtSh.EndAction();
+        rWrtSh.EndUndo();
+
+        rWrtSh.SetInsMode( bOldIns );
+    }
+    break;
     default:
         OSL_ENSURE(false, "wrong dispatcher");
         return;
@@ -1386,7 +1624,20 @@ void SwTextShell::GetState( SfxItemSet &rSet )
                 OUString aCurrentLang = "*";
                 nLang = SwLangHelper::GetCurrentLanguage( rSh );
                 if (nLang != LANGUAGE_DONTKNOW)
+                {
                     aCurrentLang = SvtLanguageTable::GetLanguageString( nLang );
+                    if (comphelper::LibreOfficeKit::isActive())
+                    {
+                        if (nLang == LANGUAGE_NONE)
+                        {
+                            aCurrentLang += ";-";
+                        }
+                        else
+                        {
+                            aCurrentLang += ";" + LanguageTag(nLang).getBcp47(false);
+                        }
+                    }
+                }
 
                 // build sequence for status value
                 uno::Sequence< OUString > aSeq( 4 );
@@ -1417,19 +1668,19 @@ void SwTextShell::GetState( SfxItemSet &rSet )
 
             LanguageType nLang = rSh.GetCurLang();
             LanguageTag aLanguageTag( nLang);
-            lang::Locale aLocale( aLanguageTag.getLocale());
-            OUString aLangText( aLanguageTag.getBcp47() );
-
-            // set word and locale to look up as status value
-            OUString aStatusVal = aText + "#" + aLangText;
-
-            rSet.Put( SfxStringItem( SID_THES, aStatusVal ) );
+            const lang::Locale& aLocale( aLanguageTag.getLocale());
 
             // disable "Thesaurus" context menu entry if there is nothing to look up
             uno::Reference< linguistic2::XThesaurus >  xThes( ::GetThesaurus() );
             if (aText.isEmpty() ||
                 !xThes.is() || nLang == LANGUAGE_NONE || !xThes->hasLocale( aLocale ))
                 rSet.DisableItem( SID_THES );
+            else
+            {
+                // set word and locale to look up as status value
+                OUString aStatusVal = aText + "#" + aLanguageTag.getBcp47();
+                rSet.Put( SfxStringItem( SID_THES, aStatusVal ) );
+            }
         }
         break;
 
@@ -1444,6 +1695,7 @@ void SwTextShell::GetState( SfxItemSet &rSet )
         case FN_EDIT_FORMULA:
         case SID_CHARMAP:
         case SID_EMOJI_CONTROL:
+        case SID_CHARMAP_CONTROL:
             {
                 const SelectionType nType = rSh.GetSelectionType();
                 if (!(nType & SelectionType::Text) &&
@@ -1502,7 +1754,7 @@ void SwTextShell::GetState( SfxItemSet &rSet )
         case FN_GOTO_REFERENCE:
             {
                 SwField *pField = rSh.GetCurField();
-                if ( !pField || (pField->GetTypeId() != TYP_GETREFFLD) )
+                if ( !pField || (pField->GetTypeId() != SwFieldTypesEnum::GetRef) )
                     rSet.DisableItem(nWhich);
             }
             break;
@@ -1515,7 +1767,7 @@ void SwTextShell::GetState( SfxItemSet &rSet )
         case SID_DEC_INDENT:
         case SID_INC_INDENT:
         {
-            //if the paragrah has bullet we'll do the following things:
+            //if the paragraph has bullet we'll do the following things:
             //1: if the bullet level is the first level, disable the decrease-indent button
             //2: if the bullet level is the last level, disable the increase-indent button
             if ( rSh.GetNumRuleAtCurrCursorPos() && !rSh.HasReadonlySel() )
@@ -1556,9 +1808,8 @@ void SwTextShell::GetState( SfxItemSet &rSet )
             {
                 SfxItemSet aSet( GetPool() );
                 rSh.GetCurAttr( aSet );
-                const SvxColorItem& aColorItem = static_cast< const SvxColorItem& >( aSet.Get(RES_CHRATR_COLOR) );
-                std::unique_ptr<SfxPoolItem> pNewItem(aColorItem.CloneSetWhich(SID_ATTR_CHAR_COLOR2));
-                rSet.Put( *pNewItem );
+                const SvxColorItem& aColorItem = aSet.Get(RES_CHRATR_COLOR);
+                rSet.Put( aColorItem.CloneSetWhich(SID_ATTR_CHAR_COLOR2) );
             }
             break;
         case SID_ATTR_CHAR_COLOR_BACKGROUND:
@@ -1566,14 +1817,14 @@ void SwTextShell::GetState( SfxItemSet &rSet )
                 // Always use the visible background
                 SfxItemSet aSet( GetPool() );
                 rSh.GetCurAttr( aSet );
-                const SvxBrushItem& aBrushItem = static_cast< const SvxBrushItem& >( aSet.Get(RES_CHRATR_HIGHLIGHT) );
+                const SvxBrushItem& aBrushItem = aSet.Get(RES_CHRATR_HIGHLIGHT);
                 if( aBrushItem.GetColor() != COL_TRANSPARENT )
                 {
                     rSet.Put( SvxColorItem(aBrushItem.GetColor(), nWhich) );
                 }
                 else
                 {
-                    const SvxBrushItem& aBrushItem2 = static_cast< const SvxBrushItem& >( aSet.Get(RES_CHRATR_BACKGROUND) );
+                    const SvxBrushItem& aBrushItem2 = aSet.Get(RES_CHRATR_BACKGROUND);
                     rSet.Put( SvxColorItem(aBrushItem2.GetColor(), nWhich) );
                 }
             }
@@ -1586,7 +1837,7 @@ void SwTextShell::GetState( SfxItemSet &rSet )
                 rSet.Put(SfxBoolItem(nWhich, pApply && pApply->nColor == nWhich));
             }
             break;
-
+        case FN_SET_REMINDER:
         case FN_INSERT_BOOKMARK:
             if( rSh.IsTableMode()
                 || rSh.CursorInsideInputField() )
@@ -1614,6 +1865,53 @@ void SwTextShell::GetState( SfxItemSet &rSet )
 
         case FN_INSERT_PAGEHEADER:
         case FN_INSERT_PAGEFOOTER:
+            if (comphelper::LibreOfficeKit::isActive())
+            {
+                bool bState = false;
+                bool bAllState = true;
+                bool bIsPhysical = false;
+
+                OUString aStyleName;
+                std::vector<OUString> aList;
+                const OUString sPhysical("IsPhysical");
+                const OUString sDisplay("DisplayName");
+                const OUString sHeaderOn(nWhich == FN_INSERT_PAGEHEADER ? OUString("HeaderIsOn") : OUString("FooterIsOn"));
+
+                uno::Reference< XStyleFamiliesSupplier > xSupplier(GetView().GetDocShell()->GetBaseModel(), uno::UNO_QUERY);
+                if (xSupplier.is())
+                {
+                    uno::Reference< XNameContainer > xContainer;
+                    uno::Reference< XNameAccess > xFamilies = xSupplier->getStyleFamilies();
+                    if (xFamilies->getByName("PageStyles") >>= xContainer)
+                    {
+                        const uno::Sequence< OUString > aSeqNames = xContainer->getElementNames();
+                        for (const auto& rName : aSeqNames)
+                        {
+                            aStyleName = rName;
+                            uno::Reference<XPropertySet> xPropSet(xContainer->getByName(aStyleName), uno::UNO_QUERY);
+                            if (xPropSet.is() && (xPropSet->getPropertyValue(sPhysical) >>= bIsPhysical) && bIsPhysical)
+                            {
+                                xPropSet->getPropertyValue(sDisplay) >>= aStyleName;
+                                if ((xPropSet->getPropertyValue(sHeaderOn)>>= bState) && bState)
+                                    aList.push_back(aStyleName);
+                                else
+                                    bState = false;
+
+                                // Check if all entries have the same state
+                                bAllState &= bState;
+                            }
+                            else
+                                bIsPhysical = false;
+                       }
+                    }
+                }
+
+                if (bAllState && aList.size() > 1)
+                    aList.push_back("_ALL_");
+
+                rSet.Put(SfxStringListItem(nWhich, &aList));
+            }
+            else
             {
                 rSet.Put( SfxObjectShellItem( nWhich, GetView().GetDocShell() ));
             }
@@ -1653,8 +1951,8 @@ void SwTextShell::GetState( SfxItemSet &rSet )
                 }
                 break;
 
-            case FN_EDIT_HYPERLINK:
-            case FN_COPY_HYPERLINK_LOCATION:
+            case SID_EDIT_HYPERLINK:
+            case SID_COPY_HYPERLINK_LOCATION:
                 {
                     SfxItemSet aSet(GetPool(),
                         svl::Items<RES_TXTATR_INETFMT,
@@ -1666,7 +1964,7 @@ void SwTextShell::GetState( SfxItemSet &rSet )
                     }
                 }
             break;
-            case FN_REMOVE_HYPERLINK:
+            case SID_REMOVE_HYPERLINK:
             {
                 SfxItemSet aSet(GetPool(),
                                 svl::Items<RES_TXTATR_INETFMT,
@@ -1685,7 +1983,7 @@ void SwTextShell::GetState( SfxItemSet &rSet )
             case SID_TRANSLITERATE_HALFWIDTH:
             case SID_TRANSLITERATE_FULLWIDTH:
             case SID_TRANSLITERATE_HIRAGANA:
-            case SID_TRANSLITERATE_KATAGANA:
+            case SID_TRANSLITERATE_KATAKANA:
             {
                 SvtCJKOptions aCJKOptions;
                 if(!aCJKOptions.IsChangeCaseMapEnabled())
@@ -1818,19 +2116,17 @@ void SwTextShell::GetState( SfxItemSet &rSet )
             break;
             case FN_NUM_CONTINUE:
             {
+                // #i86492#
+                // Search also for bullet list
+                OUString aDummy;
+                const SwNumRule* pRule =
+                        rSh.SearchNumRule( true, aDummy );
+                if ( !pRule )
                 {
-                    // #i86492#
-                    // Search also for bullet list
-                    OUString aDummy;
-                    const SwNumRule* pRule =
-                            rSh.SearchNumRule( true, aDummy );
-                    if ( !pRule )
-                    {
-                        pRule = rSh.SearchNumRule( false, aDummy );
-                    }
-                    if ( !pRule )
-                        rSet.DisableItem(nWhich);
+                    pRule = rSh.SearchNumRule( false, aDummy );
                 }
+                if ( !pRule )
+                    rSet.DisableItem(nWhich);
             }
             break;
             case SID_INSERT_RLM :
@@ -1841,6 +2137,54 @@ void SwTextShell::GetState( SfxItemSet &rSet )
                 GetView().GetViewFrame()->GetBindings().SetVisibleState( nWhich, bEnabled );
                 if(!bEnabled)
                     rSet.DisableItem(nWhich);
+            }
+            break;
+            case SID_FM_CTL_PROPERTIES:
+            {
+                bool bDisable = false;
+
+                // First get the state from the form shell
+                SfxItemSet aSet(GetShell().GetAttrPool(), svl::Items<SID_FM_CTL_PROPERTIES, SID_FM_CTL_PROPERTIES>{});
+                aSet.Put(SfxBoolItem( SID_FM_CTL_PROPERTIES, true ));
+                GetShell().GetView().GetFormShell()->GetState( aSet );
+
+                if(SfxItemState::DISABLED == aSet.GetItemState(SID_FM_CTL_PROPERTIES))
+                {
+                    bDisable = true;
+                }
+
+                // Enable it if we have a valid object other than what form shell knows
+                SwPosition aPos(*GetShell().GetCursor()->GetPoint());
+                sw::mark::IFieldmark* pFieldBM = GetShell().getIDocumentMarkAccess()->getFieldmarkFor(aPos);
+                if ( !pFieldBM && aPos.nContent.GetIndex() > 0)
+                {
+                    --aPos.nContent;
+                    pFieldBM = GetShell().getIDocumentMarkAccess()->getFieldmarkFor(aPos);
+                }
+                if ( pFieldBM && (pFieldBM->GetFieldname() == ODF_FORMDROPDOWN || pFieldBM->GetFieldname() == ODF_FORMDATE) )
+                {
+                    bDisable = false;
+                }
+
+                if(bDisable)
+                    rSet.DisableItem(nWhich);
+            }
+            break;
+            case SID_COPY:
+            case SID_CUT:
+            {
+                if (GetObjectShell()->isContentExtractionLocked())
+                    rSet.DisableItem(nWhich);
+                break;
+            }
+            case FN_PROTECT_FIELDS:
+            case FN_PROTECT_BOOKMARKS:
+            {
+                DocumentSettingId aSettingId = nWhich == FN_PROTECT_FIELDS
+                                                   ? DocumentSettingId::PROTECT_FIELDS
+                                                   : DocumentSettingId::PROTECT_BOOKMARKS;
+                bool bProtected = rSh.getIDocumentSettingAccess().get(aSettingId);
+                rSet.Put(SfxBoolItem(nWhich, bProtected));
             }
             break;
         }

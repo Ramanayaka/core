@@ -19,29 +19,24 @@
 
 #include "tp_DataLabel.hxx"
 
-#include "ResourceIds.hrc"
-#include "ResId.hxx"
-
 namespace chart
 {
 
-DataLabelsTabPage::DataLabelsTabPage(vcl::Window* pWindow, const SfxItemSet& rInAttrs)
-        : SfxTabPage(pWindow
-        , "tp_DataLabel"
-        , "modules/schart/ui/tp_DataLabel.ui"
-        , &rInAttrs)
-        , m_aDataLabelResources(this, this, rInAttrs)
+DataLabelsTabPage::DataLabelsTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
+    : SfxTabPage(pPage, pController, "modules/schart/ui/tp_DataLabel.ui", "tp_DataLabel", &rInAttrs)
+    , m_aDataLabelResources(m_xBuilder.get(), pController->getDialog(), rInAttrs)
 {
 }
 
-VclPtr<SfxTabPage> DataLabelsTabPage::Create(vcl::Window* pWindow, const SfxItemSet* rOutAttrs)
+std::unique_ptr<SfxTabPage> DataLabelsTabPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rOutAttrs)
 {
-    return VclPtr<DataLabelsTabPage>::Create(pWindow, *rOutAttrs);
+    return std::make_unique<DataLabelsTabPage>(pPage, pController, *rOutAttrs);
 }
 
 bool DataLabelsTabPage::FillItemSet(SfxItemSet* rOutAttrs)
 {
-    return m_aDataLabelResources.FillItemSet(rOutAttrs);
+    m_aDataLabelResources.FillItemSet(rOutAttrs);
+    return true;
 }
 
 void DataLabelsTabPage::Reset(const SfxItemSet* rInAttrs)

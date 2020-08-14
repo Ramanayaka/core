@@ -30,21 +30,11 @@ class SwTableBox;
 class SwUndoSort;
 class FlatFndBox;
 struct SwSortOptions;
-struct SwSortElement;
 class FndBox_;
 class FndLine_;
 class CollatorWrapper;
 class LocaleDataWrapper;
-
-namespace com {
-    namespace sun {
-        namespace star {
-            namespace lang {
-                struct Locale;
-            }
-        }
-    }
-}
+namespace com::sun::star::lang { struct Locale; }
 
 class SwMovedBoxes
 {
@@ -76,8 +66,14 @@ struct SwSortElement
     static OUString*            pLastAlgorithm;
     static LocaleDataWrapper*   pLclData;
 
-    static void Init( SwDoc*, const SwSortOptions& rOpt, FlatFndBox* = nullptr );
+    static void Init( SwDoc*, const SwSortOptions& rOpt, FlatFndBox const * = nullptr );
     static void Finit();
+
+    SwSortElement() = default;
+    SwSortElement(SwSortElement const &) = default;
+    SwSortElement(SwSortElement &&) = default;
+    SwSortElement & operator =(SwSortElement const &) = default;
+    SwSortElement & operator =(SwSortElement &&) = default;
 
     virtual ~SwSortElement();
 
@@ -98,7 +94,6 @@ struct SwSortTextElement : public SwSortElement
     SwNodeIndex aPos;
 
     SwSortTextElement( const SwNodeIndex& rPos );
-    virtual ~SwSortTextElement() override;
 
     virtual OUString GetKey( sal_uInt16 nKey ) const override;
 };
@@ -109,7 +104,6 @@ struct SwSortBoxElement : public SwSortElement
     sal_uInt16 nRow;
 
     SwSortBoxElement( sal_uInt16 nRC );
-    virtual ~SwSortBoxElement() override;
 
     virtual OUString GetKey( sal_uInt16 nKey ) const override;
     virtual double GetValue( sal_uInt16 nKey ) const override;
@@ -122,9 +116,9 @@ public:
     FlatFndBox(SwDoc* pDocPtr, const FndBox_& rBox);
     ~FlatFndBox();
 
-    bool            IsSymmetric() const { return bSym;  }
-    sal_uInt16          GetRows()     const { return nRows; }
-    sal_uInt16          GetCols()     const { return nCols; }
+    bool            IsSymmetric() const { return m_bSym;  }
+    sal_uInt16          GetRows()     const { return m_nRows; }
+    sal_uInt16          GetCols()     const { return m_nCols; }
 
     const FndBox_*      GetBox(sal_uInt16 nCol, sal_uInt16 nRow) const;
 
@@ -138,20 +132,19 @@ private:
     sal_uInt16          GetRowCount(const FndBox_& rBox);
     void                FillFlat(const FndBox_&, bool bLastBox=false);
 
-    SwDoc*              pDoc;
-    const FndBox_&      rBoxRef;
-    std::unique_ptr<FndBox_ const *[]> pArr;
-    std::vector<std::unique_ptr<SfxItemSet>> ppItemSets;
+    SwDoc*              m_pDoc;
+    std::unique_ptr<FndBox_ const *[]> m_pArr;
+    std::vector<std::unique_ptr<SfxItemSet>> m_ppItemSets;
 
-    sal_uInt16          nRows;
-    sal_uInt16          nCols;
-    sal_uInt16          nRow;
-    sal_uInt16          nCol;
+    sal_uInt16          m_nRows;
+    sal_uInt16          m_nCols;
+    sal_uInt16          m_nRow;
+    sal_uInt16          m_nCol;
 
-    bool            bSym;
+    bool            m_bSym;
 };
 
-inline bool FlatFndBox::HasItemSets() const { return !ppItemSets.empty(); }
+inline bool FlatFndBox::HasItemSets() const { return !m_ppItemSets.empty(); }
 
 #endif
 

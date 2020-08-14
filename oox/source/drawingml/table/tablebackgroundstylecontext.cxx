@@ -18,9 +18,9 @@
  */
 
 
-#include "drawingml/table/tablebackgroundstylecontext.hxx"
-#include "drawingml/misccontexts.hxx"
-#include "oox/helper/attributelist.hxx"
+#include <drawingml/table/tablebackgroundstylecontext.hxx>
+#include <drawingml/misccontexts.hxx>
+#include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
@@ -29,9 +29,9 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
-TableBackgroundStyleContext::TableBackgroundStyleContext( ContextHandler2Helper& rParent, TableStyle& rTableStyle )
+TableBackgroundStyleContext::TableBackgroundStyleContext( ContextHandler2Helper const & rParent, TableStyle& rTableStyle )
 : ContextHandler2( rParent )
 , mrTableStyle( rTableStyle )
 {
@@ -50,7 +50,7 @@ TableBackgroundStyleContext::onCreateContext( ::sal_Int32 aElementToken, const A
         case A_TOKEN( fill ):       // CT_FillProperties
             {
                 std::shared_ptr< FillProperties >& rxFillProperties = mrTableStyle.getBackgroundFillProperties();
-                rxFillProperties.reset( new FillProperties );
+                rxFillProperties = std::make_shared<FillProperties>();
                 return new FillPropertiesContext( *this, *rxFillProperties );
             }
         case A_TOKEN( fillRef ):    // CT_StyleMatrixReference
@@ -69,6 +69,6 @@ TableBackgroundStyleContext::onCreateContext( ::sal_Int32 aElementToken, const A
     return this;
 }
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -24,8 +24,9 @@
 #include <tools/datetime.hxx>
 #include <vcl/timer.hxx>
 
+#include <vector>
+
 class SwGlossaries;
-class vector;
 
 struct AutoTextGroup
 {
@@ -45,7 +46,7 @@ struct AutoTextGroup
 
 class SwGlossaryList : public AutoTimer
 {
-    std::vector<AutoTextGroup*> aGroupArr;
+    std::vector<std::unique_ptr<AutoTextGroup>> aGroupArr;
     OUString        sPath;
     bool            bFilled;
 
@@ -56,7 +57,8 @@ public:
         SwGlossaryList();
         virtual ~SwGlossaryList() override;
 
-    void            HasLongName(const OUString& rBegin, std::vector<OUString> *pLongNames);
+    void            HasLongName(const std::vector<OUString>& rBeginCandidates,
+                                std::vector<std::pair<OUString, sal_uInt16>>& rLongNames);
     bool            GetShortName(const OUString& rLongName,
                                        OUString& rShortName, OUString& rGroupName );
 

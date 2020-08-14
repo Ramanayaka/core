@@ -17,25 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_FORMS_SOURCE_COMPONENT_EDITBASE_HXX
-#define INCLUDED_FORMS_SOURCE_COMPONENT_EDITBASE_HXX
+#pragma once
 
-#include "FormComponent.hxx"
-#include <com/sun/star/util/XNumberFormatter.hpp>
-#include <com/sun/star/awt/XFocusListener.hpp>
-#include <com/sun/star/awt/XKeyListener.hpp>
-#include <com/sun/star/form/XChangeBroadcaster.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
+#include <FormComponent.hxx>
 
 // persistence flags for use with the version id
 #define PF_HANDLE_COMMON_PROPS  0x8000
     // Derived classes which use their own persistence methods (read/write) and have an own
     // version handling therein may want to clear this flag in getPersistenceFlags.
-    // If done so, this class will write an version without a call to writeCommonEditProperties.
+    // If done so, this class will write a version without a call to writeCommonEditProperties.
 #define PF_FAKE_FORMATTED_FIELD 0x4000
-    // .... hmmm .... a fake, as the name suggests. see OFormattedFieldWrapper
+    // ... hmmm... a fake, as the name suggests. see OFormattedFieldWrapper
 
 #define PF_SPECIAL_FLAGS        0xFF00
 
@@ -84,19 +76,16 @@ public:
 
 protected:
     // new properties common to all edit models should be handled with the following two methods
-    void SAL_CALL readCommonEditProperties(const css::uno::Reference< css::io::XObjectInputStream>& _rxInStream);
-    void SAL_CALL writeCommonEditProperties(const css::uno::Reference< css::io::XObjectOutputStream>& _rxOutStream);
+    void readCommonEditProperties(const css::uno::Reference< css::io::XObjectInputStream>& _rxInStream);
+    void writeCommonEditProperties(const css::uno::Reference< css::io::XObjectOutputStream>& _rxOutStream);
     void defaultCommonEditProperties();
 
     virtual sal_uInt16 getPersistenceFlags() const;
     // derived classes may use this if they want this base class to write additional version flags
-    // (one of the PF_.... constants). After ::read they may ask for that flags with getLastReadVersion
+    // (one of the PF_... constants). After ::read they may ask for that flags with getLastReadVersion
 };
 
 
 }
-
-
-#endif // INCLUDED_FORMS_SOURCE_COMPONENT_EDITBASE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

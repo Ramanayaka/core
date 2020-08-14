@@ -32,10 +32,9 @@
 
 #include <memory>
 
-namespace sd { namespace colortoolpanel
+namespace sd::colortoolpanel
 {
 
-    // class SingleColorPanel
     typedef ::cppu::WeakComponentImplHelper    <   css::drawing::framework::XView
                                                 ,   css::ui::XToolPanel
                                                 ,   css::awt::XPaintListener

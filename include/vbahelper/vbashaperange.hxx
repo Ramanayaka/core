@@ -33,30 +33,29 @@
 #include <vbahelper/vbadllapi.h>
 #include <vbahelper/vbahelper.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XEnumeration; }
     namespace container { class XIndexAccess; }
     namespace drawing { class XDrawPage; }
     namespace drawing { class XShapes; }
     namespace frame { class XModel; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
-namespace ooo { namespace vba {
+namespace ooo::vba {
     class XHelperInterface;
     namespace msforms { class XFillFormat; }
     namespace msforms { class XLineFormat; }
     namespace msforms { class XShape; }
-} }
+}
 
 typedef CollTestImplHelper< ov::msforms::XShapeRange > ScVbaShapeRange_BASE;
 
-class VBAHELPER_DLLPUBLIC ScVbaShapeRange : public ScVbaShapeRange_BASE
+class VBAHELPER_DLLPUBLIC ScVbaShapeRange final : public ScVbaShapeRange_BASE
 {
 private:
     css::uno::Reference< css::drawing::XDrawPage > m_xDrawPage;
     css::uno::Reference< css::drawing::XShapes > m_xShapes;
-protected:
     css::uno::Reference< css::frame::XModel > m_xModel;
     virtual OUString getServiceImplName() override;
     virtual css::uno::Sequence<OUString> getServiceNames() override;
@@ -91,8 +90,8 @@ public:
     virtual void SAL_CALL setRelativeHorizontalPosition( ::sal_Int32 _relativehorizontalposition ) override;
     virtual ::sal_Int32 SAL_CALL getRelativeVerticalPosition() override;
     virtual void SAL_CALL setRelativeVerticalPosition( ::sal_Int32 _relativeverticalposition ) override;
-    virtual css::uno::Any SAL_CALL SAL_CALL TextFrame(  ) override;
-    virtual css::uno::Any SAL_CALL SAL_CALL WrapFormat(  ) override;
+    virtual css::uno::Any SAL_CALL TextFrame(  ) override;
+    virtual css::uno::Any SAL_CALL WrapFormat(  ) override;
     virtual void SAL_CALL ZOrder( sal_Int32 ZOrderCmd ) override;
     //XEnumerationAccess
     virtual css::uno::Type SAL_CALL getElementType() override;

@@ -41,21 +41,19 @@ namespace xmloff
     {
         OUString getParaAlignProperty()
         {
-            return OUString( "ParaAdjust" );
+            return "ParaAdjust";
         }
 
         OUString getAlignProperty()
         {
-            return OUString( "Align" );
+            return "Align";
         }
 
         sal_Int32 findStringElement( const Sequence< OUString >& _rNames, const OUString& _rName )
         {
-            const OUString* pStart = _rNames.getConstArray();
-            const OUString* pEnd = _rNames.getConstArray() + _rNames.getLength();
-            const OUString* pPos = ::std::find( pStart, pEnd, _rName );
-            if ( pPos != pEnd )
-                return pPos - pStart;
+            const OUString* pPos = ::std::find( _rNames.begin(), _rNames.end(), _rName );
+            if ( pPos != _rNames.end() )
+                return pPos - _rNames.begin();
             return -1;
         }
 
@@ -64,7 +62,7 @@ namespace xmloff
             ParagraphAdjust nParagraphValue;
             sal_Int16       nControlValue;
         }
-        AlignmentTranslations[] =
+        const AlignmentTranslations[] =
         {
             // note that order matters:
             // valueAlignToParaAdjust and valueParaAdjustToAlign search this map from the _beginning_
@@ -102,7 +100,7 @@ namespace xmloff
             const AlignmentTranslationEntry* pTranslation = AlignmentTranslations;
             while ( ParagraphAdjust::ParagraphAdjust_MAKE_FIXED_SIZE != pTranslation->nParagraphValue)
             {
-                if ( (ParagraphAdjust)nValue == pTranslation->nParagraphValue)
+                if ( static_cast<ParagraphAdjust>(nValue) == pTranslation->nParagraphValue)
                 {
                     rValue <<= pTranslation->nControlValue;
                     return;

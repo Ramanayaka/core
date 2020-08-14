@@ -188,7 +188,7 @@ public class ScTabViewObj extends TestCase {
             XForm myForm = null;
             String kindOfControl="CommandButton";
             XShape aShape = null;
-            log.println("adding contol shape '" + kindOfControl + "'");
+            log.println("adding control shape '" + kindOfControl + "'");
             XComponent oComp = UnoRuntime.queryInterface(XComponent.class, xSpreadsheetDoc) ;
 
             aShape = FormTools.createControlShape(oComp, 3000, 4500, 15000, 10000, kindOfControl);
@@ -211,11 +211,11 @@ public class ScTabViewObj extends TestCase {
                 try {
                     myForm = (XForm) AnyConverter.toObject(new Type(XForm.class),xForm.getByName("Standard"));
                 } catch (WrappedTargetException ex) {
-                    log.println("ERROR: could not XFormm 'Standard': " + ex.toString());
+                    log.println("ERROR: could not XForm 'Standard': " + ex.toString());
                 } catch (com.sun.star.lang.IllegalArgumentException ex) {
-                    log.println("ERROR: could not XFormm 'Standard': " + ex.toString());
+                    log.println("ERROR: could not XForm 'Standard': " + ex.toString());
                 } catch (NoSuchElementException ex) {
-                    log.println("ERROR: could not XFormm 'Standard': " + ex.toString());
+                    log.println("ERROR: could not XForm 'Standard': " + ex.toString());
                 }
                 if (myForm == null)
                     log.println("ERROR: could not get XForm: null");

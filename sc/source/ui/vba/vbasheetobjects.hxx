@@ -25,11 +25,11 @@
 #include <vbahelper/vbacollectionimpl.hxx>
 #include <rtl/ref.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XEnumeration; }
     namespace frame { class XModel; }
     namespace sheet { class XSpreadsheet; }
-} } }
+}
 
 class ScVbaObjectContainer;
 typedef ::rtl::Reference< ScVbaObjectContainer > ScVbaObjectContainerRef;
@@ -94,7 +94,8 @@ public:
         const css::uno::Reference< ov::XHelperInterface >& rxParent,
         const css::uno::Reference< css::uno::XComponentContext >& rxContext,
         const css::uno::Reference< css::frame::XModel >& rxModel,
-        const css::uno::Reference< css::sheet::XSpreadsheet >& rxSheet );
+        const css::uno::Reference< css::sheet::XSpreadsheet >& rxSheet,
+        bool bOptionButtons);
 
     VBAHELPER_DECL_XHELPERINTERFACE
 };

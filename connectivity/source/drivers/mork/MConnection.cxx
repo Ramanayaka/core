@@ -15,13 +15,11 @@
 #include "MorkParser.hxx"
 
 #include <connectivity/dbexception.hxx>
+#include <sal/log.hxx>
 
-#include "resource/mork_res.hrc"
-#include "resource/common_res.hrc"
+#include <strings.hrc>
 
 #include <com/sun/star/sdbc/TransactionIsolation.hpp>
-
-#include <comphelper/processfactory.hxx>
 
 using namespace dbtools;
 
@@ -33,33 +31,26 @@ using namespace com::sun::star::sdbc;
 using namespace com::sun::star::sdbcx;
 
 
-namespace connectivity { namespace mork {
+namespace connectivity::mork {
 
-static const int defaultScope = 0x80;
+const int defaultScope = 0x80;
 
 
 OConnection::OConnection(MorkDriver* _pDriver)
-    :OSubComponent<OConnection, OConnection_BASE>(static_cast<cppu::OWeakObject*>(_pDriver), this)
-    ,m_xDriver(_pDriver)
+    :m_xDriver(_pDriver)
     ,m_aColumnAlias( _pDriver->getFactory() )
 {
-    m_pBook = new MorkParser();
-    m_pHistory = new MorkParser();
+    m_pBook.reset( new MorkParser() );
+    m_pHistory.reset( new MorkParser() );
 }
 
 OConnection::~OConnection()
 {
     if(!isClosed())
         close();
-    delete m_pBook;
-    delete m_pHistory;
+    m_pBook.reset();
+    m_pHistory.reset();
 }
-
-void SAL_CALL OConnection::release() throw()
-{
-    release_ChildImpl();
-}
-
 
 void OConnection::construct(const OUString& url)
 {
@@ -71,13 +62,12 @@ void OConnection::construct(const OUString& url)
 
     sal_Int32 nLen = url.indexOf(':');
     nLen = url.indexOf(':',nLen+1);
-    OSL_ENSURE( url.copy( 0, nLen ) == "sdbc:address", "OConnection::construct: invalid start of the URI - should never have survived XDriver::acceptsURL!" );
+    OSL_ENSURE( url.startsWith("sdbc:address:"), "OConnection::construct: invalid start of the URI - should never have survived XDriver::acceptsURL!" );
 
     OUString aAddrbookURI(url.copy(nLen+1));
     // Get Scheme
     nLen = aAddrbookURI.indexOf(':');
     OUString aAddrbookScheme;
-    OUString sAdditionalInfo;
     if ( nLen == -1 )
     {
         // There isn't any subschema: - but could be just subschema
@@ -94,7 +84,6 @@ void OConnection::construct(const OUString& url)
     else
     {
         aAddrbookScheme = aAddrbookURI.copy(0, nLen);
-        sAdditionalInfo = aAddrbookURI.copy( nLen + 1 );
     }
 
     SAL_INFO("connectivity.mork", "URI = " << aAddrbookURI );
@@ -147,14 +136,13 @@ void OConnection::construct(const OUString& url)
 
     // check that we can retrieve the tables:
     MorkTableMap *Tables = m_pBook->getTables( defaultScope );
-    MorkTableMap::Map::const_iterator tableIter;
     if (Tables)
     {
         // Iterate all tables
-        for ( tableIter = Tables->map.begin(); tableIter != Tables->map.end(); ++tableIter )
+        for ( const auto& rEntry : Tables->map )
         {
-            if ( 0 == tableIter->first ) continue;
-            SAL_INFO("connectivity.mork", "table->first : " << tableIter->first);
+            if ( 0 == rEntry.first ) continue;
+            SAL_INFO("connectivity.mork", "table->first : " << rEntry.first);
         }
     }
     // check that we can retrieve the history tables:
@@ -162,10 +150,10 @@ void OConnection::construct(const OUString& url)
     if (Tables_hist)
     {
         // Iterate all tables
-        for ( tableIter = Tables_hist->map.begin(); tableIter != Tables_hist->map.end(); ++tableIter )
+        for ( const auto& rEntry : Tables_hist->map )
         {
-            if ( 0 == tableIter->first ) continue;
-            SAL_INFO("connectivity.mork", "table->first : " << tableIter->first);
+            if ( 0 == rEntry.first ) continue;
+            SAL_INFO("connectivity.mork", "table->first : " << rEntry.first);
         }
     }
 }
@@ -350,12 +338,10 @@ void OConnection::disposing()
 {
     // we noticed that we should be destroyed in near future so we have to dispose our statements
     ::osl::MutexGuard aGuard(m_aMutex);
-    dispose_ChildImpl();
     m_xCatalog.clear();
 }
 
-
-Reference< XTablesSupplier > SAL_CALL OConnection::createCatalog()
+Reference< XTablesSupplier > OConnection::createCatalog()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     Reference< XTablesSupplier > xTab = m_xCatalog;
@@ -368,51 +354,24 @@ Reference< XTablesSupplier > SAL_CALL OConnection::createCatalog()
     return xTab;
 }
 
-
 void OConnection::throwSQLException( const ErrorDescriptor& _rError, const Reference< XInterface >& _rxContext )
 {
-    if ( _rError.getResId() != 0 )
+    if (_rError.getResId() != nullptr)
     {
-        OSL_ENSURE( ( _rError.getErrorCondition() == 0 ),
-            "OConnection::throwSQLException: unsupported error code combination!" );
-
-        const OUString& sParameter( _rError.getParameter() );
-        if ( !sParameter.isEmpty() )
-        {
-            const OUString sError( getResources().getResourceStringWithSubstitution(
-                _rError.getResId(),
-                "$1$", sParameter
-             ) );
-            ::dbtools::throwGenericSQLException( sError, _rxContext );
-            OSL_FAIL( "OConnection::throwSQLException: unreachable (1)!" );
-        }
-
         throwGenericSQLException( _rError.getResId(), _rxContext );
         OSL_FAIL( "OConnection::throwSQLException: unreachable (2)!" );
-    }
-
-    if ( _rError.getErrorCondition() != 0 )
-    {
-        SQLError aErrorHelper( comphelper::getComponentContext(getDriver()->getFactory()) );
-        const OUString& sParameter( _rError.getParameter() );
-        if ( !sParameter.isEmpty() )
-            aErrorHelper.raiseException( _rError.getErrorCondition(), _rxContext, sParameter );
-        else
-            aErrorHelper.raiseException( _rError.getErrorCondition(), _rxContext);
-        OSL_FAIL( "OConnection::throwSQLException: unreachable (3)!" );
     }
 
     throwGenericSQLException( STR_UNSPECIFIED_ERROR, _rxContext );
 }
 
-
-void OConnection::throwSQLException( const sal_uInt16 _nErrorResourceId, const Reference< XInterface >& _rxContext )
+void OConnection::throwSQLException( const char* pErrorResourceId, const Reference< XInterface >& _rxContext )
 {
     ErrorDescriptor aError;
-    aError.setResId( _nErrorResourceId );
-    throwSQLException( aError, _rxContext );
+    aError.setResId(pErrorResourceId);
+    throwSQLException(aError, _rxContext);
 }
 
-} } // namespace connectivity::mork
+} // namespace connectivity::mork
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

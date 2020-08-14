@@ -8,10 +8,19 @@
  */
 
 #include <memory>
-#include "uiobject.hxx"
-#include "edtwin.hxx"
-#include "view.hxx"
-#include "wrtsh.hxx"
+#include <uiobject.hxx>
+#include <edtwin.hxx>
+#include <view.hxx>
+#include <wrtsh.hxx>
+#include <navipi.hxx>
+#include <ndtxt.hxx>
+#include <sfx2/sidebar/Sidebar.hxx>
+#include <sfx2/viewfrm.hxx>
+
+#include <AnnotationWin.hxx>
+#include <comphelper/string.hxx>
+#include <editeng/editeng.hxx>
+#include <editeng/editview.hxx>
 
 SwEditWinUIObject::SwEditWinUIObject(const VclPtr<SwEditWin>& xEditWin):
     WindowUIObject(xEditWin),
@@ -93,7 +102,31 @@ void SwEditWinUIObject::execute(const OUString& rAction,
             OUString aEndPos = itr->second;
             sal_Int32 nEndPos = aEndPos.toInt32();
 
-            getWrtShell(mxEditWin).SelectText(nStartPos, nEndPos);
+            auto & shell = getWrtShell(mxEditWin);
+            sal_Int32 len;
+            if (auto const text = shell.GetCursor_()->GetPoint()->nNode.GetNode().GetTextNode()) {
+                len = text->GetText().getLength();
+            } else {
+                len = 0;
+            }
+            SAL_WARN_IF(
+                nStartPos < 0 || nStartPos > len || nEndPos < 0 || nEndPos > len, "sw.ui",
+                "SELECT START/END_POS " << nStartPos << ".." << nEndPos << " outside 0.." << len);
+            shell.SelectText(
+                std::clamp(nStartPos, sal_Int32(0), len), std::clamp(nEndPos, sal_Int32(0), len));
+        }
+    }
+    else if (rAction == "SIDEBAR")
+    {
+        SfxViewFrame* pViewFrm = SfxViewFrame::Current();
+        DBG_ASSERT(pViewFrm, "SwEditWinUIObject::execute: no viewframe");
+        pViewFrm->ShowChildWindow(SID_SIDEBAR);
+
+        if (rParameters.find("PANEL") != rParameters.end())
+        {
+            auto itr = rParameters.find("PANEL");
+            OUString aVal = itr->second;
+            ::sfx2::sidebar::Sidebar::ShowPanel(aVal, pViewFrm->GetFrame().GetFrameInterface());
         }
     }
     else
@@ -102,7 +135,7 @@ void SwEditWinUIObject::execute(const OUString& rAction,
 
 OUString SwEditWinUIObject::get_name() const
 {
-    return OUString("SwEditWinUIObject");
+    return "SwEditWinUIObject";
 }
 
 std::unique_ptr<UIObject> SwEditWinUIObject::create(vcl::Window* pWindow)
@@ -111,5 +144,116 @@ std::unique_ptr<UIObject> SwEditWinUIObject::create(vcl::Window* pWindow)
     assert(pEditWin);
     return std::unique_ptr<UIObject>(new SwEditWinUIObject(pEditWin));
 }
+
+SwNavigationPIUIObject::SwNavigationPIUIObject(const VclPtr<SwNavigationPI>& xSwNavigationPI):
+    WindowUIObject(xSwNavigationPI),
+    mxSwNavigationPI(xSwNavigationPI)
+{
+}
+
+StringMap SwNavigationPIUIObject::get_state()
+{
+    StringMap aMap = WindowUIObject::get_state();
+
+    aMap["selectioncount"] = OUString::number(mxSwNavigationPI->m_xContentTree->count_selected_rows());
+    aMap["selectedtext"] = mxSwNavigationPI->m_xContentTree->get_selected_text();
+
+    return aMap;
+}
+
+void SwNavigationPIUIObject::execute(const OUString& rAction,
+        const StringMap& rParameters)
+{
+    if (rAction == "ROOT")
+    {
+        mxSwNavigationPI->m_xContentTree->grab_focus();
+        mxSwNavigationPI->ToolBoxSelectHdl("root");
+    }
+    else
+        WindowUIObject::execute(rAction, rParameters);
+}
+
+std::unique_ptr<UIObject> SwNavigationPIUIObject::create(vcl::Window* pWindow)
+{
+    SwNavigationPI* pSwNavigationPI = dynamic_cast<SwNavigationPI*>(pWindow);
+    assert(pSwNavigationPI);
+    return std::unique_ptr<UIObject>(new SwNavigationPIUIObject(pSwNavigationPI));
+}
+
+OUString SwNavigationPIUIObject::get_name() const
+{
+    return "SwNavigationPIUIObject";
+}
+
+CommentUIObject::CommentUIObject(const VclPtr<sw::annotation::SwAnnotationWin>& xCommentUIObject):
+    WindowUIObject(xCommentUIObject),
+    mxCommentUIObject(xCommentUIObject)
+{
+}
+
+StringMap CommentUIObject::get_state()
+{
+    StringMap aMap = WindowUIObject::get_state();
+    aMap["Author"] = mxCommentUIObject->GetAuthor();
+    aMap["ReadOnly"] = OUString::boolean(mxCommentUIObject->IsReadOnly());
+    aMap["Resolved"] = OUString::boolean(mxCommentUIObject->IsResolved());
+    aMap["Visible"] = OUString::boolean(mxCommentUIObject->IsVisible());
+
+    aMap["Text"] = mxCommentUIObject->GetOutliner()->GetEditEngine().GetText();
+    aMap["SelectedText"] = mxCommentUIObject->GetOutlinerView()->GetEditView().GetSelected();
+    return aMap;
+}
+
+void CommentUIObject::execute(const OUString& rAction,
+        const StringMap& rParameters)
+{
+    if (rAction == "SELECT")
+    {
+        if (rParameters.find("FROM") != rParameters.end() &&
+                    rParameters.find("TO") != rParameters.end())
+            {
+                long nMin = rParameters.find("FROM")->second.toInt32();
+                long nMax = rParameters.find("TO")->second.toInt32();
+                ESelection aNewSelection( 0 , nMin, mxCommentUIObject->GetOutliner()->GetParagraphCount()-1, nMax );
+                mxCommentUIObject->GetOutlinerView()->SetSelection( aNewSelection );
+            }
+    }
+    else if (rAction == "LEAVE")
+    {
+        mxCommentUIObject->SwitchToFieldPos();
+    }
+    else if (rAction == "HIDE")
+    {
+        mxCommentUIObject->HideNote();
+    }
+    else if (rAction == "SHOW")
+    {
+        mxCommentUIObject->ShowNote();
+    }
+    else if (rAction == "DELETE")
+    {
+        mxCommentUIObject->Delete();
+    }
+    else if (rAction == "RESOLVE")
+    {
+        mxCommentUIObject->SetResolved(true);
+    }
+    else
+        WindowUIObject::execute(rAction, rParameters);
+}
+
+std::unique_ptr<UIObject> CommentUIObject::create(vcl::Window* pWindow)
+{
+    sw::annotation::SwAnnotationWin* pCommentUIObject = dynamic_cast<sw::annotation::SwAnnotationWin*>(pWindow);
+    assert(pCommentUIObject);
+    return std::unique_ptr<UIObject>(new CommentUIObject(pCommentUIObject));
+}
+
+OUString CommentUIObject::get_name() const
+{
+    return "CommentUIObject";
+}
+
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

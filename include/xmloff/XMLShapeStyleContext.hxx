@@ -23,7 +23,6 @@
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
 #include <xmloff/prstylei.hxx>
-#include <xmloff/families.hxx>
 
 class SvXMLImport;
 
@@ -49,10 +48,10 @@ public:
         const OUString& rLName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList,
         SvXMLStylesContext& rStyles,
-        sal_uInt16 nFamily);
+        XmlStyleFamily nFamily);
     virtual ~XMLShapeStyleContext() override;
 
-    SvXMLImportContext * CreateChildContext(
+    SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList ) override;

@@ -17,13 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "tools/PropertySet.hxx"
+#include <tools/PropertySet.hxx>
 #include <algorithm>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sd { namespace tools {
+namespace sd::tools {
 
 PropertySet::PropertySet()
     : PropertySetInterfaceBase(m_aMutex),
@@ -53,20 +53,20 @@ void SAL_CALL PropertySet::setPropertyValue (
     ThrowIfDisposed();
 
     Any aOldValue (SetPropertyValue(rsPropertyName,rsPropertyValue));
-    if (aOldValue != rsPropertyValue)
-    {
-        // Inform listeners that are registered specifically for the
-        // property and those registered for any property.
-        beans::PropertyChangeEvent aEvent(
-            static_cast<XWeak*>(this),
-            rsPropertyName,
-            false,
-            -1,
-            aOldValue,
-            rsPropertyValue);
-        CallListeners(rsPropertyName, aEvent);
-        CallListeners(OUString(), aEvent);
-    }
+    if (aOldValue == rsPropertyValue)
+        return;
+
+    // Inform listeners that are registered specifically for the
+    // property and those registered for any property.
+    beans::PropertyChangeEvent aEvent(
+        static_cast<XWeak*>(this),
+        rsPropertyName,
+        false,
+        -1,
+        aOldValue,
+        rsPropertyValue);
+    CallListeners(rsPropertyName, aEvent);
+    CallListeners(OUString(), aEvent);
 }
 
 Any SAL_CALL PropertySet::getPropertyValue (const OUString& rsPropertyName)
@@ -86,10 +86,7 @@ void SAL_CALL PropertySet::addPropertyChangeListener (
     if (rBHelper.bDisposed || rBHelper.bInDispose)
         return;
 
-    mpChangeListeners->insert(
-        ChangeListenerContainer::value_type(
-            rsPropertyName,
-            rxListener));
+    mpChangeListeners->emplace(rsPropertyName, rxListener);
 }
 
 void SAL_CALL PropertySet::removePropertyChangeListener (
@@ -107,14 +104,13 @@ void SAL_CALL PropertySet::removePropertyChangeListener (
                 return listener.second == rxListener;
             }));
 
-    if (iListener != mpChangeListeners->end())
-    {
-        mpChangeListeners->erase(iListener);
-    }
-    else
+    if (iListener == mpChangeListeners->end())
     {
         throw lang::IllegalArgumentException();
     }
+
+    mpChangeListeners->erase(iListener);
+
 }
 
 void SAL_CALL PropertySet::addVetoableChangeListener (
@@ -157,6 +153,6 @@ void PropertySet::ThrowIfDisposed()
     }
 }
 
-} } // end of namespace ::sd::tools
+} // end of namespace ::sd::tools
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

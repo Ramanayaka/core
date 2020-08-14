@@ -10,7 +10,6 @@
 #include "dbtest_base.cxx"
 
 #include <memory>
-#include <osl/file.hxx>
 #include <osl/process.h>
 #include <osl/time.h>
 #include <rtl/ustrbuf.hxx>
@@ -19,16 +18,13 @@
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sdb/XOfficeDatabaseDocument.hpp>
-#include <com/sun/star/sdbc/XColumnLocate.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbc/XParameters.hpp>
 #include <com/sun/star/sdbc/XPreparedStatement.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XStatement.hpp>
-#include <com/sun/star/util/XCloseable.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans;
@@ -38,13 +34,13 @@ using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::uno;
 
-void normaliseTimeValue(TimeValue* pVal)
+static void normaliseTimeValue(TimeValue* pVal)
 {
     pVal->Seconds += pVal->Nanosec / 1000000000;
     pVal->Nanosec %= 1000000000;
 }
 
-void getTimeDifference(const TimeValue* pTimeStart,
+static void getTimeDifference(const TimeValue* pTimeStart,
                        const TimeValue* pTimeEnd,
                        TimeValue* pTimeDifference)
 {
@@ -56,7 +52,7 @@ void getTimeDifference(const TimeValue* pTimeStart,
     normaliseTimeValue(pTimeDifference);
 }
 
-OUString getPrintableTimeValue(const TimeValue* pTimeValue)
+static OUString getPrintableTimeValue(const TimeValue* pTimeValue)
 {
     return OUString::number(
         (sal_uInt64(pTimeValue->Seconds) * SAL_CONST_UINT64(1000000000)
@@ -98,19 +94,19 @@ private:
                                 const OUString& rDBName,
                                 const bool bUsePreparedStatement);
 
-    void setupTestTable(uno::Reference< XConnection >& xConnection);
+    void setupTestTable(uno::Reference< XConnection > const & xConnection);
 
     SvFileStream *getWordListStream();
 
     // Individual Tests
     void performPreparedStatementInsertTest(
-        uno::Reference< XConnection >& xConnection,
+        uno::Reference< XConnection > const & xConnection,
         const OUString& rDBName);
     void performStatementInsertTest(
-        uno::Reference< XConnection >& xConnection,
+        uno::Reference< XConnection > const & xConnection,
         const OUString& rDBName);
     void performReadTest(
-        uno::Reference< XConnection >& xConnection,
+        uno::Reference< XConnection > const & xConnection,
         const OUString& rDBName);
 
     // Perform all tests on a given DB.
@@ -137,12 +133,11 @@ void EmbeddedDBPerformanceTest::printTimes(
     const TimeValue* pTime2,
     const TimeValue* pTime3)
 {
-    m_aOutputBuffer.append(
-        getPrintableTimeValue(pTime1) + "\t" +
-        getPrintableTimeValue(pTime2) + "\t" +
-        getPrintableTimeValue(pTime3) + "\t"
-        "\n"
-   );
+    m_aOutputBuffer
+        .append(getPrintableTimeValue(pTime1)).append("\t")
+        .append(getPrintableTimeValue(pTime2)).append("\t")
+        .append(getPrintableTimeValue(pTime3)).append("\t")
+        .append("\n");
 }
 
 const char EmbeddedDBPerformanceTest::our_sEnableTestEnvVar[] = "DBA_PERFTEST";
@@ -234,7 +229,7 @@ void EmbeddedDBPerformanceTest::doPerformanceTestOnODB(
 }
 
 void EmbeddedDBPerformanceTest::setupTestTable(
-    uno::Reference< XConnection >& xConnection)
+    uno::Reference< XConnection > const & xConnection)
 {
     uno::Reference< XStatement > xStatement = xConnection->createStatement();
 
@@ -249,7 +244,7 @@ void EmbeddedDBPerformanceTest::setupTestTable(
 }
 
 void EmbeddedDBPerformanceTest::performPreparedStatementInsertTest(
-    uno::Reference< XConnection >& xConnection,
+    uno::Reference< XConnection > const & xConnection,
     const OUString& rDBName)
 {
     uno::Reference< XPreparedStatement > xPreparedStatement =
@@ -284,14 +279,14 @@ void EmbeddedDBPerformanceTest::performPreparedStatementInsertTest(
     getTimeDifference(&aStart, &aMiddle, &aTimeInsert);
     getTimeDifference(&aMiddle, &aEnd, &aTimeCommit);
     getTimeDifference(&aStart, &aEnd, &aTimeTotal);
-    m_aOutputBuffer.append("Insert: " + rDBName + "\n");
+    m_aOutputBuffer.append("Insert: ").append(rDBName).append("\n");
     printTimes(&aTimeInsert, &aTimeCommit, &aTimeTotal);
 
     pFile->Close();
 }
 
 void EmbeddedDBPerformanceTest::performStatementInsertTest(
-    uno::Reference< XConnection >& xConnection,
+    uno::Reference< XConnection > const & xConnection,
     const OUString& rDBName)
 {
     uno::Reference< XStatement > xStatement =
@@ -322,14 +317,14 @@ void EmbeddedDBPerformanceTest::performStatementInsertTest(
     getTimeDifference(&aStart, &aMiddle, &aTimeInsert);
     getTimeDifference(&aMiddle, &aEnd, &aTimeCommit);
     getTimeDifference(&aStart, &aEnd, &aTimeTotal);
-    m_aOutputBuffer.append("Insert: " + rDBName + "\n");
+    m_aOutputBuffer.append("Insert: ").append(rDBName).append("\n");
     printTimes(&aTimeInsert, &aTimeCommit, &aTimeTotal);
 
     pFile->Close();
 }
 
 void EmbeddedDBPerformanceTest::performReadTest(
-    uno::Reference< XConnection >& xConnection,
+    uno::Reference< XConnection > const & xConnection,
     const OUString& rDBName)
 {
     uno::Reference< XStatement > xStatement = xConnection->createStatement();
@@ -353,7 +348,7 @@ void EmbeddedDBPerformanceTest::performReadTest(
     getTimeDifference(&aStart, &aMiddle, &aTimeSelect);
     getTimeDifference(&aMiddle, &aEnd, &aTimeIterate);
     getTimeDifference(&aStart, &aEnd, &aTimeTotal);
-    m_aOutputBuffer.append("Read from: " + rDBName + "\n");
+    m_aOutputBuffer.append("Read from: ").append(rDBName).append("\n");
     printTimes(&aTimeSelect, &aTimeIterate, &aTimeTotal);
 }
 

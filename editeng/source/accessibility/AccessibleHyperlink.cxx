@@ -23,7 +23,7 @@
 #include <comphelper/accessiblekeybindinghelper.hxx>
 
 #include "AccessibleHyperlink.hxx"
-#include "editeng/unoedprx.hxx"
+#include <editeng/unoedprx.hxx>
 #include <editeng/flditem.hxx>
 #include <vcl/keycodes.hxx>
 
@@ -36,12 +36,10 @@ using namespace ::com::sun::star;
 namespace accessibility
 {
 
-    AccessibleHyperlink::AccessibleHyperlink( SvxAccessibleTextAdapter& r, SvxFieldItem* p, sal_Int32 nP, sal_uInt16 nR, sal_Int32 nStt, sal_Int32 nEnd, const OUString& rD )
+    AccessibleHyperlink::AccessibleHyperlink( SvxAccessibleTextAdapter& r, SvxFieldItem* p, sal_Int32 nStt, sal_Int32 nEnd, const OUString& rD )
     : rTA( r )
     {
         pFld.reset( p );
-        nPara = nP;
-        nRealIdx = nR;
         nStartIdx = nStt;
         nEndIdx = nEnd;
         aDescription = rD;
@@ -62,7 +60,7 @@ namespace accessibility
         bool bRet = false;
         if ( isValid() && ( nIndex == 0 ) )
         {
-            rTA.FieldClicked( *pFld, nPara, nRealIdx );
+            rTA.FieldClicked( *pFld );
             bRet = true;
         }
         return bRet;

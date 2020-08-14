@@ -20,13 +20,13 @@
 #ifndef INCLUDED_SW_INC_IDOCUMENTSETTINGACCESS_HXX
 #define INCLUDED_SW_INC_IDOCUMENTSETTINGACCESS_HXX
 
-#include <tools/solar.h>
-#include <rtl/ref.hxx>
-#include <fldupde.hxx>
+#include <sal/types.h>
+#include "fldupde.hxx"
 #include <i18nlangtag/lang.h>
+#include <memory>
 
 class SvxForbiddenCharactersTable;
-namespace com { namespace sun { namespace star { namespace i18n { struct ForbiddenCharacters; } } } }
+namespace com::sun::star::i18n { struct ForbiddenCharacters; }
 enum class CharCompressType;
 
 enum class DocumentSettingId
@@ -49,6 +49,7 @@ enum class DocumentSettingId
     ADD_PARA_SPACING_TO_TABLE_CELLS,
     USE_FORMER_OBJECT_POS,
     USE_FORMER_TEXT_WRAPPING,
+    ALLOW_WRAP_WHEN_ANCHORED_IN_TABLE, // change LO to match MS allowing wrapping around fly-frames anchored in tables in header & footnote
     CONSIDER_WRAP_ON_OBJECT_POSITION,
 
     IGNORE_FIRST_LINE_INDENT_IN_NUMBERING,
@@ -63,7 +64,8 @@ enum class DocumentSettingId
 
     // tdf#104349 tdf#104668
     MS_WORD_COMP_TRAILING_BLANKS,
-
+    // tdf#128197 MS Word in some modes can have line height based on shape height, not on font
+    MS_WORD_COMP_MIN_LINE_HEIGHT_BY_FLY,
     UNIX_FORCE_ZERO_EXT_LEADING,
     TABS_RELATIVE_TO_INDENT,
     PROTECT_FORM,
@@ -81,6 +83,9 @@ enum class DocumentSettingId
     SURROUND_TEXT_WRAP_SMALL,
     PROP_LINE_SPACING_SHRINKS_FIRST_LINE,
     SUBTRACT_FLYS,
+    // tdf#112443 disable off-page content positioning
+    DISABLE_OFF_PAGE_POSITIONING,
+    EMPTY_DB_FIELD_HIDES_PARA,
     // COMPATIBILITY FLAGS END
     BROWSE_MODE,
     HTML_MODE,
@@ -93,8 +98,17 @@ enum class DocumentSettingId
     STYLES_NODEFAULT,
     FLOATTABLE_NOMARGINS,
     EMBED_FONTS,
+    EMBED_USED_FONTS,
+    EMBED_LATIN_SCRIPT_FONTS,
+    EMBED_ASIAN_SCRIPT_FONTS,
+    EMBED_COMPLEX_SCRIPT_FONTS,
     EMBED_SYSTEM_FONTS,
     APPLY_PARAGRAPH_MARK_FORMAT_TO_NUMBERING,
+    CONTINUOUS_ENDNOTES,
+    PROTECT_BOOKMARKS,
+    PROTECT_FIELDS,
+    HEADER_SPACING_BELOW_LAST_PARA,
+    FRAME_AUTOWIDTH_WITH_MORE_PARA,
 };
 
  /** Provides access to settings of a document
@@ -155,14 +169,14 @@ enum class DocumentSettingId
        @returns
        the forbidden characters table.
     */
-    virtual rtl::Reference<SvxForbiddenCharactersTable>& getForbiddenCharacterTable() = 0;
+    virtual std::shared_ptr<SvxForbiddenCharactersTable>& getForbiddenCharacterTable() = 0;
 
     /** Get the forbidden character table.
 
        @returns
        the forbidden characters table.
     */
-    virtual const rtl::Reference<SvxForbiddenCharactersTable>& getForbiddenCharacterTable() const = 0;
+    virtual const std::shared_ptr<SvxForbiddenCharactersTable>& getForbiddenCharacterTable() const = 0;
 
     /** Get the current link update mode.
 

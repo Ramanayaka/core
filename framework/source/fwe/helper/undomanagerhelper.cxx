@@ -18,13 +18,16 @@
  */
 
 #include <framework/undomanagerhelper.hxx>
+#include <framework/imutex.hxx>
 
 #include <com/sun/star/document/EmptyUndoStackException.hpp>
 #include <com/sun/star/document/UndoContextNotClosedException.hpp>
 #include <com/sun/star/document/UndoFailedException.hpp>
+#include <com/sun/star/document/XUndoManager.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/util/InvalidStateException.hpp>
 #include <com/sun/star/util/NotLockedException.hpp>
+#include <com/sun/star/util/XModifyListener.hpp>
 
 #include <comphelper/interfacecontainer2.hxx>
 #include <cppuhelper/exc_hlp.hxx>
@@ -61,9 +64,10 @@ namespace framework
     using ::com::sun::star::util::InvalidStateException;
     using ::com::sun::star::lang::IllegalArgumentException;
     using ::com::sun::star::util::XModifyListener;
-    using ::svl::IUndoManager;
 
     //= UndoActionWrapper
+
+    namespace {
 
     class UndoActionWrapper : public SfxUndoAction
     {
@@ -82,6 +86,8 @@ namespace framework
         const Reference< XUndoAction >  m_xUndoAction;
     };
 
+    }
+
     UndoActionWrapper::UndoActionWrapper( Reference< XUndoAction > const& i_undoAction )
         :SfxUndoAction()
         ,m_xUndoAction( i_undoAction )
@@ -99,7 +105,7 @@ namespace framework
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("fwk");
         }
     }
 
@@ -112,7 +118,7 @@ namespace framework
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("fwk");
         }
         return sComment;
     }
@@ -133,6 +139,8 @@ namespace framework
     }
 
     //= UndoManagerRequest
+
+    namespace {
 
     class UndoManagerRequest : public ::comphelper::AnyEvent
     {
@@ -185,6 +193,8 @@ namespace framework
         ::osl::Condition            m_finishCondition;
     };
 
+    }
+
     //= UndoManagerHelper_Impl
 
     class UndoManagerHelper_Impl : public SfxUndoListener
@@ -226,7 +236,7 @@ namespace framework
         {
         }
 
-        IUndoManager& getUndoManager() const
+        SfxUndoManager& getUndoManager() const
         {
             return m_rUndoManagerImplementation.getImplUndoManager();
         }
@@ -246,7 +256,6 @@ namespace framework
         virtual void listActionEntered( const OUString& i_comment ) override;
         virtual void listActionLeft( const OUString& i_comment ) override;
         virtual void listActionCancelled() override;
-        virtual void undoManagerDying() override;
 
         // public operations
         void disposing();
@@ -339,7 +348,7 @@ namespace framework
         const UndoManagerEvent aEvent( buildEvent( i_title ) );
 
         // TODO: this notification method here is used by UndoManagerHelper_Impl, to multiplex the notifications we
-        // receive from the IUndoManager. Those notifications are sent with a locked SolarMutex, which means
+        // receive from the SfxUndoManager. Those notifications are sent with a locked SolarMutex, which means
         // we're doing the multiplexing here with a locked SM, too. Which is Bad (TM).
         // Fixing this properly would require outsourcing all the notifications into an own thread - which might lead
         // to problems of its own, since clients might expect synchronous notifications.
@@ -420,7 +429,7 @@ namespace framework
 
         if ( ++m_nLockCount == 1 )
         {
-            IUndoManager& rUndoManager = getUndoManager();
+            SfxUndoManager& rUndoManager = getUndoManager();
             rUndoManager.EnableUndo( false );
         }
         // <--- SYNCHRONIZED
@@ -436,7 +445,7 @@ namespace framework
 
         if ( --m_nLockCount == 0 )
         {
-            IUndoManager& rUndoManager = getUndoManager();
+            SfxUndoManager& rUndoManager = getUndoManager();
             rUndoManager.EnableUndo( true );
         }
         // <--- SYNCHRONIZED
@@ -508,7 +517,7 @@ namespace framework
         // SYNCHRONIZED --->
         ::osl::ClearableMutexGuard aGuard( m_aMutex );
 
-        IUndoManager& rUndoManager = getUndoManager();
+        SfxUndoManager& rUndoManager = getUndoManager();
         if ( !rUndoManager.IsUndoEnabled() )
             // ignore this request if the manager is locked
             return;
@@ -539,7 +548,7 @@ namespace framework
         // SYNCHRONIZED --->
         ::osl::ClearableMutexGuard aGuard( m_aMutex );
 
-        IUndoManager& rUndoManager = getUndoManager();
+        SfxUndoManager& rUndoManager = getUndoManager();
         if ( !rUndoManager.IsUndoEnabled() )
             // ignore this request if the manager is locked
             return;
@@ -555,7 +564,7 @@ namespace framework
         const bool isHiddenContext = m_aContextVisibilities.top();
         m_aContextVisibilities.pop();
 
-        const bool bHadRedoActions = ( rUndoManager.GetRedoActionCount( IUndoManager::TopLevel ) > 0 );
+        const bool bHadRedoActions = ( rUndoManager.GetRedoActionCount( SfxUndoManager::TopLevel ) > 0 );
         {
             ::comphelper::FlagGuard aNotificationGuard( m_bAPIActionRunning );
             if ( isHiddenContext )
@@ -563,7 +572,7 @@ namespace framework
             else
                 nContextElements = rUndoManager.LeaveListAction();
         }
-        const bool bHasRedoActions = ( rUndoManager.GetRedoActionCount( IUndoManager::TopLevel ) > 0 );
+        const bool bHasRedoActions = ( rUndoManager.GetRedoActionCount( SfxUndoManager::TopLevel ) > 0 );
 
         // prepare notification
         void ( SAL_CALL XUndoManagerListener::*notificationMethod )( const UndoManagerEvent& ) = nullptr;
@@ -602,13 +611,13 @@ namespace framework
         // SYNCHRONIZED --->
         ::osl::ClearableMutexGuard aGuard( m_aMutex );
 
-        IUndoManager& rUndoManager = getUndoManager();
+        SfxUndoManager& rUndoManager = getUndoManager();
         if ( rUndoManager.IsInListAction() )
             throw UndoContextNotClosedException( OUString(), getXUndoManager() );
 
         const size_t nElements  =   i_undo
-                                ?   rUndoManager.GetUndoActionCount( IUndoManager::TopLevel )
-                                :   rUndoManager.GetRedoActionCount( IUndoManager::TopLevel );
+                                ?   rUndoManager.GetUndoActionCount( SfxUndoManager::TopLevel )
+                                :   rUndoManager.GetRedoActionCount( SfxUndoManager::TopLevel );
         if ( nElements == 0 )
             throw EmptyUndoStackException("stack is empty", getXUndoManager() );
 
@@ -632,7 +641,7 @@ namespace framework
         }
 
         // note that in opposite to all of the other methods, we do *not* have our mutex locked when calling
-        // into the IUndoManager implementation. This ensures that an actual XUndoAction::undo/redo is also
+        // into the SfxUndoManager implementation. This ensures that an actual XUndoAction::undo/redo is also
         // called without our mutex being locked.
         // As a consequence, we do not set m_bAPIActionRunning here. Instead, our actionUndone/actionRedone methods
         // *always* multiplex the event to our XUndoManagerListeners, not only when m_bAPIActionRunning is FALSE (This
@@ -645,7 +654,7 @@ namespace framework
         // SYNCHRONIZED --->
         ::osl::ClearableMutexGuard aGuard( m_aMutex );
 
-        IUndoManager& rUndoManager = getUndoManager();
+        SfxUndoManager& rUndoManager = getUndoManager();
         if ( !rUndoManager.IsUndoEnabled() )
             // ignore the request if the manager is locked
             return;
@@ -656,7 +665,7 @@ namespace framework
         const bool bHadRedoActions = ( rUndoManager.GetRedoActionCount() > 0 );
         {
             ::comphelper::FlagGuard aNotificationGuard( m_bAPIActionRunning );
-            rUndoManager.AddUndoAction( new UndoActionWrapper( i_action ) );
+            rUndoManager.AddUndoAction( std::make_unique<UndoActionWrapper>( i_action ) );
         }
         const bool bHasRedoActions = ( rUndoManager.GetRedoActionCount() > 0 );
 
@@ -674,7 +683,7 @@ namespace framework
         // SYNCHRONIZED --->
         ::osl::ClearableMutexGuard aGuard( m_aMutex );
 
-        IUndoManager& rUndoManager = getUndoManager();
+        SfxUndoManager& rUndoManager = getUndoManager();
         if ( rUndoManager.IsInListAction() )
             throw UndoContextNotClosedException( OUString(), getXUndoManager() );
 
@@ -696,7 +705,7 @@ namespace framework
         // SYNCHRONIZED --->
         ::osl::ClearableMutexGuard aGuard( m_aMutex );
 
-        IUndoManager& rUndoManager = getUndoManager();
+        SfxUndoManager& rUndoManager = getUndoManager();
         if ( rUndoManager.IsInListAction() )
             throw UndoContextNotClosedException( OUString(), getXUndoManager() );
 
@@ -718,7 +727,7 @@ namespace framework
         // SYNCHRONIZED --->
         ::osl::ClearableMutexGuard aGuard( m_aMutex );
 
-        IUndoManager& rUndoManager = getUndoManager();
+        SfxUndoManager& rUndoManager = getUndoManager();
         {
             ::comphelper::FlagGuard aNotificationGuard( m_bAPIActionRunning );
             rUndoManager.Reset();
@@ -824,11 +833,6 @@ namespace framework
         notify( OUString(), &XUndoManagerListener::cancelledContext );
     }
 
-    void UndoManagerHelper_Impl::undoManagerDying()
-    {
-        // TODO: do we need to care? Or is this the responsibility of our owner?
-    }
-
     //= UndoManagerHelper
 
     UndoManagerHelper::UndoManagerHelper( IUndoManagerImplementation& i_undoManagerImpl )
@@ -895,10 +899,10 @@ namespace framework
     {
         // SYNCHRONIZED --->
         ::osl::MutexGuard aGuard( m_xImpl->getMutex() );
-        IUndoManager& rUndoManager = m_xImpl->getUndoManager();
+        SfxUndoManager& rUndoManager = m_xImpl->getUndoManager();
         if ( rUndoManager.IsInListAction() )
             return false;
-        return rUndoManager.GetUndoActionCount( IUndoManager::TopLevel ) > 0;
+        return rUndoManager.GetUndoActionCount( SfxUndoManager::TopLevel ) > 0;
         // <--- SYNCHRONIZED
     }
 
@@ -906,10 +910,10 @@ namespace framework
     {
         // SYNCHRONIZED --->
         ::osl::MutexGuard aGuard( m_xImpl->getMutex() );
-        const IUndoManager& rUndoManager = m_xImpl->getUndoManager();
+        const SfxUndoManager& rUndoManager = m_xImpl->getUndoManager();
         if ( rUndoManager.IsInListAction() )
             return false;
-        return rUndoManager.GetRedoActionCount( IUndoManager::TopLevel ) > 0;
+        return rUndoManager.GetRedoActionCount( SfxUndoManager::TopLevel ) > 0;
         // <--- SYNCHRONIZED
     }
 
@@ -921,10 +925,10 @@ namespace framework
             // SYNCHRONIZED --->
             ::osl::MutexGuard aGuard( i_impl.getMutex() );
 
-            const IUndoManager& rUndoManager = i_impl.getUndoManager();
+            const SfxUndoManager& rUndoManager = i_impl.getUndoManager();
             const size_t nActionCount = i_undo
-                                    ?   rUndoManager.GetUndoActionCount( IUndoManager::TopLevel )
-                                    :   rUndoManager.GetRedoActionCount( IUndoManager::TopLevel );
+                                    ?   rUndoManager.GetUndoActionCount( SfxUndoManager::TopLevel )
+                                    :   rUndoManager.GetRedoActionCount( SfxUndoManager::TopLevel );
             if ( nActionCount == 0 )
                 throw EmptyUndoStackException(
                     i_undo ? OUString( "no action on the undo stack" )
@@ -932,8 +936,8 @@ namespace framework
                     i_impl.getXUndoManager()
                 );
             return  i_undo
-                ?   rUndoManager.GetUndoActionComment( 0, IUndoManager::TopLevel )
-                :   rUndoManager.GetRedoActionComment( 0, IUndoManager::TopLevel );
+                ?   rUndoManager.GetUndoActionComment( 0, SfxUndoManager::TopLevel )
+                :   rUndoManager.GetRedoActionComment( 0, SfxUndoManager::TopLevel );
             // <--- SYNCHRONIZED
         }
 
@@ -942,17 +946,17 @@ namespace framework
             // SYNCHRONIZED --->
             ::osl::MutexGuard aGuard( i_impl.getMutex() );
 
-            const IUndoManager& rUndoManager = i_impl.getUndoManager();
+            const SfxUndoManager& rUndoManager = i_impl.getUndoManager();
             const size_t nCount =   i_undo
-                                ?   rUndoManager.GetUndoActionCount( IUndoManager::TopLevel )
-                                :   rUndoManager.GetRedoActionCount( IUndoManager::TopLevel );
+                                ?   rUndoManager.GetUndoActionCount( SfxUndoManager::TopLevel )
+                                :   rUndoManager.GetRedoActionCount( SfxUndoManager::TopLevel );
 
             Sequence< OUString > aTitles( nCount );
             for ( size_t i=0; i<nCount; ++i )
             {
                 aTitles[i] =    i_undo
-                            ?   rUndoManager.GetUndoActionComment( i, IUndoManager::TopLevel )
-                            :   rUndoManager.GetRedoActionComment( i, IUndoManager::TopLevel );
+                            ?   rUndoManager.GetUndoActionComment( i, SfxUndoManager::TopLevel )
+                            :   rUndoManager.GetRedoActionComment( i, SfxUndoManager::TopLevel );
             }
             return aTitles;
             // <--- SYNCHRONIZED
@@ -1009,7 +1013,7 @@ namespace framework
         // SYNCHRONIZED --->
         ::osl::MutexGuard aGuard( m_xImpl->getMutex() );
 
-        IUndoManager& rUndoManager = m_xImpl->getUndoManager();
+        SfxUndoManager& rUndoManager = m_xImpl->getUndoManager();
         return !rUndoManager.IsUndoEnabled();
         // <--- SYNCHRONIZED
     }

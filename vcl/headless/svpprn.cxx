@@ -19,17 +19,18 @@
 
 #include <vcl/svapp.hxx>
 #include <vcl/timer.hxx>
-#include "printerinfomanager.hxx"
+#include <vcl/QueueInfo.hxx>
+#include <printerinfomanager.hxx>
 
-#include "jobset.h"
-#include "print.h"
-#include "salptype.hxx"
-#include "saldatabasic.hxx"
+#include <jobset.h>
+#include <print.h>
+#include <salptype.hxx>
+#include <saldatabasic.hxx>
 
-#include "unx/genpspgraphics.h"
+#include <unx/genpspgraphics.h>
 
-#include "headless/svpprn.hxx"
-#include "headless/svpinst.hxx"
+#include <headless/svpprn.hxx>
+#include <headless/svpinst.hxx>
 
 using namespace psp;
 
@@ -56,7 +57,7 @@ static OUString getPdfDir( const PrinterInfo& rInfo )
     return aDir;
 }
 
-inline int PtTo10Mu( int nPoints ) { return (int)((((double)nPoints)*35.27777778)+0.5); }
+static int PtTo10Mu( int nPoints ) { return static_cast<int>((static_cast<double>(nPoints)*35.27777778)+0.5); }
 
 static void copyJobDataToJobSetup( ImplJobSetup* pJobSetup, JobData& rData )
 {
@@ -94,7 +95,7 @@ static void copyJobDataToJobSetup( ImplJobSetup* pJobSetup, JobData& rData )
 
     pJobSetup->SetPaperBin( 0xffff );
     if( rData.m_pParser )
-        pKey                    = rData.m_pParser->getKey( OUString( "InputSlot"  ) );
+        pKey                    = rData.m_pParser->getKey( "InputSlot" );
     if( pKey )
         pValue                  = rData.m_aContext.getValue( pKey );
     if( pKey && pValue )
@@ -116,7 +117,7 @@ static void copyJobDataToJobSetup( ImplJobSetup* pJobSetup, JobData& rData )
 
     pJobSetup->SetDuplexMode( DuplexMode::Unknown );
     if( rData.m_pParser )
-        pKey = rData.m_pParser->getKey( OUString( "Duplex"  ) );
+        pKey = rData.m_pParser->getKey( "Duplex" );
     if( pKey )
         pValue = rData.m_aContext.getValue( pKey );
     if( pKey && pValue )
@@ -139,7 +140,7 @@ static void copyJobDataToJobSetup( ImplJobSetup* pJobSetup, JobData& rData )
 
     // copy the whole context
     if( pJobSetup->GetDriverData() )
-        rtl_freeMemory( const_cast<sal_uInt8*>(pJobSetup->GetDriverData()) );
+        std::free( const_cast<sal_uInt8*>(pJobSetup->GetDriverData()) );
 
     sal_uInt32 nBytes;
     void* pBuffer = nullptr;
@@ -188,18 +189,13 @@ void SvpSalInstance::DestroyInfoPrinter( SalInfoPrinter* pPrinter )
     delete pPrinter;
 }
 
-SalPrinter* SvpSalInstance::CreatePrinter( SalInfoPrinter* pInfoPrinter )
+std::unique_ptr<SalPrinter> SvpSalInstance::CreatePrinter( SalInfoPrinter* pInfoPrinter )
 {
     // create and initialize SalPrinter
     SvpSalPrinter* pPrinter = new SvpSalPrinter( pInfoPrinter );
     pPrinter->m_aJobData = static_cast<SvpSalInfoPrinter*>(pInfoPrinter)->m_aJobData;
 
-    return pPrinter;
-}
-
-void SvpSalInstance::DestroyPrinter( SalPrinter* pPrinter )
-{
-    delete pPrinter;
+    return std::unique_ptr<SalPrinter>(pPrinter);
 }
 
 void SvpSalInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
@@ -211,19 +207,18 @@ void SvpSalInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
         // #i62663# synchronize possible asynchronouse printer detection now
         rManager.checkPrintersChanged( true );
     }
-    ::std::list< OUString > aPrinters;
+    ::std::vector< OUString > aPrinters;
     rManager.listPrinters( aPrinters );
 
-    for( ::std::list< OUString >::iterator it = aPrinters.begin(); it != aPrinters.end(); ++it )
+    for (auto const& printer : aPrinters)
     {
-        const PrinterInfo& rInfo( rManager.getPrinterInfo( *it ) );
-        // Neuen Eintrag anlegen
-        SalPrinterQueueInfo* pInfo = new SalPrinterQueueInfo;
-        pInfo->maPrinterName    = *it;
+        const PrinterInfo& rInfo( rManager.getPrinterInfo(printer) );
+        // create new entry
+        std::unique_ptr<SalPrinterQueueInfo> pInfo(new SalPrinterQueueInfo);
+        pInfo->maPrinterName    = printer;
         pInfo->maDriver         = rInfo.m_aDriverName;
         pInfo->maLocation       = rInfo.m_aLocation;
         pInfo->maComment        = rInfo.m_aComment;
-        pInfo->mpSysData        = nullptr;
 
         sal_Int32 nIndex = 0;
         while( nIndex != -1 )
@@ -236,13 +231,8 @@ void SvpSalInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
             }
         }
 
-        pList->Add( pInfo );
+        pList->Add( std::move(pInfo) );
     }
-}
-
-void SvpSalInstance::DeletePrinterQueueInfo( SalPrinterQueueInfo* pInfo )
-{
-    delete pInfo;
 }
 
 void SvpSalInstance::GetPrinterQueueState( SalPrinterQueueInfo* )
@@ -257,18 +247,17 @@ OUString SvpSalInstance::GetDefaultPrinter()
 
 void SvpSalInstance::PostPrintersChanged()
 {
-    const std::list< SalFrame* >& rList = SvpSalInstance::s_pDefaultInstance->getFrames();
-    for( std::list< SalFrame* >::const_iterator it = rList.begin();
-         it != rList.end(); ++it )
-        SvpSalInstance::s_pDefaultInstance->PostEvent( *it, nullptr, SalEvent::PrinterChanged );
+    SvpSalInstance *pInst = SvpSalInstance::s_pDefaultInstance;
+    for (auto pSalFrame : pInst->getFrames() )
+        pInst->PostEvent( pSalFrame, nullptr, SalEvent::PrinterChanged );
 }
 
-GenPspGraphics *SvpSalInstance::CreatePrintGraphics()
+std::unique_ptr<GenPspGraphics> SvpSalInstance::CreatePrintGraphics()
 {
-    return new GenPspGraphics();
+    return std::make_unique<GenPspGraphics>();
 }
 
-bool SvpSalInfoPrinter::Setup( SalFrame*, ImplJobSetup* )
+bool SvpSalInfoPrinter::Setup( weld::Window*, ImplJobSetup* )
 {
     return false;
 }

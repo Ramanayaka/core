@@ -18,19 +18,20 @@
  */
 
 #include <connectivity/sqlparse.hxx>
-#include "ado/APreparedStatement.hxx"
+#include <ado/APreparedStatement.hxx>
 #include <com/sun/star/sdbc/DataType.hpp>
-#include "ado/AResultSetMetaData.hxx"
-#include "ado/AResultSet.hxx"
-#include "ado/ADriver.hxx"
+#include <ado/AResultSetMetaData.hxx>
+#include <ado/AResultSet.hxx>
+#include <ado/ADriver.hxx>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
+#include <comphelper/types.hxx>
 #include <connectivity/dbexception.hxx>
 #include <connectivity/dbtools.hxx>
-#include "resource/ado_res.hrc"
+#include <strings.hrc>
 
 #include <limits>
 
@@ -57,18 +58,17 @@ OPreparedStatement::OPreparedStatement( OConnection* _pConnection, const OUStrin
 {
     osl_atomic_increment( &m_refCount );
 
-    OSQLParser aParser(comphelper::getComponentContext(_pConnection->getDriver()->getORB()));
+    OSQLParser aParser(_pConnection->getDriver()->getContext());
     OUString sErrorMessage;
     OUString sNewSql;
-    OSQLParseNode* pNode = aParser.parseTree(sErrorMessage,sql);
+    std::unique_ptr<OSQLParseNode> pNode = aParser.parseTree(sErrorMessage,sql);
     if(pNode)
     {   // special handling for parameters
         //  we recursive replace all occurrences of ? in the statement and
         //  replace them with name like "parame" */
         sal_Int32 nParameterCount = 0;
-        replaceParameterNodeName(pNode,"parame",nParameterCount);
+        replaceParameterNodeName(pNode.get(), "parame", nParameterCount);
         pNode->parseNodeToStr( sNewSql, _pConnection );
-        delete pNode;
     }
     else
         sNewSql = sql;
@@ -118,7 +118,7 @@ Reference< XResultSetMetaData > SAL_CALL OPreparedStatement::getMetaData(  )
 
 void OPreparedStatement::disposing()
 {
-m_xMetaData.clear();
+    m_xMetaData.clear();
     if (m_pParameters)
     {
         m_pParameters->Release();
@@ -197,16 +197,6 @@ void OPreparedStatement::setParameter(sal_Int32 parameterIndex, const DataTypeEn
         if(pParam)
         {
             m_pParameters->Append(pParam);
-#if OSL_DEBUG_LEVEL > 0
-            pParam = nullptr;
-            m_pParameters->get_Item(OLEVariant(sal_Int32(parameterIndex-1)),&pParam);
-            WpADOParameter aParam(pParam);
-            if(pParam)
-            {
-                DataTypeEnum eType = aParam.GetADOType();
-                (void)eType;
-            }
-#endif
         }
     }
     else
@@ -446,7 +436,7 @@ void SAL_CALL OPreparedStatement::release() throw()
     OStatement_Base::release();
 }
 
-void OPreparedStatement::replaceParameterNodeName(OSQLParseNode* _pNode,
+void OPreparedStatement::replaceParameterNodeName(OSQLParseNode const * _pNode,
                                                   const OUString& _sDefaultName,
                                                   sal_Int32& _rParameterCount)
 {

@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawdoc.hxx"
-#include "unoaprms.hxx"
-#include "anminfo.hxx"
+#include <drawdoc.hxx>
+#include <unoaprms.hxx>
+#include <anminfo.hxx>
 
 
 void SdAnimationPrmsUndoAction::Undo()
@@ -27,11 +27,10 @@ void SdAnimationPrmsUndoAction::Undo()
     // no new info created: restore data
     if (!bInfoCreated)
     {
-        SdDrawDocument* pDoc   = static_cast<SdDrawDocument*>(pObject->GetModel());
-        if( pDoc )
+        SdDrawDocument* pDoc(dynamic_cast< SdDrawDocument* >(&pObject->getSdrModelFromSdrObject()));
+        SdAnimationInfo* pInfo = pDoc ? SdDrawDocument::GetAnimationInfo(pObject) : nullptr;
+        if (pInfo)
         {
-            SdAnimationInfo* pInfo = SdDrawDocument::GetAnimationInfo( pObject );
-
             pInfo->mbActive     = bOldActive;
             pInfo->meEffect      = eOldEffect;
             pInfo->meTextEffect  = eOldTextEffect;
@@ -64,9 +63,7 @@ void SdAnimationPrmsUndoAction::Undo()
 
 void SdAnimationPrmsUndoAction::Redo()
 {
-    SdAnimationInfo* pInfo = nullptr;
-
-    pInfo = SdDrawDocument::GetShapeUserData(*pObject,true);
+    SdAnimationInfo* pInfo = SdDrawDocument::GetShapeUserData(*pObject,true);
 
     pInfo->mbActive      = bNewActive;
     pInfo->meEffect      = eNewEffect;

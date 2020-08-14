@@ -18,9 +18,9 @@
  */
 
 #include <vcl/window.hxx>
-#include <vcl/outdev.hxx>
+#include <tools/debug.hxx>
 
-#include "window.h"
+#include <window.h>
 
 #ifdef DBG_UTIL
 const char* ImplDbgCheckWindow( const void* pObj )

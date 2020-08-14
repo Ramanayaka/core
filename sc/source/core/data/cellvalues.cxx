@@ -10,8 +10,7 @@
 #include <memory>
 #include <cellvalues.hxx>
 #include <column.hxx>
-#include <cellvalue.hxx>
-#include <o3tl/make_unique.hxx>
+#include <formulacell.hxx>
 
 #include <cassert>
 
@@ -69,27 +68,23 @@ void CellValues::swapNonEmpty( ScColumn& rCol )
 {
     std::vector<BlockPos> aBlocksToSwap;
 
+    // Go through static value blocks and record their positions and sizes.
+    for (const auto& rCell : mpImpl->maCells)
     {
-        // Go through static value blocks and record their positions and sizes.
-        sc::CellStoreType::const_iterator it = mpImpl->maCells.begin(), itEnd = mpImpl->maCells.end();
-        for (; it != itEnd; ++it)
-        {
-            if (it->type == sc::element_type_empty)
-                continue;
+        if (rCell.type == sc::element_type_empty)
+            continue;
 
-            BlockPos aPos;
-            aPos.mnStart = it->position;
-            aPos.mnEnd = aPos.mnStart + it->size - 1;
-            aBlocksToSwap.push_back(aPos);
-        }
+        BlockPos aPos;
+        aPos.mnStart = rCell.position;
+        aPos.mnEnd = aPos.mnStart + rCell.size - 1;
+        aBlocksToSwap.push_back(aPos);
     }
 
     // Do the swapping.  The undo storage will store the replaced formula cells after this.
-    std::vector<BlockPos>::const_iterator it = aBlocksToSwap.begin(), itEnd = aBlocksToSwap.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rBlock : aBlocksToSwap)
     {
-        rCol.maCells.swap(it->mnStart, it->mnEnd, mpImpl->maCells, it->mnStart);
-        rCol.maCellTextAttrs.swap(it->mnStart, it->mnEnd, mpImpl->maCellTextAttrs, it->mnStart);
+        rCol.maCells.swap(rBlock.mnStart, rBlock.mnEnd, mpImpl->maCells, rBlock.mnStart);
+        rCol.maCellTextAttrs.swap(rBlock.mnStart, rBlock.mnEnd, mpImpl->maCellTextAttrs, rBlock.mnStart);
     }
 }
 
@@ -97,6 +92,25 @@ void CellValues::assign( const std::vector<double>& rVals )
 {
     mpImpl->maCells.resize(rVals.size());
     mpImpl->maCells.set(0, rVals.begin(), rVals.end());
+
+    // Set default text attributes.
+    std::vector<CellTextAttr> aDefaults(rVals.size(), CellTextAttr());
+    mpImpl->maCellTextAttrs.resize(rVals.size());
+    mpImpl->maCellTextAttrs.set(0, aDefaults.begin(), aDefaults.end());
+}
+
+void CellValues::assign( const std::vector<ScFormulaCell*>& rVals )
+{
+    std::vector<ScFormulaCell*> aCopyVals(rVals.size());
+    size_t nIdx = 0;
+    for (const auto* pCell : rVals)
+    {
+        aCopyVals[nIdx] = pCell->Clone();
+        ++nIdx;
+    }
+
+    mpImpl->maCells.resize(aCopyVals.size());
+    mpImpl->maCells.set(0, aCopyVals.begin(), aCopyVals.end());
 
     // Set default text attributes.
     std::vector<CellTextAttr> aDefaults(rVals.size(), CellTextAttr());
@@ -141,15 +155,14 @@ void CellValues::swap( CellValues& r )
 std::vector<CellValueSpan> CellValues::getNonEmptySpans() const
 {
     std::vector<CellValueSpan> aRet;
-    CellStoreType::const_iterator it = mpImpl->maCells.begin(), itEnd = mpImpl->maCells.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rCell : mpImpl->maCells)
     {
-        if (it->type != element_type_empty)
+        if (rCell.type != element_type_empty)
         {
             // Record this span.
-            size_t nRow1 = it->position;
-            size_t nRow2 = nRow1 + it->size - 1;
-            aRet.push_back(CellValueSpan(nRow1, nRow2));
+            size_t nRow1 = rCell.position;
+            size_t nRow2 = nRow1 + rCell.size - 1;
+            aRet.emplace_back(nRow1, nRow2);
         }
     }
     return aRet;
@@ -161,50 +174,49 @@ void CellValues::copyCellsTo( ScColumn& rCol, SCROW nRow ) const
     const CellStoreType& rSrc = mpImpl->maCells;
 
     // Caller must ensure the destination is long enough.
-    assert(rSrc.size() + static_cast<size_t>(nRow) < rDest.size());
+    assert(rSrc.size() + static_cast<size_t>(nRow) <= rDest.size());
 
     SCROW nCurRow = nRow;
     CellStoreType::iterator itPos = rDest.begin();
 
-    CellStoreType::const_iterator itBlk = rSrc.begin(), itBlkEnd = rSrc.end();
-    for (; itBlk != itBlkEnd; ++itBlk)
+    for (const auto& rBlk : rSrc)
     {
-        switch (itBlk->type)
+        switch (rBlk.type)
         {
             case element_type_numeric:
             {
-                numeric_block::const_iterator it = numeric_block::begin(*itBlk->data);
-                numeric_block::const_iterator itEnd = numeric_block::end(*itBlk->data);
+                numeric_block::const_iterator it = numeric_block::begin(*rBlk.data);
+                numeric_block::const_iterator itEnd = numeric_block::end(*rBlk.data);
                 itPos = rDest.set(itPos, nCurRow, it, itEnd);
             }
             break;
             case element_type_string:
             {
-                string_block::const_iterator it = string_block::begin(*itBlk->data);
-                string_block::const_iterator itEnd = string_block::end(*itBlk->data);
+                string_block::const_iterator it = string_block::begin(*rBlk.data);
+                string_block::const_iterator itEnd = string_block::end(*rBlk.data);
                 itPos = rDest.set(itPos, nCurRow, it, itEnd);
             }
             break;
             case element_type_edittext:
             {
-                edittext_block::const_iterator it = edittext_block::begin(*itBlk->data);
-                edittext_block::const_iterator itEnd = edittext_block::end(*itBlk->data);
+                edittext_block::const_iterator it = edittext_block::begin(*rBlk.data);
+                edittext_block::const_iterator itEnd = edittext_block::end(*rBlk.data);
                 std::vector<EditTextObject*> aVals;
-                aVals.reserve(itBlk->size);
+                aVals.reserve(rBlk.size);
                 for (; it != itEnd; ++it)
                 {
                     const EditTextObject* p = *it;
-                    aVals.push_back(p->Clone());
+                    aVals.push_back(p->Clone().release());
                 }
                 itPos = rDest.set(itPos, nCurRow, aVals.begin(), aVals.end());
             }
             break;
             case element_type_formula:
             {
-                formula_block::const_iterator it = formula_block::begin(*itBlk->data);
-                formula_block::const_iterator itEnd = formula_block::end(*itBlk->data);
+                formula_block::const_iterator it = formula_block::begin(*rBlk.data);
+                formula_block::const_iterator itEnd = formula_block::end(*rBlk.data);
                 std::vector<ScFormulaCell*> aVals;
-                aVals.reserve(itBlk->size);
+                aVals.reserve(rBlk.size);
                 for (; it != itEnd; ++it)
                 {
                     const ScFormulaCell* p = *it;
@@ -214,10 +226,10 @@ void CellValues::copyCellsTo( ScColumn& rCol, SCROW nRow ) const
             }
             break;
             default:
-                itPos = rDest.set_empty(itPos, nCurRow, nCurRow+itBlk->size-1);
+                itPos = rDest.set_empty(itPos, nCurRow, nCurRow+rBlk.size-1);
         }
 
-        nCurRow += itBlk->size;
+        nCurRow += rBlk.size;
     }
 }
 
@@ -227,28 +239,27 @@ void CellValues::copyCellTextAttrsTo( ScColumn& rCol, SCROW nRow ) const
     const CellTextAttrStoreType& rSrc = mpImpl->maCellTextAttrs;
 
     // Caller must ensure the destination is long enough.
-    assert(rSrc.size() + static_cast<size_t>(nRow) < rDest.size());
+    assert(rSrc.size() + static_cast<size_t>(nRow) <= rDest.size());
 
     SCROW nCurRow = nRow;
     CellTextAttrStoreType::iterator itPos = rDest.begin();
 
-    CellTextAttrStoreType::const_iterator itBlk = rSrc.begin(), itBlkEnd = rSrc.end();
-    for (; itBlk != itBlkEnd; ++itBlk)
+    for (const auto& rBlk : rSrc)
     {
-        switch (itBlk->type)
+        switch (rBlk.type)
         {
             case element_type_celltextattr:
             {
-                celltextattr_block::const_iterator it = celltextattr_block::begin(*itBlk->data);
-                celltextattr_block::const_iterator itEnd = celltextattr_block::end(*itBlk->data);
+                celltextattr_block::const_iterator it = celltextattr_block::begin(*rBlk.data);
+                celltextattr_block::const_iterator itEnd = celltextattr_block::end(*rBlk.data);
                 itPos = rDest.set(itPos, nCurRow, it, itEnd);
             }
             break;
             default:
-                itPos = rDest.set_empty(itPos, nCurRow, nCurRow+itBlk->size-1);
+                itPos = rDest.set_empty(itPos, nCurRow, nCurRow+rBlk.size-1);
         }
 
-        nCurRow += itBlk->size;
+        nCurRow += rBlk.size;
     }
 }
 
@@ -267,10 +278,10 @@ struct TableValues::Impl
 
         for (size_t nTab = 0; nTab < nTabs; ++nTab)
         {
-            m_Tables.push_back(o3tl::make_unique<TableType>());
+            m_Tables.push_back(std::make_unique<TableType>());
             std::unique_ptr<TableType>& rTab2 = m_Tables.back();
             for (size_t nCol = 0; nCol < nCols; ++nCol)
-                rTab2.get()->push_back(o3tl::make_unique<CellValues>());
+                rTab2->push_back(std::make_unique<CellValues>());
         }
     }
 
@@ -287,7 +298,7 @@ struct TableValues::Impl
             return nullptr;
         std::unique_ptr<TableType>& rTab2 = m_Tables[nTab-maRange.aStart.Tab()];
         size_t nColOffset = nCol - maRange.aStart.Col();
-        if(nColOffset >= rTab2.get()->size())
+        if (nColOffset >= rTab2->size())
             return nullptr;
         return &rTab2.get()[0][nColOffset].get()[0];
     }

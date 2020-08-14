@@ -27,10 +27,10 @@
 #include <vbahelper/vbahelperinterface.hxx>
 #include "vbapalette.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XIndexContainer; }
     namespace drawing { class XControlShape; }
-} } }
+}
 
 typedef InheritedHelperInterfaceWeakImpl< ov::excel::XCharacters > ScVbaButtonCharacters_BASE;
 
@@ -133,24 +133,13 @@ typedef ::cppu::ImplInheritanceHelper< ScVbaSheetObjectBase, ov::excel::XControl
 class ScVbaControlObjectBase : public ScVbaControlObject_BASE
 {
 public:
-    /** Specifies the listener used for OnAction events. */
-    enum ListenerType
-    {
-        LISTENER_ACTION,        /// XActionListener.actionPerformed
-        LISTENER_MOUSE,         /// XMouseListener.mouseReleased
-        LISTENER_TEXT,          /// XTextListener.textChanged
-        LISTENER_VALUE,         /// XAdjustmentListener.adjustmentValueChanged
-        LISTENER_CHANGE         /// XChangeListener.changed
-    };
-
     /// @throws css::uno::RuntimeException
     explicit ScVbaControlObjectBase(
         const css::uno::Reference< ov::XHelperInterface >& rxParent,
         const css::uno::Reference< css::uno::XComponentContext >& rxContext,
         const css::uno::Reference< css::frame::XModel >& rxModel,
         const css::uno::Reference< css::container::XIndexContainer >& rxFormIC,
-        const css::uno::Reference< css::drawing::XControlShape >& rxControlShape,
-        ListenerType eListenerType );
+        const css::uno::Reference< css::drawing::XControlShape >& rxControlShape );
 
     // XSheetObject attributes
     virtual OUString SAL_CALL getName() override;
@@ -164,6 +153,9 @@ public:
     virtual sal_Bool SAL_CALL getAutoSize() override;
     virtual void SAL_CALL setAutoSize( sal_Bool bAutoSize ) override;
 
+    /// Notify that the document contains a macro event handler
+    void NotifyMacroEventRead();
+
 protected:
     /// @throws css::uno::RuntimeException
     sal_Int32 getModelIndexInForm() const;
@@ -171,8 +163,7 @@ protected:
 protected:
     css::uno::Reference< css::container::XIndexContainer > mxFormIC;
     css::uno::Reference< css::beans::XPropertySet > mxControlProps;
-    OUString maListenerType;
-    OUString maEventMethod;
+    bool mbNotifyMacroEventRead;
 };
 
 typedef ::cppu::ImplInheritanceHelper< ScVbaControlObjectBase, ov::excel::XButton > ScVbaButton_BASE;
@@ -199,6 +190,10 @@ public:
     virtual void SAL_CALL setVerticalAlignment( sal_Int32 nAlign ) override;
     virtual sal_Int32 SAL_CALL getOrientation() override;
     virtual void SAL_CALL setOrientation( sal_Int32 nOrientation ) override;
+    virtual css::uno::Any SAL_CALL getValue() override;
+    virtual void SAL_CALL setValue( const css::uno::Any &nValue ) override;
+    virtual OUString SAL_CALL getText() override;
+    virtual void SAL_CALL setText( const OUString &aText ) override;
 
     // XButton methods
     css::uno::Reference< ov::excel::XCharacters > SAL_CALL Characters(

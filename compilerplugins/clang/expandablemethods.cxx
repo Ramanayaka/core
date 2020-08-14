@@ -59,7 +59,8 @@ class ExpandableMethods:
     public RecursiveASTVisitor<ExpandableMethods>, public loplugin::Plugin
 {
 public:
-    explicit ExpandableMethods(InstantiationData const & data): Plugin(data) {}
+    explicit ExpandableMethods(loplugin::InstantiationData const & data):
+        Plugin(data) {}
 
     virtual void run() override
     {
@@ -81,7 +82,7 @@ public:
         for (const MyFuncInfo & s : addressOfSet)
             output += "addrof:\t" + s.returnType + "\t" + s.nameAndParams + "\n";
         std::ofstream myfile;
-        myfile.open( SRCDIR "/loplugin.expandablemethods.log", std::ios::app | std::ios::out);
+        myfile.open( WORKDIR "/loplugin.expandablemethods.log", std::ios::app | std::ios::out);
         myfile << output;
         myfile.close();
     }
@@ -113,13 +114,12 @@ MyFuncInfo ExpandableMethods::niceName(const FunctionDecl* functionDecl)
 {
     if (functionDecl->getInstantiatedFromMemberFunction())
         functionDecl = functionDecl->getInstantiatedFromMemberFunction();
+#if CLANG_VERSION < 90000
     else if (functionDecl->getClassScopeSpecializationPattern())
         functionDecl = functionDecl->getClassScopeSpecializationPattern();
-// workaround clang-3.5 issue
-#if CLANG_VERSION >= 30600
+#endif
     else if (functionDecl->getTemplateInstantiationPattern())
         functionDecl = functionDecl->getTemplateInstantiationPattern();
-#endif
 
     MyFuncInfo aInfo;
     switch (functionDecl->getAccess())
@@ -130,7 +130,7 @@ MyFuncInfo ExpandableMethods::niceName(const FunctionDecl* functionDecl)
     default: aInfo.access = "unknown"; break;
     }
     if (!isa<CXXConstructorDecl>(functionDecl)) {
-        aInfo.returnType = compat::getReturnType(*functionDecl).getCanonicalType().getAsString();
+        aInfo.returnType = functionDecl->getReturnType().getCanonicalType().getAsString();
     } else {
         aInfo.returnType = "";
     }
@@ -142,7 +142,7 @@ MyFuncInfo ExpandableMethods::niceName(const FunctionDecl* functionDecl)
     }
     aInfo.nameAndParams += functionDecl->getNameAsString() + "(";
     bool bFirst = true;
-    for (const ParmVarDecl *pParmVarDecl : compat::parameters(*functionDecl)) {
+    for (const ParmVarDecl *pParmVarDecl : functionDecl->parameters()) {
         if (bFirst)
             bFirst = false;
         else
@@ -162,9 +162,9 @@ MyFuncInfo ExpandableMethods::niceName(const FunctionDecl* functionDecl)
 std::string ExpandableMethods::toString(SourceLocation loc)
 {
     SourceLocation expansionLoc = compiler.getSourceManager().getExpansionLoc( loc );
-    StringRef name = compiler.getSourceManager().getFilename(expansionLoc);
+    StringRef name = getFilenameOfLocation(expansionLoc);
     std::string sourceLocation = std::string(name.substr(strlen(SRCDIR)+1)) + ":" + std::to_string(compiler.getSourceManager().getSpellingLineNumber(expansionLoc));
-    normalizeDotDotInFilePath(sourceLocation);
+    loplugin::normalizeDotDotInFilePath(sourceLocation);
     return sourceLocation;
 }
 
@@ -189,7 +189,7 @@ bool ExpandableMethods::VisitFunctionDecl( const FunctionDecl* functionDecl )
                  // any function that uses a parameter more than once
                  if (!bLargeFunction) {
                      StringRef bodyText(s1, s2-s1);
-                     for (const ParmVarDecl* param : compat::parameters(*functionDecl)) {
+                     for (const ParmVarDecl* param : functionDecl->parameters()) {
                          StringRef name = param->getName();
                          if (name.empty())
                              continue;
@@ -270,9 +270,9 @@ void ExpandableMethods::functionTouchedFromExpr( const FunctionDecl* calleeFunct
         return;
     }
 
-    calledFromSet.emplace(toString(expr->getLocStart()), niceName(canonicalFunctionDecl));
+    calledFromSet.emplace(toString(compat::getBeginLoc(expr)), niceName(canonicalFunctionDecl));
 
-    if (const UnaryOperator* unaryOp = dyn_cast_or_null<UnaryOperator>(parentStmt(expr))) {
+    if (const UnaryOperator* unaryOp = dyn_cast_or_null<UnaryOperator>(getParentStmt(expr))) {
         if (unaryOp->getOpcode() == UO_AddrOf) {
             addressOfSet.insert(niceName(canonicalFunctionDecl));
         }

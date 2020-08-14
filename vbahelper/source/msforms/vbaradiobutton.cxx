@@ -23,7 +23,8 @@
 using namespace com::sun::star;
 using namespace ooo::vba;
 
-ScVbaRadioButton::ScVbaRadioButton( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, AbstractGeometryAttributes* pGeomHelper ) : RadioButtonImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper )
+ScVbaRadioButton::ScVbaRadioButton( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, std::unique_ptr<ov::AbstractGeometryAttributes> pGeomHelper )
+    : RadioButtonImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) )
 {
 }
 
@@ -93,18 +94,16 @@ uno::Reference< msforms::XNewFont > SAL_CALL ScVbaRadioButton::getFont()
 OUString
 ScVbaRadioButton::getServiceImplName()
 {
-    return OUString( "ScVbaRadioButton" );
+    return "ScVbaRadioButton";
 }
 
 uno::Sequence< OUString >
 ScVbaRadioButton::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.RadioButton";
-    }
+        "ooo.vba.msforms.RadioButton"
+    };
     return aServiceNames;
 }
 

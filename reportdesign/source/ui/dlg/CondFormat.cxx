@@ -17,32 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "CondFormat.hxx"
+#include <CondFormat.hxx>
 
-#include "uistrings.hrc"
-#include "RptResId.hrc"
-#include "rptui_slotid.hrc"
-#include "ModuleHelper.hxx"
-#include "helpids.hrc"
-#include "UITools.hxx"
-#include "ReportController.hxx"
+#include <strings.hxx>
+#include <strings.hrc>
+#include <core_resource.hxx>
+#include <ReportController.hxx>
 #include "Condition.hxx"
 
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-
+#include <o3tl/safeint.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 
-#include <vcl/msgbox.hxx>
-#include <vcl/settings.hxx>
-
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
 
 #include <comphelper/property.hxx>
 
 #include <algorithm>
-#include "UndoActions.hxx"
+#include <UndoActions.hxx>
 
 
 namespace rptui
@@ -60,25 +52,6 @@ namespace rptui
 
     using namespace ::com::sun::star::report;
 
-
-    // UpdateLocker
-
-    class UpdateLocker
-    {
-        vcl::Window& m_rWindow;
-
-    public:
-        explicit UpdateLocker( vcl::Window& _rWindow )
-            :m_rWindow( _rWindow )
-        {
-            _rWindow.SetUpdateMode( false );
-        }
-        ~UpdateLocker()
-        {
-            m_rWindow.SetUpdateMode( true );
-        }
-    };
-
     void ConditionalFormattingDialog::impl_setPrefHeight(bool bFirst)
     {
         if (!m_bConstructed && !bFirst)
@@ -86,39 +59,35 @@ namespace rptui
 
         //allow dialog to resize itself
         size_t nCount = impl_getConditionCount();
-        if (nCount)
+        if (!nCount)
+            return;
+
+        auto nHeight = m_aConditions[0]->get_preferred_size().Height();
+        size_t nVisibleConditions = ::std::min(nCount, MAX_CONDITIONS);
+        nHeight *= nVisibleConditions;
+        nHeight += 2;
+        if (nHeight != m_xScrollWindow->get_size_request().Height())
         {
-            long nHeight = m_aConditions[0]->get_preferred_size().Height();
-            size_t nVisibleConditions = ::std::min(nCount, MAX_CONDITIONS);
-            nHeight *= nVisibleConditions;
-            if (nHeight != m_pScrollWindow->get_height_request())
-            {
-                m_pScrollWindow->set_height_request(nHeight);
-                if (!isCalculatingInitialLayoutSize() && !bFirst)
-                    setOptimalLayoutSize();
-            }
+            m_xScrollWindow->set_size_request(-1, nHeight);
+            if (!bFirst)
+                m_xDialog->resize_to_request();
         }
     }
 
-    // class ConditionalFormattingDialog
     ConditionalFormattingDialog::ConditionalFormattingDialog(
-            vcl::Window* _pParent, const Reference< XReportControlModel >& _rxFormatConditions, ::rptui::OReportController& _rController )
-        :ModalDialog( _pParent, "CondFormat", "modules/dbreport/ui/condformatdialog.ui" )
-        ,m_rController( _rController )
-        ,m_xFormatConditions( _rxFormatConditions )
-        ,m_bDeletingCondition( false )
-        ,m_bConstructed( false )
+            weld::Window* _pParent, const Reference< XReportControlModel >& _rxFormatConditions, ::rptui::OReportController& _rController)
+        : GenericDialogController(_pParent, "modules/dbreport/ui/condformatdialog.ui", "CondFormat")
+        , m_rController(_rController)
+        , m_xFormatConditions(_rxFormatConditions)
+        , m_bConstructed(false)
+        , m_xScrollWindow(m_xBuilder->weld_scrolled_window("scrolledwindow"))
+        , m_xConditionPlayground(m_xBuilder->weld_box("condPlaygroundDrawingarea"))
     {
-        get(m_pConditionPlayground, "condPlaygroundDrawingarea");
-        get(m_pScrollWindow, "scrolledwindow");
-        m_pScrollWindow->setUserManagedScrolling(true);
-        m_pCondScroll = &(m_pScrollWindow->getVertScrollBar());
-
         OSL_ENSURE( m_xFormatConditions.is(), "ConditionalFormattingDialog::ConditionalFormattingDialog: ReportControlModel is NULL -> Prepare for GPF!" );
 
         m_xCopy.set( m_xFormatConditions->createClone(), UNO_QUERY_THROW );
 
-        m_pCondScroll->SetScrollHdl( LINK( this, ConditionalFormattingDialog, OnScroll ) );
+        m_xScrollWindow->connect_vadjustment_changed(LINK(this, ConditionalFormattingDialog, OnScroll));
 
         impl_initializeConditions();
 
@@ -129,33 +98,16 @@ namespace rptui
 
     ConditionalFormattingDialog::~ConditionalFormattingDialog()
     {
-        disposeOnce();
-    }
-
-    void ConditionalFormattingDialog::dispose()
-    {
-
-        for (auto i = m_aConditions.begin(); i != m_aConditions.end(); ++i)
-        {
-            i->disposeAndClear();
-        }
-
-        m_aConditions.clear();
-        m_pConditionPlayground.clear();
-        m_pScrollWindow.clear();
-        m_pCondScroll.clear();
-        ModalDialog::dispose();
     }
 
     void ConditionalFormattingDialog::impl_updateConditionIndicies()
     {
         sal_Int32 nIndex = 0;
-        for (   Conditions::const_iterator cond = m_aConditions.begin();
-                cond != m_aConditions.end();
-                ++cond, ++nIndex
-            )
+        for (const auto& rxCondition : m_aConditions)
         {
-            (*cond)->setConditionIndex( nIndex, impl_getConditionCount() );
+            rxCondition->setConditionIndex( nIndex, impl_getConditionCount() );
+            m_xConditionPlayground->reorder_child(rxCondition->get_widget(), nIndex);
+            ++nIndex;
         }
     }
 
@@ -166,7 +118,6 @@ namespace rptui
 
         impl_setPrefHeight(false);
 
-        impl_updateScrollBarRange();
         impl_updateConditionIndicies();
         impl_layoutAll();
     }
@@ -186,24 +137,22 @@ namespace rptui
 
     void ConditionalFormattingDialog::impl_addCondition_nothrow( size_t _nNewCondIndex )
     {
-        UpdateLocker aLockUpdates( *this );
-
         try
         {
-            if ( _nNewCondIndex > (size_t)m_xCopy->getCount() )
+            if ( _nNewCondIndex > o3tl::make_unsigned(m_xCopy->getCount()) )
                 throw IllegalArgumentException();
 
             Reference< XFormatCondition > xCond = m_xCopy->createFormatCondition();
             ::comphelper::copyProperties(m_xCopy.get(),xCond.get());
             m_xCopy->insertByIndex( _nNewCondIndex, makeAny( xCond ) );
-            VclPtrInstance<Condition> pCon( m_pConditionPlayground, *this, m_rController );
-            pCon->setCondition( xCond );
-            pCon->reorderWithinParent(_nNewCondIndex);
-            m_aConditions.insert( m_aConditions.begin() + _nNewCondIndex, pCon );
+            auto xCon = std::make_unique<Condition>(m_xConditionPlayground.get(), m_xDialog.get(), *this, m_rController);
+            xCon->setCondition(xCond);
+            m_xConditionPlayground->reorder_child(xCon->get_widget(), _nNewCondIndex);
+            m_aConditions.insert(m_aConditions.begin() + _nNewCondIndex, std::move(xCon));
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("reportdesign");
         }
 
         impl_conditionCountChanged();
@@ -211,21 +160,17 @@ namespace rptui
         impl_ensureConditionVisible( _nNewCondIndex );
     }
 
-
     void ConditionalFormattingDialog::impl_focusCondition( size_t _nCondIndex )
     {
         OSL_PRECOND( _nCondIndex < impl_getConditionCount(),
             "ConditionalFormattingDialog::impl_focusCondition: illegal index!" );
 
         impl_ensureConditionVisible( _nCondIndex );
-        m_aConditions[ _nCondIndex ]->GrabFocus();
+        m_aConditions[ _nCondIndex ]->grab_focus();
     }
-
 
     void ConditionalFormattingDialog::impl_deleteCondition_nothrow( size_t _nCondIndex )
     {
-        UpdateLocker aLockUpdates( *this );
-
         OSL_PRECOND( _nCondIndex < impl_getConditionCount(),
             "ConditionalFormattingDialog::impl_deleteCondition_nothrow: illegal index!" );
 
@@ -247,10 +192,11 @@ namespace rptui
             }
             else
             {
-                bSetNewFocus = (*pos)->HasChildPathFocus();
-                m_bDeletingCondition = true;
-                m_aConditions.erase( pos );
-                m_bDeletingCondition = false;
+                bSetNewFocus = (*pos)->has_focus();
+
+                auto xMovedCondition = std::move(*pos);
+                m_aConditions.erase(pos);
+                m_xConditionPlayground->move(xMovedCondition->get_widget(), nullptr);
             }
 
             if ( bSetNewFocus )
@@ -261,7 +207,7 @@ namespace rptui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("reportdesign");
         }
 
         impl_conditionCountChanged();
@@ -277,48 +223,43 @@ namespace rptui
 
         // do this in two steps, so we don't become inconsistent if any of the UNO actions fails
         Any aMovedCondition;
-        Condition *pMovedCondition;
+        std::unique_ptr<Condition> xMovedCondition;
         try
         {
-            aMovedCondition = m_xCopy->getByIndex( (sal_Int32)nOldConditionIndex );
-            m_xCopy->removeByIndex( (sal_Int32)nOldConditionIndex );
+            aMovedCondition = m_xCopy->getByIndex( static_cast<sal_Int32>(nOldConditionIndex) );
+            m_xCopy->removeByIndex( static_cast<sal_Int32>(nOldConditionIndex) );
 
             Conditions::iterator aRemovePos( m_aConditions.begin() + nOldConditionIndex );
-            pMovedCondition = aRemovePos->get();
+            xMovedCondition = std::move(*aRemovePos);
             m_aConditions.erase( aRemovePos );
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("reportdesign");
             return;
         }
 
         try
         {
-            m_xCopy->insertByIndex( (sal_Int32)nNewConditionIndex, aMovedCondition );
-            m_aConditions.insert( m_aConditions.begin() + nNewConditionIndex, pMovedCondition );
+            m_xCopy->insertByIndex( static_cast<sal_Int32>(nNewConditionIndex), aMovedCondition );
+            m_aConditions.insert(m_aConditions.begin() + nNewConditionIndex, std::move(xMovedCondition));
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("reportdesign");
         }
 
         // at least the two swapped conditions need to know their new index
         impl_updateConditionIndicies();
 
-        // re-layout all conditions
-        impl_layoutConditions();
-
         // ensure the moved condition is visible
         impl_ensureConditionVisible( nNewConditionIndex );
     }
 
-    IMPL_LINK( ConditionalFormattingDialog, OnScroll, ScrollBar*, /*_pNotInterestedIn*/, void )
+    IMPL_LINK_NOARG(ConditionalFormattingDialog, OnScroll, weld::ScrolledWindow&, void)
     {
         size_t nFirstCondIndex( impl_getFirstVisibleConditionIndex() );
         size_t nFocusCondIndex = impl_getFocusedConditionIndex( nFirstCondIndex );
-
-        impl_layoutConditions();
 
         if ( nFocusCondIndex < nFirstCondIndex )
             impl_focusCondition( nFirstCondIndex );
@@ -326,24 +267,12 @@ namespace rptui
             impl_focusCondition( nFirstCondIndex + MAX_CONDITIONS - 1 );
     }
 
-    void ConditionalFormattingDialog::impl_layoutConditions()
-    {
-        if (m_aConditions.empty())
-            return;
-        long nConditionHeight = m_aConditions[0]->get_preferred_size().Height();
-        Point aConditionPos(0, -1 * nConditionHeight * impl_getFirstVisibleConditionIndex());
-        m_pConditionPlayground->SetPosPixel(aConditionPos);
-    }
-
     void ConditionalFormattingDialog::impl_layoutAll()
     {
-        // condition's positions
-        impl_layoutConditions();
-
         // scrollbar visibility
         if ( m_aConditions.size() <= MAX_CONDITIONS )
             // normalize the position, so it can, in all situations, be used as top index
-            m_pCondScroll->SetThumbPos( 0 );
+            m_xScrollWindow->vadjustment_set_value(0);
     }
 
     void ConditionalFormattingDialog::impl_initializeConditions()
@@ -353,12 +282,12 @@ namespace rptui
             sal_Int32 nCount = m_xCopy->getCount();
             for ( sal_Int32 i = 0; i < nCount ; ++i )
             {
-                VclPtrInstance<Condition> pCon( m_pConditionPlayground, *this, m_rController );
+                auto xCon = std::make_unique<Condition>(m_xConditionPlayground.get(), m_xDialog.get(), *this, m_rController);
                 Reference< XFormatCondition > xCond( m_xCopy->getByIndex(i), UNO_QUERY );
-                pCon->reorderWithinParent(i);
-                pCon->setCondition( xCond );
-                pCon->updateToolbar( xCond.get() );
-                m_aConditions.push_back( pCon );
+                m_xConditionPlayground->reorder_child(xCon->get_widget(), i);
+                xCon->setCondition(xCond);
+                xCon->updateToolbar(xCond.get());
+                m_aConditions.push_back(std::move(xCon));
             }
         }
         catch(Exception&)
@@ -382,10 +311,10 @@ namespace rptui
             aArgs[0].Value <<= xReportControlFormat;
 
             aArgs[1].Name = CURRENT_WINDOW;
-            aArgs[1].Value <<= VCLUnoHelper::GetInterface(this);
+            aArgs[1].Value <<= m_xDialog->GetXWindow();
 
             aArgs[2].Name = PROPERTY_FONTCOLOR;
-            aArgs[2].Value <<= (sal_uInt32)rColor.GetColor();
+            aArgs[2].Value <<= rColor;
 
             // we use this way to create undo actions
             m_rController.executeUnChecked(_nCommandId,aArgs);
@@ -393,7 +322,7 @@ namespace rptui
         }
         catch( Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("reportdesign");
         }
     }
 
@@ -413,7 +342,6 @@ namespace rptui
             impl_moveCondition_nothrow( _nCondIndex, false );
     }
 
-
     OUString ConditionalFormattingDialog::getDataField() const
     {
         OUString sDataField;
@@ -423,18 +351,17 @@ namespace rptui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("reportdesign");
         }
         return sDataField;
     }
 
-
-    short ConditionalFormattingDialog::Execute()
+    short ConditionalFormattingDialog::run()
     {
-        short nRet = ModalDialog::Execute();
-        if ( nRet == RET_OK )
+        short nRet = GenericDialogController::run();
+        if (nRet == RET_OK)
         {
-            const OUString sUndoAction( ModuleRes( RID_STR_UNDO_CONDITIONAL_FORMATTING ) );
+            const OUString sUndoAction( RptResId( RID_STR_UNDO_CONDITIONAL_FORMATTING ) );
             const UndoContext aUndoContext( m_rController.getUndoManager(), sUndoAction );
             try
             {
@@ -471,117 +398,42 @@ namespace rptui
             }
             catch ( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("reportdesign");
                 nRet = RET_NO;
             }
         }
         return nRet;
     }
 
-
-    bool ConditionalFormattingDialog::PreNotify( NotifyEvent& _rNEvt )
-    {
-        switch ( _rNEvt.GetType() )
-        {
-            case MouseNotifyEvent::KEYINPUT:
-            {
-                const KeyEvent* pKeyEvent( _rNEvt.GetKeyEvent() );
-                const vcl::KeyCode& rKeyCode = pKeyEvent->GetKeyCode();
-                if ( rKeyCode.IsMod1() && rKeyCode.IsMod2() )
-                {
-                    if ( rKeyCode.GetCode() == 0x0508 )
-                    {
-                        impl_deleteCondition_nothrow( impl_getFocusedConditionIndex( 0 ) );
-                        return true;
-                    }
-                    if ( rKeyCode.GetCode() == 0x0507 ) // +
-                    {
-                        impl_addCondition_nothrow( impl_getFocusedConditionIndex( impl_getConditionCount() - 1 ) + 1 );
-                        return true;
-                    }
-                }
-                break;
-            }
-            case MouseNotifyEvent::GETFOCUS:
-            {
-                if (m_bDeletingCondition)
-                    break;
-
-                if (!m_pConditionPlayground) //e.g. during dispose
-                    break;
-
-                const vcl::Window* pGetFocusWindow( _rNEvt.GetWindow() );
-
-                // determine whether the new focus window is part of an (currently invisible) condition
-                const vcl::Window* pConditionCandidate = pGetFocusWindow->GetParent();
-                const vcl::Window* pPlaygroundCandidate = pConditionCandidate ? pConditionCandidate->GetParent() : nullptr;
-                while   (   ( pPlaygroundCandidate )
-                        &&  ( pPlaygroundCandidate != this )
-                        &&  ( pPlaygroundCandidate != m_pConditionPlayground )
-                        )
-                {
-                    pConditionCandidate = pConditionCandidate->GetParent();
-                    pPlaygroundCandidate = pConditionCandidate ? pConditionCandidate->GetParent() : nullptr;
-                }
-                if (pConditionCandidate && pPlaygroundCandidate == m_pConditionPlayground)
-                {
-                    impl_ensureConditionVisible( dynamic_cast< const Condition& >( *pConditionCandidate ).getConditionIndex() );
-                }
-                break;
-            }
-            default:
-                break;
-        }
-
-        return ModalDialog::PreNotify( _rNEvt );
-    }
-
-
     size_t ConditionalFormattingDialog::impl_getFirstVisibleConditionIndex() const
     {
-        return (size_t)m_pCondScroll->GetThumbPos();
+        auto nHeight = m_aConditions[0]->get_preferred_size().Height();
+        return m_xScrollWindow->vadjustment_get_value() / nHeight;
     }
-
 
     size_t ConditionalFormattingDialog::impl_getLastVisibleConditionIndex() const
     {
         return ::std::min( impl_getFirstVisibleConditionIndex() + MAX_CONDITIONS, impl_getConditionCount() ) - 1;
     }
 
-
     size_t ConditionalFormattingDialog::impl_getFocusedConditionIndex( sal_Int32 _nFallBackIfNone ) const
     {
-        size_t nIndex( 0 );
-        for (   Conditions::const_iterator cond = m_aConditions.begin();
-                cond != m_aConditions.end();
-                ++cond, ++nIndex
-            )
-        {
-            if ( (*cond)->HasChildPathFocus() )
-                return nIndex;
-        }
+        auto cond = std::find_if(m_aConditions.begin(), m_aConditions.end(),
+            [](const std::unique_ptr<Condition>& rxCondition) { return rxCondition->has_focus(); });
+        if (cond != m_aConditions.end())
+            return static_cast<size_t>(std::distance(m_aConditions.begin(), cond));
         return _nFallBackIfNone;
     }
 
-
-    void ConditionalFormattingDialog::impl_updateScrollBarRange()
+    void ConditionalFormattingDialog::impl_scrollTo( size_t nTopCondIndex )
     {
-        long nMax = ( impl_getConditionCount() > MAX_CONDITIONS ) ? impl_getConditionCount() - MAX_CONDITIONS + 1 : 0;
-
-        m_pCondScroll->SetRangeMin( 0 );
-        m_pCondScroll->SetRangeMax( nMax );
-        m_pCondScroll->SetVisibleSize( 1 );
-    }
-
-
-    void ConditionalFormattingDialog::impl_scrollTo( size_t _nTopCondIndex )
-    {
-        OSL_PRECOND( _nTopCondIndex + MAX_CONDITIONS <= impl_getConditionCount(),
+        OSL_PRECOND( nTopCondIndex + MAX_CONDITIONS <= impl_getConditionCount(),
             "ConditionalFormattingDialog::impl_scrollTo: illegal index!" );
-        m_pCondScroll->SetThumbPos( _nTopCondIndex );
-        OnScroll( m_pCondScroll );
-    }
 
+        auto nHeight = m_aConditions[0]->get_preferred_size().Height();
+        m_xScrollWindow->vadjustment_set_value(nTopCondIndex * nHeight);
+        OnScroll(*m_xScrollWindow);
+    }
 
     void ConditionalFormattingDialog::impl_ensureConditionVisible( size_t _nCondIndex )
     {

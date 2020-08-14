@@ -17,50 +17,110 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/svapp.hxx>
+#include <sal/log.hxx>
 
-#include "document.hxx"
-#include "brdcst.hxx"
-#include "bcaslot.hxx"
-#include "formulacell.hxx"
-#include <formula/errorcodes.hxx>
-#include "scerrors.hxx"
-#include "docoptio.hxx"
-#include "refupdat.hxx"
-#include "table.hxx"
-#include "progress.hxx"
-#include "scmod.hxx"
-#include "inputopt.hxx"
-#include "conditio.hxx"
-#include "colorscale.hxx"
-#include "sheetevents.hxx"
-#include "tokenarray.hxx"
-#include "listenercontext.hxx"
-#include "formulagroup.hxx"
+#include <document.hxx>
+#include <brdcst.hxx>
+#include <bcaslot.hxx>
+#include <formulacell.hxx>
+#include <table.hxx>
+#include <progress.hxx>
+#include <scmod.hxx>
+#include <inputopt.hxx>
+#include <sheetevents.hxx>
+#include <tokenarray.hxx>
+#include <listenercontext.hxx>
 #include <refhint.hxx>
-
-#include "globstr.hrc"
 
 void ScDocument::StartListeningArea(
     const ScRange& rRange, bool bGroupListening, SvtListener* pListener )
 {
-    if ( pBASM )
+    if (!pBASM)
+        return;
+
+    // Ensure sane ranges for the slots, specifically don't attempt to listen
+    // to more sheets than the document has. The slot machine handles it but
+    // with memory waste. Binary import filters can set out-of-bounds ranges
+    // in formula expressions' references, so all middle layers would have to
+    // check it, rather have this central point here.
+    ScRange aLimitedRange( ScAddress::UNINITIALIZED );
+    bool bEntirelyOut;
+    if (!LimitRangeToAvailableSheets( rRange, aLimitedRange, bEntirelyOut))
+    {
         pBASM->StartListeningArea(rRange, bGroupListening, pListener);
+        return;
+    }
+
+    // If both sheets are out-of-bounds in the same direction then just bail out.
+    if (bEntirelyOut)
+        return;
+
+    pBASM->StartListeningArea( aLimitedRange, bGroupListening, pListener);
 }
 
 void ScDocument::EndListeningArea( const ScRange& rRange, bool bGroupListening, SvtListener* pListener )
 {
-    if ( pBASM )
+    if (!pBASM)
+        return;
+
+    // End listening has to limit the range exactly the same as in
+    // StartListeningArea(), otherwise the range would not be found.
+    ScRange aLimitedRange( ScAddress::UNINITIALIZED );
+    bool bEntirelyOut;
+    if (!LimitRangeToAvailableSheets( rRange, aLimitedRange, bEntirelyOut))
+    {
         pBASM->EndListeningArea(rRange, bGroupListening, pListener);
+        return;
+    }
+
+    // If both sheets are out-of-bounds in the same direction then just bail out.
+    if (bEntirelyOut)
+        return;
+
+    pBASM->EndListeningArea( aLimitedRange, bGroupListening, pListener);
+}
+
+bool ScDocument::LimitRangeToAvailableSheets( const ScRange& rRange, ScRange& o_rRange,
+        bool& o_bEntirelyOutOfBounds ) const
+{
+    const SCTAB nMaxTab = GetTableCount() - 1;
+    if (ValidTab( rRange.aStart.Tab(), nMaxTab) && ValidTab( rRange.aEnd.Tab(), nMaxTab))
+        return false;
+
+    // Originally BCA_LISTEN_ALWAYS uses an implicit tab 0 and should had been
+    // valid already, but in case that would change...
+    if (rRange == BCA_LISTEN_ALWAYS)
+        return false;
+
+    SCTAB nTab1 = rRange.aStart.Tab();
+    SCTAB nTab2 = rRange.aEnd.Tab();
+    SAL_WARN("sc.core","ScDocument::LimitRangeToAvailableSheets - bad sheet range: " << nTab1 << ".." << nTab2 <<
+            ", sheets: 0.." << nMaxTab);
+
+    // Both sheets are out-of-bounds in the same direction.
+    if ((nTab1 < 0 && nTab2 < 0) || (nMaxTab < nTab1 && nMaxTab < nTab2))
+    {
+        o_bEntirelyOutOfBounds = true;
+        return true;
+    }
+
+    // Limit the sheet range to bounds.
+    o_bEntirelyOutOfBounds = false;
+    nTab1 = std::max<SCTAB>( 0, std::min( nMaxTab, nTab1));
+    nTab2 = std::max<SCTAB>( 0, std::min( nMaxTab, nTab2));
+    o_rRange = rRange;
+    o_rRange.aStart.SetTab(nTab1);
+    o_rRange.aEnd.SetTab(nTab2);
+    return true;
 }
 
 void ScDocument::Broadcast( const ScHint& rHint )
 {
     if ( !pBASM )
         return ;    // Clipboard or Undo
-    if ( eHardRecalcState == HARDRECALCSTATE_OFF )
+    if ( eHardRecalcState == HardRecalcState::OFF )
     {
-        ScBulkBroadcast aBulkBroadcast( pBASM, rHint.GetId());     // scoped bulk broadcast
+        ScBulkBroadcast aBulkBroadcast( pBASM.get(), rHint.GetId());     // scoped bulk broadcast
         bool bIsBroadcasted = false;
         SvtBroadcaster* pBC = GetBroadcaster(rHint.GetAddress());
         if ( pBC )
@@ -75,7 +135,7 @@ void ScDocument::Broadcast( const ScHint& rHint )
     if ( rHint.GetAddress() != BCA_BRDCST_ALWAYS )
     {
         SCTAB nTab = rHint.GetAddress().Tab();
-        if (nTab < static_cast<SCTAB>(maTabs.size()) && maTabs[nTab] && maTabs[nTab]->IsStreamValid())
+        if (nTab < static_cast<SCTAB>(maTabs.size()) && maTabs[nTab])
             maTabs[nTab]->SetStreamValid(false);
     }
 }
@@ -94,9 +154,9 @@ void ScDocument::BroadcastCells( const ScRange& rRange, SfxHintId nHint, bool bB
     SCCOL nCol1 = rRange.aStart.Col();
     SCCOL nCol2 = rRange.aEnd.Col();
 
-    if (eHardRecalcState == HARDRECALCSTATE_OFF)
+    if (eHardRecalcState == HardRecalcState::OFF)
     {
-        ScBulkBroadcast aBulkBroadcast( pBASM, nHint);     // scoped bulk broadcast
+        ScBulkBroadcast aBulkBroadcast( pBASM.get(), nHint);     // scoped bulk broadcast
         bool bIsBroadcasted = false;
 
         if (bBroadcastSingleBroadcasters)
@@ -127,104 +187,13 @@ void ScDocument::BroadcastCells( const ScRange& rRange, SfxHintId nHint, bool bB
     BroadcastUno(SfxHint(SfxHintId::ScDataChanged));
 }
 
-namespace {
-
-class RefMovedNotifier
-{
-    const sc::RefMovedHint& mrHint;
-public:
-    explicit RefMovedNotifier( const sc::RefMovedHint& rHint ) : mrHint(rHint) {}
-
-    void operator() ( SvtListener* p )
-    {
-        p->Notify(mrHint);
-    }
-};
-
-}
-
-void ScDocument::BroadcastRefMoved( const sc::RefMovedHint& rHint )
-{
-    if (!pBASM)
-        // clipboard or undo document.
-        return;
-
-    const ScRange& rSrcRange = rHint.getRange(); // old range
-    const ScAddress& rDelta = rHint.getDelta();
-
-    // Get all area listeners that listens on the old range, and end their listening.
-    std::vector<sc::AreaListener> aAreaListeners = pBASM->GetAllListeners(rSrcRange, sc::AreaInside);
-    {
-        std::vector<sc::AreaListener>::iterator it = aAreaListeners.begin(), itEnd = aAreaListeners.end();
-        for (; it != itEnd; ++it)
-        {
-            pBASM->EndListeningArea(it->maArea, it->mbGroupListening, it->mpListener);
-            it->mpListener->Notify(rHint); // Adjust the references.
-        }
-    }
-
-    // Collect all listeners listening into the range.
-    std::vector<SvtListener*> aListeners;
-    for (SCTAB nTab = rSrcRange.aStart.Tab(); nTab <= rSrcRange.aEnd.Tab(); ++nTab)
-    {
-        ScTable* pTab = FetchTable(nTab);
-        if (!pTab)
-            continue;
-
-        pTab->CollectListeners(
-            aListeners,
-            rSrcRange.aStart.Col(), rSrcRange.aStart.Row(),
-            rSrcRange.aEnd.Col(), rSrcRange.aEnd.Row());
-    }
-
-    // Remove any duplicate listener entries.  We must ensure that we notify
-    // each unique listener only once.
-    std::sort(aListeners.begin(), aListeners.end());
-    aListeners.erase(std::unique(aListeners.begin(), aListeners.end()), aListeners.end());
-
-    // Notify the listeners.
-    std::for_each(aListeners.begin(), aListeners.end(), RefMovedNotifier(rHint));
-
-    for (SCTAB nTab = rSrcRange.aStart.Tab(); nTab <= rSrcRange.aEnd.Tab(); ++nTab)
-    {
-        ScTable* pTab = FetchTable(nTab);
-        if (!pTab)
-            continue;
-
-        SCTAB nDestTab = nTab + rDelta.Tab();
-        ScTable* pDestTab = FetchTable(nDestTab);
-        if (!pDestTab)
-            continue;
-
-        // Move the listeners from the old location to the new.
-        pTab->TransferListeners(
-            *pDestTab, rSrcRange.aStart.Col(), rSrcRange.aStart.Row(),
-            rSrcRange.aEnd.Col(), rSrcRange.aEnd.Row(), rDelta.Col(), rDelta.Row());
-    }
-
-    // Re-start area listeners on the new range.
-    {
-        ScRange aErrorRange( ScAddress::UNINITIALIZED );
-        std::vector<sc::AreaListener>::iterator it = aAreaListeners.begin(), itEnd = aAreaListeners.end();
-        for (; it != itEnd; ++it)
-        {
-            ScRange aNewRange = it->maArea;
-            if (!aNewRange.Move(rDelta.Col(), rDelta.Row(), rDelta.Tab(), aErrorRange))
-            {
-                assert(!"can't move AreaListener");
-            }
-            pBASM->StartListeningArea(aNewRange, it->mbGroupListening, it->mpListener);
-        }
-    }
-}
-
 void ScDocument::AreaBroadcast( const ScHint& rHint )
 {
     if ( !pBASM )
         return ;    // Clipboard or Undo
-    if (eHardRecalcState == HARDRECALCSTATE_OFF)
+    if (eHardRecalcState == HardRecalcState::OFF)
     {
-        ScBulkBroadcast aBulkBroadcast( pBASM, rHint.GetId());     // scoped bulk broadcast
+        ScBulkBroadcast aBulkBroadcast( pBASM.get(), rHint.GetId());     // scoped bulk broadcast
         if ( pBASM->AreaBroadcast( rHint ) )
             TrackFormulas( rHint.GetId() );
     }
@@ -280,9 +249,8 @@ void ScDocument::EndListeningFormulaCells( std::vector<ScFormulaCell*>& rCells )
         return;
 
     sc::EndListeningContext aCxt(*this);
-    std::vector<ScFormulaCell*>::iterator it = rCells.begin(), itEnd = rCells.end();
-    for (; it != itEnd; ++it)
-        (*it)->EndListeningTo(aCxt);
+    for (auto& pCell : rCells)
+        pCell->EndListeningTo(aCxt);
 
     aCxt.purgeEmptyBroadcasters();
 }
@@ -292,10 +260,11 @@ void ScDocument::PutInFormulaTree( ScFormulaCell* pCell )
     OSL_ENSURE( pCell, "PutInFormulaTree: pCell Null" );
     RemoveFromFormulaTree( pCell );
     // append
+    ScMutationGuard aGuard(this, ScMutationGuardFlags::CORE);
     if ( pEOFormulaTree )
         pEOFormulaTree->SetNext( pCell );
     else
-        pFormulaTree = pCell;               // No end, no beginning..
+        pFormulaTree = pCell;               // No end, no beginning...
     pCell->SetPrevious( pEOFormulaTree );
     pCell->SetNext( nullptr );
     pEOFormulaTree = pCell;
@@ -304,6 +273,7 @@ void ScDocument::PutInFormulaTree( ScFormulaCell* pCell )
 
 void ScDocument::RemoveFromFormulaTree( ScFormulaCell* pCell )
 {
+    ScMutationGuard aGuard(this, ScMutationGuardFlags::CORE);
     OSL_ENSURE( pCell, "RemoveFromFormulaTree: pCell Null" );
     ScFormulaCell* pPrev = pCell->GetPrevious();
     assert(pPrev != pCell);                 // pointing to itself?!?
@@ -348,7 +318,7 @@ void ScDocument::RemoveFromFormulaTree( ScFormulaCell* pCell )
     }
 }
 
-bool ScDocument::IsInFormulaTree( ScFormulaCell* pCell ) const
+bool ScDocument::IsInFormulaTree( const ScFormulaCell* pCell ) const
 {
     return pCell->GetPrevious() || pFormulaTree == pCell;
 }
@@ -360,6 +330,7 @@ void ScDocument::CalcFormulaTree( bool bOnlyForced, bool bProgressBar, bool bSet
     if ( IsCalculatingFormulaTree() )
         return ;
 
+    ScMutationGuard aGuard(this, ScMutationGuardFlags::CORE);
     mpFormulaGroupCxt.reset();
     bCalculatingFormulaTree = true;
 
@@ -370,7 +341,7 @@ void ScDocument::CalcFormulaTree( bool bOnlyForced, bool bProgressBar, bool bSet
     //ATTENTION: _not_ SetAutoCalc( true ) because this might call CalcFormulaTree( true )
     //ATTENTION: if it was disabled before and bHasForcedFormulas is set
     bAutoCalc = true;
-    if (eHardRecalcState == HARDRECALCSTATE_ETERNAL)
+    if (eHardRecalcState == HardRecalcState::ETERNAL)
         CalcAll();
     else
     {
@@ -394,10 +365,9 @@ void ScDocument::CalcFormulaTree( bool bOnlyForced, bool bProgressBar, bool bSet
             }
             pCell = pCell->GetNext();
         }
-        for (::std::vector<ScFormulaCell*>::iterator it( vAlwaysDirty.begin()), itEnd( vAlwaysDirty.end());
-                it != itEnd; ++it)
+        for (const auto& rpCell : vAlwaysDirty)
         {
-            pCell = *it;
+            pCell = rpCell;
             if (!pCell->GetDirty())
                 pCell->SetDirty();
         }
@@ -487,7 +457,7 @@ void ScDocument::AppendToFormulaTrack( ScFormulaCell* pCell )
     if ( pEOFormulaTrack )
         pEOFormulaTrack->SetNextTrack( pCell );
     else
-        pFormulaTrack = pCell;              // No end, no beginning..
+        pFormulaTrack = pCell;              // No end, no beginning...
     pCell->SetPreviousTrack( pEOFormulaTrack );
     pCell->SetNextTrack( nullptr );
     pEOFormulaTrack = pCell;
@@ -500,35 +470,35 @@ void ScDocument::RemoveFromFormulaTrack( ScFormulaCell* pCell )
     ScFormulaCell* pPrev = pCell->GetPreviousTrack();
     assert(pPrev != pCell);                     // pointing to itself?!?
     // if the cell is first or somewhere in chain
-    if ( pPrev || pFormulaTrack == pCell )
+    if ( !(pPrev || pFormulaTrack == pCell) )
+        return;
+
+    ScFormulaCell* pNext = pCell->GetNextTrack();
+    assert(pNext != pCell);                 // pointing to itself?!?
+    if ( pPrev )
     {
-        ScFormulaCell* pNext = pCell->GetNextTrack();
-        assert(pNext != pCell);                 // pointing to itself?!?
-        if ( pPrev )
-        {
-            assert(pFormulaTrack != pCell);     // if this cell is also head something's wrong
-            pPrev->SetNextTrack( pNext );       // predecessor exists, set successor
-        }
-        else
-        {
-            pFormulaTrack = pNext;              // this cell was first cell
-        }
-        if ( pNext )
-        {
-            assert(pEOFormulaTrack != pCell);   // if this cell is also tail something's wrong
-            pNext->SetPreviousTrack( pPrev );   // successor exists, set predecessor
-        }
-        else
-        {
-            pEOFormulaTrack = pPrev;            // this cell was last cell
-        }
-        pCell->SetPreviousTrack( nullptr );
-        pCell->SetNextTrack( nullptr );
-        --nFormulaTrackCount;
+        assert(pFormulaTrack != pCell);     // if this cell is also head something's wrong
+        pPrev->SetNextTrack( pNext );       // predecessor exists, set successor
     }
+    else
+    {
+        pFormulaTrack = pNext;              // this cell was first cell
+    }
+    if ( pNext )
+    {
+        assert(pEOFormulaTrack != pCell);   // if this cell is also tail something's wrong
+        pNext->SetPreviousTrack( pPrev );   // successor exists, set predecessor
+    }
+    else
+    {
+        pEOFormulaTrack = pPrev;            // this cell was last cell
+    }
+    pCell->SetPreviousTrack( nullptr );
+    pCell->SetNextTrack( nullptr );
+    --nFormulaTrackCount;
 }
 
-bool ScDocument::IsInFormulaTrack( ScFormulaCell* pCell ) const
+bool ScDocument::IsInFormulaTrack( const ScFormulaCell* pCell ) const
 {
     return pCell->GetPreviousTrack() || pFormulaTrack == pCell;
 }
@@ -559,7 +529,8 @@ void ScDocument::TrackFormulas( SfxHintId nHintId )
     if (!pBASM)
         return;
 
-    if (pBASM->IsInBulkBroadcast() && !IsFinalTrackFormulas() && nHintId == SfxHintId::ScDataChanged)
+    if (pBASM->IsInBulkBroadcast() && !IsFinalTrackFormulas() &&
+            (nHintId == SfxHintId::ScDataChanged || nHintId == SfxHintId::ScHiddenRowsChanged))
     {
         SetTrackFormulasPending();
         return;

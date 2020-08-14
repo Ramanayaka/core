@@ -14,6 +14,7 @@
 #include <scmatrix.hxx>
 #include <comphelper/random.hxx>
 #include <formula/token.hxx>
+#include <sal/log.hxx>
 
 #include <stack>
 #include <cmath>
@@ -22,12 +23,16 @@
 
 using namespace formula;
 
+namespace {
+
 struct DataPoint
 {
     double X, Y;
 
     DataPoint( double rX, double rY ) : X( rX ), Y( rY ) {};
 };
+
+}
 
 static bool lcl_SortByX( const DataPoint &lhs, const DataPoint &rhs ) { return lhs.X < rhs.X; }
 
@@ -69,18 +74,21 @@ static bool lcl_SortByX( const DataPoint &lhs, const DataPoint &rhs ) { return l
  * Intervals for Future Values
  *
  */
+
+namespace {
+
 class ScETSForecastCalculation
 {
 private:
     SvNumberFormatter* mpFormatter;
     std::vector< DataPoint > maRange;   // data (X, Y)
-    double* mpBase;                     // calculated base value array
-    double* mpTrend;                    // calculated trend factor array
-    double* mpPerIdx;                   // calculated periodical deviation array, not used with eds
-    double* mpForecast;                 // forecasted value array
+    std::unique_ptr<double[]> mpBase;                     // calculated base value array
+    std::unique_ptr<double[]> mpTrend;                    // calculated trend factor array
+    std::unique_ptr<double[]> mpPerIdx;                   // calculated periodical deviation array, not used with eds
+    std::unique_ptr<double[]> mpForecast;                 // forecasted value array
     SCSIZE mnSmplInPrd;                 // samples per period
     double mfStepSize;                  // increment of X in maRange
-    double mfAlpha, mfBeta, mfGamma;    // constants to minimise the RMSE in the ES-equations
+    double mfAlpha, mfBeta, mfGamma;    // constants to minimize the RMSE in the ES-equations
     SCSIZE mnCount;                     // No of data points
     bool mbInitialised;
     int mnMonthDay;                     // n-month X-interval, value is day of month
@@ -95,45 +103,42 @@ private:
     bool bEDS;                          // true: EDS, false: ETS
 
     // constants used in determining best fit for alpha, beta, gamma
-    const double cfMinABCResolution = 0.001;  // minimum change of alpha, beta, gamma
+    static constexpr double cfMinABCResolution = 0.001;  // minimum change of alpha, beta, gamma
     static const SCSIZE cnScenarios = 1000;   // No. of scenarios to calculate for PI calculations
 
     bool initData();
-    bool prefillBaseData();
+    void prefillBaseData();
     bool prefillTrendData();
     bool prefillPerIdx();
-    bool initCalc();
+    void initCalc();
     void refill();
     SCSIZE CalcPeriodLen();
     void CalcAlphaBetaGamma();
     void CalcBetaGamma();
     void CalcGamma();
     void calcAccuracyIndicators();
-    bool GetForecast( double fTarget, double& rForecast );
+    void GetForecast( double fTarget, double& rForecast );
     double RandDev();
     double convertXtoMonths( double x );
 
 public:
     ScETSForecastCalculation( SCSIZE nSize, SvNumberFormatter* pFormatter );
-    ~ScETSForecastCalculation();
 
-    bool PreprocessDataRange( const ScMatrixRef& rMatX, const ScMatrixRef& rMatY, int& rSmplInPrd,
+    bool PreprocessDataRange( const ScMatrixRef& rMatX, const ScMatrixRef& rMatY, int nSmplInPrd,
                               bool bDataCompletion, int nAggregation, const ScMatrixRef& rTMat,
                               ScETSType eETSType );
-    FormulaError GetError() { return mnErrorValue; };
-    bool GetForecastRange( const ScMatrixRef& rTMat, const ScMatrixRef& rFcMat );
-    bool GetStatisticValue( const ScMatrixRef& rTypeMat, const ScMatrixRef& rStatMat );
-    bool GetSamplesInPeriod( double& rVal );
-    bool GetEDSPredictionIntervals( const ScMatrixRef& rTMat, const ScMatrixRef& rPIMat, double fPILevel );
-    bool GetETSPredictionIntervals( const ScMatrixRef& rTMat, const ScMatrixRef& rPIMat, double fPILevel );
+    FormulaError GetError() const { return mnErrorValue; };
+    void GetForecastRange( const ScMatrixRef& rTMat, const ScMatrixRef& rFcMat );
+    void GetStatisticValue( const ScMatrixRef& rTypeMat, const ScMatrixRef& rStatMat );
+    void GetSamplesInPeriod( double& rVal );
+    void GetEDSPredictionIntervals( const ScMatrixRef& rTMat, const ScMatrixRef& rPIMat, double fPILevel );
+    void GetETSPredictionIntervals( const ScMatrixRef& rTMat, const ScMatrixRef& rPIMat, double fPILevel );
 };
+
+}
 
 ScETSForecastCalculation::ScETSForecastCalculation( SCSIZE nSize, SvNumberFormatter* pFormatter )
     : mpFormatter(pFormatter)
-    , mpBase(nullptr)
-    , mpTrend(nullptr)
-    , mpPerIdx(nullptr)
-    , mpForecast(nullptr)
     , mnSmplInPrd(0)
     , mfStepSize(0.0)
     , mfAlpha(0.0)
@@ -154,24 +159,16 @@ ScETSForecastCalculation::ScETSForecastCalculation( SCSIZE nSize, SvNumberFormat
     maRange.reserve( mnCount );
 }
 
-ScETSForecastCalculation::~ScETSForecastCalculation()
-{
-    delete[] mpBase;
-    delete[] mpTrend;
-    delete[] mpPerIdx;
-    delete[] mpForecast;
-}
-
-bool ScETSForecastCalculation::PreprocessDataRange( const ScMatrixRef& rMatX, const ScMatrixRef& rMatY, int& rSmplInPrd,
+bool ScETSForecastCalculation::PreprocessDataRange( const ScMatrixRef& rMatX, const ScMatrixRef& rMatY, int nSmplInPrd,
                                                     bool bDataCompletion, int nAggregation, const ScMatrixRef& rTMat,
                                                     ScETSType eETSType )
 {
-    bEDS = ( rSmplInPrd == 0 );
+    bEDS = ( nSmplInPrd == 0 );
     bAdditive = ( eETSType == etsAdd || eETSType == etsPIAdd || eETSType == etsStatAdd );
 
     // maRange needs to be sorted by X
     for ( SCSIZE i = 0; i < mnCount; i++ )
-        maRange.push_back( DataPoint( rMatX->GetDouble( i ), rMatY->GetDouble( i ) ) );
+        maRange.emplace_back( rMatX->GetDouble( i ), rMatY->GetDouble( i ) );
     sort( maRange.begin(), maRange.end(), lcl_SortByX );
 
     if ( rTMat )
@@ -201,12 +198,12 @@ bool ScETSForecastCalculation::PreprocessDataRange( const ScMatrixRef& rMatX, co
     // Method: assume there is an month interval and verify.
     // If month interval is used, replace maRange.X with month values
     // for ease of calculations.
-    Date aNullDate = *( mpFormatter->GetNullDate() );
-    Date aDate = aNullDate + static_cast< long >( maRange[ 0 ].X );
+    Date aNullDate = mpFormatter->GetNullDate();
+    Date aDate = aNullDate + static_cast< sal_Int32 >( maRange[ 0 ].X );
     mnMonthDay = aDate.GetDay();
     for ( SCSIZE i = 1; i < mnCount && mnMonthDay; i++ )
     {
-        Date aDate1 = aNullDate + static_cast< long >( maRange[ i ].X );
+        Date aDate1 = aNullDate + static_cast< sal_Int32 >( maRange[ i ].X );
         if ( aDate != aDate1 )
         {
             if ( aDate1.GetDay() != mnMonthDay )
@@ -219,7 +216,7 @@ bool ScETSForecastCalculation::PreprocessDataRange( const ScMatrixRef& rMatX, co
     {
         for ( SCSIZE i = 0; i < mnCount; i++ )
         {
-            aDate = aNullDate + static_cast< long >( maRange[ i ].X );
+            aDate = aNullDate + static_cast< sal_Int32 >( maRange[ i ].X );
             maRange[ i ].X = aDate.GetYear() * 12 + aDate.GetMonth();
         }
     }
@@ -341,13 +338,13 @@ bool ScETSForecastCalculation::PreprocessDataRange( const ScMatrixRef& rMatX, co
         SCSIZE nMissingXCount = 0;
         double fOriginalCount = static_cast< double >( mnCount );
         if ( mnMonthDay )
-            aDate = aNullDate + static_cast< long >( maRange[ 0 ].X );
+            aDate = aNullDate + static_cast< sal_Int32 >( maRange[ 0 ].X );
         for ( SCSIZE i = 1; i < mnCount; i++ )
         {
             double fDist;
             if ( mnMonthDay )
             {
-                Date aDate1 = aNullDate + static_cast< long >( maRange[ i ].X );
+                Date aDate1 = aNullDate + static_cast< sal_Int32 >( maRange[ i ].X );
                 fDist = 12 * ( aDate1.GetYear() - aDate.GetYear() ) +
                          ( aDate1.GetMonth() - aDate.GetMonth() );
                 aDate = aDate1;
@@ -375,11 +372,11 @@ bool ScETSForecastCalculation::PreprocessDataRange( const ScMatrixRef& rMatX, co
         }
     }
 
-    if ( rSmplInPrd != 1 )
-        mnSmplInPrd = rSmplInPrd;
+    if ( nSmplInPrd != 1 )
+        mnSmplInPrd = nSmplInPrd;
     else
     {
-         mnSmplInPrd = CalcPeriodLen();
+        mnSmplInPrd = CalcPeriodLen();
         if ( mnSmplInPrd == 1 )
             bEDS = true; // period length 1 means no periodic data: EDS suffices
     }
@@ -393,19 +390,19 @@ bool ScETSForecastCalculation::PreprocessDataRange( const ScMatrixRef& rMatX, co
 bool ScETSForecastCalculation::initData( )
 {
     // give various vectors size and initial value
-    mpBase     = new double[ mnCount ];
-    mpTrend    = new double[ mnCount ];
+    mpBase.reset( new double[ mnCount ] );
+    mpTrend.reset( new double[ mnCount ] );
     if ( !bEDS )
-        mpPerIdx   = new double[ mnCount ];
-    mpForecast = new double[ mnCount ];
+        mpPerIdx.reset( new double[ mnCount ] );
+    mpForecast.reset( new double[ mnCount ] );
     mpForecast[ 0 ] = maRange[ 0 ].Y;
 
     if ( prefillTrendData() )
     {
         if ( prefillPerIdx() )
         {
-            if ( prefillBaseData() )
-                return true;
+            prefillBaseData();
+            return true;
         }
     }
     return false;
@@ -482,16 +479,15 @@ bool ScETSForecastCalculation::prefillPerIdx()
     return true;
 }
 
-bool ScETSForecastCalculation::prefillBaseData()
+void ScETSForecastCalculation::prefillBaseData()
 {
     if ( bEDS )
         mpBase[ 0 ] = maRange[ 0 ].Y;
     else
         mpBase[ 0 ] = maRange[ 0 ].Y / mpPerIdx[ 0 ];
-    return true;
 }
 
-bool ScETSForecastCalculation::initCalc()
+void ScETSForecastCalculation::initCalc()
 {
     if ( !mbInitialised )
     {
@@ -500,7 +496,6 @@ bool ScETSForecastCalculation::initCalc()
         mbInitialised = true;
         calcAccuracyIndicators();
     }
-    return true;
 }
 
 void ScETSForecastCalculation::calcAccuracyIndicators()
@@ -821,8 +816,7 @@ void ScETSForecastCalculation::refill()
 
 double ScETSForecastCalculation::convertXtoMonths( double x )
 {
-    Date aNullDate = *( mpFormatter->GetNullDate() );
-    Date aDate = aNullDate + static_cast< long >( x );
+    Date aDate = mpFormatter->GetNullDate() + static_cast< sal_Int32 >( x );
     int nYear = aDate.GetYear();
     int nMonth = aDate.GetMonth();
     double fMonthLength;
@@ -846,10 +840,9 @@ double ScETSForecastCalculation::convertXtoMonths( double x )
     return ( 12.0 * nYear + nMonth + ( aDate.GetDay() - mnMonthDay ) / fMonthLength );
 }
 
-bool ScETSForecastCalculation::GetForecast( double fTarget, double& rForecast )
+void ScETSForecastCalculation::GetForecast( double fTarget, double& rForecast )
 {
-    if ( !initCalc() )
-        return false;
+    initCalc();
 
     if ( fTarget <= maRange[ mnCount - 1 ].X )
     {
@@ -893,10 +886,9 @@ bool ScETSForecastCalculation::GetForecast( double fTarget, double& rForecast )
             rForecast = rForecast + fInterpolateFactor * ( fFc_1 - rForecast );
         }
     }
-    return true;
 }
 
-bool ScETSForecastCalculation::GetForecastRange( const ScMatrixRef& rTMat, const ScMatrixRef& rFcMat )
+void ScETSForecastCalculation::GetForecastRange( const ScMatrixRef& rTMat, const ScMatrixRef& rFcMat )
 {
     SCSIZE nC, nR;
     rTMat->GetDimensions( nC, nR );
@@ -911,19 +903,15 @@ bool ScETSForecastCalculation::GetForecastRange( const ScMatrixRef& rTMat, const
             else
                 fTarget = rTMat->GetDouble( j, i );
             double fForecast;
-            if ( GetForecast( fTarget, fForecast ) )
-                rFcMat->PutDouble( fForecast, j, i );
-            else
-                return false;
+            GetForecast( fTarget, fForecast );
+            rFcMat->PutDouble( fForecast, j, i );
         }
     }
-    return true;
 }
 
-bool ScETSForecastCalculation::GetStatisticValue( const ScMatrixRef& rTypeMat, const ScMatrixRef& rStatMat )
+void ScETSForecastCalculation::GetStatisticValue( const ScMatrixRef& rTypeMat, const ScMatrixRef& rStatMat )
 {
-    if ( !initCalc() )
-        return false;
+    initCalc();
 
     SCSIZE nC, nR;
     rTypeMat->GetDimensions( nC, nR );
@@ -963,13 +951,11 @@ bool ScETSForecastCalculation::GetStatisticValue( const ScMatrixRef& rTypeMat, c
             }
         }
     }
-    return true;
 }
 
-bool ScETSForecastCalculation::GetSamplesInPeriod( double& rVal )
+void ScETSForecastCalculation::GetSamplesInPeriod( double& rVal )
 {
     rVal = mnSmplInPrd;
-    return true;
 }
 
 double ScETSForecastCalculation::RandDev()
@@ -979,10 +965,9 @@ double ScETSForecastCalculation::RandDev()
              ::comphelper::rng::uniform_real_distribution( 0.5, 1.0 ) ) );
 }
 
-bool ScETSForecastCalculation::GetETSPredictionIntervals( const ScMatrixRef& rTMat, const ScMatrixRef& rPIMat, double fPILevel )
+void ScETSForecastCalculation::GetETSPredictionIntervals( const ScMatrixRef& rTMat, const ScMatrixRef& rPIMat, double fPILevel )
 {
-    if ( !initCalc() )
-        return false;
+    initCalc();
 
     SCSIZE nC, nR;
     rTMat->GetDimensions( nC, nR );
@@ -1001,9 +986,15 @@ bool ScETSForecastCalculation::GetETSPredictionIntervals( const ScMatrixRef& rTM
         fMaxTarget = convertXtoMonths( fMaxTarget ) - maRange[ mnCount - 1 ].X;
     else
         fMaxTarget -= maRange[ mnCount - 1 ].X;
-    SCSIZE nSize = ( fMaxTarget / mfStepSize );
+    SCSIZE nSize = fMaxTarget / mfStepSize;
     if ( fmod( fMaxTarget, mfStepSize ) != 0.0 )
         nSize++;
+
+    if (nSize == 0)
+    {
+        mnErrorValue = FormulaError::IllegalArgument;
+        return;
+    }
 
     std::unique_ptr< double[] > xScenRange( new double[nSize]);
     std::unique_ptr< double[] > xScenBase( new double[nSize]);
@@ -1017,17 +1008,18 @@ bool ScETSForecastCalculation::GetETSPredictionIntervals( const ScMatrixRef& rTM
         // fill array with forecasts, with RandDev() added to xScenRange
         if ( bAdditive )
         {
+            double nPIdx = !bEDS ? mpPerIdx[mnCount - mnSmplInPrd] : 0.0;
             // calculation based on additive model
             xScenRange[ 0 ] = mpBase[ mnCount - 1 ] + mpTrend[ mnCount - 1 ] +
-                              mpPerIdx[ mnCount - mnSmplInPrd ] +
+                              nPIdx +
                               RandDev();
             aPredictions[ 0 ][ k ] = xScenRange[ 0 ];
-            xScenBase[ 0 ] = mfAlpha * ( xScenRange[ 0 ] - mpPerIdx[ mnCount - mnSmplInPrd ] ) +
+            xScenBase[ 0 ] = mfAlpha * ( xScenRange[ 0 ] - nPIdx ) +
                              ( 1 - mfAlpha ) * ( mpBase[ mnCount - 1 ] + mpTrend[ mnCount - 1 ] );
             xScenTrend[ 0 ] = mfGamma * ( xScenBase[ 0 ] - mpBase[ mnCount - 1 ] ) +
                               ( 1 - mfGamma ) * mpTrend[ mnCount - 1 ];
             xScenPerIdx[ 0 ] = mfBeta * ( xScenRange[ 0 ] - xScenBase[ 0 ] ) +
-                               ( 1 - mfBeta ) * mpPerIdx[ mnCount - mnSmplInPrd ];
+                               ( 1 - mfBeta ) * nPIdx;
             for ( SCSIZE i = 1; i < nSize; i++ )
             {
                 double fPerIdx;
@@ -1106,14 +1098,12 @@ bool ScETSForecastCalculation::GetETSPredictionIntervals( const ScMatrixRef& rTM
             rPIMat->PutDouble( fPI, j, i );
         }
     }
-    return true;
 }
 
 
-bool ScETSForecastCalculation::GetEDSPredictionIntervals( const ScMatrixRef& rTMat, const ScMatrixRef& rPIMat, double fPILevel )
+void ScETSForecastCalculation::GetEDSPredictionIntervals( const ScMatrixRef& rTMat, const ScMatrixRef& rPIMat, double fPILevel )
 {
-    if ( !initCalc() )
-        return false;
+    initCalc();
 
     SCSIZE nC, nR;
     rTMat->GetDimensions( nC, nR );
@@ -1132,9 +1122,15 @@ bool ScETSForecastCalculation::GetEDSPredictionIntervals( const ScMatrixRef& rTM
         fMaxTarget = convertXtoMonths( fMaxTarget ) - maRange[ mnCount - 1 ].X;
     else
         fMaxTarget -= maRange[ mnCount - 1 ].X;
-    SCSIZE nSize = ( fMaxTarget / mfStepSize );
+    SCSIZE nSize = fMaxTarget / mfStepSize;
     if ( fmod( fMaxTarget, mfStepSize ) != 0.0 )
         nSize++;
+
+    if (nSize == 0)
+    {
+        mnErrorValue = FormulaError::IllegalArgument;
+        return;
+    }
 
     double z = ScInterpreter::gaussinv( ( 1.0 + fPILevel ) / 2.0 );
     double o = 1 - fPILevel;
@@ -1169,7 +1165,6 @@ bool ScETSForecastCalculation::GetEDSPredictionIntervals( const ScMatrixRef& rTM
             rPIMat->PutDouble( fPI, j, i );
         }
     }
-    return true;
 }
 
 
@@ -1207,7 +1202,7 @@ void ScInterpreter::ScForecast_Ets( ScETSType eETSType )
         nAggregation = 1;
     if ( nAggregation < 1 || nAggregation > 7 )
     {
-        PushIllegalParameter();
+        PushIllegalArgument();
         return;
     }
 
@@ -1221,7 +1216,7 @@ void ScInterpreter::ScForecast_Ets( ScETSType eETSType )
             bDataCompletion = nTemp;
         else
         {
-            PushIllegalParameter();
+            PushIllegalArgument();
             return;
         }
     }
@@ -1246,18 +1241,18 @@ void ScInterpreter::ScForecast_Ets( ScETSType eETSType )
 
     // required arguments
     double fPILevel = 0.0;
-    if ( nParamCount < 3 && !( nParamCount == 2 && eETSType == etsSeason ) )
+    if ( nParamCount < 3 && ( nParamCount != 2 || eETSType != etsSeason ) )
     {
-        PushIllegalArgument();
+        PushParameterExpected();
         return;
     }
 
     if ( eETSType == etsPIAdd || eETSType == etsPIMult )
     {
-        fPILevel = GetDoubleWithDefault( 0.95 );
+        fPILevel = (nParamCount < 4 ? 0.95 : GetDoubleWithDefault( 0.95 ));
         if ( fPILevel < 0 || fPILevel > 1 )
         {
-            PushIllegalParameter();
+            PushIllegalArgument();
             return;
         }
     }
@@ -1275,7 +1270,7 @@ void ScInterpreter::ScForecast_Ets( ScETSType eETSType )
                 if ( static_cast< int >( pTypeMat->GetDouble( j, i ) ) < 1 ||
                      static_cast< int >( pTypeMat->GetDouble( j, i ) ) > 9 )
                 {
-                    PushIllegalParameter();
+                    PushIllegalArgument();
                     return;
                 }
             }
@@ -1329,10 +1324,11 @@ void ScInterpreter::ScForecast_Ets( ScETSType eETSType )
                 SCSIZE nC, nR;
                 pTMat->GetDimensions( nC, nR );
                 ScMatrixRef pFcMat = GetNewMat( nC, nR );
-                if ( aETSCalc.GetForecastRange( pTMat, pFcMat ) )
-                    PushMatrix( pFcMat );
+                aETSCalc.GetForecastRange( pTMat, pFcMat );
+                if (aETSCalc.GetError() != FormulaError::NONE)
+                    PushError( aETSCalc.GetError());    // explicitly push error, PushMatrix() does not
                 else
-                    PushError( aETSCalc.GetError() );
+                    PushMatrix( pFcMat );
             }
             break;
         case etsPIAdd :
@@ -1343,18 +1339,16 @@ void ScInterpreter::ScForecast_Ets( ScETSType eETSType )
                 ScMatrixRef pPIMat = GetNewMat( nC, nR );
                 if ( nSmplInPrd == 0 )
                 {
-                    if ( aETSCalc.GetEDSPredictionIntervals( pTMat, pPIMat, fPILevel ) )
-                        PushMatrix( pPIMat );
-                    else
-                        PushError( aETSCalc.GetError() );
+                    aETSCalc.GetEDSPredictionIntervals( pTMat, pPIMat, fPILevel );
                 }
                 else
                 {
-                    if ( aETSCalc.GetETSPredictionIntervals( pTMat, pPIMat, fPILevel ) )
-                        PushMatrix( pPIMat );
-                    else
-                        PushError( aETSCalc.GetError() );
+                    aETSCalc.GetETSPredictionIntervals( pTMat, pPIMat, fPILevel );
                 }
+                if (aETSCalc.GetError() != FormulaError::NONE)
+                    PushError( aETSCalc.GetError());    // explicitly push error, PushMatrix() does not
+                else
+                    PushMatrix( pPIMat );
             }
             break;
         case etsStatAdd  :
@@ -1363,19 +1357,19 @@ void ScInterpreter::ScForecast_Ets( ScETSType eETSType )
                 SCSIZE nC, nR;
                 pTypeMat->GetDimensions( nC, nR );
                 ScMatrixRef pStatMat = GetNewMat( nC, nR );
-                if ( aETSCalc.GetStatisticValue( pTypeMat, pStatMat ) )
-                    PushMatrix( pStatMat );
+                aETSCalc.GetStatisticValue( pTypeMat, pStatMat );
+                if (aETSCalc.GetError() != FormulaError::NONE)
+                    PushError( aETSCalc.GetError());    // explicitly push error, PushMatrix() does not
                 else
-                    PushError( aETSCalc.GetError() );
+                    PushMatrix( pStatMat );
             }
             break;
         case etsSeason :
             {
                 double rVal;
-                if ( aETSCalc.GetSamplesInPeriod( rVal ) )
-                    PushDouble( rVal );
-                else
-                    PushError( aETSCalc.GetError() );
+                aETSCalc.GetSamplesInPeriod( rVal );
+                SetError( aETSCalc.GetError() );
+                PushDouble( rVal );
             }
             break;
     }
@@ -1396,7 +1390,11 @@ void ScInterpreter::ScConcat_MS()
         {
             case svString:
             case svDouble:
-                aResBuf.append( GetString().getString() );
+                {
+                    const OUString& rStr = GetString().getString();
+                    if (CheckStringResultLen( aResBuf, rStr))
+                        aResBuf.append( rStr);
+                }
                 break;
             case svSingleRef :
             {
@@ -1411,7 +1409,9 @@ void ScInterpreter::ScConcat_MS()
                     {
                         svl::SharedString aSS;
                         GetCellString( aSS, aCell);
-                        aResBuf.append( aSS.getString());
+                        const OUString& rStr = aSS.getString();
+                        if (CheckStringResultLen( aResBuf, rStr))
+                            aResBuf.append( rStr);
                     }
                 }
             }
@@ -1452,7 +1452,9 @@ void ScInterpreter::ScConcat_MS()
                             {
                                 svl::SharedString aSS;
                                 GetCellString( aSS, aCell);
-                                aResBuf.append( aSS.getString());
+                                const OUString& rStr = aSS.getString();
+                                if (CheckStringResultLen( aResBuf, rStr))
+                                    aResBuf.append( rStr);
                             }
                         }
                     }
@@ -1476,12 +1478,20 @@ void ScInterpreter::ScConcat_MS()
                         {
                             for (SCSIZE k = 0; k < nR; k++ )
                             {
-                                if ( pMat->IsString( j, k ) )
-                                    aResBuf.append(  pMat->GetString( j, k ).getString() );
+                                if ( pMat->IsStringOrEmpty( j, k ) )
+                                {
+                                    const OUString& rStr = pMat->GetString( j, k ).getString();
+                                    if (CheckStringResultLen( aResBuf, rStr))
+                                        aResBuf.append( rStr);
+                                }
                                 else
                                 {
                                     if ( pMat->IsValue( j, k ) )
-                                        aResBuf.append( pMat->GetString( *pFormatter, j, k ).getString() );
+                                    {
+                                        const OUString& rStr = pMat->GetString( *pFormatter, j, k ).getString();
+                                        if (CheckStringResultLen( aResBuf, rStr))
+                                            aResBuf.append( rStr);
+                                    }
                                 }
                             }
                         }
@@ -1502,20 +1512,164 @@ void ScInterpreter::ScTextJoin_MS()
 {
     short nParamCount = GetByte();
 
-    if ( MustHaveParamCountMin( nParamCount, 3 ) )
-    {
-        //reverse order of parameter stack to simplify processing
-        ReverseStack( nParamCount );
+    if ( !MustHaveParamCountMin( nParamCount, 3 ) )
+        return;
 
-        // get aDelimiters and bSkipEmpty
-        std::vector< OUString > aDelimiters;
-        size_t nRefInList = 0;
+    //reverse order of parameter stack to simplify processing
+    ReverseStack( nParamCount );
+
+    // get aDelimiters and bSkipEmpty
+    std::vector< OUString > aDelimiters;
+    size_t nRefInList = 0;
+    switch ( GetStackType() )
+    {
+        case svString:
+        case svDouble:
+            aDelimiters.push_back( GetString().getString() );
+            break;
+        case svSingleRef :
+        {
+            ScAddress aAdr;
+            PopSingleRef( aAdr );
+            if ( nGlobalError != FormulaError::NONE )
+                break;
+            ScRefCellValue aCell( *pDok, aAdr );
+            if ( !aCell.isEmpty() )
+            {
+                if ( !aCell.hasEmptyValue() )
+                {
+                    svl::SharedString aSS;
+                    GetCellString( aSS, aCell);
+                    aDelimiters.push_back( aSS.getString());
+                }
+            }
+        }
+        break;
+        case svDoubleRef :
+        case svRefList :
+        {
+            ScRange aRange;
+            PopDoubleRef( aRange, nParamCount, nRefInList);
+            if ( nGlobalError != FormulaError::NONE )
+                break;
+            // we need to read row for row, so we can't use ScCellIterator
+            SCCOL nCol1, nCol2;
+            SCROW nRow1, nRow2;
+            SCTAB nTab1, nTab2;
+            aRange.GetVars( nCol1, nRow1, nTab1, nCol2, nRow2, nTab2 );
+            if ( nTab1 != nTab2 )
+            {
+                SetError( FormulaError::IllegalParameter);
+                break;
+            }
+            if ( nRow1 > nRow2 )
+                std::swap( nRow1, nRow2 );
+            if ( nCol1 > nCol2 )
+                std::swap( nCol1, nCol2 );
+            ScAddress aAdr;
+            aAdr.SetTab( nTab1 );
+            for ( SCROW nRow = nRow1; nRow <= nRow2; nRow++ )
+            {
+                for ( SCCOL nCol = nCol1; nCol <= nCol2; nCol++ )
+                {
+                    aAdr.SetRow( nRow );
+                    aAdr.SetCol( nCol );
+                    ScRefCellValue aCell( *pDok, aAdr );
+                    if ( !aCell.isEmpty() )
+                    {
+                        if ( !aCell.hasEmptyValue() )
+                        {
+                            svl::SharedString aSS;
+                            GetCellString( aSS, aCell);
+                            aDelimiters.push_back( aSS.getString());
+                        }
+                    }
+                    else
+                        aDelimiters.emplace_back("" );
+                }
+            }
+        }
+        break;
+        case svMatrix :
+        case svExternalSingleRef:
+        case svExternalDoubleRef:
+        {
+            ScMatrixRef pMat = GetMatrix();
+            if (pMat)
+            {
+                SCSIZE nC, nR;
+                pMat->GetDimensions(nC, nR);
+                if (nC == 0 || nR == 0)
+                    SetError(FormulaError::IllegalArgument);
+                else
+                {
+                    for ( SCSIZE j = 0; j < nC; j++ )
+                    {
+                        for (SCSIZE k = 0; k < nR; k++ )
+                        {
+                            if ( !pMat->IsEmpty( j, k ) )
+                            {
+                                if ( pMat->IsStringOrEmpty( j, k ) )
+                                    aDelimiters.push_back( pMat->GetString( j, k ).getString() );
+                                else
+                                {
+                                    if ( pMat->IsValue( j, k ) )
+                                        aDelimiters.push_back( pMat->GetString( *pFormatter, j, k ).getString() );
+                                }
+                            }
+                            else
+                                aDelimiters.emplace_back("" );
+                        }
+                    }
+                }
+            }
+        }
+        break;
+        default:
+            PopError();
+            SetError( FormulaError::IllegalArgument);
+            break;
+    }
+    if ( aDelimiters.empty() )
+    {
+        PushIllegalArgument();
+        return;
+    }
+    SCSIZE nSize = aDelimiters.size();
+    bool bSkipEmpty = static_cast< bool >( GetDouble() );
+    nParamCount -= 2;
+
+    OUStringBuffer aResBuf;
+    bool bFirst = true;
+    SCSIZE nIdx = 0;
+    nRefInList = 0;
+    // get the strings to be joined
+    while ( nParamCount-- > 0 && nGlobalError == FormulaError::NONE )
+    {
         switch ( GetStackType() )
         {
             case svString:
             case svDouble:
-                aDelimiters.push_back( GetString().getString() );
-                break;
+            {
+                OUString aStr = GetString().getString();
+                if ( !aStr.isEmpty() || !bSkipEmpty )
+                {
+                    if ( !bFirst )
+                    {
+                        aResBuf.append( aDelimiters[ nIdx ] );
+                        if ( nSize > 1 )
+                        {
+                            if ( ++nIdx >= nSize )
+                                nIdx = 0;
+                        }
+                    }
+                    else
+                        bFirst = false;
+                    if (CheckStringResultLen( aResBuf, aStr))
+                        aResBuf.append( aStr );
+                }
+            }
+            break;
             case svSingleRef :
             {
                 ScAddress aAdr;
@@ -1523,14 +1677,33 @@ void ScInterpreter::ScTextJoin_MS()
                 if ( nGlobalError != FormulaError::NONE )
                     break;
                 ScRefCellValue aCell( *pDok, aAdr );
+                OUString aStr;
                 if ( !aCell.isEmpty() )
                 {
                     if ( !aCell.hasEmptyValue() )
                     {
                         svl::SharedString aSS;
                         GetCellString( aSS, aCell);
-                        aDelimiters.push_back( aSS.getString());
+                        aStr = aSS.getString();
                     }
+                }
+                else
+                    aStr.clear();
+                if ( !aStr.isEmpty() || !bSkipEmpty )
+                {
+                    if ( !bFirst )
+                    {
+                        aResBuf.append( aDelimiters[ nIdx ] );
+                        if ( nSize > 1 )
+                        {
+                            if ( ++nIdx >= nSize )
+                                nIdx = 0;
+                        }
+                    }
+                    else
+                        bFirst = false;
+                    if (CheckStringResultLen( aResBuf, aStr))
+                        aResBuf.append( aStr );
                 }
             }
             break;
@@ -1557,6 +1730,7 @@ void ScInterpreter::ScTextJoin_MS()
                     std::swap( nCol1, nCol2 );
                 ScAddress aAdr;
                 aAdr.SetTab( nTab1 );
+                OUString aStr;
                 for ( SCROW nRow = nRow1; nRow <= nRow2; nRow++ )
                 {
                     for ( SCCOL nCol = nCol1; nCol <= nCol2; nCol++ )
@@ -1570,11 +1744,27 @@ void ScInterpreter::ScTextJoin_MS()
                             {
                                 svl::SharedString aSS;
                                 GetCellString( aSS, aCell);
-                                aDelimiters.push_back( aSS.getString());
+                                aStr = aSS.getString();
                             }
                         }
                         else
-                            aDelimiters.push_back( "" );
+                            aStr.clear();
+                        if ( !aStr.isEmpty() || !bSkipEmpty )
+                        {
+                            if ( !bFirst )
+                            {
+                                aResBuf.append( aDelimiters[ nIdx ] );
+                                if ( nSize > 1 )
+                                {
+                                    if ( ++nIdx >= nSize )
+                                        nIdx = 0;
+                                }
+                            }
+                            else
+                                bFirst = false;
+                            if (CheckStringResultLen( aResBuf, aStr))
+                                aResBuf.append( aStr );
+                        }
                     }
                 }
             }
@@ -1592,25 +1782,60 @@ void ScInterpreter::ScTextJoin_MS()
                         SetError(FormulaError::IllegalArgument);
                     else
                     {
+                        OUString aStr;
                         for ( SCSIZE j = 0; j < nC; j++ )
                         {
                             for (SCSIZE k = 0; k < nR; k++ )
                             {
                                 if ( !pMat->IsEmpty( j, k ) )
                                 {
-                                    if ( pMat->IsString( j, k ) )
-                                        aDelimiters.push_back( pMat->GetString( j, k ).getString() );
+                                    if ( pMat->IsStringOrEmpty( j, k ) )
+                                        aStr = pMat->GetString( j, k ).getString();
                                     else
                                     {
                                         if ( pMat->IsValue( j, k ) )
-                                            aDelimiters.push_back( pMat->GetString( *pFormatter, j, k ).getString() );
+                                            aStr = pMat->GetString( *pFormatter, j, k ).getString();
                                     }
                                 }
                                 else
-                                    aDelimiters.push_back( "" );
+                                    aStr.clear();
+                                if ( !aStr.isEmpty() || !bSkipEmpty )
+                                {
+                                    if ( !bFirst )
+                                    {
+                                        aResBuf.append( aDelimiters[ nIdx ] );
+                                        if ( nSize > 1 )
+                                        {
+                                            if ( ++nIdx >= nSize )
+                                                nIdx = 0;
+                                        }
+                                    }
+                                    else
+                                        bFirst = false;
+                                    if (CheckStringResultLen( aResBuf, aStr))
+                                        aResBuf.append( aStr );
+                                }
                             }
                         }
                     }
+                }
+            }
+            break;
+            case svMissing :
+            {
+                if ( !bSkipEmpty )
+                {
+                    if ( !bFirst )
+                    {
+                        aResBuf.append( aDelimiters[ nIdx ] );
+                        if ( nSize > 1 )
+                        {
+                            if ( ++nIdx >= nSize )
+                                nIdx = 0;
+                        }
+                    }
+                    else
+                        bFirst = false;
                 }
             }
             break;
@@ -1619,219 +1844,8 @@ void ScInterpreter::ScTextJoin_MS()
                 SetError( FormulaError::IllegalArgument);
                 break;
         }
-        if ( aDelimiters.empty() )
-        {
-            PushIllegalArgument();
-            return;
-        }
-        SCSIZE nSize = aDelimiters.size();
-        bool bSkipEmpty = static_cast< bool >( GetDouble() );
-        nParamCount -= 2;
-
-        OUStringBuffer aResBuf;
-        bool bFirst = true;
-        SCSIZE nIdx = 0;
-        nRefInList = 0;
-        // get the strings to be joined
-        while ( nParamCount-- > 0 && nGlobalError == FormulaError::NONE )
-        {
-            switch ( GetStackType() )
-            {
-                case svString:
-                case svDouble:
-                {
-                    OUString aStr = GetString().getString();
-                    if ( !aStr.isEmpty() || !bSkipEmpty )
-                    {
-                        if ( !bFirst )
-                        {
-                            aResBuf.append( aDelimiters[ nIdx ] );
-                            if ( nSize > 1 )
-                            {
-                                if ( ++nIdx >= nSize )
-                                    nIdx = 0;
-                            }
-                        }
-                        else
-                            bFirst = false;
-                        aResBuf.append( aStr );
-                    }
-                }
-                break;
-                case svSingleRef :
-                {
-                    ScAddress aAdr;
-                    PopSingleRef( aAdr );
-                    if ( nGlobalError != FormulaError::NONE )
-                        break;
-                    ScRefCellValue aCell( *pDok, aAdr );
-                    OUString aStr;
-                    if ( !aCell.isEmpty() )
-                    {
-                        if ( !aCell.hasEmptyValue() )
-                        {
-                            svl::SharedString aSS;
-                            GetCellString( aSS, aCell);
-                            aStr = aSS.getString();
-                        }
-                    }
-                    else
-                        aStr.clear();
-                    if ( !aStr.isEmpty() || !bSkipEmpty )
-                    {
-                        if ( !bFirst )
-                        {
-                            aResBuf.append( aDelimiters[ nIdx ] );
-                            if ( nSize > 1 )
-                            {
-                                if ( ++nIdx >= nSize )
-                                    nIdx = 0;
-                            }
-                        }
-                        else
-                            bFirst = false;
-                        aResBuf.append( aStr );
-                    }
-                }
-                break;
-                case svDoubleRef :
-                case svRefList :
-                {
-                    ScRange aRange;
-                    PopDoubleRef( aRange, nParamCount, nRefInList);
-                    if ( nGlobalError != FormulaError::NONE )
-                        break;
-                    // we need to read row for row, so we can't use ScCellIterator
-                    SCCOL nCol1, nCol2;
-                    SCROW nRow1, nRow2;
-                    SCTAB nTab1, nTab2;
-                    aRange.GetVars( nCol1, nRow1, nTab1, nCol2, nRow2, nTab2 );
-                    if ( nTab1 != nTab2 )
-                    {
-                        SetError( FormulaError::IllegalParameter);
-                        break;
-                    }
-                    if ( nRow1 > nRow2 )
-                        std::swap( nRow1, nRow2 );
-                    if ( nCol1 > nCol2 )
-                        std::swap( nCol1, nCol2 );
-                    ScAddress aAdr;
-                    aAdr.SetTab( nTab1 );
-                    OUString aStr;
-                    for ( SCROW nRow = nRow1; nRow <= nRow2; nRow++ )
-                    {
-                        for ( SCCOL nCol = nCol1; nCol <= nCol2; nCol++ )
-                        {
-                            aAdr.SetRow( nRow );
-                            aAdr.SetCol( nCol );
-                            ScRefCellValue aCell( *pDok, aAdr );
-                            if ( !aCell.isEmpty() )
-                            {
-                                if ( !aCell.hasEmptyValue() )
-                                {
-                                    svl::SharedString aSS;
-                                    GetCellString( aSS, aCell);
-                                    aStr = aSS.getString();
-                                }
-                            }
-                            else
-                                aStr.clear();
-                            if ( !aStr.isEmpty() || !bSkipEmpty )
-                            {
-                                if ( !bFirst )
-                                {
-                                    aResBuf.append( aDelimiters[ nIdx ] );
-                                    if ( nSize > 1 )
-                                    {
-                                        if ( ++nIdx >= nSize )
-                                            nIdx = 0;
-                                    }
-                                }
-                                else
-                                    bFirst = false;
-                                aResBuf.append( aStr );
-                            }
-                        }
-                    }
-                }
-                break;
-                case svMatrix :
-                case svExternalSingleRef:
-                case svExternalDoubleRef:
-                {
-                    ScMatrixRef pMat = GetMatrix();
-                    if (pMat)
-                    {
-                        SCSIZE nC, nR;
-                        pMat->GetDimensions(nC, nR);
-                        if (nC == 0 || nR == 0)
-                            SetError(FormulaError::IllegalArgument);
-                        else
-                        {
-                            OUString aStr;
-                            for ( SCSIZE j = 0; j < nC; j++ )
-                            {
-                                for (SCSIZE k = 0; k < nR; k++ )
-                                {
-                                    if ( !pMat->IsEmpty( j, k ) )
-                                    {
-                                        if ( pMat->IsString( j, k ) )
-                                            aStr = pMat->GetString( j, k ).getString();
-                                        else
-                                        {
-                                            if ( pMat->IsValue( j, k ) )
-                                                aStr = pMat->GetString( *pFormatter, j, k ).getString();
-                                        }
-                                    }
-                                    else
-                                        aStr.clear();
-                                    if ( !aStr.isEmpty() || !bSkipEmpty )
-                                    {
-                                        if ( !bFirst )
-                                        {
-                                            aResBuf.append( aDelimiters[ nIdx ] );
-                                            if ( nSize > 1 )
-                                            {
-                                                if ( ++nIdx >= nSize )
-                                                    nIdx = 0;
-                                            }
-                                        }
-                                        else
-                                            bFirst = false;
-                                        aResBuf.append( aStr );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                break;
-                case svMissing :
-                {
-                    if ( !bSkipEmpty )
-                    {
-                        if ( !bFirst )
-                        {
-                            aResBuf.append( aDelimiters[ nIdx ] );
-                            if ( nSize > 1 )
-                            {
-                                if ( ++nIdx >= nSize )
-                                    nIdx = 0;
-                            }
-                        }
-                        else
-                            bFirst = false;
-                    }
-                }
-                break;
-                default:
-                    PopError();
-                    SetError( FormulaError::IllegalArgument);
-                    break;
-            }
-        }
-        PushString( aResBuf.makeStringAndClear() );
     }
+    PushString( aResBuf.makeStringAndClear() );
 }
 
 
@@ -1960,8 +1974,9 @@ void ScInterpreter::ScSwitch_MS()
         else
             aStr = GetString();
         nParamCount--;
-        if ( nGlobalError != FormulaError::NONE || (( isValue && rtl::math::approxEqual( fRefVal, fVal ) ) ||
-             ( !isValue && aRefStr.getDataIgnoreCase() == aStr.getDataIgnoreCase() )) )
+        if ((nGlobalError != FormulaError::NONE && nParamCount < 2)
+                || (isValue && rtl::math::approxEqual( fRefVal, fVal))
+                || (!isValue && aRefStr.getDataIgnoreCase() == aStr.getDataIgnoreCase()))
         {
             // TRUE
             bFinished = true;

@@ -14,18 +14,19 @@
 
 #include <utility>
 
+#include <o3tl/cppunittraitshelper.hxx>
 #include <sal/types.h>
 #include <config_global.h>
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
-#include "rtl/string.h"
-#include "rtl/ustring.hxx"
-#include "rtl/ustrbuf.hxx"
+#include <rtl/string.h>
+#include <rtl/ustring.hxx>
+#include <rtl/ustrbuf.hxx>
 
 extern bool rtl_string_unittest_const_literal;
 bool rtl_string_unittest_invalid_conversion;
 
-namespace test { namespace oustring {
+namespace test::oustring {
 
 class StringLiterals: public CppUnit::TestFixture
 {
@@ -36,10 +37,13 @@ private:
     void checkNonconstChar();
     void checkBuffer();
     void checkOUStringLiteral();
-    void checkOUStringLiteral1();
+    void checkOUStringChar();
     void checkUtf16();
 
     void testcall( const char str[] );
+
+    // Check that OUStringLiteral ctor is actually constexpr:
+    static constexpr rtlunittest::OUStringLiteral dummy{"dummy"};
 
 CPPUNIT_TEST_SUITE(StringLiterals);
 CPPUNIT_TEST(checkCtors);
@@ -48,14 +52,14 @@ CPPUNIT_TEST(checkExtraIntArgument);
 CPPUNIT_TEST(checkNonconstChar);
 CPPUNIT_TEST(checkBuffer);
 CPPUNIT_TEST(checkOUStringLiteral);
-CPPUNIT_TEST(checkOUStringLiteral1);
+CPPUNIT_TEST(checkOUStringChar);
 CPPUNIT_TEST(checkUtf16);
 CPPUNIT_TEST_SUITE_END();
 };
 
 // reset the flag, evaluate the expression and return
 // whether the string literal ctor was used (i.e. whether the conversion was valid)
-template<typename T> bool VALID_CONVERSION( T && expression )
+template<typename T> static bool VALID_CONVERSION( T && expression )
 {
     rtl_string_unittest_invalid_conversion = false;
     // OK to std::forward expression twice; what is relevant in both ctor calls
@@ -65,7 +69,7 @@ template<typename T> bool VALID_CONVERSION( T && expression )
     ( void ) rtl::OUStringBuffer( std::forward<T>(expression) );
     return !rtl_string_unittest_invalid_conversion;
 }
-template<typename T> bool VALID_CONVERSION_CALL( T f )
+template<typename T> static bool VALID_CONVERSION_CALL( T f )
 {
     rtl_string_unittest_invalid_conversion = false;
     ( void ) rtl::OUString( f() );
@@ -314,39 +318,39 @@ void test::oustring::StringLiterals::checkOUStringLiteral()
         sal_Int32(5), b.lastIndexOf(rtlunittest::OUStringLiteral("ab")));
 }
 
-void test::oustring::StringLiterals::checkOUStringLiteral1()
+void test::oustring::StringLiterals::checkOUStringChar()
 {
-    auto l1 = rtlunittest::OUStringLiteral1('A');
+    auto l1 = rtlunittest::OUStringChar('A');
     CPPUNIT_ASSERT_EQUAL(u'A', l1.c);
 
     char const c2 = 'A';
-    auto l2 = rtlunittest::OUStringLiteral1(c2);
+    auto l2 = rtlunittest::OUStringChar(c2);
     CPPUNIT_ASSERT_EQUAL(u'A', l2.c);
 
-    char c3 = 'A'; auto l3 = rtlunittest::OUStringLiteral1(c3);
+    char c3 = 'A'; auto l3 = rtlunittest::OUStringChar(c3);
     CPPUNIT_ASSERT_EQUAL(u'A', l3.c);
 
-    auto l4 = rtlunittest::OUStringLiteral1(u'A');
+    auto l4 = rtlunittest::OUStringChar(u'A');
     CPPUNIT_ASSERT_EQUAL(u'A', l4.c);
 
     sal_Unicode const c5 = 0x100;
-    auto l5 = rtlunittest::OUStringLiteral1(c5);
+    auto l5 = rtlunittest::OUStringChar(c5);
     CPPUNIT_ASSERT_EQUAL(c5, l5.c);
 
-    rtl::OUString s1{rtlunittest::OUStringLiteral1('A')};
+    rtl::OUString s1{rtlunittest::OUStringChar('A')};
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1), s1.getLength());
     CPPUNIT_ASSERT_EQUAL(u'A', s1[0]);
 
     CPPUNIT_ASSERT_EQUAL(
-        true, rtl::OUString("A") == rtlunittest::OUStringLiteral1('A'));
+        true, rtl::OUString("A") == rtlunittest::OUStringChar('A'));
     CPPUNIT_ASSERT_EQUAL(
-        false, rtl::OUString("AB") == rtlunittest::OUStringLiteral1('A'));
+        false, rtl::OUString("AB") == rtlunittest::OUStringChar('A'));
     CPPUNIT_ASSERT_EQUAL(
-        false, rtl::OUString("A") != rtlunittest::OUStringLiteral1('A'));
+        false, rtl::OUString("A") != rtlunittest::OUStringChar('A'));
     CPPUNIT_ASSERT_EQUAL(
-        true, rtl::OUString("AB") != rtlunittest::OUStringLiteral1('A'));
+        true, rtl::OUString("AB") != rtlunittest::OUStringChar('A'));
 
-    rtl::OUString s2("A" + rtlunittest::OUStringLiteral1('b'));
+    rtl::OUString s2("A" + rtlunittest::OUStringChar('b'));
     CPPUNIT_ASSERT_EQUAL(sal_Int32(2), s2.getLength());
     CPPUNIT_ASSERT_EQUAL(u'A', s2[0]);
     CPPUNIT_ASSERT_EQUAL(u'b', s2[1]);
@@ -420,7 +424,7 @@ void test::oustring::StringLiterals::checkUtf16() {
     CPPUNIT_ASSERT_EQUAL(sal_Int32(5), b.lastIndexOf(u"ab"));
 }
 
-}} // namespace
+} // namespace
 
 CPPUNIT_TEST_SUITE_REGISTRATION(test::oustring::StringLiterals);
 

@@ -19,7 +19,6 @@
 
 
 #include "basecontainer.hxx"
-#include "constant.hxx"
 
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/document/FilterConfigRefresh.hpp>
@@ -31,8 +30,7 @@
 
 #define LOAD_IMPLICIT
 
-namespace filter{
-    namespace config{
+namespace filter::config{
 
 BaseContainer::BaseContainer()
     : BaseLock     (       )
@@ -55,7 +53,7 @@ void BaseContainer::init(const css::uno::Reference< css::uno::XComponentContext 
                                FilterCache::EItemType                                  eType              )
 {
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
     m_sImplementationName = sImplementationName;
     m_lServiceNames       = lServiceNames      ;
@@ -69,7 +67,7 @@ void BaseContainer::impl_loadOnDemand()
 {
 #ifdef LOAD_IMPLICIT
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
     // A generic container needs all items of a set of our cache!
     // Of course it can block for a while, till the cache is really filled.
@@ -104,7 +102,7 @@ void BaseContainer::impl_loadOnDemand()
 void BaseContainer::impl_initFlushMode()
 {
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
     if (!m_pFlushCache)
         m_pFlushCache = TheFilterCache::get().clone();
     if (!m_pFlushCache)
@@ -117,7 +115,7 @@ void BaseContainer::impl_initFlushMode()
 FilterCache* BaseContainer::impl_getWorkingCache() const
 {
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
     if (m_pFlushCache)
         return m_pFlushCache.get();
     else
@@ -164,7 +162,7 @@ void SAL_CALL BaseContainer::insertByName(const OUString& sItem ,
     impl_loadOnDemand();
 
     // SAFE -> ----------------------------------
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
     // create write copy of used cache on demand ...
     impl_initFlushMode();
@@ -173,8 +171,6 @@ void SAL_CALL BaseContainer::insertByName(const OUString& sItem ,
     if (pCache->hasItem(m_eType, sItem))
         throw css::container::ElementExistException(OUString(), static_cast< css::container::XNameContainer* >(this));
     pCache->setItem(m_eType, sItem, aItem);
-
-    aLock.clear();
     // <- SAFE ----------------------------------
 }
 
@@ -184,15 +180,13 @@ void SAL_CALL BaseContainer::removeByName(const OUString& sItem)
     impl_loadOnDemand();
 
     // SAFE -> ----------------------------------
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
     // create write copy of used cache on demand ...
     impl_initFlushMode();
 
     FilterCache* pCache = impl_getWorkingCache();
     pCache->removeItem(m_eType, sItem); // throw exceptions automatically
-
-    aLock.clear();
     // <- SAFE ----------------------------------
 }
 
@@ -218,7 +212,7 @@ void SAL_CALL BaseContainer::replaceByName(const OUString& sItem ,
     impl_loadOnDemand();
 
     // SAFE -> ----------------------------------
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
     // create write copy of used cache on demand ...
     impl_initFlushMode();
@@ -227,8 +221,6 @@ void SAL_CALL BaseContainer::replaceByName(const OUString& sItem ,
     if (!pCache->hasItem(m_eType, sItem))
         throw css::container::NoSuchElementException(OUString(), static_cast< css::container::XNameContainer* >(this));
     pCache->setItem(m_eType, sItem, aItem);
-
-    aLock.clear();
     // <- SAFE ----------------------------------
 }
 
@@ -244,7 +236,7 @@ css::uno::Any SAL_CALL BaseContainer::getByName(const OUString& sItem)
     impl_loadOnDemand();
 
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
     CacheItem aItem;
     try
@@ -277,12 +269,12 @@ css::uno::Sequence< OUString > SAL_CALL BaseContainer::getElementNames()
     impl_loadOnDemand();
 
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
     try
     {
         FilterCache* pCache = impl_getWorkingCache();
-        OUStringList lKeys  = pCache->getItemNames(m_eType);
+        std::vector<OUString> lKeys  = pCache->getItemNames(m_eType);
         lNames = comphelper::containerToSequence(lKeys);
     }
     catch(const css::uno::Exception&)
@@ -304,7 +296,7 @@ sal_Bool SAL_CALL BaseContainer::hasByName(const OUString& sItem)
     impl_loadOnDemand();
 
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
     try
     {
@@ -338,7 +330,7 @@ sal_Bool SAL_CALL BaseContainer::hasElements()
     impl_loadOnDemand();
 
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
     try
     {
@@ -368,12 +360,12 @@ css::uno::Reference< css::container::XEnumeration > SAL_CALL BaseContainer::crea
 
 css::uno::Reference< css::container::XEnumeration > SAL_CALL BaseContainer::createSubSetEnumerationByProperties(const css::uno::Sequence< css::beans::NamedValue >& lProperties)
 {
-    OUStringList                                        lKeys;
+    std::vector<OUString>                               lKeys;
 
     impl_loadOnDemand();
 
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
     try
     {
@@ -403,7 +395,7 @@ css::uno::Reference< css::container::XEnumeration > SAL_CALL BaseContainer::crea
     /* Note: It's not allowed to return NULL. Because an empty enumeration
              transport the same information but make no trouble outside.
              Further its easier to work directly with the return value
-             instaed of checking of NULL returns! */
+             instead of checking of NULL returns! */
 
     css::uno::Sequence< OUString > lSubSet = comphelper::containerToSequence(lKeys);
     ::comphelper::OEnumerationByName* pEnum = new ::comphelper::OEnumerationByName(this, lSubSet);
@@ -414,7 +406,7 @@ css::uno::Reference< css::container::XEnumeration > SAL_CALL BaseContainer::crea
 void SAL_CALL BaseContainer::flush()
 {
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::ClearableMutexGuard aLock(m_aLock);
 
     if (!m_pFlushCache)
         throw css::lang::WrappedTargetRuntimeException(
@@ -462,24 +454,24 @@ void SAL_CALL BaseContainer::flush()
     // if an outside object is called :-)
     css::lang::EventObject             aSource    (static_cast< css::util::XFlushable* >(this));
     ::cppu::OInterfaceContainerHelper* pContainer = m_lListener.getContainer(cppu::UnoType<css::util::XFlushListener>::get());
-    if (pContainer)
+    if (!pContainer)
+        return;
+
+    ::cppu::OInterfaceIteratorHelper pIterator(*pContainer);
+    while (pIterator.hasMoreElements())
     {
-        ::cppu::OInterfaceIteratorHelper pIterator(*pContainer);
-        while (pIterator.hasMoreElements())
+        try
         {
-            try
-            {
-                // ... this pointer can be interesting to find out, where will be called as listener
-                // Don't optimize it to a direct iterator cast :-)
-                css::util::XFlushListener* pListener = static_cast<css::util::XFlushListener*>(pIterator.next());
-                pListener->flushed(aSource);
-            }
-            catch(const css::uno::Exception&)
-            {
-                // ignore any "damaged" flush listener!
-                // May its remote reference is broken ...
-                pIterator.remove();
-            }
+            // ... this pointer can be interesting to find out, where will be called as listener
+            // Don't optimize it to a direct iterator cast :-)
+            css::util::XFlushListener* pListener = static_cast<css::util::XFlushListener*>(pIterator.next());
+            pListener->flushed(aSource);
+        }
+        catch(const css::uno::Exception&)
+        {
+            // ignore any "damaged" flush listener!
+            // May its remote reference is broken ...
+            pIterator.remove();
         }
     }
 }
@@ -500,7 +492,6 @@ void SAL_CALL BaseContainer::removeFlushListener(const css::uno::Reference< css:
     m_lListener.removeInterface(cppu::UnoType<css::util::XFlushListener>::get(), xListener);
 }
 
-    } // namespace config
-} // namespace filter
+} // namespace filter::config
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

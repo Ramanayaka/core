@@ -18,32 +18,22 @@
  */
 
 #include <string.h>
-#include <vcl/dialog.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/button.hxx>
-#include <vcl/msgbox.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
+#include <vcl/window.hxx>
 #include <osl/file.hxx>
-#include <tools/urlobj.hxx>
 
-#include "runtime.hxx"
+#include <runtime.hxx>
 
-#include <rtl/byteseq.hxx>
-#include <rtl/textenc.h>
 #include <rtl/strbuf.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/string.hxx>
 
-#include <com/sun/star/bridge/BridgeFactory.hpp>
-#include <com/sun/star/bridge/XBridge.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/ucb/SimpleFileAccess.hpp>
 #include <com/sun/star/ucb/UniversalContentBroker.hpp>
-#include <com/sun/star/ucb/XContentProvider.hpp>
-#include <com/sun/star/ucb/XContentProviderManager.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/io/XStream.hpp>
@@ -55,74 +45,52 @@ using namespace com::sun::star::ucb;
 using namespace com::sun::star::io;
 using namespace com::sun::star::bridge;
 
-#include "iosys.hxx"
-#include "sbintern.hxx"
+#include <iosys.hxx>
 
+namespace {
 
-class SbiInputDialog : public ModalDialog {
-    VclPtr<Edit> aInput;
-    VclPtr<OKButton> aOk;
-    VclPtr<CancelButton> aCancel;
-    OUString aText;
-    DECL_LINK( Ok, Button *, void );
-    DECL_LINK( Cancel, Button *, void );
+class SbiInputDialog : public weld::GenericDialogController
+{
+    std::unique_ptr<weld::Entry> m_xInput;
+    std::unique_ptr<weld::Button> m_xOk;
+    std::unique_ptr<weld::Button> m_xCancel;
+    std::unique_ptr<weld::Label> m_xPromptText;
+    OUString m_aText;
+    DECL_LINK(Ok, weld::Button&, void);
+    DECL_LINK(Cancel, weld::Button&, void);
 public:
-    SbiInputDialog( vcl::Window*, const OUString& );
-    virtual ~SbiInputDialog() override { disposeOnce(); }
-    virtual void dispose() override;
-    const OUString& GetInput() { return aText; }
+    SbiInputDialog(weld::Window*, const OUString&);
+    const OUString& GetInput() const { return m_aText; }
 };
 
-SbiInputDialog::SbiInputDialog( vcl::Window* pParent, const OUString& rPrompt )
-            :ModalDialog( pParent, WB_3DLOOK | WB_MOVEABLE | WB_CLOSEABLE ),
-             aInput( VclPtr<Edit>::Create(this, WB_3DLOOK | WB_LEFT | WB_BORDER) ),
-             aOk( VclPtr<OKButton>::Create(this) ), aCancel( VclPtr<CancelButton>::Create(this) )
-{
-    SetText( rPrompt );
-    aOk->SetClickHdl( LINK( this, SbiInputDialog, Ok ) );
-    aCancel->SetClickHdl( LINK( this, SbiInputDialog, Cancel ) );
-    SetMapMode( MapMode( MapUnit::MapAppFont ) );
-
-    Point aPt = LogicToPixel( Point( 50, 50 ) );
-    Size  aSz = LogicToPixel( Size( 145, 65 ) );
-    SetPosSizePixel( aPt, aSz );
-    aPt = LogicToPixel( Point( 10, 10 ) );
-    aSz = LogicToPixel( Size( 120, 12 ) );
-    aInput->SetPosSizePixel( aPt, aSz );
-    aPt = LogicToPixel( Point( 15, 30 ) );
-    aSz = LogicToPixel( Size( 45, 15) );
-    aOk->SetPosSizePixel( aPt, aSz );
-    aPt = LogicToPixel( Point( 80, 30 ) );
-    aSz = LogicToPixel( Size( 45, 15) );
-    aCancel->SetPosSizePixel( aPt, aSz );
-
-    aInput->Show();
-    aOk->Show();
-    aCancel->Show();
 }
 
-void SbiInputDialog::dispose()
+SbiInputDialog::SbiInputDialog(weld::Window* pParent, const OUString& rPrompt)
+    : GenericDialogController(pParent, "svt/ui/inputbox.ui", "InputBox")
+    , m_xInput(m_xBuilder->weld_entry("entry"))
+    , m_xOk(m_xBuilder->weld_button("ok"))
+    , m_xCancel(m_xBuilder->weld_button("cancel"))
+    , m_xPromptText(m_xBuilder->weld_label("prompt"))
 {
-    aInput.disposeAndClear();
-    aOk.disposeAndClear();
-    aCancel.disposeAndClear();
-    ModalDialog::dispose();
+    m_xDialog->set_title(rPrompt);
+    m_xPromptText->set_label(rPrompt);
+    m_xOk->connect_clicked( LINK( this, SbiInputDialog, Ok ) );
+    m_xCancel->connect_clicked( LINK( this, SbiInputDialog, Cancel ) );
 }
 
-IMPL_LINK_NOARG( SbiInputDialog, Ok, Button *, void )
+IMPL_LINK_NOARG( SbiInputDialog, Ok, weld::Button&, void )
 {
-    aText = aInput->GetText();
-    EndDialog( 1 );
+    m_aText = m_xInput->get_text();
+    m_xDialog->response(RET_OK);
 }
 
-IMPL_LINK_NOARG( SbiInputDialog, Cancel, Button *, void )
+IMPL_LINK_NOARG( SbiInputDialog, Cancel, weld::Button&, void )
 {
-    EndDialog();
+    m_xDialog->response(RET_CANCEL);
 }
 
 SbiStream::SbiStream()
-    : pStrm(nullptr)
-    , nExpandOnWriteTo(0)
+    : nExpandOnWriteTo(0)
     , nLine(0)
     , nLen(0)
     , nMode(SbiStreamFlags::NONE)
@@ -138,26 +106,26 @@ SbiStream::~SbiStream()
 
 void SbiStream::MapError()
 {
-    if( pStrm )
-    {
-        ErrCode nEC = pStrm->GetError();
-        if (nEC == ERRCODE_NONE)
-            nError = ERRCODE_NONE;
-        else if (nEC == SVSTREAM_FILE_NOT_FOUND)
-            nError = ERRCODE_BASIC_FILE_NOT_FOUND;
-        else if (nEC ==SVSTREAM_PATH_NOT_FOUND)
-            nError = ERRCODE_BASIC_PATH_NOT_FOUND;
-        else if (nEC ==SVSTREAM_TOO_MANY_OPEN_FILES)
-            nError = ERRCODE_BASIC_TOO_MANY_FILES;
-        else if (nEC ==SVSTREAM_ACCESS_DENIED)
-            nError = ERRCODE_BASIC_ACCESS_DENIED;
-        else if (nEC ==SVSTREAM_INVALID_PARAMETER)
-            nError = ERRCODE_BASIC_BAD_ARGUMENT;
-        else if (nEC ==SVSTREAM_OUTOFMEMORY)
-            nError = ERRCODE_BASIC_NO_MEMORY;
-        else
-            nError = ERRCODE_BASIC_IO_ERROR;
-    }
+    if( !pStrm )
+        return;
+
+    ErrCode nEC = pStrm->GetError();
+    if (nEC == ERRCODE_NONE)
+        nError = ERRCODE_NONE;
+    else if (nEC == SVSTREAM_FILE_NOT_FOUND)
+        nError = ERRCODE_BASIC_FILE_NOT_FOUND;
+    else if (nEC ==SVSTREAM_PATH_NOT_FOUND)
+        nError = ERRCODE_BASIC_PATH_NOT_FOUND;
+    else if (nEC ==SVSTREAM_TOO_MANY_OPEN_FILES)
+        nError = ERRCODE_BASIC_TOO_MANY_FILES;
+    else if (nEC ==SVSTREAM_ACCESS_DENIED)
+        nError = ERRCODE_BASIC_ACCESS_DENIED;
+    else if (nEC ==SVSTREAM_INVALID_PARAMETER)
+        nError = ERRCODE_BASIC_BAD_ARGUMENT;
+    else if (nEC ==SVSTREAM_OUTOFMEMORY)
+        nError = ERRCODE_BASIC_NO_MEMORY;
+    else
+        nError = ERRCODE_BASIC_IO_ERROR;
 }
 
 // Returns sal_True if UNO is available, otherwise the old file
@@ -191,6 +159,7 @@ bool hasUno()
     return bRetVal;
 }
 
+namespace {
 
 class OslStream : public SvStream
 {
@@ -205,6 +174,8 @@ public:
     virtual void        FlushData() override;
     virtual void        SetSize( sal_uInt64 nSize) override;
 };
+
+}
 
 OslStream::OslStream( const OUString& rName, StreamMode nStrmMode )
     : maFile( rName )
@@ -272,7 +243,8 @@ sal_uInt64 OslStream::SeekPos( sal_uInt64 nPos )
     }
     OSL_VERIFY(rc == ::osl::FileBase::E_None);
     sal_uInt64 nRealPos(0);
-    maFile.getPos( nRealPos );
+    rc = maFile.getPos( nRealPos );
+    OSL_VERIFY(rc == ::osl::FileBase::E_None);
     return nRealPos;
 }
 
@@ -285,6 +257,7 @@ void OslStream::SetSize( sal_uInt64 nSize )
     maFile.setSize( nSize );
 }
 
+namespace {
 
 class UCBStream : public SvStream
 {
@@ -292,8 +265,8 @@ class UCBStream : public SvStream
     Reference< XStream >        xS;
     Reference< XSeekable >      xSeek;
 public:
-    explicit UCBStream( Reference< XInputStream > & xIS );
-    explicit UCBStream( Reference< XStream > & xS );
+    explicit UCBStream( Reference< XInputStream > const & xIS );
+    explicit UCBStream( Reference< XStream > const & xS );
                        virtual ~UCBStream() override;
     virtual std::size_t GetData( void* pData, std::size_t nSize ) override;
     virtual std::size_t PutData( const void* pData, std::size_t nSize ) override;
@@ -302,13 +275,15 @@ public:
     virtual void        SetSize( sal_uInt64 nSize ) override;
 };
 
-UCBStream::UCBStream( Reference< XInputStream > & rStm )
+}
+
+UCBStream::UCBStream( Reference< XInputStream > const & rStm )
     : xIS( rStm )
     , xSeek( rStm, UNO_QUERY )
 {
 }
 
-UCBStream::UCBStream( Reference< XStream > & rStm )
+UCBStream::UCBStream( Reference< XStream > const & rStm )
     : xS( rStm )
     , xSeek( rStm, UNO_QUERY )
 {
@@ -445,7 +420,7 @@ void    UCBStream::SetSize( sal_uInt64 )
 }
 
 
-ErrCode SbiStream::Open
+ErrCode const & SbiStream::Open
 ( const OString& rName, StreamMode nStrmMode, SbiStreamFlags nFlags, short nL )
 {
     nMode   = nFlags;
@@ -511,7 +486,7 @@ ErrCode SbiStream::Open
     return nError;
 }
 
-ErrCode SbiStream::Close()
+ErrCode const & SbiStream::Close()
 {
     if( pStrm )
     {
@@ -546,20 +521,20 @@ ErrCode SbiStream::Read(OString& rBuf, sal_uInt16 n, bool bForceReadingPerByte)
         rBuf = aBuffer.makeStringAndClear();
     }
     MapError();
-    if( !nError && pStrm->IsEof() )
+    if( !nError && pStrm->eof() )
     {
         nError = ERRCODE_BASIC_READ_PAST_EOF;
     }
     return nError;
 }
 
-ErrCode SbiStream::Read( char& ch )
+ErrCode const & SbiStream::Read( char& ch )
 {
     nExpandOnWriteTo = 0;
     if (aLine.isEmpty())
     {
         Read( aLine );
-        aLine = aLine + OString('\n');
+        aLine += OString('\n');
     }
     ch = aLine[0];
     aLine = aLine.copy(1);
@@ -568,23 +543,23 @@ ErrCode SbiStream::Read( char& ch )
 
 void SbiStream::ExpandFile()
 {
-    if ( nExpandOnWriteTo )
+    if ( !nExpandOnWriteTo )
+        return;
+
+    sal_uInt64 nCur = pStrm->Seek(STREAM_SEEK_TO_END);
+    if( nCur < nExpandOnWriteTo )
     {
-        sal_uInt64 nCur = pStrm->Seek(STREAM_SEEK_TO_END);
-        if( nCur < nExpandOnWriteTo )
+        sal_uInt64 nDiff = nExpandOnWriteTo - nCur;
+        while( nDiff-- )
         {
-            sal_uInt64 nDiff = nExpandOnWriteTo - nCur;
-            while( nDiff-- )
-            {
-                pStrm->WriteChar( 0 );
-            }
+            pStrm->WriteChar( 0 );
         }
-        else
-        {
-            pStrm->Seek( nExpandOnWriteTo );
-        }
-        nExpandOnWriteTo = 0;
     }
+    else
+    {
+        pStrm->Seek( nExpandOnWriteTo );
+    }
+    nExpandOnWriteTo = 0;
 }
 
 namespace
@@ -606,7 +581,7 @@ ErrCode SbiStream::Write( const OString& rBuf )
     }
     if( IsText() )
     {
-        aLine = aLine + rBuf;
+        aLine += rBuf;
         // Get it out, if the end is an LF, but strip CRLF before,
         // because the SvStream adds a CRLF!
         sal_Int32 nLineLen = aLine.getLength();
@@ -644,7 +619,7 @@ SbiIoSystem::SbiIoSystem()
     nError = ERRCODE_NONE;
 }
 
-SbiIoSystem::~SbiIoSystem()
+SbiIoSystem::~SbiIoSystem() COVERITY_NOEXCEPT_FALSE
 {
     Shutdown();
 }
@@ -720,12 +695,10 @@ void SbiIoSystem::Shutdown()
     // anything left to PRINT?
     if( !aOut.isEmpty() )
     {
-#if defined __GNUC__
         vcl::Window* pParent = Application::GetDefDialogParent();
-        ScopedVclPtrInstance<MessBox>( pParent, WinBits( WB_OK ), OUString(), aOut )->Execute();
-#else
-        ScopedVclPtrInstance<MessBox>( Application::GetDefDialogParent(), WinBits( WB_OK ), OUString(), aOut )->Execute();
-#endif
+        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(pParent ? pParent->GetFrameWeld() : nullptr, VclMessageType::Warning,
+            VclButtonsType::Ok, aOut));
+        xBox->run();
     }
     aOut.clear();
 }
@@ -755,7 +728,7 @@ char SbiIoSystem::Read()
         if( aIn.isEmpty() )
         {
             ReadCon( aIn );
-            aIn = aIn + OString('\n');
+            aIn += OString('\n');
         }
         ch = aIn[0];
         aIn = aIn.copy(1);
@@ -816,20 +789,13 @@ void SbiIoSystem::CloseAll()
     }
 }
 
-/***************************************************************************
-*
-*   Console Support
-*
-***************************************************************************/
-
-
 void SbiIoSystem::ReadCon(OString& rIn)
 {
     OUString aPromptStr(OStringToOUString(aPrompt, osl_getThreadTextEncoding()));
-    ScopedVclPtrInstance< SbiInputDialog > aDlg(nullptr, aPromptStr);
-    if( aDlg->Execute() )
+    SbiInputDialog aDlg(nullptr, aPromptStr);
+    if (aDlg.run() == RET_OK)
     {
-        rIn = OUStringToOString(aDlg->GetInput(), osl_getThreadTextEncoding());
+        rIn = OUStringToOString(aDlg.GetInput(), osl_getThreadTextEncoding());
     }
     else
     {
@@ -838,42 +804,44 @@ void SbiIoSystem::ReadCon(OString& rIn)
     aPrompt.clear();
 }
 
-// output of a MessageBox, if theres a CR in the console-buffer
+// output of a MessageBox, if there's a CR in the console-buffer
 
 void SbiIoSystem::WriteCon(const OUString& rText)
 {
     aOut += rText;
     sal_Int32 n1 = aOut.indexOf('\n');
     sal_Int32 n2 = aOut.indexOf('\r');
-    if( n1 != -1 || n2 != -1 )
+    if( n1 == -1 && n2 == -1 )
+        return;
+
+    if( n1 == -1 )
     {
-        if( n1 == -1 )
+        n1 = n2;
+    }
+    else if( n2 == -1 )
+    {
+        n2 = n1;
+    }
+    if( n1 > n2 )
+    {
+        n1 = n2;
+    }
+    OUString s(aOut.copy(0, n1));
+    aOut = aOut.copy(n1);
+    while ( !aOut.isEmpty() && (aOut[0] == '\n' || aOut[0] == '\r') )
+    {
+        aOut = aOut.copy(1);
+    }
+    {
+        SolarMutexGuard aSolarGuard;
+
+        vcl::Window* pParent = Application::GetDefDialogParent();
+        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(pParent ? pParent->GetFrameWeld() : nullptr, VclMessageType::Warning,
+            VclButtonsType::OkCancel, s));
+        xBox->set_default_response(RET_OK);
+        if (!xBox->run())
         {
-            n1 = n2;
-        }
-        else if( n2 == -1 )
-        {
-            n2 = n1;
-        }
-        if( n1 > n2 )
-        {
-            n1 = n2;
-        }
-        OUString s(aOut.copy(0, n1));
-        aOut = aOut.copy(n1);
-        while ( !aOut.isEmpty() && (aOut[0] == '\n' || aOut[0] == '\r') )
-        {
-            aOut = aOut.copy(1);
-        }
-        {
-            SolarMutexGuard aSolarGuard;
-            if( !ScopedVclPtrInstance<MessBox>(
-                        Application::GetDefDialogParent(),
-                        WinBits( WB_OK_CANCEL | WB_DEF_OK ),
-                        OUString(), s)->Execute() )
-            {
-                nError = ERRCODE_BASIC_USER_ABORT;
-            }
+            nError = ERRCODE_BASIC_USER_ABORT;
         }
     }
 }

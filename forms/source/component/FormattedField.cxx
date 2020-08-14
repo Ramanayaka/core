@@ -17,25 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include "FormattedField.hxx"
-#include "services.hxx"
-#include "property.hrc"
-#include "property.hxx"
-#include "frm_resource.hxx"
-#include "frm_resource.hrc"
-#include "propertybaghelper.hxx"
+#include <services.hxx>
+#include <property.hxx>
+#include <propertybaghelper.hxx>
+#include <comphelper/property.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/numbers.hxx>
+#include <comphelper/types.hxx>
 #include <connectivity/dbtools.hxx>
 #include <connectivity/dbconversion.hxx>
 #include <o3tl/any.hxx>
 #include <svl/zforlist.hxx>
 #include <svl/numuno.hxx>
+#include <vcl/keycodes.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 #include <tools/debug.hxx>
-#include <tools/wintypes.hxx>
 #include <i18nlangtag/languagetag.hxx>
-#include <rtl/textenc.h>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/util/NumberFormat.hpp>
 #include <com/sun/star/util/Date.hpp>
@@ -43,9 +41,7 @@
 #include <com/sun/star/awt/MouseEvent.hpp>
 #include <com/sun/star/form/XSubmit.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/XKeyListener.hpp>
 #include <com/sun/star/form/FormComponentType.hpp>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 #include <com/sun/star/util/XNumberFormatTypes.hpp>
 #include <com/sun/star/form/XForm.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
@@ -54,7 +50,7 @@
 #include <comphelper/streamsection.hxx>
 #include <cppuhelper/weakref.hxx>
 #include <unotools/desktopterminationobserver.hxx>
-#include <list>
+#include <vector>
 #include <algorithm>
 
 
@@ -74,15 +70,15 @@ using namespace css::form::binding;
 
 namespace frm
 {
+namespace {
+
 class StandardFormatsSupplier : protected SvNumberFormatsSupplierObj, public ::utl::ITerminationListener
 {
 protected:
-            SvNumberFormatter*                       m_pMyPrivateFormatter;
+            std::unique_ptr<SvNumberFormatter>       m_pMyPrivateFormatter;
     static  WeakReference< XNumberFormatsSupplier >  s_xDefaultFormatsSupplier;
 public:
     static Reference< XNumberFormatsSupplier > get( const Reference< XComponentContext >& _rxORB );
-    using SvNumberFormatsSupplierObj::operator new;
-    using SvNumberFormatsSupplierObj::operator delete;
 protected:
     StandardFormatsSupplier(const Reference< XComponentContext >& _rxFactory,LanguageType _eSysLanguage);
     virtual ~StandardFormatsSupplier() override;
@@ -90,19 +86,21 @@ protected:
     virtual bool    queryTermination() const override;
     virtual void    notifyTermination() override;
 };
+
+}
+
 WeakReference< XNumberFormatsSupplier > StandardFormatsSupplier::s_xDefaultFormatsSupplier;
 StandardFormatsSupplier::StandardFormatsSupplier(const Reference< XComponentContext > & _rxContext,LanguageType _eSysLanguage)
     :SvNumberFormatsSupplierObj()
     ,m_pMyPrivateFormatter(new SvNumberFormatter(_rxContext, _eSysLanguage))
 {
-    SetNumberFormatter(m_pMyPrivateFormatter);
+    SetNumberFormatter(m_pMyPrivateFormatter.get());
     // #i29147#
     ::utl::DesktopTerminationObserver::registerTerminationListener( this );
 }
 StandardFormatsSupplier::~StandardFormatsSupplier()
 {
     ::utl::DesktopTerminationObserver::revokeTerminationListener( this );
-    DELETEZ( m_pMyPrivateFormatter );
 }
 Reference< XNumberFormatsSupplier > StandardFormatsSupplier::get( const Reference< XComponentContext >& _rxORB )
 {
@@ -140,7 +138,7 @@ void StandardFormatsSupplier::notifyTermination()
     // #i29147#
     s_xDefaultFormatsSupplier = WeakReference< XNumberFormatsSupplier >( );
     SetNumberFormatter( nullptr );
-    DELETEZ( m_pMyPrivateFormatter );
+    m_pMyPrivateFormatter.reset();
 }
 Sequence<Type> OFormattedControl::_getTypes()
 {
@@ -262,7 +260,6 @@ void OFormattedModel::implConstruct()
     m_xOriginalFormatter = nullptr;
     m_nKeyType = NumberFormat::UNDEFINED;
     m_aNullDate = DBTypeConversion::getStandardDate();
-    m_nFieldType =  DataType::OTHER;
     // default our formats supplier
     osl_atomic_increment(&m_refCount);
     setPropertyToDefaultByHandle(PROPERTY_ID_FORMATSSUPPLIER);
@@ -337,7 +334,7 @@ Sequence< Type > OFormattedModel::_getTypes()
 // XPersistObject
 OUString SAL_CALL OFormattedModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_EDIT);
+    return FRM_COMPONENT_EDIT;
 }
 
 // XPropertySet
@@ -414,43 +411,43 @@ void OFormattedModel::_propertyChanged( const css::beans::PropertyChangeEvent& e
 {
     // TODO: check how this works with external bindings
     OSL_ENSURE( evt.Source == m_xAggregateSet, "OFormattedModel::_propertyChanged: where did this come from?" );
-    if ( evt.Source == m_xAggregateSet )
+    if ( evt.Source != m_xAggregateSet )
+        return;
+
+    if ( evt.PropertyName == PROPERTY_FORMATKEY )
     {
-        if ( evt.PropertyName == PROPERTY_FORMATKEY )
+        if ( evt.NewValue.getValueType().getTypeClass() == TypeClass_LONG )
         {
-            if ( evt.NewValue.getValueType().getTypeClass() == TypeClass_LONG )
+            try
             {
-                try
+                ::osl::MutexGuard aGuard( m_aMutex );
+                Reference<XNumberFormatsSupplier> xSupplier( calcFormatsSupplier() );
+                m_nKeyType  = getNumberFormatType(xSupplier->getNumberFormats(), getINT32( evt.NewValue ) );
+                // as m_aSaveValue (which is used by commitControlValueToDbColumn) is format dependent we have
+                // to recalc it, which is done by translateDbColumnToControlValue
+                if ( m_xColumn.is() && m_xAggregateFastSet.is()  && !m_xCursor->isBeforeFirst() && !m_xCursor->isAfterLast())
                 {
-                    ::osl::MutexGuard aGuard( m_aMutex );
-                    Reference<XNumberFormatsSupplier> xSupplier( calcFormatsSupplier() );
-                    m_nKeyType  = getNumberFormatType(xSupplier->getNumberFormats(), getINT32( evt.NewValue ) );
-                    // as m_aSaveValue (which is used by commitControlValueToDbColumn) is format dependent we have
-                    // to recalc it, which is done by translateDbColumnToControlValue
-                    if ( m_xColumn.is() && m_xAggregateFastSet.is()  && !m_xCursor->isBeforeFirst() && !m_xCursor->isAfterLast())
-                    {
-                        setControlValue( translateDbColumnToControlValue(), eOther );
-                    }
-                    // if we're connected to an external value binding, then re-calculate the type
-                    // used to exchange the value - it depends on the format, too
-                    if ( hasExternalValueBinding() )
-                    {
-                        calculateExternalValueType();
-                    }
+                    setControlValue( translateDbColumnToControlValue(), eOther );
                 }
-                catch(const Exception&)
+                // if we're connected to an external value binding, then re-calculate the type
+                // used to exchange the value - it depends on the format, too
+                if ( hasExternalValueBinding() )
                 {
+                    calculateExternalValueType();
                 }
             }
-            return;
+            catch(const Exception&)
+            {
+            }
         }
-        if ( evt.PropertyName == PROPERTY_FORMATSSUPPLIER )
-        {
-            updateFormatterNullDate();
-            return;
-        }
-        OBoundControlModel::_propertyChanged( evt );
+        return;
     }
+    if ( evt.PropertyName == PROPERTY_FORMATSSUPPLIER )
+    {
+        updateFormatterNullDate();
+        return;
+    }
+    OBoundControlModel::_propertyChanged( evt );
 }
 
 void OFormattedModel::updateFormatterNullDate()
@@ -516,7 +513,7 @@ void OFormattedModel::loaded(const EventObject& rEvent)
 {
     // HACK: our onConnectedDbColumn accesses our NumberFormatter which locks the solar mutex (as it doesn't have
     // an own one). To prevent deadlocks with other threads which may request a property from us in an
-    // UI-triggered action (e.g. an tooltip) we lock the solar mutex _here_ before our base class locks
+    // UI-triggered action (e.g. a tooltip) we lock the solar mutex _here_ before our base class locks
     // its own mutex (which is used for property requests)
     // alternative a): we use two mutexes, one which is passed to the OPropertysetHelper and used for
     // property requests and one for our own code. This would need a lot of code rewriting
@@ -530,10 +527,7 @@ void OFormattedModel::onConnectedDbColumn( const Reference< XInterface >& _rxFor
 {
     m_xOriginalFormatter = nullptr;
     // get some properties of the field
-    m_nFieldType = DataType::OTHER;
     Reference<XPropertySet> xField = getField();
-    if ( xField.is() )
-        xField->getPropertyValue( PROPERTY_FIELDTYPE ) >>= m_nFieldType;
     sal_Int32 nFormatKey = 0;
     DBG_ASSERT(m_xAggregateSet.is(), "OFormattedModel::onConnectedDbColumn : have no aggregate !");
     if (m_xAggregateSet.is())
@@ -564,9 +558,9 @@ void OFormattedModel::onConnectedDbColumn( const Reference< XInterface >& _rxFor
                     {
                         Locale aApplicationLocale = Application::GetSettings().GetUILanguageTag().getLocale();
                         if (m_bOriginalNumeric)
-                            aFmtKey <<= (sal_Int32)xTypes->getStandardFormat(NumberFormat::NUMBER, aApplicationLocale);
+                            aFmtKey <<= xTypes->getStandardFormat(NumberFormat::NUMBER, aApplicationLocale);
                         else
-                            aFmtKey <<= (sal_Int32)xTypes->getStandardFormat(NumberFormat::TEXT, aApplicationLocale);
+                            aFmtKey <<= xTypes->getStandardFormat(NumberFormat::TEXT, aApplicationLocale);
                     }
                 }
                 aSupplier >>= m_xOriginalFormatter;
@@ -620,7 +614,6 @@ void OFormattedModel::onDisconnectedDbColumn()
         setPropertyValue(PROPERTY_TREATASNUMERIC, makeAny(m_bOriginalNumeric));
         m_xOriginalFormatter = nullptr;
     }
-    m_nFieldType = DataType::OTHER;
     m_nKeyType   = NumberFormat::UNDEFINED;
     m_aNullDate  = DBTypeConversion::getStandardDate();
 }
@@ -633,8 +626,8 @@ void OFormattedModel::write(const Reference<XObjectOutputStream>& _rxOutStream)
     // Bring my Format (may be void) to a persistent Format.
     // The Supplier together with the Key is already persistent, but that doesn't mean
     // we have to save the Supplier (which would be quite some overhead)
-        Reference<XNumberFormatsSupplier>  xSupplier;
-        Any aFmtKey;
+    Reference<XNumberFormatsSupplier>  xSupplier;
+    Any aFmtKey;
     bool bVoidKey = true;
     if (m_xAggregateSet.is())
     {
@@ -671,7 +664,7 @@ void OFormattedModel::write(const Reference<XObjectOutputStream>& _rxOutStream)
         if (hasProperty(s_aFormatStringProp, xFormat))
             xFormat->getPropertyValue(s_aFormatStringProp) >>= sFormatDescription;
         _rxOutStream->writeUTF(sFormatDescription);
-        _rxOutStream->writeLong((sal_uInt16)eFormatLanguage);
+        _rxOutStream->writeLong(static_cast<sal_uInt16>(eFormatLanguage));
     }
     // version 2 : write the properties common to all OEditBaseModels
     writeCommonEditProperties(_rxOutStream);
@@ -737,7 +730,7 @@ void OFormattedModel::read(const Reference<XObjectInputStream>& _rxInStream)
                 {
                     Locale aDescriptionLanguage( LanguageTag::convertToLocale(eDescriptionLanguage));
                     nKey = xFormats->queryKey(sFormatDescription, aDescriptionLanguage, false);
-                    if (nKey == (sal_Int32)-1)
+                    if (nKey == sal_Int32(-1))
                     {   // does not yet exist in my formatter...
                         nKey = xFormats->addNew(sFormatDescription, aDescriptionLanguage);
                     }
@@ -749,7 +742,7 @@ void OFormattedModel::read(const Reference<XObjectInputStream>& _rxInStream)
             {   // since version 3 there is a "skippable" block at this position
                 OStreamSection aDownCompat(_rxInStream);
                 _rxInStream->readShort(); // sub-version
-                // version 0 and higher : the "effective value" property
+                // version 0 and higher: the "effective value" property
                 Any aEffectiveValue;
                 {
                     OStreamSection aDownCompat2(_rxInStream);
@@ -764,10 +757,10 @@ void OFormattedModel::read(const Reference<XObjectInputStream>& _rxInStream)
                         case 2:
                             break;
                         case 3:
-                            OSL_FAIL("FmXFormattedModel::read : unknown effective value type !");
+                            OSL_FAIL("FmXFormattedModel::read : unknown effective value type!");
                     }
                 }
-                // this property is only to be set if we have no control source : in all other cases the base class did a
+                // this property is only to be set if we have no control source: in all other cases the base class made a
                 // reset after it's read and this set the effective value to a default value
                 if ( m_xAggregateSet.is() && getControlSource().isEmpty() )
                 {
@@ -864,7 +857,7 @@ Any OFormattedModel::translateExternalValueToControlValue( const Any& _rExternal
     {
         bool bExternalValue = false;
         _rExternalValue >>= bExternalValue;
-        aControlValue <<= (double)( bExternalValue ? 1 : 0 );
+        aControlValue <<= static_cast<double>( bExternalValue ? 1 : 0 );
     }
     break;
     default:
@@ -920,7 +913,7 @@ Any OFormattedModel::translateControlValueToExternalValue( ) const
             aExternalValue <<= sString;
             break;
         }
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     }
     case TypeClass_BOOLEAN:
     {
@@ -976,26 +969,26 @@ Any OFormattedModel::translateDbColumnToControlValue()
 
 Sequence< Type > OFormattedModel::getSupportedBindingTypes()
 {
-    ::std::list< Type > aTypes;
-    aTypes.push_back( cppu::UnoType< double >::get() );
+    ::std::vector< Type > aTypes;
     switch ( m_nKeyType & ~NumberFormat::DEFINED )
     {
     case NumberFormat::DATE:
-        aTypes.push_front(cppu::UnoType< css::util::Date >::get() );
+        aTypes.push_back(cppu::UnoType< css::util::Date >::get() );
         break;
     case NumberFormat::TIME:
-        aTypes.push_front(cppu::UnoType< css::util::Time >::get() );
+        aTypes.push_back(cppu::UnoType< css::util::Time >::get() );
         break;
     case NumberFormat::DATETIME:
-        aTypes.push_front(cppu::UnoType< css::util::DateTime >::get() );
+        aTypes.push_back(cppu::UnoType< css::util::DateTime >::get() );
         break;
     case NumberFormat::TEXT:
-        aTypes.push_front(cppu::UnoType< OUString >::get() );
+        aTypes.push_back(cppu::UnoType< OUString >::get() );
         break;
     case NumberFormat::LOGICAL:
-        aTypes.push_front(cppu::UnoType< sal_Bool >::get() );
+        aTypes.push_back(cppu::UnoType< sal_Bool >::get() );
         break;
     }
+    aTypes.push_back( cppu::UnoType< double >::get() );
     return comphelper::containerToSequence(aTypes);
 }
 
@@ -1012,7 +1005,7 @@ void OFormattedModel::resetNoBroadcast()
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OFormattedControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

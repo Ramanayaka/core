@@ -18,33 +18,28 @@
  */
 
 
-#include <svl/whiter.hxx>
-#include <svl/eitem.hxx>
+#include <osl/diagnose.h>
+#include <tools/debug.hxx>
 
 #include <sfx2/app.hxx>
-#include "appdata.hxx"
-#include "workwin.hxx"
-#include "childwinimpl.hxx"
+#include <appdata.hxx>
+#include <workwin.hxx>
+#include <childwinimpl.hxx>
 #include <sfx2/childwin.hxx>
-#include <sfx2/templdlg.hxx>
-#include <sfx2/request.hxx>
-#include <sfx2/bindings.hxx>
-#include <sfx2/dispatch.hxx>
-#include "sfxtypes.hxx"
 #include <sfx2/module.hxx>
-#include <sfx2/sfxsids.hrc>
+#include <sfx2/viewfrm.hxx>
 
 
-void SfxApplication::RegisterChildWindow_Impl( SfxModule *pMod, SfxChildWinFactory *pFact )
+void SfxApplication::RegisterChildWindow_Impl( SfxModule *pMod, std::unique_ptr<SfxChildWinFactory> pFact )
 {
     if ( pMod )
     {
-        pMod->RegisterChildWindow( pFact );
+        pMod->RegisterChildWindow( std::move(pFact) );
         return;
     }
 
     if (!pImpl->pFactArr)
-        pImpl->pFactArr = new SfxChildWinFactArr_Impl;
+        pImpl->pFactArr.reset(new SfxChildWinFactArr_Impl);
 
     for (size_t nFactory=0; nFactory<pImpl->pFactArr->size(); ++nFactory)
     {
@@ -54,11 +49,11 @@ void SfxApplication::RegisterChildWindow_Impl( SfxModule *pMod, SfxChildWinFacto
         }
     }
 
-    pImpl->pFactArr->push_back( pFact );
+    pImpl->pFactArr->push_back( std::move(pFact) );
 }
 
 void SfxApplication::RegisterChildWindowContext_Impl( SfxModule *pMod, sal_uInt16 nId,
-        SfxChildWinContextFactory *pFact)
+        std::unique_ptr<SfxChildWinContextFactory> pFact)
 {
     SfxChildWinFactArr_Impl *pFactories;
     SfxChildWinFactory *pF = nullptr;
@@ -88,7 +83,7 @@ void SfxApplication::RegisterChildWindowContext_Impl( SfxModule *pMod, sal_uInt1
         DBG_ASSERT( pImpl, "No AppData!" );
         DBG_ASSERT( pImpl->pFactArr, "No Factories!" );
 
-        pFactories = pImpl->pFactArr;
+        pFactories = pImpl->pFactArr.get();
         sal_uInt16 nCount = pFactories->size();
         for (sal_uInt16 nFactory=0; nFactory<nCount; ++nFactory)
         {
@@ -103,7 +98,7 @@ void SfxApplication::RegisterChildWindowContext_Impl( SfxModule *pMod, sal_uInt1
                     // DLL-exit
                     pF = new SfxChildWinFactory( pFac->pCtor, pFac->nId,
                             pFac->nPos );
-                    pMod->RegisterChildWindow( pF );
+                    pMod->RegisterChildWindow( std::unique_ptr<SfxChildWinFactory>(pF) );
                 }
                 else
                     pF = pFac;
@@ -116,7 +111,7 @@ void SfxApplication::RegisterChildWindowContext_Impl( SfxModule *pMod, sal_uInt1
     {
         if ( !pF->pArr )
             pF->pArr.reset( new SfxChildWinContextArr_Impl );
-        pF->pArr->push_back( pFact );
+        pF->pArr->push_back( std::move(pFact) );
         return;
     }
 

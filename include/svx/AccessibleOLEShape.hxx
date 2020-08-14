@@ -20,13 +20,9 @@
 #ifndef INCLUDED_SVX_ACCESSIBLEOLESHAPE_HXX
 #define INCLUDED_SVX_ACCESSIBLEOLESHAPE_HXX
 
-#include <exception>
-
 #include <com/sun/star/accessibility/XAccessibleAction.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Type.hxx>
 #include <rtl/ustring.hxx>
@@ -34,9 +30,9 @@
 #include <svx/AccessibleShape.hxx>
 #include <svx/svxdllapi.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace accessibility { class XAccessibleKeyBinding; }
-} } }
+}
 
 namespace accessibility {
 
@@ -102,10 +98,6 @@ protected:
     /// Create a name string that contains the accessible name.
     virtual OUString
         CreateAccessibleBaseName () override;
-
-    /// Create a description string that contains the accessible description.
-    virtual OUString
-        CreateAccessibleDescription () override;
 
 private:
     AccessibleOLEShape (const AccessibleOLEShape&) = delete;

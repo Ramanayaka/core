@@ -18,11 +18,8 @@
  */
 
 #include <sys/time.h>
-#include <sys/times.h>
-#include <time.h>
-#include <unistd.h>
 
-#include <unx/salunx.h>
+#include <unx/salunxtime.h>
 #include <unx/saldisp.hxx>
 #include <unx/saltimer.h>
 #include <unx/salinst.h>
@@ -34,7 +31,7 @@ void SalXLib::StopTimer()
     m_nTimeoutMS        = 0;
 }
 
-void SalXLib::StartTimer( sal_uLong nMS )
+void SalXLib::StartTimer( sal_uInt64 nMS )
 {
     timeval Timeout (m_aTimeout); // previous timeout.
     gettimeofday (&m_aTimeout, nullptr);
@@ -63,7 +60,7 @@ void X11SalTimer::Stop()
     mpXLib->StopTimer();
 }
 
-void X11SalTimer::Start( sal_uLong nMS )
+void X11SalTimer::Start( sal_uInt64 nMS )
 {
     mpXLib->StartTimer( nMS );
 }

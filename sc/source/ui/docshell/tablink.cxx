@@ -19,7 +19,8 @@
 
 #include <sal/config.h>
 
-#include <o3tl/make_unique.hxx>
+#include <com/sun/star/task/InteractionHandler.hpp>
+
 #include <sfx2/sfxsids.hrc>
 #include <sfx2/app.hxx>
 #include <svl/itemset.hxx>
@@ -27,26 +28,29 @@
 #include <sfx2/docfile.hxx>
 #include <sfx2/docfilt.hxx>
 #include <sfx2/fcontnr.hxx>
+#include <sfx2/frame.hxx>
 #include <sfx2/linkmgr.hxx>
+#include <vcl/weld.hxx>
 #include <tools/urlobj.hxx>
 #include <unotools/transliterationwrapper.hxx>
+#include <unotools/configmgr.hxx>
+#include <comphelper/processfactory.hxx>
 
-#include "tablink.hxx"
+#include <tablink.hxx>
 
-#include "scextopt.hxx"
-#include "table.hxx"
-#include "document.hxx"
-#include "docsh.hxx"
-#include "globstr.hrc"
-#include "undoblk.hxx"
-#include "undotab.hxx"
-#include "global.hxx"
-#include "hints.hxx"
-#include "dociter.hxx"
+#include <scextopt.hxx>
+#include <document.hxx>
+#include <docsh.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <undoblk.hxx>
+#include <undotab.hxx>
+#include <global.hxx>
+#include <hints.hxx>
+#include <dociter.hxx>
 #include <formula/opcode.hxx>
-#include "formulacell.hxx"
-#include "formulaiter.hxx"
-#include "tokenarray.hxx"
+#include <formulaiter.hxx>
+#include <tokenarray.hxx>
 
 struct TableLink_Impl
 {
@@ -99,11 +103,11 @@ ScTableLink::~ScTableLink()
     ScDocument& rDoc = pImpl->m_pDocSh->GetDocument();
     SCTAB nCount = rDoc.GetTableCount();
     for (SCTAB nTab=0; nTab<nCount; nTab++)
-        if (rDoc.IsLinked(nTab) && aFileName.equals(rDoc.GetLinkDoc(nTab)))
+        if (rDoc.IsLinked(nTab) && aFileName == rDoc.GetLinkDoc(nTab))
             rDoc.SetLink( nTab, ScLinkMode::NONE, "", "", "", "", 0 );
 }
 
-void ScTableLink::Edit( vcl::Window* pParent, const Link<SvBaseLink&,void>& rEndEditHdl )
+void ScTableLink::Edit(weld::Window* pParent, const Link<SvBaseLink&,void>& rEndEditHdl)
 {
     pImpl->m_aEndEditLink = rEndEditHdl;
 
@@ -139,7 +143,7 @@ void ScTableLink::Closed()
     if (bAddUndo && bUndo)
     {
         pImpl->m_pDocSh->GetUndoManager()->AddUndoAction(
-                new ScUndoRemoveLink( pImpl->m_pDocSh, aFileName ) );
+                std::make_unique<ScUndoRemoveLink>( pImpl->m_pDocSh, aFileName ) );
 
         bAddUndo = false;   // only once
     }
@@ -163,7 +167,7 @@ bool ScTableLink::Refresh(const OUString& rNewFile, const OUString& rNewFilter,
         return false;
 
     OUString aNewUrl = ScGlobal::GetAbsDocName(rNewFile, pImpl->m_pDocSh);
-    bool bNewUrlName = !aFileName.equals(aNewUrl);
+    bool bNewUrlName = aFileName != aNewUrl;
 
     std::shared_ptr<const SfxFilter> pFilter = pImpl->m_pDocSh->GetFactory().GetFilterContainer()->GetFilter4FilterName(rNewFilter);
     if (!pFilter)
@@ -175,17 +179,17 @@ bool ScTableLink::Refresh(const OUString& rNewFile, const OUString& rNewFilter,
     bool bUndo(rDoc.IsUndoEnabled());
 
     //  if new filter has been selected, forget options
-    if (!aFilterName.equals(rNewFilter))
+    if (aFilterName != rNewFilter)
         aOptions.clear();
-    if ( pNewOptions )                  // options hard-specfied?
+    if ( pNewOptions )                  // options hard-specified?
         aOptions = *pNewOptions;
 
     //  always create ItemSet, so that DocShell can set the options
-    SfxItemSet* pSet = new SfxAllItemSet( SfxGetpApp()->GetPool() );
+    auto pSet = std::make_shared<SfxAllItemSet>( SfxGetpApp()->GetPool() );
     if (!aOptions.isEmpty())
         pSet->Put( SfxStringItem( SID_FILE_FILTEROPTIONS, aOptions ) );
 
-    SfxMedium* pMed = new SfxMedium(aNewUrl, StreamMode::STD_READ, pFilter, pSet);
+    SfxMedium* pMed = new SfxMedium(aNewUrl, StreamMode::STD_READ, pFilter, std::move(pSet));
 
     if ( bInEdit )                              // only if using the edit dialog,
         pMed->UseInteractionHandler(true);    // enable the filter options dialog
@@ -202,10 +206,10 @@ bool ScTableLink::Refresh(const OUString& rNewFile, const OUString& rNewFilter,
 
     //  Undo...
 
-    ScDocument* pUndoDoc = nullptr;
+    ScDocumentUniquePtr pUndoDoc;
     bool bFirst = true;
     if (bAddUndo && bUndo)
-        pUndoDoc = new ScDocument( SCDOCMODE_UNDO );
+        pUndoDoc.reset(new ScDocument( SCDOCMODE_UNDO ));
 
     //  copy tables
 
@@ -223,7 +227,7 @@ bool ScTableLink::Refresh(const OUString& rNewFile, const OUString& rNewFilter,
     for (SCTAB nTab=0; nTab<nCount; nTab++)
     {
         ScLinkMode nMode = rDoc.GetLinkMode(nTab);
-        if (nMode != ScLinkMode::NONE && aFileName.equals(rDoc.GetLinkDoc(nTab)))
+        if (nMode != ScLinkMode::NONE && aFileName == rDoc.GetLinkDoc(nTab))
         {
             OUString aTabName = rDoc.GetLinkTab(nTab);
 
@@ -236,7 +240,7 @@ bool ScTableLink::Refresh(const OUString& rNewFile, const OUString& rNewFilter,
                 else
                     pUndoDoc->AddUndoTab( nTab, nTab, true, true );
                 bFirst = false;
-                ScRange aRange(0,0,nTab,MAXCOL,MAXROW,nTab);
+                ScRange aRange(0,0,nTab,rDoc.MaxCol(),rDoc.MaxRow(),nTab);
                 rDoc.CopyToDocument(aRange, InsertDeleteFlags::ALL, false, *pUndoDoc);
                 pUndoDoc->TransferDrawPage( &rDoc, nTab, nTab );
                 pUndoDoc->SetLink( nTab, nMode, aFileName, aFilterName,
@@ -280,7 +284,7 @@ bool ScTableLink::Refresh(const OUString& rNewFile, const OUString& rNewFilter,
                                         (nMode == ScLinkMode::VALUE) );     // only values?
             else
             {
-                rDoc.DeleteAreaTab( 0,0,MAXCOL,MAXROW, nTab, InsertDeleteFlags::ALL );
+                rDoc.DeleteAreaTab( 0,0,rDoc.MaxCol(),rDoc.MaxRow(), nTab, InsertDeleteFlags::ALL );
 
                 bool bShowError = true;
                 if ( nMode == ScLinkMode::VALUE )
@@ -290,14 +294,14 @@ bool ScTableLink::Refresh(const OUString& rNewFile, const OUString& rNewFilter,
 
                     ScRangeList aErrorCells;        // cells on the linked sheets that need error values
 
-                    ScCellIterator aIter(&rDoc, ScRange(0,0,0,MAXCOL,MAXROW,MAXTAB));          // all sheets
+                    ScCellIterator aIter(&rDoc, ScRange(0,0,0,rDoc.MaxCol(),rDoc.MaxRow(),MAXTAB));          // all sheets
                     for (bool bHas = aIter.first(); bHas; bHas = aIter.next())
                     {
                         if (aIter.getType() != CELLTYPE_FORMULA)
                             continue;
 
                         ScFormulaCell* pCell = aIter.getFormulaCell();
-                        ScDetectiveRefIter aRefIter(pCell);
+                        ScDetectiveRefIter aRefIter(&rDoc, pCell);
                         ScRange aRefRange;
                         while ( aRefIter.GetNextRef( aRefRange ) )
                         {
@@ -313,7 +317,7 @@ bool ScTableLink::Refresh(const OUString& rNewFile, const OUString& rNewFilter,
                     size_t nRanges = aErrorCells.size();
                     if ( nRanges )                          // found any?
                     {
-                        ScTokenArray aTokenArr;
+                        ScTokenArray aTokenArr(&rDoc);
                         aTokenArr.AddOpCode( ocNotAvail );
                         aTokenArr.AddOpCode( ocOpen );
                         aTokenArr.AddOpCode( ocClose );
@@ -321,11 +325,11 @@ bool ScTableLink::Refresh(const OUString& rNewFile, const OUString& rNewFilter,
 
                         for (size_t nPos=0; nPos < nRanges; nPos++)
                         {
-                            const ScRange* pRange = aErrorCells[ nPos ];
-                            SCCOL nStartCol = pRange->aStart.Col();
-                            SCROW nStartRow = pRange->aStart.Row();
-                            SCCOL nEndCol = pRange->aEnd.Col();
-                            SCROW nEndRow = pRange->aEnd.Row();
+                            const ScRange & rRange = aErrorCells[ nPos ];
+                            SCCOL nStartCol = rRange.aStart.Col();
+                            SCROW nStartRow = rRange.aStart.Row();
+                            SCCOL nEndCol = rRange.aEnd.Col();
+                            SCROW nEndRow = rRange.aEnd.Row();
                             for (SCROW nRow=nStartRow; nRow<=nEndRow; nRow++)
                                 for (SCCOL nCol=nStartCol; nCol<=nEndCol; nCol++)
                                 {
@@ -343,18 +347,18 @@ bool ScTableLink::Refresh(const OUString& rNewFile, const OUString& rNewFilter,
                 {
                     //  Normal link or no references: put error message on sheet.
 
-                    rDoc.SetString( 0,0,nTab, ScGlobal::GetRscString(STR_LINKERROR) );
-                    rDoc.SetString( 0,1,nTab, ScGlobal::GetRscString(STR_LINKERRORFILE) );
+                    rDoc.SetString( 0,0,nTab, ScResId(STR_LINKERROR) );
+                    rDoc.SetString( 0,1,nTab, ScResId(STR_LINKERRORFILE) );
                     rDoc.SetString( 1,1,nTab, aNewUrl );
-                    rDoc.SetString( 0,2,nTab, ScGlobal::GetRscString(STR_LINKERRORTAB) );
+                    rDoc.SetString( 0,2,nTab, ScResId(STR_LINKERRORTAB) );
                     rDoc.SetString( 1,2,nTab, aTabName );
                 }
 
                 bNotFound = true;
             }
 
-            if ( bNewUrlName || !aFilterName.equals(rNewFilter) ||
-                    !aOptions.equals(aNewOpt) || pNewOptions ||
+            if ( bNewUrlName || aFilterName != rNewFilter ||
+                    aOptions != aNewOpt || pNewOptions ||
                     nNewRefresh != GetRefreshDelay() )
                 rDoc.SetLink( nTab, nMode, aNewUrl, rNewFilter, aNewOpt,
                     aTabName, nNewRefresh );
@@ -365,9 +369,9 @@ bool ScTableLink::Refresh(const OUString& rNewFile, const OUString& rNewFilter,
 
     if ( bNewUrlName )
         aFileName = aNewUrl;
-    if (!aFilterName.equals(rNewFilter))
+    if (aFilterName != rNewFilter)
         aFilterName = rNewFilter;
-    if (!aOptions.equals(aNewOpt))
+    if (aOptions != aNewOpt)
         aOptions = aNewOpt;
 
     //  clean up
@@ -378,11 +382,11 @@ bool ScTableLink::Refresh(const OUString& rNewFile, const OUString& rNewFilter,
 
     if (bAddUndo && bUndo)
         pImpl->m_pDocSh->GetUndoManager()->AddUndoAction(
-                    new ScUndoRefreshLink( pImpl->m_pDocSh, pUndoDoc ) );
+                    std::make_unique<ScUndoRefreshLink>( pImpl->m_pDocSh, std::move(pUndoDoc) ) );
 
     //  Paint (may be several tables)
 
-    pImpl->m_pDocSh->PostPaint( ScRange(0,0,0,MAXCOL,MAXROW,MAXTAB),
+    pImpl->m_pDocSh->PostPaint( ScRange(0,0,0,rDoc.MaxCol(),rDoc.MaxRow(),MAXTAB),
                                 PaintPartFlags::Grid | PaintPartFlags::Top | PaintPartFlags::Left | PaintPartFlags::Extras );
     aModificator.SetDocumentModified();
 
@@ -415,7 +419,7 @@ IMPL_LINK( ScTableLink, TableEndEditHdl, ::sfx2::SvBaseLink&, rLink, void )
 
 // === ScDocumentLoader ==================================================
 
-OUString ScDocumentLoader::GetOptions( SfxMedium& rMedium )
+OUString ScDocumentLoader::GetOptions( const SfxMedium& rMedium )
 {
     SfxItemSet* pSet = rMedium.GetItemSet();
     const SfxPoolItem* pItem;
@@ -435,7 +439,7 @@ bool ScDocumentLoader::GetFilterName( const OUString& rFileName,
         if ( pDocSh->HasName() )
         {
             SfxMedium* pMed = pDocSh->GetMedium();
-            if ( pMed->GetName().equals(rFileName) )
+            if ( pMed->GetName() == rFileName )
             {
                 rFilter = pMed->GetFilter()->GetFilterName();
                 rOptions = GetOptions(*pMed);
@@ -453,8 +457,8 @@ bool ScDocumentLoader::GetFilterName( const OUString& rFileName,
     //  Filter detection
 
     std::shared_ptr<const SfxFilter> pSfxFilter;
-    auto pMedium = o3tl::make_unique<SfxMedium>( rFileName, StreamMode::STD_READ );
-    if ( pMedium->GetError() == ERRCODE_NONE )
+    auto pMedium = std::make_unique<SfxMedium>( rFileName, StreamMode::STD_READ );
+    if (pMedium->GetError() == ERRCODE_NONE && !utl::ConfigManager::IsFuzzing())
     {
         if ( bWithInteraction )
             pMedium->UseInteractionHandler(true);   // #i73992# no longer called from GuessFilter
@@ -487,33 +491,44 @@ void ScDocumentLoader::RemoveAppPrefix( OUString& rFilterName )
 }
 
 SfxMedium* ScDocumentLoader::CreateMedium( const OUString& rFileName, std::shared_ptr<const SfxFilter> const & pFilter,
-        const OUString& rOptions )
+        const OUString& rOptions, weld::Window* pInteractionParent )
 {
     // Always create SfxItemSet so ScDocShell can set options.
-    SfxItemSet* pSet = new SfxAllItemSet( SfxGetpApp()->GetPool() );
+    auto pSet = std::make_shared<SfxAllItemSet>( SfxGetpApp()->GetPool() );
     if ( !rOptions.isEmpty() )
         pSet->Put( SfxStringItem( SID_FILE_FILTEROPTIONS, rOptions ) );
 
-    return new SfxMedium( rFileName, StreamMode::STD_READ, pFilter, pSet );
+    if (pInteractionParent)
+    {
+        css::uno::Reference<css::uno::XComponentContext> xContext = comphelper::getProcessComponentContext();
+        css::uno::Reference<css::task::XInteractionHandler> xIHdl(css::task::InteractionHandler::createWithParent(xContext,
+                    pInteractionParent->GetXWindow()), css::uno::UNO_QUERY_THROW);
+        pSet->Put(SfxUnoAnyItem(SID_INTERACTIONHANDLER, makeAny(xIHdl)));
+    }
+
+    SfxMedium *pRet = new SfxMedium( rFileName, StreamMode::STD_READ, pFilter, std::move(pSet) );
+    if (pInteractionParent)
+        pRet->UseInteractionHandler(true); // to enable the filter options dialog
+    return pRet;
 }
 
-ScDocumentLoader::ScDocumentLoader( const OUString& rFileName,
-                                    OUString& rFilterName, OUString& rOptions,
-                                    sal_uInt32 nRekCnt, bool bWithInteraction ) :
-        pDocShell(nullptr),
-        pMedium(nullptr)
+ScDocumentLoader::ScDocumentLoader(const OUString& rFileName,
+                                   OUString& rFilterName, OUString& rOptions,
+                                   sal_uInt32 nRekCnt, weld::Window* pInteractionParent,
+                                   css::uno::Reference<css::io::XInputStream> xInputStream)
+    : pDocShell(nullptr)
+    , pMedium(nullptr)
 {
     if ( rFilterName.isEmpty() )
-        GetFilterName( rFileName, rFilterName, rOptions, true, bWithInteraction );
+        GetFilterName(rFileName, rFilterName, rOptions, true, pInteractionParent != nullptr);
 
     std::shared_ptr<const SfxFilter> pFilter = ScDocShell::Factory().GetFilterContainer()->GetFilter4FilterName( rFilterName );
 
-    pMedium = CreateMedium( rFileName, pFilter, rOptions);
+    pMedium = CreateMedium(rFileName, pFilter, rOptions, pInteractionParent);
+    if (xInputStream.is())
+        pMedium->setStreamToLoadFrom(xInputStream, true);
     if ( pMedium->GetError() != ERRCODE_NONE )
         return ;
-
-    if ( bWithInteraction )
-        pMedium->UseInteractionHandler( true ); // to enable the filter options dialog
 
     pDocShell = new ScDocShell( SfxModelFlags::EMBEDDED_OBJECT | SfxModelFlags::DISABLE_EMBEDDED_SCRIPTS );
     aRef = pDocShell;
@@ -522,8 +537,8 @@ ScDocumentLoader::ScDocumentLoader( const OUString& rFileName,
     ScExtDocOptions*    pExtDocOpt = rDoc.GetExtDocOptions();
     if( !pExtDocOpt )
     {
-        pExtDocOpt = new ScExtDocOptions;
-        rDoc.SetExtDocOptions( pExtDocOpt );
+        rDoc.SetExtDocOptions( std::make_unique<ScExtDocOptions>() );
+        pExtDocOpt = rDoc.GetExtDocOptions();
     }
     pExtDocOpt->GetDocSettings().mnLinkCnt = nRekCnt;
 

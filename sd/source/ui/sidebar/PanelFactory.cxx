@@ -18,10 +18,9 @@
  */
 
 #include "PanelFactory.hxx"
-#include "facreg.hxx"
-#include "framework/Pane.hxx"
-#include "ViewShellBase.hxx"
-#include "DrawController.hxx"
+#include <framework/Pane.hxx>
+#include <ViewShellBase.hxx>
+#include <DrawController.hxx>
 #include "LayoutMenu.hxx"
 #include "CurrentMasterPagesSelector.hxx"
 #include "RecentMasterPagesSelector.hxx"
@@ -32,25 +31,24 @@
 #include "TableDesignPanel.hxx"
 #include "SlideBackground.hxx"
 
-#include <sfx2/viewfrm.hxx>
 #include <sfx2/sidebar/SidebarPanelBase.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <comphelper/namedvaluecollection.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <vcl/window.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 
 using namespace css;
 using namespace css::uno;
 using namespace ::sd::framework;
-using ::rtl::OUString;
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 static Reference<lang::XEventListener> mxControllerDisposeListener;
 
 //----- PanelFactory --------------------------------------------------------
 
-PanelFactory::PanelFactory(
-        const css::uno::Reference<css::uno::XComponentContext>& /*rxContext*/)
+PanelFactory::PanelFactory()
     : PanelFactoryInterfaceBase(m_aMutex)
 {
 }
@@ -66,7 +64,7 @@ void SAL_CALL PanelFactory::disposing()
 // XUIElementFactory
 
 Reference<ui::XUIElement> SAL_CALL PanelFactory::createUIElement (
-    const ::rtl::OUString& rsUIElementResourceURL,
+    const OUString& rsUIElementResourceURL,
     const css::uno::Sequence<css::beans::PropertyValue>& rArguments)
 {
     // Process arguments.
@@ -86,14 +84,9 @@ Reference<ui::XUIElement> SAL_CALL PanelFactory::createUIElement (
 
     // Tunnel through the controller to obtain a ViewShellBase.
     ViewShellBase* pBase = nullptr;
-    Reference<lang::XUnoTunnel> xTunnel (xFrame->getController(), UNO_QUERY);
-    if (xTunnel.is())
-    {
-        ::sd::DrawController* pController = reinterpret_cast<sd::DrawController*>(
-            xTunnel->getSomething(sd::DrawController::getUnoTunnelId()));
-        if (pController != nullptr)
-            pBase = pController->GetViewShellBase();
-    }
+    auto pController = comphelper::getUnoTunnelImplementation<sd::DrawController>(xFrame->getController());
+    if (pController != nullptr)
+        pBase = pController->GetViewShellBase();
     if (pBase == nullptr)
         throw RuntimeException("can not get ViewShellBase for frame");
 
@@ -140,14 +133,14 @@ Reference<ui::XUIElement> SAL_CALL PanelFactory::createUIElement (
         aLayoutSize);
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
-org_openoffice_comp_Draw_framework_PanelFactory_get_implementation(css::uno::XComponentContext* context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+org_openoffice_comp_Draw_framework_PanelFactory_get_implementation(css::uno::XComponentContext* /*context*/,
                                                                    css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new sd::sidebar::PanelFactory(context));
+    return cppu::acquire(new sd::sidebar::PanelFactory);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

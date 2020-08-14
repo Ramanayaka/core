@@ -28,13 +28,13 @@
 
 #include <vcl/keycodes.hxx>
 #include <vcl/event.hxx>
+#include <sal/log.hxx>
 
-#include <unx/salunx.h>
 #include <unx/salinst.h>
 #include <unx/saldisp.hxx>
-#include <unx/salframe.h>
 #include <unx/salobj.h>
 
+#include <salframe.hxx>
 #include <salwtype.hxx>
 
 // SalInstance member to create and destroy a SalObject
@@ -59,10 +59,11 @@ X11SalObject* X11SalObject::CreateObject( SalFrame* pParent, SystemWindowData* p
 
     pObject->mpParent = pParent;
 
-    SalDisplay* pSalDisp        = vcl_sal::getSalDisplay(GetGenericData());
+    SalDisplay* pSalDisp        = vcl_sal::getSalDisplay(GetGenericUnixSalData());
     const SystemEnvData* pEnv   = pParent->GetSystemData();
     Display* pDisp              = pSalDisp->GetDisplay();
-    ::Window aObjectParent      = (::Window)pEnv->aWindow;
+    ::Window aObjectParent      = static_cast<::Window>(pEnv->aWindow);
+    pObject->maParentWin = aObjectParent;
 
     // find out on which screen that window is
     XWindowAttributes aParentAttr;
@@ -113,12 +114,16 @@ X11SalObject* X11SalObject::CreateObject( SalFrame* pParent, SystemWindowData* p
     }
     else
     {
-        #if OSL_DEBUG_LEVEL > 1
-        fprintf( stderr, "visual id of vcl %x, of visual %x\n",
-                 static_cast<unsigned int> (pSalDisp->GetVisual( nXScreen ).GetVisualId()),
-                 static_cast<unsigned int> (aVisID) );
-        #endif
-        GetGenericData()->ErrorTrapPush();
+#if OSL_DEBUG_LEVEL > 1
+        SAL_INFO("vcl.window", "visual id of vcl "
+                << std::hex
+                << static_cast<unsigned int>
+                (pSalDisp->GetVisual( nXScreen ).GetVisualId())
+                << ", of visual "
+                << static_cast<unsigned int>
+                (aVisID));
+#endif
+        GetGenericUnixSalData()->ErrorTrapPush();
 
         // create colormap for visual - there might not be one
         pObject->maColormap = aAttribs.colormap = XCreateColormap(
@@ -136,7 +141,7 @@ X11SalObject* X11SalObject::CreateObject( SalFrame* pParent, SystemWindowData* p
                            pVisual,
                            CWEventMask|CWColormap, &aAttribs );
         XSync( pDisp, False );
-        if( GetGenericData()->ErrorTrapPop( false ) )
+        if( GetGenericUnixSalData()->ErrorTrapPop( false ) )
         {
             pObject->maSecondary = None;
             delete pObject;
@@ -145,7 +150,7 @@ X11SalObject* X11SalObject::CreateObject( SalFrame* pParent, SystemWindowData* p
         XReparentWindow( pDisp, pObject->maSecondary, pObject->maPrimary, 0, 0 );
     }
 
-    GetGenericData()->ErrorTrapPush();
+    GetGenericUnixSalData()->ErrorTrapPush();
     if( bShow ) {
         XMapWindow( pDisp, pObject->maSecondary );
         XMapWindow( pDisp, pObject->maPrimary );
@@ -157,7 +162,7 @@ X11SalObject* X11SalObject::CreateObject( SalFrame* pParent, SystemWindowData* p
     pObjData->pVisual       = pVisual;
 
     XSync(pDisp, False);
-    if( GetGenericData()->ErrorTrapPop( false ) )
+    if( GetGenericUnixSalData()->ErrorTrapPop( false ) )
     {
         delete pObject;
         return nullptr;
@@ -186,7 +191,7 @@ SalClipRegion::~SalClipRegion()
 }
 
 void
-SalClipRegion::BeginSetClipRegion( sal_uLong nRects )
+SalClipRegion::BeginSetClipRegion( sal_uInt32 nRects )
 {
     ClipRectangleList.reset( new XRectangle[nRects] );
     numClipRectangles = 0;
@@ -200,10 +205,10 @@ SalClipRegion::UnionClipRegion( long nX, long nY, long nWidth, long nHeight )
     {
         XRectangle& aRect = ClipRectangleList[numClipRectangles];
 
-        aRect.x     = (short) nX;
-        aRect.y     = (short) nY;
-        aRect.width = (unsigned short) nWidth;
-        aRect.height= (unsigned short) nHeight;
+        aRect.x     = static_cast<short>(nX);
+        aRect.y     = static_cast<short>(nY);
+        aRect.width = static_cast<unsigned short>(nWidth);
+        aRect.height= static_cast<unsigned short>(nHeight);
 
         numClipRectangles++;
     }
@@ -212,31 +217,32 @@ SalClipRegion::UnionClipRegion( long nX, long nY, long nWidth, long nHeight )
 // SalObject Implementation
 X11SalObject::X11SalObject()
     : mpParent(nullptr)
+    , maParentWin(0)
     , maPrimary(0)
     , maSecondary(0)
     , maColormap(0)
     , mbVisible(false)
 {
-    maSystemChildData.nSize     = sizeof( SystemEnvData );
-    maSystemChildData.pDisplay  = vcl_sal::getSalDisplay(GetGenericData())->GetDisplay();
+    maSystemChildData.pDisplay  = vcl_sal::getSalDisplay(GetGenericUnixSalData())->GetDisplay();
     maSystemChildData.aWindow       = None;
     maSystemChildData.pSalFrame = nullptr;
     maSystemChildData.pWidget       = nullptr;
     maSystemChildData.pVisual       = nullptr;
     maSystemChildData.aShellWindow  = 0;
+    maSystemChildData.toolkit = SystemEnvData::Toolkit::Gen;
+    maSystemChildData.platform = SystemEnvData::Platform::Xcb;
 
-    std::list< SalObject* >& rObjects = vcl_sal::getSalDisplay(GetGenericData())->getSalObjects();
+    std::list< SalObject* >& rObjects = vcl_sal::getSalDisplay(GetGenericUnixSalData())->getSalObjects();
     rObjects.push_back( this );
 }
 
 X11SalObject::~X11SalObject()
 {
-    std::list< SalObject* >& rObjects = vcl_sal::getSalDisplay(GetGenericData())->getSalObjects();
+    std::list< SalObject* >& rObjects = vcl_sal::getSalDisplay(GetGenericUnixSalData())->getSalObjects();
     rObjects.remove( this );
 
-    GetGenericData()->ErrorTrapPush();
-    const SystemEnvData* pEnv   = mpParent->GetSystemData();
-    ::Window aObjectParent      = (::Window)pEnv->aWindow;
+    GetGenericUnixSalData()->ErrorTrapPush();
+    ::Window aObjectParent = maParentWin;
     XSetWindowBackgroundPixmap(static_cast<Display*>(maSystemChildData.pDisplay), aObjectParent, None);
     if ( maSecondary )
         XDestroyWindow( static_cast<Display*>(maSystemChildData.pDisplay), maSecondary );
@@ -245,7 +251,7 @@ X11SalObject::~X11SalObject()
     if ( maColormap )
         XFreeColormap(static_cast<Display*>(maSystemChildData.pDisplay), maColormap);
     XSync( static_cast<Display*>(maSystemChildData.pDisplay), False );
-    GetGenericData()->ErrorTrapPop();
+    GetGenericUnixSalData()->ErrorTrapPop();
 }
 
 void
@@ -281,7 +287,7 @@ X11SalObject::ResetClipRegion()
 }
 
 void
-X11SalObject::BeginSetClipRegion( sal_uLong nRectCount )
+X11SalObject::BeginSetClipRegion( sal_uInt32 nRectCount )
 {
     maClipRegion.BeginSetClipRegion ( nRectCount );
 }
@@ -382,11 +388,11 @@ static sal_uInt16 sal_GetCode( int state )
 
 bool X11SalObject::Dispatch( XEvent* pEvent )
 {
-    std::list< SalObject* >& rObjects = vcl_sal::getSalDisplay(GetGenericData())->getSalObjects();
+    std::list< SalObject* >& rObjects = vcl_sal::getSalDisplay(GetGenericUnixSalData())->getSalObjects();
 
-    for( std::list< SalObject* >::iterator it = rObjects.begin(); it != rObjects.end(); ++it )
+    for (auto const& elem : rObjects)
     {
-        X11SalObject* pObject = static_cast<X11SalObject*>(*it);
+        X11SalObject* pObject = static_cast<X11SalObject*>(elem);
         if( pEvent->xany.window == pObject->maPrimary ||
             pEvent->xany.window == pObject->maSecondary )
         {
@@ -400,12 +406,11 @@ bool X11SalObject::Dispatch( XEvent* pEvent )
                )
             {
                 SalMouseEvent aEvt;
-                const SystemEnvData* pParentData = pObject->mpParent->GetSystemData();
                 int dest_x, dest_y;
                 ::Window aChild = None;
                 XTranslateCoordinates( pEvent->xbutton.display,
                                        pEvent->xbutton.root,
-                                       pParentData->aWindow,
+                                       pObject->maParentWin,
                                        pEvent->xbutton.x_root,
                                        pEvent->xbutton.y_root,
                                        &dest_x, &dest_y,
@@ -465,10 +470,9 @@ bool X11SalObject::Dispatch( XEvent* pEvent )
 
 void X11SalObject::SetLeaveEnterBackgrounds(const css::uno::Sequence<css::uno::Any>& rLeaveArgs, const css::uno::Sequence<css::uno::Any>& rEnterArgs)
 {
-    SalDisplay* pSalDisp        = vcl_sal::getSalDisplay(GetGenericData());
-    const SystemEnvData* pEnv   = mpParent->GetSystemData();
+    SalDisplay* pSalDisp        = vcl_sal::getSalDisplay(GetGenericUnixSalData());
     Display* pDisp              = pSalDisp->GetDisplay();
-    ::Window aObjectParent      = (::Window)pEnv->aWindow;
+    ::Window aObjectParent      = maParentWin;
 
     bool bFreePixmap = false;
     Pixmap aPixmap = None;

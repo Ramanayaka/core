@@ -20,11 +20,7 @@
 #ifndef INCLUDED_FRAMEWORK_INC_JOBS_JOBCONST_HXX
 #define INCLUDED_FRAMEWORK_INC_JOBS_JOBCONST_HXX
 
-#include <stdtypes.h>
-#include <general.h>
-
 #include <rtl/ustring.hxx>
-#include <fwidllapi.h>
 
 namespace framework{
 
@@ -36,12 +32,12 @@ namespace framework{
             it's code. Typos can occur or code will be changed by new developers ...
             Shared set of constant values can help to improve the maintenance of this code.
  */
-class FWI_DLLPUBLIC JobConst
+class JobConst
 {
     public:
-        static const OUString ANSWER_DEACTIVATE_JOB();
-        static const OUString ANSWER_SAVE_ARGUMENTS();
-        static const OUString ANSWER_SEND_DISPATCHRESULT();
+        static const OUStringLiteral ANSWER_DEACTIVATE_JOB;
+        static const OUStringLiteral ANSWER_SAVE_ARGUMENTS;
+        static const OUStringLiteral ANSWER_SEND_DISPATCHRESULT;
 };
 
 } // namespace framework

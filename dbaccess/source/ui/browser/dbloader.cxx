@@ -17,15 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbu_reghelper.hxx"
-#include "dbustrings.hrc"
-#include "uiservices.hxx"
-#include "UITools.hxx"
+#include <strings.hxx>
+#include <UITools.hxx>
 
 #include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XSet.hpp>
-#include <com/sun/star/document/XEventListener.hpp>
 #include <com/sun/star/frame/XController2.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XFrameLoader.hpp>
@@ -34,7 +29,6 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/sdb/ReportDesign.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/frame/XModule.hpp>
@@ -42,10 +36,9 @@
 #include <com/sun/star/sdbc/XDataSource.hpp>
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/types.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <toolkit/awt/vclxwindow.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
 #include <tools/diagnose_ex.h>
 #include <tools/urlobj.hxx>
 #include <vcl/svapp.hxx>
@@ -58,33 +51,23 @@ using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::registry;
 using namespace dbaui;
+
+namespace {
 
 class DBContentLoader : public ::cppu::WeakImplHelper< XFrameLoader, XServiceInfo>
 {
 private:
-    OUString                     m_aURL;
     Sequence< PropertyValue>            m_aArgs;
     Reference< XLoadEventListener >     m_xListener;
-    Reference< XFrame >                 m_xFrame;
     Reference< XComponentContext >      m_xContext;
 public:
     explicit DBContentLoader(const Reference< XComponentContext >&);
 
     // XServiceInfo
     OUString                 SAL_CALL getImplementationName() override;
-    sal_Bool                        SAL_CALL supportsService(const OUString& ServiceName) override;
+    sal_Bool                 SAL_CALL supportsService(const OUString& ServiceName) override;
     Sequence< OUString >     SAL_CALL getSupportedServiceNames() override;
-
-    // static methods
-    static OUString          getImplementationName_Static() throw(  )
-    {
-        return OUString("org.openoffice.comp.dbu.DBContentLoader");
-    }
-    static Sequence< OUString> getSupportedServiceNames_Static() throw(  );
-    static css::uno::Reference< css::uno::XInterface >
-            SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
 
     // XLoader
     virtual void SAL_CALL load( const Reference< XFrame > & _rFrame, const OUString& _rURL,
@@ -93,6 +76,7 @@ public:
     virtual void SAL_CALL cancel() override;
 };
 
+}
 
 DBContentLoader::DBContentLoader(const Reference< XComponentContext >& _rxContext)
     :m_xContext(_rxContext)
@@ -100,20 +84,17 @@ DBContentLoader::DBContentLoader(const Reference< XComponentContext >& _rxContex
 
 }
 
-extern "C" void SAL_CALL createRegistryInfo_DBContentLoader()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+org_openoffice_comp_dbu_DBContentLoader_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static ::dbaui::OMultiInstanceAutoRegistration< DBContentLoader > aAutoRegistration;
-}
-
-Reference< XInterface > SAL_CALL DBContentLoader::Create( const Reference< XMultiServiceFactory >  & rSMgr )
-{
-    return *(new DBContentLoader(comphelper::getComponentContext(rSMgr)));
+    return cppu::acquire(new DBContentLoader(context));
 }
 
 // XServiceInfo
 OUString SAL_CALL DBContentLoader::getImplementationName()
 {
-    return getImplementationName_Static();
+    return "org.openoffice.comp.dbu.DBContentLoader";
 }
 
 // XServiceInfo
@@ -125,28 +106,17 @@ sal_Bool SAL_CALL DBContentLoader::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > SAL_CALL DBContentLoader::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
-}
-
-// ORegistryServiceManager_Static
-Sequence< OUString > DBContentLoader::getSupportedServiceNames_Static() throw(  )
-{
-    Sequence< OUString > aSNS( 2 );
-    aSNS[0] = "com.sun.star.frame.FrameLoader";
-    aSNS[1] = "com.sun.star.sdb.ContentLoader";
-    return aSNS;
+    return { "com.sun.star.frame.FrameLoader", "com.sun.star.sdb.ContentLoader" };
 }
 
 void SAL_CALL DBContentLoader::load(const Reference< XFrame > & rFrame, const OUString& rURL,
         const Sequence< PropertyValue >& rArgs,
         const Reference< XLoadEventListener > & rListener)
 {
-    m_xFrame    = rFrame;
     m_xListener = rListener;
-    m_aURL      = rURL;
     m_aArgs     = rArgs;
 
-    const struct ServiceNameToImplName
+    static const struct ServiceNameToImplName
     {
         const char*     pAsciiServiceName;
         const char*     pAsciiImplementationName;
@@ -197,7 +167,7 @@ void SAL_CALL DBContentLoader::load(const Reference< XFrame > & rFrame, const OU
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
             }
         }
     }
@@ -278,7 +248,7 @@ void SAL_CALL DBContentLoader::load(const Reference< XFrame > & rFrame, const OU
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
             }
         }
     }

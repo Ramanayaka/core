@@ -18,40 +18,39 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <cassert>
 #include <limits>
 
 #include "localebackend.hxx"
 #include <com/sun/star/beans/Optional.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/supportsservice.hxx>
-#include <osl/time.h>
 #include <rtl/character.hxx>
-
-#include <stdio.h>
+#include <o3tl/char16_t2wchar_t.hxx>
+#include <i18nlangtag/languagetag.hxx>
+#include <i18nlangtag/mslangid.hxx>
 
 #ifdef _WIN32
-#if defined _MSC_VER
-#pragma warning(push, 1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 
-css::beans::Optional<css::uno::Any> ImplGetLocale(LCID lcid)
+static css::beans::Optional<css::uno::Any> ImplGetLocale(LCID lcid)
 {
-    CHAR buffer[8];
-    PSTR cp = buffer;
+    WCHAR buffer[8];
+    PWSTR cp = buffer;
 
-    cp += GetLocaleInfoA( lcid, LOCALE_SISO639LANGNAME , buffer, 4 );
+    cp += GetLocaleInfoW( lcid, LOCALE_SISO639LANGNAME, buffer, 4 );
     if( cp > buffer )
     {
-        if( 0 < GetLocaleInfoA( lcid, LOCALE_SISO3166CTRYNAME, cp, buffer + 8 - cp) )
+        if( 0 < GetLocaleInfoW( lcid, LOCALE_SISO3166CTRYNAME, cp, buffer + 8 - cp) )
             // #i50822# minus character must be written before cp
             *(cp - 1) = '-';
 
-        return {true, css::uno::Any(OUString::createFromAscii(buffer))};
+        return {true, css::uno::Any(OUString(o3tl::toU(buffer)))};
     }
 
     return {false, {}};
@@ -113,9 +112,9 @@ namespace /* private */
 
         CFStringRef sref = (CFGetTypeID(ref) == CFArrayGetTypeID()) ? static_cast<CFStringRef>(CFArrayGetValueAtIndex(static_cast<CFArrayRef>(ref), 0)) : static_cast<CFStringRef>(ref);
 
-        // NOTE: this API is only available with Mac OS X >=10.3. We need to use it because
+        // NOTE: this API is only available with macOS >=10.3. We need to use it because
         // Apple used non-ISO values on systems <10.2 like "German" for instance but didn't
-        // upgrade those values during upgrade to newer Mac OS X versions. See also #i54337#
+        // upgrade those values during upgrade to newer macOS versions. See also #i54337#
         return CFLocaleCreateCanonicalLocaleIdentifierFromString(kCFAllocatorDefault, sref);
     }
 
@@ -180,16 +179,19 @@ static css::beans::Optional<css::uno::Any> ImplGetLocale(char const * category)
 
     const char *cp;
     const char *uscore = nullptr;
+    const char *end = nullptr;
 
     // locale string have the format lang[_ctry][.encoding][@modifier]
-    // we are only interested in the first two items, so we handle
-    // '.' and '@' as string end.
+    // Let LanguageTag handle all conversion, but do a sanity and length check
+    // first.
+    // For the fallback we are only interested in the first two items, so we
+    // handle '.' and '@' as string end for that.
     for (cp = locale; *cp; cp++)
     {
-        if (*cp == '_')
+        if (*cp == '_' && !uscore)
             uscore = cp;
-        if (*cp == '.' || *cp == '@')
-            break;
+        if ((*cp == '.' || *cp == '@') && !end)
+            end = cp;
         if (!rtl::isAscii(static_cast<unsigned char>(*cp))) {
             SAL_INFO("shell", "locale env var with non-ASCII content");
             return {false, {}};
@@ -201,16 +203,31 @@ static css::beans::Optional<css::uno::Any> ImplGetLocale(char const * category)
         return {false, {}};
     }
 
+    // This is a tad awkward... but the easiest way to obtain what we're
+    // actually interested in. For example this also converts
+    // "ca_ES.UTF-8@valencia" to "ca-ES-valencia".
+    const OString aLocaleStr(locale);
+    const LanguageType nLang = MsLangId::convertUnxByteStringToLanguage( aLocaleStr);
+    if (nLang != LANGUAGE_DONTKNOW)
+    {
+        const OUString aLangTagStr( LanguageTag::convertToBcp47( nLang));
+        return {true, css::uno::Any(aLangTagStr)};
+    }
+
+    // As a fallback, strip encoding and modifier and return just a
+    // language-country combination and let the caller handle unknowns.
     OUStringBuffer aLocaleBuffer;
+    if (!end)
+        end = cp;
     if( uscore != nullptr )
     {
         aLocaleBuffer.appendAscii(locale, uscore++ - locale);
         aLocaleBuffer.append("-");
-        aLocaleBuffer.appendAscii(uscore, cp - uscore);
+        aLocaleBuffer.appendAscii(uscore, end - uscore);
     }
     else
     {
-        aLocaleBuffer.appendAscii(locale, cp - locale);
+        aLocaleBuffer.appendAscii(locale, end - locale);
     }
 
     return {true, css::uno::Any(aLocaleBuffer.makeStringAndClear())};
@@ -228,11 +245,6 @@ LocaleBackend::~LocaleBackend()
 {
 }
 
-
-LocaleBackend* LocaleBackend::createInstance()
-{
-    return new LocaleBackend;
-}
 
 
 css::beans::Optional<css::uno::Any> LocaleBackend::getLocale()
@@ -296,19 +308,9 @@ css::uno::Any LocaleBackend::getPropertyValue(
 }
 
 
-OUString SAL_CALL LocaleBackend::getBackendName() {
-    return OUString("com.sun.star.comp.configuration.backend.LocaleBackend") ;
-}
-
 OUString SAL_CALL LocaleBackend::getImplementationName()
 {
-    return getBackendName() ;
-}
-
-uno::Sequence<OUString> SAL_CALL LocaleBackend::getBackendServiceNames()
-{
-    uno::Sequence<OUString> aServiceNameList { "com.sun.star.configuration.backend.LocaleBackend" };
-    return aServiceNameList ;
+    return "com.sun.star.comp.configuration.backend.LocaleBackend" ;
 }
 
 sal_Bool SAL_CALL LocaleBackend::supportsService(const OUString& aServiceName)
@@ -318,7 +320,14 @@ sal_Bool SAL_CALL LocaleBackend::supportsService(const OUString& aServiceName)
 
 uno::Sequence<OUString> SAL_CALL LocaleBackend::getSupportedServiceNames()
 {
-    return getBackendServiceNames() ;
+    return { "com.sun.star.configuration.backend.LocaleBackend" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+shell_LocaleBackend_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new LocaleBackend());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

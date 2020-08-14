@@ -44,7 +44,7 @@ SfxImageItem::SfxImageItem( sal_uInt16 which )
 
 SfxImageItem::SfxImageItem( const SfxImageItem& rItem )
     : SfxInt16Item( rItem ),
-      pImpl( new SfxImageItem_Impl( *(rItem.pImpl.get()) ) )
+      pImpl( new SfxImageItem_Impl( *rItem.pImpl ) )
 {
 }
 
@@ -52,17 +52,15 @@ SfxImageItem::~SfxImageItem()
 {
 }
 
-
-SfxPoolItem* SfxImageItem::Clone( SfxItemPool* ) const
+SfxImageItem* SfxImageItem::Clone( SfxItemPool* ) const
 {
     return new SfxImageItem( *this );
 }
 
-
 bool SfxImageItem::operator==( const SfxPoolItem& rItem ) const
 {
-    return (static_cast<const SfxImageItem&>(rItem).GetValue() == GetValue()) &&
-           (*pImpl == *static_cast<const SfxImageItem&>(rItem).pImpl);
+    return SfxInt16Item::operator==(rItem) &&
+           *pImpl == *static_cast<const SfxImageItem&>(rItem).pImpl;
 }
 
 bool SfxImageItem::QueryValue( css::uno::Any& rVal, sal_uInt8 ) const

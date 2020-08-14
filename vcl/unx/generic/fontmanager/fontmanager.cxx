@@ -19,37 +19,28 @@
 
 #include <memory>
 #include <unistd.h>
-#include <sys/stat.h>
-#include <dirent.h>
-#include <stdlib.h>
 #include <osl/thread.h>
 
-#include "unx/fontmanager.hxx"
-#include "fontsubset.hxx"
-#include "impfontcharmap.hxx"
-#include "svdata.hxx"
-#include "unx/geninst.h"
-#include <vcl/strhelper.hxx>
-#include <vcl/ppdparser.hxx>
-#include <vcl/embeddedfontshelper.hxx>
+#include <unx/fontmanager.hxx>
+#include <fontsubset.hxx>
+#include <impfontcharmap.hxx>
+#include <unx/gendata.hxx>
+#include <unx/helper.hxx>
 #include <vcl/fontcharmap.hxx>
 
-#include "tools/urlobj.hxx"
-#include "tools/stream.hxx"
+#include <tools/urlobj.hxx>
 
-#include "osl/file.hxx"
-#include "osl/process.h"
+#include <osl/file.hxx>
 
-#include "rtl/tencinfo.h"
-#include "rtl/ustrbuf.hxx"
-#include "rtl/strbuf.hxx"
+#include <rtl/ustrbuf.hxx>
+#include <rtl/strbuf.hxx>
 
 #include <sal/macros.h>
+#include <sal/log.hxx>
 
-#include "i18nlangtag/applelangid.hxx"
-#include "i18nlangtag/mslangid.hxx"
+#include <i18nlangtag/applelangid.hxx>
 
-#include "sft.hxx"
+#include <sft.hxx>
 
 #if OSL_DEBUG_LEVEL > 1
 #include <sys/times.h>
@@ -63,10 +54,7 @@
 #include <valgrind/callgrind.h>
 #endif
 
-#include <comphelper/processfactory.hxx>
-#include <comphelper/string.hxx>
-#include "com/sun/star/beans/XMaterialHolder.hpp"
-#include "com/sun/star/beans/NamedValue.hpp"
+#include <com/sun/star/beans/XMaterialHolder.hpp>
 
 using namespace vcl;
 using namespace utl;
@@ -80,10 +68,10 @@ using namespace com::sun::star::lang;
  *  static helpers
  */
 
-inline sal_uInt16 getUInt16BE( const sal_uInt8*& pBuffer )
+static sal_uInt16 getUInt16BE( const sal_uInt8*& pBuffer )
 {
-    sal_uInt16 nRet = (sal_uInt16)pBuffer[1] |
-        (((sal_uInt16)pBuffer[0]) << 8);
+    sal_uInt16 nRet = static_cast<sal_uInt16>(pBuffer[1]) |
+        (static_cast<sal_uInt16>(pBuffer[0]) << 8);
     pBuffer+=2;
     return nRet;
 }
@@ -107,6 +95,7 @@ PrintFontManager::PrintFont::PrintFont()
 ,   m_nYMax(0)
 ,   m_nDirectory(0)
 ,   m_nCollectionEntry(0)
+,   m_nVariationEntry(0)
 {
 }
 
@@ -115,14 +104,9 @@ PrintFontManager::PrintFont::PrintFont()
  */
 PrintFontManager& PrintFontManager::get()
 {
-    static PrintFontManager* pManager = nullptr;
-    if( ! pManager )
-    {
-        static PrintFontManager theManager;
-        pManager = &theManager;
-        pManager->initialize();
-    }
-    return *pManager;
+    GenericUnixSalData* const pSalData(GetGenericUnixSalData());
+    assert(pSalData);
+    return *pSalData->GetPrintFontManager();
 }
 
 /*
@@ -133,18 +117,14 @@ PrintFontManager::PrintFontManager()
     : m_nNextFontID( 1 )
     , m_nNextDirAtom( 1 )
 {
-#if ENABLE_DBUS
     m_aFontInstallerTimer.SetInvokeHandler(LINK(this, PrintFontManager, autoInstallFontLangSupport));
     m_aFontInstallerTimer.SetTimeout(5000);
-#endif
 }
 
 PrintFontManager::~PrintFontManager()
 {
     m_aFontInstallerTimer.Stop();
     deinitFontconfig();
-    for( std::unordered_map< fontID, PrintFont* >::const_iterator it = m_aFonts.begin(); it != m_aFonts.end(); ++it )
-        delete (*it).second;
 }
 
 OString PrintFontManager::getDirectory( int nAtom ) const
@@ -156,7 +136,7 @@ OString PrintFontManager::getDirectory( int nAtom ) const
 int PrintFontManager::getDirectoryAtom( const OString& rDirectory )
 {
     int nAtom = 0;
-    std::unordered_map< OString, int, OStringHash >::const_iterator it
+    std::unordered_map< OString, int >::const_iterator it
           ( m_aDirToAtom.find( rDirectory ) );
     if( it != m_aDirToAtom.end() )
         nAtom = it->second;
@@ -169,11 +149,11 @@ int PrintFontManager::getDirectoryAtom( const OString& rDirectory )
     return nAtom;
 }
 
-std::vector<fontID> PrintFontManager::addFontFile( const OString& rFileName )
+std::vector<fontID> PrintFontManager::addFontFile( const OUString& rFileUrl )
 {
     rtl_TextEncoding aEncoding = osl_getThreadTextEncoding();
-    INetURLObject aPath( OStringToOUString( rFileName, aEncoding ), FSysStyle::Detect );
-    OString aName( OUStringToOString( aPath.GetName( INetURLObject::DecodeMechanism::WithCharset, aEncoding ), aEncoding ) );
+    INetURLObject aPath( rFileUrl );
+    OString aName(OUStringToOString(aPath.GetLastName(INetURLObject::DecodeMechanism::WithCharset, aEncoding), aEncoding));
     OString aDir( OUStringToOString(
         INetURLObject::decode( aPath.GetPath(), INetURLObject::DecodeMechanism::WithCharset, aEncoding ), aEncoding ) );
 
@@ -181,68 +161,54 @@ std::vector<fontID> PrintFontManager::addFontFile( const OString& rFileName )
     std::vector<fontID> aFontIds = findFontFileIDs( nDirID, aName );
     if( aFontIds.empty() )
     {
-        std::list<std::unique_ptr<PrintFont>> aNewFonts;
-        if (analyzeFontFile(nDirID, aName, aNewFonts))
+        std::vector<std::unique_ptr<PrintFont>> aNewFonts = analyzeFontFile(nDirID, aName);
+        for (auto & font : aNewFonts)
         {
-            for (auto it = aNewFonts.begin(); it != aNewFonts.end(); ++it)
-            {
-                fontID nFontId = m_nNextFontID++;
-                m_aFonts[nFontId] = it->release();
-                m_aFontFileToFontID[ aName ].insert( nFontId );
-                aFontIds.push_back(nFontId);
-            }
+            fontID nFontId = m_nNextFontID++;
+            m_aFonts[nFontId] = std::move(font);
+            m_aFontFileToFontID[ aName ].insert( nFontId );
+            aFontIds.push_back(nFontId);
         }
     }
     return aFontIds;
 }
 
-enum fontFormat
+std::vector<std::unique_ptr<PrintFontManager::PrintFont>> PrintFontManager::analyzeFontFile( int nDirID, const OString& rFontFile, const char *pFormat ) const
 {
-    UNKNOWN, TRUETYPE, CFF
-};
-
-bool PrintFontManager::analyzeFontFile( int nDirID, const OString& rFontFile, std::list<std::unique_ptr<PrintFontManager::PrintFont>>& rNewFonts, const char *pFormat ) const
-{
-    rNewFonts.clear();
+    std::vector<std::unique_ptr<PrintFontManager::PrintFont>> aNewFonts;
 
     OString aDir( getDirectory( nDirID ) );
 
-    OString aFullPath( aDir );
-    aFullPath += "/";
-    aFullPath += rFontFile;
+    OString aFullPath = aDir + "/" + rFontFile;
 
     // #i1872# reject unreadable files
     if( access( aFullPath.getStr(), R_OK ) )
-        return false;
+        return aNewFonts;
 
-    fontFormat eFormat = UNKNOWN;
+    bool bSupported = false;
     if (pFormat)
     {
-        if (!strcmp(pFormat, "TrueType"))
-            eFormat = TRUETYPE;
-        else if (!strcmp(pFormat, "CFF"))
-            eFormat = CFF;
+        if (!strcmp(pFormat, "TrueType") ||
+            !strcmp(pFormat, "CFF"))
+            bSupported = true;
     }
-    if (eFormat == UNKNOWN)
+    if (!bSupported)
     {
         OString aExt( rFontFile.copy( rFontFile.lastIndexOf( '.' )+1 ) );
         if( aExt.equalsIgnoreAsciiCase("ttf")
              ||  aExt.equalsIgnoreAsciiCase("ttc")
-             ||  aExt.equalsIgnoreAsciiCase("tte") ) // #i33947# for Gaiji support
-            eFormat = TRUETYPE;
-        else if( aExt.equalsIgnoreAsciiCase("otf") ) // check for TTF- and PS-OpenType too
-            eFormat = CFF;
+             ||  aExt.equalsIgnoreAsciiCase("tte")   // #i33947# for Gaiji support
+             ||  aExt.equalsIgnoreAsciiCase("otf") ) // check for TTF- and PS-OpenType too
+            bSupported = true;
     }
 
-    if (eFormat == TRUETYPE || eFormat == CFF)
+    if (bSupported)
     {
         // get number of ttc entries
         int nLength = CountTTCFonts( aFullPath.getStr() );
         if (nLength > 0)
         {
-#if OSL_DEBUG_LEVEL > 1
-            fprintf( stderr, "ttc: %s contains %d fonts\n", aFullPath.getStr(), nLength );
-#endif
+            SAL_INFO("vcl.fonts", "ttc: " << aFullPath << " contains " << nLength << " fonts");
 
             sal_uInt64 fileSize = 0;
 
@@ -254,10 +220,12 @@ bool PrintFontManager::analyzeFontFile( int nDirID, const OString& rFontFile, st
                 if (aFile.open(osl_File_OpenFlag_Read | osl_File_OpenFlag_NoLock) == osl::File::E_None)
                 {
                     osl::DirectoryItem aItem;
-                    osl::DirectoryItem::get( aURL, aItem );
-                    osl::FileStatus aFileStatus( osl_FileStatus_Mask_FileSize );
-                    aItem.getFileStatus( aFileStatus );
-                    fileSize = aFileStatus.getFileSize();
+                    if (osl::DirectoryItem::get(aURL, aItem) == osl::File::E_None)
+                    {
+                        osl::FileStatus aFileStatus( osl_FileStatus_Mask_FileSize );
+                        if (aItem.getFileStatus(aFileStatus) == osl::File::E_None)
+                            fileSize = aFileStatus.getFileSize();
+                    }
                 }
             }
 
@@ -277,7 +245,7 @@ bool PrintFontManager::analyzeFontFile( int nDirID, const OString& rFontFile, st
                 xFont->m_aFontFile          = rFontFile;
                 xFont->m_nCollectionEntry   = i;
                 if (analyzeSfntFile(xFont.get()))
-                    rNewFonts.push_back(std::move(xFont));
+                    aNewFonts.push_back(std::move(xFont));
             }
         }
         else
@@ -289,29 +257,35 @@ bool PrintFontManager::analyzeFontFile( int nDirID, const OString& rFontFile, st
 
             // need to read the font anyway to get aliases inside the font file
             if (analyzeSfntFile(xFont.get()))
-                rNewFonts.push_back(std::move(xFont));
+                aNewFonts.push_back(std::move(xFont));
         }
     }
-    return ! rNewFonts.empty();
+    return aNewFonts;
 }
 
-fontID PrintFontManager::findFontFileID( int nDirID, const OString& rFontFile, int nFaceIndex ) const
+fontID PrintFontManager::findFontFileID(int nDirID, const OString& rFontFile, int nFaceIndex, int nVariationIndex) const
 {
     fontID nID = 0;
 
-    std::unordered_map< OString, ::std::set< fontID >, OStringHash >::const_iterator set_it = m_aFontFileToFontID.find( rFontFile );
+    std::unordered_map< OString, ::std::set< fontID > >::const_iterator set_it = m_aFontFileToFontID.find( rFontFile );
     if( set_it == m_aFontFileToFontID.end() )
         return nID;
 
-    for( ::std::set< fontID >::const_iterator font_it = set_it->second.begin(); font_it != set_it->second.end() && ! nID; ++font_it )
+    for (auto const& elem : set_it->second)
     {
-        std::unordered_map< fontID, PrintFont* >::const_iterator it = m_aFonts.find( *font_it );
+        auto it = m_aFonts.find(elem);
         if( it == m_aFonts.end() )
             continue;
-        PrintFont* const pFont = (*it).second;
+        PrintFont* const pFont = (*it).second.get();
         if (pFont->m_nDirectory == nDirID &&
-            pFont->m_aFontFile == rFontFile && pFont->m_nCollectionEntry == nFaceIndex)
-                nID = it->first;
+            pFont->m_aFontFile == rFontFile &&
+            pFont->m_nCollectionEntry == nFaceIndex &&
+            pFont->m_nVariationEntry == nVariationIndex)
+        {
+            nID = it->first;
+            if (nID)
+                break;
+        }
     }
 
     return nID;
@@ -321,19 +295,19 @@ std::vector<fontID> PrintFontManager::findFontFileIDs( int nDirID, const OString
 {
     std::vector<fontID> aIds;
 
-    std::unordered_map< OString, ::std::set< fontID >, OStringHash >::const_iterator set_it = m_aFontFileToFontID.find( rFontFile );
+    std::unordered_map< OString, ::std::set< fontID > >::const_iterator set_it = m_aFontFileToFontID.find( rFontFile );
     if( set_it == m_aFontFileToFontID.end() )
         return aIds;
 
-    for( ::std::set< fontID >::const_iterator font_it = set_it->second.begin(); font_it != set_it->second.end(); ++font_it )
+    for (auto const& elem : set_it->second)
     {
-        std::unordered_map< fontID, PrintFont* >::const_iterator it = m_aFonts.find( *font_it );
+        auto it = m_aFonts.find(elem);
         if( it == m_aFonts.end() )
             continue;
-         PrintFont* const pFont = (*it).second;
-         if (pFont->m_nDirectory == nDirID &&
-             pFont->m_aFontFile == rFontFile)
-             aIds.push_back(it->first);
+        PrintFont* const pFont = (*it).second.get();
+        if (pFont->m_nDirectory == nDirID &&
+            pFont->m_aFontFile == rFontFile)
+            aIds.push_back(it->first);
     }
 
     return aIds;
@@ -352,7 +326,7 @@ OUString PrintFontManager::convertSfntName( void* pRecord )
         OUStringBuffer aName( pNameRecord->slen/2 );
         const sal_uInt8* pNameBuffer = pNameRecord->sptr;
         for(int n = 0; n < pNameRecord->slen/2; n++ )
-            aName.append( (sal_Unicode)getUInt16BE( pNameBuffer ) );
+            aName.append( static_cast<sal_Unicode>(getUInt16BE( pNameBuffer )) );
         aValue = aName.makeStringAndClear();
     }
     else if( pNameRecord->platformID == 3 )
@@ -369,8 +343,8 @@ OUString PrintFontManager::convertSfntName( void* pRecord )
             const sal_uInt8* pNameBuffer = pNameRecord->sptr;
             for(int n = 0; n < pNameRecord->slen/2; n++ )
             {
-                sal_Unicode aCode = (sal_Unicode)getUInt16BE( pNameBuffer );
-                sal_Char aChar = aCode >> 8;
+                sal_Unicode aCode = static_cast<sal_Unicode>(getUInt16BE( pNameBuffer ));
+                char aChar = aCode >> 8;
                 if( aChar )
                     aName.append( aChar );
                 aChar = aCode & 0x00ff;
@@ -451,7 +425,7 @@ OUString PrintFontManager::convertSfntName( void* pRecord )
             default:
                 if (aName.startsWith("Khmer OS"))
                     eEncoding = RTL_TEXTENCODING_UTF8;
-                SAL_WARN_IF(eEncoding == RTL_TEXTENCODING_DONTKNOW, "vcl", "Unimplemented mac encoding " << pNameRecord->encodingID << " to unicode conversion for fontname " << aName);
+                SAL_WARN_IF(eEncoding == RTL_TEXTENCODING_DONTKNOW, "vcl.fonts", "Unimplemented mac encoding " << pNameRecord->encodingID << " to unicode conversion for fontname " << aName);
                 break;
         }
         if (eEncoding != RTL_TEXTENCODING_DONTKNOW)
@@ -484,7 +458,7 @@ namespace
     }
 }
 
-void PrintFontManager::analyzeSfntFamilyName( void* pTTFont, ::std::list< OUString >& rNames )
+void PrintFontManager::analyzeSfntFamilyName( void const * pTTFont, ::std::vector< OUString >& rNames )
 {
     OUString aFamily;
 
@@ -492,7 +466,7 @@ void PrintFontManager::analyzeSfntFamilyName( void* pTTFont, ::std::list< OUStri
     ::std::set< OUString > aSet;
 
     NameRecord* pNameRecords = nullptr;
-    int nNameRecords = GetTTNameRecords( static_cast<TrueTypeFont*>(pTTFont), &pNameRecords );
+    int nNameRecords = GetTTNameRecords( static_cast<TrueTypeFont const *>(pTTFont), &pNameRecords );
     if( nNameRecords && pNameRecords )
     {
         LanguageTag aSystem("");
@@ -520,7 +494,7 @@ void PrintFontManager::analyzeSfntFamilyName( void* pTTFont, ::std::list< OUStri
             }
             else if (pNameRecords[i].platformID == 1)
             {
-                AppleLanguageId aAppleId = static_cast<AppleLanguageId>((sal_uInt16)pNameRecords[i].languageID);
+                AppleLanguageId aAppleId = static_cast<AppleLanguageId>(static_cast<sal_uInt16>(pNameRecords[i].languageID));
                 LanguageTag aApple(makeLanguageTagFromAppleLanguageId(aAppleId));
                 if (aApple == aSystem)
                     nMatch = 8000;
@@ -543,10 +517,10 @@ void PrintFontManager::analyzeSfntFamilyName( void* pTTFont, ::std::list< OUStri
     DisposeNameRecords( pNameRecords, nNameRecords );
     if( !aFamily.isEmpty() )
     {
-        rNames.push_front( aFamily );
-        for( ::std::set< OUString >::const_iterator it = aSet.begin(); it != aSet.end(); ++it )
-            if( *it != aFamily )
-                rNames.push_back( *it );
+        rNames.push_back( aFamily );
+        for (auto const& elem : aSet)
+            if( elem != aFamily )
+                rNames.push_back(elem);
     }
 }
 
@@ -557,12 +531,13 @@ bool PrintFontManager::analyzeSfntFile( PrintFont* pFont ) const
     OString aFile = getFontFile( pFont );
     TrueTypeFont* pTTFont = nullptr;
 
-    if( OpenTTFontFile( aFile.getStr(), pFont->m_nCollectionEntry, &pTTFont ) == SF_OK )
+    auto const e = OpenTTFontFile( aFile.getStr(), pFont->m_nCollectionEntry, &pTTFont );
+    if( e == SFErrCodes::Ok )
     {
         TTGlobalFontInfo aInfo;
         GetTTGlobalFontInfo( pTTFont, & aInfo );
 
-        ::std::list< OUString > aNames;
+        ::std::vector< OUString > aNames;
         analyzeSfntFamilyName( pTTFont, aNames );
 
         // set family name from XLFD if possible
@@ -571,7 +546,7 @@ bool PrintFontManager::analyzeSfntFile( PrintFont* pFont ) const
             if( !aNames.empty() )
             {
                 pFont->m_aFamilyName = aNames.front();
-                aNames.pop_front();
+                aNames.erase(aNames.begin());
             }
             else
             {
@@ -602,7 +577,7 @@ bool PrintFontManager::analyzeSfntFile( PrintFont* pFont ) const
         if( aInfo.usubfamily )
             pFont->m_aStyleName = OUString( aInfo.usubfamily );
 
-        SAL_WARN_IF( !aInfo.psname, "vcl", "No PostScript name in font:" << aFile );
+        SAL_WARN_IF( !aInfo.psname, "vcl.fonts", "No PostScript name in font:" << aFile );
 
         pFont->m_aPSName = aInfo.psname ?
             OUString(aInfo.psname, rtl_str_getLength(aInfo.psname), aEncoding) :
@@ -686,7 +661,7 @@ bool PrintFontManager::analyzeSfntFile( PrintFont* pFont ) const
         bSuccess = true;
     }
     else
-        SAL_WARN("vcl", "Could not OpenTTFont \"" << aFile << "\"");
+        SAL_WARN("vcl.fonts", "Could not OpenTTFont \"" << aFile << "\": " << int(e));
 
     return bSuccess;
 }
@@ -702,12 +677,9 @@ void PrintFontManager::initialize()
     // gtk-fontconfig-timestamp changes to reflect new font installed and
     // PrintFontManager::initialize called again
     {
-        for( std::unordered_map< fontID, PrintFont* >::const_iterator it = m_aFonts.begin(); it != m_aFonts.end(); ++it )
-            delete (*it).second;
         m_nNextFontID = 1;
         m_aFonts.clear();
     }
-
 #if OSL_DEBUG_LEVEL > 1
     clock_t aStart;
     clock_t aStep1;
@@ -741,21 +713,25 @@ void PrintFontManager::initialize()
     }
 
     // protect against duplicate paths
-    std::unordered_map< OString, int, OStringHash > visited_dirs;
+    std::unordered_map< OString, int > visited_dirs;
 
     // Don't search directories that fontconfig already did
     countFontconfigFonts( visited_dirs );
 
 #if OSL_DEBUG_LEVEL > 1
     aStep1 = times( &tms );
-#endif
 
-#if OSL_DEBUG_LEVEL > 1
     aStep2 = times( &tms );
-    fprintf( stderr, "PrintFontManager::initialize: collected %" SAL_PRI_SIZET "u fonts\n", m_aFonts.size() );
+    SAL_INFO("vcl.fonts", "PrintFontManager::initialize: collected "
+            << m_aFonts.size()
+            << " fonts.");
     double fTick = (double)sysconf( _SC_CLK_TCK );
-    fprintf( stderr, "Step 1 took %lf seconds\n", (double)(aStep1 - aStart)/fTick );
-    fprintf( stderr, "Step 2 took %lf seconds\n", (double)(aStep2 - aStep1)/fTick );
+    SAL_INFO("vcl.fonts", "Step 1 took "
+            << ((double)(aStep1 - aStart)/fTick)
+            << " seconds.");
+    SAL_INFO("vcl.fonts", "Step 2 took "
+            << ((double)(aStep2 - aStep1)/fTick)
+            << " seconds.");
 #endif
 
     #ifdef CALLGRIND_COMPILE
@@ -764,13 +740,12 @@ void PrintFontManager::initialize()
     #endif
 }
 
-void PrintFontManager::getFontList( ::std::list< fontID >& rFontIDs )
+void PrintFontManager::getFontList( ::std::vector< fontID >& rFontIDs )
 {
     rFontIDs.clear();
-    std::unordered_map< fontID, PrintFont* >::const_iterator it;
 
-    for( it = m_aFonts.begin(); it != m_aFonts.end(); ++it )
-        rFontIDs.push_back( it->first );
+    for (auto const& font : m_aFonts)
+        rFontIDs.push_back(font.first);
 }
 
 void PrintFontManager::fillPrintFontInfo(PrintFont* pFont, FastPrintFontInfo& rInfo)
@@ -853,16 +828,29 @@ int PrintFontManager::getFontFaceNumber( fontID nFontID ) const
     return nRet;
 }
 
+int PrintFontManager::getFontFaceVariation( fontID nFontID ) const
+{
+    int nRet = 0;
+    PrintFont* pFont = getFont( nFontID );
+    if (pFont)
+    {
+        nRet = pFont->m_nVariationEntry;
+        if (nRet < 0)
+            nRet = 0;
+    }
+    return nRet;
+}
+
 FontFamily PrintFontManager::matchFamilyName( const OUString& rFamily )
 {
-    typedef struct {
+    struct family_t {
         const char*  mpName;
         sal_uInt16   mnLength;
         FontFamily   meType;
-    } family_t;
+    };
 
 #define InitializeClass( p, a ) p, sizeof(p) - 1, a
-    const family_t pFamilyMatch[] =  {
+    static const family_t pFamilyMatch[] =  {
         { InitializeClass( "arial",                  FAMILY_SWISS )  },
         { InitializeClass( "arioso",                 FAMILY_SCRIPT ) },
         { InitializeClass( "avant garde",            FAMILY_SWISS )  },
@@ -925,9 +913,7 @@ OString PrintFontManager::getFontFile(const PrintFont* pFont) const
     if (pFont)
     {
         std::unordered_map< int, OString >::const_iterator it = m_aAtomToDir.find(pFont->m_nDirectory);
-        aPath = it->second;
-        aPath += "/";
-        aPath += pFont->m_aFontFile;
+        aPath = it->second + "/" + pFont->m_aFontFile;
     }
     return aPath;
 }
@@ -998,11 +984,11 @@ bool PrintFontManager::createFontSubset(
         }
         else
         {
-            SAL_WARN_IF( (pGlyphIds[i] & 0x007f0000), "vcl", "overlong glyph id" );
-            SAL_WARN_IF( (int)pNewEncoding[i] >= nGlyphs, "vcl", "encoding wrong" );
-            SAL_WARN_IF( pEnc[pNewEncoding[i]] != 0 || pGID[pNewEncoding[i]] != 0, "vcl", "duplicate encoded glyph" );
+            SAL_WARN_IF( (pGlyphIds[i] & 0x007f0000), "vcl.fonts", "overlong glyph id" );
+            SAL_WARN_IF( static_cast<int>(pNewEncoding[i]) >= nGlyphs, "vcl.fonts", "encoding wrong" );
+            SAL_WARN_IF( pEnc[pNewEncoding[i]] != 0 || pGID[pNewEncoding[i]] != 0, "vcl.fonts", "duplicate encoded glyph" );
             pEnc[ pNewEncoding[i] ] = pNewEncoding[i];
-            pGID[ pNewEncoding[i] ] = (sal_uInt16)pGlyphIds[ i ];
+            pGID[ pNewEncoding[i] ] = static_cast<sal_uInt16>(pGlyphIds[ i ]);
             pOldIndex[ pNewEncoding[i] ] = i;
             nChar++;
         }
@@ -1014,7 +1000,7 @@ bool PrintFontManager::createFontSubset(
     const OString aFromFile = getFontFile( pFont );
 
     TrueTypeFont* pTTFont = nullptr; // TODO: rename to SfntFont
-    if( OpenTTFontFile( aFromFile.getStr(), pFont->m_nCollectionEntry, &pTTFont ) != SF_OK )
+    if( OpenTTFontFile( aFromFile.getStr(), pFont->m_nCollectionEntry, &pTTFont ) != SFErrCodes::Ok )
         return false;
 
     // prepare system name for write access for subset file target
@@ -1077,15 +1063,15 @@ bool PrintFontManager::createFontSubset(
     rInfo.m_nCapHeight  = yMax; // Well ...
 
     // fill in glyph advance widths
-    TTSimpleGlyphMetrics* pMetrics = GetTTSimpleGlyphMetrics( pTTFont,
+    std::unique_ptr<sal_uInt16[]> pMetrics = GetTTSimpleGlyphMetrics( pTTFont,
                                                               pGID,
                                                               nGlyphs,
                                                               false/*bVertical*/ );
     if( pMetrics )
     {
         for( int i = 0; i < nGlyphs; i++ )
-            pWidths[pOldIndex[i]] = pMetrics[i].adv;
-        free( pMetrics );
+            pWidths[pOldIndex[i]] = pMetrics[i];
+        pMetrics.reset();
     }
     else
     {
@@ -1093,13 +1079,11 @@ bool PrintFontManager::createFontSubset(
         return false;
     }
 
-    bool bSuccess = ( SF_OK == CreateTTFromTTGlyphs( pTTFont,
+    bool bSuccess = ( SFErrCodes::Ok == CreateTTFromTTGlyphs( pTTFont,
                                                      aToFile.getStr(),
                                                      pGID,
                                                      pEnc,
-                                                     nGlyphs,
-                                                     0,
-                                                     nullptr ) );
+                                                     nGlyphs ) );
     CloseTTFont( pTTFont );
 
     return bSuccess;
@@ -1115,7 +1099,7 @@ void PrintFontManager::getGlyphWidths( fontID nFont,
         return;
     TrueTypeFont* pTTFont = nullptr;
     OString aFromFile = getFontFile( pFont );
-    if( OpenTTFontFile( aFromFile.getStr(), pFont->m_nCollectionEntry, &pTTFont ) != SF_OK )
+    if( OpenTTFontFile( aFromFile.getStr(), pFont->m_nCollectionEntry, &pTTFont ) != SFErrCodes::Ok )
         return;
     int nGlyphs = GetTTGlyphCount(pTTFont);
     if (nGlyphs > 0)
@@ -1124,15 +1108,15 @@ void PrintFontManager::getGlyphWidths( fontID nFont,
         std::vector<sal_uInt16> aGlyphIds(nGlyphs);
         for (int i = 0; i < nGlyphs; i++)
             aGlyphIds[i] = sal_uInt16(i);
-        TTSimpleGlyphMetrics* pMetrics = GetTTSimpleGlyphMetrics(pTTFont,
-                                                                 &aGlyphIds[0],
+        std::unique_ptr<sal_uInt16[]> pMetrics = GetTTSimpleGlyphMetrics(pTTFont,
+                                                                 aGlyphIds.data(),
                                                                  nGlyphs,
                                                                  bVertical);
         if (pMetrics)
         {
             for (int i = 0; i< nGlyphs; i++)
-                rWidths[i] = pMetrics[i].adv;
-            free(pMetrics);
+                rWidths[i] = pMetrics[i];
+            pMetrics.reset();
             rUnicodeEnc.clear();
         }
 
@@ -1154,13 +1138,13 @@ void PrintFontManager::getGlyphWidths( fontID nFont,
                         break;
                     cOld = c;
 #if 1 // TODO: remove when sal_Unicode covers all of unicode
-                    if (c > (sal_Unicode)~0)
+                    if (c > sal_Unicode(~0))
                         break;
 #endif
                     // get the matching glyph index
                     const sal_GlyphId aGlyphId = xFontCharMap->GetGlyphIndex(c);
                     // update the requested map
-                    rUnicodeEnc[(sal_Unicode)c] = aGlyphId;
+                    rUnicodeEnc[static_cast<sal_Unicode>(c)] = aGlyphId;
                 }
             }
         }
@@ -1172,11 +1156,11 @@ void PrintFontManager::getGlyphWidths( fontID nFont,
 extern "C" {
 SAL_DLLPUBLIC_EXPORT const char * unit_online_get_fonts(void)
 {
-    std::list< fontID > aFontIDs;
+    std::vector< fontID > aFontIDs;
     PrintFontManager &rMgr = PrintFontManager::get();
     rMgr.getFontList(aFontIDs);
     OStringBuffer aBuf;
-    aBuf.append( (sal_Int32)aFontIDs.size() );
+    aBuf.append( static_cast<sal_Int32>(aFontIDs.size()) );
     aBuf.append( " PS fonts.\n" );
     for( auto nId : aFontIDs )
     {

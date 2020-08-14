@@ -13,15 +13,17 @@ $(eval $(call gb_Library_use_external,clucene,zlib))
 
 $(eval $(call gb_Library_use_unpacked,clucene,clucene))
 
-$(eval $(call gb_Library_set_warnings_not_errors,clucene))
+$(eval $(call gb_Library_set_warnings_disabled,clucene))
 
 $(eval $(call gb_Library_set_include,clucene,\
-	-I$(WORKDIR)/UnpackedTarball/clucene/inc/internal \
-	-I$(WORKDIR)/UnpackedTarball/clucene/src/core \
-	-I$(WORKDIR)/UnpackedTarball/clucene/src/contribs-lib \
-	-I$(WORKDIR)/UnpackedTarball/clucene/src/shared \
+	-I$(call gb_UnpackedTarball_get_dir,clucene)/inc/internal \
+	-I$(call gb_UnpackedTarball_get_dir,clucene)/src/core \
+	-I$(call gb_UnpackedTarball_get_dir,clucene)/src/contribs-lib \
+	-I$(call gb_UnpackedTarball_get_dir,clucene)/src/shared \
 	$$(INCLUDE) \
 ))
+
+$(eval $(call gb_Library_set_precompiled_header,clucene,external/clucene/inc/pch/precompiled_clucene))
 
 $(eval $(call gb_Library_add_defs,clucene,\
     -Dclucene_shared_EXPORTS \
@@ -29,20 +31,16 @@ $(eval $(call gb_Library_add_defs,clucene,\
     -Dclucene_contribs_lib_EXPORTS \
 ))
 
-# clucene is riddled with warnings... let's spare use
-# the pointless spamming
-$(eval $(call gb_Library_add_cxxflags,clucene,\
-	-w \
-))
-$(eval $(call gb_Library_add_cflags,clucene,\
-	-w \
+# Needed when building against MSVC in C++17 mode, as
+# workdir/UnpackedTarball/clucene/src/core/CLucene/util/Equators.h uses std::binary_function:
+$(eval $(call gb_Library_add_defs,clucene, \
+    -D_HAS_AUTO_PTR_ETC=1 \
 ))
 
 ifeq ($(OS),LINUX)
 $(eval $(call gb_Library_add_libs,clucene,\
 	-lm \
 	-ldl \
-	-lpthread \
 ))
 endif
 

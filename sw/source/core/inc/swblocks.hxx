@@ -19,14 +19,17 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_SWBLOCKS_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_SWBLOCKS_HXX
 
-#include <tools/datetime.hxx>
+#include <tools/date.hxx>
+#include <tools/time.hxx>
 #include <o3tl/sorted_vector.hxx>
+#include <vcl/errcode.hxx>
+#include <rtl/ref.hxx>
 
 class SwPaM;
 class SwDoc;
 class SvxMacroTableDtor;
 
-// Name eines Textblocks:
+// Name of a text block:
 
 class SwBlockName
 {
@@ -46,7 +49,7 @@ public:
     bool operator< ( const SwBlockName& r ) const { return aShort <  r.aShort; }
 };
 
-class SwBlockNames : public o3tl::sorted_vector<SwBlockName*, o3tl::less_ptr_to<SwBlockName> > {};
+class SwBlockNames : public o3tl::sorted_vector<std::unique_ptr<SwBlockName>, o3tl::less_uniqueptr_to<SwBlockName> > {};
 
 class SwImpBlocks
 {
@@ -60,7 +63,7 @@ protected:
     SwBlockNames m_aNames;                // List of all Blocks
     Date m_aDateModified;                 // For aligning the Actions
     tools::Time m_aTimeModified;
-    SwDoc* m_pDoc;                        // Document to be switched
+    rtl::Reference<SwDoc> m_xDoc;                        // Document to be switched
     sal_uInt16 m_nCurrentIndex;                    // Current Index
     bool m_bReadOnly : 1;
     bool m_bInPutMuchBlocks : 1;          // Put several block entries
@@ -71,14 +74,12 @@ protected:
     enum class FileType {
         NoFile,  // Not present
         None,    // No TB file
-        SW3,     // SW3 file
         XML      // XML Block List
     };
     static FileType GetFileType( const OUString& );
-    virtual FileType GetFileType() const = 0;
 
     virtual void   ClearDoc();          // Delete Doc content
-    SwPaM* MakePaM();                   // Span PaM over Doc
+    std::unique_ptr<SwPaM> MakePaM();   // Span PaM over Doc
     virtual void   AddName( const OUString&, const OUString&, bool bOnlyText = false );
     bool   IsFileChanged() const;
     void   Touch();
@@ -97,15 +98,14 @@ public:
     const OUString& GetFileName() const {return m_aFile;}      /// Return physical file name
     void SetName( const OUString& rName )             /// Logic name
         { m_aName = rName; m_bInfoChanged = true; }
-    const OUString& GetName()
+    const OUString& GetName() const
         { return m_aName; }
 
     const OUString&     GetBaseURL() const { return m_sBaseURL;}
     void                SetBaseURL( const OUString& rURL ) { m_sBaseURL = rURL; }
 
     virtual ErrCode Delete( sal_uInt16 ) = 0;
-    virtual ErrCode Rename( sal_uInt16, const OUString&, const OUString& ) = 0;
-    virtual ErrCode CopyBlock( SwImpBlocks& rImp, OUString& rShort, const OUString& rLong) = 0;
+    virtual ErrCode Rename( sal_uInt16, const OUString& ) = 0;
     virtual ErrCode GetDoc( sal_uInt16 ) = 0;
     virtual ErrCode BeginPutDoc( const OUString&, const OUString& ) = 0;
     virtual ErrCode PutDoc() = 0;

@@ -20,12 +20,12 @@
 #ifndef INCLUDED_RTL_STRING_H
 #define INCLUDED_RTL_STRING_H
 
-#include <sal/config.h>
+#include "sal/config.h"
 
-#include <osl/interlck.h>
-#include <rtl/textcvt.h>
-#include <sal/saldllapi.h>
-#include <sal/types.h>
+#include "osl/interlck.h"
+#include "rtl/textcvt.h"
+#include "sal/saldllapi.h"
+#include "sal/types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -783,6 +783,31 @@ SAL_DLLPUBLIC sal_uInt32 SAL_CALL rtl_str_toUInt32(
 SAL_DLLPUBLIC sal_Int64 SAL_CALL rtl_str_toInt64(
         const sal_Char * str, sal_Int16 radix ) SAL_THROW_EXTERN_C();
 
+/** Interpret a string as a long integer.
+
+    This function cannot be used for language-specific conversion.  The string
+    must be null-terminated.
+
+    @param str
+    a null-terminated string.
+
+    @param radix
+    the radix.  Must be between RTL_STR_MIN_RADIX (2) and RTL_STR_MAX_RADIX
+    (36), inclusive.
+
+    @param nStrLength
+    number of sal_Chars to process
+
+    @return
+    the long integer value represented by the string, or 0 if the string does
+    not represent a long integer.
+
+    @internal
+    @since LibreOffice 6.4
+*/
+SAL_DLLPUBLIC sal_Int64 SAL_CALL rtl_str_toInt64_WithLength(
+        const sal_Char * str, sal_Int16 radix, sal_Int32 nStrLength ) SAL_THROW_EXTERN_C();
+
 /** Interpret a string as an unsigned long integer.
 
     This function cannot be used for language-specific conversion.  The string
@@ -836,7 +861,7 @@ SAL_DLLPUBLIC double SAL_CALL rtl_str_toDouble(
 
 /* ======================================================================= */
 
-#ifdef SAL_W32
+#ifdef _WIN32
 #   pragma pack(push, 8)
 #endif
 
@@ -851,7 +876,7 @@ typedef struct _rtl_String
 } rtl_String;
 /** @endcond */
 
-#if defined(SAL_W32)
+#if defined(_WIN32)
 #pragma pack(pop)
 #endif
 
@@ -886,7 +911,7 @@ SAL_DLLPUBLIC void SAL_CALL rtl_string_new( rtl_String ** newStr ) SAL_THROW_EXT
     The reference count of the new string will be 1. The length of the string
     will be nLen. This function does not handle out-of-memory conditions.
 
-    For nLen < 0 or failed allocation this method returns NULL.
+    For failed allocation this method returns NULL.
 
     The characters of the capacity are not cleared, and the length is set to
     nLen, unlike the similar method of rtl_String_new_WithLength which
@@ -897,7 +922,8 @@ SAL_DLLPUBLIC void SAL_CALL rtl_string_new( rtl_String ** newStr ) SAL_THROW_EXT
     alternatively pass ownership to an OUString with
     rtl::OUString(newStr, SAL_NO_ACQUIRE);
 
-    @param[out] nLen the number of characters.
+    @param[out] nLen the number of characters. Must be >= 0.
+
     @return pointer to the new string.
 
     @since LibreOffice 4.1
@@ -1051,7 +1077,7 @@ SAL_DLLPUBLIC void SAL_CALL rtl_string_newConcat( rtl_String ** newStr, rtl_Stri
 
     The new string results from replacing a number of characters (count),
     starting at the specified position (index) in the original string (str),
-    with some new substring (subStr).  If subStr is null, than only a number
+    with some new substring (subStr).  If subStr is null, then only a number
     of characters is deleted.
 
     The new string does not necessarily have a reference count of 1, so it

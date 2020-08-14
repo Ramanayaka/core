@@ -23,7 +23,6 @@
 #include "PresenterController.hxx"
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/drawing/framework/XConfigurationController.hpp>
 #include <com/sun/star/drawing/framework/XResourceFactory.hpp>
 #include <com/sun/star/drawing/framework/XView.hpp>
@@ -31,7 +30,7 @@
 #include <rtl/ref.hxx>
 #include <memory>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::drawing::framework::XResourceFactory
@@ -46,7 +45,7 @@ public:
     virtual void ActivatePresenterView();
 
     /** Called when the view is put into a cache.  The view must not paint
-        itself while being deactive.
+        itself while being deactivated.
     */
     virtual void DeactivatePresenterView();
 
@@ -76,12 +75,12 @@ class PresenterViewFactory
       public PresenterViewFactoryInterfaceBase
 {
 public:
-    static const OUString msCurrentSlidePreviewViewURL;
-    static const OUString msNextSlidePreviewViewURL;
-    static const OUString msNotesViewURL;
-    static const OUString msToolBarViewURL;
-    static const OUString msSlideSorterURL;
-    static const OUString msHelpViewURL;
+    static const OUStringLiteral msCurrentSlidePreviewViewURL;
+    static const OUStringLiteral msNextSlidePreviewViewURL;
+    static const OUStringLiteral msNotesViewURL;
+    static const OUStringLiteral msToolBarViewURL;
+    static const OUStringLiteral msSlideSorterURL;
+    static const OUStringLiteral msHelpViewURL;
 
     /** Create a new instance of this class and register it as resource
         factory in the drawing framework of the given controller.
@@ -155,7 +154,7 @@ private:
     void ThrowIfDisposed() const;
 };
 
-} }
+}
 
 #endif
 

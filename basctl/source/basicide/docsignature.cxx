@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "docsignature.hxx"
-#include "scriptdocument.hxx"
+#include <docsignature.hxx>
+#include <scriptdocument.hxx>
 
 #include <sfx2/objsh.hxx>
 #include <sfx2/signaturestate.hxx>
@@ -45,19 +45,19 @@ namespace basctl
     DocumentSignature::DocumentSignature (ScriptDocument const& rDocument) :
         m_pImpl(new Impl)
     {
-        if (rDocument.isDocument())
+        if (!rDocument.isDocument())
+            return;
+
+        Reference<XModel> xDocument(rDocument.getDocument());
+        // find object shell for document
+        SfxObjectShell* pShell = SfxObjectShell::GetFirst();
+        while ( pShell )
         {
-            Reference<XModel> xDocument(rDocument.getDocument());
-            // find object shell for document
-            SfxObjectShell* pShell = SfxObjectShell::GetFirst();
-            while ( pShell )
-            {
-                if ( pShell->GetModel() == xDocument )
-                    break;
-                pShell = SfxObjectShell::GetNext( *pShell );
-            }
-            m_pImpl->pShell = pShell;
+            if ( pShell->GetModel() == xDocument )
+                break;
+            pShell = SfxObjectShell::GetNext( *pShell );
         }
+        m_pImpl->pShell = pShell;
     }
 
     DocumentSignature::~DocumentSignature()
@@ -69,11 +69,11 @@ namespace basctl
         return ( m_pImpl->pShell != nullptr );
     }
 
-    void DocumentSignature::signScriptingContent() const
+    void DocumentSignature::signScriptingContent(weld::Window* pDialogParent) const
     {
         OSL_PRECOND( supportsSignatures(), "DocumentSignature::signScriptingContent: signatures not supported by this document!" );
         if ( m_pImpl->pShell )
-            m_pImpl->pShell->SignScriptingContent();
+            m_pImpl->pShell->SignScriptingContent(pDialogParent);
     }
 
     SignatureState DocumentSignature::getScriptingSignatureState() const

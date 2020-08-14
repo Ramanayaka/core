@@ -10,11 +10,9 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_CELLMERGEOPTION_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_CELLMERGEOPTION_HXX
 
-#include "address.hxx"
+#include <address.hxx>
 
 #include <set>
-
-class ScRange;
 
 struct ScCellMergeOption
 {
@@ -29,7 +27,6 @@ struct ScCellMergeOption
     explicit ScCellMergeOption(SCCOL nStartCol, SCROW nStartRow,
                                SCCOL nEndCol, SCROW nEndRow,
                                bool bCenter = false);
-    explicit ScCellMergeOption(const ScCellMergeOption& r);
 
     ScRange getSingleRange(SCTAB nTab) const;
     ScRange getFirstSingleRange() const;

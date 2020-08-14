@@ -24,10 +24,21 @@
 #include <set>
 #include <vector>
 
-#include "types.hxx"
 #include "token.hxx"
 #include "error.hxx"
-#include "node.hxx"
+
+class SmBlankNode;
+class SmBracebodyNode;
+class SmExpressionNode;
+class SmGlyphSpecialNode;
+class SmNode;
+class SmOperNode;
+class SmSpecialNode;
+class SmStructureNode;
+class SmTableNode;
+class SmTextNode;
+
+#define DEPTH_LIMIT 1024
 
 class SmParser
 {
@@ -41,6 +52,24 @@ class SmParser
                     m_nColOff; // 0-based
     bool            m_bImportSymNames,
                     m_bExportSymNames;
+    sal_Int32       m_nParseDepth;
+
+    class DepthProtect
+    {
+    private:
+        sal_Int32& m_rParseDepth;
+    public:
+        DepthProtect(sal_Int32& rParseDepth)
+            : m_rParseDepth(rParseDepth)
+        {
+            ++m_rParseDepth;
+        }
+        bool TooDeep() const { return m_rParseDepth > DEPTH_LIMIT; }
+        ~DepthProtect()
+        {
+            --m_rParseDepth;
+        }
+    };
 
     // map of used symbols (used to reduce file size by exporting only actually used symbols)
     std::set< OUString >   m_aUsedSymbols;
@@ -60,45 +89,45 @@ class SmParser
     inline bool     TokenInGroup( TG nGroup );
 
     // grammar
-    SmTableNode *DoTable();
-    SmLineNode *DoLine();
-    SmNode *DoExpression(bool bUseExtraSpaces = true);
-    SmNode *DoRelation();
-    SmNode *DoSum();
-    SmNode *DoProduct();
-    SmNode *DoSubSup(TG nActiveGroup, SmNode *pGivenNode);
-    SmNode *DoOpSubSup();
-    SmNode *DoPower();
-    SmBlankNode *DoBlank();
-    SmNode *DoTerm(bool bGroupNumberIdent);
-    SmNode *DoEscape();
-    SmOperNode *DoOperator();
-    SmNode *DoOper();
-    SmStructureNode *DoUnOper();
-    SmNode *DoAlign(bool bUseExtraSpaces = true);
-    SmStructureNode *DoFontAttribut();
-    SmAttributNode *DoAttribut();
-    SmStructureNode *DoFont();
-    SmStructureNode *DoFontSize();
-    SmStructureNode *DoColor();
-    SmStructureNode *DoBrace();
-    SmBracebodyNode *DoBracebody(bool bIsLeftRight);
-    SmTextNode *DoFunction();
-    SmTableNode *DoBinom();
-    SmStructureNode *DoStack();
-    SmStructureNode *DoMatrix();
-    SmSpecialNode *DoSpecial();
-    SmGlyphSpecialNode *DoGlyphSpecial();
-    SmExpressionNode *DoError(SmParseError Error);
+    std::unique_ptr<SmTableNode> DoTable();
+    std::unique_ptr<SmNode> DoLine();
+    std::unique_ptr<SmNode> DoExpression(bool bUseExtraSpaces = true);
+    std::unique_ptr<SmNode> DoRelation();
+    std::unique_ptr<SmNode> DoSum();
+    std::unique_ptr<SmNode> DoProduct();
+    std::unique_ptr<SmNode> DoSubSup(TG nActiveGroup, SmNode *pGivenNode);
+    std::unique_ptr<SmNode> DoOpSubSup();
+    std::unique_ptr<SmNode> DoPower();
+    std::unique_ptr<SmBlankNode> DoBlank();
+    std::unique_ptr<SmNode> DoTerm(bool bGroupNumberIdent);
+    std::unique_ptr<SmNode> DoEscape();
+    std::unique_ptr<SmOperNode> DoOperator();
+    std::unique_ptr<SmNode> DoOper();
+    std::unique_ptr<SmStructureNode> DoUnOper();
+    std::unique_ptr<SmNode> DoAlign(bool bUseExtraSpaces = true);
+    std::unique_ptr<SmStructureNode> DoFontAttribut();
+    std::unique_ptr<SmStructureNode> DoAttribut();
+    std::unique_ptr<SmStructureNode> DoFont();
+    std::unique_ptr<SmStructureNode> DoFontSize();
+    std::unique_ptr<SmStructureNode> DoColor();
+    std::unique_ptr<SmStructureNode> DoBrace();
+    std::unique_ptr<SmBracebodyNode> DoBracebody(bool bIsLeftRight);
+    std::unique_ptr<SmTextNode> DoFunction();
+    std::unique_ptr<SmTableNode> DoBinom();
+    std::unique_ptr<SmStructureNode> DoStack();
+    std::unique_ptr<SmStructureNode> DoMatrix();
+    std::unique_ptr<SmSpecialNode> DoSpecial();
+    std::unique_ptr<SmGlyphSpecialNode> DoGlyphSpecial();
+    std::unique_ptr<SmExpressionNode> DoError(SmParseError Error);
     // end of grammar
 
 public:
                  SmParser();
 
     /** Parse rBuffer to formula tree */
-    SmTableNode *Parse(const OUString &rBuffer);
+    std::unique_ptr<SmTableNode> Parse(const OUString &rBuffer);
     /** Parse rBuffer to formula subtree that constitutes an expression */
-    SmNode      *ParseExpression(const OUString &rBuffer);
+    std::unique_ptr<SmNode> ParseExpression(const OUString &rBuffer);
 
     const OUString & GetText() const { return m_aBufferString; };
 
@@ -110,7 +139,7 @@ public:
     void        AddError(SmParseError Type, SmNode *pNode);
     const SmErrorDesc*  NextError();
     const SmErrorDesc*  PrevError();
-    const SmErrorDesc*  GetError(size_t i);
+    const SmErrorDesc*  GetError();
     static const SmTokenTableEntry* GetTokenTableEntry( const OUString &rName );
     const std::set< OUString >&   GetUsedSymbols() const      { return m_aUsedSymbols; }
 };

@@ -44,17 +44,26 @@ interface TextDrawText
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
 
-    SID_PASTE_SPECIAL  // api:
+    SID_PASTE_UNFORMATTED  // api:
     [
+        ExecMethod = ExecClpbrd ;
         StateMethod = StateClpbrd ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
 
-        SID_CLIPBOARD_FORMAT_ITEMS  // api:
-        [
-                StateMethod = StateClpbrd ;
-                DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
-        ]
+    SID_PASTE_SPECIAL  // api:
+    [
+        ExecMethod = ExecClpbrd ;
+        StateMethod = StateClpbrd ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
+    SID_CLIPBOARD_FORMAT_ITEMS  // api:
+    [
+        ExecMethod = ExecClpbrd ;
+        StateMethod = StateClpbrd ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
 
     FN_ESCAPE // api:
     [
@@ -108,6 +117,11 @@ interface TextDrawText
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
 
+    SID_CHARMAP_CONTROL
+    [
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
     FN_INSERT_STRING
     [
             ExecMethod = ExecDraw ;
@@ -128,6 +142,12 @@ interface TextDrawText
                 DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
         ]
         FN_INSERT_HARD_SPACE // status(final|play)
+        [
+                ExecMethod = ExecDraw ;
+                StateMethod = NoState ;
+                DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+        ]
+        FN_INSERT_NNBSP // status(final|play)
         [
                 ExecMethod = ExecDraw ;
                 StateMethod = NoState ;
@@ -526,6 +546,30 @@ interface TextDrawText
     [
         StateMethod = StateInsert ;
     ]
+    SID_OPEN_HYPERLINK
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+    SID_EDIT_HYPERLINK
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+    SID_REMOVE_HYPERLINK
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+    SID_COPY_HYPERLINK_LOCATION
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
     SID_TRANSLITERATE_SENTENCE_CASE
     [
         ExecMethod = ExecTransliteration;
@@ -580,7 +624,7 @@ interface TextDrawText
         StateMethod = GetState ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
-    SID_TRANSLITERATE_KATAGANA
+    SID_TRANSLITERATE_KATAKANA
     [
         ExecMethod = ExecTransliteration;
         StateMethod = GetState ;

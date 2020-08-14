@@ -28,8 +28,8 @@ class SdrPageView;
 class FuSelection : public FuDraw
 {
 public:
-    FuSelection(ScTabViewShell* pViewSh, vcl::Window* pWin, ScDrawView* pView,
-           SdrModel* pDoc, SfxRequest& rReq );
+    FuSelection(ScTabViewShell& rViewSh, vcl::Window* pWin, ScDrawView* pView,
+           SdrModel* pDoc, const SfxRequest& rReq );
 
     virtual ~FuSelection() override;
                                        // Mouse- & Key-Events
@@ -40,7 +40,7 @@ public:
     void    ActivateNoteHandles(SdrObject* pObj);
 
 private:
-    bool TestDetective( SdrPageView* pPV, const Point& rPos );  // -> fusel2
+    bool TestDetective( const SdrPageView* pPV, const Point& rPos );  // -> fusel2
 
     bool                IsNoteCaptionMarked() const;
     bool                IsNoteCaptionClicked( const Point& rPos ) const;

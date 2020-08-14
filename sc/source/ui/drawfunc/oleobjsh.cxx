@@ -17,28 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <editeng/eeitem.hxx>
-#include <svx/fontwork.hxx>
-#include <svl/srchitem.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/objface.hxx>
-#include <sfx2/request.hxx>
-#include <svl/whiter.hxx>
-#include <vcl/msgbox.hxx>
 
-#include "oleobjsh.hxx"
-#include "drwlayer.hxx"
-#include "sc.hrc"
-#include "viewdata.hxx"
-#include "document.hxx"
-#include "docpool.hxx"
-#include "drawview.hxx"
-#include "scresid.hxx"
-#include <svx/svdobj.hxx>
+#include <oleobjsh.hxx>
 #include <vcl/EnumContext.hxx>
 
-#define ScOleObjectShell
-#include "scslots.hxx"
+#define ShellClass_ScOleObjectShell
+#include <scslots.hxx>
 
 SFX_IMPL_INTERFACE(ScOleObjectShell, ScDrawShell)
 

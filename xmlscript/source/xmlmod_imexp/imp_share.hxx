@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_XMLSCRIPT_SOURCE_XMLMOD_IMEXP_IMP_SHARE_HXX
-#define INCLUDED_XMLSCRIPT_SOURCE_XMLMOD_IMEXP_IMP_SHARE_HXX
+#pragma once
 
 #include <xmlscript/xmlmod_imexp.hxx>
 
@@ -26,16 +25,7 @@
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ref.hxx>
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-
-#include <com/sun/star/awt/XControlModel.hpp>
-#include <com/sun/star/awt/FontDescriptor.hpp>
-
 #include <com/sun/star/xml/input/XRoot.hpp>
-
-#include <vector>
 
 namespace xmlscript
 {
@@ -78,9 +68,9 @@ class ModuleElement
 {
     rtl::Reference<ModuleImport> mxImport;
 
-    OUString _aLocalName;
+    OUString const _aLocalName;
     css::uno::Reference< css::xml::input::XAttributes > _xAttributes;
-    OUStringBuffer _strBuffer;
+    OUStringBuffer _strBuffer{512};
 
 public:
     ModuleElement(
@@ -107,6 +97,5 @@ public:
 
 }
 
-#endif // INCLUDED_XMLSCRIPT_SOURCE_XMLMOD_IMEXP_IMP_SHARE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

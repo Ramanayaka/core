@@ -19,16 +19,13 @@
 
 #include <config_folders.h>
 
-#include <stdio.h>
-
 #include <vcl/svapp.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/weld.hxx>
 #include <rtl/bootstrap.hxx>
-#include <rtl/strbuf.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <osl/process.h>
 #include <osl/file.hxx>
-#include <osl/thread.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/bootstrap.hxx>
 #include <cppuhelper/bootstrap.hxx>
@@ -38,11 +35,12 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/ucb/UniversalContentBroker.hpp>
 
-#include "deployment.hrc"
+#include <strings.hrc>
 #include "unopkg_shared.h"
-#include "dp_identifier.hxx"
-#include "dp_gui.hrc"
-#include "lockfile.hxx"
+#include <dp_identifier.hxx>
+#include <dp_misc.h>
+#include <dp_shared.hxx>
+#include <lockfile.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -106,7 +104,7 @@ bool isOption( OptionInfo const * option_info, sal_uInt32 * pIndex )
     {
         ++(*pIndex);
         dp_misc::TRACE(__FILE__ ": identified option \'\'"
-            + OUStringLiteral1( option_info->m_short_option ) + "\n");
+            + OUStringChar( option_info->m_short_option ) + "\n");
         return true;
     }
     if (arg[ 1 ] == '-' && rtl_ustr_ascii_compare(
@@ -159,7 +157,7 @@ bool readArgument(
 namespace {
 struct ExecutableDir : public rtl::StaticWithInit<
     OUString, ExecutableDir> {
-    const OUString operator () () {
+    OUString operator () () {
         OUString path;
         if (osl_getExecutableFile( &path.pData ) != osl_Process_E_None) {
             throw RuntimeException("cannot locate executable directory!",nullptr);
@@ -169,7 +167,7 @@ struct ExecutableDir : public rtl::StaticWithInit<
 };
 struct ProcessWorkingDir : public rtl::StaticWithInit<
     OUString, ProcessWorkingDir> {
-    const OUString operator () () {
+    OUString operator () () {
         OUString workingDir;
         utl::Bootstrap::getProcessWorkingDir(workingDir);
         return workingDir;
@@ -198,15 +196,12 @@ OUString makeAbsoluteFileUrl(
     oslFileError rc = osl_getFileURLFromSystemPath( sys_path.pData, &file_url.pData );
     if ( rc != osl_File_E_None) {
         OUString tempPath;
-        if ( osl_getSystemPathFromFileURL( sys_path.pData, &tempPath.pData) == osl_File_E_None )
-        {
-            file_url = sys_path;
-        }
-        else
+        if ( osl_getSystemPathFromFileURL( sys_path.pData, &tempPath.pData) != osl_File_E_None )
         {
             throw RuntimeException("cannot get file url from system path: " +
                 sys_path );
         }
+        file_url = sys_path;
     }
 
     OUString abs;
@@ -225,7 +220,7 @@ OUString makeAbsoluteFileUrl(
 namespace {
 
 
-inline void printf_space( sal_Int32 space )
+void printf_space( sal_Int32 space )
 {
     while (space--)
         dp_misc::writeConsole("  ");
@@ -235,7 +230,7 @@ inline void printf_space( sal_Int32 space )
 void printf_line(
     OUString const & name, OUString const & value, sal_Int32 level )
 {
-   printf_space( level );
+    printf_space( level );
     dp_misc::writeConsole(name + ": " + value + "\n");
 }
 
@@ -264,7 +259,7 @@ void printf_package(
         if (reg.IsAmbiguous)
             value = "unknown";
         else
-            value = reg.Value ? OUString("yes") : OUString("no");
+            value = reg.Value ? OUStringLiteral("yes") : OUStringLiteral("no");
     }
     else
         value = "n/a";
@@ -277,23 +272,24 @@ void printf_package(
         printf_line( "Media-Type", xPackageType->getMediaType(), level + 1 );
     }
     printf_line( "Description", xPackage->getDescription(), level + 1 );
-    if (xPackage->isBundle()) {
-        Sequence< Reference<deployment::XPackage> > seq(
-            xPackage->getBundle( Reference<task::XAbortChannel>(), xCmdEnv ) );
-        printf_space( level + 1 );
-        dp_misc::writeConsole("bundled Packages: {\n");
-        std::vector<Reference<deployment::XPackage> >vec_bundle;
-        ::comphelper::sequenceToContainer(vec_bundle, seq);
-        printf_packages( vec_bundle, std::vector<bool>(vec_bundle.size()),
-                         xCmdEnv, level + 2 );
-        printf_space( level + 1 );
-        dp_misc::writeConsole("}\n");
-    }
+    if (!xPackage->isBundle())
+        return;
+
+    Sequence< Reference<deployment::XPackage> > seq(
+        xPackage->getBundle( Reference<task::XAbortChannel>(), xCmdEnv ) );
+    printf_space( level + 1 );
+    dp_misc::writeConsole("bundled Packages: {\n");
+    std::vector<Reference<deployment::XPackage> >vec_bundle;
+    ::comphelper::sequenceToContainer(vec_bundle, seq);
+    printf_packages( vec_bundle, std::vector<bool>(vec_bundle.size()),
+                     xCmdEnv, level + 2 );
+    printf_space( level + 1 );
+    dp_misc::writeConsole("}\n");
 }
 
 } // anon namespace
 
-void printf_unaccepted_licenses(
+static void printf_unaccepted_licenses(
     Reference<deployment::XPackage> const & ext)
 {
         OUString id(
@@ -318,15 +314,15 @@ void printf_packages(
     }
     else
     {
-        typedef std::vector< Reference<deployment::XPackage> >::const_iterator I_EXT;
         int index = 0;
-        for (I_EXT i = allExtensions.begin(); i != allExtensions.end(); ++i, ++index)
+        for (auto const& extension : allExtensions)
         {
             if (vecUnaccepted[index])
-                printf_unaccepted_licenses(*i);
+                printf_unaccepted_licenses(extension);
             else
-                printf_package( *i, xCmdEnv, level );
+                printf_package( extension, xCmdEnv, level );
             dp_misc::writeConsole("\n");
+            ++index;
         }
     }
 }
@@ -357,16 +353,10 @@ Reference<XComponentContext> connectToOffice(
     Reference<XComponentContext> const & xLocalComponentContext,
     bool verbose )
 {
-    Sequence<OUString> args( 3 );
-    args[ 0 ] = "--nologo";
-    args[ 1 ] = "--nodefault";
-
     OUString pipeId( ::dp_misc::generateRandomPipeId() );
-    OUStringBuffer buf;
-    buf.append( "--accept=pipe,name=" );
-    buf.append( pipeId );
-    buf.append( ";urp;" );
-    args[ 2 ] = buf.makeStringAndClear();
+    OUString acceptArg = "--accept=pipe,name=" + pipeId + ";urp;";
+
+    Sequence<OUString> args { "--nologo", "--nodefault", acceptArg };
     OUString appURL( getExecutableDir() + "/soffice" );
 
     if (verbose)
@@ -382,13 +372,10 @@ Reference<XComponentContext> connectToOffice(
     if (verbose)
         dp_misc::writeConsole("OK.  Connecting...");
 
-    OSL_ASSERT( buf.isEmpty() );
-    buf.append( "uno:pipe,name=" );
-    buf.append( pipeId );
-    buf.append( ";urp;StarOffice.ComponentContext" );
+    OUString sUnoUrl = "uno:pipe,name=" + pipeId + ";urp;StarOffice.ComponentContext";
     Reference<XComponentContext> xRet(
         ::dp_misc::resolveUnoURL(
-            buf.makeStringAndClear(), xLocalComponentContext ),
+            sUnoUrl, xLocalComponentContext ),
         UNO_QUERY_THROW );
     if (verbose)
         dp_misc::writeConsole("OK.\n");
@@ -401,7 +388,7 @@ Reference<XComponentContext> connectToOffice(
 /** returns the path to the lock file used by unopkg.
     @return the path. An empty string signifies an error.
 */
-OUString getLockFilePath()
+static OUString getLockFilePath()
 {
     OUString ret;
     OUString sBootstrap("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}");
@@ -421,13 +408,12 @@ OUString getLockFilePath()
 }
 
 Reference<XComponentContext> getUNO(
-    bool verbose, bool shared, bool bGui,
+    bool verbose, bool bGui, const OUString& sTempDir,
     Reference<XComponentContext> & out_localContext)
 {
     // do not create any user data (for the root user) in --shared mode:
-    if (shared) {
-        rtl::Bootstrap::set("CFG_CacheUrl", OUString());
-    }
+    if (!sTempDir.isEmpty())
+        rtl::Bootstrap::set("UserInstallation", sTempDir);
 
     // hold lock during process runtime:
     static ::desktop::Lockfile s_lockfile( false /* no IPC server */ );
@@ -441,10 +427,8 @@ Reference<XComponentContext> getUNO(
     {
         if (! s_lockfile.check( nullptr ))
         {
-            OUString sMsg(ResId(RID_STR_CONCURRENTINSTANCE, *DeploymentResMgr::get()));
-            //Create this string before we call DeInitVCL, because this will kill
-            //the ResMgr
-            OUString sError(ResId(RID_STR_UNOPKG_ERROR, *DeploymentResMgr::get()));
+            OUString sMsg(DpResId(RID_STR_CONCURRENTINSTANCE));
+            OUString sError(DpResId(RID_STR_UNOPKG_ERROR));
 
             sMsg += "\n" + getLockFilePath();
 
@@ -455,10 +439,11 @@ Reference<XComponentContext> getUNO(
                 if ( ! InitVCL() )
                     throw RuntimeException( "Cannot initialize VCL!" );
                 {
-                    ScopedVclPtrInstance< WarningBox > warn(nullptr, WB_OK | WB_DEF_OK, sMsg);
-                    warn->SetText(utl::ConfigManager::getProductName());
-                    warn->SetIcon(0);
-                    warn->Execute();
+                    std::unique_ptr<weld::MessageDialog> xWarn(Application::CreateMessageDialog(nullptr,
+                                                               VclMessageType::Warning, VclButtonsType::Ok,
+                                                               sMsg));
+                    xWarn->set_title(utl::ConfigManager::getProductName());
+                    xWarn->run();
                 }
                 DeInitVCL();
             }

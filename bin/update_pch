@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 # -*- Mode: python; tab-width: 4; indent-tabs-mode: t -*-
 #
 # This file is part of the LibreOffice project.
@@ -27,12 +27,14 @@ import sys
 import re
 import os
 import unittest
+import glob
 
 CUTOFF = 1
 EXCLUDE_MODULE = False
 EXCLUDE_LOCAL = False
 EXCLUDE_SYSTEM = True
 SILENT = False
+WORKDIR = 'workdir'
 
 # System includes: oox, sal, sd, svl, vcl
 
@@ -47,7 +49,6 @@ DEFAULTS = \
     'basic.sb'                          : ( 2, EXCLUDE, EXCLUDE, INCLUDE), #  10.7
     'chart2.chartcontroller'            : ( 6, EXCLUDE, INCLUDE, INCLUDE), #  18.4
     'chart2.chartcore'                  : ( 3, EXCLUDE, EXCLUDE, INCLUDE), #  22.5
-    'chart2.chartopengl'                : (12, EXCLUDE, EXCLUDE, EXCLUDE), #   5.3
     'comphelper.comphelper'             : ( 4, EXCLUDE, INCLUDE, INCLUDE), #   7.6
     'configmgr.configmgr'               : ( 6, EXCLUDE, INCLUDE, INCLUDE), #   6.0
     'connectivity.ado'                  : ( 2, EXCLUDE, EXCLUDE, EXCLUDE), #   6.4
@@ -66,7 +67,6 @@ DEFAULTS = \
     'cui.cui'                           : ( 8, EXCLUDE, INCLUDE, EXCLUDE), #  19.7
     'dbaccess.dba'                      : ( 6, EXCLUDE, INCLUDE, INCLUDE), #  13.8
     'dbaccess.dbaxml'                   : ( 2, EXCLUDE, EXCLUDE, EXCLUDE), #   6.5
-    'dbaccess.dbmm'                     : (10, EXCLUDE, INCLUDE, EXCLUDE), #   4.3
     'dbaccess.dbu'                      : (12, EXCLUDE, EXCLUDE, EXCLUDE), #  23.6
     'dbaccess.sdbt'                     : ( 1, EXCLUDE, INCLUDE, EXCLUDE), #   2.9
     'desktop.deployment'                : ( 3, EXCLUDE, EXCLUDE, EXCLUDE), #   6.1
@@ -76,10 +76,7 @@ DEFAULTS = \
     'drawinglayer.drawinglayer'         : ( 4, EXCLUDE, EXCLUDE, EXCLUDE), #   7.4
     'editeng.editeng'                   : ( 5, EXCLUDE, INCLUDE, EXCLUDE), #  13.0
     'forms.frm'                         : ( 2, EXCLUDE, EXCLUDE, EXCLUDE), #  14.2
-    'framework.fwe'                     : (10, EXCLUDE, INCLUDE, EXCLUDE), #   5.5
-    'framework.fwi'                     : ( 9, EXCLUDE, INCLUDE, EXCLUDE), #   3.4
     'framework.fwk'                     : ( 7, EXCLUDE, INCLUDE, INCLUDE), #  14.8
-    'framework.fwl'                     : ( 5, EXCLUDE, INCLUDE, INCLUDE), #   5.1
     'hwpfilter.hwp'                     : ( 3, EXCLUDE, INCLUDE, INCLUDE), #   6.0
     'lotuswordpro.lwpft'                : ( 2, EXCLUDE, EXCLUDE, EXCLUDE), #  11.6
     'oox.oox'                           : ( 6, EXCLUDE, EXCLUDE, INCLUDE), #  28.2
@@ -102,6 +99,7 @@ DEFAULTS = \
     'sot.sot'                           : ( 5, EXCLUDE, EXCLUDE, INCLUDE), #   3.1
     'starmath.sm'                       : ( 5, EXCLUDE, EXCLUDE, INCLUDE), #  10.9
     'svgio.svgio'                       : ( 8, EXCLUDE, EXCLUDE, INCLUDE), #   4.3
+    'emfio.emfio'                       : ( 8, EXCLUDE, EXCLUDE, INCLUDE), #   4.3
     'svl.svl'                           : ( 6, EXCLUDE, EXCLUDE, EXCLUDE), #   7.6
     'svtools.svt'                       : ( 4, EXCLUDE, INCLUDE, EXCLUDE), #  17.6
     'svx.svx'                           : ( 3, EXCLUDE, EXCLUDE, INCLUDE), #  20.7
@@ -122,7 +120,6 @@ DEFAULTS = \
     'xmloff.xof'                        : ( 1, EXCLUDE, EXCLUDE, INCLUDE), #   4.4
     'xmlscript.xmlscript'               : ( 4, EXCLUDE, EXCLUDE, INCLUDE), #   3.6
     'xmlsecurity.xmlsecurity'           : ( 6, EXCLUDE, INCLUDE, INCLUDE), #   5.1
-    'xmlsecurity.xsec_fw'               : ( 2, EXCLUDE, INCLUDE, EXCLUDE), #   2.7
     'xmlsecurity.xsec_xmlsec'           : ( 2, EXCLUDE, INCLUDE, INCLUDE), #   4.4
     'xmlsecurity.xsec_gpg'              : ( 2, EXCLUDE, INCLUDE, INCLUDE), #   ?
 }
@@ -186,24 +183,36 @@ def get_filename(line):
         return line
     return re.sub(r'(.*#include\s*)<(.*)>(.*)', r'\2', line)
 
-def is_c_runtime(inc):
+def is_c_runtime(inc, root, module):
     """ Heuristic-based detection of C/C++
         runtime headers.
         They are all-lowercase, with .h or
         no extension, filename only.
+        Try to check that they are not LO headers.
     """
     inc = get_filename(inc)
 
     if inc.endswith('.hxx') or inc.endswith('.hpp'):
         return False
 
+    if inc.endswith('.h') and inc.startswith( 'config_' ):
+        return False
+
+    hasdot = False
     for c in inc:
         if c == '/':
             return False
+        if c == '.' and not inc.endswith('.h'):
+            return False
         if c == '.':
-            return inc.endswith('.h')
+            hasdot = True
         if c.isupper():
             return False
+    if not hasdot: # <memory> etc.
+        return True
+
+    if glob.glob(os.path.join(root, module, '**', inc), recursive=True):
+        return False;
 
     return True
 
@@ -243,12 +252,12 @@ class Filter_Local(object):
         self.public_prefix = '<' + self.module + '/'
 
         all = find_files(os.path.join(root, module))
-        self.module = []
+        self.module_includes = []
         self.locals = []
         mod_prefix = module + '/inc/'
         for i in all:
             if mod_prefix in i:
-                self.module.append(i)
+                self.module_includes.append(i)
             else:
                 self.locals.append(i)
 
@@ -258,7 +267,7 @@ class Filter_Local(object):
     def is_module(self, line):
         """ Returns True if in module/inc/... """
         filename = get_filename(line)
-        for i in self.module:
+        for i in self.module_includes:
             if i.endswith(filename):
                 return True
         return False
@@ -272,7 +281,7 @@ class Filter_Local(object):
         return False
 
     def is_external(self, line):
-        return is_c_runtime(line) and \
+        return is_c_runtime(line, self.root, self.module) and \
                not self.is_public(line) and \
                not self.is_module(line) and \
                not self.is_local(line)
@@ -285,13 +294,19 @@ class Filter_Local(object):
         for i in self.locals:
             if i.endswith(filename):
                 return i
-        for i in self.module:
+        for i in self.module_includes:
             if i.endswith(filename):
                 return i
         return None
 
     def proc(self, line):
         assert line and len(line)
+
+        if line[0] == '#':
+            if not SILENT:
+                sys.stderr.write('unhandled #include : {}\n'.format(line))
+            return ''
+
         assert line[0] != '<' and line[0] != '#'
 
         filename = get_filename(line)
@@ -303,7 +318,17 @@ class Filter_Local(object):
 
         # Locals are included first (by the compiler).
         if self.is_local(filename):
-            return line if self.allow_locals and '/inc/' in filename else ''
+            # Use only locals that are in some /inc/ directory (either in <module>/inc or
+            # somewhere under <module>/source/**/inc/, compilations use -I for these paths
+            # and headers elsewhere would not be found when compiling the PCH.
+            if not self.allow_locals:
+                return ''
+            elif '/inc/' in filename:
+                return filename
+            elif glob.glob(os.path.join(self.root, self.module, '**', 'inc', filename), recursive=True):
+                return filename
+            else:
+                return ''
 
         # Module headers are next.
         if self.is_module(filename):
@@ -347,8 +372,7 @@ def filter_ignore(line, module):
             'LibreOfficeKit/LibreOfficeKitTypes.h', # Needs special directives
             'jerror.h',     # c++ unfriendly
             'jpeglib.h',    # c++ unfriendly
-            'boost/spirit/include/classic_core.hpp', # depends on BOOST_SPIRIT_DEBUG
-            'svtools/editimplementation.hxx' # no direct include
+            'boost/spirit/include/classic_core.hpp' # depends on BOOST_SPIRIT_DEBUG
         ]
 
     if module == 'accessibility':
@@ -364,10 +388,9 @@ def filter_ignore(line, module):
         ignore_list += [
             'com/sun/star/beans/PropertyAttribute.hpp', # OPTIONAL defined via objbase.h
             'com/sun/star/sdbcx/Privilege.hpp', # DELETE defined via objbase.h
-            ]
-    if module == 'reportdesign':
-        ignore_list += [
-            'editeng/eeitemid.hxx', # macro redefined in ui/misc/UITools.cxx
+            'ado/*' , # some strange type conflict because of Window's adoctint.h
+            'adoint.h',
+            'adoctint.h',
             ]
     if module == 'sc':
         ignore_list += [
@@ -421,6 +444,42 @@ def filter_ignore(line, module):
             'xmlsec/*',
             'xmlsecurity/xmlsec-wrapper.h',
             ]
+    if module == 'external/pdfium':
+        ignore_list += [
+            'third_party/freetype/include/pstables.h',
+            ]
+    if module == 'external/clucene':
+        ignore_list += [
+            '_bufferedstream.h',
+            '_condition.h',
+            '_gunichartables.h',
+            '_threads.h',
+            'error.h',
+            'CLucene/LuceneThreads.h',
+            'CLucene/config/_threads.h',
+            ]
+    if module == 'external/skia':
+        ignore_list += [
+            'skcms_internal.h',
+            'zlib.h', # causes crc32 conflict
+            'dirent.h', # unix-specific
+            'pthread.h',
+            'unistd.h',
+            'sys/stat.h',
+            'ft2build.h',
+            'fontconfig/fontconfig.h',
+            'GL/glx.h',
+            'src/Transform_inl.h',
+            'src/c/sk_c_from_to.h',
+            'src/c/sk_types_priv.h',
+            'src/core/SkBlitBWMaskTemplate.h',
+            'src/sfnt/SkSFNTHeader.h',
+            'src/opts/',
+            'src/core/SkCubicSolver.h',
+            'src/sksl/SkSLCPP.h',
+            'src/gpu/vk/GrVkAMDMemoryAllocator.h',
+            'src/gpu/GrUtil.h',
+            ]
 
     for i in ignore_list:
         if line.startswith(i):
@@ -466,7 +525,7 @@ def fixup(includes, module):
     #        append('sfx2/msg.hxx')
     return fixes
 
-def sort_by_category(list, module, filter_local):
+def sort_by_category(list, root, module, filter_local):
     """ Move all 'system' headers first.
         Core files of osl, rtl, sal, next.
         Everything non-module-specific third.
@@ -480,30 +539,48 @@ def sort_by_category(list, module, filter_local):
 
     prefix = '<' + module + '/'
     for i in list:
-        if is_c_runtime(i):
+        if is_c_runtime(i, root, module):
             sys.append(i)
         elif '<boost/' in i:
             boo.append(i)
-        elif '<osl' in i or '<rtl' in i or '<sal' in i or '<vcl' in i:
+        elif prefix in i or not '/' in i:
+            mod.append(i)
+        elif '<sal/' in i or '<vcl/' in i:
             cor.append(i)
-        elif prefix in i:
+        elif '<osl/' in i or '<rtl/' in i:
+            if module == "sal": # osl and rtl are also part of sal
+                mod.append(i)
+            else:
+                cor.append(i)
+        # Headers from another module that is closely tied to the module.
+        elif module == 'sc' and '<formula' in i:
             mod.append(i)
         else:
             rst.append(i)
 
     out = []
+    out += [ "#if PCH_LEVEL >= 1" ]
     out += sorted(sys)
     out += sorted(boo)
+    out += [ "#endif // PCH_LEVEL >= 1" ]
+    out += [ "#if PCH_LEVEL >= 2" ]
     out += sorted(cor)
+    out += [ "#endif // PCH_LEVEL >= 2" ]
+    out += [ "#if PCH_LEVEL >= 3" ]
     out += sorted(rst)
+    out += [ "#endif // PCH_LEVEL >= 3" ]
+    out += [ "#if PCH_LEVEL >= 4" ]
     out += sorted(mod)
+    out += [ "#endif // PCH_LEVEL >= 4" ]
     return out
 
 def parse_makefile(groups, lines, lineno, lastif, ifstack):
 
     inobjects = False
+    ingeneratedobjects = False
     inelse = False
-    os_cond_re = re.compile('(ifeq|ifneq)\s*\(\$\(OS\)\,(\w*)\)')
+    suffix = 'cxx'
+    os_cond_re = re.compile(r'(ifeq|ifneq)\s*\(\$\(OS\)\,(\w*)\)')
 
     line = lines[lineno]
     if line.startswith('if'):
@@ -524,12 +601,21 @@ def parse_makefile(groups, lines, lineno, lastif, ifstack):
 
         if line == '))':
             inobjects = False
+            ingeneratedobjects = False
         elif 'add_exception_objects' in line or \
              'add_cxxobject' in line:
              inobjects = True
              #print('inobjects')
              #if ifstack and not SILENT:
                 #sys.stderr.write('Sources in a conditional, ignoring for now.\n')
+        elif 'add_generated_exception_objects' in line or \
+             'add_generated_cxxobject' in line:
+             ingeneratedobjects = True
+        elif 'set_generated_cxx_suffix' in line:
+            suffix_re = re.compile('.*set_generated_cxx_suffix,[^,]*,([^)]*).*')
+            match = suffix_re.match(line)
+            if match:
+                suffix = match.group(1)
         elif line.startswith('if'):
             lineno = parse_makefile(groups, lines, lineno, line, ifstack+1)
             continue
@@ -539,11 +625,11 @@ def parse_makefile(groups, lines, lineno, lastif, ifstack):
             continue
         elif line.startswith('else'):
             inelse = True
-        elif inobjects:
+        elif inobjects or ingeneratedobjects:
             if EXCLUDE_SYSTEM and ifstack:
                 continue
-            file = line + '.cxx'
-            if ',' in line or '(' in line or ')' in line:
+            file = line + '.' + suffix
+            if ',' in line or '(' in line or ')' in line or file.startswith('-'):
                 #print('passing: ' + line)
                 pass # $if() probably, or something similar
             else:
@@ -564,26 +650,51 @@ def parse_makefile(groups, lines, lineno, lastif, ifstack):
 
                 if osname not in groups:
                     groups[osname] = []
+                if ingeneratedobjects:
+                    file = WORKDIR + '/' + file
                 groups[osname].append(file)
 
     return groups
 
-def process_makefile(root, module, makefile):
+def process_makefile(root, module, libname):
     """ Parse a gmake makefile and extract
         source filenames from it.
     """
 
+    makefile = 'Library_{}.mk'.format(libname)
     filename = os.path.join(os.path.join(root, module), makefile)
     if not os.path.isfile(filename):
-        sys.stderr.write('Error: Module {} has no makefile at {}.'.format(module, filename))
+        makefile = 'StaticLibrary_{}.mk'.format(libname)
+        filename = os.path.join(os.path.join(root, module), makefile)
+        if not os.path.isfile(filename):
+            sys.stderr.write('Error: Module {} has no makefile at {}.'.format(module, filename))
 
-    groups = {'':[], 'ANDROID':[], 'IOS':[], 'WNT':[], 'LINUX':[], 'MACOSX':[]}
+    groups = {'':[], 'ANDROID':[], 'iOS':[], 'WNT':[], 'LINUX':[], 'MACOSX':[]}
 
     with open(filename, 'r') as f:
         lines = f.readlines()
         groups = parse_makefile(groups, lines, lineno=0, lastif=None, ifstack=0)
 
     return groups
+
+def is_allowed_if(line, module):
+    """ Check whether the given #if condition
+        is allowed for the given module or whether
+        its block should be ignored.
+    """
+
+    # remove trailing comments
+    line = re.sub(r'(.*) *//.*', r'\1', line)
+    line = line.strip()
+
+    # Our sources always build with LIBO_INTERNAL_ONLY.
+    if line == "#if defined LIBO_INTERNAL_ONLY" or line == "#ifdef LIBO_INTERNAL_ONLY":
+        return True
+    if module == "external/skia":
+        # We always set these.
+        if line == "#ifdef SK_VULKAN" or line == "#if SK_SUPPORT_GPU":
+            return True
+    return False
 
 def process_source(root, module, filename, maxdepth=0):
     """ Process a source file to extract
@@ -596,17 +707,28 @@ def process_source(root, module, filename, maxdepth=0):
     ifdepth = 0
     lastif = ''
     raw_includes = []
+    allowed_ifs = []
+    ifsallowed = 0
     with open(filename, 'r') as f:
         for line in f:
             line = line.strip()
             if line.startswith('#if'):
+                if is_allowed_if(line, module):
+                    allowed_ifs.append(True)
+                    ifsallowed += 1
+                else:
+                    allowed_ifs.append(False)
+                    lastif = line
                 ifdepth += 1
-                lastif = line
             elif line.startswith('#endif'):
                 ifdepth -= 1
-                lastif = '#if'
+                if allowed_ifs[ ifdepth ]:
+                    ifsallowed -= 1
+                else:
+                    lastif = '#if'
+                del allowed_ifs[ ifdepth ]
             elif line.startswith('#include'):
-                if ifdepth <= maxdepth:
+                if ifdepth - ifsallowed <= maxdepth:
                     line = sanitize(line)
                     if line:
                         line = get_filename(line)
@@ -667,7 +789,7 @@ def make_command_line():
     args = sys.argv[:]
     # Remove command line flags and
     # use internal flags.
-    for i in xrange(len(args)-1, 0, -1):
+    for i in range(len(args)-1, 0, -1):
         if args[i].startswith('--'):
             args.pop(i)
 
@@ -691,7 +813,7 @@ def generate_includes(includes):
     """Generates the include lines of the pch.
     """
     lines = []
-    for osname, group in includes.iteritems():
+    for osname, group in includes.items():
         if not len(group):
             continue
 
@@ -743,15 +865,16 @@ def generate(includes, libname, filename, module):
         f.write('\n If after updating build fails, use the following command to locate conflicting headers:\n ./bin/update_pch_bisect {} "make {}.build" --find-conflicts\n*/\n'.format(
                 filename, module))
 
-        # svx needs this (sendreportw32.cxx)
-        if module == 'svx' and libname == 'svx':
-            svx_define = """
-#ifdef _WIN32
-#   define UNICODE
-#   define _UNICODE
+        # sal needs this for rand_s()
+        if module == 'sal' and libname == 'sal':
+            sal_define = """
+#if defined(_WIN32)
+#if !defined _CRT_RAND_S
+#define _CRT_RAND_S
+#endif
 #endif
 """
-            f.write(svx_define)
+            f.write(sal_define)
 
         # Dump the headers.
         f.write('\n')
@@ -764,8 +887,8 @@ def generate(includes, libname, filename, module):
             ado_define = """
 // Cleanup windows header macro pollution.
 #if defined(_WIN32) && defined(WINAPI)
-#   include <postwin.h>
-#   undef RGB
+#include <postwin.h>
+#undef RGB
 #endif
 """
             f.write(ado_define)
@@ -779,7 +902,7 @@ def remove_from_tree(filename, tree):
         tree = remove_from_tree(i, tree)
 
     # Also remove if included from another.
-    for (k, v) in tree.iteritems():
+    for (k, v) in tree.items():
         if filename in v:
             v.remove(filename)
 
@@ -830,6 +953,10 @@ def main():
     global EXCLUDE_LOCAL
     global EXCLUDE_SYSTEM
     global SILENT
+    global WORKDIR
+
+    if os.getenv('WORKDIR'):
+        WORKDIR = os.getenv('WORKDIR')
 
     root = '.'
     module = sys.argv[1]
@@ -848,7 +975,7 @@ def main():
         EXCLUDE_LOCAL = DEFAULTS[key][3]
 
     force_update = False
-    for x in xrange(3, len(sys.argv)):
+    for x in range(3, len(sys.argv)):
         i = sys.argv[x]
         if i.startswith('--cutoff='):
             CUTOFF = int(i.split('=')[1])
@@ -881,11 +1008,10 @@ def main():
                                 not EXCLUDE_LOCAL)
 
     # Read input.
-    makefile = 'Library_{}.mk'.format(libname)
-    groups = process_makefile(root, module, makefile)
+    groups = process_makefile(root, module, libname)
 
     generic = []
-    for osname, group in groups.iteritems():
+    for osname, group in groups.items():
         if not len(group):
             continue
 
@@ -916,7 +1042,7 @@ def main():
             tree = remove_from_tree(filename, tree)
 
         extra = []
-        for (k, v) in tree.iteritems():
+        for (k, v) in tree.items():
             extra += tree_to_list([], k, tree)
 
         promoted += promote(extra)
@@ -924,7 +1050,7 @@ def main():
         promoted = process_list(promoted, filter_local.proc)
         promoted = set(promoted)
         # If a promoted header includes others, remove the rest.
-        for (k, v) in tree.iteritems():
+        for (k, v) in tree.items():
             if k in promoted:
                 for i in v:
                     promoted.discard(i)
@@ -940,8 +1066,8 @@ def main():
         fixes = map(lambda x: '#include <' + x + '>', fixes)
 
         includes = map(lambda x: '#include <' + x + '>', includes)
-        sorted = sort_by_category(includes, module, filter_local)
-        includes = fixes + sorted
+        sorted = sort_by_category(includes, root, module, filter_local)
+        includes = list(fixes) + sorted
 
         if len(osname):
             for i in generic:
@@ -960,8 +1086,8 @@ def main():
         new_lines = generate_includes(groups)
         # Find the first include in the old pch.
         start = -1
-        for i in xrange(len(old_pch_lines)):
-            if old_pch_lines[i].startswith('#include'):
+        for i in range(len(old_pch_lines)):
+            if old_pch_lines[i].startswith('#include') or old_pch_lines[i].startswith('#if PCH_LEVEL'):
                 start = i
                 break
         # Clobber if there is a mismatch.
@@ -969,13 +1095,13 @@ def main():
             generate(new_lines, libname, header, module)
             return 0
         else:
-            for i in xrange(len(new_lines)):
+            for i in range(len(new_lines)):
                 if new_lines[i] != old_pch_lines[start + i]:
                     generate(new_lines, libname, header, module)
                     return 0
             else:
                 # Identical, but see if new pch removed anything.
-                for i in xrange(start + len(new_lines), len(old_pch_lines)):
+                for i in range(start + len(new_lines), len(old_pch_lines)):
                     if '#include' in old_pch_lines[i]:
                         generate(new_lines, libname, header, module)
                         return 0
@@ -1059,7 +1185,7 @@ class TestMakefileParser(unittest.TestCase):
 
     def test_parse_multiline_eval_with_if(self):
         source = """$(eval $(call gb_Library_add_defs,sal,\\
-	$(if $(filter $(OS),IOS), \\
+	$(if $(filter $(OS),iOS), \\
 		-DNO_CHILD_PROCESSES \\
 	) \\
 ))
@@ -1160,7 +1286,7 @@ endif
         self.assertEqual(len(groups['']), 0)
 
     def test_parse_filter(self):
-        source = """ifneq ($(filter $(OS),MACOSX IOS),)
+        source = """ifneq ($(filter $(OS),MACOSX iOS),)
 $(eval $(call gb_Library_add_exception_objects,sal,\\
 	sal/osl/unx/osxlocale \\
 ))

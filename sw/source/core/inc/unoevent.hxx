@@ -20,8 +20,6 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_UNOEVENT_HXX
 
 #include <svtools/unoevent.hxx>
-#include <unostyle.hxx>
-#include <svl/macitem.hxx>
 
 class SvxMacroItem;
 class SwXFrame;
@@ -29,6 +27,7 @@ class SwXTextFrame;
 class SwXTextGraphicObject;
 class SwXTextEmbeddedObject;
 class SwFormatINetFormat;
+namespace sw { class ICoreFrameStyle; }
 
 class SwHyperlinkEventDescriptor : public SvDetachedEventDescriptor
 {
@@ -44,7 +43,7 @@ public:
     void copyMacrosIntoINetFormat(SwFormatINetFormat& aFormat);
 
     void copyMacrosFromNameReplace(
-        css::uno::Reference<css::container::XNameReplace> & xReplace);
+        css::uno::Reference<css::container::XNameReplace> const & xReplace);
 };
 
 // SwEventDescriptor for
@@ -54,8 +53,6 @@ public:
 // All these objects are an SwXFrame, so they can use a common implementation
 class SwFrameEventDescriptor : public SvEventDescriptor
 {
-    OUString sSwFrameEventDescriptor;
-
     SwXFrame& rFrame;
 
 public:
@@ -75,8 +72,6 @@ protected:
 
 class SwFrameStyleEventDescriptor : public SvEventDescriptor
 {
-    OUString sSwFrameStyleEventDescriptor;
-
     sw::ICoreFrameStyle& m_rStyle;
 
 public:

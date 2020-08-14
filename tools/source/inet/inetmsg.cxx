@@ -20,8 +20,6 @@
 #include <sal/types.h>
 #include <tools/datetime.hxx>
 #include <tools/inetmsg.hxx>
-#include <tools/contnr.hxx>
-#include <rtl/instance.hxx>
 #include <comphelper/string.hxx>
 #include <rtl/character.hxx>
 
@@ -30,7 +28,7 @@
 void INetMIMEMessage::SetHeaderField_Impl (
     const OString &rName,
     const OUString &rValue,
-    sal_uIntPtr &rnIndex)
+    sal_uInt32 &rnIndex)
 {
     SetHeaderField_Impl (
         INetMessageHeader (rName, rValue.toUtf8()), rnIndex);
@@ -48,7 +46,7 @@ void INetMIMEMessage::SetHeaderField_Impl (
  *   1*DIGIT                                     (delta seconds)
  */
 
-static const sal_Char *months[12] =
+static const char *months[12] =
 {
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
@@ -64,7 +62,7 @@ static sal_uInt16 ParseNumber(const OString& rStr, sal_Int32& nIndex)
     OString aNum(rStr.copy(nIndex, (n - nIndex)));
     nIndex = n;
 
-    return (sal_uInt16)(aNum.toInt32());
+    return static_cast<sal_uInt16>(aNum.toInt32());
 }
 
 static sal_uInt16 ParseMonth(const OString& rStr, sal_Int32& nIndex)
@@ -192,12 +190,7 @@ bool INetMIMEMessage::ParseDateField (
               (rDateTime.GetHour() > 23)    ));
 }
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning( disable : 4592)
-#endif
-
-static const std::map<InetMessageMime, const char*> ImplINetMIMEMessageHeaderData =
+const std::map<InetMessageMime, const char*> ImplINetMIMEMessageHeaderData =
 {
     { InetMessageMime::VERSION, "MIME-Version"},
     { InetMessageMime::CONTENT_DISPOSITION, "Content-Disposition"},
@@ -205,25 +198,15 @@ static const std::map<InetMessageMime, const char*> ImplINetMIMEMessageHeaderDat
     { InetMessageMime::CONTENT_TRANSFER_ENCODING, "Content-Transfer-Encoding"}
 };
 
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-
 INetMIMEMessage::INetMIMEMessage()
     : pParent(nullptr)
 {
     for (sal_uInt16 i = 0; i < static_cast<int>(InetMessageMime::NUMHDR); i++)
-        m_nMIMEIndex[static_cast<InetMessageMime>(i)] = CONTAINER_ENTRY_NOTFOUND;
+        m_nMIMEIndex[static_cast<InetMessageMime>(i)] = SAL_MAX_UINT32;
 }
 
 INetMIMEMessage::~INetMIMEMessage()
 {
-    for (auto i: m_aHeaderList) {
-        delete i;
-    }
-    for (auto i: aChildren) {
-        delete i;
-    }
 }
 
 void INetMIMEMessage::SetMIMEVersion (const OUString& rVersion)
@@ -264,9 +247,9 @@ OUString INetMIMEMessage::GetDefaultContentType()
             aParentCT = pParent->GetDefaultContentType();
 
         if (aParentCT.equalsIgnoreAsciiCase("multipart/digest"))
-            return OUString("message/rfc822");
+            return "message/rfc822";
     }
-    return OUString("text/plain; charset=us-ascii");
+    return "text/plain; charset=us-ascii";
 }
 
 void INetMIMEMessage::EnableAttachMultipartFormDataChild()
@@ -276,7 +259,7 @@ void INetMIMEMessage::EnableAttachMultipartFormDataChild()
         return;
 
     // Generate a unique boundary from current time.
-    sal_Char sTail[16 + 1];
+    char sTail[16 + 1];
     tools::Time aCurTime( tools::Time::SYSTEM );
     sal_uInt64 nThis = reinterpret_cast< sal_uIntPtr >( this ); // we can be on a 64bit architecture
     nThis = ( ( nThis >> 32 ) ^ nThis ) & SAL_MAX_UINT32;
@@ -293,12 +276,13 @@ void INetMIMEMessage::EnableAttachMultipartFormDataChild()
     SetContentTransferEncoding("7bit");
 }
 
-void INetMIMEMessage::AttachChild(INetMIMEMessage& rChildMsg)
+void INetMIMEMessage::AttachChild(std::unique_ptr<INetMIMEMessage> pChildMsg)
 {
+    assert(IsContainer());
     if (IsContainer())
     {
-        rChildMsg.pParent = this;
-        aChildren.push_back( &rChildMsg );
+        pChildMsg->pParent = this;
+        aChildren.push_back( std::move(pChildMsg) );
     }
 }
 

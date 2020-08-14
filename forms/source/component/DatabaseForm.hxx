@@ -17,17 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_FORMS_SOURCE_COMPONENT_DATABASEFORM_HXX
-#define INCLUDED_FORMS_SOURCE_COMPONENT_DATABASEFORM_HXX
+#pragma once
 
 #include <sal/config.h>
 
 #include <vector>
 
-#include "propertybaghelper.hxx"
-#include <com/sun/star/sdbc/XDataSource.hpp>
+#include <propertybaghelper.hxx>
 #include <com/sun/star/sdb/XSQLErrorListener.hpp>
-#include <com/sun/star/io/XPersistObject.hpp>
 #include <com/sun/star/sdb/XSQLErrorBroadcaster.hpp>
 #include <com/sun/star/form/FormSubmitMethod.hpp>
 #include <com/sun/star/form/FormSubmitEncoding.hpp>
@@ -46,7 +43,6 @@
 #include <com/sun/star/form/XForm.hpp>
 #include <com/sun/star/awt/XTabControllerModel.hpp>
 #include <com/sun/star/sdbc/XRowSetListener.hpp>
-#include <com/sun/star/sdb/XResultSetAccess.hpp>
 #include <com/sun/star/sdbc/XCloseable.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -59,24 +55,21 @@
 
 
 #include <tools/link.hxx>
-#include "InterfaceContainer.hxx"
+#include <InterfaceContainer.hxx>
 
 #include <connectivity/parameters.hxx>
 #include <connectivity/filtermanager.hxx>
 #include <connectivity/warningscontainer.hxx>
 
-#include "listenercontainers.hxx"
+#include <listenercontainers.hxx>
 #include <comphelper/propmultiplex.hxx>
 #include <comphelper/uno3.hxx>
-#include <comphelper/proparrhlp.hxx>
 #include <cppuhelper/implbase12.hxx>
 #include <cppuhelper/implbase4.hxx>
 #include <cppuhelper/implbase7.hxx>
 #include <rtl/ref.hxx>
 
-namespace com { namespace sun { namespace star { namespace sdbc {
-    class SQLException;
-} } } }
+namespace com::sun::star::sdbc { class SQLException; }
 
 class Timer;
 class INetMIMEMessage;
@@ -178,7 +171,7 @@ class ODatabaseForm :public OFormComponents
     rtl::Reference<OGroupManager>   m_pGroupManager;
     ::dbtools::ParameterManager m_aParameterManager;
     ::dbtools::FilterManager    m_aFilterManager;
-    Timer*                      m_pLoadTimer;
+    std::unique_ptr<Timer>      m_pLoadTimer;
 
     rtl::Reference<OFormSubmitResetThread>  m_pThread;
     OUString                    m_sCurrentErrorContext;
@@ -208,8 +201,8 @@ class ODatabaseForm :public OFormComponents
 //  </properties>
     bool                 m_bLoaded : 1;
     bool                 m_bSubForm : 1;
-    bool                 m_bForwardingConnection : 1;    // sal_True if we're setting the ActiveConnection on the aggregate
-    bool                 m_bSharingConnection : 1;       // sal_True if the connection we're using is shared with out parent
+    bool                 m_bForwardingConnection : 1;    // true if we're setting the ActiveConnection on the aggregate
+    bool                 m_bSharingConnection : 1;       // true if the connection we're using is shared with our parent
 
 public:
     explicit ODatabaseForm(const css::uno::Reference< css::uno::XComponentContext>& _rxFactory);
@@ -493,7 +486,7 @@ private:
     );
 
     /// invalidate all our parameter-related stuff
-    void        invlidateParameters();
+    void        invalidateParameters();
 
     void        saveInsertOnlyState( );
     void        restoreInsertOnlyState( );
@@ -513,7 +506,7 @@ private:
     void FillSuccessfulList(HtmlSuccessfulObjList& rList, const css::uno::Reference< css::awt::XControl>& rxSubmitButton, const css::awt::MouseEvent& MouseEvt);
 
     static void InsertTextPart(INetMIMEMessage& rParent, const OUString& rName, const OUString& rData);
-    static bool InsertFilePart(INetMIMEMessage& rParent, const OUString& rName, const OUString& rFileName);
+    static void InsertFilePart(INetMIMEMessage& rParent, const OUString& rName, const OUString& rFileName);
     static void Encode(OUString& rString);
 
     css::uno::Reference< css::sdbc::XConnection > getConnection();
@@ -529,9 +522,5 @@ protected:
 
 
 }   // namespace frm
-
-
-#endif // INCLUDED_FORMS_SOURCE_COMPONENT_DATABASEFORM_HXX
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

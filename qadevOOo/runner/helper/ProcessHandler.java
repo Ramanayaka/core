@@ -19,6 +19,8 @@ package helper;
 
 import java.io.InputStream;
 import java.io.File;
+import java.io.OutputStreamWriter;
+import java.io.UnsupportedEncodingException;
 import java.io.PrintWriter;
 import java.io.PrintStream;
 import java.io.LineNumberReader;
@@ -128,14 +130,14 @@ public class ProcessHandler
      * log stream where debug info and output
      * of external command is printed out.
      */
-    public ProcessHandler(String cmdLine, PrintWriter log)
+    public ProcessHandler(String cmdLine, PrintWriter log) throws UnsupportedEncodingException
     {
         this(cmdLine, log, null, null);
     }
 
     /**
      * Creates instance with specified external command which
-     * will be executed in the some work directory  and
+     * will be executed in the same work directory and
      *
      * @param cmdLine       the command to be executed
      * @param log           log stream where debug info and output
@@ -150,14 +152,14 @@ public class ProcessHandler
      *                      <code>isTimedOut()</code> if it has been terminated.
      *
      *                      timeOut > 0
-     *                      Waits specified time in miliSeconds for
+     *                      Waits specified time in milliSeconds for
      *                      process to exit and return its status.
      *
      *                      timeOut = 0
-     *                      Waits for the process to end regulary
+     *                      Waits for the process to end regularly
      *
      */
-    private ProcessHandler(String cmdLine, PrintWriter log, File workDir, String[] envVars)
+    private ProcessHandler(String cmdLine, PrintWriter log, File workDir, String[] envVars) throws UnsupportedEncodingException
     {
         this.cmdLine = cmdLine;
         this.workDir = workDir;
@@ -165,7 +167,7 @@ public class ProcessHandler
         this.envVars = envVars;
         if (log == null)
         {
-            this.log = new PrintWriter(System.out);
+            this.log = new PrintWriter(new OutputStreamWriter(System.out, "UTF-8"));
         }
         else
         {
@@ -381,7 +383,7 @@ public class ProcessHandler
 
     /**
      *  If the timeout only given by setProcessTimeout(int seconds) function is != 0,
-     *  a extra thread is created and after time has run out, the ProcessKiller string
+     *  an extra thread is created and after time has run out, the ProcessKiller string
      *  given by function setProcessKiller(string) will execute.
      *  So it is possible to kill a running office after a given time of seconds.
      */

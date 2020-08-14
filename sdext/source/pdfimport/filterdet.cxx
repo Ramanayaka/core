@@ -25,15 +25,17 @@
 #include <osl/file.h>
 #include <osl/thread.h>
 #include <rtl/digest.h>
-#include <rtl/ref.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
+#include <sal/log.hxx>
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XStream.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
 #include <com/sun/star/io/TempFile.hpp>
+#include <com/sun/star/task/XInteractionHandler.hpp>
 #include <comphelper/fileurl.hxx>
+#include <comphelper/hash.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <tools/diagnose_ex.h>
 #include <memory>
 #include <string.h>
 
@@ -43,6 +45,8 @@ namespace pdfi
 {
 
 // TODO(T3): locking/thread safety
+
+namespace {
 
 class FileEmitContext : public pdfparse::EmitContext
 {
@@ -67,6 +71,8 @@ public:
     const uno::Reference< io::XStream >& getContextStream() const { return m_xContextStream; }
 };
 
+}
+
 FileEmitContext::FileEmitContext( const OUString&                            rOrigFile,
                                   const uno::Reference< uno::XComponentContext >& xContext,
                                   const pdfparse::PDFContainer*                   pTop ) :
@@ -82,9 +88,9 @@ FileEmitContext::FileEmitContext( const OUString&                            rOr
     m_xSeek.set(m_xOut, uno::UNO_QUERY_THROW );
 
     oslFileError aErr = osl_File_E_None;
-    if( (aErr=osl_openFile( rOrigFile.pData,
-                            &m_aReadHandle,
-                            osl_File_OpenFlag_Read )) == osl_File_E_None )
+    if( osl_openFile( rOrigFile.pData,
+                      &m_aReadHandle,
+                      osl_File_OpenFlag_Read ) == osl_File_E_None )
     {
         if( (aErr=osl_setFilePos( m_aReadHandle,
                                   osl_Pos_End,
@@ -230,12 +236,11 @@ OUString SAL_CALL PDFDetector::detect( uno::Sequence< beans::PropertyValue >& rF
             // read the first 1024 byte (see PDF reference implementation note 12)
             const sal_Int32 nHeaderSize = 1024;
             uno::Sequence< sal_Int8 > aBuf( nHeaderSize );
-            sal_uInt64 nBytes = 0;
-            nBytes = xInput->readBytes( aBuf, nHeaderSize );
+            sal_uInt64 nBytes = xInput->readBytes( aBuf, nHeaderSize );
             if( nBytes > 5 )
             {
                 const sal_Int8* pBytes = aBuf.getConstArray();
-                for( unsigned int i = 0; i < nBytes-5; i++ )
+                for( sal_uInt64 i = 0; i < nBytes-5; i++ )
                 {
                     if( pBytes[i]   == '%' &&
                         pBytes[i+1] == 'P' &&
@@ -289,8 +294,8 @@ OUString SAL_CALL PDFDetector::detect( uno::Sequence< beans::PropertyValue >& rF
                 }
                 osl_closeFile( aFile );
             }
-        } catch (css::io::IOException & e) {
-            SAL_WARN("sdext.pdfimport", "caught IOException " + e.Message);
+        } catch (const css::io::IOException &) {
+            TOOLS_WARN_EXCEPTION("sdext.pdfimport", "caught");
             return OUString();
         }
         OUString aEmbedMimetype;
@@ -383,7 +388,7 @@ OUString SAL_CALL PDFDetector::detect( uno::Sequence< beans::PropertyValue >& rF
 
 OUString PDFDetector::getImplementationName()
 {
-    return OUString("org.libreoffice.comp.documents.PDFDetector");
+    return "org.libreoffice.comp.documents.PDFDetector";
 }
 
 sal_Bool PDFDetector::supportsService(OUString const & ServiceName)
@@ -429,37 +434,36 @@ bool checkDocChecksum( const OUString& rInPDFFileURL,
     }
 
     // open file and calculate actual checksum up to index nBytes
-    sal_uInt8 nActualChecksum[ RTL_DIGEST_LENGTH_MD5 ];
-    memset( nActualChecksum, 0, sizeof(nActualChecksum) );
-    rtlDigest aActualDigest = rtl_digest_createMD5();
+    ::std::vector<unsigned char> nChecksum;
+    ::comphelper::Hash aDigest(::comphelper::HashType::MD5);
     oslFileHandle aRead = nullptr;
-    oslFileError aErr = osl_File_E_None;
-    if( (aErr = osl_openFile(rInPDFFileURL.pData,
-                             &aRead,
-                             osl_File_OpenFlag_Read )) == osl_File_E_None )
+    if( osl_openFile(rInPDFFileURL.pData,
+                     &aRead,
+                     osl_File_OpenFlag_Read ) == osl_File_E_None )
     {
-        sal_Int8 aBuf[4096];
+        sal_uInt8 aBuf[4096];
         sal_uInt32 nCur = 0;
         sal_uInt64 nBytesRead = 0;
         while( nCur < nBytes )
         {
-            sal_uInt32 nPass = (nBytes - nCur) > sizeof( aBuf ) ? sizeof( aBuf ) : nBytes - nCur;
-            if( (aErr = osl_readFile( aRead, aBuf, nPass, &nBytesRead)) != osl_File_E_None
+            sal_uInt32 nPass = std::min<sal_uInt32>(nBytes - nCur, sizeof( aBuf ));
+            if( osl_readFile( aRead, aBuf, nPass, &nBytesRead) != osl_File_E_None
                 || nBytesRead == 0 )
             {
                 break;
             }
             nPass = static_cast<sal_uInt32>(nBytesRead);
             nCur += nPass;
-            rtl_digest_updateMD5( aActualDigest, aBuf, nPass );
+            aDigest.update(aBuf, nPass);
         }
-        rtl_digest_getMD5( aActualDigest, nActualChecksum, sizeof(nActualChecksum) );
+
+        nChecksum = aDigest.finalize();
         osl_closeFile( aRead );
     }
-    rtl_digest_destroyMD5( aActualDigest );
 
     // compare the contents
-    return (0 == memcmp( nActualChecksum, nTestChecksum, sizeof( nActualChecksum ) ));
+    return nChecksum.size() == RTL_DIGEST_LENGTH_MD5
+        && (0 == memcmp(nChecksum.data(), nTestChecksum, nChecksum.size()));
 }
 
 uno::Reference< io::XStream > getAdditionalStream( const OUString&                          rInPDFFileURL,
@@ -476,7 +480,6 @@ uno::Reference< io::XStream > getAdditionalStream( const OUString&              
         return xEmbed;
     aPDFFile = OUStringToOString( aSysUPath, osl_getThreadTextEncoding() );
 
-    pdfparse::PDFReader aParser;
     std::unique_ptr<pdfparse::PDFEntry> pEntry( pdfparse::PDFReader::read( aPDFFile.getStr() ));
     if( pEntry )
     {
@@ -486,14 +489,11 @@ uno::Reference< io::XStream > getAdditionalStream( const OUString&              
             unsigned int nElements = pPDFFile->m_aSubElements.size();
             while( nElements-- > 0 )
             {
-                pdfparse::PDFTrailer* pTrailer = dynamic_cast<pdfparse::PDFTrailer*>(pPDFFile->m_aSubElements[nElements]);
+                pdfparse::PDFTrailer* pTrailer = dynamic_cast<pdfparse::PDFTrailer*>(pPDFFile->m_aSubElements[nElements].get());
                 if( pTrailer && pTrailer->m_pDict )
                 {
                     // search document checksum entry
-                    std::unordered_map< OString,
-                                   pdfparse::PDFEntry*,
-                                   OStringHash >::iterator chk;
-                    chk = pTrailer->m_pDict->m_aMap.find( "DocChecksum" );
+                    auto chk = pTrailer->m_pDict->m_aMap.find( "DocChecksum" );
                     if( chk == pTrailer->m_pDict->m_aMap.end() )
                     {
                         SAL_INFO( "sdext.pdfimport", "no DocChecksum entry" );
@@ -507,10 +507,7 @@ uno::Reference< io::XStream > getAdditionalStream( const OUString&              
                     }
 
                     // search for AdditionalStreams entry
-                    std::unordered_map< OString,
-                                   pdfparse::PDFEntry*,
-                                   OStringHash >::iterator add_stream;
-                    add_stream = pTrailer->m_pDict->m_aMap.find( "AdditionalStreams" );
+                    auto add_stream = pTrailer->m_pDict->m_aMap.find( "AdditionalStreams" );
                     if( add_stream == pTrailer->m_pDict->m_aMap.end() )
                     {
                         SAL_INFO( "sdext.pdfimport", "no AdditionalStreams entry" );
@@ -529,8 +526,8 @@ uno::Reference< io::XStream > getAdditionalStream( const OUString&              
                         continue;
 
                     // extract addstream and mimetype
-                    pdfparse::PDFName* pMimeType = dynamic_cast<pdfparse::PDFName*>(pStreams->m_aSubElements[0]);
-                    pdfparse::PDFObjectRef* pStreamRef = dynamic_cast<pdfparse::PDFObjectRef*>(pStreams->m_aSubElements[1]);
+                    pdfparse::PDFName* pMimeType = dynamic_cast<pdfparse::PDFName*>(pStreams->m_aSubElements[0].get());
+                    pdfparse::PDFObjectRef* pStreamRef = dynamic_cast<pdfparse::PDFObjectRef*>(pStreams->m_aSubElements[1].get());
 
                     SAL_WARN_IF( !pMimeType, "sdext.pdfimport", "error: no mimetype element" );
                     SAL_WARN_IF( !pStreamRef, "sdext.pdfimport", "error: no stream ref element" );
@@ -552,13 +549,11 @@ uno::Reference< io::XStream > getAdditionalStream( const OUString&              
                                 }
                                 if( ! bAuthenticated )
                                 {
-                                    const beans::PropertyValue* pAttribs = rFilterData.getConstArray();
-                                    sal_Int32 nAttribs = rFilterData.getLength();
                                     uno::Reference< task::XInteractionHandler > xIntHdl;
-                                    for( sal_Int32 i = 0; i < nAttribs; i++ )
+                                    for( const beans::PropertyValue& rAttrib : rFilterData )
                                     {
-                                        if ( pAttribs[i].Name == "InteractionHandler" )
-                                            pAttribs[i].Value >>= xIntHdl;
+                                        if ( rAttrib.Name == "InteractionHandler" )
+                                            rAttrib.Value >>= xIntHdl;
                                     }
                                     if( ! bMayUseUI || ! xIntHdl.is() )
                                     {
@@ -598,6 +593,14 @@ uno::Reference< io::XStream > getAdditionalStream( const OUString&              
     }
 
     return xEmbed;
+}
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+sdext_PDFDetector_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new PDFDetector(context));
 }
 
 }

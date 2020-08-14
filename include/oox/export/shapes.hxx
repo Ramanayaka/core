@@ -25,6 +25,7 @@
 #include <unordered_map>
 
 #include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/table/BorderLine2.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <oox/dllapi.h>
 #include <oox/export/drawingml.hxx>
@@ -35,7 +36,7 @@
 #include <tools/fract.hxx>
 #include <vcl/mapmod.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
 namespace beans {
     class XPropertySet;
 }
@@ -53,12 +54,11 @@ namespace uno {
     class XComponentContext;
     class XInterface;
 }
-}}}
+}
 
-namespace oox {
-namespace core {
+namespace oox::core {
     class XmlFilterBase;
-}}
+}
 
 class Graphic;
 
@@ -75,46 +75,25 @@ OOX_DLLPUBLIC css::uno::Reference<css::io::XInputStream> GetOLEObjectStream(
 
 }
 
-namespace oox { namespace drawingml {
-
-class OOX_DLLPUBLIC URLTransformer
-{
-public:
-    virtual ~URLTransformer();
-
-    virtual OUString getTransformedString(const OUString& rURL) const;
-
-    virtual bool isExternalURL(const OUString& rURL) const;
-};
+namespace oox::drawingml {
 
 class OOX_DLLPUBLIC ShapeExport : public DrawingML {
 
 private:
     int m_nEmbeddedObjects;
-    struct ShapeCheck
-    {
-        bool operator()( const css::uno::Reference< css::drawing::XShape>& s1, const css::uno::Reference< css::drawing::XShape>& s2 ) const
-        {
-            return s1 == s2;
-        }
-    };
-
-    struct ShapeHash
-    {
-        size_t operator()( const css::uno::Reference < css::drawing::XShape >& ) const;
-    };
 
 public:
-    typedef std::unordered_map< css::uno::Reference< css::drawing::XShape>, sal_Int32, ShapeHash, ShapeCheck> ShapeHashMap;
+    typedef std::unordered_map< css::uno::Reference< css::drawing::XShape>, sal_Int32> ShapeHashMap;
 
 protected:
-    sal_Int32           mnShapeIdMax, mnPictureIdMax;
+    sal_Int32           mnShapeIdMax;
 
     void WriteGraphicObjectShapePart( const css::uno::Reference< css::drawing::XShape >& xShape, const Graphic *pGraphic=nullptr );
 
+    OUString            GetShapeName(const css::uno::Reference< css::drawing::XShape >& xShape);
+
 private:
     sal_Int32           mnXmlNamespace;
-    Fraction            maFraction;
     MapMode             maMapModeSrc, maMapModeDest;
     std::shared_ptr<URLTransformer> mpURLTransformer;
 
@@ -122,7 +101,6 @@ private:
 
     ShapeHashMap maShapeMap;
     ShapeHashMap* mpShapeMap;
-    OUString m_presetWarp;
 
 public:
 
@@ -216,6 +194,7 @@ public:
 
     void WriteTableCellProperties(const css::uno::Reference< css::beans::XPropertySet >& rXPropSet);
 
+    void WriteBorderLine(const sal_Int32 XML_line, const css::table::BorderLine2& rBorderLine);
     void WriteTableCellBorders(const css::uno::Reference< css::beans::XPropertySet >& rXPropSet);
 
     sal_Int32 GetNewShapeID( const css::uno::Reference< css::drawing::XShape >& rShape );
@@ -224,7 +203,7 @@ public:
     static sal_Int32 GetShapeID( const css::uno::Reference< css::drawing::XShape >& rShape, ShapeHashMap* pShapeMap );
 };
 
-}}
+}
 
 #endif // INCLUDED_OOX_EXPORT_SHAPES_HXX
 

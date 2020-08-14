@@ -17,30 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEFIXEDTEXT_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEFIXEDTEXT_HXX
+#pragma once
 
 #include <standard/vclxaccessibletextcomponent.hxx>
 
 
-//  class VCLXAccessibleFixedText
 
 
-class VCLXAccessibleFixedText : public VCLXAccessibleTextComponent
+class VCLXAccessibleFixedText final : public VCLXAccessibleTextComponent
 {
-protected:
-    virtual ~VCLXAccessibleFixedText() override;
+    virtual ~VCLXAccessibleFixedText() override = default;
 
     virtual void FillAccessibleStateSet( utl::AccessibleStateSetHelper& rStateSet ) override;
 
 public:
-    VCLXAccessibleFixedText( VCLXWindow* pVCLXindow );
+    using VCLXAccessibleTextComponent::VCLXAccessibleTextComponent;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEFIXEDTEXT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

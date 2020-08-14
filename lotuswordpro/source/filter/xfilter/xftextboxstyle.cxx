@@ -53,11 +53,8 @@
  *
  *
  ************************************************************************/
-#include "xftextboxstyle.hxx"
-#include "xfcolumns.hxx"
-#include "xfborders.hxx"
-#include "xfshadow.hxx"
-#include "xfbgimage.hxx"
+#include <xfilter/ixfattrlist.hxx>
+#include <xfilter/xftextboxstyle.hxx>
 
 XFTextBoxStyle::XFTextBoxStyle()
 {

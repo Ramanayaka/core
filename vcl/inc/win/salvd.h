@@ -20,6 +20,11 @@
 #ifndef INCLUDED_VCL_INC_WIN_SALVD_H
 #define INCLUDED_VCL_INC_WIN_SALVD_H
 
+#include <sal/config.h>
+#include <win/scoped_gdi.hxx>
+
+#include <memory>
+
 #include <salvd.hxx>
 
 class WinSalGraphics;
@@ -29,9 +34,9 @@ class WinSalVirtualDevice : public SalVirtualDevice
 {
 private:
     HDC                     mhLocalDC;              // HDC or 0 for Cache Device
-    HBITMAP                 mhBmp;                  // Memory Bitmap
+    ScopedHBITMAP           mhBmp;                  // Memory Bitmap
     HBITMAP                 mhDefBmp;               // Default Bitmap
-    WinSalGraphics*         mpGraphics;             // current VirDev graphics
+    std::unique_ptr<WinSalGraphics> mpGraphics;     // current VirDev graphics
     WinSalVirtualDevice*    mpNext;                 // next VirDev
     sal_uInt16              mnBitCount;             // BitCount (0 or 1)
     bool                    mbGraphics;             // is Graphics used
@@ -41,8 +46,8 @@ private:
 
 public:
     HDC getHDC() const { return mhLocalDC; }
-    WinSalGraphics* getGraphics() const { return mpGraphics; }
-    void setGraphics(WinSalGraphics* pVirGraphics) { mpGraphics = pVirGraphics; }
+    WinSalGraphics* getGraphics() const { return mpGraphics.get(); }
+    void setGraphics(WinSalGraphics* pVirGraphics) { mpGraphics.reset(pVirGraphics); }
     WinSalVirtualDevice* getNext() const { return mpNext; }
 
     WinSalVirtualDevice(HDC hDC = nullptr, HBITMAP hBMP = nullptr, sal_uInt16 nBitCount = 0, bool bForeignDC = false, long nWidth = 0, long nHeight = 0);

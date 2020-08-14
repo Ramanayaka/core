@@ -17,21 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "PolarCoordinateSystem.hxx"
-#include "macros.hxx"
-#include "servicenames_coosystems.hxx"
+#include <PolarCoordinateSystem.hxx>
+#include <servicenames_coosystems.hxx>
 #include <cppuhelper/supportsservice.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
-using ::com::sun::star::uno::RuntimeException;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
 
 namespace
 {
 
-static const char CHART2_COOSYSTEM_POLAR_SERVICE_NAME[] = "com.sun.star.chart2.CoordinateSystems.Polar";
+const char CHART2_COOSYSTEM_POLAR_SERVICE_NAME[] = "com.sun.star.chart2.CoordinateSystems.Polar";
 
 }
 
@@ -39,10 +39,8 @@ namespace chart
 {
 
 // explicit
-PolarCoordinateSystem::PolarCoordinateSystem(
-    const uno::Reference< uno::XComponentContext > & xContext,
-    sal_Int32 nDimensionCount /* = 2 */ ) :
-        BaseCoordinateSystem( xContext, nDimensionCount )
+PolarCoordinateSystem::PolarCoordinateSystem( sal_Int32 nDimensionCount /* = 2 */ ) :
+        BaseCoordinateSystem( nDimensionCount )
 {}
 
 PolarCoordinateSystem::PolarCoordinateSystem(
@@ -56,12 +54,12 @@ PolarCoordinateSystem::~PolarCoordinateSystem()
 // ____ XCoordinateSystem ____
 OUString SAL_CALL PolarCoordinateSystem::getCoordinateSystemType()
 {
-    return OUString(CHART2_COOSYSTEM_POLAR_SERVICE_NAME);
+    return CHART2_COOSYSTEM_POLAR_SERVICE_NAME;
 }
 
 OUString SAL_CALL PolarCoordinateSystem::getViewServiceName()
 {
-    return OUString(CHART2_COOSYSTEM_POLAR_VIEW_SERVICE_NAME);
+    return CHART2_COOSYSTEM_POLAR_VIEW_SERVICE_NAME;
 }
 
 // ____ XCloneable ____
@@ -73,7 +71,7 @@ uno::Reference< util::XCloneable > SAL_CALL PolarCoordinateSystem::createClone()
 // ____ XServiceInfo ____
 OUString SAL_CALL PolarCoordinateSystem::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.PolarCoordinateSystem");
+    return "com.sun.star.comp.chart.PolarCoordinateSystem";
 }
 
 sal_Bool SAL_CALL PolarCoordinateSystem::supportsService( const OUString& rServiceName )
@@ -88,9 +86,8 @@ css::uno::Sequence< OUString > SAL_CALL PolarCoordinateSystem::getSupportedServi
 
 // ==== PolarCoordinateSystem2d ====
 
-PolarCoordinateSystem2d::PolarCoordinateSystem2d(
-    const uno::Reference< uno::XComponentContext > & xContext ) :
-        PolarCoordinateSystem( xContext, 2 )
+PolarCoordinateSystem2d::PolarCoordinateSystem2d() :
+        PolarCoordinateSystem( 2 )
 {}
 
 PolarCoordinateSystem2d::~PolarCoordinateSystem2d()
@@ -99,7 +96,7 @@ PolarCoordinateSystem2d::~PolarCoordinateSystem2d()
 // ____ XServiceInfo ____
 OUString SAL_CALL PolarCoordinateSystem2d::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart2.PolarCoordinateSystem2d") ;
+    return "com.sun.star.comp.chart2.PolarCoordinateSystem2d" ;
 }
 
 sal_Bool SAL_CALL PolarCoordinateSystem2d::supportsService( const OUString& rServiceName )
@@ -116,9 +113,8 @@ css::uno::Sequence< OUString > SAL_CALL PolarCoordinateSystem2d::getSupportedSer
 
 // ==== PolarCoordinateSystem3d ====
 
-PolarCoordinateSystem3d::PolarCoordinateSystem3d(
-    const uno::Reference< uno::XComponentContext > & xContext ) :
-        PolarCoordinateSystem( xContext, 3 )
+PolarCoordinateSystem3d::PolarCoordinateSystem3d() :
+        PolarCoordinateSystem( 3 )
 {}
 
 PolarCoordinateSystem3d::~PolarCoordinateSystem3d()
@@ -127,7 +123,7 @@ PolarCoordinateSystem3d::~PolarCoordinateSystem3d()
 // ____ XServiceInfo ____
 OUString SAL_CALL PolarCoordinateSystem3d::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart2.PolarCoordinateSystem3d");
+    return "com.sun.star.comp.chart2.PolarCoordinateSystem3d";
 }
 
 sal_Bool SAL_CALL PolarCoordinateSystem3d::supportsService( const OUString& rServiceName )
@@ -144,18 +140,18 @@ css::uno::Sequence< OUString > SAL_CALL PolarCoordinateSystem3d::getSupportedSer
 
 }  // namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart2_PolarCoordinateSystem2d_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart2_PolarCoordinateSystem2d_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::PolarCoordinateSystem2d(context));
+    return cppu::acquire(new ::chart::PolarCoordinateSystem2d);
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart2_PolarCoordinateSystem3d_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart2_PolarCoordinateSystem3d_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::PolarCoordinateSystem3d(context));
+    return cppu::acquire(new ::chart::PolarCoordinateSystem3d);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

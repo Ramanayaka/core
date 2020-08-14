@@ -27,16 +27,12 @@
 #include <connectivity/dbexception.hxx>
 #include <rtl/ref.hxx>
 
-namespace connectivity
+namespace connectivity::macab
 {
-    namespace macab
-    {
         /*
         **  MacabResultSetMetaData
         */
-        typedef ::cppu::WeakImplHelper< css::sdbc::XResultSetMetaData>   MacabResultSetMetaData_BASE;
-
-        class MacabResultSetMetaData : public MacabResultSetMetaData_BASE
+        class MacabResultSetMetaData : public ::cppu::WeakImplHelper< css::sdbc::XResultSetMetaData>
         {
             MacabConnection*                m_pConnection;
             OUString                 m_sTableName;
@@ -81,7 +77,6 @@ namespace connectivity
             virtual sal_Bool SAL_CALL isDefinitelyWritable( sal_Int32 column ) override;
             virtual OUString SAL_CALL getColumnServiceName( sal_Int32 column ) override;
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABRESULTSETMETADATA_HXX

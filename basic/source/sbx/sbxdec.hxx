@@ -17,9 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-
-#ifndef INCLUDED_BASIC_SOURCE_SBX_SBXDEC_HXX
-#define INCLUDED_BASIC_SOURCE_SBX_SBXDEC_HXX
+#pragma once
 
 #ifdef _WIN32
 #include <prewin.h>
@@ -27,8 +25,6 @@
 #include <comutil.h>
 #include <oleauto.h>
 #endif
-
-#include <basic/sbx.hxx>
 
 #include <com/sun/star/bridge/oleautomation/Decimal.hpp>
 
@@ -68,7 +64,7 @@ public:
     void setInt( int val );
     void setUInt( unsigned int val );
     bool setString( OUString* pOUString );
-    void setDecimal( SbxDecimal* pDecimal )
+    void setDecimal( SbxDecimal const * pDecimal )
     {
 #ifdef _WIN32
         if( pDecimal )
@@ -93,13 +89,11 @@ public:
     bool operator *= ( const SbxDecimal &r );
     bool neg();
 
-    bool isZero();
+    bool isZero() const;
 
     // must match the return values of the Microsoft VarDecCmp Automation function
     enum class CmpResult { LT, EQ, GT };
     friend CmpResult compare( const SbxDecimal &rLeft, const SbxDecimal &rRight );
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

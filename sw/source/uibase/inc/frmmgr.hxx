@@ -19,21 +19,21 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_FRMMGR_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_FRMMGR_HXX
 
-#include "swtypes.hxx"
-#include "frmatr.hxx"
-#include <editeng/svxenum.hxx>
+#include <swtypes.hxx>
+#include <editeng/boxitem.hxx>
+#include <editeng/shaditem.hxx>
 #include <tools/gen.hxx>
 #include <fmtfsize.hxx>
-#include <fmtsrnd.hxx>
 #include <fmtornt.hxx>
 #include <fmtanchr.hxx>
-#include "swdllapi.h"
+#include <swdllapi.h>
 
 class   SwWrtShell;
 struct  SvxSwFrameValidation;
 struct  SwPosition;
 
 class   SwFormatCol;
+class SvGlobalName;
 
 const SwTwips   DFLT_WIDTH      = MM50 * 4;
 const SwTwips   DFLT_HEIGHT     = MM50;
@@ -54,7 +54,7 @@ class SW_DLLPUBLIC SwFlyFrameAttrMgr
     SwWrtShell* m_pOwnSh;
 
     bool    m_bAbsPos,
-                m_bNewFrame;
+            m_bNewFrame;
     bool    m_bIsInVertical;
     // #mongolianlayout#
     bool    m_bIsInVerticalL2R;
@@ -68,7 +68,7 @@ class SW_DLLPUBLIC SwFlyFrameAttrMgr
     SAL_DLLPRIVATE void UpdateFlyFrame_(); // post-treatment after insert or update
 
 public:
-    SwFlyFrameAttrMgr( bool bNew, SwWrtShell* pSh, Frmmgr_Type nType );
+    SwFlyFrameAttrMgr( bool bNew, SwWrtShell* pSh, Frmmgr_Type nType, const SvGlobalName* pName );
 
     //CopyCtor for dialogs to check the metrics
     SwFlyFrameAttrMgr( bool bNew, SwWrtShell *pSh, const SfxItemSet &rSet );
@@ -91,6 +91,9 @@ public:
     inline const Size&  GetSize() const;
 
     void                SetHeightSizeType(SwFrameSize eType);
+
+    // rotation
+    void                SetRotation(sal_uInt16 nOld, sal_uInt16 nNew, const Size& rUnrotatedSize);
 
     // space to content
     void                SetLRSpace( long nLeft,
@@ -134,28 +137,28 @@ public:
 
 inline const Size& SwFlyFrameAttrMgr::GetSize() const
 {
-    return static_cast<const SwFormatFrameSize&>(m_aSet.Get(RES_FRM_SIZE)).GetSize();
+    return m_aSet.Get(RES_FRM_SIZE).GetSize();
 }
 
 inline const SwFormatVertOrient &SwFlyFrameAttrMgr::GetVertOrient() const
 {
-    return static_cast<const SwFormatVertOrient&>(m_aSet.Get(RES_VERT_ORIENT));
+    return m_aSet.Get(RES_VERT_ORIENT);
 }
 inline const SwFormatHoriOrient &SwFlyFrameAttrMgr::GetHoriOrient() const
 {
-    return static_cast<const SwFormatHoriOrient &>(m_aSet.Get(RES_HORI_ORIENT));
+    return m_aSet.Get(RES_HORI_ORIENT);
 }
 inline const SwFormatFrameSize& SwFlyFrameAttrMgr::GetFrameSize() const
 {
-    return static_cast<const SwFormatFrameSize&>(m_aSet.Get(RES_FRM_SIZE));
+    return m_aSet.Get(RES_FRM_SIZE);
 }
 inline const SvxShadowItem &SwFlyFrameAttrMgr::GetShadow() const
 {
-    return static_cast<const SvxShadowItem&>(m_aSet.Get(RES_SHADOW));
+    return m_aSet.Get(RES_SHADOW);
 }
 inline const SvxBoxItem &SwFlyFrameAttrMgr::GetBox() const
 {
-    return static_cast<const SvxBoxItem&>(m_aSet.Get(RES_BOX));
+    return m_aSet.Get(RES_BOX);
 }
 inline Point SwFlyFrameAttrMgr::GetPos() const
 {
@@ -163,7 +166,7 @@ inline Point SwFlyFrameAttrMgr::GetPos() const
 }
 inline RndStdIds SwFlyFrameAttrMgr::GetAnchor()  const
 {
-    return static_cast<const SwFormatAnchor&>(m_aSet.Get(RES_ANCHOR)).GetAnchorId();
+    return m_aSet.Get(RES_ANCHOR).GetAnchorId();
 }
 
 #endif

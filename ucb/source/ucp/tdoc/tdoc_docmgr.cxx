@@ -18,24 +18,23 @@
  */
 
 
-#include "osl/diagnose.h"
-#include "rtl/ref.hxx"
-#include "cppuhelper/weak.hxx"
+#include <osl/diagnose.h>
+#include <rtl/ref.hxx>
 
-#include "comphelper/documentinfo.hxx"
-#include "comphelper/namedvaluecollection.hxx"
-#include "comphelper/sequence.hxx"
+#include <comphelper/documentinfo.hxx>
+#include <comphelper/namedvaluecollection.hxx>
+#include <comphelper/sequence.hxx>
 
-#include "com/sun/star/awt/XTopWindow.hpp"
-#include "com/sun/star/beans/XPropertySet.hpp"
-#include "com/sun/star/document/XDocumentEventBroadcaster.hpp"
-#include "com/sun/star/document/XStorageBasedDocument.hpp"
-#include "com/sun/star/frame/UnknownModuleException.hpp"
-#include "com/sun/star/frame/theGlobalEventBroadcaster.hpp"
-#include "com/sun/star/frame/ModuleManager.hpp"
-#include "com/sun/star/lang/DisposedException.hpp"
-#include "com/sun/star/lang/NotInitializedException.hpp"
-#include "com/sun/star/util/XCloseBroadcaster.hpp"
+#include <com/sun/star/awt/XTopWindow.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/document/XDocumentEventBroadcaster.hpp>
+#include <com/sun/star/document/XStorageBasedDocument.hpp>
+#include <com/sun/star/frame/UnknownModuleException.hpp>
+#include <com/sun/star/frame/theGlobalEventBroadcaster.hpp>
+#include <com/sun/star/frame/ModuleManager.hpp>
+#include <com/sun/star/lang/DisposedException.hpp>
+#include <com/sun/star/lang/NotInitializedException.hpp>
+#include <com/sun/star/util/XCloseBroadcaster.hpp>
 
 #include "tdoc_docmgr.hxx"
 #include "tdoc_provider.hxx"
@@ -181,17 +180,8 @@ void SAL_CALL OfficeDocumentsManager::documentEventOccured(
             {
                 osl::MutexGuard aGuard( m_aMtx );
 
-                DocumentList::const_iterator it = m_aDocs.begin();
-                while ( it != m_aDocs.end() )
-                {
-                    if ( (*it).second.xModel == xModel )
-                    {
-                        // already known.
-                        found = true;
-                        break;
-                    }
-                    ++it;
-                }
+                found = std::any_of(m_aDocs.begin(), m_aDocs.end(),
+                    [&xModel](const DocumentList::value_type& rEntry) { return rEntry.second.xModel == xModel; });
             }
 
             if (!found)
@@ -242,7 +232,7 @@ void SAL_CALL OfficeDocumentsManager::documentEventOccured(
             // Document has been closed (unloaded)
 
             // Official event "OnUnload" does not work here. Event
-            // gets fired to early. Other OnUnload listeners called after this
+            // gets fired too early. Other OnUnload listeners called after this
             // listener may still need TDOC access to the document. Remove the
             // document from TDOC docs list on XCloseListener::notifyClosing.
             // See OfficeDocumentsManager::OfficeDocumentsListener::notifyClosing.
@@ -257,15 +247,13 @@ void SAL_CALL OfficeDocumentsManager::documentEventOccured(
             {
                 osl::MutexGuard aGuard( m_aMtx );
 
-                for (auto it = m_aDocs.begin(); it != m_aDocs.end(); ++it)
+                auto it = std::find_if(m_aDocs.begin(), m_aDocs.end(),
+                    [&xModel](const DocumentList::value_type& rEntry) { return rEntry.second.xModel == xModel; });
+                if ( it != m_aDocs.end() )
                 {
-                    if ( (*it).second.xModel == xModel )
-                    {
-                        aDocId = (*it).first;
-                        found = true;
-                        m_aDocs.erase( it );
-                        break;
-                    }
+                    aDocId = (*it).first;
+                    found = true;
+                    m_aDocs.erase( it );
                 }
             }
 
@@ -309,19 +297,15 @@ void SAL_CALL OfficeDocumentsManager::documentEventOccured(
 
             osl::MutexGuard aGuard( m_aMtx );
 
-            DocumentList::iterator it = m_aDocs.begin();
-            while ( it != m_aDocs.end() )
-            {
-                if ( (*it).second.xModel == xModel )
-                {
-                    (*it).second.xStorage = xStorage;
-                    break;
-                }
-                ++it;
-            }
+            DocumentList::iterator it = std::find_if(m_aDocs.begin(), m_aDocs.end(),
+                [&xModel](const DocumentList::value_type& rEntry) { return rEntry.second.xModel == xModel; });
 
             OSL_ENSURE( it != m_aDocs.end(),
                         "OnSaveDone event notified for unknown document!" );
+            if ( it != m_aDocs.end() )
+            {
+                (*it).second.xStorage = xStorage;
+            }
         }
     }
     else if ( Event.EventName == "OnSaveAsDone" )
@@ -345,22 +329,18 @@ void SAL_CALL OfficeDocumentsManager::documentEventOccured(
 
             osl::MutexGuard aGuard( m_aMtx );
 
-            DocumentList::iterator it = m_aDocs.begin();
-            while ( it != m_aDocs.end() )
-            {
-                if ( (*it).second.xModel == xModel )
-                {
-                    (*it).second.xStorage = xStorage;
-
-                    // Adjust title.
-                    (*it).second.aTitle = title;
-                    break;
-                }
-                ++it;
-            }
+            DocumentList::iterator it = std::find_if(m_aDocs.begin(), m_aDocs.end(),
+                [&xModel](const DocumentList::value_type& rEntry) { return rEntry.second.xModel == xModel; });
 
             OSL_ENSURE( it != m_aDocs.end(),
                         "OnSaveAsDone event notified for unknown document!" );
+            if ( it != m_aDocs.end() )
+            {
+                (*it).second.xStorage = xStorage;
+
+                // Adjust title.
+                (*it).second.aTitle = title;
+            }
         }
     }
     else if ( Event.EventName == "OnTitleChanged"
@@ -387,18 +367,14 @@ void SAL_CALL OfficeDocumentsManager::documentEventOccured(
 
             osl::MutexGuard aGuard( m_aMtx );
 
-            DocumentList::iterator it = m_aDocs.begin();
-            while ( it != m_aDocs.end() )
+            DocumentList::iterator it = std::find_if(m_aDocs.begin(), m_aDocs.end(),
+                [&xModel](const DocumentList::value_type& rEntry) { return rEntry.second.xModel == xModel; });
+            if ( it != m_aDocs.end() )
             {
-                if ( (*it).second.xModel == xModel )
-                {
-                    // Adjust title.
-                    (*it).second.aTitle = aTitle;
+                // Adjust title.
+                (*it).second.aTitle = aTitle;
 
-                    m_aDocs[ aDocId ] = StorageInfo( aTitle, xStorage, xModel );
-                    break;
-                }
-                ++it;
+                m_aDocs[ aDocId ] = StorageInfo( aTitle, xStorage, xModel );
             }
 
 //            OSL_ENSURE( it != m_aDocs.end(),
@@ -450,17 +426,8 @@ void OfficeDocumentsManager::buildDocumentsList()
                     {
                         osl::MutexGuard aGuard( m_aMtx );
 
-                        DocumentList::const_iterator it = m_aDocs.begin();
-                        while ( it != m_aDocs.end() )
-                        {
-                            if ( (*it).second.xModel == xModel )
-                            {
-                                // already known.
-                                found = true;
-                                break;
-                            }
-                            ++it;
-                        }
+                        found = std::any_of(m_aDocs.begin(), m_aDocs.end(),
+                            [&xModel](const DocumentList::value_type& rEntry) { return rEntry.second.xModel == xModel; });
                     }
 
                     if (!found)
@@ -476,7 +443,7 @@ void OfficeDocumentsManager::buildDocumentsList()
 
                         uno::Reference< embed::XStorage > xStorage
                             = xDoc->getDocumentStorage();
-                        OSL_ENSURE( xDoc.is(), "Got no document storage!" );
+                        OSL_ENSURE( xStorage.is(), "Got no document storage!" );
 
                         {
                             osl::MutexGuard aGuard( m_aMtx );

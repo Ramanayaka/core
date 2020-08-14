@@ -21,17 +21,13 @@
 #define INCLUDED_SVX_FRMSEL_HXX
 
 #include <memory>
-#include <tools/color.hxx>
-#include <vcl/ctrl.hxx>
-#include <vcl/bitmap.hxx>
+#include <vcl/customweld.hxx>
 #include <editeng/borderline.hxx>
 #include <svx/framebordertype.hxx>
 #include <svx/svxdllapi.h>
 #include <o3tl/typed_flags_set.hxx>
 
-namespace editeng {
-    class SvxBorderLine;
-}
+class Color;
 
 enum class FrameSelFlags
 {
@@ -67,7 +63,7 @@ namespace o3tl
 namespace svx {
 
 struct FrameSelectorImpl;
-
+namespace a11y { class AccFrameSelectorChild; }
 
 /** All possible states of a frame border. */
 enum class FrameBorderState
@@ -78,16 +74,22 @@ enum class FrameBorderState
 };
 
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC FrameSelector : public Control
+namespace a11y
+{
+    class AccFrameSelector;
+}
+
+class SAL_WARN_UNUSED SVX_DLLPUBLIC FrameSelector final : public weld::CustomWidgetController
 {
 public:
-    FrameSelector(vcl::Window* pParent);
+    FrameSelector();
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
     virtual ~FrameSelector() override;
 
     /** Initializes the control, enables/disables frame borders according to flags. */
     void                Initialize( FrameSelFlags nFlags );
 
-    // enabled frame borders --------------------------------------------------
+    // enabled frame borders
 
     /** Returns true, if the specified frame border is enabled. */
     bool                IsBorderEnabled( FrameBorderType eBorder ) const;
@@ -95,10 +97,8 @@ public:
     sal_Int32           GetEnabledBorderCount() const;
     /** Returns the border type from the passed index (counts only enabled frame borders). */
     FrameBorderType     GetEnabledBorderType( sal_Int32 nIndex ) const;
-    /** Returns the index of a frame border (counts only enabled borders) from passed type. */
-    sal_Int32           GetEnabledBorderIndex( FrameBorderType eBorder ) const;
 
-    // frame border state and style -------------------------------------------
+    // frame border state and style
 
     /** Returns true, if the control supports the "don't care" frame border state. */
     bool                SupportsDontCareState() const;
@@ -127,7 +127,7 @@ public:
         returns the color in the passed parameter. */
     bool                GetVisibleColor( Color& rColor ) const;
 
-    // frame border selection -------------------------------------------------
+    // frame border selection
 
     /** Returns the current selection handler. */
     const Link<LinkParamNone*,void>&  GetSelectHdl() const;
@@ -153,13 +153,14 @@ public:
     /** Sets the passed color to all selected frame borders. */
     void                SetColorToSelection( const Color& rColor );
 
-    // accessibility ----------------------------------------------------------
+    // accessibility
 
-    virtual css::uno::Reference< css::accessibility::XAccessible >
-                        CreateAccessible() override;
+    css::uno::Reference<css::accessibility::XAccessible> getAccessibleParent() const { return GetDrawingArea()->get_accessible_parent(); }
+    virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible() override;
+    a11yrelationset get_accessible_relation_set() const { return GetDrawingArea()->get_accessible_relation_set(); }
 
     /** Returns the accessibility child object of the specified frame border (if enabled). */
-    css::uno::Reference< css::accessibility::XAccessible >
+    rtl::Reference< a11y::AccFrameSelectorChild >
                         GetChildAccessible( FrameBorderType eBorder );
     /** Returns the accessibility child object with specified index (counts enabled frame borders only). */
     css::uno::Reference< css::accessibility::XAccessible >
@@ -168,26 +169,21 @@ public:
     css::uno::Reference< css::accessibility::XAccessible >
                         GetChildAccessible( const Point& rPos );
 
-    /** Returns true, if the passed point is inside the click area of any enabled frame border. */
-    bool                ContainsClickPoint( const Point& rPos ) const;
     /** Returns the bounding rectangle of the specified frame border (if enabled). */
     tools::Rectangle           GetClickBoundRect( FrameBorderType eBorder ) const;
 
-
-protected:
+private:
     virtual void        Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-    virtual void        MouseButtonDown( const MouseEvent& rMEvt ) override;
-    virtual void        KeyInput( const KeyEvent& rKEvt ) override;
+    virtual bool        MouseButtonDown( const MouseEvent& rMEvt ) override;
+    virtual bool        KeyInput( const KeyEvent& rKEvt ) override;
     virtual void        GetFocus() override;
     virtual void        LoseFocus() override;
-    virtual void        DataChanged( const DataChangedEvent& rDCEvt ) override;
+    virtual void        StyleUpdated() override;
     virtual void        Resize() override;
-    virtual Size        GetOptimalSize() const override;
 
-private:
+    rtl::Reference<a11y::AccFrameSelector> mxAccess;   /// Pointer to accessibility object of the control.
     std::unique_ptr< FrameSelectorImpl > mxImpl;
 };
-
 
 }
 

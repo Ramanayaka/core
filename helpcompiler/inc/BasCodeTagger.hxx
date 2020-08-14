@@ -10,26 +10,22 @@
 #ifndef INCLUDED_HELPCOMPILER_INC_BASCODETAGGER_HXX
 #define INCLUDED_HELPCOMPILER_INC_BASCODETAGGER_HXX
 
-#include <iostream>
-#include <cstdlib>
-#include <string>
-#include <list>
-#include <libxml/xmlmemory.h>
+#include <deque>
+#include <memory>
+#include <vector>
 #include <libxml/parser.h>
-#include <rtl/ustring.hxx>
 #include <comphelper/syntaxhighlight.hxx>
 #include <helpcompiler/dllapi.h>
 
-class BasicCodeTagger;
 class LibXmlTreeWalker;
 
 //!Tagger class.
-class L10N_DLLPUBLIC BasicCodeTagger
+class BasicCodeTagger
 {
   private:
     xmlDocPtr             m_pDocument;
-    std::list<xmlNodePtr> m_BasicCodeContainerTags;
-    LibXmlTreeWalker   *m_pXmlTreeWalker;
+    std::vector<xmlNodePtr> m_BasicCodeContainerTags;
+    std::unique_ptr<LibXmlTreeWalker>  m_pXmlTreeWalker;
     SyntaxHighlighter     m_Highlighter;
     bool m_bTaggingCompleted;
     void tagParagraph( xmlNodePtr paragraph );
@@ -46,17 +42,17 @@ class L10N_DLLPUBLIC BasicCodeTagger
 
 //================LibXmlTreeWalker===========================================================
 
-class L10N_DLLPUBLIC LibXmlTreeWalker
+class LibXmlTreeWalker
 {
   private:
     xmlNodePtr            m_pCurrentNode;
-    std::list<xmlNodePtr> m_Queue; //!Queue for breath-first search
+    std::deque<xmlNodePtr> m_Queue; //!Queue for breath-first search
 
   public:
     LibXmlTreeWalker( xmlDocPtr doc );
     void nextNode();
     xmlNodePtr currentNode() { return m_pCurrentNode;}
-    bool end();
+    bool end() const;
     void ignoreCurrNodesChildren();
 };
 

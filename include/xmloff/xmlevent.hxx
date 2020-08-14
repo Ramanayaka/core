@@ -20,8 +20,10 @@
 #ifndef INCLUDED_XMLOFF_XMLEVENT_HXX
 #define INCLUDED_XMLOFF_XMLEVENT_HXX
 
-#include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/Reference.hxx>
+#include <rtl/ustring.hxx>
+
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
+namespace com::sun::star::uno { template <typename > class Sequence; }
 
 
 /**
@@ -30,10 +32,10 @@
  * Several definition used in im- and export of events
  */
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
     namespace beans { struct PropertyValue; }
-} } }
+}
 
 class SvXMLExport;
 class SvXMLImportContext;
@@ -47,7 +49,7 @@ struct XMLEventName
     OUString m_aName;
 
     XMLEventName() : m_nPrefix( 0 ) {}
-    XMLEventName( sal_uInt16 n, const sal_Char *p ) :
+    XMLEventName( sal_uInt16 n, const char *p ) :
         m_nPrefix( n ),
         m_aName( OUString::createFromAscii(p) )
        {}
@@ -72,9 +74,9 @@ struct XMLEventName
  */
 struct XMLEventNameTranslation
 {
-    const sal_Char* sAPIName;
-    sal_uInt16      nPrefix;    // namespace prefix
-    const sal_Char* sXMLName;
+    const char* sAPIName;
+    sal_uInt16 nPrefix;    // namespace prefix
+    const char* sXMLName;
 };
 
 /// a translation table for the events defined in the XEventsSupplier service
@@ -96,7 +98,7 @@ public:
     virtual void Export(
         SvXMLExport& rExport,                   /// the current XML export
         const OUString& rEventQName,     /// the XML name of the event
-        css::uno::Sequence<css::beans::PropertyValue> & rValues, /// the values for the event
+        const css::uno::Sequence<css::beans::PropertyValue> & rValues, /// the values for the event
         bool bUseWhitespace) = 0;  /// create whitespace around elements?
 };
 
@@ -126,15 +128,11 @@ public:
 
     virtual SvXMLImportContext* CreateContext(
         SvXMLImport& rImport,               /// import context
-        sal_uInt16 nPrefix,                 /// element: namespace prefix
-        const OUString& rLocalName,  /// element: local name
         const css::uno::Reference<css::xml::sax::XAttributeList> & xAttrList, /// attribute list
         /// the context for the enclosing <script:events> element
         XMLEventsImportContext* rEvents,
         /// the event name (as understood by the API)
-        const OUString& rApiEventName,
-        /// the event type name (as registered)
-        const OUString& rApiLanguage) = 0;
+        const OUString& rApiEventName) = 0;
 };
 
 

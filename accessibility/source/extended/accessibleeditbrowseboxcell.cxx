@@ -18,13 +18,10 @@
  */
 
 #include <helper/accresmgr.hxx>
-#include <helper/accessiblestrings.hrc>
+#include <strings.hrc>
 
 #include <extended/accessibleeditbrowseboxcell.hxx>
-#include <svtools/editbrowsebox.hxx>
 #include <comphelper/processfactory.hxx>
-#include <com/sun/star/accessibility/XAccessibleText.hpp>
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
 
 namespace accessibility
 {
@@ -33,13 +30,12 @@ namespace accessibility
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::awt;
     using namespace ::comphelper;
-    using namespace ::svt;
 
     EditBrowseBoxTableCell::EditBrowseBoxTableCell(
                 const css::uno::Reference< css::accessibility::XAccessible >& _rxParent,
                 const css::uno::Reference< css::accessibility::XAccessible >& _rxOwningAccessible,
                 const css::uno::Reference< css::accessibility::XAccessibleContext >& _xControlChild,
-                ::svt::IAccessibleTableProvider& _rBrowseBox,
+                ::vcl::IAccessibleTableProvider& _rBrowseBox,
                 const css::uno::Reference< css::awt::XWindow >& _xFocusWindow,
                 sal_Int32 _nRowPos,
                 sal_uInt16 _nColPos)
@@ -60,7 +56,7 @@ namespace accessibility
 
     OUString SAL_CALL EditBrowseBoxTableCell::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.svtools.TableCellProxy" );
+        return "com.sun.star.comp.svtools.TableCellProxy";
     }
 
     IMPLEMENT_FORWARD_XINTERFACE2( EditBrowseBoxTableCell, AccessibleBrowseBoxCell, OAccessibleContextWrapperHelper )
@@ -113,8 +109,8 @@ namespace accessibility
         SolarMethodGuard aGuard(getMutex());
         ensureIsAlive();
 
-        return TK_RES_STRING(RID_STR_ACC_COLUMN_NUM).replaceAll("%COLUMNNUMBER", OUString::number(getColumnPos()-1)) + ", "
-               + TK_RES_STRING(RID_STR_ACC_ROW_NUM).replaceAll("%ROWNUMBER", OUString::number(getRowPos()));
+        return AccResId(RID_STR_ACC_COLUMN_NUM).replaceAll("%COLUMNNUMBER", OUString::number(getColumnPos()-1)) + ", "
+               + AccResId(RID_STR_ACC_ROW_NUM).replaceAll("%ROWNUMBER", OUString::number(getRowPos()));
     }
 
     css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL EditBrowseBoxTableCell::getAccessibleRelationSet()
@@ -185,7 +181,7 @@ namespace accessibility
     EditBrowseBoxTableCellAccess::EditBrowseBoxTableCellAccess(
             const css::uno::Reference< css::accessibility::XAccessible >& _rxParent, const css::uno::Reference< css::accessibility::XAccessible >& _rxControlAccessible,
             const css::uno::Reference< css::awt::XWindow >& _rxFocusWindow,
-            ::svt::IAccessibleTableProvider& _rBrowseBox, sal_Int32 _nRowPos, sal_uInt16 _nColPos )
+            ::vcl::IAccessibleTableProvider& _rBrowseBox, sal_Int32 _nRowPos, sal_uInt16 _nColPos )
         :WeakComponentImplHelper( m_aMutex )
         ,m_xParent( _rxParent )
         ,m_xControlAccessible( _rxControlAccessible )
@@ -235,7 +231,7 @@ namespace accessibility
         m_pBrowseBox = nullptr;
         m_xControlAccessible.clear();
         m_aContext.clear();
-        // NO dispose of the inner object there: it is the css::accessibility::XAccessible of an window, and disposing
+        // NO dispose of the inner object there: it is the css::accessibility::XAccessible of a window, and disposing
         // it would delete the respective VCL window
     }
 } // namespace accessibility

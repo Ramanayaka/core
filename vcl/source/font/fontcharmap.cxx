@@ -16,8 +16,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <vcl/fontcharmap.hxx>
-#include <fontinstance.hxx>
 #include <impfontcharmap.hxx>
+#include <rtl/textcvt.h>
+#include <rtl/textenc.h>
+#include <sal/log.hxx>
 
 #include <vector>
 #include <set>
@@ -32,17 +34,18 @@ CmapResult::CmapResult( bool bSymbolic,
 ,   mbRecoded( false)
 {}
 
-static ImplFontCharMapRef xDefaultImplFontCharMap;
-static const sal_UCS4 aDefaultUnicodeRanges[] = {0x0020,0xD800, 0xE000,0xFFF0};
-static const sal_UCS4 aDefaultSymbolRanges[] = {0x0020,0x0100, 0xF020,0xF100};
+static ImplFontCharMapRef g_pDefaultImplFontCharMap;
+const sal_UCS4 aDefaultUnicodeRanges[] = {0x0020,0xD800, 0xE000,0xFFF0};
+const sal_UCS4 aDefaultSymbolRanges[] = {0x0020,0x0100, 0xF020,0xF100};
 
 ImplFontCharMap::~ImplFontCharMap()
 {
-    if( isDefaultMap() )
-        return;
-    delete[] mpRangeCodes;
-    delete[] mpStartGlyphs;
-    delete[] mpGlyphIds;
+    if( !isDefaultMap() )
+    {
+        delete[] mpRangeCodes;
+        delete[] mpStartGlyphs;
+        delete[] mpGlyphIds;
+    }
 }
 
 ImplFontCharMap::ImplFontCharMap( const CmapResult& rCR )
@@ -72,9 +75,9 @@ ImplFontCharMapRef const & ImplFontCharMap::getDefaultMap( bool bSymbols )
     }
 
     CmapResult aDefaultCR( bSymbols, pRangeCodes, nCodesCount/2 );
-    xDefaultImplFontCharMap = ImplFontCharMapRef(new ImplFontCharMap(aDefaultCR));
+    g_pDefaultImplFontCharMap = ImplFontCharMapRef(new ImplFontCharMap(aDefaultCR));
 
-    return xDefaultImplFontCharMap;
+    return g_pDefaultImplFontCharMap;
 }
 
 bool ImplFontCharMap::isDefaultMap() const
@@ -84,7 +87,7 @@ bool ImplFontCharMap::isDefaultMap() const
 }
 
 static unsigned GetUInt( const unsigned char* p ) { return((p[0]<<24)+(p[1]<<16)+(p[2]<<8)+p[3]);}
-static unsigned Getsal_uInt16( const unsigned char* p ){ return((p[0]<<8) | p[1]);}
+static unsigned GetUShort( const unsigned char* p ){ return((p[0]<<8) | p[1]);}
 static int GetSShort( const unsigned char* p ){ return static_cast<sal_Int16>((p[0]<<8)|p[1]);}
 
 // TODO: move CMAP parsing directly into the ImplFontCharMap class
@@ -101,10 +104,10 @@ bool ParseCMAP( const unsigned char* pCmap, int nLength, CmapResult& rResult )
     if( !pCmap || (nLength < 24) )
         return false;
 
-    if( Getsal_uInt16( pCmap ) != 0x0000 ) // simple check for CMAP corruption
+    if( GetUShort( pCmap ) != 0x0000 ) // simple check for CMAP corruption
         return false;
 
-    int nSubTables = Getsal_uInt16( pCmap + 2 );
+    int nSubTables = GetUShort( pCmap + 2 );
     if( (nSubTables <= 0) || (nLength < (24 + 8*nSubTables)) )
         return false;
 
@@ -117,8 +120,8 @@ bool ParseCMAP( const unsigned char* pCmap, int nLength, CmapResult& rResult )
     int nBestVal = 0;
     for( const unsigned char* p = pCmap + 4; --nSubTables >= 0; p += 8 )
     {
-        int nPlatform = Getsal_uInt16( p );
-        int nEncoding = Getsal_uInt16( p+2 );
+        int nPlatform = GetUShort( p );
+        int nEncoding = GetUShort( p+2 );
         int nPlatformEncoding = (nPlatform << 8) + nEncoding;
 
         int nValue;
@@ -147,7 +150,7 @@ bool ParseCMAP( const unsigned char* pCmap, int nLength, CmapResult& rResult )
             continue;
 
         int nTmpOffset = GetUInt( p+4 );
-        int nTmpFormat = Getsal_uInt16( pCmap + nTmpOffset );
+        int nTmpFormat = GetUShort( pCmap + nTmpOffset );
         if( nTmpFormat == 12 )                  // 32bit code -> glyph map format
             nValue += 3;
         else if( nTmpFormat != 4 )              // 16bit code -> glyph map format
@@ -174,7 +177,7 @@ bool ParseCMAP( const unsigned char* pCmap, int nLength, CmapResult& rResult )
     // format 4, the most common 16bit char mapping table
     if( (nFormat == 4) && ((nOffset+16) < nLength) )
     {
-        int nSegCountX2 = Getsal_uInt16( pCmap + nOffset + 6 );
+        int nSegCountX2 = GetUShort( pCmap + nOffset + 6 );
         nRangeCount = nSegCountX2/2 - 1;
         pCodePairs = new sal_UCS4[ nRangeCount * 2 ];
         pStartGlyphs = new int[ nRangeCount ];
@@ -185,10 +188,10 @@ bool ParseCMAP( const unsigned char* pCmap, int nLength, CmapResult& rResult )
         sal_UCS4* pCP = pCodePairs;
         for( int i = 0; i < nRangeCount; ++i )
         {
-            const sal_UCS4 cMinChar = Getsal_uInt16( pBeginBase + 2*i );
-            const sal_UCS4 cMaxChar = Getsal_uInt16( pLimitBase + 2*i );
+            const sal_UCS4 cMinChar = GetUShort( pBeginBase + 2*i );
+            const sal_UCS4 cMaxChar = GetUShort( pLimitBase + 2*i );
             const int nGlyphDelta  = GetSShort( pDeltaBase + 2*i );
-            const int nRangeOffset = Getsal_uInt16( pOffsetBase + 2*i );
+            const int nRangeOffset = GetUShort( pOffsetBase + 2*i );
             if( cMinChar > cMaxChar ) {  // no sane font should trigger this
                 SAL_WARN("vcl.gdi", "Min char should never be more than the max char!");
                 break;
@@ -202,7 +205,7 @@ bool ParseCMAP( const unsigned char* pCmap, int nLength, CmapResult& rResult )
                 pStartGlyphs[i] = (cMinChar + nGlyphDelta) & 0xFFFF;
             } else {
                 // update the glyphid-array with the glyphs in this range
-                pStartGlyphs[i] = -(int)aGlyphIdArray.size();
+                pStartGlyphs[i] = -static_cast<int>(aGlyphIdArray.size());
                 const unsigned char* pGlyphIdPtr = pOffsetBase + 2*i + nRangeOffset;
                 const size_t nRemainingSize = pEndValidArea - pGlyphIdPtr;
                 const size_t nMaxPossibleRecords = nRemainingSize/2;
@@ -216,7 +219,7 @@ bool ParseCMAP( const unsigned char* pCmap, int nLength, CmapResult& rResult )
                     break;
                 }
                 for( sal_UCS4 c = cMinChar; c <= cMaxChar; ++c, pGlyphIdPtr+=2 ) {
-                    const int nGlyphIndex = Getsal_uInt16( pGlyphIdPtr ) + nGlyphDelta;
+                    const int nGlyphIndex = GetUShort( pGlyphIdPtr ) + nGlyphDelta;
                     aGlyphIdArray.push_back( static_cast<sal_uInt16>(nGlyphIndex) );
                 }
             }
@@ -229,9 +232,25 @@ bool ParseCMAP( const unsigned char* pCmap, int nLength, CmapResult& rResult )
     else if( (nFormat == 12) && ((nOffset+16) < nLength) )
     {
         nRangeCount = GetUInt( pCmap + nOffset + 12 );
+        if (nRangeCount < 0)
+        {
+            SAL_WARN("vcl.gdi", "negative RangeCount");
+            nRangeCount = 0;
+        }
+
+        const int nGroupOffset = nOffset + 16;
+        const int nRemainingLen = nLength - nGroupOffset;
+        const int nMaxPossiblePairs = nRemainingLen / 12;
+        if (nRangeCount > nMaxPossiblePairs)
+        {
+            SAL_WARN("vcl.gdi", "more code pairs requested then space available");
+            nRangeCount = nMaxPossiblePairs;
+        }
+
         pCodePairs = new sal_UCS4[ nRangeCount * 2 ];
         pStartGlyphs = new int[ nRangeCount ];
-        const unsigned char* pGroup = pCmap + nOffset + 16;
+
+        const unsigned char* pGroup = pCmap + nGroupOffset;
         sal_UCS4* pCP = pCodePairs;
         for( int i = 0; i < nRangeCount; ++i )
         {
@@ -292,7 +311,7 @@ bool ParseCMAP( const unsigned char* pCmap, int nLength, CmapResult& rResult )
 
         static const int NINSIZE = 64;
         static const int NOUTSIZE = 64;
-        sal_Char    cCharsInp[ NINSIZE ];
+        char    cCharsInp[ NINSIZE ];
         sal_Unicode cCharsOut[ NOUTSIZE ];
         sal_UCS4* pCP = pCodePairs;
         for( int i = 0; i < nRangeCount; ++i )
@@ -305,9 +324,9 @@ bool ParseCMAP( const unsigned char* pCmap, int nLength, CmapResult& rResult )
                 for(; (cMin < cEnd) && (j < NINSIZE); ++cMin )
                 {
                     if( cMin >= 0x0100 )
-                        cCharsInp[ j++ ] = static_cast<sal_Char>(cMin >> 8);
+                        cCharsInp[ j++ ] = static_cast<char>(cMin >> 8);
                     if( (cMin >= 0x0100) || (cMin < 0x00A0)  )
-                        cCharsInp[ j++ ] = static_cast<sal_Char>(cMin);
+                        cCharsInp[ j++ ] = static_cast<char>(cMin);
                 }
 
                 sal_uInt32 nCvtInfo;
@@ -330,19 +349,18 @@ bool ParseCMAP( const unsigned char* pCmap, int nLength, CmapResult& rResult )
         // convert the set of supported code points to ranges
         std::vector<sal_UCS4> aSupportedRanges;
 
-        std::set<sal_UCS4>::const_iterator itChar = aSupportedCodePoints.begin();
-        for(; itChar != aSupportedCodePoints.end(); ++itChar )
+        for (auto const& supportedPoint : aSupportedCodePoints)
         {
             if( aSupportedRanges.empty()
-            || (aSupportedRanges.back() != *itChar) )
+            || (aSupportedRanges.back() != supportedPoint) )
             {
                 // add new range beginning with current unicode
-                aSupportedRanges.push_back( *itChar );
+                aSupportedRanges.push_back(supportedPoint);
                 aSupportedRanges.push_back( 0 );
             }
 
             // extend existing range to include current unicode
-            aSupportedRanges.back() = *itChar + 1;
+            aSupportedRanges.back() = supportedPoint + 1;
         }
 
         // glyph mapping for non-unicode fonts not implemented
@@ -356,9 +374,9 @@ bool ParseCMAP( const unsigned char* pCmap, int nLength, CmapResult& rResult )
         if( nRangeCount <= 0 )
             return false;
         pCodePairs = new sal_UCS4[ nRangeCount * 2 ];
-        std::vector<sal_UCS4>::const_iterator itInt = aSupportedRanges.begin();
-        for( pCP = pCodePairs; itInt != aSupportedRanges.end(); ++itInt )
-            *(pCP++) = *itInt;
+        pCP = pCodePairs;
+        for (auto const& supportedRange : aSupportedRanges)
+            *(pCP++) = supportedRange;
     }
 
     // prepare the glyphid-array if needed
@@ -368,9 +386,8 @@ bool ParseCMAP( const unsigned char* pCmap, int nLength, CmapResult& rResult )
     {
         pGlyphIds = new sal_uInt16[ aGlyphIdArray.size() ];
         sal_uInt16* pOut = pGlyphIds;
-        std::vector<sal_uInt16>::const_iterator it = aGlyphIdArray.begin();
-        while( it != aGlyphIdArray.end() )
-            *(pOut++) = *(it++);
+        for (auto const& glyphId : aGlyphIdArray)
+            *(pOut++) = glyphId;
     }
 
     // update the result struct

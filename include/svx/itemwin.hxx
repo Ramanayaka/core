@@ -19,111 +19,45 @@
 #ifndef INCLUDED_SVX_ITEMWIN_HXX
 #define INCLUDED_SVX_ITEMWIN_HXX
 
-#include <vcl/bitmap.hxx>
-
-#include <svx/dlgctrl.hxx>
+#include <svtools/toolbarmenu.hxx>
 #include <svx/svxdllapi.h>
+#include <svx/xtable.hxx>
+#include <vcl/customweld.hxx>
 
-// forward ---------------------------------------------------------------
-
-class XLineColorItem;
-class XLineWidthItem;
 class SfxObjectShell;
+class ValueSet;
+class SvxLineStyleToolBoxControl;
 
-// class SvxLineBox ------------------------------------------------------
-
-class SvxLineBox : public LineLB
+class SvxLineBox final : public WeldToolbarPopup
 {
-    sal_uInt16      nCurPos;
-    Timer           aDelayTimer;
-    Size            aLogicalSize;
-    bool            bRelease;
-    SfxObjectShell* mpSh;
-    css::uno::Reference< css::frame::XFrame > mxFrame;
-
-                    DECL_LINK(DelayHdl_Impl, Timer *, void);
-
-    void            ReleaseFocus_Impl();
-
-public:
-    SvxLineBox( vcl::Window* pParent,
-                const css::uno::Reference< css::frame::XFrame >& rFrame );
+    rtl::Reference<SvxLineStyleToolBoxControl> mxControl;
+    std::unique_ptr<ValueSet> mxLineStyleSet;
+    std::unique_ptr<weld::CustomWeld> mxLineStyleSetWin;
 
     void FillControl();
+    void Fill(const XDashListRef &pList);
 
-protected:
-    virtual void    Select() override;
-    virtual bool    PreNotify( NotifyEvent& rNEvt ) override;
-    virtual bool    EventNotify( NotifyEvent& rNEvt ) override;
-    virtual void    DataChanged( const DataChangedEvent& rDCEvt ) override;
+    DECL_LINK(SelectHdl, ValueSet*, void);
 
-};
-
-// class SvxMetricField --------------------------------------------------
-class SVX_DLLPUBLIC SvxMetricField : public MetricField
-{
-    using Window::Update;
-
-    OUString        aCurTxt;
-    MapUnit         ePoolUnit;
-    FieldUnit       eDlgUnit;
-    Size            aLogicalSize;
-    css::uno::Reference< css::frame::XFrame > mxFrame;
-
-    static void     ReleaseFocus_Impl();
-
-protected:
-    virtual void    Modify() override;
-
-    virtual bool    PreNotify( NotifyEvent& rNEvt ) override;
-    virtual bool    EventNotify( NotifyEvent& rNEvt ) override;
-    virtual void    DataChanged( const DataChangedEvent& rDCEvt ) override;
+    virtual void GrabFocus() override;
 
 public:
-    SvxMetricField( vcl::Window* pParent,
-                    const css::uno::Reference< css::frame::XFrame >& rFrame );
-
-    void            Update( const XLineWidthItem* pItem );
-    void            SetCoreUnit( MapUnit eUnit );
-    void            RefreshDlgUnit();
+    SvxLineBox(SvxLineStyleToolBoxControl* pControl, weld::Widget* pParent, int nInitialIndex);
+    virtual ~SvxLineBox() override;
 };
 
-// class SvxFillTypeBox --------------------------------------------------
-
-class SVX_DLLPUBLIC SvxFillTypeBox : public FillTypeLB
+namespace SvxFillTypeBox
 {
-public:
-    SvxFillTypeBox( vcl::Window* pParent );
+    SVX_DLLPUBLIC void Fill(weld::ComboBox& rListBox);
+}
 
-    void            Selected() { bSelect = true; }
-
-protected:
-    virtual bool    PreNotify( NotifyEvent& rNEvt ) override;
-    virtual bool    EventNotify( NotifyEvent& rNEvt ) override;
-
-private:
-    sal_uInt16      nCurPos;
-    bool            bSelect;
-
-    static void     ReleaseFocus_Impl();
-};
-
-// class SvxFillAttrBox --------------------------------------------------
-
-class SVX_DLLPUBLIC SvxFillAttrBox : public FillAttrLB
+namespace SvxFillAttrBox
 {
-public:
-    SvxFillAttrBox( vcl::Window* pParent );
-
-protected:
-    virtual bool    PreNotify( NotifyEvent& rNEvt ) override;
-    virtual bool    EventNotify( NotifyEvent& rNEvt ) override;
-
-private:
-    sal_uInt16      nCurPos;
-
-    static void     ReleaseFocus_Impl();
-};
+    SVX_DLLPUBLIC void Fill(weld::ComboBox&, const XHatchListRef &pList);
+    SVX_DLLPUBLIC void Fill(weld::ComboBox&, const XGradientListRef &pList);
+    SVX_DLLPUBLIC void Fill(weld::ComboBox&, const XBitmapListRef &pList);
+    SVX_DLLPUBLIC void Fill(weld::ComboBox&, const XPatternListRef &pList);
+}
 
 #endif // INCLUDED_SVX_ITEMWIN_HXX
 

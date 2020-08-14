@@ -18,25 +18,25 @@
  */
 
 #include "GroupManager.hxx"
-#include <com/sun/star/beans/XFastPropertySet.hpp>
 #include <com/sun/star/form/FormComponentType.hpp>
 #include <comphelper/property.hxx>
+#include <comphelper/types.hxx>
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
-#include <tools/solar.h>
 
-#include "property.hrc"
+#include <frm_strings.hxx>
 
 #include <algorithm>
 
 namespace frm
 {
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::lang;
+using namespace ::comphelper;
 
 namespace
 {
@@ -65,7 +65,7 @@ bool OGroupCompAcc::operator==( const OGroupCompAcc& rCompAcc ) const
     return m_xComponent == rCompAcc.m_xComponent;
 }
 
-class OGroupCompAccLess : public ::std::binary_function<OGroupCompAcc, OGroupCompAcc, sal_Bool>
+class OGroupCompAccLess
 {
 public:
     bool operator() (const OGroupCompAcc& lhs, const OGroupCompAcc& rhs) const
@@ -101,7 +101,7 @@ bool OGroupComp::operator==( const OGroupComp& rComp ) const
     return m_nTabIndex == rComp.GetTabIndex() && m_nPos == rComp.GetPos();
 }
 
-class OGroupCompLess : public ::std::binary_function<OGroupComp, OGroupComp, sal_Bool>
+class OGroupCompLess
 {
 public:
     bool operator() (const OGroupComp& lhs, const OGroupComp& rhs) const
@@ -121,10 +121,6 @@ public:
 OGroup::OGroup( const OUString& rGroupName )
         :m_aGroupName( rGroupName )
         ,m_nInsertPos(0)
-{
-}
-
-OGroup::~OGroup()
 {
 }
 
@@ -155,7 +151,7 @@ void OGroup::RemoveComponent( const Reference<XPropertySet>& rxElement )
 
             /*
              * By removing the GroupComp the insertion position has become invalid.
-             * We do not to change it here, however, because its passed on continuously
+             * We do not to change it here, however, because it's passed on continuously
              * and ascending distinctively.
              */
         }
@@ -172,14 +168,12 @@ void OGroup::RemoveComponent( const Reference<XPropertySet>& rxElement )
 
 Sequence< Reference<XControlModel>  > OGroup::GetControlModels() const
 {
-    sal_Int32 nLen = m_aCompArray.size();
-    Sequence<Reference<XControlModel> > aControlModelSeq( nLen );
+    Sequence<Reference<XControlModel> > aControlModelSeq( m_aCompArray.size() );
     Reference<XControlModel>* pModels = aControlModelSeq.getArray();
 
-    OGroupCompArr::const_iterator aGroupComps = m_aCompArray.begin();
-    for (sal_Int32 i = 0; i < nLen; ++i, ++pModels, ++aGroupComps)
+    for (auto const& rGroupComp : m_aCompArray)
     {
-        *pModels = aGroupComps->GetControlModel();
+        *pModels++ = rGroupComp.GetControlModel();
     }
     return aControlModelSeq;
 }
@@ -270,7 +264,7 @@ void SAL_CALL OGroupManager::propertyChange(const PropertyChangeEvent& evt)
     else if (evt.PropertyName == PROPERTY_GROUP_NAME) {
         evt.OldValue >>= sGroupName;
         if (sGroupName.isEmpty()) {
-            // No prior GroupName; fallback to Nme
+            // No prior GroupName; fallback to Name
             xSet->getPropertyValue( PROPERTY_NAME ) >>= sGroupName;
         }
     }
@@ -314,19 +308,19 @@ void SAL_CALL OGroupManager::elementReplaced(const ContainerEvent& Event)
 }
 
 // Other functions
-Sequence<Reference<XControlModel> > OGroupManager::getControlModels()
+Sequence<Reference<XControlModel> > OGroupManager::getControlModels() const
 {
     return m_pCompGroup->GetControlModels();
 }
 
-sal_Int32 OGroupManager::getGroupCount()
+sal_Int32 OGroupManager::getGroupCount() const
 {
     return m_aActiveGroupMap.size();
 }
 
 void OGroupManager::getGroup(sal_Int32 nGroup, Sequence< Reference<XControlModel> >& _rGroup, OUString& _rName)
 {
-    OSL_ENSURE(nGroup >= 0 && (size_t)nGroup < m_aActiveGroupMap.size(),"OGroupManager::getGroup: Invalid group index!");
+    OSL_ENSURE(nGroup >= 0 && o3tl::make_unsigned(nGroup) < m_aActiveGroupMap.size(),"OGroupManager::getGroup: Invalid group index!");
     OGroupArr::iterator aGroupPos   = m_aActiveGroupMap[nGroup];
     _rName                          = aGroupPos->second.GetGroupName();
     _rGroup                         = aGroupPos->second.GetControlModels();
@@ -356,7 +350,7 @@ void OGroupManager::InsertElement( const Reference<XPropertySet>& xSet )
 
     if ( aFind == m_aGroupArr.end() )
     {
-        aFind = m_aGroupArr.insert(OGroupArr::value_type(sGroupName,OGroup(sGroupName))).first;
+        aFind = m_aGroupArr.emplace(sGroupName,OGroup(sGroupName)).first;
     }
 
     aFind->second.InsertComponent( xSet );

@@ -22,7 +22,7 @@
 
 #include <sal/config.h>
 
-#include <boost/optional.hpp>
+#include <optional>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <sal/types.h>
@@ -30,7 +30,7 @@
 
 /// @HTML
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno { class XComponentContext; }
     namespace xml {
         namespace dom {
@@ -39,7 +39,7 @@ namespace com { namespace sun { namespace star {
         }
         namespace xpath { class XXPathAPI; }
     }
-} } }
+}
 
 namespace dp_misc {
 
@@ -83,7 +83,7 @@ public:
        @return
        the identifier, or an empty <code>optional</code> if none is specified
     */
-    ::boost::optional< OUString > getIdentifier() const;
+    ::std::optional< OUString > getIdentifier() const;
 
     /**
        Return the textual version representation.
@@ -135,7 +135,7 @@ public:
         As long as there is a simple-license element, the function will return
         the structure. If it does not exist, then the optional object is uninitialized.
     */
-    ::boost::optional<SimpleLicenseAttributes> getSimpleLicenseAttributes() const;
+    ::std::optional<SimpleLicenseAttributes> getSimpleLicenseAttributes() const;
 
     /** returns the localized display name of the extensions.
 
@@ -153,7 +153,7 @@ public:
         was a value provided or not. This is necessary to flag the extension in the update dialog
         properly as "browser based update". The return value will only then not be initialized
         if there is no <code>&lt;update-website&gt;</code>. If the element exists, then it must
-        have at least one child element containing an URL.
+        have at least one child element containing a URL.
 
         The <code>&lt;update-website&gt;</code> and <code>&lt;update-download&gt;</code>
         elements are mutually exclusive.
@@ -162,7 +162,7 @@ public:
         the download website URL, or an empty <code>optional</code> if none is
         specified
     */
-    ::boost::optional< OUString > getLocalizedUpdateWebsiteURL() const;
+    ::std::optional< OUString > getLocalizedUpdateWebsiteURL() const;
 
     /** returns the relative URL to the description.
 
@@ -206,7 +206,7 @@ public:
     bool hasDescription() const;
 
 private:
-    SAL_DLLPRIVATE ::boost::optional< OUString > getOptionalValue(
+    SAL_DLLPRIVATE ::std::optional< OUString > getOptionalValue(
         OUString const & expression) const;
 
     SAL_DLLPRIVATE css::uno::Sequence< OUString > getUrls(
@@ -252,16 +252,16 @@ private:
     SAL_DLLPRIVATE OUString
         getNodeValueFromExpression(OUString const & expression) const;
 
-    /** Check the extensions blacklist if additional extension meta data (e.g. dependencies)
+    /** Check the extensions denylist if additional extension meta data (e.g. dependencies)
         are defined for this extension and have to be taken into account.
     */
     SAL_DLLPRIVATE void
-        checkBlacklist() const;
+        checkDenylist() const;
 
     /** Helper method to compare the versions with the current version
      */
     SAL_DLLPRIVATE static bool
-        checkBlacklistVersion(const OUString& currentversion,
+        checkDenylistVersion(const OUString& currentversion,
                               css::uno::Sequence< OUString > const & versions);
 
     css::uno::Reference< css::uno::XComponentContext > m_context;

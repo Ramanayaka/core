@@ -20,21 +20,17 @@
 #ifndef INCLUDED_SD_SOURCE_UI_ANNOTATIONS_ANNOTATIONWINDOW_HXX
 #define INCLUDED_SD_SOURCE_UI_ANNOTATIONS_ANNOTATIONWINDOW_HXX
 
-#include <com/sun/star/office/XAnnotation.hpp>
-
 #include <vcl/ctrl.hxx>
-#include <vcl/lineinfo.hxx>
 #include <vcl/floatwin.hxx>
+#include <vcl/vclmedit.hxx>
+#include <vcl/scrbar.hxx>
 
 #include <basegfx/polygon/b2dpolygon.hxx>
 
-#include <svx/sdr/overlay/overlayobject.hxx>
-#include <editeng/editstat.hxx>
+namespace com::sun::star::office { class XAnnotation; }
 
 class OutlinerView;
 class Outliner;
-class ScrollBar;
-class MultiLineEdit;
 class SvxLanguageItem;
 class SdDrawDocument;
 
@@ -44,7 +40,6 @@ class AnnotationManagerImpl;
 class AnnotationWindow;
 class DrawDocShell;
 class TextApiObject;
-class View;
 
 class AnnotationTextWindow : public Control
 {
@@ -78,15 +73,15 @@ class AnnotationWindow : public FloatingWindow
         DrawDocShell*           mpDocShell;
         SdDrawDocument*         mpDoc;
 
-        OutlinerView*           mpOutlinerView;
-        ::Outliner*             mpOutliner;
+        std::unique_ptr<OutlinerView> mpOutlinerView;
+        std::unique_ptr<::Outliner>   mpOutliner;
         VclPtr<ScrollBar>       mpVScrollbar;
         css::uno::Reference< css::office::XAnnotation > mxAnnotation;
         bool                    mbReadonly;
         bool                    mbProtected;
         bool                    mbMouseOverButton;
         VclPtr<AnnotationTextWindow>   mpTextWindow;
-        VclPtr<MultiLineEdit>   mpMeta;
+        VclPtr<VclMultiLineEdit> mpMeta;
         ::tools::Rectangle               maRectMetaButton;
         basegfx::B2DPolygon     maPopupTriangle;
 
@@ -105,8 +100,8 @@ class AnnotationWindow : public FloatingWindow
         void ExecuteSlot( sal_uInt16 nSID );
 
         DrawDocShell*           DocShell()      { return mpDocShell; }
-        OutlinerView*           getView()       { return mpOutlinerView; }
-        ::Outliner*             Engine()        { return mpOutliner; }
+        OutlinerView*           getView()       { return mpOutlinerView.get(); }
+        ::Outliner*             Engine()        { return mpOutliner.get(); }
         SdDrawDocument*         Doc()           { return mpDoc; }
 
         long            GetPostItTextHeight();
@@ -118,7 +113,7 @@ class AnnotationWindow : public FloatingWindow
 
         void            Rescale();
 
-        bool            IsProtected() { return mbProtected; }
+        bool            IsProtected() const { return mbProtected; }
 
         void            SetLanguage(const SvxLanguageItem &aNewItem);
 

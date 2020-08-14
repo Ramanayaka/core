@@ -18,13 +18,10 @@
  */
 
 #include <docary.hxx>
-#include <vcl/window.hxx>
-#include "redline.hxx"
-#include "doc.hxx"
-#include "swundo.hxx"
-#include "editsh.hxx"
-#include "edimp.hxx"
-#include "frmtool.hxx"
+#include <redline.hxx>
+#include <doc.hxx>
+#include <editsh.hxx>
+#include <frmtool.hxx>
 
 RedlineFlags SwEditShell::GetRedlineFlags() const
 {
@@ -35,7 +32,7 @@ void SwEditShell::SetRedlineFlags( RedlineFlags eMode )
 {
     if( eMode != GetDoc()->getIDocumentRedlineAccess().GetRedlineFlags() )
     {
-        SET_CURR_SHELL( this );
+        CurrShell aCurr( this );
         StartAllAction();
         GetDoc()->getIDocumentRedlineAccess().SetRedlineFlags( eMode );
         EndAllAction();
@@ -68,7 +65,7 @@ static void lcl_InvalidateAll( SwViewShell* pSh )
 
 bool SwEditShell::AcceptRedline( SwRedlineTable::size_type nPos )
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
     StartAllAction();
     bool bRet = GetDoc()->getIDocumentRedlineAccess().AcceptRedline( nPos, true );
     if( !nPos && !::IsExtraData( GetDoc() ) )
@@ -79,7 +76,7 @@ bool SwEditShell::AcceptRedline( SwRedlineTable::size_type nPos )
 
 bool SwEditShell::RejectRedline( SwRedlineTable::size_type nPos )
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
     StartAllAction();
     bool bRet = GetDoc()->getIDocumentRedlineAccess().RejectRedline( nPos, true );
     if( !nPos && !::IsExtraData( GetDoc() ) )
@@ -90,7 +87,7 @@ bool SwEditShell::RejectRedline( SwRedlineTable::size_type nPos )
 
 bool SwEditShell::AcceptRedlinesInSelection()
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
     StartAllAction();
     bool bRet = GetDoc()->getIDocumentRedlineAccess().AcceptRedline( *GetCursor(), true );
     EndAllAction();
@@ -99,7 +96,7 @@ bool SwEditShell::AcceptRedlinesInSelection()
 
 bool SwEditShell::RejectRedlinesInSelection()
 {
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
     StartAllAction();
     bool bRet = GetDoc()->getIDocumentRedlineAccess().RejectRedline( *GetCursor(), true );
     EndAllAction();
@@ -110,7 +107,7 @@ bool SwEditShell::RejectRedlinesInSelection()
 bool SwEditShell::SetRedlineComment( const OUString& rS )
 {
     bool bRet = false;
-    for(SwPaM& rPaM : GetCursor()->GetRingContainer())
+    for(const SwPaM& rPaM : GetCursor()->GetRingContainer())
     {
         bRet = bRet || GetDoc()->getIDocumentRedlineAccess().SetRedlineComment( rPaM, rS );
     }
@@ -120,14 +117,17 @@ bool SwEditShell::SetRedlineComment( const OUString& rS )
 
 const SwRangeRedline* SwEditShell::GetCurrRedline() const
 {
-    return GetDoc()->getIDocumentRedlineAccess().GetRedline( *GetCursor()->GetPoint(), nullptr );
+    if (const SwRangeRedline* pRed = GetDoc()->getIDocumentRedlineAccess().GetRedline( *GetCursor()->GetPoint(), nullptr ))
+        return pRed;
+    // check the other side of the selection to handle completely selected changes, where the Point is at the end
+    return GetDoc()->getIDocumentRedlineAccess().GetRedline( *GetCursor()->GetMark(), nullptr );
 }
 
 void SwEditShell::UpdateRedlineAttr()
 {
     if( IDocumentRedlineAccess::IsShowChanges(GetDoc()->getIDocumentRedlineAccess().GetRedlineFlags()) )
     {
-        SET_CURR_SHELL( this );
+        CurrShell aCurr( this );
         StartAllAction();
 
         GetDoc()->getIDocumentRedlineAccess().UpdateRedlineAttr();

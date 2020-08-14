@@ -23,14 +23,10 @@
 #include <com/sun/star/xml/crypto/sax/XSecuritySAXEventKeeper.hpp>
 #include <com/sun/star/xml/crypto/sax/XReferenceResolvedBroadcaster.hpp>
 #include <com/sun/star/xml/crypto/sax/XSAXEventKeeperStatusChangeBroadcaster.hpp>
-#include <com/sun/star/xml/crypto/sax/XSAXEventKeeperStatusChangeListener.hpp>
-#include <com/sun/star/xml/csax/XCompressedDocumentHandler.hpp>
-#include <com/sun/star/xml/wrapper/XXMLDocumentWrapper.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include "xsecfwdllapi.h"
+#include <xmlsecuritydllapi.h>
 #include <cppuhelper/implbase.hxx>
 
 class BufferNode;
@@ -40,7 +36,11 @@ class ElementCollector;
 #include <vector>
 #include <memory>
 
-class XSECFW_DLLPUBLIC SAXEventKeeperImpl : public cppu::WeakImplHelper
+namespace com::sun::star::xml::crypto::sax { class XSAXEventKeeperStatusChangeListener; }
+namespace com::sun::star::xml::csax { class XCompressedDocumentHandler; }
+namespace com::sun::star::xml::wrapper { class XXMLDocumentWrapper; }
+
+class SAXEventKeeperImpl final : public cppu::WeakImplHelper
 <
     css::xml::crypto::sax::XSecuritySAXEventKeeper,
     css::xml::crypto::sax::XReferenceResolvedBroadcaster,
@@ -55,13 +55,13 @@ class XSECFW_DLLPUBLIC SAXEventKeeperImpl : public cppu::WeakImplHelper
  *  SAXEventKeeperImpl -- SAX events buffer controller
  *
  *   FUNCTION
- *  Controls SAX events to be bufferred, and controls bufferred SAX events
+ *  Controls SAX events to be buffered, and controls buffered SAX events
  *  to be released.
  ******************************************************************************/
 {
 private:
     /*
-     * the XMLDocumentWrapper component which maintains all bufferred SAX
+     * the XMLDocumentWrapper component which maintains all buffered SAX
      * in DOM format.
      */
     css::uno::Reference< css::xml::wrapper::XXMLDocumentWrapper >
@@ -92,11 +92,11 @@ private:
 
     /*
      * the root node of the BufferNode tree.
-     * the BufferNode tree is used to keep track of all bufferred elements,
+     * the BufferNode tree is used to keep track of all buffered elements,
      * it has the same structure with the document which maintains those
      * elements physically.
      */
-    BufferNode*  m_pRootBufferNode;
+    std::unique_ptr<BufferNode>  m_pRootBufferNode;
 
     /*
      * the current active BufferNode.
@@ -107,7 +107,7 @@ private:
 
     /*
      * the next Id for a coming ElementMark.
-     * the variable is increased by 1 when an new ElementMark is generated,
+     * the variable is increased by 1 when a new ElementMark is generated,
      * in this way, we can promise the Id of any ElementMark is unique.
      */
     sal_Int32    m_nNextElementMarkId;
@@ -187,10 +187,10 @@ private:
     void removeElementMarkBuffer(sal_Int32 nId);
 
     OUString printBufferNode(
-        BufferNode* pBufferNode, sal_Int32 nIndent) const;
+        BufferNode const * pBufferNode, sal_Int32 nIndent) const;
 
     static css::uno::Sequence< css::uno::Reference< css::xml::wrapper::XXMLElementWrapper > >
-        collectChildWorkingElement(BufferNode* pBufferNode);
+        collectChildWorkingElement(BufferNode const * pBufferNode);
 
     void smashBufferNode(
         BufferNode* pBufferNode, bool bClearRoot) const;
@@ -286,11 +286,7 @@ public:
 OUString SAXEventKeeperImpl_getImplementationName();
 
 /// @throws css::uno::RuntimeException
-css::uno::Sequence< OUString > SAL_CALL SAXEventKeeperImpl_getSupportedServiceNames(  );
-
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface >
-SAL_CALL SAXEventKeeperImpl_createInstance( const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr);
+css::uno::Sequence< OUString > SAXEventKeeperImpl_getSupportedServiceNames(  );
 
 #endif
 

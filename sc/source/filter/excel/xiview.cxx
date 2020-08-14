@@ -17,13 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "xiview.hxx"
-#include "document.hxx"
-#include "scextopt.hxx"
-#include "viewopti.hxx"
-#include "xistream.hxx"
-#include "xihelper.hxx"
-#include "xistyle.hxx"
+#include <sal/config.h>
+
+#include <o3tl/safeint.hxx>
+
+#include <xiview.hxx>
+#include <document.hxx>
+#include <scextopt.hxx>
+#include <viewopti.hxx>
+#include <xistream.hxx>
+#include <xihelper.hxx>
+#include <xistyle.hxx>
 
 // Document view settings =====================================================
 
@@ -94,7 +98,7 @@ void XclImpTabViewSettings::Initialize()
     maData.SetDefaults();
 }
 
-void XclImpTabViewSettings::ReadTabBgColor( XclImpStream& rStrm, XclImpPalette& rPal )
+void XclImpTabViewSettings::ReadTabBgColor( XclImpStream& rStrm, const XclImpPalette& rPal )
 {
     OSL_ENSURE_BIFF( GetBiff() >= EXC_BIFF8 );
     if( GetBiff() < EXC_BIFF8 )
@@ -251,19 +255,19 @@ void XclImpTabViewSettings::Finalize()
             #i35812# Excel uses number of visible rows/columns, Calc uses position of freeze. */
         if( (maData.mnSplitX > 0) && (maData.maFirstXclPos.mnCol + maData.mnSplitX <= GetScMaxPos().Col()) )
             rTabSett.maFreezePos.SetCol( static_cast< SCCOL >( maData.maFirstXclPos.mnCol + maData.mnSplitX ) );
-        if( (maData.mnSplitY > 0) && (maData.maFirstXclPos.mnRow + maData.mnSplitY <= static_cast<unsigned>(GetScMaxPos().Row())) )
+        if( (maData.mnSplitY > 0) && (maData.maFirstXclPos.mnRow + maData.mnSplitY <= o3tl::make_unsigned(GetScMaxPos().Row())) )
             rTabSett.maFreezePos.SetRow( static_cast< SCROW >( maData.maFirstXclPos.mnRow + maData.mnSplitY ) );
     }
     else
     {
         // split window: position is in twips
-        rTabSett.maSplitPos.X() = static_cast< long >( maData.mnSplitX );
-        rTabSett.maSplitPos.Y() = static_cast< long >( maData.mnSplitY );
+        rTabSett.maSplitPos.setX( static_cast< long >( maData.mnSplitX ) );
+        rTabSett.maSplitPos.setY( static_cast< long >( maData.mnSplitY ) );
     }
 
     // grid color
     if( maData.mbDefGridColor )
-        rTabSett.maGridColor.SetColor( COL_AUTO );
+        rTabSett.maGridColor = COL_AUTO;
     else
         rTabSett.maGridColor = maData.maGridColor;
 

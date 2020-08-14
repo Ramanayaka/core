@@ -20,7 +20,7 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_LAYCACHE_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_LAYCACHE_HXX
 
-#include <tools/solar.h>
+#include <sal/types.h>
 #include <memory>
 
 class SwDoc;
@@ -40,8 +40,8 @@ class SvStream;
  */
 class SwLayoutCache
 {
-    std::unique_ptr<SwLayCacheImpl> pImpl;
-    sal_uInt16 nLockCount;
+    std::unique_ptr<SwLayCacheImpl> m_pImpl;
+    sal_uInt16 m_nLockCount;
 
 public:
     SwLayoutCache();
@@ -51,14 +51,14 @@ public:
     static void Write( SvStream &rStream, const SwDoc& rDoc );
 
     void ClearImpl();
-    bool IsLocked() const { return nLockCount > 0; }
-    sal_uInt16& GetLockCount() { return nLockCount; }
+    bool IsLocked() const { return m_nLockCount > 0; }
+    sal_uInt16& GetLockCount() { return m_nLockCount; }
     SwLayCacheImpl *LockImpl()
-        { if( nLockCount & 0x8000 ) return nullptr;
-          if ( pImpl )
-            ++nLockCount;
-          return pImpl.get(); }
-    void UnlockImpl() { --nLockCount; }
+        { if( m_nLockCount & 0x8000 ) return nullptr;
+          if ( m_pImpl )
+            ++m_nLockCount;
+          return m_pImpl.get(); }
+    void UnlockImpl() { --m_nLockCount; }
 
 #ifdef DBG_UTIL
     bool CompareLayout( const SwDoc& rDoc ) const;

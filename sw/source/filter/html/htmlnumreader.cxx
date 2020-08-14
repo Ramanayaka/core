@@ -17,16 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/style/NumberingType.hpp>
+#include <com/sun/star/text/VertOrientation.hpp>
 #include <hintids.hxx>
 #include <svtools/htmltokn.h>
 #include <svtools/htmlkywd.hxx>
-#include <svtools/htmlout.hxx>
 #include <svl/urihelper.hxx>
 #include <editeng/brushitem.hxx>
 #include <editeng/lrspitem.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 #include <numrule.hxx>
 #include <doc.hxx>
 #include <docary.hxx>
@@ -38,12 +38,10 @@
 #include "swcss1.hxx"
 #include "swhtml.hxx"
 
-#include <SwNodeNum.hxx>
-
 using namespace css;
 
 // <UL TYPE=...>
-static HTMLOptionEnum<sal_Unicode> aHTMLULTypeTable[] =
+HTMLOptionEnum<sal_Unicode> const aHTMLULTypeTable[] =
 {
     { OOO_STRING_SVTOOLS_HTML_ULTYPE_disc,    HTML_BULLETCHAR_DISC   },
     { OOO_STRING_SVTOOLS_HTML_ULTYPE_circle,  HTML_BULLETCHAR_CIRCLE },
@@ -52,7 +50,7 @@ static HTMLOptionEnum<sal_Unicode> aHTMLULTypeTable[] =
 };
 
 
-void SwHTMLParser::NewNumBulList( HtmlTokenId nToken )
+void SwHTMLParser::NewNumberBulletList( HtmlTokenId nToken )
 {
     SwHTMLNumRuleInfo& rInfo = GetNumInfo();
 
@@ -65,7 +63,7 @@ void SwHTMLParser::NewNumBulList( HtmlTokenId nToken )
 
     // Increment the numbering depth
     rInfo.IncDepth();
-    sal_uInt8 nLevel = (sal_uInt8)( (rInfo.GetDepth() <= MAXLEVEL ? rInfo.GetDepth()
+    sal_uInt8 nLevel = static_cast<sal_uInt8>( (rInfo.GetDepth() <= MAXLEVEL ? rInfo.GetDepth()
                                                         : MAXLEVEL) - 1 );
 
     // Create rules if needed
@@ -101,12 +99,12 @@ void SwHTMLParser::NewNumBulList( HtmlTokenId nToken )
             }
             aNumFormat.SetNumberingType(SVX_NUM_CHAR_SPECIAL);
             aNumFormat.SetBulletChar( cBulletChar );
-            nChrFormatPoolId = RES_POOLCHR_BUL_LEVEL;
+            nChrFormatPoolId = RES_POOLCHR_BULLET_LEVEL;
         }
 
-        sal_uInt16 nAbsLSpace = HTML_NUMBUL_MARGINLEFT;
+        sal_Int32 nAbsLSpace = HTML_NUMBER_BULLET_MARGINLEFT;
 
-        short nFirstLineIndent  = HTML_NUMBUL_INDENT;
+        sal_Int32 nFirstLineIndent  = HTML_NUMBER_BULLET_INDENT;
         if( nLevel > 0 )
         {
             const SwNumFormat& rPrevNumFormat = rInfo.GetNumRule()->Get( nLevel-1 );
@@ -167,7 +165,7 @@ void SwHTMLParser::NewNumBulList( HtmlTokenId nToken )
             break;
         case HtmlOptionId::START:
             {
-                sal_uInt16 nStart = (sal_uInt16)rOption.GetNumber();
+                sal_uInt16 nStart = static_cast<sal_uInt16>(rOption.GetNumber());
                 if( bNewNumFormat )
                 {
                     aNumFormat.SetStart( nStart );
@@ -200,10 +198,10 @@ void SwHTMLParser::NewNumBulList( HtmlTokenId nToken )
             }
             break;
         case HtmlOptionId::WIDTH:
-            nWidth = (sal_uInt16)rOption.GetNumber();
+            nWidth = static_cast<sal_uInt16>(rOption.GetNumber());
             break;
         case HtmlOptionId::HEIGHT:
-            nHeight = (sal_uInt16)rOption.GetNumber();
+            nHeight = static_cast<sal_uInt16>(rOption.GetNumber());
             break;
         case HtmlOptionId::ALIGN:
             eVertOri = rOption.GetEnum( aHTMLImgVAlignTable, eVertOri );
@@ -250,7 +248,7 @@ void SwHTMLParser::NewNumBulList( HtmlTokenId nToken )
     }
 
     // create a new context
-    HTMLAttrContext *pCntxt = new HTMLAttrContext( nToken );
+    std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(nToken));
 
     // Parse styles
     if( HasStyleOptions( aStyle, aId, aClass, &aLang, &aDir ) )
@@ -265,17 +263,16 @@ void SwHTMLParser::NewNumBulList( HtmlTokenId nToken )
                 if( aPropInfo.m_bLeftMargin )
                 {
                     // Default indent has already been added
-                    sal_uInt16 nAbsLSpace =
-                        aNumFormat.GetAbsLSpace() - HTML_NUMBUL_MARGINLEFT;
+                    long nAbsLSpace =
+                        aNumFormat.GetAbsLSpace() - HTML_NUMBER_BULLET_MARGINLEFT;
                     if( aPropInfo.m_nLeftMargin < 0 &&
                         nAbsLSpace < -aPropInfo.m_nLeftMargin )
                         nAbsLSpace = 0U;
-                    else if( aPropInfo.m_nLeftMargin > USHRT_MAX ||
-                             (long)nAbsLSpace +
-                                            aPropInfo.m_nLeftMargin > USHRT_MAX )
-                        nAbsLSpace = USHRT_MAX;
+                    else if( aPropInfo.m_nLeftMargin > SHRT_MAX ||
+                             nAbsLSpace + aPropInfo.m_nLeftMargin > SHRT_MAX )
+                        nAbsLSpace = SHRT_MAX;
                     else
-                        nAbsLSpace = nAbsLSpace + (sal_uInt16)aPropInfo.m_nLeftMargin;
+                        nAbsLSpace = nAbsLSpace + aPropInfo.m_nLeftMargin;
 
                     aNumFormat.SetAbsLSpace( nAbsLSpace );
                     bChangeNumFormat = true;
@@ -283,8 +280,7 @@ void SwHTMLParser::NewNumBulList( HtmlTokenId nToken )
                 if( aPropInfo.m_bTextIndent )
                 {
                     short nTextIndent =
-                        static_cast<const SvxLRSpaceItem &>(aItemSet.Get( RES_LR_SPACE ))
-                                                        .GetTextFirstLineOfst();
+                        aItemSet.Get( RES_LR_SPACE ).GetTextFirstLineOffset();
                     aNumFormat.SetFirstLineOffset( nTextIndent );
                     bChangeNumFormat = true;
                 }
@@ -313,9 +309,9 @@ void SwHTMLParser::NewNumBulList( HtmlTokenId nToken )
                 bChangeNumFormat = false;
             }
 
-            DoPositioning( aItemSet, aPropInfo, pCntxt );
+            DoPositioning(aItemSet, aPropInfo, xCntxt.get());
 
-            InsertAttrs( aItemSet, aPropInfo, pCntxt );
+            InsertAttrs(aItemSet, aPropInfo, xCntxt.get());
         }
     }
 
@@ -325,13 +321,13 @@ void SwHTMLParser::NewNumBulList( HtmlTokenId nToken )
         m_xDoc->ChgNumRuleFormats( *rInfo.GetNumRule() );
     }
 
-    PushContext( pCntxt );
+    PushContext(xCntxt);
 
     // set attributes to the current template
-    SetTextCollAttrs( pCntxt );
+    SetTextCollAttrs(m_aContexts.back().get());
 }
 
-void SwHTMLParser::EndNumBulList( HtmlTokenId nToken )
+void SwHTMLParser::EndNumberBulletList( HtmlTokenId nToken )
 {
     SwHTMLNumRuleInfo& rInfo = GetNumInfo();
 
@@ -355,10 +351,10 @@ void SwHTMLParser::EndNumBulList( HtmlTokenId nToken )
         AddParSpace();
 
     // get current context from stack
-    HTMLAttrContext *pCntxt = nToken != HtmlTokenId::NONE ? PopContext( getOnToken(nToken) ) : nullptr;
+    std::unique_ptr<HTMLAttrContext> xCntxt(nToken != HtmlTokenId::NONE ? PopContext(getOnToken(nToken)) : nullptr);
 
     // Don't end a list because of a token, if the context wasn't created or mustn't be ended
-    if( rInfo.GetDepth()>0 && (nToken == HtmlTokenId::NONE || pCntxt) )
+    if( rInfo.GetDepth()>0 && (nToken == HtmlTokenId::NONE || xCntxt) )
     {
         rInfo.DecDepth();
         if( !rInfo.GetDepth() )     // was that the last level?
@@ -387,8 +383,8 @@ void SwHTMLParser::EndNumBulList( HtmlTokenId nToken )
                         }
                         aNumFormat.SetBulletChar( cBulletChar );
                     }
-                    aNumFormat.SetAbsLSpace( (i+1) * HTML_NUMBUL_MARGINLEFT );
-                    aNumFormat.SetFirstLineOffset( HTML_NUMBUL_INDENT );
+                    aNumFormat.SetAbsLSpace( (i+1) * HTML_NUMBER_BULLET_MARGINLEFT );
+                    aNumFormat.SetFirstLineOffset( HTML_NUMBER_BULLET_INDENT );
                     aNumFormat.SetCharFormat( pRefNumFormat->GetCharFormat() );
                     rInfo.GetNumRule()->Set( i, aNumFormat );
                     bChanged = true;
@@ -399,7 +395,8 @@ void SwHTMLParser::EndNumBulList( HtmlTokenId nToken )
 
             // On the last append, the NumRule item and NodeNum object were copied.
             // Now we need to delete them. ResetAttr deletes the NodeNum object as well
-            m_pPam->GetNode().GetTextNode()->ResetAttr( RES_PARATR_NUMRULE );
+            if (SwTextNode *pTextNode = m_pPam->GetNode().GetTextNode())
+                pTextNode->ResetAttr(RES_PARATR_NUMRULE);
 
             rInfo.Clear();
         }
@@ -412,10 +409,10 @@ void SwHTMLParser::EndNumBulList( HtmlTokenId nToken )
 
     // end attributes
     bool bSetAttrs = false;
-    if( pCntxt )
+    if (xCntxt)
     {
-        EndContext( pCntxt );
-        delete pCntxt;
+        EndContext(xCntxt.get());
+        xCntxt.reset();
         bSetAttrs = true;
     }
 
@@ -427,7 +424,7 @@ void SwHTMLParser::EndNumBulList( HtmlTokenId nToken )
 
 }
 
-void SwHTMLParser::NewNumBulListItem( HtmlTokenId nToken )
+void SwHTMLParser::NewNumberBulletListItem( HtmlTokenId nToken )
 {
     sal_uInt8 nLevel = GetNumInfo().GetLevel();
     OUString aId, aStyle, aClass, aLang, aDir;
@@ -444,7 +441,7 @@ void SwHTMLParser::NewNumBulListItem( HtmlTokenId nToken )
         switch( rOption.GetToken() )
         {
             case HtmlOptionId::VALUE:
-                nStart = (sal_uInt16)rOption.GetNumber();
+                nStart = static_cast<sal_uInt16>(rOption.GetNumber());
                 break;
             case HtmlOptionId::ID:
                 aId = rOption.GetString();
@@ -470,9 +467,16 @@ void SwHTMLParser::NewNumBulListItem( HtmlTokenId nToken )
         AppendTextNode( AM_NOSPACE, false );
     m_bNoParSpace = false;    // no space in <LI>!
 
+    SwTextNode* pTextNode = m_pPam->GetNode().GetTextNode();
+    if (!pTextNode)
+    {
+        SAL_WARN("sw.html", "No Text-Node at PaM-Position");
+        return;
+    }
+
     const bool bCountedInList = nToken != HtmlTokenId::LISTHEADER_ON;
 
-    HTMLAttrContext *pCntxt = new HTMLAttrContext( nToken );
+    std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(nToken));
 
     OUString aNumRuleName;
     if( GetNumInfo().GetNumRule() )
@@ -492,8 +496,8 @@ void SwHTMLParser::NewNumBulListItem( HtmlTokenId nToken )
         }
         aNumFormat.SetNumberingType(SVX_NUM_CHAR_SPECIAL);
         aNumFormat.SetBulletChar( cBulletChar );   // the bullet character !!
-        aNumFormat.SetCharFormat( m_pCSS1Parser->GetCharFormatFromPool(RES_POOLCHR_BUL_LEVEL) );
-        aNumFormat.SetFirstLineOffset( HTML_NUMBUL_INDENT );
+        aNumFormat.SetCharFormat( m_pCSS1Parser->GetCharFormatFromPool(RES_POOLCHR_BULLET_LEVEL) );
+        aNumFormat.SetFirstLineOffset( HTML_NUMBER_BULLET_INDENT );
         aNumRule.Set( 0, aNumFormat );
 
         m_xDoc->MakeNumRule( aNumRuleName, &aNumRule );
@@ -505,7 +509,6 @@ void SwHTMLParser::NewNumBulListItem( HtmlTokenId nToken )
         m_nOpenParaToken = nToken;
     }
 
-    SwTextNode* pTextNode = m_pPam->GetNode().GetTextNode();
     static_cast<SwContentNode *>(pTextNode)->SetAttr( SwNumRuleItem(aNumRuleName) );
     pTextNode->SetAttrListLevel(nLevel);
     // #i57656# - <IsCounted()> state of text node has to be adjusted accordingly.
@@ -535,31 +538,31 @@ void SwHTMLParser::NewNumBulListItem( HtmlTokenId nToken )
 
         if( ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo, &aLang, &aDir ) )
         {
-            DoPositioning( aItemSet, aPropInfo, pCntxt );
-            InsertAttrs( aItemSet, aPropInfo, pCntxt );
+            DoPositioning(aItemSet, aPropInfo, xCntxt.get());
+            InsertAttrs(aItemSet, aPropInfo, xCntxt.get());
         }
     }
 
-    PushContext( pCntxt );
+    PushContext(xCntxt);
 
     // set the new template
-    SetTextCollAttrs( pCntxt );
+    SetTextCollAttrs(m_aContexts.back().get());
 
     // Refresh scroll bar
     ShowStatline();
 }
 
-void SwHTMLParser::EndNumBulListItem( HtmlTokenId nToken, bool bSetColl )
+void SwHTMLParser::EndNumberBulletListItem( HtmlTokenId nToken, bool bSetColl )
 {
     // Create a new paragraph
     if( nToken == HtmlTokenId::NONE && m_pPam->GetPoint()->nContent.GetIndex() )
         AppendTextNode( AM_NOSPACE );
 
     // Get context to that token and pop it from stack
-    HTMLAttrContext *pCntxt = nullptr;
+    std::unique_ptr<HTMLAttrContext> xCntxt;
     auto nPos = m_aContexts.size();
     nToken = getOnToken(nToken);
-    while( !pCntxt && nPos>m_nContextStMin )
+    while (!xCntxt && nPos>m_nContextStMin)
     {
         HtmlTokenId nCntxtToken = m_aContexts[--nPos]->GetToken();
         switch( nCntxtToken )
@@ -568,7 +571,7 @@ void SwHTMLParser::EndNumBulListItem( HtmlTokenId nToken, bool bSetColl )
         case HtmlTokenId::LISTHEADER_ON:
             if( nToken == HtmlTokenId::NONE || nToken == nCntxtToken  )
             {
-                pCntxt = m_aContexts[nPos];
+                xCntxt = std::move(m_aContexts[nPos]);
                 m_aContexts.erase( m_aContexts.begin() + nPos );
             }
             break;
@@ -584,11 +587,11 @@ void SwHTMLParser::EndNumBulListItem( HtmlTokenId nToken, bool bSetColl )
     }
 
     // end attributes
-    if( pCntxt )
+    if (xCntxt)
     {
-        EndContext( pCntxt );
+        EndContext(xCntxt.get());
         SetAttr();  // set paragraph attributes asap because of Javascript
-        delete pCntxt;
+        xCntxt.reset();
     }
 
     // set current template
@@ -599,7 +602,11 @@ void SwHTMLParser::EndNumBulListItem( HtmlTokenId nToken, bool bSetColl )
 void SwHTMLParser::SetNodeNum( sal_uInt8 nLevel )
 {
     SwTextNode* pTextNode = m_pPam->GetNode().GetTextNode();
-    OSL_ENSURE( pTextNode, "No Text-Node at PaM-Position" );
+    if (!pTextNode)
+    {
+        SAL_WARN("sw.html", "No Text-Node at PaM-Position");
+        return;
+    }
 
     OSL_ENSURE( GetNumInfo().GetNumRule(), "No numbering rule" );
     const OUString& rName = GetNumInfo().GetNumRule()->GetName();

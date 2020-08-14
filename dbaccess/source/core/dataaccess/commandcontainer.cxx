@@ -20,7 +20,6 @@
 #include "commandcontainer.hxx"
 #include "commanddefinition.hxx"
 
-#include "dbastrings.hrc"
 #include <com/sun/star/sdb/TableDefinition.hpp>
 #include <com/sun/star/sdb/CommandDefinition.hpp>
 
@@ -87,7 +86,7 @@ Reference< XInterface > SAL_CALL OCommandContainer::createInstance( )
 
 OUString OCommandContainer::determineContentType() const
 {
-    return OUString( "application/vnd.org.openoffice.DatabaseCommandDefinitionContainer" );
+    return "application/vnd.org.openoffice.DatabaseCommandDefinitionContainer";
 }
 
 }   // namespace dbaccess

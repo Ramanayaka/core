@@ -20,15 +20,16 @@
 #ifndef INCLUDED_AVMEDIA_MEDIAPLAYER_HXX
 #define INCLUDED_AVMEDIA_MEDIAPLAYER_HXX
 
-#include <sfx2/ctrlitem.hxx>
+#include <config_options.h>
 #include <sfx2/dockwin.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <avmedia/avmediadllapi.h>
+#include <memory>
 
 namespace avmedia
 {
 
-class AVMEDIA_DLLPUBLIC MediaPlayer : public SfxChildWindow
+class AVMEDIA_DLLPUBLIC MediaPlayer final : public SfxChildWindow
 {
 public:
                         MediaPlayer( vcl::Window*, sal_uInt16, SfxBindings*, SfxChildWinInfo* );
@@ -39,7 +40,7 @@ public:
 
 class MediaWindow;
 
-class AVMEDIA_DLLPUBLIC MediaFloater : public SfxDockingWindow
+class UNLESS_MERGELIBS(AVMEDIA_DLLPUBLIC) MediaFloater final : public SfxDockingWindow
 {
 public:
 
@@ -56,7 +57,7 @@ private:
     virtual void            Resize() override;
     virtual void            ToggleFloatingMode() override;
 
-    MediaWindow*            mpMediaWindow;
+    std::unique_ptr<MediaWindow> mpMediaWindow;
 };
 
 inline MediaFloater * getMediaFloater() {

@@ -19,15 +19,13 @@
 
 #include <memory>
 #include <osl/diagnose.h>
-#include <comphelper/processfactory.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/exc_hlp.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/beans/PropertyState.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/io/Pipe.hpp>
@@ -92,7 +90,6 @@ struct TransferCommandContext
 };
 
 
-// class InteractionHandlerProxy.
 
 
 class InteractionHandlerProxy :
@@ -162,7 +159,6 @@ void SAL_CALL InteractionHandlerProxy::handle(
 }
 
 
-// class ActiveDataSink.
 
 
 class ActiveDataSink : public cppu::WeakImplHelper< io::XActiveDataSink >
@@ -192,7 +188,6 @@ uno::Reference< io::XInputStream > SAL_CALL ActiveDataSink::getInputStream()
 }
 
 
-// class CommandProcessorInfo.
 
 
 class CommandProcessorInfo :
@@ -215,9 +210,8 @@ public:
 
 
 CommandProcessorInfo::CommandProcessorInfo()
+    : m_pInfo( new uno::Sequence< ucb::CommandInfo >( 3 ) )
 {
-    m_pInfo.reset( new uno::Sequence< ucb::CommandInfo >( 2 ) );
-
     (*m_pInfo)[ 0 ]
         = ucb::CommandInfo(
             GETCOMMANDINFO_NAME, // Name
@@ -240,7 +234,7 @@ CommandProcessorInfo::CommandProcessorInfo()
 uno::Sequence< ucb::CommandInfo > SAL_CALL
 CommandProcessorInfo::getCommands()
 {
-    return uno::Sequence< ucb::CommandInfo >( *m_pInfo );
+    return *m_pInfo;
 }
 
 
@@ -248,11 +242,10 @@ CommandProcessorInfo::getCommands()
 ucb::CommandInfo SAL_CALL
 CommandProcessorInfo::getCommandInfoByName( const OUString& Name )
 {
-    for ( sal_Int32 n = 0; n < m_pInfo->getLength(); ++n )
-    {
-        if ( (*m_pInfo)[ n ].Name == Name )
-            return ucb::CommandInfo( (*m_pInfo)[ n ] );
-    }
+    auto pInfo = std::find_if(m_pInfo->begin(), m_pInfo->end(),
+        [&Name](const ucb::CommandInfo& rInfo) { return rInfo.Name == Name; });
+    if (pInfo != m_pInfo->end())
+        return *pInfo;
 
     throw ucb::UnsupportedCommandException();
 }
@@ -262,11 +255,10 @@ CommandProcessorInfo::getCommandInfoByName( const OUString& Name )
 ucb::CommandInfo SAL_CALL
 CommandProcessorInfo::getCommandInfoByHandle( sal_Int32 Handle )
 {
-    for ( sal_Int32 n = 0; n < m_pInfo->getLength(); ++n )
-    {
-        if ( (*m_pInfo)[ n ].Handle == Handle )
-            return ucb::CommandInfo( (*m_pInfo)[ n ] );
-    }
+    auto pInfo = std::find_if(m_pInfo->begin(), m_pInfo->end(),
+        [&Handle](const ucb::CommandInfo& rInfo) { return rInfo.Handle == Handle; });
+    if (pInfo != m_pInfo->end())
+        return *pInfo;
 
     throw ucb::UnsupportedCommandException();
 }
@@ -276,26 +268,16 @@ CommandProcessorInfo::getCommandInfoByHandle( sal_Int32 Handle )
 sal_Bool SAL_CALL CommandProcessorInfo::hasCommandByName(
                                                 const OUString& Name )
 {
-    for ( sal_Int32 n = 0; n < m_pInfo->getLength(); ++n )
-    {
-        if ( (*m_pInfo)[ n ].Name == Name )
-            return true;
-    }
-
-    return false;
+    return std::any_of(m_pInfo->begin(), m_pInfo->end(),
+        [&Name](const ucb::CommandInfo& rInfo) { return rInfo.Name == Name; });
 }
 
 
 // virtual
 sal_Bool SAL_CALL CommandProcessorInfo::hasCommandByHandle( sal_Int32 Handle )
 {
-    for ( sal_Int32 n = 0; n < m_pInfo->getLength(); ++n )
-    {
-        if ( (*m_pInfo)[ n ].Handle == Handle )
-            return true;
-    }
-
-    return false;
+    return std::any_of(m_pInfo->begin(), m_pInfo->end(),
+        [&Handle](const ucb::CommandInfo& rInfo) { return rInfo.Handle == Handle; });
 }
 
 
@@ -338,12 +320,12 @@ OUString createDesiredName(
         }
 
         // query, fragment present?
-    sal_Int32  nPos = aName.indexOf( '?' );
-    if ( nPos == -1 )
-      nPos = aName.indexOf( '#' );
+        sal_Int32  nPos = aName.indexOf( '?' );
+        if ( nPos == -1 )
+          nPos = aName.indexOf( '#' );
 
-    if ( nPos != -1 )
-      aName = aName.copy( 0, nPos );
+        if ( nPos != -1 )
+          aName = aName.copy( 0, nPos );
     }
     return aName;
 }
@@ -501,15 +483,13 @@ uno::Reference< ucb::XContent > createNew(
                                                     xTarget, uno::UNO_QUERY );
     if ( !xCommandProcessorT.is() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Folder",
-                                  -1,
-                                  uno::makeAny(rContext.aArg.TargetURL),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Folder", uno::Any(rContext.aArg.TargetURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_CREATE,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             rContext.xOrigEnv,
             "Target is no XCommandProcessor!",
             rContext.xProcessor );
@@ -552,15 +532,13 @@ uno::Reference< ucb::XContent > createNew(
 
         if ( !xCreator.is() )
         {
-            uno::Any aProps
-                = uno::makeAny(beans::PropertyValue(
-                                  "Folder",
-                                  -1,
-                                  uno::makeAny(rContext.aArg.TargetURL),
-                                  beans::PropertyState_DIRECT_VALUE));
+            uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+            {
+                {"Folder", uno::Any(rContext.aArg.TargetURL)}
+            }));
             ucbhelper::cancelCommandExecution(
                 ucb::IOErrorCode_CANT_CREATE,
-                uno::Sequence< uno::Any >(&aProps, 1),
+                aArgs,
                 rContext.xOrigEnv,
                 "Target is no XContentCreator!",
                 rContext.xProcessor );
@@ -570,137 +548,102 @@ uno::Reference< ucb::XContent > createNew(
         aTypesInfo  = xCreator->queryCreatableContentsInfo();
     }
 
-    sal_Int32 nCount = aTypesInfo.getLength();
-    if ( !nCount )
+    if ( !aTypesInfo.hasElements() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                              "Folder",
-                              -1,
-                              uno::makeAny(rContext.aArg.TargetURL),
-                              beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Folder", uno::Any(rContext.aArg.TargetURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_CREATE,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             rContext.xOrigEnv,
             "No types creatable!",
             rContext.xProcessor );
         // Unreachable
     }
 
-
     // (2) Try to find a matching target type for the source object.
 
+    std::function<bool(const sal_Int32)> lCompare;
 
-    uno::Reference< ucb::XContent > xNew;
-    for ( sal_Int32 n = 0; n < nCount; ++n )
+    if ( rContext.aArg.Operation == ucb::TransferCommandOperation_LINK )
     {
-        sal_Int32 nAttribs = aTypesInfo[ n ].Attributes;
-        bool  bMatch   = false;
-
-        if ( rContext.aArg.Operation == ucb::TransferCommandOperation_LINK )
+        // Create link
+        lCompare = [](const sal_Int32 nAttribs) { return !!( nAttribs & ucb::ContentInfoAttribute::KIND_LINK ); };
+    }
+    else if ( ( rContext.aArg.Operation == ucb::TransferCommandOperation_COPY ) ||
+              ( rContext.aArg.Operation == ucb::TransferCommandOperation_MOVE ) )
+    {
+        // Copy / Move
+        // Is source a link? Create link in target folder then.
+        if ( bSourceIsLink )
         {
-            // Create link
-
-            if ( nAttribs & ucb::ContentInfoAttribute::KIND_LINK )
-            {
-                // Match!
-                bMatch = true;
-            }
-        }
-        else if ( ( rContext.aArg.Operation
-                        == ucb::TransferCommandOperation_COPY ) ||
-                  ( rContext.aArg.Operation
-                        == ucb::TransferCommandOperation_MOVE ) )
-        {
-            // Copy / Move
-
-            // Is source a link? Create link in target folder then.
-            if ( bSourceIsLink )
-            {
-                if ( nAttribs & ucb::ContentInfoAttribute::KIND_LINK )
-                {
-                    // Match!
-                    bMatch = true;
-                }
-            }
-            else
-            {
-                // (not a and not b) or (a and b)
-                // not( a or b) or (a and b)
-
-                if ( ( !!bSourceIsFolder ==
-                        !!( nAttribs
-                            & ucb::ContentInfoAttribute::KIND_FOLDER ) )
-                     &&
-                     ( !!bSourceIsDocument ==
-                        !!( nAttribs
-                            & ucb::ContentInfoAttribute::KIND_DOCUMENT ) )
-                   )
-                {
-                    // Match!
-                    bMatch = true;
-                }
-            }
+            lCompare = [](const sal_Int32 nAttribs) { return !!( nAttribs & ucb::ContentInfoAttribute::KIND_LINK ); };
         }
         else
         {
+            // (not a and not b) or (a and b)
+            // not( a or b) or (a and b)
+            lCompare = [bSourceIsFolder, bSourceIsDocument](const sal_Int32 nAttribs) {
+                return ( bSourceIsFolder == !!( nAttribs & ucb::ContentInfoAttribute::KIND_FOLDER ) )
+                    && ( bSourceIsDocument == !!( nAttribs & ucb::ContentInfoAttribute::KIND_DOCUMENT ) ) ;
+            };
+        }
+    }
+    else
+    {
+        ucbhelper::cancelCommandExecution(
+            uno::makeAny( lang::IllegalArgumentException(
+                                    "Unknown transfer operation!",
+                                    rContext.xProcessor,
+                                    -1 ) ),
+                          rContext.xOrigEnv );
+        // Unreachable
+    }
+
+    uno::Reference< ucb::XContent > xNew;
+    auto pTypeInfo = std::find_if(aTypesInfo.begin(), aTypesInfo.end(),
+        [&lCompare](const ucb::ContentInfo& rTypeInfo) { return lCompare(rTypeInfo.Attributes); });
+    if (pTypeInfo != aTypesInfo.end())
+    {
+        // (3) Create a new, empty object of matched type.
+
+        if ( !xCreator.is() )
+        {
+            // First, try it using "CreatabeleContentsInfo" property and
+            // "createNewContent" command -> the "new" way.
+            ucb::Command aCreateNewCommand(
+               "createNewContent",
+               -1,
+               uno::makeAny( *pTypeInfo ) );
+
+            xCommandProcessorT->execute( aCreateNewCommand, 0, rContext.xEnv )
+                >>= xNew;
+        }
+        else
+        {
+            // Second, try it using XContentCreator interface -> the "old"
+            // way (not providing the chance to supply an XCommandEnvironment.
+
+            xNew = xCreator->createNewContent( *pTypeInfo );
+        }
+
+        if ( !xNew.is() )
+        {
+            uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+            {
+                {"Folder", uno::Any(rContext.aArg.TargetURL)}
+            }));
             ucbhelper::cancelCommandExecution(
-                uno::makeAny( lang::IllegalArgumentException(
-                                        "Unknown transfer operation!",
-                                        rContext.xProcessor,
-                                        -1 ) ),
-                              rContext.xOrigEnv );
+                ucb::IOErrorCode_CANT_CREATE,
+                aArgs,
+                rContext.xOrigEnv,
+                "createNewContent failed!",
+                rContext.xProcessor );
             // Unreachable
         }
-
-        if ( bMatch )
-        {
-
-
-            // (3) Create a new, empty object of matched type.
-
-
-            if ( !xCreator.is() )
-            {
-                // First, try it using "CreatabeleContentsInfo" property and
-                // "createNewContent" command -> the "new" way.
-                ucb::Command aCreateNewCommand(
-                   "createNewContent",
-                   -1,
-                   uno::makeAny( aTypesInfo[ n ] ) );
-
-                xCommandProcessorT->execute( aCreateNewCommand, 0, rContext.xEnv )
-                    >>= xNew;
-            }
-            else
-            {
-                // Second, try it using XContentCreator interface -> the "old"
-                // way (not providing the chance to supply an XCommandEnvironment.
-
-                xNew = xCreator->createNewContent( aTypesInfo[ n ] );
-            }
-
-            if ( !xNew.is() )
-            {
-                uno::Any aProps
-                    = uno::makeAny(
-                             beans::PropertyValue(
-                                 "Folder",
-                                 -1,
-                                 uno::makeAny(rContext.aArg.TargetURL),
-                                 beans::PropertyState_DIRECT_VALUE));
-                ucbhelper::cancelCommandExecution(
-                    ucb::IOErrorCode_CANT_CREATE,
-                    uno::Sequence< uno::Any >(&aProps, 1),
-                    rContext.xOrigEnv,
-                    "createNewContent failed!",
-                    rContext.xProcessor );
-                // Unreachable
-            }
-            break; // escape from 'for' loop
-        }
-    } // for
+    }
 
     return xNew;
 }
@@ -722,15 +665,13 @@ void transferProperties(
 
     if ( !xInfo.is() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Uri",
-                                  -1,
-                                  uno::makeAny(rContext.aArg.SourceURL),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(rContext.aArg.SourceURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_READ,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             rContext.xOrigEnv,
             "Unable to get propertyset info from source object!",
             rContext.xProcessor );
@@ -750,15 +691,13 @@ void transferProperties(
 
     if ( !xRow1.is() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Uri",
-                                  -1,
-                                  uno::makeAny(rContext.aArg.SourceURL),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(rContext.aArg.SourceURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_READ,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             rContext.xOrigEnv,
             "Unable to get properties from source object!",
             rContext.xProcessor );
@@ -1012,17 +951,13 @@ void handleNameClashRename(
 
     if ( !xRow.is() )
     {
-        uno::Any aProps2
-            = uno::makeAny(
-                     beans::PropertyValue(
-                         "Uri",
-                         -1,
-                         uno::makeAny(
-                             xNew->getIdentifier()->getContentIdentifier() ),
-                         beans::PropertyState_DIRECT_VALUE ) );
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(xNew->getIdentifier()->getContentIdentifier())}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_READ,
-            uno::Sequence< uno::Any >( &aProps2, 1 ),
+            aArgs,
             rContext.xOrigEnv,
             "Unable to get properties from new object!",
             rContext.xProcessor );
@@ -1060,9 +995,8 @@ void handleNameClashRename(
     {
         nTry++;
 
-        OUString aNewTitle = aOldTitlePre;
-        aNewTitle += OUString::number( nTry );
-        aNewTitle += aOldTitlePost;
+        OUString aNewTitle = aOldTitlePre + OUString::number( nTry ) +
+            aOldTitlePost;
 
         // Set new title
         setTitle( xCommandProcessorN, rContext.xEnv, aNewTitle );
@@ -1100,18 +1034,13 @@ void handleNameClashRename(
                         = getInputStream( rContext, xCommandProcessorS );
                     if ( !xInputStream.is() )
                     {
-                        uno::Any aProps2
-                            = uno::makeAny(
-                                beans::PropertyValue(
-                                    "Uri",
-                                    -1,
-                                    uno::makeAny(
-                                        xNew->getIdentifier()->
-                                            getContentIdentifier() ),
-                                    beans::PropertyState_DIRECT_VALUE ) );
+                        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+                        {
+                            {"Uri", uno::Any(xNew->getIdentifier()->getContentIdentifier())}
+                        }));
                         ucbhelper::cancelCommandExecution(
                             ucb::IOErrorCode_CANT_READ,
-                            uno::Sequence< uno::Any >( &aProps2, 1 ),
+                            aArgs,
                             rContext.xOrigEnv,
                             "Got no data stream from source!",
                             rContext.xProcessor );
@@ -1203,15 +1132,13 @@ void globalTransfer_(
                                                       bSourceIsLink );
     if ( !xNew.is() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Folder",
-                                  -1,
-                                  uno::makeAny(rContext.aArg.TargetURL),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Folder", uno::Any(rContext.aArg.TargetURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_CREATE,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             rContext.xOrigEnv,
             "No matching content type at target!",
             rContext.xProcessor );
@@ -1249,15 +1176,13 @@ void globalTransfer_(
                                                     xSource, uno::UNO_QUERY );
     if ( !xCommandProcessorS.is() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Uri",
-                                  -1,
-                                  uno::makeAny(rContext.aArg.SourceURL),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(rContext.aArg.SourceURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_READ,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             rContext.xOrigEnv,
             "Source content is not a XCommandProcessor!",
             rContext.xProcessor );
@@ -1374,7 +1299,7 @@ void globalTransfer_(
                                 rContext.xProcessor,
                                 rContext.aArg.NameClash ) ),
                         rContext.xOrigEnv );
-                    SAL_FALLTHROUGH; // Unreachable
+                    [[fallthrough]]; // Unreachable
                 }
 
                 case ucb::NameClash::ERROR:
@@ -1408,7 +1333,7 @@ void globalTransfer_(
                             case NOT_HANDLED:
                                 // Not handled.
                                 cppu::throwException( aExc );
-                                SAL_FALLTHROUGH; // break;
+                                [[fallthrough]]; // break;
 
                             case UNKNOWN:
                                 // Handled, but not clear, how...
@@ -1513,16 +1438,13 @@ void globalTransfer_(
 
             if ( !xChildAccess.is() )
             {
-                uno::Any aProps
-                    = uno::makeAny(
-                             beans::PropertyValue(
-                                 "Uri",
-                                 -1,
-                                 uno::makeAny(rContext.aArg.SourceURL),
-                                 beans::PropertyState_DIRECT_VALUE));
+                uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+                {
+                    {"Uri", uno::Any(rContext.aArg.SourceURL)}
+                }));
                 ucbhelper::cancelCommandExecution(
                     ucb::IOErrorCode_CANT_READ,
-                    uno::Sequence< uno::Any >(&aProps, 1),
+                    aArgs,
                     rContext.xOrigEnv,
                     "Unable to get children of source!",
                     rContext.xProcessor );
@@ -1652,15 +1574,13 @@ void UniversalContentBroker::globalTransfer(
 
     if ( !xTarget.is() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Uri",
-                                  -1,
-                                  uno::makeAny(rArg.TargetURL),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(rArg.TargetURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_READ,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             xEnv,
             "Can't instantiate target object!",
             this );
@@ -1674,16 +1594,13 @@ void UniversalContentBroker::globalTransfer(
                                                     xTarget, uno::UNO_QUERY );
         if ( !xCommandProcessor.is() )
         {
-            uno::Any aProps
-                = uno::makeAny(
-                         beans::PropertyValue(
-                             "Uri",
-                             -1,
-                             uno::makeAny(rArg.TargetURL),
-                             beans::PropertyState_DIRECT_VALUE));
+            uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+            {
+                {"Uri", uno::Any(rArg.TargetURL)}
+            }));
             ucbhelper::cancelCommandExecution(
                 ucb::IOErrorCode_CANT_READ,
-                uno::Sequence< uno::Any >(&aProps, 1),
+                aArgs,
                 xEnv,
                 "Target content is not a XCommandProcessor!",
                 this );
@@ -1778,7 +1695,7 @@ void UniversalContentBroker::globalTransfer(
                             case NOT_HANDLED:
                                 // Not handled.
                                 cppu::throwException( aExc );
-                                SAL_FALLTHROUGH; // break;
+                                [[fallthrough]]; // break;
 
                             case UNKNOWN:
                                 // Handled, but not clear, how...
@@ -1835,15 +1752,13 @@ void UniversalContentBroker::globalTransfer(
 
     if ( !xSource.is() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Uri",
-                                  -1,
-                                  uno::makeAny(rArg.SourceURL),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(rArg.SourceURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_READ,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             xEnv,
             "Can't instantiate source object!",
             this );
@@ -1854,15 +1769,13 @@ void UniversalContentBroker::globalTransfer(
                                                 xSource, uno::UNO_QUERY );
     if ( !xCommandProcessor.is() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Uri",
-                                  -1,
-                                  uno::makeAny(rArg.SourceURL),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(rArg.SourceURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_READ,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             xEnv,
             "Source content is not a XCommandProcessor!",
             this );
@@ -1892,15 +1805,13 @@ void UniversalContentBroker::globalTransfer(
 
     if ( !xRow.is() )
     {
-        uno::Any aProps2
-            = uno::makeAny(beans::PropertyValue(
-                                  "Uri",
-                                  -1,
-                                  uno::makeAny(rArg.SourceURL),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(rArg.SourceURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_READ,
-            uno::Sequence< uno::Any >(&aProps2, 1),
+            aArgs,
             xEnv,
             "Unable to get properties from source object!",
             this );
@@ -1928,22 +1839,22 @@ void UniversalContentBroker::globalTransfer(
     // (3) Delete source, if operation is MOVE.
 
 
-    if ( rArg.Operation == ucb::TransferCommandOperation_MOVE )
-    {
-        try
-        {
-            ucb::Command aCommand(
-                "delete",                   // Name
-                -1,                         // Handle
-                uno::makeAny( true ) );     // Argument
+    if ( rArg.Operation != ucb::TransferCommandOperation_MOVE )
+        return;
 
-            xCommandProcessor->execute( aCommand, 0, xLocalEnv );
-        }
-        catch ( uno::Exception const & )
-        {
-            OSL_FAIL( "Cannot delete source object!" );
-            throw;
-        }
+    try
+    {
+        ucb::Command aCommand(
+            "delete",                   // Name
+            -1,                         // Handle
+            uno::makeAny( true ) );     // Argument
+
+        xCommandProcessor->execute( aCommand, 0, xLocalEnv );
+    }
+    catch ( uno::Exception const & )
+    {
+        OSL_FAIL( "Cannot delete source object!" );
+        throw;
     }
 }
 
@@ -1979,14 +1890,13 @@ uno::Any UniversalContentBroker::checkIn( const ucb::CheckinArgument& rArg,
 
     if ( !xTarget.is() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Uri", -1,
-                                  uno::makeAny( rArg.TargetURL ),
-                                  beans::PropertyState_DIRECT_VALUE ) );
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(rArg.TargetURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_READ,
-            uno::Sequence< uno::Any >( &aProps, 1 ),
+            aArgs,
             xEnv,
             "Can't instantiate target object!",
             this );
@@ -1997,15 +1907,13 @@ uno::Any UniversalContentBroker::checkIn( const ucb::CheckinArgument& rArg,
                                                 xTarget, uno::UNO_QUERY );
     if ( !xCommandProcessor.is() )
     {
-        uno::Any aProps
-            = uno::makeAny(
-                     beans::PropertyValue(
-                         "Uri", -1,
-                         uno::makeAny( rArg.TargetURL ),
-                         beans::PropertyState_DIRECT_VALUE ) );
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(rArg.TargetURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_READ,
-            uno::Sequence< uno::Any >( &aProps, 1 ),
+            aArgs,
             xEnv,
             "Target content is not a XCommandProcessor!",
             this );

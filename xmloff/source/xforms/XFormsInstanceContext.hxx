@@ -23,12 +23,12 @@
 #include "TokenContext.hxx"
 #include <com/sun/star/uno/Reference.hxx>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
-    namespace xml { namespace dom { class XDocument; } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
+    namespace xml::dom { class XDocument; }
     namespace beans { class XPropertySet; }
     namespace xforms { class XModel2; }
-} } }
+}
 
 class SvXMLImport;
 class SvXMLImportContext;
@@ -52,7 +52,7 @@ public:
     // arbitrary DOM elements. For the attributes, we use the
     // TokenContext mechanism.
 
-    virtual SvXMLImportContext* CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference<css::xml::sax::XAttributeList >& xAttrList ) override;

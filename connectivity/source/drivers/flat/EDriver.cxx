@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "flat/EDriver.hxx"
-#include "flat/EConnection.hxx"
+#include <flat/EDriver.hxx>
+#include <flat/EConnection.hxx>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <connectivity/dbexception.hxx>
 #include <comphelper/sequence.hxx>
-#include "resource/common_res.hrc"
-#include "resource/sharedresources.hxx"
-#include <comphelper/processfactory.hxx>
+#include <strings.hrc>
+#include <resource/sharedresources.hxx>
 
 
 using namespace connectivity::flat;
@@ -36,23 +35,26 @@ using namespace css::sdbc;
 using namespace css::lang;
 
 
-// static ServiceInfo
-
-OUString ODriver::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.sdbc.flat.ODriver");
-}
-
+// XServiceInfo
 
 OUString SAL_CALL ODriver::getImplementationName(  )
 {
-    return getImplementationName_Static();
+    return "com.sun.star.comp.sdbc.flat.ODriver";
 }
 
 
-css::uno::Reference< css::uno::XInterface >  SAL_CALL connectivity::flat::ODriver_CreateInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory)
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+connectivity_flat_ODriver(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    return *(new ODriver( comphelper::getComponentContext(_rxFactory) ));
+    rtl::Reference<ODriver> ret;
+    try {
+        ret = new ODriver(context);
+    } catch (...) {
+    }
+    if (ret)
+        ret->acquire();
+    return static_cast<cppu::OWeakObject*>(ret.get());
 }
 
 Reference< XConnection > SAL_CALL ODriver::connect( const OUString& url, const Sequence< PropertyValue >& info )
@@ -66,8 +68,8 @@ Reference< XConnection > SAL_CALL ODriver::connect( const OUString& url, const S
 
     OFlatConnection* pCon = new OFlatConnection(this);
     pCon->construct(url,info);
-        Reference< XConnection > xCon = pCon;
-        m_xConnections.push_back(WeakReferenceHelper(*pCon));
+    Reference< XConnection > xCon = pCon;
+    m_xConnections.push_back(WeakReferenceHelper(*pCon));
 
     return xCon;
 }
@@ -123,7 +125,7 @@ Sequence< DriverPropertyInfo > SAL_CALL ODriver::getPropertyInfo( const OUString
                 ,aBoolean)
                 );
         return ::comphelper::concatSequences(OFileDriver::getPropertyInfo(url,info ),
-                                             Sequence< DriverPropertyInfo >(&aDriverInfo[0],aDriverInfo.size()));
+                                             Sequence< DriverPropertyInfo >(aDriverInfo.data(),aDriverInfo.size()));
     }
     ::connectivity::SharedResources aResources;
     const OUString sMessage = aResources.getResourceString(STR_URI_SYNTAX_ERROR);

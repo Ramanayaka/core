@@ -74,19 +74,19 @@ namespace bib
 
     void OComponentAdapterBase::dispose()
     {
-        if ( m_bListening )
-        {
-            ::rtl::Reference< OComponentAdapterBase > xPreventDelete(this);
+        if ( !m_bListening )
+            return;
 
-            disposing();
+        ::rtl::Reference< OComponentAdapterBase > xPreventDelete(this);
 
-            m_pListener->setAdapter(nullptr);
+        disposing();
 
-            m_pListener = nullptr;
-            m_bListening = false;
+        m_pListener->setAdapter(nullptr);
 
-            m_xComponent = nullptr;
-        }
+        m_pListener = nullptr;
+        m_bListening = false;
+
+        m_xComponent = nullptr;
     }
 
     // XEventListener
@@ -94,16 +94,14 @@ namespace bib
 
     void SAL_CALL OComponentAdapterBase::disposing( const EventObject& )
     {
-        if ( m_pListener )
+        if (m_pListener)
         {
             // disconnect the listener
-            if ( m_pListener )  // may have been reset whilest calling into _disposing
-                m_pListener->setAdapter( nullptr );
+            m_pListener->setAdapter( nullptr );
+            m_pListener = nullptr;
         }
 
-        m_pListener = nullptr;
         m_bListening = false;
-
         m_xComponent = nullptr;
     }
 
@@ -162,10 +160,8 @@ namespace bib
     }
 
 
-    void SAL_CALL OLoadListenerAdapter::unloaded( const EventObject& _rEvent )
+    void SAL_CALL OLoadListenerAdapter::unloaded( const EventObject& )
     {
-        if ( getLoadListener( ) )
-            getLoadListener( )->_unloaded( _rEvent );
     }
 
 

@@ -18,17 +18,14 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <memory>
-#include <utility>
 
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleTextType.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventListener.hpp>
 #include <com/sun/star/accessibility/AccessibleEventObject.hpp>
-#include <com/sun/star/awt/FocusEvent.hpp>
-#include <com/sun/star/awt/XFocusListener.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <unotools/accessiblerelationsethelper.hxx>
 
@@ -39,6 +36,7 @@
 #include <comphelper/accessibleeventnotifier.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/diagnose.h>
+#include <svx/AccessibleTextHelper.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
 #include <vcl/unohelp2.hxx>
@@ -56,17 +54,18 @@
 
 
 #include "accessibility.hxx"
-#include <unomodel.hxx>
 #include <document.hxx>
 #include <view.hxx>
-#include <o3tl/make_unique.hxx>
+#include <strings.hrc>
+#include <smmod.hxx>
+
 using namespace com::sun::star;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::accessibility;
 
 
-static awt::Rectangle lcl_GetBounds( vcl::Window *pWin )
+static awt::Rectangle lcl_GetBounds( vcl::Window const *pWin )
 {
     // !! see VCLXAccessibleComponent::implGetBounds()
 
@@ -93,7 +92,7 @@ static awt::Rectangle lcl_GetBounds( vcl::Window *pWin )
     return aBounds;
 }
 
-static awt::Point lcl_GetLocationOnScreen( vcl::Window *pWin )
+static awt::Point lcl_GetLocationOnScreen( vcl::Window const *pWin )
 {
     // !! see VCLXAccessibleComponent::getLocationOnScreen()
 
@@ -232,7 +231,7 @@ awt::Size SAL_CALL SmGraphicAccessible::getSize()
             "mismatch of window parent and accessible parent" );
 
     Size aSz( pWin->GetSizePixel() );
-#if OSL_DEBUG_LEVEL > 0
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
     awt::Rectangle aRect( lcl_GetBounds( pWin ) );
     Size aSz2( aRect.Width, aRect.Height );
     assert(aSz == aSz2 && "mismatch in width" );
@@ -255,7 +254,7 @@ sal_Int32 SAL_CALL SmGraphicAccessible::getForeground()
 
     if (!pWin)
         throw RuntimeException();
-    return static_cast<sal_Int32>(pWin->GetTextColor().GetColor());
+    return static_cast<sal_Int32>(pWin->GetTextColor());
 }
 
 sal_Int32 SAL_CALL SmGraphicAccessible::getBackground()
@@ -265,11 +264,11 @@ sal_Int32 SAL_CALL SmGraphicAccessible::getBackground()
     if (!pWin)
         throw RuntimeException();
     Wallpaper aWall( pWin->GetDisplayBackground() );
-    ColorData nCol;
+    Color nCol;
     if (aWall.IsBitmap() || aWall.IsGradient())
-        nCol = pWin->GetSettings().GetStyleSettings().GetWindowColor().GetColor();
+        nCol = pWin->GetSettings().GetStyleSettings().GetWindowColor();
     else
-        nCol = aWall.GetColor().GetColor();
+        nCol = aWall.GetColor();
     return static_cast<sal_Int32>(nCol);
 }
 
@@ -357,7 +356,7 @@ Reference< XAccessibleStateSet > SAL_CALL SmGraphicAccessible::getAccessibleStat
             pStateSet->AddState( AccessibleStateType::SHOWING );
         if (pWin->IsReallyVisible())
             pStateSet->AddState( AccessibleStateType::VISIBLE );
-        if (COL_TRANSPARENT != pWin->GetBackground().GetColor().GetColor())
+        if (COL_TRANSPARENT != pWin->GetBackground().GetColor())
             pStateSet->AddState( AccessibleStateType::OPAQUE );
     }
 
@@ -391,19 +390,19 @@ void SAL_CALL SmGraphicAccessible::addAccessibleEventListener(
 void SAL_CALL SmGraphicAccessible::removeAccessibleEventListener(
         const Reference< XAccessibleEventListener >& xListener )
 {
-    if (xListener.is() && nClientId)
+    if (!(xListener.is() && nClientId))
+        return;
+
+    SolarMutexGuard aGuard;
+    sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( nClientId, xListener );
+    if ( !nListenerCount )
     {
-        SolarMutexGuard aGuard;
-        sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( nClientId, xListener );
-        if ( !nListenerCount )
-        {
-            // no listeners anymore
-            // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-            // and at least to us not firing any events anymore, in case somebody calls
-            // NotifyAccessibleEvent, again
-            comphelper::AccessibleEventNotifier::revokeClient( nClientId );
-            nClientId = 0;
-        }
+        // no listeners anymore
+        // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
+        // and at least to us not firing any events anymore, in case somebody calls
+        // NotifyAccessibleEvent, again
+        comphelper::AccessibleEventNotifier::revokeClient( nClientId );
+        nClientId = 0;
     }
 }
 
@@ -416,7 +415,7 @@ sal_Bool SAL_CALL SmGraphicAccessible::setCaretPosition( sal_Int32 nIndex )
 {
     SolarMutexGuard aGuard;
     OUString aTxt( GetAccessibleText_Impl() );
-    if (!(nIndex < aTxt.getLength()))
+    if (nIndex >= aTxt.getLength())
         throw IndexOutOfBoundsException();
     return false;
 }
@@ -425,7 +424,7 @@ sal_Unicode SAL_CALL SmGraphicAccessible::getCharacter( sal_Int32 nIndex )
 {
     SolarMutexGuard aGuard;
     OUString aTxt( GetAccessibleText_Impl() );
-    if (!(nIndex < aTxt.getLength()))
+    if (nIndex >= aTxt.getLength())
         throw IndexOutOfBoundsException();
     return aTxt[nIndex];
 }
@@ -436,7 +435,7 @@ Sequence< beans::PropertyValue > SAL_CALL SmGraphicAccessible::getCharacterAttri
 {
     SolarMutexGuard aGuard;
     sal_Int32 nLen = GetAccessibleText_Impl().getLength();
-    if (!(0 <= nIndex  &&  nIndex < nLen))
+    if (0 > nIndex  ||  nIndex >= nLen)
         throw IndexOutOfBoundsException();
     return Sequence< beans::PropertyValue >();
 }
@@ -449,64 +448,61 @@ awt::Rectangle SAL_CALL SmGraphicAccessible::getCharacterBounds( sal_Int32 nInde
 
     if (!pWin)
         throw RuntimeException();
-    else
+
+    // get accessible text
+    SmViewShell *pView = pWin->GetView();
+    SmDocShell  *pDoc  = pView ? pView->GetDoc() : nullptr;
+    if (!pDoc)
+        throw RuntimeException();
+    OUString aTxt( GetAccessibleText_Impl() );
+    if (0 > nIndex  ||  nIndex > aTxt.getLength())   // aTxt.getLength() is valid
+        throw IndexOutOfBoundsException();
+
+    // find a reasonable rectangle for position aTxt.getLength().
+    bool bWasBehindText = (nIndex == aTxt.getLength());
+    if (bWasBehindText && nIndex)
+        --nIndex;
+
+    const SmNode *pTree = pDoc->GetFormulaTree();
+    const SmNode *pNode = pTree->FindNodeWithAccessibleIndex( nIndex );
+    //! pNode may be 0 if the index belongs to a char that was inserted
+    //! only for the accessible text!
+    if (pNode)
     {
-        // get accessible text
-        SmViewShell *pView = pWin->GetView();
-        SmDocShell  *pDoc  = pView ? pView->GetDoc() : nullptr;
-        if (!pDoc)
-            throw RuntimeException();
-        OUString aTxt( GetAccessibleText_Impl() );
-        if (!(0 <= nIndex  &&  nIndex <= aTxt.getLength()))   // aTxt.getLength() is valid
-            throw IndexOutOfBoundsException();
+        sal_Int32 nAccIndex = pNode->GetAccessibleIndex();
+        OSL_ENSURE( nAccIndex >= 0, "invalid accessible index" );
+        OSL_ENSURE( nIndex >= nAccIndex, "index out of range" );
 
-        // find a reasonable rectangle for position aTxt.getLength().
-        bool bWasBehindText = (nIndex == aTxt.getLength());
-        if (bWasBehindText && nIndex)
-            --nIndex;
-
-        const SmNode *pTree = pDoc->GetFormulaTree();
-        const SmNode *pNode = pTree->FindNodeWithAccessibleIndex( nIndex );
-        //! pNode may be 0 if the index belongs to a char that was inserted
-        //! only for the accessible text!
-        if (pNode)
+        OUStringBuffer aBuf;
+        pNode->GetAccessibleText(aBuf);
+        OUString aNodeText = aBuf.makeStringAndClear();
+        sal_Int32 nNodeIndex = nIndex - nAccIndex;
+        if (0 <= nNodeIndex  &&  nNodeIndex < aNodeText.getLength())
         {
-            sal_Int32 nAccIndex = pNode->GetAccessibleIndex();
-            OSL_ENSURE( nAccIndex >= 0, "invalid accessible index" );
-            OSL_ENSURE( nIndex >= nAccIndex, "index out of range" );
+            // get appropriate rectangle
+            Point aOffset(pNode->GetTopLeft() - pTree->GetTopLeft());
+            Point aTLPos (pWin->GetFormulaDrawPos() + aOffset);
+            Size  aSize (pNode->GetSize());
 
-            OUStringBuffer aBuf;
-            pNode->GetAccessibleText(aBuf);
-            OUString aNodeText = aBuf.makeStringAndClear();
-            sal_Int32 nNodeIndex = nIndex - nAccIndex;
-            if (0 <= nNodeIndex  &&  nNodeIndex < aNodeText.getLength())
-            {
-                // get appropriate rectangle
-                Point aOffset(pNode->GetTopLeft() - pTree->GetTopLeft());
-                Point aTLPos (pWin->GetFormulaDrawPos() + aOffset);
-                aTLPos.X() -= 0;
-                Size  aSize (pNode->GetSize());
+            std::unique_ptr<long[]> pXAry(new long[ aNodeText.getLength() ]);
+            pWin->SetFont( pNode->GetFont() );
+            pWin->GetTextArray( aNodeText, pXAry.get(), 0, aNodeText.getLength() );
+            aTLPos.AdjustX(nNodeIndex > 0 ? pXAry[nNodeIndex - 1] : 0 );
+            aSize.setWidth( nNodeIndex > 0 ? pXAry[nNodeIndex] - pXAry[nNodeIndex - 1] : pXAry[nNodeIndex] );
+            pXAry.reset();
 
-                long* pXAry = new long[ aNodeText.getLength() ];
-                pWin->SetFont( pNode->GetFont() );
-                pWin->GetTextArray( aNodeText, pXAry, 0, aNodeText.getLength() );
-                aTLPos.X()    += nNodeIndex > 0 ? pXAry[nNodeIndex - 1] : 0;
-                aSize.Width()  = nNodeIndex > 0 ? pXAry[nNodeIndex] - pXAry[nNodeIndex - 1] : pXAry[nNodeIndex];
-                delete[] pXAry;
-
-                aTLPos = pWin->LogicToPixel( aTLPos );
-                aSize  = pWin->LogicToPixel( aSize );
-                aRes.X = aTLPos.X();
-                aRes.Y = aTLPos.Y();
-                aRes.Width  = aSize.Width();
-                aRes.Height = aSize.Height();
-            }
+            aTLPos = pWin->LogicToPixel( aTLPos );
+            aSize  = pWin->LogicToPixel( aSize );
+            aRes.X = aTLPos.X();
+            aRes.Y = aTLPos.Y();
+            aRes.Width  = aSize.Width();
+            aRes.Height = aSize.Height();
         }
-
-        // take rectangle from last character and move it to the right
-        if (bWasBehindText)
-            aRes.X += aRes.Width;
     }
+
+    // take rectangle from last character and move it to the right
+    if (bWasBehindText)
+        aRes.X += aRes.Width;
 
     return aRes;
 }
@@ -545,7 +541,6 @@ sal_Int32 SAL_CALL SmGraphicAccessible::getIndexAtPoint( const awt::Point& aPoin
             // get appropriate rectangle
             Point   aOffset( pNode->GetTopLeft() - pTree->GetTopLeft() );
             Point   aTLPos ( aOffset );
-            aTLPos.X() -= 0;
             Size  aSize( pNode->GetSize() );
 
             tools::Rectangle aRect( aTLPos, aSize );
@@ -559,15 +554,15 @@ sal_Int32 SAL_CALL SmGraphicAccessible::getIndexAtPoint( const awt::Point& aPoin
 
                 long nNodeX = pNode->GetLeft();
 
-                long* pXAry = new long[ aTxt.getLength() ];
+                std::unique_ptr<long[]> pXAry(new long[ aTxt.getLength() ]);
                 pWin->SetFont( pNode->GetFont() );
-                pWin->GetTextArray( aTxt, pXAry, 0, aTxt.getLength() );
+                pWin->GetTextArray( aTxt, pXAry.get(), 0, aTxt.getLength() );
                 for (sal_Int32 i = 0;  i < aTxt.getLength()  &&  nRes == -1;  ++i)
                 {
                     if (pXAry[i] + nNodeX > aPos.X())
                         nRes = i;
                 }
-                delete[] pXAry;
+                pXAry.reset();
                 OSL_ENSURE( nRes >= 0  &&  nRes < aTxt.getLength(), "index out of range" );
                 OSL_ENSURE( pNode->GetAccessibleIndex() >= 0,
                         "invalid accessible index" );
@@ -600,8 +595,8 @@ sal_Bool SAL_CALL SmGraphicAccessible::setSelection(
 {
     SolarMutexGuard aGuard;
     sal_Int32 nLen = GetAccessibleText_Impl().getLength();
-    if (!(0 <= nStartIndex  &&  nStartIndex < nLen) ||
-        !(0 <= nEndIndex    &&  nEndIndex   < nLen))
+    if (0 > nStartIndex  ||  nStartIndex >= nLen ||
+        0 > nEndIndex    ||  nEndIndex   >= nLen)
         throw IndexOutOfBoundsException();
     return false;
 }
@@ -624,8 +619,8 @@ OUString SAL_CALL SmGraphicAccessible::getTextRange(
     OUString aTxt( GetAccessibleText_Impl() );
     sal_Int32 nStart = std::min(nStartIndex, nEndIndex);
     sal_Int32 nEnd   = std::max(nStartIndex, nEndIndex);
-    if (!(nStart <= aTxt.getLength()) ||
-        !(nEnd   <= aTxt.getLength()))
+    if ((nStart > aTxt.getLength()) ||
+        (nEnd   > aTxt.getLength()))
         throw IndexOutOfBoundsException();
     return aTxt.copy( nStart, nEnd - nStart );
 }
@@ -635,7 +630,7 @@ css::accessibility::TextSegment SAL_CALL SmGraphicAccessible::getTextAtIndex( sa
     SolarMutexGuard aGuard;
     OUString aTxt( GetAccessibleText_Impl() );
     //!! nIndex is allowed to be the string length
-    if (!(nIndex <= aTxt.getLength()))
+    if (nIndex > aTxt.getLength())
         throw IndexOutOfBoundsException();
 
     css::accessibility::TextSegment aResult;
@@ -655,7 +650,7 @@ css::accessibility::TextSegment SAL_CALL SmGraphicAccessible::getTextBeforeIndex
     SolarMutexGuard aGuard;
     OUString aTxt( GetAccessibleText_Impl() );
     //!! nIndex is allowed to be the string length
-    if (!(nIndex <= aTxt.getLength()))
+    if (nIndex > aTxt.getLength())
         throw IndexOutOfBoundsException();
 
     css::accessibility::TextSegment aResult;
@@ -676,7 +671,7 @@ css::accessibility::TextSegment SAL_CALL SmGraphicAccessible::getTextBehindIndex
     SolarMutexGuard aGuard;
     OUString aTxt( GetAccessibleText_Impl() );
     //!! nIndex is allowed to be the string length
-    if (!(nIndex <= aTxt.getLength()))
+    if (nIndex > aTxt.getLength())
         throw IndexOutOfBoundsException();
 
     css::accessibility::TextSegment aResult;
@@ -702,31 +697,35 @@ sal_Bool SAL_CALL SmGraphicAccessible::copyText(
 
     if (!pWin)
         throw RuntimeException();
-    else
+
+    Reference< datatransfer::clipboard::XClipboard > xClipboard = pWin->GetClipboard();
+    if ( xClipboard.is() )
     {
-        Reference< datatransfer::clipboard::XClipboard > xClipboard = pWin->GetClipboard();
-        if ( xClipboard.is() )
-        {
-            OUString sText( getTextRange(nStartIndex, nEndIndex) );
+        OUString sText( getTextRange(nStartIndex, nEndIndex) );
 
-            vcl::unohelper::TextDataObject* pDataObj = new vcl::unohelper::TextDataObject( sText );
-            SolarMutexReleaser aReleaser;
-            xClipboard->setContents( pDataObj, nullptr );
+        vcl::unohelper::TextDataObject* pDataObj = new vcl::unohelper::TextDataObject( sText );
+        SolarMutexReleaser aReleaser;
+        xClipboard->setContents( pDataObj, nullptr );
 
-            Reference< datatransfer::clipboard::XFlushableClipboard > xFlushableClipboard( xClipboard, uno::UNO_QUERY );
-            if( xFlushableClipboard.is() )
-                xFlushableClipboard->flushClipboard();
+        Reference< datatransfer::clipboard::XFlushableClipboard > xFlushableClipboard( xClipboard, uno::UNO_QUERY );
+        if( xFlushableClipboard.is() )
+            xFlushableClipboard->flushClipboard();
 
-            bReturn = true;
-        }
+        bReturn = true;
     }
+
 
     return bReturn;
 }
 
+sal_Bool SAL_CALL SmGraphicAccessible::scrollSubstringTo( sal_Int32, sal_Int32, AccessibleScrollType )
+{
+    return false;
+}
+
 OUString SAL_CALL SmGraphicAccessible::getImplementationName()
 {
-    return OUString("SmGraphicAccessible");
+    return "SmGraphicAccessible";
 }
 
 sal_Bool SAL_CALL SmGraphicAccessible::supportsService(
@@ -737,7 +736,7 @@ sal_Bool SAL_CALL SmGraphicAccessible::supportsService(
 
 Sequence< OUString > SAL_CALL SmGraphicAccessible::getSupportedServiceNames()
 {
-    return Sequence< OUString >{
+    return {
         "css::accessibility::Accessible",
         "css::accessibility::AccessibleComponent",
         "css::accessibility::AccessibleContext",
@@ -767,9 +766,9 @@ SmEditSource::~SmEditSource()
 {
 }
 
-SvxEditSource* SmEditSource::Clone() const
+std::unique_ptr<SvxEditSource> SmEditSource::Clone() const
 {
-    return new SmEditSource( *this );
+    return std::unique_ptr<SvxEditSource>(new SmEditSource( *this ));
 }
 
 SvxTextForwarder* SmEditSource::GetTextForwarder()
@@ -812,32 +811,6 @@ bool SmViewForwarder::IsValid() const
     return rEditAcc.GetEditView() != nullptr;
 }
 
-tools::Rectangle SmViewForwarder::GetVisArea() const
-{
-    EditView *pEditView = rEditAcc.GetEditView();
-    OutputDevice* pOutDev = pEditView ? pEditView->GetWindow() : nullptr;
-
-    if( pOutDev && pEditView)
-    {
-        tools::Rectangle aVisArea = pEditView->GetVisArea();
-
-        // figure out map mode from edit engine
-        EditEngine* pEditEngine = pEditView->GetEditEngine();
-
-        if( pEditEngine )
-        {
-            MapMode aMapMode(pOutDev->GetMapMode());
-            aVisArea = OutputDevice::LogicToLogic( aVisArea,
-                                                   pEditEngine->GetRefMapMode(),
-                                                   aMapMode.GetMapUnit() );
-            aMapMode.SetOrigin(Point());
-            return pOutDev->LogicToPixel( aVisArea, aMapMode );
-        }
-    }
-
-    return tools::Rectangle();
-}
-
 Point SmViewForwarder::LogicToPixel( const Point& rPoint, const MapMode& rMapMode ) const
 {
     EditView *pEditView = rEditAcc.GetEditView();
@@ -847,7 +820,7 @@ Point SmViewForwarder::LogicToPixel( const Point& rPoint, const MapMode& rMapMod
     {
         MapMode aMapMode(pOutDev->GetMapMode());
         Point aPoint( OutputDevice::LogicToLogic( rPoint, rMapMode,
-                                                  aMapMode.GetMapUnit() ) );
+                                                  MapMode(aMapMode.GetMapUnit())) );
         aMapMode.SetOrigin(Point());
         return pOutDev->LogicToPixel( aPoint, aMapMode );
     }
@@ -866,7 +839,7 @@ Point SmViewForwarder::PixelToLogic( const Point& rPoint, const MapMode& rMapMod
         aMapMode.SetOrigin(Point());
         Point aPoint( pOutDev->PixelToLogic( rPoint, aMapMode ) );
         return OutputDevice::LogicToLogic( aPoint,
-                                           aMapMode.GetMapUnit(),
+                                           MapMode(aMapMode.GetMapUnit()),
                                            rMapMode );
     }
 
@@ -893,8 +866,8 @@ SmTextForwarder::~SmTextForwarder()
 IMPL_LINK(SmTextForwarder, NotifyHdl, EENotify&, rNotify, void)
 {
     ::std::unique_ptr< SfxHint > aHint = SvxEditSourceHelper::EENotification2Hint( &rNotify );
-    if (aHint.get())
-        rEditSource.GetBroadcaster().Broadcast( *aHint.get() );
+    if (aHint)
+        rEditSource.GetBroadcaster().Broadcast(*aHint);
 }
 
 sal_Int32 SmTextForwarder::GetParagraphCount() const
@@ -1029,17 +1002,17 @@ bool SmTextForwarder::IsValid() const
     return pEditEngine && pEditEngine->GetUpdateMode();
 }
 
-OUString SmTextForwarder::CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, Color*& rpTxtColor, Color*& rpFldColor )
+OUString SmTextForwarder::CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rpTxtColor, std::optional<Color>& rpFldColor )
 {
     EditEngine *pEditEngine = rEditAcc.GetEditEngine();
     return pEditEngine ? pEditEngine->CalcFieldValue(rField, nPara, nPos, rpTxtColor, rpFldColor) : OUString();
 }
 
-void SmTextForwarder::FieldClicked(const SvxFieldItem&, sal_Int32, sal_Int32)
+void SmTextForwarder::FieldClicked(const SvxFieldItem&)
 {
 }
 
-static SfxItemState GetSvxEditEngineItemState( EditEngine& rEditEngine, const ESelection& rSel, sal_uInt16 nWhich )
+static SfxItemState GetSvxEditEngineItemState( EditEngine const & rEditEngine, const ESelection& rSel, sal_uInt16 nWhich )
 {
     std::vector<EECharAttrib> aAttribs;
 
@@ -1066,44 +1039,44 @@ static SfxItemState GetSvxEditEngineItemState( EditEngine& rEditEngine, const ES
         rEditEngine.GetCharAttribs( nPara, aAttribs );
 
         bool bEmpty = true;     // we found no item inside the selection of this paragraph
-        bool bGaps  = false;    // we found items but theire gaps between them
+        bool bGaps  = false;    // we found items but there are gaps between them
         sal_Int32 nLastEnd = nPos;
 
         const SfxPoolItem* pParaItem = nullptr;
 
-        for(std::vector<EECharAttrib>::const_iterator i = aAttribs.begin(); i < aAttribs.end(); ++i)
+        for(const auto& rAttrib : aAttribs)
         {
-            OSL_ENSURE( i->pAttr, "GetCharAttribs gives corrupt data" );
+            OSL_ENSURE( rAttrib.pAttr, "GetCharAttribs gives corrupt data" );
 
-            const bool bEmptyPortion = (i->nStart == i->nEnd);
-            if( (!bEmptyPortion && (i->nStart >= nEndPos)) || (bEmptyPortion && (i->nStart > nEndPos)) )
+            const bool bEmptyPortion = (rAttrib.nStart == rAttrib.nEnd);
+            if( (!bEmptyPortion && (rAttrib.nStart >= nEndPos)) || (bEmptyPortion && (rAttrib.nStart > nEndPos)) )
                 break;  // break if we are already behind our selection
 
-            if( (!bEmptyPortion && (i->nEnd <= nPos)) || (bEmptyPortion && (i->nEnd < nPos)) )
+            if( (!bEmptyPortion && (rAttrib.nEnd <= nPos)) || (bEmptyPortion && (rAttrib.nEnd < nPos)) )
                 continue;   // or if the attribute ends before our selection
 
-            if( i->pAttr->Which() != nWhich )
+            if( rAttrib.pAttr->Which() != nWhich )
                 continue; // skip if is not the searched item
 
             // if we already found an item
             if( pParaItem )
             {
                 // ... and its different to this one than the state is don't care
-                if( *pParaItem != *(i->pAttr) )
+                if( *pParaItem != *(rAttrib.pAttr) )
                     return SfxItemState::DONTCARE;
             }
             else
             {
-                pParaItem = i->pAttr;
+                pParaItem = rAttrib.pAttr;
             }
 
             if( bEmpty )
                 bEmpty = false;
 
-            if( !bGaps && i->nStart > nLastEnd )
+            if( !bGaps && rAttrib.nStart > nLastEnd )
                 bGaps = true;
 
-            nLastEnd = i->nEnd;
+            nLastEnd = rAttrib.nEnd;
         }
 
         if( !bEmpty && !bGaps && nLastEnd < ( nEndPos - 1 ) )
@@ -1265,8 +1238,10 @@ bool SmTextForwarder::GetWordIndices( sal_Int32 nPara, sal_Int32 nIndex, sal_Int
 bool SmTextForwarder::GetAttributeRun( sal_Int32& nStartIndex, sal_Int32& nEndIndex, sal_Int32 nPara, sal_Int32 nIndex, bool bInCell ) const
 {
     EditEngine *pEditEngine = rEditAcc.GetEditEngine();
-    return pEditEngine &&
-           SvxEditSourceHelper::GetAttributeRun( nStartIndex, nEndIndex, *pEditEngine, nPara, nIndex, bInCell );
+    if (!pEditEngine)
+        return false;
+    SvxEditSourceHelper::GetAttributeRun( nStartIndex, nEndIndex, *pEditEngine, nPara, nIndex, bInCell );
+    return true;
 }
 
 sal_Int32 SmTextForwarder::GetLineCount( sal_Int32 nPara ) const
@@ -1395,9 +1370,8 @@ void SmTextForwarder::CopyText(const SvxTextForwarder& rSource)
     EditEngine *pEditEngine = rEditAcc.GetEditEngine();
     if (pEditEngine && pSourceEditEngine )
     {
-        EditTextObject* pNewTextObject = pSourceEditEngine->CreateTextObject();
+        std::unique_ptr<EditTextObject> pNewTextObject = pSourceEditEngine->CreateTextObject();
         pEditEngine->SetText( *pNewTextObject );
-        delete pNewTextObject;
     }
 }
 
@@ -1416,33 +1390,6 @@ bool SmEditViewForwarder::IsValid() const
     return rEditAcc.GetEditView() != nullptr;
 }
 
-tools::Rectangle SmEditViewForwarder::GetVisArea() const
-{
-    tools::Rectangle aRect(0,0,0,0);
-
-    EditView *pEditView = rEditAcc.GetEditView();
-    OutputDevice* pOutDev = pEditView ? pEditView->GetWindow() : nullptr;
-
-    if( pOutDev && pEditView)
-    {
-        tools::Rectangle aVisArea = pEditView->GetVisArea();
-
-        // figure out map mode from edit engine
-        EditEngine* pEditEngine = pEditView->GetEditEngine();
-
-        if( pEditEngine )
-        {
-            MapMode aMapMode(pOutDev->GetMapMode());
-            aVisArea = OutputDevice::LogicToLogic( aVisArea,
-                                                   pEditEngine->GetRefMapMode(),
-                                                   aMapMode.GetMapUnit() );
-            aMapMode.SetOrigin(Point());
-            aRect = pOutDev->LogicToPixel( aVisArea, aMapMode );
-        }
-    }
-
-    return aRect;
-}
 
 Point SmEditViewForwarder::LogicToPixel( const Point& rPoint, const MapMode& rMapMode ) const
 {
@@ -1453,7 +1400,7 @@ Point SmEditViewForwarder::LogicToPixel( const Point& rPoint, const MapMode& rMa
     {
         MapMode aMapMode(pOutDev->GetMapMode());
         Point aPoint( OutputDevice::LogicToLogic( rPoint, rMapMode,
-                                                  aMapMode.GetMapUnit() ) );
+                                                  MapMode(aMapMode.GetMapUnit())));
         aMapMode.SetOrigin(Point());
         return pOutDev->LogicToPixel( aPoint, aMapMode );
     }
@@ -1472,7 +1419,7 @@ Point SmEditViewForwarder::PixelToLogic( const Point& rPoint, const MapMode& rMa
         aMapMode.SetOrigin(Point());
         Point aPoint( pOutDev->PixelToLogic( rPoint, aMapMode ) );
         return OutputDevice::LogicToLogic( aPoint,
-                                           aMapMode.GetMapUnit(),
+                                           MapMode(aMapMode.GetMapUnit()),
                                            rMapMode );
     }
 
@@ -1567,7 +1514,7 @@ void SmEditAccessible::Init()
         if (pEditEngine && pEditView)
         {
             assert(!pTextHelper);
-            pTextHelper.reset(new ::accessibility::AccessibleTextHelper( o3tl::make_unique<SmEditSource>( *this ) ));
+            pTextHelper.reset(new ::accessibility::AccessibleTextHelper( std::make_unique<SmEditSource>( *this ) ));
             pTextHelper->SetEventSource( this );
         }
     }
@@ -1660,7 +1607,7 @@ awt::Size SAL_CALL SmEditAccessible::getSize(  )
             "mismatch of window parent and accessible parent" );
 
     Size aSz( pWin->GetSizePixel() );
-#if OSL_DEBUG_LEVEL > 0
+#if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
     awt::Rectangle aRect( lcl_GetBounds( pWin ) );
     Size aSz2( aRect.Width, aRect.Height );
     assert(aSz == aSz2 && "mismatch in width");
@@ -1683,7 +1630,7 @@ sal_Int32 SAL_CALL SmEditAccessible::getForeground()
 
     if (!pWin)
         throw RuntimeException();
-    return static_cast<sal_Int32>(pWin->GetTextColor().GetColor());
+    return static_cast<sal_Int32>(pWin->GetTextColor());
 }
 
 sal_Int32 SAL_CALL SmEditAccessible::getBackground()
@@ -1693,11 +1640,11 @@ sal_Int32 SAL_CALL SmEditAccessible::getBackground()
     if (!pWin)
         throw RuntimeException();
     Wallpaper aWall( pWin->GetDisplayBackground() );
-    ColorData nCol;
+    Color nCol;
     if (aWall.IsBitmap() || aWall.IsGradient())
-        nCol = pWin->GetSettings().GetStyleSettings().GetWindowColor().GetColor();
+        nCol = pWin->GetSettings().GetStyleSettings().GetWindowColor();
     else
-        nCol = aWall.GetColor().GetColor();
+        nCol = aWall.GetColor();
     return static_cast<sal_Int32>(nCol);
 }
 
@@ -1706,7 +1653,7 @@ sal_Int32 SAL_CALL SmEditAccessible::getAccessibleChildCount(  )
 {
     SolarMutexGuard aGuard;
     if (!pTextHelper)
-        throw RuntimeException();
+        return 0;
     return pTextHelper->GetChildCount();
 }
 
@@ -1746,7 +1693,7 @@ sal_Int32 SAL_CALL SmEditAccessible::getAccessibleIndexInParent(  )
 
 sal_Int16 SAL_CALL SmEditAccessible::getAccessibleRole(  )
 {
-    return AccessibleRole::PANEL /*TEXT ?*/;
+    return AccessibleRole::TEXT_FRAME;
 }
 
 OUString SAL_CALL SmEditAccessible::getAccessibleDescription(  )
@@ -1781,6 +1728,7 @@ uno::Reference< XAccessibleStateSet > SAL_CALL SmEditAccessible::getAccessibleSt
     {
         pStateSet->AddState( AccessibleStateType::MULTI_LINE );
         pStateSet->AddState( AccessibleStateType::ENABLED );
+        pStateSet->AddState( AccessibleStateType::EDITABLE );
         pStateSet->AddState( AccessibleStateType::FOCUSABLE );
         if (pWin->HasFocus())
             pStateSet->AddState( AccessibleStateType::FOCUSED );
@@ -1790,7 +1738,7 @@ uno::Reference< XAccessibleStateSet > SAL_CALL SmEditAccessible::getAccessibleSt
             pStateSet->AddState( AccessibleStateType::SHOWING );
         if (pWin->IsReallyVisible())
             pStateSet->AddState( AccessibleStateType::VISIBLE );
-        if (COL_TRANSPARENT != pWin->GetBackground().GetColor().GetColor())
+        if (COL_TRANSPARENT != pWin->GetBackground().GetColor())
             pStateSet->AddState( AccessibleStateType::OPAQUE );
     }
 
@@ -1821,7 +1769,7 @@ void SAL_CALL SmEditAccessible::removeAccessibleEventListener( const uno::Refere
 
 OUString SAL_CALL SmEditAccessible::getImplementationName()
 {
-    return OUString("SmEditAccessible");
+    return "SmEditAccessible";
 }
 
 sal_Bool SAL_CALL SmEditAccessible::supportsService(
@@ -1832,7 +1780,7 @@ sal_Bool SAL_CALL SmEditAccessible::supportsService(
 
 Sequence< OUString > SAL_CALL SmEditAccessible::getSupportedServiceNames()
 {
-    return Sequence< OUString >{
+    return {
         "css::accessibility::Accessible",
         "css::accessibility::AccessibleComponent",
         "css::accessibility::AccessibleContext"

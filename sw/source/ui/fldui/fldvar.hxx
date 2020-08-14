@@ -20,83 +20,58 @@
 #define INCLUDED_SW_SOURCE_UI_FLDUI_FLDVAR_HXX
 
 #include <sfx2/tabdlg.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/button.hxx>
-#include <vcl/group.hxx>
-#include <vcl/toolbox.hxx>
-#include <vcl/edit.hxx>
 
 #include "fldpage.hxx"
-#include "condedit.hxx"
-#include "numfmtlb.hxx"
+#include <condedit.hxx>
+#include <numfmtlb.hxx>
 
 class SwFieldVarPage;
 
-class SelectionListBox : public ListBox
-{
-    bool            bCallAddSelection;
-
-    virtual bool    PreNotify( NotifyEvent& rNEvt ) override;
-
-public:
-    SelectionListBox(vcl::Window* pParent, WinBits nStyle);
-
-    //  detect selection via Ctrl or Alt and evaluate with SelectHdl
-    bool            IsCallAddSelection() const {return bCallAddSelection;}
-    void            ResetCallAddSelection() {bCallAddSelection = false;}
-};
-
 class SwFieldVarPage : public SwFieldPage
 {
-    friend class SelectionListBox;
-
-    VclPtr<ListBox>            m_pTypeLB;
-    VclPtr<VclContainer>       m_pSelection;
-    VclPtr<SelectionListBox>   m_pSelectionLB;
-    VclPtr<FixedText>          m_pNameFT;
-    VclPtr<Edit>               m_pNameED;
-    VclPtr<FixedText>          m_pValueFT;
-    VclPtr<ConditionEdit>      m_pValueED;
-    VclPtr<VclContainer>       m_pFormat;
-    VclPtr<NumFormatListBox>   m_pNumFormatLB;
-    VclPtr<ListBox>            m_pFormatLB;
-    VclPtr<VclContainer>       m_pChapterFrame;
-    VclPtr<ListBox>            m_pChapterLevelLB;
-    VclPtr<CheckBox>           m_pInvisibleCB;
-    VclPtr<FixedText>          m_pSeparatorFT;
-    VclPtr<Edit>               m_pSeparatorED;
-    VclPtr<ToolBox>            m_pNewDelTBX;
-    sal_uInt16          m_nApplyId;
-    sal_uInt16          m_nDeleteId;
+    std::unique_ptr<weld::TreeView> m_xTypeLB;
+    std::unique_ptr<weld::Widget> m_xSelection;
+    std::unique_ptr<weld::TreeView> m_xSelectionLB;
+    std::unique_ptr<weld::Label> m_xNameFT;
+    std::unique_ptr<weld::Entry> m_xNameED;
+    std::unique_ptr<weld::Label> m_xValueFT;
+    std::unique_ptr<ConditionEdit> m_xValueED;
+    std::unique_ptr<weld::Widget> m_xFormat;
+    std::unique_ptr<SwNumFormatTreeView> m_xNumFormatLB;
+    std::unique_ptr<weld::TreeView> m_xFormatLB;
+    std::unique_ptr<weld::Widget> m_xChapterFrame;
+    std::unique_ptr<weld::ComboBox> m_xChapterLevelLB;
+    std::unique_ptr<weld::CheckButton> m_xInvisibleCB;
+    std::unique_ptr<weld::Label> m_xSeparatorFT;
+    std::unique_ptr<weld::Entry> m_xSeparatorED;
+    std::unique_ptr<weld::Button> m_xNewPB;
+    std::unique_ptr<weld::Button> m_xDelPB;
 
     OUString            sOldValueFT;
     OUString            sOldNameFT;
 
-    sal_uLong           nOldFormat;
+    sal_uInt32          nOldFormat;
     bool                bInit;
 
-    DECL_LINK( TypeHdl, ListBox&, void );
-    DECL_LINK( SubTypeListBoxHdl, ListBox&, void );
-    DECL_LINK( ModifyHdl, Edit&, void );
-    DECL_LINK( TBClickHdl, ToolBox *, void );
-    DECL_LINK( ChapterHdl, ListBox&, void );
-    DECL_LINK( SeparatorHdl, Edit&, void );
-    void SubTypeHdl(ListBox*);
+    DECL_LINK( TypeHdl, weld::TreeView&, void );
+    DECL_LINK( SubTypeListBoxHdl, weld::TreeView&, void );
+    DECL_LINK( ModifyHdl, weld::Entry&, void );
+    DECL_LINK( TBClickHdl, weld::Button&, void );
+    DECL_LINK( ChapterHdl, weld::ComboBox&, void );
+    DECL_LINK( SeparatorHdl, weld::Entry&, void );
+    DECL_LINK( SubTypeInsertHdl, weld::TreeView&, bool );
+    void SubTypeHdl(const weld::TreeView*);
 
     void                UpdateSubType();
-    void                FillFormatLB(sal_uInt16 nTypeId);
+    void                FillFormatLB(SwFieldTypesEnum nTypeId);
 
 protected:
     virtual sal_uInt16      GetGroup() override;
 
 public:
-                        SwFieldVarPage(vcl::Window* pParent, const SfxItemSet* pSet);
-
-                        virtual ~SwFieldVarPage() override;
-    virtual void        dispose() override;
-
-    static VclPtr<SfxTabPage>  Create(vcl::Window* pParent, const SfxItemSet* rAttrSet);
+    SwFieldVarPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* pSet);
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet);
+    virtual ~SwFieldVarPage() override;
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;

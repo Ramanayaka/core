@@ -23,9 +23,7 @@
 #include <sal/types.h>
 #include <tools/gen.hxx>
 
-namespace sd { namespace slidesorter { namespace model {
-
-class PageDescriptor;
+namespace sd::slidesorter::model {
 
 /** This class gives access to values related to the visualization of page
     objects.  This includes animation state when blending from one state to
@@ -34,19 +32,8 @@ class PageDescriptor;
 class VisualState
 {
 public:
-    enum State {
-        VS_Selected,
-        VS_Focused,
-        VS_Current,
-        VS_Excluded,
-        VS_None };
-
     VisualState (const sal_Int32 nPageId);
     ~VisualState();
-
-    void SetVisualState (const State eState);
-
-    void UpdateVisualState (const PageDescriptor& rDescriptor);
 
     const Point& GetLocationOffset() const { return maLocationOffset;}
     void SetLocationOffset (const Point& rPoint);
@@ -54,11 +41,10 @@ public:
     sal_Int32 mnPageId; // For debugging
 
 private:
-    State meCurrentVisualState;
     Point maLocationOffset;
 };
 
-} } } // end of namespace ::sd::slidesorter::model
+} // end of namespace ::sd::slidesorter::model
 
 #endif
 

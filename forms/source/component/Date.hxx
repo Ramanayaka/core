@@ -17,11 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_FORMS_SOURCE_COMPONENT_DATE_HXX
-#define INCLUDED_FORMS_SOURCE_COMPONENT_DATE_HXX
+#pragma once
 
 #include "EditBase.hxx"
-#include "limitedformats.hxx"
+#include <limitedformats.hxx>
 
 
 namespace frm
@@ -51,7 +50,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.ODateModel"); }
+    { return "com.sun.star.form.ODateModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -98,15 +97,12 @@ public:
 
 // css::lang::XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.ODateControl"); }
+    { return "com.sun.star.form.ODateControl"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 };
 
 
 }   // namespace frm
-
-
-#endif // INCLUDED_FORMS_SOURCE_COMPONENT_DATE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

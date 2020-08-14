@@ -7,29 +7,29 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "formulabuffer.hxx"
-#include "formulaparser.hxx"
+#include <formulabuffer.hxx>
 #include <externallinkbuffer.hxx>
-#include "formulacell.hxx"
-#include "document.hxx"
-#include "documentimport.hxx"
+#include <formulacell.hxx>
+#include <document.hxx>
+#include <documentimport.hxx>
 
-#include "rangelst.hxx"
-#include "autonamecache.hxx"
-#include "tokenuno.hxx"
-#include "tokenarray.hxx"
-#include "sharedformulagroups.hxx"
-#include "externalrefmgr.hxx"
-#include "tokenstringcontext.hxx"
+#include <autonamecache.hxx>
+#include <tokenarray.hxx>
+#include <sharedformulagroups.hxx>
+#include <externalrefmgr.hxx>
+#include <tokenstringcontext.hxx>
+#include <o3tl/safeint.hxx>
 #include <oox/token/tokens.hxx>
+#include <oox/helper/progressbar.hxx>
 #include <svl/sharedstringpool.hxx>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sheet;
 
 #include <memory>
 
-namespace oox { namespace xls {
+namespace oox::xls {
 
 namespace {
 
@@ -57,12 +57,6 @@ public:
     explicit CachedTokenArray( ScDocument& rDoc ) :
         maCxt(&rDoc, formula::FormulaGrammar::GRAM_OOXML) {}
 
-    ~CachedTokenArray()
-    {
-        for (const std::pair<SCCOL, Item*>& rCacheItem : maCache)
-            delete rCacheItem.second;
-    }
-
     Item* get( const ScAddress& rPos, const OUString& rFormula )
     {
         // Check if a token array is cached for this column.
@@ -86,7 +80,7 @@ public:
         {
             // Create an entry for this column.
             std::pair<ColCacheType::iterator,bool> r =
-                maCache.insert(ColCacheType::value_type(rPos.Col(), new Item));
+                maCache.emplace(rPos.Col(), std::make_unique<Item>());
             if (!r.second)
                 // Insertion failed.
                 return;
@@ -100,7 +94,7 @@ public:
     }
 
 private:
-    typedef std::unordered_map<SCCOL, Item*> ColCacheType;
+    typedef std::unordered_map<SCCOL, std::unique_ptr<Item>> ColCacheType;
     ColCacheType maCache;
     sc::TokenStringContext maCxt;
 };
@@ -109,7 +103,8 @@ void applySharedFormulas(
     ScDocumentImport& rDoc,
     SvNumberFormatter& rFormatter,
     std::vector<FormulaBuffer::SharedFormulaEntry>& rSharedFormulas,
-    std::vector<FormulaBuffer::SharedFormulaDesc>& rCells )
+    std::vector<FormulaBuffer::SharedFormulaDesc>& rCells,
+    bool bGeneratorKnownGood)
 {
     sc::SharedFormulaGroups aGroups;
     {
@@ -120,27 +115,43 @@ void applySharedFormulas(
             sal_Int32 nId = rEntry.mnSharedId;
             const OUString& rTokenStr = rEntry.maTokenStr;
 
-            ScCompiler aComp(&rDoc.getDoc(), aPos, formula::FormulaGrammar::GRAM_OOXML);
+            ScCompiler aComp(&rDoc.getDoc(), aPos, formula::FormulaGrammar::GRAM_OOXML, true, false);
             aComp.SetNumberFormatter(&rFormatter);
-            ScTokenArray* pArray = aComp.CompileString(rTokenStr);
+            std::unique_ptr<ScTokenArray> pArray = aComp.CompileString(rTokenStr);
             if (pArray)
             {
                 aComp.CompileTokenArray(); // Generate RPN tokens.
-                aGroups.set(nId, pArray);
+                aGroups.set(nId, std::move(pArray), aPos);
             }
         }
     }
 
     {
+        svl::SharedStringPool& rStrPool = rDoc.getDoc().GetSharedStringPool();
         // Process formulas that use shared formulas.
         for (const FormulaBuffer::SharedFormulaDesc& rDesc : rCells)
         {
             const ScAddress& aPos = rDesc.maAddress;
-            const ScTokenArray* pArray = aGroups.get(rDesc.mnSharedId);
-            if (!pArray)
+            const sc::SharedFormulaGroupEntry* pEntry = aGroups.getEntry(rDesc.mnSharedId);
+            if (!pEntry)
                 continue;
 
-            ScFormulaCell* pCell = new ScFormulaCell(&rDoc.getDoc(), aPos, *pArray);
+            const ScTokenArray* pArray = pEntry->getTokenArray();
+            assert(pArray);
+            const ScAddress& rOrigin = pEntry->getOrigin();
+            assert(rOrigin.IsValid());
+
+            ScFormulaCell* pCell;
+            // In case of shared-formula along a row, do not let
+            // these cells share the same token objects.
+            // If we do, any reference-updates on these cells
+            // (while editing) will mess things up. Pass the cloned array as a
+            // pointer and not as reference to avoid any further allocation.
+            if (rOrigin.Col() != aPos.Col())
+                pCell = new ScFormulaCell(&rDoc.getDoc(), aPos, pArray->Clone());
+            else
+                pCell = new ScFormulaCell(&rDoc.getDoc(), aPos, *pArray);
+
             rDoc.setFormulaCell(aPos, pCell);
             if (rDesc.maCellValue.isEmpty())
             {
@@ -149,14 +160,32 @@ void applySharedFormulas(
                 continue;
             }
 
-            // Set cached formula results. For now, we only use numeric
+            // Set cached formula results. For now, we only use numeric and string-formula
             // results. Find out how to utilize cached results of other types.
             switch (rDesc.mnValueType)
             {
                 case XML_n:
                     // numeric value.
                     pCell->SetResultDouble(rDesc.maCellValue.toDouble());
+                    /* TODO: is it on purpose that we never reset dirty here
+                     * and thus recalculate anyway if cell was dirty? Or is it
+                     * never dirty and therefore set dirty below otherwise? This
+                     * is different from the non-shared case in
+                     * applyCellFormulaValues(). */
                 break;
+                case XML_str:
+                    if (bGeneratorKnownGood)
+                    {
+                        // See applyCellFormulaValues
+                        svl::SharedString aSS = rStrPool.intern(rDesc.maCellValue);
+                        pCell->SetResultToken(new formula::FormulaStringToken(aSS));
+                        // If we don't reset dirty, then e.g. disabling macros makes all cells
+                        // that use macro functions to show #VALUE!
+                        pCell->ResetDirty();
+                        pCell->SetChanged(false);
+                        break;
+                    }
+                    [[fallthrough]];
                 default:
                     // Mark it for re-calculation.
                     pCell->SetDirty();
@@ -205,15 +234,16 @@ void applyCellFormulas(
             continue;
         }
 
-        ScCompiler aCompiler(&rDoc.getDoc(), aPos, formula::FormulaGrammar::GRAM_OOXML);
+        ScCompiler aCompiler(&rDoc.getDoc(), aPos, formula::FormulaGrammar::GRAM_OOXML, true, false);
         aCompiler.SetNumberFormatter(&rFormatter);
         aCompiler.SetExternalLinks(rExternalLinks);
-        ScTokenArray* pCode = aCompiler.CompileString(rItem.maTokenStr);
+        std::unique_ptr<ScTokenArray> pCode = aCompiler.CompileString(rItem.maTokenStr);
         if (!pCode)
             continue;
 
         aCompiler.CompileTokenArray(); // Generate RPN tokens.
-        ScFormulaCell* pCell = new ScFormulaCell(&rDoc.getDoc(), aPos, pCode);
+
+        ScFormulaCell* pCell = new ScFormulaCell(&rDoc.getDoc(), aPos, std::move(pCode));
         rDoc.setFormulaCell(aPos, pCell);
         rCache.store(aPos, pCell);
     }
@@ -287,7 +317,8 @@ void processSheetFormulaCells(
     const Sequence<ExternalLinkInfo>& rExternalLinks, bool bGeneratorKnownGood )
 {
     if (rItem.mpSharedFormulaEntries && rItem.mpSharedFormulaIDs)
-        applySharedFormulas(rDoc, rFormatter, *rItem.mpSharedFormulaEntries, *rItem.mpSharedFormulaIDs);
+        applySharedFormulas(rDoc, rFormatter, *rItem.mpSharedFormulaEntries,
+                            *rItem.mpSharedFormulaIDs, bGeneratorKnownGood);
 
     if (rItem.mpCellFormulas)
     {
@@ -339,7 +370,7 @@ void FormulaBuffer::finalizeImport()
     ISegmentProgressBarRef xFormulaBar = getProgressBar().createSegment( getProgressBar().getFreeLength() );
 
     ScDocumentImport& rDoc = getDocImport();
-    rDoc.getDoc().SetAutoNameCache(new ScAutoNameCache(&rDoc.getDoc()));
+    rDoc.getDoc().SetAutoNameCache(std::make_unique<ScAutoNameCache>(&rDoc.getDoc()));
     ScExternalRefManager::ApiGuard aExtRefGuard(&rDoc.getDoc());
 
     SCTAB nTabCount = rDoc.getDoc().GetTableCount();
@@ -369,21 +400,21 @@ FormulaBuffer::SheetItem FormulaBuffer::getSheetItem( SCTAB nTab )
 
     SheetItem aItem;
 
-    if( (size_t) nTab >= maCellFormulas.size() )
+    if( o3tl::make_unsigned(nTab) >= maCellFormulas.size() )
     {
         SAL_WARN( "sc", "Tab " << nTab << " out of bounds " << maCellFormulas.size() );
         return aItem;
     }
 
-    if( maCellFormulas[ nTab ].size() > 0 )
+    if( !maCellFormulas[ nTab ].empty() )
         aItem.mpCellFormulas = &maCellFormulas[ nTab ];
-    if( maCellArrayFormulas[ nTab ].size() > 0 )
+    if( !maCellArrayFormulas[ nTab ].empty() )
         aItem.mpArrayFormulas = &maCellArrayFormulas[ nTab ];
-    if( maCellFormulaValues[ nTab ].size() > 0 )
+    if( !maCellFormulaValues[ nTab ].empty() )
         aItem.mpCellFormulaValues = &maCellFormulaValues[ nTab ];
-    if( maSharedFormulas[ nTab ].size() > 0 )
+    if( !maSharedFormulas[ nTab ].empty() )
         aItem.mpSharedFormulaEntries = &maSharedFormulas[ nTab ];
-    if( maSharedFormulaIds[ nTab ].size() > 0 )
+    if( !maSharedFormulaIds[ nTab ].empty() )
         aItem.mpSharedFormulaIDs = &maSharedFormulaIds[ nTab ];
 
     return aItem;
@@ -393,7 +424,7 @@ void FormulaBuffer::createSharedFormulaMapEntry(
     const ScAddress& rAddress,
     sal_Int32 nSharedId, const OUString& rTokens )
 {
-    assert( rAddress.Tab() >= 0 && (size_t)rAddress.Tab() < maSharedFormulas.size() );
+    assert( rAddress.Tab() >= 0 && o3tl::make_unsigned(rAddress.Tab()) < maSharedFormulas.size() );
     std::vector<SharedFormulaEntry>& rSharedFormulas = maSharedFormulas[ rAddress.Tab() ];
     SharedFormulaEntry aEntry(rAddress, rTokens, nSharedId);
     rSharedFormulas.push_back( aEntry );
@@ -401,30 +432,29 @@ void FormulaBuffer::createSharedFormulaMapEntry(
 
 void FormulaBuffer::setCellFormula( const ScAddress& rAddress, const OUString& rTokenStr )
 {
-    assert( rAddress.Tab() >= 0 && (size_t)rAddress.Tab() < maCellFormulas.size() );
-    maCellFormulas[ rAddress.Tab() ].push_back( TokenAddressItem( rTokenStr, rAddress ) );
+    assert( rAddress.Tab() >= 0 && o3tl::make_unsigned(rAddress.Tab()) < maCellFormulas.size() );
+    maCellFormulas[ rAddress.Tab() ].emplace_back( rTokenStr, rAddress );
 }
 
 void FormulaBuffer::setCellFormula(
     const ScAddress& rAddress, sal_Int32 nSharedId, const OUString& rCellValue, sal_Int32 nValueType )
 {
-    assert( rAddress.Tab() >= 0 && (size_t)rAddress.Tab() < maSharedFormulaIds.size() );
-    maSharedFormulaIds[rAddress.Tab()].push_back(
-        SharedFormulaDesc(rAddress, nSharedId, rCellValue, nValueType));
+    assert( rAddress.Tab() >= 0 && o3tl::make_unsigned(rAddress.Tab()) < maSharedFormulaIds.size() );
+    maSharedFormulaIds[rAddress.Tab()].emplace_back(rAddress, nSharedId, rCellValue, nValueType);
 }
 
 void FormulaBuffer::setCellArrayFormula( const ScRange& rRangeAddress, const ScAddress& rTokenAddress, const OUString& rTokenStr )
 {
 
     TokenAddressItem tokenPair( rTokenStr, rTokenAddress );
-    assert( rRangeAddress.aStart.Tab() >= 0 && (size_t)rRangeAddress.aStart.Tab() < maCellArrayFormulas.size() );
-    maCellArrayFormulas[ rRangeAddress.aStart.Tab() ].push_back( TokenRangeAddressItem( tokenPair, rRangeAddress ) );
+    assert( rRangeAddress.aStart.Tab() >= 0 && o3tl::make_unsigned(rRangeAddress.aStart.Tab()) < maCellArrayFormulas.size() );
+    maCellArrayFormulas[ rRangeAddress.aStart.Tab() ].emplace_back( tokenPair, rRangeAddress );
 }
 
 void FormulaBuffer::setCellFormulaValue(
         const ScAddress& rAddress, const OUString& rValueStr, sal_Int32 nCellType )
 {
-    assert( rAddress.Tab() >= 0 && (size_t)rAddress.Tab() < maCellFormulaValues.size() );
+    assert( rAddress.Tab() >= 0 && o3tl::make_unsigned(rAddress.Tab()) < maCellFormulaValues.size() );
     FormulaValue aVal;
     aVal.maAddress = rAddress;
     aVal.maValueStr = rValueStr;
@@ -432,6 +462,6 @@ void FormulaBuffer::setCellFormulaValue(
     maCellFormulaValues[rAddress.Tab()].push_back(aVal);
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

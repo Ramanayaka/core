@@ -31,9 +31,9 @@
 #include <com/sun/star/registry/XSimpleRegistry.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/weak.hxx>
@@ -48,6 +48,8 @@
 #include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace {
 
@@ -81,7 +83,7 @@ private:
         OUString const & aKeyName, OUString const & aUrl) override;
 
     virtual OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.comp.stoc.SimpleRegistry"); }
+    { return "com.sun.star.comp.stoc.SimpleRegistry"; }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
@@ -312,10 +314,7 @@ css::uno::Sequence< sal_Int32 > Key::getLongListValue()
 void Key::setLongListValue(css::uno::Sequence< sal_Int32 > const & seqValue)
 {
     osl::MutexGuard guard(registry_->mutex_);
-    std::vector< sal_Int32 > list;
-    for (sal_Int32 i = 0; i < seqValue.getLength(); ++i) {
-        list.push_back(seqValue[i]);
-    }
+    auto list = comphelper::sequenceToContainer<std::vector<sal_Int32>>(seqValue);
     RegError err = key_.setLongListValue(
         OUString(), list.data(), static_cast< sal_uInt32 >(list.size()));
     if (err != RegError::NO_ERROR) {
@@ -359,7 +358,7 @@ OUString Key::getAsciiValue()
             static_cast< OWeakObject * >(this));
     }
     std::vector< char > list(size);
-    err = key_.getValue(OUString(), &list[0]);
+    err = key_.getValue(OUString(), list.data());
     if (err != RegError::NO_ERROR) {
         throw css::registry::InvalidRegistryException(
             "com.sun.star.registry.SimpleRegistry key getAsciiValue:"
@@ -375,7 +374,7 @@ OUString Key::getAsciiValue()
     }
     OUString value;
     if (!rtl_convertStringToUString(
-            &value.pData, &list[0],
+            &value.pData, list.data(),
             static_cast< sal_Int32 >(size - 1), RTL_TEXTENCODING_UTF8,
             (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR |
              RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR |
@@ -472,9 +471,9 @@ void Key::setAsciiListValue(
 {
     osl::MutexGuard guard(registry_->mutex_);
     std::vector< OString > list;
-    for (sal_Int32 i = 0; i < seqValue.getLength(); ++i) {
+    for (const auto& rValue : seqValue) {
         OString utf8;
-        if (!seqValue[i].convertToString(
+        if (!rValue.convertToString(
                 &utf8, RTL_TEXTENCODING_UTF8,
                 (RTL_UNICODETOTEXT_FLAGS_UNDEFINED_ERROR |
                  RTL_UNICODETOTEXT_FLAGS_INVALID_ERROR)))
@@ -487,10 +486,9 @@ void Key::setAsciiListValue(
         list.push_back(utf8);
     }
     std::vector< char * > list2;
-    for (std::vector< OString >::iterator i(list.begin()); i != list.end();
-         ++i)
+    for (const auto& rItem : list)
     {
-        list2.push_back(const_cast< char * >(i->getStr()));
+        list2.push_back(const_cast< char * >(rItem.getStr()));
     }
     RegError err = key_.setStringListValue(
         OUString(), list2.data(), static_cast< sal_uInt32 >(list2.size()));
@@ -537,7 +535,7 @@ OUString Key::getStringValue()
             static_cast< OWeakObject * >(this));
     }
     std::vector< sal_Unicode > list(size);
-    err = key_.getValue(OUString(), &list[0]);
+    err = key_.getValue(OUString(), list.data());
     if (err != RegError::NO_ERROR) {
         throw css::registry::InvalidRegistryException(
             "com.sun.star.registry.SimpleRegistry key getStringValue:"
@@ -551,7 +549,7 @@ OUString Key::getStringValue()
             " to design error",
             static_cast< OWeakObject * >(this));
     }
-    return OUString(&list[0], static_cast< sal_Int32 >(size/2 - 1));
+    return OUString(list.data(), static_cast< sal_Int32 >(size/2 - 1));
 }
 
 void Key::setStringValue(OUString const & value)
@@ -613,9 +611,9 @@ void Key::setStringListValue(
 {
     osl::MutexGuard guard(registry_->mutex_);
     std::vector< sal_Unicode * > list;
-    for (sal_Int32 i = 0; i < seqValue.getLength(); ++i) {
-        list.push_back(const_cast< sal_Unicode * >(seqValue[i].getStr()));
-    }
+    list.reserve(seqValue.getLength());
+    std::transform(seqValue.begin(), seqValue.end(), std::back_inserter(list),
+        [](const OUString& rValue) -> sal_Unicode* { return const_cast<sal_Unicode*>(rValue.getStr()); });
     RegError err = key_.setUnicodeListValue(
         OUString(), list.data(), static_cast< sal_uInt32 >(list.size()));
     if (err != RegError::NO_ERROR) {
@@ -928,7 +926,7 @@ void SimpleRegistry::mergeKey(
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_stoc_SimpleRegistry_get_implementation(
     SAL_UNUSED_PARAMETER css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

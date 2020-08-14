@@ -17,21 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-/*
- * and turn off the additional virtual methods which are part of some interfaces when compiled
- * with debug
- */
-#ifdef DEBUG
-#undef DEBUG
-#endif
-
-#include <comphelper/processfactory.hxx>
 #include <sal/types.h>
-#include <rtl/bootstrap.hxx>
-#include <rtl/string.hxx>
-#include <rtl/strbuf.hxx>
-#include <osl/file.hxx>
-#include <osl/thread.h>
 #include <com/sun/star/xml/crypto/SecurityEnvironment.hpp>
 #include <com/sun/star/xml/crypto/XMLSecurityContext.hpp>
 #include <cppuhelper/supportsservice.hxx>
@@ -39,15 +25,8 @@
 #include "seinitializer_nssimpl.hxx"
 #include "securityenvironment_nssimpl.hxx"
 
-#include <nspr.h>
 #include <cert.h>
-#include <nss.h>
-#include <pk11pub.h>
-#include <secmod.h>
-#include <nssckbi.h>
 
-
-namespace cssxc = css::xml::crypto;
 
 using namespace com::sun::star;
 
@@ -62,7 +41,7 @@ SEInitializer_NssImpl::~SEInitializer_NssImpl()
 }
 
 /* XSEInitializer */
-uno::Reference< cssxc::XXMLSecurityContext > SAL_CALL
+uno::Reference< css::xml::crypto::XXMLSecurityContext > SAL_CALL
     SEInitializer_NssImpl::createSecurityContext( const OUString& )
 {
     CERTCertDBHandle    *pCertHandle = nullptr ;
@@ -75,9 +54,9 @@ uno::Reference< cssxc::XXMLSecurityContext > SAL_CALL
     try
     {
         /* Build XML Security Context */
-        uno::Reference< cssxc::XXMLSecurityContext > xSecCtx = cssxc::XMLSecurityContext::create( m_xContext );
+        uno::Reference< css::xml::crypto::XXMLSecurityContext > xSecCtx = css::xml::crypto::XMLSecurityContext::create( m_xContext );
 
-        uno::Reference< cssxc::XSecurityEnvironment > xSecEnv = cssxc::SecurityEnvironment::create( m_xContext );
+        uno::Reference< css::xml::crypto::XSecurityEnvironment > xSecEnv = css::xml::crypto::SecurityEnvironment::create( m_xContext );
         uno::Reference< lang::XUnoTunnel > xSecEnvTunnel(xSecEnv, uno::UNO_QUERY_THROW);
         SecurityEnvironment_NssImpl* pSecEnv = reinterpret_cast<SecurityEnvironment_NssImpl*>(
             sal::static_int_cast<sal_uIntPtr>(
@@ -97,7 +76,7 @@ uno::Reference< cssxc::XXMLSecurityContext > SAL_CALL
     }
 }
 
-void SAL_CALL SEInitializer_NssImpl::freeSecurityContext( const uno::Reference< cssxc::XXMLSecurityContext >& )
+void SAL_CALL SEInitializer_NssImpl::freeSecurityContext( const uno::Reference< css::xml::crypto::XXMLSecurityContext >& )
 {
     /*
      * because the security context will free all its content when it
@@ -108,29 +87,10 @@ void SAL_CALL SEInitializer_NssImpl::freeSecurityContext( const uno::Reference< 
     //NSS_Shutdown();
 }
 
-OUString SEInitializer_NssImpl_getImplementationName ()
-{
-    return OUString ("com.sun.star.xml.security.bridge.xmlsec.SEInitializer_NssImpl" );
-}
-
-uno::Sequence< OUString > SAL_CALL SEInitializer_NssImpl_getSupportedServiceNames(  )
-{
-    uno::Sequence < OUString > aRet(2);
-    OUString* pArray = aRet.getArray();
-    pArray[0] =  "com.sun.star.xml.crypto.SEInitializer";
-    pArray[1] =  NSS_SERVICE_NAME;
-    return aRet;
-}
-
-uno::Reference< uno::XInterface > SAL_CALL SEInitializer_NssImpl_createInstance( const uno::Reference< lang::XMultiServiceFactory > & rxMSF)
-{
-    return static_cast<cppu::OWeakObject*>(new SEInitializer_NssImpl(comphelper::getComponentContext(rxMSF)));
-}
-
 /* XServiceInfo */
 OUString SAL_CALL SEInitializer_NssImpl::getImplementationName(  )
 {
-    return SEInitializer_NssImpl_getImplementationName();
+    return "com.sun.star.xml.crypto.SEInitializer";
 }
 sal_Bool SAL_CALL SEInitializer_NssImpl::supportsService( const OUString& rServiceName )
 {
@@ -138,7 +98,48 @@ sal_Bool SAL_CALL SEInitializer_NssImpl::supportsService( const OUString& rServi
 }
 uno::Sequence< OUString > SAL_CALL SEInitializer_NssImpl::getSupportedServiceNames(  )
 {
-    return SEInitializer_NssImpl_getSupportedServiceNames();
+    return { "com.sun.star.xml.crypto.SEInitializer" };
+}
+
+namespace {
+
+class NSSInitializer_NssImpl : public SEInitializer_NssImpl
+{
+public:
+    explicit NSSInitializer_NssImpl(const uno::Reference<uno::XComponentContext>& xContext);
+    OUString SAL_CALL getImplementationName() override;
+    uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
+};
+
+}
+
+NSSInitializer_NssImpl::NSSInitializer_NssImpl(const uno::Reference<uno::XComponentContext>& xContext)
+    : SEInitializer_NssImpl(xContext)
+{
+}
+
+OUString NSSInitializer_NssImpl::getImplementationName()
+{
+    return "com.sun.star.xml.crypto.NSSInitializer";
+}
+
+uno::Sequence<OUString> SAL_CALL NSSInitializer_NssImpl::getSupportedServiceNames()
+{
+    return { "com.sun.star.xml.crypto.NSSInitializer" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_xml_crypto_NSSInitializer_get_implementation(
+    uno::XComponentContext* pCtx, uno::Sequence<uno::Any> const& /*rSeq*/)
+{
+    return cppu::acquire(new NSSInitializer_NssImpl(pCtx));
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_xml_crypto_SEInitializer_get_implementation(
+    uno::XComponentContext* pCtx, uno::Sequence<uno::Any> const& /*rSeq*/)
+{
+    return cppu::acquire(new SEInitializer_NssImpl(pCtx));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

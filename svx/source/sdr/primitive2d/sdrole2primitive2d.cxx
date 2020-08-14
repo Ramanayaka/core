@@ -20,22 +20,21 @@
 #include <sdr/primitive2d/sdrole2primitive2d.hxx>
 #include <svx/sdr/primitive2d/svx_primitivetypes2d.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
-#include <svx/sdr/primitive2d/sdrdecompositiontools.hxx>
+#include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
 
 
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         SdrOle2Primitive2D::SdrOle2Primitive2D(
             const Primitive2DContainer& rOLEContent,
             const basegfx::B2DHomMatrix& rTransform,
-            const attribute::SdrLineFillShadowTextAttribute& rSdrLFSTAttribute)
+            const attribute::SdrLineFillEffectsTextAttribute& rSdrLFSTAttribute)
         :   BasePrimitive2D(),
             maOLEContent(rOLEContent),
             maTransform(rTransform),
@@ -70,17 +69,14 @@ namespace drawinglayer
         {
             // to take care of getSdrLFSTAttribute() later, the same as in SdrGrafPrimitive2D::create2DDecomposition
             // should happen. For the moment we only need the OLE itself
-            // Added complete primitive preparation using getSdrLFSTAttribute() now. To not do stuff which is not needed now, it
-            // may be suppressed by using a static bool. The paint version only supported text.
-            static bool bBehaveCompatibleToPaintVersion(false);
+            // Added complete primitive preparation using getSdrLFSTAttribute() now.
             Primitive2DContainer  aRetval;
 
             // create unit outline polygon
-            const basegfx::B2DPolygon aUnitOutline(basegfx::tools::createUnitPolygon());
+            const basegfx::B2DPolygon& aUnitOutline(basegfx::utils::createUnitPolygon());
 
             // add fill
-            if(!bBehaveCompatibleToPaintVersion
-                && !getSdrLFSTAttribute().getFill().isDefault())
+            if(!getSdrLFSTAttribute().getFill().isDefault())
             {
                 basegfx::B2DPolyPolygon aTransformed(aUnitOutline);
 
@@ -95,8 +91,7 @@ namespace drawinglayer
             // add line
             // #i97981# condition was inverse to purpose. When being compatible to paint version,
             // border needs to be suppressed
-            if(!bBehaveCompatibleToPaintVersion
-                && !getSdrLFSTAttribute().getLine().isDefault())
+            if(!getSdrLFSTAttribute().getLine().isDefault())
             {
                 // if line width is given, polygon needs to be grown by half of it to make the
                 // outline to be outside of the bitmap
@@ -112,10 +107,10 @@ namespace drawinglayer
                     double fScaleX(0.0 != aScale.getX() ? fHalfLineWidth / fabs(aScale.getX()) : 1.0);
                     double fScaleY(0.0 != aScale.getY() ? fHalfLineWidth / fabs(aScale.getY()) : 1.0);
                     const basegfx::B2DRange aExpandedRange(-fScaleX, -fScaleY, 1.0 + fScaleX, 1.0 + fScaleY);
-                    basegfx::B2DPolygon aExpandedUnitOutline(basegfx::tools::createPolygonFromRect(aExpandedRange));
+                    basegfx::B2DPolygon aExpandedUnitOutline(basegfx::utils::createPolygonFromRect(aExpandedRange));
 
                     aExpandedUnitOutline.transform(getTransform());
-                aRetval.push_back(
+                    aRetval.push_back(
                         createPolygonLinePrimitive(
                             aExpandedUnitOutline,
                             getSdrLFSTAttribute().getLine(),
@@ -126,7 +121,7 @@ namespace drawinglayer
                     basegfx::B2DPolygon aTransformed(aUnitOutline);
 
                     aTransformed.transform(getTransform());
-                aRetval.push_back(
+                    aRetval.push_back(
                         createPolygonLinePrimitive(
                             aTransformed,
                             getSdrLFSTAttribute().getLine(),
@@ -157,13 +152,11 @@ namespace drawinglayer
                         getSdrLFSTAttribute().getText(),
                         getSdrLFSTAttribute().getLine(),
                         false,
-                        false,
                         false));
             }
 
             // add shadow
-            if(!bBehaveCompatibleToPaintVersion
-                && !getSdrLFSTAttribute().getShadow().isDefault())
+            if(!getSdrLFSTAttribute().getShadow().isDefault())
             {
                 aRetval = createEmbeddedShadowPrimitive(
                     aRetval,
@@ -176,7 +169,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(SdrOle2Primitive2D, PRIMITIVE2D_ID_SDROLE2PRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

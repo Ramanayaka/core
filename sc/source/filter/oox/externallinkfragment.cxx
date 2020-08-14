@@ -17,18 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "externallinkfragment.hxx"
+#include <externallinkfragment.hxx>
 
 #include <com/sun/star/sheet/XExternalSheetCache.hpp>
 #include <oox/helper/attributelist.hxx>
+#include <oox/helper/binaryinputstream.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
-#include "defnamesbuffer.hxx"
-#include "sheetdatacontext.hxx"
-#include "unitconverter.hxx"
+#include <osl/diagnose.h>
+#include <addressconverter.hxx>
+#include <unitconverter.hxx>
+#include <biffhelper.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::sheet;
 using namespace ::com::sun::star::uno;
@@ -62,23 +63,23 @@ ContextHandlerRef ExternalSheetDataContext::onCreateContext( sal_Int32 nElement,
 
 void ExternalSheetDataContext::onCharacters( const OUString& rChars )
 {
-    if( isCurrentElement( XLS_TOKEN( v ) ) )
+    if( !isCurrentElement( XLS_TOKEN( v ) ) )
+        return;
+
+    switch( mnCurrType )
     {
-        switch( mnCurrType )
-        {
-            case XML_b:
-            case XML_n:
-                setCellValue( Any( rChars.toDouble() ) );
-            break;
-            case XML_e:
-                setCellValue( Any( BiffHelper::calcDoubleFromError( getUnitConverter().calcBiffErrorCode( rChars ) ) ) );
-            break;
-            case XML_str:
-                setCellValue( Any( rChars ) );
-            break;
-        }
-        mnCurrType = XML_TOKEN_INVALID;
+        case XML_b:
+        case XML_n:
+            setCellValue( Any( rChars.toDouble() ) );
+        break;
+        case XML_e:
+            setCellValue( Any( BiffHelper::calcDoubleFromError( getUnitConverter().calcBiffErrorCode( rChars ) ) ) );
+        break;
+        case XML_str:
+            setCellValue( Any( rChars ) );
+        break;
     }
+    mnCurrType = XML_TOKEN_INVALID;
 }
 
 ContextHandlerRef ExternalSheetDataContext::onCreateRecordContext( sal_Int32 nRecId, SequenceInputStream& rStrm )
@@ -212,7 +213,7 @@ ContextHandlerRef ExternalLinkFragment::onCreateContext( sal_Int32 nElement, con
         case XLS_TOKEN( ddeItem ):
             if( nElement == XLS_TOKEN( values ) )
             {
-                if( mxExtName.get() ) mxExtName->importValues( rAttribs );
+                if( mxExtName ) mxExtName->importValues( rAttribs );
                 return this;
             }
         break;
@@ -245,7 +246,10 @@ void ExternalLinkFragment::onCharacters( const OUString& rChars )
 
 void ExternalLinkFragment::onEndElement()
 {
-    if( isCurrentElement( XLS_TOKEN( value ) ) && mxExtName.get() ) switch( mnResultType )
+    if( !(isCurrentElement( XLS_TOKEN( value ) ) && mxExtName) )
+        return;
+
+    switch( mnResultType )
     {
         case XML_b:
             mxExtName->appendResultValue( maResultValue.toDouble() );
@@ -292,18 +296,18 @@ ContextHandlerRef ExternalLinkFragment::onCreateRecordContext( sal_Int32 nRecId,
         case BIFF12_ID_EXTERNALNAME:
             switch( nRecId )
             {
-                case BIFF12_ID_EXTERNALNAMEFLAGS:   if( mxExtName.get() ) mxExtName->importExternalNameFlags( rStrm );  break;
-                case BIFF12_ID_DDEITEMVALUES:       if( mxExtName.get() ) mxExtName->importDdeItemValues( rStrm );      return this;
+                case BIFF12_ID_EXTERNALNAMEFLAGS:   if( mxExtName ) mxExtName->importExternalNameFlags( rStrm );  break;
+                case BIFF12_ID_DDEITEMVALUES:       if( mxExtName ) mxExtName->importDdeItemValues( rStrm );      return this;
             }
         break;
 
         case BIFF12_ID_DDEITEMVALUES:
             switch( nRecId )
             {
-                case BIFF12_ID_DDEITEM_BOOL:        if( mxExtName.get() ) mxExtName->importDdeItemBool( rStrm );        break;
-                case BIFF12_ID_DDEITEM_DOUBLE:      if( mxExtName.get() ) mxExtName->importDdeItemDouble( rStrm );      break;
-                case BIFF12_ID_DDEITEM_ERROR:       if( mxExtName.get() ) mxExtName->importDdeItemError( rStrm );       break;
-                case BIFF12_ID_DDEITEM_STRING:      if( mxExtName.get() ) mxExtName->importDdeItemString( rStrm );      break;
+                case BIFF12_ID_DDEITEM_BOOL:        if( mxExtName ) mxExtName->importDdeItemBool( rStrm );        break;
+                case BIFF12_ID_DDEITEM_DOUBLE:      if( mxExtName ) mxExtName->importDdeItemDouble( rStrm );      break;
+                case BIFF12_ID_DDEITEM_ERROR:       if( mxExtName ) mxExtName->importDdeItemError( rStrm );       break;
+                case BIFF12_ID_DDEITEM_STRING:      if( mxExtName ) mxExtName->importDdeItemString( rStrm );      break;
             }
         break;
     }
@@ -329,7 +333,6 @@ const RecordInfo* ExternalLinkFragment::getRecordInfos() const
     return spRecInfos;
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

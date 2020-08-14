@@ -17,22 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "uielement/imagebuttontoolbarcontroller.hxx"
+#include <uielement/imagebuttontoolbarcontroller.hxx>
 
 #include <framework/addonsoptions.hxx>
 
-#include <com/sun/star/util/XURLTransformer.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <comphelper/getexpandeduri.hxx>
 #include <comphelper/processfactory.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/mnemonic.hxx>
-#include <vcl/window.hxx>
 #include <vcl/graph.hxx>
-#include <vcl/bitmap.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <vcl/toolbox.hxx>
 #include <svtools/miscopt.hxx>
@@ -68,10 +63,10 @@ ImageButtonToolbarController::ImageButtonToolbarController(
 {
     bool bBigImages( SvtMiscOptions().AreCurrentSymbolsLarge() );
 
-    Image aImage = AddonsOptions().GetImageFromURL( aCommand, bBigImages, true );
+    Image aImage(AddonsOptions().GetImageFromURL(aCommand, bBigImages, true));
 
     // Height will be controlled by scaling according to button height
-    m_pToolbar->SetItemImage( m_nID, aImage );
+    m_xToolbar->SetItemImage( m_nID, aImage );
 }
 
 ImageButtonToolbarController::~ImageButtonToolbarController()
@@ -88,32 +83,32 @@ void ImageButtonToolbarController::executeControlCommand( const css::frame::Cont
 {
     SolarMutexGuard aSolarMutexGuard;
     // i73486 to be downward compatible use old and "wrong" also!
-    if( rControlCommand.Command == "SetImag" ||
-        rControlCommand.Command == "SetImage" )
+    if( rControlCommand.Command != "SetImag" &&
+        rControlCommand.Command != "SetImage" )
+        return;
+
+    for ( const NamedValue& rArg : rControlCommand.Arguments )
     {
-        for ( sal_Int32 i = 0; i < rControlCommand.Arguments.getLength(); i++ )
+        if ( rArg.Name == "URL" )
         {
-            if ( rControlCommand.Arguments[i].Name == "URL" )
+            OUString aURL;
+            rArg.Value >>= aURL;
+
+            SubstituteVariables( aURL );
+
+            Image aImage;
+            if ( ReadImageFromURL( SvtMiscOptions().AreCurrentSymbolsLarge(),
+                                   aURL,
+                                   aImage ))
             {
-                OUString aURL;
-                rControlCommand.Arguments[i].Value >>= aURL;
+                m_xToolbar->SetItemImage( m_nID, aImage );
 
-                SubstituteVariables( aURL );
-
-                Image aImage;
-                if ( ReadImageFromURL( SvtMiscOptions().AreCurrentSymbolsLarge(),
-                                       aURL,
-                                       aImage ))
-                {
-                    m_pToolbar->SetItemImage( m_nID, aImage );
-
-                    // send notification
-                    uno::Sequence< beans::NamedValue > aInfo { { "URL", css::uno::makeAny(aURL) } };
-                    addNotifyInfo( "ImageChanged",
-                                getDispatchFromCommand( m_aCommandURL ),
-                                aInfo );
-                    break;
-                }
+                // send notification
+                uno::Sequence< beans::NamedValue > aInfo { { "URL", css::uno::makeAny(aURL) } };
+                addNotifyInfo( "ImageChanged",
+                            getDispatchFromCommand( m_aCommandURL ),
+                            aInfo );
+                break;
             }
         }
     }
@@ -135,7 +130,7 @@ bool ImageButtonToolbarController::ReadImageFromURL( bool bBigImage, const OUStr
         const ::Size aSize = bBigImage ? aImageSizeBig : aImageSizeSmall; // Sizes used for toolbar images
 
         ::Size aBmpSize = aBitmapEx.GetSizePixel();
-        if ( aBmpSize.Width() > 0 && aBmpSize.Height() > 0 )
+        if ( !aBmpSize.IsEmpty() )
         {
             ::Size aNoScaleSize( aBmpSize.Width(), aSize.Height() );
             if ( aBmpSize != aNoScaleSize )

@@ -21,17 +21,12 @@
 
 #include "ItemConverter.hxx"
 
-#include <com/sun/star/chart2/XRegressionCurveContainer.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-
-#include <memory>
-#include <vector>
+namespace com::sun::star::chart2 { class XRegressionCurveContainer; }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
 
 class SdrModel;
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 class RegressionCurveItemConverter : public ItemConverter
@@ -60,8 +55,7 @@ private:
     css::uno::Reference< css::chart2::XRegressionCurveContainer >  m_xCurveContainer;
 };
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_INC_REGRESSIONCURVEITEMCONVERTER_HXX
 #endif

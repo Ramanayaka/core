@@ -18,7 +18,7 @@
  */
 
 
-#include "formfeaturedispatcher.hxx"
+#include <formfeaturedispatcher.hxx>
 
 #include <comphelper/namedvaluecollection.hxx>
 #include <tools/diagnose_ex.h>
@@ -91,7 +91,7 @@ namespace svx
             }
             catch( const Exception& )
             {
-                OSL_FAIL( "OSingleFeatureDispatcher::notifyStatus: caught an exception!" );
+                TOOLS_WARN_EXCEPTION( "svx", "OSingleFeatureDispatcher::notifyStatus" );
             }
         }
         else
@@ -135,7 +135,7 @@ namespace svx
 
         try
         {
-            if ( !_rArguments.getLength() )
+            if ( !_rArguments.hasElements() )
             {
                 xFormOperations->execute( nFormFeature );
             }
@@ -151,7 +151,7 @@ namespace svx
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("svx");
         }
     }
 

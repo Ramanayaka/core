@@ -21,7 +21,7 @@
 
 #include <svl/poolitem.hxx>
 #include <rtl/ustring.hxx>
-#include <com/sun/star/uno/Sequence.h>
+#include <com/sun/star/uno/Sequence.hxx>
 #include <editeng/editengdllapi.h>
 
 // class SvxFontListItem -------------------------------------------------
@@ -35,7 +35,7 @@ class FontList;
     not copied and not deleted!
 */
 
-class EDITENG_DLLPUBLIC SvxFontListItem : public SfxPoolItem
+class EDITENG_DLLPUBLIC SvxFontListItem final : public SfxPoolItem
 {
 private:
     const FontList*                 pFontList;
@@ -44,17 +44,16 @@ private:
 public:
     SvxFontListItem( const FontList* pFontLst,
                      const sal_uInt16 nId  );
-    SvxFontListItem( const SvxFontListItem& rItem );
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxFontListItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     const FontList*         GetFontList() const { return pFontList; }
 };

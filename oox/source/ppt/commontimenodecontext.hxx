@@ -20,18 +20,17 @@
 #ifndef INCLUDED_OOX_SOURCE_PPT_COMMONTIMENODECONTEXT_HXX
 #define INCLUDED_OOX_SOURCE_PPT_COMMONTIMENODECONTEXT_HXX
 
-#include "oox/ppt/timenode.hxx"
-#include "oox/ppt/timenodelistcontext.hxx"
-#include "conditioncontext.hxx"
+#include <oox/ppt/timenode.hxx>
+#include <oox/ppt/timenodelistcontext.hxx>
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
     /** CT_TLCommonTimeNodeData */
     class CommonTimeNodeContext
         : public TimeNodeContext
     {
     public:
-        CommonTimeNodeContext( ::oox::core::FragmentHandler2& rParent, sal_Int32  aElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttribs, const TimeNodePtr & pNode);
+        CommonTimeNodeContext( ::oox::core::FragmentHandler2 const & rParent, sal_Int32  aElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttribs, const TimeNodePtr & pNode);
         virtual ~CommonTimeNodeContext( ) throw( ) override;
 
         virtual void onEndElement() override;
@@ -42,7 +41,7 @@ namespace oox { namespace ppt {
         bool mbIterate;
     };
 
-} }
+}
 
 #endif
 

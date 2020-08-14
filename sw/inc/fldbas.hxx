@@ -21,16 +21,25 @@
 
 #include <i18nlangtag/lang.h>
 #include "swdllapi.h"
-#include <calbck.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/uno/Any.hxx>
+#include "calbck.hxx"
+#include "ndindex.hxx"
+
 #include <cppuhelper/weakref.hxx>
 #include <editeng/svxenum.hxx>
 #include <vector>
-#include <toxe.hxx>
+#include <climits>
 
 class SwDoc;
+class SwField;
+class SwFormatField;
+class SwRootFrame;
 class SvNumberFormatter;
+class IDocumentRedlineAccess;
+class SwGetRefField;
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::uno { class Any; }
+
+typedef struct _xmlTextWriter* xmlTextWriterPtr;
 
 enum class SwFieldIds : sal_uInt16 {
 /// For old documents the Field-Which IDs must be preserved !!!
@@ -44,7 +53,7 @@ enum class SwFieldIds : sal_uInt16 {
     Author,
     Chapter,
     DocStat,
-    GetExp,
+    GetExp, // 10
     SetExp,
     GetRef,
     HiddenText,
@@ -54,7 +63,7 @@ enum class SwFieldIds : sal_uInt16 {
     Reg,
     VarReg,
     SetRef,
-    Input,
+    Input, // 20
     Macro,
     Dde,
     Table,
@@ -64,7 +73,7 @@ enum class SwFieldIds : sal_uInt16 {
     DbNextSet,
     DbNumSet,
     DbSetNumber,
-    ExtUser,
+    ExtUser, // 30
     RefPageSet,
     RefPageGet,
     Internet,
@@ -74,60 +83,64 @@ enum class SwFieldIds : sal_uInt16 {
     TableOfAuthorities,
     CombinedChars,
     Dropdown,
-    LAST = Dropdown,
+    ParagraphSignature, // 40
+    LAST = ParagraphSignature,
 
     Unknown = USHRT_MAX, // used as default value in some method calls
 };
 
 /// List of FieldTypes at UI.
-enum SwFieldTypesEnum {
-    TYP_BEGIN,
-    TYP_DATEFLD = TYP_BEGIN,    // 0
-    TYP_TIMEFLD,
-    TYP_FILENAMEFLD,
-    TYP_DBNAMEFLD,
-    TYP_CHAPTERFLD,
-    TYP_PAGENUMBERFLD,
-    TYP_DOCSTATFLD,
-    TYP_AUTHORFLD,
-    TYP_SETFLD,
-    TYP_GETFLD,
-    TYP_FORMELFLD,              // 10
-    TYP_HIDDENTXTFLD,
-    TYP_SETREFFLD,
-    TYP_GETREFFLD,
-    TYP_DDEFLD,
-    TYP_MACROFLD,
-    TYP_INPUTFLD,
-    TYP_HIDDENPARAFLD,
-    TYP_DOCINFOFLD,
-    TYP_DBFLD,
-    TYP_USERFLD,                // 20
-    TYP_POSTITFLD,
-    TYP_TEMPLNAMEFLD,
-    TYP_SEQFLD,
-    TYP_DBNEXTSETFLD,
-    TYP_DBNUMSETFLD,
-    TYP_DBSETNUMBERFLD,
-    TYP_CONDTXTFLD,
-    TYP_NEXTPAGEFLD,
-    TYP_PREVPAGEFLD,
-    TYP_EXTUSERFLD,             // 30
-    TYP_FIXDATEFLD,
-    TYP_FIXTIMEFLD,
-    TYP_SETINPFLD,
-    TYP_USRINPFLD,
-    TYP_SETREFPAGEFLD,
-    TYP_GETREFPAGEFLD,
-    TYP_INTERNETFLD,
-    TYP_JUMPEDITFLD,
-    TYP_SCRIPTFLD,
-    TYP_AUTHORITY,              // 40
-    TYP_COMBINED_CHARS,
-    TYP_DROPDOWN,
-    TYP_END
+enum class SwFieldTypesEnum : sal_uInt16 {
+    Begin,
+    Date = Begin,    // 0
+    Time,
+    Filename,
+    DatabaseName,
+    Chapter,
+    PageNumber,
+    DocumentStatistics,
+    Author,
+    Set,
+    Get,
+    Formel,              // 10
+    HiddenText,
+    SetRef,
+    GetRef,
+    DDE,
+    Macro,
+    Input,
+    HiddenParagraph,
+    DocumentInfo,
+    Database,
+    User,                // 20
+    Postit,
+    TemplateName,
+    Sequence,
+    DatabaseNextSet,
+    DatabaseNumberSet,
+    DatabaseSetNumber,
+    ConditionalText,
+    NextPage,
+    PreviousPage,
+    ExtendedUser,             // 30
+    FixedDate,
+    FixedTime,
+    SetInput,
+    UserInput,
+    SetRefPage,
+    GetRefPage,
+    Internet,
+    JumpEdit,
+    Script,
+    Authority,              // 40
+    CombinedChars,
+    Dropdown,
+    Custom,     // Unused - necessary for alignment with aSwFields in fldmgr.cxx
+    ParagraphSignature,
+    LAST,
+    Unknown = USHRT_MAX // used by SwFieldMgr::GetCurTypeId
 };
-enum SwAttrFieldTYpe {
+enum SwAttrFieldType {
     ATTR_NONE,
     ATTR_DATEFLD,
     ATTR_TIMEFLD,
@@ -188,7 +201,6 @@ namespace nsSwGetSetExpType
 {
 const SwGetSetExpType GSE_STRING  = 0x0001; ///< String
 const SwGetSetExpType GSE_EXPR    = 0x0002; ///< Expression
-const SwGetSetExpType GSE_INP     = 0x0004; ///< InputField
 const SwGetSetExpType GSE_SEQ     = 0x0008; ///< Sequence
 const SwGetSetExpType GSE_FORMULA = 0x0010; ///< Formula
 }
@@ -219,13 +231,13 @@ enum SwDateTimeSubType {
 };
 
 /// General tools.
-OUString  FormatNumber(sal_uInt32 nNum, SvxNumType nFormat);
+OUString  FormatNumber(sal_uInt32 nNum, SvxNumType nFormat, LanguageType nLang = LANGUAGE_NONE);
 
 /** Instances of SwFields and those derived from it occur 0 to n times.
  For each class there is one instance of the associated type class.
  Base class of all field types is SwFieldType. */
 
-class SW_DLLPUBLIC SwFieldType : public SwModify
+class SW_DLLPUBLIC SwFieldType : public SwModify, public sw::BroadcasterMixin
 {
     css::uno::WeakReference<css::beans::XPropertySet> m_wXFieldMaster;
 
@@ -249,17 +261,25 @@ public:
         m_wXFieldMaster = xFieldMaster;
     }
 
-    static OUString    GetTypeStr( sal_uInt16 nTypeId );
+    static OUString    GetTypeStr( SwFieldTypesEnum nTypeId );
 
     /// Only in derived classes.
     virtual OUString        GetName() const;
-    virtual SwFieldType*    Copy()    const = 0;
-    virtual bool QueryValue( css::uno::Any& rVal, sal_uInt16 nWhich ) const;
-    virtual bool PutValue( const css::uno::Any& rVal, sal_uInt16 nWhich );
+    virtual std::unique_ptr<SwFieldType> Copy() const = 0;
+    virtual void QueryValue( css::uno::Any& rVal, sal_uInt16 nWhich ) const;
+    virtual void PutValue( const css::uno::Any& rVal, sal_uInt16 nWhich );
 
     SwFieldIds              Which() const { return m_nWhich; }
 
     inline  void            UpdateFields() const;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
+    SwFormatField* FindFormatForField(const SwField*) const;
+    SwFormatField* FindFormatForPostItId(sal_uInt32 nPostItId) const;
+    void CollectPostIts(std::vector<SwFormatField*>& rvFormatFields, IDocumentRedlineAccess const& rIDRA, bool HideRedlines);
+    bool HasHiddenInformationNotes();
+    void GatherNodeIndex(std::vector<sal_uLong>& rvNodeIndex);
+    void GatherRefFields(std::vector<SwGetRefField*>& rvRFields, const sal_uInt16 nTyp);
+    void GatherFields(std::vector<SwFormatField*>& rvFormatFields, bool bCollectOnlyInDocNodes=true) const;
 };
 
 inline void SwFieldType::UpdateFields() const
@@ -269,19 +289,19 @@ inline void SwFieldType::UpdateFields() const
 
 /** Base class of all fields.
  Type of field is queried via Which.
- Expanded content of field is queried via Expand(). */
+ Expanded content of field is queried via ExpandField(). */
 class SW_DLLPUBLIC SwField
 {
 private:
     mutable OUString    m_Cache;                ///< Cached expansion (for clipboard).
-    bool                m_bUseFieldValueCache;  /// control the usage of the cached field value
-    LanguageType        m_nLang;                ///< Always change via SetLanguage!
-    bool                m_bIsAutomaticLanguage;
-    sal_uInt32          m_nFormat;              /// this can be either SvxNumType or SwChapterFormat depending on the subtype
     SwFieldType*        m_pType;
+    sal_uInt32          m_nFormat;              /// this can be either SvxNumType or SwChapterFormat depending on the subtype
+    LanguageType        m_nLang;                ///< Always change via SetLanguage!
+    bool                m_bUseFieldValueCache;  /// control the usage of the cached field value
+    bool                m_bIsAutomaticLanguage;
 
-    virtual OUString    Expand() const = 0;
-    virtual SwField*    Copy() const = 0;
+    virtual OUString    ExpandImpl(SwRootFrame const* pLayout) const = 0;
+    virtual std::unique_ptr<SwField> Copy() const = 0;
 
 protected:
     void                SetFormat(sal_uInt32 const nSet) {
@@ -296,6 +316,11 @@ protected:
 public:
     virtual             ~SwField();
 
+    SwField(SwField const &) = default;
+    SwField(SwField &&) = default;
+    SwField & operator =(SwField const &) = default;
+    SwField & operator =(SwField &&) = default;
+
     inline SwFieldType* GetTyp() const;
 
     /// Set new type (used for copying among documents).
@@ -307,14 +332,16 @@ public:
                     this is because various fields need special handing
                     (ChangeExpansion()) to return correct values, and only
                     SwTextFormatter::NewFieldPortion() sets things up properly.
+        @param  pLayout     the layout to use for expansion; there are a few
+                            fields that expand differently via layout mode.
         @return     the generated text (suitable for display)
       */
-    OUString            ExpandField(bool const bCached) const;
+    OUString            ExpandField(bool bCached, SwRootFrame const* pLayout) const;
 
     /// @return name or content.
     virtual OUString    GetFieldName() const;
 
-    SwField *           CopyField() const;
+    std::unique_ptr<SwField> CopyField() const;
 
     /// ResId
     SwFieldIds          Which() const
@@ -327,7 +354,7 @@ public:
 #endif
 
     // TYP_ID
-    sal_uInt16      GetTypeId() const;
+    SwFieldTypesEnum    GetTypeId() const;
     virtual sal_uInt16      GetSubType() const;
     virtual void        SetSubType(sal_uInt16);
 
@@ -363,7 +390,7 @@ public:
     virtual OUString    GetDescription() const;
     /// Is this field clickable?
     bool IsClickable() const;
-    virtual void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 inline SwFieldType* SwField::GetTyp() const
@@ -439,6 +466,7 @@ public:
     }
 
     static sal_uInt32       GetSystemFormat(SvNumberFormatter* pFormatter, sal_uInt32 nFormat);
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 class SW_DLLPUBLIC SwFormulaField : public SwValueField
@@ -447,7 +475,7 @@ private:
     OUString m_sFormula;
 
 protected:
-    SwFormulaField( SwValueFieldType* pFieldType, sal_uInt32 nFormat, const double fVal = 0.0 );
+    SwFormulaField( SwValueFieldType* pFieldType, sal_uInt32 nFormat, const double fVal );
     SwFormulaField( const SwFormulaField& rField );
 
 public:

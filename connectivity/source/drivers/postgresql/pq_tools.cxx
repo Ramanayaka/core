@@ -39,8 +39,10 @@
 #include <o3tl/any.hxx>
 #include <rtl/strbuf.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
@@ -50,7 +52,6 @@
 #include <com/sun/star/sdbcx/KeyType.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
 
-#include "pq_xcontainer.hxx"
 #include "pq_tools.hxx"
 #include "pq_statics.hxx"
 
@@ -87,19 +88,15 @@ namespace pq_sdbc_driver
 
 OUString concatQualified( const OUString & a, const OUString &b)
 {
-    OUStringBuffer buf( a.getLength() + 2 + b.getLength() );
-    buf.append( a );
-    buf.append( "." );
-    buf.append( b );
-    return buf.makeStringAndClear();
+    return a + "." + b;
 }
 
-static inline OString iOUStringToOString( const OUString& str, ConnectionSettings *settings) {
+static OString iOUStringToOString( const OUString& str, ConnectionSettings const *settings) {
     OSL_ENSURE(settings, "pgsql-sdbc: OUStringToOString got NULL settings");
     return OUStringToOString( str, ConnectionSettings::encoding );
 }
 
-OString OUStringToOString( const OUString& str, ConnectionSettings *settings) {
+OString OUStringToOString( const OUString& str, ConnectionSettings const *settings) {
     return iOUStringToOString( str, settings );
 }
 
@@ -130,7 +127,7 @@ void bufferEscapeConstant( OUStringBuffer & buf, const OUString & value, Connect
     buf.append( OStringToOUString( strbuf.makeStringAndClear(), RTL_TEXTENCODING_UTF8 ) );
 }
 
-static inline void ibufferQuoteConstant( OUStringBuffer & buf, const OUString & value, ConnectionSettings *settings )
+static void ibufferQuoteConstant( OUStringBuffer & buf, const OUString & value, ConnectionSettings *settings )
 {
     buf.append( "'" );
     bufferEscapeConstant( buf, value, settings );
@@ -154,7 +151,7 @@ void bufferQuoteAnyConstant( OUStringBuffer & buf, const Any &val, ConnectionSet
         buf.append( "NULL" );
 }
 
-static inline void ibufferQuoteIdentifier( OUStringBuffer & buf, const OUString &toQuote, ConnectionSettings *settings )
+static void ibufferQuoteIdentifier( OUStringBuffer & buf, const OUString &toQuote, ConnectionSettings *settings )
 {
     OSL_ENSURE(settings, "pgsql-sdbc: bufferQuoteIdentifier got NULL settings");
 
@@ -403,7 +400,7 @@ static bool isOperator( char c )
     return ret;
 }
 
-void splitSQL( const OString & sql, OStringVector &vec )
+void splitSQL( const OString & sql, std::vector< OString > &vec )
 {
     int length = sql.getLength();
 
@@ -463,7 +460,7 @@ void splitSQL( const OString & sql, OStringVector &vec )
 
 }
 
-void tokenizeSQL( const OString & sql, OStringVector &vec  )
+void tokenizeSQL( const OString & sql, std::vector< OString > &vec  )
 {
     int length = sql.getLength();
 
@@ -549,7 +546,7 @@ void tokenizeSQL( const OString & sql, OStringVector &vec  )
 
 void splitConcatenatedIdentifier( const OUString & source, OUString *first, OUString *second)
 {
-    OStringVector vec;
+    std::vector< OString > vec;
     tokenizeSQL( OUStringToOString( source, RTL_TEXTENCODING_UTF8 ), vec );
     switch (vec.size())
     {
@@ -731,7 +728,7 @@ void fillAttnum2attnameMap(
     }
 }
 
-OString extractSingleTableFromSelect( const OStringVector &vec )
+OString extractSingleTableFromSelect( const std::vector< OString > &vec )
 {
     OString ret;
 
@@ -835,6 +832,13 @@ OString extractSingleTableFromSelect( const OStringVector &vec )
 
 }
 
+OUString getColExprForDefaultSettingVal(ConnectionSettings const *settings)
+{
+    return (PQserverVersion( settings->pConnection ) < 80000)?
+               OUString("pg_attrdef.adsrc"):
+               OUString("pg_get_expr(pg_attrdef.adbin, pg_attrdef.adrelid, true)");
+}
+
 css::uno::Sequence< sal_Int32 > string2intarray( const OUString & str )
 {
     css::uno::Sequence< sal_Int32 > ret;
@@ -843,21 +847,31 @@ css::uno::Sequence< sal_Int32 > string2intarray( const OUString & str )
     {
         sal_Int32 start = 0;
         sal_uInt32 c;
-        while ( iswspace( (c=str.iterateCodePoints(&start)) ) )
+        for (;;)
+        {
+            c = str.iterateCodePoints(&start);
+            if (!iswspace(c))
+                break;
             if ( start == strlen)
                 return ret;
+        }
         if ( c != L'{' )
             return ret;
-        while ( iswspace( c=str.iterateCodePoints(&start) ) )
+        for (;;)
+        {
+            c = str.iterateCodePoints(&start);
+            if ( !iswspace(c) )
+                break;
             if ( start == strlen)
                 return ret;
+        }
         if ( c == L'}' )
             return ret;
 
         std::vector< sal_Int32 > vec;
         do
         {
-            OUString digits;
+            OUStringBuffer digits;
             do
             {
                 if(!iswspace(c))
@@ -872,10 +886,10 @@ css::uno::Sequence< sal_Int32 > string2intarray( const OUString & str )
                     break;
                 if ( start == strlen)
                     return ret;
-                digits += OUString(&c, 1);
+                digits.append(OUString(&c, 1));
                 c = str.iterateCodePoints(&start);
             } while ( c );
-            vec.push_back( digits.toInt32() );
+            vec.push_back( digits.makeStringAndClear().toInt32() );
             do
             {
                 if(!iswspace(c))
@@ -893,7 +907,7 @@ css::uno::Sequence< sal_Int32 > string2intarray( const OUString & str )
         } while( true );
         // vec is guaranteed non-empty
         assert(vec.size() > 0);
-        ret = css::uno::Sequence< sal_Int32 > ( &vec[0] , vec.size() );
+        ret = css::uno::Sequence< sal_Int32 > ( vec.data() , vec.size() );
     }
     return ret;
 }
@@ -1022,110 +1036,105 @@ void bufferKey2TableConstraint(
     }
     buf.append( ") " );
 
-    if( foreign )
-    {
-        buf.append( "REFERENCES " );
-        OUString schema;
-        OUString tableName;
-        splitConcatenatedIdentifier( referencedTable, &schema, &tableName );
-        bufferQuoteQualifiedIdentifier(buf , schema, tableName, settings );
-        if(columns.is() )
-        {
-            Reference< XEnumerationAccess > colEnumAccess( columns->getColumns(), UNO_QUERY);
-            if( colEnumAccess.is() )
-            {
-                buf.append( " (" );
-                Reference< XEnumeration > colEnum(colEnumAccess->createEnumeration());
-                bool first = true;
-                while(colEnum.is() && colEnum->hasMoreElements() )
-                {
-                    if( first )
-                    {
-                        first = false;
-                    }
-                    else
-                    {
-                        buf.append( ", " );
-                    }
-                    Reference< XPropertySet > keyColumn( colEnum->nextElement(), UNO_QUERY_THROW );
-                    bufferQuoteIdentifier(
-                                          buf, extractStringProperty( keyColumn, st.RELATED_COLUMN ), settings );
-                }
-                buf.append( ") " );
-            }
-        }
+    if( !foreign )
+        return;
 
-        buf.append( "ON DELETE " );
-        keyType2String( buf, deleteRule );
-        buf.append( " ON UPDATE " );
-        keyType2String( buf, updateRule );
+    buf.append( "REFERENCES " );
+    OUString schema;
+    OUString tableName;
+    splitConcatenatedIdentifier( referencedTable, &schema, &tableName );
+    bufferQuoteQualifiedIdentifier(buf , schema, tableName, settings );
+    if(columns.is() )
+    {
+        Reference< XEnumerationAccess > colEnumAccess( columns->getColumns(), UNO_QUERY);
+        if( colEnumAccess.is() )
+        {
+            buf.append( " (" );
+            Reference< XEnumeration > colEnum(colEnumAccess->createEnumeration());
+            bool first = true;
+            while(colEnum.is() && colEnum->hasMoreElements() )
+            {
+                if( first )
+                {
+                    first = false;
+                }
+                else
+                {
+                    buf.append( ", " );
+                }
+                Reference< XPropertySet > keyColumn( colEnum->nextElement(), UNO_QUERY_THROW );
+                bufferQuoteIdentifier(
+                                      buf, extractStringProperty( keyColumn, st.RELATED_COLUMN ), settings );
+            }
+            buf.append( ") " );
+        }
     }
+
+    buf.append( "ON DELETE " );
+    keyType2String( buf, deleteRule );
+    buf.append( " ON UPDATE " );
+    keyType2String( buf, updateRule );
 
 }
 
 void extractNameValuePairsFromInsert( String2StringMap & map, const OString & lastQuery )
 {
-    OStringVector vec;
+    std::vector< OString > vec;
     tokenizeSQL( lastQuery, vec  );
 
     int nSize = vec.size();
 //     printf( "1 %d\n", nSize );
-    if( nSize > 6  &&
+    if( !(nSize > 6  &&
         vec[0].equalsIgnoreAsciiCase( "insert" ) &&
-        vec[1].equalsIgnoreAsciiCase( "into" ) )
-    {
-        int n = 2;
+        vec[1].equalsIgnoreAsciiCase( "into" )) )
+        return;
+
+    int n = 2;
 
 //         printf( "1a\n" );
-        // extract table name
-        OString tableName;
-        if( vec[n+1].equalsIgnoreAsciiCase( "." ) )
-        {
-            tableName = vec[n];
-            tableName += vec[n+1];
-            tableName += vec[n+2];
-            n +=2;
-        }
-        else
-        {
-            tableName = vec[n];
-        }
+    // skip table name
+    if( vec[n+1].equalsIgnoreAsciiCase( "." ) )
+    {
+        n +=2;
+    }
 
-        OStringVector names;
-        n ++;
-        if( vec[n].equalsIgnoreAsciiCase( "(" ) )
-        {
+    n ++;
+    if( !vec[n].equalsIgnoreAsciiCase( "(" ) )
+        return;
+
+    std::vector< OString> names;
 //             printf( "2\n" );
-            // extract names
-            n++;
-            while( nSize > n && ! vec[n].equalsIgnoreAsciiCase( ")" ) )
-            {
-                names.push_back( vec[n] );
-                if( nSize > n+1 && vec[n+1].equalsIgnoreAsciiCase( "," ) )
-                {
-                    n ++;
-                }
-                n++;
-            }
-            n++;
-
-            // now read the values
-            if( nSize > n +1 && vec[n].equalsIgnoreAsciiCase("VALUES") &&
-                vec[n+1].equalsIgnoreAsciiCase( "(" ) )
-            {
-                n +=2;
-//                 printf( "3\n" );
-                for ( OStringVector::size_type i = 0 ; i < names.size() && nSize > n ; i ++ )
-                {
-                    map[names[i]] = vec[n];
-                    if( nSize > n+1 && vec[n+1].equalsIgnoreAsciiCase(",") )
-                    {
-                        n ++;
-                    }
-                    n++;
-                }
-            }
+    // extract names
+    n++;
+    while( nSize > n && ! vec[n].equalsIgnoreAsciiCase( ")" ) )
+    {
+        names.push_back( vec[n] );
+        if( nSize > n+1 && vec[n+1].equalsIgnoreAsciiCase( "," ) )
+        {
+            n ++;
         }
+        n++;
+    }
+    n++;
+
+    // now read the values
+    if( !(nSize > n +1 && vec[n].equalsIgnoreAsciiCase("VALUES") &&
+        vec[n+1].equalsIgnoreAsciiCase( "(" )) )
+        return;
+
+    n +=2;
+//                 printf( "3\n" );
+    for (auto& name : names)
+    {
+        if (n >= nSize)
+            break;
+
+        map[name] = vec[n];
+        if( nSize > n+1 && vec[n+1].equalsIgnoreAsciiCase(",") )
+        {
+            n ++;
+        }
+        n++;
     }
 }
 
@@ -1223,7 +1232,7 @@ bool implSetObject( const Reference< XParameters >& _rxParameters,
                 _rxParameters->setBinaryStream(_nColumnIndex, xStream, xStream->available());
                 break;
             }
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         }
         default:
             bSuccessfullyReRouted = false;

@@ -21,30 +21,34 @@
 #define INCLUDED_SVX_SDRHITTESTHELPER_HXX
 
 #include <svx/svxdllapi.h>
-#include <tools/gen.hxx>
 
 
 // #i101872# new Object HitTest as View-tooling
 
+
+class Point;
 class SdrObject;
 class SdrPageView;
 class SdrLayerIDSet;
 class SdrObjList;
-namespace sdr { namespace contact { class ViewObjectContact; }}
+namespace sdr::contact { class ViewObjectContact; }
 namespace basegfx { class B2DPoint; }
+namespace drawinglayer::primitive2d { class Primitive2DContainer; }
 
 
 // Wrappers for classic Sdr* Mode/View classes
 
-SVX_DLLPUBLIC SdrObject* SdrObjectPrimitiveHit(
+SVXCORE_DLLPUBLIC SdrObject* SdrObjectPrimitiveHit(
     const SdrObject& rObject,
     const Point& rPnt,
     sal_uInt16 nTol,
     const SdrPageView& rSdrPageView,
     const SdrLayerIDSet* pVisiLayer,
-    bool bTextOnly);
+    bool bTextOnly,
+    /// allow getting back an evtl. resulting primitive stack which lead to a hit
+    drawinglayer::primitive2d::Primitive2DContainer* pHitContainer = nullptr);
 
-SVX_DLLPUBLIC SdrObject* SdrObjListPrimitiveHit(
+SVXCORE_DLLPUBLIC SdrObject* SdrObjListPrimitiveHit(
     const SdrObjList& rList,
     const Point& rPnt,
     sal_uInt16 nTol,
@@ -55,11 +59,13 @@ SVX_DLLPUBLIC SdrObject* SdrObjListPrimitiveHit(
 
 // the pure HitTest based on a VOC
 
-SVX_DLLPUBLIC bool ViewObjectContactPrimitiveHit(
+bool ViewObjectContactPrimitiveHit(
     const sdr::contact::ViewObjectContact& rVOC,
     const basegfx::B2DPoint& rHitPosition,
     double fLogicHitTolerance,
-    bool bTextOnly);
+    bool bTextOnly,
+    /// allow to get back the stack of primitives that lead to the hit
+    drawinglayer::primitive2d::Primitive2DContainer* pHitContainer);
 
 
 #endif // INCLUDED_SVX_SDRHITTESTHELPER_HXX

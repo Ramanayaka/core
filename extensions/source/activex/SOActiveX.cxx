@@ -19,44 +19,39 @@
 
 // SOActiveX.cpp : Implementation of CSOActiveX
 
-#pragma warning (push,1)
-#pragma warning (disable:4265)
-
 #include "StdAfx2.h"
 #include "SOActiveX.h"
 #include "SOComWindowPeer.h"
 #include "SODispatchInterceptor.h"
 #include "SOActionsApproval.h"
+#include "com_uno_helper.h"
 
 #if defined __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnon-virtual-dtor"
 #endif
-#include "so_activex.h"
+#include <so_activex.h>
 #if defined __clang__
 #pragma clang diagnostic pop
 #endif
 
-#pragma warning (pop)
-
-#define STAROFFICE_WINDOWCLASS "SOParentWindow"
+#define STAROFFICE_WINDOWCLASS L"SOParentWindow"
 
 
-void OutputError_Impl( HWND hw, HRESULT ErrorCode )
+static void OutputError_Impl( HWND hw, HRESULT ErrorCode )
 {
-    LPTSTR sMessage;
-    FormatMessageA(
-        FORMAT_MESSAGE_ALLOCATE_BUFFER |
-        FORMAT_MESSAGE_FROM_SYSTEM,
+    LPWSTR sMessage = nullptr;
+    FormatMessageW(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
         nullptr,
         ErrorCode,
         MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // Default language
-        reinterpret_cast<LPTSTR>(&sMessage),
+        reinterpret_cast<LPWSTR>(&sMessage),
         0,
         nullptr
     );
-    ::MessageBoxA( hw, sMessage, nullptr, MB_OK | MB_ICONINFORMATION );
-    LocalFree( sMessage );
+    MessageBoxW( hw, sMessage, nullptr, MB_OK | MB_ICONINFORMATION );
+    HeapFree( GetProcessHeap(), 0, sMessage );
 }
 
 HRESULT ExecuteFunc( IDispatch* idispUnoObject,
@@ -87,7 +82,7 @@ HRESULT ExecuteFunc( IDispatch* idispUnoObject,
     return hr;
 }
 
-HRESULT GetIDispByFunc( IDispatch* idispUnoObject,
+static HRESULT GetIDispByFunc( IDispatch* idispUnoObject,
                           OLECHAR const * sFuncName,
                           CComVariant* params,
                           unsigned int count,
@@ -108,7 +103,7 @@ HRESULT GetIDispByFunc( IDispatch* idispUnoObject,
     return S_OK;
 }
 
-HRESULT PutPropertiesToIDisp( IDispatch* pdispObject,
+static HRESULT PutPropertiesToIDisp( IDispatch* pdispObject,
                               OLECHAR const ** sMemberNames,
                               CComVariant* pVariant,
                               unsigned int count )
@@ -156,25 +151,25 @@ CSOActiveX::CSOActiveX()
 , mpDispatchInterceptor( nullptr )
 , mnVersion( SO_NOT_DETECTED )
 , mbReadyForActivation( FALSE )
-, mbDrawLocked( FALSE )
+, mbDrawLocked( false )
 {
-    CLSID clsFactory = {0x82154420,0x0FBF,0x11d4,{0x83, 0x13,0x00,0x50,0x04,0x52,0x6A,0xB4}};
+    CLSID const clsFactory = {0x82154420,0x0FBF,0x11d4,{0x83, 0x13,0x00,0x50,0x04,0x52,0x6A,0xB4}};
     HRESULT hr = CoCreateInstance( clsFactory, nullptr, CLSCTX_ALL, __uuidof(IDispatch), reinterpret_cast<void**>(&mpDispFactory));
     if( !SUCCEEDED( hr ) )
         OutputError_Impl( nullptr, hr );
 
     mPWinClass.style            = CS_HREDRAW|CS_VREDRAW;
-    mPWinClass.lpfnWndProc      = ::DefWindowProc;
+    mPWinClass.lpfnWndProc      = DefWindowProcW;
     mPWinClass.cbClsExtra       = 0;
     mPWinClass.cbWndExtra       = 0;
-    mPWinClass.hInstance        = GetModuleHandle(nullptr); //myInstance;
+    mPWinClass.hInstance        = GetModuleHandleW(nullptr); //myInstance;
     mPWinClass.hIcon            = nullptr;
     mPWinClass.hCursor          = nullptr;
     mPWinClass.hbrBackground    = reinterpret_cast<HBRUSH>(COLOR_BACKGROUND);
     mPWinClass.lpszMenuName     = nullptr;
     mPWinClass.lpszClassName    = STAROFFICE_WINDOWCLASS;
 
-    RegisterClass(&mPWinClass);
+    RegisterClassW(&mPWinClass);
 }
 
 CSOActiveX::~CSOActiveX()
@@ -193,7 +188,7 @@ HRESULT CSOActiveX::Cleanup()
         {
             // remove dispatch interceptor
             CComQIPtr< IDispatch, &IID_IDispatch > pIDispDispInter( mpDispatchInterceptor );
-                CComVariant aVariant( pIDispDispInter );
+            CComVariant aVariant( pIDispDispInter );
             ExecuteFunc( mpDispFrame,
                          L"releaseDispatchProviderInterceptor",
                          &aVariant,
@@ -217,7 +212,7 @@ HRESULT CSOActiveX::Cleanup()
 
     if( mpDispFrame )
     {
-        BOOL bCloserActivated = FALSE;
+        bool bCloserActivated = false;
 
         CComPtr<IDispatch> pDispDocumentCloser;
         CComVariant aDocCloser( L"com.sun.star.embed.DocumentCloser" );
@@ -294,14 +289,14 @@ HRESULT CSOActiveX::TerminateOffice()
     return hr;
 }
 
-STDMETHODIMP CSOActiveX::InitNew ()
+COM_DECLSPEC_NOTHROW STDMETHODIMP CSOActiveX::InitNew ()
 {
     mnVersion = GetVersionConnected();
     mbLoad = TRUE;
     return S_OK;
 }
 
-STDMETHODIMP CSOActiveX::Load ( LPSTREAM /*pStm*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP CSOActiveX::Load ( LPSTREAM /*pStm*/ )
 {
     mnVersion = GetVersionConnected();
     mbLoad = TRUE;
@@ -312,7 +307,7 @@ STDMETHODIMP CSOActiveX::Load ( LPSTREAM /*pStm*/ )
     return S_OK;
 }
 
-STDMETHODIMP CSOActiveX::Load( LPPROPERTYBAG pPropBag, LPERRORLOG /*pErrorLog*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP CSOActiveX::Load( LPPROPERTYBAG pPropBag, LPERRORLOG /*pErrorLog*/ )
 {
     mnVersion = GetVersionConnected();
 
@@ -359,18 +354,17 @@ STDMETHODIMP CSOActiveX::Load( LPPROPERTYBAG pPropBag, LPERRORLOG /*pErrorLog*/ 
         return hr;
     }
 
-    USES_CONVERSION;
     for( unsigned long ind = 0; ind < aNum; ind++ )
     {
         // all information from the 'object' tag is in strings
-        if( aVal[ind].vt == VT_BSTR && !strcmp( OLE2T( aPropNames[ind].pstrName ), "src" ) )
+        if (aVal[ind].vt == VT_BSTR && !wcscmp(aPropNames[ind].pstrName, L"src"))
         {
             mCurFileUrl = wcsdup( aVal[ind].bstrVal );
         }
         else if( aVal[ind].vt == VT_BSTR
-                && !strcmp( OLE2T( aPropNames[ind].pstrName ), "readonly" ) )
+                && !wcscmp(aPropNames[ind].pstrName, L"readonly"))
         {
-            if( !strcmp( OLE2T( aVal[ind].bstrVal ), "true" ) )
+            if (!wcscmp(aVal[ind].bstrVal, L"true"))
             {
                 // the default value
                 mbViewOnly = TRUE;
@@ -390,9 +384,16 @@ STDMETHODIMP CSOActiveX::Load( LPPROPERTYBAG pPropBag, LPERRORLOG /*pErrorLog*/ 
         return hr;
 
     mbReadyForActivation = FALSE;
-    hr = CBindStatusCallback<CSOActiveX>::Download( this, &CSOActiveX::CallbackCreateXInputStream, const_cast<OLECHAR *>(mCurFileUrl), m_spClientSite, FALSE );
-    if ( hr == MK_S_ASYNCHRONOUS )
-        hr = S_OK;
+    if (BSTR bStrUrl = SysAllocString(mCurFileUrl))
+    {
+        hr = CBindStatusCallback<CSOActiveX>::Download(
+            this, &CSOActiveX::CallbackCreateXInputStream, bStrUrl, m_spClientSite, FALSE);
+        SysFreeString(bStrUrl);
+        if (hr == MK_S_ASYNCHRONOUS)
+            hr = S_OK;
+    }
+    else
+        hr = E_OUTOFMEMORY;
 
     if ( !SUCCEEDED( hr ) )
     {
@@ -457,7 +458,7 @@ HRESULT CSOActiveX::SetLayoutManagerProps()
     if( pVarLayoutMgr.vt != VT_DISPATCH || pVarLayoutMgr.pdispVal == nullptr )
         return E_FAIL;
 
-      CComPtr<IDispatch> pdispLM( pVarLayoutMgr.pdispVal );
+    CComPtr<IDispatch> pdispLM( pVarLayoutMgr.pdispVal );
 
 
     if( !SUCCEEDED( hr ) || !pdispLM )
@@ -567,7 +568,7 @@ HRESULT CSOActiveX::CreateFrameOldWay( HWND hwnd, int width, int height )
     if( !SUCCEEDED( hr ) ) return hr;
 
     // initialize window
-    CComVariant aTransparent( (long)0xFFFFFFFF );
+    CComVariant aTransparent( long(0xFFFFFFFF) );
     hr = ExecuteFunc( mpDispWin, L"setBackground", &aTransparent, 1, &dummyResult );
     if( !SUCCEEDED( hr ) ) return hr;
 
@@ -598,7 +599,7 @@ HRESULT CSOActiveX::CreateFrameOldWay( HWND hwnd, int width, int height )
 
         // the second sequence element
         nInitInd = 1;
-        CComVariant pStrArr( 1L );
+        CComVariant pStrArr( 1 );
         SafeArrayPutElement( pInitVals, &nInitInd, &pStrArr );
 
         // the third sequence element
@@ -628,7 +629,7 @@ HRESULT CSOActiveX::CreateFrameOldWay( HWND hwnd, int width, int height )
     return S_OK;
 }
 
-HRESULT CSOActiveX::CallLoadComponentFromURL1PBool( OLECHAR* sUrl, OLECHAR* sArgName, BOOL sArgVal )
+HRESULT CSOActiveX::CallLoadComponentFromURL1PBool( OLECHAR const * sUrl, OLECHAR const * sArgName, BOOL sArgVal )
 {
     SAFEARRAY FAR* pPropVals = SafeArrayCreateVector( VT_DISPATCH, 0, 1 );
     long ix = 0;
@@ -672,7 +673,7 @@ HRESULT CSOActiveX::CallDispatchMethod( OLECHAR const * sUrl,
     CComVariant aArgs[3];
     aArgs[2] = CComVariant( pdispURL );
     aArgs[1] = CComVariant( L"" );
-    aArgs[0] = CComVariant( (int)0 );
+    aArgs[0] = CComVariant( int(0) );
     hr = GetIDispByFunc( mpDispFrame,
                          L"queryDispatch",
                          aArgs,
@@ -681,7 +682,7 @@ HRESULT CSOActiveX::CallDispatchMethod( OLECHAR const * sUrl,
     if( !SUCCEEDED( hr ) ) return hr;
 
     SAFEARRAY FAR* pPropVals = SafeArrayCreateVector( VT_DISPATCH, 0, count );
-    for( long ix = 0; ix < (long)count; ix ++ )
+    for( long ix = 0; ix < static_cast<long>(count); ix ++ )
     {
         CComPtr<IDispatch> pdispPropVal;
         hr = GetUnoStruct( L"com.sun.star.beans.PropertyValue", pdispPropVal );
@@ -714,14 +715,14 @@ void CSOActiveX::CallbackCreateXInputStream( CBindStatusCallback<CSOActiveX>* /*
     if ( mbReadyForActivation )
         return;
 
-    BOOL bSuccess = FALSE;
-    BOOL bFinishDownload = FALSE;
+    bool bSuccess = false;
+    bool bFinishDownload = false;
     if ( !pBytes )
     {
         // means the download is finished, dwSize contains hresult
-        bFinishDownload = TRUE;
+        bFinishDownload = true;
         if ( SUCCEEDED( dwSize ) )
-            bSuccess = TRUE;
+            bSuccess = true;
     }
     else
     {
@@ -756,7 +757,7 @@ void CSOActiveX::CallbackCreateXInputStream( CBindStatusCallback<CSOActiveX>* /*
                         CComVariant dummyResult;
                         hr = ExecuteFunc( mpDispTempFile, L"writeBytes", aArgs, 1, &dummyResult );
                         if( SUCCEEDED( hr ) )
-                            bSuccess = TRUE;
+                            bSuccess = true;
                     }
                 }
             }
@@ -766,7 +767,7 @@ void CSOActiveX::CallbackCreateXInputStream( CBindStatusCallback<CSOActiveX>* /*
     if ( !bSuccess )
     {
         // the download failed, let StarOffice download
-        bFinishDownload = TRUE;
+        bFinishDownload = true;
         mpDispTempFile = CComPtr< IDispatch >();
     }
 
@@ -807,7 +808,7 @@ HRESULT CSOActiveX::LoadURLToFrame( )
     // does not work for some documents, but it is no error
     // if( !SUCCEEDED( hr ) ) return hr;
 
-    // try to get the model and set the presetation specific property, the setting will fail for other document formats
+    // try to get the model and set the presentation specific property, the setting will fail for other document formats
     CComPtr<IDispatch> pdispController;
     hr = GetIDispByFunc( mpDispFrame, L"getController", nullptr, 0, pdispController );
     if ( SUCCEEDED( hr ) && pdispController )
@@ -844,7 +845,7 @@ HRESULT CSOActiveX::LoadURLToFrame( )
     CComQIPtr< IDispatch, &IID_IDispatch > pIDispDispInter( mpDispatchInterceptor );
 
     // register dispatch interceptor in the frame
-        CComVariant aDispVariant( pIDispDispInter );
+    CComVariant aDispVariant( pIDispDispInter );
     CComVariant dummyResult;
     hr = ExecuteFunc( mpDispFrame,
                       L"registerDispatchProviderInterceptor",
@@ -917,23 +918,22 @@ SOVersion CSOActiveX::GetVersionConnected()
 
                         if( SUCCEEDED( hr ) && aOfficeVersion.vt == VT_BSTR )
                         {
-                            USES_CONVERSION;
-                            if( !strcmp( OLE2T( aOfficeName.bstrVal ), "StarOffice" ) )
+                            if (!wcscmp(aOfficeName.bstrVal, L"StarOffice"))
                             {
-                                if( !strncmp( OLE2T( aOfficeVersion.bstrVal ), "6.1", 3 ) )
+                                if (!wcsncmp(aOfficeVersion.bstrVal, L"6.1", 3))
                                     bResult = SO_61;
-                                else if( !strncmp( OLE2T( aOfficeVersion.bstrVal ), "6.0", 3 ) )
+                                else if (!wcsncmp(aOfficeVersion.bstrVal, L"6.0", 3))
                                     bResult = SO_60;
-                                else if( !strncmp( OLE2T( aOfficeVersion.bstrVal ), "5.2", 3 ) )
+                                else if (!wcsncmp(aOfficeVersion.bstrVal, L"5.2", 3))
                                     bResult = SO_52;
                                 else
                                     bResult = SO_UNKNOWN;
                             }
                             else // OpenOffice
                             {
-                                if( !strncmp( OLE2T( aOfficeVersion.bstrVal ), "1.1", 3 ) )
+                                if (!wcsncmp(aOfficeVersion.bstrVal, L"1.1", 3))
                                     bResult = OO_11;
-                                else if( !strncmp( OLE2T( aOfficeVersion.bstrVal ), "1.0", 3 ) )
+                                else if (!wcsncmp(aOfficeVersion.bstrVal, L"1.0", 3))
                                     bResult = OO_10;
                                 else
                                     bResult = OO_UNKNOWN;
@@ -948,21 +948,25 @@ SOVersion CSOActiveX::GetVersionConnected()
     return bResult;
 }
 
+namespace {
+
 class LockingGuard
 {
-    BOOL& mbLocked;
+    bool& mbLocked;
 public:
-    explicit LockingGuard( BOOL& bLocked )
+    explicit LockingGuard( bool& bLocked )
     : mbLocked( bLocked )
     {
-        mbLocked = TRUE;
+        mbLocked = true;
     }
 
     ~LockingGuard()
     {
-        mbLocked = FALSE;
+        mbLocked = false;
     }
 };
+
+}
 
 HRESULT CSOActiveX::OnDrawAdvanced( ATL_DRAWINFO& di )
 {
@@ -986,15 +990,14 @@ HRESULT CSOActiveX::OnDrawAdvanced( ATL_DRAWINFO& di )
                 CComVariant dummyResult;
                 CComVariant aPropVar;
                 aPropVar.vt = VT_BOOL; aPropVar.boolVal = VARIANT_FALSE;
-                HRESULT hres = ExecuteFunc( mpDispFrame, L"close", &aPropVar, 1, &dummyResult );
-                (void)hres;
+                (void) ExecuteFunc( mpDispFrame, L"close", &aPropVar, 1, &dummyResult );
                 mpDispFrame = CComPtr<IDispatch>();
             }
 
             mParentWin = hwnd;
-            mOffWin = CreateWindow(
+            mOffWin = CreateWindowW(
                                 STAROFFICE_WINDOWCLASS,
-                                "OfficeContainer",
+                                L"OfficeContainer",
                                 WS_CHILD | WS_CLIPCHILDREN | WS_BORDER,
                                 di.prcBounds->left,
                                 di.prcBounds->top,
@@ -1036,7 +1039,7 @@ HRESULT CSOActiveX::OnDrawAdvanced( ATL_DRAWINFO& di )
             }
         }
 
-        if( !mnVersion )
+        if (mnVersion == SO_NOT_DETECTED)
         {
             OutputError_Impl( mOffWin, CS_E_INVALID_VERSION );
             return E_FAIL;
@@ -1091,7 +1094,7 @@ HRESULT CSOActiveX::OnDraw( ATL_DRAWINFO& di )
     return S_OK;
 }
 
-STDMETHODIMP CSOActiveX::SetClientSite( IOleClientSite* aClientSite )
+COM_DECLSPEC_NOTHROW STDMETHODIMP CSOActiveX::SetClientSite( IOleClientSite* aClientSite )
 {
     HRESULT hr = IOleObjectImpl<CSOActiveX>::SetClientSite( aClientSite );
 
@@ -1126,7 +1129,7 @@ STDMETHODIMP CSOActiveX::SetClientSite( IOleClientSite* aClientSite )
     return hr;
 }
 
-STDMETHODIMP CSOActiveX::Invoke(DISPID dispidMember,
+COM_DECLSPEC_NOTHROW STDMETHODIMP CSOActiveX::Invoke(DISPID dispidMember,
                                 REFIID riid,
                                 LCID lcid,
                                 WORD wFlags,

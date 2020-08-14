@@ -17,21 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_XMLSCRIPT_SOURCE_XMLDLG_IMEXP_IMP_SHARE_HXX
-#define INCLUDED_XMLSCRIPT_SOURCE_XMLDLG_IMEXP_IMP_SHARE_HXX
+#pragma once
 
-#include "common.hxx"
-#include "misc.hxx"
 #include <xmlscript/xmldlg_imexp.hxx>
-#include <xmlscript/xmllib_imexp.hxx>
-#include <xmlscript/xmlmod_imexp.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/util/MalformedNumberFormatException.hpp>
 #include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 #include <com/sun/star/awt/XControlModel.hpp>
 #include <com/sun/star/awt/FontDescriptor.hpp>
@@ -131,7 +124,7 @@ public:
     sal_Int32 XMLNS_DIALOGS_UID, XMLNS_SCRIPT_UID;
 
     bool isEventElement(
-        sal_Int32 nUid, OUString const & rLocalName )
+        sal_Int32 nUid, OUString const & rLocalName ) const
     {
         return ((XMLNS_SCRIPT_UID == nUid && (rLocalName == "event" || rLocalName == "listener-event" )) ||
                 (XMLNS_DIALOGS_UID == nUid && rLocalName == "event" ));
@@ -144,7 +137,7 @@ public:
         OUString const & rStyleId ) const;
 
     css::uno::Reference< css::uno::XComponentContext >
-    const & getComponentContext()  { return _xContext; }
+    const & getComponentContext() const { return _xContext; }
     css::uno::Reference< css::util::XNumberFormatsSupplier >
     const & getNumberFormatsSupplier();
 
@@ -152,8 +145,8 @@ public:
         css::uno::Reference<css::uno::XComponentContext> const & xContext,
         css::uno::Reference<css::container::XNameContainer>
         const & xDialogModel,
-        std::shared_ptr< std::vector< OUString > >& pStyleNames,
-        std::shared_ptr< std::vector< css::uno::Reference< css::xml::input::XElement > > >& pStyles,
+        std::shared_ptr< std::vector< OUString > > const & pStyleNames,
+        std::shared_ptr< std::vector< css::uno::Reference< css::xml::input::XElement > > > const & pStyles,
         css::uno::Reference<css::frame::XModel> const & xDoc )
         : _xContext( xContext )
         , _pStyleNames( pStyleNames )
@@ -163,8 +156,7 @@ public:
         , _xDialogModelFactory( xDialogModel, css::uno::UNO_QUERY_THROW )
         , XMLNS_DIALOGS_UID( 0 )
         , XMLNS_SCRIPT_UID( 0 )
-        { OSL_ASSERT( _xDialogModel.is() && _xDialogModelFactory.is() &&
-                      _xContext.is() ); }
+        { OSL_ASSERT( _xDialogModel.is() && _xContext.is() ); }
     DialogImport( const DialogImport& rOther ) :
         ::cppu::WeakImplHelper< css::xml::input::XRoot >()
         , _xContext( rOther._xContext )
@@ -179,7 +171,7 @@ public:
 
     virtual ~DialogImport() override;
 
-    const css::uno::Reference< css::frame::XModel >& getDocOwner() { return _xDoc; }
+    const css::uno::Reference< css::frame::XModel >& getDocOwner() const { return _xDoc; }
 
     // XRoot
     virtual void SAL_CALL startDocument(
@@ -269,7 +261,7 @@ class StyleElement
     short _inited, _hasValue;
 
     void setFontProperties(
-        css::uno::Reference< css::beans::XPropertySet > const & xProps );
+        css::uno::Reference< css::beans::XPropertySet > const & xProps ) const;
 
 public:
     virtual css::uno::Reference< css::xml::input::XElement >
@@ -421,7 +413,7 @@ public:
     bool importVerticalAlignProperty(
         OUString const & rPropName, OUString const & rAttrName,
         css::uno::Reference<css::xml::input::XAttributes> const & xAttributes );
-    bool importImageURLProperty( OUString const & rPropName, OUString const & rAttrName,
+    bool importGraphicOrImageProperty(OUString const & rAttrName,
         css::uno::Reference< css::xml::input::XAttributes > const & xAttributes );
     bool importImageAlignProperty(
         OUString const & rPropName, OUString const & rAttrName,
@@ -457,7 +449,7 @@ public:
         OUString const & rPropName,
         css::uno::Reference<css::xml::input::XAttributes> const & xAttributes );
     bool importImageScaleModeProperty(
-        ::rtl::OUString const & rPropName, ::rtl::OUString const & rAttrName,
+        OUString const & rPropName, OUString const & rAttrName,
         css::uno::Reference<css::xml::input::XAttributes> const & xAttributes );
 };
 
@@ -1029,8 +1021,25 @@ public:
         {}
 };
 
+//==============================================================================
+class GridControlElement
+    : public ControlElement
+{
+public:
+    virtual css::uno::Reference< css::xml::input::XElement >
+    SAL_CALL startChildElement(
+        sal_Int32 nUid,::rtl::OUString const & rLocalName,
+        css::uno::Reference<css::xml::input::XAttributes> const & xAttributes ) override;
+    virtual void SAL_CALL endElement() override;
+
+    GridControlElement(OUString const & rLocalName,
+        css::uno::Reference< css::xml::input::XAttributes > const & xAttributes,
+        ElementBase * pParent, DialogImport * pImport )
+        : ControlElement( rLocalName, xAttributes, pParent, pImport )
+        {}
+};
+
 }
 
-#endif // INCLUDED_XMLSCRIPT_SOURCE_XMLDLG_IMEXP_IMP_SHARE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

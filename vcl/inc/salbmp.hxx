@@ -21,9 +21,10 @@
 #define INCLUDED_VCL_INC_SALBMP_HXX
 
 #include <tools/gen.hxx>
+#include <tools/solar.h>
 #include <vcl/checksum.hxx>
-#include <vcl/salbtype.hxx>
-
+#include <vcl/BitmapAccessMode.hxx>
+#include <vcl/BitmapBuffer.hxx>
 #include <com/sun/star/rendering/XBitmapCanvas.hpp>
 
 struct BitmapBuffer;
@@ -33,11 +34,15 @@ class BitmapPalette;
 struct BitmapSystemData;
 enum class BmpScaleFlag;
 
+extern const sal_uLong nVCLRLut[ 6 ];
+extern const sal_uLong nVCLGLut[ 6 ];
+extern const sal_uLong nVCLBLut[ 6 ];
+extern const sal_uLong nVCLDitherLut[ 256 ];
+extern const sal_uLong nVCLLut[ 256 ];
+
 class VCL_PLUGIN_PUBLIC SalBitmap
 {
 public:
-
-    typedef BitmapChecksum  ChecksumType;
 
     SalBitmap()
         : mnChecksum(0)
@@ -68,14 +73,25 @@ public:
 
     virtual bool            ScalingSupported() const = 0;
     virtual bool            Scale( const double& rScaleX, const double& rScaleY, BmpScaleFlag nScaleFlag ) = 0;
-    virtual bool            Replace( const Color& rSearchColor, const Color& rReplaceColor, sal_uLong nTol ) = 0;
+    void                    DropScaledCache();
+
+    virtual bool            Replace( const Color& rSearchColor, const Color& rReplaceColor, sal_uInt8 nTol ) = 0;
 
     virtual bool            ConvertToGreyscale()
     {
         return false;
     }
+    virtual bool            InterpretAs8Bit()
+    {
+        return false;
+    }
 
-    void GetChecksum(ChecksumType& rChecksum) const
+    virtual bool            Erase( const Color& /*color*/ )
+    {
+        return false;
+    }
+
+    void GetChecksum(BitmapChecksum& rChecksum) const
     {
         updateChecksum();
         if (!mbChecksumValid)
@@ -90,33 +106,23 @@ public:
     }
 
 protected:
-    ChecksumType mnChecksum;
-    bool         mbChecksumValid;
+    BitmapChecksum mnChecksum;
+    bool           mbChecksumValid;
 
 protected:
-    virtual void updateChecksum() const
+    virtual void updateChecksum() const;
+    // helper function to convert data in 1,2,4 bpp formats to a 8/24/32bpp format
+    enum class BitConvert
     {
-        if (mbChecksumValid)
-            return;
-
-        ChecksumType nCrc = 0;
-        SalBitmap* pThis = const_cast<SalBitmap*>(this);
-        BitmapBuffer* pBuf = pThis->AcquireBuffer(BitmapAccessMode::Read);
-        if (pBuf)
-        {
-            nCrc = pBuf->maPalette.GetChecksum();
-            nCrc = vcl_get_checksum(nCrc, pBuf->mpBits, pBuf->mnScanlineSize * pBuf->mnHeight);
-            pThis->ReleaseBuffer(pBuf, BitmapAccessMode::Read);
-            pThis->mnChecksum = nCrc;
-            pThis->mbChecksumValid = true;
-        }
-        else
-        {
-            pThis->mbChecksumValid = false;
-        }
-    }
-
-
+        A8,
+        RGB,
+        BGR,
+        RGBA,
+        BGRA
+    };
+    static std::unique_ptr< sal_uInt8[] > convertDataBitCount( const sal_uInt8* src,
+        int width, int height, int bitCount, int bytesPerRow, const BitmapPalette& palette,
+        BitConvert type );
 };
 
 #endif

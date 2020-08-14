@@ -25,14 +25,16 @@
 #include <svl/poolitem.hxx>
 #include <svx/svxdllapi.h>
 #include <vcl/vclptr.hxx>
+#include <memory>
 
 class PopupMenu;
 class SfxModule;
 class ToolBox;
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxClipBoardControl : public SfxToolBoxControl
+class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxClipBoardControl final : public SfxToolBoxControl
 {
-    SfxPoolItem*            pClipboardFmtItem;
+    std::unique_ptr<SfxPoolItem>
+                            pClipboardFmtItem;
     VclPtr<PopupMenu>       pPopup;
     bool                    bDisabled;
 
@@ -44,7 +46,7 @@ public:
     SvxClipBoardControl( sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx );
     virtual ~SvxClipBoardControl() override;
 
-    virtual VclPtr<SfxPopupWindow> CreatePopupWindow() override;
+    void CreatePopupWindow() override;
     virtual void                StateChanged( sal_uInt16 nSID,
                                               SfxItemState eState,
                                               const SfxPoolItem* pState ) override;

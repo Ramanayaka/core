@@ -22,38 +22,35 @@
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
+#include <com/sun/star/container/ElementExistException.hpp>
+#include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
+#include <rtl/character.hxx>
 #include <vcl/svapp.hxx>
 #include <svtools/unoevent.hxx>
-#include <svl/urihelper.hxx>
 #include <sfx2/event.hxx>
-#include <swtypes.hxx>
 #include <glosdoc.hxx>
 #include <shellio.hxx>
 #include <initui.hxx>
 #include <gloslst.hxx>
 #include <unoatxt.hxx>
 #include <unomap.hxx>
-#include <unomid.h>
 #include <unotextbodyhf.hxx>
 #include <unotextrange.hxx>
 #include <TextCursorHelper.hxx>
-#include <swevent.hxx>
 #include <doc.hxx>
-#include <unocrsr.hxx>
-#include <IMark.hxx>
 #include <IDocumentContentOperations.hxx>
 #include <IDocumentRedlineAccess.hxx>
 #include <IDocumentFieldsAccess.hxx>
 #include <IDocumentState.hxx>
-#include <unoprnms.hxx>
 #include <docsh.hxx>
-#include <swmodule.hxx>
 #include <swdll.hxx>
 #include <svl/hint.hxx>
+#include <tools/urlobj.hxx>
 #include <svl/macitem.hxx>
 #include <editeng/acorrcfg.hxx>
 #include <comphelper/servicehelper.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <memory>
@@ -73,7 +70,7 @@ SwXAutoTextContainer::~SwXAutoTextContainer()
 
 sal_Int32 SwXAutoTextContainer::getCount()
 {
-    OSL_ENSURE(pGlossaries->GetGroupCnt() < static_cast<size_t>(SAL_MAX_INT32),
+    OSL_ENSURE(pGlossaries->GetGroupCnt() < o3tl::make_unsigned(SAL_MAX_INT32),
                "SwXAutoTextContainer::getCount: too many items");
     return static_cast<sal_Int32>(pGlossaries->GetGroupCnt());
 }
@@ -82,7 +79,7 @@ uno::Any SwXAutoTextContainer::getByIndex(sal_Int32 nIndex)
 {
     SolarMutexGuard aGuard;
     const size_t nCount = pGlossaries->GetGroupCnt();
-    if ( nIndex < 0 || static_cast<size_t>(nIndex) >= nCount )
+    if ( nIndex < 0 || o3tl::make_unsigned(nIndex) >= nCount )
         throw lang::IndexOutOfBoundsException();
     return getByName(pGlossaries->GetGroupName( static_cast<size_t>(nIndex) ));
 }
@@ -118,7 +115,7 @@ uno::Sequence< OUString > SwXAutoTextContainer::getElementNames()
 {
     SolarMutexGuard aGuard;
     const size_t nCount = pGlossaries->GetGroupCnt();
-    OSL_ENSURE(nCount < static_cast<size_t>(SAL_MAX_INT32),
+    OSL_ENSURE(nCount < o3tl::make_unsigned(SAL_MAX_INT32),
                "SwXAutoTextContainer::getElementNames: too many groups");
 
     uno::Sequence< OUString > aGroupNames(static_cast<sal_Int32>(nCount));
@@ -127,8 +124,7 @@ uno::Sequence< OUString > SwXAutoTextContainer::getElementNames()
     for ( size_t i = 0; i < nCount; ++i )
     {
         // The names will be passed without a path extension.
-        OUString sGroupName(pGlossaries->GetGroupName(i));
-        pArr[i] = sGroupName.getToken(0, GLOS_DELIM);
+        pArr[i] = pGlossaries->GetGroupName(i).getToken(0, GLOS_DELIM);
     }
     return aGroupNames;
 }
@@ -172,7 +168,7 @@ uno::Reference< text::XAutoTextGroup >  SwXAutoTextContainer::insertNewByName(
     OUString sGroup(aGroupName);
     if (sGroup.indexOf(GLOS_DELIM)<0)
     {
-        sGroup += OUStringLiteral1(GLOS_DELIM) + "0";
+        sGroup += OUStringChar(GLOS_DELIM) + "0";
     }
     pGlossaries->NewGroupDoc(sGroup, sGroup.getToken(0, GLOS_DELIM));
 
@@ -195,7 +191,7 @@ void SwXAutoTextContainer::removeByName(const OUString& aGroupName)
 
 OUString SwXAutoTextContainer::getImplementationName()
 {
-    return OUString("SwXAutoTextContainer" );
+    return "SwXAutoTextContainer";
 }
 
 sal_Bool SwXAutoTextContainer::supportsService(const OUString& rServiceName)
@@ -205,9 +201,7 @@ sal_Bool SwXAutoTextContainer::supportsService(const OUString& rServiceName)
 
 uno::Sequence< OUString > SwXAutoTextContainer::getSupportedServiceNames()
 {
-    OUString sService("com.sun.star.text.AutoTextContainer");
-    const uno::Sequence< OUString > aSeq( &sService, 1 );
-    return aSeq;
+    return { "com.sun.star.text.AutoTextContainer" };
 }
 
 namespace
@@ -222,11 +216,9 @@ const uno::Sequence< sal_Int8 > & SwXAutoTextGroup::getUnoTunnelId()
 
 sal_Int64 SAL_CALL SwXAutoTextGroup::getSomething( const uno::Sequence< sal_Int8 >& rId )
 {
-    if( rId.getLength() == 16
-        && 0 == memcmp( getUnoTunnelId().getConstArray(),
-                                        rId.getConstArray(), 16 ) )
+    if( isUnoTunnelId<SwXAutoTextGroup>(rId) )
     {
-            return sal::static_int_cast< sal_Int64 >( reinterpret_cast< sal_IntPtr >( this ));
+        return sal::static_int_cast< sal_Int64 >( reinterpret_cast< sal_IntPtr >( this ));
     }
     return 0;
 }
@@ -270,27 +262,25 @@ void SwXAutoTextGroup::renameByName(const OUString& aElementName,
     if(aNewElementName != aElementName && hasByName(aNewElementName))
         throw container::ElementExistException();
     std::unique_ptr<SwTextBlocks> pGlosGroup(pGlossaries ? pGlossaries->GetGroupDoc(m_sGroupName) : nullptr);
-    if(pGlosGroup && !pGlosGroup->GetError())
-    {
-        sal_uInt16 nIdx = pGlosGroup->GetIndex( aElementName);
-        if(USHRT_MAX == nIdx)
-            throw lang::IllegalArgumentException();
-        OUString aNewShort(aNewElementName);
-        OUString aNewName(aNewElementTitle);
-        sal_uInt16 nOldLongIdx = pGlosGroup->GetLongIndex( aNewShort );
-        sal_uInt16 nOldIdx = pGlosGroup->GetIndex( aNewName );
-
-        if( nIdx != USHRT_MAX &&
-                (nOldLongIdx == USHRT_MAX || nOldLongIdx == nIdx )&&
-                    (nOldIdx == USHRT_MAX || nOldIdx == nIdx ))
-        {
-            pGlosGroup->Rename( nIdx, &aNewShort, &aNewName );
-            if(pGlosGroup->GetError() != ERRCODE_NONE)
-                throw io::IOException();
-        }
-    }
-    else
+    if(!pGlosGroup || pGlosGroup->GetError())
         throw uno::RuntimeException();
+
+    const sal_uInt16 nIdx = pGlosGroup->GetIndex( aElementName);
+    if(USHRT_MAX == nIdx)
+        throw lang::IllegalArgumentException();
+    OUString aNewShort(aNewElementName);
+    OUString aNewName(aNewElementTitle);
+    sal_uInt16 nOldLongIdx = pGlosGroup->GetLongIndex( aNewShort );
+    sal_uInt16 nOldIdx = pGlosGroup->GetIndex( aNewName );
+
+    if ((nOldLongIdx == USHRT_MAX || nOldLongIdx == nIdx)
+        && (nOldIdx == USHRT_MAX || nOldIdx == nIdx))
+    {
+        pGlosGroup->Rename( nIdx, &aNewShort, &aNewName );
+        if(pGlosGroup->GetError() != ERRCODE_NONE)
+            throw io::IOException();
+    }
+
 }
 
 static bool lcl_CopySelToDoc( SwDoc* pInsDoc, OTextCursorHelper* pxCursor, SwXTextRange* pxRange)
@@ -301,12 +291,12 @@ static bool lcl_CopySelToDoc( SwDoc* pInsDoc, OTextCursorHelper* pxCursor, SwXTe
 
     SwNodeIndex aIdx( rNds.GetEndOfContent(), -1 );
     SwContentNode * pNd = aIdx.GetNode().GetContentNode();
-    SwPosition aPos(aIdx, SwIndex(pNd, (pNd) ? pNd->Len() : 0));
+    SwPosition aPos(aIdx, SwIndex(pNd, pNd ? pNd->Len() : 0));
 
     bool bRet = false;
     pInsDoc->getIDocumentFieldsAccess().LockExpFields();
     {
-        SwDoc *const pDoc((pxCursor) ? pxCursor->GetDoc() : &pxRange->GetDoc());
+        SwDoc *const pDoc(pxCursor ? pxCursor->GetDoc() : &pxRange->GetDoc());
         SwPaM aPam(pDoc->GetNodes());
         SwPaM * pPam(nullptr);
         if(pxCursor)
@@ -321,7 +311,8 @@ static bool lcl_CopySelToDoc( SwDoc* pInsDoc, OTextCursorHelper* pxCursor, SwXTe
             }
         }
         if (!pPam) { return false; }
-        bRet = pDoc->getIDocumentContentOperations().CopyRange( *pPam, aPos, /*bCopyAll=*/false, /*bCheckPos=*/true ) || bRet;
+        bRet = pDoc->getIDocumentContentOperations().CopyRange(*pPam, aPos, SwCopyFlags::CheckPosInFly)
+            || bRet;
     }
 
     pInsDoc->getIDocumentFieldsAccess().UnlockExpFields();
@@ -340,7 +331,9 @@ uno::Reference< text::XAutoTextEntry >  SwXAutoTextGroup::insertNewByName(const 
     if(!xTextRange.is())
         throw uno::RuntimeException();
 
-    SwTextBlocks* pGlosGroup = pGlossaries ? pGlossaries->GetGroupDoc(m_sGroupName) : nullptr;
+    std::unique_ptr<SwTextBlocks> pGlosGroup;
+    if (pGlossaries)
+        pGlosGroup = pGlossaries->GetGroupDoc(m_sGroupName);
     const OUString& sShortName(aName);
     const OUString& sLongName(aTitle);
     if (pGlosGroup && !pGlosGroup->GetError())
@@ -398,7 +391,7 @@ uno::Reference< text::XAutoTextEntry >  SwXAutoTextGroup::insertNewByName(const 
             throw uno::RuntimeException();
         }
     }
-    delete pGlosGroup;
+    pGlosGroup.reset();
 
     uno::Reference< text::XAutoTextEntry > xEntry;
 
@@ -418,12 +411,13 @@ uno::Reference< text::XAutoTextEntry >  SwXAutoTextGroup::insertNewByName(const 
     {
         throw;
     }
-    catch (const uno::Exception& e)
+    catch (const uno::Exception&)
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         throw css::lang::WrappedTargetRuntimeException(
                "Error Getting AutoText!",
                static_cast < OWeakObject * > ( this ),
-               makeAny( e ) );
+               anyEx );
     }
 
     return xEntry;
@@ -433,14 +427,14 @@ void SwXAutoTextGroup::removeByName(const OUString& aEntryName)
 {
     SolarMutexGuard aGuard;
     std::unique_ptr<SwTextBlocks> pGlosGroup(pGlossaries ? pGlossaries->GetGroupDoc(m_sGroupName) : nullptr);
-    if(pGlosGroup && !pGlosGroup->GetError())
-    {
-        sal_uInt16 nIdx = pGlosGroup->GetIndex(aEntryName);
-        if ( nIdx != USHRT_MAX )
-            pGlosGroup->Delete(nIdx);
-    }
-    else
+    if(!pGlosGroup || pGlosGroup->GetError())
         throw container::NoSuchElementException();
+
+    sal_uInt16 nIdx = pGlosGroup->GetIndex(aEntryName);
+    if ( nIdx == USHRT_MAX )
+        throw container::NoSuchElementException();
+
+    pGlosGroup->Delete(nIdx);
 }
 
 OUString SwXAutoTextGroup::getName()
@@ -477,7 +471,7 @@ void SwXAutoTextGroup::setName(const OUString& rName)
     OUString sNewGroup(rName);
     if (sNewGroup.indexOf(GLOS_DELIM)<0)
     {
-        sNewGroup += OUStringLiteral1(GLOS_DELIM) + "0";
+        sNewGroup += OUStringChar(GLOS_DELIM) + "0";
     }
 
     //the name must be saved, the group may be invalidated while in RenameGroupDoc()
@@ -587,7 +581,7 @@ void SwXAutoTextGroup::setPropertyValue(
     const SfxItemPropertySimpleEntry*   pEntry = pPropSet->getPropertyMap().getByName( rPropertyName );
 
     if(!pEntry)
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(rPropertyName);
 
     std::unique_ptr<SwTextBlocks> pGlosGroup(pGlossaries ? pGlossaries->GetGroupDoc(m_sGroupName) : nullptr);
     if(!pGlosGroup || pGlosGroup->GetError())
@@ -600,7 +594,7 @@ void SwXAutoTextGroup::setPropertyValue(
             aValue >>= sNewTitle;
             if(sNewTitle.isEmpty())
                 throw lang::IllegalArgumentException();
-            bool bChanged = !sNewTitle.equals(pGlosGroup->GetName());
+            bool bChanged = sNewTitle != pGlosGroup->GetName();
             pGlosGroup->SetName(sNewTitle);
             if(bChanged && HasGlossaryList())
                 GetGlossaryList()->ClearGroups();
@@ -615,7 +609,7 @@ uno::Any SwXAutoTextGroup::getPropertyValue(const OUString& rPropertyName)
     const SfxItemPropertySimpleEntry*   pEntry = pPropSet->getPropertyMap().getByName( rPropertyName);
 
     if(!pEntry)
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(rPropertyName);
     std::unique_ptr<SwTextBlocks> pGlosGroup(pGlossaries ? pGlossaries->GetGroupDoc(m_sGroupName) : nullptr);
     if(!pGlosGroup  || pGlosGroup->GetError())
         throw uno::RuntimeException();
@@ -662,7 +656,7 @@ void SwXAutoTextGroup::Invalidate()
 
 OUString SwXAutoTextGroup::getImplementationName()
 {
-    return OUString("SwXAutoTextGroup");
+    return "SwXAutoTextGroup";
 }
 
 sal_Bool SwXAutoTextGroup::supportsService(const OUString& rServiceName)
@@ -688,11 +682,9 @@ const uno::Sequence< sal_Int8 > & SwXAutoTextEntry::getUnoTunnelId()
 
 sal_Int64 SAL_CALL SwXAutoTextEntry::getSomething( const uno::Sequence< sal_Int8 >& rId )
 {
-    if( rId.getLength() == 16
-        && 0 == memcmp( getUnoTunnelId().getConstArray(),
-                                        rId.getConstArray(), 16 ) )
+    if( isUnoTunnelId<SwXAutoTextEntry>(rId) )
     {
-            return sal::static_int_cast< sal_Int64 >( reinterpret_cast< sal_IntPtr >( this ));
+        return sal::static_int_cast< sal_Int64 >( reinterpret_cast< sal_IntPtr >( this ));
     }
     return 0;
 }
@@ -716,47 +708,48 @@ SwXAutoTextEntry::~SwXAutoTextEntry()
 
 void SwXAutoTextEntry::implFlushDocument( bool _bCloseDoc )
 {
-    if ( xDocSh.is() )
+    if ( !xDocSh.is() )
+        return;
+
+    if ( xDocSh->GetDoc()->getIDocumentState().IsModified () )
+        xDocSh->Save();
+
+    if ( _bCloseDoc )
     {
-        if ( xDocSh->GetDoc()->getIDocumentState().IsModified () )
-            xDocSh->Save();
+        // stop listening at the document
+        EndListening( *xDocSh );
 
-        if ( _bCloseDoc )
-        {
-            // stop listening at the document
-            EndListening( *xDocSh );
-
-            xDocSh->DoClose();
-            xDocSh.clear();
-        }
+        xDocSh->DoClose();
+        xDocSh.clear();
     }
 }
 
 void SwXAutoTextEntry::Notify( SfxBroadcaster& _rBC, const SfxHint& _rHint )
 {
-    if ( &_rBC == xDocSh.get() )
-    {   // it's our document
-        if (const SfxEventHint* pEventHint = dynamic_cast<const SfxEventHint*>(&_rHint))
+    if ( &_rBC != xDocSh.get() )
+        return;
+
+// it's our document
+    if (const SfxEventHint* pEventHint = dynamic_cast<const SfxEventHint*>(&_rHint))
+    {
+        if (SfxEventHintId::PrepareCloseDoc == pEventHint->GetEventId())
         {
-            if (SfxEventHintId::PrepareCloseDoc == pEventHint->GetEventId())
-            {
-                implFlushDocument();
-                mxBodyText.clear();
-                EndListening( *xDocSh );
-                xDocSh.clear();
-            }
+            implFlushDocument();
+            mxBodyText.clear();
+            EndListening( *xDocSh );
+            xDocSh.clear();
         }
-        else
+    }
+    else
+    {
+        if ( SfxHintId::Deinitializing == _rHint.GetId() )
         {
-            if ( SfxHintId::Deinitializing == _rHint.GetId() )
-            {
-                // our document is dying (possibly because we're shuting down, and the document was notified
-                // earlier than we are?)
-                // stop listening at the docu
-                EndListening( *xDocSh );
-                // and release our reference
-                xDocSh.clear();
-            }
+            // our document is dying (possibly because we're shutting down, and the document was notified
+            // earlier than we are?)
+            // stop listening at the docu
+            EndListening( *xDocSh );
+            // and release our reference
+            xDocSh.clear();
         }
     }
 }
@@ -927,7 +920,7 @@ void SwXAutoTextEntry::applyTo(const uno::Reference< text::XTextRange > & xTextR
     }
 
     std::unique_ptr<SwTextBlocks> pBlock(pGlossaries->GetGroupDoc(sGroupName));
-    const bool bResult = pBlock.get() && !pBlock->GetError()
+    const bool bResult = pBlock && !pBlock->GetError()
                     && pDoc->InsertGlossary( *pBlock, sEntryName, InsertPaM);
 
     if(!bResult)
@@ -936,7 +929,7 @@ void SwXAutoTextEntry::applyTo(const uno::Reference< text::XTextRange > & xTextR
 
 OUString SwXAutoTextEntry::getImplementationName()
 {
-    return OUString("SwXAutoTextEntry");
+    return "SwXAutoTextEntry";
 }
 
 sal_Bool SwXAutoTextEntry::supportsService(const OUString& rServiceName)
@@ -957,16 +950,14 @@ uno::Reference< container::XNameReplace > SwXAutoTextEntry::getEvents()
 
 const struct SvEventDescription aAutotextEvents[] =
 {
-    { SW_EVENT_START_INS_GLOSSARY,  "OnInsertStart" },
-    { SW_EVENT_END_INS_GLOSSARY,    "OnInsertDone" },
-    { 0, nullptr }
+    { SvMacroItemId::SwStartInsGlossary,  "OnInsertStart" },
+    { SvMacroItemId::SwEndInsGlossary,    "OnInsertDone" },
+    { SvMacroItemId::NONE, nullptr }
 };
 
 SwAutoTextEventDescriptor::SwAutoTextEventDescriptor(
     SwXAutoTextEntry& rAutoText ) :
         SvBaseEventDescriptor(aAutotextEvents),
-        sSwAutoTextEventDescriptor(
-            "SwAutoTextEventDescriptor"),
         rAutoTextEntry(rAutoText)
 {
 }
@@ -977,17 +968,17 @@ SwAutoTextEventDescriptor::~SwAutoTextEventDescriptor()
 
 OUString SwAutoTextEventDescriptor::getImplementationName()
 {
-    return sSwAutoTextEventDescriptor;
+    return "SwAutoTextEventDescriptor";
 }
 
 void SwAutoTextEventDescriptor::replaceByName(
-    const sal_uInt16 nEvent,
+    const SvMacroItemId nEvent,
     const SvxMacro& rMacro)
 {
     OSL_ENSURE( nullptr != rAutoTextEntry.GetGlossaries(),
                 "Strangely enough, the AutoText vanished!" );
-    OSL_ENSURE( (nEvent == SW_EVENT_END_INS_GLOSSARY) ||
-                (nEvent == SW_EVENT_START_INS_GLOSSARY) ,
+    OSL_ENSURE( (nEvent == SvMacroItemId::SwEndInsGlossary) ||
+                (nEvent == SvMacroItemId::SwStartInsGlossary) ,
                 "Unknown event ID" );
 
     SwGlossaries *const pGlossaries =
@@ -997,17 +988,17 @@ void SwAutoTextEventDescriptor::replaceByName(
     OSL_ENSURE( pBlocks,
                 "can't get autotext group; SwAutoTextEntry has illegal name?");
 
-    if( pBlocks && !pBlocks->GetError())
+    if( !(pBlocks && !pBlocks->GetError()))
+        return;
+
+    sal_uInt16 nIndex = pBlocks->GetIndex( rAutoTextEntry.GetEntryName() );
+    if( nIndex != USHRT_MAX )
     {
-        sal_uInt16 nIndex = pBlocks->GetIndex( rAutoTextEntry.GetEntryName() );
-        if( nIndex != USHRT_MAX )
+        SvxMacroTableDtor aMacroTable;
+        if( pBlocks->GetMacroTable( nIndex, aMacroTable ) )
         {
-            SvxMacroTableDtor aMacroTable;
-            if( pBlocks->GetMacroTable( nIndex, aMacroTable ) )
-            {
-                aMacroTable.Insert( nEvent, rMacro );
-                pBlocks->SetMacroTable( nIndex, aMacroTable );
-            }
+            aMacroTable.Insert( nEvent, rMacro );
+            pBlocks->SetMacroTable( nIndex, aMacroTable );
         }
     }
     // else: ignore
@@ -1015,11 +1006,11 @@ void SwAutoTextEventDescriptor::replaceByName(
 
 void SwAutoTextEventDescriptor::getByName(
     SvxMacro& rMacro,
-    const sal_uInt16 nEvent )
+    const SvMacroItemId nEvent )
 {
     OSL_ENSURE( nullptr != rAutoTextEntry.GetGlossaries(), "no AutoText" );
-    OSL_ENSURE( (nEvent == SW_EVENT_END_INS_GLOSSARY) ||
-                (nEvent == SW_EVENT_START_INS_GLOSSARY) ,
+    OSL_ENSURE( (nEvent == SvMacroItemId::SwEndInsGlossary) ||
+                (nEvent == SvMacroItemId::SwStartInsGlossary) ,
                 "Unknown event ID" );
 
     SwGlossaries *const pGlossaries =
@@ -1034,23 +1025,23 @@ void SwAutoTextEventDescriptor::getByName(
     SvxMacro aEmptyMacro(sEmptyStr, sEmptyStr);
     rMacro = aEmptyMacro;
 
-    if ( pBlocks &&  !pBlocks->GetError())
+    if ( !(pBlocks &&  !pBlocks->GetError()))
+        return;
+
+    sal_uInt16 nIndex = pBlocks->GetIndex( rAutoTextEntry.GetEntryName() );
+    if( nIndex != USHRT_MAX )
     {
-        sal_uInt16 nIndex = pBlocks->GetIndex( rAutoTextEntry.GetEntryName() );
-        if( nIndex != USHRT_MAX )
+        SvxMacroTableDtor aMacroTable;
+        if( pBlocks->GetMacroTable( nIndex, aMacroTable ) )
         {
-            SvxMacroTableDtor aMacroTable;
-            if( pBlocks->GetMacroTable( nIndex, aMacroTable ) )
-            {
-                SvxMacro *pMacro = aMacroTable.Get( nEvent );
-                if( pMacro )
-                    rMacro = *pMacro;
-            }
+            SvxMacro *pMacro = aMacroTable.Get( nEvent );
+            if( pMacro )
+                rMacro = *pMacro;
         }
     }
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 SwXAutoTextContainer_get_implementation(css::uno::XComponentContext*,
         css::uno::Sequence<css::uno::Any> const &)
 {

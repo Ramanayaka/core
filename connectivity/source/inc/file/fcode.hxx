@@ -22,11 +22,8 @@
 
 #include <connectivity/sqliterator.hxx>
 #include <com/sun/star/sdbc/DataType.hpp>
-#include <connectivity/CommonTools.hxx>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
 #include <connectivity/FValue.hxx>
-#include "file/filedllapi.hxx"
+#include <file/filedllapi.hxx>
 
 #include <stack>
 
@@ -52,16 +49,6 @@ namespace connectivity
             //and same issue for the assignment operators
             OCode& operator=(const OCode&) = default;
             OCode& operator=(OCode&&) = default;
-
-            static void * SAL_CALL operator new( size_t nSize )
-                { return ::rtl_allocateMemory( nSize ); }
-            static void * SAL_CALL operator new( size_t /*nSize*/,void* _pHint )
-                { return _pHint; }
-            static void SAL_CALL operator delete( void * pMem )
-                { ::rtl_freeMemory( pMem ); }
-            static void SAL_CALL operator delete( void * /*pMem*/,void* /*_pHint*/ )
-                {  }
-
         };
 
 
@@ -83,12 +70,12 @@ namespace connectivity
 
         };
 
-        class OOO_DLLPUBLIC_FILE OOperandRow : public OOperand
+        class OOperandRow : public OOperand
         {
             sal_uInt16  m_nRowPos;
-        protected:
             OValueRefRow    m_pRow;
 
+        protected:
             OOperandRow(sal_uInt16 _nPos, sal_Int32 _rType);
         public:
             virtual const ORowSetValue& getValue() const override;
@@ -98,7 +85,7 @@ namespace connectivity
         };
 
         // Attributes from a result row
-        class OOO_DLLPUBLIC_FILE OOperandAttr : public OOperandRow
+        class OOperandAttr : public OOperandRow
         {
         public:
             OOperandAttr(sal_uInt16 _nPos,
@@ -110,7 +97,7 @@ namespace connectivity
         class OOperandParam : public OOperandRow
         {
         public:
-            OOperandParam(connectivity::OSQLParseNode* pNode, sal_Int32 _nPos);
+            OOperandParam(connectivity::OSQLParseNode const * pNode, sal_Int32 _nPos);
         };
 
         // Value operands
@@ -240,12 +227,10 @@ namespace connectivity
 
         class OOO_DLLPUBLIC_FILE OOp_LIKE : public OBoolOperator
         {
-        public:
-        protected:
             const sal_Unicode cEscape;
 
         public:
-            OOp_LIKE(const sal_Unicode cEsc = L'\0'):cEscape(cEsc){};
+            OOp_LIKE(const sal_Unicode cEsc):cEscape(cEsc){};
 
             virtual bool operate(const OOperand*, const OOperand*) const override;
         };
@@ -254,7 +239,7 @@ namespace connectivity
         {
         public:
         public:
-            OOp_NOTLIKE(const sal_Unicode cEsc = L'\0'):OOp_LIKE(cEsc){};
+            OOp_NOTLIKE(const sal_Unicode cEsc):OOp_LIKE(cEsc){};
 
             virtual bool operate(const OOperand*, const OOperand*) const override;
         };

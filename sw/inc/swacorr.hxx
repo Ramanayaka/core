@@ -23,18 +23,18 @@
 #include <editeng/svxacorr.hxx>
 
 #include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/embed/XStorage.hpp>
 
-#include "SwXMLTextBlocks.hxx"
 #include "swdllapi.h"
 
-class SW_DLLPUBLIC SwAutoCorrect : public SvxAutoCorrect
+class SwXMLTextBlocks;
+namespace com::sun::star::embed { class XStorage; }
+
+class SW_DLLPUBLIC SwAutoCorrect final : public SvxAutoCorrect
 {
     using  SvxAutoCorrect::PutText;
 
     std::unique_ptr<SwXMLTextBlocks> m_pTextBlocks;
 
-protected:
     // Return replacement text (only for SWG-format, all others can be obtained from wordlist!).
     // rShort is stream-name - encrypted!
     virtual bool GetLongText( const OUString& rShort, OUString& rLong ) override;

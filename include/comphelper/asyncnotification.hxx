@@ -44,8 +44,8 @@ namespace comphelper
         virtual ~AnyEvent() override;
 
     private:
-        AnyEvent( AnyEvent& ) = delete;
-        void operator=( AnyEvent& ) = delete;
+        AnyEvent( AnyEvent const & ) = delete;
+        AnyEvent& operator=( AnyEvent const & ) = delete;
     };
 
 
@@ -141,7 +141,7 @@ namespace comphelper
     /** This class is usable with rtl::Reference.
         As always, the thread must be joined somewhere.
      */
-    class COMPHELPER_DLLPUBLIC AsyncEventNotifier
+    class COMPHELPER_DLLPUBLIC AsyncEventNotifier final
         : public AsyncEventNotifierBase
         , public salhelper::Thread
     {
@@ -165,7 +165,7 @@ namespace comphelper
     /** This is a hack (when proper joining is not possible), use of which
         should be avoided by good design.
      */
-    class COMPHELPER_DLLPUBLIC AsyncEventNotifierAutoJoin
+    class COMPHELPER_DLLPUBLIC AsyncEventNotifierAutoJoin final
         : public AsyncEventNotifierBase
         , private osl::Thread
     {
@@ -195,16 +195,16 @@ namespace comphelper
 
     //= EventHolder
 
-    /** AnyEvent derivee holding an foreign event instance
+    /** AnyEvent derivee holding a foreign event instance
     */
     template < typename EVENT_OBJECT >
-    class EventHolder : public AnyEvent
+    class SAL_DLLPUBLIC_RTTI EventHolder final : public AnyEvent
     {
     public:
         typedef EVENT_OBJECT    EventObjectType;
 
     private:
-        EventObjectType m_aEvent;
+        EventObjectType const m_aEvent;
 
     public:
         EventHolder( const EventObjectType& _rEvent )

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "propertystorage.hxx"
+#include <propertystorage.hxx>
 
 #include <svl/itemset.hxx>
 #include <svl/stritem.hxx>
@@ -60,7 +60,7 @@ namespace dbaui
                 std::unique_ptr< ITEMTYPE > pClone( pCloneItem);
                 assert(pClone.get());
                 pClone->SetValue( aValue );
-                _rSet.Put( *pClone );
+                _rSet.Put( std::move(pClone) );
                 return true;
             }
 

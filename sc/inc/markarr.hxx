@@ -21,48 +21,62 @@
 #define INCLUDED_SC_INC_MARKARR_HXX
 
 #include "address.hxx"
-#include <memory>
+#include <vector>
 
-#define SC_MARKARRAY_DELTA    4
+class ScRangeList;
+struct ScSheetLimits;
 
 struct ScMarkEntry
 {
-    SCROW           nRow;
-    bool            bMarked;
+    SCROW           nRow : 30; // 30 because 31 causes compiler problems with VisualStudio
+    bool            bMarked : 1;
+
+    bool operator==(const ScMarkEntry& rOther) const
+    { return nRow == rOther.nRow && bMarked == rOther.bMarked; }
 };
 
-class ScMarkArray
+/**
+  This is a rather odd datastructure. We store alternating marked/not-marked entries,
+  and for each entry the range is defined as :
+      [previousEntry.nRow+1, currentEntry.nRow]
+*/
+class SC_DLLPUBLIC ScMarkArray
 {
-    SCSIZE                            nCount;
-    SCSIZE                            nLimit;
-    std::unique_ptr<ScMarkEntry[]>    pData;
+    const ScSheetLimits &       mrSheetLimits;
+    std::vector<ScMarkEntry>    mvData;
 
 friend class ScMarkArrayIter;
 friend class ScDocument;                // for FillInfo
 
 public:
-            ScMarkArray();
-            ScMarkArray( ScMarkArray&& rArray );
+            ScMarkArray( const ScSheetLimits& rLimits );
+            ScMarkArray( ScMarkArray&& rArray ) noexcept;
+            ScMarkArray( const ScMarkArray& rArray );
             ~ScMarkArray();
     void    Reset( bool bMarked = false, SCSIZE nNeeded = 1 );
     bool    GetMark( SCROW nRow ) const;
     void    SetMarkArea( SCROW nStartRow, SCROW nEndRow, bool bMarked );
+    void    Set( std::vector<ScMarkEntry> const & );
     bool    IsAllMarked( SCROW nStartRow, SCROW nEndRow ) const;
     bool    HasOneMark( SCROW& rStartRow, SCROW& rEndRow ) const;
-    bool    HasEqualRowsMarked( const ScMarkArray& rOther ) const;
 
-    bool    HasMarks() const    { return ( nCount > 1 || ( nCount == 1 && pData[0].bMarked ) ); }
+    bool    HasMarks() const    { return mvData.size() > 1 || ( mvData.size() == 1 && mvData[0].bMarked ); }
 
-    void    CopyMarksTo( ScMarkArray& rDestMarkArray ) const;
+    ScMarkArray& operator=( ScMarkArray const & rSource );
+    ScMarkArray& operator=(ScMarkArray&& rSource) noexcept;
+    bool operator==(ScMarkArray const & rOther ) const;
 
     bool    Search( SCROW nRow, SCSIZE& nIndex ) const;
 
     /// Including current row, may return -1 if bUp and not found
     SCROW   GetNextMarked( SCROW nRow, bool bUp ) const;
     SCROW   GetMarkEnd( SCROW nRow, bool bUp ) const;
+
+    void    Shift( SCROW nStartRow, long nOffset );
+    void    Intersect( const ScMarkArray& rOther );
 };
 
-class ScMarkArrayIter                   // iterate over selected range
+class SC_DLLPUBLIC ScMarkArrayIter // iterate over selected range
 {
     const ScMarkArray*  pArray;
     SCSIZE              nPos;

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEBUTTON_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEBUTTON_HXX
+#pragma once
 
 #include <standard/vclxaccessibletextcomponent.hxx>
 
@@ -28,24 +27,22 @@
 #include <cppuhelper/implbase2.hxx>
 
 
-//  class VCLXAccessibleButton
 
 
 typedef ::cppu::ImplHelper2<
     css::accessibility::XAccessibleAction,
     css::accessibility::XAccessibleValue > VCLXAccessibleButton_BASE;
 
-class VCLXAccessibleButton : public VCLXAccessibleTextComponent,
+class VCLXAccessibleButton final : public VCLXAccessibleTextComponent,
                              public VCLXAccessibleButton_BASE
 {
-protected:
-    virtual ~VCLXAccessibleButton() override;
+    virtual ~VCLXAccessibleButton() override = default;
 
     virtual void ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
     virtual void FillAccessibleStateSet( utl::AccessibleStateSetHelper& rStateSet ) override;
 
 public:
-    VCLXAccessibleButton( VCLXWindow* pVCLXindow );
+    using VCLXAccessibleTextComponent::VCLXAccessibleTextComponent;
 
     // XInterface
     DECLARE_XINTERFACE()
@@ -73,6 +70,5 @@ public:
     virtual css::uno::Any SAL_CALL getMinimumValue(  ) override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEBUTTON_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

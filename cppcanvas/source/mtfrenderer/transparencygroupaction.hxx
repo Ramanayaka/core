@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_TRANSPARENCYGROUPACTION_HXX
-#define INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_TRANSPARENCYGROUPACTION_HXX
+#pragma once
 
 #include <cppcanvas/canvas.hxx>
-#include <cppcanvas/renderer.hxx>
 #include <action.hxx>
 
 #include <memory>
@@ -37,9 +35,7 @@ class Gradient;
 
 /* Definition of internal::TransparencyGroupActionFactory */
 
-namespace cppcanvas
-{
-    namespace internal
+namespace cppcanvas::internal
     {
         struct OutDevState;
 
@@ -79,16 +75,14 @@ namespace cppcanvas
                 Size of the transparency group object, in current
                 state coordinate system.
              */
-            ActionSharedPtr createTransparencyGroupAction( MtfAutoPtr&&                  rGroupMtf,
+            std::shared_ptr<Action> createTransparencyGroupAction( MtfAutoPtr&&                  rGroupMtf,
                                                                   GradientAutoPtr&&             rAlphaGradient,
                                                                   const ::basegfx::B2DPoint&    rDstPoint,
                                                                   const ::basegfx::B2DVector&   rDstSize,
                                                                   const CanvasSharedPtr&        rCanvas,
                                                                   const OutDevState&            rState );
         }
-    }
-}
 
-#endif // INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_TRANSPARENCYGROUPACTION_HXX
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

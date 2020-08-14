@@ -25,11 +25,12 @@
 #include <rtl/cipher.h>
 #include <rtl/digest.h>
 #include <sal/types.h>
+#include <comphelper/hash.hxx>
 #include <vector>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { struct NamedValue; }
-} } }
+}
 
 namespace msfilter {
 
@@ -121,7 +122,7 @@ public:
     void                Skip( std::size_t nBytes );
 
 protected:
-    sal_uInt8           mpnKey[ 16 ];   /// Encryption key.
+    sal_uInt8           mpnKey[ 16 ] = {}; /// Encryption key.
     std::size_t         mnOffset;       /// Key offset.
 
 private:
@@ -135,7 +136,7 @@ private:
 
 /** Encodes and decodes data from protected MSO XLS 95- documents.
  */
-class MSFILTER_DLLPUBLIC MSCodec_XorXLS95 : public MSCodec_Xor95
+class MSFILTER_DLLPUBLIC MSCodec_XorXLS95 final : public MSCodec_Xor95
 {
 public:
     explicit            MSCodec_XorXLS95() : MSCodec_Xor95(2) {}
@@ -156,7 +157,7 @@ public:
 
 /** Encodes and decodes data from protected MSO Word 95- documents.
  */
-class MSFILTER_DLLPUBLIC MSCodec_XorWord95 : public MSCodec_Xor95
+class MSFILTER_DLLPUBLIC MSCodec_XorWord95 final : public MSCodec_Xor95
 {
 public:
     explicit            MSCodec_XorWord95() : MSCodec_Xor95(7) {}
@@ -178,7 +179,7 @@ public:
 class MSFILTER_DLLPUBLIC MSCodec97
 {
 public:
-    MSCodec97(size_t nHashLen);
+    MSCodec97(size_t nHashLen, const OUString& rEncKeyName);
     virtual ~MSCodec97();
 
     /** Initializes the algorithm with the encryption data.
@@ -195,7 +196,7 @@ public:
             The sequence contains the necessary data to initialize
             the codec.
      */
-    css::uno::Sequence< css::beans::NamedValue > GetEncryptionData();
+    virtual css::uno::Sequence<css::beans::NamedValue> GetEncryptionData();
 
     /** Initializes the algorithm with the specified password and document ID.
 
@@ -317,6 +318,7 @@ private:
     MSCodec97&          operator=(const MSCodec97&) = delete;
 
 protected:
+    OUString            m_sEncKeyName;
     size_t              m_nHashLen;
     rtlCipher           m_hCipher;
     std::vector<sal_uInt8> m_aDocId;
@@ -329,7 +331,7 @@ protected:
     Implementation is based on the wvDecrypt package by Caolan McNamara:
     http://www.csn.ul.ie/~caolan/docs/wvDecrypt.html
  */
-class MSFILTER_DLLPUBLIC MSCodec_Std97 :  public MSCodec97
+class MSFILTER_DLLPUBLIC MSCodec_Std97 final : public MSCodec97
 {
 public:
     MSCodec_Std97();
@@ -394,8 +396,10 @@ private:
     rtlDigest           m_hDigest;
 };
 
-class MSFILTER_DLLPUBLIC MSCodec_CryptoAPI :  public MSCodec97
+class MSFILTER_DLLPUBLIC MSCodec_CryptoAPI final : public MSCodec97
 {
+private:
+    css::uno::Sequence<sal_Int8> m_aStd97Key;
 public:
     MSCodec_CryptoAPI();
 
@@ -403,6 +407,7 @@ public:
                          const sal_uInt8 pDocId[16]) override;
     virtual bool InitCipher(sal_uInt32 nCounter) override;
     virtual void GetDigestFromSalt(const sal_uInt8* pSaltData, sal_uInt8* pDigest) override;
+    virtual css::uno::Sequence<css::beans::NamedValue> GetEncryptionData() override;
 };
 
 const sal_uInt32 ENCRYPTINFO_CRYPTOAPI      = 0x00000004;
@@ -434,11 +439,10 @@ const sal_uInt32 VERSION_INFO_2007_FORMAT_SP2   = 0x00020004;
 // version of encryption info - agile (major = 4, minor = 4)
 const sal_uInt32 VERSION_INFO_AGILE         = 0x00040004;
 
+const sal_uInt32 AGILE_ENCRYPTION_RESERVED  = 0x00000040;
+
 const sal_uInt32 SALT_LENGTH                    = 16;
 const sal_uInt32 ENCRYPTED_VERIFIER_LENGTH      = 16;
-const sal_uInt32 SHA1_HASH_LENGTH = RTL_DIGEST_LENGTH_SHA1; // 20
-const sal_uInt32 SHA256_HASH_LENGTH = 32;
-const sal_uInt32 SHA512_HASH_LENGTH = 64;
 
 struct MSFILTER_DLLPUBLIC EncryptionStandardHeader
 {
@@ -457,10 +461,10 @@ struct MSFILTER_DLLPUBLIC EncryptionStandardHeader
 struct MSFILTER_DLLPUBLIC EncryptionVerifierAES
 {
     sal_uInt32 saltSize;                                                // must be 0x00000010
-    sal_uInt8  salt[SALT_LENGTH];                                       // random generated salt value
-    sal_uInt8  encryptedVerifier[ENCRYPTED_VERIFIER_LENGTH];            // randomly generated verifier value
+    sal_uInt8  salt[SALT_LENGTH] = {};                                  // random generated salt value
+    sal_uInt8  encryptedVerifier[ENCRYPTED_VERIFIER_LENGTH] = {};       // randomly generated verifier value
     sal_uInt32 encryptedVerifierHashSize;                               // actually written hash size - depends on algorithm
-    sal_uInt8  encryptedVerifierHash[SHA256_HASH_LENGTH];               // verifier value hash - itself also encrypted
+    sal_uInt8  encryptedVerifierHash[comphelper::SHA256_HASH_LENGTH] = {};          // verifier value hash - itself also encrypted
 
     EncryptionVerifierAES();
 };
@@ -468,10 +472,10 @@ struct MSFILTER_DLLPUBLIC EncryptionVerifierAES
 struct MSFILTER_DLLPUBLIC EncryptionVerifierRC4
 {
     sal_uInt32 saltSize;                                                // must be 0x00000010
-    sal_uInt8  salt[SALT_LENGTH];                                       // random generated salt value
-    sal_uInt8  encryptedVerifier[ENCRYPTED_VERIFIER_LENGTH];            // randomly generated verifier value
+    sal_uInt8  salt[SALT_LENGTH] = {};                                  // random generated salt value
+    sal_uInt8  encryptedVerifier[ENCRYPTED_VERIFIER_LENGTH] = {};       // randomly generated verifier value
     sal_uInt32 encryptedVerifierHashSize;                               // actually written hash size - depends on algorithm
-    sal_uInt8  encryptedVerifierHash[SHA1_HASH_LENGTH];                 // verifier value hash - itself also encrypted
+    sal_uInt8  encryptedVerifierHash[comphelper::SHA1_HASH_LENGTH] = {};            // verifier value hash - itself also encrypted
 
     EncryptionVerifierRC4();
 };

@@ -19,8 +19,9 @@
 #include "pyuno_impl.hxx"
 
 #include <osl/diagnose.h>
-#include <osl/thread.h>
-#include <rtl/ustrbuf.hxx>
+
+#include <com/sun/star/script/CannotConvertException.hpp>
+#include <com/sun/star/script/XInvocation2.hpp>
 
 using com::sun::star::uno::Sequence;
 using com::sun::star::uno::Reference;
@@ -30,20 +31,24 @@ using com::sun::star::script::XInvocation2;
 
 namespace pyuno
 {
-typedef struct
+namespace {
+
+struct PyUNO_callable_Internals
 {
     Reference<XInvocation2> xInvocation;
     OUString methodName;
     ConversionMode mode;
-} PyUNO_callable_Internals;
+};
 
-typedef struct
+struct PyUNO_callable
 {
     PyObject_HEAD
     PyUNO_callable_Internals* members;
-} PyUNO_callable;
+};
 
-void PyUNO_callable_del (PyObject* self)
+}
+
+static void PyUNO_callable_del (PyObject* self)
 {
     PyUNO_callable* me;
 
@@ -52,7 +57,7 @@ void PyUNO_callable_del (PyObject* self)
     PyObject_Del (self);
 }
 
-PyObject* PyUNO_callable_call(
+static PyObject* PyUNO_callable_call(
     PyObject* self, PyObject* args, SAL_UNUSED_PARAMETER PyObject*)
 {
     PyUNO_callable* me;
@@ -180,7 +185,11 @@ static PyTypeObject PyUNO_callable_Type =
     sizeof (PyUNO_callable),
     0,
     ::pyuno::PyUNO_callable_del,
-    nullptr,
+#if PY_VERSION_HEX >= 0x03080000
+    0, // Py_ssize_t tp_vectorcall_offset
+#else
+    nullptr, // printfunc tp_print
+#endif
     nullptr,
     nullptr,
     nullptr,
@@ -221,11 +230,22 @@ static PyTypeObject PyUNO_callable_Type =
     nullptr,
     nullptr,
     nullptr
-#if PY_VERSION_HEX >= 0x02060000
     , 0
-#endif
 #if PY_VERSION_HEX >= 0x03040000
     , nullptr
+#if PY_VERSION_HEX >= 0x03080000
+    , nullptr // vectorcallfunc tp_vectorcall
+#if PY_VERSION_HEX < 0x03090000
+#if defined __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+    , nullptr // tp_print
+#if defined __clang__
+#pragma clang diagnostic pop
+#endif
+#endif
+#endif
 #endif
 };
 

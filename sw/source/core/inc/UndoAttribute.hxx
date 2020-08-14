@@ -42,6 +42,7 @@ class SwUndoAttr : public SwUndo, private SwUndRng
     std::unique_ptr<SwRedlineSaveDatas> m_pRedlineSaveData;
     sal_uLong m_nNodeIndex;                         // Offset: for Redlining
     const SetAttrMode m_nInsertFlags;               // insert flags
+    OUString m_aChrFormatName;
 
     void RemoveIdx( SwDoc& rDoc );
 
@@ -84,14 +85,13 @@ public:
 class SwUndoFormatAttr : public SwUndo
 {
     friend class SwUndoDefaultAttr;
-    SwFormat * m_pFormat;
+    OUString m_sFormatName;
     std::unique_ptr<SfxItemSet> m_pOldSet;      // old attributes
     sal_uLong m_nNodeIndex;
     const sal_uInt16 m_nFormatWhich;
     const bool m_bSaveDrawPt;
 
-    bool IsFormatInDoc( SwDoc* );   //is the attribute format still in the Doc?
-    void SaveFlyAnchor( bool bSaveDrawPt = false );
+    void SaveFlyAnchor( const SwFormat * pFormat, bool bSaveDrawPt = false );
     // #i35443# - Add return value, type <bool>.
     // Return value indicates, if anchor attribute is restored.
     // Notes: - If anchor attribute is restored, all other existing attributes
@@ -102,17 +102,17 @@ class SwUndoFormatAttr : public SwUndo
     //          This situation occurs for undo of styles.
     bool RestoreFlyAnchor(::sw::UndoRedoContext & rContext);
     // --> OD 2008-02-27 #refactorlists# - removed <rAffectedItemSet>
-    void Init();
+    void Init( const SwFormat & rFormat );
 
 public:
     // register at the Format and save old attributes
     // --> OD 2008-02-27 #refactorlists# - removed <rNewSet>
     SwUndoFormatAttr( const SfxItemSet& rOldSet,
                    SwFormat& rFormat,
-                   bool bSaveDrawPt = true );
+                   bool bSaveDrawPt );
     SwUndoFormatAttr( const SfxPoolItem& rItem,
                    SwFormat& rFormat,
-                   bool bSaveDrawPt = true );
+                   bool bSaveDrawPt );
 
     virtual ~SwUndoFormatAttr() override;
 
@@ -122,8 +122,8 @@ public:
 
     virtual SwRewriter GetRewriter() const override;
 
-    void PutAttr( const SfxPoolItem& rItem );
-    SwFormat* GetFormat( SwDoc& rDoc );   // checks if it is still in the Doc!
+    void PutAttr( const SfxPoolItem& rItem, const SwDoc& rDoc );
+    SwFormat* GetFormat( const SwDoc& rDoc );   // checks if it is still in the Doc!
 };
 
 // --> OD 2008-02-12 #newlistlevelattrs#
@@ -172,7 +172,7 @@ public:
 
     SwUndoFormatAttr* GetUndo() const  { return m_pUndo.get(); }
     // release the undo object (so it is not deleted here), and return it
-    SwUndoFormatAttr* ReleaseUndo()    { return m_pUndo.release(); }
+    std::unique_ptr<SwUndoFormatAttr> ReleaseUndo()    { return std::move(m_pUndo); }
 };
 
 class SwUndoMoveLeftMargin : public SwUndo, private SwUndRng
@@ -212,12 +212,11 @@ class SwUndoChangeFootNote : public SwUndo, private SwUndRng
 {
     const std::unique_ptr<SwHistory> m_pHistory;
     const OUString m_Text;
-    const sal_uInt16 m_nNumber;
     const bool m_bEndNote;
 
 public:
     SwUndoChangeFootNote( const SwPaM& rRange, const OUString& rText,
-                          sal_uInt16 nNum, bool bIsEndNote );
+                          bool bIsEndNote );
     virtual ~SwUndoChangeFootNote() override;
 
     virtual void UndoImpl( ::sw::UndoRedoContext & ) override;

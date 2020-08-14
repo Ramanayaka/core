@@ -20,9 +20,9 @@
 #ifndef INCLUDED_VCL_INC_OSX_SALPRN_H
 #define INCLUDED_VCL_INC_OSX_SALPRN_H
 
-#include "osx/osxvcltypes.h"
+#include <osx/osxvcltypes.h>
 
-#include "salprn.hxx"
+#include <salprn.hxx>
 
 #include <memory>
 
@@ -47,7 +47,7 @@ class AquaSalInfoPrinter : public SalInfoPrinter
     /// graphics context for Quartz 2D
     CGContextRef                            mrContext;
     /// memory for graphics bitmap context for querying metrics
-    std::shared_ptr<sal_uInt8> mpContextMemory;
+    std::unique_ptr<sal_uInt8[]> mpContextMemory;
 
     // since changes to NSPrintInfo during a job are ignored
     // we have to care for some settings ourselves
@@ -68,13 +68,13 @@ class AquaSalInfoPrinter : public SalInfoPrinter
 
     virtual SalGraphics*        AcquireGraphics() override;
     virtual void                ReleaseGraphics( SalGraphics* i_pGraphics ) override;
-    virtual bool                Setup( SalFrame* i_pFrame, ImplJobSetup* i_pSetupData ) override;
+    virtual bool                Setup( weld::Window* i_pFrame, ImplJobSetup* i_pSetupData ) override;
     virtual bool                SetPrinterData( ImplJobSetup* pSetupData ) override;
     virtual bool                SetData( JobSetFlags i_nFlags, ImplJobSetup* i_pSetupData ) override;
     virtual void                GetPageInfo( const ImplJobSetup* i_pSetupData,
                                              long& o_rOutWidth, long& o_rOutHeight,
-                                             long& o_rPageOffX, long& o_rPageOffY,
-                                             long& o_rPageWidth, long& o_rPageHeight ) override;
+                                             Point& rPageOffset,
+                                             Size& rPaperSize ) override;
     virtual sal_uInt32          GetCapabilities( const ImplJobSetup* i_pSetupData, PrinterCapType i_nType ) override;
     virtual sal_uInt16          GetPaperBinCount( const ImplJobSetup* i_pSetupData ) override;
     virtual OUString            GetPaperBinName( const ImplJobSetup* i_pSetupData, sal_uInt16 i_nPaperBin ) override;
@@ -95,7 +95,6 @@ class AquaSalInfoPrinter : public SalInfoPrinter
     bool                        AbortJob();
     SalGraphics*                StartPage( ImplJobSetup* i_pSetupData, bool i_bNewJobData );
     bool                        EndPage();
-    static sal_uLong            GetErrorCode();
 
     NSPrintInfo* getPrintInfo() const { return mpPrintInfo; }
     void setStartPageOffset( int nOffsetX, int nOffsetY ) { mnStartPageOffsetX = nOffsetX; mnStartPageOffsetY = nOffsetY; }
@@ -136,7 +135,6 @@ class AquaSalPrinter : public SalPrinter
     virtual bool                    EndJob() override;
     virtual SalGraphics*            StartPage( ImplJobSetup* i_pSetupData, bool i_bNewJobData ) override;
     virtual void                    EndPage() override;
-    virtual sal_uLong               GetErrorCode() override;
 
     private:
     AquaSalPrinter( const AquaSalPrinter& ) = delete;
@@ -145,9 +143,9 @@ class AquaSalPrinter : public SalPrinter
 
 const double fPtTo100thMM = 35.27777778;
 
-inline int PtTo10Mu( double nPoints ) { return (int)(((nPoints)*fPtTo100thMM)+0.5); }
+inline int PtTo10Mu( double nPoints ) { return static_cast<int>((nPoints*fPtTo100thMM)+0.5); }
 
-inline double TenMuToPt( double nUnits ) { return floor(((nUnits)/fPtTo100thMM)+0.5); }
+inline double TenMuToPt( double nUnits ) { return floor((nUnits/fPtTo100thMM)+0.5); }
 
 #endif // INCLUDED_VCL_INC_OSX_SALPRN_H
 

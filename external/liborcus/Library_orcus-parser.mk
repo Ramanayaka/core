@@ -13,21 +13,31 @@ $(eval $(call gb_Library_use_unpacked,orcus-parser,liborcus))
 
 $(eval $(call gb_Library_use_externals,orcus-parser,\
 	boost_headers \
+	boost_filesystem \
 	boost_system \
 	mdds_headers \
 	zlib \
 ))
 
-$(eval $(call gb_Library_set_warnings_not_errors,orcus-parser))
+$(eval $(call gb_Library_set_warnings_disabled,orcus-parser))
+
+$(eval $(call gb_Library_set_precompiled_header,orcus-parser,external/liborcus/inc/pch/precompiled_orcus-parser))
 
 $(eval $(call gb_Library_set_include,orcus-parser,\
 	-I$(call gb_UnpackedTarball_get_dir,liborcus)/include \
+	-I$(call gb_UnpackedTarball_get_dir,liborcus)/src/include \
 	$$(INCLUDE) \
 ))
 
 $(eval $(call gb_Library_add_defs,orcus-parser,\
 	-DBOOST_ALL_NO_LIB \
 	-D__ORCUS_PSR_BUILDING_DLL \
+))
+
+# Needed when building against MSVC in C++17 mode, as
+# workdir/UnpackedTarball/liborcus/include/orcus/global.hpp uses std::unary_function:
+$(eval $(call gb_Library_add_defs,orcus-parser, \
+    -D_HAS_AUTO_PTR_ETC=1 \
 ))
 
 $(eval $(call gb_Library_set_generated_cxx_suffix,orcus-parser,cpp))

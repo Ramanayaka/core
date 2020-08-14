@@ -19,7 +19,9 @@
 
 
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 #include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/typeprovider.hxx>
 #include <comphelper/processfactory.hxx>
 #include <connectivity/dbexception.hxx>
 
@@ -27,11 +29,10 @@
 
 #include "MDriver.hxx"
 #include "MStatement.hxx"
-#include "sqlbison.hxx"
+#include <sqlbison.hxx>
 #include "MResultSet.hxx"
 
-#include "resource/mork_res.hrc"
-#include "resource/common_res.hrc"
+#include <strings.hrc>
 
 static ::osl::Mutex m_ThreadMutex;
 
@@ -55,14 +56,12 @@ OStatement::OStatement( OConnection* _pConnection) : OCommonStatement( _pConnect
 OCommonStatement::OCommonStatement(OConnection* _pConnection )
     :OCommonStatement_IBASE(m_aMutex)
     ,OPropertySetHelper(OCommonStatement_IBASE::rBHelper)
-    ,OCommonStatement_SBASE(static_cast<cppu::OWeakObject*>(_pConnection), this)
+    ,m_xDBMetaData (_pConnection->getMetaData())
     ,m_pTable(nullptr)
     ,m_pConnection(_pConnection)
     ,m_aParser( comphelper::getComponentContext(_pConnection->getDriver()->getFactory()) )
-    ,m_pSQLIterator( new OSQLParseTreeIterator( _pConnection, _pConnection->createCatalog()->getTables(), m_aParser ) )
+    ,m_pSQLIterator( std::make_shared<OSQLParseTreeIterator>( _pConnection, _pConnection->createCatalog()->getTables(), m_aParser ) )
 {
-    m_xDBMetaData = _pConnection->getMetaData();
-    m_pParseTree = nullptr;
 }
 
 
@@ -81,9 +80,8 @@ void OCommonStatement::disposing()
     m_pConnection.clear();
 
     m_pSQLIterator->dispose();
-    delete m_pParseTree;
+    m_pParseTree.reset();
 
-    dispose_ChildImpl();
     OCommonStatement_IBASE::disposing();
 }
 
@@ -121,7 +119,7 @@ OCommonStatement::StatementType OCommonStatement::parseSql( const OUString& sql 
 
     if(m_pParseTree)
     {
-        m_pSQLIterator->setParseTree(m_pParseTree);
+        m_pSQLIterator->setParseTree(m_pParseTree.get());
         m_pSQLIterator->traverseAll();
         const OSQLTables& rTabs = m_pSQLIterator->getTables();
 
@@ -137,15 +135,15 @@ OCommonStatement::StatementType OCommonStatement::parseSql( const OUString& sql 
 
             // at this moment we support only one table per select statement
 
-            OSL_ENSURE( rTabs.begin() != rTabs.end(), "Need a Table");
+            OSL_ENSURE( !rTabs.empty(), "Need a Table");
 
             m_pTable = static_cast< OTable* > (rTabs.begin()->second.get());
             m_xColNames     = m_pTable->getColumns();
             xNames.set(m_xColNames,UNO_QUERY);
             // set the binding of the resultrow
             m_aRow          = new OValueVector(xNames->getCount());
-            (m_aRow->get())[0].setBound(true);
-            std::for_each(m_aRow->get().begin()+1,m_aRow->get().end(),TSetBound(false));
+            (*m_aRow)[0].setBound(true);
+            std::for_each(m_aRow->begin()+1,m_aRow->end(),TSetBound(false));
             // create the column mapping
             createColumnMapping();
 
@@ -175,7 +173,7 @@ Reference< XResultSet > OCommonStatement::impl_executeCurrentQuery()
 {
     clearCachedResultSet();
 
-    ::rtl::Reference< OResultSet > pResult( new OResultSet( this, m_pSQLIterator ) );
+    ::rtl::Reference pResult( new OResultSet( this, m_pSQLIterator ) );
     initializeResultSet( pResult.get() );
 
     pResult->executeQuery();
@@ -373,7 +371,7 @@ void SAL_CALL OCommonStatement::acquire() throw()
 
 void SAL_CALL OCommonStatement::release() throw()
 {
-    release_ChildImpl();
+    OCommonStatement_IBASE::release();
 }
 
 void SAL_CALL OStatement::acquire() throw()
@@ -397,7 +395,7 @@ void OCommonStatement::createColumnMapping()
 
     // initialize the column index map (mapping select columns to table columns)
     ::rtl::Reference<connectivity::OSQLColumns> xColumns = m_pSQLIterator->getSelectColumns();
-    m_aColMapping.resize(xColumns->get().size() + 1);
+    m_aColMapping.resize(xColumns->size() + 1);
     for (i=0; i<m_aColMapping.size(); ++i)
         m_aColMapping[i] = static_cast<sal_Int32>(i);
 
@@ -422,30 +420,30 @@ void OCommonStatement::createColumnMapping()
 void OCommonStatement::analyseSQL()
 {
     const OSQLParseNode* pOrderbyClause = m_pSQLIterator->getOrderTree();
-    if(pOrderbyClause)
+    if(!pOrderbyClause)
+        return;
+
+    OSQLParseNode * pOrderingSpecCommalist = pOrderbyClause->getChild(2);
+    OSL_ENSURE(SQL_ISRULE(pOrderingSpecCommalist,ordering_spec_commalist),"OResultSet: Error in Parse Tree");
+
+    for (size_t m = 0; m < pOrderingSpecCommalist->count(); m++)
     {
-        OSQLParseNode * pOrderingSpecCommalist = pOrderbyClause->getChild(2);
-        OSL_ENSURE(SQL_ISRULE(pOrderingSpecCommalist,ordering_spec_commalist),"OResultSet: Error in Parse Tree");
+        OSQLParseNode * pOrderingSpec = pOrderingSpecCommalist->getChild(m);
+        OSL_ENSURE(SQL_ISRULE(pOrderingSpec,ordering_spec),"OResultSet: Error in Parse Tree");
+        OSL_ENSURE(pOrderingSpec->count() == 2,"OResultSet: Error in Parse Tree");
 
-        for (size_t m = 0; m < pOrderingSpecCommalist->count(); m++)
+        OSQLParseNode * pColumnRef = pOrderingSpec->getChild(0);
+        if(!SQL_ISRULE(pColumnRef,column_ref))
         {
-            OSQLParseNode * pOrderingSpec = pOrderingSpecCommalist->getChild(m);
-            OSL_ENSURE(SQL_ISRULE(pOrderingSpec,ordering_spec),"OResultSet: Error in Parse Tree");
-            OSL_ENSURE(pOrderingSpec->count() == 2,"OResultSet: Error in Parse Tree");
-
-            OSQLParseNode * pColumnRef = pOrderingSpec->getChild(0);
-            if(!SQL_ISRULE(pColumnRef,column_ref))
-            {
-                throw SQLException();
-            }
-            OSQLParseNode * pAscendingDescending = pOrderingSpec->getChild(1);
-            setOrderbyColumn(pColumnRef,pAscendingDescending);
+            throw SQLException();
         }
+        OSQLParseNode * pAscendingDescending = pOrderingSpec->getChild(1);
+        setOrderbyColumn(pColumnRef,pAscendingDescending);
     }
 }
 
-void OCommonStatement::setOrderbyColumn(    OSQLParseNode* pColumnRef,
-                                        OSQLParseNode* pAscendingDescending)
+void OCommonStatement::setOrderbyColumn(OSQLParseNode const * pColumnRef,
+                                        OSQLParseNode const * pAscendingDescending)
 {
     OUString aColumnName;
     if (pColumnRef->count() == 1)
@@ -466,7 +464,7 @@ void OCommonStatement::setOrderbyColumn(    OSQLParseNode* pColumnRef,
     m_aOrderbyColumnNumber.push_back(xColLocate->findColumn(aColumnName));
 
     // Ascending or Descending?
-    m_aOrderbyAscending.push_back((SQL_ISTOKEN(pAscendingDescending,DESC)) ? TAscendingOrder::DESC : TAscendingOrder::ASC);
+    m_aOrderbyAscending.push_back(SQL_ISTOKEN(pAscendingDescending,DESC) ? TAscendingOrder::DESC : TAscendingOrder::ASC);
 }
 
 

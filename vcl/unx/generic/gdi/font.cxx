@@ -20,45 +20,16 @@
 #include <vcl/sysdata.hxx>
 #include <vcl/fontcharmap.hxx>
 
-#include "unx/saldisp.hxx"
-#include "unx/salgdi.h"
-#include "unx/salvd.h"
-#include "textrender.hxx"
-#include "CommonSalLayout.hxx"
+#include <unx/salgdi.h>
+#include <textrender.hxx>
+#include <sallayout.hxx>
 
-GC
-X11SalGraphics::GetFontGC()
+void X11SalGraphics::DrawTextLayout(const GenericSalLayout& rLayout)
 {
-    Display *pDisplay = GetXDisplay();
-
-    if( !pFontGC_ )
-    {
-        XGCValues values;
-        values.subwindow_mode       = ClipByChildren;
-        values.fill_rule            = EvenOddRule;      // Pict import/ Gradient
-        values.graphics_exposures   = False;
-        values.foreground           = nTextPixel_;
-        pFontGC_ = XCreateGC( pDisplay, hDrawable_,
-                              GCSubwindowMode | GCFillRule
-                              | GCGraphicsExposures | GCForeground,
-                              &values );
-    }
-    if( !bFontGC_ )
-    {
-        XSetForeground( pDisplay, pFontGC_, nTextPixel_ );
-        SetClipRegion( pFontGC_ );
-        bFontGC_ = true;
-    }
-
-    return pFontGC_;
+    mxTextRenderImpl->DrawTextLayout(rLayout, *this);
 }
 
-void X11SalGraphics::DrawTextLayout(const CommonSalLayout& rLayout)
-{
-    mxTextRenderImpl->DrawTextLayout(rLayout);
-}
-
-const FontCharMapRef X11SalGraphics::GetFontCharMap() const
+FontCharMapRef X11SalGraphics::GetFontCharMap() const
 {
     return mxTextRenderImpl->GetFontCharMap();
 }
@@ -69,18 +40,16 @@ bool X11SalGraphics::GetFontCapabilities(vcl::FontCapabilities &rGetImplFontCapa
 }
 
 // SalGraphics
-
-void X11SalGraphics::SetFont( FontSelectPattern *pEntry, int nFallbackLevel )
+void X11SalGraphics::SetFont(LogicalFontInstance* pEntry, int nFallbackLevel)
 {
     mxTextRenderImpl->SetFont(pEntry, nFallbackLevel);
 }
 
 void
-X11SalGraphics::SetTextColor( SalColor nSalColor )
+X11SalGraphics::SetTextColor( Color nColor )
 {
-    mxTextRenderImpl->SetTextColor(nSalColor);
-    nTextPixel_     = GetPixel( nSalColor );
-    bFontGC_        = false;
+    mxTextRenderImpl->SetTextColor(nColor);
+    nTextPixel_     = GetPixel( nColor );
 }
 
 bool X11SalGraphics::AddTempDevFont( PhysicalFontCollection* pFontCollection,
@@ -106,30 +75,10 @@ X11SalGraphics::GetFontMetric( ImplFontMetricDataRef &rxFontMetric, int nFallbac
     mxTextRenderImpl->GetFontMetric(rxFontMetric, nFallbackLevel);
 }
 
-bool X11SalGraphics::GetGlyphBoundRect(const GlyphItem& rGlyph, tools::Rectangle& rRect)
+std::unique_ptr<GenericSalLayout> X11SalGraphics::GetTextLayout(int nFallbackLevel)
 {
-    return mxTextRenderImpl->GetGlyphBoundRect(rGlyph, rRect);
+    return mxTextRenderImpl->GetTextLayout(nFallbackLevel);
 }
-
-bool X11SalGraphics::GetGlyphOutline(const GlyphItem& rGlyph,
-    basegfx::B2DPolyPolygon& rPolyPoly )
-{
-    return mxTextRenderImpl->GetGlyphOutline(rGlyph, rPolyPoly);
-}
-
-SalLayout* X11SalGraphics::GetTextLayout( ImplLayoutArgs& rArgs, int nFallbackLevel )
-{
-    return mxTextRenderImpl->GetTextLayout(rArgs, nFallbackLevel);
-}
-
-#if ENABLE_CAIRO_CANVAS
-
-SystemFontData X11SalGraphics::GetSysFontData( int nFallbackLevel ) const
-{
-    return mxTextRenderImpl->GetSysFontData(nFallbackLevel);
-}
-
-#endif
 
 bool X11SalGraphics::CreateFontSubset(
                                    const OUString& rToFile,

@@ -40,7 +40,6 @@
 #include <com/sun/star/xml/dom/NodeType.hpp>
 #include <com/sun/star/xml/dom/events/XEventTarget.hpp>
 #include <com/sun/star/xml/dom/events/XEvent.hpp>
-#include <com/sun/star/xml/dom/DOMException.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <com/sun/star/xml/sax/XFastDocumentHandler.hpp>
 
@@ -51,28 +50,25 @@ namespace DOM
     struct Context
     {
         Context( const css::uno::Reference< css::xml::sax::XFastDocumentHandler >& i_xHandler,
-                 const css::uno::Reference< css::xml::sax::XFastTokenHandler >& i_xTokenHandler ) :
+                 sax_fastparser::FastTokenHandlerBase* pTokenHandler ) :
             maNamespaces( 1, std::vector<Namespace>() ),
             maNamespaceMap(101),
-            mxAttribList(new sax_fastparser::FastAttributeList(i_xTokenHandler)),
+            mxAttribList(new sax_fastparser::FastAttributeList(pTokenHandler)),
             mxCurrentHandler(i_xHandler),
             mxDocHandler(i_xHandler),
-            mxTokenHandler(i_xTokenHandler)
+            mxTokenHandler(pTokenHandler)
         {}
 
         struct Namespace
         {
             OString     maPrefix;
             sal_Int32   mnToken;
-            OUString    maNamespaceURL;
 
             const OString& getPrefix() const { return maPrefix; }
         };
 
         typedef std::vector< std::vector<Namespace> > NamespaceVectorType;
-        typedef std::unordered_map< OUString,
-                               sal_Int32,
-                               OUStringHash > NamespaceMapType;
+        typedef std::unordered_map< OUString, sal_Int32 > NamespaceMapType;
 
         /// outer vector: xml context; inner vector: current NS
         NamespaceVectorType                 maNamespaces;
@@ -80,14 +76,14 @@ namespace DOM
         ::rtl::Reference<sax_fastparser::FastAttributeList> mxAttribList;
         css::uno::Reference<css::xml::sax::XFastContextHandler>      mxCurrentHandler;
         css::uno::Reference<css::xml::sax::XFastDocumentHandler>     mxDocHandler;
-        css::uno::Reference<css::xml::sax::XFastTokenHandler>        mxTokenHandler;
+        rtl::Reference<sax_fastparser::FastTokenHandlerBase>         mxTokenHandler;
     };
 
     void pushContext(Context& io_rContext);
     void popContext(Context& io_rContext);
 
-    sal_Int32 getTokenWithPrefix( const Context& rContext, const sal_Char* xPrefix, const sal_Char* xName );
-    sal_Int32 getToken( const Context& rContext, const sal_Char* xName );
+    sal_Int32 getTokenWithPrefix( const Context& rContext, const char* xPrefix, const char* xName );
+    sal_Int32 getToken( const Context& rContext, const char* xName );
 
     /// add namespaces on this node to context
     void addNamespaces(Context& io_rContext, xmlNodePtr pNode);
@@ -122,8 +118,7 @@ namespace DOM
 
         virtual ~CNode() override;
 
-        static CNode * GetImplementation(css::uno::Reference<
-                css::uno::XInterface> const& xNode);
+        static const css::uno::Sequence< sal_Int8 > & getUnoTunnelId() throw();
 
         xmlNodePtr GetNodePtr() { return m_aNodePtr; }
 

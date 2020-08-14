@@ -23,35 +23,30 @@
 #include "PresenterPaneBorderPainter.hxx"
 #include "PresenterPaneContainer.hxx"
 #include "PresenterSpritePane.hxx"
-#include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/drawing/framework/ResourceId.hpp>
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::drawing::framework;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
-const OUString PresenterPaneFactory::msCurrentSlidePreviewPaneURL(
+const OUStringLiteral PresenterPaneFactory::msCurrentSlidePreviewPaneURL(
     "private:resource/pane/Presenter/Pane1");
-const OUString PresenterPaneFactory::msNextSlidePreviewPaneURL(
+const OUStringLiteral PresenterPaneFactory::msNextSlidePreviewPaneURL(
     "private:resource/pane/Presenter/Pane2");
-const OUString PresenterPaneFactory::msNotesPaneURL(
+const OUStringLiteral PresenterPaneFactory::msNotesPaneURL(
     "private:resource/pane/Presenter/Pane3");
-const OUString PresenterPaneFactory::msToolBarPaneURL(
+const OUStringLiteral PresenterPaneFactory::msToolBarPaneURL(
     "private:resource/pane/Presenter/Pane4");
-const OUString PresenterPaneFactory::msSlideSorterPaneURL(
+const OUStringLiteral PresenterPaneFactory::msSlideSorterPaneURL(
     "private:resource/pane/Presenter/Pane5");
-const OUString PresenterPaneFactory::msHelpPaneURL(
+const OUStringLiteral PresenterPaneFactory::msHelpPaneURL(
     "private:resource/pane/Presenter/Pane6");
 
-const OUString PresenterPaneFactory::msOverlayPaneURL(
+const OUStringLiteral PresenterPaneFactory::msOverlayPaneURL(
     "private:resource/pane/Presenter/Overlay");
 
 //===== PresenterPaneFactory ==================================================
@@ -92,12 +87,9 @@ void PresenterPaneFactory::Register (const Reference<frame::XController>& rxCont
         {
             throw RuntimeException();
         }
-        else
-        {
-            xCC->addResourceFactory(
-                "private:resource/pane/Presenter/*",
-                this);
-        }
+        xCC->addResourceFactory(
+            "private:resource/pane/Presenter/*",
+             this);
     }
     catch (RuntimeException&)
     {
@@ -122,13 +114,11 @@ void SAL_CALL PresenterPaneFactory::disposing()
     mxConfigurationControllerWeak = WeakReference<XConfigurationController>();
 
     // Dispose the panes in the cache.
-    if (mpResourceCache.get() != nullptr)
+    if (mpResourceCache != nullptr)
     {
-        ResourceContainer::const_iterator iPane (mpResourceCache->begin());
-        ResourceContainer::const_iterator iEnd (mpResourceCache->end());
-        for ( ; iPane!=iEnd; ++iPane)
+        for (const auto& rxPane : *mpResourceCache)
         {
-            Reference<lang::XComponent> xPaneComponent (iPane->second, UNO_QUERY);
+            Reference<lang::XComponent> xPaneComponent (rxPane.second, UNO_QUERY);
             if (xPaneComponent.is())
                 xPaneComponent->dispose();
         }
@@ -150,7 +140,7 @@ Reference<XResource> SAL_CALL PresenterPaneFactory::createResource (
     if (sPaneURL.isEmpty())
         return nullptr;
 
-    if (mpResourceCache.get() != nullptr)
+    if (mpResourceCache != nullptr)
     {
         // Has the requested resource already been created?
         ResourceContainer::const_iterator iResource (mpResourceCache->find(sPaneURL));
@@ -161,7 +151,7 @@ Reference<XResource> SAL_CALL PresenterPaneFactory::createResource (
                 mpPresenterController->GetPaneContainer());
             PresenterPaneContainer::SharedPaneDescriptor pDescriptor (
                 pPaneContainer->FindPaneURL(sPaneURL));
-            if (pDescriptor.get() != nullptr)
+            if (pDescriptor)
             {
                 pDescriptor->SetActivationState(true);
                 if (pDescriptor->mxBorderWindow.is())
@@ -191,24 +181,24 @@ void SAL_CALL PresenterPaneFactory::releaseResource (const Reference<XResource>&
     const OUString sPaneURL (rxResource->getResourceId()->getResourceURL());
     PresenterPaneContainer::SharedPaneDescriptor pDescriptor (
         pPaneContainer->FindPaneURL(sPaneURL));
-    if (pDescriptor.get() != nullptr)
-    {
-        pDescriptor->SetActivationState(false);
-        if (pDescriptor->mxBorderWindow.is())
-            pDescriptor->mxBorderWindow->setVisible(false);
+    if (!pDescriptor)
+        return;
 
-        if (mpResourceCache.get() != nullptr)
-        {
-            // Store the pane in the cache.
-            (*mpResourceCache)[sPaneURL] = rxResource;
-        }
-        else
-        {
-            // Dispose the pane.
-            Reference<lang::XComponent> xPaneComponent (rxResource, UNO_QUERY);
-            if (xPaneComponent.is())
-                xPaneComponent->dispose();
-        }
+    pDescriptor->SetActivationState(false);
+    if (pDescriptor->mxBorderWindow.is())
+        pDescriptor->mxBorderWindow->setVisible(false);
+
+    if (mpResourceCache != nullptr)
+    {
+        // Store the pane in the cache.
+        (*mpResourceCache)[sPaneURL] = rxResource;
+    }
+    else
+    {
+        // Dispose the pane.
+        Reference<lang::XComponent> xPaneComponent (rxResource, UNO_QUERY);
+        if (xPaneComponent.is())
+            xPaneComponent->dispose();
     }
 }
 
@@ -253,7 +243,7 @@ Reference<XResource> PresenterPaneFactory::CreatePane (
 {
     Reference<XComponentContext> xContext (mxComponentContextWeak);
     Reference<lang::XMultiComponentFactory> xFactory (
-        xContext->getServiceManager(), UNO_QUERY_THROW);
+        xContext->getServiceManager(), UNO_SET_THROW);
 
     // Create a border window and canvas and store it in the pane
     // container.
@@ -287,21 +277,12 @@ Reference<XResource> PresenterPaneFactory::CreatePane (
     PresenterPaneContainer::SharedPaneDescriptor pDescriptor(
         pContainer->StoreBorderWindow(rxPaneId, xPane->GetBorderWindow()));
     pContainer->StorePane(xPane);
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
     {
-        if (bIsSpritePane)
-        {
-            auto const pPane(dynamic_cast<PresenterSpritePane*>(xPane.get()));
-            pDescriptor->maSpriteProvider = [pPane](){ return pPane->GetSprite(); };
-            pDescriptor->mbIsSprite = true;
-        }
-        else
-        {
-            pDescriptor->mbIsSprite = false;
-        }
+        pDescriptor->mbIsSprite = bIsSpritePane;
 
         // Get the window of the frame and make that visible.
-        Reference<awt::XWindow> xWindow (pDescriptor->mxBorderWindow, UNO_QUERY_THROW);
+        Reference<awt::XWindow> xWindow (pDescriptor->mxBorderWindow, UNO_SET_THROW);
         xWindow->setVisible(true);
     }
 
@@ -318,6 +299,6 @@ void PresenterPaneFactory::ThrowIfDisposed() const
     }
 }
 
-} } // end of namespace sdext::presenter
+} // end of namespace sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

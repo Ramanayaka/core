@@ -47,7 +47,7 @@ the update information from the repository as feed:
 
 http://updateext.services.openoffice.org/ProductUpdateService/check.Update
 
-pub8.oxt provides <publisher> and <release-notes>. These information should be transferred
+pub8.oxt provides <publisher> and <release-notes>. This information should be transferred
 in the update feed and not those entered in the repository.
 
 Test
@@ -77,7 +77,7 @@ Result:
 The Update Dialog should show the publisher name as provided in the description.xml. For example,
 when lang=en-US was selected: My OpenOffice en-US
 
-A release notes link is displayed with an URL to the release notes as provided in 
+A release notes link is displayed with a URL to the release notes as provided in 
 the description.xml. For example, when lang=en-US was selected:
 "http://extensions.openoffice.org/testarea/desktop/publisher/publisher_en-US.html
 
@@ -124,7 +124,7 @@ Result:
 The Update Dialog should show the publisher name as provided in the description.xml. For example,
 when lang=en-US was selected: My OpenOffice en-US
 
-A release notes link is displayed with an URL to the release notes as provided in the release notes
+A release notes link is displayed with a URL to the release notes as provided in the release notes
 field on the edit page for the extension in the repository.
 
 ================================================================================
@@ -147,7 +147,7 @@ Test
 Repository:
 
 -Create the new extension in the repository. 
--Provide a company name and a URL to the company website. They should then be in the update 
+-Provide a company name and a URL to the company website. They should then be in the update
  feed. 
   
 -Create a new release for the extension. Upload the version 2.0 (update/pub10.oxt). 
@@ -165,7 +165,7 @@ Office:
 Result:
 The Update Dialog should show the publisher name as provided in the repository.
 
-A release notes link is displayed with an URL to the release notes as provided in the 
+A release notes link is displayed with a URL to the release notes as provided in the 
 pub10.oxt.  For example, when the locale of the office is en-US then this page will be 
 displayed:
 For example,
@@ -190,7 +190,7 @@ Test
 Repository:
 
 -Create the new extension in the repository. 
--Provide a company name and a URL to the company website. They should then be in the update 
+-Provide a company name and a URL to the company website. They should then be in the update
  feed. 
   
 -Create a new release for the extension. Upload the version 2.0 (update/pub11.oxt). 

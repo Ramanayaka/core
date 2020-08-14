@@ -17,12 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/relfld.hxx"
-#include <vcl/builderfactory.hxx>
+#include <svx/relfld.hxx>
 
-SvxRelativeField::SvxRelativeField(
-        vcl::Window *const pParent, WinBits const nBits, FieldUnit const eUnit)
-    : MetricField( pParent, nBits)
+SvxRelativeField::SvxRelativeField(std::unique_ptr<weld::MetricSpinButton> pControl)
+    : m_xSpinButton(std::move(pControl))
     , nRelMin(0)
     , nRelMax(0)
     , bRelativeMode(false)
@@ -30,94 +28,76 @@ SvxRelativeField::SvxRelativeField(
     , bNegativeEnabled(false)
 
 {
-    SetUnit(eUnit);
-    SetDecimalDigits( 2 );
-    SetMin( 0 );
-    SetMax( 9999 );
+    weld::SpinButton& rSpinButton = m_xSpinButton->get_widget();
+    rSpinButton.connect_changed(LINK(this, SvxRelativeField, ModifyHdl));
 }
 
-VCL_BUILDER_DECL_FACTORY(SvxRelativeField)
+IMPL_LINK_NOARG(SvxRelativeField, ModifyHdl, weld::Entry&, void)
 {
-    OUString const custom(VclBuilder::extractCustomProperty(rMap));
-    FieldUnit const eUnit(VclBuilder::detectUnit(custom));
-    rRet = VclPtr<SvxRelativeField>::Create(pParent,
-                                            WB_BORDER | WB_SPIN | WB_REPEAT |
-                                            WB_LEFT | WB_GROUP,
-                                            eUnit);
-}
+    if (!bRelativeMode)
+        return;
 
-void SvxRelativeField::Modify()
-{
-    MetricField::Modify();
+    OUString  aStr = m_xSpinButton->get_text();
+    bool      bNewMode = bRelative;
 
-    if ( bRelativeMode )
+    if ( bRelative )
     {
-        OUString  aStr = GetText();
-        bool      bNewMode = bRelative;
+        const sal_Unicode* pStr = aStr.getStr();
 
-        if ( bRelative )
+        while ( *pStr )
         {
-            const sal_Unicode* pStr = aStr.getStr();
-
-            while ( *pStr )
+            if( ( ( *pStr < '0' ) || ( *pStr > '9' ) ) &&
+                ( *pStr != '%' ) )
             {
-                if( ( ( *pStr < '0' ) || ( *pStr > '9' ) ) &&
-                    ( *pStr != '%' ) )
-                {
-                    bNewMode = false;
-                    break;
-                }
-                pStr++;
+                bNewMode = false;
+                break;
             }
+            pStr++;
         }
-        else
-        {
-            if ( aStr.indexOf( "%" ) != -1 )
-                bNewMode = true;
-        }
-
-        if ( bNewMode != bRelative )
-            SetRelative( bNewMode );
-
-        MetricField::Modify();
     }
+    else
+    {
+        if ( aStr.indexOf( "%" ) != -1 )
+            bNewMode = true;
+    }
+
+    if ( bNewMode != bRelative )
+        SetRelative( bNewMode );
 }
 
-
-void SvxRelativeField::EnableRelativeMode( sal_uInt16 nMin, sal_uInt16 nMax )
+void SvxRelativeField::EnableRelativeMode(sal_uInt16 nMin, sal_uInt16 nMax)
 {
     bRelativeMode = true;
     nRelMin       = nMin;
     nRelMax       = nMax;
-    SetUnit( FUNIT_CM );
+    m_xSpinButton->set_unit(FieldUnit::CM);
 }
-
 
 void SvxRelativeField::SetRelative( bool bNewRelative )
 {
-    Selection aSelection = GetSelection();
-    OUString aStr = GetText();
+    weld::SpinButton& rSpinButton = m_xSpinButton->get_widget();
+
+    int nStartPos, nEndPos;
+    rSpinButton.get_selection_bounds(nStartPos, nEndPos);
+    OUString aStr = rSpinButton.get_text();
 
     if ( bNewRelative )
     {
         bRelative = true;
-        SetDecimalDigits( 0 );
-        SetMin( nRelMin );
-        SetMax( nRelMax );
-        SetUnit( FUNIT_PERCENT );
+        m_xSpinButton->set_digits(0);
+        m_xSpinButton->set_range(nRelMin, nRelMax, FieldUnit::NONE);
+        m_xSpinButton->set_unit(FieldUnit::PERCENT);
     }
     else
     {
         bRelative = false;
-        SetDecimalDigits( 2 );
-        SetMin( bNegativeEnabled ? -9999 : 0 );
-        SetMax( 9999 );
-        SetUnit( FUNIT_CM );
+        m_xSpinButton->set_digits(2);
+        m_xSpinButton->set_range(bNegativeEnabled ? -9999 : 0, 9999, FieldUnit::NONE);
+        m_xSpinButton->set_unit(FieldUnit::CM);
     }
 
-    SetText( aStr );
-    SetSelection( aSelection );
+    rSpinButton.set_text(aStr);
+    rSpinButton.select_region(nStartPos, nEndPos);
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

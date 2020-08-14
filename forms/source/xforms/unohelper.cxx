@@ -29,7 +29,6 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <comphelper/processfactory.hxx>
 
 
 using com::sun::star::uno::Reference;
@@ -42,7 +41,7 @@ using com::sun::star::beans::PropertyAttribute::READONLY;
 
 
 void xforms::copy( const Reference<XPropertySet>& xFrom,
-                   Reference<XPropertySet>& xTo )
+                   Reference<XPropertySet> const & xTo )
 {
     OSL_ENSURE( xFrom.is(), "no source" );
     OSL_ENSURE( xTo.is(), "no target" );

@@ -19,22 +19,16 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_AREAWRAPPER_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_AREAWRAPPER_HXX
 
-#include "WrappedPropertySet.hxx"
+#include <WrappedPropertySet.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/uno3.hxx>
 #include <comphelper/interfacecontainer2.hxx>
 #include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/chart2/XChartDocument.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <memory>
 
-namespace chart
-{
-
-namespace wrapper
+namespace chart::wrapper
 {
 
 class Chart2ModelContact;
@@ -74,7 +68,7 @@ public:
 protected:
     // ____ WrappedPropertySet ____
     virtual const css::uno::Sequence< css::beans::Property >& getPropertySequence() override;
-    virtual const std::vector< WrappedProperty* > createWrappedProperties() override;
+    virtual std::vector< std::unique_ptr<WrappedProperty> > createWrappedProperties() override;
     virtual css::uno::Reference< css::beans::XPropertySet > getInnerPropertySet() override;
 
 private:
@@ -82,8 +76,7 @@ private:
     ::comphelper::OInterfaceContainerHelper2      m_aEventListenerContainer;
 };
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_AREAWRAPPER_HXX
 #endif

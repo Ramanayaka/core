@@ -23,16 +23,13 @@
 #include <string>
 #include <cstdlib>
 #include <vector>
-#include <guess.hxx>
+#include "guess.hxx"
 
 #define MAX_STRING_LENGTH_TO_ANALYSE 200
 
 using namespace std;
 
-/**
-@author Jocelyn Merand
-*/
-class SimpleGuesser{
+class SimpleGuesser final {
 public:
     /**inits the object with conf file "./conf.txt"*/
     SimpleGuesser();
@@ -98,7 +95,7 @@ public:
     */
     void SetDBPath(const char* thePathOfConfFile, const char* prefix);
 
-protected:
+private:
 
     //Where typical fingerprints (n-gram tables) are stored
     void* h;

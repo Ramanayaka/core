@@ -27,8 +27,10 @@
 #include <docary.hxx>
 #include <ddefld.hxx>
 #include <swddetbl.hxx>
-#include <svtools/fmtfield.hxx>
+#include <ndindex.hxx>
+#include <frameformats.hxx>
 #include <vector>
+#include <osl/diagnose.h>
 
 
 #ifdef DBG_UTIL
@@ -37,6 +39,7 @@
 #define CHECK_TABLE(t)
 #endif
 
+namespace {
 
 // Structure for the mapping from old and new frame formats to the
 // boxes and lines of a table
@@ -49,9 +52,11 @@ struct MapTableFrameFormat
     {}
 };
 
+}
+
 typedef std::vector<MapTableFrameFormat> MapTableFrameFormats;
 
-SwContentNode* SwTextNode::MakeCopy( SwDoc* pDoc, const SwNodeIndex& rIdx ) const
+SwContentNode* SwTextNode::MakeCopy(SwDoc* pDoc, const SwNodeIndex& rIdx, bool const bNewFrames) const
 {
     // the Copy-Textnode is the Node with the Text, the Copy-Attrnode is the
     // node with the collection and hard attributes. Normally is the same
@@ -74,7 +79,7 @@ SwContentNode* SwTextNode::MakeCopy( SwDoc* pDoc, const SwNodeIndex& rIdx ) cons
     if( !pColl )
         pColl = pDoc->CopyTextColl( *GetTextColl() );
 
-    SwTextNode* pTextNd = pDoc->GetNodes().MakeTextNode( rIdx, pColl );
+    SwTextNode* pTextNd = pDoc->GetNodes().MakeTextNode(rIdx, pColl, bNewFrames);
 
     // METADATA: register copy
     pTextNd->RegisterAsCopyOf(*pCpyTextNd);
@@ -117,6 +122,8 @@ static bool lcl_SrchNew( const MapTableFrameFormat& rMap, SwFrameFormat** pPara 
     return false;
 }
 
+namespace {
+
 struct CopyTable
 {
     SwDoc* m_pDoc;
@@ -134,13 +141,15 @@ struct CopyTable
     {}
 };
 
+}
+
 static void lcl_CopyTableLine( const SwTableLine* pLine, CopyTable* pCT );
 
 static void lcl_CopyTableBox( SwTableBox* pBox, CopyTable* pCT )
 {
     SwTableBoxFormat * pBoxFormat = static_cast<SwTableBoxFormat*>(pBox->GetFrameFormat());
-    for (MapTableFrameFormats::const_iterator it = pCT->m_rMapArr.begin(); it != pCT->m_rMapArr.end(); ++it)
-        if ( !lcl_SrchNew( *it, reinterpret_cast<SwFrameFormat**>(&pBoxFormat) ) )
+    for (const auto& rMap : pCT->m_rMapArr)
+        if ( !lcl_SrchNew( rMap, reinterpret_cast<SwFrameFormat**>(&pBoxFormat) ) )
             break;
 
     if (pBoxFormat == pBox->GetFrameFormat()) // Create a new one?
@@ -169,7 +178,7 @@ static void lcl_CopyTableBox( SwTableBox* pBox, CopyTable* pCT )
             }
         }
 
-        pCT->m_rMapArr.push_back(MapTableFrameFormat(pBox->GetFrameFormat(), pBoxFormat));
+        pCT->m_rMapArr.emplace_back(pBox->GetFrameFormat(), pBoxFormat);
     }
 
     sal_uInt16 nLines = pBox->GetTabLines().size();
@@ -179,7 +188,7 @@ static void lcl_CopyTableBox( SwTableBox* pBox, CopyTable* pCT )
     else
     {
         SwNodeIndex aNewIdx(*pCT->m_pTableNd, pBox->GetSttIdx() - pCT->m_nOldTableSttIdx);
-        OSL_ENSURE( aNewIdx.GetNode().IsStartNode(), "Index is not on the start node" );
+        assert(aNewIdx.GetNode().IsStartNode() && "Index is not on the start node");
 
         pNewBox = new SwTableBox(pBoxFormat, aNewIdx, pCT->m_pInsLine);
         pNewBox->setRowSpan( pBox->getRowSpan() );
@@ -204,15 +213,15 @@ static void lcl_CopyTableBox( SwTableBox* pBox, CopyTable* pCT )
 static void lcl_CopyTableLine( const SwTableLine* pLine, CopyTable* pCT )
 {
     SwTableLineFormat * pLineFormat = static_cast<SwTableLineFormat*>(pLine->GetFrameFormat());
-    for (MapTableFrameFormats::const_iterator it = pCT->m_rMapArr.begin(); it != pCT->m_rMapArr.end(); ++it)
-        if ( !lcl_SrchNew( *it, reinterpret_cast<SwFrameFormat**>(&pLineFormat) ) )
+    for (const auto& rMap : pCT->m_rMapArr)
+        if ( !lcl_SrchNew( rMap, reinterpret_cast<SwFrameFormat**>(&pLineFormat) ) )
             break;
 
     if( pLineFormat == pLine->GetFrameFormat() ) // Create a new one?
     {
         pLineFormat = pCT->m_pDoc->MakeTableLineFormat();
         pLineFormat->CopyAttrs( *pLine->GetFrameFormat() );
-        pCT->m_rMapArr.push_back(MapTableFrameFormat(pLine->GetFrameFormat(), pLineFormat));
+        pCT->m_rMapArr.emplace_back(pLine->GetFrameFormat(), pLineFormat);
     }
 
     SwTableLine* pNewLine = new SwTableLine(pLineFormat, pLine->GetTabBoxes().size(), pCT->m_pInsBox);
@@ -227,9 +236,8 @@ static void lcl_CopyTableLine( const SwTableLine* pLine, CopyTable* pCT )
     }
 
     pCT->m_pInsLine = pNewLine;
-    for( SwTableBoxes::iterator it = const_cast<SwTableLine*>(pLine)->GetTabBoxes().begin();
-             it != const_cast<SwTableLine*>(pLine)->GetTabBoxes().end(); ++it)
-        lcl_CopyTableBox(*it, pCT );
+    for( auto& rpBox : const_cast<SwTableLine*>(pLine)->GetTabBoxes() )
+        lcl_CopyTableBox(rpBox, pCT);
 }
 
 SwTableNode* SwTableNode::MakeCopy( SwDoc* pDoc, const SwNodeIndex& rIdx ) const
@@ -282,8 +290,8 @@ SwTableNode* SwTableNode::MakeCopy( SwDoc* pDoc, const SwNodeIndex& rIdx ) const
         OSL_ENSURE( pDDEType, "unknown FieldType" );
 
         // Swap the table pointers in the node
-        SwDDETable* pNewTable = new SwDDETable( pTableNd->GetTable(), pDDEType );
-        pTableNd->SetNewTable( pNewTable, false );
+        std::unique_ptr<SwDDETable> pNewTable(new SwDDETable( pTableNd->GetTable(), pDDEType ));
+        pTableNd->SetNewTable( std::move(pNewTable), false );
     }
     // First copy the content of the tables, we will later assign the
     // boxes/lines and create the frames
@@ -331,7 +339,8 @@ void SwTextNode::CopyCollFormat( SwTextNode& rDestNd )
     SwAttrSet aPgBrkSet( pDestDoc->GetAttrPool(), aBreakSetRange );
     const SwAttrSet* pSet;
 
-    if( nullptr != ( pSet = rDestNd.GetpSwAttrSet() ) )
+    pSet = rDestNd.GetpSwAttrSet();
+    if( nullptr != pSet )
     {
         // Special cases for Break-Attributes
         const SfxPoolItem* pAttr;
@@ -343,7 +352,8 @@ void SwTextNode::CopyCollFormat( SwTextNode& rDestNd )
     }
 
     rDestNd.ChgFormatColl( pDestDoc->CopyTextColl( *GetTextColl() ));
-    if( nullptr != ( pSet = GetpSwAttrSet() ) )
+    pSet = GetpSwAttrSet();
+    if( nullptr != pSet )
         pSet->CopyToModify( rDestNd );
 
     if( aPgBrkSet.Count() )

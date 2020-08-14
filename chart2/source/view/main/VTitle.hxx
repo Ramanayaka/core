@@ -19,9 +19,16 @@
 #ifndef INCLUDED_CHART2_SOURCE_VIEW_MAIN_VTITLE_HXX
 #define INCLUDED_CHART2_SOURCE_VIEW_MAIN_VTITLE_HXX
 
-#include <com/sun/star/chart2/XTitle.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/uno/Reference.h>
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
+
+namespace com::sun::star::awt { struct Point; }
+namespace com::sun::star::chart2 { class XTitle; }
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::drawing { class XShapes; }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
 
 namespace chart
 {
@@ -37,7 +44,9 @@ public:
              , const OUString& rCID );
 
     void    createShapes( const css::awt::Point& rPos
-                          , const css::awt::Size& rReferenceSize );
+                          , const css::awt::Size& rReferenceSize
+                          , const css::awt::Size& nTextMaxWidth
+                          , bool bYAxisTitle );
 
     double getRotationAnglePi() const;
     css::awt::Size getUnrotatedSize() const;

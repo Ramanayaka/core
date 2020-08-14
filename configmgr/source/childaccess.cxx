@@ -27,7 +27,6 @@
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Type.hxx>
 #include <com/sun/star/uno/XInterface.hpp>
@@ -37,9 +36,7 @@
 #include <comphelper/servicehelper.hxx>
 #include <osl/mutex.hxx>
 #include <rtl/ref.hxx>
-#include <rtl/string.h>
 #include <rtl/ustrbuf.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
@@ -47,7 +44,6 @@
 #include "childaccess.hxx"
 #include "components.hxx"
 #include "data.hxx"
-#include "groupnode.hxx"
 #include "localizedpropertynode.hxx"
 #include "localizedvaluenode.hxx"
 #include "lock.hxx"
@@ -55,7 +51,6 @@
 #include "node.hxx"
 #include "propertynode.hxx"
 #include "rootaccess.hxx"
-#include "setnode.hxx"
 #include "type.hxx"
 
 namespace configmgr {
@@ -65,7 +60,7 @@ namespace
     class theChildAccessUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theChildAccessUnoTunnelId > {};
 }
 
-css::uno::Sequence< sal_Int8 > ChildAccess::getTunnelId()
+css::uno::Sequence< sal_Int8 > const & ChildAccess::getTunnelId()
 {
     return theChildAccessUnoTunnelId::get().getSeq();
 }
@@ -109,7 +104,7 @@ std::vector<OUString> ChildAccess::getRelativePath() {
 }
 
 OUString ChildAccess::getRelativePathRepresentation() {
-    OUStringBuffer path;
+    OUStringBuffer path(128);
     rtl::Reference< Access > parent(getParentAccess());
     if (parent.is()) {
         path.append(parent->getRelativePathRepresentation());
@@ -252,7 +247,8 @@ void ChildAccess::setProperty(
 
 css::uno::Any ChildAccess::asValue()
 {
-    if (changedValue_.get() != nullptr) {
+    if (changedValue_ != nullptr)
+    {
         return *changedValue_;
     }
     css::uno::Any value;
@@ -295,7 +291,8 @@ void ChildAccess::commitChanges(bool valid, Modifications * globalModifications)
 {
     assert(globalModifications != nullptr);
     commitChildChanges(valid, globalModifications);
-    if (valid && changedValue_.get() != nullptr) {
+    if (valid && changedValue_ != nullptr)
+    {
         std::vector<OUString> path(getAbsolutePath());
         getComponents().addModification(path);
         globalModifications->add(path);

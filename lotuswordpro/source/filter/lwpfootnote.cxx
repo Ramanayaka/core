@@ -56,17 +56,16 @@
 
 #include <memory>
 #include "lwpfootnote.hxx"
-#include "lwpstory.hxx"
-#include "xfilter/xffootnote.hxx"
-#include "xfilter/xfendnote.hxx"
-#include "xfilter/xffootnoteconfig.hxx"
-#include "xfilter/xfendnoteconfig.hxx"
-#include "xfilter/xfstylemanager.hxx"
-#include "xfilter/xftextspan.hxx"
+#include <xfilter/xffootnote.hxx>
+#include <xfilter/xfendnote.hxx>
+#include <xfilter/xffootnoteconfig.hxx>
+#include <xfilter/xfendnoteconfig.hxx>
+#include <xfilter/xfstylemanager.hxx>
+#include <xfilter/xftextspan.hxx>
 #include "lwppara.hxx"
 #include "lwpdoc.hxx"
 #include "lwpfnlayout.hxx"
-#include "lwpglobalmgr.hxx"
+#include <lwpglobalmgr.hxx>
 
 LwpFribFootnote::LwpFribFootnote(LwpPara* pPara ):LwpFrib(pPara)
 {
@@ -102,31 +101,31 @@ void LwpFribFootnote::RegisterNewStyle()
 void LwpFribFootnote::XFConvert(XFContentContainer* pCont)
 {
     LwpFootnote* pFootnote = GetFootnote();
-    if(pFootnote)
+    if(!pFootnote)
+        return;
+
+    rtl::Reference<XFContentContainer> xContent;
+    if(pFootnote->GetType() == FN_FOOTNOTE)
     {
-        rtl::Reference<XFContentContainer> xContent;
-        if(pFootnote->GetType() == FN_FOOTNOTE)
-        {
-            xContent.set(new XFFootNote);
-        }
-        else
-        {
-            xContent.set(new XFEndNote);
-        }
-        pFootnote->XFConvert(xContent.get());
-        if (m_ModFlag)
-        {
-            //set footnote number font style
-            rtl::Reference<XFTextSpan> xSpan(new XFTextSpan);
-            xSpan->SetStyleName(GetStyleName());
-            //add the xffootnote into the content container
-            xSpan->Add(xContent.get());
-            pCont->Add(xSpan.get());
-        }
-        else
-        {
-            pCont->Add(xContent.get());
-        }
+        xContent.set(new XFFootNote);
+    }
+    else
+    {
+        xContent.set(new XFEndNote);
+    }
+    pFootnote->XFConvert(xContent.get());
+    if (m_ModFlag)
+    {
+        //set footnote number font style
+        rtl::Reference<XFTextSpan> xSpan(new XFTextSpan);
+        xSpan->SetStyleName(GetStyleName());
+        //add the xffootnote into the content container
+        xSpan->Add(xContent.get());
+        pCont->Add(xSpan.get());
+    }
+    else
+    {
+        pCont->Add(xContent.get());
     }
 }
 
@@ -138,7 +137,7 @@ LwpFootnote* LwpFribFootnote::GetFootnote()
     return dynamic_cast<LwpFootnote*>(m_Footnote.obj().get());
 }
 
-LwpFootnote::LwpFootnote(LwpObjectHeader &objHdr, LwpSvStream *pStrm)
+LwpFootnote::LwpFootnote(LwpObjectHeader const &objHdr, LwpSvStream *pStrm)
     : LwpOrderedObject(objHdr, pStrm)
     , m_nType(0)
     , m_nRow(0)
@@ -317,7 +316,7 @@ LwpDocument* LwpFootnote::GetEndnoteDivision(LwpDocument* pPossible)
 /**
  * @descr  Get footnote table class name
  */
-OUString LwpFootnote::GetTableClass()
+OUString LwpFootnote::GetTableClass() const
 {
     OUString strClassName;
     switch (GetType() & FN_MASK_BASE)
@@ -363,7 +362,7 @@ LwpEnSuperTableLayout* LwpFootnote::FindFootnoteTableLayout()
     LwpContent* pContent = nullptr;
 
     while ((pContent = pFoundry->EnumContents(pContent)) != nullptr)
-        if (pContent->IsTable() && (strClassName.equals(pContent->GetClassName())) &&
+        if (pContent->IsTable() && (strClassName == pContent->GetClassName()) &&
             pContent->IsActive() && pContent->GetLayout(nullptr).is())
         {
             // Found it!
@@ -394,7 +393,7 @@ LwpContent* LwpFootnote::FindFootnoteContent()
     return pContent;
 }
 
-LwpFootnoteTable::LwpFootnoteTable(LwpObjectHeader &objHdr, LwpSvStream *pStrm)
+LwpFootnoteTable::LwpFootnoteTable(LwpObjectHeader const &objHdr, LwpSvStream *pStrm)
     : LwpTable(objHdr, pStrm)
 {
 }
@@ -431,7 +430,7 @@ void LwpFootnoteSeparatorOptions::Read(LwpObjectStream *pObjStrm)
     pObjStrm->SkipExtra();
 }
 
-LwpFootnoteOptions::LwpFootnoteOptions(LwpObjectHeader &objHdr, LwpSvStream *pStrm)
+LwpFootnoteOptions::LwpFootnoteOptions(LwpObjectHeader const &objHdr, LwpSvStream *pStrm)
     : LwpObject(objHdr, pStrm)
     , m_nFlag(0)
 {
@@ -528,27 +527,27 @@ void LwpFootnoteOptions::RegisterEndnoteStyle()
 /**
  * @descr  Get continue on message
  */
-OUString LwpFootnoteOptions::GetContinuedOnMessage()
+OUString LwpFootnoteOptions::GetContinuedOnMessage() const
 {
     if(m_ContinuedOnMessage.HasValue())
     {
         return m_ContinuedOnMessage.str();
     }
-    // else reture defauls message
-    return OUString(STRID_FOOTCONTINUEDON);
+    // else return default message
+    return STRID_FOOTCONTINUEDON;
 }
 
 /**
  * @descr  Get continue from message
  */
-OUString LwpFootnoteOptions::GetContinuedFromMessage()
+OUString LwpFootnoteOptions::GetContinuedFromMessage() const
 {
     if(m_ContinuedFromMessage.HasValue())
     {
         return m_ContinuedFromMessage.str();
     }
-    // else reture defauls message
-    return OUString(STRID_FOOTCONTINUEDFROM);
+    // else return default message
+    return STRID_FOOTCONTINUEDFROM;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

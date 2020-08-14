@@ -17,14 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "MovingAverageRegressionCurveCalculator.hxx"
-#include "RegressionCalculationHelper.hxx"
-#include "ResId.hxx"
-#include "Strings.hrc"
-#include "macros.hxx"
+#include <MovingAverageRegressionCurveCalculator.hxx>
+#include <RegressionCalculationHelper.hxx>
+#include <ResId.hxx>
+#include <strings.hrc>
 
 #include <rtl/math.hxx>
-#include <rtl/ustrbuf.hxx>
 
 using namespace ::com::sun::star;
 
@@ -42,7 +40,7 @@ void SAL_CALL MovingAverageRegressionCurveCalculator::recalculateRegression(
     const uno::Sequence< double >& aXValues,
     const uno::Sequence< double >& aYValues )
 {
-    ::rtl::math::setNan( & m_fCorrelationCoeffitient );
+    ::rtl::math::setNan( & m_fCorrelationCoefficient );
 
     RegressionCalculationHelper::tDoubleVectorPair aValues(
         RegressionCalculationHelper::cleanup(

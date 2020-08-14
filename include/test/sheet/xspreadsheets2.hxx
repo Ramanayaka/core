@@ -36,6 +36,7 @@ public:
     void testImportNamedRangeRedefinedInSource();
     void testImportNewNamedRange();
     void testImportCellStyle();
+    void testLastAfterInsertCopy();
 
     virtual css::uno::Reference< css::lang::XComponent > getComponent() = 0;
     virtual css::uno::Reference< css::uno::XInterface > init() = 0;
@@ -46,17 +47,14 @@ protected:
     css::uno::Reference< css::sheet::XSpreadsheetDocument> xDocument;
 
 private:
-    css::uno::Reference< css::sheet::XSpreadsheetDocument> getDoc(const OUString&, css::uno::Reference< css::lang::XComponent >&);
+    css::uno::Reference< css::sheet::XSpreadsheetDocument> getDoc(const OUString&);
     static css::uno::Reference< css::sheet::XNamedRanges> getNamedRanges(css::uno::Reference< css::sheet::XSpreadsheetDocument > const &);
     void importSheetToCopy();
-    bool isExternalReference(const OUString& aDestContent, const OUString& aSrcContent );
+    static bool isExternalReference(const OUString& aDestContent, const OUString& aSrcContent );
 
     css::uno::Reference< css::sheet::XSpreadsheetDocument> xDestDoc;
     css::uno::Reference< css::sheet::XSpreadsheet > xDestSheet;
     css::uno::Reference< css::sheet::XSpreadsheet > xSrcSheet;
-    OUString aSrcSheetName;
-    OUString aSrcFileName;
-    OUString aDestFileBase;
 };
 
 }

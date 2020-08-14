@@ -20,12 +20,10 @@
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_CELLMARGINHANDLER_HXX
 
 #include "LoggedResources.hxx"
-#include <memory>
 #include <vector>
 #include <com/sun/star/beans/PropertyValue.hpp>
 
-namespace writerfilter {
-namespace dmapper
+namespace writerfilter::dmapper
 {
 class TablePropertyMap;
 class CellMarginHandler : public LoggedProperties
@@ -62,8 +60,7 @@ public:
     css::beans::PropertyValue getInteropGrabBag();
 
 };
-typedef std::shared_ptr< CellMarginHandler >          CellMarginHandlerPtr;
-}}
+}
 
 #endif
 

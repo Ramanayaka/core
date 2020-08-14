@@ -20,8 +20,8 @@
 #include <rtl/ustring.hxx>
 #include <unotools/fontdefs.hxx>
 
-#include "outdev.h"
-#include "PhysicalFontCollection.hxx"
+#include <outdev.h>
+#include <PhysicalFontCollection.hxx>
 
 void PhysicalFontFamily::CalcType( ImplFontAttrs& rType, FontWeight& rWeight, FontWidth& rWidth,
                                    FontFamily eFamily, const utl::FontNameAttr* pFontAttr )
@@ -67,12 +67,14 @@ static ImplFontAttrs lcl_IsCJKFont( const OUString& rFontName )
 
         // korean
         if ( ((ch >= 0xAC00) && (ch <= 0xD7AF)) ||
+             ((ch >= 0xA960) && (ch <= 0xA97F)) ||
+             ((ch >= 0xD7B0) && (ch <= 0xD7FF)) ||
              ((ch >= 0x3130) && (ch <= 0x318F)) ||
              ((ch >= 0x1100) && (ch <= 0x11FF)) )
             return ImplFontAttrs::CJK|ImplFontAttrs::CJK_KR;
 
         // chinese
-        if ( ((ch >= 0x3400) && (ch <= 0x9FFF)) )
+        if ( (ch >= 0x3400) && (ch <= 0x9FFF) )
             return ImplFontAttrs::CJK|ImplFontAttrs::CJK_TC|ImplFontAttrs::CJK_SC;
 
         // cjk
@@ -98,16 +100,9 @@ PhysicalFontFamily::PhysicalFontFamily( const OUString& rSearchName )
 
 PhysicalFontFamily::~PhysicalFontFamily()
 {
-    // release all physical font faces
-    for( std::vector< PhysicalFontFace* >::iterator it=maFontFaces.begin(); it != maFontFaces.end(); )
-    {
-        delete *it;
-        it = maFontFaces.erase( it );
-    }
-
 }
 
-bool PhysicalFontFamily::AddFontFace( PhysicalFontFace* pNewFontFace )
+void PhysicalFontFamily::AddFontFace( PhysicalFontFace* pNewFontFace )
 {
     if( maFontFaces.empty() )
     {
@@ -160,7 +155,7 @@ bool PhysicalFontFamily::AddFontFace( PhysicalFontFace* pNewFontFace )
     auto it(maFontFaces.begin());
     for (; it != maFontFaces.end(); ++it)
     {
-        PhysicalFontFace* pFoundFontFace = *it;
+        PhysicalFontFace* pFoundFontFace = it->get();
         sal_Int32 eComp = pNewFontFace->CompareWithSize( *pFoundFontFace );
         if( eComp > 0 )
             continue;
@@ -169,20 +164,18 @@ bool PhysicalFontFamily::AddFontFace( PhysicalFontFace* pNewFontFace )
 
         // ignore duplicate if its quality is worse
         if( pNewFontFace->GetQuality() < pFoundFontFace->GetQuality() )
-            return false;
+            return;
 
         // keep the device font if its quality is good enough
         if( pNewFontFace->GetQuality() == pFoundFontFace->GetQuality() )
-            return false;
+            return;
 
         // replace existing font face with a better one
-        delete pFoundFontFace;
         *it = pNewFontFace; // insert at sort position
-        return true;
+        return;
     }
 
-    maFontFaces.insert(it, pNewFontFace); // insert at sort position
-    return true;
+    maFontFaces.emplace(it, pNewFontFace); // insert at sort position
 }
 
 // get font attributes using the normalized font family name
@@ -209,7 +202,7 @@ PhysicalFontFace* PhysicalFontFamily::FindBestFontFace( const FontSelectPattern&
     if( maFontFaces.empty() )
         return nullptr;
     if( maFontFaces.size() == 1)
-        return maFontFaces[0];
+        return maFontFaces[0].get();
 
     // FontName+StyleName should map to FamilyName+StyleName
     const OUString& rSearchName = rFSD.maTargetName;
@@ -223,11 +216,11 @@ PhysicalFontFace* PhysicalFontFamily::FindBestFontFace( const FontSelectPattern&
     }
 
     // TODO: linear search improve!
-    PhysicalFontFace* pBestFontFace = maFontFaces[0];
+    PhysicalFontFace* pBestFontFace = maFontFaces[0].get();
     FontMatchStatus aFontMatchStatus = {0,0,0, pTargetStyleName};
-    for( std::vector< PhysicalFontFace* >::const_iterator it=maFontFaces.begin(); it != maFontFaces.end(); ++it )
+    for (auto const& font : maFontFaces)
     {
-        PhysicalFontFace* pFoundFontFace = *it;
+        PhysicalFontFace* pFoundFontFace = font.get();
         if( pFoundFontFace->IsBetterMatch( rFSD, aFontMatchStatus ) )
             pBestFontFace = pFoundFontFace;
     }
@@ -240,9 +233,9 @@ PhysicalFontFace* PhysicalFontFamily::FindBestFontFace( const FontSelectPattern&
 void PhysicalFontFamily::UpdateDevFontList( ImplDeviceFontList& rDevFontList ) const
 {
     PhysicalFontFace* pPrevFace = nullptr;
-    for(std::vector< PhysicalFontFace* >::const_iterator it=maFontFaces.begin(); it != maFontFaces.end(); ++it )
+    for (auto const& font : maFontFaces)
     {
-        PhysicalFontFace* pFoundFontFace = *it;
+        PhysicalFontFace* pFoundFontFace = font.get();
         if( !pPrevFace || pFoundFontFace->CompareIgnoreSize( *pPrevFace ) )
             rDevFontList.Add( pFoundFontFace );
         pPrevFace = pFoundFontFace;
@@ -252,9 +245,9 @@ void PhysicalFontFamily::UpdateDevFontList( ImplDeviceFontList& rDevFontList ) c
 void PhysicalFontFamily::GetFontHeights( std::set<int>& rHeights ) const
 {
     // add all available font heights
-    for( std::vector< PhysicalFontFace* >::const_iterator it=maFontFaces.begin(); it != maFontFaces.end(); ++it )
+    for (auto const& font : maFontFaces)
     {
-        PhysicalFontFace *pFoundFontFace = *it;
+        PhysicalFontFace *pFoundFontFace = font.get();
         rHeights.insert( pFoundFontFace->GetHeight() );
     }
 }
@@ -264,25 +257,16 @@ void PhysicalFontFamily::UpdateCloneFontList(PhysicalFontCollection& rFontCollec
     OUString aFamilyName = GetEnglishSearchFontName( GetFamilyName() );
     PhysicalFontFamily* pFamily(nullptr);
 
-    for( std::vector< PhysicalFontFace* >::const_iterator it=maFontFaces.begin(); it != maFontFaces.end(); ++it )
+    for (auto const& font : maFontFaces)
     {
-        PhysicalFontFace *pFoundFontFace = *it;
+        PhysicalFontFace *pFoundFontFace = font.get();
 
         if (!pFamily)
         {   // tdf#98989 lazy create as family without faces won't work
             pFamily = rFontCollection.FindOrCreateFontFamily(aFamilyName);
         }
         assert(pFamily);
-        PhysicalFontFace* pClonedFace = pFoundFontFace->Clone();
-
-#if OSL_DEBUG_LEVEL > 0
-        OUString aClonedFamilyName = GetEnglishSearchFontName( pClonedFace->GetFamilyName() );
-        assert( aClonedFamilyName == aFamilyName );
-        assert( rFontCollection.FindOrCreateFontFamily( aClonedFamilyName ) == pFamily );
-#endif
-
-        if (! pFamily->AddFontFace( pClonedFace ) )
-            delete pClonedFace;
+        pFamily->AddFontFace( pFoundFontFace );
     }
 }
 

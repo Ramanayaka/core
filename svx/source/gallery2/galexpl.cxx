@@ -18,13 +18,11 @@
  */
 
 
-#include <unotools/pathoptions.hxx>
 #include <rtl/instance.hxx>
-#include <sfx2/viewfrm.hxx>
-#include "svx/gallery1.hxx"
-#include "svx/galtheme.hxx"
-#include "svx/gallery.hxx"
-#include "galobj.hxx"
+#include <svx/gallery1.hxx>
+#include <svx/galtheme.hxx>
+#include <svx/gallery.hxx>
+#include <galobj.hxx>
 
 namespace
 {
@@ -93,12 +91,11 @@ bool GalleryExplorer::FillObjListTitle( const sal_uInt32 nThemeId, std::vector< 
         {
             for( sal_uInt32 i = 0, nCount = pTheme->GetObjectCount(); i < nCount; i++ )
             {
-                SgaObject*  pObj = pTheme->AcquireObject( i );
+                std::unique_ptr<SgaObject>  pObj = pTheme->AcquireObject( i );
                 if ( pObj )
                 {
                     OUString aTitle( pObj->GetTitle() );
                     rList.push_back( aTitle );
-                    GalleryTheme::ReleaseObject( pObj );
                 }
             }
             pGal->ReleaseTheme( pTheme, aListener );
@@ -136,8 +133,7 @@ bool GalleryExplorer::InsertURL( sal_uInt32 nThemeId, const OUString& rURL )
 }
 
 bool GalleryExplorer::GetGraphicObj( const OUString& rThemeName, sal_uInt32 nPos,
-                                     Graphic* pGraphic, BitmapEx* pThumb,
-                                     bool bProgress )
+                                     Graphic* pGraphic )
 {
     Gallery*    pGal = ::Gallery::GetGalleryInstance();
     bool        bRet = false;
@@ -150,10 +146,7 @@ bool GalleryExplorer::GetGraphicObj( const OUString& rThemeName, sal_uInt32 nPos
         if( pTheme )
         {
             if( pGraphic )
-                bRet = bRet || pTheme->GetGraphic( nPos, *pGraphic, bProgress );
-
-            if( pThumb )
-                bRet = bRet || pTheme->GetThumb( nPos, *pThumb );
+                bRet = bRet || pTheme->GetGraphic( nPos, *pGraphic );
 
             pGal->ReleaseTheme( pTheme, aListener );
         }
@@ -163,11 +156,10 @@ bool GalleryExplorer::GetGraphicObj( const OUString& rThemeName, sal_uInt32 nPos
 }
 
 bool GalleryExplorer::GetGraphicObj( sal_uInt32 nThemeId, sal_uInt32 nPos,
-                                     Graphic* pGraphic, BitmapEx* pThumb,
-                                     bool bProgress )
+                                     Graphic* pGraphic )
 {
     Gallery* pGal = ::Gallery::GetGalleryInstance();
-    return pGal && GetGraphicObj( pGal->GetThemeName( nThemeId ), nPos, pGraphic, pThumb, bProgress );
+    return pGal && GetGraphicObj( pGal->GetThemeName( nThemeId ), nPos, pGraphic );
 }
 
 sal_uInt32 GalleryExplorer::GetSdrObjCount( const OUString& rThemeName )
@@ -219,7 +211,7 @@ bool GalleryExplorer::GetSdrObj( const OUString& rThemeName, sal_uInt32 nSdrMode
                     if( nActPos++ == nSdrModelPos )
                     {
                         if( pModel )
-                            bRet = bRet || pTheme->GetModel( i, *pModel );
+                            bRet = pTheme->GetModel(i, *pModel);
 
                         if( pThumb )
                             bRet = bRet || pTheme->GetThumb( i, *pThumb );

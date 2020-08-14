@@ -17,12 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbase/dindexnode.hxx"
-#include <connectivity/CommonTools.hxx>
-#include <osl/thread.h>
-#include "dbase/DIndex.hxx"
+#include <dbase/dindexnode.hxx>
+#include <dbase/DIndex.hxx>
+#include <o3tl/safeint.hxx>
 #include <tools/debug.hxx>
 #include <tools/stream.hxx>
+#include <sal/log.hxx>
 
 #include <algorithm>
 #include <memory>
@@ -72,7 +72,6 @@ ONDXPage::ONDXPage(ODbaseIndex& rInd, sal_uInt32 nPos, ONDXPage* pParent)
     , nCount(0)
     , aParent(pParent)
     , rIndex(rInd)
-    , ppNodes(nullptr)
 {
     sal_uInt16 nT = rIndex.getHeader().db_maxkeys;
     ppNodes.reset( new ONDXNode[nT] );
@@ -126,7 +125,7 @@ void ONDXPage::QueryDelete()
     }
 }
 
-ONDXPagePtr& ONDXPage::GetChild(ODbaseIndex* pIndex)
+ONDXPagePtr& ONDXPage::GetChild(ODbaseIndex const * pIndex)
 {
     if (!aChild.Is() && pIndex)
     {
@@ -247,7 +246,7 @@ bool ONDXPage::Insert(ONDXNode& rNode, sal_uInt32 nRowsLeft)
         // How many nodes are being inserted?
         // Enough, then we can fill the page to the brim
         ONDXNode aInnerNode;
-        if (!IsLeaf() || nRowsLeft < (sal_uInt32)(rIndex.GetMaxNodes() / 2))
+        if (!IsLeaf() || nRowsLeft < o3tl::make_unsigned(rIndex.GetMaxNodes() / 2))
             aInnerNode = Split(*aNewPage);
         else
         {
@@ -310,7 +309,7 @@ bool ONDXPage::Insert(sal_uInt16 nPos, ONDXNode& rNode)
     {
         ++nCount;
         // shift right
-        for (sal_uInt16 i = std::min((sal_uInt16)(nMaxCount-1), (sal_uInt16)(nCount-1)); nPos < i; --i)
+        for (sal_uInt16 i = std::min(static_cast<sal_uInt16>(nMaxCount-1), static_cast<sal_uInt16>(nCount-1)); nPos < i; --i)
             (*this)[i] = (*this)[i-1];
     }
     else
@@ -374,7 +373,7 @@ void ONDXPage::ReleaseFull()
     }
 }
 
-bool ONDXPage::Delete(sal_uInt16 nNodePos)
+void ONDXPage::Delete(sal_uInt16 nNodePos)
 {
     if (IsLeaf())
     {
@@ -420,7 +419,6 @@ bool ONDXPage::Delete(sal_uInt16 nNodePos)
     else if (IsRoot())
         // make sure that the position of the root is kept
         rIndex.SetRootPos(nPagePos);
-    return true;
 }
 
 
@@ -440,7 +438,7 @@ ONDXNode ONDXPage::Split(ONDXPage& rPage)
     ONDXNode aResultNode;
     if (IsLeaf())
     {
-        for (sal_uInt16 i = (nCount - (nCount / 2)), j = 0 ; i < nCount; i++)
+        for (sal_uInt16 i = nCount - (nCount / 2), j = 0 ; i < nCount; i++)
             rPage.Insert(j++,(*this)[i]);
 
         // this node contains a key that already exists in the tree and must be replaced
@@ -460,7 +458,7 @@ ONDXNode ONDXPage::Split(ONDXPage& rPage)
         aResultNode = (*this)[(nCount + 1) / 2];
         nCount = (nCount + 1) / 2;
 
-        // new page points to page with extraced node
+        // new page points to page with extracted node
         rPage.SetChild(aResultNode.GetChild());
     }
     // node points to new page
@@ -480,7 +478,6 @@ void ONDXPage::Merge(sal_uInt16 nParentNodePos, const ONDXPagePtr& xPage)
     DBG_ASSERT(nParentNodePos != NODE_NOTFOUND, "Wrong index setup");
 
     /*  Merge 2 pages   */
-    ONDXNode aResultNode;
     sal_uInt16 nMaxNodes = rIndex.GetMaxNodes(),
            nMaxNodes_2 = nMaxNodes / 2;
 
@@ -618,7 +615,7 @@ void ONDXPage::Merge(sal_uInt16 nParentNodePos, const ONDXPagePtr& xPage)
             else if(nParentNodePos)
                 // replace the node value
                 // for Append the range will be enlarged, for Insert the old node from xPage will reference to this
-                // thats why the node must be updated here
+                // that's why the node must be updated here
                 aParent->SearchAndReplace((*aParent)[nParentNodePos-1].GetKey(),(*aParent)[nParentNodePos].GetKey());
 
             xPage->SetModified(false);
@@ -660,7 +657,7 @@ void ONDXPage::Merge(sal_uInt16 nParentNodePos, const ONDXPagePtr& xPage)
 // ONDXNode
 
 
-void ONDXNode::Read(SvStream &rStream, ODbaseIndex& rIndex)
+void ONDXNode::Read(SvStream &rStream, ODbaseIndex const & rIndex)
 {
     rStream.ReadUInt32( aKey.nRecord ); // key
 
@@ -700,12 +697,11 @@ void ONDXNode::Write(SvStream &rStream, const ONDXPage& rPage) const
         }
         if (aKey.getValue().isNull())
         {
-            sal_uInt8 buf[sizeof(double)];
-            memset(&buf[0], 0, sizeof(double));
+            sal_uInt8 buf[sizeof(double)] = {};
             rStream.WriteBytes(&buf[0], sizeof(double));
         }
         else
-            rStream.WriteDouble( (double) aKey.getValue() );
+            rStream.WriteDouble( static_cast<double>(aKey.getValue()) );
     }
     else
     {
@@ -811,7 +807,7 @@ ONDXPagePtr::ONDXPagePtr()
 {
 }
 
-ONDXPagePtr::ONDXPagePtr(ONDXPagePtr&& rRef)
+ONDXPagePtr::ONDXPagePtr(ONDXPagePtr&& rRef) noexcept
 {
     mpPage = rRef.mpPage;
     rRef.mpPage = nullptr;
@@ -852,15 +848,8 @@ void ONDXPagePtr::Clear()
 
 ONDXPagePtr& ONDXPagePtr::operator=(ONDXPagePtr const & rOther)
 {
-    if (rOther.mpPage != nullptr) {
-        rOther.mpPage->AddNextRef();
-    }
-    ONDXPage * pOldObj = mpPage;
-    mpPage = rOther.mpPage;
-    nPagePos = rOther.nPagePos;
-    if (pOldObj != nullptr) {
-        pOldObj->ReleaseRef();
-    }
+    ONDXPagePtr aTemp(rOther);
+    *this = std::move(aTemp);
     return *this;
 }
 
@@ -894,13 +883,12 @@ SvStream& connectivity::dbase::WriteONDXPage(SvStream &rStream, const ONDXPage& 
     // Page doesn't exist yet
     std::size_t nSize = rPage.GetPagePos() + 1;
     nSize *= DINDEX_PAGE_SIZE;
-    if (nSize > rStream.Seek(STREAM_SEEK_TO_END))
+    if (nSize > rStream.TellEnd())
     {
         rStream.SetStreamSize(nSize);
         rStream.Seek(rPage.GetPagePos() * DINDEX_PAGE_SIZE);
 
-        char aEmptyData[DINDEX_PAGE_SIZE];
-        memset(aEmptyData,0x00,DINDEX_PAGE_SIZE);
+        char aEmptyData[DINDEX_PAGE_SIZE] = {};
         rStream.WriteBytes(aEmptyData, DINDEX_PAGE_SIZE);
     }
     rStream.Seek(rPage.GetPagePos() * DINDEX_PAGE_SIZE);
@@ -1006,22 +994,27 @@ sal_uInt16 ONDXPage::Search(const ONDXPage* pPage)
 
 // runs recursively
 void ONDXPage::SearchAndReplace(const ONDXKey& rSearch,
-                                  ONDXKey& rReplace)
+                                  ONDXKey const & rReplace)
 {
     OSL_ENSURE(rSearch != rReplace,"Invalid here:rSearch == rReplace");
-    if (rSearch != rReplace)
+    if (rSearch == rReplace)
+        return;
+
+    sal_uInt16 nPos = NODE_NOTFOUND;
+    ONDXPage* pPage = this;
+
+    while (pPage)
     {
-        sal_uInt16 nPos = NODE_NOTFOUND;
-        ONDXPage* pPage = this;
+        nPos = pPage->Search(rSearch);
+        if (nPos != NODE_NOTFOUND)
+            break;
+        pPage = pPage->aParent;
+    }
 
-        while (pPage && (nPos = pPage->Search(rSearch)) == NODE_NOTFOUND)
-            pPage = pPage->aParent;
-
-        if (pPage)
-        {
-            (*pPage)[nPos].GetKey() = rReplace;
-            pPage->SetModified(true);
-        }
+    if (pPage)
+    {
+        (*pPage)[nPos].GetKey() = rReplace;
+        pPage->SetModified(true);
     }
 }
 

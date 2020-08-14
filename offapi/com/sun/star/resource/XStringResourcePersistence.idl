@@ -30,7 +30,7 @@ module com { module sun { module star { module resource {
 /**
     Interface derived from XStringResourceManager containing
     basic persistence functionality limited to operations that
-    are independent from a associated location or storage.
+    are independent from an associated location or storage.
 
     @see XStringResourceManager.
 */
@@ -46,7 +46,7 @@ interface XStringResourcePersistence: com::sun::star::resource::XStringResourceM
         StringResourceWithLocation and
         StringResourceWithStorage
 
-        The StringResourceWithLocation is initialized with an URL
+        The StringResourceWithLocation is initialized with a URL
         specifying a location used to load data from and store data to,
         see StringResourceWithLocation.
 

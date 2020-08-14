@@ -20,24 +20,24 @@
 #include <sal/config.h>
 
 #include <com/sun/star/logging/XCsvLogFormatter.hpp>
-#include <com/sun/star/logging/XLogFormatter.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <rtl/ustrbuf.hxx>
-#include <osl/thread.h>
 
 #include <stdio.h>
-#include <string>
+#include <string_view>
 
 namespace logging
 {
     using ::com::sun::star::uno::Sequence;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::logging::LogRecord;
+
+    namespace {
 
     // formats for csv files as defined by RFC4180
     class CsvFormatter : public cppu::WeakImplHelper<css::logging::XCsvLogFormatter, css::lang::XServiceInfo>
@@ -79,6 +79,8 @@ namespace logging
         bool m_MultiColumn;
         css::uno::Sequence< OUString > m_Columnnames;
     };
+
+    }
 } // namespace logging
 
 // private helpers
@@ -86,19 +88,14 @@ namespace
 {
     const sal_Unicode quote_char = '"';
     const sal_Unicode comma_char = ',';
-    const OUString dos_newline = "\r\n";
+    const OUStringLiteral dos_newline = "\r\n";
 
-    inline bool needsQuoting(const OUString& str)
+    bool needsQuoting(const OUString& str)
     {
-        static const OUString quote_trigger_chars = "\",\n\r";
-        sal_Int32 len = str.getLength();
-        for(sal_Int32 i=0; i<len; i++)
-            if(quote_trigger_chars.indexOf(str[i])!=-1)
-                return true;
-        return false;
+        return std::u16string_view(str).find_first_of(u"\",\n\r") != std::u16string_view::npos;
     };
 
-    inline void appendEncodedString(OUStringBuffer& buf, const OUString& str)
+    void appendEncodedString(OUStringBuffer& buf, const OUString& str)
     {
         if(needsQuoting(str))
         {
@@ -183,7 +180,7 @@ namespace logging
 
     void CsvFormatter::setColumnnames(const Sequence< OUString >& columnnames)
     {
-        m_Columnnames = Sequence< OUString>(columnnames);
+        m_Columnnames = columnnames;
         m_MultiColumn = (m_Columnnames.getLength()>1);
     }
 
@@ -227,17 +224,28 @@ namespace logging
 
         if(m_LogTimestamp)
         {
+            if (   record.LogTime.Year < -9999 || 9999 < record.LogTime.Year
+                || record.LogTime.Month < 1 || 12 < record.LogTime.Month
+                || record.LogTime.Day < 1 || 31 < record.LogTime.Day
+                || 24 < record.LogTime.Hours
+                || 60 < record.LogTime.Minutes
+                || 60 < record.LogTime.Seconds
+                || 999999999 < record.LogTime.NanoSeconds)
+            {
+                throw css::lang::IllegalArgumentException("invalid date", static_cast<cppu::OWeakObject*>(this), 1);
+            }
+
             // ISO 8601
-            char buffer[ 30 ];
+            char buffer[ 31 ];
             const size_t buffer_size = sizeof( buffer );
             snprintf( buffer, buffer_size, "%04i-%02i-%02iT%02i:%02i:%02i.%09i",
-                (int)record.LogTime.Year,
-                (int)record.LogTime.Month,
-                (int)record.LogTime.Day,
-                (int)record.LogTime.Hours,
-                (int)record.LogTime.Minutes,
-                (int)record.LogTime.Seconds,
-                (int)record.LogTime.NanoSeconds );
+                static_cast<int>(record.LogTime.Year),
+                static_cast<int>(record.LogTime.Month),
+                static_cast<int>(record.LogTime.Day),
+                static_cast<int>(record.LogTime.Hours),
+                static_cast<int>(record.LogTime.Minutes),
+                static_cast<int>(record.LogTime.Seconds),
+                static_cast<int>(record.LogTime.NanoSeconds) );
             aLogEntry.appendAscii( buffer );
             aLogEntry.append(comma_char);
         }
@@ -289,7 +297,7 @@ namespace logging
 
     OUString SAL_CALL CsvFormatter::getImplementationName()
     {
-        return OUString("com.sun.star.comp.extensions.CsvFormatter");
+        return "com.sun.star.comp.extensions.CsvFormatter";
     }
 
     Sequence< OUString > SAL_CALL CsvFormatter::getSupportedServiceNames()
@@ -299,7 +307,7 @@ namespace logging
 
 } // namespace logging
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_extensions_CsvFormatter(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

@@ -22,21 +22,19 @@
 #include <o3tl/any.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/svxids.hrc>
-#include <sfx2/app.hxx>
-#include <sfx2/sfx.hrc>
+#include <tools/debug.hxx>
 #include <tools/helpers.hxx>
+#include <unotools/localedatawrapper.hxx>
 #include <unotools/syslocale.hxx>
 
-#include "sdmod.hxx"
-#include "optsitem.hxx"
-#include "cfgids.hxx"
-#include "FrameView.hxx"
+#include <optsitem.hxx>
+#include <FrameView.hxx>
 #include <sdattr.hrc>
 
 using namespace ::utl;
 using namespace ::com::sun::star::uno;
 
-template< class T > T getSafeValue( const Any& rAny )
+template< class T > static T getSafeValue( const Any& rAny )
 {
     T value = T();
     bool bOk = (rAny >>= value);
@@ -76,10 +74,9 @@ bool SdOptionsItem::PutProperties( const Sequence< OUString >& rNames, const Seq
     return ConfigItem::PutProperties( rNames, rValues );
 }
 
-SdOptionsGeneric::SdOptionsGeneric(sal_uInt16 nConfigId, const OUString& rSubTree)
+SdOptionsGeneric::SdOptionsGeneric(bool bImpress, const OUString& rSubTree)
     : maSubTree(rSubTree)
-    , mpCfgItem( nullptr)
-    , mnConfigId(nConfigId)
+    , mbImpress(bImpress)
     , mbInit(rSubTree.isEmpty())
     , mbEnableModify(false)
 {
@@ -92,37 +89,40 @@ SdOptionsGeneric::SdOptionsGeneric(SdOptionsGeneric const & rSource)
 
 SdOptionsGeneric& SdOptionsGeneric::operator=(SdOptionsGeneric const & rSource)
 {
-    maSubTree = rSource.maSubTree;
-    mpCfgItem.reset(rSource.mpCfgItem ? new SdOptionsItem(*rSource.mpCfgItem) : nullptr );
-    mnConfigId = rSource.mnConfigId;
-    mbInit = rSource.mbInit;
-    mbEnableModify = rSource.mbEnableModify;
+    if (this != &rSource)
+    {
+        maSubTree = rSource.maSubTree;
+        mpCfgItem.reset(rSource.mpCfgItem ? new SdOptionsItem(*rSource.mpCfgItem) : nullptr );
+        mbImpress = rSource.mbImpress;
+        mbInit = rSource.mbInit;
+        mbEnableModify = rSource.mbEnableModify;
+    }
     return *this;
 }
 
 void SdOptionsGeneric::Init() const
 {
-    if( !mbInit )
+    if( mbInit )
+        return;
+
+    SdOptionsGeneric* pThis = const_cast<SdOptionsGeneric*>(this);
+
+    if( !mpCfgItem )
+        pThis->mpCfgItem.reset( new SdOptionsItem( *this, maSubTree ) );
+
+    const Sequence< OUString >  aNames( GetPropertyNames() );
+    const Sequence< Any >       aValues = mpCfgItem->GetProperties( aNames );
+
+    if( aNames.hasElements() && ( aValues.getLength() == aNames.getLength() ) )
     {
-        SdOptionsGeneric* pThis = const_cast<SdOptionsGeneric*>(this);
+        const Any* pValues = aValues.getConstArray();
 
-        if( !mpCfgItem )
-            pThis->mpCfgItem.reset( new SdOptionsItem( *this, maSubTree ) );
-
-        const Sequence< OUString >  aNames( GetPropertyNames() );
-        const Sequence< Any >       aValues = mpCfgItem->GetProperties( aNames );
-
-        if( aNames.getLength() && ( aValues.getLength() == aNames.getLength() ) )
-        {
-            const Any* pValues = aValues.getConstArray();
-
-            pThis->EnableModify( false );
-            pThis->mbInit = pThis->ReadData( pValues );
-            pThis->EnableModify( true );
-        }
-        else
-            pThis->mbInit = true;
+        pThis->EnableModify( false );
+        pThis->mbInit = pThis->ReadData( pValues );
+        pThis->EnableModify( true );
     }
+    else
+        pThis->mbInit = true;
 }
 
 SdOptionsGeneric::~SdOptionsGeneric()
@@ -134,7 +134,7 @@ void SdOptionsGeneric::Commit( SdOptionsItem& rCfgItem ) const
     const Sequence< OUString >  aNames( GetPropertyNames() );
     Sequence< Any >             aValues( aNames.getLength() );
 
-    if( aNames.getLength() && ( aValues.getLength() == aNames.getLength() ) )
+    if( aNames.hasElements() )
     {
         if( WriteData( aValues.getArray() ) )
             rCfgItem.PutProperties( aNames, aValues );
@@ -181,18 +181,18 @@ bool SdOptionsGeneric::isMetricSystem()
 |*
 \************************************************************************/
 
-SdOptionsLayout::SdOptionsLayout(  sal_uInt16 nConfigId, bool bUseConfig ) :
-    SdOptionsGeneric( nConfigId, bUseConfig ?
-                      ( ( SDCFG_DRAW == nConfigId ) ?
-                        OUString( "Office.Draw/Layout" ) :
-                        OUString( "Office.Impress/Layout" ) ) :
+SdOptionsLayout::SdOptionsLayout(bool bImpress, bool bUseConfig) :
+    SdOptionsGeneric( bImpress, bUseConfig ?
+                      ( bImpress ?
+                        OUString( "Office.Impress/Layout" ) :
+                        OUString( "Office.Draw/Layout" ) ) :
                       OUString() ),
     bRuler( true ),
     bMoveOutline( true ),
     bDragStripes( false ),
     bHandlesBezier( false ),
     bHelplines( true ),
-    nMetric((sal_uInt16)(isMetricSystem() ? FUNIT_CM : FUNIT_INCH)),
+    nMetric(static_cast<sal_uInt16>(isMetricSystem() ? FieldUnit::CM : FieldUnit::INCH)),
     nDefTab( 1250 )
 {
     EnableModify( true );
@@ -250,8 +250,8 @@ bool SdOptionsLayout::ReadData( const Any* pValues )
     if( pValues[2].hasValue() ) SetMoveOutline( *o3tl::doAccess<bool>(pValues[ 2 ]) );
     if( pValues[3].hasValue() ) SetDragStripes( *o3tl::doAccess<bool>(pValues[ 3 ]) );
     if( pValues[4].hasValue() ) SetHelplines( *o3tl::doAccess<bool>(pValues[ 4 ]) );
-    if( pValues[5].hasValue() ) SetMetric( (sal_uInt16) *o3tl::doAccess<sal_Int32>(pValues[ 5 ]) );
-    if( pValues[6].hasValue() ) SetDefTab( (sal_uInt16) *o3tl::doAccess<sal_Int32>(pValues[ 6 ]) );
+    if( pValues[5].hasValue() ) SetMetric( static_cast<sal_uInt16>(*o3tl::doAccess<sal_Int32>(pValues[ 5 ])) );
+    if( pValues[6].hasValue() ) SetDefTab( static_cast<sal_uInt16>(*o3tl::doAccess<sal_Int32>(pValues[ 6 ])) );
 
     return true;
 }
@@ -263,8 +263,8 @@ bool SdOptionsLayout::WriteData( Any* pValues ) const
     pValues[ 2 ] <<= IsMoveOutline();
     pValues[ 3 ] <<= IsDragStripes();
     pValues[ 4 ] <<= IsHelplines();
-    pValues[ 5 ] <<= (sal_Int32) GetMetric();
-    pValues[ 6 ] <<= (sal_Int32) GetDefTab();
+    pValues[ 5 ] <<= static_cast<sal_Int32>(GetMetric());
+    pValues[ 6 ] <<= static_cast<sal_Int32>(GetDefTab());
 
     return true;
 }
@@ -277,13 +277,13 @@ bool SdOptionsLayout::WriteData( Any* pValues ) const
 
 SdOptionsLayoutItem::SdOptionsLayoutItem()
 :   SfxPoolItem     ( ATTR_OPTIONS_LAYOUT )
-,   maOptionsLayout ( 0, false )
+,   maOptionsLayout ( false, false )
 {
 }
 
-SdOptionsLayoutItem::SdOptionsLayoutItem( SdOptions* pOpts, ::sd::FrameView* pView )
+SdOptionsLayoutItem::SdOptionsLayoutItem( SdOptions const * pOpts, ::sd::FrameView const * pView )
 :   SfxPoolItem     ( ATTR_OPTIONS_LAYOUT )
-,   maOptionsLayout ( 0, false )
+,   maOptionsLayout ( false, false )
 {
     if( pOpts )
     {
@@ -309,7 +309,7 @@ SdOptionsLayoutItem::SdOptionsLayoutItem( SdOptions* pOpts, ::sd::FrameView* pVi
     }
 }
 
-SfxPoolItem* SdOptionsLayoutItem::Clone( SfxItemPool* ) const
+SdOptionsLayoutItem* SdOptionsLayoutItem::Clone( SfxItemPool* ) const
 {
     return new SdOptionsLayoutItem( *this );
 }
@@ -340,12 +340,10 @@ void SdOptionsLayoutItem::SetOptions( SdOptions* pOpts ) const
 |*
 \************************************************************************/
 
-SdOptionsContents::SdOptionsContents( sal_uInt16 nConfigId, bool bUseConfig ) :
-    SdOptionsGeneric( nConfigId, bUseConfig ?
-                      ( ( SDCFG_DRAW == nConfigId ) ?
-                        OUString( "Office.Draw/Content" ) :
-                        OUString( "Office.Impress/Content" ) ) :
-                      OUString() )
+SdOptionsContents::SdOptionsContents(bool bImpress) :
+    SdOptionsGeneric( bImpress, bImpress ?
+                        OUString( "Office.Impress/Content" ) :
+                        OUString( "Office.Draw/Content" ) )
 {
     EnableModify( true );
 }
@@ -384,41 +382,17 @@ bool SdOptionsContents::WriteData( Any* pValues ) const
 
     return true;
 }
-
-/*************************************************************************
-|*
-|* SdOptionsContentsItem
-|*
-\************************************************************************/
-
-SdOptionsContentsItem::SdOptionsContentsItem()
-:   SfxPoolItem         ( ATTR_OPTIONS_CONTENTS )
-,   maOptionsContents   ( 0, false )
-{
-}
-
-SfxPoolItem* SdOptionsContentsItem::Clone( SfxItemPool* ) const
-{
-    return new SdOptionsContentsItem( *this );
-}
-
-bool SdOptionsContentsItem::operator==( const SfxPoolItem& rAttr ) const
-{
-    assert(SfxPoolItem::operator==(rAttr));
-    return maOptionsContents == static_cast<const SdOptionsContentsItem&>(rAttr).maOptionsContents;
-}
-
 /*************************************************************************
 |*
 |* SdOptionsMisc
 |*
 \************************************************************************/
 
-SdOptionsMisc::SdOptionsMisc( sal_uInt16 nConfigId, bool bUseConfig ) :
-    SdOptionsGeneric( nConfigId, bUseConfig ?
-                      ( ( SDCFG_DRAW == nConfigId ) ?
-                        OUString( "Office.Draw/Misc" ) :
-                        OUString( "Office.Impress/Misc" ) ) :
+SdOptionsMisc::SdOptionsMisc( bool bImpress, bool bUseConfig ) :
+    SdOptionsGeneric( bImpress, bUseConfig ?
+                      ( bImpress ?
+                        OUString( "Office.Impress/Misc" ) :
+                        OUString( "Office.Draw/Misc" ) ) :
                       OUString() ),
     nDefaultObjectSizeWidth(8000),
     nDefaultObjectSizeHeight(5000),
@@ -426,7 +400,7 @@ SdOptionsMisc::SdOptionsMisc( sal_uInt16 nConfigId, bool bUseConfig ) :
     bMarkedHitMovesAlways( true ),
     bMoveOnlyDragging( false ),
     bCrookNoContortion( false ),
-    bQuickEdit( GetConfigId() != SDCFG_DRAW ),
+    bQuickEdit( IsImpress() ),
     bMasterPageCache( true ),
     bDragWithCopy( false ),
     bPickThrough( true ),
@@ -527,7 +501,7 @@ void SdOptionsMisc::GetPropNameArray( const char**& ppNames, sal_uLong& rCount )
         "TabBarVisible"
     };
 
-    rCount = ( ( GetConfigId() == SDCFG_IMPRESS ) ? SAL_N_ELEMENTS(aPropNames) : 14 );
+    rCount = ( IsImpress() ? SAL_N_ELEMENTS(aPropNames) : 14 );
     ppNames = aPropNames;
 }
 
@@ -550,7 +524,7 @@ bool SdOptionsMisc::ReadData( const Any* pValues )
         SetShowComments(  *o3tl::doAccess<bool>(pValues[ 13 ]) );
 
     // just for Impress
-    if( GetConfigId() == SDCFG_IMPRESS )
+    if (IsImpress())
     {
         if( pValues[14].hasValue() )
             SetStartWithTemplate( *o3tl::doAccess<bool>(pValues[ 14 ]) );
@@ -605,7 +579,7 @@ bool SdOptionsMisc::WriteData( Any* pValues ) const
     pValues[ 6 ] <<= IsDoubleClickTextEdit();
     pValues[ 7 ] <<= IsClickChangeRotation();
     // The preview is not supported anymore.  Use a dummy value.
-    pValues[ 8 ] <<= (double)0;// GetPreviewQuality();
+    pValues[ 8 ] <<= double(0);// GetPreviewQuality();
     pValues[ 9 ] <<= IsSolidDragging();
     pValues[ 10 ] <<= GetDefaultObjectSizeWidth();
     pValues[ 11 ] <<= GetDefaultObjectSizeHeight();
@@ -613,7 +587,7 @@ bool SdOptionsMisc::WriteData( Any* pValues ) const
     pValues[ 13 ] <<= IsShowComments();
 
     // just for Impress
-    if( GetConfigId() == SDCFG_IMPRESS )
+    if (IsImpress())
     {
         pValues[ 14 ] <<= IsStartWithTemplate();
         pValues[ 15 ] <<= IsSummationOfParagraphs();
@@ -644,13 +618,13 @@ bool SdOptionsMisc::WriteData( Any* pValues ) const
 
 SdOptionsMiscItem::SdOptionsMiscItem()
 :   SfxPoolItem     ( ATTR_OPTIONS_MISC )
-,   maOptionsMisc   ( 0, false )
+,   maOptionsMisc   ( false, false )
 {
 }
 
-SdOptionsMiscItem::SdOptionsMiscItem( SdOptions* pOpts, ::sd::FrameView* pView )
+SdOptionsMiscItem::SdOptionsMiscItem( SdOptions const * pOpts, ::sd::FrameView const * pView )
 :   SfxPoolItem     ( ATTR_OPTIONS_MISC )
-,   maOptionsMisc   ( 0, false )
+,   maOptionsMisc   ( false, false )
 {
     if( pOpts )
     {
@@ -706,7 +680,7 @@ SdOptionsMiscItem::SdOptionsMiscItem( SdOptions* pOpts, ::sd::FrameView* pView )
     }
 }
 
-SfxPoolItem* SdOptionsMiscItem::Clone( SfxItemPool* ) const
+SdOptionsMiscItem* SdOptionsMiscItem::Clone( SfxItemPool* ) const
 {
     return new SdOptionsMiscItem( *this );
 }
@@ -719,39 +693,39 @@ bool SdOptionsMiscItem::operator==( const SfxPoolItem& rAttr ) const
 
 void SdOptionsMiscItem::SetOptions( SdOptions* pOpts ) const
 {
-    if( pOpts )
-    {
-        pOpts->SetStartWithTemplate( maOptionsMisc.IsStartWithTemplate() );
-        pOpts->SetMarkedHitMovesAlways( maOptionsMisc.IsMarkedHitMovesAlways() );
-        pOpts->SetMoveOnlyDragging( maOptionsMisc.IsMoveOnlyDragging() );
-        pOpts->SetCrookNoContortion( maOptionsMisc.IsCrookNoContortion() );
-        pOpts->SetQuickEdit( maOptionsMisc.IsQuickEdit() );
-        pOpts->SetMasterPagePaintCaching( maOptionsMisc.IsMasterPagePaintCaching() );
-        pOpts->SetDragWithCopy( maOptionsMisc.IsDragWithCopy() );
-        pOpts->SetPickThrough( maOptionsMisc.IsPickThrough() );
-        pOpts->SetDoubleClickTextEdit( maOptionsMisc.IsDoubleClickTextEdit() );
-        pOpts->SetClickChangeRotation( maOptionsMisc.IsClickChangeRotation() );
-        pOpts->SetEnableSdremote( maOptionsMisc.IsEnableSdremote() );
-        pOpts->SetEnablePresenterScreen( maOptionsMisc.IsEnablePresenterScreen() );
-        pOpts->SetSummationOfParagraphs( maOptionsMisc.IsSummationOfParagraphs() );
-        pOpts->SetTabBarVisible( maOptionsMisc.IsTabBarVisible() );
+    if( !pOpts )
+        return;
 
-        pOpts->SetSolidDragging( maOptionsMisc.IsSolidDragging() );
-        pOpts->SetShowUndoDeleteWarning( maOptionsMisc.IsShowUndoDeleteWarning() );
-        pOpts->SetPrinterIndependentLayout( maOptionsMisc.GetPrinterIndependentLayout() );
-        pOpts->SetShowComments( maOptionsMisc.IsShowComments() );
-        pOpts->SetDefaultObjectSizeWidth( maOptionsMisc.GetDefaultObjectSizeWidth() );
-        pOpts->SetDefaultObjectSizeHeight( maOptionsMisc.GetDefaultObjectSizeHeight() );
+    pOpts->SetStartWithTemplate( maOptionsMisc.IsStartWithTemplate() );
+    pOpts->SetMarkedHitMovesAlways( maOptionsMisc.IsMarkedHitMovesAlways() );
+    pOpts->SetMoveOnlyDragging( maOptionsMisc.IsMoveOnlyDragging() );
+    pOpts->SetCrookNoContortion( maOptionsMisc.IsCrookNoContortion() );
+    pOpts->SetQuickEdit( maOptionsMisc.IsQuickEdit() );
+    pOpts->SetMasterPagePaintCaching( maOptionsMisc.IsMasterPagePaintCaching() );
+    pOpts->SetDragWithCopy( maOptionsMisc.IsDragWithCopy() );
+    pOpts->SetPickThrough( maOptionsMisc.IsPickThrough() );
+    pOpts->SetDoubleClickTextEdit( maOptionsMisc.IsDoubleClickTextEdit() );
+    pOpts->SetClickChangeRotation( maOptionsMisc.IsClickChangeRotation() );
+    pOpts->SetEnableSdremote( maOptionsMisc.IsEnableSdremote() );
+    pOpts->SetEnablePresenterScreen( maOptionsMisc.IsEnablePresenterScreen() );
+    pOpts->SetSummationOfParagraphs( maOptionsMisc.IsSummationOfParagraphs() );
+    pOpts->SetTabBarVisible( maOptionsMisc.IsTabBarVisible() );
 
-        pOpts->SetPreviewNewEffects( maOptionsMisc.IsPreviewNewEffects() );
-        pOpts->SetPreviewChangedEffects( maOptionsMisc.IsPreviewChangedEffects() );
-        pOpts->SetPreviewTransitions( maOptionsMisc.IsPreviewTransitions() );
+    pOpts->SetSolidDragging( maOptionsMisc.IsSolidDragging() );
+    pOpts->SetShowUndoDeleteWarning( maOptionsMisc.IsShowUndoDeleteWarning() );
+    pOpts->SetPrinterIndependentLayout( maOptionsMisc.GetPrinterIndependentLayout() );
+    pOpts->SetShowComments( maOptionsMisc.IsShowComments() );
+    pOpts->SetDefaultObjectSizeWidth( maOptionsMisc.GetDefaultObjectSizeWidth() );
+    pOpts->SetDefaultObjectSizeHeight( maOptionsMisc.GetDefaultObjectSizeHeight() );
 
-        pOpts->SetDisplay( maOptionsMisc.GetDisplay() );
+    pOpts->SetPreviewNewEffects( maOptionsMisc.IsPreviewNewEffects() );
+    pOpts->SetPreviewChangedEffects( maOptionsMisc.IsPreviewChangedEffects() );
+    pOpts->SetPreviewTransitions( maOptionsMisc.IsPreviewTransitions() );
 
-        pOpts->SetPresentationPenColor( maOptionsMisc.GetPresentationPenColor() );
-        pOpts->SetPresentationPenWidth( maOptionsMisc.GetPresentationPenWidth() );
-    }
+    pOpts->SetDisplay( maOptionsMisc.GetDisplay() );
+
+    pOpts->SetPresentationPenColor( maOptionsMisc.GetPresentationPenColor() );
+    pOpts->SetPresentationPenWidth( maOptionsMisc.GetPresentationPenWidth() );
 }
 
 /*************************************************************************
@@ -760,11 +734,11 @@ void SdOptionsMiscItem::SetOptions( SdOptions* pOpts ) const
 |*
 \************************************************************************/
 
-SdOptionsSnap::SdOptionsSnap( sal_uInt16 nConfigId, bool bUseConfig ) :
-    SdOptionsGeneric( nConfigId, bUseConfig ?
-                      ( ( SDCFG_DRAW == nConfigId ) ?
-                        OUString( "Office.Draw/Snap" ) :
-                        OUString( "Office.Impress/Snap" ) ) :
+SdOptionsSnap::SdOptionsSnap( bool bImpress, bool bUseConfig ) :
+    SdOptionsGeneric( bImpress, bUseConfig ?
+                      ( bImpress ?
+                        OUString( "Office.Impress/Snap" ) :
+                        OUString( "Office.Draw/Snap" ) ) :
                       OUString() ),
     bSnapHelplines( true ),
     bSnapBorder( true ),
@@ -824,9 +798,9 @@ bool SdOptionsSnap::ReadData( const Any* pValues )
     if( pValues[4].hasValue() ) SetOrtho( *o3tl::doAccess<bool>(pValues[ 4 ]) );
     if( pValues[5].hasValue() ) SetBigOrtho( *o3tl::doAccess<bool>(pValues[ 5 ]) );
     if( pValues[6].hasValue() ) SetRotate( *o3tl::doAccess<bool>(pValues[ 6 ]) );
-    if( pValues[7].hasValue() ) SetSnapArea( (sal_Int16) *o3tl::doAccess<sal_Int32>(pValues[ 7 ]) );
-    if( pValues[8].hasValue() ) SetAngle( (sal_Int16) *o3tl::doAccess<sal_Int32>(pValues[ 8 ]) );
-    if( pValues[9].hasValue() ) SetEliminatePolyPointLimitAngle( (sal_Int16) *o3tl::doAccess<sal_Int32>(pValues[ 9 ]) );
+    if( pValues[7].hasValue() ) SetSnapArea( static_cast<sal_Int16>(*o3tl::doAccess<sal_Int32>(pValues[ 7 ])) );
+    if( pValues[8].hasValue() ) SetAngle( static_cast<sal_Int16>(*o3tl::doAccess<sal_Int32>(pValues[ 8 ])) );
+    if( pValues[9].hasValue() ) SetEliminatePolyPointLimitAngle( static_cast<sal_Int16>(*o3tl::doAccess<sal_Int32>(pValues[ 9 ])) );
 
     return true;
 }
@@ -840,9 +814,9 @@ bool SdOptionsSnap::WriteData( Any* pValues ) const
     pValues[ 4 ] <<= IsOrtho();
     pValues[ 5 ] <<= IsBigOrtho();
     pValues[ 6 ] <<= IsRotate();
-    pValues[ 7 ] <<= (sal_Int32) GetSnapArea();
-    pValues[ 8 ] <<= (sal_Int32) GetAngle();
-    pValues[ 9 ] <<= (sal_Int32) GetEliminatePolyPointLimitAngle();
+    pValues[ 7 ] <<= static_cast<sal_Int32>(GetSnapArea());
+    pValues[ 8 ] <<= static_cast<sal_Int32>(GetAngle());
+    pValues[ 9 ] <<= static_cast<sal_Int32>(GetEliminatePolyPointLimitAngle());
 
     return true;
 }
@@ -855,13 +829,13 @@ bool SdOptionsSnap::WriteData( Any* pValues ) const
 
 SdOptionsSnapItem::SdOptionsSnapItem()
 :   SfxPoolItem     ( ATTR_OPTIONS_SNAP )
-,   maOptionsSnap   ( 0, false )
+,   maOptionsSnap   ( false, false )
 {
 }
 
-SdOptionsSnapItem::SdOptionsSnapItem( SdOptions* pOpts, ::sd::FrameView* pView )
+SdOptionsSnapItem::SdOptionsSnapItem( SdOptions const * pOpts, ::sd::FrameView const * pView )
 :   SfxPoolItem     ( ATTR_OPTIONS_SNAP )
-,   maOptionsSnap   ( 0, false )
+,   maOptionsSnap   ( false, false )
 {
     if( pView )
     {
@@ -873,8 +847,8 @@ SdOptionsSnapItem::SdOptionsSnapItem( SdOptions* pOpts, ::sd::FrameView* pView )
         maOptionsSnap.SetBigOrtho( pView->IsBigOrtho() );
         maOptionsSnap.SetRotate( pView->IsAngleSnapEnabled() );
         maOptionsSnap.SetSnapArea( pView->GetSnapMagneticPixel() );
-        maOptionsSnap.SetAngle( (sal_Int16) pView->GetSnapAngle() );
-        maOptionsSnap.SetEliminatePolyPointLimitAngle( (sal_Int16) pView->GetEliminatePolyPointLimitAngle() );
+        maOptionsSnap.SetAngle( static_cast<sal_Int16>(pView->GetSnapAngle()) );
+        maOptionsSnap.SetEliminatePolyPointLimitAngle( static_cast<sal_Int16>(pView->GetEliminatePolyPointLimitAngle()) );
     }
     else if( pOpts )
     {
@@ -891,7 +865,7 @@ SdOptionsSnapItem::SdOptionsSnapItem( SdOptions* pOpts, ::sd::FrameView* pView )
     }
 }
 
-SfxPoolItem* SdOptionsSnapItem::Clone( SfxItemPool* ) const
+SdOptionsSnapItem* SdOptionsSnapItem::Clone( SfxItemPool* ) const
 {
     return new SdOptionsSnapItem( *this );
 }
@@ -904,19 +878,19 @@ bool SdOptionsSnapItem::operator==( const SfxPoolItem& rAttr ) const
 
 void SdOptionsSnapItem::SetOptions( SdOptions* pOpts ) const
 {
-    if( pOpts )
-    {
-        pOpts->SetSnapHelplines( maOptionsSnap.IsSnapHelplines() );
-        pOpts->SetSnapBorder( maOptionsSnap.IsSnapBorder() );
-        pOpts->SetSnapFrame( maOptionsSnap.IsSnapFrame() );
-        pOpts->SetSnapPoints( maOptionsSnap.IsSnapPoints() );
-        pOpts->SetOrtho( maOptionsSnap.IsOrtho() );
-        pOpts->SetBigOrtho( maOptionsSnap.IsBigOrtho() );
-        pOpts->SetRotate( maOptionsSnap.IsRotate() );
-        pOpts->SetSnapArea( maOptionsSnap.GetSnapArea() );
-        pOpts->SetAngle( maOptionsSnap.GetAngle() );
-        pOpts->SetEliminatePolyPointLimitAngle( maOptionsSnap.GetEliminatePolyPointLimitAngle() );
-    }
+    if( !pOpts )
+        return;
+
+    pOpts->SetSnapHelplines( maOptionsSnap.IsSnapHelplines() );
+    pOpts->SetSnapBorder( maOptionsSnap.IsSnapBorder() );
+    pOpts->SetSnapFrame( maOptionsSnap.IsSnapFrame() );
+    pOpts->SetSnapPoints( maOptionsSnap.IsSnapPoints() );
+    pOpts->SetOrtho( maOptionsSnap.IsOrtho() );
+    pOpts->SetBigOrtho( maOptionsSnap.IsBigOrtho() );
+    pOpts->SetRotate( maOptionsSnap.IsRotate() );
+    pOpts->SetSnapArea( maOptionsSnap.GetSnapArea() );
+    pOpts->SetAngle( maOptionsSnap.GetAngle() );
+    pOpts->SetEliminatePolyPointLimitAngle( maOptionsSnap.GetEliminatePolyPointLimitAngle() );
 }
 
 /*************************************************************************
@@ -925,10 +899,10 @@ void SdOptionsSnapItem::SetOptions( SdOptions* pOpts ) const
 |*
 \************************************************************************/
 
-SdOptionsZoom::SdOptionsZoom( sal_uInt16 nConfigId ) :
-    SdOptionsGeneric( nConfigId, ( SDCFG_DRAW == nConfigId ) ?
-                                 OUString( "Office.Draw/Zoom" ) :
-                                 OUString() ),
+SdOptionsZoom::SdOptionsZoom( bool bImpress ) :
+    SdOptionsGeneric( bImpress, bImpress ?
+                                 OUString() :
+                                 OUString("Office.Draw/Zoom") ),
     nX( 1 ),
     nY( 1 )
 
@@ -944,7 +918,7 @@ void SdOptionsZoom::GetPropNameArray( const char**& ppNames, sal_uLong& rCount )
         "ScaleY"
     };
 
-    rCount = ( GetConfigId() == SDCFG_DRAW ) ? SAL_N_ELEMENTS(aPropNames) : 0;
+    rCount = !IsImpress() ? SAL_N_ELEMENTS(aPropNames) : 0;
     ppNames = aPropNames;
 }
 
@@ -978,11 +952,11 @@ bool SdOptionsZoom::WriteData( Any* pValues ) const
 |*
 \************************************************************************/
 
-SdOptionsGrid::SdOptionsGrid( sal_uInt16 nConfigId ) :
-    SdOptionsGeneric( nConfigId,
-                      ( SDCFG_DRAW == nConfigId ) ?
-                        OUString( "Office.Draw/Grid" ) :
-                        OUString( "Office.Impress/Grid" )
+SdOptionsGrid::SdOptionsGrid(bool bImpress) :
+    SdOptionsGeneric( bImpress,
+                      bImpress ?
+                        OUString( "Office.Impress/Grid" ) :
+                        OUString( "Office.Draw/Grid" )
                     )
 {
     EnableModify( false );
@@ -1079,12 +1053,12 @@ bool SdOptionsGrid::ReadData( const Any* pValues )
 
 bool SdOptionsGrid::WriteData( Any* pValues ) const
 {
-    pValues[ 0 ] <<= (sal_Int32) GetFieldDrawX();
-    pValues[ 1 ] <<= (sal_Int32) GetFieldDrawY();
-    pValues[ 2 ] <<= ( GetFieldDivisionX() ? ( (double) GetFieldDrawX() / GetFieldDivisionX() - 1.0 ) : (double) 0 );
-    pValues[ 3 ] <<= ( GetFieldDivisionY() ? ( (double) GetFieldDrawY() / GetFieldDivisionY() - 1.0 ) : (double) 0 );
-    pValues[ 4 ] <<= (sal_Int32) GetFieldSnapX();
-    pValues[ 5 ] <<= (sal_Int32) GetFieldSnapY();
+    pValues[ 0 ] <<= static_cast<sal_Int32>(GetFieldDrawX());
+    pValues[ 1 ] <<= static_cast<sal_Int32>(GetFieldDrawY());
+    pValues[ 2 ] <<= ( GetFieldDivisionX() ? ( static_cast<double>(GetFieldDrawX()) / GetFieldDivisionX() - 1.0 ) : double(0) );
+    pValues[ 3 ] <<= ( GetFieldDivisionY() ? ( static_cast<double>(GetFieldDrawY()) / GetFieldDivisionY() - 1.0 ) : double(0) );
+    pValues[ 4 ] <<= static_cast<sal_Int32>(GetFieldSnapX());
+    pValues[ 5 ] <<= static_cast<sal_Int32>(GetFieldSnapY());
     pValues[ 6 ] <<= IsUseGridSnap();
     pValues[ 7 ] <<= IsSynchronize();
     pValues[ 8 ] <<= IsGridVisible();
@@ -1099,7 +1073,7 @@ bool SdOptionsGrid::WriteData( Any* pValues ) const
 |*
 \************************************************************************/
 
-SdOptionsGridItem::SdOptionsGridItem( SdOptions* pOpts ) :
+SdOptionsGridItem::SdOptionsGridItem( SdOptions const * pOpts ) :
     SvxGridItem( SID_ATTR_GRID_OPTIONS )
 {
     SetSynchronize( pOpts->IsSynchronize() );
@@ -1135,11 +1109,11 @@ void SdOptionsGridItem::SetOptions( SdOptions* pOpts ) const
 |*
 \************************************************************************/
 
-SdOptionsPrint::SdOptionsPrint( sal_uInt16 nConfigId, bool bUseConfig ) :
-    SdOptionsGeneric( nConfigId, bUseConfig ?
-                      ( ( SDCFG_DRAW == nConfigId ) ?
-                        OUString( "Office.Draw/Print" ) :
-                        OUString( "Office.Impress/Print" ) ) :
+SdOptionsPrint::SdOptionsPrint( bool bImpress, bool bUseConfig ) :
+    SdOptionsGeneric( bImpress, bUseConfig ?
+                      ( bImpress ?
+                        OUString( "Office.Impress/Print" ) :
+                        OUString( "Office.Draw/Print" ) ) :
                       OUString() ),
     bDraw( true ),
     bNotes( false ),
@@ -1193,7 +1167,7 @@ bool SdOptionsPrint::operator==( const SdOptionsPrint& rOpt ) const
 
 void SdOptionsPrint::GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const
 {
-    if( GetConfigId() == SDCFG_IMPRESS )
+    if (IsImpress())
     {
         static const char* aImpressPropNames[] =
         {
@@ -1260,17 +1234,17 @@ bool SdOptionsPrint::ReadData( const Any* pValues )
     if( pValues[7].hasValue() ) SetFrontPage( *o3tl::doAccess<bool>(pValues[ 7 ]) );
     if( pValues[8].hasValue() ) SetBackPage( *o3tl::doAccess<bool>(pValues[ 8 ]) );
     if( pValues[9].hasValue() ) SetPaperbin( *o3tl::doAccess<bool>(pValues[ 9 ]) );
-    if( pValues[10].hasValue() ) SetOutputQuality( (sal_uInt16) *o3tl::doAccess<sal_Int32>(pValues[ 10 ]) );
+    if( pValues[10].hasValue() ) SetOutputQuality( static_cast<sal_uInt16>(*o3tl::doAccess<sal_Int32>(pValues[ 10 ])) );
     if( pValues[11].hasValue() ) SetDraw( *o3tl::doAccess<bool>(pValues[ 11 ]) );
 
     // just for impress
-    if( GetConfigId() == SDCFG_IMPRESS )
+    if (IsImpress())
     {
         if( pValues[12].hasValue() ) SetNotes( *o3tl::doAccess<bool>(pValues[ 12 ]) );
         if( pValues[13].hasValue() ) SetHandout( *o3tl::doAccess<bool>(pValues[ 13 ]) );
         if( pValues[14].hasValue() ) SetOutline( *o3tl::doAccess<bool>(pValues[ 14 ]) );
         if( pValues[15].hasValue() ) SetHandoutHorizontal( *o3tl::doAccess<bool>(pValues[15]) );
-        if( pValues[16].hasValue() ) SetHandoutPages( (sal_uInt16)*o3tl::doAccess<sal_Int32>(pValues[16]) );
+        if( pValues[16].hasValue() ) SetHandoutPages( static_cast<sal_uInt16>(*o3tl::doAccess<sal_Int32>(pValues[16])) );
     }
 
     return true;
@@ -1288,11 +1262,11 @@ bool SdOptionsPrint::WriteData( Any* pValues ) const
     pValues[ 7 ] <<= IsFrontPage();
     pValues[ 8 ] <<= IsBackPage();
     pValues[ 9 ] <<= IsPaperbin();
-    pValues[ 10 ] <<= (sal_Int32) GetOutputQuality();
+    pValues[ 10 ] <<= static_cast<sal_Int32>(GetOutputQuality());
     pValues[ 11 ] <<= IsDraw();
 
     // just for impress
-    if( GetConfigId() == SDCFG_IMPRESS )
+    if (IsImpress())
     {
         pValues[ 12 ] <<= IsNotes();
         pValues[ 13 ] <<= IsHandout();
@@ -1312,39 +1286,39 @@ bool SdOptionsPrint::WriteData( Any* pValues ) const
 
 SdOptionsPrintItem::SdOptionsPrintItem()
 :   SfxPoolItem     ( ATTR_OPTIONS_PRINT )
-,   maOptionsPrint  ( 0, false )
+,   maOptionsPrint  ( false, false )
 {
 }
 
-SdOptionsPrintItem::SdOptionsPrintItem( SdOptions* pOpts )
+SdOptionsPrintItem::SdOptionsPrintItem( SdOptions const * pOpts )
 :   SfxPoolItem     ( ATTR_OPTIONS_PRINT )
-,   maOptionsPrint  ( 0, false )
+,   maOptionsPrint  ( false, false )
 {
-    if( pOpts )
-    {
-        maOptionsPrint.SetDraw( pOpts->IsDraw() );
-        maOptionsPrint.SetNotes( pOpts->IsNotes() );
-        maOptionsPrint.SetHandout( pOpts->IsHandout() );
-        maOptionsPrint.SetOutline( pOpts->IsOutline() );
-        maOptionsPrint.SetDate( pOpts->IsDate() );
-        maOptionsPrint.SetTime( pOpts->IsTime() );
-        maOptionsPrint.SetPagename( pOpts->IsPagename() );
-        maOptionsPrint.SetHiddenPages( pOpts->IsHiddenPages() );
-        maOptionsPrint.SetPagesize( pOpts->IsPagesize() );
-        maOptionsPrint.SetPagetile( pOpts->IsPagetile() );
-        maOptionsPrint.SetWarningPrinter( pOpts->IsWarningPrinter() );
-        maOptionsPrint.SetWarningSize( pOpts->IsWarningSize() );
-        maOptionsPrint.SetWarningOrientation( pOpts->IsWarningOrientation() );
-        maOptionsPrint.SetBooklet( pOpts->IsBooklet() );
-        maOptionsPrint.SetFrontPage( pOpts->IsFrontPage() );
-        maOptionsPrint.SetBackPage( pOpts->IsBackPage() );
-        maOptionsPrint.SetCutPage( pOpts->IsCutPage() );
-        maOptionsPrint.SetPaperbin( pOpts->IsPaperbin() );
-        maOptionsPrint.SetOutputQuality( pOpts->GetOutputQuality() );
-    }
+    if( !pOpts )
+        return;
+
+    maOptionsPrint.SetDraw( pOpts->IsDraw() );
+    maOptionsPrint.SetNotes( pOpts->IsNotes() );
+    maOptionsPrint.SetHandout( pOpts->IsHandout() );
+    maOptionsPrint.SetOutline( pOpts->IsOutline() );
+    maOptionsPrint.SetDate( pOpts->IsDate() );
+    maOptionsPrint.SetTime( pOpts->IsTime() );
+    maOptionsPrint.SetPagename( pOpts->IsPagename() );
+    maOptionsPrint.SetHiddenPages( pOpts->IsHiddenPages() );
+    maOptionsPrint.SetPagesize( pOpts->IsPagesize() );
+    maOptionsPrint.SetPagetile( pOpts->IsPagetile() );
+    maOptionsPrint.SetWarningPrinter( pOpts->IsWarningPrinter() );
+    maOptionsPrint.SetWarningSize( pOpts->IsWarningSize() );
+    maOptionsPrint.SetWarningOrientation( pOpts->IsWarningOrientation() );
+    maOptionsPrint.SetBooklet( pOpts->IsBooklet() );
+    maOptionsPrint.SetFrontPage( pOpts->IsFrontPage() );
+    maOptionsPrint.SetBackPage( pOpts->IsBackPage() );
+    maOptionsPrint.SetCutPage( pOpts->IsCutPage() );
+    maOptionsPrint.SetPaperbin( pOpts->IsPaperbin() );
+    maOptionsPrint.SetOutputQuality( pOpts->GetOutputQuality() );
 }
 
-SfxPoolItem* SdOptionsPrintItem::Clone( SfxItemPool* ) const
+SdOptionsPrintItem* SdOptionsPrintItem::Clone( SfxItemPool* ) const
 {
     return new SdOptionsPrintItem( *this );
 }
@@ -1357,28 +1331,28 @@ bool SdOptionsPrintItem::operator==( const SfxPoolItem& rAttr ) const
 
 void SdOptionsPrintItem::SetOptions( SdOptions* pOpts ) const
 {
-    if( pOpts )
-    {
-        pOpts->SetDraw( maOptionsPrint.IsDraw() );
-        pOpts->SetNotes( maOptionsPrint.IsNotes() );
-        pOpts->SetHandout( maOptionsPrint.IsHandout() );
-        pOpts->SetOutline( maOptionsPrint.IsOutline() );
-        pOpts->SetDate( maOptionsPrint.IsDate() );
-        pOpts->SetTime( maOptionsPrint.IsTime() );
-        pOpts->SetPagename( maOptionsPrint.IsPagename() );
-        pOpts->SetHiddenPages( maOptionsPrint.IsHiddenPages() );
-        pOpts->SetPagesize( maOptionsPrint.IsPagesize() );
-        pOpts->SetPagetile( maOptionsPrint.IsPagetile() );
-        pOpts->SetWarningPrinter( maOptionsPrint.IsWarningPrinter() );
-        pOpts->SetWarningSize( maOptionsPrint.IsWarningSize() );
-        pOpts->SetWarningOrientation( maOptionsPrint.IsWarningOrientation() );
-        pOpts->SetBooklet( maOptionsPrint.IsBooklet() );
-        pOpts->SetFrontPage( maOptionsPrint.IsFrontPage() );
-        pOpts->SetBackPage( maOptionsPrint.IsBackPage() );
-        pOpts->SetCutPage( maOptionsPrint.IsCutPage() );
-        pOpts->SetPaperbin( maOptionsPrint.IsPaperbin() );
-        pOpts->SetOutputQuality( maOptionsPrint.GetOutputQuality() );
-    }
+    if( !pOpts )
+        return;
+
+    pOpts->SetDraw( maOptionsPrint.IsDraw() );
+    pOpts->SetNotes( maOptionsPrint.IsNotes() );
+    pOpts->SetHandout( maOptionsPrint.IsHandout() );
+    pOpts->SetOutline( maOptionsPrint.IsOutline() );
+    pOpts->SetDate( maOptionsPrint.IsDate() );
+    pOpts->SetTime( maOptionsPrint.IsTime() );
+    pOpts->SetPagename( maOptionsPrint.IsPagename() );
+    pOpts->SetHiddenPages( maOptionsPrint.IsHiddenPages() );
+    pOpts->SetPagesize( maOptionsPrint.IsPagesize() );
+    pOpts->SetPagetile( maOptionsPrint.IsPagetile() );
+    pOpts->SetWarningPrinter( maOptionsPrint.IsWarningPrinter() );
+    pOpts->SetWarningSize( maOptionsPrint.IsWarningSize() );
+    pOpts->SetWarningOrientation( maOptionsPrint.IsWarningOrientation() );
+    pOpts->SetBooklet( maOptionsPrint.IsBooklet() );
+    pOpts->SetFrontPage( maOptionsPrint.IsFrontPage() );
+    pOpts->SetBackPage( maOptionsPrint.IsBackPage() );
+    pOpts->SetCutPage( maOptionsPrint.IsCutPage() );
+    pOpts->SetPaperbin( maOptionsPrint.IsPaperbin() );
+    pOpts->SetOutputQuality( maOptionsPrint.GetOutputQuality() );
 }
 
 /*************************************************************************
@@ -1387,14 +1361,14 @@ void SdOptionsPrintItem::SetOptions( SdOptions* pOpts ) const
 |*
 \************************************************************************/
 
-SdOptions::SdOptions( sal_uInt16 nConfigId ) :
-    SdOptionsLayout( nConfigId, true ),
-    SdOptionsContents( nConfigId, true ),
-    SdOptionsMisc( nConfigId, true ),
-    SdOptionsSnap( nConfigId, true ),
-    SdOptionsZoom( nConfigId ),
-    SdOptionsGrid( nConfigId ),
-    SdOptionsPrint( nConfigId, true )
+SdOptions::SdOptions(bool bImpress) :
+    SdOptionsLayout( bImpress, true ),
+    SdOptionsContents( bImpress ),
+    SdOptionsMisc( bImpress, true ),
+    SdOptionsSnap( bImpress, true ),
+    SdOptionsZoom( bImpress ),
+    SdOptionsGrid( bImpress ),
+    SdOptionsPrint( bImpress, true )
 {
 }
 

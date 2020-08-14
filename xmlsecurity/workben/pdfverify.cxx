@@ -16,14 +16,17 @@
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/bootstrap.hxx>
 #include <osl/file.hxx>
+#include <sal/log.hxx>
 #include <sal/main.h>
+#include <tools/diagnose_ex.h>
 #include <vcl/pngwrite.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/graphicfilter.hxx>
+#include <vcl/filter/pdfdocument.hxx>
 
-#include <xmlsecurity/pdfio/pdfdocument.hxx>
+#include <pdfio/pdfdocument.hxx>
 
-#include <sigstruct.hxx>
+#include <svl/sigstruct.hxx>
 
 using namespace com::sun::star;
 
@@ -37,8 +40,10 @@ void generatePreview(const OString& rPdfPath, const OString& rPngPath)
     OUString aInURL;
     osl::FileBase::getFileURLFromSystemPath(OUString::fromUtf8(rPdfPath), aInURL);
     SvFileStream aInStream(aInURL, StreamMode::READ);
-    WMF_EXTERNALHEADER* pExtHeader = nullptr;
-    if (rFilter.ImportGraphic(aGraphic, OUString(), aInStream, GRFILTER_FORMAT_DONTKNOW, nullptr, GraphicFilterImportFlags::NONE, pExtHeader) != ERRCODE_NONE)
+    WmfExternal* pExtHeader = nullptr;
+    if (rFilter.ImportGraphic(aGraphic, OUString(), aInStream, GRFILTER_FORMAT_DONTKNOW, nullptr,
+                              GraphicFilterImportFlags::NONE, pExtHeader)
+        != ERRCODE_NONE)
         return;
 
     BitmapEx aBitmapEx = aGraphic.GetBitmapEx();
@@ -63,13 +68,16 @@ int pdfVerify(int nArgc, char** pArgv)
     {
         xComponentContext = cppu::defaultBootstrap_InitialComponentContext();
     }
-    catch (const uno::RuntimeException& rException)
+    catch (const uno::RuntimeException&)
     {
-        SAL_WARN("xmlsecurity.pdfio", "cppu::defaultBootstrap_InitialComponentContext() failed: " << rException.Message);
+        TOOLS_WARN_EXCEPTION("xmlsecurity.pdfio",
+                             "cppu::defaultBootstrap_InitialComponentContext() failed:");
         return 1;
     }
-    uno::Reference<lang::XMultiComponentFactory> xMultiComponentFactory = xComponentContext->getServiceManager();
-    uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(xMultiComponentFactory, uno::UNO_QUERY);
+    uno::Reference<lang::XMultiComponentFactory> xMultiComponentFactory
+        = xComponentContext->getServiceManager();
+    uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(xMultiComponentFactory,
+                                                                    uno::UNO_QUERY);
     comphelper::setProcessServiceFactory(xMultiServiceFactory);
 
     if (nArgc > 3 && OString(pArgv[3]) == "-p")
@@ -85,12 +93,14 @@ int pdfVerify(int nArgc, char** pArgv)
     {
         xSEInitializer = xml::crypto::SEInitializer::create(xComponentContext);
     }
-    catch (const uno::DeploymentException& rException)
+    catch (const uno::DeploymentException&)
     {
-        SAL_WARN("xmlsecurity.pdfio", "DeploymentException while creating SEInitializer: " << rException.Message);
+        TOOLS_WARN_EXCEPTION("xmlsecurity.pdfio",
+                             "DeploymentException while creating SEInitializer:");
         return 1;
     }
-    uno::Reference<xml::crypto::XXMLSecurityContext> xSecurityContext = xSEInitializer->createSecurityContext(OUString());
+    uno::Reference<xml::crypto::XXMLSecurityContext> xSecurityContext
+        = xSEInitializer->createSecurityContext(OUString());
 
     OUString aInURL;
     osl::FileBase::getFileURLFromSystemPath(OUString::fromUtf8(pArgv[1]), aInURL);
@@ -149,15 +159,18 @@ int pdfVerify(int nArgc, char** pArgv)
             for (size_t i = 0; i < aSignatures.size(); ++i)
             {
                 SignatureInformation aInfo(i);
-                bool bLast = i == aSignatures.size() - 1;
-                if (!xmlsecurity::pdfio::ValidateSignature(aStream, aSignatures[i], aInfo, bLast))
+                if (!xmlsecurity::pdfio::ValidateSignature(aStream, aSignatures[i], aInfo,
+                                                           aDocument))
                 {
                     SAL_WARN("xmlsecurity.pdfio", "failed to determine digest match");
                     return 1;
                 }
 
-                bool bSuccess = aInfo.nStatus == xml::crypto::SecurityOperationStatus_OPERATION_SUCCEEDED;
+                bool bSuccess
+                    = aInfo.nStatus == xml::crypto::SecurityOperationStatus_OPERATION_SUCCEEDED;
                 std::cerr << "signature #" << i << ": digest match? " << bSuccess << std::endl;
+                std::cerr << "signature #" << i << ": partial? " << aInfo.bPartialDocumentSignature
+                          << std::endl;
             }
         }
 
@@ -165,8 +178,10 @@ int pdfVerify(int nArgc, char** pArgv)
     }
 
     std::cerr << "adding a new signature" << std::endl;
-    uno::Reference<xml::crypto::XSecurityEnvironment> xSecurityEnvironment = xSecurityContext->getSecurityEnvironment();
-    uno::Sequence<uno::Reference<security::XCertificate>> aCertificates = xSecurityEnvironment->getPersonalCertificates();
+    uno::Reference<xml::crypto::XSecurityEnvironment> xSecurityEnvironment
+        = xSecurityContext->getSecurityEnvironment();
+    uno::Sequence<uno::Reference<security::XCertificate>> aCertificates
+        = xSecurityEnvironment->getPersonalCertificates();
     if (!aCertificates.hasElements())
     {
         SAL_WARN("xmlsecurity.pdfio", "no signing certificates found");

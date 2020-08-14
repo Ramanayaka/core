@@ -19,16 +19,12 @@
 
 #include "PresenterPaneContainer.hxx"
 #include "PresenterPaneBase.hxx"
-#include <com/sun/star/awt/XGraphics.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/drawing/framework/ResourceId.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 PresenterPaneContainer::PresenterPaneContainer (
     const Reference<XComponentContext>& rxContext)
@@ -63,42 +59,38 @@ void PresenterPaneContainer::PreparePane (
         return;
 
     SharedPaneDescriptor pPane (FindPaneURL(rxPaneId->getResourceURL()));
-    if (pPane.get() == nullptr)
-    {
-        // No entry found for the given pane id.  Create a new one.
-        SharedPaneDescriptor pDescriptor (new PaneDescriptor);
-        pDescriptor->mxPaneId = rxPaneId;
-        pDescriptor->msViewURL = rsViewURL;
-        pDescriptor->mxPane = nullptr;
-        if (rsTitle.indexOf('%') < 0)
-        {
-            pDescriptor->msTitle = rsTitle;
-            (pDescriptor->msTitleTemplate).clear();
-        }
-        else
-        {
-            pDescriptor->msTitleTemplate = rsTitle;
-            (pDescriptor->msTitle).clear();
-        }
-        pDescriptor->msAccessibleTitleTemplate = rsAccessibleTitle;
-        pDescriptor->maViewInitialization = rViewInitialization;
-        pDescriptor->mbIsActive = true;
-        pDescriptor->mbIsOpaque = bIsOpaque;
-        pDescriptor->maSpriteProvider = PaneDescriptor::SpriteProvider();
-        pDescriptor->mbIsSprite = false;
-        pDescriptor->maCalloutAnchorLocation = awt::Point(-1,-1);
+    if (pPane)
+        return;
 
-        maPanes.push_back(pDescriptor);
+    // No entry found for the given pane id.  Create a new one.
+    SharedPaneDescriptor pDescriptor = std::make_shared<PaneDescriptor>();
+    pDescriptor->mxPaneId = rxPaneId;
+    pDescriptor->msViewURL = rsViewURL;
+    pDescriptor->mxPane = nullptr;
+    if (rsTitle.indexOf('%') < 0)
+    {
+        pDescriptor->msTitle = rsTitle;
+        pDescriptor->msTitleTemplate.clear();
     }
+    else
+    {
+        pDescriptor->msTitleTemplate = rsTitle;
+        pDescriptor->msTitle.clear();
+    }
+    pDescriptor->msAccessibleTitleTemplate = rsAccessibleTitle;
+    pDescriptor->maViewInitialization = rViewInitialization;
+    pDescriptor->mbIsActive = true;
+    pDescriptor->mbIsOpaque = bIsOpaque;
+    pDescriptor->mbIsSprite = false;
+
+    maPanes.push_back(pDescriptor);
 }
 
 void SAL_CALL PresenterPaneContainer::disposing()
 {
-    PaneList::iterator iPane (maPanes.begin());
-    PaneList::const_iterator iEnd (maPanes.end());
-    for ( ; iPane!=iEnd; ++iPane)
-        if ((*iPane)->mxPaneId.is())
-            RemovePane((*iPane)->mxPaneId);
+    for (const auto& rxPane : maPanes)
+        if (rxPane->mxPaneId.is())
+            RemovePane(rxPane->mxPaneId);
 }
 
 PresenterPaneContainer::SharedPaneDescriptor
@@ -114,11 +106,11 @@ PresenterPaneContainer::SharedPaneDescriptor
             sPaneURL = xPaneId->getResourceURL();
 
         pDescriptor = FindPaneURL(sPaneURL);
-        if (pDescriptor.get() == nullptr)
+        if (!pDescriptor)
             PreparePane(xPaneId, OUString(), OUString(), OUString(),
                 false, ViewInitializationFunction());
         pDescriptor = FindPaneURL(sPaneURL);
-        if (pDescriptor.get() != nullptr)
+        if (pDescriptor)
         {
             Reference<awt::XWindow> xWindow (rxPane->getWindow());
             pDescriptor->mxContentWindow = xWindow;
@@ -146,7 +138,7 @@ PresenterPaneContainer::SharedPaneDescriptor
         sPaneURL = rxPaneId->getResourceURL();
 
     SharedPaneDescriptor pDescriptor (FindPaneURL(sPaneURL));
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
     {
         pDescriptor->mxBorderWindow = rxBorderWindow;
         return pDescriptor;
@@ -157,8 +149,7 @@ PresenterPaneContainer::SharedPaneDescriptor
 
 PresenterPaneContainer::SharedPaneDescriptor
     PresenterPaneContainer::StoreView (
-        const Reference<XView>& rxView,
-        const SharedBitmapDescriptor& rpViewBackground)
+        const Reference<XView>& rxView)
 {
     SharedPaneDescriptor pDescriptor;
 
@@ -174,12 +165,9 @@ PresenterPaneContainer::SharedPaneDescriptor
         }
 
         pDescriptor = FindPaneURL(sPaneURL);
-        if (pDescriptor.get() != nullptr)
+        if (pDescriptor)
         {
             pDescriptor->mxView = rxView;
-            pDescriptor->mpViewBackground = rpViewBackground;
-            if (pDescriptor->mxPane.is())
-                pDescriptor->mxPane->SetBackground(rpViewBackground);
             try
             {
                 if (pDescriptor->maViewInitialization)
@@ -199,7 +187,7 @@ PresenterPaneContainer::SharedPaneDescriptor
     PresenterPaneContainer::RemovePane (const Reference<XResourceId>& rxPaneId)
 {
     SharedPaneDescriptor pDescriptor (FindPaneId(rxPaneId));
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
     {
         if (pDescriptor->mxContentWindow.is())
             pDescriptor->mxContentWindow->removeEventListener(this);
@@ -229,10 +217,9 @@ PresenterPaneContainer::SharedPaneDescriptor
         }
 
         pDescriptor = FindPaneURL(sPaneURL);
-        if (pDescriptor.get() != nullptr)
+        if (pDescriptor)
         {
             pDescriptor->mxView = nullptr;
-            pDescriptor->mpViewBackground = SharedBitmapDescriptor();
         }
     }
 
@@ -242,76 +229,60 @@ PresenterPaneContainer::SharedPaneDescriptor
 PresenterPaneContainer::SharedPaneDescriptor PresenterPaneContainer::FindBorderWindow (
     const Reference<awt::XWindow>& rxBorderWindow)
 {
-    PaneList::const_iterator iPane;
-    PaneList::iterator iEnd (maPanes.end());
-    for (iPane=maPanes.begin(); iPane!=iEnd; ++iPane)
-    {
-        if ((*iPane)->mxBorderWindow == rxBorderWindow)
-            return *iPane;
-    }
+    auto iPane = std::find_if(maPanes.begin(), maPanes.end(),
+        [&rxBorderWindow](const SharedPaneDescriptor& rxPane) { return rxPane->mxBorderWindow == rxBorderWindow; });
+    if (iPane != maPanes.end())
+        return *iPane;
     return SharedPaneDescriptor();
 }
 
 PresenterPaneContainer::SharedPaneDescriptor PresenterPaneContainer::FindContentWindow (
     const Reference<awt::XWindow>& rxContentWindow)
 {
-    PaneList::const_iterator iPane;
-    PaneList::iterator iEnd (maPanes.end());
-    for (iPane=maPanes.begin(); iPane!=iEnd; ++iPane)
-    {
-        if ((*iPane)->mxContentWindow == rxContentWindow)
-            return *iPane;
-    }
+    auto iPane = std::find_if(maPanes.begin(), maPanes.end(),
+        [&rxContentWindow](const SharedPaneDescriptor& rxPane) { return rxPane->mxContentWindow == rxContentWindow; });
+    if (iPane != maPanes.end())
+        return *iPane;
     return SharedPaneDescriptor();
 }
 
 PresenterPaneContainer::SharedPaneDescriptor PresenterPaneContainer::FindPaneURL (
     const OUString& rsPaneURL)
 {
-    PaneList::const_iterator iPane;
-    PaneList::const_iterator iEnd (maPanes.end());
-    for (iPane=maPanes.begin(); iPane!=iEnd; ++iPane)
-    {
-        if ((*iPane)->mxPaneId->getResourceURL() == rsPaneURL)
-            return *iPane;
-    }
+    auto iPane = std::find_if(maPanes.begin(), maPanes.end(),
+        [&rsPaneURL](const SharedPaneDescriptor& rxPane) { return rxPane->mxPaneId->getResourceURL() == rsPaneURL; });
+    if (iPane != maPanes.end())
+        return *iPane;
     return SharedPaneDescriptor();
 }
 
 PresenterPaneContainer::SharedPaneDescriptor PresenterPaneContainer::FindPaneId (
     const Reference<XResourceId>& rxPaneId)
 {
-    PaneList::iterator iEnd (maPanes.end());
-
     if ( ! rxPaneId.is())
         return SharedPaneDescriptor();
 
-    PaneList::iterator iPane;
-    for (iPane=maPanes.begin(); iPane!=iEnd; ++iPane)
-    {
-        if (rxPaneId->compareTo((*iPane)->mxPaneId) == 0)
-            return *iPane;
-    }
+    auto iPane = std::find_if(maPanes.begin(), maPanes.end(),
+        [&rxPaneId](const SharedPaneDescriptor& rxPane) { return rxPaneId->compareTo(rxPane->mxPaneId) == 0; });
+    if (iPane != maPanes.end())
+        return *iPane;
     return SharedPaneDescriptor();
 }
 
 PresenterPaneContainer::SharedPaneDescriptor PresenterPaneContainer::FindViewURL (
     const OUString& rsViewURL)
 {
-    PaneList::iterator iEnd (maPanes.end());
-    PaneList::iterator iPane;
-    for (iPane=maPanes.begin(); iPane!=iEnd; ++iPane)
-    {
-        if (rsViewURL == (*iPane)->msViewURL)
-            return *iPane;
-    }
+    auto iPane = std::find_if(maPanes.begin(), maPanes.end(),
+        [&rsViewURL](const SharedPaneDescriptor& rxPane) { return rsViewURL == rxPane->msViewURL; });
+    if (iPane != maPanes.end())
+        return *iPane;
     return SharedPaneDescriptor();
 }
 
 OUString PresenterPaneContainer::GetPaneURLForViewURL (const OUString& rsViewURL)
 {
     SharedPaneDescriptor pDescriptor (FindViewURL(rsViewURL));
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
         if (pDescriptor->mxPaneId.is())
             return pDescriptor->mxPaneId->getResourceURL();
     return OUString();
@@ -319,24 +290,22 @@ OUString PresenterPaneContainer::GetPaneURLForViewURL (const OUString& rsViewURL
 
 void PresenterPaneContainer::ToTop (const SharedPaneDescriptor& rpDescriptor)
 {
-    if (rpDescriptor.get() != nullptr)
-    {
-        // Find iterator for pDescriptor.
-        PaneList::iterator iPane;
-        PaneList::iterator iEnd (maPanes.end());
-        for (iPane=maPanes.begin(); iPane!=iEnd; ++iPane)
-            if (iPane->get() == rpDescriptor.get())
-                break;
-        OSL_ASSERT(iPane!=iEnd);
-        if (iPane == iEnd)
-            return;
+    if (!rpDescriptor)
+        return;
 
-        if (mxPresenterHelper.is())
-            mxPresenterHelper->toTop(rpDescriptor->mxBorderWindow);
+    // Find iterator for pDescriptor.
+    PaneList::iterator iEnd (maPanes.end());
+    auto iPane = std::find_if(maPanes.begin(), iEnd,
+        [&rpDescriptor](SharedPaneDescriptor& rxPane) { return rxPane.get() == rpDescriptor.get(); });
+    OSL_ASSERT(iPane!=iEnd);
+    if (iPane == iEnd)
+        return;
 
-        maPanes.erase(iPane);
-        maPanes.push_back(rpDescriptor);
-    }
+    if (mxPresenterHelper.is())
+        mxPresenterHelper->toTop(rpDescriptor->mxBorderWindow);
+
+    maPanes.erase(iPane);
+    maPanes.push_back(rpDescriptor);
 }
 
 //----- XEventListener --------------------------------------------------------
@@ -346,7 +315,7 @@ void SAL_CALL PresenterPaneContainer::disposing (
 {
     SharedPaneDescriptor pDescriptor (
         FindContentWindow(Reference<awt::XWindow>(rEvent.Source, UNO_QUERY)));
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
     {
         RemovePane(pDescriptor->mxPaneId);
     }
@@ -359,6 +328,6 @@ void PresenterPaneContainer::PaneDescriptor::SetActivationState (const bool bIsA
     mbIsActive = bIsActive;
 }
 
-} } // end of namespace ::sdext::presenter
+} // end of namespace ::sdext::presenter
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

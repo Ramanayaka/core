@@ -18,11 +18,10 @@
  */
 
 #include "commanddefinition.hxx"
-#include "apitools.hxx"
-#include "dbastrings.hrc"
+#include <apitools.hxx>
+#include <stringconstants.hxx>
 
 #include <com/sun/star/container/ElementExistException.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 
 
@@ -37,7 +36,7 @@ namespace dbaccess
 
 void OCommandDefinition::registerProperties()
 {
-    OCommandDefinition_Impl& rCommandDefinition = dynamic_cast< OCommandDefinition_Impl& >( *m_pImpl.get() );
+    OCommandDefinition_Impl& rCommandDefinition = dynamic_cast< OCommandDefinition_Impl& >( *m_pImpl );
     registerProperty(PROPERTY_COMMAND, PROPERTY_ID_COMMAND, PropertyAttribute::BOUND,
                     &rCommandDefinition.m_sCommand, cppu::UnoType<decltype(rCommandDefinition.m_sCommand)>::get());
 
@@ -88,7 +87,7 @@ IMPLEMENT_PROPERTYCONTAINER_DEFAULTS2(OCommandDefinition,OCommandDefinition_PROP
 
 OUString SAL_CALL OCommandDefinition::getImplementationName()
 {
-    return OUString("com.sun.star.comp.dba.OCommandDefinition");
+    return "com.sun.star.comp.dba.OCommandDefinition";
 }
 
 css::uno::Sequence<OUString> SAL_CALL OCommandDefinition::getSupportedServiceNames()
@@ -122,12 +121,12 @@ void SAL_CALL OCommandDefinition::rename( const OUString& newName )
 
 }   // namespace dbaccess
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_dba_OCommandDefinition(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new dbaccess::OCommandDefinition(
-            context, nullptr, dbaccess::TContentPtr( new dbaccess::OCommandDefinition_Impl )));
+            context, nullptr, std::make_shared<dbaccess::OCommandDefinition_Impl>() ));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <drawinglayer/primitive2d/wallpaperprimitive2d.hxx>
+#include <primitive2d/wallpaperprimitive2d.hxx>
 #include <drawinglayer/primitive2d/bitmapprimitive2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 #include <drawinglayer/primitive2d/fillgraphicprimitive2d.hxx>
@@ -26,12 +26,11 @@
 #include <drawinglayer/primitive2d/maskprimitive2d.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <vcl/graph.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void WallpaperBitmapPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*rViewInformation*/) const
         {
             Primitive2DReference aRetval;
@@ -55,7 +54,7 @@ namespace drawinglayer
 
                         Primitive2DReference xReference(
                             new BitmapPrimitive2D(
-                                getBitmapEx(),
+                                VCLUnoHelper::CreateVCLXBitmap(getBitmapEx()),
                                 aObjectTransform));
 
                         aRetval = xReference;
@@ -154,7 +153,7 @@ namespace drawinglayer
 
                             Primitive2DReference xReference(
                                 new BitmapPrimitive2D(
-                                    getBitmapEx(),
+                                    VCLUnoHelper::CreateVCLXBitmap(getBitmapEx()),
                                     aObjectTransform));
                             aRetval = xReference;
 
@@ -184,7 +183,7 @@ namespace drawinglayer
 
                             // create ObjectTransform
                             const basegfx::B2DHomMatrix aObjectTransform(
-                                basegfx::tools::createScaleTranslateB2DHomMatrix(
+                                basegfx::utils::createScaleTranslateB2DHomMatrix(
                                     getLocalObjectRange().getRange(),
                                     getLocalObjectRange().getMinimum()));
 
@@ -203,7 +202,7 @@ namespace drawinglayer
                         {
                             // embed to clipping; this is necessary for tiled fills
                             const basegfx::B2DPolyPolygon aPolyPolygon(
-                                basegfx::tools::createPolygonFromRect(getLocalObjectRange()));
+                                basegfx::utils::createPolygonFromRect(getLocalObjectRange()));
                             const drawinglayer::primitive2d::Primitive2DReference xClippedFill(
                                 new drawinglayer::primitive2d::MaskPrimitive2D(
                                     aPolyPolygon,
@@ -250,7 +249,7 @@ namespace drawinglayer
 
         // provide unique ID
         ImplPrimitive2DIDBlock(WallpaperBitmapPrimitive2D, PRIMITIVE2D_ID_WALLPAPERBITMAPPRIMITIVE2D)
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

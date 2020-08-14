@@ -61,8 +61,9 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPSORTOPT_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPSORTOPT_HXX
 
-#include "lwpheader.hxx"
-#include "lwpobjstrm.hxx"
+#include <config_lgpl.h>
+
+#include <lwpobjstrm.hxx>
 
 /**
  * @brief       sort key class for LwpSortOption

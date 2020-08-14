@@ -18,19 +18,20 @@
  */
 
 #include "PageBackground.hxx"
-#include "macros.hxx"
-#include "LinePropertiesHelper.hxx"
-#include "FillProperties.hxx"
-#include "UserDefinedProperties.hxx"
-#include "PropertyHelper.hxx"
+#include <LinePropertiesHelper.hxx>
+#include <FillProperties.hxx>
+#include <UserDefinedProperties.hxx>
+#include <PropertyHelper.hxx>
+#include <ModifyListenerHelper.hxx>
 
 #include <com/sun/star/drawing/LineStyle.hpp>
-#include <rtl/uuid.h>
-#include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <vector>
 #include <algorithm>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
@@ -75,7 +76,7 @@ private:
     static uno::Sequence< Property > lcl_GetPropertySequence()
     {
         std::vector< css::beans::Property > aProperties;
-         ::chart::LinePropertiesHelper::AddPropertiesToVector( aProperties );
+        ::chart::LinePropertiesHelper::AddPropertiesToVector( aProperties );
         ::chart::FillProperties::AddPropertiesToVector( aProperties );
         ::chart::UserDefinedProperties::AddPropertiesToVector( aProperties );
 
@@ -116,8 +117,7 @@ PageBackground::PageBackground() :
 {}
 
 PageBackground::PageBackground( const PageBackground & rOther ) :
-        MutexContainer(),
-        impl::PageBackground_Base(),
+        impl::PageBackground_Base(rOther),
         ::property::OPropertySet( rOther, m_aMutex ),
     m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder())
 {}
@@ -160,9 +160,9 @@ void SAL_CALL PageBackground::addModifyListener( const uno::Reference< util::XMo
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -173,9 +173,9 @@ void SAL_CALL PageBackground::removeModifyListener( const uno::Reference< util::
         uno::Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -199,7 +199,7 @@ void PageBackground::firePropertyChangeEvent()
 
 OUString SAL_CALL PageBackground::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart2.PageBackground");
+    return "com.sun.star.comp.chart2.PageBackground";
 }
 
 sal_Bool SAL_CALL PageBackground::supportsService( const OUString& rServiceName )
@@ -220,7 +220,7 @@ IMPLEMENT_FORWARD_XINTERFACE2( PageBackground, PageBackground_Base, ::property::
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_chart2_PageBackground_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {

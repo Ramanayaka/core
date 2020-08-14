@@ -25,14 +25,14 @@
 #include <com/sun/star/ucb/XContentCreator.hpp>
 #include "ftpurl.hxx"
 
-namespace com { namespace sun { namespace star { namespace beans {
+namespace com::sun::star::beans {
     struct Property;
     struct PropertyValue;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace sdbc {
+namespace com::sun::star::sdbc {
     class XRow;
-} } } }
+}
 
 
 namespace ftp
@@ -130,9 +130,7 @@ private:
     css::uno::Reference<css::sdbc::XRow>
         getPropertyValues(
                 const css::uno::Sequence<
-                css::beans::Property>& seqProp,
-                const css::uno::Reference<
-                css::ucb::XCommandEnvironment >& Environment
+                css::beans::Property>& seqProp
             );
 
     css::uno::Sequence<css::uno::Any>

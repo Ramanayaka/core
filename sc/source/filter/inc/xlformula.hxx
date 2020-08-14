@@ -22,7 +22,7 @@
 
 #include <osl/diagnose.h>
 #include <formula/opcode.hxx>
-#include "address.hxx"
+#include <address.hxx>
 #include "ftools.hxx"
 #include <map>
 #include <memory>
@@ -310,14 +310,14 @@ const sal_uInt16 EXC_FUNCID_EXTERNCALL      = 255;
  */
 struct XclFunctionInfo
 {
-    OpCode              meOpCode;           /// Calc function opcode.
-    sal_uInt16          mnXclFunc;          /// Excel function index.
-    sal_uInt8           mnMinParamCount;    /// Minimum number of parameters.
-    sal_uInt8           mnMaxParamCount;    /// Maximum number of parameters.
-    sal_uInt8           mnRetClass;         /// Token class of the return value.
-    XclFuncParamInfo    mpParamInfos[ EXC_FUNCINFO_PARAMINFO_COUNT ]; /// Information for all parameters.
-    sal_uInt8           mnFlags;            /// Additional flags (EXC_FUNCFLAG_* constants).
-    const sal_Char*     mpcMacroName;       /** Function name, if simulated by
+    OpCode               meOpCode;           /// Calc function opcode.
+    sal_uInt16           mnXclFunc;          /// Excel function index.
+    sal_uInt8            mnMinParamCount;    /// Minimum number of parameters.
+    sal_uInt8            mnMaxParamCount;    /// Maximum number of parameters.
+    sal_uInt8            mnRetClass;         /// Token class of the return value.
+    XclFuncParamInfo     mpParamInfos[ EXC_FUNCINFO_PARAMINFO_COUNT ]; /// Information for all parameters.
+    sal_uInt8            mnFlags;            /// Additional flags (EXC_FUNCFLAG_* constants).
+    const char*          mpcMacroName;       /** Function name, if simulated by
                                                 a macro call (UTF-8) EXC_FUNCFLAG_ADDINEQUIV is 0;
                                                 or programmatical add-in name
                                                 if stored as such and
@@ -518,13 +518,13 @@ public:
     static bool         GetStringList( OUString& rStringList, const ScTokenArray& rScTokArr, sal_Unicode cSep );
 
     /** Tries to convert a formula that consists of a single string token to a list of strings.
+        Removes leading spaces from each token.
         @descr  Example: The formula ="abc\ndef\nghi" will be converted to the formula
         ="abc";"def";"ghi", if the LF character is specified as separator.
         @param rScTokArr  (in/out-parameter) The token array to modify.
-        @param cStringSep  The separator in the source string.
-        @param bTrimLeadingSpaces  true = remove leading spaces from each token. */
+        @param cStringSep  The separator in the source string. */
     static void ConvertStringToList(
-        ScTokenArray& rScTokArr, svl::SharedStringPool& rSPool, sal_Unicode cStringSep, bool bTrimLeadingSpaces );
+        ScTokenArray& rScTokArr, svl::SharedStringPool& rSPool, sal_Unicode cStringSep );
 
     // multiple operations ----------------------------------------------------
 
@@ -532,7 +532,7 @@ public:
         @descr  Requires that the formula contains a single MULTIPLE.OPERATION function call.
         Spaces in the formula are silently ignored.
         @return  true = Multiple operation found, and all references successfully extracted. */
-    static bool GetMultipleOpRefs( XclMultipleOpRefs& rRefs, const ScTokenArray& rScTokArr, const ScAddress& rScPos );
+    static bool GetMultipleOpRefs( const ScDocument* pDoc, XclMultipleOpRefs& rRefs, const ScTokenArray& rScTokArr, const ScAddress& rScPos );
 };
 
 inline sal_uInt8 XclTokenArrayHelper::GetTokenId( sal_uInt8 nBaseId, sal_uInt8 nTokenClass )

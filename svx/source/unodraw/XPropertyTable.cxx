@@ -19,28 +19,29 @@
 
 
 #include <memory>
-#include "svx/XPropertyTable.hxx"
+#include <XPropertyTable.hxx>
 #include <com/sun/star/drawing/PolyPolygonBezierCoords.hpp>
 #include <com/sun/star/drawing/LineDash.hpp>
 #include <com/sun/star/awt/Gradient.hpp>
+#include <com/sun/star/awt/XBitmap.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/drawing/Hatch.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <o3tl/any.hxx>
-#include <o3tl/make_unique.hxx>
 #include <vcl/svapp.hxx>
 
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <svx/xdef.hxx>
 
-#include "svx/unoapi.hxx"
-#include <editeng/unoprnms.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/tools/unotools.hxx>
+#include <svx/unoapi.hxx>
+#include <basegfx/polygon/b2dpolypolygontools.hxx>
 
 using namespace com::sun::star;
 using namespace ::cppu;
+
+namespace {
 
 class SvxUnoXPropertyTable : public WeakImplHelper< container::XNameContainer, lang::XServiceInfo >
 {
@@ -77,6 +78,8 @@ public:
     // XElementAccess
     virtual sal_Bool SAL_CALL hasElements(  ) override;
 };
+
+}
 
 SvxUnoXPropertyTable::SvxUnoXPropertyTable( sal_Int16 nWhich, XPropertyList* pList ) throw()
 : mpList( pList ), mnWhich( nWhich )
@@ -128,7 +131,7 @@ void SAL_CALL SvxUnoXPropertyTable::removeByName( const  OUString& Name )
     for( i = 0; i < nCount; i++ )
     {
         const XPropertyEntry* pEntry = get(i);
-        if (pEntry && aInternalName.equals(pEntry->GetName()))
+        if (pEntry && aInternalName == pEntry->GetName())
         {
             mpList->Remove(i);
             return;
@@ -150,7 +153,7 @@ void SAL_CALL SvxUnoXPropertyTable::replaceByName( const  OUString& aName, const
     for( i = 0; i < nCount; i++ )
     {
         const XPropertyEntry* pEntry = get(i);
-        if (pEntry && aInternalName.equals(pEntry->GetName()))
+        if (pEntry && aInternalName == pEntry->GetName())
         {
             std::unique_ptr<XPropertyEntry> pNewEntry(createEntry(aInternalName, aElement));
             if (!pNewEntry)
@@ -177,7 +180,7 @@ uno::Any SAL_CALL SvxUnoXPropertyTable::getByName( const  OUString& aName )
     {
         const XPropertyEntry* pEntry = get(i);
 
-        if (pEntry && aInternalName.equals(pEntry->GetName()))
+        if (pEntry && aInternalName == pEntry->GetName())
             return getAny( pEntry );
     }
 
@@ -214,7 +217,7 @@ sal_Bool SAL_CALL SvxUnoXPropertyTable::hasByName( const  OUString& aName )
     for( i = 0; i < nCount; i++ )
     {
         const XPropertyEntry* pEntry = get(i);
-        if (pEntry && aInternalName.equals(pEntry->GetName()))
+        if (pEntry && aInternalName == pEntry->GetName())
             return true;
     }
 
@@ -229,6 +232,7 @@ sal_Bool SAL_CALL SvxUnoXPropertyTable::hasElements(  )
     return getCount() != 0;
 }
 
+namespace {
 
 class SvxUnoXColorTable : public SvxUnoXPropertyTable
 {
@@ -237,7 +241,7 @@ public:
 
     // SvxUnoXPropertyTable
     virtual uno::Any getAny( const XPropertyEntry* pEntry ) const throw() override;
-    virtual std::unique_ptr<XPropertyEntry> createEntry(const OUString& rName, const uno::Any& rAny) const throw() override;
+    virtual std::unique_ptr<XPropertyEntry> createEntry(const OUString& rName, const uno::Any& rAny) const override;
 
     // XElementAccess
     virtual uno::Type SAL_CALL getElementType() override;
@@ -247,7 +251,9 @@ public:
     virtual uno::Sequence<  OUString > SAL_CALL getSupportedServiceNames(  ) override;
 };
 
-uno::Reference< uno::XInterface > SAL_CALL SvxUnoXColorTable_createInstance( XPropertyList* pList ) throw()
+}
+
+uno::Reference< uno::XInterface > SvxUnoXColorTable_createInstance( XPropertyList* pList ) throw()
 {
     return static_cast<OWeakObject*>(new SvxUnoXColorTable( pList ));
 }
@@ -255,17 +261,16 @@ uno::Reference< uno::XInterface > SAL_CALL SvxUnoXColorTable_createInstance( XPr
 // SvxUnoXPropertyTable
 uno::Any SvxUnoXColorTable::getAny( const XPropertyEntry* pEntry ) const throw()
 {
-    return uno::Any( (sal_Int32)static_cast<const XColorEntry*>(pEntry)->GetColor().GetColor() );
+    return uno::Any( static_cast<sal_Int32>(static_cast<const XColorEntry*>(pEntry)->GetColor()) );
 }
 
-std::unique_ptr<XPropertyEntry> SvxUnoXColorTable::createEntry(const OUString& rName, const uno::Any& rAny) const throw()
+std::unique_ptr<XPropertyEntry> SvxUnoXColorTable::createEntry(const OUString& rName, const uno::Any& rAny) const
 {
-    sal_Int32 nColor = 0;
-    if( !(rAny >>= nColor) )
+    Color aColor;
+    if( !(rAny >>= aColor) )
         return std::unique_ptr<XPropertyEntry>();
 
-    const Color aColor( (ColorData)nColor );
-    return o3tl::make_unique<XColorEntry>(aColor, rName);
+    return std::make_unique<XColorEntry>(aColor, rName);
 }
 
 // XElementAccess
@@ -277,16 +282,15 @@ uno::Type SAL_CALL SvxUnoXColorTable::getElementType()
 // XServiceInfo
 OUString SAL_CALL SvxUnoXColorTable::getImplementationName(  )
 {
-    return OUString( "SvxUnoXColorTable" );
+    return "SvxUnoXColorTable";
 }
 
 uno::Sequence<  OUString > SAL_CALL SvxUnoXColorTable::getSupportedServiceNames(  )
 {
-    const OUString aServiceName( "com.sun.star.drawing.ColorTable" );
-    uno::Sequence< OUString > aServices( &aServiceName, 1 );
-    return aServices;
+    return { "com.sun.star.drawing.ColorTable" };
 }
 
+namespace {
 
 class SvxUnoXLineEndTable : public SvxUnoXPropertyTable
 {
@@ -305,7 +309,9 @@ public:
     virtual uno::Sequence<  OUString > SAL_CALL getSupportedServiceNames(  ) override;
 };
 
-uno::Reference< uno::XInterface > SAL_CALL SvxUnoXLineEndTable_createInstance( XPropertyList* pTable ) throw()
+}
+
+uno::Reference< uno::XInterface > SvxUnoXLineEndTable_createInstance( XPropertyList* pTable ) throw()
 {
     return static_cast<OWeakObject*>(new SvxUnoXLineEndTable( pTable ));
 }
@@ -314,7 +320,7 @@ uno::Reference< uno::XInterface > SAL_CALL SvxUnoXLineEndTable_createInstance( X
 uno::Any SvxUnoXLineEndTable::getAny( const XPropertyEntry* pEntry ) const throw()
 {
     drawing::PolyPolygonBezierCoords aBezier;
-    basegfx::unotools::b2DPolyPolygonToPolyPolygonBezier( static_cast<const XLineEndEntry*>(pEntry)->GetLineEnd(),
+    basegfx::utils::B2DPolyPolygonToUnoPolyPolygonBezierCoords( static_cast<const XLineEndEntry*>(pEntry)->GetLineEnd(),
                                                           aBezier );
     return uno::Any(aBezier);
 }
@@ -327,12 +333,12 @@ std::unique_ptr<XPropertyEntry> SvxUnoXLineEndTable::createEntry(const OUString&
 
     basegfx::B2DPolyPolygon aPolyPolygon;
     if( pCoords->Coordinates.getLength() > 0 )
-        aPolyPolygon = basegfx::unotools::polyPolygonBezierToB2DPolyPolygon( *pCoords );
+        aPolyPolygon = basegfx::utils::UnoPolyPolygonBezierCoordsToB2DPolyPolygon( *pCoords );
 
     // #86265# make sure polygon is closed
     aPolyPolygon.setClosed(true);
 
-    return o3tl::make_unique<XLineEndEntry>(aPolyPolygon, rName);
+    return std::make_unique<XLineEndEntry>(aPolyPolygon, rName);
 }
 
 // XElementAccess
@@ -344,16 +350,15 @@ uno::Type SAL_CALL SvxUnoXLineEndTable::getElementType()
 // XServiceInfo
 OUString SAL_CALL SvxUnoXLineEndTable::getImplementationName(  )
 {
-    return OUString( "SvxUnoXLineEndTable" );
+    return "SvxUnoXLineEndTable";
 }
 
 uno::Sequence<  OUString > SAL_CALL SvxUnoXLineEndTable::getSupportedServiceNames(  )
 {
-    const OUString aServiceName( "com.sun.star.drawing.LineEndTable" );
-    uno::Sequence< OUString > aServices( &aServiceName, 1 );
-    return aServices;
+    return { "com.sun.star.drawing.LineEndTable" };
 }
 
+namespace {
 
 class SvxUnoXDashTable : public SvxUnoXPropertyTable
 {
@@ -362,7 +367,7 @@ public:
 
     // SvxUnoXPropertyTable
     virtual uno::Any getAny( const XPropertyEntry* pEntry ) const throw() override;
-    virtual std::unique_ptr<XPropertyEntry> createEntry(const OUString& rName, const uno::Any& rAny) const throw() override;
+    virtual std::unique_ptr<XPropertyEntry> createEntry(const OUString& rName, const uno::Any& rAny) const override;
 
     // XElementAccess
     virtual uno::Type SAL_CALL getElementType() override;
@@ -372,7 +377,9 @@ public:
     virtual uno::Sequence<  OUString > SAL_CALL getSupportedServiceNames(  ) override;
 };
 
-uno::Reference< uno::XInterface > SAL_CALL SvxUnoXDashTable_createInstance( XPropertyList* pTable ) throw()
+}
+
+uno::Reference< uno::XInterface > SvxUnoXDashTable_createInstance( XPropertyList* pTable ) throw()
 {
     return static_cast<OWeakObject*>(new SvxUnoXDashTable( pTable ));
 }
@@ -384,7 +391,7 @@ uno::Any SvxUnoXDashTable::getAny( const XPropertyEntry* pEntry ) const throw()
 
     drawing::LineDash aLineDash;
 
-    aLineDash.Style = (css::drawing::DashStyle)((sal_uInt16)rXD.GetDashStyle());
+    aLineDash.Style = static_cast<css::drawing::DashStyle>(static_cast<sal_uInt16>(rXD.GetDashStyle()));
     aLineDash.Dots = rXD.GetDots();
     aLineDash.DotLen = rXD.GetDotLen();
     aLineDash.Dashes = rXD.GetDashes();
@@ -394,7 +401,7 @@ uno::Any SvxUnoXDashTable::getAny( const XPropertyEntry* pEntry ) const throw()
     return uno::Any(aLineDash);
 }
 
-std::unique_ptr<XPropertyEntry> SvxUnoXDashTable::createEntry(const OUString& rName, const uno::Any& rAny) const throw()
+std::unique_ptr<XPropertyEntry> SvxUnoXDashTable::createEntry(const OUString& rName, const uno::Any& rAny) const
 {
     drawing::LineDash aLineDash;
     if(!(rAny >>= aLineDash))
@@ -402,14 +409,14 @@ std::unique_ptr<XPropertyEntry> SvxUnoXDashTable::createEntry(const OUString& rN
 
     XDash aXDash;
 
-    aXDash.SetDashStyle((css::drawing::DashStyle)((sal_uInt16)(aLineDash.Style)));
+    aXDash.SetDashStyle(static_cast<css::drawing::DashStyle>(static_cast<sal_uInt16>(aLineDash.Style)));
     aXDash.SetDots(aLineDash.Dots);
     aXDash.SetDotLen(aLineDash.DotLen);
     aXDash.SetDashes(aLineDash.Dashes);
     aXDash.SetDashLen(aLineDash.DashLen);
     aXDash.SetDistance(aLineDash.Distance);
 
-    return o3tl::make_unique<XDashEntry>(aXDash, rName);
+    return std::make_unique<XDashEntry>(aXDash, rName);
 }
 
 // XElementAccess
@@ -421,16 +428,15 @@ uno::Type SAL_CALL SvxUnoXDashTable::getElementType()
 // XServiceInfo
 OUString SAL_CALL SvxUnoXDashTable::getImplementationName(  )
 {
-    return OUString( "SvxUnoXDashTable" );
+    return "SvxUnoXDashTable";
 }
 
 uno::Sequence<  OUString > SAL_CALL SvxUnoXDashTable::getSupportedServiceNames(  )
 {
-    const OUString aServiceName( "com.sun.star.drawing.DashTable" );
-    uno::Sequence< OUString > aServices( &aServiceName, 1 );
-    return aServices;
+    return { "com.sun.star.drawing.DashTable" };
 }
 
+namespace {
 
 class SvxUnoXHatchTable : public SvxUnoXPropertyTable
 {
@@ -439,7 +445,7 @@ public:
 
     // SvxUnoXPropertyTable
     virtual uno::Any getAny( const XPropertyEntry* pEntry ) const throw() override;
-    virtual std::unique_ptr<XPropertyEntry> createEntry(const OUString& rName, const uno::Any& rAny) const throw() override;
+    virtual std::unique_ptr<XPropertyEntry> createEntry(const OUString& rName, const uno::Any& rAny) const override;
 
     // XElementAccess
     virtual uno::Type SAL_CALL getElementType() override;
@@ -449,7 +455,9 @@ public:
     virtual uno::Sequence<  OUString > SAL_CALL getSupportedServiceNames(  ) override;
 };
 
-uno::Reference< uno::XInterface > SAL_CALL SvxUnoXHatchTable_createInstance( XPropertyList* pTable ) throw()
+}
+
+uno::Reference< uno::XInterface > SvxUnoXHatchTable_createInstance( XPropertyList* pTable ) throw()
 {
     return static_cast<OWeakObject*>(new SvxUnoXHatchTable( pTable ));
 }
@@ -461,27 +469,27 @@ uno::Any SvxUnoXHatchTable::getAny( const XPropertyEntry* pEntry ) const throw()
 
     drawing::Hatch aUnoHatch;
 
-    aUnoHatch.Style = (drawing::HatchStyle)aHatch.GetHatchStyle();
-    aUnoHatch.Color = aHatch.GetColor().GetColor();
+    aUnoHatch.Style = aHatch.GetHatchStyle();
+    aUnoHatch.Color = sal_Int32(aHatch.GetColor());
     aUnoHatch.Distance = aHatch.GetDistance();
     aUnoHatch.Angle = aHatch.GetAngle();
 
     return uno::Any(aUnoHatch);
 }
 
-std::unique_ptr<XPropertyEntry> SvxUnoXHatchTable::createEntry(const OUString& rName, const uno::Any& rAny) const throw()
+std::unique_ptr<XPropertyEntry> SvxUnoXHatchTable::createEntry(const OUString& rName, const uno::Any& rAny) const
 {
     drawing::Hatch aUnoHatch;
     if(!(rAny >>= aUnoHatch))
         return std::unique_ptr<XHatchEntry>();
 
     XHatch aXHatch;
-    aXHatch.SetHatchStyle( (css::drawing::HatchStyle)aUnoHatch.Style );
-    aXHatch.SetColor( aUnoHatch.Color );
+    aXHatch.SetHatchStyle( aUnoHatch.Style );
+    aXHatch.SetColor( Color(aUnoHatch.Color) );
     aXHatch.SetDistance( aUnoHatch.Distance );
     aXHatch.SetAngle( aUnoHatch.Angle );
 
-    return o3tl::make_unique<XHatchEntry>(aXHatch, rName);
+    return std::make_unique<XHatchEntry>(aXHatch, rName);
 }
 
 // XElementAccess
@@ -493,16 +501,15 @@ uno::Type SAL_CALL SvxUnoXHatchTable::getElementType()
 // XServiceInfo
 OUString SAL_CALL SvxUnoXHatchTable::getImplementationName(  )
 {
-    return OUString( "SvxUnoXHatchTable" );
+    return "SvxUnoXHatchTable";
 }
 
 uno::Sequence<  OUString > SAL_CALL SvxUnoXHatchTable::getSupportedServiceNames(  )
 {
-    const OUString aServiceName( "com.sun.star.drawing.HatchTable" );
-    uno::Sequence< OUString > aServices( &aServiceName, 1 );
-    return aServices;
+    return { "com.sun.star.drawing.HatchTable" };
 }
 
+namespace {
 
 class SvxUnoXGradientTable : public SvxUnoXPropertyTable
 {
@@ -511,7 +518,7 @@ public:
 
     // SvxUnoXPropertyTable
     virtual uno::Any getAny( const XPropertyEntry* pEntry ) const throw() override;
-    virtual std::unique_ptr<XPropertyEntry> createEntry(const OUString& rName, const uno::Any& rAny) const throw() override;
+    virtual std::unique_ptr<XPropertyEntry> createEntry(const OUString& rName, const uno::Any& rAny) const override;
 
     // XElementAccess
     virtual uno::Type SAL_CALL getElementType() override;
@@ -521,7 +528,9 @@ public:
     virtual uno::Sequence<  OUString > SAL_CALL getSupportedServiceNames(  ) override;
 };
 
-uno::Reference< uno::XInterface > SAL_CALL SvxUnoXGradientTable_createInstance( XPropertyList* pTable ) throw()
+}
+
+uno::Reference< uno::XInterface > SvxUnoXGradientTable_createInstance( XPropertyList* pTable ) throw()
 {
     return static_cast<OWeakObject*>(new SvxUnoXGradientTable( pTable ));
 }
@@ -532,10 +541,10 @@ uno::Any SvxUnoXGradientTable::getAny( const XPropertyEntry* pEntry ) const thro
     const XGradient& aXGradient = static_cast<const XGradientEntry*>(pEntry)->GetGradient();
     awt::Gradient aGradient;
 
-    aGradient.Style = (awt::GradientStyle) aXGradient.GetGradientStyle();
-    aGradient.StartColor = (sal_Int32)aXGradient.GetStartColor().GetColor();
-    aGradient.EndColor = (sal_Int32)aXGradient.GetEndColor().GetColor();
-    aGradient.Angle = (short)aXGradient.GetAngle();
+    aGradient.Style = aXGradient.GetGradientStyle();
+    aGradient.StartColor = static_cast<sal_Int32>(aXGradient.GetStartColor());
+    aGradient.EndColor = static_cast<sal_Int32>(aXGradient.GetEndColor());
+    aGradient.Angle = static_cast<short>(aXGradient.GetAngle());
     aGradient.Border = aXGradient.GetBorder();
     aGradient.XOffset = aXGradient.GetXOffset();
     aGradient.YOffset = aXGradient.GetYOffset();
@@ -546,7 +555,7 @@ uno::Any SvxUnoXGradientTable::getAny( const XPropertyEntry* pEntry ) const thro
     return uno::Any(aGradient);
 }
 
-std::unique_ptr<XPropertyEntry> SvxUnoXGradientTable::createEntry(const OUString& rName, const uno::Any& rAny) const throw()
+std::unique_ptr<XPropertyEntry> SvxUnoXGradientTable::createEntry(const OUString& rName, const uno::Any& rAny) const
 {
     awt::Gradient aGradient;
     if(!(rAny >>= aGradient))
@@ -554,9 +563,9 @@ std::unique_ptr<XPropertyEntry> SvxUnoXGradientTable::createEntry(const OUString
 
     XGradient aXGradient;
 
-    aXGradient.SetGradientStyle( (css::awt::GradientStyle) aGradient.Style );
-    aXGradient.SetStartColor( aGradient.StartColor );
-    aXGradient.SetEndColor( aGradient.EndColor );
+    aXGradient.SetGradientStyle( aGradient.Style );
+    aXGradient.SetStartColor( Color(aGradient.StartColor) );
+    aXGradient.SetEndColor( Color(aGradient.EndColor) );
     aXGradient.SetAngle( aGradient.Angle );
     aXGradient.SetBorder( aGradient.Border );
     aXGradient.SetXOffset( aGradient.XOffset );
@@ -565,7 +574,7 @@ std::unique_ptr<XPropertyEntry> SvxUnoXGradientTable::createEntry(const OUString
     aXGradient.SetEndIntens( aGradient.EndIntensity );
     aXGradient.SetSteps( aGradient.StepCount );
 
-    return o3tl::make_unique<XGradientEntry>(aXGradient, rName);
+    return std::make_unique<XGradientEntry>(aXGradient, rName);
 }
 
 // XElementAccess
@@ -577,16 +586,15 @@ uno::Type SAL_CALL SvxUnoXGradientTable::getElementType()
 // XServiceInfo
 OUString SAL_CALL SvxUnoXGradientTable::getImplementationName(  )
 {
-    return OUString( "SvxUnoXGradientTable" );
+    return "SvxUnoXGradientTable";
 }
 
 uno::Sequence<  OUString > SAL_CALL SvxUnoXGradientTable::getSupportedServiceNames(  )
 {
-    const OUString aServiceName( "com.sun.star.drawing.GradientTable" );
-    uno::Sequence< OUString > aServices( &aServiceName, 1 );
-    return aServices;
+    return { "com.sun.star.drawing.GradientTable" };
 }
 
+namespace {
 
 class SvxUnoXBitmapTable : public SvxUnoXPropertyTable
 {
@@ -605,7 +613,9 @@ public:
     virtual uno::Sequence<  OUString > SAL_CALL getSupportedServiceNames(  ) override;
 };
 
-uno::Reference< uno::XInterface > SAL_CALL SvxUnoXBitmapTable_createInstance( XPropertyList* pTable ) throw()
+}
+
+uno::Reference< uno::XInterface > SvxUnoXBitmapTable_createInstance( XPropertyList* pTable ) throw()
 {
     return static_cast<OWeakObject*>(new SvxUnoXBitmapTable( pTable ));
 }
@@ -613,41 +623,47 @@ uno::Reference< uno::XInterface > SAL_CALL SvxUnoXBitmapTable_createInstance( XP
 // SvxUnoXPropertyTable
 uno::Any SvxUnoXBitmapTable::getAny( const XPropertyEntry* pEntry ) const
 {
-    OUString aURL( UNO_NAME_GRAPHOBJ_URLPREFIX);
-    const GraphicObject& rGraphicObject(static_cast<const XBitmapEntry*>(pEntry)->GetGraphicObject());
-    aURL += OStringToOUString(rGraphicObject.GetUniqueID(), RTL_TEXTENCODING_ASCII_US);
-
-    return uno::Any(aURL);
+    auto xBitmapEntry = static_cast<const XBitmapEntry*>(pEntry);
+    css::uno::Reference<css::awt::XBitmap> xBitmap(xBitmapEntry->GetGraphicObject().GetGraphic().GetXGraphic(), uno::UNO_QUERY);
+    return uno::Any(xBitmap);
 }
 
 std::unique_ptr<XPropertyEntry> SvxUnoXBitmapTable::createEntry(const OUString& rName, const uno::Any& rAny) const
 {
-    OUString aURL;
-    if(!(rAny >>= aURL))
+    if (!rAny.has<uno::Reference<awt::XBitmap>>())
         return std::unique_ptr<XPropertyEntry>();
 
-    const GraphicObject aGrafObj(GraphicObject::CreateGraphicObjectFromURL(aURL));
+    auto xBitmap = rAny.get<uno::Reference<awt::XBitmap>>();
+    if (!xBitmap.is())
+        return nullptr;
 
-    return o3tl::make_unique<XBitmapEntry>(aGrafObj, rName);
+    uno::Reference<graphic::XGraphic> xGraphic(xBitmap, uno::UNO_QUERY);
+    if (!xGraphic.is())
+        return nullptr;
+
+    Graphic aGraphic(xGraphic);
+    if (aGraphic.IsNone())
+        return nullptr;
+
+    GraphicObject aGraphicObject(aGraphic);
+    return std::make_unique<XBitmapEntry>(aGraphicObject, rName);
 }
 
 // XElementAccess
 uno::Type SAL_CALL SvxUnoXBitmapTable::getElementType()
 {
-    return ::cppu::UnoType<OUString>::get();
+    return ::cppu::UnoType<awt::XBitmap>::get();
 }
 
 // XServiceInfo
 OUString SAL_CALL SvxUnoXBitmapTable::getImplementationName(  )
 {
-    return OUString( "SvxUnoXBitmapTable" );
+    return "SvxUnoXBitmapTable";
 }
 
 uno::Sequence<  OUString > SAL_CALL SvxUnoXBitmapTable::getSupportedServiceNames(  )
 {
-    const OUString aServiceName( "com.sun.star.drawing.BitmapTable" );
-    uno::Sequence< OUString > aServices( &aServiceName, 1 );
-    return aServices;
+    return { "com.sun.star.drawing.BitmapTable" };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

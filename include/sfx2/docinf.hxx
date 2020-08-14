@@ -23,17 +23,19 @@
 #include <sfx2/dllapi.h>
 #include <sal/types.h>
 #include <vcl/errcode.hxx>
-#include <com/sun/star/uno/Reference.hxx>
 
 
 class GDIMetaFile;
 class SotStorage;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace document {
         class XDocumentProperties;
     }
-} } }
+}
+
+namespace com::sun::star::uno { template <typename > class Reference; }
+namespace com::sun::star::uno { template <typename > class Sequence; }
 
 
 namespace sfx2 {
@@ -64,7 +66,7 @@ bool SFX2_DLLPUBLIC SaveOlePropertySet(
 
 
 css::uno::Sequence<sal_Int8> SFX2_DLLPUBLIC convertMetaFile(
-    GDIMetaFile* i_pThumb);
+    GDIMetaFile const * i_pThumb);
 
 } // namespace sfx2
 

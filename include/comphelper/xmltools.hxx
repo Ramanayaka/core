@@ -10,17 +10,13 @@
 #ifndef INCLUDED_COMPHELPER_XMLTOOLS_HXX
 #define INCLUDED_COMPHELPER_XMLTOOLS_HXX
 
-#include <rtl/strbuf.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
+#include <rtl/string.hxx>
 #include <comphelper/comphelperdllapi.h>
 
-namespace comphelper
+namespace comphelper::xml
 {
-    namespace xml
-    {
         COMPHELPER_DLLPUBLIC OString makeXMLChaff();
-    }
+        COMPHELPER_DLLPUBLIC OString generateGUIDString();
 }
 
 #endif

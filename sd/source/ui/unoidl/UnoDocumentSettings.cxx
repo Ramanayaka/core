@@ -21,7 +21,6 @@
 
 #include <memory>
 #include <utility>
-#include <vector>
 #include <com/sun/star/embed/XStorage.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/embed/XTransactedObject.hpp>
@@ -33,22 +32,22 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/propertysethelper.hxx>
 #include <comphelper/propertysetinfo.hxx>
-#include <o3tl/make_unique.hxx>
+#include <tools/debug.hxx>
 #include <tools/urlobj.hxx>
 #include <svx/xtable.hxx>
 #include <vcl/svapp.hxx>
 
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
+#include <drawdoc.hxx>
+#include <DrawDocShell.hxx>
 #include "UnoDocumentSettings.hxx"
-#include "unomodel.hxx"
+#include <unomodel.hxx>
 
-#include "optsitem.hxx"
+#include <optsitem.hxx>
 #include <sfx2/printer.hxx>
-#include "sdattr.hxx"
-#include "ViewShell.hxx"
-#include "FrameView.hxx"
-#include "Outliner.hxx"
+#include <sfx2/sfxsids.hrc>
+#include <sdattr.hrc>
+#include <sdmod.hxx>
+#include <Outliner.hxx>
 #include <xmloff/settingsstore.hxx>
 #include <editeng/editstat.hxx>
 #include <svx/unoapi.hxx>
@@ -67,6 +66,8 @@ using namespace ::com::sun::star::i18n;
 
 namespace sd
 {
+    namespace {
+
     class DocumentSettings : public WeakImplHelper< XPropertySet, XMultiPropertySet, XServiceInfo >,
                              public comphelper::PropertySetHelper,
                              public DocumentSettingsSerializer
@@ -122,12 +123,16 @@ namespace sd
         rtl::Reference<SdXImpressDocument> mxModel;
     };
 
-    Reference< XInterface > SAL_CALL DocumentSettings_createInstance( SdXImpressDocument* pModel )
+    }
+
+    Reference< XInterface > DocumentSettings_createInstance( SdXImpressDocument* pModel )
         throw ()
     {
         DBG_ASSERT( pModel, "I need a model for the DocumentSettings!" );
         return static_cast<XWeak*>(new DocumentSettings( pModel ));
     }
+
+namespace {
 
 enum SdDocumentSettingsPropertyHandles
 {
@@ -135,17 +140,21 @@ enum SdDocumentSettingsPropertyHandles
     HANDLE_SCALE_DOM, HANDLE_TABSTOP, HANDLE_PRINTPAGENAME, HANDLE_PRINTDATE, HANDLE_PRINTTIME,
     HANDLE_PRINTHIDENPAGES, HANDLE_PRINTFITPAGE, HANDLE_PRINTTILEPAGE, HANDLE_PRINTBOOKLET, HANDLE_PRINTBOOKLETFRONT,
     HANDLE_PRINTBOOKLETBACK, HANDLE_PRINTQUALITY, HANDLE_COLORTABLEURL, HANDLE_DASHTABLEURL, HANDLE_LINEENDTABLEURL, HANDLE_HATCHTABLEURL,
-    HANDLE_GRADIENTTABLEURL, HANDLE_BITMAPTABLEURL, HANDLE_FORBIDDENCHARS, HANDLE_APPLYUSERDATA, HANDLE_PAGENUMFMT,
-    HANDLE_PRINTERNAME, HANDLE_PRINTERJOB, HANDLE_PARAGRAPHSUMMATION, HANDLE_CHARCOMPRESS, HANDLE_ASIANPUNCT, HANDLE_UPDATEFROMTEMPLATE,
-    HANDLE_PRINTER_INDEPENDENT_LAYOUT
+    HANDLE_GRADIENTTABLEURL, HANDLE_BITMAPTABLEURL, HANDLE_FORBIDDENCHARS, HANDLE_APPLYUSERDATA, HANDLE_SAVETHUMBNAIL, HANDLE_PAGENUMFMT,
+    HANDLE_PRINTERNAME, HANDLE_PRINTERJOB, HANDLE_PRINTERPAPERSIZE, HANDLE_PARAGRAPHSUMMATION, HANDLE_CHARCOMPRESS, HANDLE_ASIANPUNCT,
+    HANDLE_UPDATEFROMTEMPLATE, HANDLE_PRINTER_INDEPENDENT_LAYOUT
     // #i33095#
     ,HANDLE_LOAD_READONLY, HANDLE_MODIFY_PASSWD, HANDLE_SAVE_VERSION
-    ,HANDLE_SLIDESPERHANDOUT, HANDLE_HANDOUTHORIZONTAL, HANDLE_EMBED_FONTS
+    ,HANDLE_SLIDESPERHANDOUT, HANDLE_HANDOUTHORIZONTAL,
+    HANDLE_EMBED_FONTS, HANDLE_EMBED_USED_FONTS,
+    HANDLE_EMBED_LATIN_SCRIPT_FONTS, HANDLE_EMBED_ASIAN_SCRIPT_FONTS, HANDLE_EMBED_COMPLEX_SCRIPT_FONTS,
 };
+
+}
 
 #define MID_PRINTER 1
 
-    rtl::Reference<PropertySetInfo> createSettingsInfoImpl( bool bIsDraw )
+    static rtl::Reference<PropertySetInfo> createSettingsInfoImpl( bool bIsDraw )
     {
         static PropertyMapEntry const aImpressSettingsInfoMap[] =
         {
@@ -171,6 +180,7 @@ enum SdDocumentSettingsPropertyHandles
             { OUString("DefaultTabStop"),        HANDLE_TABSTOP,             ::cppu::UnoType<sal_Int32>::get(),    0,  0 },
             { OUString("PrinterName"),           HANDLE_PRINTERNAME,         ::cppu::UnoType<OUString>::get(),     0,  0 },
             { OUString("PrinterSetup"),          HANDLE_PRINTERJOB,          cppu::UnoType<uno::Sequence < sal_Int8 >>::get(),  0, MID_PRINTER },
+            { OUString("PrinterPaperFromSetup"), HANDLE_PRINTERPAPERSIZE,    cppu::UnoType<bool>::get(),                0,  MID_PRINTER },
 
             { OUString("IsPrintPageName"),       HANDLE_PRINTPAGENAME,       cppu::UnoType<bool>::get(),                0,  MID_PRINTER },
             { OUString("IsPrintDate"),           HANDLE_PRINTDATE,           cppu::UnoType<bool>::get(),                0,  MID_PRINTER },
@@ -191,6 +201,7 @@ enum SdDocumentSettingsPropertyHandles
 
             { OUString("ForbiddenCharacters"),   HANDLE_FORBIDDENCHARS,      cppu::UnoType<XForbiddenCharacters>::get(),    0, 0 },
             { OUString("ApplyUserData"),         HANDLE_APPLYUSERDATA,       cppu::UnoType<bool>::get(),                0,  0 },
+            { OUString("SaveThumbnail"),         HANDLE_SAVETHUMBNAIL,       cppu::UnoType<bool>::get(),                0,  0 },
 
             { OUString("PageNumberFormat"),      HANDLE_PAGENUMFMT,          ::cppu::UnoType<sal_Int32>::get(),    0,  0 },
             { OUString("ParagraphSummation"),    HANDLE_PARAGRAPHSUMMATION,  cppu::UnoType<bool>::get(),                0,  0 },
@@ -202,7 +213,11 @@ enum SdDocumentSettingsPropertyHandles
             { OUString("LoadReadonly"),          HANDLE_LOAD_READONLY,       cppu::UnoType<bool>::get(),                0,  0 },
             { OUString("ModifyPasswordInfo"),    HANDLE_MODIFY_PASSWD,       cppu::UnoType<uno::Sequence < beans::PropertyValue >>::get(),  0,  0 },
             { OUString("SaveVersionOnClose"),    HANDLE_SAVE_VERSION,        cppu::UnoType<bool>::get(),                0,  0 },
-            { OUString("EmbedFonts"),            HANDLE_EMBED_FONTS,         cppu::UnoType<bool>::get(),                0,  0 },
+            { OUString("EmbedFonts"),              HANDLE_EMBED_FONTS,                cppu::UnoType<bool>::get(), 0,  0 },
+            { OUString("EmbedOnlyUsedFonts"),      HANDLE_EMBED_USED_FONTS,           cppu::UnoType<bool>::get(), 0,  0 },
+            { OUString("EmbedLatinScriptFonts"),   HANDLE_EMBED_LATIN_SCRIPT_FONTS,   cppu::UnoType<bool>::get(), 0,  0 },
+            { OUString("EmbedAsianScriptFonts"),   HANDLE_EMBED_ASIAN_SCRIPT_FONTS,   cppu::UnoType<bool>::get(), 0,  0 },
+            { OUString("EmbedComplexScriptFonts"), HANDLE_EMBED_COMPLEX_SCRIPT_FONTS, cppu::UnoType<bool>::get(), 0,  0 },
             { OUString(), 0, css::uno::Type(), 0, 0 }
         };
 
@@ -260,10 +275,10 @@ void DocumentSettings::AssignURL( XPropertyListType t, const Any* pValue,
         *pOk = *pChanged = true;
 }
 
-static struct {
+struct {
     const char *pName;
     XPropertyListType t;
-} aURLPropertyNames[] = {
+} const aURLPropertyNames[] = {
     { "ColorTableURL", XPropertyListType::Color },
     { "DashTableURL", XPropertyListType::Dash },
     { "LineEndTableURL", XPropertyListType::LineEnd },
@@ -300,15 +315,15 @@ uno::Sequence<beans::PropertyValue>
 {
     uno::Sequence<beans::PropertyValue> aRet( aConfigProps.getLength() );
     int nRet = 0;
-    for( sal_Int32 i = 0; i < aConfigProps.getLength(); i++ )
+    for( const auto& rConfigProp : aConfigProps )
     {
-        XPropertyListType t = getTypeOfName( aConfigProps[i].Name );
+        XPropertyListType t = getTypeOfName( rConfigProp.Name );
         if (t == XPropertyListType::Unknown)
-            aRet[nRet++] = aConfigProps[i];
+            aRet[nRet++] = rConfigProp;
         else
         {
             OUString aURL;
-            aConfigProps[i].Value >>= aURL;
+            rConfigProp.Value >>= aURL;
             LoadList( t, aURL, referer, xStorage );
         }
     }
@@ -327,7 +342,7 @@ uno::Sequence<beans::PropertyValue>
     SdDrawDocument* pDoc = mxModel->GetDoc();
     for( size_t i = 0; i < SAL_N_ELEMENTS( aURLPropertyNames ); i++ )
     {
-        XPropertyListRef pList = pDoc->GetPropertyList( (XPropertyListType) i );
+        const XPropertyListRef& pList = pDoc->GetPropertyList( static_cast<XPropertyListType>(i) );
         bHasEmbed = pList.is() && pList->IsEmbedInDocument();
         if( bHasEmbed )
             break;
@@ -337,8 +352,7 @@ uno::Sequence<beans::PropertyValue>
 
     try {
         // create Settings/ sub storage.
-        uno::Reference< embed::XStorage > xSubStorage;
-        xSubStorage = xStorage->openStorageElement( "Settings" ,
+        uno::Reference< embed::XStorage > xSubStorage = xStorage->openStorageElement( "Settings" ,
             embed::ElementModes::WRITE | embed::ElementModes::TRUNCATE );
         if( !xSubStorage.is() )
             return aRet;
@@ -349,21 +363,18 @@ uno::Sequence<beans::PropertyValue>
             XPropertyListType t = getTypeOfName( aConfigProps[i].Name );
             aRet[i] = aConfigProps[i];
             if (t != XPropertyListType::Unknown) {
-                XPropertyListRef pList = pDoc->GetPropertyList( t );
+                const XPropertyListRef& pList = pDoc->GetPropertyList( t );
                 if( !pList.is() || !pList->IsEmbedInDocument() )
                     continue; // no change ...
                 else
                 {
                     // Such specific path construction is grim.
-                    OUString aValue;
-                    aRet[i].Value >>= aValue;
 
-                    OUStringBuffer aName( getNameOfType( t ) );
+                    OUString aName( getNameOfType( t ) );
                     OUString aResult;
-                    if( pList->SaveTo( xSubStorage, aName.makeStringAndClear(), &aResult ) )
+                    if( pList->SaveTo( xSubStorage, aName, &aResult ) )
                     {
-                        OUString aRealPath( "Settings/" );
-                        aRealPath += aResult;
+                        OUString aRealPath = "Settings/" + aResult;
                         aRet[i].Value <<= aRealPath;
                     }
                 }
@@ -374,8 +385,7 @@ uno::Sequence<beans::PropertyValue>
         uno::Reference< embed::XTransactedObject > xTrans( xSubStorage, UNO_QUERY );
         if( xTrans.is() )
             xTrans->commit();
-        uno::Reference< lang::XComponent > xComp( xSubStorage, UNO_QUERY );
-        if( xComp.is() )
+        if( xSubStorage.is() )
             xSubStorage->dispose();
     } catch (const uno::Exception &) {
 //        fprintf (stderr, "saving etc. exception '%s'\n",
@@ -466,6 +476,18 @@ DocumentSettings::_setPropertyValues(const PropertyMapEntry** ppEntries,
                     }
                 }
                 break;
+            case HANDLE_SAVETHUMBNAIL:
+                {
+                    bool bSaveThumbnail = false;
+                    if (*pValues >>= bSaveThumbnail)
+                    {
+                         bChanged = (bSaveThumbnail != pDocSh->IsUseThumbnailSave());
+                         pDocSh->SetUseThumbnailSave(bSaveThumbnail);
+                         bOk = true;
+                    }
+                }
+                break;
+
             case HANDLE_PRINTDRAWING:
                 if( *pValues >>= bValue )
                 {
@@ -645,7 +667,7 @@ DocumentSettings::_setPropertyValues(const PropertyMapEntry** ppEntries,
                     {
                         if( aPrintOpts.GetOutputQuality() != nValue)
                         {
-                            aPrintOpts.SetOutputQuality( (sal_uInt16)nValue );
+                            aPrintOpts.SetOutputQuality( static_cast<sal_uInt16>(nValue) );
                             bOptionsChanged = true;
                         }
                         bOk = true;
@@ -683,7 +705,9 @@ DocumentSettings::_setPropertyValues(const PropertyMapEntry** ppEntries,
                     sal_Int32 nValue = 0;
                     if( *pValues >>= nValue )
                     {
-                        Fraction aFract( pDoc->GetUIScale().GetNumerator(), nValue );
+                        auto nNumerator = pDoc->GetUIScale().GetNumerator();
+                        assert(nNumerator != 0);
+                        Fraction aFract(nNumerator, nValue);
                         pDoc->SetUIScale( aFract );
                         bOk = true;
                         bChanged = true;
@@ -696,7 +720,7 @@ DocumentSettings::_setPropertyValues(const PropertyMapEntry** ppEntries,
                     sal_Int32 nValue = 0;
                     if( (*pValues >>= nValue) && (nValue >= 0) )
                     {
-                        pDoc->SetDefaultTabulator((sal_uInt16)nValue);
+                        pDoc->SetDefaultTabulator(static_cast<sal_uInt16>(nValue));
                         bOk = true;
                         bChanged = true;
                     }
@@ -707,7 +731,7 @@ DocumentSettings::_setPropertyValues(const PropertyMapEntry** ppEntries,
                     sal_Int32 nValue = 0;
                     if( (*pValues >>= nValue ) && (nValue >= css::style::NumberingType::CHARS_UPPER_LETTER ) && (nValue <= css::style::NumberingType::PAGE_DESCRIPTOR) )
                     {
-                        pDoc->SetPageNumType((SvxNumType)nValue);
+                        pDoc->SetPageNumType(static_cast<SvxNumType>(nValue));
                         bOk = true;
                         bChanged = true;
                     }
@@ -724,7 +748,7 @@ DocumentSettings::_setPropertyValues(const PropertyMapEntry** ppEntries,
                             SfxPrinter *pTempPrinter = pDocSh->GetPrinter( true );
                             if (pTempPrinter)
                             {
-                                VclPtr<SfxPrinter> pNewPrinter = VclPtr<SfxPrinter>::Create( std::unique_ptr<SfxItemSet>(pTempPrinter->GetOptions().Clone()), aPrinterName );
+                                VclPtr<SfxPrinter> pNewPrinter = VclPtr<SfxPrinter>::Create( pTempPrinter->GetOptions().Clone(), aPrinterName );
                                 pDocSh->SetPrinter( pNewPrinter );
                             }
                         }
@@ -744,19 +768,22 @@ DocumentSettings::_setPropertyValues(const PropertyMapEntry** ppEntries,
                             aStream.Seek ( STREAM_SEEK_TO_BEGIN );
                             std::unique_ptr<SfxItemSet> pItemSet;
 
+                            bool bPreferPrinterPapersize = false;
                             if( pPrinter )
                             {
-                                pItemSet.reset(pPrinter->GetOptions().Clone());
+                                pItemSet = pPrinter->GetOptions().Clone();
+                                bPreferPrinterPapersize = pPrinter->GetPrinterSettingsPreferred();
                             }
                             else
                             {
-                                pItemSet = o3tl::make_unique<SfxItemSet>(pDoc->GetPool(),
+                                pItemSet = std::make_unique<SfxItemSet>(pDoc->GetPool(),
                                             svl::Items<SID_PRINTER_NOTFOUND_WARN,  SID_PRINTER_NOTFOUND_WARN,
                                             SID_PRINTER_CHANGESTODOC,   SID_PRINTER_CHANGESTODOC,
                                             ATTR_OPTIONS_PRINT,         ATTR_OPTIONS_PRINT>{} );
                             }
 
                             pPrinter = SfxPrinter::Create ( aStream, std::move(pItemSet) );
+                            pPrinter->SetPrinterSettingsPreferred( bPreferPrinterPapersize );
 
                             MapMode aMM (pPrinter->GetMapMode());
                             aMM.SetMapUnit(MapUnit::Map100thMM);
@@ -765,6 +792,22 @@ DocumentSettings::_setPropertyValues(const PropertyMapEntry** ppEntries,
                             pDocSh->SetPrinter( pPrinter );
 
                             pPrinter = nullptr;
+                        }
+                    }
+                }
+                break;
+
+            case HANDLE_PRINTERPAPERSIZE:
+                {
+                    bool bPreferPrinterPapersize;
+                    if( *pValues >>= bPreferPrinterPapersize )
+                    {
+                        bOk = true;
+                        if( pDocSh->GetCreateMode() != SfxObjectCreateMode::EMBEDDED )
+                        {
+                            SfxPrinter *pTempPrinter = pDocSh->GetPrinter( true );
+                            if (pTempPrinter)
+                                pTempPrinter->SetPrinterSettingsPreferred( bPreferPrinterPapersize );
                         }
                     }
                 }
@@ -811,19 +854,19 @@ DocumentSettings::_setPropertyValues(const PropertyMapEntry** ppEntries,
                 {
                     bOk = true;
 
-                    pDoc->SetCharCompressType( (CharCompressType)nCharCompressType );
+                    pDoc->SetCharCompressType( static_cast<CharCompressType>(nCharCompressType) );
                     SdDrawDocument* pDocument = pDocSh->GetDoc();
                     SdrOutliner& rOutl = pDocument->GetDrawOutliner();
-                    rOutl.SetAsianCompressionMode( (CharCompressType)nCharCompressType );
+                    rOutl.SetAsianCompressionMode( static_cast<CharCompressType>(nCharCompressType) );
                     SdOutliner* pOutl = pDocument->GetOutliner( false );
                     if( pOutl )
                     {
-                        pOutl->SetAsianCompressionMode( (CharCompressType)nCharCompressType );
+                        pOutl->SetAsianCompressionMode( static_cast<CharCompressType>(nCharCompressType) );
                     }
                     pOutl = pDocument->GetInternalOutliner( false );
                     if( pOutl )
                     {
-                        pOutl->SetAsianCompressionMode( (CharCompressType)nCharCompressType );
+                        pOutl->SetAsianCompressionMode( static_cast<CharCompressType>(nCharCompressType) );
                     }
                 }
                 break;
@@ -872,7 +915,7 @@ DocumentSettings::_setPropertyValues(const PropertyMapEntry** ppEntries,
                 // the document and determine it really differs from the old
                 // one.
                 sal_Int16 nOldValue =
-                    (sal_Int16)pDoc->GetPrinterIndependentLayout ();
+                    static_cast<sal_Int16>(pDoc->GetPrinterIndependentLayout ());
                 sal_Int16 nValue = 0;
                 if (*pValues >>= nValue)
                 {
@@ -926,11 +969,59 @@ DocumentSettings::_setPropertyValues(const PropertyMapEntry** ppEntries,
 
             case HANDLE_EMBED_FONTS:
             {
-                bool bNewValue = false;
-                if ( *pValues >>= bNewValue )
+                if (pValues->has<bool>())
                 {
-                    bChanged = ( pDoc->IsUsingEmbededFonts() != bNewValue );
-                    pDoc->SetIsUsingEmbededFonts( bNewValue );
+                    bool bNewValue = pValues->get<bool>();
+                    bChanged = (pDoc->IsEmbedFonts() != bNewValue);
+                    pDoc->SetEmbedFonts(bNewValue);
+                    bOk = true;
+                }
+            }
+            break;
+
+            case HANDLE_EMBED_USED_FONTS:
+            {
+                if (pValues->has<bool>())
+                {
+                    bool bNewValue = pValues->get<bool>();
+                    bChanged = (pDoc->IsEmbedUsedFontsOnly() != bNewValue);
+                    pDoc->SetEmbedUsedFontsOnly(bNewValue);
+                    bOk = true;
+                }
+            }
+            break;
+
+            case HANDLE_EMBED_LATIN_SCRIPT_FONTS:
+            {
+                if (pValues->has<bool>())
+                {
+                    bool bNewValue = pValues->get<bool>();
+                    bChanged = (pDoc->IsEmbedFontScriptLatin() != bNewValue);
+                    pDoc->SetEmbedFontScriptLatin(bNewValue);
+                    bOk = true;
+                }
+            }
+            break;
+
+            case HANDLE_EMBED_ASIAN_SCRIPT_FONTS:
+            {
+                if (pValues->has<bool>())
+                {
+                    bool bNewValue = pValues->get<bool>();
+                    bChanged = (pDoc->IsEmbedFontScriptAsian() != bNewValue);
+                    pDoc->SetEmbedFontScriptAsian(bNewValue);
+                    bOk = true;
+                }
+            }
+            break;
+
+            case HANDLE_EMBED_COMPLEX_SCRIPT_FONTS:
+            {
+                if (pValues->has<bool>())
+                {
+                    bool bNewValue = pValues->get<bool>();
+                    bChanged = (pDoc->IsEmbedFontScriptComplex() != bNewValue);
+                    pDoc->SetEmbedFontScriptComplex(bNewValue);
                     bOk = true;
                 }
             }
@@ -1027,6 +1118,9 @@ DocumentSettings::_getPropertyValues(
             case HANDLE_APPLYUSERDATA:
                 *pValue <<= pDocSh->IsUseUserData();
                 break;
+            case HANDLE_SAVETHUMBNAIL:
+                *pValue <<= pDocSh->IsUseThumbnailSave();
+                break;
             case HANDLE_PRINTDRAWING:
                 *pValue <<= aPrintOpts.IsDraw();
                 break;
@@ -1040,7 +1134,7 @@ DocumentSettings::_getPropertyValues(
                 *pValue <<= aPrintOpts.IsOutline();
                 break;
             case HANDLE_SLIDESPERHANDOUT:
-                *pValue <<= (sal_Int16)aPrintOpts.GetHandoutPages();
+                *pValue <<= static_cast<sal_Int16>(aPrintOpts.GetHandoutPages());
                 break;
             case HANDLE_HANDOUTHORIZONTAL:
                 *pValue <<= aPrintOpts.IsHandoutHorizontal();
@@ -1073,26 +1167,26 @@ DocumentSettings::_getPropertyValues(
                 *pValue <<= aPrintOpts.IsBackPage();
                 break;
             case HANDLE_PRINTQUALITY:
-                *pValue <<= (sal_Int32)aPrintOpts.GetOutputQuality();
+                *pValue <<= static_cast<sal_Int32>(aPrintOpts.GetOutputQuality());
                 break;
             case HANDLE_MEASUREUNIT:
                 {
                     short nMeasure;
                     SvxFieldUnitToMeasureUnit( pDoc->GetUIUnit(), nMeasure );
-                    *pValue <<= (sal_Int16)nMeasure;
+                    *pValue <<= static_cast<sal_Int16>(nMeasure);
                 }
                 break;
             case HANDLE_SCALE_NUM:
-                *pValue <<= (sal_Int32)pDoc->GetUIScale().GetNumerator();
+                *pValue <<= pDoc->GetUIScale().GetNumerator();
                 break;
             case HANDLE_SCALE_DOM:
-                *pValue <<= (sal_Int32)pDoc->GetUIScale().GetDenominator();
+                *pValue <<= pDoc->GetUIScale().GetDenominator();
                 break;
             case HANDLE_TABSTOP:
-                *pValue <<= (sal_Int32)pDoc->GetDefaultTabulator();
+                *pValue <<= static_cast<sal_Int32>(pDoc->GetDefaultTabulator());
                 break;
             case HANDLE_PAGENUMFMT:
-                *pValue <<= (sal_Int32)pDoc->GetPageNumType();
+                *pValue <<= static_cast<sal_Int32>(pDoc->GetPageNumType());
                 break;
             case HANDLE_PRINTERNAME:
                 {
@@ -1107,18 +1201,21 @@ DocumentSettings::_getPropertyValues(
                     {
                         SvMemoryStream aStream;
                         pTempPrinter->Store( aStream );
-                        aStream.Seek ( STREAM_SEEK_TO_END );
-                        sal_uInt32 nSize = aStream.Tell();
-                        aStream.Seek ( STREAM_SEEK_TO_BEGIN );
-                        Sequence < sal_Int8 > aSequence ( nSize );
-                        memcpy ( aSequence.getArray(), aStream.GetData(), nSize );
-                        *pValue <<= aSequence;
+                        *pValue <<= Sequence< sal_Int8 >( static_cast< const sal_Int8* >( aStream.GetData() ),
+                                                        aStream.TellEnd() );
                     }
                     else
                     {
                         Sequence < sal_Int8 > aSequence;
                         *pValue <<= aSequence;
                     }
+                }
+                break;
+
+            case HANDLE_PRINTERPAPERSIZE:
+                {
+                    SfxPrinter *pTempPrinter = pDocSh->GetPrinter( false );
+                    *pValue <<= pTempPrinter && pTempPrinter->GetPrinterSettingsPreferred();
                 }
                 break;
 
@@ -1131,7 +1228,7 @@ DocumentSettings::_getPropertyValues(
 
             case HANDLE_CHARCOMPRESS:
             {
-                *pValue <<= (sal_Int16)pDoc->GetCharCompressType();
+                *pValue <<= static_cast<sal_Int16>(pDoc->GetCharCompressType());
                 break;
             }
 
@@ -1150,7 +1247,7 @@ DocumentSettings::_getPropertyValues(
             case HANDLE_PRINTER_INDEPENDENT_LAYOUT:
             {
                 sal_Int16 nPrinterIndependentLayout =
-                    (sal_Int16)pDoc->GetPrinterIndependentLayout();
+                    static_cast<sal_Int16>(pDoc->GetPrinterIndependentLayout());
                 *pValue <<= nPrinterIndependentLayout;
             }
             break;
@@ -1176,7 +1273,31 @@ DocumentSettings::_getPropertyValues(
 
             case HANDLE_EMBED_FONTS:
             {
-                *pValue <<= pDoc->IsUsingEmbededFonts();
+                *pValue <<= pDoc->IsEmbedFonts();
+            }
+            break;
+
+            case HANDLE_EMBED_USED_FONTS:
+            {
+                *pValue <<= pDoc->IsEmbedUsedFontsOnly();
+            }
+            break;
+
+            case HANDLE_EMBED_LATIN_SCRIPT_FONTS:
+            {
+                *pValue <<= pDoc->IsEmbedFontScriptLatin();
+            }
+            break;
+
+            case HANDLE_EMBED_ASIAN_SCRIPT_FONTS:
+            {
+                *pValue <<= pDoc->IsEmbedFontScriptAsian();
+            }
+            break;
+
+            case HANDLE_EMBED_COMPLEX_SCRIPT_FONTS:
+            {
+                *pValue <<= pDoc->IsEmbedFontScriptComplex();
             }
             break;
 
@@ -1267,7 +1388,7 @@ void SAL_CALL DocumentSettings::firePropertiesChangeEvent( const Sequence< OUStr
 // XServiceInfo
 OUString SAL_CALL DocumentSettings::getImplementationName(  )
 {
-    return OUString( "com.sun.star.comp.Draw.DocumentSettings" );
+    return "com.sun.star.comp.Draw.DocumentSettings";
 }
 
 sal_Bool SAL_CALL DocumentSettings::supportsService( const OUString& ServiceName )
@@ -1277,18 +1398,8 @@ sal_Bool SAL_CALL DocumentSettings::supportsService( const OUString& ServiceName
 
 Sequence< OUString > SAL_CALL DocumentSettings::getSupportedServiceNames(  )
 {
-    Sequence< OUString > aSeq( 2 );
-    aSeq[0] = "com.sun.star.document.Settings" ;
-    if( mxModel->IsImpressDocument() )
-    {
-        aSeq[1] = "com.sun.star.presentation.DocumentSettings" ;
-    }
-    else
-    {
-        aSeq[1] = "com.sun.star.drawing.DocumentSettings" ;
-    }
-
-    return aSeq;
+    return {  "com.sun.star.document.Settings" ,
+              mxModel->IsImpressDocument()?OUString("com.sun.star.presentation.DocumentSettings"):OUString("com.sun.star.drawing.DocumentSettings") };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

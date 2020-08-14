@@ -20,13 +20,12 @@
 #define INCLUDED_SVL_RECTITEM_HXX
 
 #include <svl/svldllapi.h>
-#include <tools/debug.hxx>
 #include <tools/gen.hxx>
 #include <svl/poolitem.hxx>
 
 class SvStream;
 
-class SVL_DLLPUBLIC SfxRectangleItem: public SfxPoolItem
+class SVL_DLLPUBLIC SfxRectangleItem final : public SfxPoolItem
 {
     tools::Rectangle                aVal;
 
@@ -34,18 +33,15 @@ public:
                              static SfxPoolItem* CreateDefault();
                              SfxRectangleItem();
                              SfxRectangleItem( sal_uInt16 nWhich, const tools::Rectangle& rVal );
-                             SfxRectangleItem( const SfxRectangleItem& );
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper * = nullptr ) const override;
+                                  const IntlWrapper& ) const override;
 
     virtual bool             operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16 nItemVersion) const override;
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion) const override;
+    virtual SfxRectangleItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const tools::Rectangle&         GetValue() const { return aVal; }
     virtual bool             QueryValue( css::uno::Any& rVal,

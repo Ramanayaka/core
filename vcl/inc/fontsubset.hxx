@@ -24,7 +24,8 @@
 #include <tools/gen.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
-#include "salglyphid.hxx"
+#include <vcl/dllapi.h>
+#include <vcl/glyphitem.hxx>
 
 namespace vcl { struct TrueTypeFont; }         ///< SFT's idea of a TTF font
 
@@ -44,15 +45,15 @@ namespace o3tl {
     template<> struct typed_flags<FontType> : is_typed_flags<FontType, (1<<8)-1> {};
 }
 
-class FontSubsetInfo final
+class VCL_DLLPUBLIC FontSubsetInfo final
 {
 public:
     explicit    FontSubsetInfo();
                 ~FontSubsetInfo();
 
-    bool        LoadFont( FontType eInFontType,
+    void        LoadFont( FontType eInFontType,
                     const unsigned char* pFontBytes, int nByteLength );
-    bool        LoadFont( vcl::TrueTypeFont* pSftTrueTypeFont );
+    void        LoadFont( vcl::TrueTypeFont* pSftTrueTypeFont );
 
     bool        CreateFontSubset( FontType nOutFontTypeMask,
                     FILE* pOutFile, const char* pOutFontName,

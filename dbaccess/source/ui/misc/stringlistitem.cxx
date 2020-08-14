@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "stringlistitem.hxx"
+#include <stringlistitem.hxx>
 
 namespace dbaui
 {
@@ -39,22 +39,21 @@ OStringListItem::OStringListItem(const OStringListItem& _rSource)
 
 bool OStringListItem::operator==(const SfxPoolItem& _rItem) const
 {
-    const OStringListItem* pCompare = dynamic_cast<const OStringListItem*>( &_rItem );
-    if ((!pCompare) || (pCompare->m_aList.getLength() != m_aList.getLength()))
+    if (!SfxPoolItem::operator==(_rItem))
+        return false;
+    const OStringListItem* pCompare = static_cast<const OStringListItem*>( &_rItem );
+    if (pCompare->m_aList.getLength() != m_aList.getLength())
         return false;
 
     // compare all strings individually
-    const OUString* pMyStrings = m_aList.getConstArray();
-    const OUString* pCompareStrings = pCompare->m_aList.getConstArray();
-
-    for (sal_Int32 i=0; i<m_aList.getLength(); ++i, ++pMyStrings, ++pCompareStrings)
-        if (!pMyStrings->equals(*pCompareStrings))
+    for (sal_Int32 i=0; i<m_aList.getLength(); ++i)
+        if (m_aList[i] != pCompare->m_aList[i])
             return false;
 
     return true;
 }
 
-SfxPoolItem* OStringListItem::Clone(SfxItemPool* /* _pPool */) const
+OStringListItem* OStringListItem::Clone(SfxItemPool* /* _pPool */) const
 {
     return new OStringListItem(*this);
 }

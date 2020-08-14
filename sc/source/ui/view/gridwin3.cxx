@@ -17,31 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
-
-#include <svx/svdoutl.hxx>
-#include <svx/svdotext.hxx>
 #include <svx/svdpagv.hxx>
+#include <svx/svxids.hrc>
 #include <editeng/sizeitem.hxx>
 #include <sfx2/bindings.hxx>
 #include <svl/ptitem.hxx>
 
-#include "tabvwsh.hxx"
-#include "gridwin.hxx"
-#include "dbfunc.hxx"
-#include "viewdata.hxx"
-#include "output.hxx"
-#include "drawview.hxx"
-#include "fupoor.hxx"
+#include <tabvwsh.hxx>
+#include <gridwin.hxx>
+#include <dbfunc.hxx>
+#include <viewdata.hxx>
+#include <output.hxx>
+#include <drawview.hxx>
+#include <fupoor.hxx>
 
-#include "drawutil.hxx"
-#include "document.hxx"
-#include "drwlayer.hxx"
-#include <vcl/svapp.hxx>
-#include "userdat.hxx"
-#include "unitconv.hxx"
-#include <svx/svdpage.hxx>
+#include <drawutil.hxx>
+#include <document.hxx>
 #include <comphelper/lok.hxx>
 
 bool ScGridWindow::DrawMouseButtonDown(const MouseEvent& rMEvt)
@@ -50,6 +41,11 @@ bool ScGridWindow::DrawMouseButtonDown(const MouseEvent& rMEvt)
     FuPoor* pDraw = pViewData->GetView()->GetDrawFuncPtr();
     if (pDraw && !pViewData->IsRefMode())
     {
+        MapMode aDrawMode = GetDrawMapMode();
+        MapMode aOldMode = GetMapMode();
+        if ( comphelper::LibreOfficeKit::isActive() && aOldMode != aDrawMode )
+            SetMapMode( aDrawMode );
+
         pDraw->SetWindow( this );
         Point aLogicPos = PixelToLogic(rMEvt.GetPosPixel());
         if ( pDraw->IsDetectiveHit( aLogicPos ) )
@@ -63,6 +59,9 @@ bool ScGridWindow::DrawMouseButtonDown(const MouseEvent& rMEvt)
             if ( bRet )
                 UpdateStatusPosSize();
         }
+
+        if ( comphelper::LibreOfficeKit::isActive() && aOldMode != aDrawMode )
+            SetMapMode( aOldMode );
     }
 
     // cancel draw with right key
@@ -82,6 +81,11 @@ bool ScGridWindow::DrawMouseButtonUp(const MouseEvent& rMEvt)
     FuPoor* pDraw = pView->GetDrawFuncPtr();
     if (pDraw && !pViewData->IsRefMode())
     {
+        MapMode aDrawMode = GetDrawMapMode();
+        MapMode aOldMode = GetMapMode();
+        if ( comphelper::LibreOfficeKit::isActive() && aOldMode != aDrawMode )
+            SetMapMode( aDrawMode );
+
         pDraw->SetWindow( this );
         bRet = pDraw->MouseButtonUp( rMEvt );
 
@@ -98,6 +102,9 @@ bool ScGridWindow::DrawMouseButtonUp(const MouseEvent& rMEvt)
             if ( !pView->IsPaintBrushLocked() )
                 pView->ResetBrushDocument(); // end paint brush mode if not locked
         }
+
+        if ( comphelper::LibreOfficeKit::isActive() && aOldMode != aDrawMode )
+            SetMapMode( aOldMode );
     }
 
     return bRet;
@@ -108,15 +115,24 @@ bool ScGridWindow::DrawMouseMove(const MouseEvent& rMEvt)
     FuPoor* pDraw = pViewData->GetView()->GetDrawFuncPtr();
     if (pDraw && !pViewData->IsRefMode())
     {
+        MapMode aDrawMode = GetDrawMapMode();
+        MapMode aOldMode = GetMapMode();
+        if ( comphelper::LibreOfficeKit::isActive() && aOldMode != aDrawMode )
+            SetMapMode( aDrawMode );
+
         pDraw->SetWindow( this );
         bool bRet = pDraw->MouseMove( rMEvt );
         if ( bRet )
             UpdateStatusPosSize();
+
+        if ( comphelper::LibreOfficeKit::isActive() && aOldMode != aDrawMode )
+            SetMapMode( aOldMode );
+
         return bRet;
     }
     else
     {
-        SetPointer( Pointer( PointerStyle::Arrow ) );
+        SetPointer( PointerStyle::Arrow );
         return false;
     }
 }
@@ -193,20 +209,20 @@ void ScGridWindow::DrawRedraw( ScOutputData& rOutputData, SdrLayerID nLayer )
     const bool bDrawChart(VOBJ_MODE_SHOW == rOpts.GetObjMode(VOBJ_TYPE_CHART));
     const bool bDrawDraw(VOBJ_MODE_SHOW == rOpts.GetObjMode(VOBJ_TYPE_DRAW));
 
-    if(bDrawOle || bDrawChart || bDrawDraw)
+    if(!(bDrawOle || bDrawChart || bDrawDraw))
+        return;
+
+    ScDrawView* pDrView = pViewData->GetView()->GetScDrawView();
+
+    if(pDrView)
     {
-        ScDrawView* pDrView = pViewData->GetView()->GetScDrawView();
-
-        if(pDrView)
-        {
-            pDrView->setHideOle(!bDrawOle);
-            pDrView->setHideChart(!bDrawChart);
-            pDrView->setHideDraw(!bDrawDraw);
-            pDrView->setHideFormControl(!bDrawDraw);
-        }
-
-        rOutputData.DrawSelectiveObjects(nLayer);
+        pDrView->setHideOle(!bDrawOle);
+        pDrView->setHideChart(!bDrawChart);
+        pDrView->setHideDraw(!bDrawDraw);
+        pDrView->setHideFormControl(!bDrawDraw);
     }
+
+    rOutputData.DrawSelectiveObjects(nLayer);
 }
 
 void ScGridWindow::DrawSdrGrid( const tools::Rectangle& rDrawingRect, OutputDevice* pContentDev )
@@ -272,7 +288,7 @@ MapMode ScGridWindow::GetDrawMapMode( bool bForce )
     if ( bNegativePage )
     {
         //  RTL uses negative positions for drawing objects
-        aStartPos.X() = -aStartPos.X() + GetOutputSizePixel().Width() - 1;
+        aStartPos.setX( -aStartPos.X() + GetOutputSizePixel().Width() - 1 );
     }
     aDrawMode.SetOrigin( PixelToLogic( aStartPos, aDrawMode ) );
 
@@ -281,7 +297,7 @@ MapMode ScGridWindow::GetDrawMapMode( bool bForce )
 
 void ScGridWindow::DrawAfterScroll()
 {
-    Update(); // always, so the behaviour with and without DrawingLayer is the same
+    PaintImmediately(); // always, so the behaviour with and without DrawingLayer is the same
 
     ScDrawView* pDrView = pViewData->GetView()->GetScDrawView();
     if (pDrView)
@@ -303,22 +319,9 @@ void ScGridWindow::CreateAnchorHandle(SdrHdlList& rHdl, const ScAddress& rAddres
             bool bNegativePage = pViewData->GetDocument()->IsNegativePage( pViewData->GetTabNo() );
             Point aPos = pViewData->GetScrPos( rAddress.Col(), rAddress.Row(), eWhich, true );
             aPos = PixelToLogic(aPos);
-            rHdl.AddHdl(new SdrHdl(aPos, bNegativePage ? SdrHdlKind::Anchor_TR : SdrHdlKind::Anchor));
+            rHdl.AddHdl(std::make_unique<SdrHdl>(aPos, bNegativePage ? SdrHdlKind::Anchor_TR : SdrHdlKind::Anchor));
         }
     }
-}
-
-SdrObject* ScGridWindow::GetEditObject()
-{
-    ScDrawView* pDrView = pViewData->GetView()->GetScDrawView();
-    if (pDrView)
-    {
-        OutlinerView* pOlView = pDrView->GetTextEditOutlinerView();
-        if (pOlView && pOlView->GetWindow() == this)
-            return pDrView->GetTextEditObject();
-    }
-
-    return nullptr;
 }
 
 void ScGridWindow::UpdateStatusPosSize()
@@ -345,10 +348,6 @@ void ScGridWindow::UpdateStatusPosSize()
         pDrView->TakeActionRect( aRect );
         if ( !aRect.IsEmpty() )
         {
-            // mouse position will have been adjusted for offset
-            // at current position and zoom, restore that adjustment here
-            // so status shows correct value
-            aRect -= pDrView->GetGridOffset();
             pPV->LogicToPagePos(aRect);
             aSet.Put( SfxPointItem( SID_ATTR_POSITION, aRect.TopLeft() ) );
             aSet.Put( SvxSizeItem( SID_ATTR_SIZE,
@@ -361,10 +360,6 @@ void ScGridWindow::UpdateStatusPosSize()
         if ( pDrView->AreObjectsMarked() ) // selected objects
         {
             tools::Rectangle aRect = pDrView->GetAllMarkedRect();
-            // mouse position will have been adjusted for offset
-            // at current position and zoom, restore that adjustment here
-            // so status shows correct value
-            aRect -=  pDrView->GetGridOffset();
             pPV->LogicToPagePos(aRect);
             aSet.Put( SfxPointItem( SID_ATTR_POSITION, aRect.TopLeft() ) );
             aSet.Put( SvxSizeItem( SID_ATTR_SIZE,

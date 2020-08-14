@@ -19,17 +19,15 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDNUMBERFORMATPROPERTY_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDNUMBERFORMATPROPERTY_HXX
 
-#include "WrappedDirectStateProperty.hxx"
-#include "Chart2ModelContact.hxx"
+#include <WrappedDirectStateProperty.hxx>
 
 #include <memory>
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper { class Chart2ModelContact; }
+
+namespace chart::wrapper
 {
 
-class WrappedLinkNumberFormatProperty;
 
 class WrappedNumberFormatProperty : public WrappedDirectStateProperty
 {
@@ -62,8 +60,7 @@ public:
 
 };
 
-} //namespace wrapper
-} //namespace chart
+} //namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDNUMBERFORMATPROPERTY_HXX
 #endif

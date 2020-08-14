@@ -17,22 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "controller/SlsTransferableData.hxx"
+#include <controller/SlsTransferableData.hxx>
 
-#include "SlideSorterViewShell.hxx"
-#include "View.hxx"
+#include <SlideSorterViewShell.hxx>
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 SdTransferable* TransferableData::CreateTransferable (
     SdDrawDocument* pSrcDoc,
-    ::sd::View* pWorkView,
-    bool bInitOnGetData,
     SlideSorterViewShell* pViewShell,
     const ::std::vector<Representative>& rRepresentatives)
 {
-    SdTransferable* pTransferable = new SdTransferable (pSrcDoc, pWorkView, bInitOnGetData);
-    std::shared_ptr<TransferableData> pData (new TransferableData(pViewShell, rRepresentatives));
+    SdTransferable* pTransferable = new SdTransferable (pSrcDoc, nullptr, false/*bInitOnGetData*/);
+    auto pData = std::make_shared<TransferableData>(pViewShell, rRepresentatives);
     pTransferable->AddUserData(pData);
     return pTransferable;
 }
@@ -84,6 +81,6 @@ void TransferableData::Notify (SfxBroadcaster&, const SfxHint& rHint)
     }
 }
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

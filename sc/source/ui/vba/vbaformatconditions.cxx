@@ -18,18 +18,15 @@
  */
 
 #include <ooo/vba/excel/XRange.hpp>
-#include <com/sun/star/sheet/XCellRangeAddressable.hpp>
 #include <com/sun/star/sheet/XSheetConditionalEntry.hpp>
 #include <basic/sberrors.hxx>
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <vector>
-#include "unonames.hxx"
+#include <unonames.hxx>
 #include "vbaformatconditions.hxx"
 #include "vbaformatcondition.hxx"
-#include "vbaworkbook.hxx"
 #include "vbastyles.hxx"
-#include "vbaglobals.hxx"
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
@@ -145,7 +142,7 @@ ScVbaFormatConditions::Add( ::sal_Int32 _nType, const uno::Any& _aOperator, cons
     // the formulas are _xlA1 based ( need to hook into calc work this should
     // address this )
     // [*] reason: getA1Formula method below is just a hook and just
-    // returns whats it gets ( e.g. doesn't convert anything )
+    // returns what it gets ( e.g. doesn't convert anything )
     uno::Reference< excel::XStyle > xStyle( _xStyle );
     uno::Reference< excel::XFormatCondition > xFormatCondition;
     try
@@ -190,7 +187,7 @@ ScVbaFormatConditions::Add( ::sal_Int32 _nType, const uno::Any& _aOperator, cons
         for (sal_Int32 i = mxSheetConditionalEntries->getCount()-1; i >= 0; i--)
         {
             uno::Reference< sheet::XSheetConditionalEntry > xSheetConditionalEntry( mxSheetConditionalEntries->getByIndex(i), uno::UNO_QUERY_THROW );
-            if (xSheetConditionalEntry->getStyleName().equals(sStyleName))
+            if (xSheetConditionalEntry->getStyleName() == sStyleName)
             {
                 xFormatCondition =  new ScVbaFormatCondition(uno::Reference< XHelperInterface >( mxRangeParent, uno::UNO_QUERY_THROW ), mxContext, xSheetConditionalEntry, xStyle, this, mxParentRangePropertySet);
                 notifyRange();
@@ -253,7 +250,7 @@ ScVbaFormatConditions::removeFormatCondition( const OUString& _sStyleName, bool 
         for (sal_Int32 i = 0; i < nElems; i++)
         {
             uno::Reference< sheet::XSheetConditionalEntry > xSheetConditionalEntry( mxSheetConditionalEntries->getByIndex(i), uno::UNO_QUERY_THROW );
-            if (_sStyleName.equals(xSheetConditionalEntry->getStyleName()))
+            if (_sStyleName == xSheetConditionalEntry->getStyleName())
             {
                 mxSheetConditionalEntries->removeByIndex(i);
                 if (_bRemoveStyle)
@@ -276,18 +273,16 @@ ScVbaFormatConditions::removeFormatCondition( const OUString& _sStyleName, bool 
 OUString
 ScVbaFormatConditions::getServiceImplName()
 {
-    return OUString("ScVbaFormatConditions");
+    return "ScVbaFormatConditions";
 }
 
 uno::Sequence< OUString >
 ScVbaFormatConditions::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.FormatConditions";
-    }
+        "ooo.vba.excel.FormatConditions"
+    };
     return aServiceNames;
 }
 

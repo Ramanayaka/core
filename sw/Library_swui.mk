@@ -27,7 +27,7 @@ $(eval $(call gb_Library_set_include,swui,\
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,swui,$(SRCDIR)/sw/inc/pch/precompiled_swui))
+$(eval $(call gb_Library_set_precompiled_header,swui,sw/inc/pch/precompiled_swui))
 
 $(eval $(call gb_Library_use_externals,swui,\
 	boost_headers \
@@ -38,7 +38,11 @@ $(eval $(call gb_Library_use_custom_headers,swui,\
 	officecfg/registry \
 ))
 
-$(eval $(call gb_Library_use_sdk_api,swui))
+$(eval $(call gb_Library_use_api,swui,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 ifneq ($(SYSTEM_LIBXML),)
 $(eval $(call gb_Library_add_cxxflags,swui,\
@@ -71,6 +75,7 @@ $(eval $(call gb_Library_use_libraries,swui,\
     ucbhelper \
     utl \
     vcl \
+    drawinglayer \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,swui,\
@@ -90,7 +95,6 @@ $(eval $(call gb_Library_add_exception_objects,swui,\
     sw/source/ui/dialog/ascfldlg \
     sw/source/ui/dialog/docstdlg \
     sw/source/ui/dialog/macassgn \
-    sw/source/ui/dialog/swdialmgr \
     sw/source/ui/dialog/swdlgfact \
     sw/source/ui/dialog/swmessdialog \
     sw/source/ui/dialog/swuiexp \
@@ -105,8 +109,9 @@ $(eval $(call gb_Library_add_exception_objects,swui,\
     sw/source/ui/envelp/labfmt \
     sw/source/ui/envelp/labprt \
     sw/source/ui/envelp/mailmrge \
+    sw/source/ui/fldui/DateFormFieldDialog \
     sw/source/ui/fldui/DropDownFieldDialog \
-    sw/source/ui/fldui/FldRefTreeListBox \
+    sw/source/ui/fldui/DropDownFormFieldDialog \
     sw/source/ui/fldui/changedb \
     sw/source/ui/fldui/flddb \
     sw/source/ui/fldui/flddinf \
@@ -146,6 +151,7 @@ $(eval $(call gb_Library_add_exception_objects,swui,\
     sw/source/ui/misc/titlepage \
     sw/source/ui/table/colwd \
     sw/source/ui/table/convert \
+    sw/source/ui/table/autoformatpreview \
     sw/source/ui/table/instable \
     sw/source/ui/table/mergetbl \
     sw/source/ui/table/rowht \

@@ -18,7 +18,9 @@
  */
 
 #include <sfx2/printer.hxx>
+#include <sal/log.hxx>
 #include <doc.hxx>
+#include <IDocumentDrawModelAccess.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <DocumentSettingManager.hxx>
 #include <IDocumentDeviceAccess.hxx>
@@ -39,7 +41,6 @@
 #include <ndgrf.hxx>
 #include <ndindex.hxx>
 #include <accessibilityoptions.hxx>
-#include <calbck.hxx>
 
 void SwViewShell::Init( const SwViewOption *pNewOpt )
 {
@@ -48,13 +49,13 @@ void SwViewShell::Init( const SwViewOption *pNewOpt )
     // We play it safe: Remove old font information whenever the printer
     // resolution or the zoom factor changes. For that, Init() and Reformat()
     // are the most secure places.
-     pFntCache->Flush( );
+    pFntCache->Flush( );
 
     // ViewOptions are created dynamically
 
     if( !mpOpt )
     {
-        mpOpt = new SwViewOption;
+        mpOpt.reset(new SwViewOption);
 
         // ApplyViewOptions() does not need to be called
         if( pNewOpt )
@@ -73,8 +74,8 @@ void SwViewShell::Init( const SwViewOption *pNewOpt )
         }
     }
 
-    SwDocShell* pDShell = mpDoc->GetDocShell();
-    mpDoc->GetDocumentSettingManager().set(DocumentSettingId::HTML_MODE, 0 != ::GetHtmlMode( pDShell ) );
+    SwDocShell* pDShell = mxDoc->GetDocShell();
+    mxDoc->GetDocumentSettingManager().set(DocumentSettingId::HTML_MODE, 0 != ::GetHtmlMode( pDShell ) );
     // set readonly flag at ViewOptions before creating layout. Otherwise,
     // one would have to reformat again.
 
@@ -84,7 +85,7 @@ void SwViewShell::Init( const SwViewOption *pNewOpt )
     SAL_INFO( "sw.core", "View::Init - before InitPrt" );
     OutputDevice* pPDFOut = nullptr;
 
-    if ( mpOut && mpOut->GetPDFWriter() )
+    if (mpOut && (OUTDEV_PDF == mpOut->GetOutDevType()))
         pPDFOut = mpOut;
 
     // Only setup the printer if we need one:
@@ -96,7 +97,7 @@ void SwViewShell::Init( const SwViewOption *pNewOpt )
     // page descriptions are still set to (LONG_MAX, LONG_MAX) (html import)
     if ( !bBrowseMode )
     {
-        mpDoc->CheckDefaultPageFormat();
+        mxDoc->CheckDefaultPageFormat();
     }
 
     SAL_INFO( "sw.core", "View::Init - after InitPrt" );
@@ -121,9 +122,9 @@ void SwViewShell::Init( const SwViewOption *pNewOpt )
         if( !mpLayout )
         {
             // switched to two step construction because creating the layout in SwRootFrame needs a valid pLayout set
-            mpLayout = SwRootFramePtr(new SwRootFrame(mpDoc->GetDfltFrameFormat(), this),
+            mpLayout = SwRootFramePtr(new SwRootFrame(mxDoc->GetDfltFrameFormat(), this),
                                     &SwFrame::DestroyFrame);
-            mpLayout->Init( mpDoc->GetDfltFrameFormat() );
+            mpLayout->Init( mxDoc->GetDfltFrameFormat() );
         }
     }
     SizeChgNotify();
@@ -150,15 +151,13 @@ SwViewShell::SwViewShell( SwDoc& rDocument, vcl::Window *pWindow,
     mpOut( pOutput ? pOutput
                   : pWindow ? static_cast<OutputDevice*>(pWindow)
                             : static_cast<OutputDevice*>(rDocument.getIDocumentDeviceAccess().getPrinter( true ))),
-    mpTmpRef( nullptr ),
-    mpOpt( nullptr ),
     mpAccOptions( new SwAccessibilityOptions ),
     mbShowHeaderSeparator( false ),
     mbShowFooterSeparator( false ),
     mbHeaderFooterEdit( false ),
     mpTargetPaintWindow(nullptr),
     mpBufferedOut(nullptr),
-    mpDoc( &rDocument ),
+    mxDoc( &rDocument ),
     mnStartAction( 0 ),
     mnLockPaint( 0 ),
     mbSelectAll(false),
@@ -177,11 +176,10 @@ SwViewShell::SwViewShell( SwDoc& rDocument, vcl::Window *pWindow,
 
     // i#38810 Do not reset modified state of document,
     // if it's already been modified.
-    const bool bIsDocModified( mpDoc->getIDocumentState().IsModified() );
-    mpDoc->acquire();
-    pOutput = mpOut;
+    const bool bIsDocModified( mxDoc->getIDocumentState().IsModified() );
+    OutputDevice* pOrigOut = mpOut;
     Init( pNewOpt );    // may change the Outdev (InitPrt())
-    mpOut = pOutput;
+    mpOut = pOrigOut;
 
     // initialize print preview layout after layout
     // is created in <SwViewShell::Init(..)> - called above.
@@ -191,16 +189,16 @@ SwViewShell::SwViewShell( SwDoc& rDocument, vcl::Window *pWindow,
         mpImp->InitPagePreviewLayout();
     }
 
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
 
-    static_cast<SwHiddenTextFieldType*>(mpDoc->getIDocumentFieldsAccess().GetSysFieldType( SwFieldIds::HiddenText ))->
+    static_cast<SwHiddenTextFieldType*>(mxDoc->getIDocumentFieldsAccess().GetSysFieldType( SwFieldIds::HiddenText ))->
         SetHiddenFlag( !mpOpt->IsShowHiddenField() );
 
     // In Init a standard FrameFormat is created.
-    if (   !mpDoc->GetIDocumentUndoRedo().IsUndoNoResetModified()
+    if (   !mxDoc->GetIDocumentUndoRedo().IsUndoNoResetModified()
         && !bIsDocModified )
     {
-        mpDoc->getIDocumentState().ResetModified();
+        mxDoc->getIDocumentState().ResetModified();
     }
 
     // extend format cache.
@@ -223,15 +221,13 @@ SwViewShell::SwViewShell( SwViewShell& rShell, vcl::Window *pWindow,
     mpOut( pOutput ? pOutput
                   : pWindow ? static_cast<OutputDevice*>(pWindow)
                             : static_cast<OutputDevice*>(rShell.GetDoc()->getIDocumentDeviceAccess().getPrinter( true ))),
-    mpTmpRef( nullptr ),
-    mpOpt( nullptr ),
     mpAccOptions( new SwAccessibilityOptions ),
     mbShowHeaderSeparator( false ),
     mbShowFooterSeparator( false ),
     mbHeaderFooterEdit( false ),
     mpTargetPaintWindow(nullptr),
     mpBufferedOut(nullptr),
-    mpDoc( rShell.GetDoc() ),
+    mxDoc( rShell.GetDoc() ),
     mnStartAction( 0 ),
     mnLockPaint( 0 ),
     mbSelectAll(false),
@@ -251,25 +247,24 @@ SwViewShell::SwViewShell( SwViewShell& rShell, vcl::Window *pWindow,
     if( nFlags & VSHELLFLAG_SHARELAYOUT )
         mpLayout = rShell.mpLayout;
 
-    SET_CURR_SHELL( this );
+    CurrShell aCurr( this );
 
-    mpDoc->acquire();
-    bool bModified = mpDoc->getIDocumentState().IsModified();
+    bool bModified = mxDoc->getIDocumentState().IsModified();
 
-    pOutput = mpOut;
+    OutputDevice* pOrigOut = mpOut;
     Init( rShell.GetViewOptions() ); // might change Outdev (InitPrt())
-    mpOut = pOutput;
+    mpOut = pOrigOut;
 
     if ( mbPreview )
         mpImp->InitPagePreviewLayout();
 
-    static_cast<SwHiddenTextFieldType*>(mpDoc->getIDocumentFieldsAccess().GetSysFieldType( SwFieldIds::HiddenText ))->
+    static_cast<SwHiddenTextFieldType*>(mxDoc->getIDocumentFieldsAccess().GetSysFieldType( SwFieldIds::HiddenText ))->
             SetHiddenFlag( !mpOpt->IsShowHiddenField() );
 
     // In Init a standard FrameFormat is created.
-    if( !bModified && !mpDoc->GetIDocumentUndoRedo().IsUndoNoResetModified() )
+    if( !bModified && !mxDoc->GetIDocumentUndoRedo().IsUndoNoResetModified() )
     {
-        mpDoc->getIDocumentState().ResetModified();
+        mxDoc->getIDocumentState().ResetModified();
     }
 
     // extend format cache.
@@ -284,16 +279,19 @@ SwViewShell::SwViewShell( SwViewShell& rShell, vcl::Window *pWindow,
 
 SwViewShell::~SwViewShell()
 {
+    IDocumentLayoutAccess* const pLayoutAccess
+        = mxDoc ? &mxDoc->getIDocumentLayoutAccess() : nullptr;
+
     {
-        SET_CURR_SHELL( this );
+        CurrShell aCurr( this );
         mbPaintWorks = false;
 
         // i#9684 Stopping the animated graphics is not
         // necessary during printing or pdf export, because the animation
         // has not been started in this case.
-        if( mpDoc && GetWin() )
+        if( mxDoc && GetWin() )
         {
-            SwNodes& rNds = mpDoc->GetNodes();
+            SwNodes& rNds = mxDoc->GetNodes();
 
             SwStartNode *pStNd;
             SwNodeIndex aIdx( *rNds.GetEndOfAutotext().StartOfSectionNode(), 1 );
@@ -319,21 +317,15 @@ SwViewShell::~SwViewShell()
             GetDoc()->StopNumRuleAnimations( mpOut );
         }
 
-        delete mpImp; // Delete first, so that the LayoutViews are destroyed.
-        mpImp = nullptr;   // Set to zero, because ~SwFrame relies on it.
+        mpImp.reset();
 
-        if ( mpDoc )
+        if (mxDoc)
         {
-            if( !mpDoc->release() )
-            {
-                delete mpDoc;
-                mpDoc = nullptr;
-            }
-            else
+            if( mxDoc->getReferenceCount() > 1 )
                 GetLayout()->ResetNewLayout();
         }
 
-        delete mpOpt;
+        mpOpt.reset();
 
         // resize format cache.
         if ( SwTextFrame::GetTextCache()->GetCurMax() > 250 )
@@ -345,26 +337,24 @@ SwViewShell::~SwViewShell()
         OSL_ENSURE( !mnStartAction, "EndAction() pending." );
     }
 
-    if ( mpDoc )
+    if ( pLayoutAccess )
     {
         GetLayout()->DeRegisterShell( this );
-        auto& rLayoutAccess(mpDoc->getIDocumentLayoutAccess());
-        if(rLayoutAccess.GetCurrentViewShell()==this)
+        if(pLayoutAccess->GetCurrentViewShell()==this)
         {
-            rLayoutAccess.SetCurrentViewShell(nullptr);
+            pLayoutAccess->SetCurrentViewShell(nullptr);
             for(SwViewShell& rShell : GetRingContainer())
             {
                 if(&rShell != this)
                 {
-                    rLayoutAccess.SetCurrentViewShell(&rShell);
+                    pLayoutAccess->SetCurrentViewShell(&rShell);
                     break;
                 }
             }
         }
     }
 
-    mpTmpRef.disposeAndClear();
-    delete mpAccOptions;
+    mpAccOptions.reset();
 }
 
 bool SwViewShell::HasDrawView() const
@@ -375,6 +365,11 @@ bool SwViewShell::HasDrawView() const
 void SwViewShell::MakeDrawView()
 {
     Imp()->MakeDrawView( );
+}
+
+bool SwViewShell::HasDrawViewDrag() const
+{
+    return Imp()->HasDrawView() && Imp()->GetDrawView()->IsDragObj();
 }
 
 SdrView* SwViewShell::GetDrawView()

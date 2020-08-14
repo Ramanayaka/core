@@ -17,19 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/textbody.hxx"
-#include <com/sun/star/text/XText.hpp>
-#include <com/sun/star/text/XTextCursor.hpp>
+#include <drawingml/textbody.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include "drawingml/textparagraph.hxx"
-#include "oox/helper/propertyset.hxx"
+#include <drawingml/textparagraph.hxx>
+#include <oox/helper/propertyset.hxx>
 #include <oox/token/properties.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::beans;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 TextBody::TextBody()
 {
@@ -37,21 +35,22 @@ TextBody::TextBody()
 
 TextBody::TextBody( const TextBodyPtr& pBody )
 {
-    if( pBody.get() ) {
+    if( pBody ) {
         maTextProperties = pBody->maTextProperties;
         maTextListStyle = pBody->maTextListStyle;
     }
 }
 
-TextBody::~TextBody()
-{
-}
-
 TextParagraph& TextBody::addParagraph()
 {
-    std::shared_ptr< TextParagraph > xPara( new TextParagraph );
+    auto xPara = std::make_shared<TextParagraph>();
     maParagraphs.push_back( xPara );
     return *xPara;
+}
+
+void TextBody::appendParagraph(std::shared_ptr<TextParagraph> pTextParagraph)
+{
+    maParagraphs.push_back(pTextParagraph);
 }
 
 void TextBody::insertAt(
@@ -67,24 +66,36 @@ void TextBody::insertAt(
 
     Reference<css::beans::XPropertySet> xPropertySet(xAt, UNO_QUERY);
     float nCharHeight = xPropertySet->getPropertyValue("CharHeight").get<float>();
-    for( TextParagraphVector::const_iterator aBeg = maParagraphs.begin(), aIt = aBeg, aEnd = maParagraphs.end(); aIt != aEnd; ++aIt )
-        (*aIt)->insertAt( rFilterBase, xText, xAt, rTextStyleProperties, aCombinedTextStyle, aIt == aBeg, nCharHeight );
+    size_t nIndex = 0;
+    for (auto const& paragraph : maParagraphs)
+    {
+        paragraph->insertAt( rFilterBase, xText, xAt, rTextStyleProperties, aCombinedTextStyle, (nIndex == 0), nCharHeight );
+        ++nIndex;
+    }
 }
 
 bool TextBody::isEmpty() const
 {
-    if ( maParagraphs.size() <= 0 )
+    if (maParagraphs.empty())
         return true;
     if ( maParagraphs.size() > 1 )
         return false;
 
     const TextRunVector aRuns = maParagraphs[0]->getRuns();
-    if ( aRuns.size() <= 0 )
+    if ( aRuns.empty() )
         return true;
     if ( aRuns.size() > 1 )
         return false;
 
     return aRuns[0]->getText().getLength() <= 0;
+}
+
+OUString TextBody::toString() const
+{
+    if (!isEmpty())
+        return maParagraphs.front()->getRuns().front()->getText();
+    else
+        return OUString();
 }
 
 void TextBody::ApplyStyleEmpty(
@@ -94,6 +105,9 @@ void TextBody::ApplyStyleEmpty(
     const TextListStylePtr& pMasterTextListStylePtr) const
 {
     assert(isEmpty());
+
+    if (maParagraphs.empty())
+        return;
 
     // Apply character properties
     TextListStyle aCombinedTextStyle;
@@ -106,7 +120,7 @@ void TextBody::ApplyStyleEmpty(
 
     // Apply paragraph properties
     TextParagraphPropertiesPtr pTextParagraphStyle = maParagraphs[0]->getParagraphStyle(aCombinedTextStyle);
-    if (pTextParagraphStyle.get())
+    if (pTextParagraphStyle)
     {
         Reference< XPropertySet > xProps(xText, UNO_QUERY);
         PropertyMap aioBulletList;
@@ -118,6 +132,6 @@ void TextBody::ApplyStyleEmpty(
     }
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

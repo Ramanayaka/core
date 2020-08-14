@@ -21,17 +21,14 @@
 
 #include "unogaltheme.hxx"
 #include "unogalitem.hxx"
-#include "svx/galtheme.hxx"
-#include "svx/gallery1.hxx"
-#include "svx/galmisc.hxx"
+#include <svx/galtheme.hxx>
+#include <svx/gallery1.hxx>
+#include <svx/galmisc.hxx>
 #include <svx/fmmodel.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/unopage.hxx>
-#include <svl/itempool.hxx>
 #include <vcl/svapp.hxx>
-#include <unotools/pathoptions.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 using namespace ::com::sun::star;
@@ -69,7 +66,7 @@ GalleryTheme::~GalleryTheme()
 
 OUString SAL_CALL GalleryTheme::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.gallery.GalleryTheme" );
+    return "com.sun.star.comp.gallery.GalleryTheme";
 }
 
 sal_Bool SAL_CALL GalleryTheme::supportsService( const OUString& ServiceName )
@@ -84,15 +81,13 @@ uno::Sequence< OUString > SAL_CALL GalleryTheme::getSupportedServiceNames()
 
 uno::Sequence< uno::Type > SAL_CALL GalleryTheme::getTypes()
 {
-    uno::Sequence< uno::Type >  aTypes( 5 );
-    uno::Type*                  pTypes = aTypes.getArray();
-
-    *pTypes++ = cppu::UnoType<lang::XServiceInfo>::get();
-    *pTypes++ = cppu::UnoType<lang::XTypeProvider>::get();
-    *pTypes++ = cppu::UnoType<container::XElementAccess>::get();
-    *pTypes++ = cppu::UnoType<container::XIndexAccess>::get();
-    *pTypes++ = cppu::UnoType<gallery::XGalleryTheme>::get();
-
+    static const uno::Sequence aTypes {
+        cppu::UnoType<lang::XServiceInfo>::get(),
+        cppu::UnoType<lang::XTypeProvider>::get(),
+        cppu::UnoType<container::XElementAccess>::get(),
+        cppu::UnoType<container::XIndexAccess>::get(),
+        cppu::UnoType<gallery::XGalleryTheme>::get(),
+    };
     return aTypes;
 }
 
@@ -135,13 +130,10 @@ uno::Any SAL_CALL GalleryTheme::getByIndex( ::sal_Int32 nIndex )
         {
             throw lang::IndexOutOfBoundsException();
         }
-        else
-        {
-            const GalleryObject* pObj = mpTheme->ImplGetGalleryObject( nIndex );
+        const GalleryObject* pObj = mpTheme->maGalleryObjectCollection.getForPosition( nIndex );
 
-            if( pObj )
-                aRet <<= uno::Reference< gallery::XGalleryItem >( new GalleryItem( *this, *pObj ) );
-        }
+        if( pObj )
+            aRet <<= uno::Reference< gallery::XGalleryItem >( new GalleryItem( *this, *pObj ) );
     }
 
     return aRet;
@@ -188,10 +180,10 @@ void SAL_CALL GalleryTheme::update(  )
 
             if( ( aURL.GetProtocol() != INetProtocol::NotValid ) && mpTheme->InsertURL( aURL, nIndex ) )
             {
-                const GalleryObject* pObj = mpTheme->ImplGetGalleryObject( aURL );
+                const GalleryObject* pObj = mpTheme->maGalleryObjectCollection.searchObjectWithURL( aURL );
 
                 if( pObj )
-                    nRet = mpTheme->ImplGetGalleryObjectPos( pObj );
+                    nRet = mpTheme->maGalleryObjectCollection.searchPosWithObject( pObj );
             }
         }
         catch( ... )
@@ -237,9 +229,9 @@ void SAL_CALL GalleryTheme::update(  )
 
     if( mpTheme )
     {
-        GalleryDrawingModel* pModel = GalleryDrawingModel::getImplementation( Drawing );
+        GalleryDrawingModel* pModel = comphelper::getUnoTunnelImplementation<GalleryDrawingModel>( Drawing );
 
-        if( pModel && pModel->GetDoc() && dynamic_cast<const FmFormModel*>(pModel->GetDoc()) != nullptr )
+        if( pModel && dynamic_cast<const FmFormModel*>(pModel->GetDoc()) )
         {
             // Here we're inserting something that's already a gallery theme drawing
             nIndex = ::std::max( ::std::min( nIndex, getCount() ), sal_Int32( 0 ) );
@@ -254,16 +246,17 @@ void SAL_CALL GalleryTheme::update(  )
             try
             {
                 uno::Reference< drawing::XDrawPagesSupplier > xDrawPagesSupplier( Drawing, uno::UNO_QUERY_THROW );
-                uno::Reference< drawing::XDrawPages > xDrawPages( xDrawPagesSupplier->getDrawPages(), uno::UNO_QUERY_THROW );
+                uno::Reference< drawing::XDrawPages > xDrawPages( xDrawPagesSupplier->getDrawPages(), uno::UNO_SET_THROW );
                 uno::Reference< drawing::XDrawPage > xPage( xDrawPages->getByIndex( 0 ), uno::UNO_QUERY_THROW );
-                SvxDrawPage* pUnoPage = xPage.is() ? SvxDrawPage::getImplementation( xPage ) : nullptr;
-                SdrModel* pOrigModel = pUnoPage ? pUnoPage->GetSdrPage()->GetModel() : nullptr;
+                SvxDrawPage* pUnoPage = xPage.is() ? comphelper::getUnoTunnelImplementation<SvxDrawPage>( xPage ) : nullptr;
+                SdrModel* pOrigModel = pUnoPage ? &pUnoPage->GetSdrPage()->getSdrModelFromSdrPage() : nullptr;
                 SdrPage* pOrigPage = pUnoPage ? pUnoPage->GetSdrPage() : nullptr;
 
                 if (pOrigPage && pOrigModel)
                 {
                     FmFormModel* pTmpModel = new FmFormModel(&pOrigModel->GetItemPool());
-                    SdrPage* pNewPage = pOrigPage->Clone();
+                    // Clone to new target SdrModel
+                    SdrPage* pNewPage(pOrigPage->CloneSdrPage(*pTmpModel));
                     pTmpModel->InsertPage(pNewPage, 0);
 
                     uno::Reference< lang::XComponent > xDrawing( new GalleryDrawingModel( pTmpModel ) );
@@ -291,8 +284,7 @@ void SAL_CALL GalleryTheme::removeByIndex( sal_Int32 nIndex )
     {
         if( ( nIndex < 0 ) || ( nIndex >= getCount() ) )
             throw lang::IndexOutOfBoundsException();
-        else
-            mpTheme->RemoveObject( nIndex );
+        mpTheme->RemoveObject( nIndex );
     }
 }
 
@@ -304,7 +296,7 @@ void GalleryTheme::Notify( SfxBroadcaster&, const SfxHint& rHint )
 
     switch( rGalleryHint.GetType() )
     {
-        case( GalleryHintType::CLOSE_THEME ):
+        case GalleryHintType::CLOSE_THEME:
         {
             DBG_ASSERT( !mpTheme || mpGallery, "Theme is living without Gallery" );
 
@@ -318,9 +310,9 @@ void GalleryTheme::Notify( SfxBroadcaster&, const SfxHint& rHint )
         }
         break;
 
-        case( GalleryHintType::CLOSE_OBJECT ):
+        case GalleryHintType::CLOSE_OBJECT:
         {
-            GalleryObject* pObj = reinterpret_cast< GalleryObject* >( rGalleryHint.GetData1() );
+            GalleryObject* pObj = static_cast< GalleryObject* >( rGalleryHint.GetData1() );
 
             if( pObj )
                 implReleaseItems( pObj );
@@ -333,16 +325,16 @@ void GalleryTheme::Notify( SfxBroadcaster&, const SfxHint& rHint )
 }
 
 
-void GalleryTheme::implReleaseItems( GalleryObject* pObj )
+void GalleryTheme::implReleaseItems( GalleryObject const * pObj )
 {
     const SolarMutexGuard aGuard;
 
-    for( GalleryItemList::iterator aIter = maItemList.begin(); aIter != maItemList.end();  )
+    for( GalleryItemVector::iterator aIter = maItemVector.begin(); aIter != maItemVector.end();  )
     {
         if( !pObj || ( (*aIter)->implGetObject() == pObj ) )
         {
             (*aIter)->implSetInvalid();
-            aIter = maItemList.erase( aIter );
+            aIter = maItemVector.erase( aIter );
         }
         else
             ++aIter;
@@ -354,8 +346,7 @@ void GalleryTheme::implRegisterGalleryItem( ::unogallery::GalleryItem& rItem )
 {
     const SolarMutexGuard aGuard;
 
-//  DBG_ASSERT( maItemList.find( &rItem ) == maItemList.end(), "Item already registered" );
-    maItemList.push_back( &rItem );
+    maItemVector.push_back( &rItem );
 }
 
 
@@ -363,8 +354,7 @@ void GalleryTheme::implDeregisterGalleryItem( ::unogallery::GalleryItem& rItem )
 {
     const SolarMutexGuard aGuard;
 
-//  DBG_ASSERT( maItemList.find( &rItem ) != maItemList.end(), "Item is not registered" );
-    maItemList.remove( &rItem );
+    maItemVector.erase(std::remove(maItemVector.begin(), maItemVector.end(), &rItem), maItemVector.end());
 }
 
 }

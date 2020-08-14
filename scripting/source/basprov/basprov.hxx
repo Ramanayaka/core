@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SCRIPTING_SOURCE_BASPROV_BASPROV_HXX
 #define INCLUDED_SCRIPTING_SOURCE_BASPROV_BASPROV_HXX
 
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/script/XLibraryContainer.hpp>
@@ -29,6 +28,7 @@
 #include <com/sun/star/document/XScriptInvocationContext.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
+#include <svl/lstner.hxx>
 
 class BasicManager;
 
@@ -37,7 +37,6 @@ namespace basprov
 {
 
 
-    //  class BasicProviderImpl
 
 
     typedef ::cppu::WeakImplHelper<
@@ -47,7 +46,7 @@ namespace basprov
         css::script::browse::XBrowseNode > BasicProviderImpl_BASE;
 
 
-    class BasicProviderImpl : public BasicProviderImpl_BASE
+    class BasicProviderImpl : public BasicProviderImpl_BASE, public SfxListener
     {
     private:
         BasicManager*   m_pAppBasicManager;
@@ -86,6 +85,10 @@ namespace basprov
         virtual css::uno::Sequence< css::uno::Reference< css::script::browse::XBrowseNode > > SAL_CALL getChildNodes(  ) override;
         virtual sal_Bool SAL_CALL hasChildNodes(  ) override;
         virtual sal_Int16 SAL_CALL getType(  ) override;
+
+    protected:
+        // SfxListener
+        virtual void Notify(SfxBroadcaster& rBC, const SfxHint& rHint) override;
     };
 
 

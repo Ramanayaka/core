@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <documentfragment.hxx>
+#include "documentfragment.hxx"
 
 using namespace css::uno;
 using namespace css::xml::dom;
@@ -49,7 +49,7 @@ namespace DOM
 
     OUString SAL_CALL CDocumentFragment::getNodeName()
     {
-        return OUString("#document-fragment");
+        return "#document-fragment";
     }
     OUString SAL_CALL CDocumentFragment::getNodeValue()
     {

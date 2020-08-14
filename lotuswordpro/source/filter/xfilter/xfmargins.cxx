@@ -58,7 +58,8 @@
  * Margins object, include left margin,right margin,top margin and bottom margin.
  ************************************************************************/
 
-#include "xfmargins.hxx"
+#include <xfilter/ixfattrlist.hxx>
+#include <xfilter/xfmargins.hxx>
 
 XFMargins::XFMargins()
 {
@@ -99,7 +100,7 @@ void    XFMargins::ToXml(IXFStream *pStrm)
     }
 }
 
-bool operator==(XFMargins& indent1, XFMargins& indent2)
+bool operator==(XFMargins const & indent1, XFMargins const & indent2)
 {
     return (
         (indent1.m_nFlag == indent2.m_nFlag) &&
@@ -109,7 +110,7 @@ bool operator==(XFMargins& indent1, XFMargins& indent2)
         (indent1.m_fBottom == indent2.m_fBottom)
         );
 }
-bool operator!=(XFMargins& indent1, XFMargins& indent2)
+bool operator!=(XFMargins const & indent1, XFMargins const & indent2)
 {
     return !(indent1==indent2);
 }

@@ -17,71 +17,58 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/dialogs.hrc>
 #include <svx/dialmgr.hxx>
 #include <svx/papersizelistbox.hxx>
-#include <tools/resary.hxx>
-#include <vcl/builderfactory.hxx>
+#include "page.hrc"
 
-
-PaperSizeListBox::PaperSizeListBox(vcl::Window* pParent)
-    : ListBox( pParent, WB_BORDER | WB_DROPDOWN)
+SvxPaperSizeListBox::SvxPaperSizeListBox(std::unique_ptr<weld::ComboBox> pControl)
+    : m_xControl(std::move(pControl))
 {
-    SetDropDownLineCount(6);
+    m_xControl->set_size_request(150, -1);
 }
 
-VCL_BUILDER_FACTORY(PaperSizeListBox);
-
-void PaperSizeListBox::FillPaperSizeEntries( PaperSizeApp eApp )
+void SvxPaperSizeListBox::FillPaperSizeEntries( PaperSizeApp eApp )
 {
-    ResStringArray aPaperAry( ResId( ( eApp == PaperSizeApp::Std  ) ?
-                              RID_SVXSTRARY_PAPERSIZE_STD : RID_SVXSTRARY_PAPERSIZE_DRAW, DIALOG_MGR() ) );
-    sal_uInt32 nCnt = aPaperAry.Count();
+    const std::pair<const char*, int>* pPaperAry = eApp == PaperSizeApp::Std ?
+        RID_SVXSTRARY_PAPERSIZE_STD : RID_SVXSTRARY_PAPERSIZE_DRAW;
+    sal_uInt32 nCnt = eApp == PaperSizeApp::Std ?
+        SAL_N_ELEMENTS(RID_SVXSTRARY_PAPERSIZE_STD) : SAL_N_ELEMENTS(RID_SVXSTRARY_PAPERSIZE_DRAW);
 
     for ( sal_uInt32 i = 0; i < nCnt; ++i )
     {
-        OUString aStr = aPaperAry.GetString(i);
-        Paper eSize = (Paper)aPaperAry.GetValue(i);
-        sal_Int32 nPos = InsertEntry( aStr );
-        SetEntryData( nPos, reinterpret_cast<void*>((sal_uLong)eSize) );
+        OUString aStr = SvxResId(pPaperAry[i].first);
+        Paper eSize = static_cast<Paper>(pPaperAry[i].second);
+        m_xControl->append(OUString::number(static_cast<sal_Int32>(eSize)), aStr);
     }
 }
 
-void PaperSizeListBox::SetSelection( Paper ePreselectPaper )
+void SvxPaperSizeListBox::set_active_id( Paper ePreselectPaper )
 {
-    sal_Int32 nEntryCount = GetEntryCount();
-    sal_Int32 nSelPos = LISTBOX_ENTRY_NOTFOUND;
-    sal_Int32 nUserPos = LISTBOX_ENTRY_NOTFOUND;
+    int nEntryCount = m_xControl->get_count();
+    int nSelPos = -1;
+    int nUserPos = -1;
 
-    for (sal_Int32 i = 0; i < nEntryCount; ++i )
+    for (int i = 0; i < nEntryCount; ++i)
     {
-        Paper eTmp = (Paper)reinterpret_cast<sal_uLong>(GetEntryData(i));
-
-        if ( eTmp == ePreselectPaper )
+        Paper eTmp = static_cast<Paper>(m_xControl->get_id(i).toInt32());
+        if (eTmp == ePreselectPaper)
         {
             nSelPos = i;
             break;
         }
 
-        if ( eTmp == PAPER_USER )
+        if (eTmp == PAPER_USER)
            nUserPos = i;
     }
 
     // preselect current paper format - #115915#: ePaper might not be in aPaperSizeBox so use PAPER_USER instead
-    SelectEntryPos( ( nSelPos != LISTBOX_ENTRY_NOTFOUND ) ? nSelPos : nUserPos );
+    m_xControl->set_active((nSelPos != -1) ? nSelPos : nUserPos);
 }
 
-Paper PaperSizeListBox::GetSelection() const
+Paper SvxPaperSizeListBox::get_active_id() const
 {
-    const sal_Int32 nPos = GetSelectEntryPos();
-    Paper ePaper = (Paper)reinterpret_cast<sal_uLong>(GetEntryData( nPos ));
-
-    return ePaper;
+    return static_cast<Paper>(m_xControl->get_active_id().toInt32());
 }
 
-Size PaperSizeListBox::GetOptimalSize() const
-{
-    return Size(150, ListBox::GetOptimalSize().Height());
-}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
 

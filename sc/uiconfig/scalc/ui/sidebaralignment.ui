@@ -1,95 +1,100 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.20.0 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
-  <requires lib="LibreOffice" version="1.0"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="sc">
+  <requires lib="gtk+" version="3.18"/>
+  <object class="GtkAdjustment" id="adjustmentIndent">
+    <property name="upper">990</property>
+    <property name="step_increment">10</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="adjustmentSpinDegrees">
+    <property name="upper">359</property>
+    <property name="step_increment">5</property>
+  </object>
   <object class="GtkImage" id="image1">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
-    <property name="pixbuf">svx/res/lo03.png</property>
+    <property name="icon_name">svx/res/lo03.png</property>
   </object>
   <object class="GtkImage" id="image2">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
-    <property name="pixbuf">svx/res/lo02.png</property>
+    <property name="icon_name">svx/res/lo02.png</property>
   </object>
   <object class="GtkImage" id="image3">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
-    <property name="pixbuf">svx/res/lo01.png</property>
+    <property name="icon_name">svx/res/lo01.png</property>
   </object>
   <object class="GtkGrid" id="AlignmentPropertyPanel">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
-    <property name="row_homogeneous">True</property>
-    <property name="column_homogeneous">True</property>
     <child>
-      <object class="GtkBox" id="box1">
+      <object class="GtkGrid">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
+        <property name="hexpand">True</property>
         <property name="border_width">6</property>
-        <property name="orientation">vertical</property>
-        <property name="spacing">10</property>
+        <property name="row_spacing">3</property>
+        <property name="column_spacing">6</property>
         <child>
           <object class="GtkBox" id="box3">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="spacing">6</property>
+            <property name="hexpand">True</property>
+            <property name="spacing">3</property>
             <child>
-              <object class="sfxlo-SidebarToolBox" id="horizontalalignment">
+              <object class="GtkToolbar" id="horizontalalignment">
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
-                <property name="has_tooltip">True</property>
-                <property name="tooltip_text" translatable="yes">Horizontal Alignment</property>
+                <property name="can_focus">True</property>
+                <property name="tooltip_text" translatable="yes" context="sidebaralignment|horizontalalignment|tooltip_text">Horizontal Alignment</property>
                 <property name="halign">start</property>
+                <property name="toolbar_style">icons</property>
                 <property name="show_arrow">False</property>
+                <property name="icon_size">2</property>
                 <child>
-                  <object class="GtkToolButton" id="substleft">
+                  <object class="GtkToggleToolButton" id=".uno:AlignLeft">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="valign">start</property>
-                    <property name="action_name">.uno:AlignLeft</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkToolButton" id="substcenter">
+                  <object class="GtkToggleToolButton" id=".uno:AlignHorizontalCenter">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="action_name">.uno:AlignHorizontalCenter</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkToolButton" id="substright">
+                  <object class="GtkToggleToolButton" id=".uno:AlignRight">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="action_name">.uno:AlignRight</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkToolButton" id="substjustify">
+                  <object class="GtkToggleToolButton" id=".uno:AlignBlock">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="action_name">.uno:AlignBlock</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
               </object>
@@ -100,46 +105,45 @@
               </packing>
             </child>
             <child>
-              <object class="sfxlo-SidebarToolBox" id="verticalalignment">
+              <object class="GtkToolbar" id="verticalalignment">
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
-                <property name="tooltip_text" translatable="yes">Vertical Alignment</property>
+                <property name="can_focus">True</property>
+                <property name="tooltip_text" translatable="yes" context="sidebaralignment|verticalalignment|tooltip_text">Vertical Alignment</property>
                 <property name="halign">end</property>
+                <property name="toolbar_style">icons</property>
                 <property name="show_arrow">False</property>
+                <property name="icon_size">2</property>
                 <child>
-                  <object class="GtkToolButton" id="verttop">
+                  <object class="GtkToggleToolButton" id=".uno:AlignTop">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="action_name">.uno:AlignTop</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkToolButton" id="vertcenter">
+                  <object class="GtkToggleToolButton" id=".uno:AlignVCenter">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="action_name">.uno:AlignVCenter</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkToolButton" id="vertbottom">
+                  <object class="GtkToggleToolButton" id=".uno:AlignBottom">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="action_name">.uno:AlignBottom</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
               </object>
@@ -151,34 +155,32 @@
               </packing>
             </child>
             <child>
-              <object class="sfxlo-SidebarToolBox" id="writedirection">
+              <object class="GtkToolbar" id="writedirection">
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
+                <property name="can_focus">True</property>
+                <property name="toolbar_style">icons</property>
                 <property name="show_arrow">False</property>
+                <property name="icon_size">2</property>
                 <child>
-                  <object class="GtkToolButton" id="lefttoright">
+                  <object class="GtkToggleToolButton" id=".uno:ParaLeftToRight">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:ParaLeftToRight</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkToolButton" id="righttoleft">
+                  <object class="GtkToggleToolButton" id=".uno:ParaRightToLeft">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:ParaRightToLeft</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
               </object>
@@ -191,184 +193,125 @@
             </child>
           </object>
           <packing>
-            <property name="expand">False</property>
-            <property name="fill">True</property>
-            <property name="position">0</property>
+            <property name="left_attach">0</property>
+            <property name="top_attach">0</property>
+            <property name="width">2</property>
           </packing>
         </child>
         <child>
-          <object class="GtkBox" id="box5">
+          <object class="GtkSpinButton" id="orientationdegrees">
             <property name="visible">True</property>
-            <property name="can_focus">False</property>
-            <property name="spacing">12</property>
+            <property name="can_focus">True</property>
+            <property name="tooltip_text" translatable="yes" context="sidebaralignment|orientationdegrees|tooltip_text">Select the angle for rotation.</property>
+            <property name="halign">end</property>
+            <property name="adjustment">adjustmentSpinDegrees</property>
+            <property name="wrap">True</property>
+            <child internal-child="accessible">
+              <object class="AtkObject" id="orientationdegrees-atkobject">
+                <property name="AtkObject::accessible-name" translatable="yes" context="sidebaralignment|orientationdegrees-atkobject">Text Orientation</property>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="left_attach">1</property>
+            <property name="top_attach">4</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkSpinButton" id="leftindent">
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="tooltip_text" translatable="yes" context="sidebaralignment|leftindent|tooltip_text">Indents from the left edge.</property>
+            <property name="halign">end</property>
+            <property name="valign">center</property>
+            <property name="adjustment">adjustmentIndent</property>
+            <child internal-child="accessible">
+              <object class="AtkObject" id="leftindent-atkobject">
+                <property name="AtkObject::accessible-name" translatable="yes" context="sidebaralignment|leftindent-atkobject">Left Indent</property>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="left_attach">1</property>
+            <property name="top_attach">1</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkToolbar" id="indentbuttons">
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="toolbar_style">icons</property>
+            <property name="show_arrow">False</property>
+            <property name="icon_size">2</property>
             <child>
-              <object class="GtkBox" id="box6">
+              <object class="GtkToolButton" id=".uno:IncrementIndent">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="orientation">vertical</property>
-                <property name="spacing">6</property>
-                <child>
-                  <object class="GtkGrid" id="grid2">
-                    <property name="visible">True</property>
-                    <property name="can_focus">False</property>
-                    <property name="column_spacing">6</property>
-                    <child>
-                      <object class="sfxlo-SidebarToolBox" id="indentbuttons">
-                        <property name="visible">True</property>
-                        <property name="can_focus">False</property>
-                        <property name="show_arrow">False</property>
-                        <child>
-                          <object class="GtkToolButton" id="incrementindent">
-                            <property name="visible">True</property>
-                            <property name="can_focus">False</property>
-                            <property name="is_important">True</property>
-                            <property name="action_name">.uno:IncrementIndent</property>
-                            <property name="use_underline">True</property>
-                          </object>
-                          <packing>
-                            <property name="expand">False</property>
-                            <property name="homogeneous">True</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkToolButton" id="decrementindent">
-                            <property name="visible">True</property>
-                            <property name="can_focus">False</property>
-                            <property name="is_important">True</property>
-                            <property name="action_name">.uno:DecrementIndent</property>
-                            <property name="use_underline">True</property>
-                          </object>
-                          <packing>
-                            <property name="expand">False</property>
-                            <property name="homogeneous">True</property>
-                          </packing>
-                        </child>
-                      </object>
-                      <packing>
-                        <property name="left_attach">1</property>
-                        <property name="top_attach">0</property>
-                      </packing>
-                    </child>
-                    <child>
-                      <object class="GtkLabel" id="leftindentlabel">
-                        <property name="visible">True</property>
-                        <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">_Indent:</property>
-                        <property name="use_underline">True</property>
-                        <property name="mnemonic_widget">leftindent:0pt</property>
-                        <property name="xalign">0</property>
-                      </object>
-                      <packing>
-                        <property name="left_attach">0</property>
-                        <property name="top_attach">0</property>
-                      </packing>
-                    </child>
-                  </object>
-                  <packing>
-                    <property name="expand">False</property>
-                    <property name="fill">True</property>
-                    <property name="position">0</property>
-                  </packing>
-                </child>
-                <child>
-                  <object class="GtkSpinButton" id="leftindent:0pt">
-                    <property name="visible">True</property>
-                    <property name="can_focus">True</property>
-                    <property name="has_tooltip">True</property>
-                    <property name="tooltip_text" translatable="yes">Indents from the left edge.</property>
-                    <property name="invisible_char">•</property>
-                    <accessibility>
-                      <relation type="labelled-by" target="leftindentlabel"/>
-                    </accessibility>
-                    <child internal-child="accessible">
-                      <object class="AtkObject" id="leftindent:0pt-atkobject">
-                        <property name="AtkObject::accessible-name" translatable="yes">Left Indent</property>
-                      </object>
-                    </child>
-                  </object>
-                  <packing>
-                    <property name="expand">False</property>
-                    <property name="fill">True</property>
-                    <property name="position">1</property>
-                  </packing>
-                </child>
+                <property name="use_underline">True</property>
               </object>
               <packing>
                 <property name="expand">False</property>
-                <property name="fill">True</property>
-                <property name="position">0</property>
+                <property name="homogeneous">False</property>
               </packing>
             </child>
             <child>
-              <object class="GtkBox" id="box7">
+              <object class="GtkToolButton" id=".uno:DecrementIndent">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="orientation">vertical</property>
-                <property name="spacing">6</property>
-                <child>
-                  <object class="GtkCheckButton" id="mergecells">
-                    <property name="label" translatable="yes">Merge cells</property>
-                    <property name="visible">True</property>
-                    <property name="can_focus">True</property>
-                    <property name="receives_default">False</property>
-                    <property name="has_tooltip">True</property>
-                    <property name="tooltip_text" translatable="yes">Joins the selected cells into one.</property>
-                    <property name="halign">start</property>
-                    <property name="xalign">0</property>
-                    <property name="image_position">right</property>
-                    <property name="draw_indicator">True</property>
-                  </object>
-                  <packing>
-                    <property name="expand">False</property>
-                    <property name="fill">True</property>
-                    <property name="position">0</property>
-                  </packing>
-                </child>
-                <child>
-                  <object class="GtkCheckButton" id="wraptext">
-                    <property name="label" translatable="yes">Wrap text</property>
-                    <property name="visible">True</property>
-                    <property name="can_focus">True</property>
-                    <property name="receives_default">False</property>
-                    <property name="has_tooltip">True</property>
-                    <property name="tooltip_text" translatable="yes">Wrap texts automatically.</property>
-                    <property name="halign">start</property>
-                    <property name="xalign">0</property>
-                    <property name="draw_indicator">True</property>
-                  </object>
-                  <packing>
-                    <property name="expand">False</property>
-                    <property name="fill">True</property>
-                    <property name="position">1</property>
-                  </packing>
-                </child>
+                <property name="use_underline">True</property>
               </object>
               <packing>
                 <property name="expand">False</property>
-                <property name="fill">True</property>
-                <property name="pack_type">end</property>
-                <property name="position">1</property>
+                <property name="homogeneous">False</property>
               </packing>
             </child>
           </object>
           <packing>
-            <property name="expand">False</property>
-            <property name="fill">True</property>
-            <property name="position">1</property>
+            <property name="left_attach">0</property>
+            <property name="top_attach">1</property>
           </packing>
         </child>
         <child>
-          <object class="GtkBox" id="textorientbox">
+          <object class="GtkSeparator" id="separator1">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="spacing">12</property>
+            <property name="margin_left">3</property>
+            <property name="margin_right">3</property>
+          </object>
+          <packing>
+            <property name="left_attach">0</property>
+            <property name="top_attach">3</property>
+            <property name="width">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="orientationlabel">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="label" translatable="yes" context="sidebaralignment|orientationlabel">Text _orientation:</property>
+            <property name="use_underline">True</property>
+            <property name="mnemonic_widget">orientationdegrees</property>
+            <property name="xalign">0</property>
+          </object>
+          <packing>
+            <property name="left_attach">0</property>
+            <property name="top_attach">4</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="spacing">6</property>
             <child>
-              <object class="GtkLabel" id="orientationlabel">
+              <object class="GtkCheckButton" id="stacked">
+                <property name="label" translatable="yes" context="sidebaralignment|stacked">Vertically stacked</property>
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
-                <property name="label" translatable="yes">Text _orientation:</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">False</property>
                 <property name="use_underline">True</property>
                 <property name="xalign">0</property>
+                <property name="draw_indicator">True</property>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -377,30 +320,10 @@
               </packing>
             </child>
             <child>
-              <object class="VclComboBoxNumeric" id="orientationdegrees:0degrees">
+              <object class="GtkBox" id="textorientbox">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="has_tooltip">True</property>
-                <property name="tooltip_text" translatable="yes">Select the angle for rotation.</property>
-                <accessibility>
-                  <relation type="labelled-by" target="orientationlabel"/>
-                </accessibility>
-                <child internal-child="accessible">
-                  <object class="AtkObject" id="orientationdegrees:0degrees-atkobject">
-                    <property name="AtkObject::accessible-name" translatable="yes">Text Orientation</property>
-                  </object>
-                </child>
-              </object>
-              <packing>
-                <property name="expand">False</property>
-                <property name="fill">True</property>
-                <property name="position">1</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkBox" id="box4">
-                <property name="visible">True</property>
-                <property name="can_focus">False</property>
+                <property name="valign">center</property>
                 <property name="spacing">3</property>
                 <child>
                   <object class="GtkRadioButton" id="bottom">
@@ -408,15 +331,16 @@
                     <property name="can_focus">True</property>
                     <property name="focus_on_click">False</property>
                     <property name="receives_default">False</property>
-                    <property name="tooltip_text" translatable="yes">Text Extension From Lower Cell Border</property>
+                    <property name="tooltip_text" translatable="yes" context="sidebaralignment|bottom|tooltip_text">Text Extension From Lower Cell Border</property>
                     <property name="image">image3</property>
+                    <property name="use_underline">True</property>
                     <property name="xalign">0</property>
                     <property name="always_show_image">True</property>
                     <property name="draw_indicator">False</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="fill">False</property>
+                    <property name="fill">True</property>
                     <property name="position">0</property>
                   </packing>
                 </child>
@@ -426,15 +350,16 @@
                     <property name="can_focus">True</property>
                     <property name="focus_on_click">False</property>
                     <property name="receives_default">False</property>
-                    <property name="tooltip_text" translatable="yes">Text Extension From Upper Cell Border</property>
+                    <property name="tooltip_text" translatable="yes" context="sidebaralignment|top|tooltip_text">Text Extension From Upper Cell Border</property>
                     <property name="image">image2</property>
+                    <property name="use_underline">True</property>
                     <property name="xalign">0</property>
                     <property name="always_show_image">True</property>
                     <property name="draw_indicator">False</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="fill">False</property>
+                    <property name="fill">True</property>
                     <property name="position">1</property>
                   </packing>
                 </child>
@@ -444,47 +369,84 @@
                     <property name="can_focus">True</property>
                     <property name="focus_on_click">False</property>
                     <property name="receives_default">False</property>
-                    <property name="tooltip_text" translatable="yes">Text Extension Inside Cell</property>
+                    <property name="tooltip_text" translatable="yes" context="sidebaralignment|standard|tooltip_text">Text Extension Inside Cell</property>
                     <property name="image">image1</property>
+                    <property name="use_underline">True</property>
                     <property name="xalign">0</property>
                     <property name="always_show_image">True</property>
+                    <property name="active">True</property>
                     <property name="draw_indicator">False</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="fill">False</property>
+                    <property name="fill">True</property>
                     <property name="position">2</property>
                   </packing>
                 </child>
               </object>
               <packing>
                 <property name="expand">False</property>
-                <property name="fill">False</property>
+                <property name="fill">True</property>
                 <property name="pack_type">end</property>
-                <property name="position">2</property>
+                <property name="position">1</property>
               </packing>
             </child>
           </object>
           <packing>
-            <property name="expand">False</property>
-            <property name="fill">False</property>
-            <property name="position">2</property>
+            <property name="left_attach">0</property>
+            <property name="top_attach">5</property>
+            <property name="width">2</property>
           </packing>
         </child>
         <child>
-          <object class="GtkCheckButton" id="stacked">
-            <property name="label" translatable="yes">Vertically stacked</property>
+          <object class="GtkCheckButton" id="wraptext">
+            <property name="label" translatable="yes" context="sidebaralignment|wraptext">Wrap text</property>
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <property name="receives_default">False</property>
+            <property name="tooltip_text" translatable="yes" context="sidebaralignment|wraptext|tooltip_text">Wrap texts automatically.</property>
+            <property name="halign">end</property>
+            <property name="use_underline">True</property>
             <property name="xalign">0</property>
             <property name="draw_indicator">True</property>
           </object>
           <packing>
-            <property name="expand">False</property>
-            <property name="fill">True</property>
-            <property name="position">3</property>
+            <property name="left_attach">1</property>
+            <property name="top_attach">2</property>
           </packing>
+        </child>
+        <child>
+          <object class="GtkCheckButton" id="mergecells">
+            <property name="label" translatable="yes" context="sidebaralignment|mergecells">Merge cells</property>
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="receives_default">False</property>
+            <property name="tooltip_text" translatable="yes" context="sidebaralignment|mergecells|tooltip_text">Joins the selected cells into one.</property>
+            <property name="use_underline">True</property>
+            <property name="xalign">0</property>
+            <property name="image_position">right</property>
+            <property name="draw_indicator">True</property>
+          </object>
+          <packing>
+            <property name="left_attach">0</property>
+            <property name="top_attach">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="leftindentlabel">
+            <property name="can_focus">False</property>
+            <property name="label" translatable="yes" context="sidebaralignment|leftindentlabel">_Indent:</property>
+            <property name="use_underline">True</property>
+            <property name="mnemonic_widget">leftindent</property>
+            <property name="xalign">0</property>
+          </object>
+          <packing>
+            <property name="left_attach">1</property>
+            <property name="top_attach">6</property>
+          </packing>
+        </child>
+        <child>
+          <placeholder/>
         </child>
       </object>
       <packing>
@@ -492,5 +454,11 @@
         <property name="top_attach">0</property>
       </packing>
     </child>
+  </object>
+  <object class="GtkSizeGroup" id="sizegroupWidget">
+    <widgets>
+      <widget name="leftindent"/>
+      <widget name="orientationdegrees"/>
+    </widgets>
   </object>
 </interface>

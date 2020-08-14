@@ -26,8 +26,8 @@
 enum class WindowType : sal_uInt16
 {
     NONE                 = 0,
-    FIRST                = 0x0130,
-    MESSBOX              = FIRST,
+    FIRST                = 0x0130, // 304
+    MESSBOX              = FIRST, // 0
     INFOBOX              ,
     WARNINGBOX           ,
     ERRORBOX             ,
@@ -38,7 +38,6 @@ enum class WindowType : sal_uInt16
     FLOATINGWINDOW       ,
     DIALOG               ,
     MODELESSDIALOG       ,
-    MODALDIALOG          ,
     CONTROL              ,
     PUSHBUTTON           ,
     OKBUTTON             ,
@@ -67,8 +66,8 @@ enum class WindowType : sal_uInt16
     SPLITWINDOW          ,
     SPINFIELD            ,
     PATTERNFIELD         ,
-    NUMERICFIELD         ,
     METRICFIELD          ,
+    FORMATTEDFIELD       ,
     CURRENCYFIELD        ,
     DATEFIELD            ,
     TIMEFIELD            ,
@@ -78,7 +77,6 @@ enum class WindowType : sal_uInt16
     CURRENCYBOX          ,
     DATEBOX              ,
     TIMEBOX              ,
-    LONGCURRENCYFIELD    ,
     LONGCURRENCYBOX      ,
     SCROLLWINDOW         ,
     TOOLBOX              ,
@@ -99,7 +97,9 @@ enum class WindowType : sal_uInt16
     DOCKINGAREA          ,
     RULER                ,
     CALCINPUTLINE        ,
-    LAST                 = CALCINPUTLINE,
+    HEADERBAR            ,
+    VERTICALTABCONTROL   ,
+    LAST                 = VERTICALTABCONTROL,
     // only used in vclxtoolkit.cxx
     TOOLKIT_FRAMEWINDOW        = 0x1000,
     TOOLKIT_SYSTEMCHILDWINDOW  = 0x1001,
@@ -117,7 +117,7 @@ WinBits const WB_BORDER =               0x00000008;
 WinBits const WB_NOBORDER =             0x00000010;
 WinBits const WB_SIZEABLE =             0x00000020;
 WinBits const WB_3DLOOK =               0x00000040;
-WinBits const WB_AUTOSIZE =             0x00000080;
+WinBits const WB_ALLOWMENUBAR =         0x00000080;
 
 // Window-Bits for SystemWindows
 WinBits const WB_MOVEABLE =             0x00000100;
@@ -164,6 +164,7 @@ WinBits const WB_AUTOHSCROLL =          SAL_CONST_INT64(0x10000000);
 WinBits const WB_DOCKABLE =             SAL_CONST_INT64(0x20000000);
 WinBits const WB_AUTOVSCROLL =          SAL_CONST_INT64(0x40000000);
 WinBits const WB_HYPHENATION =          SAL_CONST_INT64(0x800000000) | WB_WORDBREAK;
+// #i93011# style bit for some child windows, that want their children checked for accelerators
 WinBits const WB_CHILDDLGCTRL =         SAL_CONST_INT64(0x100000000000);
 
 // system floating window
@@ -177,7 +178,6 @@ WinBits const WB_POPUP =                SAL_CONST_INT64(0x20000000);
 
 WinBits const WB_HSCROLL =              WB_HORZ;
 WinBits const WB_VSCROLL =              WB_VERT;
-WinBits const WB_TOPIMAGE =             WB_TOP;
 
 // Window-Bits for PushButtons
 WinBits const WB_DEFBUTTON =            0x10000000;
@@ -193,15 +193,9 @@ WinBits const WB_PATHELLIPSIS =         0x00100000;
 WinBits const WB_EXTRAOFFSET =          0x02000000;
 WinBits const WB_NOMULTILINE =          0x10000000;
 
-// Window-Bits for CheckBox
-WinBits const WB_CBLINESTYLE =          SAL_CONST_INT64(0x2000000000);
-WinBits const WB_EARLYTOGGLE =          SAL_CONST_INT64(0x4000000000);
-
 // Window-Bits for Edit
-WinBits const WB_PASSWORD =             0x01000000;
 WinBits const WB_READONLY =             0x02000000;
 WinBits const WB_NOHIDESELECTION =      SAL_CONST_INT64(0x1000000000);
-WinBits const WB_FORCECTRLBACKGROUND =  0x80000000;
 
 // Window-Bits for MultiLineEdit
 WinBits const WB_IGNORETAB =            0x20000000;
@@ -210,35 +204,13 @@ WinBits const WB_IGNORETAB =            0x20000000;
 WinBits const WB_SIMPLEMODE =           0x20000000;
 
 // Window-Bits for FixedBitmap
-WinBits const WB_FAST =                 0x04000000;
 WinBits const WB_SCALE =                0x08000000;
-WinBits const WB_TOPLEFTVISIBLE =       0x10000000;
 
 // Window-Bits for ToolBox
-WinBits const WB_LINESPACING =          0x01000000;
 WinBits const WB_SCROLL =               0x02000000;
-WinBits const WB_FORCETABCYCLE =        0x04000000;
-
-// Window-Bits for DockingWindows
-WinBits const WB_DOCKBORDER =           0x00001000;
 
 // Window-Bits for SplitWindow
 WinBits const WB_NOSPLITDRAW =          0x01000000;
-WinBits const WB_FLATSPLITDRAW =        0x02000000;
-
-// Window-Bits for MessageBoxen
-WinBits const WB_OK =                   0x00100000;
-WinBits const WB_OK_CANCEL =            0x00200000;
-WinBits const WB_YES_NO =               0x00400000;
-WinBits const WB_YES_NO_CANCEL =        0x00800000;
-WinBits const WB_RETRY_CANCEL =         0x01000000;
-WinBits const WB_DEF_OK =               0x02000000;
-WinBits const WB_DEF_CANCEL =           0x04000000;
-WinBits const WB_DEF_RETRY =            0x08000000;
-WinBits const WB_DEF_YES =              SAL_CONST_INT64(0x10000000);
-WinBits const WB_DEF_NO =               SAL_CONST_INT64(0x20000000);
-WinBits const WB_ABORT_RETRY_IGNORE =   SAL_CONST_INT64(0x1000000000);
-WinBits const WB_DEF_IGNORE =           SAL_CONST_INT64(0x2000000000);
 
 // Standard-WinBits
 WinBits const WB_STDWORK =              WB_SIZEMOVE | WB_CLOSEABLE;
@@ -247,7 +219,6 @@ WinBits const WB_STDFLOATWIN =          WB_SIZEMOVE | WB_CLOSEABLE | WB_ROLLABLE
 WinBits const WB_STDDIALOG =            WB_MOVEABLE | WB_CLOSEABLE;
 WinBits const WB_STDMODELESS =          WB_STDDIALOG;
 WinBits const WB_STDMODAL =             WB_STDDIALOG;
-WinBits const WB_STDTABDIALOG =         WB_STDDIALOG;
 WinBits const WB_STDTABCONTROL =        0;
 WinBits const WB_STDPOPUP =             WB_BORDER | WB_POPUP | WB_SYSTEMWINDOW | WB_3DLOOK | WB_DIALOGCONTROL;
 
@@ -258,24 +229,8 @@ WinBits const WB_HASLINESATROOT =       SAL_CONST_INT64(0x000400000000);
 WinBits const WB_HASBUTTONSATROOT =     SAL_CONST_INT64(0x000800000000);
 WinBits const WB_NOINITIALSELECTION =   SAL_CONST_INT64(0x001000000000);
 WinBits const WB_HIDESELECTION =        SAL_CONST_INT64(0x002000000000);
-WinBits const WB_FORCE_MAKEVISIBLE =    SAL_CONST_INT64(0x004000000000);
 // DO NOT USE: 0x008000000000, that's WB_SYSTEMCHILDWINDOW
-WinBits const WB_QUICK_SEARCH =         SAL_CONST_INT64(0x010000000000);
 
-// For FileOpen Dialog
-WinBits const WB_PATH =                 0x00100000;
-WinBits const WB_OPEN =                 0x00200000;
-WinBits const WB_SAVEAS =               0x00400000;
-
-// For Slider
-// Window-Bits for TabControl
-WinBits const WB_SLIDERSET =            0x02000000;
-
-// extended WinBits
-WinBits const WB_EXT_DOCUMENT =         0x00000001;
-WinBits const WB_EXT_DOCMODIFIED =      0x00000002;
-
-// WindowAlign
 
 enum class WindowAlign { Left, Top, Right, Bottom };
 
@@ -301,12 +256,11 @@ enum class StandardButtonType
     Ignore       = 8,
     Abort        = 9,
     Less         = 10,
-    Count        = 11,
+    Back         = 11,
+    Next         = 12,
+    Finish       = 13,
+    Count        = 14,
 };
-
-// prominent place for ListBox window types
-
-enum class ProminentEntry { TOP, MIDDLE };
 
 #endif
 

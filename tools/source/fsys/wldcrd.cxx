@@ -51,7 +51,7 @@ bool WildCard::ImpMatch( const char *pWild, const char *pStr )
                     break;
                 // WARNING/TODO: may cause execution of next case in some
                 // circumstances!
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case '*':
                 while ( *pWild == '*' )
                     pWild++;
@@ -97,17 +97,14 @@ bool WildCard::Matches( const OUString& rString ) const
     {
         while ( (nSepPos = aTmpWild.indexOf(cSepSymbol)) != -1 )
         {
-            // Check all splitted wildcards
+            // Check all split wildcards
             if ( ImpMatch( aTmpWild.copy( 0, nSepPos ).getStr(), aString.getStr() ) )
                 return true;
             aTmpWild = aTmpWild.copy(nSepPos + 1); // remove separator
         }
     }
 
-    if ( ImpMatch( aTmpWild.getStr(), aString.getStr() ) )
-        return true;
-    else
-        return false;
+    return ImpMatch( aTmpWild.getStr(), aString.getStr() );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,6 +19,9 @@
 
 #include <unotextmarkup.hxx>
 
+#include <o3tl/safeint.hxx>
+#include <osl/diagnose.h>
+#include <svl/listener.hxx>
 #include <vcl/svapp.hxx>
 #include <SwSmartTagMgr.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
@@ -28,6 +31,7 @@
 #include <com/sun/star/container/XStringKeyMap.hpp>
 #include <ndtxt.hxx>
 #include <SwGrammarMarkUp.hxx>
+#include <TextCursorHelper.hxx>
 
 #include <IGrammarContact.hxx>
 
@@ -37,25 +41,25 @@
 #include <pam.hxx>
 
 #include <unotextrange.hxx>
-#include <unotextcursor.hxx>
+#include <modeltoviewhelper.hxx>
 
 using namespace ::com::sun::star;
 
 struct SwXTextMarkup::Impl
-    : public SwClient
+    : public SvtListener
 {
     SwTextNode* m_pTextNode;
     ModelToViewHelper const m_ConversionMap;
 
-    Impl(SwTextNode *const pTextNode, const ModelToViewHelper& rMap)
-        : SwClient(pTextNode)
-        , m_pTextNode(pTextNode)
+    Impl(SwTextNode* const pTextNode, const ModelToViewHelper& rMap)
+        : m_pTextNode(pTextNode)
         , m_ConversionMap(rMap)
     {
+        if(m_pTextNode)
+            StartListening(pTextNode->GetNotifier());
     }
 
-    // SwClient
-    virtual void Modify(const SfxPoolItem *pOld, const SfxPoolItem *pNew) override;
+    virtual void Notify(const SfxHint& rHint) override;
 };
 
 SwXTextMarkup::SwXTextMarkup(
@@ -76,9 +80,10 @@ SwTextNode* SwXTextMarkup::GetTextNode()
 void SwXTextMarkup::ClearTextNode()
 {
     m_pImpl->m_pTextNode = nullptr;
+    m_pImpl->EndListeningAll();
 }
 
-const ModelToViewHelper& SwXTextMarkup::GetConversionMap()
+const ModelToViewHelper& SwXTextMarkup::GetConversionMap() const
 {
     return m_pImpl->m_ConversionMap;
 }
@@ -393,32 +398,26 @@ void SAL_CALL SwXTextMarkup::commitMultiTextMarkup(
     if (!m_pImpl->m_pTextNode)
         return;
 
-    // check for equal length of all sequences
-    sal_Int32 nLen = rMarkups.getLength();
-
     // for grammar checking there should be exactly one sentence markup
     // and 0..n grammar markups.
     // Different markups are not expected but may be applied anyway since
     // that should be no problem...
     // but it has to be implemented, at the moment only this function is for
     // grammar markups and sentence markup only!
-    sal_Int32 nSentenceMarkUpIndex = -1;
-    const text::TextMarkupDescriptor *pMarkups = rMarkups.getConstArray();
-    sal_Int32 i;
-    for( i = 0;  i < nLen;  ++i )
+    const text::TextMarkupDescriptor *pSentenceMarkUp = nullptr;
+    for( const text::TextMarkupDescriptor &rDesc : rMarkups )
     {
-        if (pMarkups[i].nType == text::TextMarkupType::SENTENCE)
+        if (rDesc.nType == text::TextMarkupType::SENTENCE)
         {
-            if (nSentenceMarkUpIndex == -1)
-                nSentenceMarkUpIndex = i;
-            else    // there is already one sentence markup
-                throw lang::IllegalArgumentException();
+            if (pSentenceMarkUp != nullptr)
+                throw lang::IllegalArgumentException(); // there is already one sentence markup
+            pSentenceMarkUp = &rDesc;
         }
-        else if( pMarkups[i].nType != text::TextMarkupType::PROOFREADING )
+        else if( rDesc.nType != text::TextMarkupType::PROOFREADING )
             return;
     }
 
-    if( nSentenceMarkUpIndex == -1 )
+    if( pSentenceMarkUp == nullptr )
         return;
 
     // get appropriate list to use...
@@ -447,16 +446,15 @@ void SAL_CALL SwXTextMarkup::commitMultiTextMarkup(
     {
         const ModelToViewHelper::ModelPosition aSentenceEnd =
             m_pImpl->m_ConversionMap.ConvertToModelPosition(
-                pMarkups[nSentenceMarkUpIndex].nOffset + pMarkups[nSentenceMarkUpIndex].nLength );
+                pSentenceMarkUp->nOffset + pSentenceMarkUp->nLength );
         bAcceptGrammarError = aSentenceEnd.mnPos > pWList->GetBeginInv();
         pWList->ClearGrammarList( aSentenceEnd.mnPos );
     }
 
     if( bAcceptGrammarError )
     {
-        for( i = 0;  i < nLen;  ++i )
+        for( const text::TextMarkupDescriptor &rDesc : rMarkups )
         {
-            const text::TextMarkupDescriptor &rDesc = pMarkups[i];
             lcl_commitGrammarMarkUp(m_pImpl->m_ConversionMap, pWList, rDesc.nType,
                 rDesc.aIdentifier, rDesc.nOffset, rDesc.nLength, rDesc.xMarkupInfoContainer );
         }
@@ -464,8 +462,7 @@ void SAL_CALL SwXTextMarkup::commitMultiTextMarkup(
     else
     {
         bRepaint = false;
-        i = nSentenceMarkUpIndex;
-        const text::TextMarkupDescriptor &rDesc = pMarkups[i];
+        const text::TextMarkupDescriptor &rDesc = *pSentenceMarkUp;
         lcl_commitGrammarMarkUp(m_pImpl->m_ConversionMap, pWList, rDesc.nType,
             rDesc.aIdentifier, rDesc.nOffset, rDesc.nLength, rDesc.xMarkupInfoContainer );
     }
@@ -474,14 +471,13 @@ void SAL_CALL SwXTextMarkup::commitMultiTextMarkup(
         finishGrammarCheck(*m_pImpl->m_pTextNode);
 }
 
-void SwXTextMarkup::Impl::Modify( const SfxPoolItem* /*pOld*/, const SfxPoolItem* /*pNew*/ )
+void SwXTextMarkup::Impl::Notify(const SfxHint& rHint)
 {
     DBG_TESTSOLARMUTEX();
-
-    if ( GetRegisteredIn() )
-        GetRegisteredInNonConst()->Remove( this );
-
-    m_pTextNode = nullptr;
+    if(rHint.GetId() == SfxHintId::Dying)
+    {
+        m_pTextNode = nullptr;
+    }
 }
 
 SwXStringKeyMap::SwXStringKeyMap()
@@ -518,7 +514,7 @@ void SAL_CALL SwXStringKeyMap::insertValue(const OUString & aKey, const uno::Any
 
 OUString SAL_CALL SwXStringKeyMap::getKeyByIndex(::sal_Int32 nIndex)
 {
-    if ( (sal_uInt32)nIndex >= maMap.size() )
+    if ( o3tl::make_unsigned(nIndex) >= maMap.size() )
         throw lang::IndexOutOfBoundsException();
 
     return OUString();
@@ -526,7 +522,7 @@ OUString SAL_CALL SwXStringKeyMap::getKeyByIndex(::sal_Int32 nIndex)
 
 uno::Any SAL_CALL SwXStringKeyMap::getValueByIndex(::sal_Int32 nIndex)
 {
-    if ( (sal_uInt32)nIndex >= maMap.size() )
+    if ( o3tl::make_unsigned(nIndex) >= maMap.size() )
         throw lang::IndexOutOfBoundsException();
 
     return uno::Any();

@@ -759,7 +759,7 @@ sub set_patch_state
     while (<EPMPATCH>)
     {
         chop;
-        if ( $_ =~ /Patched for OpenOffice.org/ ) { $installer::globals::is_special_epm = 1; }
+        if ( $_ =~ /Patched for .*Office/ ) { $installer::globals::is_special_epm = 1; }
     }
 
     close (EPMPATCH);
@@ -789,17 +789,6 @@ sub set_patch_state
 }
 
 #################################################
-# LD_PRELOAD string for Debian packages
-#################################################
-
-sub get_ld_preload_string
-{
-    my $getuidlibrary = $ENV{'WORKDIR'} . '/LinkTarget/Library/libgetuid.so';
-    if ( ! -e $getuidlibrary ) { installer::exiter::exit_program("File $getuidlibrary does not exist!", "get_ld_preload_string"); }
-    return 'LD_PRELOAD=' . $getuidlibrary;
-}
-
-#################################################
 # Calling epm to create the installation sets
 #################################################
 
@@ -818,11 +807,11 @@ sub call_epm
     my $outdirstring = "";
     if ( $installer::globals::epmoutpath ne "" ) { $outdirstring = " --output-dir $installer::globals::epmoutpath"; }
 
-    # Debian package build needs a LD_PRELOAD for correct rights
+    # Debian package build needs to be run with fakeroot for correct ownerships/permissions
 
-    my $ldpreloadstring = "";
+    my $fakerootstring = "";
 
-    if ( $installer::globals::debian ) { $ldpreloadstring = get_ld_preload_string($includepatharrayref) . " "; }
+    if ( $installer::globals::debian ) { $fakerootstring = "fakeroot "; }
 
     my $extraflags = "";
         if ($ENV{'EPM_FLAGS'}) { $extraflags = $ENV{'EPM_FLAGS'}; }
@@ -832,7 +821,7 @@ sub call_epm
     my $verboseflag = "-v";
     if ( ! $installer::globals::quiet ) { $verboseflag = "-v2"; };
 
-    my $systemcall = $ldpreloadstring . $epmname . " -f " . $packageformat . " " . $extraflags . " " . $localpackagename . " " . $epmlistfilename . $outdirstring . " " . $verboseflag . " " . " 2\>\&1 |";
+    my $systemcall = $fakerootstring . $epmname . " -f " . $packageformat . " " . $extraflags . " " . $localpackagename . " " . $epmlistfilename . $outdirstring . " " . $verboseflag . " " . " 2\>\&1 |";
 
     installer::logger::print_message( "... $systemcall ...\n" );
 
@@ -1193,15 +1182,15 @@ sub set_autoprovreq_in_specfile
 {
     my ($changefile, $findrequires, $bindir) = @_;
 
-    my $autoreqprovline;
+    my $autoreqprovline = "AutoReqProv\: no\n";
 
     if ( $findrequires )
     {
-        $autoreqprovline = "AutoProv\: no\n%define _use_internal_dependency_generator 0\n%define __find_requires $bindir/$findrequires\n";
-    }
-    else
-    {
-        $autoreqprovline = "AutoReqProv\: no\n";
+        # don't let rpm invoke it, we never want to use AutoReq because
+        # rpm will generate Requires: config(packagename)
+        open (FINDREQUIRES, "echo | $bindir/$findrequires |");
+        while (<FINDREQUIRES>) { $autoreqprovline .= "Requires: $_\n"; }
+        close (FINDREQUIRES);
     }
 
     $autoreqprovline .= "%define _binary_filedigest_algorithm 1\n%define _binary_payload w9.gzdio\n";
@@ -1333,7 +1322,7 @@ sub replace_variables_in_shellscripts
 }
 
 ############################################################
-# Determinig the directory created by epm, in which the
+# Determining the directory created by epm, in which the
 # RPMS or Solaris packages are created.
 ############################################################
 

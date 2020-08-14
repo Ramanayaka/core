@@ -20,7 +20,7 @@
 #ifndef INCLUDED_SVX_SOURCE_UNOGALLERY_UNOGALTHEME_HXX
 #define INCLUDED_SVX_SOURCE_UNOGALLERY_UNOGALTHEME_HXX
 
-#include <list>
+#include <vector>
 
 #include <cppuhelper/implbase.hxx>
 #include <svl/lstner.hxx>
@@ -79,15 +79,15 @@ protected:
 
 private:
 
-    typedef ::std::list< ::unogallery::GalleryItem* > GalleryItemList;
+    typedef ::std::vector< ::unogallery::GalleryItem* > GalleryItemVector;
 
-    GalleryItemList maItemList;
+    GalleryItemVector maItemVector;
     ::Gallery*      mpGallery;
     ::GalleryTheme* mpTheme;
 
     ::GalleryTheme* implGetTheme() const { return mpTheme;}
 
-    void            implReleaseItems( GalleryObject* pObj );
+    void            implReleaseItems( GalleryObject const * pObj );
 
     void            implRegisterGalleryItem( ::unogallery::GalleryItem& rItem );
     void            implDeregisterGalleryItem( ::unogallery::GalleryItem& rItem );

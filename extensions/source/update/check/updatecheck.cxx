@@ -17,13 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <comphelper/scopeguard.hxx>
 #include <config_folders.h>
 
 #include "updatecheck.hxx"
 
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/beans/XFastPropertySet.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/deployment/UpdateInformationProvider.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/office/Quickstart.hpp>
 #include <com/sun/star/system/SystemShellExecute.hpp>
@@ -32,26 +33,19 @@
 #include <com/sun/star/task/XJob.hpp>
 #include <com/sun/star/task/XJobExecutor.hpp>
 
-#include <rtl/ustrbuf.hxx>
-
 #include <rtl/bootstrap.hxx>
 #include <osl/process.h>
-#include <osl/module.hxx>
 #include <osl/file.hxx>
 #include <sal/macros.h>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 
 #ifdef _WIN32
-#ifdef _MSC_VER
-#pragma warning(push,1) // disable warnings within system headers
-//#pragma warning(disable: 4917)
-#endif
+#include <o3tl/safeCoInitUninit.hxx>
 #include <objbase.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 #endif
 
-#include <onlinecheck.hxx>
+#include "onlinecheck.hxx"
 #include "updateprotocol.hxx"
 #include "updatecheckconfig.hxx"
 
@@ -72,18 +66,15 @@ namespace uno = com::sun::star::uno ;
 // Returns the URL of the release note for the given position
 OUString getReleaseNote(const UpdateInfo& rInfo, sal_uInt8 pos, bool autoDownloadEnabled)
 {
-    std::vector< ReleaseNote >::const_iterator iter = rInfo.ReleaseNotes.begin();
-    while( iter != rInfo.ReleaseNotes.end() )
+    for (auto const& elem : rInfo.ReleaseNotes)
     {
-        if( pos == iter->Pos )
+        if( pos == elem.Pos )
         {
-            if( (pos > 2) || !autoDownloadEnabled || iter->URL2.isEmpty() )
-                return iter->URL;
+            if( (pos > 2) || !autoDownloadEnabled || elem.URL2.isEmpty() )
+                return elem.URL;
         }
-        else if( (pos == iter->Pos2) && ((1 == iter->Pos) || (2 == iter->Pos)) && autoDownloadEnabled )
-            return iter->URL2;
-
-        ++iter;
+        else if( (pos == elem.Pos2) && ((1 == elem.Pos) || (2 == elem.Pos)) && autoDownloadEnabled )
+            return elem.URL2;
     }
 
     return OUString();
@@ -93,7 +84,7 @@ OUString getReleaseNote(const UpdateInfo& rInfo, sal_uInt8 pos, bool autoDownloa
 namespace
 {
 
-inline OUString getBuildId()
+OUString getBuildId()
 {
     OUString aPathVal("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("version") ":buildid}");
     rtl::Bootstrap::expandMacros(aPathVal);
@@ -102,7 +93,7 @@ inline OUString getBuildId()
 
 
 #if (defined LINUX || defined __sun)
-inline OUString getBaseInstallation()
+OUString getBaseInstallation()
 {
     OUString aPathVal("$BRAND_BASE_DIR");
     rtl::Bootstrap::expandMacros(aPathVal);
@@ -111,9 +102,9 @@ inline OUString getBaseInstallation()
 #endif
 
 
-inline bool isObsoleteUpdateInfo(const OUString& rBuildId)
+bool isObsoleteUpdateInfo(const OUString& rBuildId)
 {
-    return !rBuildId.equals(getBuildId()) && !rBuildId.isEmpty();
+    return rBuildId != getBuildId() && !rBuildId.isEmpty();
 }
 
 
@@ -126,8 +117,8 @@ OUString getImageFromFileName(const OUString& aFile)
         sal_uInt32 lastIndex = aUnpackPath.lastIndexOf('/');
         if ( lastIndex > 0 )
         {
-            aUnpackPath = aUnpackPath.copy( 0, lastIndex+1 );
-            aUnpackPath  += "unpack_update";
+            aUnpackPath = aUnpackPath.copy( 0, lastIndex+1 ) +
+                "unpack_update";
         }
 
         oslFileHandle hOut = nullptr;
@@ -149,6 +140,12 @@ OUString getImageFromFileName(const OUString& aFile)
 
         if( osl_Process_E_None == rc )
         {
+            // Create a guard to ensure correct cleanup in its dtor in any case
+            comphelper::ScopeGuard g([hOut, hProcess] () {
+                osl_closeFile(hOut);
+                osl_freeProcessHandle(hProcess);
+            });
+
             oslProcessInfo aInfo;
             aInfo.Size = sizeof(oslProcessInfo);
 
@@ -156,14 +153,14 @@ OUString getImageFromFileName(const OUString& aFile)
             {
                 if( 0 == aInfo.Code )
                 {
-                    sal_Char   szBuffer[4096];
+                    char       szBuffer[4096];
                     sal_uInt64 nBytesRead = 0;
                     const sal_uInt64 nBytesToRead = sizeof(szBuffer) - 1;
 
                     OUString aImageName;
                     while( osl_File_E_None == osl_readFile(hOut, szBuffer, nBytesToRead, &nBytesRead) )
                     {
-                        sal_Char *pc = szBuffer + nBytesRead;
+                        char *pc = szBuffer + nBytesRead;
                         do
                         {
                             *pc = '\0'; --pc;
@@ -180,9 +177,6 @@ OUString getImageFromFileName(const OUString& aFile)
                         return aImageName;
                 }
             }
-
-            osl_closeFile(hOut);
-            osl_freeProcessHandle(hProcess);
         }
     }
 #endif
@@ -204,8 +198,7 @@ uno::Reference< beans::XPropertySet > createMenuBarUI(
         throw uno::RuntimeException(
             "UpdateCheckJob: unable to obtain service manager from component context", uno::Reference< uno::XInterface > () );
 
-    uno::Reference< beans::XPropertySet > xMenuBarUI =
-        uno::Reference< beans::XPropertySet > (
+    uno::Reference< beans::XPropertySet > xMenuBarUI(
             xServiceManager->createInstanceWithContext( "com.sun.star.setup.UpdateCheckUI", xContext ),
             uno::UNO_QUERY_THROW);
 
@@ -480,7 +473,7 @@ UpdateCheckThread::run()
             rModel.clear();
 
             // last == 0 means check immediately
-            bool checkNow = ! (last > 0);
+            bool checkNow = last <= 0;
 
             // Reset the condition to avoid busy loops
             if( osl::Condition::result_ok == aResult )
@@ -532,9 +525,9 @@ UpdateCheckThread::run()
         }
     }
 
-    catch(const uno::Exception& e) {
+    catch(const uno::Exception&) {
         // Silently catch all errors
-        SAL_WARN("extensions.update", "Caught exception, thread terminated. " << e.Message );
+        TOOLS_WARN_EXCEPTION("extensions.update", "Caught exception, thread terminated" );
     }
 }
 
@@ -547,9 +540,9 @@ ManualUpdateCheckThread::run()
         runCheck( bExtensionsChecked );
         m_aCondition.reset();
     }
-    catch(const uno::Exception& e) {
+    catch(const uno::Exception&) {
         // Silently catch all errors
-        SAL_WARN("extensions.update", "Caught exception, thread terminated. " << e.Message );
+        TOOLS_WARN_EXCEPTION("extensions.update", "Caught exception, thread terminated" );
     }
 }
 
@@ -596,8 +589,9 @@ DownloadThread::run()
     osl_setThreadName("DownloadThread");
 
 #ifdef _WIN32
-    CoUninitialize();
-    CoInitialize( nullptr );
+    int nNbCallCoInitializeExForReinit = 0;
+    // for SystemShellExecute
+    o3tl::safeCoInitializeEx(COINIT_APARTMENTTHREADED, nNbCallCoInitializeExForReinit);
 #endif
 
     while( schedule() )
@@ -635,6 +629,9 @@ DownloadThread::run()
             n=0;
         }
     }
+#ifdef _WIN32
+    o3tl::safeCoUninitializeReinit(COINIT_MULTITHREADED, nNbCallCoInitializeExForReinit);
+#endif
 }
 
 
@@ -762,7 +759,7 @@ UpdateCheck::initialize(const uno::Sequence< beans::NamedValue >& rValues,
                         }
                         else // Calculate initial percent value.
                         {
-                            sal_Int32 nPercent = (sal_Int32) (100 * nFileSize / nDownloadSize);
+                            sal_Int32 nPercent = static_cast<sal_Int32>(100 * nFileSize / nDownloadSize);
                             getUpdateHandler()->setProgress( nPercent );
                         }
                     }
@@ -850,9 +847,10 @@ UpdateCheck::download()
         {
             shutdownThread(true);
 
-            osl::ClearableMutexGuard aGuard2(m_aMutex);
-            enableDownload(true);
-            aGuard2.clear();
+            {
+                osl::MutexGuard aGuard2(m_aMutex);
+                enableDownload(true);
+            }
             setUIState(UPDATESTATE_DOWNLOADING);
         }
     }
@@ -883,17 +881,17 @@ UpdateCheck::install()
         OUString aInstallImage(m_aImageName);
         osl::FileBase::getSystemPathFromFileURL(aInstallImage, aInstallImage);
 
-        OUString aParameter;
         sal_Int32 nFlags;
 #if (defined LINUX || defined __sun)
         nFlags = 42;
-        aParameter = getBaseInstallation();
+        OUString aParameter = getBaseInstallation();
         if( !aParameter.isEmpty() )
             osl::FileBase::getSystemPathFromFileURL(aParameter, aParameter);
 
         aParameter += " &";
 #else
         nFlags = c3s::SystemShellExecuteFlags::DEFAULTS;
+        OUString const aParameter;
 #endif
 
         rtl::Reference< UpdateCheckConfig > rModel = UpdateCheckConfig::get( m_xContext );
@@ -1057,7 +1055,7 @@ UpdateCheck::downloadTargetExists(const OUString& rFileName)
 
 bool UpdateCheck::checkDownloadDestination( const OUString& rFileName )
 {
-    osl::ClearableMutexGuard aGuard(m_aMutex);
+    osl::MutexGuard aGuard(m_aMutex);
 
     rtl::Reference< UpdateHandler > aUpdateHandler( getUpdateHandler() );
 
@@ -1228,20 +1226,14 @@ UpdateCheck::setUpdateInfo(const UpdateInfo& aInfo)
 {
     osl::ClearableMutexGuard aGuard(m_aMutex);
 
-    bool bSuppressBubble = aInfo.BuildId.equals(m_aUpdateInfo.BuildId);
+    bool bSuppressBubble = aInfo.BuildId == m_aUpdateInfo.BuildId;
     m_aUpdateInfo = aInfo;
 
     OSL_ASSERT(DISABLED == m_eState || CHECK_SCHEDULED == m_eState);
 
     // Ignore leading non direct download if we get direct ones
-    std::vector< DownloadSource >::iterator iter = m_aUpdateInfo.Sources.begin();
-    while( iter != m_aUpdateInfo.Sources.end() )
-    {
-        if( iter->IsDirect )
-            break;
-
-        ++iter;
-    }
+    std::vector< DownloadSource >::iterator iter = std::find_if(m_aUpdateInfo.Sources.begin(), m_aUpdateInfo.Sources.end(),
+        [](const DownloadSource& rSource) { return rSource.IsDirect; });
 
     if( (iter != m_aUpdateInfo.Sources.begin()) &&
         (iter != m_aUpdateInfo.Sources.end()) &&
@@ -1256,18 +1248,15 @@ UpdateCheck::setUpdateInfo(const UpdateInfo& aInfo)
     // Decide whether to use alternate release note pos ..
     bool autoDownloadEnabled = rModel->isAutoDownloadEnabled();
 
-    std::vector< ReleaseNote >::iterator iter2 = m_aUpdateInfo.ReleaseNotes.begin();
-    while( iter2 != m_aUpdateInfo.ReleaseNotes.end() )
+    for (auto & elem : m_aUpdateInfo.ReleaseNotes)
     {
-        if( ((1 == iter2->Pos) || (2 == iter2->Pos)) && autoDownloadEnabled && !iter2->URL2.isEmpty())
+        if( ((1 == elem.Pos) || (2 == elem.Pos)) && autoDownloadEnabled && !elem.URL2.isEmpty())
         {
-            iter2->URL = iter2->URL2;
-            (iter2->URL2).clear();
-            iter2->Pos = iter2->Pos2;
-            iter2->Pos2 = 0;
+            elem.URL = elem.URL2;
+            elem.URL2.clear();
+            elem.Pos = elem.Pos2;
+            elem.Pos2 = 0;
         }
-
-        ++iter2;
     }
 
     // do not move below store/clear ..
@@ -1475,8 +1464,6 @@ UpdateCheck::storeReleaseNote(sal_Int8 nNum, const OUString &rURL)
 
 void UpdateCheck::showExtensionDialog()
 {
-    OUString sServiceName = "com.sun.star.deployment.ui.PackageManagerDialog";
-    OUString sArguments = "SHOW_UPDATE_DIALOG";
     uno::Reference< uno::XInterface > xService;
 
     if( ! m_xContext.is() )
@@ -1488,10 +1475,10 @@ void UpdateCheck::showExtensionDialog()
         throw uno::RuntimeException(
             "UpdateCheck::showExtensionDialog(): unable to obtain service manager from component context", uno::Reference< uno::XInterface > () );
 
-    xService = xServiceManager->createInstanceWithContext( sServiceName, m_xContext );
+    xService = xServiceManager->createInstanceWithContext( "com.sun.star.deployment.ui.PackageManagerDialog", m_xContext );
     uno::Reference< task::XJobExecutor > xExecuteable( xService, uno::UNO_QUERY );
     if ( xExecuteable.is() )
-        xExecuteable->trigger( sArguments );
+        xExecuteable->trigger( "SHOW_UPDATE_DIALOG" );
 }
 
 

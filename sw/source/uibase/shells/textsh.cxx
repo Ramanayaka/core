@@ -22,44 +22,34 @@
 #include <hintids.hxx>
 #include <comphelper/string.hxx>
 #include <svl/globalnameitem.hxx>
-#include <svl/ownlist.hxx>
+#include <sfx2/bindings.hxx>
 #include <sfx2/frmdescr.hxx>
 #include <sfx2/objface.hxx>
-#include <sfx2/lnkbase.hxx>
+#include <sfx2/viewfrm.hxx>
 
-#include <vcl/errinf.hxx>
-#include <svx/svdview.hxx>
+#include <i18nutil/transliteration.hxx>
+#include <svl/eitem.hxx>
 #include <svl/ptitem.hxx>
 #include <svl/stritem.hxx>
 #include <unotools/moduleoptions.hxx>
-#include <vcl/msgbox.hxx>
-#include <sfx2/fcontnr.hxx>
 #include <svx/hlnkitem.hxx>
-#include <svl/srchitem.hxx>
-#include <sfx2/dispatch.hxx>
-#include <sfx2/docfile.hxx>
-#include <svl/urihelper.hxx>
-#include <basic/sbxvar.hxx>
 #include <svl/whiter.hxx>
 #include <sfx2/request.hxx>
-#include <editeng/opaqitem.hxx>
 #include <editeng/fontitem.hxx>
-#include <editeng/adjustitem.hxx>
 #include <editeng/boxitem.hxx>
 #include <editeng/sizeitem.hxx>
 #include <editeng/svxacorr.hxx>
 #include <editeng/scripttypeitem.hxx>
-#include <vcl/graphicfilter.hxx>
 #include <sfx2/htmlmode.hxx>
 #include <svtools/htmlcfg.hxx>
 #include <com/sun/star/embed/Aspects.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 
 #include <comphelper/classids.hxx>
 #include <editeng/acorrcfg.hxx>
 #include <wdocsh.hxx>
 #include <fmtinfmt.hxx>
 #include <fmtclds.hxx>
-#include <fmtsrnd.hxx>
 #include <fmtfsize.hxx>
 #include <swmodule.hxx>
 #include <wrtsh.hxx>
@@ -75,44 +65,51 @@
 #include <frmfmt.hxx>
 #include <tablemgr.hxx>
 #include <swundo.hxx>
-#include <shellio.hxx>
-#include <frmdlg.hxx>
-#include <usrpref.hxx>
-#include <swtable.hxx>
-#include <tblafmt.hxx>
-#include <caption.hxx>
-#include <idxmrk.hxx>
-#include <poolfmt.hxx>
 #include <breakit.hxx>
-#include <modcfg.hxx>
-#include <column.hxx>
 #include <edtwin.hxx>
-#include <shells.hrc>
-#include <swerror.h>
+#include <strings.hrc>
 #include <unochart.hxx>
-
 #include <chartins.hxx>
+#include <viewopt.hxx>
 
-#define SwTextShell
+#define ShellClass_SwTextShell
 #include <sfx2/msg.hxx>
 #include <vcl/EnumContext.hxx>
 #include <swslots.hxx>
 #include <SwRewriter.hxx>
-#include <comcore.hrc>
+#include <SwCapObjType.hxx>
 
 using namespace ::com::sun::star;
 
 #include <svx/svxdlg.hxx>
-#include <svx/dialogs.hrc>
-#include "swabstdlg.hxx"
-#include <misc.hrc>
-#include <table.hrc>
-#include <frmui.hrc>
-#include <unomid.h>
+#include <swabstdlg.hxx>
 #include <IDocumentDrawModelAccess.hxx>
 #include <drawdoc.hxx>
+#include <svtools/embedhlp.hxx>
+#include <sfx2/event.hxx>
+#include <com/sun/star/ui/dialogs/DialogClosedEvent.hpp>
+#include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
+#include <IDocumentUndoRedo.hxx>
 
 SFX_IMPL_INTERFACE(SwTextShell, SwBaseShell)
+
+IMPL_STATIC_LINK( SwTextShell, DialogClosedHdl, css::ui::dialogs::DialogClosedEvent*, pEvent, void )
+{
+    SwView* pView = ::GetActiveView();
+    SwWrtShell& rWrtShell = pView->GetWrtShell();
+
+    sal_Int16 nDialogRet = pEvent->DialogResult;
+    if( nDialogRet == ui::dialogs::ExecutableDialogResults::CANCEL )
+    {
+        rWrtShell.Undo();
+        rWrtShell.GetIDocumentUndoRedo().ClearRedo();
+    }
+    else
+    {
+        OSL_ENSURE( nDialogRet == ui::dialogs::ExecutableDialogResults::OK,
+            "dialog execution failed" );
+    }
+}
 
 void SwTextShell::InitInterface_Impl()
 {
@@ -164,7 +161,9 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
             SvxAutoCorrect* pACorr = rACfg.GetAutoCorrect();
             if( pACorr && rACfg.IsAutoFormatByInput()
                 && pACorr->IsAutoCorrFlag(
-                    CapitalStartSentence | CapitalStartWord | AddNonBrkSpace | ChgOrdinalNumber | ChgToEnEmDash | SetINetAttr | Autocorrect ) )
+                    ACFlags::CapitalStartSentence | ACFlags::CapitalStartWord |
+                    ACFlags::AddNonBrkSpace | ACFlags::ChgOrdinalNumber | ACFlags::TransliterateRTL |
+                    ACFlags::ChgToEnEmDash | ACFlags::SetINetAttr | ACFlags::Autocorrect ) )
             {
                 rSh.AutoCorrect( *pACorr, cIns );
             }
@@ -175,6 +174,7 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
         }
         break;
 
+    case FN_INSERT_NNBSP: // shift+mod2/alt+space inserts some other character w/o going through SwEditWin::KeyInput(), at least on macOS
     case SID_INSERT_RLM :
     case SID_INSERT_LRM :
     case SID_INSERT_ZWNBSP :
@@ -187,6 +187,7 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
             case SID_INSERT_LRM : cIns = CHAR_LRM ; break;
             case SID_INSERT_ZWSP : cIns = CHAR_ZWSP ; break;
             case SID_INSERT_ZWNBSP: cIns = CHAR_ZWNBSP; break;
+            case FN_INSERT_NNBSP: cIns = CHAR_NNBSP; break;
         }
         rSh.Insert( OUString( cIns ) );
     }
@@ -271,15 +272,14 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
                 try
                 {
                     ScrollingMode eScroll = ScrollingMode::Auto;
-                    if( pScrollingItem && pScrollingItem->GetValue() <= (int)ScrollingMode::Auto )
-                        eScroll = (ScrollingMode) pScrollingItem->GetValue();
+                    if( pScrollingItem && pScrollingItem->GetValue() <= int(ScrollingMode::Auto) )
+                        eScroll = static_cast<ScrollingMode>(pScrollingItem->GetValue());
 
                     Size aMargin;
                     if ( pMarginItem )
                         aMargin = pMarginItem->GetSize();
 
-                    if ( pURLItem )
-                        xSet->setPropertyValue("FrameURL", uno::makeAny( pURLItem->GetValue() ) );
+                    xSet->setPropertyValue("FrameURL", uno::makeAny( pURLItem->GetValue() ) );
                     if ( pNameItem )
                         xSet->setPropertyValue("FrameName", uno::makeAny( pNameItem->GetValue() ) );
 
@@ -324,7 +324,7 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
                 break;
             if(!rReq.IsAPI())
             {
-                SwInsertChart();
+                SwInsertChart( LINK( this, SwTextShell, DialogClosedHdl ) );
             }
             else
             {
@@ -398,12 +398,12 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
             Size aWinSize = rEdtWin.GetSizePixel();
             Point aStartPos(aWinSize.Width()/2, aWinSize.Height() / 2);
             aStartPos = rEdtWin.PixelToLogic(aStartPos);
-            aStartPos.X() -= 8 * MM50;
-            aStartPos.Y() -= 4 * MM50;
+            aStartPos.AdjustX( -(8 * MM50) );
+            aStartPos.AdjustY( -(4 * MM50) );
             Size aSize(16 * MM50, 8 * MM50);
             GetShell().LockPaint();
             GetShell().StartAllAction();
-            SwFlyFrameAttrMgr aMgr( true, GetShellPtr(), Frmmgr_Type::TEXT );
+            SwFlyFrameAttrMgr aMgr( true, GetShellPtr(), Frmmgr_Type::TEXT, nullptr );
             if(nCols > 1)
             {
                 SwFormatCol aCol;
@@ -434,15 +434,15 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
 
         }
         // Create new border
-        SwFlyFrameAttrMgr aMgr( true, GetShellPtr(), Frmmgr_Type::TEXT );
+        SwFlyFrameAttrMgr aMgr( true, GetShellPtr(), Frmmgr_Type::TEXT, nullptr );
         if(pArgs)
         {
             Size aSize(aMgr.GetSize());
-            aSize.Width() = GetShell().GetAnyCurRect(CurRectType::PagePrt).Width();
+            aSize.setWidth( GetShell().GetAnyCurRect(CurRectType::PagePrt).Width() );
             Point aPos = aMgr.GetPos();
             RndStdIds eAnchor = RndStdIds::FLY_AT_PARA;
             if(pArgs->GetItemState(nSlot, false, &pItem) == SfxItemState::SET)
-                eAnchor = (RndStdIds)static_cast<const SfxUInt16Item *>(pItem)->GetValue();
+                eAnchor = static_cast<RndStdIds>(static_cast<const SfxUInt16Item *>(pItem)->GetValue());
             if(pArgs->GetItemState(FN_PARAM_1, false, &pItem)  == SfxItemState::SET)
                 aPos = static_cast<const SfxPointItem *>(pItem)->GetValue();
             if(pArgs->GetItemState(FN_PARAM_2, false, &pItem)  == SfxItemState::SET)
@@ -474,12 +474,10 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
             FieldUnit eMetric = ::GetDfltMetric(dynamic_cast<SwWebDocShell*>( GetView().GetDocShell()) != nullptr );
             SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)));
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            OSL_ENSURE(pFact, "Dialog creation failed!");
             ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateFrameTabDialog("FrameDialog",
                                                   GetView().GetViewFrame(),
-                                                  &GetView().GetViewFrame()->GetWindow(),
+                                                  GetView().GetFrameWeld(),
                                                   aSet));
-            OSL_ENSURE(pDlg, "Dialog creation failed!");
             if(pDlg->Execute() == RET_OK && pDlg->GetOutputItemSet())
             {
                 //local variable necessary at least after call of .AutoCaption() because this could be deleted at this point
@@ -502,10 +500,10 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
                 if ( xRecorder.is() )
                 {
                     //FN_INSERT_FRAME
-                    sal_uInt16 nAnchor = (sal_uInt16)aMgr.GetAnchor();
-                        rReq.AppendItem(SfxUInt16Item(nSlot, nAnchor));
-                        rReq.AppendItem(SfxPointItem(FN_PARAM_1, rShell.GetObjAbsPos()));
-                        rReq.AppendItem(SvxSizeItem(FN_PARAM_2, rShell.GetObjSize()));
+                    sal_uInt16 nAnchor = static_cast<sal_uInt16>(aMgr.GetAnchor());
+                    rReq.AppendItem(SfxUInt16Item(nSlot, nAnchor));
+                    rReq.AppendItem(SfxPointItem(FN_PARAM_1, rShell.GetObjAbsPos()));
+                    rReq.AppendItem(SvxSizeItem(FN_PARAM_2, rShell.GetObjSize()));
                     rReq.Done();
                 }
 
@@ -527,10 +525,10 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
     case FN_FORMAT_COLUMN :
     {
         SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-        OSL_ENSURE(pFact, "Dialog creation failed!");
-        ScopedVclPtr<VclAbstractDialog> pColDlg(pFact->CreateVclAbstractDialog( GetView().GetWindow(), rSh, DLG_COLUMN));
-        OSL_ENSURE(pColDlg, "Dialog creation failed!");
-        pColDlg->Execute();
+        VclPtr<VclAbstractDialog> pColDlg(pFact->CreateSwColumnDialog(GetView().GetFrameWeld(), rSh));
+        pColDlg->StartExecuteAsync([=](sal_Int32 /*nResult*/){
+            pColDlg->disposeOnce();
+        });
     }
     break;
 
@@ -646,15 +644,15 @@ void SwTextShell::StateInsert( SfxItemSet &rSet )
                         aHLinkItem.SetURL(pINetFormat->GetValue());
                         aHLinkItem.SetTargetFrame(pINetFormat->GetTargetFrame());
                         aHLinkItem.SetIntName(pINetFormat->GetName());
-                        const SvxMacro *pMacro = pINetFormat->GetMacro( SFX_EVENT_MOUSEOVER_OBJECT );
+                        const SvxMacro *pMacro = pINetFormat->GetMacro( SvMacroItemId::OnMouseOver );
                         if( pMacro )
                             aHLinkItem.SetMacro(HyperDialogEvent::MouseOverObject, *pMacro);
 
-                        pMacro = pINetFormat->GetMacro( SFX_EVENT_MOUSECLICK_OBJECT );
+                        pMacro = pINetFormat->GetMacro( SvMacroItemId::OnClick );
                         if( pMacro )
                             aHLinkItem.SetMacro(HyperDialogEvent::MouseClickObject, *pMacro);
 
-                        pMacro = pINetFormat->GetMacro( SFX_EVENT_MOUSEOUT_OBJECT );
+                        pMacro = pINetFormat->GetMacro( SvMacroItemId::OnMouseOut );
                         if( pMacro )
                             aHLinkItem.SetMacro(HyperDialogEvent::MouseOutObject, *pMacro);
 
@@ -680,7 +678,7 @@ void SwTextShell::StateInsert( SfxItemSet &rSet )
                         aHLinkItem.SetName(comphelper::string::stripEnd(sReturn, ' '));
                     }
 
-                    aHLinkItem.SetInsertMode((SvxLinkInsertMode)(aHLinkItem.GetInsertMode() |
+                    aHLinkItem.SetInsertMode(static_cast<SvxLinkInsertMode>(aHLinkItem.GetInsertMode() |
                         (bHtmlModeOn ? HLINK_HTMLMODE : 0)));
                     aHLinkItem.SetMacroEvents ( HyperDialogEvent::MouseOverObject|
                         HyperDialogEvent::MouseClickObject | HyperDialogEvent::MouseOutObject );
@@ -774,7 +772,7 @@ void  SwTextShell::ExecDelete(SfxRequest &rReq)
     rReq.Done();
 }
 
-void SwTextShell::ExecTransliteration( SfxRequest & rReq )
+void SwTextShell::ExecTransliteration( SfxRequest const & rReq )
 {
     using namespace ::com::sun::star::i18n;
     TransliterationFlags nMode = TransliterationFlags::NONE;
@@ -807,7 +805,7 @@ void SwTextShell::ExecTransliteration( SfxRequest & rReq )
     case SID_TRANSLITERATE_HIRAGANA:
         nMode = TransliterationFlags::KATAKANA_HIRAGANA;
         break;
-    case SID_TRANSLITERATE_KATAGANA:
+    case SID_TRANSLITERATE_KATAKANA:
         nMode = TransliterationFlags::HIRAGANA_KATAKANA;
         break;
 
@@ -819,7 +817,7 @@ void SwTextShell::ExecTransliteration( SfxRequest & rReq )
         GetShell().TransliterateText( nMode );
 }
 
-void SwTextShell::ExecRotateTransliteration( SfxRequest & rReq )
+void SwTextShell::ExecRotateTransliteration( SfxRequest const & rReq )
 {
     if( rReq.GetSlot() == SID_TRANSLITERATE_ROTATE_CASE )
         GetShell().TransliterateText( m_aRotateCase.getNextMode() );
@@ -847,6 +845,7 @@ SfxItemSet SwTextShell::CreateInsertFrameItemSet(SwFlyFrameAttrMgr& rMgr)
         FN_SET_FRM_NAME,        FN_SET_FRM_NAME,
         SID_HTML_MODE,          SID_HTML_MODE,
         SID_COLOR_TABLE,        SID_PATTERN_LIST,
+        XATTR_FILL_FIRST,       XATTR_FILL_LAST, // tdf#95003
         0
     };
 
@@ -857,12 +856,12 @@ SfxItemSet SwTextShell::CreateInsertFrameItemSet(SwFlyFrameAttrMgr& rMgr)
     GetShell().GetDoc()->getIDocumentDrawModelAccess().GetDrawModel()->PutAreaListItems(aSet);
 
     const SwRect &rPg = GetShell().GetAnyCurRect(CurRectType::Page);
-    SwFormatFrameSize aFrameSize(ATT_VAR_SIZE, rPg.Width(), rPg.Height());
+    SwFormatFrameSize aFrameSize(SwFrameSize::Variable, rPg.Width(), rPg.Height());
     aFrameSize.SetWhich(GetPool().GetWhich(SID_ATTR_PAGE_SIZE));
     aSet.Put(aFrameSize);
 
     const SwRect &rPr = GetShell().GetAnyCurRect(CurRectType::PagePrt);
-    SwFormatFrameSize aPrtSize(ATT_VAR_SIZE, rPr.Width(), rPr.Height());
+    SwFormatFrameSize aPrtSize(SwFrameSize::Variable, rPr.Width(), rPr.Height());
     aPrtSize.SetWhich(GetPool().GetWhich(FN_GET_PRINT_AREA));
     aSet.Put(aPrtSize);
 
@@ -870,8 +869,8 @@ SfxItemSet SwTextShell::CreateInsertFrameItemSet(SwFlyFrameAttrMgr& rMgr)
     aSet.SetParent( rMgr.GetAttrSet().GetParent() );
 
     // Delete minimum size in columns.
-    SvxBoxInfoItem aBoxInfo(static_cast<const SvxBoxInfoItem &>(aSet.Get(SID_ATTR_BORDER_INNER)));
-    const SvxBoxItem& rBox = static_cast<const SvxBoxItem&>(aSet.Get(RES_BOX));
+    SvxBoxInfoItem aBoxInfo(aSet.Get(SID_ATTR_BORDER_INNER));
+    const SvxBoxItem& rBox = aSet.Get(RES_BOX);
     aBoxInfo.SetMinDist(false);
     aBoxInfo.SetDefDist(rBox.GetDistance(SvxBoxItemLine::LEFT));
     aSet.Put(aBoxInfo);
@@ -904,21 +903,26 @@ void SwTextShell::InsertSymbol( SfxRequest& rReq )
     rSh.GetCurAttr( aSet );
     SvtScriptType nScript = rSh.GetScriptType();
 
-    SvxFontItem aFont( RES_CHRATR_FONT );
+    std::shared_ptr<SvxFontItem> aFont(std::make_shared<SvxFontItem>(RES_CHRATR_FONT));
     {
         SvxScriptSetItem aSetItem( SID_ATTR_CHAR_FONT, *aSet.GetPool() );
         aSetItem.GetItemSet().Put( aSet, false );
         const SfxPoolItem* pI = aSetItem.GetItemOfScript( nScript );
         if( pI )
-            aFont = *static_cast<const SvxFontItem*>(pI);
+        {
+            aFont.reset(static_cast<SvxFontItem*>(pI->Clone()));
+        }
         else
-            aFont = static_cast<const SvxFontItem&>(
+        {
+            aFont.reset(static_cast<SvxFontItem*>(
                         aSet.Get(
                             GetWhichOfScript(
                                 RES_CHRATR_FONT,
-                                SvtLanguageOptions::GetI18NScriptTypeOfLanguage( GetAppLanguage() ) )));
+                                SvtLanguageOptions::GetI18NScriptTypeOfLanguage( GetAppLanguage() ) )).Clone()));
+        }
+
         if (aFontName.isEmpty())
-            aFontName = aFont.GetFamilyName();
+            aFontName = aFont->GetFamilyName();
     }
 
     vcl::Font aNewFont(aFontName, Size(1,1)); // Size only because CTOR.
@@ -929,126 +933,116 @@ void SwTextShell::InsertSymbol( SfxRequest& rReq )
         aAllSet.Put( SfxBoolItem( FN_PARAM_1, false ) );
 
         SwViewOption aOpt(*GetShell().GetViewOptions());
-        OUString sSymbolFont = aOpt.GetSymbolFont();
+        const OUString& sSymbolFont = aOpt.GetSymbolFont();
         if( aFontName.isEmpty() && !sSymbolFont.isEmpty() )
             aAllSet.Put( SfxStringItem( SID_FONT_NAME, sSymbolFont ) );
         else
-            aAllSet.Put( SfxStringItem( SID_FONT_NAME, aFont.GetFamilyName() ) );
+            aAllSet.Put( SfxStringItem( SID_FONT_NAME, aFont->GetFamilyName() ) );
 
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-        ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateSfxDialog( GetView().GetWindow(), aAllSet,
-            GetView().GetViewFrame()->GetFrame().GetFrameInterface(), RID_SVXDLG_CHARMAP ));
-        if( RET_OK == pDlg->Execute() )
-        {
-            const SfxStringItem* pCItem = SfxItemSet::GetItem<SfxStringItem>(pDlg->GetOutputItemSet(), SID_CHARMAP, false);
-            const SvxFontItem* pFontItem = SfxItemSet::GetItem<SvxFontItem>(pDlg->GetOutputItemSet(), SID_ATTR_CHAR_FONT, false);
-            if ( pFontItem )
-            {
-                aNewFont.SetFamilyName( pFontItem->GetFamilyName() );
-                aNewFont.SetStyleName( pFontItem->GetStyleName() );
-                aNewFont.SetCharSet( pFontItem->GetCharSet() );
-                aNewFont.SetPitch( pFontItem->GetPitch() );
-            }
+        auto xFrame = GetView().GetViewFrame()->GetFrame().GetFrameInterface();
+        ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateCharMapDialog(GetView().GetFrameWeld(), aAllSet, xFrame));
+        pDlg->Execute();
+        return;
+    }
 
-            if ( pCItem )
-            {
-                aChars  = pCItem->GetValue();
-                aOpt.SetSymbolFont(aNewFont.GetFamilyName());
-                SW_MOD()->ApplyUsrPref(aOpt, &GetView());
-            }
+    if( aChars.isEmpty() )
+        return;
+
+    rSh.StartAllAction();
+
+    // Delete selected content.
+    SwRewriter aRewriter;
+    aRewriter.AddRule(UndoArg1, SwResId(STR_SPECIALCHAR));
+
+    rSh.StartUndo( SwUndoId::INSERT, &aRewriter );
+    if ( rSh.HasSelection() )
+    {
+        rSh.DelRight();
+        aSet.ClearItem();
+        rSh.GetCurAttr( aSet );
+
+        SvxScriptSetItem aSetItem( SID_ATTR_CHAR_FONT, *aSet.GetPool() );
+        aSetItem.GetItemSet().Put( aSet, false );
+        const SfxPoolItem* pI = aSetItem.GetItemOfScript( nScript );
+        if( pI )
+        {
+            aFont.reset(static_cast<SvxFontItem*>(pI->Clone()));
+        }
+        else
+        {
+            aFont.reset(static_cast<SvxFontItem*>(aSet.Get( GetWhichOfScript(
+                        RES_CHRATR_FONT,
+                        SvtLanguageOptions::GetI18NScriptTypeOfLanguage( GetAppLanguage() ) )).Clone()));
         }
     }
 
-    if( !aChars.isEmpty() )
+    // Insert character.
+    rSh.Insert( aChars );
+
+    // #108876# a font attribute has to be set always due to a guessed script type
+    if( !aNewFont.GetFamilyName().isEmpty() )
     {
-        rSh.StartAllAction();
+        std::unique_ptr<SvxFontItem> aNewFontItem(aFont->Clone());
+        aNewFontItem->SetFamilyName( aNewFont.GetFamilyName() );
+        aNewFontItem->SetFamily(  aNewFont.GetFamilyType());
+        aNewFontItem->SetPitch(   aNewFont.GetPitch());
+        aNewFontItem->SetCharSet( aNewFont.GetCharSet() );
 
-        // Delete selected content.
-        SwRewriter aRewriter;
-        aRewriter.AddRule(UndoArg1, SwResId(STR_SPECIALCHAR));
+        SfxItemSet aRestoreSet( GetPool(), svl::Items<RES_CHRATR_FONT, RES_CHRATR_FONT,
+                                           RES_CHRATR_CJK_FONT, RES_CHRATR_CJK_FONT,
+                                           RES_CHRATR_CTL_FONT, RES_CHRATR_CTL_FONT>{} );
 
-        rSh.StartUndo( SwUndoId::INSERT, &aRewriter );
-        if ( rSh.HasSelection() )
+        nScript = g_pBreakIt->GetAllScriptsOfText( aChars );
+        if( SvtScriptType::LATIN & nScript )
         {
-            rSh.DelRight();
-            aSet.ClearItem();
-            rSh.GetCurAttr( aSet );
-
-            SvxScriptSetItem aSetItem( SID_ATTR_CHAR_FONT, *aSet.GetPool() );
-            aSetItem.GetItemSet().Put( aSet, false );
-            const SfxPoolItem* pI = aSetItem.GetItemOfScript( nScript );
-            if( pI )
-                aFont = *static_cast<const SvxFontItem*>(pI);
-            else
-                aFont = static_cast<const SvxFontItem&>(aSet.Get( GetWhichOfScript(
-                            RES_CHRATR_FONT,
-                            SvtLanguageOptions::GetI18NScriptTypeOfLanguage( GetAppLanguage() ) )));
+            aRestoreSet.Put( aSet.Get( RES_CHRATR_FONT ) );
+            aNewFontItem->SetWhich(RES_CHRATR_FONT);
+            aSet.Put( *aNewFontItem );
+        }
+        if( SvtScriptType::ASIAN & nScript )
+        {
+            aRestoreSet.Put( aSet.Get( RES_CHRATR_CJK_FONT ) );
+            aNewFontItem->SetWhich(RES_CHRATR_CJK_FONT);
+            aSet.Put( *aNewFontItem );
+        }
+        if( SvtScriptType::COMPLEX & nScript )
+        {
+            aRestoreSet.Put( aSet.Get( RES_CHRATR_CTL_FONT ) );
+            aNewFontItem->SetWhich(RES_CHRATR_CTL_FONT);
+            aSet.Put( *aNewFontItem );
         }
 
-        // Insert character.
-        rSh.Insert( aChars );
+        rSh.SetMark();
+        rSh.ExtendSelection( false, aChars.getLength() );
+        rSh.SetAttrSet( aSet, SetAttrMode::DONTEXPAND | SetAttrMode::NOFORMATATTR );
+        if( !rSh.IsCursorPtAtEnd() )
+            rSh.SwapPam();
 
-        // #108876# a font attribute has to be set always due to a guessed script type
-        if( !aNewFont.GetFamilyName().isEmpty() )
-        {
-            SvxFontItem aNewFontItem( aFont );
-            aNewFontItem.SetFamilyName( aNewFont.GetFamilyName() );
-            aNewFontItem.SetFamily(  aNewFont.GetFamilyType());
-            aNewFontItem.SetPitch(   aNewFont.GetPitch());
-            aNewFontItem.SetCharSet( aNewFont.GetCharSet() );
+        rSh.ClearMark();
 
-            SfxItemSet aRestoreSet( GetPool(), svl::Items<RES_CHRATR_FONT, RES_CHRATR_FONT,
-                                               RES_CHRATR_CJK_FONT, RES_CHRATR_CJK_FONT,
-                                               RES_CHRATR_CTL_FONT, RES_CHRATR_CTL_FONT>{} );
+        // #i75891#
+        // SETATTR_DONTEXPAND does not work if there are already hard attributes.
+        // Therefore we have to restore the font attributes.
+        rSh.SetMark();
+        rSh.SetAttrSet( aRestoreSet );
+        rSh.ClearMark();
 
-            nScript = g_pBreakIt->GetAllScriptsOfText( aChars );
-            if( SvtScriptType::LATIN & nScript )
-            {
-                aRestoreSet.Put( aSet.Get( RES_CHRATR_FONT ) );
-                aNewFontItem.SetWhich(RES_CHRATR_FONT);
-                aSet.Put( aNewFontItem );
-            }
-            if( SvtScriptType::ASIAN & nScript )
-            {
-                aRestoreSet.Put( aSet.Get( RES_CHRATR_CJK_FONT ) );
-                aNewFontItem.SetWhich(RES_CHRATR_CJK_FONT);
-                aSet.Put( aNewFontItem );
-            }
-            if( SvtScriptType::COMPLEX & nScript )
-            {
-                aRestoreSet.Put( aSet.Get( RES_CHRATR_CTL_FONT ) );
-                aNewFontItem.SetWhich(RES_CHRATR_CTL_FONT);
-                aSet.Put( aNewFontItem );
-            }
+        rSh.UpdateAttr();
 
-            rSh.SetMark();
-            rSh.ExtendSelection( false, aChars.getLength() );
-            rSh.SetAttrSet( aSet, SetAttrMode::DONTEXPAND | SetAttrMode::NOFORMATATTR );
-            if( !rSh.IsCursorPtAtEnd() )
-                rSh.SwapPam();
+        // Why was this done? aFont is not used anymore below, we are not
+        // in a loop and it's a local variable...?
+        // aFont = aNewFontItem;
+    }
 
-            rSh.ClearMark();
+    rSh.EndAllAction();
+    rSh.EndUndo();
 
-            // #i75891#
-            // SETATTR_DONTEXPAND does not work if there are already hard attributes.
-            // Therefore we have to restore the font attributes.
-            rSh.SetMark();
-            rSh.SetAttrSet( aRestoreSet );
-            rSh.ClearMark();
-
-            rSh.UpdateAttr();
-            aFont = aNewFontItem;
-        }
-
-        rSh.EndAllAction();
-        rSh.EndUndo();
-
-        if ( !aChars.isEmpty() )
-        {
-            rReq.AppendItem( SfxStringItem( GetPool().GetWhich(SID_CHARMAP), aChars ) );
-            rReq.AppendItem( SfxStringItem( SID_ATTR_SPECIALCHAR, aNewFont.GetFamilyName() ) );
-            rReq.Done();
-        }
+    if ( !aChars.isEmpty() )
+    {
+        rReq.AppendItem( SfxStringItem( GetPool().GetWhich(SID_CHARMAP), aChars ) );
+        rReq.AppendItem( SfxStringItem( SID_ATTR_SPECIALCHAR, aNewFont.GetFamilyName() ) );
+        rReq.Done();
     }
 }
 

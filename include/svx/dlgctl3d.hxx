@@ -20,12 +20,12 @@
 #ifndef INCLUDED_SVX_DLGCTL3D_HXX
 #define INCLUDED_SVX_DLGCTL3D_HXX
 
-#include <vcl/ctrl.hxx>
-#include <vcl/scrbar.hxx>
-#include <vcl/button.hxx>
+#include <vcl/customweld.hxx>
+#include <vcl/weld.hxx>
 #include <svl/itemset.hxx>
 #include <svx/svxdllapi.h>
 #include <basegfx/vector/b3dvector.hxx>
+#include <memory>
 
 class FmFormModel;
 class FmFormPage;
@@ -35,12 +35,12 @@ class E3dScene;
 
 enum class SvxPreviewObjectType { SPHERE, CUBE };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC Svx3DPreviewControl : public Control
+class SAL_WARN_UNUSED SVX_DLLPUBLIC Svx3DPreviewControl : public weld::CustomWidgetController
 {
 protected:
-    FmFormModel*            mpModel;
+    std::unique_ptr<FmFormModel> mpModel;
     FmFormPage*             mpFmPage;
-    E3dView*                mp3DView;
+    std::unique_ptr<E3dView> mp3DView;
     E3dScene*               mpScene;
     E3dObject*              mp3DObj;
     SvxPreviewObjectType    mnObjectType;
@@ -48,22 +48,21 @@ protected:
     void Construct();
 
 public:
-    Svx3DPreviewControl(vcl::Window* pParent, WinBits nStyle = 0);
+    Svx3DPreviewControl();
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
     virtual ~Svx3DPreviewControl() override;
-    virtual void dispose() override;
 
     virtual void Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-    virtual void MouseButtonDown( const MouseEvent& rMEvt ) override;
+    virtual bool MouseButtonDown( const MouseEvent& rMEvt ) override;
     virtual void Resize() override;
-    virtual Size GetOptimalSize() const override;
 
     virtual void SetObjectType(SvxPreviewObjectType nType);
     SvxPreviewObjectType GetObjectType() const { return mnObjectType; }
-    SfxItemSet Get3DAttributes() const;
+    SfxItemSet const & Get3DAttributes() const;
     virtual void Set3DAttributes(const SfxItemSet& rAttr);
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC Svx3DLightControl : public Svx3DPreviewControl
+class SAL_WARN_UNUSED SVX_DLLPUBLIC Svx3DLightControl final : public Svx3DPreviewControl
 {
     // Callback for interactive changes
     Link<Svx3DLightControl*,void>  maChangeCallback;
@@ -90,6 +89,7 @@ class SAL_WARN_UNUSED SVX_DLLPUBLIC Svx3DLightControl : public Svx3DPreviewContr
     double                      mfSaveActionStartRotZ;
 
     bool                        mbMouseMoved : 1;
+    bool                        mbMouseCaptured : 1;
     bool                        mbGeometrySelected : 1;
 
     void Construct2();
@@ -98,11 +98,14 @@ class SAL_WARN_UNUSED SVX_DLLPUBLIC Svx3DLightControl : public Svx3DPreviewContr
     void TrySelection(Point aPosPixel);
 
 public:
-    Svx3DLightControl(vcl::Window* pParent, WinBits nStyle);
+    Svx3DLightControl();
 
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
     virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
-    virtual void MouseButtonDown(const MouseEvent& rMEvt) override;
-    virtual void Tracking( const TrackingEvent& rTEvt ) override;
+    virtual tools::Rectangle GetFocusRect() override;
+    virtual bool MouseButtonDown(const MouseEvent& rMEvt) override;
+    virtual bool MouseMove( const MouseEvent& rMEvt ) override;
+    virtual bool MouseButtonUp( const MouseEvent& rMEvt ) override;
     virtual void Resize() override;
 
     virtual void SetObjectType(SvxPreviewObjectType nType) override;
@@ -113,7 +116,7 @@ public:
 
     // selection checks
     bool IsSelectionValid();
-    bool IsGeometrySelected() { return mbGeometrySelected; }
+    bool IsGeometrySelected() const { return mbGeometrySelected; }
 
     // get/set position of selected lamp in polar coordinates, Hor:[0..360.0[ and Ver:[-90..90] degrees
     void GetPosition(double& rHor, double& rVer);
@@ -125,7 +128,7 @@ public:
 
     void SelectLight(sal_uInt32 nLightNumber);
     virtual void Set3DAttributes(const SfxItemSet& rAttr) override;
-    sal_uInt32 GetSelectedLight() { return maSelectedLight; }
+    sal_uInt32 GetSelectedLight() const { return maSelectedLight; }
 
     // light data access
     bool GetLightOnOff(sal_uInt32 nNum) const;
@@ -133,56 +136,48 @@ public:
     basegfx::B3DVector GetLightDirection(sal_uInt32 nNum) const;
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxLightCtl3D : public Control
+class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxLightCtl3D
 {
-private:
     // local controls
-    VclPtr<Svx3DLightControl>  maLightControl;
-    VclPtr<ScrollBar>          maHorScroller;
-    VclPtr<ScrollBar>          maVerScroller;
-    VclPtr<PushButton>         maSwitcher;
+    Svx3DLightControl& mrLightControl;
+    weld::Scale& mrHorScroller;
+    weld::Scale& mrVerScroller;
+    weld::Button& mrSwitcher;
 
     // callback for interactive changes
     Link<SvxLightCtl3D*,void>  maUserInteractiveChangeCallback;
     Link<SvxLightCtl3D*,void>  maUserSelectionChangeCallback;
 
 public:
-    SvxLightCtl3D(vcl::Window* pParent);
-    virtual ~SvxLightCtl3D() override;
-    virtual void dispose() override;
-
-    // react to size changes
-    virtual void Resize() override;
-    void NewLayout();
+    SvxLightCtl3D(Svx3DLightControl& rLightControl, weld::Scale& rHori,
+               weld::Scale& rVert, weld::Button& rButton);
+    ~SvxLightCtl3D();
 
     // check the selection for validity
     void CheckSelection();
 
     // bring further settings to the outside world
-    Svx3DLightControl& GetSvx3DLightControl() { return *maLightControl.get(); }
+    Svx3DLightControl& GetSvx3DLightControl() { return mrLightControl; }
 
     // register user callback
     void SetUserInteractiveChangeCallback(Link<SvxLightCtl3D*,void> aNew) { maUserInteractiveChangeCallback = aNew; }
     void SetUserSelectionChangeCallback(Link<SvxLightCtl3D*,void> aNew) { maUserSelectionChangeCallback = aNew; }
 
-    virtual void KeyInput( const KeyEvent& rKEvt ) override;
-    virtual void GetFocus() override;
-    virtual void LoseFocus() override;
+private:
 
-    virtual Size GetOptimalSize() const override;
-
-protected:
-
-    DECL_LINK( InternalInteractiveChange, Svx3DLightControl*, void);
-    DECL_LINK( InternalSelectionChange, Svx3DLightControl*, void);
-    DECL_LINK( ScrollBarMove, ScrollBar*, void);
-    DECL_LINK( ButtonPress, Button*, void);
+    DECL_LINK(InternalInteractiveChange, Svx3DLightControl*, void);
+    DECL_LINK(InternalSelectionChange, Svx3DLightControl*, void);
+    DECL_LINK(ScrollBarMove, weld::Scale&, void);
+    DECL_LINK(ButtonPress, weld::Button&, void);
+    DECL_LINK(KeyInput, const KeyEvent&, bool);
+    DECL_LINK(FocusIn, weld::Widget&, void);
 
     // initialize local parameters
     void Init();
 
     void move( double fDeltaHor, double fDeltaVer );
 };
+
 
 #endif // _SCH_DLGCTL3D_HXX
 

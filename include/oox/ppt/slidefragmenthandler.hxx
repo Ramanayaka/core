@@ -30,9 +30,9 @@
 #include <sal/types.h>
 
 namespace oox { class AttributeList; }
-namespace oox { namespace core { class XmlFilterBase; } }
+namespace oox::core { class XmlFilterBase; }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
 class SlideFragmentHandler : public ::oox::core::FragmentHandler2
 {
@@ -44,7 +44,7 @@ public:
     virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 aElementToken, const AttributeList& rAttribs ) override;
     virtual void onCharacters( const OUString& rChars ) override;
 
-    const ::std::vector< OUString>& getCharVector() { return maCharVector; }
+    const ::std::vector< OUString>& getCharVector() const { return maCharVector; }
 
 protected:
     SlidePersistPtr     mpSlidePersistPtr;
@@ -56,7 +56,7 @@ private:
     ::std::vector< OUString> maCharVector; // handle char in OnCharacters
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_PPT_SLIDEFRAGMENTHANDLER_HXX
 

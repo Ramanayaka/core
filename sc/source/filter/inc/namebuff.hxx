@@ -21,16 +21,13 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_NAMEBUFF_HXX
 
 #include <memory>
+#include <map>
+#include <vector>
 #include <rtl/ustring.hxx>
-#include <osl/diagnose.h>
-#include "compiler.hxx"
 #include "root.hxx"
 #include "xiroot.hxx"
+#include <refdata.hxx>
 
-#include "rangenam.hxx"
-#include "formulacell.hxx"
-
-#include <list>
 #include <unordered_map>
 
 class ScTokenArray;
@@ -63,7 +60,7 @@ inline bool StringHashEntry::operator ==( const StringHashEntry& r ) const
  */
 class SharedFormulaBuffer : public ExcRoot
 {
-    typedef std::unordered_map<ScAddress, ScTokenArray*, ScAddressHashFunctor> TokenArraysType;
+    typedef std::unordered_map<ScAddress, std::unique_ptr<ScTokenArray>, ScAddressHashFunctor> TokenArraysType;
     TokenArraysType maTokenArrays;
 
 public:
@@ -81,14 +78,12 @@ private:
     {
         StringHashEntry     aStrHashEntry;
         ScComplexRefData    aScComplexRefDataRel;
-        OUString            aScAbsName;
         sal_uInt16          nAbsInd;        // == 0 -> no Abs-Name yet!
         sal_uInt16          nRelInd;
         bool                bSingleRef;
-                            Entry( const OUString& rName, const OUString& rScName, const ScComplexRefData& rCRD )
+                            Entry( const OUString& rName, const ScComplexRefData& rCRD )
                                 : aStrHashEntry( rName )
                                 , aScComplexRefDataRel( rCRD )
-                                , aScAbsName( rScName + "_ABS" )
                                 , nAbsInd(0)
                                 , nRelInd(0)
                                 , bSingleRef(false)
@@ -96,22 +91,21 @@ private:
                             }
     };
 
-    LOTUS_ROOT*        m_pLotRoot;
     std::unique_ptr<ScTokenArray>
                        pScTokenArray;
     sal_uInt16         nIntCount;
     std::vector<Entry> maEntries;
 
 public:
-    RangeNameBufferWK3(LOTUS_ROOT* pLotRoot);
+    RangeNameBufferWK3(const ScDocument* pDoc);
     ~RangeNameBufferWK3();
-    void                    Add( const OUString& rName, const ScComplexRefData& rCRD );
-    inline void             Add( const OUString& rName, const ScRange& aScRange );
+    void                    Add( const ScDocument* pDoc, const OUString& rName, const ScComplexRefData& rCRD );
+    inline void             Add( const ScDocument* pDoc, const OUString& rName, const ScRange& aScRange );
     bool                    FindRel( const OUString& rRef, sal_uInt16& rIndex );
     bool                    FindAbs( const OUString& rRef, sal_uInt16& rIndex );
 };
 
-inline void RangeNameBufferWK3::Add( const OUString& rName, const ScRange& aScRange )
+inline void RangeNameBufferWK3::Add( const ScDocument* pDoc, const OUString& rName, const ScRange& aScRange )
 {
     ScComplexRefData        aCRD;
     ScSingleRefData*        pSRD;
@@ -124,7 +118,7 @@ inline void RangeNameBufferWK3::Add( const OUString& rName, const ScRange& aScRa
     pSRD->InitAddress(aScRange.aEnd);
     pSRD->SetFlag3D(true);
 
-    Add( rName, aCRD );
+    Add( pDoc, rName, aCRD );
 }
 
 class ExtSheetBuffer : public ExcRoot

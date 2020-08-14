@@ -20,8 +20,10 @@
 #ifndef INCLUDED_VCL_SALGTYPE_HXX
 #define INCLUDED_VCL_SALGTYPE_HXX
 
-#include <sal/types.h>
 #include <o3tl/typed_flags_set.hxx>
+#include <tools/color.hxx>
+#include <tools/gen.hxx>
+#include <ostream>
 
 enum class DeviceFormat {
                             NONE = -1,
@@ -32,16 +34,7 @@ enum class DeviceFormat {
 #endif
                         };
 
-typedef sal_uInt32 SalColor;
-
-constexpr SalColor MAKE_SALCOLOR(sal_uInt8 r, sal_uInt8 g, sal_uInt8 b) {
-    return sal_uInt32(b) | (sal_uInt32(g) << 8) | (sal_uInt32(r) << 16);
-}
-
-#define SALCOLOR_RED( n )           ((sal_uInt8)((n)>>16))
-#define SALCOLOR_GREEN( n )         ((sal_uInt8)(((sal_uInt16)(n)) >> 8))
-#define SALCOLOR_BLUE( n )          ((sal_uInt8)(n))
-#define SALCOLOR_NONE           (~(SalColor)0)
+constexpr ::Color SALCOLOR_NONE ( 0xFF, 0xFF, 0xFF, 0xFF );
 
 // must equal to class Point
 struct SalPoint
@@ -71,19 +64,31 @@ struct SalTwoRect
     }
 };
 
+template <typename charT, typename traits>
+inline std::basic_ostream<charT, traits>& operator<<(std::basic_ostream<charT, traits>& stream,
+                                                     const SalTwoRect& rPosAry)
+{
+    tools::Rectangle aSrcRect(rPosAry.mnSrcX, rPosAry.mnSrcY, rPosAry.mnSrcX + rPosAry.mnSrcWidth,
+                              rPosAry.mnSrcY + rPosAry.mnSrcHeight);
+    tools::Rectangle aDestRect(rPosAry.mnDestX, rPosAry.mnDestY,
+                               rPosAry.mnDestX + rPosAry.mnDestWidth,
+                               rPosAry.mnDestY + rPosAry.mnDestHeight);
+    stream << aSrcRect << " => " << aDestRect;
+    return stream;
+}
+
 enum class SalROPColor {
     N0, N1, Invert
 };
 
 enum class SalInvert {
     NONE       = 0x00,
-    Highlight  = 0x01,
-    N50        = 0x02,
-    TrackFrame = 0x04
+    N50        = 0x01,
+    TrackFrame = 0x02
 };
 namespace o3tl
 {
-    template<> struct typed_flags<SalInvert> : is_typed_flags<SalInvert, 0x07> {};
+    template<> struct typed_flags<SalInvert> : is_typed_flags<SalInvert, 0x03> {};
 }
 
 #endif // INCLUDED_VCL_SALGTYPE_HXX

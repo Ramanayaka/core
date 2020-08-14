@@ -17,11 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DrawViewShell.hxx"
+#include <DrawViewShell.hxx>
 
 #include <svx/svxids.hrc>
 #include <svl/aeitem.hxx>
 #include <svl/stritem.hxx>
+#include <sfx2/childwin.hxx>
 #include <sfx2/docfile.hxx>
 #include <svl/intitem.hxx>
 #include <sfx2/bindings.hxx>
@@ -30,15 +31,14 @@
 
 #include <sfx2/viewfrm.hxx>
 
-#include "app.hrc"
-
-#include "sdpage.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-#include "pgjump.hxx"
-#include "NavigatorChildWindow.hxx"
-#include "navigatr.hxx"
-#include "drawview.hxx"
+#include <app.hrc>
+#include <sdmod.hxx>
+#include <sdpage.hxx>
+#include <drawdoc.hxx>
+#include <DrawDocShell.hxx>
+#include <pgjump.hxx>
+#include <navigatr.hxx>
+#include <drawview.hxx>
 
 namespace sd {
 
@@ -74,8 +74,8 @@ void DrawViewShell::ExecNavigatorWin( SfxRequest& rReq )
                     mpDrawView->SdrEndTextEdit();
 
                 const SfxItemSet* pArgs = rReq.GetArgs();
-                PageJump eJump = (PageJump)static_cast<const SfxAllEnumItem&>( pArgs->
-                                  Get(SID_NAVIGATOR_PAGE)).GetValue();
+                PageJump eJump = static_cast<PageJump>(static_cast<const SfxUInt16Item&>( pArgs->
+                                  Get(SID_NAVIGATOR_PAGE)).GetValue());
 
                 switch (eJump)
                 {
@@ -186,7 +186,7 @@ void DrawViewShell::GetNavigatorWinState( SfxItemSet& rSet )
         nState |= NavState::BtnLastEnabled | NavState::BtnNextEnabled;
     }
 
-    rSet.Put( SfxUInt32Item( SID_NAVIGATOR_STATE, (sal_uInt32)nState ) );
+    rSet.Put( SfxUInt32Item( SID_NAVIGATOR_STATE, static_cast<sal_uInt32>(nState) ) );
     rSet.Put( SfxStringItem( SID_NAVIGATOR_PAGENAME, aPageName ) );
 }
 

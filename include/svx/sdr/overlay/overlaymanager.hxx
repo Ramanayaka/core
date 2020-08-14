@@ -23,7 +23,6 @@
 #include <rtl/ref.hxx>
 #include <svx/sdr/animation/scheduler.hxx>
 #include <svx/sdr/overlay/overlayobject.hxx>
-#include <vcl/mapmod.hxx>
 #include <tools/color.hxx>
 #include <tools/gen.hxx>
 #include <svx/svxdllapi.h>
@@ -36,19 +35,17 @@ class OutputDevice;
 class SdrModel;
 namespace vcl { class Region; }
 
-namespace sdr { namespace overlay {
+namespace sdr::overlay {
     class OverlayObject;
-}}
+}
 
 namespace basegfx {
     class B2DRange;
 }
 
-namespace sdr
-{
-    namespace overlay
+namespace sdr::overlay
     {
-        class SVX_DLLPUBLIC OverlayManager
+        class SVXCORE_DLLPUBLIC OverlayManager
             : protected sdr::animation::Scheduler
             , public salhelper::SimpleReferenceObject
         {
@@ -65,8 +62,8 @@ namespace sdr
 
             // Stripe support. All striped OverlayObjects use these stripe
             // values. Changes change all those objects.
-            Color                                       maStripeColorA; // defaults to Color(COL_BLACK)
-            Color                                       maStripeColorB; // defaults to Color(COL_WHITE)
+            Color                                       maStripeColorA; // defaults to COL_BLACK
+            Color                                       maStripeColorB; // defaults to COL_WHITE
             sal_uInt32                                  mnStripeLengthPixel; // defaults to 4L
 
             // hold an incarnation of Drawinglayer configuration options
@@ -88,6 +85,8 @@ namespace sdr
             // ViewTransformation and evtl. correct mfDiscreteOne
             double getDiscreteOne() const;
 
+            tools::Rectangle RangeToInvalidateRectangle(const basegfx::B2DRange& rRange) const;
+
             OverlayManager(OutputDevice& rOutputDevice);
             virtual ~OverlayManager() override;
 
@@ -102,9 +101,6 @@ namespace sdr
 
             // flush. Do buffered updates.
             virtual void flush();
-
-            // restore part of background. Implemented form buffered versions only.
-            virtual void restoreBackground(const vcl::Region& rRegion) const;
 
             // get the OutputDevice
             OutputDevice& getOutputDevice() const { return mrOutputDevice; }
@@ -131,10 +127,10 @@ namespace sdr
             // access to maDrawinglayerOpt
             const SvtOptionsDrawinglayer& getDrawinglayerOpt() const { return maDrawinglayerOpt; }
 
-            void InsertEvent(sdr::animation::Event* pNew) { Scheduler::InsertEvent(pNew); }
+            void InsertEvent(sdr::animation::Event& rNew) { Scheduler::InsertEvent(rNew); }
         };
-    } // end of namespace overlay
-} // end of namespace sdr
+
+} // end of namespace sdr::overlay
 
 #endif // INCLUDED_SVX_SDR_OVERLAY_OVERLAYMANAGER_HXX
 

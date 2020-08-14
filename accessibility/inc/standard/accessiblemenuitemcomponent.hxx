@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_ACCESSIBLEMENUITEMCOMPONENT_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_ACCESSIBLEMENUITEMCOMPONENT_HXX
+#pragma once
 
 #include <standard/accessiblemenubasecomponent.hxx>
 
 
-//  class OAccessibleMenuItemComponent
 
 
 class OAccessibleMenuItemComponent : public OAccessibleMenuBaseComponent
@@ -38,8 +36,8 @@ protected:
 
     virtual bool            IsEnabled() override;
     virtual bool            IsVisible() override;
-    virtual void            Select() override;
-    virtual void            DeSelect() override;
+    void                    Select();
+    void                    DeSelect();
     virtual void            Click() override;
 
     void                    SetItemPos( sal_uInt16 nItemPos );
@@ -85,6 +83,5 @@ public:
     virtual OUString SAL_CALL getToolTipText(  ) override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_ACCESSIBLEMENUITEMCOMPONENT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

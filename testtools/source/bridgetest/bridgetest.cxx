@@ -22,15 +22,15 @@
 #include <string.h>
 #include <o3tl/any.hxx>
 #include <osl/diagnose.h>
-#include "osl/diagnose.hxx"
+#include <osl/diagnose.hxx>
 #include <osl/time.h>
 #include <sal/types.h>
-#include "typelib/typedescription.hxx"
+#include <typelib/typedescription.hxx>
 #include <uno/dispatcher.hxx>
 #include <uno/lbnames.h>
-#include "uno/mapping.hxx"
+#include <uno/mapping.hxx>
 #include <uno/data.h>
-#include "uno/environment.hxx"
+#include <uno/environment.hxx>
 
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -39,16 +39,17 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XMain.hpp>
+#include <com/sun/star/lang/XSingleComponentFactory.hpp>
 #include <com/sun/star/bridge/UnoUrlResolver.hpp>
 #include <com/sun/star/bridge/XUnoUrlResolver.hpp>
-#include "com/sun/star/uno/RuntimeException.hpp"
-#include "com/sun/star/uno/Type.hxx"
+#include <com/sun/star/uno/RuntimeException.hpp>
+#include <com/sun/star/uno/Type.hxx>
 
-#include "test/testtools/bridgetest/BadConstructorArguments.hpp"
-#include "test/testtools/bridgetest/TestPolyStruct.hpp"
-#include "test/testtools/bridgetest/XBridgeTest.hpp"
-#include "test/testtools/bridgetest/XBridgeTest2.hpp"
-#include "test/testtools/bridgetest/XMulti.hpp"
+#include <test/testtools/bridgetest/BadConstructorArguments.hpp>
+#include <test/testtools/bridgetest/TestPolyStruct.hpp>
+#include <test/testtools/bridgetest/XBridgeTest.hpp>
+#include <test/testtools/bridgetest/XBridgeTest2.hpp>
+#include <test/testtools/bridgetest/XMulti.hpp>
 
 #include "currentcontextchecker.hxx"
 #include "multi.hxx"
@@ -71,13 +72,12 @@ using namespace test::testtools::bridgetest;
 namespace bridge_test
 {
 template<typename T, typename U = T>
-Sequence<T> cloneSequence(const Sequence<T>& val);
+static Sequence<T> cloneSequence(const Sequence<T>& val);
 
 
-inline static Sequence< OUString > getSupportedServiceNames()
+static Sequence< OUString > getSupportedServiceNames()
 {
-    OUString aName( SERVICENAME );
-    return Sequence< OUString >( &aName, 1 );
+    return { SERVICENAME };
 }
 
 static bool check( bool b , char const * message )
@@ -99,9 +99,6 @@ bool checkEmpty(OUString const & string, char const * message) {
     return ok;
 }
 
-}
-
-
 class TestBridgeImpl : public osl::DebugBase<TestBridgeImpl>,
                        public WeakImplHelper< XMain, XServiceInfo >
 {
@@ -121,6 +118,7 @@ public:
     virtual sal_Int32 SAL_CALL run( const Sequence< OUString > & rArgs ) override;
 };
 
+}
 
 static bool equals( const TestElement & rData1, const TestElement & rData2 )
 {
@@ -161,9 +159,12 @@ static bool equals( const TestData & rData1, const TestData & rData2 )
 {
     sal_Int32 nLen;
 
-    if ((rData1.Sequence == rData2.Sequence) &&
-        equals( static_cast<const TestElement &>(rData1), static_cast<const TestElement &>(rData2) ) &&
-        (nLen = rData1.Sequence.getLength()) == rData2.Sequence.getLength())
+    if (rData1.Sequence != rData2.Sequence)
+        return false;
+    if (!equals( static_cast<const TestElement &>(rData1), static_cast<const TestElement &>(rData2) ))
+        return false;
+    nLen = rData1.Sequence.getLength();
+    if (nLen == rData2.Sequence.getLength())
     {
         // once again by hand sequence ==
         const TestElement * pElements1 = rData1.Sequence.getConstArray();
@@ -303,6 +304,8 @@ static bool performSequenceOfCallTest( const Reference < XBridgeTest > &xLBT )
     return xLBT->sequenceOfCallTestPassed();
 }
 
+namespace {
+
 class ORecursiveCall : public WeakImplHelper< XRecursiveCall >
 {
 private:
@@ -323,6 +326,7 @@ public:
         }
 };
 
+}
 
 static bool performRecursiveCallTest( const Reference < XBridgeTest > & xLBT )
 {
@@ -331,12 +335,15 @@ static bool performRecursiveCallTest( const Reference < XBridgeTest > & xLBT )
     return true;
 }
 
+namespace {
+
 class MyClass : public osl::DebugBase<MyClass>, public OWeakObject
 {
 public:
     MyClass();
 };
 
+}
 
 MyClass::MyClass()
 {
@@ -576,7 +583,7 @@ static bool performTest(
                     !nullAny.hasValue() || (ifc && !ifc->is()),
                     "getNullPolyAny");
                 bRet &= check(
-                    xLBT->getNullPolySequence().member.getLength() == 0,
+                    !xLBT->getNullPolySequence().member.hasElements(),
                     "getNullPolySequence");
                 bRet &= check(
                     xLBT->getNullPolyEnum().member == TestEnum_TEST,
@@ -893,20 +900,19 @@ static bool performTest(
 static bool raiseOnewayException( const Reference < XBridgeTest > & xLBT )
 {
     bool bReturn = true;
-    OUString sCompare = STRING_TEST_CONSTANT;
     Reference<XInterface> const x(xLBT->getInterface());
     try
     {
         // Note : the exception may fly or not (e.g. remote scenario).
         //        When it flies, it must contain the correct elements.
-        xLBT->raiseRuntimeExceptionOneway( sCompare, x );
+        xLBT->raiseRuntimeExceptionOneway( STRING_TEST_CONSTANT, x );
     }
     catch( const RuntimeException & e )
     {
         bReturn = (
 #if OSL_DEBUG_LEVEL == 0
             // java stack traces trash Message
-            e.Message == sCompare &&
+            e.Message == STRING_TEST_CONSTANT &&
 #endif
             xLBT->getInterface() == e.Context &&
             x == e.Context );
@@ -924,7 +930,6 @@ static bool raiseException( const Reference< XBridgeTest > & xLBT )
         {
             try
             {
-                TestData aRet, aRet2;
                 xLBT->raiseException(
                     5, STRING_TEST_CONSTANT,
                     xLBT->getInterface() );
@@ -934,7 +939,7 @@ static bool raiseException( const Reference< XBridgeTest > & xLBT )
                 if (rExc.ArgumentPosition == 5 &&
 #if OSL_DEBUG_LEVEL == 0
                     // java stack traces trash Message
-                    rExc.Message == STRING_TEST_CONSTANT &&
+                    rExc.Message.startsWith(STRING_TEST_CONSTANT) &&
 #endif
                     rExc.Context == xLBT->getInterface())
                 {
@@ -961,7 +966,7 @@ static bool raiseException( const Reference< XBridgeTest > & xLBT )
             if (rExc.Context == xLBT->getInterface()
 #if OSL_DEBUG_LEVEL == 0
                     // java stack traces trash Message
-                && rExc.Message == STRING_TEST_CONSTANT
+                && rExc.Message.startsWith(STRING_TEST_CONSTANT)
 #endif
                 )
             {
@@ -981,7 +986,7 @@ static bool raiseException( const Reference< XBridgeTest > & xLBT )
         if (rExc.Context == xLBT->getInterface()
 #if OSL_DEBUG_LEVEL == 0
             // java stack traces trash Message
-            && rExc.Message == STRING_TEST_CONSTANT
+            && rExc.Message.startsWith(STRING_TEST_CONSTANT)
 #endif
             )
         {
@@ -998,7 +1003,7 @@ static bool raiseException( const Reference< XBridgeTest > & xLBT )
 
 /* Returns an acquired sequence
  */
-uno_Sequence* cloneSequence(const uno_Sequence* val, const Type& type)
+static uno_Sequence* cloneSequence(const uno_Sequence* val, const Type& type)
 {
     TypeDescription td(type);
     td.makeComplete();
@@ -1011,7 +1016,7 @@ uno_Sequence* cloneSequence(const uno_Sequence* val, const Type& type)
     sal_Int8* pBufCur = buf.get();
 
     uno_Sequence* retSeq = nullptr;
-    switch ((TypeClass)pTdElem->eTypeClass)
+    switch (static_cast<TypeClass>(pTdElem->eTypeClass))
     {
     case TypeClass_SEQUENCE:
     {
@@ -1045,7 +1050,7 @@ Sequence<T> cloneSequence(const Sequence<T>& val)
 }
 
 template< class T >
-inline bool makeSurrogate(
+static bool makeSurrogate(
     Reference< T > & rOut, Reference< T > const & rOriginal )
 {
     rOut.clear();
@@ -1105,7 +1110,7 @@ sal_Int32 TestBridgeImpl::run( const Sequence< OUString > & rArgs )
     bool bRet = false;
     try
     {
-        if (! rArgs.getLength())
+        if (! rArgs.hasElements())
         {
             throw RuntimeException( "no test object specified!\n"
                                     "usage : ServiceName of test object | -u unourl of test object" );
@@ -1184,7 +1189,7 @@ sal_Int32 TestBridgeImpl::run( const Sequence< OUString > & rArgs )
 
 OUString TestBridgeImpl::getImplementationName()
 {
-    return OUString( IMPLNAME );
+    return IMPLNAME;
 }
 
 sal_Bool TestBridgeImpl::supportsService( const OUString & rServiceName )
@@ -1198,7 +1203,7 @@ Sequence< OUString > TestBridgeImpl::getSupportedServiceNames()
 }
 
 
-static Reference< XInterface > SAL_CALL TestBridgeImpl_create(
+static Reference< XInterface > TestBridgeImpl_create(
     const Reference< XComponentContext > & xContext )
 {
     return Reference< XInterface >(
@@ -1210,8 +1215,8 @@ static Reference< XInterface > SAL_CALL TestBridgeImpl_create(
 extern "C"
 {
 
-SAL_DLLPUBLIC_EXPORT void * SAL_CALL component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager,
+SAL_DLLPUBLIC_EXPORT void * component_getFactory(
+    const char * pImplName, void * pServiceManager,
     SAL_UNUSED_PARAMETER void * )
 {
     void * pRet = nullptr;

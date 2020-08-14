@@ -20,7 +20,7 @@
 #ifndef INCLUDED_CHART2_SOURCE_VIEW_CHARTTYPES_BARPOSITIONHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_VIEW_CHARTTYPES_BARPOSITIONHELPER_HXX
 
-#include "PlottingPositionHelper.hxx"
+#include <PlottingPositionHelper.hxx>
 #include "CategoryPositionHelper.hxx"
 
 namespace chart
@@ -33,7 +33,7 @@ public:
     BarPositionHelper( const BarPositionHelper& rSource );
     virtual ~BarPositionHelper() override;
 
-    virtual PlottingPositionHelper* clone() const override;
+    virtual std::unique_ptr<PlottingPositionHelper> clone() const override;
 
     void updateSeriesCount( double fSeriesCount ); /*only enter the size of x stacked series*/
 

@@ -21,8 +21,6 @@
 #include <framework/ContextChangeEventMultiplexerTunnel.hxx>
 #include <helper/mischelper.hxx>
 
-#include <tools/diagnose_ex.h>
-
 static pfunc_setToolBoxControllerCreator   pToolBoxControllerCreator   = nullptr;
 static pfunc_setStatusBarControllerCreator pStatusBarControllerCreator = nullptr;
 static pfunc_getRefreshToolbars            pRefreshToolbars            = nullptr;
@@ -35,7 +33,7 @@ using namespace ::com::sun::star::frame;
 namespace framework
 {
 
-pfunc_setToolBoxControllerCreator SAL_CALL SetToolBoxControllerCreator( pfunc_setToolBoxControllerCreator pSetToolBoxControllerCreator )
+pfunc_setToolBoxControllerCreator SetToolBoxControllerCreator( pfunc_setToolBoxControllerCreator pSetToolBoxControllerCreator )
 {
     ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
     pfunc_setToolBoxControllerCreator pOldSetToolBoxControllerCreator = pToolBoxControllerCreator;
@@ -43,7 +41,7 @@ pfunc_setToolBoxControllerCreator SAL_CALL SetToolBoxControllerCreator( pfunc_se
     return pOldSetToolBoxControllerCreator;
 }
 
-svt::ToolboxController* SAL_CALL CreateToolBoxController( const Reference< XFrame >& rFrame, ToolBox* pToolbox, unsigned short nID, const OUString& aCommandURL )
+svt::ToolboxController* CreateToolBoxController( const Reference< XFrame >& rFrame, ToolBox* pToolbox, unsigned short nID, const OUString& aCommandURL )
 {
     pfunc_setToolBoxControllerCreator pFactory = nullptr;
     {
@@ -57,7 +55,7 @@ svt::ToolboxController* SAL_CALL CreateToolBoxController( const Reference< XFram
         return nullptr;
 }
 
-pfunc_setStatusBarControllerCreator SAL_CALL SetStatusBarControllerCreator( pfunc_setStatusBarControllerCreator pSetStatusBarControllerCreator )
+pfunc_setStatusBarControllerCreator SetStatusBarControllerCreator( pfunc_setStatusBarControllerCreator pSetStatusBarControllerCreator )
 {
     ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
     pfunc_setStatusBarControllerCreator pOldSetStatusBarControllerCreator = pSetStatusBarControllerCreator;
@@ -65,7 +63,7 @@ pfunc_setStatusBarControllerCreator SAL_CALL SetStatusBarControllerCreator( pfun
     return pOldSetStatusBarControllerCreator;
 }
 
-svt::StatusbarController* SAL_CALL CreateStatusBarController( const Reference< XFrame >& rFrame, StatusBar* pStatusBar, unsigned short nID, const OUString& aCommandURL )
+svt::StatusbarController* CreateStatusBarController( const Reference< XFrame >& rFrame, StatusBar* pStatusBar, unsigned short nID, const OUString& aCommandURL )
 {
     pfunc_setStatusBarControllerCreator pFactory = nullptr;
     {
@@ -79,7 +77,7 @@ svt::StatusbarController* SAL_CALL CreateStatusBarController( const Reference< X
         return nullptr;
 }
 
-pfunc_getRefreshToolbars SAL_CALL SetRefreshToolbars( pfunc_getRefreshToolbars pNewRefreshToolbarsFunc )
+pfunc_getRefreshToolbars SetRefreshToolbars( pfunc_getRefreshToolbars pNewRefreshToolbarsFunc )
 {
     ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
     pfunc_getRefreshToolbars pOldFunc = pRefreshToolbars;
@@ -88,7 +86,7 @@ pfunc_getRefreshToolbars SAL_CALL SetRefreshToolbars( pfunc_getRefreshToolbars p
     return pOldFunc;
 }
 
-void SAL_CALL RefreshToolbars( css::uno::Reference< css::frame::XFrame >& rFrame )
+void RefreshToolbars( css::uno::Reference< css::frame::XFrame > const & rFrame )
 {
     pfunc_getRefreshToolbars pCallback = nullptr;
     {
@@ -100,7 +98,7 @@ void SAL_CALL RefreshToolbars( css::uno::Reference< css::frame::XFrame >& rFrame
         (*pCallback)( rFrame );
 }
 
-pfunc_createDockingWindow SAL_CALL SetDockingWindowCreator( pfunc_createDockingWindow pNewCreateDockingWindow )
+pfunc_createDockingWindow SetDockingWindowCreator( pfunc_createDockingWindow pNewCreateDockingWindow )
 {
     ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
     pfunc_createDockingWindow pOldFunc = pCreateDockingWindow;
@@ -109,7 +107,7 @@ pfunc_createDockingWindow SAL_CALL SetDockingWindowCreator( pfunc_createDockingW
     return pOldFunc;
 }
 
-void SAL_CALL CreateDockingWindow( const css::uno::Reference< css::frame::XFrame >& rFrame, const OUString& rResourceURL )
+void CreateDockingWindow( const css::uno::Reference< css::frame::XFrame >& rFrame, const OUString& rResourceURL )
 {
     pfunc_createDockingWindow pFactory = nullptr;
     {
@@ -121,7 +119,7 @@ void SAL_CALL CreateDockingWindow( const css::uno::Reference< css::frame::XFrame
         (*pFactory)( rFrame, rResourceURL );
 }
 
-pfunc_isDockingWindowVisible SAL_CALL SetIsDockingWindowVisible( pfunc_isDockingWindowVisible pNewIsDockingWindowVisible)
+pfunc_isDockingWindowVisible SetIsDockingWindowVisible( pfunc_isDockingWindowVisible pNewIsDockingWindowVisible)
 {
     ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
     pfunc_isDockingWindowVisible pOldFunc = pIsDockingWindowVisible;
@@ -130,7 +128,7 @@ pfunc_isDockingWindowVisible SAL_CALL SetIsDockingWindowVisible( pfunc_isDocking
     return pOldFunc;
 }
 
-bool SAL_CALL IsDockingWindowVisible( const css::uno::Reference< css::frame::XFrame >& rFrame, const OUString& rResourceURL )
+bool IsDockingWindowVisible( const css::uno::Reference< css::frame::XFrame >& rFrame, const OUString& rResourceURL )
 {
     pfunc_isDockingWindowVisible pCall = nullptr;
     {

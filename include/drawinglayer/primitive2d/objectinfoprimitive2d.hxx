@@ -16,17 +16,15 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_OBJECTINFOPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_OBJECTINFOPRIMITIVE2D_HXX
+
+#pragma once
 
 #include <drawinglayer/drawinglayerdllapi.h>
 #include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 #include <rtl/ustring.hxx>
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** ObjectInfoPrimitive2D class
 
             Info hierarchy helper class to hold contents like Name, Title and
@@ -35,7 +33,7 @@ namespace drawinglayer
             to its content, so all direct renderers may ignore it. May e.g.
             be used when re-creating graphical content from a sequence of primitives
          */
-        class DRAWINGLAYER_DLLPUBLIC ObjectInfoPrimitive2D : public GroupPrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC ObjectInfoPrimitive2D final : public GroupPrimitive2D
         {
         private:
             OUString                           maName;
@@ -59,11 +57,9 @@ namespace drawinglayer
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-#endif // INCLUDED_DRAWINGLAYER_PRIMITIVE2D_OBJECTINFOPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

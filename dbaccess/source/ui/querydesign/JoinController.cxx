@@ -17,42 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/sfxsids.hrc>
-#include "dbu_qry.hrc"
-#include "browserids.hxx"
-#include <comphelper/types.hxx>
-#include "dbustrings.hrc"
-#include <connectivity/dbtools.hxx>
-#include <comphelper/extract.hxx>
-#include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/sdbcx/XDataDescriptorFactory.hpp>
-#include <com/sun/star/sdbcx/XTablesSupplier.hpp>
-#include <com/sun/star/sdbcx/KeyType.hpp>
-#include <com/sun/star/sdbcx/XDrop.hpp>
-#include <com/sun/star/sdbcx/XAlterTable.hpp>
-#include <com/sun/star/sdbcx/XAppend.hpp>
-#include <com/sun/star/sdb/SQLContext.hpp>
-#include <com/sun/star/sdbc/SQLWarning.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
+#include <browserids.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <connectivity/dbexception.hxx>
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
-#include <comphelper/streamsection.hxx>
-#include <comphelper/seqstream.hxx>
-#include <com/sun/star/io/XActiveDataSource.hpp>
-#include <com/sun/star/io/XActiveDataSink.hpp>
-#include "sqlmessage.hxx"
-#include "JoinController.hxx"
-#include <vcl/msgbox.hxx>
-#include "TableWindowData.hxx"
-#include "TableWindow.hxx"
-#include "TableConnectionData.hxx"
-#include "adtabdlg.hxx"
-#include <vcl/waitobj.hxx>
+#include <JoinController.hxx>
+#include <TableWindowData.hxx>
+#include <TableWindow.hxx>
+#include <TableConnectionData.hxx>
+#include <adtabdlg.hxx>
 #include <vcl/svapp.hxx>
 #include <osl/mutex.hxx>
-#include "UITools.hxx"
 #include <osl/diagnose.h>
 
 using namespace ::com::sun::star::uno;
@@ -62,7 +37,6 @@ using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::ui::dialogs;
@@ -92,7 +66,7 @@ public:
     virtual bool    allowQueries() const override;
     virtual bool    allowAddition() const override;
     virtual void    addTableWindow( const OUString& _rQualifiedTableName, const OUString& _rAliasName ) override;
-    virtual void    onWindowClosing( const vcl::Window* _pWindow ) override;
+    virtual void    onWindowClosing() override;
 
 private:
     OJoinTableView* getTableView() const;
@@ -123,14 +97,10 @@ void AddTableDialogContext::addTableWindow( const OUString& _rQualifiedTableName
     getTableView()->AddTabWin( _rQualifiedTableName, _rAliasName, true );
 }
 
-void AddTableDialogContext::onWindowClosing( const vcl::Window* _pWindow )
+void AddTableDialogContext::onWindowClosing()
 {
-    if ( !m_rController.getView() )
+    if (!m_rController.getView())
         return;
-
-    ::dbaui::notifySystemWindow(
-        m_rController.getView(), const_cast< vcl::Window* >( _pWindow ), ::comphelper::mem_fun( &TaskPaneList::RemoveWindow ) );
-
     m_rController.InvalidateFeature( ID_BROWSER_ADDTABLE );
     m_rController.getView()->GrabFocus();
 }
@@ -145,8 +115,7 @@ OJoinTableView* AddTableDialogContext::getTableView() const
 // OJoinController
 
 OJoinController::OJoinController(const Reference< XComponentContext >& _rM)
-    :OJoinController_BASE(_rM)
-    ,m_pAddTableDialog(nullptr)
+    : OJoinController_BASE(_rM)
 {
 }
 
@@ -161,7 +130,11 @@ OJoinDesignView* OJoinController::getJoinView()
 
 void OJoinController::disposing()
 {
-    m_pAddTableDialog.disposeAndClear();
+    if (m_xAddTableDialog)
+    {
+        m_xAddTableDialog->response(RET_CLOSE);
+        m_xAddTableDialog.reset();
+    }
 
     OJoinController_BASE::disposing();
 
@@ -174,8 +147,8 @@ void OJoinController::disposing()
 void OJoinController::reconnect( bool _bUI )
 {
     OJoinController_BASE::reconnect( _bUI );
-    if ( isConnected() && m_pAddTableDialog )
-        m_pAddTableDialog->Update();
+    if ( isConnected() && m_xAddTableDialog )
+        m_xAddTableDialog->Update();
 }
 
 void OJoinController::impl_onModifyChanged()
@@ -184,16 +157,16 @@ void OJoinController::impl_onModifyChanged()
     InvalidateFeature( SID_RELATION_ADD_RELATION );
 }
 
-void OJoinController::SaveTabWinPosSize(OTableWindow* pTabWin, long nOffsetX, long nOffsetY)
+void OJoinController::SaveTabWinPosSize(OTableWindow const * pTabWin, long nOffsetX, long nOffsetY)
 {
     // the data for the window
-    TTableWindowData::value_type pData = pTabWin->GetData();
+    const TTableWindowData::value_type& pData = pTabWin->GetData();
     OSL_ENSURE(pData != nullptr, "SaveTabWinPosSize : TabWin has no data !");
 
     // set Position & Size of data anew (with current window parameters)
     Point aPos = pTabWin->GetPosPixel();
-    aPos.X() += nOffsetX;
-    aPos.Y() += nOffsetY;
+    aPos.AdjustX(nOffsetX );
+    aPos.AdjustY(nOffsetY );
     pData->SetPosition(aPos);
     pData->SetSize(pTabWin->GetSizePixel());
 
@@ -213,7 +186,7 @@ FeatureState OJoinController::GetState(sal_uInt16 _nId) const
         case ID_BROWSER_ADDTABLE:
             aReturn.bEnabled = ( getView() != nullptr )
                             && const_cast< OJoinController* >( this )->getJoinView()->getTableView()->IsAddAllowed();
-            aReturn.bChecked = aReturn.bEnabled && m_pAddTableDialog != nullptr && m_pAddTableDialog->IsVisible() ;
+            aReturn.bChecked = aReturn.bEnabled && m_xAddTableDialog;
             if ( aReturn.bEnabled )
                 aReturn.sTitle = OAddTableDlg::getDialogTitleForContext( impl_getDialogContext() );
             break;
@@ -226,7 +199,7 @@ FeatureState OJoinController::GetState(sal_uInt16 _nId) const
 
 AddTableDialogContext& OJoinController::impl_getDialogContext() const
 {
-    if ( !m_pDialogContext.get() )
+    if (!m_pDialogContext)
     {
         OJoinController* pNonConstThis = const_cast< OJoinController* >( this );
         pNonConstThis->m_pDialogContext.reset( new AddTableDialogContext( *pNonConstThis ) );
@@ -259,28 +232,34 @@ void OJoinController::Execute(sal_uInt16 _nId, const Sequence< PropertyValue >& 
             InvalidateAll();
             return;
         case ID_BROWSER_ADDTABLE:
-            if ( !m_pAddTableDialog )
-                m_pAddTableDialog = VclPtr<OAddTableDlg>::Create( getView(), impl_getDialogContext() );
-
-            if ( m_pAddTableDialog->IsVisible() )
+            if (m_xAddTableDialog)
             {
-                m_pAddTableDialog->Show( false );
+                m_xAddTableDialog->response(RET_CLOSE);
                 getView()->GrabFocus();
             }
             else
             {
-                {
-                    WaitObject aWaitCursor( getView() );
-                    m_pAddTableDialog->Update();
-                }
-                m_pAddTableDialog->Show();
-                ::dbaui::notifySystemWindow(getView(),m_pAddTableDialog,::comphelper::mem_fun(&TaskPaneList::AddWindow));
+                runDialogAsync();
             }
             break;
         default:
             OJoinController_BASE::Execute(_nId,aArgs);
     }
     InvalidateFeature(_nId);
+}
+
+void OJoinController::runDialogAsync()
+{
+    assert(!m_xAddTableDialog);
+    m_xAddTableDialog = std::make_shared<OAddTableDlg>(getFrameWeld(), impl_getDialogContext());
+    {
+        weld::WaitObject aWaitCursor(getFrameWeld());
+        m_xAddTableDialog->Update();
+    }
+    weld::DialogController::runAsync(m_xAddTableDialog, [this](sal_Int32 /*nResult*/){
+        m_xAddTableDialog->OnClose();
+        m_xAddTableDialog.reset();
+    });
 }
 
 void OJoinController::SaveTabWinsPosSize( OJoinTableView::OTableWindowMap* pTabWinList, long nOffsetX, long nOffsetY )
@@ -292,10 +271,8 @@ void OJoinController::SaveTabWinsPosSize( OJoinTableView::OTableWindowMap* pTabW
     OSL_ENSURE(m_vTableData.size() == pTabWinList->size(),
         "OJoinController::SaveTabWinsPosSize : inconsistent state : should have as many TabWinDatas as TabWins !");
 
-    OJoinTableView::OTableWindowMap::const_iterator aIter = pTabWinList->begin();
-    OJoinTableView::OTableWindowMap::const_iterator aEnd = pTabWinList->end();
-    for(;aIter != aEnd;++aIter)
-        SaveTabWinPosSize(aIter->second, nOffsetX, nOffsetY);
+    for (auto const& tabWin : *pTabWinList)
+        SaveTabWinPosSize(tabWin.second, nOffsetX, nOffsetY);
 }
 
 void OJoinController::removeConnectionData(const TTableConnectionData::value_type& _pData)
@@ -311,6 +288,8 @@ void OJoinController::describeSupportedFeatures()
     implDescribeSupportedFeature( ".uno:Undo",      ID_BROWSER_UNDO,    CommandGroup::EDIT );
     implDescribeSupportedFeature( ".uno:AddTable",  ID_BROWSER_ADDTABLE,CommandGroup::EDIT );
     implDescribeSupportedFeature( ".uno:EditDoc",   ID_BROWSER_EDITDOC, CommandGroup::EDIT );
+    implDescribeSupportedFeature( ".uno:GetUndoStrings", SID_GETUNDOSTRINGS );
+    implDescribeSupportedFeature( ".uno:GetRedoStrings", SID_GETREDOSTRINGS );
 }
 
 sal_Bool SAL_CALL OJoinController::suspend(sal_Bool _bSuspend)
@@ -378,38 +357,37 @@ void OJoinController::loadTableWindow( const ::comphelper::NamedValueCollection&
         pData->ShowAll(bShowAll);
         m_vTableData.push_back(pData);
         if ( m_aMinimumTableViewSize.X() < (nX+nWidth) )
-            m_aMinimumTableViewSize.X() = (nX+nWidth);
+            m_aMinimumTableViewSize.setX( nX+nWidth );
         if ( m_aMinimumTableViewSize.Y() < (nY+nHeight) )
-            m_aMinimumTableViewSize.Y() = (nY+nHeight);
+            m_aMinimumTableViewSize.setY( nY+nHeight );
     }
 }
 
 void OJoinController::saveTableWindows( ::comphelper::NamedValueCollection& o_rViewSettings ) const
 {
-    if ( !m_vTableData.empty() )
+    if ( m_vTableData.empty() )
+        return;
+
+    ::comphelper::NamedValueCollection aAllTablesData;
+
+    sal_Int32 i = 1;
+    for (auto const& elem : m_vTableData)
     {
-        ::comphelper::NamedValueCollection aAllTablesData;
+        ::comphelper::NamedValueCollection aWindowData;
+        aWindowData.put( "ComposedName", elem->GetComposedName() );
+        aWindowData.put( "TableName", elem->GetTableName() );
+        aWindowData.put( "WindowName", elem->GetWinName() );
+        aWindowData.put( "WindowTop", static_cast<sal_Int32>(elem->GetPosition().Y()) );
+        aWindowData.put( "WindowLeft", static_cast<sal_Int32>(elem->GetPosition().X()) );
+        aWindowData.put( "WindowWidth", static_cast<sal_Int32>(elem->GetSize().Width()) );
+        aWindowData.put( "WindowHeight", static_cast<sal_Int32>(elem->GetSize().Height()) );
+        aWindowData.put( "ShowAll", elem->IsShowAll() );
 
-        TTableWindowData::const_iterator aIter = m_vTableData.begin();
-        TTableWindowData::const_iterator aEnd = m_vTableData.end();
-        for ( sal_Int32 i = 1; aIter != aEnd; ++aIter, ++i )
-        {
-            ::comphelper::NamedValueCollection aWindowData;
-            aWindowData.put( "ComposedName", (*aIter)->GetComposedName() );
-            aWindowData.put( "TableName", (*aIter)->GetTableName() );
-            aWindowData.put( "WindowName", (*aIter)->GetWinName() );
-            aWindowData.put( "WindowTop", static_cast<sal_Int32>((*aIter)->GetPosition().Y()) );
-            aWindowData.put( "WindowLeft", static_cast<sal_Int32>((*aIter)->GetPosition().X()) );
-            aWindowData.put( "WindowWidth", static_cast<sal_Int32>((*aIter)->GetSize().Width()) );
-            aWindowData.put( "WindowHeight", static_cast<sal_Int32>((*aIter)->GetSize().Height()) );
-            aWindowData.put( "ShowAll", (*aIter)->IsShowAll() );
-
-            const OUString sTableName( "Table" + OUString::number( i ) );
-            aAllTablesData.put( sTableName, aWindowData.getPropertyValues() );
-        }
-
-        o_rViewSettings.put( "Tables", aAllTablesData.getPropertyValues() );
+        const OUString sTableName( "Table" + OUString::number( i++ ) );
+        aAllTablesData.put( sTableName, aWindowData.getPropertyValues() );
     }
+
+    o_rViewSettings.put( "Tables", aAllTablesData.getPropertyValues() );
 }
 
 TTableWindowData::value_type OJoinController::createTableWindowData(const OUString& _sComposedName,const OUString& _sTableName,const OUString& _sWindowName)

@@ -21,13 +21,13 @@
 
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/task/InteractionHandler.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <com/sun/star/ucb/ContentInfo.hpp>
 #include <com/sun/star/ucb/ContentInfoAttribute.hpp>
 #include <com/sun/star/ucb/XContent.hpp>
 
 #include <comphelper/processfactory.hxx>
 #include <ucbhelper/commandenvironment.hxx>
-#include <tools/solar.h>
 #include <osl/diagnose.h>
 
 
@@ -46,15 +46,13 @@ namespace svt
 
 
     SmartContent::SmartContent()
-        :m_pContent( nullptr )
-        ,m_eState( NOT_BOUND )
+        :m_eState( NOT_BOUND )
     {
     }
 
 
     SmartContent::SmartContent( const OUString& _rInitialURL )
-        :m_pContent( nullptr )
-        ,m_eState( NOT_BOUND )
+        :m_eState( NOT_BOUND )
     {
         bindTo( _rInitialURL );
     }
@@ -180,7 +178,7 @@ namespace svt
             return false;
 
         assert( m_pContent && "SmartContent::implIs: inconsistence!" );
-            // if, after an bindTo, we don't have a content, then we should be INVALID, or at least
+            // if, after a bindTo, we don't have a content, then we should be INVALID, or at least
             // NOT_BOUND (the latter happens, for example, if somebody tries to ask for an empty URL)
 
         bool bIs = false;
@@ -264,13 +262,11 @@ namespace svt
         bool bRet = false;
         try
         {
-            Sequence< ContentInfo > aInfo = m_pContent->queryCreatableContentsInfo();
-            const ContentInfo* pInfo = aInfo.getConstArray();
-            sal_Int32 nCount = aInfo.getLength();
-            for ( sal_Int32 i = 0; i < nCount; ++i, ++pInfo )
+            const css::uno::Sequence<css::ucb::ContentInfo> aContentsInfo = m_pContent->queryCreatableContentsInfo();
+            for ( auto const& rInfo : aContentsInfo )
             {
                 // Simply look for the first KIND_FOLDER...
-                if ( pInfo->Attributes & ContentInfoAttribute::KIND_FOLDER )
+                if ( rInfo.Attributes & ContentInfoAttribute::KIND_FOLDER )
                 {
                     bRet = true;
                     break;
@@ -295,15 +291,13 @@ namespace svt
         {
             OUString sFolderType;
 
-            Sequence< ContentInfo > aInfo = m_pContent->queryCreatableContentsInfo();
-            const ContentInfo* pInfo = aInfo.getConstArray();
-            sal_Int32 nCount = aInfo.getLength();
-            for ( sal_Int32 i = 0; i < nCount; ++i, ++pInfo )
+            const css::uno::Sequence<css::ucb::ContentInfo> aContentsInfo = m_pContent->queryCreatableContentsInfo();
+            for ( auto const& rInfo : aContentsInfo )
             {
                 // Simply look for the first KIND_FOLDER...
-                if ( pInfo->Attributes & ContentInfoAttribute::KIND_FOLDER )
+                if ( rInfo.Attributes & ContentInfoAttribute::KIND_FOLDER )
                 {
-                    sFolderType = pInfo->Type;
+                    sFolderType = rInfo.Type;
                     break;
                 }
             }
@@ -312,9 +306,7 @@ namespace svt
             {
                 ucbhelper::Content aCreated;
                 Sequence< OUString > aNames { "Title" };
-                Sequence< Any > aValues( 1 );
-                Any* pValues = aValues.getArray();
-                pValues[0] <<= _rTitle;
+                Sequence< Any > aValues { Any(_rTitle) };
                 m_pContent->insertNewContent( sFolderType, aNames, aValues, aCreated );
 
                 aCreatedUrl = aCreated.getURL();

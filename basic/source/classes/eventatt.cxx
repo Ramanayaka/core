@@ -22,10 +22,7 @@
 #include <comphelper/string.hxx>
 
 #include <com/sun/star/awt/XControlContainer.hpp>
-#include <com/sun/star/awt/XControlModel.hpp>
 #include <com/sun/star/awt/XControl.hpp>
-#include <com/sun/star/awt/XDialog.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/awt/DialogProvider.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
@@ -36,13 +33,16 @@
 #include <com/sun/star/script/provider/theMasterScriptProviderFactory.hpp>
 #include <com/sun/star/script/provider/XScriptProviderSupplier.hpp>
 #include <com/sun/star/script/provider/XScriptProvider.hpp>
+#include <com/sun/star/io/XInputStreamProvider.hpp>
 
 #include <basic/basicmanagerrepository.hxx>
 #include <basic/basmgr.hxx>
 
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 #include <vcl/svapp.hxx>
-#include <xmlscript/xmldlg_imexp.hxx>
 #include <sbunoobj.hxx>
+#include <basic/sberrors.hxx>
 #include <basic/sbstar.hxx>
 #include <basic/sbmeth.hxx>
 #include <basic/sbuno.hxx>
@@ -51,6 +51,7 @@
 #include <eventatt.hxx>
 
 #include <cppuhelper/implbase.hxx>
+
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::script;
@@ -62,6 +63,7 @@ using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::io;
 using namespace ::cppu;
 
+namespace {
 
 void SFURL_firing_impl( const ScriptEvent& aScriptEvent, Any* pRet, const Reference< frame::XModel >& xModel )
 {
@@ -85,7 +87,7 @@ void SFURL_firing_impl( const ScriptEvent& aScriptEvent, Any* pRet, const Refere
 
                 Any aCtx;
                 aCtx <<= OUString("user");
-                xScriptProvider.set( xFactory->createScriptProvider( aCtx ), UNO_QUERY );
+                xScriptProvider = xFactory->createScriptProvider( aCtx );
             }
 
             if ( !xScriptProvider.is() )
@@ -114,13 +116,13 @@ void SFURL_firing_impl( const ScriptEvent& aScriptEvent, Any* pRet, const Refere
                 *pRet = result;
             }
         }
-        catch ( const RuntimeException& re )
+        catch ( const RuntimeException& )
         {
-            SAL_INFO("basic", "Caught RuntimeException reason " << re.Message);
+            TOOLS_INFO_EXCEPTION("basic", "" );
         }
-        catch ( const Exception& e )
+        catch ( const Exception& )
         {
-            SAL_INFO("basic", "Caught Exception reason " << e.Message);
+            TOOLS_INFO_EXCEPTION("basic", "" );
         }
 
 }
@@ -182,7 +184,7 @@ void BasicScriptListener_Impl::firing_impl( const ScriptEvent& aScriptEvent, Any
         if( comphelper::string::getTokenCount(aMacro, '.') == 3 )
         {
             sal_Int32 nLast = 0;
-            OUString aFullLibName = aMacro.getToken( (sal_Int32)0, '.', nLast );
+            OUString aFullLibName = aMacro.getToken( 0, '.', nLast );
 
             sal_Int32 nIndex = aFullLibName.indexOf( ':' );
             if (nIndex >= 0)
@@ -239,8 +241,8 @@ void BasicScriptListener_Impl::firing_impl( const ScriptEvent& aScriptEvent, Any
         // Be still tolerant and make default search if no search basic exists
         if( bSearchLib && xLibSearchBasic.is() )
         {
-            sal_Int16 nCount = xLibSearchBasic->GetObjects()->Count();
-            for( sal_Int16 nObj = -1; nObj < nCount ; nObj++ )
+            sal_Int32 nCount = xLibSearchBasic->GetObjects()->Count32();
+            for( sal_Int32 nObj = -1; nObj < nCount ; nObj++ )
             {
                 StarBASIC* pBasic;
                 if( nObj == -1 )
@@ -249,7 +251,7 @@ void BasicScriptListener_Impl::firing_impl( const ScriptEvent& aScriptEvent, Any
                 }
                 else
                 {
-                    SbxVariable* pVar = xLibSearchBasic->GetObjects()->Get( nObj );
+                    SbxVariable* pVar = xLibSearchBasic->GetObjects()->Get32( nObj );
                     pBasic = dynamic_cast<StarBASIC*>( pVar );
                 }
                 if( pBasic )
@@ -289,7 +291,7 @@ void BasicScriptListener_Impl::firing_impl( const ScriptEvent& aScriptEvent, Any
             {
                 SbxVariableRef xVar = new SbxVariable( SbxVARIANT );
                 unoToSbxValue( xVar.get(), pArgs[i] );
-                xArray->Put( xVar.get(), sal::static_int_cast< sal_uInt16 >(i+1) );
+                xArray->Put32( xVar.get(), sal::static_int_cast< sal_uInt32 >(i+1) );
             }
         }
 
@@ -318,9 +320,8 @@ css::uno::Reference< css::container::XNameContainer > implFindDialogLibForDialog
     css::uno::Reference< css::container::XNameContainer > aRetDlgLib;
 
     SbxVariable* pDlgLibContVar = pBasic->Find("DialogLibraries", SbxClassType::Object);
-    if( pDlgLibContVar && dynamic_cast<const SbUnoObject*>( pDlgLibContVar) != nullptr )
+    if( auto pDlgLibContUnoObj = dynamic_cast<SbUnoObject*>( pDlgLibContVar) )
     {
-        SbUnoObject* pDlgLibContUnoObj = static_cast<SbUnoObject*>(static_cast<SbxBase*>(pDlgLibContVar));
         Any aDlgLibContAny = pDlgLibContUnoObj->getUnoAny();
 
         Reference< XLibraryContainer > xDlgLibContNameAccess( aDlgLibContAny, UNO_QUERY );
@@ -401,19 +402,21 @@ css::uno::Reference< css::container::XNameContainer > implFindDialogLibForDialog
     return aDlgLib;
 }
 
+}
+
 void RTL_Impl_CreateUnoDialog( SbxArray& rPar )
 {
     Reference< XComponentContext > xContext( comphelper::getProcessComponentContext() );
 
     // We need at least 1 parameter
-    if ( rPar.Count() < 2 )
+    if ( rPar.Count32() < 2 )
     {
         StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
         return;
     }
 
     // Get dialog
-    SbxBaseRef pObj = rPar.Get( 1 )->GetObject();
+    SbxBaseRef pObj = rPar.Get32( 1 )->GetObject();
     if( !(pObj.is() && dynamic_cast<const SbUnoObject*>( pObj.get() ) != nullptr) )
     {
         StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
@@ -477,10 +480,10 @@ void RTL_Impl_CreateUnoDialog( SbxArray& rPar )
     {
         Reference< frame::XDesktop2 > xDesktop = frame::Desktop::create( xContext );
         Reference< container::XEnumeration > xModels;
-        Reference< container::XEnumerationAccess > xComponents( xDesktop->getComponents(), UNO_QUERY );
+        Reference< container::XEnumerationAccess > xComponents = xDesktop->getComponents();
         if ( xComponents.is() )
         {
-            xModels.set( xComponents->createEnumeration(), UNO_QUERY );
+            xModels = xComponents->createEnumeration();
         }
         if ( xModels.is() )
         {
@@ -537,7 +540,7 @@ void RTL_Impl_CreateUnoDialog( SbxArray& rPar )
     // Return dialog
     Any aRetVal;
     aRetVal <<= xCntrl;
-    SbxVariableRef refVar = rPar.Get(0);
+    SbxVariableRef refVar = rPar.Get32(0);
     unoToSbxValue( refVar.get(), aRetVal );
 }
 

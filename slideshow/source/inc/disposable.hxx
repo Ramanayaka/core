@@ -20,15 +20,12 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_INC_DISPOSABLE_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_INC_DISPOSABLE_HXX
 
-#include <sal/types.h>
 #include <memory>
 
 
 /* Definition of Disposable interface */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /**
          * Base class for being a shared pointer, since quite a few of the downstream classes
@@ -61,7 +58,6 @@ namespace slideshow
             virtual void dispose() = 0;
         };
 
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_DISPOSABLE_HXX

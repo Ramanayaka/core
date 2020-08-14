@@ -20,33 +20,26 @@
 #ifndef INCLUDED_EDITENG_MEASFLD_HXX
 #define INCLUDED_EDITENG_MEASFLD_HXX
 
-#include <editeng/eeitem.hxx>
-
-#ifndef _FLDITEM_HXX
-#ifndef ITEMID_FIELD
-#include <editeng/editdata.hxx>  /* this include is needed due to EE_FEATURE_FIELD */
-#define ITEMID_FIELD EE_FEATURE_FIELD  /* is needed for #include <editeng/flditem.hxx> */
-#endif
 #include <editeng/flditem.hxx>
-#endif
 #include <editeng/editengdllapi.h>
-
 #include <com/sun/star/text/textfield/Type.hpp>
 
-class SdrMeasureObj;
+enum class SdrMeasureFieldKind { Value, Unit, Rotate90Blanks };
 
-enum SdrMeasureFieldKind {SDRMEASUREFIELD_VALUE,SDRMEASUREFIELD_UNIT,SDRMEASUREFIELD_ROTA90BLANCS};
-
-class EDITENG_DLLPUBLIC SdrMeasureField: public SvxFieldData {
+class EDITENG_DLLPUBLIC SdrMeasureField final : public SvxFieldData {
     SdrMeasureFieldKind eMeasureFieldKind;
 public:
-    SV_DECL_PERSIST1(SdrMeasureField, css::text::textfield::Type::MEASURE)
-    SdrMeasureField(): eMeasureFieldKind(SDRMEASUREFIELD_VALUE) {}
+    virtual sal_Int32  GetClassId() const override { return css::text::textfield::Type::MEASURE; }
     SdrMeasureField(SdrMeasureFieldKind eNewKind): eMeasureFieldKind(eNewKind) {}
     virtual ~SdrMeasureField() override;
-    virtual SvxFieldData* Clone() const override;
+    virtual std::unique_ptr<SvxFieldData> Clone() const override;
     virtual bool operator==(const SvxFieldData&) const override;
     SdrMeasureFieldKind GetMeasureFieldKind() const { return eMeasureFieldKind; }
+
+    SdrMeasureField(SdrMeasureField const &) = default;
+    SdrMeasureField(SdrMeasureField &&) = default;
+    SdrMeasureField & operator =(SdrMeasureField const &) = default;
+    SdrMeasureField & operator =(SdrMeasureField &&) = default;
 };
 
 

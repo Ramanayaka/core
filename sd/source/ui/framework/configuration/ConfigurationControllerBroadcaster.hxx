@@ -20,14 +20,18 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_CONFIGURATIONCONTROLLERBROADCASTER_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_CONFIGURATION_CONFIGURATIONCONTROLLERBROADCASTER_HXX
 
-#include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/ConfigurationChangeEvent.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 
 #include <unordered_map>
 #include <vector>
 
-namespace sd { namespace framework {
+namespace com::sun::star::drawing::framework { class XConfigurationChangeListener; }
+namespace com::sun::star::drawing::framework { class XConfigurationController; }
+namespace com::sun::star::drawing::framework { class XResource; }
+namespace com::sun::star::drawing::framework { class XResourceId; }
+namespace com::sun::star::drawing::framework { struct ConfigurationChangeEvent; }
+
+namespace sd::framework {
 
 /** This class manages the set of XConfigurationChangeListeners and
     calls them when the ConfigurationController wants to broadcast an
@@ -117,8 +121,7 @@ private:
     typedef std::vector<ListenerDescriptor> ListenerList;
     typedef std::unordered_map
         <OUString,
-         ListenerList,
-         OUStringHash> ListenerMap;
+         ListenerList> ListenerMap;
     ListenerMap maListenerMap;
 
     /** Broadcast the given event to all listeners in the given list.
@@ -131,7 +134,7 @@ private:
         const css::drawing::framework::ConfigurationChangeEvent& rEvent);
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

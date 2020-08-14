@@ -17,22 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fuediglu.hxx"
+#include <fuediglu.hxx>
 #include <svl/eitem.hxx>
-#include <svx/dialogs.hrc>
 #include <svx/svdglue.hxx>
 #include <sfx2/request.hxx>
 
-#include "app.hrc"
-#include "strings.hrc"
-#include "res_bmp.hrc"
-#include "Window.hxx"
-#include "drawdoc.hxx"
-#include "FrameView.hxx"
-#include "View.hxx"
-#include "ViewShell.hxx"
-#include "ViewShellBase.hxx"
-#include "ToolBarManager.hxx"
+#include <app.hrc>
+
+#include <Window.hxx>
+#include <View.hxx>
+#include <ViewShell.hxx>
+#include <ViewShellBase.hxx>
+#include <ToolBarManager.hxx>
 
 namespace sd {
 
@@ -141,7 +137,7 @@ bool FuEditGluePoints::MouseButtonDown(const MouseEvent& rMEvt)
             if (!rMEvt.IsShift())
                 mpView->UnmarkAllGluePoints();
 
-            mpView->MarkGluePoint(aVEvt.pObj, aVEvt.nGlueId, aVEvt.pPV);
+            mpView->MarkGluePoint(aVEvt.pObj, aVEvt.nGlueId, false);
             SdrHdl* pHdl = mpView->GetGluePointHdl(aVEvt.pObj, aVEvt.nGlueId);
 
             if (pHdl)

@@ -19,21 +19,18 @@
 
 #include "SlsViewCacheContext.hxx"
 
-#include "SlideSorter.hxx"
-#include "model/SlideSorterModel.hxx"
-#include "model/SlsPageDescriptor.hxx"
-#include "model/SlsPageEnumerationProvider.hxx"
-#include "view/SlideSorterView.hxx"
-#include "sdpage.hxx"
-#include "Window.hxx"
-#include "drawdoc.hxx"
-#include "tools/IdleDetection.hxx"
+#include <SlideSorter.hxx>
+#include <model/SlideSorterModel.hxx>
+#include <model/SlsPageDescriptor.hxx>
+#include <model/SlsPageEnumerationProvider.hxx>
+#include <view/SlideSorterView.hxx>
+#include <sdpage.hxx>
+#include <Window.hxx>
+#include <drawdoc.hxx>
+#include <tools/IdleDetection.hxx>
 #include <svx/svdpage.hxx>
-#include <svx/sdr/contact/viewcontact.hxx>
-#include <vcl/window.hxx>
-#include <svx/sdr/contact/objectcontact.hxx>
 
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::view {
 
 ViewCacheContext::ViewCacheContext (SlideSorter& rSlideSorter)
     : mrModel(rSlideSorter.GetModel()),
@@ -45,12 +42,10 @@ ViewCacheContext::~ViewCacheContext()
 {
 }
 
-void ViewCacheContext::NotifyPreviewCreation (
-    cache::CacheKey aKey,
-    const Bitmap&)
+void ViewCacheContext::NotifyPreviewCreation(cache::CacheKey aKey)
 {
     const model::SharedPageDescriptor pDescriptor (GetDescriptor(aKey));
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
     {
         // Force a repaint that will trigger their re-creation.
         mrSlideSorter.GetView().RequestRepaint(pDescriptor);
@@ -82,7 +77,7 @@ const SdrPage* ViewCacheContext::GetPage (cache::CacheKey aKey)
 
 std::shared_ptr<std::vector<cache::CacheKey> > ViewCacheContext::GetEntryList (bool bVisible)
 {
-    std::shared_ptr<std::vector<cache::CacheKey> > pKeys (new std::vector<cache::CacheKey>);
+    auto pKeys = std::make_shared<std::vector<cache::CacheKey>>();
 
     model::PageEnumeration aPageEnumeration (
         bVisible
@@ -117,6 +112,6 @@ css::uno::Reference<css::uno::XInterface> ViewCacheContext::GetModel()
         return mrModel.GetDocument()->getUnoModel();
 }
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

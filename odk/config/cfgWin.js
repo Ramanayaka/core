@@ -197,7 +197,7 @@ function getOfficeHome()
                 continue;
             }
         }
-        //Check if this is a valid office installtion folder by looking for the
+        //Check if this is a valid office installation folder by looking for the
 		//program sub-directory
         var progDir = sHome + "\\program";
         if (! aFileSystemObject.FolderExists(progDir))
@@ -654,7 +654,7 @@ function getJavaHome()
     var bSkip = false;
     while(true)
     {
-        stdout.Write("\n Enter JAVA SDK (1.4.1_01 or higher) installation directory (optional) [" + sSuggestedHome + "]:");
+        stdout.Write("\n Enter JAVA SDK (1.6 or higher) installation directory (optional) [" + sSuggestedHome + "]:");
         var sHome = stdin.ReadLine();
         if (sHome.length == 0)
         {
@@ -751,7 +751,7 @@ function getOutputDir()
 				stdout.WriteLine("\n Error: your specified output directory " +
 								 "\"" + sDir + "\" " +
 								 "contains one or more spaces.\n        That " +
-								 "causes problems with gnu make. Please specifiy" +
+								 "causes problems with gnu make. Please specify" +
 								 " a directory without spaces.");
 				bSkip = true;
 			}
@@ -953,10 +953,7 @@ function writeBatFile(fdir, file)
         "set OO_SDK_OFFICE_JAVA_DIR=%OFFICE_PROGRAM_PATH%\\classes\n" +
         "\n" +
         "REM Set classpath\n" +
-        "set CLASSPATH=%OO_SDK_URE_JAVA_DIR%\\juh.jar;%OO_SDK_URE_JAVA_DIR%\\jurt.jar;%OO_SDK_URE_JAVA_DIR%\\ridl.jar;%OO_SDK_URE_JAVA_DIR%\\unoloader.jar;%OO_SDK_OFFICE_JAVA_DIR%\\unoil.jar\n" +
-        "REM if defined OFFICE_HOME (\n" +
-        "REM     set CLASSPATH=%CLASSPATH%;%OO_SDK_OFFICE_JAVA_DIR%\\unoil.jar\n" +
-        "REM  )\n" +
+        "set CLASSPATH=%OO_SDK_URE_JAVA_DIR%\\libreoffice.jar;%OO_SDK_URE_JAVA_DIR%\\unoloader.jar\n" +
         "\n" +
         "REM Add directory of the SDK tools to the path.\n" +
         "set PATH=%OO_SDK_HOME%\\bin;%OO_SDK_URE_BIN_DIR%;%OO_SDK_OFFICE_BIN_DIR%;%OO_SDK_HOME%\\WINexample.out\\bin;%PATH%\n" +

@@ -35,10 +35,10 @@
 class EDITENG_DLLPUBLIC SvxTabStop
 {
 private:
-    sal_Int32 nTabPos;
-
+    sal_Int32       nTabPos;
     SvxTabAdjust    eAdjustment;
-    mutable sal_Unicode     m_cDecimal;
+    mutable sal_Unicode
+                    m_cDecimal;
     sal_Unicode     cFill;
 
     void fillDecimal() const;
@@ -50,11 +50,11 @@ public:
                 const sal_Unicode cDec = cDfltDecimalChar,
                 const sal_Unicode cFil = cDfltFillChar );
 
-    sal_Int32& GetTabPos() { return nTabPos; }
-    sal_Int32  GetTabPos() const { return nTabPos; }
+    sal_Int32&    GetTabPos() { return nTabPos; }
+    sal_Int32     GetTabPos() const { return nTabPos; }
 
-    SvxTabAdjust&   GetAdjustment() { return eAdjustment; }
-    SvxTabAdjust    GetAdjustment() const { return eAdjustment; }
+    SvxTabAdjust& GetAdjustment() { return eAdjustment; }
+    SvxTabAdjust  GetAdjustment() const { return eAdjustment; }
 
     sal_Unicode&  GetDecimal() { fillDecimal(); return m_cDecimal; }
     sal_Unicode   GetDecimal() const { fillDecimal(); return m_cDecimal; }
@@ -62,27 +62,22 @@ public:
     sal_Unicode&  GetFill() { return cFill; }
     sal_Unicode   GetFill() const { return cFill; }
 
-    // the "old" operator==()
-    bool          IsEqual( const SvxTabStop& rTS ) const
+    bool          operator==( const SvxTabStop& rTS ) const
                         {
                             return ( nTabPos     == rTS.nTabPos     &&
                                      eAdjustment == rTS.eAdjustment &&
                                      m_cDecimal    == rTS.m_cDecimal    &&
                                      cFill       == rTS.cFill );
                         }
-
+    bool          operator!=( const SvxTabStop& rTS ) const
+                        {
+                            return !operator==(rTS);
+                        }
     // For the SortedArray:
     bool            operator <( const SvxTabStop& rTS ) const
                         { return nTabPos < rTS.nTabPos; }
 
-    SvxTabStop&     operator=( const SvxTabStop& rTS )
-                        {
-                            nTabPos = rTS.nTabPos;
-                            eAdjustment = rTS.eAdjustment;
-                            m_cDecimal = rTS.m_cDecimal;
-                            cFill = rTS.cFill;
-                            return *this;
-                        }
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 // class SvxTabStopItem --------------------------------------------------
@@ -94,7 +89,7 @@ typedef o3tl::sorted_vector<SvxTabStop> SvxTabStopArr;
     This item describes a list of TabStops.
 */
 
-class EDITENG_DLLPUBLIC SvxTabStopItem : public SfxPoolItem
+class EDITENG_DLLPUBLIC SvxTabStopItem final : public SfxPoolItem
 {
     SvxTabStopArr maTabStops;
 
@@ -106,7 +101,6 @@ public:
                     const sal_uInt16 nDist,
                     const SvxTabAdjust eAdjst /*= SvxTabAdjust::Default*/,
                     sal_uInt16 nWhich  );
-    SvxTabStopItem( const SvxTabStopItem& rTSI );
 
     // Returns index of the tab or TAB_NOTFOUND
     sal_uInt16          GetPos( const SvxTabStop& rTab ) const;
@@ -122,7 +116,6 @@ public:
                         { maTabStops.erase( maTabStops.begin() + nPos, maTabStops.begin() + nPos + nLen ); }
 
     // Assignment operator, equality operator (caution: expensive!)
-    SvxTabStopItem& operator=( const SvxTabStopItem& rTSI );
 
     // this is already included in SfxPoolItem declaration
     //int             operator!=( const SvxTabStopItem& rTSI ) const
@@ -144,12 +137,11 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create( SvStream&, sal_uInt16 ) const override;
-    virtual SvStream&        Store( SvStream& , sal_uInt16 nItemVersion ) const override;
+    virtual SvxTabStopItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 #endif

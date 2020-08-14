@@ -9,18 +9,15 @@
 
 #include "op_spreadsheet.hxx"
 
-#include "formulagroup.hxx"
-#include "document.hxx"
-#include "formulacell.hxx"
-#include "tokenarray.hxx"
-#include "compiler.hxx"
-#include "interpre.hxx"
+#include <rtl/math.hxx>
 #include <formula/vectortoken.hxx>
+
+#include <algorithm>
 #include <sstream>
 
 using namespace formula;
 
-namespace sc { namespace opencl {
+namespace sc::opencl {
 
 void OpVLookup::GenSlidingWindowFunction(std::stringstream &ss,
             const std::string &sSymName, SubArguments &vSubArguments)
@@ -55,36 +52,35 @@ void OpVLookup::GenSlidingWindowFunction(std::stringstream &ss,
         index = ::rtl::math::approxFloor(dblToken->GetDouble());
     }
 
-    if (vSubArguments[1]->GetFormulaToken()->GetType() == formula::svDoubleVectorRef)
+    if (vSubArguments[1]->GetFormulaToken()->GetType() != formula::svDoubleVectorRef)
+        throw Unhandled(__FILE__, __LINE__); // unusual vlookup.
+
+    FormulaToken *tmpCur = vSubArguments[1]->GetFormulaToken();
+    const formula::DoubleVectorRefToken*pCurDVR = static_cast<const formula::DoubleVectorRefToken *>(tmpCur);
+    const std::vector<VectorRefArray> items = pCurDVR->GetArrays();
+
+    secondParaWidth = items.size();
+
+    if (index < 1 || index > secondParaWidth)
+        throw Unhandled(__FILE__, __LINE__); // oob index.
+
+    if (items[index - 1].mpStringArray)
     {
-        FormulaToken *tmpCur = vSubArguments[1]->GetFormulaToken();
-        const formula::DoubleVectorRefToken*pCurDVR = static_cast<const formula::DoubleVectorRefToken *>(tmpCur);
-        const std::vector<VectorRefArray> items = pCurDVR->GetArrays();
-
-        secondParaWidth = items.size();
-
-        if (index < 1 || index > secondParaWidth)
-            throw Unhandled(__FILE__, __LINE__); // oob index.
-
-        if (items[index - 1].mpStringArray)
+        rtl_uString **pStrings = items[index - 1].mpStringArray;
+        for (size_t i = 0; i < pCurDVR->GetArrayLength(); ++i)
         {
-            rtl_uString **pStrings = items[index - 1].mpStringArray;
-            for (size_t i = 0; i < pCurDVR->GetArrayLength(); ++i)
-            {
-                if (pStrings[i] != nullptr)
-                {   // TODO: the GroupTokenConverter should do better.
-                    throw Unhandled(__FILE__, __LINE__); // mixed arguments.
-                }
+            if (pStrings[i] != nullptr)
+            {   // TODO: the GroupTokenConverter should do better.
+                throw Unhandled(__FILE__, __LINE__); // mixed arguments.
             }
         }
     }
-    else
-        throw Unhandled(__FILE__, __LINE__); // unusual vlookup.
+
 
     arg += secondParaWidth;
     CheckSubArgumentIsNan(ss,vSubArguments,arg++);
 
-    if (vSubArguments.size() == (unsigned int)(3+(secondParaWidth-1)))
+    if (vSubArguments.size() == static_cast<unsigned int>(3+(secondParaWidth-1)))
     {
         ss << "    double tmp";
         ss << 3+(secondParaWidth-1);
@@ -97,9 +93,9 @@ void OpVLookup::GenSlidingWindowFunction(std::stringstream &ss,
 
     if (vSubArguments[1]->GetFormulaToken()->GetType() == formula::svDoubleVectorRef)
     {
-        FormulaToken *tmpCur = vSubArguments[1]->GetFormulaToken();
-        const formula::DoubleVectorRefToken*pCurDVR = static_cast<const formula::DoubleVectorRefToken *>(tmpCur);
-        size_t nCurWindowSize = pCurDVR->GetArrayLength() < pCurDVR->GetRefRowSize() ? pCurDVR->GetArrayLength() : pCurDVR->GetRefRowSize() ;
+        tmpCur = vSubArguments[1]->GetFormulaToken();
+        pCurDVR = static_cast<const formula::DoubleVectorRefToken *>(tmpCur);
+        size_t nCurWindowSize = std::min(pCurDVR->GetArrayLength(), pCurDVR->GetRefRowSize());
         int unrollSize = 8;
         ss << "    int loop;\n";
         if (!pCurDVR->IsStartFixed() && pCurDVR->IsEndFixed())
@@ -285,6 +281,6 @@ void OpVLookup::GenSlidingWindowFunction(std::stringstream &ss,
     ss << "}";
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

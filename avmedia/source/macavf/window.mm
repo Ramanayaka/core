@@ -26,11 +26,10 @@
 using namespace ::com::sun::star;
 
 
-namespace avmedia { namespace macavf {
+namespace avmedia::macavf {
 
-Window::Window( const uno::Reference< lang::XMultiServiceFactory >& i_rxMgr, Player& i_rPlayer, NSView* i_pParentView )
-:   mxMgr( i_rxMgr )
-,   maListeners( maMutex )
+Window::Window( Player& i_rPlayer, NSView* i_pParentView )
+:   maListeners( maMutex )
 ,   meZoomLevel( media::ZoomLevel_NOT_AVAILABLE )
 ,   mrPlayer( i_rPlayer )
 ,   mnPointerType( awt::SystemPointer::ARROW )
@@ -44,8 +43,6 @@ Window::Window( const uno::Reference< lang::XMultiServiceFactory >& i_rxMgr, Pla
     AVPlayer* pAVPlayer = mrPlayer.getAVPlayer();
     AVAsset* pMovie = [[pAVPlayer currentItem] asset];
     const int nVideoCount = [pMovie tracksWithMediaType:AVMediaTypeVideo].count;
-    const int nAudioCount = [pMovie tracksWithMediaType:AVMediaTypeAudio].count;
-    (void)nAudioCount;
     if( nVideoCount <= 0 )
         return;
 
@@ -75,7 +72,7 @@ Window::~Window()
 
 bool Window::handleObservation( NSString* /*pKeyPath*/ )
 {
-    const BOOL bReadyForDisplay = [mpPlayerLayer isReadyForDisplay];
+    const bool bReadyForDisplay = [mpPlayerLayer isReadyForDisplay];
     [mpPlayerLayer setHidden:!bReadyForDisplay];
     return true;
 }
@@ -241,24 +238,23 @@ void SAL_CALL Window::removeEventListener( const uno::Reference< lang::XEventLis
 
 // XServiceInfo
 
-::rtl::OUString SAL_CALL Window::getImplementationName(  )
+OUString SAL_CALL Window::getImplementationName(  )
 {
-    return ::rtl::OUString( AVMEDIA_MACAVF_WINDOW_IMPLEMENTATIONNAME );
+    return AVMEDIA_MACAVF_WINDOW_IMPLEMENTATIONNAME;
 }
 
 
-sal_Bool SAL_CALL Window::supportsService( const ::rtl::OUString& ServiceName )
+sal_Bool SAL_CALL Window::supportsService( const OUString& ServiceName )
 {
     return ServiceName == AVMEDIA_MACAVF_WINDOW_SERVICENAME;
 }
 
 
-uno::Sequence< ::rtl::OUString > SAL_CALL Window::getSupportedServiceNames(  )
+uno::Sequence< OUString > SAL_CALL Window::getSupportedServiceNames(  )
 {
     return { AVMEDIA_MACAVF_WINDOW_SERVICENAME };
 }
 
-} // namespace macavf
-} // namespace avmedia
+} // namespace avmedia::macavf
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

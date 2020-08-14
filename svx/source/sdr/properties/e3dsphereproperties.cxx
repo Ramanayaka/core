@@ -18,14 +18,11 @@
  */
 
 #include <sdr/properties/e3dsphereproperties.hxx>
-#include <svl/itemset.hxx>
 #include <svx/sphere3d.hxx>
 
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         E3dSphereProperties::E3dSphereProperties(SdrObject& rObj)
         :   E3dCompoundProperties(rObj)
         {
@@ -40,9 +37,9 @@ namespace sdr
         {
         }
 
-        BaseProperties& E3dSphereProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> E3dSphereProperties::Clone(SdrObject& rObj) const
         {
-            return *(new E3dSphereProperties(*this, rObj));
+            return std::unique_ptr<BaseProperties>(new E3dSphereProperties(*this, rObj));
         }
 
         void E3dSphereProperties::PostItemChange(const sal_uInt16 nWhich)
@@ -67,7 +64,6 @@ namespace sdr
                 }
             }
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

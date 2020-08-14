@@ -8,6 +8,7 @@
  */
 
 #include <test/bootstrapfixture.hxx>
+#include <test/helper/transferable.hxx>
 #include <unotest/macros_test.hxx>
 #include <test/xmltesttools.hxx>
 #include <boost/property_tree/json_parser.hpp>
@@ -15,22 +16,29 @@
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/frame/DispatchHelper.hpp>
+#include <com/sun/star/datatransfer/clipboard/SystemClipboard.hpp>
+#include <com/sun/star/datatransfer/UnsupportedFlavorException.hpp>
 #include <comphelper/dispatchcommand.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertysequence.hxx>
-#include <comphelper/string.hxx>
-#include <editeng/editids.hrc>
-#include <editeng/editview.hxx>
-#include <editeng/outliner.hxx>
 #include <osl/conditn.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <svl/srchitem.hxx>
+#include <svl/stritem.hxx>
 
 #include <comphelper/lok.hxx>
 #include <comphelper/propertyvalue.hxx>
+#include <sfx2/childwin.hxx>
 #include <sfx2/lokhelper.hxx>
 #include <svx/svdpage.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/scheduler.hxx>
+#include <vcl/vclevent.hxx>
+#include <vcl/virdev.hxx>
+#include <vcl/unohelp2.hxx>
+#include <sc.hrc>
+#include <comphelper/string.hxx>
+#include <tools/json_writer.hxx>
 
 #include <chrono>
 #include <cstddef>
@@ -39,26 +47,28 @@
 #include <docsh.hxx>
 #include <document.hxx>
 #include <docuno.hxx>
+#include <drwlayer.hxx>
 
 using namespace css;
 
-std::ostream& operator<<(std::ostream& os, ViewShellId const & id)
+static std::ostream& operator<<(std::ostream& os, ViewShellId const & id)
 {
-    os << (sal_Int32)id; return os;
+    os << static_cast<sal_Int32>(id); return os;
 }
 
 namespace
 {
 
-const char* const DATA_DIRECTORY = "/sc/qa/unit/tiledrendering/data/";
+char const DATA_DIRECTORY[] = "/sc/qa/unit/tiledrendering/data/";
 
 class ScTiledRenderingTest : public test::BootstrapFixture, public unotest::MacrosTest, public XmlTestTools
 {
 public:
     ScTiledRenderingTest();
-    virtual void setUp() SAL_OVERRIDE;
-    virtual void tearDown() SAL_OVERRIDE;
+    virtual void setUp() override;
+    virtual void tearDown() override;
 
+    void testRowColumnHeaders();
     void testRowColumnSelections();
     void testSortAscendingDescending();
     void testPartHash();
@@ -84,8 +94,25 @@ public:
     void testInsertGraphicInvalidations();
     void testDocumentSizeWithTwoViews();
     void testDisableUndoRepair();
+    void testDocumentRepair();
+    void testLanguageStatus();
+    void testMultiViewCopyPaste();
+    void testIMESupport();
+    void testFilterDlg();
+    void testVbaRangeCopyPaste();
+    void testInvalidationLoop();
+    void testPageDownInvalidation();
+    void testSheetChangeInvalidation();
+    void testInsertDeletePageInvalidation();
+    void testGetRowColumnHeadersInvalidation();
+    void testJumpHorizontallyInvalidation();
+    void testJumpToLastRowInvalidation();
+    void testSheetGeometryDataInvariance();
+    void testSheetGeometryDataCorrectness();
+    void testDeleteCellMultilineContent();
 
     CPPUNIT_TEST_SUITE(ScTiledRenderingTest);
+    CPPUNIT_TEST(testRowColumnHeaders);
     CPPUNIT_TEST(testRowColumnSelections);
     CPPUNIT_TEST(testSortAscendingDescending);
     CPPUNIT_TEST(testPartHash);
@@ -111,6 +138,22 @@ public:
     CPPUNIT_TEST(testInsertGraphicInvalidations);
     CPPUNIT_TEST(testDocumentSizeWithTwoViews);
     CPPUNIT_TEST(testDisableUndoRepair);
+    CPPUNIT_TEST(testDocumentRepair);
+    CPPUNIT_TEST(testLanguageStatus);
+    CPPUNIT_TEST(testMultiViewCopyPaste);
+    CPPUNIT_TEST(testIMESupport);
+    CPPUNIT_TEST(testFilterDlg);
+    CPPUNIT_TEST(testVbaRangeCopyPaste);
+    CPPUNIT_TEST(testInvalidationLoop);
+    CPPUNIT_TEST(testPageDownInvalidation);
+    CPPUNIT_TEST(testSheetChangeInvalidation);
+    CPPUNIT_TEST(testInsertDeletePageInvalidation);
+    CPPUNIT_TEST(testGetRowColumnHeadersInvalidation);
+    CPPUNIT_TEST(testJumpHorizontallyInvalidation);
+    CPPUNIT_TEST(testJumpToLastRowInvalidation);
+    CPPUNIT_TEST(testSheetGeometryDataInvariance);
+    CPPUNIT_TEST(testSheetGeometryDataCorrectness);
+    CPPUNIT_TEST(testDeleteCellMultilineContent);
     CPPUNIT_TEST_SUITE_END();
 
 private:
@@ -139,7 +182,22 @@ void ScTiledRenderingTest::setUp()
 void ScTiledRenderingTest::tearDown()
 {
     if (mxComponent.is())
+    {
+        ScModelObj* pModelObj = static_cast<ScModelObj*>(mxComponent.get());
+        ScDocShell* pDocSh = dynamic_cast< ScDocShell* >( pModelObj->GetEmbeddedObject() );
+        if (pDocSh)
+        {
+            ScTabViewShell* pViewShell = pDocSh->GetBestViewShell(false);
+            if (pViewShell)
+            {
+                // The current view is unregistered here, multiple views have to be unregistered
+                // in the test function itself.
+                pViewShell->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+            }
+        }
         mxComponent->dispose();
+    }
+    comphelper::LibreOfficeKit::setActive(false);
 
     test::BootstrapFixture::tearDown();
 }
@@ -220,79 +278,76 @@ void ScTiledRenderingTest::testRowColumnSelections()
     comphelper::dispatchCommand(".uno:SelectRow", aArgs);
 
     // Check if it is selected
-    OString aUsedMimeType;
-    OString aResult = pModelObj->getTextSelection("text/plain;charset=utf-8", aUsedMimeType);
+    OString aResult = apitest::helper::transferable::getTextSelection(pModelObj->getSelection(), "text/plain;charset=utf-8");
     OString aExpected("1\t2\t3\t4\t5\t6\t7\t8\t9\t10\t11\t12\t13\t14\t15\t16\t17\t18\t19\t20\t21\n");
     CPPUNIT_ASSERT_EQUAL(aExpected, aResult);
 
     // Select the 10th row with shift modifier
-    aArgs[0].Name = OUString::fromUtf8("Row");
+    aArgs[0].Name = "Row";
     aArgs[0].Value <<= static_cast<sal_Int32>(10 - 1);
-    aArgs[1].Name = OUString::fromUtf8("Modifier");
+    aArgs[1].Name = "Modifier";
     aArgs[1].Value <<= KEY_SHIFT;
     comphelper::dispatchCommand(".uno:SelectRow", aArgs);
 
     // Check if all the rows from 5th to 10th get selected
-    aResult = pModelObj->getTextSelection("text/plain;charset=utf-8", aUsedMimeType);
+    aResult = apitest::helper::transferable::getTextSelection(pModelObj->getSelection(), "text/plain;charset=utf-8");
     aExpected = "1\t2\t3\t4\t5\t6\t7\t8\t9\t10\t11\t12\t13\t14\t15\t16\t17\t18\t19\t20\t21\n2\t3\t4\t5\t6\t7\t8\t9\t10\t11\t12\t13\t14\t15\t16\t17\t18\t19\t20\t21\t22\n3\t4\t5\t6\t7\t8\t9\t10\t11\t12\t13\t14\t15\t16\t17\t18\t19\t20\t21\t22\t23\n4\t5\t6\t7\t8\t9\t10\t11\t12\t13\t14\t15\t16\t17\t18\t19\t20\t21\t22\t23\t24\n5\t6\t7\t8\t9\t10\t11\t12\t13\t14\t15\t16\t17\t18\t19\t20\t21\t22\t23\t24\t25\n6\t7\t8\t9\t10\t11\t12\t13\t14\t15\t16\t17\t18\t19\t20\t21\t22\t23\t24\t25\t26\n";
     CPPUNIT_ASSERT_EQUAL(aExpected, aResult);
 
     // Select the 10th row with ctrl modifier
-    aArgs[0].Name = OUString::fromUtf8("Row");
+    aArgs[0].Name = "Row";
     aArgs[0].Value <<= static_cast<sal_Int32>(13 - 1);
-    aArgs[1].Name = OUString::fromUtf8("Modifier");
+    aArgs[1].Name = "Modifier";
     aArgs[1].Value <<= KEY_MOD1;
     comphelper::dispatchCommand(".uno:SelectRow", aArgs);
 
     // When we copy this, we don't get anything useful, but we must not crash
     // (used to happen)
-    aResult = pModelObj->getTextSelection("text/plain;charset=utf-8", aUsedMimeType);
+    aResult = apitest::helper::transferable::getTextSelection(pModelObj->getSelection(), "text/plain;charset=utf-8");
     CPPUNIT_ASSERT_EQUAL(OString(), aResult);
 
     // TODO check that we really selected what we wanted here
 
     // Select Column 5 with ctrl modifier
-    aArgs[0].Name = OUString::fromUtf8("Col");
+    aArgs[0].Name = "Col";
     aArgs[0].Value <<= static_cast<sal_Int32>(5 - 1);
-    aArgs[1].Name = OUString::fromUtf8("Modifier");
+    aArgs[1].Name = "Modifier";
     aArgs[1].Value <<= KEY_MOD1;
     comphelper::dispatchCommand(".uno:SelectColumn", aArgs);
 
     // When we copy this, we don't get anything useful, but we must not crash
     // (used to happen)
-    aResult = pModelObj->getTextSelection("text/plain;charset=utf-8", aUsedMimeType);
+    aResult = apitest::helper::transferable::getTextSelection(pModelObj->getSelection(), "text/plain;charset=utf-8");
     CPPUNIT_ASSERT_EQUAL(OString(), aResult);
 
     // TODO check that we really selected what we wanted here
 
     // Test for deselection of already selected rows
     // First Deselect Row 13 because copy doesn't work for multiple selections
-    aArgs[0].Name = OUString::fromUtf8("Row");
+    aArgs[0].Name = "Row";
     aArgs[0].Value <<= static_cast<sal_Int32>(13 - 1);
-    aArgs[1].Name = OUString::fromUtf8("Modifier");
+    aArgs[1].Name = "Modifier";
     aArgs[1].Value <<= KEY_MOD1;
     comphelper::dispatchCommand(".uno:SelectRow", aArgs);
 
     // Deselect row 10
-    aArgs[0].Name = OUString::fromUtf8("Row");
+    aArgs[0].Name = "Row";
     aArgs[0].Value <<= static_cast<sal_Int32>(10 - 1);
-    aArgs[1].Name = OUString::fromUtf8("Modifier");
+    aArgs[1].Name = "Modifier";
     aArgs[1].Value <<= KEY_MOD1;
     comphelper::dispatchCommand(".uno:SelectRow", aArgs);
 
     // Click at row 6 holding shift
-    aArgs[0].Name = OUString::fromUtf8("Row");
+    aArgs[0].Name = "Row";
     aArgs[0].Value <<= static_cast<sal_Int32>(6 - 1);
-    aArgs[1].Name = OUString::fromUtf8("Modifier");
+    aArgs[1].Name = "Modifier";
     aArgs[1].Value <<= KEY_SHIFT;
     comphelper::dispatchCommand(".uno:SelectRow", aArgs);
 
     //  only row 5 should remain selected
-    aResult = pModelObj->getTextSelection("text/plain;charset=utf-8", aUsedMimeType);
+    aResult = apitest::helper::transferable::getTextSelection(pModelObj->getSelection(), "text/plain;charset=utf-8");
     aExpected = "1\t2\t3\t4\t5\t6\t7\t8\t9\t10\t11\t12\t13\t14\t15\t16\t17\t18\t19\t20\t21\n";
     CPPUNIT_ASSERT_EQUAL(aExpected, aResult);
-
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testSortAscendingDescending()
@@ -305,6 +360,7 @@ void ScTiledRenderingTest::testSortAscendingDescending()
     pModelObj->postMouseEvent(LOK_MOUSEEVENT_MOUSEBUTTONDOWN, 551, 129, 1, MOUSE_LEFT, 0);
     pModelObj->postMouseEvent(LOK_MOUSEEVENT_MOUSEMOVE, 820, 1336, 1, MOUSE_LEFT, 0);
     pModelObj->postMouseEvent(LOK_MOUSEEVENT_MOUSEBUTTONUP, 820, 1359, 1, MOUSE_LEFT, 0);
+    Scheduler::ProcessEventsToIdle();
 
     // sort ascending
     uno::Sequence<beans::PropertyValue> aArgs;
@@ -329,8 +385,6 @@ void ScTiledRenderingTest::testSortAscendingDescending()
     CPPUNIT_ASSERT_EQUAL(double(1), pDoc->GetValue(ScAddress(1, 0, 0)));
     CPPUNIT_ASSERT_EQUAL(double(3), pDoc->GetValue(ScAddress(1, 1, 0)));
     CPPUNIT_ASSERT_EQUAL(double(2), pDoc->GetValue(ScAddress(1, 2, 0)));
-
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testPartHash()
@@ -346,7 +400,6 @@ void ScTiledRenderingTest::testPartHash()
 
     // check part that it does not exists
     CPPUNIT_ASSERT(pModelObj->getPartHash(100).isEmpty());
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testDocumentSize()
@@ -370,15 +423,13 @@ void ScTiledRenderingTest::testDocumentSize()
     pViewShell->SetCursor(100, 0);
     // 2 seconds
     osl::Condition::Result aResult = m_aDocSizeCondition.wait(std::chrono::seconds(2));
-    CPPUNIT_ASSERT_EQUAL(aResult, osl::Condition::result_ok);
+    CPPUNIT_ASSERT_EQUAL(osl::Condition::result_ok, aResult);
 
     // Set cursor row
     pViewShell->SetCursor(0, 100);
     // 2 seconds
     aResult = m_aDocSizeCondition.wait(std::chrono::seconds(2));
-    CPPUNIT_ASSERT_EQUAL(aResult, osl::Condition::result_ok);
-
-    comphelper::LibreOfficeKit::setActive(false);
+    CPPUNIT_ASSERT_EQUAL(osl::Condition::result_ok, aResult);
 }
 
 void ScTiledRenderingTest::testEmptyColumnSelection()
@@ -393,18 +444,15 @@ void ScTiledRenderingTest::testEmptyColumnSelection()
         }));
     comphelper::dispatchCommand(".uno:SelectColumn", aArgs);
 
-    // Get plain selection
-    OString aUsedMimeType;
-    OString aResult = pModelObj->getTextSelection("text/plain;charset=utf-8", aUsedMimeType);
     // should be an empty string
-    CPPUNIT_ASSERT_EQUAL(OString(), aResult);
-
-    comphelper::LibreOfficeKit::setActive(false);
+    CPPUNIT_ASSERT_EQUAL(OString(), apitest::helper::transferable::getTextSelection(pModelObj->getSelection(), "text/plain;charset=utf-8"));
 }
 
 /// A view callback tracks callbacks invoked on one specific view.
 class ViewCallback
 {
+    SfxViewShell* mpViewShell;
+    int mnView;
 public:
     bool m_bOwnCursorInvalidated;
     bool m_bViewCursorInvalidated;
@@ -413,11 +461,14 @@ public:
     bool m_bGraphicViewSelection;
     bool m_bFullInvalidateTiles;
     bool m_bInvalidateTiles;
+    std::vector<tools::Rectangle> m_aInvalidations;
+    std::vector<int> m_aInvalidationsParts;
     bool m_bViewLock;
     OString m_sCellFormula;
     boost::property_tree::ptree m_aCommentCallbackResult;
+    OString m_sInvalidateHeader;
 
-    ViewCallback()
+    ViewCallback(bool bDeleteListenerOnDestruct=true)
         : m_bOwnCursorInvalidated(false),
           m_bViewCursorInvalidated(false),
           m_bTextViewSelectionInvalidated(false),
@@ -427,6 +478,20 @@ public:
           m_bInvalidateTiles(false),
           m_bViewLock(false)
     {
+        mpViewShell = SfxViewShell::Current();
+        mpViewShell->registerLibreOfficeKitViewCallback(&ViewCallback::callback, this);
+        mnView = SfxLokHelper::getView();
+        if (!bDeleteListenerOnDestruct)
+            mpViewShell = nullptr;
+    }
+
+    ~ViewCallback()
+    {
+        if (mpViewShell)
+        {
+            SfxLokHelper::setView(mnView);
+            mpViewShell->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+        }
     }
 
     static void callback(int nType, const char* pPayload, void* pData)
@@ -480,6 +545,16 @@ public:
             }
             else
             {
+                uno::Sequence<OUString> aSeq = comphelper::string::convertCommaSeparated(OUString::createFromAscii(pPayload));
+                CPPUNIT_ASSERT(aSeq.getLength() == 4 || aSeq.getLength() == 5);
+                tools::Rectangle aInvalidationRect;
+                aInvalidationRect.setX(aSeq[0].toInt32());
+                aInvalidationRect.setY(aSeq[1].toInt32());
+                aInvalidationRect.setWidth(aSeq[2].toInt32());
+                aInvalidationRect.setHeight(aSeq[3].toInt32());
+                m_aInvalidations.push_back(aInvalidationRect);
+                if (aSeq.getLength() == 5)
+                    m_aInvalidationsParts.push_back(aSeq[4].toInt32());
                 m_bInvalidateTiles = true;
             }
         }
@@ -497,6 +572,10 @@ public:
             m_aCommentCallbackResult = m_aCommentCallbackResult.get_child("comment");
         }
         break;
+        case LOK_CALLBACK_INVALIDATE_HEADER:
+        {
+            m_sInvalidateHeader = pPayload;
+        }
         }
     }
 };
@@ -508,13 +587,9 @@ void ScTiledRenderingTest::testViewCursors()
 
     ScModelObj* pModelObj = createDoc("select-row-cols.ods");
     ViewCallback aView1;
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView1);
     SfxLokHelper::createView();
     pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
-    ViewCallback aView2;
-    aView2.m_bViewCursorInvalidated = false;
-    aView2.m_bOwnCursorInvalidated = false;
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView2);
+    ViewCallback aView2(/*bDeleteListenerOnDestruct*/false);
     // This was false, the new view did not get the view (cell) cursor of the old view.
     CPPUNIT_ASSERT(aView2.m_bViewCursorInvalidated);
     CPPUNIT_ASSERT(aView2.m_bOwnCursorInvalidated);
@@ -523,24 +598,6 @@ void ScTiledRenderingTest::testViewCursors()
     Scheduler::ProcessEventsToIdle();
     SfxLokHelper::destroyView(SfxLokHelper::getView());
     CPPUNIT_ASSERT(aView1.m_bViewCursorInvalidated);
-    mxComponent->dispose();
-    mxComponent.clear();
-
-    comphelper::LibreOfficeKit::setActive(false);
-}
-
-void lcl_dispatchCommand(const uno::Reference<lang::XComponent>& xComponent, const OUString& rCommand, const uno::Sequence<beans::PropertyValue>& rArguments)
-{
-    uno::Reference<frame::XController> xController = uno::Reference<frame::XModel>(xComponent, uno::UNO_QUERY)->getCurrentController();
-    CPPUNIT_ASSERT(xController.is());
-    uno::Reference<frame::XDispatchProvider> xFrame(xController->getFrame(), uno::UNO_QUERY);
-    CPPUNIT_ASSERT(xFrame.is());
-
-    uno::Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
-    uno::Reference<frame::XDispatchHelper> xDispatchHelper(frame::DispatchHelper::create(xContext));
-    CPPUNIT_ASSERT(xDispatchHelper.is());
-
-    xDispatchHelper->executeDispatch(xFrame, rCommand, OUString(), 0, rArguments);
 }
 
 void ScTiledRenderingTest::testTextViewSelection()
@@ -550,22 +607,16 @@ void ScTiledRenderingTest::testTextViewSelection()
     // Create two views, and leave the second one current.
     ScModelObj* pModelObj = createDoc("select-row-cols.ods");
     ViewCallback aView1;
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView1);
     SfxLokHelper::createView();
-    ViewCallback aView2;
     pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView2);
+    ViewCallback aView2;
 
     // Create a selection on two cells in the second view, that's a text selection in LOK terms.
     aView1.m_bTextViewSelectionInvalidated = false;
-    lcl_dispatchCommand(mxComponent, ".uno:GoRightSel", {});
+    dispatchCommand(mxComponent, ".uno:GoRightSel", {});
     Scheduler::ProcessEventsToIdle();
     // Make sure the first view got its notification.
     CPPUNIT_ASSERT(aView1.m_bTextViewSelectionInvalidated);
-
-    mxComponent->dispose();
-    mxComponent.clear();
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testDocumentSizeChanged()
@@ -581,15 +632,11 @@ void ScTiledRenderingTest::testDocumentSizeChanged()
     {
         comphelper::makePropertyValue("ToPoint", OUString("$A$30")),
     };
-    lcl_dispatchCommand(mxComponent, ".uno:GoToCell", aPropertyValues);
+    dispatchCommand(mxComponent, ".uno:GoToCell", aPropertyValues);
     Scheduler::ProcessEventsToIdle();
     // Assert that the size in the payload is not 0.
     CPPUNIT_ASSERT(m_aDocumentSize.getWidth() > 0);
     CPPUNIT_ASSERT(m_aDocumentSize.getHeight() > 0);
-
-    mxComponent->dispose();
-    mxComponent.clear();
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testViewLock()
@@ -599,11 +646,9 @@ void ScTiledRenderingTest::testViewLock()
     // Load a document that has a shape and create two views.
     ScModelObj* pModelObj = createDoc("shape.ods");
     ViewCallback aView1;
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView1);
     SfxLokHelper::createView();
-    ViewCallback aView2;
     pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView2);
+    ViewCallback aView2;
 
     // Begin text edit in the second view and assert that the first gets a lock
     // notification.
@@ -613,7 +658,7 @@ void ScTiledRenderingTest::testViewLock()
     SdrModel* pDrawModel = pViewData->GetDocument()->GetDrawLayer();
     SdrPage* pDrawPage = pDrawModel->GetPage(0);
     SdrObject* pObject = pDrawPage->GetObj(0);
-    SdrView* pView = pViewShell->GetSdrView();
+    SdrView* pView = pViewShell->GetScDrawView();
     aView1.m_bViewLock = false;
     pView->SdrBeginTextEdit(pObject);
     CPPUNIT_ASSERT(aView1.m_bViewLock);
@@ -622,10 +667,6 @@ void ScTiledRenderingTest::testViewLock()
     // the first view.
     pView->SdrEndTextEdit();
     CPPUNIT_ASSERT(!aView1.m_bViewLock);
-
-    mxComponent->dispose();
-    mxComponent.clear();
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testColRowResize()
@@ -641,31 +682,26 @@ void ScTiledRenderingTest::testColRowResize()
     pViewShell->registerLibreOfficeKitViewCallback(&ScTiledRenderingTest::callback, this);
 
     ScDocument& rDoc = pDocSh->GetDocument();
-    // Col 3, Tab 0
-    int nOldWidth = rDoc.GetColWidth(static_cast<SCCOL>(2), static_cast<SCTAB>(0), false);
 
+    // Col 3, Tab 0
     uno::Sequence<beans::PropertyValue> aArgs( comphelper::InitPropertySequence({
-            { "Column", uno::Any(sal_Int16(3)) },
-            { "Width", uno::Any(sal_uInt16(nOldWidth + 100)) }
+            { "ColumnWidth", uno::Any(sal_uInt16(4000)) }, // 4cm
+            { "Column", uno::Any(sal_Int16(3)) }
         }));
     comphelper::dispatchCommand(".uno:ColumnWidth", aArgs);
 
-    int nNewWidth = rDoc.GetColWidth(static_cast<SCCOL>(2), static_cast<SCTAB>(0), false);
-    CPPUNIT_ASSERT(nNewWidth > nOldWidth);
+    sal_uInt16 nWidth = rDoc.GetColWidth(static_cast<SCCOL>(2), static_cast<SCTAB>(0), false) * HMM_PER_TWIPS;
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt16>(4000), nWidth);
 
     // Row 5, Tab 0
-    int nOldHeight = rDoc.GetRowHeight(static_cast<SCROW>(4), static_cast<SCTAB>(0), false);
-
     uno::Sequence<beans::PropertyValue> aArgs2( comphelper::InitPropertySequence({
+            { "RowHeight", uno::Any(sal_uInt16(2000)) },
             { "Row", uno::Any(sal_Int16(5)) },
-            { "Height", uno::Any(sal_uInt16(nOldHeight + 100)) }
         }));
     comphelper::dispatchCommand(".uno:RowHeight", aArgs2);
 
-    int nNewHeight = rDoc.GetRowHeight(static_cast<SCROW>(4), static_cast<SCTAB>(0), false);
-    CPPUNIT_ASSERT(nNewHeight > nOldHeight);
-
-    comphelper::LibreOfficeKit::setActive(false);
+    sal_uInt16 nHeight = rDoc.GetRowHeight(static_cast<SCROW>(4), static_cast<SCTAB>(0), false) * HMM_PER_TWIPS;
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt16>(2000), nHeight);
 }
 
 void ScTiledRenderingTest::testUndoShells()
@@ -684,16 +720,14 @@ void ScTiledRenderingTest::testUndoShells()
     sal_Int32 nView1 = SfxLokHelper::getView();
     // This was -1: ScSimpleUndo did not remember what view shell created it.
     CPPUNIT_ASSERT_EQUAL(ViewShellId(nView1), pUndoManager->GetUndoAction()->GetViewShellId());
-
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
-bool lcl_hasEditView(ScViewData& rViewData)
+bool lcl_hasEditView(const ScViewData& rViewData)
 {
     bool bResult = false;
     for (unsigned int i=0; i<4; i++)
     {
-        bResult = rViewData.HasEditView( (ScSplitPos) i );
+        bResult = rViewData.HasEditView( static_cast<ScSplitPos>(i) );
         if (bResult) break;
     }
     return bResult;
@@ -710,7 +744,6 @@ void ScTiledRenderingTest::testTextEditViews()
 
     // view #1
     ViewCallback aView1;
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView1);
     CPPUNIT_ASSERT(!lcl_hasEditView(*pViewData));
 
     // text edit a cell in view #1
@@ -721,9 +754,8 @@ void ScTiledRenderingTest::testTextEditViews()
 
     // view #2
     SfxLokHelper::createView();
-    ViewCallback aView2;
     pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView2);
+    ViewCallback aView2;
 
     // move cell cursor i view #2
     pModelObj->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::DOWN);
@@ -732,11 +764,6 @@ void ScTiledRenderingTest::testTextEditViews()
 
     // check that text edit view in view #1 has not be killed
     CPPUNIT_ASSERT(lcl_hasEditView(*pViewData));
-
-    mxComponent->dispose();
-    mxComponent.clear();
-
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testTextEditViewInvalidations()
@@ -749,16 +776,14 @@ void ScTiledRenderingTest::testTextEditViewInvalidations()
     CPPUNIT_ASSERT(pViewData);
 
     // view #1
-    ViewCallback aView1;
     int nView1 = SfxLokHelper::getView();
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView1);
+    ViewCallback aView1;
     CPPUNIT_ASSERT(!lcl_hasEditView(*pViewData));
 
     // view #2
     SfxLokHelper::createView();
-    ViewCallback aView2;
     pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView2);
+    ViewCallback aView2;
 
     // text edit a cell in view #1
     SfxLokHelper::setView(nView1);
@@ -788,9 +813,8 @@ void ScTiledRenderingTest::testTextEditViewInvalidations()
 
     // view #3
     SfxLokHelper::createView();
-    ViewCallback aView3;
     pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView3);
+    ViewCallback aView3;
 
     // text edit a cell in view #1
     SfxLokHelper::setView(nView1);
@@ -799,11 +823,6 @@ void ScTiledRenderingTest::testTextEditViewInvalidations()
     pModelObj->postKeyEvent(LOK_KEYEVENT_KEYUP, 'y', 0);
     Scheduler::ProcessEventsToIdle();
     CPPUNIT_ASSERT(aView3.m_bInvalidateTiles);
-
-    mxComponent->dispose();
-    mxComponent.clear();
-
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testCreateViewGraphicSelection()
@@ -814,7 +833,6 @@ void ScTiledRenderingTest::testCreateViewGraphicSelection()
     // Load a document that has a shape and create two views.
     ScModelObj* pModelObj = createDoc("shape.ods");
     ViewCallback aView1;
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView1);
 
     // Mark the graphic in the first view.
     const ScViewData* pViewData = ScDocShell::GetViewData();
@@ -823,24 +841,22 @@ void ScTiledRenderingTest::testCreateViewGraphicSelection()
     SdrModel* pDrawModel = pViewData->GetDocument()->GetDrawLayer();
     SdrPage* pDrawPage = pDrawModel->GetPage(0);
     SdrObject* pObject = pDrawPage->GetObj(0);
-    SdrView* pView = pViewShell->GetSdrView();
+    SdrView* pView = pViewShell->GetScDrawView();
     aView1.m_bGraphicSelection = false;
     aView1.m_bGraphicViewSelection = false;
     pView->MarkObj(pObject, pView->GetSdrPageView());
     CPPUNIT_ASSERT(aView1.m_bGraphicSelection);
 
     // Create a second view.
+    int nView1 = SfxLokHelper::getView();
     SfxLokHelper::createView();
-    ViewCallback aView2;
-    aView2.m_bGraphicViewSelection = false;
     pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView2);
+    ViewCallback aView2;
     CPPUNIT_ASSERT(aView2.m_bGraphicViewSelection);
     CPPUNIT_ASSERT(aView1.m_bGraphicViewSelection);
 
-    mxComponent->dispose();
-    mxComponent.clear();
-    comphelper::LibreOfficeKit::setActive(false);
+    SfxLokHelper::setView(nView1);
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
 }
 
 void ScTiledRenderingTest::testGraphicInvalidate()
@@ -851,12 +867,12 @@ void ScTiledRenderingTest::testGraphicInvalidate()
     // Load a document that has a shape and create two views.
     ScModelObj* pModelObj = createDoc("shape.ods");
     ViewCallback aView;
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView);
 
     // Click to select graphic
     aView.m_bGraphicSelection = false;
     pModelObj->postMouseEvent(LOK_MOUSEEVENT_MOUSEBUTTONDOWN, /*x=*/ 1,/*y=*/ 1,/*count=*/ 1, /*buttons=*/ 1, /*modifier=*/0);
     pModelObj->postMouseEvent(LOK_MOUSEEVENT_MOUSEBUTTONUP, /*x=*/ 1, /*y=*/ 1, /*count=*/ 1, /*buttons=*/ 1, /*modifier=*/0);
+    Scheduler::ProcessEventsToIdle();
     CPPUNIT_ASSERT(aView.m_bGraphicSelection);
 
     // Drag Drop graphic
@@ -870,10 +886,6 @@ void ScTiledRenderingTest::testGraphicInvalidate()
     // Check again
     Scheduler::ProcessEventsToIdle();
     CPPUNIT_ASSERT(!aView.m_bFullInvalidateTiles);
-
-    mxComponent->dispose();
-    mxComponent.clear();
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testAutoSum()
@@ -883,16 +895,11 @@ void ScTiledRenderingTest::testAutoSum()
     createDoc("small.ods");
 
     ViewCallback aView;
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView);
 
     uno::Sequence<beans::PropertyValue> aArgs;
     comphelper::dispatchCommand(".uno:AutoSum", aArgs);
     Scheduler::ProcessEventsToIdle();
     CPPUNIT_ASSERT(aView.m_sCellFormula.startsWith("=SUM("));
-
-    mxComponent->dispose();
-    mxComponent.clear();
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testHideColRow()
@@ -954,10 +961,6 @@ void ScTiledRenderingTest::testHideColRow()
     nNewCurY = ScDocShell::GetViewData()->GetCurY();
     CPPUNIT_ASSERT(nNewCurY > nOldCurY);
     CPPUNIT_ASSERT_EQUAL(nOldCurX, nNewCurX);
-
-    mxComponent->dispose();
-    mxComponent.clear();
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testInvalidateOnCopyPasteCells()
@@ -969,7 +972,6 @@ void ScTiledRenderingTest::testInvalidateOnCopyPasteCells()
 
     // view
     ViewCallback aView;
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView);
 
     uno::Sequence<beans::PropertyValue> aArgs;
     // select and copy cells
@@ -996,10 +998,6 @@ void ScTiledRenderingTest::testInvalidateOnCopyPasteCells()
     comphelper::dispatchCommand(".uno:Paste", aArgs);
     Scheduler::ProcessEventsToIdle();
     CPPUNIT_ASSERT(aView.m_bInvalidateTiles);
-
-    mxComponent->dispose();
-    mxComponent.clear();
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testInvalidateOnInserRowCol()
@@ -1011,7 +1009,6 @@ void ScTiledRenderingTest::testInvalidateOnInserRowCol()
 
     // view
     ViewCallback aView;
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView);
 
     uno::Sequence<beans::PropertyValue> aArgs;
     // move downward
@@ -1024,9 +1021,12 @@ void ScTiledRenderingTest::testInvalidateOnInserRowCol()
 
     // insert row
     aView.m_bInvalidateTiles = false;
+    aView.m_aInvalidations.clear();
     comphelper::dispatchCommand(".uno:InsertRows", aArgs);
     Scheduler::ProcessEventsToIdle();
     CPPUNIT_ASSERT(aView.m_bInvalidateTiles);
+    CPPUNIT_ASSERT_EQUAL(size_t(2), aView.m_aInvalidations.size());
+    CPPUNIT_ASSERT_EQUAL(tools::Rectangle(-75, 50985, 32212230, 63990), aView.m_aInvalidations[0]);
 
     // move on the right
     for (int i = 0; i < 200; ++i)
@@ -1038,13 +1038,12 @@ void ScTiledRenderingTest::testInvalidateOnInserRowCol()
 
     // insert column
     aView.m_bInvalidateTiles = false;
+    aView.m_aInvalidations.clear();
     comphelper::dispatchCommand(".uno:InsertColumns", aArgs);
     Scheduler::ProcessEventsToIdle();
     CPPUNIT_ASSERT(aView.m_bInvalidateTiles);
-
-    mxComponent->dispose();
-    mxComponent.clear();
-    comphelper::LibreOfficeKit::setActive(false);
+    CPPUNIT_ASSERT_EQUAL(size_t(2), aView.m_aInvalidations.size());
+    CPPUNIT_ASSERT_EQUAL(tools::Rectangle(253650, -15, 32212230, 63990), aView.m_aInvalidations[0]);
 }
 
 void ScTiledRenderingTest::testCommentCallback()
@@ -1054,91 +1053,87 @@ void ScTiledRenderingTest::testCommentCallback()
     // Comments callback are emitted only if tiled annotations are off
     comphelper::LibreOfficeKit::setTiledAnnotations(false);
 
-    ScModelObj* pModelObj = createDoc("small.ods");
-    ViewCallback aView1;
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView1);
-    int nView1 = SfxLokHelper::getView();
-
-    // Create a 2nd view
-    SfxLokHelper::createView();
-    pModelObj->initializeForTiledRendering({});
-    ViewCallback aView2;
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView2);
-
-    SfxLokHelper::setView(nView1);
-
-    // Add a new comment
-    uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence(
     {
-        {"Text", uno::makeAny(OUString("Comment"))},
-        {"Author", uno::makeAny(OUString("LOK User1"))},
-    }));
-    comphelper::dispatchCommand(".uno:InsertAnnotation", aArgs);
-    Scheduler::ProcessEventsToIdle();
+        ScModelObj* pModelObj = createDoc("small.ods");
+        ViewCallback aView1;
+        int nView1 = SfxLokHelper::getView();
 
-    // We received a LOK_CALLBACK_COMMENT callback with comment 'Add' action
-    CPPUNIT_ASSERT_EQUAL(std::string("Add"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
-    CPPUNIT_ASSERT_EQUAL(std::string("Add"), aView2.m_aCommentCallbackResult.get<std::string>("action"));
-    CPPUNIT_ASSERT_EQUAL(std::string("1"), aView1.m_aCommentCallbackResult.get<std::string>("id"));
-    CPPUNIT_ASSERT_EQUAL(std::string("1"), aView2.m_aCommentCallbackResult.get<std::string>("id"));
-    CPPUNIT_ASSERT_EQUAL(std::string("0"), aView1.m_aCommentCallbackResult.get<std::string>("tab"));
-    CPPUNIT_ASSERT_EQUAL(std::string("0"), aView2.m_aCommentCallbackResult.get<std::string>("tab"));
-    CPPUNIT_ASSERT_EQUAL(std::string("LOK User1"), aView1.m_aCommentCallbackResult.get<std::string>("author"));
-    CPPUNIT_ASSERT_EQUAL(std::string("LOK User1"), aView2.m_aCommentCallbackResult.get<std::string>("author"));
-    CPPUNIT_ASSERT_EQUAL(std::string("Comment"), aView1.m_aCommentCallbackResult.get<std::string>("text"));
-    CPPUNIT_ASSERT_EQUAL(std::string("Comment"), aView2.m_aCommentCallbackResult.get<std::string>("text"));
-    CPPUNIT_ASSERT_EQUAL(std::string("0, 255, 1274, 254"), aView1.m_aCommentCallbackResult.get<std::string>("cellPos"));
-    CPPUNIT_ASSERT_EQUAL(std::string("0, 255, 1274, 254"), aView2.m_aCommentCallbackResult.get<std::string>("cellPos"));
+        // Create a 2nd view
+        SfxLokHelper::createView();
+        pModelObj->initializeForTiledRendering({});
+        ViewCallback aView2;
 
-    std::string aCommentId = aView1.m_aCommentCallbackResult.get<std::string>("id");
+        SfxLokHelper::setView(nView1);
 
-    // Edit a comment
-    // Select some random cell, we should be able to edit the cell note without
-    // selecting the cell
-    ScTabViewShell* pTabViewShell = dynamic_cast<ScTabViewShell*>(SfxViewShell::Current());
-    if (pTabViewShell)
-        pTabViewShell->SetCursor(3, 100);
-    aArgs = comphelper::InitPropertySequence(
-    {
-        {"Id", uno::makeAny(OUString::createFromAscii(aCommentId.c_str()))},
-        {"Text", uno::makeAny(OUString("Edited comment"))},
-        {"Author", uno::makeAny(OUString("LOK User2"))},
-    });
-    comphelper::dispatchCommand(".uno:EditAnnotation", aArgs);
-    Scheduler::ProcessEventsToIdle();
+        // Add a new comment
+        uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence(
+        {
+            {"Text", uno::makeAny(OUString("Comment"))},
+            {"Author", uno::makeAny(OUString("LOK User1"))},
+        }));
+        comphelper::dispatchCommand(".uno:InsertAnnotation", aArgs);
+        Scheduler::ProcessEventsToIdle();
 
-    // We received a LOK_CALLBACK_COMMENT callback with comment 'Modify' action
-    CPPUNIT_ASSERT_EQUAL(std::string("Modify"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
-    CPPUNIT_ASSERT_EQUAL(std::string("Modify"), aView2.m_aCommentCallbackResult.get<std::string>("action"));
-    CPPUNIT_ASSERT_EQUAL(aCommentId, aView1.m_aCommentCallbackResult.get<std::string>("id"));
-    CPPUNIT_ASSERT_EQUAL(aCommentId, aView2.m_aCommentCallbackResult.get<std::string>("id"));
-    CPPUNIT_ASSERT_EQUAL(std::string("LOK User2"), aView1.m_aCommentCallbackResult.get<std::string>("author"));
-    CPPUNIT_ASSERT_EQUAL(std::string("LOK User2"), aView2.m_aCommentCallbackResult.get<std::string>("author"));
-    CPPUNIT_ASSERT_EQUAL(std::string("Edited comment"), aView1.m_aCommentCallbackResult.get<std::string>("text"));
-    CPPUNIT_ASSERT_EQUAL(std::string("Edited comment"), aView2.m_aCommentCallbackResult.get<std::string>("text"));
-    CPPUNIT_ASSERT_EQUAL(std::string("0, 255, 1274, 254"), aView1.m_aCommentCallbackResult.get<std::string>("cellPos"));
-    CPPUNIT_ASSERT_EQUAL(std::string("0, 255, 1274, 254"), aView2.m_aCommentCallbackResult.get<std::string>("cellPos"));
+        // We received a LOK_CALLBACK_COMMENT callback with comment 'Add' action
+        CPPUNIT_ASSERT_EQUAL(std::string("Add"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
+        CPPUNIT_ASSERT_EQUAL(std::string("Add"), aView2.m_aCommentCallbackResult.get<std::string>("action"));
+        CPPUNIT_ASSERT_EQUAL(std::string("1"), aView1.m_aCommentCallbackResult.get<std::string>("id"));
+        CPPUNIT_ASSERT_EQUAL(std::string("1"), aView2.m_aCommentCallbackResult.get<std::string>("id"));
+        CPPUNIT_ASSERT_EQUAL(std::string("0"), aView1.m_aCommentCallbackResult.get<std::string>("tab"));
+        CPPUNIT_ASSERT_EQUAL(std::string("0"), aView2.m_aCommentCallbackResult.get<std::string>("tab"));
+        CPPUNIT_ASSERT_EQUAL(std::string("LOK User1"), aView1.m_aCommentCallbackResult.get<std::string>("author"));
+        CPPUNIT_ASSERT_EQUAL(std::string("LOK User1"), aView2.m_aCommentCallbackResult.get<std::string>("author"));
+        CPPUNIT_ASSERT_EQUAL(std::string("Comment"), aView1.m_aCommentCallbackResult.get<std::string>("text"));
+        CPPUNIT_ASSERT_EQUAL(std::string("Comment"), aView2.m_aCommentCallbackResult.get<std::string>("text"));
+        CPPUNIT_ASSERT_EQUAL(std::string("0, 255, 1274, 254"), aView1.m_aCommentCallbackResult.get<std::string>("cellPos"));
+        CPPUNIT_ASSERT_EQUAL(std::string("0, 255, 1274, 254"), aView2.m_aCommentCallbackResult.get<std::string>("cellPos"));
 
-    // Delete the comment
-    if (pTabViewShell)
-        pTabViewShell->SetCursor(4, 43);
-    aArgs = comphelper::InitPropertySequence(
-    {
-        {"Id", uno::makeAny(OUString::createFromAscii(aCommentId.c_str()))}
-    });
-    comphelper::dispatchCommand(".uno:DeleteNote", aArgs);
-    Scheduler::ProcessEventsToIdle();
+        std::string aCommentId = aView1.m_aCommentCallbackResult.get<std::string>("id");
 
-    // We received a LOK_CALLBACK_COMMENT callback with comment 'Remove' action
-    CPPUNIT_ASSERT_EQUAL(std::string("Remove"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
-    CPPUNIT_ASSERT_EQUAL(std::string("Remove"), aView2.m_aCommentCallbackResult.get<std::string>("action"));
-    CPPUNIT_ASSERT_EQUAL(aCommentId, aView1.m_aCommentCallbackResult.get<std::string>("id"));
-    CPPUNIT_ASSERT_EQUAL(aCommentId, aView2.m_aCommentCallbackResult.get<std::string>("id"));
+        // Edit a comment
+        // Select some random cell, we should be able to edit the cell note without
+        // selecting the cell
+        ScTabViewShell* pTabViewShell = dynamic_cast<ScTabViewShell*>(SfxViewShell::Current());
+        if (pTabViewShell)
+            pTabViewShell->SetCursor(3, 100);
+        aArgs = comphelper::InitPropertySequence(
+        {
+            {"Id", uno::makeAny(OUString::createFromAscii(aCommentId.c_str()))},
+            {"Text", uno::makeAny(OUString("Edited comment"))},
+            {"Author", uno::makeAny(OUString("LOK User2"))},
+        });
+        comphelper::dispatchCommand(".uno:EditAnnotation", aArgs);
+        Scheduler::ProcessEventsToIdle();
 
-    mxComponent->dispose();
-    mxComponent.clear();
+        // We received a LOK_CALLBACK_COMMENT callback with comment 'Modify' action
+        CPPUNIT_ASSERT_EQUAL(std::string("Modify"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
+        CPPUNIT_ASSERT_EQUAL(std::string("Modify"), aView2.m_aCommentCallbackResult.get<std::string>("action"));
+        CPPUNIT_ASSERT_EQUAL(aCommentId, aView1.m_aCommentCallbackResult.get<std::string>("id"));
+        CPPUNIT_ASSERT_EQUAL(aCommentId, aView2.m_aCommentCallbackResult.get<std::string>("id"));
+        CPPUNIT_ASSERT_EQUAL(std::string("LOK User2"), aView1.m_aCommentCallbackResult.get<std::string>("author"));
+        CPPUNIT_ASSERT_EQUAL(std::string("LOK User2"), aView2.m_aCommentCallbackResult.get<std::string>("author"));
+        CPPUNIT_ASSERT_EQUAL(std::string("Edited comment"), aView1.m_aCommentCallbackResult.get<std::string>("text"));
+        CPPUNIT_ASSERT_EQUAL(std::string("Edited comment"), aView2.m_aCommentCallbackResult.get<std::string>("text"));
+        CPPUNIT_ASSERT_EQUAL(std::string("0, 255, 1274, 254"), aView1.m_aCommentCallbackResult.get<std::string>("cellPos"));
+        CPPUNIT_ASSERT_EQUAL(std::string("0, 255, 1274, 254"), aView2.m_aCommentCallbackResult.get<std::string>("cellPos"));
+
+        // Delete the comment
+        if (pTabViewShell)
+            pTabViewShell->SetCursor(4, 43);
+        aArgs = comphelper::InitPropertySequence(
+        {
+            {"Id", uno::makeAny(OUString::createFromAscii(aCommentId.c_str()))}
+        });
+        comphelper::dispatchCommand(".uno:DeleteNote", aArgs);
+        Scheduler::ProcessEventsToIdle();
+
+        // We received a LOK_CALLBACK_COMMENT callback with comment 'Remove' action
+        CPPUNIT_ASSERT_EQUAL(std::string("Remove"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
+        CPPUNIT_ASSERT_EQUAL(std::string("Remove"), aView2.m_aCommentCallbackResult.get<std::string>("action"));
+        CPPUNIT_ASSERT_EQUAL(aCommentId, aView1.m_aCommentCallbackResult.get<std::string>("id"));
+        CPPUNIT_ASSERT_EQUAL(aCommentId, aView2.m_aCommentCallbackResult.get<std::string>("id"));
+    }
     comphelper::LibreOfficeKit::setTiledAnnotations(true);
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testUndoLimiting()
@@ -1153,16 +1148,14 @@ void ScTiledRenderingTest::testUndoLimiting()
     CPPUNIT_ASSERT(pUndoManager);
 
     // view #1
-    ViewCallback aView1;
     int nView1 = SfxLokHelper::getView();
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView1);
+    ViewCallback aView1;
 
     // view #2
     SfxLokHelper::createView();
-    ViewCallback aView2;
     int nView2 = SfxLokHelper::getView();
     pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView2);
+    ViewCallback aView2;
 
     // text edit a cell in view #1
     SfxLokHelper::setView(nView1);
@@ -1205,11 +1198,6 @@ void ScTiledRenderingTest::testUndoLimiting()
     Scheduler::ProcessEventsToIdle();
     // check that redo has been executed on view #1
     CPPUNIT_ASSERT_EQUAL(std::size_t(0), pUndoManager->GetRedoActionCount());
-
-    mxComponent->dispose();
-    mxComponent.clear();
-
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testUndoRepairDispatch()
@@ -1224,16 +1212,14 @@ void ScTiledRenderingTest::testUndoRepairDispatch()
     CPPUNIT_ASSERT(pUndoManager);
 
     // view #1
-    ViewCallback aView1;
     int nView1 = SfxLokHelper::getView();
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView1);
+    ViewCallback aView1;
 
     // view #2
     SfxLokHelper::createView();
-    ViewCallback aView2;
     int nView2 = SfxLokHelper::getView();
     pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView2);
+    ViewCallback aView2;
 
     // text edit a cell in view #1
     SfxLokHelper::setView(nView1);
@@ -1263,10 +1249,6 @@ void ScTiledRenderingTest::testUndoRepairDispatch()
     Scheduler::ProcessEventsToIdle();
     // check that undo has been executed on view #2 in repair mode
     CPPUNIT_ASSERT_EQUAL(std::size_t(0), pUndoManager->GetUndoActionCount());
-
-    mxComponent->dispose();
-    mxComponent.clear();
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testInsertGraphicInvalidations()
@@ -1280,15 +1262,14 @@ void ScTiledRenderingTest::testInsertGraphicInvalidations()
 
     // view
     ViewCallback aView;
-    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView);
 
     // we need to paint a tile in the view for triggering the tile invalidation solution
     int nCanvasWidth = 256;
     int nCanvasHeight = 256;
     std::vector<unsigned char> aBuffer(nCanvasWidth * nCanvasHeight * 4);
-    ScopedVclPtrInstance<VirtualDevice> pDevice(nullptr, Size(1, 1), DeviceFormat::DEFAULT);
+    ScopedVclPtrInstance<VirtualDevice> pDevice(DeviceFormat::DEFAULT);
     pDevice->SetOutputSizePixelScaleOffsetAndBuffer(Size(nCanvasWidth, nCanvasHeight), Fraction(1.0), Point(), aBuffer.data());
-    pModelObj->paintTile(*pDevice.get(), nCanvasWidth, nCanvasHeight, /*nTilePosX=*/0, /*nTilePosY=*/0, /*nTileWidth=*/3840, /*nTileHeight=*/3840);
+    pModelObj->paintTile(*pDevice, nCanvasWidth, nCanvasHeight, /*nTilePosX=*/0, /*nTilePosY=*/0, /*nTileWidth=*/3840, /*nTileHeight=*/3840);
     Scheduler::ProcessEventsToIdle();
 
     // insert an image in view and see if both views are invalidated
@@ -1306,10 +1287,6 @@ void ScTiledRenderingTest::testInsertGraphicInvalidations()
     comphelper::dispatchCommand(".uno:Undo", aArgs2);
     Scheduler::ProcessEventsToIdle();
     CPPUNIT_ASSERT(aView.m_bInvalidateTiles);
-
-    mxComponent->dispose();
-    mxComponent.clear();
-    comphelper::LibreOfficeKit::setActive(false);
 }
 
 void ScTiledRenderingTest::testDocumentSizeWithTwoViews()
@@ -1328,25 +1305,28 @@ void ScTiledRenderingTest::testDocumentSizeWithTwoViews()
     int nCanvasWidth = 256;
     int nCanvasHeight = 256;
     std::vector<unsigned char> aBuffer1(nCanvasWidth * nCanvasHeight * 4);
-    ScopedVclPtrInstance<VirtualDevice> pDevice1(nullptr, Size(1, 1), DeviceFormat::DEFAULT);
+    ScopedVclPtrInstance<VirtualDevice> pDevice1(DeviceFormat::DEFAULT);
     pDevice1->SetOutputSizePixelScaleOffsetAndBuffer(Size(nCanvasWidth, nCanvasHeight), Fraction(1.0), Point(), aBuffer1.data());
-    pModelObj->paintTile(*pDevice1.get(), nCanvasWidth, nCanvasHeight, /*nTilePosX=*/0, /*nTilePosY=*/291840, /*nTileWidth=*/3840, /*nTileHeight=*/3840);
+    pModelObj->paintTile(*pDevice1, nCanvasWidth, nCanvasHeight, /*nTilePosX=*/0, /*nTilePosY=*/291840, /*nTileWidth=*/3840, /*nTileHeight=*/3840);
     Scheduler::ProcessEventsToIdle();
 
     // Create a new view
+    int nView1 = SfxLokHelper::getView();
     SfxLokHelper::createView();
 
     std::vector<unsigned char> aBuffer2(nCanvasWidth * nCanvasHeight * 4);
-    ScopedVclPtrInstance<VirtualDevice> pDevice2(nullptr, Size(1, 1), DeviceFormat::DEFAULT);
+    ScopedVclPtrInstance<VirtualDevice> pDevice2(DeviceFormat::DEFAULT);
     pDevice2->SetOutputSizePixelScaleOffsetAndBuffer(Size(nCanvasWidth, nCanvasHeight), Fraction(1.0), Point(), aBuffer2.data());
-    pModelObj->paintTile(*pDevice2.get(), nCanvasWidth, nCanvasHeight, /*nTilePosX=*/0, /*nTilePosY=*/291840, /*nTileWidth=*/3840, /*nTileHeight=*/3840);
+    pModelObj->paintTile(*pDevice2, nCanvasWidth, nCanvasHeight, /*nTilePosX=*/0, /*nTilePosY=*/291840, /*nTileWidth=*/3840, /*nTileHeight=*/3840);
     Scheduler::ProcessEventsToIdle();
 
     // Check that the tiles actually have the same content
     for (size_t i = 0; i < aBuffer1.size(); ++i)
         CPPUNIT_ASSERT_EQUAL(aBuffer1[i], aBuffer2[i]);
 
-    comphelper::LibreOfficeKit::setActive(false);
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+    SfxLokHelper::setView(nView1);
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
 }
 
 void ScTiledRenderingTest::testDisableUndoRepair()
@@ -1389,7 +1369,9 @@ void ScTiledRenderingTest::testDisableUndoRepair()
         CPPUNIT_ASSERT(dynamic_cast< const SfxStringItem* >(aSet1.GetItem(SID_UNDO)));
         CPPUNIT_ASSERT_EQUAL(SfxItemState::SET, aSet2.GetItemState(SID_UNDO));
         CPPUNIT_ASSERT(dynamic_cast< const SfxUInt32Item* >(aSet2.GetItem(SID_UNDO)));
-        CPPUNIT_ASSERT_EQUAL(static_cast< sal_uInt32 >(SID_REPAIRPACKAGE), dynamic_cast< const SfxUInt32Item* >(aSet2.GetItem(SID_UNDO))->GetValue());
+        const SfxUInt32Item* pUInt32Item = dynamic_cast<const SfxUInt32Item*>(aSet2.GetItem(SID_UNDO));
+        CPPUNIT_ASSERT(pUInt32Item);
+        CPPUNIT_ASSERT_EQUAL(static_cast< sal_uInt32 >(SID_REPAIRPACKAGE), pUInt32Item->GetValue());
     }
 
     // text edit a cell in view #2
@@ -1400,18 +1382,904 @@ void ScTiledRenderingTest::testDisableUndoRepair()
     pModelObj->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::RETURN);
     pModelObj->postKeyEvent(LOK_KEYEVENT_KEYUP, 0, awt::Key::RETURN);
     Scheduler::ProcessEventsToIdle();
-    Scheduler::ProcessEventsToIdle();
     {
         SfxItemSet aSet1(pView1->GetPool(), svl::Items<SID_UNDO, SID_UNDO>{});
         SfxItemSet aSet2(pView2->GetPool(), svl::Items<SID_UNDO, SID_UNDO>{});
         pView1->GetSlotState(SID_UNDO, nullptr, &aSet1);
         pView2->GetSlotState(SID_UNDO, nullptr, &aSet2);
         CPPUNIT_ASSERT_EQUAL(SfxItemState::SET, aSet1.GetItemState(SID_UNDO));
-        CPPUNIT_ASSERT(dynamic_cast< const SfxUInt32Item* >(aSet1.GetItem(SID_UNDO)));
-        CPPUNIT_ASSERT_EQUAL(static_cast< sal_uInt32 >(SID_REPAIRPACKAGE), dynamic_cast< const SfxUInt32Item* >(aSet1.GetItem(SID_UNDO))->GetValue());
+        const SfxUInt32Item* pUInt32Item = dynamic_cast<const SfxUInt32Item*>(aSet1.GetItem(SID_UNDO));
+        CPPUNIT_ASSERT(pUInt32Item);
+        CPPUNIT_ASSERT_EQUAL(static_cast< sal_uInt32 >(SID_REPAIRPACKAGE), pUInt32Item->GetValue());
         CPPUNIT_ASSERT_EQUAL(SfxItemState::SET, aSet2.GetItemState(SID_UNDO));
         CPPUNIT_ASSERT(dynamic_cast< const SfxStringItem* >(aSet2.GetItem(SID_UNDO)));
     }
+
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+    SfxLokHelper::setView(nView1);
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+}
+
+void ScTiledRenderingTest::testDocumentRepair()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    // Create two views.
+    ScModelObj* pModelObj = createDoc("cursor-away.ods");
+    CPPUNIT_ASSERT(pModelObj);
+
+    // view #1
+    SfxViewShell* pView1 = SfxViewShell::Current();
+
+    // view #2
+    int nView1 = SfxLokHelper::getView();
+    SfxLokHelper::createView();
+    SfxViewShell* pView2 = SfxViewShell::Current();
+    int nView2 = SfxLokHelper::getView();
+    CPPUNIT_ASSERT(pView1 != pView2);
+    {
+        std::unique_ptr<SfxPoolItem> xItem1;
+        std::unique_ptr<SfxPoolItem> xItem2;
+        pView1->GetViewFrame()->GetBindings().QueryState(SID_DOC_REPAIR, xItem1);
+        pView2->GetViewFrame()->GetBindings().QueryState(SID_DOC_REPAIR, xItem2);
+        const SfxBoolItem* pItem1 = dynamic_cast< const SfxBoolItem* >(xItem1.get());
+        const SfxBoolItem* pItem2 = dynamic_cast< const SfxBoolItem* >(xItem2.get());
+        CPPUNIT_ASSERT(pItem1);
+        CPPUNIT_ASSERT(pItem2);
+        CPPUNIT_ASSERT_EQUAL(false, pItem1->GetValue());
+        CPPUNIT_ASSERT_EQUAL(false, pItem2->GetValue());
+    }
+
+    // Insert a character in the second view.
+    SfxLokHelper::setView(nView2);
+    pModelObj->setPart(1);
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 'c', 0);
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYUP, 'c', 0);
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::RETURN);
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYUP, 0, awt::Key::RETURN);
+    Scheduler::ProcessEventsToIdle();
+    {
+        std::unique_ptr<SfxPoolItem> xItem1;
+        std::unique_ptr<SfxPoolItem> xItem2;
+        pView1->GetViewFrame()->GetBindings().QueryState(SID_DOC_REPAIR, xItem1);
+        pView2->GetViewFrame()->GetBindings().QueryState(SID_DOC_REPAIR, xItem2);
+        const SfxBoolItem* pItem1 = dynamic_cast< const SfxBoolItem* >(xItem1.get());
+        const SfxBoolItem* pItem2 = dynamic_cast< const SfxBoolItem* >(xItem2.get());
+        CPPUNIT_ASSERT(pItem1);
+        CPPUNIT_ASSERT(pItem2);
+        CPPUNIT_ASSERT_EQUAL(true, pItem1->GetValue());
+        CPPUNIT_ASSERT_EQUAL(true, pItem2->GetValue());
+    }
+
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+    SfxLokHelper::setView(nView1);
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+}
+
+void ScTiledRenderingTest::testLanguageStatus()
+{
+    comphelper::LibreOfficeKit::setActive();
+    ScModelObj* pModelObj = createDoc("small.ods");
+    CPPUNIT_ASSERT(pModelObj);
+    ScDocShell* pDocSh = dynamic_cast< ScDocShell* >( pModelObj->GetEmbeddedObject() );
+    CPPUNIT_ASSERT(pDocSh);
+
+    // view #1
+    SfxViewShell* pView1 = SfxViewShell::Current();
+
+    // view #2
+    int nView1 = SfxLokHelper::getView();
+    SfxLokHelper::createView();
+    SfxViewShell* pView2 = SfxViewShell::Current();
+    CPPUNIT_ASSERT(pView1 != pView2);
+    const OUString aLangBolivia("Spanish (Bolivia);es-BO");
+    {
+        std::unique_ptr<SfxPoolItem> xItem1;
+        std::unique_ptr<SfxPoolItem> xItem2;
+        pView1->GetViewFrame()->GetBindings().QueryState(SID_LANGUAGE_STATUS, xItem1);
+        pView2->GetViewFrame()->GetBindings().QueryState(SID_LANGUAGE_STATUS, xItem2);
+        const SfxStringItem* pItem1 = dynamic_cast<const SfxStringItem*>(xItem1.get());
+        const SfxStringItem* pItem2 = dynamic_cast<const SfxStringItem*>(xItem2.get());
+        CPPUNIT_ASSERT(pItem1);
+        CPPUNIT_ASSERT(pItem2);
+        CPPUNIT_ASSERT(!pItem1->GetValue().isEmpty());
+        CPPUNIT_ASSERT(!pItem2->GetValue().isEmpty());
+    }
+
+    {
+        SfxStringItem aLangString(SID_LANGUAGE_STATUS, "Default_Spanish (Bolivia)");
+        pView1->GetViewFrame()->GetDispatcher()->ExecuteList(SID_LANGUAGE_STATUS,
+            SfxCallMode::SYNCHRON, { &aLangString });
+    }
+
+    {
+        std::unique_ptr<SfxPoolItem> xItem1;
+        std::unique_ptr<SfxPoolItem> xItem2;
+        pView1->GetViewFrame()->GetBindings().QueryState(SID_LANGUAGE_STATUS, xItem1);
+        pView2->GetViewFrame()->GetBindings().QueryState(SID_LANGUAGE_STATUS, xItem2);
+        const SfxStringItem* pItem1 = dynamic_cast<const SfxStringItem*>(xItem1.get());
+        const SfxStringItem* pItem2 = dynamic_cast<const SfxStringItem*>(xItem2.get());
+        CPPUNIT_ASSERT(pItem1);
+        CPPUNIT_ASSERT(pItem2);
+        CPPUNIT_ASSERT_EQUAL(aLangBolivia, pItem1->GetValue());
+        CPPUNIT_ASSERT_EQUAL(aLangBolivia, pItem2->GetValue());
+    }
+
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+    SfxLokHelper::setView(nView1);
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+}
+
+void ScTiledRenderingTest::testMultiViewCopyPaste()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    ScModelObj* pModelObj = createDoc("empty.ods");
+    ScDocument* pDoc = pModelObj->GetDocument();
+    CPPUNIT_ASSERT(pDoc);
+
+    pDoc->SetString(ScAddress(0, 0, 0), "TestCopy1");
+    pDoc->SetString(ScAddress(1, 0, 0), "TestCopy2");
+
+    // view #1
+    ScTabViewShell* pView1 = dynamic_cast<ScTabViewShell*>(SfxViewShell::Current());
+    CPPUNIT_ASSERT(pView1);
+    // emulate clipboard
+    pView1->GetViewData().GetActiveWin()->SetClipboard(css::datatransfer::clipboard::SystemClipboard::create(comphelper::getProcessComponentContext()));
+
+    // view #2
+    int nView1 = SfxLokHelper::getView();
+    SfxLokHelper::createView();
+    ScTabViewShell* pView2 = dynamic_cast<ScTabViewShell*>(SfxViewShell::Current());
+    // emulate clipboard
+    pView2->GetViewData().GetActiveWin()->SetClipboard(css::datatransfer::clipboard::SystemClipboard::create(comphelper::getProcessComponentContext()));
+    CPPUNIT_ASSERT(pView2);
+    CPPUNIT_ASSERT(pView1 != pView2);
+    CPPUNIT_ASSERT(pView1->GetViewData().GetActiveWin()->GetClipboard() != pView2->GetViewData().GetActiveWin()->GetClipboard());
+
+    // copy text view 1
+    pView1->SetCursor(0, 0);
+    pView1->GetViewFrame()->GetBindings().Execute(SID_COPY);
+
+    // copy text view 2
+    pView2->SetCursor(1, 0);
+    pView2->GetViewFrame()->GetBindings().Execute(SID_COPY);
+
+     // paste text view 1
+    pView1->SetCursor(0, 1);
+    pView1->GetViewFrame()->GetBindings().Execute(SID_PASTE);
+
+    // paste text view 2
+    pView2->SetCursor(1, 1);
+    pView2->GetViewFrame()->GetBindings().Execute(SID_PASTE);
+
+    CPPUNIT_ASSERT_EQUAL(OUString("TestCopy1"), pDoc->GetString(ScAddress(0, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(OUString("TestCopy2"), pDoc->GetString(ScAddress(1, 1, 0)));
+
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+    SfxLokHelper::setView(nView1);
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+}
+
+void ScTiledRenderingTest::testIMESupport()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    ScModelObj* pModelObj = createDoc("empty.ods");
+    VclPtr<vcl::Window> pDocWindow = pModelObj->getDocWindow();
+    ScDocument* pDoc = pModelObj->GetDocument();
+
+    ScTabViewShell* pView = dynamic_cast<ScTabViewShell*>(SfxViewShell::Current());
+    CPPUNIT_ASSERT(pView);
+
+    pView->SetCursor(0, 0);
+    // sequence of chinese IME compositions when 'nihao' is typed in an IME
+    const std::vector<OString> aUtf8Inputs{ "年", "你", "你好", "你哈", "你好", "你好" };
+    std::vector<OUString> aInputs;
+    std::transform(aUtf8Inputs.begin(), aUtf8Inputs.end(),
+                   std::back_inserter(aInputs), [](OString aInput) {
+                       return OUString::fromUtf8(aInput);
+                   });
+    for (const auto& aInput: aInputs)
+    {
+        pDocWindow->PostExtTextInputEvent(VclEventId::ExtTextInput, aInput);
+    }
+    pDocWindow->PostExtTextInputEvent(VclEventId::EndExtTextInput, "");
+
+    // commit the string to the cell
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::RETURN);
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYUP, 0, awt::Key::RETURN);
+    Scheduler::ProcessEventsToIdle();
+
+    CPPUNIT_ASSERT_EQUAL(aInputs[aInputs.size() - 1], pDoc->GetString(ScAddress(0, 0, 0)));
+}
+
+void ScTiledRenderingTest::testFilterDlg()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    createDoc("empty.ods");
+
+    // view #1
+    SfxViewShell* pView1 = SfxViewShell::Current();
+    int nView1 = SfxLokHelper::getView();
+
+    // view #2
+    SfxLokHelper::createView();
+    SfxViewShell* pView2 = SfxViewShell::Current();
+    CPPUNIT_ASSERT(pView1 != pView2);
+    {
+        pView2->GetViewFrame()->GetDispatcher()->Execute(SID_FILTER,
+            SfxCallMode::SLOT|SfxCallMode::RECORD);
+    }
+
+    Scheduler::ProcessEventsToIdle();
+    SfxChildWindow* pRefWindow = pView2->GetViewFrame()->GetChildWindow(SID_FILTER);
+    CPPUNIT_ASSERT(pRefWindow);
+
+    // switch to view 1
+    SfxLokHelper::setView(nView1);
+    CPPUNIT_ASSERT_EQUAL(true, pView2->GetViewFrame()->GetDispatcher()->IsLocked());
+    CPPUNIT_ASSERT_EQUAL(false, pView1->GetViewFrame()->GetDispatcher()->IsLocked());
+
+    pRefWindow->GetController()->response(RET_CANCEL);
+
+    CPPUNIT_ASSERT_EQUAL(false, pView2->GetViewFrame()->GetDispatcher()->IsLocked());
+    CPPUNIT_ASSERT_EQUAL(false, pView1->GetViewFrame()->GetDispatcher()->IsLocked());
+
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+    SfxLokHelper::setView(nView1);
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+}
+
+void ScTiledRenderingTest::testVbaRangeCopyPaste()
+{
+    comphelper::LibreOfficeKit::setActive();
+    ScModelObj* pModelObj = createDoc("RangeCopyPaste.ods");
+    ScDocShell* pDocShell = dynamic_cast< ScDocShell* >( pModelObj->GetEmbeddedObject() );
+    CPPUNIT_ASSERT(pDocShell);
+
+    uno::Any aRet;
+    uno::Sequence< uno::Any > aOutParam;
+    uno::Sequence< uno::Any > aParams;
+    uno::Sequence< sal_Int16 > aOutParamIndex;
+
+    SfxObjectShell::CallXScript(
+        mxComponent,
+        "vnd.sun.Star.script:Standard.Module1.Test_RangeCopyPaste?language=Basic&location=document",
+        aParams, aRet, aOutParamIndex, aOutParam);
+
+    CPPUNIT_ASSERT(!pDocShell->GetClipData().is());
+}
+
+void ScTiledRenderingTest::testInvalidationLoop()
+{
+    // Load the document with a form control.
+    createDoc("invalidation-loop.fods");
+    // Without the accompanying fix in place, this test would have never returned due to an infinite
+    // invalidation loop between ScGridWindow::Paint() and vcl::Window::ImplPosSizeWindow().
+    Scheduler::ProcessEventsToIdle();
+}
+
+void ScTiledRenderingTest::testPageDownInvalidation()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    ScModelObj* pModelObj = createDoc("empty.ods");
+    ScViewData* pViewData = ScDocShell::GetViewData();
+    CPPUNIT_ASSERT(pViewData);
+
+    int nView1 = SfxLokHelper::getView();
+    ViewCallback aView1;
+    CPPUNIT_ASSERT(!lcl_hasEditView(*pViewData));
+
+    SfxLokHelper::setView(nView1);
+    aView1.m_bInvalidateTiles = false;
+    aView1.m_aInvalidations.clear();
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYINPUT, awt::Key::PAGEDOWN, 0);
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYUP, awt::Key::PAGEDOWN, 0);
+    Scheduler::ProcessEventsToIdle();
+    CPPUNIT_ASSERT(aView1.m_bInvalidateTiles);
+    CPPUNIT_ASSERT_EQUAL(size_t(3), aView1.m_aInvalidations.size());
+    CPPUNIT_ASSERT_EQUAL(tools::Rectangle(15, 15, 1230, 225), aView1.m_aInvalidations[0]);
+}
+
+void ScTiledRenderingTest::testSheetChangeInvalidation()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    ScModelObj* pModelObj = createDoc("two_sheets.ods");
+    ScViewData* pViewData = ScDocShell::GetViewData();
+    CPPUNIT_ASSERT(pViewData);
+
+    int nView1 = SfxLokHelper::getView();
+    ViewCallback aView1;
+    CPPUNIT_ASSERT(!lcl_hasEditView(*pViewData));
+
+    SfxLokHelper::setView(nView1);
+    aView1.m_bInvalidateTiles = false;
+    aView1.m_aInvalidations.clear();
+    aView1.m_aInvalidationsParts.clear();
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::PAGEDOWN | KEY_MOD1);
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYUP, 0, awt::Key::PAGEDOWN | KEY_MOD1);
+    Scheduler::ProcessEventsToIdle();
+    CPPUNIT_ASSERT(aView1.m_bInvalidateTiles);
+    CPPUNIT_ASSERT_EQUAL(size_t(2), aView1.m_aInvalidations.size());
+    CPPUNIT_ASSERT_EQUAL(tools::Rectangle(0, 0, 1310720, 268435456), aView1.m_aInvalidations[0]);
+    CPPUNIT_ASSERT_EQUAL(tools::Rectangle(0, 0, 1000000000, 1000000000), aView1.m_aInvalidations[1]);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), aView1.m_aInvalidationsParts.size());
+    CPPUNIT_ASSERT_EQUAL(pModelObj->getPart(), aView1.m_aInvalidationsParts[0]);
+}
+
+void ScTiledRenderingTest::testInsertDeletePageInvalidation()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    ScModelObj* pModelObj = createDoc("insert_delete_sheet.ods");
+    // the document has 1 sheet
+    CPPUNIT_ASSERT_EQUAL(1, pModelObj->getParts());
+    ScViewData* pViewData = ScDocShell::GetViewData();
+    CPPUNIT_ASSERT(pViewData);
+
+    int nView1 = SfxLokHelper::getView();
+    ViewCallback aView1;
+    CPPUNIT_ASSERT(!lcl_hasEditView(*pViewData));
+
+    SfxLokHelper::setView(nView1);
+    aView1.m_bInvalidateTiles = false;
+    aView1.m_aInvalidations.clear();
+
+    uno::Sequence<beans::PropertyValue> aArgs( comphelper::InitPropertySequence({
+            { "Name", uno::Any(OUString("")) },
+            { "Index", uno::Any(sal_Int32(1)) }
+        }));
+    comphelper::dispatchCommand(".uno:Insert", aArgs);
+    Scheduler::ProcessEventsToIdle();
+    CPPUNIT_ASSERT(aView1.m_bInvalidateTiles);
+    CPPUNIT_ASSERT_EQUAL(size_t(6), aView1.m_aInvalidations.size());
+    CPPUNIT_ASSERT_EQUAL(tools::Rectangle(0, 0, 1000000000, 1000000000), aView1.m_aInvalidations[0]);
+    CPPUNIT_ASSERT_EQUAL(2, pModelObj->getParts());
+
+    // Delete sheet
+    aView1.m_bInvalidateTiles = false;
+    aView1.m_aInvalidations.clear();
+    uno::Sequence<beans::PropertyValue> aArgs2( comphelper::InitPropertySequence({
+            { "Index", uno::Any(sal_Int32(1)) }
+        }));
+    comphelper::dispatchCommand(".uno:Remove", aArgs2);
+    Scheduler::ProcessEventsToIdle();
+    CPPUNIT_ASSERT(aView1.m_bInvalidateTiles);
+    CPPUNIT_ASSERT_EQUAL(size_t(5), aView1.m_aInvalidations.size());
+    CPPUNIT_ASSERT_EQUAL(tools::Rectangle(0, 0, 1000000000, 1000000000), aView1.m_aInvalidations[0]);
+    CPPUNIT_ASSERT_EQUAL(1, pModelObj->getParts());
+}
+
+void ScTiledRenderingTest::testGetRowColumnHeadersInvalidation()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    ScModelObj* pModelObj = createDoc("empty.ods");
+    ScViewData* pViewData = ScDocShell::GetViewData();
+    CPPUNIT_ASSERT(pViewData);
+
+    int nView1 = SfxLokHelper::getView();
+    ViewCallback aView1;
+    CPPUNIT_ASSERT(!lcl_hasEditView(*pViewData));
+
+    SfxLokHelper::setView(nView1);
+    aView1.m_bInvalidateTiles = false;
+    aView1.m_aInvalidations.clear();
+    tools::JsonWriter aJsonWriter1;
+    pModelObj->getRowColumnHeaders(tools::Rectangle(0, 15, 19650, 5400), aJsonWriter1);
+    free(aJsonWriter1.extractData());
+    Scheduler::ProcessEventsToIdle();
+    CPPUNIT_ASSERT(aView1.m_bInvalidateTiles);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), aView1.m_aInvalidations.size());
+    CPPUNIT_ASSERT_EQUAL(tools::Rectangle(26775, 0, 49725, 13005), aView1.m_aInvalidations[0]);
+
+    // Extend area top-to-bottom
+    aView1.m_bInvalidateTiles = false;
+    aView1.m_aInvalidations.clear();
+    tools::JsonWriter aJsonWriter2;
+    pModelObj->getRowColumnHeaders(tools::Rectangle(0, 5400, 19650, 9800), aJsonWriter2);
+    free(aJsonWriter2.extractData());
+    Scheduler::ProcessEventsToIdle();
+    CPPUNIT_ASSERT(aView1.m_bInvalidateTiles);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), aView1.m_aInvalidations.size());
+    CPPUNIT_ASSERT_EQUAL(tools::Rectangle(0, 13005, 49725, 19380), aView1.m_aInvalidations[0]);
+
+    // Extend area left-to-right
+    aView1.m_bInvalidateTiles = false;
+    aView1.m_aInvalidations.clear();
+    tools::JsonWriter aJsonWriter3;
+    pModelObj->getRowColumnHeaders(tools::Rectangle(5400, 5400, 25050, 9800), aJsonWriter3);
+    free(aJsonWriter3.extractData());
+    Scheduler::ProcessEventsToIdle();
+    CPPUNIT_ASSERT(aView1.m_bInvalidateTiles);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), aView1.m_aInvalidations.size());
+    CPPUNIT_ASSERT_EQUAL(tools::Rectangle(49725, 0, 75225, 19380), aView1.m_aInvalidations[0]);
+}
+
+void ScTiledRenderingTest::testJumpHorizontallyInvalidation()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    ScModelObj* pModelObj = createDoc("empty.ods");
+    ScViewData* pViewData = ScDocShell::GetViewData();
+    CPPUNIT_ASSERT(pViewData);
+
+    int nView1 = SfxLokHelper::getView();
+    ViewCallback aView1;
+    CPPUNIT_ASSERT(!lcl_hasEditView(*pViewData));
+
+    SfxLokHelper::setView(nView1);
+    aView1.m_bInvalidateTiles = false;
+    aView1.m_aInvalidations.clear();
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::PAGEDOWN | KEY_MOD2);
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYUP, 0, awt::Key::PAGEDOWN | KEY_MOD2);
+    Scheduler::ProcessEventsToIdle();
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::PAGEDOWN | KEY_MOD2);
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYUP, 0, awt::Key::PAGEDOWN | KEY_MOD2);
+    Scheduler::ProcessEventsToIdle();
+    CPPUNIT_ASSERT(aView1.m_bInvalidateTiles);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), aView1.m_aInvalidations.size());
+    CPPUNIT_ASSERT_EQUAL(tools::Rectangle(26775, 0, 39525, 13005), aView1.m_aInvalidations[0]);
+}
+
+void ScTiledRenderingTest::testJumpToLastRowInvalidation()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    ScModelObj* pModelObj = createDoc("empty.ods");
+    ScViewData* pViewData = ScDocShell::GetViewData();
+    CPPUNIT_ASSERT(pViewData);
+
+    int nView1 = SfxLokHelper::getView();
+    ViewCallback aView1;
+    CPPUNIT_ASSERT(!lcl_hasEditView(*pViewData));
+
+    SfxLokHelper::setView(nView1);
+    aView1.m_bInvalidateTiles = false;
+    aView1.m_aInvalidations.clear();
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::DOWN | KEY_MOD1);
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYUP, 0, awt::Key::DOWN | KEY_MOD1);
+    Scheduler::ProcessEventsToIdle();
+    CPPUNIT_ASSERT(aView1.m_bInvalidateTiles);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), aView1.m_aInvalidations.size());
+    CPPUNIT_ASSERT_EQUAL(tools::Rectangle(0, 13005, 26775, 127500255), aView1.m_aInvalidations[0]);
+}
+
+// We need to ensure that views are not perterbed by rendering (!?) hmm ...
+void ScTiledRenderingTest::testRowColumnHeaders()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    ScModelObj* pModelObj = createDoc("empty.ods");
+    ScViewData* pViewData = ScDocShell::GetViewData();
+    CPPUNIT_ASSERT(pViewData);
+
+    // view #1
+    ViewCallback aView1;
+    int nView1 = SfxLokHelper::getView();
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView1);
+    CPPUNIT_ASSERT(!lcl_hasEditView(*pViewData));
+
+    // view #2
+    SfxLokHelper::createView();
+    int nView2 = SfxLokHelper::getView();
+    ViewCallback aView2;
+    pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView2);
+
+    // ViewRowColumnHeaders test
+    SfxLokHelper::setView(nView1);
+    tools::JsonWriter aJsonWriter1;
+    pModelObj->getRowColumnHeaders(tools::Rectangle(65,723,10410,4695), aJsonWriter1);
+    OString aHeaders1 = aJsonWriter1.extractAsOString();
+
+    SfxLokHelper::setView(nView2);
+    // 50% zoom
+    pModelObj->setClientVisibleArea(tools::Rectangle(0, 0, 22474, 47333));
+    pModelObj->setClientZoom(256, 256, 6636, 6636);
+    tools::JsonWriter aJsonWriter2;
+    pModelObj->getRowColumnHeaders(tools::Rectangle(65,723,10410,4695), aJsonWriter2);
+    OString aHeaders2 = aJsonWriter2.extractAsOString();
+
+    // Check vs. view #1
+    SfxLokHelper::setView(nView1);
+    tools::JsonWriter aJsonWriter3;
+    pModelObj->getRowColumnHeaders(tools::Rectangle(65,723,10410,4695), aJsonWriter3);
+    OString aHeaders1_2 = aJsonWriter3.extractAsOString();
+    CPPUNIT_ASSERT_EQUAL(aHeaders1, aHeaders1_2);
+
+    // Check vs. view #2
+    SfxLokHelper::setView(nView2);
+    tools::JsonWriter aJsonWriter4;
+    pModelObj->getRowColumnHeaders(tools::Rectangle(65,723,10410,4695), aJsonWriter4);
+    OString aHeaders2_2 = aJsonWriter4.extractAsOString();
+    CPPUNIT_ASSERT_EQUAL(aHeaders2, aHeaders2_2);
+
+    SfxLokHelper::setView(nView1);
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+    SfxLokHelper::setView(nView2);
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+}
+
+// Helper structs for setup and testing of ScModelObj::getSheetGeometryData()
+struct SpanEntry
+{
+    size_t nVal;
+    SCCOLROW nEnd;
+};
+
+struct SheetDimData
+{
+    typedef std::vector<SpanEntry> SpanList;
+    SpanList aSizes;
+    SpanList aHidden;
+    SpanList aFiltered;
+    // TODO: Add group info too to test.
+
+    void setDataToDoc(ScDocument* pDoc, bool bCol) const
+    {
+        SCCOLROW nStart = 0;
+        // sizes
+        for (const auto& rSpan : aSizes)
+        {
+            if (bCol)
+            {
+                for (SCCOLROW nIdx = nStart; nIdx <= rSpan.nEnd; ++nIdx)
+                    pDoc->SetColWidthOnly(nIdx, 0, rSpan.nVal);
+            }
+            else
+                pDoc->SetRowHeightOnly(nStart, rSpan.nEnd, 0, rSpan.nVal);
+
+            nStart = rSpan.nEnd + 1;
+        }
+
+        nStart = 0;
+        // hidden
+        for (const auto& rSpan : aHidden)
+        {
+            if (bCol)
+                pDoc->SetColHidden(nStart, rSpan.nEnd, 0, !!rSpan.nVal);
+            else
+                pDoc->SetRowHidden(nStart, rSpan.nEnd, 0, !!rSpan.nVal);
+
+            nStart = rSpan.nEnd + 1;
+        }
+
+        // There is no ScDocument interface to set ScTable::mpFilteredCols
+        // It seems ScTable::mpFilteredCols is not really used !?
+        if (bCol)
+            return;
+
+        nStart = 0;
+        // filtered
+        for (const auto& rSpan : aFiltered)
+        {
+            pDoc->SetRowFiltered(nStart, rSpan.nEnd, 0, !!rSpan.nVal);
+            nStart = rSpan.nEnd + 1;
+        }
+    }
+
+    void testPropertyTree(const boost::property_tree::ptree& rTree, bool bCol) const
+    {
+        struct SpanListWithKey
+        {
+            OString aKey;
+            const SpanList& rSpanList;
+        };
+
+        const SpanListWithKey aPairList[] = {
+            { "sizes",    aSizes    },
+            { "hidden",   aHidden   },
+            { "filtered", aFiltered }
+        };
+
+        for (const auto& rEntry : aPairList)
+        {
+            // There is no ScDocument interface to set ScTable::mpFilteredCols
+            // It seems ScTable::mpFilteredCols is not really used !?
+            if (bCol && rEntry.aKey == "filtered")
+                continue;
+
+            bool bBooleanValue = rEntry.aKey != "sizes";
+            OString aExpectedEncoding;
+            bool bFirst = true;
+            for (const auto& rSpan : rEntry.rSpanList)
+            {
+                size_t nVal = rSpan.nVal;
+                if (bBooleanValue && bFirst)
+                    nVal = static_cast<size_t>(!!nVal);
+                if (!bBooleanValue || bFirst)
+                    aExpectedEncoding += OString::number(nVal) + ":";
+                aExpectedEncoding += OString::number(rSpan.nEnd) + " ";
+                bFirst = false;
+            }
+
+            // Get the tree's value for the property key ("sizes"/"hidden"/"filtered").
+            OString aTreeValue = rTree.get<std::string>(rEntry.aKey.getStr()).c_str();
+
+            CPPUNIT_ASSERT_EQUAL(aExpectedEncoding, aTreeValue);
+        }
+    }
+};
+
+class SheetGeometryData
+{
+    SheetDimData aCols;
+    SheetDimData aRows;
+
+public:
+
+    SheetGeometryData()
+    {
+        aCols = {
+            // width spans
+            { { STD_COL_WIDTH, MAXCOL } },
+            // hidden spans
+            { { 0,             MAXCOL } },
+            // filtered spans
+            { { 0,             MAXCOL } }
+        };
+
+        aRows = {
+            // height spans
+            { { ScGlobal::nStdRowHeight, MAXROW } },
+            // hidden spans
+            { { 0,                       MAXROW } },
+            // filtered spans
+            { { 0,                       MAXROW } }
+        };
+    }
+
+    SheetGeometryData(const SheetDimData& rCols, const SheetDimData& rRows) :
+        aCols(rCols), aRows(rRows)
+    {}
+
+    void setDataToDoc(ScDocument* pDoc) const
+    {
+        aCols.setDataToDoc(pDoc, true);
+        aRows.setDataToDoc(pDoc, false);
+    }
+
+    void parseTest(const OString& rJSON) const
+    {
+        // Assumes all flags passed to getSheetGeometryData() are true.
+        boost::property_tree::ptree aTree;
+        std::stringstream aStream(rJSON.getStr());
+        boost::property_tree::read_json(aStream, aTree);
+
+        CPPUNIT_ASSERT_EQUAL(OString(".uno:SheetGeometryData"), OString(aTree.get<std::string>("commandName").c_str()));
+
+        aCols.testPropertyTree(aTree.get_child("columns"), true);
+        aRows.testPropertyTree(aTree.get_child("rows"), false);
+    }
+};
+
+// getSheetGeometryData() should return the exact same message
+// irrespective of client zoom and view-area. Switching views
+// should also not alter it.
+void ScTiledRenderingTest::testSheetGeometryDataInvariance()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    ScModelObj* pModelObj = createDoc("empty.ods");
+    const SheetGeometryData aSGData(
+        // cols
+        {
+            // width spans
+            {
+                { STD_COL_WIDTH,   20     },
+                { 2*STD_COL_WIDTH, 26     },
+                { STD_COL_WIDTH,   MAXCOL }
+            },
+
+            // hidden spans
+            {
+                { 0, 5      },
+                { 1, 12     },
+                { 0, MAXCOL }
+            },
+
+            // filtered spans
+            {
+                { 0, 50     },
+                { 1, 59     },
+                { 0, MAXCOL }
+            }
+        },
+
+        // rows
+        {
+            // height spans
+            {
+                { 300,  50     },
+                { 600,  65     },
+                { 300,  MAXROW }
+            },
+
+            // hidden spans
+            {
+                { 1, 100    },
+                { 0, 500    },
+                { 1, 578    },
+                { 0, MAXROW }
+            },
+
+            // filtered spans
+            {
+                { 0, 150    },
+                { 1, 159    },
+                { 0, MAXROW }
+            }
+        }
+    );
+
+    ScDocument* pDoc = pModelObj->GetDocument();
+
+    ScViewData* pViewData = ScDocShell::GetViewData();
+    CPPUNIT_ASSERT(pViewData);
+
+    // view #1
+    ViewCallback aView1;
+    int nView1 = SfxLokHelper::getView();
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView1);
+
+    // view #2
+    SfxLokHelper::createView();
+    int nView2 = SfxLokHelper::getView();
+    ViewCallback aView2;
+    pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView2);
+
+    // Try with the default empty document once (nIdx = 0) and then with sheet geometry settings (nIdx = 1)
+    for (size_t nIdx = 0; nIdx < 2; ++nIdx)
+    {
+        if (nIdx)
+            aSGData.setDataToDoc(pDoc);
+
+        SfxLokHelper::setView(nView1);
+        OString aGeomStr1 = pModelObj->getSheetGeometryData(/*bColumns*/ true, /*bRows*/ true, /*bSizes*/ true,
+                /*bHidden*/ true, /*bFiltered*/ true, /*bGroups*/ true);
+
+        SfxLokHelper::setView(nView2);
+        pModelObj->setClientVisibleArea(tools::Rectangle(0, 0, 22474, 47333));
+        pModelObj->setClientZoom(256, 256, 6636, 6636);
+        OString aGeomStr2 = pModelObj->getSheetGeometryData(/*bColumns*/ true, /*bRows*/ true, /*bSizes*/ true,
+                /*bHidden*/ true, /*bFiltered*/ true, /*bGroups*/ true);
+
+        // Check vs. view #1
+        SfxLokHelper::setView(nView1);
+        OString aGeomStr1_2 = pModelObj->getSheetGeometryData(/*bColumns*/ true, /*bRows*/ true, /*bSizes*/ true,
+                /*bHidden*/ true, /*bFiltered*/ true, /*bGroups*/ true);
+        CPPUNIT_ASSERT_EQUAL(aGeomStr1, aGeomStr1_2);
+
+        // Check vs. view #2
+        SfxLokHelper::setView(nView2);
+        OString aGeomStr2_2 = pModelObj->getSheetGeometryData(/*bColumns*/ true, /*bRows*/ true, /*bSizes*/ true,
+                /*bHidden*/ true, /*bFiltered*/ true, /*bGroups*/ true);
+        CPPUNIT_ASSERT_EQUAL(aGeomStr2, aGeomStr2_2);
+    }
+
+    SfxLokHelper::setView(nView1);
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+    SfxLokHelper::setView(nView2);
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+}
+
+void ScTiledRenderingTest::testSheetGeometryDataCorrectness()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    ScModelObj* pModelObj = createDoc("empty.ods");
+    const SheetGeometryData aSGData(
+        // cols
+        {
+            // width spans
+            {
+                { STD_COL_WIDTH,   20     },
+                { 2*STD_COL_WIDTH, 26     },
+                { STD_COL_WIDTH,   MAXCOL }
+            },
+
+            // hidden spans
+            {
+                { 0, 5      },
+                { 1, 12     },
+                { 0, MAXCOL }
+            },
+
+            // filtered spans
+            {
+                { 0, 50     },
+                { 1, 59     },
+                { 0, MAXCOL }
+            }
+        },
+
+        // rows
+        {
+            // height spans
+            {
+                { 300,  50     },
+                { 600,  65     },
+                { 300,  MAXROW }
+            },
+
+            // hidden spans
+            {
+                { 1, 100    },
+                { 0, 500    },
+                { 1, 578    },
+                { 0, MAXROW }
+            },
+
+            // filtered spans
+            {
+                { 0, 150    },
+                { 1, 159    },
+                { 0, MAXROW }
+            }
+        }
+    );
+
+    ScDocument* pDoc = pModelObj->GetDocument();
+
+    ScViewData* pViewData = ScDocShell::GetViewData();
+    CPPUNIT_ASSERT(pViewData);
+
+    // view #1
+    ViewCallback aView1;
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView1);
+
+    // with the default empty sheet and test the JSON encoding.
+    OString aGeomDefaultStr = pModelObj->getSheetGeometryData(/*bColumns*/ true, /*bRows*/ true, /*bSizes*/ true,
+            /*bHidden*/ true, /*bFiltered*/ true, /*bGroups*/ true);
+    SheetGeometryData().parseTest(aGeomDefaultStr);
+
+    // Apply geometry settings to the sheet and then test the resulting JSON encoding.
+    aSGData.setDataToDoc(pDoc);
+    OString aGeomStr = pModelObj->getSheetGeometryData(/*bColumns*/ true, /*bRows*/ true, /*bSizes*/ true,
+            /*bHidden*/ true, /*bFiltered*/ true, /*bGroups*/ true);
+    aSGData.parseTest(aGeomStr);
+
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
+}
+
+void ScTiledRenderingTest::testDeleteCellMultilineContent()
+{
+    comphelper::LibreOfficeKit::setActive();
+
+    ScModelObj* pModelObj = createDoc("multiline.ods");
+    CPPUNIT_ASSERT(pModelObj);
+    ScViewData* pViewData = ScDocShell::GetViewData();
+    CPPUNIT_ASSERT(pViewData);
+    ScDocShell* pDocSh = dynamic_cast< ScDocShell* >( pModelObj->GetEmbeddedObject() );
+    CPPUNIT_ASSERT(pDocSh);
+
+    // view #1
+    ViewCallback aView1;
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(&ViewCallback::callback, &aView1);
+    CPPUNIT_ASSERT(!lcl_hasEditView(*pViewData));
+
+    aView1.m_sInvalidateHeader = "";
+    ScDocument& rDoc = pDocSh->GetDocument();
+    sal_uInt16 nRow1Height = rDoc.GetRowHeight(static_cast<SCROW>(0), static_cast<SCTAB>(0), false);
+
+    // delete multiline cell content in view #1
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::DOWN);
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYUP, 0, awt::Key::DOWN);
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::DELETE);
+    pModelObj->postKeyEvent(LOK_KEYEVENT_KEYUP, 0, awt::Key::DELETE);
+    Scheduler::ProcessEventsToIdle();
+
+    // check if the row header has been invalidated and if the involved row is of the expected height
+    CPPUNIT_ASSERT_EQUAL(OString("row"), aView1.m_sInvalidateHeader);
+    sal_uInt16 nRow2Height = rDoc.GetRowHeight(static_cast<SCROW>(0), static_cast<SCTAB>(0), false);
+    CPPUNIT_ASSERT_EQUAL(nRow1Height, nRow2Height);
+    SfxViewShell::Current()->registerLibreOfficeKitViewCallback(nullptr, nullptr);
 }
 
 }

@@ -17,16 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/svxerr.hxx"
+#include <svx/svxerr.hxx>
 #include <svx/dialmgr.hxx>
-
-#include <svx/dialogs.hrc>
-
 #include <rtl/instance.hxx>
+#include <svxerr.hrc>
 
 SvxErrorHandler::SvxErrorHandler() :
   SfxErrorHandler(
-      RID_SVXERRCODE, ErrCode(ERRCODE_AREA_SVX), ErrCode(ERRCODE_AREA_SVX_END), &DIALOG_MGR() )
+      RID_SVXERRCODE, ErrCodeArea::Svx, ErrCodeArea::Svx, SvxResLocale())
 {
 }
 
@@ -38,6 +36,7 @@ namespace
 
 void SvxErrorHandler::ensure()
 {
+    // coverity[side_effect_free : FALSE] - not actually side-effect-free
     theSvxErrorHandler::get();
 }
 

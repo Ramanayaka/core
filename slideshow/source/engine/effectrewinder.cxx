@@ -19,21 +19,22 @@
 
 
 #include "effectrewinder.hxx"
-#include "eventqueue.hxx"
-#include "usereventqueue.hxx"
-#include "mouseeventhandler.hxx"
-#include "animationnodes/basecontainernode.hxx"
-#include "delayevent.hxx"
+#include <eventqueue.hxx>
+#include <usereventqueue.hxx>
+#include <basecontainernode.hxx>
+#include <delayevent.hxx>
 
-#include <com/sun/star/awt/MouseEvent.hpp>
 #include <com/sun/star/animations/Event.hpp>
 #include <com/sun/star/animations/EventTrigger.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
+#include <com/sun/star/animations/XAnimate.hpp>
+
+#include <officecfg/Office/Canvas.hxx>
 
 using ::com::sun::star::uno::Reference;
 using namespace ::com::sun::star;
 
-namespace slideshow { namespace internal {
+namespace slideshow::internal {
 
 
 namespace {
@@ -95,20 +96,20 @@ void EffectRewinder::initialize()
     // b,c) a slide was started or ended (in which case the effect counter
     // is reset.
 
-    mpAnimationStartHandler.reset(
-        new RewinderAnimationEventHandler(
+    mpAnimationStartHandler =
+        std::make_shared<RewinderAnimationEventHandler>(
             [this]( const AnimationNodeSharedPtr& pNode)
-            { return this->notifyAnimationStart( pNode ); } ) );
+            { return this->notifyAnimationStart( pNode ); } );
     mrEventMultiplexer.addAnimationStartHandler(mpAnimationStartHandler);
 
-    mpSlideStartHandler.reset(
-        new RewinderEventHandler(
-            [this]() { return this->resetEffectCount(); } ) );
+    mpSlideStartHandler =
+        std::make_shared<RewinderEventHandler>(
+            [this]() { return this->resetEffectCount(); } );
     mrEventMultiplexer.addSlideStartHandler(mpSlideStartHandler);
 
-    mpSlideEndHandler.reset(
-        new RewinderEventHandler(
-            [this]() { return this->resetEffectCount(); } ) );
+    mpSlideEndHandler =
+        std::make_shared<RewinderEventHandler>(
+            [this]() { return this->resetEffectCount(); } );
     mrEventMultiplexer.addSlideEndHandler(mpSlideEndHandler);
 }
 
@@ -170,7 +171,6 @@ bool EffectRewinder::rewind (
 
     // Abort (and skip over the rest of) any currently active animation.
     mrUserEventQueue.callSkipEffectEventHandler();
-    mrEventQueue.forceEmpty();
 
     const int nSkipCount (mnMainSequenceEffectCount - 1);
     if (nSkipCount < 0)
@@ -207,7 +207,7 @@ bool EffectRewinder::rewind (
     if (mpAsynchronousRewindEvent)
         mrEventQueue.addEvent(mpAsynchronousRewindEvent);
 
-    return mpAsynchronousRewindEvent.get()!=nullptr;
+    return bool(mpAsynchronousRewindEvent);
 }
 
 
@@ -291,9 +291,66 @@ bool EffectRewinder::resetEffectCount()
     return false;
 }
 
+bool EffectRewinder::hasBlockedAnimation( const css::uno::Reference<css::animations::XAnimationNode>& xNode)
+{
+    bool isShapeTarget = false;;
+    OUString preset_id;
+    OUString preset_sub_type;
+    OUString preset_property;
+
+    if (xNode->getUserData().getLength())
+    {
+        for(int i = 0; i < xNode->getUserData().getLength(); i++)
+        {
+            if(xNode->getUserData()[i].Name == "preset-id")
+                xNode->getUserData()[i].Value >>= preset_id;
+            if(xNode->getUserData()[i].Name == "preset-sub-type")
+                xNode->getUserData()[i].Value >>= preset_sub_type;
+            if(xNode->getUserData()[i].Name == "preset-property")
+                xNode->getUserData()[i].Value >>= preset_property;
+        }
+    }
+
+    uno::Reference<container::XEnumerationAccess> xEnumerationAccess (xNode, uno::UNO_QUERY);
+    if (xEnumerationAccess.is())
+    {
+        uno::Reference<container::XEnumeration> xEnumeration (
+            xEnumerationAccess->createEnumeration());
+        if (xEnumeration.is())
+            while (xEnumeration->hasMoreElements())
+            {
+                uno::Reference<animations::XAnimationNode> xNext (xEnumeration->nextElement(), uno::UNO_QUERY);
+                uno::Reference<animations::XAnimate> xAnimate( xNext, uno::UNO_QUERY );
+
+                if(xAnimate.is())
+                {
+                    uno::Reference< drawing::XShape > xShape( xAnimate->getTarget(), uno::UNO_QUERY );
+
+                    if (xShape.is() || xAnimate->getTarget().getValueType() == cppu::UnoType<void>::get())
+                        isShapeTarget=true;
+                }
+            }
+    }
+
+    if(isShapeTarget &&
+       ((preset_id == "ooo-entrance-zoom" && preset_sub_type == "in") || // Entrance Zoom In
+        (preset_id == "ooo-entrance-swivel" )                         || // Entrance Swivel
+        (preset_id == "ooo-entrance-spiral-in")                       || // Entrance Spiral-In
+        (preset_id == "ooo-entrance-stretchy")))                         // Entrance Stretchy
+        return true;
+
+    return false;
+}
 
 bool EffectRewinder::notifyAnimationStart (const AnimationNodeSharedPtr& rpNode)
 {
+    Reference<animations::XAnimationNode> xNode (rpNode->getXAnimationNode());
+
+    if( xNode.is() &&
+        !officecfg::Office::Canvas::ForceSafeServiceImpl::get() &&
+        hasBlockedAnimation(xNode) )
+        skipSingleMainSequenceEffects();
+
     // This notification is only relevant for us when the rpNode belongs to
     // the main sequence.
     BaseNodeSharedPtr pBaseNode (::std::dynamic_pointer_cast<BaseNode>(rpNode));
@@ -308,11 +365,10 @@ bool EffectRewinder::notifyAnimationStart (const AnimationNodeSharedPtr& rpNode)
     // triggered.
     bool bIsUserTriggered (false);
 
-    Reference<animations::XAnimationNode> xNode (rpNode->getXAnimationNode());
     if (xNode.is())
     {
         animations::Event aEvent;
-        if ((xNode->getBegin() >>= aEvent))
+        if (xNode->getBegin() >>= aEvent)
             bIsUserTriggered = (aEvent.Trigger == animations::EventTrigger::ON_NEXT);
     }
 
@@ -353,7 +409,7 @@ void EffectRewinder::asynchronousRewind (
         // Process initial events and skip any animations that are started
         // when the slide is shown.
         mbNonUserTriggeredMainSequenceEffectSeen = false;
-        mrEventQueue.forceEmpty();
+
         if (mbNonUserTriggeredMainSequenceEffectSeen)
         {
             mrUserEventQueue.callSkipEffectEventHandler();
@@ -379,6 +435,6 @@ void EffectRewinder::asynchronousRewindToPreviousSlide (
 }
 
 
-} } // end of namespace ::slideshow::internal
+} // end of namespace ::slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

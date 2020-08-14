@@ -17,15 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <algorithm>
-
 #include <connectivity/sqlparse.hxx>
 #include <connectivity/internalnode.hxx>
 
 using namespace connectivity;
 
 
-OSQLInternalNode::OSQLInternalNode(const sal_Char* pNewValue,
+OSQLInternalNode::OSQLInternalNode(const char* pNewValue,
                                    SQLNodeType eNodeType,
                                    sal_uInt32 nNodeID)
                  : OSQLParseNode(pNewValue,eNodeType,nNodeID)

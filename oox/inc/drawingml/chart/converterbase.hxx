@@ -20,25 +20,19 @@
 #ifndef INCLUDED_OOX_DRAWINGML_CHART_CONVERTERBASE_HXX
 #define INCLUDED_OOX_DRAWINGML_CHART_CONVERTERBASE_HXX
 
-#include <drawingml/chart/chartcontextbase.hxx>
 #include <drawingml/chart/objectformatter.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt { struct Rectangle; }
     namespace awt { struct Size; }
     namespace chart2 { class XChartDocument; }
     namespace chart2 { class XTitle; }
     namespace drawing { class XShape; }
     namespace uno { class XComponentContext; }
-} } }
+}
+namespace oox::core { class XmlFilterBase; }
 
-namespace oox { namespace core {
-    class XmlFilterBase;
-} }
-
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 class ChartConverter;
 struct ChartSpaceModel;
@@ -64,10 +58,15 @@ public:
                             const css::awt::Size& rChartSize );
     virtual             ~ConverterRoot();
 
+    ConverterRoot(ConverterRoot const &) = default;
+    ConverterRoot(ConverterRoot &&) = default;
+    ConverterRoot & operator =(ConverterRoot const &) = default;
+    ConverterRoot & operator =(ConverterRoot &&) = default;
+
     /** Creates an instance for the passed service name, using the process service factory. */
     css::uno::Reference< css::uno::XInterface >
                         createInstance( const OUString& rServiceName ) const;
-    css::uno::Reference< css::uno::XComponentContext >
+    css::uno::Reference< css::uno::XComponentContext > const &
                         getComponentContext() const;
 
 protected:
@@ -76,10 +75,12 @@ protected:
     /** Returns the chart converter. */
     ChartConverter&     getChartConverter() const;
     /** Returns the API chart document model. */
-    css::uno::Reference< css::chart2::XChartDocument >
+    css::uno::Reference< css::chart2::XChartDocument > const &
                         getChartDocument() const;
     /** Returns the position and size of the chart shape in 1/100 mm. */
     const css::awt::Size& getChartSize() const;
+    /** Returns the default position and size of the chart shape in 1/100 mm. */
+    static css::awt::Size getDefaultPageSize() { return css::awt::Size(16000, 9000); }
     /** Returns the object formatter. */
     ObjectFormatter&    getFormatter() const;
 
@@ -118,7 +119,7 @@ protected:
 
 /** A layout converter calculates positions and sizes for various chart objects.
  */
-class LayoutConverter : public ConverterBase< LayoutModel >
+class LayoutConverter final : public ConverterBase< LayoutModel >
 {
 public:
     explicit            LayoutConverter( const ConverterRoot& rParent, LayoutModel& rModel );
@@ -136,13 +137,11 @@ public:
     void                convertFromModel(
                             const css::uno::Reference< css::drawing::XShape >& rxShape,
                             double fRotationAngle );
-    bool getAutoLayout(){return mrModel.mbAutoLayout;}
+    bool getAutoLayout() const {return mrModel.mbAutoLayout;}
 };
 
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

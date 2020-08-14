@@ -19,23 +19,22 @@
 #include "vbaparagraphformat.hxx"
 #include <vbahelper/vbahelper.hxx>
 #include <basic/sberrors.hxx>
-#include <tools/diagnose_ex.h>
-#include "wordvbahelper.hxx"
 #include <com/sun/star/style/LineSpacingMode.hpp>
 #include <ooo/vba/word/WdLineSpacing.hpp>
 #include <ooo/vba/word/WdParagraphAlignment.hpp>
 #include <ooo/vba/word/WdOutlineLevel.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
 #include <com/sun/star/style/BreakType.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include "vbatabstops.hxx"
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
-static const sal_Int16 CHARACTER_INDENT_FACTOR = 12;
-static const sal_Int16 PERCENT100 = 100;
-static const sal_Int16 PERCENT150 = 150;
-static const sal_Int16 PERCENT200 = 200;
+const sal_Int16 CHARACTER_INDENT_FACTOR = 12;
+const sal_Int16 PERCENT100 = 100;
+const sal_Int16 PERCENT150 = 150;
+const sal_Int16 PERCENT200 = 200;
 
 SwVbaParagraphFormat::SwVbaParagraphFormat( const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext, const uno::Reference< beans::XPropertySet >& rParaProps ) : SwVbaParagraphFormat_BASE( rParent, rContext ), mxParaProps( rParaProps )
 {
@@ -54,7 +53,7 @@ sal_Int32 SAL_CALL SwVbaParagraphFormat::getAlignment()
 
 void SAL_CALL SwVbaParagraphFormat::setAlignment( sal_Int32 _alignment )
 {
-    style::ParagraphAdjust aParaAdjust = ( style::ParagraphAdjust ) getOOoAlignment( _alignment );
+    style::ParagraphAdjust aParaAdjust = getOOoAlignment( _alignment );
     mxParaProps->setPropertyValue("ParaAdjust", uno::makeAny( aParaAdjust ) );
 }
 
@@ -62,7 +61,7 @@ float SAL_CALL SwVbaParagraphFormat::getFirstLineIndent()
 {
     sal_Int32 indent = 0;
     mxParaProps->getPropertyValue("ParaFirstLineIndent") >>= indent;
-    return (float)( Millimeter::getInPoints( indent ) );
+    return static_cast<float>( Millimeter::getInPoints( indent ) );
 }
 
 void SAL_CALL SwVbaParagraphFormat::setFirstLineIndent( float _firstlineindent )
@@ -242,7 +241,7 @@ float SAL_CALL SwVbaParagraphFormat::getSpaceBefore()
 {
     sal_Int32 nSpace = 0;
     mxParaProps->getPropertyValue("ParaTopMargin") >>= nSpace;
-    return (float)( Millimeter::getInPoints( nSpace ) );
+    return static_cast<float>( Millimeter::getInPoints( nSpace ) );
 }
 
 void SAL_CALL SwVbaParagraphFormat::setSpaceBefore( float _space )
@@ -255,7 +254,7 @@ float SAL_CALL SwVbaParagraphFormat::getSpaceAfter()
 {
     sal_Int32 nSpace = 0;
     mxParaProps->getPropertyValue("ParaBottomMargin") >>= nSpace;
-    return (float)( Millimeter::getInPoints( nSpace ) );
+    return static_cast<float>( Millimeter::getInPoints( nSpace ) );
 }
 
 void SAL_CALL SwVbaParagraphFormat::setSpaceAfter( float _space )
@@ -268,7 +267,7 @@ float SAL_CALL SwVbaParagraphFormat::getLeftIndent()
 {
     sal_Int32 nIndent = 0;
     mxParaProps->getPropertyValue("ParaLeftMargin") >>= nIndent;
-    return (float)( Millimeter::getInPoints( nIndent ) );
+    return static_cast<float>( Millimeter::getInPoints( nIndent ) );
 }
 
 void SAL_CALL SwVbaParagraphFormat::setLeftIndent( float _leftindent )
@@ -281,7 +280,7 @@ float SAL_CALL SwVbaParagraphFormat::getRightIndent()
 {
     sal_Int32 nIndent = 0;
     mxParaProps->getPropertyValue("ParaRightMargin") >>= nIndent;
-    return (float)( Millimeter::getInPoints( nIndent ) );
+    return static_cast<float>( Millimeter::getInPoints( nIndent ) );
 }
 
 void SAL_CALL SwVbaParagraphFormat::setRightIndent( float _rightindent )
@@ -307,7 +306,7 @@ uno::Any SAL_CALL SwVbaParagraphFormat::getWidowControl()
     sal_Int8 nOrphan = 0;
     mxParaProps->getPropertyValue("ParaOrphans") >>= nOrphan;
     // if the amount of single lines on one page > 1 and the same of start and end of the paragraph,
-    // true is retured.
+    // true is returned.
     bool bWidow = ( nWidow > 1 && nOrphan == nWidow );
     return uno::makeAny( bWidow );
 }
@@ -341,12 +340,12 @@ style::LineSpacing SwVbaParagraphFormat::getOOoLineSpacing( float _lineSpace, sa
             aLineSpacing.Mode = style::LineSpacingMode::PROP;
             aLineSpacing.Height = PERCENT100;
         }
-        else if( _lineSpace == ( sal_Int16 )( CHARACTER_INDENT_FACTOR * 1.5 ) )
+        else if( _lineSpace == CHARACTER_INDENT_FACTOR * 1.5 ) // no rounding issues, == 18
         {
             aLineSpacing.Mode = style::LineSpacingMode::PROP;
             aLineSpacing.Height = PERCENT150;
         }
-        else if( _lineSpace == ( sal_Int16 )( ( CHARACTER_INDENT_FACTOR ) * 2 ) )
+        else if( _lineSpace == CHARACTER_INDENT_FACTOR * 2 )
         {
             aLineSpacing.Mode = style::LineSpacingMode::PROP;
             aLineSpacing.Height = PERCENT200;
@@ -354,13 +353,13 @@ style::LineSpacing SwVbaParagraphFormat::getOOoLineSpacing( float _lineSpace, sa
         else
         {
             aLineSpacing.Mode = style::LineSpacingMode::FIX;
-            aLineSpacing.Height = ( sal_Int16 )( Millimeter::getInHundredthsOfOneMillimeter( _lineSpace ) );
+            aLineSpacing.Height = static_cast<sal_Int16>( Millimeter::getInHundredthsOfOneMillimeter( _lineSpace ) );
         }
     }
     else
     {
         aLineSpacing.Mode = mode;
-        aLineSpacing.Height = ( sal_Int16 )( Millimeter::getInHundredthsOfOneMillimeter( _lineSpace ) );
+        aLineSpacing.Height = static_cast<sal_Int16>( Millimeter::getInHundredthsOfOneMillimeter( _lineSpace ) );
     }
     return aLineSpacing;
 }
@@ -410,21 +409,21 @@ style::LineSpacing SwVbaParagraphFormat::getOOoLineSpacingFromRule( sal_Int32 _l
     return aLineSpacing;
 }
 
-float SwVbaParagraphFormat::getMSWordLineSpacing( style::LineSpacing& rLineSpacing )
+float SwVbaParagraphFormat::getMSWordLineSpacing( style::LineSpacing const & rLineSpacing )
 {
     float wdLineSpacing = 0;
     if( rLineSpacing.Mode != style::LineSpacingMode::PROP )
     {
-        wdLineSpacing = (float)( Millimeter::getInPoints( rLineSpacing.Height ) );
+        wdLineSpacing = static_cast<float>( Millimeter::getInPoints( rLineSpacing.Height ) );
     }
     else
     {
-        wdLineSpacing = (float)( CHARACTER_INDENT_FACTOR * rLineSpacing.Height ) / PERCENT100;
+        wdLineSpacing = static_cast<float>( CHARACTER_INDENT_FACTOR * rLineSpacing.Height ) / PERCENT100;
     }
     return wdLineSpacing;
 }
 
-sal_Int32 SwVbaParagraphFormat::getMSWordLineSpacingRule( style::LineSpacing& rLineSpacing )
+sal_Int32 SwVbaParagraphFormat::getMSWordLineSpacingRule( style::LineSpacing const & rLineSpacing )
 {
     sal_Int32 wdLineSpacing = word::WdLineSpacing::wdLineSpaceSingle;
     switch( rLineSpacing.Mode )
@@ -478,7 +477,7 @@ sal_Int16 SwVbaParagraphFormat::getCharHeight()
 {
     float fCharHeight = 0.0;
     mxParaProps->getPropertyValue("CharHeight") >>= fCharHeight;
-    return (sal_Int16)( Millimeter::getInHundredthsOfOneMillimeter( fCharHeight ) );
+    return static_cast<sal_Int16>( Millimeter::getInHundredthsOfOneMillimeter( fCharHeight ) );
 }
 
 style::ParagraphAdjust SwVbaParagraphFormat::getOOoAlignment( sal_Int32 _alignment )
@@ -550,18 +549,16 @@ sal_Int32 SwVbaParagraphFormat::getMSWordAlignment( style::ParagraphAdjust _alig
 OUString
 SwVbaParagraphFormat::getServiceImplName()
 {
-    return OUString("SwVbaParagraphFormat");
+    return "SwVbaParagraphFormat";
 }
 
 uno::Sequence< OUString >
 SwVbaParagraphFormat::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.ParagraphFormat";
-    }
+        "ooo.vba.word.ParagraphFormat"
+    };
     return aServiceNames;
 }
 

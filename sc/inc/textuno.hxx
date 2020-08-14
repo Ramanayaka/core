@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SC_INC_TEXTUNO_HXX
 #define INCLUDED_SC_INC_TEXTUNO_HXX
 
-#include "global.hxx"
 #include "address.hxx"
 #include <editeng/unotext.hxx>
 #include <svl/lstner.hxx>
@@ -28,11 +27,11 @@
 #include <com/sun/star/sheet/XHeaderFooterContent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/weakref.hxx>
 
 #include <rtl/ref.hxx>
-#include "scdllapi.h"
 
 #include <memory>
 
@@ -40,7 +39,6 @@ class EditEngine;
 class EditTextObject;
 class SvxEditEngineForwarder;
 class ScDocShell;
-class ScAddress;
 class ScCellObj;
 class ScSimpleEditSource;
 class ScCellEditSource;
@@ -55,7 +53,7 @@ enum class ScHeaderFooterPart{ LEFT, CENTER, RIGHT };
 //  ScHeaderFooterContentObj is a dumb container which must be re-written into
 //  the page template using setPropertyValue
 
-class ScHeaderFooterContentObj : public cppu::WeakImplHelper<
+class ScHeaderFooterContentObj final : public cppu::WeakImplHelper<
                             css::sheet::XHeaderFooterContent,
                             css::lang::XUnoTunnel,
                             css::lang::XServiceInfo >
@@ -108,8 +106,8 @@ private:
     std::unique_ptr<EditTextObject> mpTextObj;
     css::uno::WeakReference<css::sheet::XHeaderFooterContent> xContentObj;
     ScHeaderFooterPart          nPart;
-    ScEditEngineDefaulter*      pEditEngine;
-    SvxEditEngineForwarder*     pForwarder;
+    std::unique_ptr<ScEditEngineDefaulter>  pEditEngine;
+    std::unique_ptr<SvxEditEngineForwarder> pForwarder;
     bool                        bDataValid;
 
 public:
@@ -123,10 +121,10 @@ public:
     SvxTextForwarder*       GetTextForwarder();
     void UpdateData();
     void UpdateData(EditEngine& rEditEngine);
-    ScEditEngineDefaulter*  GetEditEngine() { GetTextForwarder(); return pEditEngine; }
+    ScEditEngineDefaulter*  GetEditEngine() { GetTextForwarder(); return pEditEngine.get(); }
 
     ScHeaderFooterPart      GetPart() const         { return nPart; }
-    const css::uno::Reference<css::sheet::XHeaderFooterContent> GetContentObj() const { return xContentObj; }
+    css::uno::Reference<css::sheet::XHeaderFooterContent> GetContentObj() const { return xContentObj; }
 
     const EditTextObject* GetTextObject() const { return mpTextObj.get(); }
 };
@@ -215,16 +213,20 @@ public:
 
 //! uno3: SvxUnoTextCursor is not derived from XUnoTunnel, but should be (?)
 
-class ScCellTextCursor : public SvxUnoTextCursor
+class ScCellTextCursor final : public SvxUnoTextCursor
 {
-    ScCellObj&              rTextObj;
+    rtl::Reference<ScCellObj> mxTextObj;
 
 public:
-                            ScCellTextCursor(const ScCellTextCursor& rOther);
                             ScCellTextCursor(ScCellObj& rText);
-        virtual                                 ~ScCellTextCursor() throw() override;
+        virtual             ~ScCellTextCursor() throw() override;
 
-    ScCellObj&              GetCellObj() const  { return rTextObj; }
+    ScCellTextCursor(ScCellTextCursor const &) = default;
+    ScCellTextCursor(ScCellTextCursor &&) = default;
+    ScCellTextCursor & operator =(ScCellTextCursor const &) = delete; // due to SvxUnoTextCursor
+    ScCellTextCursor & operator =(ScCellTextCursor &&) = delete; // due to SvxUnoTextCursor
+
+    ScCellObj&              GetCellObj() const  { return *mxTextObj; }
 
                             // SvxUnoTextCursor methods reimplemented here:
     virtual css::uno::Reference< css::text::XText > SAL_CALL
@@ -235,20 +237,22 @@ public:
                             getEnd() override;
 
                             // XUnoTunnel
-    virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    static ScCellTextCursor* getImplementation(const css::uno::Reference< css::uno::XInterface>& rObj);
+    UNO3_GETIMPLEMENTATION_DECL(ScCellTextCursor)
 };
 
-class ScHeaderFooterTextCursor : public SvxUnoTextCursor
+class ScHeaderFooterTextCursor final : public SvxUnoTextCursor
 {
 private:
     rtl::Reference<ScHeaderFooterTextObj> rTextObj;
 
 public:
                             ScHeaderFooterTextCursor(rtl::Reference<ScHeaderFooterTextObj> const & rText);
-        virtual                                 ~ScHeaderFooterTextCursor() throw() override;
+        virtual             ~ScHeaderFooterTextCursor() throw() override;
+
+    ScHeaderFooterTextCursor(ScHeaderFooterTextCursor const &) = default;
+    ScHeaderFooterTextCursor(ScHeaderFooterTextCursor &&) = default;
+    ScHeaderFooterTextCursor & operator =(ScHeaderFooterTextCursor const &) = delete; // due to SvxUnoTextCursor
+    ScHeaderFooterTextCursor & operator =(ScHeaderFooterTextCursor &&) = delete; // due to SvxUnoTextCursor
 
                             // SvxUnoTextCursor methods reimplemented here:
     virtual css::uno::Reference< css::text::XText > SAL_CALL
@@ -259,22 +263,23 @@ public:
                             getEnd() override;
 
                             // XUnoTunnel
-    virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    static ScHeaderFooterTextCursor* getImplementation(const css::uno::Reference<css::uno::XInterface>& rObj);
+    UNO3_GETIMPLEMENTATION_DECL(ScHeaderFooterTextCursor)
 };
 
-class ScDrawTextCursor : public SvxUnoTextCursor
+class ScDrawTextCursor final : public SvxUnoTextCursor
 {
 private:
     css::uno::Reference< css::text::XText > xParentText;
 
 public:
-                            ScDrawTextCursor(const ScDrawTextCursor& rOther);
                             ScDrawTextCursor( const css::uno::Reference< css::text::XText >& xParent,
                                             const SvxUnoTextBase& rText );
     virtual                  ~ScDrawTextCursor() throw() override;
+
+    ScDrawTextCursor(ScDrawTextCursor const &) = default;
+    ScDrawTextCursor(ScDrawTextCursor &&) = default;
+    ScDrawTextCursor & operator =(ScDrawTextCursor const &) = delete; // due to SvxUnoTextCursor
+    ScDrawTextCursor & operator =(ScDrawTextCursor &&) = delete; // due to SvxUnoTextCursor
 
                             // SvxUnoTextCursor methods reimplemented here:
     virtual css::uno::Reference< css::text::XText > SAL_CALL
@@ -285,10 +290,7 @@ public:
                             getEnd() override;
 
                             // XUnoTunnel
-    virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    static ScDrawTextCursor* getImplementation(const css::uno::Reference<css::uno::XInterface>& rObj);
+    UNO3_GETIMPLEMENTATION_DECL(ScDrawTextCursor)
 };
 
 // ScAnnotationTextCursor isn't needed anymore - SvxUnoTextCursor is used instead
@@ -298,26 +300,26 @@ public:
 
 class ScSimpleEditSourceHelper
 {
-    ScEditEngineDefaulter*  pEditEngine;
-    SvxEditEngineForwarder* pForwarder;
-    ScSimpleEditSource*     pOriginalSource;
+    std::unique_ptr<ScEditEngineDefaulter>  pEditEngine;
+    std::unique_ptr<SvxEditEngineForwarder> pForwarder;
+    std::unique_ptr<ScSimpleEditSource>     pOriginalSource;
 
 public:
             ScSimpleEditSourceHelper();
             ~ScSimpleEditSourceHelper();
 
-    ScSimpleEditSource* GetOriginalSource() const   { return pOriginalSource; }
-    ScEditEngineDefaulter* GetEditEngine() const    { return pEditEngine; }
+    ScSimpleEditSource* GetOriginalSource() const   { return pOriginalSource.get(); }
+    ScEditEngineDefaulter* GetEditEngine() const    { return pEditEngine.get(); }
 };
 
-class ScEditEngineTextObj : public ScSimpleEditSourceHelper, public SvxUnoText
+class ScEditEngineTextObj final : public ScSimpleEditSourceHelper, public SvxUnoText
 {
 public:
                         ScEditEngineTextObj();
-        virtual                         ~ScEditEngineTextObj() throw() override;
+        virtual         ~ScEditEngineTextObj() throw() override;
 
     void                SetText( const EditTextObject& rTextObject );
-    EditTextObject*     CreateTextObject();
+    std::unique_ptr<EditTextObject> CreateTextObject();
 };
 
 //  ScCellTextData: shared data between sub objects of a cell text object
@@ -327,9 +329,9 @@ class ScCellTextData : public SfxListener
 protected:
     ScDocShell*             pDocShell;
     ScAddress               aCellPos;
-    ScFieldEditEngine*      pEditEngine;
-    SvxEditEngineForwarder* pForwarder;
-    ScCellEditSource* pOriginalSource;
+    std::unique_ptr<ScFieldEditEngine> pEditEngine;
+    std::unique_ptr<SvxEditEngineForwarder> pForwarder;
+    std::unique_ptr<ScCellEditSource> pOriginalSource;
     bool                    bDataValid;
     bool                    bInUpdate;
     bool                    bDirty;
@@ -344,7 +346,7 @@ public:
                             // helper functions for ScSharedCellEditSource:
     virtual SvxTextForwarder* GetTextForwarder();
     void                    UpdateData();
-    ScFieldEditEngine*      GetEditEngine() { GetTextForwarder(); return pEditEngine; }
+    ScFieldEditEngine*      GetEditEngine() { GetTextForwarder(); return pEditEngine.get(); }
 
     ScCellEditSource* GetOriginalSource();        // used as argument for SvxUnoText ctor
 
@@ -356,11 +358,11 @@ public:
     void                    SetDoUpdate(bool bValue)    { bDoUpdate = bValue; }
 };
 
-class ScCellTextObj : public ScCellTextData, public SvxUnoText
+class ScCellTextObj final : public ScCellTextData, public SvxUnoText
 {
 public:
-                ScCellTextObj(ScDocShell* pDocSh, const ScAddress& rP);
-        virtual         ~ScCellTextObj() throw() override;
+                 ScCellTextObj(ScDocShell* pDocSh, const ScAddress& rP);
+        virtual  ~ScCellTextObj() COVERITY_NOEXCEPT_FALSE override;
 };
 
 #endif

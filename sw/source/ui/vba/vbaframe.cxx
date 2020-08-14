@@ -18,11 +18,7 @@
  */
 #include "vbaframe.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
-#include <com/sun/star/text/XTextDocument.hpp>
-#include <com/sun/star/text/XTextContent.hpp>
-#include <com/sun/star/text/XTextViewCursor.hpp>
-#include <com/sun/star/text/XTextViewCursorSupplier.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 
 using namespace ::ooo::vba;
@@ -46,18 +42,16 @@ void SAL_CALL SwVbaFrame::Select()
 OUString
 SwVbaFrame::getServiceImplName()
 {
-    return OUString("SwVbaFrame");
+    return "SwVbaFrame";
 }
 
 uno::Sequence< OUString >
 SwVbaFrame::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Frame";
-    }
+        "ooo.vba.word.Frame"
+    };
     return aServiceNames;
 }
 

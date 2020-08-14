@@ -20,11 +20,9 @@
 #define INCLUDED_STARMATH_INC_EDIT_HXX
 
 #include <vcl/window.hxx>
-#include <vcl/timer.hxx>
 #include <vcl/idle.hxx>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include <editeng/editdata.hxx>
-#include <svtools/colorcfg.hxx>
 #include <memory>
 
 class SmDocShell;
@@ -35,14 +33,16 @@ class EditStatus;
 class ScrollBar;
 class ScrollBarBox;
 class DataChangedEvent;
-class Menu;
 class SmCmdBoxWindow;
 class SmEditAccessible;
 class CommandEvent;
+class Timer;
+
+namespace svtools { class ColorConfig; }
 
 void SmGetLeftSelectionPart(const ESelection &rSelection, sal_Int32 &nPara, sal_uInt16 &nPos);
 
-class SmEditWindow : public vcl::Window, public DropTargetHelper
+class SmEditWindow final : public vcl::Window, public DropTargetHelper
 {
     rtl::Reference<SmEditAccessible> mxAccessible;
 
@@ -61,6 +61,7 @@ class SmEditWindow : public vcl::Window, public DropTargetHelper
     DECL_LINK(ModifyTimerHdl, Timer *, void);
     DECL_LINK(CursorMoveTimerHdl, Timer *, void);
 
+    virtual void ApplySettings(vcl::RenderContext&) override;
     virtual void DataChanged( const DataChangedEvent& ) override;
     virtual void Resize() override;
     virtual void MouseMove(const MouseEvent &rEvt) override;
@@ -114,10 +115,8 @@ public:
     void SelPrevMark();
     static bool HasMark(const OUString &rText);
 
-    void Flush();
+    void Flush() override;
     void DeleteEditView();
-
-    void ApplyColorConfigValues(const svtools::ColorConfig& rColorCfg);
 
     bool HandleWheelCommands(const CommandEvent& rCEvt);
     bool IsInlineEditEnabled();

@@ -33,9 +33,9 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XInputStream; }
-} } }
+}
 
 namespace oox {
 
@@ -86,28 +86,28 @@ public:
         All data types supported by the ByteOrderConverter class can be used.
      */
     template< typename Type >
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     Type                 readValue();
 
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     sal_Int8             readInt8()   { return readValue<sal_Int8>(); }
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     sal_uInt8            readuInt8()  { return readValue<sal_uInt8>(); }
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     sal_Int16            readInt16()  { return readValue<sal_Int16>(); }
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     sal_uInt16           readuInt16() { return readValue<sal_uInt16>(); }
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     sal_Int32            readInt32()  { return readValue<sal_Int32>(); }
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     sal_uInt32           readuInt32() { return readValue<sal_uInt32>(); }
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     sal_Int64            readInt64()  { return readValue<sal_Int64>(); }
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     float                readFloat()  { return readValue<float>(); }
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     double               readDouble() { return readValue<double>(); }
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     unsigned char        readuChar()  { return readValue<unsigned char>(); }
 
     /** Reads a (preallocated!) C array of values from the stream.
@@ -163,15 +163,12 @@ public:
     OUString     readCharArrayUC( sal_Int32 nChars, rtl_TextEncoding eTextEnc );
 
     /** Reads a Unicode character array and returns the string.
+        NUL characters are replaced by question marks (default).
 
         @param nChars
             Number of 16-bit characters to read from the stream.
-
-        @param bAllowNulChars
-            True = NUL characters are inserted into the imported string.
-            False = NUL characters are replaced by question marks (default).
      */
-    OUString     readUnicodeArray( sal_Int32 nChars, bool bAllowNulChars = false );
+    OUString     readUnicodeArray( sal_Int32 nChars );
 
     /** Reads a Unicode character array (may be compressed) and returns the
         string.
@@ -193,14 +190,7 @@ public:
 protected:
     /** This dummy default c'tor will never call the c'tor of the virtual base
         class BinaryStreamBase as this class cannot be instantiated directly. */
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning( disable : 4702)
-#endif
     BinaryInputStream() : BinaryStreamBase( false ) {}
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
 private:
     BinaryInputStream( BinaryInputStream const& ) = delete;
@@ -244,7 +234,7 @@ sal_Int32 BinaryInputStream::readArray( ::std::vector< Type >& orVector, sal_Int
 
     The binary data in the stream is assumed to be in little-endian format.
  */
-class OOX_DLLPUBLIC BinaryXInputStream : public BinaryXSeekableStream, public BinaryInputStream
+class OOX_DLLPUBLIC BinaryXInputStream final : public BinaryXSeekableStream, public BinaryInputStream
 {
 public:
     /** Constructs the wrapper object for the passed input stream.
@@ -291,7 +281,7 @@ private:
 
     The binary data in the stream is assumed to be in little-endian format.
  */
-class OOX_DLLPUBLIC SequenceInputStream : public SequenceSeekableStream, public BinaryInputStream
+class OOX_DLLPUBLIC SequenceInputStream final : public SequenceSeekableStream, public BinaryInputStream
 {
 public:
     /** Constructs the wrapper object for the passed data sequence.
@@ -334,7 +324,7 @@ private:
     The stream MUST NOT be changed from outside as long as this stream wrapper
     is used to read from it.
  */
-class RelativeInputStream : public BinaryInputStream
+class RelativeInputStream final : public BinaryInputStream
 {
 public:
     /** Constructs the wrapper object for the passed stream.

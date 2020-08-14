@@ -20,22 +20,24 @@
 #ifndef INCLUDED_FRAMEWORK_INC_XML_TOOLBOXDOCUMENTHANDLER_HXX
 #define INCLUDED_FRAMEWORK_INC_XML_TOOLBOXDOCUMENTHANDLER_HXX
 
-#include <framework/toolboxconfiguration.hxx>
+#include <toolboxconfiguration.hxx>
 
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 
 #include <rtl/ustring.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <stdtypes.h>
-#include <framework/fwedllapi.h>
+#include <framework/fwkdllapi.h>
+
+#include <unordered_map>
 
 namespace framework{
 
 // Hash code function for using in all hash maps of follow implementation.
 
-class FWE_DLLPUBLIC OReadToolBoxDocumentHandler :
-                                    public ::cppu::WeakImplHelper< css::xml::sax::XDocumentHandler >
+// workaround for incremental linking bugs in MSVC2015
+class SAL_DLLPUBLIC_TEMPLATE OReadToolBoxDocumentHandler_Base : public cppu::WeakImplHelper< css::xml::sax::XDocumentHandler > {};
+
+class OReadToolBoxDocumentHandler final : public OReadToolBoxDocumentHandler_Base
 {
     public:
         enum ToolBox_XML_Entry
@@ -87,8 +89,7 @@ class FWE_DLLPUBLIC OReadToolBoxDocumentHandler :
         OUString getErrorLineString();
 
         class ToolBoxHashMap : public std::unordered_map<OUString,
-                                                         ToolBox_XML_Entry,
-                                                         OUStringHash >
+                                                         ToolBox_XML_Entry>
         {
         };
 
@@ -116,12 +117,12 @@ class FWE_DLLPUBLIC OReadToolBoxDocumentHandler :
         OUString                                                  m_aCommandURL;
 };
 
-class FWE_DLLPUBLIC OWriteToolBoxDocumentHandler final
+class OWriteToolBoxDocumentHandler final
 {
     public:
             OWriteToolBoxDocumentHandler(
                 const css::uno::Reference< css::container::XIndexAccess >& rItemAccess,
-                css::uno::Reference< css::xml::sax::XDocumentHandler >& rDocumentHandler );
+                css::uno::Reference< css::xml::sax::XDocumentHandler > const & rDocumentHandler );
             ~OWriteToolBoxDocumentHandler();
 
         /// @throws css::xml::sax::SAXException

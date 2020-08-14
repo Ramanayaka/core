@@ -19,29 +19,29 @@
 
 #include "VLegend.hxx"
 #include "VButton.hxx"
-#include "macros.hxx"
-#include "PropertyMapper.hxx"
-#include "CommonConverters.hxx"
-#include "ObjectIdentifier.hxx"
-#include "RelativePositionHelper.hxx"
-#include "AbstractShapeFactory.hxx"
-#include "RelativeSizeHelper.hxx"
-#include "LegendEntryProvider.hxx"
-#include "chartview/DrawModelWrapper.hxx"
-#include <com/sun/star/text/XTextRange.hpp>
+#include <PropertyMapper.hxx>
+#include <ChartModel.hxx>
+#include <ObjectIdentifier.hxx>
+#include <RelativePositionHelper.hxx>
+#include <ShapeFactory.hxx>
+#include <RelativeSizeHelper.hxx>
+#include <LegendEntryProvider.hxx>
+#include <chartview/DrawModelWrapper.hxx>
 #include <com/sun/star/text/WritingMode2.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/drawing/TextHorizontalAdjust.hpp>
 #include <com/sun/star/drawing/LineJoint.hpp>
+#include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/chart/ChartLegendExpansion.hpp>
 #include <com/sun/star/chart2/LegendPosition.hpp>
 #include <com/sun/star/chart2/RelativePosition.hpp>
+#include <com/sun/star/chart2/RelativeSize.hpp>
+#include <com/sun/star/chart2/XFormattedString2.hpp>
 #include <com/sun/star/chart2/data/XPivotTableDataProvider.hpp>
 #include <com/sun/star/chart2/data/PivotTableFieldEntry.hpp>
-#include <rtl/ustrbuf.hxx>
+#include <rtl/math.hxx>
 #include <svl/languageoptions.hxx>
-
+#include <tools/diagnose_ex.h>
 
 #include <vector>
 #include <algorithm>
@@ -79,9 +79,9 @@ double lcl_CalcViewFontSize(
                 fResult = ::chart::RelativeSizeHelper::calculate( fFontHeight, aPropRefSize, rReferenceSize );
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -96,54 +96,54 @@ void lcl_getProperties(
     const awt::Size & rReferenceSize )
 {
     // Get Line- and FillProperties from model legend
-    if( xLegendProp.is())
+    if( !xLegendProp.is())
+        return;
+
+    // set rOutLineFillProperties
+    ::chart::tPropertyNameValueMap aLineFillValueMap;
+    ::chart::PropertyMapper::getValueMap( aLineFillValueMap, ::chart::PropertyMapper::getPropertyNameMapForFillAndLineProperties(), xLegendProp );
+
+    aLineFillValueMap[ "LineJoint" ] <<= drawing::LineJoint_ROUND;
+
+    ::chart::PropertyMapper::getMultiPropertyListsFromValueMap(
+        rOutLineFillProperties.first, rOutLineFillProperties.second, aLineFillValueMap );
+
+    // set rOutTextProperties
+    ::chart::tPropertyNameValueMap aTextValueMap;
+    ::chart::PropertyMapper::getValueMap( aTextValueMap, ::chart::PropertyMapper::getPropertyNameMapForCharacterProperties(), xLegendProp );
+
+    aTextValueMap[ "TextAutoGrowHeight" ] <<= true;
+    aTextValueMap[ "TextAutoGrowWidth" ] <<= true;
+    aTextValueMap[ "TextHorizontalAdjust" ] <<= drawing::TextHorizontalAdjust_LEFT;
+    aTextValueMap[ "TextMaximumFrameWidth" ] <<= rReferenceSize.Width; //needs to be overwritten by actual available space in the legend
+
+    // recalculate font size
+    awt::Size aPropRefSize;
+    float fFontHeight( 0.0 );
+    if( (xLegendProp->getPropertyValue( "ReferencePageSize") >>= aPropRefSize) &&
+        (aPropRefSize.Height > 0) &&
+        (aTextValueMap[ "CharHeight" ] >>= fFontHeight) )
     {
-        // set rOutLineFillProperties
-        ::chart::tPropertyNameValueMap aLineFillValueMap;
-        ::chart::PropertyMapper::getValueMap( aLineFillValueMap, ::chart::PropertyMapper::getPropertyNameMapForFillAndLineProperties(), xLegendProp );
+        aTextValueMap[ "CharHeight" ] <<=
+            static_cast< float >(
+                ::chart::RelativeSizeHelper::calculate( fFontHeight, aPropRefSize, rReferenceSize ));
 
-        aLineFillValueMap[ "LineJoint" ] <<= drawing::LineJoint_ROUND;
-
-        ::chart::PropertyMapper::getMultiPropertyListsFromValueMap(
-            rOutLineFillProperties.first, rOutLineFillProperties.second, aLineFillValueMap );
-
-        // set rOutTextProperties
-        ::chart::tPropertyNameValueMap aTextValueMap;
-        ::chart::PropertyMapper::getValueMap( aTextValueMap, ::chart::PropertyMapper::getPropertyNameMapForCharacterProperties(), xLegendProp );
-
-        aTextValueMap[ "TextAutoGrowHeight" ] <<= true;
-        aTextValueMap[ "TextAutoGrowWidth" ] <<= true;
-        aTextValueMap[ "TextHorizontalAdjust" ] <<= drawing::TextHorizontalAdjust_LEFT;
-        aTextValueMap[ "TextMaximumFrameWidth" ] <<= rReferenceSize.Width; //needs to be overwritten by actual available space in the legend
-
-        // recalculate font size
-        awt::Size aPropRefSize;
-        float fFontHeight( 0.0 );
-        if( (xLegendProp->getPropertyValue( "ReferencePageSize") >>= aPropRefSize) &&
-            (aPropRefSize.Height > 0) &&
-            (aTextValueMap[ "CharHeight" ] >>= fFontHeight) )
+        if( aTextValueMap[ "CharHeightAsian" ] >>= fFontHeight )
         {
-            aTextValueMap[ "CharHeight" ] <<=
+            aTextValueMap[ "CharHeightAsian" ] <<=
                 static_cast< float >(
                     ::chart::RelativeSizeHelper::calculate( fFontHeight, aPropRefSize, rReferenceSize ));
-
-            if( aTextValueMap[ "CharHeightAsian" ] >>= fFontHeight )
-            {
-                aTextValueMap[ "CharHeightAsian" ] <<=
-                    static_cast< float >(
-                        ::chart::RelativeSizeHelper::calculate( fFontHeight, aPropRefSize, rReferenceSize ));
-            }
-            if( aTextValueMap[ "CharHeightComplex" ] >>= fFontHeight )
-            {
-                aTextValueMap[ "CharHeightComplex" ] <<=
-                    static_cast< float >(
-                        ::chart::RelativeSizeHelper::calculate( fFontHeight, aPropRefSize, rReferenceSize ));
-            }
         }
-
-        ::chart::PropertyMapper::getMultiPropertyListsFromValueMap(
-            rOutTextProperties.first, rOutTextProperties.second, aTextValueMap );
+        if( aTextValueMap[ "CharHeightComplex" ] >>= fFontHeight )
+        {
+            aTextValueMap[ "CharHeightComplex" ] <<=
+                static_cast< float >(
+                    ::chart::RelativeSizeHelper::calculate( fFontHeight, aPropRefSize, rReferenceSize ));
+        }
     }
+
+    ::chart::PropertyMapper::getMultiPropertyListsFromValueMap(
+        rOutTextProperties.first, rOutTextProperties.second, aTextValueMap );
 }
 
 awt::Size lcl_createTextShapes(
@@ -154,7 +154,7 @@ awt::Size lcl_createTextShapes(
     const tPropertyValues & rTextProperties )
 {
     awt::Size aResult;
-    AbstractShapeFactory* pShapeFactory = AbstractShapeFactory::getOrCreateShapeFactory(xShapeFactory);
+    ShapeFactory* pShapeFactory = ShapeFactory::getOrCreateShapeFactory(xShapeFactory);
 
     for (ViewLegendEntry const & rEntry : rEntries)
     {
@@ -168,7 +168,7 @@ awt::Size lcl_createTextShapes(
                 if( i == 1 )
                     break;
 
-                aLabelString = aLabelString + aLabelSeq[i]->getString();
+                aLabelString += aLabelSeq[i]->getString();
                 // workaround for Issue #i67540#
                 if( aLabelString.isEmpty())
                     aLabelString = " ";
@@ -185,9 +185,9 @@ awt::Size lcl_createTextShapes(
 
             rOutTextShapes.push_back( xEntry );
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -203,7 +203,7 @@ void lcl_collectColumnWidths( std::vector< sal_Int32 >& rColumnWidths, const sal
     {
         for (sal_Int32 nColumn = 0; nColumn < nNumberOfColumns; ++nColumn )
         {
-            sal_Int32 nEntry = (nColumn + nRow * nNumberOfColumns);
+            sal_Int32 nEntry = nColumn + nRow * nNumberOfColumns;
             if( nEntry < nNumberOfEntries )
             {
                 awt::Size aTextSize( rTextShapes[ nEntry ]->getSize() );
@@ -229,7 +229,7 @@ void lcl_collectRowHeighs( std::vector< sal_Int32 >& rRowHeights, const sal_Int3
         sal_Int32 nCurrentRowHeight = 0;
         for (sal_Int32 nColumn = 0; nColumn < nNumberOfColumns; ++nColumn)
         {
-            sal_Int32 nEntry = (nColumn + nRow * nNumberOfColumns);
+            sal_Int32 nEntry = nColumn + nRow * nNumberOfColumns;
             if( nEntry < nNumberOfEntries )
             {
                 awt::Size aTextSize( rTextShapes[ nEntry ]->getSize() );
@@ -243,6 +243,8 @@ void lcl_collectRowHeighs( std::vector< sal_Int32 >& rRowHeights, const sal_Int3
 sal_Int32 lcl_getTextLineHeight( const std::vector< sal_Int32 >& aRowHeights, const sal_Int32 nNumberOfRows, double fViewFontSize )
 {
     const sal_Int32 nFontHeight = static_cast< sal_Int32 >( fViewFontSize );
+    if (!nFontHeight)
+        return 0;
     sal_Int32 nTextLineHeight = nFontHeight;
     for (sal_Int32 nRow = 0; nRow < nNumberOfRows; ++nRow)
     {
@@ -267,10 +269,16 @@ awt::Size lcl_placeLegendEntries(
     const Reference< drawing::XShapes > & xTarget,
     const Reference< lang::XMultiServiceFactory > & xShapeFactory,
     const awt::Size& rRemainingSpace,
-    sal_Int32 nYStartPosition)
+    sal_Int32 nYStartPosition,
+    const awt::Size& rPageSize,
+    bool bIsPivotChart,
+    awt::Size& rDefaultLegendSize)
 {
     bool bIsCustomSize = (eExpansion == css::chart::ChartLegendExpansion_CUSTOM);
     awt::Size aResultingLegendSize(0,0);
+    // For Pivot charts set the *minimum* legend size as a function of page size.
+    if ( bIsPivotChart )
+        aResultingLegendSize = awt::Size((rPageSize.Width * 13) / 80, (rPageSize.Height * 31) / 90);
     if( bIsCustomSize )
         aResultingLegendSize = awt::Size(rRemainingSpace.Width, rRemainingSpace.Height + nYStartPosition);
 
@@ -282,7 +290,7 @@ awt::Size lcl_placeLegendEntries(
 
     const sal_Int32 nSymbolToTextDistance = static_cast< sal_Int32 >( std::max( 100.0, fViewFontSize * 0.22 ) );//minimum 1mm
     const sal_Int32 nSymbolPlusDistanceWidth = rMaxSymbolExtent.Width + nSymbolToTextDistance;
-    sal_Int32 nMaxTextWidth = rRemainingSpace.Width - (2 * nXPadding) - nSymbolPlusDistanceWidth;
+    sal_Int32 nMaxTextWidth = rRemainingSpace.Width - nSymbolPlusDistanceWidth;
     uno::Any* pFrameWidthAny = PropertyMapper::getValuePointer( rTextProperties.second, rTextProperties.first, "TextMaximumFrameWidth");
     if(pFrameWidthAny)
     {
@@ -302,6 +310,9 @@ awt::Size lcl_placeLegendEntries(
     sal_Int32 nMaxEntryWidth = nXOffset + nSymbolPlusDistanceWidth + aMaxEntryExtent.Width;
     sal_Int32 nMaxEntryHeight = nYOffset + aMaxEntryExtent.Height;
     sal_Int32 nNumberOfEntries = rEntries.size();
+
+    rDefaultLegendSize.Width = nMaxEntryWidth;
+    rDefaultLegendSize.Height = nMaxEntryHeight + nYPadding;
 
     sal_Int32 nNumberOfColumns = 0, nNumberOfRows = 0;
     std::vector< sal_Int32 > aColumnWidths;
@@ -391,24 +402,68 @@ awt::Size lcl_placeLegendEntries(
             {
                 for (sal_Int32 nColumn = nNumberOfColumns; nColumn--; )
                 {
-                    sal_Int32 nEntry = (nColumn + nRow * nNumberOfColumns);
+                    sal_Int32 nEntry = nColumn + nRow * nNumberOfColumns;
                     if( nEntry < static_cast<sal_Int32>(aTextShapes.size()) )
                     {
                         DrawModelWrapper::removeShape( aTextShapes[nEntry] );
                         aTextShapes.pop_back();
                     }
-                    if( nEntry < nNumberOfEntries )
+                    if( nEntry < nNumberOfEntries && ( nEntry != 0 || nNumberOfColumns != 1 ) )
                     {
                         DrawModelWrapper::removeShape( rEntries[ nEntry ].aSymbol );
                         rEntries.pop_back();
                         nNumberOfEntries--;
                     }
                 }
-                nSumHeight -= aRowHeights[nRow];
-                aRowHeights.pop_back();
-                nRemainingSpace = rRemainingSpace.Height - nSumHeight;
-                if( nRemainingSpace>=0 )
-                    break;
+                if (nRow == 0 && nNumberOfColumns == 1)
+                {
+                    try
+                    {
+                        OUString aLabelString = rEntries[0].aLabel[0]->getString();
+                        const OUString sDots = "...";
+                        ShapeFactory* pShapeFactory = ShapeFactory::getOrCreateShapeFactory(xShapeFactory);
+                        for (sal_Int32 nNewLen = aLabelString.getLength() - sDots.getLength(); nNewLen > 0; nNewLen--)
+                        {
+                            OUString aNewLabel = aLabelString.copy(0, nNewLen) + sDots;
+                            Reference<drawing::XShape> xEntry = pShapeFactory->createText(
+                                xTarget, aNewLabel, rTextProperties.first, rTextProperties.second, uno::Any());
+                            nSumHeight = xEntry->getSize().Height;
+                            nRemainingSpace = rRemainingSpace.Height - nSumHeight;
+                            if (nRemainingSpace >= 0)
+                            {
+                                sal_Int32 nWidth = xEntry->getSize().Width + nSymbolPlusDistanceWidth;
+                                if (rRemainingSpace.Width - nWidth >= 0)
+                                {
+                                    aTextShapes.push_back(xEntry);
+                                    rEntries[0].aLabel[0]->setString(aNewLabel);
+                                    aRowHeights[0] = nSumHeight;
+                                    aColumnWidths[0] = nWidth;
+                                    break;
+                                }
+                            }
+                            DrawModelWrapper::removeShape(xEntry);
+                        }
+                        if (aTextShapes.size() == 0)
+                        {
+                            DrawModelWrapper::removeShape(rEntries[0].aSymbol);
+                            rEntries.pop_back();
+                            nNumberOfEntries--;
+                            aRowHeights.pop_back();
+                        }
+                    }
+                    catch (const uno::Exception&)
+                    {
+                        DBG_UNHANDLED_EXCEPTION("chart2");
+                    }
+                }
+                else
+                {
+                    nSumHeight -= aRowHeights[nRow];
+                    aRowHeights.pop_back();
+                    nRemainingSpace = rRemainingSpace.Height - nSumHeight;
+                    if (nRemainingSpace >= 0)
+                        break;
+                }
             }
             nNumberOfRows = static_cast<sal_Int32>(aRowHeights.size());
         }
@@ -520,7 +575,7 @@ awt::Size lcl_placeLegendEntries(
         sal_Int32 nCurrentYPos = nYPadding + nYStartPosition;
         for (sal_Int32 nRow = 0; nRow < nNumberOfRows; ++nRow)
         {
-            sal_Int32 nEntry = (nColumn + nRow * nNumberOfColumns);
+            sal_Int32 nEntry = nColumn + nRow * nNumberOfColumns;
             if( nEntry >= nNumberOfEntries )
                 break;
 
@@ -569,13 +624,13 @@ awt::Size lcl_placeLegendEntries(
     if( !bIsCustomSize )
     {
         if( bSymbolsLeftSide )
-            aResultingLegendSize.Width  = nCurrentXPos + nXPadding;
+            aResultingLegendSize.Width  = std::max( aResultingLegendSize.Width, nCurrentXPos + nXPadding );
         else
         {
             sal_Int32 nLegendWidth = -(nCurrentXPos-nXPadding);
-            aResultingLegendSize.Width  = nLegendWidth;
+            aResultingLegendSize.Width  = std::max( aResultingLegendSize.Width, nLegendWidth );
         }
-        aResultingLegendSize.Height = nMaxYPos + nYPadding;
+        aResultingLegendSize.Height = std::max( aResultingLegendSize.Height, nMaxYPos + nYPadding );
     }
 
     if( !bSymbolsLeftSide )
@@ -599,13 +654,13 @@ awt::Size lcl_placeLegendEntries(
 }
 
 // #i109336# Improve auto positioning in chart
-inline sal_Int32 lcl_getLegendLeftRightMargin()
+sal_Int32 lcl_getLegendLeftRightMargin()
 {
     return 210;  // 1/100 mm
 }
 
 // #i109336# Improve auto positioning in chart
-inline sal_Int32 lcl_getLegendTopBottomMargin()
+sal_Int32 lcl_getLegendTopBottomMargin()
 {
     return 185;  // 1/100 mm
 }
@@ -619,8 +674,8 @@ chart2::RelativePosition lcl_getDefaultPosition( LegendPosition ePos, const awt:
         case LegendPosition_LINE_START:
             {
                 // #i109336# Improve auto positioning in chart
-                const double fDefaultDistance = ( static_cast< double >( lcl_getLegendLeftRightMargin() ) /
-                    static_cast< double >( rPageSize.Width ) );
+                const double fDefaultDistance = static_cast< double >( lcl_getLegendLeftRightMargin() ) /
+                    static_cast< double >( rPageSize.Width );
                 aResult = chart2::RelativePosition(
                     fDefaultDistance, 0.5, drawing::Alignment_LEFT );
             }
@@ -628,8 +683,8 @@ chart2::RelativePosition lcl_getDefaultPosition( LegendPosition ePos, const awt:
         case LegendPosition_LINE_END:
             {
                 // #i109336# Improve auto positioning in chart
-                const double fDefaultDistance = ( static_cast< double >( lcl_getLegendLeftRightMargin() ) /
-                    static_cast< double >( rPageSize.Width ) );
+                const double fDefaultDistance = static_cast< double >( lcl_getLegendLeftRightMargin() ) /
+                    static_cast< double >( rPageSize.Width );
                 aResult = chart2::RelativePosition(
                     1.0 - fDefaultDistance, 0.5, drawing::Alignment_RIGHT );
             }
@@ -637,8 +692,8 @@ chart2::RelativePosition lcl_getDefaultPosition( LegendPosition ePos, const awt:
         case LegendPosition_PAGE_START:
             {
                 // #i109336# Improve auto positioning in chart
-                const double fDefaultDistance = ( static_cast< double >( lcl_getLegendTopBottomMargin() ) /
-                    static_cast< double >( rPageSize.Height ) );
+                const double fDefaultDistance = static_cast< double >( lcl_getLegendTopBottomMargin() ) /
+                    static_cast< double >( rPageSize.Height );
                 double fDistance = (static_cast<double>(rOutAvailableSpace.Y)/static_cast<double>(rPageSize.Height)) + fDefaultDistance;
                 aResult = chart2::RelativePosition(
                     0.5, fDistance, drawing::Alignment_TOP );
@@ -647,8 +702,8 @@ chart2::RelativePosition lcl_getDefaultPosition( LegendPosition ePos, const awt:
         case LegendPosition_PAGE_END:
             {
                 // #i109336# Improve auto positioning in chart
-                const double fDefaultDistance = ( static_cast< double >( lcl_getLegendTopBottomMargin() ) /
-                    static_cast< double >( rPageSize.Height ) );
+                const double fDefaultDistance = static_cast< double >( lcl_getLegendTopBottomMargin() ) /
+                    static_cast< double >( rPageSize.Height );
 
                 double fDistance = double(rPageSize.Height - (rOutAvailableSpace.Y + rOutAvailableSpace.Height));
                 fDistance += fDefaultDistance;
@@ -658,10 +713,8 @@ chart2::RelativePosition lcl_getDefaultPosition( LegendPosition ePos, const awt:
                     0.5, 1.0 - fDistance, drawing::Alignment_BOTTOM );
             }
             break;
-
-        case LegendPosition_CUSTOM:
-            // to avoid warning
         case LegendPosition::LegendPosition_MAKE_FIXED_SIZE:
+        default:
             // nothing to be set
             break;
     }
@@ -678,7 +731,8 @@ awt::Point lcl_calculatePositionAndRemainingSpace(
     const awt::Size & rPageSize,
     const chart2::RelativePosition& rRelPos,
     LegendPosition ePos,
-    const awt::Size& aLegendSize )
+    const awt::Size& aLegendSize,
+    bool bOverlay )
 {
     // calculate position
     awt::Point aResult(
@@ -692,32 +746,32 @@ awt::Point lcl_calculatePositionAndRemainingSpace(
     // #i109336# Improve auto positioning in chart
     sal_Int32 nXDistance = lcl_getLegendLeftRightMargin();
     sal_Int32 nYDistance = lcl_getLegendTopBottomMargin();
-    switch( ePos )
+    if (!bOverlay) switch( ePos )
     {
         case LegendPosition_LINE_START:
-            {
-                sal_Int32 nExtent = aLegendSize.Width;
-                rRemainingSpace.Width -= ( nExtent + nXDistance );
-                rRemainingSpace.X += ( nExtent + nXDistance );
-            }
+        {
+            sal_Int32 nExtent = aLegendSize.Width;
+            rRemainingSpace.Width -= ( nExtent + nXDistance );
+            rRemainingSpace.X += ( nExtent + nXDistance );
+        }
         break;
         case LegendPosition_LINE_END:
-            {
-                rRemainingSpace.Width -= ( aLegendSize.Width + nXDistance );
-            }
-            break;
+        {
+            rRemainingSpace.Width -= ( aLegendSize.Width + nXDistance );
+        }
+        break;
         case LegendPosition_PAGE_START:
-            {
-                sal_Int32 nExtent = aLegendSize.Height;
-                rRemainingSpace.Height -= ( nExtent + nYDistance );
-                rRemainingSpace.Y += ( nExtent + nYDistance );
-            }
+        {
+            sal_Int32 nExtent = aLegendSize.Height;
+            rRemainingSpace.Height -= ( nExtent + nYDistance );
+            rRemainingSpace.Y += ( nExtent + nYDistance );
+        }
         break;
         case LegendPosition_PAGE_END:
-            {
-                rRemainingSpace.Height -= ( aLegendSize.Height + nYDistance );
-            }
-            break;
+        {
+            rRemainingSpace.Height -= ( aLegendSize.Height + nYDistance );
+        }
+        break;
 
         default:
             // nothing
@@ -752,7 +806,7 @@ bool lcl_shouldSymbolsBePlacedOnTheLeftSide( const Reference< beans::XPropertySe
             if(xLegendProp.is())
             {
                 sal_Int16 nWritingMode=-1;
-                if( (xLegendProp->getPropertyValue( "WritingMode" ) >>= nWritingMode) )
+                if( xLegendProp->getPropertyValue( "WritingMode" ) >>= nWritingMode )
                 {
                     if( nWritingMode == text::WritingMode2::PAGE )
                         nWritingMode = nDefaultWritingMode;
@@ -762,9 +816,9 @@ bool lcl_shouldSymbolsBePlacedOnTheLeftSide( const Reference< beans::XPropertySe
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
     return bSymbolsLeftSide;
 }
@@ -787,20 +841,24 @@ std::vector<std::shared_ptr<VButton>> lcl_createButtons(
     int x = 100;
     int y = 100;
 
-    for (chart2::data::PivotTableFieldEntry const & sColumnFieldEntry : xPivotTableDataProvider->getColumnFields())
+    const css::uno::Sequence<chart2::data::PivotTableFieldEntry> aPivotFieldEntries = xPivotTableDataProvider->getColumnFields();
+    for (chart2::data::PivotTableFieldEntry const & sColumnFieldEntry : aPivotFieldEntries)
     {
-        std::shared_ptr<VButton> pButton(new VButton);
+        auto pButton = std::make_shared<VButton>();
         aButtons.push_back(pButton);
         pButton->init(xLegendContainer, xShapeFactory);
-        awt::Point aNewPosition = awt::Point(x, y);
+        awt::Point aNewPosition(x, y);
         pButton->setLabel(sColumnFieldEntry.Name);
         pButton->setCID("FieldButton.Column." + OUString::number(sColumnFieldEntry.DimensionIndex));
         pButton->setPosition(aNewPosition);
         pButton->setSize(aSize);
         if (sColumnFieldEntry.Name == "Data")
+        {
             pButton->showArrow(false);
+            pButton->setBGColor(Color(0x00F6F6F6));
+        }
         if (sColumnFieldEntry.HasHiddenMembers)
-            pButton->setArrowColor(0x0000FF);
+            pButton->setArrowColor(Color(0x0000FF));
 
         if (bPlaceButtonsVertically)
             y += aSize.Height + 100;
@@ -850,9 +908,9 @@ bool VLegend::isVisible( const Reference< XLegend > & xLegend )
         Reference< beans::XPropertySet > xLegendProp( xLegend, uno::UNO_QUERY_THROW );
         xLegendProp->getPropertyValue( "Show") >>= bShow;
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return bShow;
@@ -860,7 +918,8 @@ bool VLegend::isVisible( const Reference< XLegend > & xLegend )
 
 void VLegend::createShapes(
     const awt::Size & rAvailableSpace,
-    const awt::Size & rPageSize )
+    const awt::Size & rPageSize,
+    awt::Size & rDefaultLegendSize )
 {
     if(! (m_xLegend.is() &&
           m_xShapeFactory.is() &&
@@ -870,8 +929,8 @@ void VLegend::createShapes(
     try
     {
         //create shape and add to page
-        AbstractShapeFactory* pShapeFactory = AbstractShapeFactory::getOrCreateShapeFactory(m_xShapeFactory);
-        OUString aLegendParticle( ObjectIdentifier::createParticleForLegend( m_xLegend, mrModel ) );
+        ShapeFactory* pShapeFactory = ShapeFactory::getOrCreateShapeFactory(m_xShapeFactory);
+        OUString aLegendParticle( ObjectIdentifier::createParticleForLegend( mrModel ) );
         m_xShape.set( pShapeFactory->createGroup2D( m_xTarget,
                     ObjectIdentifier::createClassifiedIdentifierForParticle( aLegendParticle )),
                 uno::UNO_QUERY);
@@ -889,7 +948,7 @@ void VLegend::createShapes(
             awt::Size aLegendSize( rAvailableSpace );
 
             bool bCustom = false;
-            LegendPosition eLegendPosition = LegendPosition_CUSTOM;
+            LegendPosition eLegendPosition = LegendPosition_LINE_END;
             if (xLegendProp.is())
             {
                 // get Expansion property
@@ -939,15 +998,20 @@ void VLegend::createShapes(
                 if (pLegendEntryProvider)
                 {
                     std::vector<ViewLegendEntry> aNewEntries = pLegendEntryProvider->createLegendEntries(
-                                                                    aMaxSymbolExtent, eExpansion, xLegendProp,
-                                                                    xLegendContainer, m_xShapeFactory, m_xContext);
+                                                                    aMaxSymbolExtent, eLegendPosition, xLegendProp,
+                                                                    xLegendContainer, m_xShapeFactory, m_xContext, mrModel);
+                    if (aNewEntries.size() == 0)
+                        return;
                     aViewEntries.insert( aViewEntries.end(), aNewEntries.begin(), aNewEntries.end() );
                 }
             }
 
             bool bSymbolsLeftSide = lcl_shouldSymbolsBePlacedOnTheLeftSide( xLegendProp, m_nDefaultWritingMode );
 
-            if (!aViewEntries.empty())
+            uno::Reference<chart2::data::XPivotTableDataProvider> xPivotTableDataProvider( mrModel.getDataProvider(), uno::UNO_QUERY );
+            bool bIsPivotChart = xPivotTableDataProvider.is();
+
+            if ( !aViewEntries.empty() || bIsPivotChart )
             {
                 // create buttons
                 long nUsedButtonHeight = 0;
@@ -955,8 +1019,7 @@ void VLegend::createShapes(
                                                 eLegendPosition != LegendPosition_PAGE_END &&
                                                 eExpansion != css::chart::ChartLegendExpansion_WIDE);
 
-                std::vector<std::shared_ptr<VButton>> aButtons;
-                aButtons = lcl_createButtons(xLegendContainer, m_xShapeFactory, mrModel, bPlaceButtonsVertically, nUsedButtonHeight);
+                std::vector<std::shared_ptr<VButton>> aButtons = lcl_createButtons(xLegendContainer, m_xShapeFactory, mrModel, bPlaceButtonsVertically, nUsedButtonHeight);
 
                 // A custom size includes the size we used for buttons already, so we need to
                 // subtract that from the size that is available for the legend
@@ -966,7 +1029,7 @@ void VLegend::createShapes(
                 // place the legend entries
                 aLegendSize = lcl_placeLegendEntries(aViewEntries, eExpansion, bSymbolsLeftSide, fViewFontSize,
                                                      aMaxSymbolExtent, aTextProperties, xLegendContainer,
-                                                     m_xShapeFactory, aLegendSize, nUsedButtonHeight);
+                                                     m_xShapeFactory, aLegendSize, nUsedButtonHeight, rPageSize, bIsPivotChart, rDefaultLegendSize);
 
                 uno::Reference<beans::XPropertySet> xModelPage(mrModel.getPageBackground());
 
@@ -986,21 +1049,22 @@ void VLegend::createShapes(
                         aLegendSize,
                         awt::Point(0,0),
                         aLineFillProperties.first,
-                        aLineFillProperties.second, AbstractShapeFactory::Bottom );
+                        aLineFillProperties.second, ShapeFactory::StackPosition::Bottom );
 
             //because of this name this border will be used for marking the legend
-            AbstractShapeFactory::setShapeName( xBorder, "MarkHandles" );
+            ShapeFactory::setShapeName( xBorder, "MarkHandles" );
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2" );
     }
 }
 
 void VLegend::changePosition(
     awt::Rectangle & rOutAvailableSpace,
-    const awt::Size & rPageSize )
+    const awt::Size & rPageSize,
+    const css::awt::Size & rDefaultLegendSize )
 {
     if(! m_xShape.is())
         return;
@@ -1012,19 +1076,22 @@ void VLegend::changePosition(
         Reference< beans::XPropertySet > xLegendProp( m_xLegend, uno::UNO_QUERY_THROW );
         chart2::RelativePosition aRelativePosition;
 
+        bool bDefaultLegendSize = rDefaultLegendSize.Width != 0 || rDefaultLegendSize.Height != 0;
         bool bAutoPosition =
             ! (xLegendProp->getPropertyValue( "RelativePosition") >>= aRelativePosition);
 
-        LegendPosition ePos = LegendPosition_CUSTOM;
+        LegendPosition ePos = LegendPosition_LINE_END;
         xLegendProp->getPropertyValue( "AnchorPosition") >>= ePos;
 
+        bool bOverlay = false;
+        xLegendProp->getPropertyValue("Overlay") >>= bOverlay;
         //calculate position
         if( bAutoPosition )
         {
             // auto position: relative to remaining space
             aRelativePosition = lcl_getDefaultPosition( ePos, rOutAvailableSpace, rPageSize );
             awt::Point aPos = lcl_calculatePositionAndRemainingSpace(
-                rOutAvailableSpace, rPageSize, aRelativePosition, ePos, aLegendSize );
+                rOutAvailableSpace, rPageSize, aRelativePosition, ePos, aLegendSize, bOverlay );
             m_xShape->setPosition( aPos );
         }
         else
@@ -1032,21 +1099,21 @@ void VLegend::changePosition(
             // manual position: relative to whole page
             awt::Rectangle aAvailableSpace( 0, 0, rPageSize.Width, rPageSize.Height );
             awt::Point aPos = lcl_calculatePositionAndRemainingSpace(
-                aAvailableSpace, rPageSize, aRelativePosition, ePos, aLegendSize );
+                aAvailableSpace, rPageSize, aRelativePosition, ePos, bDefaultLegendSize ? rDefaultLegendSize : aLegendSize, bOverlay );
             m_xShape->setPosition( aPos );
 
-            if( ePos != LegendPosition_CUSTOM )
+            if (!bOverlay)
             {
                 // calculate remaining space as if having autoposition:
                 aRelativePosition = lcl_getDefaultPosition( ePos, rOutAvailableSpace, rPageSize );
                 lcl_calculatePositionAndRemainingSpace(
-                    rOutAvailableSpace, rPageSize, aRelativePosition, ePos, aLegendSize );
+                    rOutAvailableSpace, rPageSize, aRelativePosition, ePos, bDefaultLegendSize ? rDefaultLegendSize : aLegendSize, bOverlay );
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2" );
     }
 }
 

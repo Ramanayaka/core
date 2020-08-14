@@ -18,19 +18,22 @@
  */
 
 #include "SlsLayeredDevice.hxx"
+#include <Window.hxx>
 
-#include <vcl/window.hxx>
 #include <vcl/virdev.hxx>
+#include <sal/log.hxx>
+#include <o3tl/safeint.hxx>
+#include <osl/diagnose.h>
 
 #include <tools/gen.hxx>
 #include <tools/fract.hxx>
 
 #include <functional>
 
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::view {
 
 namespace {
-static const sal_Int32 gnMaximumLayerCount = 8;
+const sal_Int32 gnMaximumLayerCount = 8;
 
 class LayerInvalidator : public ILayerInvalidator
 {
@@ -59,7 +62,7 @@ private:
 
 void DeviceCopy (
     vcl::RenderContext& rTargetDevice,
-    vcl::RenderContext& rSourceDevice,
+    vcl::RenderContext const & rSourceDevice,
     const ::tools::Rectangle& rBox)
 {
     rTargetDevice.DrawOutDev(
@@ -76,15 +79,15 @@ void ForAllRectangles (const vcl::Region& rRegion, const std::function<void (con
     RectangleVector aRectangles;
     rRegion.GetRegionRectangles(aRectangles);
 
-    if(0 == aRectangles.size())
+    if(aRectangles.empty())
     {
         aFunction(::tools::Rectangle());
     }
     else
     {
-        for(RectangleVector::const_iterator aRectIter(aRectangles.begin()); aRectIter != aRectangles.end(); ++aRectIter)
+        for(const auto& rRect : aRectangles)
         {
-            aFunction(*aRectIter);
+            aFunction(rRect);
         }
 
         //Region aMutableRegionCopy (rRegion);
@@ -138,8 +141,8 @@ public:
 
     const SharedLayer& back() const { return mvLayers.back(); }
 
-    const ::std::vector<SharedLayer>::const_iterator begin() const { return mvLayers.begin(); }
-    const ::std::vector<SharedLayer>::const_iterator end() const { return mvLayers.end(); }
+    ::std::vector<SharedLayer>::const_iterator begin() const { return mvLayers.begin(); }
+    ::std::vector<SharedLayer>::const_iterator end() const { return mvLayers.end(); }
 
     void clear() { mvLayers.clear(); }
 
@@ -172,9 +175,9 @@ void LayeredDevice::Invalidate (
     const ::tools::Rectangle& rInvalidationArea,
     const sal_Int32 nLayer)
 {
-    if (nLayer<0 || size_t(nLayer)>=mpLayers->size())
+    if (nLayer<0 || o3tl::make_unsigned(nLayer)>=mpLayers->size())
     {
-        OSL_ASSERT(nLayer>=0 && size_t(nLayer)<mpLayers->size());
+        OSL_ASSERT(nLayer>=0 && o3tl::make_unsigned(nLayer)<mpLayers->size());
         return;
     }
 
@@ -210,13 +213,13 @@ void LayeredDevice::RegisterPainter (
     }
 
     // Provide the layers.
-    if (sal_uInt32(nLayer) >= mpLayers->size())
+    if (o3tl::make_unsigned(nLayer) >= mpLayers->size())
     {
         const sal_Int32 nOldLayerCount (mpLayers->size());
         mpLayers->resize(nLayer+1);
 
         for (size_t nIndex=nOldLayerCount; nIndex<mpLayers->size(); ++nIndex)
-            (*mpLayers)[nIndex].reset(new Layer());
+            (*mpLayers)[nIndex] = std::make_shared<Layer>();
     }
 
     (*mpLayers)[nLayer]->AddPainter(rpPainter);
@@ -224,7 +227,7 @@ void LayeredDevice::RegisterPainter (
         (*mpLayers)[nLayer]->Initialize(mpTargetWindow);
 
     rpPainter->SetLayerInvalidator(
-        SharedILayerInvalidator(new LayerInvalidator(shared_from_this(),mpTargetWindow,nLayer)));
+        std::make_shared<LayerInvalidator>(shared_from_this(),mpTargetWindow,nLayer));
 }
 
 void LayeredDevice::RemovePainter (
@@ -236,9 +239,9 @@ void LayeredDevice::RemovePainter (
         OSL_ASSERT(rpPainter);
         return;
     }
-    if (nLayer<0 || size_t(nLayer)>=mpLayers->size())
+    if (nLayer<0 || o3tl::make_unsigned(nLayer)>=mpLayers->size())
     {
-        OSL_ASSERT(nLayer>=0 && size_t(nLayer)<mpLayers->size());
+        OSL_ASSERT(nLayer>=0 && o3tl::make_unsigned(nLayer)<mpLayers->size());
         return;
     }
 
@@ -421,13 +424,9 @@ void Layer::ValidateRectangle (const ::tools::Rectangle& rBox)
     const vcl::Region aSavedClipRegion (mpLayerDevice->GetClipRegion());
     mpLayerDevice->IntersectClipRegion(rBox);
 
-    for (::std::vector<SharedILayerPainter>::const_iterator
-             iPainter(maPainters.begin()),
-             iEnd(maPainters.end());
-         iPainter!=iEnd;
-         ++iPainter)
+    for (const auto& rxPainter : maPainters)
     {
-        (*iPainter)->Paint(*mpLayerDevice, rBox);
+        rxPainter->Paint(*mpLayerDevice, rBox);
     }
 
     mpLayerDevice->SetClipRegion(aSavedClipRegion);
@@ -490,6 +489,6 @@ void Layer::Dispose()
     maPainters.clear();
 }
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

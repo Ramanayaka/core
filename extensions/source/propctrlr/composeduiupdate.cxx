@@ -18,16 +18,20 @@
  */
 
 #include "composeduiupdate.hxx"
+#include "pcrcommon.hxx"
 
 #include <com/sun/star/inspection/XObjectInspectorUI.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/NullPointerException.hpp>
 #include <com/sun/star/inspection/PropertyLineElement.hpp>
+#include <osl/diagnose.h>
 #include <osl/mutex.hxx>
 #include <rtl/ref.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <algorithm>
+#include <map>
+#include <set>
 
 
 namespace pcr
@@ -40,17 +44,13 @@ namespace pcr
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::inspection::XObjectInspectorUI;
     using ::com::sun::star::inspection::XPropertyControl;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::inspection::XPropertyControlObserver;
 
     namespace PropertyLineElement = ::com::sun::star::inspection::PropertyLineElement;
 
     namespace
     {
-        struct HandlerLess : public std::binary_function  <   Reference< XPropertyHandler >
-                                                            ,   Reference< XPropertyHandler >
-                                                            ,   bool
-                                                            >
+        struct HandlerLess
         {
             bool operator()( const Reference< XPropertyHandler >& lhs, const Reference< XPropertyHandler >& rhs) const
             {
@@ -70,6 +70,9 @@ namespace pcr
 
     typedef ::cppu::WeakImplHelper <   css::inspection::XObjectInspectorUI
                                     >   CachedInspectorUI_Base;
+
+    namespace {
+
     struct CachedInspectorUI : public CachedInspectorUI_Base
     {
     private:
@@ -171,6 +174,7 @@ namespace pcr
         };
     };
 
+    }
 
     CachedInspectorUI::CachedInspectorUI( ComposedPropertyUIUpdate& _rMaster, FNotifySingleUIChange _pUIChangeNotification )
         :m_bDisposed( false )
@@ -512,7 +516,7 @@ namespace pcr
 
 
         // an implementation of the ->IStringKeyBooleanUIUpdate interface which calls
-        // am arbitrary ->XObjectInspectorUI method taking a string and a boolean flag
+        // an arbitrary ->XObjectInspectorUI method taking a string and a boolean flag
         class DefaultStringKeyBooleanUIUpdate : public IStringKeyBooleanUIUpdate
         {
         private:
@@ -714,14 +718,14 @@ namespace pcr
     }
 
 
-    void SAL_CALL ComposedPropertyUIUpdate::suspendAutoFire()
+    void ComposedPropertyUIUpdate::suspendAutoFire()
     {
         impl_checkDisposed();
         osl_atomic_increment( &m_nSuspendCounter );
     }
 
 
-    void SAL_CALL ComposedPropertyUIUpdate::resumeAutoFire()
+    void ComposedPropertyUIUpdate::resumeAutoFire()
     {
         impl_checkDisposed();
         if ( 0 == osl_atomic_decrement( &m_nSuspendCounter ) )
@@ -750,19 +754,16 @@ namespace pcr
     }
 
 
-    void SAL_CALL ComposedPropertyUIUpdate::dispose()
+    void ComposedPropertyUIUpdate::dispose()
     {
         if ( impl_isDisposed() )
             return;
 
         OSL_ENSURE( m_nSuspendCounter == 0, "ComposedPropertyUIUpdate::dispose: still suspended, the changes will be lost!" );
 
-        for ( ImplMapHandlerToUI::const_iterator singleUI = m_pCollectedUIs->aHandlers.begin();
-              singleUI != m_pCollectedUIs->aHandlers.end();
-              ++singleUI
-            )
+        for (auto const& singleUI : m_pCollectedUIs->aHandlers)
         {
-            singleUI->second->dispose();
+            singleUI.second->dispose();
         }
         m_pCollectedUIs.reset();
         m_xDelegatorUI.set( nullptr );

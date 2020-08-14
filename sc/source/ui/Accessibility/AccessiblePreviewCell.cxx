@@ -19,25 +19,22 @@
 
 #include <sal/config.h>
 
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
+#include <scitems.hxx>
 #include <tools/gen.hxx>
-#include "AccessibleText.hxx"
-#include "editsrc.hxx"
-#include "AccessiblePreviewCell.hxx"
-#include "AccessibilityHints.hxx"
-#include "prevwsh.hxx"
-#include "prevloc.hxx"
-#include "document.hxx"
+#include <AccessibleText.hxx>
+#include <editsrc.hxx>
+#include <AccessiblePreviewCell.hxx>
+#include <prevwsh.hxx>
+#include <prevloc.hxx>
+#include <document.hxx>
 #include <svx/AccessibleTextHelper.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <editeng/brushitem.hxx>
 #include <vcl/window.hxx>
 #include <vcl/svapp.hxx>
 #include <toolkit/helper/convert.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <o3tl/make_unique.hxx>
+
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
@@ -45,11 +42,10 @@ using namespace ::com::sun::star::accessibility;
 
 ScAccessiblePreviewCell::ScAccessiblePreviewCell( const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
                             ScPreviewShell* pViewShell,
-                            /* const */ ScAddress& rCellAddress,
+                            const ScAddress& rCellAddress,
                             sal_Int32 nIndex ) :
     ScAccessibleCellBase( rxParent, ( pViewShell ? &pViewShell->GetDocument() : nullptr ), rCellAddress, nIndex ),
-    mpViewShell( pViewShell ),
-    mpTextHelper(nullptr)
+    mpViewShell( pViewShell )
 {
     if (mpViewShell)
         mpViewShell->AddAccessibilityObject(*this);
@@ -75,8 +71,7 @@ void SAL_CALL ScAccessiblePreviewCell::disposing()
         mpViewShell = nullptr;
     }
 
-    if (mpTextHelper)
-        DELETEZ(mpTextHelper);
+    mpTextHelper.reset();
 
     ScAccessibleCellBase::disposing();
 }
@@ -99,7 +94,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePreviewCell::getAccessibleAtP
     uno::Reference<XAccessible> xRet;
     if (containsPoint(rPoint))
     {
-         SolarMutexGuard aGuard;
+        SolarMutexGuard aGuard;
         IsObjectValid();
 
         if(!mpTextHelper)
@@ -113,7 +108,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePreviewCell::getAccessibleAtP
 
 void SAL_CALL ScAccessiblePreviewCell::grabFocus()
 {
-     SolarMutexGuard aGuard;
+    SolarMutexGuard aGuard;
     IsObjectValid();
     if (getAccessibleParent().is())
     {
@@ -160,7 +155,7 @@ uno::Reference<XAccessibleStateSet> SAL_CALL ScAccessiblePreviewCell::getAccessi
     {
         pStateSet->AddState(AccessibleStateType::ENABLED);
         pStateSet->AddState(AccessibleStateType::MULTI_LINE);
-        if (IsOpaque(xParentStates))
+        if (IsOpaque())
             pStateSet->AddState(AccessibleStateType::OPAQUE);
         if (isShowing())
             pStateSet->AddState(AccessibleStateType::SHOWING);
@@ -177,7 +172,7 @@ uno::Reference<XAccessibleStateSet> SAL_CALL ScAccessiblePreviewCell::getAccessi
 
 OUString SAL_CALL ScAccessiblePreviewCell::getImplementationName()
 {
-    return OUString("ScAccessiblePreviewCell");
+    return "ScAccessiblePreviewCell";
 }
 
 uno::Sequence<OUString> SAL_CALL ScAccessiblePreviewCell::getSupportedServiceNames()
@@ -253,8 +248,7 @@ bool ScAccessiblePreviewCell::IsEditable(
     return false;
 }
 
-bool ScAccessiblePreviewCell::IsOpaque(
-    const uno::Reference<XAccessibleStateSet>& /* rxParentStates */)
+bool ScAccessiblePreviewCell::IsOpaque() const
 {
     // test whether there is a background color
     //! could be moved to ScAccessibleCellBase
@@ -262,8 +256,7 @@ bool ScAccessiblePreviewCell::IsOpaque(
     bool bOpaque(true);
     if (mpDoc)
     {
-        const SvxBrushItem* pItem = static_cast<const SvxBrushItem*>(mpDoc->GetAttr(
-            maCellAddress.Col(), maCellAddress.Row(), maCellAddress.Tab(), ATTR_BACKGROUND));
+        const SvxBrushItem* pItem = mpDoc->GetAttr(maCellAddress, ATTR_BACKGROUND);
         if (pItem)
             bOpaque = pItem->GetColor() != COL_TRANSPARENT;
     }
@@ -272,19 +265,19 @@ bool ScAccessiblePreviewCell::IsOpaque(
 
 void ScAccessiblePreviewCell::CreateTextHelper()
 {
-    if (!mpTextHelper)
-    {
-        mpTextHelper = new ::accessibility::AccessibleTextHelper(
-            o3tl::make_unique<ScAccessibilityEditSource>(
-                o3tl::make_unique<ScAccessiblePreviewCellTextData>(
-                    mpViewShell, maCellAddress)));
-        mpTextHelper->SetEventSource( this );
+    if (mpTextHelper)
+        return;
 
-        // paragraphs in preview are transient
-        ::accessibility::AccessibleTextHelper::VectorOfStates aChildStates;
-        aChildStates.push_back( AccessibleStateType::TRANSIENT );
-        mpTextHelper->SetAdditionalChildStates( aChildStates );
-    }
+    mpTextHelper.reset( new ::accessibility::AccessibleTextHelper(
+        std::make_unique<ScAccessibilityEditSource>(
+            std::make_unique<ScAccessiblePreviewCellTextData>(
+                mpViewShell, maCellAddress))) );
+    mpTextHelper->SetEventSource( this );
+
+    // paragraphs in preview are transient
+    ::accessibility::AccessibleTextHelper::VectorOfStates aChildStates;
+    aChildStates.push_back( AccessibleStateType::TRANSIENT );
+    mpTextHelper->SetAdditionalChildStates( aChildStates );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

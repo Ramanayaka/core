@@ -31,6 +31,7 @@ $(eval $(call gb_CppunitTest_use_libraries,sd_uimpress,\
     i18nlangtag \
     i18nutil \
     msfilter \
+    oox \
     sal \
     sax \
     salhelper \
@@ -70,7 +71,6 @@ endif
 
 $(eval $(call gb_CppunitTest_use_externals,sd_uimpress,\
     boost_headers \
-    gtk \
     dbus \
 	$(if $(ENABLE_AVAHI), \
 	    avahi \
@@ -79,11 +79,22 @@ $(eval $(call gb_CppunitTest_use_externals,sd_uimpress,\
 	libxml2 \
 ))
 
+ifneq ($(DBUS_HAVE_GLIB),)
+$(eval $(call gb_CppunitTest_set_include,sd_uimpress,\
+	$$(INCLUDE) \
+	$(DBUS_GLIB_CFLAGS) \
+))
+$(eval $(call gb_CppunitTest_add_libs,sd_uimpress,\
+	$(DBUS_GLIB_LIBS) \
+))
+endif
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sd_uimpress,\
     sd/qa/unit/uimpress \
 ))
 
 $(eval $(call gb_CppunitTest_use_ure,sd_uimpress))
+$(eval $(call gb_CppunitTest_use_vcl,sd_uimpress))
 
 $(eval $(call gb_CppunitTest_use_components,sd_uimpress,\
     configmgr/source/configmgr \

@@ -18,12 +18,16 @@
  */
 
 #include "navigationbar.hxx"
+#include <property.hxx>
+#include <services.hxx>
 
+#include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
 
 #include <comphelper/streamsection.hxx>
 #include <comphelper/basicio.hxx>
-#include <comphelper/processfactory.hxx>
+
+using namespace comphelper;
 
 namespace frm
 {
@@ -145,7 +149,7 @@ namespace frm
 
     OUString SAL_CALL ONavigationBarModel::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.form.ONavigationBarModel" );
+        return "com.sun.star.comp.form.ONavigationBarModel";
     }
 
 
@@ -162,7 +166,7 @@ namespace frm
 
     OUString SAL_CALL ONavigationBarModel::getServiceName()
     {
-        return OUString(FRM_SUN_COMPONENT_NAVTOOLBAR);
+        return FRM_SUN_COMPONENT_NAVTOOLBAR;
     }
 
     #define PERSIST_TABSTOP         0x0001
@@ -218,11 +222,11 @@ namespace frm
             }
             if ( nNonVoids & PERSIST_TEXTCOLOR )
             {
-               _rxOutStream->writeLong( getTextColor() );
+               _rxOutStream->writeLong( sal_Int32(getTextColor()) );
             }
             if ( nNonVoids & PERSIST_TEXTLINECOLOR )
             {
-                _rxOutStream->writeLong( getTextLineColor() );
+                _rxOutStream->writeLong( sal_Int32(getTextLineColor()) );
             }
         }
 
@@ -276,12 +280,12 @@ namespace frm
                 m_aBackgroundColor.clear();
 
             if ( nNonVoids & PERSIST_TEXTCOLOR )
-                setTextColor( _rxInStream->readLong() );
+                setTextColor( ::Color(_rxInStream->readLong()) );
             else
                 clearTextColor();
 
             if ( nNonVoids & PERSIST_TEXTLINECOLOR )
-                setTextLineColor( _rxInStream->readLong() );
+                setTextLineColor( ::Color(_rxInStream->readLong()) );
             else
                 clearTextLineColor();
         }
@@ -396,7 +400,7 @@ namespace frm
             break;
 
         case PROPERTY_ID_ICONSIZE:
-            aDefault <<= (sal_Int16)0;
+            aDefault <<= sal_Int16(0);
             break;
 
         case PROPERTY_ID_DEFAULTCONTROL:
@@ -409,11 +413,11 @@ namespace frm
             break;
 
         case PROPERTY_ID_BORDER:
-            aDefault <<= (sal_Int16)0;
+            aDefault <<= sal_Int16(0);
             break;
 
         case PROPERTY_ID_DELAY:
-            aDefault <<= (sal_Int32)20;
+            aDefault <<= sal_Int32(20);
             break;
 
         default:
@@ -449,7 +453,7 @@ namespace frm
 
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_form_ONavigationBarModel_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {

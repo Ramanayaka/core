@@ -19,13 +19,13 @@
 
 #include "ViewTabBarModule.hxx"
 
-#include "framework/FrameworkHelper.hxx"
-#include "framework/ConfigurationController.hxx"
+#include <framework/FrameworkHelper.hxx>
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <com/sun/star/drawing/framework/XTabBar.hpp>
+#include <com/sun/star/frame/XController.hpp>
 
-#include "strings.hrc"
-#include "sdresid.hxx"
+#include <strings.hrc>
+#include <sdresid.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -35,13 +35,13 @@ using ::sd::framework::FrameworkHelper;
 
 namespace {
 
-static const sal_Int32 ResourceActivationRequestEvent = 0;
-static const sal_Int32 ResourceDeactivationRequestEvent = 1;
-static const sal_Int32 ResourceActivationEvent = 2;
+const sal_Int32 ResourceActivationRequestEvent = 0;
+const sal_Int32 ResourceDeactivationRequestEvent = 1;
+const sal_Int32 ResourceActivationEvent = 2;
 
 }
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 //===== ViewTabBarModule ==================================================
 
@@ -54,27 +54,27 @@ ViewTabBarModule::ViewTabBarModule (
 {
     Reference<XControllerManager> xControllerManager (rxController, UNO_QUERY);
 
-    if (xControllerManager.is())
-    {
-        mxConfigurationController = xControllerManager->getConfigurationController();
-        if (mxConfigurationController.is())
-        {
-            mxConfigurationController->addConfigurationChangeListener(
-                this,
-                FrameworkHelper::msResourceActivationRequestEvent,
-                makeAny(ResourceActivationRequestEvent));
-            mxConfigurationController->addConfigurationChangeListener(
-                this,
-                FrameworkHelper::msResourceDeactivationRequestEvent,
-                makeAny(ResourceDeactivationRequestEvent));
+    if (!xControllerManager.is())
+        return;
 
-            UpdateViewTabBar(nullptr);
-            mxConfigurationController->addConfigurationChangeListener(
-                this,
-                FrameworkHelper::msResourceActivationEvent,
-                makeAny(ResourceActivationEvent));
-        }
-    }
+    mxConfigurationController = xControllerManager->getConfigurationController();
+    if (!mxConfigurationController.is())
+        return;
+
+    mxConfigurationController->addConfigurationChangeListener(
+        this,
+        FrameworkHelper::msResourceActivationRequestEvent,
+        makeAny(ResourceActivationRequestEvent));
+    mxConfigurationController->addConfigurationChangeListener(
+        this,
+        FrameworkHelper::msResourceDeactivationRequestEvent,
+        makeAny(ResourceDeactivationRequestEvent));
+
+    UpdateViewTabBar(nullptr);
+    mxConfigurationController->addConfigurationChangeListener(
+        this,
+        FrameworkHelper::msResourceActivationEvent,
+        makeAny(ResourceActivationEvent));
 }
 
 ViewTabBarModule::~ViewTabBarModule()
@@ -92,34 +92,34 @@ void SAL_CALL ViewTabBarModule::disposing()
 void SAL_CALL ViewTabBarModule::notifyConfigurationChange (
     const ConfigurationChangeEvent& rEvent)
 {
-    if (mxConfigurationController.is())
+    if (!mxConfigurationController.is())
+        return;
+
+    sal_Int32 nEventType = 0;
+    rEvent.UserData >>= nEventType;
+    switch (nEventType)
     {
-        sal_Int32 nEventType = 0;
-        rEvent.UserData >>= nEventType;
-        switch (nEventType)
-        {
-            case ResourceActivationRequestEvent:
-                if (mxViewTabBarId->isBoundTo(rEvent.ResourceId, AnchorBindingMode_DIRECT))
-                {
-                    mxConfigurationController->requestResourceActivation(
-                        mxViewTabBarId,
-                        ResourceActivationMode_ADD);
-                }
-                break;
+        case ResourceActivationRequestEvent:
+            if (mxViewTabBarId->isBoundTo(rEvent.ResourceId, AnchorBindingMode_DIRECT))
+            {
+                mxConfigurationController->requestResourceActivation(
+                    mxViewTabBarId,
+                    ResourceActivationMode_ADD);
+            }
+            break;
 
-            case ResourceDeactivationRequestEvent:
-                if (mxViewTabBarId->isBoundTo(rEvent.ResourceId, AnchorBindingMode_DIRECT))
-                {
-                    mxConfigurationController->requestResourceDeactivation(mxViewTabBarId);
-                }
-                break;
+        case ResourceDeactivationRequestEvent:
+            if (mxViewTabBarId->isBoundTo(rEvent.ResourceId, AnchorBindingMode_DIRECT))
+            {
+                mxConfigurationController->requestResourceDeactivation(mxViewTabBarId);
+            }
+            break;
 
-            case ResourceActivationEvent:
-                if (rEvent.ResourceId->compareTo(mxViewTabBarId) == 0)
-                {
-                    UpdateViewTabBar(Reference<XTabBar>(rEvent.ResourceObject,UNO_QUERY));
-                }
-        }
+        case ResourceActivationEvent:
+            if (rEvent.ResourceId->compareTo(mxViewTabBarId) == 0)
+            {
+                UpdateViewTabBar(Reference<XTabBar>(rEvent.ResourceObject,UNO_QUERY));
+            }
     }
 }
 
@@ -137,53 +137,45 @@ void SAL_CALL ViewTabBarModule::disposing (
 
 void ViewTabBarModule::UpdateViewTabBar (const Reference<XTabBar>& rxTabBar)
 {
-    if (mxConfigurationController.is())
-    {
-        Reference<XTabBar> xBar (rxTabBar);
-        if ( ! xBar.is())
-            xBar.set( mxConfigurationController->getResource(mxViewTabBarId), UNO_QUERY);
+    if (!mxConfigurationController.is())
+        return;
 
-        if (xBar.is())
-        {
-            TabBarButton aEmptyButton;
+    Reference<XTabBar> xBar (rxTabBar);
+    if ( ! xBar.is())
+        xBar.set( mxConfigurationController->getResource(mxViewTabBarId), UNO_QUERY);
 
-            Reference<XResourceId> xAnchor (mxViewTabBarId->getAnchor());
+    if (!xBar.is())
+        return;
 
-            TabBarButton aImpressViewButton;
-            aImpressViewButton.ResourceId = FrameworkHelper::CreateResourceId(
-                FrameworkHelper::msImpressViewURL,
-                xAnchor);
-            aImpressViewButton.ButtonLabel = SdResId(STR_NORMAL_MODE);
-            if ( ! xBar->hasTabBarButton(aImpressViewButton))
-                xBar->addTabBarButtonAfter(aImpressViewButton, aEmptyButton);
+    TabBarButton aEmptyButton;
 
-            TabBarButton aOutlineViewButton;
-            aOutlineViewButton.ResourceId = FrameworkHelper::CreateResourceId(
-                FrameworkHelper::msOutlineViewURL,
-                xAnchor);
-            aOutlineViewButton.ButtonLabel = SdResId(STR_OUTLINE_MODE);
-            if ( ! xBar->hasTabBarButton(aOutlineViewButton))
-                xBar->addTabBarButtonAfter(aOutlineViewButton, aImpressViewButton);
+    Reference<XResourceId> xAnchor (mxViewTabBarId->getAnchor());
 
-            TabBarButton aNotesViewButton;
-            aNotesViewButton.ResourceId = FrameworkHelper::CreateResourceId(
-                FrameworkHelper::msNotesViewURL,
-                xAnchor);
-            aNotesViewButton.ButtonLabel = SdResId(STR_NOTES_MODE);
-            if ( ! xBar->hasTabBarButton(aNotesViewButton))
-                xBar->addTabBarButtonAfter(aNotesViewButton, aOutlineViewButton);
+    TabBarButton aImpressViewButton;
+    aImpressViewButton.ResourceId = FrameworkHelper::CreateResourceId(
+        FrameworkHelper::msImpressViewURL,
+        xAnchor);
+    aImpressViewButton.ButtonLabel = SdResId(STR_NORMAL_MODE);
+    if ( ! xBar->hasTabBarButton(aImpressViewButton))
+        xBar->addTabBarButtonAfter(aImpressViewButton, aEmptyButton);
 
-            TabBarButton aHandoutViewButton;
-            aHandoutViewButton.ResourceId = FrameworkHelper::CreateResourceId(
-                FrameworkHelper::msHandoutViewURL,
-                xAnchor);
-            aHandoutViewButton.ButtonLabel = SdResId(STR_HANDOUT_MASTER_MODE);
-            if ( ! xBar->hasTabBarButton(aHandoutViewButton))
-                xBar->addTabBarButtonAfter(aHandoutViewButton, aNotesViewButton);
-        }
-    }
+    TabBarButton aOutlineViewButton;
+    aOutlineViewButton.ResourceId = FrameworkHelper::CreateResourceId(
+        FrameworkHelper::msOutlineViewURL,
+        xAnchor);
+    aOutlineViewButton.ButtonLabel = SdResId(STR_OUTLINE_MODE);
+    if ( ! xBar->hasTabBarButton(aOutlineViewButton))
+        xBar->addTabBarButtonAfter(aOutlineViewButton, aImpressViewButton);
+
+    TabBarButton aNotesViewButton;
+    aNotesViewButton.ResourceId = FrameworkHelper::CreateResourceId(
+        FrameworkHelper::msNotesViewURL,
+        xAnchor);
+    aNotesViewButton.ButtonLabel = SdResId(STR_NOTES_MODE);
+    if ( ! xBar->hasTabBarButton(aNotesViewButton))
+        xBar->addTabBarButtonAfter(aNotesViewButton, aOutlineViewButton);
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

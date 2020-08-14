@@ -20,12 +20,12 @@
 #ifndef INCLUDED_RTL_INSTANCE_HXX
 #define INCLUDED_RTL_INSTANCE_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cstddef>
 
-#include <osl/doublecheckedlocking.h>
-#include <osl/getglobalmutex.hxx>
+#include "osl/doublecheckedlocking.h"
+#include "osl/getglobalmutex.hxx"
 
 namespace {
 
@@ -219,7 +219,7 @@ namespace {
       T * getInstance()
       {
           return rtl_Instance< T, InitInstance,
-                               ::osl::Mutex, ::osl::GetGlobalMutex,
+                               ::osl::MutexGuard, ::osl::GetGlobalMutex,
                                Data, InitData >::create(
               InitInstance(), ::osl::GetGlobalMutex(), InitData());
       }

@@ -21,42 +21,29 @@
 
 #include <sal/types.h>
 #include <rtl/ustring.hxx>
-#include <rtl/ustrbuf.hxx>
 
-namespace basegfx
-{
-    namespace internal
+namespace basegfx::internal
     {
         void skipSpaces(sal_Int32&      io_rPos,
                         const OUString& rStr,
                         const sal_Int32 nLen);
 
-        void skipSpacesAndCommas(sal_Int32&      io_rPos,
-                                 const OUString& rStr,
-                                 const sal_Int32 nLen);
-
         inline bool isOnNumberChar(const sal_Unicode aChar,
-                                   bool              bSignAllowed,
-                                   bool              bDotAllowed)
+                                   bool              bSignAllowed)
         {
             const bool bPredicate( (u'0' <= aChar && u'9' >= aChar)
                                     || (bSignAllowed && u'+' == aChar)
                                     || (bSignAllowed && u'-' == aChar)
-                                    || (bDotAllowed && u'.' == aChar));
+                                    || (u'.' == aChar));
 
             return bPredicate;
         }
 
         inline bool isOnNumberChar(const OUString& rStr,
-                                   const sal_Int32 nPos,
-                                   bool            bSignAllowed = true)
+                                   const sal_Int32 nPos)
         {
-            return isOnNumberChar(rStr[nPos], bSignAllowed, true);
+            return isOnNumberChar(rStr[nPos], true/*bSignAllowed*/);
         }
-
-        bool getDoubleChar(double&          o_fRetval,
-                           sal_Int32&       io_rPos,
-                           const OUString&  rStr);
 
         bool importDoubleAndSpaces(double&          o_fRetval,
                                    sal_Int32&       io_rPos,
@@ -68,19 +55,7 @@ namespace basegfx
                                  const OUString& rStr,
                                  const sal_Int32 nLen);
 
-        void putNumberCharWithSpace(OUStringBuffer& rStr,
-                                    double          fValue,
-                                    double          fOldValue,
-                                    bool            bUseRelativeCoordinates);
-
-        inline sal_Unicode getCommand(sal_Char cUpperCaseCommand,
-                                      sal_Char cLowerCaseCommand,
-                                      bool     bUseRelativeCoordinates)
-        {
-            return bUseRelativeCoordinates ? cLowerCaseCommand : cUpperCaseCommand;
-        }
-    } // namespace internal
-} // namespace basegfx
+} // namespace basegfx::internal
 
 #endif // INCLUDED_BASEGFX_SOURCE_INC_STRINGCONVERSIONTOOLS_HXX
 

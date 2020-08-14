@@ -18,13 +18,14 @@
  */
 
 #include <svl/itemprop.hxx>
+#include <vcl/svapp.hxx>
 
 #include <com/sun/star/util/Date.hpp>
 
-#include "optuno.hxx"
-#include "miscuno.hxx"
-#include "unonames.hxx"
-#include "docoptio.hxx"
+#include <optuno.hxx>
+#include <miscuno.hxx>
+#include <unonames.hxx>
+#include <docoptio.hxx>
 
 using namespace com::sun::star;
 
@@ -32,20 +33,20 @@ const SfxItemPropertyMapEntry* ScDocOptionsHelper::GetPropertyMap()
 {
     static const SfxItemPropertyMapEntry aMap[] =
     {
-        {OUString(SC_UNO_CALCASSHOWN),  PROP_UNO_CALCASSHOWN ,  cppu::UnoType<bool>::get(),          0, 0},
-        {OUString(SC_UNO_DEFTABSTOP),   PROP_UNO_DEFTABSTOP  ,  cppu::UnoType<sal_Int16>::get(),    0, 0},
-        {OUString(SC_UNO_IGNORECASE),   PROP_UNO_IGNORECASE  ,  cppu::UnoType<bool>::get(),          0, 0},
-        {OUString(SC_UNO_ITERENABLED),  PROP_UNO_ITERENABLED ,  cppu::UnoType<bool>::get(),          0, 0},
-        {OUString(SC_UNO_ITERCOUNT),    PROP_UNO_ITERCOUNT   ,  cppu::UnoType<sal_Int32>::get(),    0, 0},
-        {OUString(SC_UNO_ITEREPSILON),  PROP_UNO_ITEREPSILON ,  cppu::UnoType<double>::get(),       0, 0},
-        {OUString(SC_UNO_LOOKUPLABELS), PROP_UNO_LOOKUPLABELS,  cppu::UnoType<bool>::get(),          0, 0},
-        {OUString(SC_UNO_MATCHWHOLE),   PROP_UNO_MATCHWHOLE  ,  cppu::UnoType<bool>::get(),          0, 0},
-        {OUString(SC_UNO_NULLDATE),     PROP_UNO_NULLDATE    ,  cppu::UnoType<util::Date>::get(),   0, 0},
-        {OUString(SC_UNO_SPELLONLINE),  PROP_UNO_SPELLONLINE ,  cppu::UnoType<bool>::get(),          0, 0},
-        {OUString(SC_UNO_STANDARDDEC),  PROP_UNO_STANDARDDEC ,  cppu::UnoType<sal_Int16>::get(),    0, 0},
-        {OUString(SC_UNO_REGEXENABLED), PROP_UNO_REGEXENABLED,  cppu::UnoType<bool>::get(),          0, 0},
-        {OUString(SC_UNO_WILDCARDSENABLED), PROP_UNO_WILDCARDSENABLED, cppu::UnoType<bool>::get(),  0, 0},
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        {SC_UNO_CALCASSHOWN,  PROP_UNO_CALCASSHOWN ,  cppu::UnoType<bool>::get(),          0, 0},
+        {SC_UNO_DEFTABSTOP,   PROP_UNO_DEFTABSTOP  ,  cppu::UnoType<sal_Int16>::get(),    0, 0},
+        {SC_UNO_IGNORECASE,   PROP_UNO_IGNORECASE  ,  cppu::UnoType<bool>::get(),          0, 0},
+        {SC_UNO_ITERENABLED,  PROP_UNO_ITERENABLED ,  cppu::UnoType<bool>::get(),          0, 0},
+        {SC_UNO_ITERCOUNT,    PROP_UNO_ITERCOUNT   ,  cppu::UnoType<sal_Int32>::get(),    0, 0},
+        {SC_UNO_ITEREPSILON,  PROP_UNO_ITEREPSILON ,  cppu::UnoType<double>::get(),       0, 0},
+        {SC_UNO_LOOKUPLABELS, PROP_UNO_LOOKUPLABELS,  cppu::UnoType<bool>::get(),          0, 0},
+        {SC_UNO_MATCHWHOLE,   PROP_UNO_MATCHWHOLE  ,  cppu::UnoType<bool>::get(),          0, 0},
+        {SC_UNO_NULLDATE,     PROP_UNO_NULLDATE    ,  cppu::UnoType<util::Date>::get(),   0, 0},
+        {SC_UNO_SPELLONLINE,  PROP_UNO_SPELLONLINE ,  cppu::UnoType<bool>::get(),          0, 0},
+        {SC_UNO_STANDARDDEC,  PROP_UNO_STANDARDDEC ,  cppu::UnoType<sal_Int16>::get(),    0, 0},
+        {SC_UNO_REGEXENABLED, PROP_UNO_REGEXENABLED,  cppu::UnoType<bool>::get(),          0, 0},
+        {SC_UNO_WILDCARDSENABLED, PROP_UNO_WILDCARDSENABLED, cppu::UnoType<bool>::get(),  0, 0},
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     return aMap;
 }
@@ -81,7 +82,7 @@ bool ScDocOptionsHelper::setPropertyValue( ScDocOptions& rOptions,
         {
             sal_Int32 nIntVal = 0;
             if ( aValue >>= nIntVal )
-                rOptions.SetIterCount( (sal_uInt16)nIntVal );
+                rOptions.SetIterCount( static_cast<sal_uInt16>(nIntVal) );
         }
         break;
         case PROP_UNO_ITEREPSILON :
@@ -140,7 +141,7 @@ uno::Any ScDocOptionsHelper::getPropertyValue(
             aRet <<= rOptions.IsCalcAsShown();
         break;
         case PROP_UNO_DEFTABSTOP :
-            aRet <<= (sal_Int16)( rOptions.GetTabDistance() );
+            aRet <<= static_cast<sal_Int16>( rOptions.GetTabDistance() );
         break;
         case PROP_UNO_IGNORECASE :
             aRet <<= rOptions.IsIgnoreCase();
@@ -149,7 +150,7 @@ uno::Any ScDocOptionsHelper::getPropertyValue(
             aRet <<= rOptions.IsIter();
         break;
         case PROP_UNO_ITERCOUNT:
-            aRet <<= (sal_Int32)( rOptions.GetIterCount() );
+            aRet <<= static_cast<sal_Int32>( rOptions.GetIterCount() );
         break;
         case PROP_UNO_ITEREPSILON:
             aRet <<= rOptions.GetIterEps();
@@ -173,7 +174,7 @@ uno::Any ScDocOptionsHelper::getPropertyValue(
             aRet <<= rOptions.IsAutoSpell();
         break;
         case PROP_UNO_STANDARDDEC :
-            aRet <<= (sal_Int16)( rOptions.GetStdPrecision() );
+            aRet <<= static_cast<sal_Int16>( rOptions.GetStdPrecision() );
         break;
         case PROP_UNO_REGEXENABLED:
             aRet <<= rOptions.IsFormulaRegexEnabled();

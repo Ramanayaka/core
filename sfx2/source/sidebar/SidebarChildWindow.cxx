@@ -22,61 +22,74 @@
 #include <sfx2/sidebar/SidebarChildWindow.hxx>
 #include <sfx2/sidebar/SidebarDockingWindow.hxx>
 #include <sfx2/sfxsids.hrc>
-#include "helpid.hrc"
-#include <sfx2/dockwin.hxx>
+#include <helpids.h>
+#include <comphelper/lok.hxx>
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 SFX_IMPL_DOCKINGWINDOW_WITHID(SidebarChildWindow, SID_SIDEBAR);
 
-SidebarChildWindow::SidebarChildWindow (vcl::Window* pParentWindow, sal_uInt16 nId,
-                                        SfxBindings* pBindings, SfxChildWinInfo* pInfo)
+SidebarChildWindow::SidebarChildWindow(vcl::Window* pParentWindow, sal_uInt16 nId,
+                                       SfxBindings* pBindings, SfxChildWinInfo* pInfo)
     : SfxChildWindow(pParentWindow, nId)
 {
-    SetWindow(VclPtr<SidebarDockingWindow>::Create(pBindings, *this, pParentWindow,
-                                                       WB_STDDOCKWIN | WB_OWNERDRAWDECORATION |
-                                                       WB_CLIPCHILDREN | WB_SIZEABLE |
-                                                       WB_3DLOOK | WB_ROLLABLE));
+    auto pDockWin = VclPtr<SidebarDockingWindow>::Create(
+        pBindings, *this, pParentWindow, WB_STDDOCKWIN | WB_OWNERDRAWDECORATION | WB_CLIPCHILDREN
+                                             | WB_SIZEABLE | WB_3DLOOK | WB_ROLLABLE);
+    SetWindow(pDockWin);
     SetAlignment(SfxChildAlignment::RIGHT);
 
-    GetWindow()->SetHelpId(HID_SIDEBAR_WINDOW);
-    GetWindow()->SetOutputSizePixel(Size(GetDefaultWidth(GetWindow()), 450));
+    pDockWin->SetHelpId(HID_SIDEBAR_WINDOW);
+    pDockWin->SetOutputSizePixel(Size(GetDefaultWidth(pDockWin), 450));
 
-    SfxDockingWindow* pDockingParent = dynamic_cast<SfxDockingWindow*>(GetWindow());
-    if (pDockingParent != nullptr)
+    if (pInfo && pInfo->aExtraString.isEmpty() && pInfo->aModule != "sdraw"
+        && pInfo->aModule != "simpress")
     {
-        if (pInfo && pInfo->aExtraString.isEmpty() && pInfo->aModule != "sdraw" && pInfo->aModule != "simpress")
+        // When this is the first start (never had the sidebar open yet),
+        // default to non-expanded sidebars in Writer and Calc.
+        //
+        // HACK: unfortunately I haven't found a clean solution to do
+        // this, so do it this way:
+        //
+        if (!comphelper::LibreOfficeKit::isActive())
         {
-            // When this is the first start (never had the sidebar open yet),
-            // default to non-expanded sidebars in Writer and Calc.
-            //
-            // HACK: unfortunately I haven't found a clean solution to do
-            // this, so do it this way:
-            //
-            pDockingParent->SetSizePixel(Size(TabBar::GetDefaultWidth() * GetWindow()->GetDPIScaleFactor(),
-                        pDockingParent->GetSizePixel().Height()));
+            pDockWin->SetSizePixel(
+                Size(TabBar::GetDefaultWidth() * GetWindow()->GetDPIScaleFactor(),
+                     pDockWin->GetSizePixel().Height()));
         }
-        pDockingParent->Initialize(pInfo);
     }
+
+    pDockWin->Initialize(pInfo);
+
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        // Undock sidebar in LOK to allow for resizing freely
+        // (i.e. when the client window is resized) and collapse
+        // it so the client can open it on demand.
+        pDockWin->SetFloatingSize(Size(pDockWin->GetSizePixel().Width() * GetWindow()->GetDPIScaleFactor(),
+                                       pDockWin->GetSizePixel().Height()));
+        pDockWin->SetFloatingMode(true);
+    }
+
     SetHideNotDelete(true);
 
-    GetWindow()->Show();
+    pDockWin->Show();
 }
 
-sal_Int32 SidebarChildWindow::GetDefaultWidth (vcl::Window* pWindow)
+sal_Int32 SidebarChildWindow::GetDefaultWidth(vcl::Window const* pWindow)
 {
     if (pWindow != nullptr)
     {
         // Width of the paragraph panel.
-        const static sal_Int32 nMaxPropertyPageWidth (115);
+        const static sal_Int32 nMaxPropertyPageWidth(146);
 
-        return pWindow->LogicToPixel(Point(nMaxPropertyPageWidth,1), MapUnit::MapAppFont).X()
+        return pWindow->LogicToPixel(Point(nMaxPropertyPageWidth,1), MapMode(MapUnit::MapAppFont)).X()
             + TabBar::GetDefaultWidth() * pWindow->GetDPIScaleFactor();
     }
     else
         return 0;
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

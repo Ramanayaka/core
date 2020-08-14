@@ -21,10 +21,6 @@
 
 #include <memory>
 
-#if defined _MSC_VER
-#pragma warning(push, 1)
-#pragma warning(disable: 4917)
-#endif
 #include <prewin.h>
 #include <postwin.h>
 #include <objbase.h>
@@ -32,9 +28,6 @@
 #include <Amvideo.h>
 #include "interface.hxx"
 #include <uuids.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 
 #include "framegrabber.hxx"
 #include "player.hxx"
@@ -44,19 +37,19 @@
 #include <tools/stream.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/dibtools.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 
 #define AVMEDIA_WIN_FRAMEGRABBER_IMPLEMENTATIONNAME "com.sun.star.comp.avmedia.FrameGrabber_DirectX"
 #define AVMEDIA_WIN_FRAMEGRABBER_SERVICENAME "com.sun.star.media.FrameGrabber_DirectX"
 
 using namespace ::com::sun::star;
 
-namespace avmedia { namespace win {
+namespace avmedia::win {
 
 
-FrameGrabber::FrameGrabber( const uno::Reference< lang::XMultiServiceFactory >& rxMgr ) :
-    mxMgr( rxMgr )
+FrameGrabber::FrameGrabber()
 {
-    ::CoInitialize( nullptr );
+    ::CoInitializeEx( nullptr, COINIT_APARTMENTTHREADED );
 }
 
 
@@ -78,8 +71,13 @@ IMediaDet* implCreateMediaDet( const OUString& rURL )
         if( osl::FileBase::getSystemPathFromFileURL( rURL, aLocalStr )
             == osl::FileBase::E_None )
         {
-            if( !SUCCEEDED( pDet->put_Filename( ::SysAllocString( reinterpret_cast<LPCOLESTR>(aLocalStr.getStr()) ) ) ) )
+            BSTR bstrFilename = SysAllocString(o3tl::toW(aLocalStr.getStr()));
+            if( !SUCCEEDED( pDet->put_Filename( bstrFilename ) ) )
             {
+                // Shouldn't we free this string unconditionally, not only in case of failure?
+                // I cannot find information why do we pass a newly allocated BSTR to the put_Filename
+                // and if it frees the string internally
+                SysFreeString(bstrFilename);
                 pDet->Release();
                 pDet = nullptr;
             }
@@ -174,7 +172,7 @@ uno::Reference< graphic::XGraphic > SAL_CALL FrameGrabber::grabFrame( double fMe
                 SUCCEEDED( pDet->GetBitmapBits( 0, &nSize, nullptr, nWidth, nHeight ) ) &&
                 ( nSize > 0  ) )
             {
-                auto pBuffer = std::unique_ptr<char[]>(new char[ nSize ]);
+                auto pBuffer = std::make_unique<char[]>(nSize);
 
                 try
                 {
@@ -205,7 +203,7 @@ uno::Reference< graphic::XGraphic > SAL_CALL FrameGrabber::grabFrame( double fMe
 
 OUString SAL_CALL FrameGrabber::getImplementationName(  )
 {
-    return OUString( AVMEDIA_WIN_FRAMEGRABBER_IMPLEMENTATIONNAME );
+    return AVMEDIA_WIN_FRAMEGRABBER_IMPLEMENTATIONNAME;
 }
 
 
@@ -220,7 +218,7 @@ uno::Sequence< OUString > SAL_CALL FrameGrabber::getSupportedServiceNames(  )
     return { AVMEDIA_WIN_FRAMEGRABBER_SERVICENAME };
 }
 
-} // namespace win
-} // namespace avmedia
+} // namespace avmedia::win
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

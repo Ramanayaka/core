@@ -19,8 +19,9 @@
 #ifndef INCLUDED_JVMFWK_PLUGINS_SUNMAJOR_PLUGINLIB_VENDORLIST_HXX
 #define INCLUDED_JVMFWK_PLUGINS_SUNMAJOR_PLUGINLIB_VENDORLIST_HXX
 
-#include "rtl/ref.hxx"
-#include "vendorbase.hxx"
+#include <rtl/ref.hxx>
+
+namespace jfw_plugin { class VendorBase; }
 
 namespace jfw_plugin
 {
@@ -35,22 +36,12 @@ struct VendorSupportMapEntry
     createInstance_func  createFunc;
 };
 
-extern VendorSupportMapEntry gVendorMap[];
+extern VendorSupportMapEntry const gVendorMap[];
 
-#define BEGIN_VENDOR_MAP() \
-VendorSupportMapEntry gVendorMap[] ={
+template<typename y> constexpr VendorSupportMapEntry VENDOR_MAP_ENTRY(char const * x) {
+    return {x, & y::getJavaExePaths, & y::createInstance};
+}
 
-#define VENDOR_MAP_ENTRY(x,y) \
-    {x, & y::getJavaExePaths, & y::createInstance},
-
-#define END_VENDOR_MAP() \
-    {nullptr, nullptr, nullptr} };
-
-/* Examines if the vendor supplied in parameter sVendor is part of the
-   list of supported vendors. That is the arry of VendorSupportMapEntry
-   is search for an respective entry.
-*/
-bool isVendorSupported(const OUString & sVendor);
 }
 
 #endif

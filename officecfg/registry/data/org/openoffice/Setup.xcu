@@ -37,15 +37,6 @@
     <prop oor:name="ooSetupExtension">
       <value>${PRODUCTEXTENSION}</value>
     </prop>
-    <prop oor:name="ooXMLFileFormatVersion">
-      <value>1.0</value>
-    </prop>
-    <prop oor:name="ooXMLFileFormatName">
-      <value>OpenOffice.org</value>
-    </prop>
-    <prop oor:name="ooOpenSourceContext">
-      <value>1</value>
-    </prop>
   </node>
   <node oor:name="Office">
     <node oor:name="Factories">
@@ -326,6 +317,9 @@
         </prop>
         <prop oor:name="ooSetupFactoryEmptyDocumentURL" oor:finalized="true">
           <value>private:factory/swriter</value>
+        </prop>
+        <prop oor:name="ooSetupFactoryWindowAttributes">
+          <value>,,,;4;</value>
         </prop>
         <prop oor:name="ooSetupFactoryCommandConfigRef">
           <value>WriterCommands</value>
@@ -775,7 +769,7 @@
           <value>GenericCategories</value>
         </prop>
         <prop oor:name="ooSetupFactoryUIName">
-          <value xml:lang="en-US">Base: Oracle Report Builder</value>
+          <value xml:lang="en-US">Base: Report Builder</value>
         </prop>
       </node>
     </node>

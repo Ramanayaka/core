@@ -31,10 +31,8 @@
 #include <com/sun/star/io/XInputStream.hpp>
 #include <cppuhelper/implbase5.hxx>
 
-namespace connectivity
+namespace connectivity::evoab
 {
-    namespace evoab
-    {
 
         typedef ::cppu::ImplHelper5< css::sdbc::XPreparedStatement,
                                      css::sdbc::XParameters,
@@ -42,26 +40,9 @@ namespace connectivity
                                      css::sdbc::XMultipleResults,
                                      css::lang::XServiceInfo> OPreparedStatement_BASE;
 
-        class OEvoabPreparedStatement   :public OCommonStatement
+        class OEvoabPreparedStatement final:public OCommonStatement
                                         ,public OPreparedStatement_BASE
         {
-        protected:
-            struct Parameter
-            {
-                css::uno::Any               aValue;
-                sal_Int32                   nDataType;
-
-                Parameter(const css::uno::Any& rValue, sal_Int32 rDataType) : aValue(rValue),nDataType(rDataType)
-                {
-                }
-
-            };
-
-            std::vector< Parameter>       m_aParameters;
-
-            // Data attributes
-
-
             // our SQL statement
             OUString                                              m_sSqlStatement;
             // the EBookQuery we're working with
@@ -69,7 +50,6 @@ namespace connectivity
             // our meta data
             css::uno::Reference< css::sdbc::XResultSetMetaData >  m_xMetaData;
 
-        protected:
             virtual ~OEvoabPreparedStatement() override;
 
         public:
@@ -77,7 +57,7 @@ namespace connectivity
 
             void construct( const OUString& _sql );
 
-        protected:
+        private:
             DECLARE_SERVICE_INFO();
             //XInterface
             virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
@@ -124,8 +104,8 @@ namespace connectivity
             virtual sal_Int32 SAL_CALL getUpdateCount(  ) override;
             virtual sal_Bool SAL_CALL getMoreResults(  ) override;
         };
-    }
 }
+
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_EVOAB2_NPREPAREDSTATEMENT_HXX
 

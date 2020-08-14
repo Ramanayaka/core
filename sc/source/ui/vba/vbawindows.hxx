@@ -21,10 +21,9 @@
 
 #include <ooo/vba/excel/XWindows.hpp>
 
-#include <com/sun/star/uno/XComponentContext.hpp>
-
-#include "excelvbahelper.hxx"
 #include <vbahelper/vbacollectionimpl.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 typedef CollTestImplHelper< ov::excel::XWindows > ScVbaWindows_BASE;
 

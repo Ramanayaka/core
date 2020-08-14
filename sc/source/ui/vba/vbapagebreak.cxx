@@ -20,13 +20,16 @@
 #include "vbarange.hxx"
 #include <basic/sberrors.hxx>
 #include <ooo/vba/excel/XlPageBreak.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/table/XCellRange.hpp>
+
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
 
 template< typename... Ifc >
 ScVbaPageBreak< Ifc... >::ScVbaPageBreak( const uno::Reference< XHelperInterface >& xParent,
                     const uno::Reference< uno::XComponentContext >& xContext,
-                    uno::Reference< beans::XPropertySet >& xProps,
+                    const uno::Reference< beans::XPropertySet >& xProps,
                     sheet::TablePageBreakData aTablePageBreakData):
             ScVbaPageBreak_BASE( xParent, xContext ),
             mxRowColPropertySet( xProps ),
@@ -92,18 +95,16 @@ template class ScVbaPageBreak< excel::XHPageBreak >;
 OUString
 ScVbaHPageBreak::getServiceImplName()
 {
-    return OUString("ScVbaHPageBreak");
+    return "ScVbaHPageBreak";
 }
 
 uno::Sequence< OUString >
 ScVbaHPageBreak::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.HPageBreak";
-    }
+        "ooo.vba.excel.HPageBreak"
+    };
     return aServiceNames;
 }
 
@@ -112,7 +113,7 @@ template class ScVbaPageBreak< excel::XVPageBreak >;
 /* class ScVbaVPageBreak */
 ScVbaVPageBreak::ScVbaVPageBreak( const css::uno::Reference< ov::XHelperInterface >& xParent,
                                   const css::uno::Reference< css::uno::XComponentContext >& xContext,
-                                  css::uno::Reference< css::beans::XPropertySet >& xProps,
+                                  const css::uno::Reference< css::beans::XPropertySet >& xProps,
                                   css::sheet::TablePageBreakData aTablePageBreakData )
 :   ScVbaVPageBreak_BASE( xParent, xContext, xProps, aTablePageBreakData )
 {
@@ -125,18 +126,16 @@ ScVbaVPageBreak::~ScVbaVPageBreak()
 OUString
 ScVbaVPageBreak::getServiceImplName()
 {
-    return OUString("ScVbaVPageBreak");
+    return "ScVbaVPageBreak";
 }
 
 uno::Sequence< OUString >
 ScVbaVPageBreak::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.VPageBreak";
-    }
+        "ooo.vba.excel.VPageBreak"
+    };
     return aServiceNames;
 }
 

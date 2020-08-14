@@ -18,12 +18,12 @@
  */
 
 
-#include "sdr/properties/textproperties.hxx"
-#include "editeng/outlobj.hxx"
+#include <sdr/properties/textproperties.hxx>
+#include <editeng/outlobj.hxx>
 
-#include "cell.hxx"
+#include <cell.hxx>
 #include "tableundo.hxx"
-#include "svx/svdotable.hxx"
+#include <svx/svdotable.hxx>
 #include "tablerow.hxx"
 #include "tablecolumn.hxx"
 
@@ -32,13 +32,13 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::table;
 
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
-CellUndo::CellUndo( const SdrObjectWeakRef& xObjRef, const CellRef& xCell )
-    : SdrUndoAction( *xCell->GetModel() )
-    , mxObjRef( xObjRef )
-    , mxCell( xCell )
-    , mbUndo( true )
+CellUndo::CellUndo( const tools::WeakReference<SdrObject>& xObjRef, const CellRef& xCell )
+:   SdrUndoAction(xCell->GetObject().getSdrModelFromSdrObject())
+    ,mxObjRef( xObjRef )
+    ,mxCell( xCell )
+    ,mbUndo( true )
 {
     if( mxCell.is() && mxObjRef.is() )
     {
@@ -101,14 +101,13 @@ bool CellUndo::Merge( SfxUndoAction *pNextAction )
 
 void CellUndo::setDataToCell( const Data& rData )
 {
-    delete mxCell->mpProperties;
     if( rData.mpProperties )
-        mxCell->mpProperties = Cell::CloneProperties( rData.mpProperties, *mxObjRef.get(), *mxCell.get() );
+        mxCell->mpProperties.reset(Cell::CloneProperties( rData.mpProperties, *mxObjRef, *mxCell ));
     else
-        mxCell->mpProperties = nullptr;
+        mxCell->mpProperties.reset();
 
     if( rData.mpOutlinerParaObject )
-        mxCell->SetOutlinerParaObject( new OutlinerParaObject(*rData.mpOutlinerParaObject) );
+        mxCell->SetOutlinerParaObject( std::make_unique<OutlinerParaObject>(*rData.mpOutlinerParaObject) );
     else
         mxCell->RemoveOutlinerParaObject();
 
@@ -130,23 +129,23 @@ void CellUndo::setDataToCell( const Data& rData )
 
 void CellUndo::getDataFromCell( Data& rData )
 {
-    if( mxObjRef.is() && mxCell.is() )
-    {
-        if( mxCell->mpProperties )
-            rData.mpProperties = mxCell->CloneProperties( *mxObjRef.get(), *mxCell.get());
+    if( !(mxObjRef.is() && mxCell.is()) )
+        return;
 
-        if( mxCell->GetOutlinerParaObject() )
-            rData.mpOutlinerParaObject = new OutlinerParaObject(*mxCell->GetOutlinerParaObject());
-        else
-            rData.mpOutlinerParaObject =  nullptr;
+    if( mxCell->mpProperties )
+        rData.mpProperties = mxCell->CloneProperties( *mxObjRef, *mxCell);
 
-        rData.msFormula = mxCell->msFormula;
-        rData.mfValue = mxCell->mfValue;
-        rData.mnError = mxCell->mnError;
-        rData.mbMerged = mxCell->mbMerged;
-        rData.mnRowSpan = mxCell->mnRowSpan;
-        rData.mnColSpan = mxCell->mnColSpan;
-    }
+    if( mxCell->GetOutlinerParaObject() )
+        rData.mpOutlinerParaObject = new OutlinerParaObject(*mxCell->GetOutlinerParaObject());
+    else
+        rData.mpOutlinerParaObject =  nullptr;
+
+    rData.msFormula = mxCell->msFormula;
+    rData.mfValue = mxCell->mfValue;
+    rData.mnError = mxCell->mnError;
+    rData.mbMerged = mxCell->mbMerged;
+    rData.mnRowSpan = mxCell->mnRowSpan;
+    rData.mnColSpan = mxCell->mnColSpan;
 }
 
 
@@ -155,17 +154,16 @@ void CellUndo::getDataFromCell( Data& rData )
 
 static void Dispose( RowVector& rRows )
 {
-    RowVector::iterator aIter( rRows.begin() );
-    while( aIter != rRows.end() )
-        (*aIter++)->dispose();
+    for( auto& rpRow : rRows )
+        rpRow->dispose();
 }
 
 
 InsertRowUndo::InsertRowUndo( const TableModelRef& xTable, sal_Int32 nIndex, RowVector& aNewRows )
-    : SdrUndoAction( *xTable->getSdrTableObj()->GetModel() )
-    , mxTable( xTable )
-    , mnIndex( nIndex )
-    , mbUndo( true )
+:   SdrUndoAction(xTable->getSdrTableObj()->getSdrModelFromSdrObject())
+    ,mxTable( xTable )
+    ,mnIndex( nIndex )
+    ,mbUndo( true )
 {
     maRows.swap( aNewRows );
 }
@@ -202,10 +200,10 @@ void InsertRowUndo::Redo()
 
 
 RemoveRowUndo::RemoveRowUndo( const TableModelRef& xTable, sal_Int32 nIndex, RowVector& aRemovedRows )
-    : SdrUndoAction( *xTable->getSdrTableObj()->GetModel() )
-    , mxTable( xTable )
-    , mnIndex( nIndex )
-    , mbUndo( true )
+:   SdrUndoAction(xTable->getSdrTableObj()->getSdrModelFromSdrObject())
+    ,mxTable( xTable )
+    ,mnIndex( nIndex )
+    ,mbUndo( true )
 {
     maRows.swap( aRemovedRows );
 }
@@ -243,25 +241,23 @@ void RemoveRowUndo::Redo()
 
 static void Dispose( ColumnVector& rCols )
 {
-    ColumnVector::iterator aIter( rCols.begin() );
-    while( aIter != rCols.end() )
-        (*aIter++)->dispose();
+    for( auto& rpCol : rCols )
+        rpCol->dispose();
 }
 
 
 static void Dispose( CellVector& rCells )
 {
-    CellVector::iterator aIter( rCells.begin() );
-    while( aIter != rCells.end() )
-        (*aIter++)->dispose();
+    for( auto& rpCell : rCells )
+        rpCell->dispose();
 }
 
 
 InsertColUndo::InsertColUndo( const TableModelRef& xTable, sal_Int32 nIndex, ColumnVector& aNewCols, CellVector& aCells  )
-    : SdrUndoAction( *xTable->getSdrTableObj()->GetModel() )
-    , mxTable( xTable )
-    , mnIndex( nIndex )
-    , mbUndo( true )
+:   SdrUndoAction(xTable->getSdrTableObj()->getSdrModelFromSdrObject())
+    ,mxTable( xTable )
+    ,mnIndex( nIndex )
+    ,mbUndo( true )
 {
     maColumns.swap( aNewCols );
     maCells.swap( aCells );
@@ -302,10 +298,10 @@ void InsertColUndo::Redo()
 
 
 RemoveColUndo::RemoveColUndo( const TableModelRef& xTable, sal_Int32 nIndex, ColumnVector& aNewCols, CellVector& aCells )
-    : SdrUndoAction( *xTable->getSdrTableObj()->GetModel() )
-    , mxTable( xTable )
-    , mnIndex( nIndex )
-    , mbUndo( true )
+:   SdrUndoAction(xTable->getSdrTableObj()->getSdrModelFromSdrObject())
+    ,mxTable( xTable )
+    ,mnIndex( nIndex )
+    ,mbUndo( true )
 {
     maColumns.swap( aNewCols );
     maCells.swap( aCells );
@@ -346,9 +342,9 @@ void RemoveColUndo::Redo()
 
 
 TableColumnUndo::TableColumnUndo( const TableColumnRef& xCol )
-    : SdrUndoAction( *xCol->mxTableModel->getSdrTableObj()->GetModel() )
-    , mxCol( xCol )
-    , mbHasRedoData( false )
+:   SdrUndoAction(xCol->mxTableModel->getSdrTableObj()->getSdrModelFromSdrObject())
+    ,mxCol( xCol )
+    ,mbHasRedoData( false )
 {
     getData( maUndoData );
 }
@@ -412,7 +408,7 @@ void TableColumnUndo::getData( Data& rData )
 
 
 TableRowUndo::TableRowUndo( const TableRowRef& xRow )
-    : SdrUndoAction( *xRow->mxTableModel->getSdrTableObj()->GetModel() )
+:   SdrUndoAction(xRow->mxTableModel->getSdrTableObj()->getSdrModelFromSdrObject())
     , mxRow( xRow )
     , mbHasRedoData( false )
 {
@@ -475,9 +471,9 @@ void TableRowUndo::getData( Data& rData )
 
 
 TableStyleUndo::TableStyleUndo( const SdrTableObj& rTableObj )
-    : SdrUndoAction( *rTableObj.GetModel() )
-    , mxObjRef( const_cast< sdr::table::SdrTableObj*>( &rTableObj ) )
-    , mbHasRedoData(false)
+:   SdrUndoAction(rTableObj.getSdrModelFromSdrObject())
+    ,mxObjRef( const_cast< sdr::table::SdrTableObj*>( &rTableObj ) )
+    ,mbHasRedoData(false)
 {
     getData( maUndoData );
 }
@@ -499,7 +495,7 @@ void TableStyleUndo::Redo()
 
 void TableStyleUndo::setData( const Data& rData )
 {
-    SdrTableObj* pTableObj = dynamic_cast< SdrTableObj* >( mxObjRef.get() );
+    SdrTableObj* pTableObj = mxObjRef.get();
     if( pTableObj )
     {
         pTableObj->setTableStyle( rData.mxTableStyle );
@@ -509,7 +505,7 @@ void TableStyleUndo::setData( const Data& rData )
 
 void TableStyleUndo::getData( Data& rData )
 {
-    SdrTableObj* pTableObj = dynamic_cast< SdrTableObj* >( mxObjRef.get() );
+    SdrTableObj* pTableObj = mxObjRef.get();
     if( pTableObj )
     {
         rData.maSettings = pTableObj->getTableStyleSettings();
@@ -517,6 +513,6 @@ void TableStyleUndo::getData( Data& rData )
     }
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

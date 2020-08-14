@@ -1,39 +1,56 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.16.1 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
-  <!-- interface-requires LibreOffice 1.0 -->
+<!-- Generated with glade 3.22.2 -->
+<interface domain="svx">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkGrid" id="SidebarTextPanel">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
-    <property name="row_homogeneous">True</property>
-    <property name="column_homogeneous">True</property>
+    <property name="hexpand">True</property>
     <child>
       <object class="GtkBox" id="box1">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
+        <property name="hexpand">True</property>
         <property name="border_width">6</property>
         <property name="orientation">vertical</property>
-        <property name="spacing">12</property>
+        <property name="spacing">3</property>
         <child>
           <object class="GtkBox" id="box2">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
+            <property name="hexpand">True</property>
             <property name="spacing">6</property>
             <child>
-              <object class="sfxlo-SidebarToolBox" id="font">
+              <object class="GtkToolbar" id="font">
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
+                <property name="can_focus">True</property>
+                <property name="hexpand">True</property>
+                <property name="toolbar_style">icons</property>
+                <property name="show_arrow">False</property>
+                <property name="icon_size">2</property>
                 <child>
-                  <object class="GtkToolButton" id="fontname">
+                  <object class="GtkToolItem" id=".uno:CharFontName">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:CharFontName</property>
+                    <property name="hexpand">True</property>
+                    <child>
+                      <object class="GtkComboBoxText" id="fontnamecombobox">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="hexpand">True</property>
+                        <property name="has_entry">True</property>
+                        <property name="popup_fixed_width">False</property>
+                        <child internal-child="entry">
+                          <object class="GtkEntry">
+                            <property name="can_focus">True</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="expand">True</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
               </object>
@@ -44,19 +61,32 @@
               </packing>
             </child>
             <child>
-              <object class="sfxlo-SidebarToolBox" id="fontheight">
+              <object class="GtkToolbar" id="fontheight">
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
+                <property name="can_focus">True</property>
+                <property name="toolbar_style">icons</property>
+                <property name="show_arrow">False</property>
+                <property name="icon_size">2</property>
                 <child>
-                  <object class="GtkToolButton" id="fontsize">
+                  <object class="GtkToolItem" id=".uno:FontHeight">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:FontHeight</property>
+                    <child>
+                      <object class="GtkComboBoxText" id="fontsizecombobox">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="has_entry">True</property>
+                        <child internal-child="entry">
+                          <object class="GtkEntry">
+                            <property name="can_focus">True</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="expand">True</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
               </object>
@@ -78,80 +108,67 @@
           <object class="GtkBox" id="box3">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="spacing">12</property>
+            <property name="spacing">6</property>
             <child>
-              <object class="sfxlo-SidebarToolBox" id="fonteffects">
+              <object class="GtkToolbar" id="fonteffects">
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
+                <property name="can_focus">True</property>
+                <property name="toolbar_style">icons</property>
                 <property name="show_arrow">False</property>
+                <property name="icon_size">2</property>
                 <child>
-                  <object class="GtkToolButton" id="bold">
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkToggleToolButton" id=".uno:Bold">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:Bold</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkToolButton" id="italic">
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkToggleToolButton" id=".uno:Italic">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:Italic</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkMenuToolButton" id="underline">
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkMenuToolButton" id=".uno:Underline">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:Underline</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkToolButton" id="strikeout">
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkToggleToolButton" id=".uno:Strikeout">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:Strikeout</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkToolButton" id="shadowed">
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkToggleToolButton" id=".uno:Shadowed">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:Shadowed</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
               </object>
@@ -162,36 +179,32 @@
               </packing>
             </child>
             <child>
-              <object class="sfxlo-SidebarToolBox" id="fontadjust">
+              <object class="GtkToolbar" id="fontadjust">
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
+                <property name="can_focus">True</property>
+                <property name="toolbar_style">icons</property>
                 <property name="show_arrow">False</property>
+                <property name="icon_size">2</property>
                 <child>
-                  <object class="GtkToolButton" id="grow">
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkToolButton" id=".uno:Grow">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:Grow</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkToolButton" id="shrink">
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkToolButton" id=".uno:Shrink">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:Shrink</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
               </object>
@@ -213,38 +226,34 @@
           <object class="GtkBox" id="box4">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="spacing">12</property>
+            <property name="spacing">6</property>
             <child>
-              <object class="sfxlo-SidebarToolBox" id="colorbar_writer">
+              <object class="GtkToolbar" id="colorbar_writer">
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
+                <property name="can_focus">True</property>
+                <property name="toolbar_style">icons</property>
                 <property name="show_arrow">False</property>
+                <property name="icon_size">2</property>
                 <child>
-                  <object class="GtkMenuToolButton" id="fontcolor">
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkMenuToolButton" id=".uno:FontColor">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:FontColor</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkMenuToolButton" id="highlight">
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkMenuToolButton" id=".uno:BackColor">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:BackColor</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
               </object>
@@ -255,21 +264,21 @@
               </packing>
             </child>
             <child>
-              <object class="sfxlo-SidebarToolBox" id="colorbar_others">
+              <object class="GtkToolbar" id="colorbar_others">
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
+                <property name="can_focus">True</property>
+                <property name="toolbar_style">icons</property>
+                <property name="show_arrow">False</property>
+                <property name="icon_size">2</property>
                 <child>
-                  <object class="GtkMenuToolButton" id="color">
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkMenuToolButton" id=".uno:Color">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:Color</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
               </object>
@@ -280,21 +289,20 @@
               </packing>
             </child>
             <child>
-              <object class="sfxlo-SidebarToolBox" id="colorbar_background">
+              <object class="GtkToolbar" id="colorbar_background">
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
-                 <child>
-                  <object class="GtkMenuToolButton" id="backgroundcolor">
-                    <property name="use_action_appearance">False</property>
+                <property name="can_focus">True</property>
+                <property name="toolbar_style">icons</property>
+                <property name="icon_size">2</property>
+                <child>
+                  <object class="GtkMenuToolButton" id=".uno:CharBackColor">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:CharBackColor</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
               </object>
@@ -305,34 +313,82 @@
               </packing>
             </child>
             <child>
-              <object class="sfxlo-SidebarToolBox" id="position">
+              <object class="GtkToolbar" id="resetattr">
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
+                <property name="can_focus">True</property>
+                <property name="toolbar_style">icons</property>
                 <property name="show_arrow">False</property>
+                <property name="icon_size">2</property>
                 <child>
-                  <object class="GtkToolButton" id="superscript">
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkToolButton" id=".uno:ResetAttributes">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="action_name">.uno:SuperScript</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">3</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkToolbar" id="defaultattr">
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="toolbar_style">icons</property>
+                <property name="show_arrow">False</property>
+                <property name="icon_size">2</property>
+                <child>
+                  <object class="GtkToolButton" id=".uno:SetDefault">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="use_underline">True</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="homogeneous">False</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">3</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkToolbar" id="position">
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="toolbar_style">icons</property>
+                <property name="show_arrow">False</property>
+                <property name="icon_size">2</property>
+                <child>
+                  <object class="GtkToggleToolButton" id=".uno:SuperScript">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="use_underline">True</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkToolButton" id="subscript">
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkToggleToolButton" id=".uno:SubScript">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="action_name">.uno:SubScript</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
               </object>
@@ -344,21 +400,20 @@
               </packing>
             </child>
             <child>
-              <object class="sfxlo-SidebarToolBox" id="spacingbar">
-                <property name="visible">True</property>
-                <property name="can_focus">False</property>
+              <object class="GtkToolbar" id="spacingbar">
+                <property name="can_focus">True</property>
+                <property name="toolbar_style">icons</property>
+                <property name="show_arrow">False</property>
+                <property name="icon_size">2</property>
                 <child>
-                  <object class="GtkToolButton" id="spacing">
-                    <property name="use_action_appearance">False</property>
+                  <object class="GtkMenuToolButton" id=".uno:Spacing">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="is_important">True</property>
-                    <property name="action_name">.uno:Spacing</property>
                     <property name="use_underline">True</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
-                    <property name="homogeneous">True</property>
+                    <property name="homogeneous">False</property>
                   </packing>
                 </child>
               </object>
@@ -380,8 +435,6 @@
       <packing>
         <property name="left_attach">0</property>
         <property name="top_attach">0</property>
-        <property name="width">1</property>
-        <property name="height">1</property>
       </packing>
     </child>
   </object>

@@ -22,21 +22,7 @@
 
 using namespace std;
 
-bool operator == (const SwRewriteRule & a, const SwRewriteRule & b)
-{
-    return a.first == b.first;
-}
-
 SwRewriter::SwRewriter()
-{
-}
-
-SwRewriter::SwRewriter(const SwRewriter & rSrc)
-    : mRules(rSrc.mRules)
-{
-}
-
-SwRewriter::~SwRewriter()
 {
 }
 
@@ -44,9 +30,9 @@ void SwRewriter::AddRule(SwUndoArg eWhat, const OUString & rWith)
 {
     SwRewriteRule aRule(eWhat, rWith);
 
-    vector<SwRewriteRule>::iterator aIt;
-
-    aIt = find(mRules.begin(), mRules.end(), aRule);
+    vector<SwRewriteRule>::iterator aIt = find_if(
+        mRules.begin(), mRules.end(),
+        [&aRule](SwRewriteRule const & a) { return a.first == aRule.first; });
 
     if (aIt != mRules.end())
         *aIt = aRule;
@@ -58,9 +44,9 @@ OUString SwRewriter::Apply(const OUString & rStr) const
 {
     OUString aResult = rStr;
 
-    for (std::vector<SwRewriteRule>::const_iterator aIt = mRules.begin(); aIt != mRules.end(); ++aIt)
+    for (const auto& rRule : mRules)
     {
-        aResult = aResult.replaceAll(GetPlaceHolder(aIt->first), aIt->second);
+        aResult = aResult.replaceAll(GetPlaceHolder(rRule.first), rRule.second);
     }
 
     return aResult;
@@ -71,15 +57,15 @@ OUString SwRewriter::GetPlaceHolder(SwUndoArg eId)
     switch (eId)
     {
         case UndoArg1:
-            return OUString("$1");
+            return "$1";
         case UndoArg2:
-            return OUString("$2");
+            return "$2";
         case UndoArg3:
-            return OUString("$3");
+            return "$3";
         default:
             break;
     }
-    return OUString("$1");
+    return "$1";
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,18 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/helper/zipstorage.hxx"
+#include <oox/helper/zipstorage.hxx>
 
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
 #include <com/sun/star/embed/XTransactedObject.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 #include <comphelper/storagehelper.hxx>
-#include "oox/helper/helper.hxx"
 
 namespace oox {
 
@@ -43,7 +43,10 @@ ZipStorage::ZipStorage( const Reference< XComponentContext >& rxContext, const R
 {
     OSL_ENSURE( rxContext.is(), "ZipStorage::ZipStorage - missing component context" );
     // create base storage object
-    if( rxContext.is() ) try
+    if( !rxContext.is() )
+        return;
+
+    try
     {
         /*  #i105325# ::comphelper::OStorageHelper::GetStorageFromInputStream()
             cannot be used here as it will open a storage with format type
@@ -60,10 +63,9 @@ ZipStorage::ZipStorage( const Reference< XComponentContext >& rxContext, const R
         mxStorage = ::comphelper::OStorageHelper::GetStorageOfFormatFromInputStream(
             ZIP_STORAGE_FORMAT_STRING, rxInStream, rxContext, false);
     }
-    catch (Exception const& e)
+    catch (Exception const&)
     {
-        SAL_WARN("oox.storage", "ZipStorage::ZipStorage "
-                "exception opening input storage: " << e.Message);
+        TOOLS_WARN_EXCEPTION("oox.storage", "ZipStorage::ZipStorage exception opening input storage");
     }
 }
 
@@ -78,10 +80,9 @@ ZipStorage::ZipStorage( const Reference< XComponentContext >& rxContext, const R
         mxStorage = ::comphelper::OStorageHelper::GetStorageOfFormatFromStream(
             OFOPXML_STORAGE_FORMAT_STRING, rxStream, nOpenMode, rxContext, true);
     }
-    catch (Exception const& e)
+    catch (Exception const&)
     {
-        SAL_WARN("oox.storage", "ZipStorage::ZipStorage "
-                "exception opening output storage: " << e.Message);
+        TOOLS_WARN_EXCEPTION("oox.storage", "ZipStorage::ZipStorage exception opening output storage");
     }
 }
 
@@ -113,12 +114,12 @@ void ZipStorage::implGetElementNames( ::std::vector< OUString >& orElementNames 
     if( mxStorage.is() ) try
     {
         aNames = mxStorage->getElementNames();
-        if( aNames.getLength() > 0 )
+        if( aNames.hasElements() )
             orElementNames.insert( orElementNames.end(), aNames.begin(), aNames.end() );
     }
-    catch (Exception const& e)
+    catch (Exception const&)
     {
-        SAL_INFO("oox.storage", "getElementNames: exception: " << e.Message);
+        TOOLS_INFO_EXCEPTION("oox.storage", "getElementNames");
     }
 }
 
@@ -137,9 +138,9 @@ StorageRef ZipStorage::implOpenSubStorage( const OUString& rElementName, bool bC
     {
         bMissing = true;
     }
-    catch (Exception const& e)
+    catch (Exception const&)
     {
-        SAL_INFO("oox.storage", "openStorageElement: exception: " << e.Message);
+        TOOLS_INFO_EXCEPTION("oox.storage", "openStorageElement");
     }
 
     if( bMissing && bCreateMissing ) try
@@ -147,9 +148,9 @@ StorageRef ZipStorage::implOpenSubStorage( const OUString& rElementName, bool bC
         xSubXStorage = mxStorage->openStorageElement(
             rElementName, css::embed::ElementModes::READWRITE );
     }
-    catch (Exception const& e)
+    catch (Exception const&)
     {
-        SAL_INFO("oox.storage", "openStorageElement: exception: " << e.Message);
+        TOOLS_INFO_EXCEPTION("oox.storage", "openStorageElement");
     }
 
     StorageRef xSubStorage;
@@ -165,9 +166,9 @@ Reference< XInputStream > ZipStorage::implOpenInputStream( const OUString& rElem
     {
         xInStream.set( mxStorage->openStreamElement( rElementName, css::embed::ElementModes::READ ), UNO_QUERY );
     }
-    catch (Exception const& e)
+    catch (Exception const&)
     {
-        SAL_INFO("oox.storage", "openStreamElement: exception: " << e.Message);
+        TOOLS_INFO_EXCEPTION("oox.storage", "openStreamElement");
     }
     return xInStream;
 }
@@ -179,9 +180,9 @@ Reference< XOutputStream > ZipStorage::implOpenOutputStream( const OUString& rEl
     {
         xOutStream.set( mxStorage->openStreamElement( rElementName, css::embed::ElementModes::READWRITE ), UNO_QUERY );
     }
-    catch (Exception const& e)
+    catch (Exception const&)
     {
-        SAL_INFO("oox.storage", "openStreamElement: exception: " << e.Message);
+        TOOLS_INFO_EXCEPTION("oox.storage", "openStreamElement");
     }
     return xOutStream;
 }
@@ -192,9 +193,9 @@ void ZipStorage::implCommit() const
     {
         Reference< XTransactedObject >( mxStorage, UNO_QUERY_THROW )->commit();
     }
-    catch (Exception const& e)
+    catch (Exception const&)
     {
-        SAL_WARN("oox.storage", "commit: exception: " << e.Message);
+        TOOLS_WARN_EXCEPTION("oox.storage", "commit");
     }
 }
 

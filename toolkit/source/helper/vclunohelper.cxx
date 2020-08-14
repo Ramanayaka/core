@@ -18,35 +18,30 @@
  */
 
 #include <tools/stream.hxx>
-#include <vcl/bitmap.hxx>
+#include <vcl/event.hxx>
 #include <vcl/window.hxx>
 #include <vcl/unohelp.hxx>
-#include <sal/macros.h>
+#include <vcl/metric.hxx>
 #include <com/sun/star/util/MeasureUnit.hpp>
 #include <com/sun/star/awt/XBitmap.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/awt/XDevice.hpp>
-#include <com/sun/star/awt/XPointer.hpp>
 #include <com/sun/star/awt/SimpleFontMetric.hpp>
 #include <com/sun/star/awt/FontDescriptor.hpp>
 #include <com/sun/star/awt/XControlContainer.hpp>
-#include <com/sun/star/awt/FontWeight.hpp>
-#include <com/sun/star/awt/FontWidth.hpp>
 #include <com/sun/star/awt/KeyModifier.hpp>
 #include <com/sun/star/awt/MouseButton.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/embed/EmbedMapUnits.hpp>
 #include <com/sun/star/graphic/XGraphic.hpp>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <toolkit/helper/convert.hxx>
-#include <toolkit/awt/vclxbitmap.hxx>
-#include <toolkit/awt/vclxregion.hxx>
+#include <awt/vclxbitmap.hxx>
+#include <awt/vclxregion.hxx>
 #include <toolkit/awt/vclxwindow.hxx>
-#include <toolkit/awt/vclxgraphics.hxx>
-#include <toolkit/awt/vclxpointer.hxx>
+#include <awt/vclxgraphics.hxx>
 #include <toolkit/awt/vclxfont.hxx>
-#include <toolkit/controls/unocontrolcontainer.hxx>
-#include <toolkit/controls/unocontrolcontainermodel.hxx>
+#include <controls/unocontrolcontainer.hxx>
+#include <controls/unocontrolcontainermodel.hxx>
 #include <vcl/graph.hxx>
 #include <comphelper/processfactory.hxx>
 
@@ -77,7 +72,7 @@ BitmapEx VCLUnoHelper::GetBitmap( const css::uno::Reference< css::awt::XBitmap>&
     }
     else if ( rxBitmap.is() )
     {
-        VCLXBitmap* pVCLBitmap = VCLXBitmap::GetImplementation( rxBitmap );
+        VCLXBitmap* pVCLBitmap = comphelper::getUnoTunnelImplementation<VCLXBitmap>( rxBitmap );
         if ( pVCLBitmap )
             aBmp = pVCLBitmap->GetBitmap();
         else
@@ -106,36 +101,40 @@ css::uno::Reference< css::awt::XBitmap> VCLUnoHelper::CreateBitmap( const Bitmap
     return xBmp;
 }
 
+css::uno::Reference< css::awt::XBitmap> VCLUnoHelper::CreateVCLXBitmap( const BitmapEx& rBitmap )
+{
+    return css::uno::Reference< css::awt::XBitmap >(new VCLXBitmap(rBitmap));
+}
+
 VclPtr< vcl::Window > VCLUnoHelper::GetWindow( const css::uno::Reference< css::awt::XWindow>& rxWindow )
 {
-    VCLXWindow* pVCLXWindow = VCLXWindow::GetImplementation( rxWindow );
+    VCLXWindow* pVCLXWindow = comphelper::getUnoTunnelImplementation<VCLXWindow>( rxWindow );
     return pVCLXWindow ? pVCLXWindow->GetWindow() : VclPtr< vcl::Window >();
 }
 
 VclPtr< vcl::Window > VCLUnoHelper::GetWindow( const css::uno::Reference< css::awt::XWindow2>& rxWindow )
 {
-    VCLXWindow* pVCLXWindow = VCLXWindow::GetImplementation( rxWindow );
+    VCLXWindow* pVCLXWindow = comphelper::getUnoTunnelImplementation<VCLXWindow>( rxWindow );
     return pVCLXWindow ? pVCLXWindow->GetWindow() : VclPtr< vcl::Window >();
 }
 
 VclPtr< vcl::Window > VCLUnoHelper::GetWindow( const css::uno::Reference< css::awt::XWindowPeer>& rxWindow )
 {
-    VCLXWindow* pVCLXWindow = VCLXWindow::GetImplementation( rxWindow );
+    VCLXWindow* pVCLXWindow = comphelper::getUnoTunnelImplementation<VCLXWindow>( rxWindow );
     return pVCLXWindow ? pVCLXWindow->GetWindow() : VclPtr< vcl::Window >();
 }
 
 vcl::Region VCLUnoHelper::GetRegion( const css::uno::Reference< css::awt::XRegion >& rxRegion )
 {
     vcl::Region aRegion;
-    VCLXRegion* pVCLRegion = VCLXRegion::GetImplementation( rxRegion );
+    VCLXRegion* pVCLRegion = comphelper::getUnoTunnelImplementation<VCLXRegion>( rxRegion );
     if ( pVCLRegion )
         aRegion = pVCLRegion->GetRegion();
     else
     {
-        css::uno::Sequence< css::awt::Rectangle > aRects = rxRegion->getRectangles();
-        sal_Int32 nRects = aRects.getLength();
-        for ( sal_Int32 n = 0; n < nRects; n++ )
-            aRegion.Union( VCLRectangle( aRects.getArray()[n] ) );
+        const css::uno::Sequence< css::awt::Rectangle > aRects = rxRegion->getRectangles();
+        for ( const auto& rRect : aRects )
+            aRegion.Union( VCLRectangle( rRect ) );
     }
     return aRegion;
 }
@@ -154,7 +153,7 @@ css::uno::Reference< css::awt::XWindow> VCLUnoHelper::GetInterface( vcl::Window*
 OutputDevice* VCLUnoHelper::GetOutputDevice( const css::uno::Reference< css::awt::XDevice>& rxDevice )
 {
     VclPtr<OutputDevice> pOutDev;
-    VCLXDevice* pDev = VCLXDevice::GetImplementation( rxDevice );
+    VCLXDevice* pDev = comphelper::getUnoTunnelImplementation<VCLXDevice>( rxDevice );
     if ( pDev )
         pOutDev = pDev->GetOutputDevice();
     return pOutDev;
@@ -163,7 +162,7 @@ OutputDevice* VCLUnoHelper::GetOutputDevice( const css::uno::Reference< css::awt
 OutputDevice* VCLUnoHelper::GetOutputDevice( const css::uno::Reference< css::awt::XGraphics>& rxGraphics )
 {
     OutputDevice* pOutDev = nullptr;
-    VCLXGraphics* pGrf = VCLXGraphics::GetImplementation( rxGraphics );
+    VCLXGraphics* pGrf = comphelper::getUnoTunnelImplementation<VCLXGraphics>( rxGraphics );
     if ( pGrf )
         pOutDev = pGrf->GetOutputDevice();
     return pOutDev;
@@ -175,12 +174,12 @@ tools::Polygon VCLUnoHelper::CreatePolygon( const css::uno::Sequence< sal_Int32 
     sal_Int32 nLen = DataX.getLength();
     const sal_Int32* pDataX = DataX.getConstArray();
     const sal_Int32* pDataY = DataY.getConstArray();
-    tools::Polygon aPoly( (sal_uInt16) nLen );
+    tools::Polygon aPoly( static_cast<sal_uInt16>(nLen) );
     for ( sal_Int32 n = 0; n < nLen; n++ )
     {
         Point aPnt;
-        aPnt.X() = pDataX[n];
-        aPnt.Y() = pDataY[n];
+        aPnt.setX( pDataX[n] );
+        aPnt.setY( pDataY[n] );
         aPoly[n] = aPnt;
     }
     return aPoly;
@@ -202,8 +201,8 @@ css::awt::FontDescriptor VCLUnoHelper::CreateFontDescriptor( const vcl::Font& rF
     css::awt::FontDescriptor aFD;
     aFD.Name = rFont.GetFamilyName();
     aFD.StyleName = rFont.GetStyleName();
-    aFD.Height = (sal_Int16)rFont.GetFontSize().Height();
-    aFD.Width = (sal_Int16)rFont.GetFontSize().Width();
+    aFD.Height = static_cast<sal_Int16>(rFont.GetFontSize().Height());
+    aFD.Width = static_cast<sal_Int16>(rFont.GetFontSize().Width());
     aFD.Family = sal::static_int_cast< sal_Int16 >(rFont.GetFamilyType());
     aFD.CharSet = rFont.GetCharSet();
     aFD.Pitch = sal::static_int_cast< sal_Int16 >(rFont.GetPitch());
@@ -228,25 +227,25 @@ vcl::Font VCLUnoHelper::CreateFont( const css::awt::FontDescriptor& rDescr, cons
         aFont.SetStyleName( rDescr.StyleName );
     if ( rDescr.Height )
         aFont.SetFontSize( Size( rDescr.Width, rDescr.Height ) );
-    if ( (FontFamily)rDescr.Family != FAMILY_DONTKNOW )
-        aFont.SetFamily( (FontFamily)rDescr.Family );
-    if ( (rtl_TextEncoding)rDescr.CharSet != RTL_TEXTENCODING_DONTKNOW )
-        aFont.SetCharSet( (rtl_TextEncoding)rDescr.CharSet );
-    if ( (FontPitch)rDescr.Pitch != PITCH_DONTKNOW )
-        aFont.SetPitch( (FontPitch)rDescr.Pitch );
+    if ( static_cast<FontFamily>(rDescr.Family) != FAMILY_DONTKNOW )
+        aFont.SetFamily( static_cast<FontFamily>(rDescr.Family) );
+    if ( static_cast<rtl_TextEncoding>(rDescr.CharSet) != RTL_TEXTENCODING_DONTKNOW )
+        aFont.SetCharSet( static_cast<rtl_TextEncoding>(rDescr.CharSet) );
+    if ( static_cast<FontPitch>(rDescr.Pitch) != PITCH_DONTKNOW )
+        aFont.SetPitch( static_cast<FontPitch>(rDescr.Pitch) );
     if ( rDescr.CharacterWidth )
         aFont.SetWidthType(vcl::unohelper::ConvertFontWidth(rDescr.CharacterWidth));
     if ( rDescr.Weight )
         aFont.SetWeight(vcl::unohelper::ConvertFontWeight(rDescr.Weight));
     if ( rDescr.Slant != css::awt::FontSlant_DONTKNOW )
         aFont.SetItalic(vcl::unohelper::ConvertFontSlant(rDescr.Slant));
-    if ( (FontLineStyle)rDescr.Underline != LINESTYLE_DONTKNOW )
-        aFont.SetUnderline( (FontLineStyle)rDescr.Underline );
-    if ( (FontStrikeout)rDescr.Strikeout != STRIKEOUT_DONTKNOW )
-        aFont.SetStrikeout( (FontStrikeout)rDescr.Strikeout );
+    if ( static_cast<FontLineStyle>(rDescr.Underline) != LINESTYLE_DONTKNOW )
+        aFont.SetUnderline( static_cast<FontLineStyle>(rDescr.Underline) );
+    if ( static_cast<FontStrikeout>(rDescr.Strikeout) != STRIKEOUT_DONTKNOW )
+        aFont.SetStrikeout( static_cast<FontStrikeout>(rDescr.Strikeout) );
 
     // Not DONTKNOW
-    aFont.SetOrientation( (short)rDescr.Orientation );
+    aFont.SetOrientation( static_cast<short>(rDescr.Orientation) );
     aFont.SetKerning( static_cast<FontKerning>(rDescr.Kerning) );
     aFont.SetWordLineMode( rDescr.WordLineMode );
 
@@ -256,7 +255,7 @@ vcl::Font VCLUnoHelper::CreateFont( const css::awt::FontDescriptor& rDescr, cons
 vcl::Font VCLUnoHelper::CreateFont( const css::uno::Reference< css::awt::XFont >& rxFont )
 {
     vcl::Font aFont;
-    VCLXFont* pVCLXFont = VCLXFont::GetImplementation( rxFont );
+    VCLXFont* pVCLXFont = comphelper::getUnoTunnelImplementation<VCLXFont>( rxFont );
     if ( pVCLXFont )
         aFont = pVCLXFont->GetFont();
     return aFont;
@@ -266,10 +265,10 @@ vcl::Font VCLUnoHelper::CreateFont( const css::uno::Reference< css::awt::XFont >
 css::awt::SimpleFontMetric VCLUnoHelper::CreateFontMetric( const FontMetric& rFontMetric )
 {
     css::awt::SimpleFontMetric aFM;
-    aFM.Ascent = (sal_Int16)rFontMetric.GetAscent();
-    aFM.Descent = (sal_Int16)rFontMetric.GetDescent();
-    aFM.Leading = (sal_Int16)rFontMetric.GetInternalLeading();
-    aFM.Slant = (sal_Int16)rFontMetric.GetSlant();
+    aFM.Ascent = static_cast<sal_Int16>(rFontMetric.GetAscent());
+    aFM.Descent = static_cast<sal_Int16>(rFontMetric.GetDescent());
+    aFM.Leading = static_cast<sal_Int16>(rFontMetric.GetInternalLeading());
+    aFM.Slant = static_cast<sal_Int16>(rFontMetric.GetSlant());
     aFM.FirstChar = 0x0020;
     aFM.LastChar = 0xFFFD;
     return aFM;
@@ -363,29 +362,29 @@ namespace
             FieldUnit eFieldUnit;
             sal_Int16 nMeasurementUnit;
             sal_Int16 nFieldToMeasureFactor;
-        } aUnits[] = {
-            { FUNIT_NONE,       -1 , -1},
-            { FUNIT_MM,         MeasureUnit::MM,            1 },    // must precede MM_10TH
-            { FUNIT_MM,         MeasureUnit::MM_10TH,       10 },
-            { FUNIT_100TH_MM,   MeasureUnit::MM_100TH,      1 },
-            { FUNIT_CM,         MeasureUnit::CM,            1 },
-            { FUNIT_M,          MeasureUnit::M,             1 },
-            { FUNIT_KM,         MeasureUnit::KM,            1 },
-            { FUNIT_TWIP,       MeasureUnit::TWIP,          1 },
-            { FUNIT_POINT,      MeasureUnit::POINT,         1 },
-            { FUNIT_PICA,       MeasureUnit::PICA,          1 },
-            { FUNIT_INCH,       MeasureUnit::INCH,          1 },    // must precede INCH_*TH
-            { FUNIT_INCH,       MeasureUnit::INCH_10TH,     10 },
-            { FUNIT_INCH,       MeasureUnit::INCH_100TH,    100 },
-            { FUNIT_INCH,       MeasureUnit::INCH_1000TH,   1000 },
-            { FUNIT_FOOT,       MeasureUnit::FOOT,          1 },
-            { FUNIT_MILE,       MeasureUnit::MILE,          1 },
+        } const aUnits[] = {
+            { FieldUnit::NONE,       -1 , -1},
+            { FieldUnit::MM,         MeasureUnit::MM,            1 },    // must precede MM_10TH
+            { FieldUnit::MM,         MeasureUnit::MM_10TH,       10 },
+            { FieldUnit::MM_100TH,   MeasureUnit::MM_100TH,      1 },
+            { FieldUnit::CM,         MeasureUnit::CM,            1 },
+            { FieldUnit::M,          MeasureUnit::M,             1 },
+            { FieldUnit::KM,         MeasureUnit::KM,            1 },
+            { FieldUnit::TWIP,       MeasureUnit::TWIP,          1 },
+            { FieldUnit::POINT,      MeasureUnit::POINT,         1 },
+            { FieldUnit::PICA,       MeasureUnit::PICA,          1 },
+            { FieldUnit::INCH,       MeasureUnit::INCH,          1 },    // must precede INCH_*TH
+            { FieldUnit::INCH,       MeasureUnit::INCH_10TH,     10 },
+            { FieldUnit::INCH,       MeasureUnit::INCH_100TH,    100 },
+            { FieldUnit::INCH,       MeasureUnit::INCH_1000TH,   1000 },
+            { FieldUnit::FOOT,       MeasureUnit::FOOT,          1 },
+            { FieldUnit::MILE,       MeasureUnit::MILE,          1 },
         };
         for (auto & aUnit : aUnits)
         {
             if ( eDirection == FieldUnitToMeasurementUnit )
             {
-                if ( ( aUnit.eFieldUnit == (FieldUnit)_nUnit ) && ( aUnit.nFieldToMeasureFactor == _rFieldToUNOValueFactor ) )
+                if ( ( aUnit.eFieldUnit == static_cast<FieldUnit>(_nUnit) ) && ( aUnit.nFieldToMeasureFactor == _rFieldToUNOValueFactor ) )
                     return aUnit.nMeasurementUnit;
             }
             else
@@ -393,7 +392,7 @@ namespace
                 if ( aUnit.nMeasurementUnit == _nUnit )
                 {
                     _rFieldToUNOValueFactor = aUnit.nFieldToMeasureFactor;
-                    return (sal_Int16)aUnit.eFieldUnit;
+                    return static_cast<sal_Int16>(aUnit.eFieldUnit);
                 }
             }
         }
@@ -401,7 +400,7 @@ namespace
             return -1;
 
         _rFieldToUNOValueFactor = 1;
-        return (sal_Int16)FUNIT_NONE;
+        return sal_Int16(FieldUnit::NONE);
     }
 }
 
@@ -410,13 +409,13 @@ namespace
 
 sal_Int16 VCLUnoHelper::ConvertToMeasurementUnit( FieldUnit _nFieldUnit, sal_Int16 _nUNOToFieldValueFactor )
 {
-    return convertMeasurementUnit( (sal_Int16)_nFieldUnit, FieldUnitToMeasurementUnit, _nUNOToFieldValueFactor );
+    return convertMeasurementUnit( static_cast<sal_Int16>(_nFieldUnit), FieldUnitToMeasurementUnit, _nUNOToFieldValueFactor );
 }
 
 
 FieldUnit VCLUnoHelper::ConvertToFieldUnit( sal_Int16 _nMeasurementUnit, sal_Int16& _rFieldToUNOValueFactor )
 {
-    return (FieldUnit)convertMeasurementUnit( _nMeasurementUnit, MeasurementUnitToFieldUnit, _rFieldToUNOValueFactor );
+    return static_cast<FieldUnit>(convertMeasurementUnit( _nMeasurementUnit, MeasurementUnitToFieldUnit, _rFieldToUNOValueFactor ));
 }
 
 

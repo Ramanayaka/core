@@ -17,14 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/builderfactory.hxx>
-
-#include "starmath.hrc"
-
-#include "utility.hxx"
-#include "dialog.hxx"
-#include "view.hxx"
-
+#include <strings.hrc>
+#include <smmod.hxx>
+#include <utility.hxx>
+#include <dialog.hxx>
+#include <view.hxx>
 
 // return pointer to active SmViewShell, if this is not possible
 // return 0 instead.
@@ -120,30 +117,27 @@ void SmFontPickList::WriteTo(SmFontDialog& rDialog) const
 
 /**************************************************************************/
 
-VCL_BUILDER_FACTORY_ARGS(SmFontPickListBox, WB_DROPDOWN)
-
-SmFontPickListBox::SmFontPickListBox (vcl::Window* pParent, WinBits nBits) :
-    SmFontPickList(4),
-    ListBox(pParent, nBits)
+SmFontPickListBox::SmFontPickListBox(std::unique_ptr<weld::ComboBox> pWidget)
+    : SmFontPickList(4)
+    , m_xWidget(std::move(pWidget))
 {
-    SetSelectHdl(LINK(this, SmFontPickListBox, SelectHdl));
+    m_xWidget->connect_changed(LINK(this, SmFontPickListBox, SelectHdl));
 }
 
-IMPL_LINK_NOARG( SmFontPickListBox, SelectHdl, ListBox&, void )
+IMPL_LINK_NOARG(SmFontPickListBox, SelectHdl, weld::ComboBox&, void)
 {
     OUString aString;
 
-    const sal_Int32 nPos = GetSelectEntryPos();
-
+    const int nPos = m_xWidget->get_active();
     if (nPos != 0)
     {
         SmFontPickList::Insert(Get(nPos));
-        aString = GetEntry(nPos);
-        RemoveEntry(nPos);
-        InsertEntry(aString, 0);
+        aString = m_xWidget->get_text(nPos);
+        m_xWidget->remove(nPos);
+        m_xWidget->insert_text(0, aString);
     }
 
-    SelectEntryPos(0);
+    m_xWidget->set_active(0);
 }
 
 SmFontPickListBox& SmFontPickListBox::operator=(const SmFontPickList& rList)
@@ -151,10 +145,10 @@ SmFontPickListBox& SmFontPickListBox::operator=(const SmFontPickList& rList)
     *static_cast<SmFontPickList *>(this) = rList;
 
     for (decltype(aFontVec)::size_type nPos = 0; nPos < aFontVec.size(); nPos++)
-        InsertEntry(lcl_GetStringItem(aFontVec[nPos]), nPos);
+        m_xWidget->insert_text(nPos, lcl_GetStringItem(aFontVec[nPos]));
 
     if (!aFontVec.empty())
-        SelectEntry(lcl_GetStringItem(aFontVec.front()));
+        m_xWidget->set_active_text(lcl_GetStringItem(aFontVec.front()));
 
     return *this;
 }
@@ -163,14 +157,16 @@ void SmFontPickListBox::Insert(const vcl::Font &rFont)
 {
     SmFontPickList::Insert(rFont);
 
-    RemoveEntry(lcl_GetStringItem(aFontVec.front()));
-    InsertEntry(lcl_GetStringItem(aFontVec.front()), 0);
-    SelectEntry(lcl_GetStringItem(aFontVec.front()));
+    OUString aEntry(lcl_GetStringItem(aFontVec.front()));
+    int nPos = m_xWidget->find_text(aEntry);
+    if (nPos != -1)
+        m_xWidget->remove(nPos);
+    m_xWidget->insert_text(0, aEntry);
+    m_xWidget->set_active(0);
 
-    while (GetEntryCount() > nMaxItems)
-        RemoveEntry(GetEntryCount() - 1);
+    while (m_xWidget->get_count() > nMaxItems)
+        m_xWidget->remove(m_xWidget->get_count() - 1);
 }
-
 
 bool IsItalic( const vcl::Font &rFont )
 {
@@ -183,7 +179,7 @@ bool IsItalic( const vcl::Font &rFont )
 bool IsBold( const vcl::Font &rFont )
 {
     FontWeight eWeight = rFont.GetWeight();
-    return eWeight != WEIGHT_DONTKNOW && eWeight > WEIGHT_NORMAL;
+    return eWeight > WEIGHT_NORMAL;
 }
 
 
@@ -203,7 +199,7 @@ void SmFace::SetSize(const Size& rSize)
     static int const    nMinVal = SmPtsTo100th_mm(2);
 
     if (aSize.Height() < nMinVal)
-        aSize.Height() = nMinVal;
+        aSize.setHeight( nMinVal );
 
     //! we don't force a maximum value here because this may prevent eg the
     //! parentheses in "left ( ... right )" from matching up with large
@@ -236,10 +232,9 @@ SmFace & operator *= (SmFace &rFace, const Fraction &rFrac)
     // It's main use is to make scaling fonts look easier.
 {   const Size &rFaceSize = rFace.GetFontSize();
 
-    rFace.SetSize(Size(Fraction(rFaceSize.Width())  *= rFrac,
-                       Fraction(rFaceSize.Height()) *= rFrac));
+    rFace.SetSize(Size(long(rFaceSize.Width() * rFrac),
+                       long(rFaceSize.Height() * rFrac)));
     return rFace;
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

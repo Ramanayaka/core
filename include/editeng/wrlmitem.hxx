@@ -22,8 +22,6 @@
 #include <svl/eitem.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
 // class SvxWordLineModeItem ---------------------------------------------
 
 /*  [Description]
@@ -32,7 +30,7 @@ class SvXMLUnitConverter;
     to word boundaries.
 */
 
-class EDITENG_DLLPUBLIC SvxWordLineModeItem : public SfxBoolItem
+class EDITENG_DLLPUBLIC SvxWordLineModeItem final : public SfxBoolItem
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -41,20 +39,12 @@ public:
                      const sal_uInt16 nId  );
 
     // "pure virtual Methods" from SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion) const override;
+    virtual SvxWordLineModeItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
-
-    SvxWordLineModeItem& operator=( const SvxWordLineModeItem& rWLM )
-        {
-            SetValue( rWLM.GetValue() );
-            return *this;
-        }
+                                  OUString &rText, const IntlWrapper& ) const override;
 };
 
 #endif

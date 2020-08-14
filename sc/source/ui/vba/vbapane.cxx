@@ -18,6 +18,7 @@
  */
 
 #include "vbapane.hxx"
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/table/CellRangeAddress.hpp>
@@ -49,7 +50,7 @@ ScVbaPane::setScrollColumn( sal_Int32 _scrollcolumn )
 {
     if( _scrollcolumn < 1 )
     {
-        throw uno::RuntimeException("Column number should not less than 1" );
+        throw uno::RuntimeException("Column number should not be less than 1" );
     }
     m_xViewPane->setFirstVisibleColumn( _scrollcolumn - 1 );
 }
@@ -65,7 +66,7 @@ ScVbaPane::setScrollRow( sal_Int32 _scrollrow )
 {
     if( _scrollrow < 1 )
     {
-        throw uno::RuntimeException("Row number should not less than 1" );
+        throw uno::RuntimeException("Row number should not be less than 1" );
     }
     m_xViewPane->setFirstVisibleRow( _scrollrow - 1 );
 }

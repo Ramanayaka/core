@@ -11,19 +11,20 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_EXTLSTCONTEXT_HXX
 
 #include "excelhandlers.hxx"
-#include "worksheetfragment.hxx"
-#include "workbookfragment.hxx"
+#include <oox/core/contexthandler.hxx>
+#include "condformatbuffer.hxx"
 
 #include <vector>
 #include <memory>
 
+extern sal_Int32 rStyleIdx; // Holds index of the <extlst> <cfRule> style (Will be reset by finalize import)
+
 struct ScDataBarFormatData;
-class ScFormatEntry;
+namespace oox { class AttributeList; }
+namespace oox::xls { class WorkbookFragment; }
+namespace oox::xls { class WorksheetFragment; }
 
-namespace oox {
-namespace xls {
-
-class IconSetRule;
+namespace oox::xls {
 
 class ExtCfRuleContext : public WorksheetContextBase
 {
@@ -50,9 +51,15 @@ public:
     virtual void onEndElement() override;
 
 private:
-    OUString aChars;
+    OUString aChars; // Characters of between xml elements.
+    OUString rStyle; // Style of the corresponding condition
+    sal_Int32 nPriority; // Priority of last cfRule element.
+    ScConditionMode eOperator; // Used only when cfRule type is "cellIs"
+    bool isPreviousElementF;   // Used to distinguish alone <sqref> from <f> and <sqref>
     std::vector<std::unique_ptr<ScFormatEntry> > maEntries;
-    IconSetRule* mpCurrentRule;
+    std::vector< OUString > rFormulas; // It holds formulas for a range, there can be more formula for same range.
+    std::unique_ptr<IconSetRule> mpCurrentRule;
+    std::vector<sal_Int32> maPriorities;
 };
 
 /**
@@ -126,8 +133,7 @@ protected:
     virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs ) override;
 };
 
-} //namespace xls
-} //namespace oox
+} //namespace oox::xls
 
 #endif
 

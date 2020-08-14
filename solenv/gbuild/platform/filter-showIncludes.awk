@@ -32,9 +32,9 @@ BEGIN {
         showincludes_prefix = "Note: including file:"
     }
 
-    # to match especially drive letters in whitelist case insensitive
+    # to match especially drive letters in allowlist case insensitive
     IGNORECASE = 1
-    whitelist = \
+    allowlist = \
         "^(" ENVIRON["SRCDIR"] "|" ENVIRON["WORKDIR"] ")"
     firstline = 1
 }
@@ -45,9 +45,16 @@ BEGIN {
     if (index($0, showincludes_prefix) == 1) {
         $0 = substr($0, length(showincludes_prefix) + 1)
         sub(/^ */, "")
+
+        # The output from MSVC may contain a carriage return character at the
+        # end of filenames, in which case the translation unit will depend on a
+        # non-existing header, resulting in constant rebuild of all files,
+        # prevent that.
+        sub(//, "")
+
         gsub(/\\/, "/")
         gsub(/ /, "\\ ")
-        if ($0 ~ whitelist) { # filter out system headers
+        if ($0 ~ allowlist) { # filter out system headers
             if (!($0 in incfiles)) {
                 incfiles[$0]
                 print " " $0 " \\" > tempfile

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "swwrtshitem.hxx"
+#include <swwrtshitem.hxx>
 #include <globals.hrc>
 
 SwWrtShellItem::SwWrtShellItem( SwWrtShell* pSh )
@@ -25,18 +25,14 @@ SwWrtShellItem::SwWrtShellItem( SwWrtShell* pSh )
 {
 
 }
-SwWrtShellItem::SwWrtShellItem( const SwWrtShellItem& rItem) :
-    SfxPoolItem( rItem.Which() ),
-    pWrtSh( rItem.pWrtSh )
-{
-}
 
 bool SwWrtShellItem::operator==( const SfxPoolItem& rItem) const
 {
-    return static_cast<const SwWrtShellItem&>(rItem).pWrtSh == pWrtSh;
+    return SfxPoolItem::operator==(rItem)
+        && pWrtSh == static_cast<const SwWrtShellItem&>(rItem).pWrtSh;
 }
 
-SfxPoolItem* SwWrtShellItem::Clone( SfxItemPool * /*pPool*/ ) const
+SwWrtShellItem* SwWrtShellItem::Clone( SfxItemPool * /*pPool*/ ) const
 {
     return new SwWrtShellItem( *this );
 }

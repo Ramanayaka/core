@@ -17,26 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <typeinfo>
 
-#include "osl/mutex.hxx"
-#include "salhelper/condition.hxx"
-#include "salhelper/dynload.hxx"
-#include "salhelper/simplereferenceobject.hxx"
+#include <osl/mutex.hxx>
+#include <salhelper/condition.hxx>
+#include <salhelper/dynload.hxx>
+#include <salhelper/simplereferenceobject.hxx>
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
 #include <cppunit/plugin/TestPlugIn.h>
 #include <memory>
-
-namespace salhelper {
-    class Condition;
-    class ConditionModifier;
-    class ConditionWaiter;
-    class ORealDynamicLoader;
-    class SimpleReferenceObject;
-}
 
 namespace {
 
@@ -109,7 +101,7 @@ public:
 void Test::testCondition() {
     osl::Mutex mutex;
     std::unique_ptr< salhelper::Condition > p(new DerivedCondition(mutex));
-    CPPUNIT_ASSERT(typeid (*p.get()) != typeid (salhelper::Condition));
+    CPPUNIT_ASSERT(typeid(*p) != typeid(salhelper::Condition));
     CPPUNIT_ASSERT(bool(typeid (p.get()) == typeid (salhelper::Condition *)));
     CPPUNIT_ASSERT(bool(
         typeid (const_cast< salhelper::Condition const * >(p.get()))
@@ -121,9 +113,8 @@ void Test::testCondition() {
 }
 
 #ifdef _MSC_VER
-// MSVC 2012 warns about the "p" being unused
-#pragma warning (push, 1)
-#pragma warning (disable: 4189)
+#pragma warning (push)
+#pragma warning (disable: 4189) // 'p': local variable is initialized but not referenced
 #endif
 
 
@@ -221,15 +212,14 @@ void Test::testSimpleReferenceObject() {
 
 void Test::testDerivedCondition() {
     osl::Mutex mutex;
+    // Next line tests that new doesn't throw
     std::unique_ptr< salhelper::Condition > p(new DerivedCondition(mutex));
-    CPPUNIT_ASSERT(dynamic_cast< DerivedCondition * >(p.get()) != nullptr);
 }
 
 void Test::testDerivedConditionWaiterTimedout() {
+    // Next line tests that new doesn't throw
     std::unique_ptr< salhelper::ConditionWaiter::timedout > p(
         new DerivedConditionWaiterTimedout);
-    CPPUNIT_ASSERT(
-        dynamic_cast< DerivedConditionWaiterTimedout * >(p.get()) != nullptr);
     try {
         throw DerivedConditionWaiterTimedout();
     } catch (salhelper::ConditionWaiter::timedout &) {

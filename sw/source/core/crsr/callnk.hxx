@@ -21,6 +21,7 @@
 #define INCLUDED_SW_SOURCE_CORE_CRSR_CALLNK_HXX
 
 #include <tools/solar.h>
+#include <ndtyp.hxx>
 
 class SwCursorShell;
 class SwTextNode;
@@ -29,17 +30,17 @@ class SwRootFrame;
 class SwCallLink
 {
 public:
-    SwCursorShell & rShell;
-    sal_uLong nNode;
-    sal_Int32 nContent;
-    SwNodeType nNdTyp;
-    long nLeftFramePos;
-    bool bHasSelection;
+    SwCursorShell & m_rShell;
+    sal_uLong m_nNode;
+    sal_Int32 m_nContent;
+    SwNodeType m_nNodeType;
+    long m_nLeftFramePos;
+    bool m_bHasSelection;
 
     explicit SwCallLink( SwCursorShell & rSh );
-    ~SwCallLink();
+    ~SwCallLink() COVERITY_NOEXCEPT_FALSE;
 
-    static long getLayoutFrame( const SwRootFrame*, SwTextNode& rNd, sal_Int32 nCntPos, bool bCalcFrame );
+    static long getLayoutFrame( const SwRootFrame*, SwTextNode const & rNd, sal_Int32 nCntPos, bool bCalcFrame );
 };
 
 #endif // INCLUDED_SW_SOURCE_CORE_CRSR_CALLNK_HXX

@@ -55,7 +55,7 @@ bool isWhitespace( sal_Unicode c );
 
 OUString concatQualified( const OUString & a, const OUString &b);
 
-OString OUStringToOString( const OUString& str, ConnectionSettings *settings);
+OString OUStringToOString( const OUString& str, ConnectionSettings const *settings);
 
 void bufferQuoteConstant( OUStringBuffer & buf, const OUString & str, ConnectionSettings *settings );
 void bufferQuoteAnyConstant( OUStringBuffer & buf, const css::uno::Any &val, ConnectionSettings *settings );
@@ -98,10 +98,12 @@ void disposeNoThrow( const css::uno::Reference< css::uno::XInterface > & r );
 void disposeObject( const css::uno::Reference< css::uno::XInterface > & r );
 
 OUString extractTableFromInsert( const OUString & sql );
-OString extractSingleTableFromSelect( const OStringVector &vec );
+OString extractSingleTableFromSelect( const std::vector< OString > &vec );
 
-void tokenizeSQL( const OString & sql, OStringVector &vec  );
-void splitSQL( const OString & sql, OStringVector &vec  );
+OUString getColExprForDefaultSettingVal(ConnectionSettings const *settings);
+
+void tokenizeSQL( const OString & sql, std::vector< OString > &vec  );
+void splitSQL( const OString & sql, std::vector< OString > &vec  );
 std::vector< sal_Int32 > parseIntArray( const OUString & str );
 /// @throws css::sdbc::SQLException
 std::vector< css::uno::Any > parseArray( const OUString & str );
@@ -125,11 +127,7 @@ css::uno::Sequence< sal_Int32 > string2intarray( const OUString & str );
 css::uno::Sequence< OUString > convertMappedIntArray2StringArray(
     const Int2StringMap &map, const css::uno::Sequence< sal_Int32> &source );
 
-typedef std::unordered_map
-<
-    OString,
-    OString,
-    OStringHash > String2StringMap;
+typedef std::unordered_map< OString, OString > String2StringMap;
 
 OUString querySingleValue(
     const css::uno::Reference< css::sdbc::XConnection > &connection,

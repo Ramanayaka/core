@@ -22,13 +22,12 @@
 
 #include <xmloff/xmlimp.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno { template<class X> class Reference; }
     namespace uno { class XInterface; }
-    namespace document { class XGraphicObjectResolver; }
+    namespace document { class XGraphicStorageHandler; }
     namespace container { class XNameContainer; }
-
-} } }
+}
 
 class SvxXMLXTableImport : public SvXMLImport
 {
@@ -36,7 +35,7 @@ public:
     SvxXMLXTableImport(
         const css::uno::Reference< css::uno::XComponentContext >& rContext,
         const css::uno::Reference< css::container::XNameContainer > & rTable,
-        css::uno::Reference< css::document::XGraphicObjectResolver >& rGrfResolver);
+        css::uno::Reference<css::document::XGraphicStorageHandler> const & rxGraphicStorageHandler);
 
     virtual ~SvxXMLXTableImport() throw () override;
 
@@ -45,9 +44,8 @@ public:
                       const css::uno::Reference< css::container::XNameContainer >& xTable,
                       bool *bOptLoadedFromStorage ) throw();
 protected:
-    virtual SvXMLImportContext *CreateContext( sal_uInt16 nPrefix,
-                                      const OUString& rLocalName,
-                                      const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
+    virtual SvXMLImportContext *CreateFastContext( sal_Int32 Element,
+        const ::css::uno::Reference< ::css::xml::sax::XFastAttributeList >& xAttrList ) override;
 
 private:
     const css::uno::Reference< css::container::XNameContainer > & mrTable;

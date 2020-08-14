@@ -23,14 +23,13 @@
 #include <drawingml/table/tablecell.hxx>
 #include <vector>
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
 class TableRow
 {
 public:
 
     TableRow();
-    ~TableRow();
 
     void setHeight( sal_Int32 nHeight ){ mnHeight = nHeight; };
     sal_Int32 getHeight() const { return mnHeight; };
@@ -42,7 +41,7 @@ private:
     std::vector< TableCell > mvTableCells;
 };
 
-} } }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_TABLE_TABLEROW_HXX
 

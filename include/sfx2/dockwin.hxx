@@ -25,21 +25,25 @@
 #include <vcl/dockwin.hxx>
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/frame/XFrame.hpp>
 
 #include <sfx2/dllapi.h>
 #include <sfx2/childwin.hxx>
 
-class SfxSplitWindow;
+namespace com::sun::star::frame { class XFrame; }
+
 class SfxDockingWindow_Impl;
 enum class SplitWindowItemFlags;
 
-void SFX2_DLLPUBLIC SAL_CALL SfxDockingWindowFactory( const css::uno::Reference< css::frame::XFrame >& rFrame, const OUString& rDockingWindowName );
-bool SFX2_DLLPUBLIC SAL_CALL IsDockingWindowVisible( const css::uno::Reference< css::frame::XFrame >& rFrame, const OUString& rDockingWindowName );
+void SfxDockingWindowFactory( const css::uno::Reference< css::frame::XFrame >& rFrame, const OUString& rDockingWindowName );
+bool IsDockingWindowVisible( const css::uno::Reference< css::frame::XFrame >& rFrame, const OUString& rDockingWindowName );
 
 class SFX2_DLLPUBLIC SfxDockingWindow : public DockingWindow
 {
+protected:
+    std::unique_ptr<weld::Builder> m_xBuilder;
+    VclPtr<vcl::Window> m_xVclContentArea;
+    std::unique_ptr<weld::Container> m_xContainer;
+
 private:
     tools::Rectangle               aInnerRect;
     tools::Rectangle               aOuterRect;
@@ -48,8 +52,8 @@ private:
     SfxChildWindow*         pMgr;
     std::unique_ptr< SfxDockingWindow_Impl >  pImpl;
 
-    SfxDockingWindow(SfxDockingWindow &) = delete;
-    void operator =(SfxDockingWindow &) = delete;
+    SfxDockingWindow(SfxDockingWindow const &) = delete;
+    SfxDockingWindow& operator =(SfxDockingWindow const &) = delete;
 
 protected:
     SfxChildAlignment   CalcAlignment(const Point& rPos, tools::Rectangle& rRect );
@@ -91,7 +95,7 @@ public:
     const tools::Rectangle&    GetInnerRect() const                    { return aInnerRect; }
     const tools::Rectangle&    GetOuterRect() const                    { return aOuterRect; }
     SfxBindings&        GetBindings() const                     { return *pBindings; }
-    sal_uInt16              GetType() const                         { return pMgr->GetType(); }
+    sal_uInt16          GetType() const                         { return pMgr->GetType(); }
     SfxChildAlignment   GetAlignment() const                    { return pMgr->GetAlignment(); }
     void                SetAlignment(SfxChildAlignment eAlign)  { pMgr->SetAlignment(eAlign); }
     const Size&         GetFloatingSize() const                 { return aFloatSize; }
@@ -111,7 +115,7 @@ public:
     SAL_DLLPRIVATE void ReleaseChildWindow_Impl();
 };
 
-class SfxDockingWrapper : public SfxChildWindow
+class SfxDockingWrapper final : public SfxChildWindow
 {
     public:
         SfxDockingWrapper( vcl::Window* pParent ,

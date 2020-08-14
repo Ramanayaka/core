@@ -31,9 +31,12 @@
 #include <ne_xml.h>
 #include "LockSequence.hxx"
 #include <memory>
+#include <sal/log.hxx>
 
 using namespace webdav_ucp;
 using namespace com::sun::star;
+
+namespace {
 
 struct LockSequenceParseContext
 {
@@ -45,9 +48,11 @@ struct LockSequenceParseContext
     bool hasTimeout;
 
     LockSequenceParseContext()
-    : pLock( nullptr ), hasLockScope( false ), hasLockType( false ),
+    : hasLockScope( false ), hasLockType( false ),
       hasDepth( false ), hasHREF( false ), hasTimeout( false ) {}
 };
+
+}
 
 #define STATE_TOP (1)
 
@@ -64,7 +69,9 @@ struct LockSequenceParseContext
 #define STATE_HREF          (STATE_TOP + 10)
 
 
-extern "C" int LockSequence_startelement_callback(
+extern "C" {
+
+static int LockSequence_startelement_callback(
     void *,
     int parent,
     const char * /*nspace*/,
@@ -121,7 +128,7 @@ extern "C" int LockSequence_startelement_callback(
 }
 
 
-extern "C" int LockSequence_chardata_callback(
+static int LockSequence_chardata_callback(
     void *userdata,
     int state,
     const char *buf,
@@ -230,7 +237,7 @@ extern "C" int LockSequence_chardata_callback(
 }
 
 
-extern "C" int LockSequence_endelement_callback(
+static int LockSequence_endelement_callback(
     void *userdata,
     int state,
     const char *,
@@ -294,6 +301,7 @@ extern "C" int LockSequence_endelement_callback(
     return 0; // zero to continue, non-zero to abort parsing
 }
 
+}
 
 // static
 bool LockSequence::createFromXML( const OString & rInData,

@@ -33,11 +33,13 @@ class IosSalFrame;
 class IosSalInstance : public SvpSalInstance
 {
 public:
-    IosSalInstance( SalYieldMutex *pMutex );
+    IosSalInstance( std::unique_ptr<SalYieldMutex> pMutex );
     virtual ~IosSalInstance();
     static IosSalInstance *getInstance();
 
-    virtual SalSystem* CreateSalSystem() override;
+    SalSystem* CreateSalSystem() override;
+
+    css::uno::Reference< css::uno::XInterface > CreateClipboard( const css::uno::Sequence< css::uno::Any >& i_rArguments ) override;
 
     void GetWorkArea( tools::Rectangle& rRect );
     SalFrame* CreateFrame( SalFrame* pParent, SalFrameStyleFlags nStyle ) override;

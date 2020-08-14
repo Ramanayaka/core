@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.16.1 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="sfx">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkGrid" id="DocumentInfoPage">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
     <property name="hexpand">True</property>
     <property name="vexpand">True</property>
-    <property name="border_width">6</property>
+    <property name="border_width">12</property>
     <property name="row_spacing">6</property>
     <property name="column_spacing">12</property>
     <child>
@@ -15,7 +15,7 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="halign">end</property>
-        <property name="label" translatable="yes">_Created:</property>
+        <property name="label" translatable="yes" context="documentinfopage|label13">_Created:</property>
         <property name="use_underline">True</property>
         <property name="mnemonic_widget">showcreate</property>
       </object>
@@ -29,7 +29,7 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="halign">end</property>
-        <property name="label" translatable="yes">_Modified:</property>
+        <property name="label" translatable="yes" context="documentinfopage|label14">_Modified:</property>
         <property name="use_underline">True</property>
         <property name="mnemonic_widget">showmodify</property>
       </object>
@@ -43,7 +43,7 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="halign">end</property>
-        <property name="label" translatable="yes">_Digitally signed:</property>
+        <property name="label" translatable="yes" context="documentinfopage|label15">_Digitally signed:</property>
         <property name="use_underline">True</property>
         <property name="mnemonic_widget">showsigned</property>
       </object>
@@ -57,7 +57,7 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="halign">end</property>
-        <property name="label" translatable="yes">Last pri_nted:</property>
+        <property name="label" translatable="yes" context="documentinfopage|label16">Last pri_nted:</property>
         <property name="use_underline">True</property>
         <property name="mnemonic_widget">showprint</property>
       </object>
@@ -71,7 +71,7 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="halign">end</property>
-        <property name="label" translatable="yes">Total _editing time:</property>
+        <property name="label" translatable="yes" context="documentinfopage|label17">Total _editing time:</property>
         <property name="use_underline">True</property>
         <property name="mnemonic_widget">showedittime</property>
       </object>
@@ -85,7 +85,7 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="halign">end</property>
-        <property name="label" translatable="yes">Re_vision number:</property>
+        <property name="label" translatable="yes" context="documentinfopage|label18">Re_vision number:</property>
         <property name="use_underline">True</property>
         <property name="mnemonic_widget">showrevision</property>
       </object>
@@ -99,8 +99,8 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="hexpand">True</property>
-        <property name="xalign">0</property>
         <property name="selectable">True</property>
+        <property name="xalign">0</property>
       </object>
       <packing>
         <property name="left_attach">1</property>
@@ -113,8 +113,8 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="hexpand">True</property>
-        <property name="xalign">0</property>
         <property name="selectable">True</property>
+        <property name="xalign">0</property>
       </object>
       <packing>
         <property name="left_attach">1</property>
@@ -127,9 +127,9 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="hexpand">True</property>
-        <property name="xalign">0</property>
-        <property name="label" translatable="yes">Multiply signed document</property>
+        <property name="label" translatable="yes" context="documentinfopage|showsigned">Multiply signed document</property>
         <property name="selectable">True</property>
+        <property name="xalign">0</property>
       </object>
       <packing>
         <property name="left_attach">1</property>
@@ -141,13 +141,12 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="hexpand">True</property>
-        <property name="xalign">0</property>
         <property name="selectable">True</property>
+        <property name="xalign">0</property>
       </object>
       <packing>
         <property name="left_attach">1</property>
         <property name="top_attach">8</property>
-        <property name="width">2</property>
       </packing>
     </child>
     <child>
@@ -155,8 +154,8 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="hexpand">True</property>
-        <property name="xalign">0</property>
         <property name="selectable">True</property>
+        <property name="xalign">0</property>
       </object>
       <packing>
         <property name="left_attach">1</property>
@@ -169,8 +168,8 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="hexpand">True</property>
-        <property name="xalign">0</property>
         <property name="selectable">True</property>
+        <property name="xalign">0</property>
       </object>
       <packing>
         <property name="left_attach">1</property>
@@ -180,8 +179,7 @@
     </child>
     <child>
       <object class="GtkCheckButton" id="userdatacb">
-        <property name="label" translatable="yes">_Apply user data</property>
-        <property name="use_action_appearance">False</property>
+        <property name="label" translatable="yes" context="documentinfopage|userdatacb">_Apply user data</property>
         <property name="can_focus">True</property>
         <property name="receives_default">False</property>
         <property name="no_show_all">True</property>
@@ -196,9 +194,8 @@
     </child>
     <child>
       <object class="GtkCheckButton" id="thumbnailsavecb">
+        <property name="label" translatable="yes" context="documentinfopage|thumbnailsavecb">Save preview image with this document</property>
         <property name="visible">True</property>
-        <property name="label" translatable="yes">Save preview image with this document</property>
-        <property name="use_action_appearance">False</property>
         <property name="can_focus">True</property>
         <property name="receives_default">False</property>
         <property name="no_show_all">True</property>
@@ -209,13 +206,11 @@
       <packing>
         <property name="left_attach">1</property>
         <property name="top_attach">12</property>
-        <property name="width">2</property>
       </packing>
     </child>
     <child>
       <object class="GtkButton" id="reset">
-        <property name="label" translatable="yes">Reset Properties</property>
-        <property name="use_action_appearance">False</property>
+        <property name="label" translatable="yes" context="documentinfopage|reset">Reset Properties</property>
         <property name="can_focus">True</property>
         <property name="receives_default">True</property>
         <property name="no_show_all">True</property>
@@ -224,12 +219,12 @@
       <packing>
         <property name="left_attach">2</property>
         <property name="top_attach">11</property>
+        <property name="height">2</property>
       </packing>
     </child>
     <child>
       <object class="GtkButton" id="signature">
-        <property name="label" translatable="yes">Di_gital Signatures...</property>
-        <property name="use_action_appearance">False</property>
+        <property name="label" translatable="yes" context="documentinfopage|signature">Di_gital Signatures...</property>
         <property name="visible">True</property>
         <property name="can_focus">True</property>
         <property name="has_focus">True</property>
@@ -239,7 +234,8 @@
       </object>
       <packing>
         <property name="left_attach">2</property>
-        <property name="top_attach">7</property>
+        <property name="top_attach">6</property>
+        <property name="height">3</property>
       </packing>
     </child>
     <child>
@@ -247,7 +243,7 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="halign">end</property>
-        <property name="label" translatable="yes">_Size:</property>
+        <property name="label" translatable="yes" context="documentinfopage|label11">_Size:</property>
         <property name="use_underline">True</property>
         <property name="mnemonic_widget">showsize</property>
       </object>
@@ -260,9 +256,9 @@
       <object class="GtkLabel" id="showsize">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="xalign">0</property>
-        <property name="label" translatable="yes">unknown</property>
+        <property name="label" translatable="yes" context="documentinfopage|showsize">unknown</property>
         <property name="selectable">True</property>
+        <property name="xalign">0</property>
       </object>
       <packing>
         <property name="left_attach">1</property>
@@ -275,7 +271,7 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="halign">end</property>
-        <property name="label" translatable="yes">_Location:</property>
+        <property name="label" translatable="yes" context="documentinfopage|label8">_Location:</property>
         <property name="use_underline">True</property>
         <property name="mnemonic_widget">showlocation</property>
       </object>
@@ -288,10 +284,11 @@
       <object class="GtkLabel" id="showlocation">
         <property name="visible">True</property>
         <property name="can_focus">True</property>
-        <property name="selectable">True</property>
         <property name="hexpand">True</property>
-        <property name="xalign">0</property>
+        <property name="selectable">True</property>
+        <property name="ellipsize">middle</property>
         <property name="max_width_chars">50</property>
+        <property name="xalign">0</property>
       </object>
       <packing>
         <property name="left_attach">1</property>
@@ -305,7 +302,7 @@
         <property name="can_focus">False</property>
         <property name="halign">end</property>
         <property name="xpad">1</property>
-        <property name="label" translatable="yes">_Type:</property>
+        <property name="label" translatable="yes" context="documentinfopage|label7">_Type:</property>
         <property name="use_underline">True</property>
         <property name="mnemonic_widget">showtype</property>
       </object>
@@ -318,28 +315,27 @@
       <object class="GtkLabel" id="showtype">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="xalign">0</property>
         <property name="selectable">True</property>
+        <property name="xalign">0</property>
       </object>
       <packing>
         <property name="left_attach">1</property>
         <property name="top_attach">1</property>
-        <property name="width">2</property>
       </packing>
     </child>
     <child>
       <object class="GtkButton" id="changepass">
-        <property name="label" translatable="yes">Change _Password</property>
-        <property name="use_action_appearance">False</property>
+        <property name="label" translatable="yes" context="documentinfopage|changepass">Change _Password</property>
         <property name="visible">True</property>
         <property name="can_focus">True</property>
         <property name="receives_default">True</property>
-        <property name="valign">center</property>
+        <property name="valign">start</property>
         <property name="use_underline">True</property>
       </object>
       <packing>
         <property name="left_attach">2</property>
         <property name="top_attach">0</property>
+        <property name="height">2</property>
       </packing>
     </child>
     <child>
@@ -347,7 +343,7 @@
         <property name="visible">True</property>
         <property name="can_focus">False</property>
         <property name="halign">end</property>
-        <property name="label" translatable="yes">Template:</property>
+        <property name="label" translatable="yes" context="documentinfopage|templateft">Template:</property>
         <property name="use_underline">True</property>
         <property name="mnemonic_widget">showtemplate</property>
       </object>
@@ -360,22 +356,19 @@
       <object class="GtkLabel" id="showtemplate">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="xalign">0</property>
         <property name="selectable">True</property>
         <property name="max_width_chars">56</property>
+        <property name="xalign">0</property>
       </object>
       <packing>
         <property name="left_attach">1</property>
         <property name="top_attach">6</property>
-        <property name="width">2</property>
       </packing>
     </child>
     <child>
       <object class="GtkGrid" id="grid1">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="valign">center</property>
-        <property name="hexpand">True</property>
         <property name="column_spacing">12</property>
         <child>
           <object class="GtkImage" id="icon">
@@ -393,7 +386,6 @@
           <object class="GtkLabel" id="nameed">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="halign">start</property>
             <property name="selectable">True</property>
             <property name="single_line_mode">True</property>
             <property name="max_width_chars">56</property>
@@ -405,10 +397,12 @@
         </child>
       </object>
       <packing>
-        <property name="left_attach">0</property>
+        <property name="left_attach">1</property>
         <property name="top_attach">0</property>
-        <property name="width">2</property>
       </packing>
+    </child>
+    <child>
+      <placeholder/>
     </child>
     <child>
       <placeholder/>

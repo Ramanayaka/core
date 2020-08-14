@@ -20,26 +20,21 @@
 #ifndef INCLUDED_CONNECTIVITY_DBEXCEPTION_HXX
 #define INCLUDED_CONNECTIVITY_DBEXCEPTION_HXX
 
-#include <com/sun/star/sdbc/SQLException.hpp>
 #include <connectivity/standardsqlstate.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
+#include <com/sun/star/uno/Reference.hxx>
 
-namespace com
+namespace com::sun::star
 {
-    namespace sun
+    namespace sdb
     {
-        namespace star
-        {
-            namespace sdb
-            {
-                class SQLContext;
-                struct SQLErrorEvent;
-            }
-            namespace sdbc
-            {
-                class SQLWarning;
-            }
-        }
+        class SQLContext;
+        struct SQLErrorEvent;
+    }
+    namespace sdbc
+    {
+        class SQLWarning;
+        class SQLException;
     }
 }
 
@@ -58,7 +53,7 @@ enum OOoBaseErrorCode
 //= SQLExceptionInfo - encapsulating the type info of an SQLException-derived class
 
 
-class OOO_DLLPUBLIC_DBTOOLS SQLExceptionInfo
+class OOO_DLLPUBLIC_DBTOOLS SQLExceptionInfo final
 {
 public:
     enum class TYPE { SQLException, SQLWarning, SQLContext, Undefined };
@@ -81,8 +76,6 @@ public:
     an SQLException containing exactly the given error message.
     */
     SQLExceptionInfo( const OUString& _rSimpleErrorMessage );
-
-    SQLExceptionInfo(const SQLExceptionInfo& _rCopySource);
 
             // use for events got via XSQLErrorListener::errorOccured
     SQLExceptionInfo(const css::uno::Any& _rError);
@@ -138,7 +131,7 @@ public:
         m_eType = TYPE::Undefined;
     }
 
-protected:
+private:
     void implDetermineType();
 };
 
@@ -146,9 +139,8 @@ protected:
 //= SQLExceptionIteratorHelper - iterating through an SQLException chain
 
 
-class OOO_DLLPUBLIC_DBTOOLS SQLExceptionIteratorHelper
+class OOO_DLLPUBLIC_DBTOOLS SQLExceptionIteratorHelper final
 {
-protected:
     const css::sdbc::SQLException* m_pCurrent;
     SQLExceptionInfo::TYPE                      m_eCurrentType;
 
@@ -234,7 +226,7 @@ OOO_DLLPUBLIC_DBTOOLS void throwFunctionSequenceException(
     );
 
 
-/** throw a invalid index sqlexception
+/** throw an invalid index sqlexception
 
     @throws css::sdbc::SQLException
 */
@@ -275,7 +267,8 @@ OOO_DLLPUBLIC_DBTOOLS void throwGenericSQLException(
 */
 OOO_DLLPUBLIC_DBTOOLS void throwFeatureNotImplementedSQLException(
         const OUString& _rFeatureName,
-        const css::uno::Reference< css::uno::XInterface >& _rxContext
+        const css::uno::Reference< css::uno::XInterface >& _rxContext,
+        const css::uno::Any& _rNextException = css::uno::Any()
     );
 
 /** throw a RuntimeException (Optional feature not implemented)
@@ -310,8 +303,7 @@ OOO_DLLPUBLIC_DBTOOLS void throwSQLException(
         const OUString& _rMessage,
         const OUString& _rSQLState,
         const css::uno::Reference< css::uno::XInterface >& _rxContext,
-        const sal_Int32 _nErrorCode = 0,
-        const css::uno::Any* _pNextException = nullptr
+        const sal_Int32 _nErrorCode
     );
 
 

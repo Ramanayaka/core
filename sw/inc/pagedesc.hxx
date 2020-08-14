@@ -22,8 +22,8 @@
 #include <tools/fract.hxx>
 #include <tools/color.hxx>
 #include "swdllapi.h"
-#include <swtypes.hxx>
-#include <frmfmt.hxx>
+#include "swtypes.hxx"
+#include "frmfmt.hxx"
 #include <editeng/numitem.hxx>
 #include <editeng/borderline.hxx>
 #include <com/sun/star/drawing/TextVerticalAdjust.hpp>
@@ -42,6 +42,7 @@ class SfxPoolItem;
 class SwTextFormatColl;
 class SwNode;
 class SwPageDescs;
+typedef struct _xmlTextWriter* xmlTextWriterPtr;
 
 /// Footnote information.
 class SW_DLLPUBLIC SwPageFootnoteInfo
@@ -134,7 +135,9 @@ namespace o3tl {
     template<> struct typed_flags<UseOnPage> : is_typed_flags<UseOnPage, 0xffff> {};
 }
 
-class SW_DLLPUBLIC SwPageDesc : public SwModify
+class SW_DLLPUBLIC SwPageDesc
+    : public SwModify
+    , public sw::BroadcasterMixin
 {
     friend class SwDoc;
     friend class SwPageDescs;
@@ -146,7 +149,8 @@ class SW_DLLPUBLIC SwPageDesc : public SwModify
     // FIXME epicycles growing here - page margins need to be stored differently
     SwFrameFormat    m_FirstMaster;
     SwFrameFormat    m_FirstLeft;
-    SwDepend    m_Depend; ///< Because of grid alignment (Registerhaltigkeit).
+    sw::WriterMultiListener m_aDepends; ///< Because of grid alignment (Registerhaltigkeit).
+    mutable const SwTextFormatColl* m_pTextFormatColl;
     SwPageDesc *m_pFollow;
     sal_uInt16  m_nRegHeight; ///< Sentence spacing and fontascent of style.
     sal_uInt16  m_nRegAscent; ///< For grid alignment (Registerhaltigkeit).
@@ -156,7 +160,7 @@ class SW_DLLPUBLIC SwPageDesc : public SwModify
     bool        m_IsHidden;
 
     /// Footnote information.
-    SwPageFootnoteInfo m_IsFootnoteInfo;
+    SwPageFootnoteInfo m_FootnoteInfo;
 
     /// Backref to the assigned SwPageDescs list to handle renames.
     SwPageDescs  *m_pdList;
@@ -177,7 +181,7 @@ class SW_DLLPUBLIC SwPageDesc : public SwModify
     };
 
 protected:
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNewValue ) override;
+    virtual void SwClientNotify(const SwModify&, const SfxHint&) override;
 
 public:
     const OUString& GetName() const { return m_StyleName; }
@@ -189,9 +193,9 @@ public:
     const SvxNumberType &GetNumType() const { return m_NumType; }
     void  SetNumType(const SvxNumberType& rNew) { m_NumType = rNew; }
 
-    const SwPageFootnoteInfo &GetFootnoteInfo() const { return m_IsFootnoteInfo; }
-          SwPageFootnoteInfo &GetFootnoteInfo()       { return m_IsFootnoteInfo; }
-    void  SetFootnoteInfo(const SwPageFootnoteInfo &rNew) { m_IsFootnoteInfo = rNew; }
+    const SwPageFootnoteInfo &GetFootnoteInfo() const { return m_FootnoteInfo; }
+          SwPageFootnoteInfo &GetFootnoteInfo()       { return m_FootnoteInfo; }
+    void  SetFootnoteInfo(const SwPageFootnoteInfo &rNew) { m_FootnoteInfo = rNew; }
 
     inline bool IsHeaderShared() const;
     inline bool IsFooterShared() const;
@@ -267,11 +271,11 @@ public:
     static SwPageDesc* GetByName(SwDoc& rDoc, const OUString& rName);
 
     SwPageDesc& operator=( const SwPageDesc& );
-    bool        operator<(const SwPageDesc& pd) const
-        { return m_StyleName < pd.m_StyleName; }
 
     SwPageDesc( const SwPageDesc& );
     virtual ~SwPageDesc() override;
+
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 namespace std {
@@ -366,13 +370,15 @@ public:
     SwPageDescExt & operator = (const SwPageDescExt & rSrc);
     SwPageDescExt & operator = (const SwPageDesc & rSrc);
 
-    OUString GetName() const;
+    OUString const & GetName() const;
 
     operator SwPageDesc() const; // #i7983#
 };
 
 namespace sw {
     class PageFootnoteHint final : public SfxHint {};
+
+    SW_DLLPUBLIC SwTwips FootnoteSeparatorHeight(SwPageFootnoteInfo const&);
 }
 
 typedef boost::multi_index_container<
@@ -430,6 +436,8 @@ public:
 
     bool contains( const value_type& x ) const
         { return x->m_pdList == this; }
+
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 #endif // INCLUDED_SW_INC_PAGEDESC_HXX

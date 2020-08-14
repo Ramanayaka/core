@@ -17,23 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <rtl/instance.hxx>
-#include <osl/getglobalmutex.hxx>
 #include <osl/diagnose.h>
-#include <com/sun/star/rendering/InterpolationMode.hpp>
 #include <vcl/window.hxx>
-#include <vcl/graph.hxx>
 #include <vcl/canvastools.hxx>
-#include <basegfx/polygon/b2dpolypolygon.hxx>
 
 #include <cppcanvas/vclfactory.hxx>
 
-#include <implbitmapcanvas.hxx>
-#include <implspritecanvas.hxx>
-#include <implpolypolygon.hxx>
-#include <implbitmap.hxx>
+#include "implbitmapcanvas.hxx"
+#include "implspritecanvas.hxx"
+#include "implbitmap.hxx"
 #include <implrenderer.hxx>
-#include <implsprite.hxx>
 
 using namespace ::com::sun::star;
 
@@ -41,58 +34,49 @@ namespace cppcanvas
 {
     CanvasSharedPtr VCLFactory::createCanvas( const uno::Reference< rendering::XCanvas >& xCanvas )
     {
-        return CanvasSharedPtr(
-            new internal::ImplCanvas( xCanvas ) );
+        return std::make_shared<internal::ImplCanvas>( xCanvas );
     }
 
     BitmapCanvasSharedPtr VCLFactory::createBitmapCanvas( const uno::Reference< rendering::XBitmapCanvas >& xCanvas )
     {
-        return BitmapCanvasSharedPtr(
-            new internal::ImplBitmapCanvas( xCanvas ) );
+        return std::make_shared<internal::ImplBitmapCanvas>( xCanvas );
     }
 
     SpriteCanvasSharedPtr VCLFactory::createSpriteCanvas( const vcl::Window& rVCLWindow )
     {
-        return SpriteCanvasSharedPtr(
-            new internal::ImplSpriteCanvas(
-                uno::Reference< rendering::XSpriteCanvas >(
-                    rVCLWindow.GetSpriteCanvas(),
-                    uno::UNO_QUERY) ) );
+        return std::make_shared<internal::ImplSpriteCanvas>(
+                    rVCLWindow.GetSpriteCanvas() );
     }
 
     SpriteCanvasSharedPtr VCLFactory::createSpriteCanvas( const uno::Reference< rendering::XSpriteCanvas >& xCanvas )
     {
-        return SpriteCanvasSharedPtr(
-            new internal::ImplSpriteCanvas( xCanvas ) );
+        return std::make_shared<internal::ImplSpriteCanvas>( xCanvas );
     }
 
     BitmapSharedPtr VCLFactory::createBitmap( const CanvasSharedPtr&    rCanvas,
                                               const ::BitmapEx&         rBmpEx )
     {
-        OSL_ENSURE( rCanvas.get() != nullptr &&
-                    rCanvas->getUNOCanvas().is(),
+        OSL_ENSURE( rCanvas && rCanvas->getUNOCanvas().is(),
                     "VCLFactory::createBitmap(): Invalid canvas" );
 
-        if( rCanvas.get() == nullptr )
+        if( !rCanvas )
             return BitmapSharedPtr();
 
         uno::Reference< rendering::XCanvas > xCanvas( rCanvas->getUNOCanvas() );
         if( !xCanvas.is() )
             return BitmapSharedPtr();
 
-        return BitmapSharedPtr( new internal::ImplBitmap( rCanvas,
-                                                          vcl::unotools::xBitmapFromBitmapEx(
-                                                              xCanvas->getDevice(),
-                                                              rBmpEx) ) );
+        return std::make_shared<internal::ImplBitmap>( rCanvas,
+                                                          vcl::unotools::xBitmapFromBitmapEx(rBmpEx) );
     }
 
     RendererSharedPtr VCLFactory::createRenderer( const CanvasSharedPtr&        rCanvas,
                                                   const ::GDIMetaFile&          rMtf,
                                                   const Renderer::Parameters&   rParms )
     {
-        return RendererSharedPtr( new internal::ImplRenderer( rCanvas,
+        return std::make_shared<internal::ImplRenderer>( rCanvas,
                                                               rMtf,
-                                                              rParms ) );
+                                                              rParms );
     }
 }
 

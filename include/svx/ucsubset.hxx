@@ -22,14 +22,12 @@
 
 #include <svx/svxdllapi.h>
 
-#include <svx/ucsubset.hrc>
 #include <vcl/metric.hxx>
 
-#include <list>
+#include <vector>
 
 class FontCharMap;
 
-// classes Subset & SubsetMap --------------------------------------------
 // TODO: should be moved into Font Attributes territory,
 // we let them mature here though because this is currently the only use
 
@@ -53,7 +51,7 @@ inline bool operator<(const Subset &rLHS, const Subset &rRHS)
     return rLHS.GetRangeMin() < rRHS.GetRangeMin();
 }
 
-typedef ::std::list<Subset> SubsetList;
+typedef ::std::vector<Subset> SubsetVec;
 
 class SVX_DLLPUBLIC SubsetMap
 {
@@ -61,11 +59,10 @@ public:
     SubsetMap( const FontCharMapRef& );
 
     const Subset*   GetSubsetByUnicode( sal_UCS4 ) const;
-    const Subset*   GetNextSubset( bool bFirst ) const;
+    const SubsetVec&   GetSubsetMap() const;
 
 private:
-    SubsetList      maSubsets;
-    mutable SubsetList::const_iterator maSubsetIterator;
+    SubsetVec      maSubsets;
 
     SVX_DLLPRIVATE void            InitList();
     SVX_DLLPRIVATE void            ApplyCharMap( const FontCharMapRef& );

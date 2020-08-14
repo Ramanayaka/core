@@ -91,7 +91,7 @@ public:
 
     ///=====  XTypeProvider  ===================================================
 
-    /** Returns a implementation id.
+    /** Returns an implementation id.
     */
     virtual css::uno::Sequence<sal_Int8> SAL_CALL
         getImplementationId() override;
@@ -100,11 +100,11 @@ public:
 
 protected:
     /// Return this object's description.
-    virtual OUString SAL_CALL
+    virtual OUString
         createAccessibleDescription() override;
 
     /// Return the object's current name.
-    virtual OUString SAL_CALL
+    virtual OUString
         createAccessibleName() override;
 
 public: // needed in ScShapeChildren
@@ -117,8 +117,8 @@ protected:
 
 private:
     ScPreviewShell* mpViewShell;
-    ScNotesChildren* mpNotesChildren;
-    ScShapeChildren* mpShapeChildren;
+    std::unique_ptr<ScNotesChildren> mpNotesChildren;
+    std::unique_ptr<ScShapeChildren> mpShapeChildren;
     rtl::Reference<ScAccessiblePreviewTable> mpTable;
     rtl::Reference<ScAccessiblePageHeader> mpHeader;
     rtl::Reference<ScAccessiblePageHeader> mpFooter;

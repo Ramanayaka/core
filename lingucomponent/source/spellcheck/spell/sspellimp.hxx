@@ -34,6 +34,7 @@
 #include <linguistic/lngprophelp.hxx>
 
 #include <lingutil.hxx>
+#include <memory>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
@@ -53,15 +54,22 @@ class SpellChecker :
         XServiceDisplayName
     >
 {
+    struct DictItem
+    {
+        OUString                  m_aDName;
+        Locale                    m_aDLoc;
+        std::unique_ptr<Hunspell> m_pDict;
+        rtl_TextEncoding          m_aDEnc;
+
+        DictItem(OUString i_DName, Locale i_DLoc, rtl_TextEncoding i_DEnc);
+    };
+
+    std::vector<DictItem> m_DictItems;
+
     Sequence< Locale >                 m_aSuppLocales;
-    Hunspell **                        m_aDicts;
-    rtl_TextEncoding *                 m_aDEncs;
-    Locale *                           m_aDLocs;
-    OUString *                         m_aDNames;
-    sal_Int32                          m_nNumDict;
 
     ::comphelper::OInterfaceContainerHelper2       m_aEvtListeners;
-    linguistic::PropertyHelper_Spelling*    m_pPropHelper;
+    std::unique_ptr<linguistic::PropertyHelper_Spelling> m_pPropHelper;
     bool                                    m_bDisposing;
 
     SpellChecker(const SpellChecker &) = delete;
@@ -85,8 +93,8 @@ public:
     virtual sal_Bool SAL_CALL hasLocale( const Locale& rLocale ) override;
 
     // XSpellChecker
-    virtual sal_Bool SAL_CALL isValid( const OUString& rWord, const Locale& rLocale, const PropertyValues& rProperties ) override;
-    virtual Reference< XSpellAlternatives > SAL_CALL spell( const OUString& rWord, const Locale& rLocale, const PropertyValues& rProperties ) override;
+    virtual sal_Bool SAL_CALL isValid( const OUString& rWord, const Locale& rLocale, const css::uno::Sequence< css::beans::PropertyValue >& rProperties ) override;
+    virtual Reference< XSpellAlternatives > SAL_CALL spell( const OUString& rWord, const Locale& rLocale, const css::uno::Sequence< css::beans::PropertyValue >& rProperties ) override;
 
     // XLinguServiceEventBroadcaster
     virtual sal_Bool SAL_CALL addLinguServiceEventListener( const Reference< XLinguServiceEventListener >& rxLstnr ) override;
@@ -107,18 +115,7 @@ public:
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& rServiceName ) override;
     virtual Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    static inline OUString  getImplementationName_Static() throw();
-    static Sequence< OUString > getSupportedServiceNames_Static() throw();
 };
-
-inline OUString SpellChecker::getImplementationName_Static() throw()
-{
-    return OUString( "org.openoffice.lingu.MySpellSpellChecker" );
-}
-
-void * SAL_CALL SpellChecker_getFactory(
-    char const * pImplName, css::lang::XMultiServiceFactory * pServiceManager);
 
 #endif
 

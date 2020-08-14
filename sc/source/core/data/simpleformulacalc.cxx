@@ -8,17 +8,18 @@
  */
 
 #include <memory>
-#include "simpleformulacalc.hxx"
-#include "document.hxx"
-#include "tokenarray.hxx"
-#include "interpre.hxx"
-#include "compiler.hxx"
+#include <simpleformulacalc.hxx>
+#include <document.hxx>
+#include <tokenarray.hxx>
+#include <interpre.hxx>
+#include <compiler.hxx>
+#include <sfx2/linkmgr.hxx>
 
 #define DISPLAY_LEN 15
 
 ScSimpleFormulaCalculator::ScSimpleFormulaCalculator( ScDocument* pDoc, const ScAddress& rAddr,
         const OUString& rFormula, bool bMatrixFormula, formula::FormulaGrammar::Grammar eGram )
-    : mnFormatType(0)
+    : mnFormatType(SvNumFormatType::ALL)
     , mbCalculated(false)
     , maAddr(rAddr)
     , mpDoc(pDoc)
@@ -28,8 +29,8 @@ ScSimpleFormulaCalculator::ScSimpleFormulaCalculator( ScDocument* pDoc, const Sc
     , mbMatrixFormula(bMatrixFormula)
 {
     // compile already here
-    ScCompiler aComp(mpDoc, maAddr, eGram);
-    mpCode.reset(aComp.CompileString(rFormula));
+    ScCompiler aComp(mpDoc, maAddr, eGram, true, bMatrixFormula);
+    mpCode = aComp.CompileString(rFormula);
     if(mpCode->GetCodeError() == FormulaError::NONE && mpCode->GetLen())
         aComp.CompileTokenArray();
 }
@@ -44,13 +45,13 @@ void ScSimpleFormulaCalculator::Calculate()
         return;
 
     mbCalculated = true;
-    ScInterpreter aInt(nullptr, mpDoc, maAddr, *mpCode.get());
+
+    ScInterpreter aInt(mpDoc->GetFormulaCell( maAddr ), mpDoc, mpDoc->GetNonThreadedContext(), maAddr, *mpCode);
+    if (mbMatrixFormula)
+        aInt.AssertFormulaMatrix();
 
     std::unique_ptr<sfx2::LinkManager> pNewLinkMgr( new sfx2::LinkManager(mpDoc->GetDocumentShell()) );
     aInt.SetLinkManager( pNewLinkMgr.get() );
-
-    if (mbMatrixFormula)
-        aInt.AssertFormulaMatrix();
 
     formula::StackVar aIntType = aInt.Interpret();
     if ( aIntType == formula::svMatrixCell )
@@ -93,6 +94,8 @@ bool ScSimpleFormulaCalculator::IsValue()
 
 bool ScSimpleFormulaCalculator::IsMatrix()
 {
+    Calculate();
+
     return mbMatrixResult;
 }
 
@@ -131,7 +134,7 @@ svl::SharedString ScSimpleFormulaCalculator::GetString()
     return svl::SharedString::getEmptyString();
 }
 
-bool ScSimpleFormulaCalculator::HasColRowName()
+bool ScSimpleFormulaCalculator::HasColRowName() const
 {
     return formula::FormulaTokenArrayPlainIterator(*mpCode).GetNextColRowName() != nullptr;
 }

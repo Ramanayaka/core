@@ -17,15 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/AUser.hxx"
-#include "ado/ACatalog.hxx"
-#include "ado/AGroups.hxx"
+#include <ado/AUser.hxx>
+#include <ado/ACatalog.hxx>
+#include <ado/AGroups.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include <comphelper/sequence.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
-#include "ado/AConnection.hxx"
-#include "ado/Awrapado.hxx"
+#include <ado/AConnection.hxx>
+#include <ado/Awrapado.hxx>
 
 using namespace connectivity::ado;
 using namespace com::sun::star::uno;
@@ -57,16 +57,16 @@ OAdoUser::OAdoUser(OCatalog* _pParent,bool _bCase,   const OUString& Name)
 
 void OAdoUser::refreshGroups()
 {
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
     WpADOGroups aGroups(m_aUser.get_Groups());
     aGroups.fillElementNames(aVector);
     if(m_pGroups)
         m_pGroups->reFill(aVector);
     else
-        m_pGroups = new OGroups(m_pCatalog,m_aMutex,aVector,aGroups,isCaseSensitive());
+        m_pGroups.reset(new OGroups(m_pCatalog, m_aMutex, aVector, aGroups, isCaseSensitive()));
 }
 
-Sequence< sal_Int8 > OAdoUser::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > OAdoUser::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
@@ -77,7 +77,7 @@ Sequence< sal_Int8 > OAdoUser::getUnoTunnelImplementationId()
 
 sal_Int64 OAdoUser::getSomething( const Sequence< sal_Int8 > & rId )
 {
-    return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    return isUnoTunnelId<OAdoUser>(rId)
                 ? reinterpret_cast< sal_Int64 >( this )
                 : OUser_TYPEDEF::getSomething(rId);
 }

@@ -23,16 +23,13 @@
 #include <sdr/properties/textproperties.hxx>
 
 
-namespace sdr
-{
-    namespace properties
+namespace sdr::properties
     {
-        class CustomShapeProperties : public TextProperties
+        class CustomShapeProperties final : public TextProperties
         {
         private:
             void UpdateTextFrameStatus(bool bInvalidateRenderGeometry);
 
-        protected:
             // create a new itemset
             virtual std::unique_ptr<SfxItemSet> CreateObjectSpecificItemSet(SfxItemPool& rPool) override;
 
@@ -53,7 +50,7 @@ namespace sdr
             virtual void ClearObjectItem(const sal_uInt16 nWhich = 0) override;
 
             // clear single item direct, do not do any notifies or things like that.
-            // Also supports complete deleteion of items when default parameter 0 is used.
+            // Also supports complete deletion of items when default parameter 0 is used.
             virtual void ClearObjectItemDirect(const sal_uInt16 nWhich) override;
 
         public:
@@ -75,13 +72,12 @@ namespace sdr
             virtual ~CustomShapeProperties() override;
 
             // Clone() operator, normally just calls the local copy constructor
-            virtual BaseProperties& Clone(SdrObject& rObj) const override;
+            virtual std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const override;
 
             // This is the notifier from SfxListener
             virtual void Notify(SfxBroadcaster& rBC, const SfxHint& rHint) override;
         };
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace sdr::properties
 
 
 #endif // INCLUDED_SVX_INC_SDR_PROPERTIES_CUSTOMSHAPEPROPERTIES_HXX

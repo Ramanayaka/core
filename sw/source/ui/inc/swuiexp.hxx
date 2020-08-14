@@ -19,9 +19,11 @@
 #ifndef INCLUDED_SW_SOURCE_UI_INC_SWUIEXP_HXX
 #define INCLUDED_SW_SOURCE_UI_INC_SWUIEXP_HXX
 
+#include <swabstdlg.hxx>
+
 namespace swui
 {
-    SwAbstractDialogFactory * GetFactory();
+    SwAbstractDialogFactory& GetFactory();
 }
 
 #endif

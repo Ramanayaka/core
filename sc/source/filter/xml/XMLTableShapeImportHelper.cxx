@@ -17,22 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <memory>
 #include "XMLTableShapeImportHelper.hxx"
 #include "xmlimprt.hxx"
-#include "XMLConverter.hxx"
-#include "drwlayer.hxx"
+#include <drwlayer.hxx>
 #include "xmlannoi.hxx"
-#include "rangeutl.hxx"
-#include "userdat.hxx"
-#include "docuno.hxx"
-#include "sheetdata.hxx"
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <rangeutl.hxx>
+#include <userdat.hxx>
+#include <docuno.hxx>
+#include <sheetdata.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <svx/unoshape.hxx>
-#include <svx/svdobj.hxx>
 #include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
 
@@ -52,7 +49,7 @@ XMLTableShapeImportHelper::~XMLTableShapeImportHelper()
 {
 }
 
-void XMLTableShapeImportHelper::SetLayer(uno::Reference<drawing::XShape>& rShape, SdrLayerID nLayerID, const OUString& sType)
+void XMLTableShapeImportHelper::SetLayer(const uno::Reference<drawing::XShape>& rShape, SdrLayerID nLayerID, const OUString& sType)
 {
     if ( sType == "com.sun.star.drawing.ControlShape" )
         nLayerID = SC_LAYER_CONTROLS;
@@ -92,11 +89,12 @@ void XMLTableShapeImportHelper::finishShape(
             aAnchor.maStart = aStartCell;
             awt::Point aStartPoint(rShape->getPosition());
             aAnchor.maStartOffset = Point(aStartPoint.X, aStartPoint.Y);
+            aAnchor.mbResizeWithCell = false;
 
             sal_Int32 nEndX(-1);
             sal_Int32 nEndY(-1);
             sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
-            std::unique_ptr<OUString> xRangeList;
+            std::optional<OUString> xRangeList;
             SdrLayerID nLayerID = SDRLAYER_NOTFOUND;
             for( sal_Int16 i=0; i < nAttrCount; ++i )
             {
@@ -113,20 +111,22 @@ void XMLTableShapeImportHelper::finishShape(
                     {
                         sal_Int32 nOffset(0);
                         ScRangeStringConverter::GetAddressFromString(aAnchor.maEnd, rValue, static_cast<ScXMLImport&>(mrImporter).GetDocument(), ::formula::FormulaGrammar::CONV_OOO, nOffset);
+                        // When the cell end address is set, we let the shape resize with the cell
+                        aAnchor.mbResizeWithCell = true;
                     }
                     else if (IsXMLToken(aLocalName, XML_END_X))
                     {
                         static_cast<ScXMLImport&>(mrImporter).
                             GetMM100UnitConverter().convertMeasureToCore(
                                     nEndX, rValue);
-                        aAnchor.maEndOffset.X() = nEndX;
+                        aAnchor.maEndOffset.setX( nEndX );
                     }
                     else if (IsXMLToken(aLocalName, XML_END_Y))
                     {
                         static_cast<ScXMLImport&>(mrImporter).
                             GetMM100UnitConverter().convertMeasureToCore(
                                     nEndY, rValue);
-                        aAnchor.maEndOffset.Y() = nEndY;
+                        aAnchor.maEndOffset.setY( nEndY );
                     }
                     else if (IsXMLToken(aLocalName, XML_TABLE_BACKGROUND))
                         if (IsXMLToken(rValue, XML_TRUE))
@@ -135,12 +135,12 @@ void XMLTableShapeImportHelper::finishShape(
                 else if(nPrefix == XML_NAMESPACE_DRAW)
                 {
                     if (IsXMLToken(aLocalName, XML_NOTIFY_ON_UPDATE_OF_RANGES))
-                        xRangeList.reset(new OUString(rValue));
+                        xRangeList = rValue;
                 }
             }
             SetLayer(rShape, nLayerID, rShape->getShapeType());
 
-            if (SvxShape* pShapeImp = SvxShape::getImplementation(rShape))
+            if (SvxShape* pShapeImp = comphelper::getUnoTunnelImplementation<SvxShape>(rShape))
             {
                 if (SdrObject *pSdrObj = pShapeImp->GetSdrObject())
                 {
@@ -160,8 +160,6 @@ void XMLTableShapeImportHelper::finishShape(
                 if (ScMyTables::IsOLE(rShape))
                     rTables.AddOLE(rShape, *xRangeList);
             }
-
-            xRangeList.reset();
         }
         else // shape is annotation
         {
@@ -198,13 +196,13 @@ void XMLTableShapeImportHelper::finishShape(
             // the group
             Point aStartPoint( rShape->getPosition().X,rShape->getPosition().Y );
             uno::Reference< drawing::XShape > xChild( rShapes, uno::UNO_QUERY );
-            if (SvxShape* pGroupShapeImp = SvxShape::getImplementation( lcl_getTopLevelParent( xChild ) ))
+            if (SvxShape* pGroupShapeImp = xChild.is() ? comphelper::getUnoTunnelImplementation<SvxShape>(lcl_getTopLevelParent(xChild)) : nullptr)
             {
                 if (SdrObject *pSdrObj = pGroupShapeImp->GetSdrObject())
                 {
                     if ( ScDrawObjData* pAnchor = ScDrawLayer::GetObjData( pSdrObj ) )
                     {
-                        if ( pAnchor->maStartOffset.getX() == 0 && pAnchor->maStartOffset.getY() == 0 )
+                       if ( pAnchor->maStartOffset.getX() == 0 && pAnchor->maStartOffset.getY() == 0 )
                             pAnchor->maStartOffset = aStartPoint;
                        if ( aStartPoint.getX() < pAnchor->maStartOffset.getX() )
                              pAnchor->maStartOffset.setX( aStartPoint.getX() );
@@ -236,7 +234,7 @@ void XMLTableShapeImportHelper::finishShape(
     if (!bNote)
     {
         // any shape other than a note prevents copying the sheet
-        ScSheetSaveData* pSheetData = ScModelObj::getImplementation(mrImporter.GetModel())->GetSheetSaveData();
+        ScSheetSaveData* pSheetData = comphelper::getUnoTunnelImplementation<ScModelObj>(mrImporter.GetModel())->GetSheetSaveData();
         pSheetData->BlockSheet( rTables.GetCurrentSheet() );
     }
 

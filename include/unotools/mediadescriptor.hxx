@@ -29,9 +29,9 @@
 #include <rtl/ustring.hxx>
 #include <unotools/unotoolsdllapi.h>
 
-namespace com { namespace sun { namespace star { namespace io {
+namespace com::sun::star::io {
     class XInputStream;
-} } } }
+}
 namespace comphelper { class IDocPasswordVerifier; }
 
 namespace utl {
@@ -39,10 +39,10 @@ namespace utl {
 /** @short  can be used to work with a css::document::MediaDescriptor
             struct.
 
-    @descr  It wraps a unordered_map around the Sequence< css::beans::PropertyValue >, which
+    @descr  It wraps an unordered_map around the Sequence< css::beans::PropertyValue >, which
             represent the MediaDescriptor item.
             Further this helper defines often used functions (as e.g. open of the required streams,
-            consistent checks etcpp.) and it defines all useable property names.
+            consistent checks etcpp.) and it defines all usable property names.
 
     @attention  This class isn't threadsafe and must be guarded from outside!
  */
@@ -84,6 +84,7 @@ class UNOTOOLS_DLLPUBLIC MediaDescriptor : public comphelper::SequenceAsHashMap
         static const OUString& PROP_PREVIEW();
         static const OUString& PROP_READONLY();
         static const OUString& PROP_REFERRER();
+        static const OUString& PROP_REPLACEABLE();
         static const OUString& PROP_SALVAGEDFILE();
         static const OUString& PROP_STATUSINDICATOR();
         static const OUString& PROP_STREAM();
@@ -99,6 +100,7 @@ class UNOTOOLS_DLLPUBLIC MediaDescriptor : public comphelper::SequenceAsHashMap
         static const OUString& PROP_MODEL();
         static const OUString& PROP_VIEWONLY();
         static const OUString& PROP_DOCUMENTBASEURL();
+        static const OUString& PROP_SUGGESTEDSAVEASNAME();
 
     // interface
     public:

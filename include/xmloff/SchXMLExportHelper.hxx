@@ -21,16 +21,9 @@
 
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
-#include <sal/types.h>
+#include <rtl/ustring.hxx>
 #include <salhelper/simplereferenceobject.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <com/sun/star/util/XStringMapping.hpp>
-#include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/awt/Point.hpp>
-#include <xmloff/xmlprmap.hxx>
 
-#include <queue>
-#include <vector>
 #include <memory>
 
 class SvXMLAutoStylePoolP;
@@ -42,7 +35,7 @@ class SchXMLExportHelper_Impl;
     the latter case you have to provide a table address mapper if the
     cell addressing set at the document is not in XML format.
  */
-class XMLOFF_DLLPUBLIC SchXMLExportHelper : public salhelper::SimpleReferenceObject
+class XMLOFF_DLLPUBLIC SchXMLExportHelper final : public salhelper::SimpleReferenceObject
 {
 public:
     SchXMLExportHelper( SvXMLExport& rExport,
@@ -51,14 +44,14 @@ public:
     virtual ~SchXMLExportHelper() override;
 
     /// returns the string corresponding to the current FileFormat CLSID for Chart
-    const OUString& getChartCLSID();
+    const OUString& getChartCLSID() const;
 
     void SetSourceShellID( const OUString& rShellID );
     void SetDestinationShellID( const OUString& rShellID );
 
 private:
-    SchXMLExportHelper(SchXMLExportHelper &) = delete;
-    void operator =(SchXMLExportHelper &) = delete;
+    SchXMLExportHelper(SchXMLExportHelper const &) = delete;
+    SchXMLExportHelper& operator =(SchXMLExportHelper const &) = delete;
 
 private:
     std::unique_ptr<SchXMLExportHelper_Impl> m_pImpl;

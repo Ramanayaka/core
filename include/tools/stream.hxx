@@ -19,14 +19,13 @@
 #ifndef INCLUDED_TOOLS_STREAM_HXX
 #define INCLUDED_TOOLS_STREAM_HXX
 
-#include <limits>
-#include <osl/process.h>
 #include <tools/toolsdllapi.h>
 #include <tools/lineend.hxx>
 #include <tools/ref.hxx>
 #include <vcl/errcode.hxx>
 #include <rtl/string.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <memory>
 
 class StreamData;
 
@@ -49,6 +48,7 @@ enum class StreamMode {
     NOCREATE                 = 0x0004,  ///< 1 == Don't create file
     TRUNC                    = 0x0008,  ///< Truncate _existing_ file to zero length
     COPY_ON_SYMLINK          = 0x0010,  ///< copy-on-write for symlinks (Unix)
+    TEMPORARY                = 0x0020,  ///< temporary file attribute (Windows)
 // sharing options
     SHARE_DENYNONE           = 0x0100,
     SHARE_DENYREAD           = 0x0200,  // overrides denynone
@@ -62,7 +62,7 @@ enum class StreamMode {
 };
 namespace o3tl
 {
-    template<> struct typed_flags<StreamMode> : is_typed_flags<StreamMode, 0x0f1f> {};
+    template<> struct typed_flags<StreamMode> : is_typed_flags<StreamMode, 0x0f3f> {};
 }
 
 #define STREAM_SEEK_TO_BEGIN            0L
@@ -94,8 +94,6 @@ struct SvLockBytesStat
 
     SvLockBytesStat() : nSize(0) {}
 };
-
-enum SvLockBytesStatFlag { SVSTATFLAG_DEFAULT };
 
 class TOOLS_DLLPUBLIC SvLockBytes: public virtual SvRefBase
 {
@@ -129,7 +127,7 @@ public:
 
     virtual ErrCode SetSize(sal_uInt64 nSize);
 
-    virtual ErrCode Stat(SvLockBytesStat * pStat, SvLockBytesStatFlag) const;
+    virtual ErrCode Stat(SvLockBytesStat * pStat) const;
 };
 
 typedef tools::SvRef<SvLockBytes> SvLockBytesRef;
@@ -144,10 +142,11 @@ private:
     sal_uInt64      m_nActPos;
 
     // buffer management
-    sal_uInt8*      m_pRWBuf;     ///< Points to read/write buffer
+    std::unique_ptr<sal_uInt8[]>
+                    m_pRWBuf;     ///< Points to read/write buffer
     sal_uInt8*      m_pBufPos;    ///< m_pRWBuf + m_nBufActualPos
     sal_uInt16      m_nBufSize;   ///< Allocated size of buffer
-    sal_uInt16      m_nBufActualLen; ///< Length of used segment of puffer
+    sal_uInt16      m_nBufActualLen; ///< Length of used segment of buffer
                                   ///< = m_nBufSize, if EOF did not occur
     sal_uInt16      m_nBufActualPos; ///< current position in buffer (0..m_nBufSize-1)
     sal_uInt16      m_nBufFree;   ///< number of free slots in buffer to IO of type eIOMode
@@ -156,9 +155,6 @@ private:
 
     // Error codes, conversion, compression, ...
     bool            m_isDirty;  ///< true: Stream != buffer content
-    bool            m_isConsistent; ///< false: Buffer contains data, which were
-                                ///< NOT allowed to be written by PutData
-                                ///< into the derived stream (cf. PutBack)
     bool            m_isSwap;
     bool            m_isEof;
     ErrCode         m_nError;
@@ -172,7 +168,7 @@ private:
     unsigned char   m_nCryptMask;
 
     // Userdata
-    long            m_nVersion;   // for external use
+    sal_Int32       m_nVersion;   // for external use
 
                     SvStream ( const SvStream& rStream ) = delete;
     SvStream&       operator=( const SvStream& rStream ) = delete;
@@ -188,16 +184,13 @@ protected:
     virtual void    FlushData();
     virtual void    SetSize(sal_uInt64 nSize);
 
-    void            FlushBuffer(bool isConsistent);
+    void            FlushBuffer();
     void            ClearError();
     void            ClearBuffer();
 
     // encrypt and write in blocks
     std::size_t     CryptAndWriteBuffer( const void* pStart, std::size_t nLen );
-    bool            EncryptBuffer( void* pStart, std::size_t nLen );
-
-    void            SyncSvStream( std::size_t nNewStreamPos ); ///< SvStream <- Medium
-    void            SyncSysStream(); ///< SvStream -> Medium
+    void            EncryptBuffer( void* pStart, std::size_t nLen ) const;
 
 public:
                     SvStream();
@@ -207,7 +200,7 @@ public:
     SvLockBytes*    GetLockBytes() const { return m_xLockBytes.get(); }
 
     ErrCode         GetError() const { return m_nError.IgnoreWarning(); }
-    ErrCode         GetErrorCode() const { return m_nError; }
+    ErrCode const & GetErrorCode() const { return m_nError; }
     void            SetError( ErrCode nErrorCode );
     virtual void    ResetError();
 
@@ -254,8 +247,9 @@ public:
     SvStream&       WriteUInt8( sal_uInt8 nuInt8 );
     SvStream&       WriteUnicode( sal_Unicode );
     SvStream&       WriteOString(const OString& rStr)
-                        { return WriteCharPtr(rStr.getStr()); }
+                        { WriteBytes(rStr.getStr(), rStr.getLength()); return *this; }
     SvStream&       WriteStream( SvStream& rStream );
+    sal_uInt64      WriteStream( SvStream& rStream, sal_uInt64 nSize );
 
     SvStream&       WriteBool( bool b )
                         { return WriteUChar(static_cast<unsigned char>(b)); }
@@ -274,10 +268,10 @@ public:
     sal_uInt64      Seek( sal_uInt64 nPos );
     sal_uInt64      SeekRel( sal_Int64 nPos );
     sal_uInt64      Tell() const { return m_nBufFilePos + m_nBufActualPos;  }
+    virtual sal_uInt64 TellEnd();
     // length between current (Tell()) pos and end of stream
-    virtual sal_uInt64 remainingSize();
+    sal_uInt64      remainingSize();
     void            Flush();
-    bool            IsEof() const { return m_isEof; }
     // next Tell() <= nSize
     bool            SetStreamSize( sal_uInt64 nSize );
 
@@ -295,7 +289,7 @@ public:
               @endcode
               causing endless loops ...
     */
-    virtual bool    ReadLine( OString& rStr, sal_Int32 nMaxBytesToRead = 0xFFFE );
+    bool            ReadLine( OString& rStr, sal_Int32 nMaxBytesToRead = 0xFFFE );
     bool            WriteLine( const OString& rStr );
 
     /** Read a line of bytes.
@@ -387,8 +381,8 @@ public:
     bool            IsWritable() const { return m_isWritable; }
     StreamMode      GetStreamMode() const { return m_eStreamMode; }
 
-    long            GetVersion() { return m_nVersion; }
-    void            SetVersion( long n ) { m_nVersion = n; }
+    sal_Int32       GetVersion() const { return m_nVersion; }
+    void            SetVersion( sal_Int32 n ) { m_nVersion = n; }
 
     friend SvStream& operator<<( SvStream& rStr, SvStrPtr f ); // for Manips
 
@@ -411,7 +405,7 @@ public:
         If we try to read into a variable v and the operation fails, the value
         of v should be unchanged,
     */
-    virtual bool good() const { return !(eof() || bad()); }
+    bool good() const { return !(eof() || bad()); }
 
 private:
     template<typename T>
@@ -487,7 +481,7 @@ inline std::size_t write_uInt16s_FromOUString(SvStream& rStrm,
 /// Attempt to write a pascal-style length (of type prefix) prefixed sequence
 /// of 16bit units from an OUString, returned value is number of bytes written
 /// (including byte-count of prefix)
-TOOLS_DLLPUBLIC std::size_t write_uInt32_lenPrefixed_uInt16s_FromOUString(SvStream& rStrm,
+std::size_t write_uInt32_lenPrefixed_uInt16s_FromOUString(SvStream& rStrm,
                                                 const OUString &rStr);
 
 /// Attempt to write a pascal-style length (of type prefix) prefixed sequence
@@ -528,14 +522,6 @@ inline OString read_uInt8_lenPrefixed_uInt8s_ToOString(SvStream& rStrm)
     sal_uInt8 nUnits = 0;
     rStrm.ReadUChar(nUnits);
     return read_uInt8s_ToOString(rStrm, nUnits);
-}
-
-/// Attempt to read a pascal-style length (of type prefix) prefixed sequence of
-/// 8bit units to an OUString
-inline OUString read_uInt32_lenPrefixed_uInt8s_ToOUString(SvStream& rStrm,
-                                                          rtl_TextEncoding eEnc)
-{
-    return OStringToOUString(read_uInt32_lenPrefixed_uInt8s_ToOString(rStrm), eEnc);
 }
 
 inline OUString read_uInt16_lenPrefixed_uInt8s_ToOUString(SvStream& rStrm,
@@ -579,12 +565,15 @@ inline std::size_t write_uInt16_lenPrefixed_uInt8s_FromOUString(SvStream& rStrm,
     return write_uInt16_lenPrefixed_uInt8s_FromOString(rStrm, OUStringToOString(rStr, eEnc));
 }
 
+[[nodiscard]] TOOLS_DLLPUBLIC bool checkSeek(SvStream &rSt, sal_uInt64 nOffset);
+
 // FileStream
 
-class TOOLS_DLLPUBLIC SvFileStream : public SvStream
+class TOOLS_DLLPUBLIC SvFileStream final : public SvStream
 {
 private:
-    StreamData*     pInstanceData;
+    std::unique_ptr<StreamData>
+                    pInstanceData;
     OUString        aFilename;
 #if defined(_WIN32)
     sal_uInt16      nLockCounter;
@@ -594,12 +583,9 @@ private:
     SvFileStream (const SvFileStream&) = delete;
     SvFileStream & operator= (const SvFileStream&) = delete;
 
-    bool LockRange( sal_uInt64 nByteOffset, std::size_t nBytes );
-    bool UnlockRange( sal_uInt64 nByteOffset, std::size_t nBytes );
     bool LockFile();
     void UnlockFile();
 
-protected:
     virtual std::size_t GetData( void* pData, std::size_t nSize ) override;
     virtual std::size_t PutData( const void* pData, std::size_t nSize ) override;
     virtual sal_uInt64 SeekPos( sal_uInt64 nPos ) override;
@@ -644,11 +630,11 @@ protected:
 
     /// AllocateMemory must update pBuf accordingly
     /// - pBuf: Address of new block
-    bool    AllocateMemory( std::size_t nSize );
+    void    AllocateMemory( std::size_t nSize );
 
     /// ReAllocateMemory must update the following variables:
     /// - pBuf: Address of new block
-    /// - nEndOfData: Set to nNewSize-1L , if outside of block
+    /// - nEndOfData: Set to nNewSize-1 , if outside of block
     ///               Set to 0 , if new block size is 0 bytes
     /// - nSize: New block size
     /// - nPos: Set to 0 if position outside of block
@@ -665,45 +651,18 @@ public:
 
     virtual void    ResetError() override;
 
-    const void*    GetBuffer();
-    sal_uInt64     GetSize();
+    sal_uInt64      GetSize();
     std::size_t     GetEndOfData() const { return nEndOfData; }
     const void*     GetData() { Flush(); return pBuf; }
 
+    // return the buffer currently in use, and allocate a new buffer internally
     void*           SwitchBuffer();
     // the buffer is not owned by this class
     void            SetBuffer( void* pBuf, std::size_t nSize, std::size_t nEOF );
 
     void            ObjectOwnsMemory( bool bOwn ) { bOwnsData = bOwn; }
     void            SetResizeOffset( std::size_t nNewResize ) { nResize = nNewResize; }
-    virtual sal_uInt64 remainingSize() override { FlushBuffer(true); return GetEndOfData() - Tell(); }
-};
-
-class TOOLS_DLLPUBLIC SvScriptStream: public SvStream
-{
-    oslProcess mpProcess;
-    oslFileHandle mpHandle;
-
-public:
-    SvScriptStream(const OUString& rUrl);
-    virtual ~SvScriptStream() override;
-
-    /** Read a line of bytes.
-
-        @param nMaxBytesToRead
-                   Maximum of bytes to read, if line is longer it will be
-                   truncated.
-
-        @note NOTE that the default is one character less than STRING_MAXLEN to
-              prevent problems after conversion to String that may be lurking
-              in various places doing something like
-              @code
-                for (sal_uInt16 i=0; i < aString.Len(); ++i)
-              @endcode
-              causing endless loops ...
-    */
-    virtual bool ReadLine(OString& rStr, sal_Int32 nMaxBytesToRead = 0xFFFE ) override;
-    virtual bool good() const override;
+    virtual sal_uInt64 TellEnd() override { FlushBuffer(); return nEndOfData; }
 };
 
 #endif

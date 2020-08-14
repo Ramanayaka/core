@@ -18,29 +18,34 @@
  */
 
 #include <svl/eitem.hxx>
-#include <svl/urihelper.hxx>
 #include <tools/datetime.hxx>
-#include <tools/resary.hxx>
+#include <tools/debug.hxx>
 #include <tools/urlobj.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/mnemonic.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
+#include <vcl/weldutils.hxx>
+#include <unotools/datetime.hxx>
 #include <unotools/localedatawrapper.hxx>
 #include <unotools/cmdoptions.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/xmlsechelper.hxx>
 #include <unotools/useroptions.hxx>
+#include <svtools/ctrlbox.hxx>
 #include <svtools/imagemgr.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 #include <memory>
 
+#include <comphelper/sequence.hxx>
 #include <comphelper/string.hxx>
 #include <com/sun/star/security/DocumentSignatureInformation.hpp>
 #include <com/sun/star/security/DocumentDigitalSignatures.hpp>
 #include <unotools/syslocale.hxx>
 #include <rtl/math.hxx>
-#include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/XPropertyContainer.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/Date.hpp>
 #include <com/sun/star/util/DateTimeWithTimezone.hpp>
@@ -51,28 +56,21 @@
 
 #include <vcl/timer.hxx>
 #include <vcl/settings.hxx>
-#include <sfx2/dinfdlg.hxx>
-#include <sfx2/securitypage.hxx>
 #include <sfx2/sfxresid.hxx>
 #include <sfx2/frame.hxx>
-#include <sfx2/viewfrm.hxx>
-#include <sfx2/request.hxx>
-#include <sfx2/passwd.hxx>
 #include <sfx2/filedlghelper.hxx>
-#include "helper.hxx"
+#include <sfx2/dinfdlg.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <helper.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/docfile.hxx>
-#include <comphelper/storagehelper.hxx>
 
-#include "documentfontsdialog.hxx"
-#include <sfx2/sfx.hrc>
-#include "dinfdlg.hrc"
-#include "app.hrc"
-#include "sfxlocal.hrc"
-#include <dialog.hrc>
-#include "bitmaps.hlst"
-#include <vcl/help.hxx>
-#include <vcl/builderfactory.hxx>
+#include <documentfontsdialog.hxx>
+#include <dinfdlg.hrc>
+#include <sfx2/strings.hrc>
+#include <strings.hxx>
+#include <tools/diagnose_ex.h>
+#include "securitypage.hxx"
 
 #include <algorithm>
 
@@ -80,8 +78,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::ui::dialogs;
 using namespace ::com::sun::star::uno;
-
-const sal_uInt16 FONT_PAGE_ID = 99;
 
 struct CustomProperty
 {
@@ -94,17 +90,11 @@ struct CustomProperty
 
 SfxPoolItem* SfxDocumentInfoItem::CreateDefault() { return new SfxDocumentInfoItem; }
 
-const sal_uInt16 HI_NAME = 1;
-const sal_uInt16 HI_TYPE = 2;
-const sal_uInt16 HI_VALUE = 3;
-const sal_uInt16 HI_ACTION = 4;
-
 namespace {
 
 OUString CreateSizeText( sal_Int64 nSize )
 {
-    OUString aUnitStr(" ");
-    aUnitStr += SfxResId(STR_BYTES);
+    OUString aUnitStr = " " + SfxResId(STR_BYTES);
     sal_Int64 nSize1 = nSize;
     sal_Int64 nSize2 = nSize1;
     sal_Int64 nMega = 1024 * 1024;
@@ -115,43 +105,38 @@ OUString CreateSizeText( sal_Int64 nSize )
     if ( nSize1 >= 10000 && nSize1 < nMega )
     {
         nSize1 /= 1024;
-        aUnitStr = " ";
-        aUnitStr += SfxResId(STR_KB);
+        aUnitStr = " " + SfxResId(STR_KB);
         fSize /= 1024;
         nDec = 0;
     }
     else if ( nSize1 >= nMega && nSize1 < nGiga )
     {
         nSize1 /= nMega;
-        aUnitStr = " ";
-        aUnitStr += SfxResId(STR_MB);
+        aUnitStr = " " + SfxResId(STR_MB);
         fSize /= nMega;
         nDec = 2;
     }
     else if ( nSize1 >= nGiga )
     {
         nSize1 /= nGiga;
-        aUnitStr = " ";
-        aUnitStr += SfxResId(STR_GB);
+        aUnitStr = " " + SfxResId(STR_GB);
         fSize /= nGiga;
         nDec = 3;
     }
     const SvtSysLocale aSysLocale;
     const LocaleDataWrapper& rLocaleWrapper = aSysLocale.GetLocaleData();
-    OUString aSizeStr( rLocaleWrapper.getNum( nSize1, 0 ) );
-    aSizeStr += aUnitStr;
+    OUString aSizeStr = rLocaleWrapper.getNum( nSize1, 0 ) + aUnitStr;
     if ( nSize1 < nSize2 )
     {
         aSizeStr = ::rtl::math::doubleToUString( fSize,
                 rtl_math_StringFormat_F, nDec,
-                rLocaleWrapper.getNumDecimalSep()[0] );
-        aSizeStr += aUnitStr;
-
-        aSizeStr += " (";
-        aSizeStr += rLocaleWrapper.getNum( nSize2, 0 );
-        aSizeStr += " ";
-        aSizeStr += SfxResId(STR_BYTES);
-        aSizeStr += ")";
+                rLocaleWrapper.getNumDecimalSep()[0] )
+                 + aUnitStr
+                 + " ("
+                 + rLocaleWrapper.getNum( nSize2, 0 )
+                 + " "
+                 + SfxResId(STR_BYTES)
+                 + ")";
     }
     return aSizeStr;
 }
@@ -162,14 +147,13 @@ OUString ConvertDateTime_Impl( const OUString& rName,
      Date aD(uDT);
      tools::Time aT(uDT);
      const OUString aDelim( ", " );
-     OUString aStr( rWrapper.getDate( aD ) );
-     aStr += aDelim;
-     aStr += rWrapper.getTime( aT );
+     OUString aStr = rWrapper.getDate( aD )
+                   + aDelim
+                   + rWrapper.getTime( aT );
      OUString aAuthor = comphelper::string::stripStart(rName, ' ');
      if (!aAuthor.isEmpty())
      {
-        aStr += aDelim;
-        aStr += aAuthor;
+        aStr += aDelim + aAuthor;
      }
      return aStr;
 }
@@ -238,20 +222,18 @@ SfxDocumentInfoItem::SfxDocumentInfoItem( const OUString& rFile,
         {
             Reference < beans::XPropertySet > xSet( xContainer, UNO_QUERY );
             const Sequence< beans::Property > lProps = xSet->getPropertySetInfo()->getProperties();
-            const beans::Property* pProps = lProps.getConstArray();
-            sal_Int32 nCount = lProps.getLength();
-            for ( sal_Int32 i = 0; i < nCount; ++i )
+            for ( const beans::Property& rProp : lProps )
             {
                 // "fix" property? => not a custom property => ignore it!
-                if (!(pProps[i].Attributes & css::beans::PropertyAttribute::REMOVABLE))
+                if (!(rProp.Attributes & css::beans::PropertyAttribute::REMOVABLE))
                 {
                     SAL_WARN( "sfx.dialog", "non-removable user-defined property?");
                     continue;
                 }
 
-                uno::Any aValue = xSet->getPropertyValue(pProps[i].Name);
-                CustomProperty* pProp = new CustomProperty( pProps[i].Name, aValue );
-                m_aCustomProperties.push_back( pProp );
+                uno::Any aValue = xSet->getPropertyValue(rProp.Name);
+                std::unique_ptr<CustomProperty> pProp(new CustomProperty( rProp.Name, aValue ));
+                m_aCustomProperties.push_back( std::move(pProp) );
             }
         }
 
@@ -286,32 +268,29 @@ SfxDocumentInfoItem::SfxDocumentInfoItem( const SfxDocumentInfoItem& rItem )
     , m_bUseUserData( rItem.m_bUseUserData )
     , m_bUseThumbnailSave( rItem.m_bUseThumbnailSave )
 {
-    for (const CustomProperty* pOtherProp : rItem.m_aCustomProperties)
+    for (auto const & pOtherProp : rItem.m_aCustomProperties)
     {
-        CustomProperty* pProp = new CustomProperty( pOtherProp->m_sName,
-                                                    pOtherProp->m_aValue );
-        m_aCustomProperties.push_back( pProp );
+        std::unique_ptr<CustomProperty> pProp(new CustomProperty( pOtherProp->m_sName,
+                                                    pOtherProp->m_aValue ));
+        m_aCustomProperties.push_back( std::move(pProp) );
     }
 
     m_aCmisProperties = rItem.m_aCmisProperties;
 }
-
 
 SfxDocumentInfoItem::~SfxDocumentInfoItem()
 {
     ClearCustomProperties();
 }
 
-
-SfxPoolItem* SfxDocumentInfoItem::Clone( SfxItemPool * ) const
+SfxDocumentInfoItem* SfxDocumentInfoItem::Clone( SfxItemPool * ) const
 {
     return new SfxDocumentInfoItem( *this );
 }
 
-
 bool SfxDocumentInfoItem::operator==( const SfxPoolItem& rItem) const
 {
-    if (!(typeid(rItem) == typeid(*this) && SfxStringItem::operator==(rItem)))
+    if (!SfxStringItem::operator==(rItem))
         return false;
     const SfxDocumentInfoItem& rInfoItem(static_cast<const SfxDocumentInfoItem&>(rItem));
 
@@ -341,15 +320,15 @@ bool SfxDocumentInfoItem::operator==( const SfxPoolItem& rItem) const
 
 void SfxDocumentInfoItem::resetUserData(const OUString & i_rAuthor)
 {
-    setAuthor(i_rAuthor);
+    m_Author = i_rAuthor;
     DateTime now( DateTime::SYSTEM );
     m_CreationDate = now.GetUNODateTime();
-    setModifiedBy(OUString());
-    setPrintedBy(OUString());
+    m_ModifiedBy = OUString();
+    m_PrintedBy = OUString();
     m_ModificationDate = util::DateTime();
     m_PrintDate = util::DateTime();
-    setEditingDuration(0);
-    setEditingCycles(1);
+    m_EditingDuration = 0;
+    m_EditingCycles = 1;
 }
 
 
@@ -394,32 +373,30 @@ void SfxDocumentInfoItem::UpdateDocumentInfo(
         Reference < beans::XPropertySet > xSet( xContainer, UNO_QUERY );
         Reference< beans::XPropertySetInfo > xSetInfo = xSet->getPropertySetInfo();
         const Sequence< beans::Property > lProps = xSetInfo->getProperties();
-        const beans::Property* pProps = lProps.getConstArray();
-        sal_Int32 nCount = lProps.getLength();
-        for ( sal_Int32 j = 0; j < nCount; ++j )
+        for ( const beans::Property& rProp : lProps )
         {
-            if (pProps[j].Attributes & css::beans::PropertyAttribute::REMOVABLE)
+            if (rProp.Attributes & css::beans::PropertyAttribute::REMOVABLE)
             {
-                xContainer->removeProperty( pProps[j].Name );
+                xContainer->removeProperty( rProp.Name );
             }
         }
 
-        for (const CustomProperty* pProp : m_aCustomProperties)
+        for (auto const & pProp : m_aCustomProperties)
         {
             try
             {
                 xContainer->addProperty( pProp->m_sName,
                     beans::PropertyAttribute::REMOVABLE, pProp->m_aValue );
             }
-            catch ( Exception& )
+            catch ( Exception const & )
             {
-                SAL_WARN( "sfx.dialog", "SfxDocumentInfoItem::updateDocumentInfo(): exception while adding custom properties" );
+                TOOLS_WARN_EXCEPTION( "sfx.dialog", "SfxDocumentInfoItem::updateDocumentInfo(): exception while adding custom properties" );
             }
         }
     }
-    catch ( Exception& )
+    catch ( Exception const & )
     {
-        SAL_WARN( "sfx.dialog", "SfxDocumentInfoItem::updateDocumentInfo(): exception while removing custom properties" );
+        TOOLS_WARN_EXCEPTION( "sfx.dialog", "SfxDocumentInfoItem::updateDocumentInfo(): exception while removing custom properties" );
     }
 }
 
@@ -440,14 +417,14 @@ void SfxDocumentInfoItem::SetUseThumbnailSave( bool bSet )
     m_bUseThumbnailSave = bSet;
 }
 
-std::vector< CustomProperty* > SfxDocumentInfoItem::GetCustomProperties() const
+std::vector< std::unique_ptr<CustomProperty> > SfxDocumentInfoItem::GetCustomProperties() const
 {
-    std::vector< CustomProperty* > aRet;
-    for (CustomProperty* pOtherProp : m_aCustomProperties)
+    std::vector< std::unique_ptr<CustomProperty> > aRet;
+    for (auto const & pOtherProp : m_aCustomProperties)
     {
-        CustomProperty* pProp = new CustomProperty( pOtherProp->m_sName,
-                                                    pOtherProp->m_aValue );
-        aRet.push_back( pProp );
+        std::unique_ptr<CustomProperty> pProp(new CustomProperty( pOtherProp->m_sName,
+                                                    pOtherProp->m_aValue ));
+        aRet.push_back( std::move(pProp) );
     }
 
     return aRet;
@@ -455,15 +432,13 @@ std::vector< CustomProperty* > SfxDocumentInfoItem::GetCustomProperties() const
 
 void SfxDocumentInfoItem::ClearCustomProperties()
 {
-    for (CustomProperty* pProp : m_aCustomProperties)
-        delete pProp;
     m_aCustomProperties.clear();
 }
 
 void SfxDocumentInfoItem::AddCustomProperty( const OUString& sName, const Any& rValue )
 {
-    CustomProperty* pProp = new CustomProperty( sName, rValue );
-    m_aCustomProperties.push_back( pProp );
+    std::unique_ptr<CustomProperty> pProp(new CustomProperty( sName, rValue ));
+    m_aCustomProperties.push_back( std::move(pProp) );
 }
 
 
@@ -489,7 +464,7 @@ bool SfxDocumentInfoItem::QueryValue( Any& rVal, sal_uInt8 nMemberId ) const
             bValue = IsUseThumbnailSave();
             break;
         case MID_DOCINFO_DELETEUSERDATA:
-            bValue = IsDeleteUserData();
+            bValue = m_bDeleteUserData;
             break;
         case MID_DOCINFO_AUTOLOADENABLED:
             bValue = isAutoloadEnabled();
@@ -564,22 +539,22 @@ bool SfxDocumentInfoItem::PutValue( const Any& rVal, sal_uInt8 nMemberId )
         case MID_DOCINFO_AUTOLOADENABLED:
             bRet = (rVal >>= bValue);
             if ( bRet )
-                setAutoloadEnabled(bValue);
+                m_isAutoloadEnabled = bValue;
             break;
         case MID_DOCINFO_AUTOLOADSECS:
             bRet = (rVal >>= nValue);
             if ( bRet )
-                setAutoloadDelay(nValue);
+                m_AutoloadDelay = nValue;
             break;
         case MID_DOCINFO_AUTOLOADURL:
             bRet = (rVal >>= aValue);
             if ( bRet )
-                setAutoloadURL(aValue);
+                m_AutoloadURL = aValue;
             break;
         case MID_DOCINFO_DEFAULTTARGET:
             bRet = (rVal >>= aValue);
             if ( bRet )
-                setDefaultTarget(aValue);
+                m_DefaultTarget = aValue;
             break;
         case MID_DOCINFO_DESCRIPTION:
             bRet = (rVal >>= aValue);
@@ -609,45 +584,34 @@ bool SfxDocumentInfoItem::PutValue( const Any& rVal, sal_uInt8 nMemberId )
     return bRet;
 }
 
-SfxDocumentDescPage::SfxDocumentDescPage( vcl::Window * pParent, const SfxItemSet& rItemSet )
-    : SfxTabPage(pParent, "DescriptionInfoPage", "sfx/ui/descriptioninfopage.ui", &rItemSet)
-    , m_pInfoItem   ( nullptr )
-
+SfxDocumentDescPage::SfxDocumentDescPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rItemSet)
+    : SfxTabPage(pPage, pController, "sfx/ui/descriptioninfopage.ui", "DescriptionInfoPage", &rItemSet)
+    , m_pInfoItem(nullptr)
+    , m_xTitleEd(m_xBuilder->weld_entry("title"))
+    , m_xThemaEd(m_xBuilder->weld_entry("subject"))
+    , m_xKeywordsEd(m_xBuilder->weld_entry("keywords"))
+    , m_xCommentEd(m_xBuilder->weld_text_view("comments"))
 {
-    get(m_pTitleEd, "title");
-    get(m_pThemaEd, "subject");
-    get(m_pKeywordsEd, "keywords");
-    get(m_pCommentEd, "comments");
-    m_pCommentEd->set_width_request(m_pKeywordsEd->get_preferred_size().Width());
-    m_pCommentEd->set_height_request(m_pCommentEd->GetTextHeight() * 16);
+    m_xCommentEd->set_size_request(m_xKeywordsEd->get_preferred_size().Width(),
+                                   m_xCommentEd->get_height_rows(16));
 }
 
 SfxDocumentDescPage::~SfxDocumentDescPage()
 {
-    disposeOnce();
 }
 
-void SfxDocumentDescPage::dispose()
+std::unique_ptr<SfxTabPage> SfxDocumentDescPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *rItemSet)
 {
-    m_pTitleEd.clear();
-    m_pThemaEd.clear();
-    m_pKeywordsEd.clear();
-    m_pCommentEd.clear();
-    SfxTabPage::dispose();
-}
-
-VclPtr<SfxTabPage> SfxDocumentDescPage::Create(vcl::Window *pParent, const SfxItemSet *rItemSet)
-{
-     return VclPtr<SfxDocumentDescPage>::Create(pParent, *rItemSet);
+     return std::make_unique<SfxDocumentDescPage>(pPage, pController, *rItemSet);
 }
 
 bool SfxDocumentDescPage::FillItemSet(SfxItemSet *rSet)
 {
     // Test whether a change is present
-    const bool bTitleMod = m_pTitleEd->IsModified();
-    const bool bThemeMod = m_pThemaEd->IsModified();
-    const bool bKeywordsMod = m_pKeywordsEd->IsModified();
-    const bool bCommentMod = m_pCommentEd->IsModified();
+    const bool bTitleMod = m_xTitleEd->get_value_changed_from_saved();
+    const bool bThemeMod = m_xThemaEd->get_value_changed_from_saved();
+    const bool bKeywordsMod = m_xKeywordsEd->get_value_changed_from_saved();
+    const bool bCommentMod = m_xCommentEd->get_value_changed_from_saved();
     if ( !( bTitleMod || bThemeMod || bKeywordsMod || bCommentMod ) )
     {
         return false;
@@ -656,11 +620,7 @@ bool SfxDocumentDescPage::FillItemSet(SfxItemSet *rSet)
     // Generating the output data
     const SfxPoolItem* pItem = nullptr;
     SfxDocumentInfoItem* pInfo = nullptr;
-    SfxTabDialog* pDlg = GetTabDialog();
-    const SfxItemSet* pExSet = nullptr;
-
-    if ( pDlg )
-        pExSet = pDlg->GetExampleSet();
+    const SfxItemSet* pExSet = GetDialogExampleSet();
 
     if ( pExSet && SfxItemState::SET != pExSet->GetItemState( SID_DOCINFO, true, &pItem ) )
         pInfo = m_pInfoItem;
@@ -675,19 +635,19 @@ bool SfxDocumentDescPage::FillItemSet(SfxItemSet *rSet)
 
     if ( bTitleMod )
     {
-        pInfo->setTitle( m_pTitleEd->GetText() );
+        pInfo->setTitle( m_xTitleEd->get_text() );
     }
     if ( bThemeMod )
     {
-        pInfo->setSubject( m_pThemaEd->GetText() );
+        pInfo->setSubject( m_xThemaEd->get_text() );
     }
     if ( bKeywordsMod )
     {
-        pInfo->setKeywords( m_pKeywordsEd->GetText() );
+        pInfo->setKeywords( m_xKeywordsEd->get_text() );
     }
     if ( bCommentMod )
     {
-        pInfo->setDescription( m_pCommentEd->GetText() );
+        pInfo->setDescription( m_xCommentEd->get_text() );
     }
     rSet->Put( *pInfo );
     if ( pInfo != m_pInfoItem )
@@ -698,166 +658,105 @@ bool SfxDocumentDescPage::FillItemSet(SfxItemSet *rSet)
     return true;
 }
 
-
 void SfxDocumentDescPage::Reset(const SfxItemSet *rSet)
 {
-    m_pInfoItem = const_cast<SfxDocumentInfoItem*>(&static_cast<const SfxDocumentInfoItem &>(rSet->Get(SID_DOCINFO)));
+    m_pInfoItem = const_cast<SfxDocumentInfoItem*>(&rSet->Get(SID_DOCINFO));
 
-    m_pTitleEd->SetText( m_pInfoItem->getTitle() );
-    m_pThemaEd->SetText( m_pInfoItem->getSubject() );
-    m_pKeywordsEd->SetText( m_pInfoItem->getKeywords() );
-    m_pCommentEd->SetText( m_pInfoItem->getDescription() );
+    m_xTitleEd->set_text(m_pInfoItem->getTitle());
+    m_xThemaEd->set_text(m_pInfoItem->getSubject());
+    m_xKeywordsEd->set_text(m_pInfoItem->getKeywords());
+    m_xCommentEd->set_text(m_pInfoItem->getDescription());
+
+    m_xTitleEd->save_value();
+    m_xThemaEd->save_value();
+    m_xKeywordsEd->save_value();
+    m_xCommentEd->save_value();
 
     const SfxBoolItem* pROItem = SfxItemSet::GetItem<SfxBoolItem>(rSet, SID_DOC_READONLY, false);
-    if ( pROItem && pROItem->GetValue() )
+    if (pROItem && pROItem->GetValue())
     {
-        m_pTitleEd->SetReadOnly();
-        m_pThemaEd->SetReadOnly();
-        m_pKeywordsEd->SetReadOnly();
-        m_pCommentEd->SetReadOnly();
+        m_xTitleEd->set_editable(false);
+        m_xThemaEd->set_editable(false);
+        m_xKeywordsEd->set_editable(false);
+        m_xCommentEd->set_editable(false);
     }
 }
 
-
-namespace
-{
-    OUString GetDateTimeString( sal_Int32 _nDate, sal_Int32 _nTime )
-    {
-        const LocaleDataWrapper& rWrapper( Application::GetSettings().GetLocaleDataWrapper() );
-
-        Date aDate( _nDate );
-        tools::Time aTime( _nTime );
-        OUString aStr( rWrapper.getDate( aDate ) );
-        aStr += ", ";
-        aStr += rWrapper.getTime( aTime );
-        return aStr;
-    }
-
-    // copy from xmlsecurity/source/dialog/resourcemanager.cxx
-    OUString GetContentPart( const OUString& _rRawString, const OUString& _rPartId )
-    {
-        OUString s;
-
-        sal_Int32  nContStart = _rRawString.indexOf( _rPartId );
-        if ( nContStart != -1 )
-        {
-            nContStart = nContStart + _rPartId.getLength();
-            ++nContStart; // now its start of content, directly after Id
-
-            sal_Int32  nContEnd = _rRawString.indexOf( ',', nContStart );
-            if (nContEnd != -1)
-                s = _rRawString.copy( nContStart, nContEnd - nContStart );
-            else
-                s = _rRawString.copy(nContStart);
-        }
-
-        return s;
-    }
-}
-
-SfxDocumentPage::SfxDocumentPage(vcl::Window* pParent, const SfxItemSet& rItemSet)
-    : SfxTabPage(pParent, "DocumentInfoPage", "sfx/ui/documentinfopage.ui", &rItemSet)
+SfxDocumentPage::SfxDocumentPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rItemSet)
+    : SfxTabPage(pPage, pController, "sfx/ui/documentinfopage.ui", "DocumentInfoPage", &rItemSet)
     , bEnableUseUserData( false )
     , bHandleDelete( false )
+    , m_xBmp(m_xBuilder->weld_image("icon"))
+    , m_xNameED(m_xBuilder->weld_label("nameed"))
+    , m_xChangePassBtn(m_xBuilder->weld_button("changepass"))
+    , m_xShowTypeFT(m_xBuilder->weld_label("showtype"))
+    , m_xFileValEd(m_xBuilder->weld_label("showlocation"))
+    , m_xShowSizeFT(m_xBuilder->weld_label("showsize"))
+    , m_xCreateValFt(m_xBuilder->weld_label("showcreate"))
+    , m_xChangeValFt(m_xBuilder->weld_label("showmodify"))
+    , m_xSignedValFt(m_xBuilder->weld_label("showsigned"))
+    , m_xSignatureBtn(m_xBuilder->weld_button("signature"))
+    , m_xPrintValFt(m_xBuilder->weld_label("showprint"))
+    , m_xTimeLogValFt(m_xBuilder->weld_label("showedittime"))
+    , m_xDocNoValFt(m_xBuilder->weld_label("showrevision"))
+    , m_xUseUserDataCB(m_xBuilder->weld_check_button("userdatacb"))
+    , m_xDeleteBtn(m_xBuilder->weld_button("reset"))
+    , m_xUseThumbnailSaveCB(m_xBuilder->weld_check_button("thumbnailsavecb"))
+    , m_xTemplFt(m_xBuilder->weld_label("templateft"))
+    , m_xTemplValFt(m_xBuilder->weld_label("showtemplate"))
 {
-    get(m_pBmp, "icon");
-    get(m_pNameED, "nameed");
-    get(m_pChangePassBtn, "changepass");
+    m_aUnknownSize = m_xShowSizeFT->get_label();
+    m_xShowSizeFT->set_label(OUString());
 
-    get(m_pShowTypeFT, "showtype");
-    get(m_pFileValEd, "showlocation");
-    get(m_pShowSizeFT, "showsize");
-    m_aUnknownSize = m_pShowSizeFT->GetText();
-    m_pShowSizeFT->SetText(OUString());
-
-    get(m_pCreateValFt, "showcreate");
-    get(m_pChangeValFt, "showmodify");
-    get(m_pSignedValFt, "showsigned");
-    m_aMultiSignedStr = m_pSignedValFt->GetText();
-    m_pSignedValFt->SetText(OUString());
-    get(m_pSignatureBtn, "signature");
-    get(m_pPrintValFt, "showprint");
-    get(m_pTimeLogValFt, "showedittime");
-    get(m_pDocNoValFt, "showrevision");
-
-    get(m_pUseUserDataCB, "userdatacb");
-    get(m_pUseThumbnailSaveCB, "thumbnailsavecb");
-    get(m_pDeleteBtn, "reset");
-
-    get(m_pTemplFt, "templateft");
-    get(m_pTemplValFt, "showtemplate");
+    m_aMultiSignedStr = m_xSignedValFt->get_label();
+    m_xSignedValFt->set_label(OUString());
 
     ImplUpdateSignatures();
     ImplCheckPasswordState();
-    m_pChangePassBtn->SetClickHdl( LINK( this, SfxDocumentPage, ChangePassHdl ) );
-    m_pSignatureBtn->SetClickHdl( LINK( this, SfxDocumentPage, SignatureHdl ) );
-    m_pDeleteBtn->SetClickHdl( LINK( this, SfxDocumentPage, DeleteHdl ) );
+    m_xChangePassBtn->connect_clicked( LINK( this, SfxDocumentPage, ChangePassHdl ) );
+    m_xSignatureBtn->connect_clicked( LINK( this, SfxDocumentPage, SignatureHdl ) );
+    m_xDeleteBtn->connect_clicked( LINK( this, SfxDocumentPage, DeleteHdl ) );
 
     // [i96288] Check if the document signature command is enabled
     // on the main list enable/disable the pushbutton accordingly
     SvtCommandOptions aCmdOptions;
     if ( aCmdOptions.Lookup( SvtCommandOptions::CMDOPTION_DISABLED, "Signature" ) )
-        m_pSignatureBtn->Disable();
+        m_xSignatureBtn->set_sensitive(false);
 }
 
 SfxDocumentPage::~SfxDocumentPage()
 {
-    disposeOnce();
 }
 
-void SfxDocumentPage::dispose()
-{
-    m_pBmp.clear();
-    m_pNameED.clear();
-    m_pChangePassBtn.clear();
-    m_pShowTypeFT.clear();
-    m_pFileValEd.clear();
-    m_pShowSizeFT.clear();
-    m_pCreateValFt.clear();
-    m_pChangeValFt.clear();
-    m_pSignedValFt.clear();
-    m_pSignatureBtn.clear();
-    m_pPrintValFt.clear();
-    m_pTimeLogValFt.clear();
-    m_pDocNoValFt.clear();
-    m_pUseUserDataCB.clear();
-    m_pDeleteBtn.clear();
-    m_pTemplFt.clear();
-    m_pTemplValFt.clear();
-    m_pUseThumbnailSaveCB.clear();
-    SfxTabPage::dispose();
-}
-
-
-IMPL_LINK_NOARG(SfxDocumentPage, DeleteHdl, Button*, void)
+IMPL_LINK_NOARG(SfxDocumentPage, DeleteHdl, weld::Button&, void)
 {
     OUString aName;
-    if ( bEnableUseUserData && m_pUseUserDataCB->IsChecked() )
+    if (bEnableUseUserData && m_xUseUserDataCB->get_active())
         aName = SvtUserOptions().GetFullName();
     const LocaleDataWrapper& rLocaleWrapper( Application::GetSettings().GetLocaleDataWrapper() );
     DateTime now( DateTime::SYSTEM );
     util::DateTime uDT( now.GetUNODateTime() );
-    m_pCreateValFt->SetText( ConvertDateTime_Impl( aName, uDT, rLocaleWrapper ) );
-    m_pChangeValFt->SetText( "" );
-    m_pPrintValFt->SetText( "" );
+    m_xCreateValFt->set_label( ConvertDateTime_Impl( aName, uDT, rLocaleWrapper ) );
+    m_xChangeValFt->set_label( "" );
+    m_xPrintValFt->set_label( "" );
     const tools::Time aTime( 0 );
-    m_pTimeLogValFt->SetText( rLocaleWrapper.getDuration( aTime ) );
-    m_pDocNoValFt->SetText(OUString('1'));
+    m_xTimeLogValFt->set_label( rLocaleWrapper.getDuration( aTime ) );
+    m_xDocNoValFt->set_label(OUString('1'));
     bHandleDelete = true;
 }
 
-IMPL_LINK_NOARG(SfxDocumentPage, SignatureHdl, Button*, void)
+IMPL_LINK_NOARG(SfxDocumentPage, SignatureHdl, weld::Button&, void)
 {
     SfxObjectShell* pDoc = SfxObjectShell::Current();
     if( pDoc )
     {
-        pDoc->SignDocumentContent();
+        pDoc->SignDocumentContent(GetFrameWeld());
 
         ImplUpdateSignatures();
     }
 }
 
-IMPL_STATIC_LINK_NOARG(SfxDocumentPage, ChangePassHdl, Button*, void)
+IMPL_LINK_NOARG(SfxDocumentPage, ChangePassHdl, weld::Button&, void)
 {
     SfxObjectShell* pShell = SfxObjectShell::Current();
     do
@@ -871,8 +770,7 @@ IMPL_STATIC_LINK_NOARG(SfxDocumentPage, ChangePassHdl, Button*, void)
         if (!pFilter)
             break;
 
-        OUString aDocName;
-        sfx2::RequestPassword(pFilter, aDocName, pMedSet);
+        sfx2::RequestPassword(pFilter, OUString(), pMedSet, GetFrameWeld()->GetXWindow());
         pShell->SetModified();
     }
     while (false);
@@ -881,30 +779,37 @@ IMPL_STATIC_LINK_NOARG(SfxDocumentPage, ChangePassHdl, Button*, void)
 void SfxDocumentPage::ImplUpdateSignatures()
 {
     SfxObjectShell* pDoc = SfxObjectShell::Current();
-    if ( pDoc )
-    {
-        SfxMedium* pMedium = pDoc->GetMedium();
-        if ( pMedium && !pMedium->GetName().isEmpty() && pMedium->GetStorage().is() )
-        {
-            Reference< security::XDocumentDigitalSignatures > xD(
-                security::DocumentDigitalSignatures::createDefault(comphelper::getProcessComponentContext()) );
+    if ( !pDoc )
+        return;
 
-            OUString s;
-            Sequence< security::DocumentSignatureInformation > aInfos;
-            aInfos = xD->verifyDocumentContentSignatures( pMedium->GetZipStorageToSign_Impl(),
-                                                            uno::Reference< io::XInputStream >() );
-            if ( aInfos.getLength() > 1 )
-                s = m_aMultiSignedStr;
-            else if ( aInfos.getLength() == 1 )
-            {
-                const security::DocumentSignatureInformation& rInfo = aInfos[ 0 ];
-                s = GetDateTimeString( rInfo.SignatureDate, rInfo.SignatureTime );
-                s += ", ";
-                s += GetContentPart( rInfo.Signer->getSubjectName(), "CN" );
-            }
-            m_pSignedValFt->SetText( s );
-        }
+    SfxMedium* pMedium = pDoc->GetMedium();
+    if ( !pMedium || pMedium->GetName().isEmpty() || !pMedium->GetStorage().is() )
+        return;
+
+    Reference< security::XDocumentDigitalSignatures > xD;
+    try
+    {
+        xD = security::DocumentDigitalSignatures::createDefault(comphelper::getProcessComponentContext());
+        xD->setParentWindow(GetDialogController()->getDialog()->GetXWindow());
     }
+    catch ( const css::uno::DeploymentException& )
+    {
+    }
+    OUString s;
+    Sequence< security::DocumentSignatureInformation > aInfos;
+
+    if ( xD.is() )
+        aInfos = xD->verifyDocumentContentSignatures( pMedium->GetZipStorageToSign_Impl(),
+                                                      uno::Reference< io::XInputStream >() );
+    if ( aInfos.getLength() > 1 )
+        s = m_aMultiSignedStr;
+    else if ( aInfos.getLength() == 1 )
+    {
+        const security::DocumentSignatureInformation& rInfo = aInfos[ 0 ];
+        s = utl::GetDateTimeString( rInfo.SignatureDate, rInfo.SignatureTime ) + ", " +
+            comphelper::xmlsec::GetContentPart(rInfo.Signer->getSubjectName(), rInfo.Signer->getCertificateKind());
+    }
+    m_xSignedValFt->set_label(s);
 }
 
 void SfxDocumentPage::ImplCheckPasswordState()
@@ -924,25 +829,25 @@ void SfxDocumentPage::ImplCheckPasswordState()
         else
              break;
 
-        if (!aEncryptionData.getLength())
+        if (!aEncryptionData.hasElements())
              break;
-        m_pChangePassBtn->Enable();
+        m_xChangePassBtn->set_sensitive(true);
         return;
     }
     while (false);
-    m_pChangePassBtn->Disable();
+    m_xChangePassBtn->set_sensitive(false);
 }
 
-VclPtr<SfxTabPage> SfxDocumentPage::Create( vcl::Window* pParent, const SfxItemSet* rItemSet )
+std::unique_ptr<SfxTabPage> SfxDocumentPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rItemSet)
 {
-     return VclPtr<SfxDocumentPage>::Create( pParent, *rItemSet );
+     return std::make_unique<SfxDocumentPage>(pPage, pController, *rItemSet);
 }
 
 void SfxDocumentPage::EnableUseUserData()
 {
     bEnableUseUserData = true;
-    m_pUseUserDataCB->Show();
-    m_pDeleteBtn->Show();
+    m_xUseUserDataCB->show();
+    m_xDeleteBtn->show();
 }
 
 bool SfxDocumentPage::FillItemSet( SfxItemSet* rSet )
@@ -950,36 +855,35 @@ bool SfxDocumentPage::FillItemSet( SfxItemSet* rSet )
     bool bRet = false;
 
     if ( !bHandleDelete && bEnableUseUserData &&
-         m_pUseUserDataCB->IsValueChangedFromSaved() &&
-         GetTabDialog() && GetTabDialog()->GetExampleSet() )
+         m_xUseUserDataCB->get_state_changed_from_saved() )
     {
-        SfxItemSet* pExpSet = GetTabDialog()->GetExampleSet();
+        const SfxItemSet* pExpSet = GetDialogExampleSet();
         const SfxPoolItem* pItem;
 
         if ( pExpSet && SfxItemState::SET == pExpSet->GetItemState( SID_DOCINFO, true, &pItem ) )
         {
             const SfxDocumentInfoItem* pInfoItem = static_cast<const SfxDocumentInfoItem*>(pItem);
-            bool bUseData = ( TRISTATE_TRUE == m_pUseUserDataCB->GetState() );
+            bool bUseData = ( TRISTATE_TRUE == m_xUseUserDataCB->get_state() );
             const_cast<SfxDocumentInfoItem*>(pInfoItem)->SetUseUserData( bUseData );
-            rSet->Put( SfxDocumentInfoItem( *pInfoItem ) );
+            rSet->Put( *pInfoItem );
             bRet = true;
         }
     }
 
     if ( bHandleDelete )
     {
-        SfxItemSet* pExpSet = GetTabDialog()->GetExampleSet();
+        const SfxItemSet* pExpSet = GetDialogExampleSet();
         const SfxPoolItem* pItem;
         if ( pExpSet && SfxItemState::SET == pExpSet->GetItemState( SID_DOCINFO, true, &pItem ) )
         {
             const SfxDocumentInfoItem* pInfoItem = static_cast<const SfxDocumentInfoItem*>(pItem);
-            bool bUseAuthor = bEnableUseUserData && m_pUseUserDataCB->IsChecked();
+            bool bUseAuthor = bEnableUseUserData && m_xUseUserDataCB->get_active();
             SfxDocumentInfoItem newItem( *pInfoItem );
             newItem.resetUserData( bUseAuthor
                 ? SvtUserOptions().GetFullName()
                 : OUString() );
-            const_cast<SfxDocumentInfoItem*>(pInfoItem)->SetUseUserData( TRISTATE_TRUE == m_pUseUserDataCB->GetState() );
-            newItem.SetUseUserData( TRISTATE_TRUE == m_pUseUserDataCB->GetState() );
+            const_cast<SfxDocumentInfoItem*>(pInfoItem)->SetUseUserData( TRISTATE_TRUE == m_xUseUserDataCB->get_state() );
+            newItem.SetUseUserData( TRISTATE_TRUE == m_xUseUserDataCB->get_state() );
 
             newItem.SetDeleteUserData( true );
             rSet->Put( newItem );
@@ -987,18 +891,17 @@ bool SfxDocumentPage::FillItemSet( SfxItemSet* rSet )
         }
     }
 
-    if ( m_pUseThumbnailSaveCB->IsValueChangedFromSaved() &&
-       GetTabDialog() && GetTabDialog()->GetExampleSet() )
+    if ( m_xUseThumbnailSaveCB->get_state_changed_from_saved() )
     {
-        SfxItemSet* pExpSet = GetTabDialog()->GetExampleSet();
+        const SfxItemSet* pExpSet = GetDialogExampleSet();
         const SfxPoolItem* pItem;
 
         if ( pExpSet && SfxItemState::SET == pExpSet->GetItemState( SID_DOCINFO, true, &pItem ) )
         {
             const SfxDocumentInfoItem* pInfoItem = static_cast<const SfxDocumentInfoItem*>(pItem);
-            bool bUseThumbnail = ( TRISTATE_TRUE == m_pUseThumbnailSaveCB->GetState() );
+            bool bUseThumbnail = ( TRISTATE_TRUE == m_xUseThumbnailSaveCB->get_state() );
             const_cast<SfxDocumentInfoItem*>(pInfoItem)->SetUseThumbnailSave( bUseThumbnail );
-            rSet->Put( SfxDocumentInfoItem( *pInfoItem ) );
+            rSet->Put( *pInfoItem );
             bRet = true;
         }
     }
@@ -1009,16 +912,21 @@ bool SfxDocumentPage::FillItemSet( SfxItemSet* rSet )
 void SfxDocumentPage::Reset( const SfxItemSet* rSet )
 {
     // Determine the document information
-    const SfxDocumentInfoItem& rInfoItem =
-        static_cast<const SfxDocumentInfoItem &>(rSet->Get(SID_DOCINFO));
+    const SfxDocumentInfoItem& rInfoItem = rSet->Get(SID_DOCINFO);
 
     // template data
-    if ( rInfoItem.HasTemplate() )
-        m_pTemplValFt->SetText( rInfoItem.getTemplateName() );
+    if (rInfoItem.HasTemplate())
+    {
+        const OUString& rName = rInfoItem.getTemplateName();
+        if (rName.getLength() > SAL_MAX_INT16) // tdf#122780 pick some ~arbitrary max size
+            m_xTemplValFt->set_label(rName.copy(0, SAL_MAX_INT16));
+        else
+            m_xTemplValFt->set_label(rName);
+    }
     else
     {
-        m_pTemplFt->Hide();
-        m_pTemplValFt->Hide();
+        m_xTemplFt->hide();
+        m_xTemplValFt->hide();
     }
 
     // determine file name
@@ -1033,37 +941,29 @@ void SfxDocumentPage::Reset( const SfxItemSet* rSet )
 
     // determine name
     INetURLObject aURL(aFile);
-    OUString aName = aURL.GetName( INetURLObject::DecodeMechanism::WithCharset );
+    OUString aName = aURL.GetLastName(INetURLObject::DecodeMechanism::WithCharset);
     if ( aName.isEmpty() || aURL.GetProtocol() == INetProtocol::PrivSoffice )
         aName = SfxResId( STR_NONAME );
-    m_pNameED->SetText( aName );
+    m_xNameED->set_label( aName );
 
     // determine context symbol
     aURL.SetSmartProtocol( INetProtocol::File );
     aURL.SetSmartURL( aFactory);
     const OUString& rMainURL = aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-    Image aImage = SvFileInformationManager::GetImage( aURL, true );
-
-    if ( GetDPIScaleFactor() > 1)
-    {
-        BitmapEx b = aImage.GetBitmapEx();
-        b.Scale(GetDPIScaleFactor(), GetDPIScaleFactor());
-        aImage = Image(b);
-    }
-
-    m_pBmp->SetImage( aImage );
+    OUString aImage = SvFileInformationManager::GetImageId( aURL, true );
+    m_xBmp->set_from_icon_name(aImage);
 
     // determine size and type
     OUString aSizeText( m_aUnknownSize );
     if ( aURL.GetProtocol() == INetProtocol::File ||
          aURL.isAnyKnownWebDAVScheme() )
         aSizeText = CreateSizeText( SfxContentHelper::GetSize( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ) ) );
-    m_pShowSizeFT->SetText( aSizeText );
+    m_xShowSizeFT->set_label( aSizeText );
 
     OUString aDescription = SvFileInformationManager::GetDescription( INetURLObject(rMainURL) );
     if ( aDescription.isEmpty() )
         aDescription = SfxResId( STR_SFX_NEWOFFICEDOC );
-    m_pShowTypeFT->SetText( aDescription );
+    m_xShowTypeFT->set_label( aDescription );
 
     // determine location
     aURL.SetSmartURL( aFile);
@@ -1075,30 +975,30 @@ void SfxDocumentPage::Reset( const SfxItemSet* rSet )
         // we know it's a folder -> don't need the final slash, but it's better for WB_PATHELLIPSIS
         aPath.removeFinalSlash();
         OUString aText( aPath.PathToFileName() ); //! (pb) MaxLen?
-        m_pFileValEd->SetText( aText );
+        m_xFileValEd->set_label( aText );
     }
     else if ( aURL.GetProtocol() != INetProtocol::PrivSoffice )
-        m_pFileValEd->SetText( aURL.GetPartBeforeLastName() );
+        m_xFileValEd->set_label( aURL.GetPartBeforeLastName() );
 
     // handle access data
     bool bUseUserData = rInfoItem.IsUseUserData();
     const LocaleDataWrapper& rLocaleWrapper( Application::GetSettings().GetLocaleDataWrapper() );
-    m_pCreateValFt->SetText( ConvertDateTime_Impl( rInfoItem.getAuthor(),
+    m_xCreateValFt->set_label( ConvertDateTime_Impl( rInfoItem.getAuthor(),
         rInfoItem.getCreationDate(), rLocaleWrapper ) );
     util::DateTime aTime( rInfoItem.getModificationDate() );
     if ( aTime.Month > 0 )
-        m_pChangeValFt->SetText( ConvertDateTime_Impl(
+        m_xChangeValFt->set_label( ConvertDateTime_Impl(
             rInfoItem.getModifiedBy(), aTime, rLocaleWrapper ) );
     aTime = rInfoItem.getPrintDate();
     if ( aTime.Month > 0 )
-        m_pPrintValFt->SetText( ConvertDateTime_Impl( rInfoItem.getPrintedBy(),
+        m_xPrintValFt->set_label( ConvertDateTime_Impl( rInfoItem.getPrintedBy(),
             aTime, rLocaleWrapper ) );
     const long nTime = rInfoItem.getEditingDuration();
     if ( bUseUserData )
     {
         const tools::Time aT( nTime/3600, (nTime%3600)/60, nTime%60 );
-        m_pTimeLogValFt->SetText( rLocaleWrapper.getDuration( aT ) );
-        m_pDocNoValFt->SetText( OUString::number(
+        m_xTimeLogValFt->set_label( rLocaleWrapper.getDuration( aT ) );
+        m_xDocNoValFt->set_label( OUString::number(
             rInfoItem.getEditingCycles() ) );
     }
 
@@ -1107,70 +1007,66 @@ void SfxDocumentPage::Reset( const SfxItemSet* rSet )
     // Check for cmis properties where otherwise unavailable
     if ( rInfoItem.isCmisDocument( ) )
     {
-        uno::Sequence< document::CmisProperty > aCmisProps = rInfoItem.GetCmisProperties();
-        for ( sal_Int32 i = 0; i < aCmisProps.getLength(); i++ )
+        const uno::Sequence< document::CmisProperty > aCmisProps = rInfoItem.GetCmisProperties();
+        for ( const auto& rCmisProp : aCmisProps )
         {
-            if ( aCmisProps[i].Id == "cmis:contentStreamLength" &&
+            if ( rCmisProp.Id == "cmis:contentStreamLength" &&
                  aSizeText == m_aUnknownSize )
             {
                 Sequence< sal_Int64 > seqValue;
-                aCmisProps[i].Value >>= seqValue;
+                rCmisProp.Value >>= seqValue;
                 SvNumberFormatter aNumberFormatter( ::comphelper::getProcessComponentContext(),
                         Application::GetSettings().GetLanguageTag().getLanguageType() );
                 sal_uInt32 nIndex = aNumberFormatter.GetFormatIndex( NF_NUMBER_SYSTEM );
-                if ( seqValue.getLength( ) > 0 )
+                if ( seqValue.hasElements() )
                 {
                     OUString sValue;
                     aNumberFormatter.GetInputLineString( seqValue[0], nIndex, sValue );
-                    m_pShowSizeFT->SetText( CreateSizeText( sValue.toInt64( ) ) );
+                    m_xShowSizeFT->set_label( CreateSizeText( sValue.toInt64( ) ) );
                 }
             }
 
             util::DateTime uDT;
             OUString emptyDate = ConvertDateTime_Impl( "", uDT, rLocaleWrapper );
-            if ( aCmisProps[i].Id == "cmis:creationDate" &&
-                 (m_pCreateValFt->GetText() == emptyDate ||
-                  m_pCreateValFt->GetText().isEmpty()))
+            if ( rCmisProp.Id == "cmis:creationDate" &&
+                 (m_xCreateValFt->get_label() == emptyDate ||
+                  m_xCreateValFt->get_label().isEmpty()))
             {
                 Sequence< util::DateTime > seqValue;
-                aCmisProps[i].Value >>= seqValue;
-                if ( seqValue.getLength( ) > 0 )
+                rCmisProp.Value >>= seqValue;
+                if ( seqValue.hasElements() )
                 {
-                    m_pCreateValFt->SetText( ConvertDateTime_Impl( "", seqValue[0], rLocaleWrapper ) );
+                    m_xCreateValFt->set_label( ConvertDateTime_Impl( "", seqValue[0], rLocaleWrapper ) );
                 }
             }
-            if ( aCmisProps[i].Id == "cmis:lastModificationDate" &&
-                 (m_pChangeValFt->GetText() == emptyDate ||
-                  m_pChangeValFt->GetText().isEmpty()))
+            if ( rCmisProp.Id == "cmis:lastModificationDate" &&
+                 (m_xChangeValFt->get_label() == emptyDate ||
+                  m_xChangeValFt->get_label().isEmpty()))
             {
                 Sequence< util::DateTime > seqValue;
-                aCmisProps[i].Value >>= seqValue;
-                if ( seqValue.getLength( ) > 0 )
+                rCmisProp.Value >>= seqValue;
+                if ( seqValue.hasElements() )
                 {
-                    m_pChangeValFt->SetText( ConvertDateTime_Impl( "", seqValue[0], rLocaleWrapper ) );
+                    m_xChangeValFt->set_label( ConvertDateTime_Impl( "", seqValue[0], rLocaleWrapper ) );
                 }
             }
         }
     }
 
-    m_pUseUserDataCB->SetState( static_cast<TriState>(bUseUserData) );
-    m_pUseUserDataCB->SaveValue();
-    m_pUseUserDataCB->Enable( bEnableUseUserData );
+    m_xUseUserDataCB->set_active(bUseUserData);
+    m_xUseUserDataCB->save_state();
+    m_xUseUserDataCB->set_sensitive( bEnableUseUserData );
     bHandleDelete = false;
-    m_pDeleteBtn->Enable( bEnableUseUserData );
-    m_pUseThumbnailSaveCB->SetState( static_cast<TriState>(bUseThumbnailSave) );
-    m_pUseThumbnailSaveCB->SaveValue();
+    m_xDeleteBtn->set_sensitive( bEnableUseUserData );
+    m_xUseThumbnailSaveCB->set_active(bUseThumbnailSave);
+    m_xUseThumbnailSaveCB->save_state();
 }
 
-
-SfxDocumentInfoDialog::SfxDocumentInfoDialog( vcl::Window* pParent,
-                                              const SfxItemSet& rItemSet )
-    : SfxTabDialog(pParent, "DocumentPropertiesDialog",
-        "sfx/ui/documentpropertiesdialog.ui", &rItemSet)
-    , m_nDocInfoId(0)
+SfxDocumentInfoDialog::SfxDocumentInfoDialog(weld::Window* pParent, const SfxItemSet& rItemSet)
+    : SfxTabDialogController(pParent, "sfx/ui/documentpropertiesdialog.ui",
+                             "DocumentPropertiesDialog", &rItemSet)
 {
-    const SfxDocumentInfoItem& rInfoItem =
-        static_cast<const SfxDocumentInfoItem &>(rItemSet.Get( SID_DOCINFO ));
+    const SfxDocumentInfoItem& rInfoItem = rItemSet.Get( SID_DOCINFO );
 
 #ifdef DBG_UTIL
     const SfxStringItem* pURLItem = rItemSet.GetItem<SfxStringItem>(SID_BASEURL, false);
@@ -1179,7 +1075,7 @@ SfxDocumentInfoDialog::SfxDocumentInfoDialog( vcl::Window* pParent,
 
      // Determine the Titles
     const SfxPoolItem* pItem = nullptr;
-    OUString aTitle( GetText() );
+    OUString aTitle(m_xDialog->get_title());
     if ( SfxItemState::SET !=
          rItemSet.GetItemState( SID_EXPLORER_PROPS_START, false, &pItem ) )
     {
@@ -1206,438 +1102,292 @@ SfxDocumentInfoDialog::SfxDocumentInfoDialog( vcl::Window* pParent,
                     "SfxDocumentInfoDialog:<SfxStringItem> expected" );
         aTitle = aTitle.replaceFirst("%1", static_cast<const SfxStringItem*>(pItem)->GetValue());
     }
-    SetText( aTitle );
+    m_xDialog->set_title(aTitle);
 
     // Property Pages
-    m_nDocInfoId = AddTabPage("general", SfxDocumentPage::Create, nullptr);
+    AddTabPage("general", SfxDocumentPage::Create, nullptr);
     AddTabPage("description", SfxDocumentDescPage::Create, nullptr);
     AddTabPage("customprops", SfxCustomPropertiesPage::Create, nullptr);
-    AddTabPage("cmisprops", SfxCmisPropertiesPage::Create, nullptr);
+    if (rInfoItem.isCmisDocument())
+        AddTabPage("cmisprops", SfxCmisPropertiesPage::Create, nullptr);
+    else
+        RemoveTabPage("cmisprops");
     AddTabPage("security", SfxSecurityPage::Create, nullptr);
 }
 
-
-void SfxDocumentInfoDialog::PageCreated( sal_uInt16 nId, SfxTabPage &rPage )
+void SfxDocumentInfoDialog::PageCreated(const OString& rId, SfxTabPage &rPage)
 {
-    if ( m_nDocInfoId == nId )
+    if (rId == "general")
         static_cast<SfxDocumentPage&>(rPage).EnableUseUserData();
 }
 
 void SfxDocumentInfoDialog::AddFontTabPage()
 {
-    AddTabPage( FONT_PAGE_ID, SfxResId( STR_FONT_TABPAGE ), SfxDocumentFontsPage::Create, nullptr);
+    AddTabPage("font", SfxResId(STR_FONT_TABPAGE), SfxDocumentFontsPage::Create);
 }
 
 // class CustomPropertiesYesNoButton -------------------------------------
 
-CustomPropertiesYesNoButton::CustomPropertiesYesNoButton(vcl::Window* pParent)
-    : Control(pParent, WB_DIALOGCONTROL | WB_BORDER)
-    , m_aYesButton(VclPtr<RadioButton>::Create(this, WB_TABSTOP))
-    , m_aNoButton(VclPtr<RadioButton>::Create(this, WB_TABSTOP))
+CustomPropertiesYesNoButton::CustomPropertiesYesNoButton(std::unique_ptr<weld::Widget> xTopLevel,
+                                                         std::unique_ptr<weld::RadioButton> xYesButton,
+                                                         std::unique_ptr<weld::RadioButton> xNoButton)
+    : m_xTopLevel(std::move(xTopLevel))
+    , m_xYesButton(std::move(xYesButton))
+    , m_xNoButton(std::move(xNoButton))
 {
-    m_aYesButton->SetText(MnemonicGenerator::EraseAllMnemonicChars(Button::GetStandardText(StandardButtonType::Yes)));
-    m_aYesButton->Show();
-    m_aNoButton->SetText(MnemonicGenerator::EraseAllMnemonicChars(Button::GetStandardText(StandardButtonType::No)));
-    m_aNoButton->Show();
-    SetBackground( Wallpaper( GetSettings().GetStyleSettings().GetFieldColor() ) );
-    SetBorderStyle( WindowBorderStyle::MONO  );
     CheckNo();
-    Wallpaper aWall( Color( COL_TRANSPARENT ) );
-    m_aYesButton->SetBackground( aWall );
-    m_aNoButton->SetBackground( aWall );
 }
 
 CustomPropertiesYesNoButton::~CustomPropertiesYesNoButton()
 {
-    disposeOnce();
 }
 
-void CustomPropertiesYesNoButton::dispose()
-{
-    m_aYesButton.disposeAndClear();
-    m_aNoButton.disposeAndClear();
-    Control::dispose();
-}
+namespace {
 
-class DurationDialog_Impl : public ModalDialog
+class DurationDialog_Impl : public weld::GenericDialogController
 {
-    VclPtr<CheckBox>       m_pNegativeCB;
-    VclPtr<NumericField>   m_pYearNF;
-    VclPtr<NumericField>   m_pMonthNF;
-    VclPtr<NumericField>   m_pDayNF;
-    VclPtr<NumericField>   m_pHourNF;
-    VclPtr<NumericField>   m_pMinuteNF;
-    VclPtr<NumericField>   m_pSecondNF;
-    VclPtr<NumericField>   m_pMSecondNF;
+    std::unique_ptr<weld::CheckButton> m_xNegativeCB;
+    std::unique_ptr<weld::SpinButton> m_xYearNF;
+    std::unique_ptr<weld::SpinButton> m_xMonthNF;
+    std::unique_ptr<weld::SpinButton> m_xDayNF;
+    std::unique_ptr<weld::SpinButton> m_xHourNF;
+    std::unique_ptr<weld::SpinButton> m_xMinuteNF;
+    std::unique_ptr<weld::SpinButton> m_xSecondNF;
+    std::unique_ptr<weld::SpinButton> m_xMSecondNF;
 
 public:
-
-    DurationDialog_Impl( vcl::Window* pParent, const util::Duration& rDuration );
-    virtual ~DurationDialog_Impl() override;
-    virtual void dispose() override;
+    DurationDialog_Impl(weld::Widget* pParent, const util::Duration& rDuration);
     util::Duration  GetDuration() const;
 };
 
-DurationDialog_Impl::DurationDialog_Impl(vcl::Window* pParent,
-    const util::Duration& rDuration)
-    : ModalDialog(pParent, "EditDurationDialog",
-        "sfx/ui/editdurationdialog.ui")
-{
-    get(m_pNegativeCB, "negative");
-    get(m_pYearNF, "years");
-    get(m_pMonthNF, "months");
-    get(m_pDayNF, "days");
-    get(m_pHourNF, "hours");
-    get(m_pMinuteNF, "minutes");
-    get(m_pSecondNF, "seconds");
-    get(m_pMSecondNF, "milliseconds");
-
-    m_pNegativeCB->Check(rDuration.Negative);
-    m_pYearNF->SetValue(rDuration.Years);
-    m_pMonthNF->SetValue(rDuration.Months);
-    m_pDayNF->SetValue(rDuration.Days);
-    m_pHourNF->SetValue(rDuration.Hours);
-    m_pMinuteNF->SetValue(rDuration.Minutes);
-    m_pSecondNF->SetValue(rDuration.Seconds);
-    m_pMSecondNF->SetValue(rDuration.NanoSeconds);
 }
 
-DurationDialog_Impl::~DurationDialog_Impl()
+DurationDialog_Impl::DurationDialog_Impl(weld::Widget* pParent, const util::Duration& rDuration)
+    : GenericDialogController(pParent, "sfx/ui/editdurationdialog.ui", "EditDurationDialog")
+    , m_xNegativeCB(m_xBuilder->weld_check_button("negative"))
+    , m_xYearNF(m_xBuilder->weld_spin_button("years"))
+    , m_xMonthNF(m_xBuilder->weld_spin_button("months"))
+    , m_xDayNF(m_xBuilder->weld_spin_button("days"))
+    , m_xHourNF(m_xBuilder->weld_spin_button("hours"))
+    , m_xMinuteNF(m_xBuilder->weld_spin_button("minutes"))
+    , m_xSecondNF(m_xBuilder->weld_spin_button("seconds"))
+    , m_xMSecondNF(m_xBuilder->weld_spin_button("milliseconds"))
 {
-    disposeOnce();
-}
-
-void DurationDialog_Impl::dispose()
-{
-    m_pNegativeCB.clear();
-    m_pYearNF.clear();
-    m_pMonthNF.clear();
-    m_pDayNF.clear();
-    m_pHourNF.clear();
-    m_pMinuteNF.clear();
-    m_pSecondNF.clear();
-    m_pMSecondNF.clear();
-    ModalDialog::dispose();
+    m_xNegativeCB->set_active(rDuration.Negative);
+    m_xYearNF->set_value(rDuration.Years);
+    m_xMonthNF->set_value(rDuration.Months);
+    m_xDayNF->set_value(rDuration.Days);
+    m_xHourNF->set_value(rDuration.Hours);
+    m_xMinuteNF->set_value(rDuration.Minutes);
+    m_xSecondNF->set_value(rDuration.Seconds);
+    m_xMSecondNF->set_value(rDuration.NanoSeconds);
 }
 
 util::Duration  DurationDialog_Impl::GetDuration() const
 {
     util::Duration  aRet;
-    aRet.Negative = m_pNegativeCB->IsChecked();
-    aRet.Years = m_pYearNF->GetValue();
-    aRet.Months = m_pMonthNF->GetValue( );
-    aRet.Days = m_pDayNF->GetValue(   );
-    aRet.Hours  = m_pHourNF->GetValue( );
-    aRet.Minutes = m_pMinuteNF->GetValue();
-    aRet.Seconds = m_pSecondNF->GetValue();
-    aRet.NanoSeconds = m_pMSecondNF->GetValue();
+    aRet.Negative = m_xNegativeCB->get_active();
+    aRet.Years = m_xYearNF->get_value();
+    aRet.Months = m_xMonthNF->get_value();
+    aRet.Days = m_xDayNF->get_value();
+    aRet.Hours  = m_xHourNF->get_value();
+    aRet.Minutes = m_xMinuteNF->get_value();
+    aRet.Seconds = m_xSecondNF->get_value();
+    aRet.NanoSeconds = m_xMSecondNF->get_value();
     return aRet;
 }
 
-CustomPropertiesDurationField::CustomPropertiesDurationField(vcl::Window* pParent, WinBits nStyle,
-                                                             CustomPropertyLine* pLine)
-    : Edit(pParent, nStyle)
-    , m_pLine(pLine)
-
+CustomPropertiesDurationField::CustomPropertiesDurationField(std::unique_ptr<weld::Entry> xEntry,
+                                                             std::unique_ptr<weld::Button> xEditButton)
+    : m_xEntry(std::move(xEntry))
+    , m_xEditButton(std::move(xEditButton))
 {
+    m_xEditButton->connect_clicked(LINK(this, CustomPropertiesDurationField, ClickHdl));
     SetDuration( util::Duration(false, 0, 0, 0, 0, 0, 0, 0) );
 }
 
-void CustomPropertiesDurationField::RequestHelp( const HelpEvent& rHEvt )
+void CustomPropertiesDurationField::set_visible(bool bVisible)
 {
-    if ( rHEvt.GetMode() & HelpEventMode::QUICK )
-    {
-        Size aSize( GetSizePixel() );
-        tools::Rectangle aItemRect( rHEvt.GetMousePosPixel(), aSize );
-        if (Help::IsBalloonHelpEnabled())
-            Help::ShowBalloon( this, rHEvt.GetMousePosPixel(), aItemRect, GetText() );
-        else
-            Help::ShowQuickHelp( this, aItemRect, GetText(),
-                QuickHelpFlags::Left|QuickHelpFlags::VCenter );
-    }
+    m_xEntry->set_visible(bVisible);
+    m_xEditButton->set_visible(bVisible);
 }
 
 void CustomPropertiesDurationField::SetDuration( const util::Duration& rDuration )
 {
     m_aDuration = rDuration;
-    OUString sText(rDuration.Negative ? OUString('-') : OUString('+'));
-    sText += m_pLine->m_sDurationFormat;
+    OUString sText = (rDuration.Negative ? OUString('-') : OUString('+')) +
+        SfxResId(SFX_ST_DURATION_FORMAT);
     sText = sText.replaceFirst( "%1", OUString::number( rDuration.Years ) );
     sText = sText.replaceFirst( "%2", OUString::number( rDuration.Months ) );
     sText = sText.replaceFirst( "%3", OUString::number( rDuration.Days   ) );
     sText = sText.replaceFirst( "%4", OUString::number( rDuration.Hours  ) );
     sText = sText.replaceFirst( "%5", OUString::number( rDuration.Minutes) );
     sText = sText.replaceFirst( "%6", OUString::number( rDuration.Seconds) );
-    SetText( sText );
+    m_xEntry->set_text(sText);
 }
 
-CustomPropertiesEditButton::CustomPropertiesEditButton(vcl::Window* pParent, WinBits nStyle,
-                                                       CustomPropertyLine* pLine)
-    : PushButton(pParent, nStyle)
-    , m_pLine(pLine)
+IMPL_LINK(CustomPropertiesDurationField, ClickHdl, weld::Button&, rButton, void)
 {
-    SetClickHdl( LINK( this, CustomPropertiesEditButton, ClickHdl ));
-}
-
-IMPL_LINK_NOARG(CustomPropertiesEditButton, ClickHdl, Button*, void)
-{
-    VclPtrInstance< DurationDialog_Impl > pDurationDlg( this, m_pLine->m_aDurationField->GetDuration() );
-    if ( RET_OK == pDurationDlg->Execute() )
-        m_pLine->m_aDurationField->SetDuration( pDurationDlg->GetDuration() );
-}
-
-void CustomPropertiesYesNoButton::Resize()
-{
-    Size aParentSize(GetSizePixel());
-    const long nWidth = aParentSize.Width();
-    Size a1Size = LogicToPixel(Size(1, 1), MapUnit::MapAppFont);
-    const long n3Width = LogicToPixel(Size(3, 3), MapUnit::MapAppFont).Width();
-    const long nNewWidth = (nWidth / 2) - n3Width - 2;
-    Size aSize(nNewWidth, aParentSize.Height() - 2 * a1Size.Height());
-    Point aPos(a1Size.Width(), a1Size.Height());
-    m_aYesButton->SetPosSizePixel(aPos, aSize);
-    aPos.X() += aSize.Width() + n3Width;
-    m_aNoButton->SetPosSizePixel(aPos, aSize);
+    DurationDialog_Impl aDurationDlg(&rButton, GetDuration());
+    if (aDurationDlg.run() == RET_OK)
+        SetDuration(aDurationDlg.GetDuration());
 }
 
 namespace
 {
-    VclPtr<ComboBox> makeComboBox(vcl::Window *pParent)
+    void fillNameBox(weld::ComboBox& rNameBox)
     {
-        VclPtr<ComboBox> aNameBox(VclPtr<ComboBox>::Create(pParent, WB_TABSTOP|WB_DROPDOWN|
-                                                                    WB_AUTOSIZE|WB_AUTOHSCROLL));
-        aNameBox->SetPosSizePixel(aNameBox->LogicToPixel(Point(0, 2), MapUnit::MapAppFont),
-                                  aNameBox->LogicToPixel(Size(60, 72), MapUnit::MapAppFont));
-        ResStringArray aStrArr(ResId(SFX_CB_PROPERTY_STRINGARRAY, *SfxResMgr::GetResMgr()));
-        for (sal_uInt32 i = 0; i < aStrArr.Count(); ++i)
-            aNameBox->InsertEntry(aStrArr.GetString(i));
-        return aNameBox;
+        for (size_t i = 0; i < SAL_N_ELEMENTS(SFX_CB_PROPERTY_STRINGARRAY); ++i)
+            rNameBox.append_text(SfxResId(SFX_CB_PROPERTY_STRINGARRAY[i]));
+        Size aSize(rNameBox.get_preferred_size());
+        rNameBox.set_size_request(aSize.Width(), aSize.Height());
     }
-}
 
-CustomPropertiesTypeBox::CustomPropertiesTypeBox(vcl::Window* pParent, CustomPropertyLine* pLine)
-    : ListBox(pParent, WB_BORDER|WB_DROPDOWN)
-    , m_pLine(pLine)
-{
-    SetPosSizePixel(LogicToPixel(Point(63, 2), MapUnit::MapAppFont),
-                    LogicToPixel(Size(60, 80), MapUnit::MapAppFont));
-    ResStringArray aStrArr(ResId(SFX_LB_PROPERTY_STRINGARRAY, *SfxResMgr::GetResMgr()));
-    for (sal_uInt32 i = 0; i < aStrArr.Count(); ++i)
+    void fillTypeBox(weld::ComboBox& rTypeBox)
     {
-        InsertEntry(aStrArr.GetString(i));
-        SetEntryData(i, reinterpret_cast<void*>(aStrArr.GetValue(i)));
+        for (size_t i = 0; i < SAL_N_ELEMENTS(SFX_LB_PROPERTY_STRINGARRAY); ++i)
+        {
+            OUString sId(OUString::number(SFX_LB_PROPERTY_STRINGARRAY[i].second));
+            rTypeBox.append(sId, SfxResId(SFX_LB_PROPERTY_STRINGARRAY[i].first));
+        }
+        rTypeBox.set_active(0);
+        Size aSize(rTypeBox.get_preferred_size());
+        rTypeBox.set_size_request(aSize.Width(), aSize.Height());
     }
-    SelectEntryPos(0);
 }
 
 // struct CustomPropertyLine ---------------------------------------------
-CustomPropertyLine::CustomPropertyLine( vcl::Window* pParent ) :
-    m_aNameBox      ( makeComboBox(pParent) ),
-    m_aTypeBox      ( VclPtr<CustomPropertiesTypeBox>::Create(pParent, this) ),
-    m_aValueEdit    ( VclPtr<CustomPropertiesEdit>::Create(pParent, WB_BORDER|WB_TABSTOP|WB_LEFT, this ) ),
-    m_aDateField    ( VclPtr<CustomPropertiesDateField>::Create(pParent, WB_BORDER|WB_TABSTOP|WB_SPIN|WB_LEFT ) ),
-    m_aTimeField    ( VclPtr<CustomPropertiesTimeField>::Create(pParent, WB_BORDER|WB_TABSTOP|WB_SPIN|WB_LEFT ) ),
-    m_sDurationFormat( SfxResId( SFX_ST_DURATION_FORMAT ) ),
-    m_aDurationField( VclPtr<CustomPropertiesDurationField>::Create(pParent, WB_BORDER|WB_TABSTOP|WB_READONLY, this ) ),
-    m_aEditButton   ( VclPtr<CustomPropertiesEditButton>::Create(pParent, WB_TABSTOP, this) ),
-    m_aYesNoButton  ( VclPtr<CustomPropertiesYesNoButton>::Create(pParent) ),
-    m_aRemoveButton ( VclPtr<CustomPropertiesRemoveButton>::Create(pParent, 0, this) ),
-    m_bIsDate       ( false ),
-    m_bIsRemoved    ( false ),
-    m_bTypeLostFocus( false )
-
+CustomPropertyLine::CustomPropertyLine(CustomPropertiesWindow* pParent, weld::Widget* pContainer)
+    : m_pParent(pParent)
+    , m_xBuilder(Application::CreateBuilder(pContainer, "sfx/ui/linefragment.ui"))
+    , m_xLine(m_xBuilder->weld_container("lineentry"))
+    , m_xNameBox(m_xBuilder->weld_combo_box("namebox"))
+    , m_xTypeBox(m_xBuilder->weld_combo_box("typebox"))
+    , m_xValueEdit(m_xBuilder->weld_entry("valueedit"))
+    , m_xDateTimeBox(m_xBuilder->weld_widget("datetimebox"))
+    , m_xDateField(new CustomPropertiesDateField(new SvtCalendarBox(m_xBuilder->weld_menu_button("date"))))
+    , m_xTimeField(new CustomPropertiesTimeField(m_xBuilder->weld_formatted_spin_button("time")))
+    , m_xDurationBox(m_xBuilder->weld_widget("durationbox"))
+    , m_xDurationField(new CustomPropertiesDurationField(m_xBuilder->weld_entry("duration"),
+                                                         m_xBuilder->weld_button("durationbutton")))
+    , m_xYesNoButton(new CustomPropertiesYesNoButton(m_xBuilder->weld_widget("yesno"),
+                                                     m_xBuilder->weld_radio_button("yes"),
+                                                     m_xBuilder->weld_radio_button("no")))
+    , m_xRemoveButton(m_xBuilder->weld_button("remove"))
+    , m_bTypeLostFocus( false )
 {
-    m_aTimeField->SetExtFormat( ExtTimeFieldFormat::Long24H );
-    m_aDateField->SetExtDateFormat( ExtDateFieldFormat::SystemShortYYYY );
+    fillNameBox(*m_xNameBox);
+    fillTypeBox(*m_xTypeBox);
 
-    m_aRemoveButton->SetModeImage(Image(BitmapEx(SFX_BMP_PROPERTY_REMOVE)));
-    m_aRemoveButton->SetQuickHelpText(SfxResId(STR_SFX_REMOVE_PROPERTY));
-
-    m_aEditButton->SetText(SfxResId(SFX_ST_EDIT));
+    m_xTypeBox->connect_changed(LINK(this, CustomPropertyLine, TypeHdl));
+    m_xRemoveButton->connect_clicked(LINK(this, CustomPropertyLine, RemoveHdl));
+    m_xValueEdit->connect_focus_out(LINK(this, CustomPropertyLine, EditLoseFocusHdl));
+    //add lose focus handlers of date/time fields
+    m_xTypeBox->connect_focus_out(LINK(this, CustomPropertyLine, BoxLoseFocusHdl));
 }
 
-void CustomPropertyLine::SetRemoved()
+void CustomPropertyLine::Clear()
 {
-    DBG_ASSERT( !m_bIsRemoved, "CustomPropertyLine::SetRemoved(): line already removed" );
-    m_bIsRemoved = true;
-    m_aNameBox->Hide();
-    m_aTypeBox->Hide();
-    m_aValueEdit->Hide();
-    m_aDateField->Hide();
-    m_aTimeField->Hide();
-    m_aDurationField->Hide();
-    m_aEditButton->Hide();
-    m_aYesNoButton->Hide();
-    m_aRemoveButton->Hide();
+    m_xNameBox->set_active(-1);
+    m_xValueEdit->set_text(OUString());
+
 }
 
-CustomPropertiesWindow::CustomPropertiesWindow(vcl::Window* pParent,
-    FixedText *pHeaderAccName,
-    FixedText *pHeaderAccType,
-    FixedText *pHeaderAccValue) :
-    Window(pParent, WB_HIDE | WB_CLIPCHILDREN | WB_TABSTOP | WB_DIALOGCONTROL),
-    m_pHeaderAccName(pHeaderAccName),
-    m_pHeaderAccType(pHeaderAccType),
-    m_pHeaderAccValue(pHeaderAccValue),
-    m_aNameBox      ( makeComboBox(this) ),
-    m_aTypeBox      ( VclPtr<CustomPropertiesTypeBox>::Create(pParent, nullptr) ),
-    m_aValueEdit    ( VclPtr<Edit>::Create( this, WB_BORDER|WB_TABSTOP|WB_LEFT ) ),
-    m_aDateField    ( VclPtr<DateField>::Create( this, WB_BORDER|WB_TABSTOP|WB_SPIN|WB_LEFT ) ),
-    m_aTimeField    ( VclPtr<TimeField>::Create( this, WB_BORDER|WB_TABSTOP|WB_SPIN|WB_LEFT ) ),
-    m_aDurationField( VclPtr<Edit>::Create( this, WB_BORDER|WB_TABSTOP|WB_READONLY ) ),
-    m_aEditButton   ( VclPtr<PushButton>::Create( this, WB_TABSTOP ) ),
-    m_aYesNoButton  ( VclPtr<CustomPropertiesYesNoButton>::Create(this) ),
-    m_aRemoveButton ( VclPtr<ImageButton>::Create( this, 0 ) ),
-    m_nScrollPos (0),
-    m_pCurrentLine (nullptr),
-    m_aNumberFormatter( ::comphelper::getProcessComponentContext(),
-                        Application::GetSettings().GetLanguageTag().getLanguageType() )
+void CustomPropertyLine::Hide()
 {
-    Point aPos(LogicToPixel(Point(159, 2), MapUnit::MapAppFont));
+    m_xLine->hide();
+}
 
-    m_aEditButton->SetPosSizePixel(aPos,
-        LogicToPixel(Size(RSC_CD_TEXTBOX_HEIGHT, RSC_CD_TEXTBOX_HEIGHT), MapUnit::MapAppFont));
-
-    m_aRemoveButton->SetSizePixel(LogicToPixel(Size(RSC_CD_PUSHBUTTON_HEIGHT, RSC_CD_PUSHBUTTON_HEIGHT), MapUnit::MapAppFont));
-
-    Size aSize(LogicToPixel(Size(61, RSC_CD_TEXTBOX_HEIGHT), MapUnit::MapAppFont));
-    m_aValueEdit->SetPosSizePixel(aPos, aSize);
-    m_aDurationField->SetPosSizePixel(aPos, aSize);
-    m_aDateField->SetPosSizePixel(aPos, aSize);
-    m_aTimeField->SetPosSizePixel(aPos, aSize);
-
+CustomPropertiesWindow::CustomPropertiesWindow(weld::Container& rParent, weld::Label& rHeaderAccName,
+                                               weld::Label& rHeaderAccType, weld::Label& rHeaderAccValue)
+    : m_nHeight(0)
+    , m_nLineHeight(0)
+    , m_nScrollPos(0)
+    , m_pCurrentLine(nullptr)
+    , m_aNumberFormatter(::comphelper::getProcessComponentContext(),
+                         Application::GetSettings().GetLanguageTag().getLanguageType())
+    , m_rBody(rParent)
+    , m_rHeaderAccName(rHeaderAccName)
+    , m_rHeaderAccType(rHeaderAccType)
+    , m_rHeaderAccValue(rHeaderAccValue)
+{
     m_aEditLoseFocusIdle.SetPriority( TaskPriority::LOWEST );
     m_aEditLoseFocusIdle.SetInvokeHandler( LINK( this, CustomPropertiesWindow, EditTimeoutHdl ) );
     m_aBoxLoseFocusIdle.SetPriority( TaskPriority::LOWEST );
     m_aBoxLoseFocusIdle.SetInvokeHandler( LINK( this, CustomPropertiesWindow, BoxTimeoutHdl ) );
-
-    m_aNameBox->add_mnemonic_label(m_pHeaderAccName);
-    m_aNameBox->SetAccessibleName(m_pHeaderAccName->GetText());
-    m_aTypeBox->add_mnemonic_label(m_pHeaderAccType);
-    m_aTypeBox->SetAccessibleName(m_pHeaderAccType->GetText());
-    m_aValueEdit->add_mnemonic_label(m_pHeaderAccValue);
-    m_aValueEdit->SetAccessibleName(m_pHeaderAccValue->GetText());
-
-    m_aNameBox->Hide();
-    m_aTypeBox->Hide();
-    m_aValueEdit->Hide();
-    m_aDateField->Hide();
-    m_aTimeField->Hide();
-    m_aDurationField->Hide();
-    m_aEditButton->Hide();
-    m_aYesNoButton->Hide();
-    m_aRemoveButton->Hide();
-
-    m_nLineHeight =
-        ( m_aRemoveButton->GetPosPixel().Y() * 2 ) + m_aRemoveButton->GetSizePixel().Height();
 }
 
 CustomPropertiesWindow::~CustomPropertiesWindow()
 {
-    disposeOnce();
-}
-
-void CustomPropertiesWindow::dispose()
-{
     m_aEditLoseFocusIdle.Stop();
     m_aBoxLoseFocusIdle.Stop();
-    ClearAllLines();
-    m_aNameBox.disposeAndClear();
-    m_aTypeBox.disposeAndClear();
-    m_aValueEdit.disposeAndClear();
-    m_aDateField.disposeAndClear();
-    m_aTimeField.disposeAndClear();
-    m_aDurationField.disposeAndClear();
-    m_aEditButton.disposeAndClear();
-    m_aYesNoButton.disposeAndClear();
-    m_aRemoveButton.disposeAndClear();
-    m_pHeaderAccName.clear();
-    m_pHeaderAccType.clear();
-    m_pHeaderAccValue.clear();
-    vcl::Window::dispose();
+
+    m_pCurrentLine = nullptr;
 }
 
-IMPL_STATIC_LINK(
-    CustomPropertiesWindow, TypeHdl, ListBox&, rListBox, void )
+void CustomPropertyLine::DoTypeHdl(const weld::ComboBox& rBox)
 {
-    CustomPropertiesTypeBox* pBox = static_cast<CustomPropertiesTypeBox*>(&rListBox);
-    long nType = reinterpret_cast<long>( pBox->GetSelectEntryData() );
-    CustomPropertyLine* pLine = pBox->GetLine();
-    pLine->m_aValueEdit->Show( (CUSTOM_TYPE_TEXT == nType) || (CUSTOM_TYPE_NUMBER  == nType) );
-    pLine->m_aDateField->Show( (CUSTOM_TYPE_DATE == nType) || (CUSTOM_TYPE_DATETIME  == nType) );
-    pLine->m_aTimeField->Show( CUSTOM_TYPE_DATETIME  == nType );
-    pLine->m_aDurationField->Show( CUSTOM_TYPE_DURATION == nType );
-    pLine->m_aEditButton->Show( CUSTOM_TYPE_DURATION == nType );
-    pLine->m_aYesNoButton->Show( CUSTOM_TYPE_BOOLEAN == nType );
-
-    //adjust positions of date and time controls
-    if ( nType == CUSTOM_TYPE_DATE )
-    {
-        pLine->m_bIsDate = true;
-        pLine->m_aDateField->SetSizePixel( pLine->m_aValueEdit->GetSizePixel() );
-    }
-    else if ( nType == CUSTOM_TYPE_DATETIME)
-    {
-        // because m_aDateField and m_aTimeField have the same size for type "DateTime",
-        // we just rely on m_aTimeField here.
-        pLine->m_bIsDate = false;
-        pLine->m_aDateField->SetSizePixel( pLine->m_aTimeField->GetSizePixel() );
-    }
+    auto nType = rBox.get_active_id().toInt32();
+    m_xValueEdit->set_visible( (CUSTOM_TYPE_TEXT == nType) || (CUSTOM_TYPE_NUMBER  == nType) );
+    m_xDateTimeBox->set_visible( (CUSTOM_TYPE_DATE == nType) || (CUSTOM_TYPE_DATETIME  == nType) );
+    m_xDateField->set_visible( (CUSTOM_TYPE_DATE == nType) || (CUSTOM_TYPE_DATETIME  == nType) );
+    m_xTimeField->set_visible( CUSTOM_TYPE_DATETIME  == nType );
+    m_xDurationBox->set_visible( CUSTOM_TYPE_DURATION == nType );
+    m_xDurationField->set_visible( CUSTOM_TYPE_DURATION == nType );
+    m_xYesNoButton->set_visible( CUSTOM_TYPE_BOOLEAN == nType );
 }
 
-IMPL_LINK( CustomPropertiesWindow, RemoveHdl, Button*, pBtn, void )
+IMPL_LINK(CustomPropertyLine, TypeHdl, weld::ComboBox&, rBox, void)
 {
-    CustomPropertiesRemoveButton* pButton = static_cast<CustomPropertiesRemoveButton*>(pBtn);
-    CustomPropertyLine* pLine = pButton->GetLine();
-    std::vector< CustomPropertyLine* >::iterator pFound =
-        std::find( m_aCustomPropertiesLines.begin(), m_aCustomPropertiesLines.end(), pLine );
+    DoTypeHdl(rBox);
+}
+
+void CustomPropertiesWindow::Remove(const CustomPropertyLine* pLine)
+{
+    StoreCustomProperties();
+
+    auto pFound = std::find_if( m_aCustomPropertiesLines.begin(), m_aCustomPropertiesLines.end(),
+                    [&] (const std::unique_ptr<CustomPropertyLine>& p) { return p.get() == pLine; });
     if ( pFound != m_aCustomPropertiesLines.end() )
     {
-        pLine = *pFound;
-        pLine->SetRemoved();
-        std::vector< CustomPropertyLine* >::iterator pIter = pFound + 1;
-        const long nDelta = GetLineHeight();
-        for ( ; pIter != m_aCustomPropertiesLines.end(); ++pIter )
-        {
-            pLine = *pIter;
-            if ( pLine->m_bIsRemoved )
-                continue;
+        sal_uInt32 nLineNumber = pFound - m_aCustomPropertiesLines.begin();
+        sal_uInt32 nDataModelIndex = GetCurrentDataModelPosition() + nLineNumber;
+        m_aCustomProperties.erase(m_aCustomProperties.begin() + nDataModelIndex);
 
-            vcl::Window* pWindows[] = {  pLine->m_aNameBox.get(), pLine->m_aTypeBox.get(), pLine->m_aValueEdit.get(),
-                                    pLine->m_aDateField.get(), pLine->m_aTimeField.get(),
-                                    pLine->m_aDurationField.get(), pLine->m_aEditButton.get(),
-                                    pLine->m_aYesNoButton.get(), pLine->m_aRemoveButton.get(), nullptr };
-            vcl::Window** pCurrent = pWindows;
-            while ( *pCurrent )
-            {
-                Point aPos = (*pCurrent)->GetPosPixel();
-                aPos.Y() -= nDelta;
-                (*pCurrent)->SetPosPixel( aPos );
-                pCurrent++;
-            }
-        }
+        ReloadLinesContent();
     }
 
     m_aRemovedHdl.Call(nullptr);
 }
 
-IMPL_LINK( CustomPropertiesWindow, EditLoseFocusHdl, Control&, rControl, void )
+IMPL_LINK_NOARG(CustomPropertyLine, RemoveHdl, weld::Button&, void)
 {
-    CustomPropertiesEdit* pEdit = static_cast<CustomPropertiesEdit*>(&rControl);
-    CustomPropertyLine* pLine = pEdit->GetLine();
-    if ( !pLine->m_bTypeLostFocus )
-    {
-        m_pCurrentLine = pLine;
-        m_aEditLoseFocusIdle.Start();
-    }
-    else
-        pLine->m_bTypeLostFocus = false;
+    m_pParent->Remove(this);
 }
 
-IMPL_LINK( CustomPropertiesWindow, BoxLoseFocusHdl, Control&, rControl, void )
+void CustomPropertiesWindow::EditLoseFocus(CustomPropertyLine* pLine)
 {
-    m_pCurrentLine = static_cast<CustomPropertiesTypeBox*>(&rControl)->GetLine();
+    m_pCurrentLine = pLine;
+    m_aEditLoseFocusIdle.Start();
+}
+
+IMPL_LINK_NOARG(CustomPropertyLine, EditLoseFocusHdl, weld::Widget&, void)
+{
+    if (!m_bTypeLostFocus)
+        m_pParent->EditLoseFocus(this);
+    else
+        m_bTypeLostFocus = false;
+}
+
+void CustomPropertiesWindow::BoxLoseFocus(CustomPropertyLine* pLine)
+{
+    m_pCurrentLine = pLine;
     m_aBoxLoseFocusIdle.Start();
+}
+
+IMPL_LINK_NOARG(CustomPropertyLine, BoxLoseFocusHdl, weld::Widget&, void)
+{
+    m_pParent->BoxLoseFocus(this);
 }
 
 IMPL_LINK_NOARG(CustomPropertiesWindow, EditTimeoutHdl, Timer *, void)
@@ -1654,9 +1404,8 @@ bool CustomPropertiesWindow::IsLineValid( CustomPropertyLine* pLine ) const
 {
     bool bIsValid = true;
     pLine->m_bTypeLostFocus = false;
-    long nType = reinterpret_cast<long>(
-                     pLine->m_aTypeBox->GetSelectEntryData() );
-    OUString sValue = pLine->m_aValueEdit->GetText();
+    auto nType = pLine->m_xTypeBox->get_active_id().toInt32();
+    OUString sValue = pLine->m_xValueEdit->get_text();
     if ( sValue.isEmpty() )
         return true;
 
@@ -1684,265 +1433,55 @@ bool CustomPropertiesWindow::IsLineValid( CustomPropertyLine* pLine ) const
 
 void CustomPropertiesWindow::ValidateLine( CustomPropertyLine* pLine, bool bIsFromTypeBox )
 {
-    if ( !IsLineValid( pLine ) )
+    if (pLine && !IsLineValid(pLine))
     {
         if ( bIsFromTypeBox ) // LoseFocus of TypeBox
             pLine->m_bTypeLostFocus = true;
-        vcl::Window* pParent = GetParent()->GetParent();
-        if (ScopedVclPtrInstance<MessageDialog>(pParent, SfxResId(STR_SFX_QUERY_WRONG_TYPE), VclMessageType::Question, VclButtonsType::OkCancel)->Execute() == RET_OK)
-            pLine->m_aTypeBox->SelectEntryPos( m_aTypeBox->GetEntryPos( reinterpret_cast<void*>(CUSTOM_TYPE_TEXT) ) );
+        std::unique_ptr<weld::MessageDialog> xMessageBox(Application::CreateMessageDialog(&m_rBody,
+                                                         VclMessageType::Question, VclButtonsType::OkCancel, SfxResId(STR_SFX_QUERY_WRONG_TYPE)));
+        if (xMessageBox->run() == RET_OK)
+            pLine->m_xTypeBox->set_active_id(OUString::number(CUSTOM_TYPE_TEXT));
         else
-            pLine->m_aValueEdit->GrabFocus();
+            pLine->m_xValueEdit->grab_focus();
     }
 }
 
-bool CustomPropertiesWindow::InitControls( HeaderBar* pHeaderBar, const ScrollBar* pScrollBar )
+void CustomPropertiesWindow::SetVisibleLineCount(sal_uInt32 nCount)
 {
-    bool bChanged = false;
-
-    DBG_ASSERT( pHeaderBar, "CustomPropertiesWindow::InitControls(): invalid headerbar" );
-    DBG_ASSERT( pScrollBar, "CustomPropertiesWindow::InitControls(): invalid scrollbar" );
-
-    const long nOffset = 4;
-    const long nScrollBarWidth = pScrollBar->GetSizePixel().Width();
-    const long nButtonWidth = m_aRemoveButton->GetSizePixel().Width() + nScrollBarWidth + nOffset;
-    long nTypeWidth = m_aTypeBox->CalcMinimumSize().Width() + ( 2 * nOffset );
-    long nFullWidth = pHeaderBar->GetSizePixel().Width();
-    long nItemWidth = ( nFullWidth - nTypeWidth - nButtonWidth ) / 2;
-    pHeaderBar->SetItemSize( HI_NAME, nItemWidth );
-    pHeaderBar->SetItemSize( HI_TYPE, nTypeWidth );
-    pHeaderBar->SetItemSize( HI_VALUE, nItemWidth );
-    pHeaderBar->SetItemSize( HI_ACTION, nButtonWidth );
-
-    vcl::Window* pWindows[] = { m_aNameBox.get(), m_aTypeBox.get(), m_aValueEdit.get(), m_aRemoveButton.get(), nullptr };
-    vcl::Window** pCurrent = pWindows;
-    sal_uInt16 nPos = 0;
-    while ( *pCurrent )
+    while (GetExistingLineCount() < nCount)
     {
-        tools::Rectangle aRect = pHeaderBar->GetItemRect( pHeaderBar->GetItemId( nPos++ ) );
-        Size aOrigSize = (*pCurrent)->GetSizePixel();
-        Point aOrigPos = (*pCurrent)->GetPosPixel();
-        Size aSize(aOrigSize);
-        Point aPos(aOrigPos);
-        long nWidth = aRect.GetWidth() - nOffset;
-        if ( *pCurrent == m_aRemoveButton.get() )
-            nWidth -= pScrollBar->GetSizePixel().Width();
-        aSize.Width() = nWidth;
-        aPos.X() = aRect.getX() + ( nOffset / 2 );
-
-        if (aOrigSize != aSize || aOrigPos != aPos)
-        {
-            (*pCurrent)->SetPosSizePixel(aPos, aSize);
-            bChanged = true;
-        }
-
-        if ( *pCurrent == m_aValueEdit.get() )
-        {
-            Point aDurationPos( aPos );
-            m_aDurationField->SetPosPixel( aDurationPos );
-            Size aDurationSize(aSize);
-            aDurationSize.Width() -= (m_aEditButton->GetSizePixel().Width() + 3 );
-            m_aDurationField->SetSizePixel(aDurationSize);
-            aDurationPos.X() = aPos.X() - m_aEditButton->GetSizePixel().Width() + aSize.Width();
-            m_aEditButton->SetPosPixel(aDurationPos);
-
-            m_aYesNoButton->SetPosSizePixel( aPos, aSize );
-
-            aSize.Width() /= 2;
-            aSize.Width() -= 2;
-            m_aDateField->SetPosSizePixel( aPos, aSize );
-            aPos.X() += aSize.Width() + 4;
-            m_aTimeField->SetPosSizePixel( aPos, aSize );
-        }
-
-        pCurrent++;
-    }
-    return bChanged;
-}
-
-sal_uInt16 CustomPropertiesWindow::GetVisibleLineCount() const
-{
-    sal_uInt16 nCount = 0;
-    std::vector< CustomPropertyLine* >::const_iterator pIter;
-    for ( pIter = m_aCustomPropertiesLines.begin();
-            pIter != m_aCustomPropertiesLines.end(); ++pIter )
-    {
-        CustomPropertyLine* pLine = *pIter;
-        if ( !pLine->m_bIsRemoved )
-            nCount++;
-    }
-    return nCount;
-}
-
-void CustomPropertiesWindow::updateLineWidth()
-{
-    vcl::Window* pWindows[] = {  m_aNameBox.get(), m_aTypeBox.get(), m_aValueEdit.get(),
-                            m_aDateField.get(), m_aTimeField.get(),
-                            m_aDurationField.get(), m_aEditButton.get(),
-                            m_aYesNoButton.get(), m_aRemoveButton.get(), nullptr };
-
-    for (std::vector< CustomPropertyLine* >::iterator aI =
-        m_aCustomPropertiesLines.begin(), aEnd = m_aCustomPropertiesLines.end();
-        aI != aEnd; ++aI)
-    {
-        CustomPropertyLine* pNewLine = *aI;
-
-        vcl::Window* pNewWindows[] =
-            {   pNewLine->m_aNameBox.get(), pNewLine->m_aTypeBox.get(), pNewLine->m_aValueEdit.get(),
-                pNewLine->m_aDateField.get(), pNewLine->m_aTimeField.get(),
-                pNewLine->m_aDurationField.get(), pNewLine->m_aEditButton.get(),
-                pNewLine->m_aYesNoButton.get(), pNewLine->m_aRemoveButton.get(), nullptr };
-
-        vcl::Window** pCurrent = pWindows;
-        vcl::Window** pNewCurrent = pNewWindows;
-        while ( *pCurrent )
-        {
-            Size aSize = (*pCurrent)->GetSizePixel();
-            Point aPos = (*pCurrent)->GetPosPixel();
-            aPos.Y() = (*pNewCurrent)->GetPosPixel().Y();
-            (*pNewCurrent)->SetPosSizePixel( aPos, aSize );
-            pCurrent++;
-            pNewCurrent++;
-        }
-
-        // if we have type "Date", we use the full width, not only the half
-        if (pNewLine->m_bIsDate)
-            pNewLine->m_aDateField->SetSizePixel( pNewLine->m_aValueEdit->GetSizePixel() );
+        CreateNewLine();
     }
 }
 
-void CustomPropertiesWindow::AddLine( const OUString& sName, Any& rAny )
+void CustomPropertiesWindow::AddLine(const OUString& sName, Any const & rAny)
 {
-    CustomPropertyLine* pNewLine = new CustomPropertyLine( this );
-    pNewLine->m_aTypeBox->SetSelectHdl( LINK( this, CustomPropertiesWindow, TypeHdl ) );
-    pNewLine->m_aRemoveButton->SetClickHdl( LINK( this, CustomPropertiesWindow, RemoveHdl ) );
-    pNewLine->m_aValueEdit->SetLoseFocusHdl( LINK( this, CustomPropertiesWindow, EditLoseFocusHdl ) );
-    //add lose focus handlers of date/time fields
+    m_aCustomProperties.push_back(std::unique_ptr<CustomProperty>(new CustomProperty(sName, rAny)));
+    ReloadLinesContent();
+}
 
-    pNewLine->m_aTypeBox->SetLoseFocusHdl( LINK( this, CustomPropertiesWindow, BoxLoseFocusHdl ) );
+void CustomPropertiesWindow::CreateNewLine()
+{
+    CustomPropertyLine* pNewLine = new CustomPropertyLine(this, &m_rBody);
+    pNewLine->m_xNameBox->set_accessible_relation_labeled_by(&m_rHeaderAccName);
+    pNewLine->m_xNameBox->set_accessible_name(m_rHeaderAccName.get_label());
+    pNewLine->m_xTypeBox->set_accessible_relation_labeled_by(&m_rHeaderAccType);
+    pNewLine->m_xTypeBox->set_accessible_name(m_rHeaderAccType.get_label());
+    pNewLine->m_xValueEdit->set_accessible_relation_labeled_by(&m_rHeaderAccValue);
+    pNewLine->m_xValueEdit->set_accessible_name(m_rHeaderAccValue.get_label());
 
-    pNewLine->m_aNameBox->add_mnemonic_label(m_pHeaderAccName);
-    pNewLine->m_aNameBox->SetAccessibleName(m_pHeaderAccName->GetText());
-    pNewLine->m_aTypeBox->add_mnemonic_label(m_pHeaderAccType);
-    pNewLine->m_aTypeBox->SetAccessibleName(m_pHeaderAccType->GetText());
-    pNewLine->m_aValueEdit->add_mnemonic_label(m_pHeaderAccValue);
-    pNewLine->m_aValueEdit->SetAccessibleName(m_pHeaderAccValue->GetText());
+    m_aCustomPropertiesLines.emplace_back( pNewLine );
 
-    sal_Int32 nPos = GetVisibleLineCount() * GetLineHeight();
-    m_aCustomPropertiesLines.push_back( pNewLine );
-    vcl::Window* pWindows[] = {  m_aNameBox.get(), m_aTypeBox.get(), m_aValueEdit.get(),
-                            m_aDateField.get(), m_aTimeField.get(),
-                            m_aDurationField.get(), m_aEditButton.get(),
-                            m_aYesNoButton.get(), m_aRemoveButton.get(), nullptr };
-    vcl::Window* pNewWindows[] =
-        {   pNewLine->m_aNameBox.get(), pNewLine->m_aTypeBox.get(), pNewLine->m_aValueEdit.get(),
-            pNewLine->m_aDateField.get(), pNewLine->m_aTimeField.get(),
-            pNewLine->m_aDurationField.get(), pNewLine->m_aEditButton.get(),
-            pNewLine->m_aYesNoButton.get(), pNewLine->m_aRemoveButton.get(), nullptr };
-    vcl::Window** pCurrent = pWindows;
-    vcl::Window** pNewCurrent = pNewWindows;
-    while ( *pCurrent )
-    {
-        Size aSize = (*pCurrent)->GetSizePixel();
-        Point aPos = (*pCurrent)->GetPosPixel();
-        aPos.Y() += nPos;
-        aPos.Y() += m_nScrollPos;
-        (*pNewCurrent)->SetPosSizePixel( aPos, aSize );
-        (*pNewCurrent)->Show();
-        pCurrent++;
-        pNewCurrent++;
-    }
-
-    double nTmpValue = 0;
-    bool bTmpValue = false;
-    OUString sTmpValue;
-    util::DateTime aTmpDateTime;
-    util::Date aTmpDate;
-    util::DateTimeWithTimezone aTmpDateTimeTZ;
-    util::DateWithTimezone aTmpDateTZ;
-    util::Duration aTmpDuration;
-    SvtSysLocale aSysLocale;
-    const LocaleDataWrapper& rLocaleWrapper = aSysLocale.GetLocaleData();
-    pNewLine->m_aNameBox->SetText( sName );
-    sal_IntPtr nType = CUSTOM_TYPE_UNKNOWN;
-    OUString sValue;
-
-    if ( rAny >>= nTmpValue )
-    {
-        sal_uInt32 nIndex = m_aNumberFormatter.GetFormatIndex( NF_NUMBER_SYSTEM );
-        m_aNumberFormatter.GetInputLineString( nTmpValue, nIndex, sValue );
-        pNewLine->m_aValueEdit->SetText( sValue );
-        nType = CUSTOM_TYPE_NUMBER;
-    }
-    else if ( rAny >>= bTmpValue )
-    {
-        sValue = ( bTmpValue ? rLocaleWrapper.getTrueWord() : rLocaleWrapper.getFalseWord() );
-        nType = CUSTOM_TYPE_BOOLEAN;
-    }
-    else if ( rAny >>= sTmpValue )
-    {
-        pNewLine->m_aValueEdit->SetText( sTmpValue );
-        nType = CUSTOM_TYPE_TEXT;
-    }
-    else if ( rAny >>= aTmpDate )
-    {
-        pNewLine->m_aDateField->SetDate( Date( aTmpDate ) );
-        nType = CUSTOM_TYPE_DATE;
-    }
-    else if ( rAny >>= aTmpDateTime )
-    {
-        pNewLine->m_aDateField->SetDate( Date( aTmpDateTime ) );
-        pNewLine->m_aTimeField->SetTime( tools::Time( aTmpDateTime ) );
-        pNewLine->m_aTimeField->m_isUTC = aTmpDateTime.IsUTC;
-        nType = CUSTOM_TYPE_DATETIME;
-    }
-    else if ( rAny >>= aTmpDateTZ )
-    {
-        pNewLine->m_aDateField->SetDate( Date( aTmpDateTZ.DateInTZ.Day,
-                    aTmpDateTZ.DateInTZ.Month, aTmpDateTZ.DateInTZ.Year ) );
-        pNewLine->m_aDateField->m_TZ = aTmpDateTZ.Timezone;
-        nType = CUSTOM_TYPE_DATE;
-    }
-    else if ( rAny >>= aTmpDateTimeTZ )
-    {
-        util::DateTime const& rDT(aTmpDateTimeTZ.DateTimeInTZ);
-        pNewLine->m_aDateField->SetDate( Date( rDT ) );
-        pNewLine->m_aTimeField->SetTime( tools::Time( rDT ) );
-        pNewLine->m_aTimeField->m_isUTC = rDT.IsUTC;
-        pNewLine->m_aDateField->m_TZ = aTmpDateTimeTZ.Timezone;
-        nType = CUSTOM_TYPE_DATETIME;
-    }
-    else if ( rAny >>= aTmpDuration )
-    {
-        nType = CUSTOM_TYPE_DURATION;
-        pNewLine->m_aDurationField->SetDuration( aTmpDuration );
-    }
-
-    if ( nType != CUSTOM_TYPE_UNKNOWN )
-    {
-        if ( CUSTOM_TYPE_BOOLEAN == nType )
-        {
-            if ( bTmpValue )
-                pNewLine->m_aYesNoButton->CheckYes();
-            else
-                pNewLine->m_aYesNoButton->CheckNo();
-        }
-        pNewLine->m_aTypeBox->SelectEntryPos( m_aTypeBox->GetEntryPos( reinterpret_cast<void*>(nType) ) );
-    }
-
-    TypeHdl( nullptr, *pNewLine->m_aTypeBox.get() );
-    pNewLine->m_aNameBox->GrabFocus();
+    pNewLine->DoTypeHdl(*pNewLine->m_xTypeBox);
+    pNewLine->m_xNameBox->grab_focus();
 }
 
 bool CustomPropertiesWindow::AreAllLinesValid() const
 {
     bool bRet = true;
-    std::vector< CustomPropertyLine* >::const_iterator pIter;
-    for ( pIter = m_aCustomPropertiesLines.begin();
-            pIter != m_aCustomPropertiesLines.end(); ++pIter )
+    for ( std::unique_ptr<CustomPropertyLine> const & pLine : m_aCustomPropertiesLines )
     {
-        CustomPropertyLine* pLine = *pIter;
-        if ( !IsLineValid( pLine ) )
+        if ( !IsLineValid( pLine.get() ) )
         {
             bRet = false;
             break;
@@ -1954,295 +1493,422 @@ bool CustomPropertiesWindow::AreAllLinesValid() const
 
 void CustomPropertiesWindow::ClearAllLines()
 {
-    std::vector< CustomPropertyLine* >::iterator pIter;
-    for ( pIter = m_aCustomPropertiesLines.begin();
-          pIter != m_aCustomPropertiesLines.end(); ++pIter )
+    for (auto& pLine : m_aCustomPropertiesLines)
     {
-        CustomPropertyLine* pLine = *pIter;
-        pLine->SetRemoved();
-        delete pLine;
+        pLine->Clear();
     }
-    m_aCustomPropertiesLines.clear();
+    m_pCurrentLine = nullptr;
+    m_aCustomProperties.clear();
     m_nScrollPos = 0;
 }
 
 void CustomPropertiesWindow::DoScroll( sal_Int32 nNewPos )
 {
+    StoreCustomProperties();
     m_nScrollPos += nNewPos;
-    std::vector< CustomPropertyLine* >::iterator pIter;
-    for ( pIter = m_aCustomPropertiesLines.begin();
-            pIter != m_aCustomPropertiesLines.end(); ++pIter )
-    {
-        CustomPropertyLine* pLine = *pIter;
-        if ( pLine->m_bIsRemoved )
-            continue;
-
-        vcl::Window* pWindows[] = {  pLine->m_aNameBox.get(), pLine->m_aTypeBox.get(), pLine->m_aValueEdit.get(), pLine->m_aDateField.get(), pLine->m_aTimeField.get(),
-                                pLine->m_aDurationField.get(), pLine->m_aEditButton.get(), pLine->m_aYesNoButton.get(), pLine->m_aRemoveButton.get(), nullptr };
-        vcl::Window** pCurrent = pWindows;
-        while ( *pCurrent )
-        {
-            Point aPos = (*pCurrent)->GetPosPixel();
-            aPos.Y() += nNewPos;
-            (*pCurrent)->SetPosPixel( aPos );
-            pCurrent++;
-        }
-    }
+    ReloadLinesContent();
 }
 
-Sequence< beans::PropertyValue > CustomPropertiesWindow::GetCustomProperties() const
+Sequence< beans::PropertyValue > CustomPropertiesWindow::GetCustomProperties()
 {
-    Sequence< beans::PropertyValue > aPropertiesSeq( m_aCustomPropertiesLines.size() );
-    sal_Int32 i = 0;
-    std::vector< CustomPropertyLine* >::const_iterator pIter;
-    for ( pIter = m_aCustomPropertiesLines.begin();
-            pIter != m_aCustomPropertiesLines.end(); ++pIter, ++i )
-    {
-        CustomPropertyLine* pLine = *pIter;
-        if ( pLine->m_bIsRemoved )
-            continue;
+    StoreCustomProperties();
 
-        OUString sPropertyName = pLine->m_aNameBox->GetText();
-        if ( !sPropertyName.isEmpty() )
-        {
-            aPropertiesSeq[i].Name = sPropertyName;
-            long nType = reinterpret_cast<long>(
-                            pLine->m_aTypeBox->GetSelectEntryData() );
-            if ( CUSTOM_TYPE_NUMBER == nType )
-            {
-                double nValue = 0;
-                sal_uInt32 nIndex = const_cast< SvNumberFormatter& >(
-                    m_aNumberFormatter ).GetFormatIndex( NF_NUMBER_SYSTEM );
-                bool bIsNum = const_cast< SvNumberFormatter& >( m_aNumberFormatter ).
-                    IsNumberFormat( pLine->m_aValueEdit->GetText(), nIndex, nValue );
-                if ( bIsNum )
-                    aPropertiesSeq[i].Value <<= nValue;
-            }
-            else if ( CUSTOM_TYPE_BOOLEAN == nType )
-            {
-                bool bValue = pLine->m_aYesNoButton->IsYesChecked();
-                aPropertiesSeq[i].Value <<= bValue;
-            }
-            else if ( CUSTOM_TYPE_DATETIME == nType )
-            {
-                Date aTmpDate = pLine->m_aDateField->GetDate();
-                tools::Time aTmpTime = pLine->m_aTimeField->GetTime();
-                util::DateTime const aDateTime(aTmpTime.GetNanoSec(),
-                    aTmpTime.GetSec(), aTmpTime.GetMin(), aTmpTime.GetHour(),
-                    aTmpDate.GetDay(), aTmpDate.GetMonth(), aTmpDate.GetYear(),
-                    pLine->m_aTimeField->m_isUTC);
-                if (pLine->m_aDateField->m_TZ.is_initialized())
-                {
-                    aPropertiesSeq[i].Value <<= util::DateTimeWithTimezone(
-                            aDateTime, pLine->m_aDateField->m_TZ.get());
-                }
-                else
-                {
-                    aPropertiesSeq[i].Value <<= aDateTime;
-                }
-            }
-            else if ( CUSTOM_TYPE_DATE == nType )
-            {
-                Date aTmpDate = pLine->m_aDateField->GetDate();
-                util::Date const aDate(aTmpDate.GetDay(), aTmpDate.GetMonth(),
-                        aTmpDate.GetYear());
-                if (pLine->m_aDateField->m_TZ.is_initialized())
-                {
-                    aPropertiesSeq[i].Value <<= util::DateWithTimezone(
-                            aDate, pLine->m_aDateField->m_TZ.get());
-                }
-                else
-                {
-                    aPropertiesSeq[i].Value <<= aDate;
-                }
-            }
-            else if ( CUSTOM_TYPE_DURATION == nType )
-            {
-                aPropertiesSeq[i].Value <<= pLine->m_aDurationField->GetDuration();
-            }
-            else
-            {
-                OUString sValue( pLine->m_aValueEdit->GetText() );
-                aPropertiesSeq[i].Value <<= sValue;
-            }
-        }
+    Sequence< beans::PropertyValue > aPropertiesSeq(GetTotalLineCount());
+
+    for (sal_uInt32 i = 0; i < GetTotalLineCount(); ++i)
+    {
+        aPropertiesSeq[i].Name = m_aCustomProperties[i]->m_sName;
+        aPropertiesSeq[i].Value = m_aCustomProperties[i]->m_aValue;
     }
 
     return aPropertiesSeq;
 }
 
-CustomPropertiesControl::CustomPropertiesControl(vcl::Window* pParent)
-    : Window(pParent, WB_HIDE | WB_CLIPCHILDREN | WB_TABSTOP | WB_DIALOGCONTROL | WB_BORDER)
-    , m_pVBox(nullptr)
-    , m_pHeaderBar(nullptr)
-    , m_pBody(nullptr)
-    , m_pPropertiesWin(nullptr)
-    , m_pVertScroll(nullptr)
-    , m_nThumbPos(0)
+CustomPropertiesTimeField::CustomPropertiesTimeField(std::unique_ptr<weld::FormattedSpinButton> xTimeField)
+    : m_xTimeField(std::move(xTimeField))
+    , m_xFormatter(new weld::TimeFormatter(*m_xTimeField))
+    , m_isUTC(false)
+{
+    m_xFormatter->SetExtFormat(ExtTimeFieldFormat::LongDuration);
+    m_xFormatter->EnableEmptyField(false);
+}
+
+tools::Time CustomPropertiesTimeField::get_value() const
+{
+    return m_xFormatter->GetTime();
+}
+
+void CustomPropertiesTimeField::set_value(const tools::Time& rTime)
+{
+    m_xFormatter->SetTime(rTime);
+}
+
+CustomPropertiesTimeField::~CustomPropertiesTimeField()
 {
 }
 
-void CustomPropertiesControl::Init(VclBuilderContainer& rBuilder)
+CustomPropertiesDateField::CustomPropertiesDateField(SvtCalendarBox* pDateField)
+    : m_xDateField(pDateField)
 {
-    m_pVBox = VclPtr<VclVBox>::Create(this);
-    m_pHeaderBar = VclPtr<HeaderBar>::Create(m_pVBox, WB_BUTTONSTYLE | WB_BOTTOMBORDER);
-    m_pBody = VclPtr<VclHBox>::Create(m_pVBox);
-    FixedText* pName = rBuilder.get<FixedText>("name");
-    FixedText* pType = rBuilder.get<FixedText>("type");
-    FixedText* pValue = rBuilder.get<FixedText>("value");
-    OUString sName = pName->GetText();
-    OUString sType = pType->GetText();
-    OUString sValue = pValue->GetText();
-    m_pPropertiesWin = VclPtr<CustomPropertiesWindow>::Create(m_pBody, pName, pType, pValue);
-    m_pVertScroll = VclPtr<ScrollBar>::Create(m_pBody, WB_VERT);
-
-    set_hexpand(true);
-    set_vexpand(true);
-    set_expand(true);
-    set_fill(true);
-
-    m_pVBox->set_hexpand(true);
-    m_pVBox->set_vexpand(true);
-    m_pVBox->set_expand(true);
-    m_pVBox->set_fill(true);
-    m_pVBox->Show();
-
-    m_pBody->set_hexpand(true);
-    m_pBody->set_vexpand(true);
-    m_pBody->set_expand(true);
-    m_pBody->set_fill(true);
-    m_pBody->Show();
-
-    m_pPropertiesWin->set_hexpand(true);
-    m_pPropertiesWin->set_vexpand(true);
-    m_pPropertiesWin->set_expand(true);
-    m_pPropertiesWin->set_fill(true);
-    m_pPropertiesWin->Show();
-
-    m_pPropertiesWin->SetBackground( Wallpaper( GetSettings().GetStyleSettings().GetFieldColor() ) );
-    m_pVertScroll->EnableDrag();
-    m_pVertScroll->Show();
-
-    m_pHeaderBar->set_height_request(GetTextHeight() + 6);
-
-    const HeaderBarItemBits nHeadBits = HeaderBarItemBits::VCENTER | HeaderBarItemBits::FIXED | HeaderBarItemBits::FIXEDPOS | HeaderBarItemBits::LEFT;
-
-    m_pHeaderBar->InsertItem( HI_NAME, sName, 0, nHeadBits );
-    m_pHeaderBar->InsertItem( HI_TYPE, sType, 0, nHeadBits );
-    m_pHeaderBar->InsertItem( HI_VALUE, sValue, 0, nHeadBits );
-    m_pHeaderBar->InsertItem( HI_ACTION, OUString(), 0, nHeadBits );
-    m_pHeaderBar->Show();
-
-    m_pPropertiesWin->SetRemovedHdl( LINK( this, CustomPropertiesControl, RemovedHdl ) );
-
-    m_pVertScroll->SetRangeMin( 0 );
-    m_pVertScroll->SetRangeMax( 0 );
-    m_pVertScroll->SetVisibleSize( 0xFFFF );
-
-    Link<ScrollBar*,void> aScrollLink = LINK( this, CustomPropertiesControl, ScrollHdl );
-    m_pVertScroll->SetScrollHdl( aScrollLink );
+    DateTime aDateTime(DateTime::SYSTEM);
+    m_xDateField->set_date(aDateTime);
 }
 
-void CustomPropertiesControl::Resize()
+void CustomPropertiesDateField::set_visible(bool bVisible)
 {
-    Window::Resize();
+    m_xDateField->set_visible(bVisible);
+}
 
-    if (!m_pVBox)
-        return;
+Date CustomPropertiesDateField::get_date() const
+{
+    return m_xDateField->get_date();
+}
 
-    m_pVBox->SetSizePixel(GetSizePixel());
+void CustomPropertiesDateField::set_date(const Date& rDate)
+{
+    m_xDateField->set_date(rDate);
+}
 
-    bool bWidgetsResized = m_pPropertiesWin->InitControls( m_pHeaderBar, m_pVertScroll );
-    sal_Int32 nScrollOffset = m_pPropertiesWin->GetLineHeight();
-    sal_Int32 nVisibleEntries = m_pPropertiesWin->GetSizePixel().Height() / nScrollOffset;
-    m_pVertScroll->SetPageSize( nVisibleEntries - 1 );
-    m_pVertScroll->SetVisibleSize( nVisibleEntries );
-    if (bWidgetsResized)
+CustomPropertiesDateField::~CustomPropertiesDateField()
+{
+}
+
+void CustomPropertiesWindow::StoreCustomProperties()
+{
+    sal_uInt32 nDataModelPos = GetCurrentDataModelPosition();
+
+    for (sal_uInt32 i = 0; nDataModelPos + i < GetTotalLineCount() && i < GetExistingLineCount(); i++)
     {
-        m_pPropertiesWin->updateLineWidth();
+        CustomPropertyLine* pLine = m_aCustomPropertiesLines[i].get();
+
+        OUString sPropertyName = pLine->m_xNameBox->get_active_text();
+        if (!sPropertyName.isEmpty())
+        {
+            m_aCustomProperties[nDataModelPos + i]->m_sName = sPropertyName;
+            auto nType = pLine->m_xTypeBox->get_active_id().toInt32();
+            if (CUSTOM_TYPE_NUMBER == nType)
+            {
+                double nValue = 0;
+                sal_uInt32 nIndex = m_aNumberFormatter.GetFormatIndex(NF_NUMBER_SYSTEM);
+                bool bIsNum = m_aNumberFormatter.
+                    IsNumberFormat(pLine->m_xValueEdit->get_text(), nIndex, nValue);
+                if (bIsNum)
+                    m_aCustomProperties[nDataModelPos + i]->m_aValue <<= nValue;
+            }
+            else if (CUSTOM_TYPE_BOOLEAN == nType)
+            {
+                bool bValue = pLine->m_xYesNoButton->IsYesChecked();
+                m_aCustomProperties[nDataModelPos + i]->m_aValue <<= bValue;
+            }
+            else if (CUSTOM_TYPE_DATETIME == nType)
+            {
+                Date aTmpDate = pLine->m_xDateField->get_date();
+                tools::Time aTmpTime = pLine->m_xTimeField->get_value();
+                util::DateTime const aDateTime(aTmpTime.GetNanoSec(),
+                    aTmpTime.GetSec(), aTmpTime.GetMin(), aTmpTime.GetHour(),
+                    aTmpDate.GetDay(), aTmpDate.GetMonth(), aTmpDate.GetYear(),
+                    pLine->m_xTimeField->m_isUTC);
+                if (pLine->m_xDateField->m_TZ)
+                {
+                    m_aCustomProperties[nDataModelPos + i]->m_aValue <<= util::DateTimeWithTimezone(
+                        aDateTime, *pLine->m_xDateField->m_TZ);
+                }
+                else
+                {
+                    m_aCustomProperties[nDataModelPos + i]->m_aValue <<= aDateTime;
+                }
+            }
+            else if (CUSTOM_TYPE_DATE == nType)
+            {
+                Date aTmpDate = pLine->m_xDateField->get_date();
+                util::Date const aDate(aTmpDate.GetDay(), aTmpDate.GetMonth(),
+                    aTmpDate.GetYear());
+                if (pLine->m_xDateField->m_TZ)
+                {
+                    m_aCustomProperties[nDataModelPos + i]->m_aValue <<= util::DateWithTimezone(
+                        aDate, *pLine->m_xDateField->m_TZ);
+                }
+                else
+                {
+                    m_aCustomProperties[nDataModelPos + i]->m_aValue <<= aDate;
+                }
+            }
+            else if (CUSTOM_TYPE_DURATION == nType)
+            {
+                m_aCustomProperties[nDataModelPos + i]->m_aValue <<= pLine->m_xDurationField->GetDuration();
+            }
+            else
+            {
+                OUString sValue(pLine->m_xValueEdit->get_text());
+                m_aCustomProperties[nDataModelPos + i]->m_aValue <<= sValue;
+            }
+        }
     }
 }
 
-VCL_BUILDER_FACTORY(CustomPropertiesControl)
+void CustomPropertiesWindow::SetCustomProperties(std::vector< std::unique_ptr<CustomProperty> >&& rProperties)
+{
+    m_aCustomProperties = std::move(rProperties);
+    ReloadLinesContent();
+}
+
+void CustomPropertiesWindow::ReloadLinesContent()
+{
+    double nTmpValue = 0;
+    bool bTmpValue = false;
+    OUString sTmpValue;
+    util::DateTime aTmpDateTime;
+    util::Date aTmpDate;
+    util::DateTimeWithTimezone aTmpDateTimeTZ;
+    util::DateWithTimezone aTmpDateTZ;
+    util::Duration aTmpDuration;
+    SvtSysLocale aSysLocale;
+    const LocaleDataWrapper& rLocaleWrapper = aSysLocale.GetLocaleData();
+    sal_IntPtr nType = CUSTOM_TYPE_UNKNOWN;
+    OUString sValue;
+
+    sal_uInt32 nDataModelPos = GetCurrentDataModelPosition();
+    sal_uInt32 i = 0;
+
+    for (; nDataModelPos + i < GetTotalLineCount() && i < GetExistingLineCount(); i++)
+    {
+        const OUString& rName = m_aCustomProperties[nDataModelPos + i]->m_sName;
+        const css::uno::Any& rAny = m_aCustomProperties[nDataModelPos + i]->m_aValue;
+
+        CustomPropertyLine* pLine = m_aCustomPropertiesLines[i].get();
+        pLine->Clear();
+
+        pLine->m_xNameBox->set_entry_text(rName);
+        pLine->m_xLine->show();
+
+        if (!rAny.hasValue())
+        {
+            pLine->m_xValueEdit->set_text(OUString());
+        }
+        else if (rAny >>= nTmpValue)
+        {
+            sal_uInt32 nIndex = m_aNumberFormatter.GetFormatIndex(NF_NUMBER_SYSTEM);
+            m_aNumberFormatter.GetInputLineString(nTmpValue, nIndex, sValue);
+            pLine->m_xValueEdit->set_text(sValue);
+            nType = CUSTOM_TYPE_NUMBER;
+        }
+        else if (rAny >>= bTmpValue)
+        {
+            sValue = (bTmpValue ? rLocaleWrapper.getTrueWord() : rLocaleWrapper.getFalseWord());
+            nType = CUSTOM_TYPE_BOOLEAN;
+        }
+        else if (rAny >>= sTmpValue)
+        {
+            pLine->m_xValueEdit->set_text(sTmpValue);
+            nType = CUSTOM_TYPE_TEXT;
+        }
+        else if (rAny >>= aTmpDate)
+        {
+            pLine->m_xDateField->set_date(Date(aTmpDate));
+            nType = CUSTOM_TYPE_DATE;
+        }
+        else if (rAny >>= aTmpDateTime)
+        {
+            pLine->m_xDateField->set_date(Date(aTmpDateTime));
+            pLine->m_xTimeField->set_value(tools::Time(aTmpDateTime));
+            pLine->m_xTimeField->m_isUTC = aTmpDateTime.IsUTC;
+            nType = CUSTOM_TYPE_DATETIME;
+        }
+        else if (rAny >>= aTmpDateTZ)
+        {
+            pLine->m_xDateField->set_date(Date(aTmpDateTZ.DateInTZ.Day,
+                aTmpDateTZ.DateInTZ.Month, aTmpDateTZ.DateInTZ.Year));
+            pLine->m_xDateField->m_TZ = aTmpDateTZ.Timezone;
+            nType = CUSTOM_TYPE_DATE;
+        }
+        else if (rAny >>= aTmpDateTimeTZ)
+        {
+            util::DateTime const& rDT(aTmpDateTimeTZ.DateTimeInTZ);
+            pLine->m_xDateField->set_date(Date(rDT));
+            pLine->m_xTimeField->set_value(tools::Time(rDT));
+            pLine->m_xTimeField->m_isUTC = rDT.IsUTC;
+            pLine->m_xDateField->m_TZ = aTmpDateTimeTZ.Timezone;
+            nType = CUSTOM_TYPE_DATETIME;
+        }
+        else if (rAny >>= aTmpDuration)
+        {
+            nType = CUSTOM_TYPE_DURATION;
+            pLine->m_xDurationField->SetDuration(aTmpDuration);
+        }
+
+        if (nType != CUSTOM_TYPE_UNKNOWN)
+        {
+            if (CUSTOM_TYPE_BOOLEAN == nType)
+            {
+                if (bTmpValue)
+                    pLine->m_xYesNoButton->CheckYes();
+                else
+                    pLine->m_xYesNoButton->CheckNo();
+            }
+            pLine->m_xTypeBox->set_active_id(OUString::number(nType));
+        }
+
+        pLine->DoTypeHdl(*pLine->m_xTypeBox);
+    }
+
+    while (nDataModelPos + i >= GetTotalLineCount() && i < GetExistingLineCount())
+    {
+        CustomPropertyLine* pLine = m_aCustomPropertiesLines[i].get();
+        pLine->Hide();
+        i++;
+    }
+}
+
+CustomPropertiesControl::CustomPropertiesControl()
+    : m_nThumbPos(0)
+{
+}
+
+void CustomPropertiesControl::Init(weld::Builder& rBuilder)
+{
+    m_xBox = rBuilder.weld_widget("box");
+    m_xBody = rBuilder.weld_container("properties");
+
+    m_xName = rBuilder.weld_label("name");
+    m_xType = rBuilder.weld_label("type");
+    m_xValue = rBuilder.weld_label("value");
+    m_xVertScroll = rBuilder.weld_scrolled_window("scroll");
+    m_xVertScroll->set_user_managed_scrolling();
+    m_xPropertiesWin.reset(new CustomPropertiesWindow(*m_xBody, *m_xName, *m_xType, *m_xValue));
+
+    m_xBox->set_stack_background();
+    m_xVertScroll->show();
+
+    std::unique_ptr<CustomPropertyLine> xNewLine(new CustomPropertyLine(m_xPropertiesWin.get(), m_xBody.get()));
+    Size aLineSize(xNewLine->m_xLine->get_preferred_size());
+    m_xPropertiesWin->SetLineHeight(aLineSize.Height() + 6);
+    m_xBody->set_size_request(aLineSize.Width() + 6, -1);
+    auto nHeight = aLineSize.Height() * 8;
+    m_xVertScroll->set_size_request(-1, nHeight + 6);
+
+    m_xPropertiesWin->SetHeight(nHeight);
+    m_xVertScroll->connect_size_allocate(LINK(this, CustomPropertiesControl, ResizeHdl));
+
+    m_xName->set_size_request(xNewLine->m_xNameBox->get_preferred_size().Width(), -1);
+    m_xType->set_size_request(xNewLine->m_xTypeBox->get_preferred_size().Width(), -1);
+    m_xValue->set_size_request(xNewLine->m_xValueEdit->get_preferred_size().Width(), -1);
+
+    m_xBody->move(xNewLine->m_xLine.get(), nullptr);
+    xNewLine.reset();
+
+    m_xPropertiesWin->SetRemovedHdl( LINK( this, CustomPropertiesControl, RemovedHdl ) );
+
+    m_xVertScroll->vadjustment_set_lower(0);
+    m_xVertScroll->vadjustment_set_upper(0);
+    m_xVertScroll->vadjustment_set_page_size(0xFFFF);
+
+    Link<weld::ScrolledWindow&,void> aScrollLink = LINK( this, CustomPropertiesControl, ScrollHdl );
+    m_xVertScroll->connect_vadjustment_changed(aScrollLink);
+
+    ResizeHdl(Size(-1, nHeight));
+}
+
+IMPL_LINK(CustomPropertiesControl, ResizeHdl, const Size&, rSize, void)
+{
+    int nHeight = rSize.Height() - 6;
+    if (nHeight == m_xPropertiesWin->GetHeight())
+        return;
+    m_xPropertiesWin->SetHeight(nHeight);
+    sal_Int32 nScrollOffset = m_xPropertiesWin->GetLineHeight();
+    sal_Int32 nVisibleEntries = nHeight / nScrollOffset;
+    m_xPropertiesWin->SetVisibleLineCount( nVisibleEntries );
+    m_xVertScroll->vadjustment_set_page_increment( nVisibleEntries - 1 );
+    m_xVertScroll->vadjustment_set_page_size( nVisibleEntries );
+    m_xPropertiesWin->ReloadLinesContent();
+}
 
 CustomPropertiesControl::~CustomPropertiesControl()
 {
-    disposeOnce();
 }
 
-void CustomPropertiesControl::dispose()
+IMPL_LINK( CustomPropertiesControl, ScrollHdl, weld::ScrolledWindow&, rScrollBar, void )
 {
-    m_pVertScroll.disposeAndClear();
-    m_pPropertiesWin.disposeAndClear();
-    m_pBody.disposeAndClear();
-    m_pHeaderBar.disposeAndClear();
-    m_pVBox.disposeAndClear();
-    vcl::Window::dispose();
-}
-
-IMPL_LINK( CustomPropertiesControl, ScrollHdl, ScrollBar*, pScrollBar, void )
-{
-    sal_Int32 nOffset = m_pPropertiesWin->GetLineHeight();
-    nOffset *= ( m_nThumbPos - pScrollBar->GetThumbPos() );
-    m_nThumbPos = pScrollBar->GetThumbPos();
-    m_pPropertiesWin->DoScroll( nOffset );
+    sal_Int32 nOffset = m_xPropertiesWin->GetLineHeight();
+    int nThumbPos = rScrollBar.vadjustment_get_value();
+    nOffset *= ( m_nThumbPos - nThumbPos );
+    m_nThumbPos = nThumbPos;
+    m_xPropertiesWin->DoScroll( nOffset );
 }
 
 IMPL_LINK_NOARG(CustomPropertiesControl, RemovedHdl, void*, void)
 {
-    long nLineCount = m_pPropertiesWin->GetVisibleLineCount();
-    m_pVertScroll->SetRangeMax(nLineCount + 1);
-    if ( m_pPropertiesWin->GetOutputSizePixel().Height() < nLineCount * m_pPropertiesWin->GetLineHeight() )
-        m_pVertScroll->DoScrollAction ( ScrollType::LineUp );
+    auto nLineCount = m_xPropertiesWin->GetTotalLineCount();
+    m_xVertScroll->vadjustment_set_upper(nLineCount + 1);
+    if (m_xPropertiesWin->GetTotalLineCount() > m_xPropertiesWin->GetExistingLineCount())
+    {
+        m_xVertScroll->vadjustment_set_value(nLineCount - 1);
+        ScrollHdl(*m_xVertScroll);
+    }
 }
 
-void CustomPropertiesControl::AddLine( const OUString& sName, Any& rAny, bool bInteractive )
+void CustomPropertiesControl::AddLine( Any const & rAny )
 {
-    m_pPropertiesWin->AddLine( sName, rAny );
-    long nLineCount = m_pPropertiesWin->GetVisibleLineCount();
-    m_pVertScroll->SetRangeMax(nLineCount + 1);
-    if ( bInteractive && m_pPropertiesWin->GetOutputSizePixel().Height() < nLineCount * m_pPropertiesWin->GetLineHeight() )
-        m_pVertScroll->DoScroll(nLineCount + 1);
+    m_xPropertiesWin->AddLine( OUString(), rAny );
+    auto nLineCount = m_xPropertiesWin->GetTotalLineCount();
+    m_xVertScroll->vadjustment_set_upper(nLineCount + 1);
+    if (m_xPropertiesWin->GetHeight() < nLineCount * m_xPropertiesWin->GetLineHeight())
+    {
+        m_xVertScroll->vadjustment_set_value(nLineCount + 1);
+        ScrollHdl(*m_xVertScroll);
+    }
+}
+
+void CustomPropertiesControl::SetCustomProperties(std::vector< std::unique_ptr<CustomProperty> >&& rProperties)
+{
+    m_xPropertiesWin->SetCustomProperties(std::move(rProperties));
+    auto nLineCount = m_xPropertiesWin->GetTotalLineCount();
+    m_xVertScroll->vadjustment_set_upper(nLineCount + 1);
 }
 
 // class SfxCustomPropertiesPage -----------------------------------------
-SfxCustomPropertiesPage::SfxCustomPropertiesPage( vcl::Window* pParent, const SfxItemSet& rItemSet )
-    : SfxTabPage(pParent, "CustomInfoPage", "sfx/ui/custominfopage.ui", &rItemSet)
+SfxCustomPropertiesPage::SfxCustomPropertiesPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rItemSet )
+    : SfxTabPage(pPage, pController, "sfx/ui/custominfopage.ui", "CustomInfoPage", &rItemSet)
+    , m_xPropertiesCtrl(new CustomPropertiesControl)
+    , m_xAdd(m_xBuilder->weld_button("add"))
 {
-    get(m_pPropertiesCtrl, "properties");
-    m_pPropertiesCtrl->Init(*this);
-    get<PushButton>("add")->SetClickHdl(LINK(this, SfxCustomPropertiesPage, AddHdl));
+    m_xPropertiesCtrl->Init(*m_xBuilder);
+    m_xAdd->connect_clicked(LINK(this, SfxCustomPropertiesPage, AddHdl));
 }
 
 SfxCustomPropertiesPage::~SfxCustomPropertiesPage()
 {
-    disposeOnce();
+    m_xPropertiesCtrl.reset();
 }
 
-void SfxCustomPropertiesPage::dispose()
+IMPL_LINK_NOARG(SfxCustomPropertiesPage, AddHdl, weld::Button&, void)
 {
-    m_pPropertiesCtrl.clear();
-    SfxTabPage::dispose();
-}
+    // tdf#115853: reload current lines before adding a brand new one
+    // indeed the info are deleted by ClearCustomProperties
+    // each time SfxDocumentInfoItem destructor is called
+    SfxDocumentInfoItem pInfo;
+    const Sequence< beans::PropertyValue > aPropertySeq = m_xPropertiesCtrl->GetCustomProperties();
+    for ( const auto& rProperty : aPropertySeq )
+    {
+        if ( !rProperty.Name.isEmpty() )
+        {
+            pInfo.AddCustomProperty( rProperty.Name, rProperty.Value );
+        }
+    }
 
-IMPL_LINK_NOARG(SfxCustomPropertiesPage, AddHdl, Button*, void)
-{
     Any aAny;
-    m_pPropertiesCtrl->AddLine( OUString(), aAny, true );
+    m_xPropertiesCtrl->AddLine(aAny);
 }
 
 bool SfxCustomPropertiesPage::FillItemSet( SfxItemSet* rSet )
 {
-    bool bModified = false;
     const SfxPoolItem* pItem = nullptr;
     SfxDocumentInfoItem* pInfo = nullptr;
     bool bMustDelete = false;
 
-    if ( GetTabDialog() && GetTabDialog()->GetExampleSet() )
+    if (const SfxItemSet* pItemSet = GetDialogExampleSet())
     {
-        if ( SfxItemState::SET !=
-                GetTabDialog()->GetExampleSet()->GetItemState( SID_DOCINFO, true, &pItem ) )
-            pInfo = const_cast<SfxDocumentInfoItem*>(&static_cast<const SfxDocumentInfoItem& >(rSet->Get( SID_DOCINFO )));
+        if (SfxItemState::SET != pItemSet->GetItemState(SID_DOCINFO, true, &pItem))
+            pInfo = const_cast<SfxDocumentInfoItem*>(&rSet->Get( SID_DOCINFO ));
         else
         {
             bMustDelete = true;
@@ -2261,168 +1927,126 @@ bool SfxCustomPropertiesPage::FillItemSet( SfxItemSet* rSet )
         }
 
         pInfo->ClearCustomProperties();
-        Sequence< beans::PropertyValue > aPropertySeq = m_pPropertiesCtrl->GetCustomProperties();
-        sal_Int32 i = 0, nCount = aPropertySeq.getLength();
-        for ( ; i < nCount; ++i )
+        const Sequence< beans::PropertyValue > aPropertySeq = m_xPropertiesCtrl->GetCustomProperties();
+        for ( const auto& rProperty : aPropertySeq )
         {
-            if ( !aPropertySeq[i].Name.isEmpty() )
-                pInfo->AddCustomProperty( aPropertySeq[i].Name, aPropertySeq[i].Value );
+            if ( !rProperty.Name.isEmpty() )
+                pInfo->AddCustomProperty( rProperty.Name, rProperty.Value );
         }
     }
 
-    bModified = true; //!!!
-
     if (pInfo)
     {
-        if ( bModified )
-            rSet->Put( *pInfo );
+        rSet->Put(*pInfo);
         if ( bMustDelete )
             delete pInfo;
     }
-    return bModified;
+    return true;
 }
 
 void SfxCustomPropertiesPage::Reset( const SfxItemSet* rItemSet )
 {
-    m_pPropertiesCtrl->ClearAllLines();
-    const SfxDocumentInfoItem& rInfoItem = static_cast<const SfxDocumentInfoItem &>(rItemSet->Get(SID_DOCINFO));
-    std::vector< CustomProperty* > aCustomProps = rInfoItem.GetCustomProperties();
-    for (CustomProperty* pCustomProp : aCustomProps)
-    {
-        m_pPropertiesCtrl->AddLine( pCustomProp->m_sName, pCustomProp->m_aValue, false );
-    }
+    m_xPropertiesCtrl->ClearAllLines();
+    const SfxDocumentInfoItem& rInfoItem = rItemSet->Get(SID_DOCINFO);
+    std::vector< std::unique_ptr<CustomProperty> > aCustomProps = rInfoItem.GetCustomProperties();
+    m_xPropertiesCtrl->SetCustomProperties(std::move(aCustomProps));
 }
 
 DeactivateRC SfxCustomPropertiesPage::DeactivatePage( SfxItemSet* /*pSet*/ )
 {
     DeactivateRC nRet = DeactivateRC::LeavePage;
-    if ( !m_pPropertiesCtrl->AreAllLinesValid() )
+    if ( !m_xPropertiesCtrl->AreAllLinesValid() )
         nRet = DeactivateRC::KeepPage;
     return nRet;
 }
 
-VclPtr<SfxTabPage> SfxCustomPropertiesPage::Create( vcl::Window* pParent, const SfxItemSet* rItemSet )
+std::unique_ptr<SfxTabPage> SfxCustomPropertiesPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rItemSet)
 {
-    return VclPtr<SfxCustomPropertiesPage>::Create( pParent, *rItemSet );
+    return std::make_unique<SfxCustomPropertiesPage>(pPage, pController, *rItemSet);
 }
 
-CmisValue::CmisValue( vcl::Window* pParent, const OUString& aStr )
+CmisValue::CmisValue(weld::Widget* pParent, const OUString& aStr)
+    : m_xBuilder(Application::CreateBuilder(pParent, "sfx/ui/cmisline.ui"))
+    , m_xFrame(m_xBuilder->weld_frame("CmisFrame"))
+    , m_xValueEdit(m_xBuilder->weld_entry("value"))
 {
-    m_pUIBuilder.reset(new VclBuilder( pParent, getUIRootDir(), "sfx/ui/cmisline.ui"));
-    get( m_aValueEdit, "value");
-    m_aValueEdit->Show();
-    m_aValueEdit->SetText( aStr );
+    m_xValueEdit->show();
+    m_xValueEdit->set_text(aStr);
 }
 
-CmisDateTime::CmisDateTime( vcl::Window* pParent, const util::DateTime& aDateTime )
+CmisDateTime::CmisDateTime(weld::Widget* pParent, const util::DateTime& aDateTime)
+    : m_xBuilder(Application::CreateBuilder(pParent, "sfx/ui/cmisline.ui"))
+    , m_xFrame(m_xBuilder->weld_frame("CmisFrame"))
+    , m_xDateField(new SvtCalendarBox(m_xBuilder->weld_menu_button("date")))
+    , m_xTimeField(m_xBuilder->weld_formatted_spin_button("time"))
+    , m_xFormatter(new weld::TimeFormatter(*m_xTimeField))
 {
-    m_pUIBuilder.reset(new VclBuilder( pParent, getUIRootDir(), "sfx/ui/cmisline.ui"));
-    get( m_aDateField, "date");
-    get( m_aTimeField, "time");
-    m_aDateField->Show();
-    m_aTimeField->Show();
-    m_aDateField->SetDate( Date( aDateTime ) );
-    m_aTimeField->SetTime( tools::Time( aDateTime ) );
+    m_xFormatter->SetExtFormat(ExtTimeFieldFormat::LongDuration);
+    m_xFormatter->EnableEmptyField(false);
+
+    m_xDateField->show();
+    m_xTimeField->show();
+    m_xDateField->set_date(Date(aDateTime));
+    m_xFormatter->SetTime(tools::Time(aDateTime));
 }
 
-CmisYesNo::CmisYesNo( vcl::Window* pParent, bool bValue )
+CmisYesNo::CmisYesNo(weld::Widget* pParent, bool bValue)
+    : m_xBuilder(Application::CreateBuilder(pParent, "sfx/ui/cmisline.ui"))
+    , m_xFrame(m_xBuilder->weld_frame("CmisFrame"))
+    , m_xYesButton(m_xBuilder->weld_radio_button("yes"))
+    , m_xNoButton(m_xBuilder->weld_radio_button("no"))
 {
-    m_pUIBuilder.reset(new VclBuilder( pParent, getUIRootDir(), "sfx/ui/cmisline.ui"));
-    get( m_aYesButton, "yes");
-    get( m_aNoButton, "no");
-    m_aYesButton->Show();
-    m_aNoButton->Show();
-    if ( bValue )
-        m_aYesButton->Check( );
+    m_xYesButton->show();
+    m_xNoButton->show();
+    if (bValue)
+        m_xYesButton->set_active(true);
     else
-        m_aNoButton->Check( );
+        m_xNoButton->set_active(true);
 }
 
 // struct CmisPropertyLine ---------------------------------------------
-CmisPropertyLine::CmisPropertyLine(vcl::Window* pParent)
-    : m_sType(CMIS_TYPE_STRING)
+CmisPropertyLine::CmisPropertyLine(weld::Widget* pParent)
+    : m_xBuilder(Application::CreateBuilder(pParent, "sfx/ui/cmisline.ui"))
+    , m_sType(CMIS_TYPE_STRING)
     , m_bUpdatable(false)
     , m_bRequired(false)
     , m_bMultiValued(false)
     , m_bOpenChoice(false)
+    , m_xFrame(m_xBuilder->weld_frame("CmisFrame"))
+    , m_xName(m_xBuilder->weld_label("name"))
+    , m_xType(m_xBuilder->weld_label("type"))
 {
-    m_pUIBuilder.reset(new VclBuilder( pParent, getUIRootDir(), "sfx/ui/cmisline.ui"));
-    get( m_pFrame, "CmisFrame" );
-    get( m_aName, "name" );
-    get( m_aType, "type" );
-    m_pFrame->Enable();
+    m_xFrame->set_sensitive(true);
 }
 
 CmisPropertyLine::~CmisPropertyLine( )
 {
-    std::vector< CmisValue* >::iterator pIter;
-    for ( pIter = m_aValues.begin();
-          pIter != m_aValues.end(); ++pIter )
-    {
-        CmisValue* pValue = *pIter;
-        delete pValue;
-    }
-    m_aValues.clear();
-
-    std::vector< CmisYesNo* >::iterator pIterYesNo;
-    for ( pIterYesNo = m_aYesNos.begin();
-          pIterYesNo != m_aYesNos.end(); ++pIterYesNo )
-    {
-        CmisYesNo* pYesNo = *pIterYesNo;
-        delete pYesNo;
-    }
-    m_aYesNos.clear();
-
-    std::vector< CmisDateTime* >::iterator pIterDateTime;
-    for ( pIterDateTime = m_aDateTimes.begin();
-          pIterDateTime != m_aDateTimes.end(); ++pIterDateTime )
-    {
-        CmisDateTime* pDateTime = *pIterDateTime;
-        delete pDateTime;
-    }
-    m_aDateTimes.clear();
-
-}
-
-long CmisPropertyLine::getItemHeight() const
-{
-    return VclContainer::getLayoutRequisition(*m_pFrame).Height();
 }
 
 // class CmisPropertiesWindow -----------------------------------------
 
-CmisPropertiesWindow::CmisPropertiesWindow(SfxTabPage* pParent):
-    m_aNumberFormatter( ::comphelper::getProcessComponentContext(),
-                        Application::GetSettings().GetLanguageTag().getLanguageType() )
+CmisPropertiesWindow::CmisPropertiesWindow(std::unique_ptr<weld::Container> xParent)
+    : m_xBox(std::move(xParent))
+    , m_aNumberFormatter(::comphelper::getProcessComponentContext(),
+                         Application::GetSettings().GetLanguageTag().getLanguageType())
 {
-    pParent->get(m_pBox, "CmisWindow");
-    CmisPropertyLine aTemp( m_pBox );
-    m_nItemHeight = aTemp.getItemHeight();
 }
 
 CmisPropertiesWindow::~CmisPropertiesWindow()
 {
-    ClearAllLines();
 }
 
 void CmisPropertiesWindow::ClearAllLines()
 {
-    std::vector< CmisPropertyLine* >::iterator pIter;
-    for ( pIter = m_aCmisPropertiesLines.begin();
-          pIter != m_aCmisPropertiesLines.end(); ++pIter )
-    {
-        CmisPropertyLine* pLine = *pIter;
-        delete pLine;
-    }
     m_aCmisPropertiesLines.clear();
 }
 
 void CmisPropertiesWindow::AddLine( const OUString& sId, const OUString& sName,
                                     const OUString& sType, const bool bUpdatable,
                                     const bool bRequired, const bool bMultiValued,
-                                    const bool bOpenChoice, Any& /*aChoices*/, Any& rAny )
+                                    const bool bOpenChoice, Any& /*aChoices*/, Any const & rAny )
 {
-    CmisPropertyLine* pNewLine = new CmisPropertyLine( m_pBox );
+    std::unique_ptr<CmisPropertyLine> pNewLine(new CmisPropertyLine(m_xBox.get()));
 
     pNewLine->m_sId = sId;
     pNewLine->m_sType = sType;
@@ -2436,14 +2060,13 @@ void CmisPropertiesWindow::AddLine( const OUString& sId, const OUString& sName,
         Sequence< sal_Int64 > seqValue;
         rAny >>= seqValue;
         sal_uInt32 nIndex = m_aNumberFormatter.GetFormatIndex( NF_NUMBER_SYSTEM );
-        sal_Int32 nNumValue = seqValue.getLength( );
-        for ( sal_Int32 i = 0; i < nNumValue; ++i )
+        for ( const auto& rValue : std::as_const(seqValue) )
         {
             OUString sValue;
-            m_aNumberFormatter.GetInputLineString( seqValue[i], nIndex, sValue );
-            CmisValue* pValue = new CmisValue( m_pBox, sValue );
-            pValue->m_aValueEdit->SetReadOnly( !bUpdatable );
-            pNewLine->m_aValues.push_back( pValue );
+            m_aNumberFormatter.GetInputLineString( rValue, nIndex, sValue );
+            std::unique_ptr<CmisValue> pValue(new CmisValue(m_xBox.get(), sValue));
+            pValue->m_xValueEdit->set_editable(bUpdatable);
+            pNewLine->m_aValues.push_back( std::move(pValue) );
         }
     }
     else if ( sType == CMIS_TYPE_DECIMAL )
@@ -2451,14 +2074,13 @@ void CmisPropertiesWindow::AddLine( const OUString& sId, const OUString& sName,
         Sequence< double > seqValue;
         rAny >>= seqValue;
         sal_uInt32 nIndex = m_aNumberFormatter.GetFormatIndex( NF_NUMBER_SYSTEM );
-        sal_Int32 nNumValue = seqValue.getLength( );
-        for ( sal_Int32 i = 0; i < nNumValue; ++i )
+        for ( const auto& rValue : std::as_const(seqValue) )
         {
             OUString sValue;
-            m_aNumberFormatter.GetInputLineString( seqValue[i], nIndex, sValue );
-            CmisValue* pValue = new CmisValue( m_pBox, sValue );
-            pValue->m_aValueEdit->SetReadOnly( !bUpdatable );
-            pNewLine->m_aValues.push_back( pValue );
+            m_aNumberFormatter.GetInputLineString( rValue, nIndex, sValue );
+            std::unique_ptr<CmisValue> pValue(new CmisValue(m_xBox.get(), sValue));
+            pValue->m_xValueEdit->set_editable(bUpdatable);
+            pNewLine->m_aValues.push_back( std::move(pValue) );
         }
 
     }
@@ -2466,62 +2088,52 @@ void CmisPropertiesWindow::AddLine( const OUString& sId, const OUString& sName,
     {
         Sequence<sal_Bool> seqValue;
         rAny >>= seqValue;
-        sal_Int32 nNumValue = seqValue.getLength( );
-        for ( sal_Int32 i = 0; i < nNumValue; ++i )
+        for ( const auto& rValue : std::as_const(seqValue) )
         {
-            CmisYesNo* pYesNo = new CmisYesNo( m_pBox, seqValue[i] );
-            pYesNo->m_aYesButton->Enable( bUpdatable );
-            pYesNo->m_aNoButton->Enable( bUpdatable );
-            pNewLine->m_aYesNos.push_back( pYesNo );
+            std::unique_ptr<CmisYesNo> pYesNo(new CmisYesNo(m_xBox.get(), rValue));
+            pYesNo->m_xYesButton->set_sensitive( bUpdatable );
+            pYesNo->m_xNoButton->set_sensitive( bUpdatable );
+            pNewLine->m_aYesNos.push_back( std::move(pYesNo) );
         }
     }
     else if ( sType == CMIS_TYPE_STRING )
     {
         Sequence< OUString > seqValue;
         rAny >>= seqValue;
-        sal_Int32 nNumValue = seqValue.getLength( );
-        for ( sal_Int32 i = 0; i < nNumValue; ++i )
+        for ( const auto& rValue : std::as_const(seqValue) )
         {
-            CmisValue* pValue = new CmisValue( m_pBox, seqValue[i] );
-            pValue->m_aValueEdit->SetReadOnly( !bUpdatable );
-            pNewLine->m_aValues.push_back( pValue );
+            std::unique_ptr<CmisValue> pValue(new CmisValue(m_xBox.get(), rValue));
+            pValue->m_xValueEdit->set_editable(bUpdatable);
+            pNewLine->m_aValues.push_back( std::move(pValue) );
         }
     }
     else if ( sType == CMIS_TYPE_DATETIME )
     {
         Sequence< util::DateTime > seqValue;
         rAny >>= seqValue;
-        sal_Int32 nNumValue = seqValue.getLength( );
-        for ( sal_Int32 i = 0; i < nNumValue; ++i )
+        for ( const auto& rValue : std::as_const(seqValue) )
         {
-            CmisDateTime* pDateTime = new CmisDateTime( m_pBox, seqValue[i]);
-            pDateTime->m_aDateField->SetReadOnly( !bUpdatable );
-            pDateTime->m_aTimeField->SetReadOnly( !bUpdatable );
-            pNewLine->m_aDateTimes.push_back( pDateTime );
+            std::unique_ptr<CmisDateTime> pDateTime(new CmisDateTime(m_xBox.get(), rValue));
+            pDateTime->m_xDateField->set_sensitive(bUpdatable);
+            pDateTime->m_xTimeField->set_sensitive(bUpdatable);
+            pNewLine->m_aDateTimes.push_back( std::move(pDateTime) );
         }
     }
-    pNewLine->m_aName->SetText( sName );
-    pNewLine->m_aName->Show();
-    pNewLine->m_aType->SetText( sType );
-    pNewLine->m_aType->Show();
+    pNewLine->m_xName->set_label( sName );
+    pNewLine->m_xName->show();
+    pNewLine->m_xType->set_label( sType );
+    pNewLine->m_xType->show();
 
-    m_aCmisPropertiesLines.push_back( pNewLine );
-}
-
-void CmisPropertiesWindow::DoScroll( sal_Int32 nNewPos )
-{
-    m_pBox->SetPosPixel(Point(0, nNewPos));
+    m_aCmisPropertiesLines.push_back( std::move(pNewLine) );
 }
 
 Sequence< document::CmisProperty > CmisPropertiesWindow::GetCmisProperties() const
 {
     Sequence< document::CmisProperty > aPropertiesSeq( m_aCmisPropertiesLines.size() );
     sal_Int32 i = 0;
-    std::vector< CmisPropertyLine* >::const_iterator pIter;
-    for ( pIter = m_aCmisPropertiesLines.begin();
-            pIter != m_aCmisPropertiesLines.end(); ++pIter, ++i )
+    for ( auto& rxLine : m_aCmisPropertiesLines )
     {
-        CmisPropertyLine* pLine = *pIter;
+        CmisPropertyLine* pLine = rxLine.get();
 
         aPropertiesSeq[i].Id = pLine->m_sId;
         aPropertiesSeq[i].Type = pLine->m_sType;
@@ -2530,26 +2142,26 @@ Sequence< document::CmisProperty > CmisPropertiesWindow::GetCmisProperties() con
         aPropertiesSeq[i].OpenChoice = pLine->m_bOpenChoice;
         aPropertiesSeq[i].MultiValued = pLine->m_bMultiValued;
 
-        OUString sPropertyName = pLine->m_aName->GetText();
+        OUString sPropertyName = pLine->m_xName->get_label();
         if ( !sPropertyName.isEmpty() )
         {
             aPropertiesSeq[i].Name = sPropertyName;
-            OUString sType = pLine->m_aType->GetText( );
+            OUString sType = pLine->m_xType->get_label();
             if ( CMIS_TYPE_DECIMAL == sType )
             {
                 sal_uInt32 nIndex = const_cast< SvNumberFormatter& >(
                     m_aNumberFormatter ).GetFormatIndex( NF_NUMBER_SYSTEM );
                 Sequence< double > seqValue( pLine->m_aValues.size( ) );
                 sal_Int32 k = 0;
-                for ( std::vector< CmisValue*>::const_iterator it = pLine->m_aValues.begin();
-                    it != pLine->m_aValues.end(); ++it, ++k)
+                for ( const auto& rxValue : pLine->m_aValues )
                 {
                     double dValue = 0.0;
-                    OUString sValue( (*it)->m_aValueEdit->GetText() );
+                    OUString sValue( rxValue->m_xValueEdit->get_text() );
                     bool bIsNum = const_cast< SvNumberFormatter& >( m_aNumberFormatter ).
                     IsNumberFormat( sValue, nIndex, dValue );
                     if ( bIsNum )
                         seqValue[k] = dValue;
+                    ++k;
                 }
                 aPropertiesSeq[i].Value <<= seqValue;
             }
@@ -2559,15 +2171,15 @@ Sequence< document::CmisProperty > CmisPropertiesWindow::GetCmisProperties() con
                     m_aNumberFormatter ).GetFormatIndex( NF_NUMBER_SYSTEM );
                 Sequence< sal_Int64 > seqValue( pLine->m_aValues.size( ) );
                 sal_Int32 k = 0;
-                for ( std::vector< CmisValue*>::const_iterator it = pLine->m_aValues.begin();
-                    it != pLine->m_aValues.end(); ++it, ++k)
+                for ( const auto& rxValue : pLine->m_aValues )
                 {
                     double dValue = 0;
-                    OUString sValue( (*it)->m_aValueEdit->GetText() );
+                    OUString sValue( rxValue->m_xValueEdit->get_text() );
                     bool bIsNum = const_cast< SvNumberFormatter& >( m_aNumberFormatter ).
                     IsNumberFormat( sValue, nIndex, dValue );
                     if ( bIsNum )
-                        seqValue[k] = (sal_Int64) dValue;
+                        seqValue[k] = static_cast<sal_Int64>(dValue);
+                    ++k;
                 }
                 aPropertiesSeq[i].Value <<= seqValue;
             }
@@ -2575,11 +2187,11 @@ Sequence< document::CmisProperty > CmisPropertiesWindow::GetCmisProperties() con
             {
                 Sequence<sal_Bool> seqValue( pLine->m_aYesNos.size( ) );
                 sal_Int32 k = 0;
-                for ( std::vector< CmisYesNo*>::const_iterator it = pLine->m_aYesNos.begin();
-                    it != pLine->m_aYesNos.end(); ++it, ++k)
+                for ( const auto& rxYesNo : pLine->m_aYesNos )
                 {
-                    bool bValue = (*it)->m_aYesButton->IsChecked();
+                    bool bValue = rxYesNo->m_xYesButton->get_active();
                     seqValue[k] = bValue;
+                    ++k;
                 }
                 aPropertiesSeq[i].Value <<= seqValue;
 
@@ -2588,16 +2200,16 @@ Sequence< document::CmisProperty > CmisPropertiesWindow::GetCmisProperties() con
             {
                 Sequence< util::DateTime > seqValue( pLine->m_aDateTimes.size( ) );
                 sal_Int32 k = 0;
-                for ( std::vector< CmisDateTime*>::const_iterator it = pLine->m_aDateTimes.begin();
-                    it != pLine->m_aDateTimes.end(); ++it, ++k)
+                for ( const auto& rxDateTime : pLine->m_aDateTimes )
                 {
-                    Date aTmpDate = (*it)->m_aDateField->GetDate();
-                    tools::Time aTmpTime = (*it)->m_aTimeField->GetTime();
+                    Date aTmpDate = rxDateTime->m_xDateField->get_date();
+                    tools::Time aTmpTime = rxDateTime->m_xFormatter->GetTime();
                     util::DateTime aDateTime( aTmpTime.GetNanoSec(), aTmpTime.GetSec(),
                                               aTmpTime.GetMin(), aTmpTime.GetHour(),
                                               aTmpDate.GetDay(), aTmpDate.GetMonth(),
                                               aTmpDate.GetYear(), true );
                     seqValue[k] = aDateTime;
+                    ++k;
                 }
                 aPropertiesSeq[i].Value <<= seqValue;
             }
@@ -2605,102 +2217,55 @@ Sequence< document::CmisProperty > CmisPropertiesWindow::GetCmisProperties() con
             {
                 Sequence< OUString > seqValue( pLine->m_aValues.size( ) );
                 sal_Int32 k = 0;
-                for ( std::vector< CmisValue*>::const_iterator it = pLine->m_aValues.begin();
-                    it != pLine->m_aValues.end(); ++it, ++k)
+                for ( const auto& rxValue : pLine->m_aValues )
                 {
-                    OUString sValue( (*it)->m_aValueEdit->GetText() );
+                    OUString sValue( rxValue->m_xValueEdit->get_text() );
                     seqValue[k] = sValue;
+                    ++k;
                 }
                 aPropertiesSeq[i].Value <<= seqValue;
             }
         }
+        ++i;
     }
 
     return aPropertiesSeq;
 }
 
-CmisPropertiesControl::CmisPropertiesControl(SfxTabPage* pParent)
-    : m_pPropertiesWin( pParent )
-    , m_rScrolledWindow( *pParent->get<VclScrolledWindow>("CmisScroll"))
-    , m_rVertScroll( m_rScrolledWindow.getVertScrollBar())
+CmisPropertiesControl::CmisPropertiesControl(weld::Builder& rBuilder)
+    : m_aPropertiesWin(rBuilder.weld_container("CmisWindow"))
+    , m_xScrolledWindow(rBuilder.weld_scrolled_window("CmisScroll"))
 {
-    m_rScrolledWindow.setUserManagedScrolling(true);
-    m_rVertScroll.EnableDrag();
-    m_rVertScroll.Show( m_rScrolledWindow.GetStyle() & WB_VSCROLL);
-    m_rVertScroll.SetRangeMin(0);
-    m_rVertScroll.SetVisibleSize( 0xFFFF );
-
-    Link<ScrollBar*,void> aScrollLink = LINK( this, CmisPropertiesControl, ScrollHdl );
-    m_rVertScroll.SetScrollHdl( aScrollLink );
+    // set height to something small and force it to take the size
+    // dictated by the other pages
+    m_xScrolledWindow->set_size_request(-1, 42);
 }
 
 void CmisPropertiesControl::ClearAllLines()
 {
-   m_pPropertiesWin.ClearAllLines();
-}
-
-IMPL_LINK( CmisPropertiesControl, ScrollHdl, ScrollBar*, pScrollBar, void )
-{
-    sal_Int32 nOffset = m_pPropertiesWin.GetItemHeight();
-    nOffset *= ( pScrollBar->GetThumbPos() );
-    m_pPropertiesWin.DoScroll( -nOffset );
-}
-
-void CmisPropertiesControl::checkAutoVScroll()
-{
-    WinBits nBits = m_rScrolledWindow.GetStyle();
-    if (nBits & WB_VSCROLL)
-        return;
-    if (nBits & WB_AUTOVSCROLL)
-    {
-        bool bShow = m_rVertScroll.GetRangeMax() > m_rVertScroll.GetVisibleSize();
-        if (bShow != m_rVertScroll.IsVisible())
-            m_rVertScroll.Show(bShow);
-    }
-}
-
-void CmisPropertiesControl::setScrollRange()
-{
-    sal_Int32 nScrollOffset = m_pPropertiesWin.GetItemHeight();
-    sal_Int32 nVisibleItems = m_rScrolledWindow.getVisibleChildSize().Height() / nScrollOffset;
-    m_rVertScroll.SetPageSize( nVisibleItems - 1 );
-    m_rVertScroll.SetVisibleSize( nVisibleItems );
-    m_rVertScroll.Scroll();
-    checkAutoVScroll();
+   m_aPropertiesWin.ClearAllLines();
 }
 
 void CmisPropertiesControl::AddLine( const OUString& sId, const OUString& sName,
                                      const OUString& sType, const bool bUpdatable,
                                      const bool bRequired, const bool bMultiValued,
-                                     const bool bOpenChoice, Any& aChoices, Any& rAny
+                                     const bool bOpenChoice, Any& aChoices, Any const & rAny
                                      )
 {
-    m_pPropertiesWin.AddLine( sId, sName, sType, bUpdatable, bRequired, bMultiValued,
+    m_aPropertiesWin.AddLine( sId, sName, sType, bUpdatable, bRequired, bMultiValued,
                                bOpenChoice, aChoices, rAny );
-    //compute logical elements
-    sal_Int32 nLogicElements = ( m_pPropertiesWin.getBoxHeight()
-                                 + m_pPropertiesWin.GetItemHeight() ) / m_pPropertiesWin.GetItemHeight();
-    m_rVertScroll.SetRangeMax( nLogicElements );
-    m_rVertScroll.DoScroll( nLogicElements );
-    checkAutoVScroll();
 }
 
 // class SfxCmisPropertiesPage -----------------------------------------
-SfxCmisPropertiesPage::SfxCmisPropertiesPage( vcl::Window* pParent, const SfxItemSet& rItemSet )
-    : SfxTabPage(pParent, "CmisInfoPage", "sfx/ui/cmisinfopage.ui", &rItemSet)
-    , m_pPropertiesCtrl( this )
+SfxCmisPropertiesPage::SfxCmisPropertiesPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rItemSet)
+    : SfxTabPage(pPage, pController, "sfx/ui/cmisinfopage.ui", "CmisInfoPage", &rItemSet)
+    , m_xPropertiesCtrl(new CmisPropertiesControl(*m_xBuilder))
 {
 }
 
 SfxCmisPropertiesPage::~SfxCmisPropertiesPage()
 {
-    disposeOnce();
-}
-
-void SfxCmisPropertiesPage::dispose()
-{
-    m_pPropertiesCtrl.ClearAllLines();
-    SfxTabPage::dispose();
+    m_xPropertiesCtrl.reset();
 }
 
 bool SfxCmisPropertiesPage::FillItemSet( SfxItemSet* rSet )
@@ -2709,11 +2274,10 @@ bool SfxCmisPropertiesPage::FillItemSet( SfxItemSet* rSet )
     SfxDocumentInfoItem* pInfo = nullptr;
     bool bMustDelete = false;
 
-    if ( GetTabDialog() && GetTabDialog()->GetExampleSet() )
+    if (const SfxItemSet* pItemSet = GetDialogExampleSet())
     {
-        if ( SfxItemState::SET !=
-                GetTabDialog()->GetExampleSet()->GetItemState( SID_DOCINFO, true, &pItem ) )
-            pInfo = const_cast<SfxDocumentInfoItem*>(&static_cast<const SfxDocumentInfoItem& >(rSet->Get( SID_DOCINFO )));
+        if (SfxItemState::SET != pItemSet->GetItemState(SID_DOCINFO, true, &pItem))
+            pInfo = const_cast<SfxDocumentInfoItem*>(&rSet->Get( SID_DOCINFO ));
         else
         {
             bMustDelete = true;
@@ -2725,7 +2289,7 @@ bool SfxCmisPropertiesPage::FillItemSet( SfxItemSet* rSet )
     if ( pInfo )
     {
         Sequence< document::CmisProperty > aOldProps = pInfo->GetCmisProperties( );
-        Sequence< document::CmisProperty > aNewProps = m_pPropertiesCtrl.GetCmisProperties();
+        Sequence< document::CmisProperty > aNewProps = m_xPropertiesCtrl->GetCmisProperties();
 
         std::vector< document::CmisProperty > changedProps;
         for ( sal_Int32 i = 0; i< aNewProps.getLength( ); ++i )
@@ -2738,10 +2302,10 @@ bool SfxCmisPropertiesPage::FillItemSet( SfxItemSet* rSet )
                     aOldProps[i].Value >>= oldValue;
                     // We only edit hours and minutes
                     // don't compare NanoSeconds and Seconds
-                    for ( sal_Int32 ii = 0; ii < oldValue.getLength( ); ++ii )
+                    for ( auto& rDateTime : oldValue )
                     {
-                        oldValue[ii].NanoSeconds = 0;
-                        oldValue[ii].Seconds = 0;
+                        rDateTime.NanoSeconds = 0;
+                        rDateTime.Seconds = 0;
                     }
                     Sequence< util::DateTime > newValue;
                     aNewProps[i].Value >>= newValue;
@@ -2758,11 +2322,7 @@ bool SfxCmisPropertiesPage::FillItemSet( SfxItemSet* rSet )
                 }
             }
         }
-        Sequence< document::CmisProperty> aModifiedProps( modifiedNum );
-        sal_Int32 nCount = 0;
-        for( std::vector< document::CmisProperty>::const_iterator pIter = changedProps.begin();
-            pIter != changedProps.end( ); ++pIter )
-                aModifiedProps[ nCount++ ] = *pIter;
+        Sequence< document::CmisProperty> aModifiedProps( comphelper::containerToSequence(changedProps) );
         pInfo->SetCmisProperties( aModifiedProps );
         rSet->Put( *pInfo );
         if ( bMustDelete )
@@ -2774,22 +2334,21 @@ bool SfxCmisPropertiesPage::FillItemSet( SfxItemSet* rSet )
 
 void SfxCmisPropertiesPage::Reset( const SfxItemSet* rItemSet )
 {
-    m_pPropertiesCtrl.ClearAllLines();
-    const SfxDocumentInfoItem& rInfoItem = static_cast<const SfxDocumentInfoItem& >(rItemSet->Get(SID_DOCINFO));
+    m_xPropertiesCtrl->ClearAllLines();
+    const SfxDocumentInfoItem& rInfoItem = rItemSet->Get(SID_DOCINFO);
     uno::Sequence< document::CmisProperty > aCmisProps = rInfoItem.GetCmisProperties();
-    for ( sal_Int32 i = 0; i < aCmisProps.getLength(); i++ )
+    for ( auto& rCmisProp : aCmisProps )
     {
-        m_pPropertiesCtrl.AddLine( aCmisProps[i].Id,
-                                   aCmisProps[i].Name,
-                                   aCmisProps[i].Type,
-                                   aCmisProps[i].Updatable,
-                                   aCmisProps[i].Required,
-                                   aCmisProps[i].MultiValued,
-                                   aCmisProps[i].OpenChoice,
-                                   aCmisProps[i].Choices,
-                                   aCmisProps[i].Value );
+        m_xPropertiesCtrl->AddLine(rCmisProp.Id,
+                                   rCmisProp.Name,
+                                   rCmisProp.Type,
+                                   rCmisProp.Updatable,
+                                   rCmisProp.Required,
+                                   rCmisProp.MultiValued,
+                                   rCmisProp.OpenChoice,
+                                   rCmisProp.Choices,
+                                   rCmisProp.Value);
     }
-    m_pPropertiesCtrl.setScrollRange();
 }
 
 DeactivateRC SfxCmisPropertiesPage::DeactivatePage( SfxItemSet* /*pSet*/ )
@@ -2797,28 +2356,9 @@ DeactivateRC SfxCmisPropertiesPage::DeactivatePage( SfxItemSet* /*pSet*/ )
     return DeactivateRC::LeavePage;
 }
 
-VclPtr<SfxTabPage> SfxCmisPropertiesPage::Create( vcl::Window* pParent, const SfxItemSet* rItemSet )
+std::unique_ptr<SfxTabPage> SfxCmisPropertiesPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rItemSet)
 {
-    return VclPtr<SfxCmisPropertiesPage>::Create( pParent, *rItemSet );
+    return std::make_unique<SfxCmisPropertiesPage>(pPage, pController, *rItemSet);
 }
-
-void SfxCmisPropertiesPage::SetPosSizePixel(const Point& rAllocPos, const Size& rAllocation)
-{
-    SfxTabPage::SetPosSizePixel(rAllocPos, rAllocation);
-    m_pPropertiesCtrl.setScrollRange();
-}
-
-void SfxCmisPropertiesPage::SetSizePixel(const Size& rAllocation)
-{
-    SfxTabPage::SetSizePixel(rAllocation);
-    m_pPropertiesCtrl.setScrollRange();
-}
-
-void SfxCmisPropertiesPage::SetPosPixel(const Point& rAllocPos)
-{
-    SfxTabPage::SetPosPixel(rAllocPos);
-    m_pPropertiesCtrl.setScrollRange();
-}
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

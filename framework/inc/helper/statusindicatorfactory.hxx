@@ -26,27 +26,20 @@
 
 // include files of own module
 #include <helper/wakeupthread.hxx>
-#include <general.h>
 
 // include uno interfaces
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/task/XStatusIndicatorFactory.hpp>
 #include <com/sun/star/task/XStatusIndicator.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/lang/EventObject.hpp>
-#include <com/sun/star/awt/WindowEvent.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/util/XUpdatable.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <cppuhelper/supportsservice.hxx>
-#include <vcl/status.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <osl/thread.hxx>
+#include <rtl/ref.hxx>
 
 namespace framework{
 
@@ -68,9 +61,6 @@ struct IndicatorInfo
         /** @short  the last set text for this indicator */
         OUString m_sText;
 
-        /** @short  the max range for this indicator. */
-        sal_Int32 m_nRange;
-
         /** @short  the last set value for this indicator */
         sal_Int32 m_nValue;
 
@@ -89,53 +79,44 @@ struct IndicatorInfo
                     the max range for this indicator.
          */
         IndicatorInfo(const css::uno::Reference< css::task::XStatusIndicator >& xIndicator,
-                      const OUString&                                    sText     ,
-                            sal_Int32                                           nRange    )
+                      const OUString&                                    sText    )
         {
             m_xIndicator = xIndicator;
             m_sText      = sText;
-            m_nRange     = nRange;
             m_nValue     = 0;
-        }
-
-        /** @short  Don't forget to free used references!
-         */
-        ~IndicatorInfo()
-        {
-            m_xIndicator.clear();
         }
 
         /** @short  Used to locate an info struct inside a stl structure...
 
             @descr  The indicator object itself is used as key. Its values
-                    are not interesting then. Because more then one child
+                    are not interesting then. Because more than one child
                     indicator can use the same values...
          */
-        bool operator==(const css::uno::Reference< css::task::XStatusIndicator >& xIndicator)
+        bool operator==(const css::uno::Reference< css::task::XStatusIndicator >& xIndicator) const
         {
             return (m_xIndicator == xIndicator);
         }
 };
 
-/** @descr  Define a lits of child indicator objects and her data. */
+/** @descr  Define a list of child indicator objects and its data. */
 typedef ::std::vector< IndicatorInfo > IndicatorStack;
 
 /** @short          implement a factory service to create new status indicator objects
 
     @descr          Internally it uses:
                     - a vcl based
-                    - or an uno based and by the frame layouted
+                    - or a uno based and by the frame layouted
                     progress implementation.
 
                     This factory create different indicators and control his access
                     to a shared output device! Only the last activated component
-                    can write his state to this device. All other requests will be
+                    can write its state to this device. All other requests will be
                     cached only.
 
     @devstatus      ready to use
     @threadsafe     yes
  */
-class StatusIndicatorFactory : public  ::cppu::WeakImplHelper<
+class StatusIndicatorFactory final : public  ::cppu::WeakImplHelper<
                                              css::lang::XServiceInfo
                                            , css::lang::XInitialization
                                            , css::task::XStatusIndicatorFactory
@@ -193,7 +174,7 @@ class StatusIndicatorFactory : public  ::cppu::WeakImplHelper<
 
         virtual OUString SAL_CALL getImplementationName() override
         {
-            return OUString("com.sun.star.comp.framework.StatusIndicatorFactory");
+            return "com.sun.star.comp.framework.StatusIndicatorFactory";
         }
 
         virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -221,24 +202,23 @@ class StatusIndicatorFactory : public  ::cppu::WeakImplHelper<
                            const OUString&                                    sText ,
                                  sal_Int32                                           nRange);
 
-        void SAL_CALL reset(const css::uno::Reference< css::task::XStatusIndicator >& xChild);
+        void reset(const css::uno::Reference< css::task::XStatusIndicator >& xChild);
 
-        void SAL_CALL end(const css::uno::Reference< css::task::XStatusIndicator >& xChild);
+        void end(const css::uno::Reference< css::task::XStatusIndicator >& xChild);
 
-        void SAL_CALL setText(const css::uno::Reference< css::task::XStatusIndicator >& xChild,
+        void setText(const css::uno::Reference< css::task::XStatusIndicator >& xChild,
                                       const OUString&                                    sText );
 
-        void SAL_CALL setValue(const css::uno::Reference< css::task::XStatusIndicator >& xChild,
+        void setValue(const css::uno::Reference< css::task::XStatusIndicator >& xChild,
                                              sal_Int32                                           nValue);
 
     // specials
 
-    protected:
+    private:
 
         virtual ~StatusIndicatorFactory() override;
 
     // helper
-    private:
 
         /** @short  show the parent window of this progress ...
                     if it's allowed to do so.
@@ -256,21 +236,21 @@ class StatusIndicatorFactory : public  ::cppu::WeakImplHelper<
         /** @short  creates a new internal used progress.
             @descr  This factory does not paint the progress itself.
                     It uses helper for that. They can be vcl based or
-                    layouted by the frame and provided as an uno interface.
+                    layouted by the frame and provided as a uno interface.
          */
         void impl_createProgress();
 
         /** @short  shows the internal used progress.
             @descr  This factory does not paint the progress itself.
                     It uses helper for that. They can be vcl based or
-                    layouted by the frame and provided as an uno interface.
+                    layouted by the frame and provided as a uno interface.
          */
         void impl_showProgress();
 
         /** @short  hides the internal used progress.
             @descr  This factory does not paint the progress itself.
                     It uses helper for that. They can be vcl based or
-                    layouted by the frame and provided as an uno interface.
+                    layouted by the frame and provided as a uno interface.
          */
         void impl_hideProgress();
 

@@ -19,29 +19,12 @@
 
 #include <jobs/jobresult.hxx>
 #include <jobs/jobconst.hxx>
-#include <general.h>
-#include <services.h>
 
-#include <rtl/ustrbuf.hxx>
 #include <vcl/svapp.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <comphelper/sequence.hxx>
 
 namespace framework{
-
-/**
-    @short      standard dtor
-    @descr      It does nothing else ...
-                but it marks this new instance as non valid!
-*/
-JobResult::JobResult()
-    : m_bDeactivate(false)
-{
-    // reset the flag mask!
-    // It will reset the accessible state of this object.
-    // That can be useful if something will fail here ...
-    m_eParts = E_NOPART;
-}
 
 /**
     @short      special ctor
@@ -87,12 +70,7 @@ JobResult::JobResult()
                     the job result
 */
 JobResult::JobResult( /*IN*/ const css::uno::Any& aResult )
-    : m_bDeactivate(false)
 {
-    // safe the pure result
-    // May someone need it later ...
-    m_aPureResult = aResult;
-
     // reset the flag mask!
     // It will reset the accessible state of this object.
     // That can be useful if something will fail here ...
@@ -103,25 +81,31 @@ JobResult::JobResult( /*IN*/ const css::uno::Any& aResult )
     if ( aProtocol.empty() )
         return;
 
-    ::comphelper::SequenceAsHashMap::const_iterator pIt = aProtocol.find(JobConst::ANSWER_DEACTIVATE_JOB());
+    ::comphelper::SequenceAsHashMap::const_iterator pIt = aProtocol.find(JobConst::ANSWER_DEACTIVATE_JOB);
     if (pIt != aProtocol.end())
     {
-        pIt->second >>= m_bDeactivate;
-        if (m_bDeactivate)
+        /**
+            an executed job can force his deactivation
+            But we provide this information here only.
+            Doing so is part of any user of us.
+         */
+        bool bDeactivate(false);
+        pIt->second >>= bDeactivate;
+        if (bDeactivate)
             m_eParts |= E_DEACTIVATE;
     }
 
-    pIt = aProtocol.find(JobConst::ANSWER_SAVE_ARGUMENTS());
+    pIt = aProtocol.find(JobConst::ANSWER_SAVE_ARGUMENTS);
     if (pIt != aProtocol.end())
     {
         css::uno::Sequence<css::beans::NamedValue> aTmp;
         pIt->second >>= aTmp;
         comphelper::sequenceToContainer(m_lArguments, aTmp);
-        if (!m_lArguments.size())
+        if (m_lArguments.empty())
             m_eParts |= E_ARGUMENTS;
     }
 
-    pIt = aProtocol.find(JobConst::ANSWER_SEND_DISPATCHRESULT());
+    pIt = aProtocol.find(JobConst::ANSWER_SEND_DISPATCHRESULT);
     if (pIt != aProtocol.end())
     {
         if (pIt->second >>= m_aDispatchResult)
@@ -134,10 +118,8 @@ JobResult::JobResult( /*IN*/ const css::uno::Any& aResult )
 */
 JobResult::JobResult( const JobResult& rCopy )
 {
-    m_aPureResult     = rCopy.m_aPureResult;
     m_eParts          = rCopy.m_eParts;
     m_lArguments      = rCopy.m_lArguments;
-    m_bDeactivate     = rCopy.m_bDeactivate;
     m_aDispatchResult = rCopy.m_aDispatchResult;
 }
 
@@ -160,10 +142,8 @@ JobResult::~JobResult()
 JobResult& JobResult::operator=( const JobResult& rCopy )
 {
     SolarMutexGuard g;
-    m_aPureResult     = rCopy.m_aPureResult;
     m_eParts          = rCopy.m_eParts;
     m_lArguments      = rCopy.m_lArguments;
-    m_bDeactivate     = rCopy.m_bDeactivate;
     m_aDispatchResult = rCopy.m_aDispatchResult;
     return *this;
 }

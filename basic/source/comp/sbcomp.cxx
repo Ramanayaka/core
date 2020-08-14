@@ -18,14 +18,14 @@
  */
 
 
+#include <basic/sbmeth.hxx>
+#include <basic/sbstar.hxx>
 #include <basic/sbx.hxx>
-#include "parser.hxx"
-#include "image.hxx"
-#include "sbobjmod.hxx"
-#include <svtools/miscopt.hxx>
-#include <rtl/character.hxx>
+#include <parser.hxx>
+#include <image.hxx>
+#include <sbintern.hxx>
+#include <sbobjmod.hxx>
 #include <memory>
-#include <o3tl/make_unique.hxx>
 
 // This routine is defined here, so that the
 // compiler can be loaded as a discrete segment.
@@ -42,7 +42,7 @@ bool SbModule::Compile()
     SbModule* pOld = GetSbData()->pCompMod;
     GetSbData()->pCompMod = this;
 
-    auto pParser = o3tl::make_unique<SbiParser>( pBasic, this );
+    auto pParser = std::make_unique<SbiParser>( pBasic, this );
     while( pParser->Parse() ) {}
     if( !pParser->GetErrors() )
         pParser->aGen.Save();
@@ -62,9 +62,9 @@ bool SbModule::Compile()
             pBasic->ClearAllModuleVars();
         RemoveVars(); // remove 'this' Modules variables
         // clear all method statics
-        for( sal_uInt16 i = 0; i < pMethods->Count(); i++ )
+        for( sal_uInt32 i = 0; i < pMethods->Count32(); i++ )
         {
-            SbMethod* p = dynamic_cast<SbMethod*>( pMethods->Get( i )  );
+            SbMethod* p = dynamic_cast<SbMethod*>( pMethods->Get32( i )  );
             if( p )
                 p->ClearStatics();
         }

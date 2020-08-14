@@ -16,7 +16,7 @@ $(eval $(call gb_Library_set_include,xstor,\
 	-I$(SRCDIR)/package/inc \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,xstor,$(SRCDIR)/package/inc/pch/precompiled_xstor))
+$(eval $(call gb_Library_set_precompiled_header,xstor,package/inc/pch/precompiled_xstor))
 
 $(eval $(call gb_Library_use_sdk_api,xstor))
 
@@ -26,6 +26,7 @@ $(eval $(call gb_Library_use_libraries,xstor,\
 	cppuhelper \
 	sal \
 	salhelper \
+	tl \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,xstor,\
@@ -34,7 +35,6 @@ $(eval $(call gb_Library_add_exception_objects,xstor,\
 	package/source/xstor/ohierarchyholder \
 	package/source/xstor/oseekinstream \
 	package/source/xstor/owriteablestream \
-	package/source/xstor/register \
 	package/source/xstor/selfterminatefilestream \
 	package/source/xstor/switchpersistencestream \
 	package/source/xstor/xfactory \

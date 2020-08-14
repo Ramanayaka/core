@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/ppt/timenode.hxx"
+#include <oox/ppt/timenode.hxx>
 
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
@@ -27,20 +26,22 @@
 #include <com/sun/star/animations/XAnimateMotion.hpp>
 #include <com/sun/star/animations/XAnimateTransform.hpp>
 #include <com/sun/star/animations/XCommand.hpp>
+#include <com/sun/star/animations/XAudio.hpp>
 #include <com/sun/star/animations/XIterateContainer.hpp>
 #include <com/sun/star/animations/XTimeContainer.hpp>
 #include <com/sun/star/animations/XTransitionFilter.hpp>
 #include <com/sun/star/animations/AnimationNodeType.hpp>
 #include <com/sun/star/animations/Event.hpp>
 #include <com/sun/star/animations/EventTrigger.hpp>
+#include <com/sun/star/io/WrongFormatException.hpp>
 #include <com/sun/star/presentation/EffectNodeType.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
-#include "oox/helper/helper.hxx"
-#include "oox/core/xmlfilterbase.hxx"
+#include <oox/core/xmlfilterbase.hxx>
 #include <oox/ppt/pptfilterhelpers.hxx>
 #include <oox/token/tokens.hxx>
-#include "sal/log.hxx"
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::oox::core;
 using namespace ::com::sun::star::beans;
@@ -50,7 +51,7 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::animations;
 using namespace ::com::sun::star::presentation;
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
         OUString TimeNode::getServiceName( sal_Int16 nNodeType )
         {
@@ -65,6 +66,9 @@ namespace oox { namespace ppt {
                 break;
             case AnimationNodeType::ANIMATE:
                 sServiceName = "com.sun.star.animations.Animate";
+                break;
+            case AnimationNodeType::ITERATE:
+                sServiceName = "com.sun.star.animations.IterateContainer";
                 break;
             case AnimationNodeType::ANIMATECOLOR:
                 sServiceName = "com.sun.star.animations.AnimateColor";
@@ -88,7 +92,7 @@ namespace oox { namespace ppt {
                 sServiceName = "com.sun.star.animations.Audio";
                 break;
             default:
-                SAL_INFO("oox.ppt","OOX: uhandled type " << nNodeType );
+                SAL_INFO("oox.ppt","OOX: unhandled type " << nNodeType );
                 break;
             }
             return sServiceName;
@@ -110,7 +114,7 @@ namespace oox { namespace ppt {
         {
             bool bFirst = true;
             Reference< XEnumerationAccess > xEA( xNode, UNO_QUERY_THROW );
-            Reference< XEnumeration > xE( xEA->createEnumeration(), UNO_QUERY_THROW );
+            Reference< XEnumeration > xE( xEA->createEnumeration(), UNO_SET_THROW );
             while( xE->hasMoreElements() )
             {
                 // click node
@@ -125,13 +129,13 @@ namespace oox { namespace ppt {
                 {
                     bFirst = false;
                     Reference< XEnumerationAccess > xEA2( xClickNode, UNO_QUERY_THROW );
-                    Reference< XEnumeration > xE2( xEA2->createEnumeration(), UNO_QUERY_THROW );
+                    Reference< XEnumeration > xE2( xEA2->createEnumeration(), UNO_SET_THROW );
                     if( xE2->hasMoreElements() )
                     {
                         // with node
                         xE2->nextElement() >>= xEA2;
                         if( xEA2.is() )
-                            xE2.set(xEA2->createEnumeration(), css::uno::UNO_QUERY);
+                            xE2 = xEA2->createEnumeration();
                         else
                             xE2.clear();
 
@@ -139,14 +143,12 @@ namespace oox { namespace ppt {
                         {
                             Reference< XAnimationNode > xEffectNode( xE2->nextElement(), UNO_QUERY_THROW );
                             const Sequence< NamedValue > aUserData( xEffectNode->getUserData() );
-                            const NamedValue* p = aUserData.getConstArray();
-                            sal_Int32 nLength = aUserData.getLength();
-                            while( nLength-- )
+                            for( const NamedValue& rProp : aUserData )
                             {
-                                if ( p->Name == "node-type" )
+                                if ( rProp.Name == "node-type" )
                                 {
                                     sal_Int16 nNodeType = 0;
-                                    p->Value >>= nNodeType;
+                                    rProp.Value >>= nNodeType;
                                     if( nNodeType != css::presentation::EffectNodeType::ON_CLICK )
                                     {
                                         // first effect does not start on click, so correct
@@ -155,7 +157,6 @@ namespace oox { namespace ppt {
                                         break;
                                     }
                                 }
-                                p++;
                             }
                         }
                     }
@@ -177,7 +178,7 @@ namespace oox { namespace ppt {
             xNode->setBegin( aEmpty );
 
             Reference< XEnumerationAccess > xEA( xNode, UNO_QUERY_THROW );
-            Reference< XEnumeration > xE( xEA->createEnumeration(), UNO_QUERY_THROW );
+            Reference< XEnumeration > xE( xEA->createEnumeration(), UNO_SET_THROW );
             while( xE->hasMoreElements() )
             {
                 // click node
@@ -194,17 +195,25 @@ namespace oox { namespace ppt {
     void TimeNode::addNode( const XmlFilterBase& rFilter, const Reference< XAnimationNode >& rxNode, const SlidePersistPtr & pSlide )
     {
         try {
-            OUString sServiceName = getServiceName( mnNodeType );
+            sal_Int16 nNodeType = mnNodeType;
+
+            if (mnNodeType == AnimationNodeType::PAR && maNodeProperties[NP_ITERATETYPE].hasValue())
+                nNodeType = AnimationNodeType::ITERATE;
+
+            OUString sServiceName = getServiceName(nNodeType);
+
             Reference< XAnimationNode > xNode = createAndInsert( rFilter, sServiceName, rxNode );
-            setNode( rFilter, xNode, pSlide );
+            if (!xNode)
+                return;
+            setNode(rFilter, xNode, pSlide, rxNode);
         }
-        catch( const Exception& e )
+        catch( const Exception& )
         {
-            SAL_INFO("oox.ppt","OOX: exception raised in TimeNode::addNode() - " << e.Message );
+            TOOLS_INFO_EXCEPTION("oox.ppt","OOX: exception raised in TimeNode::addNode()" );
         }
     }
 
-    void TimeNode::setNode( const XmlFilterBase& rFilter, const Reference< XAnimationNode >& xNode, const SlidePersistPtr & pSlide )
+    void TimeNode::setNode(const XmlFilterBase& rFilter, const Reference< XAnimationNode >& xNode, const SlidePersistPtr & pSlide, const Reference<XAnimationNode>& xParent)
     {
         SAL_WARN_IF( !xNode.is(), "oox.ppt", "null node passed" );
 
@@ -227,7 +236,7 @@ namespace oox { namespace ppt {
             if( !maStCondList.empty() )
             {
                 Any aAny = AnimationCondition::convertList( pSlide, maStCondList );
-                 if( aAny.hasValue() )
+                if( aAny.hasValue() )
                 {
                     xNode->setBegin( aAny );
                 }
@@ -241,24 +250,6 @@ namespace oox { namespace ppt {
                     xNode->setEnd( aAny );
                 }
             }
-#if 0  // FIXME even the binary filter has this disabled.
-            if( !maNextCondList.empty() )
-            {
-                Any aAny = AnimationCondition::convertList( pSlide, maNextCondList );
-                if( aAny.hasValue() )
-                {
-                    xNode->setNext( aAny );
-                }
-            }
-            if( !maPrevCondList.empty() )
-            {
-                Any aAny = AnimationCondition::convertList( pSlide, maPrevCondList );
-                if( aAny.hasValue() )
-                {
-                    xNode->setPrev( aAny );
-                }
-            }
-#endif
             if( mbHasEndSyncValue )
             {
                 Any aValue = maEndSyncValue.convert( pSlide );
@@ -269,10 +260,11 @@ namespace oox { namespace ppt {
             {
                 Sequence< NamedValue > aUserDataSeq( static_cast< sal_Int32 >( maUserData.size() ) );
                 NamedValue* pValues = aUserDataSeq.getArray();
-                for( UserDataMap::const_iterator aIt = maUserData.begin(), aEnd = maUserData.end(); aIt != aEnd; ++aIt, ++pValues )
+                for (auto const& elem : maUserData)
                 {
-                    pValues->Name = aIt->first;
-                    pValues->Value = aIt->second;
+                    pValues->Name = elem.first;
+                    pValues->Value = elem.second;
+                    ++pValues;
                 }
                 maNodeProperties[ NP_USERDATA ] <<= aUserDataSeq;
             }
@@ -282,6 +274,7 @@ namespace oox { namespace ppt {
             Reference< XAnimateMotion > xAnimateMotion( xNode, UNO_QUERY );
             Reference< XAnimateTransform > xAnimateTransform( xNode, UNO_QUERY );
             Reference< XCommand > xCommand( xNode, UNO_QUERY );
+            Reference< XAudio > xAudio( xNode, UNO_QUERY );
             Reference< XIterateContainer > xIterateContainer( xNode, UNO_QUERY );
             sal_Int16 nInt16 = 0;
             bool bBool = false;
@@ -309,8 +302,22 @@ namespace oox { namespace ppt {
                             xAnimate->setBy( aValue );
                         break;
                     case NP_TARGET:
-                        if( xAnimate.is() )
-                            xAnimate->setTarget( aValue );
+
+                        if (xParent.is() && xParent->getType() == AnimationNodeType::ITERATE)
+                        {
+                            Reference<XIterateContainer> xParentContainer(xParent, UNO_QUERY);
+                            if (xParentContainer.is())
+                                xParentContainer->setTarget(aValue);
+                        }
+                        else
+                        {
+                            if (xAnimate.is())
+                                xAnimate->setTarget(aValue);
+                            if (xCommand.is())
+                                xCommand->setTarget(aValue);
+                            if (xAudio.is())
+                                xAudio->setSource(aValue);
+                        }
                         break;
                     case NP_SUBITEM:
                         if( xAnimate.is() )
@@ -518,6 +525,9 @@ namespace oox { namespace ppt {
                 }
             }
 
+            if (xAnimate.is() && xAnimate->getValues().getLength() != xAnimate->getKeyTimes().getLength())
+                throw css::io::WrongFormatException();
+
             if( mnNodeType == AnimationNodeType::TRANSITIONFILTER )
             {
 
@@ -554,9 +564,9 @@ namespace oox { namespace ppt {
                 break;
             }
         }
-        catch( const Exception& e )
+        catch( const Exception& )
         {
-            SAL_INFO("oox.ppt","OOX: exception raised in TimeNode::setNode() - " << e.Message );
+            TOOLS_INFO_EXCEPTION("oox.ppt","OOX: exception raised in TimeNode::setNode()");
         }
     }
 
@@ -572,9 +582,9 @@ namespace oox { namespace ppt {
             xParentContainer->appendChild( xNode );
             return xNode;
         }
-        catch( const Exception& e )
+        catch( const Exception& )
         {
-            SAL_INFO("oox.ppt", "OOX: exception raised in TimeNode::createAndInsert() trying to create a service " << rServiceName << " = " << e.Message );
+            TOOLS_INFO_EXCEPTION("oox.ppt", "OOX: exception raised in TimeNode::createAndInsert() trying to create a service " << rServiceName);
         }
 
         return Reference< XAnimationNode >();
@@ -600,6 +610,6 @@ namespace oox { namespace ppt {
         maNodeProperties[ NP_BY ] = aBy;
     }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

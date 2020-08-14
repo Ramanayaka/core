@@ -21,18 +21,18 @@
 #include <sfx2/dispatch.hxx>
 #include <sfx2/docfile.hxx>
 #include <tools/urlobj.hxx>
+#include <vcl/commandevent.hxx>
 #include <vcl/svapp.hxx>
-#include "tabcont.hxx"
-#include "tabvwsh.hxx"
-#include "docsh.hxx"
-#include "scmod.hxx"
-#include "scresid.hxx"
-#include "sc.hrc"
-#include "globstr.hrc"
-#include "transobj.hxx"
-#include "clipparam.hxx"
-#include "dragdata.hxx"
-#include "markdata.hxx"
+#include <tabcont.hxx>
+#include <tabvwsh.hxx>
+#include <docsh.hxx>
+#include <scmod.hxx>
+#include <sc.hrc>
+#include <globstr.hrc>
+#include <transobj.hxx>
+#include <clipparam.hxx>
+#include <dragdata.hxx>
+#include <markdata.hxx>
 #include <gridwin.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <comphelper/lok.hxx>
@@ -58,9 +58,13 @@ ScTabControl::ScTabControl( vcl::Window* pParent, ScViewData* pData )
             if (pDoc->GetName(i,aString))
             {
                 if ( pDoc->IsScenario(i) )
-                    InsertPage( static_cast<sal_uInt16>(i)+1, aString, TPB_SPECIAL );
+                    InsertPage( static_cast<sal_uInt16>(i)+1, aString, TabBarPageBits::Blue);
                 else
                     InsertPage( static_cast<sal_uInt16>(i)+1, aString );
+
+                if ( pDoc->IsTabProtected(i) )
+                    SetProtectionSymbol(static_cast<sal_uInt16>(i)+1, true);
+
                 if ( !pDoc->IsDefaultTabBgColor(i) )
                 {
                     aTabBgColor = pDoc->GetTabBgColor(i);
@@ -194,7 +198,7 @@ void ScTabControl::MouseButtonUp( const MouseEvent& rMEvt )
     if( nMouseClickPageId != GetPageId(aPos))
         nMouseClickPageId = TabBar::PAGE_NOT_FOUND;
 
-    if ( rMEvt.GetClicks() == 2 && rMEvt.IsLeft() && nMouseClickPageId != 0 && nMouseClickPageId != TAB_PAGE_NOTFOUND )
+    if ( rMEvt.GetClicks() == 2 && rMEvt.IsLeft() && nMouseClickPageId != 0 && nMouseClickPageId != TabBar::PAGE_NOT_FOUND )
     {
         SfxDispatcher* pDispatcher = pViewData->GetViewShell()->GetViewFrame()->GetDispatcher();
         pDispatcher->Execute( FID_TAB_MENU_RENAME, SfxCallMode::SYNCHRON | SfxCallMode::RECORD );
@@ -310,7 +314,7 @@ void ScTabControl::Select()
             ScRange aRange(
                     pViewData->GetRefStartX(), pViewData->GetRefStartY(), pViewData->GetRefStartZ(),
                     pViewData->GetRefEndX(), pViewData->GetRefEndY(), pViewData->GetRefEndZ() );
-            pScMod->SetReference( aRange, pDoc, &rMark );
+            pScMod->SetReference( aRange, *pDoc, &rMark );
             pScMod->EndReference();                     // due to Auto-Hide
         }
 }
@@ -321,9 +325,9 @@ void ScTabControl::UpdateInputContext()
     WinBits nStyle = GetStyle();
     if (pDoc->GetDocumentShell()->IsReadOnly())
         // no insert sheet tab for readonly doc.
-        SetStyle((nStyle & ~WB_INSERTTAB));
+        SetStyle(nStyle & ~WB_INSERTTAB);
     else
-        SetStyle((nStyle | WB_INSERTTAB));
+        SetStyle(nStyle | WB_INSERTTAB);
 }
 
 void ScTabControl::UpdateStatus()
@@ -351,7 +355,7 @@ void ScTabControl::UpdateStatus()
             aString.clear();
         }
 
-        if ( !aString.equals(GetPageText(static_cast<sal_uInt16>(i)+1)) || (GetTabBgColor(static_cast<sal_uInt16>(i)+1) != aTabBgColor) )
+        if ( aString != GetPageText(static_cast<sal_uInt16>(i)+1) || (GetTabBgColor(static_cast<sal_uInt16>(i)+1) != aTabBgColor) )
             bModified = true;
     }
 
@@ -365,13 +369,17 @@ void ScTabControl::UpdateStatus()
                 if (pDoc->GetName(i,aString))
                 {
                     if ( pDoc->IsScenario(i) )
-                        InsertPage( static_cast<sal_uInt16>(i)+1, aString, TPB_SPECIAL );
+                        InsertPage(static_cast<sal_uInt16>(i)+1, aString, TabBarPageBits::Blue);
                     else
                         InsertPage( static_cast<sal_uInt16>(i)+1, aString );
+
+                    if ( pDoc->IsTabProtected(i) )
+                        SetProtectionSymbol(static_cast<sal_uInt16>(i)+1, true);
+
                     if ( !pDoc->IsDefaultTabBgColor(i) )
                     {
                         aTabBgColor = pDoc->GetTabBgColor(i);
-                        SetTabBgColor( static_cast<sal_uInt16>(i)+1, aTabBgColor );
+                        SetTabBgColor(static_cast<sal_uInt16>(i)+1, aTabBgColor );
                     }
                 }
             }
@@ -390,9 +398,6 @@ void ScTabControl::UpdateStatus()
             for (i=0; i<nCount; i++)
                 SelectPage( static_cast<sal_uInt16>(i)+1, rMark.GetTableSelect(i) );
     }
-    else
-    {
-    }
 }
 
 void ScTabControl::SetSheetLayoutRTL( bool bSheetRTL )
@@ -403,28 +408,28 @@ void ScTabControl::SetSheetLayoutRTL( bool bSheetRTL )
 
 void ScTabControl::SwitchToPageId(sal_uInt16 nId)
 {
-    if (nId)
+    if (!nId)
+        return;
+
+    bool bAlreadySelected = IsPageSelected( nId );
+    //make the clicked page the current one
+    SetCurPageId( nId );
+    //change the selection when the current one is not already
+    //selected or part of a multi selection
+    if(bAlreadySelected)
+        return;
+
+    sal_uInt16 nCount = GetMaxId();
+
+    for (sal_uInt16 i=1; i<=nCount; i++)
+        SelectPage( i, i==nId );
+    Select();
+
+    if (comphelper::LibreOfficeKit::isActive())
     {
-        bool bAlreadySelected = IsPageSelected( nId );
-        //make the clicked page the current one
-        SetCurPageId( nId );
-        //change the selection when the current one is not already
-        //selected or part of a multi selection
-        if(!bAlreadySelected)
-        {
-            sal_uInt16 nCount = GetMaxId();
-
-            for (sal_uInt16 i=1; i<=nCount; i++)
-                SelectPage( i, i==nId );
-            Select();
-
-            if (comphelper::LibreOfficeKit::isActive())
-            {
-                // notify LibreOfficeKit about changed page
-                OString aPayload = OString::number(nId - 1);
-                pViewData->GetViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_SET_PART, aPayload.getStr());
-            }
-        }
+        // notify LibreOfficeKit about changed page
+        OString aPayload = OString::number(nId - 1);
+        pViewData->GetViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_SET_PART, aPayload.getStr());
     }
 }
 
@@ -437,21 +442,21 @@ void ScTabControl::Command( const CommandEvent& rCEvt )
     // first activate ViewFrame (Bug 19493):
     pViewSh->SetActive();
 
-    if ( rCEvt.GetCommand() == CommandEventId::ContextMenu && !bDisable)
-    {
-        // #i18735# select the page that is under the mouse cursor
-        // if multiple tables are selected and the one under the cursor
-        // is not part of them then unselect them
-        sal_uInt16 nId = GetPageId( rCEvt.GetMousePosPixel() );
-        SwitchToPageId(nId);
+    if (rCEvt.GetCommand() != CommandEventId::ContextMenu || bDisable)
+        return;
 
-        // #i52073# OLE inplace editing has to be stopped before showing the sheet tab context menu
-        pViewSh->DeactivateOle();
+    // #i18735# select the page that is under the mouse cursor
+    // if multiple tables are selected and the one under the cursor
+    // is not part of them then unselect them
+    sal_uInt16 nId = GetPageId( rCEvt.GetMousePosPixel() );
+    SwitchToPageId(nId);
 
-        //  Popup-Menu:
-        //  get Dispatcher from ViewData (ViewFrame) instead of Shell (Frame), so it can't be null
-        pViewData->GetDispatcher().ExecutePopup( "sheettab" );
-    }
+    // #i52073# OLE inplace editing has to be stopped before showing the sheet tab context menu
+    pViewSh->DeactivateOle();
+
+    //  Popup-Menu:
+    //  get Dispatcher from ViewData (ViewFrame) instead of Shell (Frame), so it can't be null
+    pViewData->GetDispatcher().ExecutePopup( "sheettab" );
 }
 
 void ScTabControl::StartDrag( sal_Int8 /* nAction */, const Point& rPosPixel )
@@ -474,21 +479,21 @@ void ScTabControl::DoDrag()
     ScDocument& rDoc = pDocSh->GetDocument();
 
     SCTAB nTab = pViewData->GetTabNo();
-    ScRange aTabRange( 0, 0, nTab, MAXCOL, MAXROW, nTab );
+    ScRange aTabRange( 0, 0, nTab, rDoc.MaxCol(), rDoc.MaxRow(), nTab );
     ScMarkData aTabMark = pViewData->GetMarkData();
     aTabMark.ResetMark();   // doesn't change marked table information
     aTabMark.SetMarkArea( aTabRange );
 
-    ScDocument* pClipDoc = new ScDocument( SCDOCMODE_CLIP );
+    ScDocumentUniquePtr pClipDoc(new ScDocument( SCDOCMODE_CLIP ));
     ScClipParam aClipParam(aTabRange, false);
-    rDoc.CopyToClip(aClipParam, pClipDoc, &aTabMark, false, false);
+    rDoc.CopyToClip(aClipParam, pClipDoc.get(), &aTabMark, false, false);
 
     TransferableObjectDescriptor aObjDesc;
     pDocSh->FillTransferableObjectDescriptor( aObjDesc );
     aObjDesc.maDisplayName = pDocSh->GetMedium()->GetURLObject().GetURLNoPass();
     // maSize is set in ScTransferObj ctor
 
-    rtl::Reference<ScTransferObj> pTransferObj = new ScTransferObj( pClipDoc, aObjDesc );
+    rtl::Reference<ScTransferObj> pTransferObj = new ScTransferObj( std::move(pClipDoc), aObjDesc );
 
     pTransferObj->SetDragSourceFlags(ScDragSrc::Table);
 
@@ -501,7 +506,7 @@ void ScTabControl::DoDrag()
     pTransferObj->StartDrag( pWindow, DND_ACTION_COPYMOVE | DND_ACTION_LINK );
 }
 
-static sal_uInt16 lcl_DocShellNr( ScDocument* pDoc )
+static sal_uInt16 lcl_DocShellNr( const ScDocument* pDoc )
 {
     sal_uInt16 nShellCnt = 0;
     SfxObjectShell* pShell = SfxObjectShell::GetFirst();

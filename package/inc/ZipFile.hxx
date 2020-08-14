@@ -28,16 +28,16 @@
 
 #include <comphelper/refcountedmutex.hxx>
 #include <package/Inflater.hxx>
-#include <ByteGrabber.hxx>
-#include <HashMaps.hxx>
-#include <EncryptionData.hxx>
+#include "ByteGrabber.hxx"
+#include "HashMaps.hxx"
+#include "EncryptionData.hxx"
 
 #include <memory>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno { class XComponentContext; }
     namespace ucb  { class XProgressHandler; }
-} } }
+}
 namespace rtl
 {
     template < class T > class Reference;
@@ -67,13 +67,14 @@ class ZipFile
     // aMediaType parameter is used only for raw stream header creation
     css::uno::Reference < css::io::XInputStream >  createStreamForZipEntry(
             const rtl::Reference<comphelper::RefCountedMutex>& aMutexHolder,
-            ZipEntry & rEntry,
+            ZipEntry const & rEntry,
             const ::rtl::Reference < EncryptionData > &rData,
             sal_Int8 nStreamMode,
             bool bDecrypt,
+            const bool bUseBufferedStream = true,
             const OUString& aMediaType = OUString() );
 
-    bool hasValidPassword ( ZipEntry & rEntry, const rtl::Reference < EncryptionData > &rData );
+    bool hasValidPassword ( ZipEntry const & rEntry, const rtl::Reference < EncryptionData > &rData );
 
     bool checkSizeAndCRC( const ZipEntry& aEntry );
 
@@ -81,7 +82,7 @@ class ZipFile
 
     void getSizeAndCRC( sal_Int64 nOffset, sal_Int64 nCompressedSize, sal_Int64 *nSize, sal_Int32 *nCRC );
 
-    bool readLOC( ZipEntry &rEntry );
+    void readLOC( ZipEntry &rEntry );
     sal_Int32 readCEN();
     sal_Int32 findEND();
     void recover();
@@ -89,12 +90,12 @@ class ZipFile
 public:
 
     ZipFile( const rtl::Reference<comphelper::RefCountedMutex>& aMutexHolder,
-             css::uno::Reference < css::io::XInputStream > &xInput,
+             css::uno::Reference < css::io::XInputStream > const &xInput,
              const css::uno::Reference < css::uno::XComponentContext > &rxContext,
              bool bInitialise );
 
     ZipFile( const rtl::Reference<comphelper::RefCountedMutex>& aMutexHolder,
-             css::uno::Reference < css::io::XInputStream > &xInput,
+             css::uno::Reference < css::io::XInputStream > const &xInput,
              const css::uno::Reference < css::uno::XComponentContext > &rxContext,
              bool bInitialise,
              bool bForceRecover );
@@ -108,7 +109,8 @@ public:
             ZipEntry& rEntry,
             const ::rtl::Reference < EncryptionData > &rData,
             bool bDecrypt,
-            const rtl::Reference<comphelper::RefCountedMutex>& aMutexHolder );
+            const rtl::Reference<comphelper::RefCountedMutex>& aMutexHolder,
+            const bool bUseBufferedStream = true );
 
     static css::uno::Reference< css::xml::crypto::XDigestContext > StaticGetDigestContextForChecksum(
             const css::uno::Reference< css::uno::XComponentContext >& xArgContext,
@@ -124,7 +126,7 @@ public:
                                     const OUString& aMediaType,
                                     sal_Int8 * & pHeader );
 
-    static bool StaticFillData ( ::rtl::Reference < BaseEncryptionData > & rData,
+    static bool StaticFillData ( ::rtl::Reference < BaseEncryptionData > const & rData,
                                      sal_Int32 &rEncAlgorithm,
                                      sal_Int32 &rChecksumAlgorithm,
                                      sal_Int32 &rDerivedKeySize,

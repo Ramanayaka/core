@@ -26,7 +26,7 @@ import java.util.ArrayList;
 
 /**
  * New Interface which gives us the possibility to switch on the fly between the old
- * Wizard and the new Sun Report Builder Wizard, which use the same UI.
+ * Wizard and the new Report Builder Wizard, which use the same UI.
  */
 public interface IReportDocument
 {
@@ -88,7 +88,7 @@ public interface IReportDocument
     void setFieldTitles(final String[] sFieldTitles);
 
     /**
-     * Change a the name of the 'title' of one field.
+     * Change the name of the 'title' of one field.
      * It is possible to give all element names new names which are used as
      * element title of a given element name.
      * This is only used as a preview
@@ -100,13 +100,13 @@ public interface IReportDocument
     /* Grouping Page */
     // Document should not hold the grouping information!
     /**
-     * Called by press ('greater then') add a group to the group list
+     * Called by press ('greater than') add a group to the group list
      */
     boolean liveupdate_addGroupNametoDocument(String[] GroupNames, String CurGroupTitle, ArrayList<String> GroupFieldVector, ArrayList<String> ReportPath, int iSelCount);
 
     void refreshGroupFields(String[] _sNewNames);
     /**
-     * Called by press ('less then') Removes an already set Groupname out of the list
+     * Called by press ('less than') Removes an already set Groupname out of the list
      */
     void liveupdate_removeGroupName(String[] NewSelGroupNames, String CurGroupTitle, java.util.ArrayList<String> GroupFieldVector);
 
@@ -194,7 +194,7 @@ public interface IReportDocument
     void insertDatabaseDatatoReportDocument(XMultiServiceFactory xMSF);
     // ???
     /**
-     * set a internal variable to stop a maybe longer DB access.
+     * set an internal variable to stop a maybe longer DB access.
      */
     void StopProcess(); // cancel
 

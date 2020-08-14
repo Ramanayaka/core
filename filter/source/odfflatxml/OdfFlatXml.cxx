@@ -13,11 +13,13 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
+#include <rtl/ref.hxx>
 
 #include <sax/tools/documenthandleradapter.hxx>
 
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 
 #include <com/sun/star/beans/PropertyValue.hpp>
 
@@ -26,8 +28,6 @@
 #include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/InputSource.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
-#include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
-#include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
 #include <com/sun/star/xml/sax/XFastParser.hpp>
 
@@ -35,6 +35,7 @@
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/io/XActiveDataSource.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
+#include <tools/diagnose_ex.h>
 
 using namespace ::cppu;
 using namespace ::osl;
@@ -47,8 +48,9 @@ using namespace ::com::sun::star::registry;
 using namespace ::com::sun::star::xml;
 using namespace ::com::sun::star::xml::sax;
 
-namespace filter {
-    namespace odfflatxml {
+namespace filter::odfflatxml {
+        namespace {
+
         /*
          * OdfFlatXml export and imports ODF flat XML documents by plugging a pass-through
          * filter implementation into XmlFilterAdaptor.
@@ -79,7 +81,7 @@ namespace filter {
                      const Sequence< OUString >& userData) override;
 
             OUString SAL_CALL getImplementationName() override
-            { return OUString("com.sun.star.comp.filter.OdfFlatXml"); }
+            { return "com.sun.star.comp.filter.OdfFlatXml"; }
 
             sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
             { return cppu::supportsService(this, ServiceName); }
@@ -91,15 +93,9 @@ namespace filter {
                         "com.sun.star.document.ExportFilter"};
             }
 
-            // UNO component helper methods
-
-            static OUString impl_getImplementationName();
-
-            static Sequence< OUString > impl_getSupportedServiceNames();
-
-            static Reference< XInterface > impl_createInstance(const Reference< XMultiServiceFactory >& fact);
         };
-    }
+
+        }
 }
 
 using namespace ::filter::odfflatxml;
@@ -110,7 +106,7 @@ OdfFlatXml::importer(
                      const Reference< XDocumentHandler >& docHandler,
                      const Sequence< OUString >& /* userData */)
 {
-    // Read InputStream to read from and an URL used for the system id
+    // Read InputStream to read from and a URL used for the system id
     // of the InputSource we create from the given sourceData sequence
     Reference<XInputStream> inputStream;
     OUString paramName;
@@ -150,11 +146,14 @@ OdfFlatXml::importer(
         else
             saxParser->parseStream(inputSource);
     }
-    catch (const Exception &exc)
+    catch (const Exception &)
     {
-        SAL_WARN(
-            "filter.odfflatxml",
-            "caught exception \"" << exc.Message << "\"");
+        TOOLS_WARN_EXCEPTION("filter.odfflatxml", "");
+        return false;
+    }
+    catch (const std::exception &exc)
+    {
+        SAL_WARN("filter.odfflatxml", exc.what());
         return false;
     }
     return true;
@@ -165,7 +164,6 @@ OdfFlatXml::exporter(const Sequence< PropertyValue >& sourceData,
                      const Sequence< OUString >& /*msUserData*/)
 {
     OUString paramName;
-    OUString targetURL;
     Reference<XOutputStream> outputStream;
 
     // Read output stream and target URL from the parameters given in sourceData.
@@ -175,8 +173,6 @@ OdfFlatXml::exporter(const Sequence< PropertyValue >& sourceData,
             paramName = sourceData[paramIdx].Name;
             if ( paramName == "OutputStream" )
                 sourceData[paramIdx].Value >>= outputStream;
-            else if ( paramName == "URL" )
-                sourceData[paramIdx].Value >>= targetURL;
         }
 
     if (!getDelegate().is())
@@ -197,52 +193,13 @@ OdfFlatXml::exporter(const Sequence< PropertyValue >& sourceData,
     return true;
 }
 
-
-OUString OdfFlatXml::impl_getImplementationName()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_OdfFlatXml_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    return OUString("com.sun.star.comp.filter.OdfFlatXml");
-}
-
-Sequence< OUString > OdfFlatXml::impl_getSupportedServiceNames()
-{
-    Sequence< OUString > lServiceNames(2);
-    lServiceNames[0] = "com.sun.star.document.ImportFilter";
-    lServiceNames[1] = "com.sun.star.document.ExportFilter";
-    return lServiceNames;
-}
-
-Reference< XInterface > SAL_CALL OdfFlatXml::impl_createInstance(const Reference< XMultiServiceFactory >& fact)
-{
-    return Reference<XInterface> (static_cast<OWeakObject *>(new OdfFlatXml( comphelper::getComponentContext(fact) )));
-
-}
-
-extern "C" SAL_DLLPUBLIC_EXPORT void* SAL_CALL
-odfflatxml_component_getFactory( const sal_Char* pImplementationName,
-                      void* pServiceManager,
-                      void* /* pRegistryKey */ )
-{
-    if ((!pImplementationName) || (!pServiceManager))
-        return nullptr;
-
-    css::uno::Reference< css::lang::XMultiServiceFactory >
-        xSMGR = static_cast< css::lang::XMultiServiceFactory* >(pServiceManager);
-    css::uno::Reference< css::lang::XSingleServiceFactory > xFactory;
-    OUString sImplName = OUString::createFromAscii(pImplementationName);
-
-    if (OdfFlatXml::impl_getImplementationName() == sImplName)
-        xFactory = cppu::createOneInstanceFactory( xSMGR,
-                                                   OdfFlatXml::impl_getImplementationName(),
-                                                   OdfFlatXml::impl_createInstance,
-                                                   OdfFlatXml::impl_getSupportedServiceNames() );
-
-    if (xFactory.is())
-    {
-        xFactory->acquire();
-        return xFactory.get();
-    }
-
-    return nullptr;
+    static rtl::Reference<OdfFlatXml> g_Instance(new OdfFlatXml(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

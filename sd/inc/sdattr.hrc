@@ -20,7 +20,7 @@
 #ifndef INCLUDED_SD_INC_SDATTR_HRC
 #define INCLUDED_SD_INC_SDATTR_HRC
 
-#include <sfx2/sfx.hrc>
+#include <svl/solar.hrc>
 
 // Layer attributes
 #define ATTR_LAYER_START        SID_SD_START + 1234
@@ -94,10 +94,9 @@
 
 #define ATTR_OPTIONS_START              ATTR_SNAPLINE_END + 1
 #define ATTR_OPTIONS_LAYOUT             ATTR_OPTIONS_START + 1
-#define ATTR_OPTIONS_CONTENTS           ATTR_OPTIONS_START + 2
-#define ATTR_OPTIONS_MISC               ATTR_OPTIONS_START + 3
-#define ATTR_OPTIONS_SNAP               ATTR_OPTIONS_START + 4
-#define ATTR_OPTIONS_PRINT              ATTR_OPTIONS_START + 5
+#define ATTR_OPTIONS_MISC               ATTR_OPTIONS_START + 2
+#define ATTR_OPTIONS_SNAP               ATTR_OPTIONS_START + 3
+#define ATTR_OPTIONS_PRINT              ATTR_OPTIONS_START + 4
 #define ATTR_OPTIONS_END                ATTR_OPTIONS_PRINT
 
 #define ATTR_OPTIONS_SCALE_START        ATTR_OPTIONS_END + 1

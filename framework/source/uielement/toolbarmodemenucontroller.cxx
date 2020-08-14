@@ -18,30 +18,29 @@
  */
 
 #include <uielement/toolbarmodemenucontroller.hxx>
+#include <services.h>
 
-#include "services.h"
-#include <framework/sfxhelperfunctions.hxx>
-
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/awt/MenuItemStyle.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/ui/UIElementType.hpp>
 #include <com/sun/star/frame/XModuleManager.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
+#include <com/sun/star/util/XURLTransformer.hpp>
 
 
+#include <toolkit/awt/vclxmenu.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/settings.hxx>
+#include <vcl/EnumContext.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <vcl/window.hxx>
-#include <svtools/menuoptions.hxx>
+#include <sal/log.hxx>
+#include <comphelper/processfactory.hxx>
+#include <comphelper/propertysequence.hxx>
+#include <comphelper/types.hxx>
 #include <svtools/miscopt.hxx>
-#include <officecfg/Office/UI/ToolbarMode.hxx>
 #include <unotools/confignode.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 //  Defines
 
@@ -57,13 +56,23 @@ using namespace ::com::sun::star::ui;
 namespace framework
 {
 
-DEFINE_XSERVICEINFO_MULTISERVICE_2      (   ToolbarModeMenuController                  ,
-                                            OWeakObject                             ,
-                                            SERVICENAME_POPUPMENUCONTROLLER         ,
-                                            IMPLEMENTATIONNAME_TOOLBARMODEMENUCONTROLLER
-                                        )
+// XInterface, XTypeProvider, XServiceInfo
 
-DEFINE_INIT_SERVICE                     (   ToolbarModeMenuController, {} )
+OUString SAL_CALL ToolbarModeMenuController::getImplementationName()
+{
+    return "com.sun.star.comp.framework.ToolbarModeMenuController";
+}
+
+sal_Bool SAL_CALL ToolbarModeMenuController::supportsService( const OUString& sServiceName )
+{
+    return cppu::supportsService(this, sServiceName);
+}
+
+css::uno::Sequence< OUString > SAL_CALL ToolbarModeMenuController::getSupportedServiceNames()
+{
+    return { SERVICENAME_POPUPMENUCONTROLLER };
+}
+
 
 ToolbarModeMenuController::ToolbarModeMenuController( const css::uno::Reference< css::uno::XComponentContext >& xContext ) :
     svt::PopupMenuControllerBase( xContext ),
@@ -75,7 +84,7 @@ ToolbarModeMenuController::~ToolbarModeMenuController()
 {
 }
 
-void ToolbarModeMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >& rPopupMenu )
+void ToolbarModeMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu > const & rPopupMenu )
 {
     if ( SvtMiscOptions().DisableUICustomization() )
         return;
@@ -102,6 +111,12 @@ void ToolbarModeMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >
         case vcl::EnumContext::Application::Draw:
             aPath.append("Draw");
             break;
+        case vcl::EnumContext::Application::Formula:
+            aPath.append("Formula");
+            break;
+        case vcl::EnumContext::Application::Base:
+            aPath.append("Base");
+            break;
         default:
             break;
     }
@@ -117,6 +132,7 @@ void ToolbarModeMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >
     const Sequence<OUString> aModeNodeNames (aModesNode.getNodeNames());
     const sal_Int32 nCount(aModeNodeNames.getLength());
     SvtMiscOptions aMiscOptions;
+    long nCountToolbar = 0;
 
     for ( sal_Int32 nReadIndex = 0; nReadIndex < nCount; ++nReadIndex )
     {
@@ -128,14 +144,18 @@ void ToolbarModeMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >
         OUString aCommandArg = comphelper::getString( aModeNode.getNodeValue( "CommandArg" ) );
         long nPosition = comphelper::getINT32( aModeNode.getNodeValue( "MenuPosition" ) );
         bool isExperimental = comphelper::getBOOL( aModeNode.getNodeValue( "IsExperimental" ) );
+        bool hasNotebookbar = comphelper::getBOOL( aModeNode.getNodeValue( "HasNotebookbar" ) );
 
         // Allow Notebookbar only in experimental mode
         if ( isExperimental && !aMiscOptions.IsExperimentalMode() )
             continue;
+        if (!hasNotebookbar)
+            nCountToolbar++;
 
         m_xPopupMenu->insertItem( nReadIndex+1, aLabel, css::awt::MenuItemStyle::RADIOCHECK, nPosition );
         rPopupMenu->setCommand( nReadIndex+1, aCommandArg );
     }
+    rPopupMenu->insertSeparator(nCountToolbar);
 }
 
 // XEventListener
@@ -162,43 +182,43 @@ void SAL_CALL ToolbarModeMenuController::statusChanged( const FeatureStateEvent&
     Reference< css::awt::XPopupMenu > xPopupMenu( m_xPopupMenu );
     aLock.clear();
 
-    if ( xPopupMenu.is() )
+    if ( !xPopupMenu.is() )
+        return;
+
+    SolarMutexGuard aGuard;
+    VCLXPopupMenu* pXPopupMenu = static_cast<VCLXPopupMenu *>(comphelper::getUnoTunnelImplementation<VCLXMenu>( xPopupMenu ));
+    PopupMenu*     pVCLPopupMenu = pXPopupMenu ? static_cast<PopupMenu *>(pXPopupMenu->GetMenu()) : nullptr;
+
+    SAL_WARN_IF(!pVCLPopupMenu, "fwk.uielement", "worrying lack of popup menu");
+    if (!pVCLPopupMenu)
+        return;
+
+    bool bSetCheckmark      = false;
+    bool bCheckmark         = false;
+    for ( sal_uInt16 i = 0; i < pVCLPopupMenu->GetItemCount(); i++ )
     {
-        SolarMutexGuard aGuard;
-        VCLXPopupMenu* pXPopupMenu = static_cast<VCLXPopupMenu *>(VCLXMenu::GetImplementation( xPopupMenu ));
-        PopupMenu*     pVCLPopupMenu = pXPopupMenu ? static_cast<PopupMenu *>(pXPopupMenu->GetMenu()) : nullptr;
+        sal_uInt16 nId = pVCLPopupMenu->GetItemId( i );
+        if ( nId == 0 )
+            continue;
 
-        SAL_WARN_IF(!pVCLPopupMenu, "fwk.uielement", "worrying lack of popup menu");
-        if (!pVCLPopupMenu)
-            return;
-
-        bool bSetCheckmark      = false;
-        bool bCheckmark         = false;
-        for ( sal_uInt16 i = 0; i < pVCLPopupMenu->GetItemCount(); i++ )
+        OUString aCmd = pVCLPopupMenu->GetItemCommand( nId );
+        if ( aCmd == aFeatureURL )
         {
-            sal_uInt16 nId = pVCLPopupMenu->GetItemId( i );
-            if ( nId == 0 )
-                continue;
+            // Enable/disable item
+            pVCLPopupMenu->EnableItem( nId, Event.IsEnabled );
 
-            OUString aCmd = pVCLPopupMenu->GetItemCommand( nId );
-            if ( aCmd == aFeatureURL )
+            // Checkmark
+            if ( Event.State >>= bCheckmark )
+                bSetCheckmark = true;
+
+            if ( bSetCheckmark )
+                pVCLPopupMenu->CheckItem( nId, bCheckmark );
+            else
             {
-                // Enable/disable item
-                pVCLPopupMenu->EnableItem( nId, Event.IsEnabled );
+                OUString aItemText;
 
-                // Checkmark
-                if ( Event.State >>= bCheckmark )
-                    bSetCheckmark = true;
-
-                if ( bSetCheckmark )
-                    pVCLPopupMenu->CheckItem( nId, bCheckmark );
-                else
-                {
-                    OUString aItemText;
-
-                    if ( Event.State >>= aItemText )
-                        pVCLPopupMenu->SetItemText( nId, aItemText );
-                }
+                if ( Event.State >>= aItemText )
+                    pVCLPopupMenu->SetItemText( nId, aItemText );
             }
         }
     }
@@ -207,46 +227,8 @@ void SAL_CALL ToolbarModeMenuController::statusChanged( const FeatureStateEvent&
 // XMenuListener
 void SAL_CALL ToolbarModeMenuController::itemSelected( const css::awt::MenuEvent& rEvent )
 {
-    Reference< css::awt::XPopupMenu >   xPopupMenu;
-    Reference< XURLTransformer >        xURLTransformer;
-    Reference< XFrame >                 xFrame;
-
-    osl::ClearableMutexGuard aLock( m_aMutex );
-    xPopupMenu             = m_xPopupMenu;
-    xURLTransformer        = m_xURLTransformer;
-    xFrame                 = m_xFrame;
-    aLock.clear();
-
-    if ( xPopupMenu.is() )
-    {
-        VCLXPopupMenu* pPopupMenu = static_cast<VCLXPopupMenu *>(VCLXPopupMenu::GetImplementation( xPopupMenu ));
-        if ( pPopupMenu )
-        {
-            SolarMutexGuard aSolarMutexGuard;
-            PopupMenu* pVCLPopupMenu = static_cast<PopupMenu *>(pPopupMenu->GetMenu());
-
-            OUString aCmd( pVCLPopupMenu->GetItemCommand( rEvent.MenuId ));
-            OUStringBuffer aBuf(".uno:ToolbarMode?Mode:string=");
-            aBuf.append( aCmd );
-            URL aTargetURL;
-            Sequence<PropertyValue> aArgs;
-
-            aTargetURL.Complete = aBuf.makeStringAndClear();
-            xURLTransformer->parseStrict( aTargetURL );
-            Reference< XDispatchProvider > xDispatchProvider( m_xFrame, UNO_QUERY );
-            if ( xDispatchProvider.is() )
-            {
-                Reference< XDispatch > xDispatch = xDispatchProvider->queryDispatch(
-                                                        aTargetURL, OUString(), 0 );
-
-                ExecuteInfo* pExecuteInfo = new ExecuteInfo;
-                pExecuteInfo->xDispatch     = xDispatch;
-                pExecuteInfo->aTargetURL    = aTargetURL;
-                pExecuteInfo->aArgs         = aArgs;
-                Application::PostUserEvent( LINK(nullptr, ToolbarModeMenuController, ExecuteHdl_Impl), pExecuteInfo );
-            }
-        }
-    }
+    auto aArgs(comphelper::InitPropertySequence({{"Mode", makeAny(m_xPopupMenu->getCommand(rEvent.MenuId))}}));
+    dispatchCommand(m_aCommandURL, aArgs);
 }
 
 void SAL_CALL ToolbarModeMenuController::itemActivated( const css::awt::MenuEvent& )
@@ -269,6 +251,12 @@ void SAL_CALL ToolbarModeMenuController::itemActivated( const css::awt::MenuEven
         case vcl::EnumContext::Application::Draw:
             aPath.append("Draw");
             break;
+        case vcl::EnumContext::Application::Formula:
+            aPath.append("Formula");
+            break;
+        case vcl::EnumContext::Application::Base:
+            aPath.append("Base");
+            break;
         default:
             break;
     }
@@ -283,7 +271,10 @@ void SAL_CALL ToolbarModeMenuController::itemActivated( const css::awt::MenuEven
     OUString aMode = comphelper::getString( aModesNode.getNodeValue( "Active" ) );
 
     for ( int i = 0; i < m_xPopupMenu->getItemCount(); ++i )
-        m_xPopupMenu->checkItem( i+1, (aMode.compareTo( m_xPopupMenu->getCommand( i+1 ) ) == 0) );
+    {
+        sal_Int16 nItemId(m_xPopupMenu->getItemId(i));
+        m_xPopupMenu->checkItem(nItemId, aMode == m_xPopupMenu->getCommand(nItemId));
+    }
 }
 
 // XPopupMenuController
@@ -304,26 +295,13 @@ void SAL_CALL ToolbarModeMenuController::setPopupMenu( const Reference< css::awt
     }
 }
 
-IMPL_STATIC_LINK( ToolbarModeMenuController, ExecuteHdl_Impl, void*, p, void )
-{
-    ExecuteInfo* pExecuteInfo = static_cast<ExecuteInfo*>(p);
-    try
-    {
-        // Asynchronous execution as this can lead to our own destruction!
-        // Framework can recycle our current frame and the layout manager disposes all user interface
-        // elements if a component gets detached from its frame!
-        if ( pExecuteInfo->xDispatch.is() )
-        {
-            pExecuteInfo->xDispatch->dispatch( pExecuteInfo->aTargetURL, pExecuteInfo->aArgs );
-        }
-    }
-    catch ( const Exception& )
-    {
-    }
-
-    delete pExecuteInfo;
 }
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+framework_ToolbarModeMenuController_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new framework::ToolbarModeMenuController(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

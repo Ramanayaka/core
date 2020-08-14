@@ -20,12 +20,7 @@
 #define INCLUDED_VCL_Reference_HXX
 
 #include <vcl/dllapi.h>
-#include <tools/debug.hxx>
 #include <osl/interlck.h>
-
-#include <cassert>
-
-class VclReferenceBase;
 
 class VCL_DLLPUBLIC VclReferenceBase
 {
@@ -45,8 +40,8 @@ public:
             delete this;
     }
 #ifdef DBG_UTIL
-#ifndef WNT
-    int getRefCount() const { return mnRefCnt; }
+#ifndef _WIN32
+    sal_Int32 getRefCount() const { return mnRefCnt; }
 #endif
 #endif
 

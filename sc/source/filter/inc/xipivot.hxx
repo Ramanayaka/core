@@ -22,7 +22,7 @@
 
 #include "xlpivot.hxx"
 #include "xiroot.hxx"
-#include <list>
+#include <vector>
 #include <memory>
 
 class ScDPSaveData;
@@ -170,7 +170,7 @@ public:
      */
     void                ReadDConName( XclImpStream& rStrm );
     /** Reads the entire pivot cache stream. Uses decrypter from passed stream. */
-    void                ReadPivotCacheStream( XclImpStream& rStrm );
+    void                ReadPivotCacheStream( const XclImpStream& rStrm );
 
     bool                IsRefreshOnLoad() const;
     bool                IsValid() const;
@@ -202,12 +202,14 @@ public:
 
     /** Returns the internal name of the item or 0, if no name could be found. */
     const OUString* GetItemName() const;
+    /** Returns the internal name of the item. */
+    std::pair<bool, OUString> GetItemName(const ScDPSaveDimension& rSaveDim, ScDPObject* pObj, const XclImpRoot& rRoot) const;
 
     /** Reads an SXVI record containing data of this item. */
     void                ReadSxvi( XclImpStream& rStrm );
 
     /** Inserts this item into the passed ScDPSaveDimension. */
-    void                ConvertItem( ScDPSaveDimension& rSaveDim ) const;
+    void                ConvertItem( ScDPSaveDimension& rSaveDim, ScDPObject* pObj, const XclImpRoot& rRoot ) const;
 
 private:
     XclPTItemInfo       maItemInfo;         /// General data for this item.
@@ -268,23 +270,22 @@ public:
     void                AddDataFieldInfo( const XclPTDataFieldInfo& rDataInfo );
     void                ConvertDataField( ScDPSaveData& rSaveData ) const;
 
+    void                ConvertFieldInfo( const ScDPSaveData& rSaveData, ScDPObject* pObj, const XclImpRoot& rRoot, bool bPageField = false ) const;
+
 private:
-    ScDPSaveDimension*  ConvertRCPField( ScDPSaveData& rSaveData ) const;
-    void                ConvertFieldInfo( ScDPSaveDimension& rSaveDim ) const;
+    void                ConvertRCPField( ScDPSaveData& rSaveData ) const;
 
     void                ConvertDataField( ScDPSaveDimension& rSaveDim, const XclPTDataFieldInfo& rDataInfo ) const;
     void                ConvertDataFieldInfo( ScDPSaveDimension& rSaveDim, const XclPTDataFieldInfo& rDataInfo ) const;
 
 private:
-    typedef ::std::list< XclPTDataFieldInfo >   XclPTDataFieldInfoList;
-    typedef ::std::vector< XclImpPTItemRef >    XclImpPTItemVec;
 
     const XclImpPivotTable& mrPTable;       /// Parent pivot table containing this field.
     XclPTFieldInfo      maFieldInfo;        /// General field info (SXVD record).
     XclPTFieldExtInfo   maFieldExtInfo;     /// Extended field info (SXVDEX record).
     XclPTPageFieldInfo  maPageInfo;         /// Page field info (entry from SXPI record).
-    XclPTDataFieldInfoList maDataInfoList;  /// List of extended data field info (SXDI records).
-    XclImpPTItemVec     maItems;            /// List of all items of this field.
+    std::vector< XclPTDataFieldInfo > maDataInfoVector;  /// Vector of extended data field info (SXDI records).
+    std::vector< XclImpPTItemRef >    maItems;           /// List of all items of this field.
 };
 
 typedef std::shared_ptr< XclImpPTField > XclImpPTFieldRef;
@@ -329,22 +330,26 @@ public:
      *  autoformat. */
     void                ReadSxViewEx9( XclImpStream& rStrm );
 
+    /** Reads an SXADDL record that specifies additional info for pivot table. */
+    void                ReadSxAddl( XclImpStream& rStrm );
+
     /** Inserts the pivot table into the Calc document. */
     void                Convert();
 
     void                MaybeRefresh();
 
     void                ApplyMergeFlags(const ScRange& rOutRange, const ScDPSaveData& rSaveData);
+    void                ApplyFieldInfo();
 
 private:
-    typedef ::std::vector< XclImpPTFieldRef > XclImpPTFieldVec;
-
     XclImpPivotCacheRef mxPCache;           /// Pivot cache containing field/item names.
 
     XclPTInfo           maPTInfo;           /// General info about the pivot table (SXVIEW record).
     XclPTExtInfo        maPTExtInfo;        /// Extended info about the pivot table (SXEX record).
     XclPTViewEx9Info    maPTViewEx9Info;     /// (SXVIEWEX9 record)
-    XclImpPTFieldVec    maFields;           /// Vector containing all fields.
+    XclPTAddl           maPTAddlInfo;
+    std::vector< XclImpPTFieldRef >
+                        maFields;           /// Vector containing all fields.
     XclImpPTFieldRef    mxCurrField;        /// Current field for importing additional info.
     ScfStringVec        maVisFieldNames;    /// Vector containing all visible field names.
     ScfUInt16Vec        maRowFields;        /// Row field indexes.
@@ -404,20 +409,20 @@ public:
     /** Reads an SXVIEWEX9 record that specifies the pivot tables
      *  autoformat. */
     void                ReadSxViewEx9( XclImpStream& rStrm );
+    /** Reads an SXADDL record that specifies additional info for pivot table. */
+    void                ReadSxAddl( XclImpStream& rStrm );
 
     /** Reads all used pivot caches and creates additional sheets for external data sources. */
-    void                ReadPivotCaches( XclImpStream& rStrm );
+    void                ReadPivotCaches( const XclImpStream& rStrm );
     /** Inserts all pivot tables into the Calc document. */
     void                ConvertPivotTables();
 
     void                MaybeRefreshPivotTables();
 
 private:
-    typedef ::std::vector< XclImpPivotCacheRef >    XclImpPivotCacheVec;
-    typedef ::std::vector< XclImpPivotTableRef >    XclImpPivotTableVec;
 
-    XclImpPivotCacheVec maPCaches;          /// List of all pivot caches.
-    XclImpPivotTableVec maPTables;          /// List of all pivot tables.
+    std::vector< XclImpPivotCacheRef >  maPCaches; /// List of all pivot caches.
+    std::vector< XclImpPivotTableRef >  maPTables; /// List of all pivot tables.
 };
 
 #endif

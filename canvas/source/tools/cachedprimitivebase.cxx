@@ -20,11 +20,11 @@
 #include <sal/config.h>
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <com/sun/star/rendering/RepaintResult.hpp>
 #include <cppuhelper/supportsservice.hxx>
 
-#include <canvas/base/cachedprimitivebase.hxx>
+#include <base/cachedprimitivebase.hxx>
 
 
 using namespace ::com::sun::star;
@@ -78,7 +78,7 @@ namespace canvas
 
     OUString SAL_CALL CachedPrimitiveBase::getImplementationName(  )
     {
-        return OUString("canvas::CachedPrimitiveBase");
+        return "canvas::CachedPrimitiveBase";
     }
 
     sal_Bool SAL_CALL CachedPrimitiveBase::supportsService( const OUString& ServiceName )

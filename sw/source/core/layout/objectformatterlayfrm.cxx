@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <objectformatterlayfrm.hxx>
+#include "objectformatterlayfrm.hxx"
 #include <anchoredobject.hxx>
 #include <sortedobjs.hxx>
 #include <pagefrm.hxx>
@@ -36,7 +36,7 @@ SwObjectFormatterLayFrame::~SwObjectFormatterLayFrame()
 {
 }
 
-SwObjectFormatterLayFrame* SwObjectFormatterLayFrame::CreateObjFormatter(
+std::unique_ptr<SwObjectFormatterLayFrame> SwObjectFormatterLayFrame::CreateObjFormatter(
                                                 SwLayoutFrame& _rAnchorLayFrame,
                                                 const SwPageFrame& _rPageFrame,
                                                 SwLayAction* _pLayAction )
@@ -48,7 +48,7 @@ SwObjectFormatterLayFrame* SwObjectFormatterLayFrame::CreateObjFormatter(
         return nullptr;
     }
 
-    SwObjectFormatterLayFrame* pObjFormatter = nullptr;
+    std::unique_ptr<SwObjectFormatterLayFrame> pObjFormatter;
 
     // create object formatter, if floating screen objects are registered at
     // given anchor layout frame.
@@ -56,8 +56,8 @@ SwObjectFormatterLayFrame* SwObjectFormatterLayFrame::CreateObjFormatter(
          ( _rAnchorLayFrame.IsPageFrame() &&
             static_cast<SwPageFrame&>(_rAnchorLayFrame).GetSortedObjs() ) )
     {
-        pObjFormatter =
-            new SwObjectFormatterLayFrame( _rAnchorLayFrame, _rPageFrame, _pLayAction );
+        pObjFormatter.reset(
+            new SwObjectFormatterLayFrame( _rAnchorLayFrame, _rPageFrame, _pLayAction ));
     }
 
     return pObjFormatter;
@@ -82,9 +82,7 @@ bool SwObjectFormatterLayFrame::DoFormatObj( SwAnchoredObject& _rAnchoredObj,
 
 bool SwObjectFormatterLayFrame::DoFormatObjs()
 {
-    bool bSuccess( true );
-
-    bSuccess = FormatObjsAtFrame_();
+    bool bSuccess = FormatObjsAtFrame_();
 
     if ( bSuccess && GetAnchorFrame().IsPageFrame() )
     {

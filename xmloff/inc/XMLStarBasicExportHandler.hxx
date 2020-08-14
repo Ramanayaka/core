@@ -24,21 +24,13 @@
 #include <rtl/ustring.hxx>
 #include <xmloff/xmlevent.hxx>
 
-#include <map>
-
 class SvXMLExport;
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { struct PropertyValue; }
-} } }
+}
 
-class XMLStarBasicExportHandler : public XMLEventExportHandler
+class XMLStarBasicExportHandler final : public XMLEventExportHandler
 {
-    const OUString sStarBasic;
-    const OUString sLibrary;
-    const OUString sMacroName;
-    const OUString sStarOffice;
-    const OUString sApplication;
-
 public:
     XMLStarBasicExportHandler();
     virtual ~XMLStarBasicExportHandler() override;
@@ -46,7 +38,7 @@ public:
     virtual void Export(
         SvXMLExport& rExport,
         const OUString& rEventName,
-        css::uno::Sequence<css::beans::PropertyValue> & rValues,
+        const css::uno::Sequence<css::beans::PropertyValue> & rValues,
         bool bUseWhitespace) override;
 };
 

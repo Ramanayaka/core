@@ -33,10 +33,11 @@
 #include <com/sun/star/ucb/CachedDynamicResultSetStubFactory.hpp>
 #include <com/sun/star/ucb/XSourceInitialization.hpp>
 #include <cppuhelper/interfacecontainer.h>
+#include <cppuhelper/queryinterface.hxx>
 #include <ucbhelper/resultsethelper.hxx>
-#include <ucbhelper/getcomponentcontext.hxx>
+#include <ucbhelper/macros.hxx>
 
-#include "osl/diagnose.h"
+#include <osl/diagnose.h>
 
 using namespace com::sun::star;
 
@@ -50,8 +51,7 @@ namespace ucbhelper {
 ResultSetImplHelper::ResultSetImplHelper(
     const uno::Reference< uno::XComponentContext >& rxContext,
     const css::ucb::OpenCommandArgument2& rCommand )
-: m_pDisposeEventListeners( nullptr ),
-  m_bStatic( false ),
+: m_bStatic( false ),
   m_bInitDone( false ),
   m_aCommand( rCommand ),
   m_xContext( rxContext )
@@ -65,44 +65,11 @@ ResultSetImplHelper::~ResultSetImplHelper()
 }
 
 
-// XInterface methods.
-void SAL_CALL ResultSetImplHelper::acquire()
-    throw()
-{
-    OWeakObject::acquire();
-}
-
-void SAL_CALL ResultSetImplHelper::release()
-    throw()
-{
-    OWeakObject::release();
-}
-
-css::uno::Any SAL_CALL ResultSetImplHelper::queryInterface( const css::uno::Type & rType )
-{
-    css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< lang::XTypeProvider* >(this)),
-                                               (static_cast< lang::XServiceInfo* >(this)),
-                                               (static_cast< lang::XComponent* >(this)),
-                                               (static_cast< css::ucb::XDynamicResultSet* >(this))
-                                               );
-    return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
-}
-
-// XTypeProvider methods.
-
-
-XTYPEPROVIDER_IMPL_3( ResultSetImplHelper,
-                      lang::XTypeProvider,
-                      lang::XServiceInfo,
-                      css::ucb::XDynamicResultSet );
-
-
 // XServiceInfo methods.
 
 OUString SAL_CALL ResultSetImplHelper::getImplementationName()
 {
-    return OUString( "ResultSetImplHelper" );
+    return "ResultSetImplHelper";
 }
 
 sal_Bool SAL_CALL ResultSetImplHelper::supportsService( const OUString& ServiceName )
@@ -264,30 +231,30 @@ void ResultSetImplHelper::init( bool bStatic )
 {
     osl::MutexGuard aGuard( m_aMutex );
 
-    if ( !m_bInitDone )
+    if ( m_bInitDone )
+        return;
+
+    if ( bStatic )
     {
-        if ( bStatic )
-        {
-            // virtual... derived class fills m_xResultSet1
-            initStatic();
+        // virtual... derived class fills m_xResultSet1
+        initStatic();
 
-            OSL_ENSURE( m_xResultSet1.is(),
-                        "ResultSetImplHelper::init - No 1st result set!" );
-            m_bStatic = true;
-        }
-        else
-        {
-            // virtual... derived class fills m_xResultSet1 and m_xResultSet2
-            initDynamic();
-
-            OSL_ENSURE( m_xResultSet1.is(),
-                        "ResultSetImplHelper::init - No 1st result set!" );
-            OSL_ENSURE( m_xResultSet2.is(),
-                        "ResultSetImplHelper::init - No 2nd result set!" );
-            m_bStatic = false;
-        }
-        m_bInitDone = true;
+        OSL_ENSURE( m_xResultSet1.is(),
+                    "ResultSetImplHelper::init - No 1st result set!" );
+        m_bStatic = true;
     }
+    else
+    {
+        // virtual... derived class fills m_xResultSet1 and m_xResultSet2
+        initDynamic();
+
+        OSL_ENSURE( m_xResultSet1.is(),
+                    "ResultSetImplHelper::init - No 1st result set!" );
+        OSL_ENSURE( m_xResultSet2.is(),
+                    "ResultSetImplHelper::init - No 2nd result set!" );
+        m_bStatic = false;
+    }
+    m_bInitDone = true;
 }
 
 } // namespace ucbhelper

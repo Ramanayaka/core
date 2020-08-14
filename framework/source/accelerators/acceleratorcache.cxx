@@ -19,40 +19,12 @@
 
 #include <accelerators/acceleratorcache.hxx>
 
-#include <xml/acceleratorconfigurationreader.hxx>
-
-#include <com/sun/star/container/ElementExistException.hpp>
-
 #include <com/sun/star/container/NoSuchElementException.hpp>
 
 #include <vcl/svapp.hxx>
 
 namespace framework
 {
-
-AcceleratorCache::AcceleratorCache()
-{
-}
-
-AcceleratorCache::AcceleratorCache(const AcceleratorCache& rCopy)
-{
-    m_lCommand2Keys = rCopy.m_lCommand2Keys;
-    m_lKey2Commands = rCopy.m_lKey2Commands;
-}
-
-void AcceleratorCache::takeOver(const AcceleratorCache& rCopy)
-{
-    SolarMutexGuard g;
-    m_lCommand2Keys = rCopy.m_lCommand2Keys;
-    m_lKey2Commands = rCopy.m_lKey2Commands;
-}
-
-AcceleratorCache& AcceleratorCache::operator=(const AcceleratorCache& rCopy)
-{
-    takeOver(rCopy);
-    return *this;
-}
-
 bool AcceleratorCache::hasKey(const css::awt::KeyEvent& aKey) const
 {
     SolarMutexGuard g;
@@ -71,20 +43,15 @@ AcceleratorCache::TKeyList AcceleratorCache::getAllKeys() const
     TKeyList lKeys;
     lKeys.reserve(m_lKey2Commands.size());
 
-    TKey2Commands::const_iterator pIt;
-    TKey2Commands::const_iterator pEnd = m_lKey2Commands.end();
-    for (  pIt  = m_lKey2Commands.begin();
-           pIt != pEnd;
-         ++pIt                           )
+    for (auto const& key2Command : m_lKey2Commands)
     {
-        lKeys.push_back(pIt->first);
+        lKeys.push_back(key2Command.first);
     }
 
     return lKeys;
 }
 
-void AcceleratorCache::setKeyCommandPair(const css::awt::KeyEvent& aKey    ,
-                                         const OUString&    sCommand)
+void AcceleratorCache::setKeyCommandPair(const css::awt::KeyEvent& aKey, const OUString& sCommand)
 {
     SolarMutexGuard g;
 
@@ -140,14 +107,10 @@ void AcceleratorCache::removeCommand(const OUString& sCommand)
 {
     SolarMutexGuard g;
 
-    const TKeyList&                            lKeys = getKeysByCommand(sCommand);
-    AcceleratorCache::TKeyList::const_iterator pKey;
-    for (  pKey  = lKeys.begin();
-           pKey != lKeys.end();
-         ++pKey                 )
+    const TKeyList& lKeys = getKeysByCommand(sCommand);
+    for (auto const& lKey : lKeys)
     {
-        const css::awt::KeyEvent& rKey = *pKey;
-        removeKey(rKey);
+        removeKey(lKey);
     }
     m_lCommand2Keys.erase(sCommand);
 }

@@ -24,7 +24,6 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/text/XTextContent.hpp>
 #include <com/sun/star/text/XText.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/container/XChild.hpp>
@@ -32,18 +31,17 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/implbase1.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno {
         class XAggregation;
     }
     namespace drawing {
         class XShape;
     }
-}}}
+}
 
 class SdrObject;
 struct SvEventDescription;
-class ShapeUnoEventAccessImpl;
 class  ScMacroInfo;
 
 //  object which aggregates all svx shape objects,
@@ -59,12 +57,12 @@ typedef ::cppu::ImplHelper1     <   css::text::XText
                                 >   ScShapeObj_TextBase;
 typedef ::cppu::ImplHelper1     <   css::container::XChild
                                 >   ScShapeObj_ChildBase;
-class ScShapeObj    :public ScShapeObj_Base
+class ScShapeObj final : public ScShapeObj_Base
                     ,public ScShapeObj_TextBase
                     ,public ScShapeObj_ChildBase
 {
 private:
-    friend ScMacroInfo* ScShapeObj_getShapeHyperMacroInfo( ScShapeObj* pShape, bool bCreate );
+    friend ScMacroInfo* ScShapeObj_getShapeHyperMacroInfo( const ScShapeObj* pShape, bool bCreate );
     css::uno::Reference< css::uno::XAggregation >              mxShapeAgg;
     // cached pointers to avoid repeated queryAggregation calls:
     css::beans::XPropertySet*                                  pShapePropertySet;
@@ -72,7 +70,6 @@ private:
     css::uno::Reference< css::beans::XPropertySetInfo >        mxPropSetInfo;
     bool                                                       bIsTextShape;
     bool                                                       bIsNoteCaption;
-    bool                                                       bInitializedNotifier;
 
     SdrObject* GetSdrObject() const throw();
 

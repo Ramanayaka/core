@@ -591,7 +591,7 @@
             <desc>Indicates whether a text frame can only be selected by clicking on the text or by clicking somewhere in the frame.</desc>
             <label>Only text area selectable</label>
           </info>
-          <value>true</value>
+          <value>false</value>
         </prop>
       </group>
       <group oor:name="NewDoc">
@@ -667,7 +667,7 @@
         <!-- OldLocation: -->
         <!-- UIHints: Default size for newly created objects when using CTRL-Return or CTRL-Click -->
         <info>
-          <desc>Defines the default size of newly created objects using CTRL-Return or CTRL-Click at a object creating Button.</desc>
+          <desc>Defines the default size of newly created objects using CTRL-Return or CTRL-Click at an object-creating Button.</desc>
           <label>Default Object Size</label>
         </info>
         <prop oor:name="Width" oor:type="xs:int" oor:nillable="false">
@@ -957,7 +957,7 @@
             <desc>Specifies the number of points between two adjacent grid points on the X axis.</desc>
             <label>X Axis Subdivision</label>
           </info>
-          <value>9</value>
+          <value>3</value>
         </prop>
         <prop oor:name="YAxis" oor:type="xs:double" oor:nillable="false">
           <!-- OldPath: Impress/Grid/Subdivision -->
@@ -968,7 +968,7 @@
             <desc>Specifies the number of intervals between two adjacent grid points on the Y axis</desc>
             <label>Y Axis Subdivision</label>
           </info>
-          <value>9</value>
+          <value>3</value>
         </prop>
       </group>
       <group oor:name="SnapGrid">
@@ -1600,7 +1600,7 @@
           <prop oor:name="TimeBetweenHighPriorityRequests" oor:type="xs:int" oor:nillable="false">
             <info>
               <desc>
-                Time in milli seconds to wait between processing
+                Time in milliseconds to wait between processing
                 preview creation requests with high priority.
               </desc>
               <label>Time Between High Priority Requests</label>
@@ -1610,7 +1610,7 @@
           <prop oor:name="TimeBetweenLowPriorityRequests" oor:type="xs:int" oor:nillable="false">
             <info>
               <desc>
-                Time in milli seconds to wait between processing
+                Time in milliseconds to wait between processing
                 preview creation requests with low priority.
               </desc>
               <label>Time Between Low Priority Requests</label>
@@ -1620,8 +1620,8 @@
           <prop oor:name="TimeBetweenRequestsDuringShow" oor:type="xs:int" oor:nillable="false">
             <info>
               <desc>
-                Time in milli seconds to wait between processing
-                preview creation requestsest when show is running.
+                Time in milliseconds to wait between processing
+                preview creation requests when show is running.
               </desc>
               <label>Time Between Requests During Show</label>
             </info>
@@ -1632,12 +1632,26 @@
     </group>
     <group oor:name="Pictures">
       <info>
-        <desc>Contains configuration items form Impress Photo Album function.</desc>
+        <desc>Contains configuration items for Impress Photo Album function.</desc>
       </info>
       <prop oor:name="Path" oor:type="xs:string" oor:nillable="false">
         <info>
           <desc>
             Access path, where images were loaded last time.
+            The default is work directory.
+          </desc>
+        </info>
+        <value>$(work)</value>
+      </prop>
+    </group>
+    <group oor:name="Sound">
+      <info>
+        <desc>Contains configuration items for Sound related functions.</desc>
+      </info>
+      <prop oor:name="Path" oor:type="xs:string" oor:nillable="false">
+        <info>
+          <desc>
+            Access path, where sounds were loaded last time.
             The default is work directory.
           </desc>
         </info>

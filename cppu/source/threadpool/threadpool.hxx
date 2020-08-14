@@ -24,7 +24,7 @@
 #include <unordered_map>
 
 #include <osl/conditn.hxx>
-
+#include <osl/mutex.hxx>
 #include <rtl/byteseq.hxx>
 #include <rtl/ref.hxx>
 #include <salhelper/simplereferenceobject.hxx>
@@ -72,7 +72,7 @@ namespace cppu_threadpool {
             rtl::Reference<ORequestThread> const & theThread);
     };
 
-    typedef std::list < struct ::cppu_threadpool::WaitingThread * > WaitingThreadList;
+    typedef std::deque< struct ::cppu_threadpool::WaitingThread * > WaitingThreadDeque;
 
     class DisposedCallerAdmin;
     typedef std::shared_ptr<DisposedCallerAdmin> DisposedCallerAdminHolder;
@@ -82,15 +82,15 @@ namespace cppu_threadpool {
     public:
         ~DisposedCallerAdmin();
 
-        static DisposedCallerAdminHolder getInstance();
+        static DisposedCallerAdminHolder const & getInstance();
 
-        void dispose( sal_Int64 nDisposeId );
-        void destroy( sal_Int64 nDisposeId );
-        bool isDisposed( sal_Int64 nDisposeId );
+        void dispose( void const * nDisposeId );
+        void destroy( void const * nDisposeId );
+        bool isDisposed( void const * nDisposeId );
 
     private:
         ::osl::Mutex m_mutex;
-        std::vector< sal_Int64 > m_lst;
+        std::vector< void const * > m_vector;
     };
 
     class ThreadAdmin
@@ -107,7 +107,7 @@ namespace cppu_threadpool {
         ::osl::Mutex m_mutex;
 
     private:
-        std::list< rtl::Reference< ORequestThread > > m_lst;
+        std::deque< rtl::Reference< ORequestThread > > m_deque;
         bool m_disposed;
     };
 
@@ -120,16 +120,17 @@ namespace cppu_threadpool {
         ThreadPool();
         virtual ~ThreadPool() override;
 
-        void dispose( sal_Int64 nDisposeId );
-        void destroy( sal_Int64 nDisposeId );
+        void dispose( void const * nDisposeId );
+        void destroy( void const * nDisposeId );
 
         bool addJob( const ::rtl::ByteSequence &aThreadId,
                      bool bAsynchron,
                      void *pThreadSpecificData,
-                     RequestFun * doRequest );
+                     RequestFun * doRequest,
+                     void const * disposeId );
 
         void prepare( const ::rtl::ByteSequence &aThreadId );
-        void * enter( const ::rtl::ByteSequence &aThreadId, sal_Int64 nDisposeId );
+        void * enter( const ::rtl::ByteSequence &aThreadId, void const * nDisposeId );
 
         /********
          * @return true, if queue could be successfully revoked.
@@ -150,7 +151,7 @@ namespace cppu_threadpool {
         ::osl::Mutex m_mutex;
 
         ::osl::Mutex m_mutexWaitingThreadList;
-        WaitingThreadList m_lstThreads;
+        WaitingThreadDeque m_dequeThreads;
 
         DisposedCallerAdminHolder m_DisposedCallerAdmin;
         ThreadAdmin m_aThreadAdmin;

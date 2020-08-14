@@ -17,30 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <hintids.hxx>
+#include <rtl/tencinfo.h>
+#include <osl/diagnose.h>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
-#include <comphelper/string.hxx>
 #include <unotools/tempfile.hxx>
 #include <tools/urlobj.hxx>
 #include <vcl/errinf.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/print.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/wrkwin.hxx>
-#include <vcl/metric.hxx>
-#include <svtools/ctrltool.hxx>
+#include <vcl/weld.hxx>
+#include <vcl/textview.hxx>
+#include <vcl/svapp.hxx>
 #include <svl/intitem.hxx>
 #include <svl/stritem.hxx>
 #include <unotools/pathoptions.hxx>
 #include <svl/undo.hxx>
-#include <unotools/textsearch.hxx>
 #include <svl/eitem.hxx>
 #include <svl/whiter.hxx>
 #include <unotools/saveopt.hxx>
-#include <svtools/transfer.hxx>
-#include <svtools/svtools.hrc>
+#include <vcl/transfer.hxx>
+#include <svtools/strings.hrc>
 #include <svtools/svtresid.hxx>
-#include <svx/svxids.hrc>
 #include <svtools/htmlcfg.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/objface.hxx>
@@ -49,21 +45,15 @@
 #include <sfx2/docfilt.hxx>
 #include <sfx2/fcontnr.hxx>
 #include <sfx2/request.hxx>
-#include <sfx2/prnmon.hxx>
 #include <sfx2/docfile.hxx>
-#include <editeng/fhgtitem.hxx>
 #include <svx/srchdlg.hxx>
 #include <svl/srchitem.hxx>
-#include <editeng/fontitem.hxx>
-#include <editeng/flstitem.hxx>
-#include <editeng/unolingu.hxx>
 #include <sfx2/sfxhtml.hxx>
 #include <swtypes.hxx>
-#include <swmodule.hxx>
 #include <docsh.hxx>
 #include <wdocsh.hxx>
 #include <srcview.hxx>
-#include <viewfunc.hxx>
+#include "viewfunc.hxx"
 #include <doc.hxx>
 #include <IDocumentDeviceAccess.hxx>
 #include <IDocumentState.hxx>
@@ -71,18 +61,11 @@
 #include <shellio.hxx>
 
 #include <cmdid.h>
-#include <helpid.h>
-#include <globals.hrc>
-#include <shells.hrc>
-#include <web.hrc>
-#include <view.hrc>
-#include <com/sun/star/ui/dialogs/XFilePicker2.hpp>
-#include <com/sun/star/ui/dialogs/XFilterManager.hpp>
+#include <strings.hrc>
+#include <com/sun/star/ui/dialogs/XFilePicker3.hpp>
 #include <sfx2/filedlghelper.hxx>
-#define SwSrcView
-#include "swslots.hxx"
-
-#include <unomid.h>
+#define ShellClass_SwSrcView
+#include <swslots.hxx>
 
 #include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
@@ -133,7 +116,7 @@ static void lcl_PrintHeader( vcl::RenderContext &rOutDev, sal_Int32 nPages, sal_
     Color aOldFillColor( rOutDev.GetFillColor() );
     vcl::Font aOldFont( rOutDev.GetFont() );
 
-    rOutDev.SetFillColor( Color(COL_TRANSPARENT) );
+    rOutDev.SetFillColor( COL_TRANSPARENT );
 
     vcl::Font aFont( aOldFont );
     aFont.SetWeight( WEIGHT_BOLD );
@@ -159,12 +142,8 @@ static void lcl_PrintHeader( vcl::RenderContext &rOutDev, sal_Int32 nPages, sal_
     {
         aFont.SetWeight( WEIGHT_NORMAL );
         rOutDev.SetFont( aFont );
-        OUString aPageStr( " [" );
-        aPageStr += SwResId( STR_PAGE );
-        aPageStr += " ";
-        aPageStr += OUString::number( nCurPage );
-        aPageStr += "]";
-        aPos.X() += rOutDev.GetTextWidth( rTitle );
+        OUString aPageStr = " [" + SwResId( STR_PAGE ) + " " + OUString::number( nCurPage ) + "]";
+        aPos.AdjustX(rOutDev.GetTextWidth( rTitle ) );
         rOutDev.DrawText( aPos, aPageStr );
     }
 
@@ -182,7 +161,7 @@ static rtl_TextEncoding lcl_GetStreamCharSet(rtl_TextEncoding eLoadEncoding)
     if(RTL_TEXTENCODING_DONTKNOW == eRet)
     {
         SvxHtmlOptions& rHtmlOptions = SvxHtmlOptions::Get();
-        const sal_Char *pCharSet =
+        const char *pCharSet =
             rtl_getBestMimeCharsetFromTextEncoding( rHtmlOptions.GetTextEncoding() );
         eRet = rtl_getTextEncodingFromMimeCharset( pCharSet );
     }
@@ -215,7 +194,6 @@ static OUString lcl_ConvertTabsToSpaces( const OUString& sLine )
 SwSrcView::SwSrcView(SfxViewFrame* pViewFrame, SfxViewShell*) :
     SfxViewShell( pViewFrame, SWSRCVIEWFLAGS ),
     aEditWin( VclPtr<SwSrcEditWindow>::Create( &pViewFrame->GetWindow(), this ) ),
-    pSearchItem(nullptr),
     bSourceSaved(false),
     eLoadEncoding(RTL_TEXTENCODING_DONTKNOW)
 {
@@ -238,7 +216,7 @@ SwSrcView::~SwSrcView()
     pDocShell->SetAutoLoad(INetURLObject(url), delay,
                             (delay != 0) || !url.isEmpty());
     EndListening(*pDocShell);
-    delete pSearchItem;
+    pSearchItem.reset();
 
     aEditWin.disposeAndClear();
 }
@@ -265,7 +243,7 @@ void SwSrcView::Init()
     }
 
     SetNewWindowAllowed( false );
-    StartListening(*pDocShell,true);
+    StartListening(*pDocShell, DuplicateHandling::Prevent);
 }
 
 SwDocShell*     SwSrcView::GetDocShell()
@@ -294,9 +272,9 @@ void SwSrcView::Execute(SfxRequest& rReq)
             SvtPathOptions aPathOpt;
             // filesave dialog with autoextension
             FileDialogHelper aDlgHelper(
-                TemplateDescription::FILESAVE_AUTOEXTENSION );
-            uno::Reference < XFilePicker2 > xFP = aDlgHelper.GetFilePicker();
-            uno::Reference<XFilterManager> xFltMgr(xFP, UNO_QUERY);
+                TemplateDescription::FILESAVE_AUTOEXTENSION,
+                FileDialogFlags::NONE, aEditWin->GetFrameWeld());
+            uno::Reference < XFilePicker3 > xFP = aDlgHelper.GetFilePicker();
 
             // search for an html filter for export
             SfxFilterContainer* pFilterCont = GetObjectShell()->GetFactory().GetFilterContainer();
@@ -307,15 +285,15 @@ void SwSrcView::Execute(SfxRequest& rReq)
                 // filter found -> use its uiname and wildcard
                 const OUString& rUIName = pFilter->GetUIName();
                 const WildCard& rCard = pFilter->GetWildcard();
-                xFltMgr->appendFilter( rUIName, rCard.getGlob() );
-                xFltMgr->setCurrentFilter( rUIName ) ;
+                xFP->appendFilter( rUIName, rCard.getGlob() );
+                xFP->setCurrentFilter( rUIName ) ;
             }
             else
             {
                 // filter not found
                 OUString sHtml("HTML");
-                xFltMgr->appendFilter( sHtml, "*.html;*.htm" );
-                xFltMgr->setCurrentFilter( sHtml ) ;
+                xFP->appendFilter( sHtml, "*.html;*.htm" );
+                xFP->setCurrentFilter( sHtml ) ;
             }
 
             xFP->setDisplayDirectory( aPathOpt.GetWorkPath() );
@@ -333,6 +311,7 @@ void SwSrcView::Execute(SfxRequest& rReq)
         case SID_SAVEDOC:
         {
             SwDocShell* pDocShell = GetDocShell();
+            assert(pDocShell);
             SfxMedium* pMed = nullptr;
             if(pDocShell->HasName())
                 pMed = pDocShell->GetMedium();
@@ -367,7 +346,11 @@ void SwSrcView::Execute(SfxRequest& rReq)
             SetSearchItem( static_cast<const SvxSearchItem&>(rItem));
             StartSearchAndReplace( static_cast<const SvxSearchItem&>(rItem), rReq.IsAPI() );
             if(aEditWin->IsModified())
-                GetDocShell()->GetDoc()->getIDocumentState().SetModified();
+            {
+                SwDocShell* pDocShell = GetDocShell();
+                assert(pDocShell);
+                pDocShell->GetDoc()->getIDocumentState().SetModified();
+            }
         }
         break;
         case FN_REPEAT_SEARCH:
@@ -434,6 +417,7 @@ void SwSrcView::GetState(SfxItemSet& rSet)
             case SID_SAVEDOC:
             {
                 SwDocShell* pDocShell = GetDocShell();
+                assert(pDocShell);
                 if(!pDocShell->IsModified())
                     rSet.DisableItem(nWhich);
             }
@@ -446,8 +430,8 @@ void SwSrcView::GetState(SfxItemSet& rSet)
                 OUString aPos( SwResId(STR_SRCVIEW_ROW) );
                 TextSelection aSel = pTextView->GetSelection();
                 aPos += OUString::number( aSel.GetEnd().GetPara()+1 );
-                aPos += " : ";
-                aPos += SwResId(STR_SRCVIEW_COL);
+                aPos += " : " +
+                    SwResId(STR_SRCVIEW_COL);
                 aPos += OUString::number( aSel.GetEnd().GetIndex()+1 );
                 SfxStringItem aItem( nWhich, aPos );
                 rSet.Put( aItem );
@@ -456,7 +440,9 @@ void SwSrcView::GetState(SfxItemSet& rSet)
             case SID_SEARCH_OPTIONS:
             {
                 SearchOptionFlags nOpt = SRC_SEARCHOPTIONS;
-                if(GetDocShell()->IsReadOnly())
+                SwDocShell* pDocShell = GetDocShell();
+                assert(pDocShell);
+                if (pDocShell->IsReadOnly())
                     nOpt &= ~SearchOptionFlags(SearchOptionFlags::REPLACE|SearchOptionFlags::REPLACE_ALL);
 
                 rSet.Put( SfxUInt16Item( SID_SEARCH_OPTIONS,  static_cast<sal_uInt16>(nOpt) ) );
@@ -488,7 +474,7 @@ void SwSrcView::GetState(SfxItemSet& rSet)
             case SID_UNDO:
             case SID_REDO:
             {
-                ::svl::IUndoManager& rMgr = pTextView->GetTextEngine()->GetUndoManager();
+                SfxUndoManager& rMgr = pTextView->GetTextEngine()->GetUndoManager();
                 sal_uInt16 nCount = 0;
                 if(nWhich == SID_UNDO)
                 {
@@ -551,15 +537,14 @@ SvxSearchItem* SwSrcView::GetSearchItem()
 {
     if(!pSearchItem)
     {
-        pSearchItem = new SvxSearchItem(SID_SEARCH_ITEM);
+        pSearchItem.reset(new SvxSearchItem(SID_SEARCH_ITEM));
     }
-    return pSearchItem;
+    return pSearchItem.get();
 }
 
 void SwSrcView::SetSearchItem( const SvxSearchItem& rItem )
 {
-    delete pSearchItem;
-    pSearchItem = static_cast<SvxSearchItem*>(rItem.Clone());
+    pSearchItem.reset(rItem.Clone());
 }
 
 void SwSrcView::StartSearchAndReplace(const SvxSearchItem& rSearchItem,
@@ -567,7 +552,6 @@ void SwSrcView::StartSearchAndReplace(const SvxSearchItem& rSearchItem,
                                                   bool bRecursive)
 {
     TextView* pTextView = aEditWin->GetTextView();
-    TextSelection aSel;
     TextPaM aPaM;
 
     bool bForward = !rSearchItem.GetBackward();
@@ -589,7 +573,7 @@ void SwSrcView::StartSearchAndReplace(const SvxSearchItem& rSearchItem,
         break;
 
     case SvxSearchCmd::REPLACE_ALL: bAll = true;
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case SvxSearchCmd::REPLACE:
         nFound = pTextView->Replace( aSearchOpt, bAll, bForward );
         break;
@@ -598,46 +582,49 @@ void SwSrcView::StartSearchAndReplace(const SvxSearchItem& rSearchItem,
         nFound = 0;
     }
 
-    if( !nFound )
+    if( nFound )
+        return;
+
+    bool bNotFoundMessage = false;
+    if(!bRecursive)
     {
-        bool bNotFoundMessage = false;
-        if(!bRecursive)
+        bNotFoundMessage = bAtStart;
+    }
+    else if(bAtStart)
+    {
+        bNotFoundMessage = true;
+    }
+
+    if(bApi)
+        return;
+
+    if(bNotFoundMessage)
+    {
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, "modules/swriter/ui/infonotfounddialog.ui"));
+        std::unique_ptr<weld::MessageDialog> xInfoBox(xBuilder->weld_message_dialog("InfoNotFoundDialog"));
+        xInfoBox->run();
+    }
+    else if(!bRecursive)
+    {
+        int nRet;
+
+        if (!bForward)
         {
-            bNotFoundMessage = bAtStart;
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, "modules/swriter/ui/querycontinueenddialog.ui"));
+            std::unique_ptr<weld::MessageDialog> xQueryBox(xBuilder->weld_message_dialog("QueryContinueEndDialog"));
+            nRet = xQueryBox->run();
         }
-        else if(bAtStart)
+        else
         {
-            bNotFoundMessage = true;
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, "modules/swriter/ui/querycontinuebegindialog.ui"));
+            std::unique_ptr<weld::MessageDialog> xQueryBox(xBuilder->weld_message_dialog("QueryContinueBeginDialog"));
+            nRet = xQueryBox->run();
         }
 
-        if(!bApi)
+        if (nRet == RET_YES)
         {
-            if(bNotFoundMessage)
-            {
-                ScopedVclPtrInstance<MessageDialog>(nullptr, "InfoNotFoundDialog",
-                    "modules/swriter/ui/infonotfounddialog.ui")->Execute();
-            }
-            else if(!bRecursive)
-            {
-                int nRet;
-
-                if (!bForward)
-                {
-                    nRet = ScopedVclPtrInstance<MessageDialog>(nullptr, "QueryContinueEndDialog",
-                        "modules/swriter/ui/querycontinueenddialog.ui")->Execute();
-                }
-                else
-                {
-                    nRet = ScopedVclPtrInstance<MessageDialog>(nullptr, "QueryContinueBeginDialog",
-                        "modules/swriter/ui/querycontinuebegindialog.ui")->Execute();
-                }
-
-                if (nRet == RET_YES)
-                {
-                    pTextView->SetSelection( TextSelection( aPaM, aPaM ) );
-                    StartSearchAndReplace( rSearchItem, false, true );
-                }
-            }
+            pTextView->SetSelection( TextSelection( aPaM, aPaM ) );
+            StartSearchAndReplace( rSearchItem, false, true );
         }
     }
 }
@@ -645,6 +632,7 @@ void SwSrcView::StartSearchAndReplace(const SvxSearchItem& rSearchItem,
 sal_uInt16 SwSrcView::SetPrinter(SfxPrinter* pNew, SfxPrinterChangeFlags nDiffFlags )
 {
     SwDocShell* pDocSh = GetDocShell();
+    assert(pDocSh);
     if ( (SfxPrinterChangeFlags::JOBSETUP | SfxPrinterChangeFlags::PRINTER) & nDiffFlags )
     {
         pDocSh->GetDoc()->getIDocumentDeviceAccess().setPrinter( pNew, true, true );
@@ -665,7 +653,9 @@ sal_uInt16 SwSrcView::SetPrinter(SfxPrinter* pNew, SfxPrinterChangeFlags nDiffFl
 
 SfxPrinter* SwSrcView::GetPrinter( bool bCreate )
 {
-    return  GetDocShell()->GetDoc()->getIDocumentDeviceAccess().getPrinter( bCreate );
+    SwDocShell* pDocSh = GetDocShell();
+    assert(pDocSh);
+    return pDocSh->GetDoc()->getIDocumentDeviceAccess().getPrinter(bCreate);
 }
 
 sal_Int32 SwSrcView::PrintSource(
@@ -684,10 +674,10 @@ sal_Int32 SwSrcView::PrintSource(
     pOutDev->Push();
 
     TextEngine* pTextEngine = aEditWin->GetTextEngine();
-    pOutDev->SetMapMode( MapUnit::Map100thMM );
+    pOutDev->SetMapMode(MapMode(MapUnit::Map100thMM));
     vcl::Font aFont( aEditWin->GetOutWin()->GetFont() );
     Size aSize( aFont.GetFontSize() );
-    aSize = aEditWin->GetOutWin()->PixelToLogic( aSize, MapUnit::Map100thMM );
+    aSize = aEditWin->GetOutWin()->PixelToLogic(aSize, MapMode(MapUnit::Map100thMM));
     aFont.SetFontSize( aSize );
     aFont.SetColor( COL_BLACK );
     pOutDev->SetFont( aFont );
@@ -698,8 +688,8 @@ sal_Int32 SwSrcView::PrintSource(
     const long nParaSpace = 10;
 
     Size aPaperSz = pOutDev->GetOutputSize();
-    aPaperSz.Width() -= (LMARGPRN + RMARGPRN);
-    aPaperSz.Height() -= (TMARGPRN + BMARGPRN);
+    aPaperSz.AdjustWidth( -(LMARGPRN + RMARGPRN) );
+    aPaperSz.AdjustHeight( -(TMARGPRN + BMARGPRN) );
 
     // nLinepPage is not true, if lines have to be wrapped...
     const long nLinespPage = nLineHeight ? aPaperSz.Height() / nLineHeight : 1;
@@ -722,7 +712,7 @@ sal_Int32 SwSrcView::PrintSource(
         const sal_Int32 nLines = (nLineLen+nCharspLine-1) / nCharspLine;
         for ( sal_Int32 nLine = 0; nLine < nLines; ++nLine )
         {
-            aPos.Y() += nLineHeight;
+            aPos.AdjustY(nLineHeight );
             if ( aPos.Y() > ( aPaperSz.Height() + TMARGPRN - nLineHeight/2 ) )
             {
                 ++nCurPage;
@@ -737,7 +727,7 @@ sal_Int32 SwSrcView::PrintSource(
                 pOutDev->DrawText( aPos, aLine.copy(nStart, nLen) );
             }
         }
-        aPos.Y() += nParaSpace;
+        aPos.AdjustY(nParaSpace );
     }
 
     pOutDev->Pop();
@@ -748,17 +738,17 @@ sal_Int32 SwSrcView::PrintSource(
 
 void SwSrcView::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 {
-    if ( rHint.GetId() == SfxHintId::ModeChanged ||
-            (
-             rHint.GetId() == SfxHintId::TitleChanged &&
-             !GetDocShell()->IsReadOnly() && aEditWin->IsReadonly()
-            )
-       )
+    if (rHint.GetId() == SfxHintId::ModeChanged || rHint.GetId() == SfxHintId::TitleChanged)
     {
-        // Broadcast only comes once!
         const SwDocShell* pDocSh = GetDocShell();
-        const bool bReadonly = pDocSh->IsReadOnly();
-        aEditWin->SetReadonly(bReadonly);
+        assert(pDocSh);
+        if (!(rHint.GetId() == SfxHintId::TitleChanged
+              && (pDocSh->IsReadOnly() || !aEditWin->IsReadonly())))
+        {
+            // Broadcast only comes once!
+            const bool bReadonly = pDocSh->IsReadOnly();
+            aEditWin->SetReadonly(bReadonly);
+        }
     }
     SfxViewShell::Notify(rBC, rHint);
 }
@@ -766,7 +756,7 @@ void SwSrcView::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 void SwSrcView::Load(SwDocShell* pDocShell)
 {
     SvxHtmlOptions& rHtmlOptions = SvxHtmlOptions::Get();
-    const sal_Char *pCharSet =
+    const char *pCharSet =
         rtl_getBestMimeCharsetFromTextEncoding( rHtmlOptions.GetTextEncoding() );
     rtl_TextEncoding eDestEnc = rtl_getTextEncodingFromMimeCharset( pCharSet );
 
@@ -787,7 +777,7 @@ void SwSrcView::Load(SwDocShell* pDocShell)
                                             pDocShell->GetHeaderAttributes() );
             if( RTL_TEXTENCODING_DONTKNOW == eHeaderEnc )
             {
-                const sal_Char *pTmpCharSet =
+                const char *pTmpCharSet =
                     rtl_getBestMimeCharsetFromTextEncoding( RTL_TEXTENCODING_ISO_8859_1 );
                 eHeaderEnc = rtl_getTextEncodingFromMimeCharset( pTmpCharSet );
             }
@@ -806,8 +796,11 @@ void SwSrcView::Load(SwDocShell* pDocShell)
         }
         else
         {
-            vcl::Window *pTmpWindow = &GetViewFrame()->GetWindow();
-            ScopedVclPtrInstance<MessageDialog>(pTmpWindow, SwResId(STR_ERR_SRCSTREAM), VclMessageType::Info)->Execute();
+            vcl::Window& rTmpWindow = GetViewFrame()->GetWindow();
+            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(rTmpWindow.GetFrameWeld(),
+                                                      VclMessageType::Info, VclButtonsType::Ok,
+                                                      SwResId(STR_ERR_SRCSTREAM)));
+            xBox->run();
         }
     }
     else
@@ -815,7 +808,6 @@ void SwSrcView::Load(SwDocShell* pDocShell)
         utl::TempFile aTempFile;
         aTempFile.EnableKillingFile();
         const OUString sFileURL( aTempFile.GetURL() );
-        SvtSaveOptions aOpt;
 
         {
             SfxMedium aMedium( sFileURL,StreamMode::READWRITE );
@@ -828,7 +820,7 @@ void SwSrcView::Load(SwDocShell* pDocShell)
             ErrCode nRes = aWriter.Write(xWriter, &sWriteName);
             if(nRes)
             {
-                ErrorHandler::HandleError(ErrCode(nRes));
+                ErrorHandler::HandleError(nRes);
                 aEditWin->SetReadonly(true);
             }
             aMedium.Commit();

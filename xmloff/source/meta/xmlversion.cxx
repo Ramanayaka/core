@@ -18,20 +18,22 @@
  */
 
 #include <com/sun/star/embed/ElementModes.hpp>
-#include <unotools/streamwrap.hxx>
 #include <xmlversion.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlmetae.hxx>
+#include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 #include <xmloff/xmltoken.hxx>
 #include <comphelper/processfactory.hxx>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/io/IOException.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/MeasureUnit.hpp>
 #include <com/sun/star/xml/sax/InputSource.hpp>
-#include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
+#include <com/sun/star/xml/sax/SAXParseException.hpp>
 #include <cppuhelper/supportsservice.hxx>
 
 using namespace ::com::sun::star::xml::sax;
@@ -44,7 +46,7 @@ XMLVersionListExport::XMLVersionListExport(
     const css::uno::Reference< css::uno::XComponentContext >& rContext,
     const css::uno::Sequence < css::util::RevisionTag >& rVersions,
     const OUString &rFileName,
-    Reference< XDocumentHandler > &rHandler )
+    Reference< XDocumentHandler > const &rHandler )
 :   SvXMLExport( rContext, "", rFileName, util::MeasureUnit::CM, rHandler ),
     maVersions( rVersions )
 {
@@ -73,9 +75,8 @@ ErrCode XMLVersionListExport::exportDoc( enum ::xmloff::token::XMLTokenEnum )
         // the following object will write all collected attributes in its dtor
         SvXMLElementExport aRoot( *this, XML_NAMESPACE_FRAMEWORK, xmloff::token::XML_VERSION_LIST, true, true );
 
-        for ( sal_Int32 n=0; n<maVersions.getLength(); n++ )
+        for ( const util::RevisionTag& rInfo : maVersions )
         {
-            const util::RevisionTag& rInfo = maVersions[n];
             AddAttribute( XML_NAMESPACE_FRAMEWORK,
                           xmloff::token::XML_TITLE,
                           rInfo.Identifier );
@@ -105,112 +106,92 @@ XMLVersionListImport::XMLVersionListImport(
 :   SvXMLImport(rContext, ""),
     maVersions( rVersions )
 {
-    GetNamespaceMap().AddAtIndex( xmloff::token::GetXMLToken(xmloff::token::XML_NP_VERSIONS_LIST),
-                                  xmloff::token::GetXMLToken(xmloff::token::XML_N_VERSIONS_LIST), XML_NAMESPACE_FRAMEWORK );
 }
 
 XMLVersionListImport::~XMLVersionListImport() throw()
 {}
 
-SvXMLImportContext *XMLVersionListImport::CreateContext(
-        sal_uInt16 nPrefix,
-        const OUString& rLocalName,
-        const Reference< XAttributeList > & xAttrList )
+SvXMLImportContext *XMLVersionListImport::CreateFastContext( sal_Int32 nElement,
+        const ::css::uno::Reference< ::css::xml::sax::XFastAttributeList >& /*xAttrList*/ )
 {
     SvXMLImportContext *pContext = nullptr;
 
-    if ( XML_NAMESPACE_FRAMEWORK == nPrefix &&
-        rLocalName == xmloff::token::GetXMLToken(xmloff::token::XML_VERSION_LIST) )
+    if ( nElement == XML_ELEMENT(VERSIONS_LIST, xmloff::token::XML_VERSION_LIST) )
     {
-        pContext = new XMLVersionListContext( *this, nPrefix, rLocalName, xAttrList );
-    }
-    else
-    {
-        pContext = SvXMLImport::CreateContext( nPrefix, rLocalName, xAttrList );
+        pContext = new XMLVersionListContext( *this );
     }
 
     return pContext;
 }
 
-XMLVersionListContext::XMLVersionListContext( XMLVersionListImport& rImport,
-                                        sal_uInt16 nPrefix,
-                                        const OUString& rLocalName,
-                                        const Reference< XAttributeList > & )
-    : SvXMLImportContext( rImport, nPrefix, rLocalName )
-    , rLocalRef( rImport )
+XMLVersionListContext::XMLVersionListContext( XMLVersionListImport& rImport)
+    : SvXMLImportContext( rImport )
 {
 }
 
 XMLVersionListContext::~XMLVersionListContext()
 {}
 
-SvXMLImportContext *XMLVersionListContext::CreateChildContext( sal_uInt16 nPrefix,
-                                        const OUString& rLocalName,
-                                        const Reference< XAttributeList > & xAttrList )
+css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL
+XMLVersionListContext::createFastChildContext(sal_Int32 nElement,
+            const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList)
 {
     SvXMLImportContext *pContext = nullptr;
 
-    if ( nPrefix == XML_NAMESPACE_FRAMEWORK &&
-         rLocalName == xmloff::token::GetXMLToken(xmloff::token::XML_VERSION_ENTRY) )
+    if ( nElement == XML_ELEMENT(FRAMEWORK, xmloff::token::XML_VERSION_ENTRY)
+        || nElement == XML_ELEMENT(VERSIONS_LIST, xmloff::token::XML_VERSION_ENTRY) )
     {
-        pContext = new XMLVersionContext( rLocalRef, nPrefix, rLocalName, xAttrList );
-    }
-    else
-    {
-        pContext = new SvXMLImportContext( rLocalRef, nPrefix, rLocalName );
+        pContext = new XMLVersionContext( GetImport(), xAttrList );
     }
 
     return pContext;
 }
 
 XMLVersionContext::XMLVersionContext( XMLVersionListImport& rImport,
-                                        sal_uInt16 nPref,
-                                        const OUString& rLocalName,
-                                        const Reference< XAttributeList > & xAttrList )
-    : SvXMLImportContext( rImport, nPref, rLocalName )
-    , rLocalRef( rImport )
+                                        const Reference< XFastAttributeList > & xAttrList )
+    : SvXMLImportContext( rImport )
 {
-    sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
-
-    if ( !nAttrCount )
+    sax_fastparser::FastAttributeList& rAttribList =
+        sax_fastparser::castToFastAttributeList( xAttrList );
+    if ( rAttribList.getFastAttributeTokens().empty() )
         return;
-
     util::RevisionTag aInfo;
-    for ( sal_Int16 i=0; i < nAttrCount; i++ )
+    for (auto &aIter : rAttribList)
     {
-        OUString        aLocalName;
-        const OUString& rAttrName   = xAttrList->getNameByIndex( i );
-        sal_uInt16      nPrefix     = rImport.GetNamespaceMap().GetKeyByAttrName( rAttrName, &aLocalName );
-
-        if ( XML_NAMESPACE_FRAMEWORK == nPrefix )
+        switch( aIter.getToken() )
         {
-            if ( aLocalName == xmloff::token::GetXMLToken(xmloff::token::XML_TITLE) )
-            {
-                const OUString& rAttrValue = xAttrList->getValueByIndex( i );
-                aInfo.Identifier = rAttrValue;
-            }
-            else if ( aLocalName == xmloff::token::GetXMLToken(xmloff::token::XML_COMMENT) )
-            {
-                const OUString& rAttrValue = xAttrList->getValueByIndex( i );
-                aInfo.Comment = rAttrValue;
-            }
-            else if ( aLocalName == xmloff::token::GetXMLToken(xmloff::token::XML_CREATOR) )
-            {
-                const OUString& rAttrValue = xAttrList->getValueByIndex( i );
-                aInfo.Author = rAttrValue;
-            }
+        case XML_ELEMENT(FRAMEWORK, xmloff::token::XML_TITLE):
+        case XML_ELEMENT(VERSIONS_LIST, xmloff::token::XML_TITLE):
+        {
+            aInfo.Identifier = aIter.toString();
+            break;
         }
-        else if ( ( XML_NAMESPACE_DC == nPrefix ) &&
-                  ( aLocalName == xmloff::token::GetXMLToken(xmloff::token::XML_DATE_TIME) ) )
+        case XML_ELEMENT(FRAMEWORK, xmloff::token::XML_COMMENT):
+        case XML_ELEMENT(VERSIONS_LIST, xmloff::token::XML_COMMENT):
         {
-            const OUString& rAttrValue = xAttrList->getValueByIndex( i );
+            aInfo.Comment = aIter.toString();
+            break;
+        }
+        case XML_ELEMENT(FRAMEWORK, xmloff::token::XML_CREATOR):
+        case XML_ELEMENT(VERSIONS_LIST, xmloff::token::XML_CREATOR):
+        {
+            aInfo.Author = aIter.toString();
+            break;
+        }
+        case XML_ELEMENT(DC, xmloff::token::XML_DATE_TIME):
+        {
             util::DateTime aTime;
-            if ( ParseISODateTimeString( rAttrValue, aTime ) )
+            if ( ParseISODateTimeString( aIter.toString(), aTime ) )
                 aInfo.TimeStamp = aTime;
+            break;
+        }
+        default:
+            SAL_WARN("xmloff", "unknown attribute " << SvXMLImport::getPrefixAndNameFromToken(aIter.getToken()) << "=" << aIter.toString());
+            break;
         }
     }
 
-    uno::Sequence < util::RevisionTag >& aList = rLocalRef.GetList();
+    uno::Sequence < util::RevisionTag >& aList = rImport.GetList();
     sal_Int32 nLength = aList.getLength();
     aList.realloc( nLength+1 );
     aList[nLength] = aInfo;
@@ -321,45 +302,42 @@ bool XMLVersionContext::ParseISODateTimeString(
 void SAL_CALL XMLVersionListPersistence::store( const uno::Reference< embed::XStorage >& xRoot, const uno::Sequence< util::RevisionTag >& rVersions )
 {
     // no storage, no version list!
-    if ( xRoot.is() )
+    if ( !xRoot.is() )
+        return;
+
+    // get the services needed for writing the xml data
+    Reference< uno::XComponentContext > xContext =
+            comphelper::getProcessComponentContext();
+
+    Reference< XWriter > xWriter = Writer::create(xContext);
+
+    // check whether there's already a sub storage with the version info
+    // and delete it
+    OUString sVerName( XMLN_VERSIONSLIST  );
+
+    try {
+        // open (create) the sub storage with the version info
+        uno::Reference< io::XStream > xVerStream = xRoot->openStreamElement(
+                                        sVerName,
+                                        embed::ElementModes::READWRITE | embed::ElementModes::TRUNCATE );
+        if ( !xVerStream.is() )
+            throw uno::RuntimeException();
+
+        Reference< io::XOutputStream > xOut = xVerStream->getOutputStream();
+        if ( !xOut.is() )
+            throw uno::RuntimeException(); // the stream was successfully opened for writing already
+
+        xWriter->setOutputStream(xOut);
+
+        rtl::Reference< XMLVersionListExport > xExp( new XMLVersionListExport( xContext, rVersions, sVerName, xWriter ) );
+
+        xExp->exportDoc( ::xmloff::token::XML_VERSION );
+
+        xVerStream.clear(); // use refcounting for now to dispose
+    }
+    catch( uno::Exception& )
     {
-        // get the services needed for writing the xml data
-        Reference< uno::XComponentContext > xContext =
-                comphelper::getProcessComponentContext();
-
-        Reference< XWriter > xWriter = Writer::create(xContext);
-
-        // check whether there's already a sub storage with the version info
-        // and delete it
-        OUString sVerName( XMLN_VERSIONSLIST  );
-
-        try {
-            // open (create) the sub storage with the version info
-            uno::Reference< io::XStream > xVerStream = xRoot->openStreamElement(
-                                            sVerName,
-                                            embed::ElementModes::READWRITE | embed::ElementModes::TRUNCATE );
-            if ( !xVerStream.is() )
-                throw uno::RuntimeException();
-
-            Reference< io::XOutputStream > xOut = xVerStream->getOutputStream();
-            if ( !xOut.is() )
-                throw uno::RuntimeException(); // the stream was successfully opened for writing already
-
-            Reference< io::XActiveDataSource > xSrc( xWriter, uno::UNO_QUERY );
-            xSrc->setOutputStream(xOut);
-
-            Reference< XDocumentHandler > xHandler( xWriter, uno::UNO_QUERY );
-
-            rtl::Reference< XMLVersionListExport > xExp( new XMLVersionListExport( xContext, rVersions, sVerName, xHandler ) );
-
-            xExp->exportDoc( ::xmloff::token::XML_VERSION );
-
-            xVerStream.clear(); // use refcounting for now to dispose
-        }
-        catch( uno::Exception& )
-        {
-            // TODO: error handling
-        }
+        // TODO: error handling
     }
 }
 
@@ -368,10 +346,9 @@ uno::Sequence< util::RevisionTag > SAL_CALL XMLVersionListPersistence::load( con
     css::uno::Sequence < css::util::RevisionTag > aVersions;
 
     const OUString sDocName( XMLN_VERSIONSLIST  );
-    uno::Reference< container::XNameAccess > xRootNames( xRoot, uno::UNO_QUERY );
 
     try {
-        if ( xRootNames.is() && xRootNames->hasByName( sDocName ) && xRoot->isStreamElement( sDocName ) )
+        if ( xRoot.is() && xRoot->hasByName( sDocName ) && xRoot->isStreamElement( sDocName ) )
         {
             Reference< uno::XComponentContext > xContext = comphelper::getProcessComponentContext();
 
@@ -396,21 +373,17 @@ uno::Sequence< util::RevisionTag > SAL_CALL XMLVersionListPersistence::load( con
 
             aParserInput.aInputStream = xDocStream->getInputStream();
             OSL_ENSURE( aParserInput.aInputStream.is(),
-                        "The stream was successfully opened for reading, the input part must be accessible!\n" );
+                        "The stream was successfully opened for reading, the input part must be accessible!" );
             if ( !aParserInput.aInputStream.is() )
                 throw uno::RuntimeException();
 
             // get filter
-            Reference< XDocumentHandler > xFilter = new XMLVersionListImport( xContext, aVersions );
-
-            // connect parser and filter
-            Reference< XParser > xParser = xml::sax::Parser::create(xContext);
-            xParser->setDocumentHandler( xFilter );
+            rtl::Reference< XMLVersionListImport > xImport = new XMLVersionListImport( xContext, aVersions );
 
             // parse
             try
             {
-                xParser->parseStream( aParserInput );
+                xImport->parseStream( aParserInput );
             }
             catch( SAXParseException&  ) {}
             catch( SAXException&  )      {}
@@ -427,7 +400,7 @@ uno::Sequence< util::RevisionTag > SAL_CALL XMLVersionListPersistence::load( con
 
 OUString XMLVersionListPersistence::getImplementationName()
 {
-    return OUString("XMLVersionListPersistence");
+    return "XMLVersionListPersistence";
 }
 
 sal_Bool XMLVersionListPersistence::supportsService(
@@ -443,7 +416,7 @@ XMLVersionListPersistence::getSupportedServiceNames()
         "com.sun.star.document.DocumentRevisionListPersistence"};
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 XMLVersionListPersistence_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)

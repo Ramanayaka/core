@@ -24,7 +24,6 @@
 #include <vcl/dockwin.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
-class Wallpaper;
 class ImplSplitSet;
 
 enum class SplitWindowItemFlags
@@ -34,20 +33,19 @@ enum class SplitWindowItemFlags
     RelativeSize   = 0x0002,
     PercentSize    = 0x0004,
     ColSet         = 0x0008,
-    Invisible      = 0x0010,
 };
 namespace o3tl
 {
-    template<> struct typed_flags<SplitWindowItemFlags> : is_typed_flags<SplitWindowItemFlags, 0x1f> {};
+    template<> struct typed_flags<SplitWindowItemFlags> : is_typed_flags<SplitWindowItemFlags, 0x0f> {};
 }
 
-#define SPLITWINDOW_APPEND          ((sal_uInt16)0xFFFF)
-#define SPLITWINDOW_ITEM_NOTFOUND   ((sal_uInt16)0xFFFF)
+#define SPLITWINDOW_APPEND          (sal_uInt16(0xFFFF))
+#define SPLITWINDOW_ITEM_NOTFOUND   (sal_uInt16(0xFFFF))
 
 class VCL_DLLPUBLIC SplitWindow : public DockingWindow
 {
 private:
-    ImplSplitSet*       mpMainSet;
+    std::unique_ptr<ImplSplitSet> mpMainSet;
     ImplSplitSet*       mpBaseSet;
     ImplSplitSet*       mpSplitSet;
     long*               mpLastSizes;
@@ -102,13 +100,10 @@ private:
     SAL_DLLPRIVATE void ImplDrawBorderLine(vcl::RenderContext& rRenderContext);
     static SAL_DLLPRIVATE void ImplCalcSet2( SplitWindow* pWindow, ImplSplitSet* pSet, bool bHide,
                                              bool bRows );
-    SAL_DLLPRIVATE void ImplDrawBack(vcl::RenderContext& rRenderContext, ImplSplitSet* pSet );
-    SAL_DLLPRIVATE static void ImplDrawBack(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect,
-                                             const Wallpaper* pWall, const Bitmap* pBitmap );
     static SAL_DLLPRIVATE sal_uInt16 ImplTestSplit( ImplSplitSet* pSet, const Point& rPos,
                                                 long& rMouseOff, ImplSplitSet** ppFoundSet, sal_uInt16& rFoundPos,
                                                 bool bRows );
-    static SAL_DLLPRIVATE sal_uInt16 ImplTestSplit( SplitWindow* pWindow, const Point& rPos,
+    static SAL_DLLPRIVATE sal_uInt16 ImplTestSplit( const SplitWindow* pWindow, const Point& rPos,
                                                 long& rMouseOff, ImplSplitSet** ppFoundSet, sal_uInt16& rFoundPos );
     SAL_DLLPRIVATE void ImplDrawSplitTracking(const Point& rPos);
 
@@ -142,7 +137,6 @@ public:
                                     sal_uInt16 nPos, sal_uInt16 nIntoSetId,
                                     SplitWindowItemFlags nBits );
     void                RemoveItem( sal_uInt16 nId );
-    void                Clear();
 
     void                SplitItem( sal_uInt16 nId, long nNewSize,
                                    bool bPropSmall,

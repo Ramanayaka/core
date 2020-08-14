@@ -19,21 +19,19 @@
 #ifndef INCLUDED_SVX_PALETTEMANAGER_HXX
 #define INCLUDED_SVX_PALETTEMANAGER_HXX
 
-#include <svx/SvxColorValueSet.hxx>
 #include <svx/Palette.hxx>
 #include <rtl/ustring.hxx>
-#include <svx/tbxcolorupdate.hxx>
-
-#include <tools/urlobj.hxx>
-#include <comphelper/processfactory.hxx>
-#include <com/sun/star/util/XURLTransformer.hpp>
-#include <com/sun/star/util/URLTransformer.hpp>
+#include <svx/xtable.hxx>
 
 #include <deque>
 #include <vector>
 #include <memory>
 
-class SVX_DLLPUBLIC PaletteManager
+namespace com::sun::star::uno { class XComponentContext; }
+namespace svx { class ToolboxButtonColorUpdaterBase; }
+namespace weld { class Window; }
+
+class SVXCORE_DLLPUBLIC PaletteManager
 {
     const sal_uInt16        mnMaxRecentColors;
 
@@ -41,10 +39,9 @@ class SVX_DLLPUBLIC PaletteManager
     sal_uInt16              mnCurrentPalette;
 
     long                    mnColorCount;
-    svx::ToolboxButtonColorUpdater* mpBtnUpdater;
+    svx::ToolboxButtonColorUpdaterBase* mpBtnUpdater;
 
     XColorListRef           pColorList;
-    Color                   mLastColor;
     std::deque<NamedColor>  maRecentColors;
     std::vector<std::unique_ptr<Palette>> m_Palettes;
 
@@ -60,20 +57,17 @@ public:
     void        ReloadRecentColorSet(SvxColorValueSet& rColorSet);
     std::vector<OUString> GetPaletteList();
     void        SetPalette( sal_Int32 nPos );
-    sal_Int32   GetPalette();
-    sal_Int32   GetPaletteCount() { return mnNumOfPalettes; }
+    sal_Int32   GetPalette() const;
+    sal_Int32   GetPaletteCount() const { return mnNumOfPalettes; }
     OUString    GetPaletteName();
     OUString    GetSelectedPalettePath();
 
-    long        GetColorCount();
-    long        GetRecentColorCount();
-
-    const Color& GetLastColor();
-    void        SetLastColor(const Color& rLastColor);
+    long        GetColorCount() const;
+    long        GetRecentColorCount() const;
     void        AddRecentColor(const Color& rRecentColor, const OUString& rColorName, bool bFront = true);
 
-    void        SetBtnUpdater(svx::ToolboxButtonColorUpdater* pBtnUpdater);
-    void        PopupColorPicker(const OUString& aCommand);
+    void        SetBtnUpdater(svx::ToolboxButtonColorUpdaterBase* pBtnUpdater);
+    void        PopupColorPicker(weld::Window* pParent, const OUString& aCommand, const Color& rInitialColor);
 
     void        SetColorSelectFunction(const std::function<void(const OUString&, const NamedColor&)>& aColorSelectFunction);
 

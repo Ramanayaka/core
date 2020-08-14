@@ -34,24 +34,19 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/mutex.hxx>
-#include "CustomAnimationPreset.hxx"
-#include "facreg.hxx"
-#include "randomnode.hxx"
+#include <CustomAnimationPreset.hxx>
+#include <randomnode.hxx>
 
 using ::osl::Mutex;
 using ::osl::Guard;
 
 using ::com::sun::star::uno::Reference;
-using ::com::sun::star::uno::RuntimeException;
-using ::com::sun::star::uno::Exception;
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::uno::UNO_QUERY;
 using ::com::sun::star::uno::XInterface;
 using ::com::sun::star::beans::NamedValue;
 using ::com::sun::star::lang::IllegalArgumentException;
-using ::com::sun::star::container::NoSuchElementException;
-using ::com::sun::star::lang::WrappedTargetException;
 using ::com::sun::star::container::XEnumeration;
 using ::com::sun::star::container::XEnumerationAccess;
 using ::com::sun::star::util::XCloneable;
@@ -67,6 +62,9 @@ namespace sd
 {
 
 typedef ::cppu::WeakImplHelper< XTimeContainer, XEnumerationAccess, XCloneable, XServiceInfo, XInitialization > RandomAnimationNodeBase;
+
+namespace {
+
 class RandomAnimationNode : public RandomAnimationNodeBase
 {
 public:
@@ -152,6 +150,8 @@ private:
     Reference< XAnimate > mxFirstNode;
 };
 
+}
+
 Reference< XInterface > RandomAnimationNode_createInstance( sal_Int16 nPresetClass )
 {
     Reference< XInterface > xInt( static_cast<XWeak*>( new RandomAnimationNode( nPresetClass ) ) );
@@ -159,7 +159,7 @@ Reference< XInterface > RandomAnimationNode_createInstance( sal_Int16 nPresetCla
 }
 
 RandomAnimationNode::RandomAnimationNode( const RandomAnimationNode& rNode )
-:   RandomAnimationNodeBase(),
+:   RandomAnimationNodeBase(rNode),
     mnPresetClass( rNode.mnPresetClass ),
     maBegin( rNode.maBegin ),
     maDuration( rNode.maDuration ),
@@ -476,7 +476,7 @@ Reference< XEnumeration > SAL_CALL RandomAnimationNode::createEnumeration()
 
     if( aEnumAccess.is() )
     {
-        Reference< XEnumeration > xEnumeration( aEnumAccess->createEnumeration(), UNO_QUERY );
+        Reference< XEnumeration > xEnumeration = aEnumAccess->createEnumeration();
         if( xEnumeration.is() )
         {
             while( xEnumeration->hasMoreElements() )
@@ -542,7 +542,7 @@ Reference< XAnimationNode > SAL_CALL RandomAnimationNode::appendChild( const Ref
 // XServiceInfo
 OUString RandomAnimationNode::getImplementationName()
 {
-    return OUString( "sd::RandomAnimationNode" ) ;
+    return "sd::RandomAnimationNode" ;
 }
 
 // XServiceInfo
@@ -554,15 +554,12 @@ sal_Bool RandomAnimationNode::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > RandomAnimationNode::getSupportedServiceNames()
 {
-    Sequence< OUString > aSeq( 2 );
-    aSeq[0] = "com.sun.star.animations.ParallelTimeContainer";
-    aSeq[1] = "com.sun.star.comp.sd.RandomAnimationNode";
-    return aSeq;
+    return { "com.sun.star.animations.ParallelTimeContainer", "com.sun.star.comp.sd.RandomAnimationNode" };
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 RandomAnimationNode_get_implementation(css::uno::XComponentContext*,
                                                                     css::uno::Sequence<css::uno::Any> const &)
 {

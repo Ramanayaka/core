@@ -31,25 +31,29 @@
 // Drawing in non-client area (general DWM-related info):
 //   http://msdn.microsoft.com/en-us/library/windows/desktop/bb688195%28v=vs.85%29.aspx
 
-#include "rtl/ustring.h"
+#include <rtl/ustring.h>
 
-#include "osl/module.h"
+#include <osl/diagnose.h>
+#include <osl/module.h>
+#include <o3tl/char16_t2wchar_t.hxx>
 
 #include <opengl/win/gdiimpl.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
-#include "win/svsys.h"
-#include "win/salgdi.h"
-#include "win/saldata.hxx"
+#include <win/svsys.h>
+#include <win/salgdi.h>
+#include <win/saldata.hxx>
+#include <win/scoped_gdi.hxx>
 
-#include "uxtheme.h"
-#include "vssym32.h"
+#include <uxtheme.h>
+#include <vssym32.h>
 
 #include <map>
 #include <string>
-#include <boost/optional.hpp>
-#include "ControlCacheKey.hxx"
+#include <optional>
+#include <ControlCacheKey.hxx>
+
 using namespace std;
 
 typedef map< wstring, HTHEME > ThemeMap;
@@ -59,6 +63,8 @@ static ThemeMap aThemeMap;
  wrap visual styles API to avoid linking against it
  it is not available on all Windows platforms
 *****************************************************/
+
+namespace {
 
 class VisualStylesAPI
 {
@@ -91,8 +97,10 @@ public:
     HRESULT DrawThemeBackground( HTHEME hTheme, HDC hdc, int iPartId, int iStateId, const RECT *pRect, const RECT *pClipRect );
     HRESULT DrawThemeText( HTHEME hTheme, HDC hdc, int iPartId, int iStateId, LPCWSTR pszText, int iCharCount, DWORD dwTextFlags, DWORD dwTextFlags2, const RECT *pRect );
     HRESULT GetThemePartSize( HTHEME hTheme, HDC hdc, int iPartId, int iStateId, RECT *prc, THEMESIZE eSize, SIZE *psz );
-    BOOL IsThemeActive();
+    bool IsThemeActive();
 };
+
+}
 
 static VisualStylesAPI vsAPI;
 
@@ -174,12 +182,12 @@ HRESULT VisualStylesAPI::GetThemePartSize( HTHEME hTheme, HDC hdc, int iPartId, 
         return S_FALSE;
 }
 
-BOOL VisualStylesAPI::IsThemeActive()
+bool VisualStylesAPI::IsThemeActive()
 {
     if(lpfnIsThemeActive)
         return (*lpfnIsThemeActive) ();
     else
-        return FALSE;
+        return false;
 }
 
 /*********************************************************
@@ -198,12 +206,8 @@ void SalData::initNWF()
 // ********************************************************
 void SalData::deInitNWF()
 {
-    ThemeMap::iterator iter = aThemeMap.begin();
-    while( iter != aThemeMap.end() )
-    {
-        vsAPI.CloseThemeData(iter->second);
-        ++iter;
-    }
+    for( auto& rEntry : aThemeMap )
+        vsAPI.CloseThemeData(rEntry.second);
     aThemeMap.clear();
 }
 
@@ -226,7 +230,7 @@ static HTHEME getThemeHandle( HWND hWnd, LPCWSTR name )
     return hTheme;
 }
 
-bool WinSalGraphics::IsNativeControlSupported( ControlType nType, ControlPart nPart )
+bool WinSalGraphics::isNativeControlSupported( ControlType nType, ControlPart nPart )
 {
     HTHEME hTheme = nullptr;
 
@@ -240,13 +244,13 @@ bool WinSalGraphics::IsNativeControlSupported( ControlType nType, ControlPart nP
             break;
         case ControlType::Scrollbar:
             if( nPart == ControlPart::DrawBackgroundHorz || nPart == ControlPart::DrawBackgroundVert )
-                return FALSE;   // no background painting needed
+                return false;   // no background painting needed
             if( nPart == ControlPart::Entire )
                 hTheme = getThemeHandle( mhWnd, L"Scrollbar");
             break;
         case ControlType::Combobox:
             if( nPart == ControlPart::HasBackgroundTexture )
-                return FALSE;   // we do not paint the inner part (ie the selection background/focus indication)
+                return false;   // we do not paint the inner part (ie the selection background/focus indication)
             if( nPart == ControlPart::Entire )
                 hTheme = getThemeHandle( mhWnd, L"Edit");
             else if( nPart == ControlPart::ButtonDown )
@@ -267,14 +271,14 @@ bool WinSalGraphics::IsNativeControlSupported( ControlType nType, ControlPart nP
         case ControlType::Editbox:
         case ControlType::MultilineEditbox:
             if( nPart == ControlPart::HasBackgroundTexture )
-                return FALSE;   // we do not paint the inner part (ie the selection background/focus indication)
+                return false;   // we do not paint the inner part (ie the selection background/focus indication)
                 //return TRUE;
             if( nPart == ControlPart::Entire )
                 hTheme = getThemeHandle( mhWnd, L"Edit");
             break;
         case ControlType::Listbox:
             if( nPart == ControlPart::HasBackgroundTexture )
-                return FALSE;   // we do not paint the inner part (ie the selection background/focus indication)
+                return false;   // we do not paint the inner part (ie the selection background/focus indication)
             if( nPart == ControlPart::Entire || nPart == ControlPart::ListboxWindow )
                 hTheme = getThemeHandle( mhWnd, L"Listview");
             else if( nPart == ControlPart::ButtonDown )
@@ -339,10 +343,10 @@ bool WinSalGraphics::hitTestNativeControl( ControlType,
                               const Point&,
                               bool& )
 {
-    return FALSE;
+    return false;
 }
 
-bool ImplDrawTheme( HTHEME hTheme, HDC hDC, int iPart, int iState, RECT rc, const OUString& aStr)
+static bool ImplDrawTheme( HTHEME hTheme, HDC hDC, int iPart, int iState, RECT rc, const OUString& aStr)
 {
     HRESULT hr = vsAPI.DrawThemeBackground( hTheme, hDC, iPart, iState, &rc, nullptr);
 
@@ -351,14 +355,14 @@ bool ImplDrawTheme( HTHEME hTheme, HDC hDC, int iPart, int iState, RECT rc, cons
         RECT rcContent;
         hr = vsAPI.GetThemeBackgroundContentRect( hTheme, hDC, iPart, iState, &rc, &rcContent);
         hr = vsAPI.DrawThemeText( hTheme, hDC, iPart, iState,
-            reinterpret_cast<LPCWSTR>(aStr.getStr()), -1,
+            o3tl::toW(aStr.getStr()), -1,
             DT_CENTER | DT_VCENTER | DT_SINGLELINE,
             0, &rcContent);
     }
     return (hr == S_OK);
 }
 
-tools::Rectangle ImplGetThemeRect( HTHEME hTheme, HDC hDC, int iPart, int iState, const tools::Rectangle& /* aRect */, THEMESIZE eTS = TS_TRUE )
+static tools::Rectangle ImplGetThemeRect( HTHEME hTheme, HDC hDC, int iPart, int iState, const tools::Rectangle& /* aRect */, THEMESIZE eTS = TS_TRUE )
 {
     SIZE aSz;
     HRESULT hr = vsAPI.GetThemePartSize( hTheme, hDC, iPart, iState, nullptr, eTS, &aSz ); // TS_TRUE returns optimal size
@@ -370,7 +374,7 @@ tools::Rectangle ImplGetThemeRect( HTHEME hTheme, HDC hDC, int iPart, int iState
 
 // Helper functions
 
-void ImplConvertSpinbuttonValues( ControlPart nControlPart, const ControlState& rState, const tools::Rectangle& rRect,
+static void ImplConvertSpinbuttonValues( ControlPart nControlPart, const ControlState& rState, const tools::Rectangle& rRect,
                                  int* pLunaPart, int *pLunaState, RECT *pRect )
 {
     if( nControlPart == ControlPart::ButtonDown )
@@ -459,20 +463,15 @@ static void impl_drawAeroToolbar( HDC hDC, RECT rc, bool bHorizontal )
         GdiGradientFill( hDC, vert, 2, g_rect, 1, GRADIENT_FILL_RECT_V );
 
         // and a darker horizontal line under that
-        HPEN hpen = CreatePen( PS_SOLID, 1, RGB( 0xb0, 0xb0, 0xb0 ) );
-        HPEN hOrigPen = static_cast<HPEN>(SelectObject(hDC, hpen));
+        ScopedSelectedHPEN hPen(hDC, CreatePen(PS_SOLID, 1, RGB( 0xb0, 0xb0, 0xb0)));
 
         MoveToEx( hDC, rc.left, gradient_bottom, nullptr );
         LineTo( hDC, rc.right, gradient_bottom );
-
-        SelectObject(hDC, hOrigPen);
-        DeleteObject(hpen);
     }
     else
     {
-        HBRUSH hbrush = CreateSolidBrush( RGB( 0xf0, 0xf0, 0xf0 ) );
-        FillRect( hDC, &rc, hbrush );
-        DeleteObject( hbrush );
+        ScopedHBRUSH hbrush(CreateSolidBrush(RGB(0xf0, 0xf0, 0xf0)));
+        FillRect(hDC, &rc, hbrush.get());
 
         // darker line to distinguish the toolbar and viewshell
         // it is drawn only for the horizontal toolbars; it did not look well
@@ -485,19 +484,43 @@ static void impl_drawAeroToolbar( HDC hDC, RECT rc, bool bHorizontal )
             to_x = rc.right;
             from_y = to_y = rc.top;
 
-            HPEN hpen = CreatePen( PS_SOLID, 1, RGB( 0xb0, 0xb0, 0xb0 ) );
-            HPEN hOrigPen = static_cast<HPEN>(SelectObject(hDC, hpen));
+            ScopedSelectedHPEN hPen(hDC, CreatePen(PS_SOLID, 1, RGB( 0xb0, 0xb0, 0xb0)));
 
             MoveToEx( hDC, from_x, from_y, nullptr );
             LineTo( hDC, to_x, to_y );
-
-            SelectObject(hDC, hOrigPen);
-            DeleteObject(hpen);
         }
     }
 }
 
-bool ImplDrawNativeControl( HDC hDC, HTHEME hTheme, RECT rc,
+/**
+ * Gives the actual rectangle used for rendering by ControlType::MenuPopup's
+ * ControlPart::MenuItemCheckMark or ControlPart::MenuItemRadioMark.
+ */
+static tools::Rectangle GetMenuPopupMarkRegion(const ImplControlValue& rValue)
+{
+    tools::Rectangle aRet;
+
+    auto pMVal = dynamic_cast<const MenupopupValue*>(&rValue);
+    if (!pMVal)
+        return aRet;
+
+    aRet.SetTop(pMVal->maItemRect.Top());
+    aRet.SetBottom(pMVal->maItemRect.Bottom() + 1); // see below in drawNativeControl
+    if (AllSettings::GetLayoutRTL())
+    {
+        aRet.SetRight(pMVal->maItemRect.Right() + 1);
+        aRet.SetLeft(aRet.Right() - (pMVal->getNumericVal() - pMVal->maItemRect.Left()));
+    }
+    else
+    {
+        aRet.SetRight(pMVal->getNumericVal());
+        aRet.SetLeft(pMVal->maItemRect.Left());
+    }
+
+    return aRet;
+}
+
+static bool ImplDrawNativeControl( HDC hDC, HTHEME hTheme, RECT rc,
                             ControlType nType,
                             ControlPart nPart,
                             ControlState nState,
@@ -848,15 +871,15 @@ bool ImplDrawNativeControl( HDC hDC, HTHEME hTheme, RECT rc,
 
         OSL_ASSERT( aValue.getType() == ControlType::TabItem );
 
-        const TabitemValue *pValue = static_cast<const TabitemValue*>(&aValue);
-        if( pValue->isBothAligned() )
+        const TabitemValue& rValue = static_cast<const TabitemValue&>(aValue);
+        if (rValue.isBothAligned())
         {
             iPart = TABP_TABITEMLEFTEDGE;
             rc.right--;
         }
-        else if( pValue->isLeftAligned() )
+        else if (rValue.isLeftAligned())
             iPart = TABP_TABITEMLEFTEDGE;
-        else if( pValue->isRightAligned() )
+        else if (rValue.isRightAligned())
             iPart = TABP_TABITEMRIGHTEDGE;
         else iPart = TABP_TABITEM;
 
@@ -867,11 +890,11 @@ bool ImplDrawNativeControl( HDC hDC, HTHEME hTheme, RECT rc,
             iState = TILES_SELECTED;
             // increase the selected tab
             rc.left-=2;
-            if( pValue && !pValue->isBothAligned() )
+            if (rValue.isBothAligned())
             {
-                if( pValue->isLeftAligned() || pValue->isNotAligned() )
+                if (rValue.isLeftAligned() || rValue.isNotAligned())
                     rc.right+=2;
-                if( pValue->isRightAligned() )
+                if (rValue.isRightAligned())
                     rc.right+=1;
             }
             rc.top-=2;
@@ -977,7 +1000,7 @@ bool ImplDrawNativeControl( HDC hDC, HTHEME hTheme, RECT rc,
     if( nType == ControlType::Progress )
     {
         if( nPart != ControlPart::Entire )
-            return FALSE;
+            return false;
 
         if( ! ImplDrawTheme( hTheme, hDC, PP_BAR, iState, rc, aCaption) )
             return false;
@@ -1032,7 +1055,7 @@ bool ImplDrawNativeControl( HDC hDC, HTHEME hTheme, RECT rc,
     if( nType == ControlType::ListNode )
     {
         if( nPart != ControlPart::Entire )
-            return FALSE;
+            return false;
 
         ButtonValue aButtonValue = aValue.getTristateVal();
         iPart = TVP_GLYPH;
@@ -1045,7 +1068,7 @@ bool ImplDrawNativeControl( HDC hDC, HTHEME hTheme, RECT rc,
             iState = GLPS_CLOSED;
             break;
         default:
-            return FALSE;
+            return false;
         }
         return ImplDrawTheme( hTheme, hDC, iPart, iState, rc, aCaption );
     }
@@ -1074,7 +1097,7 @@ bool ImplDrawNativeControl( HDC hDC, HTHEME hTheme, RECT rc,
             }
             else if( nPart == ControlPart::MenuItem )
             {
-                if( (nState & ControlState::ENABLED) )
+                if( nState & ControlState::ENABLED )
                     iState = (nState & ControlState::SELECTED) ? MPI_HOT : MPI_NORMAL;
                 else
                     iState = (nState & ControlState::SELECTED) ? MPI_DISABLEDHOT : MPI_DISABLED;
@@ -1082,24 +1105,16 @@ bool ImplDrawNativeControl( HDC hDC, HTHEME hTheme, RECT rc,
             }
             else if( nPart == ControlPart::MenuItemCheckMark || nPart == ControlPart::MenuItemRadioMark )
             {
-                if( (nState & ControlState::PRESSED) )
+                if( nState & ControlState::PRESSED )
                 {
                     RECT aBGRect = rc;
                     if( aValue.getType() == ControlType::MenuPopup )
                     {
-                        const MenupopupValue& rMVal( static_cast<const MenupopupValue&>(aValue) );
-                        aBGRect.top    = rMVal.maItemRect.Top();
-                        aBGRect.bottom = rMVal.maItemRect.Bottom()+1; // see below in drawNativeControl
-                        if( AllSettings::GetLayoutRTL() )
-                        {
-                            aBGRect.right = rMVal.maItemRect.Right()+1;
-                            aBGRect.left = aBGRect.right - (rMVal.getNumericVal()-rMVal.maItemRect.Left());
-                        }
-                        else
-                        {
-                            aBGRect.right = rMVal.getNumericVal();
-                            aBGRect.left  = rMVal.maItemRect.Left();
-                        }
+                        tools::Rectangle aRectangle = GetMenuPopupMarkRegion(aValue);
+                        aBGRect.top = aRectangle.Top();
+                        aBGRect.left = aRectangle.Left();
+                        aBGRect.bottom = aRectangle.Bottom();
+                        aBGRect.right = aRectangle.Right();
                         rc = aBGRect;
                     }
                     iState = (nState & ControlState::ENABLED) ? MCB_NORMAL : MCB_DISABLED;
@@ -1148,7 +1163,9 @@ bool WinSalGraphics::drawNativeControl( ControlType nType,
     tools::Rectangle cacheRect = rControlRegion;
     Size keySize = cacheRect.GetSize();
 
-    WinOpenGLSalGraphicsImpl* pImpl = dynamic_cast<WinOpenGLSalGraphicsImpl*>(mpImpl.get());
+    WinSalGraphicsImplBase* pImpl = dynamic_cast<WinSalGraphicsImplBase*>(mpImpl.get());
+    if( !pImpl->UseRenderNativeControl())
+        pImpl = nullptr;
 
     // tdf#95618 - A few controls render outside the region they're given.
     if (pImpl && nType == ControlType::TabItem)
@@ -1162,6 +1179,18 @@ bool WinSalGraphics::drawNativeControl( ControlType nType,
             keySize = rNativeBoundingRegion.GetSize();
         }
     }
+
+    if (pImpl && nType == ControlType::MenuPopup && (nPart == ControlPart::MenuItemCheckMark || nPart == ControlPart::MenuItemRadioMark))
+    {
+        tools::Rectangle aRectangle = GetMenuPopupMarkRegion(aValue);
+        if (!aRectangle.IsEmpty())
+        {
+            cacheRect = GetMenuPopupMarkRegion(aValue);
+            buttonRect = cacheRect;
+            keySize = cacheRect.GetSize();
+        }
+    }
+
 
     ControlCacheKey aControlCacheKey(nType, nPart, nState, keySize);
     if (pImpl != nullptr && pImpl->TryRenderCachedNativeControl(aControlCacheKey, buttonRect.Left(), buttonRect.Top()))
@@ -1275,19 +1304,19 @@ bool WinSalGraphics::drawNativeControl( ControlType nType,
     }
     else
     {
-        // We can do OpenGL
-        OpenGLCompatibleDC aBlackDC(*this, cacheRect.Left(), cacheRect.Top(), cacheRect.GetWidth()+1, cacheRect.GetHeight()+1);
-        SetTextAlign(aBlackDC.getCompatibleHDC(), TA_LEFT|TA_TOP|TA_NOUPDATECP);
-        aBlackDC.fill(MAKE_SALCOLOR(0, 0, 0));
+        // We can do OpenGL/Skia
+        std::unique_ptr<CompatibleDC> aBlackDC(CompatibleDC::create(*this, cacheRect.Left(), cacheRect.Top(), cacheRect.GetWidth()+1, cacheRect.GetHeight()+1));
+        SetTextAlign(aBlackDC->getCompatibleHDC(), TA_LEFT|TA_TOP|TA_NOUPDATECP);
+        aBlackDC->fill(RGB(0, 0, 0));
 
-        OpenGLCompatibleDC aWhiteDC(*this, cacheRect.Left(), cacheRect.Top(), cacheRect.GetWidth()+1, cacheRect.GetHeight()+1);
-        SetTextAlign(aWhiteDC.getCompatibleHDC(), TA_LEFT|TA_TOP|TA_NOUPDATECP);
-        aWhiteDC.fill(MAKE_SALCOLOR(0xff, 0xff, 0xff));
+        std::unique_ptr<CompatibleDC> aWhiteDC(CompatibleDC::create(*this, cacheRect.Left(), cacheRect.Top(), cacheRect.GetWidth()+1, cacheRect.GetHeight()+1));
+        SetTextAlign(aWhiteDC->getCompatibleHDC(), TA_LEFT|TA_TOP|TA_NOUPDATECP);
+        aWhiteDC->fill(RGB(0xff, 0xff, 0xff));
 
-        if (ImplDrawNativeControl(aBlackDC.getCompatibleHDC(), hTheme, rc, nType, nPart, nState, aValue, aCaptionStr) &&
-            ImplDrawNativeControl(aWhiteDC.getCompatibleHDC(), hTheme, rc, nType, nPart, nState, aValue, aCaptionStr))
+        if (ImplDrawNativeControl(aBlackDC->getCompatibleHDC(), hTheme, rc, nType, nPart, nState, aValue, aCaptionStr) &&
+            ImplDrawNativeControl(aWhiteDC->getCompatibleHDC(), hTheme, rc, nType, nPart, nState, aValue, aCaptionStr))
         {
-            bOk = pImpl->RenderAndCacheNativeControl(aWhiteDC, aBlackDC, cacheRect.Left(), cacheRect.Top(), aControlCacheKey);
+            bOk = pImpl->RenderAndCacheNativeControl(*aWhiteDC, *aBlackDC, cacheRect.Left(), cacheRect.Top(), aControlCacheKey);
         }
     }
 
@@ -1303,7 +1332,7 @@ bool WinSalGraphics::getNativeControlRegion(  ControlType nType,
                                 tools::Rectangle &rNativeBoundingRegion,
                                 tools::Rectangle &rNativeContentRegion )
 {
-    bool bRet = FALSE;
+    bool bRet = false;
 
     // FIXME: rNativeBoundingRegion has a different origin
     //        depending on which part is used; horrors.
@@ -1345,7 +1374,7 @@ bool WinSalGraphics::getNativeControlRegion(  ControlType nType,
                 rNativeContentRegion = aRect;
                 rNativeBoundingRegion = rNativeContentRegion;
                 if( !rNativeContentRegion.IsEmpty() )
-                    bRet = TRUE;
+                    bRet = true;
             }
         }
     }
@@ -1359,7 +1388,7 @@ bool WinSalGraphics::getNativeControlRegion(  ControlType nType,
             rNativeContentRegion = aRect;
             rNativeBoundingRegion = rNativeContentRegion;
             if( !rNativeContentRegion.IsEmpty() )
-                bRet = TRUE;
+                bRet = true;
         }
     }
     if( (nType == ControlType::Listbox || nType == ControlType::Combobox ) && nPart == ControlPart::Entire )
@@ -1371,13 +1400,13 @@ bool WinSalGraphics::getNativeControlRegion(  ControlType nType,
             tools::Rectangle aRect( ImplGetThemeRect( hTheme, hDC, CP_DROPDOWNBUTTON,
                                                CBXS_NORMAL, aBoxRect ) );
             if( aRect.GetHeight() > aBoxRect.GetHeight() )
-                aBoxRect.Bottom() = aBoxRect.Top() + aRect.GetHeight();
+                aBoxRect.SetBottom( aBoxRect.Top() + aRect.GetHeight() );
             if( aRect.GetWidth() > aBoxRect.GetWidth() )
-                aBoxRect.Right() = aBoxRect.Left() + aRect.GetWidth();
+                aBoxRect.SetRight( aBoxRect.Left() + aRect.GetWidth() );
             rNativeContentRegion = aBoxRect;
             rNativeBoundingRegion = rNativeContentRegion;
             if( !aRect.IsEmpty() )
-                bRet = TRUE;
+                bRet = true;
         }
     }
 
@@ -1401,15 +1430,15 @@ bool WinSalGraphics::getNativeControlRegion(  ControlType nType,
 
                 if( aRect.GetHeight() && nFontHeight )
                 {
-                    aRect.Bottom() += aRect.GetHeight();
-                    aRect.Bottom() += nFontHeight;
+                    aRect.AdjustBottom(aRect.GetHeight());
+                    aRect.AdjustBottom(nFontHeight);
                     if( aRect.GetHeight() > aBoxRect.GetHeight() )
-                        aBoxRect.Bottom() = aBoxRect.Top() + aRect.GetHeight();
+                        aBoxRect.SetBottom( aBoxRect.Top() + aRect.GetHeight() );
                     if( aRect.GetWidth() > aBoxRect.GetWidth() )
-                        aBoxRect.Right() = aBoxRect.Left() + aRect.GetWidth();
+                        aBoxRect.SetRight( aBoxRect.Left() + aRect.GetWidth() );
                     rNativeContentRegion = aBoxRect;
                     rNativeBoundingRegion = rNativeContentRegion;
-                        bRet = TRUE;
+                    bRet = true;
                 }
             }
         }
@@ -1432,7 +1461,7 @@ bool WinSalGraphics::getNativeControlRegion(  ControlType nType,
                 {
                     rNativeContentRegion = aRect;
                     rNativeBoundingRegion = rNativeContentRegion;
-                    bRet = TRUE;
+                    bRet = true;
                 }
             }
         }
@@ -1450,7 +1479,7 @@ bool WinSalGraphics::getNativeControlRegion(  ControlType nType,
             {
                 long nW = aThumbRect.GetWidth();
                 tools::Rectangle aRect( rControlRegion );
-                aRect.Right() = aRect.Left() + nW - 1;
+                aRect.SetRight( aRect.Left() + nW - 1 );
                 rNativeContentRegion = aRect;
                 rNativeBoundingRegion = rNativeContentRegion;
             }
@@ -1458,11 +1487,11 @@ bool WinSalGraphics::getNativeControlRegion(  ControlType nType,
             {
                 long nH = aThumbRect.GetHeight();
                 tools::Rectangle aRect( rControlRegion );
-                aRect.Bottom() = aRect.Top() + nH - 1;
+                aRect.SetBottom( aRect.Top() + nH - 1 );
                 rNativeContentRegion = aRect;
                 rNativeBoundingRegion = rNativeContentRegion;
             }
-            bRet = TRUE;
+            bRet = true;
         }
     }
 
@@ -1471,30 +1500,30 @@ bool WinSalGraphics::getNativeControlRegion(  ControlType nType,
         tools::Rectangle aControlRect( rControlRegion );
         rNativeContentRegion = aControlRect;
 
-        --aControlRect.Bottom();
+        aControlRect.AdjustBottom(-1);
 
         if( rControlValue.getType() == ControlType::TabItem )
         {
-            const TabitemValue *pValue = static_cast<const TabitemValue*>(&rControlValue);
-            if ( pValue->isBothAligned() )
-                --aControlRect.Right();
+            const TabitemValue& rValue = static_cast<const TabitemValue&>(rControlValue);
+            if (rValue.isBothAligned())
+                aControlRect.AdjustRight(-1);
 
             if ( nState & ControlState::SELECTED )
             {
-                aControlRect.Left() -= 2;
-                if ( pValue && !pValue->isBothAligned() )
+                aControlRect.AdjustLeft(-2);
+                if (!rValue.isBothAligned())
                 {
-                    if ( pValue->isLeftAligned() || pValue->isNotAligned() )
-                        aControlRect.Right() += 2;
-                    if ( pValue->isRightAligned() )
-                        aControlRect.Right() += 1;
+                    if (rValue.isLeftAligned() || rValue.isNotAligned())
+                        aControlRect.AdjustRight(2);
+                    if (rValue.isRightAligned())
+                        aControlRect.AdjustRight(1);
                 }
-                aControlRect.Top() -= 2;
-                aControlRect.Bottom() += 2;
+                aControlRect.AdjustTop(-2);
+                aControlRect.AdjustBottom(2);
             }
         }
         rNativeBoundingRegion = aControlRect;
-        bRet = TRUE;
+        bRet = true;
     }
 
     ReleaseDC( mhWnd, hDC );
@@ -1512,22 +1541,16 @@ void WinSalGraphics::updateSettingsNative( AllSettings& rSettings )
     // don't draw frame around each and every toolbar
     pSVData->maNWFData.mbDockingAreaAvoidTBFrames = true;
 
-    // check if vista or newer runs
-    // in Aero theme (and similar ?) the menu text color does not change
-    // for selected items; also on WinXP and earlier menus are not themed
     // FIXME get the color directly from the theme, not from the settings
-    if (aSalShlData.mbWVista)
-    {
-        Color aMenuBarTextColor = aStyleSettings.GetPersonaMenuBarTextColor().get_value_or( aStyleSettings.GetMenuTextColor() );
-        // in aero menuitem highlight text is drawn in the same color as normal
-        aStyleSettings.SetMenuHighlightTextColor( aStyleSettings.GetMenuTextColor() );
-        aStyleSettings.SetMenuBarRolloverTextColor( aMenuBarTextColor );
-        aStyleSettings.SetMenuBarHighlightTextColor( aMenuBarTextColor );
-        pSVData->maNWFData.mnMenuFormatBorderX = 2;
-        pSVData->maNWFData.mnMenuFormatBorderY = 2;
-        pSVData->maNWFData.maMenuBarHighlightTextColor = aMenuBarTextColor;
-        GetSalData()->mbThemeMenuSupport = true;
-    }
+    Color aMenuBarTextColor = aStyleSettings.GetPersonaMenuBarTextColor().value_or( aStyleSettings.GetMenuTextColor() );
+    // in aero menuitem highlight text is drawn in the same color as normal
+    aStyleSettings.SetMenuHighlightTextColor( aStyleSettings.GetMenuTextColor() );
+    aStyleSettings.SetMenuBarRolloverTextColor( aMenuBarTextColor );
+    aStyleSettings.SetMenuBarHighlightTextColor( aMenuBarTextColor );
+    pSVData->maNWFData.mnMenuFormatBorderX = 2;
+    pSVData->maNWFData.mnMenuFormatBorderY = 2;
+    pSVData->maNWFData.maMenuBarHighlightTextColor = aMenuBarTextColor;
+    GetSalData()->mbThemeMenuSupport = true;
 
     rSettings.SetStyleSettings( aStyleSettings );
 }

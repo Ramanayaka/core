@@ -18,9 +18,9 @@
  */
 
 #include <memory>
-#include "tools/IconCache.hxx"
+#include <tools/IconCache.hxx>
 
-#include "sdresid.hxx"
+#include <tools/debug.hxx>
 #include <osl/doublecheckedlocking.h>
 #include <osl/getglobalmutex.hxx>
 #include <unordered_map>
@@ -40,7 +40,7 @@ private:
     */
     static IconCache* s_pIconCache;
 
-    typedef std::unordered_map<OUString, Image, OUStringHash> ImageContainer;
+    typedef std::unordered_map<OUString, Image> ImageContainer;
     ImageContainer maContainer;
 
     Image GetIcon(const OUString& rResourceId);
@@ -51,11 +51,10 @@ IconCache* IconCache::Implementation::s_pIconCache = nullptr;
 Image IconCache::Implementation::GetIcon(const OUString& rResourceId)
 {
     Image aResult;
-    ImageContainer::iterator iImage;
-    iImage = maContainer.find(rResourceId);
+    ImageContainer::iterator iImage = maContainer.find(rResourceId);
     if (iImage == maContainer.end())
     {
-        aResult = Image(BitmapEx(rResourceId));
+        aResult = Image(StockImage::Yes, rResourceId);
         maContainer[rResourceId] = aResult;
     }
     else

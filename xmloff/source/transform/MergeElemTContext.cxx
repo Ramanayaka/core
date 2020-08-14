@@ -21,15 +21,16 @@
 #include "MutableAttrList.hxx"
 #include "TransformerBase.hxx"
 #include "TransformerActions.hxx"
-#include "AttrTransformerAction.hxx"
 #include "ElemTransformerAction.hxx"
 #include "IgnoreTContext.hxx"
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <osl/diagnose.h>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::xmloff::token;
+
+namespace {
 
 class XMLParagraphTransformerContext : public XMLTransformerContext
 {
@@ -44,6 +45,8 @@ public:
                                    const OUString& rQName,
                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
 };
+
+}
 
 XMLParagraphTransformerContext::XMLParagraphTransformerContext(
         XMLTransformerBase& rImp,
@@ -62,6 +65,8 @@ rtl::Reference<XMLTransformerContext> XMLParagraphTransformerContext::CreateChil
                                                 rQName, true );
 }
 
+namespace {
+
 class XMLPersTextContentRNGTransformTContext : public XMLPersTextContentTContext
 {
 public:
@@ -73,6 +78,8 @@ public:
 
     virtual void Characters( const OUString& rChars ) override;
 };
+
+}
 
 XMLPersTextContentRNGTransformTContext::XMLPersTextContentRNGTransformTContext(
     XMLTransformerBase& rTransformer,
@@ -93,11 +100,9 @@ void XMLPersTextContentRNGTransformTContext::Characters( const OUString& rChars 
 
 void XMLMergeElemTransformerContext::ExportStartElement()
 {
-    XMLPersTextContentTContextVector::iterator aIter = m_aChildContexts.begin();
-
-    for( ; aIter != m_aChildContexts.end(); ++aIter )
+    for( const auto& rChildContext : m_aChildContexts )
     {
-        XMLPersTextContentTContext *pContext = (*aIter).get();
+        XMLPersTextContentTContext *pContext = rChildContext.get();
         static_cast< XMLMutableAttributeList * >( m_xAttrList.get() )
             ->AddAttribute( pContext->GetExportQName(),
                             pContext->GetTextContent() );
@@ -172,7 +177,7 @@ rtl::Reference<XMLTransformerContext> XMLMergeElemTransformerContext::CreateChil
             XMLTransformerActions::const_iterator aIter =
                 pActions->find( aKey );
 
-            if( !(aIter == pActions->end()) )
+            if( aIter != pActions->end() )
             {
                 switch( (*aIter).second.m_nActionType )
                 {
@@ -225,7 +230,7 @@ rtl::Reference<XMLTransformerContext> XMLMergeElemTransformerContext::CreateChil
             XMLTransformerActions::const_iterator aIter =
                 pActions->find( aKey );
 
-            if( !(aIter == pActions->end()) )
+            if( aIter != pActions->end() )
             {
                 switch( (*aIter).second.m_nActionType )
                 {

@@ -20,13 +20,14 @@
 #ifndef INCLUDED_SD_INC_SHAPELIST_HXX
 #define INCLUDED_SD_INC_SHAPELIST_HXX
 
+#include <sal/types.h>
 #include <svx/sdrobjectuser.hxx>
 
 #include <list>
 
 namespace sd
 {
-    class ShapeList : public sdr::ObjectUser
+    class ShapeList final : public sdr::ObjectUser
     {
     public:
         ShapeList();

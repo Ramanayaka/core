@@ -23,10 +23,8 @@
 #include "MacabTable.hxx"
 #include <connectivity/sdbcx/VCollection.hxx>
 
-namespace connectivity
+namespace connectivity::macab
 {
-    namespace macab
-    {
         class MacabColumns : public sdbcx::OCollection
         {
         protected:
@@ -38,9 +36,8 @@ namespace connectivity
         public:
             MacabColumns(   MacabTable* _pTable,
                         ::osl::Mutex& _rMutex,
-                        const TStringVector &_rVector);
+                        const ::std::vector< OUString> &_rVector);
         };
-    }
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MACAB_MACABCOLUMNS_HXX

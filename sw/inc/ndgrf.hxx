@@ -19,17 +19,16 @@
 
 #ifndef INCLUDED_SW_INC_NDGRF_HXX
 #define INCLUDED_SW_INC_NDGRF_HXX
+
 #include <sfx2/lnkbase.hxx>
-#include <svtools/grfmgr.hxx>
-#include <ndnotxt.hxx>
-#include <com/sun/star/embed/XStorage.hpp>
+#include <vcl/GraphicObject.hxx>
+#include "ndnotxt.hxx"
 #include <memory>
+
 class SwAsyncRetrieveInputStreamThreadConsumer;
 
 class SwGrfFormatColl;
 class SwDoc;
-class GraphicAttr;
-class SotStorage;
 
 // SwGrfNode
 class SW_DLLPUBLIC SwGrfNode: public SwNoTextNode
@@ -37,15 +36,15 @@ class SW_DLLPUBLIC SwGrfNode: public SwNoTextNode
     friend class SwNodes;
 
     GraphicObject maGrfObj;
-    GraphicObject *mpReplacementGraphic;
-    tools::SvRef<sfx2::SvBaseLink> refLink;       ///< If graphics only as link then pointer is set.
-    Size nGrfSize;
-    bool bInSwapIn              :1;
+    std::unique_ptr<GraphicObject> mpReplacementGraphic;
+    tools::SvRef<sfx2::SvBaseLink> mxLink;       ///< If graphics only as link then pointer is set.
+    Size mnGrfSize;
+    bool mbInSwapIn              :1; // to avoid recursion in SwGrfNode::SwapIn
+    bool mbInBaseLinkSwapIn      :1; // to avoid recursion in SwBaseLink::SwapIn
 
-    bool bGraphicArrived        :1;
-    bool bChgTwipSize           :1;
-    bool bFrameInPaint          :1; ///< To avoid Start-/EndActions in Paint via SwapIn.
-    bool bScaleImageMap         :1; ///< Scale image map in SetTwipSize.
+    bool mbChangeTwipSize           :1;
+    bool mbFrameInPaint          :1; ///< To avoid Start-/EndActions in Paint via SwapIn.
+    bool mbScaleImageMap         :1; ///< Scale image map in SetTwipSize.
 
     std::shared_ptr< SwAsyncRetrieveInputStreamThreadConsumer > mpThreadConsumer;
     bool mbLinkedInputStreamReady;
@@ -56,60 +55,18 @@ class SW_DLLPUBLIC SwGrfNode: public SwNoTextNode
                const OUString& rGrfName, const OUString& rFltName,
                const Graphic* pGraphic,
                SwGrfFormatColl* pGrfColl,
-               SwAttrSet* pAutoAttr );
+               SwAttrSet const * pAutoAttr );
     ///< Ctor for reading (SW/G) without graphics.
     SwGrfNode( const SwNodeIndex& rWhere,
                const OUString& rGrfName, const OUString& rFltName,
                SwGrfFormatColl* pGrfColl,
-               SwAttrSet* pAutoAttr );
+               SwAttrSet const * pAutoAttr );
     SwGrfNode( const SwNodeIndex& rWhere,
                const GraphicObject& rGrfObj,
                SwGrfFormatColl* pGrfColl,
-               SwAttrSet* pAutoAttr );
+               SwAttrSet const * pAutoAttr );
 
     void InsertLink( const OUString& rGrfName, const OUString& rFltName );
-    bool ImportGraphic( SvStream& rStrm );
-
-    DECL_LINK( SwapGraphic, const GraphicObject*, SvStream* );
-
-    /** helper method to determine stream for the embedded graphic.
-
-        Important note: caller of this method has to handle the thrown exceptions
-        Storage, which should contain the stream of the embedded graphic, is
-        provided via parameter. Otherwise the returned stream will be closed
-        after the method returns, because its parent stream is closed and deleted.
-        Proposed name of embedded graphic stream is also provided by parameter.
-
-        @author OD
-
-        @param _refPics
-        input parameter - reference to storage, which should contain the
-        embedded graphic stream.
-
-        @param rStrmName
-        input parameter - proposed name of the embedded graphic stream.
-
-        @return SvStream*
-        new created stream of the embedded graphic, which has to be destroyed
-        after its usage. Could be NULL, if the stream isn't found.
-    */
-    SvStream* GetStreamForEmbedGrf(
-            const css::uno::Reference< css::embed::XStorage >& _refPics,
-            const OUString& rStreamName ) const;
-
-    /** helper method to get a substorage of the document storage for readonly access.
-
-        A substorage with the specified name will be opened readonly. If the provided
-        name is empty the root storage will be returned.
-
-        @param _aStgName
-        input parameter - name of substorage. Can be empty.
-
-        @return XStorage
-        reference to substorage or the root storage
-    */
-    css::uno::Reference< css::embed::XStorage > GetDocSubstorageOrRoot(
-                                                const OUString& aStgName ) const;
 
     /// allow reaction on change of content of GraphicObject, so always call
     /// when GraphicObject content changes
@@ -120,10 +77,9 @@ public:
     const Graphic&          GetGrf(bool bWait = false) const;
     const GraphicObject&    GetGrfObj(bool bWait = false) const;
     const GraphicObject* GetReplacementGrfObj() const;
-    virtual SwContentNode *SplitContentNode( const SwPosition & ) override;
 
     /// isolated only way to set GraphicObject to allow more actions when doing so
-    void SetGraphic(const Graphic& rGraphic, const OUString& rLink);
+    void SetGraphic(const Graphic& rGraphic);
 
     /// wrappers for non-const calls at GraphicObject
     void StartGraphicAnimation(OutputDevice* pOut, const Point& rPt, const Size& rSz, long nExtraData, OutputDevice* pFirstFrameOutDev)
@@ -137,51 +93,42 @@ public:
 
     bool IsAnimated() const              { return maGrfObj.IsAnimated(); }
 
-    bool IsChgTwipSize() const           { return bChgTwipSize; }
+    bool IsChgTwipSize() const           { return mbChangeTwipSize; }
     void SetChgTwipSize( bool b)
     {
-        bChgTwipSize = b;
+        mbChangeTwipSize = b;
     }
 
-    bool IsGraphicArrived() const        { return bGraphicArrived; }
-    void SetGraphicArrived( bool b )     { bGraphicArrived = b; }
+    bool IsFrameInPaint() const          { return mbFrameInPaint; }
+    void SetFrameInPaint( bool b )       { mbFrameInPaint = b; }
 
-    bool IsFrameInPaint() const          { return bFrameInPaint; }
-    void SetFrameInPaint( bool b )       { bFrameInPaint = b; }
-
-    bool IsScaleImageMap() const         { return bScaleImageMap; }
-    void SetScaleImageMap( bool b )      { bScaleImageMap = b; }
+    bool IsScaleImageMap() const         { return mbScaleImageMap; }
+    void SetScaleImageMap( bool b )      { mbScaleImageMap = b; }
 
     /// in ndcopy.cxx
-    virtual SwContentNode* MakeCopy( SwDoc*, const SwNodeIndex& ) const override;
+    virtual SwContentNode* MakeCopy(SwDoc*, const SwNodeIndex&, bool bNewFrames) const override;
 
     /** Re-read in case graphic was not OK. The current one
        gets replaced by the new one. */
     bool ReRead( const OUString& rGrfName, const OUString& rFltName,
                  const Graphic* pGraphic = nullptr,
-                 const GraphicObject* pGrfObj = nullptr,
                  bool bModify = true );
 private:
     /// Loading of graphic immediately before displaying.
     bool SwapIn( bool bWaitForData = false );
-    /// Remove graphic in order to free memory.
-    bool SwapOut();
 
 public:
     bool HasEmbeddedStreamName() const { return maGrfObj.HasUserData(); }
-
-    /// Is this node selected by any shell?
-    bool IsSelected() const;
 
     /// Communicate to graphic that node is in Undo-range.
     virtual bool SavePersistentData() override;
     virtual bool RestorePersistentData() override;
 
     /// Query link-data.
-    bool IsGrfLink() const                  { return refLink.is(); }
+    bool IsGrfLink() const                  { return mxLink.is(); }
     bool IsLinkedFile() const;
     bool IsLinkedDDE() const;
-    const tools::SvRef<sfx2::SvBaseLink>& GetLink() const    { return refLink; }
+    const tools::SvRef<sfx2::SvBaseLink>& GetLink() const    { return mxLink; }
     bool GetFileFilterNms( OUString* pFileNm, OUString* pFilterNm ) const;
     void ReleaseLink();
 
@@ -192,7 +139,7 @@ public:
     /// Returns the with our graphic attributes filled Graphic-Attr-Structure.
     GraphicAttr& GetGraphicAttr( GraphicAttr&, const SwFrame* pFrame ) const;
 
-    std::weak_ptr< SwAsyncRetrieveInputStreamThreadConsumer > GetThreadConsumer() { return mpThreadConsumer;}
+    std::weak_ptr< SwAsyncRetrieveInputStreamThreadConsumer > GetThreadConsumer() const { return mpThreadConsumer;}
     bool IsLinkedInputStreamReady() const { return mbLinkedInputStreamReady;}
     void TriggerAsyncRetrieveInputStream();
     void ApplyInputStream(
@@ -215,12 +162,12 @@ inline const SwGrfNode   *SwNode::GetGrfNode() const
 
 inline bool SwGrfNode::IsLinkedFile() const
 {
-    return refLink.is() && OBJECT_CLIENT_GRF == refLink->GetObjType();
+    return mxLink.is() && sfx2::SvBaseLinkObjectType::ClientGraphic == mxLink->GetObjType();
 }
 
 inline bool SwGrfNode::IsLinkedDDE() const
 {
-    return refLink.is() && OBJECT_CLIENT_DDE == refLink->GetObjType();
+    return mxLink.is() && sfx2::SvBaseLinkObjectType::ClientDde == mxLink->GetObjType();
 }
 
 #endif

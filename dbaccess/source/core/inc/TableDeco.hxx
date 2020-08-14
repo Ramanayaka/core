@@ -29,10 +29,9 @@
 #include <com/sun/star/sdbcx/XRename.hpp>
 #include <com/sun/star/sdbcx/XAlterTable.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
+#include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <cppuhelper/compbase.hxx>
-#include "apitools.hxx"
 #include "datasettings.hxx"
 #include "column.hxx"
 
@@ -71,10 +70,11 @@ namespace dbaccess
         css::uno::Reference< css::sdbc::XDatabaseMetaData >       m_xMetaData;
         css::uno::Reference< css::util::XNumberFormatsSupplier >  m_xNumberFormats;
 
-    // <properties>
+        // <properties>
         mutable sal_Int32                                         m_nPrivileges;
-    // </properties>
-        rtl::Reference<::connectivity::sdbcx::OCollection>       m_pColumns;
+        // </properties>
+        // note: this thing uses the ref-count of "this", see OCollection::acquire()!
+        std::unique_ptr<::connectivity::sdbcx::OCollection>       m_pColumns;
 
         // IColumnFactory
         virtual OColumn*    createColumn(const OUString& _rName) const override;
@@ -146,7 +146,7 @@ namespace dbaccess
         virtual void SAL_CALL setName( const OUString& aName ) override;
         // css::lang::XUnoTunnel
         virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-        static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+        static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
         // XColumnsSupplier
         virtual css::uno::Reference< css::container::XNameAccess > SAL_CALL getColumns(  ) override;

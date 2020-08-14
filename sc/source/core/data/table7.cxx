@@ -11,17 +11,21 @@
 #include <clipcontext.hxx>
 #include <document.hxx>
 #include <clipparam.hxx>
-#include <bcaslot.hxx>
 #include <segmenttree.hxx>
 #include <sharedformula.hxx>
 #include <cellvalues.hxx>
-#include "olinetab.hxx"
+#include <olinetab.hxx>
 #include <tabprotection.hxx>
 #include <columniterator.hxx>
+#include <drwlayer.hxx>
+#include <compressedarray.hxx>
+
+#include <sal/log.hxx>
+#include <tools/stream.hxx>
 
 bool ScTable::IsMerged( SCCOL nCol, SCROW nRow ) const
 {
-    if (!ValidCol(nCol))
+    if (!ValidCol(nCol) || nCol >= GetAllocatedColumnsCount() )
         return false;
 
     return aCol[nCol].IsMerged(nRow);
@@ -39,14 +43,13 @@ sc::MultiDataCellState ScTable::HasMultipleDataCells( SCCOL nCol1, SCROW nRow1, 
     if (aCol.empty())
         return sc::MultiDataCellState(sc::MultiDataCellState::Empty);
 
-    auto setFirstCell = []( sc::MultiDataCellState& rRet, SCCOL nCurCol, SCROW nCurRow, SCTAB nCurTab )
+    auto setFirstCell = []( sc::MultiDataCellState& rRet, SCCOL nCurCol, SCROW nCurRow )
     {
         if (rRet.mnCol1 < 0)
         {
             // First cell not yet set.  Set it.
             rRet.mnCol1 = nCurCol;
             rRet.mnRow1 = nCurRow;
-            rRet.mnTab1 = nCurTab;
         }
     };
 
@@ -61,7 +64,7 @@ sc::MultiDataCellState ScTable::HasMultipleDataCells( SCCOL nCol1, SCROW nRow1, 
         {
             case sc::MultiDataCellState::HasOneCell:
             {
-                setFirstCell(aRet, nCol, nFirstDataRow, nTab);
+                setFirstCell(aRet, nCol, nFirstDataRow);
 
                 if (bHasOne)
                 {
@@ -74,7 +77,7 @@ sc::MultiDataCellState ScTable::HasMultipleDataCells( SCCOL nCol1, SCROW nRow1, 
             }
             case sc::MultiDataCellState::HasMultipleCells:
             {
-                setFirstCell(aRet, nCol, nFirstDataRow, nTab);
+                setFirstCell(aRet, nCol, nFirstDataRow);
 
                 aRet.meState = sc::MultiDataCellState::HasMultipleCells;
                 return aRet;
@@ -119,7 +122,7 @@ void ScTable::DeleteBeforeCopyFromClip(
 }
 
 void ScTable::CopyOneCellFromClip(
-    sc::CopyFromClipContext& rCxt, SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2, SCROW nSrcRow, ScTable* pSrcTab )
+    sc::CopyFromClipContext& rCxt, const SCCOL nCol1, const SCROW nRow1, const SCCOL nCol2, const SCROW nRow2, const SCROW nSrcRow, const ScTable* pSrcTab )
 {
     ScRange aSrcRange = rCxt.getClipDoc()->GetClipParam().getWholeRange();
     SCCOL nSrcColSize = aSrcRange.aEnd.Col() - aSrcRange.aStart.Col() + 1;
@@ -129,53 +132,83 @@ void ScTable::CopyOneCellFromClip(
         SCCOL nColOffset = nCol - nCol1;
         nColOffset = nColOffset % nSrcColSize;
         assert(nColOffset >= 0);
-        aCol[nCol].CopyOneCellFromClip(rCxt, nRow1, nRow2, nColOffset);
+        CreateColumnIfNotExists(nCol).CopyOneCellFromClip(rCxt, nRow1, nRow2, nColOffset);
 
-        if ((rCxt.getInsertFlag() & InsertDeleteFlags::ATTRIB) && (nColOffset == 0))
+        if (rCxt.getInsertFlag() & InsertDeleteFlags::ATTRIB)
         {
             for (SCROW nRow = nRow1; nRow <= nRow2; ++nRow)
-                CopyConditionalFormat(nCol, nRow, nCol + nSrcColSize - 1, nRow, nCol - aSrcRange.aStart.Col(),
+                CopyConditionalFormat(nCol, nRow, nCol, nRow, nCol - aSrcRange.aStart.Col() - nColOffset,
                         nRow - nSrcRow, pSrcTab);
         }
     }
 
-    if (nCol1 == 0 && nCol2 == MAXCOL && mpRowHeights)
+    if (nCol1 == 0 && nCol2 == pDocument->MaxCol() && mpRowHeights)
+    {
         mpRowHeights->setValue(nRow1, nRow2, pSrcTab->GetOriginalHeight(nSrcRow));
+
+        if (pRowFlags && pSrcTab->pRowFlags) {
+           if (pSrcTab->pRowFlags->GetValue(nSrcRow) & CRFlags::ManualSize)
+               pRowFlags->OrValue(nRow1, CRFlags::ManualSize);
+           else
+               pRowFlags->AndValue(nRow1, ~CRFlags::ManualSize);
+        }
+    }
+
+    // Copy graphics over too
+    bool bCopyGraphics
+        = (rCxt.getInsertFlag() & InsertDeleteFlags::OBJECTS) != InsertDeleteFlags::NONE;
+    if (!(bCopyGraphics && rCxt.getClipDoc()->mpDrawLayer))
+        return;
+
+    ScDrawLayer* pDrawLayer = GetDoc().GetDrawLayer();
+    OSL_ENSURE(pDrawLayer, "No drawing layer");
+    if (pDrawLayer)
+    {
+        const ScAddress aSrcStartPos
+            = rCxt.getClipDoc()->GetClipParam().getWholeRange().aStart;
+        const ScAddress aSrcEndPos = rCxt.getClipDoc()->GetClipParam().getWholeRange().aEnd;
+        tools::Rectangle aSourceRect = rCxt.getClipDoc()->GetMMRect(
+            aSrcStartPos.Col(), aSrcStartPos.Row(), aSrcEndPos.Col(), aSrcEndPos.Row(),
+            aSrcStartPos.Tab());
+        tools::Rectangle aDestRect = GetDoc().GetMMRect(nCol1, nRow1, nCol2, nRow2, nTab);
+        pDrawLayer->CopyFromClip(rCxt.getClipDoc()->mpDrawLayer.get(), aSrcStartPos.Tab(),
+                                 aSourceRect, ScAddress(nCol1, nRow1, nTab), aDestRect);
+    }
 }
 
-void ScTable::SetValues( SCCOL nCol, SCROW nRow, const std::vector<double>& rVals )
+void ScTable::SetValues( const SCCOL nCol, const SCROW nRow, const std::vector<double>& rVals )
 {
     if (!ValidCol(nCol))
         return;
 
-    aCol[nCol].SetValues(nRow, rVals);
+    CreateColumnIfNotExists(nCol).SetValues(nRow, rVals);
 }
 
-void ScTable::TransferCellValuesTo( SCCOL nCol, SCROW nRow, size_t nLen, sc::CellValues& rDest )
+void ScTable::TransferCellValuesTo( const SCCOL nCol, SCROW nRow, size_t nLen, sc::CellValues& rDest )
 {
     if (!ValidCol(nCol))
         return;
 
-    aCol[nCol].TransferCellValuesTo(nRow, nLen, rDest);
+    CreateColumnIfNotExists(nCol).TransferCellValuesTo(nRow, nLen, rDest);
 }
 
-void ScTable::CopyCellValuesFrom( SCCOL nCol, SCROW nRow, const sc::CellValues& rSrc )
+void ScTable::CopyCellValuesFrom( const SCCOL nCol, SCROW nRow, const sc::CellValues& rSrc )
 {
     if (!ValidCol(nCol))
         return;
 
-    aCol[nCol].CopyCellValuesFrom(nRow, rSrc);
+    CreateColumnIfNotExists(nCol).CopyCellValuesFrom(nRow, rSrc);
 }
 
 void ScTable::ConvertFormulaToValue(
-    sc::EndListeningContext& rCxt, SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2,
+    sc::EndListeningContext& rCxt, const SCCOL nCol1, const SCROW nRow1, const SCCOL nCol2, const SCROW nRow2,
     sc::TableValues* pUndo )
 {
     if (!ValidCol(nCol1) || !ValidCol(nCol2) || nCol1 > nCol2)
         return;
 
     for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol)
-        aCol[nCol].ConvertFormulaToValue(rCxt, nRow1, nRow2, pUndo);
+         CreateColumnIfNotExists(nCol).ConvertFormulaToValue(rCxt, nRow1, nRow2, pUndo);
 }
 
 void ScTable::SwapNonEmpty(
@@ -184,7 +217,7 @@ void ScTable::SwapNonEmpty(
     const ScRange& rRange = rValues.getRange();
     assert(rRange.IsValid());
     for (SCCOL nCol = rRange.aStart.Col(); nCol <= rRange.aEnd.Col(); ++nCol)
-        aCol[nCol].SwapNonEmpty(rValues, rStartCxt, rEndCxt);
+        CreateColumnIfNotExists(nCol).SwapNonEmpty(rValues, rStartCxt, rEndCxt);
 }
 
 void ScTable::PreprocessRangeNameUpdate(
@@ -208,12 +241,14 @@ void ScTable::CompileHybridFormula(
         aCol[i].CompileHybridFormula(rStartListenCxt, rCompileCxt);
 }
 
-void ScTable::UpdateScriptTypes( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2 )
+void ScTable::UpdateScriptTypes( const SCCOL nCol1, SCROW nRow1, const SCCOL nCol2, SCROW nRow2 )
 {
-    if (!ValidCol(nCol1) || !ValidCol(nCol2) || nCol1 > nCol2)
+    if (!IsColValid(nCol1) || !ValidCol(nCol2) || nCol1 > nCol2)
         return;
 
-    for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol)
+    const SCCOL nMaxCol2 = std::min<SCCOL>( nCol2, aCol.size() - 1 );
+
+    for (SCCOL nCol = nCol1; nCol <= nMaxCol2; ++nCol)
         aCol[nCol].UpdateScriptTypes(nRow1, nRow2);
 }
 
@@ -232,44 +267,36 @@ bool ScTable::HasUniformRowHeight( SCROW nRow1, SCROW nRow2 ) const
 
 void ScTable::SplitFormulaGroups( SCCOL nCol, std::vector<SCROW>& rRows )
 {
-    if (!ValidCol(nCol))
+    if (!IsColValid(nCol))
         return;
 
-    sc::SharedFormulaUtil::splitFormulaCellGroups(aCol[nCol].maCells, rRows);
+    sc::SharedFormulaUtil::splitFormulaCellGroups(&GetDoc(), aCol[nCol].maCells, rRows);
 }
 
 void ScTable::UnshareFormulaCells( SCCOL nCol, std::vector<SCROW>& rRows )
 {
-    if (!ValidCol(nCol))
+    if (!IsColValid(nCol))
         return;
 
-    sc::SharedFormulaUtil::unshareFormulaCells(aCol[nCol].maCells, rRows);
+    sc::SharedFormulaUtil::unshareFormulaCells(pDocument, aCol[nCol].maCells, rRows);
 }
 
 void ScTable::RegroupFormulaCells( SCCOL nCol )
 {
-    if (!ValidCol(nCol))
+    if (!IsColValid(nCol))
         return;
 
     aCol[nCol].RegroupFormulaCells();
 }
 
-void ScTable::CollectListeners(
-    std::vector<SvtListener*>& rListeners, SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2 )
+bool ScTable::HasFormulaCell( const SCCOL nCol1, SCROW nRow1, const SCCOL nCol2, SCROW nRow2 ) const
 {
-    if (nCol2 < nCol1 || !ValidCol(nCol1) || !ValidCol(nCol2))
-        return;
-
-    for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol)
-        aCol[nCol].CollectListeners(rListeners, nRow1, nRow2);
-}
-
-bool ScTable::HasFormulaCell( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2 ) const
-{
-    if (nCol2 < nCol1 || !ValidCol(nCol1) || !ValidCol(nCol2))
+    if (nCol2 < nCol1 || !IsColValid(nCol1) || !ValidCol(nCol2))
         return false;
 
-    for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol)
+    const SCCOL nMaxCol2 = std::min<SCCOL>( nCol2, aCol.size() - 1 );
+
+    for (SCCOL nCol = nCol1; nCol <= nMaxCol2; ++nCol)
         if (aCol[nCol].HasFormulaCell(nRow1, nRow2))
             return true;
 
@@ -279,26 +306,26 @@ bool ScTable::HasFormulaCell( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2
 void ScTable::EndListeningIntersectedGroup(
     sc::EndListeningContext& rCxt, SCCOL nCol, SCROW nRow, std::vector<ScAddress>* pGroupPos )
 {
-    if (!ValidCol(nCol))
+    if (!IsColValid(nCol))
         return;
 
     aCol[nCol].EndListeningIntersectedGroup(rCxt, nRow, pGroupPos);
 }
 
 void ScTable::EndListeningIntersectedGroups(
-    sc::EndListeningContext& rCxt, SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2,
+    sc::EndListeningContext& rCxt, const SCCOL nCol1, SCROW nRow1, const SCCOL nCol2, SCROW nRow2,
     std::vector<ScAddress>* pGroupPos )
 {
-    if (nCol2 < nCol1 || !ValidCol(nCol1) || !ValidCol(nCol2))
+    if (nCol2 < nCol1 || !IsColValid(nCol1) || !ValidCol(nCol2))
         return;
 
-    for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol)
+    for (SCCOL nCol : GetColumnsRange(nCol1, nCol2))
         aCol[nCol].EndListeningIntersectedGroups(rCxt, nRow1, nRow2, pGroupPos);
 }
 
-void ScTable::EndListeningGroup( sc::EndListeningContext& rCxt, SCCOL nCol, SCROW nRow )
+void ScTable::EndListeningGroup( sc::EndListeningContext& rCxt, const SCCOL nCol, SCROW nRow )
 {
-    if (!ValidCol(nCol))
+    if (!IsColValid(nCol))
         return;
 
     aCol[nCol].EndListeningGroup(rCxt, nRow);
@@ -309,7 +336,7 @@ void ScTable::SetNeedsListeningGroup( SCCOL nCol, SCROW nRow )
     if (!ValidCol(nCol))
         return;
 
-    aCol[nCol].SetNeedsListeningGroup(nRow);
+    CreateColumnIfNotExists(nCol).SetNeedsListeningGroup(nRow);
 }
 
 bool ScTable::IsEditActionAllowed(
@@ -317,8 +344,8 @@ bool ScTable::IsEditActionAllowed(
 {
     if (!IsProtected())
     {
-        SCCOL nCol1 = 0, nCol2 = MAXCOL;
-        SCROW nRow1 = 0, nRow2 = MAXROW;
+        SCCOL nCol1 = 0, nCol2 = aCol.size() - 1;
+        SCROW nRow1 = 0, nRow2 = pDocument->MaxRow();
 
         switch (eAction)
         {
@@ -358,7 +385,7 @@ bool ScTable::IsEditActionAllowed(
         case sc::ColRowEditAction::InsertColumnsAfter:
         {
             // TODO: improve the matrix range handling for the insert-before action.
-            if (HasBlockMatrixFragment(nStart, 0, nEnd, MAXROW))
+            if (HasBlockMatrixFragment(nStart, 0, nEnd, pDocument->MaxRow()))
                 return false;
 
             return pTabProtection->isOptionEnabled(ScTableProtection::INSERT_COLUMNS);
@@ -367,7 +394,7 @@ bool ScTable::IsEditActionAllowed(
         case sc::ColRowEditAction::InsertRowsAfter:
         {
             // TODO: improve the matrix range handling for the insert-before action.
-            if (HasBlockMatrixFragment(0, nStart, MAXCOL, nEnd))
+            if (HasBlockMatrixFragment(0, nStart, pDocument->MaxCol(), nEnd))
                 return false;
 
             return pTabProtection->isOptionEnabled(ScTableProtection::INSERT_ROWS);
@@ -377,14 +404,14 @@ bool ScTable::IsEditActionAllowed(
             if (!pTabProtection->isOptionEnabled(ScTableProtection::DELETE_COLUMNS))
                 return false;
 
-            return !HasAttrib(nStart, 0, nEnd, MAXROW, HasAttrFlags::Protected);
+            return !HasAttrib(nStart, 0, nEnd, pDocument->MaxRow(), HasAttrFlags::Protected);
         }
         case sc::ColRowEditAction::DeleteRows:
         {
             if (!pTabProtection->isOptionEnabled(ScTableProtection::DELETE_ROWS))
                 return false;
 
-            return !HasAttrib(0, nStart, MAXCOL, nEnd, HasAttrFlags::Protected);
+            return !HasAttrib(0, nStart, pDocument->MaxCol(), nEnd, HasAttrFlags::Protected);
         }
         default:
             ;
@@ -395,19 +422,28 @@ bool ScTable::IsEditActionAllowed(
 
 std::unique_ptr<sc::ColumnIterator> ScTable::GetColumnIterator( SCCOL nCol, SCROW nRow1, SCROW nRow2 ) const
 {
-    if (!ValidCol(nCol) || nCol >= aCol.size())
+    if (!ValidCol(nCol))
         return std::unique_ptr<sc::ColumnIterator>();
 
-    return aCol[nCol].GetColumnIterator(nRow1, nRow2);
+    return CreateColumnIfNotExists(nCol).GetColumnIterator(nRow1, nRow2);
 }
 
-void ScTable::EnsureFormulaCellResults( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2 )
+bool ScTable::EnsureFormulaCellResults( const SCCOL nCol1, SCROW nRow1, const SCCOL nCol2, SCROW nRow2, bool bSkipRunning )
 {
-    if (nCol2 < nCol1 || !ValidCol(nCol1) || !ValidCol(nCol2))
-        return;
+    if (nCol2 < nCol1 || !IsColValid(nCol1) || !ValidCol(nCol2))
+        return false;
 
-    for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol)
-        aCol[nCol].EnsureFormulaCellResults(nRow1, nRow2);
+    const SCCOL nMaxCol2 = std::min<SCCOL>( nCol2, aCol.size() - 1 );
+
+    bool bAnyDirty = false;
+
+    for (SCCOL nCol = nCol1; nCol <= nMaxCol2; ++nCol)
+    {
+        bool bRet = aCol[nCol].EnsureFormulaCellResults(nRow1, nRow2, bSkipRunning);
+        bAnyDirty = bAnyDirty || bRet;
+    }
+
+    return bAnyDirty;
 }
 
 void ScTable::finalizeOutlineImport()
@@ -416,6 +452,180 @@ void ScTable::finalizeOutlineImport()
     {
         pOutlineTable->GetRowArray().finalizeImport(*this);
     }
+}
+
+void ScTable::StoreToCache(SvStream& rStrm) const
+{
+    SCCOL nStartCol = 0;
+    SCCOL nEndCol = pDocument->MaxCol();
+    SCROW nStartRow = 0;
+    SCROW nEndRow = pDocument->MaxRow();
+
+    GetDataArea(nStartCol, nStartRow, nEndCol, nEndRow, false, false);
+
+    rStrm.WriteUInt64(nEndCol + 1);
+    for (SCCOL nCol = 0; nCol <= nEndCol; ++nCol)
+    {
+        aCol[nCol].StoreToCache(rStrm);
+    }
+}
+
+void ScTable::RestoreFromCache(SvStream& rStrm)
+{
+    sal_uInt64 nCols = 0;
+    rStrm.ReadUInt64(nCols);
+    for (SCCOL nCol = 0; nCol < static_cast<SCCOL>(nCols); ++nCol)
+    {
+        aCol[nCol].RestoreFromCache(rStrm);
+    }
+}
+
+OString ScTable::dumpSheetGeomData(bool bColumns, SheetGeomType eGeomType)
+{
+    switch (eGeomType)
+    {
+        case SheetGeomType::SIZES:
+            // returns a non-empty space separated list of spans with trailing space.
+            // The format of the span is <size of any row/col in the span in print twips>:<last row/col of the span>
+            // Example (for columns with three spans if MAXCOL is 1023):   "1280:3 1049:50 1280:1023"
+            return dumpColumnRowSizes(bColumns);
+        case SheetGeomType::HIDDEN:
+            // returns a non-empty space separated list of spans with trailing space.
+            // The format of the span is:
+            // 1) First span:         <1 (span is hidden) / 0 (not hidden)>:<last row/col of the span>
+            // 2) Rest of the spans:  <last row/col of the span>
+            // The hidden state of the spans after the first can be inferred from the first span's flag as no adjacent
+            // spans can have the same state by definition of span.
+            return dumpHiddenFiltered(bColumns, /*bHidden*/ true);
+        case SheetGeomType::FILTERED:
+            // has exactly the same format as 'hidden'.
+            return dumpHiddenFiltered(bColumns, /*bHidden*/ false);
+        case SheetGeomType::GROUPS:
+            // returns a space separated list of 'levels' with trailing space.
+            // A 'level' is a comma separated list of groups(outline entries) with trailing comma.
+            // format of a group is:
+            // <start row/col of group>:<number of rows/cols in the group>:<1/0(group is hidden?)>:<1/0(control is visible?)>
+            return dumpColumnRowGroups(bColumns);
+        default:
+            ;
+    }
+
+    return "";
+}
+
+OString ScTable::dumpColumnRowSizes(bool bColumns)
+{
+    // If the data-structures are not available, just report that all
+    // rows/cols have the default sizes.
+    static const OString aDefaultForCols
+        = OString::number(STD_COL_WIDTH) + ":" + OString::number(MAXCOL) + " ";
+    static const OString aDefaultForRows
+        = OString::number(ScGlobal::nStdRowHeight) + ":" + OString::number(MAXROW) + " ";
+
+    // ScCompressedArray is a template class and we don't want to impose
+    // the restriction that its value type should be string serializable,
+    // instead just operate on the specialized object.
+    typedef ScCompressedArray<SCCOL, sal_uInt16> ColWidthsType;
+    auto dumpColWidths = [](const ColWidthsType& rWidths) -> OString {
+        OString aOutput;
+        OString aSegment;
+        SCCOL nStartCol = 0;
+        const SCCOL nMaxCol = std::min(rWidths.GetLastPos(), MAXCOL);
+        size_t nDummy = 0;
+        while (nStartCol <= nMaxCol)
+        {
+            SCCOL nEndCol;
+            sal_uInt16 nWidth = rWidths.GetValue(nStartCol, nDummy, nEndCol);
+            // The last span nEndCol is always MAXCOL+1 for some reason, and we don't want that.
+            if (nEndCol > nMaxCol)
+                nEndCol = nMaxCol;
+            aSegment = OString::number(nWidth) + ":" + OString::number(nEndCol) + " ";
+            aOutput += aSegment;
+            nStartCol = nEndCol + 1;
+        }
+
+        return aOutput;
+    };
+
+    if (bColumns)
+        return mpColWidth ? dumpColWidths(*mpColWidth) : aDefaultForCols;
+
+    return mpRowHeights ? mpRowHeights->dumpAsString() : aDefaultForRows;
+}
+
+OString ScTable::dumpHiddenFiltered(bool bColumns, bool bHidden)
+{
+    // defaults to no hidden/filtered row/cols.
+    static const OString aDefaultForCols = "0:" + OString::number(MAXCOL) + " ";
+    static const OString aDefaultForRows = "0:" + OString::number(MAXROW) + " ";
+
+    if (bHidden)
+    {
+        if (bColumns)
+            return mpHiddenCols ? mpHiddenCols->dumpAsString() : aDefaultForCols;
+
+        return mpHiddenRows ? mpHiddenRows->dumpAsString() : aDefaultForRows;
+    }
+
+    if (bColumns)
+        return mpFilteredCols ? mpFilteredCols->dumpAsString() : aDefaultForCols;
+
+    return mpFilteredRows ? mpFilteredRows->dumpAsString() : aDefaultForRows;
+}
+
+OString ScTable::dumpColumnRowGroups(bool bColumns) const
+{
+    if (!pOutlineTable)
+        return "";
+
+    if (bColumns)
+        return pOutlineTable->GetColArray().dumpAsString();
+
+    return pOutlineTable->GetRowArray().dumpAsString();
+}
+
+SCCOL ScTable::GetLOKFreezeCol() const
+{
+    return maLOKFreezeCell.Col();
+}
+
+SCROW ScTable::GetLOKFreezeRow() const
+{
+    return maLOKFreezeCell.Row();
+}
+
+bool ScTable::SetLOKFreezeCol(SCCOL nFreezeCol)
+{
+    if (!ValidCol(nFreezeCol))
+    {
+        SAL_WARN("sc.core", "ScTable::SetLOKFreezeCol : invalid nFreezeCol = " << nFreezeCol);
+        return false;
+    }
+
+    if (maLOKFreezeCell.Col() != nFreezeCol)
+    {
+        maLOKFreezeCell.SetCol(nFreezeCol);
+        return true;
+    }
+
+    return false;
+}
+
+bool ScTable::SetLOKFreezeRow(SCROW nFreezeRow)
+{
+    if (!ValidRow(nFreezeRow))
+    {
+        SAL_WARN("sc.core", "ScTable::SetLOKFreezeRow : invalid nFreezeRow = " << nFreezeRow);
+        return false;
+    }
+
+    if (maLOKFreezeCell.Row() != nFreezeRow)
+    {
+        maLOKFreezeCell.SetRow(nFreezeRow);
+        return true;
+    }
+
+    return false;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

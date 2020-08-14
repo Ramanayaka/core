@@ -20,13 +20,9 @@
 #ifndef INCLUDED_SW_SOURCE_FILTER_WW8_WW8SCAN_HXX
 #define INCLUDED_SW_SOURCE_FILTER_WW8_WW8SCAN_HXX
 
-#ifndef LONG_MAX
-#include <limits.h>
-#endif
-#include <algorithm>
 #include <cassert>
 #include <cstddef>
-#include <list>
+#include <deque>
 #include <memory>
 #include <stack>
 #include <unordered_map>
@@ -34,13 +30,11 @@
 
 #include <osl/endian.h>
 #include <tools/solar.h>
+#include <tools/stream.hxx>
 #include <rtl/ustring.hxx>
-#include "sortedarray.hxx"
 
 #include "ww8struc.hxx"
-#include <types.hxx>
-
-#include <unomid.h>
+#include "types.hxx"
 
 class SvStream;
 
@@ -74,8 +68,7 @@ public:
     //see Read_AmbiguousSPRM for the bPatchCJK oddity
     wwSprmSearcher(SprmInfoRow const * rows, std::size_t size, bool bPatchCJK = false) {
         for (std::size_t i = 0; i != size; ++i) {
-            bool ins = map_.insert(Map::value_type(rows[i].nId, rows[i].info))
-                .second;
+            bool ins = map_.emplace(rows[i].nId, rows[i].info).second;
             assert(ins); (void) ins;
         }
         if (bPatchCJK)
@@ -183,7 +176,7 @@ struct WW8PLCFxDesc;
 class  WW8PLCFx_PCD;
 
 /**
- reads array of strings (see MS documentation: STring TaBle stored in File)
+ reads array of strings (see MS documentation: String Table stored in File)
  returns NOT the original pascal strings but an array of converted char*
 
  attention: the *extra data* of each string are SKIPPED and ignored
@@ -194,13 +187,13 @@ void WW8ReadSTTBF(bool bVer8, SvStream& rStrm, sal_uInt32 nStart, sal_Int32 nLen
 
 struct WW8FieldDesc
 {
-    long nLen;              ///< total length (to skip over text)
+    WW8_CP nLen;            ///< total length (to skip over text)
     WW8_CP nSCode;          ///< start of instructions code
     WW8_CP nLCode;          ///< length
     WW8_CP nSRes;           ///< start of result
     WW8_CP nLRes;           ///< length ( == 0, if no result )
-    sal_uInt16 nId;             ///< WW-id for fields
-    sal_uInt8 nOpt;              ///< WW-Flags ( e.g.: changed by user )
+    sal_uInt16 nId;         ///< WW-id for fields
+    sal_uInt8 nOpt;         ///< WW-Flags ( e.g.: changed by user )
     bool bCodeNest:1;       ///< instruction used recursively
     bool bResNest:1;        ///< instruction inserted into result
 };
@@ -269,12 +262,12 @@ class WW8SprmIter
 private:
     const wwSprmParser &mrSprmParser;
     // these members will be updated
-    const sal_uInt8* pSprms; // remaining part of the SPRMs ( == start of akt. SPRM)
-    const sal_uInt8* pAktParams; // start of akt. SPRM's parameters
-    sal_uInt16 nAktId;
-    sal_uInt16 nAktSize;
+    const sal_uInt8* pSprms; // remaining part of the SPRMs ( == start of current SPRM)
+    const sal_uInt8* pCurrentParams; // start of current SPRM's parameters
+    sal_uInt16 nCurrentId;
+    sal_uInt16 nCurrentSize;
 
-    sal_Int32 nRemLen;   // length of remaining SPRMs (including akt. SPRM)
+    sal_Int32 nRemLen;   // length of remaining SPRMs (including current SPRM)
 
     void UpdateMyMembers();
 
@@ -282,12 +275,12 @@ public:
     explicit WW8SprmIter(const sal_uInt8* pSprms_, sal_Int32 nLen_,
         const wwSprmParser &rSprmParser);
     void  SetSprms(const sal_uInt8* pSprms_, sal_Int32 nLen_);
-    SprmResult FindSprm(sal_uInt16 nId);
+    SprmResult FindSprm(sal_uInt16 nId, bool bFindFirst, const sal_uInt8* pNextByteMatch = nullptr);
     void  advance();
     const sal_uInt8* GetSprms() const
         { return ( pSprms && (0 < nRemLen) ) ? pSprms : nullptr; }
-    const sal_uInt8* GetAktParams() const { return pAktParams; }
-    sal_uInt16 GetAktId() const { return nAktId; }
+    const sal_uInt8* GetCurrentParams() const { return pCurrentParams; }
+    sal_uInt16 GetCurrentId() const { return nCurrentId; }
     sal_Int32 GetRemLen() const { return nRemLen; }
 
 private:
@@ -387,7 +380,7 @@ public:
 // PLCF-type:
 enum ePLCFT{ CHP=0, PAP, SEP, /*HED, FNR, ENR,*/ PLCF_END };
 
-//Its hardcoded that eFTN be the first one: A very poor hack, needs to be fixed
+//It's hardcoded that eFTN be the first one: a very poor hack, needs to be fixed
 enum eExtSprm { eFTN = 256, eEDN = 257, eFLD = 258, eBKN = 259, eAND = 260, eATNBKN = 261, eFACTOIDBKN = 262 };
 
 /*
@@ -439,10 +432,9 @@ class WW8PLCFx_PCDAttrs : public WW8PLCFx
 private:
     WW8PLCFpcd_Iter* pPcdI;
     WW8PLCFx_PCD* pPcd;
-    sal_uInt8* const* pGrpprls; // attribute of Piece-table
+    std::vector<std::unique_ptr<sal_uInt8[]>> const & mrGrpprls; // attribute of Piece-table
     SVBT32 aShortSprm;          // mini storage: can contain ONE sprm with
                                 // 1 byte param
-    sal_uInt16 nGrpprls;            // attribute count of this
 
     WW8PLCFx_PCDAttrs(const WW8PLCFx_PCDAttrs&) = delete;
     WW8PLCFx_PCDAttrs& operator=(const WW8PLCFx_PCDAttrs&) = delete;
@@ -453,7 +445,7 @@ public:
     virtual sal_uInt32 GetIdx() const override;
     virtual void SetIdx(sal_uInt32 nI) override;
     virtual bool SeekPos(WW8_CP nCpPos) override;
-    virtual WW8_FC Where() override;
+    virtual WW8_CP Where() override;
     virtual void GetSprms( WW8PLCFxDesc* p ) override;
     virtual void advance() override;
 
@@ -478,16 +470,16 @@ public:
     virtual sal_uInt32 GetIdx() const override;
     virtual void SetIdx(sal_uInt32 nI) override;
     virtual bool SeekPos(WW8_CP nCpPos) override;
-    virtual WW8_FC Where() override;
+    virtual WW8_CP Where() override;
     virtual long GetNoSprms( WW8_CP& rStart, WW8_CP&, sal_Int32& rLen ) override;
     virtual void advance() override;
-    WW8_CP AktPieceStartFc2Cp( WW8_FC nStartPos );
-    WW8_FC AktPieceStartCp2Fc( WW8_CP nCp );
-    static void AktPieceFc2Cp(WW8_CP& rStartPos, WW8_CP& rEndPos,
+    WW8_CP CurrentPieceStartFc2Cp( WW8_FC nStartPos );
+    WW8_FC CurrentPieceStartCp2Fc( WW8_CP nCp );
+    static void CurrentPieceFc2Cp(WW8_CP& rStartPos, WW8_CP& rEndPos,
         const WW8ScannerBase *pSBase);
     WW8PLCFpcd_Iter* GetPLCFIter() { return pPcdI.get(); }
     void SetClipStart(WW8_CP nIn) { nClipStart = nIn; }
-    WW8_CP GetClipStart() { return nClipStart; }
+    WW8_CP GetClipStart() const { return nClipStart; }
 
     static sal_Int32 TransformPieceAddress(long nfc, bool& bIsUnicodeAddress)
     {
@@ -534,6 +526,7 @@ public:
         sal_uInt8 mnIdx;         // Pos marker
         ePLCFT ePLCF;
         sal_uInt8 mnIMax;         // number of entries
+        int mnMustRemainCached;  // after SaveAllPLCFx, before RestoreAllPLCFx
 
         wwSprmParser maSprmParser;
 
@@ -569,18 +562,27 @@ public:
 
         /*
             calls GetLenAndIStdAndSprms()...
+            2020 bFindFirst note: Normally the last SPRM takes effect, so I don't know why HasSprm always returned the first value!
+            I don't dare to change the default due to regression potential (and slower in the few cases looking for a boolean result),
+            but first thing to try is use FindFirst as false.
         */
-        SprmResult HasSprm(sal_uInt16 nId);
+        SprmResult HasSprm(sal_uInt16 nId, bool bFindFirst = true);
         void HasSprm(sal_uInt16 nId, std::vector<SprmResult> &rResult);
 
         const wwSprmParser &GetSprmParser() const { return maSprmParser; }
+
+        void IncMustRemainCache() { ++mnMustRemainCached; }
+        bool IsMustRemainCache() const { return mnMustRemainCached > 0; }
+        void DecMustRemainCache() { --mnMustRemainCached; }
     };
 
 private:
     SvStream* pFKPStrm;         // input file
     SvStream* pDataStrm;        // input file
-    WW8PLCF* pPLCF;
+    std::unique_ptr<WW8PLCF> pPLCF;
+protected:
     WW8Fkp* pFkp;
+private:
 
     /*
         Keep a cache of eMaxCache entries of previously seen pFkps, which
@@ -594,9 +596,8 @@ private:
         == 10     : 18549 pap, 47 chp
         == 5      : 18515 pap, 47 chp
     */
-    typedef std::list<WW8Fkp*>::iterator myiter;
-    std::list<WW8Fkp*> maFkpCache;
-    enum Limits {eMaxCache = 5};
+    std::deque<std::unique_ptr<WW8Fkp>> maFkpCache;
+    enum Limits {eMaxCache = 50000};
 
     bool NewFkp();
 
@@ -605,7 +606,7 @@ private:
 
 protected:
     ePLCFT ePLCF;
-    WW8PLCFx_PCDAttrs* pPCDAttrs;
+    std::unique_ptr<WW8PLCFx_PCDAttrs> pPCDAttrs;
 
 public:
     WW8PLCFx_Fc_FKP( SvStream* pSt, SvStream* pTableSt, SvStream* pDataSt,
@@ -619,8 +620,8 @@ public:
     virtual void advance() override;
     virtual sal_uInt16 GetIstd() const override;
     void GetPCDSprms( WW8PLCFxDesc& rDesc );
-    SprmResult HasSprm(sal_uInt16 nId);
-    bool HasSprm(sal_uInt16 nId, std::vector<SprmResult> &rResult);
+    SprmResult HasSprm(sal_uInt16 nId, bool bFindFirst = true);
+    void HasSprm(sal_uInt16 nId, std::vector<SprmResult> &rResult);
     bool HasFkp() const { return (nullptr != pFkp); }
 };
 
@@ -660,8 +661,8 @@ class WW8PLCFx_SEPX : public WW8PLCFx
 private:
     wwSprmParser maSprmParser;
     SvStream* pStrm;
-    WW8PLCF* pPLCF;
-    sal_uInt8* pSprms;
+    std::unique_ptr<WW8PLCF> pPLCF;
+    std::unique_ptr<sal_uInt8[]> pSprms;
     sal_uInt16 nArrMax;
     sal_uInt16 nSprmSiz;
 
@@ -675,7 +676,7 @@ public:
     virtual sal_uInt32 GetIdx() const override;
     virtual void SetIdx(sal_uInt32 nIdx) override;
     virtual bool SeekPos(WW8_CP nCpPos) override;
-    virtual WW8_FC Where() override;
+    virtual WW8_CP Where() override;
     virtual void GetSprms( WW8PLCFxDesc* p ) override;
     virtual void advance() override;
     SprmResult HasSprm( sal_uInt16 nId ) const;
@@ -690,8 +691,8 @@ public:
 class WW8PLCFx_SubDoc : public WW8PLCFx
 {
 private:
-    WW8PLCF* pRef;
-    WW8PLCF* pText;
+    std::unique_ptr<WW8PLCF> pRef;
+    std::unique_ptr<WW8PLCF> pText;
 
     WW8PLCFx_SubDoc(const WW8PLCFx_SubDoc&) = delete;
     WW8PLCFx_SubDoc& operator=(const WW8PLCFx_SubDoc&) = delete;
@@ -703,7 +704,7 @@ public:
     virtual sal_uInt32 GetIdx() const override;
     virtual void SetIdx(sal_uInt32 nIdx) override;
     virtual bool SeekPos(WW8_CP nCpPos) override;
-    virtual WW8_FC Where() override;
+    virtual WW8_CP Where() override;
 
     // returns reference descriptors
     const void* GetData() const
@@ -713,7 +714,7 @@ public:
 
     virtual void GetSprms(WW8PLCFxDesc* p) override;
     virtual void advance() override;
-    long Count() const { return ( pRef ) ? pRef->GetIMax() : 0; }
+    long Count() const { return pRef ? pRef->GetIMax() : 0; }
 };
 
 /// Iterator for fields
@@ -731,7 +732,7 @@ public:
     virtual sal_uInt32 GetIdx() const override;
     virtual void SetIdx(sal_uInt32 nIdx) override;
     virtual bool SeekPos(WW8_CP nCpPos) override;
-    virtual WW8_FC Where() override;
+    virtual WW8_CP Where() override;
     virtual void GetSprms(WW8PLCFxDesc* p) override;
     virtual void advance() override;
     bool StartPosIsFieldStart();
@@ -745,7 +746,7 @@ enum eBookStatus { BOOK_NORMAL = 0, BOOK_IGNORE = 0x1, BOOK_FIELD = 0x2 };
 class WW8PLCFx_Book : public WW8PLCFx
 {
 private:
-    WW8PLCFspecial* pBook[2];           // Start and End Position
+    std::unique_ptr<WW8PLCFspecial> pBook[2];           // Start and End Position
     std::vector<OUString> aBookNames;   // Name
     std::vector<eBookStatus> aStatus;
     long nIMax;                         // Number of Booknotes
@@ -764,12 +765,12 @@ public:
     virtual sal_uInt32 GetIdx2() const override;
     virtual void SetIdx2(sal_uInt32 nIdx) override;
     virtual bool SeekPos(WW8_CP nCpPos) override;
-    virtual WW8_FC Where() override;
+    virtual WW8_CP Where() override;
     virtual long GetNoSprms( WW8_CP& rStart, WW8_CP& rEnd, sal_Int32& rLen ) override;
     virtual void advance() override;
     const OUString* GetName() const;
     WW8_CP GetStartPos() const
-        { return ( nIsEnd ) ? WW8_CP_MAX : pBook[0]->Where(); }
+        { return nIsEnd ? WW8_CP_MAX : pBook[0]->Where(); }
     long GetLen() const;
     bool GetIsEnd() const { return nIsEnd != 0; }
     long GetHandle() const;
@@ -785,7 +786,7 @@ class WW8PLCFx_AtnBook : public WW8PLCFx
 {
 private:
     /// Start and end positions.
-    WW8PLCFspecial* m_pBook[2];
+    std::unique_ptr<WW8PLCFspecial> m_pBook[2];
     /// Number of annotation marks
     sal_Int32 nIMax;
     bool m_bIsEnd;
@@ -801,7 +802,7 @@ public:
     virtual sal_uInt32 GetIdx2() const override;
     virtual void SetIdx2(sal_uInt32 nIdx) override;
     virtual bool SeekPos(WW8_CP nCpPos) override;
-    virtual WW8_FC Where() override;
+    virtual WW8_CP Where() override;
     virtual long GetNoSprms( WW8_CP& rStart, WW8_CP& rEnd, sal_Int32& rLen ) override;
     virtual void advance() override;
 
@@ -815,7 +816,7 @@ class WW8PLCFx_FactoidBook : public WW8PLCFx
 {
 private:
     /// Start and end positions.
-    WW8PLCFspecial* m_pBook[2];
+    std::unique_ptr<WW8PLCFspecial> m_pBook[2];
     /// Number of factoid marks
     sal_Int32 m_nIMax;
     bool m_bIsEnd;
@@ -831,7 +832,7 @@ public:
     virtual sal_uInt32 GetIdx2() const override;
     virtual void SetIdx2(sal_uInt32 nIdx) override;
     virtual bool SeekPos(WW8_CP nCpPos) override;
-    virtual WW8_FC Where() override;
+    virtual WW8_CP Where() override;
     virtual long GetNoSprms(WW8_CP& rStart, WW8_CP& rEnd, sal_Int32& rLen) override;
     virtual void advance() override;
 
@@ -848,7 +849,7 @@ struct WW8PLCFManResult
     WW8_CP nCpPos;      // attribute starting position
     long nMemLen;       // length for previous
     long nCp2OrIdx;     // footnote-textpos or index in PLCF
-    WW8_CP nAktCp;      // only used by caller
+    WW8_CP nCurrentCp;  // only used by caller
     const sal_uInt8* pMemPos;// Mem-Pos for Sprms
     sal_uInt16 nSprmId;     // Sprm-Id ( 0 = invalid Id -> skip! )
                         // (2..255) or pseudo-Sprm-Id (256..260)
@@ -898,6 +899,7 @@ struct WW8PLCFxDesc
     long nCpOfs;          // for Offset Header .. Footnote
     bool bFirstSprm;      // for recognizing the first Sprm of a group
     bool bRealLineEnd;    // false for Pap-Piece-end
+    sal_Int16 nRelativeJustify;
     void Save( WW8PLCFxSave1& rSave ) const;
     void Restore( const WW8PLCFxSave1& rSave );
     //With nStartPos set to WW8_CP_MAX then in the case of a pap or chp
@@ -917,6 +919,7 @@ struct WW8PLCFxDesc
         , nCpOfs(0)
         , bFirstSprm(false)
         , bRealLineEnd(false)
+        , nRelativeJustify(-1)
     {
     }
     void ReduceByOffset();
@@ -961,7 +964,7 @@ private:
     sal_uInt16 GetId(const WW8PLCFxDesc* p ) const;
 
 public:
-    WW8PLCFMan(WW8ScannerBase* pBase, ManTypes nType, long nStartCp,
+    WW8PLCFMan(const WW8ScannerBase* pBase, ManTypes nType, long nStartCp,
         bool bDoingDrawTextBox = false);
     ~WW8PLCFMan();
 
@@ -1012,11 +1015,8 @@ public:
 
 struct WW8PLCFxSaveAll
 {
-    WW8PLCFxSave1 aS[WW8PLCFMan::MAN_PLCF_COUNT];
-    WW8PLCFxSaveAll()
-    {
-        memset(aS, 0, sizeof(aS));
-    }
+    WW8PLCFxSave1 aS[WW8PLCFMan::MAN_PLCF_COUNT] = {};
+    WW8PLCFxSaveAll() = default;
 };
 
 class WW8ScannerBase
@@ -1026,45 +1026,46 @@ friend WW8PLCFx_PCDAttrs::WW8PLCFx_PCDAttrs(const WW8Fib& rFib,
 friend WW8PLCFx_Cp_FKP::WW8PLCFx_Cp_FKP( SvStream*, SvStream*, SvStream*,
     const WW8ScannerBase&, ePLCFT );
 
-friend WW8PLCFMan::WW8PLCFMan(WW8ScannerBase*, ManTypes, long, bool);
+friend WW8PLCFMan::WW8PLCFMan(const WW8ScannerBase*, ManTypes, long, bool);
 friend class SwWW8FltControlStack;
 
 private:
     WW8Fib* m_pWw8Fib;
-    WW8PLCFx_Cp_FKP*  m_pChpPLCF;         // Character-Attrs
-    WW8PLCFx_Cp_FKP*  m_pPapPLCF;         // Paragraph-Attrs
-    WW8PLCFx_SEPX*    m_pSepPLCF;         // Section-Attrs
-    WW8PLCFx_SubDoc*  m_pFootnotePLCF;         // Footnotes
-    WW8PLCFx_SubDoc*  m_pEdnPLCF;         // EndNotes
-    WW8PLCFx_SubDoc*  m_pAndPLCF;         // Comments
-    WW8PLCFx_FLD*     m_pFieldPLCF;         // Fields in Main Text
-    WW8PLCFx_FLD*     m_pFieldHdFtPLCF;     // Fields in Header / Footer
-    WW8PLCFx_FLD*     m_pFieldTxbxPLCF;     // Fields in Textboxes in Main Text
-    WW8PLCFx_FLD*     m_pFieldTxbxHdFtPLCF; // Fields in Textboxes in Header / Footer
-    WW8PLCFx_FLD*     m_pFieldFootnotePLCF;      // Fields in Footnotes
-    WW8PLCFx_FLD*     m_pFieldEdnPLCF;      // Fields in Endnotes
-    WW8PLCFx_FLD*     m_pFieldAndPLCF;      // Fields in Comments
-    WW8PLCFspecial*   m_pMainFdoa;        // Graphic Primitives in Main Text
-    WW8PLCFspecial*   m_pHdFtFdoa;        // Graphic Primitives in Header / Footer
-    WW8PLCFspecial*   m_pMainTxbx;        // Textboxes in Main Text
-    WW8PLCFspecial*   m_pMainTxbxBkd;     // Break-Descriptors for them
-    WW8PLCFspecial*   m_pHdFtTxbx;        // TextBoxes in Header / Footer
-    WW8PLCFspecial*   m_pHdFtTxbxBkd;     // Break-Descriptors for previous
-    WW8PLCFspecial*   m_pMagicTables;     // Break-Descriptors for them
-    WW8PLCFspecial*   m_pSubdocs;         // subdoc references in master document
-    sal_uInt8*        m_pExtendedAtrds;   // Extended ATRDs
-    WW8PLCFx_Book*    m_pBook;            // Bookmarks
-    WW8PLCFx_AtnBook* m_pAtnBook;         // Annotationmarks
+    std::unique_ptr<WW8PLCFx_Cp_FKP>  m_pChpPLCF;         // Character-Attrs
+    std::unique_ptr<WW8PLCFx_Cp_FKP>  m_pPapPLCF;         // Paragraph-Attrs
+    std::unique_ptr<WW8PLCFx_SEPX>    m_pSepPLCF;         // Section-Attrs
+    std::unique_ptr<WW8PLCFx_SubDoc>  m_pFootnotePLCF;         // Footnotes
+    std::unique_ptr<WW8PLCFx_SubDoc>  m_pEdnPLCF;         // EndNotes
+    std::unique_ptr<WW8PLCFx_SubDoc>  m_pAndPLCF;         // Comments
+    std::unique_ptr<WW8PLCFx_FLD>     m_pFieldPLCF;         // Fields in Main Text
+    std::unique_ptr<WW8PLCFx_FLD>     m_pFieldHdFtPLCF;     // Fields in Header / Footer
+    std::unique_ptr<WW8PLCFx_FLD>     m_pFieldTxbxPLCF;     // Fields in Textboxes in Main Text
+    std::unique_ptr<WW8PLCFx_FLD>     m_pFieldTxbxHdFtPLCF; // Fields in Textboxes in Header / Footer
+    std::unique_ptr<WW8PLCFx_FLD>     m_pFieldFootnotePLCF;      // Fields in Footnotes
+    std::unique_ptr<WW8PLCFx_FLD>     m_pFieldEdnPLCF;      // Fields in Endnotes
+    std::unique_ptr<WW8PLCFx_FLD>     m_pFieldAndPLCF;      // Fields in Comments
+    std::unique_ptr<WW8PLCFspecial>   m_pMainFdoa;        // Graphic Primitives in Main Text
+    std::unique_ptr<WW8PLCFspecial>   m_pHdFtFdoa;        // Graphic Primitives in Header / Footer
+    std::unique_ptr<WW8PLCFspecial>   m_pMainTxbx;        // Textboxes in Main Text
+    std::unique_ptr<WW8PLCFspecial>   m_pMainTxbxBkd;     // Break-Descriptors for them
+    std::unique_ptr<WW8PLCFspecial>   m_pHdFtTxbx;        // TextBoxes in Header / Footer
+    std::unique_ptr<WW8PLCFspecial>   m_pHdFtTxbxBkd;     // Break-Descriptors for previous
+    std::unique_ptr<WW8PLCFspecial>   m_pMagicTables;     // Break-Descriptors for them
+    std::unique_ptr<WW8PLCFspecial>   m_pSubdocs;         // subdoc references in master document
+    std::unique_ptr<sal_uInt8[]>
+                      m_pExtendedAtrds;   // Extended ATRDs
+    std::unique_ptr<WW8PLCFx_Book>    m_pBook;            // Bookmarks
+    std::unique_ptr<WW8PLCFx_AtnBook> m_pAtnBook;         // Annotationmarks
     /// Smart tag bookmarks.
-    WW8PLCFx_FactoidBook* m_pFactoidBook;
+    std::unique_ptr<WW8PLCFx_FactoidBook> m_pFactoidBook;
 
-    WW8PLCFpcd*         m_pPiecePLCF; // for FastSave ( Basis-PLCF without iterator )
-    WW8PLCFpcd_Iter*    m_pPieceIter; // for FastSave ( iterator for previous )
-    WW8PLCFx_PCD*       m_pPLCFx_PCD;     // ditto
-    WW8PLCFx_PCDAttrs*  m_pPLCFx_PCDAttrs;
-    std::vector<sal_uInt8*> m_aPieceGrpprls;  // attributes of Piece-Table
+    std::unique_ptr<WW8PLCFpcd>         m_pPiecePLCF; // for FastSave ( Basis-PLCF without iterator )
+    std::unique_ptr<WW8PLCFpcd_Iter>    m_pPieceIter; // for FastSave ( iterator for previous )
+    std::unique_ptr<WW8PLCFx_PCD>       m_pPLCFx_PCD;     // ditto
+    std::unique_ptr<WW8PLCFx_PCDAttrs>  m_pPLCFx_PCDAttrs;
+    std::vector<std::unique_ptr<sal_uInt8[]>> m_aPieceGrpprls;  // attributes of Piece-Table
 
-    WW8PLCFpcd* OpenPieceTable( SvStream* pStr, const WW8Fib* pWwF );
+    std::unique_ptr<WW8PLCFpcd> OpenPieceTable( SvStream* pStr, const WW8Fib* pWwF );
 
     WW8ScannerBase(const WW8ScannerBase&) = delete;
     WW8ScannerBase& operator=(const WW8ScannerBase&) = delete;
@@ -1084,7 +1085,7 @@ public:
     WW8_FC WW8Cp2Fc(WW8_CP nCpPos, bool* pIsUnicode = nullptr,
         WW8_CP* pNextPieceCp = nullptr, bool* pTestFlag = nullptr) const;
 
-    sal_Int32 WW8ReadString(SvStream& rStrm, OUString& rStr, WW8_CP nAktStartCp,
+    sal_Int32 WW8ReadString(SvStream& rStrm, OUString& rStr, WW8_CP nCurrentStartCp,
         long nTotalLen, rtl_TextEncoding eEnc ) const;
 
 };
@@ -1098,7 +1099,7 @@ public:
 class WW8Fib
 {
 private:
-    sal_Unicode m_nNumDecimalSep;
+    sal_Unicode m_nNumDecimalSep = u'\0';
 
 public:
     /**
@@ -1109,7 +1110,7 @@ public:
         7 == "only WinWord 95"
         8 == "WinWord 97 or newer"
     */
-    sal_uInt8 m_nVersion;
+    sal_uInt8 m_nVersion = 0;
     /*
         error status
     */
@@ -1119,7 +1120,7 @@ public:
         (corresponds only approximately to the real structure
         of the Winword-FIB)
     */
-    sal_uInt16 m_wIdent;      // 0x0 int magic number
+    sal_uInt16 m_wIdent = 0; // 0x0 int magic number
     /*
         File Information Block (FIB) values:
         WinWord 1.0 = 33
@@ -1133,20 +1134,20 @@ public:
         Word 2003 = 268
         Word 2007 = 274
     */
-    sal_uInt16 m_nFib;        // 0x2 FIB version written
-    sal_uInt16 m_nProduct;    // 0x4 product version written by
+    sal_uInt16 m_nFib = 0;        // 0x2 FIB version written
+    sal_uInt16 m_nProduct = 0;    // 0x4 product version written by
     LanguageType m_lid;       // 0x6 language stamp---localized version;
-    WW8_PN m_pnNext;          // 0x8
+    WW8_PN m_pnNext = 0;          // 0x8
 
-    bool m_fDot :1;     // 0xa 0001
-    bool m_fGlsy :1;
-    bool m_fComplex :1; // 0004 when 1, file is in complex, fast-saved format.
-    bool m_fHasPic :1;  // 0008 file contains 1 or more pictures
-    sal_uInt16 m_cQuickSaves :4; // 00F0 count of times file was quicksaved
-    bool m_fEncrypted :1; //0100 1 if file is encrypted, 0 if not
-    bool m_fWhichTableStm :1; //0200 When 0, this fib refers to the table stream
-    bool m_fReadOnlyRecommended :1;
-    bool m_fWriteReservation :1;
+    bool m_fDot :1 /*= false*/;     // 0xa 0001
+    bool m_fGlsy :1 /*= false*/;
+    bool m_fComplex :1 /*= false*/; // 0004 when 1, file is in complex, fast-saved format.
+    bool m_fHasPic :1 /*= false*/;  // 0008 file contains 1 or more pictures
+    sal_uInt16 m_cQuickSaves :4 /*= 0*/; // 00F0 count of times file was quicksaved
+    bool m_fEncrypted :1 /*= false*/; //0100 1 if file is encrypted, 0 if not
+    bool m_fWhichTableStm :1 /*= false*/; //0200 When 0, this fib refers to the table stream
+    bool m_fReadOnlyRecommended :1 /*= false*/;
+    bool m_fWriteReservation :1 /*= false*/;
                                                     // named "0Table", when 1, this fib refers to the
                                                     // table stream named "1Table". Normally, a file
                                                     // will have only one table stream, but under unusual
@@ -1154,378 +1155,380 @@ public:
                                                     // both names. In that case, this flag must be used
                                                     // to decide which table stream is valid.
 
-    bool m_fExtChar :1; // 1000 =1, when using extended character set in file
-    bool m_fFarEast :1; // 4000 =1, probably, when far-East language variants of Word is used to create a file #i90932#
+    bool m_fExtChar :1 /*= false*/; // 1000 =1, when using extended character set in file
+    bool m_fFarEast :1 /*= false*/; // 4000 =1, probably, when far-East language variants of Word is used to create a file #i90932#
 
-    bool m_fObfuscated :1; // 8000=1. specifies whether the document is obfuscated using XOR obfuscation. otherwise this bit MUST be ignored.
+    bool m_fObfuscated :1 /*= false*/; // 8000=1. specifies whether the document is obfuscated using XOR obfuscation. otherwise this bit MUST be ignored.
 
-    sal_uInt16 m_nFibBack;    // 0xc
-    sal_uInt16 m_nHash;       // 0xe  file encrypted hash
-    sal_uInt16 m_nKey;        // 0x10  file encrypted key
-    sal_uInt8 m_envr;         // 0x12 environment in which file was created
+    sal_uInt16 m_nFibBack = 0;    // 0xc
+    sal_uInt16 m_nHash = 0;       // 0xe  file encrypted hash
+    sal_uInt16 m_nKey = 0;        // 0x10  file encrypted key
+    sal_uInt8 m_envr = 0;         // 0x12 environment in which file was created
                                     //      0 created by Win Word / 1 created by Mac Word
-    bool m_fMac              :1;          // 0x13 when 1, this file was last saved in the Mac environment
-    bool m_fEmptySpecial     :1;
-    bool m_fLoadOverridePage :1;
-    bool m_fFuturesavedUndo  :1;
-    bool m_fWord97Saved      :1;
-    bool m_fWord2000Saved    :1;
+    bool m_fMac              :1 /*= false*/;          // 0x13 when 1, this file was last saved in the Mac environment
+    bool m_fEmptySpecial     :1 /*= false*/;
+    bool m_fLoadOverridePage :1 /*= false*/;
+    bool m_fFuturesavedUndo  :1 /*= false*/;
+    bool m_fWord97Saved      :1 /*= false*/;
+    bool m_fWord2000Saved    :1 /*= false*/;
     sal_uInt8 :2;
 
-    sal_uInt16 m_chse;        // 0x14 default extended character set id for text in document stream. (overridden by chp.chse)
+    sal_uInt16 m_chse = 0;        // 0x14 default extended character set id for text in document stream. (overridden by chp.chse)
                         //      0 = ANSI  / 256 Macintosh character set.
-    sal_uInt16 m_chseTables;  // 0x16 default extended character set id for text in
+    sal_uInt16 m_chseTables = 0;  // 0x16 default extended character set id for text in
                         //      internal data structures: 0 = ANSI, 256 = Macintosh
-    WW8_FC m_fcMin;           // 0x18 file offset of first character of text
-    WW8_FC m_fcMac;           // 0x1c file offset of last character of text + 1
+    WW8_FC m_fcMin = 0;           // 0x18 file offset of first character of text
+    WW8_FC m_fcMac = 0;           // 0x1c file offset of last character of text + 1
 
     // start of WW8 section
-    sal_uInt16 m_csw;             // Count of fields in the array of "shorts"
+    sal_uInt16 m_csw = 0;             // Count of fields in the array of "shorts"
 
     // marker: "rgsw" Beginning of the array of shorts
-    sal_uInt16 m_wMagicCreated;   // unique number Identifying the File's creator
+    sal_uInt16 m_wMagicCreated = 0;   // unique number Identifying the File's creator
                                 // 0x6A62 is the creator ID for Word and is reserved.
                                 // Other creators should choose a different value.
-    sal_uInt16 m_wMagicRevised;   // identifies the File's last modifier
-    sal_uInt16 m_wMagicCreatedPrivate; // private data
-    sal_uInt16 m_wMagicRevisedPrivate; // private data
+    sal_uInt16 m_wMagicRevised = 0;   // identifies the File's last modifier
+    sal_uInt16 m_wMagicCreatedPrivate = 0; // private data
+    sal_uInt16 m_wMagicRevisedPrivate = 0; // private data
 
     LanguageType m_lidFE; // Language id if document was written by Far East version
                           // of Word (i.e. FIB.fFarEast is on)
-    sal_uInt16 m_clw; // Number of fields in the array of longs
+    sal_uInt16 m_clw = 0; // Number of fields in the array of longs
 
     // end of WW8 section
 
     // Marker: "rglw" Beginning of the array of longs
-    WW8_FC m_cbMac;           // 0x20 file offset of last byte written to file + 1.
+    WW8_FC m_cbMac = 0;           // 0x20 file offset of last byte written to file + 1.
 
     // WW8_FC u4[4];        // 0x24
-    WW8_CP m_ccpText;         // 0x34 length of main document text stream
-    WW8_CP m_ccpFootnote;          // 0x38 length of footnote subdocument text stream
-    WW8_CP m_ccpHdr;          // 0x3c length of header subdocument text stream
-    WW8_CP m_ccpMcr;          // 0x40 length of macro subdocument text stream
-    WW8_CP m_ccpAtn;          // 0x44 length of annotation subdocument text stream
-    WW8_CP m_ccpEdn;          // 0x48 length of endnote subdocument text stream
-    WW8_CP m_ccpTxbx;         // 0x4c length of textbox subdocument text stream
-    WW8_CP m_ccpHdrTxbx;      // 0x50 length of header textbox subdocument text stream
+    WW8_CP m_ccpText = 0;         // 0x34 length of main document text stream
+    WW8_CP m_ccpFootnote = 0;          // 0x38 length of footnote subdocument text stream
+    WW8_CP m_ccpHdr = 0;          // 0x3c length of header subdocument text stream
+    WW8_CP m_ccpMcr = 0;          // 0x40 length of macro subdocument text stream
+    WW8_CP m_ccpAtn = 0;          // 0x44 length of annotation subdocument text stream
+    WW8_CP m_ccpEdn = 0;          // 0x48 length of endnote subdocument text stream
+    WW8_CP m_ccpTxbx = 0;         // 0x4c length of textbox subdocument text stream
+    WW8_CP m_ccpHdrTxbx = 0;      // 0x50 length of header textbox subdocument text stream
 
     // start of WW8 section
-    sal_Int32  m_pnFbpChpFirst; // when there was insufficient memory for Word to expand
+    sal_Int32  m_pnFbpChpFirst = 0; // when there was insufficient memory for Word to expand
                               // the PLCFbte at save time, the PLCFbte is written
                               // to the file in a linked list of 512-byte pieces
                               // starting with this pn.
-    sal_Int32  m_pnFbpPapFirst; // when there was insufficient memory for Word to expand
+    sal_Int32  m_pnFbpPapFirst = 0; // when there was insufficient memory for Word to expand
                               // the PLCFbte at save time, the PLCFbte is written to
                               // the file in a linked list of 512-byte pieces
                               // starting with this pn
 
-    sal_Int32  m_pnFbpLvcFirst; // when there was insufficient memory for Word to expand
+    sal_Int32  m_pnFbpLvcFirst = 0; // when there was insufficient memory for Word to expand
                               // the PLCFbte at save time, the PLCFbte is written to
                               // the file in a linked list of 512-byte pieces
                               // starting with this pn
-    sal_Int32  m_pnLvcFirst; // the page number of the lowest numbered page in the
+    sal_Int32  m_pnLvcFirst = 0; // the page number of the lowest numbered page in the
                            // document that records LVC FKP information
-    sal_Int32  m_cpnBteLvc;  // count of LVC FKPs recorded in file. In non-complex
+    sal_Int32  m_cpnBteLvc = 0;  // count of LVC FKPs recorded in file. In non-complex
                            // files if the number of entries in the PLCFbtePapx is
                            // less than this, the PLCFbtePapx is incomplete.
-    sal_Int32  m_fcIslandFirst;   // ?
-    sal_Int32  m_fcIslandLim;     // ?
-    sal_uInt16 m_cfclcb; // Number of fields in the array of FC/LCB pairs.
+    sal_Int32  m_fcIslandFirst = 0;   // ?
+    sal_Int32  m_fcIslandLim = 0;     // ?
+    sal_uInt16 m_cfclcb = 0; // Number of fields in the array of FC/LCB pairs.
+    /// Specifies the count of 16-bit values corresponding to fibRgCswNew that follow.
+    sal_uInt16 m_cswNew = 0;
 
     // end of WW8 section
 
     // Marker: "rgfclcb" Beginning of array of FC/LCB pairs.
-    WW8_FC m_fcStshfOrig;     // file offset of original allocation for STSH in table
+    WW8_FC m_fcStshfOrig = 0;     // file offset of original allocation for STSH in table
                                                 // stream. During fast save Word will attempt to reuse
                                                 // this allocation if STSH is small enough to fit.
-    sal_Int32 m_lcbStshfOrig; // 0x5c count of bytes of original STSH allocation
-    WW8_FC m_fcStshf;         // 0x60 file offset of STSH in file.
-    sal_Int32 m_lcbStshf;     // 0x64 count of bytes of current STSH allocation
-    WW8_FC m_fcPlcffndRef;    // 0x68 file offset of footnote reference PLCF.
-    sal_Int32 m_lcbPlcffndRef;    // 0x6c count of bytes of footnote reference PLCF
+    sal_Int32 m_lcbStshfOrig = 0; // 0x5c count of bytes of original STSH allocation
+    WW8_FC m_fcStshf = 0;         // 0x60 file offset of STSH in file.
+    sal_Int32 m_lcbStshf = 0;     // 0x64 count of bytes of current STSH allocation
+    WW8_FC m_fcPlcffndRef = 0;    // 0x68 file offset of footnote reference PLCF.
+    sal_Int32 m_lcbPlcffndRef = 0;    // 0x6c count of bytes of footnote reference PLCF
                         //      == 0 if no footnotes defined in document.
 
-    WW8_FC m_fcPlcffndText;    // 0x70 file offset of footnote text PLCF.
-    sal_Int32 m_lcbPlcffndText;    // 0x74 count of bytes of footnote text PLCF.
+    WW8_FC m_fcPlcffndText = 0;    // 0x70 file offset of footnote text PLCF.
+    sal_Int32 m_lcbPlcffndText = 0;    // 0x74 count of bytes of footnote text PLCF.
                         //      == 0 if no footnotes defined in document
 
-    WW8_FC m_fcPlcfandRef;    // 0x78 file offset of annotation reference PLCF.
-    sal_Int32 m_lcbPlcfandRef;    // 0x7c count of bytes of annotation reference PLCF.
+    WW8_FC m_fcPlcfandRef = 0;    // 0x78 file offset of annotation reference PLCF.
+    sal_Int32 m_lcbPlcfandRef = 0;    // 0x7c count of bytes of annotation reference PLCF.
 
-    WW8_FC m_fcPlcfandText;    // 0x80 file offset of annotation text PLCF.
-    sal_Int32 m_lcbPlcfandText;    // 0x84 count of bytes of the annotation text PLCF
+    WW8_FC m_fcPlcfandText = 0;    // 0x80 file offset of annotation text PLCF.
+    sal_Int32 m_lcbPlcfandText = 0;    // 0x84 count of bytes of the annotation text PLCF
 
-    WW8_FC m_fcPlcfsed;       // 8x88 file offset of section descriptor PLCF.
-    sal_Int32 m_lcbPlcfsed;   // 0x8c count of bytes of section descriptor PLCF.
+    WW8_FC m_fcPlcfsed = 0;       // 8x88 file offset of section descriptor PLCF.
+    sal_Int32 m_lcbPlcfsed = 0;   // 0x8c count of bytes of section descriptor PLCF.
 
-    WW8_FC m_fcPlcfpad;       // 0x90 file offset of paragraph descriptor PLCF
-    sal_Int32 m_lcbPlcfpad;   // 0x94 count of bytes of paragraph descriptor PLCF.
+    WW8_FC m_fcPlcfpad = 0;       // 0x90 file offset of paragraph descriptor PLCF
+    sal_Int32 m_lcbPlcfpad = 0;   // 0x94 count of bytes of paragraph descriptor PLCF.
                         // ==0 if file was never viewed in Outline view.
                         // Should not be written by third party creators
 
-    WW8_FC m_fcPlcfphe;       // 0x98 file offset of PLCF of paragraph heights.
-    sal_Int32 m_lcbPlcfphe;   // 0x9c count of bytes of paragraph height PLCF.
+    WW8_FC m_fcPlcfphe = 0;       // 0x98 file offset of PLCF of paragraph heights.
+    sal_Int32 m_lcbPlcfphe = 0;   // 0x9c count of bytes of paragraph height PLCF.
                         // ==0 when file is non-complex.
 
-    WW8_FC m_fcSttbfglsy;     // 0xa0 file offset of glossary string table.
-    sal_Int32 m_lcbSttbfglsy; // 0xa4 count of bytes of glossary string table.
+    WW8_FC m_fcSttbfglsy = 0;     // 0xa0 file offset of glossary string table.
+    sal_Int32 m_lcbSttbfglsy = 0; // 0xa4 count of bytes of glossary string table.
                         //      == 0 for non-glossary documents.
                         //      !=0 for glossary documents.
 
-    WW8_FC m_fcPlcfglsy;      // 0xa8 file offset of glossary PLCF.
-    sal_Int32 m_lcbPlcfglsy;  // 0xac count of bytes of glossary PLCF.
+    WW8_FC m_fcPlcfglsy = 0;      // 0xa8 file offset of glossary PLCF.
+    sal_Int32 m_lcbPlcfglsy = 0;  // 0xac count of bytes of glossary PLCF.
                         //      == 0 for non-glossary documents.
                         //      !=0 for glossary documents.
 
-    WW8_FC m_fcPlcfhdd;       // 0xb0 byte offset of header PLCF.
-    sal_Int32 m_lcbPlcfhdd;   // 0xb4 count of bytes of header PLCF.
+    WW8_FC m_fcPlcfhdd = 0;       // 0xb0 byte offset of header PLCF.
+    sal_Int32 m_lcbPlcfhdd = 0;   // 0xb4 count of bytes of header PLCF.
                         //      == 0 if document contains no headers
 
-    WW8_FC m_fcPlcfbteChpx;   // 0xb8 file offset of character property bin table.PLCF.
-    sal_Int32 m_lcbPlcfbteChpx;// 0xbc count of bytes of character property bin table PLCF.
+    WW8_FC m_fcPlcfbteChpx = 0;   // 0xb8 file offset of character property bin table.PLCF.
+    sal_Int32 m_lcbPlcfbteChpx = 0;// 0xbc count of bytes of character property bin table PLCF.
 
-    WW8_FC m_fcPlcfbtePapx;   // 0xc0 file offset of paragraph property bin table.PLCF.
-    sal_Int32 m_lcbPlcfbtePapx;// 0xc4 count of bytes of paragraph  property bin table PLCF.
+    WW8_FC m_fcPlcfbtePapx = 0;   // 0xc0 file offset of paragraph property bin table.PLCF.
+    sal_Int32 m_lcbPlcfbtePapx = 0;// 0xc4 count of bytes of paragraph  property bin table PLCF.
 
-    WW8_FC m_fcPlcfsea;       // 0xc8 file offset of PLCF reserved for private use. The SEA is 6 bytes long.
-    sal_Int32 m_lcbPlcfsea;   // 0xcc count of bytes of private use PLCF.
+    WW8_FC m_fcPlcfsea = 0;       // 0xc8 file offset of PLCF reserved for private use. The SEA is 6 bytes long.
+    sal_Int32 m_lcbPlcfsea = 0;   // 0xcc count of bytes of private use PLCF.
 
-    WW8_FC m_fcSttbfffn;      // 0xd0 file offset of font information STTBF. See the FFN file structure definition.
-    sal_Int32 m_lcbSttbfffn;  // 0xd4 count of bytes in sttbfffn.
+    WW8_FC m_fcSttbfffn = 0;      // 0xd0 file offset of font information STTBF. See the FFN file structure definition.
+    sal_Int32 m_lcbSttbfffn = 0;  // 0xd4 count of bytes in sttbfffn.
 
-    WW8_FC m_fcPlcffldMom;    // 0xd8 offset in doc stream to the PLCF of field positions in the main document.
-    sal_Int32 m_lcbPlcffldMom;    // 0xdc
+    WW8_FC m_fcPlcffldMom = 0;    // 0xd8 offset in doc stream to the PLCF of field positions in the main document.
+    sal_Int32 m_lcbPlcffldMom = 0;    // 0xdc
 
-    WW8_FC m_fcPlcffldHdr;    // 0xe0 offset in doc stream to the PLCF of field positions in the header subdocument.
-    sal_Int32 m_lcbPlcffldHdr;    // 0xe4
+    WW8_FC m_fcPlcffldHdr = 0;    // 0xe0 offset in doc stream to the PLCF of field positions in the header subdocument.
+    sal_Int32 m_lcbPlcffldHdr = 0;    // 0xe4
 
-    WW8_FC m_fcPlcffldFootnote;    // 0xe8 offset in doc stream to the PLCF of field positions in the footnote subdocument.
-    sal_Int32 m_lcbPlcffldFootnote;    // 0xec
+    WW8_FC m_fcPlcffldFootnote = 0;    // 0xe8 offset in doc stream to the PLCF of field positions in the footnote subdocument.
+    sal_Int32 m_lcbPlcffldFootnote = 0;    // 0xec
 
-    WW8_FC m_fcPlcffldAtn;    // 0xf0 offset in doc stream to the PLCF of field positions in the annotation subdocument.
-    sal_Int32 m_lcbPlcffldAtn;    // 0xf4
+    WW8_FC m_fcPlcffldAtn = 0;    // 0xf0 offset in doc stream to the PLCF of field positions in the annotation subdocument.
+    sal_Int32 m_lcbPlcffldAtn = 0;    // 0xf4
 
-    WW8_FC m_fcPlcffldMcr;    // 0xf8 offset in doc stream to the PLCF of field positions in the macro subdocument.
-    sal_Int32 m_lcbPlcffldMcr;    // 9xfc
+    WW8_FC m_fcPlcffldMcr = 0;    // 0xf8 offset in doc stream to the PLCF of field positions in the macro subdocument.
+    sal_Int32 m_lcbPlcffldMcr = 0;    // 9xfc
 
-    WW8_FC m_fcSttbfbkmk; // 0x100 offset in document stream of the STTBF that records bookmark names in the main document
-    sal_Int32 m_lcbSttbfbkmk; // 0x104
+    WW8_FC m_fcSttbfbkmk = 0; // 0x100 offset in document stream of the STTBF that records bookmark names in the main document
+    sal_Int32 m_lcbSttbfbkmk = 0; // 0x104
 
-    WW8_FC m_fcPlcfbkf;   // 0x108 offset in document stream of the PLCF that records the beginning CP offsets of bookmarks in the main document. See BKF
-    sal_Int32 m_lcbPlcfbkf;   // 0x10c
+    WW8_FC m_fcPlcfbkf = 0;   // 0x108 offset in document stream of the PLCF that records the beginning CP offsets of bookmarks in the main document. See BKF
+    sal_Int32 m_lcbPlcfbkf = 0;   // 0x10c
 
-    WW8_FC m_fcPlcfbkl;   // 0x110 offset in document stream of the PLCF that records the ending CP offsets of bookmarks recorded in the main document. See the BKL structure definition.
-    sal_Int32 m_lcbPlcfbkl;   // 0x114 sal_Int32
+    WW8_FC m_fcPlcfbkl = 0;   // 0x110 offset in document stream of the PLCF that records the ending CP offsets of bookmarks recorded in the main document. See the BKL structure definition.
+    sal_Int32 m_lcbPlcfbkl = 0;   // 0x114 sal_Int32
 
-    WW8_FC m_fcCmds;      // 0x118 FC
-    sal_uInt32 m_lcbCmds;      // 0x11c
+    WW8_FC m_fcCmds = 0;      // 0x118 FC
+    sal_uInt32 m_lcbCmds = 0;      // 0x11c
 
-    WW8_FC m_fcPlcfmcr;       // 0x120 FC
-    sal_Int32 m_lcbPlcfmcr;       // 0x124
+    WW8_FC m_fcPlcfmcr = 0;       // 0x120 FC
+    sal_Int32 m_lcbPlcfmcr = 0;       // 0x124
 
-    WW8_FC m_fcSttbfmcr;  // 0x128 FC
-    sal_Int32 m_lcbSttbfmcr;  // 0x12c
+    WW8_FC m_fcSttbfmcr = 0;  // 0x128 FC
+    sal_Int32 m_lcbSttbfmcr = 0;  // 0x12c
 
-    WW8_FC m_fcPrDrvr;        // 0x130 file offset of the printer driver information (names of drivers, port etc...)
-    sal_Int32 m_lcbPrDrvr;        // 0x134 count of bytes of the printer driver information (names of drivers, port etc...)
+    WW8_FC m_fcPrDrvr = 0;        // 0x130 file offset of the printer driver information (names of drivers, port etc...)
+    sal_Int32 m_lcbPrDrvr = 0;        // 0x134 count of bytes of the printer driver information (names of drivers, port etc...)
 
-    WW8_FC m_fcPrEnvPort; // 0x138 file offset of the print environment in portrait mode.
-    sal_Int32 m_lcbPrEnvPort; // 0x13c count of bytes of the print environment in portrait mode.
+    WW8_FC m_fcPrEnvPort = 0; // 0x138 file offset of the print environment in portrait mode.
+    sal_Int32 m_lcbPrEnvPort = 0; // 0x13c count of bytes of the print environment in portrait mode.
 
-    WW8_FC m_fcPrEnvLand; // 0x140 file offset of the print environment in landscape mode.
-    sal_Int32 m_lcbPrEnvLand; // 0x144 count of bytes of the print environment in landscape mode.
+    WW8_FC m_fcPrEnvLand = 0; // 0x140 file offset of the print environment in landscape mode.
+    sal_Int32 m_lcbPrEnvLand = 0; // 0x144 count of bytes of the print environment in landscape mode.
 
-    WW8_FC m_fcWss;       // 0x148 file offset of Window Save State data structure. See WSS.
-    sal_Int32 m_lcbWss;       // 0x14c count of bytes of WSS. ==0 if unable to store the window state.
+    WW8_FC m_fcWss = 0;       // 0x148 file offset of Window Save State data structure. See WSS.
+    sal_Int32 m_lcbWss = 0;       // 0x14c count of bytes of WSS. ==0 if unable to store the window state.
 
-    WW8_FC m_fcDop;       // 0x150 file offset of document property data structure.
-    sal_uInt32 m_lcbDop;       // 0x154 count of bytes of document properties.
+    WW8_FC m_fcDop = 0;       // 0x150 file offset of document property data structure.
+    sal_uInt32 m_lcbDop = 0;       // 0x154 count of bytes of document properties.
         // cbDOP is 84 when nFib < 103
 
-    WW8_FC m_fcSttbfAssoc;    // 0x158 offset to STTBF of associated strings. See STTBFASSOC.
-    sal_Int32 m_lcbSttbfAssoc; // 0x15C
+    WW8_FC m_fcSttbfAssoc = 0;    // 0x158 offset to STTBF of associated strings. See STTBFASSOC.
+    sal_Int32 m_lcbSttbfAssoc = 0; // 0x15C
 
-    WW8_FC m_fcClx;           // 0x160 file  offset of beginning of information for complex files.
-    sal_Int32 m_lcbClx;       // 0x164 count of bytes of complex file information. 0 if file is non-complex.
+    WW8_FC m_fcClx = 0;           // 0x160 file  offset of beginning of information for complex files.
+    sal_Int32 m_lcbClx = 0;       // 0x164 count of bytes of complex file information. 0 if file is non-complex.
 
-    WW8_FC m_fcPlcfpgdFootnote;    // 0x168 file offset of page descriptor PLCF for footnote subdocument.
-    sal_Int32 m_lcbPlcfpgdFootnote;    // 0x16C count of bytes of page descriptor PLCF for footnote subdocument.
+    WW8_FC m_fcPlcfpgdFootnote = 0;    // 0x168 file offset of page descriptor PLCF for footnote subdocument.
+    sal_Int32 m_lcbPlcfpgdFootnote = 0;    // 0x16C count of bytes of page descriptor PLCF for footnote subdocument.
                         //  ==0 if document has not been paginated. The length of the PGD is 8 bytes.
 
-    WW8_FC m_fcAutosaveSource;    // 0x170 file offset of the name of the original file.
-    sal_Int32 m_lcbAutosaveSource;    // 0x174 count of bytes of the name of the original file.
+    WW8_FC m_fcAutosaveSource = 0;    // 0x170 file offset of the name of the original file.
+    sal_Int32 m_lcbAutosaveSource = 0;    // 0x174 count of bytes of the name of the original file.
 
-    WW8_FC m_fcGrpStAtnOwners;    // 0x178 group of strings recording the names of the owners of annotations
-    sal_Int32 m_lcbGrpStAtnOwners;    // 0x17C count of bytes of the group of strings
+    WW8_FC m_fcGrpStAtnOwners = 0;    // 0x178 group of strings recording the names of the owners of annotations
+    sal_Int32 m_lcbGrpStAtnOwners = 0;    // 0x17C count of bytes of the group of strings
 
-    WW8_FC m_fcSttbfAtnbkmk;  // 0x180 file offset of the sttbf that records names of bookmarks in the annotation subdocument
-    sal_Int32 m_lcbSttbfAtnbkmk;  // 0x184 length in bytes of the sttbf that records names of bookmarks in the annotation subdocument
+    WW8_FC m_fcSttbfAtnbkmk = 0;  // 0x180 file offset of the sttbf that records names of bookmarks in the annotation subdocument
+    sal_Int32 m_lcbSttbfAtnbkmk = 0;  // 0x184 length in bytes of the sttbf that records names of bookmarks in the annotation subdocument
 
     // end of WW67 section
 
-    WW8_FC m_fcPlcfdoaMom;    // 0x192 file offset of the  FDOA (drawn object) PLCF for main document.
+    WW8_FC m_fcPlcfdoaMom = 0;    // 0x192 file offset of the  FDOA (drawn object) PLCF for main document.
                         //  ==0 if document has no drawn objects. The length of the FDOA is 6 bytes.
                         // unused starting from Ver8
-    sal_Int32 m_lcbPlcfdoaMom;    // 0x196 length in bytes of the FDOA PLCF of the main document
+    sal_Int32 m_lcbPlcfdoaMom = 0;    // 0x196 length in bytes of the FDOA PLCF of the main document
                                                 // unused starting from Ver8
-    WW8_FC m_fcPlcfdoaHdr;    // 0x19A file offset of the  FDOA (drawn object) PLCF for the header document.
+    WW8_FC m_fcPlcfdoaHdr = 0;    // 0x19A file offset of the  FDOA (drawn object) PLCF for the header document.
                         //  ==0 if document has no drawn objects. The length of the FDOA is 6 bytes.
                         // unused starting from Ver8
-    sal_Int32 m_lcbPlcfdoaHdr;    // 0x19E length in bytes of the FDOA PLCF of the header document
+    sal_Int32 m_lcbPlcfdoaHdr = 0;    // 0x19E length in bytes of the FDOA PLCF of the header document
                                                 // unused starting from Ver8
 
-    WW8_FC m_fcPlcfspaMom;        // offset in table stream of the FSPA PLCF for main document.
+    WW8_FC m_fcPlcfspaMom = 0;        // offset in table stream of the FSPA PLCF for main document.
                                                 // == 0 if document has no office art objects
                                                         // was empty reserve in Ver67
-    sal_Int32 m_lcbPlcfspaMom;        // length in bytes of the FSPA PLCF of the main document
+    sal_Int32 m_lcbPlcfspaMom = 0;        // length in bytes of the FSPA PLCF of the main document
                                                         // was empty reserve in Ver67
-    WW8_FC m_fcPlcfspaHdr;        // offset in table stream of the FSPA PLCF for header document.
+    WW8_FC m_fcPlcfspaHdr = 0;        // offset in table stream of the FSPA PLCF for header document.
                                                 // == 0 if document has no office art objects
                                                         // was empty reserve in Ver67
-    sal_Int32 m_lcbPlcfspaHdr;        // length in bytes of the FSPA PLCF of the header document
+    sal_Int32 m_lcbPlcfspaHdr = 0;        // length in bytes of the FSPA PLCF of the header document
                                                         // was empty reserve in Ver67
 
-    WW8_FC m_fcPlcfAtnbkf;    // 0x1B2 file offset of BKF (bookmark first) PLCF of the annotation subdocument
-    sal_Int32 m_lcbPlcfAtnbkf;    // 0x1B6 length in bytes of BKF (bookmark first) PLCF of the annotation subdocument
+    WW8_FC m_fcPlcfAtnbkf = 0;    // 0x1B2 file offset of BKF (bookmark first) PLCF of the annotation subdocument
+    sal_Int32 m_lcbPlcfAtnbkf = 0;    // 0x1B6 length in bytes of BKF (bookmark first) PLCF of the annotation subdocument
 
-    WW8_FC m_fcPlcfAtnbkl;    // 0x1BA file offset of BKL (bookmark last) PLCF of the annotation subdocument
-    sal_Int32 m_lcbPlcfAtnbkl;    // 0x1BE length in bytes of BKL (bookmark first) PLCF of the annotation subdocument
+    WW8_FC m_fcPlcfAtnbkl = 0;    // 0x1BA file offset of BKL (bookmark last) PLCF of the annotation subdocument
+    sal_Int32 m_lcbPlcfAtnbkl = 0;    // 0x1BE length in bytes of BKL (bookmark first) PLCF of the annotation subdocument
 
-    WW8_FC m_fcPms;       // 0x1C2 file offset of PMS (Print Merge State) information block
-    sal_Int32 m_lcbPMS;       // 0x1C6 length in bytes of PMS
+    WW8_FC m_fcPms = 0;       // 0x1C2 file offset of PMS (Print Merge State) information block
+    sal_Int32 m_lcbPMS = 0;       // 0x1C6 length in bytes of PMS
 
-    WW8_FC m_fcFormFieldSttbf;  // 0x1CA file offset of form field Sttbf which contains strings used in form field dropdown controls
-    sal_Int32 m_lcbFormFieldSttbf;  // 0x1CE length in bytes of form field Sttbf
+    WW8_FC m_fcFormFieldSttbf = 0;  // 0x1CA file offset of form field Sttbf which contains strings used in form field dropdown controls
+    sal_Int32 m_lcbFormFieldSttbf = 0;  // 0x1CE length in bytes of form field Sttbf
 
-    WW8_FC m_fcPlcfendRef;    // 0x1D2 file offset of PLCFendRef which points to endnote references in the main document stream
-    sal_Int32 m_lcbPlcfendRef;    // 0x1D6
+    WW8_FC m_fcPlcfendRef = 0;    // 0x1D2 file offset of PLCFendRef which points to endnote references in the main document stream
+    sal_Int32 m_lcbPlcfendRef = 0;    // 0x1D6
 
-    WW8_FC m_fcPlcfendText;    // 0x1DA file offset of PLCFendRef which points to endnote text  in the endnote document
+    WW8_FC m_fcPlcfendText = 0;    // 0x1DA file offset of PLCFendRef which points to endnote text  in the endnote document
                         //       stream which corresponds with the PLCFendRef
-    sal_Int32 m_lcbPlcfendText;    // 0x1DE
+    sal_Int32 m_lcbPlcfendText = 0;    // 0x1DE
 
-    WW8_FC m_fcPlcffldEdn;    // 0x1E2 offset to PLCF of field positions in the endnote subdoc
-    sal_Int32 m_lcbPlcffldEdn;    // 0x1E6
+    WW8_FC m_fcPlcffldEdn = 0;    // 0x1E2 offset to PLCF of field positions in the endnote subdoc
+    sal_Int32 m_lcbPlcffldEdn = 0;    // 0x1E6
 
-    WW8_FC  m_fcPlcfpgdEdn;   // 0x1EA offset to PLCF of page boundaries in the endnote subdoc.
-    sal_Int32 m_lcbPlcfpgdEdn;        // 0x1EE
+    WW8_FC  m_fcPlcfpgdEdn = 0;   // 0x1EA offset to PLCF of page boundaries in the endnote subdoc.
+    sal_Int32 m_lcbPlcfpgdEdn = 0;        // 0x1EE
 
-    WW8_FC m_fcDggInfo;           // offset in table stream of the office art object table data.
+    WW8_FC m_fcDggInfo = 0;           // offset in table stream of the office art object table data.
                                                 // The format of office art object table data is found in a separate document.
                                                         // was empty reserve in Ver67
-    sal_Int32 m_lcbDggInfo;           // length in bytes of the office art object table data
+    sal_Int32 m_lcbDggInfo = 0;           // length in bytes of the office art object table data
                                                         // was empty reserve in Ver67
 
-    WW8_FC m_fcSttbfRMark;        // 0x1fa offset to STTBF that records the author abbreviations...
-    sal_Int32 m_lcbSttbfRMark;        // 0x1fe
-    WW8_FC m_fcSttbfCaption;  // 0x202 offset to STTBF that records caption titles...
-    sal_Int32 m_lcbSttbfCaption;  // 0x206
-    WW8_FC m_fcSttbAutoCaption;   // offset in table stream to the STTBF that records the object names and
+    WW8_FC m_fcSttbfRMark = 0;        // 0x1fa offset to STTBF that records the author abbreviations...
+    sal_Int32 m_lcbSttbfRMark = 0;        // 0x1fe
+    WW8_FC m_fcSttbfCaption = 0;  // 0x202 offset to STTBF that records caption titles...
+    sal_Int32 m_lcbSttbfCaption = 0;  // 0x206
+    WW8_FC m_fcSttbAutoCaption = 0;   // offset in table stream to the STTBF that records the object names and
                                                         // indices into the caption STTBF for objects which get auto captions.
-    sal_Int32 m_lcbSttbAutoCaption;   // 0x20e
+    sal_Int32 m_lcbSttbAutoCaption = 0;   // 0x20e
 
-    WW8_FC m_fcPlcfwkb;       // 0x212 offset to PLCF that describes the boundaries of contributing documents...
-    sal_Int32 m_lcbPlcfwkb;       // 0x216
+    WW8_FC m_fcPlcfwkb = 0;       // 0x212 offset to PLCF that describes the boundaries of contributing documents...
+    sal_Int32 m_lcbPlcfwkb = 0;       // 0x216
 
-    WW8_FC m_fcPlcfspl;       // offset in table stream of PLCF (of SPLS structures) that records spell check state
+    WW8_FC m_fcPlcfspl = 0;       // offset in table stream of PLCF (of SPLS structures) that records spell check state
                                                         // was empty reserve in Ver67
-    sal_Int32 m_lcbPlcfspl;                   // was empty reserve in Ver67
+    sal_Int32 m_lcbPlcfspl = 0;                   // was empty reserve in Ver67
 
-    WW8_FC m_fcPlcftxbxText;   // 0x222 ...PLCF of beginning CP in the text box subdoc
-    sal_Int32 m_lcbPlcftxbxText;   // 0x226
-    WW8_FC m_fcPlcffldTxbx;   // 0x22a ...PLCF of field boundaries recorded in the textbox subdoc.
-    sal_Int32 m_lcbPlcffldTxbx;   // 0x22e
-    WW8_FC m_fcPlcfHdrtxbxText;// 0x232 ...PLCF of beginning CP in the header text box subdoc
-    sal_Int32 m_lcbPlcfHdrtxbxText;// 0x236
-    WW8_FC m_fcPlcffldHdrTxbx;// 0x23a ...PLCF of field boundaries recorded in the header textbox subdoc.
-    sal_Int32 m_lcbPlcffldHdrTxbx;// 0x23e
-    WW8_FC m_fcStwUser;
-    sal_uInt32 m_lcbStwUser;
-    WW8_FC m_fcSttbttmbd;
-    sal_uInt32 m_lcbSttbttmbd;
+    WW8_FC m_fcPlcftxbxText = 0;   // 0x222 ...PLCF of beginning CP in the text box subdoc
+    sal_Int32 m_lcbPlcftxbxText = 0;   // 0x226
+    WW8_FC m_fcPlcffldTxbx = 0;   // 0x22a ...PLCF of field boundaries recorded in the textbox subdoc.
+    sal_Int32 m_lcbPlcffldTxbx = 0;   // 0x22e
+    WW8_FC m_fcPlcfHdrtxbxText = 0;// 0x232 ...PLCF of beginning CP in the header text box subdoc
+    sal_Int32 m_lcbPlcfHdrtxbxText = 0;// 0x236
+    WW8_FC m_fcPlcffldHdrTxbx = 0;// 0x23a ...PLCF of field boundaries recorded in the header textbox subdoc.
+    sal_Int32 m_lcbPlcffldHdrTxbx = 0;// 0x23e
+    WW8_FC m_fcStwUser = 0;
+    sal_uInt32 m_lcbStwUser = 0;
+    WW8_FC m_fcSttbttmbd = 0;
+    sal_uInt32 m_lcbSttbttmbd = 0;
 
-    WW8_FC m_fcSttbFnm;       // 0x02da offset in the table stream of masters subdocument names
-    sal_Int32 m_lcbSttbFnm;       // 0x02de length
+    WW8_FC m_fcSttbFnm = 0;       // 0x02da offset in the table stream of masters subdocument names
+    sal_Int32 m_lcbSttbFnm = 0;       // 0x02de length
 
     /*
         special list handling for WW8
     */
-    WW8_FC m_fcPlcfLst;       // 0x02e2 offset in the table stream of list format information.
-    sal_Int32 m_lcbPlcfLst;       // 0x02e6 length
-    WW8_FC m_fcPlfLfo;        // 0x02ea offset in the table stream of list format override information.
-    sal_Int32 m_lcbPlfLfo;        // 0x02ee length
+    WW8_FC m_fcPlcfLst = 0;       // 0x02e2 offset in the table stream of list format information.
+    sal_Int32 m_lcbPlcfLst = 0;       // 0x02e6 length
+    WW8_FC m_fcPlfLfo = 0;        // 0x02ea offset in the table stream of list format override information.
+    sal_Int32 m_lcbPlfLfo = 0;        // 0x02ee length
     /*
         special Break handling for text-box-stories in WW8
     */
-    WW8_FC m_fcPlcftxbxBkd;   // 0x02f2 PLCF for TextBox-Break-descriptors in the Maintext
-    sal_Int32 m_lcbPlcftxbxBkd;   // 0x02f6
-    WW8_FC m_fcPlcfHdrtxbxBkd;// 0x02fa PLCF for TextBox-Break-descriptors in the Header-/Footer- area
-    sal_Int32 m_lcbPlcfHdrtxbxBkd;// 0x02fe
+    WW8_FC m_fcPlcftxbxBkd = 0;   // 0x02f2 PLCF for TextBox-Break-descriptors in the Maintext
+    sal_Int32 m_lcbPlcftxbxBkd = 0;   // 0x02f6
+    WW8_FC m_fcPlcfHdrtxbxBkd = 0;// 0x02fa PLCF for TextBox-Break-descriptors in the Header-/Footer- area
+    sal_Int32 m_lcbPlcfHdrtxbxBkd = 0;// 0x02fe
 
     // 0x302 - 372 == ignore
     /*
         ListNames (skip to here!)
     */
-    WW8_FC m_fcSttbListNames;// 0x0372 PLCF for Listname Table
-    sal_Int32 m_lcbSttbListNames;// 0x0376
+    WW8_FC m_fcSttbListNames = 0;// 0x0372 PLCF for Listname Table
+    sal_Int32 m_lcbSttbListNames = 0;// 0x0376
 
-    WW8_FC m_fcPlcfTch;
-    sal_Int32 m_lcbPlcfTch;
+    WW8_FC m_fcPlcfTch = 0;
+    sal_Int32 m_lcbPlcfTch = 0;
 
     // 0x38A - 41A == ignore
-    WW8_FC m_fcAtrdExtra;
-    sal_uInt32 m_lcbAtrdExtra;
+    WW8_FC m_fcAtrdExtra = 0;
+    sal_uInt32 m_lcbAtrdExtra = 0;
 
     // 0x422 - 0x429 == ignore
 
     /// 0x42a smart-tag bookmark string table offset.
-    WW8_FC m_fcSttbfBkmkFactoid;
+    WW8_FC m_fcSttbfBkmkFactoid = 0;
     /// 0x42e smart-tag bookmark string table length.
-    sal_uInt32 m_lcbSttbfBkmkFactoid;
+    sal_uInt32 m_lcbSttbfBkmkFactoid = 0;
     /// 0x432 smart-tag bookmark starts offset.
-    WW8_FC m_fcPlcfBkfFactoid;
+    WW8_FC m_fcPlcfBkfFactoid = 0;
     /// 0x436 smart-tag bookmark ends length.
-    sal_uInt32 m_lcbPlcfBkfFactoid;
+    sal_uInt32 m_lcbPlcfBkfFactoid = 0;
 
     // 0x43a - 0x441 == ignore
 
     /// 0x442 smart-tag bookmark ends offset.
-    WW8_FC m_fcPlcfBklFactoid;
+    WW8_FC m_fcPlcfBklFactoid = 0;
     /// 0x446 smart-tag bookmark ends length.
-    sal_uInt32 m_lcbPlcfBklFactoid;
+    sal_uInt32 m_lcbPlcfBklFactoid = 0;
     /// 0x44a smart tag data offset.
-    WW8_FC m_fcFactoidData;
+    WW8_FC m_fcFactoidData = 0;
     /// 0x44e smart tag data length.
-    sal_uInt32 m_lcbFactoidData;
+    sal_uInt32 m_lcbFactoidData = 0;
 
     // 0x452 - 0x4b9 == ignore
 
     /// 0x4ba Plcffactoid offset.
-    WW8_FC m_fcPlcffactoid;
+    WW8_FC m_fcPlcffactoid = 0;
     /// 0x4be Plcffactoid offset.
-    sal_uInt32 m_lcbPlcffactoid;
+    sal_uInt32 m_lcbPlcffactoid = 0;
 
     // 0x4bf - 0x4d4 == ignore
 
-    WW8_FC m_fcHplxsdr;    //bizarrely, word xp seems to require this set to shows dates from AtrdExtra
-    sal_uInt32 m_lcbHplxsdr;
+    WW8_FC m_fcHplxsdr = 0;    //bizarrely, word xp seems to require this set to shows dates from AtrdExtra
+    sal_uInt32 m_lcbHplxsdr = 0;
 
     /*
         general variables that were used for Ver67 and Ver8,
         even though they had different sizes in the corresponding files:
     */
-    sal_Int32 m_pnChpFirst;
-    sal_Int32 m_pnPapFirst;
-    sal_Int32 m_cpnBteChp;
-    sal_Int32 m_cpnBtePap;
+    sal_Int32 m_pnChpFirst = 0;
+    sal_Int32 m_pnPapFirst = 0;
+    sal_Int32 m_cpnBteChp = 0;
+    sal_Int32 m_cpnBtePap = 0;
     /*
         The actual nFib, moved here because some readers assumed
         they couldn't read any format with nFib > some constant
     */
-    sal_uInt16 m_nFib_actual; // 0x05bc #i56856#
+    sal_uInt16 m_nFib_actual = 0; // 0x05bc #i56856#
 
     WW8Fib(SvStream& rStrm, sal_uInt8 nWantedVersion,sal_uInt32 nOffset=0);
-    explicit WW8Fib(sal_uInt8 nVersion = 6, bool bDot = false);
+    explicit WW8Fib(sal_uInt8 nVersion, bool bDot = false);
 
     void WriteHeader(SvStream& rStrm);
     void Write(SvStream& rStrm);
@@ -1538,24 +1541,24 @@ public:
 class WW8Style
 {
 protected:
-    WW8Fib& rFib;
-    SvStream& rSt;
+    WW8Fib& m_rFib;
+    SvStream& m_rStream;
 
-    sal_uInt16  cstd;                      // Count of styles in stylesheet
-    sal_uInt16  cbSTDBaseInFile;           // Length of STD Base as stored in a file
-    sal_uInt16  fStdStylenamesWritten : 1; // Are built-in stylenames stored?
+    sal_uInt16  m_cstd;                      // Count of styles in stylesheet
+    sal_uInt16  m_cbSTDBaseInFile;           // Length of STD Base as stored in a file
+    sal_uInt16  m_fStdStylenamesWritten : 1; // Are built-in stylenames stored?
     sal_uInt16  : 15;                      // Spare flags
-    sal_uInt16  stiMaxWhenSaved;           // Max sti known when file was written
-    sal_uInt16  istdMaxFixedWhenSaved;     // How many fixed-index istds are there?
-    sal_uInt16  nVerBuiltInNamesWhenSaved; // Current version of built-in stylenames
+    sal_uInt16  m_stiMaxWhenSaved;           // Max sti known when file was written
+    sal_uInt16  m_istdMaxFixedWhenSaved;     // How many fixed-index istds are there?
+    sal_uInt16  m_nVerBuiltInNamesWhenSaved; // Current version of built-in stylenames
     // ftc used by StandardChpStsh for this document
-    sal_uInt16  ftcAsci;
+    sal_uInt16  m_ftcAsci;
     // CJK ftc used by StandardChpStsh for this document
-    sal_uInt16  ftcFE;
+    sal_uInt16  m_ftcFE;
     // CTL/Other ftc used by StandardChpStsh for this document
-    sal_uInt16  ftcOther;
+    sal_uInt16  m_ftcOther;
     // CTL ftc used by StandardChpStsh for this document
-    sal_uInt16  ftcBi;
+    sal_uInt16  m_ftcBi;
 
     //No copying
     WW8Style(const WW8Style&);
@@ -1563,24 +1566,23 @@ protected:
 
 public:
     WW8Style( SvStream& rSt, WW8Fib& rFibPara );
-    WW8_STD* Read1STDFixed(sal_uInt16& rSkip);
-    WW8_STD* Read1Style(sal_uInt16& rSkip, OUString* pString);
-    sal_uInt16 GetCount() const { return cstd; }
+    std::unique_ptr<WW8_STD> Read1STDFixed(sal_uInt16& rSkip);
+    std::unique_ptr<WW8_STD> Read1Style(sal_uInt16& rSkip, OUString* pString);
+    sal_uInt16 GetCount() const { return m_cstd; }
 };
 
-class WW8Fonts
+class WW8Fonts final
 {
 private:
     WW8Fonts(const WW8Fonts&) = delete;
     WW8Fonts& operator=(const WW8Fonts&) = delete;
-protected:
-    std::unique_ptr<WW8_FFN[]> pFontA;    // Array of Pointers to Font Description
-    sal_uInt16 nMax;        // Array-Size
+
+    std::vector<WW8_FFN> m_aFontA; // Array of Pointers to Font Description
 
 public:
-    WW8Fonts( SvStream& rSt, WW8Fib& rFib );
+    WW8Fonts( SvStream& rSt, WW8Fib const & rFib );
     const WW8_FFN* GetFont( sal_uInt16 nNum ) const;
-    sal_uInt16 GetMax() const { return nMax; }
+    sal_uInt16 GetMax() const { return m_aFontA.size(); }
 };
 
 typedef sal_uInt8 HdFtFlags;
@@ -1604,227 +1606,227 @@ public:
     Corresponds only roughly to the actual structure of the Winword DOP,
     the winword FIB version matters to what exists.
     */
-    bool        fFacingPages : 1;   // 1 when facing pages should be printed
+     bool        fFacingPages : 1 /*= false*/;   // 1 when facing pages should be printed
 
-    bool        fWidowControl : 1;  //a: orig 97 docs say
+     bool        fWidowControl : 1 /*= false*/;  //a: orig 97 docs say
                                     //    1 when widow control is in effect. 0 when widow control disabled.
                                     //b: MS-DOC: Word Binary File Format (.doc) Structure Specification 2008 says
                                     //    B - unused1 (1 bit): Undefined and MUST be ignored.
 
-    bool        fPMHMainDoc : 1;    // 1 when doc is a main doc for Print Merge Helper, 0 when not; default=0
-    sal_uInt16  grfSuppression : 2; // 0 Default line suppression storage; 0= form letter line suppression; 1= no line suppression; default=0
-    sal_uInt16  fpc : 2;            // 1 footnote position code: 0 as endnotes, 1 at bottom of page, 2 immediately beneath text
+     bool        fPMHMainDoc : 1 /*= false*/;    // 1 when doc is a main doc for Print Merge Helper, 0 when not; default=0
+     sal_uInt16  grfSuppression : 2 /*= 0*/; // 0 Default line suppression storage; 0= form letter line suppression; 1= no line suppression; default=0
+     sal_uInt16  fpc : 2 /*= 0*/;            // 1 footnote position code: 0 as endnotes, 1 at bottom of page, 2 immediately beneath text
     sal_uInt16  : 1;                // 0 unused
 
-    sal_uInt16  grpfIhdt : 8;           // 0 specification of document headers and footers. See explanation under Headers and Footers topic.
+     sal_uInt16  grpfIhdt : 8 /*= 0*/;           // 0 specification of document headers and footers. See explanation under Headers and Footers topic.
 
-    sal_uInt16  rncFootnote : 2;         // 0 restart index for footnotes, 0 don't restart note numbering, 1 section, 2 page
-    sal_uInt16  nFootnote : 14;          // 1 initial footnote number for document
-    bool        fOutlineDirtySave : 1; // when 1, indicates that information in the hPLCFpad should be refreshed since outline has been dirtied
+     sal_uInt16  rncFootnote : 2 /*= 0*/;         // 0 restart index for footnotes, 0 don't restart note numbering, 1 section, 2 page
+     sal_uInt16  nFootnote : 14 /*= 0*/;          // 1 initial footnote number for document
+     bool        fOutlineDirtySave : 1 /*= false*/; // when 1, indicates that information in the hPLCFpad should be refreshed since outline has been dirtied
     sal_uInt16  : 7;                //   reserved
-    bool        fOnlyMacPics : 1;   //   when 1, Word believes all pictures recorded in the document were created on a Macintosh
-    bool        fOnlyWinPics : 1;   //   when 1, Word believes all pictures recorded in the document were created in Windows
-    bool        fLabelDoc : 1;      //   when 1, document was created as a print merge labels document
-    bool        fHyphCapitals : 1;  //   when 1, Word is allowed to hyphenate words that are capitalized. When 0, capitalized may not be hyphenated
-    bool        fAutoHyphen : 1;    //   when 1, Word will hyphenate newly typed text as a background task
-    bool        fFormNoFields : 1;
-    bool        fLinkStyles : 1;    //   when 1, Word will merge styles from its template
-    bool        fRevMarking : 1;    //   when 1, Word will mark revisions as the document is edited
-    bool        fBackup : 1;        //   always make backup when document saved when 1.
-    bool        fExactCWords : 1;
-    bool        fPagHidden : 1;
-    bool        fPagResults : 1;
-    bool        fLockAtn : 1;       //   when 1, annotations are locked for editing
-    bool        fMirrorMargins : 1; //   swap margins on left/right pages when 1.
-    bool        fReadOnlyRecommended : 1;// user has recommended that this doc be opened read-only when 1
-    bool        fDfltTrueType : 1;  //   when 1, use TrueType fonts by default (flag obeyed only when doc was created by WinWord 2.x)
-    bool        fPagSuppressTopSpacing : 1;//when 1, file created with SUPPRESSTOPSPACING=YES in win.ini. (flag obeyed only when doc was created by WinWord 2.x).
-    bool        fProtEnabled : 1;   //   when 1, document is protected from edit operations
-    bool        fDispFormFieldSel : 1;//   when 1, restrict selections to occur only within form fields
-    bool        fRMView : 1;        //   when 1, show revision markings on screen
-    bool        fRMPrint : 1;       //   when 1, print revision marks when document is printed
-    bool        fWriteReservation : 1;
-    bool        fLockRev : 1;       //   when 1, the current revision marking state is locked
-    bool        fEmbedFonts : 1;    //   when 1, document contains embedded True Type fonts
+     bool        fOnlyMacPics : 1 /*= false*/;   //   when 1, Word believes all pictures recorded in the document were created on a Macintosh
+     bool        fOnlyWinPics : 1 /*= false*/;   //   when 1, Word believes all pictures recorded in the document were created in Windows
+     bool        fLabelDoc : 1 /*= false*/;      //   when 1, document was created as a print merge labels document
+     bool        fHyphCapitals : 1 /*= false*/;  //   when 1, Word is allowed to hyphenate words that are capitalized. When 0, capitalized may not be hyphenated
+     bool        fAutoHyphen : 1 /*= false*/;    //   when 1, Word will hyphenate newly typed text as a background task
+     bool        fFormNoFields : 1 /*= false*/;
+     bool        fLinkStyles : 1 /*= false*/;    //   when 1, Word will merge styles from its template
+     bool        fRevMarking : 1 /*= false*/;    //   when 1, Word will mark revisions as the document is edited
+     bool        fBackup : 1 /*= false*/;        //   always make backup when document saved when 1.
+     bool        fExactCWords : 1 /*= false*/;
+     bool        fPagHidden : 1 /*= false*/;
+     bool        fPagResults : 1 /*= false*/;
+     bool        fLockAtn : 1 /*= false*/;       //   when 1, annotations are locked for editing
+     bool        fMirrorMargins : 1 /*= false*/; //   swap margins on left/right pages when 1.
+     bool        fReadOnlyRecommended : 1 /*= false*/;// user has recommended that this doc be opened read-only when 1
+     bool        fDfltTrueType : 1 /*= false*/;  //   when 1, use TrueType fonts by default (flag obeyed only when doc was created by WinWord 2.x)
+     bool        fPagSuppressTopSpacing : 1 /*= false*/;//when 1, file created with SUPPRESSTOPSPACING=YES in win.ini. (flag obeyed only when doc was created by WinWord 2.x).
+     bool        fProtEnabled : 1 /*= false*/;   //   when 1, document is protected from edit operations
+     bool        fDispFormFieldSel : 1 /*= false*/;//   when 1, restrict selections to occur only within form fields
+     bool        fRMView : 1 /*= false*/;        //   when 1, show revision markings on screen
+     bool        fRMPrint : 1 /*= false*/;       //   when 1, print revision marks when document is printed
+     bool        fWriteReservation : 1 /*= false*/;
+     bool        fLockRev : 1 /*= false*/;       //   when 1, the current revision marking state is locked
+     bool        fEmbedFonts : 1 /*= false*/;    //   when 1, document contains embedded True Type fonts
     //    compatibility options
-    bool       copts_fNoTabForInd : 1;          //    when 1, don't add automatic tab stops for hanging indent
-    bool       copts_fNoSpaceRaiseLower : 1;        //    when 1, don't add extra space for raised or lowered characters
-    bool       copts_fSupressSpbfAfterPgBrk : 1;    // when 1, suppress the paragraph Space Before and Space After options after a page break
-    bool       copts_fWrapTrailSpaces : 1;      //    when 1, wrap trailing spaces at the end of a line to the next line
-    bool       copts_fMapPrintTextColor : 1;        //    when 1, print colors as black on non-color printers
-    bool       copts_fNoColumnBalance : 1;      //    when 1, don't balance columns for Continuous Section starts
-    bool       copts_fConvMailMergeEsc : 1;
-    bool       copts_fSupressTopSpacing : 1;        //    when 1, suppress extra line spacing at top of page
-    bool       copts_fOrigWordTableRules : 1;   //    when 1, combine table borders like Word 5.x for the Macintosh
-    bool       copts_fTransparentMetafiles : 1; //    when 1, don't blank area between metafile pictures
-    bool       copts_fShowBreaksInFrames : 1;   //    when 1, show hard page or column breaks in frames
-    bool       copts_fSwapBordersFacingPgs : 1; //    when 1, swap left and right pages on odd facing pages
-    bool       copts_fExpShRtn : 1;             //    when 1, expand character spaces on the line ending SHIFT+RETURN  // #i56856#
+     bool       copts_fNoTabForInd : 1 /*= false*/;          //    when 1, don't add automatic tab stops for hanging indent
+     bool       copts_fNoSpaceRaiseLower : 1 /*= false*/;        //    when 1, don't add extra space for raised or lowered characters
+     bool       copts_fSupressSpbfAfterPgBrk : 1 /*= false*/;    // when 1, suppress the paragraph Space Before and Space After options after a page break
+     bool       copts_fWrapTrailSpaces : 1 /*= false*/;      //    when 1, wrap trailing spaces at the end of a line to the next line
+     bool       copts_fMapPrintTextColor : 1 /*= false*/;        //    when 1, print colors as black on non-color printers
+     bool       copts_fNoColumnBalance : 1 /*= false*/;      //    when 1, don't balance columns for Continuous Section starts
+     bool       copts_fConvMailMergeEsc : 1 /*= false*/;
+     bool       copts_fSupressTopSpacing : 1 /*= false*/;        //    when 1, suppress extra line spacing at top of page
+     bool       copts_fOrigWordTableRules : 1 /*= false*/;   //    when 1, combine table borders like Word 5.x for the Macintosh
+     bool       copts_fTransparentMetafiles : 1 /*= false*/; //    when 1, don't blank area between metafile pictures
+     bool       copts_fShowBreaksInFrames : 1 /*= false*/;   //    when 1, show hard page or column breaks in frames
+     bool       copts_fSwapBordersFacingPgs : 1 /*= false*/; //    when 1, swap left and right pages on odd facing pages
+     bool       copts_fExpShRtn : 1 /*= false*/;             //    when 1, expand character spaces on the line ending SHIFT+RETURN  // #i56856#
 
-    sal_Int16  dxaTab;              //      720 twips - default tab width
-    sal_uInt16 wSpare;
-    sal_uInt16 dxaHotZ;             //      width of hyphenation hot zone measured in twips
-    sal_uInt16 cConsecHypLim;       //      number of lines allowed to have consecutive hyphens
-    sal_uInt16 wSpare2;             //      reserved
-    sal_Int32  dttmCreated;         //      DTTM date and time document was created
-    sal_Int32  dttmRevised;         //      DTTM date and time document was last revised
-    sal_Int32  dttmLastPrint;       //      DTTM date and time document was last printed
-    sal_Int16  nRevision;           //      number of times document has been revised since its creation
-    sal_Int32  tmEdited;            //      time document was last edited
-    sal_Int32  cWords;              //      count of words tallied by last Word Count execution
-    sal_Int32  cCh;                 //      count of characters tallied by last Word Count execution
-    sal_Int16  cPg;                 //      count of pages tallied by last Word Count execution
-    sal_Int32  cParas;              //      count of paragraphs tallied by last Word Count execution
-    sal_uInt16 rncEdn : 2;          //      restart endnote number code: 0 don't restart endnote numbering, 1 section, 2 page
-    sal_uInt16 nEdn : 14;           //      beginning endnote number
-    sal_uInt16 epc : 2;             //      endnote position code: 0 at end of section, 3 at end of document
+    sal_Int16  dxaTab = 0;              //      720 twips - default tab width
+    sal_uInt16 wSpare = 0;
+    sal_uInt16 dxaHotZ = 0;             //      width of hyphenation hot zone measured in twips
+    sal_uInt16 cConsecHypLim = 0;       //      number of lines allowed to have consecutive hyphens
+    sal_uInt16 wSpare2 = 0;             //      reserved
+    sal_Int32  dttmCreated = 0;         //      DTTM date and time document was created
+    sal_Int32  dttmRevised = 0;         //      DTTM date and time document was last revised
+    sal_Int32  dttmLastPrint = 0;       //      DTTM date and time document was last printed
+    sal_Int16  nRevision = 0;           //      number of times document has been revised since its creation
+    sal_Int32  tmEdited = 0;            //      time document was last edited
+    sal_Int32  cWords = 0;              //      count of words tallied by last Word Count execution
+    sal_Int32  cCh = 0;                 //      count of characters tallied by last Word Count execution
+    sal_Int16  cPg = 0;                 //      count of pages tallied by last Word Count execution
+    sal_Int32  cParas = 0;              //      count of paragraphs tallied by last Word Count execution
+     sal_uInt16 rncEdn : 2 /*= 0*/;          //      restart endnote number code: 0 don't restart endnote numbering, 1 section, 2 page
+     sal_uInt16 nEdn : 14 /*= 0*/;           //      beginning endnote number
+     sal_uInt16 epc : 2 /*= 0*/;             //      endnote position code: 0 at end of section, 3 at end of document
 
-    bool       fPrintFormData : 1;  //      only print data inside of form fields
-    bool       fSaveFormData : 1;   //      only save document data that is inside of a form field.
-    bool       fShadeFormData : 1;  //      shade form fields
+     bool       fPrintFormData : 1 /*= false*/;  //      only print data inside of form fields
+     bool       fSaveFormData : 1 /*= false*/;   //      only save document data that is inside of a form field.
+     bool       fShadeFormData : 1 /*= false*/;  //      shade form fields
     sal_uInt16 : 2;                 //      reserved
-    bool       fWCFootnoteEdn : 1;       //      when 1, include footnotes and endnotes in word count
-    sal_Int32   cLines;             //      count of lines tallied by last Word Count operation
-    sal_Int32   cWordsFootnoteEnd;       //      count of words in footnotes and endnotes tallied by last Word Count operation
-    sal_Int32   cChFootnoteEdn;          //      count of characters in footnotes and endnotes tallied by last Word Count operation
-    sal_Int16   cPgFootnoteEdn;          //      count of pages in footnotes and endnotes tallied by last Word Count operation
-    sal_Int32   cParasFootnoteEdn;       //      count of paragraphs in footnotes and endnotes tallied by last Word Count operation
-    sal_Int32   cLinesFootnoteEdn;       //      count of paragraphs in footnotes and endnotes tallied by last Word Count operation
-    sal_Int32   lKeyProtDoc;        //      document protection password key, only valid if dop.fProtEnabled, dop.fLockAtn or dop.fLockRev are 1.
-    sal_uInt16  wvkSaved : 3;       //      document view kind: 0 Normal view, 1 Outline view, 2 Page View
-    sal_uInt16  wScaleSaved : 9;    ///< Specifies the zoom percentage that was in use when the document was saved.
-    sal_uInt16  zkSaved : 2;        //      document zoom type: 0 percent, 1 whole/entire page, 2 page width, 3 text width/optimal
-    bool        fRotateFontW6 : 1;
-    bool        iGutterPos : 1 ;
+     bool       fWCFootnoteEdn : 1 /*= false*/;       //      when 1, include footnotes and endnotes in word count
+    sal_Int32   cLines = 0;             //      count of lines tallied by last Word Count operation
+    sal_Int32   cWordsFootnoteEnd = 0;       //      count of words in footnotes and endnotes tallied by last Word Count operation
+    sal_Int32   cChFootnoteEdn = 0;          //      count of characters in footnotes and endnotes tallied by last Word Count operation
+    sal_Int16   cPgFootnoteEdn = 0;          //      count of pages in footnotes and endnotes tallied by last Word Count operation
+    sal_Int32   cParasFootnoteEdn = 0;       //      count of paragraphs in footnotes and endnotes tallied by last Word Count operation
+    sal_Int32   cLinesFootnoteEdn = 0;       //      count of paragraphs in footnotes and endnotes tallied by last Word Count operation
+    sal_Int32   lKeyProtDoc = 0;        //      document protection password key, only valid if dop.fProtEnabled, dop.fLockAtn or dop.fLockRev are 1.
+     sal_uInt16  wvkSaved : 3 /*= 0*/;       //      document view kind: 0 Normal view, 1 Outline view, 2 Page View
+     sal_uInt16  wScaleSaved : 9 /*= 0*/;    ///< Specifies the zoom percentage that was in use when the document was saved.
+     sal_uInt16  zkSaved : 2 /*= 0*/;        //      document zoom type: 0 percent, 1 whole/entire page, 2 page width, 3 text width/optimal
+     bool        fRotateFontW6 : 1 /*= false*/;
+     bool        iGutterPos : 1 /*= false*/;
 
     // this should be the end for nFib < 103, otherwise the file is broken!
 
     /*
         for nFib >= 103 it continues:
     */
-    bool       fNoTabForInd : 1;                      // see above in compatibility options
-    bool       fNoSpaceRaiseLower : 1;                // see above
-    bool       fSupressSpbfAfterPageBreak : 1;        // see above
-    bool       fWrapTrailSpaces : 1;                  // see above
-    bool       fMapPrintTextColor : 1;                // see above
-    bool       fNoColumnBalance : 1;                  // see above
-    bool       fConvMailMergeEsc : 1;                 // see above
-    bool       fSupressTopSpacing : 1;                // see above
-    bool       fOrigWordTableRules : 1;               // see above
-    bool       fTransparentMetafiles : 1;             // see above
-    bool       fShowBreaksInFrames : 1;               // see above
-    bool       fSwapBordersFacingPgs : 1;             // see above
-    bool       fCompatibilityOptions_Unknown1_13 : 1; // #i78591#
-    bool       fExpShRtn : 1;                         // #i78591# and #i56856#
-    bool       fCompatibilityOptions_Unknown1_15 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown1_16 : 1; // #i78591#
-    bool       fSuppressTopSpacingMac5 : 1;           // Suppress extra line spacing at top
+     bool       fNoTabForInd : 1 /*= false*/;                      // see above in compatibility options
+     bool       fNoSpaceRaiseLower : 1 /*= false*/;                // see above
+     bool       fSupressSpbfAfterPageBreak : 1 /*= false*/;        // see above
+     bool       fWrapTrailSpaces : 1 /*= false*/;                  // see above
+     bool       fMapPrintTextColor : 1 /*= false*/;                // see above
+     bool       fNoColumnBalance : 1 /*= false*/;                  // see above
+     bool       fConvMailMergeEsc : 1 /*= false*/;                 // see above
+     bool       fSupressTopSpacing : 1 /*= false*/;                // see above
+     bool       fOrigWordTableRules : 1 /*= false*/;               // see above
+     bool       fTransparentMetafiles : 1 /*= false*/;             // see above
+     bool       fShowBreaksInFrames : 1 /*= false*/;               // see above
+     bool       fSwapBordersFacingPgs : 1 /*= false*/;             // see above
+     bool       fCompatibilityOptions_Unknown1_13 : 1 /*= false*/; // #i78591#
+     bool       fExpShRtn : 1 /*= false*/;                         // #i78591# and #i56856#
+     bool       fCompatibilityOptions_Unknown1_15 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown1_16 : 1 /*= false*/; // #i78591#
+     bool       fSuppressTopSpacingMac5 : 1 /*= false*/;           // Suppress extra line spacing at top
                                                       // of page like MacWord 5.x
-    bool       fTruncDxaExpand : 1;                    // Expand/Condense by whole number of points
-    bool       fPrintBodyBeforeHdr : 1;               // Print body text before header/footer
-    bool       fNoLeading : 1;                        // Don't add extra spacebetween rows of text
-    bool       fCompatibilityOptions_Unknown1_21 : 1; // #i78591#
-    bool       fMWSmallCaps : 1;                     // Use larger small caps like MacWord 5.x
-    bool       fCompatibilityOptions_Unknown1_23 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown1_24 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown1_25 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown1_26 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown1_27 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown1_28 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown1_29 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown1_30 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown1_31 : 1; // #i78591#
-    bool       fUsePrinterMetrics : 1;                //The magic option
+     bool       fTruncDxaExpand : 1 /*= false*/;                    // Expand/Condense by whole number of points
+     bool       fPrintBodyBeforeHdr : 1 /*= false*/;               // Print body text before header/footer
+     bool       fNoLeading : 1 /*= false*/;                        // Don't add extra spacebetween rows of text
+     bool       fCompatibilityOptions_Unknown1_21 : 1 /*= false*/; // #i78591#
+     bool       fMWSmallCaps : 1 /*= false*/;                     // Use larger small caps like MacWord 5.x
+     bool       fCompatibilityOptions_Unknown1_23 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown1_24 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown1_25 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown1_26 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown1_27 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown1_28 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown1_29 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown1_30 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown1_31 : 1 /*= false*/; // #i78591#
+     bool       fUsePrinterMetrics : 1 /*= false*/;                //The magic option
 
     // this should be the end for nFib <= 105, otherwise the file is broken!
 
     /*
         for nFib > 105 it continues:
     */
-    sal_Int16   adt;                  // Autoformat Document Type:
+    sal_Int16   adt = 0;                  // Autoformat Document Type:
                                       // 0 for normal.
                                       // 1 for letter, and
                                       // 2 for email.
-    WW8DopTypography doptypography;   // see WW8STRUC.HXX
-    WW8_DOGRID dogrid;                // see WW8STRUC.HXX
+    WW8DopTypography doptypography = {};   // see WW8STRUC.HXX
+    WW8_DOGRID dogrid = {};                // see WW8STRUC.HXX
     sal_uInt16 : 1;                   // reserved
-    sal_uInt16 lvl : 4;               // Which outline levels are showing in outline view
+     sal_uInt16 lvl : 4 /*= 0*/;               // Which outline levels are showing in outline view
     sal_uInt16 : 4;                   // reserved
-    bool       fHtmlDoc : 1;          // This file is based upon an HTML file
+     bool       fHtmlDoc : 1 /*= false*/;          // This file is based upon an HTML file
     sal_uInt16 : 1;                   // reserved
-    bool       fSnapBorder : 1;       // Snap table and page borders to page border
-    bool       fIncludeHeader : 1;    // Place header inside page border
-    bool       fIncludeFooter : 1;    // Place footer inside page border
-    bool       fForcePageSizePag : 1; // Are we in online view
-    bool       fMinFontSizePag : 1;   // Are we auto-promoting fonts to >= hpsZoonFontPag?
-    bool       fHaveVersions : 1;     // versioning is turned on
-    bool       fAutoVersion : 1;      // autoversioning is enabled
+     bool       fSnapBorder : 1 /*= false*/;       // Snap table and page borders to page border
+     bool       fIncludeHeader : 1 /*= false*/;    // Place header inside page border
+     bool       fIncludeFooter : 1 /*= false*/;    // Place footer inside page border
+     bool       fForcePageSizePag : 1 /*= false*/; // Are we in online view
+     bool       fMinFontSizePag : 1 /*= false*/;   // Are we auto-promoting fonts to >= hpsZoonFontPag?
+     bool       fHaveVersions : 1 /*= false*/;     // versioning is turned on
+     bool       fAutoVersion : 1 /*= false*/;      // autoversioning is enabled
     sal_uInt16 : 14;                  // reserved
     // Skip 12 Bytes here: ASUMI
-    sal_Int32 cChWS;
-    sal_Int32 cChWSFootnoteEdn;
-    sal_Int32 grfDocEvents;
+    sal_Int32 cChWS = 0;
+    sal_Int32 cChWSFootnoteEdn = 0;
+    sal_Int32 grfDocEvents = 0;
     // Skip 4+30+8 Bytes here
-    sal_Int32 cDBC;
-    sal_Int32 cDBCFootnoteEdn;
+    sal_Int32 cDBC = 0;
+    sal_Int32 cDBCFootnoteEdn = 0;
     // Skip 4 Bytes here
-    sal_Int16 nfcFootnoteRef;
-    sal_Int16 nfcEdnRef;
-    sal_Int16 hpsZoonFontPag;
-    sal_Int16 dywDispPag;
+    sal_Int16 nfcFootnoteRef = 0;
+    sal_Int16 nfcEdnRef = 0;
+    sal_Int16 hpsZoonFontPag = 0;
+    sal_Int16 dywDispPag = 0;
 
-    bool       fCompatibilityOptions_Unknown2_1 : 1;  // #i78591#
-    bool       fCompatibilityOptions_Unknown2_2 : 1;  // #i78591#
-    bool       fDontUseHTMLAutoSpacing : 1;
-    bool       fCompatibilityOptions_Unknown2_4 : 1;  // #i78591#
-    bool       fCompatibilityOptions_Unknown2_5 : 1;  // #i78591#
-    bool       fCompatibilityOptions_Unknown2_6 : 1;  // #i78591#
-    bool       fCompatibilityOptions_Unknown2_7 : 1;  // #i78591#
-    bool       fCompatibilityOptions_Unknown2_8 : 1;  // #i78591#
-    bool       fCompatibilityOptions_Unknown2_9 : 1;  // #i78591#
-    bool       fCompatibilityOptions_Unknown2_10 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_11 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_12 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_13 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_14 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_15 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_16 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_17 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_18 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_19 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_20 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_21 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_22 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_23 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_24 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_25 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_26 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_27 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_28 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_29 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_30 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_31 : 1; // #i78591#
-    bool       fCompatibilityOptions_Unknown2_32 : 1; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_1 : 1 /*= false*/;  // #i78591#
+     bool       fCompatibilityOptions_Unknown2_2 : 1 /*= false*/;  // #i78591#
+     bool       fDontUseHTMLAutoSpacing : 1 /*= false*/;
+     bool       fCompatibilityOptions_Unknown2_4 : 1 /*= false*/;  // #i78591#
+     bool       fCompatibilityOptions_Unknown2_5 : 1 /*= false*/;  // #i78591#
+     bool       fCompatibilityOptions_Unknown2_6 : 1 /*= false*/;  // #i78591#
+     bool       fCompatibilityOptions_Unknown2_7 : 1 /*= false*/;  // #i78591#
+     bool       fCompatibilityOptions_Unknown2_8 : 1 /*= false*/;  // #i78591#
+     bool       fCompatibilityOptions_Unknown2_9 : 1 /*= false*/;  // #i78591#
+     bool       fCompatibilityOptions_Unknown2_10 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_11 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_12 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_13 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_14 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_15 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_16 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_17 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_18 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_19 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_20 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_21 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_22 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_23 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_24 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_25 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_26 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_27 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_28 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_29 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_30 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_31 : 1 /*= false*/; // #i78591#
+     bool       fCompatibilityOptions_Unknown2_32 : 1 /*= false*/; // #i78591#
 
-    sal_uInt16 fUnknown3 : 15;
-    bool       fUseBackGroundInAllmodes : 1;
+     sal_uInt16 fUnknown3 : 15 /*= 0*/;
+     bool       fUseBackGroundInAllmodes : 1 /*= false*/;
 
-    bool       fDoNotEmbedSystemFont : 1;
-    bool       fWordCompat : 1;
-    bool       fLiveRecover : 1;
-    bool       fEmbedFactoids : 1;
-    bool       fFactoidXML : 1;
-    bool       fFactoidAllDone : 1;
-    bool       fFolioPrint : 1;
-    bool       fReverseFolio : 1;
-    sal_uInt16 iTextLineEnding : 3;
-    bool       fHideFcc : 1;
-    bool       fAcetateShowMarkup : 1;
-    bool       fAcetateShowAtn : 1;
-    bool       fAcetateShowInsDel : 1;
-    bool       fAcetateShowProps : 1;
+     bool       fDoNotEmbedSystemFont : 1 /*= false*/;
+     bool       fWordCompat : 1 /*= false*/;
+     bool       fLiveRecover : 1 /*= false*/;
+     bool       fEmbedFactoids : 1 /*= false*/;
+     bool       fFactoidXML : 1 /*= false*/;
+     bool       fFactoidAllDone : 1 /*= false*/;
+     bool       fFolioPrint : 1 /*= false*/;
+     bool       fReverseFolio : 1 /*= false*/;
+     sal_uInt16 iTextLineEnding : 3 /*= 0*/;
+     bool       fHideFcc : 1 /*= false*/;
+     bool       fAcetateShowMarkup : 1 /*= false*/;
+     bool       fAcetateShowAtn : 1 /*= false*/;
+     bool       fAcetateShowInsDel : 1 /*= false*/;
+     bool       fAcetateShowProps : 1 /*= false*/;
 
-    bool bUseThaiLineBreakingRules;
+    bool bUseThaiLineBreakingRules = false;
 
     /* Constructor for importing, needs to know the version of word used */
     WW8Dop(SvStream& rSt, sal_Int16 nFib, sal_Int32 nPos, sal_uInt32 nSize);
@@ -1844,26 +1846,19 @@ class WW8PLCF_HdFt
 {
 private:
     WW8PLCF aPLCF;
-    long nTextOfs;
     short nIdxOffset;
 
 public:
-    WW8PLCF_HdFt( SvStream* pSt, WW8Fib& rFib, WW8Dop& rDop );
+    WW8PLCF_HdFt( SvStream* pSt, WW8Fib const & rFib, WW8Dop const & rDop );
     bool GetTextPos(sal_uInt8 grpfIhdt, sal_uInt8 nWhich, WW8_CP& rStart, WW8_CP& rLen);
     void GetTextPosExact(short nIdx, WW8_CP& rStart, WW8_CP& rLen);
     void UpdateIndex( sal_uInt8 grpfIhdt );
 };
 
-void SwapQuotesInField(OUString &rFormat);
-
 Word2CHPX ReadWord2Chpx(SvStream &rSt, std::size_t nOffset, sal_uInt8 nSize);
 std::vector<sal_uInt8> ChpxToSprms(const Word2CHPX &rChpx);
 
-bool checkSeek(SvStream &rSt, sal_uInt32 nOffset)
-    SAL_WARN_UNUSED_RESULT;
-
-bool checkRead(SvStream &rSt, void *pDest, sal_uInt32 nLength)
-    SAL_WARN_UNUSED_RESULT;
+[[nodiscard]] bool checkRead(SvStream &rSt, void *pDest, sal_uInt32 nLength);
 
 //MS has a (slightly) inaccurate view of how many twips
 //are in the default letter size of a page

@@ -11,13 +11,14 @@
 #define INCLUDED_SC_INC_ORCUSFILTERS_HXX
 
 #include <rtl/ustring.hxx>
+#include <memory>
 
 class ScDocument;
-class SvTreeListBox;
 struct ScOrcusXMLTreeParam;
 struct ScOrcusImportXMLParam;
 class ScOrcusXMLContext;
 class SfxMedium;
+namespace weld { class TreeView; }
 
 /**
  * Collection of orcus filter wrappers.
@@ -30,6 +31,8 @@ public:
     virtual bool importCSV(ScDocument& rDoc, SfxMedium& rMedium) const = 0;
 
     virtual bool importGnumeric(ScDocument& rDoc, SfxMedium& rMedium) const = 0;
+
+    virtual bool importExcel2003XML(ScDocument& rDoc, SfxMedium& rMedium) const = 0;
 
     virtual bool importXLSX(ScDocument& rDoc, SfxMedium& rMedium) const = 0;
 
@@ -50,7 +53,7 @@ public:
      * The caller is responsible for deleting the instance returned from this
      * method when it's done.
      */
-    virtual ScOrcusXMLContext* createXMLContext(ScDocument& rDoc, const OUString& rPath) const = 0;
+    virtual std::unique_ptr<ScOrcusXMLContext> createXMLContext(ScDocument& rDoc, const OUString& rPath) const = 0;
 };
 
 class ScOrcusXMLContext
@@ -58,7 +61,7 @@ class ScOrcusXMLContext
 public:
     virtual ~ScOrcusXMLContext() {}
 
-    virtual void loadXMLStructure(SvTreeListBox& rTreeCtrl, ScOrcusXMLTreeParam& rParam) = 0;
+    virtual void loadXMLStructure(weld::TreeView& rTreeCtrl, ScOrcusXMLTreeParam& rParam) = 0;
 
     virtual void importXML(const ScOrcusImportXMLParam& rParam) = 0;
 };

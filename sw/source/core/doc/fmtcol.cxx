@@ -21,6 +21,7 @@
 #include <libxml/xmlwriter.h>
 
 #include <sal/macros.h>
+#include <osl/diagnose.h>
 #include <hintids.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/lrspitem.hxx>
@@ -29,14 +30,12 @@
 #include <fmtcol.hxx>
 #include <fmtcolfunc.hxx>
 #include <hints.hxx>
-#include <calc.hxx>
 #include <node.hxx>
 #include <numrule.hxx>
 #include <paratr.hxx>
 #include <calbck.hxx>
 #include <svl/intitem.hxx>
 
-#include <o3tl/make_unique.hxx>
 namespace TextFormatCollFunc
 {
     // #i71574#
@@ -52,22 +51,22 @@ namespace TextFormatCollFunc
         }
 
         // #i73790#
-        if ( !pTextFormatColl->StayAssignedToListLevelOfOutlineStyle() &&
-             pTextFormatColl->IsAssignedToListLevelOfOutlineStyle() )
+        if ( !(!pTextFormatColl->StayAssignedToListLevelOfOutlineStyle() &&
+             pTextFormatColl->IsAssignedToListLevelOfOutlineStyle()) )
+            return;
+
+        if (!pNewNumRuleItem)
         {
-            if (!pNewNumRuleItem)
+            (void)pTextFormatColl->GetItemState(RES_PARATR_NUMRULE, false, reinterpret_cast<const SfxPoolItem**>(&pNewNumRuleItem));
+        }
+        if (pNewNumRuleItem)
+        {
+            const OUString& sNumRuleName = pNewNumRuleItem->GetValue();
+            if ( sNumRuleName.isEmpty() ||
+                 sNumRuleName != pTextFormatColl->GetDoc()->GetOutlineNumRule()->GetName() )
             {
-                (void)pTextFormatColl->GetItemState(RES_PARATR_NUMRULE, false, reinterpret_cast<const SfxPoolItem**>(&pNewNumRuleItem));
-            }
-            if (pNewNumRuleItem)
-            {
-                OUString sNumRuleName = pNewNumRuleItem->GetValue();
-                if ( sNumRuleName.isEmpty() ||
-                     sNumRuleName != pTextFormatColl->GetDoc()->GetOutlineNumRule()->GetName() )
-                {
-                    // delete assignment of paragraph style to list level of outline style.
-                    pTextFormatColl->DeleteAssignmentToListLevelOfOutlineStyle();
-                }
+                // delete assignment of paragraph style to list level of outline style.
+                pTextFormatColl->DeleteAssignmentToListLevelOfOutlineStyle();
             }
         }
     }
@@ -80,7 +79,7 @@ namespace TextFormatCollFunc
         (void)rTextFormatColl.GetItemState(RES_PARATR_NUMRULE, false, reinterpret_cast<const SfxPoolItem**>(&pNumRuleItem));
         if (pNumRuleItem)
         {
-            const OUString sNumRuleName = pNumRuleItem->GetValue();
+            const OUString& sNumRuleName = pNumRuleItem->GetValue();
             if ( !sNumRuleName.isEmpty() )
             {
                 pNumRule = rTextFormatColl.GetDoc()->FindNumRulePtr( sNumRuleName );
@@ -158,11 +157,11 @@ void SwTextFormatColl::Modify( const SfxPoolItem* pOld, const SfxPoolItem* pNew 
         if( GetAttrSet().GetParent() )
         {
             const SfxItemSet* pParent = GetAttrSet().GetParent();
-            pNewLRSpace = static_cast<const SvxLRSpaceItem*>(&pParent->Get( RES_LR_SPACE ));
-            pNewULSpace = static_cast<const SvxULSpaceItem*>(&pParent->Get( RES_UL_SPACE ));
-            aFontSizeArr[0] = static_cast<const SvxFontHeightItem*>(&pParent->Get( RES_CHRATR_FONTSIZE ));
-            aFontSizeArr[1] = static_cast<const SvxFontHeightItem*>(&pParent->Get( RES_CHRATR_CJK_FONTSIZE ));
-            aFontSizeArr[2] = static_cast<const SvxFontHeightItem*>(&pParent->Get( RES_CHRATR_CTL_FONTSIZE ));
+            pNewLRSpace = &pParent->Get( RES_LR_SPACE );
+            pNewULSpace = &pParent->Get( RES_UL_SPACE );
+            aFontSizeArr[0] = &pParent->Get( RES_CHRATR_FONTSIZE );
+            aFontSizeArr[1] = &pParent->Get( RES_CHRATR_CJK_FONTSIZE );
+            aFontSizeArr[2] = &pParent->Get( RES_CHRATR_CTL_FONTSIZE );
             // #i66431# - modify has to be propagated, because of new parent format.
             bNewParent = true;
         }
@@ -226,12 +225,12 @@ void SwTextFormatColl::Modify( const SfxPoolItem* pOld, const SfxPoolItem* pNew 
                 bChg |= nTmp != aNew.GetRight();
             }
             // We had a relative value -> recalculate
-            if( 100 != aNew.GetPropTextFirstLineOfst() )
+            if( 100 != aNew.GetPropTextFirstLineOffset() )
             {
-                short nTmp = aNew.GetTextFirstLineOfst();    // keep so that we can compare
-                aNew.SetTextFirstLineOfst( pNewLRSpace->GetTextFirstLineOfst(),
-                                            aNew.GetPropTextFirstLineOfst() );
-                bChg |= nTmp != aNew.GetTextFirstLineOfst();
+                short nTmp = aNew.GetTextFirstLineOffset();    // keep so that we can compare
+                aNew.SetTextFirstLineOffset( pNewLRSpace->GetTextFirstLineOffset(),
+                                            aNew.GetPropTextFirstLineOffset() );
+                bChg |= nTmp != aNew.GetTextFirstLineOffset();
             }
             if( bChg )
             {
@@ -387,7 +386,7 @@ sal_uInt16 SwTextFormatColl::ResetAllFormatAttr()
     const bool bOldState( mbStayAssignedToListLevelOfOutlineStyle );
     mbStayAssignedToListLevelOfOutlineStyle = true;
     // #i70748#
-    // Outline level is no longer a member, it is a attribute now.
+    // Outline level is no longer a member, it is an attribute now.
     // Thus, it needs to be restored, if the paragraph style is assigned
     // to the outline style
     const int nAssignedOutlineStyleLevel = IsAssignedToListLevelOfOutlineStyle()
@@ -541,22 +540,18 @@ void SwConditionTextFormatColl::InsertCondition( const SwCollCondition& rCond )
     }
 
     // Not found -> so insert it
-    m_CondColls.push_back( o3tl::make_unique<SwCollCondition> (rCond) );
+    m_CondColls.push_back( std::make_unique<SwCollCondition> (rCond) );
 }
 
-bool SwConditionTextFormatColl::RemoveCondition( const SwCollCondition& rCond )
+void SwConditionTextFormatColl::RemoveCondition( const SwCollCondition& rCond )
 {
-    bool bRet = false;
     for (SwFormatCollConditions::size_type n = 0; n < m_CondColls.size(); ++n)
     {
         if (*m_CondColls[ n ] == rCond)
         {
             m_CondColls.erase( m_CondColls.begin() + n );
-            bRet = true;
         }
     }
-
-    return bRet;
 }
 
 void SwConditionTextFormatColl::SetConditions( const SwFormatCollConditions& rCndClls )
@@ -586,7 +581,7 @@ void SwTextFormatColl::SetAttrOutlineLevel( int nLevel)
 
 int SwTextFormatColl::GetAttrOutlineLevel() const
 {
-    return static_cast<const SfxUInt16Item &>(GetFormatAttr(RES_PARATR_OUTLINELEVEL)).GetValue();
+    return GetFormatAttr(RES_PARATR_OUTLINELEVEL).GetValue();
 }
 
 int SwTextFormatColl::GetAssignedOutlineStyleLevel() const
@@ -610,7 +605,7 @@ void SwTextFormatColl::AssignToListLevelOfOutlineStyle(const int nAssignedListLe
         {
             if ( pDerivedTextFormatColl->GetItemState( RES_PARATR_NUMRULE, false ) == SfxItemState::DEFAULT )
             {
-                SwNumRuleItem aItem(aEmptyOUStr);
+                SwNumRuleItem aItem;
                 pDerivedTextFormatColl->SetFormatAttr( aItem );
             }
             if ( pDerivedTextFormatColl->GetItemState( RES_PARATR_OUTLINELEVEL, false ) == SfxItemState::DEFAULT )

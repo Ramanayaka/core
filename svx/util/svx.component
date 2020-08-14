@@ -100,8 +100,36 @@
       constructor="com_sun_star_comp_svx_SmartTagMenuController_get_implementation">
     <service name="com.sun.star.frame.PopupMenuController"/>
   </implementation>
-  <implementation name="com.sun.star.comp.svx.LineEndToolBoxControl"
-      constructor="com_sun_star_comp_svx_LineEndToolBoxControl_get_implementation">
+  <implementation name="com.sun.star.comp.svx.LineSpacingToolBoxControl"
+    constructor="com_sun_star_comp_svx_LineSpacingToolBoxControl_get_implementation">
+    <service name="com.sun.star.frame.ToolbarController"/>
+  </implementation>
+  <implementation name="com.sun.star.comp.svx.CharacterSpacingToolBoxControl"
+    constructor="com_sun_star_comp_svx_CharacterSpacingToolBoxControl_get_implementation">
+    <service name="com.sun.star.frame.ToolbarController"/>
+  </implementation>
+  <implementation name="com.sun.star.comp.svx.TableToolBoxControl"
+    constructor="com_sun_star_comp_svx_TableToolBoxControl_get_implementation">
+    <service name="com.sun.star.frame.ToolbarController"/>
+  </implementation>
+  <implementation name="com.sun.star.comp.svx.ColumnsToolBoxControl"
+    constructor="com_sun_star_comp_svx_ColumnsToolBoxControl_get_implementation">
+    <service name="com.sun.star.frame.ToolbarController"/>
+  </implementation>
+  <implementation name="com.sun.star.comp.svx.UnderlineToolBoxControl"
+    constructor="com_sun_star_comp_svx_UnderlineToolBoxControl_get_implementation">
+    <service name="com.sun.star.frame.ToolbarController"/>
+  </implementation>
+  <implementation name="com.sun.star.comp.svx.UndoRedoToolBoxControl"
+    constructor="com_sun_star_comp_svx_UndoRedoToolBoxControl_get_implementation">
+    <service name="com.sun.star.frame.ToolbarController"/>
+  </implementation>
+  <implementation name="com.sun.star.comp.svx.CTLToolBoxControl"
+    constructor="com_sun_star_comp_svx_CTLToolBoxControl_get_implementation">
+    <service name="com.sun.star.frame.ToolbarController"/>
+  </implementation>
+  <implementation name="com.sun.star.comp.svx.VertTextToolBoxControl"
+    constructor="com_sun_star_comp_svx_VertTextToolBoxControl_get_implementation">
     <service name="com.sun.star.frame.ToolbarController"/>
   </implementation>
 </component>

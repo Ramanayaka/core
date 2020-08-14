@@ -23,15 +23,11 @@
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/embed/XStorage.hpp>
 #include <com/sun/star/embed/XHierarchicalStorageAccess.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/io/XStream.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/packages/NoEncryptionException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/weak.hxx>
-#include <cppuhelper/interfacecontainer.h>
 
 #include <ucbhelper/content.hxx>
 
@@ -43,7 +39,7 @@ class FSStorage : public css::lang::XTypeProvider
                 , public ::cppu::OWeakObject
 {
     ::osl::Mutex m_aMutex;
-    FSStorage_Impl* m_pImpl;
+    std::unique_ptr<FSStorage_Impl> m_pImpl;
 
 protected:
 
@@ -55,14 +51,14 @@ public:
 
     virtual ~FSStorage() override;
 
-    ::ucbhelper::Content* GetContent();
+    ucbhelper::Content& GetContent();
 
     static void CopyStreamToSubStream( const OUString& aSourceURL,
                                 const css::uno::Reference< css::embed::XStorage >& xDest,
                                 const OUString& aNewEntryName );
 
-    void CopyContentToStorage_Impl( ::ucbhelper::Content* pContent,
-                                    const css::uno::Reference< css::embed::XStorage >& xDest );
+    void CopyContentToStorage_Impl(ucbhelper::Content& rContent,
+                                   const css::uno::Reference<css::embed::XStorage>& xDest);
 
     static bool MakeFolderNoUI( const OUString& rFolder );
 

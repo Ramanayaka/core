@@ -20,38 +20,36 @@
 #define INCLUDED_CHART2_SOURCE_VIEW_AXES_VAXISPROPERTIES_HXX
 
 #include "TickmarkProperties.hxx"
-#include "PlottingPositionHelper.hxx"
-#include "LabelAlignment.hxx"
-#include "ExplicitCategoriesProvider.hxx"
+#include <LabelAlignment.hxx>
 
 #include <com/sun/star/chart/ChartAxisLabelPosition.hpp>
 #include <com/sun/star/chart/ChartAxisMarkPosition.hpp>
 #include <com/sun/star/chart/ChartAxisPosition.hpp>
-#include <com/sun/star/chart2/XAxis.hpp>
-#include <com/sun/star/chart2/AxisType.hpp>
-#include <com/sun/star/chart2/data/XTextualDataSequence.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/drawing/TextVerticalAdjust.hpp>
-#include <com/sun/star/drawing/TextHorizontalAdjust.hpp>
-#include <com/sun/star/lang/Locale.hpp>
+#include <com/sun/star/uno/Any.hxx>
 
 #include <vector>
-#include <boost/optional.hpp>
+#include <optional>
+
+namespace chart { class ExplicitCategoriesProvider; }
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::chart2 { class XAxis; }
+namespace com::sun::star::chart2::data { class XTextualDataSequence; }
 
 namespace chart
 {
 
 //These properties describe how a couple of labels are arranged one to another.
 //The couple can contain all labels for all tickmark depth or just the labels for one single depth or
-//the labels from an coherent range of tick depths (e.g. the major and first minor tickmarks should be handled together).
+//the labels from a coherent range of tick depths (e.g. the major and first minor tickmarks should be handled together).
 //... only allow side by side for different tick depth
-enum AxisLabelStaggering
+enum class AxisLabelStaggering
 {
-      SIDE_BY_SIDE
-    , STAGGER_EVEN
-    , STAGGER_ODD
-    , STAGGER_AUTO
+      SideBySide
+    , StaggerEven
+    , StaggerOdd
+    , StaggerAuto
 };
 
 struct AxisLabelProperties final
@@ -103,8 +101,8 @@ struct AxisProperties final
     css::chart::ChartAxisLabelPosition m_eLabelPos;
     css::chart::ChartAxisMarkPosition  m_eTickmarkPos;
 
-    boost::optional<double> m_pfMainLinePositionAtOtherAxis;
-    boost::optional<double> m_pfExrtaLinePositionAtOtherAxis;
+    std::optional<double> m_pfMainLinePositionAtOtherAxis;
+    std::optional<double> m_pfExrtaLinePositionAtOtherAxis;
 
     bool        m_bCrossingAxisHasReverseDirection;
     bool        m_bCrossingAxisIsCategoryAxes;
@@ -137,11 +135,12 @@ struct AxisProperties final
     css::uno::Reference<css::chart2::data::XTextualDataSequence> m_xAxisTextProvider; //for categories or series names
     //<- category axes
 
+    bool                                m_bLimitSpaceForLabels;
+
     //methods:
 
     AxisProperties( const css::uno::Reference< css::chart2::XAxis >& xAxisModel
                   , ExplicitCategoriesProvider* pExplicitCategoriesProvider );
-    AxisProperties( const AxisProperties& rAxisProperties );
 
     void init(bool bCartesian=false);//init from model data (m_xAxisModel)
 

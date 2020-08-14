@@ -33,6 +33,10 @@ $(eval $(call gb_CppunitTest_use_libraries,vcl_lifecycle, \
 	vcl \
 ))
 
+$(eval $(call gb_CppunitTest_add_defs,vcl_lifecycle,\
+    -DVCL_INTERNALS \
+))
+
 $(eval $(call gb_CppunitTest_use_sdk_api,vcl_lifecycle))
 
 $(eval $(call gb_CppunitTest_use_ure,vcl_lifecycle))
@@ -48,5 +52,9 @@ $(eval $(call gb_CppunitTest_use_components,vcl_lifecycle,\
 ))
 
 $(eval $(call gb_CppunitTest_use_configuration,vcl_lifecycle))
+
+$(eval $(call gb_CppunitTest_use_uiconfigs,vcl_lifecycle, \
+    vcl \
+))
 
 # vim: set noet sw=4 ts=4:

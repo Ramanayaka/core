@@ -28,18 +28,15 @@ class SfxItemSet;
 class Bitmap;
 class MapMode;
 
-namespace sdr
-{
-    namespace contact
+namespace sdr::contact
     {
-        class ViewContactOfMasterPageDescriptor : public ViewContact
+        class ViewContactOfMasterPageDescriptor final : public ViewContact
         {
-        protected:
             // the owner of this ViewContact. Set from constructor and not
             // to be changed in any way.
             sdr::MasterPageDescriptor&                      mrMasterPageDescriptor;
 
-            // Create a Object-Specific ViewObjectContact
+            // Create an Object-Specific ViewObjectContact
             virtual ViewObjectContact& CreateObjectSpecificViewObjectContact(ObjectContact& rObjectContact) override;
 
             // This method is responsible for creating the graphical visualisation data
@@ -63,8 +60,8 @@ namespace sdr
             virtual ViewContact& GetViewContact(sal_uInt32 nIndex) const override;
             virtual ViewContact* GetParentContact() const override;
         };
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace sdr::contact
 
 #endif // INCLUDED_SVX_INC_SDR_CONTACT_VIEWCONTACTOFMASTERPAGEDESCRIPTOR_HXX
 

@@ -17,35 +17,36 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "model/SlideSorterModel.hxx"
+#include <model/SlideSorterModel.hxx>
 
-#include "SlideSorter.hxx"
-#include "model/SlsPageDescriptor.hxx"
-#include "model/SlsPageEnumerationProvider.hxx"
-#include "controller/SlideSorterController.hxx"
-#include "controller/SlsProperties.hxx"
-#include "controller/SlsPageSelector.hxx"
-#include "controller/SlsCurrentSlideManager.hxx"
-#include "controller/SlsSlotManager.hxx"
-#include "view/SlideSorterView.hxx"
+#include <SlideSorter.hxx>
+#include <sal/log.hxx>
+#include <model/SlsPageDescriptor.hxx>
+#include <model/SlsPageEnumerationProvider.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsPageSelector.hxx>
+#include <controller/SlsCurrentSlideManager.hxx>
+#include <controller/SlsSlotManager.hxx>
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 #include <com/sun/star/drawing/XMasterPagesSupplier.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/UnknownPropertyException.hpp>
+#include <com/sun/star/frame/XController.hpp>
 
-#include "ViewShellBase.hxx"
-#include "DrawViewShell.hxx"
-#include "DrawDocShell.hxx"
-#include "drawdoc.hxx"
-#include "sdpage.hxx"
-#include "FrameView.hxx"
+#include <vcl/uitest/logger.hxx>
+#include <vcl/uitest/eventdescription.hxx>
+
+#include <ViewShellBase.hxx>
+#include <DrawDocShell.hxx>
+#include <drawdoc.hxx>
+#include <sdpage.hxx>
+#include <FrameView.hxx>
 
 #include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sd { namespace slidesorter { namespace model {
+namespace sd::slidesorter::model {
 
 namespace {
     bool PrintModel (const SlideSorterModel& rModel)
@@ -97,6 +98,22 @@ namespace {
 
         return true;
     }
+}
+
+namespace {
+
+void collectUIInformation(const OUString& num, const OUString& rAction)
+{
+    EventDescription aDescription;
+    aDescription.aID = "impress_win_or_draw_win";
+    aDescription.aParameters = {{"POS", num}};
+    aDescription.aAction = rAction;
+    aDescription.aKeyWord = "ImpressWindowUIObject";
+    aDescription.aParent = "MainWindow";
+
+    UITestLogger::getInstance().logEvent(aDescription);
+}
+
 }
 
 SlideSorterModel::SlideSorterModel (SlideSorter& rSlideSorter)
@@ -157,10 +174,10 @@ SharedPageDescriptor SlideSorterModel::GetPageDescriptor (
         if (pDescriptor == nullptr && bCreate && mxSlides.is())
         {
             SdPage* pPage = GetPage(nPageIndex);
-            pDescriptor.reset(new PageDescriptor (
+            pDescriptor = std::make_shared<PageDescriptor>(
                 Reference<drawing::XDrawPage>(mxSlides->getByIndex(nPageIndex),UNO_QUERY),
                 pPage,
-                nPageIndex));
+                nPageIndex);
             maPageDescriptors[nPageIndex] = pDescriptor;
         }
     }
@@ -183,7 +200,7 @@ sal_Int32 SlideSorterModel::GetIndex (const Reference<drawing::XDrawPage>& rxSli
             aNumber >>= nNumber;
             nNumber -= 1;
             SharedPageDescriptor pDescriptor (GetPageDescriptor(nNumber, false));
-            if (pDescriptor.get() != nullptr
+            if (pDescriptor
                 && pDescriptor->GetXDrawPage() == rxSlide)
             {
                 return nNumber;
@@ -191,7 +208,7 @@ sal_Int32 SlideSorterModel::GetIndex (const Reference<drawing::XDrawPage>& rxSli
         }
         catch (uno::Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("sd");
         }
     }
 
@@ -204,7 +221,7 @@ sal_Int32 SlideSorterModel::GetIndex (const Reference<drawing::XDrawPage>& rxSli
 
         // Make sure that the descriptor exists.  Without it the given slide
         // can not be found.
-        if (pDescriptor.get() == nullptr)
+        if (!pDescriptor)
         {
             // Call GetPageDescriptor() to create the missing descriptor.
             pDescriptor = GetPageDescriptor(nIndex);
@@ -227,7 +244,7 @@ sal_Int32 SlideSorterModel::GetIndex (const SdrPage* pPage) const
     // First try to guess the right index.
     sal_Int16 nNumber ((pPage->GetPageNum()-1)/2);
     SharedPageDescriptor pDescriptor (GetPageDescriptor(nNumber, false));
-    if (pDescriptor.get() != nullptr
+    if (pDescriptor
         && pDescriptor->GetPage() == pPage)
     {
         return nNumber;
@@ -242,7 +259,7 @@ sal_Int32 SlideSorterModel::GetIndex (const SdrPage* pPage) const
 
         // Make sure that the descriptor exists.  Without it the given slide
         // can not be found.
-        if (pDescriptor.get() == nullptr)
+        if (!pDescriptor)
         {
             // Call GetPageDescriptor() to create the missing descriptor.
             pDescriptor = GetPageDescriptor(nIndex);
@@ -317,22 +334,20 @@ void SlideSorterModel::ClearDescriptorList()
         aDescriptors.swap(maPageDescriptors);
     }
 
-    for (::std::vector<SharedPageDescriptor>::iterator iDescriptor=aDescriptors.begin(), iEnd=aDescriptors.end();
-         iDescriptor!=iEnd;
-         ++iDescriptor)
+    for (auto& rxDescriptor : aDescriptors)
     {
-        if (iDescriptor->get() != nullptr)
+        if (rxDescriptor != nullptr)
         {
-            if ( ! iDescriptor->unique())
+            if (rxDescriptor.use_count() > 1)
             {
                 SAL_INFO(
                     "sd.sls",
                     "trying to delete page descriptor that is still used with"
-                        " count " << iDescriptor->use_count());
+                        " count " << rxDescriptor.use_count());
                 // No assertion here because that can hang the office when
                 // opening a dialog from here.
             }
-            iDescriptor->reset();
+            rxDescriptor.reset();
         }
     }
 }
@@ -374,7 +389,7 @@ void SlideSorterModel::SetDocumentSlides (
     mxSlides = nullptr;
     ClearDescriptorList ();
 
-    // Reset the current page to cause everbody to release references to it.
+    // Reset the current page to cause everybody to release references to it.
     mrSlideSorter.GetController().GetCurrentSlideManager()->NotifyCurrentSlideChange(-1);
 
     // Set the new set of pages.
@@ -444,7 +459,7 @@ void SlideSorterModel::UpdatePageList()
                     xController->getModel(), UNO_QUERY);
                 if (xSupplier.is())
                 {
-                    xPages.set( xSupplier->getMasterPages(), UNO_QUERY);
+                    xPages = xSupplier->getMasterPages();
                 }
             }
             break;
@@ -455,7 +470,7 @@ void SlideSorterModel::UpdatePageList()
                     xController->getModel(), UNO_QUERY);
                 if (xSupplier.is())
                 {
-                    xPages.set( xSupplier->getDrawPages(), UNO_QUERY);
+                    xPages = xSupplier->getDrawPages();
                 }
             }
             break;
@@ -534,15 +549,17 @@ bool SlideSorterModel::NotifyPageEvent (const SdrPage* pSdrPage)
     //NotifyPageEvent is called for add, remove, *and* change position so for
     //the change position case we must ensure we don't end up with the slide
     //duplicated in our list
-    DeleteSlide(pPage);
+    bool bSelected = DeleteSlide(pPage);
     if (pPage->IsInserted())
-        InsertSlide(pPage);
+    {
+        InsertSlide(pPage, bSelected);
+    }
     CheckModel(*this);
 
     return true;
 }
 
-void SlideSorterModel::InsertSlide (SdPage* pPage)
+void SlideSorterModel::InsertSlide(SdPage* pPage, bool bMarkSelected)
 {
     // Find the index at which to insert the given page.
     sal_uInt16 nCoreIndex (pPage->GetPageNum());
@@ -559,19 +576,24 @@ void SlideSorterModel::InsertSlide (SdPage* pPage)
         if (GetPage(nIndex+1) != GetPageDescriptor(nIndex)->GetPage())
             return;
 
+    auto iter = maPageDescriptors.begin() + nIndex;
+
     // Insert the given page at index nIndex
-    maPageDescriptors.insert(
-        maPageDescriptors.begin()+nIndex,
+    iter = maPageDescriptors.insert(
+        iter,
         std::make_shared<PageDescriptor>(
                 Reference<drawing::XDrawPage>(mxSlides->getByIndex(nIndex),UNO_QUERY),
                 pPage,
                 nIndex));
 
+    if (bMarkSelected)
+        (*iter)->SetState(PageDescriptor::ST_Selected, true);
+
     // Update page indices.
     UpdateIndices(nIndex+1);
 }
 
-void SlideSorterModel::DeleteSlide (const SdPage* pPage)
+bool SlideSorterModel::DeleteSlide (const SdPage* pPage)
 {
     sal_Int32 nIndex(0);
 
@@ -594,15 +616,22 @@ void SlideSorterModel::DeleteSlide (const SdPage* pPage)
         }
     }
 
+    bool bMarkedSelected(false);
+
     if(nIndex >= 0 && nIndex < static_cast<sal_Int32>(maPageDescriptors.size()))
     {
         if (maPageDescriptors[nIndex])
             if (maPageDescriptors[nIndex]->GetPage() != pPage)
-                return;
+                return false;
 
-        maPageDescriptors.erase(maPageDescriptors.begin()+nIndex);
+        auto iter = maPageDescriptors.begin() + nIndex;
+        bMarkedSelected = (*iter)->HasState(PageDescriptor::ST_Selected);
+        maPageDescriptors.erase(iter);
         UpdateIndices(nIndex);
+
+        collectUIInformation(OUString::number(nIndex + 1), "Delete_Slide_or_Page");
     }
+    return bMarkedSelected;
 }
 
 void SlideSorterModel::UpdateIndices (const sal_Int32 nFirstIndex)
@@ -635,14 +664,14 @@ SdPage* SlideSorterModel::GetPage (const sal_Int32 nSdIndex) const
     if (pModel != nullptr)
     {
         if (meEditMode == EditMode::Page)
-            return pModel->GetSdPage ((sal_uInt16)nSdIndex, PageKind::Standard);
+            return pModel->GetSdPage (static_cast<sal_uInt16>(nSdIndex), PageKind::Standard);
         else
-            return pModel->GetMasterSdPage ((sal_uInt16)nSdIndex, PageKind::Standard);
+            return pModel->GetMasterSdPage (static_cast<sal_uInt16>(nSdIndex), PageKind::Standard);
     }
     else
         return nullptr;
 }
 
-} } } // end of namespace ::sd::slidesorter::model
+} // end of namespace ::sd::slidesorter::model
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

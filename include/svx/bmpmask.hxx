@@ -25,24 +25,18 @@
 #include <sfx2/dockwin.hxx>
 #include <svl/poolitem.hxx>
 #include <svx/svxdllapi.h>
-#include <svx/xtable.hxx>
 #include <tools/color.hxx>
-#include <vcl/animate.hxx>
-#include <vcl/bitmap.hxx>
+#include <vcl/animate/Animation.hxx>
 #include <vcl/bitmapex.hxx>
 #include <vcl/gdimtf.hxx>
 #include <vcl/graph.hxx>
-#include <vcl/vclptr.hxx>
+#include <memory>
 
 namespace vcl { class Window; }
+namespace weld { class CustomWeld; }
 
-class CheckBox;
-class ColorLB;
-class MetricField;
-class PushButton;
 class SfxBindings;
 class SfxModule;
-class ToolBox;
 
 /*************************************************************************
 |*
@@ -51,12 +45,10 @@ class ToolBox;
 \************************************************************************/
 class SvxBmpMask;
 
-class SvxBmpMaskSelectItem : public SfxControllerItem
+class SvxBmpMaskSelectItem final : public SfxControllerItem
 {
-private:
     SvxBmpMask  &rBmpMask;
 
-protected:
     virtual void StateChanged( sal_uInt16 nSID, SfxItemState eState,
                                const SfxPoolItem* pState ) override;
 
@@ -71,7 +63,7 @@ public:
 |*
 \************************************************************************/
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxBmpMaskChildWindow : public SfxChildWindow
+class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxBmpMaskChildWindow final : public SfxChildWindow
 {
  public:
                             SvxBmpMaskChildWindow( vcl::Window*,
@@ -89,61 +81,65 @@ class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxBmpMaskChildWindow : public SfxChildWindo
 
 class MaskData;
 class MaskSet;
-class ColorWindow;
-class SvxColorListBox;
+class BmpColorWindow;
+class ColorListBox;
 
 class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxBmpMask : public SfxDockingWindow
 {
     friend class MaskData;
     friend class MaskSet;
 
-    VclPtr<ToolBox>            m_pTbxPipette;
-    VclPtr<ColorWindow>        m_pCtlPipette;
-    VclPtr<PushButton>         m_pBtnExec;
+    std::unique_ptr<weld::Toolbar> m_xTbxPipette;
+    std::unique_ptr<BmpColorWindow> m_xCtlPipette;
+    std::unique_ptr<weld::CustomWeld> m_xCtlPipetteWin;
+    std::unique_ptr<weld::Button> m_xBtnExec;
 
-    VclPtr<CheckBox>           m_pCbx1;
-    VclPtr<MaskSet>            m_pQSet1;
-    VclPtr<MetricField>        m_pSp1;
-    VclPtr<SvxColorListBox>    m_pLbColor1;
+    std::unique_ptr<weld::CheckButton> m_xCbx1;
+    std::unique_ptr<MaskSet> m_xQSet1;
+    std::unique_ptr<weld::CustomWeld> m_xQSetWin1;
+    std::unique_ptr<weld::MetricSpinButton> m_xSp1;
+    std::unique_ptr<ColorListBox> m_xLbColor1;
 
-    VclPtr<CheckBox>           m_pCbx2;
-    VclPtr<MaskSet>            m_pQSet2;
-    VclPtr<MetricField>        m_pSp2;
-    VclPtr<SvxColorListBox>    m_pLbColor2;
+    std::unique_ptr<weld::CheckButton> m_xCbx2;
+    std::unique_ptr<MaskSet> m_xQSet2;
+    std::unique_ptr<weld::CustomWeld> m_xQSetWin2;
+    std::unique_ptr<weld::MetricSpinButton> m_xSp2;
+    std::unique_ptr<ColorListBox> m_xLbColor2;
 
-    VclPtr<CheckBox>           m_pCbx3;
-    VclPtr<MaskSet>            m_pQSet3;
-    VclPtr<MetricField>        m_pSp3;
-    VclPtr<SvxColorListBox>    m_pLbColor3;
+    std::unique_ptr<weld::CheckButton> m_xCbx3;
+    std::unique_ptr<MaskSet> m_xQSet3;
+    std::unique_ptr<weld::CustomWeld> m_xQSetWin3;
+    std::unique_ptr<weld::MetricSpinButton> m_xSp3;
+    std::unique_ptr<ColorListBox> m_xLbColor3;
 
-    VclPtr<CheckBox>           m_pCbx4;
-    VclPtr<MaskSet>            m_pQSet4;
-    VclPtr<MetricField>        m_pSp4;
-    VclPtr<SvxColorListBox>    m_pLbColor4;
+    std::unique_ptr<weld::CheckButton> m_xCbx4;
+    std::unique_ptr<MaskSet> m_xQSet4;
+    std::unique_ptr<weld::CustomWeld> m_xQSetWin4;
+    std::unique_ptr<weld::MetricSpinButton> m_xSp4;
+    std::unique_ptr<ColorListBox> m_xLbColor4;
 
-    MaskData*           pData;
-    VclPtr<CheckBox>           m_pCbxTrans;
-    VclPtr<SvxColorListBox>    m_pLbColorTrans;
+    std::unique_ptr<weld::CheckButton> m_xCbxTrans;
+    std::unique_ptr<ColorListBox> m_xLbColorTrans;
+
+    std::unique_ptr<MaskData> m_xData;
 
     Color               aPipetteColor;
     SvxBmpMaskSelectItem aSelItem;
 
     virtual bool        Close() override;
 
-    sal_uInt16              InitColorArrays( Color* pSrcCols, Color* pDstCols,
-                                         sal_uIntPtr* pTols );
+    sal_uInt16          InitColorArrays( Color* pSrcCols, Color* pDstCols,
+                                         sal_uInt8* pTols );
 
-    Bitmap              ImpMask( const Bitmap& rBitmap );
+    void                ImpMask( BitmapEx& rBitmap );
     GDIMetaFile         ImpMask( const GDIMetaFile& rMtf );
     Animation           ImpMask( const Animation& rAnimation );
     BitmapEx            ImpMaskTransparent( const BitmapEx& rBitmapEx,
                                             const Color& rColor,
-                                            const long nTol );
+                                            const sal_uInt8 nTol );
 
     GDIMetaFile         GetMetaFile(const Graphic& rGraphic);
 
-    static BitmapEx     ImpReplaceTransparency( const BitmapEx& rBmpEx,
-                                                const Color& rColor );
     static Animation    ImpReplaceTransparency( const Animation& rAnim,
                                                 const Color& rColor );
     static GDIMetaFile  ImpReplaceTransparency( const GDIMetaFile& rMtf,

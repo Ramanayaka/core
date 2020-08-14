@@ -19,13 +19,19 @@
 
 #include "pdffilter.hxx"
 #include "pdfexport.hxx"
+#include <comphelper/processfactory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
 #include <svl/outstrm.hxx>
+#include <unotools/ucbstreamhelper.hxx>
+#include <unotools/tempfile.hxx>
 #include <vcl/FilterConfigItem.hxx>
 #include <memory>
 
+#include <com/sun/star/io/XOutputStream.hpp>
+
+using namespace ::com::sun::star::io;
 
 PDFFilter::PDFFilter( const Reference< XComponentContext > &rxContext ) :
     mxContext( rxContext )
@@ -44,11 +50,12 @@ bool PDFFilter::implExport( const Sequence< PropertyValue >& rDescriptor )
     Sequence< PropertyValue >   aFilterData;
     sal_Int32                   nLength = rDescriptor.getLength();
     const PropertyValue*        pValue = rDescriptor.getConstArray();
+    bool                        bIsRedactMode = false;
     bool                    bRet = false;
     Reference< task::XStatusIndicator > xStatusIndicator;
     Reference< task::XInteractionHandler > xIH;
 
-    for ( sal_Int32 i = 0 ; ( i < nLength ) && !xOStm.is(); ++i)
+    for (sal_Int32 i = 0; i < nLength; ++i)
     {
         if ( pValue[ i ].Name == "OutputStream" )
             pValue[ i ].Value >>= xOStm;
@@ -60,9 +67,15 @@ bool PDFFilter::implExport( const Sequence< PropertyValue >& rDescriptor )
             pValue[i].Value >>= xIH;
     }
 
+    for (sal_Int32 i = 0 ; i < nLength; ++i)
+    {
+        if ( pValue[i].Name == "IsRedactMode")
+            pValue[i].Value >>= bIsRedactMode;
+    }
+
     /* we don't get FilterData if we are exporting directly
        to pdf, but we have to use the last user settings (especially for the CompressMode) */
-    if ( !aFilterData.getLength() )
+    if ( !aFilterData.hasElements() )
     {
         FilterConfigItem aCfgItem( "Office.Common/Filter/PDF/Export/" );
         aCfgItem.ReadBool(  "UseLosslessCompression", false );
@@ -71,9 +84,11 @@ bool PDFFilter::implExport( const Sequence< PropertyValue >& rDescriptor )
         aCfgItem.ReadInt32( "MaxImageResolution", 300 );
         aCfgItem.ReadBool(  "UseTaggedPDF", false );
         aCfgItem.ReadInt32( "SelectPdfVersion", 0 );
+        aCfgItem.ReadBool("PDFUACompliance", false);
         aCfgItem.ReadBool(  "ExportNotes", false );
         aCfgItem.ReadBool( "ExportPlaceholders", false );
         aCfgItem.ReadBool(  "ExportNotesPages", false );
+        aCfgItem.ReadBool(  "ExportOnlyNotesPages", false );
         aCfgItem.ReadBool(  "UseTransitionEffects", true );
         aCfgItem.ReadBool(  "IsSkipEmptyPages", false );
         aCfgItem.ReadBool(  "ExportFormFields", true );
@@ -87,8 +102,10 @@ bool PDFFilter::implExport( const Sequence< PropertyValue >& rDescriptor )
         aCfgItem.ReadBool(  "DisplayPDFDocumentTitle", true );
         aCfgItem.ReadInt32( "InitialView", 0 );
         aCfgItem.ReadInt32( "Magnification", 0 );
+        aCfgItem.ReadInt32( "Zoom", 100 );
         aCfgItem.ReadInt32( "PageLayout", 0 );
         aCfgItem.ReadBool(  "FirstPageOnLeft", false );
+        aCfgItem.ReadInt32( "InitialPage", 1 );
         aCfgItem.ReadBool(  "IsAddStream", false );
 
         // the encryption is not available when exporting directly, since the encryption is off by default and the selection
@@ -103,8 +120,36 @@ bool PDFFilter::implExport( const Sequence< PropertyValue >& rDescriptor )
 
         aCfgItem.ReadBool(  "ExportBookmarks", true );
         aCfgItem.ReadBool(  "ExportHiddenSlides", false );
+        aCfgItem.ReadBool(  "SinglePageSheets", false );
         aCfgItem.ReadInt32( "OpenBookmarkLevels", -1 );
+
+        aCfgItem.ReadBool( "IsRedactMode", false);
+
         aFilterData = aCfgItem.GetFilterData();
+    }
+
+
+    if (bIsRedactMode)
+    {
+        bool bFound = false;
+
+        for (PropertyValue& rProp : aFilterData)
+        {
+            if (rProp.Name == "IsRedactMode")
+            {
+                rProp.Value <<= bIsRedactMode;
+                bFound = true;
+                break;
+            }
+        }
+
+        if (!bFound)
+        {
+            sal_Int32 nNewSize = aFilterData.getLength() + 1;
+            aFilterData.realloc( nNewSize );
+            aFilterData[nNewSize - 1].Name = "IsRedactMode";
+            aFilterData[nNewSize - 1].Value <<= bIsRedactMode;
+        }
     }
 
     if( mxSrcDoc.is() && xOStm.is() )
@@ -132,6 +177,7 @@ bool PDFFilter::implExport( const Sequence< PropertyValue >& rDescriptor )
     return bRet;
 }
 
+namespace {
 
 class FocusWindowWaitCursor
 {
@@ -162,6 +208,7 @@ public:
     DECL_LINK( DestroyedLink, VclWindowEvent&, void );
 };
 
+}
 
 IMPL_LINK( FocusWindowWaitCursor, DestroyedLink, VclWindowEvent&, rEvent, void )
 {
@@ -196,28 +243,9 @@ void SAL_CALL PDFFilter::initialize( const css::uno::Sequence< css::uno::Any >& 
 }
 
 
-OUString PDFFilter_getImplementationName ()
-{
-    return OUString ( "com.sun.star.comp.PDF.PDFFilter" );
-}
-
-
-Sequence< OUString > SAL_CALL PDFFilter_getSupportedServiceNames(  )
-{
-    Sequence<OUString> aRet { "com.sun.star.document.PDFFilter" };
-    return aRet;
-}
-
-
-Reference< XInterface > SAL_CALL PDFFilter_createInstance( const Reference< XMultiServiceFactory > & rSMgr)
-{
-    return static_cast<cppu::OWeakObject*>(new PDFFilter( comphelper::getComponentContext(rSMgr) ));
-}
-
-
 OUString SAL_CALL PDFFilter::getImplementationName()
 {
-    return PDFFilter_getImplementationName();
+    return "com.sun.star.comp.PDF.PDFFilter";
 }
 
 
@@ -229,7 +257,15 @@ sal_Bool SAL_CALL PDFFilter::supportsService( const OUString& rServiceName )
 
 css::uno::Sequence< OUString > SAL_CALL PDFFilter::getSupportedServiceNames(  )
 {
-    return PDFFilter_getSupportedServiceNames();
+    return { "com.sun.star.document.PDFFilter" };
+}
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_PDFFilter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new PDFFilter(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

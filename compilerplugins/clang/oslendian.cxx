@@ -8,22 +8,38 @@
  */
 
 #include <cassert>
+#include <memory>
 
-#include "compat.hxx"
 #include "plugin.hxx"
 
 namespace {
 
 class OslEndian: public loplugin::Plugin, public PPCallbacks {
 public:
-    explicit OslEndian(InstantiationData const & data): Plugin(data) {
-        compat::addPPCallbacks(compiler.getPreprocessor(), this);
+    explicit OslEndian(loplugin::InstantiationData const & data): Plugin(data) {
+        compiler.getPreprocessor().addPPCallbacks(std::unique_ptr<PPCallbacks>(this));
     }
 
     enum { isPPCallback = true };
 
 private:
     void run() override {}
+
+    virtual void FileChanged(SourceLocation, FileChangeReason, SrcMgr::CharacteristicKind, FileID) override {
+        if(!startChecked) {
+            // With precompiled headers MacroDefined() would not be called, so check already at the very
+            // start whether the macros exist.
+            startChecked = true;
+            if(const MacroInfo* macroBig = compiler.getPreprocessor().getMacroInfo(
+                &compiler.getPreprocessor().getIdentifierTable().get("OSL_BIGENDIAN"))) {
+                definedBig_ = macroBig->getDefinitionLoc();
+            }
+            if(const MacroInfo* macroLit = compiler.getPreprocessor().getMacroInfo(
+                &compiler.getPreprocessor().getIdentifierTable().get("OSL_LITENDIAN"))) {
+                definedLit_ = macroLit->getDefinitionLoc();
+            }
+        }
+    }
 
     void MacroDefined(Token const & MacroNameTok, MacroDirective const *)
         override
@@ -59,11 +75,7 @@ private:
     }
 
     void MacroUndefined(
-        Token const & MacroNameTok, compat::MacroDefinitionParam
-#if CLANG_VERSION >= 50000
-        , MacroDirective const *
-#endif
-        ) override
+        Token const & MacroNameTok, MacroDefinition const &, MacroDirective const *) override
     {
         auto id = MacroNameTok.getIdentifierInfo()->getName();
         if (id == "OSL_BIGENDIAN" || id == "OSL_LITENDIAN") {
@@ -75,7 +87,7 @@ private:
     }
 
     void Defined(
-        Token const & MacroNameTok, compat::MacroDefinitionParam, SourceRange)
+        Token const & MacroNameTok, MacroDefinition const &, SourceRange)
         override
     {
         check(MacroNameTok);
@@ -83,14 +95,14 @@ private:
 
     void Ifdef(
         SourceLocation, Token const & MacroNameTok,
-        compat::MacroDefinitionParam) override
+        MacroDefinition const &) override
     {
         check(MacroNameTok);
     }
 
     void Ifndef(
         SourceLocation, Token const & MacroNameTok,
-        compat::MacroDefinitionParam) override
+        MacroDefinition const &) override
     {
         check(MacroNameTok);
     }
@@ -111,6 +123,7 @@ private:
 
     SourceLocation definedBig_;
     SourceLocation definedLit_;
+    bool startChecked = false;
 };
 
 loplugin::Plugin::Registration<OslEndian> X("oslendian");

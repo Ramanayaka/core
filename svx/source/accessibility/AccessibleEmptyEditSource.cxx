@@ -38,6 +38,7 @@
 
 namespace accessibility
 {
+    namespace {
 
     /** This class simply wraps a SvxTextEditSource, forwarding all
         methods except the GetBroadcaster() call
@@ -53,14 +54,14 @@ namespace accessibility
          */
         AccessibleProxyEditSource_Impl( SdrObject&      rObj,
                                         SdrView&        rView,
-                                        const vcl::Window&   rViewWindow );
+                                        const OutputDevice&   rViewWindow );
 
         // from the SvxEditSource interface
         SvxTextForwarder*       GetTextForwarder() override;
         SvxViewForwarder*       GetViewForwarder() override;
         SvxEditViewForwarder*   GetEditViewForwarder( bool bCreate = false ) override;
 
-        SvxEditSource*          Clone() const override;
+        std::unique_ptr<SvxEditSource> Clone() const override;
 
         void                    UpdateData() override;
 
@@ -82,9 +83,9 @@ namespace accessibility
         // SvxEditSource
         SvxTextForwarder*       GetTextForwarder() override { return this; }
         SvxViewForwarder*       GetViewForwarder() override { return this; }
-        SvxEditSource*          Clone() const override { return nullptr; }
+        std::unique_ptr<SvxEditSource> Clone() const override { return nullptr; }
         void                    UpdateData() override {}
-        SfxBroadcaster&         GetBroadcaster() const override { return *(const_cast<AccessibleEmptyEditSource_Impl*>(this)); }
+        SfxBroadcaster&         GetBroadcaster() const override { return *const_cast<AccessibleEmptyEditSource_Impl*>(this); }
 
         // SvxTextForwarder
         sal_Int32          GetParagraphCount() const override { return 1; }
@@ -120,11 +121,11 @@ namespace accessibility
         //XTextCopy
         void        CopyText(const SvxTextForwarder& ) override {}
 
-        OUString    CalcFieldValue( const SvxFieldItem& /*rField*/, sal_Int32 /*nPara*/, sal_Int32 /*nPos*/, Color*& /*rpTxtColor*/, Color*& /*rpFldColor*/ ) override
+        OUString    CalcFieldValue( const SvxFieldItem& /*rField*/, sal_Int32 /*nPara*/, sal_Int32 /*nPos*/, std::optional<Color>& /*rpTxtColor*/, std::optional<Color>& /*rpFldColor*/ ) override
         {
             return  OUString();
         }
-        void            FieldClicked( const SvxFieldItem&, sal_Int32, sal_Int32 ) override {}
+        void            FieldClicked( const SvxFieldItem& ) override {}
 
         bool            IsValid() const override { return true; }
 
@@ -158,19 +159,19 @@ namespace accessibility
         sal_Int16       GetDepth( sal_Int32 ) const override { return -1; }
         bool            SetDepth( sal_Int32, sal_Int16 ) override { return true; }
 
-        tools::Rectangle       GetVisArea() const override { return tools::Rectangle(); }
         Point           LogicToPixel( const Point& rPoint, const MapMode& /*rMapMode*/ ) const override { return rPoint; }
         Point           PixelToLogic( const Point& rPoint, const MapMode& /*rMapMode*/ ) const override { return rPoint; }
 
     };
 
+    }
 
     // Implementing AccessibleProxyEditSource_Impl
 
 
     AccessibleProxyEditSource_Impl::AccessibleProxyEditSource_Impl( SdrObject&      rObj,
                                                                     SdrView&        rView,
-                                                                    const vcl::Window&   rViewWindow ) :
+                                                                    const OutputDevice&   rViewWindow ) :
         maEditSource( rObj, nullptr, rView, rViewWindow )
     {
     }
@@ -190,7 +191,7 @@ namespace accessibility
         return maEditSource.GetEditViewForwarder( bCreate );
     }
 
-    SvxEditSource* AccessibleProxyEditSource_Impl::Clone() const
+    std::unique_ptr<SvxEditSource> AccessibleProxyEditSource_Impl::Clone() const
     {
         return maEditSource.Clone();
     }
@@ -211,15 +212,14 @@ namespace accessibility
 
     AccessibleEmptyEditSource::AccessibleEmptyEditSource( SdrObject&    rObj,
                                                           SdrView&      rView,
-                                                          const vcl::Window& rViewWindow ) :
+                                                          const OutputDevice& rViewWindow ) :
         mpEditSource( new AccessibleEmptyEditSource_Impl() ),
         mrObj(rObj),
         mrView(rView),
         mrViewWindow(rViewWindow),
         mbEditSourceEmpty( true )
     {
-        if( mrObj.GetModel() )
-            StartListening( *mrObj.GetModel() );
+        StartListening( mrObj.getSdrModelFromSdrObject() );
     }
 
     AccessibleEmptyEditSource::~AccessibleEmptyEditSource()
@@ -227,19 +227,18 @@ namespace accessibility
         if( !mbEditSourceEmpty )
         {
             // deregister as listener
-            if( mpEditSource.get() )
+            if (mpEditSource)
                 EndListening( mpEditSource->GetBroadcaster() );
         }
         else
         {
-            if( mrObj.GetModel() )
-                EndListening( *mrObj.GetModel() );
+            EndListening( mrObj.getSdrModelFromSdrObject() );
         }
     }
 
     SvxTextForwarder* AccessibleEmptyEditSource::GetTextForwarder()
     {
-        if( !mpEditSource.get() )
+        if (!mpEditSource)
             return nullptr;
 
         return mpEditSource->GetTextForwarder();
@@ -247,7 +246,7 @@ namespace accessibility
 
     SvxViewForwarder* AccessibleEmptyEditSource::GetViewForwarder()
     {
-        if( !mpEditSource.get() )
+        if (!mpEditSource)
             return nullptr;
 
         return mpEditSource->GetViewForwarder();
@@ -256,8 +255,7 @@ namespace accessibility
     void AccessibleEmptyEditSource::Switch2ProxyEditSource()
     {
         // deregister EmptyEditSource model listener
-        if( mrObj.GetModel() )
-            EndListening( *mrObj.GetModel() );
+        EndListening( mrObj.getSdrModelFromSdrObject() );
 
         ::std::unique_ptr< SvxEditSource > pProxySource( new AccessibleProxyEditSource_Impl(mrObj, mrView, mrViewWindow) );
         mpEditSource.swap(pProxySource);
@@ -271,7 +269,7 @@ namespace accessibility
 
     SvxEditViewForwarder* AccessibleEmptyEditSource::GetEditViewForwarder( bool bCreate )
     {
-        if( !mpEditSource.get() )
+        if (!mpEditSource)
             return nullptr;
 
         // switch edit source, if not yet done
@@ -281,9 +279,9 @@ namespace accessibility
         return mpEditSource->GetEditViewForwarder( bCreate );
     }
 
-    SvxEditSource* AccessibleEmptyEditSource::Clone() const
+    std::unique_ptr<SvxEditSource> AccessibleEmptyEditSource::Clone() const
     {
-        if( !mpEditSource.get() )
+        if (!mpEditSource)
             return nullptr;
 
         return mpEditSource->Clone();
@@ -291,21 +289,21 @@ namespace accessibility
 
     void AccessibleEmptyEditSource::UpdateData()
     {
-        if( mpEditSource.get() )
+        if (mpEditSource)
             mpEditSource->UpdateData();
     }
 
     SfxBroadcaster& AccessibleEmptyEditSource::GetBroadcaster() const
     {
-        return *(const_cast<AccessibleEmptyEditSource*>(this));
+        return *const_cast<AccessibleEmptyEditSource*>(this);
     }
 
     void AccessibleEmptyEditSource::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
     {
-        const SdrHint* pSdrHint = dynamic_cast<const SdrHint*>( &rHint );
+        const SdrHint* pSdrHint = ( rHint.GetId() == SfxHintId::ThisIsAnSdrHint ? static_cast<const SdrHint*>(&rHint) : nullptr );
 
         if( pSdrHint && pSdrHint->GetKind() == SdrHintKind::BeginEdit &&
-            &mrObj == pSdrHint->GetObject() && mpEditSource.get() )
+            &mrObj == pSdrHint->GetObject() && mpEditSource )
         {
             // switch edit source, if not yet done. This is necessary
             // to become a full-fledged EditSource the first time a

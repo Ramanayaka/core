@@ -24,14 +24,14 @@
 
 #include <jni.h>
 
-#include <com/sun/star/uno/Reference.hxx>
 #include <jvmaccess/jvmaccessdllapi.h>
 #include <rtl/ustring.hxx>
-#include <sal/types.h>
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class XComponentContext;
-} } } }
+}
+
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 namespace jvmaccess {
 

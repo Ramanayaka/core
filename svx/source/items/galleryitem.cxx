@@ -19,6 +19,8 @@
 
 #include <svx/galleryitem.hxx>
 #include <com/sun/star/gallery/GalleryItemType.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
+#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 
@@ -74,37 +76,35 @@ bool SvxGalleryItem::PutValue( const css::uno::Any& rVal, sal_uInt8 /* nMemberId
     bool bAllConverted( true );
 
     sal_Int8 nType(0);
-    rtl::OUString aURL, aFilterName;
+    OUString aURL, aFilterName;
     css::uno::Reference< css::lang::XComponent > xDrawing;
     css::uno::Reference< css::graphic::XGraphic > xGraphic;
 
-    const css::beans::PropertyValue *pProp = aSeq.getConstArray();
-    const css::beans::PropertyValue *pEnd = pProp + aSeq.getLength();
-    for ( ; pProp != pEnd; pProp++ )
+    for ( const css::beans::PropertyValue& rProp : std::as_const(aSeq) )
     {
-        if ( pProp->Name == SVXGALLERYITEM_TYPE )
+        if ( rProp.Name == SVXGALLERYITEM_TYPE )
         {
-            bAllConverted &= ( pProp->Value >>= nType );
+            bAllConverted &= ( rProp.Value >>= nType );
             ++nConverted;
         }
-        else if ( pProp->Name == SVXGALLERYITEM_URL )
+        else if ( rProp.Name == SVXGALLERYITEM_URL )
         {
-            bAllConverted &= ( pProp->Value >>= aURL );
+            bAllConverted &= ( rProp.Value >>= aURL );
             ++nConverted;
         }
-        else if ( pProp->Name == SVXGALLERYITEM_FILTER )
+        else if ( rProp.Name == SVXGALLERYITEM_FILTER )
         {
-            bAllConverted &= ( pProp->Value >>= aFilterName );
+            bAllConverted &= ( rProp.Value >>= aFilterName );
             ++nConverted;
         }
-        else if ( pProp->Name == SVXGALLERYITEM_DRAWING )
+        else if ( rProp.Name == SVXGALLERYITEM_DRAWING )
         {
-            bAllConverted &= ( pProp->Value >>= xDrawing );
+            bAllConverted &= ( rProp.Value >>= xDrawing );
             ++nConverted;
         }
-        else if ( pProp->Name == SVXGALLERYITEM_GRAPHIC )
+        else if ( rProp.Name == SVXGALLERYITEM_GRAPHIC )
         {
-            bAllConverted &= ( pProp->Value >>= xGraphic );
+            bAllConverted &= ( rProp.Value >>= xGraphic );
             ++nConverted;
         }
     }
@@ -114,7 +114,6 @@ bool SvxGalleryItem::PutValue( const css::uno::Any& rVal, sal_uInt8 /* nMemberId
 
     m_nType = nType;
     m_aURL = aURL;
-    m_aFilterName = aFilterName;
     m_xDrawing = xDrawing;
     m_xGraphic = xGraphic;
 
@@ -133,19 +132,9 @@ bool SvxGalleryItem::operator==( const SfxPoolItem& rAttr ) const
             m_xGraphic  == rItem.m_xGraphic;
 }
 
-SfxPoolItem* SvxGalleryItem::Clone( SfxItemPool * ) const
+SvxGalleryItem* SvxGalleryItem::Clone( SfxItemPool * ) const
 {
     return new SvxGalleryItem( *this );
-}
-
-SvStream& SvxGalleryItem::Store( SvStream& rStream, sal_uInt16 /*nItemVersion*/ ) const
-{
-    return rStream;
-}
-
-SfxPoolItem* SvxGalleryItem::Create(SvStream& , sal_uInt16) const
-{
-    return nullptr;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

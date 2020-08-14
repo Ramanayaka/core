@@ -22,7 +22,8 @@
 #include <sal/log.hxx>
 
 #include "imp_share.hxx"
-#include "xml_import.hxx"
+#include <xml_import.hxx>
+#include <xmlscript/xmlns.h>
 
 using namespace css;
 using namespace css::uno;
@@ -175,13 +176,13 @@ Reference< xml::input::XElement > LibrariesElement::startChildElement(
     }
     else
     {
-        throw xml::sax::SAXException( "expected styles ot bulletinboard element!", Reference< XInterface >(), Any() );
+        throw xml::sax::SAXException( "expected styles of bulletinboard element!", Reference< XInterface >(), Any() );
     }
 }
 
 void LibrariesElement::endElement()
 {
-    sal_Int32 nLibCount = mxImport->mpLibArray->mnLibCount = (sal_Int32)mLibDescriptors.size();
+    sal_Int32 nLibCount = mxImport->mpLibArray->mnLibCount = static_cast<sal_Int32>(mLibDescriptors.size());
     mxImport->mpLibArray->mpLibs.reset( new LibDescriptor[ nLibCount ] );
 
     for( sal_Int32 i = 0 ; i < nLibCount ; i++ )
@@ -211,7 +212,7 @@ Reference< xml::input::XElement > LibraryElement::startChildElement(
     }
     else
     {
-        throw xml::sax::SAXException( "expected styles ot bulletinboard element!", Reference< XInterface >(), Any() );
+        throw xml::sax::SAXException( "expected styles or bulletinboard element!", Reference< XInterface >(), Any() );
     }
 }
 
@@ -230,17 +231,15 @@ void LibraryElement::endElement()
 }
 
 Reference< css::xml::sax::XDocumentHandler >
-SAL_CALL importLibraryContainer( LibDescriptorArray* pLibArray )
+importLibraryContainer( LibDescriptorArray* pLibArray )
 {
-    return ::xmlscript::createDocumentHandler(
-        static_cast< xml::input::XRoot * >( new LibraryImport( pLibArray ) ) );
+    return ::xmlscript::createDocumentHandler(new LibraryImport(pLibArray));
 }
 
 css::uno::Reference< css::xml::sax::XDocumentHandler >
-SAL_CALL importLibrary( LibDescriptor& rLib )
+importLibrary( LibDescriptor& rLib )
 {
-    return ::xmlscript::createDocumentHandler(
-        static_cast< xml::input::XRoot * >( new LibraryImport( &rLib ) ) );
+    return ::xmlscript::createDocumentHandler(new LibraryImport(&rLib));
 }
 
 LibDescriptorArray::LibDescriptorArray( sal_Int32 nLibCount )

@@ -17,17 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "txtfrm.hxx"
-#include "pagefrm.hxx"
-#include "swtable.hxx"
-#include "frmfmt.hxx"
-#include "rowfrm.hxx"
-#include "tabfrm.hxx"
+#include <txtfrm.hxx>
+#include <pagefrm.hxx>
+#include <swtable.hxx>
+#include <frmfmt.hxx>
+#include <rowfrm.hxx>
+#include <tabfrm.hxx>
 #include <calbck.hxx>
+#include <ndtxt.hxx>
 
 void SwTextNode::fillSoftPageBreakList( SwSoftPageBreakList& rBreak ) const
 {
-    SwIterator<SwTextFrame,SwTextNode> aIter( *this );
+    SwIterator<SwTextFrame, SwTextNode, sw::IteratorMode::UnwrapMulti> aIter(*this);
     for( const SwTextFrame *pFrame = aIter.First(); pFrame; pFrame = aIter.Next() )
     {
         // No soft page break in header or footer
@@ -78,8 +79,12 @@ void SwTextNode::fillSoftPageBreakList( SwSoftPageBreakList& rBreak ) const
                         pFirst2 = static_cast<const SwLayoutFrame*>(pCell)->ContainsContent();
                         if( pFirst2 == pFrame )
                         {   // Here we are: a first content inside a cell
-                            // inside the splitted row => soft page break
-                            rBreak.insert( pFrame->GetOfst() );
+                            // inside the split row => soft page break
+                            auto const pos(pFrame->MapViewToModel(pFrame->GetOffset()));
+                            if (pos.first == this)
+                            {
+                                rBreak.insert(pos.second);
+                            }
                             break;
                         }
                         pCell = pCell->GetNext();
@@ -88,7 +93,14 @@ void SwTextNode::fillSoftPageBreakList( SwSoftPageBreakList& rBreak ) const
             }
             else // No soft page break if there's a "hard" page break attribute
             if( pFirst2 == pFrame && !pFrame->IsPageBreak( true ) )
-                rBreak.insert( pFrame->GetOfst() );
+            {
+                auto const pos(pFrame->MapViewToModel(pFrame->GetOffset()));
+                if (pos.first == this)
+                {   // in the !Show case, we have to iterate over the merged
+                    // SwTextFrame for every node
+                    rBreak.insert(pos.second);
+                }
+            }
         }
     }
 }

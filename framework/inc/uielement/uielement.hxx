@@ -61,9 +61,7 @@ struct UIElement
                   m_bUserActive( false ),
                   m_bMasterHide( false ),
                   m_bContextSensitive( false ),
-                  m_bContextActive( true ),
                   m_bNoClose( false ),
-                  m_bSoftClose( false ),
                   m_bStateRead( false ),
                   m_nStyle( ButtonType::SYMBOLONLY )
                   {}
@@ -79,14 +77,11 @@ struct UIElement
                    m_bUserActive( false ),
                    m_bMasterHide( false ),
                    m_bContextSensitive( false ),
-                   m_bContextActive( true ),
                    m_bNoClose( false ),
-                   m_bSoftClose( false ),
                    m_bStateRead( false ),
                    m_nStyle( ButtonType::SYMBOLONLY ) {}
 
     bool operator< ( const UIElement& aUIElement ) const;
-    UIElement& operator=( const UIElement& rUIElement );
 
     OUString                                                      m_aType;
     OUString                                                      m_aName;
@@ -96,10 +91,8 @@ struct UIElement
                                                                        m_bVisible,
                                                                        m_bUserActive,
                                                                        m_bMasterHide,
-                                                                       m_bContextSensitive,
-                                                                       m_bContextActive;
+                                                                       m_bContextSensitive;
     bool                                                               m_bNoClose,
-                                                                       m_bSoftClose,
                                                                        m_bStateRead;
     ButtonType                                                         m_nStyle;
     DockedData                                                         m_aDockedData;

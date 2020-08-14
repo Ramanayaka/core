@@ -16,15 +16,14 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <CellMarginHandler.hxx>
-#include <PropertyMap.hxx>
-#include <ConversionHelper.hxx>
+#include "CellMarginHandler.hxx"
+#include "ConversionHelper.hxx"
 #include <ooxml/resourceids.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/sequence.hxx>
+#include <sal/log.hxx>
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
 using namespace ::com::sun::star;
 using namespace ::writerfilter;
@@ -95,9 +94,9 @@ void CellMarginHandler::createGrabBag(const OUString& aName)
 void CellMarginHandler::lcl_sprm(Sprm & rSprm)
 {
     writerfilter::Reference<Properties>::Pointer_t pProperties = rSprm.getProps();
-    if( pProperties.get())
+    if( pProperties)
     {
-        pProperties.get()->resolve( *this );
+        pProperties->resolve( *this );
         const bool rtl = false; // TODO
         switch( rSprm.getId() )
         {
@@ -108,6 +107,7 @@ void CellMarginHandler::lcl_sprm(Sprm & rSprm)
                 createGrabBag("top");
             break;
             case NS_ooxml::LN_CT_TblCellMar_start:
+            case NS_ooxml::LN_CT_TcMar_start:
                 if( rtl )
                 {
                     m_nRightMargin = m_nValue;
@@ -133,6 +133,7 @@ void CellMarginHandler::lcl_sprm(Sprm & rSprm)
                 createGrabBag("bottom");
             break;
             case NS_ooxml::LN_CT_TblCellMar_end:
+            case NS_ooxml::LN_CT_TcMar_end:
                 if( rtl )
                 {
                     m_nLeftMargin = m_nValue;
@@ -171,7 +172,6 @@ beans::PropertyValue CellMarginHandler::getInteropGrabBag()
     return aRet;
 }
 
-} //namespace dmapper
-} //namespace writerfilter
+} //namespace writerfilter::dmapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

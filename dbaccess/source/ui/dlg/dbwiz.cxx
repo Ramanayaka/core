@@ -17,28 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbwiz.hxx"
-#include "dbu_dlg.hrc"
-#include "dsitems.hxx"
+#include <core_resource.hxx>
+#include <dbwiz.hxx>
+#include <strings.hrc>
+#include <strings.hxx>
+#include <dsitems.hxx>
 #include "dsnItem.hxx"
-#include <svl/stritem.hxx>
-#include <svl/eitem.hxx>
-#include <svl/intitem.hxx>
-#include <vcl/msgbox.hxx>
-#include "dbustrings.hrc"
 #include "adminpages.hxx"
 #include "generalpage.hxx"
-#include "stringlistitem.hxx"
-#include "propertysetitem.hxx"
 #include <unotools/confignode.hxx>
 #include "ConnectionPage.hxx"
 #include "DriverSettings.hxx"
 #include "DbAdminImpl.hxx"
-#include "dbaccess_helpid.hrc"
+#include <helpids.h>
 
 namespace dbaui
 {
-using namespace svt;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::sdbc;
 using namespace com::sun::star::lang;
@@ -61,49 +55,39 @@ using namespace com::sun::star::container;
 #define ADDITIONAL_PAGE_MYSQL_NATIVE   12
 
 // ODbTypeWizDialog
-ODbTypeWizDialog::ODbTypeWizDialog(vcl::Window* _pParent
-                               ,SfxItemSet* _pItems
-                               ,const Reference< XComponentContext >& _rxORB
-                               ,const css::uno::Any& _aDataSourceName
-                               )
-    :OWizardMachine(_pParent, WizardButtonFlags::NEXT | WizardButtonFlags::PREVIOUS | WizardButtonFlags::FINISH | WizardButtonFlags::CANCEL | WizardButtonFlags::HELP )
-    ,m_pOutSet(nullptr)
+ODbTypeWizDialog::ODbTypeWizDialog(weld::Window* _pParent, SfxItemSet const * _pItems,
+                                   const Reference< XComponentContext >& _rxORB, const css::uno::Any& _aDataSourceName)
+    : WizardMachine(_pParent, WizardButtonFlags::NEXT | WizardButtonFlags::PREVIOUS | WizardButtonFlags::FINISH | WizardButtonFlags::CANCEL | WizardButtonFlags::HELP )
 {
-    m_pImpl.reset(new ODbDataSourceAdministrationHelper(_rxORB,this,this));
+    m_pImpl.reset(new ODbDataSourceAdministrationHelper(_rxORB, m_xAssistant.get(), _pParent, this));
     m_pImpl->setDataSourceOrName(_aDataSourceName);
     Reference< XPropertySet > xDatasource = m_pImpl->getCurrentDataSource();
-    m_pOutSet = new SfxItemSet( *_pItems->GetPool(), _pItems->GetRanges() );
+    m_pOutSet.reset(new SfxItemSet( *_pItems->GetPool(), _pItems->GetRanges() ));
 
     m_pImpl->translateProperties(xDatasource, *m_pOutSet);
     m_eType = dbaui::ODbDataSourceAdministrationHelper::getDatasourceType(*m_pOutSet);
 
-    SetPageSizePixel(LogicToPixel(::Size(PAGE_X, PAGE_Y), MapUnit::MapAppFont));
     defaultButton(WizardButtonFlags::NEXT);
     enableButtons(WizardButtonFlags::FINISH, false);
     enableAutomaticNextButtonState();
 
-    m_pPrevPage->SetHelpId(HID_DBWIZ_PREVIOUS);
-    m_pNextPage->SetHelpId(HID_DBWIZ_NEXT);
-    m_pCancel->SetHelpId(HID_DBWIZ_CANCEL);
-    m_pFinish->SetHelpId(HID_DBWIZ_FINISH);
+    m_xPrevPage->set_help_id(HID_DBWIZ_PREVIOUS);
+    m_xNextPage->set_help_id(HID_DBWIZ_NEXT);
+    m_xCancel->set_help_id(HID_DBWIZ_CANCEL);
+    m_xFinish->set_help_id(HID_DBWIZ_FINISH);
     // no local resources needed anymore
 
     const DbuTypeCollectionItem& rCollectionItem = dynamic_cast<const DbuTypeCollectionItem&>(*_pItems->GetItem(DSID_TYPECOLLECTION));
     m_pCollection = rCollectionItem.getCollection();
 
     ActivatePage();
-    setTitleBase(ModuleRes(STR_DATABASE_TYPE_CHANGE));
+    setTitleBase(DBA_RES(STR_DATABASE_TYPE_CHANGE));
+
+    m_xAssistant->set_current_page(0);
 }
 
 ODbTypeWizDialog::~ODbTypeWizDialog()
 {
-    disposeOnce();
-}
-
-void ODbTypeWizDialog::dispose()
-{
-    delete m_pOutSet;
-    svt::OWizardMachine::dispose();
 }
 
 IMPL_LINK(ODbTypeWizDialog, OnTypeSelected, OGeneralPage&, _rTabPage, void)
@@ -114,9 +98,9 @@ IMPL_LINK(ODbTypeWizDialog, OnTypeSelected, OGeneralPage&, _rTabPage, void)
     enableButtons(WizardButtonFlags::FINISH,!bURLRequired);
 }
 
-WizardTypes::WizardState ODbTypeWizDialog::determineNextState( WizardState _nCurrentState ) const
+WizardState ODbTypeWizDialog::determineNextState( WizardState _nCurrentState ) const
 {
-    WizardTypes::WizardState nNextState = WZS_INVALID_STATE;
+    WizardState nNextState = WZS_INVALID_STATE;
     switch(_nCurrentState)
     {
         case START_PAGE:
@@ -156,6 +140,7 @@ WizardTypes::WizardState ODbTypeWizDialog::determineNextState( WizardState _nCur
                 case  ::dbaccess::DST_MSACCESS_2007:
                 case  ::dbaccess::DST_JDBC:
                 case  ::dbaccess::DST_CALC:
+                case  ::dbaccess::DST_WRITER:
                     nNextState = WZS_INVALID_STATE;
                     break;
                 case  ::dbaccess::DST_DBASE:
@@ -194,15 +179,15 @@ WizardTypes::WizardState ODbTypeWizDialog::determineNextState( WizardState _nCur
 
 const SfxItemSet* ODbTypeWizDialog::getOutputSet() const
 {
-    return m_pOutSet;
+    return m_pOutSet.get();
 }
 
 SfxItemSet* ODbTypeWizDialog::getWriteOutputSet()
 {
-    return m_pOutSet;
+    return m_pOutSet.get();
 }
 
-std::pair< Reference<XConnection>,sal_Bool> ODbTypeWizDialog::createConnection()
+std::pair< Reference<XConnection>,bool> ODbTypeWizDialog::createConnection()
 {
     return m_pImpl->createConnection();
 }
@@ -227,54 +212,58 @@ void ODbTypeWizDialog::clearPassword()
     m_pImpl->clearPassword();
 }
 
-VclPtr<TabPage> ODbTypeWizDialog::createPage(WizardState _nState)
+std::unique_ptr<BuilderPage> ODbTypeWizDialog::createPage(WizardState _nState)
 {
-    sal_uInt16 nStringId = STR_PAGETITLE_ADVANCED;
-    VclPtr<TabPage> pPage;
+    const char* pStringId = STR_PAGETITLE_ADVANCED;
+    std::unique_ptr<BuilderPage> xPage;
+
+    OString sIdent(OString::number(_nState));
+    weld::Container* pPageContainer = m_xAssistant->append_page(sIdent);
+
     switch(_nState)
     {
         case START_PAGE: // start state
         {
-            pPage = VclPtr<OGeneralPageDialog>::Create(this,*m_pOutSet);
-            OGeneralPage* pGeneralPage = static_cast< OGeneralPage* >( pPage.get() );
+            xPage = std::make_unique<OGeneralPageDialog>(pPageContainer, this, *m_pOutSet);
+            OGeneralPage* pGeneralPage = static_cast<OGeneralPage*>(xPage.get());
             pGeneralPage->SetTypeSelectHandler( LINK( this, ODbTypeWizDialog, OnTypeSelected));
-            nStringId = STR_PAGETITLE_GENERAL;
+            pStringId = STR_PAGETITLE_GENERAL;
         }
         break;
         case CONNECTION_PAGE:
-            pPage = OConnectionTabPage::Create(this,m_pOutSet);
-            nStringId = STR_PAGETITLE_CONNECTION;
+            xPage = OConnectionTabPage::Create(pPageContainer, this, m_pOutSet.get());
+            pStringId = STR_PAGETITLE_CONNECTION;
             break;
 
         case ADDITIONAL_PAGE_DBASE:
-            pPage = ODriversSettings::CreateDbase(this,m_pOutSet);
+            xPage = ODriversSettings::CreateDbase(pPageContainer, this, m_pOutSet.get());
             break;
         case ADDITIONAL_PAGE_FLAT:
-            pPage = ODriversSettings::CreateText(this,m_pOutSet);
+            xPage = ODriversSettings::CreateText(pPageContainer, this, m_pOutSet.get());
             break;
         case ADDITIONAL_PAGE_LDAP:
-            pPage = ODriversSettings::CreateLDAP(this,m_pOutSet);
+            xPage = ODriversSettings::CreateLDAP(pPageContainer, this, m_pOutSet.get());
             break;
         case ADDITIONAL_PAGE_MYSQL_JDBC:
-            pPage = ODriversSettings::CreateMySQLJDBC(this,m_pOutSet);
+            xPage = ODriversSettings::CreateMySQLJDBC(pPageContainer, this, m_pOutSet.get());
             break;
         case ADDITIONAL_PAGE_MYSQL_NATIVE:
-            pPage = ODriversSettings::CreateMySQLNATIVE(this,m_pOutSet);
+            xPage = ODriversSettings::CreateMySQLNATIVE(pPageContainer, this, m_pOutSet.get());
             break;
         case ADDITIONAL_PAGE_MYSQL_ODBC:
-            pPage = ODriversSettings::CreateMySQLODBC(this,m_pOutSet);
+            xPage = ODriversSettings::CreateMySQLODBC(pPageContainer, this, m_pOutSet.get());
             break;
         case ADDITIONAL_PAGE_ORACLE_JDBC:
-            pPage = ODriversSettings::CreateOracleJDBC(this,m_pOutSet);
+            xPage = ODriversSettings::CreateOracleJDBC(pPageContainer, this, m_pOutSet.get());
             break;
         case ADDITIONAL_PAGE_ADO:
-            pPage = ODriversSettings::CreateAdo(this,m_pOutSet);
+            xPage = ODriversSettings::CreateAdo(pPageContainer, this, m_pOutSet.get());
             break;
         case ADDITIONAL_PAGE_ODBC:
-            pPage = ODriversSettings::CreateODBC(this,m_pOutSet);
+            xPage = ODriversSettings::CreateODBC(pPageContainer, this, m_pOutSet.get());
             break;
         case ADDITIONAL_USERDEFINED:
-            pPage = ODriversSettings::CreateUser(this,m_pOutSet);
+            xPage = ODriversSettings::CreateUser(pPageContainer, this, m_pOutSet.get());
             break;
         default:
             OSL_FAIL("Wrong state!");
@@ -282,29 +271,28 @@ VclPtr<TabPage> ODbTypeWizDialog::createPage(WizardState _nState)
     }
 
     // register ourself as modified listener
-    if ( pPage )
+    if ( xPage )
     {
-        static_cast<OGenericAdministrationPage*>(pPage.get())->SetServiceFactory( m_pImpl->getORB() );
-        static_cast<OGenericAdministrationPage*>(pPage.get())->SetAdminDialog(this,this);
-        pPage->SetText(ModuleRes(nStringId));
+        static_cast<OGenericAdministrationPage*>(xPage.get())->SetServiceFactory( m_pImpl->getORB() );
+        static_cast<OGenericAdministrationPage*>(xPage.get())->SetAdminDialog(this,this);
+        m_xAssistant->set_page_title(sIdent, DBA_RES(pStringId));
         defaultButton( _nState == START_PAGE ? WizardButtonFlags::NEXT : WizardButtonFlags::FINISH );
         enableButtons( WizardButtonFlags::FINISH, _nState != START_PAGE);
-        pPage->Show();
     }
-    return pPage;
+    return xPage;
 }
 
 bool ODbTypeWizDialog::leaveState(WizardState _nState)
 {
-    SfxTabPage* pPage = static_cast<SfxTabPage*>(WizardDialog::GetPage(_nState));
+    SfxTabPage* pPage = static_cast<SfxTabPage*>(WizardMachine::GetPage(_nState));
     if ( pPage )
-        pPage->FillItemSet(m_pOutSet);
+        pPage->FillItemSet(m_pOutSet.get());
     return true;
 }
 
 void ODbTypeWizDialog::setTitle(const OUString& _sTitle)
 {
-    SetText(_sTitle);
+    m_xAssistant->set_title(_sTitle);
 }
 
 void ODbTypeWizDialog::enableConfirmSettings( bool _bEnable )
@@ -320,9 +308,9 @@ void ODbTypeWizDialog::enableConfirmSettings( bool _bEnable )
 
 void ODbTypeWizDialog::saveDatasource()
 {
-    SfxTabPage* pPage = static_cast<SfxTabPage*>(WizardDialog::GetPage(getCurrentState()));
+    SfxTabPage* pPage = static_cast<SfxTabPage*>(WizardMachine::GetPage(getCurrentState()));
     if ( pPage )
-        pPage->FillItemSet(m_pOutSet);
+        pPage->FillItemSet(m_pOutSet.get());
 
     OUString sOldURL;
     if ( m_pImpl->getCurrentDataSource().is() )
@@ -330,16 +318,16 @@ void ODbTypeWizDialog::saveDatasource()
     DataSourceInfoConverter::convert( getORB(), m_pCollection,sOldURL,m_eType,m_pImpl->getCurrentDataSource());
 }
 
-IWizardPageController* ODbTypeWizDialog::getPageController( TabPage* _pCurrentPage ) const
+vcl::IWizardPageController* ODbTypeWizDialog::getPageController(BuilderPage* pCurrentPage) const
 {
-    OGenericAdministrationPage* pPage = static_cast<OGenericAdministrationPage*>(_pCurrentPage);
+    OGenericAdministrationPage* pPage = static_cast<OGenericAdministrationPage*>(pCurrentPage);
     return pPage;
 }
 
 bool ODbTypeWizDialog::onFinish()
 {
     saveDatasource();
-    return m_pImpl->saveChanges(*m_pOutSet) && OWizardMachine::onFinish();
+    return m_pImpl->saveChanges(*m_pOutSet) && WizardMachine::onFinish();
 }
 
 }   // namespace dbaui

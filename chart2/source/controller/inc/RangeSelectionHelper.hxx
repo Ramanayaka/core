@@ -19,16 +19,19 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_RANGESELECTIONHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_RANGESELECTIONHELPER_HXX
 
-#include <com/sun/star/chart2/XChartDocument.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/uno/Reference.h>
+#include <com/sun/star/uno/Sequence.h>
+#include <rtl/ustring.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::chart2 { class XChartDocument; }
+
+namespace com::sun::star {
     namespace sheet{
         class XRangeSelection;
         class XRangeSelectionListener;
-        class XCellRangesAccess;
     }
-}}}
+}
 
 namespace chart
 {

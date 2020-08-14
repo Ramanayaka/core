@@ -20,11 +20,9 @@
 #ifndef INCLUDED_IDLC_INC_OPTIONS_HXX
 #define INCLUDED_IDLC_INC_OPTIONS_HXX
 
-#include <idlctypes.hxx>
+#include "idlctypes.hxx"
 
-typedef std::unordered_map< OString,
-                         OString,
-                         OStringHash > OptionMap;
+typedef std::unordered_map< OString, OString > OptionMap;
 
 class IllegalArgument
 {
@@ -51,11 +49,11 @@ public:
     static bool badOption(char const * reason, std::string const & rArg);
     bool setOption(char const * option, std::string const & rArg);
 
-    OString prepareHelp();
-    OString prepareVersion();
+    OString prepareHelp() const;
+    OString prepareVersion() const;
 
     const OString&   getProgramName() const { return m_program;}
-    bool                isValid(const OString& option);
+    bool                isValid(const OString& option) const;
     /// @throws IllegalArgument
     const OString&   getOption(const OString& option);
 

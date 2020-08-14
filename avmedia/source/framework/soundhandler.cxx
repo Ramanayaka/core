@@ -24,9 +24,7 @@
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/frame/DispatchResultState.hpp>
 
-#include <comphelper/sequenceashashmap.hxx>
-#include <rtl/ustrbuf.hxx>
-
+#include <avmedia/mediawindow.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/factory.hxx>
@@ -77,36 +75,17 @@ css::uno::Sequence< sal_Int8 > SAL_CALL SoundHandler::getImplementationId()
 
 css::uno::Sequence< css::uno::Type > SAL_CALL SoundHandler::getTypes()
 {
-    /* Optimize this method !                                       */
-    /* We initialize a static variable only one time.               */
-    /* And we don't must use a mutex at every call!                 */
-    /* For the first call; pTypeCollection is NULL -                */
-    /* for the second call pTypeCollection is different from NULL!  */
-    static ::cppu::OTypeCollection* pTypeCollection = nullptr ;
-    if ( pTypeCollection == nullptr )
-    {
-        /* Ready for multithreading; get global mutex for first call of this method only! see before   */
-        ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
-        /* Control these pointer again ... it can be, that another instance will be faster then these! */
-        if ( pTypeCollection == nullptr )
-        {
-            /* Create a static typecollection ...           */
-            static ::cppu::OTypeCollection aTypeCollection
-                (
-                    cppu::UnoType<css::lang::XTypeProvider>::get(),
-                    cppu::UnoType<css::lang::XServiceInfo>::get(),
-                    cppu::UnoType<css::frame::XNotifyingDispatch>::get(),
-                    cppu::UnoType<css::frame::XDispatch>::get(),
-                    cppu::UnoType<css::document::XExtendedFilterDetection>::get()
-                );
-            /* ... and set his address to static pointer! */
-            pTypeCollection = &aTypeCollection ;
-        }
-    }
-    return pTypeCollection->getTypes();
+    static ::cppu::OTypeCollection aTypeCollection(
+        cppu::UnoType<css::lang::XTypeProvider>::get(),
+        cppu::UnoType<css::lang::XServiceInfo>::get(),
+        cppu::UnoType<css::frame::XNotifyingDispatch>::get(),
+        cppu::UnoType<css::frame::XDispatch>::get(),
+        cppu::UnoType<css::document::XExtendedFilterDetection>::get());
+
+    return aTypeCollection.getTypes();
 }
 
-#define IMPLEMENTATIONNAME_SOUNDHANDLER OUString("com.sun.star.comp.framework.SoundHandler")
+#define IMPLEMENTATIONNAME_SOUNDHANDLER "com.sun.star.comp.framework.SoundHandler"
 
 /*===========================================================================================================*/
 /* XServiceInfo */
@@ -139,11 +118,8 @@ css::uno::Sequence< OUString > SAL_CALL SoundHandler::getSupportedServiceNames()
     @threadsafe yes
 *//*-*************************************************************************************************************/
 SoundHandler::SoundHandler()
-        //  Init baseclasses first
-        :   ThreadHelpBase      (          )
-        ,   ::cppu::OWeakObject (          )
         // Init member
-    ,   m_bError        ( false    )
+    :   m_bError        ( false    )
     ,   m_aUpdateIdle   ( "avmedia SoundHandler Update" )
 {
     m_aUpdateIdle.SetInvokeHandler(LINK(this, SoundHandler, implts_PlayerNotify));
@@ -188,7 +164,7 @@ void SAL_CALL SoundHandler::dispatchWithNotification(const css::util::URL&      
                                                      const css::uno::Reference< css::frame::XDispatchResultListener >& xListener )
 {
     // SAFE {
-    const ::osl::MutexGuard aLock( m_aLock );
+    const ::osl::MutexGuard aLock( GetMutex() );
 
     utl::MediaDescriptor aDescriptor(lDescriptor);
 
@@ -216,12 +192,12 @@ void SAL_CALL SoundHandler::dispatchWithNotification(const css::util::URL&      
     try
     {
         m_bError = false;
-        m_xPlayer.set( avmedia::MediaWindow::createPlayer( aURL.Complete, aDescriptor.getUnpackedValueOrDefault(utl::MediaDescriptor::PROP_REFERRER(), OUString()) ), css::uno::UNO_QUERY_THROW );
+        m_xPlayer.set( avmedia::MediaWindow::createPlayer( aURL.Complete, aDescriptor.getUnpackedValueOrDefault(utl::MediaDescriptor::PROP_REFERRER(), OUString()) ), css::uno::UNO_SET_THROW );
         // OK- we can start async playing ...
         // Count this request and initialize self-holder against dying by uno ref count ...
         m_xSelfHold.set(static_cast< ::cppu::OWeakObject* >(this), css::uno::UNO_QUERY);
         m_xPlayer->start();
-        m_aUpdateIdle.SetPriority( TaskPriority::LOWER );
+        m_aUpdateIdle.SetPriority( TaskPriority::HIGH_IDLE );
         m_aUpdateIdle.Start();
     }
     catch( css::uno::Exception& )
@@ -300,7 +276,7 @@ OUString SAL_CALL SoundHandler::detect( css::uno::Sequence< css::beans::Property
 IMPL_LINK_NOARG(SoundHandler, implts_PlayerNotify, Timer *, void)
 {
     // SAFE {
-    ::osl::ClearableMutexGuard aLock( m_aLock );
+    ::osl::ClearableMutexGuard aLock( GetMutex() );
 
     if (m_xPlayer.is() && m_xPlayer->isPlaying() && m_xPlayer->getMediaTime() < m_xPlayer->getDuration())
     {
@@ -336,7 +312,7 @@ IMPL_LINK_NOARG(SoundHandler, implts_PlayerNotify, Timer *, void)
 } // namespace framework
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_framework_SoundHandler_get_implementation(css::uno::XComponentContext*,
                                                             css::uno::Sequence<css::uno::Any> const &)
 {

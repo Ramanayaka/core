@@ -20,7 +20,6 @@
 #define INCLUDED_SVL_CJKOPTIONS_HXX
 
 #include <svl/svldllapi.h>
-#include <sal/types.h>
 #include <unotools/options.hxx>
 #include <memory>
 
@@ -28,7 +27,7 @@ class SvtCJKOptions_Impl;
 
 // class SvtCJKOptions --------------------------------------------------
 
-class SVL_DLLPUBLIC SvtCJKOptions: public utl::detail::Options
+class SVL_DLLPUBLIC SvtCJKOptions final : public utl::detail::Options
 {
 private:
     std::shared_ptr<SvtCJKOptions_Impl>    pImpl;

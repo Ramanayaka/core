@@ -17,19 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+#include <osl/diagnose.h>
+
+#include <tools/debug.hxx>
+#include <vcl/metaact.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/window.hxx>
 #include <vcl/gdimtf.hxx>
-#include <vcl/print.hxx>
 #include <vcl/outdev.hxx>
 
 #include <salgdi.hxx>
-#include <salframe.hxx>
-#include <salvd.hxx>
-#include <salprn.hxx>
-#include <window.h>
 
-#include <numeric>
+void OutputDevice::SaveBackground(VirtualDevice& rSaveDevice,
+                                  const Point& rPos, const Size& rSize, const Size& rBackgroundSize) const
+{
+   rSaveDevice.DrawOutDev(Point(), rBackgroundSize, rPos, rSize, *this);
+}
 
 vcl::Region OutputDevice::GetClipRegion() const
 {
@@ -75,9 +78,8 @@ bool OutputDevice::SelectClipRegion( const vcl::Region& rRegion, SalGraphics* pG
 
     if( !pGraphics )
     {
-        if( !mpGraphics )
-            if( !AcquireGraphics() )
-                return false;
+        if( !mpGraphics && !AcquireGraphics() )
+            return false;
         pGraphics = mpGraphics;
     }
 
@@ -149,19 +151,7 @@ void OutputDevice::InitClipRegion()
             mbOutputClipped = false;
 
             // #102532# Respect output offset also for clip region
-            vcl::Region aRegion( ImplPixelToDevicePixel( maRegion ) );
-            const bool bClipDeviceBounds( ! GetPDFWriter()
-                                          && GetOutDevType() != OUTDEV_PRINTER );
-            if( bClipDeviceBounds )
-            {
-                // Perform actual rect clip against outdev
-                // dimensions, to generate empty clips whenever one of the
-                // values is completely off the device.
-                tools::Rectangle aDeviceBounds( mnOutOffX, mnOutOffY,
-                                         mnOutOffX+GetOutputWidthPixel()-1,
-                                         mnOutOffY+GetOutputHeightPixel()-1 );
-                aRegion.Intersect( aDeviceBounds );
-            }
+            vcl::Region aRegion = ClipToDeviceBounds(ImplPixelToDevicePixel(maRegion));
 
             if ( aRegion.IsEmpty() )
             {
@@ -180,7 +170,8 @@ void OutputDevice::InitClipRegion()
     {
         if ( mbClipRegionSet )
         {
-            mpGraphics->ResetClipRegion();
+            if (mpGraphics)
+                mpGraphics->ResetClipRegion();
             mbClipRegionSet = false;
         }
 
@@ -188,6 +179,16 @@ void OutputDevice::InitClipRegion()
     }
 
     mbInitClipRegion = false;
+}
+
+vcl::Region OutputDevice::ClipToDeviceBounds(vcl::Region aRegion) const
+{
+    aRegion.Intersect(tools::Rectangle{mnOutOffX,
+                                       mnOutOffY,
+                                       mnOutOffX + GetOutputWidthPixel() - 1,
+                                       mnOutOffY + GetOutputHeightPixel() - 1
+                                      });
+    return aRegion;
 }
 
 vcl::Region OutputDevice::GetActiveClipRegion() const

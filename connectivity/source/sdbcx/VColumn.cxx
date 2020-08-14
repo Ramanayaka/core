@@ -18,10 +18,10 @@
  */
 
 #include <connectivity/sdbcx/VColumn.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 
 using namespace connectivity;
@@ -36,19 +36,13 @@ using namespace ::com::sun::star::sdbc;
 OUString SAL_CALL OColumn::getImplementationName(  )
 {
     if(isNew())
-        return OUString("com.sun.star.sdbcx.VColumnDescription");
-    return OUString("com.sun.star.sdbcx.VColumn");
+        return "com.sun.star.sdbcx.VColumnDescriptor";
+    return "com.sun.star.sdbcx.VColumn";
 }
 
 css::uno::Sequence< OUString > SAL_CALL OColumn::getSupportedServiceNames(  )
 {
-    css::uno::Sequence< OUString > aSupported(1);
-    if(isNew())
-        aSupported[0] = "com.sun.star.sdbcx.ColumnDescription";
-    else
-        aSupported[0] = "com.sun.star.sdbcx.Column";
-
-    return aSupported;
+    return { isNew()?OUString("com.sun.star.sdbcx.ColumnDescriptor"):OUString("com.sun.star.sdbcx.Column") };
 }
 
 sal_Bool SAL_CALL OColumn::supportsService( const OUString& _rServiceName )

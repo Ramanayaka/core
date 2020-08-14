@@ -36,6 +36,7 @@ filter_XcuFilterTypesTarget_get_clean_target = \
 
 $(call gb_XcuFilterTypesTarget_get_target,%) : $(filter_MERGE_TARGET)
 	$(call gb_Output_announce,$*,$(true),FIT,1)
+	$(call gb_Trace_StartRange,$*,FIT)
 	$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
 		RESPONSEFILE=`$(gb_MKTEMP)` && \
@@ -46,6 +47,7 @@ $(call gb_XcuFilterTypesTarget_get_target,%) : $(filter_MERGE_TARGET)
 		 	fragmentsdir=$(dir $(firstword $(filter %.xcu,$^))).. \
 			outdir=$(dir $@) pkg=$@ xmlpackage=Types tcfg=$${RESPONSEFILE} && \
 		rm -f $${RESPONSEFILE})
+	$(call gb_Trace_EndRange,$*,FIT)
 
 $(call filter_XcuFilterTypesTarget_get_clean_target,%) :
 	$(call gb_Output_announce,$*,$(false),FIT,1)
@@ -77,6 +79,7 @@ filter_XcuFilterFiltersTarget_get_clean_target = \
 
 $(call gb_XcuFilterFiltersTarget_get_target,%) : $(filter_MERGE_TARGET)
 	$(call gb_Output_announce,$*,$(true),FIF,1)
+	$(call gb_Trace_StartRange,$*,FIF)
 	$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
 		RESPONSEFILE=`$(gb_MKTEMP)` && \
@@ -87,6 +90,7 @@ $(call gb_XcuFilterFiltersTarget_get_target,%) : $(filter_MERGE_TARGET)
 			fragmentsdir=$(dir $(firstword $(filter %.xcu,$^))).. \
 			outdir=$(dir $@) pkg=$@ xmlpackage=Filter fcfg=$${RESPONSEFILE} && \
 		rm -f $${RESPONSEFILE})
+	$(call gb_Trace_EndRange,$*,FIF)
 
 $(call filter_XcuFilterFiltersTarget_get_clean_target,%) :
 	$(call gb_Output_announce,$*,$(false),FIF,1)
@@ -108,6 +112,7 @@ filter_XcuFilterOthersTarget_get_clean_target = \
 
 $(call gb_XcuFilterOthersTarget_get_target,%) : $(filter_MERGE_TARGET)
 	$(call gb_Output_announce,$*,$(true),FIO,1)
+	$(call gb_Trace_StartRange,$*,FIO)
 	$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
 		RESPONSEFILE=`$(gb_MKTEMP)` && \
@@ -122,6 +127,7 @@ $(call gb_XcuFilterOthersTarget_get_target,%) : $(filter_MERGE_TARGET)
 			outdir=$(dir $@) pkg=$@ xmlpackage=Misc \
 			lcfg=$${RESPONSEFILE} ccfg=$${RESPONSEFILE2} && \
 		rm -f $${RESPONSEFILE} $${RESPONSEFILE2})
+	$(call gb_Trace_EndRange,$*,FIO)
 
 $(call filter_XcuFilterOthersTarget_get_clean_target,%) :
 	$(call gb_Output_announce,$*,$(false),FIO,1)
@@ -142,6 +148,7 @@ filter_XcuFilterInternalTarget_get_clean_target = \
 
 $(call gb_XcuFilterInternalTarget_get_target,%) : $(filter_MERGE_TARGET)
 	$(call gb_Output_announce,$*,$(true),FII,1)
+	$(call gb_Trace_StartRange,$*,FII)
 	$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
 		RESPONSEFILE=`$(gb_MKTEMP)` && \
@@ -153,6 +160,7 @@ $(call gb_XcuFilterInternalTarget_get_target,%) : $(filter_MERGE_TARGET)
 			outdir=$(dir $@) pkg=$@ xmlpackage=GraphicFilter \
 			fcfg=$${RESPONSEFILE} subdir_filters=internalgraphicfilters && \
 		rm -f $${RESPONSEFILE})
+	$(call gb_Trace_EndRange,$*,FII)
 
 $(call filter_XcuFilterInternalTarget_get_clean_target,%) :
 	$(call gb_Output_announce,$*,$(false),FII,1)
@@ -188,6 +196,7 @@ filter_XcuResTarget_get_clean_target = \
 
 $(filter_XcuFilterUiTarget) : $(filter_MERGE_TARGET)
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),FIU,1)
+	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),FIU)
 	$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
 		RESPONSEFILE=`$(gb_MKTEMP)` && \
@@ -198,6 +207,7 @@ $(filter_XcuFilterUiTarget) : $(filter_MERGE_TARGET)
 			fragmentsdir=$(dir $(firstword $(filter %.xcu,$^))).. \
 			pkg=$@ xmlpackage=Filter fcfg=$${RESPONSEFILE} languagepack=true \
 		&& rm -f $${RESPONSEFILE})
+	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),FIU)
 
 $(filter_XcuFilterUiCleanTarget) :
 	$(call gb_Output_announce,$(filter_XcuFilterUiTarget),$(false),FIU,1)
@@ -215,11 +225,13 @@ $$(call filter_XcuResTarget_get_target,$(1)) : \
 		$(filter_XSLT_langfilter) $(filter_XcuFilterUiTarget) \
 		| $(call gb_ExternalExecutable_get_dependencies,xsltproc)
 	$$(call gb_Output_announce,$(1),$(true),XCU,1)
+	$$(call gb_Trace_StartRange,$(1),XCU)
 	$$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $$(dir $$@) && \
 		$(subst $$,$$$$,$(call gb_ExternalExecutable_get_command,xsltproc)) --nonet --stringparam lang $(1) \
 			$(filter_XSLT_langfilter) \
 			$(filter_XcuFilterUiTarget) > $$@)
+	$$(call gb_Trace_EndRange,$(1),XCU)
 
 endef
 
@@ -354,6 +366,7 @@ $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_writer_types.xcu
 	MWAW_Text_Document \
 	Palm_Text_Document \
 	StarOffice_Writer \
+	writer_EPUB_Document \
 ))
 
 $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_writer_filters.xcu,filter/source/config/fragments/filters,\
@@ -401,6 +414,7 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_writer_filters
 	MWAW_Text_Document \
 	Palm_Text_Document \
 	StarOffice_Writer \
+	EPUB \
 ))
 
 # fcfg_web
@@ -491,6 +505,7 @@ $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_calc_types.xcu,f
 	MWAW_Database \
 	MWAW_Spreadsheet \
 	StarOffice_Spreadsheet \
+	calc_MS_Multiplan \
 ))
 
 $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_calc_filters.xcu,filter/source/config/fragments/filters,\
@@ -507,6 +522,7 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_calc_filters.x
 	MS_Excel_95_Vorlage_Template \
 	MS_Excel_97 \
 	MS_Excel_97_Vorlage_Template \
+	MS_Excel_2003_XML_Orcus \
 	Rich_Text_Format__StarCalc_ \
 	SYLK \
 	StarOffice_XML__Calc_ \
@@ -534,6 +550,7 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_calc_filters.x
 	MWAW_Database \
 	MWAW_Spreadsheet \
 	StarOffice_Spreadsheet \
+	MS_Multiplan \
 ))
 
 # fcfg_draw
@@ -553,6 +570,7 @@ $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_draw_types.xcu,f
 	draw_Visio_Document \
 	draw_ClarisWorks \
 	draw_PageMaker_Document \
+	draw_QXP_Document \
 	draw_ZMF_Document \
 	MWAW_Bitmap \
 	MWAW_Drawing \
@@ -574,6 +592,7 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_draw_filters.x
 	FreehandDocument \
 	ClarisWorks_Draw \
 	PageMakerDocument \
+	QXPDocument \
 	ZMFDocument \
 	MWAW_Bitmap \
 	MWAW_Drawing \
@@ -597,6 +616,7 @@ $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_impress_types.xc
 	MS_PowerPoint_2007_XML \
 	MS_PowerPoint_2007_XML_AutoPlay \
 	MS_PowerPoint_2007_XML_Template \
+	MS_PowerPoint_2007_XML_VBA \
 	impress_OOXML_Presentation \
 	impress_OOXML_Presentation_Template \
 	impress_OOXML_Presentation_AutoPlay \
@@ -622,6 +642,7 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_impress_filter
 	impress_MS_PowerPoint_2007_XML \
 	impress_MS_PowerPoint_2007_XML_AutoPlay \
 	impress_MS_PowerPoint_2007_XML_Template \
+	impress_MS_PowerPoint_2007_XML_VBA \
 	impress_OOXML \
 	impress_OOXML_Template \
 	impress_OOXML_AutoPlay \
@@ -671,7 +692,6 @@ $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_drawgraphics_typ
 	eps_Encapsulated_PostScript \
 	gif_Graphics_Interchange \
 	graphic_HTML \
-	graphic_SWF \
 	jpg_JPEG \
 	met_OS2_Metafile \
         mov_MOV \
@@ -686,8 +706,7 @@ $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_drawgraphics_typ
 	ppm_Portable_Pixelmap \
 	psd_Adobe_Photoshop \
 	ras_Sun_Rasterfile \
-	sgf_StarOffice_Writer_SGF \
-	sgv_StarDraw_20 \
+	svg_Scalable_Vector_Graphics_Draw \
 	svg_Scalable_Vector_Graphics \
 	svm_StarView_Metafile \
 	tga_Truevision_TARGA \
@@ -714,8 +733,7 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_drawgraphics_f
 	PPM___Portable_Pixelmap \
 	PSD___Adobe_Photoshop \
 	RAS___Sun_Rasterfile \
-	SGF___StarOffice_Writer_SGF \
-	SGV___StarDraw_2_0 \
+	SVG___Scalable_Vector_Graphics_Draw \
 	SVG___Scalable_Vector_Graphics \
 	SVM___StarView_Metafile \
 	TGA___Truevision_TARGA \
@@ -729,7 +747,6 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_drawgraphics_f
 	draw_bmp_Export \
 	draw_emf_Export \
 	draw_eps_Export \
-	draw_flash_Export \
 	draw_gif_Export \
 	draw_html_Export \
 	draw_jpg_Export \
@@ -746,7 +763,6 @@ $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_impressgraphics_
 	eps_Encapsulated_PostScript \
 	gif_Graphics_Interchange \
 	graphic_HTML \
-	graphic_SWF \
 	impress_CGM_Computer_Graphics_Metafile \
 	jpg_JPEG \
 	met_OS2_Metafile \
@@ -756,6 +772,7 @@ $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_impressgraphics_
 	png_Portable_Network_Graphic \
 	ppm_Portable_Pixelmap \
 	ras_Sun_Rasterfile \
+	svg_Scalable_Vector_Graphics_Draw \
 	svg_Scalable_Vector_Graphics \
 	svm_StarView_Metafile \
 	tif_Tag_Image_File \
@@ -768,7 +785,6 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_impressgraphic
 	impress_bmp_Export \
 	impress_emf_Export \
 	impress_eps_Export \
-	impress_flash_Export \
 	impress_gif_Export \
 	impress_html_Export \
 	impress_jpg_Export \
@@ -782,20 +798,25 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_impressgraphic
 $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_writergraphics_types.xcu,filter/source/config/fragments/types,\
 	jpg_JPEG \
 	png_Portable_Network_Graphic \
+	svg_Scalable_Vector_Graphics \
 ))
 
 $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_writergraphics_filters.xcu,filter/source/config/fragments/filters,\
 	writer_jpg_Export \
 	writer_png_Export \
+	writer_svg_Export \
 ))
 
 # fcfg_calcgraphics
 $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_calcgraphics_types.xcu,filter/source/config/fragments/types,\
 	png_Portable_Network_Graphic \
+	svg_Scalable_Vector_Graphics \
 ))
 
 $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_calcgraphics_filters.xcu,filter/source/config/fragments/filters,\
+	calc_jpg_Export \
 	calc_png_Export \
+	calc_svg_Export \
 ))
 
 # fcfg_internalgraphics
@@ -819,8 +840,6 @@ $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_internalgraphics
 	ppm_Portable_Pixelmap \
 	psd_Adobe_Photoshop \
 	ras_Sun_Rasterfile \
-	sgf_StarOffice_Writer_SGF \
-	sgv_StarDraw_20 \
 	svg_Scalable_Vector_Graphics \
 	svm_StarView_Metafile \
 	tga_Truevision_TARGA \
@@ -857,8 +876,6 @@ $(eval $(call filter_Configuration_add_internal_filters,fcfg_langpack,fcfg_inter
 	ppm_Import \
 	psd_Import \
 	ras_Import \
-	sgf_Import \
-	sgv_Import \
 	svg_Export \
 	svg_Import \
 	svm_Export \

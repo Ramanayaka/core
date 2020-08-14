@@ -24,13 +24,11 @@
 #include <map>
 #include <vector>
 
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/sdbc/XPooledConnection.hpp>
 #include <com/sun/star/sdbc/XDriver.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/reflection/XProxyFactory.hpp>
-#include <cppuhelper/weakref.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <osl/mutex.hxx>
 #include <salhelper/timer.hxx>
@@ -59,17 +57,15 @@ namespace connectivity
     // OConnectionPool - the one-instance service for PooledConnections
     // manages the active connections and the connections in the pool
 
-    typedef ::cppu::WeakImplHelper< css::beans::XPropertyChangeListener>  OConnectionPool_Base;
-
     // typedef for the internal structure
     typedef std::vector< css::uno::Reference< css::sdbc::XPooledConnection> > TPooledConnections;
 
      // contains the currently pooled connections
-    typedef struct
+    struct TConnectionPool
     {
         TPooledConnections  aConnections;
         sal_Int32           nALiveCount; // will be decremented every time a time says to, when will reach zero the pool will be deleted
-    } TConnectionPool;
+    };
 
     struct TDigestHolder
     {
@@ -83,7 +79,7 @@ namespace connectivity
 
     //  typedef TDigestHolder
 
-    struct TDigestLess : public std::binary_function< TDigestHolder, TDigestHolder, bool>
+    struct TDigestLess
     {
         bool operator() (const TDigestHolder& x, const TDigestHolder& y) const
         {
@@ -96,17 +92,17 @@ namespace connectivity
 
     typedef std::map< TDigestHolder,TConnectionPool,TDigestLess> TConnectionMap;
 
-    // contains additional information about a activeconnection which is needed to put it back to the pool
-    typedef struct
+    // contains additional information about an activeconnection which is needed to put it back to the pool
+    struct TActiveConnectionInfo
     {
         TConnectionMap::iterator aPos;
         css::uno::Reference< css::sdbc::XPooledConnection> xPooledConnection;
-    } TActiveConnectionInfo;
+    };
 
     typedef std::map< css::uno::Reference< css::sdbc::XConnection>,
                         TActiveConnectionInfo> TActiveConnectionMap;
 
-    class OConnectionPool : public OConnectionPool_Base
+    class OConnectionPool : public ::cppu::WeakImplHelper< css::beans::XPropertyChangeListener>
     {
         TConnectionMap          m_aPool;                // the pooled connections
         TActiveConnectionMap    m_aActiveConnections;   // the currently active connections
@@ -123,7 +119,7 @@ namespace connectivity
     private:
         css::uno::Reference< css::sdbc::XConnection> createNewConnection(const OUString& _rURL,
                                 const css::uno::Sequence< css::beans::PropertyValue >& _rInfo);
-        css::uno::Reference< css::sdbc::XConnection> getPooledConnection(TConnectionMap::iterator& _rIter);
+        css::uno::Reference< css::sdbc::XConnection> getPooledConnection(TConnectionMap::iterator const & _rIter);
         // calculate the timeout and the corresponding ALiveCount
         void calculateTimeOuts();
 
@@ -139,7 +135,7 @@ namespace connectivity
         void clear(bool _bDispose);
         /// @throws css::sdbc::SQLException
         /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::sdbc::XConnection > SAL_CALL getConnectionWithInfo( const OUString& url, const css::uno::Sequence< css::beans::PropertyValue >& info );
+        css::uno::Reference< css::sdbc::XConnection > getConnectionWithInfo( const OUString& url, const css::uno::Sequence< css::beans::PropertyValue >& info );
         // XEventListener
         virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
         // XPropertyChangeListener

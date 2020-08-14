@@ -21,29 +21,27 @@
 #define INCLUDED_OOX_DRAWINGML_SHAPEGROUPCONTEXT_HXX
 
 #include <oox/core/contexthandler.hxx>
-#include <oox/core/contexthandler2.hxx>
+#include <oox/core/fragmenthandler2.hxx>
 #include <oox/dllapi.h>
 #include <oox/drawingml/drawingmltypes.hxx>
 #include <sal/types.h>
 
 namespace oox { class AttributeList; }
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-class OOX_DLLPUBLIC ShapeGroupContext : public ::oox::core::ContextHandler2
+class OOX_DLLPUBLIC ShapeGroupContext : public ::oox::core::FragmentHandler2
 {
 public:
-    ShapeGroupContext( ::oox::core::ContextHandler2Helper& rParent, ShapePtr const & pMasterShapePtr, ShapePtr const & pGroupShapePtr );
+    ShapeGroupContext( ::oox::core::FragmentHandler2 const & rParent, ShapePtr const & pMasterShapePtr, ShapePtr const & pGroupShapePtr );
     virtual ~ShapeGroupContext() override;
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
 protected:
-
     ShapePtr            mpGroupShapePtr;
-    ShapePtr            mpMasterShapePtr;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_SHAPEGROUPCONTEXT_HXX
 

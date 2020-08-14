@@ -17,40 +17,33 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "SchXMLImport.hxx"
+#include <SchXMLImport.hxx>
 #include "SchXMLChartContext.hxx"
 #include "contexts.hxx"
-#include "XMLChartPropertySetMapper.hxx"
 #include "SchXMLTools.hxx"
-#include "facreg.hxx"
 
-#include <o3tl/make_unique.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <comphelper/processfactory.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/prstylei.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlstyle.hxx>
-#include <com/sun/star/task/XStatusIndicatorSupplier.hpp>
 #include <com/sun/star/chart/XChartDocument.hpp>
-#include <com/sun/star/chart/ChartDataRowSource.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/chart2/data/XDataReceiver.hpp>
-#include <com/sun/star/chart2/data/XDataProvider.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
 #include <com/sun/star/chart2/XChartTypeContainer.hpp>
 #include <com/sun/star/chart2/XDataSeriesContainer.hpp>
 
-#include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 
-#include <typeinfo>
+#include <tools/diagnose_ex.h>
 
 using namespace com::sun::star;
 using namespace ::xmloff::token;
@@ -70,7 +63,7 @@ public:
     bool operator () ( const Reference< chart2::XChartType > & xChartType ) const
     {
         return (xChartType.is() &&
-                xChartType->getChartType().equals( m_aChartTypeName ));
+                xChartType->getChartType() == m_aChartTypeName );
     }
 
 private:
@@ -92,7 +85,7 @@ SchXMLImportHelper::SchXMLImportHelper() :
 
 SvXMLImportContext* SchXMLImportHelper::CreateChartContext(
     SvXMLImport& rImport,
-    sal_uInt16 nPrefix, const OUString& rLocalName,
+    sal_uInt16 /*nPrefix*/, const OUString& rLocalName,
     const Reference< frame::XModel >& rChartModel,
     const Reference< xml::sax::XAttributeList >& )
 {
@@ -107,7 +100,6 @@ SvXMLImportContext* SchXMLImportHelper::CreateChartContext(
     else
     {
         SAL_WARN("xmloff.chart", "No valid XChartDocument given as XModel" );
-        pContext = new SvXMLImportContext( rImport, nPrefix, rLocalName );
     }
 
     return pContext;
@@ -143,7 +135,7 @@ const SvXMLTokenMap& SchXMLImportHelper::GetDocElemTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        mpChartDocElemTokenMap = o3tl::make_unique<SvXMLTokenMap>( aDocElemTokenMap );
+        mpChartDocElemTokenMap = std::make_unique<SvXMLTokenMap>( aDocElemTokenMap );
     } // if( ! mpChartDocElemTokenMap )
 
     return *mpChartDocElemTokenMap;
@@ -164,7 +156,7 @@ const SvXMLTokenMap& SchXMLImportHelper::GetTableElemTokenMap()
         XML_TOKEN_MAP_END
     };
 
-        mpTableElemTokenMap = o3tl::make_unique<SvXMLTokenMap>( aTableElemTokenMap );
+        mpTableElemTokenMap = std::make_unique<SvXMLTokenMap>( aTableElemTokenMap );
     } // if( ! mpTableElemTokenMap )
 
     return *mpTableElemTokenMap;
@@ -184,7 +176,7 @@ const SvXMLTokenMap& SchXMLImportHelper::GetChartElemTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        mpChartElemTokenMap = o3tl::make_unique<SvXMLTokenMap>( aChartElemTokenMap );
+        mpChartElemTokenMap = std::make_unique<SvXMLTokenMap>( aChartElemTokenMap );
     } // if( ! mpChartElemTokenMap )
 
     return *mpChartElemTokenMap;
@@ -209,7 +201,7 @@ const SvXMLTokenMap& SchXMLImportHelper::GetPlotAreaElemTokenMap()
     XML_TOKEN_MAP_END
 };
 
-        mpPlotAreaElemTokenMap = o3tl::make_unique<SvXMLTokenMap>( aPlotAreaElemTokenMap );
+        mpPlotAreaElemTokenMap = std::make_unique<SvXMLTokenMap>( aPlotAreaElemTokenMap );
     } // if( ! mpPlotAreaElemTokenMap )
 
     return *mpPlotAreaElemTokenMap;
@@ -227,10 +219,11 @@ const SvXMLTokenMap& SchXMLImportHelper::GetSeriesElemTokenMap()
     { XML_NAMESPACE_CHART,  XML_REGRESSION_CURVE, XML_TOK_SERIES_REGRESSION_CURVE },
     { XML_NAMESPACE_CHART,  XML_ERROR_INDICATOR,  XML_TOK_SERIES_ERROR_INDICATOR  },
     { XML_NAMESPACE_LO_EXT, XML_PROPERTY_MAPPING, XML_TOK_SERIES_PROPERTY_MAPPING },
+    { XML_NAMESPACE_CHART, XML_DATA_LABEL,       XML_TOK_SERIES_DATA_LABEL       },
     XML_TOKEN_MAP_END
 };
 
-        mpSeriesElemTokenMap = o3tl::make_unique<SvXMLTokenMap>( aSeriesElemTokenMap );
+        mpSeriesElemTokenMap = std::make_unique<SvXMLTokenMap>( aSeriesElemTokenMap );
     } // if( ! mpSeriesElemTokenMap )
 
     return *mpSeriesElemTokenMap;
@@ -253,7 +246,7 @@ const SvXMLTokenMap& SchXMLImportHelper::GetChartAttrTokenMap()
     XML_TOKEN_MAP_END
 };
 
-        mpChartAttrTokenMap = o3tl::make_unique<SvXMLTokenMap>( aChartAttrTokenMap );
+        mpChartAttrTokenMap = std::make_unique<SvXMLTokenMap>( aChartAttrTokenMap );
     } // if( ! mpChartAttrTokenMap )
 
     return *mpChartAttrTokenMap;
@@ -286,7 +279,7 @@ const SvXMLTokenMap& SchXMLImportHelper::GetPlotAreaAttrTokenMap()
     XML_TOKEN_MAP_END
 };
 
-        mpPlotAreaAttrTokenMap = o3tl::make_unique<SvXMLTokenMap>( aPlotAreaAttrTokenMap );
+        mpPlotAreaAttrTokenMap = std::make_unique<SvXMLTokenMap>( aPlotAreaAttrTokenMap );
     } // if( ! mpPlotAreaAttrTokenMap )
 
     return *mpPlotAreaAttrTokenMap;
@@ -303,7 +296,7 @@ const SvXMLTokenMap& SchXMLImportHelper::GetCellAttrTokenMap()
     XML_TOKEN_MAP_END
 };
 
-        mpCellAttrTokenMap = o3tl::make_unique<SvXMLTokenMap>( aCellAttrTokenMap );
+        mpCellAttrTokenMap = std::make_unique<SvXMLTokenMap>( aCellAttrTokenMap );
     } // if( ! mpCellAttrTokenMap )
 
     return *mpCellAttrTokenMap;
@@ -317,14 +310,15 @@ const SvXMLTokenMap& SchXMLImportHelper::GetSeriesAttrTokenMap()
 {
     { XML_NAMESPACE_CHART,  XML_VALUES_CELL_RANGE_ADDRESS,  XML_TOK_SERIES_CELL_RANGE    },
     { XML_NAMESPACE_CHART,  XML_LABEL_CELL_ADDRESS,         XML_TOK_SERIES_LABEL_ADDRESS },
-    { XML_NAMESPACE_LO_EXT,  XML_LABEL_STRING,         XML_TOK_SERIES_LABEL_STRING },
+    { XML_NAMESPACE_LO_EXT, XML_LABEL_STRING,               XML_TOK_SERIES_LABEL_STRING  },
     { XML_NAMESPACE_CHART,  XML_ATTACHED_AXIS,              XML_TOK_SERIES_ATTACHED_AXIS },
     { XML_NAMESPACE_CHART,  XML_STYLE_NAME,                 XML_TOK_SERIES_STYLE_NAME    },
     { XML_NAMESPACE_CHART,  XML_CLASS,                      XML_TOK_SERIES_CHART_CLASS   },
+    { XML_NAMESPACE_LO_EXT, XML_HIDE_LEGEND,                XML_TOK_SERIES_HIDE_LEGEND   },
     XML_TOKEN_MAP_END
 };
 
-        mpSeriesAttrTokenMap = o3tl::make_unique<SvXMLTokenMap>( aSeriesAttrTokenMap );
+        mpSeriesAttrTokenMap = std::make_unique<SvXMLTokenMap>( aSeriesAttrTokenMap );
     } // if( ! mpSeriesAttrTokenMap )
 
     return *mpSeriesAttrTokenMap;
@@ -341,7 +335,7 @@ const SvXMLTokenMap& SchXMLImportHelper::GetPropMappingAttrTokenMap()
             XML_TOKEN_MAP_END
         };
 
-        mpPropMappingAttrTokenMap = o3tl::make_unique<SvXMLTokenMap>( aPropMappingAttrTokenMap );
+        mpPropMappingAttrTokenMap = std::make_unique<SvXMLTokenMap>( aPropMappingAttrTokenMap );
     }
 
     return *mpPropMappingAttrTokenMap;
@@ -361,7 +355,7 @@ const SvXMLTokenMap& SchXMLImportHelper::GetRegEquationAttrTokenMap()
     XML_TOKEN_MAP_END
 };
 
-        mpRegEquationAttrTokenMap = o3tl::make_unique<SvXMLTokenMap>( aRegressionEquationAttrTokenMap );
+        mpRegEquationAttrTokenMap = std::make_unique<SvXMLTokenMap>( aRegressionEquationAttrTokenMap );
     } // if( ! mpRegEquationAttrTokenMap )
 
     return *mpRegEquationAttrTokenMap;
@@ -372,41 +366,36 @@ void SchXMLImportHelper::DeleteDataSeries(
                     const Reference< chart2::XDataSeries > & xSeries,
                     const Reference< chart2::XChartDocument > & xDoc )
 {
-    if( xDoc.is() )
+    if( !xDoc.is() )
+        return;
     try
     {
         Reference< chart2::XCoordinateSystemContainer > xCooSysCnt(
             xDoc->getFirstDiagram(), uno::UNO_QUERY_THROW );
-        Sequence< Reference< chart2::XCoordinateSystem > > aCooSysSeq(
+        const Sequence< Reference< chart2::XCoordinateSystem > > aCooSysSeq(
             xCooSysCnt->getCoordinateSystems());
 
-        sal_Int32 nCooSysIndex = 0;
-        for( nCooSysIndex=0; nCooSysIndex<aCooSysSeq.getLength(); nCooSysIndex++ )
+        for( const auto& rCooSys : aCooSysSeq )
         {
-            Reference< chart2::XChartTypeContainer > xCTCnt( aCooSysSeq[ nCooSysIndex ], uno::UNO_QUERY_THROW );
-            Sequence< Reference< chart2::XChartType > > aChartTypes( xCTCnt->getChartTypes());
+            Reference< chart2::XChartTypeContainer > xCTCnt( rCooSys, uno::UNO_QUERY_THROW );
+            const Sequence< Reference< chart2::XChartType > > aChartTypes( xCTCnt->getChartTypes());
 
-            sal_Int32 nChartTypeIndex = 0;
-            for( nChartTypeIndex=0; nChartTypeIndex<aChartTypes.getLength(); nChartTypeIndex++ )
+            for( const auto& rChartType : aChartTypes )
             {
-                Reference< chart2::XDataSeriesContainer > xSeriesCnt( aChartTypes[nChartTypeIndex], uno::UNO_QUERY_THROW );
+                Reference< chart2::XDataSeriesContainer > xSeriesCnt( rChartType, uno::UNO_QUERY_THROW );
                 Sequence< Reference< chart2::XDataSeries > > aSeriesSeq( xSeriesCnt->getDataSeries());
 
-                sal_Int32 nSeriesIndex = 0;
-                for( nSeriesIndex=0; nSeriesIndex<aSeriesSeq.getLength(); nSeriesIndex++ )
+                if (std::find(aSeriesSeq.begin(), aSeriesSeq.end(), xSeries) != aSeriesSeq.end())
                 {
-                    if( xSeries==aSeriesSeq[nSeriesIndex] )
-                    {
-                        xSeriesCnt->removeDataSeries(xSeries);
-                        return;
-                    }
+                    xSeriesCnt->removeDataSeries(xSeries);
+                    return;
                 }
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception &)
     {
-       SAL_WARN("xmloff.chart",  "Exception caught. Type: " << OUString::createFromAscii( typeid( ex ).name()) << ", Message: " << ex.Message);
+       DBG_UNHANDLED_EXCEPTION("xmloff.chart");
     }
 }
 
@@ -452,7 +441,7 @@ Reference< chart2::XDataSeries > SchXMLImportHelper::GetNewDataSeries(
                         uno::UNO_QUERY );
                     if( xCurrentType.is())
                     {
-                        if( bPushLastChartType && aChartTypes.getLength())
+                        if( bPushLastChartType && aChartTypes.hasElements())
                         {
                             sal_Int32 nIndex( aChartTypes.getLength() - 1 );
                             aChartTypes.realloc( aChartTypes.getLength() + 1 );
@@ -482,9 +471,9 @@ Reference< chart2::XDataSeries > SchXMLImportHelper::GetNewDataSeries(
             }
         }
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        SAL_WARN("xmloff.chart", "Exception caught. Type: " << OUString::createFromAscii( typeid( ex ).name()) << ", Message: " << ex.Message);
+        DBG_UNHANDLED_EXCEPTION("xmloff.chart");
     }
     return xResult;
 }
@@ -497,19 +486,10 @@ SchXMLImport::SchXMLImport(
 {
     GetNamespaceMap().Add( GetXMLToken(XML_NP_XLINK), GetXMLToken(XML_N_XLINK), XML_NAMESPACE_XLINK );
     GetNamespaceMap().Add( GetXMLToken(XML_NP_CHART_EXT), GetXMLToken(XML_N_CHART_EXT), XML_NAMESPACE_CHART_EXT);
-
-    mbIsGraphicLoadOnDemandSupported = false;
 }
 
 SchXMLImport::~SchXMLImport() throw ()
 {
-    // stop progress view
-    if( mxStatusIndicator.is())
-    {
-        mxStatusIndicator->end();
-        mxStatusIndicator->reset();
-    }
-
     uno::Reference< chart2::XChartDocument > xChartDoc( GetModel(), uno::UNO_QUERY );
     if( xChartDoc.is() && xChartDoc->hasControllersLocked() )
         xChartDoc->unlockControllers();
@@ -517,56 +497,43 @@ SchXMLImport::~SchXMLImport() throw ()
 
 // create the main context (subcontexts are created
 // by the one created here)
-SvXMLImportContext *SchXMLImport::CreateContext( sal_uInt16 nPrefix, const OUString& rLocalName,
-    const Reference< xml::sax::XAttributeList >& xAttrList )
+SvXMLImportContext *SchXMLImport::CreateFastContext( sal_Int32 nElement,
+        const uno::Reference< xml::sax::XFastAttributeList >& /*xAttrList*/ )
 {
     SvXMLImportContext* pContext = nullptr;
 
-    // accept <office:document>
-    if( XML_NAMESPACE_OFFICE == nPrefix &&
-        ( IsXMLToken( rLocalName, XML_DOCUMENT_STYLES) ||
-          IsXMLToken( rLocalName, XML_DOCUMENT_CONTENT) ))
+    switch (nElement)
     {
-        pContext = new SchXMLDocContext( *maImportHelper.get(), *this, nPrefix, rLocalName );
-    } else if ( (XML_NAMESPACE_OFFICE == nPrefix) &&
-                ( IsXMLToken(rLocalName, XML_DOCUMENT) ||
-                  (IsXMLToken(rLocalName, XML_DOCUMENT_META)
-                   && (getImportFlags() & SvXMLImportFlags::META) )) )
-    {
-        uno::Reference<document::XDocumentPropertiesSupplier> xDPS(
-            GetModel(), uno::UNO_QUERY);
-        // mst@: right now, this seems to be not supported, so it is untested
-        if (xDPS.is()) {
-            pContext = (IsXMLToken(rLocalName, XML_DOCUMENT_META))
-                ? new SvXMLMetaDocumentContext(*this,
-                            XML_NAMESPACE_OFFICE, rLocalName,
-                            xDPS->getDocumentProperties())
-                // flat OpenDocument file format
-                : new SchXMLFlatDocContext_Impl(
-                            *maImportHelper.get(), *this, nPrefix, rLocalName,
-                            xDPS->getDocumentProperties());
-        } else {
-            pContext = (IsXMLToken(rLocalName, XML_DOCUMENT_META))
-                ? SvXMLImport::CreateContext( nPrefix, rLocalName, xAttrList )
-                : new SchXMLDocContext( *maImportHelper.get(), *this,
-                                        nPrefix, rLocalName );
+        case XML_ELEMENT( OFFICE, XML_DOCUMENT ):
+        case XML_ELEMENT( OFFICE, XML_DOCUMENT_META ):
+        {
+            uno::Reference<document::XDocumentPropertiesSupplier> xDPS(
+                GetModel(), uno::UNO_QUERY);
+            // mst@: right now, this seems to be not supported, so it is untested
+            if (xDPS.is()) {
+                pContext = (nElement == XML_ELEMENT(OFFICE, XML_DOCUMENT_META))
+                               ? new SvXMLMetaDocumentContext(*this, xDPS->getDocumentProperties())
+                               // flat OpenDocument file format
+                               : new SchXMLFlatDocContext_Impl(*maImportHelper, *this, nElement,
+                                                               xDPS->getDocumentProperties());
+            }
         }
-    } else {
-        pContext = SvXMLImport::CreateContext( nPrefix, rLocalName, xAttrList );
+        break;
+        // accept <office:document>
+        case XML_ELEMENT(OFFICE, XML_DOCUMENT_STYLES):
+        case XML_ELEMENT(OFFICE, XML_DOCUMENT_CONTENT):
+            pContext = new SchXMLDocContext(*maImportHelper, *this, nElement);
+        break;
     }
-
     return pContext;
 }
 
-SvXMLImportContext* SchXMLImport::CreateStylesContext(
-    const OUString& rLocalName,
-    const Reference<xml::sax::XAttributeList>& xAttrList )
+SvXMLImportContext* SchXMLImport::CreateStylesContext()
 {
     //#i103287# make sure that the version information is set before importing all the properties (especially stroke-opacity!)
     SchXMLTools::setBuildIDAtImportInfo( GetModel(), getImportInfo() );
 
-    SvXMLStylesContext* pStylesCtxt =
-        new SvXMLStylesContext( *(this), XML_NAMESPACE_OFFICE, rLocalName, xAttrList );
+    SvXMLStylesContext* pStylesCtxt = new SvXMLStylesContext( *this );
 
     // set context at base class, so that all auto-style classes are imported
     SetAutoStyles( pStylesCtxt );
@@ -585,10 +552,11 @@ void SAL_CALL SchXMLImport::setTargetDocument(const uno::Reference<lang::XCompon
 
     uno::Reference<chart2::XChartDocument> xChartDoc(GetModel(), uno::UNO_QUERY);
 
-    if (xChartDoc.is())
+    if (!xChartDoc.is())
+        return;
     try
     {
-        // prevent rebuild of view during load (necesarry especially if loaded not
+        // prevent rebuild of view during load (necessary especially if loaded not
         // via load api, which is the case for example if binary files are loaded)
         xChartDoc->lockControllers();
 
@@ -605,75 +573,44 @@ void SAL_CALL SchXMLImport::setTargetDocument(const uno::Reference<lang::XCompon
             }
         }
     }
-    catch (const uno::Exception & rEx)
+    catch (const uno::Exception &)
     {
-        OString aBStr(OUStringToOString(rEx.Message, RTL_TEXTENCODING_ASCII_US));
-        SAL_INFO("xmloff.chart", "SchXMLChartContext::StartElement(): Exception caught: " << aBStr);
+        TOOLS_INFO_EXCEPTION("xmloff.chart", "SchXMLChartContext::StartElement(): Exception caught");
     }
 }
 
 // first version: everything comes from one storage
 
-Sequence< OUString > SAL_CALL SchXMLImport_getSupportedServiceNames() throw()
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_comp_Chart_XMLOasisImporter_get_implementation(uno::XComponentContext* pCtx,
+                                                            uno::Sequence<uno::Any> const& /*rSeq*/)
 {
-    return Sequence< OUString > { "com.sun.star.comp.Chart.XMLOasisImporter" };
-}
-
-OUString SAL_CALL SchXMLImport_getImplementationName() throw()
-{
-    return OUString(  "SchXMLImport"  );
-}
-
-Reference< uno::XInterface > SAL_CALL SchXMLImport_createInstance(const Reference< lang::XMultiServiceFactory > & rSMgr)
-{
-    return static_cast<cppu::OWeakObject*>(new SchXMLImport( comphelper::getComponentContext(rSMgr), SchXMLImport_getImplementationName(), SvXMLImportFlags::ALL));
+    return cppu::acquire(new SchXMLImport(pCtx, "SchXMLImport", SvXMLImportFlags::ALL));
 }
 
 // multiple storage version: one for content / styles / meta
 
-Sequence< OUString > SAL_CALL SchXMLImport_Styles_getSupportedServiceNames() throw()
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_comp_Chart_XMLOasisMetaImporter_get_implementation(
+    uno::XComponentContext* pCtx, uno::Sequence<uno::Any> const& /*rSeq*/)
 {
-    return Sequence< OUString > { "com.sun.star.comp.Chart.XMLOasisStylesImporter" };
+    return cppu::acquire(new SchXMLImport(pCtx, "SchXMLImport.Meta", SvXMLImportFlags::META));
 }
 
-OUString SAL_CALL SchXMLImport_Styles_getImplementationName() throw()
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_comp_Chart_XMLOasisStylesImporter_get_implementation(
+    uno::XComponentContext* pCtx, uno::Sequence<uno::Any> const& /*rSeq*/)
 {
-    return OUString( "SchXMLImport.Styles" );
+    return cppu::acquire(new SchXMLImport(pCtx, "SchXMLImport.Styles", SvXMLImportFlags::STYLES));
 }
 
-Reference< uno::XInterface > SAL_CALL SchXMLImport_Styles_createInstance(const Reference< lang::XMultiServiceFactory > & rSMgr)
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_comp_Chart_XMLOasisContentImporter_get_implementation(
+    uno::XComponentContext* pCtx, uno::Sequence<uno::Any> const& /*rSeq*/)
 {
-    return static_cast<cppu::OWeakObject*>(new SchXMLImport( comphelper::getComponentContext(rSMgr), SchXMLImport_Styles_getImplementationName(), SvXMLImportFlags::STYLES ));
-}
-
-Sequence< OUString > SAL_CALL SchXMLImport_Content_getSupportedServiceNames() throw()
-{
-    return Sequence< OUString > { "com.sun.star.comp.Chart.XMLOasisContentImporter" };
-}
-
-OUString SAL_CALL SchXMLImport_Content_getImplementationName() throw()
-{
-    return OUString(  "SchXMLImport.Content"  );
-}
-
-Reference< uno::XInterface > SAL_CALL SchXMLImport_Content_createInstance(const Reference< lang::XMultiServiceFactory > & rSMgr)
-{
-    return static_cast<cppu::OWeakObject*>(new SchXMLImport( comphelper::getComponentContext(rSMgr), SchXMLImport_Content_getImplementationName(), SvXMLImportFlags::CONTENT | SvXMLImportFlags::AUTOSTYLES | SvXMLImportFlags::FONTDECLS ));
-}
-
-Sequence< OUString > SAL_CALL SchXMLImport_Meta_getSupportedServiceNames() throw()
-{
-    return Sequence< OUString > { "com.sun.star.comp.Chart.XMLOasisMetaImporter" };
-}
-
-OUString SAL_CALL SchXMLImport_Meta_getImplementationName() throw()
-{
-    return OUString(  "SchXMLImport.Meta"  );
-}
-
-Reference< uno::XInterface > SAL_CALL SchXMLImport_Meta_createInstance(const Reference< lang::XMultiServiceFactory > & rSMgr)
-{
-    return static_cast<cppu::OWeakObject*>(new SchXMLImport( comphelper::getComponentContext(rSMgr), SchXMLImport_Meta_getImplementationName(), SvXMLImportFlags::META ));
+    return cppu::acquire(new SchXMLImport(pCtx, "SchXMLImport.Content",
+                                          SvXMLImportFlags::CONTENT | SvXMLImportFlags::AUTOSTYLES
+                                              | SvXMLImportFlags::FONTDECLS));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,15 +19,9 @@
 
 #include <rtl/ustrbuf.hxx>
 #include <tools/stream.hxx>
-#include <sot/exchange.hxx>
 #include <sot/filelist.hxx>
-#include <osl/thread.h>
 
-/******************************************************************************
-|*
-|*  Stream-Operatoren
-|*
-\******************************************************************************/
+/* Stream operators */
 
 /* #i28176#
    The Windows clipboard bridge now provides a double '\0'
@@ -42,7 +36,7 @@ SvStream& ReadFileList( SvStream& rIStm, FileList& rFileList )
     OUStringBuffer sBuf(512);
     sal_uInt16 c;
 
-    while (!rIStm.IsEof())
+    while (!rIStm.eof())
     {
         // read first character of filepath; c==0 > reach end of stream
         rIStm.ReadUInt16( c );
@@ -50,9 +44,9 @@ SvStream& ReadFileList( SvStream& rIStm, FileList& rFileList )
             break;
 
         // read string till c==0
-        while (c && !rIStm.IsEof())
+        while (c && !rIStm.eof())
         {
-            sBuf.append((sal_Unicode)c);
+            sBuf.append(static_cast<sal_Unicode>(c));
             rIStm.ReadUInt16( c );
         }
 
@@ -63,12 +57,7 @@ SvStream& ReadFileList( SvStream& rIStm, FileList& rFileList )
     return rIStm;
 }
 
-/******************************************************************************
-|*
-|*  Liste fuellen/abfragen
-|*
-\******************************************************************************/
-
+/* Fill in / check the list */
 void FileList::AppendFile( const OUString& rStr )
 {
     aStrList.push_back( rStr );

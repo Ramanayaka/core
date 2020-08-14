@@ -17,18 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fuconarc.hxx"
-#include "sc.hrc"
-#include "tabvwsh.hxx"
-#include "drawview.hxx"
+#include <fuconarc.hxx>
+#include <tabvwsh.hxx>
+#include <drawview.hxx>
 
 // Create default drawing objects via keyboard
 #include <svx/svdocirc.hxx>
+#include <svx/svxids.hrc>
 #include <svx/sxciaitm.hxx>
 
-FuConstArc::FuConstArc( ScTabViewShell* pViewSh, vcl::Window* pWin, ScDrawView* pViewP,
-                   SdrModel* pDoc, SfxRequest& rReq )
-    : FuConstruct( pViewSh, pWin, pViewP, pDoc, rReq )
+FuConstArc::FuConstArc(ScTabViewShell& rViewSh, vcl::Window* pWin, ScDrawView* pViewP,
+                       SdrModel* pDoc, const SfxRequest& rReq)
+    : FuConstruct(rViewSh, pWin, pViewP, pDoc, rReq)
 {
 }
 
@@ -46,14 +46,8 @@ bool FuConstArc::MouseButtonDown( const MouseEvent& rMEvt )
     if ( rMEvt.IsLeft() && !pView->IsAction() )
     {
         Point aPnt( pWindow->PixelToLogic( rMEvt.GetPosPixel() ) );
-        // Hack  to align object to nearest grid position where object
-        // would be anchored ( if it were cell anchored )
-        // Get grid offset for current position ( note: aPnt is
-        // also adjusted )
-        Point aGridOff = CurrentGridSyncOffsetAndPos( aPnt );
         pWindow->CaptureMouse();
         pView->BegCreateObj( aPnt );
-        pView->GetCreateObj()->SetGridOffset( aGridOff );
         bReturn = true;
     }
     return bReturn;
@@ -81,22 +75,22 @@ void FuConstArc::Activate()
     switch (aSfxRequest.GetSlot() )
     {
         case SID_DRAW_ARC:
-            aNewPointer = Pointer( PointerStyle::DrawArc );
+            aNewPointer = PointerStyle::DrawArc;
             aObjKind = OBJ_CARC;
             break;
 
         case SID_DRAW_PIE:
-            aNewPointer = Pointer( PointerStyle::DrawPie );
+            aNewPointer = PointerStyle::DrawPie;
             aObjKind = OBJ_SECT;
             break;
 
         case SID_DRAW_CIRCLECUT:
-            aNewPointer = Pointer( PointerStyle::DrawCircleCut );
+            aNewPointer = PointerStyle::DrawCircleCut;
             aObjKind = OBJ_CCUT;
             break;
 
         default:
-            aNewPointer = Pointer( PointerStyle::Cross );
+            aNewPointer = PointerStyle::Cross;
             aObjKind = OBJ_CARC;
             break;
     }
@@ -104,7 +98,7 @@ void FuConstArc::Activate()
     pView->SetCurrentObj( sal::static_int_cast<sal_uInt16>( aObjKind ) );
 
     aOldPointer = pWindow->GetPointer();
-    pViewShell->SetActivePointer( aNewPointer );
+    rViewShell.SetActivePointer( aNewPointer );
 
     FuDraw::Activate();
 }
@@ -112,23 +106,24 @@ void FuConstArc::Activate()
 void FuConstArc::Deactivate()
 {
     FuDraw::Deactivate();
-    pViewShell->SetActivePointer( aOldPointer );
+    rViewShell.SetActivePointer( aOldPointer );
 }
 
 // Create default drawing objects via keyboard
-SdrObject* FuConstArc::CreateDefaultObject(const sal_uInt16 nID, const tools::Rectangle& rRectangle)
+SdrObjectUniquePtr FuConstArc::CreateDefaultObject(const sal_uInt16 nID, const tools::Rectangle& rRectangle)
 {
     // case SID_DRAW_ARC:
     // case SID_DRAW_PIE:
     // case SID_DRAW_CIRCLECUT:
 
-    SdrObject* pObj = SdrObjFactory::MakeNewObject(
-        pView->GetCurrentObjInventor(), pView->GetCurrentObjIdentifier(),
-        nullptr, pDrDoc);
+    SdrObjectUniquePtr pObj(SdrObjFactory::MakeNewObject(
+        *pDrDoc,
+        pView->GetCurrentObjInventor(),
+        pView->GetCurrentObjIdentifier()));
 
     if(pObj)
     {
-        if(dynamic_cast<const SdrCircObj*>( pObj) !=  nullptr)
+        if(dynamic_cast<const SdrCircObj*>( pObj.get() ) !=  nullptr)
         {
             tools::Rectangle aRect(rRectangle);
 

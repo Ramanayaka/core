@@ -20,20 +20,20 @@
 #include "richtextimplcontrol.hxx"
 #include "textattributelistener.hxx"
 #include "richtextengine.hxx"
-#include <editeng/editeng.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
+#include <i18nlangtag/languagetag.hxx>
+#include <editeng/editids.hrc>
 #include <editeng/editview.hxx>
-#include <editeng/eeitem.hxx>
 #include <editeng/editstat.hxx>
-#include <svx/svxids.hrc>
 #include <editeng/scripttypeitem.hxx>
 
-#include <editeng/editobj.hxx>
 #include <svl/itempool.hxx>
 #include <svl/itemset.hxx>
 #include <tools/mapunit.hxx>
-#include <vcl/window.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/commandevent.hxx>
 
 #define EMPTY_PAPER_SIZE    0x7FFFFFFF
 
@@ -48,7 +48,6 @@ namespace frm
         ,m_pVScroll             ( nullptr                )
         ,m_pScrollCorner        ( nullptr                )
         ,m_pEngine              ( _pEngine            )
-        ,m_pView                ( nullptr                )
         ,m_pTextAttrListener    ( _pTextAttrListener  )
         ,m_pSelectionListener   ( _pSelectionListener )
         ,m_bHasEverBeenShown    ( false               )
@@ -65,8 +64,8 @@ namespace frm
         m_pAntiImpl->SetMapMode( aRefDeviceMapMode );
         m_pViewport->SetMapMode( aRefDeviceMapMode );
 
-        m_pView = new EditView( m_pEngine, m_pViewport );
-        m_pEngine->InsertView( m_pView );
+        m_pView.reset(new EditView( m_pEngine, m_pViewport ));
+        m_pEngine->InsertView( m_pView.get() );
         m_pViewport->setView( *m_pView );
 
         m_pEngine->registerEngineStatusListener( this );
@@ -88,9 +87,9 @@ namespace frm
 
     RichTextControlImpl::~RichTextControlImpl( )
     {
-        m_pEngine->RemoveView( m_pView );
+        m_pEngine->RemoveView( m_pView.get() );
         m_pEngine->revokeEngineStatusListener( this );
-        delete m_pView;
+        m_pView.reset();
         m_pViewport.disposeAndClear();
         m_pHScroll.disposeAndClear();
         m_pVScroll.disposeAndClear();
@@ -114,7 +113,7 @@ namespace frm
             // This is useful in case the observer is for instance a toolbox which contains only
             // an, e.g., "bold" slot, and thus not interested in the particular script type of the
             // current selection.
-            SvxScriptSetItem aNormalizedSet( (WhichId)_pHandler->first, *m_pView->GetAttribs().GetPool() );
+            SvxScriptSetItem aNormalizedSet( static_cast<WhichId>(_pHandler->first), *m_pView->GetAttribs().GetPool() );
             normalizeScriptDependentAttribute( aNormalizedSet );
 
             implCheckUpdateCache( _pHandler->first, _pHandler->second->getState( aNormalizedSet.GetItemSet() ) );
@@ -146,10 +145,10 @@ namespace frm
         if ( m_pSelectionListener && m_pView )
         {
             ESelection aCurrentSelection = m_pView->GetSelection();
-            if ( !aCurrentSelection.IsEqual( m_aLastKnownSelection ) )
+            if ( aCurrentSelection != m_aLastKnownSelection )
             {
                 m_aLastKnownSelection = aCurrentSelection;
-                m_pSelectionListener->onSelectionChanged( m_aLastKnownSelection );
+                m_pSelectionListener->onSelectionChanged();
             }
         }
     }
@@ -191,12 +190,12 @@ namespace frm
                 return;
             SAL_WARN_IF( _nAttributeId != aHandler->getAttributeId(), "forms.richtext", "RichTextControlImpl::enableAttributeNotification: suspicious handler!" );
 
-            aHandlerPos = m_aAttributeHandlers.insert( AttributeHandlerPool::value_type( _nAttributeId , aHandler ) ).first;
+            aHandlerPos = m_aAttributeHandlers.emplace( _nAttributeId , aHandler ).first;
         }
 
         // remember the listener
         if ( _pListener )
-            m_aAttributeListeners.insert( AttributeListenerPool::value_type( _nAttributeId, _pListener ) );
+            m_aAttributeListeners.emplace( _nAttributeId, _pListener );
 
         // update (and broadcast) the state of this attribute
         updateAttribute( _nAttributeId );
@@ -225,10 +224,7 @@ namespace frm
         WhichId nNormalizedWhichId = _rScriptSetItem.GetItemSet().GetPool()->GetWhich( _rScriptSetItem.Which() );
         if ( pNormalizedItem )
         {
-            SfxPoolItem* pProperWhich = pNormalizedItem->Clone();
-            pProperWhich->SetWhich( nNormalizedWhichId );
-            _rScriptSetItem.GetItemSet().Put( *pProperWhich );
-            DELETEZ( pProperWhich );
+            _rScriptSetItem.GetItemSet().Put( pNormalizedItem->CloneSetWhich(nNormalizedWhichId) );
         }
         else
             _rScriptSetItem.GetItemSet().InvalidateItem( nNormalizedWhichId );
@@ -240,7 +236,7 @@ namespace frm
         StateCache::iterator aCachePos = m_aLastKnownStates.find( _nAttribute );
         if ( aCachePos == m_aLastKnownStates.end() )
         {   // nothing known about this attribute, yet
-            m_aLastKnownStates.insert( StateCache::value_type( _nAttribute, _rState ) );
+            m_aLastKnownStates.emplace( _nAttribute, _rState );
         }
         else
         {
@@ -255,11 +251,11 @@ namespace frm
         // is there a dedicated listener for this particular attribute?
         AttributeListenerPool::const_iterator aListenerPos = m_aAttributeListeners.find( _nAttribute );
         if ( aListenerPos != m_aAttributeListeners.end( ) )
-            aListenerPos->second->onAttributeStateChanged( _nAttribute, _rState );
+            aListenerPos->second->onAttributeStateChanged( _nAttribute );
 
         // call our global listener, if there is one
         if ( m_pTextAttrListener )
-            m_pTextAttrListener->onAttributeStateChanged( _nAttribute, _rState );
+            m_pTextAttrListener->onAttributeStateChanged( _nAttribute );
     }
 
 
@@ -289,7 +285,7 @@ namespace frm
         bool bVScroll = bool( nStatusWord & EditStatusFlags::VSCROLL );
 
         // In case of *no* automatic line breaks, we also need to check for the *range* here.
-        // Normally, we would do this only after a EditStatusFlags::TEXTWIDTHCHANGED. However, due to a bug
+        // Normally, we would do this only after an EditStatusFlags::TEXTWIDTHCHANGED. However, due to a bug
         // in the EditEngine (I believe so) this is not fired when the engine does not have
         // the AutoPaperSize bits set.
         // So in order to be properly notified, we would need the AutoPaperSize. But, with
@@ -389,7 +385,7 @@ namespace frm
     {
         if ( !m_bHasEverBeenShown )
             // no need to do anything. Especially, no need to set the paper size on the
-            // EditEngine to anything ....
+            // EditEngine to anything...
             return;
 
         const StyleSettings& rStyleSettings = m_pAntiImpl->GetSettings().GetStyleSettings();
@@ -409,8 +405,8 @@ namespace frm
         // the size of the viewport - note that the viewport does *not* occupy all the place
         // which is left when subtracting the scrollbar width/height
         Size aViewportPlaygroundPixel( aPlaygroundSizePixel );
-        aViewportPlaygroundPixel.Width() = ::std::max( long( 10 ), long( aViewportPlaygroundPixel.Width() - nScrollBarWidth ) );
-        aViewportPlaygroundPixel.Height() = ::std::max( long( 10 ), long( aViewportPlaygroundPixel.Height() - nScrollBarHeight ) );
+        aViewportPlaygroundPixel.setWidth( ::std::max( long( 10 ), long( aViewportPlaygroundPixel.Width() - nScrollBarWidth ) ) );
+        aViewportPlaygroundPixel.setHeight( ::std::max( long( 10 ), long( aViewportPlaygroundPixel.Height() - nScrollBarHeight ) ) );
         Size aViewportPlaygroundLogic( m_pViewport->PixelToLogic( aViewportPlaygroundPixel ) );
 
         const long nOffset = 2;
@@ -439,7 +435,7 @@ namespace frm
         {
             m_pVScroll->SetVisibleSize( aViewportPlaygroundLogic.Height() );
 
-            // the default height of a text line ....
+            // the default height of a text line...
             long nFontHeight = m_pEngine->GetStandardFont(0).GetFontSize().Height();
             // ... is the scroll size for the vertical scrollbar
             m_pVScroll->SetLineSize( nFontHeight );
@@ -545,14 +541,14 @@ namespace frm
     {
         void lcl_inflate( tools::Rectangle& _rRect, long _nInflateX, long _nInflateY )
         {
-            _rRect.Left() -= _nInflateX;
-            _rRect.Right() += _nInflateX;
-            _rRect.Top() -= _nInflateY;
-            _rRect.Bottom() += _nInflateY;
+            _rRect.AdjustLeft( -_nInflateX );
+            _rRect.AdjustRight(_nInflateX );
+            _rRect.AdjustTop( -_nInflateY );
+            _rRect.AdjustBottom(_nInflateY );
         }
     }
 
-    long RichTextControlImpl::HandleCommand( const CommandEvent& _rEvent )
+    bool RichTextControlImpl::HandleCommand( const CommandEvent& _rEvent )
     {
         if (  ( _rEvent.GetCommand() == CommandEventId::Wheel )
            || ( _rEvent.GetCommand() == CommandEventId::StartAutoScroll )
@@ -560,9 +556,9 @@ namespace frm
            )
         {
             m_pAntiImpl->HandleScrollCommand( _rEvent, m_pHScroll, m_pVScroll );
-            return 1;
+            return true;
         }
-        return 0;
+        return false;
     }
 
 
@@ -594,8 +590,8 @@ namespace frm
 
         tools::Rectangle aPlayground( aPos, aSize );
         Size aOnePixel( _pDev->PixelToLogic( Size( 1, 1 ) ) );
-        aPlayground.Right() -= aOnePixel.Width();
-        aPlayground.Bottom() -= aOnePixel.Height();
+        aPlayground.AdjustRight( -(aOnePixel.Width()) );
+        aPlayground.AdjustBottom( -(aOnePixel.Height()) );
 
         // background
         _pDev->SetLineColor();

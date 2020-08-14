@@ -21,7 +21,7 @@
 #define INCLUDED_UUI_SOURCE_LOGINERR_HXX
 
 #include <rtl/ustring.hxx>
-
+#include <vcl/errinf.hxx>
 
 #define LOGINERROR_FLAG_MODIFY_ACCOUNT         1
 #define LOGINERROR_FLAG_MODIFY_USER_NAME       2
@@ -34,13 +34,11 @@
 class LoginErrorInfo
 {
 private:
-    OUString m_aTitle;
     OUString m_aServer;
     OUString m_aAccount;
     OUString m_aUserName;
     OUString m_aPassword;
     OUString m_aPasswordToModify;
-    OUString m_aPath;
     OUString m_aErrorText;
     sal_uInt8   m_nFlags;
     DialogMask m_nRet;
@@ -60,7 +58,6 @@ public:
     const OUString&   GetPassword() const                 { return m_aPassword; }
     const OUString&   GetPasswordToModify() const         { return m_aPasswordToModify; }
     bool              IsRecommendToOpenReadonly() const   { return m_bRecommendToOpenReadonly; }
-    const OUString&   GetPath() const                     { return m_aPath; }
     const OUString&   GetErrorText() const                { return m_aErrorText; }
     bool            GetCanRememberPassword() const      { return ( m_nFlags & LOGINERROR_FLAG_CAN_REMEMBER_PASSWORD ); }
     bool            GetIsRememberPersistent() const     { return ( m_nFlags & LOGINERROR_FLAG_REMEMBER_PERSISTENT ); }
@@ -74,8 +71,6 @@ public:
     sal_uInt8       GetFlags() const        { return m_nFlags; }
     DialogMask   GetResult() const       { return m_nRet; }
 
-    void            SetTitle( const OUString& aTitle )
-                    { m_aTitle = aTitle; }
     void            SetServer( const OUString& aServer )
                     { m_aServer = aServer; }
     void            SetAccount( const OUString& aAccount )

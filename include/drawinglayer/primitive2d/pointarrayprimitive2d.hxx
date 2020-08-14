@@ -17,10 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_DRAWINGLAYER_PRIMITIVE2D_POINTARRAYPRIMITIVE2D_HXX
-#define INCLUDED_DRAWINGLAYER_PRIMITIVE2D_POINTARRAYPRIMITIVE2D_HXX
-
-#include <drawinglayer/drawinglayerdllapi.h>
+#pragma once
 
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 #include <basegfx/color/bcolor.hxx>
@@ -28,10 +25,8 @@
 
 // PointArrayPrimitive2D class
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         /** PointArrayPrimitive2D class
 
             This primitive defines single,discrete 'pixels' for the given
@@ -42,7 +37,7 @@ namespace drawinglayer
             should process it (Currently it is only used for grid visualisation,
             but this may change).
          */
-        class DRAWINGLAYER_DLLPUBLIC PointArrayPrimitive2D : public BasePrimitive2D
+        class PointArrayPrimitive2D final : public BasePrimitive2D
         {
         private:
             /// the array of positions
@@ -71,12 +66,9 @@ namespace drawinglayer
             virtual basegfx::B2DRange getB2DRange(const geometry::ViewInformation2D& rViewInformation) const override;
 
             /// provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
-
-#endif //INCLUDED_DRAWINGLAYER_PRIMITIVE2D_POINTARRAYPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

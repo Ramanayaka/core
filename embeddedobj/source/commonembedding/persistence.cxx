@@ -21,7 +21,6 @@
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/document/XStorageBasedDocument.hpp>
 #include <com/sun/star/embed/EmbedStates.hpp>
-#include <com/sun/star/embed/EmbedVerbs.hpp>
 #include <com/sun/star/embed/EntryInitModes.hpp>
 #include <com/sun/star/embed/StorageWrappedTargetException.hpp>
 #include <com/sun/star/embed/WrongStateException.hpp>
@@ -37,7 +36,6 @@
 #include <com/sun/star/frame/XLoadable.hpp>
 #include <com/sun/star/frame/XModule.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
@@ -50,12 +48,13 @@
 #include <com/sun/star/chart2/XChartDocument.hpp>
 
 #include <comphelper/fileformat.h>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/storagehelper.hxx>
 #include <comphelper/mimeconfighelper.hxx>
 #include <comphelper/namedvaluecollection.hxx>
 
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
+#include <unotools/configmgr.hxx>
 #include "persistence.hxx"
 
 using namespace ::com::sun::star;
@@ -67,20 +66,20 @@ uno::Sequence< beans::PropertyValue > GetValuableArgs_Impl( const uno::Sequence<
     uno::Sequence< beans::PropertyValue > aResult;
     sal_Int32 nResLen = 0;
 
-    for ( sal_Int32 nInd = 0; nInd < aMedDescr.getLength(); nInd++ )
+    for ( beans::PropertyValue const & prop : aMedDescr )
     {
-        if ( aMedDescr[nInd].Name == "ComponentData" || aMedDescr[nInd].Name == "DocumentTitle"
-          || aMedDescr[nInd].Name == "InteractionHandler" || aMedDescr[nInd].Name == "JumpMark"
-          // || aMedDescr[nInd].Name == "Password" // makes no sense for embedded objects
-          || aMedDescr[nInd].Name == "Preview" || aMedDescr[nInd].Name == "ReadOnly"
-          || aMedDescr[nInd].Name == "StartPresentation" || aMedDescr[nInd].Name == "RepairPackage"
-          || aMedDescr[nInd].Name == "StatusIndicator" || aMedDescr[nInd].Name == "ViewData"
-          || aMedDescr[nInd].Name == "ViewId" || aMedDescr[nInd].Name == "MacroExecutionMode"
-          || aMedDescr[nInd].Name == "UpdateDocMode"
-          || (aMedDescr[nInd].Name == "DocumentBaseURL" && bCanUseDocumentBaseURL) )
+        if ( prop.Name == "ComponentData" || prop.Name == "DocumentTitle"
+          || prop.Name == "InteractionHandler" || prop.Name == "JumpMark"
+          // || prop.Name == "Password" // makes no sense for embedded objects
+          || prop.Name == "Preview" || prop.Name == "ReadOnly"
+          || prop.Name == "StartPresentation" || prop.Name == "RepairPackage"
+          || prop.Name == "StatusIndicator" || prop.Name == "ViewData"
+          || prop.Name == "ViewId" || prop.Name == "MacroExecutionMode"
+          || prop.Name == "UpdateDocMode"
+          || (prop.Name == "DocumentBaseURL" && bCanUseDocumentBaseURL) )
         {
             aResult.realloc( ++nResLen );
-            aResult[nResLen-1] = aMedDescr[nInd];
+            aResult[nResLen-1] = prop;
         }
     }
 
@@ -88,7 +87,7 @@ uno::Sequence< beans::PropertyValue > GetValuableArgs_Impl( const uno::Sequence<
 }
 
 
-uno::Sequence< beans::PropertyValue > addAsTemplate( const uno::Sequence< beans::PropertyValue >& aOrig )
+static uno::Sequence< beans::PropertyValue > addAsTemplate( const uno::Sequence< beans::PropertyValue >& aOrig )
 {
     bool bAsTemplateSet = false;
     sal_Int32 nLength = aOrig.getLength();
@@ -117,7 +116,7 @@ uno::Sequence< beans::PropertyValue > addAsTemplate( const uno::Sequence< beans:
 }
 
 
-uno::Reference< io::XInputStream > createTempInpStreamFromStor(
+static uno::Reference< io::XInputStream > createTempInpStreamFromStor(
                                                             const uno::Reference< embed::XStorage >& xStorage,
                                                             const uno::Reference< uno::XComponentContext >& xContext )
 {
@@ -138,19 +137,18 @@ uno::Reference< io::XInputStream > createTempInpStreamFromStor(
     try
     {
         xStorage->copyToStorage( xTempStorage );
-    } catch( const uno::Exception& e )
+    } catch( const uno::Exception& )
     {
+        css::uno::Any anyEx = cppu::getCaughtException();
         throw embed::StorageWrappedTargetException(
                     "Can't copy storage!",
                     uno::Reference< uno::XInterface >(),
-                    uno::makeAny( e ) );
+                    anyEx );
     }
 
     try {
-        uno::Reference< lang::XComponent > xComponent( xTempStorage, uno::UNO_QUERY );
-        SAL_WARN_IF( !xComponent.is(), "embeddedobj.common", "Wrong storage implementation!" );
-        if ( xComponent.is() )
-            xComponent->dispose();
+        if ( xTempStorage.is() )
+            xTempStorage->dispose();
     }
     catch ( const uno::Exception& )
     {
@@ -183,7 +181,7 @@ static void TransferMediaType( const uno::Reference< embed::XStorage >& i_rSourc
     }
     catch( const uno::Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("embeddedobj.common");
     }
 }
 
@@ -219,23 +217,23 @@ static uno::Reference< util::XCloseable > CreateDocument( const uno::Reference< 
 
 static void SetDocToEmbedded( const uno::Reference< frame::XModel >& rDocument, const OUString& aModuleName )
 {
-    if (rDocument.is())
-    {
-        uno::Sequence< beans::PropertyValue > aSeq( 1 );
-        aSeq[0].Name = "SetEmbedded";
-        aSeq[0].Value <<= true;
-        rDocument->attachResource( OUString(), aSeq );
+    if (!rDocument.is())
+        return;
 
-        if ( !aModuleName.isEmpty() )
+    uno::Sequence< beans::PropertyValue > aSeq( 1 );
+    aSeq[0].Name = "SetEmbedded";
+    aSeq[0].Value <<= true;
+    rDocument->attachResource( OUString(), aSeq );
+
+    if ( !aModuleName.isEmpty() )
+    {
+        try
         {
-            try
-            {
-                uno::Reference< frame::XModule > xModule( rDocument, uno::UNO_QUERY_THROW );
-                xModule->setIdentifier( aModuleName );
-            }
-            catch( const uno::Exception& )
-            {}
+            uno::Reference< frame::XModule > xModule( rDocument, uno::UNO_QUERY_THROW );
+            xModule->setIdentifier( aModuleName );
         }
+        catch( const uno::Exception& )
+        {}
     }
 }
 
@@ -244,15 +242,13 @@ void OCommonEmbeddedObject::SwitchOwnPersistence( const uno::Reference< embed::X
                                                   const uno::Reference< embed::XStorage >& xNewObjectStorage,
                                                   const OUString& aNewName )
 {
-    if ( xNewParentStorage == m_xParentStorage && aNewName.equals( m_aEntryName ) )
+    if ( xNewParentStorage == m_xParentStorage && aNewName == m_aEntryName )
     {
         SAL_WARN_IF( xNewObjectStorage != m_xObjectStorage, "embeddedobj.common", "The storage must be the same!" );
         return;
     }
 
-    uno::Reference< lang::XComponent > xComponent( m_xObjectStorage, uno::UNO_QUERY );
-    OSL_ENSURE( !m_xObjectStorage.is() || xComponent.is(), "Wrong storage implementation!" );
-
+    auto xOldObjectStorage = m_xObjectStorage;
     m_xObjectStorage = xNewObjectStorage;
     m_xParentStorage = xNewParentStorage;
     m_aEntryName = aNewName;
@@ -266,8 +262,8 @@ void OCommonEmbeddedObject::SwitchOwnPersistence( const uno::Reference< embed::X
     }
 
     try {
-        if ( xComponent.is() )
-            xComponent->dispose();
+        if ( xOldObjectStorage.is() )
+            xOldObjectStorage->dispose();
     }
     catch ( const uno::Exception& )
     {
@@ -278,7 +274,7 @@ void OCommonEmbeddedObject::SwitchOwnPersistence( const uno::Reference< embed::X
 void OCommonEmbeddedObject::SwitchOwnPersistence( const uno::Reference< embed::XStorage >& xNewParentStorage,
                                                   const OUString& aNewName )
 {
-    if ( xNewParentStorage == m_xParentStorage && aNewName.equals( m_aEntryName ) )
+    if ( xNewParentStorage == m_xParentStorage && aNewName == m_aEntryName )
         return;
 
     sal_Int32 nStorageMode = m_bReadOnly ? embed::ElementModes::READ : embed::ElementModes::READWRITE;
@@ -346,12 +342,11 @@ uno::Reference< util::XCloseable > OCommonEmbeddedObject::InitNewDocument_Impl()
     }
     catch( const uno::Exception& )
     {
-        uno::Reference< util::XCloseable > xCloseable( xDocument, uno::UNO_QUERY );
-        if ( xCloseable.is() )
+        if ( xDocument.is() )
         {
             try
             {
-                xCloseable->close( true );
+                xDocument->close( true );
             }
             catch( const uno::Exception& )
             {
@@ -404,9 +399,9 @@ uno::Reference< util::XCloseable > OCommonEmbeddedObject::LoadLink_Impl()
         {
             // check if there is a password to cache
             uno::Reference< frame::XModel > xModel( xLoadable, uno::UNO_QUERY_THROW );
-            uno::Sequence< beans::PropertyValue > aProps = xModel->getArgs();
-            for ( sal_Int32 nInd = 0; nInd < aProps.getLength(); nInd++ )
-                if ( aProps[nInd].Name == "Password" && ( aProps[nInd].Value >>= m_aLinkPassword ) )
+            const uno::Sequence< beans::PropertyValue > aProps = xModel->getArgs();
+            for ( beans::PropertyValue const & prop : aProps )
+                if ( prop.Name == "Password" && ( prop.Value >>= m_aLinkPassword ) )
                 {
                     m_bLinkHasPassword = true;
                     break;
@@ -415,12 +410,11 @@ uno::Reference< util::XCloseable > OCommonEmbeddedObject::LoadLink_Impl()
     }
     catch( const uno::Exception& )
     {
-        uno::Reference< util::XCloseable > xCloseable( xDocument, uno::UNO_QUERY );
-        if ( xCloseable.is() )
+        if ( xDocument.is() )
         {
             try
             {
-                xCloseable->close( true );
+                xDocument->close( true );
             }
             catch( const uno::Exception& )
             {
@@ -440,9 +434,15 @@ OUString OCommonEmbeddedObject::GetFilterName( sal_Int32 nVersion ) const
     OUString aFilterName = GetPresetFilterName();
     if ( aFilterName.isEmpty() )
     {
+        OUString sDocumentServiceName = GetDocumentServiceName();
+        if (utl::ConfigManager::IsFuzzing() && nVersion == SOFFICE_FILEFORMAT_CURRENT &&
+            sDocumentServiceName == "com.sun.star.chart2.ChartDocument")
+        {
+            return "chart8";
+        }
         try {
             ::comphelper::MimeConfigurationHelper aHelper( m_xContext );
-            aFilterName = aHelper.GetDefaultFilterFromServiceName( GetDocumentServiceName(), nVersion );
+            aFilterName = aHelper.GetDefaultFilterFromServiceName(sDocumentServiceName, nVersion);
 
             // If no filter is found, fall back to the FileFormatVersion=6200 filter, Base only has that.
             if (aFilterName.isEmpty() && nVersion == SOFFICE_FILEFORMAT_CURRENT)
@@ -541,16 +541,15 @@ uno::Reference< util::XCloseable > OCommonEmbeddedObject::LoadDocumentFromStorag
     }
     catch( const uno::Exception& )
     {
-        uno::Reference< util::XCloseable > xCloseable( xDocument, uno::UNO_QUERY );
-        if ( xCloseable.is() )
+        if ( xDocument.is() )
         {
             try
             {
-                xCloseable->close( true );
+                xDocument->close( true );
             }
             catch( const uno::Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("embeddedobj.common");
             }
         }
 
@@ -613,26 +612,26 @@ uno::Reference< io::XInputStream > OCommonEmbeddedObject::StoreDocumentToTempStr
 
 void OCommonEmbeddedObject::SaveObject_Impl()
 {
-    if ( m_xClientSite.is() )
-    {
-        try
-        {
-            // check whether the component is modified,
-            // if not there is no need for storing
-            uno::Reference< util::XModifiable > xModifiable( m_xDocHolder->GetComponent(), uno::UNO_QUERY );
-            if ( xModifiable.is() && !xModifiable->isModified() )
-                return;
-        }
-        catch( const uno::Exception& )
-        {}
+    if ( !m_xClientSite.is() )
+        return;
 
-        try {
-            m_xClientSite->saveObject();
-        }
-        catch( const uno::Exception& )
-        {
-            SAL_WARN( "embeddedobj.common", "The object was not stored!" );
-        }
+    try
+    {
+        // check whether the component is modified,
+        // if not there is no need for storing
+        uno::Reference< util::XModifiable > xModifiable( m_xDocHolder->GetComponent(), uno::UNO_QUERY );
+        if ( xModifiable.is() && !xModifiable->isModified() )
+            return;
+    }
+    catch( const uno::Exception& )
+    {}
+
+    try {
+        m_xClientSite->saveObject();
+    }
+    catch( const uno::Exception& )
+    {
+        SAL_WARN( "embeddedobj.common", "The object was not stored!" );
     }
 }
 
@@ -640,22 +639,19 @@ void OCommonEmbeddedObject::SaveObject_Impl()
 OUString OCommonEmbeddedObject::GetBaseURL_Impl() const
 {
     OUString aBaseURL;
-    sal_Int32 nInd = 0;
 
     if ( m_xClientSite.is() )
     {
         try
         {
             uno::Reference< frame::XModel > xParentModel( m_xClientSite->getComponent(), uno::UNO_QUERY_THROW );
-            uno::Sequence< beans::PropertyValue > aModelProps = xParentModel->getArgs();
-            for ( nInd = 0; nInd < aModelProps.getLength(); nInd++ )
-                if ( aModelProps[nInd].Name == "DocumentBaseURL" )
+            const uno::Sequence< beans::PropertyValue > aModelProps = xParentModel->getArgs();
+            for ( beans::PropertyValue const & prop : aModelProps )
+                if ( prop.Name == "DocumentBaseURL" )
                 {
-                    aModelProps[nInd].Value >>= aBaseURL;
+                    prop.Value >>= aBaseURL;
                     break;
                 }
-
-
         }
         catch( const uno::Exception& )
         {}
@@ -663,10 +659,10 @@ OUString OCommonEmbeddedObject::GetBaseURL_Impl() const
 
     if ( aBaseURL.isEmpty() )
     {
-        for ( nInd = 0; nInd < m_aDocMediaDescriptor.getLength(); nInd++ )
-            if ( m_aDocMediaDescriptor[nInd].Name == "DocumentBaseURL" )
+        for ( beans::PropertyValue const & prop : m_aDocMediaDescriptor )
+            if ( prop.Name == "DocumentBaseURL" )
             {
-                m_aDocMediaDescriptor[nInd].Value >>= aBaseURL;
+                prop.Value >>= aBaseURL;
                 break;
             }
     }
@@ -683,21 +679,20 @@ OUString OCommonEmbeddedObject::GetBaseURLFrom_Impl(
                     const uno::Sequence< beans::PropertyValue >& lObjArgs )
 {
     OUString aBaseURL;
-    sal_Int32 nInd = 0;
 
-    for ( nInd = 0; nInd < lArguments.getLength(); nInd++ )
-        if ( lArguments[nInd].Name == "DocumentBaseURL" )
+    for ( beans::PropertyValue const & prop : lArguments )
+        if ( prop.Name == "DocumentBaseURL" )
         {
-            lArguments[nInd].Value >>= aBaseURL;
+            prop.Value >>= aBaseURL;
             break;
         }
 
     if ( aBaseURL.isEmpty() )
     {
-        for ( nInd = 0; nInd < lObjArgs.getLength(); nInd++ )
-            if ( lObjArgs[nInd].Name == "DefaultParentBaseURL" )
+        for ( beans::PropertyValue const & prop : lObjArgs )
+            if ( prop.Name == "DefaultParentBaseURL" )
             {
-                lObjArgs[nInd].Value >>= aBaseURL;
+                prop.Value >>= aBaseURL;
                 break;
             }
     }
@@ -724,11 +719,11 @@ OUString getStringPropertyValue( const uno::Sequence<beans::PropertyValue>& rPro
 {
     OUString aStr;
 
-    for (sal_Int32 i = 0; i < rProps.getLength(); ++i)
+    for (beans::PropertyValue const & prop : rProps)
     {
-        if (rProps[i].Name == rName)
+        if (prop.Name == rName)
         {
-            rProps[i].Value >>= aStr;
+            prop.Value >>= aStr;
             break;
         }
     }
@@ -826,12 +821,11 @@ uno::Reference< util::XCloseable > OCommonEmbeddedObject::CreateDocFromMediaDesc
     }
     catch( const uno::Exception& )
     {
-        uno::Reference< util::XCloseable > xCloseable( xDocument, uno::UNO_QUERY );
-        if ( xCloseable.is() )
+        if ( xDocument.is() )
         {
             try
             {
-                xCloseable->close( true );
+                xDocument->close( true );
             }
             catch( const uno::Exception& )
             {
@@ -953,26 +947,23 @@ void SAL_CALL OCommonEmbeddedObject::setPersistentEntry(
 
     if ( m_bWaitSaveCompleted )
     {
-        if ( nEntryConnectionMode == embed::EntryInitModes::NO_INIT )
-        {
-            // saveCompleted is expected, handle it accordingly
-            if ( m_xNewParentStorage == xStorage && m_aNewEntryName.equals( sEntName ) )
-            {
-                saveCompleted( true );
-                return;
-            }
-
-            // if a completely different entry is provided, switch first back to the old persistence in saveCompleted
-            // and then switch to the target persistence
-            bool bSwitchFurther = ( m_xParentStorage != xStorage || !m_aEntryName.equals( sEntName ) );
-            saveCompleted( false );
-            if ( !bSwitchFurther )
-                return;
-        }
-        else
+        if ( nEntryConnectionMode != embed::EntryInitModes::NO_INIT )
             throw embed::WrongStateException(
                         "The object waits for saveCompleted() call!",
                         static_cast< ::cppu::OWeakObject* >(this) );
+        // saveCompleted is expected, handle it accordingly
+        if ( m_xNewParentStorage == xStorage && m_aNewEntryName == sEntName )
+        {
+            saveCompleted( true );
+            return;
+        }
+
+        // if a completely different entry is provided, switch first back to the old persistence in saveCompleted
+        // and then switch to the target persistence
+        bool bSwitchFurther = ( m_xParentStorage != xStorage || m_aEntryName != sEntName );
+        saveCompleted( false );
+        if ( !bSwitchFurther )
+            return;
     }
 
     // for now support of this interface is required to allow breaking of links and converting them to normal embedded
@@ -993,36 +984,36 @@ void SAL_CALL OCommonEmbeddedObject::setPersistentEntry(
                                                   nEntryConnectionMode != embed::EntryInitModes::MEDIA_DESCRIPTOR_INIT );
 
     m_bReadOnly = false;
-    for ( sal_Int32 nInd = 0; nInd < lArguments.getLength(); nInd++ )
-        if ( lArguments[nInd].Name == "ReadOnly" )
-            lArguments[nInd].Value >>= m_bReadOnly;
+    for ( beans::PropertyValue const & prop : lArguments )
+        if ( prop.Name == "ReadOnly" )
+            prop.Value >>= m_bReadOnly;
 
     // TODO: use lObjArgs for StoreVisualReplacement
-    for ( sal_Int32 nObjInd = 0; nObjInd < lObjArgs.getLength(); nObjInd++ )
-        if ( lObjArgs[nObjInd].Name == "OutplaceDispatchInterceptor" )
+    for ( beans::PropertyValue const & prop : lObjArgs )
+        if ( prop.Name == "OutplaceDispatchInterceptor" )
         {
             uno::Reference< frame::XDispatchProviderInterceptor > xDispatchInterceptor;
-            if ( lObjArgs[nObjInd].Value >>= xDispatchInterceptor )
+            if ( prop.Value >>= xDispatchInterceptor )
                 m_xDocHolder->SetOutplaceDispatchInterceptor( xDispatchInterceptor );
         }
-        else if ( lObjArgs[nObjInd].Name == "DefaultParentBaseURL" )
+        else if ( prop.Name == "DefaultParentBaseURL" )
         {
-            lObjArgs[nObjInd].Value >>= m_aDefaultParentBaseURL;
+            prop.Value >>= m_aDefaultParentBaseURL;
         }
-        else if ( lObjArgs[nObjInd].Name == "Parent" )
+        else if ( prop.Name == "Parent" )
         {
-            lObjArgs[nObjInd].Value >>= m_xParent;
+            prop.Value >>= m_xParent;
         }
-        else if ( lObjArgs[nObjInd].Name == "IndividualMiscStatus" )
+        else if ( prop.Name == "IndividualMiscStatus" )
         {
             sal_Int64 nMiscStatus=0;
-            lObjArgs[nObjInd].Value >>= nMiscStatus;
+            prop.Value >>= nMiscStatus;
             m_nMiscStatus |= nMiscStatus;
         }
-        else if ( lObjArgs[nObjInd].Name == "CloneFrom" )
+        else if ( prop.Name == "CloneFrom" )
         {
             uno::Reference < embed::XEmbeddedObject > xObj;
-            lObjArgs[nObjInd].Value >>= xObj;
+            prop.Value >>= xObj;
             if ( xObj.is() )
             {
                 m_bHasClonedSize = true;
@@ -1030,15 +1021,15 @@ void SAL_CALL OCommonEmbeddedObject::setPersistentEntry(
                 m_nClonedMapUnit = xObj->getMapUnit( embed::Aspects::MSOLE_CONTENT );
             }
         }
-        else if ( lObjArgs[nObjInd].Name == "OutplaceFrameProperties" )
+        else if ( prop.Name == "OutplaceFrameProperties" )
         {
             uno::Sequence< uno::Any > aOutFrameProps;
             uno::Sequence< beans::NamedValue > aOutFramePropsTyped;
-            if ( lObjArgs[nObjInd].Value >>= aOutFrameProps )
+            if ( prop.Value >>= aOutFrameProps )
             {
                 m_xDocHolder->SetOutplaceFrameProperties( aOutFrameProps );
             }
-            else if ( lObjArgs[nObjInd].Value >>= aOutFramePropsTyped )
+            else if ( prop.Value >>= aOutFramePropsTyped )
             {
                 aOutFrameProps.realloc( aOutFramePropsTyped.getLength() );
                 uno::Any* pProp = aOutFrameProps.getArray();
@@ -1054,21 +1045,21 @@ void SAL_CALL OCommonEmbeddedObject::setPersistentEntry(
             else
                 SAL_WARN( "embeddedobj.common", "OCommonEmbeddedObject::setPersistentEntry: illegal type for argument 'OutplaceFrameProperties'!" );
         }
-        else if ( lObjArgs[nObjInd].Name == "ModuleName" )
+        else if ( prop.Name == "ModuleName" )
         {
-            lObjArgs[nObjInd].Value >>= m_aModuleName;
+            prop.Value >>= m_aModuleName;
         }
-        else if ( lObjArgs[nObjInd].Name == "EmbeddedScriptSupport" )
+        else if ( prop.Name == "EmbeddedScriptSupport" )
         {
-            OSL_VERIFY( lObjArgs[nObjInd].Value >>= m_bEmbeddedScriptSupport );
+            OSL_VERIFY( prop.Value >>= m_bEmbeddedScriptSupport );
         }
-        else if ( lObjArgs[nObjInd].Name == "DocumentRecoverySupport" )
+        else if ( prop.Name == "DocumentRecoverySupport" )
         {
-            OSL_VERIFY( lObjArgs[nObjInd].Value >>= m_bDocumentRecoverySupport );
+            OSL_VERIFY( prop.Value >>= m_bDocumentRecoverySupport );
         }
-        else if ( lObjArgs[nObjInd].Name == "RecoveryStorage" )
+        else if ( prop.Name == "RecoveryStorage" )
         {
-            OSL_VERIFY( lObjArgs[nObjInd].Value >>= m_xRecoveryStorage );
+            OSL_VERIFY( prop.Value >>= m_xRecoveryStorage );
         }
 
 
@@ -1196,11 +1187,11 @@ void SAL_CALL OCommonEmbeddedObject::storeToEntry( const uno::Reference< embed::
     }
 
     bool bTryOptimization = false;
-    for ( sal_Int32 nInd = 0; nInd < lObjArgs.getLength(); nInd++ )
+    for ( beans::PropertyValue const & prop : lObjArgs )
     {
         // StoreVisualReplacement and VisualReplacement args have no sense here
-        if ( lObjArgs[nInd].Name == "CanTryOptimization" )
-            lObjArgs[nInd].Value >>= bTryOptimization;
+        if ( prop.Name == "CanTryOptimization" )
+            prop.Value >>= bTryOptimization;
     }
 
     bool bSwitchBackToLoaded = false;
@@ -1237,23 +1228,23 @@ void SAL_CALL OCommonEmbeddedObject::storeToEntry( const uno::Reference< embed::
         }
     }
 
-    if ( m_nObjectState != embed::EmbedStates::LOADED )
-    {
-        uno::Reference< embed::XStorage > xSubStorage =
-                    xStorage->openStorageElement( sEntName, embed::ElementModes::READWRITE );
+    if ( m_nObjectState == embed::EmbedStates::LOADED )
+        return;
 
-        if ( !xSubStorage.is() )
-            throw uno::RuntimeException(); //TODO
+    uno::Reference< embed::XStorage > xSubStorage =
+                xStorage->openStorageElement( sEntName, embed::ElementModes::READWRITE );
 
-        aGuard.clear();
-        // TODO/LATER: support hierarchical name for embedded objects in embedded objects
-        StoreDocToStorage_Impl(
-            xSubStorage, lArguments, lObjArgs, nTargetStorageFormat, sEntName, false );
-        aGuard.reset();
+    if ( !xSubStorage.is() )
+        throw uno::RuntimeException(); //TODO
 
-        if ( bSwitchBackToLoaded )
-            changeState( embed::EmbedStates::LOADED );
-    }
+    aGuard.clear();
+    // TODO/LATER: support hierarchical name for embedded objects in embedded objects
+    StoreDocToStorage_Impl(
+        xSubStorage, lArguments, lObjArgs, nTargetStorageFormat, sEntName, false );
+    aGuard.reset();
+
+    if ( bSwitchBackToLoaded )
+        changeState( embed::EmbedStates::LOADED );
 
     // TODO: should the listener notification be done?
 }
@@ -1329,11 +1320,11 @@ void SAL_CALL OCommonEmbeddedObject::storeAsEntry( const uno::Reference< embed::
     PostEvent_Impl( "OnSaveAs" );
 
     bool bTryOptimization = false;
-    for ( sal_Int32 nInd = 0; nInd < lObjArgs.getLength(); nInd++ )
+    for ( beans::PropertyValue const & prop : lObjArgs )
     {
         // StoreVisualReplacement and VisualReplacement args have no sense here
-        if ( lObjArgs[nInd].Name == "CanTryOptimization" )
-            lObjArgs[nInd].Value >>= bTryOptimization;
+        if ( prop.Name == "CanTryOptimization" )
+            prop.Value >>= bTryOptimization;
     }
 
     bool bSwitchBackToLoaded = false;
@@ -1394,7 +1385,7 @@ void SAL_CALL OCommonEmbeddedObject::storeAsEntry( const uno::Reference< embed::
     m_aNewEntryName = sEntName;
     m_aNewDocMediaDescriptor = GetValuableArgs_Impl( lArguments, true );
 
-    // TODO: register listeners for storages above, in case thay are disposed
+    // TODO: register listeners for storages above, in case they are disposed
     //       an exception will be thrown on saveCompleted( true )
 
     // TODO: should the listener notification be done here or in saveCompleted?
@@ -1451,10 +1442,7 @@ void SAL_CALL OCommonEmbeddedObject::saveCompleted( sal_Bool bUseNew )
     else
     {
         try {
-            uno::Reference< lang::XComponent > xComponent( m_xNewObjectStorage, uno::UNO_QUERY );
-            SAL_WARN_IF( !xComponent.is(), "embeddedobj.common", "Wrong storage implementation!" );
-            if ( xComponent.is() )
-                xComponent->dispose();
+            m_xNewObjectStorage->dispose();
         }
         catch ( const uno::Exception& )
         {
@@ -1668,17 +1656,17 @@ void SAL_CALL OCommonEmbeddedObject::reload(
         OUString aOldLinkFilter = m_aLinkFilterName;
 
         OUString aNewLinkFilter;
-        for ( sal_Int32 nInd = 0; nInd < lArguments.getLength(); nInd++ )
+        for ( beans::PropertyValue const & prop : lArguments )
         {
-            if ( lArguments[nInd].Name == "URL" )
+            if ( prop.Name == "URL" )
             {
                 // the new URL
-                lArguments[nInd].Value >>= m_aLinkURL;
+                prop.Value >>= m_aLinkURL;
                 m_aLinkFilterName.clear();
             }
-            else if ( lArguments[nInd].Name == "FilterName" )
+            else if ( prop.Name == "FilterName" )
             {
-                lArguments[nInd].Value >>= aNewLinkFilter;
+                prop.Value >>= aNewLinkFilter;
                 m_aLinkFilterName.clear();
             }
         }
@@ -1697,7 +1685,7 @@ void SAL_CALL OCommonEmbeddedObject::reload(
             }
         }
 
-        if ( !aOldLinkFilter.equals( m_aLinkFilterName ) )
+        if ( aOldLinkFilter != m_aLinkFilterName )
         {
             uno::Sequence< beans::NamedValue > aObject = aHelper.GetObjectPropsByFilter( m_aLinkFilterName );
 
@@ -1711,11 +1699,11 @@ void SAL_CALL OCommonEmbeddedObject::reload(
     m_aDocMediaDescriptor = GetValuableArgs_Impl( lArguments, true );
 
     // TODO: use lObjArgs for StoreVisualReplacement
-    for ( sal_Int32 nObjInd = 0; nObjInd < lObjArgs.getLength(); nObjInd++ )
-        if ( lObjArgs[nObjInd].Name == "OutplaceDispatchInterceptor" )
+    for ( beans::PropertyValue const & prop : lObjArgs )
+        if ( prop.Name == "OutplaceDispatchInterceptor" )
         {
             uno::Reference< frame::XDispatchProviderInterceptor > xDispatchInterceptor;
-            if ( lObjArgs[nObjInd].Value >>= xDispatchInterceptor )
+            if ( prop.Value >>= xDispatchInterceptor )
                 m_xDocHolder->SetOutplaceDispatchInterceptor( xDispatchInterceptor );
 
             break;
@@ -1727,35 +1715,32 @@ void SAL_CALL OCommonEmbeddedObject::reload(
     bool bOldReadOnlyValue = m_bReadOnly;
 
     m_bReadOnly = false;
-    for ( sal_Int32 nInd = 0; nInd < lArguments.getLength(); nInd++ )
-        if ( lArguments[nInd].Name == "ReadOnly" )
-            lArguments[nInd].Value >>= m_bReadOnly;
+    for ( beans::PropertyValue const & prop : lArguments )
+        if ( prop.Name == "ReadOnly" )
+            prop.Value >>= m_bReadOnly;
 
-    if ( bOldReadOnlyValue != m_bReadOnly && !m_bIsLink )
-    {
-        // close own storage
-        try {
-            uno::Reference< lang::XComponent > xComponent( m_xObjectStorage, uno::UNO_QUERY );
-            OSL_ENSURE( !m_xObjectStorage.is() || xComponent.is(), "Wrong storage implementation!" );
-            if ( xComponent.is() )
-                xComponent->dispose();
-        }
-        catch ( const uno::Exception& )
-        {
-        }
+    if ( bOldReadOnlyValue == m_bReadOnly || m_bIsLink )
+        return;
 
-        sal_Int32 nStorageMode = m_bReadOnly ? embed::ElementModes::READ : embed::ElementModes::READWRITE;
-        m_xObjectStorage = m_xParentStorage->openStorageElement( m_aEntryName, nStorageMode );
+    // close own storage
+    try {
+        if ( m_xObjectStorage.is() )
+            m_xObjectStorage->dispose();
     }
+    catch ( const uno::Exception& )
+    {
+    }
+
+    sal_Int32 nStorageMode = m_bReadOnly ? embed::ElementModes::READ : embed::ElementModes::READWRITE;
+    m_xObjectStorage = m_xParentStorage->openStorageElement( m_aEntryName, nStorageMode );
 }
 
 sal_Bool SAL_CALL OCommonEmbeddedObject::isStored()
 {
-    uno::Reference<container::XNameAccess> xNA(m_xObjectStorage, uno::UNO_QUERY);
-    if (!xNA.is())
+    if (!m_xObjectStorage.is())
         return false;
 
-    return xNA->getElementNames().getLength() > 0;
+    return m_xObjectStorage->getElementNames().hasElements();
 }
 
 
@@ -1766,18 +1751,15 @@ void SAL_CALL OCommonEmbeddedObject::breakLink( const uno::Reference< embed::XSt
     if ( m_bDisposed )
         throw lang::DisposedException(); // TODO
 
-    if ( !m_bIsLink )
+    if (!m_bIsLink || m_nObjectState == -1)
     {
         // it must be a linked initialized object
         throw embed::WrongStateException(
                     "The object is not a valid linked object!",
                     static_cast< ::cppu::OWeakObject* >(this) );
     }
-    else
-    {
-        // the current implementation of OOo links does not implement this method since it does not implement
-        // all the set of interfaces required for OOo embedded object ( XEmbedPersist is not supported ).
-    }
+    // the current implementation of OOo links does not implement this method since it does not implement
+    // all the set of interfaces required for OOo embedded object ( XEmbedPersist is not supported ).
 
     if ( !xStorage.is() )
         throw lang::IllegalArgumentException( "No parent storage is provided!",
@@ -1789,14 +1771,6 @@ void SAL_CALL OCommonEmbeddedObject::breakLink( const uno::Reference< embed::XSt
                                             static_cast< ::cppu::OWeakObject* >(this),
                                             2 );
 
-    if ( !m_bIsLink || m_nObjectState == -1 )
-    {
-        // it must be a linked initialized object
-        throw embed::WrongStateException(
-                    "The object is not a valid linked object!",
-                    static_cast< ::cppu::OWeakObject* >(this) );
-    }
-
     if ( m_bWaitSaveCompleted )
         throw embed::WrongStateException(
                     "The object waits for saveCompleted() call!",
@@ -1806,7 +1780,7 @@ void SAL_CALL OCommonEmbeddedObject::breakLink( const uno::Reference< embed::XSt
 
     m_bReadOnly = false;
 
-    if ( m_xParentStorage != xStorage || !m_aEntryName.equals( sEntName ) )
+    if ( m_xParentStorage != xStorage || m_aEntryName != sEntName )
         SwitchOwnPersistence( xStorage, sEntName );
 
     // for linked object it means that it becomes embedded object

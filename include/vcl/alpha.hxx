@@ -29,52 +29,44 @@
 
 class BitmapEx;
 
-class VCL_DLLPUBLIC AlphaMask : private Bitmap
+class VCL_DLLPUBLIC AlphaMask : public Bitmap
 {
 public:
 
                 AlphaMask();
-                AlphaMask( const Bitmap& rBitmap );
+    explicit    AlphaMask( const Bitmap& rBitmap );
                 AlphaMask( const AlphaMask& rAlphaMask );
                 AlphaMask( AlphaMask&& rAlphaMask );
-                AlphaMask( const Size& rSizePixel, const sal_uInt8* pEraseTransparency = nullptr );
+    explicit    AlphaMask( const Size& rSizePixel, const sal_uInt8* pEraseTransparency = nullptr );
     virtual     ~AlphaMask() override;
 
     AlphaMask&  operator=( const Bitmap& rBitmap );
     AlphaMask&  operator=( const AlphaMask& rAlphaMask ) { return static_cast<AlphaMask&>( Bitmap::operator=( rAlphaMask ) ); }
-    AlphaMask&  operator=( AlphaMask&& rAlphaMask ) { return static_cast<AlphaMask&>( Bitmap::operator=( std::move(rAlphaMask) ) ); }
+    AlphaMask&  operator=( AlphaMask&& rAlphaMask ) noexcept { return static_cast<AlphaMask&>( Bitmap::operator=( std::move(rAlphaMask) ) ); }
     bool        operator!() const { return Bitmap::operator!(); }
-    bool        operator==( const AlphaMask& rAlphaMask ) const { return Bitmap::operator==( rAlphaMask ); }
-    bool        operator!=( const AlphaMask& rAlphaMask ) const { return Bitmap::operator!=( rAlphaMask ); }
+    bool        operator==( const AlphaMask& rAlphaMask ) const { return Bitmap::operator==(rAlphaMask); }
+    bool        operator!=( const AlphaMask& rAlphaMask ) const { return Bitmap::operator!=(rAlphaMask); }
 
-    void        SetPrefMapMode( const MapMode& rMapMode ) { Bitmap::SetPrefMapMode( rMapMode ); }
+    Bitmap const & GetBitmap() const;
 
-    void        SetPrefSize( const Size& rSize ) { Bitmap::SetPrefSize( rSize ); }
+    void        Erase( sal_uInt8 cTransparency );
+    void        Replace( const Bitmap& rMask, sal_uInt8 rReplaceTransparency );
+    void        Replace( sal_uInt8 cSearchTransparency, sal_uInt8 cReplaceTransparency );
+    void        BlendWith(const Bitmap& rOther);
 
-    Size        GetSizePixel() const { return Bitmap::GetSizePixel(); }
-
-    BitmapChecksum   GetChecksum() const { return Bitmap::GetChecksum(); }
-
-    Bitmap      GetBitmap() const;
-
-    bool        Erase( sal_uInt8 cTransparency );
-    bool        Replace( const Bitmap& rMask, sal_uInt8 rReplaceTransparency );
-    bool        Replace( sal_uInt8 cSearchTransparency, sal_uInt8 cReplaceTransparency );
-
-    BitmapReadAccess*  AcquireReadAccess() { return Bitmap::AcquireReadAccess(); }
-    BitmapWriteAccess* AcquireWriteAccess() { return Bitmap::AcquireWriteAccess(); }
+    BitmapReadAccess*  AcquireAlphaReadAccess() { return Bitmap::AcquireReadAccess(); }
+    BitmapWriteAccess* AcquireAlphaWriteAccess() { return Bitmap::AcquireWriteAccess(); }
 
     void        ReleaseAccess( BitmapReadAccess* pAccess );
 
-    typedef vcl::ScopedBitmapAccess< BitmapReadAccess, AlphaMask, &AlphaMask::AcquireReadAccess >
-        ScopedReadAccess;
-    typedef vcl::ScopedBitmapAccess< BitmapWriteAccess, AlphaMask, &AlphaMask::AcquireWriteAccess >
-        ScopedWriteAccess;
+    typedef vcl::ScopedBitmapAccess<BitmapReadAccess, AlphaMask, &AlphaMask::AcquireAlphaReadAccess> ScopedReadAccess;
+
+    using Bitmap::IsEmpty;
 
 private:
     friend class BitmapEx;
     friend class ::OutputDevice;
-    friend bool VCL_DLLPUBLIC ReadDIBBitmapEx(BitmapEx& rTarget, SvStream& rIStm);
+    friend bool VCL_DLLPUBLIC ReadDIBBitmapEx(BitmapEx& rTarget, SvStream& rIStm, bool bFileHeader, bool bMSOFormat);
 
     SAL_DLLPRIVATE const Bitmap&    ImplGetBitmap() const;
     SAL_DLLPRIVATE void             ImplSetBitmap( const Bitmap& rBitmap );

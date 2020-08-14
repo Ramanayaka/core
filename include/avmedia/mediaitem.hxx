@@ -22,13 +22,14 @@
 
 #include <svl/poolitem.hxx>
 #include <com/sun/star/media/ZoomLevel.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/embed/XStorage.hpp>
 #include <avmedia/avmediadllapi.h>
 #include <memory>
 #include <o3tl/typed_flags_set.hxx>
 
-class SvStream;
+namespace com::sun::star::embed { class XStorage; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::io { class XInputStream; }
+namespace com::sun::star::io { class XStream; }
 
 enum class AVMediaSetMask
 {
@@ -60,7 +61,7 @@ enum class MediaState
 };
 
 
-class AVMEDIA_DLLPUBLIC MediaItem : public SfxPoolItem
+class AVMEDIA_DLLPUBLIC MediaItem final : public SfxPoolItem
 {
 public:
                             static SfxPoolItem* CreateDefault();
@@ -71,12 +72,12 @@ public:
     virtual                 ~MediaItem() override;
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
+    virtual MediaItem*      Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool            GetPresentation( SfxItemPresentation ePres,
                                                  MapUnit eCoreUnit,
                                                  MapUnit ePresUnit,
                                                  OUString&  rText,
-                                                 const IntlWrapper *pIntl = nullptr ) const override;
+                                                 const IntlWrapper& rIntl ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
@@ -127,12 +128,29 @@ typedef ::avmedia::MediaItem avmedia_MediaItem;
 bool AVMEDIA_DLLPUBLIC EmbedMedia(
         const ::css::uno::Reference< ::css::frame::XModel>& xModel,
         const OUString& rSourceURL,
-        OUString & o_rEmbeddedURL);
+        OUString & o_rEmbeddedURL,
+        ::css::uno::Reference<::css::io::XInputStream> const& xInputStream =
+            ::css::uno::Reference<::css::io::XInputStream>());
+
+bool AVMEDIA_DLLPUBLIC CreateMediaTempFile(
+        ::css::uno::Reference<::css::io::XInputStream> const& xInStream,
+        OUString& o_rTempFileURL,
+        const OUString& rDesiredExtension);
 
 OUString GetFilename(OUString const& rSourceURL);
 
 ::css::uno::Reference< ::css::io::XStream> CreateStream(
     const ::css::uno::Reference< ::css::embed::XStorage>& xStorage, const OUString& rFilename);
+
+struct AVMEDIA_DLLPUBLIC MediaTempFile
+{
+    OUString const m_TempFileURL;
+    MediaTempFile(OUString const& rURL)
+        : m_TempFileURL(rURL)
+    {}
+    ~MediaTempFile();
+};
+
 }
 
 #endif

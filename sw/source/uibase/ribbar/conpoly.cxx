@@ -17,36 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/svdmark.hxx>
-#include <svx/svdview.hxx>
-#include <svx/svdopath.hxx>
+#include <svx/svxids.hrc>
+#include <vcl/event.hxx>
 
-#include "view.hxx"
-#include "edtwin.hxx"
-#include "wrtsh.hxx"
-#include "drawbase.hxx"
-#include "conpoly.hxx"
-#include <basegfx/polygon/b2dpolygon.hxx>
+#include <view.hxx>
+#include <edtwin.hxx>
+#include <wrtsh.hxx>
+#include <drawbase.hxx>
+#include <conpoly.hxx>
 
 ConstPolygon::ConstPolygon(SwWrtShell* pWrtShell, SwEditWin* pEditWin, SwView* pSwView) :
                 SwDrawBase(pWrtShell, pEditWin, pSwView)
 {
-}
-
-bool ConstPolygon::MouseButtonDown(const MouseEvent& rMEvt)
-{
-    bool bReturn = SwDrawBase::MouseButtonDown(rMEvt);
-    if (bReturn)
-        aLastPos = rMEvt.GetPosPixel();
-
-    return bReturn;
-}
-
-bool ConstPolygon::MouseMove(const MouseEvent& rMEvt)
-{
-    bool bReturn = SwDrawBase::MouseMove(rMEvt);
-
-    return bReturn;
 }
 
 bool ConstPolygon::MouseButtonUp(const MouseEvent& rMEvt)

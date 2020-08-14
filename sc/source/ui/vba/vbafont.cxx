@@ -16,22 +16,17 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <com/sun/star/beans/XProperty.hpp>
-#include <com/sun/star/awt/FontWeight.hpp>
+
 #include <com/sun/star/awt/FontUnderline.hpp>
-#include <com/sun/star/awt/FontStrikeout.hpp>
-#include <com/sun/star/awt/FontSlant.hpp>
-#include <com/sun/star/text/XSimpleText.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
-#include <com/sun/star/table/XCell.hpp>
-#include <com/sun/star/table/XColumnRowRange.hpp>
 #include <ooo/vba/excel/XlColorIndex.hpp>
 #include <ooo/vba/excel/XlUnderlineStyle.hpp>
+#include <editeng/eeitem.hxx>
 #include <svl/itemset.hxx>
 #include "excelvbahelper.hxx"
 #include "vbafont.hxx"
-#include "scitems.hxx"
-#include "cellsuno.hxx"
+#include "vbapalette.hxx"
+#include <scitems.hxx>
+#include <cellsuno.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
@@ -43,7 +38,6 @@ ScVbaFont::ScVbaFont(
         const uno::Reference< beans::XPropertySet >& xPropertySet,
         ScCellRangeObj* pRangeObj, bool bFormControl ) :
     ScVbaFont_BASE( xParent, xContext, dPalette.getPalette(), xPropertySet, bFormControl ),
-    mPalette( dPalette ),
     mpRangeObj( pRangeObj )
 {
 }
@@ -79,19 +73,19 @@ ScVbaFont::setColorIndex( const uno::Any& _colorindex )
     // handled properly here
 
     if ( !nIndex || ( nIndex == excel::XlColorIndex::xlColorIndexAutomatic ) )
-        {
+    {
         nIndex = 1;  // check default ( assume black )
-                ScVbaFont_BASE::setColorIndex( uno::makeAny( nIndex ) );
-        }
-        else
-            ScVbaFont_BASE::setColorIndex( _colorindex );
+        ScVbaFont_BASE::setColorIndex( uno::makeAny( nIndex ) );
+    }
+    else
+        ScVbaFont_BASE::setColorIndex( _colorindex );
 }
 
 uno::Any SAL_CALL
 ScVbaFont::getColorIndex()
 {
     if(mbFormControl)
-        return uno::Any( (sal_Int32) 0 );
+        return uno::Any( sal_Int32(0) );
     if ( GetDataSet() )
         if (  GetDataSet()->GetItemState( ATTR_FONT_COLOR) == SfxItemState::DONTCARE )
             return aNULL();
@@ -139,22 +133,21 @@ ScVbaFont::setFontStyle( const uno::Any& aValue )
     OUString aStyles;
     aValue >>= aStyles;
 
-    std::vector< OUString > aTokens;
-    sal_Int32 nIndex = 0;
-    do
+    for (sal_Int32 nIdx{ 0 }; nIdx>=0; )
     {
-        OUString aToken = aStyles.getToken( 0, ' ', nIndex );
-        aTokens.push_back( aToken );
-    }while( nIndex >= 0 );
-
-    std::vector< OUString >::iterator it;
-    for( it = aTokens.begin(); it != aTokens.end(); ++it )
-    {
-        if( (*it).equalsIgnoreAsciiCase("Bold") )
+        const OUString aToken{ aStyles.getToken( 0, ' ', nIdx ) };
+        if (aToken.equalsIgnoreAsciiCase("Bold"))
+        {
             bBold = true;
-
-        if( (*it).equalsIgnoreAsciiCase("Italic") )
+            if (bItalic)
+                break;
+        }
+        else if (aToken.equalsIgnoreAsciiCase("Italic"))
+        {
             bItalic = true;
+            if (bBold)
+                break;
+        }
     }
 
     setBold( uno::makeAny( bBold ) );
@@ -297,8 +290,7 @@ uno::Any
 ScVbaFont::getColor()
 {
     // #TODO #FIXME - behave like getXXX above ( wrt. GetDataSet )
-    uno::Any aAny;
-    aAny = OORGBToXLRGB( mxFont->getPropertyValue("CharColor") );
+    uno::Any aAny = OORGBToXLRGB( mxFont->getPropertyValue("CharColor") );
     return aAny;
 }
 
@@ -321,18 +313,16 @@ ScVbaFont::getOutlineFont()
 OUString
 ScVbaFont::getServiceImplName()
 {
-    return OUString("ScVbaFont");
+    return "ScVbaFont";
 }
 
 uno::Sequence< OUString >
 ScVbaFont::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Font";
-    }
+        "ooo.vba.excel.Font"
+    };
     return aServiceNames;
 }
 

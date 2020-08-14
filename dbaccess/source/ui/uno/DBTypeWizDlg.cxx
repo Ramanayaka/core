@@ -17,17 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "dbu_reghelper.hxx"
-#include "uiservices.hxx"
 #include "DBTypeWizDlg.hxx"
-#include "dbwiz.hxx"
+#include <dbwiz.hxx>
 #include <comphelper/processfactory.hxx>
+#include <vcl/svapp.hxx>
 
 using namespace dbaui;
 
-extern "C" void SAL_CALL createRegistryInfo_ODBTypeWizDialog()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+org_openoffice_comp_dbu_ODBTypeWizDialog_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static OMultiInstanceAutoRegistration< ODBTypeWizDialog > aAutoRegistration;
+    return cppu::acquire(new ODBTypeWizDialog(context));
 }
 
 namespace dbaui
@@ -47,30 +48,14 @@ Sequence<sal_Int8> SAL_CALL ODBTypeWizDialog::getImplementationId(  )
     return css::uno::Sequence<sal_Int8>();
 }
 
-Reference< XInterface > SAL_CALL ODBTypeWizDialog::Create(const Reference< XMultiServiceFactory >& _rxFactory)
-{
-    return *(new ODBTypeWizDialog( comphelper::getComponentContext(_rxFactory) ));
-}
-
 OUString SAL_CALL ODBTypeWizDialog::getImplementationName()
 {
-    return getImplementationName_Static();
-}
-
-OUString ODBTypeWizDialog::getImplementationName_Static()
-{
-    return OUString("org.openoffice.comp.dbu.ODBTypeWizDialog");
+    return "org.openoffice.comp.dbu.ODBTypeWizDialog";
 }
 
 css::uno::Sequence<OUString> SAL_CALL ODBTypeWizDialog::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
-}
-
-css::uno::Sequence<OUString> ODBTypeWizDialog::getSupportedServiceNames_Static()
-{
-    css::uno::Sequence<OUString> aSupported { "com.sun.star.sdb.DataSourceTypeChangeDialog" };
-    return aSupported;
+    return { "com.sun.star.sdb.DataSourceTypeChangeDialog" };
 }
 
 Reference<XPropertySetInfo>  SAL_CALL ODBTypeWizDialog::getPropertySetInfo()
@@ -91,9 +76,9 @@ Reference<XPropertySetInfo>  SAL_CALL ODBTypeWizDialog::getPropertySetInfo()
     return new ::cppu::OPropertyArrayHelper(aProps);
 }
 
-VclPtr<Dialog> ODBTypeWizDialog::createDialog(vcl::Window* _pParent)
+std::unique_ptr<weld::DialogController> ODBTypeWizDialog::createDialog(const css::uno::Reference<css::awt::XWindow>& rParent)
 {
-    return VclPtr<ODbTypeWizDialog>::Create(_pParent, m_pDatasourceItems, m_aContext, m_aInitialSelection);
+    return std::make_unique<ODbTypeWizDialog>(Application::GetFrameWeld(rParent), m_pDatasourceItems.get(), m_aContext, m_aInitialSelection);
 }
 
 }   // namespace dbaui

@@ -19,16 +19,15 @@
 
 #include <drawinglayer/processor2d/textaspolygonextractor2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonHairlinePrimitive2D.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
 #include <drawinglayer/primitive2d/modifiedcolorprimitive2d.hxx>
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::processor2d
 {
-    namespace processor2d
-    {
         void TextAsPolygonExtractor2D::processBasePrimitive2D(const primitive2d::BasePrimitive2D& rCandidate)
         {
             switch(rCandidate.getPrimitive2DID())
@@ -104,7 +103,7 @@ namespace drawinglayer
                             const basegfx::BColor aColor(maBColorModifierStack.getModifiedColor(rPoPoCoCandidate.getBColor()));
 
                             // add to result vector
-                            maTarget.push_back(TextAsPolygonDataNode(aPolyPolygon, aColor, true));
+                            maTarget.emplace_back(aPolyPolygon, aColor, true);
                         }
                     }
 
@@ -126,7 +125,7 @@ namespace drawinglayer
                             const basegfx::BColor aColor(maBColorModifierStack.getModifiedColor(rPoHaCandidate.getBColor()));
 
                             // add to result vector
-                            maTarget.push_back(TextAsPolygonDataNode(basegfx::B2DPolyPolygon(aPolygon), aColor, false));
+                            maTarget.emplace_back(basegfx::B2DPolyPolygon(aPolygon), aColor, false);
                         }
                     }
 
@@ -148,7 +147,7 @@ namespace drawinglayer
                             const basegfx::BColor aColor(maBColorModifierStack.getModifiedColor(rPoPoHaCandidate.getBColor()));
 
                             // add to result vector
-                            maTarget.push_back(TextAsPolygonDataNode(aPolyPolygon, aColor, false));
+                            maTarget.emplace_back(aPolyPolygon, aColor, false);
                         }
                     }
 
@@ -228,7 +227,7 @@ namespace drawinglayer
         TextAsPolygonExtractor2D::~TextAsPolygonExtractor2D()
         {
         }
-    } // end of namespace processor2d
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

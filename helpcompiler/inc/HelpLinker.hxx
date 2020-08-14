@@ -21,8 +21,10 @@
 #define INCLUDED_HELPCOMPILER_INC_HELPLINKER_HXX
 
 #include <memory>
+#include <vector>
 #include <helpcompiler/dllapi.h>
-#include <libxslt/transform.h>
+#include "HelpCompiler.hxx"
+#include <libxslt/xsltInternals.h>
 
 #ifdef AIX
 #    undef _THREAD_SAFE
@@ -45,25 +47,24 @@ public:
     void processDocument( xmlDocPtr doc, const std::string& EncodedDocPath );
 };
 
-class L10N_DLLPUBLIC HelpLinker
+class HelpLinker
 {
 public:
     /// @throws HelpProcessingException
-    void main(std::vector<std::string> &args,
-              std::string* pExtensionPath = nullptr,
-              std::string* pDestination = nullptr,
+    L10N_DLLPUBLIC void main(std::vector<std::string> &args,
+              std::string const * pExtensionPath = nullptr,
+              std::string const * pDestination = nullptr,
               const OUString* pOfficeHelpPath = nullptr );
 
     HelpLinker()
         : bExtensionMode(false)
-        , m_pIndexerPreProcessor(nullptr)
         , m_bUseLangRoot(true)
         , m_bCreateIndex(true)
     {}
 
 private:
     Stringtable additionalFiles;
-    HashSet helpFiles;
+    std::vector<std::string> helpFiles;
     fs::path sourceRoot;
     fs::path compactStylesheet;
     fs::path embeddStylesheet;

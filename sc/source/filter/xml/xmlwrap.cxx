@@ -18,14 +18,15 @@
  */
 
 #include <vcl/errinf.hxx>
-#include <rsc/rscsfx.hxx>
 #include <sfx2/docfile.hxx>
 #include <sfx2/objsh.hxx>
 #include <sot/storage.hxx>
 #include <osl/diagnose.h>
+#include <comphelper/fileformat.h>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertysequence.hxx>
-#include <unotools/streamwrap.hxx>
+#include <svx/dialmgr.hxx>
+#include <svx/strings.hrc>
 #include <svx/xmlgrhlp.hxx>
 #include <svtools/sfxecode.hxx>
 #include <sfx2/frame.hxx>
@@ -34,13 +35,14 @@
 #include <sfx2/sfxsids.hrc>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
+#include <com/sun/star/frame/XTransientDocumentsDocumentContentFactory.hpp>
 #include <com/sun/star/xml/sax/InputSource.hpp>
 #include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/XFastParser.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
+#include <com/sun/star/xml/sax/SAXParseException.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <comphelper/extract.hxx>
 #include <comphelper/propertysetinfo.hxx>
 #include <comphelper/genericpropertyset.hxx>
 #include <com/sun/star/packages/WrongPasswordException.hpp>
@@ -49,28 +51,32 @@
 #include <com/sun/star/script/vba/XVBACompatibility.hpp>
 #include <com/sun/star/rdf/XDocumentMetadataAccess.hpp>
 #include <com/sun/star/ucb/InteractiveAugmentedIOException.hpp>
+#include <com/sun/star/task/XStatusIndicator.hpp>
 
 #include <sfx2/DocumentMetadataAccess.hxx>
 #include <comphelper/documentconstants.hxx>
 #include <svx/xmleohlp.hxx>
-#include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
 #include <unotools/saveopt.hxx>
+#include <tools/diagnose_ex.h>
 
-#include "document.hxx"
-#include "xmlwrap.hxx"
+#include <document.hxx>
+#include <xmlwrap.hxx>
 #include "xmlimprt.hxx"
 #include "xmlexprt.hxx"
-#include "global.hxx"
-#include "globstr.hrc"
-#include "scerrors.hxx"
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <scerrors.hxx>
 #include "XMLExportSharedData.hxx"
-#include "docuno.hxx"
-#include "sheetdata.hxx"
+#include <docuno.hxx>
+#include <drwlayer.hxx>
+#include <sheetdata.hxx>
 #include "XMLCodeNameProvider.hxx"
 #include <docsh.hxx>
 #include <unonames.hxx>
 
 using namespace com::sun::star;
+using namespace css::uno;
 
 ScXMLImportWrapper::ScXMLImportWrapper( ScDocShell& rDocSh, SfxMedium* pM, const uno::Reference < embed::XStorage >& xStor ) :
     mrDocShell(rDocSh),
@@ -81,7 +87,7 @@ ScXMLImportWrapper::ScXMLImportWrapper( ScDocShell& rDocSh, SfxMedium* pM, const
     OSL_ENSURE( pMedium || xStorage.is(), "ScXMLImportWrapper: Medium or Storage must be set" );
 }
 
-uno::Reference <task::XStatusIndicator> ScXMLImportWrapper::GetStatusIndicator()
+uno::Reference <task::XStatusIndicator> ScXMLImportWrapper::GetStatusIndicator() const
 {
     uno::Reference<task::XStatusIndicator> xStatusIndicator;
     if (pMedium)
@@ -98,10 +104,10 @@ uno::Reference <task::XStatusIndicator> ScXMLImportWrapper::GetStatusIndicator()
 }
 
 ErrCode ScXMLImportWrapper::ImportFromComponent(const uno::Reference<uno::XComponentContext>& xContext,
-    uno::Reference<frame::XModel>& xModel, uno::Reference<xml::sax::XParser>& xParser,
+    const uno::Reference<frame::XModel>& xModel, const uno::Reference<xml::sax::XParser>& xParser,
     xml::sax::InputSource& aParserInput,
     const OUString& sComponentName, const OUString& sDocName,
-    const OUString& sOldDocName, uno::Sequence<uno::Any>& aArgs,
+    const uno::Sequence<uno::Any>& aArgs,
     bool bMustBeSuccessfull)
 {
     uno::Reference < io::XStream > xDocStream;
@@ -114,14 +120,8 @@ ErrCode ScXMLImportWrapper::ImportFromComponent(const uno::Reference<uno::XCompo
     {
         try
         {
-            uno::Reference < container::XNameAccess > xAccess( xStorage, uno::UNO_QUERY );
-            if ( xAccess->hasByName(sDocName) && xStorage->isStreamElement( sDocName) )
+            if ( xStorage->hasByName(sDocName) && xStorage->isStreamElement( sDocName) )
                 xDocStream = xStorage->openStreamElement( sDocName, embed::ElementModes::READ );
-            else if (!sOldDocName.isEmpty() && xAccess->hasByName(sOldDocName) && xStorage->isStreamElement( sOldDocName) )
-            {
-                xDocStream = xStorage->openStreamElement( sOldDocName, embed::ElementModes::READ );
-                sStream = sOldDocName;
-            }
             else
                 return ERRCODE_NONE;
 
@@ -149,7 +149,7 @@ ErrCode ScXMLImportWrapper::ImportFromComponent(const uno::Reference<uno::XCompo
 
     // set Base URL
     uno::Reference< beans::XPropertySet > xInfoSet;
-    if( aArgs.getLength() > 0 )
+    if( aArgs.hasElements() )
         aArgs.getConstArray()[0] >>= xInfoSet;
     OSL_ENSURE( xInfoSet.is(), "missing property set" );
     if( xInfoSet.is() )
@@ -166,9 +166,8 @@ ErrCode ScXMLImportWrapper::ImportFromComponent(const uno::Reference<uno::XCompo
         uno::UNO_QUERY );
     OSL_ENSURE( xDocHandler.is(), "can't get Calc importer" );
     uno::Reference<document::XImporter> xImporter( xDocHandler, uno::UNO_QUERY );
-    uno::Reference<lang::XComponent> xComponent( xModel, uno::UNO_QUERY );
     if (xImporter.is())
-        xImporter->setTargetDocument( xComponent );
+        xImporter->setTargetDocument( xModel );
 
     ScXMLImport* pImporterImpl = dynamic_cast<ScXMLImport*>(xImporter.get());
     if (pImporterImpl)
@@ -188,6 +187,7 @@ ErrCode ScXMLImportWrapper::ImportFromComponent(const uno::Reference<uno::XCompo
     }
     catch( const xml::sax::SAXParseException& r )
     {
+        css::uno::Any ex( cppu::getCaughtException() );
         // sax parser sends wrapped exceptions,
         // try to find the original one
         xml::sax::SAXException aSaxEx = *static_cast<xml::sax::SAXException const *>(&r);
@@ -209,7 +209,7 @@ ErrCode ScXMLImportWrapper::ImportFromComponent(const uno::Reference<uno::XCompo
             nReturn = ERRCODE_SFX_WRONGPASSWORD;
         else
         {
-            SAL_WARN("sc.filter", "SAX parse exception caught while importing: " << r.Message);
+            SAL_WARN("sc.filter", "SAX parse exception caught while importing: " << exceptionToString(ex));
 
             OUString sErr = OUString::number( r.LineNumber ) +
                           "," +
@@ -233,6 +233,7 @@ ErrCode ScXMLImportWrapper::ImportFromComponent(const uno::Reference<uno::XCompo
     }
     catch( const xml::sax::SAXException& r )
     {
+        css::uno::Any ex( cppu::getCaughtException() );
         packages::zip::ZipIOException aBrokenPackage;
         if ( r.WrappedException >>= aBrokenPackage )
             return ERRCODE_IO_BROKENPACKAGE;
@@ -240,26 +241,26 @@ ErrCode ScXMLImportWrapper::ImportFromComponent(const uno::Reference<uno::XCompo
             nReturn = ERRCODE_SFX_WRONGPASSWORD;
         else
         {
-            SAL_WARN("sc.filter", "SAX exception caught while importing: " << r.Message);
+            SAL_WARN("sc.filter", "SAX exception caught while importing: " << exceptionToString(ex));
 
             nReturn = SCERR_IMPORT_FORMAT;
         }
     }
-    catch( const packages::zip::ZipIOException& r )
+    catch( const packages::zip::ZipIOException& )
     {
-        SAL_WARN("sc.filter", "Zip exception caught while importing: " << r.Message);
+        TOOLS_WARN_EXCEPTION("sc.filter", "Zip exception caught while importing");
 
         nReturn = ERRCODE_IO_BROKENPACKAGE;
     }
-    catch( const io::IOException& r )
+    catch( const io::IOException& )
     {
-        SAL_WARN("sc.filter", "IO exception caught while importing: " << r.Message);
+        TOOLS_WARN_EXCEPTION("sc.filter", "IO exception caught while importing");
 
         nReturn = SCERR_IMPORT_OPEN;
     }
-    catch( const uno::Exception& r )
+    catch( const uno::Exception& )
     {
-        SAL_WARN("sc.filter", "uno exception caught while importing: " << r.Message);
+        TOOLS_WARN_EXCEPTION("sc.filter", "uno exception caught while importing");
 
         nReturn = SCERR_IMPORT_UNKNOWN;
     }
@@ -342,7 +343,7 @@ bool ScXMLImportWrapper::Import( ImportFlags nMode, ErrCode& rError )
     if (xStatusIndicator.is())
     {
         sal_Int32 nProgressRange(1000000);
-        xStatusIndicator->start(ScGlobal::GetRscString(STR_LOAD_DOC), nProgressRange);
+        xStatusIndicator->start(SvxResId(RID_SVXSTR_DOC_LOAD), nProgressRange);
         xInfoSet->setPropertyValue("ProgressRange", uno::makeAny(nProgressRange));
     }
 
@@ -390,7 +391,7 @@ bool ScXMLImportWrapper::Import( ImportFlags nMode, ErrCode& rError )
             const uno::Reference< rdf::XDocumentMetadataAccess > xDMA(
                 xModel, uno::UNO_QUERY_THROW );
             const uno::Reference< rdf::XURI > xBaseURI(
-                ::sfx2::createBaseURI( xContext, xStorage, aBaseURL, aName ) );
+                ::sfx2::createBaseURI( xContext, xModel, aBaseURL, aName ) );
             uno::Reference<task::XInteractionHandler> xHandler =
                 mrDocShell.GetMedium()->GetInteractionHandler();
             xDMA->loadMetadataFromStorage( xStorage, xBaseURI, xHandler );
@@ -427,29 +428,29 @@ bool ScXMLImportWrapper::Import( ImportFlags nMode, ErrCode& rError )
                                 xContext, xModel, xXMLParser, aParserInput,
                                 bOasis ? OUString("com.sun.star.comp.Calc.XMLOasisMetaImporter")
                                 : OUString("com.sun.star.comp.Calc.XMLMetaImporter"),
-                                "meta.xml", "Meta.xml", aMetaArgs, false);
+                                "meta.xml", aMetaArgs, false);
 
         SAL_INFO( "sc.filter", "meta import end" );
     }
 
-    SvXMLGraphicHelper* pGraphicHelper = nullptr;
-    uno::Reference< document::XGraphicObjectResolver > xGrfContainer;
+    rtl::Reference<SvXMLGraphicHelper> xGraphicHelper;
+    uno::Reference<document::XGraphicStorageHandler> xGraphicStorageHandler;
 
     uno::Reference< document::XEmbeddedObjectResolver > xObjectResolver;
-    SvXMLEmbeddedObjectHelper *pObjectHelper = nullptr;
+    rtl::Reference<SvXMLEmbeddedObjectHelper> xObjectHelper;
 
     if( xStorage.is() )
     {
-        pGraphicHelper = SvXMLGraphicHelper::Create( xStorage, SvXMLGraphicHelperMode::Read );
-        xGrfContainer = pGraphicHelper;
+        xGraphicHelper = SvXMLGraphicHelper::Create( xStorage, SvXMLGraphicHelperMode::Read );
+        xGraphicStorageHandler = xGraphicHelper.get();
 
-        pObjectHelper = SvXMLEmbeddedObjectHelper::Create(xStorage, mrDocShell, SvXMLEmbeddedObjectHelperMode::Read);
-        xObjectResolver = pObjectHelper;
+        xObjectHelper = SvXMLEmbeddedObjectHelper::Create(xStorage, mrDocShell, SvXMLEmbeddedObjectHelperMode::Read);
+        xObjectResolver = xObjectHelper.get();
     }
     uno::Sequence<uno::Any> aStylesArgs(4);
     uno::Any* pStylesArgs = aStylesArgs.getArray();
     pStylesArgs[0] <<= xInfoSet;
-    pStylesArgs[1] <<= xGrfContainer;
+    pStylesArgs[1] <<= xGraphicStorageHandler;
     pStylesArgs[2] <<= xStatusIndicator;
     pStylesArgs[3] <<= xObjectResolver;
 
@@ -469,7 +470,7 @@ bool ScXMLImportWrapper::Import( ImportFlags nMode, ErrCode& rError )
                             xContext, xModel, xXMLParser, aParserInput,
                             bOasis ? OUString("com.sun.star.comp.Calc.XMLOasisSettingsImporter")
                                    : OUString("com.sun.star.comp.Calc.XMLSettingsImporter"),
-                            "settings.xml", "", aSettingsArgs, false);
+                            "settings.xml", aSettingsArgs, false);
 
         SAL_INFO( "sc.filter", "settings import end" );
     }
@@ -483,7 +484,7 @@ bool ScXMLImportWrapper::Import( ImportFlags nMode, ErrCode& rError )
             bOasis ? OUString("com.sun.star.comp.Calc.XMLOasisStylesImporter")
                    : OUString("com.sun.star.comp.Calc.XMLStylesImporter"),
             "styles.xml",
-            "", aStylesArgs, true);
+            aStylesArgs, true);
 
         SAL_INFO( "sc.filter", "styles import end" );
     }
@@ -498,7 +499,7 @@ bool ScXMLImportWrapper::Import( ImportFlags nMode, ErrCode& rError )
         uno::Sequence<uno::Any> aDocArgs(4);
         uno::Any* pDocArgs = aDocArgs.getArray();
         pDocArgs[0] <<= xInfoSet;
-        pDocArgs[1] <<= xGrfContainer;
+        pDocArgs[1] <<= xGraphicStorageHandler;
         pDocArgs[2] <<= xStatusIndicator;
         pDocArgs[3] <<= xObjectResolver;
 
@@ -508,16 +509,18 @@ bool ScXMLImportWrapper::Import( ImportFlags nMode, ErrCode& rError )
             bOasis ? OUString("com.sun.star.comp.Calc.XMLOasisContentImporter")
                    : OUString("com.sun.star.comp.Calc.XMLContentImporter"),
             "content.xml",
-            "Content.xml", aDocArgs,
+            aDocArgs,
             true);
 
         SAL_INFO( "sc.filter", "content import end" );
     }
-    if( pGraphicHelper )
-        SvXMLGraphicHelper::Destroy( pGraphicHelper );
+    if( xGraphicHelper.is() )
+        xGraphicHelper->dispose();
+    xGraphicHelper.clear();
 
-    if( pObjectHelper )
-        SvXMLEmbeddedObjectHelper::Destroy( pObjectHelper );
+    if( xObjectHelper.is() )
+        xObjectHelper->dispose();
+    xObjectHelper.clear();
 
     if (xStatusIndicator.is())
         xStatusIndicator->end();
@@ -584,7 +587,7 @@ bool ScXMLImportWrapper::Import( ImportFlags nMode, ErrCode& rError )
     return bRet;//!bStylesOnly ? bDocRetval : bStylesRetval;
 }
 
-static bool lcl_HasValidStream(ScDocument& rDoc)
+static bool lcl_HasValidStream(const ScDocument& rDoc)
 {
     SfxObjectShell* pObjSh = rDoc.GetDocumentShell();
     if ( pObjSh->IsDocShared() )
@@ -604,10 +607,10 @@ static bool lcl_HasValidStream(ScDocument& rDoc)
 }
 
 bool ScXMLImportWrapper::ExportToComponent(const uno::Reference<uno::XComponentContext>& xContext,
-    uno::Reference<frame::XModel>& xModel, uno::Reference<xml::sax::XWriter>& xWriter,
-    uno::Sequence<beans::PropertyValue>& aDescriptor, const OUString& sName,
+    const uno::Reference<frame::XModel>& xModel, const uno::Reference<xml::sax::XWriter>& xWriter,
+    const uno::Sequence<beans::PropertyValue>& aDescriptor, const OUString& sName,
     const OUString& sMediaType, const OUString& sComponentName,
-    uno::Sequence<uno::Any>& aArgs, ScMySharedData*& pSharedData)
+    const uno::Sequence<uno::Any>& aArgs, std::unique_ptr<ScMySharedData>& pSharedData)
 {
     bool bRet(false);
     uno::Reference<io::XOutputStream> xOut;
@@ -637,7 +640,7 @@ bool ScXMLImportWrapper::ExportToComponent(const uno::Reference<uno::XComponentC
 
     // set Base URL
     uno::Reference< beans::XPropertySet > xInfoSet;
-    if( aArgs.getLength() > 0 )
+    if( aArgs.hasElements() )
         aArgs.getConstArray()[0] >>= xInfoSet;
     OSL_ENSURE( xInfoSet.is(), "missing property set" );
     if( xInfoSet.is() )
@@ -653,14 +656,13 @@ bool ScXMLImportWrapper::ExportToComponent(const uno::Reference<uno::XComponentC
         uno::UNO_QUERY );
     OSL_ENSURE( xFilter.is(), "can't get exporter" );
     uno::Reference<document::XExporter> xExporter( xFilter, uno::UNO_QUERY );
-    uno::Reference<lang::XComponent> xComponent( xModel, uno::UNO_QUERY );
     if (xExporter.is())
-        xExporter->setSourceDocument( xComponent );
+        xExporter->setSourceDocument( xModel );
 
     if ( xFilter.is() )
     {
-        ScXMLExport* pExport = static_cast<ScXMLExport*>(SvXMLExport::getImplementation(xFilter));
-        pExport->SetSharedData(pSharedData);
+        ScXMLExport* pExport = static_cast<ScXMLExport*>(comphelper::getUnoTunnelImplementation<SvXMLExport>(xFilter));
+        pExport->SetSharedData(std::move(pSharedData));
 
         // if there are sheets to copy, get the source stream
         if ( sName == "content.xml" && lcl_HasValidStream(rDoc) && ( pExport->getExportFlags() & SvXMLExportFlags::OASIS ) )
@@ -674,7 +676,7 @@ bool ScXMLImportWrapper::ExportToComponent(const uno::Reference<uno::XComponentC
 
             // #i108978# If an embedded object is saved and no events are notified, don't use the stream
             // because without the ...DONE events, stream positions aren't updated.
-            ScSheetSaveData* pSheetData = ScModelObj::getImplementation(xModel)->GetSheetSaveData();
+            ScSheetSaveData* pSheetData = comphelper::getUnoTunnelImplementation<ScModelObj>(xModel)->GetSheetSaveData();
             if (pSheetData && pSheetData->IsInSupportedSave())
             {
                 try
@@ -702,14 +704,13 @@ bool ScXMLImportWrapper::ExportToComponent(const uno::Reference<uno::XComponentC
             {
                 SCTAB nTabCount = rDoc.GetTableCount();
                 for (SCTAB nTab=0; nTab<nTabCount; nTab++)
-                    if (rDoc.IsStreamValid(nTab))
-                        rDoc.SetStreamValid(nTab, false);
+                    rDoc.SetStreamValid(nTab, false);
             }
         }
         else
             bRet = xFilter->filter( aDescriptor );
 
-        pSharedData = pExport->GetSharedData();
+        pSharedData = pExport->ReleaseSharedData();
     }
 
     return bRet;
@@ -773,15 +774,14 @@ bool ScXMLImportWrapper::Export(bool bStylesOnly)
         uno::Reference<task::XStatusIndicator> xStatusIndicator(GetStatusIndicator());
         sal_Int32 nProgressRange(1000000);
         if(xStatusIndicator.is())
-            xStatusIndicator->start(ScGlobal::GetRscString(STR_SAVE_DOC), nProgressRange);
+            xStatusIndicator->start(ScResId(STR_SAVE_DOC), nProgressRange);
         xInfoSet->setPropertyValue("ProgressRange", uno::makeAny(nProgressRange));
 
         SvtSaveOptions aSaveOpt;
         bool bUsePrettyPrinting(aSaveOpt.IsPrettyPrinting());
         xInfoSet->setPropertyValue("UsePrettyPrinting", uno::makeAny(bUsePrettyPrinting));
 
-        const OUString sTargetStorage("TargetStorage");
-        xInfoSet->setPropertyValue( sTargetStorage, uno::Any( xStorage ) );
+        xInfoSet->setPropertyValue( "TargetStorage", uno::Any( xStorage ) );
 
         OSL_ENSURE( pMedium, "There is no medium to get MediaDescriptor from!" );
         OUString aBaseURL = pMedium ? pMedium->GetBaseURL( true ) : OUString();
@@ -811,7 +811,7 @@ bool ScXMLImportWrapper::Export(bool bStylesOnly)
         bool bStylesRet (false);
         bool bDocRet(false);
         bool bSettingsRet(false);
-        ScMySharedData* pSharedData = nullptr;
+        std::unique_ptr<ScMySharedData> pSharedData;
 
         bool bOasis = ( SotStorage::GetVersion( xStorage ) > SOFFICE_FILEFORMAT_60 );
 
@@ -860,23 +860,18 @@ bool ScXMLImportWrapper::Export(bool bStylesOnly)
             SAL_INFO( "sc.filter", "meta export end" );
         }
 
-        uno::Reference< document::XEmbeddedObjectResolver > xObjectResolver;
-        SvXMLEmbeddedObjectHelper *pObjectHelper = nullptr;
-
-        uno::Reference< document::XGraphicObjectResolver > xGrfContainer;
-        SvXMLGraphicHelper* pGraphicHelper = nullptr;
+        uno::Reference<document::XGraphicStorageHandler> xGraphicStorageHandler;
+        rtl::Reference<SvXMLGraphicHelper> xGraphicHelper;
 
         if( xStorage.is() )
         {
-            pGraphicHelper = SvXMLGraphicHelper::Create( xStorage, SvXMLGraphicHelperMode::Write, false );
-            xGrfContainer = pGraphicHelper;
+            xGraphicHelper = SvXMLGraphicHelper::Create( xStorage, SvXMLGraphicHelperMode::Write );
+            xGraphicStorageHandler = xGraphicHelper.get();
         }
 
-        if( pObjSh )
-        {
-            pObjectHelper = SvXMLEmbeddedObjectHelper::Create( xStorage, *pObjSh, SvXMLEmbeddedObjectHelperMode::Write );
-            xObjectResolver = pObjectHelper;
-        }
+        auto xObjectHelper = SvXMLEmbeddedObjectHelper::Create(
+            xStorage, *pObjSh, SvXMLEmbeddedObjectHelperMode::Write);
+        uno::Reference<document::XEmbeddedObjectResolver> xObjectResolver(xObjectHelper.get());
 
         // styles export
 
@@ -884,7 +879,7 @@ bool ScXMLImportWrapper::Export(bool bStylesOnly)
             uno::Sequence<uno::Any> aStylesArgs(5);
             uno::Any* pStylesArgs = aStylesArgs.getArray();
             pStylesArgs[0] <<= xInfoSet;
-            pStylesArgs[1] <<= xGrfContainer;
+            pStylesArgs[1] <<= xGraphicStorageHandler;
             pStylesArgs[2] <<= xStatusIndicator;
             pStylesArgs[3] <<= xWriter;
             pStylesArgs[4] <<= xObjectResolver;
@@ -908,7 +903,7 @@ bool ScXMLImportWrapper::Export(bool bStylesOnly)
             uno::Sequence<uno::Any> aDocArgs(5);
             uno::Any* pDocArgs = aDocArgs.getArray();
             pDocArgs[0] <<= xInfoSet;
-            pDocArgs[1] <<= xGrfContainer;
+            pDocArgs[1] <<= xGraphicStorageHandler;
             pDocArgs[2] <<= xStatusIndicator;
             pDocArgs[3] <<= xWriter;
             pDocArgs[4] <<= xObjectResolver;
@@ -925,11 +920,13 @@ bool ScXMLImportWrapper::Export(bool bStylesOnly)
             SAL_INFO( "sc.filter", "content export end" );
         }
 
-        if( pGraphicHelper )
-            SvXMLGraphicHelper::Destroy( pGraphicHelper );
+        if( xGraphicHelper )
+            xGraphicHelper->dispose();
+        xGraphicHelper.clear();
 
-        if( pObjectHelper )
-            SvXMLEmbeddedObjectHelper::Destroy( pObjectHelper );
+        if( xObjectHelper )
+            xObjectHelper->dispose();
+        xObjectHelper.clear();
 
         // settings export
 
@@ -953,7 +950,7 @@ bool ScXMLImportWrapper::Export(bool bStylesOnly)
             SAL_INFO( "sc.filter", "settings export end" );
         }
 
-        delete pSharedData;
+        pSharedData.reset();
 
         if (xStatusIndicator.is())
             xStatusIndicator->end();

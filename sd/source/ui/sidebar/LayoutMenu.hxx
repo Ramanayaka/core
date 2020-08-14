@@ -20,24 +20,17 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SIDEBAR_LAYOUTMENU_HXX
 #define INCLUDED_SD_SOURCE_UI_SIDEBAR_LAYOUTMENU_HXX
 
-#include "IDisposable.hxx"
-#include "ISidebarReceiver.hxx"
 #include <sfx2/sidebar/ILayoutableWindow.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
 
-#include <com/sun/star/frame/XStatusListener.hpp>
-
-#include "glob.hxx"
-#include "pres.hxx"
-
-#include <vcl/ctrl.hxx>
 #include <svtools/valueset.hxx>
-#include <svtools/transfer.hxx>
-#include <sfx2/shell.hxx>
+#include <vcl/menu.hxx>
+#include <vcl/transfer.hxx>
+#include <sfx2/request.hxx>
 #include <xmloff/autolayout.hxx>
 
-#include <com/sun/star/ui/XSidebar.hpp>
-
-class SfxModule;
+namespace com::sun::star::frame { class XStatusListener; }
+namespace com::sun::star::ui { class XSidebar; }
 
 
 namespace sd {
@@ -45,20 +38,14 @@ class DrawDocShell;
 class ViewShellBase;
 }
 
-namespace sd { namespace tools {
-class EventMultiplexerEvent;
-} }
+namespace sd::tools { class EventMultiplexerEvent; }
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
-class ControlFactory;
-class SidebarViewShell;
+class LayoutValueSet;
 
-class LayoutMenu
-    : public ValueSet,
-      public DragSourceHelper,
-      public DropTargetHelper,
-      public sfx2::sidebar::ILayoutableWindow
+class LayoutMenu : public PanelLayout
+                 , public sfx2::sidebar::ILayoutableWindow
 {
 public:
     /** Create a new layout menu.  Depending on the given flag it
@@ -81,13 +68,12 @@ public:
     /** Return a numerical value representing the currently selected
         layout.
     */
-    AutoLayout GetSelectedAutoLayout();
+    AutoLayout GetSelectedAutoLayout() const;
 
     // From ILayoutableWindow
     virtual css::ui::LayoutSize GetHeightForWidth (const sal_Int32 nWidth) override;
 
     // From vcl::Window
-    virtual void Paint (vcl::RenderContext& rRenderContext, const ::tools::Rectangle& rRect) override;
     virtual void Resize() override;
 
     /** Show a context menu when the right mouse button is pressed.
@@ -100,16 +86,9 @@ public:
     */
     void InvalidateContent();
 
-    // DragSourceHelper
-    virtual void StartDrag (sal_Int8 nAction, const Point& rPosPixel) override;
-
-    // DropTargetHelper
-    virtual sal_Int8 AcceptDrop (const AcceptDropEvent& rEvent) override;
-    virtual sal_Int8 ExecuteDrop (const ExecuteDropEvent& rEvent) override;
-
-    /** The context menu is requested over this Command() method.
+    /** The context menu is requested over this ShowContextMenu() method.
     */
-    virtual void Command (const CommandEvent& rEvent) override;
+    void ShowContextMenu(const Point* pPos);
 
     /** Call Fill() when switching to or from high contrast mode so that the
         correct set of icons is displayed.
@@ -117,21 +96,17 @@ public:
     virtual void DataChanged (const DataChangedEvent& rEvent) override;
 
     using Window::GetWindow;
-    using ValueSet::StartDrag;
 
 private:
     ViewShellBase& mrBase;
 
-    /** Do we use our own scroll bar or is viewport handling done by
-        our parent?
-    */
-    bool mbUseOwnScrollBar;
+    std::unique_ptr<LayoutValueSet> mxLayoutValueSet;
+    std::unique_ptr<weld::CustomWeld> mxLayoutValueSetWin;
 
     /** If we are asked for the preferred window size, then use this
         many columns for the calculation.
     */
     css::uno::Reference<css::frame::XStatusListener> mxListener;
-    bool mbSelectionUpdatePending;
     bool mbIsMainViewChangePending;
     css::uno::Reference<css::ui::XSidebar> mxSidebar;
     bool mbIsDisposed;
@@ -195,7 +170,7 @@ private:
     DECL_LINK(OnMenuItemSelected, Menu*, bool);
 };
 
-} } // end of namespace ::sd::toolpanel
+} // end of namespace ::sd::toolpanel
 
 #endif
 

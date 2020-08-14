@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "AnimationChildWindow.hxx"
+#include <AnimationChildWindow.hxx>
 
-#include "app.hrc"
-#include "animobjs.hxx"
-#include <sfx2/app.hxx>
+#include <app.hrc>
+#include <animobjs.hxx>
 #include <sfx2/childwin.hxx>
-#include <sfx2/dockwin.hxx>
 
 namespace sd {
 

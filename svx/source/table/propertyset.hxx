@@ -24,17 +24,16 @@
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/beans/XFastPropertySet.hpp>
 #include <rtl/ref.hxx>
-#include <functional>
 #include <unordered_map>
 #include <vector>
 
 #include <cppuhelper/implbase1.hxx>
 #include <cppuhelper/implbase3.hxx>
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
 typedef std::vector< css::beans::Property > PropertyVector;
-typedef std::unordered_map< OUString, ::sal_uInt32, OUStringHash > PropertyMap;
+typedef std::unordered_map< OUString, ::sal_uInt32 > PropertyMap;
 
 class FastPropertySetInfo : public ::cppu::WeakAggImplHelper1< css::beans::XPropertySetInfo >
 {
@@ -90,7 +89,7 @@ private:
     rtl::Reference< FastPropertySetInfo > mxInfo;
 };
 
-}}
+}
 
 #endif
 

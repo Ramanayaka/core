@@ -23,15 +23,11 @@
 #include <vcl/dllapi.h>
 #include <vcl/vclptr.hxx>
 
-#include <com/sun/star/uno/Reference.hxx>
-
 class Menu;
 
-namespace com { namespace sun { namespace star {
-    namespace accessibility {
-        class XAccessible;
-    }
-}}}
+namespace com::sun::star::accessibility {
+    class XAccessible;
+}
 
 namespace vcl
 {
@@ -59,6 +55,8 @@ enum class VclEventId
     EditCaretChanged,
     EditModify,
     EditSelectionChanged,
+    ExtTextInput,
+    EndExtTextInput,
     ItemCollapsed,
     ItemExpanded,
     ListboxDoubleClick,
@@ -67,7 +65,6 @@ enum class VclEventId
     ListboxItemRemoved,      // pData = itempos, -1=All
     ListboxScrolled,
     ListboxSelect,
-    ListboxStateUpdate,
     ListboxTreeFocus,
     ListboxTreeSelect,
     MenuActivate,
@@ -100,8 +97,6 @@ enum class VclEventId
     SpinfieldLast,
     SpinfieldUp,
     StatusbarAllItemsRemoved,
-    StatusbarClick,
-    StatusbarDoubleClick,
     StatusbarDrawItem,      // pData = itemid
     StatusbarHideItem,      // pData = itemid
     StatusbarItemAdded,     // pData = itemid
@@ -115,7 +110,6 @@ enum class VclEventId
     TabbarPageRemoved,      // pData = pageid
     TabbarPageSelected,     // pData = pageid
     TabbarPageTextChanged,  // pData = pageid
-    TableCellNameChanged,   // pData = struct(Entry, Column, oldText)
     TableRowSelect,
     TabpageActivate,        // pData = pageid
     TabpageDeactivate,      // pData = pageid
@@ -141,7 +135,6 @@ enum class VclEventId
     ToolboxItemWindowChanged,
     ToolboxSelect,
     WindowActivate,
-    WindowChildCreated,     // pData = vcl::Window*
     WindowChildDestroyed,   // pData = vcl::Window*
     WindowClose,
     WindowCommand,          // pData = CommandEvent*
@@ -172,6 +165,7 @@ enum class VclEventId
     WindowShow,
     WindowStartDocking,     // pData = DockingData
     WindowToggleFloating,
+    WindowGestureEvent,
 };
 
 class VCL_DLLPUBLIC VclSimpleEvent
@@ -179,8 +173,8 @@ class VCL_DLLPUBLIC VclSimpleEvent
 private:
     VclEventId nId;
 
-    VclSimpleEvent(VclSimpleEvent &) = delete;
-    void operator =(VclSimpleEvent) = delete;
+    VclSimpleEvent(VclSimpleEvent const &) = delete;
+    VclSimpleEvent& operator =(VclSimpleEvent const &) = delete;
 
 public:
     VclSimpleEvent( VclEventId n ) { nId = n; }
@@ -189,7 +183,7 @@ public:
     VclEventId GetId() const { return nId; }
 };
 
-class VCL_DLLPUBLIC VclWindowEvent : public VclSimpleEvent
+class VCL_DLLPUBLIC VclWindowEvent final : public VclSimpleEvent
 {
 private:
     VclPtr<vcl::Window> pWindow;
@@ -203,14 +197,14 @@ public:
     void*   GetData() const { return pData; }
 };
 
-class VCL_DLLPUBLIC VclMenuEvent : public VclSimpleEvent
+class VCL_DLLPUBLIC VclMenuEvent final : public VclSimpleEvent
 {
 private:
     VclPtr<Menu> pMenu;
     sal_uInt16 mnPos;
 
-    VclMenuEvent(VclMenuEvent &) = delete;
-    void operator =(VclMenuEvent) = delete;
+    VclMenuEvent(VclMenuEvent const &) = delete;
+    VclMenuEvent& operator =(VclMenuEvent const &) = delete;
 
 public:
     VclMenuEvent( Menu* pM, VclEventId n, sal_uInt16 nPos );
@@ -218,17 +212,6 @@ public:
 
     Menu* GetMenu() const;
     sal_uInt16 GetItemPos() const { return mnPos; }
-};
-
-class VCL_DLLPUBLIC VclAccessibleEvent: public VclSimpleEvent
-{
-public:
-    VclAccessibleEvent( VclEventId n, const css::uno::Reference< css::accessibility::XAccessible >& rxAccessible );
-    virtual ~VclAccessibleEvent() override;
-    const css::uno::Reference< css::accessibility::XAccessible >& GetAccessible() const { return mxAccessible;}
-
-private:
-    css::uno::Reference< css::accessibility::XAccessible > mxAccessible;
 };
 
 #endif // INCLUDED_VCL_VCLEVENT_HXX

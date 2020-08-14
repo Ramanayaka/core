@@ -47,10 +47,9 @@ write_ALL_LANG();
 write_OTHER_LANGS();
 write_DIR_ISOLANGUAGE_ALL_LANG_2();
 write_DIR_ISOLANGUAGE_ALL_LANG();
-write_DIR_ISOLANGUAGE_ALL_LANG_LPROJ();
 write_EXTRA_ALL_LANG();
 write_EXTRA_ALL_LANG_BUT_EN_US();
-write_UI_ALL_LANG_BUT_EN_US();
+write_MO_ALL_LANG_EXCEPT_EN_US_AND_QTZ();
 write_EXTRA_ALL_GOOD_HELP_LOCALIZATIONS_LANG();
 write_RESFILE_ALL_LANG();
 write_README_ALL_LANG();
@@ -73,20 +72,6 @@ sub write_ITERATE_ALL_LANG
         print OUTFILE "\\\n\tDir = CONCAT3(gid_Dir_,dir,_$speciallang);";
         print OUTFILE "\\\n\tmacro;";
         print OUTFILE "\\\n\tName = STRING(CONCAT3(name,_$lang,ext)); ";
-        print OUTFILE "\\\nEnd ";
-        print OUTFILE "\\\n";
-    }
-    print OUTFILE "\n\n";
-
-    print OUTFILE "#define ITERATE_ALL_LANG_DIR_LPROJ(gid,parent) ";
-    foreach $lang (@helplangs) {
-        my $shortlang = $lang;
-        $shortlang = "en" if $shortlang eq "en-US";
-        my $speciallang = $lang;
-        $speciallang =~ s/-/_/;
-        print OUTFILE "\\\nDirectory CONCAT3(gid_Dir_,gid,_$speciallang)";
-        print OUTFILE "\\\n\tParentID = CONCAT2(gid_Dir_,parent);";
-        print OUTFILE "\\\n\tDosName = \"$shortlang.lproj\"; ";
         print OUTFILE "\\\nEnd ";
         print OUTFILE "\\\n";
     }
@@ -130,18 +115,6 @@ sub write_DIR_ISOLANGUAGE_ALL_LANG
         print OUTFILE "\n\n";
 }
 
-sub write_DIR_ISOLANGUAGE_ALL_LANG_LPROJ
-{
-    print OUTFILE "#define DIR_ISOLANGUAGE_ALL_LANG_LPROJ ";
-    foreach $lang (@completelangiso) {
-        my $speciallang = $lang;
-        if ( $speciallang eq "en-US" ) { $speciallang = "en"; }
-        print OUTFILE "\\\n\tDosName ($lang) = \"$speciallang.lproj\"";
-        print OUTFILE "; " if ( $lang ne $completelangiso[$#completelangiso]);
-    }
-    print OUTFILE "\n\n";
-}
-
 sub write_EXTRA_ALL_LANG
 {
     print OUTFILE "#define EXTRA_ALL_LANG(name,ext) ";
@@ -167,16 +140,19 @@ sub write_EXTRA_ALL_LANG_BUT_EN_US
     print OUTFILE "\n\n";
 }
 
-sub write_UI_ALL_LANG_BUT_EN_US
+sub write_MO_ALL_LANG_EXCEPT_EN_US_AND_QTZ
 {
-    print OUTFILE "#define UI_ALL_LANG_BUT_EN_US(name) ";
+    print OUTFILE "#define MO_ALL_LANG_EXCEPT_EN_US_AND_QTZ(name) ";
     my $first = 1;
     foreach $lang (@completelangiso) {
-        if ($lang ne "en-US") {
+        if (($lang ne "en-US") and ($lang ne "qtz")) {
             print OUTFILE "; " unless $first;
             $first = 0;
+            my $SRC_ROOT = $ENV{"SRC_ROOT"};
+            my $langdir = `$SRC_ROOT/solenv/bin/localestr $lang`;
+            chomp $langdir;
             print OUTFILE
-                "\\\n\tName ($lang) = STRING(CONCAT2(name,/ui/res/$lang.zip))";
+                "\\\n\tName ($lang) = STRING(CONCAT3($langdir/LC_MESSAGES/,name,.mo))";
         }
     }
     print OUTFILE "\n\n";
@@ -185,11 +161,17 @@ sub write_UI_ALL_LANG_BUT_EN_US
 sub write_EXTRA_ALL_GOOD_HELP_LOCALIZATIONS_LANG
 {
     my $first = 1;
+    my $source;
+    if ($ENV{'ENABLE_HTMLHELP'} eq 'TRUE') {
+        $source = 'html-help'; # found in instsetoo_native/util/openoffice.lst.in's {filelistpath}/CustomTarget/helpcontent2/help3xsl/filelists
+    } else {
+        $source = 'HelpTarget';
+    }
     print OUTFILE "#define EXTRA_ALL_GOOD_HELP_LOCALIZATIONS_LANG(name) ";
     foreach $lang (@helplangs) {
         print OUTFILE ";" unless $first;
         $first = 0;
-        print OUTFILE "\\\n\tName ($lang) = EXTRAFILELISTNAME(HelpTarget/,name,/$lang)";
+        print OUTFILE "\\\n\tName ($lang) = EXTRAFILELISTNAME($source/,name,/$lang)";
     }
     print OUTFILE "\n\n";
 }

@@ -18,7 +18,6 @@
  */
 
 #include <unotools/optionsdlg.hxx>
-#include <unotools/configmgr.hxx>
 #include <unotools/configitem.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
@@ -43,9 +42,9 @@ static sal_Int32                    nRefCount = 0;
 class SvtOptionsDlgOptions_Impl : public utl::ConfigItem
 {
 private:
-    typedef std::unordered_map< OUString, sal_Bool, OUStringHash > OptionNodeList;
+    typedef std::unordered_map< OUString, bool > OptionNodeList;
 
-    OUString        m_sPathDelimiter;
+    static constexpr OUStringLiteral g_sPathDelimiter = "/";
     OptionNodeList  m_aOptionNodeList;
 
     enum NodeType{ NT_Group, NT_Page, NT_Option };
@@ -81,18 +80,14 @@ namespace
 
 SvtOptionsDlgOptions_Impl::SvtOptionsDlgOptions_Impl()
     : ConfigItem( CFG_FILENAME ),
-
-    m_sPathDelimiter( "/" ),
     m_aOptionNodeList( OptionNodeList() )
-
 {
     OUString sRootNode( ROOT_NODE );
-    Sequence< OUString > aNodeSeq = GetNodeNames( sRootNode );
-    OUString sNode( sRootNode + m_sPathDelimiter );
-    sal_uInt32 nCount = aNodeSeq.getLength();
-    for ( sal_uInt32 n = 0; n < nCount; n++ )
+    const Sequence< OUString > aNodeSeq = GetNodeNames( sRootNode );
+    OUString sNode( sRootNode + g_sPathDelimiter );
+    for ( const auto& rNode : aNodeSeq )
     {
-        OUString sSubNode( sNode + aNodeSeq[n] );
+        OUString sSubNode( sNode + rNode );
         ReadNode( sSubNode, NT_Group );
     }
 }
@@ -109,7 +104,7 @@ void SvtOptionsDlgOptions_Impl::Notify( const Sequence< OUString >& )
 
 void SvtOptionsDlgOptions_Impl::ReadNode( const OUString& _rNode, NodeType _eType )
 {
-    OUString sNode( _rNode + m_sPathDelimiter );
+    OUString sNode( _rNode + g_sPathDelimiter );
     OUString sSet;
     sal_Int32 nLen = 0;
     switch ( _eType )
@@ -140,36 +135,32 @@ void SvtOptionsDlgOptions_Impl::ReadNode( const OUString& _rNode, NodeType _eTyp
     if ( _eType != NT_Option )
         lResult[1] = sNode + sSet;
 
-    Sequence< Any > aValues;
-    aValues = GetProperties( lResult );
+    Sequence< Any > aValues = GetProperties( lResult );
     bool bHide = false;
     if ( aValues[0] >>= bHide )
-        m_aOptionNodeList.insert( OptionNodeList::value_type( sNode, bHide ) );
+        m_aOptionNodeList.emplace( sNode, bHide );
 
     if ( _eType != NT_Option )
     {
         OUString sNodes( sNode + sSet );
-        Sequence< OUString > aNodes = GetNodeNames( sNodes );
-        if ( aNodes.getLength() > 0 )
+        const Sequence< OUString > aNodes = GetNodeNames( sNodes );
+        for ( const auto& rNode : aNodes )
         {
-            for ( sal_uInt32 n = 0; n < (sal_uInt32)aNodes.getLength(); ++n )
-            {
-                OUString sSubNodeName( sNodes + m_sPathDelimiter + aNodes[n] );
-                ReadNode( sSubNodeName, _eType == NT_Group ? NT_Page : NT_Option );
-            }
+            OUString sSubNodeName( sNodes + g_sPathDelimiter + rNode );
+            ReadNode( sSubNodeName, _eType == NT_Group ? NT_Page : NT_Option );
         }
     }
 }
 
-OUString getGroupPath( const OUString& _rGroup )
+static OUString getGroupPath( const OUString& _rGroup )
 {
     return OUString( ROOT_NODE "/" + _rGroup + "/" );
 }
-OUString getPagePath( const OUString& _rPage )
+static OUString getPagePath( const OUString& _rPage )
 {
     return OUString( PAGES_NODE "/" + _rPage + "/" );
 }
-OUString getOptionPath( const OUString& _rOption )
+static OUString getOptionPath( const OUString& _rOption )
 {
     return OUString( OPTIONS_NODE "/" + _rOption + "/" );
 }

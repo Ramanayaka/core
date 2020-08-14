@@ -22,8 +22,8 @@
 
 #include <utility>
 
-#include "model/SlideSorterModel.hxx"
-#include "model/SlsPageDescriptor.hxx"
+#include <model/SlsPageEnumeration.hxx>
+#include <model/SlideSorterModel.hxx>
 
 using namespace ::sd::slidesorter;
 using namespace ::sd::slidesorter::model;
@@ -34,7 +34,7 @@ class PageEnumerationImpl
     : public Enumeration<SharedPageDescriptor>
 {
 public:
-    inline PageEnumerationImpl (
+    PageEnumerationImpl (
         const SlideSorterModel& rModel,
         const PageEnumeration::PagePredicate& rPredicate);
     PageEnumerationImpl(const PageEnumerationImpl&) = delete;
@@ -56,7 +56,7 @@ private:
         It does not call AdvanceToNextValidElement() to skip elements that
         do not fulfill Predicate.
     */
-    inline PageEnumerationImpl (
+    PageEnumerationImpl (
         const SlideSorterModel& rModel,
         const PageEnumeration::PagePredicate& rPredicate,
         int nIndex);
@@ -64,12 +64,12 @@ private:
     /** Skip all elements that do not fulfill Predicate starting with the
         one pointed to by mnIndex.
     */
-    inline void AdvanceToNextValidElement();
+    void AdvanceToNextValidElement();
 };
 
-} // end of anonymouse namespace
+} // end of anonymous namespace
 
-namespace sd { namespace slidesorter { namespace model {
+namespace sd::slidesorter::model {
 
 PageEnumeration PageEnumeration::Create (
     const SlideSorterModel& rModel,
@@ -123,7 +123,7 @@ void PageEnumeration::Rewind()
     return mpImpl->Rewind();
 }
 
-} } } // end of namespace ::sd::slidesorter::model
+} // end of namespace ::sd::slidesorter::model
 
 namespace {
 
@@ -184,7 +184,7 @@ void PageEnumerationImpl::AdvanceToNextValidElement()
         SharedPageDescriptor pDescriptor (mrModel.GetPageDescriptor(mnIndex));
 
         // Test for the predicate being fulfilled.
-        if (pDescriptor.get()!=nullptr && maPredicate(pDescriptor))
+        if (pDescriptor && maPredicate(pDescriptor))
         {
             // This predicate is valid.
             break;

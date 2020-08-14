@@ -19,19 +19,19 @@
 #ifndef INCLUDED_SVX_FMGRIDCL_HXX
 #define INCLUDED_SVX_FMGRIDCL_HXX
 
-#include <com/sun/star/container/XIndexContainer.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-
 #include <svx/gridctrl.hxx>
-#include <svtools/transfer.hxx>
+#include <vcl/transfer.hxx>
 #include <svx/svxdllapi.h>
 #include <memory>
 
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::container { class XIndexContainer; }
+namespace com::sun::star::container { class XNameAccess; }
 
 // FmGridHeader
 
 struct FmGridHeaderData;
-class SAL_WARN_UNUSED SVX_DLLPUBLIC FmGridHeader
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC FmGridHeader
             :public ::svt::EditBrowserHeader
             ,public DropTargetHelper
 {
@@ -86,7 +86,7 @@ private:
 // FmGridControl
 
 class FmXGridPeer;
-class SAL_WARN_UNUSED SVX_DLLPUBLIC FmGridControl : public DbGridControl
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC FmGridControl : public DbGridControl
 
 {
     friend class FmGridHeader;
@@ -109,7 +109,7 @@ public:
     virtual void KeyInput( const KeyEvent& rKEvt ) override;
 
     // css::beans::XPropertyChangeListener
-    void SAL_CALL propertyChange(const css::beans::PropertyChangeEvent& evt);
+    void propertyChange(const css::beans::PropertyChangeEvent& evt);
 
     // css::form::XPositioningListener
     void positioned();
@@ -133,7 +133,7 @@ public:
         @return
             The name of the specified object.
     */
-    virtual OUString GetAccessibleObjectName( ::svt::AccessibleBrowseBoxObjType eObjType,sal_Int32 _nPosition = -1) const override;
+    virtual OUString GetAccessibleObjectName( ::vcl::AccessibleBrowseBoxObjType eObjType,sal_Int32 _nPosition = -1) const override;
 
     /** return the description of the specified object.
         @param  eObjType
@@ -143,7 +143,7 @@ public:
         @return
             The description of the specified object.
     */
-    virtual OUString GetAccessibleObjectDescription( ::svt::AccessibleBrowseBoxObjType eObjType,sal_Int32 _nPosition = -1) const override;
+    virtual OUString GetAccessibleObjectDescription( ::vcl::AccessibleBrowseBoxObjType eObjType,sal_Int32 _nPosition = -1) const override;
 
 protected:
     virtual void Command(const CommandEvent& rEvt) override;
@@ -191,7 +191,7 @@ protected:
         @return
             <TRUE/> if the column is selected, otherwise <FALSE/>
     */
-    bool isColumnSelected(DbGridColumn* _pColumn);
+    bool isColumnSelected(DbGridColumn const * _pColumn);
 };
 
 #endif // INCLUDED_SVX_FMGRIDCL_HXX

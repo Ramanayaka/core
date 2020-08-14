@@ -23,21 +23,17 @@
 #include <svx/svxdllapi.h>
 
 
-// class SdrAngleItem
 
-class SVX_DLLPUBLIC SdrAngleItem: public SfxInt32Item {
+class SVXCORE_DLLPUBLIC SdrAngleItem: public SfxInt32Item {
 public:
     SdrAngleItem(sal_uInt16 nId, sal_Int32 nAngle): SfxInt32Item(nId,nAngle) {}
-    SdrAngleItem(sal_uInt16 nId, SvStream& rIn):  SfxInt32Item(nId,rIn) {}
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool=nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual SdrAngleItem* Clone(SfxItemPool* pPool=nullptr) const override;
 
     virtual bool GetPresentation(SfxItemPresentation ePres,
                                  MapUnit eCoreMetric,
                                  MapUnit ePresMetric,
                                  OUString& rText,
-                                 const IntlWrapper *
-                                 pIntlWrapper = nullptr) const override;
+                                 const IntlWrapper& rIntlWrapper) const override;
 };
 
 

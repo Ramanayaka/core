@@ -18,7 +18,7 @@
  */
 
 #include <sfx2/bindings.hxx>
-#include <sfx2/htmlmode.hxx>
+#include <sfx2/viewfrm.hxx>
 #include <svx/sdtacitm.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/sdtagitm.hxx>
@@ -32,7 +32,6 @@
 #include <view.hxx>
 #include <edtwin.hxx>
 #include <wrtsh.hxx>
-#include <viewopt.hxx>
 #include <drawbase.hxx>
 #include <conrect.hxx>
 
@@ -65,8 +64,8 @@ bool ConstRectangle::MouseButtonDown(const MouseEvent& rMEvt)
             SdrObject* pObj = m_pView->GetDrawView()->GetCreateObj();
             if (pObj)
             {
-                SfxItemSet aAttr(pObj->GetModel()->GetItemPool());
-                SwFEShell::SetLineEnds(aAttr, pObj, m_nSlotId);
+                SfxItemSet aAttr(pObj->getSdrModelFromSdrObject().GetItemPool());
+                SwFEShell::SetLineEnds(aAttr, *pObj, m_nSlotId);
                 pObj->SetMergedItemSet(aAttr);
             }
         }
@@ -103,7 +102,7 @@ bool ConstRectangle::MouseButtonUp(const MouseEvent& rMEvt)
                     aItemSet.Put( SdrTextAniDirectionItem( SdrTextAniDirection::Left ) );
                     aItemSet.Put( SdrTextAniCountItem( 0 ) );
                     aItemSet.Put( SdrTextAniAmountItem(
-                            (sal_Int16)m_pWin->PixelToLogic(Size(2,1)).Width()) );
+                            static_cast<sal_Int16>(m_pWin->PixelToLogic(Size(2,1)).Width())) );
 
                     pObj->SetMergedItemSetAndBroadcast(aItemSet);
                 }
@@ -199,7 +198,7 @@ void ConstRectangle::Activate(const sal_uInt16 nSlotId)
 
     case SID_DRAW_CAPTION_VERTICAL:
         bCapVertical = true;
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case SID_DRAW_CAPTION:
         m_pWin->SetSdrDrawMode(OBJ_CAPTION);
         break;

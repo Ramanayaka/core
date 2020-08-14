@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEMENUITEM_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEMENUITEM_HXX
+#pragma once
 
 #include <standard/accessiblemenuitemcomponent.hxx>
 
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessibleAction.hpp>
 #include <com/sun/star/accessibility/XAccessibleValue.hpp>
 
@@ -29,7 +29,6 @@
 #include <comphelper/accessibletexthelper.hxx>
 
 
-//  class VCLXAccessibleMenuItem
 
 
 typedef ::cppu::ImplHelper3<
@@ -51,13 +50,12 @@ protected:
     virtual void            FillAccessibleStateSet( utl::AccessibleStateSetHelper& rStateSet ) override;
 
     // OCommonAccessibleText
-    virtual OUString                     implGetText() override;
+    virtual OUString                     implGetText() final override;
     virtual css::lang::Locale            implGetLocale() override;
-    virtual void                         implGetSelection( sal_Int32& nStartIndex, sal_Int32& nEndIndex ) override;
+    virtual void                         implGetSelection( sal_Int32& nStartIndex, sal_Int32& nEndIndex ) override final;
 
 public:
     VCLXAccessibleMenuItem( Menu* pParent, sal_uInt16 nItemPos, Menu* pMenu = nullptr );
-    virtual ~VCLXAccessibleMenuItem() override;
 
     // XInterface
     DECLARE_XINTERFACE()
@@ -75,24 +73,25 @@ public:
     // XAccessibleText
     virtual sal_Int32 SAL_CALL getCaretPosition() override;
     virtual sal_Bool SAL_CALL setCaretPosition( sal_Int32 nIndex ) override;
-    virtual sal_Unicode SAL_CALL getCharacter( sal_Int32 nIndex ) override;
+    virtual sal_Unicode SAL_CALL getCharacter( sal_Int32 nIndex ) final override;
     virtual css::uno::Sequence< css::beans::PropertyValue > SAL_CALL getCharacterAttributes( sal_Int32 nIndex, const css::uno::Sequence< OUString >& aRequestedAttributes ) override;
     virtual css::awt::Rectangle SAL_CALL getCharacterBounds( sal_Int32 nIndex ) override;
-    virtual sal_Int32 SAL_CALL getCharacterCount() override;
+    virtual sal_Int32 SAL_CALL getCharacterCount() final override;
     virtual sal_Int32 SAL_CALL getIndexAtPoint( const css::awt::Point& aPoint ) override;
-    virtual OUString SAL_CALL getSelectedText() override;
-    virtual sal_Int32 SAL_CALL getSelectionStart() override;
-    virtual sal_Int32 SAL_CALL getSelectionEnd() override;
+    virtual OUString SAL_CALL getSelectedText() override final;
+    virtual sal_Int32 SAL_CALL getSelectionStart() override final;
+    virtual sal_Int32 SAL_CALL getSelectionEnd() override final;
     virtual sal_Bool SAL_CALL setSelection( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
-    virtual OUString SAL_CALL getText() override;
+    virtual OUString SAL_CALL getText() final override;
     virtual OUString SAL_CALL getTextRange( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
     virtual css::accessibility::TextSegment SAL_CALL getTextAtIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+    virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 
     // XAccessibleAction
-    virtual sal_Int32 SAL_CALL getAccessibleActionCount( ) override;
+    virtual sal_Int32 SAL_CALL getAccessibleActionCount( ) final override;
     virtual sal_Bool SAL_CALL doAccessibleAction ( sal_Int32 nIndex ) override;
     virtual OUString SAL_CALL getAccessibleActionDescription ( sal_Int32 nIndex ) override;
     virtual css::uno::Reference< css::accessibility::XAccessibleKeyBinding > SAL_CALL getAccessibleActionKeyBinding( sal_Int32 nIndex ) override;
@@ -104,6 +103,5 @@ public:
     virtual css::uno::Any SAL_CALL getMinimumValue(  ) override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEMENUITEM_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

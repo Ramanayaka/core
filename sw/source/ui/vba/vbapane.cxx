@@ -18,7 +18,6 @@
  */
 #include "vbapane.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
 #include "vbaview.hxx"
 
 using namespace ::ooo::vba;
@@ -43,25 +42,22 @@ SwVbaPane::View()
 void SAL_CALL
 SwVbaPane::Close( )
 {
-    OUString url = ".uno:CloseWin";
-    dispatchRequests( mxModel,url );
+    dispatchRequests( mxModel,".uno:CloseWin" );
 }
 
 OUString
 SwVbaPane::getServiceImplName()
 {
-    return OUString("SwVbaPane");
+    return "SwVbaPane";
 }
 
 uno::Sequence< OUString >
 SwVbaPane::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Pane";
-    }
+        "ooo.vba.word.Pane"
+    };
     return aServiceNames;
 }
 

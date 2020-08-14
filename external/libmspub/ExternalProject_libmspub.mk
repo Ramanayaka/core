@@ -23,6 +23,7 @@ $(eval $(call gb_ExternalProject_use_externals,libmspub,\
 ))
 
 $(call gb_ExternalProject_get_state_target,libmspub,build) :
+	$(call gb_Trace_StartRange,libmspub,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		export PKG_CONFIG="" \
 		&& MAKE=$(MAKE) ./configure \
@@ -35,10 +36,11 @@ $(call gb_ExternalProject_get_state_target,libmspub,build) :
 			--disable-werror \
 			--disable-weffc \
 			$(if $(verbose),--disable-silent-rules,--enable-silent-rules) \
-			CXXFLAGS="$(CXXFLAGS) $(ICU_UCHAR_TYPE) $(BOOST_CPPFLAGS) \
-				-DBOOST_ERROR_CODE_HEADER_ONLY -DBOOST_SYSTEM_NO_DEPRECATED" \
+			CXXFLAGS="$(gb_CXXFLAGS) $(if $(ENABLE_OPTIMIZED),$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS))" \
+			CPPFLAGS="$(CPPFLAGS) $(ICU_UCHAR_TYPE) $(BOOST_CPPFLAGS)" \
 			$(if $(CROSS_COMPILING),--build=$(BUILD_PLATFORM) --host=$(HOST_PLATFORM)) \
 		&& $(MAKE) \
 	)
+	$(call gb_Trace_EndRange,libmspub,EXTERNAL)
 
 # vim: set noet sw=4 ts=4:

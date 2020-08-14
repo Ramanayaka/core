@@ -16,15 +16,12 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXCHECKBOXCELL_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXCHECKBOXCELL_HXX
+#pragma once
 
 #include <com/sun/star/accessibility/XAccessibleValue.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include "extended/accessiblebrowseboxcell.hxx"
+#include <extended/accessiblebrowseboxcell.hxx>
 #include <cppuhelper/implbase2.hxx>
-#include <tools/wintypes.hxx>
 
 namespace accessibility
 {
@@ -33,21 +30,20 @@ namespace accessibility
                                     css::accessibility::XAccessibleValue
                                 >   AccessibleCheckBoxCell_BASE;
 
-    class AccessibleCheckBoxCell :   public AccessibleBrowseBoxCell
+    class AccessibleCheckBoxCell final : public AccessibleBrowseBoxCell
                                     ,public AccessibleCheckBoxCell_BASE
     {
     private:
         TriState m_eState;
         bool m_bIsTriState;
 
-    protected:
         virtual ~AccessibleCheckBoxCell() override {}
 
         virtual ::utl::AccessibleStateSetHelper* implCreateStateSetHelper() override;
 
     public:
         AccessibleCheckBoxCell(const css::uno::Reference< css::accessibility::XAccessible >& _rxParent,
-                                ::svt::IAccessibleTableProvider& _rBrowseBox,
+                                ::vcl::IAccessibleTableProvider& _rBrowseBox,
                                 const css::uno::Reference< css::awt::XWindow >& _xFocusWindow,
                                 sal_Int32 _nRowPos,
                                 sal_uInt16 _nColPos,
@@ -79,6 +75,5 @@ namespace accessibility
         void        SetChecked( bool _bChecked );
     };
 }
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLEBROWSEBOXCHECKBOXCELL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

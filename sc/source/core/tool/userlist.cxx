@@ -20,12 +20,11 @@
 #include <memory>
 #include <unotools/charclass.hxx>
 
-#include "global.hxx"
-#include "userlist.hxx"
+#include <global.hxx>
+#include <userlist.hxx>
 #include <unotools/localedatawrapper.hxx>
 #include <unotools/calendarwrapper.hxx>
 #include <unotools/transliterationwrapper.hxx>
-#include <o3tl/make_unique.hxx>
 
 #include <algorithm>
 
@@ -39,7 +38,7 @@ public:
     FindByName(const OUString& rName, bool bUpper) : mrName(rName), mbUpper(bUpper) {}
     bool operator() (const ScUserListData::SubStr& r) const
     {
-        return mbUpper ? r.maUpper.equals(mrName) : r.maReal.equals(mrName);
+        return mbUpper ? r.maUpper == mrName : r.maReal == mrName;
     }
 };
 
@@ -70,8 +69,8 @@ void ScUserListData::InitTokens()
             if (nLen)
             {
                 OUString aSub(p0, nLen);
-                OUString aUpStr = ScGlobal::pCharClass->uppercase(aSub);
-                maSubStrings.push_back(SubStr(aSub, aUpStr));
+                OUString aUpStr = ScGlobal::getCharClassPtr()->uppercase(aSub);
+                maSubStrings.emplace_back(aSub, aUpStr);
             }
             bFirst = true;
         }
@@ -80,8 +79,8 @@ void ScUserListData::InitTokens()
     if (nLen)
     {
         OUString aSub(p0, nLen);
-        OUString aUpStr = ScGlobal::pCharClass->uppercase(aSub);
-        maSubStrings.push_back(SubStr(aSub, aUpStr));
+        OUString aUpStr = ScGlobal::getCharClassPtr()->uppercase(aSub);
+        maSubStrings.emplace_back(aSub, aUpStr);
     }
 }
 
@@ -125,7 +124,7 @@ bool ScUserListData::GetSubIndex(const OUString& rSubStr, sal_uInt16& rIndex, bo
     }
 
     // When that fails, do a case insensitive search.
-    OUString aUpStr = ScGlobal::pCharClass->uppercase(rSubStr);
+    OUString aUpStr = ScGlobal::getCharClassPtr()->uppercase(rSubStr);
     itr = ::std::find_if(
         maSubStrings.begin(), maSubStrings.end(), FindByName(aUpStr, true));
     if (itr != maSubStrings.end())
@@ -205,21 +204,21 @@ ScUserList::ScUserList()
     sal_Unicode cDelimiter = ScGlobal::cListDelimiter;
     uno::Sequence< i18n::CalendarItem2 > xCal;
 
-    uno::Sequence< i18n::Calendar2 > xCalendars(
-            ScGlobal::pLocaleData->getAllCalendars() );
+    const uno::Sequence< i18n::Calendar2 > xCalendars(
+            ScGlobal::getLocaleDataPtr()->getAllCalendars() );
 
-    for ( sal_Int32 j = 0; j < xCalendars.getLength(); ++j )
+    for ( const auto& rCalendar : xCalendars )
     {
-        xCal = xCalendars[j].Days;
-        if ( xCal.getLength() )
+        xCal = rCalendar.Days;
+        if ( xCal.hasElements() )
         {
-            OUStringBuffer aDayShortBuf, aDayLongBuf;
+            OUStringBuffer aDayShortBuf(32), aDayLongBuf(64);
             sal_Int32 i;
             sal_Int32 nLen = xCal.getLength();
             sal_Int16 nStart = sal::static_int_cast<sal_Int16>(nLen);
             while (nStart > 0)
             {
-                if (xCal[--nStart].ID == xCalendars[j].StartOfWeek)
+                if (xCal[--nStart].ID == rCalendar.StartOfWeek)
                     break;
             }
             sal_Int16 nLast = sal::static_int_cast<sal_Int16>( (nStart + nLen - 1) % nLen );
@@ -237,15 +236,15 @@ ScUserList::ScUserList()
             OUString aDayLong = aDayLongBuf.makeStringAndClear();
 
             if ( !HasEntry( aDayShort ) )
-                maData.push_back( o3tl::make_unique<ScUserListData>( aDayShort ));
+                maData.push_back( std::make_unique<ScUserListData>( aDayShort ));
             if ( !HasEntry( aDayLong ) )
-                maData.push_back( o3tl::make_unique<ScUserListData>( aDayLong ));
+                maData.push_back( std::make_unique<ScUserListData>( aDayLong ));
         }
 
-        xCal = xCalendars[j].Months;
-        if ( xCal.getLength() )
+        xCal = rCalendar.Months;
+        if ( xCal.hasElements() )
         {
-            OUStringBuffer aMonthShortBuf, aMonthLongBuf;
+            OUStringBuffer aMonthShortBuf(128), aMonthLongBuf(128);
             sal_Int32 i;
             sal_Int32 nLen = xCal.getLength() - 1;
             for (i = 0; i < nLen; i++)
@@ -262,9 +261,9 @@ ScUserList::ScUserList()
             OUString aMonthLong = aMonthLongBuf.makeStringAndClear();
 
             if ( !HasEntry( aMonthShort ) )
-                maData.push_back( o3tl::make_unique<ScUserListData>( aMonthShort ));
+                maData.push_back( std::make_unique<ScUserListData>( aMonthShort ));
             if ( !HasEntry( aMonthLong ) )
-                maData.push_back( o3tl::make_unique<ScUserListData>( aMonthLong ));
+                maData.push_back( std::make_unique<ScUserListData>( aMonthLong ));
         }
     }
 }
@@ -272,24 +271,23 @@ ScUserList::ScUserList()
 ScUserList::ScUserList(const ScUserList& rOther)
 {
     for (const std::unique_ptr<ScUserListData>& rData : rOther.maData)
-        maData.push_back( o3tl::make_unique<ScUserListData>(*rData.get()) );
+        maData.push_back(std::make_unique<ScUserListData>(*rData));
 }
 
 const ScUserListData* ScUserList::GetData(const OUString& rSubStr) const
 {
     const ScUserListData* pFirstCaseInsensitive = nullptr;
-    DataType::const_iterator itr = maData.begin(), itrEnd = maData.end();
     sal_uInt16 nIndex;
     bool bMatchCase = false;
 
-    for (; itr != itrEnd; ++itr)
+    for (const auto& rxItem : maData)
     {
-        if ((*itr)->GetSubIndex(rSubStr, nIndex, bMatchCase))
+        if (rxItem->GetSubIndex(rSubStr, nIndex, bMatchCase))
         {
             if (bMatchCase)
-                return itr->get();
+                return rxItem.get();
             if (!pFirstCaseInsensitive)
-                pFirstCaseInsensitive = itr->get();
+                pFirstCaseInsensitive = rxItem.get();
         }
     }
 
@@ -298,36 +296,28 @@ const ScUserListData* ScUserList::GetData(const OUString& rSubStr) const
 
 const ScUserListData& ScUserList::operator[](size_t nIndex) const
 {
-    return *maData[nIndex].get();
+    return *maData[nIndex];
 }
 
 ScUserListData& ScUserList::operator[](size_t nIndex)
 {
-    return *maData[nIndex].get();
+    return *maData[nIndex];
 }
 
 ScUserList& ScUserList::operator=( const ScUserList& rOther )
 {
     maData.clear();
     for (const std::unique_ptr<ScUserListData>& rData : rOther.maData)
-        maData.push_back( o3tl::make_unique<ScUserListData>(*rData.get()) );
+        maData.push_back(std::make_unique<ScUserListData>(*rData));
     return *this;
 }
 
 bool ScUserList::operator==( const ScUserList& r ) const
 {
-    if (size() != r.size())
-        return false;
-
-    DataType::const_iterator itr1 = maData.begin(), itr2 = r.maData.begin(), itrEnd = maData.end();
-    for (; itr1 != itrEnd; ++itr1, ++itr2)
-    {
-        const ScUserListData& v1 = *itr1->get();
-        const ScUserListData& v2 = *itr2->get();
-        if (v1.GetString() != v2.GetString() || v1.GetSubCount() != v2.GetSubCount())
-            return false;
-    }
-    return true;
+    return std::equal(maData.begin(), maData.end(), r.maData.begin(), r.maData.end(),
+        [](const std::unique_ptr<ScUserListData>& lhs, const std::unique_ptr<ScUserListData>& rhs) {
+            return (lhs->GetString() == rhs->GetString()) && (lhs->GetSubCount() == rhs->GetSubCount());
+        });
 }
 
 bool ScUserList::operator!=( const ScUserList& r ) const

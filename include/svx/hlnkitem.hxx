@@ -61,18 +61,16 @@ public:
     static SfxPoolItem* CreateDefault();
 
     SvxHyperlinkItem( sal_uInt16 _nWhich = SID_HYPERLINK_GETLINK ):
-                SfxPoolItem(_nWhich), pMacroTable(nullptr) { eType = HLINK_DEFAULT; nMacroEvents=HyperDialogEvent::NONE; };
+                SfxPoolItem(_nWhich) { eType = HLINK_DEFAULT; nMacroEvents=HyperDialogEvent::NONE; };
     SvxHyperlinkItem( const SvxHyperlinkItem& rHyperlinkItem );
     SvxHyperlinkItem( sal_uInt16 nWhich, const OUString& rName, const OUString& rURL,
                                     const OUString& rTarget, const OUString& rIntName,
                                     SvxLinkInsertMode eTyp,
-                                    HyperDialogEvent nEvents = HyperDialogEvent::NONE,
-                                    SvxMacroTableDtor *pMacroTbl =nullptr );
-
-    inline SvxHyperlinkItem& operator=( const SvxHyperlinkItem &rItem );
+                                    HyperDialogEvent nEvents,
+                                    SvxMacroTableDtor const *pMacroTbl );
 
     virtual bool             operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SvxHyperlinkItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
@@ -98,9 +96,6 @@ public:
 
     void SetMacroEvents (const HyperDialogEvent nEvents) { nMacroEvents = nEvents; }
     HyperDialogEvent GetMacroEvents() const { return nMacroEvents; }
-
-    virtual SvStream&           Store( SvStream &, sal_uInt16 nItemVersion ) const override;
-    virtual SfxPoolItem*        Create( SvStream &, sal_uInt16 nVer ) const override;
 
 };
 

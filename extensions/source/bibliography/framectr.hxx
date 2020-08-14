@@ -19,25 +19,26 @@
 
 #ifndef INCLUDED_EXTENSIONS_SOURCE_BIBLIOGRAPHY_FRAMECTR_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_BIBLIOGRAPHY_FRAMECTR_HXX
-#include <com/sun/star/beans/XPropertyChangeListener.hpp>
+
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
-#include <com/sun/star/form/XLoadable.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/frame/XDispatchInformationProvider.hpp>
 #include <cppuhelper/implbase.hxx>
+#include <rtl/ref.hxx>
+#include <tools/link.hxx>
 #include <vector>
 #include <memory>
 
 #include "bibmod.hxx"
 class BibDataManager;
 class BibFrameCtrl_Impl;
-namespace com{namespace sun{namespace star{
-    namespace form { namespace runtime {
+namespace com::sun::star{
+    namespace form::runtime {
         class XFormController;
-    } }
-}}}
+    }
+}
 class BibStatusDispatch
 {
 public:
@@ -65,9 +66,7 @@ friend class BibFrameCtrl_Impl;
     css::uno::Reference< css::awt::XWindow >                  xWindow;
     css::uno::Reference< css::frame::XFrame >                 xFrame;
     bool                        bDisposing;
-    bool                        bHierarchical;
     rtl::Reference<BibDataManager>                            m_xDatMan;
-    HdlBibModul                 pBibMod;
 
     DECL_LINK( DisposeHdl, void*, void );
 

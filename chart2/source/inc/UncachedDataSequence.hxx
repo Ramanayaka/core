@@ -25,23 +25,19 @@
 #include <comphelper/broadcasthelper.hxx>
 #include <comphelper/propertycontainer.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include "charttoolsdllapi.hxx"
 
 // interfaces and types
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/chart2/XInternalDataProvider.hpp>
 #include <com/sun/star/chart2/data/XDataSequence.hpp>
 #include <com/sun/star/chart2/data/XNumericalDataSequence.hpp>
 #include <com/sun/star/chart2/data/XTextualDataSequence.hpp>
 #include <com/sun/star/container/XIndexReplace.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
-#include <com/sun/star/util/XModifyBroadcaster.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
 
-#include <vector>
+namespace com::sun::star::beans { class XPropertySetInfo; }
+namespace com::sun::star::chart2 { class XInternalDataProvider; }
 
 namespace chart
 {
@@ -68,9 +64,9 @@ typedef ::cppu::WeakComponentImplHelper<
  * the internal data table.
  *
  * <p>A range representation can be either '0', '1', '2', ..., or 'label 1',
- * 'label 2', ....</p>
+ * 'label 2', ...</p>
  */
-class UncachedDataSequence :
+class UncachedDataSequence final :
         public ::comphelper::OMutexAndBroadcastHelper,
         public ::comphelper::OPropertyContainer,
         public ::comphelper::OPropertyArrayUsageHelper< UncachedDataSequence >,
@@ -100,7 +96,7 @@ public:
     /// merge XTypeProvider implementations
     DECLARE_XTYPEPROVIDER()
 
-protected:
+private:
     // ____ XPropertySet ____
     /// @see css::beans::XPropertySet
     virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo() override;
@@ -165,7 +161,6 @@ protected:
      */
     void registerProperties();
 
-private:
     css::uno::Reference< css::chart2::XInternalDataProvider > m_xDataProvider;
     OUString                 m_aSourceRepresentation;
     css::uno::Reference< css::util::XModifyListener >

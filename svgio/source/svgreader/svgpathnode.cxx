@@ -20,25 +20,19 @@
 #include <svgpathnode.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgPathNode::SvgPathNode(
             SvgDocument& rDocument,
             SvgNode* pParent)
         :   SvgNode(SVGTokenPath, rDocument, pParent),
             maSvgStyleAttributes(*this),
-            mpPolyPolygon(nullptr),
-            mpaTransform(nullptr),
             maPathLength()
         {
         }
 
         SvgPathNode::~SvgPathNode()
         {
-            delete mpPolyPolygon;
-            delete mpaTransform;
         }
 
         const SvgStyleAttributes* SvgPathNode::getSvgStyleAttributes() const
@@ -66,7 +60,7 @@ namespace svgio
                 {
                     basegfx::B2DPolyPolygon aPath;
 
-                    if(basegfx::tools::importFromSvgD(aPath, aContent, false, &maHelpPointIndices))
+                    if(basegfx::utils::importFromSvgD(aPath, aContent, false, &maHelpPointIndices))
                     {
                         if(aPath.count())
                         {
@@ -119,7 +113,6 @@ namespace svgio
                 }
             }
         }
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

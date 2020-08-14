@@ -17,17 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <hintids.hxx>
+#include <osl/diagnose.h>
 #include <unotools/tempfile.hxx>
-#include <svl/urihelper.hxx>
 #include <svl/stritem.hxx>
 #include <svl/eitem.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/docfile.hxx>
 #include <sfx2/docfilt.hxx>
 #include <sfx2/fcontnr.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/request.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <sfx2/viewfrm.hxx>
+#include <tools/datetime.hxx>
 #include <fmtinfmt.hxx>
 #include <fmtanchr.hxx>
 #include <doc.hxx>
@@ -40,25 +41,27 @@
 #include <pam.hxx>
 #include <ndtxt.hxx>
 #include <docsh.hxx>
-#include <globdoc.hxx>
-#include <shellio.hxx>
-#include <swundo.hxx>
 #include <section.hxx>
-#include <doctxm.hxx>
-#include <poolfmt.hxx>
 #include <calbck.hxx>
+#include <iodetect.hxx>
+#include <frameformats.hxx>
 #include <memory>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 
 using namespace ::com::sun::star;
+
+namespace {
 
 enum SwSplitDocType
 {
     SPLITDOC_TO_GLOBALDOC,
     SPLITDOC_TO_HTML
 };
+
+}
 
 bool SwDoc::GenerateGlobalDoc( const OUString& rPath,
                                    const SwTextFormatColl* pSplitColl )
@@ -83,20 +86,21 @@ bool SwDoc::GenerateHTMLDoc( const OUString& rPath,
 }
 
 // two helpers for outline mode
-SwNodePtr GetStartNode( SwOutlineNodes* pOutlNds, int nOutlineLevel, SwOutlineNodes::size_type* nOutl )
+static SwNodePtr GetStartNode( SwOutlineNodes const * pOutlNds, int nOutlineLevel, SwOutlineNodes::size_type* nOutl )
 {
-    SwNodePtr pNd;
-
     for( ; *nOutl < pOutlNds->size(); ++(*nOutl) )
-        if( ( pNd = (*pOutlNds)[ *nOutl ])->GetTextNode()->GetAttrOutlineLevel() == nOutlineLevel && !pNd->FindTableNode() )
+    {
+        SwNodePtr pNd = (*pOutlNds)[ *nOutl ];
+        if( pNd->GetTextNode()->GetAttrOutlineLevel() == nOutlineLevel && !pNd->FindTableNode() )
         {
             return pNd;
         }
+    }
 
     return nullptr;
 }
 
-SwNodePtr GetEndNode( SwOutlineNodes* pOutlNds, int nOutlineLevel, SwOutlineNodes::size_type* nOutl )
+static SwNodePtr GetEndNode( SwOutlineNodes const * pOutlNds, int nOutlineLevel, SwOutlineNodes::size_type* nOutl )
 {
     SwNodePtr pNd;
 
@@ -116,20 +120,21 @@ SwNodePtr GetEndNode( SwOutlineNodes* pOutlNds, int nOutlineLevel, SwOutlineNode
 }
 
 // two helpers for collection mode
-SwNodePtr GetStartNode( const SwOutlineNodes* pOutlNds, const SwTextFormatColl* pSplitColl, SwOutlineNodes::size_type* nOutl )
+static SwNodePtr GetStartNode( const SwOutlineNodes* pOutlNds, const SwTextFormatColl* pSplitColl, SwOutlineNodes::size_type* nOutl )
 {
-    SwNodePtr pNd;
     for( ; *nOutl < pOutlNds->size(); ++(*nOutl) )
-        if( ( pNd = (*pOutlNds)[ *nOutl ])->GetTextNode()->
-                    GetTextColl() == pSplitColl &&
+    {
+        SwNodePtr pNd = (*pOutlNds)[ *nOutl ];
+        if( pNd->GetTextNode()->GetTextColl() == pSplitColl &&
             !pNd->FindTableNode() )
         {
             return pNd;
         }
+    }
     return nullptr;
 }
 
-SwNodePtr GetEndNode( const SwOutlineNodes* pOutlNds, const SwTextFormatColl* pSplitColl, SwOutlineNodes::size_type* nOutl )
+static SwNodePtr GetEndNode( const SwOutlineNodes* pOutlNds, const SwTextFormatColl* pSplitColl, SwOutlineNodes::size_type* nOutl )
 {
     SwNodePtr pNd;
 
@@ -168,7 +173,7 @@ bool SwDoc::SplitDoc( sal_uInt16 eDocType, const OUString& rPath, bool bOutline,
     if ( !bOutline) {
         if( pSplitColl )
         {
-            // If it isn't a OutlineNumbering, then use an own array and collect the Nodes.
+            // If it isn't an OutlineNumbering, then use an own array and collect the Nodes.
             if( pSplitColl->GetAttrOutlineLevel() == 0 )
             {
                 xTmpOutlNds.reset(new SwOutlineNodes);
@@ -290,7 +295,7 @@ bool SwDoc::SplitDoc( sal_uInt16 eDocType, const OUString& rPath, bool bOutline,
                     OUString sTitle( xDocProps->getTitle() );
                     if (!sTitle.isEmpty())
                         sTitle += ": ";
-                    sTitle += pStartNd->GetTextNode()->GetExpandText();
+                    sTitle += pStartNd->GetTextNode()->GetExpandText(nullptr);
                     xDocProps->setTitle( sTitle );
 
                     // Replace template
@@ -311,7 +316,7 @@ bool SwDoc::SplitDoc( sal_uInt16 eDocType, const OUString& rPath, bool bOutline,
                         pDoc->GetNodes().Delete( aIdx );
 
                     // All Flys in the section
-                    GetDocumentContentOperationsManager().CopyFlyInFlyImpl( aRg, 0, aIdx );
+                    GetDocumentContentOperationsManager().CopyFlyInFlyImpl(aRg, nullptr, aIdx);
 
                     // And what's with all the Bookmarks?
                     // ?????
@@ -407,8 +412,8 @@ bool SwDoc::SplitDoc( sal_uInt16 eDocType, const OUString& rPath, bool bOutline,
 
                 default:
                     {
-                        const OUString sNm( INetURLObject( sFileName ).GetName() );
-                        SwSectionData aSectData( FILE_LINK_SECTION,
+                        const OUString sNm(INetURLObject(sFileName).GetLastName());
+                        SwSectionData aSectData( SectionType::FileLink,
                                         GetUniqueSectionName( &sNm ));
                         SwSectionFormat* pFormat = MakeSectionFormat();
                         aSectData.SetLinkFileName(sFileName);
@@ -474,7 +479,7 @@ bool SwDoc::SplitDoc( sal_uInt16 eDocType, const OUString& rPath, bool bOutline,
                         }
                         // <- #i26762#
 
-                        pSectNd->GetSection().CreateLink( CREATE_CONNECT );
+                        pSectNd->GetSection().CreateLink( LinkCreateType::Connect );
                     }
                     break;
                 }

@@ -20,11 +20,9 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_FLAT_ECONNECTION_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_FLAT_ECONNECTION_HXX
 
-#include "file/FConnection.hxx"
+#include <file/FConnection.hxx>
 
-namespace connectivity
-{
-    namespace flat
+namespace connectivity::flat
     {
         class ODriver;
         class OFlatConnection : public file::OConnection
@@ -59,7 +57,7 @@ namespace connectivity
             virtual css::uno::Reference< css::sdbc::XPreparedStatement > SAL_CALL prepareStatement( const OUString& sql ) override;
             virtual css::uno::Reference< css::sdbc::XPreparedStatement > SAL_CALL prepareCall( const OUString& sql ) override;
         };
-    }
+
 }
 #endif // _CONNECTIVITY_FLAT_DCONNECTION_HXX_
 

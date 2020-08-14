@@ -32,7 +32,7 @@ import static org.junit.Assert.*;
 /**
  * This class is used to copy the content of a folder to
  * another folder.
- * There is an incosistency with argument order.
+ * There is an inconsistency with argument order.
  * It should be always: dir,filename.
  */
 public class UCB  {
@@ -117,10 +117,11 @@ public class UCB  {
 
             System.out.println("now executing open");
             executeCommand(content, "open", aArg);
-            fail("Expected 'IllegalArgumentException' was not thrown.");
+            fail("Expected exception 'IllegalArgumentException' or 'IllegalIdentifierException' was not thrown.");
         } catch (com.sun.star.lang.IllegalArgumentException ex) {
-            //TODO error message;
-            System.out.println("Correct exception thrown: " + ex.getClass().toString());
+            // correct
+        } catch (com.sun.star.ucb.IllegalIdentifierException ex) {
+            // correct
         } catch(com.sun.star.ucb.InteractiveNetworkException ex) {
             System.out.println("This Exception is correctly thrown when no Proxy in StarOffice is used.");
             System.out.println("To reproduce the bug behaviour, use a Proxy and try again.");

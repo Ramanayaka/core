@@ -23,10 +23,10 @@
 
 #include <dispatch/dispatchprovider.hxx>
 #include <dispatch/interceptionhelper.hxx>
-#include <dispatch/closedispatcher.hxx>
 #include <dispatch/windowcommanddispatch.hxx>
 #include <loadenv/loadenv.hxx>
 #include <helper/oframes.hxx>
+#include <framework/framecontainer.hxx>
 #include <framework/titlehelper.hxx>
 #include <svtools/openfiledroptargetlistener.hxx>
 #include <classes/taskcreator.hxx>
@@ -34,11 +34,11 @@
 #include <framework/framelistanalyzer.hxx>
 #include <helper/dockingareadefaultacceptor.hxx>
 #include <dispatch/dispatchinformationprovider.hxx>
-#include <classes/framecontainer.hxx>
-#include <general.h>
 
 #include <pattern/window.hxx>
 #include <properties.h>
+#include <stdtypes.h>
+#include <targets.h>
 
 #include <com/sun/star/awt/Toolkit.hpp>
 #include <com/sun/star/awt/XDevice.hpp>
@@ -66,28 +66,21 @@
 #include <com/sun/star/util/XCloseable.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-#include <comphelper/sequenceashashmap.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/queryinterface.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/interfacecontainer.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/weak.hxx>
-#include <rtl/ref.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <vcl/window.hxx>
 #include <vcl/wrkwin.hxx>
 #include <vcl/svapp.hxx>
 
 #include <toolkit/helper/vclunohelper.hxx>
-#include <toolkit/awt/vclxwindow.hxx>
-#include <comphelper/processfactory.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <tools/diagnose_ex.h>
-#include <vcl/menu.hxx>
 #include <unotools/cmdoptions.hxx>
+#include <vcl/threadex.hxx>
 
 using namespace framework;
 
@@ -96,8 +89,8 @@ namespace {
 // This enum can be used to set different active states of frames
 enum EActiveState
 {
-    E_INACTIVE,   // I'am not a member of active path in tree and i don't have the focus.
-    E_ACTIVE,     // I'am in the middle of an active path in tree and i don't have the focus.
+    E_INACTIVE,   // I am not a member of active path in tree and i don't have the focus.
+    E_ACTIVE,     // I am in the middle of an active path in tree and i don't have the focus.
     E_FOCUS       // I have the focus now. I must a member of an active path!
 };
 
@@ -107,7 +100,7 @@ enum EActiveState
                 subtree, find of subframes, activate- and deactivate-mechanism as well as
                 set/get of a frame window, component or controller.
 *//*-*************************************************************************************************************/
-class Frame:
+class XFrameImpl:
     private cppu::BaseMutex,
     public cppu::PartialWeakComponentImplHelper<
         css::lang::XServiceInfo, css::frame::XFrame2, css::awt::XWindowListener,
@@ -119,14 +112,14 @@ class Frame:
 {
 public:
 
-    explicit Frame(const css::uno::Reference< css::uno::XComponentContext >& xContext);
+    explicit XFrameImpl(const css::uno::Reference< css::uno::XComponentContext >& xContext);
 
     /// Initialization function after having acquire()'d.
     void initListeners();
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.Frame");
+        return "com.sun.star.comp.framework.Frame";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -306,10 +299,10 @@ public:
 
 private:
 
-    void SAL_CALL impl_setPropertyValue(sal_Int32 nHandle,
+    void impl_setPropertyValue(sal_Int32 nHandle,
                                         const css::uno::Any& aValue);
 
-    css::uno::Any SAL_CALL impl_getPropertyValue(sal_Int32 nHandle);
+    css::uno::Any impl_getPropertyValue(sal_Int32 nHandle);
 
     /** set a new owner for this helper.
      *
@@ -331,11 +324,11 @@ private:
      *          The owner of this class has to be sure, that every new property does
      *          not clash with any existing one.
      */
-    void SAL_CALL impl_addPropertyInfo(const css::beans::Property& aProperty);
+    void impl_addPropertyInfo(const css::beans::Property& aProperty);
 
     /** mark the object as "dead".
      */
-    void SAL_CALL impl_disablePropertySet();
+    void impl_disablePropertySet();
 
     bool impl_existsVeto(const css::beans::PropertyChangeEvent& aEvent);
 
@@ -412,14 +405,16 @@ private:
     bool                                                                    m_bSelfClose;
     /// indicates, if this frame is used in hidden mode or not
     bool                                                                    m_bIsHidden;
+    /// The container window has WindowExtendedStyle::DocHidden set.
+    bool                                                                    m_bDocHidden = false;
     /// is used to layout the child windows of the frame.
     css::uno::Reference< css::frame::XLayoutManager2 >                      m_xLayoutManager;
     css::uno::Reference< css::frame::XDispatchInformationProvider >         m_xDispatchInfoHelper;
     css::uno::Reference< css::frame::XTitle >                               m_xTitleHelper;
 
-    WindowCommandDispatch*                                                  m_pWindowCommandDispatch;
+    std::unique_ptr<WindowCommandDispatch>                                  m_pWindowCommandDispatch;
 
-    typedef std::unordered_map<OUString, css::beans::Property, OUStringHash> TPropInfoHash;
+    typedef std::unordered_map<OUString, css::beans::Property> TPropInfoHash;
     TPropInfoHash m_lProps;
 
     ListenerHash m_lSimpleChangeListener;
@@ -437,7 +432,7 @@ private:
     @descr      This constructor initialize a new instance of this class by valid factory,
                 and will be set valid values on his member and baseclasses.
 
-    @attention  a)  Don't use your own reference during an UNO-Service-ctor! There is no guarantee, that you
+    @attention  a)  Don't use your own reference during a UNO-Service-ctor! There is no guarantee, that you
                     will get over this. (e.g. using of your reference as parameter to initialize some member)
                     Do such things in DEFINE_INIT_SERVICE() method, which is called automatically after your ctor!!!
                 b)  Baseclass OBroadcastHelper is a typedef in namespace cppu!
@@ -451,7 +446,7 @@ private:
                     The value must be different from NULL!
     @onerror    ASSERT in debug version or nothing in release version.
 *//*-*****************************************************************************************************/
-Frame::Frame( const css::uno::Reference< css::uno::XComponentContext >& xContext )
+XFrameImpl::XFrameImpl( const css::uno::Reference< css::uno::XComponentContext >& xContext )
         : PartialWeakComponentImplHelper(m_aMutex)
         //  init member
         , m_xContext                  ( xContext )
@@ -468,14 +463,13 @@ Frame::Frame( const css::uno::Reference< css::uno::XComponentContext >& xContext
         , m_bSelfClose                ( false ) // Important!
         , m_bIsHidden                 ( true )
         , m_xTitleHelper              ()
-        , m_pWindowCommandDispatch    ( nullptr )
         , m_lSimpleChangeListener     ( m_aMutex )
         , m_lVetoChangeListener       ( m_aMutex )
         , m_aChildFrameContainer      ()
 {
 }
 
-void Frame::initListeners()
+void XFrameImpl::initListeners()
 {
     css::uno::Reference< css::uno::XInterface > xThis(static_cast< ::cppu::OWeakObject* >(this), css::uno::UNO_QUERY_THROW);
 
@@ -502,20 +496,20 @@ void Frame::initListeners()
     OFrames* pFramesHelper = new OFrames( this, &m_aChildFrameContainer );
     m_xFramesHelper.set( static_cast< ::cppu::OWeakObject* >(pFramesHelper), css::uno::UNO_QUERY );
 
-    // Initialize a the drop target listener.
+    // Initialize the drop target listener.
     // We hold member as reference ... not as pointer too!
     OpenFileDropTargetListener* pDropListener = new OpenFileDropTargetListener( m_xContext, this );
     m_xDropTargetListener.set( static_cast< ::cppu::OWeakObject* >(pDropListener), css::uno::UNO_QUERY );
 
     // Safe impossible cases
     // We can't work without these helpers!
-    SAL_WARN_IF( !xDispatchProvider.is(), "fwk.frame", "Frame::Frame(): Slowest slave for dispatch- and interception helper "
+    SAL_WARN_IF( !xDispatchProvider.is(), "fwk.frame", "XFrameImpl::XFrameImpl(): Slowest slave for dispatch- and interception helper "
         "is not valid. XDispatchProvider, XDispatch, XDispatchProviderInterception are not full supported!" );
-    SAL_WARN_IF( !m_xDispatchHelper.is(), "fwk.frame", "Frame::Frame(): Interception helper is not valid. XDispatchProvider, "
+    SAL_WARN_IF( !m_xDispatchHelper.is(), "fwk.frame", "XFrameImpl::XFrameImpl(): Interception helper is not valid. XDispatchProvider, "
         "XDispatch, XDispatchProviderInterception are not full supported!" );
-    SAL_WARN_IF( !m_xFramesHelper.is(), "fwk.frame", "Frame::Frame(): Frames helper is not valid. XFrames, "
-        "XIndexAccess and XElementAcces are not supported!" );
-    SAL_WARN_IF( !m_xDropTargetListener.is(), "fwk.frame", "Frame::Frame(): DropTarget helper is not valid. "
+    SAL_WARN_IF( !m_xFramesHelper.is(), "fwk.frame", "XFrameImpl::XFrameImpl(): Frames helper is not valid. XFrames, "
+        "XIndexAccess and XElementAccess are not supported!" );
+    SAL_WARN_IF( !m_xDropTargetListener.is(), "fwk.frame", "XFrameImpl::XFrameImpl(): DropTarget helper is not valid. "
         "Drag and drop without functionality!" );
 
     // establish notifies for changing of "disabled commands" configuration during runtime
@@ -569,13 +563,13 @@ void Frame::initListeners()
     @param      "sTargetFrameName"  , name of target frame or special value like "_self", "_blank" ...
     @param      "nSearchFlags"      , optional arguments for frame search, if target is not a special one
     @param      "lArguments"        , optional arguments for loading
-    @return     A valid component reference, if loading was successfully.
+    @return     A valid component reference, if loading was successful.
                 A null reference otherwise.
 
     @onerror    We return a null reference.
     @threadsafe yes
 *//*-*************************************************************************************************************/
-css::uno::Reference< css::lang::XComponent > SAL_CALL Frame::loadComponentFromURL(
+css::uno::Reference< css::lang::XComponent > SAL_CALL XFrameImpl::loadComponentFromURL(
         const OUString& sURL,
         const OUString& sTargetFrameName,
         sal_Int32 nSearchFlags,
@@ -584,7 +578,17 @@ css::uno::Reference< css::lang::XComponent > SAL_CALL Frame::loadComponentFromUR
     checkDisposed();
 
     css::uno::Reference< css::frame::XComponentLoader > xThis(static_cast< css::frame::XComponentLoader* >(this), css::uno::UNO_QUERY);
-    return LoadEnv::loadComponentFromURL(xThis, m_xContext, sURL, sTargetFrameName, nSearchFlags, lArguments);
+
+    utl::MediaDescriptor aDescriptor(lArguments);
+    bool bOnMainThread = aDescriptor.getUnpackedValueOrDefault("OnMainThread", false);
+
+    if (bOnMainThread)
+        return vcl::solarthread::syncExecute(std::bind(&LoadEnv::loadComponentFromURL, xThis,
+                                                       m_xContext, sURL, sTargetFrameName,
+                                                       nSearchFlags, lArguments));
+    else
+        return LoadEnv::loadComponentFromURL(xThis, m_xContext, sURL, sTargetFrameName,
+                                             nSearchFlags, lArguments);
 }
 
 /*-****************************************************************************************************
@@ -598,7 +602,7 @@ css::uno::Reference< css::lang::XComponent > SAL_CALL Frame::loadComponentFromUR
 
     @onerror    A null reference is returned.
 *//*-*****************************************************************************************************/
-css::uno::Reference< css::frame::XFrames > SAL_CALL Frame::getFrames()
+css::uno::Reference< css::frame::XFrames > SAL_CALL XFrameImpl::getFrames()
 {
     checkDisposed();
 
@@ -621,7 +625,7 @@ css::uno::Reference< css::frame::XFrames > SAL_CALL Frame::getFrames()
 
     @onerror    A null reference is returned.
 *//*-*****************************************************************************************************/
-css::uno::Reference< css::frame::XFrame > SAL_CALL Frame::getActiveFrame()
+css::uno::Reference< css::frame::XFrame > SAL_CALL XFrameImpl::getActiveFrame()
 {
     checkDisposed();
 
@@ -643,7 +647,7 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Frame::getActiveFrame()
     @param      "xFrame", reference to new active child. It must be an already existing child!
     @onerror    An assertion is thrown and element is ignored, if given frame isn't already a child of us.
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::setActiveFrame( const css::uno::Reference< css::frame::XFrame >& xFrame )
+void SAL_CALL XFrameImpl::setActiveFrame( const css::uno::Reference< css::frame::XFrame >& xFrame )
 {
     checkDisposed();
 
@@ -726,7 +730,7 @@ void lcl_enableLayoutManager(const css::uno::Reference< css::frame::XLayoutManag
 /*-****************************************************************************************************
    deinitialize layout manager
 **/
-void Frame::disableLayoutManager(const css::uno::Reference< css::frame::XLayoutManager2 >& xLayoutManager)
+void XFrameImpl::disableLayoutManager(const css::uno::Reference< css::frame::XLayoutManager2 >& xLayoutManager)
 {
     removeFrameActionListener(xLayoutManager);
     xLayoutManager->setDockingAreaAcceptor(css::uno::Reference< css::ui::XDockingAreaAcceptor >());
@@ -737,7 +741,7 @@ void Frame::disableLayoutManager(const css::uno::Reference< css::frame::XLayoutM
     @short      initialize frame instance
     @descr      A frame needs a window. This method set a new one ... but should called one times only!
                 We use this window to listen for window events and forward it to our set component.
-                Its used as parent of component window too.
+                It's used as parent of component window too.
 
     @seealso    method getContainerWindow()
     @seealso    method setComponent()
@@ -746,12 +750,12 @@ void Frame::disableLayoutManager(const css::uno::Reference< css::frame::XLayoutM
     @param      "xWindow", reference to new container window - must be valid!
     @onerror    We do nothing.
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::initialize( const css::uno::Reference< css::awt::XWindow >& xWindow )
+void SAL_CALL XFrameImpl::initialize( const css::uno::Reference< css::awt::XWindow >& xWindow )
 {
     /* UNSAFE AREA --------------------------------------------------------------------------------------------- */
     if (!xWindow.is())
         throw css::uno::RuntimeException(
-                    "Frame::initialize() called without a valid container window reference.",
+                    "XFrameImpl::initialize() called without a valid container window reference.",
                     static_cast< css::frame::XFrame* >(this));
 
     checkDisposed();
@@ -761,19 +765,24 @@ void SAL_CALL Frame::initialize( const css::uno::Reference< css::awt::XWindow >&
 
     if ( m_xContainerWindow.is() )
         throw css::uno::RuntimeException(
-                "Frame::initialized() is called more than once, which is not useful nor allowed.",
+                "XFrameImpl::initialized() is called more than once, which is not useful nor allowed.",
                 static_cast< css::frame::XFrame* >(this));
 
     // This must be the first call of this method!
     // We should initialize our object and open it for working.
     // Set the new window.
-    SAL_WARN_IF( m_xContainerWindow.is(), "fwk.frame", "Frame::initialize(): Leak detected! This state should never occur ..." );
+    SAL_WARN_IF( m_xContainerWindow.is(), "fwk.frame", "XFrameImpl::initialize(): Leak detected! This state should never occur ..." );
     m_xContainerWindow = xWindow;
 
     // if window is initially visible, we will never get a windowShowing event
     VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow(xWindow);
-    if (pWindow && pWindow->IsVisible())
-        m_bIsHidden = false;
+    if (pWindow)
+    {
+        if (pWindow->IsVisible())
+            m_bIsHidden = false;
+        m_bDocHidden
+            = static_cast<bool>(pWindow->GetExtendedStyle() & WindowExtendedStyle::DocHidden);
+    }
 
     css::uno::Reference< css::frame::XLayoutManager2 >  xLayoutManager = m_xLayoutManager;
 
@@ -782,7 +791,9 @@ void SAL_CALL Frame::initialize( const css::uno::Reference< css::awt::XWindow >&
     aWriteLock.clear();
     /* UNSAFE AREA --------------------------------------------------------------------------------------------- */
 
-    if (xLayoutManager.is())
+    // Avoid enabling the layout manager for hidden frames: it's expensive and
+    // provides little value.
+    if (xLayoutManager.is() && !m_bDocHidden)
         lcl_enableLayoutManager(xLayoutManager, this);
 
     // create progress helper
@@ -802,7 +813,7 @@ void SAL_CALL Frame::initialize( const css::uno::Reference< css::awt::XWindow >&
     // So superfluous messages are filtered to NULL :-)
     implts_startWindowListening();
 
-    m_pWindowCommandDispatch = new WindowCommandDispatch(m_xContext, this);
+    m_pWindowCommandDispatch.reset(new WindowCommandDispatch(m_xContext, this));
 
     // Initialize title functionality
     TitleHelper* pTitleHelper = new TitleHelper( m_xContext );
@@ -822,7 +833,7 @@ void SAL_CALL Frame::initialize( const css::uno::Reference< css::awt::XWindow >&
 
     @onerror    A null reference is returned.
 *//*-*****************************************************************************************************/
-css::uno::Reference< css::awt::XWindow > SAL_CALL Frame::getContainerWindow()
+css::uno::Reference< css::awt::XWindow > SAL_CALL XFrameImpl::getContainerWindow()
 {
     SolarMutexGuard g;
     return m_xContainerWindow;
@@ -833,26 +844,27 @@ css::uno::Reference< css::awt::XWindow > SAL_CALL Frame::getContainerWindow()
     @descr      We need a parent to support some functionality! e.g. findFrame()
                 By the way we use the chance to set an internal information about our top state.
                 So we must not check this information during every isTop() call.
-                We are top, if our parent is the desktop instance or we havent any parent.
+                We are top, if our parent is the desktop instance or we haven't any parent.
 
     @seealso    getCreator()
     @seealso    findFrame()
     @seealso    isTop()
-    @seealos    m_bIsFrameTop
+    @seealso    m_bIsFrameTop
 
     @param      xCreator
                     valid reference to our new owner frame, which should implement a supplier interface
 
     @threadsafe yes
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::setCreator( const css::uno::Reference< css::frame::XFramesSupplier >& xCreator )
+void SAL_CALL XFrameImpl::setCreator( const css::uno::Reference< css::frame::XFramesSupplier >& xCreator )
 {
     checkDisposed();
 
     /* SAFE { */
-        SolarMutexClearableGuard aWriteLock;
-            m_xParent = xCreator;
-        aWriteLock.clear();
+    {
+        SolarMutexGuard aWriteLock;
+        m_xParent = xCreator;
+    }
     /* } SAFE */
 
     css::uno::Reference< css::frame::XDesktop > xIsDesktop( xCreator, css::uno::UNO_QUERY );
@@ -868,7 +880,7 @@ void SAL_CALL Frame::setCreator( const css::uno::Reference< css::frame::XFramesS
 
     @onerror    A null reference is returned.
 *//*-*****************************************************************************************************/
-css::uno::Reference< css::frame::XFramesSupplier > SAL_CALL Frame::getCreator()
+css::uno::Reference< css::frame::XFramesSupplier > SAL_CALL XFrameImpl::getCreator()
 {
     checkDisposed();
     SolarMutexGuard g;
@@ -884,7 +896,7 @@ css::uno::Reference< css::frame::XFramesSupplier > SAL_CALL Frame::getCreator()
 
     @onerror    An empty string is returned.
 *//*-*****************************************************************************************************/
-OUString SAL_CALL Frame::getName()
+OUString SAL_CALL XFrameImpl::getName()
 {
     SolarMutexGuard g;
     return m_sName;
@@ -902,7 +914,7 @@ OUString SAL_CALL Frame::getName()
     @param      "sName", new frame name.
     @onerror    We do nothing.
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::setName( const OUString& sName )
+void SAL_CALL XFrameImpl::setName( const OUString& sName )
 {
     SolarMutexGuard g;
     // Set new name... but look for invalid special target names!
@@ -936,7 +948,7 @@ void SAL_CALL Frame::setName( const OUString& sName )
     @return     A reference to found or may be new created frame.
     @threadsafe yes
 *//*-*****************************************************************************************************/
-css::uno::Reference< css::frame::XFrame > SAL_CALL Frame::findFrame( const OUString& sTargetFrameName,
+css::uno::Reference< css::frame::XFrame > SAL_CALL XFrameImpl::findFrame( const OUString& sTargetFrameName,
                                                                      sal_Int32 nSearchFlags )
 {
     css::uno::Reference< css::frame::XFrame > xTarget;
@@ -958,7 +970,7 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Frame::findFrame( const OUStr
     // get threadsafe some necessary member which are necessary for following functionality
     /* SAFE { */
     SolarMutexResettableGuard aReadLock;
-    css::uno::Reference< css::frame::XFrame > xParent ( m_xParent, css::uno::UNO_QUERY );
+    css::uno::Reference< css::frame::XFrame > xParent = m_xParent;
     bool bIsTopFrame  = m_bIsFrameTop;
     bool bIsTopWindow = WindowHelper::isTopWindow(m_xContainerWindow);
     aReadLock.clear();
@@ -971,7 +983,7 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Frame::findFrame( const OUStr
     if ( sTargetFrameName==SPECIALTARGET_BLANK )
     {
         TaskCreator aCreator(m_xContext);
-        xTarget = aCreator.createTask(sTargetFrameName);
+        xTarget = aCreator.createTask(sTargetFrameName, utl::MediaDescriptor());
     }
 
     // I.II) "_parent"
@@ -985,7 +997,7 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Frame::findFrame( const OUStr
 
     // I.III) "_top"
     //  If we are not the top frame in this hierarchy, we must forward request to our parent.
-    //  Otherwhise we must return ourself.
+    //  Otherwise we must return ourself.
 
     else if ( sTargetFrameName==SPECIALTARGET_TOP )
     {
@@ -1022,11 +1034,11 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Frame::findFrame( const OUStr
                 /* TODO
                     Creation not supported yet!
                     Wait for new layout manager service because we can't plug it
-                    inside already opened document of this frame ...
+                    inside already opened document of this frame...
                 */
             }
         }
-        // We arent a task => forward request to our parent or ignore it.
+        // We aren't a task => forward request to our parent or ignore it.
         else if (xParent.is())
             xTarget = xParent->findFrame(SPECIALTARGET_BEAMER,0);
     }
@@ -1106,7 +1118,7 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Frame::findFrame( const OUStr
                 css::uno::Reference< css::frame::XFramesSupplier > xSupplier( xParent, css::uno::UNO_QUERY );
                 if (xSupplier.is())
                 {
-                    css::uno::Reference< css::container::XIndexAccess > xContainer( xSupplier->getFrames(), css::uno::UNO_QUERY );
+                    css::uno::Reference< css::container::XIndexAccess > xContainer = xSupplier->getFrames();
                     if (xContainer.is())
                     {
                         sal_Int32 nCount = xContainer->getCount();
@@ -1154,8 +1166,7 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Frame::findFrame( const OUStr
                     xTarget = xParent;
                 else
                 {
-                    sal_Int32 nRightFlags  = nSearchFlags;
-                              nRightFlags &= ~css::frame::FrameSearchFlag::CHILDREN;
+                    sal_Int32 nRightFlags  = nSearchFlags & ~css::frame::FrameSearchFlag::CHILDREN;
                     xTarget = xParent->findFrame(sTargetFrameName, nRightFlags);
                 }
             }
@@ -1171,7 +1182,7 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Frame::findFrame( const OUStr
            )
         {
             TaskCreator aCreator(m_xContext);
-            xTarget = aCreator.createTask(sTargetFrameName);
+            xTarget = aCreator.createTask(sTargetFrameName, utl::MediaDescriptor());
         }
     }
 
@@ -1192,7 +1203,7 @@ css::uno::Reference< css::frame::XFrame > SAL_CALL Frame::findFrame( const OUStr
 
     @onerror    No error should occur!
 *//*-*****************************************************************************************************/
-sal_Bool SAL_CALL Frame::isTop()
+sal_Bool SAL_CALL XFrameImpl::isTop()
 {
     checkDisposed();
     SolarMutexGuard g;
@@ -1211,7 +1222,7 @@ sal_Bool SAL_CALL Frame::isTop()
     @seealso    enum EActiveState
     @seealso    listener mechanism
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::activate()
+void SAL_CALL XFrameImpl::activate()
 {
     checkDisposed();
 
@@ -1222,14 +1233,14 @@ void SAL_CALL Frame::activate()
     // It's not necessary for m_aChildFrameContainer ... because
     // he is threadsafe himself and live if we live.
     css::uno::Reference< css::frame::XFrame >           xActiveChild    = m_aChildFrameContainer.getActive();
-    css::uno::Reference< css::frame::XFramesSupplier >  xParent         ( m_xParent, css::uno::UNO_QUERY );
+    css::uno::Reference< css::frame::XFramesSupplier >  xParent         = m_xParent;
     css::uno::Reference< css::frame::XFrame >           xThis           ( static_cast< ::cppu::OWeakObject* >(this), css::uno::UNO_QUERY );
     EActiveState                                        eState          = m_eActiveState;
 
     aWriteLock.clear();
     /* UNSAFE AREA --------------------------------------------------------------------------------------------- */
 
-    //  1)  If I'am not active before ...
+    //  1)  If I am not active before...
     if( eState == E_INACTIVE )
     {
         // ... do it then.
@@ -1255,9 +1266,9 @@ void SAL_CALL Frame::activate()
             // But we do nothing then! We are already activated.
             xParent->activate();
         }
-        // Its necessary to send event NOW - not before.
+        // It's necessary to send event NOW - not before.
         // Activation goes from bottom to top!
-        // Thats the reason to activate parent first and send event now.
+        // That's the reason to activate parent first and send event now.
         implts_sendFrameActionEvent( css::frame::FrameAction_FRAME_ACTIVATED );
     }
 
@@ -1283,15 +1294,15 @@ void SAL_CALL Frame::activate()
 
 /*-****************************************************************************************************
     @short      deactivate frame in hierarchy
-    @descr      This feature is used to deactive paths in our frame hierarchy.
-                You can be a listener for this event to react for it ... change some internal states or something else.
+    @descr      This feature is used to deactivate paths in our frame hierarchy.
+                You can be a listener for this event to react for it... change some internal states or something else.
 
     @seealso    method activate()
     @seealso    method isActivate()
     @seealso    enum EActiveState
     @seealso    listener mechanism
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::deactivate()
+void SAL_CALL XFrameImpl::deactivate()
 {
     checkDisposed();
 
@@ -1300,7 +1311,7 @@ void SAL_CALL Frame::deactivate()
 
     // Copy necessary member and free the lock.
     css::uno::Reference< css::frame::XFrame > xActiveChild = m_aChildFrameContainer.getActive();
-    css::uno::Reference< css::frame::XFramesSupplier > xParent ( m_xParent, css::uno::UNO_QUERY );
+    css::uno::Reference< css::frame::XFramesSupplier > xParent = m_xParent;
     css::uno::Reference< css::frame::XFrame > xThis ( static_cast< ::cppu::OWeakObject* >(this), css::uno::UNO_QUERY );
     EActiveState eState = m_eActiveState;
 
@@ -1308,49 +1319,49 @@ void SAL_CALL Frame::deactivate()
     /* UNSAFE AREA --------------------------------------------------------------------------------------------- */
 
     // Work only, if there something to do!
-    if( eState != E_INACTIVE )
+    if( eState == E_INACTIVE )
+        return;
+
+
+    //  1)  Deactivate all active children.
+    if ( xActiveChild.is() && xActiveChild->isActive() )
     {
+        xActiveChild->deactivate();
+    }
 
-        //  1)  Deactivate all active children.
-        if ( xActiveChild.is() && xActiveChild->isActive() )
-        {
-            xActiveChild->deactivate();
-        }
+    //  2)  If I have the focus - I will lost it now.
+    if( eState == E_FOCUS )
+    {
+        // Set new state INACTIVE(!) and send message to all listener.
+        // Don't set ACTIVE as new state. This frame is deactivated for next time - due to activate().
+        aWriteLock.reset();
+        eState          = E_ACTIVE;
+        m_eActiveState  = eState;
+        aWriteLock.clear();
+        implts_sendFrameActionEvent( css::frame::FrameAction_FRAME_UI_DEACTIVATING );
+    }
 
-        //  2)  If I have the focus - I will lost it now.
-        if( eState == E_FOCUS )
-        {
-            // Set new state INACTIVE(!) and send message to all listener.
-            // Don't set ACTIVE as new state. This frame is deactivated for next time - due to activate().
-            aWriteLock.reset();
-            eState          = E_ACTIVE;
-            m_eActiveState  = eState;
-            aWriteLock.clear();
-            implts_sendFrameActionEvent( css::frame::FrameAction_FRAME_UI_DEACTIVATING );
-        }
+    //  3)  If I am active - I will be deactivated now.
+    if( eState == E_ACTIVE )
+    {
+        // Set new state and send message to all listener.
+        aWriteLock.reset();
+        eState          = E_INACTIVE;
+        m_eActiveState  = eState;
+        aWriteLock.clear();
+        implts_sendFrameActionEvent( css::frame::FrameAction_FRAME_DEACTIVATING );
+    }
 
-        //  3)  If I'am active - I will be deactivated now.
-        if( eState == E_ACTIVE )
-        {
-            // Set new state and send message to all listener.
-            aWriteLock.reset();
-            eState          = E_INACTIVE;
-            m_eActiveState  = eState;
-            aWriteLock.clear();
-            implts_sendFrameActionEvent( css::frame::FrameAction_FRAME_DEACTIVATING );
-        }
-
-        //  4)  If there is a path from here to my parent ...
-        //      ... I'am on the top or in the middle of deactivated subtree and action was started here.
-        //      I must deactivate all frames from here to top, which are members of current path.
-        //      Stop, if THESE frame not the active frame of our parent!
-        if ( xParent.is() && xParent->getActiveFrame() == xThis )
-        {
-            // We MUST break the path - otherwise we will get the focus - not our parent! ...
-            // Attention: Our parent don't call us again - WE ARE NOT ACTIVE YET!
-            // [ see step 3 and condition "if ( m_eActiveState!=INACTIVE ) ..." in this method! ]
-            xParent->deactivate();
-        }
+    //  4)  If there is a path from here to my parent...
+    //      ... I am on the top or in the middle of deactivated subtree and action was started here.
+    //      I must deactivate all frames from here to top, which are members of current path.
+    //      Stop, if THESE frame not the active frame of our parent!
+    if ( xParent.is() && xParent->getActiveFrame() == xThis )
+    {
+        // We MUST break the path - otherwise we will get the focus - not our parent! ...
+        // Attention: Our parent don't call us again - WE ARE NOT ACTIVE YET!
+        // [ see step 3 and condition "if ( m_eActiveState!=INACTIVE ) ..." in this method! ]
+        xParent->deactivate();
     }
 }
 
@@ -1365,7 +1376,7 @@ void SAL_CALL Frame::deactivate()
 
     @onerror    No error should occur.
 *//*-*****************************************************************************************************/
-sal_Bool SAL_CALL Frame::isActive()
+sal_Bool SAL_CALL XFrameImpl::isActive()
 {
     checkDisposed();
     SolarMutexGuard g;
@@ -1375,7 +1386,7 @@ sal_Bool SAL_CALL Frame::isActive()
 /*-****************************************************************************************************
     @short      ???
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::contextChanged()
+void SAL_CALL XFrameImpl::contextChanged()
 {
     // Sometimes called during closing object...
     // Impl-method is threadsafe himself!
@@ -1404,19 +1415,19 @@ void SAL_CALL Frame::contextChanged()
                     May <NULL/> for releasing.
     @param      xController
                     reference to new component controller
-                    (may <NULL/> for relasing or setting of a simple component)
+                    (may <NULL/> for releasing or setting of a simple component)
 
     @return     <TRUE/> if operation was successful, <FALSE/> otherwise.
 
     @onerror    We return <FALSE/>.
     @threadsafe yes
 *//*-*****************************************************************************************************/
-sal_Bool SAL_CALL Frame::setComponent(const css::uno::Reference< css::awt::XWindow >& xComponentWindow,
+sal_Bool SAL_CALL XFrameImpl::setComponent(const css::uno::Reference< css::awt::XWindow >& xComponentWindow,
                                       const css::uno::Reference< css::frame::XController >& xController )
 {
 
     // Ignore this HACK of sfx2!
-    // He call us with an valid controller without a valid window ... Thats not allowed!
+    // He call us with a valid controller without a valid window... that's not allowed!
     if  ( xController.is() && ! xComponentWindow.is() )
         return true;
 
@@ -1461,17 +1472,17 @@ sal_Bool SAL_CALL Frame::setComponent(const css::uno::Reference< css::awt::XWind
         // Before we dispose this controller we should hide it inside this frame instance.
         // We hold it alive for next calls by using xOldController!
         /* SAFE {*/
-        SolarMutexClearableGuard aWriteLock;
-        m_xController = nullptr;
-        aWriteLock.clear();
+        {
+            SolarMutexGuard aWriteLock;
+            m_xController = nullptr;
+        }
         /* } SAFE */
 
-        css::uno::Reference< css::lang::XComponent > xDisposable( xOldController, css::uno::UNO_QUERY );
-        if (xDisposable.is())
+        if (xOldController.is())
         {
             try
             {
-                xDisposable->dispose();
+                xOldController->dispose();
             }
             catch(const css::lang::DisposedException&)
                 {}
@@ -1490,17 +1501,17 @@ sal_Bool SAL_CALL Frame::setComponent(const css::uno::Reference< css::awt::XWind
        )
     {
         /* SAFE { */
-        SolarMutexClearableGuard aWriteLock;
-        m_xComponentWindow = nullptr;
-        aWriteLock.clear();
+        {
+            SolarMutexGuard aWriteLock;
+            m_xComponentWindow = nullptr;
+        }
         /* } SAFE */
 
-        css::uno::Reference< css::lang::XComponent > xDisposable( xOldComponentWindow, css::uno::UNO_QUERY );
-        if (xDisposable.is())
+        if (xOldComponentWindow.is())
         {
             try
             {
-                xDisposable->dispose();
+                xOldComponentWindow->dispose();
             }
             catch(const css::lang::DisposedException&)
             {
@@ -1528,10 +1539,7 @@ sal_Bool SAL_CALL Frame::setComponent(const css::uno::Reference< css::awt::XWind
 
     // A new component window doesn't know anything about current active/focus states.
     // Set this information on it!
-    if (
-        (bHadFocus            ) &&
-        (xComponentWindow.is())
-       )
+    if ( bHadFocus && xComponentWindow.is() )
     {
         xComponentWindow->setFocus();
     }
@@ -1569,7 +1577,7 @@ sal_Bool SAL_CALL Frame::setComponent(const css::uno::Reference< css::awt::XWind
 
     @onerror    A null reference is returned.
 *//*-*****************************************************************************************************/
-css::uno::Reference< css::awt::XWindow > SAL_CALL Frame::getComponentWindow()
+css::uno::Reference< css::awt::XWindow > SAL_CALL XFrameImpl::getComponentWindow()
 {
     checkDisposed();
     SolarMutexGuard g;
@@ -1592,7 +1600,7 @@ css::uno::Reference< css::awt::XWindow > SAL_CALL Frame::getComponentWindow()
 
     @onerror    A null reference is returned.
 *//*-*****************************************************************************************************/
-css::uno::Reference< css::frame::XController > SAL_CALL Frame::getController()
+css::uno::Reference< css::frame::XController > SAL_CALL XFrameImpl::getController()
 {
     SolarMutexGuard g;
     return m_xController;
@@ -1607,13 +1615,13 @@ css::uno::Reference< css::frame::XController > SAL_CALL Frame::getController()
     @param      "xListener" reference to your listener object
     @onerror    Listener is ignored.
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::addFrameActionListener( const css::uno::Reference< css::frame::XFrameActionListener >& xListener )
+void SAL_CALL XFrameImpl::addFrameActionListener( const css::uno::Reference< css::frame::XFrameActionListener >& xListener )
 {
     checkDisposed();
     m_aListenerContainer.addInterface( cppu::UnoType<css::frame::XFrameActionListener>::get(), xListener );
 }
 
-void SAL_CALL Frame::removeFrameActionListener( const css::uno::Reference< css::frame::XFrameActionListener >& xListener )
+void SAL_CALL XFrameImpl::removeFrameActionListener( const css::uno::Reference< css::frame::XFrameActionListener >& xListener )
 {
     m_aListenerContainer.removeInterface( cppu::UnoType<css::frame::XFrameActionListener>::get(), xListener );
 }
@@ -1629,15 +1637,15 @@ void SAL_CALL Frame::removeFrameActionListener( const css::uno::Reference< css::
 
     @param      bDeliverOwnership
                     If parameter is set to <FALSE/> the original caller will be the owner after thrown
-                    veto exception and must try to close this frame at later time again. Otherwhise the
-                    source of throwed exception is the right one. May it will be the frame himself.
+                    veto exception and must try to close this frame at later time again. Otherwise the
+                    source of thrown exception is the right one. May it will be the frame himself.
 
     @throws     CloseVetoException
-                    if any internal things willn't be closed
+                    if any internal things will not be closed
 
     @threadsafe yes
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::close( sal_Bool bDeliverOwnership )
+void SAL_CALL XFrameImpl::close( sal_Bool bDeliverOwnership )
 {
     checkDisposed();
 
@@ -1703,9 +1711,10 @@ void SAL_CALL Frame::close( sal_Bool bDeliverOwnership )
     }
 
     /* SAFE { */
-    SolarMutexClearableGuard aWriteLock;
-    m_bIsHidden = true;
-    aWriteLock.clear();
+    {
+        SolarMutexGuard aWriteLock;
+        m_bIsHidden = true;
+    }
     /* } SAFE */
     impl_checkMenuCloser();
 
@@ -1718,7 +1727,7 @@ void SAL_CALL Frame::close( sal_Bool bDeliverOwnership )
                 this object, the such listener are informed and can disagree with that by throwing
                 a CloseVetoException.
 
-    @seealso    Frame::close()
+    @seealso    XFrameImpl::close()
 
     @param      xListener
                     reference to your listener object
@@ -1727,44 +1736,44 @@ void SAL_CALL Frame::close( sal_Bool bDeliverOwnership )
 
     @threadsafe yes
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::addCloseListener( const css::uno::Reference< css::util::XCloseListener >& xListener )
+void SAL_CALL XFrameImpl::addCloseListener( const css::uno::Reference< css::util::XCloseListener >& xListener )
 {
     checkDisposed();
     m_aListenerContainer.addInterface( cppu::UnoType<css::util::XCloseListener>::get(), xListener );
 }
 
-void SAL_CALL Frame::removeCloseListener( const css::uno::Reference< css::util::XCloseListener >& xListener )
+void SAL_CALL XFrameImpl::removeCloseListener( const css::uno::Reference< css::util::XCloseListener >& xListener )
 {
     m_aListenerContainer.removeInterface( cppu::UnoType<css::util::XCloseListener>::get(), xListener );
 }
 
-OUString SAL_CALL Frame::getTitle()
+OUString SAL_CALL XFrameImpl::getTitle()
 {
     checkDisposed();
 
     // SAFE ->
     SolarMutexClearableGuard aReadLock;
-    css::uno::Reference< css::frame::XTitle > xTitle(m_xTitleHelper, css::uno::UNO_QUERY_THROW);
+    css::uno::Reference< css::frame::XTitle > xTitle(m_xTitleHelper, css::uno::UNO_SET_THROW);
     aReadLock.clear();
     // <- SAFE
 
     return xTitle->getTitle();
 }
 
-void SAL_CALL Frame::setTitle( const OUString& sTitle )
+void SAL_CALL XFrameImpl::setTitle( const OUString& sTitle )
 {
     checkDisposed();
 
     // SAFE ->
     SolarMutexClearableGuard aReadLock;
-    css::uno::Reference< css::frame::XTitle > xTitle(m_xTitleHelper, css::uno::UNO_QUERY_THROW);
+    css::uno::Reference< css::frame::XTitle > xTitle(m_xTitleHelper, css::uno::UNO_SET_THROW);
     aReadLock.clear();
     // <- SAFE
 
     xTitle->setTitle(sTitle);
 }
 
-void SAL_CALL Frame::addTitleChangeListener( const css::uno::Reference< css::frame::XTitleChangeListener >& xListener)
+void SAL_CALL XFrameImpl::addTitleChangeListener( const css::uno::Reference< css::frame::XTitleChangeListener >& xListener)
 {
     checkDisposed();
 
@@ -1777,7 +1786,7 @@ void SAL_CALL Frame::addTitleChangeListener( const css::uno::Reference< css::fra
     xTitle->addTitleChangeListener(xListener);
 }
 
-void SAL_CALL Frame::removeTitleChangeListener( const css::uno::Reference< css::frame::XTitleChangeListener >& xListener )
+void SAL_CALL XFrameImpl::removeTitleChangeListener( const css::uno::Reference< css::frame::XTitleChangeListener >& xListener )
 {
     checkDisposed();
 
@@ -1790,32 +1799,32 @@ void SAL_CALL Frame::removeTitleChangeListener( const css::uno::Reference< css::
     xTitle->removeTitleChangeListener(xListener);
 }
 
-css::uno::Reference<css::container::XNameContainer> SAL_CALL Frame::getUserDefinedAttributes()
+css::uno::Reference<css::container::XNameContainer> SAL_CALL XFrameImpl::getUserDefinedAttributes()
 {
     // optional attribute
     return nullptr;
 }
 
-css::uno::Reference<css::frame::XDispatchRecorderSupplier> SAL_CALL Frame::getDispatchRecorderSupplier()
+css::uno::Reference<css::frame::XDispatchRecorderSupplier> SAL_CALL XFrameImpl::getDispatchRecorderSupplier()
 {
     SolarMutexGuard g;
     return m_xDispatchRecorderSupplier;
 }
 
-void SAL_CALL Frame::setDispatchRecorderSupplier(const css::uno::Reference<css::frame::XDispatchRecorderSupplier>& p)
+void SAL_CALL XFrameImpl::setDispatchRecorderSupplier(const css::uno::Reference<css::frame::XDispatchRecorderSupplier>& p)
 {
     checkDisposed();
     SolarMutexGuard g;
     m_xDispatchRecorderSupplier.set(p);
 }
 
-css::uno::Reference<css::uno::XInterface> SAL_CALL Frame::getLayoutManager()
+css::uno::Reference<css::uno::XInterface> SAL_CALL XFrameImpl::getLayoutManager()
 {
     SolarMutexGuard g;
     return m_xLayoutManager;
 }
 
-void SAL_CALL Frame::setLayoutManager(const css::uno::Reference<css::uno::XInterface>& p1)
+void SAL_CALL XFrameImpl::setLayoutManager(const css::uno::Reference<css::uno::XInterface>& p1)
 {
     checkDisposed();
     SolarMutexGuard g;
@@ -1828,12 +1837,12 @@ void SAL_CALL Frame::setLayoutManager(const css::uno::Reference<css::uno::XInter
         m_xLayoutManager = xNewLayoutManager;
         if (xOldLayoutManager.is())
             disableLayoutManager(xOldLayoutManager);
-        if (xNewLayoutManager.is())
+        if (xNewLayoutManager.is() && !m_bDocHidden)
             lcl_enableLayoutManager(xNewLayoutManager, this);
     }
 }
 
-css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL Frame::getPropertySetInfo()
+css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL XFrameImpl::getPropertySetInfo()
 {
     checkDisposed();
     css::uno::Reference< css::beans::XPropertySetInfo > xInfo(
@@ -1841,7 +1850,7 @@ css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL Frame::getPropertyS
     return xInfo;
 }
 
-void SAL_CALL Frame::setPropertyValue(const OUString& sProperty,
+void SAL_CALL XFrameImpl::setPropertyValue(const OUString& sProperty,
                                                   const css::uno::Any&   aValue   )
 {
     // TODO look for e.g. readonly props and reject setProp() call!
@@ -1853,7 +1862,7 @@ void SAL_CALL Frame::setPropertyValue(const OUString& sProperty,
 
     TPropInfoHash::const_iterator pIt = m_lProps.find(sProperty);
     if (pIt == m_lProps.end())
-        throw css::beans::UnknownPropertyException();
+        throw css::beans::UnknownPropertyException(sProperty);
 
     css::beans::Property aPropInfo = pIt->second;
 
@@ -1879,115 +1888,112 @@ void SAL_CALL Frame::setPropertyValue(const OUString& sProperty,
     impl_notifyChangeListener(aEvent);
 }
 
-css::uno::Any SAL_CALL Frame::getPropertyValue(const OUString& sProperty)
+css::uno::Any SAL_CALL XFrameImpl::getPropertyValue(const OUString& sProperty)
 {
     checkDisposed();
 
     // SAFE ->
-    SolarMutexClearableGuard aReadLock;
+    SolarMutexGuard aReadLock;
 
     TPropInfoHash::const_iterator pIt = m_lProps.find(sProperty);
     if (pIt == m_lProps.end())
-        throw css::beans::UnknownPropertyException();
+        throw css::beans::UnknownPropertyException(sProperty);
 
     css::beans::Property aPropInfo = pIt->second;
 
     return impl_getPropertyValue(aPropInfo.Handle);
 }
 
-void SAL_CALL Frame::addPropertyChangeListener(
+void SAL_CALL XFrameImpl::addPropertyChangeListener(
         const OUString& sProperty,
         const css::uno::Reference< css::beans::XPropertyChangeListener >& xListener)
 {
     checkDisposed();
 
     // SAFE ->
-    SolarMutexClearableGuard aReadLock;
+    {
+        SolarMutexGuard aReadLock;
 
-    TPropInfoHash::const_iterator pIt = m_lProps.find(sProperty);
-    if (pIt == m_lProps.end())
-        throw css::beans::UnknownPropertyException();
-
-    aReadLock.clear();
+        TPropInfoHash::const_iterator pIt = m_lProps.find(sProperty);
+        if (pIt == m_lProps.end())
+            throw css::beans::UnknownPropertyException(sProperty);
+    }
     // <- SAFE
 
     m_lSimpleChangeListener.addInterface(sProperty, xListener);
 }
 
-void SAL_CALL Frame::removePropertyChangeListener(
+void SAL_CALL XFrameImpl::removePropertyChangeListener(
         const OUString& sProperty,
         const css::uno::Reference< css::beans::XPropertyChangeListener >& xListener)
 {
     // SAFE ->
-    SolarMutexClearableGuard aReadLock;
+    {
+        SolarMutexGuard aReadLock;
 
-    TPropInfoHash::const_iterator pIt = m_lProps.find(sProperty);
-    if (pIt == m_lProps.end())
-        throw css::beans::UnknownPropertyException();
-
-    aReadLock.clear();
+        TPropInfoHash::const_iterator pIt = m_lProps.find(sProperty);
+        if (pIt == m_lProps.end())
+            throw css::beans::UnknownPropertyException(sProperty);
+    }
     // <- SAFE
 
     m_lSimpleChangeListener.removeInterface(sProperty, xListener);
 }
 
-void SAL_CALL Frame::addVetoableChangeListener(
+void SAL_CALL XFrameImpl::addVetoableChangeListener(
         const OUString& sProperty,
         const css::uno::Reference< css::beans::XVetoableChangeListener >& xListener)
 {
     checkDisposed();
 
     // SAFE ->
-    SolarMutexClearableGuard aReadLock;
+    {
+        SolarMutexGuard aReadLock;
 
-    TPropInfoHash::const_iterator pIt = m_lProps.find(sProperty);
-    if (pIt == m_lProps.end())
-        throw css::beans::UnknownPropertyException();
-
-    aReadLock.clear();
+        TPropInfoHash::const_iterator pIt = m_lProps.find(sProperty);
+        if (pIt == m_lProps.end())
+            throw css::beans::UnknownPropertyException(sProperty);
+    }
     // <- SAFE
 
     m_lVetoChangeListener.addInterface(sProperty, xListener);
 }
 
-void SAL_CALL Frame::removeVetoableChangeListener(
+void SAL_CALL XFrameImpl::removeVetoableChangeListener(
         const OUString& sProperty,
         const css::uno::Reference< css::beans::XVetoableChangeListener >& xListener)
 {
     // SAFE ->
-    SolarMutexClearableGuard aReadLock;
+    {
+        SolarMutexGuard aReadLock;
 
-    TPropInfoHash::const_iterator pIt = m_lProps.find(sProperty);
-    if (pIt == m_lProps.end())
-        throw css::beans::UnknownPropertyException();
-
-    aReadLock.clear();
+        TPropInfoHash::const_iterator pIt = m_lProps.find(sProperty);
+        if (pIt == m_lProps.end())
+            throw css::beans::UnknownPropertyException(sProperty);
+    }
     // <- SAFE
 
     m_lVetoChangeListener.removeInterface(sProperty, xListener);
 }
 
-css::uno::Sequence< css::beans::Property > SAL_CALL Frame::getProperties()
+css::uno::Sequence< css::beans::Property > SAL_CALL XFrameImpl::getProperties()
 {
     checkDisposed();
 
     SolarMutexGuard g;
 
-    sal_Int32 c = (sal_Int32)m_lProps.size();
+    sal_Int32 c = static_cast<sal_Int32>(m_lProps.size());
     css::uno::Sequence< css::beans::Property > lProps(c);
-    TPropInfoHash::const_iterator pIt;
 
-    for (  pIt  = m_lProps.begin();
-           pIt != m_lProps.end();
-         ++pIt                    )
+    for (auto const& elem : m_lProps)
     {
-        lProps[--c] = pIt->second;
+        lProps[--c] = elem.second;
     }
 
     return lProps;
 }
 
-css::beans::Property SAL_CALL Frame::getPropertyByName(const OUString& sName)
+css::beans::Property SAL_CALL XFrameImpl::getPropertyByName(const OUString& sName)
 {
     checkDisposed();
 
@@ -1995,12 +2001,12 @@ css::beans::Property SAL_CALL Frame::getPropertyByName(const OUString& sName)
 
     TPropInfoHash::const_iterator pIt = m_lProps.find(sName);
     if (pIt == m_lProps.end())
-        throw css::beans::UnknownPropertyException();
+        throw css::beans::UnknownPropertyException(sName);
 
     return pIt->second;
 }
 
-sal_Bool SAL_CALL Frame::hasPropertyByName(const OUString& sName)
+sal_Bool SAL_CALL XFrameImpl::hasPropertyByName(const OUString& sName)
 {
     checkDisposed();
 
@@ -2013,7 +2019,7 @@ sal_Bool SAL_CALL Frame::hasPropertyByName(const OUString& sName)
 }
 
 /*-****************************************************************************************************/
-void Frame::implts_forgetSubFrames()
+void XFrameImpl::implts_forgetSubFrames()
 {
     // SAFE ->
     SolarMutexClearableGuard aReadLock;
@@ -2047,7 +2053,7 @@ void Frame::implts_forgetSubFrames()
 
 /*-****************************************************************************************************
     @short      destroy instance
-    @descr      The owner of this object calles the dispose method if the object
+    @descr      The owner of this object calls the dispose method if the object
                 should be destroyed. All other objects and components, that are registered
                 as an EventListener are forced to release their references to this object.
                 Furthermore this frame is removed from its parent frame container to release
@@ -2059,7 +2065,7 @@ void Frame::implts_forgetSubFrames()
     @seealso    method initialize()
     @seealso    baseclass FairRWLockBase!
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::disposing()
+void SAL_CALL XFrameImpl::disposing()
 {
     // We should hold a reference to ourself ...
     // because our owner dispose us and release our reference ...
@@ -2082,12 +2088,12 @@ void SAL_CALL Frame::disposing()
         disableLayoutManager(layoutMgr);
     }
 
-    WindowCommandDispatch * disp = nullptr;
+    std::unique_ptr<WindowCommandDispatch> disp;
     {
         SolarMutexGuard g;
         std::swap(disp, m_pWindowCommandDispatch);
     }
-    delete disp;
+    disp.reset();
 
     // Send message to all listener and forget her references.
     css::lang::EventObject aEvent( xThis );
@@ -2107,15 +2113,15 @@ void SAL_CALL Frame::disposing()
     xDispatchHelper.clear();
 
     // Don't show any dialogs, errors or something else any more!
-    // If somewhere called dispose() whitout close() before - normally no dialogs
-    // should exist. Otherwhise it's the problem of the outside caller.
+    // If somewhere called dispose() without close() before - normally no dialogs
+    // should exist. Otherwise it's the problem of the outside caller.
     // Note:
-    //      (a) Do it after stopWindowListening(). May that force some active/deactive
+    //      (a) Do it after stopWindowListening(). May that force some active/deactivate
     //          notifications which we don't need here really.
     //      (b) Don't forget to save the old value of IsDialogCancelEnabled() to
     //          restore it afterwards (to not kill headless mode).
-    Application::DialogCancelMode old = Application::GetDialogCancelMode();
-    Application::SetDialogCancelMode( Application::DialogCancelMode::Silent );
+    DialogCancelMode old = Application::GetDialogCancelMode();
+    Application::SetDialogCancelMode( DialogCancelMode::Silent );
 
     // We should be alone for ever and further dispose calls are rejected by lines before ...
     // I hope it :-)
@@ -2147,8 +2153,8 @@ void SAL_CALL Frame::disposing()
     css::uno::Reference< css::lang::XComponent > xDisposableComp;
     {
         SolarMutexGuard g;
-        xDisposableCtrl.set( m_xController, css::uno::UNO_QUERY );
-        xDisposableComp.set( m_xComponentWindow, css::uno::UNO_QUERY );
+        xDisposableCtrl = m_xController;
+        xDisposableComp = m_xComponentWindow;
     }
     if (xDisposableCtrl.is())
         xDisposableCtrl->dispose();
@@ -2217,13 +2223,13 @@ void SAL_CALL Frame::disposing()
     @param      "xListener" reference to your listener object.
     @onerror    Listener is ignored.
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::addEventListener( const css::uno::Reference< css::lang::XEventListener >& xListener )
+void SAL_CALL XFrameImpl::addEventListener( const css::uno::Reference< css::lang::XEventListener >& xListener )
 {
     checkDisposed();
     m_aListenerContainer.addInterface( cppu::UnoType<css::lang::XEventListener>::get(), xListener );
 }
 
-void SAL_CALL Frame::removeEventListener( const css::uno::Reference< css::lang::XEventListener >& xListener )
+void SAL_CALL XFrameImpl::removeEventListener( const css::uno::Reference< css::lang::XEventListener >& xListener )
 {
     m_aListenerContainer.removeInterface( cppu::UnoType<css::lang::XEventListener>::get(), xListener );
 }
@@ -2239,7 +2245,7 @@ void SAL_CALL Frame::removeEventListener( const css::uno::Reference< css::lang::
 
     @onerror    We return a null reference.
 *//*-*****************************************************************************************************/
-css::uno::Reference< css::task::XStatusIndicator > SAL_CALL Frame::createStatusIndicator()
+css::uno::Reference< css::task::XStatusIndicator > SAL_CALL XFrameImpl::createStatusIndicator()
 {
     checkDisposed();
 
@@ -2282,11 +2288,11 @@ css::uno::Reference< css::task::XStatusIndicator > SAL_CALL Frame::createStatusI
 
     @onerror    A null reference is returned.
 *//*-*****************************************************************************************************/
-css::uno::Reference< css::frame::XDispatch > SAL_CALL Frame::queryDispatch( const css::util::URL& aURL,
+css::uno::Reference< css::frame::XDispatch > SAL_CALL XFrameImpl::queryDispatch( const css::util::URL& aURL,
                                                                             const OUString& sTargetFrameName,
                                                                             sal_Int32 nSearchFlags)
 {
-    // Don't check incoming parameter here! Our helper do it for us and it is not a good idea to do it more than ones!
+    // Don't check incoming parameter here! Our helper do it for us and it is not a good idea to do it more than once!
 
     checkDisposed();
 
@@ -2326,7 +2332,7 @@ css::uno::Reference< css::frame::XDispatch > SAL_CALL Frame::queryDispatch( cons
 
     @onerror    An empty list is returned.
 *//*-*****************************************************************************************************/
-css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > SAL_CALL Frame::queryDispatches(
+css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > SAL_CALL XFrameImpl::queryDispatches(
         const css::uno::Sequence< css::frame::DispatchDescriptor >& lDescriptor )
 {
     // Don't check incoming parameter here! Our helper do it for us and it is not a good idea to do it more than ones!
@@ -2355,7 +2361,7 @@ css::uno::Sequence< css::uno::Reference< css::frame::XDispatch > > SAL_CALL Fram
     @param      "xInterceptor", reference to your interceptor implementation.
     @onerror    Interceptor is ignored.
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::registerDispatchProviderInterceptor(
+void SAL_CALL XFrameImpl::registerDispatchProviderInterceptor(
         const css::uno::Reference< css::frame::XDispatchProviderInterceptor >& xInterceptor )
 {
     // We use a helper to support these interface and an interceptor mechanism.
@@ -2374,7 +2380,7 @@ void SAL_CALL Frame::registerDispatchProviderInterceptor(
     }
 }
 
-void SAL_CALL Frame::releaseDispatchProviderInterceptor(
+void SAL_CALL XFrameImpl::releaseDispatchProviderInterceptor(
         const css::uno::Reference< css::frame::XDispatchProviderInterceptor >& xInterceptor )
 {
     // We use a helper to support these interface and an interceptor mechanism.
@@ -2397,12 +2403,12 @@ void SAL_CALL Frame::releaseDispatchProviderInterceptor(
     @short      provides information about all possible dispatch functions
                 inside the current frame environment
 *//*-*****************************************************************************************************/
-css::uno::Sequence< sal_Int16 > SAL_CALL Frame::getSupportedCommandGroups()
+css::uno::Sequence< sal_Int16 > SAL_CALL XFrameImpl::getSupportedCommandGroups()
 {
     return m_xDispatchInfoHelper->getSupportedCommandGroups();
 }
 
-css::uno::Sequence< css::frame::DispatchInformation > SAL_CALL Frame::getConfigurableDispatchInformation(
+css::uno::Sequence< css::frame::DispatchInformation > SAL_CALL XFrameImpl::getConfigurableDispatchInformation(
         sal_Int16 nCommandGroup)
 {
     return m_xDispatchInfoHelper->getConfigurableDispatchInformation(nCommandGroup);
@@ -2418,7 +2424,7 @@ css::uno::Sequence< css::frame::DispatchInformation > SAL_CALL Frame::getConfigu
 
     @param      "aEvent" describe source of detected event
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::windowResized( const css::awt::WindowEvent& )
+void SAL_CALL XFrameImpl::windowResized( const css::awt::WindowEvent& )
 {
     // Part of dispose-mechanism
 
@@ -2428,7 +2434,7 @@ void SAL_CALL Frame::windowResized( const css::awt::WindowEvent& )
     implts_resizeComponentWindow();
 }
 
-void SAL_CALL Frame::focusGained( const css::awt::FocusEvent& )
+void SAL_CALL XFrameImpl::focusGained( const css::awt::FocusEvent& )
 {
     // Part of dispose() mechanism
 
@@ -2456,7 +2462,7 @@ void SAL_CALL Frame::focusGained( const css::awt::FocusEvent& )
 
     @param      "aEvent" describe source of detected event
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::windowActivated( const css::lang::EventObject& )
+void SAL_CALL XFrameImpl::windowActivated( const css::lang::EventObject& )
 {
     checkDisposed();
 
@@ -2474,51 +2480,51 @@ void SAL_CALL Frame::windowActivated( const css::lang::EventObject& )
     }
 }
 
-void SAL_CALL Frame::windowDeactivated( const css::lang::EventObject& )
+void SAL_CALL XFrameImpl::windowDeactivated( const css::lang::EventObject& )
 {
     // Sometimes called during dispose()
 
     /* SAFE AREA ----------------------------------------------------------------------------------------------- */
     SolarMutexClearableGuard aReadLock;
 
-    css::uno::Reference< css::frame::XFrame > xParent          ( m_xParent, css::uno::UNO_QUERY );
+    css::uno::Reference< css::frame::XFrame > xParent          = m_xParent;
     css::uno::Reference< css::awt::XWindow >  xContainerWindow = m_xContainerWindow;
     EActiveState                              eActiveState     = m_eActiveState;
 
     aReadLock.clear();
 
-    if( eActiveState != E_INACTIVE )
+    if( eActiveState == E_INACTIVE )
+        return;
+
+    // Deactivation is always done implicitly by activation of another frame.
+    // Only if no activation is done, deactivations have to be processed if the activated window
+    // is a parent window of the last active Window!
+    SolarMutexClearableGuard aSolarGuard;
+    vcl::Window* pFocusWindow = Application::GetFocusWindow();
+    if  ( !(xContainerWindow.is() && xParent.is() &&
+          !css::uno::Reference< css::frame::XDesktop >( xParent, css::uno::UNO_QUERY ).is())
+        )
+        return;
+
+    css::uno::Reference< css::awt::XWindow >  xParentWindow   = xParent->getContainerWindow();
+    VclPtr<vcl::Window>                       pParentWindow   = VCLUnoHelper::GetWindow( xParentWindow    );
+    //#i70261#: dialogs opened from an OLE object will cause a deactivate on the frame of the OLE object
+    // on Solaris/Linux at that time pFocusWindow is still NULL because the focus handling is different; right after
+    // the deactivation the focus will be set into the dialog!
+    // currently I see no case where a sub frame could get a deactivate with pFocusWindow being NULL permanently
+    // so for now this case is omitted from handled deactivations
+    if( pFocusWindow && pParentWindow->IsChild( pFocusWindow ) )
     {
-        // Deactivation is always done implicitly by activation of another frame.
-        // Only if no activation is done, deactivations have to be processed if the activated window
-        // is a parent window of the last active Window!
-        SolarMutexClearableGuard aSolarGuard;
-        vcl::Window* pFocusWindow = Application::GetFocusWindow();
-        if  ( xContainerWindow.is() && xParent.is() &&
-              !css::uno::Reference< css::frame::XDesktop >( xParent, css::uno::UNO_QUERY ).is()
-            )
+        css::uno::Reference< css::frame::XFramesSupplier > xSupplier( xParent, css::uno::UNO_QUERY );
+        if( xSupplier.is() )
         {
-            css::uno::Reference< css::awt::XWindow >  xParentWindow   = xParent->getContainerWindow();
-            VclPtr<vcl::Window>                       pParentWindow   = VCLUnoHelper::GetWindow( xParentWindow    );
-            //#i70261#: dialogs opened from an OLE object will cause a deactivate on the frame of the OLE object
-            // on Solaris/Linux at that time pFocusWindow is still NULL because the focus handling is different; right after
-            // the deactivation the focus will be set into the dialog!
-            // currently I see no case where a sub frame could get a deactivate with pFocusWindow being NULL permanently
-            // so for now this case is omitted from handled deactivations
-            if( pFocusWindow && pParentWindow->IsChild( pFocusWindow ) )
-            {
-                css::uno::Reference< css::frame::XFramesSupplier > xSupplier( xParent, css::uno::UNO_QUERY );
-                if( xSupplier.is() )
-                {
-                    aSolarGuard.clear();
-                    xSupplier->setActiveFrame( css::uno::Reference< css::frame::XFrame >() );
-                }
-            }
+            aSolarGuard.clear();
+            xSupplier->setActiveFrame( css::uno::Reference< css::frame::XFrame >() );
         }
     }
 }
 
-void SAL_CALL Frame::windowClosing( const css::lang::EventObject& )
+void SAL_CALL XFrameImpl::windowClosing( const css::lang::EventObject& )
 {
     checkDisposed();
 
@@ -2526,13 +2532,13 @@ void SAL_CALL Frame::windowClosing( const css::lang::EventObject& )
     deactivate();
 
     // ... and try to close it
-    // But do it asynchron inside the main thread.
+    // But do it asynchronous inside the main thread.
     // VCL has no fun to do such things outside his main thread :-(
     // Note: The used dispatch make it asynchronous for us .-)
 
     /*ATTENTION!
         Don't try to suspend the controller here! Because it's done inside used dispatch().
-        Otherwhise the dialog "would you save your changes?" will be shown more than once ...
+        Otherwise the dialog "would you save your changes?" will be shown more than once ...
      */
 
     css::util::URL aURL;
@@ -2571,9 +2577,8 @@ void SAL_CALL Frame::windowClosing( const css::lang::EventObject& )
 
     @threadsafe yes
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::windowShown( const css::lang::EventObject& )
+void SAL_CALL XFrameImpl::windowShown( const css::lang::EventObject& )
 {
-    static bool bFirstVisibleTask = true;
     static osl::Mutex aFirstVisibleLock;
 
     /* SAFE { */
@@ -2585,28 +2590,30 @@ void SAL_CALL Frame::windowShown( const css::lang::EventObject& )
 
     impl_checkMenuCloser();
 
-    if (xDesktopCheck.is())
-    {
-        osl::ClearableMutexGuard aGuard(aFirstVisibleLock);
-        bool bMustBeTriggered = bFirstVisibleTask;
-        bFirstVisibleTask = false;
-        aGuard.clear();
+    if (!xDesktopCheck.is())
+        return;
 
-        if (bMustBeTriggered)
-        {
-            css::uno::Reference< css::task::XJobExecutor > xExecutor
-                = css::task::theJobExecutor::get( m_xContext );
-            xExecutor->trigger( "onFirstVisibleTask" );
-        }
+    static bool bFirstVisibleTask = true;
+    osl::ClearableMutexGuard aGuard(aFirstVisibleLock);
+    bool bMustBeTriggered = bFirstVisibleTask;
+    bFirstVisibleTask = false;
+    aGuard.clear();
+
+    if (bMustBeTriggered)
+    {
+        css::uno::Reference< css::task::XJobExecutor > xExecutor
+            = css::task::theJobExecutor::get( m_xContext );
+        xExecutor->trigger( "onFirstVisibleTask" );
     }
 }
 
-void SAL_CALL Frame::windowHidden( const css::lang::EventObject& )
+void SAL_CALL XFrameImpl::windowHidden( const css::lang::EventObject& )
 {
     /* SAFE { */
-    SolarMutexClearableGuard aReadLock;
-    m_bIsHidden = true;
-    aReadLock.clear();
+    {
+        SolarMutexGuard aReadLock;
+        m_bIsHidden = true;
+    }
     /* } SAFE */
 
     impl_checkMenuCloser();
@@ -2616,13 +2623,13 @@ void SAL_CALL Frame::windowHidden( const css::lang::EventObject& )
     @short      called by dispose of our windows!
     @descr      This object is forced to release all references to the interfaces given
                 by the parameter source. We are a listener at our container window and
-                should listen for his diposing.
+                should listen for his disposing.
 
     @seealso    XWindowListener
     @seealso    XTopWindowListener
     @seealso    XFocusListener
 *//*-*****************************************************************************************************/
-void SAL_CALL Frame::disposing( const css::lang::EventObject& aEvent )
+void SAL_CALL XFrameImpl::disposing( const css::lang::EventObject& aEvent )
 {
     /* SAFE AREA ----------------------------------------------------------------------------------------------- */
     SolarMutexResettableGuard aWriteLock;
@@ -2646,29 +2653,29 @@ void SAL_CALL Frame::disposing( const css::lang::EventObject& aEvent )
                 Otherwise task couldn't die anymore!!!
 
     @seealso    interface XActionLockable
-    @seeelso    method BaseDispatcher::implts_loadIt()
-    @seeelso    method Desktop::loadComponentFromURL()
+    @seealso    method BaseDispatcher::implts_loadIt()
+    @seealso    method Desktop::loadComponentFromURL()
     @return     true if frame/task is locked
                 false otherwise
     @threadsafe yes
 *//*-*************************************************************************************************************/
-sal_Bool SAL_CALL Frame::isActionLocked()
+sal_Bool SAL_CALL XFrameImpl::isActionLocked()
 {
     SolarMutexGuard g;
     return( m_nExternalLockCount!=0);
 }
 
-void SAL_CALL Frame::addActionLock()
+void SAL_CALL XFrameImpl::addActionLock()
 {
     SolarMutexGuard g;
     ++m_nExternalLockCount;
 }
 
-void SAL_CALL Frame::removeActionLock()
+void SAL_CALL XFrameImpl::removeActionLock()
 {
     {
         SolarMutexGuard g;
-        SAL_WARN_IF( m_nExternalLockCount<=0, "fwk.frame", "Frame::removeActionLock(): Frame is not locked! "
+        SAL_WARN_IF( m_nExternalLockCount<=0, "fwk.frame", "XFrameImpl::removeActionLock(): Frame is not locked! "
             "Possible multithreading problem detected." );
         --m_nExternalLockCount;
     }
@@ -2676,7 +2683,7 @@ void SAL_CALL Frame::removeActionLock()
     implts_checkSuicide();
 }
 
-void SAL_CALL Frame::setActionLocks( sal_Int16 nLock )
+void SAL_CALL XFrameImpl::setActionLocks( sal_Int16 nLock )
 {
     SolarMutexGuard g;
     // Attention: If somewhere called resetActionLocks() before and get e.g. 5 locks ...
@@ -2686,7 +2693,7 @@ void SAL_CALL Frame::setActionLocks( sal_Int16 nLock )
     m_nExternalLockCount = m_nExternalLockCount + nLock;
 }
 
-sal_Int16 SAL_CALL Frame::resetActionLocks()
+sal_Int16 SAL_CALL XFrameImpl::resetActionLocks()
 {
     sal_Int16 nCurrentLocks = 0;
     {
@@ -2696,15 +2703,15 @@ sal_Int16 SAL_CALL Frame::resetActionLocks()
     }
 
     // Attention:
-    // external lock count is 0 here every time ... but if
-    // member m_bSelfClose is set to true too .... we call our own close()/dispose().
+    // external lock count is 0 here every time... but if
+    // member m_bSelfClose is set to true too... we call our own close()/dispose().
     // See close() for further information
     implts_checkSuicide();
 
     return nCurrentLocks;
 }
 
-void SAL_CALL Frame::impl_setPropertyValue(sal_Int32 nHandle,
+void XFrameImpl::impl_setPropertyValue(sal_Int32 nHandle,
                                            const css::uno::Any& aValue)
 
 {
@@ -2713,7 +2720,7 @@ void SAL_CALL Frame::impl_setPropertyValue(sal_Int32 nHandle,
     */
 
     /* Attention: You can use nHandle only, if you are sure that all supported
-                  properties has an unique handle. That must be guaranteed
+                  properties has a unique handle. That must be guaranteed
                   inside method initListeners()!
     */
     switch (nHandle)
@@ -2741,7 +2748,7 @@ void SAL_CALL Frame::impl_setPropertyValue(sal_Int32 nHandle,
                         m_xLayoutManager = xNewLayoutManager;
                         if (xOldLayoutManager.is())
                             disableLayoutManager(xOldLayoutManager);
-                        if (xNewLayoutManager.is())
+                        if (xNewLayoutManager.is() && !m_bDocHidden)
                             lcl_enableLayoutManager(xNewLayoutManager, this);
                     }
                 }
@@ -2756,19 +2763,19 @@ void SAL_CALL Frame::impl_setPropertyValue(sal_Int32 nHandle,
                 break;
 
         default :
-                SAL_INFO("fwk.frame",  "Frame::setFastPropertyValue_NoBroadcast(): Invalid handle detected!" );
+                SAL_INFO("fwk.frame",  "XFrameImpl::setFastPropertyValue_NoBroadcast(): Invalid handle detected!" );
                 break;
     }
 }
 
-css::uno::Any SAL_CALL Frame::impl_getPropertyValue(sal_Int32 nHandle)
+css::uno::Any XFrameImpl::impl_getPropertyValue(sal_Int32 nHandle)
 {
     /* There is no need to lock any mutex here. Because we share the
        solar mutex with our base class. And we said to our base class: "don't release it on calling us" .-)
     */
 
     /* Attention: You can use nHandle only, if you are sure that all supported
-                  properties has an unique handle. That must be guaranteed
+                  properties has a unique handle. That must be guaranteed
                   inside method initListeners()!
     */
     css::uno::Any aValue;
@@ -2799,20 +2806,20 @@ css::uno::Any SAL_CALL Frame::impl_getPropertyValue(sal_Int32 nHandle)
                 break;
 
         default :
-                SAL_INFO("fwk.frame", "Frame::getFastPropertyValue(): Invalid handle detected!" );
+                SAL_INFO("fwk.frame", "XFrameImpl::getFastPropertyValue(): Invalid handle detected!" );
                 break;
     }
 
     return aValue;
 }
 
-void Frame::impl_setPropertyChangeBroadcaster(const css::uno::Reference< css::uno::XInterface >& xBroadcaster)
+void XFrameImpl::impl_setPropertyChangeBroadcaster(const css::uno::Reference< css::uno::XInterface >& xBroadcaster)
 {
     SolarMutexGuard g;
     m_xBroadcaster = xBroadcaster;
 }
 
-void SAL_CALL Frame::impl_addPropertyInfo(const css::beans::Property& aProperty)
+void XFrameImpl::impl_addPropertyInfo(const css::beans::Property& aProperty)
 {
     SolarMutexGuard g;
 
@@ -2823,7 +2830,7 @@ void SAL_CALL Frame::impl_addPropertyInfo(const css::beans::Property& aProperty)
     m_lProps[aProperty.Name] = aProperty;
 }
 
-void SAL_CALL Frame::impl_disablePropertySet()
+void XFrameImpl::impl_disablePropertySet()
 {
     SolarMutexGuard g;
 
@@ -2835,7 +2842,7 @@ void SAL_CALL Frame::impl_disablePropertySet()
     m_lProps.clear();
 }
 
-bool Frame::impl_existsVeto(const css::beans::PropertyChangeEvent& aEvent)
+bool XFrameImpl::impl_existsVeto(const css::beans::PropertyChangeEvent& aEvent)
 {
     /*  Don't use the lock here!
         The used helper is threadsafe and it lives for the whole lifetime of
@@ -2864,7 +2871,7 @@ bool Frame::impl_existsVeto(const css::beans::PropertyChangeEvent& aEvent)
     return false;
 }
 
-void Frame::impl_notifyChangeListener(const css::beans::PropertyChangeEvent& aEvent)
+void XFrameImpl::impl_notifyChangeListener(const css::beans::PropertyChangeEvent& aEvent)
 {
     /*  Don't use the lock here!
         The used helper is threadsafe and it lives for the whole lifetime of
@@ -2894,7 +2901,7 @@ void Frame::impl_notifyChangeListener(const css::beans::PropertyChangeEvent& aEv
     @descr      This method is threadsafe AND can be called by our dispose method too!
     @param      "aAction", describe the event for sending
 *//*-*****************************************************************************************************/
-void Frame::implts_sendFrameActionEvent( const css::frame::FrameAction& aAction )
+void XFrameImpl::implts_sendFrameActionEvent( const css::frame::FrameAction& aAction )
 {
     // Sometimes used by dispose()
 
@@ -2921,24 +2928,24 @@ void Frame::implts_sendFrameActionEvent( const css::frame::FrameAction& aAction 
     ::cppu::OInterfaceContainerHelper* pContainer = m_aListenerContainer.getContainer(
         cppu::UnoType<css::frame::XFrameActionListener>::get());
 
-    if( pContainer != nullptr )
-    {
-        // Build action event.
-        css::frame::FrameActionEvent aFrameActionEvent( static_cast< ::cppu::OWeakObject* >(this), this, aAction );
+    if( pContainer == nullptr )
+        return;
 
-        // Get iterator for access to listener.
-        ::cppu::OInterfaceIteratorHelper aIterator( *pContainer );
-        // Send message to all listener.
-        while( aIterator.hasMoreElements() )
+    // Build action event.
+    css::frame::FrameActionEvent aFrameActionEvent( static_cast< ::cppu::OWeakObject* >(this), this, aAction );
+
+    // Get iterator for access to listener.
+    ::cppu::OInterfaceIteratorHelper aIterator( *pContainer );
+    // Send message to all listener.
+    while( aIterator.hasMoreElements() )
+    {
+        try
         {
-            try
-            {
-                static_cast<css::frame::XFrameActionListener*>(aIterator.next())->frameAction( aFrameActionEvent );
-            }
-            catch( const css::uno::RuntimeException& )
-            {
-                aIterator.remove();
-            }
+            static_cast<css::frame::XFrameActionListener*>(aIterator.next())->frameAction( aFrameActionEvent );
+        }
+        catch( const css::uno::RuntimeException& )
+        {
+            aIterator.remove();
         }
     }
 }
@@ -2949,120 +2956,120 @@ void Frame::implts_sendFrameActionEvent( const css::frame::FrameAction& aAction 
                 This method resize inner component window to full size of outer container window.
                 This method is threadsafe AND can be called by our dispose method too!
 *//*-*****************************************************************************************************/
-void Frame::implts_resizeComponentWindow()
+void XFrameImpl::implts_resizeComponentWindow()
 {
     // usually the LayoutManager does the resizing
     // in case there is no LayoutManager resizing has to be done here
-    if ( !m_xLayoutManager.is() )
-    {
-        css::uno::Reference< css::awt::XWindow > xComponentWindow( getComponentWindow() );
-        if( xComponentWindow.is() )
-        {
-            css::uno::Reference< css::awt::XDevice > xDevice( getContainerWindow(), css::uno::UNO_QUERY );
+    if ( m_xLayoutManager.is() )
+        return;
 
-            // Convert relative size to output size.
-            css::awt::Rectangle  aRectangle  = getContainerWindow()->getPosSize();
-            css::awt::DeviceInfo aInfo = xDevice->getInfo();
-            css::awt::Size aSize( aRectangle.Width - aInfo.LeftInset - aInfo.RightInset,
-                                  aRectangle.Height - aInfo.TopInset - aInfo.BottomInset );
+    css::uno::Reference< css::awt::XWindow > xComponentWindow( getComponentWindow() );
+    if( !xComponentWindow.is() )
+        return;
 
-            // Resize our component window.
-            xComponentWindow->setPosSize( 0, 0, aSize.Width, aSize.Height, css::awt::PosSize::POSSIZE );
-        }
-    }
+    css::uno::Reference< css::awt::XDevice > xDevice( getContainerWindow(), css::uno::UNO_QUERY );
+
+    // Convert relative size to output size.
+    css::awt::Rectangle  aRectangle  = getContainerWindow()->getPosSize();
+    css::awt::DeviceInfo aInfo = xDevice->getInfo();
+    css::awt::Size aSize( aRectangle.Width - aInfo.LeftInset - aInfo.RightInset,
+                          aRectangle.Height - aInfo.TopInset - aInfo.BottomInset );
+
+    // Resize our component window.
+    xComponentWindow->setPosSize( 0, 0, aSize.Width, aSize.Height, css::awt::PosSize::POSSIZE );
 }
 
 /*-****************************************************************************************************
     @short      helper to set icon on our container window (if it is a system window!)
     @descr      We use our internal set controller (if it exist) to specify which factory he represented.
-                These information can be used to find right icon. But our controller can say it us directly
+                This information can be used to find right icon. But our controller can say it us directly
                 too ... we should ask his optional property set first ...
 
     @seealso    method Window::SetIcon()
     @onerror    We do nothing.
 *//*-*****************************************************************************************************/
-void Frame::implts_setIconOnWindow()
+void XFrameImpl::implts_setIconOnWindow()
 {
     checkDisposed();
 
     /* SAFE AREA ----------------------------------------------------------------------------------------------- */
     // Make snapshot of necessary members and release lock.
     SolarMutexClearableGuard aReadLock;
-    css::uno::Reference< css::awt::XWindow > xContainerWindow( m_xContainerWindow, css::uno::UNO_QUERY );
-    css::uno::Reference< css::frame::XController > xController( m_xController, css::uno::UNO_QUERY );
+    css::uno::Reference< css::awt::XWindow > xContainerWindow = m_xContainerWindow;
+    css::uno::Reference< css::frame::XController > xController = m_xController;
     aReadLock.clear();
     /* UNSAFE AREA --------------------------------------------------------------------------------------------- */
 
-    if( xContainerWindow.is() && xController.is() )
+    if( !(xContainerWindow.is() && xController.is()) )
+        return;
+
+
+    // a) set default value to an invalid one. So we can start further searches for right icon id, if
+    //    first steps failed!
+    //    We must reset it to any fallback value - if no search step returns a valid result.
+    sal_Int32 nIcon = -1;
+
+    // b) try to find information on controller propertyset directly
+    //    Don't forget to catch possible exceptions - because these property is an optional one!
+    css::uno::Reference< css::beans::XPropertySet > xSet( xController, css::uno::UNO_QUERY );
+    if( xSet.is() )
     {
-
-        // a) set default value to an invalid one. So we can start further searches for right icon id, if
-        //    first steps failed!
-        //    We must reset it to any fallback value - if no search step returns a valid result.
-        sal_Int32 nIcon = -1;
-
-        // b) try to find information on controller propertyset directly
-        //    Don't forget to catch possible exceptions - because these property is an optional one!
-        css::uno::Reference< css::beans::XPropertySet > xSet( xController, css::uno::UNO_QUERY );
-        if( xSet.is() )
+        try
         {
-            try
-            {
-                css::uno::Reference< css::beans::XPropertySetInfo > const xPSI( xSet->getPropertySetInfo(),
-                                                                                css::uno::UNO_SET_THROW );
-                if ( xPSI->hasPropertyByName( "IconId" ) )
-                    xSet->getPropertyValue( "IconId" ) >>= nIcon;
-            }
-            catch( css::uno::Exception& )
-            {
-                DBG_UNHANDLED_EXCEPTION();
-            }
+            css::uno::Reference< css::beans::XPropertySetInfo > const xPSI( xSet->getPropertySetInfo(),
+                                                                            css::uno::UNO_SET_THROW );
+            if ( xPSI->hasPropertyByName( "IconId" ) )
+                xSet->getPropertyValue( "IconId" ) >>= nIcon;
         }
-
-        // c) if b) failed... analyze argument list of currently loaded document inside the frame to find the filter.
-        //    He can be used to detect right factory - and these can be used to match factory to icon...
-        if( nIcon == -1 )
+        catch( css::uno::Exception& )
         {
-            css::uno::Reference< css::frame::XModel > xModel = xController->getModel();
-            if( xModel.is() )
-            {
-                SvtModuleOptions::EFactory eFactory = SvtModuleOptions::ClassifyFactoryByModel(xModel);
-                if (eFactory != SvtModuleOptions::EFactory::UNKNOWN_FACTORY)
-                    nIcon = SvtModuleOptions().GetFactoryIcon( eFactory );
-            }
+            DBG_UNHANDLED_EXCEPTION("fwk");
         }
-
-        // d) if all steps failed - use fallback!
-        if( nIcon == -1 )
-        {
-            nIcon = 0;
-        }
-
-        // e) set icon on container window now
-        //    Don't forget SolarMutex! We use vcl directly :-(
-        //    Check window pointer for right WorkWindow class too!!!
-        /* SAFE AREA ----------------------------------------------------------------------------------------------- */
-        {
-            SolarMutexGuard aSolarGuard;
-            VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xContainerWindow );
-            if(
-                ( pWindow            != nullptr              ) &&
-                ( pWindow->GetType() == WindowType::WORKWINDOW )
-                )
-            {
-                WorkWindow* pWorkWindow = static_cast<WorkWindow*>(pWindow.get());
-                pWorkWindow->SetIcon( (sal_uInt16)nIcon );
-            }
-        }
-        /* UNSAFE AREA --------------------------------------------------------------------------------------------- */
     }
+
+    // c) if b) failed... analyze argument list of currently loaded document inside the frame to find the filter.
+    //    He can be used to detect right factory - and these can be used to match factory to icon...
+    if( nIcon == -1 )
+    {
+        css::uno::Reference< css::frame::XModel > xModel = xController->getModel();
+        if( xModel.is() )
+        {
+            SvtModuleOptions::EFactory eFactory = SvtModuleOptions::ClassifyFactoryByModel(xModel);
+            if (eFactory != SvtModuleOptions::EFactory::UNKNOWN_FACTORY)
+                nIcon = SvtModuleOptions().GetFactoryIcon( eFactory );
+        }
+    }
+
+    // d) if all steps failed - use fallback!
+    if( nIcon == -1 )
+    {
+        nIcon = 0;
+    }
+
+    // e) set icon on container window now
+    //    Don't forget SolarMutex! We use vcl directly :-(
+    //    Check window pointer for right WorkWindow class too!!!
+    /* SAFE AREA ----------------------------------------------------------------------------------------------- */
+    {
+        SolarMutexGuard aSolarGuard;
+        VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xContainerWindow );
+        if(
+            ( pWindow            != nullptr              ) &&
+            ( pWindow->GetType() == WindowType::WORKWINDOW )
+            )
+        {
+            WorkWindow* pWorkWindow = static_cast<WorkWindow*>(pWindow.get());
+            pWorkWindow->SetIcon( static_cast<sal_uInt16>(nIcon) );
+        }
+    }
+    /* UNSAFE AREA --------------------------------------------------------------------------------------------- */
 }
 
 /*-************************************************************************************************************
-    @short      helper to start/stop listeneing for window events on container window
+    @short      helper to start/stop listening for window events on container window
     @descr      If we get a new container window, we must set it on internal member ...
                 and stop listening at old one ... and start listening on new one!
-                But sometimes (in dispose() call!) it's necessary to stop listeneing without starting
+                But sometimes (in dispose() call!) it's necessary to stop listening without starting
                 on new connections. So we split this functionality to make it easier at use.
 
     @seealso    method initialize()
@@ -3070,7 +3077,7 @@ void Frame::implts_setIconOnWindow()
     @onerror    We do nothing!
     @threadsafe yes
 *//*-*************************************************************************************************************/
-void Frame::implts_startWindowListening()
+void XFrameImpl::implts_startWindowListening()
 {
     checkDisposed();
 
@@ -3088,28 +3095,28 @@ void Frame::implts_startWindowListening()
     aReadLock.clear();
     /* UNSAFE AREA --------------------------------------------------------------------------------------------- */
 
-    if( xContainerWindow.is() )
+    if( !xContainerWindow.is() )
+        return;
+
+    xContainerWindow->addWindowListener( xWindowListener);
+    xContainerWindow->addFocusListener ( xFocusListener );
+
+    css::uno::Reference< css::awt::XTopWindow > xTopWindow( xContainerWindow, css::uno::UNO_QUERY );
+    if( xTopWindow.is() )
     {
-        xContainerWindow->addWindowListener( xWindowListener);
-        xContainerWindow->addFocusListener ( xFocusListener );
+        xTopWindow->addTopWindowListener( xTopWindowListener );
 
-        css::uno::Reference< css::awt::XTopWindow > xTopWindow( xContainerWindow, css::uno::UNO_QUERY );
-        if( xTopWindow.is() )
+        css::uno::Reference< css::awt::XToolkit2 > xToolkit = css::awt::Toolkit::create( m_xContext );
+        css::uno::Reference< css::datatransfer::dnd::XDropTarget > xDropTarget = xToolkit->getDropTarget( xContainerWindow );
+        if( xDropTarget.is() )
         {
-            xTopWindow->addTopWindowListener( xTopWindowListener );
-
-            css::uno::Reference< css::awt::XToolkit2 > xToolkit = css::awt::Toolkit::create( m_xContext );
-            css::uno::Reference< css::datatransfer::dnd::XDropTarget > xDropTarget = xToolkit->getDropTarget( xContainerWindow );
-            if( xDropTarget.is() )
-            {
-                xDropTarget->addDropTargetListener( xDragDropListener );
-                xDropTarget->setActive( true );
-            }
+            xDropTarget->addDropTargetListener( xDragDropListener );
+            xDropTarget->setActive( true );
         }
     }
 }
 
-void Frame::implts_stopWindowListening()
+void XFrameImpl::implts_stopWindowListening()
 {
     // Sometimes used by dispose()
 
@@ -3127,43 +3134,43 @@ void Frame::implts_stopWindowListening()
     aReadLock.clear();
     /* UNSAFE AREA --------------------------------------------------------------------------------------------- */
 
-    if( xContainerWindow.is() )
+    if( !xContainerWindow.is() )
+        return;
+
+    xContainerWindow->removeWindowListener( xWindowListener);
+    xContainerWindow->removeFocusListener ( xFocusListener );
+
+    css::uno::Reference< css::awt::XTopWindow > xTopWindow( xContainerWindow, css::uno::UNO_QUERY );
+    if( !xTopWindow.is() )
+        return;
+
+    xTopWindow->removeTopWindowListener( xTopWindowListener );
+
+    css::uno::Reference< css::awt::XToolkit2 > xToolkit = css::awt::Toolkit::create( m_xContext );
+    css::uno::Reference< css::datatransfer::dnd::XDropTarget > xDropTarget =
+        xToolkit->getDropTarget( xContainerWindow );
+    if( xDropTarget.is() )
     {
-        xContainerWindow->removeWindowListener( xWindowListener);
-        xContainerWindow->removeFocusListener ( xFocusListener );
-
-        css::uno::Reference< css::awt::XTopWindow > xTopWindow( xContainerWindow, css::uno::UNO_QUERY );
-        if( xTopWindow.is() )
-        {
-            xTopWindow->removeTopWindowListener( xTopWindowListener );
-
-            css::uno::Reference< css::awt::XToolkit2 > xToolkit = css::awt::Toolkit::create( m_xContext );
-            css::uno::Reference< css::datatransfer::dnd::XDropTarget > xDropTarget =
-                xToolkit->getDropTarget( xContainerWindow );
-            if( xDropTarget.is() )
-            {
-                xDropTarget->removeDropTargetListener( xDragDropListener );
-                xDropTarget->setActive( false );
-            }
-        }
+        xDropTarget->removeDropTargetListener( xDragDropListener );
+        xDropTarget->setActive( false );
     }
 }
 
 /*-****************************************************************************************************
-    @short      helper to force breaked close() request again
+    @short      helper to force broken close() request again
     @descr      If we self disagree with a close() request, and detect that all external locks are gone ...
                 then we must try to close this frame again.
 
     @seealso    XCloseable::close()
-    @seealso    Frame::close()
-    @seealso    Frame::removeActionLock()
-    @seealso    Frame::resetActionLock()
+    @seealso    XFrameImpl::close()
+    @seealso    XFrameImpl::removeActionLock()
+    @seealso    XFrameImpl::resetActionLock()
     @seealso    m_bSelfClose
     @seealso    m_nExternalLockCount
 
     @threadsafe yes
 *//*-*****************************************************************************************************/
-void Frame::implts_checkSuicide()
+void XFrameImpl::implts_checkSuicide()
 {
     /* SAFE */
     SolarMutexClearableGuard aReadLock;
@@ -3173,7 +3180,7 @@ void Frame::implts_checkSuicide()
     m_bSelfClose = false;
     aReadLock.clear();
     /* } SAFE */
-    // force close and deliver ownership to source of possible throwed veto exception
+    // force close and deliver ownership to source of possible thrown veto exception
     // Attention: Because this method is not designed to throw such exception we must suppress
     // it for outside code!
     try
@@ -3197,7 +3204,7 @@ void Frame::implts_checkSuicide()
                 <TRUE/> enable; <FALSE/> disable this state
  */
 
-void Frame::impl_setCloser( /*IN*/ const css::uno::Reference< css::frame::XFrame2 >& xFrame ,
+void XFrameImpl::impl_setCloser( /*IN*/ const css::uno::Reference< css::frame::XFrame2 >& xFrame ,
                             /*IN*/       bool                                   bState  )
 {
     // Note: If start module is not installed - no closer has to be shown!
@@ -3227,7 +3234,7 @@ void Frame::impl_setCloser( /*IN*/ const css::uno::Reference< css::frame::XFrame
     for the new one.
  */
 
-void Frame::impl_checkMenuCloser()
+void XFrameImpl::impl_checkMenuCloser()
 {
     /* SAFE { */
     SolarMutexClearableGuard aReadLock;
@@ -3251,15 +3258,15 @@ void Frame::impl_checkMenuCloser()
         this,
         FrameAnalyzerFlags::Hidden | FrameAnalyzerFlags::Help | FrameAnalyzerFlags::BackingComponent);
 
-    // specify the new frame, which must have this special state ...
+    // specify the new frame, which must have this special state...
     css::uno::Reference< css::frame::XFrame2 > xNewCloserFrame;
 
     // a)
-    // If there exist ate least one other frame - there are two frames currently open.
+    // If there exist at least one other frame - there are two frames currently open.
     // But we can enable this closer only, if one of these two tasks includes the help module.
     // The "other frame" couldn't be the help. Because then it wouldn't be part of this "other list".
     // In such case it will be separated to the reference aAnalyzer.m_xHelp!
-    // But we must check, if weself includes the help ...
+    // But we must check, if we include ourself the help...
     // Check aAnalyzer.m_bReferenceIsHelp!
     if (
         (aAnalyzer.m_lOtherVisibleFrames.size()==1)   &&
@@ -3275,8 +3282,8 @@ void Frame::impl_checkMenuCloser()
     }
 
     // b)
-    // There is no other frame ... means no other document frame. The help module
-    // will be handled separately and must(!) be ignored here ... excepting weself includes the help.
+    // There is no other frame... means no other document frame. The help module
+    // will be handled separately and must(!) be ignored here... excepting if we include ourself the help.
     else if (
         (aAnalyzer.m_lOtherVisibleFrames.empty()) &&
         (!aAnalyzer.m_bReferenceIsHelp) &&
@@ -3306,12 +3313,12 @@ void Frame::impl_checkMenuCloser()
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_Frame_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
 {
-    Frame *inst = new Frame(context);
+    XFrameImpl *inst = new XFrameImpl(context);
     css::uno::XInterface *acquired_inst = cppu::acquire(inst);
 
     inst->initListeners();

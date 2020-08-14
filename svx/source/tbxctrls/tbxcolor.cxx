@@ -18,9 +18,11 @@
  */
 
 
-#include "svx/tbxcolor.hxx"
+#include <svx/tbxcolor.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <osl/diagnose.h>
+#include <tools/diagnose_ex.h>
 
 
 namespace svx
@@ -31,28 +33,25 @@ namespace svx
     using namespace ::com::sun::star::frame;
     using namespace ::com::sun::star::beans;
 
-    #define TOOLBAR_RESNAME         "private:resource/toolbar/"
-    #define PROPNAME_LAYOUTMANAGER  "LayoutManager"
-
-    ToolboxAccess::ToolboxAccess( const ::rtl::OUString& rToolboxName ) :
-        m_sToolboxResName   ( TOOLBAR_RESNAME )
+    ToolboxAccess::ToolboxAccess( const OUString& rToolboxName ) :
+        m_sToolboxResName   ( "private:resource/toolbar/" )
     {
         m_sToolboxResName += rToolboxName;
 
         // the layout manager
-        if ( SfxViewFrame::Current() )
+        if ( !SfxViewFrame::Current() )
+            return;
+
+        try
         {
-            try
-            {
-                Reference< XFrame > xFrame = SfxViewFrame::Current()->GetFrame().GetFrameInterface();
-                Reference< XPropertySet > xFrameProps( xFrame, UNO_QUERY );
-                if ( xFrameProps.is() )
-                    xFrameProps->getPropertyValue( PROPNAME_LAYOUTMANAGER ) >>= m_xLayouter;
-            }
-            catch ( Exception& )
-            {
-                SAL_WARN( "svx.tbxcrtls", "ToolboxAccess::Ctor(): exception" );
-            }
+            Reference< XFrame > xFrame = SfxViewFrame::Current()->GetFrame().GetFrameInterface();
+            Reference< XPropertySet > xFrameProps( xFrame, UNO_QUERY );
+            if ( xFrameProps.is() )
+                xFrameProps->getPropertyValue( "LayoutManager" ) >>= m_xLayouter;
+        }
+        catch ( Exception const & )
+        {
+            TOOLS_WARN_EXCEPTION( "svx.tbxcrtls", "ToolboxAccess::Ctor()" );
         }
     }
 
@@ -79,7 +78,7 @@ namespace svx
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "ToolboxAccess::toggleToolbox: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "svx", "ToolboxAccess::toggleToolbox" );
         }
     }
 

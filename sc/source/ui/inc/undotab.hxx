@@ -21,15 +21,13 @@
 #define INCLUDED_SC_SOURCE_UI_INC_UNDOTAB_HXX
 
 #include "undobase.hxx"
-#include <formula/grammar.hxx>
 #include <tools/color.hxx>
-#include "tabbgcolor.hxx"
+#include <tabbgcolor.hxx>
 
 #include <memory>
 #include <vector>
 
 class ScDocShell;
-class ScDocument;
 class SdrUndoAction;
 class ScPrintRangeSaver;
 class SdrObject;
@@ -56,7 +54,7 @@ public:
 
 private:
     OUString        sNewName;
-    SdrUndoAction*  pDrawUndo;
+    std::unique_ptr<SdrUndoAction> pDrawUndo;
     sal_uLong       nEndChangeAction;
     SCTAB           nTab;
     bool            bAppend;
@@ -70,7 +68,7 @@ public:
                     ScUndoInsertTables(
                             ScDocShell* pNewDocShell,
                             SCTAB nTabNum,
-                            std::vector<OUString>& newNameList);
+                            const std::vector<OUString>& newNameList);
     virtual         ~ScUndoInsertTables() override;
 
     virtual void    Undo() override;
@@ -82,7 +80,7 @@ public:
 
 private:
 
-    SdrUndoAction*  pDrawUndo;
+    std::unique_ptr<SdrUndoAction> pDrawUndo;
     std::vector<OUString>      aNameList;
     sal_uLong           nStartChangeAction;
     sal_uLong           nEndChangeAction;
@@ -97,8 +95,8 @@ public:
                     ScUndoDeleteTab(
                             ScDocShell* pNewDocShell,
                             const std::vector<SCTAB> &theTabs,      //SCTAB nNewTab,
-                            ScDocument* pUndoDocument,
-                            ScRefUndoData* pRefData );
+                            ScDocumentUniquePtr pUndoDocument,
+                            std::unique_ptr<ScRefUndoData> pRefData );
     virtual         ~ScUndoDeleteTab() override;
 
     virtual void    Undo() override;
@@ -146,10 +144,10 @@ class ScUndoMoveTab: public ScSimpleUndo
 public:
                     ScUndoMoveTab(
                         ScDocShell* pNewDocShell,
-                        ::std::vector<SCTAB>* pOldTabs,
-                        ::std::vector<SCTAB>* pNewTabs,
-                        ::std::vector< OUString>* pOldNames = nullptr,
-                        ::std::vector< OUString>* pNewNames = nullptr );
+                        std::unique_ptr<std::vector<SCTAB>> pOldTabs,
+                        std::unique_ptr<std::vector<SCTAB>> pNewTabs,
+                        std::unique_ptr<std::vector< OUString>> pOldNames = nullptr,
+                        std::unique_ptr<std::vector< OUString>> pNewNames = nullptr );
 
     virtual         ~ScUndoMoveTab() override;
 
@@ -161,10 +159,10 @@ public:
     virtual OUString GetComment() const override;
 
 private:
-    std::shared_ptr< ::std::vector<SCTAB> > mpOldTabs;
-    std::shared_ptr< ::std::vector<SCTAB> > mpNewTabs;
-    std::shared_ptr< ::std::vector< OUString> > mpOldNames;
-    std::shared_ptr< ::std::vector< OUString> > mpNewNames;
+    std::unique_ptr< ::std::vector<SCTAB> > mpOldTabs;
+    std::unique_ptr< ::std::vector<SCTAB> > mpNewTabs;
+    std::unique_ptr< ::std::vector< OUString> > mpOldNames;
+    std::unique_ptr< ::std::vector< OUString> > mpNewNames;
 
     void DoChange( bool bUndo ) const;
 };
@@ -174,9 +172,9 @@ class ScUndoCopyTab: public ScSimpleUndo
 public:
                     ScUndoCopyTab(
                         ScDocShell* pNewDocShell,
-                        ::std::vector<SCTAB>* pOldTabs,
-                        ::std::vector<SCTAB>* pNewTabs,
-                        ::std::vector< OUString>* pNewNames = nullptr );
+                        std::unique_ptr<std::vector<SCTAB>> pOldTabs,
+                        std::unique_ptr<std::vector<SCTAB>> pNewTabs,
+                        std::unique_ptr<std::vector< OUString>> pNewNames = nullptr );
 
     virtual         ~ScUndoCopyTab() override;
 
@@ -188,10 +186,10 @@ public:
     virtual OUString GetComment() const override;
 
 private:
-    std::shared_ptr< ::std::vector<SCTAB> > mpOldTabs;
-    std::shared_ptr< ::std::vector<SCTAB> > mpNewTabs;
-    std::shared_ptr< ::std::vector< OUString> > mpNewNames;
-    SdrUndoAction*  pDrawUndo;
+    std::unique_ptr< ::std::vector<SCTAB> > mpOldTabs;
+    std::unique_ptr< ::std::vector<SCTAB> > mpNewTabs;
+    std::unique_ptr< ::std::vector< OUString> > mpNewNames;
+    std::unique_ptr<SdrUndoAction> pDrawUndo;
 
     void DoChange() const;
 };
@@ -248,7 +246,7 @@ private:
     OUString    aComment;
     Color       aColor;
     ScScenarioFlags nFlags;
-    SdrUndoAction* pDrawUndo;
+    std::unique_ptr<SdrUndoAction> pDrawUndo;
 };
 
 class ScUndoImportTab : public ScSimpleUndo
@@ -269,8 +267,8 @@ public:
 private:
     SCTAB       nTab;
     SCTAB       nCount;
-    std::unique_ptr<ScDocument> xRedoDoc;
-    SdrUndoAction*  pDrawUndo;
+    ScDocumentUniquePtr xRedoDoc;
+    std::unique_ptr<SdrUndoAction> pDrawUndo;
 
     void DoChange() const;
 };
@@ -296,9 +294,12 @@ private:
     OUString    aOptions;
     sal_uLong   nRefreshDelay;
     sal_uInt16  nCount;
-    SCTAB*      pTabs;
-    ScLinkMode* pModes;
-    OUString*   pTabNames;
+    std::unique_ptr<SCTAB[]>
+                pTabs;
+    std::unique_ptr<ScLinkMode[]>
+                pModes;
+    std::unique_ptr<OUString[]>
+                pTabNames;
 
     void DoChange( bool bLink ) const;
 };
@@ -374,7 +375,8 @@ class ScUndoPrintRange : public ScSimpleUndo
 {
 public:
                     ScUndoPrintRange( ScDocShell* pShell, SCTAB nNewTab,
-                                        ScPrintRangeSaver* pOld, ScPrintRangeSaver* pNew );
+                                      std::unique_ptr<ScPrintRangeSaver> pOld,
+                                      std::unique_ptr<ScPrintRangeSaver> pNew );
     virtual         ~ScUndoPrintRange() override;
 
     virtual void    Undo() override;
@@ -386,8 +388,8 @@ public:
 
 private:
     SCTAB               nTab;
-    ScPrintRangeSaver*  pOldRanges;
-    ScPrintRangeSaver*  pNewRanges;
+    std::unique_ptr<ScPrintRangeSaver> pOldRanges;
+    std::unique_ptr<ScPrintRangeSaver> pNewRanges;
 
     void DoChange( bool bUndo );
 };

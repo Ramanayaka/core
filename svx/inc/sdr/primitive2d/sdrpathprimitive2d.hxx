@@ -22,47 +22,59 @@
 
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <svx/sdr/attribute/sdrlinefillshadowtextattribute.hxx>
+#include <sdr/attribute/sdrlinefilleffectstextattribute.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 
 
 // predefines
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class SdrPathPrimitive2D : public BufferedDecompositionPrimitive2D
+        class SdrPathPrimitive2D final : public BufferedDecompositionPrimitive2D
         {
         private:
             basegfx::B2DHomMatrix                       maTransform;
-            attribute::SdrLineFillShadowTextAttribute   maSdrLFSTAttribute;
+            attribute::SdrLineFillEffectsTextAttribute   maSdrLFSTAttribute;
             basegfx::B2DPolyPolygon                     maUnitPolyPolygon;
 
-        protected:
+            // OperationSmiley: Added to be able to define a FillGeometry different from local
+            // geometry. It is ignored when empty and/or equal to UnitPolyPolygon.
+            // If used and there is a fill, the object's geometry (maUnitPolyPolygon) will be filled,
+            // but UnitDefinitionPolyPolygon will be used to define the FillStyle. Thus when
+            // using the 'same' UnitDefinitionPolyPolygon for multiple definitions,
+            // all filled stuff using it will fit seamlessly together.
+            // 'same' is in quotes since it is a UnitPolygon, so being relative to the
+            // unit polygon of the local geometry (UnitPolyPolygon). The definition is complete
+            // when applying the also given transformation (maTransform)
+            basegfx::B2DPolyPolygon                     maUnitDefinitionPolyPolygon;
+
             // local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
 
         public:
+            // OperationSmiley: Extended to UnitDefinitionPolyPolygon, but when needed
+            // a 2nd version without can be defined that just does not set the
+            // maUnitDefinitionPolyPolygon or set equal to UnitPolyPolygon
             SdrPathPrimitive2D(
                 const basegfx::B2DHomMatrix& rTransform,
-                const attribute::SdrLineFillShadowTextAttribute& rSdrLFSTAttribute,
-                const basegfx::B2DPolyPolygon& rUnitPolyPolygon);
+                const attribute::SdrLineFillEffectsTextAttribute& rSdrLFSTAttribute,
+                const basegfx::B2DPolyPolygon& rUnitPolyPolygon,
+                const basegfx::B2DPolyPolygon& rUnitDefinitionPolyPolygon);
 
             // data access
             const basegfx::B2DHomMatrix& getTransform() const { return maTransform; }
-            const attribute::SdrLineFillShadowTextAttribute& getSdrLFSTAttribute() const { return maSdrLFSTAttribute; }
+            const attribute::SdrLineFillEffectsTextAttribute& getSdrLFSTAttribute() const { return maSdrLFSTAttribute; }
             const basegfx::B2DPolyPolygon& getUnitPolyPolygon() const { return maUnitPolyPolygon; }
+            const basegfx::B2DPolyPolygon& getUnitDefinitionPolyPolygon() const { return maUnitDefinitionPolyPolygon; }
 
             // compare operator
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             // provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
 #endif // INCLUDED_SVX_INC_SDR_PRIMITIVE2D_SDRPATHPRIMITIVE2D_HXX

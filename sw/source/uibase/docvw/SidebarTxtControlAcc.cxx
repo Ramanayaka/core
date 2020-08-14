@@ -21,9 +21,9 @@
 
 #include <memory>
 
-#include <SidebarTxtControlAcc.hxx>
+#include "SidebarTxtControlAcc.hxx"
 
-#include <SidebarTxtControl.hxx>
+#include "SidebarTxtControl.hxx"
 
 #include <svl/SfxBroadcaster.hxx>
 #include <toolkit/awt/vclxaccessiblecomponent.hxx>
@@ -33,9 +33,11 @@
 #include <editeng/unoedhlp.hxx>
 #include <svx/AccessibleTextHelper.hxx>
 #include <editeng/outliner.hxx>
-#include <o3tl/make_unique.hxx>
+#include <vcl/vclevent.hxx>
 
-namespace sw { namespace sidebarwindows {
+namespace sw::sidebarwindows {
+
+namespace {
 
 // declaration and implementation of <SvxEditSource>
 // for <::accessibility::AccessibleTextHelper> instance
@@ -46,7 +48,7 @@ class SidebarTextEditSource : public SvxEditSource,
         explicit SidebarTextEditSource(SidebarTextControl& rSidebarTextControl);
         virtual ~SidebarTextEditSource() override;
 
-        virtual SvxEditSource* Clone() const override;
+        virtual std::unique_ptr<SvxEditSource> Clone() const override;
 
         virtual SvxTextForwarder* GetTextForwarder() override;
         virtual SvxViewForwarder* GetViewForwarder() override;
@@ -62,6 +64,8 @@ class SidebarTextEditSource : public SvxEditSource,
         SvxOutlinerForwarder mTextForwarder;
         SvxDrawOutlinerViewForwarder mViewForwarder;
 };
+
+}
 
 SidebarTextEditSource::SidebarTextEditSource( SidebarTextControl& rSidebarTextControl )
     : SvxEditSource()
@@ -83,9 +87,9 @@ SidebarTextEditSource::~SidebarTextEditSource()
     }
 }
 
-SvxEditSource* SidebarTextEditSource::Clone() const
+std::unique_ptr<SvxEditSource> SidebarTextEditSource::Clone() const
 {
-    return new SidebarTextEditSource( mrSidebarTextControl );
+    return std::unique_ptr<SvxEditSource>(new SidebarTextEditSource( mrSidebarTextControl ));
 }
 
 SvxTextForwarder* SidebarTextEditSource::GetTextForwarder()
@@ -110,25 +114,26 @@ void SidebarTextEditSource::UpdateData()
 
 SfxBroadcaster& SidebarTextEditSource::GetBroadcaster() const
 {
-    return *( const_cast< SidebarTextEditSource* > (this) );
+    return * const_cast< SidebarTextEditSource* > (this);
 }
 
 IMPL_LINK(SidebarTextEditSource, NotifyHdl, EENotify&, rNotify, void)
 {
     std::unique_ptr< SfxHint > aHint( SvxEditSourceHelper::EENotification2Hint( &rNotify ) );
 
-    if( aHint.get() )
+    if (aHint)
     {
-        Broadcast( *aHint.get() );
+        Broadcast(*aHint);
     }
 }
+
+namespace {
 
 // declaration and implementation of accessible context for <SidebarTextControl> instance
 class SidebarTextControlAccessibleContext : public VCLXAccessibleComponent
 {
     public:
         explicit SidebarTextControlAccessibleContext( SidebarTextControl& rSidebarTextControl );
-        virtual ~SidebarTextControlAccessibleContext() override;
 
         virtual sal_Int32 SAL_CALL
                 getAccessibleChildCount() override;
@@ -146,33 +151,19 @@ class SidebarTextControlAccessibleContext : public VCLXAccessibleComponent
         virtual void ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
 
     private:
-        SidebarTextControl& mrSidebarTextControl;
-        ::accessibility::AccessibleTextHelper* mpAccessibleTextHelper;
+        std::unique_ptr<::accessibility::AccessibleTextHelper> mpAccessibleTextHelper;
 
         ::osl::Mutex maMutex;
-
-        void defunc();
 };
+
+}
 
 SidebarTextControlAccessibleContext::SidebarTextControlAccessibleContext( SidebarTextControl& rSidebarTextControl )
     : VCLXAccessibleComponent( rSidebarTextControl.GetWindowPeer() )
-    , mrSidebarTextControl( rSidebarTextControl )
-    , mpAccessibleTextHelper( nullptr )
     , maMutex()
 {
-    mpAccessibleTextHelper = new ::accessibility::AccessibleTextHelper( o3tl::make_unique<SidebarTextEditSource>(mrSidebarTextControl) );
-    mpAccessibleTextHelper->SetEventSource( mrSidebarTextControl.GetWindowPeer() );
-}
-
-SidebarTextControlAccessibleContext::~SidebarTextControlAccessibleContext()
-{
-    defunc();
-}
-
-void SidebarTextControlAccessibleContext::defunc()
-{
-    delete mpAccessibleTextHelper;
-    mpAccessibleTextHelper = nullptr;
+    mpAccessibleTextHelper.reset(new ::accessibility::AccessibleTextHelper( std::make_unique<SidebarTextEditSource>(rSidebarTextControl) ));
+    mpAccessibleTextHelper->SetEventSource( rSidebarTextControl.GetWindowPeer() );
 }
 
 sal_Int32 SAL_CALL SidebarTextControlAccessibleContext::getAccessibleChildCount()
@@ -233,7 +224,7 @@ void SidebarTextControlAccessibleContext::ProcessWindowEvent( const VclWindowEve
         {
             case VclEventId::ObjectDying:
             {
-                defunc();
+                mpAccessibleTextHelper.reset();
             }
             break;
             case VclEventId::WindowGetFocus:
@@ -275,6 +266,6 @@ css::uno::Reference< css::accessibility::XAccessibleContext > SidebarTextControl
     return xAcc;
 }
 
-} } // end of namespace sw::sidebarwindows
+} // end of namespace sw::sidebarwindows
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

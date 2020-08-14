@@ -21,10 +21,8 @@
 
 #include <sal/types.h>
 
-#include "fontinstance.hxx"
-#include "PhysicalFontFace.hxx"
-#include "salgdi.hxx"
-#include "sallayout.hxx"
+#include <PhysicalFontFace.hxx>
+#include <salgdi.hxx>
 
 #include "pdffontcache.hxx"
 
@@ -44,7 +42,7 @@ PDFFontCache::FontData& PDFFontCache::getFont( const PhysicalFontFace* pFont, bo
     if( it != m_aFontToIndex.end() )
         return m_aFonts[ it->second ];
     m_aFontToIndex[ aId ] = sal_uInt32(m_aFonts.size());
-    m_aFonts.push_back( FontData() );
+    m_aFonts.emplace_back( );
     return m_aFonts.back();
 }
 

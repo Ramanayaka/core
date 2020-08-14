@@ -19,6 +19,9 @@
 
 #include <algorithm>
 #ifdef _WIN32
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #else
 #include <unistd.h>
@@ -45,7 +48,7 @@
 
 using namespace osl;
 
-using ::rtl::OString;
+namespace {
 
 // Small stopwatch
 class StopWatch {
@@ -67,6 +70,8 @@ public:
     double getSeconds() const;
     double getTenthSec() const;
 };
+
+}
 
 // ================================= Stop Watch =================================
 
@@ -93,7 +98,7 @@ void StopWatch::start()
     m_bIsValid = false;
     m_bIsRunning = true;
     osl_getSystemTime( &t1 );
-    t_print("# %u %u nsecs\n", (unsigned)t1.Seconds, (unsigned)t1.Nanosec);
+    t_print("# %u %u nsecs\n", static_cast<unsigned>(t1.Seconds), static_cast<unsigned>(t1.Nanosec));
     // gettimeofday(&t1, 0);
 }
 
@@ -102,26 +107,20 @@ void StopWatch::stop()
 // pre: Timer should be started
 // post: Timer will stopped
 
-    // gettimeofday(&t2, 0);                         // Ask timer
     osl_getSystemTime( &t2 );
-    t_print("# %u %u nsecs\n", (unsigned) t2.Seconds, (unsigned) t2.Nanosec);
+    t_print("# %u %u nsecs\n", static_cast<unsigned>(t2.Seconds), static_cast<unsigned>(t2.Nanosec));
 
     if (m_bIsRunning)
     {                                // check if started.
         m_nSeconds = static_cast<sal_Int32>(t2.Seconds) - static_cast<sal_Int32>(t1.Seconds);
         if ( t2.Nanosec > t1.Nanosec )
-               m_nNanoSec = static_cast<sal_Int32>(t2.Nanosec) - static_cast<sal_Int32>(t1.Nanosec);
-           else
-           {
-        m_nNanoSec = 1000000000 + static_cast<sal_Int32>(t2.Nanosec) - static_cast<sal_Int32>(t1.Nanosec);
-                m_nSeconds -= 1;
-    }
-    t_print("# %u %u nsecs\n", (unsigned) m_nSeconds, (unsigned) m_nNanoSec );
-        //if (m_nNanoSec < 0)
-        //{
-            //m_nNanoSec += 1000000000;
-            //m_nSeconds -= 1;
-        //}
+            m_nNanoSec = static_cast<sal_Int32>(t2.Nanosec) - static_cast<sal_Int32>(t1.Nanosec);
+        else
+        {
+            m_nNanoSec = 1000000000 + static_cast<sal_Int32>(t2.Nanosec) - static_cast<sal_Int32>(t1.Nanosec);
+            m_nSeconds -= 1;
+        }
+        t_print("# %u %u nsecs\n", static_cast<unsigned>(m_nSeconds), static_cast<unsigned>(m_nNanoSec) );
         m_bIsValid = true;
         m_bIsRunning = false;
     }
@@ -150,6 +149,8 @@ double StopWatch::getTenthSec() const
     return nValue ;
 }
 
+namespace {
+
 template <class T>
 class ThreadSafeValue
 {
@@ -173,21 +174,16 @@ public:
     void release() {m_aMutex.release();}
 };
 
+}
+
 namespace ThreadHelper
 {
-    void thread_sleep_tenth_sec(sal_Int32 _nTenthSec)
+    static void thread_sleep_tenth_sec(sal_Int32 _nTenthSec)
     {
-#ifdef _WIN32
-        Sleep(_nTenthSec * 100 );
-#else
-        TimeValue nTV;
-        nTV.Seconds = static_cast<sal_uInt32>( _nTenthSec/10 );
-        nTV.Nanosec = ( (_nTenthSec%10 ) * 100000000 );
-        osl_waitThread(&nTV);
-#endif
+        osl::Thread::wait(std::chrono::milliseconds(_nTenthSec * 100));
     }
 
-    void outputPriority(oslThreadPriority const& _aPriority)
+    static void outputPriority(oslThreadPriority const& _aPriority)
     {
         // LLA: output the priority
         if (_aPriority == osl_Thread_PriorityHighest)
@@ -216,6 +212,8 @@ namespace ThreadHelper
         }
     }
 }
+
+namespace {
 
 /** Simple thread for testing Thread-create.
 
@@ -265,10 +263,9 @@ class OCountThread : public Thread
 {
     ThreadSafeValue<sal_Int32> m_aFlag;
 public:
-    OCountThread()
+    OCountThread() : m_nWaitSec(0)
         {
-            m_nWaitSec = 0;
-            t_print("new OCountThread thread %u!\n", (unsigned) getIdentifier());
+            t_print("new OCountThread thread %u!\n", static_cast<unsigned>(getIdentifier()));
         }
     sal_Int32 getValue() { return m_aFlag.getValue(); }
 
@@ -309,7 +306,7 @@ protected:
         }
     void SAL_CALL onTerminated() override
         {
-            t_print("normally terminate this thread %u!\n", (unsigned) getIdentifier());
+            t_print("normally terminate this thread %u!\n", static_cast<unsigned>(getIdentifier()));
         }
 public:
 
@@ -348,12 +345,12 @@ protected:
         }
     void SAL_CALL onTerminated() override
         {
-            t_print("normally terminate this thread %u!\n", (unsigned) getIdentifier());
+            t_print("normally terminate this thread %u!\n", static_cast<unsigned>(getIdentifier()));
         }
 public:
     ONoScheduleThread()
         {
-                t_print("new thread id %u!\n", (unsigned) getIdentifier());
+                t_print("new thread id %u!\n", static_cast<unsigned>(getIdentifier()));
         }
     virtual ~ONoScheduleThread() override
         {
@@ -405,10 +402,12 @@ public:
 
 };
 
+}
+
 namespace osl_Thread
 {
 
-    void resumeAndWaitThread(Thread* _pThread)
+    static void resumeAndWaitThread(Thread* _pThread)
     {
         // This function starts a thread, wait a second and suspends the thread
         // Due to the fact, that a suspend and never run thread never really exists.
@@ -426,7 +425,7 @@ namespace osl_Thread
     }
 
     // kill a running thread and join it, if it has terminated, do nothing
-    void termAndJoinThread(Thread* _pThread)
+    static void termAndJoinThread(Thread* _pThread)
     {
         _pThread->terminate();
 
@@ -464,7 +463,7 @@ namespace osl_Thread
                 termAndJoinThread(newthread);
                 delete newthread;
 
-                t_print("   nValue = %d\n", (int) nValue);
+                t_print("   nValue = %d\n", static_cast<int>(nValue));
                 t_print("isRunning = %s\n", isRunning ? "true" : "false");
 
                 CPPUNIT_ASSERT_MESSAGE(
@@ -572,7 +571,7 @@ namespace osl_Thread
 
     /** when the count value equal to or more than 3, suspend the thread.
     */
-    void suspendCountThread(OCountThread* _pCountThread)
+    static void suspendCountThread(OCountThread* _pCountThread)
     {
         sal_Int32 nValue = 0;
         while (true)
@@ -668,9 +667,9 @@ namespace osl_Thread
                 termAndJoinThread(pCountThread);
                 delete pCountThread;
 
-                t_print("SuspendValue: %d\n", (int) nSuspendValue);
-                t_print("ResumeValue:  %d\n", (int) nResumeValue);
-                t_print("LaterValue:   %d\n", (int) nLaterValue);
+                t_print("SuspendValue: %d\n", static_cast<int>(nSuspendValue));
+                t_print("ResumeValue:  %d\n", static_cast<int>(nResumeValue));
+                t_print("LaterValue:   %d\n", static_cast<int>(nLaterValue));
 
                 /* LLA: this assumption is no longer relevant: nResumeValue ==  nSuspendValue && */
                 CPPUNIT_ASSERT_MESSAGE(
@@ -703,7 +702,7 @@ namespace osl_Thread
                 termAndJoinThread(newthread);
                 delete newthread;
 
-                t_print("   nValue = %d\n", (int) nValue);
+                t_print("   nValue = %d\n", static_cast<int>(nValue));
 
                 CPPUNIT_ASSERT_MESSAGE(
                     "Creates a suspended thread, then resume",
@@ -744,8 +743,8 @@ namespace osl_Thread
                 aCountThread->join();
                 delete aCountThread;
 
-                t_print("     nValue = %d\n", (int) nValue);
-                t_print("nLaterValue = %d\n", (int) nLaterValue);
+                t_print("     nValue = %d\n", static_cast<int>(nValue));
+                t_print("nLaterValue = %d\n", static_cast<int>(nLaterValue));
 
                 CPPUNIT_ASSERT_MESSAGE(
                     "Terminate the thread",
@@ -777,8 +776,8 @@ namespace osl_Thread
                 sal_Int32 nLaterValue = aCountThread->getValue();
                 delete aCountThread;
 
-                t_print("     nValue = %d\n", (int) nValue);
-                t_print("nLaterValue = %d\n", (int) nLaterValue);
+                t_print("     nValue = %d\n", static_cast<int>(nValue));
+                t_print("nLaterValue = %d\n", static_cast<int>(nLaterValue));
 
                 CPPUNIT_ASSERT_MESSAGE(
                     "Suspend then resume the thread",
@@ -945,9 +944,9 @@ namespace osl_Thread
     {
     public:
         // insert your test code here.
-        rtl::OString getPrioName(oslThreadPriority _aPriority)
+        OString getPrioName(oslThreadPriority _aPriority)
             {
-                rtl::OString sPrioStr;
+                OString sPrioStr;
                 switch (_aPriority)
                 {
                 case osl_Thread_PriorityHighest:
@@ -1001,17 +1000,15 @@ namespace osl_Thread
                 pThread->terminate();
                 p2Thread->terminate();
 
-                sal_Int32 nValueNormal = 0;
-                nValueNormal = pThread->getValue();
+                sal_Int32 nValueNormal = pThread->getValue();
 
-                sal_Int32 nValueNormal2 = 0;
-                nValueNormal2 = p2Thread->getValue();
+                sal_Int32 nValueNormal2 = p2Thread->getValue();
 
-                rtl::OString sPrio = getPrioName(_aPriority);
+                OString sPrio = getPrioName(_aPriority);
                 t_print("After 10 tenth seconds\n");
 
-                t_print("nValue in %s Prio Thread is  %d\n",sPrio.getStr(), (int) nValueNormal);
-                t_print("nValue in %s Prio Thread is %d\n", sPrio.getStr(), (int) nValueNormal2);
+                t_print("nValue in %s Prio Thread is  %d\n",sPrio.getStr(), static_cast<int>(nValueNormal));
+                t_print("nValue in %s Prio Thread is %d\n", sPrio.getStr(), static_cast<int>(nValueNormal2));
 
                 // ThreadHelper::thread_sleep_tenth_sec(1);
                 pThread->join();
@@ -1028,7 +1025,7 @@ namespace osl_Thread
                     );
                 double nDeltaPercent = nDelta / nQuotient * 100;
 
-                t_print("Delta value %d, percent %f\n", (int) nDelta, nDeltaPercent);
+                t_print("Delta value %d, percent %f\n", static_cast<int>(nDelta), nDeltaPercent);
 
                 // LLA: it's not a bug if the current OS is not able to handle thread scheduling right and good.
                 // like Windows XP
@@ -1100,19 +1097,16 @@ namespace osl_Thread
                 //aBelowNormalThread->terminate();
                 //aLowestThread->terminate();
 
-                sal_Int32 nValueHighest = 0;
-                nValueHighest = aHighestThread.getValue();
+                sal_Int32 nValueHighest = aHighestThread.getValue();
 
-                sal_Int32 nValueAboveNormal = 0;
-                nValueAboveNormal = aAboveNormalThread.getValue();
+                sal_Int32 nValueAboveNormal = aAboveNormalThread.getValue();
 
-                sal_Int32 nValueNormal = 0;
-                nValueNormal = aNormalThread.getValue();
+                sal_Int32 nValueNormal = aNormalThread.getValue();
 
                 t_print("After 10 tenth seconds\n");
-                t_print("nValue in Highest Prio Thread is %d\n", (int) nValueHighest);
-                t_print("nValue in AboveNormal Prio Thread is %d\n", (int) nValueAboveNormal);
-                t_print("nValue in Normal Prio Thread is %d\n", (int) nValueNormal);
+                t_print("nValue in Highest Prio Thread is %d\n", static_cast<int>(nValueHighest));
+                t_print("nValue in AboveNormal Prio Thread is %d\n", static_cast<int>(nValueAboveNormal));
+                t_print("nValue in Normal Prio Thread is %d\n", static_cast<int>(nValueNormal));
 
 #ifndef _WIN32
                 CPPUNIT_ASSERT_MESSAGE(
@@ -1175,27 +1169,22 @@ namespace osl_Thread
                 termAndJoinThread(&pBelowNormalThread);
                 termAndJoinThread(&pLowestThread);
 
-                sal_Int32 nValueHighest = 0;
-                nValueHighest = pHighestThread.getValue();
+                sal_Int32 nValueHighest = pHighestThread.getValue();
 
-                sal_Int32 nValueAboveNormal = 0;
-                nValueAboveNormal = pAboveNormalThread.getValue();
+                sal_Int32 nValueAboveNormal = pAboveNormalThread.getValue();
 
-                sal_Int32 nValueNormal = 0;
-                nValueNormal = pNormalThread.getValue();
+                sal_Int32 nValueNormal = pNormalThread.getValue();
 
-                sal_Int32 nValueBelowNormal = 0;
-                nValueBelowNormal = pBelowNormalThread.getValue();
+                sal_Int32 nValueBelowNormal = pBelowNormalThread.getValue();
 
-                sal_Int32 nValueLowest = 0;
-                nValueLowest = pLowestThread.getValue();
+                sal_Int32 nValueLowest = pLowestThread.getValue();
 
                 t_print("After 10 tenth seconds\n");
-                t_print("nValue in Highest Prio Thread is     %d\n", (int) nValueHighest);
-                t_print("nValue in AboveNormal Prio Thread is %d\n", (int) nValueAboveNormal);
-                t_print("nValue in Normal Prio Thread is      %d\n", (int) nValueNormal);
-                t_print("nValue in BelowNormal Prio Thread is %d\n", (int) nValueBelowNormal);
-                t_print("nValue in Lowest Prio Thread is      %d\n", (int) nValueLowest);
+                t_print("nValue in Highest Prio Thread is     %d\n", static_cast<int>(nValueHighest));
+                t_print("nValue in AboveNormal Prio Thread is %d\n", static_cast<int>(nValueAboveNormal));
+                t_print("nValue in Normal Prio Thread is      %d\n", static_cast<int>(nValueNormal));
+                t_print("nValue in BelowNormal Prio Thread is %d\n", static_cast<int>(nValueBelowNormal));
+                t_print("nValue in Lowest Prio Thread is      %d\n", static_cast<int>(nValueLowest));
 
 #ifndef _WIN32
                 CPPUNIT_ASSERT_MESSAGE(
@@ -1263,23 +1252,19 @@ namespace osl_Thread
                 // sal_Int32 nValueHighest  = 0;
                 // nValueHighest =  pHighestThread->getValue();
 
-                sal_Int32 nValueAboveNormal = 0;
-                nValueAboveNormal = pAboveNormalThread.getValue();
+                sal_Int32 nValueAboveNormal = pAboveNormalThread.getValue();
 
-                sal_Int32 nValueNormal = 0;
-                nValueNormal = pNormalThread.getValue();
+                sal_Int32 nValueNormal = pNormalThread.getValue();
 
-                sal_Int32 nValueBelowNormal = 0;
-                nValueBelowNormal = pBelowNormalThread.getValue();
+                sal_Int32 nValueBelowNormal = pBelowNormalThread.getValue();
 
-                sal_Int32 nValueLowest = 0;
-                nValueLowest = pLowestThread.getValue();
+                sal_Int32 nValueLowest = pLowestThread.getValue();
 
                 t_print("After 5 tenth seconds\n");
-                t_print("nValue in AboveNormal Prio Thread is %d\n", (int) nValueAboveNormal);
-                t_print("nValue in Normal Prio Thread is      %d\n", (int) nValueNormal);
-                t_print("nValue in BelowNormal Prio Thread is %d\n", (int) nValueBelowNormal);
-                t_print("nValue in Lowest Prio Thread is      %d\n", (int) nValueLowest);
+                t_print("nValue in AboveNormal Prio Thread is %d\n", static_cast<int>(nValueAboveNormal));
+                t_print("nValue in Normal Prio Thread is      %d\n", static_cast<int>(nValueNormal));
+                t_print("nValue in BelowNormal Prio Thread is %d\n", static_cast<int>(nValueBelowNormal));
+                t_print("nValue in Lowest Prio Thread is      %d\n", static_cast<int>(nValueLowest));
 
                 // delete pHighestThread;
 
@@ -1351,19 +1336,16 @@ namespace osl_Thread
                 // sal_Int32 nValueAboveNormal = 0;
                 // nValueAboveNormal = pAboveNormalThread->getValue();
 
-                sal_Int32 nValueNormal = 0;
-                nValueNormal = pNormalThread.getValue();
+                sal_Int32 nValueNormal = pNormalThread.getValue();
 
-                sal_Int32 nValueBelowNormal = 0;
-                nValueBelowNormal = pBelowNormalThread.getValue();
+                sal_Int32 nValueBelowNormal = pBelowNormalThread.getValue();
 
-                sal_Int32 nValueLowest = 0;
-                nValueLowest = pLowestThread.getValue();
+                sal_Int32 nValueLowest = pLowestThread.getValue();
 
                 t_print("After 5 tenth seconds\n");
-                t_print("nValue in Normal Prio Thread is      %d\n", (int) nValueNormal);
-                t_print("nValue in BelowNormal Prio Thread is %d\n", (int) nValueBelowNormal);
-                t_print("nValue in Lowest Prio Thread is      %d\n", (int) nValueLowest);
+                t_print("nValue in Normal Prio Thread is      %d\n", static_cast<int>(nValueNormal));
+                t_print("nValue in BelowNormal Prio Thread is %d\n", static_cast<int>(nValueBelowNormal));
+                t_print("nValue in Lowest Prio Thread is      %d\n", static_cast<int>(nValueLowest));
 
 #ifndef _WIN32
                 CPPUNIT_ASSERT_MESSAGE(
@@ -1523,7 +1505,7 @@ namespace osl_Thread
                 delete aCountThread;
                 t_print("nTenthSec = %f \n", nTenthSec);
                 t_print("nSec = %f \n", nSec);
-                t_print("nValue = %d \n",  (int) nValue);
+                t_print("nValue = %d \n",  static_cast<int>(nValue));
 
                 CPPUNIT_ASSERT_MESSAGE(
                     "Wait: Blocks the calling thread for the given number of time.",
@@ -1583,9 +1565,9 @@ namespace osl_Thread
                 ThreadHelper::thread_sleep_tenth_sec(3);
                 sal_Int32 nLaterValue = aThread->getValue();
                 // resumeAndWaitThread(aThread);
-                t_print("      value = %d\n", (int) nValue);
-                t_print("later value = %d\n", (int) nLaterValue);
-                // if value and latervalue not equal, than the thread would not suspended
+                t_print("      value = %d\n", static_cast<int>(nValue));
+                t_print("later value = %d\n", static_cast<int>(nLaterValue));
+                // if value and latervalue not equal, then the thread would not suspended
 
                 CPPUNIT_ASSERT_EQUAL_MESSAGE(
                     "Schedule: suspend works.",
@@ -1601,8 +1583,8 @@ namespace osl_Thread
                 aThread->join();
                 sal_Int32 nValue_join = aThread->getValue();
 
-                t_print("value after term = %d\n", (int) nValue_term);
-                t_print("value after join = %d\n", (int) nValue_join);
+                t_print("value after term = %d\n", static_cast<int>(nValue_term));
+                t_print("value after join = %d\n", static_cast<int>(nValue_join));
 
                 // nValue_term and nValue_join should be the same
                 // but should be differ from nValue
@@ -1638,8 +1620,8 @@ namespace osl_Thread
 
                 resumeAndWaitThread(&aThread);
 
-                t_print("      value = %d\n", (int) nValue);
-                t_print("later value = %d\n", (int) nLaterValue);
+                t_print("      value = %d\n", static_cast<int>(nValue));
+                t_print("later value = %d\n", static_cast<int>(nLaterValue));
 
                 //On windows, suspend works, so the values are same
 #ifdef _WIN32
@@ -1662,7 +1644,7 @@ namespace osl_Thread
                 termAndJoinThread(&aThread);
                 sal_Int32 nValue_term = aThread.getValue();
 
-                t_print(" value term = %d\n", (int) nValue_term);
+                t_print(" value term = %d\n", static_cast<int>(nValue_term));
 
                 CPPUNIT_ASSERT_EQUAL_MESSAGE(
                     "Schedule: don't schedule in thread run method, terminate failed.",
@@ -1693,12 +1675,14 @@ namespace osl_Thread
 } // namespace osl_Thread
 
 // destroy function when the binding thread terminate
-void SAL_CALL destroyCallback(void * data)
+static void destroyCallback(void * data)
 {
     delete[] static_cast<char *>(data);
 }
 
 static ThreadData myThreadData(destroyCallback);
+
+namespace {
 
 class myKeyThread : public Thread
 {
@@ -1737,7 +1721,11 @@ public:
         }
 };
 
+}
+
 static ThreadData idData;
+
+namespace {
 
 class idThread: public Thread
 {
@@ -1763,6 +1751,8 @@ public:
             }
         }
 };
+
+}
 
 namespace osl_ThreadData
 {

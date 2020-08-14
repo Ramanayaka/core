@@ -17,14 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_SOURCE_FILTER_JPEG_EXIF_HXX
-#define INCLUDED_VCL_SOURCE_FILTER_JPEG_EXIF_HXX
+#pragma once
 
-#include <osl/endian.h>
-#include <vcl/graph.hxx>
-#include <vcl/fltcall.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/task/XStatusIndicator.hpp>
+#include <tools/stream.hxx>
+
+namespace exif {
 
 enum Orientation {
     TOP_LEFT        = 1,
@@ -36,6 +33,7 @@ enum Orientation {
     RIGHT_BOTTOM    = 7,
     LEFT_BOTTOM     = 8
 };
+};
 
 enum Tag {
     ORIENTATION         = 0x0112
@@ -44,18 +42,18 @@ enum Tag {
 class Exif final
 {
 private:
-    Orientation maOrientation;
+    exif::Orientation maOrientation;
     bool mbExifPresent;
 
     bool processJpeg(SvStream& rStream, bool bSetValue);
     bool processExif(SvStream& rStream, sal_uInt16 aLength, bool bSetValue);
-    void processIFD(sal_uInt8* pExifData, sal_uInt16 aLength, sal_uInt16 aOffset, sal_uInt16 aNumberOfTags, bool bSetValue, bool bMoto);
+    void processIFD(sal_uInt8* pExifData, sal_uInt16 aLength, sal_uInt16 aOffset, sal_uInt16 aNumberOfTags, bool bSetValue, bool bLittleEndian);
 
     struct ExifIFD {
-        sal_uInt16 tag;
-        sal_uInt16 type;
-        sal_uInt32 count;
-        sal_uInt32 offset;
+        sal_uInt8 tag[2];
+        sal_uInt8 type[2];
+        sal_uInt8 count[4];
+        sal_uInt8 offset[4];
     };
 
     struct TiffHeader {
@@ -64,24 +62,22 @@ private:
         sal_uInt32 offset;
     };
 
-    static Orientation convertToOrientation(sal_Int32 value);
+    static exif::Orientation convertToOrientation(sal_Int32 value);
 
 public:
     Exif();
     ~Exif();
 
-    bool hasExif() { return mbExifPresent;}
+    bool hasExif() const { return mbExifPresent;}
 
-    Orientation getOrientation() { return maOrientation;}
-    sal_Int32 getRotation();
+    exif::Orientation getOrientation() const { return maOrientation;}
+    sal_Int32 getRotation() const;
 
-    void setOrientation(Orientation orientation);
+    void setOrientation(exif::Orientation orientation);
 
     bool read(SvStream& rStream);
     void write(SvStream& rStream);
 
 };
-
-#endif // INCLUDED_VCL_SOURCE_FILTER_JPEG_EXIF_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

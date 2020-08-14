@@ -17,8 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <escphdl.hxx>
+#include "escphdl.hxx"
 
+#include <editeng/escapementitem.hxx>
 #include <sax/tools/converter.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
@@ -28,13 +29,7 @@
 using namespace ::com::sun::star;
 using namespace ::xmloff::token;
 
-// this is a copy of defines in svx/inc/escpitem.hxx
-#define DFLT_ESC_PROP    58
-#define DFLT_ESC_AUTO_SUPER 101
-#define DFLT_ESC_AUTO_SUB  -101
 
-
-// class XMLEscapementPropHdl
 
 
 XMLEscapementPropHdl::~XMLEscapementPropHdl()
@@ -66,7 +61,7 @@ bool XMLEscapementPropHdl::importXML( const OUString& rStrImpValue, uno::Any& rV
         if (!::sax::Converter::convertPercent( nNewEsc, aToken ))
             return false;
 
-        nVal = (sal_Int16) nNewEsc;
+        nVal = static_cast<sal_Int16>(nNewEsc);
     }
 
     rValue <<= nVal;
@@ -99,7 +94,6 @@ bool XMLEscapementPropHdl::exportXML( OUString& rStrExpValue, const uno::Any& rV
 }
 
 
-// class XMLEscapementHeightPropHdl
 
 
 XMLEscapementHeightPropHdl::~XMLEscapementHeightPropHdl()
@@ -124,7 +118,7 @@ bool XMLEscapementHeightPropHdl::importXML( const OUString& rStrImpValue, uno::A
         sal_Int32 nNewProp;
         if (!::sax::Converter::convertPercent( nNewProp, aToken ))
             return false;
-        nProp = (sal_Int8)nNewProp;
+        nProp = static_cast<sal_Int8>(nNewProp);
     }
     else
     {
@@ -135,7 +129,7 @@ bool XMLEscapementHeightPropHdl::importXML( const OUString& rStrImpValue, uno::A
             nProp = 100; //if escapement position is zero and no escapement height is given the default height should be 100percent and not something smaller (#i91800#)
         }
         else
-            nProp = (sal_Int8) DFLT_ESC_PROP;
+            nProp = sal_Int8(DFLT_ESC_PROP);
     }
 
     rValue <<= nProp;

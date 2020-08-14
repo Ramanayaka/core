@@ -19,9 +19,9 @@
 #ifndef INCLUDED_IDLC_INC_ASTINTERFACEMEMBER_HXX
 #define INCLUDED_IDLC_INC_ASTINTERFACEMEMBER_HXX
 
-#include <astinterface.hxx>
+#include "astinterface.hxx"
 
-class AstInterfaceMember : public AstDeclaration
+class AstInterfaceMember final : public AstDeclaration
 {
 public:
     AstInterfaceMember(const sal_uInt32 flags, AstInterface* pRealInterface,
@@ -33,7 +33,7 @@ public:
 
     AstInterface* getRealInterface()
         { return m_pRealInterface; }
-    bool isOptional()
+    bool isOptional() const
         { return ((m_flags & AF_OPTIONAL) == AF_OPTIONAL); }
 private:
     const sal_uInt32    m_flags;

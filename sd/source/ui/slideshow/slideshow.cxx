@@ -22,33 +22,43 @@
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/util/URL.hpp>
 
-#include <cppuhelper/bootstrap.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
+#include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/wrkwin.hxx>
 #include <svx/svdpool.hxx>
+#include <svx/svdlayer.hxx>
 #include <svl/itemprop.hxx>
 
+#include <sfx2/bindings.hxx>
 #include <sfx2/viewfrm.hxx>
+#include <sfx2/sfxsids.hrc>
 
-#include <toolkit/helper/vclunohelper.hxx>
-#include <svx/unoprov.hxx>
+#include <framework/FrameworkHelper.hxx>
+#include <comphelper/extract.hxx>
 
-#include "framework/FrameworkHelper.hxx"
-
-#include "FrameView.hxx"
-#include "createpresentation.hxx"
-#include "unomodel.hxx"
-#include "slideshow.hxx"
+#include <FrameView.hxx>
+#include <createpresentation.hxx>
+#include <unomodel.hxx>
+#include <slideshow.hxx>
 #include "slideshowimpl.hxx"
-#include "sdattr.hrc"
-#include "FactoryIds.hxx"
-#include "ViewShell.hxx"
+#include <sdattr.hrc>
+#include <sdmod.hxx>
+#include <FactoryIds.hxx>
+#include <DrawDocShell.hxx>
+#include <ViewShell.hxx>
+#include <ViewShellBase.hxx>
 #include "SlideShowRestarter.hxx"
-#include "DrawController.hxx"
-#include "customshowlist.hxx"
-#include "unopage.hxx"
+#include <DrawController.hxx>
+#include <PresentationViewShell.hxx>
+#include <customshowlist.hxx>
+#include <unopage.hxx>
+#include <sdpage.hxx>
+#include <cusshow.hxx>
+#include <optsitem.hxx>
+#include <strings.hrc>
+#include <sdresid.hxx>
 
 using ::com::sun::star::presentation::XSlideShowController;
 using ::sd::framework::FrameworkHelper;
@@ -74,7 +84,7 @@ namespace {
             const ::rtl::Reference<SlideShow>& rpSlideShow,
             ViewShellBase* pViewShellBase)
             : WorkWindow(nullptr, WB_HIDE | WB_CLIPCHILDREN),
-              mpRestarter(new SlideShowRestarter(rpSlideShow, pViewShellBase))
+              mpRestarter(std::make_shared<SlideShowRestarter>(rpSlideShow, pViewShellBase))
         {}
 
         void Restart(bool bForce)
@@ -93,33 +103,32 @@ namespace {
     };
 }
 
-const SfxItemPropertyMapEntry* ImplGetPresentationPropertyMap()
+static const SfxItemPropertyMapEntry* ImplGetPresentationPropertyMap()
 {
     // NOTE: First member must be sorted
     static const SfxItemPropertyMapEntry aPresentationPropertyMap_Impl[] =
     {
-        { OUString("AllowAnimations"),          ATTR_PRESENT_ANIMATION_ALLOWED, cppu::UnoType<bool>::get(),                0, 0 },
-        { OUString("CustomShow"),               ATTR_PRESENT_CUSTOMSHOW,        ::cppu::UnoType<OUString>::get(),     0, 0 },
-        { OUString("Display"),                  ATTR_PRESENT_DISPLAY,           ::cppu::UnoType<sal_Int32>::get(),    0, 0 },
-        { OUString("FirstPage"),                ATTR_PRESENT_DIANAME,           ::cppu::UnoType<OUString>::get(),     0, 0 },
-        { OUString("IsAlwaysOnTop"),            ATTR_PRESENT_ALWAYS_ON_TOP,     cppu::UnoType<bool>::get(),                0, 0 },
-        { OUString("IsAutomatic"),              ATTR_PRESENT_MANUEL,            cppu::UnoType<bool>::get(),                0, 0 },
-        { OUString("IsEndless"),                ATTR_PRESENT_ENDLESS,           cppu::UnoType<bool>::get(),                0, 0 },
-        { OUString("IsFullScreen"),             ATTR_PRESENT_FULLSCREEN,        cppu::UnoType<bool>::get(),                0, 0 },
-        { OUString("IsShowAll"),                ATTR_PRESENT_ALL,               cppu::UnoType<bool>::get(),                0, 0 },
-        { OUString("IsMouseVisible"),           ATTR_PRESENT_MOUSE,             cppu::UnoType<bool>::get(),                0, 0 },
-        { OUString("IsShowLogo"),               ATTR_PRESENT_SHOW_PAUSELOGO,    cppu::UnoType<bool>::get(),                0, 0 },
-        { OUString("IsTransitionOnClick"),      ATTR_PRESENT_CHANGE_PAGE,       cppu::UnoType<bool>::get(),                0, 0 },
-        { OUString("Pause"),                    ATTR_PRESENT_PAUSE_TIMEOUT,     ::cppu::UnoType<sal_Int32>::get(),    0, 0 },
-        { OUString("StartWithNavigator"),       ATTR_PRESENT_NAVIGATOR,         cppu::UnoType<bool>::get(),                0, 0 },
-        { OUString("UsePen"),                   ATTR_PRESENT_PEN,               cppu::UnoType<bool>::get(),                0, 0 },
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        { "AllowAnimations",          ATTR_PRESENT_ANIMATION_ALLOWED, cppu::UnoType<bool>::get(),                0, 0 },
+        { "CustomShow",               ATTR_PRESENT_CUSTOMSHOW,        ::cppu::UnoType<OUString>::get(),     0, 0 },
+        { "Display",                  ATTR_PRESENT_DISPLAY,           ::cppu::UnoType<sal_Int32>::get(),    0, 0 },
+        { "FirstPage",                ATTR_PRESENT_DIANAME,           ::cppu::UnoType<OUString>::get(),     0, 0 },
+        { "IsAlwaysOnTop",            ATTR_PRESENT_ALWAYS_ON_TOP,     cppu::UnoType<bool>::get(),                0, 0 },
+        { "IsAutomatic",              ATTR_PRESENT_MANUEL,            cppu::UnoType<bool>::get(),                0, 0 },
+        { "IsEndless",                ATTR_PRESENT_ENDLESS,           cppu::UnoType<bool>::get(),                0, 0 },
+        { "IsFullScreen",             ATTR_PRESENT_FULLSCREEN,        cppu::UnoType<bool>::get(),                0, 0 },
+        { "IsShowAll",                ATTR_PRESENT_ALL,               cppu::UnoType<bool>::get(),                0, 0 },
+        { "IsMouseVisible",           ATTR_PRESENT_MOUSE,             cppu::UnoType<bool>::get(),                0, 0 },
+        { "IsShowLogo",               ATTR_PRESENT_SHOW_PAUSELOGO,    cppu::UnoType<bool>::get(),                0, 0 },
+        { "IsTransitionOnClick",      ATTR_PRESENT_CHANGE_PAGE,       cppu::UnoType<bool>::get(),                0, 0 },
+        { "Pause",                    ATTR_PRESENT_PAUSE_TIMEOUT,     ::cppu::UnoType<sal_Int32>::get(),    0, 0 },
+        { "StartWithNavigator",       ATTR_PRESENT_NAVIGATOR,         cppu::UnoType<bool>::get(),                0, 0 },
+        { "UsePen",                   ATTR_PRESENT_PEN,               cppu::UnoType<bool>::get(),                0, 0 },
+        { "", 0, css::uno::Type(), 0, 0 }
     };
 
     return aPresentationPropertyMap_Impl;
 }
 
-// class SlideShow
 
 SlideShow::SlideShow( SdDrawDocument* pDoc )
 : SlideshowBase( m_aMutex )
@@ -145,7 +154,7 @@ rtl::Reference< SlideShow > SlideShow::Create( SdDrawDocument* pDoc )
     return new SlideShow( pDoc );
 }
 
-rtl::Reference< SlideShow > SlideShow::GetSlideShow( SdDrawDocument* pDocument )
+rtl::Reference< SlideShow > SlideShow::GetSlideShow( SdDrawDocument const * pDocument )
 {
     rtl::Reference< SlideShow > xRet;
 
@@ -155,18 +164,18 @@ rtl::Reference< SlideShow > SlideShow::GetSlideShow( SdDrawDocument* pDocument )
     return xRet;
 }
 
-rtl::Reference< SlideShow > SlideShow::GetSlideShow( SdDrawDocument& rDocument )
+rtl::Reference< SlideShow > SlideShow::GetSlideShow( SdDrawDocument const & rDocument )
 {
     return rtl::Reference< SlideShow >(
         dynamic_cast< SlideShow* >( rDocument.getPresentation().get() ) );
 }
 
-rtl::Reference< SlideShow > SlideShow::GetSlideShow( ViewShellBase& rBase )
+rtl::Reference< SlideShow > SlideShow::GetSlideShow( ViewShellBase const & rBase )
 {
     return GetSlideShow( rBase.GetDocument() );
 }
 
-css::uno::Reference< css::presentation::XSlideShowController > SlideShow::GetSlideShowController(ViewShellBase& rBase )
+css::uno::Reference< css::presentation::XSlideShowController > SlideShow::GetSlideShowController(ViewShellBase const & rBase )
 {
     rtl::Reference< SlideShow > xSlideShow( GetSlideShow( rBase ) );
 
@@ -177,25 +186,26 @@ css::uno::Reference< css::presentation::XSlideShowController > SlideShow::GetSli
     return xRet;
 }
 
-bool SlideShow::StartPreview( ViewShellBase& rBase,
+bool SlideShow::StartPreview( ViewShellBase const & rBase,
     const css::uno::Reference< css::drawing::XDrawPage >& xDrawPage,
     const css::uno::Reference< css::animations::XAnimationNode >& xAnimationNode )
 {
     rtl::Reference< SlideShow > xSlideShow( GetSlideShow( rBase ) );
-    if( xSlideShow.is() )
-        return xSlideShow->startPreview( xDrawPage, xAnimationNode );
+    if( !xSlideShow.is() )
+        return false;
 
-    return false;
+    xSlideShow->startPreview( xDrawPage, xAnimationNode );
+    return true;
 }
 
-void SlideShow::Stop( ViewShellBase& rBase )
+void SlideShow::Stop( ViewShellBase const & rBase )
 {
     rtl::Reference< SlideShow > xSlideShow( GetSlideShow( rBase ) );
     if( xSlideShow.is() )
         xSlideShow->end();
 }
 
-bool SlideShow::IsRunning( ViewShellBase& rBase )
+bool SlideShow::IsRunning( ViewShellBase const & rBase )
 {
     rtl::Reference< SlideShow > xSlideShow( GetSlideShow( rBase ) );
     return xSlideShow.is() && xSlideShow->isRunning();
@@ -209,7 +219,7 @@ bool SlideShow::IsRunning( ViewShell& rViewShell )
 
 void SlideShow::CreateController(  ViewShell* pViewSh, ::sd::View* pView, vcl::Window* pParentWindow )
 {
-    DBG_ASSERT( !mxController.is(), "sd::SlideShow::CreateController(), clean up old controller first!" );
+    SAL_INFO_IF( !mxController.is(), "sd.slideshow", "sd::SlideShow::CreateController(), clean up old controller first!" );
 
     Reference< XPresentation2 > xThis( this );
 
@@ -226,7 +236,7 @@ void SlideShow::CreateController(  ViewShell* pViewSh, ::sd::View* pView, vcl::W
 // XServiceInfo
 OUString SAL_CALL SlideShow::getImplementationName(  )
 {
-    return OUString( "com.sun.star.comp.sd.SlideShow" );
+    return "com.sun.star.comp.sd.SlideShow";
 }
 
 sal_Bool SAL_CALL SlideShow::supportsService( const OUString& ServiceName )
@@ -236,9 +246,7 @@ sal_Bool SAL_CALL SlideShow::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL SlideShow::getSupportedServiceNames(  )
 {
-    OUString aService( "com.sun.star.presentation.Presentation" );
-    Sequence< OUString > aSeq( &aService, 1 );
-    return aSeq;
+    return { "com.sun.star.presentation.Presentation" };
 }
 
 // XPropertySet
@@ -635,139 +643,162 @@ void SAL_CALL SlideShow::end()
     // The mbIsInStartup flag should have been reset during the start of the
     // slide show.  Reset it here just in case that something has horribly
     // gone wrong.
-    OSL_ASSERT(!mbIsInStartup);
-    mbIsInStartup = false;
+    assert(!mbIsInStartup);
 
     rtl::Reference< SlideshowImpl > xController( mxController );
-    if( xController.is() )
+    if( !xController.is() )
+        return;
+
+    mxController.clear();
+
+    if( mpFullScreenFrameView )
     {
-        mxController.clear();
-
-        if( mpFullScreenFrameView )
-        {
-            delete mpFullScreenFrameView;
-            mpFullScreenFrameView = nullptr;
-        }
-
-        ViewShellBase* pFullScreenViewShellBase = mpFullScreenViewShellBase;
-        mpFullScreenViewShellBase = nullptr;
-
-        // dispose before fullscreen window changes screens
-        // (potentially). If this needs to be moved behind
-        // pWorkWindow->StartPresentationMode() again, read issue
-        // pWorkWindow->i94007 & implement the solution outlined
-        // there.
-        xController->dispose();
-
-        if( pFullScreenViewShellBase )
-        {
-            PresentationViewShell* pShell = dynamic_cast<PresentationViewShell*>(pFullScreenViewShellBase->GetMainViewShell().get());
-
-            if( pShell && pShell->GetViewFrame() )
-            {
-                WorkWindow* pWorkWindow = dynamic_cast<WorkWindow*>(pShell->GetViewFrame()->GetFrame().GetWindow().GetParent());
-                if( pWorkWindow )
-                {
-                    pWorkWindow->StartPresentationMode(   (mxController.is() && mxController->maPresSettings.mbAlwaysOnTop)
-                                                        ? PresentationFlags::HideAllApps : PresentationFlags::NONE );
-                }
-            }
-        }
-
-        if( pFullScreenViewShellBase )
-        {
-            PresentationViewShell* pShell = nullptr;
-            {
-                // Get the shell pointer in its own scope to be sure that
-                // the shared_ptr to the shell is released before DoClose()
-                // is called.
-                ::std::shared_ptr<ViewShell> pSharedView (pFullScreenViewShellBase->GetMainViewShell());
-                pShell = dynamic_cast<PresentationViewShell*>(pSharedView.get());
-            }
-            if( pShell && pShell->GetViewFrame() )
-                pShell->GetViewFrame()->DoClose();
-        }
-        else if( mpCurrentViewShellBase )
-        {
-            ViewShell* pViewShell = mpCurrentViewShellBase->GetMainViewShell().get();
-
-            if( pViewShell )
-            {
-                FrameView* pFrameView = pViewShell->GetFrameView();
-
-                if( pFrameView && (pFrameView->GetPresentationViewShellId() != SID_VIEWSHELL0) )
-                {
-                    ViewShell::ShellType ePreviousType (pFrameView->GetPreviousViewShellType());
-                    pFrameView->SetPreviousViewShellType(ViewShell::ST_NONE);
-
-                    pFrameView->SetPresentationViewShellId(SID_VIEWSHELL0);
-                    pFrameView->SetPreviousViewShellType(pViewShell->GetShellType());
-
-                    framework::FrameworkHelper::Instance(*mpCurrentViewShellBase)->RequestView(
-                        framework::FrameworkHelper::GetViewURL(ePreviousType),
-                        framework::FrameworkHelper::msCenterPaneURL);
-
-                    pViewShell->GetViewFrame()->GetBindings().InvalidateAll( true );
-                }
-            }
-        }
-
-        if( mpCurrentViewShellBase )
-        {
-            ViewShell* pViewShell = mpCurrentViewShellBase->GetMainViewShell().get();
-            if( pViewShell )
-            {
-                // invalidate the view shell so the presentation slot will be re-enabled
-                // and the rehearsing will be updated
-                pViewShell->Invalidate();
-
-                if( xController->meAnimationMode ==ANIMATIONMODE_SHOW )
-                {
-                    // switch to the previously visible Slide
-                    DrawViewShell* pDrawViewShell = dynamic_cast<DrawViewShell*>( pViewShell );
-                    if( pDrawViewShell )
-                        pDrawViewShell->SwitchPage( (sal_uInt16)xController->getRestoreSlide() );
-                    else
-                    {
-                        Reference<XDrawView> xDrawView (
-                            Reference<XWeak>(&mpCurrentViewShellBase->GetDrawController()), UNO_QUERY);
-                        if (xDrawView.is())
-                            xDrawView->setCurrentPage(
-                                Reference<XDrawPage>(
-                                    mpDoc->GetSdPage(xController->getRestoreSlide(), PageKind::Standard)->getUnoPage(),
-                                    UNO_QUERY));
-                    }
-                }
-
-                if( pViewShell->GetDoc()->IsExitAfterPresenting() )
-                {
-                    pViewShell->GetDoc()->SetExitAfterPresenting( false );
-
-                    Reference<frame::XDispatchProvider> xProvider(pViewShell->GetViewShellBase().GetController()->getFrame(),
-                                                                  UNO_QUERY);
-                    if( xProvider.is() )
-                    {
-                        util::URL aURL;
-                        aURL.Complete = ".uno:CloseFrame";
-
-                        uno::Reference< frame::XDispatch > xDispatch(
-                            xProvider->queryDispatch(
-                                aURL, OUString(), 0));
-                        if( xDispatch.is() )
-                        {
-                            xDispatch->dispatch(aURL,
-                                                uno::Sequence< beans::PropertyValue >());
-                        }
-                    }
-                }
-            }
-            //Fire the acc focus event when focus is switched back. The above method mpCurrentViewShellBase->GetWindow()->GrabFocus() will
-            //set focus to WorkWindow instead of the sd::window, so here call Shell's method to fire the focus event
-            if (pViewShell)
-                pViewShell->SwitchActiveViewFireFocus();
-        }
-        mpCurrentViewShellBase = nullptr;
+        delete mpFullScreenFrameView;
+        mpFullScreenFrameView = nullptr;
     }
+
+    ViewShellBase* pFullScreenViewShellBase = mpFullScreenViewShellBase;
+    mpFullScreenViewShellBase = nullptr;
+
+    // dispose before fullscreen window changes screens
+    // (potentially). If this needs to be moved behind
+    // pWorkWindow->StartPresentationMode() again, read issue
+    // pWorkWindow->i94007 & implement the solution outlined
+    // there.
+    xController->dispose();
+
+    if( pFullScreenViewShellBase )
+    {
+        PresentationViewShell* pShell = dynamic_cast<PresentationViewShell*>(pFullScreenViewShellBase->GetMainViewShell().get());
+
+        if( pShell && pShell->GetViewFrame() )
+        {
+            WorkWindow* pWorkWindow = dynamic_cast<WorkWindow*>(pShell->GetViewFrame()->GetFrame().GetWindow().GetParent());
+            if( pWorkWindow )
+            {
+                pWorkWindow->StartPresentationMode(   (mxController.is() && mxController->maPresSettings.mbAlwaysOnTop)
+                                                    ? PresentationFlags::HideAllApps : PresentationFlags::NONE );
+            }
+        }
+    }
+
+    if( pFullScreenViewShellBase )
+    {
+        PresentationViewShell* pShell = nullptr;
+        {
+            // Get the shell pointer in its own scope to be sure that
+            // the shared_ptr to the shell is released before DoClose()
+            // is called.
+            ::std::shared_ptr<ViewShell> pSharedView (pFullScreenViewShellBase->GetMainViewShell());
+            pShell = dynamic_cast<PresentationViewShell*>(pSharedView.get());
+        }
+        if( pShell && pShell->GetViewFrame() )
+            pShell->GetViewFrame()->DoClose();
+    }
+    else if( mpCurrentViewShellBase )
+    {
+        ViewShell* pViewShell = mpCurrentViewShellBase->GetMainViewShell().get();
+
+        if( pViewShell )
+        {
+            FrameView* pFrameView = pViewShell->GetFrameView();
+
+            if( pFrameView && (pFrameView->GetPresentationViewShellId() != SID_VIEWSHELL0) )
+            {
+                ViewShell::ShellType ePreviousType (pFrameView->GetPreviousViewShellType());
+                pFrameView->SetPreviousViewShellType(ViewShell::ST_NONE);
+
+                pFrameView->SetPresentationViewShellId(SID_VIEWSHELL0);
+                pFrameView->SetPreviousViewShellType(pViewShell->GetShellType());
+
+                framework::FrameworkHelper::Instance(*mpCurrentViewShellBase)->RequestView(
+                    framework::FrameworkHelper::GetViewURL(ePreviousType),
+                    framework::FrameworkHelper::msCenterPaneURL);
+
+                pViewShell->GetViewFrame()->GetBindings().InvalidateAll( true );
+            }
+        }
+    }
+
+    if( mpCurrentViewShellBase )
+    {
+        if (ViewShell* const pViewShell = mpCurrentViewShellBase->GetMainViewShell().get())
+        {
+            // invalidate the view shell so the presentation slot will be re-enabled
+            // and the rehearsing will be updated
+            pViewShell->Invalidate();
+
+            if( xController->meAnimationMode ==ANIMATIONMODE_SHOW )
+            {
+                // switch to the previously visible Slide
+                DrawViewShell* pDrawViewShell = dynamic_cast<DrawViewShell*>( pViewShell );
+                if( pDrawViewShell )
+                    pDrawViewShell->SwitchPage( static_cast<sal_uInt16>(xController->getRestoreSlide()) );
+                else
+                {
+                    Reference<XDrawView> xDrawView (
+                        Reference<XWeak>(&mpCurrentViewShellBase->GetDrawController()), UNO_QUERY);
+                    if (xDrawView.is())
+                        xDrawView->setCurrentPage(
+                            Reference<XDrawPage>(
+                                mpDoc->GetSdPage(xController->getRestoreSlide(), PageKind::Standard)->getUnoPage(),
+                                UNO_QUERY));
+                }
+            }
+
+            if( pViewShell->GetDoc()->IsExitAfterPresenting() )
+            {
+                pViewShell->GetDoc()->SetExitAfterPresenting( false );
+
+                Reference<frame::XDispatchProvider> xProvider(pViewShell->GetViewShellBase().GetController()->getFrame(),
+                                                              UNO_QUERY);
+                if( xProvider.is() )
+                {
+                    util::URL aURL;
+                    aURL.Complete = ".uno:CloseFrame";
+
+                    uno::Reference< frame::XDispatch > xDispatch(
+                        xProvider->queryDispatch(
+                            aURL, OUString(), 0));
+                    if( xDispatch.is() )
+                    {
+                        xDispatch->dispatch(aURL,
+                                            uno::Sequence< beans::PropertyValue >());
+                    }
+                }
+            }
+
+            // In case mbMouseAsPen was set, a new layer DrawnInSlideshow might have been generated
+            // during slideshow, which is not known to FrameView yet.
+            if (any2bool(getPropertyValue("UsePen"))
+                && pViewShell->GetDoc()->GetLayerAdmin().GetLayer("DrawnInSlideshow"))
+            {
+                SdrLayerIDSet aDocLayerIDSet;
+                pViewShell->GetDoc()->GetLayerAdmin().getVisibleLayersODF(aDocLayerIDSet);
+                if (pViewShell->GetFrameView()->GetVisibleLayers() != aDocLayerIDSet)
+                {
+                    pViewShell->GetFrameView()->SetVisibleLayers(aDocLayerIDSet);
+                }
+                pViewShell->GetDoc()->GetLayerAdmin().getPrintableLayersODF(aDocLayerIDSet);
+                if (pViewShell->GetFrameView()->GetPrintableLayers() != aDocLayerIDSet)
+                {
+                    pViewShell->GetFrameView()->SetPrintableLayers(aDocLayerIDSet);
+                }
+                pViewShell->GetDoc()->GetLayerAdmin().getLockedLayersODF(aDocLayerIDSet);
+                if (pViewShell->GetFrameView()->GetLockedLayers() != aDocLayerIDSet)
+                {
+                    pViewShell->GetFrameView()->SetLockedLayers(aDocLayerIDSet);
+                }
+                pViewShell->InvalidateWindows();
+            }
+
+            // Fire the acc focus event when focus is switched back. The above method
+            // mpCurrentViewShellBase->GetWindow()->GrabFocus() will set focus to WorkWindow
+            // instead of the sd::window, so here call Shell's method to fire the focus event
+            pViewShell->SwitchActiveViewFireFocus();
+        }
+    }
+    mpCurrentViewShellBase = nullptr;
 }
 
 void SAL_CALL SlideShow::rehearseTimings()
@@ -788,7 +819,7 @@ void SAL_CALL SlideShow::startWithArguments(const Sequence< PropertyValue >& rAr
     // Stop a running show before starting a new one.
     if( mxController.is() )
     {
-        OSL_ASSERT(!mbIsInStartup);
+        assert(!mbIsInStartup);
         end();
     }
     else if (mbIsInStartup)
@@ -802,7 +833,7 @@ void SAL_CALL SlideShow::startWithArguments(const Sequence< PropertyValue >& rAr
     // Prevent multiple instance of the SlideShow class for one document.
     mbIsInStartup = true;
 
-    mxCurrentSettings.reset( new PresentationSettingsEx( mpDoc->getPresentationSettings() ) );
+    mxCurrentSettings = std::make_shared<PresentationSettingsEx>( mpDoc->getPresentationSettings() );
     mxCurrentSettings->SetArguments( rArguments );
 
     // if there is no view shell base set, use the current one or the first using this document
@@ -878,7 +909,7 @@ void SAL_CALL SlideShow::disposing()
     mpDoc = nullptr;
 }
 
-bool SlideShow::startPreview( const Reference< XDrawPage >& xDrawPage, const Reference< XAnimationNode >& xAnimationNode )
+void SlideShow::startPreview( const Reference< XDrawPage >& xDrawPage, const Reference< XAnimationNode >& xAnimationNode )
 {
     Sequence< PropertyValue > aArguments(4);
 
@@ -895,8 +926,6 @@ bool SlideShow::startPreview( const Reference< XDrawPage >& xDrawPage, const Ref
     aArguments[3].Value <<= Reference< XWindow >();
 
     startWithArguments( aArguments );
-
-    return true;
 }
 
 OutputDevice* SlideShow::getShowWindow()
@@ -904,7 +933,7 @@ OutputDevice* SlideShow::getShowWindow()
     return mxController.is() ? mxController->mpShowWindow.get() : nullptr;
 }
 
-int SlideShow::getAnimationMode()
+int SlideShow::getAnimationMode() const
 {
     return mxController.is() ? mxController->meAnimationMode : ANIMATIONMODE_SHOW;
 }
@@ -921,7 +950,7 @@ void SlideShow::jumpToPageNumber( sal_Int32 nPageNumber )
         mxController->displaySlideNumber( nPageNumber );
 }
 
-sal_Int32 SlideShow::getCurrentPageNumber()
+sal_Int32 SlideShow::getCurrentPageNumber() const
 {
     return mxController.is() ? mxController->getCurrentSlideNumber() : 0;
 }
@@ -932,7 +961,7 @@ void SlideShow::jumpToBookmark( const OUString& sBookmark )
         mxController->jumpToBookmark( sBookmark );
 }
 
-bool SlideShow::isFullScreen()
+bool SlideShow::isFullScreen() const
 {
     return mxController.is() && mxController->maPresSettings.mbFullScreen;
 }
@@ -948,7 +977,7 @@ void SlideShow::activate( ViewShellBase& rBase )
     if( (mpFullScreenViewShellBase == &rBase) && !mxController.is() )
     {
         ::std::shared_ptr<PresentationViewShell> pShell = std::dynamic_pointer_cast<PresentationViewShell>(rBase.GetMainViewShell());
-        if(pShell.get() != nullptr)
+        if (pShell != nullptr)
         {
             pShell->FinishInitialization( mpFullScreenFrameView );
             mpFullScreenFrameView = nullptr;
@@ -1038,14 +1067,14 @@ void SlideShow::StartInPlacePresentation()
         ::std::shared_ptr<FrameworkHelper> pHelper(FrameworkHelper::Instance(*mpCurrentViewShellBase));
         ::std::shared_ptr<ViewShell> pMainViewShell(pHelper->GetViewShell(FrameworkHelper::msCenterPaneURL));
 
-        if( pMainViewShell.get() )
+        if( pMainViewShell )
             eShell = pMainViewShell->GetShellType();
 
         if( eShell != ViewShell::ST_IMPRESS )
         {
             // Switch temporary to a DrawViewShell which supports the in-place presentation.
 
-            if( pMainViewShell.get() )
+            if( pMainViewShell )
             {
                 FrameView* pFrameView = pMainViewShell->GetFrameView();
                 pFrameView->SetPresentationViewShellId(SID_VIEWSHELL1);
@@ -1074,25 +1103,25 @@ void SlideShow::StartInPlacePresentation()
         CreateController( nullptr, nullptr, mxCurrentSettings->mpParentWindow );
     }
 
-    if( mxController.is() )
-    {
-        bool bSuccess = false;
-        if( mxCurrentSettings.get() && mxCurrentSettings->mbPreview )
-        {
-            bSuccess = mxController->startPreview(mxCurrentSettings->mxStartPage, mxCurrentSettings->mxAnimationNode, mxCurrentSettings->mpParentWindow );
-        }
-        else
-        {
-            bSuccess = mxController->startShow(mxCurrentSettings.get());
-        }
+    if( !mxController.is() )
+        return;
 
-        if( !bSuccess )
-            end();
-        else
-        {
-            if(mpCurrentViewShellBase)
-                mpCurrentViewShellBase->GetWindow()->GrabFocus();
-        }
+    bool bSuccess = false;
+    if( mxCurrentSettings && mxCurrentSettings->mbPreview )
+    {
+        bSuccess = mxController->startPreview(mxCurrentSettings->mxStartPage, mxCurrentSettings->mxAnimationNode, mxCurrentSettings->mpParentWindow );
+    }
+    else
+    {
+        bSuccess = mxController->startShow(mxCurrentSettings.get());
+    }
+
+    if( !bSuccess )
+        end();
+    else
+    {
+        if( mpCurrentViewShellBase && ( !mxCurrentSettings || ( mxCurrentSettings && !mxCurrentSettings->mbPreview ) ) )
+            mpCurrentViewShellBase->GetWindow()->GrabFocus();
     }
 }
 
@@ -1104,37 +1133,41 @@ void SlideShow::StartFullscreenPresentation( )
     const sal_Int32 nDisplay (GetDisplay());
     VclPtr<WorkWindow> pWorkWindow = VclPtr<FullScreenWorkWindow>::Create(this, mpCurrentViewShellBase);
     pWorkWindow->SetBackground(Wallpaper(COL_BLACK));
+    OUString Title(SdResId(STR_FULLSCREEN_SLIDESHOW));
+    Title = Title.replaceFirst("%s",
+                               mpCurrentViewShellBase->GetDocShell()->GetTitle(SFX_TITLE_DETECT));
+    pWorkWindow->SetText(Title);
     pWorkWindow->StartPresentationMode( true, mpDoc->getPresentationSettings().mbAlwaysOnTop ? PresentationFlags::HideAllApps : PresentationFlags::NONE, nDisplay);
     //    pWorkWindow->ShowFullScreenMode(sal_False, nDisplay);
 
-    if (pWorkWindow->IsVisible())
+    if (!pWorkWindow->IsVisible())
+        return;
+
+    // Initialize the new presentation view shell with a copy of the
+    // frame view of the current view shell.  This avoids that
+    // changes made by the presentation have an effect on the other
+    // view shells.
+    FrameView* pOriginalFrameView = nullptr;
+    ::std::shared_ptr<ViewShell> xShell(mpCurrentViewShellBase->GetMainViewShell());
+    if (xShell)
+        pOriginalFrameView = xShell->GetFrameView();
+
+    delete mpFullScreenFrameView;
+    mpFullScreenFrameView = new FrameView(mpDoc, pOriginalFrameView);
+
+    // The new frame is created hidden.  To make it visible and activate the
+    // new view shell--a prerequisite to process slot calls and initialize
+    // its panes--a GrabFocus() has to be called later on.
+    SfxFrame* pNewFrame = SfxFrame::CreateHidden( *mpDoc->GetDocSh(), *pWorkWindow, PRESENTATION_FACTORY_ID );
+    pNewFrame->SetPresentationMode(true);
+
+    mpFullScreenViewShellBase = static_cast<ViewShellBase*>(pNewFrame->GetCurrentViewFrame()->GetViewShell());
+    if(mpFullScreenViewShellBase != nullptr)
     {
-        // Initialize the new presentation view shell with a copy of the
-        // frame view of the current view shell.  This avoids that
-        // changes made by the presentation have an effect on the other
-        // view shells.
-        FrameView* pOriginalFrameView = nullptr;
-        ::std::shared_ptr<ViewShell> xShell(mpCurrentViewShellBase->GetMainViewShell());
-        if (xShell.get())
-            pOriginalFrameView = xShell->GetFrameView();
-
-        delete mpFullScreenFrameView;
-        mpFullScreenFrameView = new FrameView(mpDoc, pOriginalFrameView);
-
-        // The new frame is created hidden.  To make it visible and activate the
-        // new view shell--a prerequisite to process slot calls and initialize
-        // its panes--a GrabFocus() has to be called later on.
-        SfxFrame* pNewFrame = SfxFrame::Create( *mpDoc->GetDocSh(), *pWorkWindow, PRESENTATION_FACTORY_ID, true );
-        pNewFrame->SetPresentationMode(true);
-
-        mpFullScreenViewShellBase = static_cast<ViewShellBase*>(pNewFrame->GetCurrentViewFrame()->GetViewShell());
-        if(mpFullScreenViewShellBase != nullptr)
-        {
-            // The following GrabFocus() is responsible for activating the
-            // new view shell.  Without it the screen remains blank (under
-            // Windows and some Linux variants.)
-            mpFullScreenViewShellBase->GetWindow()->GrabFocus();
-        }
+        // The following GrabFocus() is responsible for activating the
+        // new view shell.  Without it the screen remains blank (under
+        // Windows and some Linux variants.)
+        mpFullScreenViewShellBase->GetWindow()->GrabFocus();
     }
 }
 
@@ -1150,7 +1183,7 @@ sal_Int32 SlideShow::GetDisplay()
     if( nDisplay < 0 )
         nDisplay = -1;
     else if( nDisplay == 0)
-        nDisplay = (sal_Int32)Application::GetDisplayExternalScreen();
+        nDisplay = static_cast<sal_Int32>(Application::GetDisplayExternalScreen());
     else
         nDisplay--;
 
@@ -1159,7 +1192,7 @@ sal_Int32 SlideShow::GetDisplay()
     return nDisplay;
 }
 
-bool SlideShow::dependsOn( ViewShellBase* pViewShellBase )
+bool SlideShow::dependsOn( ViewShellBase const * pViewShellBase )
 {
     return mxController.is() && (pViewShellBase == mpCurrentViewShellBase) && mpFullScreenViewShellBase;
 }

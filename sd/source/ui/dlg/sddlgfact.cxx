@@ -17,398 +17,691 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/objsh.hxx>
 #include "sddlgfact.hxx"
-#include "strings.hrc"
-#include "BreakDlg.hxx"
-#include "copydlg.hxx"
-#include "custsdlg.hxx"
-#include "dlg_char.hxx"
-#include "dlgpage.hxx"
-#include "dlgfield.hxx"
-#include "dlgsnap.hxx"
-#include "layeroptionsdlg.hxx"
-#include "ins_paste.hxx"
-#include "inspagob.hxx"
-#include "morphdlg.hxx"
-#include "OutlineBulletDlg.hxx"
-#include "paragr.hxx"
-#include "present.hxx"
+#include <BreakDlg.hxx>
+#include <copydlg.hxx>
+#include <custsdlg.hxx>
+#include <dlg_char.hxx>
+#include <dlgpage.hxx>
+#include <dlgfield.hxx>
+#include <dlgsnap.hxx>
+#include <layeroptionsdlg.hxx>
+#include <inspagob.hxx>
+#include <morphdlg.hxx>
+#include <OutlineBulletDlg.hxx>
+#include <paragr.hxx>
+#include <present.hxx>
 #include "RemoteDialog.hxx"
-#include "prltempl.hxx"
-#include "sdpreslt.hxx"
-#include "tabtempl.hxx"
-#include "tpaction.hxx"
-#include "vectdlg.hxx"
-#include "tpoption.hxx"
-#include "prntopts.hxx"
-#include "pubdlg.hxx"
-#include "masterlayoutdlg.hxx"
-#include "headerfooterdlg.hxx"
+#include <prltempl.hxx>
+#include <sdpreslt.hxx>
+#include <tabtempl.hxx>
+#include <tpaction.hxx>
+#include <vectdlg.hxx>
+#include <tpoption.hxx>
+#include <prntopts.hxx>
+#include <pubdlg.hxx>
+#include <masterlayoutdlg.hxx>
+#include <headerfooterdlg.hxx>
 #include "PhotoAlbumDialog.hxx"
+#include <vcl/virdev.hxx>
 
-IMPL_ABSTDLG_BASE(SdVclAbstractDialog_Impl);
-IMPL_ABSTDLG_BASE(AbstractCopyDlg_Impl);
-IMPL_ABSTDLG_BASE(AbstractSdCustomShowDlg_Impl);
-IMPL_ABSTDLG_BASE(SdAbstractTabDialog_Impl);
-IMPL_ABSTDLG_BASE(SdPresLayoutTemplateDlg_Impl);
-IMPL_ABSTDLG_BASE(AbstractSdModifyFieldDlg_Impl);
-IMPL_ABSTDLG_BASE(AbstractSdSnapLineDlg_Impl);
-IMPL_ABSTDLG_BASE(AbstractSdInsertLayerDlg_Impl);
-IMPL_ABSTDLG_BASE(AbstractSdInsertPagesObjsDlg_Impl);
-IMPL_ABSTDLG_BASE(AbstractMorphDlg_Impl);
-IMPL_ABSTDLG_BASE(AbstractSdStartPresDlg_Impl);
-IMPL_ABSTDLG_BASE(AbstractSdPresLayoutDlg_Impl);
-IMPL_ABSTDLG_BASE(SdAbstractSfxDialog_Impl);
-IMPL_ABSTDLG_BASE(AbstractSdVectorizeDlg_Impl);
-IMPL_ABSTDLG_BASE(AbstractSdPublishingDlg_Impl);
-IMPL_ABSTDLG_BASE(AbstractHeaderFooterDialog_Impl);
-IMPL_ABSTDLG_BASE(AbstractBulletDialog_Impl);
+short AbstractSvxBulletAndPositionDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+short SdAbstractGenericDialog_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+BitmapEx SdAbstractGenericDialog_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString SdAbstractGenericDialog_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
+}
+
+const SfxItemSet* AbstractSvxBulletAndPositionDlg_Impl::GetOutputItemSet( SfxItemSet* pSet ) const
+{
+    return m_xDlg->GetOutputItemSet( pSet );
+}
+
+bool AbstractSvxBulletAndPositionDlg_Impl::IsApplyToMaster()
+{
+    return m_xDlg->IsApplyToMaster();
+}
+
+bool AbstractSvxBulletAndPositionDlg_Impl::IsSlideScope()
+{
+    return m_xDlg->IsSlideScope();
+}
+
+short AbstractCopyDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+short AbstractSdCustomShowDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+short SdPresLayoutTemplateDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+bool SdPresLayoutTemplateDlg_Impl::StartExecuteAsync(AsyncContext &rCtx)
+{
+    return SfxTabDialogController::runAsync(m_xDlg, rCtx.maEndDialogFn);
+}
+
+short AbstractSdModifyFieldDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+short AbstractSdSnapLineDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+short AbstractSdInsertLayerDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+short AbstractSdInsertPagesObjsDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+short AbstractMorphDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+short AbstractSdStartPresDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+short AbstractSdPresLayoutDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+short SdAbstractSfxDialog_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+short AbstractSdVectorizeDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+short AbstractSdPublishingDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+short AbstractHeaderFooterDialog_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+bool AbstractHeaderFooterDialog_Impl::StartExecuteAsync(AsyncContext &rCtx)
+{
+    return weld::DialogController::runAsync(m_xDlg, rCtx.maEndDialogFn);
+}
+
+BitmapEx AbstractHeaderFooterDialog_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString AbstractHeaderFooterDialog_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
+}
+
+short AbstractBulletDialog_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+bool AbstractBulletDialog_Impl::StartExecuteAsync(AsyncContext &rCtx)
+{
+    return SfxTabDialogController::runAsync(m_xDlg, rCtx.maEndDialogFn);
+}
+
+AbstractBreakDlg_Impl::AbstractBreakDlg_Impl(std::unique_ptr<::sd::BreakDlg> pDlg)
+    : m_xDlg(std::move(pDlg))
+{
+}
+
+short AbstractBreakDlg_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+BitmapEx AbstractBreakDlg_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString AbstractBreakDlg_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
+}
+
+AbstractMasterLayoutDialog_Impl::AbstractMasterLayoutDialog_Impl(std::unique_ptr<::sd::MasterLayoutDialog> pDlg)
+    : m_xDlg(std::move(pDlg))
+{
+}
+
+short AbstractMasterLayoutDialog_Impl::Execute()
+{
+    return m_xDlg->run();
+}
+
+BitmapEx AbstractMasterLayoutDialog_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString AbstractMasterLayoutDialog_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
+}
 
 void AbstractCopyDlg_Impl::GetAttr( SfxItemSet& rOutAttrs )
 {
-    pDlg->GetAttr( rOutAttrs );
+    m_xDlg->GetAttr( rOutAttrs );
+}
+
+BitmapEx AbstractCopyDlg_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString AbstractCopyDlg_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
 }
 
 bool AbstractSdCustomShowDlg_Impl::IsModified() const
 {
-    return pDlg->IsModified();
+    return m_xDlg->IsModified();
 }
 
 bool AbstractSdCustomShowDlg_Impl::IsCustomShow() const
 {
-    return pDlg->IsCustomShow();
+    return m_xDlg->IsCustomShow();
 }
 
-void SdAbstractTabDialog_Impl::SetCurPageId( sal_uInt16 nId )
+BitmapEx AbstractSdCustomShowDlg_Impl::createScreenshot() const
 {
-    pDlg->SetCurPageId( nId );
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
 }
 
-void SdAbstractTabDialog_Impl::SetCurPageId( const OString& rName )
+OString AbstractSdCustomShowDlg_Impl::GetScreenshotId() const
 {
-    pDlg->SetCurPageId( rName );
+    return m_xDlg->get_help_id();
 }
 
-const SfxItemSet* SdAbstractTabDialog_Impl::GetOutputItemSet() const
+short SdAbstractTabController_Impl::Execute()
 {
-    return pDlg->GetOutputItemSet();
+    return m_xDlg->run();
 }
 
-const sal_uInt16* SdAbstractTabDialog_Impl::GetInputRanges(const SfxItemPool& pItem )
+void SdAbstractTabController_Impl::SetCurPageId( const OString &rName )
 {
-    return pDlg->GetInputRanges( pItem );
+    m_xDlg->SetCurPageId( rName );
 }
 
-void SdAbstractTabDialog_Impl::SetInputSet( const SfxItemSet* pInSet )
+const SfxItemSet* SdAbstractTabController_Impl::GetOutputItemSet() const
 {
-     pDlg->SetInputSet( pInSet );
+    return m_xDlg->GetOutputItemSet();
+}
+
+const sal_uInt16* SdAbstractTabController_Impl::GetInputRanges(const SfxItemPool& pItem )
+{
+    return m_xDlg->GetInputRanges( pItem );
+}
+
+void SdAbstractTabController_Impl::SetInputSet( const SfxItemSet* pInSet )
+{
+     m_xDlg->SetInputSet( pInSet );
+}
+
+bool SdAbstractTabController_Impl::StartExecuteAsync(AsyncContext &rCtx)
+{
+    return SfxTabDialogController::runAsync(m_xDlg, rCtx.maEndDialogFn);
 }
 
 //From class Window.
-void SdAbstractTabDialog_Impl::SetText( const OUString& rStr )
+void SdAbstractTabController_Impl::SetText( const OUString& rStr )
 {
-    pDlg->SetText( rStr );
+    m_xDlg->set_title(rStr);
 }
 
-OUString SdAbstractTabDialog_Impl::GetText() const
+BitmapEx SdAbstractTabController_Impl::createScreenshot() const
 {
-    return pDlg->GetText();
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
 }
 
-void AbstractBulletDialog_Impl::SetCurPageId( sal_uInt16 nId )
+OString SdAbstractTabController_Impl::GetScreenshotId() const
 {
-    static_cast< ::sd::OutlineBulletDlg*>(pDlg.get())->SetCurPageId( nId );
+    return m_xDlg->get_help_id();
 }
 
 void AbstractBulletDialog_Impl::SetCurPageId( const OString& rName )
 {
-    static_cast< ::sd::OutlineBulletDlg*>(pDlg.get())->SetCurPageId( rName );
+    m_xDlg->SetCurPageId( rName );
 }
 
 const SfxItemSet* AbstractBulletDialog_Impl::GetOutputItemSet() const
 {
-    return static_cast< ::sd::OutlineBulletDlg*>(pDlg.get())->GetOutputItemSet();
+    return static_cast< ::sd::OutlineBulletDlg*>(m_xDlg.get())->GetBulletOutputItemSet();
 }
 
 const sal_uInt16* AbstractBulletDialog_Impl::GetInputRanges(const SfxItemPool& pItem )
 {
-    return static_cast< ::sd::OutlineBulletDlg*>(pDlg.get())->GetInputRanges( pItem );
+    return m_xDlg->GetInputRanges(pItem);
 }
 
 void AbstractBulletDialog_Impl::SetInputSet( const SfxItemSet* pInSet )
 {
-     static_cast< ::sd::OutlineBulletDlg*>(pDlg.get())->SetInputSet( pInSet );
+     m_xDlg->SetInputSet(pInSet);
 }
 
 void AbstractBulletDialog_Impl::SetText( const OUString& rStr )
 {
-    static_cast< ::sd::OutlineBulletDlg*>(pDlg.get())->SetText( rStr );
+    m_xDlg->set_title(rStr);
 }
 
-OUString AbstractBulletDialog_Impl::GetText() const
+BitmapEx AbstractBulletDialog_Impl::createScreenshot() const
 {
-    return static_cast< ::sd::OutlineBulletDlg*>(pDlg.get())->GetText();
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
 }
 
-void SdPresLayoutTemplateDlg_Impl::SetCurPageId( sal_uInt16 nId )
+OString AbstractBulletDialog_Impl::GetScreenshotId() const
 {
-    pDlg->SetCurPageId( nId );
+    return m_xDlg->get_help_id();
 }
 
 void SdPresLayoutTemplateDlg_Impl::SetCurPageId( const OString& rName )
 {
-    pDlg->SetCurPageId( rName );
+    m_xDlg->SetCurPageId( rName );
 }
 
 const SfxItemSet* SdPresLayoutTemplateDlg_Impl::GetOutputItemSet() const
 {
-    return pDlg->GetOutputItemSet();
+    return m_xDlg->GetOutputItemSet();
 }
 
 const sal_uInt16* SdPresLayoutTemplateDlg_Impl::GetInputRanges(const SfxItemPool& pItem )
 {
-    return pDlg->GetInputRanges( pItem );
+    return m_xDlg->GetInputRanges( pItem );
 }
 
 void SdPresLayoutTemplateDlg_Impl::SetInputSet( const SfxItemSet* pInSet )
 {
-     pDlg->SetInputSet( pInSet );
+     m_xDlg->SetInputSet( pInSet );
 }
 
 void SdPresLayoutTemplateDlg_Impl::SetText( const OUString& rStr )
 {
-    pDlg->SetText( rStr );
+    m_xDlg->set_title(rStr);
 }
 
-OUString SdPresLayoutTemplateDlg_Impl::GetText() const
+BitmapEx SdPresLayoutTemplateDlg_Impl::createScreenshot() const
 {
-    return pDlg->GetText();
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString SdPresLayoutTemplateDlg_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
 }
 
 SvxFieldData* AbstractSdModifyFieldDlg_Impl::GetField()
 {
-    return pDlg->GetField();
+    return m_xDlg->GetField();
 }
 
 SfxItemSet AbstractSdModifyFieldDlg_Impl::GetItemSet()
 {
-    return pDlg->GetItemSet();
+    return m_xDlg->GetItemSet();
+}
+
+BitmapEx AbstractSdModifyFieldDlg_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString AbstractSdModifyFieldDlg_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
 }
 
 void AbstractSdSnapLineDlg_Impl::GetAttr(SfxItemSet& rOutAttrs)
 {
-    pDlg->GetAttr(rOutAttrs);
+    m_xDlg->GetAttr(rOutAttrs);
 }
 
 void AbstractSdSnapLineDlg_Impl::HideRadioGroup()
 {
-    pDlg->HideRadioGroup();
+    m_xDlg->HideRadioGroup();
 }
 
 void AbstractSdSnapLineDlg_Impl::HideDeleteBtn()
 {
-    pDlg->HideDeleteBtn();
+    m_xDlg->HideDeleteBtn();
 }
 
 void AbstractSdSnapLineDlg_Impl::SetInputFields(bool bEnableX, bool bEnableY)
 {
-    pDlg->SetInputFields(bEnableX, bEnableY);
+    m_xDlg->SetInputFields(bEnableX, bEnableY);
 }
 
 void AbstractSdSnapLineDlg_Impl::SetText( const OUString& rStr )
 {
-    pDlg->SetText( rStr );
+    m_xDlg->set_title(rStr);
+}
+
+BitmapEx AbstractSdSnapLineDlg_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString AbstractSdSnapLineDlg_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
 }
 
 void AbstractSdInsertLayerDlg_Impl::GetAttr( SfxItemSet& rOutAttrs )
 {
-    pDlg->GetAttr( rOutAttrs );
+    m_xDlg->GetAttr(rOutAttrs);
 }
 
 void AbstractSdInsertLayerDlg_Impl::SetHelpId( const OString& rHelpId )
 {
-    pDlg->SetHelpId( rHelpId );
+    m_xDlg->set_help_id(rHelpId);
+}
+
+BitmapEx AbstractSdInsertLayerDlg_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString AbstractSdInsertLayerDlg_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
 }
 
 std::vector<OUString> AbstractSdInsertPagesObjsDlg_Impl::GetList(const sal_uInt16 nType)
 {
-    return pDlg->GetList(nType);
+    return m_xDlg->GetList(nType);
 }
 
 bool AbstractSdInsertPagesObjsDlg_Impl::IsLink()
 {
-    return pDlg->IsLink();
+    return m_xDlg->IsLink();
 }
 
 bool AbstractSdInsertPagesObjsDlg_Impl::IsRemoveUnnessesaryMasterPages() const
 {
-    return pDlg->IsRemoveUnnessesaryMasterPages();
+    return m_xDlg->IsRemoveUnnessesaryMasterPages();
+}
+
+BitmapEx AbstractSdInsertPagesObjsDlg_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString AbstractSdInsertPagesObjsDlg_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
 }
 
 void AbstractMorphDlg_Impl::SaveSettings() const
 {
-    pDlg->SaveSettings();
+    m_xDlg->SaveSettings();
 }
 
 sal_uInt16 AbstractMorphDlg_Impl::GetFadeSteps() const
 {
-    return pDlg->GetFadeSteps();
+    return m_xDlg->GetFadeSteps();
 }
 
 bool AbstractMorphDlg_Impl::IsAttributeFade() const
 {
-    return pDlg->IsAttributeFade();
+    return m_xDlg->IsAttributeFade();
 }
 
 bool AbstractMorphDlg_Impl::IsOrientationFade() const
 {
-    return pDlg->IsOrientationFade();
+    return m_xDlg->IsOrientationFade();
+}
+
+BitmapEx AbstractMorphDlg_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString AbstractMorphDlg_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
 }
 
 void AbstractSdStartPresDlg_Impl::GetAttr( SfxItemSet& rOutAttrs )
 {
-    pDlg->GetAttr( rOutAttrs );
+    m_xDlg->GetAttr(rOutAttrs);
+}
+
+BitmapEx AbstractSdStartPresDlg_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString AbstractSdStartPresDlg_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
 }
 
 void AbstractSdPresLayoutDlg_Impl::GetAttr( SfxItemSet& rOutAttrs )
 {
-    pDlg->GetAttr( rOutAttrs );
+    m_xDlg->GetAttr(rOutAttrs);
+}
+
+BitmapEx AbstractSdPresLayoutDlg_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString AbstractSdPresLayoutDlg_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
 }
 
 const SfxItemSet* SdAbstractSfxDialog_Impl::GetOutputItemSet() const
 {
-    return pDlg->GetOutputItemSet();
+    return m_xDlg->GetOutputItemSet();
 }
 
 void SdAbstractSfxDialog_Impl::SetText( const OUString& rStr )
 {
-    pDlg->SetText( rStr );
-}
-
-OUString SdAbstractSfxDialog_Impl::GetText() const
-{
-    return pDlg->GetText();
+    m_xDlg->set_title(rStr);
 }
 
 const GDIMetaFile& AbstractSdVectorizeDlg_Impl::GetGDIMetaFile() const
 {
-    return pDlg->GetGDIMetaFile();
+    return m_xDlg->GetGDIMetaFile();
+}
+
+BitmapEx AbstractSdVectorizeDlg_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString AbstractSdVectorizeDlg_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
 }
 
 void AbstractSdPublishingDlg_Impl::GetParameterSequence( css::uno::Sequence< css::beans::PropertyValue >& rParams )
 {
-    pDlg->GetParameterSequence( rParams );
+    m_xDlg->GetParameterSequence( rParams );
+}
+
+BitmapEx AbstractSdPublishingDlg_Impl::createScreenshot() const
+{
+    VclPtr<VirtualDevice> xDialogSurface(m_xDlg->getDialog()->screenshot());
+    return xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel());
+}
+
+OString AbstractSdPublishingDlg_Impl::GetScreenshotId() const
+{
+    return m_xDlg->get_help_id();
 }
 
 //-------------- SdAbstractDialogFactory implementation--------------
 
+VclPtr<AbstractSvxBulletAndPositionDlg> SdAbstractDialogFactory_Impl::CreateSvxBulletAndPositionDlg(weld::Window* pParent, const SfxItemSet* pAttr, ::sd::View* pView)
+{
+    return VclPtr<AbstractSvxBulletAndPositionDlg_Impl>::Create(std::make_unique<SvxBulletAndPositionDlg>(pParent, *pAttr, pView));
+}
+
 VclPtr<VclAbstractDialog> SdAbstractDialogFactory_Impl::CreateBreakDlg(
-                                            vcl::Window* pParent,
+                                            weld::Window* pParent,
                                             ::sd::DrawView* pDrView,
                                             ::sd::DrawDocShell* pShell,
                                             sal_uLong nSumActionCount,
                                             sal_uLong nObjCount )
 {
-    return VclPtr<SdVclAbstractDialog_Impl>::Create( VclPtr<::sd::BreakDlg>::Create( pParent, pDrView, pShell, nSumActionCount, nObjCount ) );
+    return VclPtr<AbstractBreakDlg_Impl>::Create(std::make_unique<::sd::BreakDlg>(pParent, pDrView, pShell, nSumActionCount, nObjCount));
 }
 
-VclPtr<AbstractCopyDlg> SdAbstractDialogFactory_Impl::CreateCopyDlg(vcl::Window* pParent,
+VclPtr<AbstractCopyDlg> SdAbstractDialogFactory_Impl::CreateCopyDlg(weld::Window* pParent,
                                             const SfxItemSet& rInAttrs,
                                             ::sd::View* pView )
 {
-    return VclPtr<AbstractCopyDlg_Impl>::Create( VclPtr<::sd::CopyDlg>::Create( pParent, rInAttrs, pView ) );
+    return VclPtr<AbstractCopyDlg_Impl>::Create(std::make_unique<::sd::CopyDlg>(pParent, rInAttrs, pView));
 }
 
-VclPtr<AbstractSdCustomShowDlg> SdAbstractDialogFactory_Impl::CreateSdCustomShowDlg(vcl::Window* pParent, SdDrawDocument& rDrawDoc )
+VclPtr<AbstractSdCustomShowDlg> SdAbstractDialogFactory_Impl::CreateSdCustomShowDlg(weld::Window* pParent, SdDrawDocument& rDrawDoc )
 {
-    return VclPtr<AbstractSdCustomShowDlg_Impl>::Create( VclPtr<SdCustomShowDlg>::Create(pParent, rDrawDoc) );
+    return VclPtr<AbstractSdCustomShowDlg_Impl>::Create(std::make_unique<SdCustomShowDlg>(pParent, rDrawDoc));
 }
 
-VclPtr<SfxAbstractTabDialog>  SdAbstractDialogFactory_Impl::CreateSdTabCharDialog(vcl::Window* pParent, const SfxItemSet* pAttr, SfxObjectShell* pDocShell )
+VclPtr<SfxAbstractTabDialog>  SdAbstractDialogFactory_Impl::CreateSdTabCharDialog(weld::Window* pParent, const SfxItemSet* pAttr, SfxObjectShell* pDocShell)
 {
-    return VclPtr<SdAbstractTabDialog_Impl>::Create( VclPtr<SdCharDlg>::Create(pParent, pAttr, pDocShell) );
+    return VclPtr<SdAbstractTabController_Impl>::Create(std::make_shared<SdCharDlg>(pParent, pAttr, pDocShell));
 }
 
-VclPtr<SfxAbstractTabDialog>  SdAbstractDialogFactory_Impl::CreateSdTabPageDialog(vcl::Window* pParent, const SfxItemSet* pAttr, SfxObjectShell* pDocShell, bool bAreaPage )
+VclPtr<SfxAbstractTabDialog>  SdAbstractDialogFactory_Impl::CreateSdTabPageDialog(weld::Window* pParent, const SfxItemSet* pAttr, SfxObjectShell* pDocShell, bool bAreaPage, bool bIsImpressDoc )
 {
-    return VclPtr<SdAbstractTabDialog_Impl>::Create( VclPtr<SdPageDlg>::Create( pDocShell, pParent, pAttr, bAreaPage ) );
+    return VclPtr<SdAbstractTabController_Impl>::Create(std::make_shared<SdPageDlg>(pDocShell, pParent, pAttr, bAreaPage, bIsImpressDoc));
 }
 
-VclPtr<AbstractSdModifyFieldDlg> SdAbstractDialogFactory_Impl::CreateSdModifyFieldDlg( vcl::Window* pParent, const SvxFieldData* pInField, const SfxItemSet& rSet )
+VclPtr<AbstractSdModifyFieldDlg> SdAbstractDialogFactory_Impl::CreateSdModifyFieldDlg(weld::Window* pParent, const SvxFieldData* pInField, const SfxItemSet& rSet)
 {
-    return VclPtr<AbstractSdModifyFieldDlg_Impl>::Create( VclPtr<SdModifyFieldDlg>::Create( pParent, pInField, rSet ) );
+    return VclPtr<AbstractSdModifyFieldDlg_Impl>::Create(std::make_unique<SdModifyFieldDlg>(pParent, pInField, rSet));
 }
 
-VclPtr<AbstractSdSnapLineDlg> SdAbstractDialogFactory_Impl::CreateSdSnapLineDlg( vcl::Window* pParent, const SfxItemSet& rInAttrs, ::sd::View* pView)
+VclPtr<AbstractSdSnapLineDlg> SdAbstractDialogFactory_Impl::CreateSdSnapLineDlg(weld::Window* pParent, const SfxItemSet& rInAttrs, ::sd::View* pView)
 {
-    return VclPtr<AbstractSdSnapLineDlg_Impl>::Create( VclPtr<SdSnapLineDlg>::Create( pParent, rInAttrs, pView ) );
+    return VclPtr<AbstractSdSnapLineDlg_Impl>::Create(std::make_unique<SdSnapLineDlg>(pParent, rInAttrs, pView));
 }
 
-VclPtr<AbstractSdInsertLayerDlg> SdAbstractDialogFactory_Impl::CreateSdInsertLayerDlg( vcl::Window* pParent, const SfxItemSet& rInAttrs, bool bDeletable, const OUString& aStr )
+VclPtr<AbstractSdInsertLayerDlg> SdAbstractDialogFactory_Impl::CreateSdInsertLayerDlg(weld::Window* pParent, const SfxItemSet& rInAttrs, bool bDeletable, const OUString& aStr)
 {
-    return VclPtr<AbstractSdInsertLayerDlg_Impl>::Create( VclPtr<SdInsertLayerDlg>::Create( pParent, rInAttrs, bDeletable, aStr ) );
+    return VclPtr<AbstractSdInsertLayerDlg_Impl>::Create(std::make_unique<SdInsertLayerDlg>(pParent, rInAttrs, bDeletable, aStr));
 }
 
-VclPtr<AbstractSdInsertPagesObjsDlg> SdAbstractDialogFactory_Impl::CreateSdInsertPagesObjsDlg( vcl::Window* pParent, const SdDrawDocument* pDoc, SfxMedium* pSfxMedium, const OUString& rFileName )
+VclPtr<AbstractSdInsertPagesObjsDlg> SdAbstractDialogFactory_Impl::CreateSdInsertPagesObjsDlg(weld::Window* pParent, const SdDrawDocument* pDoc, SfxMedium* pSfxMedium, const OUString& rFileName)
 {
-    return VclPtr<AbstractSdInsertPagesObjsDlg_Impl>::Create( VclPtr<SdInsertPagesObjsDlg>::Create( pParent, pDoc, pSfxMedium, rFileName ) );
+    return VclPtr<AbstractSdInsertPagesObjsDlg_Impl>::Create(std::make_unique<SdInsertPagesObjsDlg>(pParent, pDoc, pSfxMedium, rFileName));
 }
 
-VclPtr<AbstractMorphDlg> SdAbstractDialogFactory_Impl::CreateMorphDlg( vcl::Window* pParent, const SdrObject* pObj1, const SdrObject* pObj2)
+VclPtr<AbstractMorphDlg> SdAbstractDialogFactory_Impl::CreateMorphDlg(weld::Window* pParent, const SdrObject* pObj1, const SdrObject* pObj2)
 {
-    return VclPtr<AbstractMorphDlg_Impl>::Create( VclPtr<::sd::MorphDlg>::Create( pParent, pObj1, pObj2 ) );
+    return VclPtr<AbstractMorphDlg_Impl>::Create(std::make_unique<::sd::MorphDlg>(pParent, pObj1, pObj2));
 }
 
-VclPtr<SfxAbstractTabDialog>  SdAbstractDialogFactory_Impl::CreateSdOutlineBulletTabDlg(vcl::Window* pParent, const SfxItemSet* pAttr, ::sd::View* pView )
+VclPtr<SfxAbstractTabDialog>  SdAbstractDialogFactory_Impl::CreateSdOutlineBulletTabDlg(weld::Window* pParent, const SfxItemSet* pAttr, ::sd::View* pView)
 {
-    return VclPtr<AbstractBulletDialog_Impl>::Create( VclPtr<::sd::OutlineBulletDlg>::Create( pParent, pAttr, pView ) );
+    return VclPtr<AbstractBulletDialog_Impl>::Create(std::make_shared<::sd::OutlineBulletDlg>(pParent, pAttr, pView));
 }
 
-VclPtr<SfxAbstractTabDialog> SdAbstractDialogFactory_Impl::CreateSdParagraphTabDlg(vcl::Window* pParent, const SfxItemSet* pAttr )
+VclPtr<SfxAbstractTabDialog> SdAbstractDialogFactory_Impl::CreateSdParagraphTabDlg(weld::Window* pParent, const SfxItemSet* pAttr )
 {
-    return VclPtr<SdAbstractTabDialog_Impl>::Create( VclPtr<SdParagraphDlg>::Create( pParent, pAttr ) );
+    return VclPtr<SdAbstractTabController_Impl>::Create(std::make_shared<SdParagraphDlg>(pParent, pAttr));
 }
 
-VclPtr<AbstractSdStartPresDlg> SdAbstractDialogFactory_Impl::CreateSdStartPresentationDlg( vcl::Window* pParent, const SfxItemSet& rInAttrs,
-                                                                                     const std::vector<OUString> &rPageNames, SdCustomShowList* pCSList )
+VclPtr<AbstractSdStartPresDlg> SdAbstractDialogFactory_Impl::CreateSdStartPresentationDlg(weld::Window* pParent,
+        const SfxItemSet& rInAttrs, const std::vector<OUString> &rPageNames, SdCustomShowList* pCSList)
 {
-    return VclPtr<AbstractSdStartPresDlg_Impl>::Create( VclPtr<SdStartPresentationDlg>::Create( pParent, rInAttrs, rPageNames, pCSList ) );
+    return VclPtr<AbstractSdStartPresDlg_Impl>::Create(std::make_unique<SdStartPresentationDlg>(pParent, rInAttrs, rPageNames, pCSList));
 }
 
-VclPtr<VclAbstractDialog> SdAbstractDialogFactory_Impl::CreateRemoteDialog( vcl::Window* pParent )
+VclPtr<VclAbstractDialog> SdAbstractDialogFactory_Impl::CreateRemoteDialog(weld::Window* pParent)
 {
-     return VclPtr<SdVclAbstractDialog_Impl>::Create( VclPtr<::sd::RemoteDialog>::Create( pParent ) );
+     return VclPtr<SdAbstractGenericDialog_Impl>::Create(std::make_unique<::sd::RemoteDialog>(pParent));
 }
 
-VclPtr<SfxAbstractTabDialog>  SdAbstractDialogFactory_Impl::CreateSdPresLayoutTemplateDlg( SfxObjectShell* pDocSh, vcl::Window* pParent, sal_uInt16 nDlgId, SfxStyleSheetBase& rStyleBase, PresentationObjects ePO, SfxStyleSheetBasePool* pSSPool )
+VclPtr<SfxAbstractTabDialog>  SdAbstractDialogFactory_Impl::CreateSdPresLayoutTemplateDlg(SfxObjectShell* pDocSh, weld::Window* pParent, bool bBackgroundDlg, SfxStyleSheetBase& rStyleBase, PresentationObjects ePO, SfxStyleSheetBasePool* pSSPool)
 {
-    return VclPtr<SdPresLayoutTemplateDlg_Impl>::Create( VclPtr<SdPresLayoutTemplateDlg>::Create( pDocSh, pParent, nDlgId, rStyleBase, ePO, pSSPool ) );
+    return VclPtr<SdPresLayoutTemplateDlg_Impl>::Create(std::make_shared<SdPresLayoutTemplateDlg>(pDocSh, pParent, bBackgroundDlg, rStyleBase, ePO, pSSPool));
 }
 
-VclPtr<AbstractSdPresLayoutDlg>  SdAbstractDialogFactory_Impl::CreateSdPresLayoutDlg(  ::sd::DrawDocShell* pDocShell, const SfxItemSet& rInAttrs)
+VclPtr<AbstractSdPresLayoutDlg> SdAbstractDialogFactory_Impl::CreateSdPresLayoutDlg(weld::Window* pParent, ::sd::DrawDocShell* pDocShell, const SfxItemSet& rInAttrs)
 {
-    return VclPtr<AbstractSdPresLayoutDlg_Impl>::Create( VclPtr<SdPresLayoutDlg>::Create( pDocShell, nullptr, rInAttrs ) );
+    return VclPtr<AbstractSdPresLayoutDlg_Impl>::Create(std::make_unique<SdPresLayoutDlg>(pDocShell, pParent, rInAttrs));
 }
 
-VclPtr<SfxAbstractTabDialog>  SdAbstractDialogFactory_Impl::CreateSdTabTemplateDlg(vcl::Window* pParent, const SfxObjectShell* pDocShell, SfxStyleSheetBase& rStyleBase, SdrModel* pModel, SdrView* pView )
+VclPtr<SfxAbstractTabDialog>  SdAbstractDialogFactory_Impl::CreateSdTabTemplateDlg(weld::Window* pParent, const SfxObjectShell* pDocShell, SfxStyleSheetBase& rStyleBase, SdrModel* pModel, SdrView* pView)
 {
-    return VclPtr<SdAbstractTabDialog_Impl>::Create( VclPtr<SdTabTemplateDlg>::Create( pParent, pDocShell, rStyleBase, pModel, pView ) );
+    return VclPtr<SdAbstractTabController_Impl>::Create(std::make_shared<SdTabTemplateDlg>(pParent, pDocShell, rStyleBase, pModel, pView));
 }
 
-VclPtr<SfxAbstractDialog> SdAbstractDialogFactory_Impl::CreatSdActionDialog(vcl::Window* pParent, const SfxItemSet* pAttr, ::sd::View* pView )
+VclPtr<SfxAbstractDialog> SdAbstractDialogFactory_Impl::CreatSdActionDialog(weld::Window* pParent, const SfxItemSet* pAttr, ::sd::View* pView )
 {
-    return VclPtr<SdAbstractSfxDialog_Impl>::Create( VclPtr<SdActionDlg>::Create( pParent, pAttr, pView ) );
+    return VclPtr<SdAbstractSfxDialog_Impl>::Create(std::make_unique<SdActionDlg>(pParent, pAttr, pView));
 }
 
-VclPtr<AbstractSdVectorizeDlg>  SdAbstractDialogFactory_Impl::CreateSdVectorizeDlg( vcl::Window* pParent, const Bitmap& rBmp, ::sd::DrawDocShell* pDocShell )
+VclPtr<AbstractSdVectorizeDlg>  SdAbstractDialogFactory_Impl::CreateSdVectorizeDlg(weld::Window* pParent, const Bitmap& rBmp, ::sd::DrawDocShell* pDocShell)
 {
-    return VclPtr<AbstractSdVectorizeDlg_Impl>::Create( VclPtr<SdVectorizeDlg>::Create( pParent, rBmp, pDocShell ) );
+    return VclPtr<AbstractSdVectorizeDlg_Impl>::Create(std::make_unique<SdVectorizeDlg>(pParent, rBmp, pDocShell));
 }
 
-VclPtr<AbstractSdPublishingDlg>  SdAbstractDialogFactory_Impl::CreateSdPublishingDlg( vcl::Window* pParent, DocumentType eDocType)
+VclPtr<AbstractSdPublishingDlg>  SdAbstractDialogFactory_Impl::CreateSdPublishingDlg(weld::Window* pParent, DocumentType eDocType)
 {
-    return VclPtr<AbstractSdPublishingDlg_Impl>::Create( VclPtr<SdPublishingDlg>::Create( pParent, eDocType ) );
+    return VclPtr<AbstractSdPublishingDlg_Impl>::Create(std::make_unique<SdPublishingDlg>(pParent, eDocType));
 }
 
 // Factories for TabPages
@@ -432,21 +725,20 @@ CreateTabPage SdAbstractDialogFactory_Impl::GetSdOptionsSnapTabPageCreatorFunc()
     return SdTpOptionsSnap::Create;
 }
 
-VclPtr<VclAbstractDialog> SdAbstractDialogFactory_Impl::CreateMasterLayoutDialog( vcl::Window* pParent,
-    SdDrawDocument* pDoc, SdPage* pCurrentPage )
+VclPtr<VclAbstractDialog> SdAbstractDialogFactory_Impl::CreateMasterLayoutDialog(weld::Window* pParent, SdDrawDocument* pDoc, SdPage* pCurrentPage)
 {
-  return VclPtr<SdVclAbstractDialog_Impl>::Create( VclPtr<::sd::MasterLayoutDialog>::Create( pParent, pDoc, pCurrentPage ));
+  return VclPtr<AbstractMasterLayoutDialog_Impl>::Create(std::make_unique<::sd::MasterLayoutDialog>(pParent, pDoc, pCurrentPage));
 }
 
-VclPtr<AbstractHeaderFooterDialog> SdAbstractDialogFactory_Impl::CreateHeaderFooterDialog( sd::ViewShell* pViewShell,
-  vcl::Window* pParent, SdDrawDocument* pDoc, SdPage* pCurrentPage )
+VclPtr<AbstractHeaderFooterDialog> SdAbstractDialogFactory_Impl::CreateHeaderFooterDialog(sd::ViewShell* pViewShell,
+    weld::Window* pParent, SdDrawDocument* pDoc, SdPage* pCurrentPage)
 {
-    return VclPtr<AbstractHeaderFooterDialog_Impl>::Create( VclPtr<::sd::HeaderFooterDialog>::Create( pViewShell, pParent, pDoc, pCurrentPage ));
+    return VclPtr<AbstractHeaderFooterDialog_Impl>::Create(std::make_shared<::sd::HeaderFooterDialog>(pViewShell, pParent, pDoc, pCurrentPage));
 }
 
-VclPtr<VclAbstractDialog> SdAbstractDialogFactory_Impl::CreateSdPhotoAlbumDialog( vcl::Window* pParent, SdDrawDocument* pDoc )
+VclPtr<VclAbstractDialog> SdAbstractDialogFactory_Impl::CreateSdPhotoAlbumDialog(weld::Window* pParent, SdDrawDocument* pDoc)
 {
-    return VclPtr<SdVclAbstractDialog_Impl>::Create( VclPtr<::sd::SdPhotoAlbumDialog>::Create( pParent, pDoc ) );
+    return VclPtr<SdAbstractGenericDialog_Impl>::Create(std::make_unique<sd::SdPhotoAlbumDialog>(pParent, pDoc));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

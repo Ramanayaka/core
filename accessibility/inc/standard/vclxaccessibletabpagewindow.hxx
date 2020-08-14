@@ -17,28 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETABPAGEWINDOW_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETABPAGEWINDOW_HXX
+#pragma once
 
 #include <toolkit/awt/vclxaccessiblecomponent.hxx>
+#include <vcl/tabctrl.hxx>
+#include <vcl/tabpage.hxx>
 #include <vcl/vclptr.hxx>
 
 
-class TabControl;
-class TabPage;
 
 
-//  class VCLXAccessibleTabPageWindow
-
-
-class VCLXAccessibleTabPageWindow : public VCLXAccessibleComponent
+class VCLXAccessibleTabPageWindow final : public VCLXAccessibleComponent
 {
 private:
     VclPtr<TabControl>      m_pTabControl;
     VclPtr<TabPage>         m_pTabPage;
     sal_uInt16              m_nPageId;
 
-protected:
     // OCommonAccessibleComponent
     virtual css::awt::Rectangle implGetBounds(  ) override;
 
@@ -47,7 +42,6 @@ protected:
 
 public:
     VCLXAccessibleTabPageWindow( VCLXWindow* pVCLXWindow );
-    virtual ~VCLXAccessibleTabPageWindow() override;
 
     // XAccessibleContext
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleParent(  ) override;
@@ -55,6 +49,5 @@ public:
 };
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETABPAGEWINDOW_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

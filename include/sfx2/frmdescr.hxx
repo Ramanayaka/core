@@ -23,16 +23,8 @@
 #include <rtl/ustring.hxx>
 #include <sal/config.h>
 #include <sfx2/dllapi.h>
-#include <sfx2/sfxsids.hrc>
-#include <svl/poolitem.hxx>
 #include <tools/gen.hxx>
 #include <tools/urlobj.hxx>
-
-class SvStream;
-struct SfxFrameDescriptor_Impl;
-class SfxFrameDescriptor;
-class Wallpaper;
-
 
 // The SfxFrame descriptors build a recursive structure, that covers all the
 // required data in-order to display the frame document.
@@ -51,23 +43,19 @@ enum class ScrollingMode
     Auto
 };
 
-#define SPACING_NOT_SET     -1L
 #define SIZE_NOT_SET        -1L
 
 class SfxItemSet;
-struct SfxFrameProperties;
 
 class SFX2_DLLPUBLIC SfxFrameDescriptor
 {
     INetURLObject           aURL;
-    INetURLObject           aActualURL;
     OUString                aName;
     Size                    aMargin;
     ScrollingMode           eScroll;
     bool                    bHasBorder;
     bool                    bHasBorderSet;
-    bool                    bResizeVertical;
-    std::unique_ptr< SfxFrameDescriptor_Impl > pImpl;
+    std::unique_ptr<SfxItemSet> m_pArgs;
 
 public:
                             SfxFrameDescriptor();
@@ -79,10 +67,6 @@ public:
                             { return aURL; }
     void                    SetURL( const OUString& rURL );
     void                    SetActualURL( const OUString& rURL );
-
-                            // Size
-    void                    SetResizable( bool bRes )
-                            { bResizeVertical = bRes; }
 
                             // FrameName
     const OUString&         GetName() const
@@ -99,8 +83,6 @@ public:
                             { return eScroll; }
     void                    SetScrollingMode( ScrollingMode eMode )
                             { eScroll = eMode; }
-
-    void                    SetWallpaper( const Wallpaper& rWallpaper );
 
                             // FrameBorder
     bool                    HasFrameBorder() const

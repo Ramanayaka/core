@@ -29,7 +29,6 @@
 
 class OutputDevice;
 class MetaAction;
-class MetaCommentAction;
 class SvStream;
 class Color;
 class BitmapEx;
@@ -38,10 +37,9 @@ namespace tools {
     class PolyPolygon;
 }
 class Gradient;
+struct ImplMetaReadData;
 
-
-#define GDI_METAFILE_END                ((size_t)0xFFFFFFFF)
-#define GDI_METAFILE_LABEL_NOTFOUND     ((size_t)0xFFFFFFFF)
+#define GDI_METAFILE_END                (size_t(0xFFFFFFFF))
 
 enum class MtfConversion
 {
@@ -53,10 +51,13 @@ enum class MtfConversion
 typedef Color (*ColorExchangeFnc)( const Color& rColor, const void* pColParam );
 typedef BitmapEx (*BmpExchangeFnc)( const BitmapEx& rBmpEx, const void* pBmpParam );
 
+VCL_DLLPUBLIC SvStream& ReadGDIMetaFile(SvStream& rIStm, GDIMetaFile& rGDIMetaFile, ImplMetaReadData* pReadData = nullptr);
+VCL_DLLPUBLIC SvStream& WriteGDIMetaFile( SvStream& rOStm, const GDIMetaFile& rGDIMetaFile );
+
 class VCL_DLLPUBLIC GDIMetaFile final
 {
 private:
-    ::std::vector< MetaAction* > m_aList;
+    ::std::vector< rtl::Reference<MetaAction> > m_aList;
     size_t          m_nCurrentActionElement;
 
     MapMode         m_aPrefMapMode;
@@ -109,7 +110,7 @@ public:
     bool            operator!=( const GDIMetaFile& rMtf ) const { return !( *this == rMtf ); }
 
     void            Clear();
-    bool            Mirror( BmpMirrorFlags nMirrorFlags );
+    void            Mirror( BmpMirrorFlags nMirrorFlags );
     void            Move( long nX, long nY );
     // additional Move method getting specifics how to handle MapMode( MapUnit::MapPixel )
     void            Move( long nX, long nY, long nDPIX, long nDPIY );
@@ -117,6 +118,8 @@ public:
     void            Scale( const Fraction& rScaleX, const Fraction& rScaleY );
     void            Rotate( long nAngle10 );
     void            Clip( const tools::Rectangle& );
+    bool            HasTransparentActions() const;
+
     /* get the bound rect of the contained actions
      * caveats:
      * - clip actions will limit the contained actions,
@@ -155,15 +158,14 @@ public:
 
     size_t          GetActionSize() const;
 
-    void            AddAction( MetaAction* pAction );
-    void            AddAction( MetaAction* pAction, size_t nPos );
-    void            RemoveAction( size_t nPos );
-    void            push_back( MetaAction* pAction );
+    void            AddAction(const rtl::Reference<MetaAction>& pAction);
+    void            AddAction(const rtl::Reference<MetaAction>& pAction, size_t nPos);
+    void            push_back(const rtl::Reference<MetaAction>& pAction);
     /**
      * @param pAction takes ownership
      * @param nAction the action to replace
      */
-    MetaAction*     ReplaceAction( MetaAction* pAction, size_t nAction );
+    void ReplaceAction( rtl::Reference<MetaAction> pAction, size_t nAction );
 
     MetaAction*     FirstAction();
     MetaAction*     NextAction();
@@ -187,8 +189,8 @@ public:
 
     // Stream-operators write (still) the old format
     // and read both the old and the new format
-    friend VCL_DLLPUBLIC SvStream& ReadGDIMetaFile( SvStream& rIStm, GDIMetaFile& rGDIMetaFile );
-    friend VCL_DLLPUBLIC SvStream& WriteGDIMetaFile( SvStream& rOStm, const GDIMetaFile& rGDIMetaFile );
+    friend VCL_DLLPUBLIC SvStream& ReadGDIMetaFile(SvStream& rIStm, GDIMetaFile& rGDIMetaFile, ImplMetaReadData* pReadData);
+    friend VCL_DLLPUBLIC SvStream& WriteGDIMetaFile(SvStream& rOStm, const GDIMetaFile& rGDIMetaFile);
 
     /// Creates an antialiased thumbnail
     bool            CreateThumbnail(BitmapEx& rBitmapEx,
@@ -197,6 +199,9 @@ public:
 
     void            UseCanvas( bool _bUseCanvas );
     bool            GetUseCanvas() const { return m_bUseCanvas; }
+
+    /// Dumps the meta actions as XML in metafile.xml.
+    void dumpAsXml(const char* pFileName = nullptr) const;
 };
 
 #endif // INCLUDED_VCL_GDIMTF_HXX

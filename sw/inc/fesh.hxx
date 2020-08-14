@@ -20,19 +20,17 @@
 #define INCLUDED_SW_INC_FESH_HXX
 
 #include <com/sun/star/text/RelOrientation.hpp>
-#include <com/sun/star/embed/XClassifiedObject.hpp>
-#include <com/sun/star/embed/XEmbeddedObject.hpp>
 
 #include <svx/svdobj.hxx>
 #include "swdllapi.h"
-#include <editsh.hxx>
-#include <flyenum.hxx>
+#include "editsh.hxx"
+#include "flyenum.hxx"
 
 #include <svx/svdtypes.hxx>
 #include <sot/formats.hxx>
 #include <rtl/ustring.hxx>
-#include <svtools/embedhlp.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <comphelper/interfacecontainer2.hxx>
 
 #include <vector>
 #include <memory>
@@ -47,18 +45,17 @@ class SwTableAutoFormat;
 class SwFrame;
 class SwFormatFrameSize;
 class SwFormatRowSplit;
-class SdrObject;
-class Color;
 class Outliner;
-class SotDataObject;
 class SwFrameFormat;
 struct SwSortOptions;
 class SdrMarkList;
+enum class RndStdIds;
 
 namespace svx
 {
     class ISdrObjectFilter;
 }
+namespace com::sun::star::embed { class XEmbeddedObject; }
 
 // return values for GetFrameType() and GetSelFrameType().
 //! values can be combined via logical or
@@ -153,8 +150,8 @@ enum class CurRectType
 struct SwGetCurColNumPara
 {
     const SwFrameFormat* pFrameFormat;
-    const SwRect* pPrtRect, *pFrameRect;
-    SwGetCurColNumPara() : pFrameFormat( nullptr ), pPrtRect( nullptr ), pFrameRect( nullptr ) {}
+    const SwRect* pPrtRect;
+    SwGetCurColNumPara() : pFrameFormat( nullptr ), pPrtRect( nullptr ) {}
 };
 
 enum class SwPasteSdr
@@ -198,13 +195,21 @@ enum class SwTab
 };
 
 class SdrDropMarkerOverlay;
+struct SwColCache;
 
 class SW_DLLPUBLIC SwFEShell : public SwEditShell
 {
 private:
+    mutable std::unique_ptr<SwColCache> m_pColumnCache;
+    mutable std::unique_ptr<SwColCache> m_pRowCache;
     std::unique_ptr<SdrDropMarkerOverlay> m_pChainTo;
     std::unique_ptr<SdrDropMarkerOverlay> m_pChainFrom;
     bool m_bCheckForOLEInCaption;
+    comphelper::OInterfaceContainerHelper2 m_aPasteListeners;
+    /// insert table rows or columns instead of overwriting the existing table cells
+    SwTable::SearchType m_eTableInsertMode;
+    /// table copied to the clipboard by the last private copy
+    bool m_bTableCopied;
 
     SAL_DLLPRIVATE SwFlyFrame *FindFlyFrame( const css::uno::Reference < css::embed::XEmbeddedObject >&  ) const;
 
@@ -223,12 +228,10 @@ private:
     SAL_DLLPRIVATE static sal_uInt16 GetCurColNum_( const SwFrame *pFrame,
                           SwGetCurColNumPara* pPara );
 
-    SAL_DLLPRIVATE static void GetTabCols_( SwTabCols &rToFill, const SwFrame *pBox );
-    SAL_DLLPRIVATE static void GetTabRows_( SwTabCols &rToFill, const SwFrame *pBox );
+    SAL_DLLPRIVATE void GetTabCols_(SwTabCols &rToFill, const SwFrame *pBox) const;
+    SAL_DLLPRIVATE void GetTabRows_(SwTabCols &rToFill, const SwFrame *pBox) const;
 
     SAL_DLLPRIVATE bool ImpEndCreate();
-
-    SAL_DLLPRIVATE static ObjCntType GetObjCntType( const SdrObject& rObj );
 
     /// Methods for copying of draw objects.
     SAL_DLLPRIVATE bool CopyDrawSel( SwFEShell* pDestShell, const Point& rSttPt,
@@ -252,11 +255,11 @@ public:
     virtual ~SwFEShell() override;
 
     /// Copy and Paste methods for internal clipboard.
-    bool Copy( SwDoc* pClpDoc, const OUString* pNewClpText = nullptr );
-    bool Paste( SwDoc* pClpDoc );
+    void Copy( SwDoc* pClpDoc, const OUString* pNewClpText = nullptr );
+    bool Paste( SwDoc* pClpDoc, bool bNestedTable = false );
 
     /// Paste some pages into another doc - used in mailmerge.
-    bool PastePages( SwFEShell& rToFill, sal_uInt16 nStartPage, sal_uInt16 nEndPage);
+    void PastePages( SwFEShell& rToFill, sal_uInt16 nStartPage, sal_uInt16 nEndPage);
 
     /// Copy-Method for Drag&Drop
     bool Copy( SwFEShell*, const Point& rSttPt, const Point& rInsPt,
@@ -267,7 +270,7 @@ public:
     /// Is selected frame within another frame?
     const SwFrameFormat* IsFlyInFly();
 
-    /** If an object as been given, exactly this object is selected
+    /** If an object has been given, exactly this object is selected
      (instead of searching over position). */
     bool SelectObj( const Point& rSelPt, sal_uInt8 nFlag = 0, SdrObject *pObj = nullptr );
     void DelSelectedObj();
@@ -305,13 +308,14 @@ public:
      Although (0,TRUE) is kind of a standard, the parameters are not defaulted here
      in order to force more conscious use especially of bStopAtFly. */
     FrameTypeFlags GetFrameType( const Point *pPt, bool bStopAtFly ) const;
-    FrameTypeFlags GetSelFrameType() const;               //Selektion (Drawing)
+    FrameTypeFlags GetSelFrameType() const;               //Selection (Drawing)
 
     /** check whether selected frame contains a control;
      * companion method to GetSelFrameType, used for preventing
      * drag&drop of controls into header */
     bool IsSelContainsControl() const;
 
+    static ObjCntType GetObjCntType( const SdrObject& rObj );
     ObjCntType GetObjCntType( const Point &rPt, SdrObject *&rpObj ) const;
     ObjCntType GetObjCntTypeOfSelection() const;
 
@@ -338,8 +342,8 @@ public:
     /// Set size of draw objects.
     void SetObjRect( const SwRect& rRect );
 
-    long BeginDrag( const Point *pPt, bool bProp );
-    long Drag     ( const Point *pPt, bool bProp );
+    void BeginDrag( const Point *pPt, bool bProp );
+    void Drag     ( const Point *pPt, bool bProp );
     void EndDrag  ();
     void BreakDrag();
 
@@ -379,19 +383,19 @@ public:
     bool GetFlyFrameAttr( SfxItemSet &rSet ) const;
     bool SetFlyFrameAttr( SfxItemSet &rSet );
     static SfxItemSet makeItemSetFromFormatAnchor(SfxItemPool& rPool, const SwFormatAnchor &rAnchor);
-    bool ResetFlyFrameAttr( const SfxItemSet* pSet );
+    void ResetFlyFrameAttr( const SfxItemSet* pSet );
     const SwFrameFormat *NewFlyFrame( const SfxItemSet &rSet, bool bAnchValid = false,
                          SwFrameFormat *pParent = nullptr );
     void SetFlyPos( const Point &rAbsPos);
     Point FindAnchorPos( const Point &rAbsPos, bool bMoveIt = false );
 
     /** Determines whether a frame or its environment is vertically formatted and right-to-left.
-     also determines, if frame or its environment is in mongolianlayout (vertical left-to-right)
+     also determines, if frame or its environment is in Mongolian layout (vertical left-to-right)
      - add output parameter <bVertL2R> */
     bool IsFrameVertical(const bool bEnvironment, bool& bRightToLeft, bool& bVertL2R) const;
 
     SwFrameFormat* GetSelectedFrameFormat() const; ///< If frame then frame style, else 0.
-    void SetFrameFormat( SwFrameFormat *pFormat, bool bKeepOrient = false, Point* pDocPos = nullptr ); ///< If frame then set frame style.
+    void SetFrameFormat( SwFrameFormat *pFormat, bool bKeepOrient = false, Point const * pDocPos = nullptr ); ///< If frame then set frame style.
 
     // Get selected fly
     SwFlyFrame* GetSelectedFlyFrame() const;
@@ -421,7 +425,7 @@ public:
     /// If a fly is selected, it draws cursor into the first ContentFrame.
     const SwFrameFormat* SelFlyGrabCursor();
 
-    /// Get FlyFrameFormat; fuer UI Macro Anbindung an Flys
+    /// Get FlyFrameFormat; for UI macro linkage at Flys
     const SwFrameFormat* GetFlyFrameFormat() const;
           SwFrameFormat* GetFlyFrameFormat();
 
@@ -458,7 +462,7 @@ public:
     OUString GetFlyName() const;
 
     /// get reference to OLE object (if there is one) for selected FlyFrame
-    const css::uno::Reference < css::embed::XEmbeddedObject > GetOleRef() const;
+    css::uno::Reference < css::embed::XEmbeddedObject > GetOleRef() const;
 
     /// Created unique name for frame.
     OUString GetUniqueGrfName() const;
@@ -491,7 +495,7 @@ public:
 
     /// Attention: Ambiguities if multiple selections.
     bool GetObjAttr( SfxItemSet &rSet ) const;
-    bool SetObjAttr( const SfxItemSet &rSet );
+    void SetObjAttr( const SfxItemSet &rSet );
 
     const SdrObject* GetBestObject( bool bNext, GotoObjFlags eType, bool bFlat = true, const svx::ISdrObjectFilter* pFilter = nullptr );
     bool GotoObj( bool bNext, GotoObjFlags eType = GotoObjFlags::DrawAny);
@@ -504,6 +508,9 @@ public:
 
     // Start cropping the selected image
     void StartCropImage();
+
+    // RotGrfFlyFrame: check if RotationMode is possible
+    bool IsRotationOfSwGrfNodePossible() const;
 
     size_t IsObjSelected() const;   ///< @return object count, but doesn't count the objects in groups.
     bool IsObjSelected( const SdrObject& rObj ) const;
@@ -533,7 +540,6 @@ public:
     bool BeginMark( const Point &rPos );
     void MoveMark ( const Point &rPos );
     bool EndMark  ();
-    void BreakMark();
 
     /// Create and destroy group, don't when frame is selected.
     bool IsGroupSelected();     ///< Can be a mixed selection!
@@ -561,6 +567,8 @@ public:
     void Paste( SvStream& rStm, SwPasteSdr nAction, const Point* pPt );
     bool Paste( const Graphic &rGrf, const OUString& rURL );
 
+    comphelper::OInterfaceContainerHelper2& GetPasteListeners();
+
     bool IsAlignPossible() const;
     void SetCalcFieldValueHdl(Outliner* pOutliner);
 
@@ -573,7 +581,7 @@ public:
     void InsertDrawObj( SdrObject& rDrawObj,
                         const Point& rInsertPosition );
 
-    bool ReplaceSdrObj( const OUString& rGrfName, const Graphic* pGrf );
+    void ReplaceSdrObj( const OUString& rGrfName, const Graphic* pGrf );
 
     // --> #i972#
     /** for starmath formulas anchored 'as char' it aligns it baseline to baseline
@@ -618,7 +626,7 @@ public:
     bool GetPageNumber( long nYPos, bool bAtCursorPos, sal_uInt16& rPhyNum, sal_uInt16& rVirtNum, OUString &rDisplay ) const;
 
     SwFlyFrameFormat* InsertObject( const svt::EmbeddedObjectRef&,
-                const SfxItemSet* pFlyAttrSet );
+                SfxItemSet* pFlyAttrSet );
     bool    FinishOLEObj(); ///< Shutdown server.
 
     void GetTableAttr( SfxItemSet & ) const;
@@ -629,49 +637,54 @@ public:
     /// Is content of a table cell or at least a table cell completely selected?
     bool HasBoxSelection() const;
 
-    bool InsertRow( sal_uInt16 nCnt, bool bBehind );
-    bool InsertCol( sal_uInt16 nCnt, bool bBehind );  // 0 == at the end.
+    void InsertRow( sal_uInt16 nCnt, bool bBehind );
+    void InsertCol( sal_uInt16 nCnt, bool bBehind );  // 0 == at the end.
     bool DeleteCol();
-    bool DeleteTable();
+    void DeleteTable();
     bool DeleteRow(bool bCompleteTable = false);
+
+    SwTable::SearchType GetTableInsertMode() const         { return m_eTableInsertMode; }
+    void SetTableInsertMode( SwTable::SearchType eFlag )  { m_eTableInsertMode = eFlag; }
+
+    bool GetTableCopied()  { return m_bTableCopied; }
+    void SetTableCopied( bool bCopied )  { m_bTableCopied = bCopied; }
 
     bool DeleteTableSel();        ///< Current selection, may be whole table.
 
     TableMergeErr MergeTab();          /**< Merge selected parts of table */
 
     /// Split cell vertically or horizontally.
-    bool SplitTab( bool bVert, sal_uInt16 nCnt, bool bSameHeight = false );
-    bool Sort(const SwSortOptions&);    //Sortieren.
+    void SplitTab( bool bVert, sal_uInt16 nCnt, bool bSameHeight );
+    bool Sort(const SwSortOptions&);    // sorting
 
     void SetRowHeight( const SwFormatFrameSize &rSz );
 
     /// Pointer must be destroyed by caller != 0.
-    void GetRowHeight( SwFormatFrameSize *&rpSz ) const;
+    std::unique_ptr<SwFormatFrameSize> GetRowHeight() const;
 
     void SetRowSplit( const SwFormatRowSplit &rSz );
-    void GetRowSplit( SwFormatRowSplit *&rpSz ) const;
+    std::unique_ptr<SwFormatRowSplit> GetRowSplit() const;
 
     void   SetBoxAlign( sal_uInt16 nOrient );
     sal_uInt16 GetBoxAlign() const;         ///< USHRT_MAX if ambiguous.
 
-    /// Adjustment of Rowheights. Determine via bTstOnly if more than one row is selected.
-    bool BalanceRowHeight( bool bTstOnly );
+    bool BalanceRowHeight( bool bTstOnly, const bool bOptimize = false );
 
     void SetTabBorders( const SfxItemSet& rSet );
     void GetTabBorders(       SfxItemSet& rSet) const;
     void SetTabLineStyle(const Color* pColor, bool bSetLine = false, const editeng::SvxBorderLine* pBorderLine = nullptr);
 
     void SetTabBackground( const SvxBrushItem &rNew );
-    void GetTabBackground( SvxBrushItem &rToFill ) const;
+    void GetTabBackground( std::unique_ptr<SvxBrushItem>& rToFill ) const;
 
     void SetBoxBackground( const SvxBrushItem &rNew );
-    bool GetBoxBackground( SvxBrushItem &rToFill ) const; ///< FALSE ambiguous.
+    bool GetBoxBackground( std::unique_ptr<SvxBrushItem>& rToFill ) const; ///< FALSE ambiguous.
 
     void SetBoxDirection( const SvxFrameDirectionItem& rNew );
-    bool GetBoxDirection( SvxFrameDirectionItem& rToFill ) const; ///< FALSE ambiguous.
+    bool GetBoxDirection( std::unique_ptr<SvxFrameDirectionItem>& rToFill ) const; ///< FALSE ambiguous.
 
     void SetRowBackground( const SvxBrushItem &rNew );
-    bool GetRowBackground( SvxBrushItem &rToFill ) const; ///< FALSE ambiguous.
+    bool GetRowBackground( std::unique_ptr<SvxBrushItem>& rToFill ) const; ///< FALSE ambiguous.
 
     SwTab WhichMouseTabCol( const Point &rPt ) const;
     void GetTabCols( SwTabCols &rToFill ) const; ///< Info about columns and margins.
@@ -698,7 +711,7 @@ public:
 
     sal_uInt16 GetRowsToRepeat() const;
     void SetRowsToRepeat( sal_uInt16 nNumOfRows );
-    sal_uInt16 GetVirtPageNum();
+    sal_uInt16 GetVirtPageNum() const;
 
     /** @return the number of table rows currently selected
     if the selection start at the top of the table. */
@@ -707,10 +720,7 @@ public:
     bool IsInRepeatedHeadline() const { return CheckHeadline( true ); }
     bool IsInHeadline() const { return CheckHeadline( false ); }
 
-    /** Adjusts cell widths in such a way, that their content
-     does not need to be wrapped (if possible).
-     bBalance provides for adjustment of selected columns. */
-    void AdjustCellWidth( bool bBalance );
+    void AdjustCellWidth( const bool bBalance, const bool bNoShrink );
 
     /// Not allowed if only empty cells are selected.
     bool IsAdjustCellWidthAllowed( bool bBalance = false ) const;
@@ -727,13 +737,13 @@ public:
 
     bool GetTableAutoFormat( SwTableAutoFormat& rGet );
 
-    bool SetColRowWidthHeight( TableChgWidthHeightType eType, sal_uInt16 nDiff );
+    void SetColRowWidthHeight( TableChgWidthHeightType eType, sal_uInt16 nDiff );
 
-    bool GetAutoSum( OUString& rFormula ) const;
+    void GetAutoSum( OUString& rFormula ) const;
 
     /** Phy: real page count.
      Virt: consider offset that may have been set by user. */
-    sal_uInt16  GetPhyPageNum();
+    sal_uInt16  GetPhyPageNum() const;
 
     void SetNewPageOffset( sal_uInt16 nOffset );
     void SetPageOffset( sal_uInt16 nOffset );   ///< Changes last page offset.
@@ -777,19 +787,15 @@ public:
         color COL_BLACK (default color on constructing object of class Color)
         is returned.
 
-        @author OD
-
         @returns an object of class Color
     */
-    const Color GetShapeBackgrd() const;
+    Color GetShapeBackgrd() const;
 
     /** Is default horizontal text direction for selected drawing object right-to-left
 
         Because drawing objects only painted for each page only, the default
         horizontal text direction of a drawing object is given by the corresponding
         page property.
-
-        @author OD
 
         @returns boolean, indicating, if the horizontal text direction of the
         page, the selected drawing object is on, is right-to-left.
@@ -805,10 +811,12 @@ public:
                                    const Point& _rDocPos );
 
     void ToggleHeaderFooterEdit( );
-    static void SetLineEnds(SfxItemSet& rAttr, SdrObject* pObj, sal_uInt16 nSlotId);
+    static void SetLineEnds(SfxItemSet& rAttr, SdrObject const & rObj, sal_uInt16 nSlotId);
+
+    SAL_DLLPRIVATE void ClearColumnRowCache(SwTabFrame const*);
 };
 
-void ClearFEShellTabCols();
+void ClearFEShellTabCols(SwDoc & rDoc, SwTabFrame const*const pFrame);
 
 #endif
 

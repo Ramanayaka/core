@@ -23,8 +23,6 @@
 #include "address.hxx"
 #include <vector>
 
-class ScAddress;
-
 class SC_DLLPUBLIC ScDPOutputGeometry
 {
 public:
@@ -42,6 +40,8 @@ public:
     void setPageFieldCount(sal_uInt32 nCount);
     void setDataFieldCount(sal_uInt32 nCount);
     void setDataLayoutType(FieldType eType);
+    void setHeaderLayout(bool bHeaderLayout);
+    void setCompactMode(bool bCompactMode);
 
     void getColumnFieldPositions(::std::vector<ScAddress>& rAddrs) const;
     void getRowFieldPositions(::std::vector<ScAddress>& rAddrs) const;
@@ -62,6 +62,8 @@ private:
     sal_uInt32  mnDataFields;
     FieldType   meDataLayoutType;
     bool        mbShowFilter;
+    bool        mbHeaderLayout;
+    bool        mbCompactMode; // MSO only setting
 };
 
 #endif

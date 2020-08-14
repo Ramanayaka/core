@@ -20,19 +20,15 @@
 #ifndef INCLUDED_FILTER_SOURCE_CONFIG_CACHE_CACHEITEM_HXX
 #define INCLUDED_FILTER_SOURCE_CONFIG_CACHE_CACHEITEM_HXX
 
-#include <deque>
-#include <list>
 #include <unordered_map>
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <vector>
 #include <comphelper/sequenceashashmap.hxx>
 #include <osl/mutex.hxx>
 
 
-namespace filter{
-    namespace config{
+namespace filter::config {
 
 
 /** @short  Must be used as first derived base class
@@ -43,12 +39,9 @@ struct BaseLock
 {
     public:
 
-        // must be mutable to be useable in const environments too!
+        // must be mutable to be usable in const environments too!
         mutable ::osl::Mutex m_aLock;
 };
-
-
-typedef ::std::vector< OUString > OUStringList;
 
 
 /** @short  represent an item of a FilterCache
@@ -107,7 +100,7 @@ class CacheItem : public ::comphelper::SequenceAsHashMap
                     are checked. Additional existing items are ignored.
 
             @param  lProps
-                    contains all properties, which should not exists at this item.
+                    contains all properties, which should not exist at this item.
 
             @return sal_False if at least on property exists at this item(!);
                     sal_True otherwise.
@@ -122,7 +115,7 @@ class CacheItem : public ::comphelper::SequenceAsHashMap
 
             @param  sActLocale
                     must specify the current office locale.
-                    Its needed to address the UIName property inside
+                    It's needed to address the UIName property inside
                     the list of possible ones.
          */
         void validateUINames(const OUString& sActLocale);
@@ -147,9 +140,8 @@ class CacheItem : public ::comphelper::SequenceAsHashMap
 /** @short  represent an item list of a FilterCache
             instance.
  */
-typedef std::unordered_map< OUString                    ,
-                            CacheItem                          ,
-                            OUStringHash > CacheItemList;
+typedef std::unordered_map< OUString,
+                            CacheItem > CacheItemList;
 
 
 /** @short  supports registration of multiple key to
@@ -164,18 +156,17 @@ typedef std::unordered_map< OUString                    ,
             there we need key-value pairs too, which can't be provided
             by a pure vector!
  */
-typedef std::unordered_map< OUString                    ,
-                            OUStringList                       ,
-                            OUStringHash > CacheItemRegistration;
+typedef std::unordered_map< OUString,
+                            std::vector<OUString> > CacheItemRegistration;
 
 
-/** @short  is used to collect all matching types of an URL
+/** @short  is used to collect all matching types of a URL
             during type detection.
 
     @descr  Every type in this list is combined with an information,
             which property matched to the given URL. The user of this
             structure can decide then, if a deep detection should be
-            suppressed e.g. if an URLPattern was used.
+            suppressed e.g. if a URLPattern was used.
  */
 struct FlatDetectionInfo
 {
@@ -194,10 +185,9 @@ struct FlatDetectionInfo
     FlatDetectionInfo();
 };
 
-typedef ::std::list< FlatDetectionInfo > FlatDetection;
+typedef ::std::vector< FlatDetectionInfo > FlatDetection;
 
-    } // namespace config
-} // namespace filter
+} // namespace filter::config
 
 #endif // INCLUDED_FILTER_SOURCE_CONFIG_CACHE_CACHEITEM_HXX
 

@@ -9,6 +9,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sc_opencl_test))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sc_opencl_test))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sc_opencl_test, \
     sc/qa/unit/opencl-test \
 ))
@@ -59,7 +61,11 @@ $(eval $(call gb_CppunitTest_set_include,sc_opencl_test,\
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_CppunitTest_use_sdk_api,sc_opencl_test))
+$(eval $(call gb_CppunitTest_use_api,sc_opencl_test,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_CppunitTest_use_ure,sc_opencl_test))
 $(eval $(call gb_CppunitTest_use_vcl,sc_opencl_test))
@@ -100,6 +106,7 @@ $(eval $(call gb_CppunitTest_use_components,sc_opencl_test,\
     unotools/util/utl \
     unoxml/source/rdf/unordf \
     unoxml/source/service/unoxml \
+    vcl/vcl.common \
     xmloff/util/xo \
 ))
 

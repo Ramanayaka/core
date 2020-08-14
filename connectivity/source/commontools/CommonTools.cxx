@@ -17,28 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
+#include <config_java.h>
 
 #include <connectivity/CommonTools.hxx>
 #include <connectivity/dbtools.hxx>
-#include <com/sun/star/util/Date.hpp>
-#include <com/sun/star/util/Time.hpp>
-#include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <comphelper/extract.hxx>
-#include <cppuhelper/interfacecontainer.h>
-#include "TConnection.hxx"
-#include <comphelper/types.hxx>
 #include <com/sun/star/java/JavaVirtualMachine.hpp>
 #if HAVE_FEATURE_JAVA
 #include <jvmaccess/virtualmachine.hxx>
 #endif
+#include <osl/diagnose.h>
 #include <rtl/character.hxx>
 #include <rtl/process.h>
+#include <tools/diagnose_ex.h>
 
 using namespace ::comphelper;
-inline sal_Unicode rtl_ascii_toUpperCase( sal_Unicode ch )
+static sal_Unicode rtl_ascii_toUpperCase( sal_Unicode ch )
 {
     return ch >= 0x0061 && ch <= 0x007a ? ch + 0x20 : ch;
 }
@@ -79,7 +73,7 @@ namespace connectivity
                         break;
                     // WARNING/TODO: in certain circumstances it will run into
                     // the next 'case'!
-                    SAL_FALLTHROUGH;
+                    [[fallthrough]];
                 case CHAR_WILD:
                     while ( *pWild == CHAR_WILD )
                         pWild++;
@@ -134,13 +128,14 @@ namespace connectivity
             Any uaJVM = xVM->getJavaVM( processID );
             sal_Int64 nTemp;
             if (!(uaJVM >>= nTemp)) {
-                throw Exception(); // -5
+                throw Exception("cannot get result for getJavaVM", nullptr); // -5
             }
             aRet = reinterpret_cast<jvmaccess::VirtualMachine *>(
                 static_cast<sal_IntPtr>(nTemp));
         }
         catch (Exception&)
         {
+            TOOLS_WARN_EXCEPTION("connectivity.commontools", "getJavaVM failed:");
         }
 
         return aRet;
@@ -170,7 +165,7 @@ namespace connectivity
 namespace dbtools
 {
 
-bool isCharOk(sal_Unicode c,const OUString& _rSpecials)
+static bool isCharOk(sal_Unicode c,const OUString& _rSpecials)
 {
 
     return ( ((c >= 97) && (c <= 122)) || ((c >= 65) && (c <=  90)) || ((c >= 48) && (c <=  57)) ||
@@ -199,8 +194,8 @@ bool isValidSQLName(const OUString& rName,const OUString& _rSpecials)
         )
         return false;
     // the SQL-Standard requires the first character to be an alphabetic character, which
-    // isn't easy to decide in UniCode ...
-    // So we just prohibit the characters which already lead to problems ....
+    // isn't easy to decide in UniCode...
+    // So we just prohibit the characters which already lead to problems...
     // 11.04.00 - 74902 - FS
 
     return true;

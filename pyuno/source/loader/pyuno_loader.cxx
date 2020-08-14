@@ -29,11 +29,12 @@
 #include <osl/thread.h>
 
 #include <rtl/ustrbuf.hxx>
-#include <rtl/strbuf.hxx>
 #include <rtl/bootstrap.hxx>
 
 #include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/factory.hxx>
+
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 // apparently PATH_MAX is not standard and not defined by MSVC
 #ifndef PATH_MAX
@@ -47,7 +48,6 @@
 #endif
 #endif
 #endif
-
 
 using pyuno::PyRef;
 using pyuno::NOT_NULL;
@@ -106,27 +106,15 @@ static PyRef getObjectFromLoaderModule( const char * func )
     return object;
 }
 
-OUString getImplementationName()
-{
-    return OUString( "org.openoffice.comp.pyuno.Loader" );
-}
-
-Sequence< OUString > getSupportedServiceNames()
-{
-    OUString serviceName( "com.sun.star.loader.Python" );
-    return Sequence< OUString > ( &serviceName, 1 );
-}
-
 static void setPythonHome ( const OUString & pythonHome )
 {
     OUString systemPythonHome;
     osl_getSystemPathFromFileURL( pythonHome.pData, &(systemPythonHome.pData) );
     OString o = OUStringToOString( systemPythonHome, osl_getThreadTextEncoding() );
-#if PY_MAJOR_VERSION >= 3
     // static because Py_SetPythonHome just copies the "wide" pointer
     static wchar_t wide[PATH_MAX + 1];
     size_t len = mbstowcs(wide, o.pData->buffer, PATH_MAX + 1);
-    if(len == (size_t)-1)
+    if(len == size_t(-1))
     {
         PyErr_SetString(PyExc_SystemError, "invalid multibyte sequence in python home path");
         return;
@@ -137,15 +125,12 @@ static void setPythonHome ( const OUString & pythonHome )
         return;
     }
     Py_SetPythonHome(wide);
-#else
-    rtl_string_acquire(o.pData); // increase reference count
-    Py_SetPythonHome(o.pData->buffer);
-#endif
 }
 
 static void prependPythonPath( const OUString & pythonPathBootstrap )
 {
     OUStringBuffer bufPYTHONPATH( 256 );
+    bool bAppendSep = false;
     sal_Int32 nIndex = 0;
     while( true )
     {
@@ -161,44 +146,55 @@ static void prependPythonPath( const OUString & pythonPathBootstrap )
         }
         OUString systemPath;
         osl_getSystemPathFromFileURL( fileUrl.pData, &(systemPath.pData) );
-        bufPYTHONPATH.append( systemPath );
-        bufPYTHONPATH.append( static_cast<sal_Unicode>(SAL_PATHSEPARATOR) );
+        if (!systemPath.isEmpty())
+        {
+            if (bAppendSep)
+                bufPYTHONPATH.append(static_cast<sal_Unicode>(SAL_PATHSEPARATOR));
+            bufPYTHONPATH.append(systemPath);
+            bAppendSep = true;
+        }
         if( nNew == -1 )
             break;
         nIndex = nNew + 1;
     }
     const char * oldEnv = getenv( "PYTHONPATH");
     if( oldEnv )
+    {
+        if (bAppendSep)
+            bufPYTHONPATH.append( static_cast<sal_Unicode>(SAL_PATHSEPARATOR) );
         bufPYTHONPATH.append( OUString(oldEnv, strlen(oldEnv), osl_getThreadTextEncoding()) );
+    }
 
     OUString envVar("PYTHONPATH");
     OUString envValue(bufPYTHONPATH.makeStringAndClear());
     osl_setEnvironment(envVar.pData, envValue.pData);
 }
 
-Reference< XInterface > CreateInstance( const Reference< XComponentContext > & ctx )
+namespace {
+
+struct PythonInit
 {
-    Reference< XInterface > ret;
+PythonInit() {
+    if ( Py_IsInitialized()) // may be inited by getComponentContext() already
+        return;
 
-    if( ! Py_IsInitialized() )
-    {
-        OUString pythonPath;
-        OUString pythonHome;
-        OUString path( "$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("pythonloader.uno" ));
-        rtl::Bootstrap::expandMacros(path); //TODO: detect failure
-        rtl::Bootstrap bootstrap(path);
+    OUString pythonPath;
+    OUString pythonHome;
+    OUString path( "$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("pythonloader.uno" ));
+    rtl::Bootstrap::expandMacros(path); //TODO: detect failure
+    rtl::Bootstrap bootstrap(path);
 
-        // look for pythonhome
-        bootstrap.getFrom( "PYUNO_LOADER_PYTHONHOME", pythonHome );
-        bootstrap.getFrom( "PYUNO_LOADER_PYTHONPATH", pythonPath );
+    // look for pythonhome
+    bootstrap.getFrom( "PYUNO_LOADER_PYTHONHOME", pythonHome );
+    bootstrap.getFrom( "PYUNO_LOADER_PYTHONPATH", pythonPath );
 
-        // pythonhome+pythonpath must be set before Py_Initialize(), otherwise there appear warning on the console
-        // sadly, there is no api for setting the pythonpath, we have to use the environment variable
-        if( !pythonHome.isEmpty() )
-            setPythonHome( pythonHome );
+    // pythonhome+pythonpath must be set before Py_Initialize(), otherwise there appear warning on the console
+    // sadly, there is no api for setting the pythonpath, we have to use the environment variable
+    if( !pythonHome.isEmpty() )
+        setPythonHome( pythonHome );
 
-        if( !pythonPath.isEmpty() )
-            prependPythonPath( pythonPath );
+    if( !pythonPath.isEmpty() )
+        prependPythonPath( pythonPath );
 
 #ifdef _WIN32
     //extend PATH under windows to include the branddir/program so ssl libs will be found
@@ -215,30 +211,42 @@ Reference< XInterface > CreateInstance( const Reference< XComponentContext > & c
     osl_setEnvironment(sEnvName.pData, sPath.pData);
 #endif
 
-#if PY_MAJOR_VERSION >= 3
-        PyImport_AppendInittab( "pyuno", PyInit_pyuno );
-#else
-        PyImport_AppendInittab( (char*)"pyuno", initpyuno );
-#endif
+    PyImport_AppendInittab( "pyuno", PyInit_pyuno );
 
 #if HAVE_FEATURE_READONLY_INSTALLSET
-        Py_DontWriteBytecodeFlag = 1;
+    Py_DontWriteBytecodeFlag = 1;
 #endif
 
-        // initialize python
-        Py_Initialize();
-        PyEval_InitThreads();
+    // initialize python
+    Py_Initialize();
+    PyEval_InitThreads();
 
-        PyThreadState *tstate = PyThreadState_Get();
-        PyEval_ReleaseThread( tstate );
-        // This tstate is never used again, so delete it here.
-        // This prevents an assertion in PyThreadState_Swap on the
-        // PyThreadAttach below.
-        PyThreadState_Delete(tstate);
-    }
+    PyThreadState *tstate = PyThreadState_Get();
+    PyEval_ReleaseThread( tstate );
+    // This tstate is never used again, so delete it here.
+    // This prevents an assertion in PyThreadState_Swap on the
+    // PyThreadAttach below.
+    PyThreadState_Delete(tstate);
+}
+};
+
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+pyuno_Loader_get_implementation(
+    css::uno::XComponentContext* ctx , css::uno::Sequence<css::uno::Any> const&)
+{
+    // tdf#114815 thread-safe static to init python only once
+    static PythonInit s_Init;
+
+    Reference< XInterface > ret;
 
     PyThreadAttach attach( PyInterpreterState_Head() );
     {
+        // note: this can't race against getComponentContext() because
+        // either (in soffice.bin) CreateInstance() must be called before
+        // getComponentContext() can be called, or (in python.bin) the other
+        // way around
         if( ! Runtime::isInitialized() )
         {
             Runtime::initialize( ctx );
@@ -246,7 +254,7 @@ Reference< XInterface > CreateInstance( const Reference< XComponentContext > & c
         Runtime runtime;
 
         PyRef pyCtx = runtime.any2PyObject(
-            css::uno::makeAny( ctx ) );
+            css::uno::makeAny( css::uno::Reference(ctx) ) );
 
         PyRef clazz = getObjectFromLoaderModule( "Loader" );
         PyRef args ( PyTuple_New( 1 ), SAL_NO_ACQUIRE, NOT_NULL );
@@ -254,29 +262,8 @@ Reference< XInterface > CreateInstance( const Reference< XComponentContext > & c
         PyRef pyInstance( PyObject_CallObject( clazz.get() , args.get() ), SAL_NO_ACQUIRE );
         runtime.pyObject2Any( pyInstance ) >>= ret;
     }
-    return ret;
-}
-
-}
-
-
-static const struct cppu::ImplementationEntry g_entries[] =
-{
-    {
-        pyuno_loader::CreateInstance, pyuno_loader::getImplementationName,
-        pyuno_loader::getSupportedServiceNames, cppu::createSingleComponentFactory,
-        nullptr , 0
-    },
-    { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-};
-
-extern "C"
-{
-
-SAL_DLLPUBLIC_EXPORT void * SAL_CALL pythonloader_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * pRegistryKey )
-{
-    return cppu::component_getFactoryHelper( pImplName, pServiceManager, pRegistryKey , g_entries );
+    ret->acquire();
+    return ret.get();
 }
 
 }

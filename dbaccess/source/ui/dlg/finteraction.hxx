@@ -30,11 +30,10 @@ namespace dbaui
     typedef ::cppu::WeakImplHelper<   css::task::XInteractionHandler
                                   >   OFilePickerInteractionHandler_Base;
 
-    /** a InteractionHandler implementation which extends another handler with some customizability
+    /** an InteractionHandler implementation which extends another handler with some customizability
     */
-    class OFilePickerInteractionHandler : public OFilePickerInteractionHandler_Base
+    class OFilePickerInteractionHandler final : public OFilePickerInteractionHandler_Base
     {
-    protected:
         css::uno::Reference< css::task::XInteractionHandler >
                     m_xMaster;      // our master handler
         bool        m_bDoesNotExist;
@@ -44,7 +43,7 @@ namespace dbaui
 
         bool isDoesNotExist() const { return m_bDoesNotExist; }
 
-    protected:
+    private:
         // XInteractionHandler
         virtual void SAL_CALL handle( const css::uno::Reference< css::task::XInteractionRequest >& _rxRequest ) override;
 

@@ -33,10 +33,10 @@
 #include <com/sun/star/report/XFunctionsSupplier.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/sdbc/XRowSet.hpp>
+#include <map>
 #include <memory>
 #include <comphelper/stl_types.hxx>
 #include <comphelper/listenernotification.hxx>
-#include "metadata.hxx"
 
 
 namespace rptui
@@ -73,7 +73,7 @@ namespace rptui
         */
         void impl_setCounterFunction_throw();
 
-        /** executes a dialog for chosing a filter criterion for a database report
+        /** executes a dialog for choosing a filter criterion for a database report
             @param _out_rSelectedClause
                 the filter or order clause as chosen by the user
             @precond
@@ -90,12 +90,12 @@ namespace rptui
         */
         sal_uInt32 impl_getDataFieldType_throw(const OUString& _sDataField = OUString()) const;
 
-        css::uno::Any getConstantValue(bool bToControlValue,sal_uInt16 nResId,const css::uno::Any& _aValue,const OUString& _sConstantName,const OUString & PropertyName );
+        css::uno::Any getConstantValue(bool bToControlValue,const char** pResId,const css::uno::Any& _aValue,const OUString& _sConstantName,const OUString & PropertyName );
         css::beans::Property getProperty(const OUString & PropertyName);
         static void implCreateListLikeControl(
                 const css::uno::Reference< css::inspection::XPropertyControlFactory >& _rxControlFactory
                 ,css::inspection::LineDescriptor & out_Descriptor
-                ,sal_uInt16 _nResId
+                ,const char** pResId
                 ,bool _bReadOnlyControl
                 ,bool _bTrueIfListBoxFalseIfComboBox
             );
@@ -237,15 +237,6 @@ namespace rptui
         virtual void SAL_CALL propertyChange(const css::beans::PropertyChangeEvent& evt) override;
 
     public:
-        // XServiceInfo - static versions
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_static(  );
-        static css::uno::Reference< css::uno::XInterface > SAL_CALL
-                        create(const css::uno::Reference< css::uno::XComponentContext >&);
-
-    public:
         explicit GeometryHandler(css::uno::Reference< css::uno::XComponentContext > const & context);
 
         // XServiceInfo
@@ -278,8 +269,8 @@ namespace rptui
     protected:
         virtual ~GeometryHandler() override;
     private:
-        GeometryHandler(GeometryHandler &) = delete;
-        void operator =(GeometryHandler &) = delete;
+        GeometryHandler(GeometryHandler const &) = delete;
+        void operator =(GeometryHandler const &) = delete;
 
         // override WeakComponentImplHelperBase::disposing()
         // This function is called upon disposing the component,

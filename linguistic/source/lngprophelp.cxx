@@ -20,12 +20,15 @@
 
 #include <tools/debug.hxx>
 #include <sal/macros.h>
+#include <sal/log.hxx>
 
 #include <com/sun/star/linguistic2/LinguServiceEvent.hpp>
 #include <com/sun/star/linguistic2/LinguServiceEventFlags.hpp>
 #include <com/sun/star/linguistic2/XLinguServiceEventListener.hpp>
+#include <com/sun/star/linguistic2/XLinguProperties.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <osl/mutex.hxx>
+#include <unotools/linguprops.hxx>
 
 #include <linguistic/misc.hxx>
 #include <linguistic/lngprops.hxx>
@@ -51,12 +54,12 @@ static const char *aCH[] =
     UPN_IS_USE_DICTIONARY_LIST,
 };
 
-static const int nCHCount = SAL_N_ELEMENTS(aCH);
+const int nCHCount = SAL_N_ELEMENTS(aCH);
 
 
 PropertyChgHelper::PropertyChgHelper(
         const Reference< XInterface > &rxSource,
-        Reference< XLinguProperties > &rxPropSet,
+        Reference< XLinguProperties > const &rxPropSet,
         int nAllowedEvents ) :
     PropertyChgHelperBase(),
     aPropNames          (nCHCount),
@@ -104,31 +107,30 @@ void PropertyChgHelper::SetDefaultValues()
 
 void PropertyChgHelper::GetCurrentValues()
 {
-    sal_Int32 nLen = GetPropNames().getLength();
-    if (GetPropSet().is() && nLen)
+    const auto& rPropNames = GetPropNames();
+    if (!(GetPropSet().is() && rPropNames.hasElements()))
+        return;
+
+    for (const OUString& rPropName : rPropNames)
     {
-        const OUString *pPropName = GetPropNames().getConstArray();
-        for (sal_Int32 i = 0;  i < nLen;  ++i)
+        bool *pbVal     = nullptr,
+             *pbResVal  = nullptr;
+
+        if ( rPropName == UPN_IS_IGNORE_CONTROL_CHARACTERS )
         {
-            bool *pbVal     = nullptr,
-                 *pbResVal  = nullptr;
+            pbVal    = &bIsIgnoreControlCharacters;
+            pbResVal = &bResIsIgnoreControlCharacters;
+        }
+        else if ( rPropName == UPN_IS_USE_DICTIONARY_LIST )
+        {
+            pbVal    = &bIsUseDictionaryList;
+            pbResVal = &bResIsUseDictionaryList;
+        }
 
-            if ( pPropName[i] == UPN_IS_IGNORE_CONTROL_CHARACTERS )
-            {
-                pbVal    = &bIsIgnoreControlCharacters;
-                pbResVal = &bResIsIgnoreControlCharacters;
-            }
-            else if ( pPropName[i] == UPN_IS_USE_DICTIONARY_LIST )
-            {
-                pbVal    = &bIsUseDictionaryList;
-                pbResVal = &bResIsUseDictionaryList;
-            }
-
-            if (pbVal && pbResVal)
-            {
-                GetPropSet()->getPropertyValue( pPropName[i] ) >>= *pbVal;
-                *pbResVal = *pbVal;
-            }
+        if (pbVal && pbResVal)
+        {
+            GetPropSet()->getPropertyValue( rPropName ) >>= *pbVal;
+            *pbResVal = *pbVal;
         }
     }
 }
@@ -141,25 +143,20 @@ void PropertyChgHelper::SetTmpPropVals( const PropertyValues &rPropVals )
     bResIsIgnoreControlCharacters   = bIsIgnoreControlCharacters;
     bResIsUseDictionaryList         = bIsUseDictionaryList;
 
-    sal_Int32 nLen = rPropVals.getLength();
-    if (nLen)
+    for (const PropertyValue& rVal : rPropVals)
     {
-        const PropertyValue *pVal = rPropVals.getConstArray();
-        for (sal_Int32 i = 0;  i < nLen;  ++i)
+        bool  *pbResVal = nullptr;
+        switch (rVal.Handle)
         {
-            bool  *pbResVal = nullptr;
-            switch (pVal[i].Handle)
-            {
-                case UPH_IS_IGNORE_CONTROL_CHARACTERS :
-                        pbResVal = &bResIsIgnoreControlCharacters; break;
-                case UPH_IS_USE_DICTIONARY_LIST     :
-                        pbResVal = &bResIsUseDictionaryList; break;
-                default:
-                        ;
-            }
-            if (pbResVal)
-                pVal[i].Value >>= *pbResVal;
+            case UPH_IS_IGNORE_CONTROL_CHARACTERS :
+                    pbResVal = &bResIsIgnoreControlCharacters; break;
+            case UPH_IS_USE_DICTIONARY_LIST     :
+                    pbResVal = &bResIsUseDictionaryList; break;
+            default:
+                    ;
         }
+        if (pbResVal)
+            rVal.Value >>= *pbResVal;
     }
 }
 
@@ -226,12 +223,10 @@ void PropertyChgHelper::AddAsPropListener()
 {
     if (xPropSet.is())
     {
-        sal_Int32 nLen = aPropNames.getLength();
-        const OUString *pPropName = aPropNames.getConstArray();
-        for (sal_Int32 i = 0;  i < nLen;  ++i)
+        for (const OUString& rPropName : std::as_const(aPropNames))
         {
-            if (!pPropName[i].isEmpty())
-                xPropSet->addPropertyChangeListener( pPropName[i], this );
+            if (!rPropName.isEmpty())
+                xPropSet->addPropertyChangeListener( rPropName, this );
         }
     }
 }
@@ -240,12 +235,10 @@ void PropertyChgHelper::RemoveAsPropListener()
 {
     if (xPropSet.is())
     {
-        sal_Int32 nLen = aPropNames.getLength();
-        const OUString *pPropName = aPropNames.getConstArray();
-        for (sal_Int32 i = 0;  i < nLen;  ++i)
+        for (const OUString& rPropName : std::as_const(aPropNames))
         {
-            if (!pPropName[i].isEmpty())
-                xPropSet->removePropertyChangeListener( pPropName[i], this );
+            if (!rPropName.isEmpty())
+                xPropSet->removePropertyChangeListener( rPropName, this );
         }
     }
 }
@@ -303,7 +296,7 @@ sal_Bool SAL_CALL
 
 PropertyHelper_Thes::PropertyHelper_Thes(
         const Reference< XInterface > &rxSource,
-        Reference< XLinguProperties > &rxPropSet ) :
+        Reference< XLinguProperties > const &rxPropSet ) :
     PropertyChgHelper   ( rxSource, rxPropSet, 0 )
 {
     SetDefaultValues();
@@ -336,14 +329,12 @@ static const char *aSP[] =
 
 PropertyHelper_Spell::PropertyHelper_Spell(
         const Reference< XInterface > & rxSource,
-        Reference< XLinguProperties > &rxPropSet ) :
+        Reference< XLinguProperties > const &rxPropSet ) :
     PropertyChgHelper   ( rxSource, rxPropSet, AE_SPELLCHECKER )
 {
     AddPropNames( aSP, SAL_N_ELEMENTS(aSP) );
     SetDefaultValues();
     GetCurrentValues();
-
-    nResMaxNumberOfSuggestions = GetDefaultNumberOfSuggestions();
 }
 
 
@@ -366,36 +357,35 @@ void PropertyHelper_Spell::GetCurrentValues()
 {
     PropertyChgHelper::GetCurrentValues();
 
-    sal_Int32 nLen = GetPropNames().getLength();
-    if (GetPropSet().is() && nLen)
+    const auto& rPropNames = GetPropNames();
+    if (!(GetPropSet().is() && rPropNames.hasElements()))
+        return;
+
+    for (const OUString& rPropName : rPropNames)
     {
-        const OUString *pPropName = GetPropNames().getConstArray();
-        for (sal_Int32 i = 0;  i < nLen;  ++i)
+        bool *pbVal     = nullptr,
+             *pbResVal  = nullptr;
+
+        if ( rPropName == UPN_IS_SPELL_UPPER_CASE )
         {
-            bool *pbVal     = nullptr,
-                 *pbResVal  = nullptr;
+            pbVal    = &bIsSpellUpperCase;
+            pbResVal = &bResIsSpellUpperCase;
+        }
+        else if ( rPropName == UPN_IS_SPELL_WITH_DIGITS )
+        {
+            pbVal    = &bIsSpellWithDigits;
+            pbResVal = &bResIsSpellWithDigits;
+        }
+        else if ( rPropName == UPN_IS_SPELL_CAPITALIZATION )
+        {
+            pbVal    = &bIsSpellCapitalization;
+            pbResVal = &bResIsSpellCapitalization;
+        }
 
-            if ( pPropName[i] == UPN_IS_SPELL_UPPER_CASE )
-            {
-                pbVal    = &bIsSpellUpperCase;
-                pbResVal = &bResIsSpellUpperCase;
-            }
-            else if ( pPropName[i] == UPN_IS_SPELL_WITH_DIGITS )
-            {
-                pbVal    = &bIsSpellWithDigits;
-                pbResVal = &bResIsSpellWithDigits;
-            }
-            else if ( pPropName[i] == UPN_IS_SPELL_CAPITALIZATION )
-            {
-                pbVal    = &bIsSpellCapitalization;
-                pbResVal = &bResIsSpellCapitalization;
-            }
-
-            if (pbVal && pbResVal)
-            {
-                GetPropSet()->getPropertyValue( pPropName[i] ) >>= *pbVal;
-                *pbResVal = *pbVal;
-            }
+        if (pbVal && pbResVal)
+        {
+            GetPropSet()->getPropertyValue( rPropName ) >>= *pbVal;
+            *pbResVal = *pbVal;
         }
     }
 }
@@ -474,35 +464,29 @@ void PropertyHelper_Spell::SetTmpPropVals( const PropertyValues &rPropVals )
 
     // return value is default value unless there is an explicitly supplied
     // temporary value
-    nResMaxNumberOfSuggestions  = GetDefaultNumberOfSuggestions();
     bResIsSpellWithDigits       = bIsSpellWithDigits;
     bResIsSpellCapitalization   = bIsSpellCapitalization;
     bResIsSpellUpperCase        = bIsSpellUpperCase;
 
-    sal_Int32 nLen = rPropVals.getLength();
-    if (nLen)
+    for (const PropertyValue& rVal : rPropVals)
     {
-        const PropertyValue *pVal = rPropVals.getConstArray();
-        for (sal_Int32 i = 0;  i < nLen;  ++i)
+        if ( rVal.Name == UPN_MAX_NUMBER_OF_SUGGESTIONS )
         {
-            if ( pVal[i].Name == UPN_MAX_NUMBER_OF_SUGGESTIONS )
+            // special value that is not part of the property set and thus needs to be handled differently
+        }
+        else
+        {
+            bool *pbResVal = nullptr;
+            switch (rVal.Handle)
             {
-                pVal[i].Value >>= nResMaxNumberOfSuggestions;
+                case UPH_IS_SPELL_UPPER_CASE     : pbResVal = &bResIsSpellUpperCase; break;
+                case UPH_IS_SPELL_WITH_DIGITS    : pbResVal = &bResIsSpellWithDigits; break;
+                case UPH_IS_SPELL_CAPITALIZATION : pbResVal = &bResIsSpellCapitalization; break;
+                default:
+                    SAL_WARN( "linguistic", "unknown property" );
             }
-            else
-            {
-                bool *pbResVal = nullptr;
-                switch (pVal[i].Handle)
-                {
-                    case UPH_IS_SPELL_UPPER_CASE     : pbResVal = &bResIsSpellUpperCase; break;
-                    case UPH_IS_SPELL_WITH_DIGITS    : pbResVal = &bResIsSpellWithDigits; break;
-                    case UPH_IS_SPELL_CAPITALIZATION : pbResVal = &bResIsSpellCapitalization; break;
-                    default:
-                        SAL_WARN( "linguistic", "unknown property" );
-                }
-                if (pbResVal)
-                    pVal[i].Value >>= *pbResVal;
-            }
+            if (pbResVal)
+                rVal.Value >>= *pbResVal;
         }
     }
 }
@@ -517,7 +501,7 @@ static const char *aHP[] =
 
 PropertyHelper_Hyphen::PropertyHelper_Hyphen(
         const Reference< XInterface > & rxSource,
-        Reference< XLinguProperties > &rxPropSet ) :
+        Reference< XLinguProperties > const &rxPropSet ) :
     PropertyChgHelper   ( rxSource, rxPropSet, AE_HYPHENATOR )
 {
     AddPropNames( aHP, SAL_N_ELEMENTS(aHP) );
@@ -538,6 +522,7 @@ void PropertyHelper_Hyphen::SetDefaultValues()
     nResHyphMinLeading      = nHyphMinLeading       = 2;
     nResHyphMinTrailing     = nHyphMinTrailing      = 2;
     nResHyphMinWordLength   = nHyphMinWordLength    = 0;
+    bResNoHyphenateCaps = bNoHyphenateCaps = false;
 }
 
 
@@ -545,36 +530,47 @@ void PropertyHelper_Hyphen::GetCurrentValues()
 {
     PropertyChgHelper::GetCurrentValues();
 
-    sal_Int32 nLen = GetPropNames().getLength();
-    if (GetPropSet().is() && nLen)
+    const auto& rPropNames = GetPropNames();
+    if (!(GetPropSet().is() && rPropNames.hasElements()))
+        return;
+
+    for (const OUString& rPropName : rPropNames)
     {
-        const OUString *pPropName = GetPropNames().getConstArray();
-        for (sal_Int32 i = 0;  i < nLen;  ++i)
+        sal_Int16  *pnVal    = nullptr,
+               *pnResVal = nullptr;
+        bool *pbVal = nullptr;
+        bool *pbResVal = nullptr;
+
+        if ( rPropName == UPN_HYPH_MIN_LEADING )
         {
-            sal_Int16  *pnVal    = nullptr,
-                   *pnResVal = nullptr;
+            pnVal    = &nHyphMinLeading;
+            pnResVal = &nResHyphMinLeading;
+        }
+        else if ( rPropName == UPN_HYPH_MIN_TRAILING )
+        {
+            pnVal    = &nHyphMinTrailing;
+            pnResVal = &nResHyphMinTrailing;
+        }
+        else if ( rPropName == UPN_HYPH_MIN_WORD_LENGTH )
+        {
+            pnVal    = &nHyphMinWordLength;
+            pnResVal = &nResHyphMinWordLength;
+        }
+        else if ( rPropName == UPN_HYPH_NO_CAPS )
+        {
+            pbVal    = &bNoHyphenateCaps;
+            pbResVal = &bResNoHyphenateCaps;
+        }
 
-            if ( pPropName[i] == UPN_HYPH_MIN_LEADING )
-            {
-                pnVal    = &nHyphMinLeading;
-                pnResVal = &nResHyphMinLeading;
-            }
-            else if ( pPropName[i] == UPN_HYPH_MIN_TRAILING )
-            {
-                pnVal    = &nHyphMinTrailing;
-                pnResVal = &nResHyphMinTrailing;
-            }
-            else if ( pPropName[i] == UPN_HYPH_MIN_WORD_LENGTH )
-            {
-                pnVal    = &nHyphMinWordLength;
-                pnResVal = &nResHyphMinWordLength;
-            }
-
-            if (pnVal && pnResVal)
-            {
-                GetPropSet()->getPropertyValue( pPropName[i] ) >>= *pnVal;
-                *pnResVal = *pnVal;
-            }
+        if (pnVal && pnResVal)
+        {
+            GetPropSet()->getPropertyValue( rPropName ) >>= *pnVal;
+            *pnResVal = *pnVal;
+        }
+        else if (pbVal && pbResVal)
+        {
+            GetPropSet()->getPropertyValue( rPropName ) >>= *pbVal;
+            *pbResVal = *pbVal;
         }
     }
 }
@@ -586,28 +582,27 @@ bool PropertyHelper_Hyphen::propertyChange_Impl( const PropertyChangeEvent& rEvt
 
     if (!bRes  &&  GetPropSet().is()  &&  rEvt.Source == GetPropSet())
     {
-        sal_Int16 nLngSvcFlags = LinguServiceEventFlags::HYPHENATE_AGAIN;
-
         sal_Int16   *pnVal = nullptr;
+        bool *pbVal = nullptr;
         switch (rEvt.PropertyHandle)
         {
             case UPH_HYPH_MIN_LEADING     : pnVal = &nHyphMinLeading; break;
             case UPH_HYPH_MIN_TRAILING    : pnVal = &nHyphMinTrailing; break;
             case UPH_HYPH_MIN_WORD_LENGTH : pnVal = &nHyphMinWordLength; break;
+            case UPH_HYPH_NO_CAPS : pbVal = &bNoHyphenateCaps; break;
             default:
                 SAL_WARN( "linguistic", "unknown property" );
         }
         if (pnVal)
             rEvt.NewValue >>= *pnVal;
+        else if (pbVal)
+            rEvt.NewValue >>= *pbVal;
 
-        bRes = (pnVal != nullptr);
+        bRes = (pnVal != nullptr || pbVal != nullptr);
         if (bRes)
         {
-            if (nLngSvcFlags)
-            {
-                LinguServiceEvent aEvt( GetEvtObj(), nLngSvcFlags );
-                LaunchEvent( aEvt );
-            }
+            LinguServiceEvent aEvt(GetEvtObj(), LinguServiceEventFlags::HYPHENATE_AGAIN);
+            LaunchEvent(aEvt);
         }
     }
 
@@ -632,37 +627,36 @@ void PropertyHelper_Hyphen::SetTmpPropVals( const PropertyValues &rPropVals )
     nResHyphMinLeading      = nHyphMinLeading;
     nResHyphMinTrailing     = nHyphMinTrailing;
     nResHyphMinWordLength   = nHyphMinWordLength;
+    bResNoHyphenateCaps = bNoHyphenateCaps;
 
-    sal_Int32 nLen = rPropVals.getLength();
-
-    if (nLen)
+    for (const PropertyValue& rVal : rPropVals)
     {
-        const PropertyValue *pVal = rPropVals.getConstArray();
-        for (sal_Int32 i = 0;  i < nLen;  ++i)
-        {
-            sal_Int16 *pnResVal = nullptr;
+        sal_Int16 *pnResVal = nullptr;
+        bool *pbResVal = nullptr;
 
-            if ( pVal[i].Name == UPN_HYPH_MIN_LEADING )
-                pnResVal = &nResHyphMinLeading;
-            else if ( pVal[i].Name == UPN_HYPH_MIN_TRAILING )
-                pnResVal = &nResHyphMinTrailing;
-            else if ( pVal[i].Name == UPN_HYPH_MIN_WORD_LENGTH )
-                pnResVal = &nResHyphMinWordLength;
+        if ( rVal.Name == UPN_HYPH_MIN_LEADING )
+            pnResVal = &nResHyphMinLeading;
+        else if ( rVal.Name == UPN_HYPH_MIN_TRAILING )
+            pnResVal = &nResHyphMinTrailing;
+        else if ( rVal.Name == UPN_HYPH_MIN_WORD_LENGTH )
+            pnResVal = &nResHyphMinWordLength;
+        else if ( rVal.Name == UPN_HYPH_NO_CAPS )
+            pbResVal = &bResNoHyphenateCaps;
 
-            DBG_ASSERT( pnResVal, "unknown property" );
+        DBG_ASSERT( pnResVal || pbResVal, "unknown property" );
 
-            if (pnResVal)
-                pVal[i].Value >>= *pnResVal;
-        }
+        if (pnResVal)
+            rVal.Value >>= *pnResVal;
+        else if (pbResVal)
+            rVal.Value >>= *pbResVal;
     }
 }
 
 PropertyHelper_Thesaurus::PropertyHelper_Thesaurus(
             const css::uno::Reference< css::uno::XInterface > &rxSource,
-            css::uno::Reference< css::linguistic2::XLinguProperties > &rxPropSet )
+            css::uno::Reference< css::linguistic2::XLinguProperties > const &rxPropSet )
 {
-    pInst = new PropertyHelper_Thes( rxSource, rxPropSet );
-    xPropHelper = pInst;
+    mxPropHelper = new PropertyHelper_Thes( rxSource, rxPropSet );
 }
 
 PropertyHelper_Thesaurus::~PropertyHelper_Thesaurus()
@@ -671,25 +665,24 @@ PropertyHelper_Thesaurus::~PropertyHelper_Thesaurus()
 
 void PropertyHelper_Thesaurus::AddAsPropListener()
 {
-    pInst->AddAsPropListener();
+    mxPropHelper->AddAsPropListener();
 }
 
 void PropertyHelper_Thesaurus::RemoveAsPropListener()
 {
-    pInst->RemoveAsPropListener();
+    mxPropHelper->RemoveAsPropListener();
 }
 
 void PropertyHelper_Thesaurus::SetTmpPropVals( const css::beans::PropertyValues &rPropVals )
 {
-    pInst->SetTmpPropVals( rPropVals );
+    mxPropHelper->SetTmpPropVals( rPropVals );
 }
 
 PropertyHelper_Hyphenation::PropertyHelper_Hyphenation(
             const css::uno::Reference< css::uno::XInterface > &rxSource,
-            css::uno::Reference< css::linguistic2::XLinguProperties > &rxPropSet)
+            css::uno::Reference< css::linguistic2::XLinguProperties > const &rxPropSet)
 {
-    pInst = new PropertyHelper_Hyphen( rxSource, rxPropSet );
-    xPropHelper = pInst;
+    mxPropHelper = new PropertyHelper_Hyphen( rxSource, rxPropSet );
 }
 
 PropertyHelper_Hyphenation::~PropertyHelper_Hyphenation()
@@ -698,52 +691,56 @@ PropertyHelper_Hyphenation::~PropertyHelper_Hyphenation()
 
 void PropertyHelper_Hyphenation::AddAsPropListener()
 {
-    pInst->AddAsPropListener();
+    mxPropHelper->AddAsPropListener();
 }
 
 void PropertyHelper_Hyphenation::RemoveAsPropListener()
 {
-    pInst->RemoveAsPropListener();
+    mxPropHelper->RemoveAsPropListener();
 }
 
 void PropertyHelper_Hyphenation::SetTmpPropVals( const css::beans::PropertyValues &rPropVals )
 {
-    pInst->SetTmpPropVals( rPropVals );
+    mxPropHelper->SetTmpPropVals( rPropVals );
 }
 
 sal_Int16 PropertyHelper_Hyphenation::GetMinLeading() const
 {
-    return pInst->GetMinLeading();
+    return mxPropHelper->GetMinLeading();
 }
 
 sal_Int16 PropertyHelper_Hyphenation::GetMinTrailing() const
 {
-    return pInst->GetMinTrailing();
+    return mxPropHelper->GetMinTrailing();
 }
 
 sal_Int16 PropertyHelper_Hyphenation::GetMinWordLength() const
 {
-    return pInst->GetMinWordLength();
+    return mxPropHelper->GetMinWordLength();
+}
+
+bool PropertyHelper_Hyphenation::IsNoHyphenateCaps() const
+{
+    return mxPropHelper->IsNoHyphenateCaps();
 }
 
 bool PropertyHelper_Hyphenation::addLinguServiceEventListener(
                 const css::uno::Reference< css::linguistic2::XLinguServiceEventListener >& rxListener )
 {
-    return pInst->addLinguServiceEventListener( rxListener );
+    return mxPropHelper->addLinguServiceEventListener( rxListener );
 }
 
 bool PropertyHelper_Hyphenation::removeLinguServiceEventListener(
                 const css::uno::Reference< css::linguistic2::XLinguServiceEventListener >& rxListener )
 {
-    return pInst->removeLinguServiceEventListener( rxListener );
+    return mxPropHelper->removeLinguServiceEventListener( rxListener );
 }
 
 PropertyHelper_Spelling::PropertyHelper_Spelling(
             const css::uno::Reference< css::uno::XInterface > &rxSource,
-            css::uno::Reference< css::linguistic2::XLinguProperties > &rxPropSet )
+            css::uno::Reference< css::linguistic2::XLinguProperties > const &rxPropSet )
 {
-    pInst = new PropertyHelper_Spell( rxSource, rxPropSet );
-    xPropHelper = pInst;
+    mxPropHelper = new PropertyHelper_Spell( rxSource, rxPropSet );
 }
 
 PropertyHelper_Spelling::~PropertyHelper_Spelling()
@@ -752,46 +749,46 @@ PropertyHelper_Spelling::~PropertyHelper_Spelling()
 
 void PropertyHelper_Spelling::AddAsPropListener()
 {
-    pInst->AddAsPropListener();
+    mxPropHelper->AddAsPropListener();
 }
 
 void PropertyHelper_Spelling::RemoveAsPropListener()
 {
-    pInst->RemoveAsPropListener();
+    mxPropHelper->RemoveAsPropListener();
 }
 
 void PropertyHelper_Spelling::SetTmpPropVals( const css::beans::PropertyValues &rPropVals )
 {
-    pInst->SetTmpPropVals( rPropVals );
+    mxPropHelper->SetTmpPropVals( rPropVals );
 }
 
 bool PropertyHelper_Spelling::IsSpellUpperCase() const
 {
-    return pInst->IsSpellUpperCase();
+    return mxPropHelper->IsSpellUpperCase();
 }
 
 bool PropertyHelper_Spelling::IsSpellWithDigits() const
 {
-    return pInst->IsSpellWithDigits();
+    return mxPropHelper->IsSpellWithDigits();
 }
 
 bool PropertyHelper_Spelling::IsSpellCapitalization() const
 {
-    return pInst->IsSpellCapitalization();
+    return mxPropHelper->IsSpellCapitalization();
 }
 
 bool PropertyHelper_Spelling::addLinguServiceEventListener(
                 const css::uno::Reference<
                     css::linguistic2::XLinguServiceEventListener >& rxListener )
 {
-    return pInst->addLinguServiceEventListener( rxListener );
+    return mxPropHelper->addLinguServiceEventListener( rxListener );
 }
 
 bool PropertyHelper_Spelling::removeLinguServiceEventListener(
                 const css::uno::Reference<
                     css::linguistic2::XLinguServiceEventListener >& rxListener )
 {
-    return pInst->removeLinguServiceEventListener( rxListener );
+    return mxPropHelper->removeLinguServiceEventListener( rxListener );
 }
 
 }   // namespace linguistic

@@ -18,12 +18,11 @@
  */
 
 
-#include "runtime.hxx"
-#include "stdobj.hxx"
-#include "sbstdobj.hxx"
-#include <sal/macros.h>
-#include "rtlproto.hxx"
-#include "sbintern.hxx"
+#include <runtime.hxx>
+#include <stdobj.hxx>
+#include <sbstdobj.hxx>
+#include <rtlproto.hxx>
+#include <sbintern.hxx>
 // The nArgs-field of a table entry is encrypted as follows:
 // At the moment it is assumed that properties don't need any
 // parameters!
@@ -33,7 +32,7 @@
 // struct below.
 // note: the limitation of 63 args is only for RTL functions defined here and
 // does NOT impose a limit on User defined procedures ). This changes is to
-// allow us space for a flag to blacklist some functions in vba mode
+// allow us space for a flag to denylist some functions in vba mode
 
 #define ARGSMASK_   0x003F  // 63 Arguments
 #define COMPTMASK_  0x00C0  // COMPATIBILITY mask
@@ -56,6 +55,8 @@
 #define RWPROP_     0x4300  // mask Read/Write-Property
 #define CPROP_      0x4900  // mask for constant
 
+namespace {
+
 struct Methods {
     const char* pName;
     SbxDataType eType;
@@ -63,6 +64,8 @@ struct Methods {
     RtlCall     pFunc;
     sal_uInt16      nHash;
 };
+
+}
 
 static Methods aMethods[] = {
 
@@ -278,6 +281,12 @@ static Methods aMethods[] = {
 { "FormatDateTime", SbxSTRING,    2 | FUNCTION_ | COMPATONLY_, RTLNAME(FormatDateTime),0 },
   { "Date",         SbxDATE, 0,nullptr,0 },
   { "NamedFormat",  SbxINTEGER,        OPT_, nullptr,0 },
+{ "FormatNumber",   SbxSTRING, 5 | FUNCTION_ | COMPATONLY_, RTLNAME(FormatNumber), 0 },
+  { "expression",                  SbxDOUBLE,  0,    nullptr, 0 },
+  { "numDigitsAfterDecimal",       SbxINTEGER, OPT_, nullptr, 0 },
+  { "includeLeadingDigit",         SbxINTEGER, OPT_, nullptr, 0 }, // vbTriState
+  { "useParensForNegativeNumbers", SbxINTEGER, OPT_, nullptr, 0 }, // vbTriState
+  { "groupDigits",                 SbxINTEGER, OPT_, nullptr, 0 }, // vbTriState
 { "Frac",           SbxDOUBLE,    1 | FUNCTION_, RTLNAME(Frac),0            },
   { "number",       SbxDOUBLE, 0,nullptr,0 },
 { "FRAMEANCHORCHAR",        SbxINTEGER,       CPROP_,    RTLNAME(FRAMEANCHORCHAR),0 },
@@ -724,16 +733,16 @@ SbiStdObject::SbiStdObject( const OUString& r, StarBASIC* pb ) : SbxObject( r )
 
     SetParent( pb );
 
-    pStdFactory = new SbStdFactory;
-    SbxBase::AddFactory( pStdFactory );
+    pStdFactory.reset( new SbStdFactory );
+    SbxBase::AddFactory( pStdFactory.get() );
 
     Insert( new SbStdClipboard );
 }
 
 SbiStdObject::~SbiStdObject()
 {
-    SbxBase::RemoveFactory( pStdFactory );
-    delete pStdFactory;
+    SbxBase::RemoveFactory( pStdFactory.get() );
+    pStdFactory.reset();
 }
 
 // Finding an element:
@@ -769,11 +778,23 @@ SbxVariable* SbiStdObject::Find( const OUString& rName, SbxClassType t )
              && ( p->nHash == nHash_ )
              && ( rName.equalsIgnoreAsciiCaseAscii( p->pName ) ) )
             {
-                SbiInstance* pInst = GetSbData()->pInst;
                 bFound = true;
                 if( p->nArgs & COMPTMASK_ )
                 {
-                    if ( !pInst || ( pInst->IsCompatibility()  && ( NORMONLY_ & p->nArgs )  ) || ( !pInst->IsCompatibility()  && ( COMPATONLY_ & p->nArgs )  ) )
+                    bool bCompatibility = false;
+                    SbiInstance* pInst = GetSbData()->pInst;
+                    if (pInst)
+                    {
+                        bCompatibility = pInst->IsCompatibility();
+                    }
+                    else
+                    {
+                        // No instance running => compiling a source on module level.
+                        const SbModule* pModule = GetSbData()->pCompMod;
+                        if (pModule)
+                            bCompatibility = pModule->IsVBACompat();
+                    }
+                    if ((bCompatibility && (NORMONLY_ & p->nArgs)) || (!bCompatibility && (COMPATONLY_ & p->nArgs)))
                         bFound = false;
                 }
                 break;
@@ -817,37 +838,37 @@ void SbiStdObject::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 
 {
     const SbxHint* pHint = dynamic_cast<const SbxHint*>(&rHint);
-    if( pHint )
+    if( !pHint )
+        return;
+
+    SbxVariable* pVar = pHint->GetVar();
+    SbxArray* pPar_ = pVar->GetParameters();
+    const sal_uInt16 nCallId = static_cast<sal_uInt16>(pVar->GetUserData());
+    if( nCallId )
     {
-        SbxVariable* pVar = pHint->GetVar();
-        SbxArray* pPar_ = pVar->GetParameters();
-        const sal_uInt16 nCallId = static_cast<sal_uInt16>(pVar->GetUserData());
-        if( nCallId )
+        const SfxHintId t = pHint->GetId();
+        if( t == SfxHintId::BasicInfoWanted )
+            pVar->SetInfo( GetInfo( static_cast<short>(pVar->GetUserData()) ) );
+        else
         {
-            const SfxHintId t = pHint->GetId();
-            if( t == SfxHintId::BasicInfoWanted )
-                pVar->SetInfo( GetInfo( static_cast<short>(pVar->GetUserData()) ) );
-            else
+            bool bWrite = false;
+            if( t == SfxHintId::BasicDataChanged )
+                bWrite = true;
+            if( t == SfxHintId::BasicDataWanted || bWrite )
             {
-                bool bWrite = false;
-                if( t == SfxHintId::BasicDataChanged )
-                    bWrite = true;
-                if( t == SfxHintId::BasicDataWanted || bWrite )
+                RtlCall p = aMethods[ nCallId-1 ].pFunc;
+                SbxArrayRef rPar( pPar_ );
+                if( !pPar_ )
                 {
-                    RtlCall p = aMethods[ nCallId-1 ].pFunc;
-                    SbxArrayRef rPar( pPar_ );
-                    if( !pPar_ )
-                    {
-                        rPar = pPar_ = new SbxArray;
-                        pPar_->Put( pVar, 0 );
-                    }
-                    p( static_cast<StarBASIC*>(GetParent()), *pPar_, bWrite );
-                    return;
+                    rPar = pPar_ = new SbxArray;
+                    pPar_->Put32( pVar, 0 );
                 }
+                p( static_cast<StarBASIC*>(GetParent()), *pPar_, bWrite );
+                return;
             }
         }
-        SbxObject::Notify( rBC, rHint );
     }
+    SbxObject::Notify( rBC, rHint );
 }
 
 // building the info-structure for single elements

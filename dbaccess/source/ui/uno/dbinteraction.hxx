@@ -21,20 +21,17 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_UNO_DBINTERACTION_HXX
 
 #include <cppuhelper/implbase.hxx>
+#include <connectivity/CommonTools.hxx>
 
-#include "moduledbu.hxx"
-#include "apitools.hxx"
-
+#include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/task/XInteractionHandler2.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/ucb/AuthenticationRequest.hpp>
 #include <com/sun/star/sdb/ParametersRequest.hpp>
 #include <com/sun/star/sdb/DocumentSaveRequest.hpp>
 
-namespace com { namespace sun { namespace star { namespace uno {
-    class XComponentContext;
-} } } }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace dbtools
 {
@@ -46,6 +43,7 @@ namespace dbaui
 
     // BasicInteractionHandler
     typedef ::cppu::WeakImplHelper<   css::lang::XServiceInfo
+                                  ,   css::lang::XInitialization
                                   ,   css::task::XInteractionHandler2
                                   >   BasicInteractionHandler_Base;
     /** implements an <type scope="com.sun.star.task">XInteractionHandler</type> for
@@ -62,7 +60,7 @@ namespace dbaui
     class BasicInteractionHandler
                 :public BasicInteractionHandler_Base
     {
-        const OModuleClient m_aModuleClient;
+        css::uno::Reference< css::awt::XWindow > m_xParentWindow;
         const css::uno::Reference< css::uno::XComponentContext >
                             m_xContext;
         const bool          m_bFallbackToGeneric;
@@ -72,6 +70,9 @@ namespace dbaui
             const css::uno::Reference< css::uno::XComponentContext >& rxContext,
             const bool i_bFallbackToGeneric
         );
+
+        // XInitialization
+        virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& rArgs ) override;
 
         // XInteractionHandler2
         virtual sal_Bool SAL_CALL handleInteractionRequest( const css::uno::Reference< css::task::XInteractionRequest >& Request ) override;
@@ -134,12 +135,6 @@ namespace dbaui
 
         // XServiceInfo
         DECLARE_SERVICE_INFO();
-        /// @throws css::uno::RuntimeException
-        static OUString SAL_CALL getImplementationName_Static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_Static(  );
-        static css::uno::Reference< css::uno::XInterface >
-        SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
     };
 
     // SQLExceptionInteractionHandler
@@ -168,12 +163,6 @@ namespace dbaui
 
         // XServiceInfo
         DECLARE_SERVICE_INFO();
-        /// @throws css::uno::RuntimeException
-        static OUString SAL_CALL getImplementationName_Static(  );
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames_Static(  );
-        static css::uno::Reference< css::uno::XInterface >
-        SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
     };
 
 }   // namespace dbaui

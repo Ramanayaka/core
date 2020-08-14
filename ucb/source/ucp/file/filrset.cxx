@@ -18,6 +18,7 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/ucb/ListenerAlreadySetException.hpp>
@@ -60,9 +61,6 @@ XResultSet_impl::XResultSet_impl( TaskManager* pMyShell,
     , m_aFolder( aUnqPath )
     , m_sProperty( seq )
     , m_sSortingInfo( seqSort )
-    , m_pDisposeEventListeners( nullptr )
-    , m_pRowCountListeners( nullptr )
-    , m_pIsFinalListeners( nullptr )
     , m_nErrorCode( TASKHANDLER_NO_ERROR )
     , m_nMinorErrorCode( TASKHANDLER_NO_ERROR )
 {
@@ -77,21 +75,13 @@ XResultSet_impl::XResultSet_impl( TaskManager* pMyShell,
     }
     else
         m_nIsOpen = true;
-
-    m_pMyShell->registerNotifier( m_aBaseDirectory,this );
 }
 
 
 XResultSet_impl::~XResultSet_impl()
 {
-    m_pMyShell->deregisterNotifier( m_aBaseDirectory,this );
-
     if( m_nIsOpen )
         m_aFolder.close();
-
-    delete m_pDisposeEventListeners;
-    delete m_pRowCountListeners;
-    delete m_pIsFinalListeners;
 }
 
 
@@ -109,8 +99,8 @@ XResultSet_impl::addEventListener(
     osl::MutexGuard aGuard( m_aMutex );
 
     if ( ! m_pDisposeEventListeners )
-        m_pDisposeEventListeners =
-            new comphelper::OInterfaceContainerHelper2( m_aEventListenerMutex );
+        m_pDisposeEventListeners.reset(
+            new comphelper::OInterfaceContainerHelper2( m_aEventListenerMutex ) );
 
     m_pDisposeEventListeners->addInterface( Listener );
 }
@@ -202,7 +192,7 @@ void XResultSet_impl::isFinalChanged()
 }
 
 
-bool SAL_CALL
+bool
 XResultSet_impl::OneMore()
 {
     if( ! m_nIsOpen )
@@ -222,12 +212,12 @@ XResultSet_impl::OneMore()
         {
             m_aFolder.close();
             isFinalChanged();
-            return ( m_nIsOpen = false );
+            m_nIsOpen = false;
+            return m_nIsOpen;
         }
         else if( err == osl::FileBase::E_None )
         {
-            if (!m_pMyShell->getv(
-                    this, m_sProperty, aDirIte, aUnqPath, IsRegular, aRow ))
+            if (!m_pMyShell->getv( m_sProperty, aDirIte, aUnqPath, IsRegular, aRow ))
             {
                 SAL_WARN(
                     "ucb.ucp.file",
@@ -239,8 +229,7 @@ XResultSet_impl::OneMore()
             {
                 osl::MutexGuard aGuard( m_aMutex );
                 m_aItems.push_back( aRow );
-                m_aIdents.push_back(
-                    uno::Reference< ucb::XContentIdentifier >() );
+                m_aIdents.emplace_back( );
                 m_aUnqPath.push_back( aUnqPath );
                 rowCountChanged();
                 return true;
@@ -254,8 +243,7 @@ XResultSet_impl::OneMore()
             {
                 osl::MutexGuard aGuard( m_aMutex );
                 m_aItems.push_back( aRow );
-                m_aIdents.push_back(
-                    uno::Reference< ucb::XContentIdentifier >() );
+                m_aIdents.emplace_back( );
                 m_aUnqPath.push_back( aUnqPath );
                 rowCountChanged();
                 return true;
@@ -268,8 +256,7 @@ XResultSet_impl::OneMore()
             {
                 osl::MutexGuard aGuard( m_aMutex );
                 m_aItems.push_back( aRow );
-                m_aIdents.push_back(
-                    uno::Reference< ucb::XContentIdentifier >() );
+                m_aIdents.emplace_back( );
                 m_aUnqPath.push_back( aUnqPath );
                 rowCountChanged();
                 return true;
@@ -603,22 +590,22 @@ XResultSet_impl::getCapabilities()
 uno::Reference< sdbc::XResultSetMetaData > SAL_CALL
 XResultSet_impl::getMetaData()
 {
-    for ( sal_Int32 n = 0; n < m_sProperty.getLength(); ++n )
+    auto pProp = std::find_if(m_sProperty.begin(), m_sProperty.end(),
+        [](const beans::Property& rProp) { return rProp.Name == "Title"; });
+    if (pProp != m_sProperty.end())
     {
-        if ( m_sProperty.getConstArray()[ n ].Name == "Title" )
-        {
-            std::vector< ::ucbhelper::ResultSetColumnData >
-                                    aColumnData( m_sProperty.getLength() );
-            // @@@ #82177# - Determine correct value!
-            aColumnData[ n ].isCaseSensitive = false;
+        std::vector< ::ucbhelper::ResultSetColumnData >
+                                aColumnData( m_sProperty.getLength() );
+        auto n = std::distance(m_sProperty.begin(), pProp);
+        // @@@ #82177# - Determine correct value!
+        aColumnData[ n ].isCaseSensitive = false;
 
-            ::ucbhelper::ResultSetMetaData* p =
-                new ::ucbhelper::ResultSetMetaData(
-                    m_pMyShell->m_xContext,
-                    m_sProperty,
-                    aColumnData );
-            return uno::Reference< sdbc::XResultSetMetaData >( p );
-        }
+        ::ucbhelper::ResultSetMetaData* p =
+            new ::ucbhelper::ResultSetMetaData(
+                m_pMyShell->m_xContext,
+                m_sProperty,
+                aColumnData );
+        return uno::Reference< sdbc::XResultSetMetaData >( p );
     }
 
     ::ucbhelper::ResultSetMetaData* p =
@@ -638,10 +625,10 @@ XResultSet_impl::getPropertySetInfo()
     seq[0].Type = cppu::UnoType<sal_Int32>::get();
     seq[0].Attributes = beans::PropertyAttribute::READONLY;
 
-    seq[0].Name = "IsRowCountFinal";
-    seq[0].Handle = -1;
-    seq[0].Type = cppu::UnoType<sal_Bool>::get();
-    seq[0].Attributes = beans::PropertyAttribute::READONLY;
+    seq[1].Name = "IsRowCountFinal";
+    seq[1].Handle = -1;
+    seq[1].Type = cppu::UnoType<sal_Bool>::get();
+    seq[1].Attributes = beans::PropertyAttribute::READONLY;
 
     XPropertySetInfo_impl* p = new XPropertySetInfo_impl( m_pMyShell,
                                                           seq );
@@ -655,7 +642,7 @@ void SAL_CALL XResultSet_impl::setPropertyValue(
     if( aPropertyName == "IsRowCountFinal" ||
         aPropertyName == "RowCount" )
         return;
-    throw beans::UnknownPropertyException( THROW_WHERE );
+    throw beans::UnknownPropertyException( aPropertyName );
 }
 
 
@@ -672,7 +659,7 @@ uno::Any SAL_CALL XResultSet_impl::getPropertyValue(
         return uno::Any(count);
     }
     else
-        throw beans::UnknownPropertyException( THROW_WHERE );
+        throw beans::UnknownPropertyException( PropertyName );
 }
 
 
@@ -684,8 +671,8 @@ void SAL_CALL XResultSet_impl::addPropertyChangeListener(
     {
         osl::MutexGuard aGuard( m_aMutex );
         if ( ! m_pIsFinalListeners )
-            m_pIsFinalListeners =
-                new comphelper::OInterfaceContainerHelper2( m_aEventListenerMutex );
+            m_pIsFinalListeners.reset(
+                new comphelper::OInterfaceContainerHelper2( m_aEventListenerMutex ) );
 
         m_pIsFinalListeners->addInterface( xListener );
     }
@@ -693,12 +680,12 @@ void SAL_CALL XResultSet_impl::addPropertyChangeListener(
     {
         osl::MutexGuard aGuard( m_aMutex );
         if ( ! m_pRowCountListeners )
-            m_pRowCountListeners =
-                new comphelper::OInterfaceContainerHelper2( m_aEventListenerMutex );
+            m_pRowCountListeners.reset(
+                new comphelper::OInterfaceContainerHelper2( m_aEventListenerMutex ) );
         m_pRowCountListeners->addInterface( xListener );
     }
     else
-        throw beans::UnknownPropertyException( THROW_WHERE );
+        throw beans::UnknownPropertyException( aPropertyName );
 }
 
 
@@ -720,7 +707,7 @@ void SAL_CALL XResultSet_impl::removePropertyChangeListener(
         m_pRowCountListeners->removeInterface( aListener );
     }
     else
-        throw beans::UnknownPropertyException( THROW_WHERE );
+        throw beans::UnknownPropertyException( aPropertyName );
 }
 
 void SAL_CALL XResultSet_impl::addVetoableChangeListener(

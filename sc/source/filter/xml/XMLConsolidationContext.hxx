@@ -20,12 +20,12 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_XML_XMLCONSOLIDATIONCONTEXT_HXX
 #define INCLUDED_SC_SOURCE_FILTER_XML_XMLCONSOLIDATIONCONTEXT_HXX
 
-#include "global.hxx"
-#include "address.hxx"
-#include <xmloff/xmlimp.hxx>
-#include "xmlimprt.hxx"
+#include <global.hxx>
+#include <address.hxx>
 #include "importcontext.hxx"
 
+
+namespace sax_fastparser { class FastAttributeList; }
 
 class ScXMLConsolidationContext : public ScXMLImportContext
 {
@@ -40,16 +40,10 @@ private:
 public:
                                 ScXMLConsolidationContext(
                                     ScXMLImport& rImport,
-                                    sal_Int32 nElement,
-                                    const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList
+                                    const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList
                                     );
     virtual                     ~ScXMLConsolidationContext() override;
 
-    virtual SvXMLImportContext* CreateChildContext(
-                                    sal_uInt16 nPrefix,
-                                    const OUString& rLocalName,
-                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList
-                                    ) override;
     virtual void SAL_CALL endFastElement( sal_Int32 nElement ) override;
 };
 

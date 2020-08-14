@@ -11,6 +11,13 @@
 #include "progressui.h"
 #include "readstrings.h"
 #include "errors.h"
+#include <string.h>
+#include "progressui_gtk_icon.h"
+
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 
 #define TIMER_INTERVAL 100
 
@@ -76,15 +83,16 @@ ShowProgressUI()
 
     StringTable strings;
     if (ReadStrings(ini_path, &strings) != OK)
-        return -1;
+    {
+        strcpy(strings.title, "LibreOffice Update");
+        strcpy(strings.info, "Please wait while we update your installation.");
+    }
 
     sWin = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     if (!sWin)
         return -1;
 
     static GdkPixbuf *pixbuf;
-    char icon_path[PATH_MAX];
-    snprintf(icon_path, sizeof(icon_path), "%s.png", sProgramPath);
 
     g_signal_connect(G_OBJECT(sWin), "delete_event",
                      G_CALLBACK(OnDeleteEvent), nullptr);
@@ -95,7 +103,7 @@ ShowProgressUI()
     gtk_window_set_resizable(GTK_WINDOW(sWin), FALSE);
     gtk_window_set_decorated(GTK_WINDOW(sWin), TRUE);
     gtk_window_set_deletable(GTK_WINDOW(sWin),FALSE);
-    pixbuf = gdk_pixbuf_new_from_file (icon_path, nullptr);
+    pixbuf = gdk_pixbuf_new_from_xpm_data (icon_data);
     gtk_window_set_icon(GTK_WINDOW(sWin), pixbuf);
     g_object_unref(pixbuf);
 
@@ -130,4 +138,9 @@ UpdateProgressUI(float progress)
 {
     sProgressVal = progress;  // 32-bit writes are atomic
 }
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+
 #endif  // defined(UNIX) || defined(MACOSX)

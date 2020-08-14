@@ -63,8 +63,10 @@ public:
     // XInterface
     virtual css::uno::Any SAL_CALL queryAggregation( const css::uno::Type & rType ) override;
     virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire() throw() override;
-    virtual void SAL_CALL release() throw() override;
+    virtual void SAL_CALL acquire() throw() override
+    { OWeakAggObject::acquire(); }
+    virtual void SAL_CALL release() throw() override
+    { OWeakAggObject::release(); }
 
     // XTypeProvider
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
@@ -79,7 +81,7 @@ protected:
     void init();
 
     /// @throws css::beans::UnknownPropertyException
-    static void getAny( SfxItemPool* pPool, const comphelper::PropertyMapEntry* pEntry, css::uno::Any& rValue );
+    static void getAny( SfxItemPool const * pPool, const comphelper::PropertyMapEntry* pEntry, css::uno::Any& rValue );
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::uno::RuntimeException

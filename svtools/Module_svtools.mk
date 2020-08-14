@@ -21,11 +21,11 @@ $(eval $(call gb_Module_Module,svtools))
 
 $(eval $(call gb_Module_add_targets,svtools,\
     Library_svt \
+    UIConfig_svt \
 ))
 
 $(eval $(call gb_Module_add_l10n_targets,svtools,\
-    AllLangResTarget_svt \
-    UIConfig_svt \
+    AllLangMoTarget_svt \
 ))
 
 $(eval $(call gb_Module_add_check_targets,svtools,\
@@ -43,18 +43,16 @@ endif
 
 endif
 
-ifneq ($(OOO_JUNIT_JAR),)
 $(eval $(call gb_Module_add_subsequentcheck_targets,svtools,\
     JunitTest_svtools_unoapi \
 ))
-endif
 
 # screenshots
 $(eval $(call gb_Module_add_screenshot_targets,svtools,\
     CppunitTest_svtools_dialogs_test \
 ))
 
-#todo: javapatchres
+#todo: javapatches
 #todo: jpeg on mac in svtools/util/makefile.mk
 #todo: deliver errtxt.src as ehdl.srs
 #todo: nooptfiles filter, filterconfigitem, FilterConfigCache, SvFilterOptionsDialog

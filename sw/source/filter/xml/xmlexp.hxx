@@ -47,9 +47,9 @@ typedef std::vector< SwXMLTableLines_Impl* > SwXMLTableLinesCache_Impl;
 
 class SwXMLExport : public SvXMLExport
 {
-    SvXMLUnitConverter*         m_pTwipUnitConverter;
-    SvXMLExportItemMapper*      m_pTableItemMapper;
-    SwXMLTableLinesCache_Impl*  m_pTableLines;
+    std::unique_ptr<SvXMLUnitConverter>    m_pTwipUnitConverter;
+    std::unique_ptr<SvXMLExportItemMapper> m_pTableItemMapper;
+    std::unique_ptr<SwXMLTableLinesCache_Impl> m_pTableLines;
 
     SvXMLItemMapEntriesRef      m_xTableItemMap;
     SvXMLItemMapEntriesRef      m_xTableRowItemMap;
@@ -95,7 +95,7 @@ class SwXMLExport : public SvXMLExport
     virtual void ExportContent_() override;
     virtual void GetViewSettings(css::uno::Sequence<css::beans::PropertyValue>& aProps) override;
     virtual void GetConfigurationSettings(css::uno::Sequence<css::beans::PropertyValue>& aProps) override;
-    virtual sal_Int32 GetDocumentSpecificSettings( std::list< SettingsGroup >& _out_rSettings ) override;
+    virtual sal_Int32 GetDocumentSpecificSettings( std::vector< SettingsGroup >& _out_rSettings ) override;
 
 private:
     void DeleteTableLines();
@@ -113,6 +113,8 @@ public:
         OUString const & implementationName, SvXMLExportFlags nExportFlags);
 
     virtual ~SwXMLExport() override;
+
+    void collectAutoStyles() override;
 
     virtual ErrCode exportDoc( enum ::xmloff::token::XMLTokenEnum eClass = ::xmloff::token::XML_TOKEN_INVALID ) override;
 

@@ -31,21 +31,23 @@ namespace basegfx
     class B2DVector;
     class B2DHomMatrix;
     class B2DPolyPolygon;
+    typedef B2DVector B2DSize;
 }
 namespace cppcanvas
 {
     class Canvas;
     class CustomSprite;
+    typedef std::shared_ptr< Canvas > CanvasSharedPtr;
+    typedef std::shared_ptr< ::cppcanvas::CustomSprite > CustomSpriteSharedPtr;
 }
 
 
 /* Definition of ViewLayer interface */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         class View;
+        typedef std::shared_ptr< View > ViewSharedPtr;
 
         class ViewLayer
         {
@@ -57,14 +59,14 @@ namespace slideshow
                 @return true, if this layer displays on the given
                 view.
             */
-            virtual bool isOnView(std::shared_ptr<View> const& rView) const = 0;
+            virtual bool isOnView(ViewSharedPtr const& rView) const = 0;
 
             /** Get the associated canvas of this layer.
 
                 The canvas returned by this method must not change, as
                 long as this object is alive.
             */
-            virtual std::shared_ptr< cppcanvas::Canvas > getCanvas() const = 0;
+            virtual cppcanvas::CanvasSharedPtr getCanvas() const = 0;
 
             /** Clear the clipped view layer area
 
@@ -99,9 +101,9 @@ namespace slideshow
                 @return the sprite, or NULL on failure (or if this
                 canvas does not support sprites).
             */
-            virtual std::shared_ptr< cppcanvas::CustomSprite >
-            createSprite( const basegfx::B2DVector& rSpriteSizePixel,
-                          double                    nPriority ) const = 0;
+            virtual cppcanvas::CustomSpriteSharedPtr
+            createSprite( const basegfx::B2DSize& rSpriteSizePixel,
+                          double                  nPriority ) const = 0;
 
             /** Set the layer priority range
 
@@ -164,7 +166,6 @@ namespace slideshow
         };
 
         typedef std::shared_ptr< ViewLayer > ViewLayerSharedPtr;
-    }
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_VIEWLAYER_HXX

@@ -17,17 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "AccessibleSlideSorterObject.hxx"
+#include <AccessibleSlideSorterObject.hxx>
 
-#include "SlideSorter.hxx"
-#include "controller/SlideSorterController.hxx"
-#include "controller/SlsPageSelector.hxx"
-#include "controller/SlsFocusManager.hxx"
-#include "model/SlideSorterModel.hxx"
-#include "model/SlsPageDescriptor.hxx"
-#include "view/SlideSorterView.hxx"
-#include "view/SlsLayouter.hxx"
-#include "view/SlsPageObjectLayouter.hxx"
+#include <SlideSorter.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsPageSelector.hxx>
+#include <controller/SlsFocusManager.hxx>
+#include <model/SlideSorterModel.hxx>
+#include <model/SlsPageDescriptor.hxx>
+#include <view/SlideSorterView.hxx>
+#include <view/SlsLayouter.hxx>
+#include <view/SlsPageObjectLayouter.hxx>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/IllegalAccessibleComponentStateException.hpp>
@@ -35,13 +35,14 @@
 #include <comphelper/accessibleeventnotifier.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
+#include <sal/log.hxx>
 
-#include "sdpage.hxx"
-#include "sdresid.hxx"
+#include <sdpage.hxx>
+#include <sdresid.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
-#include "glob.hrc"
+#include <strings.hrc>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -154,10 +155,7 @@ sal_Int32 SAL_CALL AccessibleSlideSorterObject::getAccessibleIndexInParent()
 sal_Int16 SAL_CALL AccessibleSlideSorterObject::getAccessibleRole()
 {
     ThrowIfDisposed();
-    //set Role = Shape
-    //static sal_Int16 nRole = AccessibleRole::LIST_ITEM;
-    static sal_Int16 nRole = AccessibleRole::SHAPE;
-    return nRole;
+    return AccessibleRole::SHAPE;
 }
 
 OUString SAL_CALL AccessibleSlideSorterObject::getAccessibleDescription()
@@ -235,21 +233,21 @@ lang::Locale SAL_CALL AccessibleSlideSorterObject::getLocale()
 void SAL_CALL AccessibleSlideSorterObject::addAccessibleEventListener(
     const Reference<XAccessibleEventListener>& rxListener)
 {
-    if (rxListener.is())
-    {
-        const osl::MutexGuard aGuard(maMutex);
+    if (!rxListener.is())
+        return;
 
-        if (IsDisposed())
-        {
-            uno::Reference<uno::XInterface> x (static_cast<lang::XComponent *>(this), uno::UNO_QUERY);
-            rxListener->disposing (lang::EventObject (x));
-        }
-        else
-        {
-            if (mnClientId == 0)
-                mnClientId = comphelper::AccessibleEventNotifier::registerClient();
-            comphelper::AccessibleEventNotifier::addEventListener(mnClientId, rxListener);
-        }
+    const osl::MutexGuard aGuard(maMutex);
+
+    if (IsDisposed())
+    {
+        uno::Reference<uno::XInterface> x (static_cast<lang::XComponent *>(this), uno::UNO_QUERY);
+        rxListener->disposing (lang::EventObject (x));
+    }
+    else
+    {
+        if (mnClientId == 0)
+            mnClientId = comphelper::AccessibleEventNotifier::registerClient();
+        comphelper::AccessibleEventNotifier::addEventListener(mnClientId, rxListener);
     }
 }
 
@@ -257,20 +255,20 @@ void SAL_CALL AccessibleSlideSorterObject::removeAccessibleEventListener(
     const Reference<XAccessibleEventListener>& rxListener)
 {
     ThrowIfDisposed();
-    if (rxListener.is() && mnClientId)
-    {
-        const osl::MutexGuard aGuard(maMutex);
+    if (!(rxListener.is() && mnClientId))
+        return;
 
-        sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( mnClientId, rxListener );
-        if ( !nListenerCount )
-        {
-            // no listeners anymore
-            // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-            // and at least to us not firing any events anymore, in case somebody calls
-            // NotifyAccessibleEvent, again
-            comphelper::AccessibleEventNotifier::revokeClient( mnClientId );
-            mnClientId = 0;
-        }
+    const osl::MutexGuard aGuard(maMutex);
+
+    sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( mnClientId, rxListener );
+    if ( !nListenerCount )
+    {
+        // no listeners anymore
+        // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
+        // and at least to us not firing any events anymore, in case somebody calls
+        // NotifyAccessibleEvent, again
+        comphelper::AccessibleEventNotifier::revokeClient( mnClientId );
+        mnClientId = 0;
     }
 }
 
@@ -370,22 +368,22 @@ sal_Int32 SAL_CALL AccessibleSlideSorterObject::getForeground()
 {
     ThrowIfDisposed ();
     svtools::ColorConfig aColorConfig;
-    sal_uInt32 nColor = aColorConfig.GetColorValue( svtools::FONTCOLOR ).nColor;
+    Color nColor = aColorConfig.GetColorValue( svtools::FONTCOLOR ).nColor;
     return static_cast<sal_Int32>(nColor);
 }
 
 sal_Int32 SAL_CALL AccessibleSlideSorterObject::getBackground()
 {
     ThrowIfDisposed ();
-    sal_uInt32 nColor = Application::GetSettings().GetStyleSettings().GetWindowColor().GetColor();
-    return static_cast<sal_Int32>(nColor);
+    Color nColor = Application::GetSettings().GetStyleSettings().GetWindowColor();
+    return sal_Int32(nColor);
 }
 
 // XServiceInfo
 OUString SAL_CALL
        AccessibleSlideSorterObject::getImplementationName()
 {
-    return OUString("AccessibleSlideSorterObject");
+    return "AccessibleSlideSorterObject";
 }
 
 sal_Bool SAL_CALL AccessibleSlideSorterObject::supportsService (const OUString& sServiceName)
@@ -414,7 +412,7 @@ void AccessibleSlideSorterObject::ThrowIfDisposed()
     }
 }
 
-bool AccessibleSlideSorterObject::IsDisposed()
+bool AccessibleSlideSorterObject::IsDisposed() const
 {
     return (rBHelper.bDisposed || rBHelper.bInDispose);
 }
@@ -423,7 +421,7 @@ SdPage* AccessibleSlideSorterObject::GetPage() const
 {
     ::sd::slidesorter::model::SharedPageDescriptor pDescriptor(
         mrSlideSorter.GetModel().GetPageDescriptor(mnPageNumber));
-    if (pDescriptor.get() != nullptr)
+    if (pDescriptor)
         return pDescriptor->GetPage();
     else
         return nullptr;

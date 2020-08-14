@@ -24,7 +24,6 @@
 #include <tools/gen.hxx>
 #include <tools/color.hxx>
 #include "scdllapi.h"
-#include "token.hxx"
 
 #include <vector>
 
@@ -32,8 +31,6 @@ class SdrObject;
 
 class ScDetectiveData;
 class ScDocument;
-class ScAddress;
-class ScRange;
 
 #define SC_DET_MAXCIRCLE    1000
 
@@ -48,11 +45,11 @@ enum ScDetectiveObjType
     SC_DETOBJ_CIRCLE
 };
 
-class SC_DLLPUBLIC ScDetectiveFunc
+class ScDetectiveFunc
 {
-    static ColorData nArrowColor;
-    static ColorData nErrorColor;
-    static ColorData nCommentColor;
+    static Color     nArrowColor;
+    static Color     nErrorColor;
+    static Color     nCommentColor;
     static bool      bColorsInitialized;
 
     ScDocument*     pDoc;
@@ -83,12 +80,12 @@ class SC_DLLPUBLIC ScDetectiveFunc
     bool        HasError( const ScRange& rRange, ScAddress& rErrPos );
 
                 /// called from DrawEntry/DrawAlienEntry and InsertObject
-    bool        InsertArrow( SCCOL nCol, SCROW nRow,
+    void        InsertArrow( SCCOL nCol, SCROW nRow,
                                 SCCOL nRefStartCol, SCROW nRefStartRow,
                                 SCCOL nRefEndCol, SCROW nRefEndRow,
                                 bool bFromOtherTab, bool bRed,
                                 ScDetectiveData& rData );
-    bool        InsertToOtherTab( SCCOL nStartCol, SCROW nStartRow,
+    void        InsertToOtherTab( SCCOL nStartCol, SCROW nStartRow,
                                 SCCOL nEndCol, SCROW nEndRow, bool bRed,
                                 ScDetectiveData& rData );
 
@@ -114,7 +111,7 @@ class SC_DLLPUBLIC ScDetectiveFunc
     sal_uInt16      FindSuccLevel( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2,
                                 sal_uInt16 nLevel, sal_uInt16 nDeleteLevel );
 
-    void        FindFrameForObject( SdrObject* pObject, ScRange& rRange );
+    void        FindFrameForObject( const SdrObject* pObject, ScRange& rRange );
 
     void        Modified();
 
@@ -137,16 +134,16 @@ public:
     static void UpdateAllComments( ScDocument& rDoc );        ///< on all tables
     void        UpdateAllArrowColors();     ///< on all tables
 
-    static bool IsNonAlienArrow( SdrObject* pObject );
+    static bool IsNonAlienArrow( const SdrObject* pObject );
 
     ScDetectiveObjType GetDetectiveObjectType( SdrObject* pObject, SCTAB nObjTab,
                                 ScAddress& rPosition, ScRange& rSource, bool& rRedLine );
     void        InsertObject( ScDetectiveObjType eType, const ScAddress& rPosition,
                                 const ScRange& rSource, bool bRedLine );
 
-    static ColorData GetArrowColor();
-    static ColorData GetErrorColor();
-    static ColorData GetCommentColor();
+    static Color GetArrowColor();
+    static Color GetErrorColor();
+    static Color GetCommentColor();
     static void InitializeColors();
     static bool IsColorsInitialized();
     static void AppendChangTrackNoteSeparator(OUString &str);

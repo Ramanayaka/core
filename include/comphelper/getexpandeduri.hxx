@@ -12,14 +12,11 @@
 
 #include <sal/config.h>
 
-#include <com/sun/star/uno/Reference.hxx>
 #include <comphelper/comphelperdllapi.h>
 #include <rtl/ustring.hxx>
-#include <sal/types.h>
 
-namespace com { namespace sun { namespace star { namespace uno {
-    class XComponentContext;
-} } } }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 namespace comphelper {
 

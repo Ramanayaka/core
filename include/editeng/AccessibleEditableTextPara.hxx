@@ -20,16 +20,15 @@
 #ifndef INCLUDED_EDITENG_ACCESSIBLEEDITABLETEXTPARA_HXX
 #define INCLUDED_EDITENG_ACCESSIBLEEDITABLETEXTPARA_HXX
 
+#include <config_options.h>
 #include <rtl/ustring.hxx>
 #include <tools/gen.hxx>
-#include <cppuhelper/weakref.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
@@ -37,12 +36,18 @@
 #include <com/sun/star/accessibility/XAccessibleTextAttributes.hpp>
 #include <com/sun/star/accessibility/XAccessibleHypertext.hpp>
 #include <com/sun/star/accessibility/XAccessibleMultiLineText.hpp>
+#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 
 #include <comphelper/accessibletexthelper.hxx>
 #include <editeng/AccessibleParaManager.hxx>
-#include <editeng/AccessibleImageBullet.hxx>
-#include <editeng/unoedprx.hxx>
+#include <editeng/editdata.hxx>
 #include <editeng/editengdllapi.h>
+
+class SvxViewForwarder;
+class MapMode;
+class SvxAccessibleTextAdapter;
+class SvxAccessibleTextEditViewAdapter;
+namespace accessibility { class AccessibleImageBullet; }
 
 namespace accessibility
 {
@@ -58,16 +63,15 @@ namespace accessibility
 
     /** This class implements the actual text paragraphs for the EditEngine/Outliner UAA
      */
-    class EDITENG_DLLPUBLIC AccessibleEditableTextPara : public ::cppu::BaseMutex, public AccessibleTextParaInterfaceBase, public ::comphelper::OCommonAccessibleText
+    class UNLESS_MERGELIBS(EDITENG_DLLPUBLIC) AccessibleEditableTextPara final : public ::cppu::BaseMutex, public AccessibleTextParaInterfaceBase, private ::comphelper::OCommonAccessibleText
     {
 
-    protected:
         // override OCommonAccessibleText methods
         virtual OUString                 implGetText() override;
         virtual css::lang::Locale        implGetLocale() override;
         virtual void                     implGetSelection( sal_Int32& nStartIndex, sal_Int32& nEndIndex ) override;
-        virtual void                     implGetParagraphBoundary( css::i18n::Boundary& rBoundary, sal_Int32 nIndex ) override;
-        virtual void                     implGetLineBoundary( css::i18n::Boundary& rBoundary, sal_Int32 nIndex ) override;
+        virtual void                     implGetParagraphBoundary( const OUString& rtext, css::i18n::Boundary& rBoundary, sal_Int32 nIndex ) override;
+        virtual void                     implGetLineBoundary( const OUString& rtext, css::i18n::Boundary& rBoundary, sal_Int32 nIndex ) override;
 
     public:
         /// Create accessible object for given parent
@@ -136,6 +140,7 @@ namespace accessibility
         /// Does not support AccessibleTextType::SENTENCE (missing feature in EditEngine)
         virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
         virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+        virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 
         // XAccessibleEditableText
         virtual sal_Bool SAL_CALL cutText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
@@ -234,7 +239,7 @@ namespace accessibility
         /// Unsets the given state on the internal state set and fires STATE_CHANGE event. Don't hold locks when calling this!
         void UnSetState( const sal_Int16 nStateId );
 
-        static tools::Rectangle LogicToPixel( const tools::Rectangle& rRect, const MapMode& rMapMode, SvxViewForwarder& rForwarder );
+        static tools::Rectangle LogicToPixel( const tools::Rectangle& rRect, const MapMode& rMapMode, SvxViewForwarder const & rForwarder );
 
         SvxEditSourceAdapter& GetEditSource() const;
 
@@ -367,8 +372,6 @@ namespace accessibility
         /// Our listeners (guarded by maMutex)
         int mnNotifierClientId;
 private:
-        css::uno::Reference< css::accessibility::XAccessible > m_xAccInfo;
-
         // Text paragraphs should provide FLOWS_TO and FLOWS_FROM relations (#i27138#)
         // the paragraph manager, which created this instance - is NULL, if
         // instance isn't created by AccessibleParaManager.

@@ -28,17 +28,17 @@
 #include <cppuhelper/implbase5.hxx>
 #include <connectivity/sqliterator.hxx>
 #include <connectivity/sqlparse.hxx>
-#include "apitools.hxx"
+#include <apitools.hxx>
 #include <comphelper/broadcasthelper.hxx>
 #include <comphelper/uno3.hxx>
 #include <comphelper/proparrhlp.hxx>
 #include <comphelper/propertycontainer.hxx>
 #include <svx/ParseContext.hxx>
 
-namespace com { namespace sun { namespace star { namespace util {
+namespace com::sun::star::util {
     class XNumberFormatsSupplier;
     class XNumberFormatter;
-}}}}
+}
 
 namespace dbaccess
 {
@@ -66,7 +66,7 @@ namespace dbaccess
 
             SQLPartCount
         };
-        static void incSQLPart( SQLPart& e ) { e = (SQLPart)(1 + (size_t)e); }
+        static void incSQLPart( SQLPart& e ) { e = static_cast<SQLPart>(1 + static_cast<size_t>(e)); }
         enum EColumnType
         {
             SelectColumns       = 0,
@@ -74,14 +74,16 @@ namespace dbaccess
             OrderColumns        = 2,
             ParameterColumns    = 3
         };
-        typedef std::const_mem_fun_t< const ::connectivity::OSQLParseNode*, ::connectivity::OSQLParseTreeIterator >
+        typedef std::function<const ::connectivity::OSQLParseNode*(::connectivity::OSQLParseTreeIterator *)>
                                                 TGetParseNode;
         ::svxform::OSystemParseContext          m_aParseContext;
         ::connectivity::OSQLParser              m_aSqlParser;
         ::connectivity::OSQLParseTreeIterator   m_aSqlIterator;         // the iterator for the complete statement
         ::connectivity::OSQLParseTreeIterator   m_aAdditiveIterator;    // the iterator for the "additive statement" (means without the clauses of the elementary statement)
-        std::vector<OPrivateColumns*>         m_aColumnsCollection;   // used for columns and parameters of old queries
-        std::vector<OPrivateTables*>          m_aTablesCollection;
+        std::vector<std::unique_ptr<OPrivateColumns>>
+                                                m_aColumnsCollection;   // used for columns and parameters of old queries
+        std::vector<std::unique_ptr<OPrivateTables>>
+                                                m_aTablesCollection;
 
         std::vector< OUString >        m_aElementaryParts;     // the filter/groupby/having/order of the elementary statement
 
@@ -93,8 +95,8 @@ namespace dbaccess
         css::uno::Reference< css::uno::XComponentContext>         m_aContext;
         css::uno::Reference< css::script::XTypeConverter >        m_xTypeConverter;
 
-        std::vector<OPrivateColumns*>         m_aCurrentColumns;
-        OPrivateTables*                         m_pTables;      // currently used tables
+        std::vector<std::unique_ptr<OPrivateColumns>>         m_aCurrentColumns;
+        std::unique_ptr<OPrivateTables>                       m_pTables;      // currently used tables
 
         OUString                                m_aPureSelectSQL;   // the pure select statement, without filter/order/groupby/having
         OUString                                m_sDecimalSep;
@@ -104,20 +106,22 @@ namespace dbaccess
         sal_Int32                               m_nCommandType;
 
         // <properties>
-        OUString                         m_sOrignal;
+        OUString                         m_sOriginal;
         // </properties>
 
 
-        bool setORCriteria(::connectivity::OSQLParseNode* pCondition, ::connectivity::OSQLParseTreeIterator& _rIterator,
+        bool setORCriteria(::connectivity::OSQLParseNode const * pCondition, ::connectivity::OSQLParseTreeIterator& _rIterator,
             std::vector< std::vector < css::beans::PropertyValue > >& rFilters, const css::uno::Reference< css::util::XNumberFormatter > & xFormatter) const;
-        bool setANDCriteria(::connectivity::OSQLParseNode* pCondition, ::connectivity::OSQLParseTreeIterator& _rIterator,
+        bool setANDCriteria(::connectivity::OSQLParseNode const * pCondition, ::connectivity::OSQLParseTreeIterator& _rIterator,
             std::vector < css::beans::PropertyValue > & rFilters, const css::uno::Reference< css::util::XNumberFormatter > & xFormatter) const;
-        bool setComparsionPredicate(::connectivity::OSQLParseNode* pCondition, ::connectivity::OSQLParseTreeIterator& _rIterator,
+        bool setLikePredicate(::connectivity::OSQLParseNode const * pCondition, ::connectivity::OSQLParseTreeIterator const & _rIterator,
+            std::vector < css::beans::PropertyValue > & rFilters, const css::uno::Reference< css::util::XNumberFormatter > & xFormatter) const;
+        bool setComparisonPredicate(::connectivity::OSQLParseNode const * pCondition, ::connectivity::OSQLParseTreeIterator const & _rIterator,
             std::vector < css::beans::PropertyValue > & rFilters, const css::uno::Reference< css::util::XNumberFormatter > & xFormatter) const;
 
-        static OUString getColumnName(::connectivity::OSQLParseNode* pColumnRef,::connectivity::OSQLParseTreeIterator& _rIterator);
+        static OUString getColumnName(::connectivity::OSQLParseNode const * pColumnRef, ::connectivity::OSQLParseTreeIterator const & _rIterator);
         OUString getTableAlias(const css::uno::Reference< css::beans::XPropertySet >& column ) const;
-        static sal_Int32 getPredicateType(::connectivity::OSQLParseNode * _pPredicate);
+        static sal_Int32 getPredicateType(::connectivity::OSQLParseNode const * _pPredicate);
         // clears all Columns,Parameters and tables and insert it to their vectors
         void clearCurrentCollections();
         // clears the columns collection given by EColumnType
@@ -127,12 +131,12 @@ namespace dbaccess
             @param _rIterator
                 the iterator to use.
         */
-        OUString getStatementPart( TGetParseNode& _aGetFunctor, ::connectivity::OSQLParseTreeIterator& _rIterator );
+        OUString getStatementPart( TGetParseNode const & _aGetFunctor, ::connectivity::OSQLParseTreeIterator& _rIterator );
         void setQuery_Impl( const OUString& command );
 
         void setConditionByColumn( const css::uno::Reference< css::beans::XPropertySet >& column
                                 , bool andCriteria
-                                ,std::mem_fun1_t<bool,OSingleSelectQueryComposer,const OUString& >& _aSetFunctor
+                                , std::function<bool(OSingleSelectQueryComposer *, const OUString&)> const & _aSetFunctor
                                 ,sal_Int32 filterOperator);
 
         /** getStructuredCondition returns the structured condition for the where or having clause
@@ -143,7 +147,7 @@ namespace dbaccess
                 The structured filter
         */
         css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue > >
-                    getStructuredCondition( TGetParseNode& _aGetFunctor );
+                    getStructuredCondition( TGetParseNode const & _aGetFunctor );
 
         css::uno::Reference< css::container::XIndexAccess >
                     setCurrentColumns( EColumnType _eType, const ::rtl::Reference< ::connectivity::OSQLColumns >& _rCols );

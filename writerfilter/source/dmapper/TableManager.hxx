@@ -20,21 +20,15 @@
 #ifndef INCLUDED_WRITERFILTER_SOURCE_DMAPPER_TABLEMANAGER_HXX
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_TABLEMANAGER_HXX
 
-#include <dmapper/resourcemodel.hxx>
-
-#include <ooxml/resourceids.hxx>
-
 #include <memory>
 #include <stack>
-#include "TagLogger.hxx"
 
-#include <rtl/strbuf.hxx>
-#include <PropertyMap.hxx>
-#include <TableData.hxx>
+#include "PropertyMap.hxx"
+#include "TableData.hxx"
 
-namespace writerfilter
-{
-namespace dmapper
+#include <dmapper/resourcemodel.hxx>
+
+namespace writerfilter::dmapper
 {
 
 class DomainMapperTableHandler;
@@ -47,7 +41,7 @@ class DomainMapperTableHandler;
    table structure. The events have to be handles by a TableDataHandler.
 
  */
-class TableManager
+class TableManager : public virtual SvRefBase
 {
     class TableManagerState final
     {
@@ -60,6 +54,11 @@ class TableManager
          properties of the current row
          */
         TablePropertyMapPtr mpRowProps;
+
+        /**
+         table exception properties of the current row
+         */
+        TablePropertyMapPtr mpTableExceptionProps;
 
         /**
          properties of the current table
@@ -113,7 +112,7 @@ class TableManager
 
         void resetCellProps()
         {
-            mpCellProps.reset();
+            mpCellProps = getTableExceptionProps();
         }
 
         void setCellProps(TablePropertyMapPtr pProps)
@@ -121,14 +120,18 @@ class TableManager
             mpCellProps = pProps;
         }
 
-        const TablePropertyMapPtr& getCellProps()
+        const TablePropertyMapPtr& getCellProps() const
         {
             return mpCellProps;
         }
 
         void resetRowProps()
         {
-            mpRowProps.reset();
+            // reset also table exception and
+            // its copy set by the previous resetCellProps()
+            mpTableExceptionProps.clear();
+            resetCellProps();
+            mpRowProps.clear();
         }
 
         void setRowProps(TablePropertyMapPtr pProps)
@@ -136,15 +139,25 @@ class TableManager
             mpRowProps = pProps;
         }
 
-        const TablePropertyMapPtr& getRowProps()
+        const TablePropertyMapPtr& getRowProps() const
         {
             return mpRowProps;
+        }
+
+        void setTableExceptionProps(TablePropertyMapPtr pProps)
+        {
+            mpTableExceptionProps = pProps;
+        }
+
+        const TablePropertyMapPtr& getTableExceptionProps() const
+        {
+            return mpTableExceptionProps;
         }
 
         void resetTableProps()
         {
             if (mTableProps.size() > 0)
-                mTableProps.top().reset();
+                mTableProps.top().clear();
         }
 
         void setTableProps(TablePropertyMapPtr pProps)
@@ -202,15 +215,20 @@ class TableManager
     TableManagerState mState;
 
 protected:
-    TablePropertyMapPtr getCellProps()
+    TablePropertyMapPtr const & getCellProps() const
     {
         return mState.getCellProps();
     }
 
 public:
-    TablePropertyMapPtr getRowProps()
+    TablePropertyMapPtr const & getRowProps() const
     {
         return mState.getRowProps();
+    }
+
+    TablePropertyMapPtr const & getTableExceptionProps() const
+    {
+        return mState.getTableExceptionProps();
     }
 
 protected:
@@ -244,7 +262,7 @@ protected:
         return mState.getTableProps();
     }
 
-    const css::uno::Reference<css::text::XTextRange>& getHandle()
+    const css::uno::Reference<css::text::XTextRange>& getHandle() const
     {
         return mCurHandle;
     }
@@ -255,7 +273,7 @@ protected:
     }
 
 private:
-    typedef std::shared_ptr< css::uno::Reference<css::text::XTextRange> > T_p;
+    typedef tools::SvRef< css::uno::Reference<css::text::XTextRange> > T_p;
 
     /**
        depth of the current cell
@@ -278,10 +296,12 @@ private:
     /// If this is a nested table, does it start at cell start?
     bool m_bTableStartsAtCellStart;
 
+    bool m_bCellLastParaAfterAutospacing;
+
     /**
        handler for resolveCurrentTable
      */
-    std::shared_ptr<DomainMapperTableHandler> mpTableDataHandler;
+    tools::SvRef<DomainMapperTableHandler> mpTableDataHandler;
 
     /**
        Set flag which indicates the current handle is in a cell.
@@ -314,12 +334,12 @@ private:
      Open a cell at current level.
      */
 
-    void openCell(const css::uno::Reference<css::text::XTextRange>& handle, const TablePropertyMapPtr& pProps);
+    void openCell(const css::uno::Reference<css::text::XTextRange>& rHandle, const TablePropertyMapPtr& pProps);
 
     /**
      Close a cell at current level.
      */
-    void closeCell(const css::uno::Reference<css::text::XTextRange>& handle);
+    void closeCell(const css::uno::Reference<css::text::XTextRange>& rHandle);
 
     /**
      Ensure a cell is open at the current level.
@@ -330,7 +350,9 @@ protected:
     /**
        Return the current table difference, i.e. 1 if we are in the first cell of a new table, etc.
      */
-    sal_uInt32 getTableDepthDifference() { return mnTableDepthNew - mnTableDepth; }
+    sal_uInt32 getTableDepthDifference() const { return mnTableDepthNew - mnTableDepth; }
+
+    sal_uInt32 getTableDepth() const { return mnTableDepthNew; }
 
     /**
        Action to be carried out at the end of the last paragraph of a
@@ -358,14 +380,14 @@ protected:
 
 public:
     TableManager();
-    virtual ~TableManager(){}
+    ~TableManager();
 
     /**
        Set handler for resolveCurrentTable.
 
        @param pTableDataHandler     the handler
      */
-    void setHandler(const std::shared_ptr<DomainMapperTableHandler>& pTableDataHandler);
+    void setHandler(const tools::SvRef<DomainMapperTableHandler>& pTableDataHandler);
 
     /**
        Set the current handle.
@@ -448,19 +470,18 @@ public:
     virtual void cellProps(const TablePropertyMapPtr& pProps);
 
     /**
-       Handle properties of a certain cell in the current row.
-
-       @paran i        index of the cell in the current row
-       @param pProps   the properties
-     */
-    virtual void cellPropsByCell(unsigned int i, const TablePropertyMapPtr& pProps);
-
-    /**
        Handle properties of the current row.
 
        @param pProps   the properties
      */
     virtual void insertRowProps(const TablePropertyMapPtr& pProps);
+
+    /**
+       Handle table exception properties of the current row.
+
+       @param pProps   the properties
+     */
+    virtual void tableExceptionProps(const TablePropertyMapPtr& pProps);
 
     /**
        Handle properties of the current table.
@@ -477,13 +498,26 @@ public:
      */
     bool isIgnore() const;
 
+    sal_uInt32 getGridBefore(sal_uInt32 nRow);
+    sal_uInt32 getCurrentGridBefore();
+    void setCurrentGridBefore( sal_uInt32 nSkipGrids );
+    sal_uInt32 getGridAfter(sal_uInt32 nRow);
+    void setCurrentGridAfter( sal_uInt32 nSkipGrids );
+    std::vector<sal_uInt32> getCurrentGridSpans();
+    void setCurrentGridSpan( sal_uInt32 nGridSpan, bool bFirstCell = false );
+    /// Given a zero-based row/cell, return the zero-based grid it belongs to, or SAL_MAX_UINT16 for invalid.
+    sal_uInt32 findColumn( const sal_uInt32 nRow, const sal_uInt32 nCell );
+    /// Given a zero-based row/col, return the zero-based cell describing that grid, or SAL_MAX_UINT16 for invalid.
+    sal_uInt32 findColumnCell( const sal_uInt32 nRow, const sal_uInt32 nCol );
 
     void setTableStartsAtCellStart(bool bTableStartsAtCellStart);
+    void setCellLastParaAfterAutospacing(bool bIsAfterAutospacing);
+    bool isCellLastParaAfterAutospacing() const {return m_bCellLastParaAfterAutospacing;}
 };
 
 }
 
-}
+
 
 #endif // INCLUDED_WRITERFILTER_INC_RESOURCEMODEL_TABLEMANAGER_HXX
 

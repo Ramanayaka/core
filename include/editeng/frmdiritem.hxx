@@ -28,35 +28,35 @@
     layout text for Western, CJK and CTL languages.
 */
 
-class EDITENG_DLLPUBLIC SvxFrameDirectionItem : public SfxEnumItem<SvxFrameDirection>
+class EDITENG_DLLPUBLIC SvxFrameDirectionItem final : public SfxEnumItem<SvxFrameDirection>
 {
 public:
     SvxFrameDirectionItem( SvxFrameDirection nValue, sal_uInt16 nWhich  );
     virtual ~SvxFrameDirectionItem() override;
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual sal_uInt16      GetVersion( sal_uInt16 nFileVersion ) const override;
-    virtual bool            operator==( const SfxPoolItem& ) const override;
+    SvxFrameDirectionItem(SvxFrameDirectionItem const &) = default;
+    SvxFrameDirectionItem(SvxFrameDirectionItem &&) = default;
+    SvxFrameDirectionItem & operator =(SvxFrameDirectionItem const &) = delete;
+    SvxFrameDirectionItem & operator =(SvxFrameDirectionItem &&) = delete;
+
+    virtual SvxFrameDirectionItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool            GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper * = nullptr ) const override;
+                                  const IntlWrapper& ) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
     virtual sal_uInt16      GetValueCount() const override
     {
-        return (sal_uInt16)SvxFrameDirection::Environment + 1;
+        return sal_uInt16(SvxFrameDirection::Vertical_LR_BT) + 1;
     }
-    SvxFrameDirectionItem& operator=( const SvxFrameDirectionItem& rItem )
-    {
-        SetValue( rItem.GetValue() );
-        return *this;
-    }
+
+        // SfxPoolItem copy function dichotomy
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 #endif // INCLUDED_EDITENG_FRMDIRITEM_HXX

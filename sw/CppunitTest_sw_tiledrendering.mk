@@ -11,6 +11,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sw_tiledrendering))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sw_tiledrendering))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sw_tiledrendering, \
     sw/qa/extras/tiledrendering/tiledrendering \
 ))
@@ -26,6 +28,7 @@ $(eval $(call gb_CppunitTest_use_libraries,sw_tiledrendering, \
     svt \
 	svxcore \
     sw \
+	swqahelper \
     test \
     unotest \
     vcl \
@@ -42,11 +45,15 @@ $(eval $(call gb_CppunitTest_set_include,sw_tiledrendering,\
     -I$(SRCDIR)/sw/inc \
     -I$(SRCDIR)/sw/source/core/inc \
     -I$(SRCDIR)/sw/source/uibase/inc \
-    -I$(SRCDIR)/sw/qa/extras/inc \
+    -I$(SRCDIR)/sw/qa/inc \
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_CppunitTest_use_sdk_api,sw_tiledrendering))
+$(eval $(call gb_CppunitTest_use_api,sw_tiledrendering,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_CppunitTest_use_ure,sw_tiledrendering))
 $(eval $(call gb_CppunitTest_use_vcl,sw_tiledrendering))

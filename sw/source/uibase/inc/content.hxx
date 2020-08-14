@@ -19,10 +19,9 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_CONTENT_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_CONTENT_HXX
 #include <memory>
-#include <limits.h>
 #include "swcont.hxx"
 
-#include <vcl/menu.hxx>
+#include <ndarr.hxx>
 
 class SwWrtShell;
 class SwContentArr;
@@ -49,7 +48,7 @@ class SwOutlineContent : public SwContent
             SwContent(pCnt, rName, nYPos),
             nOutlinePos(nArrPos), nOutlineLevel(nLevel), bIsMoveable(bMove) {}
 
-    sal_uInt16  GetPos() const {return nOutlinePos;}
+    SwOutlineNodes::size_type GetOutlinePos() const {return nOutlinePos;}
     sal_uInt8   GetOutlineLevel() const {return nOutlineLevel;}
     bool        IsMoveable() const {return bIsMoveable;};
 };
@@ -85,7 +84,7 @@ public:
 
     virtual bool        IsProtect() const override;
     const OUString&     GetURL()    const   { return sURL; }
-    const SwTextINetFormat* GetINetAttr()       { return pINetAttr; }
+    const SwTextINetFormat* GetINetAttr() const { return pINetAttr; }
 };
 
 class SwPostItContent : public SwContent
@@ -138,18 +137,18 @@ public:
 */
 class SwContentType : public SwTypeNumber
 {
-    SwWrtShell*         pWrtShell;
+    SwWrtShell*         m_pWrtShell;
     std::unique_ptr<SwContentArr>
-                        pMember;            // array for content
-    OUString            sContentTypeName;   // name of content type
-    OUString            sSingleContentTypeName; // name of content type, singular
-    OUString            sTypeToken;         // attachment for URL
-    size_t              nMemberCount;       // content count
-    ContentTypeId       nContentType;       // content type's Id
-    sal_uInt8           nOutlineLevel;
-    bool                bDataValid :    1;
-    bool                bEdit:          1;  // can this type be edited?
-    bool                bDelete:        1;  // can this type be deleted?
+                        m_pMember;            // array for content
+    OUString            m_sContentTypeName;   // name of content type
+    OUString            m_sSingleContentTypeName; // name of content type, singular
+    OUString            m_sTypeToken;         // attachment for URL
+    size_t              m_nMemberCount;       // content count
+    ContentTypeId       m_nContentType;       // content type's Id
+    sal_uInt8           m_nOutlineLevel;
+    bool                m_bDataValid :    1;
+    bool                m_bEdit:          1;  // can this type be edited?
+    bool                m_bDelete:        1;  // can this type be deleted?
 protected:
         static OUString     RemoveNewline(const OUString&);
 public:
@@ -161,25 +160,25 @@ public:
         /** Fill the List of contents */
         void                FillMemberList(bool* pbLevelChanged = nullptr);
         size_t              GetMemberCount() const
-                                {return nMemberCount;};
-        ContentTypeId       GetType() const {return nContentType;}
+                                {return m_nMemberCount;};
+        ContentTypeId       GetType() const {return m_nContentType;}
 
         /** Deliver content, for that if necessary fill the list */
         const SwContent*    GetMember(size_t nIndex);
-        const OUString&     GetName() {return sContentTypeName;}
-        const OUString&     GetSingleName() const {return sSingleContentTypeName;}
-        const OUString&     GetTypeToken() const{return sTypeToken;}
+        const OUString&     GetName() const {return m_sContentTypeName;}
+        const OUString&     GetSingleName() const {return m_sSingleContentTypeName;}
+        const OUString&     GetTypeToken() const{return m_sTypeToken;}
 
         void                SetOutlineLevel(sal_uInt8 nNew)
                             {
-                                nOutlineLevel = nNew;
+                                m_nOutlineLevel = nNew;
                                 Invalidate();
                             }
 
         void                Invalidate(); // only nMemberCount is read again
 
-        bool                IsEditable() const {return bEdit;}
-        bool                IsDeletable() const {return bDelete;}
+        bool                IsEditable() const {return m_bEdit;}
+        bool                IsDeletable() const {return m_bDelete;}
 };
 
 #endif

@@ -19,10 +19,10 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_THREADLISTENER_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_THREADLISTENER_HXX
 
-#include <ifinishedthreadlistener.hxx>
-#include <observablethread.hxx>
+#include "ifinishedthreadlistener.hxx"
 
 class ThreadManager;
+class ObservableThread;
 
 /** helper class to observe threads
 

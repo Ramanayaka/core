@@ -20,10 +20,13 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSTOOLTIP_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSTOOLTIP_HXX
 
-#include "SlideSorter.hxx"
-#include "model/SlsSharedPageDescriptor.hxx"
+#include <model/SlsSharedPageDescriptor.hxx>
+#include <rtl/ustring.hxx>
+#include <vcl/timer.hxx>
 
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter { class SlideSorter; }
+
+namespace sd::slidesorter::view {
 
 /** Manage the display of tool tips.  The tool tip text changes when the
     mouse is moved from slide to slide or from button to button.
@@ -56,7 +59,7 @@ private:
     SlideSorter& mrSlideSorter;
     model::SharedPageDescriptor mpDescriptor;
     OUString msCurrentHelpText;
-    sal_uLong mnHelpWindowHandle;
+    void* mnHelpWindowHandle;
     Timer maShowTimer;
     Timer maHiddenTimer;
 
@@ -65,7 +68,7 @@ private:
     DECL_LINK(DelayTrigger, Timer*, void);
 };
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 #endif
 

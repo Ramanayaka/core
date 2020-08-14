@@ -18,15 +18,14 @@
  */
 
 #include <memory>
-#include "ChartModel.hxx"
-#include "MediaDescriptorHelper.hxx"
-#include "macros.hxx"
-#include "ChartViewHelper.hxx"
-#include "ChartModelHelper.hxx"
-#include "DataSourceHelper.hxx"
-#include "AxisHelper.hxx"
-#include "ThreeDHelper.hxx"
-#include "DiagramHelper.hxx"
+#include <ChartModel.hxx>
+#include <MediaDescriptorHelper.hxx>
+#include <ChartViewHelper.hxx>
+#include <ChartModelHelper.hxx>
+#include <DataSourceHelper.hxx>
+#include <AxisHelper.hxx>
+#include <ThreeDHelper.hxx>
+#include <DiagramHelper.hxx>
 
 #include <com/sun/star/chart2/LegendPosition.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
@@ -41,11 +40,11 @@
 #include <com/sun/star/embed/StorageFactory.hpp>
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/io/TempFile.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
 #include <com/sun/star/ucb/CommandFailedException.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
 
 #include <com/sun/star/chart2/data/XPivotTableDataProvider.hpp>
 
@@ -54,9 +53,10 @@
 #include <vcl/cvtgrf.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/storagehelper.hxx>
-#include <comphelper/sequence.hxx>
-#include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
+#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 #include <algorithm>
 
@@ -75,7 +75,7 @@ struct lcl_PropNameEquals
     {}
     bool operator() ( const beans::PropertyValue & rProp )
     {
-        return rProp.Name.equals( m_aStr );
+        return rProp.Name == m_aStr;
     }
 private:
     OUString m_aStr;
@@ -87,7 +87,7 @@ T lcl_getProperty(
     const OUString & rPropName )
 {
     T aResult;
-    if( rMediaDescriptor.getLength())
+    if( rMediaDescriptor.hasElements())
     {
         const beans::PropertyValue * pIt = rMediaDescriptor.getConstArray();
         const beans::PropertyValue * pEndIt = pIt +  + rMediaDescriptor.getLength();
@@ -130,15 +130,14 @@ Reference< embed::XStorage > lcl_createStorage(
         aStorageArgs[2] <<= rMediaDescriptor;
         xStorage.set(
             xStorageFact->createInstanceWithArguments( aStorageArgs ), uno::UNO_QUERY_THROW );
-        OSL_ENSURE( xStorage.is(), "No Storage" );
     }
-    catch(const css::ucb::ContentCreationException& rEx)
+    catch(const css::ucb::ContentCreationException&)
     {
-        ASSERT_EXCEPTION( rEx );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
-    catch(const css::ucb::CommandFailedException& rEx)
+    catch(const css::ucb::CommandFailedException&)
     {
-        ASSERT_EXCEPTION( rEx );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     return xStorage;
@@ -185,9 +184,9 @@ Reference< document::XFilter > ChartModel::impl_createFilter(
                 }
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
         OSL_ENSURE( xFilter.is(), "Filter not found via factory" );
     }
@@ -316,9 +315,9 @@ void SAL_CALL ChartModel::storeToURL(
                 }
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
     else
@@ -346,9 +345,9 @@ void ChartModel::impl_store(
             xExporter->setSourceDocument( Reference< lang::XComponent >( this ));
             xFilter->filter( aMD );
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
     else
@@ -363,18 +362,18 @@ void ChartModel::impl_store(
     //notify parent data provider after saving thus the parent document can store
     //the ranges for which a load and update of the chart will be necessary
     Reference< beans::XPropertySet > xPropSet( m_xParent, uno::UNO_QUERY );
-    if ( !hasInternalDataProvider() && xPropSet.is() )
+    if ( !(!hasInternalDataProvider() && xPropSet.is()) )
+        return;
+
+    apphelper::MediaDescriptorHelper aMDHelper(rMediaDescriptor);
+    try
     {
-        apphelper::MediaDescriptorHelper aMDHelper(rMediaDescriptor);
-        try
-        {
-            xPropSet->setPropertyValue(
-                "SavedObject",
-                uno::Any( aMDHelper.HierarchicalDocumentName ) );
-        }
-        catch ( const uno::Exception& )
-        {
-        }
+        xPropSet->setPropertyValue(
+            "SavedObject",
+            uno::Any( aMDHelper.HierarchicalDocumentName ) );
+    }
+    catch ( const uno::Exception& )
+    {
     }
 }
 
@@ -459,16 +458,16 @@ void ChartModel::insertDefaultChart()
 
                 }
             }
-            catch( const uno::Exception & ex )
+            catch( const uno::Exception & )
             {
-                ASSERT_EXCEPTION( ex );
+                DBG_UNHANDLED_EXCEPTION("chart2");
             }
         }
         ChartModelHelper::setIncludeHiddenCells( false, *this );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
     setModified( false );
     unlockControllers();
@@ -513,7 +512,7 @@ void SAL_CALL ChartModel::load(
                 Sequence< uno::Any > aStorageArgs( 2 );
                 aStorageArgs[0] <<= aMDHelper.Stream;
                 // todo: check if stream is read-only
-                aStorageArgs[1] <<= (embed::ElementModes::READ); //WRITE | embed::ElementModes::NOCREATE);
+                aStorageArgs[1] <<= embed::ElementModes::READ; //WRITE | embed::ElementModes::NOCREATE);
 
                 xStorage.set( xStorageFact->createInstanceWithArguments( aStorageArgs ),
                     uno::UNO_QUERY_THROW );
@@ -524,7 +523,7 @@ void SAL_CALL ChartModel::load(
                 // convert XInputStream to XStorage via the storage factory
                 Sequence< uno::Any > aStorageArgs( 2 );
                 aStorageArgs[0] <<= aMDHelper.InputStream;
-                aStorageArgs[1] <<= (embed::ElementModes::READ);
+                aStorageArgs[1] <<= embed::ElementModes::READ;
 
                 xStorage.set( xStorageFact->createInstanceWithArguments( aStorageArgs ),
                     uno::UNO_QUERY_THROW );
@@ -534,9 +533,9 @@ void SAL_CALL ChartModel::load(
         if( aMDHelper.ISSET_URL )
             aURL = aMDHelper.URL;
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 
     if( xStorage.is())
@@ -601,13 +600,13 @@ void ChartModel::impl_loadGraphics(
             const uno::Sequence< OUString > aElementNames(
                 xGraphicsStorage->getElementNames() );
 
-            for( int i = 0; i < aElementNames.getLength(); ++i )
+            for( OUString const & streamName : aElementNames )
             {
-                if( xGraphicsStorage->isStreamElement( aElementNames[ i ] ) )
+                if( xGraphicsStorage->isStreamElement( streamName ) )
                 {
                     uno::Reference< io::XStream > xElementStream(
                         xGraphicsStorage->openStreamElement(
-                            aElementNames[ i ],
+                            streamName,
                             embed::ElementModes::READ ) );
 
                     if( xElementStream.is() )
@@ -616,15 +615,13 @@ void ChartModel::impl_loadGraphics(
                             ::utl::UcbStreamHelper::CreateStream(
                                 xElementStream, true ) );
 
-                        if( apIStm.get() )
+                        if (apIStm)
                         {
+                            SolarMutexGuard aGuard;
                             Graphic aGraphic;
-
-                            if( !GraphicConverter::Import(
-                                    *apIStm.get(),
-                                    aGraphic ) )
+                            if (!GraphicConverter::Import(*apIStm, aGraphic))
                             {
-                                m_aGraphicObjectVector.push_back( aGraphic );
+                                m_aGraphicObjectVector.emplace_back(aGraphic );
                             }
                         }
                     }
@@ -638,7 +635,7 @@ void ChartModel::impl_loadGraphics(
 }
 
 // util::XModifiable
-void SAL_CALL ChartModel::impl_notifyModifiedListeners()
+void ChartModel::impl_notifyModifiedListeners()
 {
     {
         MutexGuard aGuard( m_aModelMutex );
@@ -729,9 +726,9 @@ void SAL_CALL ChartModel::modified( const lang::EventObject& rEvenObject)
             css::uno::Reference<css::chart2::XChartTypeTemplate> xChartTypeTemplate(aTemplateAndService.first);
             xChartTypeTemplate->changeDiagramData(xDiagram, xDataSource, aArguments);
         }
-        catch (const uno::Exception & ex)
+        catch (const uno::Exception &)
         {
-            ASSERT_EXCEPTION(ex);
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
         unlockControllers();
     }
@@ -773,7 +770,7 @@ Reference< embed::XStorage > SAL_CALL ChartModel::getDocumentStorage()
     return m_xStorage;
 }
 
-void SAL_CALL ChartModel::impl_notifyStorageChangeListeners()
+void ChartModel::impl_notifyStorageChangeListeners()
 {
     ::cppu::OInterfaceContainerHelper* pIC = m_aLifeTimeManager.m_aListenerContainer
           .getContainer( cppu::UnoType<document::XStorageChangeListener>::get());

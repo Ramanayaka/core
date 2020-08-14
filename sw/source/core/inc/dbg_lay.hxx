@@ -21,6 +21,7 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_DBG_LAY_HXX
 
 #include <o3tl/typed_flags_set.hxx>
+#include <memory>
 
 enum class PROT {
     FileInit   = 0x00000000,
@@ -34,7 +35,6 @@ enum class PROT {
     ShrinkTest = 0x00000080,
     Size       = 0x00000100,
     PrintArea  = 0x00000200,
-    Pos        = 0x00000400,
     AdjustN    = 0x00000800,
     Section    = 0x00001000,
     Cut        = 0x00002000,
@@ -42,10 +42,9 @@ enum class PROT {
     Leaf       = 0x00008000,
     TestFormat = 0x00010000,
     FrmChanges = 0x00020000,
-    Snapshot   = 0x00040000
 };
 namespace o3tl {
-    template<> struct typed_flags<PROT> : is_typed_flags<PROT, 0x0007ffff> {};
+    template<> struct typed_flags<PROT> : is_typed_flags<PROT, 0x0003fbff> {};
 }
 
 enum class DbgAction {
@@ -58,10 +57,6 @@ enum class DbgAction {
 };
 
 #ifdef DBG_UTIL
-
-#include <tools/solar.h>
-
-#include "swtypes.hxx"
 
 class SwImplProtocol;
 class SwFrame;
@@ -84,23 +79,10 @@ public:
 
 class SwEnterLeave
 {
-    SwImplEnterLeave* pImpl;
-    void Ctor( const SwFrame* pFrame, PROT nFunc, DbgAction nAct, void* pPar );
-    void Dtor();
-
+    std::unique_ptr<SwImplEnterLeave> pImpl;
 public:
-    SwEnterLeave( const SwFrame* pFrame, PROT nFunc, DbgAction nAct, void* pPar )
-    {
-        if( SwProtocol::Record( nFunc ) )
-            Ctor( pFrame, nFunc, nAct, pPar );
-        else
-            pImpl = nullptr;
-    }
-    ~SwEnterLeave()
-    {
-        if( pImpl )
-            Dtor();
-    }
+    SwEnterLeave( const SwFrame* pFrame, PROT nFunc, DbgAction nAct, void* pPar );
+    ~SwEnterLeave();
 };
 
 #define PROTOCOL( pFrame, nFunc, nAct, pPar ) {   if( SwProtocol::Record( nFunc ) )\

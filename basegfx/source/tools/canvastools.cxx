@@ -24,39 +24,26 @@
 #include <com/sun/star/geometry/RealBezierSegment2D.hpp>
 #include <com/sun/star/geometry/AffineMatrix2D.hpp>
 #include <com/sun/star/geometry/AffineMatrix3D.hpp>
-#include <com/sun/star/geometry/Matrix2D.hpp>
 #include <com/sun/star/geometry/IntegerSize2D.hpp>
-#include <com/sun/star/geometry/IntegerPoint2D.hpp>
 #include <com/sun/star/geometry/IntegerRectangle2D.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/rendering/XPolyPolygon2D.hpp>
 #include <com/sun/star/rendering/XGraphicDevice.hpp>
-#include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
-#include <basegfx/tools/unopolypolygon.hxx>
+#include <basegfx/utils/unopolypolygon.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/matrix/b3dhommatrix.hxx>
-#include <basegfx/vector/b2dsize.hxx>
 #include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/range/b2drectangle.hxx>
 #include <basegfx/range/b3drange.hxx>
-#include <basegfx/vector/b2isize.hxx>
-#include <basegfx/point/b2ipoint.hxx>
-#include <basegfx/range/b2irectangle.hxx>
-#include <basegfx/range/b2ibox.hxx>
+#include <basegfx/range/b2irange.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <limits>
+#include <basegfx/utils/canvastools.hxx>
 
 using namespace ::com::sun::star;
 
-namespace basegfx
+namespace basegfx::unotools
 {
-
-    namespace unotools
-    {
         namespace
         {
             uno::Sequence< geometry::RealBezierSegment2D > bezierSequenceFromB2DPolygon(const ::basegfx::B2DPolygon& rPoly)
@@ -144,19 +131,16 @@ namespace basegfx
 
             if( rPoly.areControlPointsUsed() )
             {
-                uno::Sequence< uno::Sequence< geometry::RealBezierSegment2D > > outputSequence( 1 );
-                outputSequence[0] = bezierSequenceFromB2DPolygon( rPoly );
+                uno::Sequence< uno::Sequence< geometry::RealBezierSegment2D > > outputSequence{ bezierSequenceFromB2DPolygon( rPoly )};
 
-                xRes.set( xGraphicDevice->createCompatibleBezierPolyPolygon( outputSequence ),
-                          uno::UNO_QUERY );
+                xRes = xGraphicDevice->createCompatibleBezierPolyPolygon( outputSequence );
             }
             else
             {
-                uno::Sequence< uno::Sequence< geometry::RealPoint2D > > outputSequence( 1 );
-                outputSequence[0] = pointSequenceFromB2DPolygon( rPoly );
+                uno::Sequence< uno::Sequence< geometry::RealPoint2D > > outputSequence{
+                 pointSequenceFromB2DPolygon( rPoly )};
 
-                xRes.set( xGraphicDevice->createCompatibleLinePolyPolygon( outputSequence ),
-                          uno::UNO_QUERY );
+                xRes = xGraphicDevice->createCompatibleLinePolyPolygon( outputSequence );
             }
 
             if( xRes.is() && rPoly.isClosed() )
@@ -178,15 +162,13 @@ namespace basegfx
 
             if( rPolyPoly.areControlPointsUsed() )
             {
-                xRes.set( xGraphicDevice->createCompatibleBezierPolyPolygon(
-                              bezierSequenceSequenceFromB2DPolyPolygon( rPolyPoly ) ),
-                          uno::UNO_QUERY );
+                xRes = xGraphicDevice->createCompatibleBezierPolyPolygon(
+                              bezierSequenceSequenceFromB2DPolyPolygon( rPolyPoly ) );
             }
             else
             {
-                xRes.set( xGraphicDevice->createCompatibleLinePolyPolygon(
-                              pointSequenceSequenceFromB2DPolyPolygon( rPolyPoly ) ),
-                          uno::UNO_QUERY );
+                xRes = xGraphicDevice->createCompatibleLinePolyPolygon(
+                              pointSequenceSequenceFromB2DPolyPolygon( rPolyPoly ) );
             }
 
             for( i=0; i<nNumPolies; ++i )
@@ -213,9 +195,9 @@ namespace basegfx
         {
             ::basegfx::B2DPolyPolygon aRes;
 
-            for( sal_Int32 nCurrPoly=0; nCurrPoly<points.getLength(); ++nCurrPoly )
+            for( const auto & p : points )
             {
-                aRes.append( polygonFromPoint2DSequence( points[nCurrPoly] ) );
+                aRes.append( polygonFromPoint2DSequence( p ) );
             }
 
             return aRes;
@@ -257,9 +239,9 @@ namespace basegfx
         {
             ::basegfx::B2DPolyPolygon aRes;
 
-            for( sal_Int32 nCurrPoly=0; nCurrPoly<curves.getLength(); ++nCurrPoly )
+            for( const auto & c : curves )
             {
-                aRes.append( polygonFromBezier2DSequence( curves[nCurrPoly] ) );
+                aRes.append( polygonFromBezier2DSequence( c ) );
             }
 
             return aRes;
@@ -487,8 +469,6 @@ namespace basegfx
                                         ceil(rRange.getMaxY()) );
         }
 
-    } // namespace bgfxtools
-
-} // namespace canvas
+} // namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

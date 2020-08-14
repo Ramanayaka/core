@@ -20,7 +20,7 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_TCONNECTION_HXX
 
 #include <rtl/textenc.h>
-#include <com/sun/star/lang/DisposedException.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/sdbc/XWarningsSupplier.hpp>
@@ -62,7 +62,7 @@ namespace connectivity
         rtl_TextEncoding getTextEncoding() const { return m_nTextEncoding; }
         const OUString&         getURL() const  { return m_sURL; }
         void             setURL(const OUString& _rsUrl) { m_sURL = _rsUrl; }
-        void                    throwGenericSQLException( sal_uInt16 _nErrorResourceId,const css::uno::Reference< css::uno::XInterface>& _xContext  );
+        void                    throwGenericSQLException(const char* pErrorResourceId, const css::uno::Reference< css::uno::XInterface>& _xContext);
         const SharedResources& getResources() const { return m_aResources;}
 
         void setConnectionInfo(const css::uno::Sequence< css::beans::PropertyValue >& _aInfo) { m_aConnectionInfo = _aInfo; }
@@ -74,7 +74,7 @@ namespace connectivity
 
         //XUnoTunnel
         virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-        static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+        static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
     };
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_TCONNECTION_HXX

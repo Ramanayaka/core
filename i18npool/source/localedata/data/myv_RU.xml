@@ -51,7 +51,7 @@
     <TimePM>ч.л.</TimePM>
     <MeasurementSystem>metric</MeasurementSystem>
   </LC_CTYPE>
-  <LC_FORMAT replaceFrom="[CURRENCY]" replaceTo="[$цел-66C]">
+  <LC_FORMAT replaceFrom="[CURRENCY]" replaceTo="[$₽-66C]">
     <DateAcceptancePattern>M/D</DateAcceptancePattern>
     <FormatElement msgid="FixedFormatskey1" default="true" type="medium" usage="FIXED_NUMBER" formatindex="0">
       <FormatCode>General</FormatCode>
@@ -196,6 +196,9 @@
     <FormatElement msgid="DateTimeFormatskey2" default="false" type="medium" usage="DATE_TIME" formatindex="47">
       <FormatCode>YYYY/MM/DD HH:MM:SS AM/PM</FormatCode>
     </FormatElement>
+    <FormatElement msgid="DateTimeFormatskey3" default="false" type="medium" usage="DATE_TIME" formatindex="50">
+      <FormatCode>YYYY/MM/DD HH:MM</FormatCode>
+    </FormatElement>
   </LC_FORMAT>
   <LC_COLLATION>
     <Collator default="true" unoid="alphanumeric"/>
@@ -335,6 +338,13 @@
   </LC_CALENDAR>
   <LC_CURRENCY>
     <Currency default="true" usedInCompatibleFormatCodes="true">
+      <CurrencyID>RUB</CurrencyID>
+      <CurrencySymbol>₽</CurrencySymbol>
+      <BankSymbol>RUB</BankSymbol>
+      <CurrencyName>Цельковой</CurrencyName>
+      <DecimalPlaces>2</DecimalPlaces>
+    </Currency>
+    <Currency default="false" usedInCompatibleFormatCodes="false" legacyOnly="true">
       <CurrencyID>RUB</CurrencyID>
       <CurrencySymbol>цел</CurrencySymbol>
       <BankSymbol>RUB</BankSymbol>

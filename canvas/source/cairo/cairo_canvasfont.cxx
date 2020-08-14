@@ -59,30 +59,30 @@ namespace cairocanvas
         maFont->SetLanguage( LanguageTag::convertToLanguageType( rFontRequest.Locale, false));
 
         // adjust to stretched/shrunk font
-        if( !::rtl::math::approxEqual( rFontMatrix.m00, rFontMatrix.m11) )
-        {
-            VclPtr<OutputDevice> pOutDev( mpRefDevice->getOutputDevice() );
+        if( ::rtl::math::approxEqual( rFontMatrix.m00, rFontMatrix.m11) )
+            return;
 
-            if( pOutDev )
-            {
-                const bool bOldMapState( pOutDev->IsMapModeEnabled() );
-                pOutDev->EnableMapMode(false);
+        VclPtr<OutputDevice> pOutDev( mpRefDevice->getOutputDevice() );
 
-                const Size aSize = pOutDev->GetFontMetric( *maFont ).GetFontSize();
+        if( !pOutDev )
+            return;
 
-                const double fDividend( rFontMatrix.m10 + rFontMatrix.m11 );
-                double fStretch = (rFontMatrix.m00 + rFontMatrix.m01);
+        const bool bOldMapState( pOutDev->IsMapModeEnabled() );
+        pOutDev->EnableMapMode(false);
 
-                if( !::basegfx::fTools::equalZero( fDividend) )
-                    fStretch /= fDividend;
+        const Size aSize = pOutDev->GetFontMetric( *maFont ).GetFontSize();
 
-                const long nNewWidth = ::basegfx::fround( aSize.Width() * fStretch );
+        const double fDividend( rFontMatrix.m10 + rFontMatrix.m11 );
+        double fStretch = rFontMatrix.m00 + rFontMatrix.m01;
 
-                maFont->SetAverageFontWidth( nNewWidth );
+        if( !::basegfx::fTools::equalZero( fDividend) )
+            fStretch /= fDividend;
 
-                pOutDev->EnableMapMode(bOldMapState);
-            }
-        }
+        const long nNewWidth = ::basegfx::fround( aSize.Width() * fStretch );
+
+        maFont->SetAverageFontWidth( nNewWidth );
+
+        pOutDev->EnableMapMode(bOldMapState);
     }
 
     void SAL_CALL CanvasFont::disposing()
@@ -133,7 +133,7 @@ namespace cairocanvas
 
     OUString SAL_CALL CanvasFont::getImplementationName()
     {
-        return OUString( "CairoCanvas::CanvasFont" );
+        return "CairoCanvas::CanvasFont";
     }
 
     sal_Bool SAL_CALL CanvasFont::supportsService( const OUString& ServiceName )
@@ -146,7 +146,7 @@ namespace cairocanvas
         return { "com.sun.star.rendering.CanvasFont" };
     }
 
-    vcl::Font CanvasFont::getVCLFont() const
+    vcl::Font const & CanvasFont::getVCLFont() const
     {
         return *maFont;
     }

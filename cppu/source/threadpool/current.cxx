@@ -20,14 +20,13 @@
 #include <sal/config.h>
 
 #include <rtl/byteseq.h>
-#include "rtl/uuid.h"
-#include "osl/thread.h"
-#include "osl/mutex.hxx"
+#include <osl/thread.h>
+#include <osl/mutex.hxx>
 
-#include "uno/current_context.h"
-#include "uno/environment.hxx"
-#include "uno/mapping.hxx"
-#include "typelib/typedescription.h"
+#include <uno/current_context.h>
+#include <uno/environment.hxx>
+#include <uno/mapping.hxx>
+#include <typelib/typedescription.h>
 
 #include "current.hxx"
 
@@ -42,60 +41,47 @@ namespace cppu
 
 static typelib_InterfaceTypeDescription * get_type_XCurrentContext()
 {
-    static typelib_InterfaceTypeDescription * s_type_XCurrentContext = nullptr;
-    if (nullptr == s_type_XCurrentContext)
-    {
-        ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
-        if (nullptr == s_type_XCurrentContext)
-        {
-            OUString sTypeName("com.sun.star.uno.XCurrentContext");
-            typelib_InterfaceTypeDescription * pTD = nullptr;
-            typelib_TypeDescriptionReference * pMembers[1] = { nullptr };
-            OUString sMethodName0("com.sun.star.uno.XCurrentContext::getValueByName");
-            typelib_typedescriptionreference_new(
-                &pMembers[0],
-                typelib_TypeClass_INTERFACE_METHOD,
-                sMethodName0.pData );
-            typelib_typedescription_newInterface(
-                &pTD,
-                sTypeName.pData, 0, 0, 0, 0, 0,
-                * typelib_static_type_getByTypeClass( typelib_TypeClass_INTERFACE ),
-                1,
-                pMembers );
+    static typelib_InterfaceTypeDescription* s_type_XCurrentContext = []() {
+        OUString sTypeName("com.sun.star.uno.XCurrentContext");
+        typelib_InterfaceTypeDescription* pTD = nullptr;
+        typelib_TypeDescriptionReference* pMembers[1] = { nullptr };
+        OUString sMethodName0("com.sun.star.uno.XCurrentContext::getValueByName");
+        typelib_typedescriptionreference_new(&pMembers[0], typelib_TypeClass_INTERFACE_METHOD,
+                                             sMethodName0.pData);
+        typelib_typedescription_newInterface(
+            &pTD, sTypeName.pData, 0, 0, 0, 0, 0,
+            *typelib_static_type_getByTypeClass(typelib_TypeClass_INTERFACE), 1, pMembers);
 
-            typelib_typedescription_register( reinterpret_cast<typelib_TypeDescription**>(&pTD) );
-            typelib_typedescriptionreference_release( pMembers[0] );
+        typelib_typedescription_register(reinterpret_cast<typelib_TypeDescription**>(&pTD));
+        typelib_typedescriptionreference_release(pMembers[0]);
 
-            typelib_InterfaceMethodTypeDescription * pMethod = nullptr;
-            typelib_Parameter_Init aParameters[1];
-            OUString sParamName0("Name");
-            OUString sParamType0("string");
-            aParameters[0].pParamName = sParamName0.pData;
-            aParameters[0].eTypeClass = typelib_TypeClass_STRING;
-            aParameters[0].pTypeName = sParamType0.pData;
-            aParameters[0].bIn = true;
-            aParameters[0].bOut = false;
-            rtl_uString * pExceptions[1];
-            OUString sExceptionName0("com.sun.star.uno.RuntimeException");
-            pExceptions[0] = sExceptionName0.pData;
-            OUString sReturnType0("any");
-            typelib_typedescription_newInterfaceMethod(
-                &pMethod,
-                3, false,
-                sMethodName0.pData,
-                typelib_TypeClass_ANY, sReturnType0.pData,
-                1, aParameters, 1, pExceptions );
-            typelib_typedescription_register( reinterpret_cast<typelib_TypeDescription**>(&pMethod) );
-            typelib_typedescription_release( &pMethod->aBase.aBase );
-            // another static ref:
-            ++reinterpret_cast< typelib_TypeDescription * >( pTD )->
-                nStaticRefCount;
-            s_type_XCurrentContext = pTD;
-        }
-    }
+        typelib_InterfaceMethodTypeDescription* pMethod = nullptr;
+        typelib_Parameter_Init aParameters[1];
+        OUString sParamName0("Name");
+        OUString sParamType0("string");
+        aParameters[0].pParamName = sParamName0.pData;
+        aParameters[0].eTypeClass = typelib_TypeClass_STRING;
+        aParameters[0].pTypeName = sParamType0.pData;
+        aParameters[0].bIn = true;
+        aParameters[0].bOut = false;
+        rtl_uString* pExceptions[1];
+        OUString sExceptionName0("com.sun.star.uno.RuntimeException");
+        pExceptions[0] = sExceptionName0.pData;
+        OUString sReturnType0("any");
+        typelib_typedescription_newInterfaceMethod(&pMethod, 3, false, sMethodName0.pData,
+                                                   typelib_TypeClass_ANY, sReturnType0.pData, 1,
+                                                   aParameters, 1, pExceptions);
+        typelib_typedescription_register(reinterpret_cast<typelib_TypeDescription**>(&pMethod));
+        typelib_typedescription_release(&pMethod->aBase.aBase);
+        // another static ref:
+        ++reinterpret_cast<typelib_TypeDescription*>(pTD)->nStaticRefCount;
+        return pTD;
+    }();
+
     return s_type_XCurrentContext;
 }
 
+namespace {
 
 class ThreadKey
 {
@@ -134,25 +120,31 @@ public:
     }
 };
 
-extern "C" void SAL_CALL delete_IdContainer( void * p )
+}
+
+extern "C" {
+
+static void delete_IdContainer( void * p )
 {
-    if (p)
+    if (!p)
+        return;
+
+    IdContainer * pId = static_cast< IdContainer * >( p );
+    if (pId->pCurrentContext)
     {
-        IdContainer * pId = static_cast< IdContainer * >( p );
-        if (pId->pCurrentContext)
-        {
-            (*pId->pCurrentContextEnv->releaseInterface)(
-                pId->pCurrentContextEnv, pId->pCurrentContext );
-            (*pId->pCurrentContextEnv->aBase.release)(
-                &pId->pCurrentContextEnv->aBase );
-        }
-        if (pId->bInit)
-        {
-            ::rtl_byte_sequence_release( pId->pLocalThreadId );
-            ::rtl_byte_sequence_release( pId->pCurrentId );
-        }
-        delete pId;
+        (*pId->pCurrentContextEnv->releaseInterface)(
+            pId->pCurrentContextEnv, pId->pCurrentContext );
+        (*pId->pCurrentContextEnv->aBase.release)(
+            &pId->pCurrentContextEnv->aBase );
     }
+    if (pId->bInit)
+    {
+        ::rtl_byte_sequence_release( pId->pLocalThreadId );
+        ::rtl_byte_sequence_release( pId->pCurrentId );
+    }
+    delete pId;
+}
+
 }
 
 IdContainer * getIdContainer()
@@ -235,7 +227,7 @@ extern "C" sal_Bool SAL_CALL uno_getCurrentContext(
     // release inout parameter
     if (*ppCurrentContext)
     {
-        target_env = Environment(rtl::OUString(pEnvTypeName), pEnvContext);
+        target_env = Environment(OUString(pEnvTypeName), pEnvContext);
         OSL_ASSERT( target_env.is() );
         if (! target_env.is())
             return false;
@@ -254,7 +246,7 @@ extern "C" sal_Bool SAL_CALL uno_getCurrentContext(
 
     if (! target_env.is())
     {
-        target_env = Environment(rtl::OUString(pEnvTypeName), pEnvContext);
+        target_env = Environment(OUString(pEnvTypeName), pEnvContext);
         OSL_ASSERT( target_env.is() );
         if (! target_env.is())
             return false;

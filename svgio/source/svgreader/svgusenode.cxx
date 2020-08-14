@@ -21,21 +21,19 @@
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 #include <svgdocument.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgUseNode::SvgUseNode(
             SvgDocument& rDocument,
             SvgNode* pParent)
-        :   SvgNode(SVGTokenG, rDocument, pParent),
+        :   SvgNode(SVGTokenUse, rDocument, pParent),
             maSvgStyleAttributes(*this),
-            mpaTransform(nullptr),
             maX(),
             maY(),
             maWidth(),
             maHeight(),
-            maXLink()
+            maXLink(),
+            mbDecomposingSvgNode(false)
         {
         }
 
@@ -142,52 +140,53 @@ namespace svgio
             // try to access link to content
             const SvgNode* pXLink = getDocument().findSvgNodeById(maXLink);
 
-            if(pXLink && Display_none != pXLink->getDisplay())
+            if (!(pXLink && Display_none != pXLink->getDisplay() && !mbDecomposingSvgNode))
+                return;
+
+            // decompose children
+            drawinglayer::primitive2d::Primitive2DContainer aNewTarget;
+
+            // todo: in case mpXLink is a SVGTokenSvg or SVGTokenSymbol the
+            // SVG docs want the getWidth() and getHeight() from this node
+            // to be valid for the subtree.
+            mbDecomposingSvgNode = true;
+            const_cast< SvgNode* >(pXLink)->setAlternativeParent(this);
+            pXLink->decomposeSvgNode(aNewTarget, true);
+            const_cast< SvgNode* >(pXLink)->setAlternativeParent();
+            mbDecomposingSvgNode = false;
+
+            if(aNewTarget.empty())
+                return;
+
+            basegfx::B2DHomMatrix aTransform;
+
+            if(getX().isSet() || getY().isSet())
             {
-                // decompose children
-                drawinglayer::primitive2d::Primitive2DContainer aNewTarget;
+                aTransform.translate(
+                    getX().solve(*this, xcoordinate),
+                    getY().solve(*this, ycoordinate));
+            }
 
-                // todo: in case mpXLink is a SVGTokenSvg or SVGTokenSymbol the
-                // SVG docs want the getWidth() and getHeight() from this node
-                // to be valid for the subtree.
-                const_cast< SvgNode* >(pXLink)->setAlternativeParent(this);
-                pXLink->decomposeSvgNode(aNewTarget, true);
-                const_cast< SvgNode* >(pXLink)->setAlternativeParent();
+            if(getTransform())
+            {
+                aTransform = *getTransform() * aTransform;
+            }
 
-                if(!aNewTarget.empty())
-                {
-                    basegfx::B2DHomMatrix aTransform;
+            if(!aTransform.isIdentity())
+            {
+                const drawinglayer::primitive2d::Primitive2DReference xRef(
+                    new drawinglayer::primitive2d::TransformPrimitive2D(
+                        aTransform,
+                        aNewTarget));
 
-                    if(getX().isSet() || getY().isSet())
-                    {
-                        aTransform.translate(
-                            getX().solve(*this, xcoordinate),
-                            getY().solve(*this, ycoordinate));
-                    }
-
-                    if(getTransform())
-                    {
-                        aTransform = *getTransform() * aTransform;
-                    }
-
-                    if(!aTransform.isIdentity())
-                    {
-                        const drawinglayer::primitive2d::Primitive2DReference xRef(
-                            new drawinglayer::primitive2d::TransformPrimitive2D(
-                                aTransform,
-                                aNewTarget));
-
-                        rTarget.push_back(xRef);
-                    }
-                    else
-                    {
-                        rTarget.append(aNewTarget);
-                    }
-                }
+                rTarget.push_back(xRef);
+            }
+            else
+            {
+                rTarget.append(aNewTarget);
             }
         }
 
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

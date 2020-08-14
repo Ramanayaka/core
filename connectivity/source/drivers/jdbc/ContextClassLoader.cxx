@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "java/ContextClassLoader.hxx"
-#include "java/lang/Object.hxx"
+#include <java/ContextClassLoader.hxx>
+#include <java/lang/Object.hxx>
 
 
-namespace connectivity { namespace jdbc
+namespace connectivity::jdbc
 {
 
 
@@ -105,7 +105,7 @@ namespace connectivity { namespace jdbc
         }
     }
 
-} } // namespace connectivity::jdbc
+} // namespace connectivity::jdbc
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -30,25 +30,25 @@
 #include "DAVResourceAccess.hxx"
 #include "PropertyMap.hxx"
 
-namespace com { namespace sun { namespace star { namespace beans {
+namespace com::sun::star::beans {
     struct Property;
     struct PropertyValue;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace io {
+namespace com::sun::star::io {
     class XInputStream;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace sdbc {
+namespace com::sun::star::sdbc {
     class XRow;
-} } } }
+}
 
-namespace com { namespace sun { namespace star { namespace ucb {
+namespace com::sun::star::ucb {
     struct OpenCommandArgument2;
     struct PropertyCommandArgument;
     struct PostCommandArgument2;
     struct TransferInfo;
-} } } }
+}
 
 namespace http_dav_ucp
 {
@@ -104,13 +104,13 @@ private:
                        const css::uno::Reference< css::ucb::XCommandEnvironment >& xEnv );
 
     typedef rtl::Reference< Content > ContentRef;
-    typedef std::list< ContentRef > ContentRefList;
+    typedef std::vector< ContentRef > ContentRefList;
     void queryChildren( ContentRefList& rChildren);
 
     bool
     exchangeIdentity( const css::uno::Reference< css::ucb::XContentIdentifier >& xNewId );
 
-    const OUString
+    OUString
     getBaseURI( const std::unique_ptr< DAVResourceAccess > & rResAccess );
 
     /// @throws css::uno::Exception
@@ -182,7 +182,7 @@ private:
     /// @throws css::beans::PropertyExistException
     /// @throws css::beans::NotRemoveableException
     /// @throws css::uno::RuntimeException
-    void removeProperty( const rtl::OUString& Name,
+    void removeProperty( const OUString& Name,
                          const css::uno::Reference< css::ucb::XCommandEnvironment >& Environment );
 public:
     /// @throws css::ucb::ContentCreationException

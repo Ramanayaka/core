@@ -20,8 +20,8 @@
 #ifndef INCLUDED_OSL_PROFILE_HXX
 #define INCLUDED_OSL_PROFILE_HXX
 
-#include <osl/profile.h>
-#include <rtl/ustring.hxx>
+#include "osl/profile.h"
+#include "rtl/ustring.hxx"
 
 #include <string.h>
 #include <exception>
@@ -32,7 +32,7 @@ namespace osl {
     typedef oslProfileOption ProfileOption;
 
     const int Profile_DEFAULT   = osl_Profile_DEFAULT;
-    const int Profile_SYSTEM    = osl_Profile_SYSTEM;    /* use system depended functinality */
+    const int Profile_SYSTEM    = osl_Profile_SYSTEM;    /* use system depended functionality */
     const int Profile_READLOCK  = osl_Profile_READLOCK;  /* lock file for reading            */
     const int Profile_WRITELOCK = osl_Profile_WRITELOCK; /* lock file for writing            */
 
@@ -147,7 +147,7 @@ namespace osl {
 
         /** Get all entries belonging to the specified section.
             @param rSection Name of the section.
-            @return Pointer to a array of pointers.
+            @return Pointer to an array of pointers.
         */
         std::list< rtl::OString > getSectionEntries(const rtl::OString& rSection )
         {
@@ -160,8 +160,13 @@ namespace osl {
                 sal_Char* pBuf = new sal_Char[ n+1 ];
                 osl_getProfileSectionEntries( profile, rSection.getStr(), pBuf, n+1 );
                 size_t nLen;
-                for( n = 0; ( nLen = strlen( pBuf+n ) ); n += nLen+1 )
+                for( n = 0; ; n += nLen+1 )
+                {
+                    nLen = strlen( pBuf+n );
+                    if (!nLen)
+                        break;
                     aEntries.push_back( rtl::OString( pBuf+n ) );
+                }
                 delete[] pBuf;
             }
 
@@ -169,7 +174,7 @@ namespace osl {
         }
 
         /** Get all section entries
-            @return Pointer to a array of pointers.
+            @return Pointer to an array of pointers.
         */
         std::list< rtl::OString > getSections()
         {
@@ -182,8 +187,13 @@ namespace osl {
                 sal_Char* pBuf = new sal_Char[ n+1 ];
                 osl_getProfileSections( profile, pBuf, n+1 );
                 size_t nLen;
-                for( n = 0; ( nLen = strlen( pBuf+n ) ); n += nLen+1 )
+                for( n = 0; ; n += nLen+1 )
+                {
+                    nLen = strlen( pBuf+n );
+                    if (!nLen)
+                        break;
                     aSections.push_back( rtl::OString( pBuf+n ) );
+                }
                 delete[] pBuf;
             }
 

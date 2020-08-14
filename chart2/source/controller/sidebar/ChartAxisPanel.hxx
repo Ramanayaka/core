@@ -14,16 +14,15 @@
 #include <sfx2/sidebar/ControllerItem.hxx>
 #include <sfx2/sidebar/IContextChangeReceiver.hxx>
 #include <sfx2/sidebar/SidebarModelUpdate.hxx>
-#include <svx/sidebar/PanelLayout.hxx>
-#include <vcl/layout.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
 
 #include "ChartSidebarModifyListener.hxx"
 #include "ChartSidebarSelectionListener.hxx"
 
-#include <com/sun/star/util/XModifyListener.hpp>
-#include <com/sun/star/view/XSelectionChangeListener.hpp>
+namespace com::sun::star::util { class XModifyListener; }
+namespace com::sun::star::view { class XSelectionChangeListener; }
 
-class FixedText;
+class Edit;
 class ListBox;
 class MetricField;
 
@@ -55,8 +54,11 @@ public:
     virtual void NotifyItemUpdate(
         const sal_uInt16 nSId,
         const SfxItemState eState,
-        const SfxPoolItem* pState,
-        const bool bIsEnabled) override;
+        const SfxPoolItem* pState) override;
+
+    virtual void GetControlState(
+        const sal_uInt16 /*nSId*/,
+        boost::property_tree::ptree& /*rState*/) override {};
 
     // constructor/destructor
     ChartAxisPanel(
@@ -70,19 +72,16 @@ public:
     virtual void modelInvalid() override;
 
     virtual void selectionChanged(bool bCorrectType) override;
-    virtual void SelectionInvalid() override;
 
     virtual void updateModel(css::uno::Reference<css::frame::XModel> xModel) override;
 
 private:
     //ui controls
-    VclPtr<CheckBox> mpCBShowLabel;
-    VclPtr<CheckBox> mpCBReverse;
-
-    VclPtr<ListBox> mpLBLabelPos;
-    VclPtr<VclGrid> mpGridLabel;
-
-    VclPtr<MetricField> mpNFRotation;
+    std::unique_ptr<weld::CheckButton> mxCBShowLabel;
+    std::unique_ptr<weld::CheckButton> mxCBReverse;
+    std::unique_ptr<weld::ComboBox> mxLBLabelPos;
+    std::unique_ptr<weld::Widget> mxGridLabel;
+    std::unique_ptr<weld::MetricSpinButton> mxNFRotation;
 
     css::uno::Reference<css::frame::XModel> mxModel;
     css::uno::Reference<css::util::XModifyListener> mxModifyListener;
@@ -92,9 +91,9 @@ private:
 
     void Initialize();
 
-    DECL_LINK(CheckBoxHdl, Button*, void);
-    DECL_LINK(ListBoxHdl, ListBox&, void);
-    DECL_LINK(TextRotationHdl, Edit&, void);
+    DECL_LINK(CheckBoxHdl, weld::ToggleButton&, void);
+    DECL_LINK(ListBoxHdl, weld::ComboBox&, void);
+    DECL_LINK(TextRotationHdl, weld::MetricSpinButton&, void);
 };
 
 } } // end of namespace ::chart::sidebar

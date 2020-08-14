@@ -21,21 +21,17 @@
 #define INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_GUI_DP_GUI_UPDATEINSTALLDIALOG_HXX
 
 #include <sal/config.h>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/prgsbar.hxx>
-#include <vcl/vclmedit.hxx>
+#include <vcl/weld.hxx>
 #include <rtl/ref.hxx>
 #include <vector>
 
 /// @HTML
-namespace com { namespace sun { namespace star { namespace deployment {
+namespace com::sun::star::deployment {
     class XExtensionManager;
-}}}}
-namespace com { namespace sun { namespace star { namespace uno {
+}
+namespace com::sun::star::uno {
     class XComponentContext;
-}}}}
+}
 
 namespace vcl { class Window; }
 
@@ -48,7 +44,8 @@ namespace dp_gui {
 /**
    The modal &ldquo;Download and Installation&rdquo; dialog.
 */
-class UpdateInstallDialog: public ModalDialog {
+class UpdateInstallDialog : public weld::GenericDialogController
+{
 public:
     /**
        Create an instance.
@@ -56,24 +53,22 @@ public:
        @param parent
        the parent window, may be null
     */
-    UpdateInstallDialog(vcl::Window * parent, std::vector<UpdateData> & aVecUpdateData,
+    UpdateInstallDialog(weld::Window* parent, std::vector<UpdateData> & aVecUpdateData,
         css::uno::Reference< css::uno::XComponentContext > const & xCtx);
 
     virtual ~UpdateInstallDialog() override;
-    virtual void dispose() override;
 
-    bool Close() override;
-    virtual short Execute() override;
+    virtual short run() override;
 
 private:
-    UpdateInstallDialog(UpdateInstallDialog &) = delete;
-    void operator =(UpdateInstallDialog &) = delete;
+    UpdateInstallDialog(UpdateInstallDialog const &) = delete;
+    UpdateInstallDialog& operator =(UpdateInstallDialog const &) = delete;
 
     class Thread;
     friend class Thread;
     friend class UpdateCommandEnv;
 
-    DECL_LINK(cancelHandler, Button*, void);
+    DECL_LINK(cancelHandler, weld::Button&, void);
 
     //signals in the dialog that we have finished.
     void updateDone();
@@ -104,13 +99,13 @@ private:
     OUString m_sNoInstall;
     OUString m_sThisErrorOccurred;
 
-    VclPtr<FixedText>    m_pFt_action;
-    VclPtr<ProgressBar>  m_pStatusbar;
-    VclPtr<FixedText>    m_pFt_extension_name;
-    VclPtr<VclMultiLineEdit> m_pMle_info;
-    VclPtr<HelpButton>   m_pHelp;
-    VclPtr<OKButton>     m_pOk;
-    VclPtr<CancelButton> m_pCancel;
+    std::unique_ptr<weld::Label> m_xFt_action;
+    std::unique_ptr<weld::ProgressBar>  m_xStatusbar;
+    std::unique_ptr<weld::Label> m_xFt_extension_name;
+    std::unique_ptr<weld::TextView> m_xMle_info;
+    std::unique_ptr<weld::Button> m_xHelp;
+    std::unique_ptr<weld::Button> m_xOk;
+    std::unique_ptr<weld::Button> m_xCancel;
 };
 
 }

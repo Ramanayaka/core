@@ -20,44 +20,38 @@
 #include <memory>
 #include <sal/config.h>
 
-#include <utility>
+#include <AccessibleCell.hxx>
+#include <scitems.hxx>
 
-#include "AccessibleCell.hxx"
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
-
-#include "AccessibleText.hxx"
-#include "AccessibleDocument.hxx"
-#include "tabvwsh.hxx"
-#include "document.hxx"
-#include "attrib.hxx"
-#include "miscuno.hxx"
-#include "editsrc.hxx"
-#include "dociter.hxx"
-#include "markdata.hxx"
-#include "cellvalue.hxx"
-#include "formulaiter.hxx"
-#include "validat.hxx"
+#include <AccessibleText.hxx>
+#include <AccessibleDocument.hxx>
+#include <tabvwsh.hxx>
+#include <document.hxx>
+#include <attrib.hxx>
+#include <editsrc.hxx>
+#include <dociter.hxx>
+#include <markdata.hxx>
+#include <cellvalue.hxx>
+#include <formulaiter.hxx>
+#include <validat.hxx>
 
 #include <unotools/accessiblestatesethelper.hxx>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
+#include <unotools/accessiblerelationsethelper.hxx>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleRelationType.hpp>
 #include <com/sun/star/accessibility/XAccessibleTable.hpp>
 #include <editeng/brushitem.hxx>
-#include <comphelper/sequence.hxx>
-#include <float.h>
 #include <vcl/svapp.hxx>
 
-#include "AccessibleSpreadsheet.hxx"
-#include <o3tl/make_unique.hxx>
+#include <AccessibleSpreadsheet.hxx>
+
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
 rtl::Reference<ScAccessibleCell> ScAccessibleCell::create(
         const uno::Reference<XAccessible>& rxParent,
         ScTabViewShell* pViewShell,
-        ScAddress& rCellAddress,
+        const ScAddress& rCellAddress,
         sal_Int32 nIndex,
         ScSplitPos eSplitPos,
         ScAccessibleDocument* pAccDoc)
@@ -71,7 +65,7 @@ rtl::Reference<ScAccessibleCell> ScAccessibleCell::create(
 ScAccessibleCell::ScAccessibleCell(
         const uno::Reference<XAccessible>& rxParent,
         ScTabViewShell* pViewShell,
-        ScAddress& rCellAddress,
+        const ScAddress& rCellAddress,
         sal_Int32 nIndex,
         ScSplitPos eSplitPos,
         ScAccessibleDocument* pAccDoc)
@@ -138,7 +132,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessibleCell::getAccessibleAtPoint(
 
 void SAL_CALL ScAccessibleCell::grabFocus(  )
 {
-     SolarMutexGuard aGuard;
+    SolarMutexGuard aGuard;
     IsObjectValid();
     if (getAccessibleParent().is() && mpViewShell)
     {
@@ -193,8 +187,7 @@ tools::Rectangle ScAccessibleCell::GetBoundingBox() const
             simply expand the cell size to the width of the unrotated text. */
         if (mpDoc)
         {
-            const SfxInt32Item* pItem = static_cast< const SfxInt32Item* >(
-                mpDoc->GetAttr( maCellAddress.Col(), maCellAddress.Row(), maCellAddress.Tab(), ATTR_ROTATE_VALUE ) );
+            const ScRotateValueItem* pItem = mpDoc->GetAttr( maCellAddress, ATTR_ROTATE_VALUE );
             if( pItem && (pItem->GetValue() != 0) )
             {
                 tools::Rectangle aParaRect = GetParagraphBoundingBox();
@@ -242,7 +235,7 @@ uno::Reference<XAccessibleStateSet> SAL_CALL
             pStateSet->AddState(AccessibleStateType::ENABLED);
             pStateSet->AddState(AccessibleStateType::MULTI_LINE);
             pStateSet->AddState(AccessibleStateType::MULTI_SELECTABLE);
-            if (IsOpaque(xParentStates))
+            if (IsOpaque())
                 pStateSet->AddState(AccessibleStateType::OPAQUE);
             pStateSet->AddState(AccessibleStateType::SELECTABLE);
             if (IsSelected())
@@ -263,7 +256,7 @@ uno::Reference<XAccessibleStateSet> SAL_CALL
         pStateSet->AddState(AccessibleStateType::MULTI_LINE);
         pStateSet->AddState(AccessibleStateType::MULTI_SELECTABLE);
         pStateSet->AddState(AccessibleStateType::FOCUSABLE);
-        if (IsOpaque(xParentStates))
+        if (IsOpaque())
             pStateSet->AddState(AccessibleStateType::OPAQUE);
         pStateSet->AddState(AccessibleStateType::SELECTABLE);
         if (IsSelected())
@@ -296,7 +289,7 @@ uno::Reference<XAccessibleRelationSet> SAL_CALL
 
 OUString SAL_CALL ScAccessibleCell::getImplementationName()
 {
-    return OUString("ScAccessibleCell");
+    return "ScAccessibleCell";
 }
 
 uno::Sequence< OUString> SAL_CALL
@@ -328,25 +321,20 @@ bool ScAccessibleCell::IsEditable(
         mpDoc)
     {
         // here I have to test whether the protection of the table should influence this cell.
-        const ScProtectionAttr* pItem = static_cast<const ScProtectionAttr*>(mpDoc->GetAttr(
-            maCellAddress.Col(), maCellAddress.Row(),
-            maCellAddress.Tab(), ATTR_PROTECTION));
+        const ScProtectionAttr* pItem = mpDoc->GetAttr(maCellAddress, ATTR_PROTECTION);
         if (pItem)
             bEditable = !pItem->GetProtection();
     }
     return bEditable;
 }
 
-bool ScAccessibleCell::IsOpaque(
-    const uno::Reference<XAccessibleStateSet>& /* rxParentStates */)
+bool ScAccessibleCell::IsOpaque() const
 {
     // test whether there is a background color
     bool bOpaque(true);
     if (mpDoc)
     {
-        const SvxBrushItem* pItem = static_cast<const SvxBrushItem*>(mpDoc->GetAttr(
-            maCellAddress.Col(), maCellAddress.Row(),
-            maCellAddress.Tab(), ATTR_BACKGROUND));
+        const SvxBrushItem* pItem = mpDoc->GetAttr(maCellAddress, ATTR_BACKGROUND);
         if (pItem)
             bOpaque = pItem->GetColor() != COL_TRANSPARENT;
     }
@@ -388,51 +376,51 @@ ScDocument* ScAccessibleCell::GetDocument(ScTabViewShell* pViewShell)
     {
         return ::std::unique_ptr< SvxEditSource >();
     }
-    ::std::unique_ptr< SvxEditSource > pEditSource (new ScAccessibilityEditSource(o3tl::make_unique<ScAccessibleCellTextData>(pViewShell, aCell, eSplitPos, this)));
+    ::std::unique_ptr< SvxEditSource > pEditSource (new ScAccessibilityEditSource(std::make_unique<ScAccessibleCellTextData>(pViewShell, aCell, eSplitPos, this)));
 
     return pEditSource;
 }
 
 void ScAccessibleCell::FillDependents(utl::AccessibleRelationSetHelper* pRelationSet)
 {
-    if (mpDoc)
-    {
-        ScRange aRange(0, 0, maCellAddress.Tab(), MAXCOL, MAXROW, maCellAddress.Tab());
-        ScCellIterator aCellIter(mpDoc, aRange);
+    if (!mpDoc)
+        return;
 
-        for (bool bHasCell = aCellIter.first(); bHasCell; bHasCell = aCellIter.next())
+    ScRange aRange(0, 0, maCellAddress.Tab(), mpDoc->MaxCol(), mpDoc->MaxRow(), maCellAddress.Tab());
+    ScCellIterator aCellIter(mpDoc, aRange);
+
+    for (bool bHasCell = aCellIter.first(); bHasCell; bHasCell = aCellIter.next())
+    {
+        if (aCellIter.getType() == CELLTYPE_FORMULA)
         {
-            if (aCellIter.getType() == CELLTYPE_FORMULA)
+            bool bFound = false;
+            ScDetectiveRefIter aIter(mpDoc, aCellIter.getFormulaCell());
+            ScRange aRef;
+            while ( !bFound && aIter.GetNextRef( aRef ) )
             {
-                bool bFound = false;
-                ScDetectiveRefIter aIter(aCellIter.getFormulaCell());
-                ScRange aRef;
-                while ( !bFound && aIter.GetNextRef( aRef ) )
-                {
-                    if (aRef.In(maCellAddress))
-                        bFound = true;
-                }
-                if (bFound)
-                    AddRelation(aCellIter.GetPos(), AccessibleRelationType::CONTROLLER_FOR, pRelationSet);
+                if (aRef.In(maCellAddress))
+                    bFound = true;
             }
+            if (bFound)
+                AddRelation(aCellIter.GetPos(), AccessibleRelationType::CONTROLLER_FOR, pRelationSet);
         }
     }
 }
 
 void ScAccessibleCell::FillPrecedents(utl::AccessibleRelationSetHelper* pRelationSet)
 {
-    if (mpDoc)
+    if (!mpDoc)
+        return;
+
+    ScRefCellValue aCell(*mpDoc, maCellAddress);
+    if (aCell.meType == CELLTYPE_FORMULA)
     {
-        ScRefCellValue aCell(*mpDoc, maCellAddress);
-        if (aCell.meType == CELLTYPE_FORMULA)
+        ScFormulaCell* pCell = aCell.mpFormula;
+        ScDetectiveRefIter aIter(mpDoc, pCell);
+        ScRange aRef;
+        while ( aIter.GetNextRef( aRef ) )
         {
-            ScFormulaCell* pCell = aCell.mpFormula;
-            ScDetectiveRefIter aIter(pCell);
-            ScRange aRef;
-            while ( aIter.GetNextRef( aRef ) )
-            {
-                AddRelation( aRef, AccessibleRelationType::CONTROLLED_BY, pRelationSet);
-            }
+            AddRelation( aRef, AccessibleRelationType::CONTROLLED_BY, pRelationSet);
         }
     }
 }
@@ -449,31 +437,28 @@ void ScAccessibleCell::AddRelation(const ScRange& rRange,
     utl::AccessibleRelationSetHelper* pRelationSet)
 {
     uno::Reference < XAccessibleTable > xTable ( getAccessibleParent()->getAccessibleContext(), uno::UNO_QUERY );
-    if (xTable.is())
+    if (!xTable.is())
+        return;
+
+    const sal_uInt32 nCount(static_cast<sal_uInt32>(rRange.aEnd.Col() -
+                rRange.aStart.Col() + 1) * (rRange.aEnd.Row() -
+                rRange.aStart.Row() + 1));
+    uno::Sequence < uno::Reference < uno::XInterface > > aTargetSet( nCount );
+    uno::Reference < uno::XInterface >* pTargetSet = aTargetSet.getArray();
+    sal_uInt32 nPos(0);
+    for (sal_uInt32 nRow = rRange.aStart.Row(); nRow <= sal::static_int_cast<sal_uInt32>(rRange.aEnd.Row()); ++nRow)
     {
-        sal_uInt32 nCount(static_cast<sal_uInt32>(rRange.aEnd.Col() -
-                    rRange.aStart.Col() + 1) * (rRange.aEnd.Row() -
-                    rRange.aStart.Row() + 1));
-        uno::Sequence < uno::Reference < uno::XInterface > > aTargetSet( nCount );
-        uno::Reference < uno::XInterface >* pTargetSet = aTargetSet.getArray();
-        if (pTargetSet)
+        for (sal_uInt32 nCol = rRange.aStart.Col(); nCol <= sal::static_int_cast<sal_uInt32>(rRange.aEnd.Col()); ++nCol)
         {
-            sal_uInt32 nPos(0);
-            for (sal_uInt32 nRow = rRange.aStart.Row(); nRow <= sal::static_int_cast<sal_uInt32>(rRange.aEnd.Row()); ++nRow)
-            {
-                for (sal_uInt32 nCol = rRange.aStart.Col(); nCol <= sal::static_int_cast<sal_uInt32>(rRange.aEnd.Col()); ++nCol)
-                {
-                    pTargetSet[nPos] = xTable->getAccessibleCellAt(nRow, nCol);
-                    ++nPos;
-                }
-            }
-            OSL_ENSURE(nCount == nPos, "something wents wrong");
+            pTargetSet[nPos] = xTable->getAccessibleCellAt(nRow, nCol);
+            ++nPos;
         }
-        AccessibleRelation aRelation;
-        aRelation.RelationType = aRelationType;
-        aRelation.TargetSet = aTargetSet;
-        pRelationSet->AddRelation(aRelation);
     }
+    OSL_ENSURE(nCount == nPos, "something went wrong");
+    AccessibleRelation aRelation;
+    aRelation.RelationType = aRelationType;
+    aRelation.TargetSet = aTargetSet;
+    pRelationSet->AddRelation(aRelation);
 }
 
 static OUString ReplaceOneChar(const OUString& oldOUString, const OUString& replacedChar, const OUString& replaceStr)
@@ -506,14 +491,16 @@ uno::Any SAL_CALL ScAccessibleCell::getExtendedAttributes()
     if (mpViewShell)
     {
         OUString strFor = mpViewShell->GetFormula(maCellAddress) ;
-        strFor = strFor.replaceAt(0,1,"");
-        strFor = ReplaceFourChar(strFor);
-        strFor = "Formula:" + strFor;
-        strFor += ";Note:";
-        strFor += ReplaceFourChar(GetAllDisplayNote());
-        strFor += ";";
-        strFor += getShadowAttrs();//the string returned contains the spliter ";"
-        strFor += getBorderAttrs();//the string returned contains the spliter ";"
+        if (!strFor.isEmpty())
+        {
+            strFor = strFor.copy(1);
+            strFor = ReplaceFourChar(strFor);
+        }
+        strFor = "Formula:" + strFor +
+            ";Note:" +
+            ReplaceFourChar(GetAllDisplayNote()) + ";" +
+            getShadowAttrs() + //the string returned contains the spliter ";"
+            getBorderAttrs();//the string returned contains the spliter ";"
         //end of cell attributes
         if( mpDoc )
         {
@@ -535,19 +522,14 @@ uno::Sequence< beans::PropertyValue > SAL_CALL ScAccessibleCell::getCharacterAtt
     SolarMutexGuard aGuard;
 
     uno::Sequence< beans::PropertyValue > aAttribs = AccessibleStaticTextBase::getCharacterAttributes( nIndex, aRequestedAttributes );
-    beans::PropertyValue *pAttribs = aAttribs.getArray();
 
-    sal_uInt16 nParaIndent = static_cast< const SfxUInt16Item* >( mpDoc->GetAttr( maCellAddress.Col(), maCellAddress.Row(), maCellAddress.Tab(), ATTR_INDENT ) )->GetValue();
+    sal_uInt16 nParaIndent = mpDoc->GetAttr( maCellAddress, ATTR_INDENT )->GetValue();
     if (nParaIndent > 0)
     {
-        for (int i = 0; i < aAttribs.getLength(); ++i)
-        {
-            if ("ParaLeftMargin" == pAttribs[i].Name)
-            {
-                pAttribs[i].Value <<= nParaIndent;
-                break;
-            }
-        }
+        auto pAttrib = std::find_if(aAttribs.begin(), aAttribs.end(),
+            [](const beans::PropertyValue& rAttrib) { return "ParaLeftMargin" == rAttrib.Name; });
+        if (pAttrib != aAttribs.end())
+            pAttrib->Value <<= nParaIndent;
     }
     return aAttribs;
 }
@@ -562,20 +544,19 @@ bool ScAccessibleCell::IsFormulaMode()
     return false;
 }
 
-bool ScAccessibleCell::IsDropdown()
+bool ScAccessibleCell::IsDropdown() const
 {
     sal_uInt16 nPosX = maCellAddress.Col();
     sal_uInt16 nPosY = sal_uInt16(maCellAddress.Row());
     sal_uInt16 nTab = maCellAddress.Tab();
-    sal_uInt32 nValidation = static_cast< const SfxUInt32Item* >( mpDoc->GetAttr( nPosX, nPosY, nTab, ATTR_VALIDDATA ) )->GetValue();
+    sal_uInt32 nValidation = mpDoc->GetAttr( nPosX, nPosY, nTab, ATTR_VALIDDATA )->GetValue();
     if( nValidation )
     {
         const ScValidationData* pData = mpDoc->GetValidationEntry( nValidation );
         if( pData && pData->HasSelectionList() )
             return true;
     }
-    const ScMergeFlagAttr* pAttr;
-    pAttr = static_cast<const ScMergeFlagAttr*>(mpDoc->GetAttr( nPosX, nPosY, nTab, ATTR_MERGE_FLAG ));
+    const ScMergeFlagAttr* pAttr = mpDoc->GetAttr( nPosX, nPosY, nTab, ATTR_MERGE_FLAG );
     if( pAttr->HasAutoFilter() )
     {
         return true;
@@ -586,7 +567,7 @@ bool ScAccessibleCell::IsDropdown()
         if ( nTab+1<nTabCount && mpDoc->IsScenario(nTab+1) && !mpDoc->IsScenario(nTab) )
         {
             SCTAB i;
-            ScMarkData aMarks;
+            ScMarkData aMarks(mpDoc->GetSheetLimits());
             for (i=nTab+1; i<nTabCount && mpDoc->IsScenario(i); i++)
                 mpDoc->MarkScenario( i, nTab, aMarks, false, ScScenarioFlags::ShowFrame );
             ScRangeList aRanges;
@@ -595,7 +576,7 @@ bool ScAccessibleCell::IsDropdown()
             SCTAB nRangeCount = aRanges.size();
             for (i=0; i<nRangeCount; i++)
             {
-                ScRange aRange = *aRanges[i];
+                ScRange aRange = aRanges[i];
                 mpDoc->ExtendTotalMerge( aRange );
                 bool bTextBelow = ( aRange.aStart.Row() == 0 );
                 // MT IA2: Not used: sal_Bool bIsInScen = sal_False;

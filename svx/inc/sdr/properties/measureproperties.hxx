@@ -23,13 +23,10 @@
 #include <sdr/properties/textproperties.hxx>
 
 
-namespace sdr
-{
-    namespace properties
+namespace sdr::properties
     {
-        class MeasureProperties : public TextProperties
+        class MeasureProperties final : public TextProperties
         {
-        protected:
             // create a new itemset
             virtual std::unique_ptr<SfxItemSet> CreateObjectSpecificItemSet(SfxItemPool& rPool) override;
 
@@ -47,7 +44,7 @@ namespace sdr
             virtual ~MeasureProperties() override;
 
             // Clone() operator, normally just calls the local copy constructor
-            virtual BaseProperties& Clone(SdrObject& rObj) const override;
+            virtual std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const override;
 
             // set a new StyleSheet and broadcast
             virtual void SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr) override;
@@ -56,8 +53,7 @@ namespace sdr
             // DefaultProperties::GetObjectItemSet() if a new ItemSet is created
             virtual void ForceDefaultAttributes() override;
         };
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace sdr::properties
 
 
 #endif // INCLUDED_SVX_INC_SDR_PROPERTIES_MEASUREPROPERTIES_HXX

@@ -104,7 +104,7 @@ protected:
 // SmCaretDrawingVisitor
 
 /** Visitor for drawing a caret position */
-class SmCaretDrawingVisitor : public SmDefaultingVisitor
+class SmCaretDrawingVisitor final : public SmDefaultingVisitor
 {
 public:
     /** Given position and device this constructor will draw the caret */
@@ -116,9 +116,9 @@ private:
     OutputDevice &mrDev;
     SmCaretPos maPos;
     /** Offset to draw from */
-    Point maOffset;
-    bool mbCaretVisible;
-protected:
+    Point  maOffset;
+    bool  mbCaretVisible;
+
     /** Default method for drawing pNodes */
     void DefaultVisit( SmNode* pNode ) override;
 };
@@ -126,7 +126,7 @@ protected:
 // SmCaretPos2LineVisitor
 
 /** Visitor getting a line from a caret position */
-class SmCaretPos2LineVisitor : public SmDefaultingVisitor
+class SmCaretPos2LineVisitor final : public SmDefaultingVisitor
 {
 public:
     /** Given position and device this constructor will compute a line for the caret */
@@ -141,14 +141,14 @@ public:
     virtual ~SmCaretPos2LineVisitor() {}
     void Visit( SmTextNode* pNode ) override;
     using SmDefaultingVisitor::Visit;
-    const SmCaretLine& GetResult( ) {
+    const SmCaretLine& GetResult( ) const {
         return maLine;
     }
 private:
     SmCaretLine maLine;
     VclPtr<OutputDevice> mpDev;
     SmCaretPos maPos;
-protected:
+
     /** Default method for computing lines for pNodes */
     void DefaultVisit( SmNode* pNode ) override;
 };
@@ -156,7 +156,7 @@ protected:
 // SmDrawingVisitor
 
 /** Visitor for drawing SmNodes to OutputDevice */
-class SmDrawingVisitor : public SmVisitor
+class SmDrawingVisitor final : public SmVisitor
 {
 public:
     /** Create an instance of SmDrawingVisitor, and use it to draw a formula
@@ -224,7 +224,7 @@ private:
 /** Set Selection Visitor
  * Sets the IsSelected( ) property on all SmNodes of the tree
  */
-class SmSetSelectionVisitor : public SmDefaultingVisitor
+class SmSetSelectionVisitor final : public SmDefaultingVisitor
 {
 public:
     SmSetSelectionVisitor( SmCaretPos startPos, SmCaretPos endPos, SmNode* pNode);
@@ -272,7 +272,7 @@ private:
  * denoted by | in "H|".
  *
  * Parameter variables:
- *  The following variables are used to transfer parameters in to calls and results out
+ *  The following variables are used to transfer parameters into calls and results out
  *  of calls.
  *      pRightMost : SmCaretPosGraphEntry*
  *
@@ -283,7 +283,7 @@ private:
  *  pRightMost: A pointer to the right most position in the called line entry, if no there's
  *              no caret positions in called line entry don't change this variable.
  */
-class SmCaretPosGraphBuildingVisitor : public SmVisitor
+class SmCaretPosGraphBuildingVisitor final : public SmVisitor
 {
 public:
     /** Builds a caret position graph for pRootNode */
@@ -331,7 +331,7 @@ private:
  *
  * This visitor creates deep clones.
  */
-class SmCloningVisitor : public SmVisitor
+class SmCloningVisitor final : public SmVisitor
 {
 public:
     SmCloningVisitor()
@@ -372,13 +372,13 @@ private:
     /** Clone children of pSource and give them to pTarget */
     void CloneKids( SmStructureNode* pSource, SmStructureNode* pTarget );
     /** Clone attributes on a pNode */
-    static void CloneNodeAttr( SmNode* pSource, SmNode* pTarget );
+    static void CloneNodeAttr( SmNode const * pSource, SmNode* pTarget );
 };
 
 
 // SmSelectionDrawingVisitor
 
-class SmSelectionDrawingVisitor : public SmDefaultingVisitor
+class SmSelectionDrawingVisitor final : public SmDefaultingVisitor
 {
 public:
     /** Draws a selection on rDevice for the selection on pTree */
@@ -404,7 +404,7 @@ private:
 // SmNodeToTextVisitor
 
 /** Extract command text from pNodes */
-class SmNodeToTextVisitor : public SmVisitor
+class SmNodeToTextVisitor final : public SmVisitor
 {
 public:
     SmNodeToTextVisitor( SmNode* pNode, OUString &rText );

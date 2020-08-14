@@ -36,10 +36,10 @@ class CKeywordsTag : public ITag
         virtual void addCharacters(const std::wstring& characters) override;
         virtual void addAttributes(const XmlTagAttributes_t& attributes) override;
         virtual std::wstring getTagContent() override;
-        virtual ::std::wstring const getTagAttribute( ::std::wstring  const & /*attrname*/ ) override { return ::std::wstring(); };
+        virtual ::std::wstring getTagAttribute( ::std::wstring  const & /*attrname*/ ) override { return ::std::wstring(); };
 
     private:
-        StringList_t m_slKeywords;
+        std::vector<std::wstring> m_slKeywords;
         std::wstring m_sCurrentKeyword;
 };
 

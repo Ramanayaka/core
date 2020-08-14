@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLELISTBOX_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLELISTBOX_HXX
+#pragma once
 
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <cppuhelper/implbase2.hxx>
 #include <vcl/vclevent.hxx>
 #include <toolkit/awt/vclxaccessiblecomponent.hxx>
@@ -39,17 +37,15 @@ namespace accessibility
 
     /** the class OAccessibleListBoxEntry represents the base class for an accessible object of a listbox entry
     */
-    class AccessibleListBox:
+    class AccessibleListBox final :
         public cppu::ImplHelper2<
             css::accessibility::XAccessible,
             css::accessibility::XAccessibleSelection>,
         public VCLXAccessibleComponent
     {
-    protected:
 
         css::uno::Reference< css::accessibility::XAccessible > m_xParent;
 
-    protected:
         virtual ~AccessibleListBox() override;
 
         // OComponentHelper overridables
@@ -65,7 +61,7 @@ namespace accessibility
 
         void            RemoveChildEntries(SvTreeListEntry*);
 
-        sal_Int32 GetRoleType();
+        sal_Int32 GetRoleType() const;
 
     public:
         /** OAccessibleBase needs a valid view
@@ -74,8 +70,10 @@ namespace accessibility
             @param  _xParent
                 is our parent accessible object
         */
-        AccessibleListBox( SvTreeListBox& _rListBox,
+        AccessibleListBox( SvTreeListBox const & _rListBox,
                            const css::uno::Reference< css::accessibility::XAccessible >& _xParent );
+
+        rtl::Reference<AccessibleListBoxEntry> implGetAccessible(SvTreeListEntry & rEntry);
 
         // XTypeProvider
         DECLARE_XTYPEPROVIDER()
@@ -108,14 +106,14 @@ namespace accessibility
         css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getSelectedAccessibleChild( sal_Int32 nSelectedChildIndex ) override;
         void SAL_CALL deselectAccessibleChild( sal_Int32 nSelectedChildIndex ) override;
 
-private:
+    private:
 
-    typedef std::map< SvTreeListEntry*, css::uno::Reference< css::accessibility::XAccessible > > MAP_ENTRY;
-    MAP_ENTRY m_mapEntry;
+        typedef std::map<SvTreeListEntry*, rtl::Reference<AccessibleListBoxEntry>> MAP_ENTRY;
+        MAP_ENTRY m_mapEntry;
 
-    css::uno::Reference< css::accessibility::XAccessible > m_xFocusedChild;
+        css::uno::Reference< css::accessibility::XAccessible > m_xFocusedChild;
 
-    accessibility::AccessibleListBoxEntry* GetCurEventEntry( const VclWindowEvent& rVclWindowEvent );
+        accessibility::AccessibleListBoxEntry* GetCurEventEntry( const VclWindowEvent& rVclWindowEvent );
 
     };
 
@@ -123,6 +121,5 @@ private:
 }// namespace accessibility
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_ACCESSIBLELISTBOX_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

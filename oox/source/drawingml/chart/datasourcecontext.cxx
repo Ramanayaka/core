@@ -17,11 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/datasourcecontext.hxx"
+#include <drawingml/chart/datasourcecontext.hxx>
 
-#include "oox/drawingml/chart/datasourcemodel.hxx"
+#include <oox/drawingml/chart/datasourcemodel.hxx>
 
-#include <comphelper/processfactory.hxx>
 #include <oox/core/xmlfilterbase.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
@@ -29,9 +28,7 @@
 #include <svl/zforlist.hxx>
 #include <osl/diagnose.h>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 using ::oox::core::ContextHandler2Helper;
 using ::oox::core::ContextHandlerRef;
@@ -40,8 +37,7 @@ using namespace ::com::sun::star;
 
 DoubleSequenceContext::DoubleSequenceContext( ContextHandler2Helper& rParent, DataSequenceModel& rModel ) :
     DataSequenceContextBase( rParent, rModel ),
-    mnPtIndex( -1 ),
-    mpNumberFormatter( nullptr )
+    mnPtIndex( -1 )
 {
 }
 
@@ -118,7 +114,7 @@ void DoubleSequenceContext::onCharacters( const OUString& rChars )
                         {
                             OUString aFormatCode = mrModel.maFormatCode;
                             sal_Int32 nCheckPos = 0;
-                            short nType;
+                            SvNumFormatType nType;
                             pNumFrmt->PutEntry( aFormatCode, nCheckPos, nType, nKey );
                             bNoKey = (nCheckPos != 0);
                         }
@@ -131,6 +127,9 @@ void DoubleSequenceContext::onCharacters( const OUString& rChars )
                             double fValue = rChars.toDouble();
                             ::Color* pColor = nullptr;
                             OUString aFormattedValue;
+                            // tdf#91250: use UNLIMITED_PRECISION in case of GENERAL Number Format of category axis labels
+                            if( pNumFrmt->GetStandardPrec() != SvNumberFormatter::UNLIMITED_PRECISION )
+                                pNumFrmt->ChangeStandardPrec(SvNumberFormatter::UNLIMITED_PRECISION);
                             pNumFrmt->GetOutputString( fValue, nKey, aFormattedValue, &pColor );
                             mrModel.maData[ mnPtIndex ] <<= aFormattedValue;
                         }
@@ -155,7 +154,7 @@ SvNumberFormatter* DoubleSequenceContext::getNumberFormatter()
     if( mpNumberFormatter == nullptr )
     {
         uno::Reference<uno::XComponentContext> rContext =
-                                this->getFilter().getComponentContext();
+                                getFilter().getComponentContext();
         mpNumberFormatter.reset(
                 new SvNumberFormatter(rContext, LANGUAGE_DONTKNOW) );
     }
@@ -181,6 +180,7 @@ ContextHandlerRef StringSequenceContext::onCreateContext( sal_Int32 nElement, co
             switch( nElement )
             {
                 case C_TOKEN( f ):
+                case C_TOKEN( multiLvlStrCache ):
                     return this;
             }
         break;
@@ -207,6 +207,28 @@ ContextHandlerRef StringSequenceContext::onCreateContext( sal_Int32 nElement, co
             }
         break;
 
+        case C_TOKEN( multiLvlStrCache ):
+            switch (nElement)
+            {
+                case C_TOKEN( ptCount ):
+                    mrModel.mnPointCount = rAttribs.getInteger(XML_val, -1);
+                    mrModel.mnLevelCount--; // normalize level count
+                    return nullptr;
+                case C_TOKEN( lvl ):
+                    mrModel.mnLevelCount++;
+                    return this;
+            }
+            break;
+
+        case C_TOKEN( lvl ):
+            switch (nElement)
+            {
+                case C_TOKEN(pt):
+                    mnPtIndex = rAttribs.getInteger(XML_idx, -1);
+                    return this;
+            }
+            break;
+
         case C_TOKEN( pt ):
             switch( nElement )
             {
@@ -227,7 +249,7 @@ void StringSequenceContext::onCharacters( const OUString& rChars )
         break;
         case C_TOKEN( v ):
             if( mnPtIndex >= 0 )
-                mrModel.maData[ mnPtIndex ] <<= rChars;
+                mrModel.maData[ (mrModel.mnLevelCount-1) * mrModel.mnPointCount + mnPtIndex ] <<= rChars;
         break;
     }
 }
@@ -279,8 +301,6 @@ ContextHandlerRef DataSourceContext::onCreateContext( sal_Int32 nElement, const 
     return nullptr;
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

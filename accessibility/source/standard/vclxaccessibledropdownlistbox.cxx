@@ -19,23 +19,8 @@
 
 
 #include <standard/vclxaccessibledropdownlistbox.hxx>
-#include <standard/vclxaccessiblelistbox.hxx>
-#include <helper/accresmgr.hxx>
-#include <helper/accessiblestrings.hrc>
-
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <vcl/svapp.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/unohelp.hxx>
 
 #include <toolkit/awt/vclxwindow.hxx>
-#include <toolkit/helper/convert.hxx>
-
-#include <comphelper/sequence.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <unotools/accessiblestatesethelper.hxx>
 
 
 using namespace ::com::sun::star;
@@ -50,13 +35,9 @@ VCLXAccessibleDropDownListBox::VCLXAccessibleDropDownListBox (VCLXWindow* pVCLWi
 }
 
 
-VCLXAccessibleDropDownListBox::~VCLXAccessibleDropDownListBox()
-{
-}
-
 bool VCLXAccessibleDropDownListBox::IsValid() const
 {
-    return GetWindow().get() != nullptr;
+    return GetWindow();
 }
 
 
@@ -64,17 +45,14 @@ bool VCLXAccessibleDropDownListBox::IsValid() const
 
 OUString VCLXAccessibleDropDownListBox::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleDropDownListBox" );
+    return "com.sun.star.comp.toolkit.AccessibleDropDownListBox";
 }
 
 
 Sequence< OUString > VCLXAccessibleDropDownListBox::getSupportedServiceNames()
 {
-    Sequence< OUString > aNames = VCLXAccessibleBox::getSupportedServiceNames();
-    sal_Int32 nLength = aNames.getLength();
-    aNames.realloc( nLength + 1 );
-    aNames[nLength] = "com.sun.star.accessibility.AccessibleDropDownListBox";
-    return aNames;
+    return comphelper::concatSequences(VCLXAccessibleBox::getSupportedServiceNames(),
+                                       Sequence<OUString>{"com.sun.star.accessibility.AccessibleDropDownListBox"});
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

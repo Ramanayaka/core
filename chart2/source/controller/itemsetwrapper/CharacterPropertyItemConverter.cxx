@@ -17,28 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "CharacterPropertyItemConverter.hxx"
+#include <CharacterPropertyItemConverter.hxx>
 #include "SchWhichPairs.hxx"
-#include "macros.hxx"
-#include "ItemPropertyMap.hxx"
-#include "RelativeSizeHelper.hxx"
-#include <editeng/memberids.hrc>
+#include <ItemPropertyMap.hxx>
+#include <RelativeSizeHelper.hxx>
+#include <editeng/memberids.h>
 #include <editeng/eeitem.hxx>
 #include <editeng/udlnitem.hxx>
 #include <editeng/fontitem.hxx>
-#include <editeng/crossedoutitem.hxx>
 #include <editeng/postitem.hxx>
 #include <editeng/wghtitem.hxx>
 #include <editeng/fhgtitem.hxx>
 #include <o3tl/any.hxx>
 #include <svl/stritem.hxx>
 
-#include <com/sun/star/beans/XPropertyState.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/chart2/XFormattedString.hpp>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 
-namespace chart { namespace wrapper {
+namespace chart::wrapper {
 
 namespace {
 
@@ -82,7 +81,7 @@ CharacterPropertyItemConverter::CharacterPropertyItemConverter(
         m_xRefSizePropSet( rRefSizePropSet.is() ? rRefSizePropSet : rPropertySet )
 {
     if (pRefSize)
-        m_pRefSize.reset(*pRefSize);
+        m_pRefSize = *pRefSize;
 }
 
 CharacterPropertyItemConverter::~CharacterPropertyItemConverter()
@@ -277,9 +276,9 @@ void CharacterPropertyItemConverter::FillSpecialItem(
                     rOutItemSet.Put( aItem );
                 }
             }
-            catch( const uno::Exception & ex )
+            catch( const uno::Exception & )
             {
-                ASSERT_EXCEPTION( ex );
+                DBG_UNHANDLED_EXCEPTION("chart2");
             }
         }
         break;
@@ -536,9 +535,9 @@ bool CharacterPropertyItemConverter::ApplySpecialItem(
                     }
                 }
             }
-            catch( const uno::Exception & ex )
+            catch( const uno::Exception & )
             {
-                ASSERT_EXCEPTION( ex );
+                DBG_UNHANDLED_EXCEPTION("chart2");
             }
         }
         break;
@@ -552,6 +551,6 @@ const uno::Reference<beans::XPropertySet>& CharacterPropertyItemConverter::GetRe
     return m_xRefSizePropSet;
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

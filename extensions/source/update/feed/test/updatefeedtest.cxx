@@ -17,8 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <comphelper/processfactory.hxx>
-
 #include <cppuhelper/servicefactory.hxx>
 #include <cppuhelper/bootstrap.hxx>
 
@@ -30,6 +28,7 @@
 
 #include <sal/main.h>
 #include <osl/process.h>
+#include <sal/log.hxx>
 #include <stdio.h>
 
 namespace deployment = ::com::sun::star::deployment;
@@ -71,9 +70,9 @@ SAL_IMPLEMENT_MAIN()
         uno::Sequence< uno::Reference< xml::dom::XElement > > theUpdateInfo =
             rUpdateInformationProvider->getUpdateInformation( theURLs, aExtension );
     }
-    catch( const uno::Exception & e )
+    catch( const uno::Exception & )
     {
-        SAL_WARN("extensions.update", "exception caught: " << e.Message);
+        TOOLS_WARN_EXCEPTION("extensions.update", "");
     }
     catch( ... )
     {

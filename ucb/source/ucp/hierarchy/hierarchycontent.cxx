@@ -37,16 +37,12 @@
  *************************************************************************/
 #include <osl/diagnose.h>
 
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/beans/IllegalTypeException.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/PropertyExistException.hpp>
 #include <com/sun/star/beans/PropertyState.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/beans/XPropertyAccess.hpp>
 #include <com/sun/star/lang/IllegalAccessException.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/ucb/ContentInfoAttribute.hpp>
 #include <com/sun/star/ucb/IllegalIdentifierException.hpp>
 #include <com/sun/star/ucb/InsertCommandArgument.hpp>
@@ -62,10 +58,13 @@
 #include <com/sun/star/ucb/XPersistentPropertySet.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <comphelper/processfactory.hxx>
+#include <comphelper/propertysequence.hxx>
+#include <comphelper/sequence.hxx>
+#include <cppuhelper/queryinterface.hxx>
 #include <ucbhelper/contentidentifier.hxx>
 #include <ucbhelper/propertyvalueset.hxx>
 #include <ucbhelper/cancelcommandexecution.hxx>
+#include <ucbhelper/macros.hxx>
 #include "hierarchycontent.hxx"
 #include "hierarchyprovider.hxx"
 #include "dynamicresultset.hxx"
@@ -243,7 +242,7 @@ uno::Sequence< uno::Type > SAL_CALL HierarchyContent::getTypes()
 // virtual
 OUString SAL_CALL HierarchyContent::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.ucb.HierarchyContent" );
+    return "com.sun.star.comp.ucb.HierarchyContent";
 }
 
 
@@ -338,7 +337,7 @@ uno::Any SAL_CALL HierarchyContent::execute(
             // Unreachable
         }
 
-        if ( !aProperties.getLength() )
+        if ( !aProperties.hasElements() )
         {
             ucbhelper::cancelCommandExecution(
                 uno::makeAny( lang::IllegalArgumentException(
@@ -427,17 +426,13 @@ uno::Any SAL_CALL HierarchyContent::execute(
         // Remove own and all children's persistent data.
         if ( !removeData() )
         {
-            uno::Any aProps
-                = uno::makeAny(
-                         beans::PropertyValue(
-                             "Uri",
-                             -1,
-                             uno::makeAny(m_xIdentifier->
-                                              getContentIdentifier()),
-                             beans::PropertyState_DIRECT_VALUE));
+            uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+            {
+                {"Uri", uno::Any(m_xIdentifier->getContentIdentifier())}
+            }));
             ucbhelper::cancelCommandExecution(
                 ucb::IOErrorCode_CANT_WRITE,
-                uno::Sequence< uno::Any >(&aProps, 1),
+                aArgs,
                 Environment,
                 "Cannot remove persistent data!",
                 this );
@@ -687,15 +682,7 @@ bool HierarchyContent::isReadOnly()
             {
                 uno::Sequence< OUString > aNames
                     = xConfigProv->getAvailableServiceNames();
-                sal_Int32 nCount = aNames.getLength();
-                for ( sal_Int32 n = 0; n < nCount; ++n )
-                {
-                    if ( aNames[ n ] == "com.sun.star.ucb.HierarchyDataReadWriteAccess" )
-                    {
-                        m_bIsReadOnly = false;
-                        break;
-                    }
-                }
+                m_bIsReadOnly = comphelper::findValue(aNames, "com.sun.star.ucb.HierarchyDataReadWriteAccess") == -1;
             }
         }
     }
@@ -711,8 +698,7 @@ HierarchyContent::makeNewIdentifier( const OUString& rTitle )
 
     // Assemble new content identifier...
     HierarchyUri aUri( m_xIdentifier->getContentIdentifier() );
-    OUString aNewURL = aUri.getParentUri();
-    aNewURL += "/";
+    OUString aNewURL = aUri.getParentUri() + "/";
     aNewURL += ::ucb_impl::urihelper::encodeSegment( rTitle );
 
     return uno::Reference< ucb::XContentIdentifier >(
@@ -720,7 +706,7 @@ HierarchyContent::makeNewIdentifier( const OUString& rTitle )
 }
 
 
-void HierarchyContent::queryChildren( HierarchyContentRefList& rChildren )
+void HierarchyContent::queryChildren( HierarchyContentRefVector& rChildren )
 {
     if ( ( m_eKind != FOLDER ) && ( m_eKind != ROOT ) )
         return;
@@ -743,12 +729,9 @@ void HierarchyContent::queryChildren( HierarchyContentRefList& rChildren )
 
     sal_Int32 nLen = aURL.getLength();
 
-    ::ucbhelper::ContentRefList::const_iterator it  = aAllContents.begin();
-    ::ucbhelper::ContentRefList::const_iterator end = aAllContents.end();
-
-    while ( it != end )
+    for ( const auto& rContent : aAllContents )
     {
-        ::ucbhelper::ContentImplHelperRef xChild = (*it);
+        ::ucbhelper::ContentImplHelperRef xChild = rContent;
         OUString aChildURL
             = xChild->getIdentifier()->getContentIdentifier();
 
@@ -756,19 +739,16 @@ void HierarchyContent::queryChildren( HierarchyContentRefList& rChildren )
         if ( ( aChildURL.getLength() > nLen ) &&
              ( aChildURL.startsWith( aURL ) ) )
         {
-            sal_Int32 nPos = nLen;
-            nPos = aChildURL.indexOf( '/', nPos );
+            sal_Int32 nPos = aChildURL.indexOf( '/', nLen );
 
             if ( ( nPos == -1 ) ||
                  ( nPos == ( aChildURL.getLength() - 1 ) ) )
             {
                 // No further slashes/ only a final slash. It's a child!
-                rChildren.push_back(
-                    HierarchyContentRef(
-                        static_cast< HierarchyContent * >( xChild.get() ) ) );
+                rChildren.emplace_back(
+                        static_cast< HierarchyContent * >( xChild.get() ) );
             }
         }
-        ++it;
     }
 }
 
@@ -812,15 +792,12 @@ bool HierarchyContent::exchangeIdentity(
             {
                 // Process instantiated children...
 
-                HierarchyContentRefList aChildren;
+                HierarchyContentRefVector aChildren;
                 queryChildren( aChildren );
 
-                HierarchyContentRefList::const_iterator it  = aChildren.begin();
-                HierarchyContentRefList::const_iterator end = aChildren.end();
-
-                while ( it != end )
+                for ( const auto& rChild : aChildren )
                 {
-                    HierarchyContentRef xChild = (*it);
+                    HierarchyContentRef xChild = rChild;
 
                     // Create new content identifier for the child...
                     uno::Reference< ucb::XContentIdentifier > xOldChildId
@@ -837,8 +814,6 @@ bool HierarchyContent::exchangeIdentity(
 
                     if ( !xChild->exchangeIdentity( xNewChildId ) )
                         return false;
-
-                    ++it;
                 }
             }
             return true;
@@ -864,17 +839,13 @@ uno::Reference< sdbc::XRow > HierarchyContent::getPropertyValues(
     rtl::Reference< ::ucbhelper::PropertyValueSet > xRow
         = new ::ucbhelper::PropertyValueSet( rxContext );
 
-    sal_Int32 nCount = rProperties.getLength();
-    if ( nCount )
+    if ( rProperties.hasElements() )
     {
         uno::Reference< beans::XPropertySet > xAdditionalPropSet;
         bool bTriedToGetAdditionalPropSet = false;
 
-        const beans::Property* pProps = rProperties.getConstArray();
-        for ( sal_Int32 n = 0; n < nCount; ++n )
+        for ( const beans::Property& rProp : rProperties )
         {
-            const beans::Property& rProp = pProps[ n ];
-
             // Process Core properties.
 
             if ( rProp.Name == "ContentType" )
@@ -913,10 +884,9 @@ uno::Reference< sdbc::XRow > HierarchyContent::getPropertyValues(
 
                 if ( !bTriedToGetAdditionalPropSet && !xAdditionalPropSet.is() )
                 {
-                    xAdditionalPropSet.set(
+                    xAdditionalPropSet =
                             pProvider->getAdditionalPropertySet( rContentId,
-                                                                 false ),
-                            uno::UNO_QUERY );
+                                                                 false );
                     bTriedToGetAdditionalPropSet = true;
                 }
 
@@ -989,9 +959,8 @@ uno::Reference< sdbc::XRow > HierarchyContent::getPropertyValues(
 
         // Append all Additional Core Properties.
 
-        uno::Reference< beans::XPropertySet > xSet(
-            pProvider->getAdditionalPropertySet( rContentId, false ),
-            uno::UNO_QUERY );
+        uno::Reference< beans::XPropertySet > xSet =
+            pProvider->getAdditionalPropertySet( rContentId, false );
         xRow->appendPropertySet( xSet );
     }
 
@@ -1015,7 +984,7 @@ uno::Sequence< uno::Any > HierarchyContent::setPropertyValues(
         const uno::Sequence< beans::PropertyValue >& rValues,
         const uno::Reference< ucb::XCommandEnvironment > & xEnv )
 {
-    osl::ClearableGuard< osl::Mutex > aGuard( m_aMutex );
+    osl::ResettableGuard< osl::Mutex > aGuard( m_aMutex );
 
     uno::Sequence< uno::Any > aRet( rValues.getLength() );
     uno::Sequence< beans::PropertyChangeEvent > aChanges( rValues.getLength() );
@@ -1266,6 +1235,7 @@ uno::Sequence< uno::Any > HierarchyContent::setPropertyValues(
                     "Exchange failed!",
                     static_cast< cppu::OWeakObject * >( this ) );
         }
+        aGuard.reset();
     }
 
     if ( !aOldTitle.isEmpty() )
@@ -1285,17 +1255,13 @@ uno::Sequence< uno::Any > HierarchyContent::setPropertyValues(
         {
             if ( !storeData() )
             {
-                uno::Any aProps
-                    = uno::makeAny(
-                             beans::PropertyValue(
-                                "Uri",
-                                 -1,
-                                 uno::makeAny(m_xIdentifier->
-                                                  getContentIdentifier()),
-                                 beans::PropertyState_DIRECT_VALUE));
+                uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+                {
+                    {"Uri", uno::Any(m_xIdentifier->getContentIdentifier())}
+                }));
                 ucbhelper::cancelCommandExecution(
                     ucb::IOErrorCode_CANT_WRITE,
-                    uno::Sequence< uno::Any >(&aProps, 1),
+                    aArgs,
                     xEnv,
                     "Cannot store persistent data!",
                     this );
@@ -1380,8 +1346,7 @@ void HierarchyContent::insert( sal_Int32 nNameClashResolve,
 
                 do
                 {
-                    OUString aNewId = xId->getContentIdentifier();
-                    aNewId += "_";
+                    OUString aNewId = xId->getContentIdentifier() + "_";
                     aNewId += OUString::number( ++nTry );
                     xId = new ::ucbhelper::ContentIdentifier( aNewId );
                 }
@@ -1401,8 +1366,8 @@ void HierarchyContent::insert( sal_Int32 nNameClashResolve,
                 else
                 {
                     OUString aNewTitle( m_aProps.getTitle() );
-                    aNewTitle += "_";
-                    aNewTitle += OUString::number( nTry );
+                    aNewTitle += "_" +
+                        OUString::number( nTry );
                     m_aProps.setTitle( aNewTitle );
                 }
             }
@@ -1432,16 +1397,13 @@ void HierarchyContent::insert( sal_Int32 nNameClashResolve,
 
     if ( !storeData() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Uri",
-                                  -1,
-                                  uno::makeAny(m_xIdentifier->
-                                                   getContentIdentifier()),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(m_xIdentifier->getContentIdentifier())}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_WRITE,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             xEnv,
             "Cannot store persistent data!",
             this );
@@ -1499,16 +1461,12 @@ void HierarchyContent::destroy( bool bDeletePhysical,
     {
         // Process instantiated children...
 
-        HierarchyContentRefList aChildren;
+        HierarchyContentRefVector aChildren;
         queryChildren( aChildren );
 
-        HierarchyContentRefList::const_iterator it  = aChildren.begin();
-        HierarchyContentRefList::const_iterator end = aChildren.end();
-
-        while ( it != end )
+        for ( auto & child : aChildren)
         {
-            (*it)->destroy( bDeletePhysical, xEnv );
-            ++it;
+            child->destroy( bDeletePhysical, xEnv );
         }
     }
 }
@@ -1555,15 +1513,13 @@ void HierarchyContent::transfer(
     {
         if ( aId.startsWith( rInfo.SourceURL ) )
         {
-            uno::Any aProps
-                = uno::makeAny(beans::PropertyValue(
-                                      "Uri",
-                                      -1,
-                                      uno::makeAny(rInfo.SourceURL),
-                                      beans::PropertyState_DIRECT_VALUE));
+            uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+            {
+                {"Uri", uno::Any(rInfo.SourceURL)}
+            }));
             ucbhelper::cancelCommandExecution(
                 ucb::IOErrorCode_RECURSIVE,
-                uno::Sequence< uno::Any >(&aProps, 1),
+                aArgs,
                 xEnv,
                 "Target is equal to or is a child of source!",
                 this );
@@ -1594,15 +1550,13 @@ void HierarchyContent::transfer(
 
     if ( !xSource.is() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Uri",
-                                  -1,
-                                  uno::makeAny(xId->getContentIdentifier()),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(xId->getContentIdentifier())}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_READ,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             xEnv,
             "Cannot instantiate source object!",
             this );
@@ -1627,15 +1581,13 @@ void HierarchyContent::transfer(
             createNewContent( aContentInfo ).get() );
     if ( !xTarget.is() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Folder",
-                                  -1,
-                                  uno::makeAny(aId),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Folder", uno::Any(aId)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_CREATE,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             xEnv,
             "XContentCreator::createNewContent failed!",
             this );
@@ -1749,34 +1701,29 @@ void HierarchyContent::transfer(
     // 5) Destroy source ( when moving only ) .
 
 
-    if ( rInfo.MoveData )
+    if ( !rInfo.MoveData )
+        return;
+
+    xSource->destroy( true, xEnv );
+
+    // Remove all persistent data of source and its children.
+    if ( !xSource->removeData() )
     {
-        xSource->destroy( true, xEnv );
-
-        // Remove all persistent data of source and its children.
-        if ( !xSource->removeData() )
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
         {
-            uno::Any aProps
-                = uno::makeAny(
-                         beans::PropertyValue(
-                             "Uri",
-                             -1,
-                             uno::makeAny(
-                                 xSource->m_xIdentifier->
-                                              getContentIdentifier()),
-                             beans::PropertyState_DIRECT_VALUE));
-            ucbhelper::cancelCommandExecution(
-                ucb::IOErrorCode_CANT_WRITE,
-                uno::Sequence< uno::Any >(&aProps, 1),
-                xEnv,
-                "Cannot remove persistent data of source object!",
-                this );
-            // Unreachable
-        }
-
-        // Remove own and all children's Additional Core Properties.
-        xSource->removeAdditionalPropertySet();
+            {"Uri", uno::Any(xSource->m_xIdentifier->getContentIdentifier())}
+        }));
+        ucbhelper::cancelCommandExecution(
+            ucb::IOErrorCode_CANT_WRITE,
+            aArgs,
+            xEnv,
+            "Cannot remove persistent data of source object!",
+            this );
+        // Unreachable
     }
+
+    // Remove own and all children's Additional Core Properties.
+    xSource->removeAdditionalPropertySet();
 }
 
 

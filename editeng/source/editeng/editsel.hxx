@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_EDITENG_SOURCE_EDITENG_EDITSEL_HXX
-#define INCLUDED_EDITENG_SOURCE_EDITENG_EDITSEL_HXX
+#pragma once
 
 #include <vcl/seleng.hxx>
 
@@ -37,7 +36,7 @@ public:
     virtual void    CreateAnchor() override;
     virtual void    DestroyAnchor() override;
 
-    virtual bool    SetCursorAtPoint( const Point& rPointPixel, bool bDontSelectAtCursor = false ) override;
+    virtual void    SetCursorAtPoint( const Point& rPointPixel, bool bDontSelectAtCursor = false ) override;
 
     virtual bool    IsSelectionAtPoint( const Point& rPointPixel ) override;
     virtual void    DeselectAtPoint( const Point& rPointPixel ) override;
@@ -55,7 +54,5 @@ public:
 
     void            SetCurView( EditView* pNewView );
 };
-
-#endif // INCLUDED_EDITENG_SOURCE_EDITENG_EDITSEL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

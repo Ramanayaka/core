@@ -16,14 +16,12 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_AVMEDIA_SOURCE_VLC_VLCWINDOW_HXX
-#define INCLUDED_AVMEDIA_SOURCE_VLC_VLCWINDOW_HXX
+#pragma once
 
 #include "vlccommon.hxx"
 #include <cppuhelper/implbase.hxx>
 
-namespace avmedia {
-namespace vlc {
+namespace avmedia::vlc {
 class VLCPlayer;
 
 class VLCWindow : public ::cppu::WeakImplHelper< css::media::XPlayerWindow,
@@ -42,9 +40,9 @@ public:
     css::media::ZoomLevel SAL_CALL getZoomLevel() override;
     void SAL_CALL setPointerType( ::sal_Int32 SystemPointerType ) override;
 
-    ::rtl::OUString SAL_CALL getImplementationName() override;
-    sal_Bool SAL_CALL supportsService( const ::rtl::OUString& serviceName ) override;
-    css::uno::Sequence< ::rtl::OUString > SAL_CALL getSupportedServiceNames() override;
+    OUString SAL_CALL getImplementationName() override;
+    sal_Bool SAL_CALL supportsService( const OUString& serviceName ) override;
+    css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
     void SAL_CALL dispose() override;
     void SAL_CALL addEventListener( const css::uno::Reference< css::lang::XEventListener >& xListener ) override;
@@ -70,8 +68,6 @@ public:
 };
 
 }
-}
 
-#endif // INCLUDED_AVMEDIA_SOURCE_VLC_VLCWINDOW_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,28 +20,25 @@
 #ifndef INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_MANAGER_DP_EXTENSIONMANAGER_HXX
 #define INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_MANAGER_DP_EXTENSIONMANAGER_HXX
 
-#include "dp_manager.hrc"
-#include "dp_misc.h"
-#include "dp_interact.h"
-#include "dp_activepackages.hxx"
-#include <rtl/ref.hxx>
+#include <strings.hrc>
+#include <dp_misc.h>
+#include <dp_shared.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <ucbhelper/content.hxx>
-#include <com/sun/star/deployment/XPackageRegistry.hpp>
+#include <com/sun/star/deployment/XExtensionManager.hpp>
 #include <com/sun/star/deployment/XPackageManager.hpp>
+#include <com/sun/star/deployment/XPackageManagerFactory.hpp>
 #include <osl/mutex.hxx>
-#include <list>
+#include <vector>
 #include <unordered_map>
 
 namespace dp_manager {
 
 typedef std::unordered_map<
     OUString,
-    std::vector<css::uno::Reference<css::deployment::XPackage> >,
-    OUStringHash > id2extensions;
+    std::vector<css::uno::Reference<css::deployment::XPackage> > > id2extensions;
 
 class ExtensionManager : private ::dp_misc::MutexHolder,
-        public ::cppu::WeakComponentImplHelper< css::deployment::XExtensionManager >
+        public ::cppu::WeakComponentImplHelper< css::deployment::XExtensionManager, css::lang::XServiceInfo >
 {
 public:
     explicit ExtensionManager( css::uno::Reference< css::uno::XComponentContext >const& xContext);
@@ -51,6 +48,11 @@ public:
     void fireModified();
 
 public:
+
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
 //    XModifyBroadcaster
     virtual void SAL_CALL addModifyListener(
@@ -137,8 +139,7 @@ public:
 
 private:
 
-    struct StrSyncRepository : public ::dp_misc::StaticResourceString<
-        StrSyncRepository, RID_STR_SYNCHRONIZING_REPOSITORY> {};
+    static OUString StrSyncRepository() { return DpResId(RID_STR_SYNCHRONIZING_REPOSITORY); }
 
     css::uno::Reference< css::uno::XComponentContext> m_xContext;
     css::uno::Reference<css::deployment::XPackageManagerFactory> m_xPackageManagerFactory;
@@ -149,7 +150,7 @@ private:
        priority. That is, the first element is "user" followed by "shared" and
        then "bundled"
      */
-    std::list< OUString > m_repositoryNames;
+    std::vector< OUString > m_repositoryNames;
 
     css::uno::Reference<css::deployment::XPackageManager> getUserRepository();
     css::uno::Reference<css::deployment::XPackageManager> getSharedRepository();
@@ -176,11 +177,9 @@ private:
         css::uno::Reference<css::task::XAbortChannel> const & xAbortChannel,
         css::uno::Reference<css::ucb::XCommandEnvironment> const & xCmdEnv );
 
-    std::list<css::uno::Reference<css::deployment::XPackage> >
+    std::vector<css::uno::Reference<css::deployment::XPackage> >
     getExtensionsWithSameId(OUString  const & identifier,
-                            OUString const & fileName,
-                            css::uno::Reference< css::ucb::XCommandEnvironment> const & xCmdEnv =
-                            css::uno::Reference< css::ucb::XCommandEnvironment>());
+                            OUString const & fileName);
 
     css::uno::Reference<css::deployment::XPackage> backupExtension(
         OUString const & identifier, OUString const & fileName,

@@ -27,14 +27,13 @@
 #include <connectivity/sdbcx/VColumn.hxx>
 #include <connectivity/CommonTools.hxx>
 #include <rtl/ref.hxx>
-#include <com/sun/star/sdbc/XResultSetMetaData.hpp>
-#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <comphelper/proparrhlp.hxx>
 
-namespace connectivity
-{
-    namespace parse
+namespace com::sun::star::container { class XNameAccess; }
+namespace com::sun::star::sdbc { class XDatabaseMetaData; }
+namespace com::sun::star::sdbc { class XResultSetMetaData; }
+
+namespace connectivity::parse
     {
         class OParseColumn;
 
@@ -113,7 +112,7 @@ namespace connectivity
         typedef sdbcx::OColumn OOrderColumn_BASE;
         typedef ::comphelper::OPropertyArrayUsageHelper<OOrderColumn> OOrderColumn_PROP;
 
-        class OOO_DLLPUBLIC_DBTOOLS OOrderColumn :
+        class OOrderColumn :
             public OOrderColumn_BASE, public OOrderColumn_PROP
         {
             const   bool        m_bAscending;
@@ -143,7 +142,7 @@ namespace connectivity
         private:
             using OOrderColumn_BASE::createArrayHelper;
         };
-    }
+
 }
 
 #endif // INCLUDED_CONNECTIVITY_PCOLUMN_HXX

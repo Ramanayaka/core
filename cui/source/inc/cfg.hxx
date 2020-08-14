@@ -16,57 +16,61 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_CUI_SOURCE_INC_CFG_HXX
-#define INCLUDED_CUI_SOURCE_INC_CFG_HXX
 
-#include <vcl/fixed.hxx>
-#include <vcl/group.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/menubtn.hxx>
-#include <vcl/toolbox.hxx>
-#include <svtools/treelistbox.hxx>
-#include <svtools/svmedit2.hxx>
-#include <svtools/svmedit.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
+#pragma once
+
+#include <vcl/transfer.hxx>
+#include <vcl/timer.hxx>
+#include <vcl/weld.hxx>
+#include <svtools/valueset.hxx>
+
 #include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/ui/XUIConfigurationListener.hpp>
 #include <com/sun/star/ui/XUIConfigurationManager.hpp>
 #include <com/sun/star/ui/XImageManager.hpp>
 #include <com/sun/star/graphic/XGraphicProvider.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XSingleComponentFactory.hpp>
 
 #include <sfx2/tabdlg.hxx>
 #include <memory>
 #include <vector>
-#include <vcl/msgbox.hxx>
 
 #include "cfgutil.hxx"
+#include "CommandCategoryListBox.hxx"
+
+#define notebookbarTabScope "notebookbarTabScope"
+
+const char ITEM_DESCRIPTOR_COMMANDURL[]  = "CommandURL";
+const char ITEM_DESCRIPTOR_CONTAINER[]   = "ItemDescriptorContainer";
+const char ITEM_DESCRIPTOR_LABEL[]       = "Label";
+const char ITEM_DESCRIPTOR_TYPE[]        = "Type";
+const char ITEM_DESCRIPTOR_STYLE[]       = "Style";
+const char ITEM_DESCRIPTOR_ISVISIBLE[]   = "IsVisible";
+const char ITEM_DESCRIPTOR_RESOURCEURL[] = "ResourceURL";
+const char ITEM_DESCRIPTOR_UINAME[]      = "UIName";
+
+const char ITEM_MENUBAR_URL[] = "private:resource/menubar/menubar";
+const char ITEM_TOOLBAR_URL[] = "private:resource/toolbar/";
+
+const char CUSTOM_TOOLBAR_STR[] = "custom_toolbar_";
+
+const char aMenuSeparatorStr[] = " | ";
 
 class SvxConfigEntry;
 class SvxConfigPage;
-class SvxMenuConfigPage;
-class SvxToolbarConfigPage;
 
 typedef std::vector< SvxConfigEntry* > SvxEntries;
 
-class SvxConfigDialog : public SfxTabDialog
+class SvxConfigDialog : public SfxTabDialogController
 {
 private:
     css::uno::Reference< css::frame::XFrame > m_xFrame;
-    sal_uInt16 m_nMenusPageId;
-    sal_uInt16 m_nContextMenusPageId;
-    sal_uInt16 m_nKeyboardPageId;
-    sal_uInt16 m_nToolbarsPageId;
-    sal_uInt16 m_nEventsPageId;
 
 public:
-    SvxConfigDialog( vcl::Window*, const SfxItemSet* );
+    SvxConfigDialog(weld::Window*, const SfxItemSet*);
 
-    virtual void                PageCreated( sal_uInt16 nId, SfxTabPage &rPage ) override;
+    virtual void PageCreated(const OString& rId, SfxTabPage &rPage) override;
     void SetFrame(const css::uno::Reference< css::frame::XFrame >& xFrame);
 };
 
@@ -97,13 +101,13 @@ private:
 protected:
 
     void ApplyMenu(
-        css::uno::Reference< css::container::XIndexContainer >& rMenuBar,
+        css::uno::Reference< css::container::XIndexContainer > const & rMenuBar,
         css::uno::Reference< css::lang::XSingleComponentFactory >& rFactory,
         SvxConfigEntry *pMenuData );
 
-    bool LoadSubMenus(
+    void LoadSubMenus(
         const css::uno::Reference< css::container::XIndexAccess >& xMenuSettings,
-        const OUString& rBaseTitle, SvxConfigEntry* pParentData, bool bContextMenu );
+        const OUString& rBaseTitle, SvxConfigEntry const * pParentData, bool bContextMenu );
 
 public:
 
@@ -119,26 +123,26 @@ public:
         const css::uno::Reference< css::uno::XInterface >& xManager );
 
     void SetModified( bool bValue = true ) { bModified = bValue; }
-    bool IsModified( ) { return bModified; }
+    bool IsModified( ) const { return bModified; }
 
-    bool IsReadOnly( ) { return bReadOnly; }
-    bool IsDocConfig( ) { return bDocConfig; }
-
-    const css::uno::Reference
-        < css::ui::XUIConfigurationManager >&
-            GetConfigManager() { return m_xCfgMgr; };
+    bool IsReadOnly( ) const { return bReadOnly; }
+    bool IsDocConfig( ) const { return bDocConfig; }
 
     const css::uno::Reference
         < css::ui::XUIConfigurationManager >&
-            GetParentConfigManager() { return m_xParentCfgMgr; };
+            GetConfigManager() const { return m_xCfgMgr; };
+
+    const css::uno::Reference
+        < css::ui::XUIConfigurationManager >&
+            GetParentConfigManager() const { return m_xParentCfgMgr; };
 
     const css::uno::Reference
         < css::ui::XImageManager >&
-            GetImageManager() { return m_xImgMgr; };
+            GetImageManager() const { return m_xImgMgr; };
 
     const css::uno::Reference
         < css::ui::XImageManager >&
-            GetParentImageManager() { return m_xParentImgMgr; };
+            GetParentImageManager() const { return m_xParentImgMgr; };
 
     css::uno::Reference
         < css::container::XNameAccess > m_xCommandToLabelMap;
@@ -146,12 +150,12 @@ public:
     css::uno::Sequence
         < css::beans::PropertyValue > m_aSeparatorSeq;
 
-    Image GetImage( const OUString& rCommandURL );
+    css::uno::Reference<css::graphic::XGraphic> GetImage(const OUString& rCommandURL);
 
     virtual bool HasURL( const OUString& aURL ) = 0;
     virtual bool HasSettings() = 0;
     virtual SvxEntries* GetEntries() = 0;
-    virtual void SetEntries( SvxEntries* ) = 0;
+    virtual void SetEntries( std::unique_ptr<SvxEntries> ) = 0;
     virtual void Reset() = 0;
     virtual bool Apply() = 0;
 };
@@ -175,7 +179,7 @@ private:
     static MenuSaveInData* GetDefaultData() { return pDefaultData; }
 
     void        Apply(
-        css::uno::Reference< css::container::XIndexContainer >& rNewMenuBar,
+        css::uno::Reference< css::container::XIndexContainer > const & rNewMenuBar,
         css::uno::Reference< css::lang::XSingleComponentFactory >& rFactory );
 
 public:
@@ -190,7 +194,7 @@ public:
 
     /// methods inherited from SaveInData
     SvxEntries*         GetEntries() override;
-    void                SetEntries( SvxEntries* ) override;
+    void                SetEntries( std::unique_ptr<SvxEntries> ) override;
     bool                HasURL( const OUString& ) override { return false; }
     bool                HasSettings() override { return m_xMenuSettings.is(); }
     void                Reset() override;
@@ -212,11 +216,13 @@ public:
     virtual ~ContextMenuSaveInData() override;
 
     SvxEntries* GetEntries() override;
-    void SetEntries( SvxEntries* pNewEntries ) override;
+    void SetEntries( std::unique_ptr<SvxEntries> pNewEntries ) override;
     bool HasSettings() override;
     bool HasURL( const OUString& rURL ) override;
     void Reset() override;
     bool Apply() override;
+
+    void ResetContextMenu( const SvxConfigEntry* pEntry );
 };
 
 class SvxConfigEntry
@@ -225,7 +231,6 @@ private:
 
     /// common properties
     sal_uInt16                  nId;
-    OUString                    aHelpText;
     OUString                    aLabel;
     OUString                    aCommand;
 
@@ -243,14 +248,14 @@ private:
     css::uno::Reference<
         css::graphic::XGraphic > xBackupGraphic;
 
-    SvxEntries                  *mpEntries;
+    std::unique_ptr<SvxEntries>  mpEntries;
 
 public:
 
     SvxConfigEntry( const OUString& rDisplayName,
                     const OUString& rCommandURL,
-                    bool bPopup = false,
-                    bool bParentData = false );
+                    bool bPopup,
+                    bool bParentData );
 
     SvxConfigEntry()
         :
@@ -262,8 +267,7 @@ public:
             bIsParentData( false ),
             bIsModified( false ),
             bIsVisible( true ),
-            nStyle( 0 ),
-            mpEntries( nullptr )
+            nStyle( 0 )
     {}
 
     ~SvxConfigEntry();
@@ -274,8 +278,6 @@ public:
     void                 SetName( const OUString& rStr ) { aLabel = rStr; bStrEdited = true; }
     bool                 HasChangedName() const { return bStrEdited; }
 
-    const OUString&      GetHelpText();
-
     bool    IsPopup() const { return bPopUp; }
 
     void    SetUserDefined( bool bOn = true ) { bIsUserDefined = bOn; }
@@ -284,21 +286,21 @@ public:
     bool    IsBinding() const { return !bPopUp; }
     bool    IsSeparator() const { return nId == 0; }
 
-    SvxEntries* GetEntries() const { return mpEntries; }
-    void    SetEntries( SvxEntries* entries ) { mpEntries = entries; }
+    SvxEntries* GetEntries() const { return mpEntries.get(); }
+    void    SetEntries( std::unique_ptr<SvxEntries> entries ) { mpEntries = std::move(entries); }
 
     void    SetMain() { bIsMain = true; }
-    bool    IsMain() { return bIsMain; }
+    bool    IsMain() const { return bIsMain; }
 
     void    SetParentData( bool bValue = true ) { bIsParentData = bValue; }
-    bool    IsParentData() { return bIsParentData; }
+    bool    IsParentData() const { return bIsParentData; }
 
     void    SetModified( bool bValue = true ) { bIsModified = bValue; }
-    bool    IsModified() { return bIsModified; }
+    bool    IsModified() const { return bIsModified; }
 
-    bool    IsMovable();
-    bool    IsDeletable();
-    bool    IsRenamable();
+    bool    IsMovable() const;
+    bool    IsDeletable() const;
+    bool    IsRenamable() const;
 
     void    SetVisible( bool b ) { bIsVisible = b; }
     bool    IsVisible() const { return bIsVisible; }
@@ -306,103 +308,132 @@ public:
     void    SetBackupGraphic( css::uno::Reference< css::graphic::XGraphic > const & graphic )
                 { xBackupGraphic = graphic; }
 
-    const css::uno::Reference< css::graphic::XGraphic >& GetBackupGraphic()
+    const css::uno::Reference< css::graphic::XGraphic >& GetBackupGraphic() const
                 { return xBackupGraphic; }
 
-    bool    IsIconModified() { return xBackupGraphic.is(); }
-
-    sal_Int32   GetStyle() { return nStyle; }
+    sal_Int32   GetStyle() const { return nStyle; }
     void        SetStyle( sal_Int32 style ) { nStyle = style; }
 };
 
-class SvxMenuEntriesListBox : public SvTreeListBox
+class SvxMenuEntriesListBox
 {
-private:
-    VclPtr<SvxConfigPage>      pPage;
-
 protected:
-    bool                m_bIsInternalDrag;
+    std::unique_ptr<weld::TreeView> m_xControl;
+    ScopedVclPtr<VirtualDevice> m_xDropDown;
+    SvxConfigPage* m_pPage;
 
 public:
-    SvxMenuEntriesListBox(vcl::Window*, SvxConfigPage*);
-    virtual ~SvxMenuEntriesListBox() override;
-    virtual void dispose() override;
+    SvxMenuEntriesListBox(std::unique_ptr<weld::TreeView> xControl, SvxConfigPage* pPage);
+    virtual ~SvxMenuEntriesListBox();
 
-    virtual sal_Int8    AcceptDrop( const AcceptDropEvent& rEvt ) override;
+    VirtualDevice& get_dropdown_image() const { return *m_xDropDown; }
 
-    virtual bool        NotifyAcceptDrop( SvTreeListEntry* pEntry ) override;
+    int get_selected_index() const { return m_xControl->get_selected_index(); }
+    OUString get_id(int nPos) const { return m_xControl->get_id(nPos); }
+    void remove(int nPos) { m_xControl->remove(nPos); }
+    int n_children() const { return m_xControl->n_children(); }
+    void set_text(int row, const OUString& rText, int col) { m_xControl->set_text(row, rText, col); }
+    OUString get_text(int row) { return m_xControl->get_text(row); }
+    void set_image(int row, const css::uno::Reference<css::graphic::XGraphic>& rImage, int col) { m_xControl->set_image(row, rImage, col); }
+    void set_dropdown(int row, int col) { m_xControl->set_image(row, *m_xDropDown, col); }
+    void set_id(int row, const OUString& rId) { m_xControl->set_id(row, rId); }
+    void clear() { m_xControl->clear(); } //need frees ?
+    void set_toggle(int row, TriState eState) { m_xControl->set_toggle(row, eState); }
+    void scroll_to_row(int pos) { m_xControl->scroll_to_row(pos); }
+    void select(int pos) { m_xControl->select(pos); }
 
-    virtual TriState    NotifyMoving( SvTreeListEntry*, SvTreeListEntry*,
-                                      SvTreeListEntry*&, sal_uLong& ) override;
+    weld::TreeView& get_widget() { return *m_xControl; }
 
-    virtual TriState    NotifyCopying( SvTreeListEntry*, SvTreeListEntry*,
-                                       SvTreeListEntry*&, sal_uLong&) override;
+    void insert(int pos, const OUString& rId)
+    {
+        m_xControl->insert(nullptr, pos, nullptr, &rId,
+                           nullptr, nullptr, false, nullptr);
+    }
 
-    virtual DragDropMode    NotifyStartDrag(
-        TransferDataContainer&, SvTreeListEntry* ) override;
+    DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
 
-    virtual void        DragFinished( sal_Int8 ) override;
+    void CreateDropDown();
+};
 
-    void                KeyInput( const KeyEvent& rKeyEvent ) override;
+class SvxConfigPageFunctionDropTarget : public DropTargetHelper
+{
+private:
+    SvxConfigPage& m_rPage;
+    weld::TreeView& m_rTreeView;
+
+    virtual sal_Int8 AcceptDrop( const AcceptDropEvent& rEvt ) override;
+    virtual sal_Int8 ExecuteDrop( const ExecuteDropEvent& rEvt ) override;
+
+public:
+    SvxConfigPageFunctionDropTarget(SvxConfigPage&rPage, weld::TreeView& rTreeView);
 };
 
 class SvxConfigPage : public SfxTabPage
 {
 private:
 
+    Timer                               m_aUpdateDataTimer;
     bool                                bInitialised;
     SaveInData*                         pCurrentSaveInData;
 
-    DECL_LINK(  SelectSaveInLocation, ListBox&, void );
-    DECL_LINK( AsyncInfoMsg, void*, void );
+    DECL_LINK(SearchUpdateHdl, weld::Entry&, void);
 
 protected:
-
-    // the top section of the tab page where top level menus and toolbars
-    //  are displayed in a listbox
-    VclPtr<VclFrame>                           m_pTopLevel;
-    VclPtr<FixedText>                          m_pTopLevelLabel;
-    VclPtr<ListBox>                            m_pTopLevelListBox;
-    VclPtr<PushButton>                         m_pNewTopLevelButton;
-    VclPtr<MenuButton>                         m_pModifyTopLevelButton;
-
-    VclPtr<FixedText>                          m_pToolbarStyleLabel;
-    VclPtr<RadioButton>                        m_pIconsOnlyRB;
-    VclPtr<RadioButton>                        m_pTextOnlyRB;
-    VclPtr<RadioButton>                        m_pIconsAndTextRB;
-
-    // the contents section where the contents of the selected
-    // menu or toolbar are displayed
-    VclPtr<VclFrame>                           m_pContents;
-    VclPtr<FixedText>                          m_pContentsLabel;
-    VclPtr<VclContainer>                       m_pEntries;
-    VclPtr<SvTreeListBox>                      m_pContentsListBox;
-
-    VclPtr<PushButton>                         m_pAddCommandsButton;
-    VclPtr<PushButton>                         m_pAddSeparatorButton;
-    VclPtr<PushButton>                         m_pAddSubmenuButton;
-    VclPtr<MenuButton>                         m_pModifyCommandButton;
-    VclPtr<PushButton>                         m_pDeleteCommandButton;
-    // Resets the top level toolbar to default settings
-    VclPtr<PushButton>                         m_pResetTopLevelButton;
-
-    VclPtr<PushButton>                         m_pMoveUpButton;
-    VclPtr<PushButton>                         m_pMoveDownButton;
-
-    VclPtr<ListBox>                            m_pSaveInListBox;
-
-    VclPtr<VclMultiLineEdit>                   m_pDescriptionField;
-
-    VclPtr<SvxScriptSelectorDialog>            m_pSelectorDlg;
 
     /// the ResourceURL to select when opening the dialog
     OUString                                   m_aURLToSelect;
 
     css::uno::Reference< css::frame::XFrame >  m_xFrame;
+    OUString                                   m_aModuleId;
 
-    SvxConfigPage( vcl::Window*, const SfxItemSet& );
+    // Left side of the dialog where command categories and the available
+    // commands in them are displayed as a searchable list
+    std::unique_ptr<CommandCategoryListBox>    m_xCommandCategoryListBox;
+    std::unique_ptr<CuiConfigFunctionListBox>  m_xFunctions;
 
-    DECL_LINK( MoveHdl, Button *, void );
+    std::unique_ptr<weld::Label>               m_xCategoryLabel;
+    std::unique_ptr<weld::Label>               m_xDescriptionFieldLb;
+    std::unique_ptr<weld::TextView>            m_xDescriptionField;
+    std::unique_ptr<weld::Label>               m_xLeftFunctionLabel;
+    std::unique_ptr<weld::Entry>               m_xSearchEdit;
+    std::unique_ptr<weld::Label>               m_xSearchLabel;
+
+
+    // Right side of the dialog where the contents of the selected
+    // menu or toolbar are displayed
+    std::unique_ptr<weld::Label>               m_xCustomizeLabel;
+    std::unique_ptr<weld::ComboBox>            m_xTopLevelListBox;
+    // Used to add and remove toolbars/menus
+    std::unique_ptr<weld::MenuButton>          m_xGearBtn;
+    std::unique_ptr<SvxMenuEntriesListBox>     m_xContentsListBox;
+    std::unique_ptr<SvxConfigPageFunctionDropTarget> m_xDropTargetHelper;
+
+    std::unique_ptr<weld::Button>              m_xMoveUpButton;
+    std::unique_ptr<weld::Button>              m_xMoveDownButton;
+
+    std::unique_ptr<weld::ComboBox>            m_xSaveInListBox;
+
+    std::unique_ptr<weld::MenuButton>          m_xInsertBtn;
+    std::unique_ptr<weld::MenuButton>          m_xModifyBtn;
+    // Used to reset the selected toolbar/menu/context menu
+    std::unique_ptr<weld::Button>              m_xResetBtn;
+
+    // Middle buttons
+    std::unique_ptr<weld::Button>              m_xAddCommandButton;
+    std::unique_ptr<weld::Button>              m_xRemoveCommandButton;
+
+    OUString m_sAppName;
+    OUString m_sFileName;
+
+    SvxConfigPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet&);
+
+    DECL_LINK(MoveHdl, weld::Button&, void);
+    DECL_LINK(SelectFunctionHdl, weld::TreeView&, void);
+    DECL_LINK(FunctionDoubleClickHdl, weld::TreeView&, bool);
+    DECL_LINK(SelectSaveInLocation, weld::ComboBox&, void);
+    DECL_LINK(SelectElementHdl, weld::ComboBox&, void);
+    DECL_LINK(ImplUpdateDataHdl, Timer*, void);
+    DECL_LINK(FocusOut_Impl, weld::Widget&, void);
 
     virtual SaveInData* CreateSaveInData(
         const css::uno::Reference< css::ui::XUIConfigurationManager >&,
@@ -414,38 +445,46 @@ protected:
     virtual void            UpdateButtonStates() = 0;
     virtual short           QueryReset() = 0;
 
-    SvTreeListEntry*    InsertEntry(        SvxConfigEntry* pNewEntryData,
-                                        SvTreeListEntry* pTarget = nullptr,
-                                        bool bFront = false );
+    virtual void            SelectElement() = 0;
+
+    int                 AppendEntry(SvxConfigEntry* pNewEntryData,
+                                    int nTarget);
 
     void                AddSubMenusToUI(    const OUString& rBaseTitle,
-                                        SvxConfigEntry* pParentData );
+                                        SvxConfigEntry const * pParentData );
 
-    SvTreeListEntry*    InsertEntryIntoUI ( SvxConfigEntry* pNewEntryData,
-                                        sal_uLong nPos = TREELIST_APPEND );
+    void                InsertEntryIntoUI(SvxConfigEntry* pNewEntryData,
+                                          weld::TreeView& rTreeView, int nPos,
+                                          bool bMenu = false);
+    void                InsertEntryIntoUI(SvxConfigEntry* pNewEntryData,
+                                          weld::TreeView& rTreeView, weld::TreeIter& rIter,
+                                          bool bMenu = false);
+
+    void InsertEntryIntoNotebookbarTabUI(const OUString& sClassId, const OUString& sUIItemId,
+                                         const OUString& sUIItemCommand,
+                                         weld::TreeView& rTreeView, weld::TreeIter& rIter);
 
     SvxEntries*     FindParentForChild( SvxEntries* pParentEntries,
                                         SvxConfigEntry* pChildData );
 
-    void            ReloadTopLevelListBox( SvxConfigEntry* pSelection = nullptr );
+    void            ReloadTopLevelListBox( SvxConfigEntry const * pSelection = nullptr );
 
 public:
 
     virtual ~SvxConfigPage() override;
-    virtual void dispose() override;
 
     static bool     CanConfig( const OUString& rModuleId );
 
     SaveInData*     GetSaveInData() { return pCurrentSaveInData; }
+    const OUString& GetAppName() const { return m_sAppName; }
+    const OUString& GetFileName() const { return m_sFileName; }
 
-    SvTreeListEntry*    AddFunction( SvTreeListEntry* pTarget = nullptr,
-                                 bool bFront = false,
-                                 bool bAllowDuplicates = false );
+    int             AddFunction(int nTarget,
+                                bool bAllowDuplicates);
 
     virtual void    MoveEntry( bool bMoveUp );
 
-    bool            MoveEntryData(  SvTreeListEntry* pSourceEntry,
-                                    SvTreeListEntry* pTargetEntry );
+    bool            MoveEntryData(int SourceEntry, int nTargetEntry);
 
     bool            FillItemSet( SfxItemSet* ) override;
     void            Reset( const SfxItemSet* ) override;
@@ -453,10 +492,11 @@ public:
     virtual void    DeleteSelectedContent() = 0;
     virtual void    DeleteSelectedTopLevel() = 0;
 
+    virtual void    ListModified() {}
+
     SvxConfigEntry* GetTopLevelSelection()
     {
-        return static_cast<SvxConfigEntry*>(m_pTopLevelListBox->GetEntryData(
-            m_pTopLevelListBox->GetSelectEntryPos() ));
+        return reinterpret_cast<SvxConfigEntry*>(m_xTopLevelListBox->get_active_id().toInt64());
     }
 
     /** identifies the module in the given frame. If the frame is <NULL/>, a default
@@ -466,151 +506,41 @@ public:
         frame of the desktop, then the current frame. If both are <NULL/>,
         the SfxViewFrame::Current's XFrame is used. If this is <NULL/>, too, an empty string is returned.
 
-        If the given frame is not <NULL/>, or an default frame could be successfully determined, then
+        If the given frame is not <NULL/>, or a default frame could be successfully determined, then
         the ModuleManager is asked for the module ID of the component in the frame.
     */
     static OUString
         GetFrameWithDefaultAndIdentify( css::uno::Reference< css::frame::XFrame >& _inout_rxFrame );
+
+    OUString    GetScriptURL() const;
+    OUString    GetSelectedDisplayName() const;
 };
 
-class SvxMenuConfigPage : public SvxConfigPage
+class SvxMainMenuOrganizerDialog : public weld::GenericDialogController
 {
-private:
-    bool m_bIsMenuBar;
-    DECL_LINK( SelectMenu, ListBox&, void );
-    DECL_LINK( SelectMenuEntry, SvTreeListBox *, void );
-    DECL_LINK( NewMenuHdl, Button *, void );
-    DECL_LINK( MenuSelectHdl, MenuButton *, void );
-    DECL_LINK( EntrySelectHdl, MenuButton *, void );
-    DECL_LINK( AddCommandsHdl, Button *, void );
-    DECL_LINK( AddSeparatorHdl, Button *, void );
-    DECL_LINK( AddSubmenuHdl, Button *, void );
-    DECL_LINK( DeleteCommandHdl, Button *, void );
-    DECL_LINK( AddFunctionHdl, SvxScriptSelectorDialog&, void );
+    std::unique_ptr<SvxEntries> mpEntries;
+    OUString m_sNewMenuEntryId;
 
-    void            Init() override;
-    void            UpdateButtonStates() override;
-    short           QueryReset() override;
-    void            DeleteSelectedContent() override;
-    void            DeleteSelectedTopLevel() override;
-
-public:
-    SvxMenuConfigPage( vcl::Window *pParent, const SfxItemSet& rItemSet, bool bIsMenuBar = true );
-    virtual ~SvxMenuConfigPage() override;
-    virtual void dispose() override;
-
-    SaveInData* CreateSaveInData(
-        const css::uno::Reference <
-            css::ui::XUIConfigurationManager >&,
-        const css::uno::Reference <
-            css::ui::XUIConfigurationManager >&,
-        const OUString& aModuleId,
-        bool docConfig ) override;
-};
-
-class SvxMainMenuOrganizerDialog : public ModalDialog
-{
-    VclPtr<VclContainer>   m_pMenuBox;
-    VclPtr<Edit>           m_pMenuNameEdit;
-    VclPtr<SvTreeListBox>  m_pMenuListBox;
-    VclPtr<PushButton>     m_pMoveUpButton;
-    VclPtr<PushButton>     m_pMoveDownButton;
-
-    SvxEntries*     mpEntries;
-    SvTreeListEntry*    pNewMenuEntry;
-    bool            bModified;
+    std::unique_ptr<weld::Widget> m_xMenuBox;
+    std::unique_ptr<weld::Entry> m_xMenuNameEdit;
+    std::unique_ptr<weld::TreeView> m_xMenuListBox;
+    std::unique_ptr<weld::Button> m_xMoveUpButton;
+    std::unique_ptr<weld::Button> m_xMoveDownButton;
 
     void UpdateButtonStates();
 
-    DECL_LINK( MoveHdl, Button *, void );
-    DECL_LINK( ModifyHdl, Edit&, void );
-    DECL_LINK( SelectHdl, SvTreeListBox*, void );
+    DECL_LINK(MoveHdl, weld::Button&, void);
+    DECL_LINK(ModifyHdl, weld::Entry&, void);
+    DECL_LINK(SelectHdl, weld::TreeView&, void);
 
 public:
-    SvxMainMenuOrganizerDialog (
-        vcl::Window*, SvxEntries*,
-        SvxConfigEntry*, bool bCreateMenu = false );
+    SvxMainMenuOrganizerDialog(
+        weld::Window*, SvxEntries*,
+        SvxConfigEntry const *, bool bCreateMenu);
     virtual ~SvxMainMenuOrganizerDialog() override;
-    virtual void dispose() override;
 
-    SvxEntries*     GetEntries() { return mpEntries;}
+    std::unique_ptr<SvxEntries> ReleaseEntries() { return std::move(mpEntries);}
     SvxConfigEntry* GetSelectedEntry();
-};
-
-class SvxToolbarEntriesListBox : public SvxMenuEntriesListBox
-{
-    Size            m_aCheckBoxImageSizePixel;
-    SvLBoxButtonData*   m_pButtonData;
-    VclPtr<SvxConfigPage>  pPage;
-
-    void            ChangeVisibility( SvTreeListEntry* pEntry );
-
-protected:
-
-    virtual void    CheckButtonHdl() override;
-    virtual void    DataChanged( const DataChangedEvent& rDCEvt ) override;
-    void            BuildCheckBoxButtonImages( SvLBoxButtonData* );
-    Image           GetSizedImage(
-        VirtualDevice& aDev, const Size& aNewSize, const Image& aImage );
-
-public:
-
-    SvxToolbarEntriesListBox(vcl::Window* pParent, SvxToolbarConfigPage* pPg);
-    virtual ~SvxToolbarEntriesListBox() override;
-    virtual void dispose() override;
-
-    virtual TriState NotifyMoving(
-        SvTreeListEntry*, SvTreeListEntry*, SvTreeListEntry*&, sal_uLong& ) override;
-
-    virtual TriState NotifyCopying(
-        SvTreeListEntry*, SvTreeListEntry*, SvTreeListEntry*&, sal_uLong&) override;
-
-    void            KeyInput( const KeyEvent& rKeyEvent ) override;
-};
-
-class SvxToolbarConfigPage : public SvxConfigPage
-{
-private:
-
-    DECL_LINK( SelectToolbar, ListBox&, void );
-    DECL_LINK( SelectToolbarEntry, SvTreeListBox*, void );
-    DECL_LINK( ToolbarSelectHdl, MenuButton *, void );
-    DECL_LINK( EntrySelectHdl, MenuButton *, void );
-    DECL_LINK( StyleChangeHdl, Button *, void );
-    DECL_LINK( NewToolbarHdl, Button *, void );
-    DECL_LINK( AddCommandsHdl, Button *, void );
-    DECL_LINK( AddSeparatorHdl, Button *, void );
-    DECL_LINK( DeleteCommandHdl, Button *, void );
-    DECL_LINK( ResetTopLevelHdl, Button *, void );
-    DECL_LINK( AddFunctionHdl, SvxScriptSelectorDialog&, void );
-    DECL_LINK( MoveHdl, Button *, void );
-
-    void            UpdateButtonStates() override;
-    short           QueryReset() override;
-    void            Init() override;
-    void            DeleteSelectedContent() override;
-    void            DeleteSelectedTopLevel() override;
-
-    VclPtr<PopupMenu> m_pMenu;
-    VclPtr<PopupMenu> m_pEntry;
-
-public:
-    SvxToolbarConfigPage( vcl::Window *pParent, const SfxItemSet& rItemSet );
-    virtual ~SvxToolbarConfigPage() override;
-    virtual void dispose() override;
-
-    void            AddFunction( SvTreeListEntry* pTarget = nullptr,
-                                             bool bFront = false );
-
-    void            MoveEntry( bool bMoveUp ) override;
-
-    SaveInData*     CreateSaveInData(
-        const css::uno::Reference <
-            css::ui::XUIConfigurationManager >&,
-        const css::uno::Reference <
-            css::ui::XUIConfigurationManager >&,
-        const OUString& aModuleId,
-        bool docConfig ) override;
 };
 
 class ToolbarSaveInData : public SaveInData
@@ -625,12 +555,12 @@ private:
 
     void        LoadToolbar(
         const css::uno::Reference< css::container::XIndexAccess >& xToolBarSettings,
-        SvxConfigEntry* pParentData );
+        SvxConfigEntry const * pParentData );
 
     void        ApplyToolbar(
-        css::uno::Reference< css::container::XIndexContainer >& rNewToolbarBar,
+        css::uno::Reference< css::container::XIndexContainer > const & rNewToolbarBar,
         css::uno::Reference< css::lang::XSingleComponentFactory >& rFactory,
-        SvxConfigEntry *pToolbar );
+        SvxConfigEntry const *pToolbar );
 
 public:
 
@@ -654,46 +584,37 @@ public:
     void            SetSystemStyle( const OUString& rResourceURL, sal_Int32 nStyle );
 
     void            SetSystemStyle(
-        const css::uno::Reference< css::frame::XFrame >& xFrame,
-        const OUString& rResourceURL, sal_Int32 nStyle );
+                        const css::uno::Reference< css::frame::XFrame >& xFrame,
+                        const OUString& rResourceURL, sal_Int32 nStyle );
 
     SvxEntries*     GetEntries() override;
-    void            SetEntries( SvxEntries* ) override;
+    void            SetEntries( std::unique_ptr<SvxEntries> ) override;
     bool            HasSettings() override;
     bool            HasURL( const OUString& rURL ) override;
     void            Reset() override;
     bool            Apply() override;
 };
 
-class SvxNewToolbarDialog : public ModalDialog
+class SvxNewToolbarDialog : public weld::GenericDialogController
 {
 private:
-    VclPtr<Edit>           m_pEdtName;
-    VclPtr<OKButton>       m_pBtnOK;
-
+    std::unique_ptr<weld::Entry> m_xEdtName;
+    std::unique_ptr<weld::Button> m_xBtnOK;
 public:
-    SvxNewToolbarDialog(vcl::Window* pWindow, const OUString& rName);
+    std::unique_ptr<weld::ComboBox> m_xSaveInListBox;
+
+    SvxNewToolbarDialog(weld::Window* pWindow, const OUString& rName);
     virtual ~SvxNewToolbarDialog() override;
-    virtual void dispose() override;
 
-    VclPtr<ListBox>        m_pSaveInListBox;
-
-    OUString GetName()
+    OUString GetName() const
     {
-        return m_pEdtName->GetText();
+        return m_xEdtName->get_text();
     }
 };
 
-class SvxIconSelectorDialog : public ModalDialog
+class SvxIconSelectorDialog : public weld::GenericDialogController
 {
 private:
-    VclPtr<ToolBox>        pTbSymbol;
-    VclPtr<FixedText>      pFtNote;
-    VclPtr<PushButton>     pBtnImport;
-    VclPtr<PushButton>     pBtnDelete;
-    Size            aTbSize;
-    sal_uInt16      m_nNextId;
-
     sal_Int32       m_nExpectedSize;
 
     css::uno::Reference<
@@ -708,6 +629,14 @@ private:
     css::uno::Reference<
         css::graphic::XGraphicProvider > m_xGraphProvider;
 
+    std::vector<css::uno::Reference<css::graphic::XGraphic>> m_aGraphics;
+
+    std::unique_ptr<ValueSet> m_xTbSymbol;
+    std::unique_ptr<weld::CustomWeld> m_xTbSymbolWin;
+    std::unique_ptr<weld::Label>      m_xFtNote;
+    std::unique_ptr<weld::Button>     m_xBtnImport;
+    std::unique_ptr<weld::Button>     m_xBtnDelete;
+
     bool ReplaceGraphicItem( const OUString& aURL );
 
     bool ImportGraphic( const OUString& aURL );
@@ -717,48 +646,27 @@ private:
 public:
 
     SvxIconSelectorDialog(
-        vcl::Window *pWindow,
+        weld::Window *pWindow,
         const css::uno::Reference< css::ui::XImageManager >& rXImageManager,
-        const css::uno::Reference< css::ui::XImageManager >& rXParentImageManager
-            );
+        const css::uno::Reference< css::ui::XImageManager >& rXParentImageManager);
 
     virtual ~SvxIconSelectorDialog() override;
-    virtual void dispose() override;
 
     css::uno::Reference< css::graphic::XGraphic >
         GetSelectedIcon();
 
-    DECL_LINK( SelectHdl, ToolBox *, void );
-    DECL_LINK( ImportHdl, Button *, void );
-    DECL_LINK( DeleteHdl, Button *, void );
+    DECL_LINK(SelectHdl, ValueSet*, void);
+    DECL_LINK(ImportHdl, weld::Button&, void);
+    DECL_LINK(DeleteHdl, weld::Button&, void);
 };
 
-class SvxIconReplacementDialog : public MessBox
-{
-public:
-    SvxIconReplacementDialog(
-        vcl::Window *pWindow,
-        const OUString& aMessage,
-        bool aYestoAll);
-
-    SvxIconReplacementDialog(
-        vcl::Window *pWindow,
-        const OUString& aMessage );
-
-    static OUString ReplaceIconName( const OUString& );
-    sal_uInt16 ShowDialog();
-};
 //added for issue83555
-class SvxIconChangeDialog : public ModalDialog
+class SvxIconChangeDialog : public weld::MessageDialogController
 {
 private:
-    VclPtr<FixedImage>         pFImageInfo;
-    VclPtr<VclMultiLineEdit>   pLineEditDescription;
+    std::unique_ptr<weld::TextView> m_xLineEditDescription;
 public:
-    SvxIconChangeDialog(vcl::Window *pWindow, const OUString& aMessage);
-    virtual ~SvxIconChangeDialog() override;
-    virtual void dispose() override;
+    SvxIconChangeDialog(weld::Window *pWindow, const OUString& rMessage);
 };
-#endif // INCLUDED_CUI_SOURCE_INC_CFG_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -23,12 +23,9 @@
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 
-#include <cppcanvas/spritecanvas.hxx>
-
 #include "combtransition.hxx"
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 namespace {
 
@@ -45,7 +42,7 @@ basegfx::B2DPolyPolygon createClipPolygon(
     for( int i=nOffset; i<nNumStrips; i+=2 )
     {
         aClipPoly.append(
-            ::basegfx::tools::createPolygonFromRect(
+            ::basegfx::utils::createPolygonFromRect(
                 ::basegfx::B2DRectangle( double(i)/nNumStrips, 0.0,
                                          double(i+1)/nNumStrips, 1.0) ) );
 
@@ -54,7 +51,7 @@ basegfx::B2DPolyPolygon createClipPolygon(
     // rotate polygons, such that the strips are parallel to
     // the given direction vector
     const ::basegfx::B2DVector aUpVec(0.0, 1.0);
-    basegfx::B2DHomMatrix aMatrix(basegfx::tools::createRotateAroundPoint(0.5, 0.5, aUpVec.angle( rDirection )));
+    basegfx::B2DHomMatrix aMatrix(basegfx::utils::createRotateAroundPoint(0.5, 0.5, aUpVec.angle( rDirection )));
 
     // blow up clip polygon to slide size
     aMatrix.scale( rSlideSize.getX(),
@@ -68,7 +65,7 @@ basegfx::B2DPolyPolygon createClipPolygon(
 }
 
 CombTransition::CombTransition(
-    boost::optional<SlideSharedPtr> const & leavingSlide,
+    std::optional<SlideSharedPtr> const & leavingSlide,
     const SlideSharedPtr&                   pEnteringSlide,
     const SoundPlayerSharedPtr&             pSoundPlayer,
     const UnoViewContainer&                 rViewContainer,
@@ -117,7 +114,7 @@ void CombTransition::renderComb( double           t,
     const basegfx::B2DSize enteringSizePixel(
         getEnteringSlideSizePixel( rViewEntry.mpView) );
 
-    const basegfx::B2DVector aPushDirection = basegfx::B2DVector(
+    const basegfx::B2DVector aPushDirection(
         enteringSizePixel * maPushDirectionUnit );
     const basegfx::B2DPolyPolygon aClipPolygon1 =
         createClipPolygon( maPushDirectionUnit,
@@ -135,14 +132,14 @@ void CombTransition::renderComb( double           t,
         pLeavingBitmap->clip( aClipPolygon1 );
         // don't modify bitmap object (no move!):
         p = basegfx::B2DPoint( pageOrigin + (t * aPushDirection) );
-        pCanvas->setTransformation(basegfx::tools::createTranslateB2DHomMatrix(p.getX(), p.getY()));
+        pCanvas->setTransformation(basegfx::utils::createTranslateB2DHomMatrix(p.getX(), p.getY()));
         pLeavingBitmap->draw( pCanvas );
 
         // render even strips:
         pLeavingBitmap->clip( aClipPolygon2 );
         // don't modify bitmap object (no move!):
         p = basegfx::B2DPoint( pageOrigin - (t * aPushDirection) );
-        pCanvas->setTransformation(basegfx::tools::createTranslateB2DHomMatrix(p.getX(), p.getY()));
+        pCanvas->setTransformation(basegfx::utils::createTranslateB2DHomMatrix(p.getX(), p.getY()));
         pLeavingBitmap->draw( pCanvas );
     }
 
@@ -153,14 +150,14 @@ void CombTransition::renderComb( double           t,
     pEnteringBitmap->clip( aClipPolygon1 );
     // don't modify bitmap object (no move!):
     p = basegfx::B2DPoint( pageOrigin + ((t - 1.0) * aPushDirection) );
-    pCanvas->setTransformation(basegfx::tools::createTranslateB2DHomMatrix(p.getX(), p.getY()));
+    pCanvas->setTransformation(basegfx::utils::createTranslateB2DHomMatrix(p.getX(), p.getY()));
     pEnteringBitmap->draw( pCanvas );
 
     // render even strips:
     pEnteringBitmap->clip( aClipPolygon2 );
     // don't modify bitmap object (no move!):
     p = basegfx::B2DPoint( pageOrigin + ((1.0 - t) * aPushDirection) );
-    pCanvas->setTransformation(basegfx::tools::createTranslateB2DHomMatrix(p.getX(), p.getY()));
+    pCanvas->setTransformation(basegfx::utils::createTranslateB2DHomMatrix(p.getX(), p.getY()));
     pEnteringBitmap->draw( pCanvas );
 }
 
@@ -176,7 +173,6 @@ bool CombTransition::operator()( double t )
     return true;
 }
 
-} // namespace internal
-} // namespace presentation
+} // namespace slideshow::internal
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,25 +21,19 @@
 
 #include <com/sun/star/lang/XComponent.hpp>
 #include <cppuhelper/interfacecontainer.hxx>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/drawing/XShapes2.hpp>
+#include <com/sun/star/drawing/XShapes3.hpp>
 #include <com/sun/star/drawing/XShapeGrouper.hpp>
-#include <com/sun/star/drawing/XShapeCombiner.hpp>
-#include <com/sun/star/drawing/XShapeBinder.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <cppuhelper/weak.hxx>
-#include <cppuhelper/weakagg.hxx>
-#include <svl/lstner.hxx>
 #include <editeng/mutxhelp.hxx>
 #include <svx/svxdllapi.h>
 
-#include <cppuhelper/implbase6.hxx>
+#include <cppuhelper/implbase7.hxx>
 #include <comphelper/servicehelper.hxx>
 
-#include <svx/unoprov.hxx>
+#include <memory>
 
 class SdrPage;
 class SdrModel;
@@ -57,9 +51,10 @@ enum class SdrInventor : sal_uInt32;
 #define TWIPS_TO_MM(val) ((val * 127 + 36) / 72)
 #define MM_TO_TWIPS(val) ((val * 72 + 63) / 127)
 
-class SVX_DLLPUBLIC SvxDrawPage : public ::cppu::WeakAggImplHelper6< css::drawing::XDrawPage,
+class SVXCORE_DLLPUBLIC SvxDrawPage : public ::cppu::WeakAggImplHelper7< css::drawing::XDrawPage,
                                                css::drawing::XShapeGrouper,
                                                css::drawing::XShapes2,
+                                               css::drawing::XShapes3,
                                                css::lang::XServiceInfo,
                                                css::lang::XUnoTunnel,
                                                css::lang::XComponent>,
@@ -68,9 +63,9 @@ class SVX_DLLPUBLIC SvxDrawPage : public ::cppu::WeakAggImplHelper6< css::drawin
  protected:
     cppu::OBroadcastHelper mrBHelper;
 
-    SdrPage*        mpPage;
-    SdrModel*       mpModel;
-    SdrView*        mpView;
+    SdrPage*        mpPage;     // TTTT should be reference
+    SdrModel*       mpModel;    // TTTT probably not needed -> use from SdrPage
+    std::unique_ptr<SdrView> mpView;
 
     void    SelectObjectsInView( const css::uno::Reference< css::drawing::XShapes >& aShapes, SdrPageView*   pPageView ) throw ();
     void    SelectObjectInView( const css::uno::Reference< css::drawing::XShape >& xShape, SdrPageView*  pPageView ) throw();
@@ -78,12 +73,11 @@ class SVX_DLLPUBLIC SvxDrawPage : public ::cppu::WeakAggImplHelper6< css::drawin
     virtual void disposing() throw();
 
  public:
-    SvxDrawPage( SdrPage* pPage ) throw();
+    SvxDrawPage(SdrPage* pPage);
     virtual ~SvxDrawPage() throw() override;
 
     // Internals
     SdrPage* GetSdrPage() const { return mpPage; }
-    void ChangeModel( SdrModel* pNewModel );
 
     // Creation of a SdrObject and insertion into the SdrPage
     SdrObject *CreateSdrObject( const css::uno::Reference< css::drawing::XShape >& xShape, bool bBeginning = false ) throw();
@@ -116,6 +110,9 @@ class SVX_DLLPUBLIC SvxDrawPage : public ::cppu::WeakAggImplHelper6< css::drawin
     // XShapes2
     virtual void SAL_CALL addTop( const css::uno::Reference< css::drawing::XShape >& xShape ) override;
     virtual void SAL_CALL addBottom( const css::uno::Reference< css::drawing::XShape >& xShape ) override;
+
+    // XShapes3
+    virtual void SAL_CALL sort( const css::uno::Sequence< sal_Int32 >& sortOrder ) override;
 
     // XElementAccess
     virtual css::uno::Type SAL_CALL getElementType() override;

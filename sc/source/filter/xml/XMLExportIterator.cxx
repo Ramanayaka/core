@@ -17,16 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <com/sun/star/sheet/XSpreadsheet.hpp>
+#include <com/sun/star/table/XCellRange.hpp>
+
 #include "XMLExportIterator.hxx"
-#include <xmloff/xmlnmspe.hxx>
-#include "dociter.hxx"
-#include "convuno.hxx"
+#include <dociter.hxx>
 #include "xmlexprt.hxx"
 #include "XMLExportSharedData.hxx"
 #include "XMLStylesExportHelper.hxx"
-#include "document.hxx"
-
-#include <algorithm>
+#include <document.hxx>
+#include <osl/diagnose.h>
 
 using namespace ::com::sun::star;
 
@@ -96,9 +98,9 @@ void ScMyShapesContainer::SetCellData( ScMyCell& rMyCell )
 
 void ScMyShapesContainer::SkipTable(SCTAB nSkip)
 {
-    ScMyShapeList::iterator aItr = aShapeList.begin();
-    while( ( aItr != aShapeList.end() ) && ( aItr->aAddress.Tab() == nSkip ) )
-        aItr = aShapeList.erase(aItr);
+    ScMyShapeList::iterator aItr = std::find_if_not(aShapeList.begin(), aShapeList.end(),
+        [&nSkip](const ScMyShape& rShape) { return rShape.aAddress.Tab() == nSkip; });
+    aShapeList.erase(aShapeList.begin(), aItr);
 }
 
 void ScMyShapesContainer::Sort()
@@ -138,18 +140,16 @@ bool ScMyNoteShapesContainer::GetFirstAddress( ScAddress& rCellAddress )
 
 void ScMyNoteShapesContainer::SetCellData( ScMyCell& rMyCell )
 {
-    ScMyNoteShapeList::iterator aItr = aNoteShapeList.begin();
-    while( (aItr != aNoteShapeList.end()) && (aItr->aPos == rMyCell.maCellAddress) )
-    {
-        aItr = aNoteShapeList.erase(aItr);
-    }
+    ScMyNoteShapeList::iterator aItr = std::find_if_not(aNoteShapeList.begin(), aNoteShapeList.end(),
+        [&rMyCell](const ScMyNoteShape& rNoteShape) { return rNoteShape.aPos == rMyCell.maCellAddress; });
+    aNoteShapeList.erase(aNoteShapeList.begin(), aItr);
 }
 
 void ScMyNoteShapesContainer::SkipTable(SCTAB nSkip)
 {
-    ScMyNoteShapeList::iterator aItr = aNoteShapeList.begin();
-    while( (aItr != aNoteShapeList.end() ) && ( aItr->aPos.Tab() == nSkip ) )
-        aItr = aNoteShapeList.erase(aItr);
+    ScMyNoteShapeList::iterator aItr = std::find_if_not(aNoteShapeList.begin(), aNoteShapeList.end(),
+        [&nSkip](const ScMyNoteShape& rNoteShape) { return rNoteShape.aPos.Tab() == nSkip; });
+    aNoteShapeList.erase(aNoteShapeList.begin(), aItr);
 }
 
 void ScMyNoteShapesContainer::Sort()
@@ -210,31 +210,31 @@ void ScMyMergedRangesContainer::SetCellData( ScMyCell& rMyCell )
 {
     rMyCell.bIsMergedBase = rMyCell.bIsCovered = false;
     ScMyMergedRangeList::iterator aItr(aRangeList.begin());
-    if( aItr != aRangeList.end() )
+    if( aItr == aRangeList.end() )
+        return;
+
+    if( aItr->aCellRange.aStart != rMyCell.aCellAddress )
+        return;
+
+    rMyCell.aMergeRange = aItr->aCellRange;
+    if (aItr->bIsFirst)
+        rMyCell.aMergeRange.aEnd.SetRow( rMyCell.aMergeRange.aStart.Row() + aItr->nRows - 1 );
+    rMyCell.bIsMergedBase = aItr->bIsFirst;
+    rMyCell.bIsCovered = !aItr->bIsFirst;
+    if( aItr->aCellRange.aStart.Col() < aItr->aCellRange.aEnd.Col() )
     {
-        if( aItr->aCellRange.aStart == rMyCell.aCellAddress )
-        {
-            rMyCell.aMergeRange = aItr->aCellRange;
-            if (aItr->bIsFirst)
-                rMyCell.aMergeRange.aEnd.SetRow( rMyCell.aMergeRange.aStart.Row() + aItr->nRows - 1 );
-            rMyCell.bIsMergedBase = aItr->bIsFirst;
-            rMyCell.bIsCovered = !aItr->bIsFirst;
-            if( aItr->aCellRange.aStart.Col() < aItr->aCellRange.aEnd.Col() )
-            {
-                aItr->aCellRange.aStart.IncCol( 1 );
-                aItr->bIsFirst = false;
-            }
-            else
-                aRangeList.erase(aItr);
-        }
+        aItr->aCellRange.aStart.IncCol( 1 );
+        aItr->bIsFirst = false;
     }
+    else
+        aRangeList.erase(aItr);
 }
 
 void ScMyMergedRangesContainer::SkipTable(SCTAB nSkip)
 {
-    ScMyMergedRangeList::iterator aItr = aRangeList.begin();
-    while( ( aItr != aRangeList.end() ) && ( aItr->aCellRange.aStart.Tab() == nSkip ) )
-        aItr = aRangeList.erase(aItr);
+    ScMyMergedRangeList::iterator aItr = std::find_if_not(aRangeList.begin(), aRangeList.end(),
+        [&nSkip](const ScMyMergedRange& rRange) { return rRange.aCellRange.aStart.Tab() == nSkip; });
+    aRangeList.erase(aRangeList.begin(), aItr);
 }
 
 void ScMyMergedRangesContainer::Sort()
@@ -280,33 +280,33 @@ void ScMyAreaLinksContainer::SetCellData( ScMyCell& rMyCell )
 {
     rMyCell.bHasAreaLink = false;
     ScMyAreaLinkList::iterator aItr(aAreaLinkList.begin());
-    if( aItr != aAreaLinkList.end() )
+    if( aItr == aAreaLinkList.end() )
+        return;
+
+    if( aItr->aDestRange.aStart != rMyCell.aCellAddress )
+        return;
+
+    rMyCell.bHasAreaLink = true;
+    rMyCell.aAreaLink = *aItr;
+    aItr = aAreaLinkList.erase( aItr );
+    bool bFound = true;
+    while (aItr != aAreaLinkList.end() && bFound)
     {
-        if( aItr->aDestRange.aStart == rMyCell.aCellAddress )
+        if ( aItr->aDestRange.aStart == rMyCell.aCellAddress )
         {
-            rMyCell.bHasAreaLink = true;
-            rMyCell.aAreaLink = *aItr;
+            OSL_FAIL("more than one linked range on one cell");
             aItr = aAreaLinkList.erase( aItr );
-            bool bFound = true;
-            while (aItr != aAreaLinkList.end() && bFound)
-            {
-                if ( aItr->aDestRange.aStart == rMyCell.aCellAddress )
-                {
-                    OSL_FAIL("more than one linked range on one cell");
-                    aItr = aAreaLinkList.erase( aItr );
-                }
-                else
-                    bFound = false;
-            }
         }
+        else
+            bFound = false;
     }
 }
 
 void ScMyAreaLinksContainer::SkipTable(SCTAB nSkip)
 {
-    ScMyAreaLinkList::iterator aItr = aAreaLinkList.begin();
-    while( ( aItr != aAreaLinkList.end() ) && ( aItr->aDestRange.aStart.Tab() == nSkip ) )
-        aItr = aAreaLinkList.erase(aItr);
+    ScMyAreaLinkList::iterator aItr = std::find_if_not(aAreaLinkList.begin(), aAreaLinkList.end(),
+        [&nSkip](const ScMyAreaLink& rAreaLink) { return rAreaLink.aDestRange.aStart.Tab() == nSkip; });
+    aAreaLinkList.erase(aAreaLinkList.begin(), aItr);
 }
 
 void ScMyAreaLinksContainer::Sort()
@@ -367,9 +367,9 @@ void ScMyEmptyDatabaseRangesContainer::SetCellData( ScMyCell& rMyCell )
 
 void ScMyEmptyDatabaseRangesContainer::SkipTable(SCTAB nSkip)
 {
-    ScMyEmptyDatabaseRangeList::iterator aItr = aDatabaseList.begin();
-    while( ( aItr != aDatabaseList.end() ) && ( aItr->aStart.Tab() == nSkip ) )
-        aItr = aDatabaseList.erase(aItr);
+    ScMyEmptyDatabaseRangeList::iterator aItr = std::find_if_not(aDatabaseList.begin(), aDatabaseList.end(),
+        [&nSkip](const ScRange& rDatabase) { return rDatabase.aStart.Tab() == nSkip; });
+    aDatabaseList.erase(aDatabaseList.begin(), aItr);
 }
 
 void ScMyEmptyDatabaseRangesContainer::Sort()
@@ -395,32 +395,32 @@ void ScMyDetectiveObjContainer::AddObject( ScDetectiveObjType eObjType, const SC
                                             const ScAddress& rPosition, const ScRange& rSourceRange,
                                             bool bHasError )
 {
-    if( (eObjType == SC_DETOBJ_ARROW) ||
+    if( !((eObjType == SC_DETOBJ_ARROW) ||
         (eObjType == SC_DETOBJ_FROMOTHERTAB) ||
         (eObjType == SC_DETOBJ_TOOTHERTAB) ||
-        (eObjType == SC_DETOBJ_CIRCLE) )
+        (eObjType == SC_DETOBJ_CIRCLE)) )
+        return;
+
+    ScMyDetectiveObj aDetObj;
+    aDetObj.eObjType = eObjType;
+    if( eObjType == SC_DETOBJ_TOOTHERTAB )
+        aDetObj.aPosition = rSourceRange.aStart;
+    else
+        aDetObj.aPosition = rPosition;
+    aDetObj.aSourceRange = rSourceRange;
+
+    // #111064#; take the sheet where the object is found and not the sheet given in the ranges, because they are not always true
+    if (eObjType != SC_DETOBJ_FROMOTHERTAB)
     {
-        ScMyDetectiveObj aDetObj;
-        aDetObj.eObjType = eObjType;
-        if( eObjType == SC_DETOBJ_TOOTHERTAB )
-            aDetObj.aPosition = rSourceRange.aStart;
-        else
-            aDetObj.aPosition = rPosition;
-        aDetObj.aSourceRange = rSourceRange;
-
-        // #111064#; take the sheet where the object is found and not the sheet given in the ranges, because they are not always true
-        if (eObjType != SC_DETOBJ_FROMOTHERTAB)
-        {
-            // if the ObjType == SC_DETOBJ_FROMOTHERTAB then the SourceRange is not used and so it has not to be tested and changed
-            OSL_ENSURE(aDetObj.aPosition.Tab() == aDetObj.aSourceRange.aStart.Tab(), "It seems to be possible to have different sheets");
-            aDetObj.aSourceRange.aStart.SetTab( nSheet );
-            aDetObj.aSourceRange.aEnd.SetTab( nSheet );
-        }
-        aDetObj.aPosition.SetTab( nSheet );
-
-        aDetObj.bHasError = bHasError;
-        aDetectiveObjList.push_back( aDetObj );
+        // if the ObjType == SC_DETOBJ_FROMOTHERTAB then the SourceRange is not used and so it has not to be tested and changed
+        OSL_ENSURE(aDetObj.aPosition.Tab() == aDetObj.aSourceRange.aStart.Tab(), "It seems to be possible to have different sheets");
+        aDetObj.aSourceRange.aStart.SetTab( nSheet );
+        aDetObj.aSourceRange.aEnd.SetTab( nSheet );
     }
+    aDetObj.aPosition.SetTab( nSheet );
+
+    aDetObj.bHasError = bHasError;
+    aDetectiveObjList.push_back( aDetObj );
 }
 
 bool ScMyDetectiveObjContainer::GetFirstAddress( ScAddress& rCellAddress )
@@ -444,14 +444,14 @@ void ScMyDetectiveObjContainer::SetCellData( ScMyCell& rMyCell )
         rMyCell.aDetectiveObjVec.push_back( *aItr );
         aItr = aDetectiveObjList.erase( aItr );
     }
-    rMyCell.bHasDetectiveObj = (rMyCell.aDetectiveObjVec.size() != 0);
+    rMyCell.bHasDetectiveObj = (!rMyCell.aDetectiveObjVec.empty());
 }
 
 void ScMyDetectiveObjContainer::SkipTable(SCTAB nSkip)
 {
-    ScMyDetectiveObjList::iterator aItr = aDetectiveObjList.begin();
-    while( ( aItr != aDetectiveObjList.end() ) && ( aItr->aPosition.Tab() == nSkip ) )
-        aItr = aDetectiveObjList.erase(aItr);
+    ScMyDetectiveObjList::iterator aItr = std::find_if_not(aDetectiveObjList.begin(), aDetectiveObjList.end(),
+        [&nSkip](const ScMyDetectiveObj& rDetectiveObj) { return rDetectiveObj.aPosition.Tab() == nSkip; });
+    aDetectiveObjList.erase(aDetectiveObjList.begin(), aItr);
 }
 
 void ScMyDetectiveObjContainer::Sort()
@@ -503,14 +503,14 @@ void ScMyDetectiveOpContainer::SetCellData( ScMyCell& rMyCell )
         rMyCell.aDetectiveOpVec.push_back( *aItr );
         aItr = aDetectiveOpList.erase( aItr );
     }
-    rMyCell.bHasDetectiveOp = (rMyCell.aDetectiveOpVec.size() != 0);
+    rMyCell.bHasDetectiveOp = (!rMyCell.aDetectiveOpVec.empty());
 }
 
 void ScMyDetectiveOpContainer::SkipTable(SCTAB nSkip)
 {
-    ScMyDetectiveOpList::iterator aItr = aDetectiveOpList.begin();
-    while( (aItr != aDetectiveOpList.end()) && (aItr->aPosition.Tab() == nSkip) )
-        aItr = aDetectiveOpList.erase(aItr);
+    ScMyDetectiveOpList::iterator aItr = std::find_if_not(aDetectiveOpList.begin(), aDetectiveOpList.end(),
+        [&nSkip](const ScMyDetectiveOp& rDetectiveOp) { return rDetectiveOp.aPosition.Tab() == nSkip; });
+    aDetectiveOpList.erase(aDetectiveOpList.begin(), aItr);
 }
 
 void ScMyDetectiveOpContainer::Sort()
@@ -537,10 +537,6 @@ ScMyCell::ScMyCell() :
     bIsMatrixBase( false ),
     bIsMatrixCovered( false ),
     bHasAnnotation( false )
-{
-}
-
-ScMyCell::~ScMyCell()
 {
 }
 
@@ -642,24 +638,24 @@ void ScMyNotEmptyCellsIterator::HasAnnotation(ScMyCell& aCell)
 }
 
 void ScMyNotEmptyCellsIterator::SetCurrentTable(const SCTAB nTable,
-    uno::Reference<sheet::XSpreadsheet>& rxTable)
+    const uno::Reference<sheet::XSpreadsheet>& rxTable)
 {
     aLastAddress.SetRow( 0 );
     aLastAddress.SetCol( 0 );
     aLastAddress.SetTab( nTable );
-    if (nCurrentTable != nTable)
-    {
-        nCurrentTable = nTable;
+    if (nCurrentTable == nTable)
+        return;
 
-        mpCellItr.reset(
-            new ScHorizontalCellIterator(
-                rExport.GetDocument(), nCurrentTable, 0, 0,
-                static_cast<SCCOL>(rExport.GetSharedData()->GetLastColumn(nCurrentTable)),
-                static_cast<SCROW>(rExport.GetSharedData()->GetLastRow(nCurrentTable))));
+    nCurrentTable = nTable;
 
-        xTable.set(rxTable);
-        xCellRange.set(xTable, uno::UNO_QUERY);
-    }
+    mpCellItr.reset(
+        new ScHorizontalCellIterator(
+            rExport.GetDocument(), nCurrentTable, 0, 0,
+            static_cast<SCCOL>(rExport.GetSharedData()->GetLastColumn(nCurrentTable)),
+            static_cast<SCROW>(rExport.GetSharedData()->GetLastRow(nCurrentTable))));
+
+    xTable.set(rxTable);
+    xCellRange.set(xTable);
 }
 
 void ScMyNotEmptyCellsIterator::SkipTable(SCTAB nSkip)
@@ -685,7 +681,8 @@ void ScMyNotEmptyCellsIterator::SkipTable(SCTAB nSkip)
 
 bool ScMyNotEmptyCellsIterator::GetNext(ScMyCell& aCell, ScFormatRangeStyles* pCellStyles)
 {
-    ScAddress  aAddress( MAXCOL + 1, MAXROW + 1, nCurrentTable );
+    ScDocument* pDoc = rExport.GetDocument();
+    ScAddress  aAddress( pDoc->MaxCol() + 1, pDoc->MaxRow() + 1, nCurrentTable );
 
     UpdateAddress( aAddress );
 
@@ -704,7 +701,7 @@ bool ScMyNotEmptyCellsIterator::GetNext(ScMyCell& aCell, ScFormatRangeStyles* pC
     if( pDetectiveOp )
         pDetectiveOp->UpdateAddress( aAddress );
 
-    bool bFoundCell( ( aAddress.Col() <= MAXCOL ) && ( aAddress.Row() <= MAXROW ) );
+    bool bFoundCell( ( aAddress.Col() <= pDoc->MaxCol() ) && ( aAddress.Row() <= pDoc->MaxRow() + 1 ) );
     if( bFoundCell )
     {
         SetCellData( aCell, aAddress );

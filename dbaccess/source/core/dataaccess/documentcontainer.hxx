@@ -20,16 +20,19 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_CORE_DATAACCESS_DOCUMENTCONTAINER_HXX
 #define INCLUDED_DBACCESS_SOURCE_CORE_DATAACCESS_DOCUMENTCONTAINER_HXX
 
-#include "definitioncontainer.hxx"
+#include <definitioncontainer.hxx>
 #include <cppuhelper/implbase5.hxx>
+#include <connectivity/CommonTools.hxx>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/frame/XComponentLoader.hpp>
 #include <com/sun/star/container/XHierarchicalNameContainer.hpp>
 #include <com/sun/star/container/XHierarchicalName.hpp>
+#include <com/sun/star/embed/XStorage.hpp>
 #include <com/sun/star/embed/XTransactedObject.hpp>
 #include <comphelper/propertystatecontainer.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include "apitools.hxx"
+#include <rtl/ref.hxx>
+#include <apitools.hxx>
 
 namespace dbaccess
 {

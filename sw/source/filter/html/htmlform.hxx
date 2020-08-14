@@ -20,20 +20,12 @@
 #ifndef INCLUDED_SW_SOURCE_FILTER_HTML_HTMLFORM_HXX
 #define INCLUDED_SW_SOURCE_FILTER_HTML_HTMLFORM_HXX
 
-enum HTMLEventType
-{
-    HTML_ET_ONSUBMITFORM,   HTML_ET_ONRESETFORM,
-    HTML_ET_ONGETFOCUS,     HTML_ET_ONLOSEFOCUS,
-    HTML_ET_ONCLICK,        HTML_ET_ONCLICK_ITEM,
-    HTML_ET_ONCHANGE,       HTML_ET_ONSELECT,
-    HTML_ET_END
-};
+#include <sal/types.h>
 
-extern HTMLEventType aEventTypeTable[];
-extern const sal_Char * aEventListenerTable[];
-extern const sal_Char * aEventMethodTable[];
-extern const sal_Char * aEventSDOptionTable[];
-extern const sal_Char * aEventOptionTable[];
+extern const char * aEventListenerTable[];
+extern const char * aEventMethodTable[];
+extern const char * aEventSDOptionTable[];
+extern const char * aEventOptionTable[];
 
 #endif
 

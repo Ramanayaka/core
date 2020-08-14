@@ -21,7 +21,7 @@
 #include <sortopt.hxx>
 
 SwSortKey::SwSortKey() :
-    eSortOrder( SRT_ASCENDING ),
+    eSortOrder( SwSortOrder::Ascending ),
     nColumnId( 0 ),
     bIsNumeric( true )
 {
@@ -35,16 +35,8 @@ SwSortKey::SwSortKey(sal_uInt16 nId, const OUString& rSrtType, SwSortOrder eOrde
 {
 }
 
-SwSortKey::SwSortKey(const SwSortKey& rOld) :
-    sSortType( rOld.sSortType ),
-    eSortOrder( rOld.eSortOrder ),
-    nColumnId( rOld.nColumnId ),
-    bIsNumeric( rOld.bIsNumeric )
-{
-}
-
 SwSortOptions::SwSortOptions()
-    : eDirection( SRT_ROWS ),
+    : eDirection( SwSortDirection::Rows ),
     cDeli( 9 ),
     nLanguage( LANGUAGE_SYSTEM ),
     bTable( false ),
@@ -59,17 +51,14 @@ SwSortOptions::SwSortOptions(const SwSortOptions& rOpt) :
     bTable( rOpt.bTable ),
     bIgnoreCase( rOpt.bIgnoreCase )
 {
-    for(SwSortKey* pKey : rOpt.aKeys)
+    for(auto const & pKey : rOpt.aKeys)
     {
-        SwSortKey* pNew = new SwSortKey(*pKey);
-        aKeys.push_back( pNew );
+        aKeys.push_back( std::make_unique<SwSortKey>(*pKey) );
     }
 }
 
 SwSortOptions::~SwSortOptions()
 {
-    for( SwSortKey *pKey : aKeys )
-        delete pKey;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

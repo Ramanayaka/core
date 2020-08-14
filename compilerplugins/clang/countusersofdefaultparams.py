@@ -9,13 +9,13 @@ callDict = dict()
 
 # clang does not always use exactly the same numbers in the type-parameter vars it generates
 # so I need to substitute them to ensure we can match correctly.
-normalizeTypeParamsRegex = re.compile(r"type-parameter-\d+-\d+")
+normalizeTypeParamsRegex1 = re.compile(r"type-parameter-\d+-\d+")
+normalizeTypeParamsRegex2 = re.compile(r"typename enable_if<.*")
 def normalizeTypeParams( line ):
-    return normalizeTypeParamsRegex.sub("type-parameter-?-?", line)
+    line = normalizeTypeParamsRegex1.sub("type-parameter-?-?", line)
+    return normalizeTypeParamsRegex2.sub("type-parameter-?-?", line)
 
-# The parsing here is designed to avoid grabbing stuff which is mixed in from gbuild.
-# I have not yet found a way of suppressing the gbuild output.
-with io.open("loplugin.countusersofdefaultparams.log", "rb", buffering=1024*1024) as txt:
+with io.open("workdir/loplugin.countusersofdefaultparams.log", "rb", buffering=1024*1024) as txt:
     for line in txt:
         tokens = line.strip().split("\t")
         if tokens[0] == "defn:":
@@ -35,14 +35,9 @@ with io.open("loplugin.countusersofdefaultparams.log", "rb", buffering=1024*1024
             if not funcInfo in callDict:
                 callDict[funcInfo] = set()
             callDict[funcInfo].add(sourceLocationOfCall)
+        else:
+            print( "unknown line: " + line)
 
-# Invert the definitionToSourceLocationMap.
-sourceLocationToDefinitionMap = {}
-for k, v in definitionToSourceLocationMap.iteritems():
-    sourceLocationToDefinitionMap[v] = sourceLocationToDefinitionMap.get(v, [])
-    sourceLocationToDefinitionMap[v].append(k)
-
-    
 tmp1list = list()
 for k,v in callDict.iteritems():
     if len(v) >= 1:

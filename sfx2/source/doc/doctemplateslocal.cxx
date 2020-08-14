@@ -19,13 +19,10 @@
 
 
 #include <com/sun/star/beans/StringPair.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
 #include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/SAXException.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
 
 #include <comphelper/attributelist.hxx>
 
@@ -50,7 +47,7 @@ std::vector< beans::StringPair > DocTemplLocaleHelper::ReadGroupLocalizationSequ
 }
 
 
-void SAL_CALL DocTemplLocaleHelper::WriteGroupLocalizationSequence( const uno::Reference< io::XOutputStream >& xOutStream, const std::vector< beans::StringPair >& aSequence, const uno::Reference< uno::XComponentContext >& xContext )
+void DocTemplLocaleHelper::WriteGroupLocalizationSequence( const uno::Reference< io::XOutputStream >& xOutStream, const std::vector< beans::StringPair >& aSequence, const uno::Reference< uno::XComponentContext >& xContext )
 {
     if ( !xOutStream.is() )
         throw uno::RuntimeException();
@@ -92,7 +89,7 @@ void SAL_CALL DocTemplLocaleHelper::WriteGroupLocalizationSequence( const uno::R
 }
 
 
-std::vector< beans::StringPair > SAL_CALL DocTemplLocaleHelper::ReadLocalizationSequence_Impl( const uno::Reference< io::XInputStream >& xInStream, const OUString& aStringID, const uno::Reference< uno::XComponentContext >& xContext )
+std::vector< beans::StringPair > DocTemplLocaleHelper::ReadLocalizationSequence_Impl( const uno::Reference< io::XInputStream >& xInStream, const OUString& aStringID, const uno::Reference< uno::XComponentContext >& xContext )
 {
     if ( !xContext.is() || !xInStream.is() )
         throw uno::RuntimeException();
@@ -122,7 +119,7 @@ DocTemplLocaleHelper::~DocTemplLocaleHelper()
 }
 
 
-std::vector< beans::StringPair > const & DocTemplLocaleHelper::GetParsingResult()
+std::vector< beans::StringPair > const & DocTemplLocaleHelper::GetParsingResult() const
 {
     if ( !m_aElementsSeq.empty() )
         throw uno::RuntimeException(); // the parsing has still not finished!
@@ -145,7 +142,7 @@ void SAL_CALL DocTemplLocaleHelper::startElement( const OUString& aName, const u
 {
     if ( aName == g_sGroupListElement )
     {
-        if ( m_aElementsSeq.size() != 0 )
+        if ( !m_aElementsSeq.empty() )
             throw xml::sax::SAXException(); // TODO: this element must be the first level element
 
         m_aElementsSeq.push_back( aName );

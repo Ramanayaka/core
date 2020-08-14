@@ -21,7 +21,6 @@
 #define INCLUDED_SVX_GRAFCTRL_HXX
 
 #include <svl/lstner.hxx>
-#include <svl/intitem.hxx>
 #include <sfx2/tbxctrl.hxx>
 #include <svx/svxdllapi.h>
 
@@ -33,11 +32,11 @@ public:
     virtual ~SvxGrafToolBoxControl() override;
 
     virtual void        StateChanged( sal_uInt16 nSID, SfxItemState eState, const SfxPoolItem* pState ) override;
-    virtual VclPtr<vcl::Window> CreateItemWindow( vcl::Window *pParent ) override;
+    virtual VclPtr<InterimItemWindow> CreateItemWindow( vcl::Window *pParent ) override;
 };
 
 
-class SVX_DLLPUBLIC SvxGrafRedToolBoxControl : public SvxGrafToolBoxControl
+class SVX_DLLPUBLIC SvxGrafRedToolBoxControl final : public SvxGrafToolBoxControl
 {
 public:
                         SFX_DECL_TOOLBOX_CONTROL();
@@ -45,7 +44,7 @@ public:
 };
 
 
-class SVX_DLLPUBLIC SvxGrafGreenToolBoxControl : public SvxGrafToolBoxControl
+class SVX_DLLPUBLIC SvxGrafGreenToolBoxControl final : public SvxGrafToolBoxControl
 {
 public:
                         SFX_DECL_TOOLBOX_CONTROL();
@@ -53,7 +52,7 @@ public:
 };
 
 
-class SVX_DLLPUBLIC SvxGrafBlueToolBoxControl : public SvxGrafToolBoxControl
+class SVX_DLLPUBLIC SvxGrafBlueToolBoxControl final : public SvxGrafToolBoxControl
 {
 public:
                         SFX_DECL_TOOLBOX_CONTROL();
@@ -61,7 +60,7 @@ public:
 };
 
 
-class SVX_DLLPUBLIC SvxGrafLuminanceToolBoxControl : public SvxGrafToolBoxControl
+class SVX_DLLPUBLIC SvxGrafLuminanceToolBoxControl final : public SvxGrafToolBoxControl
 {
 public:
                         SFX_DECL_TOOLBOX_CONTROL();
@@ -69,7 +68,7 @@ public:
 };
 
 
-class SVX_DLLPUBLIC SvxGrafContrastToolBoxControl : public SvxGrafToolBoxControl
+class SVX_DLLPUBLIC SvxGrafContrastToolBoxControl final : public SvxGrafToolBoxControl
 {
 public:
                         SFX_DECL_TOOLBOX_CONTROL();
@@ -77,7 +76,7 @@ public:
 };
 
 
-class SVX_DLLPUBLIC SvxGrafGammaToolBoxControl : public SvxGrafToolBoxControl
+class SVX_DLLPUBLIC SvxGrafGammaToolBoxControl final : public SvxGrafToolBoxControl
 {
 public:
                         SFX_DECL_TOOLBOX_CONTROL();
@@ -85,7 +84,7 @@ public:
 };
 
 
-class SVX_DLLPUBLIC SvxGrafTransparenceToolBoxControl : public SvxGrafToolBoxControl
+class SVX_DLLPUBLIC SvxGrafTransparenceToolBoxControl final : public SvxGrafToolBoxControl
 {
 public:
                         SFX_DECL_TOOLBOX_CONTROL();
@@ -93,7 +92,7 @@ public:
 };
 
 
-class SVX_DLLPUBLIC SvxGrafModeToolBoxControl : public SfxToolBoxControl, public SfxListener
+class SVX_DLLPUBLIC SvxGrafModeToolBoxControl final : public SfxToolBoxControl, public SfxListener
 {
 public:
                         SFX_DECL_TOOLBOX_CONTROL();
@@ -101,7 +100,7 @@ public:
                         virtual ~SvxGrafModeToolBoxControl() override;
 
     virtual void        StateChanged( sal_uInt16 nSID, SfxItemState eState, const SfxPoolItem* pState ) override;
-    virtual VclPtr<vcl::Window> CreateItemWindow( vcl::Window *pParent ) override;
+    virtual VclPtr<InterimItemWindow> CreateItemWindow( vcl::Window *pParent ) override;
 };
 
 
@@ -114,7 +113,7 @@ class SVX_DLLPUBLIC SvxGrafAttrHelper
 public:
 
     static void     ExecuteGrafAttr( SfxRequest& rReq, SdrView& rView );
-    static void     GetGrafAttrState( SfxItemSet& rSet, SdrView& rView );
+    static void     GetGrafAttrState( SfxItemSet& rSet, SdrView const & rView );
 };
 
 #endif // INCLUDED_SVX_GRAFCTRL_HXX

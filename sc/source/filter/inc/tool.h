@@ -20,17 +20,18 @@
 #ifndef INCLUDED_SC_SOURCE_FILTER_INC_TOOL_H
 #define INCLUDED_SC_SOURCE_FILTER_INC_TOOL_H
 
-#include <attrib.hxx>
-#include <document.hxx>
+#include <i18nlangtag/lang.h>
+#include <svl/intitem.hxx>
+#include <types.hxx>
 #include <osl/diagnose.h>
 
 // Default values
-const sal_uInt8 nDezStd = 0;        // Decimal points for standard cells
-const sal_uInt8 nDezFloat = 2;      //        "         " float cells
+const sal_uInt8 nFractionalStd = 0;        // Number of digits in fractional part for standard cells
+const sal_uInt8 nFractionalFloat = 2;      //        "         "         "         "  float cells
 
 struct LotusContext;
 
-void        PutFormString(LotusContext& rContext, SCCOL nCol, SCROW nRow, SCTAB nTab, sal_Char *pString);
+void        PutFormString(LotusContext& rContext, SCCOL nCol, SCROW nRow, SCTAB nTab, char *pString);
 
 void        SetFormat(LotusContext& rContext, SCCOL nCol, SCROW nRow, SCTAB nTab, sal_uInt8 nFormat, sal_uInt8 nSt);
 
@@ -48,7 +49,7 @@ class FormIdent
 {
 private:
     StampTyp        nStamp;         // ID key
-    SfxUInt32Item*  pAttr;          // associated attribute
+    std::unique_ptr<SfxUInt32Item> pAttr;          // associated attribute
 public:
                     FormIdent( void )
                     {
@@ -59,7 +60,7 @@ public:
                     FormIdent( sal_uInt8 nFormat, sal_uInt8 nSt, SfxUInt32Item& rAttr )
                     {
                         nStamp = MAKE_STAMP( nFormat, nSt );
-                        pAttr = &rAttr;
+                        pAttr.reset(&rAttr);
                     }
 
     StampTyp        GetStamp( void ) const
@@ -69,7 +70,7 @@ public:
 
     SfxUInt32Item*  GetAttr( void )
                     {
-                        return pAttr;
+                        return pAttr.get();
                     }
 
     void            SetStamp( sal_uInt8 nFormat, sal_uInt8 nSt )
@@ -94,7 +95,7 @@ private:
 
     SfxUInt32Item*      NewAttr( sal_uInt8 nFormat, sal_uInt8 nSt );
 public:
-                        FormCache( ScDocument* );
+                        FormCache( const ScDocument* );
                         ~FormCache();
 
     inline const SfxUInt32Item* GetAttr( sal_uInt8 nFormat, sal_uInt8 nSt );

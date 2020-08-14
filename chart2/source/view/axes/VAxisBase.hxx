@@ -22,7 +22,8 @@
 #include "VAxisOrGridBase.hxx"
 #include "VAxisProperties.hxx"
 #include "Tickmarks.hxx"
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
+
+namespace com::sun::star::util { class XNumberFormatsSupplier; }
 
 namespace chart
 {

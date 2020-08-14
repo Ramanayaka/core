@@ -19,68 +19,47 @@
 
 #include <memory>
 #include "AppController.hxx"
-#include <comphelper/sequence.hxx>
 #include <comphelper/property.hxx>
-#include <comphelper/processfactory.hxx>
-#include "dbustrings.hrc"
+#include <core_resource.hxx>
+#include <strings.hxx>
 #include <com/sun/star/sdbcx/XDataDescriptorFactory.hpp>
 #include <com/sun/star/sdbcx/XAppend.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
-#include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/uno/XNamingService.hpp>
-#include <com/sun/star/sdbc/XDataSource.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
-#include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/container/XHierarchicalNameContainer.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
-#include <com/sun/star/sdb/XBookmarksSupplier.hpp>
 #include <com/sun/star/sdb/SQLContext.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <com/sun/star/sdbcx/XViewsSupplier.hpp>
 #include <com/sun/star/sdb/XQueryDefinitionsSupplier.hpp>
 #include <com/sun/star/sdbcx/XDrop.hpp>
-#include <unotools/ucbhelper.hxx>
-#include "dlgsave.hxx"
-#include <comphelper/types.hxx>
-#include <vcl/layout.hxx>
-#include <cppuhelper/typeprovider.hxx>
+#include <dlgsave.hxx>
+#include <vcl/weld.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <connectivity/dbexception.hxx>
-#include <vcl/waitobj.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include "AppView.hxx"
 #include <svx/dataaccessdescriptor.hxx>
 #include <svx/dbaobjectex.hxx>
-#include "browserids.hxx"
-#include "dbu_reghelper.hxx"
-#include "dbu_app.hrc"
-#include <vcl/menu.hxx>
-#include <comphelper/uno3.hxx>
+#include <strings.hrc>
 #include <vcl/svapp.hxx>
-#include <svtools/svlbitm.hxx>
-#include "listviewitems.hxx"
-#include "AppDetailView.hxx"
-#include "linkeddocuments.hxx"
-#include <vcl/lstbox.hxx>
+#include <linkeddocuments.hxx>
 #include <connectivity/dbtools.hxx>
-#include "sqlmessage.hxx"
-#include "dbexchange.hxx"
-#include "UITools.hxx"
+#include <dbexchange.hxx>
+#include <UITools.hxx>
 #include <algorithm>
 #include <iterator>
-#include <svtools/treelistbox.hxx>
 #include <com/sun/star/sdb/XReportDocumentsSupplier.hpp>
 #include <com/sun/star/sdb/XFormDocumentsSupplier.hpp>
-#include <unotools/pathoptions.hxx>
-#include <sfx2/docfilt.hxx>
-#include <svtools/fileview.hxx>
+#include <svtools/querydelete.hxx>
 #include <tools/diagnose_ex.h>
 #include <osl/diagnose.h>
-#include "defaultobjectnamecheck.hxx"
+#include <defaultobjectnamecheck.hxx>
 #include <osl/mutex.hxx>
 #include "subcomponentmanager.hxx"
+#include <set>
 
 namespace dbaui
 {
@@ -104,82 +83,84 @@ void OApplicationController::deleteTables(const std::vector< OUString>& _rList)
     SharedConnection xConnection( ensureConnection() );
 
     Reference<XTablesSupplier> xSup(xConnection,UNO_QUERY);
-    OSL_ENSURE(xSup.is(),"OApplicationController::deleteTable: no XTablesSuppier!");
-    if ( xSup.is() )
+    OSL_ENSURE(xSup.is(),"OApplicationController::deleteTable: no XTablesSupplier!");
+    if ( !xSup.is() )
+        return;
+
+    Reference<XNameAccess> xTables = xSup->getTables();
+    Reference<XDrop> xDrop(xTables,UNO_QUERY);
+    if ( xDrop.is() )
     {
-        Reference<XNameAccess> xTables = xSup->getTables();
-        Reference<XDrop> xDrop(xTables,UNO_QUERY);
-        if ( xDrop.is() )
+        bool bConfirm = true;
+        std::vector< OUString>::const_iterator aEnd = _rList.end();
+        for (std::vector< OUString>::const_iterator aIter = _rList.begin(); aIter != aEnd; ++aIter)
         {
-            bool bConfirm = true;
-            std::vector< OUString>::const_iterator aEnd = _rList.end();
-            for (std::vector< OUString>::const_iterator aIter = _rList.begin(); aIter != aEnd; ++aIter)
+            OUString sTableName = *aIter;
+
+            sal_Int32 nResult = RET_YES;
+            if ( bConfirm )
+                nResult = ::dbaui::askForUserAction(getFrameWeld(), STR_TITLE_CONFIRM_DELETION, STR_QUERY_DELETE_TABLE, _rList.size() > 1 && (aIter+1) != _rList.end(), sTableName);
+
+            bool bUserConfirmedDelete =
+                        ( RET_YES == nResult )
+                    ||  ( RET_ALL == nResult );
+            if ( bUserConfirmedDelete && m_pSubComponentManager->closeSubFrames( sTableName, E_TABLE ) )
             {
-                OUString sTableName = *aIter;
-
-                sal_Int32 nResult = RET_YES;
-                if ( bConfirm )
-                    nResult = ::dbaui::askForUserAction(getView(),STR_TITLE_CONFIRM_DELETION ,STR_QUERY_DELETE_TABLE,_rList.size() > 1 && (aIter+1) != _rList.end(),sTableName);
-
-                bool bUserConfirmedDelete =
-                            ( RET_YES == nResult )
-                        ||  ( RET_ALL == nResult );
-                if ( bUserConfirmedDelete && m_pSubComponentManager->closeSubFrames( sTableName, E_TABLE ) )
+                SQLExceptionInfo aErrorInfo;
+                try
                 {
-                    SQLExceptionInfo aErrorInfo;
-                    try
-                    {
-                        if ( xTables->hasByName(sTableName) )
-                            xDrop->dropByName(sTableName);
-                        else
-                        {// could be a view
-                            Reference<XViewsSupplier> xViewsSup(xConnection,UNO_QUERY);
+                    if ( xTables->hasByName(sTableName) )
+                        xDrop->dropByName(sTableName);
+                    else
+                    {// could be a view
+                        Reference<XViewsSupplier> xViewsSup(xConnection,UNO_QUERY);
 
-                            Reference<XNameAccess> xViews;
-                            if ( xViewsSup.is() )
+                        Reference<XNameAccess> xViews;
+                        if ( xViewsSup.is() )
+                        {
+                            xViews = xViewsSup->getViews();
+                            if ( xViews.is() && xViews->hasByName(sTableName) )
                             {
-                                xViews = xViewsSup->getViews();
-                                if ( xViews.is() && xViews->hasByName(sTableName) )
-                                {
-                                    xDrop.set(xViews,UNO_QUERY);
-                                    if ( xDrop.is() )
-                                        xDrop->dropByName(sTableName);
-                                }
+                                xDrop.set(xViews,UNO_QUERY);
+                                if ( xDrop.is() )
+                                    xDrop->dropByName(sTableName);
                             }
                         }
                     }
-                    catch(SQLContext& e) { aErrorInfo = e; }
-                    catch(SQLWarning& e) { aErrorInfo = e; }
-                    catch(SQLException& e) { aErrorInfo = e; }
-                    catch(WrappedTargetException& e)
-                    {
-                        SQLException aSql;
-                        if(e.TargetException >>= aSql)
-                            aErrorInfo = aSql;
-                        else
-                            OSL_FAIL("OApplicationController::implDropTable: something strange happened!");
-                    }
-                    catch( const Exception& )
-                    {
-                        DBG_UNHANDLED_EXCEPTION();
-                    }
-
-                    if ( aErrorInfo.isValid() )
-                        showError(aErrorInfo);
-
-                    if ( RET_ALL == nResult )
-                        bConfirm = false;
                 }
-                else
-                    break;
+                catch(SQLContext& e) { aErrorInfo = e; }
+                catch(SQLWarning& e) { aErrorInfo = e; }
+                catch(SQLException& e) { aErrorInfo = e; }
+                catch(WrappedTargetException& e)
+                {
+                    SQLException aSql;
+                    if(e.TargetException >>= aSql)
+                        aErrorInfo = aSql;
+                    else
+                        OSL_FAIL("OApplicationController::implDropTable: something strange happened!");
+                }
+                catch( const Exception& )
+                {
+                    DBG_UNHANDLED_EXCEPTION("dbaccess");
+                }
+
+                if ( aErrorInfo.isValid() )
+                    showError(aErrorInfo);
+
+                if ( RET_ALL == nResult )
+                    bConfirm = false;
             }
+            else
+                break;
         }
-        else
-        {
-            OUString sMessage(ModuleRes(STR_MISSING_TABLES_XDROP));
-            ScopedVclPtrInstance< MessageDialog > aError(getView(), sMessage);
-            aError->Execute();
-        }
+    }
+    else
+    {
+        OUString sMessage(DBA_RES(STR_MISSING_TABLES_XDROP));
+        std::unique_ptr<weld::MessageDialog> xError(Application::CreateMessageDialog(getFrameWeld(),
+                                                    VclMessageType::Warning, VclButtonsType::Ok,
+                                                    sMessage));
+        xError->run();
     }
 }
 
@@ -187,106 +168,95 @@ void OApplicationController::deleteObjects( ElementType _eType, const std::vecto
 {
     Reference< XNameContainer > xNames( getElements( _eType ), UNO_QUERY );
     Reference< XHierarchicalNameContainer > xHierarchyName( xNames, UNO_QUERY );
-    if ( xNames.is() )
+    if ( !xNames.is() )
+        return;
+
+    short eResult = _bConfirm ? svtools::QUERYDELETE_YES : svtools::QUERYDELETE_ALL;
+
+    // The list of elements to delete is allowed to contain related elements: A given element may
+    // be the ancestor or child of another element from the list.
+    // We want to ensure that ancestors get deleted first, so we normalize the list in this respect.
+    // #i33353#
+    // Note that this implicitly uses std::less< OUString > a comparison operation, which
+    // results in lexicographical order, which is exactly what we need, because "foo" is *before*
+    // any "foo/bar" in this order.
+    std::set< OUString > aDeleteNames(_rList.begin(), _rList.end());
+
+    std::set< OUString >::size_type nCount = aDeleteNames.size();
+    for ( std::set< OUString >::size_type nObjectsLeft = nCount; !aDeleteNames.empty(); )
     {
-        OString sDialogPosition;
-        short eResult = _bConfirm ? svtools::QUERYDELETE_YES : svtools::QUERYDELETE_ALL;
+        std::set< OUString >::const_iterator  aThisRound = aDeleteNames.begin();
 
-        // The list of elements to delete is allowed to contain related elements: A given element may
-        // be the ancestor or child of another element from the list.
-        // We want to ensure that ancestors get deleted first, so we normalize the list in this respect.
-        // #i33353#
-        std::set< OUString > aDeleteNames;
-            // Note that this implicitly uses std::less< OUString > a comparison operation, which
-            // results in lexicographical order, which is exactly what we need, because "foo" is *before*
-            // any "foo/bar" in this order.
-        std::copy(
-            _rList.begin(), _rList.end(),
-            std::insert_iterator< std::set< OUString > >( aDeleteNames, aDeleteNames.begin() )
-        );
-
-        std::set< OUString >::size_type nCount = aDeleteNames.size();
-        for ( std::set< OUString >::size_type nObjectsLeft = nCount; !aDeleteNames.empty(); )
+        if ( eResult != svtools::QUERYDELETE_ALL )
         {
-            std::set< OUString >::const_iterator  aThisRound = aDeleteNames.begin();
+            svtools::QueryDeleteDlg_Impl aDlg(getFrameWeld(), *aThisRound);
 
-            if ( eResult != svtools::QUERYDELETE_ALL )
+            if ( nObjectsLeft > 1 )
+                aDlg.EnableAllButton();
+
+            eResult = aDlg.run();
+        }
+
+        bool bSuccess = false;
+
+        bool bUserConfirmedDelete =
+                    ( eResult == svtools::QUERYDELETE_ALL )
+                ||  ( eResult == svtools::QUERYDELETE_YES );
+
+        if  (   bUserConfirmedDelete
+            &&  (   _eType != E_QUERY || m_pSubComponentManager->closeSubFrames( *aThisRound, _eType ) )
+            )
+        {
+            try
             {
-                ScopedVclPtrInstance< svtools::QueryDeleteDlg_Impl > aDlg(getView(), *aThisRound);
+                if ( xHierarchyName.is() )
+                    xHierarchyName->removeByHierarchicalName( *aThisRound );
+                else
+                    xNames->removeByName( *aThisRound );
 
-                if ( !sDialogPosition.isEmpty() )
-                    aDlg->SetWindowState( sDialogPosition );
+                bSuccess = true;
 
-                if ( nObjectsLeft > 1 )
-                    aDlg->EnableAllButton();
+                // now that we removed the element, care for all its child elements
+                // which may also be a part of the list
+                // #i33353#
+                OSL_ENSURE( aThisRound->getLength() - 1 >= 0, "OApplicationController::deleteObjects: empty name?" );
+                OUString sSmallestSiblingName = *aThisRound + OUStringChar( sal_Unicode( '/' + 1) );
 
-                eResult = aDlg->Execute();
-
-                sDialogPosition = aDlg->GetWindowState( );
-            }
-
-            bool bSuccess = false;
-
-            bool bUserConfirmedDelete =
-                        ( eResult == svtools::QUERYDELETE_ALL )
-                    ||  ( eResult == svtools::QUERYDELETE_YES );
-
-            if  (   bUserConfirmedDelete
-                &&  (   _eType != E_QUERY || m_pSubComponentManager->closeSubFrames( *aThisRound, _eType ) )
-                )
-            {
-                try
+                std::set< OUString >::const_iterator aUpperChildrenBound = aDeleteNames.lower_bound( sSmallestSiblingName );
+                for ( std::set< OUString >::const_iterator aObsolete = aThisRound;
+                      aObsolete != aUpperChildrenBound;
+                    )
                 {
-                    if ( xHierarchyName.is() )
-                        xHierarchyName->removeByHierarchicalName( *aThisRound );
-                    else
-                        xNames->removeByName( *aThisRound );
-
-                    bSuccess = true;
-
-                    // now that we removed the element, care for all its child elements
-                    // which may also be a part of the list
-                    // #i33353#
-                    OSL_ENSURE( aThisRound->getLength() - 1 >= 0, "OApplicationController::deleteObjects: empty name?" );
-                    OUStringBuffer sSmallestSiblingName( *aThisRound );
-                    sSmallestSiblingName.append( (sal_Unicode)( '/' + 1) );
-
-                    std::set< OUString >::const_iterator aUpperChildrenBound = aDeleteNames.lower_bound( sSmallestSiblingName.makeStringAndClear() );
-                    for ( std::set< OUString >::const_iterator aObsolete = aThisRound;
-                          aObsolete != aUpperChildrenBound;
-                        )
-                    {
-                        std::set< OUString >::const_iterator aNextObsolete = aObsolete; ++aNextObsolete;
-                        aDeleteNames.erase( aObsolete );
-                        --nObjectsLeft;
-                        aObsolete = aNextObsolete;
-                    }
-                }
-                catch(const SQLException&)
-                {
-                    showError( SQLExceptionInfo( ::cppu::getCaughtException() ) );
-                }
-                catch(const WrappedTargetException& e)
-                {
-                    SQLException aSql;
-                    if ( e.TargetException >>= aSql )
-                        showError( SQLExceptionInfo( e.TargetException ) );
-                    else
-                        OSL_FAIL( "OApplicationController::deleteObjects: something strange happened!" );
-                }
-                catch( const Exception& )
-                {
-                    DBG_UNHANDLED_EXCEPTION();
+                    std::set< OUString >::const_iterator aNextObsolete = aObsolete; ++aNextObsolete;
+                    aDeleteNames.erase( aObsolete );
+                    --nObjectsLeft;
+                    aObsolete = aNextObsolete;
                 }
             }
-
-            if ( !bSuccess )
+            catch(const SQLException&)
             {
-                // okay, this object could not be deleted (or the user did not want to delete it),
-                // but continue with the rest
-                aDeleteNames.erase( aThisRound );
-                --nObjectsLeft;
+                showError( SQLExceptionInfo( ::cppu::getCaughtException() ) );
             }
+            catch(const WrappedTargetException& e)
+            {
+                SQLException aSql;
+                if ( e.TargetException >>= aSql )
+                    showError( SQLExceptionInfo( e.TargetException ) );
+                else
+                    OSL_FAIL( "OApplicationController::deleteObjects: something strange happened!" );
+            }
+            catch( const Exception& )
+            {
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
+            }
+        }
+
+        if ( !bSuccess )
+        {
+            // okay, this object could not be deleted (or the user did not want to delete it),
+            // but continue with the rest
+            aDeleteNames.erase( aThisRound );
+            --nObjectsLeft;
         }
     }
 }
@@ -296,28 +266,28 @@ void OApplicationController::deleteEntries()
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard( getMutex() );
 
-    if ( getContainer() )
+    if ( !getContainer() )
+        return;
+
+    std::vector< OUString> aList;
+    getSelectionElementNames(aList);
+    ElementType eType = getContainer()->getElementType();
+    switch(eType)
     {
-        std::vector< OUString> aList;
-        getSelectionElementNames(aList);
-        ElementType eType = getContainer()->getElementType();
-        switch(eType)
-        {
-        case E_TABLE:
-            deleteTables(aList);
-            break;
-        case E_QUERY:
-            deleteObjects( E_QUERY, aList, true );
-            break;
-        case E_FORM:
-            deleteObjects( E_FORM, aList, true );
-            break;
-        case E_REPORT:
-            deleteObjects( E_REPORT, aList, true );
-            break;
-        case E_NONE:
-            break;
-        }
+    case E_TABLE:
+        deleteTables(aList);
+        break;
+    case E_QUERY:
+        deleteObjects( E_QUERY, aList, true );
+        break;
+    case E_FORM:
+        deleteObjects( E_FORM, aList, true );
+        break;
+    case E_REPORT:
+        deleteObjects( E_REPORT, aList, true );
+        break;
+    case E_NONE:
+        break;
     }
 }
 
@@ -340,12 +310,12 @@ const SharedConnection& OApplicationController::ensureConnection( ::dbtools::SQL
             return m_xDataSourceConnection;
     }
 
-    WaitObject aWO(getView());
+    weld::WaitObject aWO(getFrameWeld());
     Reference<XConnection> conn;
     {
         SolarMutexGuard aSolarGuard;
 
-        OUString sConnectingContext( ModuleRes( STR_COULDNOTCONNECT_DATASOURCE ) );
+        OUString sConnectingContext(DBA_RES(STR_COULDNOTCONNECT_DATASOURCE));
         sConnectingContext = sConnectingContext.replaceFirst("$name$", getStrippedDatabaseName());
 
         // do the connection *without* holding getMutex() to avoid deadlock
@@ -389,7 +359,7 @@ const SharedConnection& OApplicationController::ensureConnection( ::dbtools::SQL
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("dbaccess");
             }
             if ( aError.isValid() )
             {
@@ -426,7 +396,7 @@ bool OApplicationController::isConnectionReadOnly() const
         }
         catch(const SQLException&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
     // TODO check configuration
@@ -476,7 +446,7 @@ Reference< XNameAccess > OApplicationController::getElements( ElementType _eType
     }
     catch(const Exception&)
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 
     return xElements;
@@ -507,7 +477,7 @@ std::unique_ptr< OLinkedDocumentsAccess > OApplicationController::getDocumentsAc
     }
 
     std::unique_ptr< OLinkedDocumentsAccess > pDocuments( new OLinkedDocumentsAccess(
-        getView(), this, getORB(), xDocContainer, xConnection, getDatabaseName()
+        getFrameWeld(), this, getORB(), xDocContainer, xConnection, getDatabaseName()
     ) );
     return pDocuments;
 }
@@ -573,7 +543,7 @@ TransferableHelper* OApplicationController::copyObject()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
     return nullptr;
 }
@@ -621,7 +591,7 @@ bool OApplicationController::paste( ElementType _eType, const svx::ODataAccessDe
 
                     if ( sTargetName.isEmpty() )
                     {
-                        OUString sDefaultName = OUString( ModuleRes( STR_QRY_TITLE ) );
+                        OUString sDefaultName = DBA_RES(STR_QRY_TITLE);
                         sDefaultName = sDefaultName.getToken( 0, ' ' );
 
                         Reference< XNameAccess > xQueries( getQueryDefinitions(), UNO_QUERY_THROW );
@@ -630,7 +600,7 @@ bool OApplicationController::paste( ElementType _eType, const svx::ODataAccessDe
                 }
                 catch(const Exception&)
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("dbaccess");
                 }
 
                 Reference< XPropertySet > xQuery;
@@ -642,7 +612,7 @@ bool OApplicationController::paste( ElementType _eType, const svx::ODataAccessDe
                     {
                         // the concrete query
                         Reference< XQueryDefinitionsSupplier > xSourceQuerySup(
-                            getDataSourceByName( sDataSourceName, getView(), getORB(), nullptr ),
+                            getDataSourceByName( sDataSourceName, getFrameWeld(), getORB(), nullptr ),
                             UNO_QUERY_THROW );
                         Reference< XNameAccess > xQueries( xSourceQuerySup->getQueryDefinitions(), UNO_SET_THROW );
                         if ( xQueries->hasByName( sCommand ) )
@@ -654,18 +624,18 @@ bool OApplicationController::paste( ElementType _eType, const svx::ODataAccessDe
                     catch(SQLException&) { throw; } // caught and handled by the outer catch
                     catch( const Exception& )
                     {
-                        DBG_UNHANDLED_EXCEPTION();
+                        DBG_UNHANDLED_EXCEPTION("dbaccess");
                     }
 
                     if (!bSuccess)
                     {
                         OSL_FAIL("OApplicationController::paste: could not extract the source query object!");
-                        // TODO: maybe this is worth an error message to be displayed to the user ....
+                        // TODO: maybe this is worth an error message to be displayed to the user...
                         return false;
                     }
                 }
 
-                Reference< XNameContainer > xDestQueries(getQueryDefinitions(), UNO_QUERY);
+                Reference< XNameContainer > xDestQueries = getQueryDefinitions();
                 Reference< XSingleServiceFactory > xQueryFactory(xDestQueries, UNO_QUERY);
                 if (!xQueryFactory.is())
                 {
@@ -673,7 +643,7 @@ bool OApplicationController::paste( ElementType _eType, const svx::ODataAccessDe
                     return false;
                 }
 
-                // here we have everything needed to create a new query object ...
+                // here we have everything needed to create a new query object...
                 // ... ehm, except a new name
                 ensureConnection();
 
@@ -686,18 +656,17 @@ bool OApplicationController::paste( ElementType _eType, const svx::ODataAccessDe
                                                 has a /table/ with that name) */
                 if ( bNeedAskForName )
                 {
-                    ScopedVclPtrInstance<OSaveAsDlg> aAskForName(
-                                            getView(),
-                                            CommandType::QUERY,
-                                            getORB(),
-                                            getConnection(),
-                                            sTargetName,
-                                            aNameChecker,
-                                            SADFlags::AdditionalDescription | SADFlags::TitlePasteAs );
-                    if ( RET_OK != aAskForName->Execute() )
+                    OSaveAsDlg aAskForName(getFrameWeld(),
+                                           CommandType::QUERY,
+                                           getORB(),
+                                           getConnection(),
+                                           sTargetName,
+                                           aNameChecker,
+                                           SADFlags::AdditionalDescription | SADFlags::TitlePasteAs );
+                    if ( RET_OK != aAskForName.run() )
                         // cancelled by the user
                         return false;
-                    sTargetName = aAskForName->getName();
+                    sTargetName = aAskForName.getName();
                 }
 
                 // create a new object
@@ -758,7 +727,7 @@ bool OApplicationController::paste( ElementType _eType, const svx::ODataAccessDe
     catch(const SQLException&) { showError( SQLExceptionInfo( ::cppu::getCaughtException() ) ); }
     catch(const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
     return false;
 }
@@ -782,7 +751,7 @@ void OApplicationController::getSupportedFormats(ElementType _eType,std::vector<
             _rFormatIds.push_back(SotClipboardFormatId::DBACCESS_TABLE);
             _rFormatIds.push_back(SotClipboardFormatId::RTF);
             _rFormatIds.push_back(SotClipboardFormatId::HTML);
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         case E_QUERY:
             _rFormatIds.push_back(SotClipboardFormatId::DBACCESS_QUERY);
             break;

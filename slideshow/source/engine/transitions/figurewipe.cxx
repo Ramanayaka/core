@@ -22,21 +22,19 @@
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
-#include "transitiontools.hxx"
 #include "figurewipe.hxx"
 
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 ::basegfx::B2DPolyPolygon FigureWipe::operator () ( double t )
 {
     ::basegfx::B2DPolyPolygon res(m_figure);
-    res.transform(basegfx::tools::createScaleTranslateB2DHomMatrix(t, t, 0.5, 0.5));
+    res.transform(basegfx::utils::createScaleTranslateB2DHomMatrix(t, t, 0.5, 0.5));
     return res;
 }
 
-FigureWipe * FigureWipe::createTriangleWipe()
+std::shared_ptr<FigureWipe> FigureWipe::createTriangleWipe()
 {
     const double s60 = sin( basegfx::deg2rad(60.0) );
     const double s30 = sin( basegfx::deg2rad(30.0) );
@@ -45,10 +43,10 @@ FigureWipe * FigureWipe::createTriangleWipe()
     figure.append( ::basegfx::B2DPoint( 0.0, -0.5 - s60 ) );
     figure.append( ::basegfx::B2DPoint( -0.5 - s30, 0.5 ) );
     figure.setClosed(true);
-    return new FigureWipe(figure);
+    return std::make_shared<FigureWipe>(figure);
 }
 
-FigureWipe * FigureWipe::createArrowHeadWipe()
+std::shared_ptr<FigureWipe> FigureWipe::createArrowHeadWipe()
 {
     const double s60 = sin( basegfx::deg2rad(60.0) );
     const double s30 = sin( basegfx::deg2rad(30.0) );
@@ -59,10 +57,10 @@ FigureWipe * FigureWipe::createArrowHeadWipe()
     figure.append( ::basegfx::B2DPoint( -0.5 - s30 - off, 0.5 + off ) );
     figure.append( ::basegfx::B2DPoint( 0.0, 0.5 ) );
     figure.setClosed(true);
-    return new FigureWipe(figure);
+    return std::make_shared<FigureWipe>(figure);
 }
 
-FigureWipe * FigureWipe::createPentagonWipe()
+std::shared_ptr<FigureWipe> FigureWipe::createPentagonWipe()
 {
     const double s = sin( basegfx::deg2rad(18.0) );
     const double c = cos( basegfx::deg2rad(18.0) );
@@ -73,10 +71,10 @@ FigureWipe * FigureWipe::createPentagonWipe()
     figure.append( ::basegfx::B2DPoint( -0.5 - s, 0.5 - c ) );
     figure.append( ::basegfx::B2DPoint( -0.5, 0.5 ) );
     figure.setClosed(true);
-    return new FigureWipe(figure);
+    return std::make_shared<FigureWipe>(figure);
 }
 
-FigureWipe * FigureWipe::createHexagonWipe()
+std::shared_ptr<FigureWipe> FigureWipe::createHexagonWipe()
 {
     const double s = sin( basegfx::deg2rad(30.0) );
     const double c = cos( basegfx::deg2rad(30.0) );
@@ -88,16 +86,16 @@ FigureWipe * FigureWipe::createHexagonWipe()
     figure.append( ::basegfx::B2DPoint( -0.5 - s, 0.0 ) );
     figure.append( ::basegfx::B2DPoint( -0.5, c ) );
     figure.setClosed(true);
-    return new FigureWipe(figure);
+    return std::make_shared<FigureWipe>(figure);
 }
 
-FigureWipe * FigureWipe::createStarWipe( sal_Int32 nPoints )
+std::shared_ptr<FigureWipe> FigureWipe::createStarWipe( sal_Int32 nPoints )
 {
-    const double v = (M_PI / nPoints);
+    const double v = M_PI / nPoints;
     const ::basegfx::B2DPoint p_( 0.0, -M_SQRT2 );
     ::basegfx::B2DPolygon figure;
     for ( sal_Int32 pos = 0; pos < nPoints; ++pos ) {
-        const double w = (pos * 2.0 * M_PI / nPoints);
+        const double w = pos * 2.0 * M_PI / nPoints;
         ::basegfx::B2DHomMatrix aTransform;
         ::basegfx::B2DPoint p(p_);
         aTransform.rotate( -w );
@@ -111,10 +109,9 @@ FigureWipe * FigureWipe::createStarWipe( sal_Int32 nPoints )
         figure.append(p);
     }
     figure.setClosed(true);
-    return new FigureWipe(figure);
+    return std::make_shared<FigureWipe>(figure);
 }
 
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

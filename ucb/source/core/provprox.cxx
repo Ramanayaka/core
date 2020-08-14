@@ -20,21 +20,27 @@
 #include <osl/diagnose.h>
 #include <osl/thread.h>
 #include <rtl/strbuf.hxx>
+#include <tools/diagnose_ex.h>
 #include "provprox.hxx"
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/ucb/IllegalIdentifierException.hpp>
+#include <cppuhelper/queryinterface.hxx>
+#include <ucbhelper/macros.hxx>
+#include <rtl/ref.hxx>
 
 using namespace com::sun::star::lang;
 using namespace com::sun::star::ucb;
 using namespace com::sun::star::uno;
 
+static osl::Mutex g_InstanceGuard;
+static rtl::Reference<UcbContentProviderProxyFactory> g_Instance;
 
 // UcbContentProviderProxyFactory Implementation.
 
 
 UcbContentProviderProxyFactory::UcbContentProviderProxyFactory(
-                        const Reference< XMultiServiceFactory >& rxSMgr )
-: m_xSMgr( rxSMgr )
+                        const Reference< XComponentContext >& rxContext )
+: UcbContentProviderProxyFactory_Base(m_aMutex), m_xContext( rxContext )
 {
 }
 
@@ -44,20 +50,25 @@ UcbContentProviderProxyFactory::~UcbContentProviderProxyFactory()
 {
 }
 
+// XComponent
+void SAL_CALL UcbContentProviderProxyFactory::dispose()
+{
+    UcbContentProviderProxyFactory_Base::dispose();
+    osl::MutexGuard aGuard(g_InstanceGuard);
+    g_Instance.clear();
+}
+
 // XServiceInfo methods.
 
-XSERVICEINFO_COMMOM_IMPL( UcbContentProviderProxyFactory,
-                          OUString( "com.sun.star.comp.ucb.UcbContentProviderProxyFactory" ) )
-/// @throws css::uno::Exception
-static css::uno::Reference< css::uno::XInterface > SAL_CALL
-UcbContentProviderProxyFactory_CreateInstance( const css::uno::Reference< css::lang::XMultiServiceFactory> & rSMgr )
+OUString SAL_CALL UcbContentProviderProxyFactory::getImplementationName()
 {
-    css::lang::XServiceInfo* pX =
-        static_cast<css::lang::XServiceInfo*>(new UcbContentProviderProxyFactory( rSMgr ));
-    return css::uno::Reference< css::uno::XInterface >::query( pX );
+    return "com.sun.star.comp.ucb.UcbContentProviderProxyFactory";
 }
-css::uno::Sequence< OUString >
-UcbContentProviderProxyFactory::getSupportedServiceNames_Static()
+sal_Bool SAL_CALL UcbContentProviderProxyFactory::supportsService( const OUString& ServiceName )
+{
+    return cppu::supportsService( this, ServiceName );
+}
+css::uno::Sequence< OUString > SAL_CALL UcbContentProviderProxyFactory::getSupportedServiceNames()
 {
     return { "com.sun.star.ucb.ContentProviderProxyFactory" };
 }
@@ -65,7 +76,16 @@ UcbContentProviderProxyFactory::getSupportedServiceNames_Static()
 // Service factory implementation.
 
 
-ONE_INSTANCE_SERVICE_FACTORY_IMPL( UcbContentProviderProxyFactory );
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_UcbContentProviderProxyFactory_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    osl::MutexGuard aGuard(g_InstanceGuard);
+    if (!g_Instance)
+        g_Instance.set(new UcbContentProviderProxyFactory(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
+}
 
 
 // XContentProviderFactory methods.
@@ -77,7 +97,7 @@ UcbContentProviderProxyFactory::createContentProvider(
                                                 const OUString& Service )
 {
     return Reference< XContentProvider >(
-                        new UcbContentProviderProxy( m_xSMgr, Service ) );
+                        new UcbContentProviderProxy( m_xContext, Service ) );
 }
 
 
@@ -85,12 +105,12 @@ UcbContentProviderProxyFactory::createContentProvider(
 
 
 UcbContentProviderProxy::UcbContentProviderProxy(
-                        const Reference< XMultiServiceFactory >& rxSMgr,
+                        const Reference< XComponentContext >& rxContext,
                         const OUString& Service )
 : m_aService( Service ),
   m_bReplace( false ),
   m_bRegister( false ),
-  m_xSMgr( rxSMgr )
+  m_xContext( rxContext )
 {
 }
 
@@ -130,7 +150,7 @@ UcbContentProviderProxy::queryInterface( const Type & rType )
 
     if ( !aRet.hasValue() )
     {
-        // Get original provider an forward the call...
+        // Get original provider and forward the call...
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
         Reference< XContentProvider > xProvider = getContentProvider();
         if ( xProvider.is() )
@@ -149,7 +169,7 @@ XTYPEPROVIDER_COMMON_IMPL( UcbContentProviderProxy );
 
 Sequence< Type > SAL_CALL UcbContentProviderProxy::getTypes()
 {
-    // Get original provider an forward the call...
+    // Get original provider and forward the call...
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
     Reference< XTypeProvider > xProvider( getContentProvider(), UNO_QUERY );
     if ( xProvider.is() )
@@ -173,7 +193,7 @@ Sequence< Type > SAL_CALL UcbContentProviderProxy::getTypes()
 
 OUString SAL_CALL UcbContentProviderProxy::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.ucb.UcbContentProviderProxy" );
+    return "com.sun.star.comp.ucb.UcbContentProviderProxy";
 }
 
 sal_Bool SAL_CALL UcbContentProviderProxy::supportsService( const OUString& ServiceName )
@@ -194,7 +214,7 @@ css::uno::Sequence< OUString > SAL_CALL UcbContentProviderProxy::getSupportedSer
 Reference< XContent > SAL_CALL UcbContentProviderProxy::queryContent(
                         const Reference< XContentIdentifier >& Identifier )
 {
-    // Get original provider an forward the call...
+    // Get original provider and forward the call...
 
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
 
@@ -211,7 +231,7 @@ sal_Int32 SAL_CALL UcbContentProviderProxy::compareContentIds(
                        const Reference< XContentIdentifier >& Id1,
                        const Reference< XContentIdentifier >& Id2 )
 {
-    // Get original provider an forward the call...
+    // Get original provider and forward the call...
 
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
     Reference< XContentProvider > xProvider = getContentProvider();
@@ -296,7 +316,7 @@ UcbContentProviderProxy::getContentProvider()
     {
         try
         {
-            m_xProvider.set( m_xSMgr->createInstance( m_aService ), UNO_QUERY );
+            m_xProvider.set( m_xContext->getServiceManager()->createInstanceWithContext( m_aService,m_xContext ), UNO_QUERY );
             if ( m_aArguments == "NoConfig" )
             {
                 Reference<XInitialization> xInit(m_xProvider,UNO_QUERY);
@@ -311,9 +331,9 @@ UcbContentProviderProxy::getContentProvider()
         {
             throw;
         }
-        catch ( Exception const & e)
+        catch ( Exception const & )
         {
-            SAL_INFO( "ucb.core", "Exception when getting content provider: " << e.Message );
+            TOOLS_INFO_EXCEPTION( "ucb.core", "Exception getting content provider");
         }
 
         // registerInstance called at proxy, but not yet at original?

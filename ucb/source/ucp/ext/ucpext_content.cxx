@@ -22,48 +22,43 @@
 #include "ucpext_resultset.hxx"
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/beans/XPropertyAccess.hpp>
+#include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/lang/IllegalAccessException.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
+#include <com/sun/star/ucb/CommandAbortedException.hpp>
 #include <com/sun/star/ucb/XCommandInfo.hpp>
-#include <com/sun/star/ucb/XPersistentPropertySet.hpp>
 #include <com/sun/star/ucb/OpenCommandArgument2.hpp>
 #include <com/sun/star/ucb/OpenMode.hpp>
 #include <com/sun/star/ucb/UnsupportedCommandException.hpp>
 #include <com/sun/star/ucb/XDynamicResultSet.hpp>
 #include <com/sun/star/deployment/PackageInformationProvider.hpp>
 
-#include <ucbhelper/contentidentifier.hxx>
 #include <ucbhelper/propertyvalueset.hxx>
 #include <ucbhelper/cancelcommandexecution.hxx>
 #include <ucbhelper/content.hxx>
 #include <tools/diagnose_ex.h>
-#include <comphelper/processfactory.hxx>
-#include <comphelper/string.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/uri.hxx>
 #include <sal/macros.h>
+#include <sal/log.hxx>
 
 #include <algorithm>
 
 
-namespace ucb { namespace ucp { namespace ext
+namespace ucb::ucp::ext
 {
 
 
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::uno::UNO_SET_THROW;
     using ::com::sun::star::uno::Exception;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Any;
     using ::com::sun::star::uno::makeAny;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::uno::XComponentContext;
     using ::com::sun::star::ucb::XContentIdentifier;
-    using ::com::sun::star::ucb::XContent;
     using ::com::sun::star::ucb::XCommandEnvironment;
     using ::com::sun::star::ucb::Command;
-    using ::com::sun::star::ucb::CommandAbortedException;
     using ::com::sun::star::beans::Property;
     using ::com::sun::star::lang::IllegalArgumentException;
     using ::com::sun::star::beans::PropertyValue;
@@ -71,7 +66,6 @@ namespace ucb { namespace ucp { namespace ext
     using ::com::sun::star::ucb::XDynamicResultSet;
     using ::com::sun::star::ucb::UnsupportedCommandException;
     using ::com::sun::star::sdbc::XRow;
-    using ::com::sun::star::beans::XPropertySet;
     using ::com::sun::star::beans::PropertyChangeEvent;
     using ::com::sun::star::lang::IllegalAccessException;
     using ::com::sun::star::ucb::CommandInfo;
@@ -140,19 +134,19 @@ namespace ucb { namespace ucp { namespace ext
             }
         }
 
-        if ( m_eExtContentType != E_ROOT )
-        {
-            const OUString sRootURL = ContentProvider::getRootURL();
-            m_sExtensionId = sURL.copy( sRootURL.getLength() );
+        if ( m_eExtContentType == E_ROOT )
+            return;
 
-            const sal_Int32 nNextSep = m_sExtensionId.indexOf( '/' );
-            if ( nNextSep > -1 )
-            {
-                m_sPathIntoExtension = m_sExtensionId.copy( nNextSep + 1 );
-                m_sExtensionId = m_sExtensionId.copy( 0, nNextSep );
-            }
-            m_sExtensionId = Content::decodeIdentifier( m_sExtensionId );
+        const OUString sRootURL = ContentProvider::getRootURL();
+        m_sExtensionId = sURL.copy( sRootURL.getLength() );
+
+        const sal_Int32 nNextSep = m_sExtensionId.indexOf( '/' );
+        if ( nNextSep > -1 )
+        {
+            m_sPathIntoExtension = m_sExtensionId.copy( nNextSep + 1 );
+            m_sExtensionId = m_sExtensionId.copy( 0, nNextSep );
         }
+        m_sExtensionId = Content::decodeIdentifier( m_sExtensionId );
     }
 
 
@@ -163,16 +157,13 @@ namespace ucb { namespace ucp { namespace ext
 
     OUString SAL_CALL Content::getImplementationName()
     {
-        return OUString(  "org.openoffice.comp.ucp.ext.Content"  );
+        return "org.openoffice.comp.ucp.ext.Content";
     }
 
 
     Sequence< OUString > SAL_CALL Content::getSupportedServiceNames()
     {
-        Sequence< OUString > aServiceNames(2);
-        aServiceNames[0] = "com.sun.star.ucb.Content";
-        aServiceNames[1] = "com.sun.star.ucb.ExtensionContent";
-        return aServiceNames;
+        return { "com.sun.star.ucb.Content", "com.sun.star.ucb.ExtensionContent" };
     }
 
 
@@ -211,7 +202,7 @@ namespace ucb { namespace ucp { namespace ext
                 // unreachable
             }
 
-            if ( !aProperties.getLength() )
+            if ( !aProperties.hasElements() )
             {
                 ::ucbhelper::cancelCommandExecution( makeAny( IllegalArgumentException(
                     OUString(), *this, -1 ) ),
@@ -219,7 +210,7 @@ namespace ucb { namespace ucp { namespace ext
                 // unreachable
             }
 
-            aRet <<= setPropertyValues( aProperties, i_rEvironment );
+            aRet <<= setPropertyValues( aProperties );
         }
         else if ( aCommand.Name == "getPropertySetInfo" )
         {
@@ -234,7 +225,7 @@ namespace ucb { namespace ucp { namespace ext
         else if ( aCommand.Name == "open" )
         {
             OpenCommandArgument2 aOpenCommand;
-              if ( !( aCommand.Argument >>= aOpenCommand ) )
+            if ( !( aCommand.Argument >>= aOpenCommand ) )
             {
                 ::ucbhelper::cancelCommandExecution( makeAny( IllegalArgumentException(
                     OUString(), *this, -1 ) ),
@@ -360,11 +351,7 @@ namespace ucb { namespace ucp { namespace ext
             const sal_Int32 nLastSep = sRelativeURL.lastIndexOf( '/' );
             sRelativeURL = sRelativeURL.copy( 0, nLastSep != -1 ? nLastSep : 0 );
 
-            OUStringBuffer aComposer;
-            aComposer.append( sRootURL );
-            aComposer.append( sSeparatedExtensionId );
-            aComposer.append( sRelativeURL );
-            return aComposer.makeStringAndClear();
+            return sRootURL + sSeparatedExtensionId + sRelativeURL;
         }
 
         default:
@@ -381,14 +368,10 @@ namespace ucb { namespace ucp { namespace ext
         // note: empty sequence means "get values of all supported properties".
         ::rtl::Reference< ::ucbhelper::PropertyValueSet > xRow = new ::ucbhelper::PropertyValueSet( rxContext );
 
-        const sal_Int32 nCount = i_rProperties.getLength();
-        if ( nCount )
+        if ( i_rProperties.hasElements() )
         {
-            const Property* pProps = i_rProperties.getConstArray();
-            for ( sal_Int32 n = 0; n < nCount; ++n )
+            for ( const Property& rProp : i_rProperties )
             {
-                const Property& rProp = pProps[ n ];
-
                 // Process Core properties.
                 if ( rProp.Name == "ContentType" )
                 {
@@ -446,7 +429,7 @@ namespace ucb { namespace ucp { namespace ext
     {
         ENSURE_OR_RETURN( m_eExtContentType != E_ROOT, "illegal call", OUString() );
 
-        // create an ucb::XContent for the physical file within the deployed extension
+        // create a ucb::XContent for the physical file within the deployed extension
         const Reference< XPackageInformationProvider > xPackageInfo = PackageInformationProvider::get(m_xContext);
         const OUString sPackageLocation( xPackageInfo->getPackageLocation( m_sExtensionId ) );
 
@@ -474,8 +457,8 @@ namespace ucb { namespace ucp { namespace ext
             // translate the property request
             Sequence< OUString > aPropertyNames( i_rProperties.getLength() );
             ::std::transform(
-                i_rProperties.getConstArray(),
-                i_rProperties.getConstArray() + i_rProperties.getLength(),
+                i_rProperties.begin(),
+                i_rProperties.end(),
                 aPropertyNames.getArray(),
                 SelectPropertyName()
             );
@@ -502,7 +485,7 @@ namespace ucb { namespace ucp { namespace ext
     }
 
 
-    Sequence< Any > Content::setPropertyValues( const Sequence< PropertyValue >& i_rValues, const Reference< XCommandEnvironment >& /* xEnv */)
+    Sequence< Any > Content::setPropertyValues( const Sequence< PropertyValue >& i_rValues)
     {
         ::osl::ClearableGuard< osl::Mutex > aGuard( m_aMutex );
 
@@ -513,13 +496,10 @@ namespace ucb { namespace ucp { namespace ext
         aEvent.Further        = false;
         aEvent.PropertyHandle = -1;
 
-        const PropertyValue* pValues = i_rValues.getConstArray();
-        const sal_Int32 nCount = i_rValues.getLength();
-
-        for ( sal_Int32 n = 0; n < nCount; ++n, ++pValues )
+        for ( auto& rRet : aRet )
         {
             // all our properties are read-only ...
-            aRet[ n ] <<= IllegalAccessException("property is read-only.", *this );
+            rRet <<= IllegalAccessException("property is read-only.", *this );
         }
 
         return aRet;
@@ -614,9 +594,9 @@ namespace ucb { namespace ucp { namespace ext
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("ucb.ucp.ext");
         }
-        m_aIsFolder.reset( bIsFolder );
+        m_aIsFolder = bIsFolder;
         return *m_aIsFolder;
     }
 
@@ -626,25 +606,25 @@ namespace ucb { namespace ucp { namespace ext
         if ( !!m_aContentType )
             return;
 
-        m_aContentType.reset( ContentProvider::getArtificialNodeContentType() );
-        if ( m_eExtContentType == E_EXTENSION_CONTENT )
+        m_aContentType = ContentProvider::getArtificialNodeContentType();
+        if ( m_eExtContentType != E_EXTENSION_CONTENT )
+            return;
+
+        try
         {
-            try
-            {
-                Sequence< Property > aProps(1);
-                aProps[0].Name = "ContentType";
-                Reference< XRow > xRow( getPropertyValues( aProps, nullptr ), UNO_SET_THROW );
-                m_aContentType.reset( xRow->getString(1) );
-            }
-            catch( const Exception& )
-            {
-                DBG_UNHANDLED_EXCEPTION();
-            }
+            Sequence< Property > aProps(1);
+            aProps[0].Name = "ContentType";
+            Reference< XRow > xRow( getPropertyValues( aProps, nullptr ), UNO_SET_THROW );
+            m_aContentType = xRow->getString(1);
+        }
+        catch( const Exception& )
+        {
+            DBG_UNHANDLED_EXCEPTION("ucb.ucp.ext");
         }
     }
 
 
-} } }   // namespace ucp::ext
+}   // namespace ucp::ext
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

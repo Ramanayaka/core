@@ -20,28 +20,30 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_DIACTRL_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_DIACTRL_HXX
 
-#include <svl/intitem.hxx>
-#include <sfx2/bindings.hxx>
-#include <svx/itemwin.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/field.hxx>
-#include <vcl/toolbox.hxx>
+#include <vcl/InterimItemWindow.hxx>
 #include <sfx2/tbxctrl.hxx>
-#include <com/sun/star/frame/XFrame.hpp>
+
+namespace com::sun::star::frame { class XFrame; }
+class SfxUInt16Item;
 
 // SdPagesField:
 
-class SdPagesField : public SvxMetricField
+class SdPagesField final : public InterimItemWindow
 {
 private:
-    css::uno::Reference< css::frame::XFrame > m_xFrame;
-protected:
-    virtual void    Modify() override;
+    std::unique_ptr<weld::SpinButton> m_xWidget;
+    css::uno::Reference<css::frame::XFrame> m_xFrame;
+
+    DECL_LINK(ModifyHdl, weld::SpinButton&, void);
+    DECL_STATIC_LINK(SdPagesField, OutputHdl, weld::SpinButton&, void);
+    DECL_LINK(spin_button_input, int* result, bool);
+    DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
 
 public:
-                    SdPagesField( vcl::Window* pParent,
-                                  const css::uno::Reference< css::frame::XFrame >& rFrame );
-                    virtual ~SdPagesField() override;
+    SdPagesField(vcl::Window* pParent, const css::uno::Reference<css::frame::XFrame>& rFrame);
+    virtual void dispose() override;
+    void set_sensitive(bool bSensitive);
+    virtual ~SdPagesField() override;
 
     void            UpdatePagesField( const SfxUInt16Item* pItem );
 };
@@ -53,7 +55,7 @@ class SdTbxCtlDiaPages : public SfxToolBoxControl
 public:
     virtual void        StateChanged( sal_uInt16 nSID, SfxItemState eState,
                                       const SfxPoolItem* pState ) override;
-    virtual VclPtr<vcl::Window> CreateItemWindow( vcl::Window *pParent ) override;
+    virtual VclPtr<InterimItemWindow> CreateItemWindow( vcl::Window *pParent ) override;
 
     SFX_DECL_TOOLBOX_CONTROL();
 

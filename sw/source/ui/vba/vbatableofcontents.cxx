@@ -19,7 +19,6 @@
 #include "vbatableofcontents.hxx"
 #include <vbahelper/vbahelper.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <tools/diagnose_ex.h>
 #include <ooo/vba/word/WdTabLeader.hpp>
 
 using namespace ::ooo::vba;
@@ -96,18 +95,16 @@ void SAL_CALL SwVbaTableOfContents::Update(  )
 OUString
 SwVbaTableOfContents::getServiceImplName()
 {
-    return OUString("SwVbaTableOfContents");
+    return "SwVbaTableOfContents";
 }
 
 uno::Sequence< OUString >
 SwVbaTableOfContents::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.TableOfContents";
-    }
+        "ooo.vba.word.TableOfContents"
+    };
     return aServiceNames;
 }
 

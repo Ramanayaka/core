@@ -22,15 +22,12 @@
 
 #include "expressionnode.hxx"
 
-#include <basegfx/vector/b2dsize.hxx>
-#include <basegfx/range/b2drectangle.hxx>
+#include <memory>
 
 
 /* Definition of ExpressionNodeFactory class */
 
-namespace slideshow
-{
-    namespace internal
+namespace slideshow::internal
     {
         /** ExpressionNode factory
 
@@ -65,7 +62,7 @@ namespace slideshow
             static std::shared_ptr<ExpressionNode> createMaxExpression      ( const std::shared_ptr<ExpressionNode>&    rOuterFunction,
                                                                       const std::shared_ptr<ExpressionNode>&    rInnerFunction );
         };
-    }
+
 }
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_EXPRESSIONNODEFACTORY_HXX

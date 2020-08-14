@@ -31,7 +31,7 @@ using namespace css::lang;
 
 namespace
 {
-    static const struct ::cppu::ImplementationEntry s_aServiceEntries[] =
+    const struct ::cppu::ImplementationEntry s_aServiceEntries[] =
     {
         {
             // FilePicker should not use a constructor, it is only a
@@ -56,13 +56,13 @@ namespace
 extern "C"
 {
 
-SAL_DLLPUBLIC_EXPORT void * SAL_CALL svt_component_getFactory(
-    const sal_Char * pImplementationName, void * _pServiceManager, void * pRegistryKey)
+SAL_DLLPUBLIC_EXPORT void * svt_component_getFactory(
+    const char * pImplementationName, void * _pServiceManager, void * pRegistryKey)
 {
     void * pResult = nullptr;
     if (_pServiceManager)
     {
-        Reference< XMultiServiceFactory > xSMgr(static_cast< XMultiServiceFactory * >(_pServiceManager));
+        Reference< XMultiServiceFactory > xHoldAlive(static_cast< XMultiServiceFactory * >(_pServiceManager));
 
         pResult = cppu::component_getFactoryHelper(pImplementationName,
                 _pServiceManager,

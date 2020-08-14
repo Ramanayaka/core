@@ -19,23 +19,24 @@
 #ifndef INCLUDED_SW_SOURCE_FILTER_XML_WRTXML_HXX
 #define INCLUDED_SW_SOURCE_FILTER_XML_WRTXML_HXX
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/task/XStatusIndicator.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <shellio.hxx>
 
 class SwPaM;
 class SfxMedium;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno { template<class A> class Reference; }
     namespace uno { template<class A> class Sequence; }
     namespace uno { class Any; }
     namespace lang { class XComponent; }
     namespace lang { class XMultiServiceFactory; }
     namespace beans { struct PropertyValue; }
-} } }
+}
 
 class SwXMLWriter : public StgWriter
 {
@@ -62,10 +63,10 @@ private:
     bool WriteThroughComponent(
         // the component we export
         const css::uno::Reference<css::lang::XComponent> & xComponent,
-        const sal_Char* pStreamName,        // the stream name
+        const char* pStreamName,        // the stream name
         // service factory for pServiceName
         const css::uno::Reference<css::uno::XComponentContext> & rFactory,
-        const sal_Char* pServiceName,       // service name of the component
+        const char* pServiceName,       // service name of the component
         // the argument (XInitialization)
         const css::uno::Sequence<css::uno::Any> & rArguments,
         // output descriptor
@@ -77,7 +78,7 @@ private:
         const css::uno::Reference<css::io::XOutputStream> & xOutputStream,
         const css::uno::Reference<css::lang::XComponent> & xComponent,
         const css::uno::Reference<css::uno::XComponentContext> & rFactory,
-        const sal_Char* pServiceName,
+        const char* pServiceName,
         const css::uno::Sequence<css::uno::Any> & rArguments,
         const css::uno::Sequence<css::beans::PropertyValue> & rMediaDesc );
 };

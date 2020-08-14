@@ -21,8 +21,9 @@
 #define INCLUDED_SVX_DATABASEREGISTRATIONUI_HXX
 
 #include <svx/svxdllapi.h>
+#include <svl/solar.hrc>
 
-namespace vcl { class Window; }
+namespace weld { class Window; }
 
 #define SID_SB_POOLING_ENABLED          (RID_OFA_START + 247)
 #define SID_SB_DRIVER_TIMEOUTS          (RID_OFA_START + 248)
@@ -32,7 +33,7 @@ namespace svx
 {
     /** opens a dialog which allows the user to administrate the database registrations
     */
-    sal_uInt16  SVX_DLLPUBLIC  administrateDatabaseRegistration( vcl::Window* _parentWindow );
+    sal_uInt16  SVX_DLLPUBLIC  administrateDatabaseRegistration( weld::Window* _parentWindow );
 
 }
 

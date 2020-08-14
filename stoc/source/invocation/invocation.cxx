@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <osl/mutex.hxx>
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/weak.hxx>
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/implementationentry.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/script/CannotConvertException.hpp>
@@ -43,47 +41,32 @@
 #include <com/sun/star/beans/MethodConcept.hpp>
 #include <com/sun/star/beans/PropertyConcept.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/registry/XRegistryKey.hpp>
 
 #include <memory>
-#include <rtl/ustrbuf.hxx>
-#include <rtl/strbuf.hxx>
-
-#define SERVICENAME "com.sun.star.script.Invocation"
-#define IMPLNAME     "com.sun.star.comp.stoc.Invocation"
+#include <vector>
 
 using namespace css::uno;
 using namespace css::lang;
 using namespace css::script;
 using namespace css::reflection;
 using namespace css::beans;
-using namespace css::registry;
 using namespace css::container;
 using namespace cppu;
 using namespace osl;
 
 namespace stoc_inv
 {
-static Sequence< OUString > inv_getSupportedServiceNames()
-{
-    Sequence< OUString > seqNames { SERVICENAME };
-    return seqNames;
-}
 
-static OUString inv_getImplementationName()
-{
-    return OUString(IMPLNAME);
-}
 
 // TODO: Implement centrally
-inline Reference<XIdlClass> TypeToIdlClass( const Type& rType, const Reference< XIdlReflection > & xRefl )
+static Reference<XIdlClass> TypeToIdlClass( const Type& rType, const Reference< XIdlReflection > & xRefl )
 {
     return xRefl->forName( rType.getTypeName() );
 }
 
+namespace {
 
 class Invocation_Impl
     : public OWeakObject
@@ -98,7 +81,8 @@ class Invocation_Impl
 public:
     Invocation_Impl( const Any & rAdapted, const Reference<XTypeConverter> &,
                                            const Reference<XIntrospection> &,
-                                           const Reference<XIdlReflection> & );
+                                           const Reference<XIdlReflection> &,
+                                           bool bFromOLE );
 
     // XInterface
     virtual Any         SAL_CALL queryInterface( const Type & aType) override;
@@ -212,19 +196,24 @@ private:
 
 
     Reference<XExactName>               _xENDirect, _xENIntrospection;
+
+    bool                                mbFromOLE;
 };
 
+}
 
 Invocation_Impl::Invocation_Impl
 (
     const Any & rAdapted,
     const Reference<XTypeConverter> & rTC,
     const Reference<XIntrospection> & rI,
-    const Reference<XIdlReflection> & rCR
+    const Reference<XIdlReflection> & rCR,
+    bool bFromOLE
 )
     : xTypeConverter( rTC )
     , xIntrospection( rI )
     , xCoreReflection( rCR )
+    , mbFromOLE( bFromOLE )
 {
     setMaterial( rAdapted );
 }
@@ -236,9 +225,9 @@ Any SAL_CALL Invocation_Impl::queryInterface( const Type & aType )
 {
     // PropertySet implementation
     Any a = ::cppu::queryInterface( aType,
-                                   (static_cast< XInvocation* >(this)),
-                                   (static_cast< XMaterialHolder* >(this)),
-                                   (static_cast< XTypeProvider * >(this))    );
+                                   static_cast< XInvocation* >(this),
+                                   static_cast< XMaterialHolder* >(this),
+                                   static_cast< XTypeProvider * >(this) );
     if( a.hasValue() )
     {
         return a;
@@ -247,64 +236,66 @@ Any SAL_CALL Invocation_Impl::queryInterface( const Type & aType )
     if( aType  == cppu::UnoType<XExactName>::get())
     {
         // Invocation does not support XExactName, if direct object supports
-        // XInvocation, but not XExactName.
-        if ((_xDirect.is() && _xENDirect.is()) ||
+        // XInvocation, but not XExactName. Except when called from OLE Automation.
+        if (mbFromOLE ||
+            (_xDirect.is() && _xENDirect.is()) ||
             (!_xDirect.is() && _xENIntrospection.is()))
         {
-            return makeAny( Reference< XExactName >( (static_cast< XExactName* >(this)) ) );
+            return makeAny( Reference< XExactName >( static_cast< XExactName* >(this) ) );
         }
     }
     else if ( aType == cppu::UnoType<XNameContainer>::get())
     {
         if( _xNameContainer.is() )
-            return makeAny( Reference< XNameContainer >( (static_cast< XNameContainer* >(this)) ) );
+            return makeAny( Reference< XNameContainer >( static_cast< XNameContainer* >(this) ) );
     }
     else if ( aType == cppu::UnoType<XNameReplace>::get())
     {
         if( _xNameReplace.is() )
-            return makeAny( Reference< XNameReplace >( (static_cast< XNameReplace* >(this)) ) );
+            return makeAny( Reference< XNameReplace >( static_cast< XNameReplace* >(this) ) );
     }
     else if ( aType == cppu::UnoType<XNameAccess>::get())
     {
         if( _xNameAccess.is() )
-            return makeAny( Reference< XNameAccess >( (static_cast< XNameAccess* >(this)) ) );
+            return makeAny( Reference< XNameAccess >( static_cast< XNameAccess* >(this) ) );
     }
     else if ( aType == cppu::UnoType<XIndexContainer>::get())
     {
         if (_xIndexContainer.is())
-            return makeAny( Reference< XIndexContainer >( (static_cast< XIndexContainer* >(this)) ) );
+            return makeAny( Reference< XIndexContainer >( static_cast< XIndexContainer* >(this) ) );
     }
     else if ( aType == cppu::UnoType<XIndexReplace>::get())
     {
         if (_xIndexReplace.is())
-            return makeAny( Reference< XIndexReplace >( (static_cast< XIndexReplace* >(this)) ) );
+            return makeAny( Reference< XIndexReplace >( static_cast< XIndexReplace* >(this) ) );
     }
     else if ( aType == cppu::UnoType<XIndexAccess>::get())
     {
         if (_xIndexAccess.is())
-            return makeAny( Reference< XIndexAccess >( (static_cast< XIndexAccess* >(this)) ) );
+            return makeAny( Reference< XIndexAccess >( static_cast< XIndexAccess* >(this) ) );
     }
     else if ( aType == cppu::UnoType<XEnumerationAccess>::get())
     {
         if (_xEnumerationAccess.is())
-            return makeAny( Reference< XEnumerationAccess >( (static_cast< XEnumerationAccess* >(this)) ) );
+            return makeAny( Reference< XEnumerationAccess >( static_cast< XEnumerationAccess* >(this) ) );
     }
     else if ( aType == cppu::UnoType<XElementAccess>::get())
     {
         if (_xElementAccess.is())
         {
             return makeAny( Reference< XElementAccess >(
-                (static_cast< XElementAccess* >((static_cast< XNameContainer* >(this))) ) ) );
+                static_cast< XElementAccess* >(static_cast< XNameContainer* >(this)) ) );
         }
     }
     else if ( aType == cppu::UnoType<XInvocation2>::get())
     {
         // Invocation does not support XInvocation2, if direct object supports
         // XInvocation, but not XInvocation2.
-        if ( ( _xDirect.is() && _xDirect2.is()) ||
+        if ( mbFromOLE ||
+             ( _xDirect.is() && _xDirect2.is()) ||
              (!_xDirect.is() && _xIntrospectionAccess.is() ) )
         {
-            return makeAny( Reference< XInvocation2 >( (static_cast< XInvocation2* >(this)) ) );
+            return makeAny( Reference< XInvocation2 >( static_cast< XInvocation2* >(this) ) );
         }
     }
 
@@ -344,7 +335,7 @@ void Invocation_Impl::setMaterial( const Any& rMaterial )
     // First do this outside the guard
     _xDirect.set( rMaterial, UNO_QUERY );
 
-    if( _xDirect.is() )
+    if( !mbFromOLE && _xDirect.is() )
     {
         // Consult object directly
         _xElementAccess.set( _xDirect, UNO_QUERY );
@@ -357,10 +348,6 @@ void Invocation_Impl::setMaterial( const Any& rMaterial )
         _xNameContainer.set( _xDirect, UNO_QUERY );
         _xENDirect.set( _xDirect, UNO_QUERY );
         _xDirect2.set( _xDirect, UNO_QUERY );
-
-        // only once!!!
-        //_xIntrospectionAccess = XIntrospectionAccessRef();
-        //_xPropertySet         = XPropertySetRef();
     }
     else
     {
@@ -417,20 +404,6 @@ void Invocation_Impl::setMaterial( const Any& rMaterial )
                 _xENIntrospection.set( _xIntrospectionAccess, UNO_QUERY );
             }
         }
-        /* only once !!!
-        _xDirect = XInvocationRef();
-        if( !_xIntrospectionAccess.is() )
-        {
-            // reset
-            _xElementAccess     = XElementAccessRef();
-            _xEnumerationAccess = XEnumerationAccessRef();
-            _xIndexAccess       = XIndexAccessRef();
-            _xIndexContainer    = XIndexContainerRef();
-            _xNameAccess        = XNameAccessRef();
-            _xNameContainer     = XNameContainerRef();
-            _xPropertySet       = XPropertySetRef();
-        }
-        */
     }
 }
 
@@ -458,7 +431,7 @@ Reference<XIntrospectionAccess> Invocation_Impl::getIntrospection()
 
 sal_Bool Invocation_Impl::hasMethod( const OUString& Name )
 {
-    if (_xDirect.is())
+    if (!mbFromOLE && _xDirect.is())
         return _xDirect->hasMethod( Name );
     if( _xIntrospectionAccess.is() )
         return _xIntrospectionAccess->hasMethod( Name, MethodConcept::ALL ^ MethodConcept::DANGEROUS );
@@ -469,7 +442,11 @@ sal_Bool Invocation_Impl::hasMethod( const OUString& Name )
 sal_Bool Invocation_Impl::hasProperty( const OUString& Name )
 {
     if (_xDirect.is())
-        return _xDirect->hasProperty( Name );
+    {
+        bool bRet = _xDirect->hasProperty( Name );
+        if (bRet || !mbFromOLE)
+            return bRet;
+    }
     // PropertySet
     if( _xIntrospectionAccess.is()
         && _xIntrospectionAccess->hasProperty( Name, PropertyConcept::ALL ^ PropertyConcept::DANGEROUS ) )
@@ -483,8 +460,16 @@ sal_Bool Invocation_Impl::hasProperty( const OUString& Name )
 
 Any Invocation_Impl::getValue( const OUString& PropertyName )
 {
-    if (_xDirect.is())
-        return _xDirect->getValue( PropertyName );
+    try
+    {
+        if (_xDirect.is())
+            return _xDirect->getValue( PropertyName );
+    }
+    catch (Exception &)
+    {
+        if (!mbFromOLE)
+            throw;
+    }
     try
     {
         // PropertySet
@@ -516,74 +501,83 @@ Any Invocation_Impl::getValue( const OUString& PropertyName )
 
 void Invocation_Impl::setValue( const OUString& PropertyName, const Any& Value )
 {
-    if (_xDirect.is())
-        _xDirect->setValue( PropertyName, Value );
-    else
+    try
     {
-        try
+        if (_xDirect.is())
         {
-            // Properties
-            if( _xIntrospectionAccess.is() && _xPropertySet.is()
-                && _xIntrospectionAccess->hasProperty(
-                    PropertyName, PropertyConcept::ALL ^ PropertyConcept::DANGEROUS ) )
-            {
-                Property aProp = _xIntrospectionAccess->getProperty(
-                    PropertyName, PropertyConcept::ALL ^ PropertyConcept::DANGEROUS );
-                Reference < XIdlClass > r = TypeToIdlClass( aProp.Type, xCoreReflection );
-                if( r->isAssignableFrom( TypeToIdlClass( Value.getValueType(), xCoreReflection ) ) )
-                    _xPropertySet->setPropertyValue( PropertyName, Value );
-                else if( xTypeConverter.is() )
-                    _xPropertySet->setPropertyValue(
-                        PropertyName, xTypeConverter->convertTo( Value, aProp.Type ) );
-                else
-                    throw RuntimeException( "no type converter service!" );
-            }
-            // NameContainer
-            else if( _xNameContainer.is() )
-            {
-                // Note: This misfeature deliberately not adapted to apply to objects which
-                // have XNameReplace but not XNameContainer
-                Any aConv;
-                Reference < XIdlClass > r =
-                    TypeToIdlClass( _xNameContainer->getElementType(), xCoreReflection );
-                if( r->isAssignableFrom(TypeToIdlClass( Value.getValueType(), xCoreReflection ) ) )
-                    aConv = Value;
-                else if( xTypeConverter.is() )
-                    aConv = xTypeConverter->convertTo( Value, _xNameContainer->getElementType() );
-                else
-                    throw RuntimeException( "no type converter service!" );
-
-                // Replace if present, otherwise insert
-                if (_xNameContainer->hasByName( PropertyName ))
-                    _xNameContainer->replaceByName( PropertyName, aConv );
-                else
-                    _xNameContainer->insertByName( PropertyName, aConv );
-            }
+            _xDirect->setValue( PropertyName, Value );
+            return;
+        }
+    }
+    catch (Exception &)
+    {
+        if (!mbFromOLE)
+            throw;
+    }
+    try
+    {
+        // Properties
+        if( _xIntrospectionAccess.is() && _xPropertySet.is()
+            && _xIntrospectionAccess->hasProperty(
+                PropertyName, PropertyConcept::ALL ^ PropertyConcept::DANGEROUS ) )
+        {
+            Property aProp = _xIntrospectionAccess->getProperty(
+                PropertyName, PropertyConcept::ALL ^ PropertyConcept::DANGEROUS );
+            Reference < XIdlClass > r = TypeToIdlClass( aProp.Type, xCoreReflection );
+            if( r->isAssignableFrom( TypeToIdlClass( Value.getValueType(), xCoreReflection ) ) )
+                _xPropertySet->setPropertyValue( PropertyName, Value );
+            else if( xTypeConverter.is() )
+                _xPropertySet->setPropertyValue(
+                    PropertyName, xTypeConverter->convertTo( Value, aProp.Type ) );
             else
-                throw UnknownPropertyException( "no introspection nor name container!" );
+                throw RuntimeException( "no type converter service!" );
         }
-        catch (UnknownPropertyException &)
+        // NameContainer
+        else if( _xNameContainer.is() )
         {
-            throw;
+            // Note: This misfeature deliberately not adapted to apply to objects which
+            // have XNameReplace but not XNameContainer
+            Any aConv;
+            Reference < XIdlClass > r =
+                TypeToIdlClass( _xNameContainer->getElementType(), xCoreReflection );
+            if( r->isAssignableFrom(TypeToIdlClass( Value.getValueType(), xCoreReflection ) ) )
+                aConv = Value;
+            else if( xTypeConverter.is() )
+                aConv = xTypeConverter->convertTo( Value, _xNameContainer->getElementType() );
+            else
+                throw RuntimeException( "no type converter service!" );
+
+            // Replace if present, otherwise insert
+            if (_xNameContainer->hasByName( PropertyName ))
+                _xNameContainer->replaceByName( PropertyName, aConv );
+            else
+                _xNameContainer->insertByName( PropertyName, aConv );
         }
-        catch (CannotConvertException &)
-        {
-            throw;
-        }
-        catch (InvocationTargetException &)
-        {
-            throw;
-        }
-        catch (RuntimeException &)
-        {
-            throw;
-        }
-        catch (const Exception & exc)
-        {
-            throw InvocationTargetException(
-                "exception occurred in setValue(): " + exc.Message,
-                Reference< XInterface >(), makeAny( exc /* though sliced */ ) );
-        }
+        else
+            throw UnknownPropertyException( "no introspection nor name container!" );
+    }
+    catch (UnknownPropertyException &)
+    {
+        throw;
+    }
+    catch (CannotConvertException &)
+    {
+        throw;
+    }
+    catch (InvocationTargetException &)
+    {
+        throw;
+    }
+    catch (RuntimeException &)
+    {
+        throw;
+    }
+    catch (const Exception & exc)
+    {
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw InvocationTargetException(
+            "exception occurred in setValue(): " + exc.Message,
+            Reference< XInterface >(), anyEx );
     }
 }
 
@@ -591,7 +585,7 @@ void Invocation_Impl::setValue( const OUString& PropertyName, const Any& Value )
 Any Invocation_Impl::invoke( const OUString& FunctionName, const Sequence<Any>& InParams,
                                 Sequence<sal_Int16>& OutIndices, Sequence<Any>& OutParams )
 {
-    if (_xDirect.is())
+    if (!mbFromOLE && _xDirect.is())
         return _xDirect->invoke( FunctionName, InParams, OutIndices, OutParams );
 
     if (_xIntrospectionAccess.is())
@@ -608,8 +602,8 @@ Any Invocation_Impl::invoke( const OUString& FunctionName, const Sequence<Any>& 
         {
             throw IllegalArgumentException(
                 "incorrect number of parameters passed invoking function " + FunctionName +
-                "expected " + OUString::number(nFParamsLen) + ", got " + OUString::number(InParams.getLength()),
-                static_cast<OWeakObject *>(this), (sal_Int16) 1 );
+                ": expected " + OUString::number(nFParamsLen) + ", got " + OUString::number(InParams.getLength()),
+                static_cast<OWeakObject *>(this), sal_Int16(1) );
         }
 
         // IN Parameter
@@ -655,7 +649,7 @@ Any Invocation_Impl::invoke( const OUString& FunctionName, const Sequence<Any>& 
                 // is OUT/INOUT parameter?
                 if (rFParam.aMode != ParamMode_IN)
                 {
-                    pOutIndices[nOutIndex] = (sal_Int16)nPos;
+                    pOutIndices[nOutIndex] = static_cast<sal_Int16>(nPos);
                     if (rFParam.aMode == ParamMode_OUT)
                         rDestType->createObject( pInvokeParams[nPos] );     // default init
                     ++nOutIndex;
@@ -673,14 +667,10 @@ Any Invocation_Impl::invoke( const OUString& FunctionName, const Sequence<Any>& 
 
         // OUT Params
         OutIndices.realloc( nOutIndex );
-        pOutIndices        = OutIndices.getArray();
         OutParams.realloc( nOutIndex );
-        Any* pOutParams = OutParams.getArray();
 
-        while (nOutIndex--)
-        {
-            pOutParams[nOutIndex] = pInvokeParams[ pOutIndices[nOutIndex] ];
-        }
+        std::transform(OutIndices.begin(), OutIndices.end(), OutParams.begin(),
+            [&pInvokeParams](const sal_Int16 nIndex) -> Any { return pInvokeParams[nIndex]; });
 
         return aRet;
     }
@@ -691,6 +681,7 @@ Any Invocation_Impl::invoke( const OUString& FunctionName, const Sequence<Any>& 
     throw aExc;
 }
 
+namespace {
 
 // Struct to optimize sorting
 struct MemberItem
@@ -698,12 +689,15 @@ struct MemberItem
     OUString aName;
 
     // Defines where the member comes from
-    enum Mode { NAMEACCESS, PROPERTYSET, METHOD } eMode;
+    enum class Mode { NameAccess, PropertySet, Method };
+    Mode eMode;
 
     // Index to respective sequence
-    // (Index to NameAccess sequence for eMode==NAMEACCESS etc.)
+    // (Index to NameAccess sequence for eMode==Mode::NameAccess etc.)
     sal_Int32 nIndex;
 };
+
+}
 
 // Implementation of getting name or info
 // String sequence will be filled when pStringSeq != NULL
@@ -757,7 +751,7 @@ void Invocation_Impl::getInfoSequenceImpl
     {
         MemberItem& rItem = pItems[ iTotal ];
         rItem.aName = pStrings[ i ];
-        rItem.eMode = MemberItem::NAMEACCESS;
+        rItem.eMode = MemberItem::Mode::NameAccess;
         rItem.nIndex = i;
     }
 
@@ -766,7 +760,7 @@ void Invocation_Impl::getInfoSequenceImpl
     {
         MemberItem& rItem = pItems[ iTotal ];
         rItem.aName = pProps[ i ].Name;
-        rItem.eMode = MemberItem::PROPERTYSET;
+        rItem.eMode = MemberItem::Mode::PropertySet;
         rItem.nIndex = i;
     }
 
@@ -776,7 +770,7 @@ void Invocation_Impl::getInfoSequenceImpl
         MemberItem& rItem = pItems[ iTotal ];
         Reference< XIdlMethod > xMethod = pMethods[ i ];
         rItem.aName = xMethod->getName();
-        rItem.eMode = MemberItem::METHOD;
+        rItem.eMode = MemberItem::Mode::Method;
         rItem.nIndex = i;
     }
 
@@ -806,15 +800,15 @@ void Invocation_Impl::getInfoSequenceImpl
 
         if( pRetInfos )
         {
-            if( rItem.eMode == MemberItem::NAMEACCESS )
+            if( rItem.eMode == MemberItem::Mode::NameAccess )
             {
                 fillInfoForNameAccess( pRetInfos[ iTotal ], rItem.aName );
             }
-            else if( rItem.eMode == MemberItem::PROPERTYSET )
+            else if( rItem.eMode == MemberItem::Mode::PropertySet )
             {
                 fillInfoForProperty( pRetInfos[ iTotal ], pProps[ rItem.nIndex ] );
             }
-            else if( rItem.eMode == MemberItem::METHOD )
+            else if( rItem.eMode == MemberItem::Mode::Method )
             {
                 fillInfoForMethod( pRetInfos[ iTotal ], pMethods[ rItem.nIndex ] );
             }
@@ -872,7 +866,7 @@ InvocationInfo SAL_CALL Invocation_Impl::getInfoForName( const OUString& aName, 
             if( _xIntrospectionAccess.is() && _xIntrospectionAccess->hasProperty
                  ( aExactName, PropertyConcept::ALL ^ PropertyConcept::DANGEROUS ) )
             {
-                 Property aProp = _xIntrospectionAccess->getProperty
+                Property aProp = _xIntrospectionAccess->getProperty
                     ( aExactName, PropertyConcept::ALL ^ PropertyConcept::DANGEROUS );
                 fillInfoForProperty( aRetInfo, aProp );
                 bFound = true;
@@ -936,22 +930,22 @@ void Invocation_Impl::fillInfoForMethod
     rInfo.aType = aReturnType;
     Sequence<ParamInfo> aParamInfos = xMethod->getParameterInfos();
     sal_Int32 nParamCount = aParamInfos.getLength();
-    if( nParamCount > 0 )
+    if( nParamCount <= 0 )
+        return;
+
+    const ParamInfo* pInfo = aParamInfos.getConstArray();
+
+    rInfo.aParamTypes.realloc( nParamCount );
+    Type* pParamTypes = rInfo.aParamTypes.getArray();
+    rInfo.aParamModes.realloc( nParamCount );
+    ParamMode* pParamModes = rInfo.aParamModes.getArray();
+
+    for( sal_Int32 i = 0 ; i < nParamCount ; i++ )
     {
-        const ParamInfo* pInfo = aParamInfos.getConstArray();
-
-        rInfo.aParamTypes.realloc( nParamCount );
-        Type* pParamTypes = rInfo.aParamTypes.getArray();
-        rInfo.aParamModes.realloc( nParamCount );
-        ParamMode* pParamModes = rInfo.aParamModes.getArray();
-
-        for( sal_Int32 i = 0 ; i < nParamCount ; i++ )
-        {
-            Reference< XIdlClass > xParamClass = pInfo[i].aType;
-            Type aParamType( xParamClass->getTypeClass(), xParamClass->getName() );
-            pParamTypes[ i ] = aParamType;
-            pParamModes[ i ] = pInfo[i].aMode;
-        }
+        Reference< XIdlClass > xParamClass = pInfo[i].aType;
+        Type aParamType( xParamClass->getTypeClass(), xParamClass->getName() );
+        pParamTypes[ i ] = aParamType;
+        pParamModes[ i ] = pInfo[i].aMode;
     }
 }
 
@@ -959,76 +953,41 @@ void Invocation_Impl::fillInfoForMethod
 // XTypeProvider
 Sequence< Type > SAL_CALL Invocation_Impl::getTypes()
 {
-    static Sequence< Type > const * s_pTypes = nullptr;
-    if (! s_pTypes)
-    {
-        Sequence< Type > types( 4 + 10 );
-        Type * pTypes = types.getArray();
-        sal_Int32 n = 0;
-
-        pTypes[ n++ ] = cppu::UnoType<XTypeProvider>::get();
-        pTypes[ n++ ] = cppu::UnoType<XWeak>::get();
-        pTypes[ n++ ] = cppu::UnoType<XInvocation>::get();
-        pTypes[ n++ ] = cppu::UnoType<XMaterialHolder>::get();
+    static Sequence<Type> s_types = [this]() {
+        std::vector<Type> tmp {
+            cppu::UnoType<XTypeProvider>::get(),
+            cppu::UnoType<XWeak>::get(),
+            cppu::UnoType<XInvocation>::get(),
+            cppu::UnoType<XMaterialHolder>::get() };
 
         // Invocation does not support XExactName if direct object supports
         // XInvocation, but not XExactName.
-        if ((_xDirect.is() && _xENDirect.is()) ||
-            (!_xDirect.is() && _xENIntrospection.is()))
-        {
-            pTypes[ n++ ] = cppu::UnoType<XExactName>::get();
-        }
-        if( _xNameContainer.is() )
-        {
-            pTypes[ n++ ] = cppu::UnoType<XNameContainer>::get();
-        }
-        if( _xNameReplace.is() )
-        {
-            pTypes[ n++ ] = cppu::UnoType<XNameReplace>::get();
-        }
-        if( _xNameAccess.is() )
-        {
-            pTypes[ n++ ] = cppu::UnoType<XNameAccess>::get();
-        }
+        if ((_xDirect.is() && _xENDirect.is()) || (!_xDirect.is() && _xENIntrospection.is()))
+            tmp.push_back(cppu::UnoType<XExactName>::get());
+        if (_xNameContainer.is())
+            tmp.push_back(cppu::UnoType<XNameContainer>::get());
+        if (_xNameReplace.is())
+            tmp.push_back(cppu::UnoType<XNameReplace>::get());
+        if (_xNameAccess.is())
+            tmp.push_back(cppu::UnoType<XNameAccess>::get());
         if (_xIndexContainer.is())
-        {
-            pTypes[ n++ ] = cppu::UnoType<XIndexContainer>::get();
-        }
+            tmp.push_back(cppu::UnoType<XIndexContainer>::get());
         if (_xIndexReplace.is())
-        {
-            pTypes[ n++ ] = cppu::UnoType<XIndexReplace>::get();
-        }
+            tmp.push_back(cppu::UnoType<XIndexReplace>::get());
         if (_xIndexAccess.is())
-        {
-            pTypes[ n++ ] = cppu::UnoType<XIndexAccess>::get();
-        }
+            tmp.push_back(cppu::UnoType<XIndexAccess>::get());
         if (_xEnumerationAccess.is())
-        {
-            pTypes[ n++ ] = cppu::UnoType<XEnumerationAccess>::get();
-        }
+            tmp.push_back(cppu::UnoType<XEnumerationAccess>::get());
         if (_xElementAccess.is())
-        {
-            pTypes[ n++ ] = cppu::UnoType<XElementAccess>::get();
-        }
+            tmp.push_back(cppu::UnoType<XElementAccess>::get());
         // Invocation does not support XInvocation2, if direct object supports
         // XInvocation, but not XInvocation2.
-        if ( ( _xDirect.is() && _xDirect2.is()) ||
-             (!_xDirect.is() && _xIntrospectionAccess.is() ) )
-        {
-            pTypes[ n++ ] = cppu::UnoType<XInvocation2>::get();
-        }
+        if ((_xDirect.is() && _xDirect2.is()) || (!_xDirect.is() && _xIntrospectionAccess.is()))
+            tmp.push_back(cppu::UnoType<XInvocation2>::get());
 
-        types.realloc( n );
-
-        // store types
-        MutexGuard guard( Mutex::getGlobalMutex() );
-        if (! s_pTypes)
-        {
-            static Sequence< Type > s_types( types );
-            s_pTypes = &s_types;
-        }
-    }
-    return *s_pTypes;
+        return comphelper::containerToSequence(tmp);
+    }();
+    return s_types;
 }
 
 Sequence< sal_Int8 > SAL_CALL Invocation_Impl::getImplementationId(  )
@@ -1036,6 +995,7 @@ Sequence< sal_Int8 > SAL_CALL Invocation_Impl::getImplementationId(  )
     return css::uno::Sequence<sal_Int8>();
 }
 
+namespace {
 
 class InvocationService
     : public WeakImplHelper< XSingleServiceFactory, XServiceInfo >
@@ -1060,6 +1020,8 @@ private:
     Reference<XIdlReflection> xCoreReflection;
 };
 
+}
+
 InvocationService::InvocationService( const Reference<XComponentContext> & xCtx )
     : mxCtx( xCtx )
     , mxSMgr( xCtx->getServiceManager() )
@@ -1074,7 +1036,7 @@ InvocationService::InvocationService( const Reference<XComponentContext> & xCtx 
 // XServiceInfo
 OUString InvocationService::getImplementationName()
 {
-    return inv_getImplementationName();
+    return "com.sun.star.comp.stoc.Invocation";
 }
 
 // XServiceInfo
@@ -1086,7 +1048,7 @@ sal_Bool InvocationService::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > InvocationService::getSupportedServiceNames()
 {
-    return inv_getSupportedServiceNames();
+    return { "com.sun.star.script.Invocation" };
 }
 
 
@@ -1100,43 +1062,36 @@ Reference<XInterface> InvocationService::createInstance()
 Reference<XInterface> InvocationService::createInstanceWithArguments(
     const Sequence<Any>& rArguments )
 {
+    if (rArguments.getLength() == 2)
+    {
+        OUString aArg1;
+        if ((rArguments[1] >>= aArg1) &&
+            aArg1 == "FromOLE")
+        {
+            return Reference< XInterface >
+                ( *new Invocation_Impl( *rArguments.getConstArray(),
+                                        xTypeConverter, xIntrospection, xCoreReflection, true ) );
+        }
+    }
     if (rArguments.getLength() == 1)
     {
         return Reference< XInterface >
             ( *new Invocation_Impl( *rArguments.getConstArray(),
-              xTypeConverter, xIntrospection, xCoreReflection ) );
+                                    xTypeConverter, xIntrospection, xCoreReflection, false ) );
     }
-    else
-    {
-        //TODO:throw( Exception("no default construction of invocation adapter possible!", *this) );
-        return Reference<XInterface>();
-    }
+
+    //TODO:throw( Exception("no default construction of invocation adapter possible!", *this) );
+    return Reference<XInterface>();
 }
 
-/// @throws RuntimeException
-Reference<XInterface> SAL_CALL InvocationService_CreateInstance( const Reference<XComponentContext> & xCtx )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+stoc_InvocationService_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    Reference<XInterface> xService( *new InvocationService( xCtx ) );
-    return xService;
+    return cppu::acquire(new InvocationService(context));
 }
 
 }
 
-using namespace stoc_inv;
-static const struct ImplementationEntry g_entries[] =
-{
-    {
-        InvocationService_CreateInstance, inv_getImplementationName,
-        inv_getSupportedServiceNames, createSingleComponentFactory,
-        nullptr, 0
-    },
-    { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-};
-
-extern "C" SAL_DLLPUBLIC_EXPORT void * SAL_CALL invocation_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * pRegistryKey )
-{
-    return component_getFactoryHelper( pImplName, pServiceManager, pRegistryKey , g_entries );
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

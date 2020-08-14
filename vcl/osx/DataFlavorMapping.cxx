@@ -17,17 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
+#include <sal/log.hxx>
 
-#include <DataFlavorMapping.hxx>
+#include "DataFlavorMapping.hxx"
 #include "HtmlFmtFlt.hxx"
 #include "PictToBmpFlt.hxx"
-#include "com/sun/star/datatransfer/UnsupportedFlavorException.hpp"
-#include "com/sun/star/datatransfer/XMimeContentType.hpp"
-#include "com/sun/star/datatransfer/MimeContentTypeFactory.hpp"
-#include "com/sun/star/lang/IllegalArgumentException.hpp"
-#include "com/sun/star/uno/Sequence.hxx"
-#include "comphelper/processfactory.hxx"
+#include <com/sun/star/datatransfer/UnsupportedFlavorException.hpp>
+#include <com/sun/star/datatransfer/XMimeContentType.hpp>
+#include <com/sun/star/datatransfer/MimeContentTypeFactory.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
+#include <comphelper/processfactory.hxx>
 
 #include <rtl/ustring.hxx>
 #include <osl/endian.h>
@@ -108,13 +109,18 @@ namespace
 
   /* At the moment it appears as if only MS Office pastes "public.html" to the clipboard.
    */
-  static const FlavorMap flavorMap[] =
+  const FlavorMap flavorMap[] =
     {
-      { NSStringPboardType, "text/plain;charset=utf-16", "Unicode Text (UTF-16)", true },
-      { NSRTFPboardType, "text/richtext", "Rich Text Format", false },
-      { NSTIFFPboardType, "image/png", "Portable Network Graphics", false },
-      { NSHTMLPboardType, "text/html", "Plain Html", false },
+      { NSPasteboardTypeString, "text/plain;charset=utf-16", "Unicode Text (UTF-16)", true },
+      { NSPasteboardTypeRTF, "text/rtf", "Rich Text Format", false },
+      { NSPasteboardTypePDF, "application/pdf", "PDF File", false },
+      { NSPasteboardTypeTIFF, "image/png", "Portable Network Graphics", false },
+      { NSPasteboardTypeHTML, "text/html", "Plain Html", false },
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
+          // "'NSFilenamesPboardType' is deprecated: first deprecated in macOS 10.14 - Create
+          // multiple pasteboard items with NSPasteboardTypeFileURL or kUTTypeFileURL instead"
       { NSFilenamesPboardType, "application/x-openoffice-filelist;windows_formatname=\"FileList\"", "FileList", false },
+SAL_WNODEPRECATED_DECLARATIONS_POP
       { PBTYPE_SESX, FLAVOR_SESX, "Star Embed Source (XML)", false },
       { PBTYPE_SLSDX, FLAVOR_SLSDX, "Star Link Source Descriptor (XML)", false },
       { PBTYPE_ESX, FLAVOR_ESX, "Star Embed Source (XML)", false },
@@ -130,17 +136,15 @@ namespace
 
   #define SIZE_FLAVOR_MAP (sizeof(flavorMap)/sizeof(FlavorMap))
 
-  inline bool isByteSequenceType(const Type& theType)
+  bool isByteSequenceType(const Type& theType)
   {
     return (theType == cppu::UnoType<Sequence<sal_Int8>>::get());
   }
 
-  inline bool isOUStringType(const Type& theType)
+  bool isOUStringType(const Type& theType)
   {
     return (theType == cppu::UnoType<OUString>::get() );
   }
-
-} // unnamed namespace
 
 /* A base class for other data provider.
  */
@@ -156,6 +160,8 @@ protected:
   //NSData* mSystemData;
   id mSystemData;
 };
+
+} // unnamed namespace
 
 DataProviderBaseImpl::DataProviderBaseImpl(const Any& data) :
   mData(data),
@@ -177,6 +183,8 @@ DataProviderBaseImpl::~DataProviderBaseImpl()
     }
 }
 
+namespace {
+
 class UniDataProvider : public DataProviderBaseImpl
 {
 public:
@@ -188,6 +196,8 @@ public:
 
   virtual Any getOOoData() override;
 };
+
+}
 
 UniDataProvider::UniDataProvider(const Any& data) :
   DataProviderBaseImpl(data)
@@ -216,7 +226,7 @@ Any UniDataProvider::getOOoData()
 
   if (mSystemData)
     {
-      oOOData <<= OUString(static_cast<const sal_Char*>([mSystemData bytes]),
+      oOOData <<= OUString(static_cast<const char*>([mSystemData bytes]),
                                  [mSystemData length],
                                  RTL_TEXTENCODING_UTF8);
     }
@@ -227,6 +237,8 @@ Any UniDataProvider::getOOoData()
 
   return oOOData;
 }
+
+namespace {
 
 class ByteSequenceDataProvider : public DataProviderBaseImpl
 {
@@ -239,6 +251,8 @@ public:
 
   virtual Any getOOoData() override;
 };
+
+}
 
 ByteSequenceDataProvider::ByteSequenceDataProvider(const Any& data) :
   DataProviderBaseImpl(data)
@@ -278,6 +292,8 @@ Any ByteSequenceDataProvider::getOOoData()
   return oOOData;
 }
 
+namespace {
+
 class HTMLFormatDataProvider : public DataProviderBaseImpl
 {
 public:
@@ -287,6 +303,8 @@ public:
 
   virtual Any getOOoData() override;
 };
+
+}
 
 HTMLFormatDataProvider::HTMLFormatDataProvider(NSData* data) :
   DataProviderBaseImpl(data)
@@ -334,6 +352,9 @@ Any HTMLFormatDataProvider::getOOoData()
   return oOOData;
 }
 
+namespace {
+
+
 class PNGDataProvider : public DataProviderBaseImpl
 {
     NSBitmapImageFileType meImageType;
@@ -346,6 +367,8 @@ public:
 
     virtual Any getOOoData() override;
 };
+
+}
 
 PNGDataProvider::PNGDataProvider( const Any& data, NSBitmapImageFileType eImageType) :
   DataProviderBaseImpl(data),
@@ -387,7 +410,7 @@ Any PNGDataProvider::getOOoData()
         memcpy( imgData.getArray(), [mSystemData bytes], flavorDataLength);
 
         Sequence<sal_Int8> pngData;
-        if( ImageToPNG( imgData, pngData, meImageType))
+        if( ImageToPNG( imgData, pngData))
             oOOData <<= pngData;
     }
     else
@@ -395,8 +418,10 @@ Any PNGDataProvider::getOOoData()
         oOOData = mData;
     }
 
-  return oOOData;
+    return oOOData;
 }
+
+namespace {
 
 class FileListDataProvider : public DataProviderBaseImpl
 {
@@ -407,6 +432,8 @@ public:
   virtual NSData* getSystemData() override;
   virtual Any getOOoData() override;
 };
+
+}
 
 FileListDataProvider::FileListDataProvider(const Any& data) :
   DataProviderBaseImpl(data)
@@ -478,9 +505,9 @@ DataFlavorMapper::~DataFlavorMapper()
 
 DataFlavor DataFlavorMapper::systemToOpenOfficeFlavor( const NSString* systemDataFlavor) const
 {
-  DataFlavor oOOFlavor;
+    DataFlavor oOOFlavor;
 
-  for (size_t i = 0; i < SIZE_FLAVOR_MAP; i++)
+    for (size_t i = 0; i < SIZE_FLAVOR_MAP; i++)
     {
       if ([systemDataFlavor caseInsensitiveCompare:const_cast<NSString*>(flavorMap[i].SystemFlavor)] == NSOrderedSame)
         {
@@ -533,7 +560,7 @@ const NSString* DataFlavorMapper::openOfficeToSystemFlavor( const DataFlavor& oO
 
 NSString* DataFlavorMapper::openOfficeImageToSystemFlavor(NSPasteboard* pPasteboard)
 {
-    NSArray *supportedTypes = [NSArray arrayWithObjects: NSTIFFPboardType, nil];
+    NSArray *supportedTypes = [NSArray arrayWithObjects: NSPasteboardTypeTIFF, nil];
     NSString *sysFlavor = [pPasteboard availableTypeFromArray:supportedTypes];
     return sysFlavor;
 }
@@ -562,11 +589,15 @@ DataProviderPtr_t DataFlavorMapper::getDataProvider( const NSString* systemFlavo
             }
           else
           */
-          if ([systemFlavor caseInsensitiveCompare: NSTIFFPboardType] == NSOrderedSame)
+          if ([systemFlavor caseInsensitiveCompare: NSPasteboardTypeTIFF] == NSOrderedSame)
             {
-              dp = DataProviderPtr_t( new PNGDataProvider( data, NSTIFFFileType));
+              dp = DataProviderPtr_t( new PNGDataProvider( data, NSBitmapImageFileTypeTIFF));
             }
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
+              // "'NSFilenamesPboardType' is deprecated: first deprecated in macOS 10.14 - Create
+              // multiple pasteboard items with NSPasteboardTypeFileURL or kUTTypeFileURL instead"
           else if ([systemFlavor caseInsensitiveCompare: NSFilenamesPboardType] == NSOrderedSame)
+SAL_WNODEPRECATED_DECLARATIONS_POP
             {
               dp = DataProviderPtr_t(new FileListDataProvider(data));
             }
@@ -601,19 +632,23 @@ DataProviderPtr_t DataFlavorMapper::getDataProvider( const NSString* systemFlavo
 {
   DataProviderPtr_t dp;
 
-  if ([systemFlavor caseInsensitiveCompare: NSStringPboardType] == NSOrderedSame)
+  if ([systemFlavor caseInsensitiveCompare: NSPasteboardTypeString] == NSOrderedSame)
     {
       dp = DataProviderPtr_t(new UniDataProvider(systemData));
     }
-  else if ([systemFlavor caseInsensitiveCompare: NSHTMLPboardType] == NSOrderedSame)
+  else if ([systemFlavor caseInsensitiveCompare: NSPasteboardTypeHTML] == NSOrderedSame)
     {
       dp = DataProviderPtr_t(new HTMLFormatDataProvider(systemData));
     }
-  else if ([systemFlavor caseInsensitiveCompare: NSTIFFPboardType] == NSOrderedSame)
+  else if ([systemFlavor caseInsensitiveCompare: NSPasteboardTypeTIFF] == NSOrderedSame)
     {
-      dp = DataProviderPtr_t( new PNGDataProvider(systemData, NSTIFFFileType));
+      dp = DataProviderPtr_t( new PNGDataProvider(systemData, NSBitmapImageFileTypeTIFF));
     }
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
+      // "'NSFilenamesPboardType' is deprecated: first deprecated in macOS 10.14 - Create multiple
+      // pasteboard items with NSPasteboardTypeFileURL or kUTTypeFileURL instead"
   else if ([systemFlavor caseInsensitiveCompare: NSFilenamesPboardType] == NSOrderedSame)
+SAL_WNODEPRECATED_DECLARATIONS_POP
     {
       //dp = DataProviderPtr_t(new FileListDataProvider(systemData));
     }
@@ -652,7 +687,7 @@ NSArray* DataFlavorMapper::flavorSequenceToTypesArray(const css::uno::Sequence<c
   {
       if( flavors[i].MimeType.startsWith("image/bmp") )
       {
-          [array addObject: NSTIFFPboardType];
+          [array addObject: NSPasteboardTypeTIFF];
       }
       else
       {

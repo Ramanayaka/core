@@ -20,18 +20,17 @@
 #include <memory>
 #include <sal/config.h>
 
-#include <cstdlib>
+#include <cstdint>
 
 #include <i18nlangtag/mslangid.hxx>
 #include <vcl/outdev.hxx>
-#include <vcl/print.hxx>
 #include <vcl/lineinfo.hxx>
 #include <vcl/metric.hxx>
-#include <vcl/window.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/lazydelete.hxx>
 #include <com/sun/star/i18n/CharacterIteratorMode.hpp>
 #include <com/sun/star/i18n/WordType.hpp>
+#include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <breakit.hxx>
 #include <paintfrm.hxx>
 #include <viewsh.hxx>
@@ -40,10 +39,8 @@
 #include <IDocumentSettingAccess.hxx>
 #include <swfont.hxx>
 #include <wrong.hxx>
-#include "dbg_lay.hxx"
 #include <txtfrm.hxx>
 #include <pagefrm.hxx>
-#include <pagedesc.hxx>
 #include <tgrditem.hxx>
 #include <scriptinfo.hxx>
 #include <editeng/brushitem.hxx>
@@ -53,9 +50,12 @@
 #include <svx/sdr/attribute/sdrallfillattributeshelper.hxx>
 #include <doc.hxx>
 #include <editeng/fhgtitem.hxx>
+#include <vcl/glyphitem.hxx>
+#include <vcl/vcllayout.hxx>
 #include <docsh.hxx>
-#include <poolfmt.hrc>
+#include <strings.hrc>
 #include <fntcap.hxx>
+#include <vcl/outdev/ScopedStates.hxx>
 
 using namespace ::com::sun::star;
 
@@ -64,10 +64,8 @@ using namespace ::com::sun::star;
 SwFntCache *pFntCache = nullptr;
 // last Font set by ChgFntCache
 SwFntObj *pLastFont = nullptr;
-// "MagicNumber" used to identify Fonts
-sal_uInt8* pMagicNo = nullptr;
 
-Color *pWaveCol = nullptr;
+constexpr Color gWaveCol(COL_GRAY);
 
 long SwFntObj::nPixWidth;
 MapMode* SwFntObj::pPixMap = nullptr;
@@ -81,11 +79,9 @@ long EvalGridWidthAdd( const SwTextGridItem *const pGrid, const SwDrawTextInfo &
     SwDocShell* pDocShell = rInf.GetShell()->GetDoc()->GetDocShell();
     SfxStyleSheetBasePool* pBasePool = pDocShell->GetStyleSheetPool();
 
-    OUString sString(SwResId(STR_POOLCOLL_STANDARD));
-
-    SfxStyleSheetBase* pStyle = pBasePool->Find(sString, SfxStyleFamily::Para);
+    SfxStyleSheetBase* pStyle = pBasePool->Find(SwResId(STR_POOLCOLL_STANDARD), SfxStyleFamily::Para);
     SfxItemSet& aTmpSet = pStyle->GetItemSet();
-    const SvxFontHeightItem &aDefaultFontItem = static_cast<const SvxFontHeightItem&>(aTmpSet.Get(RES_CHRATR_CJK_FONTSIZE));
+    const SvxFontHeightItem &aDefaultFontItem = aTmpSet.Get(RES_CHRATR_CJK_FONTSIZE);
 
     const SwDoc* pDoc = rInf.GetShell()->GetDoc();
     const sal_uInt16 nGridWidth = GetGridWidth(*pGrid, *pDoc);
@@ -97,7 +93,70 @@ long EvalGridWidthAdd( const SwTextGridItem *const pGrid, const SwDrawTextInfo &
     return nGridWidthAdd;
 }
 
+/**
+ * Pre-calculates glyph items for the rendered subset of rKey's text, assuming
+ * outdev state does not change between the outdev calls.
+ */
+SalLayoutGlyphs* lcl_CreateLayout(const SwTextGlyphsKey& rKey, SalLayoutGlyphs& rTextGlyphs)
+{
+    // Use pre-calculated result.
+    if (rTextGlyphs.IsValid())
+        return &rTextGlyphs;
+
+    if (rKey.m_nIndex >= rKey.m_aText.getLength())
+        // Same as in OutputDevice::GetTextArray().
+        return nullptr;
+
+    // Calculate glyph items.
+    std::unique_ptr<SalLayout> pLayout
+        = rKey.m_pOutputDevice->ImplLayout(rKey.m_aText, rKey.m_nIndex, rKey.m_nLength, Point(0, 0), 0,
+                                         nullptr, SalLayoutFlags::GlyphItemsOnly);
+    if (!pLayout)
+        return nullptr;
+
+    const SalLayoutGlyphs* pGlyphs = pLayout->GetGlyphs();
+    if (!pGlyphs)
+        return nullptr;
+
+    // Remember the calculation result.
+    rTextGlyphs = *pGlyphs;
+
+    return &rTextGlyphs;
 }
+}
+
+bool operator<(const SwTextGlyphsKey& l, const SwTextGlyphsKey& r)
+{
+    if (l.m_pOutputDevice.get() < r.m_pOutputDevice.get())
+        return true;
+    if (l.m_pOutputDevice.get() > r.m_pOutputDevice.get())
+        return false;
+    if (l.m_nIndex < r.m_nIndex)
+        return true;
+    if (l.m_nIndex > r.m_nIndex)
+        return false;
+    if (l.m_nLength < r.m_nLength)
+        return true;
+    if (l.m_nLength > r.m_nLength)
+        return false;
+
+    // Comparing strings is expensive, so compare them:
+    // - only at the end of this function
+    // - only once
+    // - only the relevant substring (if the index/length is not out of bounds)
+    sal_Int32 nRet = 0;
+    if (l.m_nLength < 0 || l.m_nIndex < 0 || l.m_nIndex + l.m_nLength > l.m_aText.getLength())
+        nRet = l.m_aText.compareTo(r.m_aText);
+    else
+        nRet = memcmp(l.m_aText.getStr() + l.m_nIndex, r.m_aText.getStr() + r.m_nIndex,
+                      l.m_nLength * sizeof(sal_Unicode));
+    if (nRet < 0)
+        return true;
+    if (nRet > 0)
+        return false;
+
+    return false;
+};
 
 void SwFntCache::Flush( )
 {
@@ -109,8 +168,8 @@ void SwFntCache::Flush( )
     SwCache::Flush( );
 }
 
-SwFntObj::SwFntObj(const SwSubFont &rFont, const void *pOwn, SwViewShell const *pSh)
-    : SwCacheObj(pOwn)
+SwFntObj::SwFntObj(const SwSubFont &rFont, std::uintptr_t nFontCacheId, SwViewShell const *pSh)
+    : SwCacheObj(reinterpret_cast<void *>(nFontCacheId))
     , m_aFont(rFont)
     , m_pScrFont(nullptr)
     , m_pPrtFont(&m_aFont)
@@ -142,25 +201,26 @@ SwFntObj::~SwFntObj()
 
 void SwFntObj::CreatePrtFont( const OutputDevice& rPrt )
 {
-    if ( m_nPropWidth != 100 && m_pPrinter != &rPrt )
-    {
-        if( m_pScrFont != m_pPrtFont )
-            delete m_pScrFont;
-        if( m_pPrtFont != &m_aFont )
-            delete m_pPrtFont;
+    if ( m_nPropWidth == 100 || m_pPrinter == &rPrt )
+        return;
 
-        const vcl::Font aOldFnt( rPrt.GetFont() );
-        const_cast<OutputDevice&>(rPrt).SetFont( m_aFont );
-        const FontMetric aWinMet( rPrt.GetFontMetric() );
-        const_cast<OutputDevice&>(rPrt).SetFont( aOldFnt );
-        long nWidth = ( aWinMet.GetFontSize().Width() * m_nPropWidth ) / 100;
+    if( m_pScrFont != m_pPrtFont )
+        delete m_pScrFont;
+    if( m_pPrtFont != &m_aFont )
+        delete m_pPrtFont;
 
-        if( !nWidth )
-            ++nWidth;
-        m_pPrtFont = new vcl::Font( m_aFont );
-        m_pPrtFont->SetFontSize( Size( nWidth, m_aFont.GetFontSize().Height() ) );
-        m_pScrFont = nullptr;
-    }
+    const vcl::Font aOldFnt( rPrt.GetFont() );
+    const_cast<OutputDevice&>(rPrt).SetFont( m_aFont );
+    const FontMetric aWinMet( rPrt.GetFontMetric() );
+    const_cast<OutputDevice&>(rPrt).SetFont( aOldFnt );
+    auto nWidth = ( aWinMet.GetFontSize().Width() * m_nPropWidth ) / 100;
+
+    if( !nWidth )
+        ++nWidth;
+    m_pPrtFont = new vcl::Font( m_aFont );
+    m_pPrtFont->SetFontSize( Size( nWidth, m_aFont.GetFontSize().Height() ) );
+    m_pScrFont = nullptr;
+
 }
 
 /*
@@ -182,24 +242,28 @@ static bool lcl_IsFontAdjustNecessary( const vcl::RenderContext& rOutDev,
              OUTDEV_PRINTER != rOutDev.GetOutDevType() );
 }
 
+namespace {
+
 struct CalcLinePosData
 {
     SwDrawTextInfo& rInf;
     vcl::Font& rFont;
-    sal_Int32 nCnt;
+    TextFrameIndex nCnt;
     const bool bSwitchH2V;
+    const bool bSwitchH2VLRBT;
     const bool bSwitchL2R;
     long nHalfSpace;
     long* pKernArray;
     const bool bBidiPor;
 
     CalcLinePosData( SwDrawTextInfo& _rInf, vcl::Font& _rFont,
-                      sal_Int32 _nCnt, const bool _bSwitchH2V, const bool _bSwitchL2R,
+          TextFrameIndex const _nCnt, const bool _bSwitchH2V, const bool _bSwitchH2VLRBT, const bool _bSwitchL2R,
                       long _nHalfSpace, long* _pKernArray, const bool _bBidiPor) :
         rInf( _rInf ),
         rFont( _rFont ),
         nCnt( _nCnt ),
         bSwitchH2V( _bSwitchH2V ),
+        bSwitchH2VLRBT( _bSwitchH2VLRBT ),
         bSwitchL2R( _bSwitchL2R ),
         nHalfSpace( _nHalfSpace ),
         pKernArray( _pKernArray ),
@@ -208,52 +272,55 @@ struct CalcLinePosData
     }
 };
 
+}
+
 // Computes the start and end position of an underline. This function is called
 // from the DrawText-method (for underlining misspelled words or smarttag terms).
 static void lcl_calcLinePos( const CalcLinePosData &rData,
-    Point &rStart, Point &rEnd, sal_Int32 nStart, sal_Int32 nWrLen )
+    Point &rStart, Point &rEnd, TextFrameIndex const nStart, TextFrameIndex const nWrLen)
 {
     long nBlank = 0;
-    const sal_Int32 nEnd = nStart + nWrLen;
+    const TextFrameIndex nEnd = nStart + nWrLen;
     const long nTmpSpaceAdd = rData.rInf.GetSpace() / SPACING_PRECISION_FACTOR;
 
     if ( nEnd < rData.nCnt
-       && CH_BLANK == rData.rInf.GetText()[ rData.rInf.GetIdx() + nEnd ] )
+       && CH_BLANK == rData.rInf.GetText()[sal_Int32(rData.rInf.GetIdx() + nEnd)] )
     {
-        if( nEnd + 1 == rData.nCnt )
+        if (nEnd + TextFrameIndex(1) == rData.nCnt)
             nBlank -= nTmpSpaceAdd;
         else
             nBlank -= rData.nHalfSpace;
     }
 
     // determine start, end and length of wave line
-    sal_Int32 nKernStart = nStart ? rData.pKernArray[ nStart - 1 ] : 0;
-    sal_Int32 nKernEnd = rData.pKernArray[ nEnd - 1 ];
+    sal_Int32 nKernStart = nStart ? rData.pKernArray[sal_Int32(nStart) - 1] : 0;
+    sal_Int32 nKernEnd = rData.pKernArray[sal_Int32(nEnd) - 1];
 
-    const sal_uInt16 nDir = rData.bBidiPor ? 1800 :
-        UnMapDirection( rData.rFont.GetOrientation(), rData.bSwitchH2V );
+    const sal_uInt16 nDir = rData.bBidiPor ? 1800
+                                           : UnMapDirection(rData.rFont.GetOrientation(),
+                                                            rData.bSwitchH2V, rData.bSwitchH2VLRBT);
 
     switch ( nDir )
     {
     case 0 :
-        rStart.X() += nKernStart;
-        rEnd.X() = nBlank + rData.rInf.GetPos().X() + nKernEnd;
-        rEnd.Y() = rData.rInf.GetPos().Y();
+        rStart.AdjustX(nKernStart );
+        rEnd.setX( nBlank + rData.rInf.GetPos().X() + nKernEnd );
+        rEnd.setY( rData.rInf.GetPos().Y() );
         break;
     case 900 :
-        rStart.Y() -= nKernStart;
-        rEnd.X() = rData.rInf.GetPos().X();
-        rEnd.Y() = nBlank + rData.rInf.GetPos().Y() - nKernEnd;
+        rStart.AdjustY( -nKernStart );
+        rEnd.setX( rData.rInf.GetPos().X() );
+        rEnd.setY( nBlank + rData.rInf.GetPos().Y() - nKernEnd );
         break;
     case 1800 :
-        rStart.X() -= nKernStart;
-        rEnd.X() = rData.rInf.GetPos().X() - nKernEnd - nBlank;
-        rEnd.Y() = rData.rInf.GetPos().Y();
+        rStart.AdjustX( -nKernStart );
+        rEnd.setX( rData.rInf.GetPos().X() - nKernEnd - nBlank );
+        rEnd.setY( rData.rInf.GetPos().Y() );
         break;
     case 2700 :
-        rStart.Y() += nKernStart;
-        rEnd.X() = rData.rInf.GetPos().X();
-        rEnd.Y() = nBlank + rData.rInf.GetPos().Y() + nKernEnd;
+        rStart.AdjustY(nKernStart );
+        rEnd.setX( rData.rInf.GetPos().X() );
+        rEnd.setY( nBlank + rData.rInf.GetPos().Y() + nKernEnd );
         break;
     }
 
@@ -291,7 +358,7 @@ sal_uInt16 SwFntObj::GetFontAscent( const SwViewShell *pSh, const OutputDevice& 
             const vcl::Font aOldFnt( rRefDev.GetFont() );
             const_cast<OutputDevice&>(rRefDev).SetFont( *m_pPrtFont );
             const FontMetric aOutMet( rRefDev.GetFontMetric() );
-            m_nPrtAscent = (sal_uInt16) aOutMet.GetAscent();
+            m_nPrtAscent = static_cast<sal_uInt16>(aOutMet.GetAscent());
             const_cast<OutputDevice&>(rRefDev).SetFont( aOldFnt );
         }
 
@@ -332,7 +399,7 @@ sal_uInt16 SwFntObj::GetFontHeight( const SwViewShell* pSh, const OutputDevice& 
 #if OSL_DEBUG_LEVEL > 0
             // Check if vcl did not change the meaning of GetTextHeight
             const FontMetric aOutMet( rRefDev.GetFontMetric() );
-            long nTmpPrtHeight = (sal_uInt16)aOutMet.GetAscent() + aOutMet.GetDescent();
+            long nTmpPrtHeight = static_cast<sal_uInt16>(aOutMet.GetAscent()) + aOutMet.GetDescent();
             // #i106098#: do not compare with == here due to rounding error
             OSL_ENSURE( std::abs(nTmpPrtHeight - m_nPrtHeight) < 3,
                     "GetTextHeight != Ascent + Descent" );
@@ -476,8 +543,7 @@ void SwFntObj::CreateScrFont( const SwViewShell& rSh, const OutputDevice& rOut )
             pOut->GetMapMode().GetScaleY().IsValid() &&
             pOut->GetMapMode().GetScaleX() == pOut->GetMapMode().GetScaleY() )
         {
-            nTmp = ( 100 * pOut->GetMapMode().GetScaleX().GetNumerator() ) /
-                     pOut->GetMapMode().GetScaleX().GetDenominator();
+            nTmp = long(100 * pOut->GetMapMode().GetScaleX());
         }
         else
             nTmp = 0;
@@ -485,9 +551,9 @@ void SwFntObj::CreateScrFont( const SwViewShell& rSh, const OutputDevice& rOut )
             m_nZoom = USHRT_MAX - 1;
     }
 
-    m_nScrAscent = (sal_uInt16)pOut->GetFontMetric().GetAscent();
+    m_nScrAscent = static_cast<sal_uInt16>(pOut->GetFontMetric().GetAscent());
     if ( USHRT_MAX == m_nScrHeight )
-        m_nScrHeight = (sal_uInt16)pOut->GetTextHeight();
+        m_nScrHeight = static_cast<sal_uInt16>(pOut->GetTextHeight());
 
     // reset original output device font
     pOut->SetFont( aOldOutFont );
@@ -544,14 +610,14 @@ void SwFntObj::GuessLeading( const SwViewShell&
                 // (above original comment preserved for cultural reasons)
                 // Those who lie about their Leading, may lie about their
                 // Ascent/Descent as well, hence the Font will be lowered a
-                // litte without changing its height.
+                // little without changing its height.
                 long nDiff = std::min( rMet.GetDescent() - aWinMet.GetDescent(),
                     aWinMet.GetAscent() - rMet.GetAscent() - nTmpLeading );
                 if( nDiff > 0 )
                 {
                     OSL_ENSURE( m_nPrtAscent < USHRT_MAX, "GuessLeading: PrtAscent-Fault" );
                     if ( m_nPrtAscent < USHRT_MAX )
-                        m_nPrtAscent = m_nPrtAscent + (sal_uInt16)(( 2 * nDiff ) / 5);
+                        m_nPrtAscent = m_nPrtAscent + static_cast<sal_uInt16>(( 2 * nDiff ) / 5);
                 }
             }
         }
@@ -565,8 +631,10 @@ void SwFntObj::GuessLeading( const SwViewShell&
         pWin->SetMapMode( aOldMap );
     }
     else
-#endif
         m_nGuessedLeading = 0;
+#else
+    m_nGuessedLeading = 0;
+#endif
 }
 
 // Set the font at the given output device; for screens it may be
@@ -626,10 +694,8 @@ static sal_uInt8 lcl_WhichPunctuation( sal_Unicode cChar )
 
 static bool lcl_IsMonoSpaceFont( const vcl::RenderContext& rOut )
 {
-    const OUString aStr1( u'\x3008' );
-    const OUString aStr2( u'\x307C' );
-    const long nWidth1 = rOut.GetTextWidth( aStr1 );
-    const long nWidth2 = rOut.GetTextWidth( aStr2 );
+    const long nWidth1 = rOut.GetTextWidth( OUString( u'\x3008' ) );
+    const long nWidth2 = rOut.GetTextWidth( OUString( u'\x307C' ) );
     return nWidth1 == nWidth2;
 }
 
@@ -642,19 +708,19 @@ static bool lcl_IsFullstopCentered( const vcl::RenderContext& rOut )
 /* This helper structure (SwForbidden) contains the already marked parts of the string
     to avoid double lines (e.g grammar + spell check error) */
 
-typedef std::vector< std::pair< sal_Int32, sal_Int32 > > SwForbidden;
+typedef std::vector<std::pair<TextFrameIndex, TextFrameIndex>> SwForbidden;
 
 static void lcl_DrawLineForWrongListData(
     SwForbidden &rForbidden,
     const SwDrawTextInfo    &rInf,
-    const SwWrongList       *pWList,
+    sw::WrongListIterator *pWList,
     const CalcLinePosData   &rCalcLinePosData,
     const Size              &rPrtFontSize )
 {
     if (!pWList) return;
 
-    sal_Int32 nStart = rInf.GetIdx();
-    sal_Int32 nWrLen = rInf.GetLen();
+    TextFrameIndex nStart = rInf.GetIdx();
+    TextFrameIndex nWrLen = rInf.GetLen();
 
     // check if respective data is available in the current text range
     if (!pWList->Check( nStart, nWrLen ))
@@ -682,23 +748,20 @@ static void lcl_DrawLineForWrongListData(
     {
         nStart -= rInf.GetIdx();
 
-        const sal_Int32 nEnd = nStart + nWrLen;
-        sal_Int32 nNext = nStart;
+        const TextFrameIndex nEnd = nStart + nWrLen;
+        TextFrameIndex nNext = nStart;
         while( nNext < nEnd )
         {
             while( pIter != rForbidden.end() && pIter->second <= nNext )
                 ++pIter;
 
-            const sal_Int32 nNextStart = nNext;
-            sal_Int32 nNextEnd = nEnd;
+            const TextFrameIndex nNextStart = nNext;
+            TextFrameIndex nNextEnd = nEnd;
 
             if( pIter == rForbidden.end() || nNextEnd <= pIter->first )
             {
                 // No overlapping mark up found
-                std::pair< sal_Int32, sal_Int32 > aNew;
-                aNew.first = nNextStart;
-                aNew.second = nNextEnd;
-                rForbidden.insert( pIter, aNew );
+                rForbidden.insert(pIter, std::make_pair(nNextStart, nNextEnd));
                 pIter = rForbidden.begin();
                 nNext = nEnd;
             }
@@ -718,18 +781,38 @@ static void lcl_DrawLineForWrongListData(
             Point aEnd;
             lcl_calcLinePos( rCalcLinePosData, aStart, aEnd, nNextStart, nNextEnd - nNextStart );
 
-            const sal_uInt16 wrongPos = pWList->GetWrongPos(nNextStart + rInf.GetIdx());
-
-            const SwWrongArea* wrongArea = pWList->GetElement(wrongPos);
-
+            SwWrongArea const*const wrongArea = pWList->GetWrongElement(nNextStart + rInf.GetIdx());
             if (wrongArea != nullptr)
             {
-                if (WRONGAREA_DASHED == wrongArea->mLineType)
+                if (WRONGAREA_WAVE == wrongArea->mLineType)
+                {
+                    vcl::ScopedAntialiasing a(rInf.GetOut(), true);
+                    rInf.GetOut().SetLineColor( wrongArea->mColor );
+                    rInf.GetOut().DrawWaveLine( aStart, aEnd, 1 );
+                }
+                else if (WRONGAREA_BOLDWAVE == wrongArea->mLineType)
+                {
+                    vcl::ScopedAntialiasing a(rInf.GetOut(), true);
+                    rInf.GetOut().SetLineColor( wrongArea->mColor );
+                    rInf.GetOut().DrawWaveLine( aStart, aEnd, 2 );
+                }
+                else if (WRONGAREA_BOLD == wrongArea->mLineType)
                 {
                     rInf.GetOut().SetLineColor( wrongArea->mColor );
 
-                    aStart.Y() +=30;
-                    aEnd.Y() +=30;
+                    aStart.AdjustY(30 );
+                    aEnd.AdjustY(30 );
+
+                    LineInfo aLineInfo( LineStyle::Solid, 26 );
+
+                    rInf.GetOut().DrawLine( aStart, aEnd, aLineInfo );
+                }
+                else if (WRONGAREA_DASHED == wrongArea->mLineType)
+                {
+                    rInf.GetOut().SetLineColor( wrongArea->mColor );
+
+                    aStart.AdjustY(30 );
+                    aEnd.AdjustY(30 );
 
                     LineInfo aLineInfo( LineStyle::Dash );
                     aLineInfo.SetDistance( 40 );
@@ -737,12 +820,6 @@ static void lcl_DrawLineForWrongListData(
                     aLineInfo.SetDashCount(1);
 
                     rInf.GetOut().DrawLine( aStart, aEnd, aLineInfo );
-                }
-                else if (WRONGAREA_WAVE == wrongArea->mLineType)
-                {
-                    rInf.GetOut().SetLineColor( wrongArea->mColor );
-
-                    rInf.GetOut().DrawWaveLine( aStart, aEnd );
                 }
             }
         }
@@ -815,7 +892,7 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
         {
             OSL_ENSURE( bNoAdjust && !bUseScrFont, "Outdev Check failed" );
         }
-        else if ( OUTDEV_VIRDEV == rRefDev.GetOutDevType() )
+        else if ( rRefDev.IsVirtual() )
         {
             OSL_ENSURE( !bNoAdjust && bUseScrFont, "Outdev Check failed" );
         }
@@ -824,14 +901,14 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
             OSL_FAIL( "Outdev Check failed" );
         }
     }
-    else if ( OUTDEV_VIRDEV == rInf.GetOut().GetOutDevType() && ! pWin )
+    else if ( rInf.GetOut().IsVirtual() && ! pWin )
     {
         // PDF export
         if ( OUTDEV_PRINTER == rRefDev.GetOutDevType() )
         {
             OSL_ENSURE( !bNoAdjust && bUseScrFont, "Outdev Check failed" );
         }
-        else if ( OUTDEV_VIRDEV == rRefDev.GetOutDevType() )
+        else if ( rRefDev.IsVirtual() )
         {
             OSL_ENSURE( !bNoAdjust && bUseScrFont, "Outdev Check failed" );
         }
@@ -841,14 +918,14 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
         }
     }
     else if ( OUTDEV_WINDOW == rInf.GetOut().GetOutDevType() ||
-               ( OUTDEV_VIRDEV == rInf.GetOut().GetOutDevType() && pWin ) )
+               ( rInf.GetOut().IsVirtual() && pWin ) )
     {
         // Window or virtual window
         if ( OUTDEV_PRINTER == rRefDev.GetOutDevType() )
         {
             OSL_ENSURE( !bNoAdjust && bUseScrFont, "Outdev Check failed" );
         }
-        else if ( OUTDEV_VIRDEV == rRefDev.GetOutDevType() )
+        else if ( rRefDev.IsVirtual() )
         {
             OSL_ENSURE( !bNoAdjust && bUseScrFont, "Outdev Check failed" );
         }
@@ -877,6 +954,7 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
     // line of the ExtendedAttributeSets will appear in the font color first
 
     const bool bSwitchH2V = rInf.GetFrame() && rInf.GetFrame()->IsVertical();
+    const bool bSwitchH2VLRBT = rInf.GetFrame() && rInf.GetFrame()->IsVertLRBT();
     const bool bSwitchL2R = rInf.GetFrame() && rInf.GetFrame()->IsRightToLeft() &&
                             ! rInf.IsIgnoreFrameRTL();
     const ComplexTextLayoutFlags nMode = rInf.GetOut().GetLayoutMode();
@@ -901,7 +979,7 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
             nPixWidth = rInf.GetOut().PixelToLogic( aTmp ).Width();
         }
 
-        aTextOriginPos.X() += rInf.GetFrame()->IsRightToLeft() ? 0 : nPixWidth;
+        aTextOriginPos.AdjustX(rInf.GetFrame()->IsRightToLeft() ? 0 : nPixWidth );
     }
 
     Color aOldColor( pTmpFont->GetColor() );
@@ -911,8 +989,8 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
     if ( bChgColor )
         pTmpFont->SetColor( aOldColor );
 
-    if ( COMPLETE_STRING == rInf.GetLen() )
-        rInf.SetLen( rInf.GetText().getLength() );
+    if (TextFrameIndex(COMPLETE_STRING) == rInf.GetLen())
+        rInf.SetLen( TextFrameIndex(rInf.GetText().getLength()) );
 
     // ASIAN LINE AND CHARACTER GRID MODE START
 
@@ -930,21 +1008,21 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
             const sal_uInt16 nGridWidth = GetGridWidth(*pGrid, *pDoc);
 
             // kerning array - gives the absolute position of end of each character
-            std::unique_ptr<long[]> pKernArray(new long[rInf.GetLen()]);
+            std::unique_ptr<long[]> pKernArray(new long[sal_Int32(rInf.GetLen())]);
 
             if ( m_pPrinter )
                 m_pPrinter->GetTextArray( rInf.GetText(), pKernArray.get(),
-                                        rInf.GetIdx(), rInf.GetLen() );
+                            sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
             else
                 rInf.GetOut().GetTextArray( rInf.GetText(), pKernArray.get(),
-                                            rInf.GetIdx(), rInf.GetLen() );
+                            sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
 
             // Change the average width per character to an appropriate grid width
             // basically get the ratio of the avg width to the grid unit width, then
             // multiple this ratio to give the new avg width - which in this case
             // gives a new grid width unit size
 
-            long nAvgWidthPerChar = pKernArray[ rInf.GetLen() - 1 ] / rInf.GetLen();
+            long nAvgWidthPerChar = pKernArray[sal_Int32(rInf.GetLen()) - 1] / sal_Int32(rInf.GetLen());
 
             const sal_uLong nRatioAvgWidthCharToGridWidth = nAvgWidthPerChar ?
                                 ( nAvgWidthPerChar - 1 ) / nGridWidth + 1:
@@ -963,17 +1041,17 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
             // The exceptions are for punctuation characters that are not centered
             // so in these cases we just add half a regular "average" character width
             // to the first characters actual width to allow the next character to
-            // be centred automatically
+            // be centered automatically
             // If the character is "special right", then the offset is correct already
             // so the fix offset is as normal - half the average character width
 
-            sal_Unicode cChar = rInf.GetText()[ rInf.GetIdx() ];
+            sal_Unicode cChar = rInf.GetText()[ sal_Int32(rInf.GetIdx()) ];
             sal_uInt8 nType = lcl_WhichPunctuation( cChar );
             switch ( nType )
             {
             // centre character
             case SwScriptInfo::NONE :
-                aTextOriginPos.X() += ( nAvgWidthPerChar - nCharWidth ) / 2;
+                aTextOriginPos.AdjustX(( nAvgWidthPerChar - nCharWidth ) / 2 );
                 nNextFix = nCharWidth / 2;
                 break;
             case SwScriptInfo::SPECIAL_RIGHT :
@@ -981,12 +1059,12 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                 break;
             // punctuation
             default:
-                aTextOriginPos.X() += nAvgWidthPerChar - nCharWidth;
+                aTextOriginPos.AdjustX(nAvgWidthPerChar - nCharWidth );
                 nNextFix = nCharWidth - nHalfWidth;
             }
 
             // calculate offsets
-            for( sal_Int32 j = 1; j < rInf.GetLen(); ++j )
+            for (sal_Int32 j = 1; j < sal_Int32(rInf.GetLen()); ++j)
             {
                 long nCurrentCharWidth = pKernArray[ j ] - pKernArray[ j - 1 ];
                 nNextFix += nAvgWidthPerChar;
@@ -996,7 +1074,7 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                 // average character width minus the characters actual char width
                 // to get the offset into the centre of the next character
 
-                cChar = rInf.GetText()[ rInf.GetIdx() + j ];
+                cChar = rInf.GetText()[ sal_Int32(rInf.GetIdx()) + j ];
                 nType = lcl_WhichPunctuation( cChar );
                 switch ( nType )
                 {
@@ -1012,14 +1090,14 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
             }
 
             // the layout engine requires the total width of the output
-            pKernArray[ rInf.GetLen() - 1 ] = rInf.GetWidth() -
+            pKernArray[sal_Int32(rInf.GetLen()) - 1] = rInf.GetWidth() -
                                               aTextOriginPos.X() + rInf.GetPos().X() ;
 
             if ( bSwitchH2V )
                 rInf.GetFrame()->SwitchHorizontalToVertical( aTextOriginPos );
 
             rInf.GetOut().DrawTextArray( aTextOriginPos, rInf.GetText(),
-                pKernArray.get(), rInf.GetIdx(), rInf.GetLen() );
+                pKernArray.get(), sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
 
             return;
         }
@@ -1037,14 +1115,14 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
         {
             const long nGridWidthAdd = EvalGridWidthAdd( pGrid, rInf );
 
-            std::unique_ptr<long[]> pKernArray( new long[rInf.GetLen()] );
+            std::unique_ptr<long[]> pKernArray(new long[sal_Int32(rInf.GetLen())]);
 
             if ( m_pPrinter )
                 m_pPrinter->GetTextArray( rInf.GetText(), pKernArray.get(),
-                rInf.GetIdx(), rInf.GetLen() );
+                    sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
             else
                 rInf.GetOut().GetTextArray( rInf.GetText(), pKernArray.get(),
-                rInf.GetIdx(), rInf.GetLen() );
+                    sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
             if ( bSwitchH2V )
                 rInf.GetFrame()->SwitchHorizontalToVertical( aTextOriginPos );
             if ( rInf.GetSpace() || rInf.GetKanaComp())
@@ -1061,7 +1139,7 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                         lcl_IsMonoSpaceFont( *(rInf.GetpOut()) ) )
                     {
                         pSI->Compress( pKernArray.get(), rInf.GetIdx(), rInf.GetLen(),
-                            rInf.GetKanaComp(), (sal_uInt16)m_aFont.GetFontSize().Height(), lcl_IsFullstopCentered( rInf.GetOut() ) , &aTextOriginPos );
+                            rInf.GetKanaComp(), static_cast<sal_uInt16>(m_aFont.GetFontSize().Height()), lcl_IsFullstopCentered( rInf.GetOut() ) , &aTextOriginPos );
                         bSpecialJust = true;
                     }
                     ///Asian Justification
@@ -1071,7 +1149,7 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                         if (!MsLangId::isKorean(aLang))
                         {
                             long nSpaceSum = nSpaceAdd;
-                            for ( sal_Int32 nI = 0; nI < rInf.GetLen(); ++nI )
+                            for (sal_Int32 nI = 0; nI < sal_Int32(rInf.GetLen()); ++nI)
                             {
                                 pKernArray[ nI ] += nSpaceSum;
                                 nSpaceSum += nSpaceAdd;
@@ -1081,67 +1159,63 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                         }
                     }
                     long nGridAddSum = nGridWidthAdd;
-                    for(sal_Int32 i = 0; i < rInf.GetLen(); i++, nGridAddSum += nGridWidthAdd )
+                    for (sal_Int32 i = 0; i < sal_Int32(rInf.GetLen()); i++, nGridAddSum += nGridWidthAdd )
                     {
                         pKernArray[i] += nGridAddSum;
                     }
                     long nKernSum = rInf.GetKern();
                     if ( bSpecialJust || rInf.GetKern() )
                     {
-                        for( sal_Int32 i = 0; i < rInf.GetLen(); i++, nKernSum += rInf.GetKern() )
+                        for (sal_Int32 i = 0; i < sal_Int32(rInf.GetLen()); i++, nKernSum += rInf.GetKern())
                         {
-                            if ( CH_BLANK == rInf.GetText()[ rInf.GetIdx()+i ] )
+                            if (CH_BLANK == rInf.GetText()[sal_Int32(rInf.GetIdx())+i])
                                 nKernSum += nSpaceAdd;
                             pKernArray[i] += nKernSum;
                         }
                         ///With through/uderstr. Grouped style requires a blank at the end
                         ///of a text edition special measures:
                         if( m_bPaintBlank && rInf.GetLen() && (CH_BLANK ==
-                            rInf.GetText()[ rInf.GetIdx() + rInf.GetLen() - 1 ] ) )
+                            rInf.GetText()[sal_Int32(rInf.GetIdx() + rInf.GetLen()) - 1]))
                         {
                             ///If it concerns a singular, underlined space acts,
                             ///we must spend two:
-                            if( 1 == rInf.GetLen() )
+                            if (TextFrameIndex(1) == rInf.GetLen())
                             {
                                 pKernArray[0] = rInf.GetWidth() + nSpaceAdd;
                                 rInf.GetOut().DrawTextArray( aTextOriginPos, rInf.GetText(),
-                                    pKernArray.get(), rInf.GetIdx(), 1 );
+                                    pKernArray.get(), sal_Int32(rInf.GetIdx()), 1);
                             }
                             else
                             {
-                                pKernArray[ rInf.GetLen() - 2] += nSpaceAdd;
+                                pKernArray[sal_Int32(rInf.GetLen()) - 2] += nSpaceAdd;
                                 rInf.GetOut().DrawTextArray( aTextOriginPos, rInf.GetText(),
-                                    pKernArray.get(), rInf.GetIdx(), rInf.GetLen() );
+                                    pKernArray.get(), sal_Int32(rInf.GetIdx()),
+                                    sal_Int32(rInf.GetLen()));
                             }
                         }
                         else
                         {
                             rInf.GetOut().DrawTextArray( aTextOriginPos, rInf.GetText(),
-                                pKernArray.get(), rInf.GetIdx(), rInf.GetLen() );
+                                pKernArray.get(), sal_Int32(rInf.GetIdx()),
+                                sal_Int32(rInf.GetLen()));
                         }
                     }
                     else
                     {
-                        Point aTmpPos( aTextOriginPos );
                         sal_Int32 i;
-                        sal_Int32 j = 0;
                         long nSpaceSum = 0;
-                        for( i = 0; i < rInf.GetLen(); i++ )
+                        for (i = 0; i < sal_Int32(rInf.GetLen()); i++)
                         {
-                            if( CH_BLANK == rInf.GetText()[ rInf.GetIdx() + i ] )
-                            {
-                                nSpaceSum += nSpaceAdd;
-                                if( j < i)
-                                    rInf.GetOut().DrawTextArray( aTmpPos, rInf.GetText(),
-                                    pKernArray.get() + j, rInf.GetIdx() + j, i - j );
-                                j = i + 1;
-                                pKernArray[i] = pKernArray[i] + nSpaceSum;
-                                aTmpPos.X() = aTextOriginPos.X() + pKernArray[ i ] + nKernSum;
-                            }
+                            if(CH_BLANK == rInf.GetText()[sal_Int32(rInf.GetIdx()) + i])
+                                nSpaceSum += nSpaceAdd + nKernSum;
+
+                            pKernArray[i] += nSpaceSum;
                         }
-                        if( j < i )
-                            rInf.GetOut().DrawTextArray( aTmpPos, rInf.GetText(),
-                            pKernArray.get() + j, rInf.GetIdx() +j , i - j );
+
+                        rInf.GetOut().DrawTextArray(aTextOriginPos,
+                                rInf.GetText(), pKernArray.get(),
+                                sal_Int32(rInf.GetIdx()),
+                                sal_Int32(rInf.GetLen()));
                     }
                 }
             }
@@ -1150,12 +1224,13 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                 //long nKernAdd = rInf.GetKern();
                 long nKernAdd = 0;
                 long nGridAddSum = nGridWidthAdd + nKernAdd;
-                for(sal_Int32 i = 0; i < rInf.GetLen(); i++,nGridAddSum += nGridWidthAdd + nKernAdd )
+                for (sal_Int32 i = 0; i < sal_Int32(rInf.GetLen());
+                     i++, nGridAddSum += nGridWidthAdd + nKernAdd)
                 {
                     pKernArray[i] += nGridAddSum;
                 }
                 rInf.GetOut().DrawTextArray( aTextOriginPos, rInf.GetText(),
-                    pKernArray.get(), rInf.GetIdx(), rInf.GetLen() );
+                    pKernArray.get(), sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
             }
             return;
         }
@@ -1166,7 +1241,7 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
     if ( bDirectPrint )
     {
         const Fraction aTmp( 1, 1 );
-        bool bStretch = rInf.GetWidth() && ( rInf.GetLen() > 1 ) && bPrt
+        bool bStretch = rInf.GetWidth() && (rInf.GetLen() > TextFrameIndex(1)) && bPrt
                         && ( aTmp != rInf.GetOut().GetMapMode().GetScaleX() );
 
         if ( bSwitchL2R )
@@ -1182,15 +1257,15 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
         // Simple kerning is handled by DrawStretchText
         if( rInf.GetSpace() || rInf.GetKanaComp() )
         {
-            std::unique_ptr<long[]> pKernArray( new long[ rInf.GetLen() ] );
+            std::unique_ptr<long[]> pKernArray(new long[sal_Int32(rInf.GetLen())]);
             rInf.GetOut().GetTextArray( rInf.GetText(), pKernArray.get(),
-                                       rInf.GetIdx(), rInf.GetLen() );
+                           sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
 
             if( bStretch )
             {
-                sal_Int32 nZwi = rInf.GetLen() - 1;
+                sal_Int32 nZwi = sal_Int32(rInf.GetLen()) - 1;
                 long nDiff = rInf.GetWidth() - pKernArray[ nZwi ]
-                             - rInf.GetLen() * rInf.GetKern();
+                             - sal_Int32(rInf.GetLen()) * rInf.GetKern();
                 long nRest = nDiff % nZwi;
                 long nAdd;
                 if( nRest < 0 )
@@ -1231,7 +1306,7 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                 {
                     pSI->Compress( pKernArray.get(), rInf.GetIdx(), rInf.GetLen(),
                                    rInf.GetKanaComp(),
-                                   (sal_uInt16)m_aFont.GetFontSize().Height(), lcl_IsFullstopCentered( rInf.GetOut() ), &aTextOriginPos );
+                                   static_cast<sal_uInt16>(m_aFont.GetFontSize().Height()), lcl_IsFullstopCentered( rInf.GetOut() ), &aTextOriginPos );
                     bSpecialJust = true;
                 }
 
@@ -1290,10 +1365,10 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
 
             if ( bStretch || m_bPaintBlank || rInf.GetKern() || bSpecialJust )
             {
-                for( sal_Int32 i = 0; i < rInf.GetLen(); i++,
+                for (sal_Int32 i = 0; i < sal_Int32(rInf.GetLen()); i++,
                      nKernSum += rInf.GetKern() )
                 {
-                    if ( CH_BLANK == rInf.GetText()[ rInf.GetIdx()+i ] )
+                    if (CH_BLANK == rInf.GetText()[sal_Int32(rInf.GetIdx()) + i])
                         nKernSum += nSpaceAdd;
                     pKernArray[i] += nKernSum;
                 }
@@ -1301,50 +1376,50 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                 // In case of underlined/strike-through justified text
                 // a blank at the end requires special handling:
                 if( m_bPaintBlank && rInf.GetLen() && ( CH_BLANK ==
-                    rInf.GetText()[ rInf.GetIdx()+rInf.GetLen()-1 ] ) )
+                    rInf.GetText()[sal_Int32(rInf.GetIdx() + rInf.GetLen())-1]))
                 {
                     // If it is a single underlined space, output 2 spaces:
-                    if( 1 == rInf.GetLen() )
+                    if (TextFrameIndex(1) == rInf.GetLen())
                     {
                         pKernArray[0] = rInf.GetWidth() + nSpaceAdd;
 
                         rInf.GetOut().DrawTextArray( aTextOriginPos, rInf.GetText(),
-                                                     pKernArray.get(), rInf.GetIdx(), 1 );
+                             pKernArray.get(), sal_Int32(rInf.GetIdx()), 1 );
                     }
                     else
                     {
-                        pKernArray[ rInf.GetLen() - 2 ] += nSpaceAdd;
+                        pKernArray[ sal_Int32(rInf.GetLen()) - 2 ] += nSpaceAdd;
                         rInf.GetOut().DrawTextArray( aTextOriginPos, rInf.GetText(),
-                            pKernArray.get(), rInf.GetIdx(), rInf.GetLen() );
+                            pKernArray.get(), sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
                     }
                 }
                 else
                     rInf.GetOut().DrawTextArray( aTextOriginPos, rInf.GetText(),
-                                                 pKernArray.get(), rInf.GetIdx(), rInf.GetLen() );
+                            pKernArray.get(), sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
             }
             else
             {
                 Point aTmpPos( aTextOriginPos );
                 sal_Int32 j = 0;
                 sal_Int32 i;
-                for( i = 0; i < rInf.GetLen(); i++ )
+                for( i = 0; i < sal_Int32(rInf.GetLen()); i++ )
                 {
-                    if( CH_BLANK == rInf.GetText()[ rInf.GetIdx()+i ] )
+                    if (CH_BLANK == rInf.GetText()[sal_Int32(rInf.GetIdx()) + i])
                     {
                         nKernSum += nSpaceAdd;
                         if( j < i )
                             rInf.GetOut().DrawText( aTmpPos, rInf.GetText(),
-                                                rInf.GetIdx() + j, i - j );
+                                        sal_Int32(rInf.GetIdx()) + j, i - j);
                         j = i + 1;
                         SwTwips nAdd = pKernArray[ i ] + nKernSum;
                         if ( ( ComplexTextLayoutFlags::BiDiStrong | ComplexTextLayoutFlags::BiDiRtl ) == nMode )
                             nAdd *= -1;
-                        aTmpPos.X() = aTextOriginPos.X() + nAdd;
+                        aTmpPos.setX( aTextOriginPos.X() + nAdd );
                     }
                 }
                 if( j < i )
                     rInf.GetOut().DrawText( aTmpPos, rInf.GetText(),
-                                            rInf.GetIdx() + j, i - j );
+                                sal_Int32(rInf.GetIdx()) + j, i - j);
             }
         }
         else if( bStretch )
@@ -1353,7 +1428,8 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
             if( rInf.GetKern() && rInf.GetLen() && nTmpWidth > rInf.GetKern() )
                 nTmpWidth -= rInf.GetKern();
             rInf.GetOut().DrawStretchText( aTextOriginPos, nTmpWidth,
-                                           rInf.GetText(), rInf.GetIdx(), rInf.GetLen() );
+                       rInf.GetText(),
+                       sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
         }
         else if( rInf.GetKern() )
         {
@@ -1370,11 +1446,12 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
             }
 
             rInf.GetOut().DrawStretchText( aTextOriginPos, nTmpWidth,
-                                           rInf.GetText(), rInf.GetIdx(), rInf.GetLen() );
+                    rInf.GetText(),
+                    sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
         }
         else
             rInf.GetOut().DrawText( aTextOriginPos, rInf.GetText(),
-                                    rInf.GetIdx(), rInf.GetLen() );
+                    sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
     }
 
     // PAINTING WITH FORMATTING DEVICE/SCREEN ADJUSTMENT
@@ -1388,14 +1465,16 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
         bool bBullet = rInf.GetBullet();
         if( m_bSymbol )
             bBullet = false;
-        std::unique_ptr<long[]> pKernArray( new long[ rInf.GetLen() ] );
+        std::unique_ptr<long[]> pKernArray(new long[sal_Int32(rInf.GetLen())]);
         CreateScrFont( *rInf.GetShell(), rInf.GetOut() );
         long nScrPos;
 
         // get screen array
-        std::unique_ptr<long[]> pScrArray( new long[ rInf.GetLen() ] );
+        std::unique_ptr<long[]> pScrArray(new long[sal_Int32(rInf.GetLen())]);
+        SwTextGlyphsKey aGlyphsKey{ &rInf.GetOut(), rInf.GetText(), sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()) };
+        SalLayoutGlyphs* pGlyphs = lcl_CreateLayout(aGlyphsKey, m_aTextGlyphs[aGlyphsKey]);
         rInf.GetOut().GetTextArray( rInf.GetText(), pScrArray.get(),
-                                    rInf.GetIdx(), rInf.GetLen() );
+                        sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()), nullptr, pGlyphs);
 
         // OLE: no printer available
         // OSL_ENSURE( pPrinter, "DrawText needs pPrinter" )
@@ -1407,13 +1486,15 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                 if( !m_pPrtFont->IsSameInstance( m_pPrinter->GetFont() ) )
                     m_pPrinter->SetFont( *m_pPrtFont );
             }
-            m_pPrinter->GetTextArray( rInf.GetText(), pKernArray.get(), rInf.GetIdx(),
-                                    rInf.GetLen() );
+            aGlyphsKey = SwTextGlyphsKey{ m_pPrinter, rInf.GetText(), sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()) };
+            pGlyphs = lcl_CreateLayout(aGlyphsKey, m_aTextGlyphs[aGlyphsKey]);
+            m_pPrinter->GetTextArray(rInf.GetText(), pKernArray.get(),
+                    sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()), nullptr, pGlyphs);
         }
         else
         {
             rInf.GetOut().GetTextArray( rInf.GetText(), pKernArray.get(),
-                                        rInf.GetIdx(), rInf.GetLen() );
+                    sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
         }
 
         // Modify Printer and ScreenArrays for special justifications
@@ -1434,10 +1515,10 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                 Point aTmpPos( aTextOriginPos );
                 pSI->Compress( pScrArray.get(), rInf.GetIdx(), rInf.GetLen(),
                                rInf.GetKanaComp(),
-                               (sal_uInt16)m_aFont.GetFontSize().Height(), lcl_IsFullstopCentered( rInf.GetOut() ), &aTmpPos );
+                               static_cast<sal_uInt16>(m_aFont.GetFontSize().Height()), lcl_IsFullstopCentered( rInf.GetOut() ), &aTmpPos );
                 pSI->Compress( pKernArray.get(), rInf.GetIdx(), rInf.GetLen(),
                                rInf.GetKanaComp(),
-                               (sal_uInt16)m_aFont.GetFontSize().Height(), lcl_IsFullstopCentered( rInf.GetOut() ), &aTextOriginPos );
+                               static_cast<sal_uInt16>(m_aFont.GetFontSize().Height()), lcl_IsFullstopCentered( rInf.GetOut() ), &aTextOriginPos );
             }
 
             // Asian Justification
@@ -1494,11 +1575,11 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
             // !!! HACK !!!
             // The Arabic layout engine requires some context of the string
             // which should be painted.
-            sal_Int32 nCopyStart = rInf.GetIdx();
+            sal_Int32 nCopyStart = sal_Int32(rInf.GetIdx());
             if ( nCopyStart )
                 --nCopyStart;
 
-            sal_Int32 nCopyLen = rInf.GetLen();
+            sal_Int32 nCopyLen = sal_Int32(rInf.GetLen());
             if ( nCopyStart + nCopyLen < rInf.GetText().getLength() )
                 ++nCopyLen;
 
@@ -1513,7 +1594,7 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                     /* fdo#72488 Hack: try to see if the space is zero width
                      * and don't bother with inserting a bullet in this case.
                      */
-                    if ((i + nCopyStart + 1 >= rInf.GetLen()) ||
+                    if ((i + nCopyStart + 1 >= sal_Int32(rInf.GetLen())) ||
                         pKernArray[i + nCopyStart] != pKernArray[ i + nCopyStart + 1])
                     {
                         aBulletOverlay = aBulletOverlay.replaceAt(i, 1, OUString(CH_BULLET));
@@ -1529,18 +1610,18 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                 }
         }
 
-        sal_Int32 nCnt = rInf.GetText().getLength();
+        TextFrameIndex nCnt(rInf.GetText().getLength());
         if ( nCnt < rInf.GetIdx() )
-            nCnt = 0;
+            assert(false); // layout bug, not handled below
         else
             nCnt = nCnt - rInf.GetIdx();
-        nCnt = std::min<sal_Int32>( nCnt, rInf.GetLen() );
+        nCnt = std::min(nCnt, rInf.GetLen());
         long nKernSum = rInf.GetKern();
-        sal_Unicode cChPrev = rInf.GetText()[ rInf.GetIdx() ];
+        sal_Unicode cChPrev = rInf.GetText()[sal_Int32(rInf.GetIdx())];
 
         // In case of a single underlined space in justified text,
         // have to output 2 spaces:
-        if ( ( nCnt == 1 ) && rInf.GetSpace() && ( cChPrev == CH_BLANK ) )
+        if ((nCnt == TextFrameIndex(1)) && rInf.GetSpace() && (cChPrev == CH_BLANK))
         {
             pKernArray[0] = rInf.GetWidth() +
                             rInf.GetKern() +
@@ -1553,7 +1634,7 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                 rInf.GetFrame()->SwitchHorizontalToVertical( aTextOriginPos );
 
             rInf.GetOut().DrawTextArray( aTextOriginPos, rInf.GetText(),
-                                         pKernArray.get(), rInf.GetIdx(), 1 );
+                         pKernArray.get(), sal_Int32(rInf.GetIdx()), 1 );
             if( bBullet )
                 rInf.GetOut().DrawTextArray( aTextOriginPos, *pStr, pKernArray.get(),
                                              rInf.GetIdx() ? 1 : 0, 1 );
@@ -1583,9 +1664,9 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
             const long nOtherHalf = nSpaceAdd - nHalfSpace;
             if ( nSpaceAdd && ( cChPrev == CH_BLANK ) )
                 nSpaceSum = nHalfSpace;
-            for( sal_Int32 i=1; i<nCnt; ++i, nKernSum += rInf.GetKern() )
+            for (sal_Int32 i = 1; i < sal_Int32(nCnt); ++i, nKernSum += rInf.GetKern())
             {
-                nCh = rInf.GetText()[ rInf.GetIdx() + i ];
+                nCh = rInf.GetText()[sal_Int32(rInf.GetIdx()) + i];
 
                 OSL_ENSURE( pScrArray, "Where is the screen array?" );
                 long nScr;
@@ -1601,7 +1682,7 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
 
                     if ( cChPrev == CH_BLANK )
                         nSpaceSum += nOtherHalf;
-                    if ( i + 1 == nCnt )
+                    if (i + 1 == sal_Int32(nCnt))
                         nSpaceSum += nSpaceAdd;
                     else
                         nSpaceSum += nHalfSpace;
@@ -1628,12 +1709,12 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                 // ends with a blank, the full nSpaceAdd value has been added to the character in
                 // front of the blank. This leads to painting artifacts, therefore we remove the
                 // nSpaceAdd value again:
-                if ( (bNoHalfSpace || m_pPrtFont->IsWordLineMode()) && i+1 == nCnt && nCh == CH_BLANK )
+                if ((bNoHalfSpace || m_pPrtFont->IsWordLineMode()) && i+1 == sal_Int32(nCnt) && nCh == CH_BLANK)
                     pKernArray[i-1] = pKernArray[i-1] - nSpaceAdd;
             }
 
             // the layout engine requires the total width of the output
-            pKernArray[ rInf.GetLen() - 1 ] += nKernSum + nSpaceSum;
+            pKernArray[sal_Int32(rInf.GetLen()) - 1] += nKernSum + nSpaceSum;
 
             if( rInf.GetGreyWave() )
             {
@@ -1647,36 +1728,35 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                             rInf.GetOut().Push();
 
                         Color aCol( rInf.GetOut().GetLineColor() );
-                        bool bColSave = aCol != *pWaveCol;
+                        bool bColSave = aCol != gWaveCol;
                         if ( bColSave )
-                            rInf.GetOut().SetLineColor( *pWaveCol );
+                            rInf.GetOut().SetLineColor( gWaveCol );
 
                         Point aEnd;
-                        long nKernVal = pKernArray[ rInf.GetLen() - 1 ];
+                        long nKernVal = pKernArray[sal_Int32(rInf.GetLen()) - 1];
 
-                        const sal_uInt16 nDir = bBidiPor ?
-                                        1800 :
-                                        UnMapDirection(
-                                            GetFont().GetOrientation(),
-                                            bSwitchH2V );
+                        const sal_uInt16 nDir = bBidiPor
+                                                    ? 1800
+                                                    : UnMapDirection(GetFont().GetOrientation(),
+                                                                     bSwitchH2V, bSwitchH2VLRBT);
 
                         switch ( nDir )
                         {
                         case 0 :
-                            aEnd.X() = rInf.GetPos().X() + nKernVal;
-                            aEnd.Y() = rInf.GetPos().Y();
+                            aEnd.setX( rInf.GetPos().X() + nKernVal );
+                            aEnd.setY( rInf.GetPos().Y() );
                             break;
                         case 900 :
-                            aEnd.X() = rInf.GetPos().X();
-                            aEnd.Y() = rInf.GetPos().Y() - nKernVal;
+                            aEnd.setX( rInf.GetPos().X() );
+                            aEnd.setY( rInf.GetPos().Y() - nKernVal );
                             break;
                         case 1800 :
-                            aEnd.X() = rInf.GetPos().X() - nKernVal;
-                            aEnd.Y() = rInf.GetPos().Y();
+                            aEnd.setX( rInf.GetPos().X() - nKernVal );
+                            aEnd.setY( rInf.GetPos().Y() );
                             break;
                         case 2700 :
-                            aEnd.X() = rInf.GetPos().X();
-                            aEnd.Y() = rInf.GetPos().Y() + nKernVal;
+                            aEnd.setX( rInf.GetPos().X() );
+                            aEnd.setY( rInf.GetPos().Y() + nKernVal );
                             break;
                         }
 
@@ -1693,8 +1773,10 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                             rInf.GetFrame()->SwitchHorizontalToVertical( aCurrPos );
                             rInf.GetFrame()->SwitchHorizontalToVertical( aEnd );
                         }
-                        rInf.GetOut().DrawWaveLine( aCurrPos, aEnd );
-
+                        {
+                            vcl::ScopedAntialiasing a(rInf.GetOut(), true);
+                            rInf.GetOut().DrawWaveLine( aCurrPos, aEnd );
+                        }
                         if ( bColSave )
                             rInf.GetOut().SetLineColor( aCol );
 
@@ -1708,9 +1790,9 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                 // anything to do?
                 if (rInf.GetWrong() || rInf.GetGrammarCheck() || rInf.GetSmartTags())
                 {
-                    CalcLinePosData aCalcLinePosData(rInf, GetFont(),
-                            nCnt, bSwitchH2V, bSwitchL2R,
-                            nHalfSpace, pKernArray.get(), bBidiPor);
+                    CalcLinePosData aCalcLinePosData(rInf, GetFont(), nCnt, bSwitchH2V,
+                                                     bSwitchH2VLRBT, bSwitchL2R, nHalfSpace,
+                                                     pKernArray.get(), bBidiPor);
 
                     SwForbidden aForbidden;
                     // draw line for smart tag data
@@ -1725,10 +1807,9 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                 }
             }
 
-            sal_Int32 nOffs = 0;
-            sal_Int32 nLen = rInf.GetLen();
+            sal_Int32 nLen = sal_Int32(rInf.GetLen());
 
-            if( nOffs < nLen )
+            if( nLen > 0 )
             {
 
                 if ( bSwitchL2R )
@@ -1741,11 +1822,13 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                 // the paragraph string. For the layout engine, the copy
                 // of the string has to be an environment of the range which
                 // is painted
-                sal_Int32 nTmpIdx = bBullet ?
-                                              ( rInf.GetIdx() ? 1 : 0 ) :
-                                              rInf.GetIdx();
-                rInf.GetOut().DrawTextArray( aTextOriginPos, *pStr, pKernArray.get() + nOffs,
-                                             nTmpIdx + nOffs , nLen - nOffs );
+                sal_Int32 nTmpIdx = bBullet
+                            ? (rInf.GetIdx() ? 1 : 0)
+                            : sal_Int32(rInf.GetIdx());
+                aGlyphsKey = SwTextGlyphsKey{ &rInf.GetOut(), *pStr, nTmpIdx, nLen };
+                pGlyphs = lcl_CreateLayout(aGlyphsKey, m_aTextGlyphs[aGlyphsKey]);
+                rInf.GetOut().DrawTextArray( aTextOriginPos, *pStr, pKernArray.get(),
+                                             nTmpIdx , nLen, SalLayoutFlags::NONE, pGlyphs );
                 if (bBullet)
                 {
                     rInf.GetOut().Push();
@@ -1755,7 +1838,7 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                     FontLineStyle aPreviousOverline = pTmpFont->GetOverline();
                     FontStrikeout aPreviousStrikeout = pTmpFont->GetStrikeout();
 
-                    pTmpFont->SetColor( Color(NON_PRINTING_CHARACTER_COLOR) );
+                    pTmpFont->SetColor( NON_PRINTING_CHARACTER_COLOR );
                     pTmpFont->SetUnderline(LINESTYLE_NONE);
                     pTmpFont->SetOverline(LINESTYLE_NONE);
                     pTmpFont->SetStrikeout(STRIKEOUT_NONE);
@@ -1769,9 +1852,9 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                             aBulletOverlay[ nTmpIdx ] == CH_BULLET )
                         {
                             if (bSwitchH2V)
-                                aTextOriginPos.Y() += nShift ;
+                                aTextOriginPos.AdjustY(nShift ) ;
                             else
-                                aTextOriginPos.X() += nShift ;
+                                aTextOriginPos.AdjustX(nShift ) ;
                             nAdd = nShift ;
                         }
                         for( sal_Int32 i = 1 ; i < nLen ; ++i )
@@ -1782,8 +1865,8 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
                                 pKernArray [ i - 1 ] -= nAdd;
                         }
                     }
-                    rInf.GetOut().DrawTextArray( aTextOriginPos, aBulletOverlay, pKernArray.get() + nOffs,
-                                                 nTmpIdx + nOffs , nLen - nOffs );
+                    rInf.GetOut().DrawTextArray( aTextOriginPos, aBulletOverlay, pKernArray.get(),
+                                                 nTmpIdx , nLen );
                     pTmpFont->SetColor( aPreviousColor );
 
                     pTmpFont->SetUnderline(aPreviousUnderline);
@@ -1799,8 +1882,9 @@ void SwFntObj::DrawText( SwDrawTextInfo &rInf )
 Size SwFntObj::GetTextSize( SwDrawTextInfo& rInf )
 {
     Size aTextSize;
-    const sal_Int32 nLn = ( COMPLETE_STRING != rInf.GetLen() ) ? rInf.GetLen() :
-                           rInf.GetText().getLength();
+    const TextFrameIndex nLn = (TextFrameIndex(COMPLETE_STRING) != rInf.GetLen())
+        ? rInf.GetLen()
+        : TextFrameIndex(rInf.GetText().getLength());
 
     // be sure to have the correct layout mode at the printer
     if ( m_pPrinter )
@@ -1829,22 +1913,22 @@ Size SwFntObj::GetTextSize( SwDrawTextInfo& rInf )
             else
                 pOutDev = rInf.GetpOut();
 
-            aTextSize.Width() =
-                    pOutDev->GetTextWidth( rInf.GetText(), rInf.GetIdx(), nLn );
+            aTextSize.setWidth( pOutDev->GetTextWidth(rInf.GetText(),
+                        sal_Int32(rInf.GetIdx()), sal_Int32(nLn)) );
 
             OSL_ENSURE( !rInf.GetShell() ||
                     ( USHRT_MAX != GetGuessedLeading() && USHRT_MAX != GetExternalLeading() ),
                 "Leading values should be already calculated" );
-            aTextSize.Height() = pOutDev->GetTextHeight() +
-                                GetFontLeading( rInf.GetShell(), rInf.GetOut() );
+            aTextSize.setHeight( pOutDev->GetTextHeight() +
+                                GetFontLeading( rInf.GetShell(), rInf.GetOut() ) );
 
-            long nAvgWidthPerChar = aTextSize.Width() / nLn;
+            long nAvgWidthPerChar = aTextSize.Width() / sal_Int32(nLn);
 
             const sal_uLong i = nAvgWidthPerChar ?
                             ( nAvgWidthPerChar - 1 ) / nGridWidth + 1:
                             1;
 
-            aTextSize.Width() = i * nGridWidth * nLn;
+            aTextSize.setWidth(i * nGridWidth * sal_Int32(nLn));
             rInf.SetKanaDiff( 0 );
             return aTextSize;
         }
@@ -1866,10 +1950,11 @@ Size SwFntObj::GetTextSize( SwDrawTextInfo& rInf )
             }
             else
                 pOutDev = rInf.GetpOut();
-            aTextSize.Width() = pOutDev->GetTextWidth( rInf.GetText(), rInf.GetIdx(), nLn );
-            aTextSize.Height() = pOutDev->GetTextHeight() +
-                                GetFontLeading( rInf.GetShell(), rInf.GetOut() );
-            aTextSize.Width() += nLn * nGridWidthAdd;
+            aTextSize.setWidth(pOutDev->GetTextWidth(rInf.GetText(),
+                        sal_Int32(rInf.GetIdx()), sal_Int32(nLn)));
+            aTextSize.setHeight( pOutDev->GetTextHeight() +
+                                GetFontLeading( rInf.GetShell(), rInf.GetOut() ) );
+            aTextSize.AdjustWidth(sal_Int32(nLn) * nGridWidthAdd);
             //if ( rInf.GetKern() && nLn )
             //    aTextSize.Width() += ( nLn ) * long( rInf.GetKern() );
 
@@ -1894,38 +1979,39 @@ Size SwFntObj::GetTextSize( SwDrawTextInfo& rInf )
     {
         if( !m_pPrtFont->IsSameInstance( m_pPrinter->GetFont() ) )
             m_pPrinter->SetFont(*m_pPrtFont);
-        aTextSize.Width() = m_pPrinter->GetTextWidth( rInf.GetText(),
-                                                   rInf.GetIdx(), nLn );
-        aTextSize.Height() = m_pPrinter->GetTextHeight();
-        long* pKernArray = new long[nLn];
+        aTextSize.setWidth( m_pPrinter->GetTextWidth( rInf.GetText(),
+                               sal_Int32(rInf.GetIdx()), sal_Int32(nLn)));
+        aTextSize.setHeight( m_pPrinter->GetTextHeight() );
+        std::unique_ptr<long[]> pKernArray(new long[sal_Int32(nLn)]);
         CreateScrFont( *rInf.GetShell(), rInf.GetOut() );
         if( !GetScrFont()->IsSameInstance( rInf.GetOut().GetFont() ) )
             rInf.GetOut().SetFont( *m_pScrFont );
         long nScrPos;
 
-        m_pPrinter->GetTextArray( rInf.GetText(), pKernArray, rInf.GetIdx(),nLn );
+        m_pPrinter->GetTextArray(rInf.GetText(), pKernArray.get(),
+                sal_Int32(rInf.GetIdx()), sal_Int32(nLn));
         if( bCompress )
-            rInf.SetKanaDiff( rInf.GetScriptInfo()->Compress( pKernArray,
+            rInf.SetKanaDiff( rInf.GetScriptInfo()->Compress( pKernArray.get(),
                 rInf.GetIdx(), nLn, rInf.GetKanaComp(),
-                (sal_uInt16)m_aFont.GetFontSize().Height() ,lcl_IsFullstopCentered( rInf.GetOut() ) ) );
+                static_cast<sal_uInt16>(m_aFont.GetFontSize().Height()) ,lcl_IsFullstopCentered( rInf.GetOut() ) ) );
         else
             rInf.SetKanaDiff( 0 );
 
         if ( rInf.GetKanaDiff() )
-            nScrPos = pKernArray[ nLn - 1 ];
+            nScrPos = pKernArray[ sal_Int32(nLn) - 1 ];
         else
         {
-            std::unique_ptr<long[]> pScrArray( new long[ rInf.GetLen() ] );
+            std::unique_ptr<long[]> pScrArray(new long[sal_Int32(rInf.GetLen())]);
             rInf.GetOut().GetTextArray( rInf.GetText(), pScrArray.get(),
-                                        rInf.GetIdx(), rInf.GetLen() );
+                        sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
             nScrPos = pScrArray[ 0 ];
-            sal_Int32 nCnt = rInf.GetText().getLength();
+            TextFrameIndex nCnt(rInf.GetText().getLength());
             if ( nCnt < rInf.GetIdx() )
-                nCnt=0;
+                nCnt = TextFrameIndex(0); // assert???
             else
                 nCnt = nCnt - rInf.GetIdx();
-            nCnt = std::min<sal_Int32>(nCnt, nLn);
-            sal_Unicode nChPrev = rInf.GetText()[ rInf.GetIdx() ];
+            nCnt = std::min(nCnt, nLn);
+            sal_Unicode nChPrev = rInf.GetText()[ sal_Int32(rInf.GetIdx()) ];
 
             sal_Unicode nCh;
 
@@ -1933,9 +2019,9 @@ Size SwFntObj::GetTextSize( SwDrawTextInfo& rInf )
             // grows
             const int nMul = m_pPrtFont->GetKerning() != FontKerning::NONE ? 1 : 3;
             const int nDiv = nMul+1;
-            for( sal_Int32 i = 1; i<nCnt; i++ )
+            for (sal_Int32 i = 1; i < sal_Int32(nCnt); i++)
             {
-                nCh = rInf.GetText()[ rInf.GetIdx() + i ];
+                nCh = rInf.GetText()[ sal_Int32(rInf.GetIdx()) + i ];
                 long nScr;
                 nScr = pScrArray[ i ] - pScrArray[ i - 1 ];
                 if ( nCh == CH_BLANK )
@@ -1955,8 +2041,8 @@ Size SwFntObj::GetTextSize( SwDrawTextInfo& rInf )
             }
         }
 
-        delete[] pKernArray;
-        aTextSize.Width() = nScrPos;
+        pKernArray.reset();
+        aTextSize.setWidth( nScrPos );
     }
     else
     {
@@ -1964,36 +2050,38 @@ Size SwFntObj::GetTextSize( SwDrawTextInfo& rInf )
             rInf.GetOut().SetFont( *m_pPrtFont );
         if( bCompress )
         {
-            std::unique_ptr<long[]> pKernArray( new long[nLn] );
+            std::unique_ptr<long[]> pKernArray( new long[sal_Int32(nLn)] );
             rInf.GetOut().GetTextArray( rInf.GetText(), pKernArray.get(),
-                                        rInf.GetIdx(), nLn );
+                                sal_Int32(rInf.GetIdx()), sal_Int32(nLn));
             rInf.SetKanaDiff( rInf.GetScriptInfo()->Compress( pKernArray.get(),
                 rInf.GetIdx(), nLn, rInf.GetKanaComp(),
-                (sal_uInt16) m_aFont.GetFontSize().Height() ,lcl_IsFullstopCentered( rInf.GetOut() ) ) );
-            aTextSize.Width() = pKernArray[ nLn - 1 ];
+                static_cast<sal_uInt16>(m_aFont.GetFontSize().Height()) ,lcl_IsFullstopCentered( rInf.GetOut() ) ) );
+            aTextSize.setWidth( pKernArray[sal_Int32(nLn) - 1] );
         }
         else
         {
-            aTextSize.Width() = rInf.GetOut().GetTextWidth( rInf.GetText(),
-                                                           rInf.GetIdx(), nLn,
-                                                           rInf.GetVclCache());
+            SwTextGlyphsKey aGlyphsKey{ &rInf.GetOut(), rInf.GetText(), sal_Int32(rInf.GetIdx()), sal_Int32(nLn) };
+            SalLayoutGlyphs* pGlyphs = lcl_CreateLayout(aGlyphsKey, m_aTextGlyphs[aGlyphsKey]);
+            aTextSize.setWidth( rInf.GetOut().GetTextWidth( rInf.GetText(),
+                                   sal_Int32(rInf.GetIdx()), sal_Int32(nLn),
+                                                           rInf.GetVclCache(), pGlyphs) );
             rInf.SetKanaDiff( 0 );
         }
 
-        aTextSize.Height() = rInf.GetOut().GetTextHeight();
+        aTextSize.setHeight( rInf.GetOut().GetTextHeight() );
     }
 
     if ( rInf.GetKern() && nLn )
-        aTextSize.Width() += ( nLn - 1 ) * rInf.GetKern();
+        aTextSize.AdjustWidth((sal_Int32(nLn) - 1) * rInf.GetKern());
 
     OSL_ENSURE( !rInf.GetShell() ||
             ( USHRT_MAX != GetGuessedLeading() && USHRT_MAX != GetExternalLeading() ),
               "Leading values should be already calculated" );
-    aTextSize.Height() += GetFontLeading( rInf.GetShell(), rInf.GetOut() );
+    aTextSize.AdjustHeight(GetFontLeading( rInf.GetShell(), rInf.GetOut() ) );
     return aTextSize;
 }
 
-sal_Int32 SwFntObj::GetCursorOfst( SwDrawTextInfo &rInf )
+TextFrameIndex SwFntObj::GetModelPositionForViewPoint(SwDrawTextInfo &rInf)
 {
     long nSpaceAdd =       rInf.GetSpace() / SPACING_PRECISION_FACTOR;
     const long nSperren = -rInf.GetSperren() / SPACING_PRECISION_FACTOR;
@@ -2002,19 +2090,21 @@ sal_Int32 SwFntObj::GetCursorOfst( SwDrawTextInfo &rInf )
     if( 0 != nSperren )
         nKern -= nSperren;
 
-    std::unique_ptr<long[]> pKernArray( new long[ rInf.GetLen() ] );
+    std::unique_ptr<long[]> pKernArray(new long[sal_Int32(rInf.GetLen())]);
 
     // be sure to have the correct layout mode at the printer
     if ( m_pPrinter )
     {
         m_pPrinter->SetLayoutMode( rInf.GetOut().GetLayoutMode() );
         m_pPrinter->SetDigitLanguage( rInf.GetOut().GetDigitLanguage() );
+        SwTextGlyphsKey aGlyphsKey{ m_pPrinter, rInf.GetText(), sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()) };
+        SalLayoutGlyphs* pGlyphs = lcl_CreateLayout(aGlyphsKey, m_aTextGlyphs[aGlyphsKey]);
         m_pPrinter->GetTextArray( rInf.GetText(), pKernArray.get(),
-                                rInf.GetIdx(), rInf.GetLen() );
+                sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()), nullptr, pGlyphs);
     }
     else
         rInf.GetOut().GetTextArray( rInf.GetText(), pKernArray.get(),
-                                    rInf.GetIdx(), rInf.GetLen() );
+                sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
 
     const SwScriptInfo* pSI = rInf.GetScriptInfo();
     if ( rInf.GetFont() && rInf.GetLen() )
@@ -2028,7 +2118,7 @@ sal_Int32 SwFntObj::GetCursorOfst( SwDrawTextInfo &rInf )
         {
             pSI->Compress( pKernArray.get(), rInf.GetIdx(), rInf.GetLen(),
                            rInf.GetKanaComp(),
-                           (sal_uInt16) m_aFont.GetFontSize().Height(),
+                           static_cast<sal_uInt16>(m_aFont.GetFontSize().Height()),
                            lcl_IsFullstopCentered( rInf.GetOut() ) );
         }
 
@@ -2079,7 +2169,7 @@ sal_Int32 SwFntObj::GetCursorOfst( SwDrawTextInfo &rInf )
 
     long nLeft = 0;
     long nRight = 0;
-    sal_Int32 nCnt = 0;
+    TextFrameIndex nCnt(0);
     long nSpaceSum = 0;
     long nKernSum = 0;
 
@@ -2092,7 +2182,7 @@ sal_Int32 SwFntObj::GetCursorOfst( SwDrawTextInfo &rInf )
             const SwDoc* pDoc = rInf.GetShell()->GetDoc();
             const sal_uInt16 nGridWidth = GetGridWidth(*pGrid, *pDoc);
 
-            long nAvgWidthPerChar = pKernArray[ rInf.GetLen() - 1 ] / rInf.GetLen();
+            long nAvgWidthPerChar = pKernArray[sal_Int32(rInf.GetLen()) - 1] / sal_Int32(rInf.GetLen());
 
             sal_uLong i = nAvgWidthPerChar ?
                       ( nAvgWidthPerChar - 1 ) / nGridWidth + 1:
@@ -2100,8 +2190,9 @@ sal_Int32 SwFntObj::GetCursorOfst( SwDrawTextInfo &rInf )
 
             nAvgWidthPerChar = i * nGridWidth;
 
-            nCnt = rInf.GetOfst() / nAvgWidthPerChar;
-            if ( 2 * ( rInf.GetOfst() - nCnt * nAvgWidthPerChar ) > nAvgWidthPerChar )
+// stupid CLANG
+            nCnt = TextFrameIndex(rInf.GetOffset() / nAvgWidthPerChar);
+            if (2 * (rInf.GetOffset() - sal_Int32(nCnt) * nAvgWidthPerChar) > nAvgWidthPerChar)
                 ++nCnt;
 
             return nCnt;
@@ -2117,10 +2208,10 @@ sal_Int32 SwFntObj::GetCursorOfst( SwDrawTextInfo &rInf )
 
             const long nGridWidthAdd = EvalGridWidthAdd( pGrid, rInf );
 
-            for(sal_Int32 j = 0; j < rInf.GetLen(); j++)
+            for (TextFrameIndex j(0); j < rInf.GetLen(); j++)
             {
-                long nScr = pKernArray[ j ] + ( nSpaceAdd + nGridWidthAdd  ) * ( j + 1 );
-                if( nScr >= rInf.GetOfst())
+                long nScr = pKernArray[sal_Int32(j)] + (nSpaceAdd + nGridWidthAdd) * (sal_Int32(j) + 1);
+                if( nScr >= rInf.GetOffset())
                 {
                     nCnt = j;
                     break;
@@ -2131,30 +2222,31 @@ sal_Int32 SwFntObj::GetCursorOfst( SwDrawTextInfo &rInf )
     }
 
     sal_Int32 nDone = 0;
-    sal_Int32 nIdx = rInf.GetIdx();
-    sal_Int32 nLastIdx = nIdx;
-    const sal_Int32 nEnd = rInf.GetIdx() + rInf.GetLen();
+    TextFrameIndex nIdx = rInf.GetIdx();
+    TextFrameIndex nLastIdx = nIdx;
+    const TextFrameIndex nEnd = rInf.GetIdx() + rInf.GetLen();
 
     // #i105901#
     // skip character cells for all script types
     LanguageType aLang = rInf.GetFont()->GetLanguage();
 
-    while ( ( nRight < long( rInf.GetOfst() ) ) && ( nIdx < nEnd ) )
+    while ( ( nRight < long( rInf.GetOffset() ) ) && ( nIdx < nEnd ) )
     {
-        if ( nSpaceAdd && CH_BLANK == rInf.GetText()[ nIdx ] )
+        if (nSpaceAdd && CH_BLANK == rInf.GetText()[ sal_Int32(nIdx)])
             nSpaceSum += nSpaceAdd;
 
         // go to next character (cell).
         nLastIdx = nIdx;
 
-        nIdx = g_pBreakIt->GetBreakIter()->nextCharacters( rInf.GetText(),
-                    nIdx, g_pBreakIt->GetLocale( aLang ),
-                    i18n::CharacterIteratorMode::SKIPCELL, 1, nDone );
+        nIdx = TextFrameIndex(g_pBreakIt->GetBreakIter()->nextCharacters(
+                    rInf.GetText(), sal_Int32(nIdx),
+                    g_pBreakIt->GetLocale( aLang ),
+                    i18n::CharacterIteratorMode::SKIPCELL, 1, nDone));
         if ( nIdx <= nLastIdx )
             break;
 
         nLeft = nRight;
-        nRight = pKernArray[ nIdx - rInf.GetIdx() - 1 ] + nKernSum + nSpaceSum;
+        nRight = pKernArray[sal_Int32(nIdx - rInf.GetIdx()) - 1] + nKernSum + nSpaceSum;
 
         nKernSum += nKern;
     }
@@ -2163,8 +2255,8 @@ sal_Int32 SwFntObj::GetCursorOfst( SwDrawTextInfo &rInf )
     // or if we do not want to go to the next character
     if ( nIdx > rInf.GetIdx() &&
          ( rInf.IsPosMatchesBounds() ||
-           ( ( nRight > long( rInf.GetOfst() ) ) &&
-             ( nRight - rInf.GetOfst() > rInf.GetOfst() - nLeft ) ) ) )
+           ( ( nRight > long( rInf.GetOffset() ) ) &&
+             ( nRight - rInf.GetOffset() > rInf.GetOffset() - nLeft ) ) ) )
         nCnt = nLastIdx - rInf.GetIdx(); // first half
     else
         nCnt = nIdx - rInf.GetIdx(); // second half
@@ -2175,16 +2267,16 @@ sal_Int32 SwFntObj::GetCursorOfst( SwDrawTextInfo &rInf )
     return nCnt;
 }
 
-SwFntAccess::SwFntAccess( const void* &rMagic,
+SwFntAccess::SwFntAccess( const void* & rnFontCacheId,
                 sal_uInt16 &rIndex, const void *pOwn, SwViewShell const *pSh,
                 bool bCheck ) :
-  SwCacheAccess( *pFntCache, rMagic, rIndex ),
-  pShell( pSh )
+  SwCacheAccess( *pFntCache, rnFontCacheId, rIndex ),
+  m_pShell( pSh )
 {
-    // the used ctor of SwCacheAccess searches for rMagic+rIndex in the cache
-    if ( IsAvail() )
+    // the used ctor of SwCacheAccess searches for rnFontCacheId+rIndex in the cache
+    if ( m_pObj )
     {
-        // fast case: known Font (rMagic), no need to check printer and zoom
+        // fast case: known Font (rnFontCacheId), no need to check printer and zoom
         if ( !bCheck )
             return;
 
@@ -2273,19 +2365,21 @@ SwFntAccess::SwFntAccess( const void* &rMagic,
         // no matter if new or found, now the Owner of the Object is a
         // MagicNumber, and will be given to the SwFont, as well as the Index
         // for later direct access
-        rMagic = pFntObj->GetOwner();
-        SwCacheAccess::m_pOwner = rMagic;
+        rnFontCacheId = reinterpret_cast<void*>(reinterpret_cast<sal_IntPtr>(pFntObj->GetOwner()));
+        SwCacheAccess::m_pOwner = pFntObj->GetOwner();
         rIndex = pFntObj->GetCachePos();
     }
 }
 
 SwCacheObj *SwFntAccess::NewObj( )
 {
+    // "MagicNumber" used to identify Fonts
+    static std::uintptr_t fontCacheIdCounter = 0;
     // a new Font, a new "MagicNumber".
-    return new SwFntObj( *static_cast<SwSubFont const *>(m_pOwner), ++pMagicNo, pShell );
+    return new SwFntObj( *static_cast<SwSubFont const *>(m_pOwner), ++fontCacheIdCounter, m_pShell );
 }
 
-sal_Int32 SwFont::GetTextBreak( SwDrawTextInfo& rInf, long nTextWidth )
+TextFrameIndex SwFont::GetTextBreak(SwDrawTextInfo const & rInf, long nTextWidth)
 {
     ChgFnt( rInf.GetShell(), rInf.GetOut() );
 
@@ -2298,11 +2392,11 @@ sal_Int32 SwFont::GetTextBreak( SwDrawTextInfo& rInf, long nTextWidth )
     OSL_ENSURE( !bCompress || ( rInf.GetScriptInfo() && rInf.GetScriptInfo()->
             CountCompChg()), "Compression without info" );
 
-    sal_Int32 nTextBreak = 0;
+    TextFrameIndex nTextBreak(0);
     long nKern = 0;
 
-    sal_Int32 nLn = rInf.GetLen() == COMPLETE_STRING
-        ? rInf.GetText().getLength() : rInf.GetLen();
+    TextFrameIndex nLn = rInf.GetLen() == TextFrameIndex(COMPLETE_STRING)
+        ? TextFrameIndex(rInf.GetText().getLength()) : rInf.GetLen();
 
     if ( rInf.GetFrame() && nLn && rInf.SnapToGrid() &&
          rInf.GetFont() && SwFontScript::CJK == rInf.GetFont()->GetActual() )
@@ -2313,11 +2407,11 @@ sal_Int32 SwFont::GetTextBreak( SwDrawTextInfo& rInf, long nTextWidth )
             const SwDoc* pDoc = rInf.GetShell()->GetDoc();
             const sal_uInt16 nGridWidth = GetGridWidth(*pGrid, *pDoc);
 
-            std::unique_ptr<long[]> pKernArray( new long[rInf.GetLen()] );
+            std::unique_ptr<long[]> pKernArray(new long[sal_Int32(rInf.GetLen())]);
             rInf.GetOut().GetTextArray( rInf.GetText(), pKernArray.get(),
-                                        rInf.GetIdx(), rInf.GetLen() );
+                    sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
 
-            long nAvgWidthPerChar = pKernArray[ rInf.GetLen() - 1 ] / rInf.GetLen();
+            long nAvgWidthPerChar = pKernArray[sal_Int32(rInf.GetLen()) - 1] / sal_Int32(rInf.GetLen());
 
             const sal_uLong i = nAvgWidthPerChar ?
                             ( nAvgWidthPerChar - 1 ) / nGridWidth + 1:
@@ -2344,14 +2438,13 @@ sal_Int32 SwFont::GetTextBreak( SwDrawTextInfo& rInf, long nTextWidth )
         {
             const long nGridWidthAdd = EvalGridWidthAdd( pGrid, rInf );
 
-            std::unique_ptr<long[]> pKernArray( new long[rInf.GetLen()] );
+            std::unique_ptr<long[]> pKernArray(new long[sal_Int32(rInf.GetLen())] );
             rInf.GetOut().GetTextArray( rInf.GetText(), pKernArray.get(),
-                                            rInf.GetIdx(), rInf.GetLen() );
-            long nCurrPos = pKernArray[nTextBreak] + nGridWidthAdd;
-            while( nTextBreak < rInf.GetLen() && nTextWidth >= nCurrPos)
+                        sal_Int32(rInf.GetIdx()), sal_Int32(rInf.GetLen()));
+            long nCurrPos = pKernArray[sal_Int32(nTextBreak)] + nGridWidthAdd;
+            while (++nTextBreak < rInf.GetLen() && nTextWidth >= nCurrPos)
             {
-                nTextBreak++;
-                nCurrPos = pKernArray[nTextBreak] + nGridWidthAdd * ( nTextBreak + 1 );
+                nCurrPos = pKernArray[sal_Int32(nTextBreak)] + nGridWidthAdd * (sal_Int32(nTextBreak) + 1);
             }
             return nTextBreak + rInf.GetIdx();
         }
@@ -2369,8 +2462,8 @@ sal_Int32 SwFont::GetTextBreak( SwDrawTextInfo& rInf, long nTextWidth )
 
         const OUString* pTmpText;
         OUString aTmpText;
-        sal_Int32 nTmpIdx;
-        sal_Int32 nTmpLen;
+        TextFrameIndex nTmpIdx;
+        TextFrameIndex nTmpLen;
         bool bTextReplaced = false;
 
         if ( !m_aSub[m_nActual].IsCaseMap() )
@@ -2381,7 +2474,7 @@ sal_Int32 SwFont::GetTextBreak( SwDrawTextInfo& rInf, long nTextWidth )
         }
         else
         {
-            const OUString aSnippet(rInf.GetText().copy(rInf.GetIdx(), nLn));
+            const OUString aSnippet(rInf.GetText().copy(sal_Int32(rInf.GetIdx()), sal_Int32(nLn)));
             aTmpText = m_aSub[m_nActual].CalcCaseMap( aSnippet );
             const bool bTitle = SvxCaseMap::Capitalize == m_aSub[m_nActual].GetCaseMap();
 
@@ -2390,7 +2483,7 @@ sal_Int32 SwFont::GetTextBreak( SwDrawTextInfo& rInf, long nTextWidth )
             {
                 // check if rInf.GetIdx() is begin of word
                 if ( !g_pBreakIt->GetBreakIter()->isBeginWord(
-                     rInf.GetText(), rInf.GetIdx(),
+                     rInf.GetText(), sal_Int32(rInf.GetIdx()),
                      g_pBreakIt->GetLocale( m_aSub[m_nActual].GetLanguage() ),
                      i18n::WordType::ANYWORD_IGNOREWHITESPACES ) )
                 {
@@ -2402,23 +2495,34 @@ sal_Int32 SwFont::GetTextBreak( SwDrawTextInfo& rInf, long nTextWidth )
             }
 
             pTmpText = &aTmpText;
-            nTmpIdx = 0;
-            nTmpLen = aTmpText.getLength();
+            nTmpIdx = TextFrameIndex(0);
+            nTmpLen = TextFrameIndex(aTmpText.getLength());
             bTextReplaced = true;
         }
 
         if( rInf.GetHyphPos() ) {
-            sal_Int32 nHyphPos = *rInf.GetHyphPos();
-            nTextBreak = rInf.GetOut().GetTextBreak( *pTmpText, nTextWidth,
+            sal_Int32 nHyphPos = sal_Int32(*rInf.GetHyphPos());
+            nTextBreak = TextFrameIndex(rInf.GetOut().GetTextBreak(
+                             *pTmpText, nTextWidth,
                              u'-', nHyphPos,
-                             nTmpIdx, nTmpLen, nKern, rInf.GetVclCache());
-            *rInf.GetHyphPos() = (nHyphPos == -1) ? COMPLETE_STRING : nHyphPos;
+                             sal_Int32(nTmpIdx), sal_Int32(nTmpLen),
+                             nKern, rInf.GetVclCache()));
+            *rInf.GetHyphPos() = TextFrameIndex((nHyphPos == -1) ? COMPLETE_STRING : nHyphPos);
         }
         else
-            nTextBreak = rInf.GetOut().GetTextBreak( *pTmpText, nTextWidth,
-                             nTmpIdx, nTmpLen, nKern, rInf.GetVclCache());
+        {
+            SwFntAccess aFntAccess(m_aSub[m_nActual].m_nFontCacheId, m_aSub[m_nActual].m_nFontIndex,
+                                   &m_aSub[m_nActual], rInf.GetShell());
+            SwTextGlyphsKey aGlyphsKey{ &rInf.GetOut(), *pTmpText, sal_Int32(nTmpIdx), sal_Int32(nTmpLen) };
+            SalLayoutGlyphs* pGlyphs
+                = lcl_CreateLayout(aGlyphsKey, aFntAccess.Get()->GetTextGlyphs()[aGlyphsKey]);
+            nTextBreak = TextFrameIndex(rInf.GetOut().GetTextBreak(
+                             *pTmpText, nTextWidth,
+                             sal_Int32(nTmpIdx), sal_Int32(nTmpLen),
+                             nKern, rInf.GetVclCache(), pGlyphs));
+        }
 
-        if ( bTextReplaced && nTextBreak != -1 )
+        if (bTextReplaced && sal_Int32(nTextBreak) != -1)
         {
             if ( nTmpLen != nLn )
                 nTextBreak = sw_CalcCaseMap( *this, rInf.GetText(),
@@ -2428,7 +2532,9 @@ sal_Int32 SwFont::GetTextBreak( SwDrawTextInfo& rInf, long nTextWidth )
         }
     }
 
-    sal_Int32 nTextBreak2 = nTextBreak == -1 ? COMPLETE_STRING : nTextBreak;
+    TextFrameIndex nTextBreak2 = sal_Int32(nTextBreak) == -1
+            ? TextFrameIndex(COMPLETE_STRING)
+            : nTextBreak;
 
     if ( ! bCompress )
         return nTextBreak2;
@@ -2438,21 +2544,21 @@ sal_Int32 SwFont::GetTextBreak( SwDrawTextInfo& rInf, long nTextWidth )
     if( nTextBreak2 < nLn )
     {
         if( !nTextBreak2 && nLn )
-            nLn = 1;
-        else if( nLn > 2 * nTextBreak2 )
-            nLn = 2 * nTextBreak2;
-        std::unique_ptr<long[]> pKernArray( new long[ nLn ] );
+            nLn = TextFrameIndex(1);
+        else if (nLn > nTextBreak2 + nTextBreak2)
+            nLn = nTextBreak2 + nTextBreak2;
+        std::unique_ptr<long[]> pKernArray( new long[sal_Int32(nLn)] );
         rInf.GetOut().GetTextArray( rInf.GetText(), pKernArray.get(),
-                                    rInf.GetIdx(), nLn );
+                                    sal_Int32(rInf.GetIdx()), sal_Int32(nLn));
         if( rInf.GetScriptInfo()->Compress( pKernArray.get(), rInf.GetIdx(), nLn,
-                            rInf.GetKanaComp(), (sal_uInt16)GetHeight( m_nActual ),
+                            rInf.GetKanaComp(), static_cast<sal_uInt16>(GetHeight( m_nActual )),
                             lcl_IsFullstopCentered( rInf.GetOut() ) ) )
         {
             long nKernAdd = nKern;
-            sal_Int32 nTmpBreak = nTextBreak2;
+            TextFrameIndex const nTmpBreak = nTextBreak2;
             if( nKern && nTextBreak2 )
-                nKern *= nTextBreak2 - 1;
-            while( nTextBreak2<nLn && nTextWidth >= pKernArray[nTextBreak2] +nKern )
+                nKern *= sal_Int32(nTextBreak2) - 1;
+            while (nTextBreak2 < nLn && nTextWidth >= pKernArray[sal_Int32(nTextBreak2)] + nKern)
             {
                 nKern += nKernAdd;
                 ++nTextBreak2;
@@ -2469,18 +2575,17 @@ sal_Int32 SwFont::GetTextBreak( SwDrawTextInfo& rInf, long nTextWidth )
 bool SwDrawTextInfo::ApplyAutoColor( vcl::Font* pFont )
 {
     const vcl::Font& rFnt = pFont ? *pFont : GetOut().GetFont();
-    bool bPrt = GetShell() && ! GetShell()->GetWin();
-    ColorData nNewColor = COL_BLACK;
+    Color nNewColor = COL_BLACK;
     bool bChgFntColor = false;
     bool bChgLineColor = false;
 
-    if( bPrt && GetShell() && GetShell()->GetViewOptions()->IsBlackFont() )
+    if (GetShell() && !GetShell()->GetWin() && GetShell()->GetViewOptions()->IsBlackFont())
     {
-        if ( COL_BLACK != rFnt.GetColor().GetColor() )
+        if ( COL_BLACK != rFnt.GetColor() )
             bChgFntColor = true;
 
-        if ( (COL_BLACK != GetOut().GetLineColor().GetColor()) ||
-             (COL_BLACK != GetOut().GetOverlineColor().GetColor()) )
+        if ( (COL_BLACK != GetOut().GetLineColor()) ||
+             (COL_BLACK != GetOut().GetOverlineColor()) )
             bChgLineColor = true;
     }
     else
@@ -2490,17 +2595,17 @@ bool SwDrawTextInfo::ApplyAutoColor( vcl::Font* pFont )
         // LineColor has to be changed if:
         // 1. IsAlwaysAutoColor is set
 
-        bChgLineColor = ! bPrt && GetShell() &&
+        bChgLineColor = GetShell() && GetShell()->GetWin() &&
                 GetShell()->GetAccessibilityOptions()->IsAlwaysAutoColor();
 
-        bChgFntColor = COL_AUTO == rFnt.GetColor().GetColor() || bChgLineColor;
+        bChgFntColor = COL_AUTO == rFnt.GetColor() || bChgLineColor;
 
         if ( bChgFntColor )
         {
             // check if current background has a user defined setting
             const Color* pCol = GetFont() ? GetFont()->GetBackColor() : nullptr;
             Color aColor;
-            if( ! pCol || COL_TRANSPARENT == pCol->GetColor() )
+            if( ! pCol || COL_TRANSPARENT == *pCol )
             {
                 const SvxBrushItem* pItem;
                 SwRect aOrigBackRect;
@@ -2512,9 +2617,9 @@ bool SwDrawTextInfo::ApplyAutoColor( vcl::Font* pFont )
                 /// OD 21.08.2002 #99657#
                 ///     There is a user defined setting for the background, if there
                 ///     is a background brush and its color is *not* "no fill"/"auto fill".
-                if( GetFrame()->GetBackgroundBrush( aFillAttributes, pItem, pCol, aOrigBackRect, false ) )
+                if( GetFrame()->GetBackgroundBrush( aFillAttributes, pItem, pCol, aOrigBackRect, false, /*bConsiderTextBox=*/true ) )
                 {
-                    if (aFillAttributes.get() && aFillAttributes->isUsed())
+                    if (aFillAttributes && aFillAttributes->isUsed())
                     {
                         // First see if fill attributes provide a color.
                         aColor = Color(aFillAttributes->getAverageColor(aGlobalRetoucheColor.getBColor()));
@@ -2529,7 +2634,7 @@ bool SwDrawTextInfo::ApplyAutoColor( vcl::Font* pFont )
 
                     /// OD 30.08.2002 #99657#
                     /// determined color <pCol> can be <COL_TRANSPARENT>. Thus, check it.
-                    if ( pCol->GetColor() == COL_TRANSPARENT)
+                    if ( *pCol == COL_TRANSPARENT)
                         pCol = nullptr;
                 }
                 else
@@ -2549,7 +2654,7 @@ bool SwDrawTextInfo::ApplyAutoColor( vcl::Font* pFont )
                     nNewColor = COL_BLACK;
                 else
                     // we take the font color from the appearance page
-                    nNewColor = SwViewOption::GetFontColor().GetColor();
+                    nNewColor = SwViewOption::GetFontColor();
             }
 
             // change painting color depending of dark/bright background
@@ -2596,6 +2701,12 @@ bool SwDrawTextInfo::ApplyAutoColor( vcl::Font* pFont )
     }
 
     return false;
+}
+
+void SwClearFntCacheTextGlyphs()
+{
+    for (SwFntObj* pFntObj = pFntCache->First(); pFntObj; pFntObj = SwFntCache::Next(pFntObj))
+        pFntObj->GetTextGlyphs().clear();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

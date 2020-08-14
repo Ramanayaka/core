@@ -20,12 +20,9 @@
 #ifndef INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_COMPOSEDUIUPDATE_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_COMPOSEDUIUPDATE_HXX
 
-#include "propertyhandler.hxx"
-
 #include <com/sun/star/inspection/XObjectInspectorUI.hpp>
+#include <com/sun/star/inspection/XPropertyHandler.hpp>
 
-#include <map>
-#include <set>
 #include <memory>
 
 
@@ -34,13 +31,13 @@ namespace pcr
 
     struct MapHandlerToUI;
 
-    /** callback for an ComposedPropertyUIUpdate checking a given property for existence
+    /** callback for a ComposedPropertyUIUpdate checking a given property for existence
     */
     class SAL_NO_VTABLE IPropertyExistenceCheck
     {
     public:
         /// @throws css::uno::RuntimeException
-        virtual bool SAL_CALL hasPropertyByName( const OUString& _rName ) = 0;
+        virtual bool hasPropertyByName( const OUString& _rName ) = 0;
 
     protected:
         ~IPropertyExistenceCheck() {}
@@ -112,19 +109,19 @@ namespace pcr
             firing is suspended, only explicit ->fire calls trigger the notification to the
             delegator UI.
 
-            Note that calls to ->suspendAutoFire are culmulative, that is, if you make multiple calls
+            Note that calls to ->suspendAutoFire are cumulative, that is, if you make multiple calls
             they must be accompanied by an equal number of calls to ->resumeAutoFire, to enable
             auto-firing again.
 
             @seealso resumeAutoFire
         */
-        void SAL_CALL suspendAutoFire();
+        void suspendAutoFire();
 
         /** Suspends automatic firing of UI changes
 
             @seealso suspendAutoFire
         */
-        void SAL_CALL resumeAutoFire();
+        void resumeAutoFire();
 
         /** disposes the instance, so it becomes non-functional.
 
@@ -132,7 +129,7 @@ namespace pcr
             the latter will also be disposed, so that if anybody still holds a reference to them
             and tries to operate them will get a DisposedException.
         */
-        void SAL_CALL dispose();
+        void dispose();
 
         /** invokes m_pPropertyCheck to check whether a given property should be handled
         */
@@ -140,7 +137,7 @@ namespace pcr
 
     private:
         /// determines whether the instance is already disposed
-        bool impl_isDisposed() const { return m_pCollectedUIs.get() == nullptr; }
+        bool impl_isDisposed() const { return !m_pCollectedUIs; }
 
         /// throws an exception if the component is already disposed
                 void impl_checkDisposed() const;
@@ -157,7 +154,7 @@ namespace pcr
                 <li>If an element should have been rebuilt (->XObjectInspectorUI::rebuiltPropertyUI)
                     at least once, it's rebuilt at the delegator UI, too.<br/>
                     After that, the request to rebuild the UI for this property is cleared, so subsequent
-                    calls to ->fire will not trigger an new rebuilt request.
+                    calls to ->fire will not trigger a new rebuilt request.
             </ul>
 
             @precond

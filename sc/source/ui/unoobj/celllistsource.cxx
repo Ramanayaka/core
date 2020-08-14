@@ -21,8 +21,11 @@
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/NotInitializedException.hpp>
 #include <com/sun/star/lang/NullPointerException.hpp>
+#include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/text/XTextRange.hpp>
 #include <com/sun/star/sheet/XCellRangeAddressable.hpp>
+#include <com/sun/star/sheet/FormulaResult.hpp>
+#include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
@@ -114,7 +117,7 @@ namespace calc
     void SAL_CALL OCellListSource::getFastPropertyValue( Any& _rValue, sal_Int32 _nHandle ) const
     {
         OSL_ENSURE( _nHandle == PROP_HANDLE_RANGE_ADDRESS, "OCellListSource::getFastPropertyValue: invalid handle!" );
-            // we only have this one property ....
+            // we only have this one property...
 
         _rValue <<= getRangeAddress( );
     }
@@ -134,7 +137,7 @@ namespace calc
 
     OUString SAL_CALL OCellListSource::getImplementationName(  )
     {
-        return OUString( "com.sun.star.comp.sheet.OCellListSource" );
+        return "com.sun.star.comp.sheet.OCellListSource";
     }
 
     sal_Bool SAL_CALL OCellListSource::supportsService( const OUString& _rServiceName )
@@ -200,9 +203,9 @@ namespace calc
                         Reference< XPropertySet > xProp( xCell, UNO_QUERY);
                         if (xProp.is())
                         {
-                            CellContentType eResultType;
-                            if ((xProp->getPropertyValue("FormulaResultType") >>= eResultType) &&
-                                    eResultType == CellContentType_VALUE)
+                            sal_Int32 nResultType;
+                            if ((xProp->getPropertyValue("FormulaResultType2") >>= nResultType) &&
+                                    nResultType == FormulaResult::VALUE)
                                 *pAny <<= xCell->getValue();
                             else
                                 *pAny <<= sText;
@@ -349,17 +352,18 @@ namespace calc
         CellRangeAddress aRangeAddress;
         bool bFoundAddress = false;
 
-        const Any* pLoop = _rArguments.getConstArray();
-        const Any* pLoopEnd = _rArguments.getConstArray() + _rArguments.getLength();
-        for ( ; ( pLoop != pLoopEnd ) && !bFoundAddress; ++pLoop )
+        for ( const Any& rArg : _rArguments )
         {
             NamedValue aValue;
-            if ( *pLoop >>= aValue )
+            if ( rArg >>= aValue )
             {
                 if ( aValue.Name == "CellRange" )
                 {
                     if ( aValue.Value >>= aRangeAddress )
+                    {
                         bFoundAddress = true;
+                        break;
+                    }
                 }
             }
         }

@@ -25,13 +25,10 @@
 
 #include "PictToBmpFlt.hxx"
 
-bool ImageToPNG( css::uno::Sequence<sal_Int8>& rImgData,
-                 css::uno::Sequence<sal_Int8>& rPngData,
-                 NSBitmapImageFileType eInFormat)
+bool ImageToPNG( css::uno::Sequence<sal_Int8> const & rImgData,
+                 css::uno::Sequence<sal_Int8>& rPngData)
 {
-    (void) eInFormat; // Really not needed? Weird.
-
-    NSData* pData = [NSData dataWithBytesNoCopy: const_cast<sal_Int8 *>(rImgData.getConstArray()) length: rImgData.getLength() freeWhenDone: 0];
+    NSData* pData = [NSData dataWithBytesNoCopy: const_cast<sal_Int8 *>(rImgData.getConstArray()) length: rImgData.getLength() freeWhenDone: false];
     if( !pData)
         return false;
 
@@ -39,7 +36,7 @@ bool ImageToPNG( css::uno::Sequence<sal_Int8>& rImgData,
     if( !pRep)
         return false;
 
-    NSData* pOut = [pRep representationUsingType: NSPNGFileType properties: @{ }];
+    NSData* pOut = [pRep representationUsingType: NSBitmapImageFileTypePNG properties: @{ }];
     if( !pOut)
         return false;
 
@@ -49,12 +46,12 @@ bool ImageToPNG( css::uno::Sequence<sal_Int8>& rImgData,
     return (nPngSize > 0);
 }
 
-bool PNGToImage( css::uno::Sequence<sal_Int8>& rPngData,
+bool PNGToImage( css::uno::Sequence<sal_Int8> const & rPngData,
                  css::uno::Sequence<sal_Int8>& rImgData,
                  NSBitmapImageFileType eOutFormat
                 )
 {
-    NSData* pData = [NSData dataWithBytesNoCopy: const_cast<sal_Int8*>(rPngData.getConstArray()) length: rPngData.getLength() freeWhenDone: 0];
+    NSData* pData = [NSData dataWithBytesNoCopy: const_cast<sal_Int8*>(rPngData.getConstArray()) length: rPngData.getLength() freeWhenDone: false];
     if( !pData)
         return false;
 

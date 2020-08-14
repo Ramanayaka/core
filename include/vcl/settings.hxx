@@ -23,22 +23,18 @@
 #include <tools/solar.h>
 #include <vcl/dllapi.h>
 #include <tools/color.hxx>
-#include <vcl/bitmapex.hxx>
-#include <vcl/font.hxx>
-#include <vcl/accel.hxx>
-#include <vcl/wall.hxx>
-#include <i18nlangtag/languagetag.hxx>
-#include <unotools/syslocale.hxx>
+#include <tools/gen.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
 #include <memory>
+#include <vector>
 
-namespace boost
-{
-    template<typename T> class optional;
-}
+#include <optional>
 
-class CollatorWrapper;
+class BitmapEx;
+class LanguageTag;
+class SvtSysLocale;
+
 class LocaleDataWrapper;
 struct ImplMouseData;
 struct ImplMiscData;
@@ -48,9 +44,8 @@ struct ImplAllSettingsData;
 enum class ConfigurationHints;
 
 namespace vcl {
+    class Font;
     class I18nHelper;
-    class IconThemeScanner;
-    class IconThemeSelector;
     class IconThemeInfo;
 }
 
@@ -79,7 +74,7 @@ namespace o3tl
 
 enum class MouseMiddleButtonAction
 {
-    Nothing, AutoScroll
+    Nothing, AutoScroll, PasteSelection
 };
 
 enum class MouseWheelBehaviour
@@ -95,8 +90,6 @@ private:
 
 public:
                                     MouseSettings();
-
-                                    ~MouseSettings();
 
     void                            SetOptions( MouseSettingsOptions nOptions );
     MouseSettingsOptions            GetOptions() const;
@@ -116,20 +109,20 @@ public:
     void                            SetStartDragHeight( long nDragHeight );
     long                            GetStartDragHeight() const;
 
-    sal_uInt16                      GetStartDragCode() const;
+    static sal_uInt16               GetStartDragCode();
 
-    sal_uInt16                      GetContextMenuCode() const;
+    static sal_uInt16               GetContextMenuCode();
 
-    sal_uInt16                      GetContextMenuClicks() const;
+    static sal_uInt16               GetContextMenuClicks();
 
-    sal_uLong                       GetScrollRepeat() const;
+    static sal_uLong                GetScrollRepeat();
 
-    sal_uLong                       GetButtonStartRepeat() const;
+    static sal_uLong                GetButtonStartRepeat();
 
     void                            SetButtonRepeat( sal_uLong nRepeat );
     sal_uLong                       GetButtonRepeat() const;
 
-    sal_uLong                       GetActionDelay() const;
+    static sal_uLong                GetActionDelay();
 
     void                            SetMenuDelay( sal_uLong nDelay );
     sal_uLong                       GetMenuDelay() const;
@@ -150,31 +143,14 @@ public:
 struct DialogStyle
 {
     int content_area_border;
-    int content_area_spacing;
     int button_spacing;
     int action_area_border;
     DialogStyle()
         : content_area_border(2)
-        , content_area_spacing(0)
         , button_spacing(6)
         , action_area_border(5)
     {}
 };
-
-struct FrameStyle
-{
-    int left;
-    int right;
-    int top;
-    int bottom;
-    FrameStyle()
-        : left(0)
-        , right(0)
-        , top(0)
-        , bottom(0)
-    {}
-};
-
 
 enum class StyleSettingsOptions
 {
@@ -243,7 +219,6 @@ private:
 
 public:
                                     StyleSettings();
-                                    ~StyleSettings();
 
     void                            Set3DColors( const Color& rColor );
 
@@ -270,11 +245,50 @@ public:
     void                            SetDarkShadowColor( const Color& rColor );
     const Color&                    GetDarkShadowColor() const;
 
+    void                            SetDefaultButtonTextColor( const Color& rColor );
+    const Color&                    GetDefaultButtonTextColor() const;
+
     void                            SetButtonTextColor( const Color& rColor );
     const Color&                    GetButtonTextColor() const;
 
+    void                            SetDefaultActionButtonTextColor( const Color& rColor );
+    const Color&                    GetDefaultActionButtonTextColor() const;
+
+    void                            SetActionButtonTextColor( const Color& rColor );
+    const Color&                    GetActionButtonTextColor() const;
+
+    void                            SetFlatButtonTextColor( const Color& rColor );
+    const Color&                    GetFlatButtonTextColor() const;
+
+    void                            SetDefaultButtonRolloverTextColor( const Color& rColor );
+    const Color&                    GetDefaultButtonRolloverTextColor() const;
+
     void                            SetButtonRolloverTextColor( const Color& rColor );
     const Color&                    GetButtonRolloverTextColor() const;
+
+    void                            SetDefaultActionButtonRolloverTextColor( const Color& rColor );
+    const Color&                    GetDefaultActionButtonRolloverTextColor() const;
+
+    void                            SetActionButtonRolloverTextColor( const Color& rColor );
+    const Color&                    GetActionButtonRolloverTextColor() const;
+
+    void                            SetFlatButtonRolloverTextColor( const Color& rColor );
+    const Color&                    GetFlatButtonRolloverTextColor() const;
+
+    void                            SetDefaultButtonPressedRolloverTextColor( const Color& rColor );
+    const Color&                    GetDefaultButtonPressedRolloverTextColor() const;
+
+    void                            SetButtonPressedRolloverTextColor( const Color& rColor );
+    const Color&                    GetButtonPressedRolloverTextColor() const;
+
+    void                            SetDefaultActionButtonPressedRolloverTextColor( const Color& rColor );
+    const Color&                    GetDefaultActionButtonPressedRolloverTextColor() const;
+
+    void                            SetActionButtonPressedRolloverTextColor( const Color& rColor );
+    const Color&                    GetActionButtonPressedRolloverTextColor() const;
+
+    void                            SetFlatButtonPressedRolloverTextColor( const Color& rColor );
+    const Color&                    GetFlatButtonPressedRolloverTextColor() const;
 
     void                            SetRadioCheckTextColor( const Color& rColor );
     const Color&                    GetRadioCheckTextColor() const;
@@ -409,6 +423,9 @@ public:
     void                            SetUseSystemUIFonts( bool bUseSystemUIFonts );
     bool                            GetUseSystemUIFonts() const;
 
+    void SetUseFontAAFromSystem(bool bUseFontAAFromSystem);
+    bool GetUseFontAAFromSystem() const;
+
     void                            SetUseFlatBorders( bool bUseFlatBorders );
     bool                            GetUseFlatBorders() const;
 
@@ -475,15 +492,13 @@ public:
     void                            SetTabFont( const vcl::Font& rFont );
     const vcl::Font&                GetTabFont() const;
 
-    long                            GetBorderSize() const;
+    static long                     GetBorderSize();
 
     void                            SetTitleHeight( long nSize );
     long                            GetTitleHeight() const;
 
     void                            SetFloatTitleHeight( long nSize );
     long                            GetFloatTitleHeight() const;
-
-    long                            GetTearOffTitleHeight() const;
 
     void                            SetScrollBarSize( long nSize );
     long                            GetScrollBarSize() const;
@@ -494,7 +509,7 @@ public:
     void                            SetSpinSize( long nSize );
     long                            GetSpinSize() const;
 
-    long                            GetSplitSize() const;
+    static long                     GetSplitSize();
 
     void                            SetCursorSize( long nSize );
     long                            GetCursorSize() const;
@@ -543,7 +558,7 @@ public:
     /** Obtain the list of icon themes which were found in the config folder
      * @see vcl::IconThemeScanner for more details.
      */
-    std::vector<vcl::IconThemeInfo> GetInstalledIconThemes() const;
+    std::vector<vcl::IconThemeInfo> const & GetInstalledIconThemes() const;
 
     /** Obtain the name of the icon theme which will be chosen automatically for the desktop environment.
      * This method will only return icon themes which were actually found on the system.
@@ -556,23 +571,19 @@ public:
     void                            SetPreferredIconTheme(const OUString&, bool bDarkIconTheme = false);
 
     const DialogStyle&              GetDialogStyle() const;
-    void                            SetDialogStyle( const DialogStyle& rStyle );
 
-    const FrameStyle&               GetFrameStyle() const;
-    void                            SetFrameStyle( const FrameStyle& rStyle );
+    BitmapEx const &                GetPersonaHeader() const;
 
-    const BitmapEx                  GetPersonaHeader() const;
+    BitmapEx const &                GetPersonaFooter() const;
 
-    const BitmapEx                  GetPersonaFooter() const;
-
-    const boost::optional<Color>&   GetPersonaMenuBarTextColor() const;
+    const std::optional<Color>&   GetPersonaMenuBarTextColor() const;
 
     // global switch to allow EdgeBlenging; currently possible for ValueSet and ListBox
     // when activated there using Get/SetEdgeBlending; default is true
     void                            SetEdgeBlending(sal_uInt16 nCount);
     sal_uInt16                      GetEdgeBlending() const;
 
-    // TopLeft (default RGB_COLORDATA(0xC0, 0xC0, 0xC0)) and BottomRight (default RGB_COLORDATA(0x40, 0x40, 0x40))
+    // TopLeft (default Color(0xC0, 0xC0, 0xC0)) and BottomRight (default Color(0x40, 0x40, 0x40))
     // default colors for EdgeBlending
     const Color&                    GetEdgeBlendingTopLeftColor() const;
     const Color&                    GetEdgeBlendingBottomRightColor() const;
@@ -591,12 +602,13 @@ public:
 
     // maximum row/line count for the ColorValueSet control. If more lines would be needed, a scrollbar will
     // be used.
-    sal_uInt16                      GetColorValueSetMaximumRowCount() const;
+    static sal_uInt16               GetColorValueSetMaximumRowCount();
 
+    void                            SetListBoxPreviewDefaultLogicSize(Size const & rSize);
     const Size&                     GetListBoxPreviewDefaultPixelSize() const;
 
     // the default LineWidth for ListBox UI previews (LineStyle, LineDash, LineStartEnd). Default is 1.
-    sal_uInt16                      GetListBoxPreviewDefaultLineWidth() const;
+    static sal_uInt16               GetListBoxPreviewDefaultLineWidth();
 
     // defines if previews which contain potentially transparent objects (e.g. the dash/line/LineStartEnd previews and others)
     // use the default transparent visualization background (checkered background) as it has got standard in graphic programs nowadays
@@ -607,6 +619,12 @@ public:
 
     bool                            operator ==( const StyleSettings& rSet ) const;
     bool                            operator !=( const StyleSettings& rSet ) const;
+
+    // Batch setters used by various backends
+    void                            BatchSetBackgrounds( const Color &aBackColor,
+                                                         bool bCheckedColorSpecialCase = true );
+    void                            BatchSetFonts( const vcl::Font& aAppFont,
+                                                   const vcl::Font& aLabelFont );
 };
 
 
@@ -616,7 +634,6 @@ class VCL_DLLPUBLIC MiscSettings
 
 public:
                                     MiscSettings();
-                                    ~MiscSettings();
 
 #ifdef _WIN32
     void                            SetEnableATToolSupport( bool bEnable );
@@ -625,7 +642,6 @@ public:
     bool                            GetDisablePrinting() const;
     void                            SetEnableLocalizedDecimalSep( bool bEnable );
     bool                            GetEnableLocalizedDecimalSep() const;
-    bool                            GetPseudoHeadless() const;
 
     bool                            operator ==( const MiscSettings& rSet ) const;
     bool                            operator !=( const MiscSettings& rSet ) const;
@@ -638,12 +654,11 @@ class VCL_DLLPUBLIC HelpSettings
 
 public:
                                     HelpSettings();
-                                    ~HelpSettings();
 
-    sal_uLong                       GetTipDelay() const;
+    static sal_uLong                GetTipDelay();
     void                            SetTipTimeout( sal_uLong nTipTimeout );
     sal_uLong                       GetTipTimeout() const;
-    sal_uLong                       GetBalloonDelay() const;
+    static sal_uLong                GetBalloonDelay();
 
     bool                            operator ==( const HelpSettings& rSet ) const;
     bool                            operator !=( const HelpSettings& rSet ) const;
@@ -671,8 +686,6 @@ private:
 
 public:
                                             AllSettings();
-                                            AllSettings( const AllSettings& rSet );
-                                            ~AllSettings();
 
     void                                    SetMouseSettings( const MouseSettings& rSet );
     const MouseSettings&                    GetMouseSettings() const;
@@ -686,17 +699,21 @@ public:
     void                                    SetHelpSettings( const HelpSettings& rSet );
     const HelpSettings&                     GetHelpSettings() const;
 
+    void                                    SetLanguageTag(const OUString& rLanguage, bool bCanonicalize);
     void                                    SetLanguageTag( const LanguageTag& rLanguageTag );
     const LanguageTag&                      GetLanguageTag() const;
     const LanguageTag&                      GetUILanguageTag() const;
     static bool                             GetLayoutRTL();   // returns true if UI language requires right-to-left Text Layout
     static bool                             GetMathLayoutRTL();   // returns true if UI language requires right-to-left Math Layout
+    static OUString                         GetUIRootDir();
     const LocaleDataWrapper&                GetLocaleDataWrapper() const;
     const LocaleDataWrapper&                GetUILocaleDataWrapper() const;
+    const LocaleDataWrapper&                GetNeutralLocaleDataWrapper() const;
     const vcl::I18nHelper&                  GetLocaleI18nHelper() const;
     const vcl::I18nHelper&                  GetUILocaleI18nHelper() const;
 
-    AllSettingsFlags                        GetWindowUpdate() const;
+    static AllSettingsFlags                 GetWindowUpdate()
+    { return AllSettingsFlags::MOUSE | AllSettingsFlags::STYLE | AllSettingsFlags::MISC | AllSettingsFlags::LOCALE; }
 
     AllSettingsFlags                        Update( AllSettingsFlags nFlags, const AllSettings& rSettings );
     AllSettingsFlags                        GetChangeFlags( const AllSettings& rSettings ) const;

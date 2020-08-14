@@ -25,12 +25,15 @@
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <osl/mutex.hxx>
+#include <com/sun/star/container/XNameContainer.hpp>
 
 typedef std::map<OUString, css::uno::Any> SvGenericNameContainerMapImpl;
 
 namespace comphelper
 {
-    /** this is the base helper class for NameContainer thats also declared in this header. */
+    namespace {
+
+    /** this is the base helper class for NameContainer that's also declared in this header. */
     class NameContainer : public ::cppu::WeakImplHelper< css::container::XNameContainer >
     {
     public:
@@ -57,6 +60,8 @@ namespace comphelper
         const css::uno::Type maType;
         osl::Mutex maMutex;
     };
+
+    }
 }
 
 using namespace ::comphelper;
@@ -82,7 +87,7 @@ void SAL_CALL NameContainer::insertByName( const OUString& aName, const Any& aEl
     if( aElement.getValueType() != maType )
         throw IllegalArgumentException();
 
-    maProperties.insert( SvGenericNameContainerMapImpl::value_type(aName,aElement));
+    maProperties.emplace(aName,aElement);
 }
 
 void SAL_CALL NameContainer::removeByName( const OUString& Name )
@@ -154,7 +159,7 @@ Type SAL_CALL NameContainer::getElementType()
 
 Reference< XNameContainer > comphelper::NameContainer_createInstance( const Type& aType )
 {
-    return static_cast<XNameContainer*>(new NameContainer( aType ));
+    return new NameContainer(aType);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

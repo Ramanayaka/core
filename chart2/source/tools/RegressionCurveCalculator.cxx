@@ -17,9 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RegressionCurveCalculator.hxx"
-#include "RegressionCalculationHelper.hxx"
-#include "servicenames_coosystems.hxx"
+#include <RegressionCurveCalculator.hxx>
 
 #include <comphelper/processfactory.hxx>
 #include <rtl/math.hxx>
@@ -39,14 +37,14 @@ namespace chart
 {
 
 RegressionCurveCalculator::RegressionCurveCalculator() :
-        m_fCorrelationCoeffitient(0.0),
+        m_fCorrelationCoefficient(0.0),
         mDegree(2),
         mForceIntercept(false),
         mInterceptValue(0.0),
         mPeriod(2),
         mXName("x"), mYName("f(x)")
 {
-    rtl::math::setNan( &m_fCorrelationCoeffitient );
+    rtl::math::setNan( &m_fCorrelationCoefficient );
     rtl::math::setNan( &mInterceptValue );
 }
 
@@ -88,7 +86,7 @@ OUString RegressionCurveCalculator::getFormattedString(
     double fNumber, const sal_Int32* pStringLength /* = nullptr */ )
 {
     if ( pStringLength && *pStringLength <= 0 )
-        return OUString("###");
+        return "###";
     OUString aResult;
 
     if( xNumFormatter.is() )
@@ -161,7 +159,7 @@ Sequence< geometry::RealPoint2D > SAL_CALL RegressionCurveCalculator::getCurveVa
         if( bDoXScaling )
             x = xInverseScaling->doScaling( x );
         aResult[nP].X = x;
-        aResult[nP].Y = this->getCurveValue( x );
+        aResult[nP].Y = getCurveValue( x );
     }
 
     return aResult;
@@ -169,7 +167,7 @@ Sequence< geometry::RealPoint2D > SAL_CALL RegressionCurveCalculator::getCurveVa
 
 double SAL_CALL RegressionCurveCalculator::getCorrelationCoefficient()
 {
-    return m_fCorrelationCoeffitient;
+    return m_fCorrelationCoefficient;
 }
 
 OUString SAL_CALL RegressionCurveCalculator::getRepresentation()
@@ -184,7 +182,7 @@ OUString SAL_CALL RegressionCurveCalculator::getFormattedRepresentation(
     // create and prepare a number formatter
     if( !xNumFmtSupplier.is())
         return getRepresentation();
-    Reference< uno::XComponentContext > xContext( comphelper::getProcessComponentContext(), uno::UNO_QUERY_THROW );
+    Reference< uno::XComponentContext > xContext( comphelper::getProcessComponentContext(), uno::UNO_SET_THROW );
     Reference< util::XNumberFormatter > xNumFormatter( util::NumberFormatter::create(xContext), uno::UNO_QUERY_THROW );
     xNumFormatter->attachNumberFormatsSupplier( xNumFmtSupplier );
 
@@ -194,7 +192,7 @@ OUString SAL_CALL RegressionCurveCalculator::getFormattedRepresentation(
 }
 
 void RegressionCurveCalculator::addStringToEquation(
-        OUStringBuffer& aStrEquation, sal_Int32& nLineLength, OUStringBuffer& aAddString, const sal_Int32* pMaxWidth)
+        OUStringBuffer& aStrEquation, sal_Int32& nLineLength, OUStringBuffer const & aAddString, const sal_Int32* pMaxWidth)
 {
     if ( pMaxWidth && ( nLineLength + aAddString.getLength() > *pMaxWidth ) )
     {  // wrap line

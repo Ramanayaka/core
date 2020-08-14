@@ -26,7 +26,6 @@
 
 class SfxViewFrame;
 class SfxViewShell;
-namespace vcl { class Window; }
 
 typedef SfxViewShell* (*SfxViewCtor)(SfxViewFrame*, SfxViewShell*);
 
@@ -35,7 +34,7 @@ class SFX2_DLLPUBLIC SfxViewFactory
 {
 public:
     SfxViewFactory( SfxViewCtor fnC,
-                    SfxInterfaceId nOrdinal, const sal_Char* asciiViewName );
+                    SfxInterfaceId nOrdinal, const char* asciiViewName );
 
     SfxViewShell*  CreateInstance(SfxViewFrame *pViewFrame, SfxViewShell *pOldSh);
     SfxInterfaceId GetOrdinal() const { return nOrd; }
@@ -43,7 +42,7 @@ public:
     /// returns a legacy view name. This is "view" with an appended ordinal/ID.
     OUString      GetLegacyViewName() const;
 
-    /** returns a API-compatible view name.
+    /** returns an API-compatible view name.
 
         For details on which view names are specified, see the XModel2.getAvailableViewControllerNames
         documentation.

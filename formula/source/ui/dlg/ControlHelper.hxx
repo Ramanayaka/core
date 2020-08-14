@@ -19,68 +19,35 @@
 #ifndef INCLUDED_FORMULA_SOURCE_UI_DLG_CONTROLHELPER_HXX
 #define INCLUDED_FORMULA_SOURCE_UI_DLG_CONTROLHELPER_HXX
 
-#include "formula/funcutl.hxx"
-#include <svtools/svmedit.hxx>
+#include <formula/funcutl.hxx>
+
 namespace formula
 {
 
-// class EditBox
-class EditBox : public Control
-{
-private:
+class ParaWin;
 
-    VclPtr<MultiLineEdit>  pMEdit;
-    Link<EditBox&,void>    aSelChangedLink;
-    Selection              aOldSel;
-    bool                   bMouseFlag;
-
-    DECL_LINK(ChangedHdl, void *, void);
-
-protected:
-
-    virtual bool    PreNotify( NotifyEvent& rNEvt ) override;
-    virtual void    Resize() override;
-    virtual void    GetFocus() override;
-
-
-public:
-                    EditBox( vcl::Window* pParent, WinBits nBits );
-
-                    virtual ~EditBox() override;
-    virtual void    dispose() override;
-
-    MultiLineEdit*  GetEdit() {return pMEdit;}
-
-    void            SetSelChangedHdl( const Link<EditBox&,void>& rLink ) { aSelChangedLink = rLink; }
-
-    void            UpdateOldSel();
-};
-
-
-// class ArgEdit
 
 class ArgEdit : public RefEdit
 {
 public:
-            ArgEdit( vcl::Window* pParent, WinBits nBits );
-    virtual ~ArgEdit() override;
-    virtual void dispose() override;
+    ArgEdit(std::unique_ptr<weld::Entry> xControl);
 
-    void    Init( ArgEdit* pPrevEdit, ArgEdit* pNextEdit,
-                  ScrollBar& rArgSlider, sal_uInt16 nArgCount );
+    void    Init(ArgEdit* pPrevEdit, ArgEdit* pNextEdit,
+                 weld::ScrolledWindow& rArgSlider,
+                 ParaWin& rParaWin, sal_uInt16 nArgCount);
 
 protected:
-    virtual void    KeyInput( const KeyEvent& rKEvt ) override;
+    virtual bool KeyInput(const KeyEvent& rKEvt) override;
 
 private:
-    VclPtr<ArgEdit>    pEdPrev;
-    VclPtr<ArgEdit>    pEdNext;
-    VclPtr<ScrollBar>  pSlider;
-    sal_uInt16      nArgs;
+    ArgEdit* pEdPrev;
+    ArgEdit* pEdNext;
+    weld::ScrolledWindow* pSlider;
+    ParaWin* pParaWin;
+    sal_uInt16 nArgs;
 };
 
 
-// class ArgInput
 
 class ArgInput final
 {
@@ -90,35 +57,35 @@ private:
     Link<ArgInput&,void>          aEdFocusLink;
     Link<ArgInput&,void>          aEdModifyLink;
 
-    VclPtr<FixedText>      pFtArg;
-    VclPtr<PushButton>     pBtnFx;
-    VclPtr<ArgEdit>        pEdArg;
-    VclPtr<RefButton>      pRefBtn;
+    weld::Label*pFtArg;
+    weld::Button* pBtnFx;
+    ArgEdit* pEdArg;
+    RefButton* pRefBtn;
 
-    DECL_LINK( FxBtnClickHdl, Button*, void );
-    DECL_LINK( FxBtnFocusHdl, Control&, void );
-    DECL_LINK( EdFocusHdl, Control&, void );
-    DECL_LINK( EdModifyHdl, Edit&, void );
+    DECL_LINK( FxBtnClickHdl, weld::Button&, void );
+    DECL_LINK( FxBtnFocusHdl, weld::Widget&, void );
+    DECL_LINK( EdFocusHdl, RefEdit&, void );
+    DECL_LINK( EdModifyHdl, RefEdit&, void );
 
 public:
 
     ArgInput();
 
-    void        InitArgInput (  FixedText*      pftArg,
-                                PushButton*    pbtnFx,
-                                ArgEdit*        pedArg,
-                                RefButton*  prefBtn);
+    void        InitArgInput(weld::Label* pftArg,
+                             weld::Button* pbtnFx,
+                             ArgEdit* pedArg,
+                             RefButton* prefBtn);
 
     void        SetArgName(const OUString &aArg);
-    OUString    GetArgName();
+    OUString    GetArgName() const;
     void        SetArgNameFont(const vcl::Font&);
 
     void        SetArgVal(const OUString &aVal);
-    OUString    GetArgVal();
+    OUString    GetArgVal() const;
 
-    void        SetArgSelection (const Selection& rSel);
+    void        SelectAll();
 
-    ArgEdit*    GetArgEdPtr() {return pEdArg;}
+    ArgEdit*    GetArgEdPtr() { return pEdArg; }
 
 
     void            SetFxClickHdl( const Link<ArgInput&,void>& rLink ) { aFxClickLink = rLink; }

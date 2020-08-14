@@ -17,17 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <drawinglayer/primitive3d/hiddengeometryprimitive3d.hxx>
+#include <primitive3d/hiddengeometryprimitive3d.hxx>
 #include <drawinglayer/primitive3d/drawinglayer_primitivetypes3d.hxx>
 
 
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         HiddenGeometryPrimitive3D::HiddenGeometryPrimitive3D(
             const Primitive3DContainer& rChildren)
         :   GroupPrimitive3D(rChildren)
@@ -48,7 +46,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive3DIDBlock(HiddenGeometryPrimitive3D, PRIMITIVE3D_ID_HIDDENGEOMETRYPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

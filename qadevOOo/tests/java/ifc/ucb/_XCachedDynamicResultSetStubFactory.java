@@ -39,7 +39,7 @@ import com.sun.star.uno.UnoRuntime;
 * <ul>
 *  <li> <code>'DynamicResultSet'</code> (of type
 *   <code>com.sun.star.sdbc.XDynamicResultSet</code>):
-*   this must be an imlementation of <code>
+*   this must be an implementation of <code>
 *   com.sun.star.ucb.DynamicResultSet</code> service.</li>
 * <ul> <p>
 * Test is <b> NOT </b> multithread compliant. <p>
@@ -48,7 +48,7 @@ import com.sun.star.uno.UnoRuntime;
 public class _XCachedDynamicResultSetStubFactory extends MultiMethodTest {
 
     /**
-     * Conatins the tested object.
+     * Contains the tested object.
      */
     public XCachedDynamicResultSetStubFactory oObj;
     private XDynamicResultSet resSet = null ;
@@ -71,7 +71,7 @@ public class _XCachedDynamicResultSetStubFactory extends MultiMethodTest {
     * of rows from result set stub created and its source set are retrieved
     * using their static representations and compared. <p>
     * Has <b>OK</b> status if numbers of rows are equal and they are
-    * greater then 0 (because JAR file contains at least one entry).
+    * greater than 0 (because JAR file contains at least one entry).
     */
     public void _createCachedDynamicResultSetStub() {
         boolean result = true ;
@@ -117,7 +117,7 @@ public class _XCachedDynamicResultSetStubFactory extends MultiMethodTest {
     * Connection is checked by retrieving and comparing of row numbers
     * of connected set and its source set. <p>
     * Has <b>OK</b> status if row numbers are equal and they are
-    * greater then 0 (because JAR file contains at least one entry).
+    * greater than 0 (because JAR file contains at least one entry).
     */
     public void _connectToCache() throws Exception {
         boolean result = true ;

@@ -11,8 +11,10 @@
 #define INCLUDED_O3TL_SORTED_VECTOR_HXX
 
 #include <vector>
-#include <functional>
 #include <algorithm>
+#include <functional>
+#include <memory>
+#include <type_traits>
 
 namespace o3tl
 {
@@ -27,8 +29,11 @@ struct find_unique;
     @tpl Compare comparison method
     @tpl Find   look up index of a Value in the array
 */
-template<typename Value, typename Compare = std::less<Value>,
-     template<typename, typename> class Find = find_unique >
+template<
+     typename Value,
+     typename Compare = std::less<Value>,
+     template<typename, typename> class Find = find_unique,
+     bool = std::is_copy_constructible<Value>::value >
 class sorted_vector
 {
 private:
@@ -40,7 +45,30 @@ public:
     typedef typename std::vector<Value>::difference_type difference_type;
     typedef typename std::vector<Value>::size_type size_type;
 
+    constexpr sorted_vector( std::initializer_list<Value> init )
+        : m_vector(init)
+    {
+        std::sort(m_vector.begin(), m_vector.end(), Compare());
+    }
+    sorted_vector() = default;
+    sorted_vector(sorted_vector const&) = default;
+    sorted_vector(sorted_vector&&) = default;
+
+    sorted_vector& operator=(sorted_vector const&) = default;
+    sorted_vector& operator=(sorted_vector&&) = default;
+
     // MODIFIERS
+
+    std::pair<const_iterator,bool> insert( Value&& x )
+    {
+        std::pair<const_iterator, bool> const ret(Find_t()(m_vector.begin(), m_vector.end(), x));
+        if (!ret.second)
+        {
+            const_iterator const it = m_vector.insert(m_vector.begin() + (ret.first - m_vector.begin()), std::move(x));
+            return std::make_pair(it, true);
+        }
+        return std::make_pair(ret.first, false);
+    }
 
     std::pair<const_iterator,bool> insert( const Value& x )
     {
@@ -81,9 +109,30 @@ public:
                        m_vector.begin() + (last - m_vector.begin()));
     }
 
+    /**
+     * make erase return the removed element, otherwise there is no useful way of extracting a std::unique_ptr
+     * from this.
+     */
+    Value erase_extract( size_t index )
+    {
+        Value val = std::move(m_vector[index]);
+        m_vector.erase(m_vector.begin() + index);
+        return val;
+    }
+
     void clear()
     {
         m_vector.clear();
+    }
+
+    void swap(sorted_vector & other)
+    {
+        m_vector.swap(other.m_vector);
+    }
+
+    void reserve(size_type amount)
+    {
+        m_vector.reserve(amount);
     }
 
     // ACCESSORS
@@ -149,6 +198,21 @@ public:
         return (ret.second) ? ret.first : m_vector.end();
     }
 
+    size_type count(const Value& v) const
+    {
+        return find(v) != end() ? 1 : 0;
+    }
+
+    bool operator==(const sorted_vector & other) const
+    {
+        return m_vector == other.m_vector;
+    }
+
+    bool operator!=(const sorted_vector & other) const
+    {
+        return m_vector != other.m_vector;
+    }
+
     void insert(sorted_vector<Value,Compare,Find> const& rOther)
     {
        // optimization for the rather common case that we are overwriting this with the contents
@@ -192,13 +256,73 @@ private:
     vector_t m_vector;
 };
 
+/* Specialise the template for cases like Value = std::unique_ptr<T>, where
+   MSVC2017 needs some help
+*/
+template<
+     typename Value,
+     typename Compare,
+     template<typename, typename> class Find >
+class sorted_vector<Value,Compare,Find,false> : public sorted_vector<Value, Compare, Find, true>
+{
+public:
+    using sorted_vector<Value, Compare, Find, true>::sorted_vector;
+    typedef sorted_vector<Value, Compare, Find, true> super_sorted_vector;
+
+    sorted_vector(sorted_vector const&) = delete;
+    sorted_vector& operator=(sorted_vector const&) = delete;
+
+    sorted_vector() = default;
+    sorted_vector(sorted_vector&&) = default;
+    sorted_vector& operator=(sorted_vector&&) = default;
+
+    /**
+     * implement find for sorted_vectors containing std::unique_ptr
+     */
+    typename super_sorted_vector::const_iterator find( typename Value::element_type const * x ) const
+    {
+        Value tmp(const_cast<typename Value::element_type*>(x));
+        auto ret = super_sorted_vector::find(tmp);
+        tmp.release();
+        return ret;
+    }
+    /**
+     * implement upper_bound for sorted_vectors containing std::unique_ptr
+     */
+    typename super_sorted_vector::const_iterator upper_bound( typename Value::element_type const * x ) const
+    {
+        Value tmp(const_cast<typename Value::element_type*>(x));
+        auto ret = super_sorted_vector::upper_bound(tmp);
+        tmp.release();
+        return ret;
+    }
+    /**
+     * implement lower_bound for sorted_vectors containing std::unique_ptr
+     */
+    typename super_sorted_vector::const_iterator lower_bound( typename Value::element_type const * x ) const
+    {
+        Value tmp(const_cast<typename Value::element_type*>(x));
+        auto ret = super_sorted_vector::lower_bound(tmp);
+        tmp.release();
+        return ret;
+    }
+};
+
 
 /** Implements an ordering function over a pointer, where the comparison uses the < operator on the pointed-to types.
     Very useful for the cases where we put pointers to objects inside a sorted_vector.
 */
-template <class T> struct less_ptr_to : public std::binary_function <T*,T*,bool>
+template <class T> struct less_ptr_to
 {
     bool operator() ( T* const& lhs, T* const& rhs ) const
+    {
+        return (*lhs) < (*rhs);
+    }
+};
+
+template <class T> struct less_uniqueptr_to
+{
+    bool operator() ( std::unique_ptr<T> const& lhs, std::unique_ptr<T> const& rhs ) const
     {
         return (*lhs) < (*rhs);
     }

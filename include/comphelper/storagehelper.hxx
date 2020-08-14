@@ -19,7 +19,7 @@
 #ifndef INCLUDED_COMPHELPER_STORAGEHELPER_HXX
 #define INCLUDED_COMPHELPER_STORAGEHELPER_HXX
 
-#include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <comphelper/comphelperdllapi.h>
@@ -32,8 +32,9 @@
 #define PACKAGE_ENCRYPTIONDATA_SHA256UTF8 "PackageSHA256UTF8EncryptionKey"
 #define PACKAGE_ENCRYPTIONDATA_SHA1UTF8   "PackageSHA1UTF8EncryptionKey"
 #define PACKAGE_ENCRYPTIONDATA_SHA1MS1252 "PackageSHA1MS1252EncryptionKey"
+#define PACKAGE_ENCRYPTIONDATA_SHA1CORRECT "PackageSHA1CorrectEncryptionKey"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { struct NamedValue; }
     namespace embed { class XStorage; }
     namespace io {
@@ -43,7 +44,7 @@ namespace com { namespace sun { namespace star {
     }
     namespace lang { class XSingleServiceFactory; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
 namespace comphelper {
 
@@ -172,6 +173,9 @@ public:
         CreatePackageEncryptionData(
             const OUString& aPassword );
 
+    static css::uno::Sequence< css::beans::NamedValue >
+        CreateGpgPackageEncryptionData();
+
     static bool IsValidZipEntryFileName( const OUString& aName, bool bSlashAllowed );
     static bool IsValidZipEntryFileName( const sal_Unicode *pChar, sal_Int32 nLength, bool bSlashAllowed );
 
@@ -181,14 +185,17 @@ public:
 
     static css::uno::Reference< css::embed::XStorage > GetStorageAtPath(
         const css::uno::Reference< css::embed::XStorage > &xStorage,
-        const OUString& aPath, sal_uInt32 nOpenMode, LifecycleProxy &rNastiness );
+        const OUString& aPath, sal_uInt32 nOpenMode, LifecycleProxy const &rNastiness );
     static css::uno::Reference< css::io::XStream > GetStreamAtPath(
         const css::uno::Reference< css::embed::XStorage > &xStorage,
-        const OUString& aPath, sal_uInt32 nOpenMode, LifecycleProxy &rNastiness );
+        const OUString& aPath, sal_uInt32 nOpenMode, LifecycleProxy const &rNastiness );
     static css::uno::Reference< css::io::XStream > GetStreamAtPackageURL(
         const css::uno::Reference< css::embed::XStorage > &xStorage,
         const OUString& rURL, sal_uInt32 const nOpenMode,
-        LifecycleProxy & rNastiness );
+        LifecycleProxy const & rNastiness );
+
+    static OUString
+    GetODFVersionFromStorage(const css::uno::Reference<css::embed::XStorage>& xStorage);
 };
 
 }

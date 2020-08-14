@@ -19,19 +19,17 @@
 
 
 #include <sdr/contact/viewcontactofe3dpolygon.hxx>
-#include <svx/polygn3d.hxx>
+#include <polygn3d.hxx>
 #include <drawinglayer/primitive3d/sdrpolypolygonprimitive3d.hxx>
-#include <svx/sdr/primitive2d/sdrattributecreator.hxx>
+#include <sdr/primitive2d/sdrattributecreator.hxx>
 #include <sdr/primitive3d/sdrattributecreator3d.hxx>
 #include <basegfx/polygon/b3dpolygon.hxx>
 #include <basegfx/polygon/b3dpolypolygontools.hxx>
 #include <memory>
 
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
         ViewContactOfE3dPolygon::ViewContactOfE3dPolygon(E3dPolygonObj& rPolygon)
         :   ViewContactOfE3d(rPolygon)
         {
@@ -58,7 +56,7 @@ namespace sdr
 
             if(bNormals || bTexture)
             {
-                for(sal_uInt32 a(0L); a < aPolyPolygon3D.count(); a++)
+                for(sal_uInt32 a(0); a < aPolyPolygon3D.count(); a++)
                 {
                     basegfx::B3DPolygon aCandidate3D(aPolyPolygon3D.getB3DPolygon(a));
                     basegfx::B3DPolygon aNormals3D;
@@ -74,7 +72,7 @@ namespace sdr
                         aTexture2D = aPolyTexture2D.getB2DPolygon(a);
                     }
 
-                    for(sal_uInt32 b(0L); b < aCandidate3D.count(); b++)
+                    for(sal_uInt32 b(0); b < aCandidate3D.count(); b++)
                     {
                         if(bNormals)
                         {
@@ -108,7 +106,7 @@ namespace sdr
             {
                 // #i98314#
                 // create texture size from object's size
-                const basegfx::B3DRange aObjectRange(basegfx::tools::getRange(aPolyPolygon3D));
+                const basegfx::B3DRange aObjectRange(basegfx::utils::getRange(aPolyPolygon3D));
 
                 double fWidth(0.0);
                 double fHeight(0.0);
@@ -166,7 +164,7 @@ namespace sdr
 
             return xRetval;
         }
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

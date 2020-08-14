@@ -7,8 +7,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <SyncDbusSessionHelper.hxx>
+#include "SyncDbusSessionHelper.hxx"
 
+#include <cppuhelper/supportsservice.hxx>
 #include <gio/gio.h>
 #include <memory>
 #include <vector>
@@ -18,7 +19,7 @@ using namespace ::com::sun::star::uno;
 
 namespace
 {
-    struct GVariantDeleter { void operator()(GVariant* pV) { g_variant_unref(pV); } };
+    struct GVariantDeleter { void operator()(GVariant* pV) { if (pV) g_variant_unref(pV); } };
     struct GVariantBuilderDeleter { void operator()(GVariantBuilder* pVB) { g_variant_builder_unref(pVB); } };
     template <typename T> struct GObjectDeleter { void operator()(T* pO) { g_object_unref(pO); } };
     class GErrorWrapper
@@ -36,7 +37,7 @@ namespace
             }
             GError*& getRef() { return m_pError; }
     };
-    inline GDBusProxy* lcl_GetPackageKitProxy(const OUString& sInterface)
+    GDBusProxy* lcl_GetPackageKitProxy(const OUString& sInterface)
     {
         const OString sFullInterface = OUStringToOString("org.freedesktop.PackageKit." + sInterface, RTL_TEXTENCODING_ASCII_US);
         GDBusProxy* proxy = nullptr;
@@ -51,15 +52,23 @@ namespace
                                &error.getRef());
         }
         if(!proxy)
-            throw RuntimeException("couldnt get a proxy!");
+            throw RuntimeException("couldn't get a proxy!");
         return proxy;
     }
 
+    GVariant* pk_make_platform_data()
+    {
+        GVariantBuilder builder;
+        g_variant_builder_init(&builder, G_VARIANT_TYPE("a{sv}"));
+        return g_variant_builder_end(&builder);
+    }
+
 void request(
-    char const * method, sal_uInt32 xid,
+    char const * method,
     css::uno::Sequence<OUString> const & resources,
     OUString const & interaction)
 {
+    // Keep strings alive until after call to g_dbus_proxy_call_sync
     std::vector<OString> resUtf8;
     std::shared_ptr<GVariantBuilder> builder(
         g_variant_builder_new(G_VARIANT_TYPE ("as")), GVariantBuilderDeleter());
@@ -70,19 +79,19 @@ void request(
     }
     auto iactUtf8(OUStringToOString(interaction, RTL_TEXTENCODING_UTF8));
     std::shared_ptr<GDBusProxy> proxy(
-        lcl_GetPackageKitProxy("Modify"), GObjectDeleter<GDBusProxy>());
+        lcl_GetPackageKitProxy("Modify2"), GObjectDeleter<GDBusProxy>());
     GErrorWrapper error;
-    g_dbus_proxy_call_sync(
+    std::shared_ptr<GVariant> result(g_dbus_proxy_call_sync(
         proxy.get(), method,
         g_variant_new(
-            "(uass)", static_cast<guint32>(xid), builder.get(),
-            iactUtf8.getStr()),
-        G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error.getRef());
+            "(asss@a{sv})", builder.get(), iactUtf8.getStr(),
+            "libreoffice-startcenter.desktop", pk_make_platform_data()),
+        G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error.getRef()), GVariantDeleter());
 }
 
 }
 
-namespace shell { namespace sessioninstall
+namespace shell::sessioninstall
 {
     SyncDbusSessionHelper::SyncDbusSessionHelper(Reference<XComponentContext> const&)
     {
@@ -91,87 +100,110 @@ namespace shell { namespace sessioninstall
 #endif
     }
 
+Sequence< OUString > SAL_CALL SyncDbusSessionHelper::getSupportedServiceNames()
+{
+    return { "org.freedesktop.PackageKit.SyncDbusSessionHelper" };
+}
+
+OUString SAL_CALL SyncDbusSessionHelper::getImplementationName()
+{
+    return "org.libreoffice.comp.shell.sessioninstall.SyncDbusSessionHelper";
+}
+
+sal_Bool SAL_CALL SyncDbusSessionHelper::supportsService(const OUString& aServiceName)
+{
+    return cppu::supportsService(this, aServiceName);
+}
+
 void SyncDbusSessionHelper::InstallPackageFiles(
-    sal_uInt32 xid, css::uno::Sequence<OUString> const & files,
+    css::uno::Sequence<OUString> const & files,
     OUString const & interaction)
 {
-    request("InstallPackageFiles", xid, files, interaction);
+    request("InstallPackageFiles", files, interaction);
 }
 
 void SyncDbusSessionHelper::InstallProvideFiles(
-    sal_uInt32 xid, css::uno::Sequence<OUString> const & files,
+    css::uno::Sequence<OUString> const & files,
     OUString const & interaction)
 {
-    request("InstallProvideFiles", xid, files, interaction);
+    request("InstallProvideFiles", files, interaction);
 }
 
 void SyncDbusSessionHelper::InstallCatalogs(
-    sal_uInt32 xid, css::uno::Sequence<OUString> const & files,
+    css::uno::Sequence<OUString> const & files,
     OUString const & interaction)
 {
-    request("InstallCatalogs", xid, files, interaction);
+    request("InstallCatalogs", files, interaction);
 }
 
 void SyncDbusSessionHelper::InstallPackageNames(
-    sal_uInt32 xid, css::uno::Sequence<OUString> const & packages,
+    css::uno::Sequence<OUString> const & packages,
     OUString const & interaction)
 {
-    request("InstallPackageNames", xid, packages, interaction);
+    request("InstallPackageNames", packages, interaction);
 }
 
 void SyncDbusSessionHelper::InstallMimeTypes(
-    sal_uInt32 xid, css::uno::Sequence<OUString> const & mimeTypes,
+    css::uno::Sequence<OUString> const & mimeTypes,
     OUString const & interaction)
 {
-    request("InstallMimeTypes", xid, mimeTypes, interaction);
+    request("InstallMimeTypes", mimeTypes, interaction);
 }
 
 void SyncDbusSessionHelper::InstallFontconfigResources(
-    sal_uInt32 xid, css::uno::Sequence<OUString> const & resources,
+    css::uno::Sequence<OUString> const & resources,
     OUString const & interaction)
 {
-    request("InstallFontconfigResources", xid, resources, interaction);
+    request("InstallFontconfigResources", resources, interaction);
 }
 
 void SyncDbusSessionHelper::InstallGStreamerResources(
-    sal_uInt32 xid, css::uno::Sequence<OUString> const & resources,
+    css::uno::Sequence<OUString> const & resources,
     OUString const & interaction)
 {
-    request("InstallGStreamerResources", xid, resources, interaction);
+    request("InstallGStreamerResources", resources, interaction);
 }
 
 void SyncDbusSessionHelper::RemovePackageByFiles(
-    sal_uInt32 xid, css::uno::Sequence<OUString> const & files,
+    css::uno::Sequence<OUString> const & files,
     OUString const & interaction)
 {
-    request("RemovePackageByFiles", xid, files, interaction);
+    request("RemovePackageByFiles", files, interaction);
 }
 
 void SyncDbusSessionHelper::InstallPrinterDrivers(
-    sal_uInt32 xid, css::uno::Sequence<OUString> const & files,
+    css::uno::Sequence<OUString> const & files,
     OUString const & interaction)
 {
-    request("InstallPrinteDrivers", xid, files, interaction);
+    request("InstallPrinterDrivers", files, interaction);
 }
 
-    void SAL_CALL SyncDbusSessionHelper::IsInstalled( const OUString& sPackagename, const OUString& sInteraction, sal_Bool& o_isInstalled )
-    {
-        const OString sPackagenameAscii = OUStringToOString(sPackagename, RTL_TEXTENCODING_ASCII_US);
-        const OString sInteractionAscii = OUStringToOString(sInteraction, RTL_TEXTENCODING_ASCII_US);
-        std::shared_ptr<GDBusProxy> proxy(lcl_GetPackageKitProxy("Query"), GObjectDeleter<GDBusProxy>());
-        GErrorWrapper error;
-        std::shared_ptr<GVariant> result(g_dbus_proxy_call_sync (proxy.get(),
-                         "IsInstalled",
-                         g_variant_new ("(ss)",
-                                sPackagenameAscii.getStr(),
-                                sInteractionAscii.getStr()),
-                         G_DBUS_CALL_FLAGS_NONE,
-                         -1, /* timeout */
-                         nullptr, /* cancellable */
-                         &error.getRef()),GVariantDeleter());
-        if(result.get())
-            o_isInstalled = bool(g_variant_get_boolean(g_variant_get_child_value(result.get(),0)));
-    }
-}}
+void SAL_CALL SyncDbusSessionHelper::IsInstalled( const OUString& sPackagename, const OUString& sInteraction, sal_Bool& o_isInstalled )
+{
+    const OString sPackagenameAscii = OUStringToOString(sPackagename, RTL_TEXTENCODING_ASCII_US);
+    const OString sInteractionAscii = OUStringToOString(sInteraction, RTL_TEXTENCODING_ASCII_US);
+    std::shared_ptr<GDBusProxy> proxy(lcl_GetPackageKitProxy("Query"), GObjectDeleter<GDBusProxy>());
+    GErrorWrapper error;
+    std::shared_ptr<GVariant> result(g_dbus_proxy_call_sync (proxy.get(),
+                     "IsInstalled",
+                     g_variant_new ("(ss)",
+                            sPackagenameAscii.getStr(),
+                            sInteractionAscii.getStr()),
+                     G_DBUS_CALL_FLAGS_NONE,
+                     -1, /* timeout */
+                     nullptr, /* cancellable */
+                     &error.getRef()),GVariantDeleter());
+    if(result)
+        o_isInstalled = bool(g_variant_get_boolean(g_variant_get_child_value(result.get(),0)));
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+shell_sessioninstall_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new SyncDbusSessionHelper(context));
+}
+
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

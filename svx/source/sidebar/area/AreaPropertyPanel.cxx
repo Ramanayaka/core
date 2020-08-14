@@ -17,28 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/sidebar/ControlFactory.hxx>
-#include <AreaPropertyPanel.hxx>
-#include <svx/dialogs.hrc>
-#include <svx/dialmgr.hxx>
-#include <sfx2/objsh.hxx>
+#include "AreaPropertyPanel.hxx"
+#include <svx/svxids.hrc>
 #include <svx/xfltrit.hxx>
 #include <svx/xflftrit.hxx>
-#include <svx/xtable.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/bindings.hxx>
-#include <helpid.hrc>
-#include <svtools/valueset.hxx>
-#include <unotools/pathoptions.hxx>
-#include <svx/svxitems.hrc>
-#include <vcl/toolbox.hxx>
-#include <svtools/toolbarmenu.hxx>
 
 
 using namespace css;
 using namespace css::uno;
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
 AreaPropertyPanel::AreaPropertyPanel(
     vcl::Window* pParent,
@@ -58,7 +48,6 @@ AreaPropertyPanel::AreaPropertyPanel(
       maFillFloatTransparenceController(SID_ATTR_FILL_FLOATTRANSPARENCE, *pBindings, *this),
       mpBindings(pBindings)
 {
-    Initialize();
 }
 
 AreaPropertyPanel::~AreaPropertyPanel()
@@ -123,7 +112,7 @@ void AreaPropertyPanel::setFillStyleAndColor(const XFillStyleItem* pStyleItem,
         const XFillColorItem& rColorItem)
 {
     GetBindings()->GetDispatcher()->ExecuteList(SID_ATTR_FILL_COLOR,
-        SfxCallMode::RECORD, (pStyleItem)
+        SfxCallMode::RECORD, pStyleItem
             ? std::initializer_list<SfxPoolItem const*>{ &rColorItem, pStyleItem }
             : std::initializer_list<SfxPoolItem const*>{ &rColorItem });
 }
@@ -132,7 +121,7 @@ void AreaPropertyPanel::setFillStyleAndGradient(const XFillStyleItem* pStyleItem
         const XFillGradientItem& rGradientItem)
 {
     GetBindings()->GetDispatcher()->ExecuteList(SID_ATTR_FILL_GRADIENT,
-        SfxCallMode::RECORD, (pStyleItem)
+        SfxCallMode::RECORD, pStyleItem
             ? std::initializer_list<SfxPoolItem const*>{ &rGradientItem, pStyleItem }
             : std::initializer_list<SfxPoolItem const*>{ &rGradientItem });
 }
@@ -141,7 +130,7 @@ void AreaPropertyPanel::setFillStyleAndHatch(const XFillStyleItem* pStyleItem,
         const XFillHatchItem& rHatchItem)
 {
     GetBindings()->GetDispatcher()->ExecuteList(SID_ATTR_FILL_HATCH,
-        SfxCallMode::RECORD, (pStyleItem)
+        SfxCallMode::RECORD, pStyleItem
             ? std::initializer_list<SfxPoolItem const*>{ &rHatchItem, pStyleItem }
             : std::initializer_list<SfxPoolItem const*>{ &rHatchItem });
 }
@@ -150,11 +139,11 @@ void AreaPropertyPanel::setFillStyleAndBitmap(const XFillStyleItem* pStyleItem,
         const XFillBitmapItem& rBitmapItem)
 {
     GetBindings()->GetDispatcher()->ExecuteList(SID_ATTR_FILL_BITMAP,
-        SfxCallMode::RECORD, (pStyleItem)
+        SfxCallMode::RECORD, pStyleItem
             ? std::initializer_list<SfxPoolItem const*>{ &rBitmapItem, pStyleItem }
             : std::initializer_list<SfxPoolItem const*>{ &rBitmapItem });
 }
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

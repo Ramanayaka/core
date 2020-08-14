@@ -23,21 +23,16 @@
 #include <editeng/tstpitem.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/brushitem.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/menu.hxx>
+#include <svtools/unitconv.hxx>
 
 #include <cmdid.h>
-#include <frmatr.hxx>
-#include <swtypes.hxx>
 #include <wrtsh.hxx>
 #include <view.hxx>
-#include <basesh.hxx>
-#include <drpcps.hxx>
-#include <envfmt.hxx>
+#include "envfmt.hxx"
 #include <fmtcol.hxx>
-#include "swuipardlg.hxx"
+#include <swuipardlg.hxx>
 #include <chrdlgmodes.hxx>
-#include <pattern.hxx>
+#include <pardlg.hxx>
 #include <poolfmt.hxx>
 #include <uitool.hxx>
 
@@ -46,8 +41,7 @@
 
 #include <memory>
 
-#include "swabstdlg.hxx"
-#include "chrdlg.hrc"
+#include <swabstdlg.hxx>
 #include <swuiexp.hxx>
 
 namespace {
@@ -115,184 +109,153 @@ namespace {
 static long lUserW = 5669; // 10 cm
 static long lUserH = 5669; // 10 cm
 
-SwEnvFormatPage::SwEnvFormatPage(vcl::Window* pParent, const SfxItemSet& rSet)
-    : SfxTabPage(pParent, "EnvFormatPage",
-        "modules/swriter/ui/envformatpage.ui", &rSet)
+SwEnvFormatPage::SwEnvFormatPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
+    : SfxTabPage(pPage, pController, "modules/swriter/ui/envformatpage.ui", "EnvFormatPage", &rSet)
+    , m_pDialog(nullptr)
+    , m_xAddrLeftField(m_xBuilder->weld_metric_spin_button("leftaddr", FieldUnit::CM))
+    , m_xAddrTopField(m_xBuilder->weld_metric_spin_button("topaddr", FieldUnit::CM))
+    , m_xAddrEditButton(m_xBuilder->weld_menu_button("addredit"))
+    , m_xSendLeftField(m_xBuilder->weld_metric_spin_button("leftsender", FieldUnit::CM))
+    , m_xSendTopField(m_xBuilder->weld_metric_spin_button("topsender", FieldUnit::CM))
+    , m_xSendEditButton(m_xBuilder->weld_menu_button("senderedit"))
+    , m_xSizeFormatBox(m_xBuilder->weld_combo_box("format"))
+    , m_xSizeWidthField(m_xBuilder->weld_metric_spin_button("width", FieldUnit::CM))
+    , m_xSizeHeightField(m_xBuilder->weld_metric_spin_button("height", FieldUnit::CM))
+    , m_xPreview(new weld::CustomWeld(*m_xBuilder, "preview", m_aPreview))
 {
-    get(m_pAddrLeftField, "leftaddr");
-    get(m_pAddrTopField, "topaddr");
-    get(m_pSendLeftField,"leftsender");
-    get(m_pSendTopField, "topsender");
-    get(m_pSizeFormatBox, "format");
-    get(m_pSizeWidthField, "width");
-    get(m_pSizeHeightField, "height");
-    get(m_pPreview, "preview");
-    get(m_pAddrEditButton, "addredit");
-    get(m_pSendEditButton, "senderedit");
     SetExchangeSupport();
 
     // Metrics
     FieldUnit aMetric = ::GetDfltMetric(false);
-    SetMetric(*m_pAddrLeftField, aMetric);
-    SetMetric(*m_pAddrTopField, aMetric);
-    SetMetric(*m_pSendLeftField, aMetric);
-    SetMetric(*m_pSendTopField, aMetric);
-    SetMetric(*m_pSizeWidthField, aMetric);
-    SetMetric(*m_pSizeHeightField, aMetric);
+    ::SetFieldUnit(*m_xAddrLeftField, aMetric);
+    ::SetFieldUnit(*m_xAddrTopField, aMetric);
+    ::SetFieldUnit(*m_xSendLeftField, aMetric);
+    ::SetFieldUnit(*m_xSendTopField, aMetric);
+    ::SetFieldUnit(*m_xSizeWidthField, aMetric);
+    ::SetFieldUnit(*m_xSizeHeightField, aMetric);
 
     // Install handlers
-    Link<SpinField&,void> aLk = LINK(this, SwEnvFormatPage, ModifyHdl);
-    m_pAddrLeftField->SetUpHdl( aLk );
-    m_pAddrTopField->SetUpHdl( aLk );
-    m_pSendLeftField->SetUpHdl( aLk );
-    m_pSendTopField->SetUpHdl( aLk );
-    m_pSizeWidthField->SetUpHdl( aLk );
-    m_pSizeHeightField->SetUpHdl( aLk );
+    Link<weld::MetricSpinButton&,void> aLk = LINK(this, SwEnvFormatPage, ModifyHdl);
+    m_xAddrLeftField->connect_value_changed( aLk );
+    m_xAddrTopField->connect_value_changed( aLk );
+    m_xSendLeftField->connect_value_changed( aLk );
+    m_xSendTopField->connect_value_changed( aLk );
+    m_xSizeWidthField->connect_value_changed( aLk );
+    m_xSizeHeightField->connect_value_changed( aLk );
 
-    m_pAddrLeftField->SetDownHdl( aLk );
-    m_pAddrTopField->SetDownHdl( aLk );
-    m_pSendLeftField->SetDownHdl( aLk );
-    m_pSendTopField->SetDownHdl( aLk );
-    m_pSizeWidthField->SetDownHdl( aLk );
-    m_pSizeHeightField->SetDownHdl( aLk );
+    m_xAddrEditButton->connect_selected(LINK(this, SwEnvFormatPage, AddrEditHdl));
+    m_xSendEditButton->connect_selected(LINK(this, SwEnvFormatPage, SendEditHdl));
 
-    Link<Control&,void> aLk3 = LINK(this, SwEnvFormatPage, LoseFocusHdl);
-    m_pAddrLeftField->SetLoseFocusHdl( aLk3 );
-    m_pAddrTopField->SetLoseFocusHdl( aLk3 );
-    m_pSendLeftField->SetLoseFocusHdl( aLk3 );
-    m_pSendTopField->SetLoseFocusHdl( aLk3 );
-    m_pSizeWidthField->SetLoseFocusHdl( aLk3 );
-    m_pSizeHeightField->SetLoseFocusHdl( aLk3 );
+    m_xSizeFormatBox->connect_changed(LINK(this, SwEnvFormatPage, FormatHdl));
 
-    Link<MenuButton *, void> aLk2 = LINK(this, SwEnvFormatPage, EditHdl );
-    m_pAddrEditButton->SetSelectHdl( aLk2 );
-    m_pSendEditButton->SetSelectHdl( aLk2 );
-
-    m_pPreview->SetBorderStyle( WindowBorderStyle::MONO );
-
-    m_pSizeFormatBox->SetSelectHdl(LINK(this, SwEnvFormatPage, FormatHdl));
-
-    // m_pSizeFormatBox
+    // m_xSizeFormatBox
     for (sal_uInt16 i = PAPER_A3; i <= PAPER_KAI32BIG; i++)
     {
         if (i != PAPER_USER)
         {
-            const OUString aPaperName = SvxPaperInfo::GetName((Paper) i);
+            const OUString aPaperName = SvxPaperInfo::GetName(static_cast<Paper>(i));
 
             if (aPaperName.isEmpty())
                 continue;
 
             sal_Int32 nPos = 0;
-            while (nPos < m_pSizeFormatBox->GetEntryCount() &&
-                   m_pSizeFormatBox->GetEntry(nPos) < aPaperName)
+            while (nPos < m_xSizeFormatBox->get_count() &&
+                   m_xSizeFormatBox->get_text(nPos) < aPaperName)
             {
                 ++nPos;
             }
-            m_pSizeFormatBox->InsertEntry(aPaperName, nPos);
-            aIDs.insert( aIDs.begin() + nPos, i);
+            m_xSizeFormatBox->insert_text(nPos, aPaperName);
+            m_aIDs.insert( m_aIDs.begin() + nPos, i);
         }
     }
-    m_pSizeFormatBox->InsertEntry(SvxPaperInfo::GetName(PAPER_USER));
-    aIDs.push_back( (sal_uInt16) PAPER_USER );
+    m_xSizeFormatBox->append_text(SvxPaperInfo::GetName(PAPER_USER));
+    m_aIDs.push_back( sal_uInt16(PAPER_USER) );
+}
 
+void SwEnvFormatPage::Init(SwEnvDlg* pDialog)
+{
+    m_pDialog = pDialog;
+    m_aPreview.SetDialog(m_pDialog);
 }
 
 SwEnvFormatPage::~SwEnvFormatPage()
 {
-    disposeOnce();
 }
 
-void SwEnvFormatPage::dispose()
+IMPL_LINK( SwEnvFormatPage, ModifyHdl, weld::MetricSpinButton&, rEdit, void )
 {
-    m_pAddrLeftField.clear();
-    m_pAddrTopField.clear();
-    m_pAddrEditButton.clear();
-    m_pSendLeftField.clear();
-    m_pSendTopField.clear();
-    m_pSendEditButton.clear();
-    m_pSizeFormatBox.clear();
-    m_pSizeWidthField.clear();
-    m_pSizeHeightField.clear();
-    m_pPreview.clear();
-    SfxTabPage::dispose();
-}
+    int lWVal = getfieldval(*m_xSizeWidthField);
+    int lHVal = getfieldval(*m_xSizeHeightField);
 
+    int lWidth  = std::max(lWVal, lHVal);
+    int lHeight = std::min(lWVal, lHVal);
 
-IMPL_LINK( SwEnvFormatPage, LoseFocusHdl, Control&, rControl, void )
-{
-    ModifyHdl(static_cast<SpinField&>(rControl));
-}
-IMPL_LINK( SwEnvFormatPage, ModifyHdl, SpinField&, rEdit, void )
-{
-    long lWVal = static_cast< long >(GetFieldVal(*m_pSizeWidthField ));
-    long lHVal = static_cast< long >(GetFieldVal(*m_pSizeHeightField));
-
-    long lWidth  = std::max(lWVal, lHVal);
-    long lHeight = std::min(lWVal, lHVal);
-
-    if (&rEdit == m_pSizeWidthField || &rEdit == m_pSizeHeightField)
+    if (&rEdit == m_xSizeWidthField.get() || &rEdit == m_xSizeHeightField.get())
     {
-        long nRotatedWidth = lHeight;
-        long nRotatedHeight = lWidth;
+        int nRotatedWidth = lHeight;
+        int nRotatedHeight = lWidth;
         Paper ePaper = SvxPaperInfo::GetSvxPaper(
-            Size(nRotatedWidth, nRotatedHeight), MapUnit::MapTwip, true);
-        for (size_t i = 0; i < aIDs.size(); ++i)
-            if (aIDs[i] == (sal_uInt16)ePaper)
-                m_pSizeFormatBox->SelectEntryPos(static_cast<sal_Int32>(i));
+            Size(nRotatedWidth, nRotatedHeight), MapUnit::MapTwip);
+        for (size_t i = 0; i < m_aIDs.size(); ++i)
+            if (m_aIDs[i] == static_cast<sal_uInt16>(ePaper))
+                m_xSizeFormatBox->set_active(i);
 
         // remember user size
-        if (aIDs[m_pSizeFormatBox->GetSelectEntryPos()] == (sal_uInt16)PAPER_USER)
+        if (m_aIDs[m_xSizeFormatBox->get_active()] == sal_uInt16(PAPER_USER))
         {
             lUserW = lWidth ;
             lUserH = lHeight;
         }
 
-        m_pSizeFormatBox->GetSelectHdl().Call(*m_pSizeFormatBox);
+        FormatHdl(*m_xSizeFormatBox);
     }
     else
     {
         FillItem(GetParentSwEnvDlg()->aEnvItem);
         SetMinMax();
-        m_pPreview->Invalidate();
+        m_xPreview->queue_draw();
     }
 }
 
-IMPL_LINK( SwEnvFormatPage, EditHdl, MenuButton *, pButton, void )
+IMPL_LINK(SwEnvFormatPage, AddrEditHdl, const OString&, rIdent, void)
+{
+    Edit(rIdent, false);
+}
+
+IMPL_LINK(SwEnvFormatPage, SendEditHdl, const OString&, rIdent, void)
+{
+    Edit(rIdent, true);
+}
+
+void SwEnvFormatPage::Edit(const OString& rIdent, bool bSender)
 {
     SwWrtShell* pSh = GetParentSwEnvDlg()->pSh;
     OSL_ENSURE(pSh, "Shell missing");
-
-    // determine collection-ptr
-    bool bSender = pButton != m_pAddrEditButton;
 
     SwTextFormatColl* pColl = pSh->GetTextCollFromPool( static_cast< sal_uInt16 >(
         bSender ? RES_POOLCOLL_SENDADRESS : RES_POOLCOLL_JAKETADRESS));
     OSL_ENSURE(pColl, "Text collection missing");
 
-    OString sIdent(pButton->GetCurItemIdent());
-
-    if (sIdent == "character")
+    if (rIdent.startsWith("character"))
     {
         SfxItemSet *pCollSet = GetCollItemSet(pColl, bSender);
 
         // In order for the background color not to get ironed over:
         SfxAllItemSet aTmpSet(*pCollSet);
-        ::ConvertAttrCharToGen(aTmpSet, CONV_ATTR_ENV);
+        ::ConvertAttrCharToGen(aTmpSet);
 
-        SwAbstractDialogFactory* pFact = swui::GetFactory();
-        OSL_ENSURE(pFact, "SwAbstractDialogFactory fail!");
+        SwAbstractDialogFactory& rFact = swui::GetFactory();
 
         const OUString sFormatStr = pColl->GetName();
-        ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSwCharDlg(GetParentSwEnvDlg(), pSh->GetView(), aTmpSet, SwCharDlgMode::Env, &sFormatStr));
-        OSL_ENSURE(pDlg, "Dialog creation failed!");
+        ScopedVclPtr<SfxAbstractTabDialog> pDlg(rFact.CreateSwCharDlg(GetFrameWeld(), pSh->GetView(), aTmpSet, SwCharDlgMode::Env, &sFormatStr));
         if (pDlg->Execute() == RET_OK)
         {
             SfxItemSet aOutputSet( *pDlg->GetOutputItemSet() );
-            ::ConvertAttrGenToChar(aOutputSet, aTmpSet, CONV_ATTR_ENV);
+            ::ConvertAttrGenToChar(aOutputSet, aTmpSet);
             pCollSet->Put(aOutputSet);
         }
     }
-    else if (sIdent == "paragraph")
+    else if (rIdent.startsWith("paragraph"))
     {
         SfxItemSet *pCollSet = GetCollItemSet(pColl, bSender);
 
@@ -300,8 +263,8 @@ IMPL_LINK( SwEnvFormatPage, EditHdl, MenuButton *, pButton, void )
         SfxAllItemSet aTmpSet(*pCollSet);
 
         // Insert tabs, default tabs into ItemSet
-        const SvxTabStopItem& rDefTabs = static_cast<const SvxTabStopItem&>(
-            pSh->GetView().GetCurShell()->GetPool().GetDefaultItem(RES_PARATR_TABSTOP));
+        const SvxTabStopItem& rDefTabs =
+            pSh->GetView().GetCurShell()->GetPool().GetDefaultItem(RES_PARATR_TABSTOP);
 
         const sal_uInt16 nDefDist = static_cast<sal_uInt16>(::GetTabDist( rDefTabs ));
         SfxUInt16Item aDefDistItem( SID_ATTR_TABSTOP_DEFAULTS, nDefDist );
@@ -312,8 +275,7 @@ IMPL_LINK( SwEnvFormatPage, EditHdl, MenuButton *, pButton, void )
         aTmpSet.Put( aTabPos );
 
         // left border as offset
-        const long nOff = static_cast<const SvxLRSpaceItem&>(aTmpSet.Get( RES_LR_SPACE )).
-                                                            GetTextLeft();
+        const long nOff = aTmpSet.Get( RES_LR_SPACE ).GetTextLeft();
         SfxInt32Item aOff( SID_ATTR_TABSTOP_OFFSET, nOff );
         aTmpSet.Put( aOff );
 
@@ -321,13 +283,13 @@ IMPL_LINK( SwEnvFormatPage, EditHdl, MenuButton *, pButton, void )
         ::PrepareBoxInfo( aTmpSet, *pSh );
 
         const OUString sFormatStr = pColl->GetName();
-        VclPtrInstance< SwParaDlg > pDlg(GetParentSwEnvDlg(), pSh->GetView(), aTmpSet, DLG_ENVELOP, &sFormatStr);
+        SwParaDlg aDlg(GetFrameWeld(), pSh->GetView(), aTmpSet, DLG_ENVELOP, &sFormatStr);
 
-        if ( pDlg->Execute() == RET_OK )
+        if (aDlg.run() == RET_OK)
         {
             // maybe relocate defaults
             const SfxPoolItem* pItem = nullptr;
-            SfxItemSet* pOutputSet = const_cast<SfxItemSet*>(pDlg->GetOutputItemSet());
+            SfxItemSet* pOutputSet = const_cast<SfxItemSet*>(aDlg.GetOutputItemSet());
             sal_uInt16 nNewDist;
 
             if( SfxItemState::SET == pOutputSet->GetItemState( SID_ATTR_TABSTOP_DEFAULTS,
@@ -348,9 +310,9 @@ IMPL_LINK( SwEnvFormatPage, EditHdl, MenuButton *, pButton, void )
 }
 
 // A temporary Itemset that gets discarded at abort
-SfxItemSet *SwEnvFormatPage::GetCollItemSet(SwTextFormatColl* pColl, bool bSender)
+SfxItemSet *SwEnvFormatPage::GetCollItemSet(SwTextFormatColl const * pColl, bool bSender)
 {
-    SfxItemSet *&pAddrSet = bSender ? GetParentSwEnvDlg()->pSenderSet : GetParentSwEnvDlg()->pAddresseeSet;
+    std::unique_ptr<SfxItemSet>& pAddrSet = bSender ? GetParentSwEnvDlg()->pSenderSet : GetParentSwEnvDlg()->pAddresseeSet;
     if (!pAddrSet)
     {
         // determine range (merge both Itemsets' ranges)
@@ -375,15 +337,15 @@ SfxItemSet *SwEnvFormatPage::GetCollItemSet(SwTextFormatColl* pColl, bool bSende
         aVec2.insert(aVec2.end(), aVec.begin(), aVec.end());
         std::unique_ptr<sal_uInt16[]> pNewRanges(::lcl_convertListToRanges(aVec2));
 
-        pAddrSet = new SfxItemSet(GetParentSwEnvDlg()->pSh->GetView().GetCurShell()->GetPool(),
-                                  pNewRanges.get());
+        pAddrSet.reset(new SfxItemSet(GetParentSwEnvDlg()->pSh->GetView().GetCurShell()->GetPool(),
+                                  pNewRanges.get()));
         pAddrSet->Put(pColl->GetAttrSet());
     }
 
-    return pAddrSet;
+    return pAddrSet.get();
 }
 
-IMPL_LINK_NOARG(SwEnvFormatPage, FormatHdl, ListBox&, void)
+IMPL_LINK_NOARG(SwEnvFormatPage, FormatHdl, weld::ComboBox&, void)
 {
     long lWidth;
     long lHeight;
@@ -392,10 +354,10 @@ IMPL_LINK_NOARG(SwEnvFormatPage, FormatHdl, ListBox&, void)
     long lAddrFromLeft;
     long lAddrFromTop;
 
-    const sal_uInt16 nPaper = aIDs[m_pSizeFormatBox->GetSelectEntryPos()];
-    if (nPaper != (sal_uInt16)PAPER_USER)
+    const sal_uInt16 nPaper = m_aIDs[m_xSizeFormatBox->get_active()];
+    if (nPaper != sal_uInt16(PAPER_USER))
     {
-        Size aSz = SvxPaperInfo::GetPaperSize((Paper)nPaper);
+        Size aSz = SvxPaperInfo::GetPaperSize(static_cast<Paper>(nPaper));
         lWidth  = std::max(aSz.Width(), aSz.Height());
         lHeight = std::min(aSz.Width(), aSz.Height());
     }
@@ -410,60 +372,42 @@ IMPL_LINK_NOARG(SwEnvFormatPage, FormatHdl, ListBox&, void)
     lAddrFromLeft = lWidth  / 2;
     lAddrFromTop  = lHeight / 2;
 
-    SetFieldVal(*m_pAddrLeftField, lAddrFromLeft);
-    SetFieldVal(*m_pAddrTopField , lAddrFromTop );
-    SetFieldVal(*m_pSendLeftField, lSendFromLeft);
-    SetFieldVal(*m_pSendTopField , lSendFromTop );
+    setfieldval(*m_xAddrLeftField, lAddrFromLeft);
+    setfieldval(*m_xAddrTopField , lAddrFromTop );
+    setfieldval(*m_xSendLeftField, lSendFromLeft);
+    setfieldval(*m_xSendTopField , lSendFromTop );
 
-    SetFieldVal(*m_pSizeWidthField , lWidth );
-    SetFieldVal(*m_pSizeHeightField, lHeight);
+    setfieldval(*m_xSizeWidthField , lWidth );
+    setfieldval(*m_xSizeHeightField, lHeight);
 
     SetMinMax();
 
     FillItem(GetParentSwEnvDlg()->aEnvItem);
-    m_pPreview->Invalidate();
+    m_xPreview->queue_draw();
 }
 
 void SwEnvFormatPage::SetMinMax()
 {
-    long lWVal = static_cast< long >(GetFieldVal(*m_pSizeWidthField ));
-    long lHVal = static_cast< long >(GetFieldVal(*m_pSizeHeightField));
+    long lWVal = static_cast< long >(getfieldval(*m_xSizeWidthField ));
+    long lHVal = static_cast< long >(getfieldval(*m_xSizeHeightField));
 
     long lWidth  = std::max(lWVal, lHVal),
          lHeight = std::min(lWVal, lHVal);
 
     // Min and Max
-    m_pAddrLeftField->SetMin((long) 100 * (GetFieldVal(*m_pSendLeftField) + 566), FUNIT_TWIP);
-    m_pAddrLeftField->SetMax((long) 100 * (lWidth  - 2 * 566), FUNIT_TWIP);
-    m_pAddrTopField->SetMin((long) 100 * (GetFieldVal(*m_pSendTopField ) + 2 * 566), FUNIT_TWIP);
-    m_pAddrTopField->SetMax((long) 100 * (lHeight - 2 * 566), FUNIT_TWIP);
-    m_pSendLeftField->SetMin((long) 100 * (566), FUNIT_TWIP);
-    m_pSendLeftField->SetMax((long) 100 * (GetFieldVal(*m_pAddrLeftField) - 566), FUNIT_TWIP);
-    m_pSendTopField->SetMin((long) 100 * (566), FUNIT_TWIP);
-    m_pSendTopField->SetMax((long) 100 * (GetFieldVal(*m_pAddrTopField ) - 2 * 566), FUNIT_TWIP);
-
-    // First and last
-    m_pAddrLeftField->SetFirst(m_pAddrLeftField->GetMin());
-    m_pAddrLeftField->SetLast(m_pAddrLeftField->GetMax());
-    m_pAddrTopField->SetFirst(m_pAddrTopField->GetMin());
-    m_pAddrTopField->SetLast(m_pAddrTopField->GetMax());
-    m_pSendLeftField->SetFirst(m_pSendLeftField->GetMin());
-    m_pSendLeftField->SetLast(m_pSendLeftField->GetMax());
-    m_pSendTopField->SetFirst(m_pSendTopField->GetMin());
-    m_pSendTopField->SetLast(m_pSendTopField->GetMax());
-
-    // Reformat fields
-    m_pAddrLeftField->Reformat();
-    m_pAddrTopField->Reformat();
-    m_pSendLeftField->Reformat();
-    m_pSendTopField->Reformat();
-    m_pSizeWidthField->Reformat();
-    m_pSizeHeightField->Reformat();
+    m_xAddrLeftField->set_range(100 * (getfieldval(*m_xSendLeftField) + 566),
+                                100 * (lWidth  - 2 * 566), FieldUnit::TWIP);
+    m_xAddrTopField->set_range(100 * (getfieldval(*m_xSendTopField ) + 2 * 566),
+                               100 * (lHeight - 2 * 566), FieldUnit::TWIP);
+    m_xSendLeftField->set_range(100 * 566,
+                                100 * (getfieldval(*m_xAddrLeftField) - 566), FieldUnit::TWIP);
+    m_xSendTopField->set_range(100 * 566,
+                               100 * (getfieldval(*m_xAddrTopField ) - 2 * 566), FieldUnit::TWIP);
 }
 
-VclPtr<SfxTabPage> SwEnvFormatPage::Create(vcl::Window* pParent, const SfxItemSet* rSet)
+std::unique_ptr<SfxTabPage> SwEnvFormatPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet)
 {
-    return VclPtr<SwEnvFormatPage>::Create(pParent, *rSet);
+    return std::make_unique<SwEnvFormatPage>(pPage, pController, *rSet);
 }
 
 void SwEnvFormatPage::ActivatePage(const SfxItemSet& rSet)
@@ -482,25 +426,25 @@ DeactivateRC SwEnvFormatPage::DeactivatePage(SfxItemSet* _pSet)
 
 void SwEnvFormatPage::FillItem(SwEnvItem& rItem)
 {
-    rItem.lAddrFromLeft = static_cast< sal_Int32 >(GetFieldVal(*m_pAddrLeftField));
-    rItem.lAddrFromTop  = static_cast< sal_Int32 >(GetFieldVal(*m_pAddrTopField ));
-    rItem.lSendFromLeft = static_cast< sal_Int32 >(GetFieldVal(*m_pSendLeftField));
-    rItem.lSendFromTop  = static_cast< sal_Int32 >(GetFieldVal(*m_pSendTopField ));
+    rItem.m_nAddrFromLeft = static_cast< sal_Int32 >(getfieldval(*m_xAddrLeftField));
+    rItem.m_nAddrFromTop  = static_cast< sal_Int32 >(getfieldval(*m_xAddrTopField ));
+    rItem.m_nSendFromLeft = static_cast< sal_Int32 >(getfieldval(*m_xSendLeftField));
+    rItem.m_nSendFromTop  = static_cast< sal_Int32 >(getfieldval(*m_xSendTopField ));
 
-    const sal_uInt16 nPaper = aIDs[m_pSizeFormatBox->GetSelectEntryPos()];
-    if (nPaper == (sal_uInt16)PAPER_USER)
+    const sal_uInt16 nPaper = m_aIDs[m_xSizeFormatBox->get_active()];
+    if (nPaper == sal_uInt16(PAPER_USER))
     {
-        long lWVal = static_cast< long >(GetFieldVal(*m_pSizeWidthField ));
-        long lHVal = static_cast< long >(GetFieldVal(*m_pSizeHeightField));
-        rItem.lWidth  = std::max(lWVal, lHVal);
-        rItem.lHeight = std::min(lWVal, lHVal);
+        long lWVal = static_cast< long >(getfieldval(*m_xSizeWidthField ));
+        long lHVal = static_cast< long >(getfieldval(*m_xSizeHeightField));
+        rItem.m_nWidth  = std::max(lWVal, lHVal);
+        rItem.m_nHeight = std::min(lWVal, lHVal);
     }
     else
     {
-        long lWVal = SvxPaperInfo::GetPaperSize((Paper)nPaper).Width ();
-        long lHVal = SvxPaperInfo::GetPaperSize((Paper)nPaper).Height();
-        rItem.lWidth  = std::max(lWVal, lHVal);
-        rItem.lHeight = std::min(lWVal, lHVal);
+        long lWVal = SvxPaperInfo::GetPaperSize(static_cast<Paper>(nPaper)).Width ();
+        long lHVal = SvxPaperInfo::GetPaperSize(static_cast<Paper>(nPaper)).Height();
+        rItem.m_nWidth  = std::max(lWVal, lHVal);
+        rItem.m_nHeight = std::min(lWVal, lHVal);
     }
 }
 
@@ -516,23 +460,23 @@ void SwEnvFormatPage::Reset(const SfxItemSet* rSet)
     const SwEnvItem& rItem = static_cast<const SwEnvItem&>( rSet->Get(FN_ENVELOP));
 
     Paper ePaper = SvxPaperInfo::GetSvxPaper(
-        Size( std::min(rItem.lWidth, rItem.lHeight),
-        std::max(rItem.lWidth, rItem.lHeight)), MapUnit::MapTwip, true);
-    for (size_t i = 0; i < aIDs.size(); ++i)
-        if (aIDs[i] == (sal_uInt16)ePaper)
-            m_pSizeFormatBox->SelectEntryPos(static_cast<sal_Int32>(i));
+        Size( std::min(rItem.m_nWidth, rItem.m_nHeight),
+        std::max(rItem.m_nWidth, rItem.m_nHeight)), MapUnit::MapTwip);
+    for (size_t i = 0; i < m_aIDs.size(); ++i)
+        if (m_aIDs[i] == static_cast<sal_uInt16>(ePaper))
+            m_xSizeFormatBox->set_active(i);
 
     // Metric fields
-    SetFieldVal(*m_pAddrLeftField, rItem.lAddrFromLeft);
-    SetFieldVal(*m_pAddrTopField, rItem.lAddrFromTop );
-    SetFieldVal(*m_pSendLeftField, rItem.lSendFromLeft);
-    SetFieldVal(*m_pSendTopField, rItem.lSendFromTop );
-    SetFieldVal(*m_pSizeWidthField  , std::max(rItem.lWidth, rItem.lHeight));
-    SetFieldVal(*m_pSizeHeightField , std::min(rItem.lWidth, rItem.lHeight));
+    setfieldval(*m_xAddrLeftField, rItem.m_nAddrFromLeft);
+    setfieldval(*m_xAddrTopField, rItem.m_nAddrFromTop );
+    setfieldval(*m_xSendLeftField, rItem.m_nSendFromLeft);
+    setfieldval(*m_xSendTopField, rItem.m_nSendFromTop );
+    setfieldval(*m_xSizeWidthField  , std::max(rItem.m_nWidth, rItem.m_nHeight));
+    setfieldval(*m_xSizeHeightField , std::min(rItem.m_nWidth, rItem.m_nHeight));
     SetMinMax();
 
-    DELETEZ(GetParentSwEnvDlg()->pSenderSet);
-    DELETEZ(GetParentSwEnvDlg()->pAddresseeSet);
+    GetParentSwEnvDlg()->pSenderSet.reset();
+    GetParentSwEnvDlg()->pAddresseeSet.reset();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

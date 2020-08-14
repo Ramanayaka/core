@@ -9,15 +9,12 @@
 
 #include <stdexcept>
 
-#include <sal/types.h>
-
 #include <rtl/ustring.hxx>
 #include <vcl/IconThemeInfo.hxx>
 
 #include <cppunit/TestAssert.h>
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
-#include <cppunit/plugin/TestPlugIn.h>
 
 using namespace vcl;
 
@@ -30,16 +27,10 @@ class IconThemeInfoTest : public CppUnit::TestFixture
     ImagesZipIsNotValid();
 
     void
-    ImagesOxygenZipIsValid();
+    ImagesColibreZipIsValid();
 
     void
     ThemeIdIsDetectedFromFileNameWithUnderscore();
-
-    void
-    DisplayNameForHicontrastIsHighContrast();
-
-    void
-    DisplayNameForTango_testingIsTangoTesting();
 
     void
     ExceptionIsThrownWhenIdCannotBeDetermined1();
@@ -52,9 +43,7 @@ class IconThemeInfoTest : public CppUnit::TestFixture
     CPPUNIT_TEST(UpperCaseDisplayNameIsReturnedForNonDefaultId);
     CPPUNIT_TEST(ThemeIdIsDetectedFromFileNameWithUnderscore);
     CPPUNIT_TEST(ImagesZipIsNotValid);
-    CPPUNIT_TEST(ImagesOxygenZipIsValid);
-    CPPUNIT_TEST(DisplayNameForHicontrastIsHighContrast);
-    CPPUNIT_TEST(DisplayNameForTango_testingIsTangoTesting);
+    CPPUNIT_TEST(ImagesColibreZipIsValid);
     CPPUNIT_TEST(ExceptionIsThrownWhenIdCannotBeDetermined1);
     CPPUNIT_TEST(ExceptionIsThrownWhenIdCannotBeDetermined2);
 
@@ -65,8 +54,7 @@ class IconThemeInfoTest : public CppUnit::TestFixture
 void
 IconThemeInfoTest::UpperCaseDisplayNameIsReturnedForNonDefaultId()
 {
-    OUString const id("katze");
-    OUString displayName = vcl::IconThemeInfo::ThemeIdToDisplayName(id);
+    OUString displayName = vcl::IconThemeInfo::ThemeIdToDisplayName("katze");
     CPPUNIT_ASSERT_EQUAL_MESSAGE("theme id is properly uppercased", OUString("Katze"), displayName);
 }
 
@@ -78,28 +66,25 @@ IconThemeInfoTest::ImagesZipIsNotValid()
 }
 
 void
-IconThemeInfoTest::ImagesOxygenZipIsValid()
+IconThemeInfoTest::ImagesColibreZipIsValid()
 {
-    OUString const id("file://images_oxygen.zip");
-    bool valid = vcl::IconThemeInfo::UrlCanBeParsed(id);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("images_oxygen.zip is a valid theme name", true, valid);
+    bool valid = vcl::IconThemeInfo::UrlCanBeParsed("file://images_colibre.zip");
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("images_colibre.zip is a valid theme name", true, valid);
 }
 
 void
 IconThemeInfoTest::ThemeIdIsDetectedFromFileNameWithUnderscore()
 {
-    OUString const fname("images_oxygen.zip");
-    OUString sname = vcl::IconThemeInfo::FileNameToThemeId(fname);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("'oxygen' theme id is returned for 'images_oxygen.zip'", OUString("oxygen"), sname);
+    OUString sname = vcl::IconThemeInfo::FileNameToThemeId("images_colibre.zip");
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("'colibre' theme id is returned for 'images_colibre.zip'", OUString("colibre"), sname);
 }
 
 void
 IconThemeInfoTest::ExceptionIsThrownWhenIdCannotBeDetermined1()
 {
     bool thrown = false;
-    OUString const fname("images_oxygen");
     try {
-        vcl::IconThemeInfo::FileNameToThemeId(fname);
+        vcl::IconThemeInfo::FileNameToThemeId("images_colibre");
     }
     catch (std::runtime_error&) {
         thrown = true;
@@ -111,32 +96,13 @@ void
 IconThemeInfoTest::ExceptionIsThrownWhenIdCannotBeDetermined2()
 {
     bool thrown = false;
-    OUString const fname("image_oxygen.zip");
     try {
-        vcl::IconThemeInfo::FileNameToThemeId(fname);
+        vcl::IconThemeInfo::FileNameToThemeId("image_colibre.zip");
     }
     catch (std::runtime_error&) {
         thrown = true;
     }
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Exception was thrown", true, thrown);
-}
-
-void
-IconThemeInfoTest::DisplayNameForHicontrastIsHighContrast()
-{
-    OUString const id("hicontrast");
-    OUString const expected("High Contrast");
-    OUString displayName = vcl::IconThemeInfo::ThemeIdToDisplayName(id);
-    CPPUNIT_ASSERT_EQUAL(expected, displayName);
-}
-
-void
-IconThemeInfoTest::DisplayNameForTango_testingIsTangoTesting()
-{
-    OUString const id("tango_testing");
-    OUString const expected("Tango Testing");
-    OUString displayName = vcl::IconThemeInfo::ThemeIdToDisplayName(id);
-    CPPUNIT_ASSERT_EQUAL(expected, displayName);
 }
 
 // Put the test suite in the registry

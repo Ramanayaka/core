@@ -23,39 +23,38 @@
 #include <svx/svdorect.hxx>
 #include <svx/svxdllapi.h>
 
-namespace sdr { namespace properties {
+namespace sdr::properties {
     class CircleProperties;
-}}
+}
 
 // Helper class SdrCircObjGeoData
 
-class SdrCircObjGeoData : public SdrTextObjGeoData
+class SdrCircObjGeoData final : public SdrTextObjGeoData
 {
 public:
     long                        nStartAngle;
     long                        nEndAngle;
 };
 
-// class SdrCircObj
+enum class SdrCircKind { Full, Section, Cut, Arc };
 
-class SVX_DLLPUBLIC SdrCircObj : public SdrRectObj
+extern SVXCORE_DLLPUBLIC SdrCircKind ToSdrCircKind(SdrObjKind);
+
+
+class SVXCORE_DLLPUBLIC SdrCircObj final : public SdrRectObj
 {
 private:
     // to allow sdr::properties::CircleProperties access to ImpSetAttrToCircInfo()
     friend class sdr::properties::CircleProperties;
 
-    // only for SdrCircleAttributes
-    SdrObjKind GetCircleKind() const { return meCircleKind; }
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
 
-protected:
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
-    virtual sdr::properties::BaseProperties* CreateObjectSpecificProperties() override;
-
-    SdrObjKind                  meCircleKind;
+    SdrCircKind                 meCircleKind;
     long                        nStartAngle;
     long                        nEndAngle;
-private:
-     SVX_DLLPRIVATE basegfx::B2DPolygon ImpCalcXPolyCirc(const SdrObjKind eKind, const tools::Rectangle& rRect1, long nStart, long nEnd) const;
+
+    SVX_DLLPRIVATE basegfx::B2DPolygon ImpCalcXPolyCirc(const SdrCircKind eKind, const tools::Rectangle& rRect1, long nStart, long nEnd) const;
     SVX_DLLPRIVATE static void ImpSetCreateParams(SdrDragStat& rStat);
     SVX_DLLPRIVATE void ImpSetAttrToCircInfo(); // copy values from pool
     SVX_DLLPRIVATE void ImpSetCircInfoToAttr(); // copy values into pool
@@ -64,19 +63,33 @@ private:
     SVX_DLLPRIVATE bool PaintNeedsXPolyCirc() const; // PaintNeedsXPoly-> PaintNeedsXPolyCirc
     SVX_DLLPRIVATE virtual void RecalcXPoly() override;
 
-protected:
     virtual void Notify(SfxBroadcaster& rBC, const SfxHint& rHint) override;
 
+private:
+    // protected destructor - due to final, make private
+    virtual ~SdrCircObj() override;
+
 public:
-    SdrCircObj(SdrObjKind eNewKind); // Circ, CArc, Sect or CCut
-    SdrCircObj(SdrObjKind eNewKind, const tools::Rectangle& rRect);
+    SdrCircObj(
+        SdrModel& rSdrModel,
+        SdrCircKind eNewKind);
+    SdrCircObj(
+        SdrModel& rSdrModel,
+        SdrCircKind eNewKind,
+        const tools::Rectangle& rRect);
 
     // 0=0.00Deg=3h 9000=90.00Deg=12h 18000=180.00Deg=9h 27000=270.00Deg=6h
     // The circle is build up from StartAngle to EndWink anti-clockwise.
     // If nNewStartAngle==nNewEndWink, then arc has an angle of 0 degrees.
     // If nNewStartAngle+36000==nNewEndWink, then the arc has angle of 360 degrees.
-    SdrCircObj(SdrObjKind eNewKind, const tools::Rectangle& rRect, long nNewStartAngle, long nNewEndWink);
-    virtual ~SdrCircObj() override;
+    SdrCircObj(
+        SdrModel& rSdrModel,
+        SdrCircKind eNewKind,
+        const tools::Rectangle& rRect,
+        long nNewStartAngle,
+        long nNewEndWink);
+
+    SdrCircKind GetCircleKind() const { return meCircleKind; }
 
     virtual void TakeObjInfo(SdrObjTransformInfoRec& rInfo) const override;
     virtual sal_uInt16 GetObjIdentifier() const override;
@@ -85,7 +98,11 @@ public:
     virtual OUString TakeObjNameSingul() const override;
     virtual OUString TakeObjNamePlural() const override;
 
-    virtual SdrCircObj* Clone() const override;
+    virtual SdrCircObj* CloneSdrObject(SdrModel& rTargetModel) const override;
+
+    // implemented mainly for the purposes of Clone()
+    SdrCircObj& operator=(const SdrCircObj& rObj);
+
     virtual void RecalcSnapRect() override;
     virtual void NbcSetSnapRect(const tools::Rectangle& rRect) override;
     virtual basegfx::B2DPolyPolygon TakeXorPoly() const override;
@@ -94,7 +111,7 @@ public:
     virtual Point GetSnapPoint(sal_uInt32 i) const override;
 
     virtual sal_uInt32 GetHdlCount() const override;
-    virtual SdrHdl* GetHdl(sal_uInt32 nHdlNum) const override;
+    virtual void AddToHdlList(SdrHdlList& rHdlList) const override;
 
     // special drag methods
     virtual bool hasSpecialDrag() const override;
@@ -108,14 +125,14 @@ public:
     virtual bool BckCreate(SdrDragStat& rStat) override;
     virtual void BrkCreate(SdrDragStat& rStat) override;
     virtual basegfx::B2DPolyPolygon TakeCreatePoly(const SdrDragStat& rDrag) const override;
-    virtual Pointer GetCreatePointer() const override;
+    virtual PointerStyle GetCreatePointer() const override;
     virtual void NbcMove(const Size& aSiz) override;
     virtual void NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
     virtual void NbcMirror(const Point& rRef1, const Point& rRef2) override;
     virtual void NbcShear (const Point& rRef, long nAngle, double tn, bool bVShear) override;
-    virtual SdrObject* DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
+    virtual SdrObjectUniquePtr DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
 
-protected:
+private:
     virtual SdrObjGeoData* NewGeoData() const override;
     virtual void SaveGeoData(SdrObjGeoData& rGeo) const override;
     virtual void RestGeoData(const SdrObjGeoData& rGeo) override;

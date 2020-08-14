@@ -17,21 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_VLC_VLCPLAYER_HXX
-#define INCLUDED_AVMEDIA_SOURCE_VLC_VLCPLAYER_HXX
+#pragma once
 
 #include "vlccommon.hxx"
 #include <cppuhelper/compbase.hxx>
 #include <com/sun/star/media/XPlayer.hpp>
 #include <cppuhelper/basemutex.hxx>
 
-#include "wrapper/Instance.hxx"
-#include "wrapper/Media.hxx"
-#include "wrapper/Player.hxx"
-#include "wrapper/EventManager.hxx"
+#include <wrapper/Instance.hxx>
+#include <wrapper/Media.hxx>
+#include <wrapper/Player.hxx>
+#include <wrapper/EventManager.hxx>
 
-namespace avmedia {
-namespace vlc {
+namespace avmedia::vlc {
 
 typedef ::cppu::WeakComponentImplHelper< css::media::XPlayer,
                                          css::lang::XServiceInfo > VLC_Base;
@@ -39,27 +37,23 @@ typedef ::cppu::WeakComponentImplHelper< css::media::XPlayer,
 class VLCPlayer : public ::cppu::BaseMutex,
                   public VLC_Base
 {
-    wrapper::Instance&     mInstance;
     wrapper::EventHandler& mEventHandler;
 
     wrapper::Media         mMedia;
     wrapper::Player        mPlayer;
     wrapper::EventManager  mEventManager;
-    const rtl::OUString    mUrl;
+    const OUString         mUrl;
     bool                   mPlaybackLoop;
     css::uno::Reference< css::media::XFrameGrabber > mrFrameGrabber;
     intptr_t               mPrevWinID;
 public:
-    VLCPlayer( const rtl::OUString& url,
+    VLCPlayer( const OUString& url,
                wrapper::Instance& instance,
                wrapper::EventHandler& eh );
 
     void setVideoSize( unsigned width, unsigned height );
-    unsigned getWidth() const;
-    unsigned getHeight() const;
 
-    void SAL_CALL setScale( float factor );
-    void SAL_CALL setWindowID( const intptr_t windowID );
+    void setWindowID( const intptr_t windowID );
 
     void SAL_CALL start() override;
     void SAL_CALL stop() override;
@@ -77,17 +71,15 @@ public:
     css::uno::Reference< css::media::XPlayerWindow > SAL_CALL createPlayerWindow( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
     css::uno::Reference< css::media::XFrameGrabber > SAL_CALL createFrameGrabber() override;
 
-    ::rtl::OUString SAL_CALL getImplementationName() override;
-    sal_Bool SAL_CALL supportsService( const ::rtl::OUString& serviceName ) override;
-    css::uno::Sequence< ::rtl::OUString > SAL_CALL getSupportedServiceNames() override;
+    OUString SAL_CALL getImplementationName() override;
+    sal_Bool SAL_CALL supportsService( const OUString& serviceName ) override;
+    css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
 private:
     void replay();
 };
 
 }
-}
 
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

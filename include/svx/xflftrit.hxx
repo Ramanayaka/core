@@ -22,12 +22,12 @@
 
 #include <svx/xflgrit.hxx>
 #include <svx/svxdllapi.h>
+#include <boost/property_tree/ptree_fwd.hpp>
 
 
-// class XFillFloatTransparenceItem -
 
 
-class SVX_DLLPUBLIC XFillFloatTransparenceItem : public XFillGradientItem
+class SVXCORE_DLLPUBLIC XFillFloatTransparenceItem : public XFillGradientItem
 {
 private:
 
@@ -42,19 +42,20 @@ public:
                             XFillFloatTransparenceItem( const XFillFloatTransparenceItem& rItem );
 
     virtual bool            operator==( const SfxPoolItem& rItem ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
-    virtual sal_uInt16      GetVersion( sal_uInt16 nFileFormatVersion ) const override;
+    virtual XFillFloatTransparenceItem* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres, MapUnit eCoreMetric,
-                                  MapUnit ePresMetric, OUString &rText, const IntlWrapper * pIntlWrapper = nullptr ) const override;
+                                  MapUnit ePresMetric, OUString &rText, const IntlWrapper& rIntlWrapper ) const override;
 
     bool                    IsEnabled() const { return bEnabled; }
     void                    SetEnabled( bool bEnable ) { bEnabled = bEnable; }
 
     static bool CompareValueFunc( const NameOrIndex* p1, const NameOrIndex* p2 );
-    XFillFloatTransparenceItem* checkForUniqueItem( SdrModel* pModel ) const;
+    std::unique_ptr<XFillFloatTransparenceItem> checkForUniqueItem( SdrModel* pModel ) const;
+
+    virtual boost::property_tree::ptree dumpAsJSON() const override;
 };
 
 #endif

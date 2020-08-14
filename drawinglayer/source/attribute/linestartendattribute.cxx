@@ -23,10 +23,8 @@
 #include <rtl/instance.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::attribute
 {
-    namespace attribute
-    {
         class ImpLineStartEndAttribute
         {
         public:
@@ -86,25 +84,16 @@ namespace drawinglayer
         {
         }
 
-        LineStartEndAttribute::LineStartEndAttribute(const LineStartEndAttribute& rCandidate)
-        :   mpLineStartEndAttribute(rCandidate.mpLineStartEndAttribute)
-        {
-        }
+        LineStartEndAttribute::LineStartEndAttribute(const LineStartEndAttribute&) = default;
 
-        LineStartEndAttribute::~LineStartEndAttribute()
-        {
-        }
+        LineStartEndAttribute::~LineStartEndAttribute() = default;
 
         bool LineStartEndAttribute::isDefault() const
         {
             return mpLineStartEndAttribute.same_object(theGlobalDefault::get());
         }
 
-        LineStartEndAttribute& LineStartEndAttribute::operator=(const LineStartEndAttribute& rCandidate)
-        {
-            mpLineStartEndAttribute = rCandidate.mpLineStartEndAttribute;
-            return *this;
-        }
+        LineStartEndAttribute& LineStartEndAttribute::operator=(const LineStartEndAttribute&) = default;
 
         bool LineStartEndAttribute::operator==(const LineStartEndAttribute& rCandidate) const
         {
@@ -136,7 +125,7 @@ namespace drawinglayer
                 && 0 != getB2DPolyPolygon().count()
                 && 0 != getB2DPolyPolygon().getB2DPolygon(0).count());
         }
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

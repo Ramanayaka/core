@@ -28,7 +28,7 @@
 class SdrMeasureTextAutoAngleItem: public SdrYesNoItem {
 public:
     SdrMeasureTextAutoAngleItem(bool bOn=true): SdrYesNoItem(SDRATTR_MEASURETEXTAUTOANGLE,bOn) {}
-    virtual SfxPoolItem* Clone(SfxItemPool*) const override
+    virtual SdrMeasureTextAutoAngleItem* Clone(SfxItemPool*) const override
     {
         return new SdrMeasureTextAutoAngleItem(*this);
     }
@@ -36,10 +36,10 @@ public:
 
 // Preferred perspective for reading text is only evaluated if TextAutoAngle=TRUE.
 // Angle in 1/100deg from viewpoint of the user.
-class SdrMeasureTextAutoAngleViewItem: public SdrAngleItem {
+class SdrMeasureTextAutoAngleViewItem final : public SdrAngleItem {
 public:
     SdrMeasureTextAutoAngleViewItem(long nVal=31500): SdrAngleItem(SDRATTR_MEASURETEXTAUTOANGLEVIEW,nVal)  {}
-    virtual SfxPoolItem* Clone(SfxItemPool*) const override
+    virtual SdrMeasureTextAutoAngleViewItem* Clone(SfxItemPool*) const override
     {
         return new SdrMeasureTextAutoAngleViewItem(*this);
     }

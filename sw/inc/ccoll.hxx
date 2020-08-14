@@ -19,16 +19,10 @@
 #ifndef INCLUDED_SW_INC_CCOLL_HXX
 #define INCLUDED_SW_INC_CCOLL_HXX
 
-#include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
 #include <svl/poolitem.hxx>
-#include <sfx2/tabdlg.hxx>
-#include <svtools/svtabbx.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <vcl/lstbox.hxx>
+#include <tools/solar.h>
 #include "swdllapi.h"
-#include "cmdid.h"
 
 enum class Master_CollCondition;
 
@@ -43,7 +37,7 @@ struct CommandStruct
 sal_Int16       GetCommandContextIndex( const OUString &rContextName );
 OUString   GetCommandContextByIndex( sal_Int16 nIndex );
 
-class SW_DLLPUBLIC SwCondCollItem : public SfxPoolItem
+class SW_DLLPUBLIC SwCondCollItem final : public SfxPoolItem
 {
     static const CommandStruct  aCmds[COND_COMMAND_COUNT];
 
@@ -53,8 +47,12 @@ public:
     SwCondCollItem();
     virtual ~SwCondCollItem() override;
 
+    SwCondCollItem(SwCondCollItem const &) = default;
+    SwCondCollItem(SwCondCollItem &&) = default;
+    SwCondCollItem & operator =(SwCondCollItem const &) = delete; // due to SfxPoolItem
+    SwCondCollItem & operator =(SwCondCollItem &&) = delete; // due to SfxPoolItem
 
-    virtual SfxPoolItem*        Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual SwCondCollItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool                operator==( const SfxPoolItem& ) const override;
 
     static const CommandStruct* GetCmds() { return aCmds; }

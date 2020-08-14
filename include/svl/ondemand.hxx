@@ -25,13 +25,9 @@
 #include <i18nlangtag/lang.h>
 #include <unotools/localedatawrapper.hxx>
 #include <unotools/calendarwrapper.hxx>
-#include <unotools/collatorwrapper.hxx>
-#include <com/sun/star/i18n/CollatorOptions.hpp>
 #include <unotools/transliterationwrapper.hxx>
 #include <unotools/nativenumberwrapper.hxx>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <comphelper/processfactory.hxx>
 #include <i18nutil/transliteration.hxx>
 
 /*
@@ -60,25 +56,18 @@ class OnDemandLocaleDataWrapper
             LanguageType        eCurrentLanguage;
             LanguageType        eLastAnyLanguage;
     const   LocaleDataWrapper*  pSystem;
-    const   LocaleDataWrapper*  pEnglish;
-            LocaleDataWrapper*  pAny;
+    std::unique_ptr<const LocaleDataWrapper>  pEnglish;
+    std::unique_ptr<      LocaleDataWrapper>  pAny;
     const   LocaleDataWrapper*  pCurrent;
             bool                bInitialized;
 
 public:
                                 OnDemandLocaleDataWrapper()
                                     : eLastAnyLanguage( LANGUAGE_DONTKNOW )
-                                    , pEnglish(nullptr)
-                                    , pAny(nullptr)
                                     , bInitialized(false)
                                     {
                                         pCurrent = pSystem = aSysLocale.GetLocaleDataPtr();
                                         eCurrentLanguage = LANGUAGE_SYSTEM;
-                                    }
-                                ~OnDemandLocaleDataWrapper()
-                                    {
-                                        delete pEnglish;
-                                        delete pAny;
                                     }
 
             bool                isInitialized() const   { return bInitialized; }
@@ -101,14 +90,14 @@ public:
                                         else if ( eLang == LANGUAGE_ENGLISH_US )
                                         {
                                                 if ( !pEnglish )
-                                                    pEnglish = new LocaleDataWrapper( m_xContext, rLanguageTag );
-                                                pCurrent = pEnglish;
+                                                    pEnglish.reset( new LocaleDataWrapper( m_xContext, rLanguageTag ) );
+                                                pCurrent = pEnglish.get();
                                         }
                                         else
                                         {
                                             if ( !pAny )
                                             {
-                                                pAny = new LocaleDataWrapper( m_xContext, rLanguageTag );
+                                                pAny.reset( new LocaleDataWrapper( m_xContext, rLanguageTag ) );
                                                 eLastAnyLanguage = eLang;
                                             }
                                             else if ( eLastAnyLanguage != eLang )
@@ -116,7 +105,7 @@ public:
                                                 pAny->setLanguageTag( rLanguageTag );
                                                 eLastAnyLanguage = eLang;
                                             }
-                                            pCurrent = pAny;
+                                            pCurrent = pAny.get();
                                         }
                                         eCurrentLanguage = eLang;
                                     }
@@ -126,27 +115,33 @@ public:
 
     const   LocaleDataWrapper*  get() const         { return pCurrent; }
     const   LocaleDataWrapper*  operator->() const  { return get(); }
-    const   LocaleDataWrapper&  operator*() const   { return *get(); }
+    const   LocaleDataWrapper&  operator*() const   { return *pCurrent; }
 };
 
-/** Load a calendar only if it's needed.
+/** Load a calendar only if it's needed. Keep calendar for "en-US" locale
+    separately, as there can be alternation between locale dependent and
+    locale independent formats.
     SvNumberformatter uses it upon switching locales.
+
     @ATTENTION If the default ctor is used the init() method MUST be called
     before accessing the calendar.
  */
 class OnDemandCalendarWrapper
 {
             css::uno::Reference< css::uno::XComponentContext > m_xContext;
+            css::lang::Locale  aEnglishLocale;
             css::lang::Locale  aLocale;
-    mutable std::unique_ptr<CalendarWrapper>
-                                pPtr;
-    mutable bool                bValid;
+    mutable css::lang::Locale  aLastAnyLocale;
+    mutable std::unique_ptr<CalendarWrapper> pEnglishPtr;
+    mutable std::unique_ptr<CalendarWrapper> pAnyPtr;
 
 public:
                                 OnDemandCalendarWrapper()
-                                    : pPtr(nullptr)
-                                    , bValid(false)
-                                    {}
+                                    {
+                                        LanguageTag aEnglishLanguageTag(LANGUAGE_ENGLISH_US);
+                                        aEnglishLocale = aEnglishLanguageTag.getLocale();
+                                        aLastAnyLocale = aEnglishLocale;
+                                    }
 
             void                init(
                                     const css::uno::Reference< css::uno::XComponentContext >& rxContext,
@@ -155,25 +150,43 @@ public:
                                     {
                                         m_xContext = rxContext;
                                         changeLocale( rLocale );
-                                        pPtr.reset();
+                                        pEnglishPtr.reset();
+                                        pAnyPtr.reset();
                                     }
 
             void                changeLocale( const css::lang::Locale& rLocale )
                                     {
-                                        bValid = false;
                                         aLocale = rLocale;
                                     }
 
             CalendarWrapper*    get() const
                                     {
-                                        if ( !bValid )
+                                        CalendarWrapper* pPtr;
+                                        if ( aLocale == aEnglishLocale )
                                         {
-                                            if ( !pPtr )
-                                                pPtr.reset(new CalendarWrapper( m_xContext ));
-                                            pPtr->loadDefaultCalendar( aLocale );
-                                            bValid = true;
+                                            if (!pEnglishPtr)
+                                            {
+                                                pEnglishPtr.reset( new CalendarWrapper( m_xContext ));
+                                                pEnglishPtr->loadDefaultCalendar( aEnglishLocale );
+                                            }
+                                            pPtr = pEnglishPtr.get();
                                         }
-                                        return pPtr.get();
+                                        else
+                                        {
+                                            if ( !pAnyPtr )
+                                            {
+                                                pAnyPtr.reset(new CalendarWrapper( m_xContext ));
+                                                pAnyPtr->loadDefaultCalendar(aLocale);
+                                                aLastAnyLocale = aLocale;
+                                            }
+                                            else if ( aLocale != aLastAnyLocale )
+                                            {
+                                                pAnyPtr->loadDefaultCalendar( aLocale );
+                                                aLastAnyLocale = aLocale;
+                                            }
+                                            pPtr = pAnyPtr.get();
+                                        }
+                                        return pPtr;
                                     }
 
 };
@@ -197,7 +210,6 @@ public:
                                 OnDemandTransliterationWrapper()
                                     : eLanguage( LANGUAGE_SYSTEM )
                                     , nType(TransliterationFlags::NONE)
-                                    , pPtr(nullptr)
                                     , bValid(false)
                                     , bInitialized(false)
                                     {}
@@ -252,7 +264,6 @@ class OnDemandNativeNumberWrapper
 
 public:
                                 OnDemandNativeNumberWrapper()
-                                    : pPtr(nullptr)
                                     {}
 
             void                init(

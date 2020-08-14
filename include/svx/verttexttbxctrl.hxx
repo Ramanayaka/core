@@ -19,34 +19,55 @@
 #ifndef INCLUDED_SVX_VERTTEXTTBXCTRL_HXX
 #define INCLUDED_SVX_VERTTEXTTBXCTRL_HXX
 
-#include <sfx2/tbxctrl.hxx>
-#include <svx/svxdllapi.h>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+
+#include <cppuhelper/implbase.hxx>
+#include <svtools/toolboxcontroller.hxx>
+
+//HACK to avoid duplicate ImplInheritanceHelper symbols with MSVC:
+class SAL_DLLPUBLIC_TEMPLATE SvxVertCTLTextTbxCtrl_Base:
+    public cppu::ImplInheritanceHelper<svt::ToolboxController, css::lang::XServiceInfo>
+{
+    using ImplInheritanceHelper::ImplInheritanceHelper;
+};
 
 /*
   control to remove/insert cjk settings dependent vertical text toolbox item
  */
-class SvxVertCTLTextTbxCtrl : public SfxToolBoxControl
+class SvxVertCTLTextTbxCtrl : public SvxVertCTLTextTbxCtrl_Base
 {
+    bool m_bVisible;
 public:
-    SvxVertCTLTextTbxCtrl( sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx );
+    explicit SvxVertCTLTextTbxCtrl(const css::uno::Reference<css::uno::XComponentContext>& rContext);
+
     virtual ~SvxVertCTLTextTbxCtrl() override;
 
-    virtual void                StateChanged( sal_uInt16 nSID, SfxItemState eState,
-                                              const SfxPoolItem* pState ) override;
+    // XInitialization
+    virtual void SAL_CALL initialize(const css::uno::Sequence<css::uno::Any>& rArguments) override;
+
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override = 0;
+    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+
+    // XStatusListener
+    virtual void SAL_CALL statusChanged(const css::frame::FeatureStateEvent& rEvent) override;
 };
 
-class SVX_DLLPUBLIC SvxCTLTextTbxCtrl : public SvxVertCTLTextTbxCtrl
+class SvxCTLTextTbxCtrl final : public SvxVertCTLTextTbxCtrl
 {
 public:
-    SFX_DECL_TOOLBOX_CONTROL();
-    SvxCTLTextTbxCtrl(sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx );
+    SvxCTLTextTbxCtrl(const css::uno::Reference<css::uno::XComponentContext>& rContext);
+
+    virtual OUString SAL_CALL getImplementationName() override;
 };
 
-class SVX_DLLPUBLIC SvxVertTextTbxCtrl : public SvxVertCTLTextTbxCtrl
+class SvxVertTextTbxCtrl final : public SvxVertCTLTextTbxCtrl
 {
 public:
-    SFX_DECL_TOOLBOX_CONTROL();
-    SvxVertTextTbxCtrl( sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx );
+    SvxVertTextTbxCtrl(const css::uno::Reference<css::uno::XComponentContext>& rContext);
+
+    virtual OUString SAL_CALL getImplementationName() override;
 };
 
 #endif

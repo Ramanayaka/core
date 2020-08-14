@@ -19,10 +19,8 @@
 
 #include <svgdocument.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgDocument::SvgDocument(const OUString& rAbsolutePath)
         :   maNodes(),
             maAbsolutePath(rAbsolutePath),
@@ -33,25 +31,19 @@ namespace svgio
 
         SvgDocument::~SvgDocument()
         {
-            while(!maNodes.empty())
-            {
-                SvgNode* pCandidate = maNodes[maNodes.size() - 1];
-                delete pCandidate;
-                maNodes.pop_back();
-            }
         }
 
-        void SvgDocument::appendNode(SvgNode* pNode)
+        void SvgDocument::appendNode(std::unique_ptr<SvgNode> pNode)
         {
-            OSL_ENSURE(pNode, "OOps, empty node added (!)");
-            maNodes.push_back(pNode);
+            assert(pNode);
+            maNodes.push_back(std::move(pNode));
         }
 
         void SvgDocument::addSvgNodeToMapper(const OUString& rStr, const SvgNode& rNode)
         {
             if(!rStr.isEmpty())
             {
-                maIdTokenMapperList.insert(IdTokenValueType(rStr, &rNode));
+                maIdTokenMapperList.emplace(rStr, &rNode);
             }
         }
 
@@ -81,7 +73,7 @@ namespace svgio
         {
             if(!rStr.isEmpty())
             {
-                maIdStyleTokenMapperList.insert(IdStyleTokenValueType(rStr, &rSvgStyleAttributes));
+                maIdStyleTokenMapperList.emplace(rStr, &rSvgStyleAttributes);
             }
         }
 
@@ -99,7 +91,6 @@ namespace svgio
             }
         }
 
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,12 +21,10 @@
 
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/ui/XUIElementFactory.hpp>
 
-
-namespace sc { namespace sidebar {
+namespace sc::sidebar {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::ui::XUIElementFactory, css::lang::XServiceInfo
@@ -46,7 +44,7 @@ public:
 
     // XUIElementFactory
     css::uno::Reference<css::ui::XUIElement> SAL_CALL createUIElement(
-        const ::rtl::OUString& rsResourceURL,
+        const OUString& rsResourceURL,
         const ::css::uno::Sequence<css::beans::PropertyValue>& rArguments) override;
 
     OUString SAL_CALL getImplementationName() override;
@@ -56,7 +54,7 @@ public:
     css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 };
 
-} } // end of namespace sc::sidebar
+} // end of namespace sc::sidebar
 
 #endif
 

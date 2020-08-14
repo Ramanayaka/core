@@ -19,6 +19,7 @@
 
 #include <sal/config.h>
 
+#include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/frame/Frame.hpp>
 #include <com/sun/star/frame/XFrame2.hpp>
@@ -34,15 +35,13 @@
 
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <rtl/ref.hxx>
 #include <svtools/miscopt.hxx>
-#include <svl/ownlist.hxx>
 #include <svl/itemprop.hxx>
 #include <sfx2/frmdescr.hxx>
 #include <sfx2/sfxdlg.hxx>
-#include <sfx2/sfxsids.hrc>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/window.hxx>
+#include <tools/debug.hxx>
 
 using namespace ::com::sun::star;
 
@@ -69,7 +68,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.sfx2.IFrameObject");
+        return "com.sun.star.comp.sfx2.IFrameObject";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -108,7 +107,7 @@ public:
 };
 
 IFrameWindow_Impl::IFrameWindow_Impl( vcl::Window *pParent, bool bHasBorder )
-    : Window( pParent, WB_CLIPCHILDREN | WB_NODIALOGCONTROL | WB_DOCKBORDER )
+    : Window( pParent, WB_CLIPCHILDREN | WB_NODIALOGCONTROL )
 {
     if ( !bHasBorder )
         SetBorderStyle( WindowBorderStyle::NOBORDER );
@@ -131,15 +130,15 @@ const SfxItemPropertyMapEntry* lcl_GetIFramePropertyMap_Impl()
 {
     static const SfxItemPropertyMapEntry aIFramePropertyMap_Impl[] =
     {
-        { OUString("FrameIsAutoBorder"),    WID_FRAME_IS_AUTO_BORDER,   cppu::UnoType<bool>::get(), PROPERTY_UNBOUND, 0 },
-        { OUString("FrameIsAutoScroll"),    WID_FRAME_IS_AUTO_SCROLL,   cppu::UnoType<bool>::get(), PROPERTY_UNBOUND, 0 },
-        { OUString("FrameIsBorder"),        WID_FRAME_IS_BORDER,        cppu::UnoType<bool>::get(), PROPERTY_UNBOUND, 0 },
-        { OUString("FrameIsScrollingMode"), WID_FRAME_IS_SCROLLING_MODE,cppu::UnoType<bool>::get(), PROPERTY_UNBOUND, 0 },
-        { OUString("FrameMarginHeight"),    WID_FRAME_MARGIN_HEIGHT,    cppu::UnoType<sal_Int32>::get(), PROPERTY_UNBOUND, 0 },
-        { OUString("FrameMarginWidth"),     WID_FRAME_MARGIN_WIDTH,     cppu::UnoType<sal_Int32>::get(), PROPERTY_UNBOUND, 0 },
-        { OUString("FrameName"),            WID_FRAME_NAME,             cppu::UnoType<OUString>::get(), PROPERTY_UNBOUND, 0 },
-        { OUString("FrameURL"),             WID_FRAME_URL,              cppu::UnoType<OUString>::get(), PROPERTY_UNBOUND, 0 },
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        { "FrameIsAutoBorder",    WID_FRAME_IS_AUTO_BORDER,   cppu::UnoType<bool>::get(), PROPERTY_UNBOUND, 0 },
+        { "FrameIsAutoScroll",    WID_FRAME_IS_AUTO_SCROLL,   cppu::UnoType<bool>::get(), PROPERTY_UNBOUND, 0 },
+        { "FrameIsBorder",        WID_FRAME_IS_BORDER,        cppu::UnoType<bool>::get(), PROPERTY_UNBOUND, 0 },
+        { "FrameIsScrollingMode", WID_FRAME_IS_SCROLLING_MODE,cppu::UnoType<bool>::get(), PROPERTY_UNBOUND, 0 },
+        { "FrameMarginHeight",    WID_FRAME_MARGIN_HEIGHT,    cppu::UnoType<sal_Int32>::get(), PROPERTY_UNBOUND, 0 },
+        { "FrameMarginWidth",     WID_FRAME_MARGIN_WIDTH,     cppu::UnoType<sal_Int32>::get(), PROPERTY_UNBOUND, 0 },
+        { "FrameName",            WID_FRAME_NAME,             cppu::UnoType<OUString>::get(), PROPERTY_UNBOUND, 0 },
+        { "FrameURL",             WID_FRAME_URL,              cppu::UnoType<OUString>::get(), PROPERTY_UNBOUND, 0 },
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     return aIFramePropertyMap_Impl;
 }
@@ -148,7 +147,7 @@ IFrameObject::IFrameObject(const uno::Reference < uno::XComponentContext >& rxCo
     : mxContext( rxContext )
     , maPropMap( lcl_GetIFramePropertyMap_Impl() )
 {
-    if ( aArguments.getLength() )
+    if ( aArguments.hasElements() )
         aArguments[0] >>= mxObj;
 }
 
@@ -187,7 +186,7 @@ sal_Bool SAL_CALL IFrameObject::load(
 
         uno::Sequence < beans::PropertyValue > aProps(2);
         aProps[0].Name = "PluginMode";
-        aProps[0].Value <<= (sal_Int16) 2;
+        aProps[0].Value <<= sal_Int16(2);
         aProps[1].Name = "ReadOnly";
         aProps[1].Value <<= true;
         uno::Reference < frame::XDispatch > xDisp = mxFrame->queryDispatch( aTargetURL, "_self", 0 );
@@ -241,7 +240,7 @@ void SAL_CALL IFrameObject::setPropertyValue(const OUString& aPropertyName, cons
 {
     const SfxItemPropertySimpleEntry*  pEntry = maPropMap.getByName( aPropertyName );
     if( !pEntry )
-         throw beans::UnknownPropertyException();
+         throw beans::UnknownPropertyException(aPropertyName);
     switch( pEntry->nWID )
     {
     case WID_FRAME_URL:
@@ -282,7 +281,7 @@ void SAL_CALL IFrameObject::setPropertyValue(const OUString& aPropertyName, cons
     case WID_FRAME_IS_AUTO_BORDER:
     {
         bool bIsAutoBorder;
-        if ( (aAny >>= bIsAutoBorder) )
+        if ( aAny >>= bIsAutoBorder )
         {
             bool bBorder = maFrmDescr.IsFrameBorderOn();
             maFrmDescr.ResetBorder();
@@ -297,7 +296,7 @@ void SAL_CALL IFrameObject::setPropertyValue(const OUString& aPropertyName, cons
         Size aSize = maFrmDescr.GetMargin();
         if ( aAny >>= nMargin )
         {
-            aSize.Width() = nMargin;
+            aSize.setWidth( nMargin );
             maFrmDescr.SetMargin( aSize );
         }
     }
@@ -308,7 +307,7 @@ void SAL_CALL IFrameObject::setPropertyValue(const OUString& aPropertyName, cons
         Size aSize = maFrmDescr.GetMargin();
         if ( aAny >>= nMargin )
         {
-            aSize.Height() = nMargin;
+            aSize.setHeight( nMargin );
             maFrmDescr.SetMargin( aSize );
         }
     }
@@ -321,7 +320,7 @@ uno::Any SAL_CALL IFrameObject::getPropertyValue(const OUString& aPropertyName)
 {
     const SfxItemPropertySimpleEntry*  pEntry = maPropMap.getByName( aPropertyName );
     if( !pEntry )
-         throw beans::UnknownPropertyException();
+         throw beans::UnknownPropertyException(aPropertyName);
     uno::Any aAny;
     switch( pEntry->nWID )
     {
@@ -361,12 +360,12 @@ uno::Any SAL_CALL IFrameObject::getPropertyValue(const OUString& aPropertyName)
     break;
     case WID_FRAME_MARGIN_WIDTH:
     {
-        aAny <<= (sal_Int32 ) maFrmDescr.GetMargin().Width();
+        aAny <<= static_cast<sal_Int32>(maFrmDescr.GetMargin().Width());
     }
     break;
     case WID_FRAME_MARGIN_HEIGHT:
     {
-        aAny <<= (sal_Int32 ) maFrmDescr.GetMargin().Height();
+        aAny <<= static_cast<sal_Int32>(maFrmDescr.GetMargin().Height());
     }
     break;
     default: ;
@@ -393,9 +392,9 @@ void SAL_CALL IFrameObject::removeVetoableChangeListener(const OUString&, const 
 ::sal_Int16 SAL_CALL IFrameObject::execute()
 {
     SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
-    ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateEditObjectDialog( ".uno:InsertObjectFloatingFrame", mxObj ));
-    if ( pDlg )
-        pDlg->Execute();
+    //we really should set a parent here
+    ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateEditObjectDialog(nullptr, ".uno:InsertObjectFloatingFrame", mxObj));
+    pDlg->Execute();
     return 0;
 }
 
@@ -405,7 +404,7 @@ void SAL_CALL IFrameObject::setTitle( const OUString& )
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_sfx2_IFrameObject_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &arguments)

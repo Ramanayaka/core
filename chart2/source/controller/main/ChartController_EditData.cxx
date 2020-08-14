@@ -17,18 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ChartController.hxx"
-#include "macros.hxx"
+#include <ChartWindow.hxx>
+#include <ChartController.hxx>
 
-#include "dlg_DataEditor.hxx"
-#include "DataSourceHelper.hxx"
-#include "DiagramHelper.hxx"
-#include "ControllerLockGuard.hxx"
+#include <dlg_DataEditor.hxx>
 #include "UndoGuard.hxx"
-#include "ResId.hxx"
-#include "Strings.hrc"
+#include <ResId.hxx>
+#include <strings.hrc>
 
-#include <vcl/msgbox.hxx>
 #include <vcl/svapp.hxx>
 #include <com/sun/star/chart2/XChartDocument.hpp>
 
@@ -42,15 +38,14 @@ namespace chart
 void ChartController::executeDispatch_EditData()
 {
     Reference< chart2::XChartDocument > xChartDoc( getModel(), uno::UNO_QUERY );
-    if( xChartDoc.is())
+    if (xChartDoc.is())
     {
         SolarMutexGuard aSolarGuard;
         UndoLiveUpdateGuardWithData aUndoGuard(
             SchResId( STR_ACTION_EDIT_CHART_DATA ),
             m_xUndoManager );
-        ScopedVclPtrInstance<DataEditor> aDataEditorDialog( nullptr, xChartDoc, m_xCC );
-        if (aDataEditorDialog->Execute() == RET_OK)
-            aDataEditorDialog->ApplyChangesToModel();
+        DataEditor aDataEditorDialog(GetChartFrame(), xChartDoc, m_xCC);
+        aDataEditorDialog.run();
         aUndoGuard.commit();
     }
 }

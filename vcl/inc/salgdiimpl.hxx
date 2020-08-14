@@ -22,14 +22,12 @@
 
 #include <vcl/dllapi.h>
 
-#include <rtl/ustring.hxx>
-
+#include <tools/color.hxx>
 #include <tools/poly.hxx>
-#include <tools/solar.h>
 
 #include <vcl/salgtype.hxx>
 #include <vcl/region.hxx>
-#include <vcl/salnativewidgets.hxx>
+#include <vcl/vclenum.hxx>
 
 #include <com/sun/star/drawing/LineCap.hpp>
 
@@ -52,6 +50,8 @@ public:
 
     virtual void freeResources() = 0;
 
+    virtual OUString getRenderBackendName() const = 0;
+
     virtual bool setClipRegion( const vcl::Region& ) = 0;
     //
     // get the depth of the device
@@ -68,17 +68,17 @@ public:
     virtual void SetLineColor() = 0;
 
     // set the line color to a specific color
-    virtual void SetLineColor( SalColor nSalColor ) = 0;
+    virtual void SetLineColor( Color nColor ) = 0;
 
     // set the fill color to transparent (= don't fill)
     virtual void SetFillColor() = 0;
 
     // set the fill color to a specific color, shapes will be
     // filled accordingly
-    virtual void SetFillColor( SalColor nSalColor ) = 0;
+    virtual void SetFillColor( Color nColor ) = 0;
 
     // enable/disable XOR drawing
-    virtual void SetXORMode( bool bSet ) = 0;
+    virtual void SetXORMode( bool bSet, bool bInvertOnly ) = 0;
 
     // set line color for raster operations
     virtual void SetROPLineColor( SalROPColor nROPColor ) = 0;
@@ -88,7 +88,7 @@ public:
 
     // draw --> LineColor and FillColor and RasterOp and ClipRegion
     virtual void drawPixel( long nX, long nY ) = 0;
-    virtual void drawPixel( long nX, long nY, SalColor nSalColor ) = 0;
+    virtual void drawPixel( long nX, long nY, Color nColor ) = 0;
 
     virtual void drawLine( long nX1, long nY1, long nX2, long nY2 ) = 0;
 
@@ -99,15 +99,22 @@ public:
     virtual void drawPolygon( sal_uInt32 nPoints, const SalPoint* pPtAry ) = 0;
 
     virtual void drawPolyPolygon( sal_uInt32 nPoly, const sal_uInt32* pPoints, PCONSTSALPOINT* pPtAry ) = 0;
-    virtual bool drawPolyPolygon( const basegfx::B2DPolyPolygon&, double fTransparency ) = 0;
+
+    virtual bool drawPolyPolygon(
+        const basegfx::B2DHomMatrix& rObjectToDevice,
+        const basegfx::B2DPolyPolygon&,
+        double fTransparency) = 0;
 
     virtual bool drawPolyLine(
+                const basegfx::B2DHomMatrix& rObjectToDevice,
                 const basegfx::B2DPolygon&,
                 double fTransparency,
-                const basegfx::B2DVector& rLineWidths,
+                double fLineWidth,
+                const std::vector< double >* pStroke, // MM01
                 basegfx::B2DLineJoin,
                 css::drawing::LineCap,
-                double fMiterMinimumAngle) = 0;
+                double fMiterMinimumAngle,
+                bool bPixelSnapHairline) = 0;
 
     virtual bool drawPolyLineBezier(
                 sal_uInt32 nPoints,
@@ -146,11 +153,11 @@ public:
     virtual void drawMask(
                 const SalTwoRect& rPosAry,
                 const SalBitmap& rSalBitmap,
-                SalColor nMaskColor ) = 0;
+                Color nMaskColor ) = 0;
 
-    virtual SalBitmap* getBitmap( long nX, long nY, long nWidth, long nHeight ) = 0;
+    virtual std::shared_ptr<SalBitmap> getBitmap( long nX, long nY, long nWidth, long nHeight ) = 0;
 
-    virtual SalColor getPixel( long nX, long nY ) = 0;
+    virtual Color getPixel( long nX, long nY ) = 0;
 
     // invert --> ClipRegion (only Windows or VirDevs)
     virtual void invert(
@@ -164,7 +171,7 @@ public:
                 long nX, long nY,
                 long nWidth, long nHeight,
                 void* pPtr,
-                sal_uLong nSize ) = 0;
+                sal_uInt32 nSize ) = 0;
 
     virtual bool blendBitmap(
                 const SalTwoRect&,
@@ -195,6 +202,8 @@ public:
                     sal_uInt8 nTransparency ) = 0;
 
     virtual bool drawGradient(const tools::PolyPolygon& rPolygon, const Gradient& rGradient) = 0;
+
+    virtual bool supportsOperation(OutDevSupportType eType) const = 0;
 };
 
 #endif

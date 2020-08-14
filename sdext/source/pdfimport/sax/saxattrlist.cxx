@@ -23,34 +23,20 @@
 namespace pdfi
 {
 
-SaxAttrList::SaxAttrList( const std::unordered_map< OUString, OUString, OUStringHash >& rMap )
+SaxAttrList::SaxAttrList( const std::unordered_map< OUString, OUString >& rMap )
 {
     m_aAttributes.reserve(rMap.size());
-    for( std::unordered_map< OUString,
-                        OUString,
-                        OUStringHash >::const_iterator it = rMap.begin();
-         it != rMap.end(); ++it )
+    for( const auto& rEntry : rMap )
     {
-        m_aIndexMap[ it->first ] = m_aAttributes.size();
-        m_aAttributes.push_back( AttrEntry( it->first, it->second ) );
+        m_aIndexMap[ rEntry.first ] = m_aAttributes.size();
+        m_aAttributes.emplace_back( rEntry.first, rEntry.second );
     }
-}
-
-SaxAttrList::SaxAttrList( const SaxAttrList& rClone ) :
-    cppu::WeakImplHelper<css::xml::sax::XAttributeList, css::util::XCloneable>(rClone),
-    m_aAttributes( rClone.m_aAttributes ),
-    m_aIndexMap( rClone.m_aIndexMap )
-{
-}
-
-SaxAttrList::~SaxAttrList()
-{
 }
 
 namespace {
     OUString getCDATAString()
     {
-        return OUString( "CDATA" );
+        return "CDATA";
     }
 }
 
@@ -80,7 +66,7 @@ OUString SAL_CALL SaxAttrList::getValueByIndex( sal_Int16 i_nIndex )
 
 OUString SAL_CALL SaxAttrList::getValueByName(const OUString& i_rName)
 {
-    std::unordered_map< OUString, size_t, OUStringHash >::const_iterator it = m_aIndexMap.find( i_rName );
+    std::unordered_map< OUString, size_t >::const_iterator it = m_aIndexMap.find( i_rName );
     return (it != m_aIndexMap.end()) ? m_aAttributes[it->second].m_aValue : OUString();
 }
 

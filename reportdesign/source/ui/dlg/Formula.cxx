@@ -17,21 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/svapp.hxx>
-#include <vcl/mnemonic.hxx>
-#include <vcl/msgbox.hxx>
-#include <unotools/charclass.hxx>
 #include <unotools/viewoptions.hxx>
 #include <formula/formdata.hxx>
 #include <formula/funcutl.hxx>
 #include <formula/tokenarray.hxx>
+#include <formula/FormulaCompiler.hxx>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 
 #include <memory>
 
-#include "Formula.hxx"
-#include "AddField.hxx"
-#include "helpids.hrc"
+#include <Formula.hxx>
+#include <AddField.hxx>
+#include <helpids.h>
 
 
 namespace rptui
@@ -43,7 +41,7 @@ namespace rptui
 //      initialization / shared functions for the dialog
 
 
-FormulaDialog::FormulaDialog(vcl::Window* pParent
+FormulaDialog::FormulaDialog(weld::Window* pParent
                              , const uno::Reference<lang::XMultiServiceFactory>& _xServiceFactory
                              , const std::shared_ptr< IFunctionManager >&  _pFunctionMgr
                              , const OUString& _sFormula
@@ -51,8 +49,7 @@ FormulaDialog::FormulaDialog(vcl::Window* pParent
                              , svl::SharedStringPool& rStrPool )
     : FormulaModalDialog( pParent, _pFunctionMgr.get(),this)
     ,m_aFunctionManager(_pFunctionMgr)
-    ,m_pFormulaData(new FormEditData())
-    ,m_pAddField(nullptr)
+    ,m_xFormulaData(new FormEditData())
     ,m_xRowSet(_xRowSet)
     ,m_pEdit(nullptr)
     ,m_sFormula("=")
@@ -87,23 +84,20 @@ void FormulaDialog::fill()
 
 FormulaDialog::~FormulaDialog()
 {
-    disposeOnce();
-}
-
-void FormulaDialog::dispose()
-{
-    if ( m_pAddField )
+    if ( m_xAddField )
     {
         SvtViewOptions aDlgOpt( EViewType::Window, HID_RPT_FIELD_SEL_WIN );
-        aDlgOpt.SetWindowState(OStringToOUString(m_pAddField->GetWindowState((WindowStateMask::X | WindowStateMask::Y | WindowStateMask::State | WindowStateMask::Minimized)), RTL_TEXTENCODING_ASCII_US));
+        aDlgOpt.SetWindowState(OStringToOUString(m_xAddField->getDialog()->get_window_state(WindowStateMask::X | WindowStateMask::Y | WindowStateMask::State | WindowStateMask::Minimized), RTL_TEXTENCODING_ASCII_US));
+
+        if (m_xAddField->getDialog()->get_visible())
+            m_xAddField->response(RET_CANCEL);
+
+        m_xAddField.reset();
     }
 
-    StoreFormEditData( m_pFormulaData );
-    m_pEdit.clear();
-    m_pAddField.clear();
-    formula::FormulaModalDialog::dispose();
+    StoreFormEditData(m_xFormulaData.get());
+    m_pEdit = nullptr;
 }
-
 
 // functions for right side
 
@@ -112,10 +106,22 @@ bool FormulaDialog::calculateValue( const OUString& rStrExp, OUString& rStrResul
     rStrResult = rStrExp;
     return false;
 }
+
+std::shared_ptr<formula::FormulaCompiler> FormulaDialog::getCompiler() const
+{
+    return nullptr;
+}
+
+std::unique_ptr<formula::FormulaCompiler> FormulaDialog::createCompiler( formula::FormulaTokenArray& rArray ) const
+{
+    return std::unique_ptr<formula::FormulaCompiler>(new FormulaCompiler(rArray));
+}
+
 void FormulaDialog::doClose(bool _bOk)
 {
-    EndDialog(_bOk ? RET_OK : RET_CANCEL);
+    response(_bOk ? RET_OK : RET_CANCEL);
 }
+
 void FormulaDialog::insertEntryToLRUList(const IFunctionDescription*    /*_pDesc*/)
 {
 }
@@ -139,7 +145,7 @@ void FormulaDialog::switchBack()
 }
 FormEditData* FormulaDialog::getFormEditData() const
 {
-    return m_pFormulaData;
+    return m_xFormulaData.get();
 }
 void FormulaDialog::setCurrentFormula(const OUString& _sReplacement)
 {
@@ -195,26 +201,27 @@ void FormulaDialog::ToggleCollapsed( RefEdit* _pEdit, RefButton* _pButton)
     ::std::pair<RefButton*,RefEdit*> aPair = RefInputStartBefore( _pEdit, _pButton );
     m_pEdit = aPair.second;
     if ( m_pEdit )
-        m_pEdit->Hide();
+        m_pEdit->GetWidget()->hide();
     if ( aPair.first )
-        aPair.first->Hide();
+        aPair.first->GetWidget()->hide();
 
-    if ( !m_pAddField )
+    if (!m_xAddField)
     {
-        m_pAddField = VclPtr<OAddFieldWindow>::Create(this,m_xRowSet);
-        m_pAddField->SetCreateHdl(LINK( this, FormulaDialog, OnClickHdl ) );
+        m_xAddField = std::make_shared<OAddFieldWindow>(m_xDialog.get(), m_xRowSet);
+        m_xAddField->SetCreateHdl(LINK( this, FormulaDialog, OnClickHdl ) );
         SvtViewOptions aDlgOpt( EViewType::Window, HID_RPT_FIELD_SEL_WIN );
         if ( aDlgOpt.Exists() )
         {
-            m_pAddField->SetWindowState(OUStringToOString(aDlgOpt.GetWindowState().getStr(), RTL_TEXTENCODING_ASCII_US));
+            m_xAddField->getDialog()->set_window_state(OUStringToOString(aDlgOpt.GetWindowState(), RTL_TEXTENCODING_ASCII_US));
 
         }
 
-        m_pAddField->Update();
+        m_xAddField->Update();
     }
     RefInputStartAfter();
-    m_pAddField->Show();
 
+    if (!m_xAddField->getDialog()->get_visible())
+        weld::DialogController::runAsync(m_xAddField, [this](sal_Int32 /*nResult*/) { m_xAddField.reset(); });
 }
 
 IMPL_LINK( FormulaDialog, OnClickHdl, OAddFieldWindow& ,_rAddFieldDlg, void)
@@ -235,7 +242,8 @@ IMPL_LINK( FormulaDialog, OnClickHdl, OAddFieldWindow& ,_rAddFieldDlg, void)
         }
     }
     m_pEdit = nullptr;
-    _rAddFieldDlg.Hide();
+    if (_rAddFieldDlg.getDialog()->get_visible())
+        _rAddFieldDlg.response(RET_CANCEL);
     RefInputDoneAfter();
 }
 

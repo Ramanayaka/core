@@ -20,10 +20,10 @@
 #ifndef INCLUDED_EMBEDDEDOBJ_SOURCE_MSOLE_MTNOTIFICATION_HXX
 #define INCLUDED_EMBEDDEDOBJ_SOURCE_MSOLE_MTNOTIFICATION_HXX
 
-#include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/awt/XCallback.hpp>
 #include <cppuhelper/implbase.hxx>
+#include <cppuhelper/weakref.hxx>
 
 #include <rtl/ref.hxx>
 

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SCRIPTING_SOURCE_DLGPROV_DLGEVTATT_HXX
-#define INCLUDED_SCRIPTING_SOURCE_DLGPROV_DLGEVTATT_HXX
+#pragma once
 
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/script/XAllListener.hpp>
@@ -36,10 +35,8 @@
 
 namespace dlgprov
 {
-    // class DialogEventsAttacherImpl
     typedef std::unordered_map< OUString,
-        css::uno::Reference< css::script::XScriptListener >,
-        OUStringHash > ListenerHash;
+        css::uno::Reference< css::script::XScriptListener > > ListenerHash;
 
     typedef ::cppu::WeakImplHelper<
         css::script::XScriptEventsAttacher > DialogEventsAttacherImpl_BASE;
@@ -53,8 +50,8 @@ namespace dlgprov
         css::uno::Reference< css::uno::XComponentContext > m_xContext;
         css::uno::Reference< css::script::XEventAttacher > m_xEventAttacher;
         /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::script::XScriptListener > getScriptListenerForKey( const OUString& sScriptName );
-        css::uno::Reference< css::script::XScriptEventsSupplier > getFakeVbaEventsSupplier( const css::uno::Reference< css::awt::XControl>& xControl, OUString& sCodeName );
+        css::uno::Reference< css::script::XScriptListener > const & getScriptListenerForKey( const OUString& sScriptName );
+        css::uno::Reference< css::script::XScriptEventsSupplier > getFakeVbaEventsSupplier( const css::uno::Reference< css::awt::XControl>& xControl, OUString const & sCodeName );
         void nestedAttachEvents( const css::uno::Sequence< css::uno::Reference< css::uno::XInterface > >& Objects, const css::uno::Any& Helper, OUString& sDialogCodeName );
         void attachEventsToControl( const css::uno::Reference< css::awt::XControl>& xControl, const css::uno::Reference< css::script::XScriptEventsSupplier >& events, const css::uno::Any& Helper  );
     public:
@@ -75,7 +72,6 @@ namespace dlgprov
     };
 
 
-    // class DialogAllListenerImpl
 
 
     typedef ::cppu::WeakImplHelper<
@@ -105,7 +101,6 @@ namespace dlgprov
     };
 
 
-    // class DialogScriptListenerImpl
 
 
     typedef ::cppu::WeakImplHelper<
@@ -131,8 +126,5 @@ namespace dlgprov
 
 
 }   // namespace dlgprov
-
-
-#endif // SCRIPTING_DLGEVT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

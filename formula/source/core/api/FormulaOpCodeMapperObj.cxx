@@ -23,11 +23,10 @@
 #include <utility>
 
 #include <formula/FormulaCompiler.hxx>
-#include "formula/FormulaOpCodeMapperObj.hxx"
-#include "formula/opcode.hxx"
-#include <comphelper/sequence.hxx>
+#include <formula/FormulaOpCodeMapperObj.hxx>
+#include <formula/opcode.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <o3tl/make_unique.hxx>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 
 namespace formula
 {
@@ -83,31 +82,23 @@ SAL_CALL FormulaOpCodeMapperObj::getAvailableMappings(
 
 OUString SAL_CALL FormulaOpCodeMapperObj::getImplementationName(  )
 {
-    return getImplementationName_Static();
-}
-
-OUString SAL_CALL FormulaOpCodeMapperObj::getImplementationName_Static()
-{
-    return OUString( "simple.formula.FormulaOpCodeMapperObj" );
+    return "simple.formula.FormulaOpCodeMapperObj";
 }
 
 uno::Sequence< OUString > SAL_CALL FormulaOpCodeMapperObj::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_Static();
-}
-uno::Sequence< OUString > SAL_CALL FormulaOpCodeMapperObj::getSupportedServiceNames_Static()
-{
-    uno::Sequence<OUString> aSeq { "com.sun.star.sheet.FormulaOpCodeMapper" };
-    return aSeq;
-}
-
-uno::Reference< uno::XInterface > SAL_CALL FormulaOpCodeMapperObj::create(
-                uno::Reference< uno::XComponentContext > const & /*_xContext*/)
-{
-    return static_cast<sheet::XFormulaOpCodeMapper*>(new FormulaOpCodeMapperObj(o3tl::make_unique<FormulaCompiler>()));
+    return { "com.sun.star.sheet.FormulaOpCodeMapper" };
 }
 
 } // formula
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+simple_formula_FormulaOpCodeMapperObj(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(
+            new formula::FormulaOpCodeMapperObj(std::make_unique<formula::FormulaCompiler>()));
+}
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

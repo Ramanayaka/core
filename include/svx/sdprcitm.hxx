@@ -19,6 +19,7 @@
 #ifndef INCLUDED_SVX_SDPRCITM_HXX
 #define INCLUDED_SVX_SDPRCITM_HXX
 
+#include <config_options.h>
 #include <svl/intitem.hxx>
 #include <svx/svxdllapi.h>
 
@@ -27,15 +28,13 @@
 // Integer percents of 0
 
 
-class SVX_DLLPUBLIC SdrPercentItem : public SfxUInt16Item
+class SVXCORE_DLLPUBLIC SdrPercentItem : public SfxUInt16Item
 {
 public:
     SdrPercentItem(sal_uInt16 nId, sal_uInt16 nVal): SfxUInt16Item(nId,nVal) {}
-    SdrPercentItem(sal_uInt16 nId, SvStream& rIn):  SfxUInt16Item(nId,rIn) {}
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool=nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual SdrPercentItem* Clone(SfxItemPool* pPool=nullptr) const override;
 
-    virtual bool GetPresentation(SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper * = nullptr) const override;
+    virtual bool GetPresentation(SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper&) const override;
 };
 
 
@@ -43,15 +42,13 @@ public:
 // Integer percents of +/-
 
 
-class SVX_DLLPUBLIC SdrSignedPercentItem : public SfxInt16Item
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SdrSignedPercentItem : public SfxInt16Item
 {
 public:
     SdrSignedPercentItem( sal_uInt16 nId, sal_Int16 nVal ) : SfxInt16Item( nId,nVal ) {}
-    SdrSignedPercentItem( sal_uInt16 nId, SvStream& rIn ) : SfxInt16Item( nId,rIn ) {}
-    virtual SfxPoolItem* Clone( SfxItemPool* pPool = nullptr ) const override;
-    virtual SfxPoolItem* Create( SvStream& rIn, sal_uInt16 nVer ) const override;
+    virtual SdrSignedPercentItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
-    virtual bool GetPresentation( SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper * = nullptr ) const override;
+    virtual bool GetPresentation(SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper&) const override;
 };
 
 

@@ -7,6 +7,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <sal/config.h>
+
+#include <string_view>
+
 #include <unicode/regex.h>
 
 #include <comphelper/configuration.hxx>
@@ -14,31 +18,32 @@
 #include <opencl/openclconfig.hxx>
 #include <opencl/platforminfo.hxx>
 #include <rtl/ustring.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <sal/types.h>
 
 OpenCLConfig::OpenCLConfig() :
     mbUseOpenCL(true)
 {
-    // This entry we have had for some time (when blacklisting was
+    // This entry we have had for some time (when denylisting was
     // done elsewhere in the code), so presumably there is a known
     // good reason for it.
-    maBlackList.insert(ImplMatcher("Windows", "", "Intel\\(R\\) Corporation", "", "9\\.17\\.10\\.2884"));
+    maDenyList.insert(ImplMatcher("Windows", "", "Intel\\(R\\) Corporation", "", "9\\.17\\.10\\.2884"));
 
     // This is what I have tested on Linux and it works for our unit tests.
-    maWhiteList.insert(ImplMatcher("Linux", "", "Advanced Micro Devices, Inc\\.", "", "1445\\.5 \\(sse2,avx\\)"));
+    maAllowList.insert(ImplMatcher("Linux", "", "Advanced Micro Devices, Inc\\.", "", "1445\\.5 \\(sse2,avx\\)"));
 
     // For now, assume that AMD, Intel and NVIDIA drivers are good
-    maWhiteList.insert(ImplMatcher("", "", "Advanced Micro Devices, Inc\\.", "", ""));
-    maWhiteList.insert(ImplMatcher("", "", "Intel\\(R\\) Corporation", "", ""));
-    maWhiteList.insert(ImplMatcher("", "", "NVIDIA Corporation", "", ""));
+    maAllowList.insert(ImplMatcher("", "", "Advanced Micro Devices, Inc\\.", "", ""));
+    maAllowList.insert(ImplMatcher("", "", "Intel\\(R\\) Corporation", "", ""));
+    maAllowList.insert(ImplMatcher("", "", "NVIDIA Corporation", "", ""));
 }
 
 bool OpenCLConfig::operator== (const OpenCLConfig& r) const
 {
     return (mbUseOpenCL == r.mbUseOpenCL &&
-            maBlackList == r.maBlackList &&
-            maWhiteList == r.maWhiteList);
+            maDenyList == r.maDenyList &&
+            maAllowList == r.maAllowList);
 }
 
 bool OpenCLConfig::operator!= (const OpenCLConfig& r) const
@@ -53,14 +58,14 @@ css::uno::Sequence<OUString> SetOfImplMatcherToStringSequence(const OpenCLConfig
     css::uno::Sequence<OUString> result(rSet.size());
 
     size_t n(0);
-    for (auto i = rSet.cbegin(); i != rSet.cend(); ++i)
+    for (const auto& rItem : rSet)
     {
         result[n++] =
-            (*i).maOS.replaceAll("%", "%25").replaceAll("/", "%2F").replaceAll(";", "%3B") + "/" +
-            (*i).maOSVersion.replaceAll("%", "%25").replaceAll("/", "%2F").replaceAll(";", "%3B") + "/" +
-            (*i).maPlatformVendor.replaceAll("%", "%25").replaceAll("/", "%2F").replaceAll(";", "%3B") + "/" +
-            (*i).maDevice.replaceAll("%", "%25").replaceAll("/", "%2F").replaceAll(";", "%3B") + "/" +
-            (*i).maDriverVersion.replaceAll("%", "%25").replaceAll("/", "%2F").replaceAll(";", "%3B");
+            rItem.maOS.replaceAll("%", "%25").replaceAll("/", "%2F").replaceAll(";", "%3B") + "/" +
+            rItem.maOSVersion.replaceAll("%", "%25").replaceAll("/", "%2F").replaceAll(";", "%3B") + "/" +
+            rItem.maPlatformVendor.replaceAll("%", "%25").replaceAll("/", "%2F").replaceAll(";", "%3B") + "/" +
+            rItem.maDevice.replaceAll("%", "%25").replaceAll("/", "%2F").replaceAll(";", "%3B") + "/" +
+            rItem.maDriverVersion.replaceAll("%", "%25").replaceAll("/", "%2F").replaceAll(";", "%3B");
     }
 
     return result;
@@ -69,16 +74,16 @@ css::uno::Sequence<OUString> SetOfImplMatcherToStringSequence(const OpenCLConfig
 OUString getToken(const OUString& string, sal_Int32& index)
 {
     OUString token(string.getToken(0, '/', index));
-    OUString result;
+    OUStringBuffer result;
     sal_Int32 i(0);
     sal_Int32 p;
     while ((p = token.indexOf('%', i)) >= 0)
     {
         if (p > i)
-            result += token.copy(i, p - i);
+            result.append(std::u16string_view(token).substr(i, p - i));
         if (p < token.getLength() - 2)
         {
-            result += OUStringLiteral1(token.copy(p+1, 2).toInt32(16));
+            result.append(sal_Unicode(token.copy(p+1, 2).toInt32(16)));
             i = p + 3;
         }
         else
@@ -86,24 +91,24 @@ OUString getToken(const OUString& string, sal_Int32& index)
             i = token.getLength();
         }
     }
-    result += token.copy(i);
+    result.append(std::u16string_view(token).substr(i));
 
-    return result;
+    return result.makeStringAndClear();
 }
 
 OpenCLConfig::ImplMatcherSet StringSequenceToSetOfImplMatcher(const css::uno::Sequence<OUString>& rSequence)
 {
     OpenCLConfig::ImplMatcherSet result;
 
-    for (auto i = rSequence.begin(); i != rSequence.end(); ++i)
+    for (const auto& rItem : rSequence)
     {
         OpenCLConfig::ImplMatcher m;
         sal_Int32 index(0);
-        m.maOS = getToken(*i, index);
-        m.maOSVersion = getToken(*i, index);
-        m.maPlatformVendor = getToken(*i, index);
-        m.maDevice = getToken(*i, index);
-        m.maDriverVersion = getToken(*i, index);
+        m.maOS = getToken(rItem, index);
+        m.maOSVersion = getToken(rItem, index);
+        m.maPlatformVendor = getToken(rItem, index);
+        m.maDevice = getToken(rItem, index);
+        m.maDriverVersion = getToken(rItem, index);
 
         result.insert(m);
     }
@@ -119,7 +124,7 @@ bool match(const OUString& rPattern, const OUString& rInput)
     UErrorCode nIcuError(U_ZERO_ERROR);
     icu::UnicodeString sIcuPattern(reinterpret_cast<const UChar*>(rPattern.getStr()), rPattern.getLength());
     icu::UnicodeString sIcuInput(reinterpret_cast<const UChar*>(rInput.getStr()), rInput.getLength());
-    RegexMatcher aMatcher(sIcuPattern, sIcuInput, 0, nIcuError);
+    icu::RegexMatcher aMatcher(sIcuPattern, sIcuInput, 0, nIcuError);
 
     return U_SUCCESS(nIcuError) && aMatcher.matches(nIcuError) && U_SUCCESS(nIcuError);
 }
@@ -153,12 +158,12 @@ bool match(const OpenCLConfig::ImplMatcher& rListEntry, const OpenCLPlatformInfo
 
 bool match(const OpenCLConfig::ImplMatcherSet& rList, const OpenCLPlatformInfo& rPlatform, const OpenCLDeviceInfo& rDevice, const char* sKindOfList)
 {
-    for (auto i = rList.cbegin(); i != rList.end(); ++i)
+    for (const auto& rListEntry : rList)
     {
         SAL_INFO("opencl", "Looking for match for platform=" << rPlatform << ", device=" << rDevice <<
-                 " in " << sKindOfList << " entry=" << *i);
+                 " in " << sKindOfList << " entry=" << rListEntry);
 
-        if (match(*i, rPlatform, rDevice))
+        if (match(rListEntry, rPlatform, rDevice))
         {
             SAL_INFO("opencl", "Match!");
             return true;
@@ -175,8 +180,8 @@ OpenCLConfig OpenCLConfig::get()
 
     result.mbUseOpenCL = officecfg::Office::Common::Misc::UseOpenCL::get();
 
-    result.maBlackList = StringSequenceToSetOfImplMatcher(officecfg::Office::Common::Misc::OpenCLBlackList::get());
-    result.maWhiteList = StringSequenceToSetOfImplMatcher(officecfg::Office::Common::Misc::OpenCLWhiteList::get());
+    result.maDenyList = StringSequenceToSetOfImplMatcher(officecfg::Office::Common::Misc::OpenCLDenyList::get());
+    result.maAllowList = StringSequenceToSetOfImplMatcher(officecfg::Office::Common::Misc::OpenCLAllowList::get());
 
     return result;
 }
@@ -186,23 +191,23 @@ void OpenCLConfig::set()
     std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
 
     officecfg::Office::Common::Misc::UseOpenCL::set(mbUseOpenCL, batch);
-    officecfg::Office::Common::Misc::OpenCLBlackList::set(SetOfImplMatcherToStringSequence(maBlackList), batch);
-    officecfg::Office::Common::Misc::OpenCLWhiteList::set(SetOfImplMatcherToStringSequence(maWhiteList), batch);
+    officecfg::Office::Common::Misc::OpenCLDenyList::set(SetOfImplMatcherToStringSequence(maDenyList), batch);
+    officecfg::Office::Common::Misc::OpenCLAllowList::set(SetOfImplMatcherToStringSequence(maAllowList), batch);
 
     batch->commit();
 }
 
 bool OpenCLConfig::checkImplementation(const OpenCLPlatformInfo& rPlatform, const OpenCLDeviceInfo& rDevice) const
 {
-    // Check blacklist of known bad OpenCL implementations
-    if (match(maBlackList, rPlatform, rDevice, "blacklist"))
+    // Check denylist of known bad OpenCL implementations
+    if (match(maDenyList, rPlatform, rDevice, "denylist"))
     {
         SAL_INFO("opencl", "Rejecting");
         return true;
     }
 
-    // Check for whitelist of known good OpenCL implementations
-    if (match(maWhiteList, rPlatform, rDevice, "whitelist"))
+    // Check for allowlist of known good OpenCL implementations
+    if (match(maAllowList, rPlatform, rDevice, "allowlist"))
     {
         SAL_INFO("opencl", "Approving");
         return false;
@@ -217,8 +222,8 @@ std::ostream& operator<<(std::ostream& rStream, const OpenCLConfig& rConfig)
 {
     rStream << "{"
         "UseOpenCL=" << (rConfig.mbUseOpenCL ? "YES" : "NO") << ","
-        "BlackList=" << rConfig.maBlackList << ","
-        "WhiteList=" << rConfig.maWhiteList <<
+        "DenyList=" << rConfig.maDenyList << ","
+        "AllowList=" << rConfig.maAllowList <<
         "}";
     return rStream;
 }

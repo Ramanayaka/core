@@ -22,8 +22,8 @@
 
 #include <vcl/image.hxx>
 
+#include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
-#include <com/sun/star/sdb/application/DatabaseObject.hpp>
 
 #include <memory>
 
@@ -77,6 +77,15 @@ namespace dbaui
             Image& _out_rImage
         );
 
+        OUString getImageId(
+            const OUString& _rName,
+            const sal_Int32 _nDatabaseObjectType
+        );
+
+        // check whether the connection can give us an icon
+        css::uno::Reference<css::graphic::XGraphic> getXGraphic(const OUString& _rName,
+                                                                const sal_Int32 _nDatabaseObjectType);
+
         /** returns the default image to be used for a database object
 
             In opposite to getImages, this method does not check the concrete object
@@ -119,12 +128,15 @@ namespace dbaui
         static Image getFolderImage(
             sal_Int32 _nDatabaseObjectType
         );
+        static OUString getFolderImageId(
+            sal_Int32 _nDatabaseObjectType
+        );
 
         /** retrieves the image to be used for a database as a whole.
             @return
                 the image to be used for folders of this type
         */
-        static Image getDatabaseImage();
+        static OUString getDatabaseImage();
     };
 
 } // namespace dbaui

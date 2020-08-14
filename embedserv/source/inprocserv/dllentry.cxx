@@ -17,11 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/types.h"
+#include <sal/types.h>
 
 #include <stdio.h>
-#include <inprocembobj.h>
+#include "inprocembobj.h"
 #include <embservconst.h>
+
+#include <olectl.h> // declarations of DllRegisterServer/DllUnregisterServer
 
 static const GUID* guidList[ SUPPORTED_FACTORIES_NUM ] = {
     &OID_WriterTextServer,
@@ -42,47 +44,47 @@ static ULONG g_nLock = 0;
 
 
 namespace {
-    void FillCharFromInt( int nValue, char* pBuf, int nLen )
+    void FillCharFromInt( int nValue, wchar_t* pBuf, int nLen )
     {
         int nInd = 0;
         while( nInd < nLen )
         {
             char nSign = ( nValue / ( 1 << ( ( nLen - nInd - 1 ) * 4 ) ) ) % 16;
             if ( nSign >= 0 && nSign <= 9 )
-                pBuf[nInd] = nSign + '0';
-            else if ( nSign >= 10 && nSign <= 15 )
-                pBuf[nInd] = nSign - 10 + 'a';
+                pBuf[nInd] = nSign + L'0';
+            else if (nSign >= 10)
+                pBuf[nInd] = nSign - 10 + L'a';
 
             nInd++;
         }
     }
 
-    int GetStringFromClassID( const GUID& guid, char* pBuf, int nLen )
+    int GetStringFromClassID( const GUID& guid, wchar_t* pBuf, int nLen )
     {
         // is not allowed to insert
         if ( nLen < 38 )
             return 0;
 
-        pBuf[0] = '{';
+        pBuf[0] = L'{';
         FillCharFromInt( guid.Data1, &pBuf[1], 8 );
-        pBuf[9] = '-';
+        pBuf[9] = L'-';
         FillCharFromInt( guid.Data2, &pBuf[10], 4 );
-        pBuf[14] = '-';
+        pBuf[14] = L'-';
         FillCharFromInt( guid.Data3, &pBuf[15], 4 );
-        pBuf[19] = '-';
+        pBuf[19] = L'-';
 
         int nInd = 0;
         for ( nInd = 0; nInd < 2 ; nInd++ )
             FillCharFromInt( guid.Data4[nInd], &pBuf[20 + 2*nInd], 2 );
-        pBuf[24] = '-';
+        pBuf[24] = L'-';
         for ( nInd = 2; nInd < 8 ; nInd++ )
             FillCharFromInt( guid.Data4[nInd], &pBuf[20 + 1 + 2*nInd], 2 );
-        pBuf[37] = '}';
+        pBuf[37] = L'}';
 
         return 38;
     }
 
-    HRESULT WriteLibraryToRegistry( const char* pLibrary, DWORD nLen )
+    HRESULT WriteLibraryToRegistry( const wchar_t* pLibrary, DWORD nLen )
     {
         HRESULT hRes = E_FAIL;
         if ( pLibrary && nLen )
@@ -92,19 +94,19 @@ namespace {
             hRes = S_OK;
             for ( int nInd = 0; nInd < SUPPORTED_FACTORIES_NUM; nInd++ )
             {
-                const char pSubKeyTemplate[] = "Software\\Classes\\CLSID\\.....................................\\InprocHandler32";
-                char pSubKey[SAL_N_ELEMENTS(pSubKeyTemplate)];
-                strncpy(pSubKey, pSubKeyTemplate, SAL_N_ELEMENTS(pSubKeyTemplate));
+                const wchar_t pSubKeyTemplate[] = L"Software\\Classes\\CLSID\\.....................................\\InprocHandler32";
+                wchar_t pSubKey[SAL_N_ELEMENTS(pSubKeyTemplate)];
+                wcsncpy(pSubKey, pSubKeyTemplate, SAL_N_ELEMENTS(pSubKeyTemplate));
 
                 int nGuidLen = GetStringFromClassID( *guidList[nInd], &pSubKey[23], 38 );
 
-                BOOL bLocalSuccess = FALSE;
+                bool bLocalSuccess = false;
                 if ( nGuidLen == 38 )
                 {
-                    if ( ERROR_SUCCESS == RegOpenKey( HKEY_LOCAL_MACHINE, pSubKey, &hKey ) )
+                    if ( ERROR_SUCCESS == RegOpenKeyW( HKEY_LOCAL_MACHINE, pSubKey, &hKey ) )
                     {
-                        if ( ERROR_SUCCESS == RegSetValueEx( hKey, "", 0, REG_SZ, reinterpret_cast<const BYTE*>(pLibrary), nLen ) )
-                            bLocalSuccess = TRUE;
+                        if ( ERROR_SUCCESS == RegSetValueExW( hKey, L"", 0, REG_SZ, reinterpret_cast<const BYTE*>(pLibrary), nLen*sizeof(wchar_t) ) )
+                            bLocalSuccess = true;
                     }
 
                     if ( hKey )
@@ -130,6 +132,8 @@ namespace {
 namespace inprocserv
 {
 
+namespace {
+
 class InprocEmbedProvider_Impl : public IClassFactory, public InprocCountedObject_Impl
 {
 public:
@@ -138,19 +142,22 @@ public:
     virtual ~InprocEmbedProvider_Impl();
 
     /* IUnknown methods */
-    STDMETHOD(QueryInterface)(REFIID riid, LPVOID FAR * ppvObj) override;
+    STDMETHOD(QueryInterface)(REFIID riid, void ** ppvObj) override;
     STDMETHOD_(ULONG, AddRef)() override;
     STDMETHOD_(ULONG, Release)() override;
 
     /* IClassFactory methods */
     STDMETHOD(CreateInstance)(IUnknown FAR* punkOuter, REFIID riid, void FAR* FAR* ppv) override;
-    STDMETHOD(LockServer)(int fLock) override;
+    STDMETHOD(LockServer)(BOOL fLock) override;
 
 protected:
 
     ULONG               m_refCount;
     GUID                m_guid;
 };
+
+}
+
 }; // namespace inprocserv
 
 
@@ -162,9 +169,6 @@ extern "C" BOOL WINAPI DllMain( HINSTANCE hInstance, DWORD dwReason, LPVOID /*lp
     if (dwReason == DLL_PROCESS_ATTACH)
     {
         g_hInstance = hInstance;
-    }
-    else if (dwReason == DLL_PROCESS_DETACH)
-    {
     }
 
     return TRUE;    // ok
@@ -199,11 +203,11 @@ STDAPI DllCanUnloadNow()
 
 STDAPI DllRegisterServer()
 {
-    HMODULE aCurModule = GetModuleHandleA( "inprocserv.dll" );
+    HMODULE aCurModule = GetModuleHandleW( L"inprocserv.dll" );
     if( aCurModule )
     {
-        char aLibPath[1024];
-        DWORD nLen = GetModuleFileNameA( aCurModule, aLibPath, 1019 );
+        wchar_t aLibPath[1024];
+        DWORD nLen = GetModuleFileNameW( aCurModule, aLibPath, 1019 );
         if ( nLen && nLen < 1019 )
         {
             aLibPath[nLen++] = 0;
@@ -217,7 +221,7 @@ STDAPI DllRegisterServer()
 
 STDAPI DllUnregisterServer()
 {
-    return WriteLibraryToRegistry( "ole32.dll", 10 );
+    return WriteLibraryToRegistry( L"ole32.dll", 10 );
 }
 
 
@@ -259,7 +263,7 @@ InprocEmbedProvider_Impl::~InprocEmbedProvider_Impl()
 
 // IUnknown
 
-STDMETHODIMP InprocEmbedProvider_Impl::QueryInterface( REFIID riid, void FAR* FAR* ppv )
+COM_DECLSPEC_NOTHROW STDMETHODIMP InprocEmbedProvider_Impl::QueryInterface( REFIID riid, void ** ppv )
 {
     if(IsEqualIID(riid, IID_IUnknown))
     {
@@ -279,13 +283,13 @@ STDMETHODIMP InprocEmbedProvider_Impl::QueryInterface( REFIID riid, void FAR* FA
 }
 
 
-STDMETHODIMP_(ULONG) InprocEmbedProvider_Impl::AddRef()
+COM_DECLSPEC_NOTHROW STDMETHODIMP_(ULONG) InprocEmbedProvider_Impl::AddRef()
 {
     return ++m_refCount;
 }
 
 
-STDMETHODIMP_(ULONG) InprocEmbedProvider_Impl::Release()
+COM_DECLSPEC_NOTHROW STDMETHODIMP_(ULONG) InprocEmbedProvider_Impl::Release()
 {
     sal_Int32 nCount = --m_refCount;
     if ( nCount == 0 )
@@ -294,7 +298,7 @@ STDMETHODIMP_(ULONG) InprocEmbedProvider_Impl::Release()
 }
 
 
-STDMETHODIMP InprocEmbedProvider_Impl::CreateInstance(IUnknown FAR* punkOuter,
+COM_DECLSPEC_NOTHROW STDMETHODIMP InprocEmbedProvider_Impl::CreateInstance(IUnknown FAR* punkOuter,
                                                        REFIID riid,
                                                        void FAR* FAR* ppv)
 {
@@ -316,7 +320,7 @@ STDMETHODIMP InprocEmbedProvider_Impl::CreateInstance(IUnknown FAR* punkOuter,
 }
 
 
-STDMETHODIMP InprocEmbedProvider_Impl::LockServer( int fLock )
+COM_DECLSPEC_NOTHROW STDMETHODIMP InprocEmbedProvider_Impl::LockServer( BOOL fLock )
 {
     if ( fLock )
         g_nLock++;

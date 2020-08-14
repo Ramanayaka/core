@@ -26,12 +26,7 @@
 #include <com/sun/star/datatransfer/dnd/XDragSourceListener.hpp>
 #include <com/sun/star/datatransfer/dnd/XDropTargetListener.hpp>
 
-namespace com {
-namespace sun {
-namespace star {
-
-namespace datatransfer {
-namespace dnd {
+namespace com::sun::star::datatransfer::dnd {
     struct DragGestureEvent;
     struct DragSourceDragEvent;
     struct DragSourceDropEvent;
@@ -40,20 +35,15 @@ namespace dnd {
     struct DropTargetDragEnterEvent;
     struct DropTargetDropEvent;
     struct DropTargetEvent;
-}}
+}
 
-}}}
-
-namespace vcl
-{
-
-namespace unohelper
+namespace vcl::unohelper
 {
 
 class VCL_DLLPUBLIC DragAndDropClient
 {
 public:
-    virtual ~DragAndDropClient();
+    virtual ~DragAndDropClient() COVERITY_NOEXCEPT_FALSE;
 
     // css::datatransfer::dnd::XDragGestureListener
     /// @throws css::uno::RuntimeException
@@ -74,7 +64,7 @@ public:
     virtual void dragOver( const css::datatransfer::dnd::DropTargetDragEvent& dtde );
 };
 
-class VCL_DLLPUBLIC DragAndDropWrapper :
+class VCL_DLLPUBLIC DragAndDropWrapper final :
                             public css::datatransfer::dnd::XDragGestureListener,
                             public css::datatransfer::dnd::XDragSourceListener,
                             public css::datatransfer::dnd::XDropTargetListener,
@@ -113,7 +103,7 @@ public:
     void SAL_CALL dropActionChanged( const css::datatransfer::dnd::DropTargetDragEvent& dtde ) override;
 };
 
-}}  // namespace vcl::unohelper
+}  // namespace vcl::unohelper
 
 #endif // INCLUDED_VCL_DNDHELP_HXX
 

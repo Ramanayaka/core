@@ -20,50 +20,36 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_ACREDLIN_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_ACREDLIN_HXX
 
-#include <vcl/morebtn.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/group.hxx>
-#include <svtools/headbar.hxx>
-#include <svtools/simptabl.hxx>
-#include <svtools/svtabbx.hxx>
-#include "rangenam.hxx"
-#include "anyrefdg.hxx"
-#include <vcl/lstbox.hxx>
 #include <svx/ctredlin.hxx>
-#include "chgtrack.hxx"
-#include "chgviset.hxx"
-#include <vcl/timer.hxx>
+#include <chgtrack.hxx>
+#include <chgviset.hxx>
 #include <vcl/idle.hxx>
 
 class ScViewData;
 class ScDocument;
+
+struct SfxChildWinInfo;
 
 class ScRedlinData : public RedlinData
 {
 public:
                     ScRedlinData();
                     virtual ~ScRedlinData() override;
+    sal_uLong       nActionNo;
+    sal_uLong       nInfo;
     SCTAB           nTable;
     SCCOL           nCol;
     SCROW           nRow;
-    sal_uLong       nActionNo;
-    sal_uLong       nInfo;
     bool            bIsRejectable;
     bool            bIsAcceptable;
 };
 
-class ScAcceptChgDlg : public SfxModelessDialog
+class ScAcceptChgDlg final : public SfxModelessDialogController
 {
-private:
     Idle                    aSelectionIdle;
     Idle                    aReOpenIdle;
-    VclPtr<PopupMenu>       m_xPopup;
-    VclPtr<SvxAcceptChgCtr> m_pAcceptChgCtr;
     ScViewData*             pViewData;
     ScDocument*             pDoc;
-    VclPtr<SvxTPFilter>     pTPFilter;
-    VclPtr<SvxTPView>       pTPView;
-    VclPtr<SvxRedlinTable>  pTheView; // #i48648 now SvHeaderTabListBox
     ScRangeList             aRangeList;
     ScChangeViewSettings    aChangeViewSet;
     OUString           aStrInsertCols;
@@ -90,6 +76,14 @@ private:
     bool                    bHasFilterEntry:1;
     bool                    bUseColor:1;
 
+    SvxTPFilter* pTPFilter;
+    SvxTPView* pTPView;
+    SvxRedlinTable* pTheView; // #i48648 now SvHeaderTabListBox
+
+    std::unique_ptr<weld::Container> m_xContentArea;
+    std::unique_ptr<weld::Menu> m_xPopup, m_xSortMenu;
+    std::unique_ptr<SvxAcceptChgCtr> m_xAcceptChgCtr;
+
     void            Init();
 
     DECL_LINK( FilterHandle, SvxTPFilter*, void );
@@ -98,17 +92,16 @@ private:
     DECL_LINK( AcceptHandle, SvxTPView*, void );
     DECL_LINK( RejectAllHandle, SvxTPView*, void );
     DECL_LINK( AcceptAllHandle, SvxTPView*, void );
-    DECL_LINK( ExpandingHandle, SvTreeListBox*, bool );
-    DECL_LINK( SelectHandle, SvTreeListBox*, void );
+    DECL_LINK( ExpandingHandle, const weld::TreeIter&, bool );
+    DECL_LINK( SelectHandle, weld::TreeView&, void );
     DECL_LINK( RefInfoHandle, const OUString*, void );
 
     DECL_LINK( UpdateSelectionHdl, Timer*, void );
     DECL_LINK( ChgTrackModHdl, ScChangeTrack&, void );
-    DECL_LINK( CommandHdl, SvSimpleTable*, void );
+    DECL_LINK( CommandHdl, const CommandEvent&, bool );
     DECL_LINK( ReOpenTimerHdl, Timer*, void );
-    DECL_LINK( ColCompareHdl, const SvSortData*, sal_Int32 );
 
-protected:
+    int ColCompareHdl(const weld::TreeIter& rLeft, const weld::TreeIter& rRight) const;
 
     void            RejectFiltered();
     void            AcceptFiltered();
@@ -117,55 +110,53 @@ protected:
 
     OUString* MakeTypeString(ScChangeActionType eType);
 
-    SvTreeListEntry* AppendChangeAction(
-        const ScChangeAction* pScChangeAction,
-        SvTreeListEntry* pParent=nullptr,bool bDelMaster = false,
+    std::unique_ptr<weld::TreeIter> AppendChangeAction(
+        const ScChangeAction* pScChangeAction, bool bCreateOnDemand,
+        const weld::TreeIter* pParent = nullptr, bool bDelMaster = false,
         bool bDisabled = false);
 
-    SvTreeListEntry* AppendFilteredAction(
+    std::unique_ptr<weld::TreeIter> AppendFilteredAction(
         const ScChangeAction* pScChangeAction,ScChangeActionState eState,
-        SvTreeListEntry* pParent = nullptr,bool bDelMaster = false,
+        bool bCreateOnDemand,
+        const weld::TreeIter* pParent = nullptr, bool bDelMaster = false,
         bool bDisabled = false);
 
-    SvTreeListEntry*    InsertChangeActionContent(const ScChangeActionContent* pScChangeAction,
-                                              SvTreeListEntry* pParent,sal_uLong nSpecial);
+    std::unique_ptr<weld::TreeIter> InsertChangeActionContent(const ScChangeActionContent* pScChangeAction,
+        const weld::TreeIter& rParent, sal_uLong nSpecial);
 
-    void            GetDependents( const ScChangeAction* pScChangeAction,
-                                ScChangeActionMap& aActionMap,
-                                SvTreeListEntry* pEntry);
+    void            GetDependents(const ScChangeAction* pScChangeAction,
+                                 ScChangeActionMap& aActionMap,
+                                 const weld::TreeIter& rEntry);
 
-    bool            InsertContentChildren( ScChangeActionMap* pActionMap, SvTreeListEntry* pParent );
+    bool            InsertContentChildren(ScChangeActionMap* pActionMap, const weld::TreeIter& rParent);
 
-    bool            InsertAcceptedORejected(SvTreeListEntry* pParent);
+    bool            InsertAcceptedORejected(const weld::TreeIter& rParent);
 
-    bool            InsertDeletedChildren( const ScChangeAction* pChangeAction, ScChangeActionMap* pActionMap,
-                                        SvTreeListEntry* pParent);
+    bool            InsertDeletedChildren(const ScChangeAction* pChangeAction, ScChangeActionMap* pActionMap,
+                                          const weld::TreeIter& rParent);
 
-    bool            InsertChildren( ScChangeActionMap* pActionMap, SvTreeListEntry* pParent );
+    bool            InsertChildren(ScChangeActionMap* pActionMap, const weld::TreeIter& rParent);
 
-    void            AppendChanges(ScChangeTrack* pChanges,sal_uLong nStartAction, sal_uLong nEndAction);
+    void            AppendChanges(const ScChangeTrack* pChanges,sal_uLong nStartAction, sal_uLong nEndAction);
 
-    void            RemoveEntrys(sal_uLong nStartAction,sal_uLong nEndAction);
-    void            UpdateEntrys(ScChangeTrack* pChgTrack, sal_uLong nStartAction,sal_uLong nEndAction);
+    void            RemoveEntries(sal_uLong nStartAction,sal_uLong nEndAction);
+    void            UpdateEntries(const ScChangeTrack* pChgTrack, sal_uLong nStartAction,sal_uLong nEndAction);
 
     void            UpdateView();
     void            ClearView();
 
-    bool            Expand(ScChangeTrack* pChanges,const ScChangeAction* pScChangeAction,
-                           SvTreeListEntry* pEntry, bool bFilter = false);
+    bool            Expand(const ScChangeTrack* pChanges,const ScChangeAction* pScChangeAction,
+                           const weld::TreeIter& rEntry, bool bFilter = false);
 
 public:
-                    ScAcceptChgDlg( SfxBindings* pB, SfxChildWindow* pCW, vcl::Window* pParent,
-                               ScViewData*      ptrViewData);
-
-                    virtual ~ScAcceptChgDlg() override;
-    virtual void    dispose() override;
+    ScAcceptChgDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent,
+                   ScViewData* ptrViewData);
+    virtual ~ScAcceptChgDlg() override;
 
     void            ReInit(ScViewData* ptrViewData);
 
     void            Initialize (SfxChildWinInfo* pInfo);
     virtual void    FillInfo(SfxChildWinInfo&) const override;
-
 };
 
 #endif // INCLUDED_SC_SOURCE_UI_INC_ACREDLIN_HXX

@@ -7,7 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cassert>
 #include <cstdarg>
@@ -21,18 +21,20 @@
 #include <string.h>
 #include <fstream>
 
-#include "osl/thread.hxx"
-#include "rtl/string.h"
-#include "sal/detail/log.h"
-#include "sal/log.hxx"
-#include "sal/types.h"
-#include "backtraceasstring.hxx"
-#include "salusesyslog.hxx"
+#include <config_global.h>
+#include <osl/thread.hxx>
+#include <rtl/string.h>
+#include <sal/detail/log.h>
+#include <sal/log.hxx>
+#include <sal/types.h>
+#include <backtraceasstring.hxx>
+#include <salusesyslog.hxx>
 
 #if defined ANDROID
 #include <android/log.h>
-#elif defined WNT
+#elif defined _WIN32
 #include <process.h>
+#include <windows.h>
 #define OSL_DETAIL_GETPID _getpid()
 #else
 #include <unistd.h>
@@ -52,6 +54,17 @@ bool const sal_use_syslog = false;
 // recursion.
 
 namespace {
+
+struct TimeContainer
+{
+    TimeValue aTime;
+    TimeContainer()
+    {
+        osl_getSystemTime(&aTime);
+    }
+};
+
+TimeContainer aStartTime;
 
 bool equalStrings(
     char const * string1, std::size_t length1, char const * string2,
@@ -76,91 +89,101 @@ char const * toString(sal_detail_LogLevel level) {
 }
 #endif
 
-// getenv is not thread safe, so minimize use of result; except on Android, see
-// 60628799633ffde502cb105b98d3f254f93115aa "Notice if SAL_LOG is changed while
-// the process is running":
-#if defined ANDROID
+#ifdef _WIN32
 
-char const * getEnvironmentVariable() {
-    return std::getenv("SAL_LOG");
-}
+char const* setEnvFromLoggingIniFile(const char* env, const char* key)
+{
+    char const* sResult = nullptr;
+    wchar_t buffer[MAX_PATH];
+    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+    std::wstring sProgramDirectory(buffer);
+    std::wstring::size_type pos = sProgramDirectory.find_last_of(L"\\/");
+    sProgramDirectory = sProgramDirectory.substr(0, pos+1);
+    sProgramDirectory += L"logging.ini";
 
-#else
+    std::ifstream logFileStream(sProgramDirectory);
+    if (!logFileStream.good())
+        return sResult;
 
-char const * getEnvironmentVariable_(const char* env) {
-    char const * p1 = std::getenv(env);
-    if (p1 == nullptr) {
-        return nullptr;
+    std::size_t n;
+    std::string aKey;
+    std::string sWantedKey(key);
+    std::string sLine;
+    while (std::getline(logFileStream, sLine)) {
+        if (sLine.find('#') == 0)
+            continue;
+        if ( ( n = sLine.find('=') ) != std::string::npos) {
+            aKey = sLine.substr(0, n);
+            if (aKey != sWantedKey)
+                continue;
+            _putenv_s(env, sLine.substr(n+1, sLine.length()).c_str());
+            sResult = std::getenv(env);
+            break;
+        }
     }
-    char const * p2 = strdup(p1); // leaked
-    if (p2 == nullptr) {
-        std::abort(); // cannot do much here
-    }
-    return p2;
+    return sResult;
+}
+#endif
+
+char const * getLogLevel() {
+    static char const* const pLevel = [] {
+        char const* pResult = nullptr;
+
+        // First check the environment variable, then the setting in logging.ini
+        char const* env = std::getenv("SAL_LOG");
+
+#ifdef _WIN32
+        if (!env)
+            env = setEnvFromLoggingIniFile("SAL_LOG", "LogLevel");
+#endif
+
+        if (env)
+        {
+            // Make a copy from the string in environment block
+            static std::string sLevel(env);
+            pResult = sLevel.c_str();
+        }
+        return pResult;
+    }();
+
+    return pLevel;
 }
 
-char const * getEnvironmentVariable() {
-    static char const * env = getEnvironmentVariable_("SAL_LOG");
-    return env;
-}
+#if !defined ANDROID
 
-char const * getLogFile() {
-    static char const * logFile = getEnvironmentVariable_("SAL_LOG_FILE");
-    return logFile;
+std::ofstream * getLogFile() {
+    static std::ofstream* const pFile = [] {
+        std::ofstream* pResult = nullptr;
+
+        // First check the environment variable, then the setting in logging.ini
+        char const* logFile = std::getenv("SAL_LOG_FILE");
+
+#ifdef _WIN32
+        if (!logFile)
+            logFile = setEnvFromLoggingIniFile("SAL_LOG_FILE", "LogFilePath");
+#endif
+
+        if (logFile)
+        {
+            // stays until process exits
+            static std::ofstream file(logFile, std::ios::app | std::ios::out);
+            pResult = &file;
+        }
+
+        return pResult;
+    }();
+
+    return pFile;
 }
 
 void maybeOutputTimestamp(std::ostringstream &s) {
-    char const * env = getEnvironmentVariable();
-    if (env == nullptr)
-        return;
-    bool outputTimestamp = false;
-    bool outputRelativeTimer = false;
-    for (char const * p = env;;) {
-        switch (*p++) {
-        case '\0':
-            if (outputTimestamp) {
-                char ts[100];
-                TimeValue systemTime;
-                osl_getSystemTime(&systemTime);
-                TimeValue localTime;
-                osl_getLocalTimeFromSystemTime(&systemTime, &localTime);
-                oslDateTime dateTime;
-                osl_getDateTimeFromTimeValue(&localTime, &dateTime);
-                struct tm tm;
-                tm.tm_sec = dateTime.Seconds;
-                tm.tm_min = dateTime.Minutes;
-                tm.tm_hour = dateTime.Hours;
-                tm.tm_mday = dateTime.Day;
-                tm.tm_mon = dateTime.Month - 1;
-                tm.tm_year = dateTime.Year - 1900;
-                strftime(ts, sizeof(ts), "%Y-%m-%d:%H:%M:%S", &tm);
-                char milliSecs[11];
-                sprintf(milliSecs, "%03u", static_cast<unsigned>(dateTime.NanoSeconds/1000000));
-                s << ts << '.' << milliSecs << ':';
-            }
-            if (outputRelativeTimer) {
-                static bool beenHere = false;
-                static TimeValue first;
-                if (!beenHere) {
-                    osl_getSystemTime(&first);
-                    beenHere = true;
-                }
-                TimeValue now;
-                osl_getSystemTime(&now);
-                int seconds = now.Seconds - first.Seconds;
-                int milliSeconds;
-                if (now.Nanosec < first.Nanosec) {
-                    seconds--;
-                    milliSeconds = 1000-(first.Nanosec-now.Nanosec)/1000000;
-                }
-                else
-                    milliSeconds = (now.Nanosec-first.Nanosec)/1000000;
-                char relativeTimestamp[100];
-                sprintf(relativeTimestamp, "%d.%03d", seconds, milliSeconds);
-                s << relativeTimestamp << ':';
-            }
-            return;
-        case '+':
+    static const std::pair<bool, bool> aFlags = [] {
+        char const* env = getLogLevel();
+        bool outputTimestamp = false;
+        bool outputRelativeTimer = false;
+        for (char const* p = env; p && *p;)
+        {
+            if (*p++ == '+')
             {
                 char const * p1 = p;
                 while (*p1 != '.' && *p1 != '+' && *p1 != '-' && *p1 != '\0') {
@@ -176,11 +199,52 @@ void maybeOutputTimestamp(std::ostringstream &s) {
                 }
                 p = p2;
             }
-            break;
-        default:
-            ; // nothing
         }
+        return std::pair(outputTimestamp, outputRelativeTimer);
+    }();
+    const auto& [outputTimestamp, outputRelativeTimer] = aFlags;
+
+    if (outputTimestamp)
+    {
+        char ts[100];
+        TimeValue systemTime;
+        osl_getSystemTime(&systemTime);
+        TimeValue localTime;
+        osl_getLocalTimeFromSystemTime(&systemTime, &localTime);
+        oslDateTime dateTime;
+        osl_getDateTimeFromTimeValue(&localTime, &dateTime);
+        struct tm tm;
+        tm.tm_sec = dateTime.Seconds;
+        tm.tm_min = dateTime.Minutes;
+        tm.tm_hour = dateTime.Hours;
+        tm.tm_mday = dateTime.Day;
+        tm.tm_wday = dateTime.DayOfWeek;
+        tm.tm_mon = dateTime.Month - 1;
+        tm.tm_year = dateTime.Year - 1900;
+        tm.tm_yday = 0;
+        strftime(ts, sizeof(ts), "%Y-%m-%d:%H:%M:%S", &tm);
+        char milliSecs[11];
+        snprintf(milliSecs, sizeof(milliSecs), "%03u",
+                 static_cast<unsigned>(dateTime.NanoSeconds / 1000000));
+        s << ts << '.' << milliSecs << ':';
     }
+    if (!outputRelativeTimer)
+        return;
+
+    TimeValue now;
+    osl_getSystemTime(&now);
+    int seconds = now.Seconds - aStartTime.aTime.Seconds;
+    int milliSeconds;
+    if (now.Nanosec < aStartTime.aTime.Nanosec)
+    {
+        seconds--;
+        milliSeconds = 1000 - (aStartTime.aTime.Nanosec - now.Nanosec) / 1000000;
+    }
+    else
+        milliSeconds = (now.Nanosec - aStartTime.aTime.Nanosec) / 1000000;
+    char relativeTimestamp[100];
+    snprintf(relativeTimestamp, sizeof(relativeTimestamp), "%d.%03d", seconds, milliSeconds);
+    s << relativeTimestamp << ':';
 }
 
 #endif
@@ -217,7 +281,7 @@ void sal_detail_log(
     if (backtraceDepth != 0) {
         s << " at:\n" << osl::detail::backtraceAsString(backtraceDepth);
     }
-    s << '\n';
+
 #if defined ANDROID
     int android_log_level;
     switch (level) {
@@ -258,12 +322,17 @@ void sal_detail_log(
         syslog(prio, "%s", s.str().c_str());
 #endif
     } else {
-        const char* logFile = getLogFile();
+        // avoid calling getLogFile() more than once
+        static std::ofstream * logFile = getLogFile();
         if (logFile) {
-            std::ofstream file(logFile, std::ios::app | std::ios::out);
-            file << s.str();
+            *logFile << s.str() << std::endl;
         }
         else {
+            s << '\n';
+#ifdef _WIN32
+            // write to Windows debugger console, too
+            OutputDebugStringA(s.str().c_str());
+#endif
             std::fputs(s.str().c_str(), stderr);
             std::fflush(stderr);
         }
@@ -275,31 +344,40 @@ void sal_detail_logFormat(
     sal_detail_LogLevel level, char const * area, char const * where,
     char const * format, ...)
 {
-    if (sal_detail_log_report(level, area)) {
-        std::va_list args;
-        va_start(args, format);
-        char buf[1024];
-        int const len = sizeof buf - RTL_CONSTASCII_LENGTH("...");
-        int n = vsnprintf(buf, len, format, args);
-        if (n < 0) {
-            std::strcpy(buf, "???");
-        } else if (n >= len) {
-            std::strcpy(buf + len - 1, "...");
-        }
-        sal_detail_log(level, area, where, buf, 0);
-        va_end(args);
+    const sal_detail_LogAction eAction
+        = static_cast<sal_detail_LogAction>(sal_detail_log_report(level, area));
+    if (eAction == SAL_DETAIL_LOG_ACTION_IGNORE)
+        return;
+
+    std::va_list args;
+    va_start(args, format);
+    char buf[1024];
+    int const len = sizeof buf - RTL_CONSTASCII_LENGTH("...");
+    int n = vsnprintf(buf, len, format, args);
+    if (n < 0) {
+        std::strcpy(buf, "???");
+    } else if (n >= len) {
+        std::strcpy(buf + len - 1, "...");
     }
+    sal_detail_log(level, area, where, buf, 0);
+    va_end(args);
+
+    if (eAction == SAL_DETAIL_LOG_ACTION_FATAL)
+        std::abort();
 }
 
-sal_Bool sal_detail_log_report(sal_detail_LogLevel level, char const * area) {
+unsigned char sal_detail_log_report(sal_detail_LogLevel level, char const * area)
+{
     if (level == SAL_DETAIL_LOG_LEVEL_DEBUG) {
-        return true;
+        return SAL_DETAIL_LOG_ACTION_LOG;
     }
     assert(area != nullptr);
-    char const * env = getEnvironmentVariable();
-    if (env == nullptr) {
-        env = "+WARN";
-    }
+    static char const* const env = [] {
+        char const* pResult =  getLogLevel();
+        if (!pResult)
+            pResult = "+WARN";
+        return pResult;
+    }();
     std::size_t areaLen = std::strlen(area);
     enum Sense { POSITIVE = 0, NEGATIVE = 1 };
     std::size_t senseLen[2] = { 0, 1 };
@@ -307,17 +385,26 @@ sal_Bool sal_detail_log_report(sal_detail_LogLevel level, char const * area) {
         // no matching switches at all, the result will be negative (and
         // initializing with 1 is safe as the length of a valid switch, even
         // without the "+"/"-" prefix, will always be > 1)
+    bool senseFatal[2] = { false, false };
     bool seenWarn = false;
+    bool bFlagFatal = false;
     for (char const * p = env;;) {
         Sense sense;
         switch (*p++) {
         case '\0':
+        {
             if (level == SAL_DETAIL_LOG_LEVEL_WARN && !seenWarn)
                 return sal_detail_log_report(SAL_DETAIL_LOG_LEVEL_INFO, area);
-            return senseLen[POSITIVE] >= senseLen[NEGATIVE];
-                // if a specific item is both positive and negative
-                // (senseLen[POSITIVE] == senseLen[NEGATIVE]), default to
-                // positive
+
+            sal_detail_LogAction eAction = SAL_DETAIL_LOG_ACTION_IGNORE;
+            // if a specific item is positive and negative (==), default to positive
+            if (senseLen[POSITIVE] >= senseLen[NEGATIVE])
+            {
+                if (senseFatal[POSITIVE]) eAction = SAL_DETAIL_LOG_ACTION_FATAL;
+                else eAction = SAL_DETAIL_LOG_ACTION_LOG;
+            }
+            return eAction;
+        }
         case '+':
             sense = POSITIVE;
             break;
@@ -325,7 +412,7 @@ sal_Bool sal_detail_log_report(sal_detail_LogLevel level, char const * area) {
             sense = NEGATIVE;
             break;
         default:
-            return true; // upon an illegal SAL_LOG value, enable everything
+            return SAL_DETAIL_LOG_ACTION_LOG; // upon an illegal SAL_LOG value, enable everything
         }
         char const * p1 = p;
         while (*p1 != '.' && *p1 != '+' && *p1 != '-' && *p1 != '\0') {
@@ -338,13 +425,17 @@ sal_Bool sal_detail_log_report(sal_detail_LogLevel level, char const * area) {
         {
             match = level == SAL_DETAIL_LOG_LEVEL_WARN;
             seenWarn = true;
+        } else if (equalStrings(p, p1 - p, RTL_CONSTASCII_STRINGPARAM("FATAL")))
+        {
+            bFlagFatal = (sense == POSITIVE);
+            match = false;
         } else if (equalStrings(p, p1 - p, RTL_CONSTASCII_STRINGPARAM("TIMESTAMP")) ||
                    equalStrings(p, p1 - p, RTL_CONSTASCII_STRINGPARAM("RELATIVETIMER")))
         {
             // handled later
             match = false;
         } else {
-            return true;
+            return SAL_DETAIL_LOG_ACTION_LOG;
                 // upon an illegal SAL_LOG value, everything is considered
                 // positive
         }
@@ -361,9 +452,11 @@ sal_Bool sal_detail_log_report(sal_detail_LogLevel level, char const * area) {
                         && equalStrings(p1, n, area, n)))
                 {
                     senseLen[sense] = p2 - p;
+                    senseFatal[sense] = bFlagFatal;
                 }
             } else {
                 senseLen[sense] = p1 - p;
+                senseFatal[sense] = bFlagFatal;
             }
         }
         p = p2;

@@ -56,7 +56,7 @@ public:
     SbxArray*  GetStatics();
     void       ClearStatics();
     SbModule*  GetModule()                         { return pMod;        }
-    BasicDebugFlags GetDebugFlags()                { return nDebugFlags; }
+    BasicDebugFlags GetDebugFlags() const          { return nDebugFlags; }
     void       SetDebugFlags( BasicDebugFlags n )  { nDebugFlags = n;    }
     void       GetLineRange( sal_uInt16&, sal_uInt16& );
 
@@ -67,7 +67,7 @@ public:
 
 typedef tools::SvRef<SbMethod> SbMethodRef;
 
-class BASIC_DLLPUBLIC SbIfaceMapperMethod : public SbMethod
+class SbIfaceMapperMethod : public SbMethod
 {
     friend class SbiRuntime;
 

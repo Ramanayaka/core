@@ -18,24 +18,21 @@
  */
 
 #include "WrappedSceneProperty.hxx"
-#include "macros.hxx"
-#include "DiagramHelper.hxx"
-#include "servicenames_charttypes.hxx"
-#include "BaseGFXHelper.hxx"
+#include "Chart2ModelContact.hxx"
+#include <DiagramHelper.hxx>
+#include <BaseGFXHelper.hxx>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::uno::Reference;
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
-void WrappedSceneProperty::addWrappedProperties( std::vector< WrappedProperty* >& rList
+void WrappedSceneProperty::addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList
                 , const std::shared_ptr< Chart2ModelContact >& spChart2ModelContact )
 {
-    rList.push_back( new WrappedD3DTransformMatrixProperty( spChart2ModelContact ) );
+    rList.emplace_back( new WrappedD3DTransformMatrixProperty( spChart2ModelContact ) );
 }
 
 WrappedD3DTransformMatrixProperty::WrappedD3DTransformMatrixProperty(
@@ -99,7 +96,6 @@ Any WrappedD3DTransformMatrixProperty::getPropertyValue( const Reference< beans:
     return WrappedProperty::getPropertyValue( xInnerPropertySet );
 }
 
-} //namespace wrapper
-} //namespace chart
+} //namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

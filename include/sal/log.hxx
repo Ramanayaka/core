@@ -10,15 +10,15 @@
 #ifndef INCLUDED_SAL_LOG_HXX
 #define INCLUDED_SAL_LOG_HXX
 
-#include <sal/config.h>
+#include "sal/config.h"
 
 #include <cstdlib>
 #include <sstream>
 #include <string>
 
-#include <sal/detail/log.h>
-#include <sal/saldllapi.h>
-#include <sal/types.h>
+#include "sal/detail/log.h"
+#include "sal/saldllapi.h"
+#include "sal/types.h"
 
 // Avoid the use of other sal code in this header as much as possible, so that
 // this code can be called from other sal code without causing endless
@@ -26,11 +26,20 @@
 
 /// @cond INTERNAL
 
+enum sal_detail_LogAction
+{
+    SAL_DETAIL_LOG_ACTION_IGNORE,
+    SAL_DETAIL_LOG_ACTION_LOG,
+    SAL_DETAIL_LOG_ACTION_FATAL
+};
+
 extern "C" SAL_DLLPUBLIC void SAL_CALL sal_detail_log(
     sal_detail_LogLevel level, char const * area, char const * where,
     char const * message, sal_uInt32 backtraceDepth);
 
-extern "C" SAL_DLLPUBLIC sal_Bool SAL_CALL sal_detail_log_report(
+// the return value is actually "enum sal_detail_LogAction", but due to ABI
+// compatibility, it's left as the original "sal_Bool" / "unsigned char".
+extern "C" SAL_DLLPUBLIC unsigned char SAL_CALL sal_detail_log_report(
     sal_detail_LogLevel level, char const * area);
 
 namespace sal { namespace detail {
@@ -113,22 +122,38 @@ inline char const * unwrapStream(SAL_UNUSED_PARAMETER StreamIgnore const &) {
 
 } }
 
+// to prevent using a local variable, which can eventually shadow,
+// resulting in compiler warnings (or even errors with -Werror)
+#define SAL_DETAIL_LOG_STREAM_PRIVATE_(level, area, where, stream) \
+    if (sizeof ::sal::detail::getResult( \
+            ::sal::detail::StreamStart() << stream) == 1) \
+    { \
+        ::sal_detail_log( \
+            (level), (area), (where), \
+            ::sal::detail::unwrapStream( \
+                ::sal::detail::StreamStart() << stream), \
+            0); \
+    } else { \
+        ::std::ostringstream sal_detail_stream; \
+        sal_detail_stream << stream; \
+        ::sal::detail::log( \
+            (level), (area), (where), sal_detail_stream, 0); \
+    }
+
 #define SAL_DETAIL_LOG_STREAM(condition, level, area, where, stream) \
     do { \
-        if ((condition) && sal_detail_log_report(level, area)) { \
-            if (sizeof ::sal::detail::getResult( \
-                    ::sal::detail::StreamStart() << stream) == 1) \
+        if (condition) \
+        { \
+            switch (sal_detail_log_report(level, area)) \
             { \
-                ::sal_detail_log( \
-                    (level), (area), (where), \
-                    ::sal::detail::unwrapStream( \
-                        ::sal::detail::StreamStart() << stream), \
-                    0); \
-            } else { \
-                ::std::ostringstream sal_detail_stream; \
-                sal_detail_stream << stream; \
-                ::sal::detail::log( \
-                    (level), (area), (where), sal_detail_stream, 0); \
+            case SAL_DETAIL_LOG_ACTION_IGNORE: break; \
+            case SAL_DETAIL_LOG_ACTION_LOG: \
+                SAL_DETAIL_LOG_STREAM_PRIVATE_(level, area, where, stream); \
+                break; \
+            case SAL_DETAIL_LOG_ACTION_FATAL: \
+                SAL_DETAIL_LOG_STREAM_PRIVATE_(level, area, where, stream); \
+                std::abort(); \
+                break; \
             } \
         } \
     } while (false)
@@ -161,7 +186,7 @@ inline char const * unwrapStream(SAL_UNUSED_PARAMETER StreamIgnore const &) {
 
     @since LibreOffice 3.5
 */
-#ifdef _LIBCPP_VERSION
+#if defined _LIBCPP_VERSION || (defined _MSC_VER && _MSC_VER >= 1915)
 #define SAL_STREAM(stream) \
     (::std::ostringstream() << stream).str()
 #else
@@ -235,7 +260,7 @@ inline char const * unwrapStream(SAL_UNUSED_PARAMETER StreamIgnore const &) {
       <switch> ::= <sense><item>
       <sense> ::= "+"|"-"
       <item> ::= <flag>|<level>("."<area>)?
-      <flag> ::= "TIMESTAMP"|"RELATIVETIMER"
+      <flag> ::= "TIMESTAMP"|"RELATIVETIMER"|"FATAL"
       <level> ::= "INFO"|"WARN"
     @endverbatim
 
@@ -251,6 +276,12 @@ inline char const * unwrapStream(SAL_UNUSED_PARAMETER StreamIgnore const &) {
     The "+RELATIVETIMER" flag causes each output line (as selected by
     the level switch(es)) to be prefixed by a relative timestamp in
     seconds since the first output line like 1.312.
+
+    The "+FATAL" flag will cause later matching rules to log and call
+    std::abort. This can be disabled at some later point by using the
+    "-FATAL" flag before specifying additional rules. The flag will just
+    abort on positive rules, as it doesn't seem to make sense to abort
+    on ignored output.
 
     If both +TIMESTAMP and +RELATIVETIMER are specified, they are
     output in that order.
@@ -274,12 +305,18 @@ inline char const * unwrapStream(SAL_UNUSED_PARAMETER StreamIgnore const &) {
     SAL_INFO("other", ...) generate output, while calls like
     SAL_INFO("foo", ...) or SAL_INFO("foo.barzzz", ...) do not.
 
-    The generated log output consists of the optinal timestamp, the given level
+    The generated log output consists of the optional timestamp, the given level
     ("info" or "warn"), the given area, the process ID, the thread ID, the
     source file, and the source line number, each followed by a colon, followed
     by a space, the given message, and a newline.  The precise format of the log
     output is subject to change.  The log output is printed to stderr without
     further text encoding conversion.
+
+    On some systems, log output can be redirected to other log sinks,
+    notably a file provided as a system path and filename via
+    environment variable SAL_LOG_FILE; or to a syslog facility if
+    LibreOffice is suitably built, by setting environment variable
+    SAL_LOG_SYSLOG.
 
     @see @ref sal_log_areas
 
@@ -345,6 +382,8 @@ inline char const * unwrapStream(SAL_UNUSED_PARAMETER StreamIgnore const &) {
 
   This macro is meant to be used only while working on code and should never
   exist in production code.
+
+  @param stream input stream
 
   @param backtraceDepth a sal_uInt32 value indicating the maximum backtrace
   depth; zero means no backtrace

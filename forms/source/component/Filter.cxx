@@ -17,13 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <config_features.h>
+
+#include <string_view>
+
 #include "Filter.hxx"
-#include "FormComponent.hxx"
-#include "frm_resource.hrc"
-#include "frm_resource.hxx"
-#include "property.hrc"
-#include "property.hxx"
-#include "services.hxx"
+#include <strings.hrc>
+#include <frm_resource.hxx>
+#include <frm_strings.hxx>
 
 #include <com/sun/star/awt/VclWindowPeerAttribute.hpp>
 #include <com/sun/star/awt/XCheckBox.hpp>
@@ -32,15 +35,13 @@
 #include <com/sun/star/awt/XRadioButton.hpp>
 #include <com/sun/star/awt/XVclWindowPeer.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/form/FormComponentType.hpp>
-#include <com/sun/star/sdb/BooleanComparisonMode.hpp>
 #include <com/sun/star/sdb/ErrorMessageDialog.hpp>
-#include <com/sun/star/sdb/XColumn.hpp>
-#include <com/sun/star/sdb/XSQLQueryComposerFactory.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
+#include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbc/XRowSet.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
@@ -48,21 +49,16 @@
 #include <com/sun/star/util/NumberFormatter.hpp>
 #include <com/sun/star/awt/XItemList.hpp>
 
-#include <comphelper/numbers.hxx>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/property.hxx>
+#include <comphelper/types.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <connectivity/dbconversion.hxx>
 #include <connectivity/dbtools.hxx>
 #include <connectivity/formattedcolumnvalue.hxx>
 #include <connectivity/predicateinput.hxx>
+#include <o3tl/safeint.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
 #include <tools/diagnose_ex.h>
-#include <unotools/localedatawrapper.hxx>
-#include <vcl/stdtext.hxx>
-#include <vcl/svapp.hxx>
-#include <tools/wintypes.hxx>
+#include <tools/gen.hxx>
 
 
 namespace frm
@@ -211,13 +207,13 @@ namespace frm
                 {
                     Reference< XListBox >  xListBox( getPeer(), UNO_QUERY_THROW );
                     xListBox->addItemListener( this );
-                    SAL_FALLTHROUGH;
+                    [[fallthrough]];
                 }
 
                 case FormComponentType::COMBOBOX:
                 {
                     xVclWindow->setProperty(PROPERTY_AUTOCOMPLETE, makeAny( true ) );
-                    SAL_FALLTHROUGH;
+                    [[fallthrough]];
                 }
 
                 default:
@@ -240,7 +236,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
 
         if (m_bFilterList)
@@ -310,7 +306,7 @@ namespace frm
                     // To fix this, we would probably have to revert here to always return "1" or "0" as normalized
                     // filter, and change our client code to properly translate this (which could be some effort).
                     if ( nMarkerPos == 0 )
-                        aText.append( sText.copy( sExpressionMarker.getLength() ) );
+                        aText.append( std::u16string_view(sText).substr(sExpressionMarker.getLength()) );
                     else
                     {
                         // fallback
@@ -342,7 +338,7 @@ namespace frm
                 }
                 catch( const Exception& )
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("forms.component");
                 }
             }
             break;
@@ -350,13 +346,13 @@ namespace frm
             case FormComponentType::RADIOBUTTON:
             {
                 if ( rEvent.Selected == TRISTATE_TRUE )
-                    aText.append( ::comphelper::getString( Reference< XPropertySet >( getModel(), UNO_QUERY )->getPropertyValue( PROPERTY_REFVALUE ) ) );
+                    aText.append( ::comphelper::getString( Reference< XPropertySet >( getModel(), UNO_QUERY_THROW )->getPropertyValue( PROPERTY_REFVALUE ) ) );
             }
             break;
         }
 
         OUString sText( aText.makeStringAndClear() );
-        if ( m_aText.compareTo( sText ) )
+        if ( m_aText != sText )
         {
             m_aText = sText;
             TextEvent aEvt;
@@ -456,7 +452,7 @@ namespace frm
             ::std::vector< OUString > aProposals;
             aProposals.reserve(16);
 
-            while ( xListCursor->next() && ( aProposals.size() < size_t( SHRT_MAX ) ) )
+            while ( xListCursor->next() && ( aProposals.size() < o3tl::make_unsigned( SHRT_MAX ) ) )
             {
                 const OUString sCurrentValue = aFormatter.getFormattedValue();
                 aProposals.push_back( sCurrentValue );
@@ -474,7 +470,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
 #endif
     }
@@ -514,11 +510,10 @@ namespace frm
             default:
                 return true;
         }
-        if (m_aText.compareTo(aText))
+        if ( m_aText != aText )
         {
             // check the text with the SQL-Parser
-            OUString aNewText(aText);
-            aNewText = aNewText.trim();
+            OUString aNewText = aText.trim();
             if ( !aNewText.isEmpty() )
             {
                 ::dbtools::OPredicateInputController aPredicateInput( m_xContext, m_xConnection, getParseContext() );
@@ -578,14 +573,14 @@ namespace frm
                         ||  aText.equalsIgnoreAsciiCase("IS TRUE")
                         )
                     {
-                        aValue <<= (sal_Int32)TRISTATE_TRUE;
+                        aValue <<= sal_Int32(TRISTATE_TRUE);
                     }
                     else if ( aText == "0" || aText.equalsIgnoreAsciiCase("FALSE") )
                     {
-                        aValue <<= (sal_Int32)TRISTATE_FALSE;
+                        aValue <<= sal_Int32(TRISTATE_FALSE);
                     }
                     else
-                        aValue <<= (sal_Int32)TRISTATE_INDET;
+                        aValue <<= sal_Int32(TRISTATE_INDET);
 
                     m_aText = aText;
                     xVclWindow->setProperty( PROPERTY_STATE, aValue );
@@ -596,12 +591,12 @@ namespace frm
                 Reference< XVclWindowPeer >  xVclWindow( getPeer(), UNO_QUERY );
                 if (xVclWindow.is())
                 {
-                    OUString aRefText = ::comphelper::getString(css::uno::Reference< XPropertySet > (getModel(), UNO_QUERY)->getPropertyValue(PROPERTY_REFVALUE));
+                    OUString aRefText = ::comphelper::getString(css::uno::Reference< XPropertySet > (getModel(), UNO_QUERY_THROW)->getPropertyValue(PROPERTY_REFVALUE));
                     Any aValue;
                     if (aText == aRefText)
-                        aValue <<= (sal_Int32)TRISTATE_TRUE;
+                        aValue <<= sal_Int32(TRISTATE_TRUE);
                     else
-                        aValue <<= (sal_Int32)TRISTATE_FALSE;
+                        aValue <<= sal_Int32(TRISTATE_FALSE);
                     m_aText = aText;
                     xVclWindow->setProperty(PROPERTY_STATE, aValue);
                 }
@@ -743,7 +738,7 @@ namespace frm
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("forms.component");
         }
     }
 
@@ -810,7 +805,7 @@ namespace frm
         }
     }
 
-    void OFilterControl::initControlModel(Reference< XPropertySet >& xControlModel)
+    void OFilterControl::initControlModel(Reference< XPropertySet > const & xControlModel)
     {
 #if !HAVE_FEATURE_DBCONNECTIVITY
         (void) xControlModel;
@@ -873,7 +868,7 @@ namespace frm
 
     OUString SAL_CALL OFilterControl::getImplementationName(  )
     {
-        return OUString( "com.sun.star.comp.forms.OFilterControl" );
+        return "com.sun.star.comp.forms.OFilterControl";
     }
 
     sal_Bool SAL_CALL OFilterControl::supportsService( const OUString& ServiceName )
@@ -888,7 +883,7 @@ namespace frm
     }
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_forms_OFilterControl_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {

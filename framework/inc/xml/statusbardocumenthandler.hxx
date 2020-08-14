@@ -20,7 +20,7 @@
 #ifndef INCLUDED_FRAMEWORK_INC_XML_STATUSBARDOCUMENTHANDLER_HXX
 #define INCLUDED_FRAMEWORK_INC_XML_STATUSBARDOCUMENTHANDLER_HXX
 
-#include <framework/statusbarconfiguration.hxx>
+#include <statusbarconfiguration.hxx>
 
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 
@@ -28,15 +28,16 @@
 #include <cppuhelper/implbase.hxx>
 
 #include <unordered_map>
-#include <stdtypes.h>
-#include <framework/fwedllapi.h>
+#include <framework/fwkdllapi.h>
 
 namespace framework{
 
 // Hash code function for using in all hash maps of follow implementation.
 
-class FWE_DLLPUBLIC OReadStatusBarDocumentHandler :
-                                        public ::cppu::WeakImplHelper< css::xml::sax::XDocumentHandler >
+// workaround for incremental linking bugs in MSVC2015
+class SAL_DLLPUBLIC_TEMPLATE OReadStatusBarDocumentHandler_Base : public cppu::WeakImplHelper< css::xml::sax::XDocumentHandler > {};
+
+class OReadStatusBarDocumentHandler final : public OReadStatusBarDocumentHandler_Base
 {
     public:
         enum StatusBar_XML_Entry
@@ -51,6 +52,7 @@ class FWE_DLLPUBLIC OReadStatusBarDocumentHandler :
             SB_ATTRIBUTE_WIDTH,
             SB_ATTRIBUTE_OFFSET,
             SB_ATTRIBUTE_HELPURL,
+            SB_ATTRIBUTE_MANDATORY,
             SB_XML_ENTRY_COUNT
         };
 
@@ -88,8 +90,7 @@ class FWE_DLLPUBLIC OReadStatusBarDocumentHandler :
         OUString getErrorLineString();
 
         class StatusBarHashMap : public std::unordered_map<OUString,
-                                                           StatusBar_XML_Entry,
-                                                           OUStringHash >
+                                                           StatusBar_XML_Entry >
         {
         };
 
@@ -100,7 +101,7 @@ class FWE_DLLPUBLIC OReadStatusBarDocumentHandler :
         css::uno::Reference< css::xml::sax::XLocator >            m_xLocator;
 };
 
-class FWE_DLLPUBLIC OWriteStatusBarDocumentHandler final
+class OWriteStatusBarDocumentHandler final
 {
     public:
         OWriteStatusBarDocumentHandler(

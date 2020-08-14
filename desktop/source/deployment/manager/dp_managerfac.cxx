@@ -19,23 +19,22 @@
 
 
 #include "dp_manager.h"
-#include "dp_resource.h"
-#include "dp_services.hxx"
 #include <cppuhelper/compbase.hxx>
-#include <comphelper/servicedecl.hxx>
-#include <com/sun/star/deployment/thePackageManagerFactory.hpp>
+#include <cppuhelper/supportsservice.hxx>
+#include <com/sun/star/deployment/XPackageManagerFactory.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <unordered_map>
 
 using namespace ::dp_misc;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace dp_manager {
-namespace factory {
+namespace dp_manager::factory {
 
 typedef ::cppu::WeakComponentImplHelper<
-    deployment::XPackageManagerFactory > t_pmfac_helper;
+    deployment::XPackageManagerFactory, lang::XServiceInfo > t_pmfac_helper;
 
+namespace {
 
 class PackageManagerFactoryImpl : private MutexHolder, public t_pmfac_helper
 {
@@ -47,8 +46,7 @@ class PackageManagerFactoryImpl : private MutexHolder, public t_pmfac_helper
     Reference<deployment::XPackageManager> m_xTmpMgr;
     Reference<deployment::XPackageManager> m_xBakMgr;
     typedef std::unordered_map<
-        OUString, WeakReference<deployment::XPackageManager>,
-        OUStringHash > t_string2weakref;
+        OUString, WeakReference<deployment::XPackageManager> > t_string2weakref;
     t_string2weakref m_managers;
 
 protected:
@@ -59,26 +57,40 @@ public:
     explicit PackageManagerFactoryImpl(
         Reference<XComponentContext> const & xComponentContext );
 
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+
     // XPackageManagerFactory
     virtual Reference<deployment::XPackageManager> SAL_CALL getPackageManager(
         OUString const & context ) override;
 };
 
-
-namespace sdecl = comphelper::service_decl;
-sdecl::class_<PackageManagerFactoryImpl> const servicePMFI;
-sdecl::ServiceDecl const serviceDecl(
-    servicePMFI,
-    // a private one:
-    "com.sun.star.comp.deployment.PackageManagerFactory",
-    "com.sun.star.comp.deployment.PackageManagerFactory" );
-
+}
 
 PackageManagerFactoryImpl::PackageManagerFactoryImpl(
     Reference<XComponentContext> const & xComponentContext )
     : t_pmfac_helper( getMutex() ),
       m_xComponentContext( xComponentContext )
 {
+}
+
+// XServiceInfo
+OUString PackageManagerFactoryImpl::getImplementationName()
+{
+    return "com.sun.star.comp.deployment.PackageManagerFactory";
+}
+
+sal_Bool PackageManagerFactoryImpl::supportsService( const OUString& ServiceName )
+{
+    return cppu::supportsService(this, ServiceName);
+}
+
+css::uno::Sequence< OUString > PackageManagerFactoryImpl::getSupportedServiceNames()
+{
+    // a private one:
+    return { "com.sun.star.comp.deployment.PackageManagerFactory" };
 }
 
 inline void PackageManagerFactoryImpl::check()
@@ -97,10 +109,8 @@ void PackageManagerFactoryImpl::disposing()
 {
     // dispose all managers:
     ::osl::MutexGuard guard( getMutex() );
-    t_string2weakref::const_iterator iPos( m_managers.begin() );
-    t_string2weakref::const_iterator const iEnd( m_managers.end() );
-    for ( ; iPos != iEnd; ++iPos )
-        try_dispose( iPos->second );
+    for (auto const& elem : m_managers)
+        try_dispose( elem.second );
     m_managers = t_string2weakref();
     // the below are already disposed:
     m_xUserMgr.clear();
@@ -129,7 +139,7 @@ PackageManagerFactoryImpl::getPackageManager( OUString const & context )
     xRet.set( PackageManagerImpl::create( m_xComponentContext, context ) );
     guard.reset();
     std::pair< t_string2weakref::iterator, bool > insertion(
-        m_managers.insert( t_string2weakref::value_type( context, xRet ) ) );
+        m_managers.emplace( context, xRet ) );
     if (insertion.second)
     {
         OSL_ASSERT( insertion.first->second.get() == xRet );
@@ -163,7 +173,13 @@ PackageManagerFactoryImpl::getPackageManager( OUString const & context )
     return xRet;
 }
 
-} // namespace factory
-} // namespace dp_manager
+} // namespace dp_manager::factory
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_deployment_PackageManagerFactory_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new dp_manager::factory::PackageManagerFactoryImpl(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

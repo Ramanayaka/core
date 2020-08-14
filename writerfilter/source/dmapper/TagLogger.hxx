@@ -21,10 +21,9 @@
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_TAGLOGGER_HXX
 
 #include <rtl/ustring.hxx>
+#include <tools/ref.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <dmapper/resourcemodel.hxx>
 #include <string>
-#include <memory>
 #include <libxml/xmlwriter.h>
 
 namespace writerfilter
@@ -33,7 +32,7 @@ namespace writerfilter
     class TagLogger
     {
     private:
-        static std::shared_ptr<TagLogger> instance;
+        static tools::SvRef<TagLogger> instance;
 
         xmlTextWriterPtr pWriter;
         const char* pName;
@@ -44,7 +43,7 @@ namespace writerfilter
 
         static TagLogger& getInstance();
 
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
         void setFileName(const std::string & filename);
         void startDocument();
         void endDocument();
@@ -54,7 +53,7 @@ namespace writerfilter
         void startElement(const std::string & name);
 #endif
         void attribute(const std::string & name, const std::string & value);
-#ifdef DEBUG_WRITERFILTER
+#ifdef DBG_UTIL
         void attribute(const std::string & name, const OUString & value);
         void attribute(const std::string & name, sal_uInt32 value);
         void attribute(const std::string & name, const css::uno::Any& aAny);

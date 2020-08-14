@@ -23,14 +23,13 @@
 #include <comphelper/proparrhlp.hxx>
 #include <connectivity/sqliterator.hxx>
 #include <connectivity/sqlparse.hxx>
-#include "TSortIndex.hxx"
+#include <com/sun/star/sdbc/SQLWarning.hpp>
+#include <TSortIndex.hxx>
 #include "MTable.hxx"
 
 #include <memory>
 
-namespace connectivity
-{
-    namespace mork
+namespace connectivity::mork
     {
         class OResultSet;
 
@@ -43,16 +42,12 @@ namespace connectivity
         // is a base class for the normal statement and for the prepared statement
 
         class OCommonStatement;
-        typedef ::connectivity::OSubComponent< OCommonStatement, OCommonStatement_IBASE >  OCommonStatement_SBASE;
 
         class OCommonStatement  :public cppu::BaseMutex
                                 ,public OCommonStatement_IBASE
                                 ,public ::cppu::OPropertySetHelper
                                 ,public ::comphelper::OPropertyArrayUsageHelper< OCommonStatement >
-                                ,public OCommonStatement_SBASE
         {
-            friend class ::connectivity::OSubComponent< OCommonStatement, OCommonStatement_IBASE >;
-
         private:
             css::sdbc::SQLWarning                              m_aLastWarning;
 
@@ -72,7 +67,7 @@ namespace connectivity
             std::shared_ptr< ::connectivity::OSQLParseTreeIterator >
                                                         m_pSQLIterator;
 
-            connectivity::OSQLParseNode*                m_pParseTree;
+            std::unique_ptr<connectivity::OSQLParseNode> m_pParseTree;
 
             std::vector<sal_Int32>                    m_aColMapping;
             std::vector<sal_Int32>                    m_aOrderbyColumnNumber;
@@ -127,8 +122,8 @@ namespace connectivity
 
             void         createColumnMapping();
             void         analyseSQL();
-            void         setOrderbyColumn( connectivity::OSQLParseNode* pColumnRef,
-                                           connectivity::OSQLParseNode* pAscendingDescending);
+            void         setOrderbyColumn( connectivity::OSQLParseNode const * pColumnRef,
+                                           connectivity::OSQLParseNode const * pAscendingDescending);
 
         public:
             // other methods
@@ -179,7 +174,7 @@ namespace connectivity
             virtual void SAL_CALL acquire() throw() override;
             virtual void SAL_CALL release() throw() override;
         };
-    }
+
 }
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MSTATEMENT_HXX

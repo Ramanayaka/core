@@ -11,7 +11,9 @@
 #include "MPreparedStatement.hxx"
 #include "MResultSetMetaData.hxx"
 #include <connectivity/dbtools.hxx>
+#include <comphelper/types.hxx>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
+#include <sal/log.hxx>
 
 using namespace ::comphelper;
 using namespace connectivity;
@@ -50,7 +52,7 @@ void SAL_CALL OPreparedStatement::disposing()
     m_xMetaData.clear();
     if(m_aParameterRow.is())
     {
-        m_aParameterRow->get().clear();
+        m_aParameterRow->clear();
         m_aParameterRow = nullptr;
     }
     m_xParamColumns = nullptr;
@@ -76,7 +78,6 @@ OCommonStatement::StatementType OPreparedStatement::parseSql( const OUString& sq
 void OPreparedStatement::initializeResultSet( OResultSet* _pResult )
 {
     OCommonStatement::initializeResultSet( _pResult );
-    _pResult->setParameterColumns( m_xParamColumns );
     _pResult->setParameterRow( m_aParameterRow );
 }
 
@@ -244,7 +245,7 @@ void SAL_CALL OPreparedStatement::setNull( sal_Int32 parameterIndex, sal_Int32 /
 
     checkAndResizeParameters(parameterIndex);
 
-    (m_aParameterRow->get())[parameterIndex].setNull();
+    (*m_aParameterRow)[parameterIndex].setNull();
 }
 
 
@@ -342,11 +343,11 @@ void OPreparedStatement::checkAndResizeParameters(sal_Int32 parameterIndex)
 
     if ( !m_aParameterRow.is() ) {
         m_aParameterRow = new OValueVector();
-        m_aParameterRow->get().push_back(sal_Int32(0));
+        m_aParameterRow->push_back(sal_Int32(0));
     }
 
-    if ((sal_Int32)(m_aParameterRow->get()).size() <= parameterIndex)
-        (m_aParameterRow->get()).resize(parameterIndex+1);
+    if (static_cast<sal_Int32>(m_aParameterRow->size()) <= parameterIndex)
+        m_aParameterRow->resize(parameterIndex+1);
 }
 
 void OPreparedStatement::setParameter(sal_Int32 parameterIndex, const
@@ -358,11 +359,11 @@ ORowSetValue& x)
     SAL_INFO(
         "connectivity.mork",
         "setParameter(" << parameterIndex << ", '" << x.getString() << "')");
-    (m_aParameterRow->get())[parameterIndex] = x;
+    (*m_aParameterRow)[parameterIndex] = x;
 }
 
 
-void OPreparedStatement::AddParameter(OSQLParseNode * pParameter, const Reference<XPropertySet>& _xCol)
+void OPreparedStatement::AddParameter(OSQLParseNode const * pParameter, const Reference<XPropertySet>& _xCol)
 {
     OSL_ENSURE(SQL_ISRULE(pParameter,parameter),"OResultSet::AddParameter: Argument is not a Parameter");
     OSL_ENSURE(pParameter->count() > 0,"OResultSet: error in parse tree");
@@ -402,11 +403,12 @@ void OPreparedStatement::AddParameter(OSQLParseNode * pParameter, const Referenc
                                                     ,OUString()
                                                     ,OUString()
                                                     ,OUString());
-    m_xParamColumns->get().push_back(xParaColumn);
+    m_xParamColumns->push_back(xParaColumn);
 }
 
-void OPreparedStatement::describeColumn(OSQLParseNode*
-_pParameter,OSQLParseNode* _pNode,const OSQLTable& _xTable)
+void OPreparedStatement::describeColumn(OSQLParseNode const * _pParameter,
+                                        OSQLParseNode const * _pNode,
+                                        const OSQLTable& _xTable)
 {
     Reference<XPropertySet> xProp;
     if(SQL_ISRULE(_pNode,column_ref))
@@ -428,20 +430,18 @@ _pParameter,OSQLParseNode* _pNode,const OSQLTable& _xTable)
 void OPreparedStatement::describeParameter()
 {
     std::vector< OSQLParseNode*> aParseNodes;
-    scanParameter(m_pParseTree,aParseNodes);
-    if(!aParseNodes.empty())
+    scanParameter(m_pParseTree.get(), aParseNodes);
+    if(aParseNodes.empty())
+        return;
+
+    m_xParamColumns = new OSQLColumns();
+    const OSQLTables& rTabs = m_pSQLIterator->getTables();
+    if(!rTabs.empty())
     {
-        m_xParamColumns = new OSQLColumns();
-        const OSQLTables& rTabs = m_pSQLIterator->getTables();
-        if(rTabs.size())
+        OSQLTable xTable = rTabs.begin()->second;
+        for (auto const& parseNode : aParseNodes)
         {
-            OSQLTable xTable = rTabs.begin()->second;
-            std::vector< OSQLParseNode*>::const_iterator aIter =
-aParseNodes.begin();
-            for (;aIter != aParseNodes.end();++aIter )
-            {
-                describeColumn(*aIter,(*aIter)->getParent()->getChild(0),xTable);
-            }
+            describeColumn(parseNode,parseNode->getParent()->getChild(0),xTable);
         }
     }
 }

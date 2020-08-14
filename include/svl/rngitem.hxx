@@ -26,24 +26,20 @@
 class SvStream;
 
 
-class SVL_DLLPUBLIC SfxRangeItem : public SfxPoolItem
+class SVL_DLLPUBLIC SfxRangeItem final : public SfxPoolItem
 {
 private:
     sal_uInt16                  nFrom;
     sal_uInt16                  nTo;
 public:
                                 SfxRangeItem( sal_uInt16 nWID, sal_uInt16 nFrom, sal_uInt16 nTo );
-                                SfxRangeItem( const SfxRangeItem& rItem );
     virtual bool                operator==( const SfxPoolItem& ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper * = nullptr ) const override;
-    virtual SfxPoolItem*        Clone( SfxItemPool *pPool = nullptr ) const override;
-    sal_uInt16&          From() { return nFrom; }
-    virtual SfxPoolItem*        Create( SvStream &, sal_uInt16 nVersion ) const override;
-    virtual SvStream&           Store( SvStream &, sal_uInt16 nItemVersion ) const override;
+                                  const IntlWrapper& ) const override;
+    virtual SfxRangeItem*       Clone( SfxItemPool *pPool = nullptr ) const override;
 };
 
 

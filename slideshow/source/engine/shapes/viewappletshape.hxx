@@ -21,23 +21,24 @@
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_VIEWAPPLETSHAPE_HXX
 
 #include <basegfx/range/b2drectangle.hxx>
-#include <com/sun/star/awt/Point.hpp>
+#include <com/sun/star/frame/XSynchronousFrameLoader.hpp>
 
 #include <memory>
 
-#include "viewlayer.hxx"
+#include <viewlayer.hxx>
 
-namespace com { namespace sun { namespace star {
-namespace frame {
-    class XSynchronousFrameLoader;
-    class XFrame2;
+namespace com::sun::star {
+    namespace frame {
+        class XSynchronousFrameLoader;
+        class XFrame2;
+    }
+    namespace uno {
+        class XComponentContext;
+    }
+    namespace drawing {
+        class XShape;
+    }
 }
-namespace uno {
-    class XComponentContext;
-}
-namespace drawing {
-    class XShape;
-}}}}
 
 namespace slideshow
 {

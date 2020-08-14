@@ -21,21 +21,23 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_FLYFRM_HXX
 
 #include "layfrm.hxx"
-#include <list>
-#include "frmfmt.hxx"
+#include <vector>
+#include <frmfmt.hxx>
 #include <anchoredobject.hxx>
+#include <swdllapi.h>
 
+class SwFormatAnchor;
 class SwPageFrame;
 class SwFormatFrameSize;
 struct SwCursorMoveState;
 class SwBorderAttrs;
 class SwVirtFlyDrawObj;
-class SwFrameFormats;
 class SwAttrSetChg;
 namespace tools { class PolyPolygon; }
-class SwFlyDrawContact;
 class SwFormat;
 class SwViewShell;
+class SwFEShell;
+class SwWrtShell;
 
 
 /** search an anchor for paragraph bound frames starting from pOldAnch
@@ -55,10 +57,10 @@ bool CalcClipRect( const SdrObject *pSdrObj, SwRect &rRect, bool bMove = true );
 
     #i26791# - inherit also from <SwAnchoredFlyFrame>
 */
-class SwFlyFrame : public SwLayoutFrame, public SwAnchoredObject
+class SW_DLLPUBLIC SwFlyFrame : public SwLayoutFrame, public SwAnchoredObject
 {
     // is allowed to lock, implemented in frmtool.cxx
-    friend void AppendObjs   ( const SwFrameFormats *, sal_uLong, SwFrame *, SwPageFrame *, SwDoc* );
+    friend void AppendObj(SwFrame *const pFrame, SwPageFrame *const pPage, SwFrameFormat *const pFormat, const SwFormatAnchor & rAnch);
     friend void Notify( SwFlyFrame *, SwPageFrame *pOld, const SwRect &rOld,
                         const SwRect* pOldPrt );
 
@@ -77,7 +79,7 @@ protected:
 private:
     // It must be possible to block Content-bound flys so that they will be not
     // formatted; in this case MakeAll() returns immediately. This is necessary
-    // for page changes during formattting. In addition, it is needed during
+    // for page changes during formatting. In addition, it is needed during
     // the constructor call of the root object since otherwise the anchor will
     // be formatted before the root is anchored correctly to a shell and
     // because too much would be formatted as a result.
@@ -136,7 +138,7 @@ protected:
     virtual bool SetObjTop_( const SwTwips _nTop ) override;
     virtual bool SetObjLeft_( const SwTwips _nLeft ) override;
 
-    virtual const SwRect GetObjBoundRect() const override;
+    virtual SwRect GetObjBoundRect() const override;
     virtual void Modify( const SfxPoolItem*, const SfxPoolItem* ) override;
     virtual void SwClientNotify(const SwModify& rMod, const SfxHint& rHint) override;
 
@@ -149,10 +151,10 @@ public:
 
     // get client information
     virtual bool GetInfo( SfxPoolItem& ) const override;
-    virtual void Paint( vcl::RenderContext& rRenderContext, SwRect const&,
+    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const&,
                         SwPrintData const*const pPrintData = nullptr ) const override;
     virtual Size ChgSize( const Size& aNewSize ) override;
-    virtual bool GetCursorOfst( SwPosition *, Point&,
+    virtual bool GetModelPositionForViewPoint( SwPosition *, Point&,
                               SwCursorMoveState* = nullptr, bool bTestBackground = false ) const override;
 
     virtual void CheckDirection( bool bVert ) override;
@@ -163,7 +165,7 @@ public:
 
     SwTwips Shrink_( SwTwips, bool bTst );
     SwTwips Grow_  ( SwTwips, bool bTst );
-    void    Invalidate_( SwPageFrame *pPage = nullptr );
+    void    Invalidate_( SwPageFrame const *pPage = nullptr );
 
     bool FrameSizeChg( const SwFormatFrameSize & );
 
@@ -173,7 +175,7 @@ public:
     static void ChainFrames( SwFlyFrame *pMaster, SwFlyFrame *pFollow );
     static void UnchainFrames( SwFlyFrame *pMaster, SwFlyFrame *pFollow );
 
-    SwFlyFrame *FindChainNeighbour( SwFrameFormat &rFormat, SwFrame *pAnch = nullptr );
+    SwFlyFrame *FindChainNeighbour( SwFrameFormat const &rFormat, SwFrame *pAnch = nullptr );
 
     // #i26791#
     const SwVirtFlyDrawObj* GetVirtDrawObj() const;
@@ -222,7 +224,7 @@ public:
 
         definition found in /core/layout/paintfrm.cxx
 
-        @return true, if background color is transparent or a existing background
+        @return true, if background color is transparent or an existing background
         graphic is transparent.
     */
     bool IsBackgroundTransparent() const;
@@ -240,7 +242,7 @@ public:
     virtual SwFrameFormat& GetFrameFormat() override;
     virtual const SwFrameFormat& GetFrameFormat() const override;
 
-    virtual const SwRect GetObjRect() const override;
+    virtual SwRect GetObjRect() const override;
 
     /** method to determine if a format on the Writer fly frame is possible
 
@@ -250,7 +252,7 @@ public:
         format isn't possible, if Writer fly frame is locked resp. col-locked.
     */
     virtual bool IsFormatPossible() const override;
-    static void GetAnchoredObjects( std::list<SwAnchoredObject*>&, const SwFormat& rFormat );
+    static void GetAnchoredObjects( std::vector<SwAnchoredObject*>&, const SwFormat& rFormat );
 
     // overwriting "SwFrameFormat *SwLayoutFrame::GetFormat" to provide the correct derived return type.
     // (This is in order to skip on the otherwise necessary casting of the result to
@@ -266,6 +268,16 @@ public:
     Point& ContentPos() { return m_aContentPos; }
 
     void InvalidateContentPos();
+
+    void SelectionHasChanged(SwFEShell* pShell);
+    bool IsShowUnfloatButton(SwWrtShell* pWrtSh) const;
+
+    // For testing only (see uiwriter)
+    void ActiveUnfloatButton(SwWrtShell* pWrtSh);
+
+private:
+    void UpdateUnfloatButton(SwWrtShell* pWrtSh, bool bShow) const;
+    void PaintDecorators() const;
 };
 #endif
 

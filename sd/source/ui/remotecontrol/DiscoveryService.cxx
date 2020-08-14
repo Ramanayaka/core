@@ -8,17 +8,16 @@
  */
 
 #include <errno.h>
-#include <stdlib.h>
 #include <string.h>
-#include <algorithm>
-#include <vector>
 #include <iostream>
 
-#include <comphelper/processfactory.hxx>
 #include <rtl/strbuf.hxx>
+#include <osl/socket.hxx>
 #include <config_features.h>
+#include <sal/log.hxx>
 
 #include "DiscoveryService.hxx"
+#include "ZeroconfService.hxx"
 
 #ifdef _WIN32
   // LO vs WinAPI conflict
@@ -32,7 +31,6 @@
   typedef int socklen_t;
 #else
   #include <unistd.h>
-  #include <sys/types.h>
   #include <sys/socket.h>
   #include <netinet/in.h>
   #include <arpa/inet.h>
@@ -70,7 +68,7 @@ DiscoveryService::~DiscoveryService()
 #endif
     }
 
-     if (zService)
+    if (zService)
          zService->clear();
 }
 
@@ -80,6 +78,7 @@ void DiscoveryService::setupSockets()
 #ifdef MACOSX
     // Bonjour for OSX
     zService = new OSXNetworkService();
+    zService->setup();
 #endif
 
 #if HAVE_FEATURE_AVAHI
@@ -89,14 +88,13 @@ void DiscoveryService::setupSockets()
     gethostname(hostname, 1023);
 
     zService = new AvahiNetworkService(hostname);
+    zService->setup();
 #endif
 
 #ifdef _WIN32
     zService = new WINNetworkService();
+    zService->setup();
 #endif
-
-    if (zService)
-        zService->setup();
 
     // Old implementation for backward compatibility matter
     mSocket = socket( AF_INET, SOCK_DGRAM, IPPROTO_UDP );
@@ -106,8 +104,7 @@ void DiscoveryService::setupSockets()
         return; // would be better to throw, but unsure if caller handles that
     }
 
-    sockaddr_in aAddr;
-    memset(&aAddr, 0, sizeof(aAddr));
+    sockaddr_in aAddr = {};
     aAddr.sin_family = AF_INET;
     aAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     aAddr.sin_port = htons( PORT_DISCOVERY );
@@ -157,10 +154,9 @@ void SAL_CALL DiscoveryService::run()
     setupSockets();
 
     // Kept for backward compatibility
-    char aBuffer[BUFFER_SIZE];
     while ( true )
     {
-        memset( aBuffer, 0, sizeof(char) * BUFFER_SIZE );
+        char aBuffer[BUFFER_SIZE] = {};
         sockaddr_in aAddr;
         socklen_t aLen = sizeof( aAddr );
         if(recvfrom( mSocket, aBuffer, BUFFER_SIZE, 0, reinterpret_cast<sockaddr*>(&aAddr), &aLen ) > 0)

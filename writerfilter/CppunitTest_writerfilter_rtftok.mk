@@ -11,27 +11,22 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,writerfilter_rtftok))
 
-$(eval $(call gb_CppunitTest_use_external,writerfilter_rtftok,boost_headers))
+$(eval $(call gb_CppunitTest_use_externals,writerfilter_rtftok,\
+	boost_headers \
+))
 
 $(eval $(call gb_CppunitTest_add_exception_objects,writerfilter_rtftok, \
-	writerfilter/qa/cppunittests/rtftok/testrtftok \
+    writerfilter/qa/cppunittests/rtftok/rtfsdrimport \
 ))
-
-ifeq ($(DISABLE_CVE_TESTS),TRUE)
-$(eval $(call gb_CppunitTest_add_defs,writerfilter_rtftok,\
-    -DDISABLE_CVE_TESTS \
-))
-endif
 
 $(eval $(call gb_CppunitTest_use_libraries,writerfilter_rtftok, \
-	comphelper \
-	cppu \
-	cppuhelper \
-	sal \
-	test \
-	unotest \
-	vcl \
-	writerfilter \
+    basegfx \
+    comphelper \
+    cppu \
+    oox \
+    sal \
+    test \
+    unotest \
 ))
 
 $(eval $(call gb_CppunitTest_use_sdk_api,writerfilter_rtftok))
@@ -39,14 +34,10 @@ $(eval $(call gb_CppunitTest_use_sdk_api,writerfilter_rtftok))
 $(eval $(call gb_CppunitTest_use_ure,writerfilter_rtftok))
 $(eval $(call gb_CppunitTest_use_vcl,writerfilter_rtftok))
 
-$(eval $(call gb_CppunitTest_use_components,writerfilter_rtftok,\
-	configmgr/source/configmgr \
-	framework/util/fwk \
-	i18npool/util/i18npool \
-	svtools/util/svt \
-	ucb/source/core/ucb1 \
-	ucb/source/ucp/file/ucpfile1 \
-	writerfilter/util/writerfilter \
+$(eval $(call gb_CppunitTest_use_rdb,writerfilter_rtftok,services))
+
+$(eval $(call gb_CppunitTest_use_custom_headers,writerfilter_rtftok,\
+	officecfg/registry \
 ))
 
 $(eval $(call gb_CppunitTest_use_configuration,writerfilter_rtftok))

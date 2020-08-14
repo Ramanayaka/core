@@ -27,7 +27,6 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/xml/dom/XNode.hpp>
 
-#include <rtl/ustrbuf.hxx>
 #include "dp_misc_api.hxx"
 
 #include <map>
@@ -103,8 +102,8 @@ typedef std::map< OUString, UpdateInfo > UpdateInfoMap;
 
 /*
   @param extensionList
-  List of extension for which online update information are to be obtained. If NULL, then
-  for update information are obtained for all installed extension. There may be only one extension
+  List of extension for which online update information is to be obtained. If NULL, then
+  for update information is obtained for all installed extension. There may be only one extension
   with a particular identifier contained in the list. If one extension is installed
   in several repositories, then the one with the highest version must be used, because it contains
   the more recent URLs for getting the update information (if at all).
@@ -125,11 +124,10 @@ UpdateInfoMap getOnlineUpdateInfos(
     std::vector< std::pair< css::uno::Reference<
     css::deployment::XPackage>, css::uno::Any> > & out_errors);
 
-/* retunrs the highest version from the provided arguments.
+/* returns the highest version from the provided arguments.
 */
 DESKTOP_DEPLOYMENTMISC_DLLPUBLIC
 OUString getHighestVersion(
-    OUString const & userVersion,
     OUString const & sharedVersion,
     OUString const & bundledVersion,
     OUString const & onlineVersion);

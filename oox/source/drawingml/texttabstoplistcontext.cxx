@@ -17,12 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <list>
-#include <algorithm>
-
 #include <rtl/ustring.hxx>
 
-#include "oox/drawingml/drawingmltypes.hxx"
+#include <oox/drawingml/drawingmltypes.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
@@ -33,9 +30,9 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::style;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-        TextTabStopListContext::TextTabStopListContext( ContextHandler2Helper& rParent, std::list< TabStop >  & aTabList )
+        TextTabStopListContext::TextTabStopListContext( ContextHandler2Helper const & rParent, std::vector< TabStop >  & aTabList )
             : ContextHandler2( rParent )
             , maTabList( aTabList )
         {
@@ -71,6 +68,6 @@ namespace oox { namespace drawingml {
             }
             return this;
         }
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

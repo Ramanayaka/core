@@ -52,22 +52,21 @@ class SvXMLWordListContext : public SvXMLImportContext
 private:
     SvXMLAutoCorrectImport & rLocalRef;
 public:
-    SvXMLWordListContext ( SvXMLAutoCorrectImport& rImport,
-        const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList );
+    SvXMLWordListContext ( SvXMLAutoCorrectImport& rImport );
 
     virtual css::uno::Reference<XFastContextHandler> SAL_CALL createFastChildContext( sal_Int32 Element,
         const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList ) override;
+    virtual void SAL_CALL startFastElement( sal_Int32 /*Element*/, const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*Attribs*/ ) override {}
 
     virtual ~SvXMLWordListContext() override;
 };
 
 class SvXMLWordContext : public SvXMLImportContext
 {
-private:
-    SvXMLAutoCorrectImport & rLocalRef;
 public:
     SvXMLWordContext ( SvXMLAutoCorrectImport& rImport,
         const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList );
+    virtual void SAL_CALL startFastElement( sal_Int32 /*Element*/, const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*Attribs*/ ) override {}
 
     virtual ~SvXMLWordContext() override;
 };
@@ -96,9 +95,11 @@ class SvXMLExceptionListContext : public SvXMLImportContext
 private:
     SvXMLExceptionListImport & rLocalRef;
 public:
-    SvXMLExceptionListContext ( SvXMLExceptionListImport& rImport,
-        const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList );
+    SvXMLExceptionListContext ( SvXMLExceptionListImport& rImport );
 
+    virtual void SAL_CALL startFastElement(
+            sal_Int32 /*nElement*/,
+            const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*xAttrList*/ ) override {}
     virtual css::uno::Reference<XFastContextHandler> SAL_CALL createFastChildContext( sal_Int32 Element,
         const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList ) override;
 
@@ -107,12 +108,13 @@ public:
 
 class SvXMLExceptionContext : public SvXMLImportContext
 {
-private:
-    SvXMLExceptionListImport & rLocalRef;
 public:
     SvXMLExceptionContext ( SvXMLExceptionListImport& rImport,
         const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList );
 
+    virtual void SAL_CALL startFastElement(
+            sal_Int32 /*nElement*/,
+            const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*xAttrList*/ ) override {}
     virtual ~SvXMLExceptionContext() override;
 };
 

@@ -17,45 +17,38 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_MACAVF_FRAMEGRABBER_HXX
-#define INCLUDED_AVMEDIA_SOURCE_MACAVF_FRAMEGRABBER_HXX
+#pragma once
 
 #include "macavfcommon.hxx"
 #include <cppuhelper/implbase.hxx>
 
-#include "com/sun/star/media/XFrameGrabber.hpp"
+#include <com/sun/star/media/XFrameGrabber.hpp>
 
-namespace avmedia { namespace macavf {
+namespace avmedia::macavf {
 
 class FrameGrabber : public ::cppu::WeakImplHelper< css::media::XFrameGrabber,
                                                     css::lang::XServiceInfo >
 {
 public:
 
-    explicit FrameGrabber( const css::uno::Reference< css::lang::XMultiServiceFactory >& );
+    explicit FrameGrabber();
     virtual  ~FrameGrabber() override;
 
-    bool    create( const ::rtl::OUString& rURL );
     bool    create( AVAsset* pMovie );
 
     // XFrameGrabber
     virtual css::uno::Reference< css::graphic::XGraphic > SAL_CALL grabFrame( double fMediaTime ) override;
 
     // XServiceInfo
-    virtual ::rtl::OUString SAL_CALL getImplementationName(  ) override;
-    virtual sal_Bool SAL_CALL supportsService( const ::rtl::OUString& ServiceName ) override;
-    virtual css::uno::Sequence< ::rtl::OUString > SAL_CALL getSupportedServiceNames(  ) override;
+    virtual OUString SAL_CALL getImplementationName(  ) override;
+    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 
 private:
-
-    css::uno::Reference< css::lang::XMultiServiceFactory >    mxMgr;
 
     AVAssetImageGenerator* mpImageGen;
 };
 
-} // namespace macavf
-} // namespace avmedia
-
-#endif // INCLUDED_AVMEDIA_SOURCE_MACAVF_FRAMEGRABBER_HXX
+} // namespace avmedia::macavf
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

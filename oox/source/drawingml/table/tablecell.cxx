@@ -17,27 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/table/tablecell.hxx"
-#include "drawingml/table/tableproperties.hxx"
+#include <drawingml/table/tablecell.hxx>
+#include <drawingml/table/tableproperties.hxx>
 #include <basegfx/color/bcolor.hxx>
-#include "oox/drawingml/shapepropertymap.hxx"
-#include "drawingml/textbody.hxx"
-#include "oox/drawingml/theme.hxx"
-#include "oox/core/xmlfilterbase.hxx"
-#include "oox/helper/propertyset.hxx"
-#include <oox/token/namespaces.hxx>
+#include <oox/drawingml/shapepropertymap.hxx>
+#include <drawingml/textbody.hxx>
+#include <oox/drawingml/theme.hxx>
+#include <oox/core/xmlfilterbase.hxx>
+#include <oox/helper/propertyset.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
 #include <tools/color.hxx>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/beans/XMultiPropertySet.hpp>
-#include <com/sun/star/table/XTable.hpp>
-#include <com/sun/star/table/XMergeableCellRange.hpp>
 #include <com/sun/star/table/BorderLineStyle.hpp>
 #include <com/sun/star/table/BorderLine2.hpp>
-#include <com/sun/star/drawing/LineStyle.hpp>
 #include <com/sun/star/drawing/TextVerticalAdjust.hpp>
-#include <com/sun/star/drawing/TextHorizontalAdjust.hpp>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/text/WritingMode.hpp>
 
@@ -47,10 +40,10 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using ::com::sun::star::table::BorderLine2;
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
 TableCell::TableCell()
-: mpTextBody( new TextBody() )
+: mpTextBody( std::make_shared<TextBody>() )
 , mnRowSpan ( 1 )
 , mnGridSpan( 1 )
 , mbhMerge( false )
@@ -65,19 +58,16 @@ TableCell::TableCell()
 , mnHorzOverflowToken( XML_clip )
 {
 }
-TableCell::~TableCell()
-{
-}
 
-void applyLineAttributes( const ::oox::core::XmlFilterBase& rFilterBase,
-        Reference< XPropertySet >& rxPropSet, oox::drawingml::LineProperties& rLineProperties,
+static void applyLineAttributes( const ::oox::core::XmlFilterBase& rFilterBase,
+        Reference< XPropertySet > const & rxPropSet, oox::drawingml::LineProperties const & rLineProperties,
         sal_Int32 nPropId )
 {
     BorderLine2 aBorderLine;
     if ( rLineProperties.maLineFill.moFillType.differsFrom( XML_noFill ))
     {
         Color aColor = rLineProperties.maLineFill.getBestSolidColor();
-        aBorderLine.Color = aColor.getColor( rFilterBase.getGraphicHelper() );
+        aBorderLine.Color = sal_Int32(aColor.getColor( rFilterBase.getGraphicHelper() ));
         aBorderLine.OuterLineWidth = static_cast< sal_Int16 >( GetCoordinate( rLineProperties.moLineWidth.get( 0 ) ) / 4 );
         aBorderLine.InnerLineWidth = static_cast< sal_Int16 >( GetCoordinate( rLineProperties.moLineWidth.get( 0 ) ) / 4 );
         aBorderLine.LineWidth = static_cast< sal_Int16 >( GetCoordinate( rLineProperties.moLineWidth.get( 0 ) ) / 2 );
@@ -85,8 +75,7 @@ void applyLineAttributes( const ::oox::core::XmlFilterBase& rFilterBase,
     }
     else if ( rLineProperties.moLineWidth.get(0)!=0 )
     {
-        // Default color of Line is black.
-        rLineProperties.maLineFill.maFillColor.setSrgbClr( 0 );
+        aBorderLine.Color = sal_Int32( COL_AUTO );
         aBorderLine.OuterLineWidth = static_cast< sal_Int16 >( GetCoordinate( rLineProperties.moLineWidth.get( 0 ) ) / 4 );
         aBorderLine.InnerLineWidth = static_cast< sal_Int16 >( GetCoordinate( rLineProperties.moLineWidth.get( 0 ) ) / 4 );
         aBorderLine.LineWidth = static_cast< sal_Int16 >( GetCoordinate( rLineProperties.moLineWidth.get( 0 ) ) / 2 );
@@ -136,25 +125,25 @@ void applyLineAttributes( const ::oox::core::XmlFilterBase& rFilterBase,
     aPropSet.setProperty( nPropId, aBorderLine );
 }
 
-void applyBorder( const ::oox::core::XmlFilterBase& rFilterBase, TableStylePart& rTableStylePart, sal_Int32 nLineType, oox::drawingml::LineProperties& rLineProperties )
+static void applyBorder( const ::oox::core::XmlFilterBase& rFilterBase, TableStylePart& rTableStylePart, sal_Int32 nLineType, oox::drawingml::LineProperties& rLineProperties )
 {
     std::map < sal_Int32, ::oox::drawingml::LinePropertiesPtr >& rPartLineBorders( rTableStylePart.getLineBorders() );
     ::oox::drawingml::ShapeStyleRef& rLineStyleRef = rTableStylePart.getStyleRefs()[ nLineType ];
     std::map < sal_Int32, ::oox::drawingml::LinePropertiesPtr >::const_iterator aIter( rPartLineBorders.find( nLineType ) );
-    if ( ( aIter != rPartLineBorders.end() ) && aIter->second.get() )
+    if ( ( aIter != rPartLineBorders.end() ) && aIter->second )
         rLineProperties.assignUsed( *aIter->second );
     else if (rLineStyleRef.mnThemedIdx != 0)
     {
         if (const Theme* pTheme = rFilterBase.getCurrentTheme())
         {
             rLineProperties.assignUsed( *pTheme->getLineStyle(rLineStyleRef.mnThemedIdx) );
-            sal_Int32 nPhClr = rLineStyleRef.maPhClr.getColor( rFilterBase.getGraphicHelper() );
+            ::Color nPhClr = rLineStyleRef.maPhClr.getColor( rFilterBase.getGraphicHelper() );
             rLineProperties.maLineFill.maFillColor.setSrgbClr( nPhClr );
         }
     }
 }
 
-void applyTableStylePart( const ::oox::core::XmlFilterBase& rFilterBase,
+static void applyTableStylePart( const ::oox::core::XmlFilterBase& rFilterBase,
                           oox::drawingml::FillProperties& rFillProperties,
                           TextCharacterProperties& aTextCharProps,
                           oox::drawingml::LineProperties& rLeftBorder,
@@ -166,7 +155,7 @@ void applyTableStylePart( const ::oox::core::XmlFilterBase& rFilterBase,
                           TableStylePart& rTableStylePart )
 {
     ::oox::drawingml::FillPropertiesPtr& rPartFillPropertiesPtr( rTableStylePart.getFillProperties() );
-    if ( rPartFillPropertiesPtr.get() )
+    if ( rPartFillPropertiesPtr )
         rFillProperties.assignUsed( *rPartFillPropertiesPtr );
     else
     {
@@ -175,7 +164,7 @@ void applyTableStylePart( const ::oox::core::XmlFilterBase& rFilterBase,
         if (pTheme && rFillStyleRef.mnThemedIdx != 0 )
         {
             rFillProperties.assignUsed( *pTheme->getFillStyle( rFillStyleRef.mnThemedIdx ) );
-            sal_Int32 nPhClr = rFillStyleRef.maPhClr.getColor( rFilterBase.getGraphicHelper() );
+            ::Color nPhClr = rFillStyleRef.maPhClr.getColor( rFilterBase.getGraphicHelper() );
             rFillProperties.maFillColor.setSrgbClr( nPhClr );
         }
     }
@@ -196,13 +185,13 @@ void applyTableStylePart( const ::oox::core::XmlFilterBase& rFilterBase,
         aTextCharProps.maFillProperties.maFillColor = rTableStylePart.getTextColor();
         aTextCharProps.maFillProperties.moFillType.set(XML_solidFill);
     }
-    if( rTableStylePart.getTextBoldStyle().is_initialized() )
+    if( rTableStylePart.getTextBoldStyle() )
         aTextCharProps.moBold = *rTableStylePart.getTextBoldStyle();
-    if( rTableStylePart.getTextItalicStyle().is_initialized() )
+    if( rTableStylePart.getTextItalicStyle() )
         aTextCharProps.moItalic = *rTableStylePart.getTextItalicStyle();
 }
 
-void applyTableCellProperties( const Reference < css::table::XCell >& rxCell, const TableCell& rTableCell )
+static void applyTableCellProperties( const Reference < css::table::XCell >& rxCell, const TableCell& rTableCell )
 {
     Reference< XPropertySet > xPropSet( rxCell, UNO_QUERY_THROW );
     xPropSet->setPropertyValue( "TextUpperDistance", Any( static_cast< sal_Int32 >( rTableCell.getTopMargin() / 360 ) ) );
@@ -425,14 +414,20 @@ void TableCell::pushToXCell( const ::oox::core::XmlFilterBase& rFilterBase, cons
     applyLineAttributes( rFilterBase, xPropSet, aLinePropertiesTopLeftToBottomRight, PROP_DiagonalTLBR );
     applyLineAttributes( rFilterBase, xPropSet, aLinePropertiesBottomLeftToTopRight, PROP_DiagonalBLTR );
 
+    if (rProperties.getBgColor().isUsed() && !maFillProperties.maFillColor.isUsed() && maFillProperties.moFillType.get() == XML_noFill)
+    {
+        maFillProperties.moFillType = XML_solidFill;
+        maFillProperties.maFillColor = rProperties.getBgColor();
+    }
+
     aFillProperties.assignUsed( maFillProperties );
     ShapePropertyMap aPropMap( rFilterBase.getModelObjectHelper() );
 
     Color aBgColor;
-    sal_Int32 nPhClr = API_RGB_TRANSPARENT;
+    ::Color nPhClr = API_RGB_TRANSPARENT;
     std::shared_ptr< ::oox::drawingml::FillProperties >& rBackgroundFillPropertiesPtr( rTable.getBackgroundFillProperties() );
     ::oox::drawingml::ShapeStyleRef& rBackgroundFillStyle( rTable.getBackgroundFillStyleRef() );
-    if (rBackgroundFillPropertiesPtr.get())
+    if (rBackgroundFillPropertiesPtr)
         aBgColor = rBackgroundFillPropertiesPtr->getBestSolidColor();
     else if (rBackgroundFillStyle.mnThemedIdx != 0)
     {
@@ -450,7 +445,7 @@ void TableCell::pushToXCell( const ::oox::core::XmlFilterBase& rFilterBase, cons
         ::Color nCellColor( rCellColor.getColor(rFilterBase.getGraphicHelper()) );
         ::Color aResult( basegfx::interpolate(nBgColor.getBColor(), nCellColor.getBColor(), 1.0 - fTransparency) );
         aFillProperties.maFillColor.clearTransformations();
-        aFillProperties.maFillColor.setSrgbClr(aResult.GetRGBColor());
+        aFillProperties.maFillColor.setSrgbClr(sal_Int32(aResult.GetRGBColor()));
         aFillProperties.moFillType.set(XML_solidFill);
     }
     if (!aFillProperties.moFillType.has())
@@ -473,6 +468,6 @@ void TableCell::pushToXCell( const ::oox::core::XmlFilterBase& rFilterBase, cons
         xPropSet->setPropertyValue("RotateAngle", Any(short(9000)));
 }
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

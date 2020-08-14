@@ -17,20 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "progressmonitor.hxx"
+#include <progressmonitor.hxx>
 
-#include <com/sun/star/awt/GradientStyle.hpp>
-#include <com/sun/star/awt/RasterOperation.hpp>
-#include <com/sun/star/awt/Gradient.hpp>
+#include <com/sun/star/awt/XFixedText.hpp>
 #include <com/sun/star/awt/XGraphics.hpp>
 #include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <tools/debug.hxx>
 #include <algorithm>
 
-#include "progressbar.hxx"
+#include <progressbar.hxx>
 
 using namespace ::cppu;
 using namespace ::osl;
@@ -39,16 +38,24 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::awt;
 
 using ::std::vector;
-using ::std::find;
 
-namespace unocontrols{
+#define FIXEDTEXT_SERVICENAME                   "com.sun.star.awt.UnoControlFixedText"
+#define FIXEDTEXT_MODELNAME                     "com.sun.star.awt.UnoControlFixedTextModel"
+#define CONTROLNAME_TEXT                        "Text"   // identifier the control in container
+#define CONTROLNAME_PROGRESSBAR                 "ProgressBar"
+#define BUTTON_SERVICENAME                      "com.sun.star.awt.UnoControlButton"
+#define CONTROLNAME_BUTTON                      "Button"
+#define BUTTON_MODELNAME                        "com.sun.star.awt.UnoControlButtonModel"
+#define DEFAULT_BUTTONLABEL                     "Abbrechen"
+
+namespace unocontrols {
 
 ProgressMonitor::ProgressMonitor( const css::uno::Reference< XComponentContext >& rxContext )
     : BaseContainerControl  ( rxContext  )
 {
     // It's not allowed to work with member in this method (refcounter !!!)
     // But with a HACK (++refcount) its "OK" :-(
-    ++m_refCount;
+    osl_atomic_increment(&m_refCount);
 
     // Create instances for fixedtext, button and progress ...
 
@@ -94,7 +101,7 @@ ProgressMonitor::ProgressMonitor( const css::uno::Reference< XComponentContext >
     m_xTopic_Bottom->setText ( PROGRESSMONITOR_DEFAULT_TOPIC );
     m_xText_Bottom->setText  ( PROGRESSMONITOR_DEFAULT_TEXT );
 
-    --m_refCount;
+    osl_atomic_decrement(&m_refCount);
 }
 
 ProgressMonitor::~ProgressMonitor()
@@ -111,13 +118,13 @@ Any SAL_CALL ProgressMonitor::queryInterface( const Type& rType )
     css::uno::Reference< XInterface > xDel = BaseContainerControl::impl_getDelegator();
     if ( xDel.is() )
     {
-        // If an delegator exist, forward question to his queryInterface.
-        // Delegator will ask his own queryAggregation!
+        // If a delegator exists, forward question to its queryInterface.
+        // Delegator will ask its own queryAggregation!
         aReturn = xDel->queryInterface( rType );
     }
     else
     {
-        // If an delegator unknown, forward question to own queryAggregation.
+        // If a delegator is unknown, forward question to own queryAggregation.
         aReturn = queryAggregation( rType );
     }
 
@@ -197,7 +204,7 @@ void SAL_CALL ProgressMonitor::addText(
     }
 
     // Else ... take memory for new item ...
-    IMPL_TextlistItem*  pTextItem = new IMPL_TextlistItem;
+    std::unique_ptr<IMPL_TextlistItem> pTextItem(new IMPL_TextlistItem);
 
     // Set values ...
     pTextItem->sTopic   = rTopic;
@@ -209,11 +216,11 @@ void SAL_CALL ProgressMonitor::addText(
     // ... and insert it in right list.
     if ( bbeforeProgress )
     {
-        maTextlist_Top.push_back( pTextItem );
+        maTextlist_Top.push_back( std::move(pTextItem) );
     }
     else
     {
-        maTextlist_Bottom.push_back( pTextItem );
+        maTextlist_Bottom.push_back( std::move(pTextItem) );
     }
 
     // ... update window
@@ -226,38 +233,40 @@ void SAL_CALL ProgressMonitor::removeText ( const OUString& rTopic, sal_Bool bbe
 {
     // Safe impossible cases
     // Check valid call of this method.
-    DBG_ASSERT ( impl_debug_checkParameter ( rTopic ), "ProgressMonitor::removeText()\nCall without valid parameters!\n" );
+    DBG_ASSERT ( impl_debug_checkParameter ( rTopic ), "ProgressMonitor::removeText()\nCall without valid parameters!" );
 
     // Search the topic ...
     IMPL_TextlistItem* pSearchItem = impl_searchTopic ( rTopic, bbeforeProgress );
 
-    if ( pSearchItem != nullptr )
+    if ( pSearchItem == nullptr )
+        return;
+
+    // Ready for multithreading
+    MutexGuard aGuard ( m_aMutex );
+
+    // ... delete item from right list ...
+    if ( bbeforeProgress )
     {
-        // Ready for multithreading
-        MutexGuard aGuard ( m_aMutex );
-
-        // ... delete item from right list ...
-        if ( bbeforeProgress )
-        {
-            vector< IMPL_TextlistItem* >::iterator
-                itr = find( maTextlist_Top.begin(), maTextlist_Top.end(), pSearchItem );
-            if (itr != maTextlist_Top.end())
-                maTextlist_Top.erase(itr);
-        }
-        else
-        {
-            vector< IMPL_TextlistItem* >::iterator
-                itr = find( maTextlist_Bottom.begin(), maTextlist_Bottom.end(), pSearchItem );
-            if (itr != maTextlist_Bottom.end())
-                maTextlist_Bottom.erase(itr);
-        }
-
-        delete pSearchItem;
-
-        // ... and update window.
-        impl_rebuildFixedText   ();
-        impl_recalcLayout       ();
+        auto itr = std::find_if( maTextlist_Top.begin(), maTextlist_Top.end(),
+                        [&] (std::unique_ptr<IMPL_TextlistItem> const &p)
+                        { return p.get() == pSearchItem; } );
+        if (itr != maTextlist_Top.end())
+            maTextlist_Top.erase(itr);
     }
+    else
+    {
+        auto itr = std::find_if( maTextlist_Bottom.begin(), maTextlist_Bottom.end(),
+                        [&] (std::unique_ptr<IMPL_TextlistItem> const &p)
+                        { return p.get() == pSearchItem; } );
+        if (itr != maTextlist_Bottom.end())
+            maTextlist_Bottom.erase(itr);
+    }
+
+    delete pSearchItem;
+
+    // ... and update window.
+    impl_rebuildFixedText   ();
+    impl_recalcLayout       ();
 }
 
 //  XProgressMonitor
@@ -487,7 +496,7 @@ void SAL_CALL ProgressMonitor::dispose ()
     removeControl ( xRef_Button         );
     removeControl ( m_xProgressBar.get() );
 
-    // do'nt use "...->clear ()" or "... = XFixedText ()"
+    // don't use "...->clear ()" or "... = XFixedText ()"
     // when other hold a reference at this object !!!
     xRef_Topic_Top->dispose     ();
     xRef_Text_Top->dispose      ();
@@ -521,42 +530,30 @@ void SAL_CALL ProgressMonitor::setPosSize ( sal_Int32 nX, sal_Int32 nY, sal_Int3
     }
 }
 
-//  impl but public method to register service
-const Sequence< OUString > ProgressMonitor::impl_getStaticSupportedServiceNames()
-{
-    return css::uno::Sequence<OUString>();
-}
-
-//  impl but public method to register service
-const OUString ProgressMonitor::impl_getStaticImplementationName()
-{
-    return OUString("stardiv.UnoControls.ProgressMonitor");
-}
-
 //  protected method
 void ProgressMonitor::impl_paint ( sal_Int32 nX, sal_Int32 nY, const css::uno::Reference< XGraphics > & rGraphics )
 {
-    if (rGraphics.is())
-    {
-        // Ready for multithreading
-        MutexGuard aGuard ( m_aMutex );
+    if (!rGraphics.is())
+        return;
 
-        // paint shadowed border around the progressmonitor
-        rGraphics->setLineColor ( PROGRESSMONITOR_LINECOLOR_SHADOW                                                              );
-        rGraphics->drawLine     ( impl_getWidth()-1, impl_getHeight()-1, impl_getWidth()-1, nY                  );
-        rGraphics->drawLine     ( impl_getWidth()-1, impl_getHeight()-1, nX               , impl_getHeight()-1  );
+    // Ready for multithreading
+    MutexGuard aGuard ( m_aMutex );
 
-        rGraphics->setLineColor ( PROGRESSMONITOR_LINECOLOR_BRIGHT                          );
-        rGraphics->drawLine     ( nX, nY, impl_getWidth(), nY               );
-        rGraphics->drawLine     ( nX, nY, nX             , impl_getHeight() );
+    // paint shadowed border around the progressmonitor
+    rGraphics->setLineColor ( PROGRESSMONITOR_LINECOLOR_SHADOW                                                              );
+    rGraphics->drawLine     ( impl_getWidth()-1, impl_getHeight()-1, impl_getWidth()-1, nY                  );
+    rGraphics->drawLine     ( impl_getWidth()-1, impl_getHeight()-1, nX               , impl_getHeight()-1  );
 
-        // Paint 3D-line
-        rGraphics->setLineColor ( PROGRESSMONITOR_LINECOLOR_SHADOW  );
-        rGraphics->drawLine     ( m_a3DLine.X, m_a3DLine.Y, m_a3DLine.X+m_a3DLine.Width, m_a3DLine.Y );
+    rGraphics->setLineColor ( PROGRESSMONITOR_LINECOLOR_BRIGHT                          );
+    rGraphics->drawLine     ( nX, nY, impl_getWidth(), nY               );
+    rGraphics->drawLine     ( nX, nY, nX             , impl_getHeight() );
 
-        rGraphics->setLineColor ( PROGRESSMONITOR_LINECOLOR_BRIGHT  );
-        rGraphics->drawLine     ( m_a3DLine.X, m_a3DLine.Y+1, m_a3DLine.X+m_a3DLine.Width, m_a3DLine.Y+1 );
-    }
+    // Paint 3D-line
+    rGraphics->setLineColor ( PROGRESSMONITOR_LINECOLOR_SHADOW  );
+    rGraphics->drawLine     ( m_a3DLine.X, m_a3DLine.Y, m_a3DLine.X+m_a3DLine.Width, m_a3DLine.Y );
+
+    rGraphics->setLineColor ( PROGRESSMONITOR_LINECOLOR_BRIGHT  );
+    rGraphics->drawLine     ( m_a3DLine.X, m_a3DLine.Y+1, m_a3DLine.X+m_a3DLine.Width, m_a3DLine.Y+1 );
 }
 
 //  private method
@@ -719,31 +716,31 @@ void ProgressMonitor::impl_rebuildFixedText ()
     // Rebuild left site of text
     if (m_xTopic_Top.is())
     {
-        OUString aCollectString;
+        OUStringBuffer aCollectString;
 
         // Collect all topics from list and format text.
         // "\n" MUST BE at the end of line!!! => Else ... topic and his text are not in the same line!!!
-        for (IMPL_TextlistItem* pSearchItem : maTextlist_Top)
+        for (auto const & pSearchItem : maTextlist_Top)
         {
-            aCollectString  +=  pSearchItem->sTopic + "\n";
+            aCollectString.append(pSearchItem->sTopic).append("\n");
         }
 
-        m_xTopic_Top->setText ( aCollectString );
+        m_xTopic_Top->setText ( aCollectString.makeStringAndClear() );
     }
 
     // Rebuild right site of text
     if (m_xText_Top.is())
     {
-        OUString        aCollectString;
+        OUStringBuffer aCollectString;
 
         // Collect all topics from list and format text.
         // "\n" MUST BE at the end of line!!! => Else ... topic and his text are not in the same line!!!
-        for (IMPL_TextlistItem* pSearchItem : maTextlist_Top)
+        for (auto const & pSearchItem : maTextlist_Top)
         {
-            aCollectString  +=  pSearchItem->sText + "\n";
+            aCollectString.append(pSearchItem->sText).append("\n");
         }
 
-        m_xText_Top->setText ( aCollectString );
+        m_xText_Top->setText ( aCollectString.makeStringAndClear() );
     }
 
     // Rebuild fixedtext below progress
@@ -751,32 +748,32 @@ void ProgressMonitor::impl_rebuildFixedText ()
     // Rebuild left site of text
     if (m_xTopic_Bottom.is())
     {
-        OUString        aCollectString;
+        OUStringBuffer aCollectString;
 
         // Collect all topics from list and format text.
         // "\n" MUST BE at the end of line!!! => Else ... topic and his text are not in the same line!!!
-        for (IMPL_TextlistItem* pSearchItem : maTextlist_Bottom)
+        for (auto const & pSearchItem : maTextlist_Bottom)
         {
-            aCollectString  +=  pSearchItem->sTopic + "\n";
+            aCollectString.append(pSearchItem->sTopic).append("\n");
         }
 
-        m_xTopic_Bottom->setText ( aCollectString );
+        m_xTopic_Bottom->setText ( aCollectString.makeStringAndClear() );
     }
 
     // Rebuild right site of text
-    if (m_xText_Bottom.is())
+    if (!m_xText_Bottom.is())
+        return;
+
+    OUStringBuffer aCollectString;
+
+    // Collect all topics from list and format text.
+    // "\n" MUST BE at the end of line!!! => Else ... topic and his text are not in the same line!!!
+    for (auto const & pSearchItem : maTextlist_Bottom)
     {
-        OUString        aCollectString;
-
-        // Collect all topics from list and format text.
-        // "\n" MUST BE at the end of line!!! => Else ... topic and his text are not in the same line!!!
-        for (IMPL_TextlistItem* pSearchItem : maTextlist_Bottom)
-        {
-            aCollectString  +=  pSearchItem->sText + "\n";
-        }
-
-        m_xText_Bottom->setText ( aCollectString );
+        aCollectString.append(pSearchItem->sText).append("\n");
     }
+
+    m_xText_Bottom->setText ( aCollectString.makeStringAndClear() );
 }
 
 //  private method
@@ -786,17 +783,7 @@ void ProgressMonitor::impl_cleanMemory ()
     MutexGuard aGuard ( m_aMutex );
 
     // Delete all of lists.
-
-    for (IMPL_TextlistItem* pSearchItem : maTextlist_Top)
-    {
-        delete pSearchItem;
-    }
     maTextlist_Top.clear();
-
-    for (IMPL_TextlistItem* pSearchItem : maTextlist_Bottom)
-    {
-        delete pSearchItem;
-    }
     maTextlist_Bottom.clear();
 }
 
@@ -804,22 +791,22 @@ void ProgressMonitor::impl_cleanMemory ()
 IMPL_TextlistItem* ProgressMonitor::impl_searchTopic ( const OUString& rTopic, bool bbeforeProgress )
 {
     // Get right textlist for following operations.
-    ::std::vector< IMPL_TextlistItem* >* pTextList;
+    ::std::vector< std::unique_ptr<IMPL_TextlistItem> >* pTextList;
 
     // Ready for multithreading
-    ClearableMutexGuard aGuard ( m_aMutex );
-
-    if ( bbeforeProgress )
     {
-        pTextList = &maTextlist_Top;
-    }
-    else
-    {
-        pTextList = &maTextlist_Bottom;
-    }
+        MutexGuard aGuard(m_aMutex);
 
+        if (bbeforeProgress)
+        {
+            pTextList = &maTextlist_Top;
+        }
+        else
+        {
+            pTextList = &maTextlist_Bottom;
+        }
+    }
     // Switch off guard.
-    aGuard.clear ();
 
     // Search the topic in textlist.
     size_t nPosition    = 0;
@@ -827,7 +814,7 @@ IMPL_TextlistItem* ProgressMonitor::impl_searchTopic ( const OUString& rTopic, b
 
     for ( nPosition = 0; nPosition < nCount; ++nPosition )
     {
-        IMPL_TextlistItem* pSearchItem = pTextList->at( nPosition );
+        auto pSearchItem = pTextList->at( nPosition ).get();
 
         if ( pSearchItem->sTopic == rTopic )
         {
@@ -866,4 +853,10 @@ bool ProgressMonitor::impl_debug_checkParameter ( const OUString& rTopic )
 
 }   // namespace unocontrols
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+stardiv_UnoControls_ProgressMonitor_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new unocontrols::ProgressMonitor(context));
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

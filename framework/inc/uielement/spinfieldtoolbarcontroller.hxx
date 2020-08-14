@@ -20,11 +20,9 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_SPINFIELDTOOLBARCONTROLLER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_SPINFIELDTOOLBARCONTROLLER_HXX
 
-#include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/frame/ControlCommand.hpp>
 
 #include <uielement/complextoolbarcontroller.hxx>
-#include <vcl/spinfld.hxx>
 #include <vcl/vclptr.hxx>
 
 class ToolBox;
@@ -34,7 +32,7 @@ namespace framework
 
 class SpinfieldControl;
 
-class SpinfieldToolbarController : public ComplexToolbarController
+class SpinfieldToolbarController final : public ComplexToolbarController
 
 {
     public:
@@ -50,25 +48,19 @@ class SpinfieldToolbarController : public ComplexToolbarController
         virtual void SAL_CALL dispose() override;
 
         // called from SpinfieldControl
-        void Up();
-        void Down();
-        void First();
-        void Last();
         void Modify();
         void GetFocus();
-        bool PreNotify( NotifyEvent& rNEvt );
+        void LoseFocus();
+        void Activate();
 
-    protected:
+        OUString FormatOutputString(double fValue);
+    private:
         virtual void executeControlCommand( const css::frame::ControlCommand& rControlCommand ) override;
         virtual css::uno::Sequence< css::beans::PropertyValue> getExecuteArgs(sal_Int16 KeyModifier) const override;
 
-    private:
         bool impl_getValue( const css::uno::Any& rAny, sal_Int32& nValue, double& fValue, bool& bFloat );
-        OUString impl_formatOutputString( double fValue );
 
-        bool              m_bFloat,
-                          m_bMaxSet,
-                          m_bMinSet;
+        bool              m_bFloat;
         double            m_nMax;
         double            m_nMin;
         double            m_nValue;

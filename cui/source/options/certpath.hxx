@@ -7,39 +7,36 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_CUI_SOURCE_OPTIONS_CERTPATH_HXX
-#define INCLUDED_CUI_SOURCE_OPTIONS_CERTPATH_HXX
+#pragma once
 
-#include <sfx2/basedlgs.hxx>
-#include <svtools/simptabl.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include "radiobtnbox.hxx"
+#include <vcl/weld.hxx>
 
-class CertPathDialog : public ModalDialog
+class CertPathDialog : public weld::GenericDialogController
 {
-private:
-    VclPtr<SvSimpleTableContainer> m_pCertPathListContainer;
-    VclPtr<svx::SvxRadioButtonListBox> m_pCertPathList;
-    VclPtr<PushButton> m_pAddBtn;
-    VclPtr<OKButton>   m_pOKBtn;
-    OUString    m_sAddDialogText;
-    OUString    m_sManual;
+    std::unique_ptr<weld::Button> m_xManualButton;
+    std::unique_ptr<weld::Button> m_xOKButton;
+    std::unique_ptr<weld::TreeView> m_xCertPathList;
+    OUString m_sAddDialogText;
+    OUString m_sManualLabel;
+    OUString m_sManualPath;
 
-    DECL_LINK(CheckHdl_Impl, SvTreeListBox*, void);
-    DECL_LINK(AddHdl_Impl, Button*, void);
-    DECL_LINK(OKHdl_Impl, Button*, void);
+    DECL_LINK(CheckHdl_Impl, const weld::TreeView::iter_col&, void);
+    DECL_LINK(ManualHdl_Impl, weld::Button&, void);
+    DECL_LINK(OKHdl_Impl, weld::Button&, void);
 
-    void HandleCheckEntry(SvTreeListEntry* _pEntry);
-    void AddCertPath(const OUString &rProfile, const OUString &rPath);
+    void HandleEntryChecked(int nRow);
+    void AddCertPath(const OUString& rProfile, const OUString& rPath, bool bSelect = true);
+    void AddManualCertPath(const OUString& sUserSetCertPath, bool bSelect = true);
+
 public:
-    explicit CertPathDialog(vcl::Window* pParent);
+    explicit CertPathDialog(weld::Window* pParent);
     virtual ~CertPathDialog() override;
-    virtual void dispose() override;
 
-    OUString getDirectory() const;
+    void Init();
+
+    // returns true, if the service currently uses the selected path or is not initialized
+    // yet and therefore has no active NSS path.
+    bool isActiveServicePath() const;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

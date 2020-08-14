@@ -19,7 +19,6 @@
 #ifndef INCLUDED_SD_SOURCE_UI_UNOIDL_UNOLAYER_HXX
 #define INCLUDED_SD_SOURCE_UI_UNOIDL_UNOLAYER_HXX
 
-#include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/drawing/XLayer.hpp>
 #include <com/sun/star/drawing/XLayerManager.hpp>
 
@@ -31,7 +30,6 @@
 
 class SdrLayer;
 class SdLayerManager;
-class SdXImpressDocument;
 class SvUnoWeakContainer;
 
 namespace sd {
@@ -49,14 +47,11 @@ class SdLayer : public ::cppu::WeakImplHelper< css::drawing::XLayer,
                                                 css::lang::XComponent >
 {
 public:
-    SdLayer( SdLayerManager* pLayerManager_, SdrLayer* pSdrLayer_ ) throw();
+    SdLayer(SdLayerManager* pLayerManager_, SdrLayer* pSdrLayer_);
     virtual ~SdLayer() throw() override;
 
     // intern
     SdrLayer* GetSdrLayer() const throw() { return pLayer; }
-
-    static OUString convertToInternalName( const OUString& rName );
-    static OUString convertToExternalName( const OUString& rName );
 
     // uno helper
     UNO3_GETIMPLEMENTATION_DECL( SdLayer )
@@ -165,7 +160,7 @@ public:
 
 private:
     SdXImpressDocument* mpModel;
-    SvUnoWeakContainer* mpLayers;
+    std::unique_ptr<SvUnoWeakContainer> mpLayers;
 
     ::sd::View* GetView() const throw();
     ::sd::DrawDocShell* GetDocShell() const throw() { return mpModel->mpDocShell; }

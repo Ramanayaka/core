@@ -20,7 +20,7 @@
 #ifndef INCLUDED_FORMS_SOURCE_SOLAR_COMPONENT_NAVBARCONTROL_HXX
 #define INCLUDED_FORMS_SOURCE_SOLAR_COMPONENT_NAVBARCONTROL_HXX
 
-#include "formnavigation.hxx"
+#include <formnavigation.hxx>
 
 #include <com/sun/star/frame/XDispatchProviderInterception.hpp>
 
@@ -28,7 +28,6 @@
 #include <toolkit/awt/vclxwindow.hxx>
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase1.hxx>
-#include <tools/wintypes.hxx>
 
 
 namespace frm
@@ -72,28 +71,19 @@ namespace frm
         virtual void SAL_CALL releaseDispatchProviderInterceptor( const css::uno::Reference< css::frame::XDispatchProviderInterceptor >& Interceptor ) override;
     };
 
-    class ONavigationBarPeer
+    class ONavigationBarPeer final
                         :public VCLXWindow
                         ,public OFormNavigationHelper
     {
     public:
         /** factory method
-            @return
-                a new ONavigationBarPeer instance, which has been acquired once!
         */
-        static ONavigationBarPeer* Create(
+        static rtl::Reference<ONavigationBarPeer> Create(
             const css::uno::Reference< css::uno::XComponentContext >& _rxORB,
             vcl::Window* _pParentWindow,
             const css::uno::Reference< css::awt::XControlModel >& _rxModel
         );
 
-    protected:
-        explicit ONavigationBarPeer(
-            const css::uno::Reference< css::uno::XComponentContext >& _rxORB
-        );
-        virtual ~ONavigationBarPeer() override;
-
-    public:
         // XInterface
         DECLARE_XINTERFACE( )
 
@@ -103,7 +93,12 @@ namespace frm
         // XWindow2
         using VCLXWindow::isEnabled;
 
-    protected:
+    private:
+        explicit ONavigationBarPeer(
+            const css::uno::Reference< css::uno::XComponentContext >& _rxORB
+        );
+        virtual ~ONavigationBarPeer() override;
+
         // XTypeProvider
         DECLARE_XTYPEPROVIDER( )
 

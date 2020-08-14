@@ -17,7 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RelativePositionHelper.hxx"
+#include <RelativePositionHelper.hxx>
+#include <com/sun/star/chart2/RelativeSize.hpp>
+#include <com/sun/star/awt/Size.hpp>
 #include <rtl/math.hxx>
 #include <osl/diagnose.h>
 

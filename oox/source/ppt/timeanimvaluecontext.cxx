@@ -29,10 +29,9 @@ using namespace ::oox::core;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-    TimeAnimValueListContext::TimeAnimValueListContext( FragmentHandler2& rParent,
-                const Reference< XFastAttributeList >& /*xAttribs*/,
+    TimeAnimValueListContext::TimeAnimValueListContext( FragmentHandler2 const & rParent,
                 TimeAnimationValueList & aTavList )
         : FragmentHandler2( rParent )
             , maTavList( aTavList )
@@ -80,6 +79,6 @@ namespace oox { namespace ppt {
         return this;
     }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

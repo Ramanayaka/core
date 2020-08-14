@@ -22,7 +22,6 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/ucb/XContentProvider.hpp>
 #include <com/sun/star/beans/Property.hpp>
-#include <com/sun/star/ucb/NumberedSortingInfo.hpp>
 
 #include "resultsetbase.hxx"
 #include "urlparameter.hxx"
@@ -39,13 +38,8 @@ namespace chelp {
         ResultSetForQuery( const css::uno::Reference<css::uno::XComponentContext>& rxContext,
                            const css::uno::Reference<css::ucb::XContentProvider>&  xProvider,
                            const css::uno::Sequence< css::beans::Property >& seq,
-                           URLParameter& aURLParameter,
+                           const URLParameter& aURLParameter,
                            Databases* pDatabases );
-
-
-    private:
-
-        URLParameter m_aURLParameter;
     };
 
 }

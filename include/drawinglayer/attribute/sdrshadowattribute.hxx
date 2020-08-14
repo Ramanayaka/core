@@ -31,14 +31,12 @@ namespace basegfx {
     class B2DVector;
 }
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class ImpSdrShadowAttribute;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class DRAWINGLAYER_DLLPUBLIC SdrShadowAttribute
         {
@@ -52,13 +50,15 @@ namespace drawinglayer
             /// constructors/assignmentoperator/destructor
             SdrShadowAttribute(
                 const basegfx::B2DVector& rOffset,
+                const basegfx::B2DVector& rSize,
                 double fTransparence,
+                sal_Int32 nBlur,
                 const basegfx::BColor& rColor);
             SdrShadowAttribute();
-            SdrShadowAttribute(const SdrShadowAttribute& rCandidate);
-            SdrShadowAttribute(SdrShadowAttribute&& rCandidate);
-            SdrShadowAttribute& operator=(const SdrShadowAttribute& rCandidate);
-            SdrShadowAttribute& operator=(SdrShadowAttribute&& rCandidate);
+            SdrShadowAttribute(const SdrShadowAttribute&);
+            SdrShadowAttribute(SdrShadowAttribute&&);
+            SdrShadowAttribute& operator=(const SdrShadowAttribute&);
+            SdrShadowAttribute& operator=(SdrShadowAttribute&&);
             ~SdrShadowAttribute();
 
             // checks if the incarnation is default constructed
@@ -69,11 +69,13 @@ namespace drawinglayer
 
             // data access
             const basegfx::B2DVector& getOffset() const;
+            const basegfx::B2DVector& getSize() const;
             double getTransparence() const;
+            sal_Int32 getBlur() const;
             const basegfx::BColor& getColor() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif //INCLUDED_DRAWINGLAYER_ATTRIBUTE_SDRSHADOWATTRIBUTE_HXX

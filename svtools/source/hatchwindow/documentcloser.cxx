@@ -18,7 +18,6 @@
  */
 
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/util/XCloseBroadcaster.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
@@ -26,15 +25,13 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/awt/XVclWindowPeer.hpp>
-#include <comphelper/processfactory.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/interfacecontainer2.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/mutex.hxx>
-#include <osl/thread.hxx>
-#include <rtl/ref.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/dialog.hxx>
+#include <vcl/dialoghelper.hxx>
+#include <vcl/window.hxx>
 #include <tools/link.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 
@@ -49,13 +46,12 @@ class ODocumentCloser : public ::cppu::WeakImplHelper< css::lang::XComponent,
 {
     ::osl::Mutex m_aMutex;
     css::uno::Reference< css::frame::XFrame > m_xFrame;
-    ::comphelper::OInterfaceContainerHelper2* m_pListenersContainer; // list of listeners
+    std::unique_ptr<::comphelper::OInterfaceContainerHelper2> m_pListenersContainer; // list of listeners
 
     bool m_bDisposed;
 
 public:
     explicit ODocumentCloser(const css::uno::Sequence< css::uno::Any >& aArguments);
-    virtual ~ODocumentCloser() override;
 
 // XComponent
     virtual void SAL_CALL dispose() override;
@@ -87,7 +83,7 @@ void MainThreadFrameCloserRequest::Start( MainThreadFrameCloserRequest* pMTReque
 {
     if ( pMTRequest )
     {
-        if ( Application::GetMainThreadIdentifier() == osl::Thread::getCurrentIdentifier() )
+        if ( Application::IsMainThread() )
         {
             // this is the main thread
             worker( nullptr, pMTRequest );
@@ -101,50 +97,49 @@ void MainThreadFrameCloserRequest::Start( MainThreadFrameCloserRequest* pMTReque
 IMPL_STATIC_LINK( MainThreadFrameCloserRequest, worker, void*, p, void )
 {
     MainThreadFrameCloserRequest* pMTRequest = static_cast<MainThreadFrameCloserRequest*>(p);
-    if ( pMTRequest )
+    if ( !pMTRequest )
+        return;
+
+    if ( pMTRequest->m_xFrame.is() )
     {
-        if ( pMTRequest->m_xFrame.is() )
+        // this is the main thread, the solar mutex must be locked
+        SolarMutexGuard aGuard;
+
+        try
         {
-            // this is the main thread, the solar mutex must be locked
-            SolarMutexGuard aGuard;
+            uno::Reference< awt::XWindow > xWindow = pMTRequest->m_xFrame->getContainerWindow();
+            uno::Reference< awt::XVclWindowPeer > xWinPeer( xWindow, uno::UNO_QUERY_THROW );
 
-            try
-            {
-                uno::Reference< awt::XWindow > xWindow = pMTRequest->m_xFrame->getContainerWindow();
-                uno::Reference< awt::XVclWindowPeer > xWinPeer( xWindow, uno::UNO_QUERY_THROW );
+            xWindow->setVisible( false );
 
-                xWindow->setVisible( false );
+            // reparent the window
+            xWinPeer->setProperty( "PluginParent", uno::makeAny( sal_Int64(0) ) );
 
-                // reparent the window
-                xWinPeer->setProperty( "PluginParent", uno::makeAny( (sal_Int64) 0 ) );
-
-                VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xWindow );
-                if ( pWindow )
-                    Dialog::EndAllDialogs( pWindow );
-            }
-            catch( uno::Exception& )
-            {
-                // ignore all the errors
-            }
-
-            try
-            {
-                uno::Reference< util::XCloseable > xCloseable( pMTRequest->m_xFrame, uno::UNO_QUERY_THROW );
-                xCloseable->close( true );
-            }
-            catch( uno::Exception& )
-            {
-                // ignore all the errors
-            }
+            VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xWindow );
+            if (pWindow)
+                vcl::EndAllDialogs(pWindow);
+        }
+        catch( uno::Exception& )
+        {
+            // ignore all the errors
         }
 
-        delete pMTRequest;
+        try
+        {
+            uno::Reference< util::XCloseable > xCloseable( pMTRequest->m_xFrame, uno::UNO_QUERY_THROW );
+            xCloseable->close( true );
+        }
+        catch( uno::Exception& )
+        {
+            // ignore all the errors
+        }
     }
+
+    delete pMTRequest;
 }
 
 ODocumentCloser::ODocumentCloser(const css::uno::Sequence< css::uno::Any >& aArguments)
-: m_pListenersContainer( nullptr )
-, m_bDisposed( false )
+: m_bDisposed( false )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     if ( !m_refCount )
@@ -165,15 +160,6 @@ ODocumentCloser::ODocumentCloser(const css::uno::Sequence< css::uno::Any >& aArg
 }
 
 
-ODocumentCloser::~ODocumentCloser()
-{
-    if ( m_pListenersContainer )
-    {
-        delete m_pListenersContainer;
-        m_pListenersContainer = nullptr;
-    }
-}
-
 // XComponent
 
 void SAL_CALL ODocumentCloser::dispose()
@@ -183,7 +169,7 @@ void SAL_CALL ODocumentCloser::dispose()
     if ( m_bDisposed )
         throw lang::DisposedException();
 
-       lang::EventObject aSource( static_cast< ::cppu::OWeakObject* >(this) );
+    lang::EventObject aSource( static_cast< ::cppu::OWeakObject* >(this) );
     if ( m_pListenersContainer )
         m_pListenersContainer->disposeAndClear( aSource );
 
@@ -206,7 +192,7 @@ void SAL_CALL ODocumentCloser::addEventListener( const uno::Reference< lang::XEv
         throw lang::DisposedException(); // TODO
 
     if ( !m_pListenersContainer )
-        m_pListenersContainer = new ::comphelper::OInterfaceContainerHelper2( m_aMutex );
+        m_pListenersContainer.reset( new ::comphelper::OInterfaceContainerHelper2( m_aMutex ) );
 
     m_pListenersContainer->addInterface( xListener );
 }
@@ -222,7 +208,7 @@ void SAL_CALL ODocumentCloser::removeEventListener( const uno::Reference< lang::
 // XServiceInfo
 OUString SAL_CALL ODocumentCloser::getImplementationName(  )
 {
-    return OUString( "com.sun.star.comp.embed.DocumentCloser" );
+    return "com.sun.star.comp.embed.DocumentCloser";
 }
 
 sal_Bool SAL_CALL ODocumentCloser::supportsService( const OUString& ServiceName )
@@ -232,13 +218,12 @@ sal_Bool SAL_CALL ODocumentCloser::supportsService( const OUString& ServiceName 
 
 uno::Sequence< OUString > SAL_CALL ODocumentCloser::getSupportedServiceNames()
 {
-    const OUString aServiceName( "com.sun.star.embed.DocumentCloser" );
-    return uno::Sequence< OUString >( &aServiceName, 1 );
+    return { "com.sun.star.embed.DocumentCloser" };
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_embed_DocumentCloser_get_implementation(
     SAL_UNUSED_PARAMETER css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &arguments)

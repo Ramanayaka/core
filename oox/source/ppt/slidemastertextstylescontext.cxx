@@ -17,19 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/textliststyle.hxx"
-#include "drawingml/textliststylecontext.hxx"
-#include "oox/ppt/slidemastertextstylescontext.hxx"
+#include <drawingml/textliststyle.hxx>
+#include <drawingml/textliststylecontext.hxx>
+#include <oox/ppt/slidemastertextstylescontext.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
 
 using namespace ::oox::core;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-SlideMasterTextStylesContext::SlideMasterTextStylesContext( FragmentHandler2& rParent, SlidePersistPtr const & pSlidePersistPtr )
+SlideMasterTextStylesContext::SlideMasterTextStylesContext( FragmentHandler2 const & rParent, SlidePersistPtr const & pSlidePersistPtr )
 : FragmentHandler2( rParent )
 , mpSlidePersistPtr( pSlidePersistPtr )
 {
@@ -75,6 +74,6 @@ SlideMasterTextStylesContext::~SlideMasterTextStylesContext()
     return this;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

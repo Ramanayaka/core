@@ -21,19 +21,12 @@
 #define INCLUDED_DESKTOP_SOURCE_DEPLOYMENT_REGISTRY_HELP_DP_HELPBACKENDDB_HXX
 
 #include <rtl/ustring.hxx>
-#include <list>
-#include <boost/optional.hpp>
-#include "dp_backenddb.hxx"
+#include <optional>
+#include <dp_backenddb.hxx>
 
-namespace com { namespace sun { namespace star {
-        namespace uno {
-        class XComponentContext;
-        }
-}}}
+namespace com::sun::star::uno { class XComponentContext; }
 
-namespace dp_registry {
-namespace backend {
-namespace help {
+namespace dp_registry::backend::help {
 
 /* The XML file stores the extensions which are currently registered.
    They will be removed when they are revoked.
@@ -65,17 +58,17 @@ public:
 
     void addEntry(OUString const & url, Data const & data);
 
-    ::boost::optional<Data> getEntry(OUString const & url);
-    //must also return the data urls for entries with @activ="false". That is,
+    ::std::optional<Data> getEntry(OUString const & url);
+    //must also return the data urls for entries with @active="false". That is,
     //those are currently revoked.
-    std::list< OUString> getAllDataUrls();
+    std::vector< OUString> getAllDataUrls();
 
 };
 
 
 }
-}
-}
+
+
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

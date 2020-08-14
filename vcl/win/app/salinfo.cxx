@@ -17,18 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svsys.h"
-#include "rtl/ustrbuf.hxx"
+#include <svsys.h>
+#include <o3tl/char16_t2wchar_t.hxx>
 
-
+#include <sal/log.hxx>
 #include <vcl/window.hxx>
 
-#include "win/salsys.h"
-#include "win/salframe.h"
-#include "win/salinst.h"
-#include "win/saldata.hxx"
+#include <win/salsys.h>
+#include <win/salframe.h>
+#include <win/salinst.h>
+#include <win/saldata.hxx>
 
-#include "svdata.hxx"
+#include <svdata.hxx>
 
 #include <unordered_map>
 
@@ -59,7 +59,7 @@ bool WinSalSystem::handleMonitorCallback( sal_IntPtr hMonitor, sal_IntPtr, sal_I
     if( GetMonitorInfoW( reinterpret_cast<HMONITOR>(hMonitor), &aInfo ) )
     {
         aInfo.szDevice[CCHDEVICENAME-1] = 0;
-        OUString aDeviceName( reinterpret_cast<const sal_Unicode *>(aInfo.szDevice) );
+        OUString aDeviceName( o3tl::toU(aInfo.szDevice) );
         std::map< OUString, unsigned int >::const_iterator it =
             m_aDeviceNameToMonitor.find( aDeviceName );
         if( it != m_aDeviceNameToMonitor.end() )
@@ -102,7 +102,7 @@ bool WinSalSystem::initMonitors()
         DISPLAY_DEVICEW aDev;
         aDev.cb = sizeof( aDev );
         DWORD nDevice = 0;
-        std::unordered_map< OUString, int, OUStringHash > aDeviceStringCount;
+        std::unordered_map< OUString, int > aDeviceStringCount;
         while( EnumDisplayDevicesW( nullptr, nDevice++, &aDev, 0 ) )
         {
             if( (aDev.StateFlags & DISPLAY_DEVICE_ACTIVE)
@@ -110,12 +110,9 @@ bool WinSalSystem::initMonitors()
             {
                 aDev.DeviceName[31] = 0;
                 aDev.DeviceString[127] = 0;
-                OUString aDeviceName( reinterpret_cast<const sal_Unicode *>(aDev.DeviceName) );
-                OUString aDeviceString( reinterpret_cast<const sal_Unicode *>(aDev.DeviceString) );
-                if( aDeviceStringCount.find( aDeviceString ) == aDeviceStringCount.end() )
-                    aDeviceStringCount[ aDeviceString ] = 1;
-                else
-                    aDeviceStringCount[ aDeviceString ]++;
+                OUString aDeviceName( o3tl::toU(aDev.DeviceName) );
+                OUString aDeviceString( o3tl::toU(aDev.DeviceString) );
+                aDeviceStringCount[ aDeviceString ]++;
                 m_aDeviceNameToMonitor[ aDeviceName ] = m_aMonitors.size();
                 m_aMonitors.push_back( DisplayMonitor( aDeviceString,
                                                        tools::Rectangle() ) );
@@ -125,7 +122,7 @@ bool WinSalSystem::initMonitors()
         EnumDisplayMonitors( aDesktopRC, nullptr, ImplEnumMonitorProc, reinterpret_cast<LPARAM>(this) );
 
         // append monitor numbers to name strings
-        std::unordered_map< OUString, int, OUStringHash > aDevCount( aDeviceStringCount );
+        std::unordered_map< OUString, int > aDevCount( aDeviceStringCount );
         unsigned int nMonitorCount = m_aMonitors.size();
         for( unsigned int i = 0; i < nMonitorCount; i++ )
         {
@@ -133,12 +130,7 @@ bool WinSalSystem::initMonitors()
             if( aDeviceStringCount[ rDev ] > 1 )
             {
                 int nInstance = aDeviceStringCount[ rDev ] - (-- aDevCount[ rDev ] );
-                OUStringBuffer aBuf( rDev.getLength() + 8 );
-                aBuf.append( rDev );
-                aBuf.append( " (" );
-                aBuf.append( sal_Int32( nInstance ) );
-                aBuf.append( ')' );
-                m_aMonitors[ i ].m_aName = aBuf.makeStringAndClear();
+                m_aMonitors[ i ].m_aName = rDev + " (" + OUString::number( nInstance ) + ")";
             }
         }
     }
@@ -161,7 +153,14 @@ unsigned int WinSalSystem::GetDisplayBuiltInScreen()
 tools::Rectangle WinSalSystem::GetDisplayScreenPosSizePixel( unsigned int nScreen )
 {
     initMonitors();
-    return (nScreen < m_aMonitors.size()) ? m_aMonitors[nScreen].m_aArea : tools::Rectangle();
+    if (nScreen >= m_aMonitors.size())
+    {
+        SAL_WARN("vcl", "Requested screen size/pos for screen #"
+                            << nScreen << ", but only " << m_aMonitors.size() << " screens found.");
+        assert(false);
+        return tools::Rectangle();
+    }
+    return m_aMonitors[nScreen].m_aArea;
 }
 
 int WinSalSystem::ShowNativeMessageBox(const OUString& rTitle, const OUString& rMessage)
@@ -169,8 +168,8 @@ int WinSalSystem::ShowNativeMessageBox(const OUString& rTitle, const OUString& r
     ImplHideSplash();
     return MessageBoxW(
         nullptr,
-        reinterpret_cast<LPCWSTR>(rMessage.getStr()),
-        reinterpret_cast<LPCWSTR>(rTitle.getStr()),
+        o3tl::toW(rMessage.getStr()),
+        o3tl::toW(rTitle.getStr()),
         MB_TASKMODAL | MB_SETFOREGROUND | MB_ICONWARNING | MB_DEFBUTTON1);
 }
 

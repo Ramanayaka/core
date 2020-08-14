@@ -27,16 +27,12 @@
 #include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 
-#include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/interfacecontainer.h>
 #include <comphelper/mimeconfighelper.hxx>
-#include <comphelper/processfactory.hxx>
 
 #include <vcl/svapp.hxx>
 
-#include "closepreventer.hxx"
-#include "intercept.hxx"
 #include "persistence.hxx"
 
 using namespace ::com::sun::star;
@@ -102,18 +98,18 @@ void OCommonEmbeddedObject::CommonInit_Impl( const uno::Sequence< beans::NamedVa
 
     // parse configuration entries
     // TODO/LATER: in future UI names can be also provided here
-    for ( sal_Int32 nInd = 0; nInd < aObjectProps.getLength(); nInd++ )
+    for ( beans::NamedValue const & prop : aObjectProps )
     {
-        if ( aObjectProps[nInd].Name == "ClassID" )
-            aObjectProps[nInd].Value >>= m_aClassID;
-        else if ( aObjectProps[nInd].Name == "ObjectDocumentServiceName" )
-            aObjectProps[nInd].Value >>= m_aDocServiceName;
-        else if ( aObjectProps[nInd].Name == "ObjectDocumentFilterName" )
-            aObjectProps[nInd].Value >>= m_aPresetFilterName;
-        else if ( aObjectProps[nInd].Name == "ObjectMiscStatus" )
-            aObjectProps[nInd].Value >>= m_nMiscStatus;
-        else if ( aObjectProps[nInd].Name == "ObjectVerbs" )
-            aObjectProps[nInd].Value >>= m_aObjectVerbs;
+        if ( prop.Name == "ClassID" )
+            prop.Value >>= m_aClassID;
+        else if ( prop.Name == "ObjectDocumentServiceName" )
+            prop.Value >>= m_aDocServiceName;
+        else if ( prop.Name == "ObjectDocumentFilterName" )
+            prop.Value >>= m_aPresetFilterName;
+        else if ( prop.Name == "ObjectMiscStatus" )
+            prop.Value >>= m_nMiscStatus;
+        else if ( prop.Name == "ObjectVerbs" )
+            prop.Value >>= m_aObjectVerbs;
     }
 
     if ( m_aClassID.getLength() != 16 /*|| !m_aDocServiceName.getLength()*/ )
@@ -165,50 +161,31 @@ void OCommonEmbeddedObject::CommonInit_Impl( const uno::Sequence< beans::NamedVa
     m_pIntermediateStatesSeqs[4][0][0] = embed::EmbedStates::RUNNING;
 
     // verbs table
-    sal_Int32 nVerbTableSize = 0;
-    for ( sal_Int32 nVerbInd = 0; nVerbInd < m_aObjectVerbs.getLength(); nVerbInd++ )
+    for ( auto const & verb : std::as_const(m_aObjectVerbs) )
     {
-        if ( m_aObjectVerbs[nVerbInd].VerbID == embed::EmbedVerbs::MS_OLEVERB_PRIMARY )
+        if ( verb.VerbID == embed::EmbedVerbs::MS_OLEVERB_PRIMARY )
         {
-            m_aVerbTable.realloc( ++nVerbTableSize );
-            m_aVerbTable[nVerbTableSize - 1].realloc( 2 );
-            m_aVerbTable[nVerbTableSize - 1][0] = m_aObjectVerbs[nVerbInd].VerbID;
-            m_aVerbTable[nVerbTableSize - 1][1] = embed::EmbedStates::UI_ACTIVE;
+            m_aVerbTable.insert( { verb.VerbID, embed::EmbedStates::UI_ACTIVE } );
         }
-        else if ( m_aObjectVerbs[nVerbInd].VerbID == embed::EmbedVerbs::MS_OLEVERB_SHOW )
+        else if ( verb.VerbID == embed::EmbedVerbs::MS_OLEVERB_SHOW )
         {
-            m_aVerbTable.realloc( ++nVerbTableSize );
-            m_aVerbTable[nVerbTableSize - 1].realloc( 2 );
-            m_aVerbTable[nVerbTableSize - 1][0] = m_aObjectVerbs[nVerbInd].VerbID;
-            m_aVerbTable[nVerbTableSize - 1][1] = embed::EmbedStates::UI_ACTIVE;
+            m_aVerbTable.insert( { verb.VerbID, embed::EmbedStates::UI_ACTIVE } );
         }
-        else if ( m_aObjectVerbs[nVerbInd].VerbID == embed::EmbedVerbs::MS_OLEVERB_OPEN )
+        else if ( verb.VerbID == embed::EmbedVerbs::MS_OLEVERB_OPEN )
         {
-            m_aVerbTable.realloc( ++nVerbTableSize );
-            m_aVerbTable[nVerbTableSize - 1].realloc( 2 );
-            m_aVerbTable[nVerbTableSize - 1][0] = m_aObjectVerbs[nVerbInd].VerbID;
-            m_aVerbTable[nVerbTableSize - 1][1] = embed::EmbedStates::ACTIVE;
+            m_aVerbTable.insert( { verb.VerbID, embed::EmbedStates::ACTIVE } );
         }
-        else if ( m_aObjectVerbs[nVerbInd].VerbID == embed::EmbedVerbs::MS_OLEVERB_IPACTIVATE )
+        else if ( verb.VerbID == embed::EmbedVerbs::MS_OLEVERB_IPACTIVATE )
         {
-            m_aVerbTable.realloc( ++nVerbTableSize );
-            m_aVerbTable[nVerbTableSize - 1].realloc( 2 );
-            m_aVerbTable[nVerbTableSize - 1][0] = m_aObjectVerbs[nVerbInd].VerbID;
-            m_aVerbTable[nVerbTableSize - 1][1] = embed::EmbedStates::INPLACE_ACTIVE;
+            m_aVerbTable.insert( { verb.VerbID, embed::EmbedStates::INPLACE_ACTIVE } );
         }
-        else if ( m_aObjectVerbs[nVerbInd].VerbID == embed::EmbedVerbs::MS_OLEVERB_UIACTIVATE )
+        else if ( verb.VerbID == embed::EmbedVerbs::MS_OLEVERB_UIACTIVATE )
         {
-            m_aVerbTable.realloc( ++nVerbTableSize );
-            m_aVerbTable[nVerbTableSize - 1].realloc( 2 );
-            m_aVerbTable[nVerbTableSize - 1][0] = m_aObjectVerbs[nVerbInd].VerbID;
-            m_aVerbTable[nVerbTableSize - 1][1] = embed::EmbedStates::UI_ACTIVE;
+            m_aVerbTable.insert( { verb.VerbID, embed::EmbedStates::UI_ACTIVE } );
         }
-        else if ( m_aObjectVerbs[nVerbInd].VerbID == embed::EmbedVerbs::MS_OLEVERB_HIDE )
+        else if ( verb.VerbID == embed::EmbedVerbs::MS_OLEVERB_HIDE )
         {
-            m_aVerbTable.realloc( ++nVerbTableSize );
-            m_aVerbTable[nVerbTableSize - 1].realloc( 2 );
-            m_aVerbTable[nVerbTableSize - 1][0] = m_aObjectVerbs[nVerbInd].VerbID;
-            m_aVerbTable[nVerbTableSize - 1][1] = embed::EmbedStates::RUNNING;
+            m_aVerbTable.insert( { verb.VerbID, embed::EmbedStates::RUNNING } );
         }
     }
 }
@@ -221,11 +198,11 @@ void OCommonEmbeddedObject::LinkInit_Impl(
 {
     // setPersistance has no effect on own links, so the complete initialization must be done here
 
-    for ( sal_Int32 nInd = 0; nInd < aMediaDescr.getLength(); nInd++ )
-        if ( aMediaDescr[nInd].Name == "URL" )
-            aMediaDescr[nInd].Value >>= m_aLinkURL;
-        else if ( aMediaDescr[nInd].Name == "FilterName" )
-            aMediaDescr[nInd].Value >>= m_aLinkFilterName;
+    for ( beans::PropertyValue const & prop : aMediaDescr )
+        if ( prop.Name == "URL" )
+            prop.Value >>= m_aLinkURL;
+        else if ( prop.Name == "FilterName" )
+            prop.Value >>= m_aLinkFilterName;
 
     OSL_ENSURE( m_aLinkURL.getLength() && m_aLinkFilterName.getLength(), "Filter and URL must be provided!" );
 
@@ -234,21 +211,21 @@ void OCommonEmbeddedObject::LinkInit_Impl(
     {
         ::comphelper::MimeConfigurationHelper aHelper( m_xContext );
         OUString aExportFilterName = aHelper.GetExportFilterFromImportFilter( m_aLinkFilterName );
-        m_bReadOnly = !( aExportFilterName.equals( m_aLinkFilterName ) );
+        m_bReadOnly = aExportFilterName != m_aLinkFilterName;
     }
 
     m_aDocMediaDescriptor = GetValuableArgs_Impl( aMediaDescr, false );
 
     uno::Reference< frame::XDispatchProviderInterceptor > xDispatchInterceptor;
-    for ( sal_Int32 nObjInd = 0; nObjInd < aObjectDescr.getLength(); nObjInd++ )
-        if ( aObjectDescr[nObjInd].Name == "OutplaceDispatchInterceptor" )
+    for ( beans::PropertyValue const & prop : aObjectDescr )
+        if ( prop.Name == "OutplaceDispatchInterceptor" )
         {
-            aObjectDescr[nObjInd].Value >>= xDispatchInterceptor;
+            prop.Value >>= xDispatchInterceptor;
             break;
         }
-        else if ( aObjectDescr[nObjInd].Name == "Parent" )
+        else if ( prop.Name == "Parent" )
         {
-            aObjectDescr[nObjInd].Value >>= m_xParent;
+            prop.Value >>= m_xParent;
         }
 
     CommonInit_Impl( aObjectProps );
@@ -260,34 +237,34 @@ void OCommonEmbeddedObject::LinkInit_Impl(
 
 OCommonEmbeddedObject::~OCommonEmbeddedObject()
 {
-    if ( m_pInterfaceContainer || m_xDocHolder.is() )
-    {
-        m_refCount++;
-        try {
-            lang::EventObject aSource( static_cast< ::cppu::OWeakObject* >( this ) );
+    if ( !(m_pInterfaceContainer || m_xDocHolder.is()) )
+        return;
 
-            if ( m_pInterfaceContainer )
-            {
-                m_pInterfaceContainer->disposeAndClear( aSource );
+    osl_atomic_increment(&m_refCount);
+    try {
+        lang::EventObject aSource( static_cast< ::cppu::OWeakObject* >( this ) );
 
-                delete m_pInterfaceContainer;
-                m_pInterfaceContainer = nullptr;
-            }
-        } catch( const uno::Exception& ) {}
+        if ( m_pInterfaceContainer )
+        {
+            m_pInterfaceContainer->disposeAndClear( aSource );
 
-        try {
-            if ( m_xDocHolder.is() )
-            {
-                m_xDocHolder->CloseFrame();
-                try {
-                    m_xDocHolder->CloseDocument( true, true );
-                } catch ( const uno::Exception& ) {}
-                m_xDocHolder->FreeOffice();
+            delete m_pInterfaceContainer;
+            m_pInterfaceContainer = nullptr;
+        }
+    } catch( const uno::Exception& ) {}
 
-                m_xDocHolder.clear();
-            }
-        } catch( const uno::Exception& ) {}
-    }
+    try {
+        if ( m_xDocHolder.is() )
+        {
+            m_xDocHolder->CloseFrame();
+            try {
+                m_xDocHolder->CloseDocument( true, true );
+            } catch ( const uno::Exception& ) {}
+            m_xDocHolder->FreeOffice();
+
+            m_xDocHolder.clear();
+        }
+    } catch( const uno::Exception& ) {}
 }
 
 
@@ -296,20 +273,20 @@ void OCommonEmbeddedObject::requestPositioning( const awt::Rectangle& aRect )
     // the method is called in case object is inplace active and the object window was resized
 
     OSL_ENSURE( m_xClientSite.is(), "The client site must be set for inplace active object!" );
-    if ( m_xClientSite.is() )
-    {
-        uno::Reference< embed::XInplaceClient > xInplaceClient( m_xClientSite, uno::UNO_QUERY );
+    if ( !m_xClientSite.is() )
+        return;
 
-        OSL_ENSURE( xInplaceClient.is(), "The client site must support XInplaceClient to allow inplace activation!" );
-        if ( xInplaceClient.is() )
+    uno::Reference< embed::XInplaceClient > xInplaceClient( m_xClientSite, uno::UNO_QUERY );
+
+    OSL_ENSURE( xInplaceClient.is(), "The client site must support XInplaceClient to allow inplace activation!" );
+    if ( xInplaceClient.is() )
+    {
+        try {
+            xInplaceClient->changedPlacement( aRect );
+        }
+        catch( const uno::Exception& )
         {
-            try {
-                xInplaceClient->changedPlacement( aRect );
-            }
-            catch( const uno::Exception& )
-            {
-                OSL_FAIL( "Exception on request to resize!" );
-            }
+            OSL_FAIL( "Exception on request to resize!" );
         }
     }
 }
@@ -317,35 +294,35 @@ void OCommonEmbeddedObject::requestPositioning( const awt::Rectangle& aRect )
 
 void OCommonEmbeddedObject::PostEvent_Impl( const OUString& aEventName )
 {
-    if ( m_pInterfaceContainer )
-    {
-        ::cppu::OInterfaceContainerHelper* pIC = m_pInterfaceContainer->getContainer(
-                                            cppu::UnoType<document::XEventListener>::get());
-        if( pIC )
-        {
-            document::EventObject aEvent;
-            aEvent.EventName = aEventName;
-            aEvent.Source.set( static_cast< ::cppu::OWeakObject* >( this ) );
-            // For now all the events are sent as object events
-            // aEvent.Source = ( xSource.is() ? xSource
-            //                       : uno::Reference< uno::XInterface >( static_cast< ::cppu::OWeakObject* >( this ) ) );
-            ::cppu::OInterfaceIteratorHelper aIt( *pIC );
-            while( aIt.hasMoreElements() )
-            {
-                try
-                {
-                    static_cast<document::XEventListener *>(aIt.next())->notifyEvent( aEvent );
-                }
-                catch( const uno::RuntimeException& )
-                {
-                    aIt.remove();
-                }
+    if ( !m_pInterfaceContainer )
+        return;
 
-                // the listener could dispose the object.
-                if ( m_bDisposed )
-                    return;
-            }
+    ::cppu::OInterfaceContainerHelper* pIC = m_pInterfaceContainer->getContainer(
+                                        cppu::UnoType<document::XEventListener>::get());
+    if( !pIC )
+        return;
+
+    document::EventObject aEvent;
+    aEvent.EventName = aEventName;
+    aEvent.Source.set( static_cast< ::cppu::OWeakObject* >( this ) );
+    // For now all the events are sent as object events
+    // aEvent.Source = ( xSource.is() ? xSource
+    //                       : uno::Reference< uno::XInterface >( static_cast< ::cppu::OWeakObject* >( this ) ) );
+    ::cppu::OInterfaceIteratorHelper aIt( *pIC );
+    while( aIt.hasMoreElements() )
+    {
+        try
+        {
+            static_cast<document::XEventListener *>(aIt.next())->notifyEvent( aEvent );
         }
+        catch( const uno::RuntimeException& )
+        {
+            aIt.remove();
+        }
+
+        // the listener could dispose the object.
+        if ( m_bDisposed )
+            return;
     }
 }
 
@@ -440,7 +417,7 @@ uno::Reference< util::XCloseable > SAL_CALL OCommonEmbeddedObject::getComponent(
                                      static_cast< ::cppu::OWeakObject* >(this) );
     }
 
-    return uno::Reference< util::XCloseable >( m_xDocHolder->GetComponent(), uno::UNO_QUERY );
+    return m_xDocHolder->GetComponent();
 }
 
 
@@ -551,15 +528,9 @@ void SAL_CALL OCommonEmbeddedObject::close( sal_Bool bDeliverOwnership )
     // will use the storage, the storage will be disposed by the document and recreated by the object
     if ( m_xObjectStorage.is() )
     {
-        uno::Reference< lang::XComponent > xComp( m_xObjectStorage, uno::UNO_QUERY );
-        OSL_ENSURE( xComp.is(), "Storage does not support XComponent!" );
-
-        if ( xComp.is() )
-        {
-            try {
-                xComp->dispose();
-            } catch ( const uno::Exception& ) {}
-        }
+        try {
+            m_xObjectStorage->dispose();
+        } catch ( const uno::Exception& ) {}
 
         m_xObjectStorage.clear();
         m_xRecoveryStorage.clear();

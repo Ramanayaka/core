@@ -21,6 +21,7 @@
 
 #include <rtl/ustring.hxx>
 #include <sfx2/linksrc.hxx>
+#include <tools/link.hxx>
 
 class DdeConnection;
 class DdeData;
@@ -35,9 +36,9 @@ class SvDDEObject : public SvLinkSource
 {
     OUString sItem;
 
-    DdeConnection* pConnection;
-    DdeLink* pLink;
-    DdeRequest* pRequest;
+    std::unique_ptr<DdeConnection> pConnection;
+    std::unique_ptr<DdeLink> pLink;
+    std::unique_ptr<DdeRequest> pRequest;
     css::uno::Any * pGetData;
 
     bool bWaitForData;  // waiting for data?
@@ -58,7 +59,7 @@ public:
                                 bool bSynchron = false ) override;
 
     virtual bool    Connect( SvBaseLink * ) override;
-    virtual void    Edit( vcl::Window* pParent, sfx2::SvBaseLink* pBaseLink, const Link<const OUString&, void>& rEndEditHdl ) override;
+    virtual void    Edit(weld::Window* pParent, sfx2::SvBaseLink* pBaseLink, const Link<const OUString&, void>& rEndEditHdl) override;
 
     virtual bool    IsPending() const override;
     virtual bool    IsDataComplete() const override;

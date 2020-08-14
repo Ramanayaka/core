@@ -21,20 +21,18 @@
 #define INCLUDED_DRAWINGLAYER_PROCESSOR3D_CUTFINDPROCESSOR3D_HXX
 
 #include <drawinglayer/drawinglayerdllapi.h>
+#include <drawinglayer/processor3d/baseprocessor3d.hxx>
 
-#include <drawinglayer/processor3d/defaultprocessor3d.hxx>
+#include <basegfx/matrix/b3dhommatrix.hxx>
 
-
-namespace drawinglayer
-{
-    namespace processor3d
+namespace drawinglayer::processor3d
     {
         /** CutFindProcessor class
 
-            This processor extracts all cuts of 3D plane geometries in the feeded primitives
+            This processor extracts all cuts of 3D plane geometries in the fed primitives
             with the given cut vector, based on the ViewInformation3D given.
          */
-        class DRAWINGLAYER_DLLPUBLIC CutFindProcessor : public BaseProcessor3D
+        class DRAWINGLAYER_DLLPUBLIC CutFindProcessor final : public BaseProcessor3D
         {
         private:
             /// the start and stop point for the cut vector
@@ -66,8 +64,8 @@ namespace drawinglayer
             /// data read access
             const ::std::vector< basegfx::B3DPoint >& getCutPoints() const { return maResult; }
         };
-    } // end of namespace processor3d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::processor3d
 
 
 #endif //INCLUDED_DRAWINGLAYER_PROCESSOR3D_CUTFINDPROCESSOR3D_HXX

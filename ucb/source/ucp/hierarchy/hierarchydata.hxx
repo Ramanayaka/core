@@ -26,14 +26,14 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <memory>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container {
         class XHierarchicalNameAccess;
     }
     namespace util {
         class XOfficeInstallationDirectories;
     }
-} } }
+}
 
 namespace hierarchy_ucp
 {
@@ -126,8 +126,8 @@ public:
         const HierarchyEntryData& operator*() const;
     };
 
-    bool first( iterator& it );
-    bool next ( iterator& it );
+    bool first( iterator const & it );
+    bool next ( iterator const & it );
 };
 
 } // namespace hierarchy_ucp

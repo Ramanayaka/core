@@ -21,46 +21,31 @@
 #define INCLUDED_VCL_EDIT_HXX
 
 #include <vcl/ctrl.hxx>
+#include <vcl/textfilter.hxx>
 
-#include <functional>
 #include <memory>
 
-#include <tools/solar.h>
+#include <rtl/ustrbuf.hxx>
+#include <o3tl/deleter.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/menu.hxx>
 #include <vcl/dndhelp.hxx>
 #include <vcl/vclptr.hxx>
 #include <com/sun/star/uno/Reference.h>
 
-namespace com {
-namespace sun {
-namespace star {
-namespace i18n {
+namespace com::sun::star::i18n {
     class XBreakIterator;
     class XExtendedInputSequenceChecker;
-}}}}
+}
+namespace weld {
+    class Widget;
+}
 
+class VclBuilder;
 struct DDInfo;
 struct Impl_IMEInfos;
 
-
 #define EDIT_NOLIMIT                SAL_MAX_INT32
-#define EDIT_UPDATEDATA_TIMEOUT     350
-
-typedef OUString (*FncGetSpecialChars)( vcl::Window* pWin, const vcl::Font& rFont );
-
-class VCL_DLLPUBLIC TextFilter
-{
-private:
-    OUString sForbiddenChars;
-public:
-    void SetForbiddenChars(const OUString& rSet) { sForbiddenChars = rSet; }
-
-    virtual OUString filter(const OUString &rText);
-
-    TextFilter(const OUString &rForbiddenChars = OUString(" "));
-    virtual ~TextFilter();
-};
 
 class Timer;
 
@@ -68,10 +53,9 @@ class VCL_DLLPUBLIC Edit : public Control, public vcl::unohelper::DragAndDropCli
 {
 private:
     VclPtr<Edit>        mpSubEdit;
-    Timer*              mpUpdateDataTimer;
     TextFilter*         mpFilterText;
-    DDInfo*             mpDDInfo;
-    Impl_IMEInfos*      mpIMEInfos;
+    std::unique_ptr<DDInfo, o3tl::default_delete<DDInfo>> mpDDInfo;
+    std::unique_ptr<Impl_IMEInfos> mpIMEInfos;
     OUStringBuffer      maText;
     OUString            maPlaceholderText;
     OUString            maSaveValue;
@@ -83,25 +67,24 @@ private:
     sal_Int32           mnWidthInChars;
     sal_Int32           mnMaxWidthChars;
     sal_Unicode         mcEchoChar;
-    bool                mbModified:1,
-                        mbInternModified:1,
+    bool                mbInternModified:1,
                         mbReadOnly:1,
                         mbInsertMode:1,
                         mbClickedInSelection:1,
                         mbIsSubEdit:1,
-                        mbActivePopup:1;
+                        mbActivePopup:1,
+                        mbForceControlBackground:1,
+                        mbPassword;
     Link<Edit&,void>    maModifyHdl;
-    Link<Edit&,void>    maUpdateDataHdl;
     Link<Edit&,void>    maAutocompleteHdl;
+    Link<Edit&,bool>    maActivateHdl;
     std::unique_ptr<VclBuilder> mpUIBuilder;
 
+    css::uno::Reference<css::i18n::XBreakIterator> mxBreakIterator;
     css::uno::Reference<css::i18n::XExtendedInputSequenceChecker> mxISC;
-
-    DECL_DLLPRIVATE_LINK(ImplUpdateDataHdl, Timer*, void);
 
     SAL_DLLPRIVATE bool        ImplTruncateToMaxLen( OUString&, sal_Int32 nSelectionLen ) const;
     SAL_DLLPRIVATE void        ImplInitEditData();
-    SAL_DLLPRIVATE void        ImplModified();
     SAL_DLLPRIVATE OUString    ImplGetText() const;
     SAL_DLLPRIVATE void        ImplRepaint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRectangle);
     SAL_DLLPRIVATE void        ImplInvalidateOrRepaint();
@@ -110,7 +93,7 @@ private:
     SAL_DLLPRIVATE void        ImplInsertText( const OUString& rStr, const Selection* pNewSelection = nullptr, bool bIsUserInput = false );
     SAL_DLLPRIVATE static OUString ImplGetValidString( const OUString& rString );
     SAL_DLLPRIVATE void        ImplClearBackground(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRectangle, long nXStart, long nXEnd);
-    SAL_DLLPRIVATE void        ImplPaintBorder(vcl::RenderContext& rRenderContext, long nXStart, long nXEnd);
+    SAL_DLLPRIVATE void        ImplPaintBorder(vcl::RenderContext const & rRenderContext);
     SAL_DLLPRIVATE void        ImplShowCursor( bool bOnlyIfVisible = true );
     SAL_DLLPRIVATE void        ImplAlign();
     SAL_DLLPRIVATE void        ImplAlignAndPaint();
@@ -120,11 +103,11 @@ private:
     SAL_DLLPRIVATE void        ImplHideDDCursor();
     SAL_DLLPRIVATE bool        ImplHandleKeyEvent( const KeyEvent& rKEvt );
     SAL_DLLPRIVATE void        ImplCopyToSelectionClipboard();
-    SAL_DLLPRIVATE void        ImplCopy(css::uno::Reference<css::datatransfer::clipboard::XClipboard>& rxClipboard);
-    SAL_DLLPRIVATE void        ImplPaste(css::uno::Reference<css::datatransfer::clipboard::XClipboard>& rxClipboard);
+    SAL_DLLPRIVATE void        ImplCopy(css::uno::Reference<css::datatransfer::clipboard::XClipboard> const & rxClipboard);
+    SAL_DLLPRIVATE void        ImplPaste(css::uno::Reference<css::datatransfer::clipboard::XClipboard> const & rxClipboard);
     SAL_DLLPRIVATE long        ImplGetTextYPosition() const;
-    SAL_DLLPRIVATE css::uno::Reference<css::i18n::XExtendedInputSequenceChecker > const & ImplGetInputSequenceChecker();
-    SAL_DLLPRIVATE static css::uno::Reference<css::i18n::XBreakIterator > ImplGetBreakIterator();
+    SAL_DLLPRIVATE css::uno::Reference<css::i18n::XExtendedInputSequenceChecker> const& ImplGetInputSequenceChecker();
+    SAL_DLLPRIVATE css::uno::Reference<css::i18n::XBreakIterator> const& ImplGetBreakIterator();
     SAL_DLLPRIVATE void        filterText();
 
 protected:
@@ -157,7 +140,7 @@ protected:
     virtual void ApplySettings(vcl::RenderContext& rRenderContext) override;
 public:
     // public because needed in button.cxx
-    SAL_DLLPRIVATE bool ImplUseNativeBorder(vcl::RenderContext& rRenderContext, WinBits nStyle);
+    SAL_DLLPRIVATE bool ImplUseNativeBorder(vcl::RenderContext const & rRenderContext, WinBits nStyle);
 
     Edit( vcl::Window* pParent, WinBits nStyle = WB_BORDER );
     virtual ~Edit() override;
@@ -168,7 +151,7 @@ public:
     virtual void        KeyInput( const KeyEvent& rKEvt ) override;
     virtual void        Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
     virtual void        Resize() override;
-    virtual void        Draw( OutputDevice* pDev, const Point& rPos, const Size& rSize, DrawFlags nFlags ) override;
+    virtual void        Draw( OutputDevice* pDev, const Point& rPos, DrawFlags nFlags ) override;
     virtual void        GetFocus() override;
     virtual void        LoseFocus() override;
     virtual void        Tracking( const TrackingEvent& rTEvt ) override;
@@ -177,16 +160,11 @@ public:
     virtual void        DataChanged( const DataChangedEvent& rDCEvt ) override;
 
     virtual void        Modify();
-    virtual void        UpdateData();
 
     static bool         IsCharInput( const KeyEvent& rKEvt );
 
     virtual void        SetModifyFlag();
     virtual void        ClearModifyFlag();
-    virtual bool        IsModified() const { return mpSubEdit ? mpSubEdit->mbModified : mbModified; }
-
-    virtual void        EnableUpdateData( sal_uLong nTimeout = EDIT_UPDATEDATA_TIMEOUT );
-    virtual void        DisableUpdateData();
 
     void                SetEchoChar( sal_Unicode c );
     sal_Unicode         GetEchoChar() const { return mcEchoChar; }
@@ -201,6 +179,7 @@ public:
     virtual sal_Int32   GetMaxTextLen() const { return mnMaxTextLen; }
 
     void                SetWidthInChars(sal_Int32 nWidthInChars);
+    sal_Int32           GetWidthInChars() const { return mnWidthInChars; }
 
     void                setMaxWidthChars(sal_Int32 nWidth);
 
@@ -223,15 +202,14 @@ public:
     void                SetCursorAtLast();
 
     void                SetPlaceholderText( const OUString& rStr );
-    OUString            GetPlaceholderText() const;
 
     void                SaveValue() { maSaveValue = GetText(); }
     const OUString&     GetSavedValue() const { return maSaveValue; }
-    bool                IsValueChangedFromSaved() const { return maSaveValue != GetText(); }
 
     virtual void        SetModifyHdl( const Link<Edit&,void>& rLink ) { maModifyHdl = rLink; }
     virtual const Link<Edit&,void>& GetModifyHdl() const { return maModifyHdl; }
-    virtual void        SetUpdateDataHdl( const Link<Edit&,void>& rLink ) { maUpdateDataHdl = rLink; }
+
+    void                SetActivateHdl(const Link<Edit&,bool>& rLink) { maActivateHdl = rLink; }
 
     void                SetSubEdit( Edit* pEdit );
     Edit*               GetSubEdit() const { return mpSubEdit; }
@@ -245,13 +223,8 @@ public:
     virtual Size        CalcSize(sal_Int32 nChars) const;
     sal_Int32           GetMaxVisChars() const;
 
-    sal_Int32           GetCharPos( const Point& rWindowPos ) const;
-
     // shows a warning box saying "text too long, truncated"
-    static void         ShowTruncationWarning( vcl::Window* pParent );
-
-    static void                 SetGetSpecialCharsFunction( FncGetSpecialChars fn );
-    static FncGetSpecialChars   GetGetSpecialCharsFunction();
+    static void         ShowTruncationWarning(weld::Widget* pParent);
 
     VclPtr<PopupMenu>           CreatePopupMenu();
 
@@ -266,6 +239,10 @@ public:
     // returns the minimum size a bordered Edit should have given the current
     // global style settings (needed by sc's inputwin.cxx)
     static Size GetMinimumEditSize();
+
+    void SetForceControlBackground(bool b) { mbForceControlBackground = b; }
+
+    bool IsPassword() const { return mbPassword; }
 };
 
 #endif // INCLUDED_VCL_EDIT_HXX

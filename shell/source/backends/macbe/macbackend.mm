@@ -28,24 +28,25 @@
 
 #include "macbackend.hxx"
 
-#include "com/sun/star/beans/Optional.hpp"
+#include <com/sun/star/beans/Optional.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/supportsservice.hxx>
-#include "rtl/ustrbuf.hxx"
+#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <osl/diagnose.h>
-#include "osl/file.h"
+#include <osl/file.h>
 
 #define SPACE      ' '
 #define SEMI_COLON ';'
+
+namespace
+{
 
 typedef enum {
     sHTTP,
     sHTTPS,
     sFTP
 } ServiceType;
-
-
-namespace
-{
 
 /*
  * Returns current proxy settings for selected service type (HTTP or
@@ -106,7 +107,7 @@ bool GetProxySetting(ServiceType sType, char *host, size_t hostSize, UInt16 *por
     }
 
     if (result)
-        result = CFStringGetCString(hostStr, host, (CFIndex) hostSize, kCFStringEncodingASCII);
+        result = CFStringGetCString(hostStr, host, static_cast<CFIndex>(hostSize), kCFStringEncodingASCII);
 
     // Get proxy port
     if (result)
@@ -126,7 +127,7 @@ bool GetProxySetting(ServiceType sType, char *host, size_t hostSize, UInt16 *por
         result = CFNumberGetValue(portNum, kCFNumberIntType, &portInt);
 
     if (result)
-        *port = (UInt16) portInt;
+        *port = static_cast<UInt16>(portInt);
 
     if (proxyDict)
         CFRelease(proxyDict);
@@ -150,12 +151,7 @@ MacOSXBackend::~MacOSXBackend(void)
 {
 }
 
-MacOSXBackend* MacOSXBackend::createInstance()
-{
-    return new MacOSXBackend;
-}
-
-rtl::OUString CFStringToOUString(const CFStringRef sOrig) {
+static OUString CFStringToOUString(const CFStringRef sOrig) {
     CFRetain(sOrig);
 
     CFIndex nStringLen = CFStringGetLength(sOrig)+1;
@@ -167,18 +163,18 @@ rtl::OUString CFStringToOUString(const CFStringRef sOrig) {
 
     CFRelease(sOrig);
 
-    return rtl::OUString::createFromAscii(sBuffer);
+    return OUString::createFromAscii(sBuffer);
 }
 
-rtl::OUString GetOUString( NSString* pStr )
+static OUString GetOUString( NSString* pStr )
 {
     if( ! pStr )
-        return rtl::OUString();
+        return OUString();
     int nLen = [pStr length];
     if( nLen == 0 )
-        return rtl::OUString();
+        return OUString();
 
-    rtl::OUStringBuffer aBuf( nLen+1 );
+    OUStringBuffer aBuf( nLen+1 );
     aBuf.setLength( nLen );
     [pStr getCharacters:
      reinterpret_cast<unichar *>(const_cast<sal_Unicode*>(aBuf.getStr()))];
@@ -186,7 +182,7 @@ rtl::OUString GetOUString( NSString* pStr )
 }
 
 void MacOSXBackend::setPropertyValue(
-    rtl::OUString const &, css::uno::Any const &)
+    OUString const &, css::uno::Any const &)
 {
     throw css::lang::IllegalArgumentException(
         "setPropertyValue not supported",
@@ -194,17 +190,17 @@ void MacOSXBackend::setPropertyValue(
 }
 
 css::uno::Any MacOSXBackend::getPropertyValue(
-    rtl::OUString const & PropertyName)
+    OUString const & PropertyName)
 {
     if ( PropertyName == "WorkPathVariable" )
     {
-        rtl::OUString aDocDir;
+        OUString aDocDir;
         NSArray* pPaths = NSSearchPathForDirectoriesInDomains( NSDocumentDirectory, NSUserDomainMask, true );
         if( pPaths && [pPaths count] > 0 )
         {
             aDocDir = GetOUString( [pPaths objectAtIndex: 0] );
 
-            rtl::OUString aDocURL;
+            OUString aDocURL;
             if( aDocDir.getLength() > 0 &&
                 osl_getFileURLFromSystemPath( aDocDir.pData, &aDocURL.pData ) == osl_File_E_None )
             {
@@ -232,7 +228,7 @@ css::uno::Any MacOSXBackend::getPropertyValue(
 
         if (retVal)
         {
-            auto const Server = rtl::OUString::createFromAscii( host );
+            auto const Server = OUString::createFromAscii( host );
             if( Server.getLength() > 0 )
             {
                 return css::uno::makeAny(
@@ -266,7 +262,7 @@ css::uno::Any MacOSXBackend::getPropertyValue(
 
         if (retVal)
         {
-            auto const Server = rtl::OUString::createFromAscii( host );
+            auto const Server = OUString::createFromAscii( host );
             if( Server.getLength() > 0 )
             {
                 return css::uno::makeAny(
@@ -300,7 +296,7 @@ css::uno::Any MacOSXBackend::getPropertyValue(
 
         if (retVal)
         {
-            auto const Server = rtl::OUString::createFromAscii( host );
+            auto const Server = OUString::createFromAscii( host );
             if( Server.getLength() > 0 )
             {
                 return css::uno::makeAny(
@@ -332,7 +328,7 @@ css::uno::Any MacOSXBackend::getPropertyValue(
                 true, uno::makeAny( sal_Int32(1) ) ) );
     } else if ( PropertyName == "ooInetNoProxy" )
     {
-        rtl::OUString aProxyBypassList;
+        OUString aProxyBypassList;
 
         CFArrayRef rExceptionsList;
         CFDictionaryRef rProxyDict = SCDynamicStoreCopyProxies(nullptr);
@@ -373,31 +369,27 @@ css::uno::Any MacOSXBackend::getPropertyValue(
     }
 }
 
-rtl::OUString SAL_CALL MacOSXBackend::getBackendName(void)
+OUString SAL_CALL MacOSXBackend::getImplementationName(void)
 {
-    return rtl::OUString("com.sun.star.comp.configuration.backend.MacOSXBackend");
+    return "com.sun.star.comp.configuration.backend.MacOSXBackend";
 }
 
-rtl::OUString SAL_CALL MacOSXBackend::getImplementationName(void)
-{
-    return getBackendName();
-}
-
-uno::Sequence<rtl::OUString> SAL_CALL MacOSXBackend::getBackendServiceNames(void)
-{
-    uno::Sequence<OUString> aServiceNameList { "com.sun.star.configuration.backend.MacOSXBackend" };
-
-    return aServiceNameList;
-}
-
-sal_Bool SAL_CALL MacOSXBackend::supportsService(const rtl::OUString& aServiceName)
+sal_Bool SAL_CALL MacOSXBackend::supportsService(const OUString& aServiceName)
 {
     return cppu::supportsService(this, aServiceName);
 }
 
-uno::Sequence<rtl::OUString> SAL_CALL MacOSXBackend::getSupportedServiceNames(void)
+uno::Sequence<OUString> SAL_CALL MacOSXBackend::getSupportedServiceNames(void)
 {
-    return getBackendServiceNames();
+    return { "com.sun.star.configuration.backend.MacOSXBackend" };
 }
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+shell_MacOSXBackend_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new MacOSXBackend());
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

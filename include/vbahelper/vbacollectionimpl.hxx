@@ -46,14 +46,14 @@
 #include <vbahelper/vbahelper.hxx>
 #include <vbahelper/vbahelperinterface.hxx>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace container { class XEnumerationAccess; }
     namespace uno { class XComponentContext; }
-} } }
+}
 
-namespace ooo { namespace vba {
+namespace ooo::vba {
     class XHelperInterface;
-} }
+}
 
 typedef ::cppu::WeakImplHelper< css::container::XEnumeration > EnumerationHelper_BASE;
 
@@ -66,7 +66,7 @@ typedef ::cppu::WeakImplHelper< css::container::XEnumeration > EnumerationHelper
     used to provide an enumeration from an index container with other objects
     (e.g. UNO objects) where construction of the VBA objects is needed first.
  */
-class VBAHELPER_DLLPUBLIC SimpleIndexAccessToEnumeration : public EnumerationHelper_BASE
+class VBAHELPER_DLLPUBLIC SimpleIndexAccessToEnumeration final : public EnumerationHelper_BASE
 {
 public:
     /// @throws css::uno::RuntimeException
@@ -121,7 +121,7 @@ public:
         the passed container element. */
     virtual css::uno::Any createCollectionObject( const css::uno::Any& rSource ) = 0;
 
-protected:
+private:
     css::uno::Reference< css::container::XEnumeration > mxEnumeration;
 };
 
@@ -143,10 +143,10 @@ public:
 // only requirement is the object needs to implement XName
 
 
-typedef ::cppu::WeakImplHelper< css::container::XNameAccess, css::container::XIndexAccess, css::container::XEnumerationAccess > XNamedCollectionHelper_BASE;
-
 template< typename OneIfc >
-class XNamedObjectCollectionHelper : public XNamedCollectionHelper_BASE
+class XNamedObjectCollectionHelper final : public ::cppu::WeakImplHelper< css::container::XNameAccess,
+                                                                    css::container::XIndexAccess,
+                                                                    css::container::XEnumerationAccess >
 {
 public:
 typedef std::vector< css::uno::Reference< OneIfc > >  XNamedVec;
@@ -166,13 +166,12 @@ private:
 
             virtual css::uno::Any SAL_CALL nextElement(  ) override
             {
-                    if ( hasMoreElements() )
-                return css::uno::makeAny( *mIt++ );
-                    throw css::container::NoSuchElementException();
+                if ( hasMoreElements() )
+                    return css::uno::makeAny( *mIt++ );
+                throw css::container::NoSuchElementException();
             }
     };
 
-protected:
     XNamedVec mXNamedVec;
     typename XNamedVec::iterator cachePos;
 public:
@@ -208,7 +207,7 @@ public:
         for ( ; cachePos != it_end; ++cachePos )
         {
             css::uno::Reference< css::container::XNamed > xName( *cachePos, css::uno::UNO_QUERY_THROW );
-            if ( aName.equals( xName->getName() ) )
+            if ( aName == xName->getName() )
                 break;
         }
         return ( cachePos != it_end );
@@ -233,7 +232,7 @@ public:
 
 // including a HelperInterface implementation
 template< typename... Ifc >
-class ScVbaCollectionBase : public InheritedHelperInterfaceImpl< Ifc... >
+class SAL_DLLPUBLIC_RTTI ScVbaCollectionBase : public InheritedHelperInterfaceImpl< Ifc... >
 {
 typedef InheritedHelperInterfaceImpl< Ifc... > BaseColBase;
 protected:
@@ -249,13 +248,12 @@ protected:
 
         if( mbIgnoreCase )
         {
-            css::uno::Sequence< OUString > sElementNames = m_xNameAccess->getElementNames();
-            for( sal_Int32 i = 0; i < sElementNames.getLength(); i++ )
+            const css::uno::Sequence< OUString > sElementNames = m_xNameAccess->getElementNames();
+            for( const OUString& rName : sElementNames )
             {
-                OUString aName = sElementNames[i];
-                if( aName.equalsIgnoreAsciiCase( sIndex ) )
+                if( rName.equalsIgnoreAsciiCase( sIndex ) )
                 {
-                    return createCollectionObject( m_xNameAccess->getByName( aName ) );
+                    return createCollectionObject( m_xNameAccess->getByName( rName ) );
                 }
             }
         }
@@ -314,7 +312,7 @@ public:
     // XDefaultMethod
     OUString SAL_CALL getDefaultMethodName(  ) override
     {
-        return OUString("Item");
+        return "Item";
     }
     // XEnumerationAccess
     virtual css::uno::Reference< css::container::XEnumeration > SAL_CALL createEnumeration() override = 0;
@@ -330,9 +328,7 @@ public:
 
 };
 
-typedef ::cppu::WeakImplHelper<ov::XCollection> XCollection_InterfacesBASE;
-
-typedef ScVbaCollectionBase< XCollection_InterfacesBASE > CollImplBase;
+typedef ScVbaCollectionBase< ::cppu::WeakImplHelper<ov::XCollection> > CollImplBase;
 // compatible with the old collections ( pre XHelperInterface base class ) ( some internal objects still use this )
 class VBAHELPER_DLLPUBLIC ScVbaCollectionBaseImpl : public CollImplBase
 {
@@ -343,7 +339,7 @@ public:
 };
 
 template < typename... Ifc > // where Ifc must implement XCollectionTest
-class CollTestImplHelper :  public ScVbaCollectionBase< ::cppu::WeakImplHelper< Ifc... > >
+class SAL_DLLPUBLIC_RTTI CollTestImplHelper :  public ScVbaCollectionBase< ::cppu::WeakImplHelper< Ifc... > >
 {
 typedef ScVbaCollectionBase< ::cppu::WeakImplHelper< Ifc... >  > ImplBase;
 

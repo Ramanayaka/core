@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/AStatement.hxx"
-#include "ado/AConnection.hxx"
-#include "ado/AResultSet.hxx"
+#include <ado/AStatement.hxx>
+#include <ado/AConnection.hxx>
+#include <ado/AResultSet.hxx>
 #include <comphelper/property.hxx>
 #include <osl/thread.h>
 #include <cppuhelper/typeprovider.hxx>
@@ -34,6 +34,7 @@
 #undef max
 
 #include <algorithm>
+#include <numeric>
 
 using namespace ::comphelper;
 
@@ -53,7 +54,6 @@ using namespace ::std;
 
 OStatement_Base::OStatement_Base(OConnection* _pConnection ) :  OStatement_BASE(m_aMutex)
                                                         ,OPropertySetHelper(OStatement_BASE::rBHelper)
-                                                        ,OSubComponent<OStatement_Base, OStatement_BASE>(static_cast<cppu::OWeakObject*>(_pConnection), this)
                                                         ,m_pConnection(_pConnection)
                                                         ,m_nMaxRows(0)
                                                         ,m_nFetchSize(1)
@@ -104,13 +104,12 @@ void OStatement_Base::disposing()
     if (m_pConnection)
         m_pConnection->release();
 
-    dispose_ChildImpl();
     OStatement_BASE::disposing();
 }
 
 void SAL_CALL OStatement_Base::release() throw()
 {
-    release_ChildImpl();
+    OStatement_BASE::release();
 }
 
 Any SAL_CALL OStatement_Base::queryInterface( const Type & rType )
@@ -211,7 +210,7 @@ sal_Int32 OStatement_Base::getPrecision ( sal_Int32 sqlType)
 
     sal_Int32 prec = -1;
     OTypeInfo aInfo;
-    aInfo.nType = (sal_Int16)sqlType;
+    aInfo.nType = static_cast<sal_Int16>(sqlType);
     if (!m_aTypeInfo.empty())
     {
         std::vector<OTypeInfo>::const_iterator aIter = std::find(m_aTypeInfo.begin(),m_aTypeInfo.end(),aInfo);
@@ -339,7 +338,7 @@ void SAL_CALL OStatement::addBatch( const OUString& sql )
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
 
-    m_aBatchList.push_back(sql);
+    m_aBatchVector.push_back(sql);
 }
 
 Sequence< sal_Int32 > SAL_CALL OStatement::executeBatch(  )
@@ -350,10 +349,9 @@ Sequence< sal_Int32 > SAL_CALL OStatement::executeBatch(  )
 
     reset();
 
-    OUString aBatchSql;
-    sal_Int32 nLen = 0;
-    for(std::list< OUString>::const_iterator i=m_aBatchList.begin();i != m_aBatchList.end();++i,++nLen)
-        aBatchSql = aBatchSql + *i + ";";
+    OUString aBatchSql = std::accumulate(m_aBatchVector.begin(), m_aBatchVector.end(), OUString(),
+        [](const OUString& rRes, const OUString& rStr) { return rRes + rStr + ";"; });
+    sal_Int32 nLen = m_aBatchVector.size();
 
 
     if ( m_RecordSet.IsValid() )
@@ -398,7 +396,7 @@ sal_Int32 SAL_CALL OStatement_Base::executeUpdate( const OUString& sql )
     try {
         ADORecordset* pSet = nullptr;
         CHECK_RETURN(m_Command.put_CommandText(sql))
-        CHECK_RETURN(m_Command.Execute(m_RecordsAffected,m_Parameters,adCmdText|adExecuteNoRecords,&pSet))
+        CHECK_RETURN(m_Command.Execute(m_RecordsAffected,m_Parameters,long(adCmdText)|long(adExecuteNoRecords),&pSet))
     }
     catch (SQLWarning& ex) {
 
@@ -724,11 +722,10 @@ sal_Bool OStatement_Base::convertFastPropertyValue(
                 break;
         }
     }
-    catch( const Exception& e )
+    catch( const Exception& )
     {
         bModified = true;   // will ensure that the property is set
         OSL_FAIL( "OStatement_Base::convertFastPropertyValue: caught something strange!" );
-        (void)e;
     }
     return bModified;
 }

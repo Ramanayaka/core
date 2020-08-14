@@ -9,8 +9,6 @@
 
 #include <sal/config.h>
 
-#include <tools/diagnose_ex.h>
-
 #include <canvas/canvastools.hxx>
 
 #include "ogl_bitmapcanvashelper.hxx"
@@ -57,7 +55,7 @@ namespace oglcanvas
         return uno::Sequence< sal_Int8 >();
     }
 
-    rendering::IntegerBitmapLayout BitmapCanvasHelper::getMemoryLayout()
+    rendering::IntegerBitmapLayout BitmapCanvasHelper::getMemoryLayout() const
     {
         return ::canvas::tools::getStdMemoryLayout(getSize());
     }

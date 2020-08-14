@@ -22,32 +22,28 @@
 #include <sal/config.h>
 #include <sfx2/dllapi.h>
 #include <sal/types.h>
+#include <rtl/ustring.hxx>
 
-#include <sfx2/frmdescr.hxx>
-#include <com/sun/star/uno/Reference.h>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <svtools/parhtml.hxx>
-#include <svtools/htmlout.hxx>
-#include <svtools/htmlkywd.hxx>
-
-class SfxFrame;
 class SvStream;
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace document {
         class XDocumentProperties;
     }
-} } }
+}
+
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::uno { template <class interface_type> class Reference; }
 
 class SFX2_DLLPUBLIC SfxFrameHTMLWriter
 {
     SAL_DLLPRIVATE static void OutMeta( SvStream& rStrm,
-                                const sal_Char *pIndent, const OUString& rName,
+                                const char *pIndent, const OUString& rName,
                                 const OUString& rContent, bool bHTTPEquiv,
                                 rtl_TextEncoding eDestEnc,
                                 OUString *pNonConvertableChars = nullptr );
     SAL_DLLPRIVATE inline static void OutMeta( SvStream& rStrm,
-                                const sal_Char *pIndent, const sal_Char *pName,
+                                const char *pIndent, const char *pName,
                                 const OUString& rContent, bool bHTTPEquiv,
                                 rtl_TextEncoding eDestEnc,
                                 OUString *pNonConvertableChars = nullptr );
@@ -55,7 +51,7 @@ class SFX2_DLLPUBLIC SfxFrameHTMLWriter
 public:
     static void Out_DocInfo( SvStream& rStrm, const OUString& rBaseURL,
             const css::uno::Reference< css::document::XDocumentProperties>&,
-            const sal_Char *pIndent,
+            const char *pIndent,
             rtl_TextEncoding eDestEnc = RTL_TEXTENCODING_MS_1252,
             OUString *pNonConvertableChars = nullptr );
 
@@ -66,7 +62,7 @@ public:
 };
 
 inline void SfxFrameHTMLWriter::OutMeta( SvStream& rStrm,
-                            const sal_Char *pIndent, const sal_Char *pName,
+                            const char *pIndent, const char *pName,
                             const OUString& rContent, bool bHTTPEquiv,
                             rtl_TextEncoding eDestEnc,
                             OUString *pNonConvertableChars )

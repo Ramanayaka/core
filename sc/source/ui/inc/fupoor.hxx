@@ -20,18 +20,17 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_FUPOOR_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_FUPOOR_HXX
 
-#include <vcl/event.hxx>
 #include <vcl/timer.hxx>
 #include <sfx2/request.hxx>
+#include <svx/svdobj.hxx>
+#include <vcl/window.hxx>
 
 class ScDrawView;
 class ScTabViewShell;
-namespace vcl { class Window; }
 class SdrModel;
-class Dialog;
-
-// Create default drawing objects via keyboard
-class SdrObject;
+class CommandEvent;
+class KeyEvent;
+class MouseEvent;
 
 //  Return values for command
 #define SC_CMD_NONE     0
@@ -42,12 +41,11 @@ class FuPoor
 {
 protected:
     ScDrawView*     pView;
-    ScTabViewShell* pViewShell;
+    ScTabViewShell& rViewShell;
     VclPtr<vcl::Window>     pWindow;
     SdrModel*       pDrDoc;
 
     SfxRequest      aSfxRequest;
-    VclPtr<Dialog>          pDialog;
 
     Timer           aScrollTimer;           // for Autoscrolling
     DECL_LINK( ScrollHdl, Timer *, void );
@@ -65,8 +63,8 @@ private:
     sal_uInt16      mnCode;
 
 public:
-    FuPoor(ScTabViewShell* pViewSh, vcl::Window* pWin, ScDrawView* pView,
-           SdrModel* pDoc, SfxRequest& rReq);
+    FuPoor(ScTabViewShell& rViewSh, vcl::Window* pWin, ScDrawView* pView,
+           SdrModel* pDoc, const SfxRequest& rReq);
     virtual ~FuPoor();
 
     // see member
@@ -90,14 +88,14 @@ public:
 
     void SetWindow(vcl::Window* pWin) { pWindow = pWin; }
 
-    sal_uInt16 GetSlotID() const { return( aSfxRequest.GetSlot() ); }
+    sal_uInt16 GetSlotID() const { return aSfxRequest.GetSlot(); }
 
     bool    IsDetectiveHit( const Point& rLogicPos );
 
     void    StopDragTimer();
 
     // Create default drawing objects via keyboard
-    virtual SdrObject* CreateDefaultObject(const sal_uInt16 nID, const tools::Rectangle& rRectangle);
+    virtual SdrObjectUniquePtr CreateDefaultObject(const sal_uInt16 nID, const tools::Rectangle& rRectangle);
 
 protected:
     static void ImpForceQuadratic(tools::Rectangle& rRect);

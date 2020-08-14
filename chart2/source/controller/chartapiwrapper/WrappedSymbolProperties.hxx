@@ -19,29 +19,28 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDSYMBOLPROPERTIES_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDSYMBOLPROPERTIES_HXX
 
-#include "WrappedProperty.hxx"
-#include "Chart2ModelContact.hxx"
-
+#include <sal/types.h>
 #include <memory>
 #include <vector>
 
-namespace chart
-{
-namespace wrapper
+namespace chart { class WrappedProperty; }
+namespace chart::wrapper { class Chart2ModelContact; }
+namespace com::sun::star::beans { struct Property; }
+
+namespace chart::wrapper
 {
 
 class WrappedSymbolProperties
 {
 public:
     static void addProperties( std::vector< css::beans::Property > & rOutProperties );
-    static void addWrappedPropertiesForSeries( std::vector< WrappedProperty* >& rList
+    static void addWrappedPropertiesForSeries( std::vector< std::unique_ptr<WrappedProperty> >& rList
                     , const std::shared_ptr< Chart2ModelContact >& spChart2ModelContact );
-    static void addWrappedPropertiesForDiagram( std::vector< WrappedProperty* >& rList
+    static void addWrappedPropertiesForDiagram( std::vector< std::unique_ptr<WrappedProperty> >& rList
                     , const std::shared_ptr< Chart2ModelContact >& spChart2ModelContact );
 };
 
-} //namespace wrapper
-} //namespace chart
+} //namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_WRAPPEDSYMBOLPROPERTIES_HXX
 #endif

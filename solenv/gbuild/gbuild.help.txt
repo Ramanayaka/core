@@ -27,7 +27,7 @@ IMPORTANT OPTIONS
        (descriptions from GNU make man page)
 
 AVAILABLE TARGETS
-       all                  build product and run unit tests (default goal)
+       build                build product (default goal)
        clean                remove all generated files
        debugrun             starts the INSTDIR instance and allows tests to
                             be run against it. You can provide additional
@@ -51,8 +51,8 @@ AVAILABLE TARGETS
                             NOTE: needs graphviz to work
        showmodules          shows all registered modules
 
-       <module>         build the named module
-       <module>.build   build the named module without running unittests
+       <module>         build the named module (without running unittests)
+       <module>.build   an alias for the above
        <module>.check   run unittests of the named module
        <module>.clean   clean the named module
        <module>.all     build the named module and the pre-requisite modules for it
@@ -65,7 +65,7 @@ AVAILABLE TARGETS
                         CppunitTest_sw_macros_test)
        <target>.clean   clean gbuild target
        <class>_<target> for all targets and for the following classes:
-           o AllLangResTarget
+           o AllLangMoTarget
            o AllLangZip
            o CliLibrary
            o CliNativeLibrary
@@ -132,7 +132,7 @@ INTERACTIVE VARIABLES:
        CXXFLAGS        Override compiler flags for C++ compilation.
                        Note: this overrides default optimization and debug
                        flags; to append flags without overriding, use:
-                       CXXFLAGS='$(call gb_LinkTarget__get_debugcxxflags,$(1)) -Wfoo'
+                       CXXFLAGS='$(call gb_LinkTarget__get_debugflags,$(1)) -Wfoo'
        ENVCFLAGSCXX    Append compiler flags for C++ compilation.
        OBJCFLAGS       Override compiler flags for Objective C compilation.
        OBJCXXFLAGS     Override compiler flags for Objective C++ compilation.
@@ -147,3 +147,6 @@ INTERACTIVE VARIABLES:
                        debugrun. Double quotes will be automatically escaped.
        gb_SUPPRESS_TESTS Do not run tests (but still build them, when requested
                        by the given targets).
+       GCC_COLORS      Colorize gcc diagnostics output. See
+                       https://gcc.gnu.org/onlinedocs/gcc/Diagnostic-Message-Formatting-Options.html
+                       for details & syntax. Or export that setting in your .bash_profile.

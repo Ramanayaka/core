@@ -17,25 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "worksheetbuffer.hxx"
+#include <worksheetbuffer.hxx>
 
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <osl/diagnose.h>
 #include <rtl/ustrbuf.hxx>
-#include <oox/core/filterbase.hxx>
 #include <oox/helper/attributelist.hxx>
+#include <oox/helper/binaryinputstream.hxx>
 #include <oox/helper/containerhelper.hxx>
-#include <oox/helper/propertyset.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
-#include "excelhandlers.hxx"
-#include "document.hxx"
+#include <document.hxx>
+#include <documentimport.hxx>
+#include <biffhelper.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::sheet;
@@ -114,29 +112,29 @@ OUString WorksheetBuffer::getCalcSheetName( sal_Int32 nWorksheet ) const
 
 void WorksheetBuffer::convertSheetNameRef( OUString& sSheetNameRef ) const
 {
-    if( sSheetNameRef.startsWith("#") )
+    if( !sSheetNameRef.startsWith("#") )
+        return;
+
+    sal_Int32 nSepPos = sSheetNameRef.lastIndexOf( '!' );
+    if( nSepPos <= 0 )
+        return;
+
+    // Do not attempt to blindly convert '#SheetName!A1' to
+    // '#SheetName.A1', it can be #SheetName!R1C1 as well. Hyperlink
+    // handler has to handle all, but prefer '#SheetName.A1' if
+    // possible.
+    if (nSepPos < sSheetNameRef.getLength() - 1)
     {
-        sal_Int32 nSepPos = sSheetNameRef.lastIndexOf( '!' );
-        if( nSepPos > 0 )
-        {
-            // Do not attempt to blindly convert '#SheetName!A1' to
-            // '#SheetName.A1', it can be #SheetName!R1C1 as well. Hyperlink
-            // handler has to handle all, but prefer '#SheetName.A1' if
-            // possible.
-            if (nSepPos < sSheetNameRef.getLength() - 1)
-            {
-                ScRange aRange;
-                if ((aRange.ParseAny( sSheetNameRef.copy( nSepPos + 1 ), nullptr,
-                                formula::FormulaGrammar::CONV_XL_R1C1) & ScRefFlags::VALID) == ScRefFlags::ZERO)
-                    sSheetNameRef = sSheetNameRef.replaceAt( nSepPos, 1, OUString( '.' ) );
-            }
-            // #i66592# convert sheet names that have been renamed on import
-            OUString aSheetName = sSheetNameRef.copy( 1, nSepPos - 1 );
-            OUString aCalcName = getCalcSheetName( aSheetName );
-            if( !aCalcName.isEmpty() )
-                sSheetNameRef = sSheetNameRef.replaceAt( 1, nSepPos - 1, aCalcName );
-        }
+        ScRange aRange;
+        if ((aRange.ParseAny( sSheetNameRef.copy( nSepPos + 1 ), &getScDocument(),
+                        formula::FormulaGrammar::CONV_XL_R1C1) & ScRefFlags::VALID) == ScRefFlags::ZERO)
+            sSheetNameRef = sSheetNameRef.replaceAt( nSepPos, 1, OUString( '.' ) );
     }
+    // #i66592# convert sheet names that have been renamed on import
+    OUString aSheetName = sSheetNameRef.copy( 1, nSepPos - 1 );
+    OUString aCalcName = getCalcSheetName( aSheetName );
+    if( !aCalcName.isEmpty() )
+        sSheetNameRef = sSheetNameRef.replaceAt( 1, nSepPos - 1, aCalcName );
 }
 
 sal_Int16 WorksheetBuffer::getCalcSheetIndex( const OUString& rWorksheetName ) const
@@ -185,7 +183,7 @@ WorksheetBuffer::IndexNamePair WorksheetBuffer::createSheet( const OUString& rPr
     //FIXME: Rewrite this block using ScDocument[Import] instead of UNO
     try
     {
-        Reference< XSpreadsheets > xSheets( getDocument()->getSheets(), UNO_QUERY_THROW );
+        Reference< XSpreadsheets > xSheets( getDocument()->getSheets(), UNO_SET_THROW );
         Reference< XIndexAccess > xSheetsIA( xSheets, UNO_QUERY_THROW );
         sal_Int16 nCalcSheet = -1;
         OUString aSheetName = rPreferredName.isEmpty() ? "Sheet" : rPreferredName;
@@ -222,7 +220,7 @@ void WorksheetBuffer::insertSheet( const SheetInfoModel& rModel )
 {
     sal_Int32 nWorksheet = static_cast< sal_Int32 >( maSheetInfos.size() );
     IndexNamePair aIndexName = createSheet( rModel.maName, nWorksheet );
-    std::shared_ptr< SheetInfo > xSheetInfo( new SheetInfo( rModel, aIndexName.first, aIndexName.second ) );
+    auto xSheetInfo = std::make_shared<SheetInfo>( rModel, aIndexName.first, aIndexName.second );
     maSheetInfos.push_back( xSheetInfo );
     maSheetInfosByName[ rModel.maName ] = xSheetInfo;
     maSheetInfosByName[ lclQuoteName( rModel.maName ) ] = xSheetInfo;
@@ -242,7 +240,6 @@ void WorksheetBuffer::finalizeImport( sal_Int16 nActiveSheet )
     }
 }
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

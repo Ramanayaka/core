@@ -31,29 +31,25 @@
 #include <win/salframe.h>
 #include <opengl/salbmp.hxx>
 
-#include <vcl/salbtype.hxx>
+#include <vcl/BitmapAccessMode.hxx>
+#include <vcl/BitmapBuffer.hxx>
+#include <vcl/BitmapPalette.hxx>
+#include <vcl/Scanline.hxx>
 #include <vcl/bitmapaccess.hxx>
-#include "outdata.hxx"
-#include "salgdiimpl.hxx"
-#include "opengl/win/gdiimpl.hxx"
+#include <outdata.hxx>
+#include <salgdiimpl.hxx>
+#include <opengl/win/gdiimpl.hxx>
+
+#include <config_features.h>
+#if HAVE_FEATURE_SKIA
+#include <skia/win/gdiimpl.hxx>
+#include <skia/salbmp.hxx>
+#endif
 
 
 bool WinSalGraphics::supportsOperation( OutDevSupportType eType ) const
 {
-    static bool bAllowForTest(true);
-    bool bRet = false;
-
-    switch( eType )
-    {
-    case OutDevSupportType::TransparentRect:
-        bRet = mbVirDev || mbWindow;
-        break;
-    case OutDevSupportType::B2DDraw:
-        bRet = bAllowForTest;
-        break;
-    default: break;
-    }
-    return bRet;
+    return mpImpl->supportsOperation(eType);
 }
 
 void WinSalGraphics::copyBits( const SalTwoRect& rPosAry, SalGraphics* pSrcGraphics )
@@ -77,16 +73,14 @@ class ColorScanlineConverter
 {
 public:
     ScanlineFormat meSourceFormat;
-    ScanlineFormat meDestinationFormat;
 
     int mnComponentSize;
     int mnComponentExchangeIndex;
 
     long mnScanlineSize;
 
-    ColorScanlineConverter(ScanlineFormat eSourceFormat, ScanlineFormat eDestinationFormat, int nComponentSize, long nScanlineSize)
+    ColorScanlineConverter(ScanlineFormat eSourceFormat, int nComponentSize, long nScanlineSize)
         : meSourceFormat(eSourceFormat)
-        , meDestinationFormat(eDestinationFormat)
         , mnComponentSize(nComponentSize)
         , mnComponentExchangeIndex(0)
         , mnScanlineSize(nScanlineSize)
@@ -100,7 +94,7 @@ public:
 
     void convertScanline(sal_uInt8* pSource, sal_uInt8* pDestination)
     {
-        for (int x = 0; x < mnScanlineSize; x += mnComponentSize)
+        for (long x = 0; x < mnScanlineSize; x += mnComponentSize)
         {
             for (int i = 0; i < mnComponentSize; ++i)
             {
@@ -114,50 +108,60 @@ public:
 
 void convertToWinSalBitmap(SalBitmap& rSalBitmap, WinSalBitmap& rWinSalBitmap)
 {
-         BitmapPalette aBitmapPalette;
-         OpenGLSalBitmap* pGLSalBitmap = dynamic_cast<OpenGLSalBitmap*>(&rSalBitmap);
-         if (pGLSalBitmap != nullptr)
-         {
-             aBitmapPalette = pGLSalBitmap->GetBitmapPalette();
-         }
+    BitmapPalette aBitmapPalette;
+    OpenGLSalBitmap* pGLSalBitmap = dynamic_cast<OpenGLSalBitmap*>(&rSalBitmap);
+    if (pGLSalBitmap != nullptr)
+    {
+        aBitmapPalette = pGLSalBitmap->GetBitmapPalette();
+    }
+#if HAVE_FEATURE_SKIA
+    if(SkiaSalBitmap* pSkiaSalBitmap = dynamic_cast<SkiaSalBitmap*>(&rSalBitmap))
+        aBitmapPalette = pSkiaSalBitmap->Palette();
+#endif
 
-        BitmapBuffer* pRead = rSalBitmap.AcquireBuffer(BitmapAccessMode::Read);
+    BitmapBuffer* pRead = rSalBitmap.AcquireBuffer(BitmapAccessMode::Read);
 
-        rWinSalBitmap.Create(rSalBitmap.GetSize(), rSalBitmap.GetBitCount(), aBitmapPalette);
-        BitmapBuffer* pWrite = rWinSalBitmap.AcquireBuffer(BitmapAccessMode::Write);
+    rWinSalBitmap.Create(rSalBitmap.GetSize(), rSalBitmap.GetBitCount(), aBitmapPalette);
+    BitmapBuffer* pWrite = rWinSalBitmap.AcquireBuffer(BitmapAccessMode::Write);
 
-        sal_uInt8* pSource(pRead->mpBits);
-        sal_uInt8* pDestination(pWrite->mpBits);
+    sal_uInt8* pSource(pRead->mpBits);
+    sal_uInt8* pDestination(pWrite->mpBits);
+    long readRowChange = pRead->mnScanlineSize;
+    if(pRead->mnFormat & ScanlineFormat::TopDown)
+    {
+        pSource += pRead->mnScanlineSize * (pRead->mnHeight - 1);
+        readRowChange = -readRowChange;
+    }
 
-        std::unique_ptr<ColorScanlineConverter> pConverter;
+    std::unique_ptr<ColorScanlineConverter> pConverter;
 
-        if (pRead->mnFormat == ScanlineFormat::N24BitTcRgb)
-            pConverter.reset(new ColorScanlineConverter(ScanlineFormat::N24BitTcRgb, ScanlineFormat::N24BitTcBgr,
-                                                        3, pRead->mnScanlineSize));
-        else if (pRead->mnFormat == ScanlineFormat::N32BitTcRgba)
-            pConverter.reset(new ColorScanlineConverter(ScanlineFormat::N32BitTcRgba, ScanlineFormat::N32BitTcBgra,
-                                                        4, pRead->mnScanlineSize));
-        if (pConverter)
+    if (RemoveScanline(pRead->mnFormat) == ScanlineFormat::N24BitTcRgb)
+        pConverter.reset(new ColorScanlineConverter(ScanlineFormat::N24BitTcRgb,
+                                                    3, pRead->mnScanlineSize));
+    else if (RemoveScanline(pRead->mnFormat) == ScanlineFormat::N32BitTcRgba)
+        pConverter.reset(new ColorScanlineConverter(ScanlineFormat::N32BitTcRgba,
+                                                    4, pRead->mnScanlineSize));
+    if (pConverter)
+    {
+        for (long y = 0; y < pRead->mnHeight; y++)
         {
-            for (long y = 0; y < pRead->mnHeight; y++)
-            {
-                pConverter->convertScanline(pSource, pDestination);
-                pSource += pRead->mnScanlineSize;
-                pDestination += pWrite->mnScanlineSize;
-            }
+            pConverter->convertScanline(pSource, pDestination);
+            pSource += readRowChange;
+            pDestination += pWrite->mnScanlineSize;
         }
-        else
+    }
+    else
+    {
+        for (long y = 0; y < pRead->mnHeight; y++)
         {
-            for (long y = 0; y < pRead->mnHeight; y++)
-            {
-                memcpy(pDestination, pSource, pRead->mnScanlineSize);
-                pSource += pRead->mnScanlineSize;
-                pDestination += pWrite->mnScanlineSize;
-            }
+            memcpy(pDestination, pSource, pRead->mnScanlineSize);
+            pSource += readRowChange;
+            pDestination += pWrite->mnScanlineSize;
         }
-        rWinSalBitmap.ReleaseBuffer(pWrite, BitmapAccessMode::Write);
+    }
+    rWinSalBitmap.ReleaseBuffer(pWrite, BitmapAccessMode::Write);
 
-        rSalBitmap.ReleaseBuffer(pRead, BitmapAccessMode::Read);
+    rSalBitmap.ReleaseBuffer(pRead, BitmapAccessMode::Read);
 }
 
 } // end anonymous namespace
@@ -165,12 +169,15 @@ void convertToWinSalBitmap(SalBitmap& rSalBitmap, WinSalBitmap& rWinSalBitmap)
 void WinSalGraphics::drawBitmap(const SalTwoRect& rPosAry, const SalBitmap& rSalBitmap)
 {
     if (dynamic_cast<WinOpenGLSalGraphicsImpl*>(mpImpl.get()) == nullptr &&
+#if HAVE_FEATURE_SKIA
+        dynamic_cast<WinSkiaSalGraphicsImpl*>(mpImpl.get()) == nullptr &&
+#endif
         dynamic_cast<const WinSalBitmap*>(&rSalBitmap) == nullptr)
     {
         std::unique_ptr<WinSalBitmap> pWinSalBitmap(new WinSalBitmap());
         SalBitmap& rConstBitmap = const_cast<SalBitmap&>(rSalBitmap);
-        convertToWinSalBitmap(rConstBitmap, *pWinSalBitmap.get());
-        mpImpl->drawBitmap(rPosAry, *pWinSalBitmap.get());
+        convertToWinSalBitmap(rConstBitmap, *pWinSalBitmap);
+        mpImpl->drawBitmap(rPosAry, *pWinSalBitmap);
     }
     else
     {
@@ -183,18 +190,21 @@ void WinSalGraphics::drawBitmap( const SalTwoRect& rPosAry,
                               const SalBitmap& rSTransparentBitmap )
 {
     if (dynamic_cast<WinOpenGLSalGraphicsImpl*>(mpImpl.get()) == nullptr &&
+#if HAVE_FEATURE_SKIA
+        dynamic_cast<WinSkiaSalGraphicsImpl*>(mpImpl.get()) == nullptr &&
+#endif
         dynamic_cast<const WinSalBitmap*>(&rSSalBitmap) == nullptr)
     {
         std::unique_ptr<WinSalBitmap> pWinSalBitmap(new WinSalBitmap());
         SalBitmap& rConstBitmap = const_cast<SalBitmap&>(rSSalBitmap);
-        convertToWinSalBitmap(rConstBitmap, *pWinSalBitmap.get());
+        convertToWinSalBitmap(rConstBitmap, *pWinSalBitmap);
 
 
         std::unique_ptr<WinSalBitmap> pWinTransparentSalBitmap(new WinSalBitmap());
         SalBitmap& rConstTransparentBitmap = const_cast<SalBitmap&>(rSTransparentBitmap);
-        convertToWinSalBitmap(rConstTransparentBitmap, *pWinTransparentSalBitmap.get());
+        convertToWinSalBitmap(rConstTransparentBitmap, *pWinTransparentSalBitmap);
 
-        mpImpl->drawBitmap(rPosAry, *pWinSalBitmap.get(), *pWinTransparentSalBitmap.get());
+        mpImpl->drawBitmap(rPosAry, *pWinSalBitmap, *pWinTransparentSalBitmap);
     }
     else
     {
@@ -210,17 +220,17 @@ bool WinSalGraphics::drawAlphaRect( long nX, long nY, long nWidth,
 
 void WinSalGraphics::drawMask( const SalTwoRect& rPosAry,
                             const SalBitmap& rSSalBitmap,
-                            SalColor nMaskColor )
+                            Color nMaskColor )
 {
     mpImpl->drawMask( rPosAry, rSSalBitmap, nMaskColor );
 }
 
-SalBitmap* WinSalGraphics::getBitmap( long nX, long nY, long nDX, long nDY )
+std::shared_ptr<SalBitmap> WinSalGraphics::getBitmap( long nX, long nY, long nDX, long nDY )
 {
     return mpImpl->getBitmap( nX, nY, nDX, nDY );
 }
 
-SalColor WinSalGraphics::getPixel( long nX, long nY )
+Color WinSalGraphics::getPixel( long nX, long nY )
 {
     return mpImpl->getPixel( nX, nY );
 }

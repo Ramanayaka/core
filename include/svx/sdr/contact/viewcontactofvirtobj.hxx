@@ -24,9 +24,9 @@
 
 class SdrVirtObj;
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
-class SVX_DLLPUBLIC ViewContactOfVirtObj : public ViewContactOfSdrObj
+class SVXCORE_DLLPUBLIC ViewContactOfVirtObj : public ViewContactOfSdrObj
 {
 protected:
     // internal access to SdrObject. Implementation in *.cxx to avoid
@@ -47,7 +47,7 @@ protected:
     virtual drawinglayer::primitive2d::Primitive2DContainer createViewIndependentPrimitive2DSequence() const override;
 };
 
-}}
+}
 
 #endif // INCLUDED_SVX_SDR_CONTACT_VIEWCONTACTOFVIRTOBJ_HXX
 

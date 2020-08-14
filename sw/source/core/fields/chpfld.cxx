@@ -20,6 +20,8 @@
 #include <com/sun/star/text/ChapterFormat.hpp>
 #include <doc.hxx>
 #include <frame.hxx>
+#include <rootfrm.hxx>
+#include <txtfrm.hxx>
 #include <pam.hxx>
 #include <ndtxt.hxx>
 #include <chpfld.hxx>
@@ -56,140 +58,165 @@ SwChapterFieldType::SwChapterFieldType()
 {
 }
 
-SwFieldType* SwChapterFieldType::Copy() const
+std::unique_ptr<SwFieldType> SwChapterFieldType::Copy() const
 {
-    return new SwChapterFieldType();
+    return std::make_unique<SwChapterFieldType>();
 }
 
 // chapter field
 
 SwChapterField::SwChapterField(SwChapterFieldType* pTyp, sal_uInt32 nFormat)
-    : SwField(pTyp, nFormat), nLevel( 0 )
-{}
-
-OUString SwChapterField::Expand() const
+    : SwField(pTyp, nFormat)
 {
+}
+
+sal_uInt8 SwChapterField::GetLevel(SwRootFrame const*const pLayout) const
+{
+    State const& rState(pLayout && pLayout->IsHideRedlines() ? m_StateRLHidden : m_State);
+    return rState.nLevel;
+}
+
+// this is called from UI or from import filters, so override both states
+void SwChapterField::SetLevel(sal_uInt8 nLev)
+{
+    m_State.nLevel = nLev;
+    m_StateRLHidden.nLevel = nLev;
+}
+
+const OUString& SwChapterField::GetNumber(SwRootFrame const*const pLayout) const
+{
+    State const& rState(pLayout && pLayout->IsHideRedlines() ? m_StateRLHidden : m_State);
+    return rState.sNumber;
+}
+
+const OUString& SwChapterField::GetTitle(SwRootFrame const*const pLayout) const
+{
+    State const& rState(pLayout && pLayout->IsHideRedlines() ? m_StateRLHidden : m_State);
+    return rState.sTitle;
+}
+
+OUString SwChapterField::ExpandImpl(SwRootFrame const*const pLayout) const
+{
+    State const& rState(pLayout && pLayout->IsHideRedlines() ? m_StateRLHidden : m_State);
     switch( GetFormat() )
     {
         case CF_TITLE:
-            return sTitle;
+            return rState.sTitle;
         case CF_NUMBER:
-            return sPre + sNumber + sPost;
+            return rState.sPre + rState.sNumber + rState.sPost;
         case CF_NUM_TITLE:
-            return sPre + sNumber + sPost + sTitle;
+            return rState.sPre + rState.sNumber + rState.sPost + rState.sTitle;
         case CF_NUM_NOPREPST_TITLE:
-            return sNumber + sTitle;
+            return rState.sNumber + rState.sTitle;
     }
     // CF_NUMBER_NOPREPST
-    return sNumber;
+    return rState.sNumber;
 }
 
-SwField* SwChapterField::Copy() const
+std::unique_ptr<SwField> SwChapterField::Copy() const
 {
-    SwChapterField *pTmp =
-        new SwChapterField(static_cast<SwChapterFieldType*>(GetTyp()), GetFormat());
-    pTmp->nLevel = nLevel;
-    pTmp->sTitle = sTitle;
-    pTmp->sNumber = sNumber;
-    pTmp->sPost = sPost;
-    pTmp->sPre = sPre;
+    std::unique_ptr<SwChapterField> pTmp(
+        new SwChapterField(static_cast<SwChapterFieldType*>(GetTyp()), GetFormat()));
+    pTmp->m_State = m_State;
+    pTmp->m_StateRLHidden = m_StateRLHidden;
 
-    return pTmp;
+    return std::unique_ptr<SwField>(pTmp.release());
 }
 
 // #i53420#
-void SwChapterField::ChangeExpansion(const SwFrame* pFrame,
+void SwChapterField::ChangeExpansion(const SwFrame & rFrame,
                                       const SwContentNode* pContentNode,
                                       bool bSrchNum )
 {
-    OSL_ENSURE( pFrame, "In which frame am I?" );
     SwDoc* pDoc = const_cast<SwDoc*>(pContentNode->GetDoc());
 
     const SwTextNode* pTextNode = dynamic_cast<const SwTextNode*>(pContentNode);
-    if ( !pTextNode || !pFrame->IsInDocBody() )
+    if (!pTextNode || !rFrame.IsInDocBody())
     {
         SwPosition aDummyPos( pDoc->GetNodes().GetEndOfContent() );
-        pTextNode = GetBodyTextNode( *pDoc, aDummyPos, *pFrame );
+        pTextNode = GetBodyTextNode( *pDoc, aDummyPos, rFrame );
     }
 
     if ( pTextNode )
     {
-        ChangeExpansion( *pTextNode, bSrchNum );
+        ChangeExpansion( *pTextNode, bSrchNum, rFrame.getRootFrame() );
     }
 }
 
-void SwChapterField::ChangeExpansion(const SwTextNode &rTextNd, bool bSrchNum)
+void SwChapterField::ChangeExpansion(const SwTextNode &rTextNd, bool bSrchNum,
+        SwRootFrame const*const pLayout)
 {
-    sNumber.clear();
-    sTitle.clear();
-    sPost.clear();
-    sPre.clear();
+    State & rState(pLayout && pLayout->IsHideRedlines() ? m_StateRLHidden : m_State);
+    rState.sNumber.clear();
+    rState.sTitle.clear();
+    rState.sPost.clear();
+    rState.sPre.clear();
 
     SwDoc* pDoc = const_cast<SwDoc*>(rTextNd.GetDoc());
-    const SwTextNode *pTextNd = rTextNd.FindOutlineNodeOfLevel( nLevel );
-    if( pTextNd )
+    const SwTextNode *pTextNd = rTextNd.FindOutlineNodeOfLevel(rState.nLevel, pLayout);
+    if( !pTextNd )
+        return;
+
+    if( bSrchNum )
     {
-        if( bSrchNum )
-        {
-            const SwTextNode* pONd = pTextNd;
-            do {
-                if( pONd && pONd->GetTextColl() )
-                {
-                    sal_uInt8 nPrevLvl = nLevel;
-
-                    OSL_ENSURE( pONd->GetAttrOutlineLevel() >= 0 && pONd->GetAttrOutlineLevel() <= MAXLEVEL,
-                            "<SwChapterField::ChangeExpansion(..)> - outline node with inconsistent outline level. Serious defect." );
-                    nLevel = static_cast<sal_uInt8>(pONd->GetAttrOutlineLevel());
-
-                    if( nPrevLvl < nLevel )
-                        nLevel = nPrevLvl;
-                    else if( SVX_NUM_NUMBER_NONE != pDoc->GetOutlineNumRule()
-                            ->Get( nLevel ).GetNumberingType() )
-                    {
-                        pTextNd = pONd;
-                        break;
-                    }
-
-                    if( !nLevel-- )
-                        break;
-                    pONd = pTextNd->FindOutlineNodeOfLevel( nLevel );
-                }
-                else
-                    break;
-            } while( true );
-        }
-
-        // get the number without Pre-/Post-fixstrings
-
-        if ( pTextNd->IsOutline() )
-        {
-            // correction of refactoring done by cws swnumtree:
-            // retrieve numbering string without prefix and suffix strings
-            // as stated in the above german comment.
-            sNumber = pTextNd->GetNumString( false );
-
-            SwNumRule* pRule( pTextNd->GetNumRule() );
-            if ( pTextNd->IsCountedInList() && pRule )
+        const SwTextNode* pONd = pTextNd;
+        do {
+            if( pONd && pONd->GetTextColl() )
             {
-                int nListLevel = pTextNd->GetActualListLevel();
-                if (nListLevel < 0)
-                    nListLevel = 0;
-                if (nListLevel >= MAXLEVEL)
-                    nListLevel = MAXLEVEL - 1;
+                sal_uInt8 nPrevLvl = rState.nLevel;
 
-                const SwNumFormat& rNFormat = pRule->Get(nListLevel);
-                sPost = rNFormat.GetSuffix();
-                sPre = rNFormat.GetPrefix();
+                OSL_ENSURE( pONd->GetAttrOutlineLevel() >= 0 && pONd->GetAttrOutlineLevel() <= MAXLEVEL,
+                        "<SwChapterField::ChangeExpansion(..)> - outline node with inconsistent outline level. Serious defect." );
+                rState.nLevel = static_cast<sal_uInt8>(pONd->GetAttrOutlineLevel());
+
+                if (nPrevLvl < rState.nLevel)
+                    rState.nLevel = nPrevLvl;
+                else if( SVX_NUM_NUMBER_NONE != pDoc->GetOutlineNumRule()
+                        ->Get( rState.nLevel ).GetNumberingType() )
+                {
+                    pTextNd = pONd;
+                    break;
+                }
+
+                if (!rState.nLevel--)
+                    break;
+                pONd = pTextNd->FindOutlineNodeOfLevel(rState.nLevel, pLayout);
             }
-        }
-        else
-        {
-            sNumber = "??";
-        }
-
-        sTitle = removeControlChars(pTextNd->GetExpandText(0, -1, false, false, false, false));
-
+            else
+                break;
+        } while( true );
     }
+
+    // get the number without Pre-/Post-fixstrings
+
+    if ( pTextNd->IsOutline() )
+    {
+        // correction of refactoring done by cws swnumtree:
+        // retrieve numbering string without prefix and suffix strings
+        // as stated in the above german comment.
+        rState.sNumber = pTextNd->GetNumString(false, MAXLEVEL, pLayout);
+
+        SwNumRule* pRule( pTextNd->GetNumRule() );
+        if ( pTextNd->IsCountedInList() && pRule )
+        {
+            int nListLevel = pTextNd->GetActualListLevel();
+            if (nListLevel < 0)
+                nListLevel = 0;
+            if (nListLevel >= MAXLEVEL)
+                nListLevel = MAXLEVEL - 1;
+
+            const SwNumFormat& rNFormat = pRule->Get(nListLevel);
+            rState.sPost = rNFormat.GetSuffix();
+            rState.sPre = rNFormat.GetPrefix();
+        }
+    }
+    else
+    {
+        rState.sNumber = "??";
+    }
+
+    rState.sTitle = removeControlChars(sw::GetExpandTextMerged(pLayout,
+                *pTextNd, false, false, ExpandMode(0)));
 }
 
 bool SwChapterField::QueryValue( uno::Any& rAny, sal_uInt16 nWhichId ) const
@@ -197,7 +224,7 @@ bool SwChapterField::QueryValue( uno::Any& rAny, sal_uInt16 nWhichId ) const
     switch( nWhichId )
     {
     case FIELD_PROP_BYTE1:
-        rAny <<= (sal_Int8)nLevel;
+        rAny <<= static_cast<sal_Int8>(m_State.nLevel);
         break;
 
     case FIELD_PROP_USHORT1:
@@ -236,7 +263,10 @@ bool SwChapterField::PutValue( const uno::Any& rAny, sal_uInt16 nWhichId )
         sal_Int8 nTmp = 0;
         rAny >>= nTmp;
         if(nTmp >= 0 && nTmp < MAXLEVEL)
-            nLevel = nTmp;
+        {
+            m_State.nLevel = nTmp;
+            m_StateRLHidden.nLevel = nTmp;
+        }
         else
             bRet = false;
         break;

@@ -8,17 +8,17 @@
  */
 
 #include <memory>
-#include "colorscale.hxx"
-#include "document.hxx"
-#include "formulacell.hxx"
-#include "fillinfo.hxx"
-#include "bitmaps.hlst"
-#include "scresid.hxx"
-#include "tokenarray.hxx"
-#include "refupdatecontext.hxx"
+#include <colorscale.hxx>
+#include <document.hxx>
+#include <formulacell.hxx>
+#include <fillinfo.hxx>
+#include <bitmaps.hlst>
+#include <tokenarray.hxx>
+#include <refupdatecontext.hxx>
+#include <refdata.hxx>
 
 #include <formula/token.hxx>
-#include <o3tl/make_unique.hxx>
+#include <vcl/bitmapex.hxx>
 
 #include <algorithm>
 #include <cassert>
@@ -36,7 +36,14 @@ ScFormulaListener::ScFormulaListener(ScDocument* pDoc):
 {
 }
 
-void ScFormulaListener::startListening(ScTokenArray* pArr, const ScRange& rRange)
+ScFormulaListener::ScFormulaListener(ScDocument* pDoc, const ScRangeList& rRange):
+    mbDirty(false),
+    mpDoc(pDoc)
+{
+    startListening(rRange);
+}
+
+void ScFormulaListener::startListening(const ScTokenArray* pArr, const ScRange& rRange)
 {
     if (!pArr || mpDoc->IsClipOrUndo())
         return;
@@ -47,8 +54,8 @@ void ScFormulaListener::startListening(ScTokenArray* pArr, const ScRange& rRange
         {
             case formula::svSingleRef:
             {
-                ScAddress aCell = t->GetSingleRef()->toAbs(rRange.aStart);
-                ScAddress aCell2 = t->GetSingleRef()->toAbs(rRange.aEnd);
+                ScAddress aCell = t->GetSingleRef()->toAbs(mpDoc, rRange.aStart);
+                ScAddress aCell2 = t->GetSingleRef()->toAbs(mpDoc, rRange.aEnd);
                 ScRange aRange(aCell, aCell2);
                 if (aRange.IsValid())
                     mpDoc->StartListeningArea(aRange, false, this);
@@ -58,10 +65,10 @@ void ScFormulaListener::startListening(ScTokenArray* pArr, const ScRange& rRange
             {
                 const ScSingleRefData& rRef1 = *t->GetSingleRef();
                 const ScSingleRefData& rRef2 = *t->GetSingleRef2();
-                ScAddress aCell1 = rRef1.toAbs(rRange.aStart);
-                ScAddress aCell2 = rRef2.toAbs(rRange.aStart);
-                ScAddress aCell3 = rRef1.toAbs(rRange.aEnd);
-                ScAddress aCell4 = rRef2.toAbs(rRange.aEnd);
+                ScAddress aCell1 = rRef1.toAbs(mpDoc, rRange.aStart);
+                ScAddress aCell2 = rRef2.toAbs(mpDoc, rRange.aStart);
+                ScAddress aCell3 = rRef1.toAbs(mpDoc, rRange.aEnd);
+                ScAddress aCell4 = rRef2.toAbs(mpDoc, rRange.aEnd);
                 ScRange aRange1(aCell1, aCell3);
                 ScRange aRange2(aCell2, aCell4);
                 aRange1.ExtendTo(aRange2);
@@ -71,11 +78,11 @@ void ScFormulaListener::startListening(ScTokenArray* pArr, const ScRange& rRange
                     {   // automagically
                         if ( rRef1.IsColRel() )
                         {   // ColName
-                            aRange1.aEnd.SetRow(MAXROW);
+                            aRange1.aEnd.SetRow(mpDoc->MaxRow());
                         }
                         else
                         {   // RowName
-                            aRange1.aEnd.SetCol(MAXCOL);
+                            aRange1.aEnd.SetCol(mpDoc->MaxCol());
                         }
                     }
                     mpDoc->StartListeningArea(aRange1, false, this);
@@ -88,7 +95,20 @@ void ScFormulaListener::startListening(ScTokenArray* pArr, const ScRange& rRange
     }
 }
 
-void ScFormulaListener::addTokenArray(ScTokenArray* pArray, const ScRange& rRange)
+void ScFormulaListener::startListening(const ScRangeList& rRange)
+{
+    if (mpDoc->IsClipOrUndo())
+        return;
+
+    size_t nLength = rRange.size();
+    for (size_t i = 0; i < nLength; ++i)
+    {
+        const ScRange& aRange = rRange[i];
+        mpDoc->StartListeningArea(aRange, false, this);
+    }
+}
+
+void ScFormulaListener::addTokenArray(const ScTokenArray* pArray, const ScRange& rRange)
 {
     startListening(pArray, rRange);
 }
@@ -103,7 +123,7 @@ void ScFormulaListener::stopListening()
     if (mpDoc->IsClipOrUndo())
         return;
 
-    this->EndListeningAll();
+    EndListeningAll();
 }
 
 ScFormulaListener::~ScFormulaListener()
@@ -131,25 +151,26 @@ bool ScFormulaListener::NeedsRepaint() const
 
 ScColorScaleEntry::ScColorScaleEntry():
     mnVal(0),
-    meType(COLORSCALE_VALUE),
-    mpFormat(nullptr)
+    mpFormat(nullptr),
+    meType(COLORSCALE_VALUE)
 {
 }
 
-ScColorScaleEntry::ScColorScaleEntry(double nVal, const Color& rCol):
+ScColorScaleEntry::ScColorScaleEntry(double nVal, const Color& rCol, ScColorScaleEntryType eType):
     mnVal(nVal),
+    mpFormat(nullptr),
     maColor(rCol),
-    meType(COLORSCALE_VALUE),
-    mpFormat(nullptr)
+    meType(eType)
 {
 }
 
 ScColorScaleEntry::ScColorScaleEntry(const ScColorScaleEntry& rEntry):
     mnVal(rEntry.mnVal),
+    mpFormat(rEntry.mpFormat),
     maColor(rEntry.maColor),
-    meType(rEntry.meType),
-    mpFormat(rEntry.mpFormat)
+    meType(rEntry.meType)
 {
+    setListener();
     if(rEntry.mpCell)
     {
         mpCell.reset(new ScFormulaCell(*rEntry.mpCell, *rEntry.mpCell->GetDocument(), rEntry.mpCell->aPos, ScCloneFlags::NoMakeAbsExternal));
@@ -160,11 +181,12 @@ ScColorScaleEntry::ScColorScaleEntry(const ScColorScaleEntry& rEntry):
 
 ScColorScaleEntry::ScColorScaleEntry(ScDocument* pDoc, const ScColorScaleEntry& rEntry):
     mnVal(rEntry.mnVal),
-    maColor(rEntry.maColor),
     mpCell(),
-    meType(rEntry.meType),
-    mpFormat(rEntry.mpFormat)
+    mpFormat(rEntry.mpFormat),
+    maColor(rEntry.maColor),
+    meType(rEntry.meType)
 {
+    setListener();
     if(rEntry.mpCell)
     {
         mpCell.reset(new ScFormulaCell(*rEntry.mpCell, *rEntry.mpCell->GetDocument(), rEntry.mpCell->aPos, ScCloneFlags::NoMakeAbsExternal));
@@ -229,42 +251,55 @@ void ScColorScaleEntry::SetValue(double nValue)
 {
     mnVal = nValue;
     mpCell.reset();
+    setListener();
 }
 
-void ScColorScaleEntry::UpdateReference( sc::RefUpdateContext& rCxt )
+void ScColorScaleEntry::UpdateReference( const sc::RefUpdateContext& rCxt )
 {
     if (!mpCell)
+    {
+        setListener();
         return;
+    }
 
     mpCell->UpdateReference(rCxt);
     mpListener.reset(new ScFormulaListener(mpCell.get()));
     SetRepaintCallback(mpFormat);
 }
 
-void ScColorScaleEntry::UpdateInsertTab( sc::RefUpdateInsertTabContext& rCxt )
+void ScColorScaleEntry::UpdateInsertTab( const sc::RefUpdateInsertTabContext& rCxt )
 {
     if (!mpCell)
+    {
+        setListener();
         return;
+    }
 
     mpCell->UpdateInsertTab(rCxt);
     mpListener.reset(new ScFormulaListener(mpCell.get()));
     SetRepaintCallback(mpFormat);
 }
 
-void ScColorScaleEntry::UpdateDeleteTab( sc::RefUpdateDeleteTabContext& rCxt )
+void ScColorScaleEntry::UpdateDeleteTab( const sc::RefUpdateDeleteTabContext& rCxt )
 {
     if (!mpCell)
+    {
+        setListener();
         return;
+    }
 
     mpCell->UpdateDeleteTab(rCxt);
     mpListener.reset(new ScFormulaListener(mpCell.get()));
     SetRepaintCallback(mpFormat);
 }
 
-void ScColorScaleEntry::UpdateMoveTab( sc::RefUpdateMoveTabContext& rCxt )
+void ScColorScaleEntry::UpdateMoveTab( const sc::RefUpdateMoveTabContext& rCxt )
 {
     if (!mpCell)
+    {
+        setListener();
         return;
+    }
 
     SCTAB nTabNo = rCxt.getNewTab(mpCell->aPos.Tab());
     mpCell->UpdateMoveTab(rCxt, nTabNo);
@@ -280,8 +315,40 @@ void ScColorScaleEntry::SetColor(const Color& rColor)
 void ScColorScaleEntry::SetRepaintCallback(ScConditionalFormat* pFormat)
 {
     mpFormat = pFormat;
+    setListener();
     if (mpFormat && mpListener)
         mpListener->setCallback([&]() { mpFormat->DoRepaint();});
+}
+
+void ScColorScaleEntry::SetType( ScColorScaleEntryType eType )
+{
+    meType = eType;
+    if(eType != COLORSCALE_FORMULA)
+    {
+        mpCell.reset();
+        mpListener.reset();
+    }
+
+    setListener();
+}
+
+void ScColorScaleEntry::setListener()
+{
+    if (!mpFormat)
+        return;
+
+    if (meType == COLORSCALE_PERCENT || meType == COLORSCALE_PERCENTILE
+            || meType == COLORSCALE_MIN || meType == COLORSCALE_MAX
+            || meType == COLORSCALE_AUTO)
+    {
+        mpListener.reset(new ScFormulaListener(mpFormat->GetDocument(), mpFormat->GetRange()));
+        mpListener->setCallback([&]() { mpFormat->DoRepaint();});
+    }
+}
+
+void ScColorScaleEntry::SetRepaintCallback(const std::function<void()>& func)
+{
+    mpListener->setCallback(func);
 }
 
 ScColorFormat::ScColorFormat(ScDocument* pDoc)
@@ -307,9 +374,9 @@ ScColorScaleFormat::ScColorScaleFormat(ScDocument* pDoc):
 ScColorScaleFormat::ScColorScaleFormat(ScDocument* pDoc, const ScColorScaleFormat& rFormat):
     ScColorFormat(pDoc)
 {
-    for(ScColorScaleEntries::const_iterator itr = rFormat.begin(); itr != rFormat.end(); ++itr)
+    for(const auto& rxEntry : rFormat)
     {
-        maColorScales.push_back(o3tl::make_unique<ScColorScaleEntry>(pDoc, **itr));
+        maColorScales.emplace_back(new ScColorScaleEntry(pDoc, *rxEntry));
     }
 }
 
@@ -333,18 +400,8 @@ void ScColorScaleFormat::SetParent(ScConditionalFormat* pFormat)
 
 void ScColorScaleFormat::AddEntry( ScColorScaleEntry* pEntry )
 {
-    maColorScales.push_back(std::unique_ptr<ScColorScaleEntry>( pEntry ));
+    maColorScales.push_back(std::unique_ptr<ScColorScaleEntry, o3tl::default_delete<ScColorScaleEntry>>(pEntry));
     maColorScales.back()->SetRepaintCallback(mpParent);
-}
-
-void ScColorScaleEntry::SetType( ScColorScaleEntryType eType )
-{
-    meType = eType;
-    if(eType != COLORSCALE_FORMULA)
-    {
-        mpCell.reset();
-        mpListener.reset();
-    }
 }
 
 double ScColorScaleFormat::GetMinValue() const
@@ -393,13 +450,13 @@ std::vector<double>& ScColorFormat::getValues() const
         const ScRangeList& aRanges = GetRange();
         for(size_t i = 0; i < n; ++i)
         {
-            const ScRange* pRange = aRanges[i];
-            SCTAB nTab = pRange->aStart.Tab();
+            const ScRange & rRange = aRanges[i];
+            SCTAB nTab = rRange.aStart.Tab();
 
-            SCCOL nColStart = pRange->aStart.Col();
-            SCROW nRowStart = pRange->aStart.Row();
-            SCCOL nColEnd = pRange->aEnd.Col();
-            SCROW nRowEnd = pRange->aEnd.Row();
+            SCCOL nColStart = rRange.aStart.Col();
+            SCROW nRowStart = rRange.aStart.Row();
+            SCCOL nColEnd = rRange.aEnd.Col();
+            SCROW nRowEnd = rRange.aEnd.Row();
 
             if(nRowEnd == MAXROW)
             {
@@ -464,7 +521,7 @@ sal_uInt8 GetColorValue( double nVal, double nVal1, sal_uInt8 nColVal1, double n
     if (nVal >= nVal2)
         return nColVal2;
 
-    sal_uInt8 nColVal = static_cast<sal_uInt8>((nVal - nVal1)/(nVal2-nVal1)*(nColVal2-nColVal1))+nColVal1;
+    sal_uInt8 nColVal = static_cast<int>((nVal - nVal1)/(nVal2-nVal1)*(nColVal2-nColVal1))+nColVal1;
     return nColVal;
 }
 
@@ -484,7 +541,7 @@ Color CalcColor( double nVal, double nVal1, const Color& rCol1, double nVal2, co
 double GetPercentile( const std::vector<double>& rArray, double fPercentile )
 {
     size_t nSize = rArray.size();
-    size_t nIndex = (size_t)::rtl::math::approxFloor( fPercentile * (nSize-1));
+    size_t nIndex = static_cast<size_t>(::rtl::math::approxFloor( fPercentile * (nSize-1)));
     double fDiff = fPercentile * (nSize-1) - ::rtl::math::approxFloor( fPercentile * (nSize-1));
     std::vector<double>::const_iterator iter = rArray.begin() + nIndex;
     if (fDiff == 0.0)
@@ -499,7 +556,7 @@ double GetPercentile( const std::vector<double>& rArray, double fPercentile )
 
 }
 
-double ScColorScaleFormat::CalcValue(double nMin, double nMax, ScColorScaleEntries::const_iterator& itr) const
+double ScColorScaleFormat::CalcValue(double nMin, double nMax, const ScColorScaleEntries::const_iterator& itr) const
 {
     switch((*itr)->GetType())
     {
@@ -528,17 +585,17 @@ double ScColorScaleFormat::CalcValue(double nMin, double nMax, ScColorScaleEntri
     return (*itr)->GetValue();
 }
 
-Color* ScColorScaleFormat::GetColor( const ScAddress& rAddr ) const
+std::optional<Color> ScColorScaleFormat::GetColor( const ScAddress& rAddr ) const
 {
     ScRefCellValue rCell(*mpDoc, rAddr);
     if(!rCell.hasNumeric())
-        return nullptr;
+        return std::optional<Color>();
 
     // now we have for sure a value
     double nVal = rCell.getValue();
 
     if (maColorScales.size() < 2)
-        return nullptr;
+        return std::optional<Color>();
 
     double nMin = std::numeric_limits<double>::max();
     double nMax = std::numeric_limits<double>::min();
@@ -546,7 +603,7 @@ Color* ScColorScaleFormat::GetColor( const ScAddress& rAddr ) const
 
     // this check is for safety
     if(nMin >= nMax)
-        return nullptr;
+        return std::optional<Color>();
 
     ScColorScaleEntries::const_iterator itr = begin();
     double nValMin = CalcValue(nMin, nMax, itr);
@@ -567,7 +624,7 @@ Color* ScColorScaleFormat::GetColor( const ScAddress& rAddr ) const
 
     Color aColor = CalcColor(nVal, nValMin, rColMin, nValMax, rColMax);
 
-    return new Color(aColor);
+    return aColor;
 }
 
 void ScColorScaleFormat::UpdateReference( sc::RefUpdateContext& rCxt )
@@ -594,9 +651,9 @@ void ScColorScaleFormat::UpdateMoveTab( sc::RefUpdateMoveTabContext& rCxt )
         (*it)->UpdateMoveTab(rCxt);
 }
 
-condformat::ScFormatEntryType ScColorScaleFormat::GetType() const
+ScFormatEntry::Type ScColorScaleFormat::GetType() const
 {
-    return condformat::COLORSCALE;
+    return Type::Colorscale;
 }
 
 ScColorScaleEntries::iterator ScColorScaleFormat::begin()
@@ -695,9 +752,9 @@ void ScDataBarFormat::SetParent(ScConditionalFormat* pFormat)
     ScColorFormat::SetParent(pFormat);
 }
 
-condformat::ScFormatEntryType ScDataBarFormat::GetType() const
+ScFormatEntry::Type ScDataBarFormat::GetType() const
 {
-    return condformat::DATABAR;
+    return Type::Databar;
 }
 
 void ScDataBarFormat::UpdateReference( sc::RefUpdateContext& rCxt )
@@ -775,7 +832,7 @@ double ScDataBarFormat::getMax(double nMin, double nMax) const
     return mpFormatData->mpUpperLimit->GetValue();
 }
 
-ScDataBarInfo* ScDataBarFormat::GetDataBarInfo(const ScAddress& rAddr) const
+std::unique_ptr<ScDataBarInfo> ScDataBarFormat::GetDataBarInfo(const ScAddress& rAddr) const
 {
     ScRefCellValue rCell(*mpDoc, rAddr);
     if(!rCell.hasNumeric())
@@ -792,7 +849,7 @@ ScDataBarInfo* ScDataBarFormat::GetDataBarInfo(const ScAddress& rAddr) const
 
     double nValue = rCell.getValue();
 
-    ScDataBarInfo* pInfo = new ScDataBarInfo;
+    std::unique_ptr<ScDataBarInfo> pInfo(new ScDataBarInfo);
     if(mpFormatData->meAxisPosition == databar::NONE)
     {
         if(nValue <= nMin)
@@ -879,7 +936,7 @@ ScDataBarInfo* ScDataBarFormat::GetDataBarInfo(const ScAddress& rAddr) const
     {
         if(mpFormatData->mpNegativeColor)
         {
-            pInfo->maColor = *mpFormatData->mpNegativeColor.get();
+            pInfo->maColor = *mpFormatData->mpNegativeColor;
         }
         else
         {
@@ -920,7 +977,7 @@ ScIconSetFormatData::ScIconSetFormatData(ScIconSetFormatData const& rOther)
     m_Entries.reserve(rOther.m_Entries.size());
     for (auto const& it : rOther.m_Entries)
     {
-        m_Entries.push_back(o3tl::make_unique<ScColorScaleEntry>(*it));
+        m_Entries.emplace_back(new ScColorScaleEntry(*it));
     }
 }
 
@@ -966,7 +1023,7 @@ const ScIconSetFormatData* ScIconSetFormat::GetIconSetData() const
     return mpFormatData.get();
 }
 
-ScIconSetInfo* ScIconSetFormat::GetIconSetInfo(const ScAddress& rAddr) const
+std::unique_ptr<ScIconSetInfo> ScIconSetFormat::GetIconSetInfo(const ScAddress& rAddr) const
 {
     ScRefCellValue rCell(*mpDoc, rAddr);
     if(!rCell.hasNumeric())
@@ -997,7 +1054,7 @@ ScIconSetInfo* ScIconSetFormat::GetIconSetInfo(const ScAddress& rAddr) const
     if(nVal >= nValMax)
         ++nIndex;
 
-    ScIconSetInfo* pInfo = new ScIconSetInfo;
+    std::unique_ptr<ScIconSetInfo> pInfo(new ScIconSetInfo);
 
     if(mpFormatData->mbReverse)
     {
@@ -1011,7 +1068,6 @@ ScIconSetInfo* ScIconSetFormat::GetIconSetInfo(const ScAddress& rAddr) const
         sal_Int32 nCustomIndex = mpFormatData->maCustomVector[nIndex].second;
         if (nCustomIndex == -1)
         {
-            delete pInfo;
             return nullptr;
         }
 
@@ -1028,9 +1084,9 @@ ScIconSetInfo* ScIconSetFormat::GetIconSetInfo(const ScAddress& rAddr) const
     return pInfo;
 }
 
-condformat::ScFormatEntryType ScIconSetFormat::GetType() const
+ScFormatEntry::Type ScIconSetFormat::GetType() const
 {
-    return condformat::ICONSET;
+    return Type::Iconset;
 }
 
 void ScIconSetFormat::UpdateReference( sc::RefUpdateContext& rCxt )
@@ -1109,7 +1165,7 @@ double ScIconSetFormat::GetMaxValue() const
     }
 }
 
-double ScIconSetFormat::CalcValue(double nMin, double nMax, ScIconSetFormat::const_iterator& itr) const
+double ScIconSetFormat::CalcValue(double nMin, double nMax, const ScIconSetFormat::const_iterator& itr) const
 {
     switch ((*itr)->GetType())
     {
@@ -1270,7 +1326,7 @@ struct ScIconSetBitmapMap {
     const OUStringLiteral* pBitmaps;
 };
 
-static const ScIconSetBitmapMap aBitmapMap[] = {
+const ScIconSetBitmapMap aBitmapMap[] = {
     { IconSet_3Arrows, a3Arrows },
     { IconSet_3ArrowsGray, a3ArrowsGray },
     { IconSet_3Flags, a3Flags },
@@ -1295,10 +1351,39 @@ static const ScIconSetBitmapMap aBitmapMap[] = {
     { IconSet_5Boxes, a5Boxes }
 };
 
+const ScIconSetMap* findIconSetType(ScIconSetType eType)
+{
+    const ScIconSetMap* pMap = ScIconSetFormat::g_IconSetMap;
+    for (; pMap->pName; ++pMap)
+    {
+        if (pMap->eType == eType)
+            return pMap;
+    }
+
+    return nullptr;
 }
 
-BitmapEx& ScIconSetFormat::getBitmap(sc::IconSetBitmapMap & rIconSetBitmapMap,
-        ScIconSetType const eType, sal_Int32 const nIndex)
+}
+
+const char* ScIconSetFormat::getIconSetName( ScIconSetType eType )
+{
+    const ScIconSetMap* pMap = findIconSetType(eType);
+    if (pMap)
+        return pMap->pName;
+
+    return "";
+}
+
+sal_Int32 ScIconSetFormat::getIconSetElements( ScIconSetType eType )
+{
+    const ScIconSetMap* pMap = findIconSetType(eType);
+    if (pMap)
+        return pMap->nElements;
+
+    return 0;
+}
+
+OUString ScIconSetFormat::getIconName(ScIconSetType const eType, sal_Int32 const nIndex)
 {
     OUString sBitmap;
 
@@ -1313,11 +1398,19 @@ BitmapEx& ScIconSetFormat::getBitmap(sc::IconSetBitmapMap & rIconSetBitmapMap,
 
     assert(!sBitmap.isEmpty());
 
+    return sBitmap;
+}
+
+BitmapEx& ScIconSetFormat::getBitmap(sc::IconSetBitmapMap & rIconSetBitmapMap,
+        ScIconSetType const eType, sal_Int32 const nIndex)
+{
+    OUString sBitmap(ScIconSetFormat::getIconName(eType, nIndex));
+
     std::map<OUString, BitmapEx>::iterator itr = rIconSetBitmapMap.find(sBitmap);
     if (itr != rIconSetBitmapMap.end())
         return itr->second;
 
-    BitmapEx aBitmap = BitmapEx(sBitmap);
+    BitmapEx aBitmap(sBitmap);
     std::pair<OUString, BitmapEx> aPair(sBitmap, aBitmap);
     std::pair<std::map<OUString, BitmapEx>::iterator, bool> itrNew = rIconSetBitmapMap.insert(aPair);
     assert(itrNew.second);

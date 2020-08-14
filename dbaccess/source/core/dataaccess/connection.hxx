@@ -21,13 +21,15 @@
 
 #include <sal/config.h>
 
+#include <atomic>
+#include <cstddef>
 #include <map>
 
-#include "apitools.hxx"
-#include "querycontainer.hxx"
-#include "tablecontainer.hxx"
-#include "viewcontainer.hxx"
-#include "RefreshListener.hxx"
+#include <apitools.hxx>
+#include <querycontainer.hxx>
+#include <tablecontainer.hxx>
+#include <viewcontainer.hxx>
+#include <RefreshListener.hxx>
 
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
@@ -41,9 +43,9 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/sdb/tools/XConnectionTools.hpp>
 #include <com/sun/star/sdb/application/XTableUIProvider.hpp>
+#include <com/sun/star/sdbc/XWarningsSupplier.hpp>
 
 #include <cppuhelper/implbase13.hxx>
-#include <comphelper/stl_types.hxx>
 #include <connectivity/ConnectionWrapper.hxx>
 #include <connectivity/CommonTools.hxx>
 #include <connectivity/warningscontainer.hxx>
@@ -68,13 +70,12 @@ typedef cppu::ImplHelper13  <   css::container::XChild
 
 class ODatabaseSource;
 // OConnection
-class OConnection           :public ::cppu::BaseMutex
+class OConnection final     :public ::cppu::BaseMutex
                             ,public OSubComponent
                             ,public ::connectivity::OConnectionWrapper
                             ,public OConnection_Base
                             ,public IRefreshListener
 {
-protected:
     css::uno::Reference< css::sdbcx::XTablesSupplier >
                                           m_xMasterTables; // just to avoid the recreation of the catalog
     connectivity::OWeakRefArray           m_aStatements;
@@ -95,19 +96,18 @@ protected:
     typedef std::map< OUString, css::uno::Reference< css::uno::XInterface> > TSupportServices;
     TSupportServices                m_aSupportServices;
 
-    OTableContainer*                m_pTables;
-    OViewContainer*                 m_pViews;
+    std::unique_ptr<OTableContainer> m_pTables;
+    std::unique_ptr<OViewContainer>  m_pViews;
     ::dbtools::WarningsContainer    m_aWarnings;
-    oslInterlockedCount             m_nInAppend;
+    std::atomic<std::size_t>        m_nInAppend;
     bool                            m_bSupportsViews;       // true when the getTableTypes return "VIEW" as type
     bool                            m_bSupportsUsers;
     bool                            m_bSupportsGroups;
 
-protected:
     virtual ~OConnection() override;
 public:
     OConnection(ODatabaseSource& _rDB
-                ,css::uno::Reference< css::sdbc::XConnection >& _rxMaster
+                ,css::uno::Reference< css::sdbc::XConnection > const & _rxMaster
                 ,const css::uno::Reference< css::uno::XComponentContext >& _rxORB);
 
 // css::lang::XTypeProvider
@@ -196,7 +196,7 @@ public:
     // IRefreshListener
     virtual void refresh(const css::uno::Reference< css::container::XNameAccess >& _rToBeRefreshed) override;
 
-protected:
+private:
     /// @throws css::lang::DisposedException
     void checkDisposed()
     {
@@ -206,7 +206,6 @@ protected:
 
     css::uno::Reference< css::sdbcx::XTablesSupplier > const & getMasterTables();
 
-private:
     /** checks whether or not there are naming conflicts between tables and queries
     */
     void    impl_checkTableQueryNames_nothrow();

@@ -22,6 +22,8 @@
 
 #include <sal/config.h>
 
+#include <rtl/ustring.hxx>
+
 #include <vector>
 
 namespace dbaui
@@ -45,9 +47,8 @@ namespace dbaui
         GrantIndexAccess() { }
     };
 
-    struct OIndex
+    struct OIndex final
     {
-    protected:
         OUString     sOriginalName;
         bool            bModified;
 
@@ -58,7 +59,6 @@ namespace dbaui
         bool            bUnique;
         IndexFields         aFields;
 
-    public:
         OIndex(const OUString& _rOriginalName)
             : sOriginalName(_rOriginalName), bModified(false), sName(_rOriginalName), bPrimaryKey(false), bUnique(false)
         {

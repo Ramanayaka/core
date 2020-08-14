@@ -18,7 +18,6 @@
  */
 #include "vbafind.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
 #include "vbareplacement.hxx"
 #include <ooo/vba/word/WdFindWrap.hpp>
 #include <ooo/vba/word/WdReplace.hpp>
@@ -392,18 +391,16 @@ SwVbaFind::ClearFormatting(  )
 OUString
 SwVbaFind::getServiceImplName()
 {
-    return OUString("SwVbaFind");
+    return "SwVbaFind";
 }
 
 uno::Sequence< OUString >
 SwVbaFind::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Find";
-    }
+        "ooo.vba.word.Find"
+    };
     return aServiceNames;
 }
 

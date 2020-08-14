@@ -36,27 +36,16 @@ class EDITENG_DLLPUBLIC SvxTextRotateItem : public SfxUInt16Item
 public:
     SvxTextRotateItem(sal_uInt16 nValue, const sal_uInt16 nId);
 
-    virtual SfxPoolItem*    Clone(SfxItemPool *pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream & rStrm, sal_uInt16 nIVer) const override;
-    virtual sal_uInt16      GetVersion(sal_uInt16 nFileVersion) const override;
+    virtual SvxTextRotateItem* Clone(SfxItemPool *pPool = nullptr) const override;
 
     virtual bool GetPresentation(SfxItemPresentation ePres,
         MapUnit eCoreMetric,
         MapUnit ePresMetric,
         OUString &rText,
-        const IntlWrapper * = nullptr) const override;
+        const IntlWrapper&) const override;
 
     virtual bool            QueryValue(css::uno::Any& rVal, sal_uInt8 nMemberId = 0) const override;
     virtual bool            PutValue(const css::uno::Any& rVal, sal_uInt8 nMemberId) override;
-
-    SvxTextRotateItem& operator=(const SvxTextRotateItem& rItem)
-    {
-        SetValue(rItem.GetValue());
-        return *this;
-    }
-
-    virtual bool operator==(const SfxPoolItem&) const override;
 
     // our currently only degree values
     void SetTopToBottom() { SetValue(2700); }
@@ -65,7 +54,7 @@ public:
     bool IsBottomToTop() const { return  900 == GetValue(); }
     bool IsVertical() const     { return IsTopToBottom() || IsBottomToTop(); }
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 
@@ -80,7 +69,7 @@ public:
 
 */
 
-class EDITENG_DLLPUBLIC SvxCharRotateItem : public SvxTextRotateItem
+class EDITENG_DLLPUBLIC SvxCharRotateItem final : public SvxTextRotateItem
 {
     bool bFitToLine;
 public:
@@ -90,33 +79,23 @@ public:
                        bool bFitIntoLine /*= false*/,
                        const sal_uInt16 nId );
 
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream & rStrm, sal_uInt16 nIVer) const override;
-    virtual sal_uInt16          GetVersion( sal_uInt16 nFileVersion ) const override;
+    virtual SvxCharRotateItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                     OUString &rText,
-                                    const IntlWrapper * = nullptr ) const override;
+                                    const IntlWrapper& ) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-
-    SvxCharRotateItem& operator=( const SvxCharRotateItem& rItem )
-    {
-        SetValue( rItem.GetValue() );
-        SetFitToLine( rItem.IsFitToLine() );
-        return *this;
-    }
 
     virtual bool             operator==( const SfxPoolItem& ) const override;
 
     bool IsFitToLine() const                { return bFitToLine; }
     void SetFitToLine( bool b )             { bFitToLine = b; }
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 #endif

@@ -17,40 +17,38 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_folders.h>
-
-#include "hsqldb/HDriver.hxx"
-#include "hsqldb/HConnection.hxx"
+#include <hsqldb/HDriver.hxx>
+#include <hsqldb/HConnection.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <connectivity/dbexception.hxx>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/sdbc/DriverManager.hpp>
-#include <com/sun/star/sdbc/XDriverAccess.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/embed/XTransactionBroadcaster.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
-#include "TConnection.hxx"
-#include "hsqldb/HStorageMap.hxx"
+#include <TConnection.hxx>
+#include <hsqldb/HStorageMap.hxx>
 #include <jvmfwk/framework.hxx>
 #include <com/sun/star/reflection/XProxyFactory.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
-#include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/util/XFlushable.hpp>
 #include "HTerminateListener.hxx"
-#include "hsqldb/HCatalog.hxx"
+#include <hsqldb/HCatalog.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <osl/file.h>
 #include <osl/process.h>
 #include <comphelper/namedvaluecollection.hxx>
-#include <comphelper/processfactory.hxx>
-#include <comphelper/string.hxx>
+#include <comphelper/propertysequence.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <comphelper/types.hxx>
 #include <unotools/confignode.hxx>
 #include <unotools/ucbstreamhelper.hxx>
-#include "resource/hsqldb_res.hrc"
-#include "resource/sharedresources.hxx"
+#include <strings.hrc>
+#include <resource/sharedresources.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <tools/diagnose_ex.h>
 
@@ -69,17 +67,11 @@ namespace connectivity
     using namespace css::lang;
     using namespace css::embed;
     using namespace css::io;
-    using namespace css::task;
     using namespace css::util;
     using namespace css::reflection;
 
-    namespace hsqldb
-    {
-        Reference< XInterface >  SAL_CALL ODriverDelegator_CreateInstance(const Reference< css::lang::XMultiServiceFactory >& _rxFac)
-        {
-            return *(new ODriverDelegator(comphelper::getComponentContext(_rxFac)));
-        }
-    }
+    constexpr OUStringLiteral IMPL_NAME = "com.sun.star.sdbcx.comp.hsqldb.Driver";
+
 
 
     ODriverDelegator::ODriverDelegator(const Reference< XComponentContext >& _rxContext)
@@ -108,9 +100,9 @@ namespace connectivity
 
         try
         {
-            for (TWeakPairVector::iterator i = m_aConnections.begin(); m_aConnections.end() != i; ++i)
+            for (const auto& rConnection : m_aConnections)
             {
-                Reference<XInterface > xTemp = i->first.get();
+                Reference<XInterface > xTemp = rConnection.first.get();
                 ::comphelper::disposeComponent(xTemp);
             }
         }
@@ -140,22 +132,19 @@ namespace connectivity
     {
         OUString lcl_getPermittedJavaMethods_nothrow( const Reference< XComponentContext >& _rxContext )
         {
-            OUStringBuffer aConfigPath;
-            aConfigPath.append( "/org.openoffice.Office.DataAccess/DriverSettings/" );
-            aConfigPath.append     ( ODriverDelegator::getImplementationName_Static() );
-            aConfigPath.append( "/PermittedJavaMethods" );
+            OUString aConfigPath =
+                "/org.openoffice.Office.DataAccess/DriverSettings/" +
+                IMPL_NAME +
+                "/PermittedJavaMethods";
             ::utl::OConfigurationTreeRoot aConfig( ::utl::OConfigurationTreeRoot::createWithComponentContext(
-                _rxContext, aConfigPath.makeStringAndClear() ) );
+                _rxContext, aConfigPath ) );
 
             OUStringBuffer aPermittedMethods;
-            Sequence< OUString > aNodeNames( aConfig.getNodeNames() );
-            for (   const OUString* pNodeNames = aNodeNames.getConstArray();
-                    pNodeNames != aNodeNames.getConstArray() + aNodeNames.getLength();
-                    ++pNodeNames
-                )
+            const Sequence< OUString > aNodeNames( aConfig.getNodeNames() );
+            for ( auto const & nodeName : aNodeNames )
             {
                 OUString sPermittedMethod;
-                OSL_VERIFY( aConfig.getNodeValue( *pNodeNames ) >>= sPermittedMethod );
+                OSL_VERIFY( aConfig.getNodeValue( nodeName ) >>= sPermittedMethod );
 
                 if ( !aPermittedMethods.isEmpty() )
                     aPermittedMethods.append( ';' );
@@ -260,7 +249,7 @@ namespace connectivity
                         if ( xStream.is() )
                         {
                             std::unique_ptr<SvStream> pStream( ::utl::UcbStreamHelper::CreateStream(xStream) );
-                            if ( pStream.get() )
+                            if (pStream)
                             {
                                 OString sLine;
                                 OString sVersionString;
@@ -268,8 +257,9 @@ namespace connectivity
                                 {
                                     if ( sLine.isEmpty() )
                                         continue;
-                                    const OString sIniKey = sLine.getToken(0, '=');
-                                    const OString sValue = sLine.getToken(1, '=');
+                                    sal_Int32 nIdx {0};
+                                    const OString sIniKey = sLine.getToken(0, '=', nIdx);
+                                    const OString sValue = sLine.getToken(0, '=', nIdx);
                                     if( sIniKey == "hsqldb.compatible_version" )
                                     {
                                         sVersionString = sValue;
@@ -284,9 +274,10 @@ namespace connectivity
                                 }
                                 if (!sVersionString.isEmpty())
                                 {
-                                    const sal_Int32 nMajor = sVersionString.getToken(0, '.').toInt32();
-                                    const sal_Int32 nMinor = sVersionString.getToken(1, '.').toInt32();
-                                    const sal_Int32 nMicro = sVersionString.getToken(2, '.').toInt32();
+                                    sal_Int32 nIdx {0};
+                                    const sal_Int32 nMajor = sVersionString.getToken(0, '.', nIdx).toInt32();
+                                    const sal_Int32 nMinor = sVersionString.getToken(0, '.', nIdx).toInt32();
+                                    const sal_Int32 nMicro = sVersionString.getToken(0, '.', nIdx).toInt32();
                                     if (     nMajor > 1
                                         || ( nMajor == 1 && nMinor > 8 )
                                         || ( nMajor == 1 && nMinor == 8 && nMicro > 0 ) )
@@ -342,27 +333,23 @@ namespace connectivity
                 if ( xOrig.is() )
                 {
                     // now we have to set the URL to get the correct answer for metadata()->getURL()
-                    Reference< XUnoTunnel> xTunnel(xOrig,UNO_QUERY);
-                    if ( xTunnel.is() )
-                    {
-                        OMetaConnection* pMetaConnection = reinterpret_cast<OMetaConnection*>(xTunnel->getSomething( OMetaConnection::getUnoTunnelImplementationId() ));
-                        if ( pMetaConnection )
-                            pMetaConnection->setURL(url);
-                    }
+                    auto pMetaConnection = comphelper::getUnoTunnelImplementation<OMetaConnection>(xOrig);
+                    if ( pMetaConnection )
+                        pMetaConnection->setURL(url);
 
                     Reference<XComponent> xComp(xOrig,UNO_QUERY);
                     if ( xComp.is() )
                         xComp->addEventListener(this);
 
                     // we want to close all connections when the office shuts down
-                    static Reference< XTerminateListener> s_xTerminateListener;
-                    if( !s_xTerminateListener.is() )
+                    static Reference< XTerminateListener> s_xTerminateListener = [&]()
                     {
                         Reference< XDesktop2 > xDesktop = Desktop::create( m_xContext );
 
-                        s_xTerminateListener = new OConnectionController(this);
-                        xDesktop->addTerminateListener(s_xTerminateListener);
-                    }
+                        auto tmp = new OConnectionController(this);
+                        xDesktop->addTerminateListener(tmp);
+                        return tmp;
+                    }();
                     Reference< XComponent> xIfc = new OHsqlConnection( this, xOrig, m_xContext );
                     xConnection.set(xIfc,UNO_QUERY);
                     m_aConnections.push_back(TWeakPair(WeakReferenceHelper(xOrig),TWeakConnectionPair(sKey,TWeakRefPair(WeakReferenceHelper(xConnection),WeakReferenceHelper()))));
@@ -428,7 +415,7 @@ namespace connectivity
                 ,"CALL IDENTITY()"
                 ,Sequence< OUString >())
                 );
-        return Sequence< DriverPropertyInfo >(&aDriverInfo[0],aDriverInfo.size());
+        return Sequence< DriverPropertyInfo >(aDriverInfo.data(),aDriverInfo.size());
     }
 
 
@@ -451,18 +438,16 @@ namespace connectivity
 
         Reference< XTablesSupplier > xTab;
 
-        TWeakPairVector::const_iterator aEnd = m_aConnections.end();
-        for (TWeakPairVector::iterator i = m_aConnections.begin(); aEnd != i; ++i)
+        TWeakPairVector::iterator i = std::find_if(m_aConnections.begin(), m_aConnections.end(),
+            [&connection](const TWeakPairVector::value_type& rConnection) {
+                return rConnection.second.second.first.get() == connection.get(); });
+        if (i != m_aConnections.end())
         {
-            if ( i->second.second.first.get() == connection.get() )
+            xTab.set(i->second.second.second,UNO_QUERY);
+            if ( !xTab.is() )
             {
-                xTab.set(i->second.second.second.get().get(),UNO_QUERY);
-                if ( !xTab.is() )
-                {
-                    xTab = new OHCatalog(connection);
-                    i->second.second.second = WeakReferenceHelper(xTab);
-                }
-                break;
+                xTab = new OHCatalog(connection);
+                i->second.second.second = WeakReferenceHelper(xTab);
             }
         }
 
@@ -484,23 +469,9 @@ namespace connectivity
 
     // XServiceInfo
 
-
-    OUString ODriverDelegator::getImplementationName_Static(  )
-    {
-        return OUString("com.sun.star.sdbcx.comp.hsqldb.Driver");
-    }
-
-    Sequence< OUString > ODriverDelegator::getSupportedServiceNames_Static(  )
-    {
-        Sequence< OUString > aSNS( 2 );
-        aSNS[0] = "com.sun.star.sdbc.Driver";
-        aSNS[1] = "com.sun.star.sdbcx.Driver";
-        return aSNS;
-    }
-
     OUString SAL_CALL ODriverDelegator::getImplementationName(  )
     {
-        return getImplementationName_Static();
+        return IMPL_NAME;
     }
 
     sal_Bool SAL_CALL ODriverDelegator::supportsService( const OUString& _rServiceName )
@@ -510,7 +481,7 @@ namespace connectivity
 
     Sequence< OUString > SAL_CALL ODriverDelegator::getSupportedServiceNames(  )
     {
-        return getSupportedServiceNames_Static();
+        return { "com.sun.star.sdbc.Driver", "com.sun.star.sdbcx.Driver" };
     }
 
     void SAL_CALL ODriverDelegator::createCatalog( const Sequence< PropertyValue >& /*info*/ )
@@ -531,7 +502,7 @@ namespace connectivity
                 Reference<XStatement> xStmt = _xConnection->createStatement();
                 if ( xStmt.is() )
                 {
-                    Reference<XResultSet> xRes(xStmt->executeQuery("SELECT COUNT(*) FROM INFORMATION_SCHEMA.SYSTEM_SESSIONS WHERE USER_NAME ='SA'"), UNO_QUERY);
+                    Reference<XResultSet> xRes = xStmt->executeQuery("SELECT COUNT(*) FROM INFORMATION_SCHEMA.SYSTEM_SESSIONS WHERE USER_NAME ='SA'");
                     Reference<XRow> xRow(xRes,UNO_QUERY);
                     if ( xRow.is() && xRes->next() )
                         bLastOne = xRow->getInt(1) == 1;
@@ -559,15 +530,11 @@ namespace connectivity
         Reference<XConnection> xCon(Source.Source,UNO_QUERY);
         if ( xCon.is() )
         {
-            TWeakPairVector::iterator i = m_aConnections.begin();
-            for (; m_aConnections.end() != i; ++i)
-            {
-                if ( i->first.get() == xCon.get() )
-                {
-                    shutdownConnection(i);
-                    break;
-                }
-            }
+            TWeakPairVector::iterator i = std::find_if(m_aConnections.begin(), m_aConnections.end(),
+                [&xCon](const TWeakPairVector::value_type& rConnection) { return rConnection.first.get() == xCon.get(); });
+
+            if (i != m_aConnections.end())
+                shutdownConnection(i);
         }
         else
         {
@@ -589,12 +556,11 @@ namespace connectivity
     void ODriverDelegator::shutdownConnections()
     {
         m_bInShutDownConnections = true;
-        TWeakPairVector::const_iterator aEnd = m_aConnections.end();
-        for (TWeakPairVector::iterator i = m_aConnections.begin(); aEnd != i; ++i)
+        for (const auto& rConnection : m_aConnections)
         {
             try
             {
-                Reference<XConnection> xCon(i->first,UNO_QUERY);
+                Reference<XConnection> xCon(rConnection.first,UNO_QUERY);
                 ::comphelper::disposeComponent(xCon);
             }
             catch(Exception&)
@@ -607,18 +573,17 @@ namespace connectivity
 
     void ODriverDelegator::flushConnections()
     {
-        TWeakPairVector::const_iterator aEnd = m_aConnections.end();
-        for (TWeakPairVector::iterator i = m_aConnections.begin(); aEnd != i; ++i)
+        for (const auto& rConnection : m_aConnections)
         {
             try
             {
-                Reference<XFlushable> xCon(i->second.second.first.get(),UNO_QUERY);
+                Reference<XFlushable> xCon(rConnection.second.second.first.get(),UNO_QUERY);
                 if (xCon.is())
                     xCon->flush();
             }
             catch(Exception&)
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("connectivity.hsqldb");
             }
         }
     }
@@ -629,40 +594,40 @@ namespace connectivity
 
         Reference< XStorage> xStorage(aEvent.Source,UNO_QUERY);
         OUString sKey = StorageContainer::getRegisteredKey(xStorage);
-        if ( !sKey.isEmpty() )
+        if ( sKey.isEmpty() )
+            return;
+
+        TWeakPairVector::const_iterator i = std::find_if(m_aConnections.begin(), m_aConnections.end(),
+            [&sKey] (const TWeakPairVector::value_type& conn) {
+                return conn.second.first == sKey;
+            });
+
+        OSL_ENSURE( i != m_aConnections.end(), "ODriverDelegator::preCommit: they're committing a storage which I do not know!" );
+        if ( i == m_aConnections.end() )
+            return;
+
+        try
         {
-            TWeakPairVector::const_iterator i = std::find_if(m_aConnections.begin(), m_aConnections.end(),
-                [&sKey] (const TWeakPairVector::value_type& conn) {
-                    return conn.second.first == sKey;
-                });
-
-            OSL_ENSURE( i != m_aConnections.end(), "ODriverDelegator::preCommit: they're committing a storage which I do not know!" );
-            if ( i != m_aConnections.end() )
+            Reference<XConnection> xConnection(i->first,UNO_QUERY);
+            if ( xConnection.is() )
             {
-                try
-                {
-                    Reference<XConnection> xConnection(i->first,UNO_QUERY);
-                    if ( xConnection.is() )
-                    {
-                        Reference< XStatement> xStmt = xConnection->createStatement();
-                        OSL_ENSURE( xStmt.is(), "ODriverDelegator::preCommit: no statement!" );
-                        if ( xStmt.is() )
-                            xStmt->execute( "SET WRITE_DELAY 0" );
+                Reference< XStatement> xStmt = xConnection->createStatement();
+                OSL_ENSURE( xStmt.is(), "ODriverDelegator::preCommit: no statement!" );
+                if ( xStmt.is() )
+                    xStmt->execute( "SET WRITE_DELAY 0" );
 
-                        bool bPreviousAutoCommit = xConnection->getAutoCommit();
-                        xConnection->setAutoCommit( false );
-                        xConnection->commit();
-                        xConnection->setAutoCommit( bPreviousAutoCommit );
+                bool bPreviousAutoCommit = xConnection->getAutoCommit();
+                xConnection->setAutoCommit( false );
+                xConnection->commit();
+                xConnection->setAutoCommit( bPreviousAutoCommit );
 
-                        if ( xStmt.is() )
-                            xStmt->execute( "SET WRITE_DELAY 60" );
-                    }
-                }
-                catch(Exception&)
-                {
-                    OSL_FAIL( "ODriverDelegator::preCommit: caught an exception!" );
-                }
+                if ( xStmt.is() )
+                    xStmt->execute( "SET WRITE_DELAY 60" );
             }
+        }
+        catch(Exception&)
+        {
+            TOOLS_WARN_EXCEPTION( "connectivity.hsqldb", "ODriverDelegator::preCommit" );
         }
     }
 
@@ -681,9 +646,9 @@ namespace connectivity
     namespace
     {
 
-        const sal_Char* lcl_getCollationForLocale( const OUString& _rLocaleString, bool _bAcceptCountryMismatch = false )
+        const char* lcl_getCollationForLocale( const OUString& _rLocaleString, bool _bAcceptCountryMismatch = false )
         {
-            static const sal_Char* pTranslations[] =
+            static const char* pTranslations[] =
             {
                 "af-ZA", "Afrikaans",
                 "am-ET", "Amharic",
@@ -782,7 +747,7 @@ namespace connectivity
             };
 
             OUString sLocaleString( _rLocaleString );
-            sal_Char nCompareTermination = 0;
+            char nCompareTermination = 0;
 
             if ( _bAcceptCountryMismatch )
             {
@@ -796,7 +761,7 @@ namespace connectivity
                 nCompareTermination = '-';
             }
 
-            const sal_Char** pLookup = pTranslations;
+            const char** pLookup = pTranslations;
             for ( ; *pLookup; pLookup +=2 )
             {
                 sal_Int32 nCompareUntil = 0;
@@ -827,20 +792,11 @@ namespace connectivity
 
 
                 // arguments for creating the config access
-                Sequence< Any > aArguments(2);
-                // the path to the node to open
-                aArguments[0] <<= PropertyValue(
-                    "nodepath", 0,
-                    makeAny( OUString("/org.openoffice.Setup/L10N" ) ),
-                    PropertyState_DIRECT_VALUE
-                );
-                // the depth: -1 means unlimited
-                aArguments[1] <<= PropertyValue(
-                    "depth", 0,
-                    makeAny( (sal_Int32)-1 ), PropertyState_DIRECT_VALUE
-                );
-
-
+                Sequence<Any> aArguments(comphelper::InitAnyPropertySequence(
+                {
+                    {"nodepath", Any(OUString("/org.openoffice.Setup/L10N" ))}, // the path to the node to open
+                    {"depth", Any(sal_Int32(-1))}, // the depth: -1 means unlimited
+                }));
                 // create the access
                 Reference< XPropertySet > xNode(
                     xConfigProvider->createInstanceWithArguments(
@@ -856,7 +812,7 @@ namespace connectivity
             }
             catch( const Exception& )
             {
-                OSL_FAIL( "lcl_getSystemLocale: caught an exception!" );
+                TOOLS_WARN_EXCEPTION( "connectivity.hsqldb", "lcl_getSystemLocale" );
             }
             if ( sLocaleString.isEmpty() )
             {
@@ -886,12 +842,20 @@ namespace connectivity
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "ODriverDelegator::onConnectedNewDatabase: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "connectivity.hsqldb", "ODriverDelegator::onConnectedNewDatabase" );
         }
     }
 
 
 }   // namespace connectivity
+
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+connectivity_hsqldb_ODriverDelegator_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new connectivity::ODriverDelegator(context));
+}
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

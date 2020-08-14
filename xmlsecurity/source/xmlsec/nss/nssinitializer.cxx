@@ -17,88 +17,87 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-
-/*
- * and turn off the additional virtual methods which are part of some interfaces when compiled
- * with debug
- */
-#undef DEBUG
-
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/mozilla/XMozillaBootstrap.hpp>
 #include <com/sun/star/xml/crypto/DigestID.hpp>
 #include <com/sun/star/xml/crypto/CipherID.hpp>
+#include <com/sun/star/xml/crypto/NSSInitializer.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <officecfg/Office/Common.hxx>
 #include <sal/types.h>
-#include <rtl/instance.hxx>
 #include <rtl/bootstrap.hxx>
 #include <rtl/string.hxx>
-#include <rtl/strbuf.hxx>
 #include <osl/file.hxx>
 #include <osl/thread.h>
 #include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
+#include <unotools/tempfile.hxx>
+#include <salhelper/singletonref.hxx>
+#include <comphelper/sequence.hxx>
 
-#include "seinitializer_nssimpl.hxx"
+#include <nss/nssinitializer.hxx>
 
-#include "securityenvironment_nssimpl.hxx"
 #include "digestcontext.hxx"
 #include "ciphercontext.hxx"
 
 #include <memory>
+#include <vector>
 
-#include <nspr.h>
-#include <cert.h>
 #include <nss.h>
 #include <pk11pub.h>
 #include <secmod.h>
-#include <nssckbi.h>
+#include <prerror.h>
+#include <prinit.h>
 
 namespace cssu = css::uno;
 namespace cssl = css::lang;
 
 using namespace com::sun::star;
 
-#define IMPLEMENTATION_NAME "com.sun.star.xml.security.bridge.xmlsec.NSSInitializer_NssImpl"
-
 #define ROOT_CERTS "Root Certs for OpenOffice.org"
 
-extern "C" void nsscrypto_finalize();
+extern "C" {
 
+static void nsscrypto_finalize();
+
+}
 
 namespace
 {
 
-bool nsscrypto_initialize( const css::uno::Reference< css::uno::XComponentContext > &rxContext, bool & out_nss_init );
-
-struct InitNSSInitialize
+class InitNSSPrivate
 {
-    css::uno::Reference< css::uno::XComponentContext > m_xContext;
+private:
+    std::unique_ptr<utl::TempFile> m_pTempFileDatabaseDirectory;
 
-    explicit InitNSSInitialize(const css::uno::Reference<css::uno::XComponentContext> &rxContext)
-        : m_xContext(rxContext)
+public:
+    OUString getTempDatabasePath()
     {
-    }
-
-    bool * operator()()
+        if (!m_pTempFileDatabaseDirectory)
         {
-            static bool bInitialized = false;
-            bool bNSSInit = false;
-            bInitialized = nsscrypto_initialize( m_xContext, bNSSInit );
-            if (bNSSInit)
-                atexit(nsscrypto_finalize );
-             return & bInitialized;
+            m_pTempFileDatabaseDirectory.reset(new utl::TempFile(nullptr, true));
+            m_pTempFileDatabaseDirectory->EnableKillingFile();
         }
-};
+        return m_pTempFileDatabaseDirectory->GetFileName();
+    }
 
-struct GetNSSInitStaticMutex
-{
-    ::osl::Mutex* operator()()
+    void reset()
     {
-        static ::osl::Mutex aNSSInitMutex;
-        return &aNSSInitMutex;
+        if (m_pTempFileDatabaseDirectory)
+        {
+            m_pTempFileDatabaseDirectory.reset();
+        }
     }
 };
+
+salhelper::SingletonRef<InitNSSPrivate>* getInitNSSPrivate()
+{
+    static salhelper::SingletonRef<InitNSSPrivate> aInitNSSPrivate;
+    return &aInitNSSPrivate;
+}
+
+bool nsscrypto_initialize( const css::uno::Reference< css::uno::XComponentContext > &rxContext, bool & out_nss_init );
 
 #ifdef XMLSEC_CRYPTO_NSS
 
@@ -131,24 +130,51 @@ void deleteRootsModule()
     }
     SECMOD_ReleaseReadLock(lock);
 
-    if (RootsModule)
+    if (!RootsModule)
+        return;
+
+    PRInt32 modType;
+    if (SECSuccess == SECMOD_DeleteModule(RootsModule->commonName, &modType))
     {
-        PRInt32 modType;
-        if (SECSuccess == SECMOD_DeleteModule(RootsModule->commonName, &modType))
-        {
-            SAL_INFO("xmlsecurity.xmlsec", "Deleted module \"" << RootsModule->commonName << "\".");
-        }
-        else
-        {
-            SAL_INFO("xmlsecurity.xmlsec", "Failed to delete \"" << RootsModule->commonName << "\": " << RootsModule->dllName);
-        }
-        SECMOD_DestroyModule(RootsModule);
-        RootsModule = nullptr;
+        SAL_INFO("xmlsecurity.xmlsec", "Deleted module \"" << RootsModule->commonName << "\".");
     }
+    else
+    {
+        SAL_INFO("xmlsecurity.xmlsec", "Failed to delete \"" << RootsModule->commonName << "\": " << RootsModule->dllName);
+    }
+    SECMOD_DestroyModule(RootsModule);
+    RootsModule = nullptr;
 }
 
-OString getMozillaCurrentProfile( const css::uno::Reference< css::uno::XComponentContext > &rxContext )
+#endif
+
+bool lcl_pathExists(const OUString& sPath)
 {
+    if (sPath.isEmpty())
+        return false;
+
+    ::osl::DirectoryItem aPathItem;
+    OUString sURL;
+    osl::FileBase::getFileURLFromSystemPath(sPath, sURL);
+    if (::osl::FileBase::E_None == ::osl::DirectoryItem::get(sURL, aPathItem))
+    {
+        ::osl::FileStatus aStatus = osl_FileStatus_Mask_Validate;
+        if (::osl::FileBase::E_None == aPathItem.getFileStatus(aStatus))
+            return true;
+    }
+
+    return false;
+}
+
+} // namespace
+
+OUString ONSSInitializer::getMozillaCurrentProfile(const css::uno::Reference< css::uno::XComponentContext > &rxContext, bool bSetActive)
+{
+    if (m_bIsNSSinitialized)
+         return m_sNSSPath;
+    if (bSetActive)
+        m_bIsNSSinitialized = true;
+
     // first, try to get the profile from "MOZILLA_CERTIFICATE_FOLDER"
     const char* pEnv = getenv("MOZILLA_CERTIFICATE_FOLDER");
     if (pEnv)
@@ -156,32 +182,33 @@ OString getMozillaCurrentProfile( const css::uno::Reference< css::uno::XComponen
         SAL_INFO(
             "xmlsecurity.xmlsec",
             "Using Mozilla profile from MOZILLA_CERTIFICATE_FOLDER=" << pEnv);
-        return OString(pEnv);
+        m_sNSSPath = OStringToOUString(pEnv, osl_getThreadTextEncoding());
     }
 
     // second, try to get saved user-preference
-    try
+    if (m_sNSSPath.isEmpty())
     {
-        OUString sUserSetCertPath =
-            officecfg::Office::Common::Security::Scripting::CertDir::get().get_value_or(OUString());
-
-        if (!sUserSetCertPath.isEmpty())
+        try
         {
-            SAL_INFO(
-                "xmlsecurity.xmlsec",
-                "Using Mozilla profile from /org.openoffice.Office.Common/"
-                    "Security/Scripting/CertDir: " << sUserSetCertPath);
-            return OUStringToOString(sUserSetCertPath, osl_getThreadTextEncoding());
+            OUString sUserSetCertPath =
+                officecfg::Office::Common::Security::Scripting::CertDir::get().value_or(OUString());
+
+            if (lcl_pathExists(sUserSetCertPath))
+            {
+                SAL_INFO(
+                    "xmlsecurity.xmlsec",
+                    "Using Mozilla profile from /org.openoffice.Office.Common/"
+                        "Security/Scripting/CertDir: " << sUserSetCertPath);
+                m_sNSSPath = sUserSetCertPath;
+            }
+        }
+        catch (const uno::Exception &)
+        {
+            TOOLS_WARN_EXCEPTION("xmlsecurity.xmlsec", "getMozillaCurrentProfile:");
         }
     }
-    catch (const uno::Exception &e)
-    {
-        SAL_WARN(
-            "xmlsecurity.xmlsec",
-            "getMozillaCurrentProfile: caught exception " << e.Message);
-    }
 
-    // third, dig around to see if there's one available
+    // third, dig around to see if there's one default available
     mozilla::MozillaProductType productTypes[3] = {
         mozilla::MozillaProductType_Thunderbird,
         mozilla::MozillaProductType_Firefox,
@@ -201,20 +228,95 @@ OString getMozillaCurrentProfile( const css::uno::Reference< css::uno::XComponen
 
             if (!profile.isEmpty())
             {
-                OUString sProfilePath = xMozillaBootstrap->getProfilePath( productTypes[i], profile );
-                SAL_INFO(
-                    "xmlsecurity.xmlsec",
-                    "Using Mozilla profile " << sProfilePath);
-                return OUStringToOString(sProfilePath, osl_getThreadTextEncoding());
+                OUString sProfilePath = xMozillaBootstrap->getProfilePath(productTypes[i], profile);
+                if (m_sNSSPath.isEmpty())
+                {
+                    SAL_INFO("xmlsecurity.xmlsec", "Using Mozilla profile " << sProfilePath);
+                    m_sNSSPath = sProfilePath;
+                }
+                break;
             }
         }
     }
 
-    SAL_INFO("xmlsecurity.xmlsec", "No Mozilla profile found");
-    return OString();
+    SAL_INFO_IF(m_sNSSPath.isEmpty(), "xmlsecurity.xmlsec", "No Mozilla profile found");
+    return m_sNSSPath;
 }
 
-#endif
+css::uno::Sequence<css::xml::crypto::NSSProfile> SAL_CALL ONSSInitializer::getNSSProfiles()
+{
+    ONSSInitializer::getMozillaCurrentProfile(m_xContext);
+
+    std::vector<xml::crypto::NSSProfile> aProfileList;
+    aProfileList.reserve(10);
+
+    mozilla::MozillaProductType productTypes[3] = {
+        mozilla::MozillaProductType_Thunderbird,
+        mozilla::MozillaProductType_Firefox,
+        mozilla::MozillaProductType_Mozilla };
+
+    uno::Reference<uno::XInterface> xInstance = m_xContext->getServiceManager()->createInstanceWithContext("com.sun.star.mozilla.MozillaBootstrap", m_xContext);
+    OSL_ENSURE(xInstance.is(), "failed to create instance" );
+
+    uno::Reference<mozilla::XMozillaBootstrap> xMozillaBootstrap(xInstance,uno::UNO_QUERY);
+
+    if (xMozillaBootstrap.is())
+    {
+        for (int i=0; i<int(SAL_N_ELEMENTS(productTypes)); ++i)
+        {
+            uno::Sequence<OUString> aProductProfileList;
+            xMozillaBootstrap->getProfileList(productTypes[i], aProductProfileList);
+            for (const auto& sProfile : std::as_const(aProductProfileList))
+                aProfileList.push_back({sProfile, xMozillaBootstrap->getProfilePath(productTypes[i], sProfile), productTypes[i]});
+        }
+    }
+
+    OUString sUserSelect;
+    try
+    {
+        sUserSelect = officecfg::Office::Common::Security::Scripting::CertDir::get().value_or(OUString());;
+        if (!lcl_pathExists(sUserSelect))
+            sUserSelect = OUString();
+    }
+    catch (const uno::Exception &)
+    {
+        TOOLS_WARN_EXCEPTION("xmlsecurity.xmlsec", "getMozillaCurrentProfile:");
+    }
+    aProfileList.push_back({"MANUAL", sUserSelect, mozilla::MozillaProductType_Default});
+
+    const char* pEnv = getenv("MOZILLA_CERTIFICATE_FOLDER");
+    aProfileList.push_back({"MOZILLA_CERTIFICATE_FOLDER",
+                            pEnv ? OStringToOUString(pEnv, osl_getThreadTextEncoding()) : OUString(),
+                            mozilla::MozillaProductType_Default});
+
+    return comphelper::containerToSequence(aProfileList);
+}
+
+bool ONSSInitializer::m_bIsNSSinitialized = false;
+OUString ONSSInitializer::m_sNSSPath;
+
+OUString SAL_CALL ONSSInitializer::getNSSPath()
+{
+    ONSSInitializer::getMozillaCurrentProfile(m_xContext);
+    return m_sNSSPath;
+};
+
+sal_Bool SAL_CALL ONSSInitializer::getIsNSSinitialized()
+{
+    return m_bIsNSSinitialized;
+}
+
+ONSSInitializer::ONSSInitializer(const css::uno::Reference< css::uno::XComponentContext > &rxContext)
+    : m_xContext(rxContext)
+{
+}
+
+ONSSInitializer::ONSSInitializer()
+{
+}
+
+namespace
+{
 
 //Older versions of Firefox (FF), for example FF2, and Thunderbird (TB) 2 write
 //the roots certificate module (libnssckbi.so), which they use, into the
@@ -224,9 +326,9 @@ OString getMozillaCurrentProfile( const css::uno::Reference< css::uno::XComponen
 //used on a different platform.
 //
 //Then one needs to add the roots module oneself. This should be done with
-//SECMOD_LoadUserModule rather then SECMOD_AddNewModule. The latter would write
+//SECMOD_LoadUserModule rather than SECMOD_AddNewModule. The latter would write
 //the location of the roots module to the profile, which makes FF2 and TB2 use
-//it instead of there own module.
+//it instead of their own module.
 //
 //When using SYSTEM_NSS then the libnss3.so lib is typically found in /usr/lib.
 //This folder may, however, NOT contain the roots certificate module. That is,
@@ -237,13 +339,13 @@ OString getMozillaCurrentProfile( const css::uno::Reference< css::uno::XComponen
 //return true - whole initialization was successful
 //param out_nss_init = true: at least the NSS initialization (NSS_InitReadWrite
 //was successful and therefore NSS_Shutdown should be called when terminating.
-bool nsscrypto_initialize( const css::uno::Reference< css::uno::XComponentContext > &rxContext, bool & out_nss_init )
+bool nsscrypto_initialize(css::uno::Reference<css::uno::XComponentContext> const & rxContext, bool & out_nss_init)
 {
     // this method must be called only once, no need for additional lock
     OString sCertDir;
 
 #ifdef XMLSEC_CRYPTO_NSS
-    sCertDir = getMozillaCurrentProfile(rxContext);
+    sCertDir = OUStringToOString(ONSSInitializer::getMozillaCurrentProfile(rxContext, true), osl_getThreadTextEncoding());
 #else
     (void) rxContext;
 #endif
@@ -251,30 +353,49 @@ bool nsscrypto_initialize( const css::uno::Reference< css::uno::XComponentContex
 
     PR_Init( PR_USER_THREAD, PR_PRIORITY_NORMAL, 1 ) ;
 
-    bool bSuccess = true;
+    bool bSuccess = false;
     // there might be no profile
-    if ( !sCertDir.isEmpty() )
+    if (!sCertDir.isEmpty())
     {
-        if( NSS_InitReadWrite( sCertDir.getStr() ) != SECSuccess )
+        if (sCertDir.indexOf(':') == -1) //might be env var with explicit prefix
+        {
+            OUString sCertDirURL;
+            osl::FileBase::getFileURLFromSystemPath(
+                OStringToOUString(sCertDir, osl_getThreadTextEncoding()),
+                sCertDirURL);
+            osl::DirectoryItem item;
+            if (osl::FileBase::E_NOENT != osl::DirectoryItem::get(sCertDirURL + "/cert8.db", item) &&
+                osl::FileBase::E_NOENT == osl::DirectoryItem::get(sCertDirURL + "/cert9.db", item))
+            {
+                SAL_INFO("xmlsecurity.xmlsec", "nsscrypto_initialize: trying to avoid profile migration");
+                sCertDir = "dbm:" + sCertDir;
+            }
+        }
+        if (NSS_InitReadWrite(sCertDir.getStr()) != SECSuccess)
         {
             SAL_INFO("xmlsecurity.xmlsec", "Initializing NSS with profile failed.");
             int errlen = PR_GetErrorTextLength();
-            if(errlen > 0)
+            if (errlen > 0)
             {
                 std::unique_ptr<char[]> const error(new char[errlen + 1]);
                 PR_GetErrorText(error.get());
                 SAL_INFO("xmlsecurity.xmlsec", error.get());
             }
-            bSuccess = false;
+        }
+        else
+        {
+            bSuccess = true;
         }
     }
 
-    if( sCertDir.isEmpty() || !bSuccess )
+    if (!bSuccess) // Try to create a database in temp dir
     {
-        SAL_INFO("xmlsecurity.xmlsec", "Initializing NSS without profile.");
-        if ( NSS_NoDB_Init(nullptr) != SECSuccess )
+        SAL_INFO("xmlsecurity.xmlsec", "Initializing NSS with a temporary profile.");
+        OUString rString = (*getInitNSSPrivate())->getTempDatabasePath();
+
+        if (NSS_InitReadWrite(rString.toUtf8().getStr()) != SECSuccess)
         {
-            SAL_INFO("xmlsecurity.xmlsec", "Initializing NSS without profile failed.");
+            SAL_INFO("xmlsecurity.xmlsec", "Initializing NSS with a temporary profile.");
             int errlen = PR_GetErrorTextLength();
             if(errlen > 0)
             {
@@ -282,7 +403,15 @@ bool nsscrypto_initialize( const css::uno::Reference< css::uno::XComponentContex
                 PR_GetErrorText(error.get());
                 SAL_INFO("xmlsecurity.xmlsec", error.get());
             }
-            return false ;
+            return false;
+        }
+        // Initialize and set empty password if needed
+        PK11SlotInfo* pSlot = PK11_GetInternalKeySlot();
+        if (pSlot)
+        {
+            if (PK11_NeedUserInit(pSlot))
+                PK11_InitPin(pSlot, nullptr, nullptr);
+            PK11_FreeSlot(pSlot);
         }
     }
     out_nss_init = true;
@@ -376,13 +505,10 @@ extern "C" void nsscrypto_finalize()
     }
     PK11_LogoutAll();
     (void)NSS_Shutdown();
+
+    (*getInitNSSPrivate())->reset();
 }
 
-ONSSInitializer::ONSSInitializer(
-    const css::uno::Reference< css::uno::XComponentContext > &rxContext)
-    :m_xContext( rxContext )
-{
-}
 
 ONSSInitializer::~ONSSInitializer()
 {
@@ -390,8 +516,15 @@ ONSSInitializer::~ONSSInitializer()
 
 bool ONSSInitializer::initNSS( const css::uno::Reference< css::uno::XComponentContext > &rxContext )
 {
-    return *rtl_Instance< bool, InitNSSInitialize, ::osl::MutexGuard, GetNSSInitStaticMutex >
-                ::create( InitNSSInitialize( rxContext ), GetNSSInitStaticMutex() );
+    static bool gbInitialized = [&rxContext]()
+        {
+            bool bNSSInit = false;
+            bool bInitialized = nsscrypto_initialize( rxContext, bNSSInit );
+            if (bNSSInit)
+                atexit(nsscrypto_finalize);
+            return bInitialized;
+        }();
+    return gbInitialized;
 }
 
 css::uno::Reference< css::xml::crypto::XDigestContext > SAL_CALL ONSSInitializer::getDigestContext( ::sal_Int32 nDigestID, const css::uno::Sequence< css::beans::NamedValue >& aParams )
@@ -413,10 +546,17 @@ css::uno::Reference< css::xml::crypto::XDigestContext > SAL_CALL ONSSInitializer
         nDigestLength = 20;
         b1KData = ( nDigestID == css::xml::crypto::DigestID::SHA1_1K );
     }
+    else if ( nDigestID == css::xml::crypto::DigestID::SHA512
+           || nDigestID == css::xml::crypto::DigestID::SHA512_1K )
+    {
+        nNSSDigestID = SEC_OID_SHA512;
+        nDigestLength = 64;
+        b1KData = ( nDigestID == css::xml::crypto::DigestID::SHA512_1K );
+    }
     else
         throw css::lang::IllegalArgumentException("Unexpected digest requested.", css::uno::Reference< css::uno::XInterface >(), 1 );
 
-    if ( aParams.getLength() )
+    if ( aParams.hasElements() )
         throw css::lang::IllegalArgumentException("Unexpected arguments provided for digest creation.", css::uno::Reference< css::uno::XInterface >(), 2 );
 
     css::uno::Reference< css::xml::crypto::XDigestContext > xResult;
@@ -434,19 +574,17 @@ css::uno::Reference< css::xml::crypto::XCipherContext > SAL_CALL ONSSInitializer
 {
     CK_MECHANISM_TYPE nNSSCipherID = 0;
     bool bW3CPadding = false;
-    if ( nCipherID == css::xml::crypto::CipherID::AES_CBC_W3C_PADDING )
-    {
-        nNSSCipherID = CKM_AES_CBC;
-        bW3CPadding = true;
-
-        if ( aKey.getLength() != 16 && aKey.getLength() != 24 && aKey.getLength() != 32 )
-            throw css::lang::IllegalArgumentException("Unexpected key length.", css::uno::Reference< css::uno::XInterface >(), 2 );
-
-        if ( aParams.getLength() )
-            throw css::lang::IllegalArgumentException("Unexpected arguments provided for cipher creation.", css::uno::Reference< css::uno::XInterface >(), 5 );
-    }
-    else
+    if ( nCipherID != css::xml::crypto::CipherID::AES_CBC_W3C_PADDING )
         throw css::lang::IllegalArgumentException("Unexpected cipher requested.", css::uno::Reference< css::uno::XInterface >(), 1 );
+
+    nNSSCipherID = CKM_AES_CBC;
+    bW3CPadding = true;
+
+    if ( aKey.getLength() != 16 && aKey.getLength() != 24 && aKey.getLength() != 32 )
+        throw css::lang::IllegalArgumentException("Unexpected key length.", css::uno::Reference< css::uno::XInterface >(), 2 );
+
+    if ( aParams.hasElements() )
+        throw css::lang::IllegalArgumentException("Unexpected arguments provided for cipher creation.", css::uno::Reference< css::uno::XInterface >(), 5 );
 
     css::uno::Reference< css::xml::crypto::XCipherContext > xResult;
     if( initNSS( m_xContext ) )
@@ -460,27 +598,10 @@ css::uno::Reference< css::xml::crypto::XCipherContext > SAL_CALL ONSSInitializer
     return xResult;
 }
 
-OUString ONSSInitializer_getImplementationName ()
-{
-
-    return OUString ( IMPLEMENTATION_NAME );
-}
-
-cssu::Sequence< OUString > SAL_CALL ONSSInitializer_getSupportedServiceNames(  )
-{
-    cssu::Sequence<OUString> aRet { NSS_SERVICE_NAME };
-    return aRet;
-}
-
-cssu::Reference< cssu::XInterface > SAL_CALL ONSSInitializer_createInstance( const cssu::Reference< cssl::XMultiServiceFactory > & rSMgr)
-{
-    return static_cast<cppu::OWeakObject*>(new ONSSInitializer( comphelper::getComponentContext(rSMgr) ));
-}
-
 /* XServiceInfo */
 OUString SAL_CALL ONSSInitializer::getImplementationName()
 {
-    return ONSSInitializer_getImplementationName();
+    return "com.sun.star.xml.crypto.NSSInitializer";
 }
 
 sal_Bool SAL_CALL ONSSInitializer::supportsService( const OUString& rServiceName )
@@ -490,7 +611,16 @@ sal_Bool SAL_CALL ONSSInitializer::supportsService( const OUString& rServiceName
 
 cssu::Sequence< OUString > SAL_CALL ONSSInitializer::getSupportedServiceNames(  )
 {
-    return ONSSInitializer_getSupportedServiceNames();
+    return { NSS_SERVICE_NAME };
 }
+
+#ifndef XMLSEC_CRYPTO_NSS
+extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
+com_sun_star_xml_crypto_NSSInitializer_get_implementation(
+    uno::XComponentContext* pCtx, uno::Sequence<uno::Any> const& /*rSeq*/)
+{
+    return cppu::acquire(new ONSSInitializer(pCtx));
+}
+#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

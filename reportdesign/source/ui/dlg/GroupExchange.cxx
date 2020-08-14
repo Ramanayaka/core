@@ -18,13 +18,12 @@
  */
 #include "GroupExchange.hxx"
 #include <sot/formats.hxx>
-#include <sot/storage.hxx>
+#include <osl/diagnose.h>
 
 namespace rptui
 {
     using namespace ::com::sun::star;
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::beans;
 
     SotClipboardFormatId OGroupExchange::getReportGroupId()
     {
@@ -43,7 +42,7 @@ namespace rptui
 
     void OGroupExchange::AddSupportedFormats()
     {
-        if ( m_aGroupRow.getLength() )
+        if ( m_aGroupRow.hasElements() )
         {
             AddFormat(OGroupExchange::getReportGroupId());
         }

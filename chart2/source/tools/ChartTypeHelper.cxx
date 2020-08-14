@@ -17,16 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ChartTypeHelper.hxx"
-#include "DiagramHelper.hxx"
-#include "DataSeriesHelper.hxx"
-#include "macros.hxx"
-#include "servicenames_charttypes.hxx"
+#include <ChartTypeHelper.hxx>
+#include <DiagramHelper.hxx>
+#include <servicenames_charttypes.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/chart/DataLabelPlacement.hpp>
-#include <com/sun/star/chart2/XDataSeriesContainer.hpp>
+#include <com/sun/star/chart2/AxisType.hpp>
+#include <com/sun/star/chart2/StackingDirection.hpp>
 #include <com/sun/star/chart/MissingValueTreatment.hpp>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -175,7 +175,7 @@ bool ChartTypeHelper::isSupportingSecondaryAxis( const uno::Reference< XChartTyp
     //@todo ask charttype itself --> need model change first
     if(xChartType.is())
     {
-         if(nDimensionCount==3)
+        if(nDimensionCount==3)
             return false;
 
         OUString aChartTypeName = xChartType->getChartType();
@@ -197,7 +197,7 @@ bool ChartTypeHelper::isSupportingOverlapAndGapWidthProperties(
     //@todo ask charttype itself --> need model change first
     if(xChartType.is())
     {
-         if(nDimensionCount==3)
+        if(nDimensionCount==3)
             return false;
 
         OUString aChartTypeName = xChartType->getChartType();
@@ -248,8 +248,7 @@ uno::Sequence < sal_Int32 > ChartTypeHelper::getSupportedLabelPlacements( const 
     {
         bool bDonut = false;
         uno::Reference< beans::XPropertySet > xChartTypeProp( xChartType, uno::UNO_QUERY_THROW );
-        if(xChartTypeProp.is())
-            xChartTypeProp->getPropertyValue( "UseRings") >>= bDonut;
+        xChartTypeProp->getPropertyValue( "UseRings") >>= bDonut;
 
         if(!bDonut)
         {
@@ -315,9 +314,26 @@ uno::Sequence < sal_Int32 > ChartTypeHelper::getSupportedLabelPlacements( const 
     }
     else if( aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_AREA) )
     {
-        aRet.realloc(1);
+        bool bStacked = false;
+        {
+            uno::Reference<beans::XPropertySet> xSeriesProp(xSeries, uno::UNO_QUERY);
+            chart2::StackingDirection eStacking = chart2::StackingDirection_NO_STACKING;
+            xSeriesProp->getPropertyValue("StackingDirection") >>= eStacking;
+            bStacked = (eStacking == chart2::StackingDirection_Y_STACKING);
+        }
+
+        aRet.realloc(2);
         sal_Int32* pSeq = aRet.getArray();
-        *pSeq++ = css::chart::DataLabelPlacement::TOP;
+        if (bStacked)
+        {
+            *pSeq++ = css::chart::DataLabelPlacement::CENTER;
+            *pSeq++ = css::chart::DataLabelPlacement::TOP;
+        }
+        else
+        {
+            *pSeq++ = css::chart::DataLabelPlacement::TOP;
+            *pSeq++ = css::chart::DataLabelPlacement::CENTER;
+        }
     }
     else if( aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_NET) )
     {
@@ -420,14 +436,28 @@ bool ChartTypeHelper::isSupportingDateAxis( const uno::Reference< chart2::XChart
     return true;
 }
 
-bool ChartTypeHelper::shiftCategoryPosAtXAxisPerDefault( const uno::Reference< chart2::XChartType >& xChartType )
+bool ChartTypeHelper::isSupportingComplexCategory( const uno::Reference< chart2::XChartType >& xChartType )
 {
-    if(xChartType.is())
+    if( xChartType.is() )
     {
         OUString aChartTypeName = xChartType->getChartType();
-        if( aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_COLUMN)
-            || aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_BAR)
-            || aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_CANDLESTICK) )
+        if( aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_PIE) )
+            return false;
+    }
+    return true;
+}
+
+bool ChartTypeHelper::isSupportingCategoryPositioning( const uno::Reference< chart2::XChartType >& xChartType, sal_Int32 nDimensionCount )
+{
+    if( xChartType.is() )
+    {
+        OUString aChartTypeName = xChartType->getChartType();
+        if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_AREA) ||
+            aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_LINE) ||
+            aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_CANDLESTICK))
+            return true;
+        else if (nDimensionCount == 2 &&
+                (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_COLUMN) || aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_BAR)))
             return true;
     }
     return false;
@@ -514,7 +544,7 @@ drawing::Direction3D ChartTypeHelper::getDefaultRealisticLightDirection( const u
 sal_Int32 ChartTypeHelper::getAxisType( const uno::Reference<
             XChartType >& xChartType, sal_Int32 nDimensionIndex )
 {
-    //retruned is a constant from constant group css::chart2::AxisType
+    //returned is a constant from constant group css::chart2::AxisType
 
     //@todo ask charttype itself --> need model change first
     if(!xChartType.is())
@@ -555,9 +585,9 @@ sal_Int32 ChartTypeHelper::getNumberOfDisplayedSeries(
                 }
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
     return nNumberOfSeries;
@@ -656,15 +686,6 @@ OUString ChartTypeHelper::getRoleOfSequenceForDataLabelNumberFormatDetection( co
         || aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_BUBBLE) )
         aRet = xChartType->getRoleOfSequenceForSeriesLabel();
     return aRet;
-}
-
-bool ChartTypeHelper::shouldLabelNumberFormatKeyBeDetectedFromYAxis( const uno::Reference< XChartType >& xChartType )
-{
-    bool bRet = true;
-    OUString aChartTypeName = xChartType->getChartType();
-    if( aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_BUBBLE) )
-        bRet = false;
-    return bRet;
 }
 
 bool ChartTypeHelper::isSupportingOnlyDeepStackingFor3D( const uno::Reference< XChartType >& xChartType )

@@ -22,18 +22,20 @@
 #include <memory>
 #include <vector>
 #include <set>
+#include <map>
 
 #include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/form/XForm.hpp>
-#include <vcl/field.hxx>
 #include <i18nlangtag/lang.h>
 #include <comphelper/stl_types.hxx>
 #include <o3tl/sorted_vector.hxx>
 #include <o3tl/typed_flags_set.hxx>
 #include <rtl/ref.hxx>
+#include <svtools/htmlout.hxx>
+#include <tools/fldunit.hxx>
 
-#include "shellio.hxx"
-#include "wrt_fn.hxx"
+#include <shellio.hxx>
+#include <wrt_fn.hxx>
 #include "htmlfly.hxx"
 
 // some forward declarations
@@ -58,8 +60,8 @@ class SwHTMLNumRuleInfo;
 class SwHTMLPosFlyFrames;
 class SwTextFootnote;
 enum class HtmlPosition;
-
-typedef std::vector<SwTextFootnote*> SwHTMLTextFootnotes;
+enum class HtmlTokenId : sal_Int16;
+namespace utl { class TempFile; }
 
 extern SwAttrFnTab aHTMLAttrFnTab;
 
@@ -99,27 +101,29 @@ enum class HtmlFrmOpts {
     SPixSize    = 1<<18,
     Id          = 1<<19,
     Dir         = 1<<20,
+    /// The graphic frame is a replacement image of an OLE object.
+    Replacement = 1<<21,
 
     GenImgAllMask = Alt | Size | AbsSize | Name,
     GenImgMask    = GenImgAllMask | Align | Space | BrClear
 };
 namespace o3tl {
-    template<> struct typed_flags<HtmlFrmOpts> : is_typed_flags<HtmlFrmOpts, ((1<<21)-1)> {};
+    template<> struct typed_flags<HtmlFrmOpts> : is_typed_flags<HtmlFrmOpts, ((1<<22)-1)> {};
 }
 
 #define HTMLMODE_BLOCK_SPACER       0x00010000
 #define HTMLMODE_FLOAT_FRAME        0x00020000
 #define HTMLMODE_VERT_SPACER        0x00040000
 #define HTMLMODE_NBSP_IN_TABLES     0x00080000
-#define HTMLMODE_LSPACE_IN_NUMBUL   0x00100000
-#define HTMLMODE_NO_BR_AT_PAREND    0x00200000
+#define HTMLMODE_LSPACE_IN_NUMBER_BULLET 0x00100000
+//was HTMLMODE_NO_BR_AT_PAREND    0x00200000
 #define HTMLMODE_PRINT_EXT          0x00400000
 #define HTMLMODE_ABS_POS_FLY        0x00800000
 #define HTMLMODE_ABS_POS_DRAW       0x01000000
 #define HTMLMODE_FLY_MARGINS        0x02000000
 #define HTMLMODE_BORDER_NONE        0x04000000
 #define HTMLMODE_FONT_GENERIC       0x08000000
-#define HTMLMODE_FRSTLINE_IN_NUMBUL 0x10000000
+#define HTMLMODE_FRSTLINE_IN_NUMBER_BULLET 0x10000000
 #define HTMLMODE_NO_CONTROL_CENTERING 0x20000000
 
 #define HTML_DLCOLL_DD 0x4000
@@ -141,11 +145,10 @@ namespace o3tl {
 
 // bit 3,4,5
 #define CSS1_OUTMODE_SPAN_NO_OFF    0x0000U
-#define CSS1_OUTMODE_SPAN_TAG_OFF   ((sal_uInt16)(0x0001U << 3))
-#define CSS1_OUTMODE_STYLE_OPT_OFF  ((sal_uInt16)(0x0002U << 3))
-#define CSS1_OUTMODE_RULE_OFF       ((sal_uInt16)(0x0003U << 3))
-#define CSS1_OUTMODE_SPAN_TAG1_OFF  ((sal_uInt16)(0x0004U << 3))
-#define CSS1_OUTMODE_ANY_OFF        ((sal_uInt16)(0x0007U << 3))
+#define CSS1_OUTMODE_SPAN_TAG_OFF   (sal_uInt16(0x0001U << 3))
+#define CSS1_OUTMODE_STYLE_OPT_OFF  (sal_uInt16(0x0002U << 3))
+#define CSS1_OUTMODE_RULE_OFF       (sal_uInt16(0x0003U << 3))
+#define CSS1_OUTMODE_ANY_OFF        (sal_uInt16(0x0007U << 3))
 
 #define CSS1_OUTMODE_ONOFF(a) (CSS1_OUTMODE_##a##_ON|CSS1_OUTMODE_##a##_OFF)
 #define CSS1_OUTMODE_SPAN_TAG       CSS1_OUTMODE_ONOFF(SPAN_TAG)
@@ -155,31 +158,31 @@ namespace o3tl {
 // the following flags specify what should be outputted
 // bit 6,7,8,9
 #define CSS1_OUTMODE_TEMPLATE       0x0000U
-#define CSS1_OUTMODE_BODY           ((sal_uInt16)(0x0001U << 6))
-#define CSS1_OUTMODE_PARA           ((sal_uInt16)(0x0002U << 6))
-#define CSS1_OUTMODE_HINT           ((sal_uInt16)(0x0003U << 6))
-#define CSS1_OUTMODE_FRAME          ((sal_uInt16)(0x0004U << 6))
-#define CSS1_OUTMODE_TABLE          ((sal_uInt16)(0x0005U << 6))
-#define CSS1_OUTMODE_TABLEBOX       ((sal_uInt16)(0x0006U << 6))
-#define CSS1_OUTMODE_DROPCAP        ((sal_uInt16)(0x0007U << 6))
-#define CSS1_OUTMODE_SECTION        ((sal_uInt16)(0x0008U << 6))
-#define CSS1_OUTMODE_SOURCE         ((sal_uInt16)(0x000fU << 6))
+#define CSS1_OUTMODE_BODY           (sal_uInt16(0x0001U << 6))
+#define CSS1_OUTMODE_PARA           (sal_uInt16(0x0002U << 6))
+#define CSS1_OUTMODE_HINT           (sal_uInt16(0x0003U << 6))
+#define CSS1_OUTMODE_FRAME          (sal_uInt16(0x0004U << 6))
+#define CSS1_OUTMODE_TABLE          (sal_uInt16(0x0005U << 6))
+#define CSS1_OUTMODE_TABLEBOX       (sal_uInt16(0x0006U << 6))
+#define CSS1_OUTMODE_DROPCAP        (sal_uInt16(0x0007U << 6))
+#define CSS1_OUTMODE_SECTION        (sal_uInt16(0x0008U << 6))
+#define CSS1_OUTMODE_SOURCE         (sal_uInt16(0x000fU << 6))
 
 // bit 10
-#define CSS1_OUTMODE_ENCODE         ((sal_uInt16)(0x0001U << 10))
+#define CSS1_OUTMODE_ENCODE         (sal_uInt16(0x0001U << 10))
 
 // bit 11,12,13
 // don't care about script
 #define CSS1_OUTMODE_ANY_SCRIPT     0x0000U
 // no cjk or ctl items
-#define CSS1_OUTMODE_WESTERN        ((sal_uInt16)(0x0001U << 11))
+#define CSS1_OUTMODE_WESTERN        (sal_uInt16(0x0001U << 11))
 // no western or ctl items
-#define CSS1_OUTMODE_CJK            ((sal_uInt16)(0x0002U << 11))
+#define CSS1_OUTMODE_CJK            (sal_uInt16(0x0002U << 11))
 // no western or cjk items
-#define CSS1_OUTMODE_CTL            ((sal_uInt16)(0x0003U << 11))
+#define CSS1_OUTMODE_CTL            (sal_uInt16(0x0003U << 11))
 // no western, cjk or ctl items
-#define CSS1_OUTMODE_NO_SCRIPT      ((sal_uInt16)(0x0004U << 11))
-#define CSS1_OUTMODE_SCRIPT         ((sal_uInt16)(0x0007U << 11))
+#define CSS1_OUTMODE_NO_SCRIPT      (sal_uInt16(0x0004U << 11))
+#define CSS1_OUTMODE_SCRIPT         (sal_uInt16(0x0007U << 11))
 
 // the HTML writer
 struct HTMLControl
@@ -199,10 +202,7 @@ struct HTMLControl
     }
 };
 
-class HTMLControls : public o3tl::sorted_vector<HTMLControl*, o3tl::less_ptr_to<HTMLControl> > {
-public:
-    // will free any items still in the vector
-    ~HTMLControls() { DeleteAndDestroyAll(); }
+class HTMLControls : public o3tl::sorted_vector<std::unique_ptr<HTMLControl>, o3tl::less_uniqueptr_to<HTMLControl> > {
 };
 
 struct SwHTMLFormatInfo
@@ -226,7 +226,6 @@ struct SwHTMLFormatInfo
     // ctor for a dummy to search
     explicit SwHTMLFormatInfo( const SwFormat *pF ) :
         pFormat( pF ),
-        pItemSet( nullptr ),
         nLeftMargin( 0 ),
         nRightMargin( 0 ),
         nFirstLineIndent(0),
@@ -236,7 +235,7 @@ struct SwHTMLFormatInfo
     {}
 
     // ctor for creating of the format information
-    SwHTMLFormatInfo( const SwFormat *pFormat, SwDoc *pDoc, SwDoc *pTemlate,
+    SwHTMLFormatInfo( const SwFormat *pFormat, SwDoc *pDoc, SwDoc *pTemplate,
                    bool bOutStyles, LanguageType eDfltLang=LANGUAGE_DONTKNOW,
                    sal_uInt16 nScript=CSS1_OUTMODE_ANY_SCRIPT );
     ~SwHTMLFormatInfo();
@@ -254,11 +253,11 @@ typedef std::set<std::unique_ptr<SwHTMLFormatInfo>,
 
 class IDocumentStylePoolAccess;
 
-class SwHTMLWriter : public Writer
+class SW_DLLPUBLIC SwHTMLWriter : public Writer
 {
-    SwHTMLPosFlyFrames *m_pHTMLPosFlyFrames;
+    std::unique_ptr<SwHTMLPosFlyFrames> m_pHTMLPosFlyFrames;
     std::unique_ptr<SwHTMLNumRuleInfo> m_pNumRuleInfo;// current numbering
-    SwHTMLNumRuleInfo *m_pNextNumRuleInfo;
+    std::unique_ptr<SwHTMLNumRuleInfo> m_pNextNumRuleInfo;
     sal_uInt32 m_nHTMLMode;               // description of export configuration
 
     FieldUnit m_eCSS1Unit;
@@ -269,6 +268,8 @@ class SwHTMLWriter : public Writer
 
     void AddLinkTarget( const OUString& rURL );
     void CollectLinkTargets();
+
+    void SetupFilterOptions(const OUString& rFilterOptions);
 
 protected:
     ErrCode WriteStream() override;
@@ -286,7 +287,7 @@ public:
     SwHTMLFormatInfos m_CharFormatInfos;
     SwHTMLFormatInfos m_TextCollInfos;
     std::vector<SwFormatINetFormat*> m_aINetFormats; // the "open" INet attributes
-    SwHTMLTextFootnotes *m_pFootEndNotes;
+    std::unique_ptr<std::vector<SwTextFootnote*>> m_pFootEndNotes;
 
     OUString m_aCSS1Selector;           // style selector
     OUString m_aNonConvertableCharacters;
@@ -295,7 +296,7 @@ public:
     css::uno::Reference<css::container::XIndexContainer> mxFormComps; // current form
 
     rtl::Reference<SwDoc> m_xTemplate;               // HTML template
-    Color *m_pDfltColor;              // default colour
+    std::optional<Color> m_xDfltColor;              // default colour
     SwNodeIndex *m_pStartNdIdx;       // index of first paragraph
     const SwPageDesc *m_pCurrPageDesc;// current page style
     const SwFormatFootnote *m_pFormatFootnote;
@@ -387,13 +388,28 @@ public:
     /// If HTML header and footer should be written as well, or just the content itself.
     bool mbSkipHeaderFooter : 1;
     bool mbEmbedImages : 1;
+    /// Temporary base URL for paste of images.
+    std::unique_ptr<utl::TempFile> mpTempBaseURL;
+    /// If XHTML markup should be written instead of HTML.
+    bool mbXHTML = false;
+    /// XML namespace, in case of XHTML.
+    OString maNamespace;
+    /// If the ReqIF subset of XHTML should be written.
+    bool mbReqIF = false;
 
 #define sCSS2_P_CLASS_leaders "leaders"
     bool m_bCfgPrintLayout : 1;       // PrintLayout option for TOC dot leaders
     bool m_bParaDotLeaders : 1;       // for TOC dot leaders
     // 25
 
-    explicit SwHTMLWriter( const OUString& rBaseURL );
+    /// Tracks which text portion attributes are currently open: a which id -> open count map.
+    std::map<sal_uInt16, int> maStartedAttributes;
+
+    OUString m_aRTFOLEMimeType;
+
+    /// Construct an instance of SwHTMLWriter and optionally give it
+    /// the filter options directly, which can also be set via SetupFilterOptions().
+    explicit SwHTMLWriter( const OUString& rBaseURL, const OUString& rFilterOptions = "" );
     virtual ~SwHTMLWriter() override;
 
     void Out_SwDoc( SwPaM* );       // write the marked range
@@ -402,7 +418,7 @@ public:
     void OutAnchor( const OUString& rName );
     void OutBookmarks();
     void OutPointFieldmarks( const SwPosition& rPos );
-    void OutImplicitMark( const OUString& rMark, const sal_Char *pMarkType );
+    void OutImplicitMark( const OUString& rMark, const char *pMarkType );
 
     OUString convertHyperlinkHRefValue(const OUString& rURL);
 
@@ -429,21 +445,21 @@ public:
     void OutFootEndNoteSym( const SwFormatFootnote& rFormatFootnote, const OUString& rNum,
                              sal_uInt16 nScript );
 
-    void OutBasic();
+    void OutBasic(SwHTMLWriter& rHTMLWrt);
 
     void OutAndSetDefList( sal_uInt16 nNewLvl );
 
     void OutStyleSheet( const SwPageDesc& rPageDesc );
 
-    inline void OutCSS1_PropertyAscii( const sal_Char *pProp,
-                                       const sal_Char *pVal );
-    inline void OutCSS1_PropertyAscii( const sal_Char *pProp,
+    inline void OutCSS1_PropertyAscii( const char *pProp,
+                                       const char *pVal );
+    inline void OutCSS1_PropertyAscii( const char *pProp,
                                        const OString& rVal );
-    inline void OutCSS1_Property( const sal_Char *pProp, const OUString& rVal );
-    void OutCSS1_Property( const sal_Char *pProp, const sal_Char *pVal,
+    inline void OutCSS1_Property( const char *pProp, const OUString& rVal );
+    void OutCSS1_Property( const char *pProp, const char *pVal,
                            const OUString *pSVal );
-    void OutCSS1_UnitProperty( const sal_Char *pProp, long nVal );
-    void OutCSS1_PixelProperty( const sal_Char *pProp, long nVal, bool bVert );
+    void OutCSS1_UnitProperty( const char *pProp, long nVal );
+    void OutCSS1_PixelProperty( const char *pProp, long nVal, bool bVert );
     void OutCSS1_SfxItemSet( const SfxItemSet& rItemSet, bool bDeep=true );
 
     // events of BODY tag from SFX configuration
@@ -489,13 +505,13 @@ public:
 
     sal_Int32 GetLineLen()
     {
-        return (sal_Int32)(Strm().Tell()-m_nLastLFPos);
+        return static_cast<sal_Int32>(Strm().Tell()-m_nLastLFPos);
     }
     void OutNewLine( bool bCheck=false );
 
     // for HTMLSaveData
-    SwPaM* GetEndPaM() { return pOrigPam; }
-    void SetEndPaM( SwPaM* pPam ) { pOrigPam = pPam; }
+    SwPaM* GetEndPaM() { return m_pOrigPam; }
+    void SetEndPaM( SwPaM* pPam ) { m_pOrigPam = pPam; }
 
     static sal_uInt32 ToPixel( sal_uInt32 nVal, const bool bVert );
 
@@ -512,10 +528,11 @@ public:
 
     // Fetch current numbering information of next paragraph. They
     // don't have to exist yet!
-    SwHTMLNumRuleInfo *GetNextNumInfo() { return m_pNextNumRuleInfo; }
+    SwHTMLNumRuleInfo *GetNextNumInfo() { return m_pNextNumRuleInfo.get(); }
+    std::unique_ptr<SwHTMLNumRuleInfo> ReleaseNextNumInfo();
 
     // Set the numbering information of next paragraph.
-    void SetNextNumInfo( SwHTMLNumRuleInfo *pNxt ) { m_pNextNumRuleInfo=pNxt; }
+    void SetNextNumInfo( std::unique_ptr<SwHTMLNumRuleInfo> pNxt );
 
     // Fill the numbering information of next paragraph.
     void FillNextNumInfo();
@@ -541,8 +558,7 @@ public:
                                                bool bCheckDropCap );
 
     static void GetEEAttrsFromDrwObj( SfxItemSet& rItemSet,
-                                      const SdrObject *pObj,
-                                      bool bSetDefaults );
+                                      const SdrObject *pObj );
 
     static sal_uInt16 GetDefListLvl( const OUString& rNm, sal_uInt16 nPoolId );
 
@@ -558,7 +574,7 @@ public:
     inline bool IsCSS1Source( sal_uInt16 n ) const;
     inline bool IsCSS1Script( sal_uInt16 n ) const;
 
-    static const sal_Char *GetNumFormat( sal_uInt16 nFormat );
+    static const char *GetNumFormat( sal_uInt16 nFormat );
     static void PrepareFontList( const SvxFontItem& rFontItem, OUString& rNames,
                                  sal_Unicode cQuote, bool bGeneric );
     static sal_uInt16 GetCSS1ScriptForScriptType( sal_uInt16 nScriptType );
@@ -567,6 +583,9 @@ public:
     FieldUnit GetCSS1Unit() const { return m_eCSS1Unit; }
 
     sal_Int32 indexOfDotLeaders( sal_uInt16 nPoolId, const OUString& rText );
+
+    /// Determines the prefix string needed to respect the requested namespace alias.
+    OString GetNamespace() const;
 };
 
 inline bool SwHTMLWriter::IsCSS1Source( sal_uInt16 n ) const
@@ -580,19 +599,19 @@ inline bool SwHTMLWriter::IsCSS1Script( sal_uInt16 n ) const
     return CSS1_OUTMODE_ANY_SCRIPT == nScript || n == nScript;
 }
 
-inline void SwHTMLWriter::OutCSS1_PropertyAscii( const sal_Char *pProp,
-                                                 const sal_Char *pVal )
+inline void SwHTMLWriter::OutCSS1_PropertyAscii( const char *pProp,
+                                                 const char *pVal )
 {
     OutCSS1_Property( pProp, pVal, nullptr );
 }
 
-inline void SwHTMLWriter::OutCSS1_PropertyAscii( const sal_Char *pProp,
+inline void SwHTMLWriter::OutCSS1_PropertyAscii( const char *pProp,
                                                  const OString& rVal )
 {
     OutCSS1_Property( pProp, rVal.getStr(), nullptr );
 }
 
-inline void SwHTMLWriter::OutCSS1_Property( const sal_Char *pProp,
+inline void SwHTMLWriter::OutCSS1_Property( const char *pProp,
                                             const OUString& rVal )
 {
     OutCSS1_Property( pProp, nullptr, &rVal );
@@ -608,9 +627,10 @@ inline void SwHTMLWriter::OutCSS1_Property( const sal_Char *pProp,
 struct HTMLSaveData
 {
     SwHTMLWriter& rWrt;
-    SwPaM* pOldPam, *pOldEnd;
-    SwHTMLNumRuleInfo *pOldNumRuleInfo;     // Owner = this
-    SwHTMLNumRuleInfo *pOldNextNumRuleInfo; // Owner = HTML-Writer
+    std::shared_ptr<SwUnoCursor> pOldPam;
+    SwPaM *pOldEnd;
+    std::unique_ptr<SwHTMLNumRuleInfo> pOldNumRuleInfo;     // Owner = this
+    std::unique_ptr<SwHTMLNumRuleInfo> pOldNextNumRuleInfo;
     sal_uInt16 nOldDefListLvl;
     SvxFrameDirection nOldDirection;
     bool bOldWriteAll : 1;
@@ -644,12 +664,13 @@ Writer& OutHTML_HeaderFooter( Writer& rWrt, const SwFrameFormat& rFrameFormat,
 
 Writer& OutHTML_Image( Writer&, const SwFrameFormat& rFormat,
                        const OUString& rGraphicURL,
-                       Graphic& rGraphic, const OUString& rAlternateText,
+                       Graphic const & rGraphic, const OUString& rAlternateText,
                        const Size& rRealSize, HtmlFrmOpts nFrameOpts,
-                       const sal_Char *pMarkType,
-                       const ImageMap *pGenImgMap = nullptr );
+                       const char *pMarkType,
+                       const ImageMap *pGenImgMap,
+                       const OUString& rMimeType = OUString() );
 
-Writer& OutHTML_BulletImage( Writer& rWrt, const sal_Char *pTag,
+Writer& OutHTML_BulletImage( Writer& rWrt, const char *pTag,
                              const SvxBrushItem* pBrush,
                              const OUString& rGraphicURL);
 
@@ -657,22 +678,27 @@ Writer& OutHTML_SwFormatField( Writer& rWrt, const SfxPoolItem& rHt );
 Writer& OutHTML_SwFormatFootnote( Writer& rWrt, const SfxPoolItem& rHt );
 Writer& OutHTML_INetFormat( Writer&, const SwFormatINetFormat& rINetFormat, bool bOn );
 
-Writer& OutCSS1_BodyTagStyleOpt( Writer& rWrt, const SfxItemSet& rItemSet, const OUString& rGraphicURL );
+Writer& OutCSS1_BodyTagStyleOpt( Writer& rWrt, const SfxItemSet& rItemSet );
 Writer& OutCSS1_ParaTagStyleOpt( Writer& rWrt, const SfxItemSet& rItemSet );
 
 Writer& OutCSS1_HintSpanTag( Writer& rWrt, const SfxPoolItem& rHt );
 Writer& OutCSS1_HintStyleOpt( Writer& rWrt, const SfxPoolItem& rHt );
 
 Writer& OutCSS1_TableBGStyleOpt( Writer& rWrt, const SfxPoolItem& rHt );
-Writer& OutCSS1_NumBulListStyleOpt( Writer& rWrt, const SwNumRule& rNumRule,
+Writer& OutCSS1_NumberBulletListStyleOpt( Writer& rWrt, const SwNumRule& rNumRule,
                                     sal_uInt8 nLevel );
 
-Writer& OutHTML_NumBulListStart( SwHTMLWriter& rWrt,
+Writer& OutHTML_NumberBulletListStart( SwHTMLWriter& rWrt,
                                  const SwHTMLNumRuleInfo& rInfo );
-Writer& OutHTML_NumBulListEnd( SwHTMLWriter& rWrt,
+Writer& OutHTML_NumberBulletListEnd( SwHTMLWriter& rWrt,
                                const SwHTMLNumRuleInfo& rNextInfo );
 
 Writer& OutCSS1_SvxBox( Writer& rWrt, const SfxPoolItem& rHt );
+
+OString GetCSS1_Color(const Color& rColor);
+
+/// Determines if rProperty with a given rValue has to be suppressed due to ReqIF mode.
+bool IgnorePropertyForReqIF(bool bReqIF, const OString& rProperty, const OString& rValue);
 
 #endif // INCLUDED_SW_SOURCE_FILTER_HTML_WRTHTML_HXX
 

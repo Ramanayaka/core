@@ -19,38 +19,38 @@
 
 #include "ImageControl.hxx"
 
-#include "property.hrc"
-#include "frm_resource.hrc"
-#include "frm_resource.hxx"
-#include "services.hxx"
-#include "componenttools.hxx"
+#include <strings.hrc>
+#include <frm_resource.hxx>
+#include <property.hxx>
+#include <services.hxx>
+#include <componenttools.hxx>
 
 #include <svtools/imageresourceaccess.hxx>
 #include <sfx2/filedlghelper.hxx>
 #include <com/sun/star/awt/PopupMenu.hpp>
 #include <com/sun/star/awt/XPopupMenu.hpp>
 #include <com/sun/star/awt/PopupMenuDirection.hpp>
+#include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
 #include <com/sun/star/ui/dialogs/ExtendedFilePickerElementIds.hpp>
+#include <com/sun/star/ui/dialogs/XFilePicker3.hpp>
 #include <com/sun/star/ui/dialogs/XFilePickerControlAccess.hpp>
-#include <com/sun/star/ui/dialogs/XFilePicker.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
 #include <com/sun/star/awt/MouseButton.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/XDialog.hpp>
-#include <com/sun/star/io/XActiveDataSink.hpp>
-#include <com/sun/star/io/NotConnectedException.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/graphic/GraphicObject.hpp>
 #include <tools/urlobj.hxx>
 #include <tools/stream.hxx>
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
+#include <vcl/graph.hxx>
 #include <vcl/svapp.hxx>
 #include <unotools/streamhelper.hxx>
 #include <comphelper/guarding.hxx>
-#include <comphelper/processfactory.hxx>
+#include <comphelper/property.hxx>
+#include <comphelper/types.hxx>
+#include <cppuhelper/queryinterface.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <svl/urihelper.hxx>
 
@@ -66,7 +66,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -273,15 +272,7 @@ void OImageControlModel::setFastPropertyValue_NoBroadcast(sal_Int32 nHandle, con
 
             if ( m_bExternalGraphic )
             {
-                // if that's an external graphic, i.e. one which has not been loaded by ourselves in response to a
-                // new image URL, then also adjust our ImageURL.
-                OUString sNewImageURL;
-                if ( m_xGraphicObject.is() )
-                {
-                    sNewImageURL = "vnd.sun.star.GraphicObject:";
-                    sNewImageURL = sNewImageURL + m_xGraphicObject->getUniqueID();
-                }
-                m_sImageURL = sNewImageURL;
+                m_sImageURL = OUString();
                 // TODO: speaking strictly, this would need to be notified, since ImageURL is a bound property. However,
                 // this method here is called with a locked mutex, so we cannot simply call listeners ...
                 // I think the missing notification (and thus clients which potentially cannot observe the change)
@@ -343,7 +334,7 @@ void OImageControlModel::describeAggregateProperties( Sequence< Property >& /* [
 
 OUString OImageControlModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_IMAGECONTROL);  // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_IMAGECONTROL;  // old (non-sun) name for compatibility !
 }
 
 
@@ -408,8 +399,8 @@ bool OImageControlModel::impl_updateStreamForURL_lck( const OUString& _rURL, Val
     }
     else
     {
-        pImageStream.reset( ::utl::UcbStreamHelper::CreateStream( _rURL, StreamMode::READ ) );
-        bool bSetNull = ( pImageStream.get() == nullptr ) || ( ERRCODE_NONE != pImageStream->GetErrorCode() );
+        pImageStream = ::utl::UcbStreamHelper::CreateStream( _rURL, StreamMode::READ );
+        bool bSetNull = (pImageStream == nullptr) || (ERRCODE_NONE != pImageStream->GetErrorCode());
 
         if ( !bSetNull )
         {
@@ -437,13 +428,13 @@ bool OImageControlModel::impl_updateStreamForURL_lck( const OUString& _rURL, Val
 }
 
 
-bool OImageControlModel::impl_handleNewImageURL_lck( ValueChangeInstigator _eInstigator )
+void OImageControlModel::impl_handleNewImageURL_lck( ValueChangeInstigator _eInstigator )
 {
     switch ( lcl_getImageStoreType( getFieldType() ) )
     {
     case ImageStoreBinary:
         if ( impl_updateStreamForURL_lck( m_sImageURL, _eInstigator ) )
-            return true;
+            return;
         break;
 
     case ImageStoreLink:
@@ -455,7 +446,7 @@ bool OImageControlModel::impl_handleNewImageURL_lck( ValueChangeInstigator _eIns
         if ( m_xColumnUpdate.is() )
         {
             m_xColumnUpdate->updateString( sCommitURL );
-            return true;
+            return;
         }
     }
     break;
@@ -471,8 +462,6 @@ bool OImageControlModel::impl_handleNewImageURL_lck( ValueChangeInstigator _eIns
         m_xColumnUpdate->updateNull();
     else
         setControlValue( Any(), _eInstigator );
-
-    return true;
 }
 
 
@@ -488,7 +477,7 @@ bool OImageControlModel::commitControlValueToDbColumn( bool _bPostReset )
     else
     {
         ::osl::MutexGuard aGuard(m_aMutex);
-        return impl_handleNewImageURL_lck( eDbColumnBinding );
+        impl_handleNewImageURL_lck( eDbColumnBinding );
     }
 
     return true;
@@ -529,7 +518,7 @@ void OImageControlModel::onConnectedDbColumn( const Reference< XInterface >& _rx
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.component");
     }
 }
 
@@ -663,7 +652,7 @@ IMPL_LINK( OImageControlModel, OnImageImportDone, ::Graphic*, i_pGraphic, void )
     }
     catch ( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.component");
     }
     m_bExternalGraphic = true;
 }
@@ -752,23 +741,23 @@ void SAL_CALL OImageControlControl::disposing( const EventObject& Event )
 void OImageControlControl::implClearGraphics( bool _bForce )
 {
     Reference< XPropertySet > xSet( getModel(), UNO_QUERY );
-    if ( xSet.is() )
+    if ( !xSet.is() )
+        return;
+
+    if ( _bForce )
     {
-        if ( _bForce )
-        {
-            OUString sOldImageURL;
-            xSet->getPropertyValue( PROPERTY_IMAGE_URL ) >>= sOldImageURL;
+        OUString sOldImageURL;
+        xSet->getPropertyValue( PROPERTY_IMAGE_URL ) >>= sOldImageURL;
 
-            if ( sOldImageURL.isEmpty() )
-                // the ImageURL is already empty, so simply setting a new empty one would not suffice
-                // (since it would be ignored)
-                xSet->setPropertyValue( PROPERTY_IMAGE_URL, makeAny( OUString( "private:emptyImage" ) ) );
-                    // (the concrete URL we're passing here doesn't matter. It's important that
-                    // the model cannot resolve it to a valid resource describing an image stream
-        }
-
-        xSet->setPropertyValue( PROPERTY_IMAGE_URL, makeAny( OUString() ) );
+        if ( sOldImageURL.isEmpty() )
+            // the ImageURL is already empty, so simply setting a new empty one would not suffice
+            // (since it would be ignored)
+            xSet->setPropertyValue( PROPERTY_IMAGE_URL, makeAny( OUString( "private:emptyImage" ) ) );
+                // (the concrete URL we're passing here doesn't matter. It's important that
+                // the model cannot resolve it to a valid resource describing an image stream
     }
+
+    xSet->setPropertyValue( PROPERTY_IMAGE_URL, makeAny( OUString() ) );
 }
 
 
@@ -782,7 +771,9 @@ bool OImageControlControl::implInsertGraphics()
     // build some arguments for the upcoming dialog
     try
     {
-        ::sfx2::FileDialogHelper aDialog( TemplateDescription::FILEOPEN_LINK_PREVIEW, FileDialogFlags::Graphic );
+        Reference< XWindow > xWindow( static_cast< ::cppu::OWeakObject* >( this ), UNO_QUERY );
+        ::sfx2::FileDialogHelper aDialog(TemplateDescription::FILEOPEN_LINK_PREVIEW, FileDialogFlags::Graphic,
+                                         Application::GetFrameWeld(xWindow));
         aDialog.SetTitle( sTitle );
 
         Reference< XFilePickerControlAccess > xController( aDialog.GetFilePicker(), UNO_QUERY_THROW );
@@ -822,7 +813,7 @@ bool OImageControlControl::implInsertGraphics()
             {
                 Graphic aGraphic;
                 aDialog.GetGraphic( aGraphic );
-                 xSet->setPropertyValue( PROPERTY_GRAPHIC, makeAny( aGraphic.GetXGraphic() ) );
+                xSet->setPropertyValue( PROPERTY_GRAPHIC, makeAny( aGraphic.GetXGraphic() ) );
             }
             else
                 xSet->setPropertyValue( PROPERTY_IMAGE_URL, makeAny( aDialog.GetPath() ) );
@@ -851,7 +842,7 @@ bool OImageControlControl::impl_isEmptyGraphics_nothrow() const
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.component");
     }
 
     return bIsEmpty;
@@ -974,14 +965,14 @@ void SAL_CALL OImageControlControl::mouseExited(const awt::MouseEvent& /*e*/)
 
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OImageControlModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new frm::OImageControlModel(component));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OImageControlControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

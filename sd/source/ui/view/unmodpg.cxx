@@ -22,17 +22,18 @@
 #include <sfx2/viewfrm.hxx>
 #include <svx/svdviter.hxx>
 #include <svx/svdview.hxx>
+#include <tools/debug.hxx>
 
-#include "strings.hrc"
-#include "strings.hxx"
-#include "glob.hxx"
-#include "glob.hrc"
-#include "app.hrc"
+#include <strings.hrc>
+#include <strings.hxx>
+#include <glob.hxx>
+#include <app.hrc>
 
-#include "unmodpg.hxx"
-#include "sdpage.hxx"
-#include "sdresid.hxx"
-#include "drawdoc.hxx"
+#include <unmodpg.hxx>
+#include <sdpage.hxx>
+#include <sdresid.hxx>
+#include <unokywds.hxx>
+#include <drawdoc.hxx>
 
 
 ModifyPageUndoAction::ModifyPageUndoAction(
@@ -58,8 +59,8 @@ ModifyPageUndoAction::ModifyPageUndoAction(
     {
         maOldName = mpPage->GetName();
         SdrLayerAdmin& rLayerAdmin = mpDoc->GetLayerAdmin();
-        SdrLayerID aBckgrnd = rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRND));
-        SdrLayerID aBckgrndObj = rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRNDOBJ));
+        SdrLayerID aBckgrnd = rLayerAdmin.GetLayerID(sUNO_LayerName_background);
+        SdrLayerID aBckgrndObj = rLayerAdmin.GetLayerID(sUNO_LayerName_background_objects);
         SdrLayerIDSet aVisibleLayers = mpPage->TRG_GetMasterPageVisibleLayers();
 
         mbOldBckgrndVisible = aVisibleLayers.IsSet(aBckgrnd);
@@ -71,14 +72,17 @@ ModifyPageUndoAction::ModifyPageUndoAction(
         mbOldBckgrndObjsVisible = false;
     }
 
-    SetComment( SdResId(STR_UNDO_MODIFY_PAGE) );
+    if (pTheDoc && pTheDoc->GetDocumentType() == DocumentType::Draw)
+        SetComment( SdResId(STR_UNDO_MODIFY_PAGE_DRAW) );
+    else
+        SetComment( SdResId(STR_UNDO_MODIFY_PAGE) );
 }
 
 void ModifyPageUndoAction::Undo()
 {
     // invalidate Selection, there could be objects deleted in this UNDO
     // which are no longer allowed to be selected then.
-      SdrViewIter aIter(mpPage);
+    SdrViewIter aIter(mpPage);
     SdrView* pView = aIter.FirstView();
 
     while(pView)
@@ -104,8 +108,8 @@ void ModifyPageUndoAction::Undo()
         }
 
         SdrLayerAdmin& rLayerAdmin = mpDoc->GetLayerAdmin();
-        SdrLayerID aBckgrnd = rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRND));
-        SdrLayerID aBckgrndObj = rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRNDOBJ));
+        SdrLayerID aBckgrnd = rLayerAdmin.GetLayerID(sUNO_LayerName_background);
+        SdrLayerID aBckgrndObj = rLayerAdmin.GetLayerID(sUNO_LayerName_background_objects);
         SdrLayerIDSet aVisibleLayers;
         aVisibleLayers.Set(aBckgrnd, mbOldBckgrndVisible);
         aVisibleLayers.Set(aBckgrndObj, mbOldBckgrndObjsVisible);
@@ -121,7 +125,7 @@ void ModifyPageUndoAction::Redo()
 {
     // invalidate Selection, there could be objects deleted in this UNDO
     // which are no longer allowed to be selected then.
-      SdrViewIter aIter(mpPage);
+    SdrViewIter aIter(mpPage);
     SdrView* pView = aIter.FirstView();
 
     while(pView)
@@ -147,8 +151,8 @@ void ModifyPageUndoAction::Redo()
         }
 
         SdrLayerAdmin& rLayerAdmin = mpDoc->GetLayerAdmin();
-        SdrLayerID aBckgrnd = rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRND));
-        SdrLayerID aBckgrndObj = rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRNDOBJ));
+        SdrLayerID aBckgrnd = rLayerAdmin.GetLayerID(sUNO_LayerName_background);
+        SdrLayerID aBckgrndObj = rLayerAdmin.GetLayerID(sUNO_LayerName_background_objects);
         SdrLayerIDSet aVisibleLayers;
         aVisibleLayers.Set(aBckgrnd, mbNewBckgrndVisible);
         aVisibleLayers.Set(aBckgrndObj, mbNewBckgrndObjsVisible);

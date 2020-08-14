@@ -7,21 +7,27 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#ifndef LO_CLANG_SHARED_PLUGINS
+
 #include "check.hxx"
 #include "plugin.hxx"
 
 namespace {
 
 class CharRightShift:
-    public RecursiveASTVisitor<CharRightShift>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<CharRightShift>
 {
 public:
-    explicit CharRightShift(InstantiationData const & data): Plugin(data) {}
+    explicit CharRightShift(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
 
     void run() override
     { TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()); }
 
-    bool VisitBinShr(BinaryOperator const * expr) {
+    bool VisitBinaryOperator(BinaryOperator const * expr) {
+        if (expr->getOpcode() != BO_Shr) {
+            return true;
+        }
         if (ignoreLocation(expr)) {
             return true;
         }
@@ -50,8 +56,10 @@ public:
     }
 };
 
-loplugin::Plugin::Registration<CharRightShift> X("charrightshift");
+loplugin::Plugin::Registration<CharRightShift> charrightshift("charrightshift");
 
 }
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

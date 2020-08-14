@@ -21,33 +21,60 @@
 
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/beans/PropertyState.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <comphelper/propertysetinfo.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <svl/itemset.hxx>
 #include <svl/svldllapi.h>
 #include <vector>
 #include <memory>
 
+// values from com/sun/star/beans/PropertyAttribute
+#define PROPERTY_NONE 0
+
 /// map a property between beans::XPropertySet and SfxPoolItem
 struct SfxItemPropertyMapEntry
 {
-    OUString                            aName; ///< name of property
-    sal_uInt16                          nWID;  ///< WhichId of SfxPoolItem
+    OUStringLiteral                     aName; ///< name of property
     css::uno::Type                      aType; ///< UNO type of property
+    sal_uInt16                          nWID;  ///< WhichId of SfxPoolItem
     /// flag bitmap, @see css::beans::PropertyAttribute
-    long                                nFlags;
+    sal_Int16                           nFlags;
     /// "member ID" to tell QueryValue/PutValue which property it is
     /// (when multiple properties map to the same nWID)
     sal_uInt8                           nMemberId;
+    PropertyMoreFlags                   nMoreFlags;
 
+    SfxItemPropertyMapEntry(OUStringLiteral _aName, sal_uInt16 _nWID, css::uno::Type const & _rType,
+                               sal_Int16 _nFlags, sal_uInt8 const _nMemberId, PropertyMoreFlags _nMoreFlags = PropertyMoreFlags::NONE)
+        : aName(      _aName )
+        , aType(     _rType )
+        , nWID(      _nWID )
+        , nFlags(    _nFlags )
+        , nMemberId( _nMemberId )
+        , nMoreFlags( _nMoreFlags )
+        {
+            assert(_nFlags <= 0x1ff );
+            assert( (_nMemberId & 0x40) == 0 );
+            // Verify that if METRIC_ITEM is set, we are one of the types supported by
+            // SvxUnoConvertToMM.
+            assert(!(_nMoreFlags & PropertyMoreFlags::METRIC_ITEM) ||
+                ( (aType.getTypeClass() == css::uno::TypeClass_BYTE)
+                  || (aType.getTypeClass() == css::uno::TypeClass_SHORT)
+                  || (aType.getTypeClass() == css::uno::TypeClass_UNSIGNED_SHORT)
+                  || (aType.getTypeClass() == css::uno::TypeClass_LONG)
+                  || (aType.getTypeClass() == css::uno::TypeClass_UNSIGNED_LONG)
+                ) );
+        }
 };
 
 struct SfxItemPropertySimpleEntry
 {
-    sal_uInt16                          nWID;
     css::uno::Type                      aType;
-    long                                nFlags;
+    sal_uInt16                          nWID;
+    /// flag bitmap, @see css::beans::PropertyAttribute
+    sal_Int16                           nFlags;
     sal_uInt8                           nMemberId;
+    PropertyMoreFlags                   nMoreFlags = PropertyMoreFlags::NONE;
 
     SfxItemPropertySimpleEntry()
         : nWID( 0 )
@@ -57,19 +84,21 @@ struct SfxItemPropertySimpleEntry
         }
 
     SfxItemPropertySimpleEntry(sal_uInt16 _nWID, css::uno::Type const & _rType,
-                               long _nFlags)
-        : nWID(      _nWID )
-        , aType(     _rType )
+                               sal_Int16 _nFlags)
+        : aType(     _rType )
+        , nWID(      _nWID )
         , nFlags(    _nFlags )
         , nMemberId( 0 )
         {
+            assert(_nFlags <= 0x1ff );
         }
 
     SfxItemPropertySimpleEntry( const SfxItemPropertyMapEntry* pMapEntry )
-        : nWID( pMapEntry->nWID )
-        , aType( pMapEntry->aType )
+        : aType( pMapEntry->aType )
+        , nWID( pMapEntry->nWID )
         , nFlags( pMapEntry->nFlags )
         , nMemberId( pMapEntry->nMemberId )
+        , nMoreFlags( pMapEntry->nMoreFlags )
         {
         }
 
@@ -95,7 +124,7 @@ public:
     ~SfxItemPropertyMap();
 
     const SfxItemPropertySimpleEntry*  getByName( const OUString &rName ) const;
-    css::uno::Sequence< css::beans::Property > getProperties() const;
+    css::uno::Sequence< css::beans::Property > const & getProperties() const;
     /// @throws css::beans::UnknownPropertyException
     css::beans::Property getPropertyByName( const OUString & rName ) const;
     bool hasPropertyByName( const OUString& rName ) const;
@@ -154,10 +183,12 @@ public:
     const SfxItemPropertyMap& getPropertyMap() const {return m_aMap;}
 };
 
-struct SfxItemPropertySetInfo_Impl;
-class SVL_DLLPUBLIC SfxItemPropertySetInfo : public cppu::WeakImplHelper<css::beans::XPropertySetInfo>
+// workaround for incremental linking bugs in MSVC2015
+class SAL_DLLPUBLIC_TEMPLATE SfxItemPropertySetInfo_Base : public cppu::WeakImplHelper< css::beans::XPropertySetInfo > {};
+
+class SVL_DLLPUBLIC SfxItemPropertySetInfo final : public SfxItemPropertySetInfo_Base
 {
-    std::unique_ptr<SfxItemPropertySetInfo_Impl> m_pImpl;
+    SfxItemPropertyMap m_aOwnMap;
 
 public:
     SfxItemPropertySetInfo(const SfxItemPropertyMap &rMap );
@@ -175,7 +206,10 @@ public:
 
 };
 
-class SVL_DLLPUBLIC SfxExtItemPropertySetInfo: public cppu::WeakImplHelper<css::beans::XPropertySetInfo>
+// workaround for incremental linking bugs in MSVC2015
+class SAL_DLLPUBLIC_TEMPLATE SfxExtItemPropertySetInfo_Base : public cppu::WeakImplHelper< css::beans::XPropertySetInfo > {};
+
+class SVL_DLLPUBLIC SfxExtItemPropertySetInfo final : public SfxExtItemPropertySetInfo_Base
 {
     SfxItemPropertyMap aExtMap;
 public:

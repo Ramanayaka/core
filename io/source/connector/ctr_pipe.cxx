@@ -22,6 +22,7 @@
 #include <com/sun/star/io/IOException.hpp>
 
 #include "connector.hxx"
+#include <osl/pipe.hxx>
 
 using namespace ::osl;
 using namespace ::com::sun::star::uno;
@@ -48,29 +49,26 @@ namespace stoc_connector {
 
     sal_Int32 PipeConnection::read( Sequence < sal_Int8 > & aReadBytes , sal_Int32 nBytesToRead )
     {
-        if( ! m_nStatus )
+        if( m_nStatus )
         {
-            if( aReadBytes.getLength() != nBytesToRead )
-            {
-                aReadBytes.realloc( nBytesToRead );
-            }
-            return m_pipe.read( aReadBytes.getArray()  , aReadBytes.getLength() );
-        }
-        else {
             throw IOException();
         }
+        if( aReadBytes.getLength() != nBytesToRead )
+        {
+            aReadBytes.realloc( nBytesToRead );
+        }
+        return m_pipe.read( aReadBytes.getArray()  , aReadBytes.getLength() );
+
     }
 
     void PipeConnection::write( const Sequence < sal_Int8 > &seq )
     {
-        if( ! m_nStatus )
+        if( m_nStatus )
         {
-            if( m_pipe.write( seq.getConstArray() , seq.getLength() ) != seq.getLength() )
-            {
-                throw IOException();
-            }
+            throw IOException();
         }
-        else {
+        if( m_pipe.write( seq.getConstArray() , seq.getLength() ) != seq.getLength() )
+        {
             throw IOException();
         }
     }

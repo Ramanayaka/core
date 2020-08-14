@@ -33,10 +33,9 @@ $(eval $(call gb_Library_add_defs,xmlscript,\
     -DXMLSCRIPT_DLLIMPLEMENTATION \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,xmlscript,$(SRCDIR)/xmlscript/inc/pch/precompiled_xmlscript))
+$(eval $(call gb_Library_set_precompiled_header,xmlscript,xmlscript/inc/pch/precompiled_xmlscript))
 
 $(eval $(call gb_Library_add_exception_objects,xmlscript,\
-    xmlscript/source/misc/unoservices \
     xmlscript/source/xml_helper/xml_byteseq \
     xmlscript/source/xml_helper/xml_element \
     xmlscript/source/xml_helper/xml_impctx \
@@ -46,7 +45,6 @@ $(eval $(call gb_Library_add_exception_objects,xmlscript,\
     xmlscript/source/xmldlg_imexp/xmldlg_impmodels \
     xmlscript/source/xmldlg_imexp/xmldlg_import \
     xmlscript/source/xmlflat_imexp/xmlbas_export \
-    xmlscript/source/xmlflat_imexp/xmlbas_import \
     xmlscript/source/xmllib_imexp/xmllib_export \
     xmlscript/source/xmllib_imexp/xmllib_import \
     xmlscript/source/xmlmod_imexp/xmlmod_export \

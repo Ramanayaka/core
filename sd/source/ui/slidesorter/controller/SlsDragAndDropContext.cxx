@@ -19,25 +19,19 @@
 
 #include "SlsDragAndDropContext.hxx"
 
-#include "SlideSorter.hxx"
-#include "model/SlideSorterModel.hxx"
-#include "model/SlsPageEnumerationProvider.hxx"
-#include "view/SlideSorterView.hxx"
-#include "controller/SlideSorterController.hxx"
-#include "controller/SlsInsertionIndicatorHandler.hxx"
-#include "controller/SlsScrollBarManager.hxx"
-#include "controller/SlsProperties.hxx"
-#include "controller/SlsSelectionFunction.hxx"
-#include "controller/SlsSelectionManager.hxx"
-#include "controller/SlsClipboard.hxx"
-#include "controller/SlsTransferableData.hxx"
-#include "DrawDocShell.hxx"
-#include "drawdoc.hxx"
-#include "app.hrc"
-#include "sdtreelb.hxx"
-#include <sfx2/bindings.hxx>
+#include <SlideSorter.hxx>
+#include <model/SlideSorterModel.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsInsertionIndicatorHandler.hxx>
+#include <controller/SlsScrollBarManager.hxx>
+#include <controller/SlsProperties.hxx>
+#include <controller/SlsClipboard.hxx>
+#include <controller/SlsTransferableData.hxx>
+#include <Window.hxx>
+#include <sdtreelb.hxx>
+#include <sdmod.hxx>
 
-namespace sd { namespace slidesorter { namespace controller {
+namespace sd::slidesorter::controller {
 
 DragAndDropContext::DragAndDropContext (SlideSorter& rSlideSorter)
     : mpTargetSlideSorter(&rSlideSorter),
@@ -51,8 +45,8 @@ DragAndDropContext::DragAndDropContext (SlideSorter& rSlideSorter)
     // need additional information.  For this a user data object is
     // created that contains the necessary information.
     SdTransferable* pTransferable = SD_MOD()->pTransferDrag;
-    SdPageObjsTLB::SdPageObjsTransferable* pTreeListBoxTransferable
-        = dynamic_cast<SdPageObjsTLB::SdPageObjsTransferable*>(pTransferable);
+    SdPageObjsTLV::SdPageObjsTransferable* pTreeListBoxTransferable
+        = dynamic_cast<SdPageObjsTLV::SdPageObjsTransferable*>(pTransferable);
     if (pTreeListBoxTransferable!=nullptr && !TransferableData::GetFromTransferable(pTransferable))
     {
         pTransferable->AddUserData(
@@ -64,7 +58,7 @@ DragAndDropContext::DragAndDropContext (SlideSorter& rSlideSorter)
 
 DragAndDropContext::~DragAndDropContext() COVERITY_NOEXCEPT_FALSE
 {
-    SetTargetSlideSorter (Point(0,0));
+    SetTargetSlideSorter();
 }
 
 void DragAndDropContext::Dispose()
@@ -94,7 +88,7 @@ void DragAndDropContext::UpdatePosition (
     bool bDoAutoScroll = bAllowAutoScroll
             && mpTargetSlideSorter->GetController().GetScrollBarManager().AutoScroll(
                 rMousePosition,
-                [this, eMode, &rMousePosition] () {
+                [this, eMode, rMousePosition] () {
                     return this->UpdatePosition(rMousePosition, eMode, false);
                 });
 
@@ -109,8 +103,7 @@ void DragAndDropContext::UpdatePosition (
     }
 }
 
-void DragAndDropContext::SetTargetSlideSorter(
-    const Point& rMousePosition)
+void DragAndDropContext::SetTargetSlideSorter()
 {
     if (mpTargetSlideSorter != nullptr)
     {
@@ -120,18 +113,8 @@ void DragAndDropContext::SetTargetSlideSorter(
     }
 
     mpTargetSlideSorter = nullptr;
-
-    if (mpTargetSlideSorter != nullptr)
-    {
-        mpTargetSlideSorter->GetController().GetInsertionIndicatorHandler()->Start(
-            false/*bIsOverSourceView*/);
-        mpTargetSlideSorter->GetController().GetInsertionIndicatorHandler()->UpdatePosition(
-            rMousePosition,
-            InsertionIndicatorHandler::UnknownMode);
-
-    }
 }
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

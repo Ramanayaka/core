@@ -20,17 +20,13 @@
 #ifndef INCLUDED_FRAMEWORK_INC_HELPER_PERSISTENTWINDOWSTATE_HXX
 #define INCLUDED_FRAMEWORK_INC_HELPER_PERSISTENTWINDOWSTATE_HXX
 
-#include <general.h>
-
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XFrameActionListener.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
-#include <unotools/moduleoptions.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <cppuhelper/weakref.hxx>
 
 namespace framework{
 
@@ -50,7 +46,7 @@ namespace framework{
     @devstatus      ready
     @threadsafe     yes
 *//*-*************************************************************************************************************/
-class PersistentWindowState :   public  ::cppu::WeakImplHelper<
+class PersistentWindowState final : public  ::cppu::WeakImplHelper<
                                            css::lang::XInitialization,
                                            css::frame::XFrameActionListener > // => XEventListener
 {
@@ -59,7 +55,7 @@ class PersistentWindowState :   public  ::cppu::WeakImplHelper<
 
     private:
 
-        /// may we need an uno service manager to create own services
+        /// may we need a uno service manager to create own services
         css::uno::Reference< css::uno::XComponentContext > m_xContext;
 
         /// reference to the frame which was created by the office himself

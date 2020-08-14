@@ -22,17 +22,15 @@
 
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/text/XTextField.hpp>
-#include <com/sun/star/text/textfield/Type.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/component.hxx>
 #include <editeng/editengdllapi.h>
 
-#include <comphelper/servicehelper.hxx>
-
 #include <editeng/mutxhelp.hxx>
 #include <memory>
+
+namespace com::sun::star::beans { class XPropertySetInfo; }
 
 class SvxUnoFieldData_Impl;
 class SfxItemPropertySet;
@@ -40,23 +38,20 @@ class SvxFieldData;
 
 /// @throws css::uno::Exception
 /// @throws css::uno::RuntimeException
-css::uno::Reference< css::uno::XInterface > EDITENG_DLLPUBLIC SAL_CALL SvxUnoTextCreateTextField(
+css::uno::Reference< css::uno::XInterface > EDITENG_DLLPUBLIC SvxUnoTextCreateTextField(
     const OUString& ServiceSpecifier );
 
-class EDITENG_DLLPUBLIC SvxUnoTextField : public SvxMutexHelper,
+class EDITENG_DLLPUBLIC SvxUnoTextField final : public SvxMutexHelper,
                         public ::cppu::OComponentHelper,
                         public css::text::XTextField,
                         public css::beans::XPropertySet,
                         public css::lang::XServiceInfo,
                         public css::lang::XUnoTunnel
 {
-private:
     css::uno::Reference< css::text::XTextRange > mxAnchor;
     const SfxItemPropertySet*   mpPropSet;
     sal_Int32                   mnServiceId;
     std::unique_ptr<SvxUnoFieldData_Impl>        mpImpl;
-
-protected:
     css::uno::Sequence< css::uno::Type > maTypeSequence;
 
 public:
@@ -65,7 +60,7 @@ public:
     virtual ~SvxUnoTextField() throw() override;
 
     // Internal
-    SvxFieldData* CreateFieldData() const throw();
+    std::unique_ptr<SvxFieldData> CreateFieldData() const throw();
 
     static const css::uno::Sequence< sal_Int8 > & getUnoTunnelId() throw();
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;

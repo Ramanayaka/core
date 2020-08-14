@@ -17,9 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <float.h>
-#include <hintids.hxx>
-#include <vcl/window.hxx>
 #include <doc.hxx>
 #include <IDocumentChartDataProviderAccess.hxx>
 #include <IDocumentState.hxx>
@@ -27,17 +24,11 @@
 #include <docary.hxx>
 #include <ndindex.hxx>
 #include <swtable.hxx>
-#include <ndtxt.hxx>
-#include <calc.hxx>
-#include <cellfml.hxx>
 #include <viewsh.hxx>
 #include <ndole.hxx>
-#include <calbck.hxx>
-#include <cntfrm.hxx>
 #include <swtblfmt.hxx>
 #include <tblsel.hxx>
-#include <cellatr.hxx>
-
+#include <frameformats.hxx>
 #include <unochart.hxx>
 
 void SwTable::UpdateCharts() const
@@ -87,22 +78,19 @@ bool SwTable::IsTableComplexForChart( const OUString& rSelection ) const
 void SwDoc::DoUpdateAllCharts()
 {
     SwViewShell* pVSh = getIDocumentLayoutAccess().GetCurrentViewShell();
-    if( pVSh )
-    {
-        const SwFrameFormats& rTableFormats = *GetTableFrameFormats();
-        for( size_t n = 0; n < rTableFormats.size(); ++n )
-        {
-            SwTable* pTmpTable;
-            const SwTableNode* pTableNd;
-            const SwFrameFormat* pFormat = rTableFormats[ n ];
+    if( !pVSh )
+        return;
 
-            if( nullptr != ( pTmpTable = SwTable::FindTable( pFormat ) ) &&
-                nullptr != ( pTableNd = pTmpTable->GetTableNode() ) &&
-                pTableNd->GetNodes().IsDocNodes() )
-            {
-                UpdateCharts_( *pTmpTable, *pVSh );
-            }
-        }
+    const SwFrameFormats& rTableFormats = *GetTableFrameFormats();
+    for( size_t n = 0; n < rTableFormats.size(); ++n )
+    {
+        const SwFrameFormat* pFormat = rTableFormats[ n ];
+        if( SwTable* pTmpTable = SwTable::FindTable( pFormat ) )
+            if( const SwTableNode* pTableNd = pTmpTable->GetTableNode() )
+                if( pTableNd->GetNodes().IsDocNodes() )
+                {
+                    UpdateCharts_( *pTmpTable, *pVSh );
+                }
     }
 }
 
@@ -114,8 +102,8 @@ void SwDoc::UpdateCharts_( const SwTable& rTable, SwViewShell const & rVSh ) con
     while( nullptr != (pStNd = aIdx.GetNode().GetStartNode()) )
     {
         ++aIdx;
-        SwOLENode *pONd;
-        if( nullptr != ( pONd = aIdx.GetNode().GetOLENode() ) &&
+        SwOLENode *pONd = aIdx.GetNode().GetOLENode();
+        if( pONd &&
             aName == pONd->GetChartTableName() &&
             pONd->getLayoutFrame( rVSh.GetLayout() ) )
         {
@@ -151,8 +139,8 @@ void SwDoc::SetTableName( SwFrameFormat& rTableFormat, const OUString &rNewName 
         const SwFrameFormats& rTable = *GetTableFrameFormats();
         for( size_t i = rTable.size(); i; )
         {
-            const SwFrameFormat* pFormat;
-            if( !( pFormat = rTable[ --i ] )->IsDefault() &&
+            const SwFrameFormat* pFormat = rTable[ --i ];
+            if( !pFormat->IsDefault() &&
                 pFormat->GetName() == rNewName && IsUsed( *pFormat ) )
             {
                 bNameFound = true;

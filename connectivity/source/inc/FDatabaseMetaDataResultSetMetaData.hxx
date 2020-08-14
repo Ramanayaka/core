@@ -22,11 +22,9 @@
 
 #include <com/sun/star/sdbc/XResultSetMetaData.hpp>
 #include <cppuhelper/implbase.hxx>
+#include <map>
 #include <vector>
-#include "FDatabaseMetaDataResultSet.hxx"
 #include "OColumn.hxx"
-#include <connectivity/StdTypeDefs.hxx>
-#include <connectivity/dbtoolsdllapi.hxx>
 
 namespace connectivity
 {
@@ -35,7 +33,7 @@ namespace connectivity
 
     typedef ::cppu::WeakImplHelper< css::sdbc::XResultSetMetaData>   ODatabaseMetaResultSetMetaData_BASE;
 
-    class OOO_DLLPUBLIC_DBTOOLS ODatabaseMetaDataResultSetMetaData :    public  ODatabaseMetaResultSetMetaData_BASE
+    class ODatabaseMetaDataResultSetMetaData :    public  ODatabaseMetaResultSetMetaData_BASE
     {
         std::map<sal_Int32,connectivity::OColumn> m_mColumns;
         std::map<sal_Int32,connectivity::OColumn>::const_iterator m_mColumnsIter;

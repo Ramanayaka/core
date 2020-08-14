@@ -32,14 +32,13 @@
 #include <com/sun/star/awt/grid/DefaultGridColumnModel.hpp>
 #include <toolkit/helper/property.hxx>
 #include <tools/diagnose_ex.h>
-#include <tools/color.hxx>
 #include <toolkit/controls/unocontrolbase.hxx>
 #include <toolkit/controls/unocontrolmodel.hxx>
 #include <toolkit/helper/listenermultiplexer.hxx>
 
 #include <memory>
 
-#include "helper/unopropertyarrayhelper.hxx"
+#include <helper/unopropertyarrayhelper.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -57,7 +56,7 @@ namespace
 {
     Reference< XGridDataModel > lcl_getDefaultDataModel_throw( const Reference<XComponentContext> & i_context )
     {
-        Reference< XMutableGridDataModel > const xDelegatorModel( DefaultGridDataModel::create( i_context ), UNO_QUERY_THROW );
+        Reference< XMutableGridDataModel > const xDelegatorModel( DefaultGridDataModel::create( i_context ), UNO_SET_THROW );
         Reference< XGridDataModel > const xDataModel( SortableGridDataModel::create( i_context, xDelegatorModel ), UNO_QUERY_THROW );
         return xDataModel;
     }
@@ -127,12 +126,12 @@ UnoGridModel::UnoGridModel( const UnoGridModel& rModel )
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("toolkit.controls");
         }
         if ( !xDataModel.is() )
             xDataModel = lcl_getDefaultDataModel_throw( m_xContext );
         UnoControlModel::setFastPropertyValue_NoBroadcast( BASEPROPERTY_GRID_DATAMODEL, makeAny( xDataModel ) );
-            // do *not* use setFastPropertyValue here: The UnoControlModel ctor did a simple copy of all property values,
+            // do *not* use setFastPropertyValue here: The UnoControlModel ctor made a simple copy of all property values,
             // so before this call here, we share our data model with the own of the clone source. setFastPropertyValue,
             // then, disposes the old data model - which means the data model which in fact belongs to the clone source.
             // so, call the UnoControlModel's impl-method for setting the value.
@@ -146,7 +145,7 @@ UnoGridModel::UnoGridModel( const UnoGridModel& rModel )
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("toolkit.controls");
         }
         if ( !xColumnModel.is() )
             xColumnModel = lcl_getDefaultColumnModel_throw( m_xContext );
@@ -157,7 +156,7 @@ UnoGridModel::UnoGridModel( const UnoGridModel& rModel )
 }
 
 
-UnoControlModel* UnoGridModel::Clone() const
+rtl::Reference<UnoControlModel> UnoGridModel::Clone() const
 {
     return new UnoGridModel( *this );
 }
@@ -174,7 +173,7 @@ namespace
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("toolkit.controls");
         }
     }
 }
@@ -212,7 +211,7 @@ void SAL_CALL UnoGridModel::setFastPropertyValue_NoBroadcast( sal_Int32 nHandle,
 
 OUString UnoGridModel::getServiceName()
 {
-    return OUString("com.sun.star.awt.grid.UnoControlGridModel");
+    return "com.sun.star.awt.grid.UnoControlGridModel";
 }
 
 
@@ -251,13 +250,8 @@ Any UnoGridModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
 
 ::cppu::IPropertyArrayHelper& UnoGridModel::getInfoHelper()
 {
-    static UnoPropertyArrayHelper* pHelper = nullptr;
-    if ( !pHelper )
-    {
-        Sequence<sal_Int32> aIDs = ImplGetPropertyIds();
-        pHelper = new UnoPropertyArrayHelper( aIDs );
-    }
-    return *pHelper;
+    static UnoPropertyArrayHelper aHelper( ImplGetPropertyIds() );
+    return aHelper;
 }
 
 
@@ -286,7 +280,7 @@ UnoGridControl::~UnoGridControl()
 
 OUString UnoGridControl::GetComponentServiceName()
 {
-    return OUString("Grid");
+    return "Grid";
 }
 
 
@@ -342,7 +336,7 @@ namespace
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("toolkit.controls");
         }
     }
 }
@@ -448,7 +442,7 @@ void SAL_CALL UnoGridControl::removeSelectionListener(const css::uno::Reference<
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_GridControl_get_implementation(
     css::uno::XComponentContext *,
     css::uno::Sequence<css::uno::Any> const &)
@@ -456,7 +450,7 @@ stardiv_Toolkit_GridControl_get_implementation(
     return cppu::acquire(new toolkit::UnoGridControl());
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_GridControlModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

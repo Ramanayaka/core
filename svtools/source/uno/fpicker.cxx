@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sal/types.h>
 #include <rtl/ustring.hxx>
 
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
@@ -39,19 +38,13 @@ static OUString FilePicker_getSystemPickerServiceName()
 {
 #ifdef UNX
     OUString aDesktopEnvironment (Application::GetDesktopEnvironment());
-    if (aDesktopEnvironment.equalsIgnoreAsciiCase("tde"))
-        return OUString ("com.sun.star.ui.dialogs.TDEFilePicker");
-    else if (aDesktopEnvironment.equalsIgnoreAsciiCase("kde"))
-        return OUString ("com.sun.star.ui.dialogs.KDEFilePicker");
-    else if (aDesktopEnvironment.equalsIgnoreAsciiCase("kde4"))
-        return OUString ("com.sun.star.ui.dialogs.KDE4FilePicker");
-    else if (aDesktopEnvironment.equalsIgnoreAsciiCase("macosx"))
-        return OUString ("com.sun.star.ui.dialogs.AquaFilePicker");
+    if (aDesktopEnvironment.equalsIgnoreAsciiCase("macosx"))
+        return "com.sun.star.ui.dialogs.AquaFilePicker";
     else
-        return OUString ("com.sun.star.ui.dialogs.SystemFilePicker");
+        return "com.sun.star.ui.dialogs.SystemFilePicker";
 #endif
 #ifdef _WIN32
-    return OUString ("com.sun.star.ui.dialogs.Win32FilePicker");
+    return "com.sun.star.ui.dialogs.Win32FilePicker";
 #endif
 }
 
@@ -99,9 +92,9 @@ Reference< css::uno::XInterface > FilePicker_CreateInstance (
     return xResult;
 }
 
-OUString SAL_CALL FilePicker_getImplementationName()
+OUString FilePicker_getImplementationName()
 {
-    return OUString("com.sun.star.comp.svt.FilePicker");
+    return "com.sun.star.comp.svt.FilePicker";
 }
 
 Sequence< OUString > FilePicker_getSupportedServiceNames()
@@ -117,14 +110,10 @@ static OUString FolderPicker_getSystemPickerServiceName()
 {
 #ifdef UNX
     OUString aDesktopEnvironment (Application::GetDesktopEnvironment());
-    if (aDesktopEnvironment.equalsIgnoreAsciiCase("tde"))
-        return OUString("com.sun.star.ui.dialogs.TDEFolderPicker");
-    else if (aDesktopEnvironment.equalsIgnoreAsciiCase("kde"))
-        return OUString("com.sun.star.ui.dialogs.KDEFolderPicker");
-    else if (aDesktopEnvironment.equalsIgnoreAsciiCase("macosx"))
-        return OUString("com.sun.star.ui.dialogs.AquaFolderPicker");
+    if (aDesktopEnvironment.equalsIgnoreAsciiCase("macosx"))
+        return "com.sun.star.ui.dialogs.AquaFolderPicker";
 #endif
-    return OUString("com.sun.star.ui.dialogs.SystemFolderPicker");
+    return "com.sun.star.ui.dialogs.SystemFolderPicker";
 }
 
 Reference< css::uno::XInterface > FolderPicker_CreateInstance (
@@ -168,9 +157,9 @@ Reference< css::uno::XInterface > FolderPicker_CreateInstance (
     return xResult;
 }
 
-OUString SAL_CALL FolderPicker_getImplementationName()
+OUString FolderPicker_getImplementationName()
 {
-    return OUString("com.sun.star.comp.svt.FolderPicker");
+    return "com.sun.star.comp.svt.FolderPicker";
 }
 
 Sequence< OUString > FolderPicker_getSupportedServiceNames()

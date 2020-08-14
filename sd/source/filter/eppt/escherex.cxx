@@ -165,45 +165,45 @@ void PptEscherEx::CloseContainer()
        not creating group objects with a depth higher than 16, because then
        PPT is having a big performance problem when starting a slide show
     */
-    if ( ( mRecTypes.back() != ESCHER_SpgrContainer ) || ( mnGroupLevel < 12 ) )
+    if ( ( mRecTypes.back() == ESCHER_SpgrContainer ) && ( mnGroupLevel >= 12 ) )
+        return;
+
+    sal_uInt32 nSize, nPos = mpOutStrm->Tell();
+    nSize = ( nPos - mOffsets.back() ) - 4;
+    mpOutStrm->Seek( mOffsets.back() );
+    mpOutStrm->WriteUInt32( nSize );
+
+    switch( mRecTypes.back() )
     {
-        sal_uInt32 nSize, nPos = mpOutStrm->Tell();
-        nSize = ( nPos - mOffsets.back() ) - 4;
-        mpOutStrm->Seek( mOffsets.back() );
-        mpOutStrm->WriteUInt32( nSize );
-
-        switch( mRecTypes.back() )
+        case ESCHER_DgContainer :
         {
-            case ESCHER_DgContainer :
+            if ( mbEscherDg )
             {
-                if ( mbEscherDg )
-                {
-                    mbEscherDg = false;
-                    if ( DoSeek( ESCHER_Persist_Dg | mnCurrentDg ) )
-                        mpOutStrm->WriteUInt32( mxGlobal->GetDrawingShapeCount( mnCurrentDg ) ).WriteUInt32( mxGlobal->GetLastShapeId( mnCurrentDg ) );
-                }
+                mbEscherDg = false;
+                if ( DoSeek( ESCHER_Persist_Dg | mnCurrentDg ) )
+                    mpOutStrm->WriteUInt32( mxGlobal->GetDrawingShapeCount( mnCurrentDg ) ).WriteUInt32( mxGlobal->GetLastShapeId( mnCurrentDg ) );
             }
-            break;
-
-            case ESCHER_SpgrContainer :
-            {
-                if ( mbEscherSpgr )
-                {
-                    mbEscherSpgr = false;
-                }
-            }
-            break;
-
-            default:
-            break;
         }
-        mOffsets.pop_back();
-        mRecTypes.pop_back();
-        mpOutStrm->Seek( nPos );
+        break;
+
+        case ESCHER_SpgrContainer :
+        {
+            if ( mbEscherSpgr )
+            {
+                mbEscherSpgr = false;
+            }
+        }
+        break;
+
+        default:
+        break;
     }
+    mOffsets.pop_back();
+    mRecTypes.pop_back();
+    mpOutStrm->Seek( nPos );
 }
 
-sal_uInt32 PptEscherEx::EnterGroup( ::tools::Rectangle* pBoundRect, SvMemoryStream* pClientData )
+sal_uInt32 PptEscherEx::EnterGroup( ::tools::Rectangle const * pBoundRect, SvMemoryStream* pClientData )
 {
     sal_uInt32 nShapeId = 0;
     /* SJ: #Issue 26747#
@@ -227,10 +227,10 @@ sal_uInt32 PptEscherEx::EnterGroup( ::tools::Rectangle* pBoundRect, SvMemoryStre
 
         nShapeId = GenerateShapeId();
         if ( !mnGroupLevel )
-            AddShape( ESCHER_ShpInst_Min, 5, nShapeId );                    // Flags: Group | Patriarch
+            AddShape( ESCHER_ShpInst_Min, ShapeFlag::Group | ShapeFlag::Patriarch, nShapeId );
         else
         {
-            AddShape( ESCHER_ShpInst_Min, 0x201, nShapeId );                // Flags: Group | HaveAnchor
+            AddShape( ESCHER_ShpInst_Min, ShapeFlag::HaveAnchor | ShapeFlag::Group, nShapeId );
             if ( mnGroupLevel == 1 )
             {
                 AddAtom( 8, ESCHER_ClientAnchor );
@@ -249,8 +249,7 @@ sal_uInt32 PptEscherEx::EnterGroup( ::tools::Rectangle* pBoundRect, SvMemoryStre
         }
         if ( pClientData )
         {
-            pClientData->Seek( STREAM_SEEK_TO_END );
-            sal_uInt32 nSize = pClientData->Tell();
+            sal_uInt32 nSize = pClientData->TellEnd();
             if ( nSize )
             {
                 mpOutStrm->WriteUInt32( ( ESCHER_ClientData << 16 ) | 0xf )

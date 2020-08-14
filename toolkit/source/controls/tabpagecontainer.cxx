@@ -18,21 +18,19 @@
  */
 
 
-#include <toolkit/controls/geometrycontrolmodel.hxx>
-#include <toolkit/controls/tabpagecontainer.hxx>
-#include <toolkit/controls/tabpagemodel.hxx>
+#include <controls/geometrycontrolmodel.hxx>
+#include <controls/tabpagecontainer.hxx>
+#include <controls/tabpagemodel.hxx>
 #include <toolkit/helper/property.hxx>
 
 #include <com/sun/star/awt/XControlModel.hpp>
-#include <com/sun/star/awt/XVclWindowPeer.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <tools/diagnose_ex.h>
 #include <vcl/svapp.hxx>
 
-#include "helper/unopropertyarrayhelper.hxx"
+#include <helper/unopropertyarrayhelper.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -44,7 +42,6 @@ using ::com::sun::star::awt::tab::XTabPageModel;
 
 #define WRONG_TYPE_EXCEPTION "Type must be css::awt::tab::XTabPageModel!"
 
-//  class UnoControlTabPageContainerModel
 
 UnoControlTabPageContainerModel::UnoControlTabPageContainerModel( const Reference< XComponentContext >& i_factory )
     :UnoControlTabPageContainerModel_Base( i_factory )
@@ -63,7 +60,7 @@ UnoControlTabPageContainerModel::UnoControlTabPageContainerModel( const Referenc
 
 OUString UnoControlTabPageContainerModel::getServiceName()
 {
-    return OUString("com.sun.star.awt.tab.UnoControlTabPageContainerModel");
+    return "com.sun.star.awt.tab.UnoControlTabPageContainerModel";
 }
 
 uno::Any UnoControlTabPageContainerModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
@@ -73,7 +70,7 @@ uno::Any UnoControlTabPageContainerModel::ImplGetDefaultValue( sal_uInt16 nPropI
         case BASEPROPERTY_DEFAULTCONTROL:
             return uno::makeAny( OUString("com.sun.star.awt.tab.UnoControlTabPageContainer") );
         case BASEPROPERTY_BORDER:
-            return uno::makeAny((sal_Int16) 0);              // No Border
+            return uno::makeAny(sal_Int16(0));              // No Border
         default:
             return UnoControlModel::ImplGetDefaultValue( nPropId );
     }
@@ -81,13 +78,8 @@ uno::Any UnoControlTabPageContainerModel::ImplGetDefaultValue( sal_uInt16 nPropI
 
 ::cppu::IPropertyArrayHelper& UnoControlTabPageContainerModel::getInfoHelper()
 {
-    static UnoPropertyArrayHelper* pHelper = nullptr;
-    if ( !pHelper )
-    {
-        css::uno::Sequence<sal_Int32>    aIDs = ImplGetPropertyIds();
-        pHelper = new UnoPropertyArrayHelper( aIDs );
-    }
-    return *pHelper;
+    static UnoPropertyArrayHelper aHelper( ImplGetPropertyIds() );
+    return aHelper;
 }
 Reference< css::beans::XPropertySetInfo > UnoControlTabPageContainerModel::getPropertySetInfo(  )
 {
@@ -123,7 +115,7 @@ namespace
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("toolkit.controls");
         }
         return nullptr;
     }
@@ -148,26 +140,25 @@ void SAL_CALL UnoControlTabPageContainerModel::insertByIndex( ::sal_Int32 nIndex
 {
     SolarMutexGuard aSolarGuard;
     uno::Reference < XTabPageModel > xTabPageModel;
-    if(aElement >>= xTabPageModel)
+    if(!(aElement >>= xTabPageModel))
+        throw IllegalArgumentException( WRONG_TYPE_EXCEPTION, static_cast<OWeakObject *>(this), 2 );
+
+    if ( sal_Int32( m_aTabPageVector.size()) ==nIndex )
+        m_aTabPageVector.push_back( xTabPageModel );
+    else if ( sal_Int32( m_aTabPageVector.size()) > nIndex )
     {
-        if ( sal_Int32( m_aTabPageVector.size()) ==nIndex )
-            m_aTabPageVector.push_back( xTabPageModel );
-        else if ( sal_Int32( m_aTabPageVector.size()) > nIndex )
-        {
-            std::vector< uno::Reference< XTabPageModel > >::iterator aIter = m_aTabPageVector.begin();
-            aIter += nIndex;
-            m_aTabPageVector.insert( aIter, xTabPageModel );
-        }
-        else
-            throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
-        ContainerEvent aEvent;
-        aEvent.Source = *this;
-        aEvent.Element = aElement;
-        aEvent.Accessor <<= OUString::number(nIndex);
-        maContainerListeners.elementInserted( aEvent );
+        std::vector< uno::Reference< XTabPageModel > >::iterator aIter = m_aTabPageVector.begin();
+        aIter += nIndex;
+        m_aTabPageVector.insert( aIter, xTabPageModel );
     }
     else
-        throw IllegalArgumentException( WRONG_TYPE_EXCEPTION, static_cast<OWeakObject *>(this), 2 );
+        throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
+    ContainerEvent aEvent;
+    aEvent.Source = *this;
+    aEvent.Element = aElement;
+    aEvent.Accessor <<= OUString::number(nIndex);
+    maContainerListeners.elementInserted( aEvent );
+
 }
 
 void SAL_CALL UnoControlTabPageContainerModel::removeByIndex( ::sal_Int32 /*Index*/ )
@@ -216,7 +207,6 @@ void UnoControlTabPageContainerModel::removeContainerListener( const Reference< 
 }
 
 
-//  class UnoControlTabPageContainer
 
 UnoControlTabPageContainer::UnoControlTabPageContainer( const uno::Reference< uno::XComponentContext >& rxContext )
     :UnoControlTabPageContainer_Base(rxContext)
@@ -226,7 +216,7 @@ UnoControlTabPageContainer::UnoControlTabPageContainer( const uno::Reference< un
 
 OUString UnoControlTabPageContainer::GetComponentServiceName()
 {
-    return OUString("TabPageContainer");
+    return "TabPageContainer";
 }
 
 void SAL_CALL UnoControlTabPageContainer::dispose(  )
@@ -299,26 +289,35 @@ void SAL_CALL UnoControlTabPageContainer::removeTabPageContainerListener( const 
     if( getPeer().is() && m_aTabPageListeners.getLength() == 1 )
     {
         uno::Reference < awt::tab::XTabPageContainer >  xTabPageContainer( getPeer(), uno::UNO_QUERY );
-        xTabPageContainer->addTabPageContainerListener( &m_aTabPageListeners );
+        xTabPageContainer->removeTabPageContainerListener( &m_aTabPageListeners );
     }
     m_aTabPageListeners.removeInterface( listener );
+}
+
+void UnoControlTabPageContainer::propertiesChange(const::css::uno::Sequence<PropertyChangeEvent> &aEvent)
+{
+    UnoControlTabPageContainer_Base::propertiesChange(aEvent);
+
+    SolarMutexGuard aSolarGuard;
+    Reference< XPropertiesChangeListener >  xPropertiesChangeListener( getPeer(), UNO_QUERY_THROW );
+    return xPropertiesChangeListener->propertiesChange(aEvent);
 }
 
 void UnoControlTabPageContainer::updateFromModel()
 {
     UnoControlTabPageContainer_Base::updateFromModel();
+    if (!getPeer().is())
+        throw RuntimeException("No peer for tabpage container!");
     Reference< XContainerListener > xContainerListener( getPeer(), UNO_QUERY );
     ENSURE_OR_RETURN_VOID( xContainerListener.is(), "UnoListBoxControl::updateFromModel: a peer which is no ItemListListener?!" );
 
     ContainerEvent aEvent;
     aEvent.Source = getModel();
-    Sequence< Reference< XControl > > aControls = getControls();
-    const Reference< XControl >* pCtrls = aControls.getConstArray();
-    const Reference< XControl >* pCtrlsEnd = pCtrls + aControls.getLength();
+    const Sequence< Reference< XControl > > aControls = getControls();
 
-    for ( ; pCtrls < pCtrlsEnd; ++pCtrls )
+    for ( const Reference< XControl >& rCtrl : aControls )
     {
-        aEvent.Element <<= *pCtrls;
+        aEvent.Element <<= rCtrl;
         xContainerListener->elementInserted( aEvent );
     }
 }
@@ -326,6 +325,8 @@ void SAL_CALL UnoControlTabPageContainer::addControl( const OUString& Name, cons
 {
     SolarMutexGuard aSolarGuard;
     ControlContainerBase::addControl(Name,Control);
+    if (!getPeer().is())
+        throw RuntimeException("No peer for tabpage container!");
     Reference< XContainerListener > xContainerListener( getPeer(), UNO_QUERY );
     ContainerEvent aEvent;
     aEvent.Source = getModel();
@@ -333,7 +334,7 @@ void SAL_CALL UnoControlTabPageContainer::addControl( const OUString& Name, cons
     xContainerListener->elementInserted( aEvent );
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoControlTabPageContainerModel_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -341,7 +342,7 @@ stardiv_Toolkit_UnoControlTabPageContainerModel_get_implementation(
     return cppu::acquire(new UnoControlTabPageContainerModel(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_UnoControlTabPageContainer_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

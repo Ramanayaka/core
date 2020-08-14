@@ -61,8 +61,7 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPFRIBFRAME_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPFRIBFRAME_HXX
 
-#include "lwpfrib.hxx"
-#include "lwplayout.hxx"
+#include <lwpfrib.hxx>
 #include "lwppara.hxx"
 #include "lwpframelayout.hxx"
 
@@ -71,7 +70,7 @@ class LwpFribFrame : public LwpFrib
 public:
     explicit LwpFribFrame( LwpPara* pPara) : LwpFrib(pPara){}
     void Read(LwpObjectStream* pObjStrm, sal_uInt16 len) override;
-    rtl::Reference<LwpObject> GetLayout();
+    rtl::Reference<LwpObject> GetLayout() const;
     void RegisterStyle(LwpFoundry* pFoundry) override;
     void SetParaDropcap(LwpPara* pPara);
     void XFConvert(XFContentContainer* pCont);

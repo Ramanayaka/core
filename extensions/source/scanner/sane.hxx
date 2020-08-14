@@ -16,14 +16,19 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_EXTENSIONS_SOURCE_SCANNER_SANE_HXX
-#define INCLUDED_EXTENSIONS_SOURCE_SCANNER_SANE_HXX
+#pragma once
 
+#include <cppuhelper/implbase.hxx>
 #include <osl/thread.h>
 #include <osl/module.h>
-#include <vcl/bitmap.hxx>
+#include <tools/stream.hxx>
+#include <tools/link.hxx>
 #include <sane/sane.h>
-#include <scanner.hxx>
+
+#include <com/sun/star/awt/XBitmap.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
+
+using namespace com::sun::star::uno;
 
 
 class BitmapTransporter: public cppu::WeakImplHelper<css::awt::XBitmap>
@@ -79,7 +84,7 @@ private:
     static SANE_Device**        ppDevices;
     static int                  nDevices;
 
-    const SANE_Option_Descriptor**  mppOptions;
+    std::unique_ptr<const SANE_Option_Descriptor*[]> mppOptions;
     int                             mnOptions;
     int                             mnDevice;
     SANE_Handle                     maHandle;
@@ -101,7 +106,7 @@ public:
 
     static bool         IsSane()
         { return pSaneLib != nullptr; }
-    bool            IsOpen()
+    bool            IsOpen() const
         { return maHandle != nullptr; }
     static int              CountDevices()
         { return nDevices; }
@@ -129,7 +134,7 @@ public:
         { return mppOptions[n]->constraint_type; }
     const char**    GetStringConstraint( int n )
         { return const_cast<const char**>(mppOptions[n]->constraint.string_list); }
-    int             GetRange( int, double*& );
+    int             GetRange( int, std::unique_ptr<double[]>& );
 
     inline int      GetOptionElements( int n );
     int             GetOptionByName( const char* );
@@ -141,12 +146,12 @@ public:
     void            SetOptionValue( int, bool );
     void            SetOptionValue( int, const OUString& );
     void            SetOptionValue( int, double, int nElement = 0 );
-    void            SetOptionValue( int, double* );
+    void            SetOptionValue( int, double const * );
 
     bool            ActivateButtonOption( int );
 
     int             CountOptions() { return mnOptions; }
-    int             GetDeviceNumber() { return mnDevice; }
+    int             GetDeviceNumber() const { return mnDevice; }
 
     bool            Open( const char* );
     bool            Open( int );
@@ -177,7 +182,5 @@ inline Link<Sane&,void> Sane::SetReloadOptionsHdl( const Link<Sane&,void>& rLink
     maReloadOptionsLink = rLink;
     return aRet;
 }
-
-#endif // INCLUDED_EXTENSIONS_SOURCE_SCANNER_SANE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

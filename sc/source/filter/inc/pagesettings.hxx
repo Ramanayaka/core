@@ -23,18 +23,18 @@
 #include <memory>
 #include "worksheethelper.hxx"
 
+namespace oox { class AttributeList; }
 namespace oox { class PropertySet; }
-namespace oox { namespace core { class Relations; } }
+namespace oox::core { class Relations; }
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 class HeaderFooterParser;
 
 /** Holds page style data for a single sheet. */
 struct PageSettingsModel
 {
-    OUString     maGraphicUrl;           /// URL of the graphic object.
+    css::uno::Reference<css::graphic::XGraphic> mxGraphic; /// Background Graphic
     OUString     maBinSettPath;          /// Relation identifier of binary printer settings.
     OUString     maOddHeader;            /// Header string for odd pages.
     OUString     maOddFooter;            /// Footer string for odd pages.
@@ -44,7 +44,7 @@ struct PageSettingsModel
     OUString     maFirstFooter;          /// Footer string for first page of the sheet.
     double              mfLeftMargin;           /// Margin between left edge of page and begin of sheet area.
     double              mfRightMargin;          /// Margin between end of sheet area and right edge of page.
-    double              mfTopMargin;            /// Margin between top egde of page and begin of sheet area.
+    double              mfTopMargin;            /// Margin between top edge of page and begin of sheet area.
     double              mfBottomMargin;         /// Margin between end of sheet area and bottom edge of page.
     double              mfHeaderMargin;         /// Margin between top edge of page and begin of header.
     double              mfFooterMargin;         /// Margin between end of footer and bottom edge of page.
@@ -175,8 +175,7 @@ private:
     HFHelperData        maFooterData;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

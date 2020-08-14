@@ -9,50 +9,23 @@
 
 #include <swmodeltestbase.hxx>
 
-#include <com/sun/star/awt/XBitmap.hpp>
-#include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/drawing/FillStyle.hpp>
-#include <com/sun/star/drawing/LineJoint.hpp>
-#include <com/sun/star/drawing/LineStyle.hpp>
-#include <com/sun/star/drawing/XControlShape.hpp>
 #include <com/sun/star/awt/Gradient.hpp>
-#include <com/sun/star/style/TabStop.hpp>
-#include <com/sun/star/view/XViewSettingsSupplier.hpp>
-#include <com/sun/star/text/RelOrientation.hpp>
-#include <com/sun/star/text/XTextFrame.hpp>
 #include <com/sun/star/text/XTextTable.hpp>
-#include <com/sun/star/text/XTextFramesSupplier.hpp>
 #include <com/sun/star/text/XTextViewCursorSupplier.hpp>
-#include <com/sun/star/text/XTextSection.hpp>
 #include <com/sun/star/style/CaseMap.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
-#include <com/sun/star/style/LineSpacing.hpp>
-#include <com/sun/star/style/LineSpacingMode.hpp>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/table/BorderLine2.hpp>
 #include <com/sun/star/table/ShadowFormat.hpp>
 #include <com/sun/star/text/GraphicCrop.hpp>
 #include <com/sun/star/text/XPageCursor.hpp>
-#include <com/sun/star/awt/FontWeight.hpp>
-#include <com/sun/star/awt/FontUnderline.hpp>
-#include <com/sun/star/awt/FontSlant.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
-#include <com/sun/star/text/WrapTextMode.hpp>
 #include <com/sun/star/xml/dom/XDocument.hpp>
 #include <com/sun/star/style/BreakType.hpp>
-#include <unotools/tempfile.hxx>
-#include <comphelper/sequenceashashmap.hxx>
-#include <com/sun/star/text/XDocumentIndex.hpp>
-#include <com/sun/star/drawing/EnhancedCustomShapeSegment.hpp>
-#include <com/sun/star/drawing/EnhancedCustomShapeSegmentCommand.hpp>
-#include <com/sun/star/drawing/EnhancedCustomShapeParameterPair.hpp>
-#include <com/sun/star/drawing/TextVerticalAdjust.hpp>
-#include <com/sun/star/drawing/Hatch.hpp>
+
 #include <ftninfo.hxx>
-
-#include <string>
-
-#if !defined(_WIN32)
+#include <docsh.hxx>
+#include <unotxdoc.hxx>
 
 class Test : public SwModelTestBase
 {
@@ -61,17 +34,17 @@ public:
 
 protected:
     /**
-     * Blacklist handling
+     * Denylist handling
      */
     bool mustTestImportOf(const char* filename) const override {
-        const char* aBlacklist[] = {
+        const char* aDenylist[] = {
             "math-escape.docx",
             "math-mso2k7.docx"
         };
-        std::vector<const char*> vBlacklist(aBlacklist, aBlacklist + SAL_N_ELEMENTS(aBlacklist));
+        std::vector<const char*> vDenylist(aDenylist, aDenylist + SAL_N_ELEMENTS(aDenylist));
 
         // If the testcase is stored in some other format, it's pointless to test.
-        return (OString(filename).endsWith(".docx") && std::find(vBlacklist.begin(), vBlacklist.end(), filename) == vBlacklist.end());
+        return (OString(filename).endsWith(".docx") && std::find(vDenylist.begin(), vDenylist.end(), filename) == vDenylist.end());
     }
 };
 
@@ -116,11 +89,15 @@ DECLARE_OOXMLEXPORT_TEST(testTdf92470_footnoteRestart, "tdf92470_footnoteRestart
     CPPUNIT_ASSERT( pTextDoc );
     SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
     CPPUNIT_ASSERT( pDoc );
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Footnote doesn't restart every Page", FTNNUM_PAGE, pDoc->GetFootnoteInfo().eNum );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Footnote doesn't restart every Page", FTNNUM_PAGE, pDoc->GetFootnoteInfo().m_eNum );
+
+    uno::Reference<beans::XPropertySet> xPageStyle(getStyles("PageStyles")->getByName("Standard"), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(25), getProperty<sal_Int32>(xPageStyle, "FootnoteLineRelativeWidth"));
 }
 
 DECLARE_OOXMLEXPORT_TEST(testCharacterBorder, "charborder.odt")
 {
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
     uno::Reference<beans::XPropertySet> xRun(getRun(getParagraph(1),1), uno::UNO_QUERY);
     // OOXML has just one border attribute (<w:bdr>) for text border so all side has
     // the same border with the same padding
@@ -151,7 +128,7 @@ DECLARE_OOXMLEXPORT_TEST(testCharacterBorder, "charborder.odt")
        width: any -> border width */
     {
         const table::ShadowFormat aShadow = getProperty<table::ShadowFormat>(xRun, "CharShadowFormat");
-        CPPUNIT_ASSERT_EQUAL(COL_BLACK, sal_uInt32(aShadow.Color));
+        CPPUNIT_ASSERT_EQUAL(COL_BLACK, Color(aShadow.Color));
         CPPUNIT_ASSERT_EQUAL(table::ShadowLocation_BOTTOM_RIGHT, aShadow.Location);
         CPPUNIT_ASSERT_EQUAL(sal_Int16(318), aShadow.ShadowWidth);
     }
@@ -161,12 +138,12 @@ DECLARE_OOXMLEXPORT_TEST(testCharacterBorder, "charborder.odt")
     {
         uno::Reference<beans::XPropertySet> xMiddleRun(getRun(getParagraph(2),2), uno::UNO_QUERY);
         const table::ShadowFormat aShadow = getProperty<table::ShadowFormat>(xMiddleRun, "CharShadowFormat");
-        CPPUNIT_ASSERT_EQUAL(COL_BLACK, sal_uInt32(aShadow.Color));
+        CPPUNIT_ASSERT_EQUAL(COL_BLACK, Color(aShadow.Color));
         CPPUNIT_ASSERT_EQUAL(table::ShadowLocation_BOTTOM_RIGHT, aShadow.Location);
         CPPUNIT_ASSERT_EQUAL(sal_Int16(318), aShadow.ShadowWidth);
     }
 
-    if (xmlDocPtr pXmlStyles = parseExport("word/styles.xml"))
+    if (xmlDocUniquePtr pXmlStyles = parseExport("word/styles.xml"))
     {
         // Make sure we write qFormat for custom style names.
         assertXPath(pXmlStyles, "//w:style[@w:styleId='Heading']/w:qFormat", 1);
@@ -176,7 +153,7 @@ DECLARE_OOXMLEXPORT_TEST(testCharacterBorder, "charborder.odt")
 DECLARE_OOXMLEXPORT_TEST(testStyleInheritance, "style-inheritance.docx")
 {
     // Check that now styleId's are more like what MSO produces
-    xmlDocPtr pXmlStyles = parseExport("word/styles.xml");
+    xmlDocUniquePtr pXmlStyles = parseExport("word/styles.xml");
     if (!pXmlStyles)
         return;
     // the 1st style always must be Normal
@@ -211,26 +188,26 @@ DECLARE_OOXMLEXPORT_TEST(testStyleInheritance, "style-inheritance.docx")
     // Check that we output real content of rPrDefault
     assertXPath(pXmlStyles, "/w:styles/w:docDefaults/w:rPrDefault/w:rPr/w:rFonts", "ascii", "Times New Roman");
     assertXPath(pXmlStyles, "/w:styles/w:docDefaults/w:rPrDefault/w:rPr/w:lang", "bidi", "ar-SA");
-    // pPrDefault is empty
-    assertXPath(pXmlStyles, "/w:styles/w:docDefaults/w:pPrDefault/w:pPr/*", 0);
+    // pPrDefault contains only one hyphenation property
+    assertXPath(pXmlStyles, "/w:styles/w:docDefaults/w:pPrDefault/w:pPr/*", 1);
 
     // Check latent styles
     uno::Sequence<beans::PropertyValue> aGrabBag = getProperty< uno::Sequence<beans::PropertyValue> >(mxComponent, "InteropGrabBag");
     uno::Sequence<beans::PropertyValue> aLatentStyles;
-    for (sal_Int32 i = 0; i < aGrabBag.getLength(); ++i)
-        if (aGrabBag[i].Name == "latentStyles")
-            aGrabBag[i].Value >>= aLatentStyles;
+    for (beans::PropertyValue const & prop : std::as_const(aGrabBag))
+        if (prop.Name == "latentStyles")
+            prop.Value >>= aLatentStyles;
     CPPUNIT_ASSERT(aLatentStyles.getLength()); // document should have latent styles
 
     // Check latent style default attributes
     OUString aCount;
     uno::Sequence<beans::PropertyValue> aLatentStyleExceptions;
-    for (sal_Int32 i = 0; i < aLatentStyles.getLength(); ++i)
+    for (beans::PropertyValue const & prop : std::as_const(aLatentStyles))
     {
-        if (aLatentStyles[i].Name == "count")
-            aCount = aLatentStyles[i].Value.get<OUString>();
-        else if (aLatentStyles[i].Name == "lsdExceptions")
-            aLatentStyles[i].Value >>= aLatentStyleExceptions;
+        if (prop.Name == "count")
+            aCount = prop.Value.get<OUString>();
+        else if (prop.Name == "lsdExceptions")
+            prop.Value >>= aLatentStyleExceptions;
     }
     CPPUNIT_ASSERT_EQUAL(OUString("371"), aCount); // This check the "count" attribute.
 
@@ -238,9 +215,9 @@ DECLARE_OOXMLEXPORT_TEST(testStyleInheritance, "style-inheritance.docx")
     uno::Sequence<beans::PropertyValue> aLatentStyleException;
     aLatentStyleExceptions[0].Value >>= aLatentStyleException;
     OUString aName;
-    for (sal_Int32 i = 0; i < aLatentStyleException.getLength(); ++i)
-        if (aLatentStyleException[i].Name == "name")
-            aName = aLatentStyleException[i].Value.get<OUString>();
+    for (beans::PropertyValue const & prop : std::as_const(aLatentStyleException))
+        if (prop.Name == "name")
+            aName = prop.Value.get<OUString>();
     CPPUNIT_ASSERT_EQUAL(OUString("Normal"), aName); // This checks the "name" attribute of the first exception.
 
     // This numbering style wasn't roundtripped.
@@ -276,7 +253,7 @@ DECLARE_OOXMLEXPORT_TEST(testStyleInheritance, "style-inheritance.docx")
 DECLARE_OOXMLEXPORT_TEST(testCalendar1, "calendar1.docx")
 {
     // Document has a non-trivial table style, test the roundtrip of it.
-    xmlDocPtr pXmlStyles = parseExport("word/styles.xml");
+    xmlDocUniquePtr pXmlStyles = parseExport("word/styles.xml");
     if (!pXmlStyles)
         return;
     assertXPath(pXmlStyles, "/w:styles/w:style[@w:styleId='Calendar1']/w:basedOn", "val", "TableNormal");
@@ -297,7 +274,7 @@ DECLARE_OOXMLEXPORT_TEST(testCalendar1, "calendar1.docx")
     assertXPath(pXmlStyles, "/w:styles/w:style[@w:styleId='Calendar1']/w:tblStylePr[@w:type='band2Horz']/w:tcPr/w:tcBorders/w:top", "themeColor", "text1");
 
     // w:tblLook element and its attributes were missing.
-    xmlDocPtr pXmlDoc = parseExport("word/document.xml");
+    xmlDocUniquePtr pXmlDoc = parseExport("word/document.xml");
     assertXPath(pXmlDoc, "/w:document/w:body/w:tbl/w:tblPr/w:tblLook", "firstRow", "1");
     assertXPath(pXmlDoc, "/w:document/w:body/w:tbl/w:tblPr/w:tblLook", "lastRow", "0");
     assertXPath(pXmlDoc, "/w:document/w:body/w:tbl/w:tblPr/w:tblLook", "lastColumn", "0");
@@ -321,7 +298,7 @@ DECLARE_OOXMLEXPORT_TEST(testCalendar2, "calendar2.docx")
     CPPUNIT_ASSERT_EQUAL(14.f, getProperty<float>(getRun(getParagraphOfText(1, xCell->getText()), 1), "CharHeight"));
 
     // This paragraph property was missing in table style.
-    xmlDocPtr pXmlStyles = parseExport("word/styles.xml");
+    xmlDocUniquePtr pXmlStyles = parseExport("word/styles.xml");
     if (!pXmlStyles)
         return;
     assertXPath(pXmlStyles, "/w:styles/w:style[@w:styleId='Calendar2']/w:pPr/w:jc", "val", "center");
@@ -338,24 +315,67 @@ DECLARE_OOXMLEXPORT_TEST(testCalendar2, "calendar2.docx")
     assertXPath(pXmlStyles, "/w:styles/w:style[@w:styleId='Calendar2']/w:tblPr/w:tblBorders/w:insideV", "themeTint", "99");
 }
 
+DECLARE_OOXMLEXPORT_TEST(testCalendar3, "calendar3.docx")
+{
+    // TableStyle:firstRow (for header rows 1 and 2) color and size overrides document rPrDefault
+    uno::Reference<text::XTextTable> xTable(getParagraphOrTable(1), uno::UNO_QUERY);
+    uno::Reference<text::XTextRange> xCell(xTable->getCellByName("A2"), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0x5B9BD5), getProperty<sal_Int32>(getRun(getParagraphOfText(1, xCell->getText()), 1), "CharColor"));
+    CPPUNIT_ASSERT_EQUAL(16.f, getProperty<float>(getRun(getParagraphOfText(1, xCell->getText()),1), "CharHeight"));
+    // direct formatting in A1
+    uno::Reference<text::XTextRange> xCell2(xTable->getCellByName("A1"), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0x2E74B5), getProperty<sal_Int32>(getRun(getParagraphOfText(1, xCell2->getText()), 1), "CharColor"));
+    CPPUNIT_ASSERT_EQUAL(20.f, getProperty<float>(getRun(getParagraphOfText(1, xCell2->getText()),1), "CharHeight"));
+}
+
+DECLARE_OOXMLEXPORT_TEST(testCalendar4, "calendar4.docx")
+{
+    // TableStyle:fontsize - overrides DocDefaults, but not Style.
+    // In this case the style does not define anything (but does copy-inherit the DocDefaults size 36)
+    uno::Reference<text::XTextTable> xTable(getParagraphOrTable(1), uno::UNO_QUERY);
+    uno::Reference<text::XTextRange> xCell(xTable->getCellByName("A3"), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(14.f, getProperty<float>(getRun(xCell,1), "CharHeight"));
+}
+
+DECLARE_OOXMLEXPORT_TEST(testCalendar5, "calendar5.docx")
+{
+    // check text portions with and without direct formatting
+    uno::Reference<text::XTextTable> xTable(getParagraphOrTable(1), uno::UNO_QUERY);
+    uno::Reference<text::XTextRange> xCell(xTable->getCellByName("A1"), uno::UNO_QUERY);
+    // text portions with direct formatting
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0x2E74B5), getProperty<sal_Int32>(getRun(getParagraphOfText(1, xCell->getText()), 1), "CharColor"));
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0xFF0000), getProperty<sal_Int32>(getRun(getParagraphOfText(1, xCell->getText()), 2), "CharColor"));
+    // default paragraph text color
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0x5B9BD5), getProperty<sal_Int32>(getRun(getParagraphOfText(1, xCell->getText()), 3), "CharColor"));
+    // text portions with direct formatting
+    CPPUNIT_ASSERT_EQUAL(20.f, getProperty<float>(getRun(getParagraphOfText(1, xCell->getText()),1), "CharHeight"));
+    CPPUNIT_ASSERT_EQUAL(10.f, getProperty<float>(getRun(getParagraphOfText(1, xCell->getText()),2), "CharHeight"));
+    // default paragraph text size
+    CPPUNIT_ASSERT_EQUAL(16.f, getProperty<float>(getRun(getParagraphOfText(1, xCell->getText()),3), "CharHeight"));
+}
+
 DECLARE_OOXMLEXPORT_TEST(testTcBorders, "testTcBorders.docx")
 {
     //fdo#76635 : Table borders are not getting preserved.
 
-    xmlDocPtr pXmlDocument = parseExport("word/document.xml");
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
     if (!pXmlDocument)
         return;
 
-       assertXPath(pXmlDocument, "/w:document[1]/w:body[1]/w:tbl[1]/w:tr[1]/w:tc[1]/w:tcPr[1]/w:tcBorders[1]/w:bottom[1][@w:val = 'single']",1);
-       assertXPath(pXmlDocument, "/w:document[1]/w:body[1]/w:tbl[1]/w:tr[1]/w:tc[1]/w:tcPr[1]/w:tcBorders[1]/w:bottom[1][@w:sz = 4]", 1);
-       assertXPath(pXmlDocument, "/w:document[1]/w:body[1]/w:tbl[1]/w:tr[1]/w:tc[1]/w:tcPr[1]/w:tcBorders[1]/w:bottom[1][@w:space = 0]", 1);
-       assertXPath(pXmlDocument, "/w:document[1]/w:body[1]/w:tbl[1]/w:tr[1]/w:tc[1]/w:tcPr[1]/w:tcBorders[1]/w:bottom[1][@w:color = 808080]", 1);
+    assertXPath(pXmlDocument, "/w:document[1]/w:body[1]/w:tbl[1]/w:tr[1]/w:tc[1]/w:tcPr[1]/w:tcBorders[1]/w:bottom[1][@w:val = 'single']",1);
+    assertXPath(pXmlDocument, "/w:document[1]/w:body[1]/w:tbl[1]/w:tr[1]/w:tc[1]/w:tcPr[1]/w:tcBorders[1]/w:bottom[1][@w:sz = 4]", 1);
+    assertXPath(pXmlDocument, "/w:document[1]/w:body[1]/w:tbl[1]/w:tr[1]/w:tc[1]/w:tcPr[1]/w:tcBorders[1]/w:bottom[1][@w:space = 0]", 1);
+    assertXPath(pXmlDocument, "/w:document[1]/w:body[1]/w:tbl[1]/w:tr[1]/w:tc[1]/w:tcPr[1]/w:tcBorders[1]/w:bottom[1][@w:color = 808080]", 1);
 
+    uno::Reference<beans::XPropertySet> xStyle(
+        getStyles("CharacterStyles")->getByName("Code Featured Element"),
+        uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Bold", float(150), getProperty<float>(xStyle, "CharWeight"));
 }
 
 DECLARE_OOXMLEXPORT_TEST(testQuicktables, "quicktables.docx")
 {
-    xmlDocPtr pXmlStyles = parseExport("word/styles.xml");
+    xmlDocUniquePtr pXmlStyles = parseExport("word/styles.xml");
     if (!pXmlStyles)
         return;
 
@@ -385,7 +405,7 @@ DECLARE_OOXMLEXPORT_TEST(testQuicktables, "quicktables.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testFdo71302, "fdo71302.docx")
 {
-    xmlDocPtr pXmlStyles = parseExport("word/styles.xml");
+    xmlDocUniquePtr pXmlStyles = parseExport("word/styles.xml");
     if (!pXmlStyles)
         return;
 
@@ -403,21 +423,19 @@ DECLARE_OOXMLEXPORT_TEST(testSmartart, "smartart.docx")
     CPPUNIT_ASSERT(aGrabBag.hasElements()); // Grab Bag not empty
 
     bool bTheme = false;
-    for(int i = 0; i < aGrabBag.getLength(); ++i)
+    for(beans::PropertyValue const & prop : std::as_const(aGrabBag))
     {
-      if (aGrabBag[i].Name == "OOXTheme")
+      if (prop.Name == "OOXTheme")
       {
         bTheme = true;
         uno::Reference<xml::dom::XDocument> aThemeDom;
-        CPPUNIT_ASSERT(aGrabBag[i].Value >>= aThemeDom); // PropertyValue of proper type
-        CPPUNIT_ASSERT(aThemeDom.get()); // Reference not empty
+        CPPUNIT_ASSERT(prop.Value >>= aThemeDom); // PropertyValue of proper type
+        CPPUNIT_ASSERT(aThemeDom); // Reference not empty
       }
     }
     CPPUNIT_ASSERT(bTheme); // Grab Bag has all the expected elements
 
-    uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(mxComponent, uno::UNO_QUERY);
-    uno::Reference<container::XIndexAccess> xDraws(xDrawPageSupplier->getDrawPage(), uno::UNO_QUERY);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(1), xDraws->getCount()); // One groupshape in the doc
+    CPPUNIT_ASSERT_EQUAL(1, getShapes()); // One groupshape in the doc
 
     uno::Reference<container::XIndexAccess> xGroup(getShape(1), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1), xGroup->getCount()); // 1 rendered bitmap from the original shapes
@@ -427,44 +445,44 @@ DECLARE_OOXMLEXPORT_TEST(testSmartart, "smartart.docx")
     CPPUNIT_ASSERT(aGrabBag.hasElements()); // Grab Bag not empty
 
     bool bData = false, bLayout = false, bQStyle = false, bColor = false, bDrawing = false;
-    for(int i = 0; i < aGrabBag.getLength(); ++i)
+    for(beans::PropertyValue const & prop : std::as_const(aGrabBag))
     {
-      if (aGrabBag[i].Name == "OOXData")
+      if (prop.Name == "OOXData")
       {
         bData = true;
         uno::Reference<xml::dom::XDocument> aDataDom;
-        CPPUNIT_ASSERT(aGrabBag[i].Value >>= aDataDom); // PropertyValue of proper type
-        CPPUNIT_ASSERT(aDataDom.get()); // Reference not empty
+        CPPUNIT_ASSERT(prop.Value >>= aDataDom); // PropertyValue of proper type
+        CPPUNIT_ASSERT(aDataDom); // Reference not empty
       }
-      else if (aGrabBag[i].Name == "OOXLayout")
+      else if (prop.Name == "OOXLayout")
       {
         bLayout = true;
         uno::Reference<xml::dom::XDocument> aLayoutDom;
-        CPPUNIT_ASSERT(aGrabBag[i].Value >>= aLayoutDom); // PropertyValue of proper type
-        CPPUNIT_ASSERT(aLayoutDom.get()); // Reference not empty
+        CPPUNIT_ASSERT(prop.Value >>= aLayoutDom); // PropertyValue of proper type
+        CPPUNIT_ASSERT(aLayoutDom); // Reference not empty
       }
-      else if (aGrabBag[i].Name == "OOXStyle")
+      else if (prop.Name == "OOXStyle")
       {
         bQStyle = true;
         uno::Reference<xml::dom::XDocument> aStyleDom;
-        CPPUNIT_ASSERT(aGrabBag[i].Value >>= aStyleDom); // PropertyValue of proper type
-        CPPUNIT_ASSERT(aStyleDom.get()); // Reference not empty
+        CPPUNIT_ASSERT(prop.Value >>= aStyleDom); // PropertyValue of proper type
+        CPPUNIT_ASSERT(aStyleDom); // Reference not empty
       }
-      else if (aGrabBag[i].Name == "OOXColor")
+      else if (prop.Name == "OOXColor")
       {
         bColor = true;
         uno::Reference<xml::dom::XDocument> aColorDom;
-        CPPUNIT_ASSERT(aGrabBag[i].Value >>= aColorDom); // PropertyValue of proper type
-        CPPUNIT_ASSERT(aColorDom.get()); // Reference not empty
+        CPPUNIT_ASSERT(prop.Value >>= aColorDom); // PropertyValue of proper type
+        CPPUNIT_ASSERT(aColorDom); // Reference not empty
       }
-      else if (aGrabBag[i].Name == "OOXDrawing")
+      else if (prop.Name == "OOXDrawing")
       {
         bDrawing = true;
         uno::Sequence< uno::Any > diagramDrawing;
         uno::Reference<xml::dom::XDocument> aDrawingDom;
-        CPPUNIT_ASSERT(aGrabBag[i].Value >>= diagramDrawing);
+        CPPUNIT_ASSERT(prop.Value >>= diagramDrawing);
         CPPUNIT_ASSERT(diagramDrawing[0] >>= aDrawingDom); // PropertyValue of proper type
-        CPPUNIT_ASSERT(aDrawingDom.get()); // Reference not empty
+        CPPUNIT_ASSERT(aDrawingDom); // Reference not empty
       }
     }
     CPPUNIT_ASSERT(bData && bLayout && bQStyle && bColor && bDrawing); // Grab Bag has all the expected elements
@@ -480,7 +498,7 @@ DECLARE_OOXMLEXPORT_TEST(testFontNameIsEmpty, "font-name-is-empty.docx")
     // Check no empty font name is exported
     // This test does not fail, if the document contains a font with empty name.
 
-    xmlDocPtr pXmlFontTable = parseExport("word/fontTable.xml");
+    xmlDocUniquePtr pXmlFontTable = parseExport("word/fontTable.xml");
     if (!pXmlFontTable)
         return;
     xmlXPathObjectPtr pXmlObj = getXPathNode(pXmlFontTable, "/w:fonts/w:font");
@@ -489,19 +507,17 @@ DECLARE_OOXMLEXPORT_TEST(testFontNameIsEmpty, "font-name-is-empty.docx")
     for(sal_Int32 index = 0; index < length; index++){
         xmlNodePtr pXmlNode = pXmlNodes->nodeTab[index];
         OUString attrVal = OUString::createFromAscii(reinterpret_cast<char*>(xmlGetProp(pXmlNode, BAD_CAST("name"))));
-         if (attrVal.isEmpty()){
+        if (attrVal.isEmpty()){
             CPPUNIT_FAIL("Font name is empty.");
         }
     }
     xmlXPathFreeObject(pXmlObj);
 }
 
-DECLARE_OOXMLEXPORT_TEST(testMultiColumnLineSeparator, "multi-column-line-separator-SAVED.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testMultiColumnLineSeparator, "multi-column-line-separator-SAVED.docx")
 {
     // Check for the Column Separator value.It should be FALSE as the document does not contain separator line.
-    xmlDocPtr pXmlDoc = parseExport();
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport();
     assertXPath(pXmlDoc, "/w:document/w:body/w:p[3]/w:pPr/w:sectPr/w:cols","sep","false");
 }
 
@@ -517,87 +533,38 @@ DECLARE_OOXMLEXPORT_TEST(testCustomXmlGrabBag, "customxml.docx")
     xTextDocumentPropertySet->getPropertyValue("InteropGrabBag") >>= aGrabBag;
     CPPUNIT_ASSERT(aGrabBag.hasElements()); // Grab Bag not empty
     bool CustomXml = false;
-    for(int i = 0; i < aGrabBag.getLength(); ++i)
+    for(beans::PropertyValue const & prop : std::as_const(aGrabBag))
     {
-        if (aGrabBag[i].Name == "OOXCustomXml" || aGrabBag[i].Name == "OOXCustomXmlProps")
+        if (prop.Name == "OOXCustomXml" || prop.Name == "OOXCustomXmlProps")
         {
             CustomXml = true;
             uno::Reference<xml::dom::XDocument> aCustomXmlDom;
             uno::Sequence<uno::Reference<xml::dom::XDocument> > aCustomXmlDomList;
-            CPPUNIT_ASSERT(aGrabBag[i].Value >>= aCustomXmlDomList); // PropertyValue of proper type
+            CPPUNIT_ASSERT(prop.Value >>= aCustomXmlDomList); // PropertyValue of proper type
             sal_Int32 length = aCustomXmlDomList.getLength();
             CPPUNIT_ASSERT_EQUAL(sal_Int32(1), length);
             aCustomXmlDom = aCustomXmlDomList[0];
-            CPPUNIT_ASSERT(aCustomXmlDom.get()); // Reference not empty
+            CPPUNIT_ASSERT(aCustomXmlDom); // Reference not empty
         }
     }
     CPPUNIT_ASSERT(CustomXml); // Grab Bag has all the expected elements
 }
 
-DECLARE_OOXMLEXPORT_TEST(testActiveXGrabBag, "activex.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testCustomXmlRelationships, "customxml.docx")
 {
-    // The problem was that activeX.xml files were missing from docx file after saving file.
-    // This test case tests whether activex files grabbagged properly in correct object.
+    xmlDocUniquePtr pXmlDoc = parseExport("customXml/_rels/item1.xml.rels");
 
-    uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY);
-    uno::Reference<beans::XPropertySet> xTextDocumentPropertySet(xTextDocument, uno::UNO_QUERY);
-    uno::Sequence<beans::PropertyValue> aGrabBag(0);
-    xTextDocumentPropertySet->getPropertyValue("InteropGrabBag") >>= aGrabBag;
-    CPPUNIT_ASSERT(aGrabBag.hasElements()); // Grab Bag not empty
-    bool bActiveX = false;
-    for(int i = 0; i < aGrabBag.getLength(); ++i)
-    {
-        if (aGrabBag[i].Name == "OOXActiveX")
-        {
-            bActiveX = true;
-            uno::Reference<xml::dom::XDocument> aActiveXDom;
-            uno::Sequence<uno::Reference<xml::dom::XDocument> > aActiveXDomList;
-            CPPUNIT_ASSERT(aGrabBag[i].Value >>= aActiveXDomList); // PropertyValue of proper type
-            sal_Int32 length = aActiveXDomList.getLength();
-            CPPUNIT_ASSERT_EQUAL(sal_Int32(5), length);
-            aActiveXDom = aActiveXDomList[0];
-            CPPUNIT_ASSERT(aActiveXDom.get()); // Reference not empty
-        }
-    }
-    CPPUNIT_ASSERT(bActiveX); // Grab Bag has all the expected elements
+    // Check there is a relation to itemProps1.xml.
+    assertXPath(pXmlDoc, "/rels:Relationships/rels:Relationship", 1);
+    assertXPath(pXmlDoc, "/rels:Relationships/rels:Relationship[@Id='rId1']", "Target", "itemProps1.xml");
 }
 
-DECLARE_OOXMLEXPORT_TEST(testActiveXBinGrabBag, "activexbin.docx")
-{
-    // The problem was that activeX.bin files were missing from docx file after saving file.
-    // This test case tests whether activex bin files grabbagged properly in correct object.
-
-    uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY);
-    uno::Reference<beans::XPropertySet> xTextDocumentPropertySet(xTextDocument, uno::UNO_QUERY);
-    uno::Sequence<beans::PropertyValue> aGrabBag(0);
-    xTextDocumentPropertySet->getPropertyValue("InteropGrabBag") >>= aGrabBag;
-    CPPUNIT_ASSERT(aGrabBag.hasElements()); // Grab Bag not empty
-    bool bActiveX = false;
-    for(int i = 0; i < aGrabBag.getLength(); ++i)
-    {
-        if (aGrabBag[i].Name == "OOXActiveXBin")
-        {
-            bActiveX = true;
-            uno::Reference<io::XInputStream> aActiveXBin;
-            uno::Sequence<uno::Reference<io::XInputStream> > aActiveXBinList;
-            CPPUNIT_ASSERT(aGrabBag[i].Value >>= aActiveXBinList); // PropertyValue of proper type
-            sal_Int32 length = aActiveXBinList.getLength();
-            CPPUNIT_ASSERT_EQUAL(sal_Int32(5), length);
-            aActiveXBin = aActiveXBinList[0];
-            CPPUNIT_ASSERT(aActiveXBin.get()); // Reference not empty
-        }
-    }
-    CPPUNIT_ASSERT(bActiveX); // Grab Bag has all the expected elements
-}
-
-DECLARE_OOXMLEXPORT_TEST(testFdo69644, "fdo69644.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testFdo69644, "fdo69644.docx")
 {
     // The problem was that the exporter exported the table definition
     // with only 3 columns, instead of 5 columns.
     // Check that the table grid is exported with 5 columns
-    xmlDocPtr pXmlDoc = parseExport();
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport();
     assertXPath(pXmlDoc, "/w:document/w:body/w:tbl/w:tblGrid/w:gridCol", 5);
 }
 
@@ -607,11 +574,9 @@ DECLARE_OOXMLEXPORT_TEST(testFdo70812, "fdo70812.docx")
     getParagraph(1, "Sample pages document.");
 }
 
-DECLARE_OOXMLEXPORT_TEST(testPgMargin, "testPgMargin.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testPgMargin, "testPgMargin.docx")
 {
-    xmlDocPtr pXmlDoc = parseExport();
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport();
     assertXPath(pXmlDoc, "/w:document/w:body/w:sectPr/w:pgMar", "left", "1440");
 }
 
@@ -637,9 +602,15 @@ DECLARE_OOXMLEXPORT_TEST(testTdf106974_int32Crop, "tdf106974_int32Crop.docx")
 
     imageProperties->getPropertyValue( "GraphicCrop" ) >>= aGraphicCropStruct;
 
+    // The crop is constructed in GraphicProperties::pushToPropMap, where
+    // GraphicHelper::getOriginalSize tries to get graphic size in mm, then falls back to pixels,
+    // which are then converted to mm taking screen DPI scaling into account. Thus, the resulting
+    // values are DPI-dependent.
+    const double fXScaleFactor = 96.0 / Application::GetDefaultDevice()->GetDPIX();
+
     CPPUNIT_ASSERT_MESSAGE(
         OString::number(aGraphicCropStruct.Right).getStr(),
-        sal_Int32( 40470 ) < aGraphicCropStruct.Right );
+        40470 * fXScaleFactor < aGraphicCropStruct.Right);
 }
 
 DECLARE_OOXMLEXPORT_TEST(testLineSpacingexport, "test_line_spacing.docx")
@@ -664,67 +635,63 @@ DECLARE_OOXMLEXPORT_TEST(testLineSpacingexport, "test_line_spacing.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testTextBoxGradientAngle, "fdo65295.docx")
 {
-    uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(mxComponent, uno::UNO_QUERY);
-    uno::Reference<container::XIndexAccess> xIndexAccess(xDrawPageSupplier->getDrawPage(), uno::UNO_QUERY);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(8), xIndexAccess->getCount());
+    CPPUNIT_ASSERT_EQUAL(8, getShapes());
 
     // Angle of frame#1 is 135 degrees, but 'aGradient.Angle' holds value in 1/10 of a degree
-    uno::Reference<beans::XPropertySet> xFrame1(xIndexAccess->getByIndex(0), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xFrame1(getShape(1), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_GRADIENT, getProperty<drawing::FillStyle>(xFrame1, "FillStyle"));
     awt::Gradient aGradient1 = getProperty<awt::Gradient>(xFrame1, "FillGradient");
     CPPUNIT_ASSERT_EQUAL(sal_Int16(135 * 10), aGradient1.Angle);
 
     // Angle of frame#2 is 180 degrees, but 'aGradient.Angle' holds value in 1/10 of a degree
-    uno::Reference<beans::XPropertySet> xFrame2(xIndexAccess->getByIndex(1), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xFrame2(getShape(2), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_GRADIENT, getProperty<drawing::FillStyle>(xFrame2, "FillStyle"));
     awt::Gradient aGradient2 = getProperty<awt::Gradient>(xFrame2, "FillGradient");
     CPPUNIT_ASSERT_EQUAL(sal_Int16(180 * 10), aGradient2.Angle);
 
     // Angle of frame#3 is  90 degrees, but 'aGradient.Angle' holds value in 1/10 of a degree
-    uno::Reference<beans::XPropertySet> xFrame3(xIndexAccess->getByIndex(2), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xFrame3(getShape(3), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_GRADIENT, getProperty<drawing::FillStyle>(xFrame3, "FillStyle"));
     awt::Gradient aGradient3 = getProperty<awt::Gradient>(xFrame3, "FillGradient");
     CPPUNIT_ASSERT_EQUAL(sal_Int16( 90 * 10), aGradient3.Angle);
 
     // Angle of frame#4 is 225 degrees, but 'aGradient.Angle' holds value in 1/10 of a degree
-    uno::Reference<beans::XPropertySet> xFrame4(xIndexAccess->getByIndex(3), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xFrame4(getShape(4), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_GRADIENT, getProperty<drawing::FillStyle>(xFrame4, "FillStyle"));
     awt::Gradient aGradient4 = getProperty<awt::Gradient>(xFrame4, "FillGradient");
     CPPUNIT_ASSERT_EQUAL(sal_Int16(225 * 10), aGradient4.Angle);
 
     // Angle of frame#5 is 270 degrees, but 'aGradient.Angle' holds value in 1/10 of a degree
-    uno::Reference<beans::XPropertySet> xFrame5(xIndexAccess->getByIndex(4), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xFrame5(getShape(5), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_GRADIENT, getProperty<drawing::FillStyle>(xFrame5, "FillStyle"));
     awt::Gradient aGradient5 = getProperty<awt::Gradient>(xFrame5, "FillGradient");
     CPPUNIT_ASSERT_EQUAL(sal_Int16(270 * 10), aGradient5.Angle);
 
     // Angle of frame#6 is 315 degrees, but 'aGradient.Angle' holds value in 1/10 of a degree
-    uno::Reference<beans::XPropertySet> xFrame6(xIndexAccess->getByIndex(5), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xFrame6(getShape(6), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_GRADIENT, getProperty<drawing::FillStyle>(xFrame6, "FillStyle"));
     awt::Gradient aGradient6 = getProperty<awt::Gradient>(xFrame6, "FillGradient");
     CPPUNIT_ASSERT_EQUAL(sal_Int16(315 * 10), aGradient6.Angle);
 
     // Angle of frame#7 is   0 degrees, but 'aGradient.Angle' holds value in 1/10 of a degree
-    uno::Reference<beans::XPropertySet> xFrame7(xIndexAccess->getByIndex(6), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xFrame7(getShape(7), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_GRADIENT, getProperty<drawing::FillStyle>(xFrame7, "FillStyle"));
     awt::Gradient aGradient7 = getProperty<awt::Gradient>(xFrame7, "FillGradient");
     CPPUNIT_ASSERT_EQUAL(sal_Int16(  0 * 10), aGradient7.Angle);
 
     // Angle of frame#8 is  45 degrees, but 'aGradient.Angle' holds value in 1/10 of a degree
-    uno::Reference<beans::XPropertySet> xFrame8(xIndexAccess->getByIndex(7), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xFrame8(getShape(8), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_GRADIENT, getProperty<drawing::FillStyle>(xFrame8, "FillStyle"));
     awt::Gradient aGradient8 = getProperty<awt::Gradient>(xFrame8, "FillGradient");
     CPPUNIT_ASSERT_EQUAL(sal_Int16( 45 * 10), aGradient8.Angle);
 }
 
-DECLARE_OOXMLEXPORT_TEST(testCellGridSpan, "cell-grid-span.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testCellGridSpan, "cell-grid-span.docx")
 {
     // The problem was during export gridSpan value for 1st & 2nd cells for test document
     // used to get set wrongly to 5 and 65532 respectively which was the reason for crash during save operation
     // Verifying gridSpan element is not present in RoundTripped Document (As it's Default value is 1).
-    xmlDocPtr pXmlDoc = parseExport();
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport();
     assertXPath(pXmlDoc, "/w:document/w:body/w:tbl/w:tr/w:tc[1]/w:tcPr/w:gridSpan",0);
     assertXPath(pXmlDoc, "/w:document/w:body/w:tbl/w:tr/w:tc[2]/w:tcPr/w:gridSpan",0);
 }
@@ -741,41 +708,43 @@ DECLARE_OOXMLEXPORT_TEST(testFdo71646, "fdo71646.docx")
     CPPUNIT_ASSERT_EQUAL(text::WritingMode2::LR_TB, nLRDir);
 }
 
-DECLARE_OOXMLEXPORT_TEST(testParaAutoSpacing, "para-auto-spacing.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testParaAutoSpacing, "para-auto-spacing.docx")
 {
-    xmlDocPtr pXmlDoc = parseExport();
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport();
     assertXPath(pXmlDoc, "/w:document/w:body/w:p[1]/w:pPr/w:spacing", "beforeAutospacing","1");
     assertXPath(pXmlDoc, "/w:document/w:body/w:p[1]/w:pPr/w:spacing", "afterAutospacing","1");
 
-    assertXPath(pXmlDoc, "/w:document/w:body/w:p[2]/w:pPr/w:spacing", "beforeAutospacing","");
-    assertXPath(pXmlDoc, "/w:document/w:body/w:p[2]/w:pPr/w:spacing", "afterAutospacing","");
+    assertXPathNoAttribute(pXmlDoc, "/w:document/w:body/w:p[2]/w:pPr/w:spacing",
+                           "beforeAutospacing");
+    assertXPathNoAttribute(pXmlDoc, "/w:document/w:body/w:p[2]/w:pPr/w:spacing",
+                           "afterAutospacing");
     assertXPath(pXmlDoc, "/w:document/w:body/w:p[2]/w:pPr/w:spacing", "before","400");
     assertXPath(pXmlDoc, "/w:document/w:body/w:p[2]/w:pPr/w:spacing", "after","400");
 }
 
 DECLARE_OOXMLEXPORT_TEST(testGIFImageCrop, "test_GIF_ImageCrop.docx")
 {
-    // FIXME why does this fail on Mac?
-#if !defined(MACOSX)
     uno::Reference<drawing::XShape> image = getShape(1);
     uno::Reference<beans::XPropertySet> imageProperties(image, uno::UNO_QUERY);
     css::text::GraphicCrop aGraphicCropStruct;
 
     imageProperties->getPropertyValue( "GraphicCrop" ) >>= aGraphicCropStruct;
 
-    CPPUNIT_ASSERT_EQUAL( sal_Int32( 1085 ), aGraphicCropStruct.Left );
-    CPPUNIT_ASSERT_EQUAL( sal_Int32( 3651 ), aGraphicCropStruct.Right );
-    CPPUNIT_ASSERT_EQUAL( sal_Int32( 953 ), aGraphicCropStruct.Top );
-    CPPUNIT_ASSERT_EQUAL( sal_Int32( 1244 ), aGraphicCropStruct.Bottom );
-#endif
+    // The crop is constructed in GraphicProperties::pushToPropMap, where
+    // GraphicHelper::getOriginalSize tries to get graphic size in mm, then falls back to pixels,
+    // which are then converted to mm taking screen DPI scaling into account. Thus, the resulting
+    // values are DPI-dependent.
+    const double fXScaleFactor = 96.0 / Application::GetDefaultDevice()->GetDPIX();
+    const double fYScaleFactor = 96.0 / Application::GetDefaultDevice()->GetDPIY();
+
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(1085 * fXScaleFactor, aGraphicCropStruct.Left, 1);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(3651 * fXScaleFactor, aGraphicCropStruct.Right, 1);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(953 * fYScaleFactor, aGraphicCropStruct.Top, 1);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(1244 * fYScaleFactor, aGraphicCropStruct.Bottom, 1);
 }
 
 DECLARE_OOXMLEXPORT_TEST(testPNGImageCrop, "test_PNG_ImageCrop.docx")
 {
-    // FIXME why does this fail on Mac?
-#if !defined(MACOSX)
     /* The problem was image cropping information was not getting saved
      * after roundtrip.
      * Check for presence of cropping parameters in exported file.
@@ -786,15 +755,23 @@ DECLARE_OOXMLEXPORT_TEST(testPNGImageCrop, "test_PNG_ImageCrop.docx")
 
     imageProperties->getPropertyValue( "GraphicCrop" ) >>= aGraphicCropStruct;
 
-    CPPUNIT_ASSERT_EQUAL( sal_Int32( 1058 ), aGraphicCropStruct.Left );
-    CPPUNIT_ASSERT_EQUAL( sal_Int32( 1111 ), aGraphicCropStruct.Right );
-    CPPUNIT_ASSERT_EQUAL( sal_Int32( 1164 ), aGraphicCropStruct.Top );
-    CPPUNIT_ASSERT_EQUAL( sal_Int32( 635 ), aGraphicCropStruct.Bottom );
-#endif
+    // The crop is constructed in GraphicProperties::pushToPropMap, where
+    // GraphicHelper::getOriginalSize tries to get graphic size in mm, then falls back to pixels,
+    // which are then converted to mm taking screen DPI scaling into account. Thus, the resulting
+    // values are DPI-dependent.
+    const double fXScaleFactor = 96.0 / Application::GetDefaultDevice()->GetDPIX();
+    const double fYScaleFactor = 96.0 / Application::GetDefaultDevice()->GetDPIY();
+
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(1058 * fXScaleFactor, aGraphicCropStruct.Left, 1);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(1111 * fXScaleFactor, aGraphicCropStruct.Right, 1);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(1164 * fYScaleFactor, aGraphicCropStruct.Top, 1);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(635 * fYScaleFactor, aGraphicCropStruct.Bottom, 1);
 }
 
 DECLARE_OOXMLEXPORT_TEST(testTdf41542_imagePadding, "tdf41542_imagePadding.odt")
 {
+    CPPUNIT_ASSERT_EQUAL(3, getShapes());
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
     // borderlessImage - image WITHOUT BORDERS : simulate padding with -crop
     text::GraphicCrop crop = getProperty<text::GraphicCrop>(getShape(2), "GraphicCrop");
     CPPUNIT_ASSERT( crop.Left != 0 && crop.Right != 0 );
@@ -811,26 +788,22 @@ DECLARE_OOXMLEXPORT_TEST(testFootnoteParagraphTag, "testFootnote.docx")
     /* In footnotes.xml, the paragraph tag inside <w:footnote w:id="2"> was getting written into document.xml.
      * Check for, paragraph tag is correctly written into footnotes.xml.
      */
-    xmlDocPtr pXmlFootnotes = parseExport("word/footnotes.xml");
+    xmlDocUniquePtr pXmlFootnotes = parseExport("word/footnotes.xml");
     if (!pXmlFootnotes)
         return;
     assertXPath(pXmlFootnotes, "/w:footnotes/w:footnote[3]","id","2");
     assertXPath(pXmlFootnotes, "/w:footnotes/w:footnote[3]/w:p/w:r/w:footnoteRef", 1);
 }
 
-DECLARE_OOXMLEXPORT_TEST(testSpacingLineRule,"table_lineRule.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testSpacingLineRule,"table_lineRule.docx")
 {
-     xmlDocPtr pXmlDoc = parseExport("word/document.xml");
-    if (!pXmlDoc)
-        return;
-     assertXPath(pXmlDoc, "/w:document/w:body/w:tbl/w:tr[1]/w:tc[1]/w:p/w:pPr/w:spacing", "lineRule", "auto");
+    xmlDocUniquePtr pXmlDoc = parseExport("word/document.xml");
+    assertXPath(pXmlDoc, "/w:document/w:body/w:tbl/w:tr[1]/w:tc[1]/w:p/w:pPr/w:spacing", "lineRule", "auto");
 }
 
-DECLARE_OOXMLEXPORT_TEST(testTableLineSpacing, "table_atleast.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testTableLineSpacing, "table_atleast.docx")
 {
-    xmlDocPtr pXmlDoc = parseExport("word/document.xml");
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport("word/document.xml");
     assertXPath(pXmlDoc, "/w:document/w:body/w:tbl/w:tr/w:tc/w:p/w:pPr/w:spacing", "line", "320");
 }
 
@@ -850,7 +823,7 @@ DECLARE_OOXMLEXPORT_TEST(testMce, "mce.docx")
 DECLARE_OOXMLEXPORT_TEST(testThemePreservation, "theme-preservation.docx")
 {
     // check default font theme values have been preserved
-    xmlDocPtr pXmlStyles = parseExport("word/styles.xml");
+    xmlDocUniquePtr pXmlStyles = parseExport("word/styles.xml");
     if (!pXmlStyles)
         return;
     assertXPath(pXmlStyles, "/w:styles/w:docDefaults/w:rPrDefault/w:rPr/w:rFonts", "asciiTheme", "minorHAnsi");
@@ -864,7 +837,7 @@ DECLARE_OOXMLEXPORT_TEST(testThemePreservation, "theme-preservation.docx")
     assertXPath(pXmlStyles, "/w:styles/w:style[@w:styleId='Custom1']/w:rPr/w:color", "themeTint", "99");
 
     // check direct format font theme values have been preserved
-    xmlDocPtr pXmlDocument = parseExport("word/document.xml");
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
     if (!pXmlDocument)
         return;
     assertXPath(pXmlDocument, "/w:document/w:body/w:p[5]/w:r[1]/w:rPr/w:rFonts", "hAnsiTheme", "majorHAnsi");
@@ -876,7 +849,7 @@ DECLARE_OOXMLEXPORT_TEST(testThemePreservation, "theme-preservation.docx")
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0xbf), sThemeShade.toInt32(16));
 
     // check the themeFontLang values in settings file
-    xmlDocPtr pXmlSettings = parseExport("word/settings.xml");
+    xmlDocUniquePtr pXmlSettings = parseExport("word/settings.xml");
     if (!pXmlSettings)
         return;
     assertXPath(pXmlSettings, "/w:settings/w:themeFontLang", "val", "en-US");
@@ -907,20 +880,24 @@ DECLARE_OOXMLEXPORT_TEST(testThemePreservation, "theme-preservation.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testTableThemePreservation, "table-theme-preservation.docx")
 {
-    xmlDocPtr pXmlDocument = parseExport("word/document.xml");
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
     if (!pXmlDocument)
         return;
 
     // check cell theme colors have been preserved
     assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[1]/w:tcPr/w:shd", "themeFill", "accent6");
-    assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[1]/w:tcPr/w:shd", "themeFillShade", "");
+    assertXPathNoAttribute(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[1]/w:tcPr/w:shd",
+                           "themeFillShade");
     assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[1]/w:tcPr/w:shd", "themeFillTint", "33");
     assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[2]/w:tcPr/w:shd", "themeFill", "accent6");
-    assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[2]/w:tcPr/w:shd", "themeFillShade", "");
-    assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[2]/w:tcPr/w:shd", "themeFillTint", "");
+    assertXPathNoAttribute(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[2]/w:tcPr/w:shd",
+                           "themeFillShade");
+    assertXPathNoAttribute(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[2]/w:tcPr/w:shd",
+                           "themeFillTint");
     assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[3]/w:tcPr/w:shd", "themeFill", "accent6");
     assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[3]/w:tcPr/w:shd", "themeFillShade", "80");
-    assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[3]/w:tcPr/w:shd", "themeFillTint", "");
+    assertXPathNoAttribute(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[3]/w:tcPr/w:shd",
+                           "themeFillTint");
     assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[3]/w:tcPr/w:shd", "val", "horzStripe");
     assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[3]/w:tcPr/w:shd", "themeColor", "accent3");
     assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[2]/w:tc[3]/w:tcPr/w:shd", "themeTint", "33");
@@ -955,20 +932,19 @@ DECLARE_OOXMLEXPORT_TEST(testTableThemePreservation, "table-theme-preservation.d
 
 }
 
-DECLARE_OOXMLEXPORT_TEST(testcantSplit, "2_table_doc.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testcantSplit, "2_table_doc.docx")
 {
     // if Split table value is true for a table then during export do not write <w:cantSplit w:val="false"/>
     // in table row property,As default row prop is allow row to break across page.
     // writing <w:cantSplit w:val="false"/> during export was causing problem that all the cell data used to come on same page
-    xmlDocPtr pXmlDoc = parseExport();
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport();
     assertXPath(pXmlDoc, "/w:document/w:body/w:tbl[1]/w:tr/w:trPr/w:cantSplit",0);
     assertXPath(pXmlDoc, "/w:document/w:body/w:tbl[2]/w:tr/w:trPr/w:cantSplit","val","true");
 }
 
 DECLARE_OOXMLEXPORT_TEST(testDontSplitTable, "tdf101589_dontSplitTable.odt")
 {
+    CPPUNIT_ASSERT_EQUAL(2, getPages());
     //single row tables need to prevent split by setting row to no split
     CPPUNIT_ASSERT_EQUAL( OUString("Row 1"), parseDump("/root/page[2]/body/tab[1]/row[1]/cell[1]/txt[1]") );
 
@@ -977,7 +953,7 @@ DECLARE_OOXMLEXPORT_TEST(testDontSplitTable, "tdf101589_dontSplitTable.odt")
     uno::Reference<text::XTextTable> xTable (xTables->getByIndex(0), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(false, getProperty<bool>(xTable, "Split"));
 
-    uno::Reference<table::XTableRows> xTableRows(xTable->getRows(), uno::UNO_QUERY);
+    uno::Reference<table::XTableRows> xTableRows = xTable->getRows();
     CPPUNIT_ASSERT_EQUAL(false, getProperty<bool>(xTableRows->getByIndex(0), "IsSplitAllowed"));
 }
 
@@ -986,27 +962,24 @@ DECLARE_OOXMLEXPORT_TEST(testExtraSectionBreak, "1_page.docx")
     // There was a problem for some documents during export.Invalid sectPr getting added
     // because of faulty calculation of PageDesc value
     // This was the reason for increasing number of pages after RT
-    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
-    uno::Reference<text::XTextViewCursorSupplier> xTextViewCursorSupplier(xModel->getCurrentController(), uno::UNO_QUERY);
-    uno::Reference<text::XPageCursor> xCursor(xTextViewCursorSupplier->getViewCursor(), uno::UNO_QUERY);
-    xCursor->jumpToLastPage();
-    CPPUNIT_ASSERT_EQUAL(sal_Int16(1), xCursor->getPage());
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
+
+    // tdf126544 Styles were being added before their base/parent/inherited-from style existed, and so were using default settings.
+    uno::Reference<container::XNameAccess> xParaStyles(getStyles("ParagraphStyles"));
+    uno::Reference<style::XStyle> xStyle(xParaStyles->getByName("Heading 1"), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL( OUString("Heading Base"), xStyle->getParentStyle() );
 }
 
-DECLARE_OOXMLEXPORT_TEST(testcolumnbreak, "columnbreak.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testcolumnbreak, "columnbreak.docx")
 {
     CPPUNIT_ASSERT_EQUAL(style::BreakType_COLUMN_BEFORE, getProperty<style::BreakType>(getParagraph(5, "This is first line after col brk."), "BreakType"));
-    xmlDocPtr pXmlDoc = parseExport("word/document.xml");
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport("word/document.xml");
     assertXPath(pXmlDoc, "/w:document/w:body/w:p[5]/w:r[1]/w:br", "type", "column");
 }
 
-DECLARE_OOXMLEXPORT_TEST(testGlossary, "testGlossary.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testGlossary, "testGlossary.docx")
 {
-    xmlDocPtr pXmlDoc = parseExport("word/glossary/document.xml");
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport("word/glossary/document.xml");
     assertXPath(pXmlDoc, "/w:glossaryDocument", "Ignorable", "w14 wp14");
 }
 
@@ -1015,27 +988,205 @@ DECLARE_OOXMLEXPORT_TEST(testFdo71785, "fdo71785.docx")
     // crashtest
 }
 
-DECLARE_OOXMLEXPORT_TEST(testCrashWhileSave, "testCrashWhileSave.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testCrashWhileSave, "testCrashWhileSave.docx")
 {
-    xmlDocPtr pXmlDoc = parseExport("word/footer1.xml");
-    if (!pXmlDoc)
-        return;
+    xmlDocUniquePtr pXmlDoc = parseExport("word/footer1.xml");
     CPPUNIT_ASSERT(getXPath(pXmlDoc, "/w:ftr/w:tbl/w:tr/w:tc[1]/w:p[1]/w:pPr/w:pStyle", "val").match("Normal"));
 }
 
-DECLARE_OOXMLEXPORT_TEST(testFileOpenInputOutputError,"floatingtbl_with_formula.docx")
+DECLARE_OOXMLEXPORT_EXPORTONLY_TEST(testFileOpenInputOutputError,"floatingtbl_with_formula.docx")
 {
-     // Docx containing Floating table with formula was giving "General input/output error" while opening in LibreOffice
-     xmlDocPtr pXmlDoc = parseExport("word/document.xml");
-     if (!pXmlDoc)
-         return;
-      assertXPath(pXmlDoc, "/w:document/w:body/w:p[1]/w:pPr/w:pStyle", "val", "Normal");
+    // Docx containing Floating table with formula was giving "General input/output error" while opening in LibreOffice
+    xmlDocUniquePtr pXmlDoc = parseExport("word/document.xml");
+    assertXPath(pXmlDoc, "/w:document/w:body/w:p[1]/w:pPr/w:pStyle", "val", "Normal");
 
     // let's also assert that the formula was exported properly
-    assertXPathContent(pXmlDoc, "//wps:txbx/w:txbxContent/w:tbl/w:tr/w:tc[2]/w:p/m:oMath/m:sSubSup/m:e/m:r/m:t", OUString::fromUtf8("\xcf\x83"));
+    assertXPathContent(pXmlDoc, "//w:tbl/w:tr/w:tc[2]/w:p/m:oMathPara/m:oMath/m:sSubSup/m:e/m:r/m:t", u"\u03C3");
 }
 
-#endif
+DECLARE_OOXMLEXPORT_TEST(testSingleCellTableBorders, "tdf124399_SingleCellTableBorders.docx")
+{
+    // tdf#124399: Extra borders on single cell tables fixed.
+
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
+    if (!pXmlDocument)
+        return;
+    assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr/w:tc/w:tcPr/w:tcBorders/w:top    [@w:val = 'nil']", 1);
+    assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr/w:tc/w:tcPr/w:tcBorders/w:bottom [@w:val = 'nil']", 1);
+}
+
+DECLARE_OOXMLEXPORT_TEST(testInsideBorders, "tdf129242_InsideBorders.docx")
+{
+    // tdf#129242: Don't remove inside borders if the table has more than one cells.
+
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
+    if (!pXmlDocument)
+        return;
+
+    // If this is not 0, then inside borders are removed.
+    assertXPathChildren(pXmlDocument, "/w:document/w:body/w:tbl/w:tr/w:tc[2]/w:tcPr/w:tcBorders", 0);
+}
+
+DECLARE_OOXMLEXPORT_TEST(testRightBorder, "tdf129442_RightBorder.docx")
+{
+    // tdf#129442: Right border of a one column table was missing.
+
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
+    if (!pXmlDocument)
+        return;
+
+    // If the right border is missing like in the bug, then there is a <w:right w:val="nil" /> tag in tcBorders.
+    assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[1]/w:tc/w:tcPr/w:tcBorders/w:end [@w:val = 'nil']", 0);
+}
+
+DECLARE_OOXMLEXPORT_TEST(testBottomBorder, "tdf129450_BottomBorder.docx")
+{
+    // tdf#129450: Missing bottom border in one row table.
+
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
+    if (!pXmlDocument)
+        return;
+
+    // If there is no bottom border, it is shown in tcBorders.
+    assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr/w:tc[1]/w:tcPr/w:tcBorders/w:bottom [@w:val = 'nil']", 0);
+}
+
+DECLARE_OOXMLEXPORT_TEST(testBottomBorders, "tdf129452_BottomBorders.docx")
+{
+    // tdf#129452: Do not omit bottom borders when a column in a table is vertically merged and
+    // the inside borders are turned off.
+
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
+    if (!pXmlDocument)
+        return;
+
+    assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[4]/w:tc[1]/w:tcPr/w:tcBorders/w:bottom [@w:val = 'nil']", 0);
+    assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[4]/w:tc[2]/w:tcPr/w:tcBorders/w:bottom [@w:val = 'nil']", 0);
+
+    // But also don't treat separately merged cells as one - the topmost merged cell shouldn't gain a border.
+    assertXPath(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[1]/w:tc[4]/w:tcPr/w:tcBorders/w:bottom", 0);
+}
+
+DECLARE_OOXMLEXPORT_TEST(testFontTypes, "tdf120344_FontTypes.docx")
+{
+    // tdf#120344: Font type of numbering symbols can be different than the font type of the text.
+
+    // Check the font type of the text, should be Consolas.
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
+    if (!pXmlDocument)
+        return;
+    assertXPath(pXmlDocument, "/w:document/w:body/w:p[1]/w:r/w:rPr/w:rFonts [@w:ascii='Consolas']", 1);
+
+    // Now the font type of the numbering symbols, should be Arial Black.
+    xmlDocUniquePtr qXmlDocument = parseExport("word/numbering.xml");
+    if (!qXmlDocument)
+        return;
+    assertXPath(qXmlDocument, "/w:numbering/w:abstractNum[1]/w:lvl[1]/w:rPr/w:rFonts [@w:ascii='Arial Black']", 1);
+}
+
+DECLARE_OOXMLEXPORT_TEST(testNumberingLevels, "tdf95495.docx")
+{
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
+    if (!pXmlDocument)
+        return;
+
+    // tdf#95495: set list level of the custom style based on the setting of the parent style
+    // [this assertXPath is not a very good test, since the numbering definition is not set on the paragraph itself,
+    //  but in a style. This just tests the current copy-to-paragraph implementation. But leaving it for now,
+    //  since this example is very much a corner case, so anyone trespassing here should double-check everything...]
+    assertXPath(pXmlDocument, "/w:document/w:body/w:p[2]/w:pPr/w:numPr/w:ilvl [@w:val = '1']", 1);
+
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    assertXPath(pXmlDoc, "//body/txt[5]/LineBreak", "Line", "A.2.1 .DESCRIPTION");
+}
+
+DECLARE_OOXMLEXPORT_TEST(testVerticalBorders, "calendar3.docx")
+{
+    // tdf#130799: Inside vertical borders of a table should not be missing.
+
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
+    if (!pXmlDocument)
+        return;
+    // Left and right borders.
+    assertXPathChildren(pXmlDocument, "/w:document/w:body/w:tbl/w:tr[3]/w:tc[3]/w:tcPr/w:tcBorders", 2);
+}
+
+DECLARE_OOXMLEXPORT_TEST(testArrowFlipXY, "tdf100751_arrowBothFlip.docx")
+{
+    // tdf#100751: Both x and y flip should happen.
+
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
+    if (!pXmlDocument)
+        return;
+
+    OUString arrowStyle = getXPath(pXmlDocument, "/w:document/w:body/w:p/w:r/mc:AlternateContent/mc:Fallback/w:pict/v:group/v:shape[2]", "style");
+    CPPUNIT_ASSERT(arrowStyle.indexOf(u"flip:xy") != sal_Int32(-1));
+}
+
+DECLARE_OOXMLEXPORT_TEST(testArrowPosition, "tdf104565_ArrowPosition.docx")
+{
+    // tdf#104565: Test correct position.
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
+    if (!pXmlDocument)
+        return;
+
+    // This is the correct Y coordinate, the incorrect was 817880.
+    assertXPathContent(pXmlDocument, "/w:document/w:body/w:p/w:r/mc:AlternateContent/mc:Choice/w:drawing/wp:anchor"
+        "/wp:positionV/wp:posOffset", "516255");
+}
+
+DECLARE_OOXMLEXPORT_TEST(testArrowMarker, "tdf123346_ArrowMarker.docx")
+{
+    // tdf#123346: Check arrow marker.
+
+    xmlDocUniquePtr pXmlDocument = parseExport("word/document.xml");
+    if (!pXmlDocument)
+        return;
+
+    assertXPath(pXmlDocument, "/w:document/w:body/w:p/w:r/mc:AlternateContent/mc:Choice/w:drawing/wp:anchor"
+        "/a:graphic/a:graphicData/wps:wsp/wps:spPr/a:ln/a:tailEnd", "type", "arrow");
+}
+
+DECLARE_OOXMLEXPORT_TEST(testShapeLineWidth, "tdf92526_ShapeLineWidth.odt")
+{
+    CPPUNIT_ASSERT_EQUAL(1, getShapes());
+    CPPUNIT_ASSERT_EQUAL(1, getPages());
+    // tdf#92526: Make sure that line with stays 0.
+    xmlDocUniquePtr pXml = parseExport("word/document.xml");
+    if (!pXml)
+        return;
+
+    // "w" attribute was not exported.
+    assertXPath(pXml, "/w:document/w:body/w:p/w:r/mc:AlternateContent/mc:Choice/w:drawing"
+        "/wp:anchor/a:graphic/a:graphicData/wps:wsp/wps:spPr/a:ln", "w", "0");
+}
+
+DECLARE_OOXMLEXPORT_TEST(testRelativeAnchorWidthFromLeftMargin, "tdf132976_testRelativeAnchorWidthFromLeftMargin.docx")
+{
+    // tdf#132976 The size of the width of this shape should come from the size of the left margin.
+    // It was set to the size of the width of the entire page before.
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    if (!pXmlDoc)
+        return;
+    assertXPath(pXmlDoc, "//SwAnchoredDrawObject/bounds", "width", "1133");
+}
+
+DECLARE_OOXMLEXPORT_TEST(testRelativeAnchorWidthFromInsideOutsideMargin, "tdf133861_RelativeAnchorWidthFromInsideOutsideMargin.docx")
+{
+    // tdf#133863 tdf#133864 The sizes of the width of these shapes depend on the sizes of the inside and outside margins.
+    // The open book: outside --text-- inside | inside --text-- outside
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    if (!pXmlDoc)
+        return;
+    // Inside
+    assertXPath(pXmlDoc, "(//SwAnchoredDrawObject)[1]/bounds", "width", "1440");
+    // Outside
+    assertXPath(pXmlDoc, "(//SwAnchoredDrawObject)[2]/bounds", "width", "2552");
+    // Outside
+    assertXPath(pXmlDoc, "(//SwAnchoredDrawObject)[3]/bounds", "width", "2552");
+    // Inside
+    assertXPath(pXmlDoc, "(//SwAnchoredDrawObject)[4]/bounds", "width", "1440");
+}
 
 CPPUNIT_PLUGIN_IMPLEMENT();
 

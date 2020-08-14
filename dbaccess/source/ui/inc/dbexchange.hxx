@@ -19,20 +19,16 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_INC_DBEXCHANGE_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_DBEXCHANGE_HXX
 
-#include <com/sun/star/beans/PropertyValue.hpp>
+#include "TokenWriter.hxx"
 #include <com/sun/star/util/XNumberFormatter.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <svx/dbaexchange.hxx>
-#include <comphelper/uno3.hxx>
-#include <vector>
 
 #include <rtl/ref.hxx>
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class XComponentContext;
-} } } }
+}
 
 namespace dbaui
 {
@@ -47,6 +43,8 @@ namespace dbaui
         ::rtl::Reference< ORTFImportExport >    m_pRtf;
 
     public:
+        ODataClipboard();
+
         ODataClipboard(
             const OUString&  _rDatasource,
             const sal_Int32         _nCommandType,
@@ -71,6 +69,23 @@ namespace dbaui
             const css::uno::Reference< css::uno::XComponentContext >& i_rORB
         );
 
+        void Update(
+            const OUString&  _rDatasource,
+            const sal_Int32         _nCommandType,
+            const OUString&  _rCommand,
+            const css::uno::Reference< css::sdbc::XConnection >& _rxConnection,
+            const css::uno::Reference< css::util::XNumberFormatter >& _rxFormatter,
+            const css::uno::Reference< css::uno::XComponentContext >& _rxORB
+        );
+
+        void Update(
+            const OUString&  _rDatasource,
+            const sal_Int32         _nCommandType,
+            const OUString&  _rCommand,
+            const css::uno::Reference< css::util::XNumberFormatter >& _rxFormatter,
+            const css::uno::Reference< css::uno::XComponentContext >& _rxORB
+        );
+
         // XEventListener
         virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
@@ -78,7 +93,7 @@ namespace dbaui
         virtual void        AddSupportedFormats() override;
         virtual bool GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;
         virtual void        ObjectReleased() override;
-        virtual bool        WriteObject( tools::SvRef<SotStorageStream>& rxOStm, void* pUserObject, SotClipboardFormatId nUserObjectId, const css::datatransfer::DataFlavor& rFlavor ) override;
+        virtual bool        WriteObject( tools::SvRef<SotStorageStream>& rxOStm, void* pUserObject, sal_uInt32 nUserObjectId, const css::datatransfer::DataFlavor& rFlavor ) override;
     };
 }
 

@@ -22,7 +22,6 @@
 #include <vector>
 
 #include <cppuhelper/weak.hxx>
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/endian.h>
@@ -37,6 +36,7 @@
 #include <com/sun/star/io/UnexpectedEOFException.hpp>
 #include <com/sun/star/io/WrongFormatException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 using namespace ::cppu;
 using namespace ::osl;
@@ -45,9 +45,9 @@ using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 
-#include "services.hxx"
-
 namespace io_stm {
+
+namespace {
 
 class ODataInputStream :
     public WeakImplHelper <
@@ -106,75 +106,51 @@ protected:
     bool m_bValidStream;
 };
 
+}
+
 // XInputStream
 sal_Int32 ODataInputStream::readBytes(Sequence< sal_Int8 >& aData, sal_Int32 nBytesToRead)
 {
-     sal_Int32 nRead;
-
-     if( m_bValidStream )
-    {
-         nRead = m_input->readBytes( aData , nBytesToRead );
-     }
-     else
-    {
+     if( !m_bValidStream )
+     {
          throw NotConnectedException( );
      }
-
+     sal_Int32 nRead = m_input->readBytes( aData , nBytesToRead );
      return nRead;
 }
 
 sal_Int32 ODataInputStream::readSomeBytes(Sequence< sal_Int8 >& aData, sal_Int32 nMaxBytesToRead)
 {
-     sal_Int32 nRead;
-     if( m_bValidStream ) {
-         nRead = m_input->readSomeBytes( aData , nMaxBytesToRead );
-     }
-     else {
+     if( !m_bValidStream )
          throw NotConnectedException( );
-     }
-
+     sal_Int32 nRead = m_input->readSomeBytes( aData , nMaxBytesToRead );
      return nRead;
 }
 void ODataInputStream::skipBytes(sal_Int32 nBytesToSkip)
 {
-     if( m_bValidStream ) {
-         m_input->skipBytes( nBytesToSkip );
-     }
-     else
-    {
+     if( !m_bValidStream )
          throw NotConnectedException( );
-     }
+     m_input->skipBytes( nBytesToSkip );
 }
 
 
 sal_Int32 ODataInputStream::available()
 {
-     sal_Int32 nAvail;
-
-     if( m_bValidStream )
-    {
-         nAvail = m_input->available( );
-     }
-     else
-    {
+     if( !m_bValidStream )
          throw NotConnectedException( );
-     }
+     sal_Int32 nAvail = m_input->available( );
      return nAvail;
 }
 
 void ODataInputStream::closeInput()
 {
-     if( m_bValidStream ) {
-         m_input->closeInput( );
-         setInputStream( Reference< XInputStream > () );
-         setPredecessor( Reference < XConnectable >() );
-         setSuccessor( Reference < XConnectable >() );
-         m_bValidStream = false;
-     }
-     else
-    {
+     if( !m_bValidStream )
          throw NotConnectedException( );
-     }
+     m_input->closeInput( );
+     setInputStream( Reference< XInputStream > () );
+     setPredecessor( Reference < XConnectable >() );
+     setSuccessor( Reference < XConnectable >() );
+     m_bValidStream = false;
 }
 
 
@@ -193,7 +169,7 @@ sal_Int8 ODataInputStream::readByte()
     {
         throw UnexpectedEOFException();
     }
-    return aTmp.getArray()[0];
+    return aTmp.getConstArray()[0];
 }
 
 sal_Unicode ODataInputStream::readChar()
@@ -205,7 +181,7 @@ sal_Unicode ODataInputStream::readChar()
     }
 
     const sal_uInt8 * pBytes = reinterpret_cast<const sal_uInt8 *>(aTmp.getConstArray());
-    return ((sal_Unicode)pBytes[0] << 8) + pBytes[1];
+    return (static_cast<sal_Unicode>(pBytes[0]) << 8) + pBytes[1];
 }
 
 sal_Int16 ODataInputStream::readShort()
@@ -217,7 +193,7 @@ sal_Int16 ODataInputStream::readShort()
     }
 
     const sal_uInt8 * pBytes = reinterpret_cast<const sal_uInt8 *>(aTmp.getConstArray());
-    return ((sal_Int16)pBytes[0] << 8) + pBytes[1];
+    return (static_cast<sal_Int16>(pBytes[0]) << 8) + pBytes[1];
 }
 
 
@@ -230,7 +206,7 @@ sal_Int32 ODataInputStream::readLong()
     }
 
     const sal_uInt8 * pBytes = reinterpret_cast<const sal_uInt8 *>(aTmp.getConstArray());
-    return ((sal_Int32)pBytes[0] << 24) + ((sal_Int32)pBytes[1] << 16) + ((sal_Int32)pBytes[2] << 8) + pBytes[3];
+    return (static_cast<sal_Int32>(pBytes[0]) << 24) + (static_cast<sal_Int32>(pBytes[1]) << 16) + (static_cast<sal_Int32>(pBytes[2]) << 8) + pBytes[3];
 }
 
 
@@ -244,13 +220,13 @@ sal_Int64 ODataInputStream::readHyper()
 
     const sal_uInt8 * pBytes = reinterpret_cast<const sal_uInt8 *>(aTmp.getConstArray());
     return
-        (((sal_Int64)pBytes[0]) << 56) +
-        (((sal_Int64)pBytes[1]) << 48) +
-        (((sal_Int64)pBytes[2]) << 40) +
-        (((sal_Int64)pBytes[3]) << 32) +
-        (((sal_Int64)pBytes[4]) << 24) +
-        (((sal_Int64)pBytes[5]) << 16) +
-        (((sal_Int64)pBytes[6]) << 8) +
+        (static_cast<sal_Int64>(pBytes[0]) << 56) +
+        (static_cast<sal_Int64>(pBytes[1]) << 48) +
+        (static_cast<sal_Int64>(pBytes[2]) << 40) +
+        (static_cast<sal_Int64>(pBytes[3]) << 32) +
+        (static_cast<sal_Int64>(pBytes[4]) << 24) +
+        (static_cast<sal_Int64>(pBytes[5]) << 16) +
+        (static_cast<sal_Int64>(pBytes[6]) << 8) +
         pBytes[7];
 }
 
@@ -276,10 +252,10 @@ double ODataInputStream::readDouble()
 
 OUString ODataInputStream::readUTF()
 {
-    sal_uInt16              nShortLen = (sal_uInt16)readShort();
+    sal_uInt16              nShortLen = static_cast<sal_uInt16>(readShort());
     sal_Int32               nUTFLen;
 
-    if( ((sal_uInt16)0xffff) == nShortLen )
+    if( (sal_uInt16(0xffff)) == nShortLen )
     {
         // is interpreted as a sign, that string is longer than 64k
         // incompatible to older XDataInputStream-routines, when strings are exactly 64k
@@ -287,7 +263,7 @@ OUString ODataInputStream::readUTF()
     }
     else
     {
-        nUTFLen = ( sal_Int32 ) nShortLen;
+        nUTFLen = static_cast<sal_Int32>(nShortLen);
     }
 
     Sequence<sal_Unicode>   aBuffer( nUTFLen );
@@ -297,7 +273,7 @@ OUString ODataInputStream::readUTF()
     sal_Int32 nStrLen = 0;
     while( nCount < nUTFLen )
     {
-        sal_uInt8 c = (sal_uInt8)readByte();
+        sal_uInt8 c = static_cast<sal_uInt8>(readByte());
         sal_uInt8 char2, char3;
         switch( c >> 4 )
         {
@@ -310,13 +286,13 @@ OUString ODataInputStream::readUTF()
             case 12: case 13:
                 // 110x xxxx   10xx xxxx
                 nCount += 2;
-                if( ! ( nCount <= nUTFLen ) )
+                if( nCount > nUTFLen )
                 {
                     throw WrongFormatException( );
                 }
 
-                char2 = (sal_uInt8)readByte();
-                if( ! ( (char2 & 0xC0) == 0x80 ) )
+                char2 = static_cast<sal_uInt8>(readByte());
+                if( (char2 & 0xC0) != 0x80 )
                 {
                     throw WrongFormatException( );
                 }
@@ -327,15 +303,15 @@ OUString ODataInputStream::readUTF()
             case 14:
             // 1110 xxxx  10xx xxxx  10xx xxxx
                 nCount += 3;
-                if( !( nCount <= nUTFLen) )
+                if( nCount > nUTFLen )
                 {
                     throw WrongFormatException( );
                 }
 
-                char2 = (sal_uInt8)readByte();
-                char3 = (sal_uInt8)readByte();
+                char2 = static_cast<sal_uInt8>(readByte());
+                char3 = static_cast<sal_uInt8>(readByte());
 
-                if( (((char2 & 0xC0) != 0x80) || ((char3 & 0xC0) != 0x80)) ) {
+                if( ((char2 & 0xC0) != 0x80) || ((char3 & 0xC0) != 0x80) ) {
                     throw WrongFormatException( );
                 }
                 pStr[nStrLen++] = (sal_Unicode(c & 0x0F) << 12) |
@@ -384,7 +360,7 @@ void ODataInputStream::setSuccessor( const Reference < XConnectable > &r )
          if( m_succ.is() ) {
               /// set this instance as the sink !
               m_succ->setPredecessor( Reference< XConnectable > (
-                  (static_cast< XConnectable *  >(this)) ) );
+                  static_cast< XConnectable * >(this) ) );
          }
      }
 }
@@ -402,7 +378,7 @@ void ODataInputStream::setPredecessor( const Reference < XConnectable > &r )
         m_pred = r;
         if( m_pred.is() ) {
             m_pred->setSuccessor( Reference< XConnectable > (
-                (static_cast< XConnectable *  >(this)) ) );
+                static_cast< XConnectable * >(this) ) );
         }
     }
 }
@@ -414,7 +390,7 @@ Reference < XConnectable > ODataInputStream::getPredecessor()
 // XServiceInfo
 OUString ODataInputStream::getImplementationName()
 {
-    return ODataInputStream_getImplementationName();
+    return "com.sun.star.comp.io.stm.DataInputStream";
 }
 
 // XServiceInfo
@@ -426,34 +402,17 @@ sal_Bool ODataInputStream::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > ODataInputStream::getSupportedServiceNames()
 {
-    return ODataInputStream_getSupportedServiceNames();
+    return { "com.sun.star.io.DataInputStream" };
 }
 
-/***
-*
-* registration information
-*
-*
-****/
-
-Reference< XInterface > SAL_CALL ODataInputStream_CreateInstance(
-    SAL_UNUSED_PARAMETER const Reference < XComponentContext > & )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+io_ODataInputStream_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    ODataInputStream *p = new ODataInputStream;
-    return Reference< XInterface > ( static_cast<OWeakObject *>(p) );
+    return cppu::acquire(new ODataInputStream());
 }
 
-OUString ODataInputStream_getImplementationName()
-{
-    return OUString("com.sun.star.comp.io.stm.DataInputStream");
-}
-
-Sequence<OUString> ODataInputStream_getSupportedServiceNames()
-{
-    Sequence<OUString> aRet { "com.sun.star.io.DataInputStream" };
-    return aRet;
-}
-
+namespace {
 
 class ODataOutputStream :
     public WeakImplHelper <
@@ -506,45 +465,32 @@ protected:
     bool m_bValidStream;
 };
 
+}
+
 // XOutputStream
 void ODataOutputStream::writeBytes(const Sequence< sal_Int8 >& aData)
 {
-    if( m_bValidStream )
-    {
-        m_output->writeBytes( aData );
-    }
-    else {
+    if( !m_bValidStream )
         throw NotConnectedException( );
-    }
+    m_output->writeBytes( aData );
 }
 
 void ODataOutputStream::flush()
 {
-    if( m_bValidStream )
-    {
-        m_output->flush();
-    }
-    else
-    {
+    if( !m_bValidStream )
         throw NotConnectedException();
-    }
-
+    m_output->flush();
 }
 
 
 void ODataOutputStream::closeOutput()
 {
-    if( m_bValidStream )
-    {
-        m_output->closeOutput();
-        setOutputStream( Reference< XOutputStream > () );
-        setPredecessor( Reference < XConnectable >() );
-        setSuccessor( Reference < XConnectable >() );
-    }
-    else
-    {
+    if( !m_bValidStream )
         throw NotConnectedException();
-    }
+    m_output->closeOutput();
+    setOutputStream( Reference< XOutputStream > () );
+    setPredecessor( Reference < XConnectable >() );
+    setSuccessor( Reference < XConnectable >() );
 }
 
 // XDataOutputStream
@@ -563,54 +509,40 @@ void ODataOutputStream::writeBoolean(sal_Bool Value)
 
 void ODataOutputStream::writeByte(sal_Int8 Value)
 {
-    Sequence<sal_Int8> aTmp( 1 );
-    aTmp.getArray()[0] = Value;
-    writeBytes( aTmp );
+    writeBytes( { Value } );
 }
 
 void ODataOutputStream::writeChar(sal_Unicode Value)
 {
-    Sequence<sal_Int8> aTmp( 2 );
-    sal_Int8 * pBytes = aTmp.getArray();
-    pBytes[0] = sal_Int8(Value >> 8);
-    pBytes[1] = sal_Int8(Value);
-    writeBytes( aTmp );
+    writeBytes( { sal_Int8(Value >> 8),
+                  sal_Int8(Value) } );
 }
 
 
 void ODataOutputStream::writeShort(sal_Int16 Value)
 {
-    Sequence<sal_Int8> aTmp( 2 );
-    sal_Int8 * pBytes = aTmp.getArray();
-    pBytes[0] = sal_Int8(Value >> 8);
-    pBytes[1] = sal_Int8(Value);
-    writeBytes( aTmp );
+    writeBytes( { sal_Int8(Value >> 8),
+                  sal_Int8(Value) } );
 }
 
 void ODataOutputStream::writeLong(sal_Int32 Value)
 {
-    Sequence<sal_Int8> aTmp( 4 );
-    sal_Int8 * pBytes = aTmp.getArray();
-    pBytes[0] = sal_Int8(Value >> 24);
-    pBytes[1] = sal_Int8(Value >> 16);
-    pBytes[2] = sal_Int8(Value >> 8);
-    pBytes[3] = sal_Int8(Value);
-    writeBytes( aTmp );
+    writeBytes( { sal_Int8(Value >> 24),
+                  sal_Int8(Value >> 16),
+                  sal_Int8(Value >> 8),
+                  sal_Int8(Value) } );
 }
 
 void ODataOutputStream::writeHyper(sal_Int64 Value)
 {
-    Sequence<sal_Int8> aTmp( 8 );
-    sal_Int8 * pBytes = aTmp.getArray();
-    pBytes[0] = sal_Int8(Value >> 56);
-    pBytes[1] = sal_Int8(Value >> 48);
-    pBytes[2] = sal_Int8(Value >> 40);
-    pBytes[3] = sal_Int8(Value >> 32);
-    pBytes[4] = sal_Int8(Value >> 24);
-    pBytes[5] = sal_Int8(Value >> 16);
-    pBytes[6] = sal_Int8(Value >> 8);
-    pBytes[7] = sal_Int8(Value);
-    writeBytes( aTmp );
+    writeBytes( { sal_Int8(Value >> 56),
+                  sal_Int8(Value >> 48),
+                  sal_Int8(Value >> 40),
+                  sal_Int8(Value >> 32),
+                  sal_Int8(Value >> 24),
+                  sal_Int8(Value >> 16),
+                  sal_Int8(Value >> 8),
+                  sal_Int8(Value) } );
 }
 
 
@@ -664,11 +596,11 @@ void ODataOutputStream::writeUTF(const OUString& Value)
     // that are exactly 64k long can not be read by older routines when written
     // with these routines and the other way round !!!!!
     if( nUTFLen >= 0xFFFF ) {
-        writeShort( (sal_Int16)-1 );
+        writeShort( sal_Int16(-1) );
         writeLong( nUTFLen );
     }
     else {
-        writeShort( ((sal_uInt16)nUTFLen) );
+        writeShort( static_cast<sal_uInt16>(nUTFLen) );
     }
     for( i = 0 ; i < nStrLen ; i++ )
     {
@@ -722,7 +654,7 @@ void ODataOutputStream::setSuccessor( const Reference < XConnectable > &r )
          {
               /// set this instance as the sink !
               m_succ->setPredecessor( Reference < XConnectable > (
-                  (static_cast< XConnectable *  >(this)) ));
+                  static_cast< XConnectable * >(this) ));
          }
      }
 }
@@ -739,7 +671,7 @@ void ODataOutputStream::setPredecessor( const Reference < XConnectable > &r )
         m_pred = r;
         if( m_pred.is() ) {
             m_pred->setSuccessor( Reference< XConnectable > (
-                (static_cast< XConnectable *  >(this)) ));
+                static_cast< XConnectable * >(this) ));
         }
     }
 }
@@ -752,7 +684,7 @@ Reference < XConnectable > ODataOutputStream::getPredecessor()
 // XServiceInfo
 OUString ODataOutputStream::getImplementationName()
 {
-    return ODataOutputStream_getImplementationName();
+    return "com.sun.star.comp.io.stm.DataOutputStream";
 }
 
 // XServiceInfo
@@ -764,29 +696,17 @@ sal_Bool ODataOutputStream::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > ODataOutputStream::getSupportedServiceNames()
 {
-    return ODataOutputStream_getSupportedServiceNames();
+    return { "com.sun.star.io.DataOutputStream" };
 }
 
-Reference< XInterface > SAL_CALL ODataOutputStream_CreateInstance(
-    SAL_UNUSED_PARAMETER const Reference < XComponentContext > & )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+io_ODataOutputStream_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    ODataOutputStream *p = new ODataOutputStream;
-    Reference< XInterface > xService = *p;
-    return xService;
+    return cppu::acquire(new ODataOutputStream());
 }
 
-
-OUString ODataOutputStream_getImplementationName()
-{
-    return OUString("com.sun.star.comp.io.stm.DataOutputStream");
-}
-
-Sequence<OUString> ODataOutputStream_getSupportedServiceNames()
-{
-    Sequence<OUString> aRet { "com.sun.star.io.DataOutputStream" };
-    return aRet;
-}
-
+namespace {
 
 struct equalObjectContainer_Impl
 {
@@ -806,6 +726,8 @@ struct hashObjectContainer_Impl
     }
 };
 
+}
+
 typedef std::unordered_map
 <
     Reference< XInterface >,
@@ -813,6 +735,8 @@ typedef std::unordered_map
     hashObjectContainer_Impl,
     equalObjectContainer_Impl
 > ObjectContainer_Impl;
+
+namespace {
 
 class OObjectOutputStream:
     public ImplInheritanceHelper<
@@ -882,6 +806,8 @@ private:
     bool                            m_bValidMarkable;
 };
 
+}
+
 void OObjectOutputStream::writeObject( const Reference< XPersistObject > & xPObj )
 {
 
@@ -911,15 +837,13 @@ void OObjectOutputStream::writeObject( const Reference< XPersistObject > & xPObj
         else
         {
             ODataOutputStream::writeLong( (*aIt).second );
-            OUString aName;
-            ODataOutputStream::writeUTF( aName );
+            ODataOutputStream::writeUTF( OUString() );
         }
     }
     else
     {
         ODataOutputStream::writeLong( 0 );
-        OUString aName;
-        ODataOutputStream::writeUTF( aName );
+        ODataOutputStream::writeUTF( OUString() );
     }
 
     sal_uInt32 nObjLenMark = m_rMarkable->createMark();
@@ -928,13 +852,13 @@ void OObjectOutputStream::writeObject( const Reference< XPersistObject > & xPObj
     sal_Int32 nInfoLen = m_rMarkable->offsetToMark( nInfoLenMark );
     m_rMarkable->jumpToMark( nInfoLenMark );
     // write length of the info data
-    ODataOutputStream::writeShort( (sal_Int16)nInfoLen );
+    ODataOutputStream::writeShort( static_cast<sal_Int16>(nInfoLen) );
     // jump to the end of the stream
     m_rMarkable->jumpToFurthest();
 
     if( bWriteObj )
         xPObj->write( Reference< XObjectOutputStream > (
-            (static_cast< XObjectOutputStream *  >(this)) ) );
+            static_cast< XObjectOutputStream *  >(this) ) );
 
     sal_Int32 nObjLen = m_rMarkable->offsetToMark( nObjLenMark ) -4;
     m_rMarkable->jumpToMark( nObjLenMark );
@@ -950,30 +874,29 @@ void OObjectOutputStream::writeObject( const Reference< XPersistObject > & xPObj
 
 void OObjectOutputStream::connectToMarkable()
 {
-    if( ! m_bValidMarkable ) {
-        if( ! m_bValidStream )
+    if(  m_bValidMarkable )
+        return;
+
+    if( ! m_bValidStream )
+        throw NotConnectedException();
+
+    // find the markable stream !
+    Reference< XInterface > rTry(m_output);
+    while( true ) {
+        if( ! rTry.is() )
         {
             throw NotConnectedException();
         }
-
-        // find the markable stream !
-        Reference< XInterface > rTry(m_output);
-        while( true ) {
-            if( ! rTry.is() )
-            {
-                throw NotConnectedException();
-            }
-            Reference < XMarkableStream > markable( rTry , UNO_QUERY );
-            if( markable.is() )
-            {
-                m_rMarkable = markable;
-                break;
-            }
-            Reference < XActiveDataSource > source( rTry , UNO_QUERY );
-            rTry = source;
+        Reference < XMarkableStream > markable( rTry , UNO_QUERY );
+        if( markable.is() )
+        {
+            m_rMarkable = markable;
+            break;
         }
-        m_bValidMarkable = true;
+        Reference < XActiveDataSource > source( rTry , UNO_QUERY );
+        rTry = source;
     }
+    m_bValidMarkable = true;
 }
 
 
@@ -1018,29 +941,10 @@ sal_Int32 OObjectOutputStream::offsetToMark(sal_Int32 nMark)
     return m_rMarkable->offsetToMark( nMark );
 }
 
-
-Reference< XInterface > SAL_CALL OObjectOutputStream_CreateInstance(
-    SAL_UNUSED_PARAMETER const Reference < XComponentContext > & )
-{
-    OObjectOutputStream *p = new OObjectOutputStream;
-    return  Reference< XInterface > ( (static_cast< OWeakObject *  >(p)) );
-}
-
-OUString OObjectOutputStream_getImplementationName()
-{
-    return OUString("com.sun.star.comp.io.stm.ObjectOutputStream");
-}
-
-Sequence<OUString> OObjectOutputStream_getSupportedServiceNames()
-{
-    Sequence<OUString> aRet { "com.sun.star.io.ObjectOutputStream" };
-    return aRet;
-}
-
 // XServiceInfo
 OUString OObjectOutputStream::getImplementationName()
 {
-    return OObjectOutputStream_getImplementationName();
+    return "com.sun.star.comp.io.stm.ObjectOutputStream";
 }
 
 // XServiceInfo
@@ -1052,8 +956,17 @@ sal_Bool OObjectOutputStream::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > OObjectOutputStream::getSupportedServiceNames()
 {
-    return OObjectOutputStream_getSupportedServiceNames();
+    return { "com.sun.star.io.ObjectOutputStream" };
 }
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+io_OObjectOutputStream_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new OObjectOutputStream());
+}
+
+namespace {
 
 class OObjectInputStream:
     public ImplInheritanceHelper<
@@ -1130,6 +1043,8 @@ private:
 
 };
 
+}
+
 Reference< XPersistObject >  OObjectInputStream::readObject()
 {
     // check if chain contains a XMarkableStream
@@ -1140,7 +1055,7 @@ Reference< XPersistObject >  OObjectInputStream::readObject()
     // create Mark to skip newer versions
     sal_uInt32 nMark = m_rMarkable->createMark();
     // length of the data
-    sal_Int32 nLen = (sal_uInt16) ODataInputStream::readShort();
+    sal_Int32 nLen = static_cast<sal_uInt16>(ODataInputStream::readShort());
     if( nLen < 0xc )
     {
         throw WrongFormatException();
@@ -1155,7 +1070,7 @@ Reference< XPersistObject >  OObjectInputStream::readObject()
 
     // Read the length of the object
     sal_Int32 nObjLen = readLong();
-    if( ( 0 == nId && 0 != nObjLen ) )
+    if( 0 == nId && 0 != nObjLen )
     {
         throw WrongFormatException();
     }
@@ -1178,12 +1093,12 @@ Reference< XPersistObject >  OObjectInputStream::readObject()
                 {
                     // grow to the right size
                     Reference< XPersistObject > xEmpty;
-                    m_aPersistVector.insert( m_aPersistVector.end(), (long)(nId - nSize + 1), xEmpty );
+                    m_aPersistVector.insert( m_aPersistVector.end(), static_cast<long>(nId - nSize + 1), xEmpty );
                 }
 
                 m_aPersistVector[nId] = xLoadedObj;
                 xLoadedObj->read( Reference< XObjectInputStream >(
-                    (static_cast< XObjectInputStream * >(this)) ) );
+                    static_cast< XObjectInputStream * >(this) ) );
             }
             else
             {
@@ -1192,7 +1107,7 @@ Reference< XPersistObject >  OObjectInputStream::readObject()
             }
         }
         else {
-            if( m_aPersistVector.size() < nId )
+            if (nId >= m_aPersistVector.size())
             {
                 // id unknown, load failure !
                 bLoadSuccessful = false;
@@ -1219,30 +1134,30 @@ Reference< XPersistObject >  OObjectInputStream::readObject()
 
 void OObjectInputStream::connectToMarkable()
 {
-    if( ! m_bValidMarkable ) {
-        if( ! m_bValidStream )
+    if(  m_bValidMarkable )        return;
+
+    if( ! m_bValidStream )
+    {
+        throw NotConnectedException( );
+    }
+
+    // find the markable stream !
+    Reference< XInterface > rTry(m_input);
+    while( true ) {
+        if( ! rTry.is() )
         {
             throw NotConnectedException( );
         }
-
-        // find the markable stream !
-        Reference< XInterface > rTry(m_input);
-        while( true ) {
-            if( ! rTry.is() )
-            {
-                throw NotConnectedException( );
-            }
-            Reference<  XMarkableStream > markable( rTry , UNO_QUERY );
-            if( markable.is() )
-            {
-                m_rMarkable = markable;
-                break;
-            }
-            Reference < XActiveDataSink > sink( rTry , UNO_QUERY );
-            rTry = sink;
+        Reference<  XMarkableStream > markable( rTry , UNO_QUERY );
+        if( markable.is() )
+        {
+            m_rMarkable = markable;
+            break;
         }
-        m_bValidMarkable = true;
+        Reference < XActiveDataSink > sink( rTry , UNO_QUERY );
+        rTry = sink;
     }
+    m_bValidMarkable = true;
 }
 
 sal_Int32 OObjectInputStream::createMark()
@@ -1287,7 +1202,7 @@ sal_Int32 OObjectInputStream::offsetToMark(sal_Int32 nMark)
 // XServiceInfo
 OUString OObjectInputStream::getImplementationName()
 {
-    return OObjectInputStream_getImplementationName();
+    return "com.sun.star.comp.io.stm.ObjectInputStream";
 }
 
 // XServiceInfo
@@ -1299,26 +1214,17 @@ sal_Bool OObjectInputStream::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > OObjectInputStream::getSupportedServiceNames()
 {
-    return OObjectInputStream_getSupportedServiceNames();
+    return { "com.sun.star.io.ObjectInputStream" };
 }
 
-Reference< XInterface > SAL_CALL OObjectInputStream_CreateInstance( const Reference < XComponentContext > & rCtx )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+io_OObjectInputStream_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    OObjectInputStream *p = new OObjectInputStream( rCtx );
-    return Reference< XInterface> ( (static_cast< OWeakObject * >(p)) );
-}
-
-OUString OObjectInputStream_getImplementationName()
-{
-    return OUString("com.sun.star.comp.io.stm.ObjectInputStream");
-}
-
-Sequence<OUString> OObjectInputStream_getSupportedServiceNames()
-{
-    Sequence<OUString> aRet { "com.sun.star.io.ObjectInputStream" };
-    return aRet;
+    return cppu::acquire(new OObjectInputStream(context));
 }
 
 }
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_HYP_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_HYP_HXX
 
-#include <tools/link.hxx>
 #include <editeng/splwrap.hxx>
 #include <com/sun/star/linguistic2/XHyphenator.hpp>
 #include <swdllapi.h>
@@ -45,7 +44,7 @@ protected:
 
 public:
     SwHyphWrapper( SwView* pVw,
-                   css::uno::Reference< css::linguistic2::XHyphenator >  &rxHyph,
+                   css::uno::Reference< css::linguistic2::XHyphenator > const &rxHyph,
                    bool bStart, bool bOther, bool bSelect );
     virtual ~SwHyphWrapper() override;
 };

@@ -19,22 +19,18 @@
 #ifndef INCLUDED_I18NPOOL_SOURCE_LOCALEDATA_LOCALENODE_HXX
 #define INCLUDED_I18NPOOL_SOURCE_LOCALEDATA_LOCALENODE_HXX
 
-#include <com/sun/star/xml/sax/XParser.hpp>
-#include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
-
+#include <string>
 #include <vector>
+#include <memory>
 
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/xml/sax/SAXParseException.hpp>
-#include <com/sun/star/io/XOutputStream.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
+
+namespace com::sun::star::xml::sax { class XAttributeList; }
 
 using namespace ::std;
 using namespace ::cppu;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::xml::sax;
-using namespace ::com::sun::star::io;
 
 class OFileWriter
 {
@@ -52,18 +48,18 @@ public:
     void  writeRefFunction2(const char *func, const OUString& useLocale) const;
     void  writeFunction3(const char *func, const char *style, const char* levels, const char* attr, const char *array) const;
     void  writeRefFunction3(const char *func, const OUString& useLocale) const;
-    void  writeIntParameter(const sal_Char* pAsciiStr, const sal_Int16 count, sal_Int16 val) const;
-    bool  writeDefaultParameter(const sal_Char* pAsciiStr, const OUString& str, sal_Int16 count) const;
-    void  writeParameter(const sal_Char* pAsciiStr, const OUString& aChars) const;
-    void  writeParameter(const sal_Char* pAsciiStr, const OUString& aChars, sal_Int16 count) const;
-    void  writeParameter(const sal_Char* pAsciiStr, const OUString& aChars, sal_Int16 count0, sal_Int16 count1) const;
-    void  writeParameter(const sal_Char* pTagStr, const sal_Char* pAsciiStr, const OUString& aChars, const sal_Int16 count) const;
-    void  writeParameter(const sal_Char* pTagStr, const sal_Char* pAsciiStr, const OUString& aChars, sal_Int16 count0, sal_Int16 count1) const;
+    void  writeIntParameter(const char* pAsciiStr, const sal_Int16 count, sal_Int16 val) const;
+    bool  writeDefaultParameter(const char* pAsciiStr, const OUString& str, sal_Int16 count) const;
+    void  writeParameter(const char* pAsciiStr, const OUString& aChars) const;
+    void  writeParameter(const char* pAsciiStr, const OUString& aChars, sal_Int16 count) const;
+    void  writeParameter(const char* pAsciiStr, const OUString& aChars, sal_Int16 count0, sal_Int16 count1) const;
+    void  writeParameter(const char* pTagStr, const char* pAsciiStr, const OUString& aChars, const sal_Int16 count) const;
+    void  writeParameter(const char* pTagStr, const char* pAsciiStr, const OUString& aChars, sal_Int16 count0, sal_Int16 count1) const;
     void  closeOutput() const;
     /// Return the locale string, something like en_US or de_DE
-    const char * getLocale() const { return theLocale; }
+    const char * getLocale() const { return theLocale.c_str(); }
 private:
-    char theLocale[50];
+    std::string theLocale;
     FILE *m_f;
 };
 
@@ -73,9 +69,7 @@ class Attr {
 
 public:
     explicit Attr (const Reference< XAttributeList > & attr);
-    OUString getValueByName (const sal_Char *str) const;
-    sal_Int32 getLength() const;
-    const OUString& getTypeByIndex (sal_Int32 idx) const;
+    OUString getValueByName (const char *str) const;
     const OUString& getValueByIndex (sal_Int32 idx) const ;
 };
 
@@ -85,7 +79,7 @@ class LocaleNode
     OUString aValue;
     Attr aAttribs;
     LocaleNode * parent;
-    std::vector<LocaleNode*> children;
+    std::vector<std::unique_ptr<LocaleNode>> children;
 
 protected:
     mutable int nError;
@@ -97,10 +91,8 @@ public:
     const OUString& getValue() const { return aValue; };
     const Attr& getAttr() const { return aAttribs; };
     sal_Int32 getNumberOfChildren () const { return sal_Int32(children.size()); };
-    LocaleNode * getChildAt (sal_Int32 idx) const { return children[idx] ; };
-    const LocaleNode * findNode ( const sal_Char *name) const;
-    void print () const;
-    void printR () const;
+    LocaleNode * getChildAt (sal_Int32 idx) const { return children[idx].get(); };
+    const LocaleNode * findNode ( const char *name) const;
     virtual ~LocaleNode();
     void addChild (  LocaleNode * node);
     const LocaleNode* getRoot() const;
@@ -183,6 +175,9 @@ public:
                 const Reference< XAttributeList > & attr) : LocaleNode (name, attr) { ; };
 
     virtual void generateCode (const OFileWriter &of) const override;
+
+    bool expectedCalendarElement( const OUString& rName,
+            const LocaleNode* pNode, sal_Int16 nChild, const OUString& rCalendarID ) const;
 };
 
 class LCCurrencyNode : public LocaleNode {

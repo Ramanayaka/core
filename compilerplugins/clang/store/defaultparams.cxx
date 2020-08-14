@@ -18,10 +18,10 @@
 namespace {
 
 class DefaultParams:
-    public RecursiveASTVisitor<DefaultParams>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<DefaultParams>
 {
 public:
-    explicit DefaultParams(InstantiationData const & data): Plugin(data) {}
+    explicit DefaultParams(InstantiationData const & data): FilteringPlugin(data) {}
 
     virtual void run() override { TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()); }
 
@@ -91,7 +91,7 @@ bool DefaultParams::VisitCallExpr(CallExpr * callExpr) {
         if (!found)
             break;
         // Ignore CPPUNIT, it's macros contain some stuff that triggers us
-        StringRef aFileName = compiler.getSourceManager().getFilename(compiler.getSourceManager().getSpellingLoc(parmVarDecl->getLocStart()));
+        StringRef aFileName = getFilenameOfLocation(compiler.getSourceManager().getSpellingLoc(parmVarDecl->getLocStart()));
         if (aFileName.find("include/cppunit") != std::string::npos)
             break;
         report(

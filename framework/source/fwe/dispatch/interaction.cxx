@@ -19,11 +19,14 @@
 
 #include <comphelper/interaction.hxx>
 #include <framework/interaction.hxx>
-#include <general.h>
+#include <com/sun/star/document/XInteractionFilterSelect.hpp>
+#include <com/sun/star/document/NoSuchFilterRequest.hpp>
 
 using namespace ::com::sun::star;
 
 namespace framework{
+
+namespace {
 
 /*-************************************************************************************************************
     @short          declaration of special continuation for filter selection
@@ -61,6 +64,8 @@ class ContinuationFilterSelect : public comphelper::OInteraction< css::document:
         OUString m_sFilter;
 
 };  // class ContinuationFilterSelect
+
+}
 
 // initialize continuation with right start values
 
@@ -105,9 +110,8 @@ private:
 
 RequestFilterSelect_Impl::RequestFilterSelect_Impl( const OUString& sURL )
 {
-    OUString temp;
     css::uno::Reference< css::uno::XInterface > temp2;
-    css::document::NoSuchFilterRequest aFilterRequest( temp                             ,
+    css::document::NoSuchFilterRequest aFilterRequest( OUString(),
                                                        temp2                            ,
                                                        sURL                                          );
     m_aRequest <<= aFilterRequest;
@@ -180,6 +184,8 @@ uno::Reference < task::XInteractionRequest > RequestFilterSelect::GetRequest()
     return mxImpl.get();
 }
 
+namespace {
+
 class InteractionRequest_Impl : public ::cppu::WeakImplHelper< css::task::XInteractionRequest >
 {
     uno::Any m_aRequest;
@@ -188,14 +194,15 @@ class InteractionRequest_Impl : public ::cppu::WeakImplHelper< css::task::XInter
 public:
     InteractionRequest_Impl( const css::uno::Any& aRequest,
         const css::uno::Sequence< css::uno::Reference< css::task::XInteractionContinuation > >& lContinuations )
+        : m_aRequest(aRequest), m_lContinuations(lContinuations)
     {
-        m_aRequest = aRequest;
-        m_lContinuations = lContinuations;
     }
 
     virtual uno::Any SAL_CALL getRequest() override;
     virtual uno::Sequence< uno::Reference< task::XInteractionContinuation > > SAL_CALL getContinuations() override;
 };
+
+}
 
 uno::Any SAL_CALL InteractionRequest_Impl::getRequest()
 {

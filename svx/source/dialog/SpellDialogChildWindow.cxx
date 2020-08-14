@@ -20,6 +20,7 @@
 #include <svx/SpellDialogChildWindow.hxx>
 
 #include <svx/svxdlg.hxx>
+#include <osl/diagnose.h>
 
 namespace svx {
 
@@ -31,11 +32,10 @@ SpellDialogChildWindow::SpellDialogChildWindow (
     : SfxChildWindow (_pParent, nId)
 {
     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-    DBG_ASSERT(pFact, "SvxAbstractDialogFactory::Create() failed");
-    m_xAbstractSpellDialog = pFact->CreateSvxSpellDialog(_pParent,
+    m_xAbstractSpellDialog = pFact->CreateSvxSpellDialog(_pParent->GetFrameWeld(),
                                             pBindings,
                                             this );
-    SetWindow( m_xAbstractSpellDialog->GetWindow() );
+    SetController(m_xAbstractSpellDialog->GetController());
     SetHideNotDelete(true);
 }
 
@@ -54,7 +54,7 @@ void SpellDialogChildWindow::InvalidateSpellDialog()
 {
     OSL_ASSERT (m_xAbstractSpellDialog);
     if (m_xAbstractSpellDialog)
-        m_xAbstractSpellDialog->Invalidate();
+        m_xAbstractSpellDialog->InvalidateDialog();
 }
 
 bool SpellDialogChildWindow::HasAutoCorrection()

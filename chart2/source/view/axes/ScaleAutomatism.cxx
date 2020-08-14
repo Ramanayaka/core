@@ -17,13 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ScaleAutomatism.hxx"
-#include "macros.hxx"
+#include <ScaleAutomatism.hxx>
 #include "Tickmarks_Equidistant.hxx"
-#include "DateHelper.hxx"
+#include <DateHelper.hxx>
 #include "DateScaling.hxx"
-#include "AxisHelper.hxx"
+#include <AxisHelper.hxx>
 #include <com/sun/star/chart/TimeUnit.hpp>
+#include <com/sun/star/chart2/AxisType.hpp>
 
 #include <rtl/math.hxx>
 #include <limits>
@@ -39,7 +39,7 @@ using ::com::sun::star::chart::TimeUnit::YEAR;
 const sal_Int32 MAXIMUM_MANUAL_INCREMENT_COUNT = 500;
 const sal_Int32 MAXIMUM_SUB_INCREMENT_COUNT = 100;
 
-sal_Int32 lcl_getMaximumAutoIncrementCount( sal_Int32 nAxisType )
+static sal_Int32 lcl_getMaximumAutoIncrementCount( sal_Int32 nAxisType )
 {
     sal_Int32 nMaximumAutoIncrementCount = 10;
     if( nAxisType==AxisType::DATE )
@@ -116,12 +116,12 @@ void ScaleAutomatism::expandValueRange( double fMinimum, double fMaximum )
 {
     // if m_fValueMinimum and m_fValueMaximum == 0, it means that they were not determined.
     // m_fValueMinimum == 0 makes impossible to determine real minimum,
-    // so they need to be reseted tdf#96807
+    // so they need to be reset tdf#96807
     if( (m_fValueMinimum == 0.0) && (m_fValueMaximum == 0.0) )
         resetValueRange();
-    if( (fMinimum < m_fValueMinimum) || ::rtl::math::isNan( m_fValueMinimum ) )
+    if( (fMinimum < m_fValueMinimum) || std::isnan( m_fValueMinimum ) )
         m_fValueMinimum = fMinimum;
-    if( (fMaximum > m_fValueMaximum) || ::rtl::math::isNan( m_fValueMaximum ) )
+    if( (fMaximum > m_fValueMaximum) || std::isnan( m_fValueMaximum ) )
         m_fValueMaximum = fMaximum;
 }
 
@@ -174,7 +174,7 @@ void ScaleAutomatism::calculateExplicitScaleAndIncrement(
     {
         if( m_aSourceScale.AxisType==AxisType::PERCENT )
             rExplicitScale.Minimum = 0.0;
-        else if( ::rtl::math::isNan( m_fValueMinimum ) )
+        else if( std::isnan( m_fValueMinimum ) )
         {
             if( m_aSourceScale.AxisType==AxisType::DATE )
                 rExplicitScale.Minimum = 36526.0; //1.1.2000
@@ -190,7 +190,7 @@ void ScaleAutomatism::calculateExplicitScaleAndIncrement(
     {
         if( m_aSourceScale.AxisType==AxisType::PERCENT )
             rExplicitScale.Maximum = 1.0;
-        else if( ::rtl::math::isNan( m_fValueMaximum ) )
+        else if( std::isnan( m_fValueMaximum ) )
         {
             if( m_aSourceScale.AxisType==AxisType::DATE )
                 rExplicitScale.Maximum = 40179.0; //1.1.2010
@@ -318,13 +318,13 @@ void ScaleAutomatism::calculateExplicitIncrementAndScaleForLogarithmic(
     uno::Reference< XScaling > xInverseScaling = xScaling->getInverseScaling();
 
     fSourceMinimum = xScaling->doScaling( fSourceMinimum );
-    if( !::rtl::math::isFinite( fSourceMinimum ) )
+    if( !std::isfinite( fSourceMinimum ) )
         fSourceMinimum = 0.0;
     else if( ::rtl::math::approxEqual( fSourceMinimum, ::rtl::math::approxFloor( fSourceMinimum ) ) )
         fSourceMinimum = ::rtl::math::approxFloor( fSourceMinimum );
 
     fSourceMaximum = xScaling->doScaling( fSourceMaximum );
-    if( !::rtl::math::isFinite( fSourceMaximum ) )
+    if( !std::isfinite( fSourceMaximum ) )
         fSourceMaximum = 0.0;
     else if( ::rtl::math::approxEqual( fSourceMaximum, ::rtl::math::approxFloor( fSourceMaximum ) ) )
         fSourceMaximum = ::rtl::math::approxFloor( fSourceMaximum );
@@ -454,7 +454,7 @@ void ScaleAutomatism::calculateExplicitIncrementAndScaleForLogarithmic(
             if( !bAutoDistance )
             {
                 double fCheck = xInverseScaling->doScaling( fAxisMinimum );
-                if( !::rtl::math::isFinite( fCheck ) || fCheck <= 0 )
+                if( !std::isfinite( fCheck ) || fCheck <= 0 )
                 {
                     bAutoDistance = true;
                     bHasCalculatedDistance = false;
@@ -470,7 +470,7 @@ void ScaleAutomatism::calculateExplicitIncrementAndScaleForLogarithmic(
             if( !bAutoDistance )
             {
                 double fCheck = xInverseScaling->doScaling( fAxisMaximum );
-                if( !::rtl::math::isFinite( fCheck ) || fCheck <= 0 )
+                if( !std::isfinite( fCheck ) || fCheck <= 0 )
                 {
                     bAutoDistance = true;
                     bHasCalculatedDistance = false;
@@ -505,16 +505,16 @@ void ScaleAutomatism::calculateExplicitIncrementAndScaleForLogarithmic(
         rExplicitScale.Maximum = xInverseScaling->doScaling( rExplicitScale.Maximum );
 
         //ensure valid values after scaling #i100995#
-        if( !::rtl::math::isFinite( rExplicitScale.Minimum ) || rExplicitScale.Minimum <= 0)
+        if( !std::isfinite( rExplicitScale.Minimum ) || rExplicitScale.Minimum <= 0)
         {
             rExplicitScale.Minimum = fInputMinimum;
-            if( !::rtl::math::isFinite( rExplicitScale.Minimum ) || rExplicitScale.Minimum <= 0 )
+            if( !std::isfinite( rExplicitScale.Minimum ) || rExplicitScale.Minimum <= 0 )
                 rExplicitScale.Minimum = 1.0;
         }
-        if( !::rtl::math::isFinite( rExplicitScale.Maximum) || rExplicitScale.Maximum <= 0 )
+        if( !std::isfinite( rExplicitScale.Maximum) || rExplicitScale.Maximum <= 0 )
         {
             rExplicitScale.Maximum= fInputMaximum;
-            if( !::rtl::math::isFinite( rExplicitScale.Maximum) || rExplicitScale.Maximum <= 0 )
+            if( !std::isfinite( rExplicitScale.Maximum) || rExplicitScale.Maximum <= 0 )
                 rExplicitScale.Maximum = 10.0;
         }
         if( rExplicitScale.Maximum < rExplicitScale.Minimum )
@@ -548,8 +548,8 @@ void ScaleAutomatism::calculateExplicitIncrementAndScaleForDateTimeAxis(
         ExplicitIncrementData& rExplicitIncrement,
         bool bAutoMinimum, bool bAutoMaximum ) const
 {
-    Date aMinDate(m_aNullDate); aMinDate += static_cast<long>(::rtl::math::approxFloor(rExplicitScale.Minimum));
-    Date aMaxDate(m_aNullDate); aMaxDate += static_cast<long>(::rtl::math::approxFloor(rExplicitScale.Maximum));
+    Date aMinDate(m_aNullDate); aMinDate.AddDays(::rtl::math::approxFloor(rExplicitScale.Minimum));
+    Date aMaxDate(m_aNullDate); aMaxDate.AddDays(::rtl::math::approxFloor(rExplicitScale.Maximum));
     rExplicitIncrement.PostEquidistant = false;
 
     if( aMinDate > aMaxDate )
@@ -612,7 +612,7 @@ void ScaleAutomatism::calculateExplicitIncrementAndScaleForDateTimeAxis(
         nMaxMainIncrementCount--;
 
     //choose major time interval:
-    long nDayCount = (aMaxDate-aMinDate);
+    long nDayCount = aMaxDate - aMinDate;
     long nMainIncrementCount = 1;
     if( !bAutoMajor )
     {
@@ -695,40 +695,40 @@ void ScaleAutomatism::calculateExplicitIncrementAndScaleForDateTimeAxis(
         if( nDayCount/nIntervalDayCount > nMaxMainIncrementCount )
             bAutoMinor = true;
     }
-    if( bAutoMinor )
+    if( !bAutoMinor )
+        return;
+
+    rExplicitIncrement.MinorTimeInterval.TimeUnit = rExplicitIncrement.MajorTimeInterval.TimeUnit;
+    rExplicitIncrement.MinorTimeInterval.Number = 1;
+    if( nMainIncrementCount > 100 )
+        rExplicitIncrement.MinorTimeInterval.Number = rExplicitIncrement.MajorTimeInterval.Number;
+    else
     {
-        rExplicitIncrement.MinorTimeInterval.TimeUnit = rExplicitIncrement.MajorTimeInterval.TimeUnit;
-        rExplicitIncrement.MinorTimeInterval.Number = 1;
-        if( nMainIncrementCount > 100 )
-            rExplicitIncrement.MinorTimeInterval.Number = rExplicitIncrement.MajorTimeInterval.Number;
+        if( rExplicitIncrement.MajorTimeInterval.Number >= 2 )
+        {
+            if( !(rExplicitIncrement.MajorTimeInterval.Number%2) )
+                rExplicitIncrement.MinorTimeInterval.Number = rExplicitIncrement.MajorTimeInterval.Number/2;
+            else if( !(rExplicitIncrement.MajorTimeInterval.Number%3) )
+                rExplicitIncrement.MinorTimeInterval.Number = rExplicitIncrement.MajorTimeInterval.Number/3;
+            else if( !(rExplicitIncrement.MajorTimeInterval.Number%5) )
+                rExplicitIncrement.MinorTimeInterval.Number = rExplicitIncrement.MajorTimeInterval.Number/5;
+            else if( rExplicitIncrement.MajorTimeInterval.Number > 50 )
+                rExplicitIncrement.MinorTimeInterval.Number = rExplicitIncrement.MajorTimeInterval.Number;
+        }
         else
         {
-            if( rExplicitIncrement.MajorTimeInterval.Number >= 2 )
+            switch( rExplicitIncrement.MajorTimeInterval.TimeUnit )
             {
-                if( !(rExplicitIncrement.MajorTimeInterval.Number%2) )
-                    rExplicitIncrement.MinorTimeInterval.Number = rExplicitIncrement.MajorTimeInterval.Number/2;
-                else if( !(rExplicitIncrement.MajorTimeInterval.Number%3) )
-                    rExplicitIncrement.MinorTimeInterval.Number = rExplicitIncrement.MajorTimeInterval.Number/3;
-                else if( !(rExplicitIncrement.MajorTimeInterval.Number%5) )
-                    rExplicitIncrement.MinorTimeInterval.Number = rExplicitIncrement.MajorTimeInterval.Number/5;
-                else if( rExplicitIncrement.MajorTimeInterval.Number > 50 )
-                    rExplicitIncrement.MinorTimeInterval.Number = rExplicitIncrement.MajorTimeInterval.Number;
-            }
-            else
-            {
-                switch( rExplicitIncrement.MajorTimeInterval.TimeUnit )
-                {
-                    case DAY:
-                        break;
-                    case MONTH:
-                        if( rExplicitScale.TimeResolution == DAY )
-                            rExplicitIncrement.MinorTimeInterval.TimeUnit = DAY;
-                        break;
-                    case YEAR:
-                        if( rExplicitScale.TimeResolution <= MONTH )
-                            rExplicitIncrement.MinorTimeInterval.TimeUnit = MONTH;
-                        break;
-                }
+                case DAY:
+                    break;
+                case MONTH:
+                    if( rExplicitScale.TimeResolution == DAY )
+                        rExplicitIncrement.MinorTimeInterval.TimeUnit = DAY;
+                    break;
+                case YEAR:
+                    if( rExplicitScale.TimeResolution <= MONTH )
+                        rExplicitIncrement.MinorTimeInterval.TimeUnit = MONTH;
+                    break;
             }
         }
     }
@@ -867,7 +867,7 @@ void ScaleAutomatism::calculateExplicitIncrementAndScaleForLinear(
                     fDistanceNormalized = 1.0;
                     fDistanceMagnitude = 1.0e-307;
                 }
-                else if ( !rtl::math::isFinite(fDistance) )
+                else if ( !std::isfinite(fDistance) )
                 {
                     // fdo#43703: Handle values bigger than limits correctly
                     fDistanceNormalized = 1.0;

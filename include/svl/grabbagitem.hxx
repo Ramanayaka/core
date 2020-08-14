@@ -15,30 +15,28 @@
 #include <svl/poolitem.hxx>
 #include <com/sun/star/uno/Any.hxx>
 
-/// Grab bag item provides a string-any map for interim interop purposes.
-class SVL_DLLPUBLIC SfxGrabBagItem : public SfxPoolItem
+/// Grab bag item provides a string-any map for keys with untyped values.
+class SVL_DLLPUBLIC SfxGrabBagItem final : public SfxPoolItem
 {
 private:
     std::map<OUString, css::uno::Any> m_aMap;
 
 public:
-
     SfxGrabBagItem();
     SfxGrabBagItem(sal_uInt16 nWhich);
     ~SfxGrabBagItem() override;
 
-    const std::map<OUString, css::uno::Any>& GetGrabBag() const
-    {
-        return m_aMap;
-    }
+    SfxGrabBagItem(SfxGrabBagItem const&) = default;
+    SfxGrabBagItem(SfxGrabBagItem&&) = default;
+    SfxGrabBagItem& operator=(SfxGrabBagItem const&) = delete; // due to SfxPoolItem
+    SfxGrabBagItem& operator=(SfxGrabBagItem&&) = delete; // due to SfxPoolItem
 
-    std::map<OUString, css::uno::Any>& GetGrabBag()
-    {
-        return m_aMap;
-    }
+    const std::map<OUString, css::uno::Any>& GetGrabBag() const { return m_aMap; }
 
-    bool operator==(const SfxPoolItem&) const override;
-    SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
+    std::map<OUString, css::uno::Any>& GetGrabBag() { return m_aMap; }
+
+    bool operator==(const SfxPoolItem& rItem) const override;
+    SfxGrabBagItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     bool PutValue(const css::uno::Any& rVal, sal_uInt8 nMemberId) override;
     bool QueryValue(css::uno::Any& rVal, sal_uInt8 nMemberId = 0) const override;

@@ -17,31 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ErrorBarItemConverter.hxx"
+#include <ErrorBarItemConverter.hxx>
 #include "SchWhichPairs.hxx"
-#include "macros.hxx"
-#include "ItemPropertyMap.hxx"
-#include "ErrorBar.hxx"
-#include "PropertyHelper.hxx"
-#include "ChartModelHelper.hxx"
-#include "ChartTypeHelper.hxx"
-#include "StatisticsHelper.hxx"
+#include <StatisticsHelper.hxx>
 
-#include "GraphicPropertyItemConverter.hxx"
+#include <GraphicPropertyItemConverter.hxx>
 
 #include <svl/stritem.hxx>
 #include <svx/chrtitem.hxx>
-#include <svl/intitem.hxx>
 #include <rtl/math.hxx>
 
-#include <com/sun/star/chart2/DataPointLabel.hpp>
 #include <com/sun/star/chart2/XInternalDataProvider.hpp>
+#include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/chart/ErrorBarStyle.hpp>
-#include <com/sun/star/lang/XServiceName.hpp>
-
-#include <functional>
-#include <algorithm>
-#include <vector>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 
@@ -59,9 +48,9 @@ void lcl_getErrorValues( const uno::Reference< beans::XPropertySet > & xErrorBar
         xErrorBarProp->getPropertyValue( "PositiveError" ) >>= rOutPosError;
         xErrorBarProp->getPropertyValue( "NegativeError" ) >>= rOutNegError;
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -77,17 +66,15 @@ void lcl_getErrorIndicatorValues(
         xErrorBarProp->getPropertyValue( "ShowPositiveError" ) >>= rOutShowPosError;
         xErrorBarProp->getPropertyValue( "ShowNegativeError" ) >>= rOutShowNegError;
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
 } // anonymous namespace
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 ErrorBarItemConverter::ErrorBarItemConverter(
@@ -97,7 +84,7 @@ ErrorBarItemConverter::ErrorBarItemConverter(
     SdrModel& rDrawModel,
     const uno::Reference< lang::XMultiServiceFactory > & xNamedPropertyContainerFactory ) :
         ItemConverter( rPropertySet, rItemPool ),
-        m_spGraphicConverter( new GraphicPropertyItemConverter(
+        m_spGraphicConverter( std::make_shared<GraphicPropertyItemConverter>(
                                   rPropertySet, rItemPool, rDrawModel,
                                   xNamedPropertyContainerFactory,
                                   GraphicObjectType::LineProperties )),
@@ -258,8 +245,8 @@ bool ErrorBarItemConverter::ApplySpecialItem(
             bool bShowPos(false), bShowNeg(false);
             lcl_getErrorIndicatorValues( xErrorBarProp, bShowPos, bShowNeg );
 
-            if( ( bShowPos != bNewIndPos ||
-                  bShowNeg != bNewIndNeg ))
+            if( bShowPos != bNewIndPos ||
+                bShowNeg != bNewIndNeg )
             {
                 xErrorBarProp->setPropertyValue( "ShowPositiveError" , uno::Any( bNewIndPos ));
                 xErrorBarProp->setPropertyValue( "ShowNegativeError" , uno::Any( bNewIndNeg ));
@@ -273,7 +260,7 @@ bool ErrorBarItemConverter::ApplySpecialItem(
         {
             // @todo: also be able to deal with x-error bars
             const bool bYError =
-                static_cast<const SfxBoolItem&>(rItemSet.Get(SCHATTR_STAT_ERRORBAR_TYPE)).GetValue();
+                rItemSet.Get(SCHATTR_STAT_ERRORBAR_TYPE).GetValue();
 
             uno::Reference< chart2::data::XDataSource > xErrorBarSource( GetPropertySet(), uno::UNO_QUERY );
             uno::Reference< chart2::XChartDocument > xChartDoc( m_xModel, uno::UNO_QUERY );
@@ -425,7 +412,7 @@ void ErrorBarItemConverter::FillSpecialItem(
         case SCHATTR_STAT_RANGE_NEG:
         {
             const bool bYError =
-                static_cast<const SfxBoolItem&>(rOutItemSet.Get(SCHATTR_STAT_ERRORBAR_TYPE)).GetValue();
+                rOutItemSet.Get(SCHATTR_STAT_ERRORBAR_TYPE).GetValue();
 
             uno::Reference< chart2::data::XDataSource > xErrorBarSource( GetPropertySet(), uno::UNO_QUERY );
             if( xErrorBarSource.is())
@@ -441,7 +428,6 @@ void ErrorBarItemConverter::FillSpecialItem(
    }
 }
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

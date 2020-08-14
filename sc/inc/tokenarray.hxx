@@ -21,6 +21,8 @@
 #define INCLUDED_SC_INC_TOKENARRAY_HXX
 
 #include <formula/token.hxx>
+#include <rtl/ref.hxx>
+#include "document.hxx"
 #include "scdllapi.h"
 #include "types.hxx"
 #include "calcmacros.hxx"
@@ -44,28 +46,39 @@ struct ScRawToken;
 struct ScSingleRefData;
 struct ScComplexRefData;
 
-class SC_DLLPUBLIC ScTokenArray : public formula::FormulaTokenArray
+class SAL_WARN_UNUSED SC_DLLPUBLIC ScTokenArray final : public formula::FormulaTokenArray
 {
     friend class ScCompiler;
 
     bool ImplGetReference( ScRange& rRange, const ScAddress& rPos, bool bValidOnly ) const;
 
+    // hold a reference to the limits because sometimes our lifetime exceeds the lifetime of the associated ScDocument
+    rtl::Reference<ScSheetLimits> mxSheetLimits;
     size_t mnHashValue;
-    ScFormulaVectorState meVectorState;
+    ScFormulaVectorState meVectorState : 4; // Only 4 bits
+    bool mbOpenCLEnabled : 1;
+    bool mbThreadingEnabled : 1;
+
+    void CheckForThreading( const formula::FormulaToken& r );
 
 public:
-    ScTokenArray();
-    /// Assignment with references to FormulaToken entries (not copied!)
-    ScTokenArray( const ScTokenArray& );
+    ScTokenArray(const ScDocument* pDoc);
+    ScTokenArray(ScSheetLimits&);
+    /** Assignment with incrementing references of FormulaToken entries
+        (not copied!) */
+    ScTokenArray( const ScTokenArray& ) = default;
     virtual ~ScTokenArray() override;
-    void ClearScTokenArray();
-    ScTokenArray* Clone() const;    /// True copy!
+
+    bool EqualTokens( const ScTokenArray* pArr2 ) const;
+
+    virtual void Clear() override;
+    std::unique_ptr<ScTokenArray> Clone() const;    /// True copy!
 
     void GenHash();
     size_t GetHash() const { return mnHashValue;}
 
     ScFormulaVectorState GetVectorState() const { return meVectorState;}
-    void ResetVectorState() { meVectorState = FormulaVectorEnabled; }
+    void ResetVectorState();
     bool IsFormulaVectorDisabled() const;
 
     /**
@@ -82,7 +95,8 @@ public:
                             /** Determines the extent of direct adjacent
                                 references. Only use with real functions, e.g.
                                 GetOuterFuncOpCode() == ocSum ! */
-    bool                    GetAdjacentExtendOfOuterFuncRefs( SCCOLROW& nExtend,
+    bool                    GetAdjacentExtendOfOuterFuncRefs(
+                                SCCOLROW& nExtend,
                                 const ScAddress& rPos, ScDirection );
 
     formula::FormulaToken* AddRawToken( const ScRawToken& );
@@ -114,7 +128,8 @@ public:
     /// Assign XML string placeholder to the array
     void AssignXMLString( const OUString &rText, const OUString &rFormulaNmsp );
 
-    /// Assignment with references to FormulaToken entries (not copied!)
+    /** Assignment with incrementing references of FormulaToken entries
+        (not copied!) */
     ScTokenArray& operator=( const ScTokenArray& );
 
     /**
@@ -129,7 +144,7 @@ public:
 
     /**
      * Make all absolute references pointing to the copied range if the range is copied too
-     * @param bCheckCopyArea should references pointing into the copy area be adjusted independently from being absolute, should be true only for copy&paste between documents
+     * @param bCheckCopyArea should reference pointing into the copy area be adjusted independently from being absolute, should be true only for copy&paste between documents
      */
     void AdjustAbsoluteRefs( const ScDocument* pOldDoc, const ScAddress& rOldPos, const ScAddress& rNewPos, bool bCheckCopyArea );
 
@@ -154,13 +169,6 @@ public:
 
     sc::RefUpdateResult AdjustReferenceOnMove(
         const sc::RefUpdateContext& rCxt, const ScAddress& rOldPos, const ScAddress& rNewPos );
-
-    /**
-     * Move reference positions that are within specified moved range.
-     *
-     * @param rPos position of this formula cell
-     */
-    sc::RefUpdateResult MoveReference( const ScAddress& rPos, const sc::RefUpdateContext& rCxt );
 
     /**
      * Move reference positions in response to column reordering.  A range
@@ -201,11 +209,11 @@ public:
      *
      * @return true if at least one reference has changed its sheet reference.
      */
-    sc::RefUpdateResult AdjustReferenceOnDeletedTab( sc::RefUpdateDeleteTabContext& rCxt, const ScAddress& rOldPos );
+    sc::RefUpdateResult AdjustReferenceOnDeletedTab( const sc::RefUpdateDeleteTabContext& rCxt, const ScAddress& rOldPos );
 
-    sc::RefUpdateResult AdjustReferenceOnInsertedTab( sc::RefUpdateInsertTabContext& rCxt, const ScAddress& rOldPos );
+    sc::RefUpdateResult AdjustReferenceOnInsertedTab( const sc::RefUpdateInsertTabContext& rCxt, const ScAddress& rOldPos );
 
-    sc::RefUpdateResult AdjustReferenceOnMovedTab( sc::RefUpdateMoveTabContext& rCxt, const ScAddress& rOldPos );
+    sc::RefUpdateResult AdjustReferenceOnMovedTab( const sc::RefUpdateMoveTabContext& rCxt, const ScAddress& rOldPos );
 
     /**
      * Adjust all internal references on base position change.
@@ -253,6 +261,11 @@ public:
 
     void WrapReference( const ScAddress& rPos, SCCOL nMaxCol, SCROW nMaxRow );
     bool NeedsWrapReference( const ScAddress& rPos, SCCOL nMaxCol, SCROW nMaxRow ) const;
+
+    sal_Int32 GetWeight() const;
+
+    bool IsEnabledForOpenCL() const { return mbOpenCLEnabled; }
+    bool IsEnabledForThreading() const { return mbThreadingEnabled; }
 
 #if DEBUG_FORMULA_COMPILER
     void Dump() const;

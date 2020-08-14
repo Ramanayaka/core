@@ -8,16 +8,17 @@
  */
 
 #include <memory>
-#include "PivotTableDataSequence.hxx"
+#include <PivotTableDataSequence.hxx>
 
 #include <sal/config.h>
+#include <sal/log.hxx>
+#include <o3tl/safeint.hxx>
+#include <osl/diagnose.h>
+#include <vcl/svapp.hxx>
 
-#include "miscuno.hxx"
-#include "document.hxx"
-#include "docsh.hxx"
-#include "hints.hxx"
-
-#include <com/sun/star/chart/ChartDataChangeEvent.hpp>
+#include <miscuno.hxx>
+#include <document.hxx>
+#include <unonames.hxx>
 
 using namespace css;
 
@@ -26,22 +27,21 @@ namespace sc
 
 SC_SIMPLE_SERVICE_INFO( PivotTableDataSequence, "PivotTableDataSequence", "com.sun.star.chart2.data.DataSequence")
 
-const SfxItemPropertyMapEntry* lcl_GetDataSequencePropertyMap()
+static const SfxItemPropertyMapEntry* lcl_GetDataSequencePropertyMap()
 {
     static const SfxItemPropertyMapEntry aDataSequencePropertyMap_Impl[] =
     {
-        { OUString(SC_UNONAME_HIDDENVALUES), 0, cppu::UnoType<uno::Sequence<sal_Int32>>::get(), 0, 0 },
-        { OUString(SC_UNONAME_ROLE), 0, cppu::UnoType<css::chart2::data::DataSequenceRole>::get(), 0, 0 },
-        { OUString(SC_UNONAME_INCLUDEHIDDENCELLS), 0, cppu::UnoType<bool>::get(), 0, 0 },
-        { OUString(), 0, css::uno::Type(), 0, 0 }
+        { SC_UNONAME_HIDDENVALUES, 0, cppu::UnoType<uno::Sequence<sal_Int32>>::get(), 0, 0 },
+        { SC_UNONAME_ROLE, 0, cppu::UnoType<css::chart2::data::DataSequenceRole>::get(), 0, 0 },
+        { SC_UNONAME_INCLUDEHIDDENCELLS, 0, cppu::UnoType<bool>::get(), 0, 0 },
+        { "", 0, css::uno::Type(), 0, 0 }
     };
     return aDataSequencePropertyMap_Impl;
 }
 
-PivotTableDataSequence::PivotTableDataSequence(ScDocument* pDocument, OUString const & sPivotTableName, OUString const & sID,
+PivotTableDataSequence::PivotTableDataSequence(ScDocument* pDocument, OUString const & sID,
                                                std::vector<ValueAndFormat> const & rData)
     : m_pDocument(pDocument)
-    , m_sPivotTableName(sPivotTableName)
     , m_aID(sID)
     , m_aData(rData)
     , m_aPropSet(lcl_GetDataSequencePropertyMap())
@@ -151,7 +151,7 @@ sal_Int32 SAL_CALL PivotTableDataSequence::getNumberFormatKeyByIndex(sal_Int32 n
     {
         return m_aData[0].m_nNumberFormat;
     }
-    else if (nIndex < 0 && size_t(nIndex) >= m_aData.size())
+    else if (nIndex < 0 && o3tl::make_unsigned(nIndex) >= m_aData.size())
     {
         SAL_WARN("sc.ui", "Passed invalid index to getNumberFormatKeyByIndex(). Will return default value '0'.");
         return 0;
@@ -166,7 +166,7 @@ uno::Reference<util::XCloneable> SAL_CALL PivotTableDataSequence::createClone()
     SolarMutexGuard aGuard;
 
     std::unique_ptr<PivotTableDataSequence> pClone;
-    pClone.reset(new PivotTableDataSequence(m_pDocument, m_sPivotTableName, m_aID, m_aData));
+    pClone.reset(new PivotTableDataSequence(m_pDocument, m_aID, m_aData));
     pClone->setRole(m_aRole);
 
     uno::Reference<util::XCloneable> xClone(pClone.release());
@@ -179,7 +179,7 @@ uno::Reference<util::XCloneable> SAL_CALL PivotTableDataSequence::createClone()
 void SAL_CALL PivotTableDataSequence::addModifyListener(const uno::Reference<util::XModifyListener>& aListener)
 {
     SolarMutexGuard aGuard;
-    m_aValueListeners.push_back(uno::Reference<util::XModifyListener>(aListener));
+    m_aValueListeners.emplace_back(aListener);
 }
 
 void SAL_CALL PivotTableDataSequence::removeModifyListener(const uno::Reference<util::XModifyListener>& aListener)
@@ -219,7 +219,7 @@ void SAL_CALL PivotTableDataSequence::setPropertyValue(const OUString& rProperty
           || rPropertyName == SC_UNONAME_HAS_STRING_LABEL)
     {}
     else
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(rPropertyName);
 }
 
 uno::Any SAL_CALL PivotTableDataSequence::getPropertyValue(const OUString& rPropertyName)
@@ -243,7 +243,7 @@ uno::Any SAL_CALL PivotTableDataSequence::getPropertyValue(const OUString& rProp
         aReturn <<= false;
     }
     else
-        throw beans::UnknownPropertyException();
+        throw beans::UnknownPropertyException(rPropertyName);
     return aReturn;
 }
 

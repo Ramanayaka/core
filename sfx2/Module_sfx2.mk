@@ -24,39 +24,28 @@ $(eval $(call gb_Module_add_targets,sfx2,\
     Library_sfx \
     Package_classification \
     Package_emoji \
+    UIConfig_sfx \
 ))
 
 $(eval $(call gb_Module_add_l10n_targets,sfx2,\
-    AllLangResTarget_sfx2 \
-    UIConfig_sfx \
+    AllLangMoTarget_sfx2 \
 ))
 
 $(eval $(call gb_Module_add_check_targets,sfx2,\
     CppunitTest_sfx2_metadatable \
+    CppunitTest_sfx2_misc \
     CppunitTest_sfx2_controlleritem \
     CppunitTest_sfx2_classification \
 ))
 
-ifneq ($(ENABLE_JAVA),)
 $(eval $(call gb_Module_add_subsequentcheck_targets,sfx2,\
     JunitTest_sfx2_complex \
     JunitTest_sfx2_unoapi \
 ))
-endif
 
-ifneq ($(DISABLE_PYTHON),TRUE)
 $(eval $(call gb_Module_add_subsequentcheck_targets,sfx2,\
 	PythonTest_sfx2_python \
 ))
-endif
-
-ifneq (,$(filter LINUX DRAGONFLY OPENBSD FREEBSD NETBSD SOLARIS, $(OS)))
-ifeq ($(ENABLE_SYSTRAY_GTK),TRUE)
-$(eval $(call gb_Module_add_targets,sfx2,\
-    Library_qstart_gtk \
-))
-endif
-endif
 
 #todo: clean up quickstarter stuff in both libraries
 #todo: move standard pool to svl
@@ -64,6 +53,10 @@ endif
 # screenshots
 $(eval $(call gb_Module_add_screenshot_targets,sfx2,\
     CppunitTest_sfx2_dialogs_test \
+))
+
+$(eval $(call gb_Module_add_uicheck_targets,sfx2,\
+    UITest_sfx2_doc \
 ))
 
 # vim: set noet sw=4 ts=4:

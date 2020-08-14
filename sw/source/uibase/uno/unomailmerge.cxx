@@ -20,12 +20,11 @@
 #include <vcl/svapp.hxx>
 #include <osl/mutex.hxx>
 #include <svl/itemprop.hxx>
-#include <svl/urihelper.hxx>
 #include <svx/dataaccessdescriptor.hxx>
 #include <unotools/tempfile.hxx>
 #include <sfx2/app.hxx>
-#include <sfx2/docfile.hxx>
 #include <sfx2/docfilt.hxx>
+#include <tools/urlobj.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/string.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -35,7 +34,6 @@
 #include <com/sun/star/text/MailMergeEvent.hpp>
 #include <com/sun/star/text/XMailMergeListener.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbc/XRowSet.hpp>
@@ -48,10 +46,9 @@
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/event.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <printdata.hxx>
 #include <swevent.hxx>
 #include <unomailmerge.hxx>
-#include <swdll.hxx>
-#include <swmodule.hxx>
 #include <unoprnms.hxx>
 #include <unomap.hxx>
 #include <swunohelper.hxx>
@@ -60,13 +57,11 @@
 #include <view.hxx>
 #include <dbmgr.hxx>
 #include <unotxdoc.hxx>
-#include <prtopt.hxx>
 #include <wrtsh.hxx>
-#include <shellio.hxx>
 #include <mmconfigitem.hxx>
 #include <mailmergehelper.hxx>
 
-#include <unomid.h>
+#include <iodetect.hxx>
 
 #include <memory>
 
@@ -80,11 +75,13 @@ using namespace SWUnoHelper;
 
 typedef ::utl::SharedUNOComponent< XInterface > SharedComponent;
 
-osl::Mutex &    GetMailMergeMutex()
+static osl::Mutex &    GetMailMergeMutex()
 {
     static osl::Mutex   aMutex;
     return aMutex;
 }
+
+namespace {
 
 enum CloseResult
 {
@@ -92,8 +89,11 @@ enum CloseResult
     eVetoed,        // vetoed, ownership transferred to the vetoing instance
     eFailed         // failed for some unknown reason
 };
+
+}
+
 static CloseResult CloseModelAndDocSh(
-       Reference< frame::XModel > &rxModel,
+       Reference< frame::XModel > const &rxModel,
        SfxObjectShellRef &rxDocSh )
 {
     CloseResult eResult = eSuccess;
@@ -150,13 +150,8 @@ static bool LoadFromURL_impl(
 
     // try to get the DocShell
     SwDocShell *pTmpDocShell = nullptr;
-    Reference < XUnoTunnel > xTunnel( xTmpModel, UNO_QUERY );
-    if (xTunnel.is())
-    {
-        SwXTextDocument* pTextDoc = reinterpret_cast<SwXTextDocument *>(
-                xTunnel->getSomething( SwXTextDocument::getUnoTunnelId() ));
-        pTmpDocShell = pTextDoc ? pTextDoc->GetDocShell() : nullptr;
-    }
+    if (auto pTextDoc = comphelper::getUnoTunnelImplementation<SwXTextDocument>(xTmpModel); pTextDoc)
+        pTmpDocShell = pTextDoc->GetDocShell();
 
     bool bRes = false;
     if (xTmpModel.is() && pTmpDocShell)    // everything available?
@@ -340,7 +335,7 @@ static bool DeleteTmpFile_Impl(
         {
             // somebody vetoed the closing, and took the ownership of the document
             // -> ensure that the temporary file is deleted later on
-            Reference< XEventListener > xEnsureDelete( new DelayedFileDeletion( rxModel, rTmpFileURL ) );
+            new DelayedFileDeletion( rxModel, rTmpFileURL );
                 // note: as soon as #106931# is fixed, the whole DelayedFileDeletion is to be superseded by
                 // a better solution
             bDelete = false;
@@ -353,7 +348,7 @@ static bool DeleteTmpFile_Impl(
         {
             if ( !SWUnoHelper::UCB_DeleteFile( rTmpFileURL ) )
             {
-                Reference< XEventListener > xEnsureDelete( new DelayedFileDeletion( rxModel, rTmpFileURL ) );
+                new DelayedFileDeletion( rxModel, rTmpFileURL );
                     // same not as above: as soon as #106931#, ...
             }
         }
@@ -385,7 +380,7 @@ SwXMailMerge::SwXMailMerge() :
     m_xDocSh->DoInitNew();
     SfxViewFrame *pFrame = SfxViewFrame::LoadHiddenDocument( *m_xDocSh, SFX_INTERFACE_NONE );
     SwView *pView = static_cast<SwView*>( pFrame->GetViewShell() );
-    pView->AttrChangedNotify( &pView->GetWrtShell() ); //So that SelectShell is called.
+    pView->AttrChangedNotify(nullptr); //So that SelectShell is called.
     m_xModel = m_xDocSh->GetModel();
 }
 
@@ -456,12 +451,10 @@ uno::Any SAL_CALL SwXMailMerge::execute(
 
     SfxObjectShellRef xCurDocSh = m_xDocSh;   // the document
 
-    const beans::NamedValue *pArguments = rArguments.getConstArray();
-    sal_Int32 nArgs = rArguments.getLength();
-    for (sal_Int32 i = 0;  i < nArgs;  ++i)
+    for (const beans::NamedValue& rArgument : rArguments)
     {
-        const OUString &rName   = pArguments[i].Name;
-        const Any &rValue       = pArguments[i].Value;
+        const OUString &rName   = rArgument.Name;
+        const Any &rValue       = rArgument.Value;
 
         bool bOK = true;
         if (rName == UNO_NAME_SELECTION)
@@ -549,7 +542,7 @@ uno::Any SAL_CALL SwXMailMerge::execute(
 
     // need to translate the selection: the API here requires a sequence of bookmarks, but the Merge
     // method we will call below requires a sequence of indices.
-    if ( aCurSelection.getLength() )
+    if ( aCurSelection.hasElements() )
     {
         Sequence< Any > aTranslated( aCurSelection.getLength() );
 
@@ -557,20 +550,17 @@ uno::Any SAL_CALL SwXMailMerge::execute(
         Reference< sdbcx::XRowLocate > xRowLocate( xCurResultSet, UNO_QUERY );
         if ( xRowLocate.is() )
         {
-
-            const Any* pBookmarks = aCurSelection.getConstArray();
-            const Any* pBookmarksEnd = pBookmarks + aCurSelection.getLength();
             Any* pTranslated = aTranslated.getArray();
 
             try
             {
                 bool bEverythingsFine = true;
-                for ( ; ( pBookmarks != pBookmarksEnd ) && bEverythingsFine; ++pBookmarks )
+                for ( const Any& rBookmark : std::as_const(aCurSelection) )
                 {
-                    if ( xRowLocate->moveToBookmark( *pBookmarks ) )
-                        *pTranslated <<= xCurResultSet->getRow();
-                    else
-                        bEverythingsFine = false;
+                    bEverythingsFine = xRowLocate->moveToBookmark( rBookmark );
+                    if ( !bEverythingsFine )
+                        break;
+                    *pTranslated <<= xCurResultSet->getRow();
                     ++pTranslated;
                 }
                 if ( bEverythingsFine )
@@ -605,7 +595,7 @@ uno::Any SAL_CALL SwXMailMerge::execute(
     // while still in Update of Sfx.
     // (GetSelection in Update is not allowed)
     if (!aCurDocumentURL.isEmpty())
-        pView->AttrChangedNotify( &pView->GetWrtShell() );//So that SelectShell is called.
+        pView->AttrChangedNotify(nullptr);//So that SelectShell is called.
 
     SharedComponent aRowSetDisposeHelper;
     if (!xCurResultSet.is())
@@ -641,7 +631,7 @@ uno::Any SAL_CALL SwXMailMerge::execute(
                     xRowSet->execute(); // build ResultSet from properties
                 if( !xCurConnection.is() )
                     xCurConnection.set( xRowSetPropSet->getPropertyValue( "ActiveConnection" ), UNO_QUERY );
-                xCurResultSet.set( xRowSet, UNO_QUERY );
+                xCurResultSet = xRowSet;
                 OSL_ENSURE( xCurResultSet.is(), "failed to build ResultSet" );
             }
         }
@@ -878,7 +868,7 @@ void SAL_CALL SwXMailMerge::setPropertyValue(
 
     const SfxItemPropertySimpleEntry* pCur = m_pPropSet->getPropertyMap().getByName( rPropertyName );
     if (!pCur)
-        throw UnknownPropertyException();
+        throw UnknownPropertyException(rPropertyName);
     else if (pCur->nFlags & PropertyAttribute::READONLY)
         throw PropertyVetoException();
     else
@@ -1005,7 +995,7 @@ void SAL_CALL SwXMailMerge::setPropertyValue(
             else if(pData == &m_sInServerPassword)
                 bOK = rValue >>= m_sInServerPassword;
             else if(pData == &m_sOutServerPassword)
-                bOK = rValue >>= m_sInServerPassword;
+                bOK = rValue >>= m_sOutServerPassword;
             else {
                 OSL_FAIL("invalid pointer" );
             }
@@ -1033,45 +1023,43 @@ uno::Any SAL_CALL SwXMailMerge::getPropertyValue(
 
     const SfxItemPropertySimpleEntry* pCur = m_pPropSet->getPropertyMap().getByName( rPropertyName );
     if (!pCur)
-        throw UnknownPropertyException();
-    else
+        throw UnknownPropertyException(rPropertyName);
+
+    switch (pCur->nWID)
     {
-        switch (pCur->nWID)
-        {
-            case WID_SELECTION :                aRet <<= m_aSelection;  break;
-            case WID_RESULT_SET :               aRet <<= m_xResultSet;  break;
-            case WID_CONNECTION :               aRet <<= m_xConnection;  break;
-            case WID_MODEL :                    aRet <<= m_xModel;  break;
-            case WID_DATA_SOURCE_NAME :         aRet <<= m_aDataSourceName;  break;
-            case WID_DATA_COMMAND :             aRet <<= m_aDataCommand;  break;
-            case WID_FILTER :                   aRet <<= m_aFilter;  break;
-            case WID_DOCUMENT_URL :             aRet <<= m_aDocumentURL;  break;
-            case WID_OUTPUT_URL :               aRet <<= m_aOutputURL;  break;
-            case WID_DATA_COMMAND_TYPE :        aRet <<= m_nDataCommandType;  break;
-            case WID_OUTPUT_TYPE :              aRet <<= m_nOutputType;  break;
-            case WID_ESCAPE_PROCESSING :        aRet <<= m_bEscapeProcessing;  break;
-            case WID_SINGLE_PRINT_JOBS :        aRet <<= m_bSinglePrintJobs;  break;
-            case WID_FILE_NAME_FROM_COLUMN :    aRet <<= m_bFileNameFromColumn;  break;
-            case WID_FILE_NAME_PREFIX :         aRet <<= m_aFileNamePrefix;  break;
-            case WID_MAIL_SUBJECT:              aRet <<= m_sSubject; break;
-            case WID_ADDRESS_FROM_COLUMN:       aRet <<= m_sAddressFromColumn; break;
-            case WID_SEND_AS_HTML:              aRet <<= m_bSendAsHTML; break;
-            case WID_SEND_AS_ATTACHMENT:        aRet <<= m_bSendAsAttachment; break;
-            case WID_MAIL_BODY:                 aRet <<= m_sMailBody; break;
-            case WID_ATTACHMENT_NAME:           aRet <<= m_sAttachmentName; break;
-            case WID_ATTACHMENT_FILTER:         aRet <<= m_sAttachmentFilter;break;
-            case WID_PRINT_OPTIONS:             aRet <<= m_aPrintSettings; break;
-            case WID_SAVE_AS_SINGLE_FILE:       aRet <<= m_bSaveAsSingleFile; break;
-            case WID_SAVE_FILTER:               aRet <<= m_sSaveFilter; break;
-            case WID_SAVE_FILTER_OPTIONS:       aRet <<= m_sSaveFilterOptions; break;
-            case WID_SAVE_FILTER_DATA:          aRet <<= m_aSaveFilterData; break;
-            case WID_COPIES_TO:                 aRet <<= m_aCopiesTo; break;
-            case WID_BLIND_COPIES_TO:           aRet <<= m_aBlindCopiesTo;break;
-            case WID_IN_SERVER_PASSWORD:        aRet <<= m_sInServerPassword; break;
-            case WID_OUT_SERVER_PASSWORD:       aRet <<= m_sOutServerPassword; break;
-            default :
-                OSL_FAIL("unknown WID");
-        }
+        case WID_SELECTION :                aRet <<= m_aSelection;  break;
+        case WID_RESULT_SET :               aRet <<= m_xResultSet;  break;
+        case WID_CONNECTION :               aRet <<= m_xConnection;  break;
+        case WID_MODEL :                    aRet <<= m_xModel;  break;
+        case WID_DATA_SOURCE_NAME :         aRet <<= m_aDataSourceName;  break;
+        case WID_DATA_COMMAND :             aRet <<= m_aDataCommand;  break;
+        case WID_FILTER :                   aRet <<= m_aFilter;  break;
+        case WID_DOCUMENT_URL :             aRet <<= m_aDocumentURL;  break;
+        case WID_OUTPUT_URL :               aRet <<= m_aOutputURL;  break;
+        case WID_DATA_COMMAND_TYPE :        aRet <<= m_nDataCommandType;  break;
+        case WID_OUTPUT_TYPE :              aRet <<= m_nOutputType;  break;
+        case WID_ESCAPE_PROCESSING :        aRet <<= m_bEscapeProcessing;  break;
+        case WID_SINGLE_PRINT_JOBS :        aRet <<= m_bSinglePrintJobs;  break;
+        case WID_FILE_NAME_FROM_COLUMN :    aRet <<= m_bFileNameFromColumn;  break;
+        case WID_FILE_NAME_PREFIX :         aRet <<= m_aFileNamePrefix;  break;
+        case WID_MAIL_SUBJECT:              aRet <<= m_sSubject; break;
+        case WID_ADDRESS_FROM_COLUMN:       aRet <<= m_sAddressFromColumn; break;
+        case WID_SEND_AS_HTML:              aRet <<= m_bSendAsHTML; break;
+        case WID_SEND_AS_ATTACHMENT:        aRet <<= m_bSendAsAttachment; break;
+        case WID_MAIL_BODY:                 aRet <<= m_sMailBody; break;
+        case WID_ATTACHMENT_NAME:           aRet <<= m_sAttachmentName; break;
+        case WID_ATTACHMENT_FILTER:         aRet <<= m_sAttachmentFilter;break;
+        case WID_PRINT_OPTIONS:             aRet <<= m_aPrintSettings; break;
+        case WID_SAVE_AS_SINGLE_FILE:       aRet <<= m_bSaveAsSingleFile; break;
+        case WID_SAVE_FILTER:               aRet <<= m_sSaveFilter; break;
+        case WID_SAVE_FILTER_OPTIONS:       aRet <<= m_sSaveFilterOptions; break;
+        case WID_SAVE_FILTER_DATA:          aRet <<= m_aSaveFilterData; break;
+        case WID_COPIES_TO:                 aRet <<= m_aCopiesTo; break;
+        case WID_BLIND_COPIES_TO:           aRet <<= m_aBlindCopiesTo;break;
+        case WID_IN_SERVER_PASSWORD:        aRet <<= m_sInServerPassword; break;
+        case WID_OUT_SERVER_PASSWORD:       aRet <<= m_sOutServerPassword; break;
+        default :
+            OSL_FAIL("unknown WID");
     }
 
     return aRet;
@@ -1085,10 +1073,9 @@ void SAL_CALL SwXMailMerge::addPropertyChangeListener(
     if (!m_bDisposing && rListener.is())
     {
         const SfxItemPropertySimpleEntry* pCur = m_pPropSet->getPropertyMap().getByName( rPropertyName );
-        if (pCur)
-            m_aPropListeners.addInterface( pCur->nWID, rListener );
-        else
-            throw UnknownPropertyException();
+        if (!pCur)
+            throw UnknownPropertyException(rPropertyName);
+        m_aPropListeners.addInterface( pCur->nWID, rListener );
     }
 }
 
@@ -1100,10 +1087,9 @@ void SAL_CALL SwXMailMerge::removePropertyChangeListener(
     if (!m_bDisposing && rListener.is())
     {
         const SfxItemPropertySimpleEntry* pCur = m_pPropSet->getPropertyMap().getByName( rPropertyName );
-        if (pCur)
-            m_aPropListeners.removeInterface( pCur->nWID, rListener );
-        else
-            throw UnknownPropertyException();
+        if (!pCur)
+            throw UnknownPropertyException(rPropertyName);
+        m_aPropListeners.removeInterface( pCur->nWID, rListener );
     }
 }
 
@@ -1172,7 +1158,7 @@ void SAL_CALL SwXMailMerge::removeMailMergeEventListener(
 
 OUString SAL_CALL SwXMailMerge::getImplementationName()
 {
-    return OUString( "SwXMailMerge" );
+    return "SwXMailMerge";
 }
 
 sal_Bool SAL_CALL SwXMailMerge::supportsService( const OUString& rServiceName )
@@ -1182,11 +1168,7 @@ sal_Bool SAL_CALL SwXMailMerge::supportsService( const OUString& rServiceName )
 
 uno::Sequence< OUString > SAL_CALL SwXMailMerge::getSupportedServiceNames()
 {
-    uno::Sequence< OUString > aNames(2);
-    OUString *pName = aNames.getArray();
-    pName[0] = "com.sun.star.text.MailMerge";
-    pName[1] = "com.sun.star.sdb.DataAccessDescriptor";
-    return aNames;
+    return { "com.sun.star.text.MailMerge", "com.sun.star.sdb.DataAccessDescriptor" };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

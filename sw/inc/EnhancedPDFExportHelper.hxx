@@ -20,10 +20,10 @@
 #ifndef INCLUDED_SW_INC_ENHANCEDPDFEXPORTHELPER_HXX
 #define INCLUDED_SW_INC_ENHANCEDPDFEXPORTHELPER_HXX
 
-#include <vcl/pdfextoutdevdata.hxx>
 #include <i18nlangtag/lang.h>
-#include <swrect.hxx>
-#include <swtypes.hxx>
+#include <vcl/pdfwriter.hxx>
+#include "swrect.hxx"
+#include "swtypes.hxx"
 
 #include <map>
 #include <memory>
@@ -43,10 +43,8 @@ class SwTextPainter;
 class SwEditShell;
 class StringRangeEnumerator;
 class SwTextNode;
-class SwNumRule;
 class SwTable;
 class SwNumberTreeNode;
-class SvxLanguageItem;
 
 /*
  * Mapping of OOo elements to tagged pdf elements:
@@ -157,7 +155,7 @@ class SwTaggedPDFHelper
     void EndStructureElements();
 
     bool CheckReopenTag();
-    bool CheckRestoreTag() const;
+    void CheckRestoreTag() const;
 
     public:
 
@@ -165,7 +163,7 @@ class SwTaggedPDFHelper
     // pPorInfo != 0 => BeginInlineStructureElement
     // pFrameInfo, pPorInfo = 0 => BeginNonStructureElement
     SwTaggedPDFHelper( const Num_Info* pNumInfo, const Frame_Info* pFrameInfo, const Por_Info* pPorInfo,
-                       OutputDevice& rOut );
+                       OutputDevice const & rOut );
     ~SwTaggedPDFHelper();
 
     static bool IsExportTaggedPDF( const OutputDevice& rOut );

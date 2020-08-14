@@ -19,6 +19,9 @@
 
 #ifdef _WIN32
 
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 // property name to register own window procedure on hwnd
 #define OLD_PROC_KEY "oldwindowproc"
@@ -31,7 +34,7 @@ static LRESULT APIENTRY NativeViewWndProc( HWND , UINT , WPARAM , LPARAM );
 #include "jawt_md.h"
 #include "NativeView.h"
 
-#define MY_ASSERT(X,S) if (!X) { fprintf(stderr,"%s\n",S); return 0L;}
+#define MY_ASSERT(X,S) if (!X) { fprintf(stderr,"%s\n",S); return 0;}
 
 #define SYSTEM_WIN32   1
 #define SYSTEM_WIN16   2

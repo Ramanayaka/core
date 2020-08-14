@@ -20,20 +20,20 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_LOCALREF_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_LOCALREF_HXX
 
-#include <jvmaccess/virtualmachine.hxx>
+#include <jni.h>
 
 
-namespace connectivity { namespace jdbc
+namespace connectivity::jdbc
 {
 
     /** helper class to hold a local ref to a JNI object
 
         Note that this class never actually calls NewLocalRef. It is assumed that all objects
         passed are already acquired with a local ref (as it usually is the case if you obtain
-        the object from an JNI method).
+        the object from a JNI method).
     */
     template< typename T >
-    class LocalRef
+    class LocalRef final
     {
     public:
         explicit LocalRef( JNIEnv& environment )
@@ -76,16 +76,15 @@ namespace connectivity { namespace jdbc
         bool    is()  const { return m_object != nullptr; }
 
     private:
-        LocalRef(LocalRef &) = delete;
-        void operator =(LocalRef &) = delete;
+        LocalRef(LocalRef const &) = delete;
+        LocalRef& operator =(LocalRef const &) = delete;
 
-    protected:
         JNIEnv& m_environment;
         T       m_object;
     };
 
 
-} } // namespace connectivity::jdbc
+} // namespace connectivity::jdbc
 
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_JAVA_LOCALREF_HXX

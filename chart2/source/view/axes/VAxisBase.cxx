@@ -18,10 +18,16 @@
  */
 
 #include "VAxisBase.hxx"
-#include "ShapeFactory.hxx"
-#include "CommonConverters.hxx"
+#include <ShapeFactory.hxx>
+#include <ExplicitCategoriesProvider.hxx>
 #include "Tickmarks.hxx"
-#include "macros.hxx"
+#include <com/sun/star/drawing/XShapes.hpp>
+#include <com/sun/star/chart2/AxisType.hpp>
+#include <com/sun/star/chart2/XAxis.hpp>
+#include <com/sun/star/chart2/data/XTextualDataSequence.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+
+#include <osl/diagnose.h>
 
 #include <memory>
 
@@ -82,7 +88,7 @@ void VAxisBase::initAxisLabelProperties( const css::awt::Size& rFontReferenceSiz
     m_aAxisLabelProperties.nNumberFormatKey = m_aAxisProperties.m_nNumberFormatKey;
     m_aAxisLabelProperties.init(m_aAxisProperties.m_xAxisModel);
     if( m_aAxisProperties.m_bComplexCategories && m_aAxisProperties.m_nAxisType == AxisType::CATEGORY )
-        m_aAxisLabelProperties.eStaggering = SIDE_BY_SIDE;
+        m_aAxisLabelProperties.eStaggering = AxisLabelStaggering::SideBySide;
 }
 
 bool VAxisBase::isDateAxis() const
@@ -113,7 +119,7 @@ sal_Int32 VAxisBase::estimateMaximumAutoMainIncrementCount()
 
 void VAxisBase::setExtraLinePositionAtOtherAxis( double fCrossingAt )
 {
-    m_aAxisProperties.m_pfExrtaLinePositionAtOtherAxis.reset(fCrossingAt);
+    m_aAxisProperties.m_pfExrtaLinePositionAtOtherAxis = fCrossingAt;
 }
 
 sal_Int32 VAxisBase::getDimensionCount() const
@@ -152,7 +158,7 @@ void VAxisBase::setExplicitScaleAndIncrement(
 
 void VAxisBase::createAllTickInfos( TickInfoArraysType& rAllTickInfos )
 {
-    std::unique_ptr< TickFactory > apTickFactory( this->createTickFactory() );
+    std::unique_ptr< TickFactory > apTickFactory( createTickFactory() );
     if( m_aScale.ShiftedCategoryPosition )
         apTickFactory->getAllTicksShifted( rAllTickInfos );
     else
@@ -178,7 +184,7 @@ bool VAxisBase::prepareShapeCreation()
         return true;
 
     //create named group shape
-    m_xGroupShape_Shapes = this->createGroupShape( m_xLogicTarget, m_nDimension==2 ? m_aCID : "");
+    m_xGroupShape_Shapes = createGroupShape( m_xLogicTarget, m_nDimension==2 ? m_aCID : "");
 
     if( m_aAxisProperties.m_bDisplayLabels )
         m_xTextTarget = m_pShapeFactory->createGroup2D( m_xFinalTarget, m_aCID );
@@ -207,22 +213,17 @@ size_t VAxisBase::getIndexOfLongestLabel( const uno::Sequence<OUString>& rLabels
 
 void VAxisBase::removeTextShapesFromTicks()
 {
-    if( m_xTextTarget.is() )
+    if( !m_xTextTarget.is() )
+        return;
+
+    for (auto & tickInfos : m_aAllTickInfos)
     {
-        TickInfoArraysType::iterator aDepthIter = m_aAllTickInfos.begin();
-        const TickInfoArraysType::const_iterator aDepthEnd  = m_aAllTickInfos.end();
-        for( ; aDepthIter != aDepthEnd; ++aDepthIter )
+        for (auto & tickInfo : tickInfos)
         {
-            TickInfoArrayType::iterator aTickIter = (*aDepthIter).begin();
-            const TickInfoArrayType::const_iterator aTickEnd  = (*aDepthIter).end();
-            for( ; aTickIter != aTickEnd; ++aTickIter )
+            if(tickInfo.xTextShape.is())
             {
-                TickInfo& rTickInfo = (*aTickIter);
-                if(rTickInfo.xTextShape.is())
-                {
-                    m_xTextTarget->remove(rTickInfo.xTextShape);
-                    rTickInfo.xTextShape = nullptr;
-                }
+                m_xTextTarget->remove(tickInfo.xTextShape);
+                tickInfo.xTextShape = nullptr;
             }
         }
     }
@@ -230,7 +231,7 @@ void VAxisBase::removeTextShapesFromTicks()
 
 void VAxisBase::updateUnscaledValuesAtTicks( TickIter& rIter )
 {
-    Reference< XScaling > xInverseScaling( nullptr );
+    Reference< XScaling > xInverseScaling;
     if( m_aScale.Scaling.is() )
         xInverseScaling = m_aScale.Scaling->getInverseScaling();
 

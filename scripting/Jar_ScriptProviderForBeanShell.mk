@@ -10,10 +10,7 @@
 $(eval $(call gb_Jar_Jar,ScriptProviderForBeanShell))
 
 $(eval $(call gb_Jar_use_jars,ScriptProviderForBeanShell,\
-	juh \
-	jurt \
-	ridl \
-	unoil \
+	libreoffice \
 	ScriptFramework \
 ))
 
@@ -33,6 +30,7 @@ $(eval $(call gb_Jar_add_sourcefiles,ScriptProviderForBeanShell,\
 	scripting/java/com/sun/star/script/framework/provider/beanshell/ScriptProviderForBeanShell \
 	scripting/java/com/sun/star/script/framework/provider/beanshell/ScriptSourceModel \
 	scripting/java/com/sun/star/script/framework/provider/beanshell/ScriptSourceView \
+	scripting/java/com/sun/star/script/framework/provider/beanshell/UnsavedChangesListener \
 ))
 
 $(eval $(call gb_Jar_add_packagefile,ScriptProviderForBeanShell,\

@@ -16,12 +16,10 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <ModelEventListener.hxx>
-#include <PropertyIds.hxx>
+#include "ModelEventListener.hxx"
+#include "PropertyIds.hxx"
 #include <rtl/ustring.hxx>
 #include <com/sun/star/document/XEventBroadcaster.hpp>
-#include <com/sun/star/text/XDocumentIndex.hpp>
-#include <com/sun/star/text/XDocumentIndexesSupplier.hpp>
 #include <com/sun/star/text/XTextFieldsSupplier.hpp>
 #include <com/sun/star/util/XRefreshable.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -29,9 +27,9 @@
 #include <com/sun/star/text/ReferenceFieldSource.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/view/XFormLayerAccess.hpp>
+#include <tools/diagnose_ex.h>
 
-namespace writerfilter {
-namespace dmapper {
+namespace writerfilter::dmapper {
 
 using namespace ::com::sun::star;
 
@@ -55,12 +53,12 @@ void ModelEventListener::notifyEvent( const document::EventObject& rEvent )
         try
         {
             //remove listener
-            uno::Reference<document::XEventBroadcaster>(rEvent.Source, uno::UNO_QUERY )->removeEventListener(
-            uno::Reference<document::XEventListener>(this));
+            uno::Reference<document::XEventBroadcaster>(rEvent.Source, uno::UNO_QUERY_THROW )->removeEventListener(
+                uno::Reference<document::XEventListener>(this));
 
             // If we have PAGEREF fields, update fields as well.
             uno::Reference<text::XTextFieldsSupplier> xTextFieldsSupplier(rEvent.Source, uno::UNO_QUERY);
-            uno::Reference<container::XEnumeration> xEnumeration(xTextFieldsSupplier->getTextFields()->createEnumeration(), uno::UNO_QUERY);
+            uno::Reference<container::XEnumeration> xEnumeration = xTextFieldsSupplier->getTextFields()->createEnumeration();
             sal_Int32 nIndex = 0;
             while(xEnumeration->hasMoreElements())
             {
@@ -85,9 +83,9 @@ void ModelEventListener::notifyEvent( const document::EventObject& rEvent )
                 xRefreshable->refresh();
             }
         }
-        catch( const uno::Exception& rEx )
+        catch( const uno::Exception& )
         {
-            SAL_WARN("writerfilter", "exception while updating indexes: " << rEx.Message);
+            DBG_UNHANDLED_EXCEPTION("writerfilter", "exception while updating indexes");
         }
     }
 
@@ -106,7 +104,7 @@ void ModelEventListener::disposing( const lang::EventObject& rEvent )
 {
     try
     {
-        uno::Reference<document::XEventBroadcaster>(rEvent.Source, uno::UNO_QUERY )->removeEventListener(
+        uno::Reference<document::XEventBroadcaster>(rEvent.Source, uno::UNO_QUERY_THROW )->removeEventListener(
             uno::Reference<document::XEventListener>(this));
     }
     catch( const uno::Exception& )
@@ -114,7 +112,6 @@ void ModelEventListener::disposing( const lang::EventObject& rEvent )
     }
 }
 
-} //namespace dmapper
-} //namespace writerfilter
+} //namespace writerfilter::dmapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

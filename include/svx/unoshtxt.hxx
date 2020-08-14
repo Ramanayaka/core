@@ -24,24 +24,24 @@
 #include <editeng/unoedsrc.hxx>
 #include <svx/svxdllapi.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace uno {
         class XInterface;
     }
     namespace accessibility {
         struct TextSegment;
     }
-} } }
+}
 
 class SvxTextForwarder;
 class SdrObject;
 class SdrModel;
 class SdrView;
-namespace vcl { class Window; }
+class OutputDevice;
 class SvxTextEditSourceImpl;
 class SdrText;
 
-class SVX_DLLPUBLIC SvxTextEditSource : public SvxEditSource, public SvxViewForwarder
+class SVXCORE_DLLPUBLIC SvxTextEditSource final : public SvxEditSource, public SvxViewForwarder
 {
 public:
     SvxTextEditSource( SdrObject* pObj, SdrText* pText );
@@ -51,12 +51,12 @@ public:
 
         The window is necessary, since our views can display on multiple windows
      */
-    SvxTextEditSource( SdrObject& rObj, SdrText* pText, SdrView& rView, const vcl::Window& rViewWindow );
+    SvxTextEditSource( SdrObject& rObj, SdrText* pText, SdrView& rView, const OutputDevice& rViewWindow );
     SvxTextEditSource(const SvxTextEditSource&) = delete;
     SvxTextEditSource& operator=(const SvxTextEditSource&) = delete;
     virtual ~SvxTextEditSource() override;
 
-    virtual SvxEditSource*          Clone() const override;
+    virtual std::unique_ptr<SvxEditSource> Clone() const override;
     virtual SvxTextForwarder*       GetTextForwarder() override;
     virtual SvxViewForwarder*      GetViewForwarder() override;
     virtual SvxEditViewForwarder*  GetEditViewForwarder( bool bCreate = false ) override;
@@ -64,7 +64,7 @@ public:
 
     virtual void addRange( SvxUnoTextRangeBase* pNewRange ) override;
     virtual void removeRange( SvxUnoTextRangeBase* pOldRange ) override;
-    virtual const SvxUnoTextRangeBaseList& getRanges() const override;
+    virtual const SvxUnoTextRangeBaseVec& getRanges() const override;
 
     virtual SfxBroadcaster&         GetBroadcaster() const override;
 
@@ -73,11 +73,8 @@ public:
 
     // the SvxViewForwarder interface
     virtual bool        IsValid() const override;
-    virtual tools::Rectangle   GetVisArea() const override;
     virtual Point       LogicToPixel( const Point&, const MapMode& ) const override;
     virtual Point       PixelToLogic( const Point&, const MapMode& ) const override;
-
-    void ChangeModel( SdrModel* pNewModel );
 
     void UpdateOutliner();
 

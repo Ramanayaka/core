@@ -21,12 +21,11 @@
 #define INCLUDED_CONNECTIVITY_TKEYS_HXX
 
 #include <connectivity/sdbcx/VCollection.hxx>
-#include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-#include <connectivity/TTableHelper.hxx>
 #include <connectivity/dbtoolsdllapi.hxx>
 
 namespace connectivity
 {
+    class OTableHelper;
     typedef sdbcx::OCollection OKeys_BASE;
     class OOO_DLLPUBLIC_DBTOOLS OKeysHelper : public OKeys_BASE
     {
@@ -43,7 +42,7 @@ namespace connectivity
     public:
         OKeysHelper(    OTableHelper* _pTable,
                 ::osl::Mutex& _rMutex,
-                const TStringVector& _rVector
+                const ::std::vector< OUString>& _rVector
                 );
 
         static void cloneDescriptorColumns(

@@ -7,6 +7,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#ifndef LO_CLANG_SHARED_PLUGINS
+
 #include "check.hxx"
 #include "plugin.hxx"
 
@@ -19,15 +21,18 @@
 namespace {
 
 class WeakObject
-    : public clang::RecursiveASTVisitor<WeakObject>
-    , public loplugin::Plugin
+    : public loplugin::FilteringPlugin<WeakObject>
 {
 
 public:
-    explicit WeakObject(InstantiationData const& rData) : Plugin(rData) {}
+    explicit WeakObject(loplugin::InstantiationData const& rData): FilteringPlugin(rData)
+    {}
 
+    virtual bool preRun() override {
+        return compiler.getLangOpts().CPlusPlus; // no OWeakObject in C
+    }
     void run() override {
-        if (compiler.getLangOpts().CPlusPlus) { // no OWeakObject in C
+        if( preRun()) {
             TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
         }
     }
@@ -57,7 +62,9 @@ public:
         if (ignoreLocation(pMethodDecl)) {
             return true;
         }
-        if (!pMethodDecl->isThisDeclarationADefinition()) {
+        if (!pMethodDecl->isThisDeclarationADefinition()
+            || pMethodDecl->isLateTemplateParsed())
+        {
             return true;
         }
         if (!pMethodDecl->isInstance()) {
@@ -123,14 +130,10 @@ public:
                         return true;
                     }
                 }
-                else if (pCalled->getName() == "release_ChildImpl") // FIXME remove this lunacy
-                {
-                    return true;
-                }
             }
         }
 
-        // whitelist
+        // allowlist
         auto tc  = loplugin::TypeCheck(pMethodDecl->getParent());
         if (   tc.Class("OWeakAggObject").Namespace("cppu").GlobalNamespace() // conditional call
             || tc.Class("WeakComponentImplHelperBase").Namespace("cppu").GlobalNamespace() // extra magic
@@ -155,8 +158,10 @@ public:
 
 };
 
-loplugin::Plugin::Registration<WeakObject> X("weakobject");
+loplugin::Plugin::Registration<WeakObject> weakobject("weakobject");
 
 } // namespace
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <sal/log.hxx>
 #include <sal/types.h>
@@ -139,7 +139,7 @@ oslModule SAL_CALL osl_loadModule(rtl_uString *ustrModuleName, sal_Int32 nRtldMo
 /* osl_loadModuleAscii */
 /*****************************************************************************/
 
-oslModule SAL_CALL osl_loadModuleAscii(const sal_Char *pModuleName, sal_Int32 nRtldMode)
+oslModule SAL_CALL osl_loadModuleAscii(const char *pModuleName, sal_Int32 nRtldMode)
 {
     SAL_WARN_IF(
         ((nRtldMode & SAL_LOADMODULE_LAZY) != 0
@@ -156,7 +156,7 @@ oslModule SAL_CALL osl_loadModuleAscii(const sal_Char *pModuleName, sal_Int32 nR
             ((nRtldMode & SAL_LOADMODULE_GLOBAL) ? RTLD_GLOBAL : RTLD_LOCAL);
         void* pLib = dlopen(pModuleName, rtld_mode);
 
-        SAL_INFO_IF(
+        SAL_WARN_IF(
             pLib == nullptr, "sal.osl",
             "dlopen(" << pModuleName << ", " << rtld_mode << "): "
                 << dlerror());
@@ -277,7 +277,7 @@ osl_getSymbol(oslModule Module, rtl_uString* pSymbolName)
 /* osl_getAsciiFunctionSymbol */
 /*****************************************************************************/
 oslGenericFunction SAL_CALL
-osl_getAsciiFunctionSymbol(oslModule Module, const sal_Char *pSymbol)
+osl_getAsciiFunctionSymbol(oslModule Module, const char *pSymbol)
 {
     return reinterpret_cast<oslGenericFunction>(getSymbol(Module, pSymbol));
         // requires conditionally-supported conversion from void * to function
@@ -309,8 +309,6 @@ sal_Bool SAL_CALL osl_getModuleURLFromAddress(void * addr, rtl_uString ** ppLibr
         osl_getProcessWorkingDir(&workDir);
         if (workDir)
         {
-            SAL_INFO(
-                "sal.osl", "osl_getModuleURLFromAddress: " << path->buffer);
             rtl_string2UString(ppLibraryUrl,
                                path->buffer,
                                path->length,
@@ -321,6 +319,7 @@ sal_Bool SAL_CALL osl_getModuleURLFromAddress(void * addr, rtl_uString ** ppLibr
                 *ppLibraryUrl == nullptr, "sal.osl", "rtl_string2UString failed");
             osl_getFileURLFromSystemPath(*ppLibraryUrl, ppLibraryUrl);
             osl_getAbsoluteFileURL(workDir, *ppLibraryUrl, ppLibraryUrl);
+            SAL_INFO("sal.osl", "osl_getModuleURLFromAddress(" << addr << ") => " << OUString(*ppLibraryUrl));
 
             rtl_uString_release(workDir);
             result = true;

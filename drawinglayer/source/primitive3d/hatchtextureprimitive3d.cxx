@@ -17,14 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <drawinglayer/primitive3d/hatchtextureprimitive3d.hxx>
+#include <primitive3d/hatchtextureprimitive3d.hxx>
 #include <drawinglayer/primitive3d/polypolygonprimitive3d.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/polygon/b3dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <basegfx/range/b2drange.hxx>
-#include <drawinglayer/texture/texture.hxx>
+#include <texture/texture.hxx>
 #include <basegfx/polygon/b2dpolygonclipper.hxx>
 #include <basegfx/matrix/b3dhommatrix.hxx>
 #include <drawinglayer/primitive3d/polygonprimitive3d.hxx>
@@ -34,10 +34,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         Primitive3DContainer HatchTexturePrimitive3D::impCreate3DDecomposition() const
         {
             Primitive3DContainer aRetval;
@@ -88,7 +86,7 @@ namespace drawinglayer
 
                                         for(sal_uInt32 b(0); b < nPolyCount; b++)
                                         {
-                                            const basegfx::B3DPolygon aPartPoly(aFillPolyPolygon.getB3DPolygon(b));
+                                            const basegfx::B3DPolygon& aPartPoly(aFillPolyPolygon.getB3DPolygon(b));
                                             const sal_uInt32 nPointCount(aPartPoly.count());
                                             basegfx::B2DPolygon aTexPolygon;
 
@@ -132,7 +130,7 @@ namespace drawinglayer
                                         {
                                             // found two linearly independent 2D vectors
                                             // get 2d range of texture coordinates
-                                            const basegfx::B2DRange aOutlineRange(basegfx::tools::getRange(aTexPolyPolygon));
+                                            const basegfx::B2DRange aOutlineRange(basegfx::utils::getRange(aTexPolyPolygon));
                                             const basegfx::BColor aHatchColor(getHatch().getColor());
                                             const double fAngle(getHatch().getAngle());
                                             std::vector< basegfx::B2DHomMatrix > aMatrices;
@@ -151,7 +149,7 @@ namespace drawinglayer
 
                                                     aHatch.appendTransformations(aMatrices);
 
-                                                    SAL_FALLTHROUGH;
+                                                    [[fallthrough]];
                                                 }
                                                 case attribute::HatchStyle::Double:
                                                 {
@@ -164,7 +162,7 @@ namespace drawinglayer
 
                                                     aHatch.appendTransformations(aMatrices);
 
-                                                    SAL_FALLTHROUGH;
+                                                    [[fallthrough]];
                                                 }
                                                 case attribute::HatchStyle::Single:
                                                 {
@@ -185,7 +183,7 @@ namespace drawinglayer
                                             a2DUnitLine.append(basegfx::B2DPoint(0.0, 0.0));
                                             a2DUnitLine.append(basegfx::B2DPoint(1.0, 0.0));
 
-                                            for(basegfx::B2DHomMatrix & rMatrix : aMatrices)
+                                            for(const basegfx::B2DHomMatrix & rMatrix : aMatrices)
                                             {
                                                 basegfx::B2DPolygon aNewLine(a2DUnitLine);
                                                 aNewLine.transform(rMatrix);
@@ -195,7 +193,7 @@ namespace drawinglayer
                                             if(a2DHatchLines.count())
                                             {
                                                 // clip against texture polygon
-                                                a2DHatchLines = basegfx::tools::clipPolyPolygonOnPolyPolygon(a2DHatchLines, aTexPolyPolygon, true, true);
+                                                a2DHatchLines = basegfx::utils::clipPolyPolygonOnPolyPolygon(a2DHatchLines, aTexPolyPolygon, true, true);
                                             }
 
                                             if(a2DHatchLines.count())
@@ -216,7 +214,7 @@ namespace drawinglayer
                                                 a2DHatchLines.transform(a2D);
 
                                                 // expand back-transformed geometry to 3D
-                                                basegfx::B3DPolyPolygon a3DHatchLines(basegfx::tools::createB3DPolyPolygonFromB2DPolyPolygon(a2DHatchLines, 0.0));
+                                                basegfx::B3DPolyPolygon a3DHatchLines(basegfx::utils::createB3DPolyPolygonFromB2DPolyPolygon(a2DHatchLines, 0.0));
 
                                                 // create 3d matrix with 3d vectors as column vectors (0,0,1 as Z) and 3d point as offset, this represents
                                                 // a coordinate system transformation from unit coordinates to the object's 3d coordinate system
@@ -317,7 +315,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive3DIDBlock(HatchTexturePrimitive3D, PRIMITIVE3D_ID_HATCHTEXTUREPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

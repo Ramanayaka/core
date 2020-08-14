@@ -9,42 +9,34 @@
  */
 
 #include <memory>
-#include <sfx2/dispatch.hxx>
-#include <svl/zforlist.hxx>
-#include <svl/undo.hxx>
 
-#include "formulacell.hxx"
-#include "rangelst.hxx"
-#include "scitems.hxx"
-#include "docsh.hxx"
-#include "document.hxx"
-#include "uiitems.hxx"
-#include "reffact.hxx"
-#include "docfunc.hxx"
-#include "TableFillingAndNavigationTools.hxx"
-
-#include "AnalysisOfVarianceDialog.hxx"
+#include <rangelst.hxx>
+#include <reffact.hxx>
+#include <TableFillingAndNavigationTools.hxx>
+#include <AnalysisOfVarianceDialog.hxx>
+#include <scresid.hxx>
+#include <strings.hrc>
 
 namespace
 {
 
 struct StatisticCalculation {
-    sal_Int16   aLabelId;
+    const char* aLabelId;
     const char* aFormula;
     const char* aResultRangeName;
 };
 
-static StatisticCalculation lclBasicStatistics[] =
+StatisticCalculation const lclBasicStatistics[] =
 {
-    { STR_ANOVA_LABEL_GROUPS, nullptr,                nullptr          },
+    { STR_ANOVA_LABEL_GROUPS, nullptr,             nullptr       },
     { STRID_CALC_COUNT,       "=COUNT(%RANGE%)",   "COUNT_RANGE" },
     { STRID_CALC_SUM,         "=SUM(%RANGE%)",     "SUM_RANGE"   },
     { STRID_CALC_MEAN,        "=AVERAGE(%RANGE%)", "MEAN_RANGE"  },
     { STRID_CALC_VARIANCE,    "=VAR(%RANGE%)",     "VAR_RANGE"   },
-    { 0,                      nullptr,                nullptr          }
+    { nullptr,                nullptr,             nullptr       }
 };
 
-static sal_Int16 lclAnovaLabels[] =
+const char* lclAnovaLabels[] =
 {
     STR_ANOVA_LABEL_SOURCE_OF_VARIATION,
     STR_ANOVA_LABEL_SS,
@@ -53,29 +45,29 @@ static sal_Int16 lclAnovaLabels[] =
     STR_ANOVA_LABEL_F,
     STR_ANOVA_LABEL_P_VALUE,
     STR_ANOVA_LABEL_F_CRITICAL,
-    0
+    nullptr
 };
 
-static const char strWildcardRange[] = "%RANGE%";
+const char strWildcardRange[] = "%RANGE%";
 
 OUString lclCreateMultiParameterFormula(
             ScRangeList&        aRangeList, const OUString& aFormulaTemplate,
-            const OUString&     aWildcard,  ScDocument*     pDocument,
-            ScAddress::Details& aAddressDetails)
+            const OUString&     aWildcard,  const ScDocument& rDocument,
+            const ScAddress::Details& aAddressDetails)
 {
-    OUString aResult;
+    OUStringBuffer aResult;
     for (size_t i = 0; i < aRangeList.size(); i++)
     {
-        OUString aRangeString(aRangeList[i]->Format(ScRefFlags::RANGE_ABS, pDocument, aAddressDetails));
+        OUString aRangeString(aRangeList[i].Format(rDocument, ScRefFlags::RANGE_ABS_3D, aAddressDetails));
         OUString aFormulaString = aFormulaTemplate.replaceAll(aWildcard, aRangeString);
-        aResult += aFormulaString;
+        aResult.append(aFormulaString);
         if(i != aRangeList.size() - 1) // Not Last
-            aResult+= ";";
+            aResult.append(";");
     }
-    return aResult;
+    return aResult.makeStringAndClear();
 }
 
-void lclMakeSubRangesList(ScRangeList& rRangeList, ScRange& rInputRange, ScStatisticsInputOutputDialog::GroupedBy aGroupedBy)
+void lclMakeSubRangesList(ScRangeList& rRangeList, const ScRange& rInputRange, ScStatisticsInputOutputDialog::GroupedBy aGroupedBy)
 {
     std::unique_ptr<DataRangeIterator> pIterator;
     if (aGroupedBy == ScStatisticsInputOutputDialog::BY_COLUMN)
@@ -86,7 +78,7 @@ void lclMakeSubRangesList(ScRangeList& rRangeList, ScRange& rInputRange, ScStati
     for( ; pIterator->hasNext(); pIterator->next() )
     {
         ScRange aRange = pIterator->get();
-        rRangeList.Append(aRange);
+        rRangeList.push_back(aRange);
     }
 }
 
@@ -94,75 +86,65 @@ void lclMakeSubRangesList(ScRangeList& rRangeList, ScRange& rInputRange, ScStati
 
 ScAnalysisOfVarianceDialog::ScAnalysisOfVarianceDialog(
                     SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow,
-                    vcl::Window* pParent, ScViewData* pViewData ) :
-    ScStatisticsInputOutputDialog(
+                    weld::Window* pParent, ScViewData* pViewData )
+    : ScStatisticsInputOutputDialog(
             pSfxBindings, pChildWindow, pParent, pViewData,
-            "AnalysisOfVarianceDialog", "modules/scalc/ui/analysisofvariancedialog.ui" ),
-    meFactor(SINGLE_FACTOR)
+            "modules/scalc/ui/analysisofvariancedialog.ui",
+            "AnalysisOfVarianceDialog")
+    , meFactor(SINGLE_FACTOR)
+    , mxAlphaField(m_xBuilder->weld_spin_button("alpha-spin"))
+    , mxSingleFactorRadio(m_xBuilder->weld_radio_button("radio-single-factor"))
+    , mxTwoFactorRadio(m_xBuilder->weld_radio_button("radio-two-factor"))
+    , mxRowsPerSampleField(m_xBuilder->weld_spin_button("rows-per-sample-spin"))
 {
-    get(mpAlphaField,         "alpha-spin");
-    get(mpSingleFactorRadio,  "radio-single-factor");
-    get(mpTwoFactorRadio,     "radio-two-factor");
-    get(mpRowsPerSampleField, "rows-per-sample-spin");
+    mxSingleFactorRadio->connect_toggled( LINK( this, ScAnalysisOfVarianceDialog, FactorChanged ) );
+    mxTwoFactorRadio->connect_toggled( LINK( this, ScAnalysisOfVarianceDialog, FactorChanged ) );
 
-    mpSingleFactorRadio->SetToggleHdl( LINK( this, ScAnalysisOfVarianceDialog, FactorChanged ) );
-    mpTwoFactorRadio->SetToggleHdl( LINK( this, ScAnalysisOfVarianceDialog, FactorChanged ) );
-
-    mpSingleFactorRadio->Check();
-    mpTwoFactorRadio->Check(false);
+    mxSingleFactorRadio->set_active(true);
+    mxTwoFactorRadio->set_active(false);
 
     FactorChanged();
 }
 
 ScAnalysisOfVarianceDialog::~ScAnalysisOfVarianceDialog()
 {
-    disposeOnce();
 }
 
-void ScAnalysisOfVarianceDialog::dispose()
+void ScAnalysisOfVarianceDialog::Close()
 {
-    mpAlphaField.clear();
-    mpSingleFactorRadio.clear();
-    mpTwoFactorRadio.clear();
-    mpRowsPerSampleField.clear();
-    ScStatisticsInputOutputDialog::dispose();
+    DoClose( ScAnalysisOfVarianceDialogWrapper::GetChildWindowId() );
 }
 
-bool ScAnalysisOfVarianceDialog::Close()
-{
-    return DoClose( ScAnalysisOfVarianceDialogWrapper::GetChildWindowId() );
-}
-
-sal_Int16 ScAnalysisOfVarianceDialog::GetUndoNameId()
+const char* ScAnalysisOfVarianceDialog::GetUndoNameId()
 {
     return STR_ANALYSIS_OF_VARIANCE_UNDO_NAME;
 }
 
-IMPL_LINK_NOARG( ScAnalysisOfVarianceDialog, FactorChanged, RadioButton&, void )
+IMPL_LINK_NOARG( ScAnalysisOfVarianceDialog, FactorChanged, weld::ToggleButton&, void )
 {
     FactorChanged();
 }
 
 void ScAnalysisOfVarianceDialog::FactorChanged()
 {
-    if (mpSingleFactorRadio->IsChecked())
+    if (mxSingleFactorRadio->get_active())
     {
-        mpGroupByRowsRadio->Enable();
-        mpGroupByColumnsRadio->Enable();
-        mpRowsPerSampleField->Enable(false);
+        mxGroupByRowsRadio->set_sensitive(true);
+        mxGroupByColumnsRadio->set_sensitive(true);
+        mxRowsPerSampleField->set_sensitive(false);
         meFactor = SINGLE_FACTOR;
     }
-    else if (mpTwoFactorRadio->IsChecked())
+    else if (mxTwoFactorRadio->get_active())
     {
-        mpGroupByRowsRadio->Enable(false);
-        mpGroupByColumnsRadio->Enable(false);
-        mpRowsPerSampleField->Enable(false); // Rows per sample not yet implemented
+        mxGroupByRowsRadio->set_sensitive(false);
+        mxGroupByColumnsRadio->set_sensitive(false);
+        mxRowsPerSampleField->set_sensitive(false); // Rows per sample not yet implemented
         meFactor = TWO_FACTOR;
     }
 }
 
 void ScAnalysisOfVarianceDialog::RowColumn(ScRangeList& rRangeList, AddressWalkerWriter& aOutput, FormulaTemplate& aTemplate,
-                                           OUString& sFormula, GroupedBy aGroupedBy, ScRange* pResultRange)
+                                           const OUString& sFormula, GroupedBy aGroupedBy, ScRange* pResultRange)
 {
     if (pResultRange != nullptr)
         pResultRange->aStart = aOutput.current();
@@ -170,9 +152,9 @@ void ScAnalysisOfVarianceDialog::RowColumn(ScRangeList& rRangeList, AddressWalke
     {
         for (size_t i = 0; i < rRangeList.size(); i++)
         {
-            ScRange* pRange = rRangeList[i];
+            ScRange const & rRange = rRangeList[i];
             aTemplate.setTemplate(sFormula);
-            aTemplate.applyRange(strWildcardRange, *pRange);
+            aTemplate.applyRange(strWildcardRange, rRange);
             aOutput.writeFormula(aTemplate.getTemplate());
             if (pResultRange != nullptr)
                 pResultRange->aEnd = aOutput.current();
@@ -181,8 +163,8 @@ void ScAnalysisOfVarianceDialog::RowColumn(ScRangeList& rRangeList, AddressWalke
     }
     else
     {
-        sal_Int16 aLabelId = (aGroupedBy == BY_COLUMN) ? STR_COLUMN_LABEL_TEMPLATE : STR_ROW_LABEL_TEMPLATE;
-        OUString aLabelTemplate(ScResId(aLabelId));
+        const char* pLabelId = (aGroupedBy == BY_COLUMN) ? STR_COLUMN_LABEL_TEMPLATE : STR_ROW_LABEL_TEMPLATE;
+        OUString aLabelTemplate(ScResId(pLabelId));
 
         for (size_t i = 0; i < rRangeList.size(); i++)
         {
@@ -201,7 +183,7 @@ void ScAnalysisOfVarianceDialog::AnovaSingleFactor(AddressWalkerWriter& output, 
     output.writeBoldString(ScResId(STR_ANOVA_SINGLE_FACTOR_LABEL));
     output.newLine();
 
-    double aAlphaValue = mpAlphaField->GetValue() / 100.0;
+    double aAlphaValue = mxAlphaField->get_value() / 100.0;
     output.writeString(ScResId(STR_LABEL_ALPHA));
     output.nextColumn();
     output.writeValue(aAlphaValue);
@@ -210,7 +192,7 @@ void ScAnalysisOfVarianceDialog::AnovaSingleFactor(AddressWalkerWriter& output, 
     output.newLine();
 
     // Write labels
-    for(sal_Int32 i = 0; lclBasicStatistics[i].aLabelId != 0; i++)
+    for(sal_Int32 i = 0; lclBasicStatistics[i].aLabelId; i++)
     {
         output.writeString(ScResId(lclBasicStatistics[i].aLabelId));
         output.nextColumn();
@@ -224,7 +206,7 @@ void ScAnalysisOfVarianceDialog::AnovaSingleFactor(AddressWalkerWriter& output, 
     output.push();
 
     // Write values
-    for(sal_Int32 i = 0; lclBasicStatistics[i].aLabelId != 0; i++)
+    for(sal_Int32 i = 0; lclBasicStatistics[i].aLabelId; i++)
     {
         output.resetRow();
         ScRange aResultRange;
@@ -242,14 +224,14 @@ void ScAnalysisOfVarianceDialog::AnovaSingleFactor(AddressWalkerWriter& output, 
 
     // Write ANOVA labels
     output.resetColumn();
-    for(sal_Int32 i = 0; lclAnovaLabels[i] != 0; i++)
+    for(sal_Int32 i = 0; lclAnovaLabels[i]; i++)
     {
         output.writeString(ScResId(lclAnovaLabels[i]));
         output.nextColumn();
     }
     output.nextRow();
 
-    aTemplate.autoReplaceRange("%FIRST_COLUMN%", *aRangeList[0]);
+    aTemplate.autoReplaceRange("%FIRST_COLUMN%", aRangeList[0]);
 
     // Between Groups
     {
@@ -259,7 +241,6 @@ void ScAnalysisOfVarianceDialog::AnovaSingleFactor(AddressWalkerWriter& output, 
         output.nextColumn();
 
         // Sum of Squares
-
         aTemplate.setTemplate("=SUMPRODUCT(%SUM_RANGE%;%MEAN_RANGE%)-SUM(%SUM_RANGE%)^2/SUM(%COUNT_RANGE%)");
         aTemplate.autoReplaceAddress("%BETWEEN_SS%", output.current());
         output.writeFormula(aTemplate.getTemplate());
@@ -333,7 +314,7 @@ void ScAnalysisOfVarianceDialog::AnovaSingleFactor(AddressWalkerWriter& output, 
 
         // Sum of Squares
         aTemplate.setTemplate("=DEVSQ(%RANGE_LIST%)");
-        aTemplate.applyRangeList("%RANGE_LIST%", aRangeList);
+        aTemplate.applyRangeList("%RANGE_LIST%", aRangeList, ';');
         output.writeFormula(aTemplate.getTemplate());
         output.nextColumn();
 
@@ -349,7 +330,7 @@ void ScAnalysisOfVarianceDialog::AnovaTwoFactor(AddressWalkerWriter& output, For
     output.writeBoldString(ScResId(STR_ANOVA_TWO_FACTOR_LABEL));
     output.newLine();
 
-    double aAlphaValue = mpAlphaField->GetValue() / 100.0;
+    double aAlphaValue = mxAlphaField->get_value() / 100.0;
     output.writeString("Alpha");
     output.nextColumn();
     output.writeValue(aAlphaValue);
@@ -358,7 +339,7 @@ void ScAnalysisOfVarianceDialog::AnovaTwoFactor(AddressWalkerWriter& output, For
     output.newLine();
 
     // Write labels
-    for(sal_Int32 i = 0; lclBasicStatistics[i].aLabelId != 0; i++)
+    for(sal_Int32 i = 0; lclBasicStatistics[i].aLabelId; i++)
     {
         output.writeString(ScResId(lclBasicStatistics[i].aLabelId));
         output.nextColumn();
@@ -373,7 +354,7 @@ void ScAnalysisOfVarianceDialog::AnovaTwoFactor(AddressWalkerWriter& output, For
 
     // Write ColumnX values
     output.push();
-    for(sal_Int32 i = 0; lclBasicStatistics[i].aLabelId != 0; i++)
+    for(sal_Int32 i = 0; lclBasicStatistics[i].aLabelId; i++)
     {
         output.resetRow();
         ScRange aResultRange;
@@ -390,7 +371,7 @@ void ScAnalysisOfVarianceDialog::AnovaTwoFactor(AddressWalkerWriter& output, For
 
     // Write RowX values
     output.push();
-    for(sal_Int32 i = 0; lclBasicStatistics[i].aLabelId != 0; i++)
+    for(sal_Int32 i = 0; lclBasicStatistics[i].aLabelId; i++)
     {
         output.resetRow();
         ScRange aResultRange;
@@ -407,7 +388,7 @@ void ScAnalysisOfVarianceDialog::AnovaTwoFactor(AddressWalkerWriter& output, For
     output.newLine();
 
     // Write ANOVA labels
-    for(sal_Int32 i = 0; lclAnovaLabels[i] != 0; i++)
+    for(sal_Int32 i = 0; lclAnovaLabels[i]; i++)
     {
         output.writeString(ScResId(lclAnovaLabels[i]));
         output.nextColumn();
@@ -416,8 +397,8 @@ void ScAnalysisOfVarianceDialog::AnovaTwoFactor(AddressWalkerWriter& output, For
 
     // Setup auto-replace strings
     aTemplate.autoReplaceRange(strWildcardRange, mInputRange);
-    aTemplate.autoReplaceRange("%FIRST_COLUMN%", *aColumnRangeList[0]);
-    aTemplate.autoReplaceRange("%FIRST_ROW%",    *aRowRangeList[0]);
+    aTemplate.autoReplaceRange("%FIRST_COLUMN%", aColumnRangeList[0]);
+    aTemplate.autoReplaceRange("%FIRST_ROW%",    aRowRangeList[0]);
 
     // Rows
     {
@@ -558,9 +539,9 @@ void ScAnalysisOfVarianceDialog::AnovaTwoFactor(AddressWalkerWriter& output, For
 
 ScRange ScAnalysisOfVarianceDialog::ApplyOutput(ScDocShell* pDocShell)
 {
-    AddressWalkerWriter output(mOutputAddress, pDocShell, mDocument,
+    AddressWalkerWriter output(mOutputAddress, pDocShell, &mDocument,
         formula::FormulaGrammar::mergeToGrammar(formula::FormulaGrammar::GRAM_ENGLISH, mAddressDetails.eConv));
-    FormulaTemplate aTemplate(mDocument);
+    FormulaTemplate aTemplate(&mDocument);
 
     if (meFactor == SINGLE_FACTOR)
     {

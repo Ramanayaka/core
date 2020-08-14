@@ -20,15 +20,12 @@
 #include "NConnection.hxx"
 #include "NDatabaseMetaData.hxx"
 #include "NCatalog.hxx"
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/sdbc/TransactionIsolation.hpp>
 #include "NPreparedStatement.hxx"
 #include "NStatement.hxx"
-#include <comphelper/extract.hxx>
 #include <connectivity/dbexception.hxx>
-#include <comphelper/processfactory.hxx>
-#include <comphelper/sequence.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 
 using namespace connectivity::evoab;
 using namespace dbtools;
@@ -40,11 +37,9 @@ using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::lang;
 
-OEvoabConnection::OEvoabConnection(OEvoabDriver& _rDriver)
-    : OSubComponent<OEvoabConnection, OConnection_BASE>( static_cast<cppu::OWeakObject*>(&_rDriver), this )
-    , m_rDriver(_rDriver)
+OEvoabConnection::OEvoabConnection(OEvoabDriver const & _rDriver)
+    : m_rDriver(_rDriver)
     , m_eSDBCAddressType(SDBCAddress::EVO_LOCAL)
-    , m_xCatalog(nullptr)
 {
 }
 
@@ -59,11 +54,6 @@ OEvoabConnection::~OEvoabConnection()
 }
 
 
-void SAL_CALL OEvoabConnection::release() throw()
-{
-    release_ChildImpl();
-}
-
 // XServiceInfo
 
 IMPLEMENT_SERVICE_INFO(OEvoabConnection, "com.sun.star.sdbc.drivers.evoab.Connection", "com.sun.star.sdbc.Connection")
@@ -74,19 +64,19 @@ void OEvoabConnection::construct(const OUString& url, const Sequence< PropertyVa
     osl_atomic_increment( &m_refCount );
     SAL_INFO("connectivity.evoab2", "OEvoabConnection::construct()::url = " << url );
 
-     OUString sPassword;
-        const char pPwd[] = "password";
+    OUString sPassword;
+    const char pPwd[] = "password";
 
-        const PropertyValue *pIter      = info.getConstArray();
-        const PropertyValue *pEnd       = pIter + info.getLength();
-        for(;pIter != pEnd;++pIter)
-        {
-                if(pIter->Name == pPwd)
-                {
-                        pIter->Value >>= sPassword;
-                        break;
-                }
-        }
+    const PropertyValue *pIter      = info.getConstArray();
+    const PropertyValue *pEnd       = pIter + info.getLength();
+    for(;pIter != pEnd;++pIter)
+    {
+            if(pIter->Name == pPwd)
+            {
+                    pIter->Value >>= sPassword;
+                    break;
+            }
+    }
 
     if ( url == "sdbc:address:evolution:groupwise" )
         setSDBCAddressType(SDBCAddress::EVO_GWISE);
@@ -124,14 +114,14 @@ Reference< XDatabaseMetaData > SAL_CALL OEvoabConnection::getMetaData(  )
 css::uno::Reference< XTablesSupplier > OEvoabConnection::createCatalog()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
-     Reference< XTablesSupplier > xTab = m_xCatalog;
-     if(!xTab.is())
-     {
+    Reference< XTablesSupplier > xTab = m_xCatalog;
+    if(!xTab.is())
+    {
          OEvoabCatalog *pCat = new OEvoabCatalog(this);
          xTab = pCat;
          m_xCatalog = xTab;
-     }
-     return xTab;
+    }
+    return xTab;
 }
 
 Reference< XStatement > SAL_CALL OEvoabConnection::createStatement(  )
@@ -198,7 +188,6 @@ void OEvoabConnection::disposing()
     // we noticed that we should be destroyed in near future so we have to dispose our statements
     ::osl::MutexGuard aGuard(m_aMutex);
     OConnection_BASE::disposing();
-    dispose_ChildImpl();
 }
 
 // -------------------------------- stubbed methods ------------------------------------------------

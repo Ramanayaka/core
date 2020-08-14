@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ExponentialRegressionCurveCalculator.hxx"
-#include "macros.hxx"
-#include "RegressionCalculationHelper.hxx"
+#include <ExponentialRegressionCurveCalculator.hxx>
+#include <RegressionCalculationHelper.hxx>
 #include <SpecialCharacters.hxx>
 
 #include <rtl/math.hxx>
@@ -64,7 +63,7 @@ void SAL_CALL ExponentialRegressionCurveCalculator::recalculateRegression(
         {
             ::rtl::math::setNan( & m_fLogSlope );
             ::rtl::math::setNan( & m_fLogIntercept );
-            ::rtl::math::setNan( & m_fCorrelationCoeffitient );// actual it is coefficient of determination
+            ::rtl::math::setNan( & m_fCorrelationCoefficient );// actual it is coefficient of determination
             return;
         }
         m_fSign = -1.0;
@@ -108,7 +107,7 @@ void SAL_CALL ExponentialRegressionCurveCalculator::recalculateRegression(
 
     m_fLogSlope = fQxy / fQx;
     m_fLogIntercept = mForceIntercept ? fLogIntercept : fAverageY - m_fLogSlope * fAverageX;
-    m_fCorrelationCoeffitient = fQxy / sqrt( fQx * fQy );
+    m_fCorrelationCoefficient = fQxy / sqrt( fQx * fQy );
 }
 
 double SAL_CALL ExponentialRegressionCurveCalculator::getCurveValue( double x )
@@ -116,8 +115,8 @@ double SAL_CALL ExponentialRegressionCurveCalculator::getCurveValue( double x )
     double fResult;
     ::rtl::math::setNan( & fResult );
 
-    if( ! ( ::rtl::math::isNan( m_fLogSlope ) ||
-            ::rtl::math::isNan( m_fLogIntercept )))
+    if( ! ( std::isnan( m_fLogSlope ) ||
+            std::isnan( m_fLogIntercept )))
     {
         fResult = m_fSign * exp(m_fLogIntercept + x * m_fLogSlope);
     }
@@ -138,9 +137,9 @@ uno::Sequence< geometry::RealPoint2D > SAL_CALL ExponentialRegressionCurveCalcul
         // optimize result
         uno::Sequence< geometry::RealPoint2D > aResult( 2 );
         aResult[0].X = min;
-        aResult[0].Y = this->getCurveValue( min );
+        aResult[0].Y = getCurveValue( min );
         aResult[1].X = max;
-        aResult[1].Y = this->getCurveValue( max );
+        aResult[1].Y = getCurveValue( max );
 
         return aResult;
     }
@@ -180,13 +179,13 @@ OUString ExponentialRegressionCurveCalculator::ImplGetRepresentation(
         // if nValueLength not calculated then nullptr
     sal_Int32* pValueLength = nValueLength ? &nValueLength : nullptr;
     if ( m_fSign < 0.0 )
-        aTmpBuf.append( OUStringLiteral1(aMinusSign) + " " );
+        aTmpBuf.append( OUStringChar(aMinusSign) ).append( " " );
     if ( bHasIntercept )
     {
         OUString aValueString = getFormattedString( xNumFormatter, nNumberFormatKey, fIntercept, pValueLength );
         if ( aValueString != "1" )  // aValueString may be rounded to 1 if nValueLength is small
         {
-            aTmpBuf.append( aValueString + " " );
+            aTmpBuf.append( aValueString ).append( " " );
             addStringToEquation( aBuf, nLineLength, aTmpBuf, pFormulaMaxWidth );
             aTmpBuf.truncate();
         }
@@ -200,21 +199,21 @@ OUString ExponentialRegressionCurveCalculator::ImplGetRepresentation(
             OUString aValueString = getFormattedString( xNumFormatter, nNumberFormatKey, m_fLogIntercept, pValueLength );
             if ( aValueString != "0" )  // aValueString may be rounded to 0 if nValueLength is small
             {
-                aTmpBuf.append( aValueString + ( (m_fLogSlope < 0.0) ? OUStringLiteral(" ") : OUStringLiteral(" + ") ) );
+                aTmpBuf.append( aValueString ).append( (m_fLogSlope < 0.0) ? OUStringLiteral(" ") : OUStringLiteral(" + ") );
             }
         }
     }
     if ( m_fLogSlope < 0.0 )
-        aTmpBuf.append( OUStringLiteral1(aMinusSign) + " " );
+        aTmpBuf.append( OUStringChar(aMinusSign) ).append( " " );
     if ( bHasLogSlope )
     {
         OUString aValueString = getFormattedString( xNumFormatter, nNumberFormatKey, fabs(m_fLogSlope), pValueLength );
         if ( aValueString != "1" )  // aValueString may be rounded to 1 if nValueLength is small
         {
-            aTmpBuf.append( aValueString + " " );
+            aTmpBuf.append( aValueString ).append( " " );
         }
     }
-    aTmpBuf.append( mXName + " )");
+    aTmpBuf.append( mXName ).append(" )");
     addStringToEquation( aBuf, nLineLength, aTmpBuf, pFormulaMaxWidth );
 
     return aBuf.makeStringAndClear();

@@ -7,12 +7,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <set>
+#ifndef LO_CLANG_SHARED_PLUGINS
 
 #include "check.hxx"
+#include "compat.hxx"
 #include "plugin.hxx"
 
-/** Look for static OUString and OUString[], they can be more efficiently declared as:
+#include <unordered_set>
+
+/** Look for static O*String and O*String[], they can be more efficiently declared as:
 
         static const OUStringLiteral our_aLBEntryMap[] = {" ", ", "};
         static const OUStringLiteral sName("name");
@@ -22,40 +25,52 @@
 namespace {
 
 class StringStatic
-    : public clang::RecursiveASTVisitor<StringStatic>
-    , public loplugin::Plugin
+    : public loplugin::FilteringPlugin<StringStatic>
 {
 
 public:
-    explicit StringStatic(InstantiationData const& rData) : Plugin(rData) {}
+    explicit StringStatic(loplugin::InstantiationData const& rData):
+        FilteringPlugin(rData) {}
 
     void run() override;
+    bool preRun() override;
+    void postRun() override;
     bool VisitVarDecl(VarDecl const*);
     bool VisitReturnStmt(ReturnStmt const*);
+    bool VisitDeclRefExpr(DeclRefExpr const*);
+
 private:
-    std::set<VarDecl const *> potentialVars;
-    std::set<VarDecl const *> excludeVars;
+    std::unordered_set<VarDecl const *> potentialVars;
+    std::unordered_set<VarDecl const *> excludeVars;
 };
 
 void StringStatic::run()
 {
-    StringRef fn( compiler.getSourceManager().getFileEntryForID(
-                      compiler.getSourceManager().getMainFileID())->getName() );
+    if( preRun())
+        if( TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()))
+            postRun();
+}
+
+bool StringStatic::preRun()
+{
+    StringRef fn(handler.getMainFileName());
     // passing around pointers to global OUString
     if (loplugin::hasPathnamePrefix(fn, SRCDIR "/filter/source/svg/"))
-         return;
+         return false;
     // has a mix of literals and refs to external OUStrings
     if (loplugin::isSamePathname(fn, SRCDIR "/ucb/source/ucp/webdav-neon/ContentProperties.cxx"))
-         return;
+         return false;
+    return true;
+}
 
-    TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
-
+void StringStatic::postRun()
+{
     for (auto const & pVarDecl : excludeVars) {
         potentialVars.erase(pVarDecl);
     }
     for (auto const & varDecl : potentialVars) {
         report(DiagnosticsEngine::Warning,
-                "rather declare this using OUStringLiteral or char[]",
+                "rather declare this using OUStringLiteral/OStringLiteral/char[]",
                 varDecl->getLocation())
             << varDecl->getSourceRange();
     }
@@ -63,22 +78,23 @@ void StringStatic::run()
 
 bool StringStatic::VisitVarDecl(VarDecl const* varDecl)
 {
-    if (ignoreLocation(varDecl)) {
+    if (ignoreLocation(varDecl))
         return true;
-    }
     QualType qt = varDecl->getType();
-    if (!varDecl->hasGlobalStorage()
-        || !varDecl->isThisDeclarationADefinition()
-        || !qt.isConstQualified()) {
+    if (!varDecl->hasGlobalStorage() && !varDecl->isStaticLocal())
         return true;
-    }
-    if (qt->isArrayType()) {
+    if (!varDecl->isThisDeclarationADefinition()
+        || !qt.isConstQualified())
+        return true;
+    if (qt->isArrayType())
         qt = qt->getAsArrayTypeUnsafe()->getElementType();
-    }
-    if (!loplugin::TypeCheck(qt).Class("OUString").Namespace("rtl").GlobalNamespace()) {
+
+    auto tc = loplugin::TypeCheck(qt);
+    if (!tc.Class("OUString").Namespace("rtl").GlobalNamespace()
+        && !tc.Class("OString").Namespace("rtl").GlobalNamespace())
         return true;
-    }
-    if (varDecl->hasInit()) {
+    if (varDecl->hasInit())
+    {
         Expr const * expr = varDecl->getInit();
         while (true) {
             if (ExprWithCleanups const * exprWithCleanups = dyn_cast<ExprWithCleanups>(expr)) {
@@ -88,13 +104,13 @@ bool StringStatic::VisitVarDecl(VarDecl const* varDecl)
                 expr = castExpr->getSubExpr();
             }
             else if (MaterializeTemporaryExpr const * materializeExpr = dyn_cast<MaterializeTemporaryExpr>(expr)) {
-                expr = materializeExpr->GetTemporaryExpr();
+                expr = compat::getSubExpr(materializeExpr);
             }
             else if (CXXBindTemporaryExpr const * bindExpr = dyn_cast<CXXBindTemporaryExpr>(expr)) {
                 expr = bindExpr->getSubExpr();
             }
             else if (CXXConstructExpr const * constructExpr = dyn_cast<CXXConstructExpr>(expr)) {
-                if (constructExpr->getNumArgs() != 1) {
+                if (constructExpr->getNumArgs() == 0) {
                     return true;
                 }
                 expr = constructExpr->getArg(0);
@@ -129,8 +145,31 @@ bool StringStatic::VisitReturnStmt(ReturnStmt const * returnStmt)
     return true;
 }
 
-loplugin::Plugin::Registration<StringStatic> X("stringstatic");
+bool StringStatic::VisitDeclRefExpr(DeclRefExpr const * declRef)
+{
+    if (ignoreLocation(declRef))
+        return true;
+    VarDecl const * varDecl = dyn_cast<VarDecl>(declRef->getDecl());
+    if (!varDecl)
+        return true;
+    if (potentialVars.count(varDecl) == 0)
+        return true;
+    // ignore globals that are used in CPPUNIT_ASSERT expressions, otherwise we can end up
+    // trying to compare an OUStringLiteral and an OUString, and CPPUNIT can't handle that
+    auto loc = compat::getBeginLoc(declRef);
+    if (compiler.getSourceManager().isMacroArgExpansion(loc))
+    {
+        StringRef name { Lexer::getImmediateMacroName(loc, compiler.getSourceManager(), compiler.getLangOpts()) };
+        if (name.startswith("CPPUNIT_ASSERT"))
+            excludeVars.insert(varDecl);
+    }
+    return true;
+}
+
+loplugin::Plugin::Registration<StringStatic> stringstatic("stringstatic");
 
 } // namespace
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

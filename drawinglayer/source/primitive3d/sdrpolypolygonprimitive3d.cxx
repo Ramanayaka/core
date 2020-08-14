@@ -18,7 +18,7 @@
  */
 
 #include <drawinglayer/primitive3d/sdrpolypolygonprimitive3d.hxx>
-#include <drawinglayer/primitive3d/sdrdecompositiontools3d.hxx>
+#include <primitive3d/sdrdecompositiontools3d.hxx>
 #include <drawinglayer/primitive3d/drawinglayer_primitivetypes3d.hxx>
 #include <basegfx/polygon/b3dpolypolygontools.hxx>
 #include <drawinglayer/attribute/sdrfillattribute.hxx>
@@ -29,10 +29,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         Primitive3DContainer SdrPolyPolygonPrimitive3D::create3DDecomposition(const geometry::ViewInformation3D& /*rViewInformation*/) const
         {
             Primitive3DContainer aRetval;
@@ -153,7 +151,7 @@ namespace drawinglayer
 
             if(getPolyPolygon3D().count())
             {
-                aRetval = basegfx::tools::getRange(getPolyPolygon3D());
+                aRetval = basegfx::utils::getRange(getPolyPolygon3D());
                 aRetval.transform(getTransform());
 
                 if(!getSdrLFSAttribute().getLine().isDefault())
@@ -174,7 +172,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive3DIDBlock(SdrPolyPolygonPrimitive3D, PRIMITIVE3D_ID_SDRPOLYPOLYGONPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

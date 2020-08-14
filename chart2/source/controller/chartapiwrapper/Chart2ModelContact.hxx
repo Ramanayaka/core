@@ -19,21 +19,26 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_CHART2MODELCONTACT_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_CHARTAPIWRAPPER_CHART2MODELCONTACT_HXX
 
-#include <chartview/ExplicitScaleValues.hxx>
-#include <com/sun/star/chart2/XAxis.hpp>
-#include <com/sun/star/chart2/XChartDocument.hpp>
-#include <com/sun/star/chart2/XDataSeries.hpp>
-#include <com/sun/star/chart2/XDiagram.hpp>
-#include <com/sun/star/chart2/XTitle.hpp>
 #include <cppuhelper/weakref.hxx>
 #include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/drawing/XDrawPage.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/awt/Point.hpp>
+#include <com/sun/star/awt/Rectangle.hpp>
 
 #include <map>
+
+namespace chart { struct ExplicitIncrementData; }
+namespace chart { struct ExplicitScaleData; }
+namespace com::sun::star::chart2 { class XAxis; }
+namespace com::sun::star::chart2 { class XChartDocument; }
+namespace com::sun::star::chart2 { class XDataSeries; }
+namespace com::sun::star::chart2 { class XDiagram; }
+namespace com::sun::star::chart2 { class XTitle; }
+namespace com::sun::star::container { class XNameContainer; }
+namespace com::sun::star::drawing { class XDrawPage; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::lang { class XUnoTunnel; }
+namespace com::sun::star::uno { class XComponentContext; }
+
 
 namespace chart
 {
@@ -60,7 +65,7 @@ public:
     css::uno::Reference< css::chart2::XChartDocument > getChart2Document() const;
     css::uno::Reference< css::chart2::XDiagram > getChart2Diagram() const;
 
-    css::uno::Reference< css::drawing::XDrawPage > getDrawPage();
+    css::uno::Reference< css::drawing::XDrawPage > getDrawPage() const;
 
     /** get the current values calculated for an axis in the current view in
         case properties are 'auto'.
@@ -73,7 +78,7 @@ public:
     sal_Int32 getExplicitNumberFormatKeyForAxis(
             const css::uno::Reference< css::chart2::XAxis >& xAxis );
 
-    sal_Int32 getExplicitNumberFormatKeyForSeries(
+    static sal_Int32 getExplicitNumberFormatKeyForSeries(
             const css::uno::Reference< css::chart2::XDataSeries >& xSeries );
 
     /** Returns the size of the page in logic coordinates.  This value is used
@@ -138,8 +143,7 @@ private: //member
 
     mutable css::uno::Reference< css::lang::XUnoTunnel > m_xChartView;
 
-    typedef std::map< OUString, css::uno::Reference< css::container::XNameContainer > > tTableMap;//GradientTable, HatchTable etc.
-    tTableMap   m_aTableMap;
+    std::map< OUString, css::uno::Reference< css::container::XNameContainer > > m_aTableMap;
 };
 
 } //  namespace wrapper

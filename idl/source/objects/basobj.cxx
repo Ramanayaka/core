@@ -107,11 +107,6 @@ void SvMetaObject::ReadContextSvIdl( SvIdlDataBase &, SvTokenStream & )
 {
 }
 
-bool SvMetaObject::Test( SvTokenStream & )
-{
-    return true;
-}
-
 bool SvMetaObject::ReadSvIdl( SvIdlDataBase & rBase, SvTokenStream & rInStm )
 {
     sal_uInt32 nTokPos = rInStm.Tell();
@@ -128,13 +123,10 @@ bool SvMetaObject::ReadSvIdl( SvIdlDataBase & rBase, SvTokenStream & rInStm )
         bOk = rInStm.ReadIf( ']' );
     }
 
-    if( bOk )
+    if( bOk && rInStm.ReadIf( '{' ) )
     {
-        if( rInStm.ReadIf( '{' ) )
-        {
-            DoReadContextSvIdl( rBase, rInStm );
-            bOk = rInStm.ReadIf( '}' );
-        }
+        DoReadContextSvIdl( rBase, rInStm );
+        bOk = rInStm.ReadIf( '}' );
     }
 
     if( !bOk )

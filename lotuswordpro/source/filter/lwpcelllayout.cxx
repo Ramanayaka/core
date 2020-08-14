@@ -60,22 +60,20 @@
 
 #include <memory>
 #include "lwpcelllayout.hxx"
-#include "lwpfoundry.hxx"
-#include "lwpobjfactory.hxx"
-#include "lwptblcell.hxx"
-#include "lwptblformula.hxx"
-#include "lwpholder.hxx"
 #include "lwpnumericfmt.hxx"
 #include "lwptable.hxx"
-#include "lwpglobalmgr.hxx"
+#include "lwprowlayout.hxx"
+#include <lwpfilehdr.hxx>
+#include <lwpglobalmgr.hxx>
 
-#include "xfilter/xfstylemanager.hxx"
-#include "xfilter/xfcell.hxx"
-#include "xfilter/xfcellstyle.hxx"
-#include "xfilter/xfcolstyle.hxx"
+#include <xfilter/xfstylemanager.hxx>
+#include <xfilter/xfcell.hxx>
+#include <xfilter/xfcellstyle.hxx>
+#include <xfilter/xfcolstyle.hxx>
 
-LwpCellLayout::LwpCellLayout(LwpObjectHeader &objHdr, LwpSvStream* pStrm)
+LwpCellLayout::LwpCellLayout(LwpObjectHeader const &objHdr, LwpSvStream* pStrm)
     : LwpMiddleLayout(objHdr, pStrm)
+    , m_bConvertCell(false)
     , crowid(0)
     , ccolid(0)
     , cType(LDT_NONE)
@@ -164,7 +162,7 @@ void LwpCellLayout::ApplyPadding(XFCellStyle *pCellStyle)
     double fRight = GetMarginsValue(MARGIN_RIGHT);
     double fTop = GetMarginsValue(MARGIN_TOP);
     double fBottom = GetMarginsValue(MARGIN_BOTTOM);
-    pCellStyle->SetPadding((float)fLeft,(float)fRight,(float)fTop,(float)fBottom);
+    pCellStyle->SetPadding(static_cast<float>(fLeft),static_cast<float>(fRight),static_cast<float>(fTop),static_cast<float>(fBottom));
 }
 /**
  * @short   Apply border to cell style according to cell position, default cell layout won't use this function
@@ -177,8 +175,8 @@ void LwpCellLayout::ApplyBorders(XFCellStyle *pCellStyle)
     LwpCellBorderType eType = GetCellBorderType(crowid, ccolid, GetTableLayout());
 
     // get left cell and judge if neighbour border is different
-    XFBorders * pBorders = GetXFBorders();
-    if(!pBorders)
+    std::unique_ptr<XFBorders> xBorders(GetXFBorders());
+    if (!xBorders)
     {
         return;
     }
@@ -186,21 +184,21 @@ void LwpCellLayout::ApplyBorders(XFCellStyle *pCellStyle)
     switch (eType)
     {
     case enumNoBottomBorder:
-        pBorders->SetWidth(enumXFBorderBottom, 0);
+        xBorders->SetWidth(enumXFBorderBottom, 0);
         break;
     case enumNoLeftBorder:
-        pBorders->SetWidth(enumXFBorderLeft, 0);
+        xBorders->SetWidth(enumXFBorderLeft, 0);
         break;
     case enumNoLeftNoBottomBorder:
-        pBorders->SetWidth(enumXFBorderBottom, 0);
-        pBorders->SetWidth(enumXFBorderLeft, 0);
+        xBorders->SetWidth(enumXFBorderBottom, 0);
+        xBorders->SetWidth(enumXFBorderLeft, 0);
         break;
     case enumWholeBorder:
         break;
     default:
         assert(false);
     }
-    pCellStyle->SetBorders(pBorders);
+    pCellStyle->SetBorders(xBorders.release());
 }
 /**
  * @short   Apply watermark to cell style
@@ -209,10 +207,10 @@ void LwpCellLayout::ApplyBorders(XFCellStyle *pCellStyle)
  */
 void LwpCellLayout::ApplyWatermark(XFCellStyle *pCellStyle)
 {
-    XFBGImage* pBGImage = GetXFBGImage();
-    if(pBGImage)
+    std::unique_ptr<XFBGImage> xBGImage(GetXFBGImage());
+    if (xBGImage)
     {
-        pCellStyle->SetBackImage(pBGImage);
+        pCellStyle->SetBackImage(xBGImage);
     }
 }
 
@@ -223,10 +221,10 @@ void LwpCellLayout::ApplyWatermark(XFCellStyle *pCellStyle)
  */
 void LwpCellLayout::ApplyPatternFill(XFCellStyle* pCellStyle)
 {
-    XFBGImage* pXFBGImage = GetFillPattern();
-    if (pXFBGImage)
+    std::unique_ptr<XFBGImage> xXFBGImage(GetFillPattern());
+    if (xXFBGImage)
     {
-        pCellStyle->SetBackImage(pXFBGImage);
+        pCellStyle->SetBackImage(xXFBGImage);
     }
 }
 
@@ -285,7 +283,7 @@ void LwpCellLayout::ApplyFmtStyle(XFCellStyle *pCellStyle)
         if (pStyle)
         {
             XFStyleManager* pXFStyleManager = LwpGlobalMgr::GetInstance()->GetXFStyleManager();
-            m_NumfmtName = pXFStyleManager->AddStyle(pStyle).m_pStyle->GetStyleName();
+            m_NumfmtName = pXFStyleManager->AddStyle(std::unique_ptr<XFStyle>(pStyle)).m_pStyle->GetStyleName();
             pCellStyle->SetDataStyle(m_NumfmtName);
         }
     }
@@ -347,6 +345,7 @@ LwpPara* LwpCellLayout::GetLastParaOfPreviousStory()
     if (pPreStoryID && !(pPreStoryID->IsNull()))
     {
         LwpStory* pPreStory = dynamic_cast<LwpStory*>(pPreStoryID->obj(VO_STORY).get());
+        assert(pPreStory);
         return dynamic_cast<LwpPara*>(pPreStory->GetLastPara().obj(VO_PARA).get());
     }
     else
@@ -424,20 +423,20 @@ LwpCellBorderType LwpCellLayout::GetCellBorderType(sal_uInt16 nRow, sal_uInt16 n
         return enumWholeBorder;
 
     // get left cell and judge if neighbour border is different
-    XFBorders * pBorders = GetXFBorders();
-    if(!pBorders)
+    std::unique_ptr<XFBorders> xBorders(GetXFBorders());
+    if (!xBorders)
     {
         return enumWholeBorder;
     }
-    XFBorder& rLeftBorder = pBorders->GetLeft();
-    XFBorder& rBottomBorder = pBorders->GetBottom();
+    XFBorder& rLeftBorder = xBorders->GetLeft();
+    XFBorder& rBottomBorder = xBorders->GetBottom();
     bool bNoLeftBorder = false;
     bool bNoBottomBorder = false;
 
     LwpCellLayout * pLeftNeighbour = GetCellByRowCol(nRow, GetLeftColID(nCol), pTableLayout);
     if (pLeftNeighbour)
     {
-        XFBorders * pNeighbourBorders = pLeftNeighbour->GetXFBorders();
+        std::unique_ptr<XFBorders> pNeighbourBorders = pLeftNeighbour->GetXFBorders();
         if (pNeighbourBorders)
         {
             XFBorder& rRightBorder = pNeighbourBorders->GetRight();
@@ -448,7 +447,6 @@ LwpCellBorderType LwpCellLayout::GetCellBorderType(sal_uInt16 nRow, sal_uInt16 n
                 // we should not ignored it
                 bNoLeftBorder = true;
             }
-            delete pNeighbourBorders;
         }
 
     }
@@ -456,7 +454,7 @@ LwpCellBorderType LwpCellLayout::GetCellBorderType(sal_uInt16 nRow, sal_uInt16 n
     LwpCellLayout * pBelowNeighbour = GetCellByRowCol(GetBelowRowID(nRow), nCol, pTableLayout);
     if (pBelowNeighbour) //&& (eType == enumRightNotLastCellBorder || eType ==  enumLeftNotLastCellBorder) )
     {
-        XFBorders * pBelowBorders = pBelowNeighbour->GetXFBorders();
+        std::unique_ptr<XFBorders> pBelowBorders = pBelowNeighbour->GetXFBorders();
         if (pBelowBorders)
         {
             XFBorder& rTopBorder = pBelowBorders->GetTop();
@@ -467,11 +465,10 @@ LwpCellBorderType LwpCellLayout::GetCellBorderType(sal_uInt16 nRow, sal_uInt16 n
                 // we should not ignored it
                 bNoBottomBorder = true;
             }
-            delete pBelowBorders;
         }
     }
 
-    delete pBorders;
+    xBorders.reset();
 
     if (bNoBottomBorder)
     {
@@ -517,8 +514,8 @@ void LwpCellLayout::RegisterDefaultCell()
         ApplyFmtStyle(xCellStyle.get());
         xCellStyle->SetAlignType(enumXFAlignNone, GetVerticalAlignmentType());
 
-        XFBorders * pBorders = GetXFBorders();
-        if (pBorders)
+        std::unique_ptr<XFBorders> xBorders(GetXFBorders());
+        if (xBorders)
         {
             switch(eLoop)
             {
@@ -527,15 +524,15 @@ void LwpCellLayout::RegisterDefaultCell()
                 //| |
 
                 // remove bottom line
-                pBorders->SetWidth(enumXFBorderBottom, 0);
+                xBorders->SetWidth(enumXFBorderBottom, 0);
                 break;
             case enumNoLeftNoBottomBorder:
 
                 //  |
 
                 // remove left and bottom
-                pBorders->SetWidth(enumXFBorderLeft, 0);
-                pBorders->SetWidth(enumXFBorderBottom, 0);
+                xBorders->SetWidth(enumXFBorderLeft, 0);
+                xBorders->SetWidth(enumXFBorderBottom, 0);
                 break;
             case enumWholeBorder:
 
@@ -548,14 +545,14 @@ void LwpCellLayout::RegisterDefaultCell()
                 //| |
 
                 // remove left line
-                pBorders->SetWidth(enumXFBorderLeft, 0);
+                xBorders->SetWidth(enumXFBorderLeft, 0);
                 break;
             default:
                 assert(false);
             }
-            xCellStyle->SetBorders(pBorders);
+            xCellStyle->SetBorders(xBorders.release());
         }
-        m_CellStyleNames[eLoop] = (pXFStyleManager->AddStyle(xCellStyle.release())).m_pStyle->GetStyleName();
+        m_CellStyleNames[eLoop] = pXFStyleManager->AddStyle(std::move(xCellStyle)).m_pStyle->GetStyleName();
     }
 }
 /**
@@ -576,18 +573,18 @@ void LwpCellLayout::RegisterStyle()
     }
 
     // register cell style
-    XFCellStyle *pCellStyle = new XFCellStyle();
+    std::unique_ptr<XFCellStyle> xCellStyle(new XFCellStyle);
 
-    ApplyPadding(pCellStyle);
-    ApplyBackGround(pCellStyle);
-    ApplyWatermark(pCellStyle);
-    ApplyFmtStyle(pCellStyle);
-    ApplyBorders(pCellStyle);
+    ApplyPadding(xCellStyle.get());
+    ApplyBackGround(xCellStyle.get());
+    ApplyWatermark(xCellStyle.get());
+    ApplyFmtStyle(xCellStyle.get());
+    ApplyBorders(xCellStyle.get());
 
-    pCellStyle->SetAlignType(enumXFAlignNone, GetVerticalAlignmentType());
+    xCellStyle->SetAlignType(enumXFAlignNone, GetVerticalAlignmentType());
 
     XFStyleManager* pXFStyleManager = LwpGlobalMgr::GetInstance()->GetXFStyleManager();
-    m_StyleName = (pXFStyleManager->AddStyle(pCellStyle)).m_pStyle->GetStyleName();
+    m_StyleName = pXFStyleManager->AddStyle(std::move(xCellStyle)).m_pStyle->GetStyleName();
 
     // content object register styles
     rtl::Reference<LwpObject> pObj = m_Content.obj();
@@ -619,13 +616,13 @@ void LwpCellLayout::Read()
     else
     {
         crowid = pStrm->QuickReaduInt16();
-        ccolid = (sal_uInt8) pStrm->QuickReaduInt16();  // written as a lushort
+        ccolid = static_cast<sal_uInt8>(pStrm->QuickReaduInt16());  // written as a lushort
 
         sal_uInt16 type;
 
         type = pStrm->QuickReaduInt16();
         pStrm->SkipExtra();
-        cType = (LeaderDotType)type;
+        cType = static_cast<LeaderDotType>(type);
 
         cLayNumerics.ReadIndexed(pStrm);
         cLayDiagonalLine.ReadIndexed(pStrm);
@@ -672,7 +669,7 @@ void LwpCellLayout::ApplyProtect(XFCell * pCell, LwpObjectID aTableID)
     pCell->SetProtect(bProtected);
 }
 
-LwpConnectedCellLayout::LwpConnectedCellLayout(LwpObjectHeader &objHdr, LwpSvStream* pStrm)
+LwpConnectedCellLayout::LwpConnectedCellLayout(LwpObjectHeader const &objHdr, LwpSvStream* pStrm)
     : LwpCellLayout(objHdr, pStrm)
     , cnumrows(0)
     , cnumcols(0)
@@ -713,21 +710,18 @@ void LwpConnectedCellLayout::SetCellMap()
 LwpCellBorderType LwpConnectedCellLayout::GetCellBorderType(sal_uInt16 nRow, sal_uInt16 nCol, LwpTableLayout * pTableLayout)
 {
     if (!pTableLayout)
-    {
-        assert(false);
-        return enumWholeBorder;
-    }
+        throw std::runtime_error("missing table layout");
 
     sal_uInt16 nRowSpan = m_nRealrowspan;
 
     // get left cell and judge if neighbour border is different
-    XFBorders * pBorders = GetXFBorders();
-    if(!pBorders)
+    std::unique_ptr<XFBorders> xBorders(GetXFBorders());
+    if( !xBorders)
     {
         return enumWholeBorder;
     }
-    XFBorder& rLeftBorder = pBorders->GetLeft();
-    XFBorder& rBottomBorder = pBorders->GetBottom();
+    XFBorder& rLeftBorder = xBorders->GetLeft();
+    XFBorder& rBottomBorder = xBorders->GetBottom();
     bool bNoLeftBorder = true;
     bool bNoBottomBorder = true;
 
@@ -788,7 +782,8 @@ LwpCellBorderType LwpConnectedCellLayout::GetCellBorderType(sal_uInt16 nRow, sal
             }
         }
     }
-    delete pBorders;
+
+    xBorders.reset();
 
     if (bNoBottomBorder)
     {
@@ -816,7 +811,7 @@ void LwpConnectedCellLayout::Read()
 
     cnumrows = m_pObjStrm->QuickReaduInt16();
     numcols = m_pObjStrm->QuickReaduInt16();        // written as a lushort
-    cnumcols = (sal_uInt8)numcols;
+    cnumcols = static_cast<sal_uInt8>(numcols);
 
     m_nRealrowspan = cnumrows;
     m_nRealcolspan = cnumcols;
@@ -840,7 +835,7 @@ void LwpConnectedCellLayout::Parse(IXFStream* /*pOutputStream*/)
 {
 }
 
-LwpHiddenCellLayout::LwpHiddenCellLayout(LwpObjectHeader &objHdr, LwpSvStream* pStrm)
+LwpHiddenCellLayout::LwpHiddenCellLayout(LwpObjectHeader const &objHdr, LwpSvStream* pStrm)
     : LwpCellLayout(objHdr, pStrm)
 {}
 
@@ -890,11 +885,11 @@ rtl::Reference<XFCell> LwpHiddenCellLayout::ConvertCell(LwpObjectID aTableID, sa
         LwpCellLayout *pDefault = dynamic_cast<LwpCellLayout *>(pTable->GetDefaultCellStyle().obj().get());
         if (pDefault)
         {
-            xXFCell = pDefault->ConvertCell(aTableID, nRow, nCol);
+            xXFCell = pDefault->DoConvertCell(aTableID, nRow, nCol);
         }
         else
         {
-            xXFCell = pConnCell->ConvertCell(aTableID, nRow, nCol);
+            xXFCell = pConnCell->DoConvertCell(aTableID, nRow, nCol);
         }
         xXFCell->SetColumnSpaned(pConnCell->GetNumcols());
     }
@@ -913,7 +908,7 @@ rtl::Reference<XFCell> LwpHiddenCellLayout::ConvertCell(LwpObjectID aTableID, sa
 {
 }
 
-LwpParallelColumnsBlock::LwpParallelColumnsBlock(LwpObjectHeader &objHdr, LwpSvStream* pStrm):LwpCellLayout(objHdr, pStrm)
+LwpParallelColumnsBlock::LwpParallelColumnsBlock(LwpObjectHeader const &objHdr, LwpSvStream* pStrm):LwpCellLayout(objHdr, pStrm)
 {}
 
 LwpParallelColumnsBlock::~LwpParallelColumnsBlock()

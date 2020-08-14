@@ -19,24 +19,17 @@
 
 #include <svtools/editbrowsebox.hxx>
 
-#include <vcl/svapp.hxx>
 #include <tools/debug.hxx>
-#include <vcl/window.hxx>
-
-#include <vcl/edit.hxx>
-#include <tools/resid.hxx>
-#include <vcl/spinfld.hxx>
+#include <vcl/image.hxx>
 #include <vcl/settings.hxx>
-#include <svtools/svtresid.hxx>
+#include <vcl/window.hxx>
+#include <vcl/svapp.hxx>
 
-#include <svtools/svtools.hrc>
-#include "bitmaps.hlst"
+#include <bitmaps.hlst>
 
 #include <algorithm>
-#include <tools/multisel.hxx>
 #include "editbrowseboximpl.hxx"
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include <comphelper/types.hxx>
 
 
 namespace svt
@@ -85,41 +78,27 @@ namespace svt
 
     void EditBrowseBox::BrowserMouseEventPtr::Clear()
     {
-        DELETEZ(pEvent);
+        pEvent.reset();
     }
 
     void EditBrowseBox::BrowserMouseEventPtr::Set(const BrowserMouseEvent* pEvt, bool bIsDown)
     {
-        if (pEvt == pEvent)
+        if (pEvt == pEvent.get())
         {
             bDown = bIsDown;
             return;
         }
-        Clear();
+        pEvent.reset();
         if (pEvt)
         {
-            pEvent = new BrowserMouseEvent(pEvt->GetWindow(),
+            pEvent.reset(new BrowserMouseEvent(pEvt->GetWindow(),
                                            *pEvt,
                                            pEvt->GetRow(),
                                            pEvt->GetColumn(),
                                            pEvt->GetColumnId(),
-                                           pEvt->GetRect());
+                                           pEvt->GetRect()));
             bDown = bIsDown;
         }
-    }
-
-    void EditBrowseBox::impl_construct()
-    {
-        m_aImpl.reset(new EditBrowseBoxImpl);
-
-        SetCompoundControl(true);
-        SetGridLineColor( Color( COL_LIGHTGRAY ) );
-
-        ImplInitSettings(true, true, true);
-
-        pCheckBoxPaint = VclPtr<CheckBoxControl>::Create(&GetDataWindow());
-        pCheckBoxPaint->SetPaintTransparent( true );
-        pCheckBoxPaint->SetBackground();
     }
 
     EditBrowseBox::EditBrowseBox( vcl::Window* pParent, EditBrowseBoxFlags nBrowserFlags, WinBits nBits, BrowserMode _nMode )
@@ -130,16 +109,22 @@ namespace svt
                   ,m_pFocusWhileRequest(nullptr)
                   ,nPaintRow(-1)
                   ,nEditRow(-1)
-                  ,nOldEditRow(-1)
                   ,nEditCol(0)
-                  ,nOldEditCol(0)
                   ,bHasFocus(false)
                   ,bPaintStatus(true)
                   ,bActiveBeforeTracking( false )
                   ,m_nBrowserFlags(nBrowserFlags)
                   ,pHeader(nullptr)
     {
-        impl_construct();
+        m_aImpl.reset(new EditBrowseBoxImpl);
+
+        SetCompoundControl(true);
+
+        ImplInitSettings(true, true, true);
+
+        pCheckBoxPaint = VclPtr<CheckBoxControl>::Create(&GetDataWindow());
+        pCheckBoxPaint->SetPaintTransparent( true );
+        pCheckBoxPaint->SetBackground();
     }
 
     void EditBrowseBox::Init()
@@ -171,8 +156,8 @@ namespace svt
     void EditBrowseBox::RemoveRows()
     {
         BrowseBox::Clear();
-        nOldEditRow = nEditRow = nPaintRow = -1;
-        nEditCol = nOldEditCol = 0;
+        nEditRow = nPaintRow = -1;
+        nEditCol = 0;
     }
 
 
@@ -224,12 +209,12 @@ namespace svt
         if (IsEditing())
         {
             EnableAndShow();
-            if (!aController->GetWindow().HasFocus() && (m_pFocusWhileRequest.get() == Application::GetFocusWindow()))
+            if (!ControlHasFocus() && (m_pFocusWhileRequest.get() == Application::GetFocusWindow()))
                 aController->GetWindow().GrabFocus();
         }
     }
 
-    void EditBrowseBox::PaintField( OutputDevice& rDev, const tools::Rectangle& rRect,
+    void EditBrowseBox::PaintField( vcl::RenderContext& rDev, const tools::Rectangle& rRect,
                                     sal_uInt16 nColumnId ) const
     {
         if (nColumnId == HandleColumnId)
@@ -318,18 +303,18 @@ namespace svt
             Image aImage(GetImage(eStatus));
             // calc the image position
             Size aImageSize(aImage.GetSizePixel());
-            aImageSize.Width() = CalcZoom(aImageSize.Width());
-            aImageSize.Height() = CalcZoom(aImageSize.Height());
+            aImageSize.setWidth( CalcZoom(aImageSize.Width()) );
+            aImageSize.setHeight( CalcZoom(aImageSize.Height()) );
             Point aPos( rRect.TopLeft() );
 
             if ( ( aImageSize.Width() > rRect.GetWidth() ) || ( aImageSize.Height() > rRect.GetHeight() ) )
                 rDev.SetClipRegion(vcl::Region(rRect));
 
             if ( aImageSize.Width() < rRect.GetWidth() )
-                aPos.X() += ( rRect.GetWidth() - aImageSize.Width() ) / 2;
+                aPos.AdjustX(( rRect.GetWidth() - aImageSize.Width() ) / 2 );
 
             if ( aImageSize.Height() < rRect.GetHeight() )
-                aPos.Y() += ( rRect.GetHeight() - aImageSize.Height() ) / 2;
+                aPos.AdjustY(( rRect.GetHeight() - aImageSize.Height() ) / 2 );
 
             if ( IsZoom() )
                 rDev.DrawImage( aPos, aImageSize, aImage );
@@ -348,7 +333,7 @@ namespace svt
         if ( bActiveBeforeTracking )
         {
             DeactivateCell();
-            Update();
+            PaintImmediately();
         }
 
         BrowseBox::ImplStartTracking();
@@ -422,7 +407,7 @@ namespace svt
                         Control::KeyInput(rEvt);
                     return;
                 }
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             default:
                 BrowseBox::KeyInput(rEvt);
         }
@@ -447,7 +432,7 @@ namespace svt
         if (rEvt.GetColumnId() == HandleColumnId)
         {   // it was the handle column. save the current cell content if necessary
             // (clicking on the handle column results in selecting the current row)
-            if (IsEditing() && aController->IsModified())
+            if (IsEditing() && aController->IsValueChangedFromSaved())
                 SaveModified();
         }
 
@@ -464,7 +449,6 @@ namespace svt
         }
     }
 
-
     void EditBrowseBox::MouseButtonUp( const BrowserMouseEvent& rEvt )
     {
         // absorb double clicks
@@ -480,6 +464,13 @@ namespace svt
                 implActivateCellOnMouseEvent(rEvt, true);
     }
 
+    bool EditBrowseBox::ControlHasFocus() const
+    {
+        Window* pControlWindow = aController ? &aController->GetWindow() : nullptr;
+        if (ControlBase* pControlBase = dynamic_cast<ControlBase*>(pControlWindow))
+            return pControlBase->ControlHasFocus();
+        return pControlWindow && pControlWindow->HasChildPathFocus();
+    }
 
     void EditBrowseBox::implActivateCellOnMouseEvent(const BrowserMouseEvent& _rEvt, bool _bUp)
     {
@@ -487,49 +478,15 @@ namespace svt
             ActivateCell();
         else if (IsEditing() && !aController->GetWindow().IsEnabled())
             DeactivateCell();
-        else if (IsEditing() && !aController->GetWindow().HasChildPathFocus())
+        else if (IsEditing() && !ControlHasFocus())
             AsynchGetFocus();
 
-        if (IsEditing() && aController->GetWindow().IsEnabled() && aController->WantMouseEvent())
-        {   // forwards the event to the control
+        if (!IsEditing() || !aController->GetWindow().IsEnabled())
+            return;
 
-            // If the field has been moved previously, we have to adjust the position
-
-            aController->GetWindow().GrabFocus();
-
-            // the position of the event relative to the controller's window
-            Point aPos = _rEvt.GetPosPixel() - _rEvt.GetRect().TopLeft();
-            // the (child) window which should really get the event
-            vcl::Window* pRealHandler = aController->GetWindow().FindWindow(aPos);
-            if (pRealHandler)
-                // the coords relative to this real handler
-                aPos -= pRealHandler->GetPosPixel();
-            else
-                pRealHandler = &aController->GetWindow();
-
-            // the faked event
-            MouseEvent aEvent(aPos, _rEvt.GetClicks(), _rEvt.GetMode(),
-                              _rEvt.GetButtons(),
-                              _rEvt.GetModifier());
-
-            pRealHandler->MouseButtonDown(aEvent);
-            if (_bUp)
-                pRealHandler->MouseButtonUp(aEvent);
-
-            vcl::Window *pWin = &aController->GetWindow();
-            if (!pWin->IsTracking())
-            {
-                for (pWin = pWin->GetWindow(GetWindowType::FirstChild);
-                     pWin && !pWin->IsTracking();
-                     pWin = pWin->GetWindow(GetWindowType::Next))
-                {
-                }
-            }
-            if (pWin && pWin->IsTracking())
-                pWin->EndTracking();
-        }
+        // forwards the event to the control
+        aController->ActivatingMouseEvent(_rEvt, _bUp);
     }
-
 
     void EditBrowseBox::Dispatch( sal_uInt16 _nId )
     {
@@ -554,118 +511,124 @@ namespace svt
         BrowseBox::Dispatch( _nId );
     }
 
+    bool EditBrowseBox::ProcessKey(const KeyEvent& rKeyEvent)
+    {
+        sal_uInt16 nCode  = rKeyEvent.GetKeyCode().GetCode();
+        bool       bShift = rKeyEvent.GetKeyCode().IsShift();
+        bool       bCtrl  = rKeyEvent.GetKeyCode().IsMod1();
+        bool       bAlt =   rKeyEvent.GetKeyCode().IsMod2();
+        bool       bLocalSelect = false;
+        bool       bNonEditOnly = false;
+        sal_uInt16 nId = BROWSER_NONE;
+
+        if (!bAlt && !bCtrl && !bShift )
+            switch ( nCode )
+            {
+                case KEY_DOWN:          nId = BROWSER_CURSORDOWN; break;
+                case KEY_UP:            nId = BROWSER_CURSORUP; break;
+                case KEY_PAGEDOWN:      nId = BROWSER_CURSORPAGEDOWN; break;
+                case KEY_PAGEUP:        nId = BROWSER_CURSORPAGEUP; break;
+                case KEY_HOME:          nId = BROWSER_CURSORHOME; break;
+                case KEY_END:           nId = BROWSER_CURSOREND; break;
+
+                case KEY_TAB:
+                    // ask if traveling to the next cell is allowed
+                    if (IsTabAllowed(true))
+                        nId = BROWSER_CURSORRIGHT;
+                    break;
+
+                case KEY_RETURN:
+                    // save the cell content (if necessary)
+                    if (IsEditing() && aController->IsValueChangedFromSaved() && !SaveModified())
+                    {
+                        // maybe we're not visible ...
+                        EnableAndShow();
+                        aController->GetWindow().GrabFocus();
+                        return true;
+                    }
+                    // ask if traveling to the next cell is allowed
+                    if (IsTabAllowed(true))
+                        nId = BROWSER_CURSORRIGHT;
+
+                    break;
+                case KEY_RIGHT:         nId = BROWSER_CURSORRIGHT; break;
+                case KEY_LEFT:          nId = BROWSER_CURSORLEFT; break;
+                case KEY_SPACE:         nId = BROWSER_SELECT; bNonEditOnly = bLocalSelect = true; break;
+            }
+
+        if ( !bAlt && !bCtrl && bShift )
+            switch ( nCode )
+            {
+                case KEY_DOWN:          nId = BROWSER_SELECTDOWN; bLocalSelect = true; break;
+                case KEY_UP:            nId = BROWSER_SELECTUP; bLocalSelect = true; break;
+                case KEY_HOME:          nId = BROWSER_SELECTHOME; bLocalSelect = true; break;
+                case KEY_END:           nId = BROWSER_SELECTEND; bLocalSelect = true; break;
+                case KEY_TAB:
+                    if (IsTabAllowed(false))
+                        nId = BROWSER_CURSORLEFT;
+                    break;
+            }
+
+        if ( !bAlt && bCtrl && bShift )
+            switch ( nCode )
+            {
+                case KEY_SPACE:         nId = BROWSER_SELECTCOLUMN; bLocalSelect = true; break;
+            }
+
+
+        if ( !bAlt && bCtrl && !bShift )
+            switch ( nCode )
+            {
+                case KEY_DOWN:          nId = BROWSER_SCROLLUP; break;
+                case KEY_UP:            nId = BROWSER_SCROLLDOWN; break;
+                case KEY_PAGEDOWN:      nId = BROWSER_CURSORENDOFFILE; break;
+                case KEY_PAGEUP:        nId = BROWSER_CURSORTOPOFFILE; break;
+                case KEY_HOME:          nId = BROWSER_CURSORTOPOFSCREEN; break;
+                case KEY_END:           nId = BROWSER_CURSORENDOFSCREEN; break;
+                case KEY_SPACE:         nId = BROWSER_ENHANCESELECTION; bLocalSelect = true; break;
+            }
+
+
+        if  (   ( nId != BROWSER_NONE )
+            &&  (   !IsEditing()
+                ||  (   !bNonEditOnly
+                    &&  aController->MoveAllowed(rKeyEvent)
+                    )
+                )
+            )
+        {
+            if (nId == BROWSER_SELECT || BROWSER_SELECTCOLUMN == nId )
+            {
+                // save the cell content (if necessary)
+                if (IsEditing() && aController->IsValueChangedFromSaved() && !SaveModified())
+                {
+                    // maybe we're not visible ...
+                    EnableAndShow();
+                    aController->GetWindow().GrabFocus();
+                    return true;
+                }
+            }
+
+            Dispatch(nId);
+
+            if (bLocalSelect && (GetSelectRowCount() || GetSelection() != nullptr))
+                DeactivateCell();
+            return true;
+        }
+        return false;
+    }
+
     bool EditBrowseBox::PreNotify(NotifyEvent& rEvt)
     {
         if (rEvt.GetType() == MouseNotifyEvent::KEYINPUT)
         {
-            if  (   (IsEditing() && Controller()->GetWindow().HasChildPathFocus())
+            if  (   (IsEditing() && ControlHasFocus())
                 ||  rEvt.GetWindow() == &GetDataWindow()
                 ||  (!IsEditing() && HasChildPathFocus())
                 )
             {
-                const KeyEvent* pKeyEvent = rEvt.GetKeyEvent();
-                sal_uInt16 nCode  = pKeyEvent->GetKeyCode().GetCode();
-                bool       bShift = pKeyEvent->GetKeyCode().IsShift();
-                bool       bCtrl  = pKeyEvent->GetKeyCode().IsMod1();
-                bool       bAlt =   pKeyEvent->GetKeyCode().IsMod2();
-                bool       bLocalSelect = false;
-                bool       bNonEditOnly = false;
-                sal_uInt16 nId = BROWSER_NONE;
-
-                if (!bAlt && !bCtrl && !bShift )
-                    switch ( nCode )
-                    {
-                        case KEY_DOWN:          nId = BROWSER_CURSORDOWN; break;
-                        case KEY_UP:            nId = BROWSER_CURSORUP; break;
-                        case KEY_PAGEDOWN:      nId = BROWSER_CURSORPAGEDOWN; break;
-                        case KEY_PAGEUP:        nId = BROWSER_CURSORPAGEUP; break;
-                        case KEY_HOME:          nId = BROWSER_CURSORHOME; break;
-                        case KEY_END:           nId = BROWSER_CURSOREND; break;
-
-                        case KEY_TAB:
-                            // ask if traveling to the next cell is allowed
-                            if (IsTabAllowed(true))
-                                nId = BROWSER_CURSORRIGHT;
-                            break;
-
-                        case KEY_RETURN:
-                            // save the cell content (if necessary)
-                            if (IsEditing() && aController->IsModified() && !SaveModified())
-                            {
-                                // maybe we're not visible ...
-                                EnableAndShow();
-                                aController->GetWindow().GrabFocus();
-                                return true;
-                            }
-                            // ask if traveling to the next cell is allowed
-                            if (IsTabAllowed(true))
-                                nId = BROWSER_CURSORRIGHT;
-
-                            break;
-                        case KEY_RIGHT:         nId = BROWSER_CURSORRIGHT; break;
-                        case KEY_LEFT:          nId = BROWSER_CURSORLEFT; break;
-                        case KEY_SPACE:         nId = BROWSER_SELECT; bNonEditOnly = bLocalSelect = true; break;
-                    }
-
-                if ( !bAlt && !bCtrl && bShift )
-                    switch ( nCode )
-                    {
-                        case KEY_DOWN:          nId = BROWSER_SELECTDOWN; bLocalSelect = true; break;
-                        case KEY_UP:            nId = BROWSER_SELECTUP; bLocalSelect = true; break;
-                        case KEY_HOME:          nId = BROWSER_SELECTHOME; bLocalSelect = true; break;
-                        case KEY_END:           nId = BROWSER_SELECTEND; bLocalSelect = true; break;
-                        case KEY_TAB:
-                            if (IsTabAllowed(false))
-                                nId = BROWSER_CURSORLEFT;
-                            break;
-                    }
-
-                if ( !bAlt && bCtrl && bShift )
-                    switch ( nCode )
-                    {
-                        case KEY_SPACE:         nId = BROWSER_SELECTCOLUMN; bLocalSelect = true; break;
-                    }
-
-
-                if ( !bAlt && bCtrl && !bShift )
-                    switch ( nCode )
-                    {
-                        case KEY_DOWN:          nId = BROWSER_SCROLLUP; break;
-                        case KEY_UP:            nId = BROWSER_SCROLLDOWN; break;
-                        case KEY_PAGEDOWN:      nId = BROWSER_CURSORENDOFFILE; break;
-                        case KEY_PAGEUP:        nId = BROWSER_CURSORTOPOFFILE; break;
-                        case KEY_HOME:          nId = BROWSER_CURSORTOPOFSCREEN; break;
-                        case KEY_END:           nId = BROWSER_CURSORENDOFSCREEN; break;
-                        case KEY_SPACE:         nId = BROWSER_ENHANCESELECTION; bLocalSelect = true; break;
-                    }
-
-
-                if  (   ( nId != BROWSER_NONE )
-                    &&  (   !IsEditing()
-                        ||  (   !bNonEditOnly
-                            &&  aController->MoveAllowed( *pKeyEvent )
-                            )
-                        )
-                    )
-                {
-                    if (nId == BROWSER_SELECT || BROWSER_SELECTCOLUMN == nId )
-                    {
-                        // save the cell content (if necessary)
-                        if (IsEditing() && aController->IsModified() && !SaveModified())
-                        {
-                            // maybe we're not visible ...
-                            EnableAndShow();
-                            aController->GetWindow().GrabFocus();
-                            return true;
-                        }
-                    }
-
-                    Dispatch(nId);
-
-                    if (bLocalSelect && (GetSelectRowCount() || GetSelection() != nullptr))
-                        DeactivateCell();
+                if (ProcessKey(*rEvt.GetKeyEvent()))
                     return true;
-                }
             }
         }
         return BrowseBox::PreNotify(rEvt);
@@ -763,28 +726,46 @@ namespace svt
 
         if (bFont)
         {
-            GetDataWindow().ApplyControlFont(GetDataWindow(), rStyleSettings.GetFieldFont());
+            vcl::Font aFont = rStyleSettings.GetFieldFont();
+            if (IsControlFont())
+            {
+                GetDataWindow().SetControlFont(GetControlFont());
+                aFont.Merge(GetControlFont());
+            }
+            else
+                GetDataWindow().SetControlFont();
+
+            GetDataWindow().SetZoomedPointFont(GetDataWindow(), aFont);
         }
 
         if (bFont || bForeground)
         {
-            GetDataWindow().ApplyControlForeground(GetDataWindow(), rStyleSettings.GetFieldTextColor());
-        }
-
-        if (bBackground) // FIXME: Outside of Paint Hierarchy
-        {
-            if (GetDataWindow().IsControlBackground())
+            Color aTextColor = rStyleSettings.GetFieldTextColor();
+            if (IsControlForeground())
             {
-                GetDataWindow().SetControlBackground(GetControlBackground());
-                GetDataWindow().SetBackground(GetDataWindow().GetControlBackground());
-                GetDataWindow().SetFillColor(GetDataWindow().GetControlBackground());
+                aTextColor = GetControlForeground();
+                GetDataWindow().SetControlForeground(aTextColor);
             }
             else
-            {
-                GetDataWindow().SetControlBackground();
-                GetDataWindow().SetBackground(rStyleSettings.GetFieldColor());
-                GetDataWindow().SetFillColor(rStyleSettings.GetFieldColor());
-            }
+                GetDataWindow().SetControlForeground();
+
+            GetDataWindow().SetTextColor( aTextColor );
+        }
+
+        if (!bBackground) // FIXME: Outside of Paint Hierarchy
+            return;
+
+        if (GetDataWindow().IsControlBackground())
+        {
+            GetDataWindow().SetControlBackground(GetControlBackground());
+            GetDataWindow().SetBackground(GetDataWindow().GetControlBackground());
+            GetDataWindow().SetFillColor(GetDataWindow().GetControlBackground());
+        }
+        else
+        {
+            GetDataWindow().SetControlBackground();
+            GetDataWindow().SetBackground(rStyleSettings.GetFieldColor());
+            GetDataWindow().SetFillColor(rStyleSettings.GetFieldColor());
         }
     }
 
@@ -807,7 +788,7 @@ namespace svt
             return true;
 
         // save the cell content
-        if (IsEditing() && aController->IsModified() && !const_cast<EditBrowseBox *>(this)->SaveModified())
+        if (IsEditing() && aController->IsValueChangedFromSaved() && !const_cast<EditBrowseBox *>(this)->SaveModified())
         {
             // maybe we're not visible ...
             EnableAndShow();
@@ -848,8 +829,6 @@ namespace svt
             {
                 tools::Rectangle aRect = GetFieldRectPixel(nEditRow, 0, false );
                 // status cell should be painted if and only if text is displayed
-                // note: bPaintStatus is mutable, but Solaris has problems with assigning
-                // probably because it is part of a bitfield
                 pTHIS->bPaintStatus = ( GetBrowserFlags() & EditBrowseBoxFlags::HANDLE_COLUMN_TEXT ) == EditBrowseBoxFlags::HANDLE_COLUMN_TEXT;
                 rWindow.Invalidate(aRect);
                 pTHIS->bPaintStatus = true;
@@ -943,38 +922,38 @@ namespace svt
             return;
         }
 
-        if (nEditRow >= 0 && nEditCol > HandleColumnId)
+        if (nEditRow < 0 || nEditCol <= HandleColumnId)
+            return;
+
+        aController = GetController(nRow, nCol);
+        if (aController.is())
         {
-            aController = GetController(nRow, nCol);
-            if (aController.is())
+            tools::Rectangle aRect( GetCellRect(nEditRow, nEditCol, false));
+            ResizeController(aController, aRect);
+
+            InitController(aController, nEditRow, nEditCol);
+
+            aController->SaveValue();
+            aController->SetModifyHdl(LINK(this,EditBrowseBox,ModifyHdl));
+            EnableAndShow();
+
+            if ( isAccessibleAlive() )
+                implCreateActiveAccessible();
+
+            // activate the cell only of the browser has the focus
+            if ( bHasFocus && bCellFocus )
+                AsynchGetFocus();
+        }
+        else
+        {
+            // no controller -> we have a new "active descendant"
+            if ( isAccessibleAlive() && HasFocus() )
             {
-                tools::Rectangle aRect( GetCellRect(nEditRow, nEditCol, false));
-                ResizeController(aController, aRect);
-
-                InitController(aController, nEditRow, nEditCol);
-
-                aController->ClearModified();
-                aController->SetModifyHdl(LINK(this,EditBrowseBox,ModifyHdl));
-                EnableAndShow();
-
-                if ( isAccessibleAlive() )
-                    implCreateActiveAccessible();
-
-                // activate the cell only of the browser has the focus
-                if ( bHasFocus && bCellFocus )
-                    AsynchGetFocus();
-            }
-            else
-            {
-                // no controller -> we have a new "active descendant"
-                if ( isAccessibleAlive() && HasFocus() )
-                {
-                    commitTableEvent(
-                        ACTIVE_DESCENDANT_CHANGED,
-                        makeAny( CreateAccessibleCell( nRow, GetColumnPos( nCol -1) ) ),
-                        Any()
-                    );
-                }
+                commitTableEvent(
+                    ACTIVE_DESCENDANT_CHANGED,
+                    makeAny( CreateAccessibleCell( nRow, GetColumnPos( nCol -1) ) ),
+                    Any()
+                );
             }
         }
     }
@@ -982,37 +961,34 @@ namespace svt
 
     void EditBrowseBox::DeactivateCell(bool bUpdate)
     {
-        if (IsEditing())
+        if (!IsEditing())
+            return;
+
+        if ( isAccessibleAlive() )
         {
-            if ( isAccessibleAlive() )
-            {
-                commitBrowseBoxEvent( CHILD, Any(), makeAny( m_aImpl->m_xActiveCell ) );
-                m_aImpl->clearActiveCell();
-            }
-
-            aOldController = aController;
-            aController.clear();
-
-            // reset the modify handler
-            aOldController->SetModifyHdl(Link<LinkParamNone*,void>());
-
-            if (bHasFocus)
-                GrabFocus(); // ensure that we have (and keep) the focus
-
-            aOldController->suspend();
-
-            // update if requested
-            if (bUpdate)
-                Update();
-
-            nOldEditCol = nEditCol;
-            nOldEditRow = nEditRow;
-
-            // release the controller (asynchronously)
-            if (nEndEvent)
-                Application::RemoveUserEvent(nEndEvent);
-            nEndEvent = Application::PostUserEvent(LINK(this,EditBrowseBox,EndEditHdl), nullptr, true);
+            commitBrowseBoxEvent( CHILD, Any(), makeAny( m_aImpl->m_xActiveCell ) );
+            m_aImpl->clearActiveCell();
         }
+
+        aOldController = aController;
+        aController.clear();
+
+        // reset the modify handler
+        aOldController->SetModifyHdl(Link<LinkParamNone*,void>());
+
+        if (bHasFocus)
+            GrabFocus(); // ensure that we have (and keep) the focus
+
+        aOldController->suspend();
+
+        // update if requested
+        if (bUpdate)
+            PaintImmediately();
+
+        // release the controller (asynchronously)
+        if (nEndEvent)
+            Application::RemoveUserEvent(nEndEvent);
+        nEndEvent = Application::PostUserEvent(LINK(this,EditBrowseBox,EndEditHdl), nullptr, true);
     }
 
 
@@ -1021,8 +997,8 @@ namespace svt
         tools::Rectangle aRect( GetFieldRectPixel(nRow, nColId, bRel));
         if ((GetMode()  & BrowserMode::CURSOR_WO_FOCUS) == BrowserMode::CURSOR_WO_FOCUS)
         {
-            aRect.Top() += 1;
-            aRect.Bottom() -= 1;
+            aRect.AdjustTop(1 );
+            aRect.AdjustBottom( -1 );
         }
         return aRect;
     }
@@ -1033,8 +1009,6 @@ namespace svt
         nEndEvent = nullptr;
 
         aOldController  = CellControllerRef();
-        nOldEditRow     = -1;
-        nOldEditCol     =  0;
     }
 
 
@@ -1052,7 +1026,6 @@ namespace svt
         CellModified();
     }
 
-
     void EditBrowseBox::ColumnResized( sal_uInt16 )
     {
         if (IsEditing())
@@ -1060,10 +1033,13 @@ namespace svt
             tools::Rectangle aRect( GetCellRect(nEditRow, nEditCol, false));
             CellControllerRef aControllerRef = Controller();
             ResizeController(aControllerRef, aRect);
+            // don't grab focus if Field Properties panel is being
+            // resized by split pane drag resizing
+            if (Application::IsUICaptured())
+                return;
             Controller()->GetWindow().GrabFocus();
         }
     }
-
 
     sal_uInt16 EditBrowseBox::AppendColumn(const OUString& rName, sal_uInt16 nWidth, sal_uInt16 nPos, sal_uInt16 nId)
     {
@@ -1088,7 +1064,7 @@ namespace svt
         if (!w)
             w = GetDefaultColumnWidth(rName);
 
-        InsertDataColumn(nId, rName, w, (HeaderBarItemBits::CENTER | HeaderBarItemBits::VCENTER | HeaderBarItemBits::CLICKABLE), nPos);
+        InsertDataColumn(nId, rName, w, (HeaderBarItemBits::CENTER | HeaderBarItemBits::CLICKABLE), nPos);
         return nId;
     }
 
@@ -1104,9 +1080,9 @@ namespace svt
 
         // the size of the control area
         Point aPoint(GetControlArea().TopLeft());
-        sal_uInt16 nX = (sal_uInt16)aPoint.X();
+        sal_uInt16 nX = static_cast<sal_uInt16>(aPoint.X());
 
-        ArrangeControls(nX, (sal_uInt16)aPoint.Y());
+        ArrangeControls(nX, static_cast<sal_uInt16>(aPoint.Y()));
 
         if (!nX)
             nX = USHRT_MAX;
@@ -1117,8 +1093,8 @@ namespace svt
         //chance to adapt to the new size
         if (bChanged)
         {
-            nX = (sal_uInt16)aPoint.X();
-            ArrangeControls(nX, (sal_uInt16)aPoint.Y());
+            nX = static_cast<sal_uInt16>(aPoint.X());
+            ArrangeControls(nX, static_cast<sal_uInt16>(aPoint.Y()));
         }
     }
 
@@ -1131,12 +1107,20 @@ namespace svt
         return nullptr;
     }
 
-
-    void EditBrowseBox::ResizeController(CellControllerRef& rController, const tools::Rectangle& rRect)
+    void EditBrowseBox::ResizeController(CellControllerRef const & rController, const tools::Rectangle& rRect)
     {
-        rController->GetWindow().SetPosSizePixel(rRect.TopLeft(), rRect.GetSize());
+        Point aPoint(rRect.TopLeft());
+        Size aSize(rRect.GetSize());
+        Control& rControl = rController->GetWindow();
+        auto nMinHeight = rControl.get_preferred_size().Height();
+        if (nMinHeight > aSize.Height())
+        {
+            auto nOffset = (nMinHeight - aSize.Height()) / 2;
+            aPoint.AdjustY(-nOffset);
+            aSize.setHeight(nMinHeight);
+        }
+        rControl.SetPosSizePixel(aPoint, aSize);
     }
-
 
     void EditBrowseBox::InitController(CellControllerRef&, long, sal_uInt16)
     {
@@ -1184,35 +1168,33 @@ namespace svt
         return nNewColWidth;
     }
 
-
     sal_uInt32 EditBrowseBox::GetTotalCellWidth(long, sal_uInt16)
     {
         return 0;
     }
 
-
     void EditBrowseBox::InvalidateHandleColumn()
     {
         tools::Rectangle aHdlFieldRect( GetFieldRectPixel( 0, 0 ));
         tools::Rectangle aInvalidRect( Point(0,0), GetOutputSizePixel() );
-        aInvalidRect.Right() = aHdlFieldRect.Right();
+        aInvalidRect.SetRight( aHdlFieldRect.Right() );
         Invalidate( aInvalidRect );
     }
 
-
     void EditBrowseBox::PaintTristate(const tools::Rectangle& rRect, const TriState& eState, bool _bEnabled) const
     {
-        pCheckBoxPaint->GetBox().SetState(eState);
-        pCheckBoxPaint->SetPosSizePixel(rRect.TopLeft(), rRect.GetSize());
+        pCheckBoxPaint->SetState(eState);
 
-        pCheckBoxPaint->GetBox().Enable(_bEnabled);
-        pCheckBoxPaint->Show();
-        pCheckBoxPaint->SetParentUpdateMode( false );
-        pCheckBoxPaint->Update();
-        pCheckBoxPaint->Hide();
-        pCheckBoxPaint->SetParentUpdateMode( true );
+        pCheckBoxPaint->GetBox().set_sensitive(_bEnabled);
+
+        Size aBoxSize = pCheckBoxPaint->GetBox().get_preferred_size();
+        tools::Rectangle aRect(Point(rRect.Left() + ((rRect.GetWidth() - aBoxSize.Width()) / 2),
+                                     rRect.Top() + ((rRect.GetHeight() - aBoxSize.Height()) / 2)),
+                               aBoxSize);
+        pCheckBoxPaint->SetPosSizePixel(aRect.TopLeft(), aRect.GetSize());
+
+        pCheckBoxPaint->Draw(&GetDataWindow(), aRect.TopLeft(), DrawFlags::NONE);
     }
-
 
     void EditBrowseBox::AsynchGetFocus()
     {
@@ -1271,7 +1253,6 @@ namespace svt
         }
     }
 
-
     void CellController::resume( )
     {
         DBG_ASSERT( bSuspended == !GetWindow().IsVisible(), "CellController::resume: inconsistence!" );
@@ -1283,23 +1264,15 @@ namespace svt
         }
     }
 
-
     void CellController::CommitModifications()
     {
         // nothing to do in this base class
     }
 
-
-    bool CellController::WantMouseEvent() const
+    void CellController::ActivatingMouseEvent(const BrowserMouseEvent& /*rEvt*/, bool /*bUp*/)
     {
-        return false;
+        // nothing to do in this base class
     }
-
-
-    void CellController::SetModified()
-    {
-    }
-
 
     bool CellController::MoveAllowed(const KeyEvent&) const
     {

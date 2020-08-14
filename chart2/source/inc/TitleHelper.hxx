@@ -19,14 +19,15 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_TITLEHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_INC_TITLEHELPER_HXX
 
-#include "ReferenceSizeProvider.hxx"
+#include <com/sun/star/uno/Reference.h>
+#include <rtl/ustring.hxx>
 #include "charttoolsdllapi.hxx"
-#include <com/sun/star/chart2/XTitled.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/chart2/XDiagram.hpp>
 
-#include "ChartModel.hxx"
+namespace chart { class ChartModel; }
+namespace chart { class ReferenceSizeProvider; }
+namespace com::sun::star::chart2 { class XTitle; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace chart
 {
@@ -71,8 +72,7 @@ public:
           createOrShowTitle(  eTitleType nTitleIndex
                     , const OUString& rTitleText
                     , const css::uno::Reference< css::frame::XModel >& xModel
-                    , const css::uno::Reference< css::uno::XComponentContext > & xContext
-                    , ReferenceSizeProvider * pRefSizeProvider );
+                    , const css::uno::Reference< css::uno::XComponentContext > & xContex );
 
     static void removeTitle( eTitleType nTitleIndex
                     , const css::uno::Reference< css::frame::XModel >& xModel );

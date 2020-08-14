@@ -35,17 +35,31 @@ private:
     sal_uInt64    GetTimeout() const = delete;
 
 protected:
-    virtual bool ReadyForSchedule( bool bIdle, sal_uInt64 nTimeNow ) const override;
-    virtual bool IsIdle() const override;
-    virtual sal_uInt64 UpdateMinPeriod( sal_uInt64 nMinPeriod, sal_uInt64 nTimeNow ) const override;
+    virtual sal_uInt64 UpdateMinPeriod( sal_uInt64 nTimeNow ) const override;
 
-    Idle( bool bAuto, const sal_Char *pDebugName = nullptr );
+    Idle( bool bAuto, const char *pDebugName );
 
 public:
-    Idle( const sal_Char *pDebugName = nullptr );
+    Idle( const char *pDebugName = nullptr );
 
     virtual void  Start() override;
 };
+
+/**
+ * An auto-idle is long running task processing small chunks of data, which
+ * is re-scheduled multiple times.
+ *
+ * Remember to stop the Idle when finished, as it would otherwise busy loop the CPU!
+ *
+ * It probably makes sense to re-implement ReadyForSchedule and UpdateMinPeriod,
+ * in case there is a quick check and it can otherwise sleep.
+ */
+class VCL_DLLPUBLIC AutoIdle : public Idle
+{
+public:
+    AutoIdle( const char *pDebugName );
+};
+
 
 #endif // INCLUDED_VCL_IDLE_HXX
 

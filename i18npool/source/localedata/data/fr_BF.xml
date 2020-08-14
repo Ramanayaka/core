@@ -33,10 +33,10 @@
       <LongDateYearSeparator> </LongDateYearSeparator>
     </Separators>
     <Markers>
-      <QuotationStart>'</QuotationStart>
-      <QuotationEnd>'</QuotationEnd>
-      <DoubleQuotationStart>"</DoubleQuotationStart>
-      <DoubleQuotationEnd>"</DoubleQuotationEnd>
+      <QuotationStart>‘</QuotationStart>
+      <QuotationEnd>’</QuotationEnd>
+      <DoubleQuotationStart>«</DoubleQuotationStart>
+      <DoubleQuotationEnd>»</DoubleQuotationEnd>
     </Markers>
     <TimeAM>AM</TimeAM>
     <TimePM>PM</TimePM>
@@ -188,6 +188,9 @@
     </FormatElement>
     <FormatElement msgid="DateTimeFormatskey2" default="false" type="medium" usage="DATE_TIME" formatindex="47">
       <FormatCode>DD/MM/YYYY HH:MM:SS AM/PM</FormatCode>
+    </FormatElement>
+    <FormatElement msgid="DateTimeFormatskey3" default="false" type="medium" usage="DATE_TIME" formatindex="50">
+      <FormatCode>DD/MM/YYYY HH:MM</FormatCode>
     </FormatElement>
   </LC_FORMAT>
   <LC_COLLATION>

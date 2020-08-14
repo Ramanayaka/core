@@ -20,17 +20,17 @@
 #ifndef INCLUDED_VCL_INC_HEADLESS_SVPINST_HXX
 #define INCLUDED_VCL_INC_HEADLESS_SVPINST_HXX
 
-#include <osl/mutex.hxx>
 #include <osl/thread.hxx>
+#include <osl/conditn.hxx>
 #include <salinst.hxx>
-#include <salwtype.hxx>
 #include <saltimer.hxx>
+#include <salusereventlist.hxx>
 #include <unx/geninst.h>
 #include <unx/genprn.h>
 
-#include <list>
+#include <condition_variable>
 
-#include <time.h>
+#include <sys/time.h>
 
 #define VIRTUAL_DESKTOP_WIDTH 1024
 #define VIRTUAL_DESKTOP_HEIGHT 768
@@ -40,7 +40,7 @@
 #endif
 
 class SvpSalInstance;
-class SvpSalTimer : public SalTimer
+class SvpSalTimer final : public SalTimer
 {
     SvpSalInstance* m_pInstance;
 public:
@@ -48,67 +48,75 @@ public:
     virtual ~SvpSalTimer() override;
 
     // override all pure virtual methods
-    virtual void Start( sal_uLong nMS ) override;
+    virtual void Start( sal_uInt64 nMS ) override;
     virtual void Stop() override;
 };
 
 class SvpSalFrame;
 class GenPspGraphics;
 
+enum class SvpRequest
+{
+    NONE,
+    MainThreadDispatchOneEvent,
+    MainThreadDispatchAllEvents,
+};
+
+class SvpSalYieldMutex final : public SalYieldMutex
+{
+private:
+    // note: these members might as well live in SvpSalInstance, but there is
+    // at least one subclass of SvpSalInstance (GTK3) that doesn't use them.
+    friend class SvpSalInstance;
+    // members for communication from main thread to non-main thread
+    int                     m_FeedbackFDs[2];
+    osl::Condition          m_NonMainWaitingYieldCond;
+    // members for communication from non-main thread to main thread
+    bool                    m_bNoYieldLock = false; // accessed only on main thread
+    std::mutex              m_WakeUpMainMutex; // guard m_wakeUpMain & m_Request
+    std::condition_variable m_WakeUpMainCond;
+    bool                    m_wakeUpMain = false;
+    SvpRequest              m_Request = SvpRequest::NONE;
+
+    virtual void            doAcquire( sal_uInt32 nLockCount ) override;
+    virtual sal_uInt32      doRelease( bool bUnlockAll ) override;
+
+public:
+    SvpSalYieldMutex();
+    virtual ~SvpSalYieldMutex() override;
+
+    virtual bool IsCurrentThread() const override;
+};
+
 SalInstance* svp_create_SalInstance();
 
-class VCL_DLLPUBLIC SvpSalInstance : public SalGenericInstance
+// NOTE: the functions IsMainThread, DoYield and Wakeup *require* the use of
+// SvpSalYieldMutex; if a subclass uses something else it must override these
+// (Wakeup is only called by SvpSalTimer and SvpSalFrame)
+class VCL_DLLPUBLIC SvpSalInstance : public SalGenericInstance, public SalUserEventList
 {
     timeval                 m_aTimeout;
     sal_uLong               m_nTimeoutMS;
-    int                     m_pTimeoutFDS[2];
+    oslThreadIdentifier     m_MainThread;
 
-    // internal event queue
-    struct SalUserEvent
-    {
-        const SalFrame*     m_pFrame;
-        ImplSVEvent*        m_pData;
-        SalEvent            m_nEvent;
-
-        SalUserEvent( const SalFrame* pFrame, ImplSVEvent* pData, SalEvent nEvent )
-                : m_pFrame( pFrame ),
-                  m_pData( pData ),
-                  m_nEvent( nEvent )
-        {}
-    };
-
-    osl::Mutex              m_aEventGuard;
-    std::list< SalUserEvent > m_aUserEvents;
-
-    std::list< SalFrame* >  m_aFrames;
-
-    bool                    isFrameAlive( const SalFrame* pFrame ) const;
-
-    void                    DoReleaseYield( int nTimeoutMS );
+    virtual void            TriggerUserEventProcessing() override;
+    virtual void            ProcessEvent( SalUserEvent aEvent ) override;
 
 public:
     static SvpSalInstance*  s_pDefaultInstance;
 
-    SvpSalInstance( SalYieldMutex *pMutex );
+    SvpSalInstance( std::unique_ptr<SalYieldMutex> pMutex );
     virtual ~SvpSalInstance() override;
 
     void                    CloseWakeupPipe(bool log);
     void                    CreateWakeupPipe(bool log);
+    void                    Wakeup(SvpRequest request = SvpRequest::NONE);
 
-    void                    PostEvent(const SalFrame* pFrame, ImplSVEvent* pData, SalEvent nEvent);
-
-#ifdef ANDROID
-    bool                    PostedEventsInQueue();
-#endif
-
-    void                    StartTimer( sal_uLong nMS );
+    void                    StartTimer( sal_uInt64 nMS );
     void                    StopTimer();
-    void                    Wakeup();
 
-    void                    registerFrame( SalFrame* pFrame ) { m_aFrames.push_back( pFrame ); }
-    void                    deregisterFrame( SalFrame* pFrame );
-    const std::list< SalFrame* >&
-                            getFrames() const { return m_aFrames; }
+    inline void             registerFrame( SalFrame* pFrame );
+    inline void             deregisterFrame( SalFrame* pFrame );
 
     bool                    CheckTimeout( bool bExecuteTimers = true );
 
@@ -125,7 +133,8 @@ public:
     // nDX and nDY in Pixel
     // nBitCount: 0 == Default(=as window) / 1 == Mono
     // pData allows for using a system dependent graphics or device context
-    virtual SalVirtualDevice*   CreateVirtualDevice( SalGraphics* pGraphics,
+    virtual std::unique_ptr<SalVirtualDevice>
+                            CreateVirtualDevice( SalGraphics* pGraphics,
                                                      long &nDX, long &nDY,
                                                      DeviceFormat eFormat, const SystemGraphicsData *pData = nullptr ) override;
 
@@ -136,12 +145,10 @@ public:
     virtual SalInfoPrinter* CreateInfoPrinter( SalPrinterQueueInfo* pQueueInfo,
                                                ImplJobSetup* pSetupData ) override;
     virtual void            DestroyInfoPrinter( SalInfoPrinter* pPrinter ) override;
-    virtual SalPrinter*     CreatePrinter( SalInfoPrinter* pInfoPrinter ) override;
-    virtual void            DestroyPrinter( SalPrinter* pPrinter ) override;
+    virtual std::unique_ptr<SalPrinter> CreatePrinter( SalInfoPrinter* pInfoPrinter ) override;
 
     virtual void            GetPrinterQueueInfo( ImplPrnQueueList* pList ) override;
     virtual void            GetPrinterQueueState( SalPrinterQueueInfo* pInfo ) override;
-    virtual void            DeletePrinterQueueInfo( SalPrinterQueueInfo* pInfo ) override;
     virtual OUString        GetDefaultPrinter() override;
     virtual void            PostPrintersChanged() override;
 
@@ -150,16 +157,17 @@ public:
     // SalSystem
     virtual SalSystem*      CreateSalSystem() override;
     // SalBitmap
-    virtual SalBitmap*      CreateSalBitmap() override;
+    virtual std::shared_ptr<SalBitmap> CreateSalBitmap() override;
+
+    std::shared_ptr<vcl::BackendCapabilities> GetBackendCapabilities() override;
 
     // wait next event and dispatch
     // must returned by UserEvent (SalFrame::PostEvent)
     // and timer
-    virtual SalYieldResult  DoYield(bool bWait, bool bHandleAllCurrentEvents, sal_uLong nReleased) override;
+    virtual bool            DoYield(bool bWait, bool bHandleAllCurrentEvents) override;
     virtual bool            AnyInput( VclInputFlags nType ) override;
-
-    // may return NULL to disable session management
-    virtual SalSession*     CreateSalSession() override;
+    virtual bool            IsMainThread() const override;
+    virtual void            updateMainThread() override;
 
     virtual OpenGLContext*  CreateOpenGLContext() override;
 
@@ -167,8 +175,20 @@ public:
 
     virtual void            AddToRecentDocumentList(const OUString& rFileUrl, const OUString& rMimeType, const OUString& rDocumentService) override;
 
-    virtual GenPspGraphics *CreatePrintGraphics() override;
+    virtual std::unique_ptr<GenPspGraphics> CreatePrintGraphics() override;
 };
+
+inline void SvpSalInstance::registerFrame( SalFrame* pFrame )
+{
+    insertFrame( pFrame );
+}
+
+inline void SvpSalInstance::deregisterFrame( SalFrame* pFrame )
+{
+    eraseFrame( pFrame );
+}
+
+VCL_DLLPUBLIC cairo_surface_t* get_underlying_cairo_surface(const VirtualDevice& rDevice);
 
 #endif // INCLUDED_VCL_INC_HEADLESS_SVPINST_HXX
 

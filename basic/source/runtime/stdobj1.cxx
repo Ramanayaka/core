@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/wrkwin.hxx>
+#include <basic/sberrors.hxx>
+#include <basic/sbstar.hxx>
+#include <vcl/outdev.hxx>
 #include <vcl/svapp.hxx>
-#include <svtools/transfer.hxx>
-#include "runtime.hxx"
-#include "sbstdobj.hxx"
+#include <sbstdobj.hxx>
 
 #define ATTR_IMP_TYPE           1
 #define ATTR_IMP_WIDTH          2
@@ -84,11 +84,8 @@ void SbStdPicture::PropWidth( SbxVariable* pVar, bool bWrite )
         return;
     }
 
-    Size aSize = aGraphic.GetPrefSize();
-    aSize = Application::GetAppWindow()->LogicToPixel( aSize, aGraphic.GetPrefMapMode() );
-    aSize = Application::GetAppWindow()->PixelToLogic( aSize, MapMode( MapUnit::MapTwip ) );
-
-    pVar->PutInteger( (sal_Int16)aSize.Width() );
+    Size aSize = OutputDevice::LogicToLogic(aGraphic.GetPrefSize(), aGraphic.GetPrefMapMode(), MapMode(MapUnit::MapTwip));
+    pVar->PutInteger( static_cast<sal_Int16>(aSize.Width()) );
 }
 
 void SbStdPicture::PropHeight( SbxVariable* pVar, bool bWrite )
@@ -99,11 +96,8 @@ void SbStdPicture::PropHeight( SbxVariable* pVar, bool bWrite )
         return;
     }
 
-    Size aSize = aGraphic.GetPrefSize();
-    aSize = Application::GetAppWindow()->LogicToPixel( aSize, aGraphic.GetPrefMapMode() );
-    aSize = Application::GetAppWindow()->PixelToLogic( aSize, MapMode( MapUnit::MapTwip ) );
-
-    pVar->PutInteger( (sal_Int16)aSize.Height() );
+    Size aSize = OutputDevice::LogicToLogic(aGraphic.GetPrefSize(), aGraphic.GetPrefMapMode(), MapMode(MapUnit::MapTwip));
+    pVar->PutInteger( static_cast<sal_Int16>(aSize.Height()) );
 }
 
 
@@ -132,28 +126,28 @@ void SbStdPicture::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 {
     const SbxHint* pHint = dynamic_cast<const SbxHint*>(&rHint);
 
-    if( pHint )
+    if( !pHint )
+        return;
+
+    if( pHint->GetId() == SfxHintId::BasicInfoWanted )
     {
-        if( pHint->GetId() == SfxHintId::BasicInfoWanted )
-        {
-            SbxObject::Notify( rBC, rHint );
-            return;
-        }
-
-        SbxVariable* pVar   = pHint->GetVar();
-        const sal_uInt32 nWhich = pVar->GetUserData();
-        bool         bWrite = pHint->GetId() == SfxHintId::BasicDataChanged;
-
-        // Properties
-        switch( nWhich )
-        {
-            case ATTR_IMP_TYPE:     PropType( pVar, bWrite ); return;
-            case ATTR_IMP_WIDTH:    PropWidth( pVar, bWrite ); return;
-            case ATTR_IMP_HEIGHT:   PropHeight( pVar, bWrite ); return;
-        }
-
         SbxObject::Notify( rBC, rHint );
+        return;
     }
+
+    SbxVariable* pVar   = pHint->GetVar();
+    const sal_uInt32 nWhich = pVar->GetUserData();
+    bool         bWrite = pHint->GetId() == SfxHintId::BasicDataChanged;
+
+    // Properties
+    switch( nWhich )
+    {
+        case ATTR_IMP_TYPE:     PropType( pVar, bWrite ); return;
+        case ATTR_IMP_WIDTH:    PropWidth( pVar, bWrite ); return;
+        case ATTR_IMP_HEIGHT:   PropHeight( pVar, bWrite ); return;
+    }
+
+    SbxObject::Notify( rBC, rHint );
 }
 
 
@@ -192,9 +186,9 @@ void SbStdFont::PropUnderline( SbxVariable* pVar, bool bWrite )
 void SbStdFont::PropSize( SbxVariable* pVar, bool bWrite )
 {
     if( bWrite )
-        SetSize( (sal_uInt16)pVar->GetInteger() );
+        SetSize( static_cast<sal_uInt16>(pVar->GetInteger()) );
     else
-        pVar->PutInteger( (sal_Int16)GetSize() );
+        pVar->PutInteger( static_cast<sal_Int16>(GetSize()) );
 }
 
 void SbStdFont::PropName( SbxVariable* pVar, bool bWrite )
@@ -205,7 +199,7 @@ void SbStdFont::PropName( SbxVariable* pVar, bool bWrite )
     }
     else
     {
-        pVar->PutString( GetFontName() );
+        pVar->PutString( aName );
     }
 }
 
@@ -249,37 +243,37 @@ void SbStdFont::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 {
     const SbxHint* pHint = dynamic_cast<const SbxHint*>(&rHint);
 
-    if( pHint )
+    if( !pHint )
+        return;
+
+    if( pHint->GetId() == SfxHintId::BasicInfoWanted )
     {
-        if( pHint->GetId() == SfxHintId::BasicInfoWanted )
-        {
-            SbxObject::Notify( rBC, rHint );
-            return;
-        }
-
-        SbxVariable* pVar   = pHint->GetVar();
-        const sal_uInt32 nWhich = pVar->GetUserData();
-        bool         bWrite = pHint->GetId() == SfxHintId::BasicDataChanged;
-
-        // Properties
-        switch( nWhich )
-        {
-            case ATTR_IMP_BOLD:         PropBold( pVar, bWrite ); return;
-            case ATTR_IMP_ITALIC:       PropItalic( pVar, bWrite ); return;
-            case ATTR_IMP_STRIKETHROUGH:PropStrikeThrough(  pVar, bWrite ); return;
-            case ATTR_IMP_UNDERLINE:    PropUnderline( pVar, bWrite ); return;
-            case ATTR_IMP_SIZE:         PropSize( pVar, bWrite ); return;
-            case ATTR_IMP_NAME:         PropName( pVar, bWrite ); return;
-        }
-
         SbxObject::Notify( rBC, rHint );
+        return;
     }
+
+    SbxVariable* pVar   = pHint->GetVar();
+    const sal_uInt32 nWhich = pVar->GetUserData();
+    bool         bWrite = pHint->GetId() == SfxHintId::BasicDataChanged;
+
+    // Properties
+    switch( nWhich )
+    {
+        case ATTR_IMP_BOLD:         PropBold( pVar, bWrite ); return;
+        case ATTR_IMP_ITALIC:       PropItalic( pVar, bWrite ); return;
+        case ATTR_IMP_STRIKETHROUGH:PropStrikeThrough(  pVar, bWrite ); return;
+        case ATTR_IMP_UNDERLINE:    PropUnderline( pVar, bWrite ); return;
+        case ATTR_IMP_SIZE:         PropSize( pVar, bWrite ); return;
+        case ATTR_IMP_NAME:         PropName( pVar, bWrite ); return;
+    }
+
+    SbxObject::Notify( rBC, rHint );
 }
 
 
-void SbStdClipboard::MethClear( SbxVariable*, SbxArray* pPar_, bool )
+void SbStdClipboard::MethClear( SbxArray const * pPar_ )
 {
-    if( pPar_ && (pPar_->Count() > 1) )
+    if( pPar_ && (pPar_->Count32() > 1) )
     {
         StarBASIC::Error( ERRCODE_BASIC_BAD_NUMBER_OF_ARGS );
         return;
@@ -287,16 +281,16 @@ void SbStdClipboard::MethClear( SbxVariable*, SbxArray* pPar_, bool )
 
 }
 
-void SbStdClipboard::MethGetData( SbxArray* pPar_, bool )
+void SbStdClipboard::MethGetData( SbxArray* pPar_ )
 {
-    if( !pPar_ || (pPar_->Count() != 2) )
+    if( !pPar_ || (pPar_->Count32() != 2) )
     {
         StarBASIC::Error( ERRCODE_BASIC_BAD_NUMBER_OF_ARGS );
         return;
     }
 
-    sal_uInt16 nFormat = pPar_->Get(1)->GetInteger();
-    if( !nFormat  || nFormat > 3 )
+    sal_Int16 nFormat = pPar_->Get32(1)->GetInteger();
+    if( nFormat <= 0 || nFormat > 3 )
     {
         StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
         return;
@@ -304,16 +298,16 @@ void SbStdClipboard::MethGetData( SbxArray* pPar_, bool )
 
 }
 
-void SbStdClipboard::MethGetFormat( SbxVariable* pVar, SbxArray* pPar_, bool )
+void SbStdClipboard::MethGetFormat( SbxVariable* pVar, SbxArray* pPar_ )
 {
-    if( !pPar_ || (pPar_->Count() != 2) )
+    if( !pPar_ || (pPar_->Count32() != 2) )
     {
         StarBASIC::Error( ERRCODE_BASIC_BAD_NUMBER_OF_ARGS );
         return;
     }
 
-    sal_uInt16 nFormat = pPar_->Get(1)->GetInteger();
-    if( !nFormat  || nFormat > 3 )
+    sal_Int16 nFormat = pPar_->Get32(1)->GetInteger();
+    if( nFormat <= 0 || nFormat > 3 )
     {
         StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
         return;
@@ -322,9 +316,9 @@ void SbStdClipboard::MethGetFormat( SbxVariable* pVar, SbxArray* pPar_, bool )
     pVar->PutBool( false );
 }
 
-void SbStdClipboard::MethGetText( SbxVariable* pVar, SbxArray* pPar_, bool )
+void SbStdClipboard::MethGetText( SbxVariable* pVar, SbxArray const * pPar_ )
 {
-    if( pPar_ && (pPar_->Count() > 1) )
+    if( pPar_ && (pPar_->Count32() > 1) )
     {
         StarBASIC::Error( ERRCODE_BASIC_BAD_NUMBER_OF_ARGS );
         return;
@@ -333,16 +327,16 @@ void SbStdClipboard::MethGetText( SbxVariable* pVar, SbxArray* pPar_, bool )
     pVar->PutString( OUString() );
 }
 
-void SbStdClipboard::MethSetData( SbxArray* pPar_, bool )
+void SbStdClipboard::MethSetData( SbxArray* pPar_ )
 {
-    if( !pPar_ || (pPar_->Count() != 3) )
+    if( !pPar_ || (pPar_->Count32() != 3) )
     {
         StarBASIC::Error( ERRCODE_BASIC_BAD_NUMBER_OF_ARGS );
         return;
     }
 
-    sal_uInt16 nFormat = pPar_->Get(2)->GetInteger();
-    if( !nFormat  || nFormat > 3 )
+    sal_Int16 nFormat = pPar_->Get32(2)->GetInteger();
+    if( nFormat <= 0 || nFormat > 3 )
     {
         StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
         return;
@@ -350,9 +344,9 @@ void SbStdClipboard::MethSetData( SbxArray* pPar_, bool )
 
 }
 
-void SbStdClipboard::MethSetText( SbxArray* pPar_, bool )
+void SbStdClipboard::MethSetText( SbxArray const * pPar_ )
 {
-    if( !pPar_ || (pPar_->Count() != 2) )
+    if( !pPar_ || (pPar_->Count32() != 2) )
     {
         StarBASIC::Error( ERRCODE_BASIC_BAD_NUMBER_OF_ARGS );
         return;
@@ -397,32 +391,31 @@ void SbStdClipboard::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 {
     const SbxHint* pHint = dynamic_cast<const SbxHint*>(&rHint);
 
-    if( pHint )
+    if( !pHint )
+        return;
+
+    if( pHint->GetId() == SfxHintId::BasicInfoWanted )
     {
-        if( pHint->GetId() == SfxHintId::BasicInfoWanted )
-        {
-            SbxObject::Notify( rBC, rHint );
-            return;
-        }
-
-        SbxVariable* pVar   = pHint->GetVar();
-        SbxArray*    pPar_  = pVar->GetParameters();
-        const sal_uInt32 nWhich = pVar->GetUserData();
-        bool         bWrite = pHint->GetId() == SfxHintId::BasicDataChanged;
-
-        // Methods
-        switch( nWhich )
-        {
-            case METH_CLEAR:            MethClear( pVar, pPar_, bWrite ); return;
-            case METH_GETDATA:          MethGetData( pPar_, bWrite ); return;
-            case METH_GETFORMAT:        MethGetFormat( pVar, pPar_, bWrite ); return;
-            case METH_GETTEXT:          MethGetText( pVar, pPar_, bWrite ); return;
-            case METH_SETDATA:          MethSetData( pPar_, bWrite ); return;
-            case METH_SETTEXT:          MethSetText( pPar_, bWrite ); return;
-        }
-
         SbxObject::Notify( rBC, rHint );
+        return;
     }
+
+    SbxVariable* pVar   = pHint->GetVar();
+    SbxArray*    pPar_  = pVar->GetParameters();
+    const sal_uInt32 nWhich = pVar->GetUserData();
+
+    // Methods
+    switch( nWhich )
+    {
+        case METH_CLEAR:            MethClear( pPar_ ); return;
+        case METH_GETDATA:          MethGetData( pPar_ ); return;
+        case METH_GETFORMAT:        MethGetFormat( pVar, pPar_ ); return;
+        case METH_GETTEXT:          MethGetText( pVar, pPar_ ); return;
+        case METH_SETDATA:          MethSetData( pPar_ ); return;
+        case METH_SETTEXT:          MethSetText( pPar_ ); return;
+    }
+
+    SbxObject::Notify( rBC, rHint );
 }
 
 

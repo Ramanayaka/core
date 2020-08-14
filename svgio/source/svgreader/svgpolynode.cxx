@@ -19,29 +19,23 @@
 
 #include <svgpolynode.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgPolyNode::SvgPolyNode(
             SvgDocument& rDocument,
             SvgNode* pParent,
             bool bIsPolyline)
         :   SvgNode(SVGTokenPolygon, rDocument, pParent),
             maSvgStyleAttributes(*this),
-            mpPolygon(nullptr),
-            mpaTransform(nullptr),
             mbIsPolyline(bIsPolyline)
         {
         }
 
         SvgPolyNode::~SvgPolyNode()
         {
-            delete mpaTransform;
-            delete mpPolygon;
         }
 
         const SvgStyleAttributes* SvgPolyNode::getSvgStyleAttributes() const
@@ -69,7 +63,7 @@ namespace svgio
                 {
                     basegfx::B2DPolygon aPath;
 
-                    if(basegfx::tools::importFromSvgPoints(aPath, aContent))
+                    if(basegfx::utils::importFromSvgPoints(aPath, aContent))
                     {
                         if(aPath.count())
                         {
@@ -116,7 +110,6 @@ namespace svgio
                 }
             }
         }
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

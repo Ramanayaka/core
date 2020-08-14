@@ -18,11 +18,11 @@
  */
 
 #include "GroupBox.hxx"
-#include "property.hxx"
-#include "property.hrc"
-#include "services.hxx"
+#include <frm_strings.hxx>
+#include <services.hxx>
+#include <comphelper/property.hxx>
 #include <tools/debug.hxx>
-#include <comphelper/processfactory.hxx>
+#include <com/sun/star/form/FormComponentType.hpp>
 
 namespace frm
 {
@@ -30,7 +30,6 @@ namespace frm
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -38,7 +37,7 @@ using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::util;
-
+using namespace comphelper;
 
 // OGroupBoxModel
 
@@ -87,7 +86,7 @@ void OGroupBoxModel::describeAggregateProperties( Sequence< Property >& _rAggreg
 
 OUString SAL_CALL OGroupBoxModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_GROUPBOX);  // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_GROUPBOX;  // old (non-sun) name for compatibility !
 }
 
 
@@ -140,7 +139,7 @@ css::uno::Sequence<OUString> SAL_CALL OGroupBoxControl::getSupportedServiceNames
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OGroupBoxModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
@@ -148,7 +147,7 @@ com_sun_star_form_OGroupBoxModel_get_implementation(css::uno::XComponentContext*
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OGroupBoxControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

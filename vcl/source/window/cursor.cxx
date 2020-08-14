@@ -18,6 +18,8 @@
  */
 
 #include <memory>
+
+#include <comphelper/lok.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/timer.hxx>
 #include <vcl/settings.hxx>
@@ -34,7 +36,6 @@ struct ImplCursorData
     Point           maPixPos;           // Pixel-Position
     Point           maPixRotOff;        // Pixel-Offset-Position
     Size            maPixSize;          // Pixel-Size
-    long            mnPixSlant;         // Pixel-Slant
     short           mnOrientation;      // Pixel-Orientation
     CursorDirection mnDirection;        // indicates writing direction
     sal_uInt16      mnStyle;            // Cursor-Style
@@ -42,16 +43,11 @@ struct ImplCursorData
     VclPtr<vcl::Window> mpWindow;           // assigned window
 };
 
-static void ImplCursorInvert( ImplCursorData* pData )
+static tools::Rectangle ImplCursorInvert(vcl::RenderContext* pRenderContext, ImplCursorData const * pData)
 {
-    vcl::Window* pWindow  = pData->mpWindow;
-    std::unique_ptr<PaintBufferGuard> pGuard;
-    const bool bDoubleBuffering = pWindow->SupportsDoubleBuffering();
-    if (bDoubleBuffering)
-        pGuard.reset(new PaintBufferGuard(pWindow->ImplGetWindowImpl()->mpFrameData, pWindow));
-    vcl::RenderContext* pRenderContext = bDoubleBuffering ? pGuard->GetRenderContext() : pWindow;
     tools::Rectangle aPaintRect;
-    bool    bMapMode = pRenderContext->IsMapModeEnabled();
+
+    bool bMapMode = pRenderContext->IsMapModeEnabled();
     pRenderContext->EnableMapMode( false );
     InvertFlags nInvertStyle;
     if ( pData->mnStyle & CURSOR_SHADOW )
@@ -60,23 +56,13 @@ static void ImplCursorInvert( ImplCursorData* pData )
         nInvertStyle = InvertFlags::NONE;
 
     tools::Rectangle aRect( pData->maPixPos, pData->maPixSize );
-    if ( pData->mnDirection != CursorDirection::NONE || pData->mnOrientation || pData->mnPixSlant )
+    if ( pData->mnDirection != CursorDirection::NONE || pData->mnOrientation )
     {
         tools::Polygon aPoly( aRect );
         if( aPoly.GetSize() == 5 )
         {
-            aPoly[1].X() += 1;  // include the right border
-            aPoly[2].X() += 1;
-            if ( pData->mnPixSlant )
-            {
-                Point aPoint = aPoly.GetPoint( 0 );
-                aPoint.X() += pData->mnPixSlant;
-                aPoly.SetPoint( aPoint, 0 );
-                aPoly.SetPoint( aPoint, 4 );
-                aPoint = aPoly.GetPoint( 1 );
-                aPoint.X() += pData->mnPixSlant;
-                aPoly.SetPoint( aPoint, 1 );
-            }
+            aPoly[1].AdjustX(1 );  // include the right border
+            aPoly[2].AdjustX(1 );
 
             // apply direction flag after slant to use the correct shape
             if ( pData->mnDirection != CursorDirection::NONE)
@@ -89,9 +75,9 @@ static void ImplCursorInvert( ImplCursorData* pData )
                     pAry[0] = aPoly.GetPoint( 0 );
                     pAry[1] = aPoly.GetPoint( 1 );
                     pAry[2] = pAry[1];
-                    pAry[2].X() += delta;
+                    pAry[2].AdjustX(delta );
                     pAry[3] =  pAry[1];
-                    pAry[3].Y() += delta;
+                    pAry[3].AdjustY(delta );
                     pAry[4] = aPoly.GetPoint( 2 );
                     pAry[5] = aPoly.GetPoint( 3 );
                     pAry[6] = aPoly.GetPoint( 4 );
@@ -104,9 +90,9 @@ static void ImplCursorInvert( ImplCursorData* pData )
                     pAry[2] = aPoly.GetPoint( 2 );
                     pAry[3] = aPoly.GetPoint( 3 );
                     pAry[4] = pAry[0];
-                    pAry[4].Y() += delta;
+                    pAry[4].AdjustY(delta );
                     pAry[5] =  pAry[0];
-                    pAry[5].X() -= delta;
+                    pAry[5].AdjustX( -delta );
                     pAry[6] = aPoly.GetPoint( 4 );
                 }
                 aPoly = tools::Polygon( 7, pAry);
@@ -115,42 +101,79 @@ static void ImplCursorInvert( ImplCursorData* pData )
             if ( pData->mnOrientation )
                 aPoly.Rotate( pData->maPixRotOff, pData->mnOrientation );
             pRenderContext->Invert( aPoly, nInvertStyle );
-            if (bDoubleBuffering)
-                aPaintRect = aPoly.GetBoundRect();
+            aPaintRect = aPoly.GetBoundRect();
         }
     }
     else
     {
         pRenderContext->Invert( aRect, nInvertStyle );
-        if (bDoubleBuffering)
-            aPaintRect = aRect;
+        aPaintRect = aRect;
     }
     pRenderContext->EnableMapMode( bMapMode );
+    return aPaintRect;
+}
+
+static void ImplCursorInvert(vcl::Window* pWindow, ImplCursorData const * pData)
+{
+    if (!pWindow || pWindow->IsDisposed())
+        return;
+
+    std::unique_ptr<vcl::PaintBufferGuard> pGuard;
+    const bool bDoubleBuffering = pWindow->SupportsDoubleBuffering();
+    if (bDoubleBuffering)
+        pGuard.reset(new vcl::PaintBufferGuard(pWindow->ImplGetWindowImpl()->mpFrameData, pWindow));
+
+    vcl::RenderContext* pRenderContext = bDoubleBuffering ? pGuard->GetRenderContext() : pWindow;
+
+    tools::Rectangle aPaintRect = ImplCursorInvert(pRenderContext, pData);
     if (bDoubleBuffering)
         pGuard->SetPaintRect(pRenderContext->PixelToLogic(aPaintRect));
 }
 
-void vcl::Cursor::ImplDraw()
+bool vcl::Cursor::ImplPrepForDraw(const OutputDevice* pDevice, ImplCursorData& rData)
 {
-    if ( mpData && mpData->mpWindow && !mpData->mbCurVisible )
+    if (pDevice && !rData.mbCurVisible)
     {
-        vcl::Window* pWindow         = mpData->mpWindow;
-        mpData->maPixPos        = pWindow->LogicToPixel( maPos );
-        mpData->maPixSize       = pWindow->LogicToPixel( maSize );
-        mpData->mnPixSlant      = pWindow->LogicToPixel( Size( mnSlant, 0 ) ).Width();
-        mpData->mnOrientation   = mnOrientation;
-        mpData->mnDirection     = mnDirection;
+        rData.maPixPos        = pDevice->LogicToPixel( maPos );
+        rData.maPixSize       = pDevice->LogicToPixel( maSize );
+        rData.mnOrientation   = mnOrientation;
+        rData.mnDirection     = mnDirection;
 
         // correct the position with the offset
-        mpData->maPixRotOff = mpData->maPixPos;
+        rData.maPixRotOff = rData.maPixPos;
 
         // use width (as set in Settings) if size is 0,
-        if ( !mpData->maPixSize.Width() )
-            mpData->maPixSize.Width() = pWindow->GetSettings().GetStyleSettings().GetCursorSize();
+        if (!rData.maPixSize.Width())
+            rData.maPixSize.setWidth(pDevice->GetSettings().GetStyleSettings().GetCursorSize());
+        return true;
+    }
+    return false;
+}
 
-        // calculate output area and display
-        ImplCursorInvert( mpData );
-        mpData->mbCurVisible = true;
+void vcl::Cursor::ImplDraw()
+{
+    if (mpData && mpData->mpWindow)
+    {
+        // calculate output area
+        if (ImplPrepForDraw(mpData->mpWindow, *mpData))
+        {
+            // display
+            ImplCursorInvert(mpData->mpWindow, mpData.get());
+            mpData->mbCurVisible = true;
+        }
+    }
+}
+
+void vcl::Cursor::DrawToDevice(OutputDevice& rRenderContext)
+{
+    ImplCursorData aData;
+    aData.mnStyle = 0;
+    aData.mbCurVisible = false;
+    // calculate output area
+    if (ImplPrepForDraw(&rRenderContext, aData))
+    {
+        // display
+        ImplCursorInvert(&rRenderContext, &aData);
     }
 }
 
@@ -158,52 +181,87 @@ void vcl::Cursor::ImplRestore()
 {
     assert( mpData && mpData->mbCurVisible );
 
-    ImplCursorInvert( mpData );
+    ImplCursorInvert(mpData->mpWindow, mpData.get());
     mpData->mbCurVisible = false;
 }
 
 void vcl::Cursor::ImplDoShow( bool bDrawDirect, bool bRestore )
 {
-    if ( mbVisible )
+    if ( !mbVisible )
+        return;
+
+    vcl::Window* pWindow;
+    if ( mpWindow )
+        pWindow = mpWindow;
+    else
     {
-        vcl::Window* pWindow;
-        if ( mpWindow )
-            pWindow = mpWindow;
-        else
-        {
-            // show the cursor, if there is an active window and the cursor
-            // has been selected in this window
-            pWindow = Application::GetFocusWindow();
-            if ( !pWindow || (pWindow->mpWindowImpl->mpCursor != this) || pWindow->mpWindowImpl->mbInPaint
-                || !pWindow->mpWindowImpl->mpFrameData->mbHasFocus )
-                pWindow = nullptr;
-        }
-
-        if ( pWindow )
-        {
-            if ( !mpData )
-            {
-                mpData = new ImplCursorData;
-                mpData->mbCurVisible = false;
-                mpData->maTimer.SetInvokeHandler( LINK( this, Cursor, ImplTimerHdl ) );
-                mpData->maTimer.SetDebugName( "vcl ImplCursorData maTimer" );
-            }
-
-            mpData->mpWindow    = pWindow;
-            mpData->mnStyle     = mnStyle;
-            if ( bDrawDirect || bRestore )
-                ImplDraw();
-
-            if ( !mpWindow && ! ( ! bDrawDirect && mpData->maTimer.IsActive()) )
-            {
-                mpData->maTimer.SetTimeout( pWindow->GetSettings().GetStyleSettings().GetCursorBlinkTime() );
-                if ( mpData->maTimer.GetTimeout() != STYLE_CURSOR_NOBLINKTIME )
-                    mpData->maTimer.Start();
-                else if ( !mpData->mbCurVisible )
-                    ImplDraw();
-            }
-        }
+        // show the cursor, if there is an active window and the cursor
+        // has been selected in this window
+        pWindow = Application::GetFocusWindow();
+        if (!pWindow || !pWindow->mpWindowImpl || (pWindow->mpWindowImpl->mpCursor != this)
+            || pWindow->mpWindowImpl->mbInPaint
+            || !pWindow->mpWindowImpl->mpFrameData->mbHasFocus)
+            pWindow = nullptr;
     }
+
+    if ( !pWindow )
+        return;
+
+    if ( !mpData )
+    {
+        mpData.reset( new ImplCursorData );
+        mpData->mbCurVisible = false;
+        mpData->maTimer.SetInvokeHandler( LINK( this, Cursor, ImplTimerHdl ) );
+        mpData->maTimer.SetDebugName( "vcl ImplCursorData maTimer" );
+    }
+
+    mpData->mpWindow    = pWindow;
+    mpData->mnStyle     = mnStyle;
+    if ( bDrawDirect || bRestore )
+        ImplDraw();
+
+    if ( !mpWindow && ! ( ! bDrawDirect && mpData->maTimer.IsActive()) )
+    {
+        mpData->maTimer.SetTimeout( pWindow->GetSettings().GetStyleSettings().GetCursorBlinkTime() );
+        if ( mpData->maTimer.GetTimeout() != STYLE_CURSOR_NOBLINKTIME )
+            mpData->maTimer.Start();
+        else if ( !mpData->mbCurVisible )
+            ImplDraw();
+        LOKNotify( pWindow, "cursor_invalidate" );
+        LOKNotify( pWindow, "cursor_visible" );
+    }
+}
+
+void vcl::Cursor::LOKNotify( vcl::Window* pWindow, const OUString& rAction )
+{
+    VclPtr<vcl::Window> pParent = pWindow->GetParentWithLOKNotifier();
+    if (!pParent)
+        return;
+
+    assert(pWindow && "Cannot notify without a window");
+    assert(mpData && "Require ImplCursorData");
+    assert(comphelper::LibreOfficeKit::isActive());
+
+    if (comphelper::LibreOfficeKit::isDialogPainting())
+        return;
+
+    const vcl::ILibreOfficeKitNotifier* pNotifier = pParent->GetLOKNotifier();
+    std::vector<vcl::LOKPayloadItem> aItems;
+    if (rAction == "cursor_visible")
+        aItems.emplace_back("visible", mpData->mbCurVisible ? "true" : "false");
+    else if (rAction == "cursor_invalidate")
+    {
+        const long nX = pWindow->GetOutOffXPixel() + pWindow->LogicToPixel(GetPos()).X() - pParent->GetOutOffXPixel();
+        const long nY = pWindow->GetOutOffYPixel() + pWindow->LogicToPixel(GetPos()).Y() - pParent->GetOutOffYPixel();
+        Size aSize = pWindow->LogicToPixel(GetSize());
+        if (!aSize.Width())
+            aSize.setWidth( pWindow->GetSettings().GetStyleSettings().GetCursorSize() );
+
+        const tools::Rectangle aRect(Point(nX, nY), aSize);
+        aItems.emplace_back("rectangle", aRect.toString());
+    }
+
+    pNotifier->notifyWindow(pParent->GetLOKWindowId(), rAction, aItems);
 }
 
 bool vcl::Cursor::ImplDoHide( bool bSuspend )
@@ -217,6 +275,7 @@ bool vcl::Cursor::ImplDoHide( bool bSuspend )
 
         if ( !bSuspend )
         {
+            LOKNotify( mpData->mpWindow, "cursor_visible" );
             mpData->maTimer.Stop();
             mpData->mpWindow = nullptr;
         }
@@ -246,17 +305,18 @@ bool vcl::Cursor::ImplSuspend()
 
 void vcl::Cursor::ImplNew()
 {
-    if ( mbVisible && mpData && mpData->mpWindow )
-    {
-        if ( mpData->mbCurVisible )
-            ImplRestore();
+    if ( !(mbVisible && mpData && mpData->mpWindow) )
+        return;
 
-        ImplDraw();
-        if ( !mpWindow )
-        {
-            if ( mpData->maTimer.GetTimeout() != STYLE_CURSOR_NOBLINKTIME )
-                mpData->maTimer.Start();
-        }
+    if ( mpData->mbCurVisible )
+        ImplRestore();
+
+    ImplDraw();
+    if ( !mpWindow )
+    {
+        LOKNotify( mpData->mpWindow, "cursor_invalidate" );
+        if ( mpData->maTimer.GetTimeout() != STYLE_CURSOR_NOBLINKTIME )
+            mpData->maTimer.Start();
     }
 }
 
@@ -272,7 +332,6 @@ vcl::Cursor::Cursor()
 {
     mpData          = nullptr;
     mpWindow        = nullptr;
-    mnSlant         = 0;
     mnOrientation   = 0;
     mnDirection     = CursorDirection::NONE;
     mnStyle         = 0;
@@ -285,7 +344,6 @@ vcl::Cursor::Cursor( const Cursor& rCursor ) :
 {
     mpData          = nullptr;
     mpWindow        = nullptr;
-    mnSlant         = rCursor.mnSlant;
     mnOrientation   = rCursor.mnOrientation;
     mnDirection     = rCursor.mnDirection;
     mnStyle         = 0;
@@ -294,13 +352,8 @@ vcl::Cursor::Cursor( const Cursor& rCursor ) :
 
 vcl::Cursor::~Cursor()
 {
-    if ( mpData )
-    {
-        if ( mpData->mbCurVisible )
-            ImplRestore();
-
-        delete mpData;
-    }
+    if (mpData && mpData->mbCurVisible)
+        ImplRestore();
 }
 
 void vcl::Cursor::SetStyle( sal_uInt16 nStyle )
@@ -361,7 +414,7 @@ void vcl::Cursor::SetWidth( long nNewWidth )
 {
     if ( maSize.Width() != nNewWidth )
     {
-        maSize.Width() = nNewWidth;
+        maSize.setWidth( nNewWidth );
         ImplNew();
     }
 }
@@ -388,7 +441,6 @@ vcl::Cursor& vcl::Cursor::operator=( const vcl::Cursor& rCursor )
 {
     maPos           = rCursor.maPos;
     maSize          = rCursor.maSize;
-    mnSlant         = rCursor.mnSlant;
     mnOrientation   = rCursor.mnOrientation;
     mnDirection     = rCursor.mnDirection;
     mbVisible       = rCursor.mbVisible;
@@ -402,7 +454,6 @@ bool vcl::Cursor::operator==( const vcl::Cursor& rCursor ) const
     return
         ((maPos         == rCursor.maPos)           &&
          (maSize        == rCursor.maSize)          &&
-         (mnSlant       == rCursor.mnSlant)         &&
          (mnOrientation == rCursor.mnOrientation)   &&
          (mnDirection   == rCursor.mnDirection)     &&
          (mbVisible     == rCursor.mbVisible))

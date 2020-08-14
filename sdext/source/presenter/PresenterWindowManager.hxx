@@ -22,26 +22,21 @@
 
 #include "PresenterPaneContainer.hxx"
 #include "PresenterTheme.hxx"
-#include <com/sun/star/awt/Point.hpp>
+#include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/awt/XFocusListener.hpp>
-#include <com/sun/star/awt/XGraphics.hpp>
-#include <com/sun/star/awt/XMouseMotionListener.hpp>
 #include <com/sun/star/awt/XPaintListener.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/document/XEventListener.hpp>
 #include <com/sun/star/drawing/framework/XPane.hpp>
 #include <com/sun/star/rendering/XBitmap.hpp>
-#include <com/sun/star/rendering/XSprite.hpp>
-#include <com/sun/star/rendering/XSpriteCanvas.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <rtl/ref.hxx>
 #include <memory>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 class PresenterController;
 class PresenterPaneBorderPainter;
@@ -88,6 +83,7 @@ public:
 
     void SetSlideSorterState (bool bIsActive);
     void SetHelpViewState (bool bIsActive);
+    void SetPauseState (bool bIsPaused);
 
     enum LayoutMode { LM_Standard, LM_Notes, LM_Generic };
 private:
@@ -168,12 +164,13 @@ private:
     LayoutMode meLayoutMode;
     bool mbIsSlideSorterActive;
     bool mbIsHelpViewActive;
+    bool mbisPaused;
     typedef ::std::vector<css::uno::Reference<css::document::XEventListener> >
         LayoutListenerContainer;
     LayoutListenerContainer maLayoutListeners;
     bool mbIsMouseClickPending;
 
-    bool PaintChildren (const css::awt::PaintEvent& rEvent) const;
+    void PaintChildren (const css::awt::PaintEvent& rEvent) const;
     void UpdateWindowSize (const css::uno::Reference<css::awt::XWindow>& rxBorderWindow);
     void PaintBackground (const css::awt::Rectangle& rUpdateBox);
     void ProvideBackgroundBitmap();
@@ -204,7 +201,7 @@ private:
     void ThrowIfDisposed() const;
 };
 
-} }
+}
 
 #endif
 

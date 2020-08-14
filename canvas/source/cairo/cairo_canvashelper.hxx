@@ -17,16 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_CANVASHELPER_HXX
-#define INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_CANVASHELPER_HXX
+#pragma once
 
+#include <com/sun/star/geometry/IntegerPoint2D.hpp>
+#include <com/sun/star/geometry/IntegerRectangle2D.hpp>
+#include <com/sun/star/rendering/IntegerBitmapLayout.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
-#include <com/sun/star/rendering/XBitmapCanvas.hpp>
-#include <com/sun/star/rendering/XIntegerBitmap.hpp>
-
-#include <basegfx/vector/b2isize.hxx>
-#include <basegfx/vector/b2dsize.hxx>
-#include <com/sun/star/rendering/XLinePolyPolygon2D.hpp>
 
 #include <vcl/vclptr.hxx>
 #include <vcl/virdev.hxx>
@@ -154,7 +150,7 @@ namespace cairocanvas
                                           const css::uno::Sequence< css::rendering::Texture >&       textures,
                                           const css::uno::Reference< css::geometry::XMapping2D >&     xMapping );
 
-        css::uno::Reference< css::rendering::XCanvasFont > SAL_CALL
+        css::uno::Reference< css::rendering::XCanvasFont >
             createFont( const css::rendering::XCanvas*             pCanvas,
                         const css::rendering::FontRequest&         fontRequest,
                         const css::uno::Sequence< css::beans::PropertyValue >&       extraFontProperties,
@@ -195,7 +191,7 @@ namespace cairocanvas
         // BitmapCanvasHelper functionality
         // ================================
 
-        css::geometry::IntegerSize2D getSize();
+        css::geometry::IntegerSize2D getSize() const;
 
         css::uno::Reference< css::rendering::XBitmap >
             getScaledBitmap( const css::geometry::RealSize2D&  newSize,
@@ -210,13 +206,6 @@ namespace cairocanvas
                       const css::geometry::IntegerPoint2D& pos );
 
         css::rendering::IntegerBitmapLayout getMemoryLayout();
-
-        bool hasAlpha() const { return mbHaveAlpha; }
-
-        enum ColorType
-        {
-            LINE_COLOR, FILL_COLOR, TEXT_COLOR, IGNORE_COLOR
-        };
 
         void doPolyPolygonPath( const css::uno::Reference< css::rendering::XPolyPolygon2D >& xPolyPolygon,
                                 Operation aOperation,
@@ -268,9 +257,6 @@ namespace cairocanvas
         ::cairo::CairoSharedPtr     mpCairo;
         ::cairo::SurfaceSharedPtr   mpSurface;
         ::basegfx::B2ISize maSize;
-
-        void clip_cairo_from_dev(::OutputDevice& rOutDev);
-
     };
 
     /// also needed from SpriteHelper
@@ -281,7 +267,5 @@ namespace cairocanvas
                                       const SurfaceProviderRef& pDevice,
                                       css::rendering::FillRule eFillrule );
 }
-
-#endif // INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_CANVASHELPER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

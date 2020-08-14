@@ -17,8 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include "analysisdefs.hxx"
 #include "analysis.hxx"
 #include "analysishelper.hxx"
+#include <o3tl/temporary.hxx>
 #include <rtl/math.hxx>
 
 using namespace sca::analysis;
@@ -123,15 +125,15 @@ double SAL_CALL AnalysisAddIn::getEffect( double fNominal, sal_Int32 nPeriods )
 double SAL_CALL AnalysisAddIn::getCumprinc( double fRate, sal_Int32 nNumPeriods, double fVal,
     sal_Int32 nStartPer, sal_Int32 nEndPer, sal_Int32 nPayType )
 {
-    double fRmz, fKapZ;
+    double fPmt, fPpmt;
 
-    if( nStartPer < 1 || nEndPer < nStartPer || fRate <= 0.0 || nEndPer > nNumPeriods  || nNumPeriods <= 0 ||
+    if( nStartPer < 1 || nEndPer < nStartPer || fRate <= 0.0 || nEndPer > nNumPeriods ||
         fVal <= 0.0 || ( nPayType != 0 && nPayType != 1 ) )
         throw css::lang::IllegalArgumentException();
 
-    fRmz = GetRmz( fRate, nNumPeriods, fVal, 0.0, nPayType );
+    fPmt = GetPmt( fRate, nNumPeriods, fVal, 0.0, nPayType );
 
-    fKapZ = 0.0;
+    fPpmt = 0.0;
 
     sal_uInt32  nStart = sal_uInt32( nStartPer );
     sal_uInt32  nEnd = sal_uInt32( nEndPer );
@@ -139,9 +141,9 @@ double SAL_CALL AnalysisAddIn::getCumprinc( double fRate, sal_Int32 nNumPeriods,
     if( nStart == 1 )
     {
         if( nPayType <= 0 )
-            fKapZ = fRmz + fVal * fRate;
+            fPpmt = fPmt + fVal * fRate;
         else
-            fKapZ = fRmz;
+            fPpmt = fPmt;
 
         nStart++;
     }
@@ -149,27 +151,27 @@ double SAL_CALL AnalysisAddIn::getCumprinc( double fRate, sal_Int32 nNumPeriods,
     for( sal_uInt32 i = nStart ; i <= nEnd ; i++ )
     {
         if( nPayType > 0 )
-            fKapZ += fRmz - ( GetZw( fRate, double( i - 2 ), fRmz, fVal, 1 ) - fRmz ) * fRate;
+            fPpmt += fPmt - ( GetFv( fRate, double( i - 2 ), fPmt, fVal, 1 ) - fPmt ) * fRate;
         else
-            fKapZ += fRmz - GetZw( fRate, double( i - 1 ), fRmz, fVal, 0 ) * fRate;
+            fPpmt += fPmt - GetFv( fRate, double( i - 1 ), fPmt, fVal, 0 ) * fRate;
     }
 
-    RETURN_FINITE( fKapZ );
+    RETURN_FINITE( fPpmt );
 }
 
 
 double SAL_CALL AnalysisAddIn::getCumipmt( double fRate, sal_Int32 nNumPeriods, double fVal,
     sal_Int32 nStartPer, sal_Int32 nEndPer, sal_Int32 nPayType )
 {
-    double fRmz, fZinsZ;
+    double fPmt, fIpmt;
 
-    if( nStartPer < 1 || nEndPer < nStartPer || fRate <= 0.0 || nEndPer > nNumPeriods  || nNumPeriods <= 0 ||
+    if( nStartPer < 1 || nEndPer < nStartPer || fRate <= 0.0 || nEndPer > nNumPeriods ||
         fVal <= 0.0 || ( nPayType != 0 && nPayType != 1 ) )
         throw css::lang::IllegalArgumentException();
 
-    fRmz = GetRmz( fRate, nNumPeriods, fVal, 0.0, nPayType );
+    fPmt = GetPmt( fRate, nNumPeriods, fVal, 0.0, nPayType );
 
-    fZinsZ = 0.0;
+    fIpmt = 0.0;
 
     sal_uInt32  nStart = sal_uInt32( nStartPer );
     sal_uInt32  nEnd = sal_uInt32( nEndPer );
@@ -177,7 +179,7 @@ double SAL_CALL AnalysisAddIn::getCumipmt( double fRate, sal_Int32 nNumPeriods, 
     if( nStart == 1 )
     {
         if( nPayType <= 0 )
-            fZinsZ = -fVal;
+            fIpmt = -fVal;
 
         nStart++;
     }
@@ -185,14 +187,14 @@ double SAL_CALL AnalysisAddIn::getCumipmt( double fRate, sal_Int32 nNumPeriods, 
     for( sal_uInt32 i = nStart ; i <= nEnd ; i++ )
     {
         if( nPayType > 0 )
-            fZinsZ += GetZw( fRate, double( i - 2 ), fRmz, fVal, 1 ) - fRmz;
+            fIpmt += GetFv( fRate, double( i - 2 ), fPmt, fVal, 1 ) - fPmt;
         else
-            fZinsZ += GetZw( fRate, double( i - 1 ), fRmz, fVal, 0 );
+            fIpmt += GetFv( fRate, double( i - 1 ), fPmt, fVal, 0 );
     }
 
-    fZinsZ *= fRate;
+    fIpmt *= fRate;
 
-    RETURN_FINITE( fZinsZ );
+    RETURN_FINITE( fIpmt );
 }
 
 
@@ -366,8 +368,7 @@ double SAL_CALL AnalysisAddIn::getTbillprice( const css::uno::Reference< css::be
 
     double  fFraction = GetYearFrac( xOpt, nSettle, nMat, 0 );  // method: USA 30/360
 
-    double  fDummy;
-    if( modf( fFraction, &fDummy ) == 0.0 )
+    if( modf( fFraction, &o3tl::temporary(double()) ) == 0.0 )
         throw css::lang::IllegalArgumentException();
 
     double fRet = 100.0 * ( 1.0 - fDisc * fFraction );
@@ -560,8 +561,8 @@ double SAL_CALL AnalysisAddIn::getXirr(
         }
         while( bContLoop && (++nIter < nMaxIter) );
         nIter = 0;
-        if (  ::rtl::math::isNan(fResultRate)  || ::rtl::math::isInf(fResultRate)
-            ||::rtl::math::isNan(fResultValue) || ::rtl::math::isInf(fResultValue))
+        if (  std::isnan(fResultRate)  || std::isinf(fResultRate)
+            ||std::isnan(fResultValue) || std::isinf(fResultValue))
             bContLoop = true;
 
         ++nIterScan;

@@ -18,12 +18,14 @@
  */
 
 #include "WrappedScaleProperty.hxx"
-#include "macros.hxx"
-#include "CommonConverters.hxx"
-#include "AxisHelper.hxx"
+#include "Chart2ModelContact.hxx"
+#include <CommonConverters.hxx>
+#include <AxisHelper.hxx>
+#include <com/sun/star/chart2/AxisType.hpp>
 #include <com/sun/star/chart2/XAxis.hpp>
 #include <com/sun/star/chart/ChartAxisType.hpp>
 #include <chartview/ExplicitScaleValues.hxx>
+#include <osl/diagnose.h>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Any;
@@ -32,9 +34,7 @@ using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::chart::TimeIncrement;
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 WrappedScaleProperty::WrappedScaleProperty(tScaleProperty eScaleProperty
@@ -103,25 +103,25 @@ WrappedScaleProperty::~WrappedScaleProperty()
 {
 }
 
-void WrappedScaleProperty::addWrappedProperties( std::vector< WrappedProperty* >& rList
+void WrappedScaleProperty::addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList
             , const std::shared_ptr< Chart2ModelContact >& spChart2ModelContact )
 {
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_MAX, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_MIN, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_ORIGIN, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_STEPMAIN, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_STEPHELP, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_STEPHELP_COUNT, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_AUTO_MAX, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_AUTO_MIN, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_AUTO_ORIGIN, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_AUTO_STEPMAIN, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_AUTO_STEPHELP, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_AXIS_TYPE, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_DATE_INCREMENT, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_EXPLICIT_DATE_INCREMENT, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_LOGARITHMIC, spChart2ModelContact ) );
-    rList.push_back( new WrappedScaleProperty( SCALE_PROP_REVERSEDIRECTION, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_MAX, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_MIN, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_ORIGIN, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_STEPMAIN, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_STEPHELP, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_STEPHELP_COUNT, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_AUTO_MAX, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_AUTO_MIN, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_AUTO_ORIGIN, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_AUTO_STEPMAIN, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_AUTO_STEPHELP, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_AXIS_TYPE, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_DATE_INCREMENT, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_EXPLICIT_DATE_INCREMENT, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_LOGARITHMIC, spChart2ModelContact ) );
+    rList.emplace_back( new WrappedScaleProperty( SCALE_PROP_REVERSEDIRECTION, spChart2ModelContact ) );
 }
 
 void WrappedScaleProperty::setPropertyValue( const Any& rOuterValue, const Reference< beans::XPropertySet >& xInnerPropertySet ) const
@@ -171,11 +171,11 @@ void WrappedScaleProperty::setPropertyValue( tScaleProperty eScaleProperty, cons
         case SCALE_PROP_STEPHELP:
         {
             Sequence< chart2::SubIncrement >& rSubIncrements( aScaleData.IncrementData.SubIncrements );
-            if( rSubIncrements.getLength() == 0 )
+            if( !rSubIncrements.hasElements() )
                 rSubIncrements.realloc( 1 );
 
             double fStepHelp = 0;
-            if( (rOuterValue >>= fStepHelp) )
+            if( rOuterValue >>= fStepHelp )
             {
                 double fStepMain = 0;
                 if( AxisHelper::isLogarithmic(aScaleData.Scaling) )
@@ -197,7 +197,7 @@ void WrappedScaleProperty::setPropertyValue( tScaleProperty eScaleProperty, cons
         case SCALE_PROP_STEPHELP_COUNT:
         {
             Sequence< chart2::SubIncrement >& rSubIncrements( aScaleData.IncrementData.SubIncrements );
-            if( rSubIncrements.getLength() == 0 )
+            if( !rSubIncrements.hasElements() )
                 rSubIncrements.realloc( 1 );
             sal_Int32 nIntervalCount=0;
             if( rOuterValue>>=nIntervalCount )
@@ -237,7 +237,7 @@ void WrappedScaleProperty::setPropertyValue( tScaleProperty eScaleProperty, cons
         case SCALE_PROP_AUTO_STEPHELP:
         {
             Sequence< chart2::SubIncrement >& rSubIncrements( aScaleData.IncrementData.SubIncrements );
-            if( rSubIncrements.getLength() == 0 )
+            if( !rSubIncrements.hasElements() )
                 rSubIncrements.realloc( 1 );
 
             if( (rOuterValue >>= bBool) && bBool )
@@ -265,7 +265,7 @@ void WrappedScaleProperty::setPropertyValue( tScaleProperty eScaleProperty, cons
         case SCALE_PROP_AXIS_TYPE:
         {
             sal_Int32 nType = 0;
-            if( (rOuterValue >>= nType) )
+            if( rOuterValue >>= nType )
             {
                 if( nType == css::chart::ChartAxisType::AUTOMATIC )
                 {
@@ -400,7 +400,7 @@ Any WrappedScaleProperty::getPropertyValue( tScaleProperty eScaleProperty, const
             Sequence< chart2::SubIncrement >& rSubIncrements( aScaleData.IncrementData.SubIncrements );
             if( bLogarithmic )
             {
-                if( rSubIncrements.getLength() > 0 )
+                if( rSubIncrements.hasElements() )
                 {
                     sal_Int32 nIntervalCount = 0;
                     rSubIncrements[ 0 ].IntervalCount >>= nIntervalCount;
@@ -410,7 +410,7 @@ Any WrappedScaleProperty::getPropertyValue( tScaleProperty eScaleProperty, const
             }
             else if( aScaleData.IncrementData.Distance.hasValue() )
             {
-                if( rSubIncrements.getLength() > 0 )
+                if( rSubIncrements.hasElements() )
                 {
                     double fStepMain = 0;
                     sal_Int32 nIntervalCount = 0;
@@ -418,7 +418,7 @@ Any WrappedScaleProperty::getPropertyValue( tScaleProperty eScaleProperty, const
                         (rSubIncrements[ 0 ].IntervalCount >>= nIntervalCount) &&
                         nIntervalCount > 0 )
                     {
-                        aRet <<= ( fStepMain / static_cast< double >( nIntervalCount ) );
+                        aRet <<= fStepMain / static_cast< double >( nIntervalCount );
                         bNeedToCalculateExplicitValues = false;
                     }
                 }
@@ -439,16 +439,16 @@ Any WrappedScaleProperty::getPropertyValue( tScaleProperty eScaleProperty, const
                 {
                     if( bLogarithmic )
                     {
-                        if( rSubIncrements.getLength() > 0 )
+                        if( rSubIncrements.hasElements() )
                         {
                             sal_Int32 nIntervalCount = aExplicitIncrement.SubIncrements[ 0 ].IntervalCount;
                             aRet <<= double(nIntervalCount);
                         }
                     }
                     else
-                        aRet <<= ( aExplicitIncrement.Distance /
+                        aRet <<= aExplicitIncrement.Distance /
                                 static_cast< double >(
-                                    aExplicitIncrement.SubIncrements[ 0 ].IntervalCount ));
+                                    aExplicitIncrement.SubIncrements[ 0 ].IntervalCount );
                 }
                 else
                 {
@@ -465,7 +465,7 @@ Any WrappedScaleProperty::getPropertyValue( tScaleProperty eScaleProperty, const
             sal_Int32 nIntervalCount = 0;
             bool bNeedToCalculateExplicitValues = true;
             Sequence< chart2::SubIncrement >& rSubIncrements( aScaleData.IncrementData.SubIncrements );
-            if( rSubIncrements.getLength() > 0 )
+            if( rSubIncrements.hasElements() )
             {
                 if( (rSubIncrements[ 0 ].IntervalCount >>= nIntervalCount) && (nIntervalCount > 0) )
                     bNeedToCalculateExplicitValues = false;
@@ -497,7 +497,7 @@ Any WrappedScaleProperty::getPropertyValue( tScaleProperty eScaleProperty, const
         case SCALE_PROP_AUTO_STEPHELP:
         {
             Sequence< chart2::SubIncrement >& rSubIncrements( aScaleData.IncrementData.SubIncrements );
-            if( rSubIncrements.getLength() > 0 )
+            if( rSubIncrements.hasElements() )
                 aRet <<= !rSubIncrements[ 0 ].IntervalCount.hasValue();
             else
                 aRet <<= true;
@@ -553,10 +553,10 @@ Any WrappedScaleProperty::getPropertyValue( tScaleProperty eScaleProperty, const
                     aTimeIncrement.TimeResolution <<= aExplicitScale.TimeResolution;
                     aRet <<= aTimeIncrement;
                 }
+                else
+                    aRet <<= aScaleData.TimeIncrement;
             }
 
-            if( aScaleData.AxisType == AxisType::DATE || aScaleData.AutoDateAxis )
-                aRet <<= aScaleData.TimeIncrement;
             break;
         }
         case SCALE_PROP_LOGARITHMIC:
@@ -579,7 +579,6 @@ Any WrappedScaleProperty::getPropertyValue( tScaleProperty eScaleProperty, const
     return aRet;
 }
 
-} //  namespace wrapper
 } //  namespace chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

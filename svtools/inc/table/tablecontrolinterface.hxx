@@ -17,20 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVTOOLS_INC_TABLE_TABLECONTROLINTERFACE_HXX
-#define INCLUDED_SVTOOLS_INC_TABLE_TABLECONTROLINTERFACE_HXX
+#pragma once
 
 #include <sal/types.h>
-#include <vcl/event.hxx>
 #include <vcl/seleng.hxx>
 
-#include <svtools/table/tabletypes.hxx>
-#include <svtools/table/tablemodel.hxx>
-
-class Pointer;
+#include <table/tabletypes.hxx>
+#include <table/tablemodel.hxx>
 
 
-namespace svt { namespace table
+namespace svt::table
 {
 
 
@@ -113,7 +109,7 @@ namespace svt { namespace table
         */
         long    nStartPixel;
 
-        /** the end of the column, in pixels, plus 1. Effectively, this is the accumulated width of a all columns
+        /** the end of the column, in pixels, plus 1. Effectively, this is the accumulated width of all columns
             up to the current one.
 
             Huh? Earlier you said that the nStartPixel of columns
@@ -207,7 +203,7 @@ namespace svt { namespace table
         virtual ::Size  getTableSizePixel() const = 0;
 
         /// sets a new mouse pointer for the table window
-        virtual void    setPointer( Pointer const & i_pointer ) = 0;
+        virtual void    setPointer( PointerStyle i_pointer ) = 0;
 
         /// captures the mouse to the table window
         virtual void    captureMouse() = 0;
@@ -218,13 +214,13 @@ namespace svt { namespace table
         /// invalidates the table window
         virtual void    invalidate( TableArea const i_what ) = 0;
 
-        /// calculates a width, given in pixels, into a AppFont-based width
+        /// calculates a width, given in pixels, into an AppFont-based width
         virtual long    pixelWidthToAppFont( long const i_pixels ) const = 0;
 
         /// shows a tracking rectangle
         virtual void    showTracking( tools::Rectangle const & i_location, ShowTrackFlags const i_flags ) = 0;
 
-        /// hides a prviously shown tracking rectangle
+        /// hides a previously shown tracking rectangle
         virtual void    hideTracking() = 0;
 
         /// does a hit test for the given pixel coordinates
@@ -240,9 +236,8 @@ namespace svt { namespace table
     };
 
 
-} } // namespace svt::table
+} // namespace svt::table
 
 
-#endif // INCLUDED_SVTOOLS_INC_TABLE_TABLECONTROLINTERFACE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

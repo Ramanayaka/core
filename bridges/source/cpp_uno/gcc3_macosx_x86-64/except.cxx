@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cassert>
 #include <new>
@@ -28,14 +28,14 @@
 #include <cxxabi.h>
 #include <dlfcn.h>
 
-#include "com/sun/star/uno/RuntimeException.hpp"
-#include "com/sun/star/uno/genfunc.hxx"
+#include <com/sun/star/uno/RuntimeException.hpp>
+#include <com/sun/star/uno/genfunc.hxx>
 #include <sal/log.hxx>
-#include "osl/mutex.hxx"
-#include "rtl/strbuf.hxx"
-#include "rtl/ustrbuf.hxx"
-#include "typelib/typedescription.h"
-#include "uno/any2.h"
+#include <osl/mutex.hxx>
+#include <rtl/strbuf.hxx>
+#include <rtl/ustrbuf.hxx>
+#include <typelib/typedescription.h>
+#include <uno/any2.h>
 #include <unordered_map>
 #include "share.hxx"
 
@@ -119,7 +119,7 @@ static OUString toUNOname( char const * p )
     while ('E' != *p)
     {
         // read chars count
-        long n = (*p++ - '0');
+        long n = *p++ - '0';
         while ('0' <= *p && '9' >= *p)
         {
             n *= 10;
@@ -141,9 +141,11 @@ static OUString toUNOname( char const * p )
 #endif
 }
 
+namespace {
+
 class RTTI
 {
-    typedef std::unordered_map< OUString, std::type_info *, OUStringHash > t_rtti_map;
+    typedef std::unordered_map< OUString, std::type_info * > t_rtti_map;
 
     Mutex m_mutex;
     t_rtti_map m_rttis;
@@ -157,6 +159,8 @@ public:
 
     std::type_info * getRTTI( typelib_CompoundTypeDescription * );
 };
+
+}
 
 RTTI::RTTI()
     : m_hApp( dlopen( nullptr, RTLD_LAZY ) )
@@ -267,10 +271,14 @@ static void deleteException( void * pExc )
     // size 8 in front of that member (changing its offset from 88 to 96,
     // sizeof(__cxa_exception) from 120 to 128, and alignof(__cxa_exception)
     // from 8 to 16); a hack to dynamically determine whether we run against a
-    // new libcxxabi is to look at the exceptionDestructor member, which must
+    // LLVM 5 libcxxabi is to look at the exceptionDestructor member, which must
     // point to this function (the use of __cxa_exception in fillUnoException is
     // unaffected, as it only accesses members towards the start of the struct,
-    // through a pointer known to actually point at the start):
+    // through a pointer known to actually point at the start).  The libcxxabi commit
+    // <https://github.com/llvm/llvm-project/commit/9ef1daa46edb80c47d0486148c0afc4e0d83ddcf>
+    // "Insert padding before the __cxa_exception header to ensure the thrown" in LLVM 6
+    // removes the need for this hack, so it can be removed again once we can be sure that we only
+    // run against libcxxabi from LLVM >= 6:
     if (header->exceptionDestructor != &deleteException) {
         header = reinterpret_cast<__cxa_exception const *>(
             reinterpret_cast<char const *>(header) - 8);
@@ -317,17 +325,8 @@ void raiseException( uno_Any * pUnoExc, uno_Mapping * pUno2Cpp )
     // destruct uno exception
     ::uno_any_destruct( pUnoExc, nullptr );
     // avoiding locked counts
-    static RTTI * s_rtti = nullptr;
-    if (! s_rtti)
-    {
-        MutexGuard guard( Mutex::getGlobalMutex() );
-        if (! s_rtti)
-        {
-            static RTTI rtti_data;
-            s_rtti = &rtti_data;
-        }
-    }
-    rtti = s_rtti->getRTTI( reinterpret_cast<typelib_CompoundTypeDescription *>(pTypeDescr) );
+    static RTTI rtti_data;
+    rtti = rtti_data.getRTTI(reinterpret_cast<typelib_CompoundTypeDescription*>(pTypeDescr));
     TYPELIB_DANGER_RELEASE( pTypeDescr );
     assert(rtti && "### no rtti for throwing exception!");
     if (! rtti)
@@ -341,8 +340,9 @@ void raiseException( uno_Any * pUnoExc, uno_Mapping * pUno2Cpp )
     __cxxabiv1::__cxa_throw( pCppExc, rtti, deleteException );
 }
 
-void fillUnoException( __cxa_exception * header, uno_Any * pUnoExc, uno_Mapping * pCpp2Uno )
+void fillUnoException(uno_Any * pUnoExc, uno_Mapping * pCpp2Uno)
 {
+    __cxa_exception * header = __cxa_get_globals()->caughtExceptions;
     if (! header)
     {
         RuntimeException aRE( "no exception header!" );
@@ -352,8 +352,36 @@ void fillUnoException( __cxa_exception * header, uno_Any * pUnoExc, uno_Mapping 
         return;
     }
 
+    // Very bad HACK to find out whether we run against a libcxxabi that has a new
+    // __cxa_exception::reserved member at the start, introduced with LLVM 10
+    // <https://github.com/llvm/llvm-project/commit/674ec1eb16678b8addc02a4b0534ab383d22fa77>
+    // "[libcxxabi] Insert padding in __cxa_exception struct for compatibility".  The layout of the
+    // start of __cxa_exception is
+    //
+    //  [8 byte  void *reserve]
+    //   8 byte  size_t referenceCount
+    //
+    // where the (bad, hacky) assumption is that reserve (if present) is null
+    // (__cxa_allocate_exception in at least LLVM 11 zero-fills the object, and nothing actively
+    // sets reserve) while referenceCount is non-null (__cxa_throw sets it to 1, and
+    // __cxa_decrement_exception_refcount destroys the exception as soon as it drops to 0; for a
+    // __cxa_dependent_exception, the referenceCount member is rather
+    //
+    //   8 byte  void* primaryException
+    //
+    // but which also will always be set to a non-null value in __cxa_rethrow_primary_exception).
+    // As described in the definition of __cxa_exception
+    // (bridges/source/cpp_uno/gcc3_macosx_x86-64/share.hxx), this hack (together with the "#if 0"
+    // there) can be dropped once we can be sure that we only run against new libcxxabi that has the
+    // reserve member:
+    if (*reinterpret_cast<void **>(header) == nullptr) {
+        header = reinterpret_cast<__cxa_exception *>(reinterpret_cast<void **>(header) + 1);
+    }
+
+    std::type_info *exceptionType = __cxxabiv1::__cxa_current_exception_type();
+
     typelib_TypeDescription * pExcTypeDescr = nullptr;
-    OUString unoName( toUNOname( header->exceptionType->name() ) );
+    OUString unoName( toUNOname( exceptionType->name() ) );
 #if OSL_DEBUG_LEVEL > 1
     OString cstr_unoName( OUStringToOString( unoName, RTL_TEXTENCODING_ASCII_US ) );
     fprintf( stderr, "> c++ exception occurred: %s\n", cstr_unoName.getStr() );

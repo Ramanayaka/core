@@ -19,10 +19,11 @@
 #ifndef INCLUDED_SC_SOURCE_UI_VBA_VBAOUTLINE_HXX
 #define INCLUDED_SC_SOURCE_UI_VBA_VBAOUTLINE_HXX
 
-#include <com/sun/star/sheet/XSheetOutline.hpp>
 #include <ooo/vba/excel/XOutline.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <vbahelper/vbahelperinterface.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::sheet { class XSheetOutline; }
 
 typedef InheritedHelperInterfaceWeakImpl< ov::excel::XOutline > ScVbaOutline_BASE;
 

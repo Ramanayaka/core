@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.18.3 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="dba">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkGrid" id="CopyTablePage">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
@@ -32,7 +32,7 @@
                 <property name="row_spacing">6</property>
                 <child>
                   <object class="GtkRadioButton" id="defdata">
-                    <property name="label" translatable="yes">De_finition and data</property>
+                    <property name="label" translatable="yes" context="copytablepage|defdata">De_finition and data</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
@@ -40,7 +40,6 @@
                     <property name="xalign">0</property>
                     <property name="active">True</property>
                     <property name="draw_indicator">True</property>
-                    <property name="group">def</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -49,14 +48,14 @@
                 </child>
                 <child>
                   <object class="GtkRadioButton" id="def">
-                    <property name="label" translatable="yes">Def_inition</property>
+                    <property name="label" translatable="yes" context="copytablepage|def">Def_inition</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
                     <property name="use_underline">True</property>
                     <property name="xalign">0</property>
                     <property name="draw_indicator">True</property>
-                    <property name="group">view</property>
+                    <property name="group">defdata</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -65,14 +64,14 @@
                 </child>
                 <child>
                   <object class="GtkRadioButton" id="view">
-                    <property name="label" translatable="yes">A_s table view</property>
+                    <property name="label" translatable="yes" context="copytablepage|view">A_s table view</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
                     <property name="use_underline">True</property>
                     <property name="xalign">0</property>
                     <property name="draw_indicator">True</property>
-                    <property name="group">data</property>
+                    <property name="group">defdata</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -81,7 +80,7 @@
                 </child>
                 <child>
                   <object class="GtkRadioButton" id="data">
-                    <property name="label" translatable="yes">Append _data</property>
+                    <property name="label" translatable="yes" context="copytablepage|data">Append _data</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
@@ -97,7 +96,7 @@
                 </child>
                 <child>
                   <object class="GtkCheckButton" id="firstline">
-                    <property name="label" translatable="yes">Use first _line as column names</property>
+                    <property name="label" translatable="yes" context="copytablepage|firstline">Use first _line as column names</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
@@ -112,7 +111,7 @@
                 </child>
                 <child>
                   <object class="GtkCheckButton" id="primarykey">
-                    <property name="label" translatable="yes">Crea_te new field as primary key</property>
+                    <property name="label" translatable="yes" context="copytablepage|primarykey">Crea_te new field as primary key</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
@@ -134,15 +133,16 @@
                       <object class="GtkGrid" id="grid3">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
+                        <property name="hexpand">True</property>
                         <property name="column_spacing">12</property>
                         <child>
                           <object class="GtkLabel" id="keynamelabel">
                             <property name="visible">True</property>
                             <property name="can_focus">False</property>
-                            <property name="xalign">1</property>
-                            <property name="label" translatable="yes">Name:</property>
+                            <property name="label" translatable="yes" context="copytablepage|keynamelabel">Name:</property>
                             <property name="use_underline">True</property>
                             <property name="mnemonic_widget">keyname</property>
+                            <property name="xalign">1</property>
                           </object>
                           <packing>
                             <property name="left_attach">0</property>
@@ -153,6 +153,8 @@
                           <object class="GtkEntry" id="keyname">
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
+                            <property name="hexpand">True</property>
+                            <property name="activates_default">True</property>
                           </object>
                           <packing>
                             <property name="left_attach">1</property>
@@ -171,10 +173,11 @@
                   <object class="GtkLabel" id="infoLabel">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
-                    <property name="xalign">0</property>
-                    <property name="label" translatable="yes">Existing data fields can be set as primary key on the type formatting step (third page) of the wizard.</property>
+                    <property name="label" translatable="yes" context="copytablepage|infoLabel">Existing data fields can be set as primary key on the type formatting step (third page) of the wizard.</property>
                     <property name="wrap">True</property>
+                    <property name="width_chars">72</property>
                     <property name="max_width_chars">72</property>
+                    <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
@@ -189,7 +192,7 @@
           <object class="GtkLabel" id="label1">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Options</property>
+            <property name="label" translatable="yes" context="copytablepage|label1">Options</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -211,10 +214,10 @@
           <object class="GtkLabel" id="label2">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="xalign">1</property>
-            <property name="label" translatable="yes">Ta_ble name:</property>
+            <property name="label" translatable="yes" context="copytablepage|label2">Ta_ble name:</property>
             <property name="use_underline">True</property>
             <property name="mnemonic_widget">name</property>
+            <property name="xalign">1</property>
           </object>
           <packing>
             <property name="left_attach">0</property>
@@ -226,6 +229,7 @@
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <property name="hexpand">True</property>
+            <property name="activates_default">True</property>
           </object>
           <packing>
             <property name="left_attach">1</property>

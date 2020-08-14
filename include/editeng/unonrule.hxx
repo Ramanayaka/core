@@ -29,21 +29,22 @@
 #include <com/sun/star/util/XCloneable.hpp>
 #include <editeng/numitem.hxx>
 #include <comphelper/servicehelper.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
 
-EDITENG_DLLPUBLIC css::uno::Reference< css::container::XIndexReplace > SvxCreateNumRule( const SvxNumRule* pRule ) throw();
-EDITENG_DLLPUBLIC css::uno::Reference< css::container::XIndexReplace > SvxCreateNumRule() throw();
+namespace com::sun::star::beans { struct PropertyValue; }
+
+EDITENG_DLLPUBLIC css::uno::Reference< css::container::XIndexReplace > SvxCreateNumRule(const SvxNumRule* pRule);
+css::uno::Reference< css::container::XIndexReplace > SvxCreateNumRule();
 /// @throws css::lang::IllegalArgumentException
 const SvxNumRule& SvxGetNumRule( css::uno::Reference< css::container::XIndexReplace > const & xRule );
 EDITENG_DLLPUBLIC css::uno::Reference< css::ucb::XAnyCompare > SvxCreateNumRuleCompare() throw();
 
-class SvxUnoNumberingRules : public ::cppu::WeakAggImplHelper5< css::container::XIndexReplace, css::ucb::XAnyCompare,
+class SvxUnoNumberingRules final : public ::cppu::WeakAggImplHelper5< css::container::XIndexReplace, css::ucb::XAnyCompare,
     css::lang::XUnoTunnel, css::util::XCloneable, css::lang::XServiceInfo >
 {
 private:
     SvxNumRule maRule;
 public:
-    SvxUnoNumberingRules( const SvxNumRule& rRule ) throw();
+    SvxUnoNumberingRules(const SvxNumRule& rRule);
     virtual ~SvxUnoNumberingRules() throw() override;
 
     UNO3_GETIMPLEMENTATION_DECL( SvxUnoNumberingRules )

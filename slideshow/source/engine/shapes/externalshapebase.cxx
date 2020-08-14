@@ -21,23 +21,19 @@
 // must be first
 #include <tools/diagnose_ex.h>
 
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
-
 #include "externalshapebase.hxx"
-#include "eventmultiplexer.hxx"
-#include "vieweventhandler.hxx"
-#include "intrinsicanimationeventhandler.hxx"
-#include "tools.hxx"
+#include <eventmultiplexer.hxx>
+#include <subsettableshapemanager.hxx>
+#include <vieweventhandler.hxx>
+#include <intrinsicanimationeventhandler.hxx>
+#include <tools.hxx>
 
 
 using namespace ::com::sun::star;
 
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         class ExternalShapeBase::ExternalShapeBaseListener : public ViewEventHandler,
                                                              public IntrinsicAnimationEventHandler
         {
@@ -85,7 +81,7 @@ namespace slideshow
                                               const SlideShowContext&                   rContext ) :
             mxComponentContext( rContext.mxComponentContext ),
             mxShape( xShape ),
-            mpListener( new ExternalShapeBaseListener(*this) ),
+            mpListener( std::make_shared<ExternalShapeBaseListener>(*this) ),
             mpShapeManager( rContext.mpSubsettableShapeManager ),
             mrEventMultiplexer( rContext.mrEventMultiplexer ),
             mnPriority( nPrio ), // TODO(F1): When ZOrder someday becomes usable: make this ( getAPIShapePrio( xShape ) ),
@@ -107,7 +103,7 @@ namespace slideshow
             }
             catch (uno::Exception &)
             {
-                SAL_WARN( "slideshow", comphelper::anyToString( cppu::getCaughtException() ) );
+                TOOLS_WARN_EXCEPTION( "slideshow", "" );
             }
         }
 
@@ -209,7 +205,6 @@ namespace slideshow
             return true;
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

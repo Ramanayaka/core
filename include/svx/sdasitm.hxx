@@ -22,27 +22,26 @@
 
 #include <svx/svddef.hxx>
 #include <svx/sdooitm.hxx>
-#include <svl/stritem.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/uno/Sequence.hxx>
 #include <rtl/ustring.hxx>
 #include <svx/svxdllapi.h>
-#include <map>
 #include <unordered_map>
 
-class SVX_DLLPUBLIC SdrCustomShapeGeometryItem : public SfxPoolItem
+namespace com::sun::star::uno { class Any; }
+
+class SVXCORE_DLLPUBLIC SdrCustomShapeGeometryItem : public SfxPoolItem
 {
 public:
     typedef std::pair < const OUString, const OUString > PropertyPair;
 
 private:
-    struct SVX_DLLPUBLIC PropertyPairHash
+    struct PropertyPairHash
     {
-        size_t operator()( const SdrCustomShapeGeometryItem::PropertyPair& ) const;
+        inline size_t operator()( const SdrCustomShapeGeometryItem::PropertyPair& ) const;
     };
     typedef std::unordered_map <PropertyPair, sal_Int32, PropertyPairHash> PropertyPairHashMap;
-    typedef std::unordered_map<OUString, sal_Int32, OUStringHash> PropertyHashMap;
+    typedef std::unordered_map<OUString, sal_Int32> PropertyHashMap;
 
     PropertyHashMap     aPropHashMap;
     PropertyPairHashMap aPropPairHashMap;
@@ -55,16 +54,17 @@ private:
             SdrCustomShapeGeometryItem( const css::uno::Sequence< css::beans::PropertyValue >& );
             virtual ~SdrCustomShapeGeometryItem() override;
 
+            SdrCustomShapeGeometryItem(SdrCustomShapeGeometryItem const &) = default;
+            SdrCustomShapeGeometryItem(SdrCustomShapeGeometryItem &&) = default;
+            SdrCustomShapeGeometryItem & operator =(SdrCustomShapeGeometryItem const &) = delete; // due to SfxPoolItem
+            SdrCustomShapeGeometryItem & operator =(SdrCustomShapeGeometryItem &&) = delete; // due to SfxPoolItem
+
             virtual bool                operator==( const SfxPoolItem& ) const override;
             virtual bool GetPresentation(SfxItemPresentation ePresentation,
                                          MapUnit eCoreMetric, MapUnit ePresentationMetric,
-                                         OUString &rText, const IntlWrapper * = nullptr) const override;
+                                         OUString &rText, const IntlWrapper&) const override;
 
-            virtual SfxPoolItem*        Create( SvStream&, sal_uInt16 nItem ) const override;
-            virtual SvStream&           Store( SvStream&, sal_uInt16 nVersion ) const override;
-
-            virtual SfxPoolItem*        Clone( SfxItemPool* pPool = nullptr ) const override;
-            virtual sal_uInt16          GetVersion( sal_uInt16 nFileFormatVersion ) const override;
+            virtual SdrCustomShapeGeometryItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
             virtual bool                QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
             virtual bool                PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -80,23 +80,18 @@ private:
             void ClearPropertyValue( const OUString& rPropertyName );
 };
 
-class SVX_DLLPUBLIC SdrCustomShapeReplacementURLItem : public SfxStringItem
-{
-    public:
-            SdrCustomShapeReplacementURLItem();
-            virtual ~SdrCustomShapeReplacementURLItem() override;
-            virtual SfxPoolItem*        Clone( SfxItemPool* pPool = nullptr ) const override;
-};
-
 inline SdrOnOffItem makeSdrTextWordWrapItem( bool bAuto ) {
     return SdrOnOffItem( SDRATTR_TEXT_WORDWRAP, bAuto );
 }
 
 // some useful inline methods
 
-inline size_t SdrCustomShapeGeometryItem::PropertyPairHash::operator()( const SdrCustomShapeGeometryItem::PropertyPair &r1 ) const
+size_t SdrCustomShapeGeometryItem::PropertyPairHash::operator()( const SdrCustomShapeGeometryItem::PropertyPair &r1 ) const
 {
-    return (size_t)r1.first.hashCode() + r1.second.hashCode();
+    size_t hash = 17;
+    hash = hash * 37 + r1.first.hashCode();
+    hash = hash * 37 + r1.second.hashCode();
+    return hash;
 };
 
 #endif

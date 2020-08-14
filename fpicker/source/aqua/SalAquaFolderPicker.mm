@@ -26,8 +26,8 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/diagnose.h>
 #include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
-#include <FPServiceInfo.hxx>
 #include <osl/mutex.hxx>
+#include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 #include "SalAquaFolderPicker.hxx"
 
@@ -47,27 +47,14 @@ using namespace ::com::sun::star::ui::dialogs;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 
-namespace
-{
-    // controlling event notifications
-    uno::Sequence<rtl::OUString> SAL_CALL FolderPicker_getSupportedServiceNames()
-    {
-        uno::Sequence<rtl::OUString> aRet(2);
-        aRet[0] = "com.sun.star.ui.dialogs.SystemFolderPicker";
-        aRet[1] = "com.sun.star.ui.dialogs.AquaFolderPicker";
-        return aRet;
-    }
-}
-
-SalAquaFolderPicker::SalAquaFolderPicker( const uno::Reference<lang::XMultiServiceFactory>& xServiceMgr ) :
-    m_xServiceMgr( xServiceMgr )
+SalAquaFolderPicker::SalAquaFolderPicker()
 {
     m_nDialogType = NAVIGATIONSERVICES_DIRECTORY;
 }
 
 // XExecutableDialog
 
-void SAL_CALL SalAquaFolderPicker::setTitle( const rtl::OUString& aTitle )
+void SAL_CALL SalAquaFolderPicker::setTitle( const OUString& aTitle )
 {
     SolarMutexGuard aGuard;
 
@@ -84,19 +71,11 @@ sal_Int16 SAL_CALL SalAquaFolderPicker::execute()
 
     switch( nResult )
     {
-#if MACOSX_SDK_VERSION >= 101000
     case NSModalResponseOK:
-#else
-    case NSOKButton:
-#endif
         retVal = ExecutableDialogResults::OK;
         break;
 
-#if MACOSX_SDK_VERSION >= 101000
     case NSModalResponseCancel:
-#else
-    case NSCancelButton:
-#endif
         retVal = ExecutableDialogResults::CANCEL;
         break;
 
@@ -110,14 +89,14 @@ sal_Int16 SAL_CALL SalAquaFolderPicker::execute()
 
 // XFolderPicker
 
-void SAL_CALL SalAquaFolderPicker::setDisplayDirectory( const rtl::OUString& aDirectory )
+void SAL_CALL SalAquaFolderPicker::setDisplayDirectory( const OUString& aDirectory )
 {
     SolarMutexGuard aGuard;
 
     implsetDisplayDirectory(aDirectory);
 }
 
-rtl::OUString SAL_CALL SalAquaFolderPicker::getDisplayDirectory()
+OUString SAL_CALL SalAquaFolderPicker::getDisplayDirectory()
 {
     SolarMutexGuard aGuard;
 
@@ -126,13 +105,13 @@ rtl::OUString SAL_CALL SalAquaFolderPicker::getDisplayDirectory()
     return aDirectory;
 }
 
-rtl::OUString SAL_CALL SalAquaFolderPicker::getDirectory()
+OUString SAL_CALL SalAquaFolderPicker::getDirectory()
 {
     SolarMutexGuard aGuard;
 
     NSArray *files = nil;
     if (m_nDialogType == NAVIGATIONSERVICES_DIRECTORY) {
-        files = [(NSOpenPanel*)m_pDialog URLs];
+        files = [static_cast<NSOpenPanel*>(m_pDialog) URLs];
     }
 
     long nFiles = [files count];
@@ -142,7 +121,7 @@ rtl::OUString SAL_CALL SalAquaFolderPicker::getDirectory()
         throw uno::RuntimeException("no directory selected", static_cast< cppu::OWeakObject * >( this ));
     }
 
-    rtl::OUString aDirectory;
+    OUString aDirectory;
 
     NSURL *url = [files objectAtIndex:0];
 
@@ -153,28 +132,26 @@ rtl::OUString SAL_CALL SalAquaFolderPicker::getDirectory()
     return aDirectory;
 }
 
-void SAL_CALL SalAquaFolderPicker::setDescription( const rtl::OUString& rDescription )
+void SAL_CALL SalAquaFolderPicker::setDescription( const OUString& rDescription )
 {
     [m_pDialog setMessage:[NSString stringWithOUString:rDescription]];
 }
 
 // XServiceInfo
 
-rtl::OUString SAL_CALL SalAquaFolderPicker::getImplementationName()
+OUString SAL_CALL SalAquaFolderPicker::getImplementationName()
 {
-    rtl::OUString retVal( FOLDER_PICKER_IMPL_NAME );
-
-    return retVal;
+    return "com.sun.star.ui.dialogs.SalAquaFolderPicker";
 }
 
-sal_Bool SAL_CALL SalAquaFolderPicker::supportsService( const rtl::OUString& sServiceName )
+sal_Bool SAL_CALL SalAquaFolderPicker::supportsService( const OUString& sServiceName )
 {
     return cppu::supportsService(this, sServiceName);
 }
 
-uno::Sequence<rtl::OUString> SAL_CALL SalAquaFolderPicker::getSupportedServiceNames()
+uno::Sequence<OUString> SAL_CALL SalAquaFolderPicker::getSupportedServiceNames()
 {
-    return FolderPicker_getSupportedServiceNames();
+    return { "com.sun.star.ui.dialogs.SystemFolderPicker", "com.sun.star.ui.dialogs.AquaFolderPicker" };
 }
 
 // XCancellable
@@ -191,5 +168,13 @@ void SAL_CALL SalAquaFolderPicker::cancel()
 void SAL_CALL SalAquaFolderPicker::disposing( const lang::EventObject& )
 {
 }
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+fpicker_SalAquaFolderPicker_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new SalAquaFolderPicker());
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

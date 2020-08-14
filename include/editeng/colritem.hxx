@@ -23,8 +23,6 @@
 #include <tools/color.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
 #define VERSION_USEAUTOCOLOR    1
 
 /** SvxColorItem item describes a color.
@@ -39,53 +37,41 @@ public:
 
     explicit SvxColorItem(const sal_uInt16 nId);
     SvxColorItem(const Color& aColor, const sal_uInt16 nId);
-    SvxColorItem(SvStream& rStream, const sal_uInt16 nId);
-    SvxColorItem(const SvxColorItem& rCopy);
     virtual ~SvxColorItem() override;
 
     // "pure virtual Methods" from SfxPoolItem
     virtual bool operator==(const SfxPoolItem& rPoolItem) const override;
     virtual bool QueryValue(css::uno::Any& rVal, sal_uInt8 nMemberId = 0) const override;
     virtual bool PutValue(const css::uno::Any& rVal, sal_uInt8 nMemberId) override;
-    virtual sal_uInt16 GetVersion(sal_uInt16 nFileVersion) const override;
 
     virtual bool GetPresentation(SfxItemPresentation ePres,
                                  MapUnit eCoreMetric, MapUnit ePresMetric,
-                                 OUString &rText, const IntlWrapper* pIntlWrapper = nullptr) const override;
+                                 OUString &rText, const IntlWrapper& rIntlWrapper) const override;
 
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rStream, sal_uInt16 nVersion) const override;
-    virtual SvStream& Store(SvStream& rStream, sal_uInt16 nVersion) const override;
-
-    SvxColorItem& operator=(const SvxColorItem& rColor)
-    {
-        SetValue(rColor.GetValue());
-        return *this;
-    }
+    virtual SvxColorItem* Clone(SfxItemPool* pPool = nullptr) const override;
+    SvxColorItem(SvxColorItem const &) = default; // SfxPoolItem copy function dichotomy
 
     const Color& GetValue() const
     {
         return mColor;
     }
     void SetValue(const Color& rNewColor);
+
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 // XXX: to be moved in a separate header.
-class EDITENG_DLLPUBLIC SvxBackgroundColorItem : public SvxColorItem
+class EDITENG_DLLPUBLIC SvxBackgroundColorItem final : public SvxColorItem
 {
-    public:
-        static SfxPoolItem* CreateDefault();
+public:
+    static SfxPoolItem* CreateDefault();
 
-        SvxBackgroundColorItem(const sal_uInt16 nId);
-        SvxBackgroundColorItem(const Color& rCol, const sal_uInt16 nId);
-        SvxBackgroundColorItem(SvStream& rStrm, const sal_uInt16 nId);
-        SvxBackgroundColorItem(const SvxBackgroundColorItem& rCopy);
+    SvxBackgroundColorItem(const sal_uInt16 nId);
+    SvxBackgroundColorItem(const Color& rCol, const sal_uInt16 nId);
 
-        virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
-        virtual SvStream& Store(SvStream& rStream, sal_uInt16 nVersion) const override;
-        virtual SfxPoolItem* Create(SvStream &, sal_uInt16) const override;
-        virtual bool QueryValue(css::uno::Any& rVal, sal_uInt8 nMemberId = 0) const override;
-        virtual bool PutValue(const css::uno::Any& rVal, sal_uInt8 nMemberId) override;
+    virtual SvxBackgroundColorItem* Clone(SfxItemPool* pPool = nullptr) const override;
+    virtual bool QueryValue(css::uno::Any& rVal, sal_uInt8 nMemberId = 0) const override;
+    virtual bool PutValue(const css::uno::Any& rVal, sal_uInt8 nMemberId) override;
 };
 
 #endif

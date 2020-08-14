@@ -17,8 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <uno/mapping.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -31,17 +32,17 @@
 #include <com/sun/star/beans/Property.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/io/XActiveDataSink.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
 #include <com/sun/star/io/XActiveDataStreamer.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
+#include <com/sun/star/ucb/ContentCreationException.hpp>
 #include <com/sun/star/ucb/CommandFailedException.hpp>
 #include <com/sun/star/ucb/ContentInfo.hpp>
 #include <com/sun/star/ucb/ContentInfoAttribute.hpp>
 #include <com/sun/star/ucb/InsertCommandArgument.hpp>
 #include <com/sun/star/ucb/InteractiveIOException.hpp>
 #include <com/sun/star/ucb/NameClash.hpp>
-#include <com/sun/star/ucb/NameClashException.hpp>
 #include <com/sun/star/ucb/OpenCommandArgument2.hpp>
 #include <com/sun/star/ucb/OpenMode.hpp>
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
@@ -51,8 +52,6 @@
 #include <com/sun/star/util/theMacroExpander.hpp>
 
 #include <vector>
-
-#include "FileAccess.hxx"
 
 #define SERVICE_NAME "com.sun.star.ucb.SimpleFileAccess"
 
@@ -116,13 +115,13 @@ public:
     virtual void SAL_CALL setHidden( const OUString& FileURL, sal_Bool bHidden ) override;
 
     OUString SAL_CALL getImplementationName() override
-    { return OUString(IMPLEMENTATION_NAME); }
+    { return "com.sun.star.comp.ucb.SimpleFileAccess"; }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
 
     css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
-    { return FileAccess_getSupportedServiceNames(); }
+    { return { SERVICE_NAME }; }
 };
 
 // Implementation XActiveDataSink
@@ -238,9 +237,10 @@ void OFileAccess::transferImpl( const OUString& rSource,
             }
             catch ( Exception const & )
             {
-                throw RuntimeException(
+                css::uno::Any anyEx = cppu::getCaughtException();
+                throw css::lang::WrappedTargetRuntimeException(
                     "OFileAccess::transferrImpl - Unable to obtain destination folder URL!",
-                    static_cast< cppu::OWeakObject * >( this ) );
+                    static_cast< cppu::OWeakObject * >( this ), anyEx );
             }
 
             transferImpl( rSource, aDestURL, bMoveData );
@@ -258,7 +258,7 @@ void OFileAccess::transferImpl( const OUString& rSource,
 
     try
     {
-        (void)aDestPath.transferContent(aSrc,
+        aDestPath.transferContent(aSrc,
                                         bMoveData
                                          ? ucbhelper::InsertOperation::Move
                                          : ucbhelper::InsertOperation::Copy,
@@ -349,15 +349,11 @@ void OFileAccess::createFolder( const OUString& NewFolderURL )
 
     ucbhelper::Content aCnt( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), mxEnvironment.get(), comphelper::getProcessComponentContext() );
 
-    Sequence< ContentInfo > aInfo = aCnt.queryCreatableContentsInfo();
-    sal_Int32 nCount = aInfo.getLength();
-    if ( nCount == 0 )
-        return;
+    const Sequence< ContentInfo > aInfo = aCnt.queryCreatableContentsInfo();
 
-    for ( sal_Int32 i = 0; i < nCount; ++i )
+    for ( const ContentInfo & rCurr : aInfo )
     {
         // Simply look for the first KIND_FOLDER...
-        const ContentInfo & rCurr = aInfo[i];
         if ( rCurr.Attributes & ContentInfoAttribute::KIND_FOLDER )
         {
             // Make sure the only required bootstrap property is "Title",
@@ -399,7 +395,7 @@ sal_Int32 OFileAccess::getSize( const OUString& FileURL )
     INetURLObject aObj( FileURL, INetProtocol::File );
     ucbhelper::Content aCnt( aObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ), mxEnvironment.get(), comphelper::getProcessComponentContext() );
     aCnt.getPropertyValue( "Size" ) >>= nTemp;
-    nSize = (sal_Int32)nTemp;
+    nSize = static_cast<sal_Int32>(nTemp);
     return nSize;
 }
 
@@ -424,13 +420,11 @@ css::util::DateTime OFileAccess::getDateTimeModified( const OUString& FileURL )
     return aDateTime;
 }
 
-typedef vector< OUString* > StringList_Impl;
-
 Sequence< OUString > OFileAccess::getFolderContents( const OUString& FolderURL, sal_Bool bIncludeFolders )
 {
     // SfxContentHelper::GetFolderContents
 
-    StringList_Impl* pFiles = nullptr;
+    std::vector<OUString> aFiles;
     INetURLObject aFolderObj( FolderURL, INetProtocol::File );
 
     ucbhelper::Content aCnt( aFolderObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ), mxEnvironment.get(), comphelper::getProcessComponentContext() );
@@ -450,35 +444,17 @@ Sequence< OUString > OFileAccess::getFolderContents( const OUString& FolderURL, 
 
     if ( xResultSet.is() )
     {
-        pFiles = new StringList_Impl;
         Reference< css::ucb::XContentAccess > xContentAccess( xResultSet, UNO_QUERY );
 
         while ( xResultSet->next() )
         {
             OUString aId = xContentAccess->queryContentIdentifierString();
             INetURLObject aURL( aId, INetProtocol::File );
-            OUString* pFile = new OUString( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
-            pFiles->push_back( pFile );
+            aFiles.push_back( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
         }
     }
 
-    if ( pFiles )
-    {
-        size_t nCount = pFiles->size();
-        Sequence < OUString > aRet( nCount );
-        OUString* pRet = aRet.getArray();
-        for ( size_t i = 0; i < nCount; ++i )
-        {
-            OUString* pFile = pFiles->at( i );
-            pRet[i] = *( pFile );
-            delete pFile;
-        }
-        pFiles->clear();
-        delete pFiles;
-        return aRet;
-    }
-    else
-        return Sequence < OUString > ();
+    return comphelper::containerToSequence(aFiles);
 }
 
 sal_Bool OFileAccess::exists( const OUString& FileURL )
@@ -505,7 +481,7 @@ Reference< XInputStream > OFileAccess::openFileRead( const OUString& FileURL )
     INetURLObject aObj( FileURL, INetProtocol::File );
     ucbhelper::Content aCnt( aObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ), mxEnvironment.get(), comphelper::getProcessComponentContext() );
 
-    Reference< XActiveDataSink > xSink = static_cast<XActiveDataSink*>(new OActiveDataSink);
+    Reference<XActiveDataSink> xSink = new OActiveDataSink;
 
     try
     {
@@ -532,7 +508,7 @@ Reference< XOutputStream > OFileAccess::openFileWrite( const OUString& FileURL )
 
 Reference< XStream > OFileAccess::openFileReadWrite( const OUString& FileURL )
 {
-    Reference< XActiveDataStreamer > xSink = static_cast<XActiveDataStreamer*>(new OActiveDataStreamer);
+    Reference<XActiveDataStreamer> xSink = new OActiveDataStreamer;
 
     OpenCommandArgument2 aArg;
     aArg.Mode       = OpenMode::DOCUMENT;
@@ -605,14 +581,10 @@ bool OFileAccess::createNewFile( const OUString & rParentURL,
 {
     ucbhelper::Content aParentCnt( rParentURL, mxEnvironment.get(), comphelper::getProcessComponentContext() );
 
-    Sequence< ContentInfo > aInfo = aParentCnt.queryCreatableContentsInfo();
-    sal_Int32 nCount = aInfo.getLength();
-    if ( nCount == 0 )
-        return false;
+    const Sequence< ContentInfo > aInfo = aParentCnt.queryCreatableContentsInfo();
 
-    for ( sal_Int32 i = 0; i < nCount; ++i )
+    for ( const ContentInfo & rCurr : aInfo )
     {
-        const ContentInfo & rCurr = aInfo[i];
         if ( ( rCurr.Attributes
                & ContentInfoAttribute::KIND_DOCUMENT ) &&
              ( rCurr.Attributes
@@ -720,17 +692,15 @@ void OFileAccess::setHidden( const OUString& FileURL, sal_Bool bHidden )
     aCnt.setPropertyValue("IsHidden", Any(bHidden) );
 }
 
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_OFileAccess_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new OFileAccess(context));
+}
+
 }; // namespace end
 
-Reference< XInterface > SAL_CALL FileAccess_CreateInstance( const Reference< XMultiServiceFactory > & xSMgr )
-{
-    return Reference < XInterface >( static_cast<cppu::OWeakObject *>(new OFileAccess( comphelper::getComponentContext(xSMgr) )) );
-}
-
-Sequence< OUString > FileAccess_getSupportedServiceNames()
-{
-    Sequence< OUString > seqNames { SERVICE_NAME };
-    return seqNames;
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

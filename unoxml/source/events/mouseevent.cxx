@@ -23,7 +23,7 @@ using namespace css::uno;
 using namespace css::xml::dom::events;
 using namespace css::xml::dom::views;
 
-namespace DOM { namespace events
+namespace DOM::events
 {
     CMouseEvent::CMouseEvent()
         : CMouseEvent_Base()
@@ -86,8 +86,7 @@ namespace DOM { namespace events
     }
     Reference< XEventTarget > SAL_CALL CMouseEvent::getRelatedTarget()
     {
-        ::osl::MutexGuard const g(m_Mutex);
-        return m_relatedTarget;
+        return Reference< XEventTarget >();
     }
 
     void SAL_CALL CMouseEvent::initMouseEvent(
@@ -192,6 +191,6 @@ namespace DOM { namespace events
         // base initializer
         CUIEvent::initEvent(eventTypeArg, canBubbleArg, cancelableArg);
     }
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

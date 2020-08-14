@@ -23,13 +23,10 @@
 #include <drawinglayer/primitive2d/textprimitive2d.hxx>
 #include <drawinglayer/primitive2d/textlayoutdevice.hxx>
 #include <drawinglayer/primitive2d/textbreakuphelper.hxx>
-#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 #include <drawinglayer/primitive2d/textdecoratedprimitive2d.hxx>
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgTextPositions::SvgTextPositions()
         :   maX(),
             maY(),
@@ -146,14 +143,13 @@ namespace svgio
             }
         }
 
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
+        namespace {
+
         class localTextBreakupHelper : public drawinglayer::primitive2d::TextBreakupHelper
         {
         private:
@@ -174,6 +170,8 @@ namespace svgio
             }
         };
 
+        }
+
         bool localTextBreakupHelper::allowChange(sal_uInt32 /*nCount*/, basegfx::B2DHomMatrix& rNewTransform, sal_uInt32 /*nIndex*/, sal_uInt32 /*nLength*/)
         {
             const double fRotation(mrSvgTextPosition.consumeRotation());
@@ -190,14 +188,11 @@ namespace svgio
             return true;
         }
 
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgCharacterNode::SvgCharacterNode(
             SvgDocument& rDocument,
             SvgNode* pParent,
@@ -503,36 +498,36 @@ namespace svgio
                     rSvgTextPosition,
                     rSvgStyleAttributes));
 
-            if(xRef.is() && (Visibility_visible == rSvgStyleAttributes.getVisibility()))
+            if(!(xRef.is() && (Visibility_visible == rSvgStyleAttributes.getVisibility())))
+                return;
+
+            if(!rSvgTextPosition.isRotated())
             {
-                if(!rSvgTextPosition.isRotated())
+                rTarget.push_back(xRef);
+            }
+            else
+            {
+                // need to apply rotations to each character as given
+                const drawinglayer::primitive2d::TextSimplePortionPrimitive2D* pCandidate =
+                    dynamic_cast< const drawinglayer::primitive2d::TextSimplePortionPrimitive2D* >(xRef.get());
+
+                if(pCandidate)
                 {
-                    rTarget.push_back(xRef);
+                    const localTextBreakupHelper alocalTextBreakupHelper(*pCandidate, rSvgTextPosition);
+                    const drawinglayer::primitive2d::Primitive2DContainer& aResult(
+                        alocalTextBreakupHelper.getResult());
+
+                    if(!aResult.empty())
+                    {
+                        rTarget.append(aResult);
+                    }
+
+                    // also consume for the implied single space
+                    rSvgTextPosition.consumeRotation();
                 }
                 else
                 {
-                    // need to apply rotations to each character as given
-                    const drawinglayer::primitive2d::TextSimplePortionPrimitive2D* pCandidate =
-                        dynamic_cast< const drawinglayer::primitive2d::TextSimplePortionPrimitive2D* >(xRef.get());
-
-                    if(pCandidate)
-                    {
-                        const localTextBreakupHelper alocalTextBreakupHelper(*pCandidate, rSvgTextPosition);
-                        const drawinglayer::primitive2d::Primitive2DContainer aResult(
-                            alocalTextBreakupHelper.getResult());
-
-                        if(!aResult.empty())
-                        {
-                            rTarget.append(aResult);
-                        }
-
-                        // also consume for the implied single space
-                        rSvgTextPosition.consumeRotation();
-                    }
-                    else
-                    {
-                        OSL_ENSURE(false, "Used primitive is not a text primitive (!)");
-                    }
+                    OSL_ENSURE(false, "Used primitive is not a text primitive (!)");
                 }
             }
         }
@@ -572,14 +567,11 @@ namespace svgio
             }
         }
 
-    } // end of namespace svgreader
-} // end of namespace svgio
+} // end of namespace svgio::svgreader
 
 
-namespace svgio
+namespace svgio::svgreader
 {
-    namespace svgreader
-    {
         SvgTextPosition::SvgTextPosition(
             SvgTextPosition* pParent,
             const InfoProvider& rInfoProvider,
@@ -604,11 +596,9 @@ namespace svgio
             // but it seems to be degrees. Convert here to radians
             if(!maRotate.empty())
             {
-                const double fFactor(F_PI / 180.0);
-
-                for(size_t a(0); a < maRotate.size(); a++)
+                for (double& f : maRotate)
                 {
-                    maRotate[a] *= fFactor;
+                    f = basegfx::deg2rad(f);
                 }
             }
 
@@ -760,7 +750,6 @@ namespace svgio
             return fRetval;
         }
 
-    } // end of namespace svgreader
 } // end of namespace svgio
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,16 +22,15 @@
 #include <ooo/vba/word/WdLineStyle.hpp>
 #include <ooo/vba/word/WdLineWidth.hpp>
 #include <ooo/vba/word/WdColorIndex.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/util/XStringSubstitution.hpp>
 #include <com/sun/star/util/thePathSettings.hpp>
+#include <comphelper/processfactory.hxx>
 #include <basic/sberrors.hxx>
 #include <osl/file.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
-SwVbaOptions::SwVbaOptions( uno::Reference<uno::XComponentContext >& xContext ) : SwVbaOptions_BASE( uno::Reference< XHelperInterface >(), xContext )
+SwVbaOptions::SwVbaOptions( uno::Reference<uno::XComponentContext > const & xContext ) : SwVbaOptions_BASE( uno::Reference< XHelperInterface >(), xContext )
 {
 }
 
@@ -259,18 +258,16 @@ void SAL_CALL SwVbaOptions::setAutoFormatApplyBulletedLists( sal_Bool /*_autofor
 OUString
 SwVbaOptions::getServiceImplName()
 {
-    return OUString("SwVbaOptions");
+    return "SwVbaOptions";
 }
 
 uno::Sequence< OUString >
 SwVbaOptions::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.Options";
-    }
+        "ooo.vba.word.Options"
+    };
     return aServiceNames;
 }
 

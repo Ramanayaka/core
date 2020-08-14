@@ -10,6 +10,7 @@
 #include <cassert>
 #include <string>
 #include <set>
+#include <iostream>
 
 #include "plugin.hxx"
 
@@ -23,13 +24,19 @@ TODO look for places where we are working around the warning by doing
  */
 namespace {
 
-class CheckUnusedParams: public RecursiveASTVisitor<CheckUnusedParams>, public loplugin::Plugin {
+class CheckUnusedParams: public loplugin::FilteringPlugin<CheckUnusedParams> {
 public:
-    explicit CheckUnusedParams(InstantiationData const & data): Plugin(data) {}
+    explicit CheckUnusedParams(loplugin::InstantiationData const & data):
+        FilteringPlugin(data) {}
     void run() override;
-    bool VisitFunctionDecl(FunctionDecl const * decl);
-    bool VisitDeclRefExpr(DeclRefExpr const *);
+    bool VisitFunctionDecl(FunctionDecl const *);
+    bool VisitUnaryOperator(UnaryOperator const *);
+    bool VisitInitListExpr(InitListExpr const *);
+    bool VisitCallExpr(CallExpr const *);
+    bool VisitBinaryOperator(BinaryOperator const *);
+    bool VisitCXXConstructExpr(CXXConstructExpr const *);
 private:
+    void checkForFunctionDecl(Expr const *, bool bCheckOnly = false);
     std::set<FunctionDecl const *> m_addressOfSet;
     enum class PluginPhase { FindAddressOf, Warning };
     PluginPhase m_phase;
@@ -37,8 +44,7 @@ private:
 
 void CheckUnusedParams::run()
 {
-    StringRef fn( compiler.getSourceManager().getFileEntryForID(
-                      compiler.getSourceManager().getMainFileID())->getName() );
+    StringRef fn(handler.getMainFileName());
     if (loplugin::hasPathnamePrefix(fn, SRCDIR "/sal/"))
          return;
     // Taking pointer to function
@@ -57,6 +63,21 @@ void CheckUnusedParams::run()
     // leave this alone for now
     if (loplugin::hasPathnamePrefix(fn, SRCDIR "/libreofficekit/"))
          return;
+    // this has a certain pattern to its code which appears to include lots of unused params
+    if (loplugin::hasPathnamePrefix(fn, SRCDIR "/xmloff/"))
+         return;
+    // I believe someone is busy working on this chunk of code
+    if (loplugin::isSamePathname(fn, SRCDIR "/sc/source/ui/docshell/dataprovider.cxx"))
+         return;
+    // I think erack is working on stuff here
+    if (loplugin::isSamePathname(fn, SRCDIR "/sc/source/filter/excel/xiformula.cxx"))
+         return;
+    // lots of callbacks here
+    if (loplugin::isSamePathname(fn, SRCDIR "/sc/source/filter/lotus/op.cxx"))
+         return;
+    // template magic
+    if (loplugin::isSamePathname(fn, SRCDIR "/sc/source/filter/html/htmlpars.cxx"))
+         return;
 
     m_phase = PluginPhase::FindAddressOf;
     TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
@@ -64,32 +85,85 @@ void CheckUnusedParams::run()
     TraverseDecl(compiler.getASTContext().getTranslationUnitDecl());
 }
 
-bool CheckUnusedParams::VisitDeclRefExpr(DeclRefExpr const * declRef) {
+bool CheckUnusedParams::VisitUnaryOperator(UnaryOperator const * op) {
+    if (op->getOpcode() != UO_AddrOf) {
+        return true;
+    }
     if (m_phase != PluginPhase::FindAddressOf)
         return true;
-    if (ignoreLocation(declRef))
-        return true;
-    if (isInUnoIncludeFile(compiler.getSourceManager().getSpellingLoc(declRef->getLocStart())))
-        return true;
-    auto functionDecl = dyn_cast<FunctionDecl>(declRef->getDecl());
-    if (!functionDecl)
-        return true;
-    m_addressOfSet.insert(functionDecl);
+    checkForFunctionDecl(op->getSubExpr());
     return true;
 }
 
+bool CheckUnusedParams::VisitBinaryOperator(BinaryOperator const * binaryOperator) {
+    if (binaryOperator->getOpcode() != BO_Assign) {
+        return true;
+    }
+    if (m_phase != PluginPhase::FindAddressOf)
+        return true;
+    checkForFunctionDecl(binaryOperator->getRHS());
+    return true;
+}
+
+bool CheckUnusedParams::VisitCallExpr(CallExpr const * callExpr) {
+    if (m_phase != PluginPhase::FindAddressOf)
+        return true;
+    for (auto arg : callExpr->arguments())
+        checkForFunctionDecl(arg);
+    return true;
+}
+
+bool CheckUnusedParams::VisitCXXConstructExpr(CXXConstructExpr const * constructExpr) {
+    if (m_phase != PluginPhase::FindAddressOf)
+        return true;
+    for (auto arg : constructExpr->arguments())
+        checkForFunctionDecl(arg);
+    return true;
+}
+
+bool CheckUnusedParams::VisitInitListExpr(InitListExpr const * initListExpr) {
+    if (m_phase != PluginPhase::FindAddressOf)
+        return true;
+    for (auto subStmt : *initListExpr)
+        checkForFunctionDecl(dyn_cast<Expr>(subStmt));
+    return true;
+}
+
+void CheckUnusedParams::checkForFunctionDecl(Expr const * expr, bool bCheckOnly) {
+    auto e1 = expr->IgnoreParenCasts();
+    auto declRef = dyn_cast<DeclRefExpr>(e1);
+    if (!declRef)
+        return;
+    auto functionDecl = dyn_cast<FunctionDecl>(declRef->getDecl());
+    if (!functionDecl)
+        return;
+    if (bCheckOnly)
+        getParentStmt(expr)->dump();
+    else
+        m_addressOfSet.insert(functionDecl->getCanonicalDecl());
+}
 
 static int noFieldsInRecord(RecordType const * recordType) {
-    return std::distance(recordType->getDecl()->field_begin(), recordType->getDecl()->field_end());
+    auto recordDecl = recordType->getDecl();
+    // if it's complicated, lets just assume it has fields
+    if (isa<ClassTemplateSpecializationDecl>(recordDecl))
+        return 1;
+    return std::distance(recordDecl->field_begin(), recordDecl->field_end());
 }
 static bool startswith(const std::string& rStr, const char* pSubStr) {
     return rStr.compare(0, strlen(pSubStr), pSubStr) == 0;
+}
+static bool endswith(const std::string& rStr, const char* pSubStr) {
+    auto len = strlen(pSubStr);
+    if (len > rStr.size())
+        return false;
+    return rStr.compare(rStr.size() - len, rStr.size(), pSubStr) == 0;
 }
 
 bool CheckUnusedParams::VisitFunctionDecl(FunctionDecl const * decl) {
     if (m_phase != PluginPhase::Warning)
         return true;
-    if (m_addressOfSet.find(decl) != m_addressOfSet.end())
+    if (m_addressOfSet.find(decl->getCanonicalDecl()) != m_addressOfSet.end())
         return true;
     if (ignoreLocation(decl))
         return true;
@@ -125,14 +199,13 @@ bool CheckUnusedParams::VisitFunctionDecl(FunctionDecl const * decl) {
     {
         return true;
     }
-
     FunctionDecl const * canon = decl->getCanonicalDecl();
     std::string fqn = canon->getQualifiedNameAsString(); // because sometimes clang returns nonsense for the filename of canon
     if (ignoreLocation(canon))
         return true;
     if (isInUnoIncludeFile(compiler.getSourceManager().getSpellingLoc(canon->getLocation())))
         return true;
-    StringRef fn = compiler.getSourceManager().getFilename(compiler.getSourceManager().getSpellingLoc(canon->getLocStart()));
+    StringRef fn = getFilenameOfLocation(compiler.getSourceManager().getSpellingLoc(compat::getBeginLoc(canon)));
     // Some backwards compat magic.
     // TODO Can probably be removed, but need to do some checking
     if (loplugin::isSamePathname(fn, SRCDIR "/include/sax/fshelper.hxx"))
@@ -291,10 +364,87 @@ bool CheckUnusedParams::VisitFunctionDecl(FunctionDecl const * decl) {
     // bool marker parameter
     if (fqn == "SvxIconReplacementDialog::SvxIconReplacementDialog")
         return true;
-
+    // used as pointer to fn
+    if (endswith(fqn, "_createInstance"))
+        return true;
+    // callback
+    if (startswith(fqn, "SbRtl_"))
+        return true;
+    // takes pointer to fn
+    if (fqn == "migration::BasicMigration_create" || fqn == "migration::WordbookMigration_create"
+        || fqn == "comp_CBlankNode::_create" || fqn == "comp_CURI::_create"
+        || fqn == "comp_CLiteral::_create" || fqn == "CDocumentBuilder::_getInstance"
+        || fqn == "DOM::CDocumentBuilder::_getInstance"
+        || fqn == "xml_security::serial_number_adapter::create"
+        || fqn == "desktop::splash::create" || fqn == "ScannerManager_CreateInstance"
+        || fqn == "formula::FormulaOpCodeMapperObj::create"
+        || fqn == "(anonymous namespace)::createInstance"
+        || fqn == "x_error_handler"
+        || fqn == "warning_func"
+        || fqn == "error_func"
+        || fqn == "ScaDateAddIn_CreateInstance"
+        || fqn == "ScaPricingAddIn_CreateInstance"
+        || fqn == "(anonymous namespace)::PDFSigningPKCS7PasswordCallback"
+        || fqn == "ContextMenuEventLink"
+        || fqn == "DelayedCloseEventLink"
+        || fqn == "GDIMetaFile::ImplColMonoFnc"
+        || fqn == "vcl::getGlyph0"
+        || fqn == "vcl::getGlyph6"
+        || fqn == "vcl::getGlyph12"
+        || fqn == "setPasswordCallback"
+        || fqn == "VCLExceptionSignal_impl"
+        || fqn == "getFontTable"
+        || fqn == "textconversiondlgs::ChineseTranslation_UnoDialog::create"
+        || fqn == "pcr::DefaultHelpProvider::Create"
+        || fqn == "pcr::DefaultFormComponentInspectorModel::Create"
+        || fqn == "pcr::ObjectInspectorModel::Create"
+        || fqn == "GraphicExportFilter::GraphicExportFilter"
+        || fqn == "CertificateContainer::CertificateContainer"
+        || startswith(fqn, "ParseCSS1_")
+        )
+         return true;
+    // TODO
+    if (fqn == "FontSubsetInfo::CreateFontSubsetFromType1")
+         return true;
+    // used in template magic
+    if (fqn == "MtfRenderer::MtfRenderer" || fqn == "shell::sessioninstall::SyncDbusSessionHelper::SyncDbusSessionHelper"
+        || fqn == "dp_gui::LicenseDialog::LicenseDialog"
+        || fqn == "(anonymous namespace)::OGLTransitionFactoryImpl::OGLTransitionFactoryImpl")
+         return true;
+    // FIXME
+    if (fqn == "GtkSalDisplay::filterGdkEvent" || fqn == "SvXMLEmbeddedObjectHelper::ImplReadObject"
+        || fqn == "chart::CachedDataSequence::CachedDataSequence")
+         return true;
+    // used via macro
+    if (fqn == "framework::MediaTypeDetectionHelper::MediaTypeDetectionHelper"
+        || fqn == "framework::UriAbbreviation::UriAbbreviation"
+        || fqn == "framework::DispatchDisabler::DispatchDisabler"
+        || fqn == "framework::DispatchRecorderSupplier::DispatchRecorderSupplier")
+         return true;
+    // TODO Armin Le Grand is still working on this
+    if (fqn == "svx::frame::CreateDiagFrameBorderPrimitives"
+        || fqn == "svx::frame::CreateBorderPrimitives")
+         return true;
+    // marked with a TODO
+    if (fqn == "pcr::FormLinkDialog::getExistingRelation"
+        || fqn == "ooo::vba::DebugHelper::basicexception"
+        || fqn == "ScPrintFunc::DrawToDev")
+         return true;
+    // macros at work
+    if (fqn == "msfilter::lcl_PrintDigest")
+         return true;
+    // TODO something wrong here, the method that calls this (Normal::GenSlidingWindowFunction) cannot be correct
+    if (fqn == "sc::opencl::OpBase::Gen")
+         return true;
+    // Can't change this without conflicting with another constructor with the same signature
+    if (fqn == "XclExpSupbook::XclExpSupbook")
+         return true;
     // ignore the LINK macros from include/tools/link.hxx
     if (decl->getLocation().isMacroID())
         return true;
+    // debug code in sw/
+    if (fqn == "lcl_dbg_out")
+         return true;
 
     for( auto it = decl->param_begin(); it != decl->param_end(); ++it) {
         auto param = *it;
@@ -327,14 +477,18 @@ bool CheckUnusedParams::VisitFunctionDecl(FunctionDecl const * decl) {
                 continue;
         }
         report( DiagnosticsEngine::Warning,
-                "unused param %0 in %1", decl->getLocation())
-                << decl->getSourceRange()
+                "unused param %0 in %1", compat::getBeginLoc(param))
+                << param->getSourceRange()
                 << param->getName()
                 << fqn;
         if (canon != decl)
+        {
+            unsigned idx = param->getFunctionScopeIndex();
+            const ParmVarDecl* pOther = canon->getParamDecl(idx);
             report( DiagnosticsEngine::Note, "declaration is here",
-                    canon->getLocation())
-                    << canon->getSourceRange();
+                    compat::getBeginLoc(pOther))
+                    << pOther->getSourceRange();
+        }
     }
     return true;
 }

@@ -18,26 +18,22 @@
  */
 
 #include <svx/sdr/overlay/overlayanimatedbitmapex.hxx>
-#include <vcl/outdev.hxx>
 #include <svx/sdr/overlay/overlaymanager.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <sdr/overlay/overlaytools.hxx>
 
 
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         drawinglayer::primitive2d::Primitive2DContainer OverlayAnimatedBitmapEx::createOverlayObjectPrimitive2DSequence()
         {
             if(mbOverlayState)
             {
                 const drawinglayer::primitive2d::Primitive2DReference aPrimitive(
                     new drawinglayer::primitive2d::OverlayBitmapExPrimitive(
-                        getBitmapEx1(),
+                        maBitmapEx1,
                         getBasePosition(),
-                        getCenterX1(),
-                        getCenterY1(),
+                        mnCenterX1,
+                        mnCenterY1,
                         getShearX(),
                         getRotation()));
 
@@ -47,10 +43,10 @@ namespace sdr
             {
                 const drawinglayer::primitive2d::Primitive2DReference aPrimitive(
                     new drawinglayer::primitive2d::OverlayBitmapExPrimitive(
-                        getBitmapEx2(),
+                        maBitmapEx2,
                         getBasePosition(),
-                        getCenterX2(),
-                        getCenterY2(),
+                        mnCenterX2,
+                        mnCenterY2,
                         getShearX(),
                         getRotation()));
 
@@ -69,7 +65,7 @@ namespace sdr
             sal_uInt16 nCenY2,
             double fShearX,
             double fRotation)
-        :   OverlayObjectWithBasePosition(rBasePos, Color(COL_WHITE)),
+        :   OverlayObjectWithBasePosition(rBasePos, COL_WHITE),
             maBitmapEx1(rBitmapEx1),
             maBitmapEx2(rBitmapEx2),
             mnCenterX1(nCenX1), mnCenterY1(nCenY1),
@@ -89,29 +85,29 @@ namespace sdr
 
         void OverlayAnimatedBitmapEx::Trigger(sal_uInt32 nTime)
         {
-            if(getOverlayManager())
+            if(!getOverlayManager())
+                return;
+
+            // #i53216# produce event after nTime + x
+            SetTime(nTime + mnBlinkTime);
+
+            // switch state
+            if(mbOverlayState)
             {
-                // #i53216# produce event after nTime + x
-                SetTime(nTime + mnBlinkTime);
-
-                // switch state
-                if(mbOverlayState)
-                {
-                    mbOverlayState = false;
-                }
-                else
-                {
-                    mbOverlayState = true;
-                }
-
-                // re-insert me as event
-                getOverlayManager()->InsertEvent(this);
-
-                // register change (after change)
-                objectChange();
+                mbOverlayState = false;
             }
+            else
+            {
+                mbOverlayState = true;
+            }
+
+            // re-insert me as event
+            getOverlayManager()->InsertEvent(*this);
+
+            // register change (after change)
+            objectChange();
         }
-    } // end of namespace overlay
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

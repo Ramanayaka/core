@@ -17,30 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "spelleng.hxx"
+#include <spelleng.hxx>
 #include <com/sun/star/i18n/TextConversionOption.hpp>
 
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
+#include <scitems.hxx>
 
 #include <editeng/langitem.hxx>
 #include <editeng/editobj.hxx>
 #include <editeng/editview.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <vcl/msgbox.hxx>
-#include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
 
-#include "spelldialog.hxx"
-#include "tabvwsh.hxx"
-#include "docsh.hxx"
-#include "cellvalue.hxx"
-#include "cellform.hxx"
-#include "formulacell.hxx"
-#include "patattr.hxx"
-#include "waitoff.hxx"
-#include "globstr.hrc"
-#include "markdata.hxx"
+#include <spelldialog.hxx>
+#include <tabvwsh.hxx>
+#include <docsh.hxx>
+#include <cellvalue.hxx>
+#include <cellform.hxx>
+#include <patattr.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <markdata.hxx>
 
 #include <memory>
 
@@ -155,7 +153,7 @@ bool ScConversionEngineBase::FindNextConversionCell()
                 bLoop = false;
                 mbFinished = true;
             }
-            else if( nNewCol > MAXCOL )
+            else if( nNewCol > mrDoc.MaxCol() )
             {
                 // no more cells in the sheet - try to restart at top of sheet
 
@@ -169,7 +167,7 @@ bool ScConversionEngineBase::FindNextConversionCell()
                 else if( ShowTableWrapDialog() )
                 {
                     // conversion started anywhere but in cell A1, user wants to restart
-                    nNewRow = MAXROW + 2;
+                    nNewRow = mrDoc.MaxRow() + 2;
                     mbWrappedInTable = true;
                 }
                 else
@@ -255,22 +253,22 @@ void ScConversionEngineBase::FillFromCell( SCCOL nCol, SCROW nRow, SCTAB nTab )
         case CELLTYPE_STRING:
         {
             SvNumberFormatter* pFormatter = mrDoc.GetFormatTable();
-            sal_uLong nNumFmt = mrDoc.GetNumberFormat(aPos);
+            sal_uInt32 nNumFmt = mrDoc.GetNumberFormat(aPos);
             OUString aText;
             Color* pColor;
             ScCellFormat::GetString(aCell, nNumFmt, aText, &pColor, *pFormatter, &mrDoc);
 
-            SetText(aText);
+            SetTextCurrentDefaults(aText);
         }
         break;
         case CELLTYPE_EDIT:
         {
             const EditTextObject* pNewEditObj = aCell.mpEditText;
-            SetText(*pNewEditObj);
+            SetTextCurrentDefaults(*pNewEditObj);
         }
         break;
         default:
-            SetText(EMPTY_OUSTRING);
+            SetTextCurrentDefaults(EMPTY_OUSTRING);
     }
 }
 
@@ -304,30 +302,46 @@ bool ScSpellingEngine::NeedsConversion()
 
 bool ScSpellingEngine::ShowTableWrapDialog()
 {
-    vcl::Window* pParent = GetDialogParent();
-    ScWaitCursorOff aWaitOff( pParent );
-    ScopedVclPtrInstance<MessBox> aMsgBox( pParent, WinBits( WB_YES_NO | WB_DEF_YES ),
-        ScGlobal::GetRscString( STR_MSSG_DOSUBTOTALS_0 ),
-        ScGlobal::GetRscString( STR_SPELLING_BEGIN_TAB) );
-    return aMsgBox->Execute() == RET_YES;
+    weld::Window* pParent = GetDialogParent();
+    weld::WaitObject aWaitOff(pParent);
+
+    std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(pParent,
+                                              VclMessageType::Question, VclButtonsType::YesNo,
+                                              ScResId(STR_SPELLING_BEGIN_TAB))); // "delete data?"
+    xBox->set_title(ScResId(STR_MSSG_DOSUBTOTALS_0));
+    xBox->set_default_response(RET_YES);
+    return xBox->run() == RET_YES;
 }
 
 void ScSpellingEngine::ShowFinishDialog()
 {
-    vcl::Window* pParent = GetDialogParent();
-    ScWaitCursorOff aWaitOff( pParent );
-    ScopedVclPtrInstance<InfoBox>( pParent, ScGlobal::GetRscString( STR_SPELLING_STOP_OK ) )->Execute();
+    weld::Window* pParent = GetDialogParent();
+    weld::WaitObject aWaitOff(pParent);
+    std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(pParent,
+                                                  VclMessageType::Info, VclButtonsType::Ok,
+                                                  ScResId(STR_SPELLING_STOP_OK)));
+    xInfoBox->run();
 }
 
-vcl::Window* ScSpellingEngine::GetDialogParent()
+weld::Window* ScSpellingEngine::GetDialogParent()
 {
     sal_uInt16 nWinId = ScSpellDialogChildWindow::GetChildWindowId();
     SfxViewFrame* pViewFrm = mrViewData.GetViewShell()->GetViewFrame();
     if( pViewFrm->HasChildWindow( nWinId ) )
+    {
         if( SfxChildWindow* pChild = pViewFrm->GetChildWindow( nWinId ) )
-            if( vcl::Window* pWin = pChild->GetWindow() )
-                if( pWin->IsVisible() )
-                    return pWin;
+        {
+            auto xController = pChild->GetController();
+            if (xController)
+            {
+                if (weld::Window *pRet = xController->getDialog())
+                {
+                    if (pRet->get_visible())
+                        return pRet;
+                }
+            }
+        }
+    }
 
     // fall back to standard dialog parent
     return ScDocShell::GetActiveDialogParent();

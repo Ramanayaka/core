@@ -21,16 +21,14 @@
 #define INCLUDED_CUI_SOURCE_INC_SCRIPTDLG_HXX
 
 #include <memory>
-#include <svtools/treelistbox.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/abstdlg.hxx>
 #include <sfx2/basedlgs.hxx>
+#include <vcl/abstdlg.hxx>
+#include <vcl/weld.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/script/browse/XBrowseNode.hpp>
 #include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <unordered_map>
 
@@ -38,53 +36,9 @@
 #define OBJTYPE_SCRIPTCONTAINER 3L
 #define OBJTYPE_SFROOT          4L
 
-typedef std::unordered_map < OUString, OUString,
-                             OUStringHash > Selection_hash;
+typedef std::unordered_map < OUString, OUString > Selection_hash;
 
 class SFEntry;
-
-class SFTreeListBox : public SvTreeListBox
-{
-   friend class SvxScriptOrgDialog;
-private:
-    Image m_hdImage;
-    Image m_libImage;
-    Image m_macImage;
-    Image m_docImage;
-    OUString m_sMyMacros;
-    OUString m_sProdMacros;
-
-    static css::uno::Reference< css::script::browse::XBrowseNode >
-        getLangNodeFromRootNode( css::uno::Reference< css::script::browse::XBrowseNode >& root, OUString& language );
-    static void delUserData( SvTreeListEntry* pEntry );
-
-    static css::uno::Reference< css::uno::XInterface  > getDocumentModel( css::uno::Reference< css::uno::XComponentContext >& xCtx, OUString& docName );
-
-protected:
-    virtual void            RequestingChildren( SvTreeListEntry* pParent ) override;
-    virtual void            ExpandedHdl() override;
-    virtual bool            ExpandingHdl() override;
-public:
-    void                    Init( const OUString& language );
-    void                    RequestSubEntries(  SvTreeListEntry* pRootEntry,
-                                css::uno::Reference< css::script::browse::XBrowseNode >& node,
-                                css::uno::Reference< css::frame::XModel>& model  );
-                            SFTreeListBox(vcl::Window* pParent);
-                    virtual ~SFTreeListBox() override;
-    virtual void    dispose() override;
-
-    SvTreeListEntry *       insertEntry(OUString const & rText, OUString const & rBitmap,
-                              SvTreeListEntry * pParent,
-                              bool bChildrenOnDemand,
-                              std::unique_ptr< SFEntry > && aUserData,
-                              const OUString& factoryURL );
-    SvTreeListEntry *       insertEntry(OUString const & rText, OUString const & rBitmap,
-                              SvTreeListEntry * pParent,
-                              bool bChildrenOnDemand,
-                              std::unique_ptr< SFEntry > && aUserData );
-    void deleteTree( SvTreeListEntry * pEntry );
-    void deleteAllTree( );
-};
 
 enum class InputDialogMode {
     NEWLIB        = 1,
@@ -92,53 +46,39 @@ enum class InputDialogMode {
     RENAME        = 3,
 };
 
-class CuiInputDialog : public ModalDialog
+class CuiInputDialog : public weld::GenericDialogController
 {
 private:
-    VclPtr<Edit> m_pEdit;
+    std::unique_ptr<weld::Entry> m_xEdit;
 public:
-    CuiInputDialog(vcl::Window * pParent, InputDialogMode nMode);
-    virtual ~CuiInputDialog() override;
-    virtual void dispose() override;
-
-    OUString GetObjectName() const { return m_pEdit->GetText(); }
+    CuiInputDialog(weld::Window * pParent, InputDialogMode nMode);
+    OUString GetObjectName() const { return m_xEdit->get_text(); }
     void SetObjectName(const OUString& rName)
     {
-        m_pEdit->SetText( rName );
-        m_pEdit->SetSelection( Selection( 0, rName.getLength() ) );
+        m_xEdit->set_text(rName);
+        m_xEdit->select_region(0, -1);
     }
 };
 
 class SFEntry final
 {
 private:
-    sal_uInt8       nType;
     bool            loaded;
-        css::uno::Reference< css::script::browse::XBrowseNode > nodes;
-        css::uno::Reference< css::frame::XModel > model;
+    css::uno::Reference< css::script::browse::XBrowseNode > nodes;
+    css::uno::Reference< css::frame::XModel > model;
 public:
-                    SFEntry( sal_uInt8 nT,
-                            const css::uno::Reference< css::script::browse::XBrowseNode >& entryNodes ,
-                            const css::uno::Reference< css::frame::XModel >& entryModel) { nType = nT; nodes = entryNodes; loaded=false; model = entryModel; }
-                    SFEntry( const SFEntry& r ) { nType = r.nType; nodes = r.nodes; loaded = r.loaded; }
-    const css::uno::Reference< css::script::browse::XBrowseNode >& GetNode() { return nodes ;}
-    const css::uno::Reference< css::frame::XModel >& GetModel() { return model ;};
+                    SFEntry( const css::uno::Reference< css::script::browse::XBrowseNode >& entryNodes ,
+                             const css::uno::Reference< css::frame::XModel >& entryModel) { nodes = entryNodes; loaded=false; model = entryModel; }
+                    SFEntry( const SFEntry& r ) { nodes = r.nodes; loaded = r.loaded; }
+    const css::uno::Reference< css::script::browse::XBrowseNode >& GetNode() const { return nodes ;}
+    const css::uno::Reference< css::frame::XModel >& GetModel() const { return model ;};
     bool            isLoaded() const                    { return loaded; }
     void            setLoaded()                         { loaded=true; }
 };
 
-class SvxScriptOrgDialog : public SfxModalDialog
+class SvxScriptOrgDialog : public SfxDialogController
 {
 protected:
-    VclPtr<SFTreeListBox>          m_pScriptsBox;
-
-    VclPtr<PushButton>             m_pRunButton;
-    VclPtr<CloseButton>            m_pCloseButton;
-    VclPtr<PushButton>             m_pCreateButton;
-    VclPtr<PushButton>             m_pEditButton;
-    VclPtr<PushButton>             m_pRenameButton;
-    VclPtr<PushButton>             m_pDelButton;
-
     OUString         m_sLanguage;
     static Selection_hash   m_lastSelection;
     const OUString m_delErrStr;
@@ -150,49 +90,79 @@ protected:
     const OUString m_createErrTitleStr;
     const OUString m_renameErrStr;
     const OUString m_renameErrTitleStr;
+    const OUString m_sMyMacros;
+    const OUString m_sProdMacros;
 
-    DECL_LINK( ScriptSelectHdl, SvTreeListBox *, void );
-    DECL_LINK( ButtonHdl, Button *, void );
-    static bool         getBoolProperty( css::uno::Reference< css::beans::XPropertySet >& xProps, OUString& propName );
-    void                CheckButtons(  css::uno::Reference< css::script::browse::XBrowseNode >& node );
+    std::unique_ptr<weld::TreeView> m_xScriptsBox;
+    std::unique_ptr<weld::TreeIter> m_xScratchIter;
+    std::unique_ptr<weld::Button> m_xRunButton;
+    std::unique_ptr<weld::Button> m_xCloseButton;
+    std::unique_ptr<weld::Button> m_xCreateButton;
+    std::unique_ptr<weld::Button> m_xEditButton;
+    std::unique_ptr<weld::Button> m_xRenameButton;
+    std::unique_ptr<weld::Button> m_xDelButton;
 
+    DECL_LINK( ScriptSelectHdl, weld::TreeView&, void );
+    DECL_LINK( ExpandingHdl, const weld::TreeIter&, bool );
+    DECL_LINK( ButtonHdl, weld::Button&, void );
+    static bool         getBoolProperty( css::uno::Reference< css::beans::XPropertySet > const & xProps, OUString const & propName );
+    void                CheckButtons(  css::uno::Reference< css::script::browse::XBrowseNode > const & node );
 
-    void        createEntry( SvTreeListEntry* pEntry );
-    void        renameEntry( SvTreeListEntry* pEntry );
-    void        deleteEntry( SvTreeListEntry* pEntry );
-    static css::uno::Reference< css::script::browse::XBrowseNode >
-                getBrowseNode( SvTreeListEntry* pEntry );
-    static css::uno::Reference< css::frame::XModel > getModel( SvTreeListEntry* pEntry );
+    void        createEntry(weld::TreeIter& rEntry);
+    void        renameEntry(const weld::TreeIter& rEntry);
+    void        deleteEntry(weld::TreeIter& rEntry);
+    css::uno::Reference<css::script::browse::XBrowseNode> getBrowseNode(const weld::TreeIter& rEntry);
+    css::uno::Reference<css::frame::XModel> getModel(const weld::TreeIter& rEntry);
     OUString    getListOfChildren( const css::uno::Reference< css::script::browse::XBrowseNode >& node, int depth );
     void        StoreCurrentSelection();
     void        RestorePreviousSelection();
 
+    void        Init(const OUString& language);
+    void        delUserData(const weld::TreeIter& rIter);
+    void        deleteTree(weld::TreeIter& rIter);
+    void        deleteAllTree();
+    void        insertEntry(OUString const & rText, OUString const & rBitmap,
+                              const weld::TreeIter* pParent,
+                              bool bChildrenOnDemand,
+                              std::unique_ptr< SFEntry > && aUserData,
+                              const OUString& factoryURL, bool bSelect);
+    void        insertEntry(OUString const & rText, OUString const & rBitmap,
+                              const weld::TreeIter* pParent,
+                              bool bChildrenOnDemand,
+                              std::unique_ptr< SFEntry > && aUserData,
+                              bool bSelect);
+
+    void        RequestSubEntries(const weld::TreeIter& rRootEntry,
+                                  css::uno::Reference< css::script::browse::XBrowseNode > const & node,
+                                  css::uno::Reference< css::frame::XModel>& model);
+
+    static css::uno::Reference< css::script::browse::XBrowseNode >
+        getLangNodeFromRootNode( css::uno::Reference< css::script::browse::XBrowseNode > const & root, OUString const & language );
+
+    static css::uno::Reference< css::uno::XInterface  > getDocumentModel( css::uno::Reference< css::uno::XComponentContext > const & xCtx, OUString const & docName );
+
 public:
-                    // prob need another arg in the ctor
-                    // to specify the language or provider
-                    SvxScriptOrgDialog( vcl::Window* pParent, const OUString& language );
-                    virtual ~SvxScriptOrgDialog() override;
-    virtual void    dispose() override;
+    // prob need another arg in the ctor
+    // to specify the language or provider
+    SvxScriptOrgDialog(weld::Window* pParent, const OUString& language);
+    virtual ~SvxScriptOrgDialog() override;
 
-    virtual short   Execute() override;
-
+    virtual short run() override;
 };
 
-class SvxScriptErrorDialog : public VclAbstractDialog
+class SvxScriptErrorDialog
 {
 private:
-
-    OUString m_sMessage;
+    struct DialogData {
+        weld::Window* pParent;
+        OUString sMessage;
+    };
 
     DECL_STATIC_LINK( SvxScriptErrorDialog, ShowDialog, void*, void );
 
 public:
 
-    SvxScriptErrorDialog( css::uno::Any const & aException );
-
-    virtual ~SvxScriptErrorDialog() override;
-
-    short           Execute() override;
+    static void ShowAsyncErrorDialog( weld::Window* pParent, css::uno::Any const & aException );
 };
 
 #endif // INCLUDED_CUI_SOURCE_INC_SCRIPTDLG_HXX

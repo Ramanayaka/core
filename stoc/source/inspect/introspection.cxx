@@ -29,25 +29,18 @@
 #include <o3tl/any.hxx>
 #include <osl/diagnose.h>
 #include <osl/mutex.hxx>
-#include <osl/thread.h>
 #include <sal/log.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/weak.hxx>
-#include <cppuhelper/component.hxx>
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <comphelper/sequence.hxx>
 #include <salhelper/simplereferenceobject.hxx>
 
-#include <com/sun/star/uno/DeploymentException.hpp>
 #include <com/sun/star/lang/NoSuchMethodException.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/reflection/XIdlReflection.hpp>
 #include <com/sun/star/reflection/XIdlClass.hpp>
@@ -70,14 +63,12 @@
 
 #include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <rtl/strbuf.hxx>
 #include <unordered_map>
 
 using namespace css::uno;
 using namespace css::lang;
 using namespace css::reflection;
 using namespace css::container;
-using namespace css::registry;
 using namespace css::beans;
 using namespace css::beans::PropertyAttribute;
 using namespace css::beans::PropertyConcept;
@@ -102,20 +93,12 @@ typedef WeakImplHelper< XIntrospectionAccess, XMaterialHolder, XExactName,
 bool isDerivedFrom( const Reference<XIdlClass>& xToTestClass, const Reference<XIdlClass>& xDerivedFromClass )
 {
     Sequence< Reference<XIdlClass> > aClassesSeq = xToTestClass->getSuperclasses();
-    const Reference<XIdlClass>* pClassesArray = aClassesSeq.getConstArray();
 
-    sal_Int32 nSuperClassCount = aClassesSeq.getLength();
-    for ( sal_Int32 i = 0; i < nSuperClassCount; ++i )
-    {
-        const Reference<XIdlClass>& rxClass = pClassesArray[i];
-
-        if ( xDerivedFromClass->equals( rxClass ) ||
-             isDerivedFrom( rxClass, xDerivedFromClass )
-           )
-            return true;
-    }
-
-    return false;
+    return std::any_of(aClassesSeq.begin(), aClassesSeq.end(),
+        [&xDerivedFromClass](const Reference<XIdlClass>& rxClass) {
+            return xDerivedFromClass->equals( rxClass )
+                || isDerivedFrom( rxClass, xDerivedFromClass );
+        });
 }
 
 
@@ -143,8 +126,7 @@ bool isDerivedFrom( const Reference<XIdlClass>& xToTestClass, const Reference<XI
 typedef std::unordered_map
 <
     OUString,
-    sal_Int32,
-    OUStringHash
+    sal_Int32
 >
 IntrospectionNameMap;
 
@@ -154,13 +136,11 @@ IntrospectionNameMap;
 typedef std::unordered_map
 <
     OUString,
-    OUString,
-    OUStringHash
+    OUString
 >
 LowerToExactNameMap;
 
 
-class ImplIntrospectionAccess;
 class IntrospectionAccessStatic_Impl: public salhelper::SimpleReferenceObject
 {
     friend class Implementation;
@@ -289,9 +269,8 @@ IntrospectionAccessStatic_Impl::IntrospectionAccessStatic_Impl( Reference< XIdlR
 
 sal_Int32 IntrospectionAccessStatic_Impl::getPropertyIndex( const OUString& aPropertyName ) const
 {
-    IntrospectionAccessStatic_Impl* pThis = const_cast<IntrospectionAccessStatic_Impl*>(this);
-    IntrospectionNameMap::iterator aIt = pThis->maPropertyNameMap.find( aPropertyName );
-    if (aIt != pThis->maPropertyNameMap.end())
+    auto aIt = maPropertyNameMap.find(aPropertyName);
+    if (aIt != maPropertyNameMap.end())
         return aIt->second;
 
     return -1;
@@ -299,9 +278,8 @@ sal_Int32 IntrospectionAccessStatic_Impl::getPropertyIndex( const OUString& aPro
 
 sal_Int32 IntrospectionAccessStatic_Impl::getMethodIndex( const OUString& aMethodName ) const
 {
-    IntrospectionAccessStatic_Impl* pThis = const_cast<IntrospectionAccessStatic_Impl*>(this);
-    IntrospectionNameMap::iterator aIt = pThis->maMethodNameMap.find( aMethodName );
-    if (aIt != pThis->maMethodNameMap.end())
+    auto aIt = maMethodNameMap.find(aMethodName);
+    if (aIt != maMethodNameMap.end())
     {
         return aIt->second;
     }
@@ -317,8 +295,8 @@ sal_Int32 IntrospectionAccessStatic_Impl::getMethodIndex( const OUString& aMetho
 
         OUString aPureMethodName = aMethodName.copy( nFound + 1 );
 
-        aIt = pThis->maMethodNameMap.find( aPureMethodName );
-        if (aIt != pThis->maMethodNameMap.end())
+        aIt = maMethodNameMap.find( aPureMethodName );
+        if (aIt != maMethodNameMap.end())
         {
             // Check if it can be a type?
             // Problem: Does not work if package names contain _ ?!
@@ -372,10 +350,9 @@ void IntrospectionAccessStatic_Impl::setPropertyValue( const Any& obj, const OUS
 //void IntrospectionAccessStatic_Impl::setPropertyValue( Any& obj, const OUString& aPropertyName, const Any& aValue ) const
 {
     sal_Int32 i = getPropertyIndex( aPropertyName );
-    if( i != -1 )
-        setPropertyValueByIndex( obj, i, aValue );
-    else
+    if( i == -1 )
         throw UnknownPropertyException(aPropertyName);
+    setPropertyValueByIndex( obj, i, aValue );
 }
 
 void IntrospectionAccessStatic_Impl::setPropertyValueByIndex(const Any& obj, sal_Int32 nSequenceIndex, const Any& aValue) const
@@ -629,7 +606,7 @@ Any IntrospectionAccessStatic_Impl::getPropertyValueByIndex(const Any& obj, sal_
 // Helper method to adjust the size of the vectors
 void IntrospectionAccessStatic_Impl::checkPropertyArraysSize( sal_Int32 iNextIndex )
 {
-    sal_Int32 nLen = (sal_Int32)maAllPropertySeq.size();
+    sal_Int32 nLen = static_cast<sal_Int32>(maAllPropertySeq.size());
     if( iNextIndex >= nLen )
     {
         maAllPropertySeq.resize( nLen + ARRAY_SIZE_STEP );
@@ -796,13 +773,11 @@ public:
 
 ImplIntrospectionAccess::ImplIntrospectionAccess
     ( const Any& obj, rtl::Reference< IntrospectionAccessStatic_Impl > const & pStaticImpl_ )
-        : maInspectedObject( obj ), mpStaticImpl( pStaticImpl_ ) //, maAdapter()
+        : maInspectedObject( obj ), mpStaticImpl( pStaticImpl_ ) ,
+          mnLastPropertyConcept(-1), mnLastMethodConcept(-1) //, maAdapter()
 {
     // Save object as an interface if possible
     maInspectedObject >>= mxIface;
-
-    mnLastPropertyConcept = -1;
-    mnLastMethodConcept = -1;
 }
 
 Reference<XElementAccess> ImplIntrospectionAccess::getXElementAccess()
@@ -828,13 +803,13 @@ void ImplIntrospectionAccess::cacheXNameContainer()
     if (mpStaticImpl->mbNameContainer)
     {
         xNameContainer.set( mxIface, UNO_QUERY );
-        xNameReplace.set( xNameContainer, UNO_QUERY );
-        xNameAccess.set( xNameContainer, UNO_QUERY );
+        xNameReplace = xNameContainer;
+        xNameAccess = xNameContainer;
     }
     else if (mpStaticImpl->mbNameReplace)
     {
         xNameReplace.set( mxIface, UNO_QUERY );
-        xNameAccess.set( xNameReplace, UNO_QUERY );
+        xNameAccess = xNameReplace;
     }
     else if (mpStaticImpl->mbNameAccess)
     {
@@ -896,13 +871,13 @@ void ImplIntrospectionAccess::cacheXIndexContainer()
     if (mpStaticImpl->mbIndexContainer)
     {
         xIndexContainer.set( mxIface, UNO_QUERY );
-        xIndexReplace.set( xIndexContainer, UNO_QUERY );
-        xIndexAccess.set( xIndexContainer, UNO_QUERY );
+        xIndexReplace = xIndexContainer;
+        xIndexAccess = xIndexContainer;
     }
     else if (mpStaticImpl->mbIndexReplace)
     {
         xIndexReplace.set( mxIface, UNO_QUERY );
-        xIndexAccess.set( xIndexReplace, UNO_QUERY );
+        xIndexAccess = xIndexReplace;
     }
     else if (mpStaticImpl->mbIndexAccess)
     {
@@ -1003,20 +978,17 @@ Any SAL_CALL ImplIntrospectionAccess::queryInterface( const Type& rType )
     if( !aRet.hasValue() )
     {
         // Wrapper for the object interfaces
-        if(   ( mpStaticImpl->mbElementAccess && (aRet = ::cppu::queryInterface
+        ( mpStaticImpl->mbElementAccess && (aRet = ::cppu::queryInterface
                     ( rType, static_cast< XElementAccess* >( static_cast< XNameAccess* >( this ) ) ) ).hasValue() )
-            || ( mpStaticImpl->mbNameAccess && (aRet = ::cppu::queryInterface( rType, static_cast< XNameAccess* >( this ) ) ).hasValue() )
-            || ( mpStaticImpl->mbNameReplace && (aRet = ::cppu::queryInterface( rType, static_cast< XNameReplace* >( this ) ) ).hasValue() )
-            || ( mpStaticImpl->mbNameContainer && (aRet = ::cppu::queryInterface( rType, static_cast< XNameContainer* >( this ) ) ).hasValue() )
-            || ( mpStaticImpl->mbIndexAccess && (aRet = ::cppu::queryInterface( rType, static_cast< XIndexAccess* >( this ) ) ).hasValue() )
-            || ( mpStaticImpl->mbIndexReplace && (aRet = ::cppu::queryInterface( rType, static_cast< XIndexReplace* >( this ) ) ).hasValue() )
-            || ( mpStaticImpl->mbIndexContainer && (aRet = ::cppu::queryInterface( rType, static_cast< XIndexContainer* >( this ) ) ).hasValue() )
-            || ( mpStaticImpl->mbEnumerationAccess && (aRet = ::cppu::queryInterface( rType, static_cast< XEnumerationAccess* >( this ) ) ).hasValue() )
-            || ( mpStaticImpl->mbIdlArray && (aRet = ::cppu::queryInterface( rType, static_cast< XIdlArray* >( this ) ) ).hasValue() )
-            || ( mpStaticImpl->mbUnoTunnel && (aRet = ::cppu::queryInterface( rType, static_cast< XUnoTunnel* >( this ) ) ).hasValue() )
-          )
-        {
-        }
+        || ( mpStaticImpl->mbNameAccess && (aRet = ::cppu::queryInterface( rType, static_cast< XNameAccess* >( this ) ) ).hasValue() )
+        || ( mpStaticImpl->mbNameReplace && (aRet = ::cppu::queryInterface( rType, static_cast< XNameReplace* >( this ) ) ).hasValue() )
+        || ( mpStaticImpl->mbNameContainer && (aRet = ::cppu::queryInterface( rType, static_cast< XNameContainer* >( this ) ) ).hasValue() )
+        || ( mpStaticImpl->mbIndexAccess && (aRet = ::cppu::queryInterface( rType, static_cast< XIndexAccess* >( this ) ) ).hasValue() )
+        || ( mpStaticImpl->mbIndexReplace && (aRet = ::cppu::queryInterface( rType, static_cast< XIndexReplace* >( this ) ) ).hasValue() )
+        || ( mpStaticImpl->mbIndexContainer && (aRet = ::cppu::queryInterface( rType, static_cast< XIndexContainer* >( this ) ) ).hasValue() )
+        || ( mpStaticImpl->mbEnumerationAccess && (aRet = ::cppu::queryInterface( rType, static_cast< XEnumerationAccess* >( this ) ) ).hasValue() )
+        || ( mpStaticImpl->mbIdlArray && (aRet = ::cppu::queryInterface( rType, static_cast< XIdlArray* >( this ) ) ).hasValue() )
+        || ( mpStaticImpl->mbUnoTunnel && (aRet = ::cppu::queryInterface( rType, static_cast< XUnoTunnel* >( this ) ) ).hasValue() );
     }
     return aRet;
 }
@@ -1311,7 +1283,7 @@ Sequence< Property > ImplIntrospectionAccess::getProperties(sal_Int32 PropertyCo
     // Go through all the properties and apply according to the concept
     const std::vector<Property>&  rPropSeq = mpStaticImpl->getProperties();
     const std::vector<sal_Int32>& rConcepts = mpStaticImpl->getPropertyConcepts();
-    sal_Int32 nLen = (sal_Int32)rPropSeq.size();
+    sal_Int32 nLen = static_cast<sal_Int32>(rPropSeq.size());
 
     sal_Int32 iDest = 0;
     for( sal_Int32 i = 0 ; i < nLen ; i++ )
@@ -1382,7 +1354,7 @@ Sequence< Reference<XIdlMethod> > ImplIntrospectionAccess::getMethods(sal_Int32 
 
     // Get method sequences
     const std::vector< Reference<XIdlMethod> >& aMethodSeq = mpStaticImpl->getMethods();
-    sal_Int32 nLen = (sal_Int32)aMethodSeq.size();
+    sal_Int32 nLen = static_cast<sal_Int32>(aMethodSeq.size());
 
     // Realloc sequence according to the required number
     // Unlike Properties, the number can not be determined by counters in
@@ -1464,7 +1436,7 @@ struct TypeKey {
         // the chance of matches between different implementations' getTypes(),
         // but the old scheme of using getImplementationId() would have missed
         // those matches, too:
-        OUStringBuffer b;
+        OUStringBuffer b(static_cast<int>(theTypes.size() * 64));
         for (const css::uno::Type& rType : theTypes) {
             b.append(rType.getTypeName());
             b.append('*'); // arbitrary delimiter not used by type grammar
@@ -1511,16 +1483,13 @@ public:
         typename Map::size_type const MAX = 100;
         assert(map_.size() <= MAX);
         if (map_.size() == MAX) {
-            typename Map::iterator del(map_.begin());
-            for (typename Map::iterator i(map_.begin()); i != map_.end(); ++i) {
-                if (i->second.hits < del->second.hits) {
-                    del = i;
-                }
-            }
+            typename Map::iterator del = std::min_element(map_.begin(), map_.end(),
+                [](const typename Map::value_type& a, const typename Map::value_type& b) {
+                    return a.second.hits < b.second.hits;
+                });
             map_.erase(del);
         }
-        bool ins = map_.insert(typename Map::value_type(key, Data(access)))
-            .second;
+        bool ins = map_.emplace(key, Data(access)).second;
         assert(ins); (void)ins;
     }
 
@@ -1563,7 +1532,7 @@ private:
     }
 
     virtual OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.comp.stoc.Introspection"); }
+    { return "com.sun.star.comp.stoc.Introspection"; }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
@@ -1691,7 +1660,7 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
         {
             SupportedClassSeq.resize( nTypeCount );
 
-            for( i = 0 ; i < (sal_Int32)nTypeCount ; i++ )
+            for( i = 0 ; i < static_cast<sal_Int32>(nTypeCount) ; i++ )
                 SupportedClassSeq[i] = reflection->forName( SupportedTypesSeq[i].getTypeName() );
         }
 
@@ -1771,7 +1740,7 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
         bool bFoundXInterface = false;
 
         size_t nClassCount = SupportedClassSeq.size();
-        for( sal_Int32 nIdx = 0 ; nIdx < (sal_Int32)nClassCount; nIdx++ )
+        for( sal_Int32 nIdx = 0 ; nIdx < static_cast<sal_Int32>(nClassCount); nIdx++ )
         {
             Reference<XIdlClass> xImplClass2 = SupportedClassSeq[nIdx];
             while( xImplClass2.is() )
@@ -1782,13 +1751,9 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
 
                 aClassSeq.realloc( nIfaceCount + 1 );
                 aClassSeq.getArray()[ nIfaceCount ] = xImplClass2;
-                nIfaceCount++;
 
-                const Reference<XIdlClass>* pParamArray = aClassSeq.getConstArray();
-
-                for( sal_Int32 j = 0 ; j < nIfaceCount ; j++ )
+                for( const Reference<XIdlClass>& rxIfaceClass : std::as_const(aClassSeq) )
                 {
-                    const Reference<XIdlClass>& rxIfaceClass = pParamArray[j];
                     if (!seen.insert(rxIfaceClass->getName()).second) {
                         continue;
                     }
@@ -1796,13 +1761,10 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
                     // 2. Register fields as properties
 
                     // Get fields
-                    Sequence< Reference<XIdlField> > fields = rxIfaceClass->getFields();
-                    const Reference<XIdlField>* pFields = fields.getConstArray();
-                    sal_Int32 nLen = fields.getLength();
+                    const Sequence< Reference<XIdlField> > fields = rxIfaceClass->getFields();
 
-                    for( i = 0 ; i < nLen ; i++ )
+                    for( const Reference<XIdlField>& xField : fields )
                     {
-                        Reference<XIdlField> xField = pFields[i];
                         Reference<XIdlClass> xPropType = xField->getType();
 
                         // Is the property sequence big enough?
@@ -1851,9 +1813,6 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
 
                     // 3. Methods
 
-                    // Counter for found listeners
-                    sal_Int32 nListenerCount = 0;
-
                     // Get and remember all methods
                     Sequence< Reference<XIdlMethod> > methods = rxIfaceClass->getMethods();
                     const Reference<XIdlMethod>* pSourceMethods = methods.getConstArray();
@@ -1892,7 +1851,7 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
                         // Catalogue methods
                         // Filter all (?) methods of XInterface so e.g. acquire and release
                         // can not be called from scripting
-                        rtl::OUString className(
+                        OUString className(
                             rxMethod_i->getDeclaringClass()->getName());
                         if (className == "com.sun.star.uno.XInterface") {
                             bFoundXInterface = true;
@@ -1924,44 +1883,44 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
                                                   INDEXCONTAINER |
                                                   ENUMERATION );
                             pAccess->mbElementAccess = true;
-                        } else if ((className
-                                    == "com.sun.star.container.XNameContainer"))
+                        } else if (className
+                                    == "com.sun.star.container.XNameContainer")
                         {
                             rMethodConcept_i |= NAMECONTAINER;
                             pAccess->mbNameContainer = true;
                             pAccess->mbNameReplace = true;
                             pAccess->mbNameAccess = true;
                             pAccess->mbElementAccess = true;
-                        } else if ((className
-                                    == "com.sun.star.container.XNameReplace"))
+                        } else if (className
+                                    == "com.sun.star.container.XNameReplace")
                         {
                             rMethodConcept_i |= NAMECONTAINER;
                             pAccess->mbNameReplace = true;
                             pAccess->mbNameAccess = true;
                             pAccess->mbElementAccess = true;
-                        } else if ((className
-                                    == "com.sun.star.container.XNameAccess"))
+                        } else if (className
+                                    == "com.sun.star.container.XNameAccess")
                         {
                             rMethodConcept_i |= NAMECONTAINER;
                             pAccess->mbNameAccess = true;
                             pAccess->mbElementAccess = true;
-                        } else if ((className
-                                    == "com.sun.star.container.XIndexContainer"))
+                        } else if (className
+                                    == "com.sun.star.container.XIndexContainer")
                         {
                             rMethodConcept_i |= INDEXCONTAINER;
                             pAccess->mbIndexContainer = true;
                             pAccess->mbIndexReplace = true;
                             pAccess->mbIndexAccess = true;
                             pAccess->mbElementAccess = true;
-                        } else if ((className
-                                    == "com.sun.star.container.XIndexReplace"))
+                        } else if (className
+                                    == "com.sun.star.container.XIndexReplace")
                         {
                             rMethodConcept_i |= INDEXCONTAINER;
                             pAccess->mbIndexReplace = true;
                             pAccess->mbIndexAccess = true;
                             pAccess->mbElementAccess = true;
-                        } else if ((className
-                                    == "com.sun.star.container.XIndexAccess"))
+                        } else if (className
+                                    == "com.sun.star.container.XIndexAccess")
                         {
                             rMethodConcept_i |= INDEXCONTAINER;
                             pAccess->mbIndexAccess = true;
@@ -1992,7 +1951,7 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
                         {
                             // Get methods must not have any parameters
                             Sequence< Reference<XIdlClass> > getParams = rxMethod_i->getParameterTypes();
-                            if( getParams.getLength() > 0 )
+                            if( getParams.hasElements() )
                             {
                                 continue;
                             }
@@ -2143,7 +2102,6 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
 
                                 pMethodTypes[i] = ADD_LISTENER_METHOD;
                                 pMethodTypes[k] = REMOVE_LISTENER_METHOD;
-                                nListenerCount++;
                             }
                         }
                     }
@@ -2316,7 +2274,6 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
                             // Option 1: Search for parameters for a listener class
                             // Disadvantage: Superclasses should be searched recursively
                             Sequence< Reference<XIdlClass> > aParams = rxMethod->getParameterTypes();
-                            const Reference<XIdlClass>* pParamArray2 = aParams.getConstArray();
 
                             css::uno::Reference<css::reflection::XIdlClass>
                                 xEventListenerClass(
@@ -2325,19 +2282,15 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
                                             css::lang::XEventListener>::get()
                                         .getTypeName()));
                             // Old: Reference<XIdlClass> xEventListenerClass = XEventListener_getReflection()->getIdlClass();
-                            sal_Int32 nParamCount = aParams.getLength();
-                            sal_Int32 k;
-                            for( k = 0 ; k < nParamCount ; k++ )
+                            auto pParam = std::find_if(aParams.begin(), aParams.end(),
+                                [&xEventListenerClass](const Reference<XIdlClass>& rxClass) {
+                                    // Are we derived from a listener?
+                                    return rxClass->equals( xEventListenerClass )
+                                        || isDerivedFrom( rxClass, xEventListenerClass );
+                                });
+                            if (pParam != aParams.end())
                             {
-                                const Reference<XIdlClass>& rxClass = pParamArray2[k];
-
-                                // Are we derived from a listener?
-                                if( rxClass->equals( xEventListenerClass ) ||
-                                    isDerivedFrom( rxClass, xEventListenerClass ) )
-                                {
-                                    xListenerClass = rxClass;
-                                    break;
-                                }
+                                xListenerClass = *pParam;
                             }
 
                             // Option 2: Unload the name of the method
@@ -2400,13 +2353,10 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
         }
 
         // Get fields
-        Sequence< Reference<XIdlField> > fields = xClassRef->getFields();
-        const Reference<XIdlField>* pFields = fields.getConstArray();
-        sal_Int32 nLen = fields.getLength();
+        const Sequence< Reference<XIdlField> > fields = xClassRef->getFields();
 
-        for( i = 0 ; i < nLen ; i++ )
+        for( const Reference<XIdlField>& xField : fields )
         {
-            Reference<XIdlField> xField = pFields[i];
             Reference<XIdlClass> xPropType = xField->getType();
             OUString aPropName = xField->getName();
 
@@ -2470,7 +2420,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_stoc_Introspection_get_implementation(
     css::uno::XComponentContext * context,
     css::uno::Sequence<css::uno::Any> const & arguments)

@@ -22,9 +22,6 @@
 #include <cppuhelper/implbase.hxx>
 #include <ooo/vba/XAssistant.hpp>
 
-#include <sfx2/sfxhelp.hxx>
-
-#include "excelvbahelper.hxx"
 #include <vbahelper/vbahelperinterface.hxx>
 
 typedef ::cppu::WeakImplHelper< ov::XAssistant > Assistant;
@@ -36,7 +33,6 @@ private:
     bool            m_bIsVisible;
     sal_Int32       m_nPointsLeft;
     sal_Int32       m_nPointsTop;
-    OUString        m_sName;
     sal_Int32       m_nAnimation;
 public:
     ScVbaAssistant( const css::uno::Reference< ov::XHelperInterface >& rParent, const css::uno::Reference< css::uno::XComponentContext >& rContext );

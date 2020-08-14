@@ -42,24 +42,13 @@ namespace dbaccess
         ENSURE_OR_THROW( i_rParentStorage.is(), "illegal stream" );
 
         const Reference< XStream > xStream(
-            i_rParentStorage->openStreamElement( i_rStreamName, ElementModes::READWRITE ), UNO_QUERY_THROW );
+            i_rParentStorage->openStreamElement( i_rStreamName, ElementModes::READWRITE ), UNO_SET_THROW );
         m_xOutputStream.set( xStream->getOutputStream(), UNO_SET_THROW );
     }
 
     StorageOutputStream::~StorageOutputStream()
     {
     }
-
-    void StorageOutputStream::close()
-    {
-        ENSURE_OR_RETURN_VOID( m_xOutputStream.is(), "already closed" );
-        m_xOutputStream->closeOutput();
-        m_xOutputStream.clear();
-
-        // if you add additional functionality here, be aware that there are derived classes which
-        // (legitimately) do not call this method here.
-    }
-
 
 } // namespace dbaccess
 

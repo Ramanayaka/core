@@ -21,7 +21,6 @@
 #define INCLUDED_SC_SOURCE_FILTER_INC_LOTFORM_HXX
 
 #include "formel.hxx"
-#include <rtl/ustring.hxx>
 
 enum FUNC_TYPE
 {
@@ -71,13 +70,13 @@ private:
     static DefTokenId   IndexToToken( sal_uInt8 );
     static FUNC_TYPE    IndexToTypeWK123( sal_uInt8 );
     static DefTokenId   IndexToTokenWK123( sal_uInt8 );
-    void                DoFunc( DefTokenId eOc, sal_uInt8 nAnz, const sal_Char* pExtName );
+    void                DoFunc( DefTokenId eOc, sal_uInt8 nCnt, const char* pExtName );
     void                LotusRelToScRel(sal_uInt16 nCol, sal_uInt16 nRow, ScSingleRefData& rSRD);
     bool                bWK3;       // alternative Code translation for < WK1
     bool                bWK123;     // alternative for 123
 
-    void                ReadSRD( ScSingleRefData& rSRD, sal_uInt8 nFlags );
-    inline void         ReadCRD( ScComplexRefData& rCRD, sal_uInt8 nFlags );
+    void                ReadSRD( const ScDocument* pDoc, ScSingleRefData& rSRD, sal_uInt8 nFlags );
+    inline void         ReadCRD( const ScDocument* pDoc, ScComplexRefData& rCRD, sal_uInt8 nFlags );
     void                IncToken( TokenId &rParam );
                         // Attention: here the Token-chain is extended in Pool
                         // with '(<rParam>)+1' and finished with Store() !
@@ -89,7 +88,7 @@ private:
 public:
     LotusToSc(LotusContext &rContext, SvStream& aStr, svl::SharedStringPool& rSPool, rtl_TextEncoding eSrc, bool b);
 
-    virtual void        Convert( const ScTokenArray*& rpErg, sal_Int32& nRest ) override;
+    virtual void        Convert( std::unique_ptr<ScTokenArray>& rpErg, sal_Int32& nRest ) override;
 
     void                Reset( const ScAddress& rEingPos );
     inline void         SetWK3();
@@ -99,13 +98,13 @@ private:
     using               LotusConverterBase::Reset;
 };
 
-inline void LotusToSc::ReadCRD( ScComplexRefData& rCRD, sal_uInt8 nRelBit )
+inline void LotusToSc::ReadCRD( const ScDocument* pDoc, ScComplexRefData& rCRD, sal_uInt8 nRelBit )
 {
     // 1st part
-    ReadSRD( rCRD.Ref1, nRelBit );
+    ReadSRD( pDoc, rCRD.Ref1, nRelBit );
 
     // 2nd part
-    ReadSRD( rCRD.Ref2, nRelBit >> 3 );
+    ReadSRD( pDoc, rCRD.Ref2, nRelBit >> 3 );
 }
 
 inline void LotusToSc::SetWK3()

@@ -13,10 +13,11 @@ $(eval $(call gb_Module_Module,lingucomponent))
 $(eval $(call gb_Module_add_targets,lingucomponent,\
 	Library_guesslang \
 	Library_hyphen \
-	Library_lnth \
-	$(if $(filter MACOSX,$(OS)),Library_MacOSXSpell) \
-	Library_spell \
+	$(if $(filter-out iOS,$(OS)),Library_lnth) \
+	$(if $(filter iOS MACOSX,$(OS)),Library_MacOSXSpell) \
+	$(if $(filter-out iOS,$(OS)),Library_spell) \
 	StaticLibrary_ulingu \
+	Library_numbertext \
 ))
 
 # vim: set noet sw=4 ts=4:

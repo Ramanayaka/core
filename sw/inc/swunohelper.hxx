@@ -19,18 +19,13 @@
 #ifndef INCLUDED_SW_INC_SWUNOHELPER_HXX
 #define INCLUDED_SW_INC_SWUNOHELPER_HXX
 
-#include <tools/solar.h>
 #include <sal/types.h>
+#include <rtl/ustring.hxx>
 #include "swdllapi.h"
 
 #include <vector>
 
-namespace com { namespace sun { namespace star {
-    namespace uno {
-        class Any;
-    }
-}}}
-namespace rtl {class OUString;}
+namespace com::sun::star::uno { class Any; }
 class DateTime;
 class SfxItemSet;
 
@@ -44,9 +39,8 @@ sal_Int32 GetEnumAsInt32( const css::uno::Any& rVal );
     // delete the file under this URL
 SW_DLLPUBLIC bool UCB_DeleteFile( const OUString& rURL );
 
-    // copy/move the file to a new location
-bool UCB_CopyFile( const OUString& rURL, const OUString& rNewURL,
-                    bool bCopyIsMove );
+    // move the file to a new location
+bool UCB_MoveFile( const OUString& rURL, const OUString& rNewURL );
 
     // is the URL on the current system case sensitive?
 SW_DLLPUBLIC bool UCB_IsCaseSensitiveFileName( const OUString& rURL );
@@ -58,16 +52,15 @@ SW_DLLPUBLIC bool UCB_IsReadOnlyFileName( const OUString& rURL );
     // options: pExtension = 0 -> all, else this specific extension
     //          pDateTime != 0 -> returns also the modified date/time of
     //                       the files in a vector -->
-    //                       !! objects must be deleted from the caller!!
 bool UCB_GetFileListOfFolder( const OUString& rURL,
                                 std::vector<OUString>& rList,
                                 const OUString* pExtension,
-                                std::vector<DateTime*>* pDateTimeList = nullptr );
+                                std::vector<DateTime>* pDateTimeList = nullptr );
 
     // is the URL an existing file?
 SW_DLLPUBLIC bool UCB_IsFile( const OUString& rURL );
 
-    // is the URL a existing directory?
+    // is the URL an existing directory?
 bool UCB_IsDirectory( const OUString& rURL );
 
 /// helper to check if fill style is set to color or bitmap

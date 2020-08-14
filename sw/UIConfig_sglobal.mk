@@ -61,7 +61,6 @@ $(eval $(call gb_UIConfig_add_toolbarfiles,modules/sglobal,\
 	sw/uiconfig/sglobal/toolbar/insertbar \
 	sw/uiconfig/sglobal/toolbar/insertobjectbar \
 	sw/uiconfig/sglobal/toolbar/mediaobjectbar \
-	sw/uiconfig/sglobal/toolbar/moreformcontrols \
 	sw/uiconfig/sglobal/toolbar/numobjectbar \
 	sw/uiconfig/sglobal/toolbar/oleobjectbar \
 	sw/uiconfig/sglobal/toolbar/optimizetablebar \
@@ -71,6 +70,7 @@ $(eval $(call gb_UIConfig_add_toolbarfiles,modules/sglobal,\
 	sw/uiconfig/sglobal/toolbar/symbolshapes \
 	sw/uiconfig/sglobal/toolbar/tableobjectbar \
 	sw/uiconfig/sglobal/toolbar/textobjectbar \
+    sw/uiconfig/sglobal/toolbar/textstylebar \
 	sw/uiconfig/sglobal/toolbar/toolbar \
 	sw/uiconfig/sglobal/toolbar/viewerbar \
 ))

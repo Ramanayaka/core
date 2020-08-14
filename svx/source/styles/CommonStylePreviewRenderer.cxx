@@ -9,27 +9,24 @@
  */
 
 #include <memory>
-#include <svx/CommonStylePreviewRenderer.hxx>
+#include <CommonStylePreviewRenderer.hxx>
 
 #include <sfx2/objsh.hxx>
 #include <svl/style.hxx>
 #include <svl/itemset.hxx>
+#include <vcl/outdev.hxx>
 
 #include <com/sun/star/drawing/FillStyle.hpp>
 #include <svx/xdef.hxx>
 #include <svx/xfillit0.hxx>
 #include <svx/xflclit.hxx>
-#include <svx/xcolit.hxx>
 #include <editeng/fontitem.hxx>
 #include <editeng/fhgtitem.hxx>
-#include <editeng/boxitem.hxx>
 #include <editeng/charreliefitem.hxx>
 #include <editeng/contouritem.hxx>
 #include <editeng/colritem.hxx>
 #include <editeng/crossedoutitem.hxx>
 #include <editeng/emphasismarkitem.hxx>
-#include <editeng/flstitem.hxx>
-#include <editeng/lineitem.hxx>
 #include <editeng/postitem.hxx>
 #include <editeng/shdditem.hxx>
 #include <editeng/udlnitem.hxx>
@@ -113,7 +110,7 @@ bool CommonStylePreviewRenderer::recalculate()
     }
     if ((pItem = pItemSet->GetItem(SID_ATTR_CHAR_COLOR)) != nullptr)
     {
-        maFontColor = Color(static_cast<const SvxColorItem*>(pItem)->GetValue());
+        maFontColor = static_cast<const SvxColorItem*>(pItem)->GetValue();
     }
 
     if (mpStyle->GetFamily() == SfxStyleFamily::Para)
@@ -125,7 +122,7 @@ bool CommonStylePreviewRenderer::recalculate()
             {
                 if ((pItem = pItemSet->GetItem(XATTR_FILLCOLOR)) != nullptr)
                 {
-                    maBackgroundColor = Color(static_cast<const XFillColorItem*>(pItem)->GetColorValue());
+                    maBackgroundColor = static_cast<const XFillColorItem*>(pItem)->GetColorValue();
                 }
             }
         }
@@ -148,7 +145,7 @@ bool CommonStylePreviewRenderer::recalculate()
     {
         const SvxFontHeightItem* pFontHeightItem = static_cast<const SvxFontHeightItem*>(pItem);
         Size aFontSize(0, pFontHeightItem->GetHeight());
-        maPixelSize = mrOutputDev.LogicToPixel(aFontSize, mrShell.GetMapUnit());
+        maPixelSize = mrOutputDev.LogicToPixel(aFontSize, MapMode(mrShell.GetMapUnit()));
         pFont->SetFontSize(maPixelSize);
 
         vcl::Font aOldFont(mrOutputDev.GetFont());
@@ -159,8 +156,8 @@ bool CommonStylePreviewRenderer::recalculate()
         if (aTextRect.Bottom() > mnMaxHeight)
         {
             double ratio = double(mnMaxHeight) / aTextRect.Bottom();
-            maPixelSize.Width() *= ratio;
-            maPixelSize.Height() *= ratio;
+            maPixelSize.setWidth( maPixelSize.Width() * ratio );
+            maPixelSize.setHeight( maPixelSize.Height() * ratio );
             pFont->SetFontSize(maPixelSize);
         }
         mrOutputDev.SetFont(aOldFont);
@@ -171,21 +168,24 @@ bool CommonStylePreviewRenderer::recalculate()
     }
 
     m_pFont = std::move(pFont);
+    maPixelSize = getRenderSize();
     return true;
 }
 
-Size CommonStylePreviewRenderer::getRenderSize()
+Size CommonStylePreviewRenderer::getRenderSize() const
 {
     assert(m_pFont);
-    maPixelSize = m_pFont->GetTextSize(&mrOutputDev, maStyleName);
-    if (maPixelSize.Height() > mnMaxHeight)
-        maPixelSize.Height() = mnMaxHeight;
-    return maPixelSize;
+    Size aPixelSize = m_pFont->GetTextSize(&mrOutputDev, maStyleName);
+
+    if (aPixelSize.Height() > mnMaxHeight)
+        aPixelSize.setHeight( mnMaxHeight );
+
+    return aPixelSize;
 }
 
 bool CommonStylePreviewRenderer::render(const tools::Rectangle& aRectangle, RenderAlign eRenderAlign)
 {
-    const OUString& rText = msRenderText.isEmpty() ? maStyleName : msRenderText;
+    const OUString& rText = maStyleName;
 
     // setup the device & draw
     vcl::Font aOldFont(mrOutputDev.GetFont());
@@ -205,13 +205,13 @@ bool CommonStylePreviewRenderer::render(const tools::Rectangle& aRectangle, Rend
     if (maFontColor != COL_AUTO)
         mrOutputDev.SetTextColor(maFontColor);
 
-    Size aPixelSize((m_pFont) ? maPixelSize : mrOutputDev.GetFont().GetFontSize());
+    Size aPixelSize(m_pFont ? maPixelSize : mrOutputDev.GetFont().GetFontSize());
 
     Point aFontDrawPosition = aRectangle.TopLeft();
     if (eRenderAlign == RenderAlign::CENTER)
     {
         if (aRectangle.GetHeight() > aPixelSize.Height())
-            aFontDrawPosition.Y() += (aRectangle.GetHeight() - aPixelSize.Height()) / 2;
+            aFontDrawPosition.AdjustY((aRectangle.GetHeight() - aPixelSize.Height()) / 2 );
     }
 
     mrOutputDev.DrawText(aFontDrawPosition, rText);

@@ -19,23 +19,24 @@
 
 #include <extended/AccessibleBrowseBoxCheckBoxCell.hxx>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include <svtools/accessibletableprovider.hxx>
+#include <com/sun/star/accessibility/AccessibleStateType.hpp>
+#include <vcl/accessibletableprovider.hxx>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
 namespace accessibility
 {
     using namespace com::sun::star::accessibility;
     using namespace com::sun::star::uno;
     using namespace com::sun::star::accessibility::AccessibleEventId;
-    using namespace ::svt;
 
     AccessibleCheckBoxCell::AccessibleCheckBoxCell(const Reference<XAccessible >& _rxParent,
-                                IAccessibleTableProvider& _rBrowseBox,
+                                vcl::IAccessibleTableProvider& _rBrowseBox,
                                 const css::uno::Reference< css::awt::XWindow >& _xFocusWindow,
                                 sal_Int32 _nRowPos,
                                 sal_uInt16 _nColPos
                                 ,const TriState& _eState,
                                 bool _bIsTriState)
-        :AccessibleBrowseBoxCell(_rxParent, _rBrowseBox, _xFocusWindow, _nRowPos, _nColPos, BBTYPE_CHECKBOXCELL)
+        :AccessibleBrowseBoxCell(_rxParent, _rBrowseBox, _xFocusWindow, _nRowPos, _nColPos, vcl::BBTYPE_CHECKBOXCELL)
         ,m_eState(_eState)
         ,m_bIsTriState(_bIsTriState)
     {
@@ -46,6 +47,7 @@ namespace accessibility
 
     Reference< XAccessibleContext > SAL_CALL AccessibleCheckBoxCell::getAccessibleContext(  )
     {
+        osl::MutexGuard aGuard( getMutex() );
         ensureIsAlive();
         return this;
     }
@@ -98,9 +100,9 @@ namespace accessibility
         Any aValue;
 
         if ( m_bIsTriState )
-            aValue <<= (sal_Int32) 2;
+            aValue <<= sal_Int32(2);
         else
-            aValue <<= (sal_Int32) 1;
+            aValue <<= sal_Int32(1);
 
         return aValue;
     }
@@ -108,7 +110,7 @@ namespace accessibility
     Any SAL_CALL AccessibleCheckBoxCell::getMinimumValue(  )
     {
         Any aValue;
-        aValue <<= (sal_Int32) 0;
+        aValue <<= sal_Int32(0);
 
         return aValue;
     }
@@ -126,12 +128,13 @@ namespace accessibility
 
     OUString SAL_CALL AccessibleCheckBoxCell::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.svtools.TableCheckBoxCell" );
+        return "com.sun.star.comp.svtools.TableCheckBoxCell";
     }
 
     sal_Int32 SAL_CALL AccessibleCheckBoxCell::getAccessibleIndexInParent()
     {
         ::osl::MutexGuard aGuard( getMutex() );
+        ensureIsAlive();
 
         return ( getRowPos() * mpBrowseBox->GetColumnCount() ) + getColumnPos();
     }

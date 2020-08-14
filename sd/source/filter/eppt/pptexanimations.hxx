@@ -20,22 +20,26 @@
 #ifndef INCLUDED_SD_SOURCE_FILTER_EPPT_PPTEXANIMATIONS_HXX
 #define INCLUDED_SD_SOURCE_FILTER_EPPT_PPTEXANIMATIONS_HXX
 
-#include <com/sun/star/drawing/XDrawPage.hpp>
-#include <com/sun/star/animations/XAnimate.hpp>
-#include <com/sun/star/beans/NamedValue.hpp>
-#include "../ppt/pptanimations.hxx"
-#include <pptexsoundcollection.hxx>
-#include <filter/msfilter/escherex.hxx>
-
 #ifdef DBG_ANIM_LOG
 #include <stdio.h>
 #endif
 
-#include <memory>
+#include <rtl/ustring.hxx>
+#include <com/sun/star/uno/Any.hxx>
+#include <com/sun/star/uno/Reference.h>
 
-#include <list>
+#include <memory>
+#include <vector>
+
+namespace com::sun::star::animations { class XAnimate; }
+namespace com::sun::star::animations { class XAnimationNode; }
+namespace com::sun::star::beans { struct NamedValue; }
+namespace com::sun::star::drawing { class XDrawPage; }
+namespace com::sun::star::drawing { class XShape; }
+namespace ppt { class ExSoundCollection; }
 
 class SvStream;
+class EscherSolverContainer;
 
 namespace ppt
 {
@@ -66,13 +70,17 @@ const int AFTEREFFECT_SET = 2;
 class AnimationExporter
 {
     css::uno::Any aTarget;
+    const EscherSolverContainer& mrSolverContainer;
+    ppt::ExSoundCollection& mrExSoundCollection;
+    std::vector< AfterEffectNodePtr > maAfterEffectNodes;
+    sal_Int32 mnCurrentGroup;
 
     static void writeZString( SvStream& rStrm, const OUString& rVal );
     static bool getColorAny( const css::uno::Any& rAny, const sal_Int16 nColorSpace, sal_Int32& rMode, sal_Int32& rA, sal_Int32& rB, sal_Int32& rC );
     static bool exportAnimProperty( SvStream& rStrm, const sal_uInt16 nPropertyId, const css::uno::Any& rAny, const TranslateMode eTranslateMode );
     static void exportAnimPropertyString( SvStream& rStrm, const sal_uInt16 nPropertyId, const OUString& rVal, const TranslateMode eTranslateMode );
     static void exportAnimPropertyFloat( SvStream& rStrm, const sal_uInt16 nPropertyId, const double& rVal );
-    static void exportAnimPropertyuInt32( SvStream& rStrm, const sal_uInt16 nPropertyId, const sal_uInt32 nVal, const TranslateMode eTranslateMode );
+    static void exportAnimPropertyuInt32( SvStream& rStrm, const sal_uInt16 nPropertyId, const sal_uInt32 nVal );
     static void exportAnimPropertyByte( SvStream& rStrm, const sal_uInt16 nPropertyId, const sal_uInt8 nVal );
 
     /** if available exportAnimPropertySet
@@ -97,8 +105,6 @@ class AnimationExporter
     void exportAnimateColor( SvStream& rStrm, const css::uno::Reference< css::animations::XAnimationNode >& xNode, int nAfterEffectType );
     void exportIterate( SvStream& rStrm, const css::uno::Reference< css::animations::XAnimationNode >& xNode );
 
-    const EscherSolverContainer& mrSolverContainer;
-    ppt::ExSoundCollection& mrExSoundCollection;
     void processAfterEffectNodes( const css::uno::Reference< css::animations::XAnimationNode >& xNode );
 
     bool isAfterEffectNode( const css::uno::Reference< css::animations::XAnimationNode >& xNode ) const;
@@ -107,14 +113,10 @@ class AnimationExporter
 
     static css::uno::Reference< css::animations::XAnimationNode > createAfterEffectNodeClone( const css::uno::Reference< css::animations::XAnimationNode >& xNode );
 
-    std::list< AfterEffectNodePtr > maAfterEffectNodes;
-
 public:
     AnimationExporter( const EscherSolverContainer& rSolverContainer, ppt::ExSoundCollection& rExSoundCollection );
 
     void doexport( const css::uno::Reference< css::drawing::XDrawPage >& xPage, SvStream& rStrm );
-
-    sal_Int32 mnCurrentGroup;
 
         // helper methods also used in ooxml export
     static css::uno::Any convertAnimateValue( const css::uno::Any& rSource, const OUString& rAttributeName );
@@ -125,7 +127,7 @@ public:
         static sal_uInt32 GetPresetID( const OUString& rPreset, sal_uInt32 nAPIPresetClass, bool& bPresetId );
         static sal_uInt32 GetValueTypeForAttributeName( const OUString& rAttributeName );
 
-    static const sal_Char* FindTransitionName( const sal_Int16 nType, const sal_Int16 nSubType, const bool bDirection );
+    static const char* FindTransitionName( const sal_Int16 nType, const sal_Int16 nSubType, const bool bDirection );
     static css::uno::Reference< css::drawing::XShape > getTargetElementShape( const css::uno::Any& rAny, sal_Int32& rBegin, sal_Int32& rEnd, bool& rParagraphTarget );
 };
 } // namespace ppt

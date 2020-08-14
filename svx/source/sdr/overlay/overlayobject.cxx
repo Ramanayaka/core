@@ -21,23 +21,17 @@
 #include <svx/sdr/overlay/overlaymanager.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/vector/b2dvector.hxx>
-#include <vcl/outdev.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
+#include <basegfx/matrix/b2dhommatrixtools.hxx>
+#include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 
-
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         void OverlayObject::objectChange()
         {
             const basegfx::B2DRange aPreviousRange(maBaseRange);
             maBaseRange.reset();
-            setPrimitive2DSequence(drawinglayer::primitive2d::Primitive2DContainer());
+            resetPrimitive2DSequence();
+//            setPrimitive2DSequence(drawinglayer::primitive2d::Primitive2DContainer());
 
             if(getOverlayManager() && !aPreviousRange.isEmpty())
             {
@@ -91,6 +85,8 @@ namespace sdr
         OverlayObject::OverlayObject(Color aBaseColor)
         :   Event(),
             mpOverlayManager(nullptr),
+            maPrimitive2DSequence(),
+            maOffset(0.0, 0.0),
             maBaseColor(aBaseColor),
             mbIsVisible(true),
             mbIsHittable(true),
@@ -109,8 +105,21 @@ namespace sdr
             if(getPrimitive2DSequence().empty())
             {
                 // no existing sequence; create one
-                const_cast< OverlayObject* >(this)->setPrimitive2DSequence(
-                    const_cast< OverlayObject* >(this)->createOverlayObjectPrimitive2DSequence());
+                const_cast< OverlayObject* >(this)->maPrimitive2DSequence = const_cast< OverlayObject* >(this)->createOverlayObjectPrimitive2DSequence();
+
+                if(!getOffset().equalZero())
+                {
+                    // embed to offset transformation
+                    const basegfx::B2DHomMatrix aTranslateGridOffset(
+                        basegfx::utils::createTranslateB2DHomMatrix(
+                            getOffset()));
+                    const drawinglayer::primitive2d::Primitive2DReference aEmbed(
+                        new drawinglayer::primitive2d::TransformPrimitive2D(
+                            aTranslateGridOffset,
+                            maPrimitive2DSequence));
+
+                    const_cast< OverlayObject* >(this)->maPrimitive2DSequence = drawinglayer::primitive2d::Primitive2DContainer { aEmbed };
+                }
             }
 
             return getPrimitive2DSequence();
@@ -170,6 +179,18 @@ namespace sdr
             }
         }
 
+        void OverlayObject::setOffset(const basegfx::B2DVector& rOffset)
+        {
+            if(rOffset != maOffset)
+            {
+                // remember new value
+                maOffset = rOffset;
+
+                // register change (after change)
+                objectChange();
+            }
+        }
+
         void OverlayObject::Trigger(sal_uInt32 /*nTime*/)
         {
             // default does not register again
@@ -179,14 +200,8 @@ namespace sdr
         {
             // default does not need to do anything
         }
-    } // end of namespace overlay
-} // end of namespace sdr
 
 
-namespace sdr
-{
-    namespace overlay
-    {
         OverlayObjectWithBasePosition::OverlayObjectWithBasePosition(const basegfx::B2DPoint& rBasePos, Color aBaseColor)
         :   OverlayObject(aBaseColor),
             maBasePosition(rBasePos)
@@ -208,7 +223,7 @@ namespace sdr
                 objectChange();
             }
         }
-    } // end of namespace overlay
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

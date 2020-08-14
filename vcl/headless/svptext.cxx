@@ -18,14 +18,14 @@
  */
 
 #include <sal/types.h>
+#include <unotools/configmgr.hxx>
 #include <vcl/fontcharmap.hxx>
 #include <basegfx/range/b2ibox.hxx>
-#include "headless/svpgdi.hxx"
-#include <config_cairo_canvas.h>
-#include "impfontmetricdata.hxx"
-#include "CommonSalLayout.hxx"
+#include <headless/svpgdi.hxx>
+#include <impfontmetricdata.hxx>
+#include <sallayout.hxx>
 
-void SvpSalGraphics::SetFont( FontSelectPattern* pIFSD, int nFallbackLevel )
+void SvpSalGraphics::SetFont(LogicalFontInstance* pIFSD, int nFallbackLevel)
 {
     m_aTextRenderImpl.SetFont(pIFSD, nFallbackLevel);
 }
@@ -35,7 +35,7 @@ void SvpSalGraphics::GetFontMetric( ImplFontMetricDataRef& xFontMetric, int nFal
     m_aTextRenderImpl.GetFontMetric(xFontMetric, nFallbackLevel);
 }
 
-const FontCharMapRef SvpSalGraphics::GetFontCharMap() const
+FontCharMapRef SvpSalGraphics::GetFontCharMap() const
 {
     return m_aTextRenderImpl.GetFontCharMap();
 }
@@ -91,38 +91,21 @@ void SvpSalGraphics::GetGlyphWidths( const PhysicalFontFace* pFont,
     m_aTextRenderImpl.GetGlyphWidths(pFont, bVertical, rWidths, rUnicodeEnc);
 }
 
-bool SvpSalGraphics::GetGlyphBoundRect(const GlyphItem& rGlyph, tools::Rectangle& rRect)
+std::unique_ptr<GenericSalLayout> SvpSalGraphics::GetTextLayout(int nFallbackLevel)
 {
-    return m_aTextRenderImpl.GetGlyphBoundRect(rGlyph, rRect);
+    if (utl::ConfigManager::IsFuzzing())
+        return nullptr;
+    return m_aTextRenderImpl.GetTextLayout(nFallbackLevel);
 }
 
-bool SvpSalGraphics::GetGlyphOutline(const GlyphItem& rGlyph, basegfx::B2DPolyPolygon& rPolyPoly)
+void SvpSalGraphics::DrawTextLayout(const GenericSalLayout& rLayout)
 {
-    return m_aTextRenderImpl.GetGlyphOutline(rGlyph, rPolyPoly);
+    m_aTextRenderImpl.DrawTextLayout(rLayout, *this);
 }
 
-SalLayout* SvpSalGraphics::GetTextLayout( ImplLayoutArgs& rArgs, int nFallbackLevel )
+void SvpSalGraphics::SetTextColor( Color nColor )
 {
-    return m_aTextRenderImpl.GetTextLayout(rArgs, nFallbackLevel);
+    m_aTextRenderImpl.SetTextColor(nColor);
 }
-
-void SvpSalGraphics::DrawTextLayout(const CommonSalLayout& rLayout)
-{
-    m_aTextRenderImpl.DrawTextLayout(rLayout);
-}
-
-void SvpSalGraphics::SetTextColor( SalColor nSalColor )
-{
-    m_aTextRenderImpl.SetTextColor(nSalColor);
-}
-
-#if ENABLE_CAIRO_CANVAS
-
-SystemFontData SvpSalGraphics::GetSysFontData( int nFallbacklevel ) const
-{
-    return m_aTextRenderImpl.GetSysFontData(nFallbacklevel);
-}
-
-#endif // ENABLE_CAIRO_CANVAS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

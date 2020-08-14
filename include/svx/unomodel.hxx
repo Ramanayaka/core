@@ -28,14 +28,16 @@
 #include <sfx2/sfxbasemodel.hxx>
 #include <svx/fmdmod.hxx>
 #include <svx/svxdllapi.h>
+#include <cppuhelper/weakref.hxx>
 
 class SdrModel;
 
-class SVX_DLLPUBLIC SvxUnoDrawingModel : public SfxBaseModel, // implements SfxListener, OWEAKOBJECT & other
-                           public SvxFmMSFactory,
-                           public css::drawing::XDrawPagesSupplier,
-                           public css::lang::XServiceInfo,
-                           public css::ucb::XAnyCompareFactory
+class SVXCORE_DLLPUBLIC SvxUnoDrawingModel
+:   public SfxBaseModel, // implements SfxListener, OWEAKOBJECT & other
+    public SvxFmMSFactory,
+    public css::drawing::XDrawPagesSupplier,
+    public css::lang::XServiceInfo,
+    public css::ucb::XAnyCompareFactory
 {
     friend class SvxUnoDrawPagesAccess;
 
@@ -53,6 +55,10 @@ private:
 
     css::uno::Sequence< css::uno::Type > maTypeSequence;
 
+protected:
+    // SvxUnoDrawMSFactory
+    virtual SdrModel& getSdrModelFromUnoModel() const override;
+
 public:
     SvxUnoDrawingModel( SdrModel* pDoc ) throw();
     virtual ~SvxUnoDrawingModel() throw() override;
@@ -61,8 +67,10 @@ public:
 
     // XInterface
     virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire() throw() override;
-    virtual void SAL_CALL release() throw() override;
+    virtual void SAL_CALL acquire() throw() override
+    {  SfxBaseModel::acquire(); }
+    virtual void SAL_CALL release() throw() override
+    {  SfxBaseModel::release(); }
 
     // XModel
     virtual void SAL_CALL lockControllers(  ) override;
@@ -89,12 +97,12 @@ public:
     virtual css::uno::Reference< css::ucb::XAnyCompare > SAL_CALL createAnyCompareByName( const OUString& PropertyName ) override;
 };
 
-SVX_DLLPUBLIC extern bool SvxDrawingLayerExport( SdrModel* pModel, const css::uno::Reference<css::io::XOutputStream>& xOut );
-SVX_DLLPUBLIC extern bool SvxDrawingLayerExport( SdrModel* pModel, const css::uno::Reference<css::io::XOutputStream>& xOut, const css::uno::Reference< css::lang::XComponent >& xComponent );
-SVX_DLLPUBLIC extern bool SvxDrawingLayerExport( SdrModel* pModel, const css::uno::Reference<css::io::XOutputStream>& xOut, const css::uno::Reference< css::lang::XComponent >& xComponent, const char* pExportService  );
-SVX_DLLPUBLIC extern bool SvxDrawingLayerImport( SdrModel* pModel, const css::uno::Reference<css::io::XInputStream>& xInputStream );
-SVX_DLLPUBLIC extern bool SvxDrawingLayerImport( SdrModel* pModel, const css::uno::Reference<css::io::XInputStream>& xInputStream, const css::uno::Reference< css::lang::XComponent >& xComponent  );
-SVX_DLLPUBLIC extern bool SvxDrawingLayerImport( SdrModel* pModel, const css::uno::Reference<css::io::XInputStream>& xInputStream, const css::uno::Reference< css::lang::XComponent >& xComponent, const char* pImportService );
+SVXCORE_DLLPUBLIC extern bool SvxDrawingLayerExport( SdrModel* pModel, const css::uno::Reference<css::io::XOutputStream>& xOut );
+extern bool SvxDrawingLayerExport( SdrModel* pModel, const css::uno::Reference<css::io::XOutputStream>& xOut, const css::uno::Reference< css::lang::XComponent >& xComponent );
+SVXCORE_DLLPUBLIC extern bool SvxDrawingLayerExport( SdrModel* pModel, const css::uno::Reference<css::io::XOutputStream>& xOut, const css::uno::Reference< css::lang::XComponent >& xComponent, const char* pExportService  );
+SVXCORE_DLLPUBLIC extern bool SvxDrawingLayerImport( SdrModel* pModel, const css::uno::Reference<css::io::XInputStream>& xInputStream );
+extern bool SvxDrawingLayerImport( SdrModel* pModel, const css::uno::Reference<css::io::XInputStream>& xInputStream, const css::uno::Reference< css::lang::XComponent >& xComponent  );
+SVXCORE_DLLPUBLIC extern bool SvxDrawingLayerImport( SdrModel* pModel, const css::uno::Reference<css::io::XInputStream>& xInputStream, const css::uno::Reference< css::lang::XComponent >& xComponent, const char* pImportService );
 
 #endif
 

@@ -18,16 +18,12 @@
  */
 
 #include <sdr/overlay/overlayhelpline.hxx>
-#include <vcl/outdev.hxx>
-#include <basegfx/vector/b2dvector.hxx>
 #include <sdr/overlay/overlaytools.hxx>
 #include <svx/sdr/overlay/overlaymanager.hxx>
 
 
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         drawinglayer::primitive2d::Primitive2DContainer OverlayHelplineStriped::createOverlayObjectPrimitive2DSequence()
         {
             drawinglayer::primitive2d::Primitive2DContainer aRetval;
@@ -65,7 +61,7 @@ namespace sdr
         OverlayHelplineStriped::OverlayHelplineStriped(
             const basegfx::B2DPoint& rBasePos,
             SdrHelpLineKind eNewKind)
-        :   OverlayObjectWithBasePosition(rBasePos, Color(COL_BLACK)),
+        :   OverlayObjectWithBasePosition(rBasePos, COL_BLACK),
             meKind(eNewKind)
         {
         }
@@ -73,7 +69,6 @@ namespace sdr
         OverlayHelplineStriped::~OverlayHelplineStriped()
         {
         }
-    } // end of namespace overlay
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

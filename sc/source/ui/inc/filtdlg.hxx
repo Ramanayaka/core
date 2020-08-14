@@ -20,15 +20,10 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_FILTDLG_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_FILTDLG_HXX
 
-#include <vcl/combobox.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/layout.hxx>
-#include <vcl/morebtn.hxx>
-#include "global.hxx"
-#include "address.hxx"
+#include <address.hxx>
 #include "anyrefdg.hxx"
-#include "queryparam.hxx"
-#include "typedstrdata.hxx"
+#include <queryparam.hxx>
+#include <filterentries.hxx>
 
 #include <memory>
 #include <deque>
@@ -40,11 +35,11 @@ class ScViewData;
 class ScDocument;
 class ScQueryItem;
 
-class ScFilterDlg : public ScAnyRefDlg
+class ScFilterDlg : public ScAnyRefDlgController
 {
     struct EntryList
     {
-        std::vector<ScTypedStrData> maList;
+        ScFilterEntries maFilterEntries;
         size_t mnHeaderPos;
 
         EntryList(const EntryList&) = delete;
@@ -54,59 +49,21 @@ class ScFilterDlg : public ScAnyRefDlg
     };
     typedef std::map<SCCOL, std::unique_ptr<EntryList>> EntryListsMap;
 public:
-                    ScFilterDlg( SfxBindings* pB, SfxChildWindow* pCW, vcl::Window* pParent,
-                                 const SfxItemSet&  rArgSet );
-                    virtual ~ScFilterDlg() override;
-    virtual void    dispose() override;
+    ScFilterDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent,
+                const SfxItemSet& rArgSet);
+    virtual ~ScFilterDlg() override;
 
-    virtual void    SetReference( const ScRange& rRef, ScDocument* pDoc ) override;
+    virtual void    SetReference( const ScRange& rRef, ScDocument& rDoc ) override;
 
     virtual bool    IsRefInputMode() const override;
     virtual void    SetActive() override;
 
-    virtual bool    Close() override;
+    virtual void    Close() override;
     void            SliderMoved();
-    size_t          GetSliderPos();
+    size_t          GetSliderPos() const;
     void            RefreshEditRow( size_t nOffset );
 
 private:
-    VclPtr<ListBox>         pLbConnect1;
-    VclPtr<ListBox>         pLbField1;
-    VclPtr<ListBox>         pLbCond1;
-    VclPtr<ComboBox>        pEdVal1;
-
-    VclPtr<ListBox>         pLbConnect2;
-    VclPtr<ListBox>         pLbField2;
-    VclPtr<ListBox>         pLbCond2;
-    VclPtr<ComboBox>        pEdVal2;
-
-    VclPtr<ListBox>         pLbConnect3;
-    VclPtr<ListBox>         pLbField3;
-    VclPtr<ListBox>         pLbCond3;
-    VclPtr<ComboBox>        pEdVal3;
-
-    VclPtr<ListBox>         pLbConnect4;
-    VclPtr<ListBox>         pLbField4;
-    VclPtr<ListBox>         pLbCond4;
-    VclPtr<ComboBox>        pEdVal4;
-
-    VclPtr<ScrollBar>       pScrollBar;
-    VclPtr<VclExpander>     pExpander;
-
-    VclPtr<OKButton>        pBtnOk;
-    VclPtr<CancelButton>    pBtnCancel;
-
-    VclPtr<CheckBox>        pBtnCase;
-    VclPtr<CheckBox>        pBtnRegExp;
-    VclPtr<CheckBox>        pBtnHeader;
-    VclPtr<CheckBox>        pBtnUnique;
-    VclPtr<CheckBox>        pBtnCopyResult;
-    VclPtr<ListBox>         pLbCopyArea;
-    VclPtr<formula::RefEdit> pEdCopyArea;
-    VclPtr<formula::RefButton> pRbCopyArea;
-    VclPtr<CheckBox>        pBtnDestPers;
-    VclPtr<FixedText>       pFtDbAreaLabel;
-    VclPtr<FixedText>       pFtDbArea;
     const OUString aStrUndefined;
     const OUString aStrNone;
 
@@ -114,19 +71,19 @@ private:
     const OUString aStrNotEmpty;
     const OUString aStrColumn;
 
-    ScFilterOptionsMgr* pOptionsMgr;
+    std::unique_ptr<ScFilterOptionsMgr> pOptionsMgr;
 
     const sal_uInt16        nWhichQuery;
     ScQueryParam        theQueryData;
-    ScQueryItem*        pOutItem;
+    std::unique_ptr<ScQueryItem> pOutItem;
     ScViewData*         pViewData;
     ScDocument*         pDoc;
     SCTAB               nSrcTab;
 
-    std::vector<VclPtr<ComboBox>> maValueEdArr;
-    std::vector<VclPtr<ListBox>>  maFieldLbArr;
-    std::vector<VclPtr<ListBox>>  maCondLbArr;
-    std::vector<VclPtr<ListBox>>  maConnLbArr;
+    std::vector<weld::ComboBox*> maValueEdArr;
+    std::vector<weld::ComboBox*> maFieldLbArr;
+    std::vector<weld::ComboBox*> maCondLbArr;
+    std::vector<weld::ComboBox*> maConnLbArr;
 
     std::deque<bool>   maHasDates;
     std::deque<bool>   maRefreshExceptQuery;
@@ -135,7 +92,47 @@ private:
     EntryListsMap m_EntryLists;
 
     // Hack: RefInput control
-    Timer*  pTimer;
+    std::unique_ptr<Timer>  pTimer;
+
+    std::unique_ptr<weld::ComboBox> m_xLbConnect1;
+    std::unique_ptr<weld::ComboBox> m_xLbField1;
+    std::unique_ptr<weld::ComboBox> m_xLbCond1;
+    std::unique_ptr<weld::ComboBox> m_xEdVal1;
+
+    std::unique_ptr<weld::ComboBox> m_xLbConnect2;
+    std::unique_ptr<weld::ComboBox> m_xLbField2;
+    std::unique_ptr<weld::ComboBox> m_xLbCond2;
+    std::unique_ptr<weld::ComboBox> m_xEdVal2;
+
+    std::unique_ptr<weld::ComboBox> m_xLbConnect3;
+    std::unique_ptr<weld::ComboBox> m_xLbField3;
+    std::unique_ptr<weld::ComboBox> m_xLbCond3;
+    std::unique_ptr<weld::ComboBox> m_xEdVal3;
+
+    std::unique_ptr<weld::ComboBox> m_xLbConnect4;
+    std::unique_ptr<weld::ComboBox> m_xLbField4;
+    std::unique_ptr<weld::ComboBox> m_xLbCond4;
+    std::unique_ptr<weld::ComboBox> m_xEdVal4;
+
+    std::unique_ptr<weld::Widget> m_xContents;
+    std::unique_ptr<weld::ScrolledWindow> m_xScrollBar;
+    std::unique_ptr<weld::Expander> m_xExpander;
+
+    std::unique_ptr<weld::Button> m_xBtnClear;
+    std::unique_ptr<weld::Button> m_xBtnOk;
+    std::unique_ptr<weld::Button> m_xBtnCancel;
+
+    std::unique_ptr<weld::CheckButton> m_xBtnCase;
+    std::unique_ptr<weld::CheckButton> m_xBtnRegExp;
+    std::unique_ptr<weld::CheckButton> m_xBtnHeader;
+    std::unique_ptr<weld::CheckButton> m_xBtnUnique;
+    std::unique_ptr<weld::CheckButton> m_xBtnCopyResult;
+    std::unique_ptr<weld::ComboBox> m_xLbCopyArea;
+    std::unique_ptr<formula::RefEdit> m_xEdCopyArea;
+    std::unique_ptr<formula::RefButton> m_xRbCopyArea;
+    std::unique_ptr<weld::CheckButton> m_xBtnDestPers;
+    std::unique_ptr<weld::Label> m_xFtDbAreaLabel;
+    std::unique_ptr<weld::Label> m_xFtDbArea;
 
 private:
     void            Init            ( const SfxItemSet& rArgSet );
@@ -147,67 +144,69 @@ private:
     ScQueryItem*    GetOutputItem   ();
 
     // Handler:
-    DECL_LINK( LbSelectHdl,  ListBox&, void );
-    DECL_LINK( ValModifyHdl, Edit&, void );
-    DECL_LINK( CheckBoxHdl,  Button*, void );
-    DECL_LINK( EndDlgHdl,    Button*, void );
-    DECL_LINK( ScrollHdl, ScrollBar*, void );
-    DECL_LINK( MoreExpandedHdl, VclExpander&, void );
+    DECL_LINK( LbSelectHdl,  weld::ComboBox&, void );
+    DECL_LINK( ValModifyHdl, weld::ComboBox&, void );
+    DECL_LINK( CheckBoxHdl,  weld::Button&, void );
+    DECL_LINK( BtnClearHdl,  weld::Button&, void );
+    DECL_LINK( EndDlgHdl,    weld::Button&, void );
+    DECL_LINK( ScrollHdl, weld::ScrolledWindow&, void );
+    DECL_LINK( MoreExpandedHdl, weld::Expander&, void );
 
     // Hack: RefInput control
     DECL_LINK( TimeOutHdl, Timer*, void );
 };
 
-class ScSpecialFilterDlg : public ScAnyRefDlg
+class ScSpecialFilterDlg : public ScAnyRefDlgController
 {
 public:
-                    ScSpecialFilterDlg( SfxBindings* pB, SfxChildWindow* pCW, vcl::Window* pParent,
-                                        const SfxItemSet&   rArgSet );
-                    virtual ~ScSpecialFilterDlg() override;
-    virtual void    dispose() override;
+    ScSpecialFilterDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent,
+                       const SfxItemSet& rArgSet);
+    virtual ~ScSpecialFilterDlg() override;
 
-    virtual void    SetReference( const ScRange& rRef, ScDocument* pDoc ) override;
+    virtual void    SetReference( const ScRange& rRef, ScDocument& rDoc ) override;
 
     virtual bool    IsRefInputMode() const override;
     virtual void    SetActive() override;
 
-    virtual bool    Close() override;
+    virtual void    Close() override;
 
 private:
-    VclPtr<ListBox>         pLbFilterArea;
-    VclPtr<formula::RefEdit>   pEdFilterArea;
-    VclPtr<formula::RefButton> pRbFilterArea;
-
-    VclPtr<VclExpander>     pExpander;
-    VclPtr<CheckBox>        pBtnCase;
-    VclPtr<CheckBox>        pBtnRegExp;
-    VclPtr<CheckBox>        pBtnHeader;
-    VclPtr<CheckBox>        pBtnUnique;
-    VclPtr<CheckBox>        pBtnCopyResult;
-    VclPtr<ListBox>         pLbCopyArea;
-    VclPtr<formula::RefEdit> pEdCopyArea;
-    VclPtr<formula::RefButton> pRbCopyArea;
-    VclPtr<CheckBox>        pBtnDestPers;
-    VclPtr<FixedText>       pFtDbAreaLabel;
-    VclPtr<FixedText>       pFtDbArea;
     const OUString aStrUndefined;
 
-    VclPtr<OKButton>        pBtnOk;
-    VclPtr<CancelButton>    pBtnCancel;
-
-    ScFilterOptionsMgr* pOptionsMgr;
+    std::unique_ptr<ScFilterOptionsMgr> pOptionsMgr;
 
     const sal_uInt16    nWhichQuery;
     const ScQueryParam  theQueryData;
-    ScQueryItem*        pOutItem;
+    std::unique_ptr<ScQueryItem> pOutItem;
     ScViewData*         pViewData;
     ScDocument*         pDoc;
 
-    VclPtr<formula::RefEdit>   pRefInputEdit;
     bool                bRefInputMode;
 
-    // Hack: RefInput control
-    Idle*  pIdle;
+    formula::RefEdit* m_pRefInputEdit;
+
+    std::unique_ptr<weld::ComboBox> m_xLbFilterArea;
+    std::unique_ptr<formula::RefEdit> m_xEdFilterArea;
+    std::unique_ptr<formula::RefButton> m_xRbFilterArea;
+
+    std::unique_ptr<weld::Expander> m_xExpander;
+    std::unique_ptr<weld::CheckButton> m_xBtnCase;
+    std::unique_ptr<weld::CheckButton> m_xBtnRegExp;
+    std::unique_ptr<weld::CheckButton> m_xBtnHeader;
+    std::unique_ptr<weld::CheckButton> m_xBtnUnique;
+    std::unique_ptr<weld::CheckButton> m_xBtnCopyResult;
+    std::unique_ptr<weld::ComboBox> m_xLbCopyArea;
+    std::unique_ptr<formula::RefEdit> m_xEdCopyArea;
+    std::unique_ptr<formula::RefButton> m_xRbCopyArea;
+    std::unique_ptr<weld::CheckButton> m_xBtnDestPers;
+    std::unique_ptr<weld::Label> m_xFtDbAreaLabel;
+    std::unique_ptr<weld::Label> m_xFtDbArea;
+
+    std::unique_ptr<weld::Button> m_xBtnOk;
+    std::unique_ptr<weld::Button> m_xBtnCancel;
+
+    std::unique_ptr<weld::Frame> m_xFilterFrame;
+    std::unique_ptr<weld::Label> m_xFilterLabel;
 
 private:
     void            Init( const SfxItemSet& rArgSet );
@@ -215,12 +214,14 @@ private:
                                     const ScRange& rSource );
 
     // Handler
-    DECL_LINK( FilterAreaSelHdl, ListBox&, void );
-    DECL_LINK( FilterAreaModHdl, Edit&, void );
-    DECL_LINK( EndDlgHdl,  Button*, void );
+    DECL_LINK( FilterAreaSelHdl, weld::ComboBox&, void );
+    DECL_LINK( FilterAreaModHdl, formula::RefEdit&, void );
+    DECL_LINK( EndDlgHdl,  weld::Button&, void );
 
-    // Hack: RefInput control
-    DECL_LINK( TimeOutHdl, Timer*, void );
+    // RefInput control
+    DECL_LINK( RefInputEditHdl, formula::RefEdit&, void );
+    DECL_LINK( RefInputButtonHdl, formula::RefButton&, void );
+    void RefInputHdl();
 };
 
 #endif // INCLUDED_SC_SOURCE_UI_INC_FILTDLG_HXX

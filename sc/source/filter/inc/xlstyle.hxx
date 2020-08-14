@@ -22,9 +22,8 @@
 
 #include <map>
 #include <com/sun/star/awt/FontSlant.hpp>
-#include <com/sun/star/awt/FontStrikeout.hpp>
 #include <tools/color.hxx>
-#include <vcl/vclenum.hxx>
+#include <tools/fontenum.hxx>
 #include <editeng/svxenum.hxx>
 #include <editeng/frmdir.hxx>
 #include <svl/zforlist.hxx>
@@ -146,7 +145,7 @@ const sal_uInt32 EXC_XFID_NOTFOUND          = 0xFFFFFFFF;
 const sal_uInt16 EXC_XF_LOCKED              = 0x0001;
 const sal_uInt16 EXC_XF_HIDDEN              = 0x0002;
 const sal_uInt16 EXC_XF_STYLE               = 0x0004;
-const sal_uInt16 EXC_XF_STYLEPARENT         = 0x0FFF;   /// Syles don't have a parent.
+const sal_uInt16 EXC_XF_STYLEPARENT         = 0x0FFF;   /// Styles don't have a parent.
 const sal_uInt16 EXC_XF_LINEBREAK           = 0x0008;   /// Automatic line break.
 const sal_uInt16 EXC_XF_SHRINK              = 0x0010;   /// Shrink to fit into cell.
 
@@ -257,22 +256,19 @@ public:
     /** Returns the color count in the current palette. */
     sal_uInt32   GetColorCount() const { return mnTableSize - EXC_COLOR_USEROFFSET; }
 
-    /** Returns the default RGB color data for a (non-zero-based) Excel color or COL_AUTO on error. */
-    ColorData           GetDefColorData( sal_uInt16 nXclIndex ) const;
     /** Returns the default color for a (non-zero-based) Excel color or COL_AUTO on error. */
-    Color        GetDefColor( sal_uInt16 nXclIndex ) const
-                            { return Color( GetDefColorData( nXclIndex ) ); }
+    Color        GetDefColor( sal_uInt16 nXclIndex ) const;
 
     /** Returns true, if the passed Excel color index is a system color. */
     bool         IsSystemColor( sal_uInt16 nXclIndex ) const { return nXclIndex >= mnTableSize; }
 
 private:
-    const ColorData*    mpnColorTable;      /// The table with RGB values.
-    ColorData           mnWindowText;       /// System window text color.
-    ColorData           mnWindowBack;       /// System window background color.
-    ColorData           mnFaceColor;        /// System button background color.
-    ColorData           mnNoteText;         /// Note text color.
-    ColorData           mnNoteBack;         /// Note background color.
+    const Color*        mpnColorTable;      /// The table with RGB values.
+    Color               mnWindowText;       /// System window text color.
+    Color               mnWindowBack;       /// System window background color.
+    Color               mnFaceColor;        /// System button background color.
+    Color               mnNoteText;         /// Note text color.
+    Color               mnNoteBack;         /// Note background color.
     sal_uInt32          mnTableSize;        /// The color table size.
 };
 
@@ -452,7 +448,7 @@ public:
     explicit            XclNumFmtBuffer( const XclRoot& rRoot );
 
     /** Returns the core index of the current standard number format. */
-    sal_uLong        GetStdScNumFmt() const { return mnStdScNumFmt; }
+    sal_uInt32          GetStdScNumFmt() const { return mnStdScNumFmt; }
 
 protected:
     typedef ::std::map< sal_uInt16, XclNumFmt > XclNumFmtMap;
@@ -471,8 +467,8 @@ private:
     void                InsertBuiltinFormats();
 
     XclNumFmtMap        maFmtMap;       /// Map containing all default and user-defined formats.
-    LanguageType        meSysLang;      /// Current system language.
-    sal_uLong               mnStdScNumFmt;  /// Calc format key for standard number format.
+    const LanguageType  meSysLang;      /// Current system language.
+    const sal_uInt32    mnStdScNumFmt;  /// Calc format key for standard number format.
 };
 
 // Cell formatting data (XF) ==================================================
@@ -568,6 +564,11 @@ class XclXFBase
 public:
     explicit            XclXFBase( bool bCellXF );
     virtual             ~XclXFBase();
+
+    XclXFBase(XclXFBase const &) = default;
+    XclXFBase(XclXFBase &&) = default;
+    XclXFBase & operator =(XclXFBase const &) = default;
+    XclXFBase & operator =(XclXFBase &&) = default;
 
     /** Sets all "attribute used" flags to the passed state. */
     void                SetAllUsedFlags( bool bUsed );

@@ -36,7 +36,7 @@ sub check_headers
   seek $fh,0,0;
   foreach $line (@content){
     if($line =~ m/#include "(\w*)\//){
-      # If a include is local and it should be global, make it global
+      # If an include is local and it should be global, make it global
       if($1 ~~ @includes){
         print "local header $line\n";
         $line =~ s/"/</;
@@ -73,7 +73,7 @@ sub check_headers
 sub check_routine
 {
   my ($dir) = @_;
-  opendir(my $fh, $dir) or die "Program stopping, could't open directory \n";
+  opendir(my $fh, $dir) or die "Program stopping, couldn't open directory \n";
   while(my $file = readdir($fh)){
     if($file =~ m/\.(cxx|hxx|c|h|hrc|src)$/i ){
       check_headers($dir,"$dir/$file",@subdirs);

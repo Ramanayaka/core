@@ -22,10 +22,11 @@
 #include <svl/svldllapi.h>
 #include <svl/poolitem.hxx>
 #include <tools/gen.hxx>
+#include <tools/debug.hxx>
 
 class SvStream;
 
-class SVL_DLLPUBLIC SfxPointItem: public SfxPoolItem
+class SVL_DLLPUBLIC SfxPointItem final : public SfxPoolItem
 {
     Point                    aVal;
 
@@ -33,19 +34,16 @@ public:
                              static SfxPoolItem* CreateDefault();
                              SfxPointItem();
                              SfxPointItem( sal_uInt16 nWhich, const Point& rVal );
-                             SfxPointItem( const SfxPointItem& );
 
     virtual bool             GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText,
-                                  const IntlWrapper * = nullptr ) const override;
+                                  const IntlWrapper& ) const override;
 
     virtual bool             operator==( const SfxPoolItem& ) const override;
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16 nItemVersion) const override;
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion) const override;
+    virtual SfxPointItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const Point&             GetValue() const { return aVal; }
             void             SetValue( const Point& rNewVal ) {

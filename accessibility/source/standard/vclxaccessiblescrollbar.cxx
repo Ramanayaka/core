@@ -21,17 +21,16 @@
 
 #include <toolkit/awt/vclxwindows.hxx>
 #include <helper/accresmgr.hxx>
-#include <helper/accessiblestrings.hrc>
+#include <strings.hrc>
 
 #include <unotools/accessiblestatesethelper.hxx>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/awt/ScrollBarOrientation.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <cppuhelper/typeprovider.hxx>
-#include <comphelper/sequence.hxx>
 #include <vcl/scrbar.hxx>
-#include "strings.hxx"
+#include <vcl/vclevent.hxx>
+#include <strings.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -43,17 +42,6 @@ using namespace ::comphelper;
 
 
 // VCLXAccessibleScrollBar
-
-
-VCLXAccessibleScrollBar::VCLXAccessibleScrollBar( VCLXWindow* pVCLWindow )
-    :VCLXAccessibleComponent( pVCLWindow )
-{
-}
-
-
-VCLXAccessibleScrollBar::~VCLXAccessibleScrollBar()
-{
-}
 
 
 void VCLXAccessibleScrollBar::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
@@ -105,7 +93,7 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( VCLXAccessibleScrollBar, VCLXAccessibleCompone
 
 OUString VCLXAccessibleScrollBar::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleScrollBar" );
+    return "com.sun.star.comp.toolkit.AccessibleScrollBar";
 }
 
 
@@ -117,12 +105,13 @@ Sequence< OUString > VCLXAccessibleScrollBar::getSupportedServiceNames()
 
 // XAccessibleAction
 
+constexpr sal_Int32 ACCESSIBLE_ACTION_COUNT=4;
 
 sal_Int32 VCLXAccessibleScrollBar::getAccessibleActionCount( )
 {
     OExternalLockGuard aGuard( this );
 
-    return 4;
+    return ACCESSIBLE_ACTION_COUNT;
 }
 
 
@@ -130,7 +119,7 @@ sal_Bool VCLXAccessibleScrollBar::doAccessibleAction ( sal_Int32 nIndex )
 {
     OExternalLockGuard aGuard( this );
 
-    if ( nIndex < 0 || nIndex >= getAccessibleActionCount() )
+    if ( nIndex < 0 || nIndex >= ACCESSIBLE_ACTION_COUNT )
         throw IndexOutOfBoundsException();
 
     bool bReturn = false;
@@ -158,7 +147,7 @@ OUString VCLXAccessibleScrollBar::getAccessibleActionDescription ( sal_Int32 nIn
 {
     OExternalLockGuard aGuard( this );
 
-    if ( nIndex < 0 || nIndex >= getAccessibleActionCount() )
+    if ( nIndex < 0 || nIndex >= ACCESSIBLE_ACTION_COUNT )
         throw IndexOutOfBoundsException();
 
     OUString sDescription;
@@ -180,7 +169,7 @@ Reference< XAccessibleKeyBinding > VCLXAccessibleScrollBar::getAccessibleActionK
 {
     OExternalLockGuard aGuard( this );
 
-    if ( nIndex < 0 || nIndex >= getAccessibleActionCount() )
+    if ( nIndex < 0 || nIndex >= ACCESSIBLE_ACTION_COUNT )
         throw IndexOutOfBoundsException();
 
     return Reference< XAccessibleKeyBinding >();
@@ -250,7 +239,7 @@ Any VCLXAccessibleScrollBar::getMinimumValue(  )
     OExternalLockGuard aGuard( this );
 
     Any aValue;
-    aValue <<= (sal_Int32) 0;
+    aValue <<= sal_Int32(0);
 
     return aValue;
 }
@@ -265,9 +254,9 @@ OUString VCLXAccessibleScrollBar::getAccessibleName(  )
     if ( pVCLXScrollBar )
     {
         if ( pVCLXScrollBar->getOrientation() == ScrollBarOrientation::HORIZONTAL )
-            aName = TK_RES_STRING( RID_STR_ACC_SCROLLBAR_NAME_HORIZONTAL );
+            aName = AccResId( RID_STR_ACC_SCROLLBAR_NAME_HORIZONTAL );
         else if ( pVCLXScrollBar->getOrientation() == ScrollBarOrientation::VERTICAL )
-            aName = TK_RES_STRING( RID_STR_ACC_SCROLLBAR_NAME_VERTICAL );
+            aName = AccResId( RID_STR_ACC_SCROLLBAR_NAME_VERTICAL );
     }
     return aName;
 }

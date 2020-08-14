@@ -18,21 +18,16 @@
  */
 
 #include <jobs/job.hxx>
-#include <jobs/joburl.hxx>
 #include <jobs/configaccess.hxx>
 #include <classes/converter.hxx>
-#include <general.h>
-#include <stdtypes.h>
 
-#include "helper/mischelper.hxx"
+#include <helper/mischelper.hxx>
 
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XContainer.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
 #include <com/sun/star/task/XJobExecutor.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/document/XEventListener.hpp>
 
@@ -42,7 +37,7 @@
 #include <unotools/configmgr.hxx>
 #include <unotools/configpaths.hxx>
 #include <rtl/ref.hxx>
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 
 using namespace framework;
@@ -87,7 +82,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.JobExecutor");
+        return "com.sun.star.comp.framework.JobExecutor";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -134,7 +129,7 @@ JobExecutor::JobExecutor( /*IN*/ const css::uno::Reference< css::uno::XComponent
 
 void JobExecutor::initListeners()
 {
-    if (utl::ConfigManager::IsAvoidConfig())
+    if (utl::ConfigManager::IsFuzzing())
         return;
 
     // read the list of all currently registered events inside configuration.
@@ -144,25 +139,25 @@ void JobExecutor::initListeners()
     // list too ... Be listener at the configuration.
 
     m_aConfig.open(ConfigAccess::E_READONLY);
-    if (m_aConfig.getMode() == ConfigAccess::E_READONLY)
+    if (m_aConfig.getMode() != ConfigAccess::E_READONLY)
+        return;
+
+    css::uno::Reference< css::container::XNameAccess > xRegistry(
+            m_aConfig.cfg(), css::uno::UNO_QUERY);
+    if (xRegistry.is())
+        m_lEvents = Converter::convert_seqOUString2OUStringList(
+                xRegistry->getElementNames());
+
+    css::uno::Reference< css::container::XContainer > xNotifier(
+            m_aConfig.cfg(), css::uno::UNO_QUERY);
+    if (xNotifier.is())
     {
-        css::uno::Reference< css::container::XNameAccess > xRegistry(
-                m_aConfig.cfg(), css::uno::UNO_QUERY);
-        if (xRegistry.is())
-            m_lEvents = Converter::convert_seqOUString2OUStringList(
-                    xRegistry->getElementNames());
-
-        css::uno::Reference< css::container::XContainer > xNotifier(
-                m_aConfig.cfg(), css::uno::UNO_QUERY);
-        if (xNotifier.is())
-        {
-            m_xConfigListener = new WeakContainerListener(this);
-            xNotifier->addContainerListener(m_xConfigListener);
-        }
-
-        // don't close cfg here!
-        // It will be done inside disposing ...
+        m_xConfigListener = new WeakContainerListener(this);
+        xNotifier->addContainerListener(m_xConfigListener);
     }
+
+    // don't close cfg here!
+    // It will be done inside disposing ...
 }
 
 JobExecutor::~JobExecutor()
@@ -223,23 +218,24 @@ void SAL_CALL JobExecutor::trigger( const OUString& sEvent )
     {
         rtl::Reference<Job> pJob;
 
-        /* SAFE */ {
-        SolarMutexGuard g2;
+        /* SAFE */
+        {
+            SolarMutexGuard g2;
 
-        JobData aCfg(m_xContext);
-        aCfg.setEvent(sEvent, lJobs[j]);
-        aCfg.setEnvironment(JobData::E_EXECUTION);
+            JobData aCfg(m_xContext);
+            aCfg.setEvent(sEvent, lJobs[j]);
+            aCfg.setEnvironment(JobData::E_EXECUTION);
 
-        /*Attention!
-            Jobs implements interfaces and dies by ref count!
-            And freeing of such uno object is done by uno itself.
-            So we have to use dynamic memory everytimes.
-         */
-        pJob = new Job(m_xContext, css::uno::Reference< css::frame::XFrame >());
-        pJob->setJobData(aCfg);
+            /*Attention!
+                Jobs implements interfaces and dies by ref count!
+                And freeing of such uno object is done by uno itself.
+                So we have to use dynamic memory everytimes.
+             */
+            pJob = new Job(m_xContext, css::uno::Reference< css::frame::XFrame >());
+            pJob->setJobData(aCfg);
         } /* SAFE */
 
-       pJob->execute(css::uno::Sequence< css::beans::NamedValue >());
+        pJob->execute(css::uno::Sequence< css::beans::NamedValue >());
     }
 }
 
@@ -293,17 +289,14 @@ void SAL_CALL JobExecutor::notifyEvent( const css::document::EventObject& aEvent
     } /* SAFE */
 
     // step over all enabled jobs and execute it
-    ::std::vector< JobData::TJob2DocEventBinding >::const_iterator pIt;
-    for (  pIt  = lJobs.begin();
-           pIt != lJobs.end();
-         ++pIt                 )
+    for (auto const& lJob : lJobs)
     {
         rtl::Reference<Job> pJob;
 
         /* SAFE */ {
         SolarMutexGuard g2;
 
-        const JobData::TJob2DocEventBinding& rBinding = *pIt;
+        const JobData::TJob2DocEventBinding& rBinding = lJob;
 
         JobData aCfg(m_xContext);
         aCfg.setEvent(rBinding.m_sDocEvent, rBinding.m_sJobName);
@@ -370,9 +363,9 @@ void SAL_CALL JobExecutor::elementReplaced( const css::container::ContainerEvent
                 this job executor instance was registered from outside code as
                 css.document.XEventListener. So it can be, that this disposing call comes from
                 the global event broadcaster service. But we don't hold any reference to this service
-                which can or must be released. Because this broadcaster itself is an one instance service
+                which can or must be released. Because this broadcaster itself is a one instance service
                 too, we can ignore this request. On the other side we must release our internal CFG
-                reference ... SOLUTION => check the given event source and react only, if it's our internal
+                reference... SOLUTION => check the given event source and react only, if it's our internal
                 hold configuration object!
  */
 void SAL_CALL JobExecutor::disposing( const css::lang::EventObject& aEvent )
@@ -411,7 +404,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_JobExecutor_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

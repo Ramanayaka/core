@@ -21,6 +21,7 @@
 
 #include <dmapper/DomainMapperFactory.hxx>
 #include "LoggedResources.hxx"
+#include "PropertyMap.hxx"
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/style/TabAlign.hpp>
 
@@ -28,7 +29,7 @@
 #include <vector>
 #include <memory>
 
-namespace com{ namespace sun {namespace star{
+namespace com::sun::star{
     namespace beans{
         struct PropertyValue;
     }
@@ -44,7 +45,7 @@ namespace com{ namespace sun {namespace star{
     namespace text{
         class XTextRange;
     }
-}}}
+}
 
 namespace utl
 {
@@ -53,8 +54,7 @@ class MediaDescriptor;
 
 typedef std::vector<css::beans::PropertyValue> PropertyValueVector_t;
 
-namespace writerfilter {
-namespace dmapper
+namespace writerfilter::dmapper
 {
 
 class PropertyMap;
@@ -63,6 +63,8 @@ class ListsManager;
 class StyleSheetTable;
 class GraphicZOrderHelper;
 class GraphicNamingHelper;
+
+typedef tools::SvRef<StyleSheetTable> StyleSheetTablePtr;
 
 class DomainMapper : public LoggedProperties, public LoggedTable,
                     public BinaryObj, public LoggedStream
@@ -75,7 +77,7 @@ public:
                  css::uno::Reference<css::lang::XComponent> const& xModel,
                  bool bRepairStorage,
                  SourceDocumentType eDocumentType,
-                 utl::MediaDescriptor& rMediaDesc);
+                 utl::MediaDescriptor const & rMediaDesc);
     virtual ~DomainMapper() override;
 
     // Stream
@@ -83,24 +85,24 @@ public:
     virtual void markLastSectionGroup() override;
 
     // BinaryObj
-    virtual void data(const sal_uInt8* buf, size_t len,
-                      writerfilter::Reference<Properties>::Pointer_t ref) override;
+    virtual void data(const sal_uInt8* buf, size_t len) override;
 
-    void sprmWithProps( Sprm& sprm, const ::std::shared_ptr<PropertyMap>& pContext );
+    void sprmWithProps( Sprm& sprm, const PropertyMapPtr& pContext );
 
-    void PushStyleSheetProperties( const ::std::shared_ptr<PropertyMap>& pStyleProperties, bool bAffectTableMngr = false );
+    void PushStyleSheetProperties( const PropertyMapPtr& pStyleProperties, bool bAffectTableMngr = false );
     void PopStyleSheetProperties( bool bAffectTableMngr = false );
 
-    void PushListProperties( const ::std::shared_ptr<PropertyMap>& pListProperties );
+    void PushListProperties( const ::tools::SvRef<PropertyMap>& pListProperties );
     void PopListProperties();
+    OUString GetListStyleName(sal_Int32 nListId) const;
 
     bool IsOOXMLImport() const;
     bool IsRTFImport() const;
-    css::uno::Reference<css::lang::XMultiServiceFactory> GetTextFactory() const;
+    css::uno::Reference<css::lang::XMultiServiceFactory> const & GetTextFactory() const;
     css::uno::Reference<css::text::XTextRange> GetCurrentTextRange();
 
     OUString getOrCreateCharStyle( PropertyValueVector_t& rCharProperties, bool bAlwaysCreate );
-    std::shared_ptr< StyleSheetTable > GetStyleSheetTable( );
+    StyleSheetTablePtr const & GetStyleSheetTable( );
     GraphicZOrderHelper* graphicZOrderHelper();
     GraphicNamingHelper& GetGraphicNamingHelper();
 
@@ -110,11 +112,14 @@ public:
     bool IsInHeaderFooter() const;
     bool IsInTable() const;
     bool IsStyleSheetImport() const;
+    bool IsInShape() const;
+
+    void hasControls( const bool bSet ) { mbHasControls = bSet; }
+
     /**
      @see DomainMapper_Impl::processDeferredCharacterProperties()
     */
     void processDeferredCharacterProperties(const std::map<sal_Int32, css::uno::Any>& rDeferredCharacterProperties);
-    void setInTableStyleRunProps(bool bInTableStyleRunProps);
 
     /// Enable storing of seen tokens in a named grab bag.
     void enableInteropGrabBag(const OUString& aName);
@@ -145,7 +150,6 @@ private:
                            writerfilter::Reference<Table>::Pointer_t ref) override;
     virtual void lcl_substream(Id name,
                                ::writerfilter::Reference<Stream>::Pointer_t ref) override;
-    virtual void lcl_info(const std::string & info) override;
     virtual void lcl_startGlossaryEntry() override;
     virtual void lcl_endGlossaryEntry() override;
 
@@ -154,23 +158,25 @@ private:
     virtual void lcl_sprm(Sprm & sprm) override;
 
     // Table
-    virtual void lcl_entry(int pos, writerfilter::Reference<Properties>::Pointer_t ref) override;
+    virtual void lcl_entry(writerfilter::Reference<Properties>::Pointer_t ref) override;
 
-    static void handleUnderlineType(const Id nId, const ::std::shared_ptr<PropertyMap>& rContext);
-    void handleParaJustification(const sal_Int32 nIntValue, const ::std::shared_ptr<PropertyMap>& rContext, const bool bExchangeLeftRight);
+    void finishParagraph(const bool bRemove = false);
+
+    static void handleUnderlineType(const Id nId, const ::tools::SvRef<PropertyMap>& rContext);
+    void handleParaJustification(const sal_Int32 nIntValue, const ::tools::SvRef<PropertyMap>& rContext, const bool bExchangeLeftRight);
     static bool getColorFromId(const Id, sal_Int32 &nColor);
     static sal_Int16 getEmphasisValue(const sal_Int32 nIntValue);
     static OUString getBracketStringFromEnum(const sal_Int32 nIntValue, const bool bIsPrefix = true);
     static css::style::TabAlign getTabAlignFromValue(const sal_Int32 nIntValue);
     static sal_Unicode getFillCharFromValue(const sal_Int32 nIntValue);
     bool mbIsSplitPara;
+    bool mbHasControls;
     std::unique_ptr< GraphicZOrderHelper > zOrderHelper;
     std::unique_ptr<GraphicNamingHelper> m_pGraphicNamingHelper;
     OUString m_sGlossaryEntryName;
 };
 
-} // namespace dmapper
-} // namespace writerfilter
+} // namespace writerfilter::dmapper
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

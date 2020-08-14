@@ -18,12 +18,10 @@
  */
 
 
-#include "dp_interact.h"
+#include <dp_interact.h>
 
 #include <comphelper/interaction.hxx>
 
-#include <cppuhelper/exc_hlp.hxx>
-#include <cppuhelper/implbase.hxx>
 #include <com/sun/star/task/XInteractionAbort.hpp>
 #include <osl/diagnose.h>
 

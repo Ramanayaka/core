@@ -28,6 +28,8 @@ $(eval $(call gb_Library_set_componentfile,wpftdraw,writerperfect/source/draw/wp
 
 $(eval $(call gb_Library_use_sdk_api,wpftdraw))
 
+$(eval $(call gb_Library_use_common_precompiled_header,wpftdraw))
+
 $(eval $(call gb_Library_use_libraries,wpftdraw,\
 	comphelper \
 	cppu \
@@ -50,8 +52,9 @@ $(eval $(call gb_Library_use_externals,wpftdraw,\
 	mwaw \
 	odfgen \
 	zmf \
-	png \
+	libpng \
 	pagemaker \
+	qxp \
 	revenge \
 	staroffice \
 	visio \
@@ -72,6 +75,7 @@ $(eval $(call gb_Library_add_exception_objects,wpftdraw,\
 	writerperfect/source/draw/MSPUBImportFilter \
 	writerperfect/source/draw/MWAWDrawImportFilter \
 	writerperfect/source/draw/PageMakerImportFilter \
+	writerperfect/source/draw/QXPImportFilter \
 	writerperfect/source/draw/StarOfficeDrawImportFilter \
 	writerperfect/source/draw/VisioImportFilter \
 	writerperfect/source/draw/WPGImportFilter \

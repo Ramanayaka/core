@@ -20,11 +20,9 @@
 #ifndef INCLUDED_SAL_CONFIG_H
 #define INCLUDED_SAL_CONFIG_H
 
-#if defined LIBO_INTERNAL_ONLY
-#include "config_global.h"
+#if defined LIBO_INTERNAL_ONLY && defined ANDROID && defined __cplusplus
+#include <android/compatibility.hxx>
 #endif
-
-#include <stdlib.h>
 
 #ifdef _WIN32
 #define SAL_W32
@@ -43,10 +41,11 @@
 
 #endif /* defined _MSC_VER */
 
-#endif /* defined WIN32 */
+#endif /* defined _WIN32 */
 
 #if defined(__sun) || defined(LINUX) || defined(NETBSD) || defined(FREEBSD) || \
-    defined(AIX) || defined(OPENBSD) || defined(DRAGONFLY) || defined(ANDROID)
+    defined(AIX) || defined(OPENBSD) || defined(DRAGONFLY) || defined(ANDROID) || \
+    defined(HAIKU)
 #define SAL_UNX
 #define SAL_DLLEXTENSION ".so"
 #define SAL_EXEEXTENSION ""
@@ -94,6 +93,13 @@
 #if defined __clang__
 #if __has_warning("-Wpotentially-evaluated-expression")
 #pragma GCC diagnostic ignored "-Wpotentially-evaluated-expression"
+#endif
+// Before fixing occurrences of this warning, lets see whether C++20 will still change to obsolete
+// the warning (see
+// <https://github.com/llvm/llvm-project/commit/974c8b7e2fde550fd87850d50695341101c38c2d> "[c++20]
+// Add rewriting from comparison operators to <=> / =="):
+#if __has_warning("-Wambiguous-reversed-operator")
+#pragma GCC diagnostic ignored "-Wambiguous-reversed-operator"
 #endif
 #endif
 

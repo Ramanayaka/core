@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <toolkit/controls/roadmapentry.hxx>
+#include <controls/roadmapentry.hxx>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <cppuhelper/supportsservice.hxx>
@@ -70,13 +70,12 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( ORoadmapEntry, ORoadmapEntry_Base, ::comphelpe
 css::uno::Reference< css:: beans::XPropertySetInfo > SAL_CALL
     ORoadmapEntry::getPropertySetInfo()
 {
-    return css::uno::Reference< css::beans::XPropertySetInfo >(
-        createPropertySetInfo( getInfoHelper() ) );
+    return createPropertySetInfo( getInfoHelper() );
 }
 
 OUString SAL_CALL ORoadmapEntry::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.toolkit.RoadmapItem");
+    return "com.sun.star.comp.toolkit.RoadmapItem";
 }
 
 sal_Bool SAL_CALL ORoadmapEntry::supportsService( const OUString& ServiceName )
@@ -86,8 +85,7 @@ sal_Bool SAL_CALL ORoadmapEntry::supportsService( const OUString& ServiceName )
 
 css::uno::Sequence< OUString > SAL_CALL ORoadmapEntry::getSupportedServiceNames(  )
 {
-    css::uno::Sequence<OUString> aRet { "com.sun.star.awt.RoadmapItem" };
-    return aRet;
+    return { "com.sun.star.awt.RoadmapItem" };
 }
 
 ::cppu::IPropertyArrayHelper& ORoadmapEntry::getInfoHelper()

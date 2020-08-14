@@ -21,28 +21,27 @@
 #define INCLUDED_SVX_SOURCE_TABLE_TABLEUNDO_HXX
 
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/table/CellContentType.hpp>
 
-#include "svx/svdotable.hxx"
-#include "svx/svdobj.hxx"
-#include "svx/svdundo.hxx"
+#include <svx/svdotable.hxx>
+#include <svx/svdobj.hxx>
+#include <svx/svdundo.hxx>
 #include <svx/sdrobjectuser.hxx>
 
-#include "celltypes.hxx"
+#include <celltypes.hxx>
 
-namespace sdr { namespace properties {
+namespace sdr::properties {
     class TextProperties;
-} }
+}
 
 class OutlinerParaObject;
 
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
 class CellUndo : public SdrUndoAction, public sdr::ObjectUser
 {
 public:
-    CellUndo( const SdrObjectWeakRef& xObjRef, const CellRef& xCell );
+    CellUndo( const tools::WeakReference<SdrObject>& xObjRef, const CellRef& xCell );
     virtual ~CellUndo() override;
 
     virtual void            Undo() override;
@@ -80,7 +79,7 @@ private:
     void setDataToCell( const Data& rData );
     void getDataFromCell( Data& rData );
 
-    SdrObjectWeakRef mxObjRef;
+    tools::WeakReference<SdrObject> mxObjRef;
     CellRef mxCell;
     Data maUndoData;
     Data maRedoData;
@@ -237,7 +236,7 @@ public:
     virtual void            Redo() override;
 
 private:
-    SdrObjectWeakRef mxObjRef;
+    tools::WeakReference<SdrTableObj> mxObjRef;
 
     struct Data
     {
@@ -253,7 +252,7 @@ private:
     bool mbHasRedoData;
 };
 
-} }
+}
 
 #endif
 

@@ -20,12 +20,11 @@
 #ifndef INCLUDED_XMLOFF_SOURCE_TRANSFORM_CREATEELEMTCONTEXT_HXX
 #define INCLUDED_XMLOFF_SOURCE_TRANSFORM_CREATEELEMTCONTEXT_HXX
 
-#include <xmloff/xmltoken.hxx>
 #include "TransformerContext.hxx"
 
 class XMLCreateElemTransformerContext : public XMLTransformerContext
 {
-    sal_uInt16 m_nActionMap;
+    sal_uInt16 const m_nActionMap;
 
 public:
     XMLCreateElemTransformerContext( XMLTransformerBase& rTransformer,

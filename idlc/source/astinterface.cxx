@@ -20,7 +20,7 @@
 #include <astinterface.hxx>
 #include <astattribute.hxx>
 #include <astoperation.hxx>
-#include "idlc.hxx"
+#include <idlc.hxx>
 
 #include <registry/version.h>
 #include <registry/writer.hxx>
@@ -58,8 +58,7 @@ AstInterface::DoubleDeclarations AstInterface::checkInheritedInterfaceClashes(
 void AstInterface::addInheritedInterface(
     AstType const * ifc, bool optional, OUString const & documentation)
 {
-    m_inheritedInterfaces.push_back(
-        InheritedInterface(ifc, optional, documentation));
+    m_inheritedInterfaces.emplace_back(ifc, optional, documentation);
     if (!optional) {
         ++m_mandatoryInterfaces;
     }
@@ -80,9 +79,7 @@ AstInterface::DoubleMemberDeclarations AstInterface::checkMemberClashes(
 
 void AstInterface::addMember(AstDeclaration /*TODO: const*/ * member) {
     addDeclaration(member);
-    m_visibleMembers.insert(
-        VisibleMembers::value_type(
-            member->getLocalName(), VisibleMember(member)));
+    m_visibleMembers.emplace(member->getLocalName(), VisibleMember(member));
 }
 
 void AstInterface::forwardDefined(AstInterface const & def)
@@ -198,21 +195,20 @@ bool AstInterface::dump(RegistryKey& rKey)
 
     sal_uInt16 superTypeIndex = 0;
     sal_uInt16 referenceIndex = 0;
-    for (InheritedInterfaces::iterator i = m_inheritedInterfaces.begin();
-          i != m_inheritedInterfaces.end(); ++i)
+    for (auto const& elem : m_inheritedInterfaces)
     {
-        if (i->isOptional()) {
+        if (elem.isOptional()) {
             aBlob.setReferenceData(
-                referenceIndex++, i->getDocumentation(), RTReferenceType::SUPPORTS,
+                referenceIndex++, elem.getDocumentation(), RTReferenceType::SUPPORTS,
                 RTFieldAccess::OPTIONAL,
                 OStringToOUString(
-                    i->getInterface()->getRelativName(),
+                    elem.getInterface()->getRelativName(),
                     RTL_TEXTENCODING_UTF8));
         } else {
             aBlob.setSuperTypeName(
                 superTypeIndex++,
                 OStringToOUString(
-                    i->getInterface()->getRelativName(),
+                    elem.getInterface()->getRelativName(),
                     RTL_TEXTENCODING_UTF8));
         }
     }
@@ -257,55 +253,54 @@ void AstInterface::checkInheritedInterfaceClashes(
     std::set< OString > & seenInterfaces, AstInterface const * ifc,
     bool direct, bool optional, bool mainOptional) const
 {
-    if (direct || optional
-        || seenInterfaces.insert(ifc->getScopedName()).second)
+    if (!(direct || optional
+        || seenInterfaces.insert(ifc->getScopedName()).second))
+        return;
+
+    VisibleInterfaces::const_iterator visible(
+        m_visibleInterfaces.find(ifc->getScopedName()));
+    if (visible != m_visibleInterfaces.end()) {
+        switch (visible->second) {
+        case INTERFACE_INDIRECT_OPTIONAL:
+            if (direct && optional) {
+                doubleDeclarations.interfaces.push_back(ifc);
+                return;
+            }
+            break;
+
+        case INTERFACE_DIRECT_OPTIONAL:
+            if (direct || !mainOptional) {
+                doubleDeclarations.interfaces.push_back(ifc);
+            }
+            return;
+
+        case INTERFACE_INDIRECT_MANDATORY:
+            if (direct) {
+                doubleDeclarations.interfaces.push_back(ifc);
+            }
+            return;
+
+        case INTERFACE_DIRECT_MANDATORY:
+            if (direct || (!optional && !mainOptional)) {
+                doubleDeclarations.interfaces.push_back(ifc);
+            }
+            return;
+        }
+    }
+    if (!(direct || !optional))
+        return;
+
+    for (DeclList::const_iterator i(ifc->getIteratorBegin());
+          i != ifc->getIteratorEnd(); ++i)
     {
-        VisibleInterfaces::const_iterator visible(
-            m_visibleInterfaces.find(ifc->getScopedName()));
-        if (visible != m_visibleInterfaces.end()) {
-            switch (visible->second) {
-            case INTERFACE_INDIRECT_OPTIONAL:
-                if (direct && optional) {
-                    doubleDeclarations.interfaces.push_back(ifc);
-                    return;
-                }
-                break;
-
-            case INTERFACE_DIRECT_OPTIONAL:
-                if (direct || !mainOptional) {
-                    doubleDeclarations.interfaces.push_back(ifc);
-                }
-                return;
-
-            case INTERFACE_INDIRECT_MANDATORY:
-                if (direct) {
-                    doubleDeclarations.interfaces.push_back(ifc);
-                }
-                return;
-
-            case INTERFACE_DIRECT_MANDATORY:
-                if (direct || (!optional && !mainOptional)) {
-                    doubleDeclarations.interfaces.push_back(ifc);
-                }
-                return;
-            }
-        }
-        if (direct || !optional) {
-            for (DeclList::const_iterator i(ifc->getIteratorBegin());
-                  i != ifc->getIteratorEnd(); ++i)
-            {
-                checkMemberClashes(
-                    doubleDeclarations.members, *i, !mainOptional);
-            }
-            for (InheritedInterfaces::const_iterator i(
-                      ifc->m_inheritedInterfaces.begin());
-                  i != ifc->m_inheritedInterfaces.end(); ++i)
-            {
-                checkInheritedInterfaceClashes(
-                    doubleDeclarations, seenInterfaces, i->getResolved(),
-                    false, i->isOptional(), mainOptional);
-            }
-        }
+        checkMemberClashes(
+            doubleDeclarations.members, *i, !mainOptional);
+    }
+    for (auto const& elem : ifc->m_inheritedInterfaces)
+    {
+        checkInheritedInterfaceClashes(
+            doubleDeclarations, seenInterfaces, elem.getResolved(),
+            false, elem.isOptional(), mainOptional);
     }
 }
 
@@ -315,26 +310,25 @@ void AstInterface::checkMemberClashes(
 {
     VisibleMembers::const_iterator i(
         m_visibleMembers.find(member->getLocalName()));
-    if (i != m_visibleMembers.end()) {
-        if (i->second.mandatory != nullptr) {
-            if (i->second.mandatory->getScopedName() != member->getScopedName())
-            {
+    if (i == m_visibleMembers.end())
+        return;
+
+    if (i->second.mandatory != nullptr) {
+        if (i->second.mandatory->getScopedName() != member->getScopedName())
+        {
+            DoubleMemberDeclaration d;
+            d.first = i->second.mandatory;
+            d.second = member;
+            doubleMembers.push_back(d);
+        }
+    } else if (checkOptional) {
+        for (auto const& elem : i->second.optionals)
+        {
+            if (elem.second->getScopedName() != member->getScopedName()) {
                 DoubleMemberDeclaration d;
-                d.first = i->second.mandatory;
+                d.first = elem.second;
                 d.second = member;
                 doubleMembers.push_back(d);
-            }
-        } else if (checkOptional) {
-            for (VisibleMember::Optionals::const_iterator j(
-                     i->second.optionals.begin());
-                 j != i->second.optionals.end(); ++j)
-            {
-                if (j->second->getScopedName() != member->getScopedName()) {
-                    DoubleMemberDeclaration d;
-                    d.first = j->second;
-                    d.second = member;
-                    doubleMembers.push_back(d);
-                }
             }
         }
     }
@@ -347,27 +341,24 @@ void AstInterface::addVisibleInterface(
         ? direct ? INTERFACE_DIRECT_OPTIONAL : INTERFACE_INDIRECT_OPTIONAL
         : direct ? INTERFACE_DIRECT_MANDATORY : INTERFACE_INDIRECT_MANDATORY;
     std::pair< VisibleInterfaces::iterator, bool > result(
-        m_visibleInterfaces.insert(
-            VisibleInterfaces::value_type(ifc->getScopedName(), kind)));
+        m_visibleInterfaces.emplace(ifc->getScopedName(), kind));
     bool seen = !result.second
         && result.first->second >= INTERFACE_INDIRECT_MANDATORY;
     if (!result.second && kind > result.first->second) {
         result.first->second = kind;
     }
-    if (!optional && !seen) {
-        for (DeclList::const_iterator i(ifc->getIteratorBegin());
-              i != ifc->getIteratorEnd(); ++i)
-        {
-            m_visibleMembers.insert(
-                VisibleMembers::value_type(
-                    (*i)->getLocalName(), VisibleMember(*i)));
-        }
-        for (InheritedInterfaces::const_iterator i(
-                  ifc->m_inheritedInterfaces.begin());
-              i != ifc->m_inheritedInterfaces.end(); ++i)
-        {
-            addVisibleInterface(i->getResolved(), false, i->isOptional());
-        }
+    if (optional || seen)
+        return;
+
+    for (DeclList::const_iterator i(ifc->getIteratorBegin());
+          i != ifc->getIteratorEnd(); ++i)
+    {
+        m_visibleMembers.emplace(
+                (*i)->getLocalName(), VisibleMember(*i));
+    }
+    for (auto const& elem : ifc->m_inheritedInterfaces)
+    {
+        addVisibleInterface(elem.getResolved(), false, elem.isOptional());
     }
 }
 
@@ -378,21 +369,17 @@ void AstInterface::addOptionalVisibleMembers(AstInterface const * ifc) {
         VisibleMembers::iterator visible(
             m_visibleMembers.find((*i)->getLocalName()));
         if (visible == m_visibleMembers.end()) {
-            visible = m_visibleMembers.insert(
-                VisibleMembers::value_type(
-                    (*i)->getLocalName(), VisibleMember())).first;
+            visible = m_visibleMembers.emplace(
+                    (*i)->getLocalName(), VisibleMember()).first;
         }
         if (visible->second.mandatory == nullptr) {
-            visible->second.optionals.insert(
-                VisibleMember::Optionals::value_type(ifc->getScopedName(), *i));
+            visible->second.optionals.emplace(ifc->getScopedName(), *i);
         }
     }
-    for (InheritedInterfaces::const_iterator i(
-              ifc->m_inheritedInterfaces.begin());
-          i != ifc->m_inheritedInterfaces.end(); ++i)
+    for (auto const& elem : ifc->m_inheritedInterfaces)
     {
-        if (!i->isOptional()) {
-            addOptionalVisibleMembers(i->getResolved());
+        if (!elem.isOptional()) {
+            addOptionalVisibleMembers(elem.getResolved());
         }
     }
 }

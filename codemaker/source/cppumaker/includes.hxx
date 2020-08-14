@@ -20,15 +20,15 @@
 #ifndef INCLUDED_CODEMAKER_SOURCE_CPPUMAKER_INCLUDES_HXX
 #define INCLUDED_CODEMAKER_SOURCE_CPPUMAKER_INCLUDES_HXX
 
-#include "rtl/ref.hxx"
-#include "rtl/ustring.hxx"
-
+#include <rtl/ref.hxx>
+#include <rtl/ustring.hxx>
+#include <vector>
 #include "dependencies.hxx"
 
 class FileStream;
 class TypeManager;
 
-namespace codemaker { namespace cppumaker {
+namespace codemaker::cppumaker {
 
 class Includes {
 public:
@@ -58,6 +58,7 @@ public:
     void addTypelibTypeclassH() { m_includeTypelibTypeclassH = true; }
     void addTypelibTypedescriptionH()
         { m_includeTypelibTypedescriptionH = true; }
+    void addCustom(const OUString& s) { m_custom.push_back(s); }
     void dump(
         FileStream & out, OUString const * companionHdl, bool exceptions);
 
@@ -65,8 +66,8 @@ public:
         FileStream & out, OString const & entityName, bool hpp);
 
 private:
-    Includes(Includes &) = delete;
-    void operator =(const Includes&) = delete;
+    Includes(Includes const &) = delete;
+    Includes& operator =(const Includes&) = delete;
 
     bool isInterfaceType(OString const & entityName) const;
 
@@ -91,9 +92,10 @@ private:
     bool m_includeSalTypesH;
     bool m_includeTypelibTypeclassH;
     bool m_includeTypelibTypedescriptionH;
+    std::vector<OUString> m_custom;
 };
 
-} }
+}
 
 #endif // INCLUDED_CODEMAKER_SOURCE_CPPUMAKER_INCLUDES_HXX
 

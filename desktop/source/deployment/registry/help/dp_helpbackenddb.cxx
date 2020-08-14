@@ -18,14 +18,9 @@
  */
 
 
-#include <rtl/string.h>
-#include <rtl/bootstrap.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <com/sun/star/deployment/DeploymentException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/xml/dom/XDocumentBuilder.hpp>
-#include <com/sun/star/xml/xpath/XXPathAPI.hpp>
-#include "dp_misc.h"
 
 #include "dp_helpbackenddb.hxx"
 
@@ -37,9 +32,7 @@ using namespace ::com::sun::star::uno;
 #define ROOT_ELEMENT_NAME "help-backend-db"
 #define KEY_ELEMENT_NAME "help"
 
-namespace dp_registry {
-namespace backend {
-namespace help {
+namespace dp_registry::backend::help {
 
 HelpBackendDb::HelpBackendDb(
     Reference<XComponentContext> const &  xContext,
@@ -50,22 +43,22 @@ HelpBackendDb::HelpBackendDb(
 
 OUString HelpBackendDb::getDbNSName()
 {
-    return OUString(EXTENSION_REG_NS);
+    return EXTENSION_REG_NS;
 }
 
 OUString HelpBackendDb::getNSPrefix()
 {
-    return OUString(NS_PREFIX);
+    return NS_PREFIX;
 }
 
 OUString HelpBackendDb::getRootElementName()
 {
-    return OUString(ROOT_ELEMENT_NAME);
+    return ROOT_ELEMENT_NAME;
 }
 
 OUString HelpBackendDb::getKeyElementName()
 {
-    return OUString(KEY_ELEMENT_NAME);
+    return KEY_ELEMENT_NAME;
 }
 
 
@@ -94,7 +87,7 @@ void HelpBackendDb::addEntry(OUString const & url, Data const & data)
 }
 
 
-::boost::optional<HelpBackendDb::Data>
+::std::optional<HelpBackendDb::Data>
 HelpBackendDb::getEntry(OUString const & url)
 {
     try
@@ -107,9 +100,9 @@ HelpBackendDb::getEntry(OUString const & url)
         }
         else
         {
-            return ::boost::optional<Data>();
+            return ::std::optional<Data>();
         }
-        return ::boost::optional<Data>(retData);
+        return ::std::optional<Data>(retData);
     }
     catch ( const css::deployment::DeploymentException& )
     {
@@ -123,13 +116,11 @@ HelpBackendDb::getEntry(OUString const & url)
     }
 }
 
-std::list<OUString> HelpBackendDb::getAllDataUrls()
+std::vector<OUString> HelpBackendDb::getAllDataUrls()
 {
     return getOneChildFromAllEntries("data-url");
 }
 
-} // namespace help
-} // namespace backend
-} // namespace dp_registry
+} // namespace dp_registry::backend::help
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,20 +22,10 @@
 
 #include "property_description.hxx"
 
-namespace xmloff { namespace metadata
+namespace xmloff::metadata
 {
 
     const PropertyDescription* getPropertyDescription( const OUString& i_propertyName );
-
-    /** retries the descriptions of all properties which add to the given XML attribute
-
-        <p>Effectively, the complete property map is search for all entries which have the given
-        namespace/attribute values.</p>
-    */
-    void getPropertyGroup(
-            const PropertyGroup i_propertyGroup,
-            PropertyDescriptionList& o_propertyDescriptions
-        );
 
     /** retrieves all known property groups which are mapped to the given attribute
     */
@@ -49,7 +39,7 @@ namespace xmloff { namespace metadata
     AttributeDescription
         getAttributeDescription( const sal_uInt16 i_namespacePrefix, const OUString& i_attributeName );
 
-} } // namespace xmloff::metadata
+} // namespace xmloff::metadata
 
 #endif // INCLUDED_XMLOFF_SOURCE_FORMS_PROPERTY_META_DATA_HXX
 

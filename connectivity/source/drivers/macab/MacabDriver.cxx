@@ -24,10 +24,9 @@
 #include <com/sun/star/sdb/SQLContext.hpp>
 #include <com/sun/star/lang/NullPointerException.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
-#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <tools/diagnose_ex.h>
-#include "resource/macab_res.hrc"
-#include <comphelper/processfactory.hxx>
+#include <strings.hrc>
 #include <cppuhelper/supportsservice.hxx>
 
 using namespace com::sun::star::uno;
@@ -51,7 +50,7 @@ void throwGenericSQLException( const OUString& _rMessage )
     throw aError;
 }
 
-/** throws an SQLException saying than no Mac OS installation was found
+/** throws an SQLException saying that no Mac OS installation was found
  */
 void throwNoMacOSException()
 {
@@ -85,7 +84,7 @@ bool MacabImplModule::isMacOSPresent()
 namespace
 {
     template< typename FUNCTION >
-    void lcl_getFunctionFromModuleOrUnload( oslModule& _rModule, const sal_Char* _pAsciiSymbolName, FUNCTION& _rFunction )
+    void lcl_getFunctionFromModuleOrUnload( oslModule& _rModule, const char* _pAsciiSymbolName, FUNCTION& _rFunction )
     {
         _rFunction = nullptr;
         if ( _rModule )
@@ -105,7 +104,7 @@ namespace
 }
 
 
-extern "C" { static void SAL_CALL thisModule() {} }
+extern "C" { static void thisModule() {} }
 
 bool MacabImplModule::impl_loadModule()
 {
@@ -193,7 +192,7 @@ MacabDriver::MacabDriver(
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("connectivity.macab");
     }
     osl_atomic_decrement( &m_refCount );
 }
@@ -203,9 +202,9 @@ void MacabDriver::disposing()
     ::osl::MutexGuard aGuard(m_aMutex);
 
     // when driver will be destroyed so all our connections have to be destroyed as well
-    for (OWeakRefArray::iterator i = m_xConnections.begin(); m_xConnections.end() != i; ++i)
+    for (auto& rxConnection : m_xConnections)
     {
-        Reference< XComponent > xComp(i->get(), UNO_QUERY);
+        Reference< XComponent > xComp(rxConnection.get(), UNO_QUERY);
         if (xComp.is())
             xComp->dispose();
     }
@@ -213,25 +212,10 @@ void MacabDriver::disposing()
 
     WeakComponentImplHelperBase::disposing();
 }
-// static ServiceInfo
-
-OUString MacabDriver::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.sdbc.macab.Driver");
-}
-
-Sequence< OUString > MacabDriver::getSupportedServiceNames_Static(  )
-{
-    // which service is supported
-    // for more information @see com.sun.star.sdbc.Driver
-    Sequence<OUString> aSNS { "com.sun.star.sdbc.Driver" };
-
-    return aSNS;
-}
 
 OUString SAL_CALL MacabDriver::getImplementationName(  )
 {
-    return getImplementationName_Static();
+    return "com.sun.star.comp.sdbc.macab.Driver";
 }
 
 sal_Bool SAL_CALL MacabDriver::supportsService( const OUString& _rServiceName )
@@ -241,7 +225,9 @@ sal_Bool SAL_CALL MacabDriver::supportsService( const OUString& _rServiceName )
 
 Sequence< OUString > SAL_CALL MacabDriver::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_Static();
+    // which service is supported
+    // for more information @see com.sun.star.sdbc.Driver
+    return { "com.sun.star.sdbc.Driver" };
 }
 
 Reference< XConnection > SAL_CALL MacabDriver::connect( const OUString& url, const Sequence< PropertyValue >& info )
@@ -311,15 +297,14 @@ void SAL_CALL MacabDriver::disposing( const EventObject& )
 
 OUString MacabDriver::impl_getConfigurationSettingsPath()
 {
-    OUStringBuffer aPath;
-    aPath.append( "/org.openoffice.Office.DataAccess/DriverSettings/" );
-    aPath.append( "com.sun.star.comp.sdbc.macab.Driver" );
-    return aPath.makeStringAndClear();
+    return "/org.openoffice.Office.DataAccess/DriverSettings/com.sun.star.comp.sdbc.macab.Driver";
 }
 
-Reference< XInterface >  SAL_CALL MacabDriver::Create( const Reference< XMultiServiceFactory >& _rxFactory )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+connectivity_MacabDriver_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    return *(new MacabDriver(comphelper::getComponentContext(_rxFactory)));
+    return cppu::acquire(new MacabDriver(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

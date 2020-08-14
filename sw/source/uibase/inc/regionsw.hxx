@@ -19,30 +19,14 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_REGIONSW_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_REGIONSW_HXX
 
-#include <hintids.hxx>
-#include <vcl/field.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/group.hxx>
-#include <vcl/layout.hxx>
-#include <svtools/treelistbox.hxx>
 #include <sfx2/basedlgs.hxx>
 #include <sfx2/tabdlg.hxx>
-#include <editeng/brushitem.hxx>
 
-#include <condedit.hxx>
+#include "condedit.hxx"
 #include <section.hxx>
-#include <fmtclds.hxx>
 #include <fmtftntx.hxx>
-#include <fmtclbl.hxx>
-#include <numberingtypelistbox.hxx>
-#include <editeng/frmdiritem.hxx>
-#include <vcl/image.hxx>
+#include "numberingtypelistbox.hxx"
 #include <svx/paraprev.hxx>
-#include <editeng/lrspitem.hxx>
 
 #include <memory>
 #include <map>
@@ -59,75 +43,72 @@ namespace sfx2
 class SectRepr;
 typedef std::map<size_t, std::unique_ptr<SectRepr>> SectReprs_t;
 
-class SwEditRegionDlg : public SfxModalDialog
+class SwEditRegionDlg : public SfxDialogController
 {
-    VclPtr<Edit>           m_pCurName;
-    VclPtr<SvTreeListBox>  m_pTree;
-
-    VclPtr<TriStateBox>    m_pFileCB;
-    VclPtr<CheckBox>       m_pDDECB;
-    VclPtr<VclContainer>   m_pDDEFrame;
-    VclPtr<FixedText>      m_pFileNameFT;
-    VclPtr<FixedText>      m_pDDECommandFT;
-    VclPtr<Edit>           m_pFileNameED;
-    VclPtr<PushButton>     m_pFilePB;
-    VclPtr<FixedText>      m_pSubRegionFT;
-    VclPtr<ComboBox>       m_pSubRegionED;
     bool            m_bSubRegionsFilled;
-
-    VclPtr<TriStateBox>    m_pProtectCB;
-    VclPtr<CheckBox>       m_pPasswdCB;
-    VclPtr<PushButton>     m_pPasswdPB;
-
-    VclPtr<TriStateBox>    m_pHideCB;
-    VclPtr<FixedText>      m_pConditionFT;
-    VclPtr<ConditionEdit>  m_pConditionED;
-
-    // #114856# edit in readonly sections
-    VclPtr<TriStateBox>    m_pEditInReadonlyCB;
-
-    VclPtr<OKButton>       m_pOK;
-    VclPtr<PushButton>     m_pOptionsPB;
-    VclPtr<PushButton>     m_pDismiss;
 
     SwWrtShell&             rSh;
     SectReprs_t             m_SectReprs;
     const SwSection*        pCurrSect;
-    sfx2::DocumentInserter* m_pDocInserter;
+    std::unique_ptr<sfx2::DocumentInserter> m_pDocInserter;
 
     bool            bDontCheckPasswd :1;
-    bool            bWeb            :1;
 
-    void    RecurseList( const SwSectionFormat* pFormat, SvTreeListEntry* pEntry);
+    std::unique_ptr<weld::Entry> m_xCurName;
+    std::unique_ptr<weld::TreeView>  m_xTree;
+    std::unique_ptr<weld::CheckButton> m_xFileCB;
+    std::unique_ptr<weld::CheckButton> m_xDDECB;
+    std::unique_ptr<weld::Widget> m_xDDEFrame;
+    std::unique_ptr<weld::Label> m_xFileNameFT;
+    std::unique_ptr<weld::Label> m_xDDECommandFT;
+    std::unique_ptr<weld::Entry> m_xFileNameED;
+    std::unique_ptr<weld::Button> m_xFilePB;
+    std::unique_ptr<weld::Label> m_xSubRegionFT;
+    std::unique_ptr<weld::ComboBox> m_xSubRegionED;
+    std::unique_ptr<weld::CheckButton> m_xProtectCB;
+    std::unique_ptr<weld::CheckButton> m_xPasswdCB;
+    std::unique_ptr<weld::Button> m_xPasswdPB;
+    std::unique_ptr<weld::CheckButton> m_xHideCB;
+    std::unique_ptr<weld::Label> m_xConditionFT;
+    std::unique_ptr<ConditionEdit>  m_xConditionED;
+    // #114856# edit in readonly sections
+    std::unique_ptr<weld::CheckButton> m_xEditInReadonlyCB;
+    std::unique_ptr<weld::Button> m_xOK;
+    std::unique_ptr<weld::Button> m_xOptionsPB;
+    std::unique_ptr<weld::Button> m_xDismiss;
+    std::unique_ptr<weld::Widget> m_xHideFrame;
+
+    void    RecurseList(const SwSectionFormat* pFormat, const weld::TreeIter* pIter);
     size_t  FindArrPos(const SwSectionFormat* pFormat);
 
-    DECL_LINK( GetFirstEntryHdl, SvTreeListBox *, void );
-    DECL_LINK( DeselectHdl, SvTreeListBox *, void );
+    DECL_LINK( GetFirstEntryHdl, weld::TreeView&, void );
 
-    DECL_LINK( OkHdl, Button*, void );
-    DECL_LINK( NameEditHdl, Edit&, void );
-    DECL_LINK( ConditionEditHdl, Edit&, void );
+    DECL_LINK( OkHdl, weld::Button&, void );
+    DECL_LINK( NameEditHdl, weld::Entry&, void );
+    DECL_LINK( ConditionEditHdl, weld::Entry&, void );
 
-    DECL_LINK( ChangePasswdHdl, Button *, void );
-    DECL_LINK( ChangeProtectHdl, Button *, void );
-    DECL_LINK( ChangeHideHdl, Button *, void );
+    void ChangePasswd(bool bChange);
+    DECL_LINK( TogglePasswdHdl, weld::ToggleButton&, void );
+    DECL_LINK( ChangePasswdHdl, weld::Button&, void );
+    DECL_LINK( ChangeProtectHdl, weld::ToggleButton&, void );
+    DECL_LINK( ChangeHideHdl, weld::ToggleButton&, void );
     // #114856# edit in readonly sections
-    DECL_LINK( ChangeEditInReadonlyHdl, Button *, void );
-    DECL_LINK( ChangeDismissHdl, Button*, void);
-    DECL_LINK( UseFileHdl, Button*, void );
-    DECL_LINK( FileSearchHdl, Button*, void );
-    DECL_LINK( OptionsHdl, Button*, void );
-    DECL_LINK( FileNameHdl, Edit&, void );
-    DECL_LINK( DDEHdl, Button*, void );
+    DECL_LINK( ChangeEditInReadonlyHdl, weld::ToggleButton&, void );
+    DECL_LINK( ChangeDismissHdl, weld::Button&, void);
+    DECL_LINK( UseFileHdl, weld::ToggleButton&, void );
+    DECL_LINK( FileSearchHdl, weld::Button&, void );
+    DECL_LINK( OptionsHdl, weld::Button&, void );
+    DECL_LINK( FileNameComboBoxHdl, weld::ComboBox&, void );
+    DECL_LINK( FileNameEntryHdl, weld::Entry&, void );
+    DECL_LINK( DDEHdl, weld::ToggleButton&, void );
     DECL_LINK( DlgClosedHdl, sfx2::FileDialogHelper*, void );
-    DECL_LINK( SubRegionEventHdl, VclWindowEvent&, void );
+    DECL_LINK( SubRegionEventHdl, weld::ComboBox&, void );
 
-    bool CheckPasswd(CheckBox* pBox = nullptr);
+    bool CheckPasswd(weld::ToggleButton* pBox = nullptr);
 
 public:
-    SwEditRegionDlg( vcl::Window* pParent, SwWrtShell& rWrtSh );
+    SwEditRegionDlg(weld::Window* pParent, SwWrtShell& rWrtSh);
     virtual ~SwEditRegionDlg() override;
-    virtual void dispose() override;
 
     void    SelectSection(const OUString& rSectionName);
 
@@ -136,158 +117,138 @@ public:
 // dialog "insert region"
 class SwInsertSectionTabPage : public SfxTabPage
 {
-    VclPtr<ComboBox>       m_pCurName;
-
-    VclPtr<CheckBox>       m_pFileCB;
-    VclPtr<CheckBox>       m_pDDECB;
-    VclPtr<FixedText>      m_pDDECommandFT;
-    VclPtr<FixedText>      m_pFileNameFT;
-    VclPtr<Edit>           m_pFileNameED;
-    VclPtr<PushButton>     m_pFilePB;
-    VclPtr<FixedText>      m_pSubRegionFT;
-    VclPtr<ComboBox>       m_pSubRegionED;
-
-    VclPtr<CheckBox>       m_pProtectCB;
-    VclPtr<CheckBox>       m_pPasswdCB;
-    VclPtr<PushButton>     m_pPasswdPB;
-
-    VclPtr<CheckBox>       m_pHideCB;
-    VclPtr<FixedText>      m_pConditionFT;
-    VclPtr<ConditionEdit>  m_pConditionED;
-
-    // #114856# edit in readonly sections
-    VclPtr<CheckBox>       m_pEditInReadonlyCB;
-
     OUString        m_sFileName;
     OUString        m_sFilterName;
     OUString        m_sFilePasswd;
 
     css::uno::Sequence <sal_Int8 > m_aNewPasswd;
     SwWrtShell*             m_pWrtSh;
-    sfx2::DocumentInserter* m_pDocInserter;
+    std::unique_ptr<sfx2::DocumentInserter> m_pDocInserter;
 
-    DECL_LINK( ChangeHideHdl, Button *, void );
-    DECL_LINK( ChangeProtectHdl, Button *, void );
-    DECL_LINK( ChangePasswdHdl, Button *, void );
-    DECL_LINK( NameEditHdl, Edit&, void );
-    DECL_LINK( UseFileHdl, Button*, void );
-    DECL_LINK( FileSearchHdl, Button*, void );
-    DECL_LINK( DDEHdl, Button*, void );
+    std::unique_ptr<weld::EntryTreeView> m_xCurName;
+    std::unique_ptr<weld::CheckButton> m_xFileCB;
+    std::unique_ptr<weld::CheckButton> m_xDDECB;
+    std::unique_ptr<weld::Label> m_xDDECommandFT;
+    std::unique_ptr<weld::Label> m_xFileNameFT;
+    std::unique_ptr<weld::Entry> m_xFileNameED;
+    std::unique_ptr<weld::Button> m_xFilePB;
+    std::unique_ptr<weld::Label> m_xSubRegionFT;
+    std::unique_ptr<weld::ComboBox> m_xSubRegionED;
+    std::unique_ptr<weld::CheckButton> m_xProtectCB;
+    std::unique_ptr<weld::CheckButton> m_xPasswdCB;
+    std::unique_ptr<weld::Button> m_xPasswdPB;
+    std::unique_ptr<weld::CheckButton> m_xHideCB;
+    std::unique_ptr<weld::Label> m_xConditionFT;
+    std::unique_ptr<ConditionEdit> m_xConditionED;
+    // #114856# edit in readonly sections
+    std::unique_ptr<weld::CheckButton> m_xEditInReadonlyCB;
+
+    void ChangePasswd(bool bChange);
+
+    DECL_LINK( ChangeHideHdl, weld::ToggleButton&, void );
+    DECL_LINK( ChangeProtectHdl, weld::ToggleButton&, void );
+    DECL_LINK( ChangePasswdHdl, weld::Button&, void );
+    DECL_LINK( TogglePasswdHdl, weld::ToggleButton&, void );
+    DECL_LINK( NameEditHdl, weld::ComboBox&, void );
+    DECL_LINK( UseFileHdl, weld::ToggleButton&, void );
+    DECL_LINK( FileSearchHdl, weld::Button&, void );
+    DECL_LINK( DDEHdl, weld::ToggleButton&, void );
     DECL_LINK( DlgClosedHdl, sfx2::FileDialogHelper*, void );
 
 public:
-    SwInsertSectionTabPage(vcl::Window *pParent, const SfxItemSet &rAttrSet);
+    SwInsertSectionTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rAttrSet);
     virtual ~SwInsertSectionTabPage() override;
-    virtual void dispose() override;
 
     void    SetWrtShell(SwWrtShell& rSh);
 
     virtual bool        FillItemSet( SfxItemSet* ) override;
     virtual void        Reset( const SfxItemSet* ) override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent,
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController,
                                 const SfxItemSet* rAttrSet);
 };
 
 class SwSectionFootnoteEndTabPage : public SfxTabPage
 {
-    VclPtr<CheckBox>        m_pFootnoteNtAtTextEndCB;
+    std::unique_ptr<weld::CheckButton> m_xFootnoteNtAtTextEndCB;
+    std::unique_ptr<weld::CheckButton> m_xFootnoteNtNumCB;
+    std::unique_ptr<weld::Label> m_xFootnoteOffsetLbl;
+    std::unique_ptr<weld::SpinButton> m_xFootnoteOffsetField;
+    std::unique_ptr<weld::CheckButton> m_xFootnoteNtNumFormatCB;
+    std::unique_ptr<weld::Label> m_xFootnotePrefixFT;
+    std::unique_ptr<weld::Entry> m_xFootnotePrefixED;
+    std::unique_ptr<SwNumberingTypeListBox> m_xFootnoteNumViewBox;
+    std::unique_ptr<weld::Label> m_xFootnoteSuffixFT;
+    std::unique_ptr<weld::Entry> m_xFootnoteSuffixED;
+    std::unique_ptr<weld::CheckButton> m_xEndNtAtTextEndCB;
+    std::unique_ptr<weld::CheckButton> m_xEndNtNumCB;
+    std::unique_ptr<weld::Label> m_xEndOffsetLbl;
+    std::unique_ptr<weld::SpinButton> m_xEndOffsetField;
+    std::unique_ptr<weld::CheckButton> m_xEndNtNumFormatCB;
+    std::unique_ptr<weld::Label> m_xEndPrefixFT;
+    std::unique_ptr<weld::Entry> m_xEndPrefixED;
+    std::unique_ptr<SwNumberingTypeListBox> m_xEndNumViewBox;
+    std::unique_ptr<weld::Label> m_xEndSuffixFT;
+    std::unique_ptr<weld::Entry> m_xEndSuffixED;
 
-    VclPtr<CheckBox>        m_pFootnoteNtNumCB;
-    VclPtr<FixedText>       m_pFootnoteOffsetLbl;
-    VclPtr<NumericField>    m_pFootnoteOffsetField;
-
-    VclPtr<CheckBox>        m_pFootnoteNtNumFormatCB;
-    VclPtr<FixedText>       m_pFootnotePrefixFT;
-    VclPtr<Edit>            m_pFootnotePrefixED;
-    VclPtr<SwNumberingTypeListBox> m_pFootnoteNumViewBox;
-    VclPtr<FixedText>       m_pFootnoteSuffixFT;
-    VclPtr<Edit>            m_pFootnoteSuffixED;
-
-    VclPtr<CheckBox>        m_pEndNtAtTextEndCB;
-
-    VclPtr<CheckBox>        m_pEndNtNumCB;
-    VclPtr<FixedText>       m_pEndOffsetLbl;
-    VclPtr<NumericField>    m_pEndOffsetField;
-
-    VclPtr<CheckBox>        m_pEndNtNumFormatCB;
-    VclPtr<FixedText>       m_pEndPrefixFT;
-    VclPtr<Edit>            m_pEndPrefixED;
-    VclPtr<SwNumberingTypeListBox> m_pEndNumViewBox;
-    VclPtr<FixedText>       m_pEndSuffixFT;
-    VclPtr<Edit>            m_pEndSuffixED;
-
-    DECL_LINK( FootEndHdl, Button*, void );
+    DECL_LINK(FootEndHdl, weld::ToggleButton&, void);
     void ResetState( bool bFootnote, const SwFormatFootnoteEndAtTextEnd& );
 
 public:
-    SwSectionFootnoteEndTabPage( vcl::Window *pParent, const SfxItemSet &rAttrSet );
+    SwSectionFootnoteEndTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rAttrSet);
     virtual ~SwSectionFootnoteEndTabPage() override;
-    virtual void dispose() override;
 
     virtual bool        FillItemSet( SfxItemSet* ) override;
     virtual void        Reset( const SfxItemSet* ) override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent,
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController,
                                 const SfxItemSet* rAttrSet);
 };
 
 class SwSectionIndentTabPage : public SfxTabPage
 {
-    VclPtr<MetricField>       m_pBeforeMF;
-    VclPtr<MetricField>       m_pAfterMF;
-    VclPtr<SvxParaPrevWindow> m_pPreviewWin;
+    SvxParaPrevWindow m_aPreviewWin;
+    std::unique_ptr<weld::MetricSpinButton> m_xBeforeMF;
+    std::unique_ptr<weld::MetricSpinButton> m_xAfterMF;
+    std::unique_ptr<weld::CustomWeld> m_xPreviewWin;
 
-    DECL_LINK(IndentModifyHdl, Edit&, void);
+    DECL_LINK(IndentModifyHdl, weld::MetricSpinButton&, void);
 public:
-    SwSectionIndentTabPage( vcl::Window *pParent, const SfxItemSet &rAttrSet );
+    SwSectionIndentTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rAttrSet);
     virtual ~SwSectionIndentTabPage() override;
-    virtual void dispose() override;
 
     virtual bool        FillItemSet( SfxItemSet* ) override;
     virtual void        Reset( const SfxItemSet* ) override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent,
-                                const SfxItemSet* rAttrSet);
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet);
 
-    void    SetWrtShell(SwWrtShell& rSh);
+    void    SetWrtShell(SwWrtShell const & rSh);
 };
 
-class SwInsertSectionTabDialog : public SfxTabDialog
+class SwInsertSectionTabDialog : public SfxTabDialogController
 {
     SwWrtShell&     rWrtSh;
     std::unique_ptr<SwSectionData> m_pSectionData;
 
-    sal_uInt16 m_nSectionPageId;
-    sal_uInt16 m_nColumnPageId;
-    sal_uInt16 m_nBackPageId;
-    sal_uInt16 m_nNotePageId;
-    sal_uInt16 m_nIndentPage;
-
 protected:
-    virtual void    PageCreated( sal_uInt16 nId, SfxTabPage &rPage ) override;
+    virtual void    PageCreated(const OString& rId, SfxTabPage &rPage) override;
     virtual short   Ok() override;
 public:
-    SwInsertSectionTabDialog(vcl::Window* pParent, const SfxItemSet& rSet, SwWrtShell& rSh);
+    SwInsertSectionTabDialog(weld::Window* pParent, const SfxItemSet& rSet, SwWrtShell& rSh);
     virtual ~SwInsertSectionTabDialog() override;
 
     void        SetSectionData(SwSectionData const& rSect);
     SwSectionData * GetSectionData() { return m_pSectionData.get(); }
 };
 
-class SwSectionPropertyTabDialog : public SfxTabDialog
+class SwSectionPropertyTabDialog : public SfxTabDialogController
 {
     SwWrtShell& rWrtSh;
 
-    sal_uInt16 m_nColumnPageId;
-    sal_uInt16 m_nBackPageId;
-    sal_uInt16 m_nNotePageId;
-    sal_uInt16 m_nIndentPage;
-
 protected:
-    virtual void    PageCreated( sal_uInt16 nId, SfxTabPage &rPage ) override;
+    virtual void    PageCreated(const OString& rId, SfxTabPage &rPage) override;
 public:
-    SwSectionPropertyTabDialog(vcl::Window* pParent, const SfxItemSet& rSet, SwWrtShell& rSh);
+    SwSectionPropertyTabDialog(weld::Window* pParent, const SfxItemSet& rSet, SwWrtShell& rSh);
     virtual ~SwSectionPropertyTabDialog() override;
 };
 

@@ -21,7 +21,6 @@ from .DataAware import DataAware, datetime, Date, Time
 from ...common.PropertyNames import PropertyNames
 
 '''
-@author rpiterman
 This class supports simple cases where a UI control can
 be directly synchronized with a data property.
 Such controls are: the different text controls
@@ -53,7 +52,7 @@ class UnoDataAware(DataAware):
                 elif self.unoPropName == "Time":
                     t = datetime.strptime(value, '%H:%M')
                     value = Time(0, 0, t.minute, t.hour, False)
-                
+
                 setattr(self.unoModel, self.unoPropName, value)
             else:
                 uno.invoke(self.unoModel, "set" + self.unoPropName, (value,))
@@ -96,10 +95,6 @@ class UnoDataAware(DataAware):
         method = getattr(uda,"updateData")
         checkBox.addItemListener(ItemListenerProcAdapter(method))
         return uda
-
-    @classmethod
-    def attachLabel(self, data, prop, label, field):
-        return UnoDataAware(data, prop, label, PropertyNames.PROPERTY_LABEL)
 
     @classmethod
     def attachListBox(self, data, prop, listBox, field):

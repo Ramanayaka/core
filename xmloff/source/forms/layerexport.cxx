@@ -20,9 +20,6 @@
 #include "layerexport.hxx"
 #include "strings.hxx"
 #include <xmloff/xmlexp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/xmluconv.hxx>
 #include <xmloff/xmlprmap.hxx>
 #include <xmloff/prhdlfac.hxx>
 #include "elementexport.hxx"
@@ -30,23 +27,21 @@
 #include <xmloff/contextid.hxx>
 #include <xmloff/controlpropertyhdl.hxx>
 #include <xmloff/maptype.hxx>
+#include <sal/log.hxx>
 #include <tools/diagnose_ex.h>
-#include <tools/debug.hxx>
 #include "controlpropertymap.hxx"
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/form/XFormsSupplier2.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/xforms/XFormsSupplier.hpp>
 #include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/script/XEventAttacherManager.hpp>
 #include <com/sun/star/util/NumberFormatsSupplier.hpp>
-#include "eventexport.hxx"
 #include <xmloff/XMLEventExport.hxx>
 #include "formevents.hxx"
 #include <xmloff/xmlnumfe.hxx>
 #include <xmloff/xformsexport.hxx>
-#include <comphelper/processfactory.hxx>
 
 #include <com/sun/star/text/XText.hpp>
 
@@ -87,7 +82,7 @@ namespace xmloff
 
         // our style family
         m_rContext.GetAutoStylePool()->AddFamily(
-            XML_STYLE_FAMILY_CONTROL_ID, token::GetXMLToken(token::XML_PARAGRAPH),
+            XmlStyleFamily::CONTROL_ID, token::GetXMLToken(token::XML_PARAGRAPH),
             m_xStyleExportMapper.get(),
             OUString(  XML_STYLE_FAMILY_CONTROL_PREFIX )
         );
@@ -197,7 +192,7 @@ namespace xmloff
                     // without this, a lot of stuff in the export routines may fail
                     continue;
 
-                // if the element is part of a ignore list, we are not allowed to export it
+                // if the element is part of an ignore list, we are not allowed to export it
                 if ( m_aIgnoreList.end() != m_aIgnoreList.find( xCurrentProps ) )
                     continue;
 
@@ -256,7 +251,7 @@ namespace xmloff
 
     void OFormLayerXMLExport_Impl::exportAutoStyles()
     {
-        m_rContext.GetAutoStylePool()->exportXML( XML_STYLE_FAMILY_CONTROL_ID );
+        m_rContext.GetAutoStylePool()->exportXML( XmlStyleFamily::CONTROL_ID );
     }
 
     void OFormLayerXMLExport_Impl::exportForms(const Reference< XDrawPage >& _rxDrawPage)
@@ -458,7 +453,7 @@ namespace xmloff
 
     namespace
     {
-        struct AccumulateSize : public ::std::binary_function< size_t, MapPropertySet2Map::value_type, size_t >
+        struct AccumulateSize
         {
             size_t operator()( size_t _size, const MapPropertySet2Map::value_type& _map ) const
             {
@@ -470,23 +465,17 @@ namespace xmloff
         {
             OUString sControlId = "control";
 
-            size_t nKnownControlCount = ::std::accumulate( _rAllPagesControlIds.begin(), _rAllPagesControlIds.end(), (size_t)0, AccumulateSize() );
-            sControlId += OUString::number( (sal_Int32)nKnownControlCount + 1 );
+            size_t nKnownControlCount = ::std::accumulate( _rAllPagesControlIds.begin(), _rAllPagesControlIds.end(), size_t(0), AccumulateSize() );
+            sControlId += OUString::number( static_cast<sal_Int32>(nKnownControlCount) + 1 );
 
         #ifdef DBG_UTIL
             // Check if the id is already used. It shouldn't, as we currently have no mechanism for removing entries
             // from the map, so the approach used above (take the accumulated map size) should be sufficient. But if
             // somebody changes this (e.g. allows removing entries from the map), the assertion below probably will fail.
-            for (   MapPropertySet2Map::const_iterator outer = _rAllPagesControlIds.begin();
-                    outer != _rAllPagesControlIds.end();
-                    ++outer
-                )
-                for (   MapPropertySet2String::const_iterator inner = outer->second.begin();
-                        inner != outer->second.end();
-                        ++inner
-                    )
+            for ( const auto& outer : _rAllPagesControlIds )
+                for ( const auto& inner : outer.second )
                 {
-                    OSL_ENSURE( inner->second != sControlId,
+                    OSL_ENSURE( inner.second != sControlId,
                         "lcl_findFreeControlId: auto-generated control ID is already used!" );
                 }
         #endif
@@ -600,18 +589,18 @@ namespace xmloff
 
                 if ( !aPropertyStates.empty() )
                 {   // add to the style pool
-                    OUString sColumnStyleName = m_rContext.GetAutoStylePool()->Add( XML_STYLE_FAMILY_CONTROL_ID, aPropertyStates );
+                    OUString sColumnStyleName = m_rContext.GetAutoStylePool()->Add( XmlStyleFamily::CONTROL_ID, aPropertyStates );
 
                     OSL_ENSURE( m_aGridColumnStyles.end() == m_aGridColumnStyles.find( xColumnProperties ),
                         "OFormLayerXMLExport_Impl::collectGridColumnStylesAndIds: already have a style for this column!" );
 
-                    m_aGridColumnStyles.insert( MapPropertySet2String::value_type( xColumnProperties, sColumnStyleName ) );
+                    m_aGridColumnStyles.emplace( xColumnProperties, sColumnStyleName );
                 }
             }
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("xmloff.forms");
         }
     }
 
@@ -690,31 +679,31 @@ namespace xmloff
 
     void OFormLayerXMLExport_Impl::ensureControlNumberStyleExport()
     {
-        if (!m_pControlNumberStyles)
+        if (m_pControlNumberStyles)
+            return;
+
+        // create our number formats supplier (if necessary)
+        Reference< XNumberFormatsSupplier > xFormatsSupplier;
+
+        OSL_ENSURE(!m_xControlNumberFormats.is(), "OFormLayerXMLExport_Impl::getControlNumberStyleExport: inconsistence!");
+            // the m_xControlNumberFormats and m_pControlNumberStyles should be maintained together
+
+        try
         {
-            // create our number formats supplier (if necessary)
-            Reference< XNumberFormatsSupplier > xFormatsSupplier;
-
-            OSL_ENSURE(!m_xControlNumberFormats.is(), "OFormLayerXMLExport_Impl::getControlNumberStyleExport: inconsistence!");
-                // the m_xControlNumberFormats and m_pControlNumberStyles should be maintained together
-
-            try
-            {
-                // create it for en-US (does not really matter, as we will specify a locale for every
-                // concrete language to use)
-                Locale aLocale (  "en", "US", OUString() );
-                xFormatsSupplier = NumberFormatsSupplier::createWithLocale( m_rContext.getComponentContext(), aLocale );
-                m_xControlNumberFormats = xFormatsSupplier->getNumberFormats();
-            }
-            catch(const Exception&)
-            {
-            }
-
-            OSL_ENSURE(m_xControlNumberFormats.is(), "OFormLayerXMLExport_Impl::getControlNumberStyleExport: could not obtain my default number formats!");
-
-            // create the exporter
-            m_pControlNumberStyles = new SvXMLNumFmtExport(m_rContext, xFormatsSupplier, getControlNumberStyleNamePrefix());
+            // create it for en-US (does not really matter, as we will specify a locale for every
+            // concrete language to use)
+            Locale aLocale (  "en", "US", OUString() );
+            xFormatsSupplier = NumberFormatsSupplier::createWithLocale( m_rContext.getComponentContext(), aLocale );
+            m_xControlNumberFormats = xFormatsSupplier->getNumberFormats();
         }
+        catch(const Exception&)
+        {
+        }
+
+        OSL_ENSURE(m_xControlNumberFormats.is(), "OFormLayerXMLExport_Impl::getControlNumberStyleExport: could not obtain my default number formats!");
+
+        // create the exporter
+        m_pControlNumberStyles = new SvXMLNumFmtExport(m_rContext, xFormatsSupplier, getControlNumberStyleNamePrefix());
     }
 
     SvXMLNumFmtExport* OFormLayerXMLExport_Impl::getControlNumberStyleExport()

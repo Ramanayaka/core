@@ -26,7 +26,7 @@
 #include <com/sun/star/xforms/XFormsUIHelper1.hpp>
 #include <com/sun/star/xforms/XForms.hpp>
 #include <comphelper/processfactory.hxx>
-#include <tools/diagnose_ex.h>
+#include <osl/diagnose.h>
 #include <com/sun/star/container/XIndexAccess.hpp>
 
 using namespace ::com::sun::star;
@@ -89,40 +89,38 @@ void SwDoc::initXForms( bool bCreateDefaultModel )
 void SwDoc::disposeXForms( )
 {
     // get XForms models
-    if( mxXForms.is() )
+    if( !mxXForms.is() )
+        return;
+
+    // iterate over all models
+    const uno::Sequence<OUString> aNames = mxXForms->getElementNames();
+    for( const OUString& rName : aNames )
     {
-        // iterate over all models
-        uno::Sequence<OUString> aNames = mxXForms->getElementNames();
-        const OUString* pNames = aNames.getConstArray();
-        sal_Int32 nNames = aNames.getLength();
-        for( sal_Int32 n = 0; (n < nNames); n++ )
+        Reference< xforms::XModel > xModel(
+            mxXForms->getByName( rName ), UNO_QUERY );
+
+        if( xModel.is() )
         {
-            Reference< xforms::XModel > xModel(
-                mxXForms->getByName( pNames[n] ), UNO_QUERY );
+            // ask model for bindings
+            Reference< XIndexAccess > xBindings(
+                     xModel->getBindings(), UNO_QUERY );
 
-            if( xModel.is() )
+            // Then release them one by one
+            int nCount = xBindings->getCount();
+            for( int i = nCount-1; i >= 0; i-- )
             {
-                // ask model for bindings
-                Reference< XIndexAccess > xBindings(
-                         xModel->getBindings(), UNO_QUERY );
+                xModel->getBindings()->remove(xBindings->getByIndex( i ));
+            }
 
-                // Then release them one by one
-                int nCount = xBindings->getCount();
-                for( int i = nCount-1; i >= 0; i-- )
-                {
-                    xModel->getBindings()->remove(xBindings->getByIndex( i ));
-                }
+            // ask model for Submissions
+            Reference< XIndexAccess > xSubmissions(
+                     xModel->getSubmissions(), UNO_QUERY );
 
-                // ask model for Submissions
-                Reference< XIndexAccess > xSubmissions(
-                         xModel->getSubmissions(), UNO_QUERY );
-
-                // Then release them one by one
-                nCount = xSubmissions->getCount();
-                for( int i = nCount-1; i >= 0; i-- )
-                {
-                    xModel->getSubmissions()->remove(xSubmissions->getByIndex( i ));
-                }
+            // Then release them one by one
+            nCount = xSubmissions->getCount();
+            for( int i = nCount-1; i >= 0; i-- )
+            {
+                xModel->getSubmissions()->remove(xSubmissions->getByIndex( i ));
             }
         }
     }

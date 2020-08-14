@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-
-#include "unoiface.hxx"
+#include <svmedit.hxx>
+#include <unoiface.hxx>
 
 MultiLineEdit::MultiLineEdit( vcl::Window* pParent, WinBits nWinStyle )
     : VclMultiLineEdit( pParent,nWinStyle )

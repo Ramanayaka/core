@@ -19,9 +19,9 @@
 #ifndef INCLUDED_IDLC_INC_ASTCONSTANTS_HXX
 #define INCLUDED_IDLC_INC_ASTCONSTANTS_HXX
 
-#include <astmodule.hxx>
+#include "astmodule.hxx"
 
-class AstConstants : public AstModule
+class AstConstants final : public AstModule
 {
 public:
     AstConstants(const OString& name, AstScope* pScope)

@@ -22,7 +22,9 @@
 #include <com/sun/star/datatransfer/clipboard/ClipboardEvent.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/supportsservice.hxx>
+#include <rtl/ref.hxx>
 #include "WinClipbImpl.hxx"
 
 using namespace osl;
@@ -33,17 +35,6 @@ using namespace com::sun::star::uno;
 using namespace com::sun::star::datatransfer;
 using namespace com::sun::star::datatransfer::clipboard;
 using namespace com::sun::star::lang;
-
-#define WINCLIPBOARD_IMPL_NAME  "com.sun.star.datatransfer.clipboard.ClipboardW32"
-
-namespace
-{
-    Sequence< OUString > SAL_CALL WinClipboard_getSupportedServiceNames()
-    {
-        Sequence< OUString > aRet { "com.sun.star.datatransfer.clipboard.SystemClipboard" };
-        return aRet;
-    }
-}
 
 /*XEventListener,*/
 CWinClipboard::CWinClipboard( const Reference< XComponentContext >& rxContext, const OUString& aClipboardName ) :
@@ -69,7 +60,7 @@ Reference< XTransferable > SAL_CALL CWinClipboard::getContents( )
         throw DisposedException("object is already disposed",
                                  static_cast< XClipboardEx* >( this ) );
 
-    if ( nullptr != m_pImpl.get( ) )
+    if ( m_pImpl )
         return m_pImpl->getContents( );
 
     return Reference< XTransferable >( );
@@ -84,7 +75,7 @@ void SAL_CALL CWinClipboard::setContents( const Reference< XTransferable >& xTra
         throw DisposedException("object is already disposed",
                                  static_cast< XClipboardEx* >( this ) );
 
-    if ( nullptr != m_pImpl.get( ) )
+    if ( m_pImpl )
         m_pImpl->setContents( xTransferable, xClipboardOwner );
 }
 
@@ -94,7 +85,7 @@ OUString SAL_CALL CWinClipboard::getName(  )
         throw DisposedException("object is already disposed",
                                  static_cast< XClipboardEx* >( this ) );
 
-    if ( nullptr != m_pImpl.get( ) )
+    if ( m_pImpl )
         return m_pImpl->getName( );
 
     return OUString();
@@ -110,7 +101,7 @@ void SAL_CALL CWinClipboard::flushClipboard( )
         throw DisposedException("object is already disposed",
                                  static_cast< XClipboardEx* >( this ) );
 
-    if ( nullptr != m_pImpl.get( ) )
+    if ( m_pImpl )
         m_pImpl->flushClipboard( );
 }
 
@@ -122,7 +113,7 @@ sal_Int8 SAL_CALL CWinClipboard::getRenderingCapabilities(  )
         throw DisposedException("object is already disposed",
                                  static_cast< XClipboardEx* >( this ) );
 
-    if ( nullptr != m_pImpl.get( ) )
+    if ( m_pImpl )
         return CWinClipbImpl::getRenderingCapabilities( );
 
     return 0;
@@ -160,7 +151,7 @@ void SAL_CALL CWinClipboard::removeClipboardListener( const Reference< XClipboar
     rBHelper.aLC.removeInterface( cppu::UnoType<decltype(listener)>::get(), listener );
 }
 
-void SAL_CALL CWinClipboard::notifyAllClipboardListener( )
+void CWinClipboard::notifyAllClipboardListener( )
 {
     if ( !rBHelper.bDisposed )
     {
@@ -223,7 +214,7 @@ void SAL_CALL CWinClipboard::disposing()
 
 OUString SAL_CALL CWinClipboard::getImplementationName(  )
 {
-    return OUString( WINCLIPBOARD_IMPL_NAME );
+    return "com.sun.star.datatransfer.clipboard.ClipboardW32";
 }
 
 sal_Bool SAL_CALL CWinClipboard::supportsService( const OUString& ServiceName )
@@ -233,7 +224,16 @@ sal_Bool SAL_CALL CWinClipboard::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL CWinClipboard::getSupportedServiceNames(   )
 {
-    return WinClipboard_getSupportedServiceNames();
+    return { "com.sun.star.datatransfer.clipboard.SystemClipboard" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+dtrans_CWinClipboard_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    static rtl::Reference<CWinClipboard> g_Instance(new CWinClipboard(context, ""));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

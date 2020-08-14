@@ -20,7 +20,7 @@
 #ifndef INCLUDED_L10NTOOLS_INC_XMLPARSE_HXX
 #define INCLUDED_L10NTOOLS_INC_XMLPARSE_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <cstddef>
 #include <memory>
@@ -82,6 +82,11 @@ protected:
 public:
     virtual XMLNodeType GetNodeType() const = 0;
     virtual ~XMLNode(){}
+
+    XMLNode(XMLNode const &) = default;
+    XMLNode(XMLNode &&) = default;
+    XMLNode & operator =(XMLNode const &) = default;
+    XMLNode & operator =(XMLNode &&) = default;
 };
 
 
@@ -135,17 +140,14 @@ public:
 };
 
 /// Mapping numeric Language code <-> XML Element
-typedef std::unordered_map<OString, XMLElement*, OStringHash> LangHashMap;
+typedef std::unordered_map<OString, XMLElement*> LangHashMap;
 
 /// Mapping XML Element string identifier <-> Language Map
-typedef std::unordered_map<OString, LangHashMap*, OStringHash> XMLHashMap;
-
-/// Mapping XML tag names <-> have localizable strings
-typedef std::unordered_map<OString, sal_Bool, OStringHash> TagMap;
+typedef std::unordered_map<OString, LangHashMap*> XMLHashMap;
 
 /** Holds information of a XML file, is root node of tree
  */
-class XMLFile : public XMLParentNode
+class XMLFile final : public XMLParentNode
 {
 public:
     XMLFile(
@@ -155,12 +157,12 @@ public:
     virtual ~XMLFile() override;
 
     void Print( XMLNode *pCur, sal_uInt16 nLevel = 0 );
-    void SearchL10NElements( XMLChildNode *pCur, int pos = 0 );
+    void SearchL10NElements( XMLChildNode *pCur );
     void Extract();
 
     XMLHashMap* GetStrings(){ return m_pXMLStrings.get(); }
     void Write( OString const &rFilename );
-    bool Write( std::ofstream &rStream, XMLNode *pCur = nullptr );
+    void Write( std::ofstream &rStream, XMLNode *pCur = nullptr );
 
     bool CheckExportStatus( XMLParentNode *pCur = nullptr );
 
@@ -173,20 +175,22 @@ public:
     void SetName( const OString &rFilename ) { m_sFileName = rFilename; }
     const std::vector<OString>& getOrder() const { return m_vOrder; }
 
-protected:
+private:
 
     void InsertL10NElement( XMLElement* pElement);
 
     // DATA
     OString m_sFileName;
 
-    TagMap m_aNodes_localize;
+    /// Mapping XML tag names <-> have localizable strings
+    std::unordered_map<OString, bool> m_aNodes_localize;
+
     std::unique_ptr<XMLHashMap> m_pXMLStrings;
 
     std::vector <OString> m_vOrder;
 };
 
-/// An Utility class for XML
+/// A Utility class for XML
 class XMLUtil
 {
 public:
@@ -202,9 +206,6 @@ class XMLElement : public XMLParentNode
 private:
     OString m_sElementName;
     std::unique_ptr<XMLAttributeList> m_pAttributes;
-    OString m_sId;
-    OString m_sLanguageId;
-    int m_nPos;
 
 protected:
     void Print(XMLNode *pCur, OStringBuffer& rBuffer, bool bRootelement) const;
@@ -234,10 +235,6 @@ public:
 
     /// Return a Unicode String representation of this object
     OString ToOString();
-
-    void SetId              ( OString const & sTheId )      { m_sId = sTheId; }
-    void SetLanguageId      ( OString const & sLangId )     { m_sLanguageId = sLangId; }
-    void SetPos             ( int nPos )                    { m_nPos = nPos; }
 };
 
 /** Holds character data
@@ -251,7 +248,7 @@ public:
     /// create a data node
     XMLData(
         const OString &rData,    // the initial data
-        XMLParentNode *pParent   // the parent node of this data, typically a element node
+        XMLParentNode *pParent   // the parent node of this data, typically an element node
     )
         : XMLChildNode( pParent ), m_sData( rData ) {}
 
@@ -268,7 +265,7 @@ public:
 
 /** Holds comments
  */
-class XMLComment : public XMLChildNode
+class XMLComment final : public XMLChildNode
 {
 private:
     OString m_sComment;
@@ -277,7 +274,7 @@ public:
     /// create a comment node
     XMLComment(
         const OString &rComment, // the comment
-        XMLParentNode *pParent   // the parent node of this comemnt, typically a element node
+        XMLParentNode *pParent   // the parent node of this comemnt, typically an element node
     )
         : XMLChildNode( pParent ), m_sComment( rComment ) {}
 
@@ -291,7 +288,7 @@ public:
 
 /** Holds additional file content like those for which no handler exists
  */
-class XMLDefault : public XMLChildNode
+class XMLDefault final : public XMLChildNode
 {
 private:
     OString m_sDefault;
@@ -300,7 +297,7 @@ public:
     /// create a comment node
     XMLDefault(
         const OString &rDefault, // the comment
-        XMLParentNode *pParent   // the parent node of this comemnt, typically a element node
+        XMLParentNode *pParent   // the parent node of this comemnt, typically an element node
     )
         : XMLChildNode( pParent ), m_sDefault( rDefault ) {}
 
@@ -352,10 +349,10 @@ public:
     SimpleXMLParser();
     ~SimpleXMLParser();
 
-    /// parse a file, returns NULL on criticall errors
-    XMLFile *Execute(
+    /// parse a file, return false on critical errors
+    bool Execute(
         const OString &rFileName,    // the file name
-        XMLFile *pXMLFileIn         // the XMLFile
+        XMLFile* pXMLFile  // the XMLFile
     );
 
     /// returns an error struct

@@ -7,37 +7,54 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "sharedformula.hxx"
-#include "calcmacros.hxx"
-#include "tokenarray.hxx"
+#include <sharedformula.hxx>
+#include <calcmacros.hxx>
+#include <tokenarray.hxx>
 #include <listenercontext.hxx>
 #include <document.hxx>
 #include <grouparealistener.hxx>
+#include <refdata.hxx>
 
 namespace sc {
 
-void SharedFormulaUtil::splitFormulaCellGroup(const CellStoreType::position_type& aPos, sc::EndListeningContext* pCxt)
+const ScFormulaCell* SharedFormulaUtil::getSharedTopFormulaCell(const CellStoreType::position_type& aPos)
+{
+    if (aPos.first->type != sc::element_type_formula)
+        // Not a formula cell block.
+        return nullptr;
+
+    sc::formula_block::iterator it = sc::formula_block::begin(*aPos.first->data);
+    std::advance(it, aPos.second);
+    const ScFormulaCell* pCell = *it;
+    if (!pCell->IsShared())
+        // Not a shared formula.
+        return nullptr;
+
+    return pCell->GetCellGroup()->mpTopCell;
+}
+
+bool SharedFormulaUtil::splitFormulaCellGroup(const CellStoreType::position_type& aPos, sc::EndListeningContext* pCxt)
 {
     SCROW nRow = aPos.first->position + aPos.second;
 
     if (aPos.first->type != sc::element_type_formula)
         // Not a formula cell block.
-        return;
+        return false;
 
     if (aPos.second == 0)
         // Split position coincides with the block border. Nothing to do.
-        return;
+        return false;
 
     sc::formula_block::iterator it = sc::formula_block::begin(*aPos.first->data);
     std::advance(it, aPos.second);
     ScFormulaCell& rTop = **it;
     if (!rTop.IsShared())
         // Not a shared formula.
-        return;
+        return false;
 
     if (nRow == rTop.GetSharedTopRow())
         // Already the top cell of a shared group.
-        return;
+        return false;
 
     ScFormulaCellGroupRef xGroup = rTop.GetCellGroup();
 
@@ -70,6 +87,9 @@ void SharedFormulaUtil::splitFormulaCellGroup(const CellStoreType::position_type
         else
             rPrevTop.EndListeningTo( rPrevTop.GetDocument(), nullptr, ScAddress( ScAddress::UNINITIALIZED));
         rPrevTop.SetNeedsListening(true);
+
+        // The new group or remaining single cell needs a new listening.
+        rTop.SetNeedsListening(true);
     }
 #endif
 
@@ -96,12 +116,14 @@ void SharedFormulaUtil::splitFormulaCellGroup(const CellStoreType::position_type
         ScFormulaCell& rCell = **it;
         rCell.SetCellGroup(xGroup2);
     }
+
+    return true;
 }
 
-void SharedFormulaUtil::splitFormulaCellGroups(CellStoreType& rCells, std::vector<SCROW>& rBounds)
+bool SharedFormulaUtil::splitFormulaCellGroups(const ScDocument* pDoc, CellStoreType& rCells, std::vector<SCROW>& rBounds)
 {
     if (rBounds.empty())
-        return;
+        return false;
 
     // Sort and remove duplicates.
     std::sort(rBounds.begin(), rBounds.end());
@@ -112,26 +134,34 @@ void SharedFormulaUtil::splitFormulaCellGroups(CellStoreType& rCells, std::vecto
     SCROW nRow = *it;
     CellStoreType::position_type aPos = rCells.position(nRow);
     if (aPos.first == rCells.end())
-        return;
+        return false;
 
-    splitFormulaCellGroup(aPos, nullptr);
+    bool bSplit = splitFormulaCellGroup(aPos, nullptr);
     std::vector<SCROW>::iterator itEnd = rBounds.end();
     for (++it; it != itEnd; ++it)
     {
         nRow = *it;
-        if (ValidRow(nRow))
+        if (pDoc->ValidRow(nRow))
         {
             aPos = rCells.position(aPos.first, nRow);
             if (aPos.first == rCells.end())
-                return;
-            splitFormulaCellGroup(aPos, nullptr);
+                return bSplit;
+            bSplit |= splitFormulaCellGroup(aPos, nullptr);
         }
     }
+    return bSplit;
 }
 
 bool SharedFormulaUtil::joinFormulaCells(
     const CellStoreType::position_type& rPos, ScFormulaCell& rCell1, ScFormulaCell& rCell2 )
 {
+    if( rCell1.GetDocument()->IsDelayedFormulaGrouping())
+    {
+        rCell1.GetDocument()->AddDelayedFormulaGroupingCell( &rCell1 );
+        rCell1.GetDocument()->AddDelayedFormulaGroupingCell( &rCell2 );
+        return false;
+    }
+
     ScFormulaCell::CompareState eState = rCell1.CompareByTokenArray(rCell2);
     if (eState == ScFormulaCell::NotEqual)
         return false;
@@ -176,7 +206,7 @@ bool SharedFormulaUtil::joinFormulaCells(
         else
         {
             // neither cells are shared.
-            assert(rCell1.aPos.Row() == (SCROW)(rPos.first->position + rPos.second));
+            assert(rCell1.aPos.Row() == static_cast<SCROW>(rPos.first->position + rPos.second));
             xGroup1 = rCell1.CreateCellGroup(2, eState == ScFormulaCell::EqualInvariant);
             rCell2.SetCellGroup(xGroup1);
         }
@@ -215,7 +245,7 @@ void SharedFormulaUtil::unshareFormulaCell(const CellStoreType::position_type& a
     if (rCell.aPos.Row() == rCell.GetSharedTopRow())
     {
         // Top of the shared range.
-        ScFormulaCellGroupRef xGroup = rCell.GetCellGroup();
+        const ScFormulaCellGroupRef& xGroup = rCell.GetCellGroup();
         if (xGroup->mnLength == 2)
         {
             // Group consists of only two cells. Mark the second one non-shared.
@@ -234,14 +264,14 @@ void SharedFormulaUtil::unshareFormulaCell(const CellStoreType::position_type& a
         {
             // Move the top cell to the next formula cell down.
             ScFormulaCell& rNext = *sc::formula_block::at(*it->data, aPos.second+1);
-            --xGroup->mnLength;
             xGroup->mpTopCell = &rNext;
         }
+        --xGroup->mnLength;
     }
     else if (rCell.aPos.Row() == rCell.GetSharedTopRow() + rCell.GetSharedLength() - 1)
     {
         // Bottom of the shared range.
-        ScFormulaCellGroupRef xGroup = rCell.GetCellGroup();
+        const ScFormulaCellGroupRef& xGroup = rCell.GetCellGroup();
         if (xGroup->mnLength == 2)
         {
             // Mark the top cell non-shared.
@@ -324,7 +354,7 @@ void SharedFormulaUtil::unshareFormulaCell(const CellStoreType::position_type& a
     rCell.SetCellGroup(xNone);
 }
 
-void SharedFormulaUtil::unshareFormulaCells(CellStoreType& rCells, std::vector<SCROW>& rRows)
+void SharedFormulaUtil::unshareFormulaCells(const ScDocument* pDoc, CellStoreType& rCells, std::vector<SCROW>& rRows)
 {
     if (rRows.empty())
         return;
@@ -335,22 +365,21 @@ void SharedFormulaUtil::unshareFormulaCells(CellStoreType& rCells, std::vector<S
 
     // Add next cell positions to the list (to ensure that each position becomes a single cell).
     std::vector<SCROW> aRows2;
-    std::vector<SCROW>::const_iterator it = rRows.begin(), itEnd = rRows.end();
-    for (; it != itEnd; ++it)
+    for (const auto& rRow : rRows)
     {
-        if (*it > MAXROW)
+        if (rRow > pDoc->MaxRow())
             break;
 
-        aRows2.push_back(*it);
+        aRows2.push_back(rRow);
 
-        if (*it < MAXROW)
-            aRows2.push_back(*it+1);
+        if (rRow < pDoc->MaxRow())
+            aRows2.push_back(rRow+1);
     }
 
     // Remove duplicates again (the vector should still be sorted).
     aRows2.erase(std::unique(aRows2.begin(), aRows2.end()), aRows2.end());
 
-    splitFormulaCellGroups(rCells, aRows2);
+    splitFormulaCellGroups(pDoc, rCells, aRows2);
 }
 
 void SharedFormulaUtil::startListeningAsGroup( sc::StartListeningContext& rCxt, ScFormulaCell** ppSharedTop )
@@ -363,7 +392,7 @@ void SharedFormulaUtil::startListeningAsGroup( sc::StartListeningContext& rCxt, 
     rDoc.SetDetectiveDirty(true);
 
     ScFormulaCellGroupRef xGroup = rTopCell.GetCellGroup();
-    const ScTokenArray* pCode = xGroup->mpCode;
+    const ScTokenArray* pCode = xGroup->mpCode.get();
     assert(pCode == rTopCell.GetCode());
     if (pCode->IsRecalcModeAlways())
     {
@@ -382,7 +411,7 @@ void SharedFormulaUtil::startListeningAsGroup( sc::StartListeningContext& rCxt, 
             case formula::svSingleRef:
             {
                 const ScSingleRefData* pRef = t->GetSingleRef();
-                ScAddress aPos = pRef->toAbs(rTopCell.aPos);
+                ScAddress aPos = pRef->toAbs(&rDoc, rTopCell.aPos);
                 ScFormulaCell** pp = ppSharedTop;
                 ScFormulaCell** ppEnd = ppSharedTop + xGroup->mnLength;
                 for (; pp != ppEnd; ++pp)
@@ -400,10 +429,10 @@ void SharedFormulaUtil::startListeningAsGroup( sc::StartListeningContext& rCxt, 
             {
                 const ScSingleRefData& rRef1 = *t->GetSingleRef();
                 const ScSingleRefData& rRef2 = *t->GetSingleRef2();
-                ScAddress aPos1 = rRef1.toAbs(rTopCell.aPos);
-                ScAddress aPos2 = rRef2.toAbs(rTopCell.aPos);
+                ScAddress aPos1 = rRef1.toAbs(&rDoc, rTopCell.aPos);
+                ScAddress aPos2 = rRef2.toAbs(&rDoc, rTopCell.aPos);
 
-                ScRange aOrigRange = ScRange(aPos1, aPos2);
+                ScRange aOrigRange(aPos1, aPos2);
                 ScRange aListenedRange = aOrigRange;
                 if (rRef2.IsRowRel())
                     aListenedRange.aEnd.IncRow(xGroup->mnLength-1);

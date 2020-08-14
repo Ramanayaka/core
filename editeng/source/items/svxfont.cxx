@@ -17,16 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <comphelper/string.hxx>
+#include <vcl/metric.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/print.hxx>
+#include <tools/debug.hxx>
 #include <tools/gen.hxx>
 #include <tools/poly.hxx>
 #include <unotools/charclass.hxx>
-#include <editeng/unolingu.hxx>
 #include <com/sun/star/i18n/KCharacterType.hpp>
 #include <editeng/svxfont.hxx>
 #include <editeng/escapementitem.hxx>
+#include <sal/log.hxx>
 
 SvxFont::SvxFont()
 {
@@ -55,6 +56,36 @@ SvxFont::SvxFont( const SvxFont &rFont )
     SetLanguage(rFont.GetLanguage());
 }
 
+void SvxFont::SetNonAutoEscapement(short nNewEsc, const OutputDevice* pOutDev)
+{
+    nEsc = nNewEsc;
+    if ( abs(nEsc) == DFLT_ESC_AUTO_SUPER )
+    {
+        double fAutoAscent = .8;
+        double fAutoDescent = .2;
+        if ( pOutDev )
+        {
+            const FontMetric& rFontMetric = pOutDev->GetFontMetric();
+            double fFontHeight = rFontMetric.GetAscent() + rFontMetric.GetDescent();
+            if ( fFontHeight )
+            {
+                fAutoAscent = rFontMetric.GetAscent() / fFontHeight;
+                fAutoDescent = rFontMetric.GetDescent() / fFontHeight;
+            }
+        }
+
+        if ( nEsc == DFLT_ESC_AUTO_SUPER )
+            nEsc = fAutoAscent * (100 - nPropr);
+        else //DFLT_ESC_AUTO_SUB
+            nEsc = fAutoDescent * -(100 - nPropr);
+    }
+
+    if ( nEsc > MAX_ESC_POS )
+        nEsc = MAX_ESC_POS;
+    else if  ( nEsc < -MAX_ESC_POS )
+        nEsc = -MAX_ESC_POS;
+}
+
 void SvxFont::DrawArrow( OutputDevice &rOut, const tools::Rectangle& rRect,
     const Size& rSize, const Color& rCol, bool bLeft )
 {
@@ -78,13 +109,13 @@ void SvxFont::DrawArrow( OutputDevice &rOut, const tools::Rectangle& rRect,
     Point aNxt( bLeft ? nRight : nLeft, nTop );
     aPoly.Insert( 0, aTmp );
     aPoly.Insert( 0, aNxt );
-    aNxt.Y() = nBottom;
+    aNxt.setY( nBottom );
     aPoly.Insert( 0, aNxt );
     aPoly.Insert( 0, aTmp );
     Color aOldLineColor = rOut.GetLineColor();
     Color aOldFillColor = rOut.GetFillColor();
     rOut.SetFillColor( rCol );
-    rOut.SetLineColor( Color( COL_BLACK ) );
+    rOut.SetLineColor( COL_BLACK );
     rOut.DrawPolygon( aPoly );
     rOut.DrawLine( aTmp, aNxt );
     rOut.SetLineColor( aOldLineColor );
@@ -255,7 +286,7 @@ void SvxFont::DoOnCapitals(SvxDoCapitals &rDo) const
         while( nPos < nTxtLen )
         {
             sal_uInt32  nCharacterType = aCharClass.getCharacterType( aCharString, 0 );
-            if ( ( nCharacterType & css::i18n::KCharacterType::UPPER ) )
+            if ( nCharacterType & css::i18n::KCharacterType::UPPER )
                 break;
             if ( aCharString == " " )
                 break;
@@ -322,8 +353,8 @@ void SvxFont::SetPhysFont( OutputDevice *pOut ) const
     {
         Font aNewFont( *this );
         Size aSize( aNewFont.GetFontSize() );
-        aNewFont.SetFontSize( Size( aSize.Width() * nPropr / 100L,
-                                    aSize.Height() * nPropr / 100L ) );
+        aNewFont.SetFontSize( Size( aSize.Width() * nPropr / 100,
+                                    aSize.Height() * nPropr / 100 ) );
         if ( !rCurrentFont.IsSameInstance( aNewFont ) )
             pOut->SetFont( aNewFont );
     }
@@ -353,7 +384,7 @@ Size SvxFont::GetPhysTxtSize( const OutputDevice *pOut, const OUString &rTxt,
     {
         const OUString aNewText = CalcCaseMap(rTxt);
         bool bCaseMapLengthDiffers(aNewText.getLength() != rTxt.getLength());
-        sal_Int32 nWidth(0L);
+        sal_Int32 nWidth(0);
 
         if(bCaseMapLengthDiffers)
         {
@@ -372,7 +403,7 @@ Size SvxFont::GetPhysTxtSize( const OutputDevice *pOut, const OUString &rTxt,
     }
 
     if( IsKern() && ( nLen > 1 ) )
-        aTxtSize.Width() += ( ( nLen-1 ) * long( nKern ) );
+        aTxtSize.AdjustWidth( ( nLen-1 ) * long( nKern ) );
 
     return aTxtSize;
 }
@@ -409,7 +440,7 @@ Size SvxFont::QuickGetTextSize( const OutputDevice *pOut, const OUString &rTxt,
 
     if( IsKern() && ( nLen > 1 ) )
     {
-        aTxtSize.Width() += ( ( nLen-1 ) * long( nKern ) );
+        aTxtSize.AdjustWidth( ( nLen-1 ) * long( nKern ) );
 
         if ( pDXArray )
         {
@@ -462,9 +493,9 @@ void SvxFont::QuickDrawText( OutputDevice *pOut,
         nDiff /= 100;
 
         if ( !IsVertical() )
-            aPos.Y() -= nDiff;
+            aPos.AdjustY( -nDiff );
         else
-            aPos.X() += nDiff;
+            aPos.AdjustX(nDiff );
     }
 
     if( IsCapital() )
@@ -510,13 +541,21 @@ void SvxFont::DrawPrev( OutputDevice *pOut, Printer* pPrinter,
     {
         short nTmpEsc;
         if( DFLT_ESC_AUTO_SUPER == nEsc )
-            nTmpEsc = 33;
+        {
+            nTmpEsc = .8 * (100 - nPropr);
+            assert (nTmpEsc == DFLT_ESC_SUPER && "I'm sure this formula needs to be changed, but how to confirm that???");
+            nTmpEsc = DFLT_ESC_SUPER;
+        }
         else if( DFLT_ESC_AUTO_SUB == nEsc )
+        {
+            nTmpEsc = .2 * -(100 - nPropr);
+            assert (nTmpEsc == -20 && "I'm sure this formula needs to be changed, but how to confirm that???");
             nTmpEsc = -20;
+        }
         else
             nTmpEsc = nEsc;
-        Size aSize = ( this->GetFontSize() );
-        aPos.Y() -= ( nTmpEsc * aSize.Height() ) / 100L;
+        Size aSize = GetFontSize();
+        aPos.AdjustY( -(( nTmpEsc * aSize.Height() ) / 100) );
     }
     Font aOldFont( ChgPhysFont( pOut ) );
     Font aOldPrnFont( ChgPhysFont( pPrinter ) );
@@ -570,6 +609,8 @@ SvxFont& SvxFont::operator=( const SvxFont& rFont )
     return *this;
 }
 
+namespace {
+
 class SvxDoGetCapitalSize : public SvxDoCapitals
 {
 protected:
@@ -591,6 +632,8 @@ public:
     const Size &GetSize() const { return aTxtSize; };
 };
 
+}
+
 void SvxDoGetCapitalSize::Do( const OUString &_rTxt, const sal_Int32 _nIdx,
                               const sal_Int32 _nLen, const bool bUpper )
 {
@@ -602,7 +645,7 @@ void SvxDoGetCapitalSize::Do( const OUString &_rTxt, const sal_Int32 _nIdx,
         pFont->SetPhysFont( pOut );
         aPartSize.setWidth( pOut->GetTextWidth( _rTxt, _nIdx, _nLen ) );
         aPartSize.setHeight( pOut->GetTextHeight() );
-        aTxtSize.Height() = aPartSize.Height();
+        aTxtSize.setHeight( aPartSize.Height() );
         pFont->SetPropr( nProp );
         pFont->SetPhysFont( pOut );
     }
@@ -611,8 +654,8 @@ void SvxDoGetCapitalSize::Do( const OUString &_rTxt, const sal_Int32 _nIdx,
         aPartSize.setWidth( pOut->GetTextWidth( _rTxt, _nIdx, _nLen ) );
         aPartSize.setHeight( pOut->GetTextHeight() );
     }
-    aTxtSize.Width() += aPartSize.Width();
-    aTxtSize.Width() += ( _nLen * long( nKern ) );
+    aTxtSize.AdjustWidth(aPartSize.Width() );
+    aTxtSize.AdjustWidth( _nLen * long( nKern ) );
 }
 
 Size SvxFont::GetCapitalSize( const OutputDevice *pOut, const OUString &rTxt,
@@ -631,6 +674,8 @@ Size SvxFont::GetCapitalSize( const OutputDevice *pOut, const OUString &rTxt,
     }
     return aTxtSize;
 }
+
+namespace {
 
 class SvxDoDrawCapital : public SvxDoCapitals
 {
@@ -655,30 +700,32 @@ public:
                      const sal_Int32 nLen, const bool bUpper ) override;
 };
 
+}
+
 void SvxDoDrawCapital::DoSpace( const bool bDraw )
 {
-    if ( bDraw || pFont->IsWordLineMode() )
+    if ( !(bDraw || pFont->IsWordLineMode()) )
+        return;
+
+    sal_uLong nDiff = static_cast<sal_uLong>(aPos.X() - aSpacePos.X());
+    if ( nDiff )
     {
-        sal_uLong nDiff = (sal_uLong)(aPos.X() - aSpacePos.X());
-        if ( nDiff )
-        {
-            bool bWordWise = pFont->IsWordLineMode();
-            bool bTrans = pFont->IsTransparent();
-            pFont->SetWordLineMode( false );
-            pFont->SetTransparent( true );
-            pFont->SetPhysFont( pOut );
-            pOut->DrawStretchText( aSpacePos, nDiff, "  ", 0, 2 );
-            pFont->SetWordLineMode( bWordWise );
-            pFont->SetTransparent( bTrans );
-            pFont->SetPhysFont( pOut );
-        }
+        bool bWordWise = pFont->IsWordLineMode();
+        bool bTrans = pFont->IsTransparent();
+        pFont->SetWordLineMode( false );
+        pFont->SetTransparent( true );
+        pFont->SetPhysFont( pOut );
+        pOut->DrawStretchText( aSpacePos, nDiff, "  ", 0, 2 );
+        pFont->SetWordLineMode( bWordWise );
+        pFont->SetTransparent( bTrans );
+        pFont->SetPhysFont( pOut );
     }
 }
 
 void SvxDoDrawCapital::SetSpace()
 {
     if ( pFont->IsWordLineMode() )
-        aSpacePos.X() = aPos.X();
+        aSpacePos.setX( aPos.X() );
 }
 
 void SvxDoDrawCapital::Do( const OUString &_rTxt, const sal_Int32 _nIdx,
@@ -704,7 +751,7 @@ void SvxDoDrawCapital::Do( const OUString &_rTxt, const sal_Int32 _nIdx,
     long nWidth = aPartSize.Width();
     if ( nKern )
     {
-        aPos.X() += (nKern/2);
+        aPos.AdjustX(nKern/2);
         if ( _nLen ) nWidth += (_nLen*long(nKern));
     }
     pOut->DrawStretchText(aPos,nWidth-nKern,_rTxt,_nIdx,_nLen);
@@ -716,7 +763,7 @@ void SvxDoDrawCapital::Do( const OUString &_rTxt, const sal_Int32 _nIdx,
         pFont->SetPropr( nProp );
     pFont->SetPhysFont( pOut );
 
-    aPos.X() += nWidth-(nKern/2);
+    aPos.AdjustX(nWidth-(nKern/2) );
 }
 
 /*************************************************************************

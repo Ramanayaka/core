@@ -22,19 +22,18 @@
 #include "calendar_gregorian.hxx"
 
 
-//  class Calendar_hijri
 
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
-class Calendar_hijri : public Calendar_gregorian
+class Calendar_hijri final : public Calendar_gregorian
 {
 public:
 
     // Constructors
     Calendar_hijri();
 
-protected:
+private:
     void mapToGregorian() override;
     void mapFromGregorian() override;
 
@@ -67,10 +66,10 @@ private:
     static void getHijri(sal_Int32 *day, sal_Int32 *month, sal_Int32 *year);
     static void ToGregorian(sal_Int32 *day, sal_Int32 *month, sal_Int32 *year);
     static void getGregorianDay(sal_Int32 jd, sal_Int32 *pnDay, sal_Int32 *pnMonth, sal_Int32 *pnYear);
-    static double getJulianDay(sal_Int32 day, sal_Int32 month, sal_Int32 year);
+    static sal_Int32 getJulianDay(sal_Int32 day, sal_Int32 month, sal_Int32 year);
 };
 
-} } } }
+}
 
 #endif
 

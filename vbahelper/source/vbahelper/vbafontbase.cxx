@@ -16,14 +16,12 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <com/sun/star/beans/XProperty.hpp>
+
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/awt/FontWeight.hpp>
-#include <com/sun/star/awt/FontUnderline.hpp>
 #include <com/sun/star/awt/FontStrikeout.hpp>
 #include <com/sun/star/awt/FontSlant.hpp>
-#include <com/sun/star/text/XSimpleText.hpp>
 #include <vbahelper/vbafontbase.hxx>
 
 using namespace ::ooo::vba;
@@ -79,7 +77,7 @@ VbaFontBase::getSuperscript()
     // not supported in form controls
     if( !mbFormControl )
        mxFont->getPropertyValue( "CharEscapement" ) >>= nValue;
-    return uno::makeAny( ( nValue == SUPERSCRIPT ) );
+    return uno::makeAny( nValue == SUPERSCRIPT );
 }
 
 void SAL_CALL
@@ -100,7 +98,7 @@ VbaFontBase::setSubscript( const uno::Any& aValue )
         nValue2 = SUBSCRIPTHEIGHT;
     }
 
-     mxFont->setPropertyValue( "CharEscapementHeight" , uno::Any(nValue2) );
+    mxFont->setPropertyValue( "CharEscapementHeight" , uno::Any(nValue2) );
     mxFont->setPropertyValue( "CharEscapement" , uno::Any(nValue) );
 
 }
@@ -112,7 +110,7 @@ VbaFontBase::getSubscript()
     // not supported in form controls
     if( !mbFormControl )
        mxFont->getPropertyValue( "CharEscapement" ) >>= nValue;
-    return uno::makeAny( ( nValue == SUBSCRIPT ) );
+    return uno::makeAny( nValue == SUBSCRIPT );
 }
 
 void SAL_CALL
@@ -231,7 +229,7 @@ VbaFontBase::setItalic( const uno::Any& aValue )
     awt::FontSlant nValue = awt::FontSlant_NONE;
     if( bValue )
         nValue = awt::FontSlant_ITALIC;
-    mxFont->setPropertyValue( VBAFONTBASE_PROPNAME( "CharPosture", "FontSlant" ), uno::Any( (short)nValue ) );
+    mxFont->setPropertyValue( VBAFONTBASE_PROPNAME( "CharPosture", "FontSlant" ), uno::Any( static_cast<short>(nValue) ) );
 }
 
 uno::Any SAL_CALL
@@ -259,8 +257,7 @@ VbaFontBase::getName()
 uno::Any
 VbaFontBase::getColor()
 {
-    uno::Any aAny;
-    aAny = OORGBToXLRGB( mxFont->getPropertyValue( VBAFONTBASE_PROPNAME( "CharColor", "TextColor" ) ) );
+    uno::Any aAny = OORGBToXLRGB( mxFont->getPropertyValue( VBAFONTBASE_PROPNAME( "CharColor", "TextColor" ) ) );
     return aAny;
 }
 

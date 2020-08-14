@@ -19,15 +19,10 @@
 
 #include <algorithm>
 
-#include "oox/helper/containerhelper.hxx"
+#include <oox/helper/containerhelper.hxx>
 
-#include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <osl/diagnose.h>
-#include <rtl/ustrbuf.hxx>
-#include "oox/helper/helper.hxx"
 
 namespace oox {
 
@@ -86,7 +81,7 @@ OUString ContainerHelper::getUnusedName(
     OUString aNewName = rSuggestedName;
     sal_Int32 nIndex = -1;
     while( rxNameAccess->hasByName( aNewName ) )
-        aNewName = rSuggestedName + OUStringLiteral1(cSeparator) + OUString::number( nIndex++ );
+        aNewName = rSuggestedName + OUStringChar(cSeparator) + OUString::number( nIndex++ );
     return aNewName;
 }
 

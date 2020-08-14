@@ -17,17 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/log.hxx>
 #include <osl/diagnose.h>
 #include <osl/mutex.hxx>
 #include <cppuhelper/weak.hxx>
-#include <cppuhelper/bootstrap.hxx>
 #include <cppuhelper/component.hxx>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <rtl/instance.hxx>
 #include <rtl/unload.h>
 
 #include <cppuhelper/propshlp.hxx>
@@ -36,6 +34,7 @@
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/lang/XSingleComponentFactory.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/loader/XImplementationLoader.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
@@ -52,10 +51,10 @@ using namespace com::sun::star::lang;
 using namespace com::sun::star::loader;
 using namespace com::sun::star::registry;
 
-using ::rtl::OUString;
-
 namespace cppu
 {
+
+namespace {
 
 class OSingleFactoryHelper
     : public XServiceInfo
@@ -116,6 +115,9 @@ protected:
     Sequence< OUString >             aServiceNames;
     OUString                         aImplementationName;
 };
+
+}
+
 OSingleFactoryHelper::~OSingleFactoryHelper()
 {
 }
@@ -189,7 +191,7 @@ Reference< XInterface > OSingleFactoryHelper::createInstanceWithArgumentsAndCont
     }
     else
     {
-        if ( rArguments.getLength() )
+        if ( rArguments.hasElements() )
         {
             // dispose the here created UNO object before throwing out exception
             // to avoid risk of memory leaks #i113722#
@@ -225,6 +227,8 @@ Sequence< OUString > OSingleFactoryHelper::getSupportedServiceNames()
     return aServiceNames;
 }
 
+namespace {
+
 struct OFactoryComponentHelper_Mutex
 {
     Mutex   aMutex;
@@ -242,7 +246,7 @@ public:
         ComponentInstantiation pCreateFunction_,
         ComponentFactoryFunc fptr,
         const Sequence< OUString > * pServiceNames_,
-        bool bOneInstance_ = false )
+        bool bOneInstance_ )
         : OComponentHelper( aMutex )
         , OSingleFactoryHelper( rServiceManager, rImplementationName_, pCreateFunction_, fptr, pServiceNames_ )
         , bOneInstance( bOneInstance_ )
@@ -284,10 +288,11 @@ private:
     bool                bOneInstance;
 protected:
     // needed for implementing XUnloadingPreference in inheriting classes
-    bool isOneInstance() {return bOneInstance;}
-    bool isInstance() {return xTheInstance.is();}
+    bool isOneInstance() const {return bOneInstance;}
+    bool isInstance() const {return xTheInstance.is();}
 };
 
+}
 
 Any SAL_CALL OFactoryComponentHelper::queryInterface( const Type & rType )
 {
@@ -429,6 +434,8 @@ sal_Bool SAL_CALL OFactoryComponentHelper::releaseOnNotification()
     return true;
 }
 
+namespace {
+
 class ORegistryFactoryHelper : public OFactoryComponentHelper,
                                public OPropertySetHelper
 
@@ -438,7 +445,7 @@ public:
         const Reference<XMultiServiceFactory > & rServiceManager,
         const OUString & rImplementationName_,
         const Reference<XRegistryKey > & xImplementationKey_,
-        bool bOneInstance_ = false )
+        bool bOneInstance_ )
             : OFactoryComponentHelper(
                 rServiceManager, rImplementationName_, nullptr, nullptr, nullptr, bOneInstance_ ),
               OPropertySetHelper( OComponentHelper::rBHelper ),
@@ -498,6 +505,8 @@ protected:
     using OPropertySetHelper::getTypes;
 };
 
+}
+
 // XInterface
 
 Any SAL_CALL ORegistryFactoryHelper::queryInterface(
@@ -551,7 +560,7 @@ ORegistryFactoryHelper::getPropertySetInfo()
 IPropertyArrayHelper & ORegistryFactoryHelper::getInfoHelper()
 {
     ::osl::MutexGuard guard( aMutex );
-    if (m_property_array_helper.get() == nullptr)
+    if (m_property_array_helper == nullptr)
     {
         beans::Property prop(
             "ImplementationKey" /* name */,
@@ -562,7 +571,7 @@ IPropertyArrayHelper & ORegistryFactoryHelper::getInfoHelper()
         m_property_array_helper.reset(
             new ::cppu::OPropertyArrayHelper( &prop, 1 ) );
     }
-    return *m_property_array_helper.get();
+    return *m_property_array_helper;
 }
 
 
@@ -700,9 +709,7 @@ Reference< XInterface > ORegistryFactoryHelper::createModuleFactory()
     {
         aActivatorUrl = xActivatorKey->getAsciiValue();
 
-        OUString tmpActivator(aActivatorUrl.getStr());
-        sal_Int32 nIndex = 0;
-        aActivatorName = tmpActivator.getToken(0, ':', nIndex );
+        aActivatorName = aActivatorUrl.getToken(0, ':');
 
         Reference<XRegistryKey > xLocationKey = xImplementationKey->openKey(
             "/UNO/LOCATION" );
@@ -752,7 +759,7 @@ Reference< XInterface > ORegistryFactoryHelper::createModuleFactory()
 Sequence< OUString > ORegistryFactoryHelper::getSupportedServiceNames()
 {
     MutexGuard aGuard( aMutex );
-    if( aServiceNames.getLength() == 0 )
+    if( !aServiceNames.hasElements() )
     {
         // not yet loaded
         try
@@ -766,9 +773,8 @@ Sequence< OUString > ORegistryFactoryHelper::getSupportedServiceNames()
 
                 // Full qualified names like "IMPLEMENTATIONS/TEST/UNO/SERVICES/com.sun.star..."
                 Sequence<OUString> seqKeys = xKey->getKeyNames();
-                OUString* pKeys = seqKeys.getArray();
-                for( sal_Int32 i = 0; i < seqKeys.getLength(); i++ )
-                    pKeys[i] = pKeys[i].copy(nPrefixLen);
+                for( OUString & key : seqKeys )
+                    key = key.copy(nPrefixLen);
 
                 aServiceNames = seqKeys;
             }
@@ -806,6 +812,8 @@ sal_Bool SAL_CALL ORegistryFactoryHelper::releaseOnNotification()
     return retVal;
 }
 
+namespace {
+
 class OFactoryProxyHelper : public WeakImplHelper< XServiceInfo, XSingleServiceFactory,
                                                     XUnloadingPreference >
 {
@@ -829,6 +837,8 @@ public:
     sal_Bool SAL_CALL releaseOnNotification() override;
 
 };
+
+}
 
 // XSingleServiceFactory
 Reference<XInterface > OFactoryProxyHelper::createInstance()

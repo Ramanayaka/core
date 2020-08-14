@@ -20,14 +20,12 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AINDEX_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AINDEX_HXX
 
-#include <connectivity/sdbcx/VIndex.hxx>
+#include <sdbcx/VIndex.hxx>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-#include "ado/Awrapadox.hxx"
+#include <ado/Awrapadox.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         class OConnection;
         class OAdoIndex : public sdbcx::OIndex
         {
@@ -43,11 +41,10 @@ namespace connectivity
             OAdoIndex(bool _bCase,  OConnection* _pConnection);
             // css::lang::XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
             WpADOIndex      getImpl() const { return m_aIndex;}
         };
-    }
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AINDEX_HXX
 

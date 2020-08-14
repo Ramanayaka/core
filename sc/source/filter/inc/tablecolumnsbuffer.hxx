@@ -23,10 +23,11 @@
 #include <oox/helper/refvector.hxx>
 #include "workbookhelper.hxx"
 
+namespace oox { class AttributeList; }
+namespace oox { class SequenceInputStream; }
 class ScDBData;
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 /** A column in a table (database range).
  */
@@ -91,8 +92,7 @@ private:
     TableColumnsVector  maTableColumnsVector;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

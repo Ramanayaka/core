@@ -17,17 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-
 #include <sdr/properties/oleproperties.hxx>
-#include <svl/itemset.hxx>
 #include <svx/xfillit0.hxx>
 #include <svx/xlineit0.hxx>
+#include <svx/svdobj.hxx>
+#include <svx/svdmodel.hxx>
 
-
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
+        void OleProperties::applyDefaultStyleSheetFromSdrModel()
+        {
+            SfxStyleSheet* pStyleSheet(GetSdrObject().getSdrModelFromSdrObject().GetDefaultStyleSheetForSdrGrafObjAndSdrOle2Obj());
+
+            if(pStyleSheet)
+            {
+                // do not delete hard attributes when setting dsefault Style
+                SetStyleSheet(pStyleSheet, true);
+            }
+            else
+            {
+                SetMergedItem(XFillStyleItem(com::sun::star::drawing::FillStyle_NONE));
+                SetMergedItem(XLineStyleItem(com::sun::star::drawing::LineStyle_NONE));
+            }
+        }
+
         OleProperties::OleProperties(SdrObject& rObj)
         :   RectangleProperties(rObj)
         {
@@ -42,9 +55,9 @@ namespace sdr
         {
         }
 
-        BaseProperties& OleProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> OleProperties::Clone(SdrObject& rObj) const
         {
-            return *(new OleProperties(*this, rObj));
+            return std::unique_ptr<BaseProperties>(new OleProperties(*this, rObj));
         }
 
         void OleProperties::ForceDefaultAttributes()
@@ -55,7 +68,6 @@ namespace sdr
             // force ItemSet
             GetObjectItemSet();
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

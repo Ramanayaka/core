@@ -22,16 +22,14 @@
 
 #include <drawingml/chart/chartcontextbase.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 
 struct ChartSpaceModel;
 
 /** Handler for a chart fragment (c:chartSpace root element).
  */
-class ChartSpaceFragment : public FragmentBase< ChartSpaceModel >
+class ChartSpaceFragment final : public FragmentBase< ChartSpaceModel >
 {
 public:
     explicit            ChartSpaceFragment(
@@ -44,9 +42,7 @@ public:
 };
 
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

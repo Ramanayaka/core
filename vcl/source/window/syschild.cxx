@@ -17,11 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
-
-#include <rtl/process.h>
-#include <rtl/ref.hxx>
-
 #include <vcl/window.hxx>
 #include <vcl/sysdata.hxx>
 #include <vcl/svapp.hxx>
@@ -29,27 +24,14 @@
 
 #include <window.h>
 #include <salinst.hxx>
-#include <salframe.hxx>
 #include <salobj.hxx>
 #include <svdata.hxx>
 
-#if HAVE_FEATURE_JAVA
-#include <jni.h>
-#endif
-
-#include <comphelper/processfactory.hxx>
-
-#if HAVE_FEATURE_JAVA
-#include <jvmaccess/virtualmachine.hxx>
-#include <com/sun/star/java/JavaVirtualMachine.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#endif
-
 using namespace ::com::sun::star;
 
-long ImplSysChildProc( void* pInst, SalObjEvent nEvent )
+static void ImplSysChildProc( SystemChildWindow* pInst, SalObjEvent nEvent )
 {
-    VclPtr<SystemChildWindow> pWindow = static_cast<SystemChildWindow*>(pInst);
+    VclPtr<SystemChildWindow> pWindow = pInst;
 
     switch ( nEvent )
     {
@@ -73,6 +55,8 @@ long ImplSysChildProc( void* pInst, SalObjEvent nEvent )
         case SalObjEvent::LoseFocus:
             // trigger a LoseFocus which matches the status
             // of the window with matching Activate-Status
+            if (pWindow->IsDisposed())
+                break;
             pWindow->ImplGetFrameData()->mbSysObjFocus = false;
             if ( !pWindow->ImplGetFrameData()->mnFocusId )
             {
@@ -97,8 +81,6 @@ long ImplSysChildProc( void* pInst, SalObjEvent nEvent )
 
         default: break;
     }
-
-    return 0;
 }
 
 void SystemChildWindow::ImplInitSysChild( vcl::Window* pParent, WinBits nStyle, SystemWindowData *pData, bool bShow )
@@ -158,6 +140,13 @@ void SystemChildWindow::EnableEraseBackground( bool bEnable )
         mpWindowImpl->mpSysObj->EnableEraseBackground( bEnable );
 }
 
+Size SystemChildWindow::GetOptimalSize() const
+{
+    if (mpWindowImpl->mpSysObj)
+        return mpWindowImpl->mpSysObj->GetOptimalSize();
+    return vcl::Window::GetOptimalSize();
+}
+
 void SystemChildWindow::SetLeaveEnterBackgrounds(const css::uno::Sequence<css::uno::Any>& rLeaveArgs, const css::uno::Sequence<css::uno::Any>& rEnterArgs)
 {
     if (mpWindowImpl->mpSysObj)
@@ -170,7 +159,7 @@ void SystemChildWindow::SetForwardKey( bool bEnable )
         mpWindowImpl->mpSysObj->SetForwardKey( bEnable );
 }
 
-sal_IntPtr SystemChildWindow::GetParentWindowHandle()
+sal_IntPtr SystemChildWindow::GetParentWindowHandle() const
 {
     sal_IntPtr nRet = 0;
 
@@ -184,10 +173,15 @@ sal_IntPtr SystemChildWindow::GetParentWindowHandle()
 #elif defined IOS
     // Nothing
 #elif defined UNX
-    nRet = (sal_IntPtr) GetSystemData()->aWindow;
+    nRet = GetSystemData()->aWindow;
 #endif
 
     return nRet;
+}
+
+void* SystemChildWindow::CreateGStreamerSink()
+{
+    return ImplGetSVData()->mpDefInst->CreateGStreamerSink(this);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

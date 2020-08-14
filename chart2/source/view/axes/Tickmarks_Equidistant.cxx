@@ -18,8 +18,9 @@
  */
 
 #include "Tickmarks_Equidistant.hxx"
-#include "ViewDefines.hxx"
 #include <rtl/math.hxx>
+#include <osl/diagnose.h>
+#include <float.h>
 
 #include <limits>
 
@@ -72,8 +73,6 @@ EquidistantTickFactory::EquidistantTickFactory(
           const ExplicitScaleData& rScale, const ExplicitIncrementData& rIncrement )
             : m_rScale( rScale )
             , m_rIncrement( rIncrement )
-            , m_xInverseScaling(nullptr)
-            , m_pfCurrentValues(nullptr)
 {
     //@todo: make sure that the scale is valid for the scaling
 
@@ -82,7 +81,7 @@ EquidistantTickFactory::EquidistantTickFactory(
     if( m_rScale.Scaling.is() )
     {
         m_xInverseScaling = m_rScale.Scaling->getInverseScaling();
-        OSL_ENSURE( m_xInverseScaling.is(), "each Scaling needs to return a inverse Scaling" );
+        OSL_ENSURE( m_xInverseScaling.is(), "each Scaling needs to return an inverse Scaling" );
     }
 
     double fMin = m_fScaledVisibleMin = m_rScale.Minimum;
@@ -106,23 +105,23 @@ EquidistantTickFactory::EquidistantTickFactory(
 
     m_fOuterMajorTickBorderMin_Scaled = m_fOuterMajorTickBorderMin;
     m_fOuterMajorTickBorderMax_Scaled = m_fOuterMajorTickBorderMax;
-    if(!m_rIncrement.PostEquidistant && m_xInverseScaling.is() )
-    {
-        m_fOuterMajorTickBorderMin_Scaled = m_rScale.Scaling->doScaling(m_fOuterMajorTickBorderMin);
-        m_fOuterMajorTickBorderMax_Scaled = m_rScale.Scaling->doScaling(m_fOuterMajorTickBorderMax);
+    if(!(!m_rIncrement.PostEquidistant && m_xInverseScaling.is()) )
+        return;
 
-        //check validity of new range: m_fOuterMajorTickBorderMin <-> m_fOuterMajorTickBorderMax
-        //it is assumed here, that the original range in the given Scale is valid
-        if( !rtl::math::isFinite(m_fOuterMajorTickBorderMin_Scaled) )
-        {
-            m_fOuterMajorTickBorderMin += m_rIncrement.Distance;
-            m_fOuterMajorTickBorderMin_Scaled = m_rScale.Scaling->doScaling(m_fOuterMajorTickBorderMin);
-        }
-        if( !rtl::math::isFinite(m_fOuterMajorTickBorderMax_Scaled) )
-        {
-            m_fOuterMajorTickBorderMax -= m_rIncrement.Distance;
-            m_fOuterMajorTickBorderMax_Scaled = m_rScale.Scaling->doScaling(m_fOuterMajorTickBorderMax);
-        }
+    m_fOuterMajorTickBorderMin_Scaled = m_rScale.Scaling->doScaling(m_fOuterMajorTickBorderMin);
+    m_fOuterMajorTickBorderMax_Scaled = m_rScale.Scaling->doScaling(m_fOuterMajorTickBorderMax);
+
+    //check validity of new range: m_fOuterMajorTickBorderMin <-> m_fOuterMajorTickBorderMax
+    //it is assumed here, that the original range in the given Scale is valid
+    if( !std::isfinite(m_fOuterMajorTickBorderMin_Scaled) )
+    {
+        m_fOuterMajorTickBorderMin += m_rIncrement.Distance;
+        m_fOuterMajorTickBorderMin_Scaled = m_rScale.Scaling->doScaling(m_fOuterMajorTickBorderMin);
+    }
+    if( !std::isfinite(m_fOuterMajorTickBorderMax_Scaled) )
+    {
+        m_fOuterMajorTickBorderMax -= m_rIncrement.Distance;
+        m_fOuterMajorTickBorderMax_Scaled = m_rScale.Scaling->doScaling(m_fOuterMajorTickBorderMax);
     }
 }
 
@@ -146,7 +145,7 @@ void EquidistantTickFactory::addSubTicks( sal_Int32 nDepth, uno::Sequence< uno::
     if(!pfNextParentTick)
         return;
 
-    sal_Int32 nMaxSubTickCount = this->getMaxTickCount( nDepth );
+    sal_Int32 nMaxSubTickCount = getMaxTickCount( nDepth );
     if(!nMaxSubTickCount)
         return;
 
@@ -159,7 +158,7 @@ void EquidistantTickFactory::addSubTicks( sal_Int32 nDepth, uno::Sequence< uno::
     {
         for( sal_Int32 nPartTick = 1; nPartTick<nIntervalCount; nPartTick++ )
         {
-            pValue = this->getMinorTick( nPartTick, nDepth
+            pValue = getMinorTick( nPartTick, nDepth
                         , fLastParentTick, *pfNextParentTick );
             if(!pValue)
                 continue;
@@ -194,7 +193,7 @@ sal_Int32 EquidistantTickFactory::getMaxTickCount( sal_Int32 nDepth ) const
     else
         fSub = approxSub( m_rScale.Maximum, m_rScale.Minimum );
 
-    if (!isFinite(fSub))
+    if (!std::isfinite(fSub))
         return 0;
 
     double fIntervalCount = fSub / m_rIncrement.Distance;
@@ -311,8 +310,8 @@ bool EquidistantTickFactory::isVisible( double fScaledValue ) const
 void EquidistantTickFactory::getAllTicks( TickInfoArraysType& rAllTickInfos ) const
 {
     //create point sequences for each tick depth
-    sal_Int32 nDepthCount = this->getTickDepth();
-    sal_Int32 nMaxMajorTickCount = this->getMaxTickCount(0);
+    const sal_Int32 nDepthCount = getTickDepth();
+    const sal_Int32 nMaxMajorTickCount = getMaxTickCount(0);
 
     if (nDepthCount <= 0 || nMaxMajorTickCount <= 0)
         return;
@@ -323,7 +322,7 @@ void EquidistantTickFactory::getAllTicks( TickInfoArraysType& rAllTickInfos ) co
     sal_Int32 nRealMajorTickCount = 0;
     for( sal_Int32 nMajorTick=0; nMajorTick<nMaxMajorTickCount; nMajorTick++ )
     {
-        double* pValue = this->getMajorTick( nMajorTick );
+        double* pValue = getMajorTick( nMajorTick );
         if(!pValue)
             continue;
         aAllTicks[0][nRealMajorTickCount] = *pValue;
@@ -333,8 +332,7 @@ void EquidistantTickFactory::getAllTicks( TickInfoArraysType& rAllTickInfos ) co
         return;
     aAllTicks[0].realloc(nRealMajorTickCount);
 
-    if(nDepthCount>0)
-        this->addSubTicks( 1, aAllTicks );
+    addSubTicks(1, aAllTicks);
 
     //so far we have added all ticks between the outer major tick marks
     //this was necessary to create sub ticks correctly
@@ -416,8 +414,7 @@ EquidistantTickIter::EquidistantTickIter( const uno::Sequence< uno::Sequence< do
                 , m_pInfoTicks(nullptr)
                 , m_rIncrement(rIncrement)
                 , m_nMaxDepth(0)
-                , m_nTickCount(0), m_pnPositions(nullptr)
-                , m_pnPreParentCount(nullptr), m_pbIntervalFinished(nullptr)
+                , m_nTickCount(0)
                 , m_nCurrentDepth(-1), m_nCurrentPos(-1), m_fCurrentValue( 0.0 )
 {
     initIter( nMaxDepth );
@@ -430,8 +427,7 @@ EquidistantTickIter::EquidistantTickIter( TickInfoArraysType& rTicks
                 , m_pInfoTicks(&rTicks)
                 , m_rIncrement(rIncrement)
                 , m_nMaxDepth(0)
-                , m_nTickCount(0), m_pnPositions(nullptr)
-                , m_pnPreParentCount(nullptr), m_pbIntervalFinished(nullptr)
+                , m_nTickCount(0)
                 , m_nCurrentDepth(-1), m_nCurrentPos(-1), m_fCurrentValue( 0.0 )
 {
     initIter( nMaxDepth );
@@ -450,10 +446,10 @@ void EquidistantTickIter::initIter( sal_Int32 nMaxDepth )
     if(!m_nTickCount)
         return;
 
-    m_pnPositions      = new sal_Int32[m_nMaxDepth+1];
+    m_pnPositions.reset( new sal_Int32[m_nMaxDepth+1] );
 
-    m_pnPreParentCount = new sal_Int32[m_nMaxDepth+1];
-    m_pbIntervalFinished = new bool[m_nMaxDepth+1];
+    m_pnPreParentCount.reset( new sal_Int32[m_nMaxDepth+1] );
+    m_pbIntervalFinished.reset( new bool[m_nMaxDepth+1] );
     m_pnPreParentCount[0] = 0;
     m_pbIntervalFinished[0] = false;
     double fParentValue = getTickValue(0,0);
@@ -482,9 +478,6 @@ void EquidistantTickIter::initIter( sal_Int32 nMaxDepth )
 
 EquidistantTickIter::~EquidistantTickIter()
 {
-    delete[] m_pnPositions;
-    delete[] m_pnPreParentCount;
-    delete[] m_pbIntervalFinished;
 }
 
 sal_Int32 EquidistantTickIter::getStartDepth() const

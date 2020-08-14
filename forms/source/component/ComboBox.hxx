@@ -21,28 +21,20 @@
 #define INCLUDED_FORMS_SOURCE_COMPONENT_COMBOBOX_HXX
 
 #include <memory>
-#include "FormComponent.hxx"
+#include <FormComponent.hxx>
 #include "errorbroadcaster.hxx"
 #include "entrylisthelper.hxx"
 #include "cachedrowset.hxx"
 
-#include <com/sun/star/util/XNumberFormatter.hpp>
-#include <com/sun/star/sdb/XSQLErrorBroadcaster.hpp>
 #include <com/sun/star/form/ListSourceType.hpp>
-#include <com/sun/star/awt/XItemListener.hpp>
-#include <com/sun/star/awt/XFocusListener.hpp>
 
 #include <connectivity/formattedcolumnvalue.hxx>
-
-#include <cppuhelper/interfacecontainer.hxx>
-
-#include <vcl/timer.hxx>
 
 
 namespace frm
 {
 
-class OComboBoxModel
+class OComboBoxModel final
             :public OBoundControlModel
             ,public OEntryListHelper
             ,public OErrorBroadcaster
@@ -54,17 +46,12 @@ class OComboBoxModel
     css::uno::Any              m_aLastKnownValue;
 
     css::uno::Sequence<OUString>                          m_aDesignModeStringItems;
-    // upon loading, in some cases we reset fill our string item list ourself. We don't want
-    // to lose the user's items then, so we remember them here.
-    css::uno::Reference< css::util::XNumberFormatter> m_xFormatter;
 
     css::form::ListSourceType  m_eListSourceType;      // ListSource's type
     bool                       m_bEmptyIsNull;         // Empty string is interpreted as NULL
 
     ::std::unique_ptr< ::dbtools::FormattedColumnValue > m_pValueFormatter;
 
-
-protected:
     virtual css::uno::Sequence< css::uno::Type>   _getTypes() override;
 
 public:
@@ -83,7 +70,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OComboBoxModel"); }
+    { return "com.sun.star.form.OComboBoxModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -112,7 +99,7 @@ public:
     // prevent method hiding
     using OBoundControlModel::getFastPropertyValue;
 
-protected:
+private:
     // OBoundControlModel overridables
     virtual css::uno::Any   translateDbColumnToControlValue( ) override;
     virtual bool            commitControlValueToDbColumn( bool _bPostReset ) override;
@@ -126,11 +113,8 @@ protected:
 
     // OEntryListHelper overridables
     virtual void    stringItemListChanged( ControlModelLock& _rInstanceLock ) override;
-    virtual void    connectedExternalListSource( ) override;
-    virtual void    disconnectedExternalListSource( ) override;
     virtual void    refreshInternalEntryList() override;
 
-protected:
     void loadData( bool _bForce );
 
     virtual css::uno::Reference< css::util::XCloneable > SAL_CALL createClone(  ) override;
@@ -143,7 +127,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OComboBoxControl"); }
+    { return "com.sun.star.form.OComboBoxControl"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 };

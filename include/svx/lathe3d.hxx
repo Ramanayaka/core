@@ -20,8 +20,14 @@
 #ifndef INCLUDED_SVX_LATHE3D_HXX
 #define INCLUDED_SVX_LATHE3D_HXX
 
+#include <svl/intitem.hxx>
+#include <svl/itemset.hxx>
 #include <svx/obj3d.hxx>
 #include <svx/svxdllapi.h>
+#include <svx/svddef.hxx>
+#include <svx/svx3ditems.hxx>
+
+class E3dDefaultAttributes;
 
 /*************************************************************************
 |*
@@ -33,65 +39,73 @@
 |*
 \************************************************************************/
 
-class SVX_DLLPUBLIC E3dLatheObj : public E3dCompoundObject
+class SVXCORE_DLLPUBLIC E3dLatheObj final : public E3dCompoundObject
 {
-private:
     basegfx::B2DPolyPolygon maPolyPoly2D;
 
- protected:
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
-    virtual sdr::properties::BaseProperties* CreateObjectSpecificProperties() override;
-    void SetDefaultAttributes(E3dDefaultAttributes& rDefault);
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
+    void SetDefaultAttributes(const E3dDefaultAttributes& rDefault);
 
- public:
-    E3dLatheObj(E3dDefaultAttributes& rDefault, const basegfx::B2DPolyPolygon& rPoly2D);
-    E3dLatheObj();
+private:
+    // protected destructor - due to final, make private
+    virtual ~E3dLatheObj() override;
+
+public:
+    E3dLatheObj(
+        SdrModel& rSdrModel,
+        const E3dDefaultAttributes& rDefault,
+        const basegfx::B2DPolyPolygon& rPoly2D);
+    E3dLatheObj(SdrModel& rSdrModel);
 
     // HorizontalSegments:
     sal_uInt32 GetHorizontalSegments() const
-        { return static_cast<const SfxUInt32Item&>(GetObjectItemSet().Get(SDRATTR_3DOBJ_HORZ_SEGS)).GetValue(); }
+        { return GetObjectItemSet().Get(SDRATTR_3DOBJ_HORZ_SEGS).GetValue(); }
 
     // VerticalSegments:
     sal_uInt32 GetVerticalSegments() const
-        { return static_cast<const SfxUInt32Item&>(GetObjectItemSet().Get(SDRATTR_3DOBJ_VERT_SEGS)).GetValue(); }
+        { return GetObjectItemSet().Get(SDRATTR_3DOBJ_VERT_SEGS).GetValue(); }
 
     // PercentDiagonal: 0..100, before 0.0..0.5
     sal_uInt16 GetPercentDiagonal() const
-        { return static_cast<const SfxUInt16Item&>(GetObjectItemSet().Get(SDRATTR_3DOBJ_PERCENT_DIAGONAL)).GetValue(); }
+        { return GetObjectItemSet().Get(SDRATTR_3DOBJ_PERCENT_DIAGONAL).GetValue(); }
 
     // BackScale: 0..100, before 0.0..1.0
     sal_uInt16 GetBackScale() const
-        { return static_cast<const SfxUInt16Item&>(GetObjectItemSet().Get(SDRATTR_3DOBJ_BACKSCALE)).GetValue(); }
+        { return GetObjectItemSet().Get(SDRATTR_3DOBJ_BACKSCALE).GetValue(); }
 
     // EndAngle: 0..10000
     sal_uInt32 GetEndAngle() const
-        { return static_cast<const SfxUInt32Item&>(GetObjectItemSet().Get(SDRATTR_3DOBJ_END_ANGLE)).GetValue(); }
+        { return GetObjectItemSet().Get(SDRATTR_3DOBJ_END_ANGLE).GetValue(); }
 
     // #107245# GetSmoothNormals() for bLatheSmoothed
     bool GetSmoothNormals() const
-        { return static_cast<const Svx3DSmoothNormalsItem&>(GetObjectItemSet().Get(SDRATTR_3DOBJ_SMOOTH_NORMALS)).GetValue(); }
+        { return GetObjectItemSet().Get(SDRATTR_3DOBJ_SMOOTH_NORMALS).GetValue(); }
 
     // #107245# GetSmoothLids() for bLatheSmoothFrontBack
     bool GetSmoothLids() const
-        { return static_cast<const Svx3DSmoothLidsItem&>(GetObjectItemSet().Get(SDRATTR_3DOBJ_SMOOTH_LIDS)).GetValue(); }
+        { return GetObjectItemSet().Get(SDRATTR_3DOBJ_SMOOTH_LIDS).GetValue(); }
 
     // #107245# GetCharacterMode() for bLatheCharacterMode
     bool GetCharacterMode() const
-        { return static_cast<const Svx3DCharacterModeItem&>(GetObjectItemSet().Get(SDRATTR_3DOBJ_CHARACTER_MODE)).GetValue(); }
+        { return GetObjectItemSet().Get(SDRATTR_3DOBJ_CHARACTER_MODE).GetValue(); }
 
     // #107245# GetCloseFront() for bLatheCloseFront
     bool GetCloseFront() const
-        { return static_cast<const Svx3DCloseFrontItem&>(GetObjectItemSet().Get(SDRATTR_3DOBJ_CLOSE_FRONT)).GetValue(); }
+        { return GetObjectItemSet().Get(SDRATTR_3DOBJ_CLOSE_FRONT).GetValue(); }
 
     // #107245# GetCloseBack() for bLatheCloseBack
     bool GetCloseBack() const
-        { return static_cast<const Svx3DCloseBackItem&>(GetObjectItemSet().Get(SDRATTR_3DOBJ_CLOSE_BACK)).GetValue(); }
+        { return GetObjectItemSet().Get(SDRATTR_3DOBJ_CLOSE_BACK).GetValue(); }
 
     virtual sal_uInt16 GetObjIdentifier() const override;
 
-    virtual E3dLatheObj* Clone() const override;
+    virtual E3dLatheObj* CloneSdrObject(SdrModel& rTargetModel) const override;
 
-    virtual SdrObject* DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
+    // implemented mainly for the purposes of Clone()
+    E3dLatheObj& operator=(const E3dLatheObj& rObj);
+
+    virtual SdrObjectUniquePtr DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
 
     // TakeObjName...() is for the display in the UI, for example "3 frames selected".
     virtual OUString TakeObjNameSingul() const override;
@@ -103,7 +117,7 @@ private:
 
     // break up
     virtual bool IsBreakObjPossible() override;
-    virtual SdrAttrObj* GetBreakObj() override;
+    virtual std::unique_ptr<SdrAttrObj,SdrObjectFreeOp> GetBreakObj() override;
 };
 
 #endif // INCLUDED_SVX_LATHE3D_HXX

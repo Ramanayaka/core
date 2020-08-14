@@ -16,18 +16,19 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifdef _MSC_VER
-#pragma warning(disable : 4917 4555)
+
+#include <docholder.hxx>
+#include <embeddoc.hxx>
+#include <intercept.hxx>
+#include <syswinwrapper.hxx>
+#include <iipaobj.hxx>
+#include <common.h>
+
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
-
-#include "docholder.hxx"
-#include "embeddoc.hxx"
-#include "intercept.hxx"
-#include "syswinwrapper.hxx"
-#include "iipaobj.hxx"
-
-#include "common.h"
 #include <windows.h>
+
 #include <com/sun/star/awt/XTopWindow.hpp>
 #include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/awt/XView.hpp>
@@ -137,7 +138,7 @@ void DocumentHolder::LoadDocInFrame( bool bPluginMode )
             aSeq[nLen-1] = beans::PropertyValue(
                 "PluginMode",
                 -1,
-                uno::Any((sal_Int16) 3),
+                uno::Any(sal_Int16(3)),
                 beans::PropertyState_DIRECT_VALUE);
         }
 
@@ -160,11 +161,11 @@ void DocumentHolder::LoadDocInFrame( bool bPluginMode )
             0,
             aSeq);
 
-        uno::Sequence< beans::PropertyValue > aResArgs = m_xDocument->getArgs();
-        for ( int nInd = 0; nInd < aResArgs.getLength(); nInd++ )
-            if ( aResArgs[nInd].Name == "MacroExecutionMode" )
+        const uno::Sequence< beans::PropertyValue > aResArgs = m_xDocument->getArgs();
+        for ( beans::PropertyValue const & prop : aResArgs )
+            if ( prop.Name == "MacroExecutionMode" )
             {
-                aResArgs[nInd].Value >>= m_nMacroExecMode;
+                prop.Value >>= m_nMacroExecMode;
                 break;
             }
     }
@@ -283,7 +284,7 @@ HRESULT DocumentHolder::InPlaceActivate(
 
             xWin.set(
                 xToolkit->createSystemChild(
-                    uno::Any(sal_Int32(hWndxWinParent)),
+                    uno::Any(sal_Int64(hWndxWinParent)),
                     aProcessIdent,
                     lang::SystemDependent::SYSTEM_WIN32),
                 uno::UNO_QUERY);
@@ -498,18 +499,17 @@ void DocumentHolder::UIDeactivate()
     return;
 }
 
-void CopyToOLEMenu(HMENU hOrig,WORD origPos,HMENU hDest,WORD destPos)
+static void CopyToOLEMenu(HMENU hOrig,WORD origPos,HMENU hDest,WORD destPos)
 {
     HMENU subMenu(nullptr);
-    char buffer[256];
+    wchar_t buffer[256];
 
     subMenu = GetSubMenu(hOrig,origPos);
-    GetMenuString(hOrig,origPos,buffer,256,MF_BYPOSITION);
-    InsertMenu(hDest,destPos,MF_BYPOSITION | MF_POPUP,
-               reinterpret_cast<UINT_PTR>(subMenu),LPCTSTR(buffer));
+    GetMenuStringW(hOrig,origPos,buffer,256,MF_BYPOSITION);
+    InsertMenuW(hDest,destPos,MF_BYPOSITION | MF_POPUP,
+               reinterpret_cast<UINT_PTR>(subMenu),buffer);
 
-    MENUITEMINFOW mi;
-    memset(&mi,0,sizeof(mi));
+    MENUITEMINFOW mi = {};
     mi.cbSize = sizeof(mi);
     mi.fMask = MIIM_DATA;
     if(GetMenuItemInfoW(hOrig,origPos,TRUE,&mi))
@@ -534,18 +534,18 @@ BOOL DocumentHolder::InPlaceMenuCreate()
     int help = count-1;
 
     // start with 1, because we don't include "File"
-    WORD pos = (WORD)mgw.width[0];
+    WORD pos = static_cast<WORD>(mgw.width[0]);
     CopyToOLEMenu(m_nMenuHandle,1,hMenu,pos);
     mgw.width[1] = 1;
 
     // insert object menu here
-    pos = ((WORD)(mgw.width[0] + mgw.width[1] + mgw.width[2]));
+    pos = static_cast<WORD>(mgw.width[0] + mgw.width[1] + mgw.width[2]);
     for(WORD i = 2; i < help-1; ++i,++pos)
         CopyToOLEMenu(m_nMenuHandle,i,hMenu,pos);
     mgw.width[3] = help - 3;
 
     // insert help menu
-    pos = (WORD)(mgw.width[0] + mgw.width[1] + mgw.width[2] +
+    pos = static_cast<WORD>(mgw.width[0] + mgw.width[1] + mgw.width[2] +
                  mgw.width[3] + mgw.width[4]);
     CopyToOLEMenu(m_nMenuHandle,WORD(help),hMenu,pos);
     mgw.width[5] = 1;
@@ -678,11 +678,8 @@ void DocumentHolder::CloseFrame()
         }
         catch( const uno::Exception& ) {
         }
-    else {
-        uno::Reference<lang::XComponent> xComp(m_xFrame, uno::UNO_QUERY);
-        if (xComp.is())
-            xComp->dispose();
-    }
+    else if (m_xFrame.is())
+        m_xFrame->dispose();
 
     m_xFrame.clear();
 }
@@ -757,13 +754,10 @@ uno::Reference< frame::XFrame2 > DocumentHolder::DocumentFrame()
     {
         uno::Reference<frame::XDesktop2> xDesktop = frame::Desktop::create(comphelper::getComponentContext(m_xFactory));
 
-        uno::Reference<frame::XFrame> xFrame(xDesktop,uno::UNO_QUERY);
-
         // the frame will be registered on desktop here, later when the document
         // is loaded into the frame in ::show() method the terminate listener will be removed
         // this is so only for outplace activation
-        if( xFrame.is() )
-            m_xFrame.set( xFrame->findFrame( "_blank", 0 ), uno::UNO_QUERY );
+        m_xFrame.set( xDesktop->findFrame( "_blank", 0 ), uno::UNO_QUERY );
 
         uno::Reference< util::XCloseBroadcaster > xBroadcaster(
             m_xFrame, uno::UNO_QUERY );
@@ -870,8 +864,7 @@ void DocumentHolder::resizeWin( const SIZEL& rNewSize )
 
     if ( m_xFrame.is() && aDocLock.GetEmbedDocument() )
     {
-        uno::Reference< awt::XWindow > xWindow(
-            m_xFrame->getContainerWindow(), uno::UNO_QUERY );
+        uno::Reference< awt::XWindow > xWindow = m_xFrame->getContainerWindow();
         uno::Reference< awt::XView > xView( xWindow, uno::UNO_QUERY );
 
         if ( xWindow.is() && xView.is() )
@@ -890,7 +883,7 @@ void DocumentHolder::resizeWin( const SIZEL& rNewSize )
                 POINT aOldOffset;
                 aOldOffset.x = aOldSize.cx;
                 aOldOffset.y = aOldSize.cy;
-                BOOL bIsOk = LPtoDP( hdc, &aOldOffset, 1 );
+                bool bIsOk = LPtoDP( hdc, &aOldOffset, 1 );
 
                 POINT aNewOffset;
                 aNewOffset.x = rNewSize.cx;
@@ -925,13 +918,12 @@ void DocumentHolder::setTitle(const OUString& aDocumentName)
             uno::Sequence<beans::PropertyValue> aSeq;
             if(m_xDocument.is())
             {
-                aSeq =
-                    m_xDocument->getArgs();
-                for(sal_Int32 j = 0; j < aSeq.getLength(); ++j)
+                aSeq = m_xDocument->getArgs();
+                for(beans::PropertyValue const & prop : std::as_const(aSeq))
                 {
-                    if(aSeq[j].Name == "FilterName")
+                    if(prop.Name == "FilterName")
                     {
-                        aSeq[j].Value >>= aFilterName;
+                        prop.Value >>= aFilterName;
                         break;
                     }
                 }
@@ -946,11 +938,10 @@ void DocumentHolder::setTitle(const OUString& aDocumentName)
                     if(xNameAccess.is() &&
                        (xNameAccess->getByName(aFilterName) >>= aSeq))
                     {
-                        for(sal_Int32 j = 0; j < aSeq.getLength(); ++j)
-                            if(aSeq[j].Name ==
-                               "UIName")
+                        for(beans::PropertyValue const & prop : std::as_const(aSeq))
+                            if(prop.Name == "UIName")
                             {
-                                aSeq[j].Value >>= m_aFilterName;
+                                prop.Value >>= m_aFilterName;
                                 break;
                             }
                     }
@@ -964,10 +955,10 @@ void DocumentHolder::setTitle(const OUString& aDocumentName)
         // set the title
         static const sal_Unicode u[] = { ' ','(',0 };
         static const sal_Unicode c[] = { ')',0 };
-        rtl::OUString aTotalName(m_aFilterName);
-        aTotalName += rtl::OUString(u);
+        OUString aTotalName(m_aFilterName);
+        aTotalName += OUString(u);
         aTotalName += aDocumentName;
-        aTotalName += rtl::OUString(c);
+        aTotalName += OUString(c);
         try {
             m_xFrame->setTitle( aTotalName );
         }
@@ -1013,10 +1004,8 @@ IDispatch* DocumentHolder::GetIDispatch()
 {
     if ( !m_pIDispatch && m_xDocument.is() )
     {
-        const OUString aServiceName (
-                "com.sun.star.bridge.OleBridgeSupplier2" );
         uno::Reference< bridge::XBridgeSupplier2 > xSupplier(
-            m_xFactory->createInstance( aServiceName ), uno::UNO_QUERY );
+            m_xFactory->createInstance( "com.sun.star.bridge.OleBridgeSupplier2" ), uno::UNO_QUERY );
 
         if ( xSupplier.is() )
         {
@@ -1052,12 +1041,12 @@ HRESULT DocumentHolder::GetDocumentBorder( RECT *pRect )
 {
     if ( pRect && m_xDocument.is() )
     {
-        uno::Sequence< beans::PropertyValue > aArgs = m_xDocument->getArgs();
-        for ( sal_Int32 nInd = 0; nInd < aArgs.getLength(); nInd++ )
-            if ( aArgs[nInd].Name == "DocumentBorder" )
+        const uno::Sequence< beans::PropertyValue > aArgs = m_xDocument->getArgs();
+        for ( beans::PropertyValue const & prop : aArgs )
+            if ( prop.Name == "DocumentBorder" )
             {
                 uno::Sequence< sal_Int32 > aRect;
-                if ( ( aArgs[nInd].Value >>= aRect ) && aRect.getLength() == 4 )
+                if ( ( prop.Value >>= aRect ) && aRect.getLength() == 4 )
                 {
                     pRect->left   = aRect[0];
                     pRect->top    = aRect[1];
@@ -1146,8 +1135,7 @@ HRESULT DocumentHolder::GetExtent( SIZEL *pSize )
 HRESULT DocumentHolder::SetContRects(LPCRECT aRect)
 {
     if(m_xContainerWindow.is()) {
-        RECT wi;
-        memset(&wi,0,sizeof(wi));
+        RECT wi = {};
         if(m_pIOleIPFrame) {
             m_pIOleIPFrame->GetBorder(&wi);
             m_xContainerWindow->setPosSize(
@@ -1172,24 +1160,26 @@ HRESULT DocumentHolder::SetContRects(LPCRECT aRect)
 
 HRESULT DocumentHolder::SetObjectRects(LPCRECT aRect, LPCRECT aClip)
 {
-    const_cast<LPRECT>(aRect)->left -= m_aBorder.left;
-    const_cast<LPRECT>(aRect)->right += m_aBorder.right;
-    const_cast<LPRECT>(aRect)->top -= m_aBorder.top;
-    const_cast<LPRECT>(aRect)->bottom += m_aBorder.bottom;
-    const_cast<LPRECT>(aClip)->left -= m_aBorder.left;
-    const_cast<LPRECT>(aClip)->right += m_aBorder.right;
-    const_cast<LPRECT>(aClip)->top -= m_aBorder.top;
-    const_cast<LPRECT>(aClip)->bottom += m_aBorder.bottom;
+    auto rect = *aRect;
+    rect.left -= m_aBorder.left;
+    rect.right += m_aBorder.right;
+    rect.top -= m_aBorder.top;
+    rect.bottom += m_aBorder.bottom;
+    auto clip = *aClip;
+    clip.left -= m_aBorder.left;
+    clip.right += m_aBorder.right;
+    clip.top -= m_aBorder.top;
+    clip.bottom += m_aBorder.bottom;
 
     if(m_pCHatchWin)
-        m_pCHatchWin->RectsSet(const_cast<LPRECT>(aRect), const_cast<LPRECT>(aClip));
+        m_pCHatchWin->RectsSet(&rect, &clip);
     if(m_xEditWindow.is()) {
         m_xEditWindow->setVisible(false);
         m_xEditWindow->setPosSize(
             m_pCHatchWin ? HATCHWIN_BORDERWIDTHDEFAULT : 0,
             m_pCHatchWin ? HATCHWIN_BORDERWIDTHDEFAULT : 0,
-            aRect->right - aRect->left,
-            aRect->bottom - aRect->top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
             awt::PosSize::POSSIZE);
         m_xEditWindow->setVisible(true);
     }
@@ -1202,7 +1192,7 @@ css::uno::Reference< css::awt::XWindow> SAL_CALL DocumentHolder::getContainerWin
     if(m_xContainerWindow.is())
         return m_xContainerWindow;
 
-    uno::Reference<awt::XWindow> xWin(nullptr);
+    uno::Reference<awt::XWindow> xWin;
 
     uno::Reference<awt::XToolkit2> xToolkit = awt::Toolkit::create( comphelper::getComponentContext(m_xFactory) );
 
@@ -1215,13 +1205,12 @@ css::uno::Reference< css::awt::XWindow> SAL_CALL DocumentHolder::getContainerWin
 
         xWin.set(
             xToolkit->createSystemChild(
-                uno::Any(sal_Int32(hWnd)),
+                uno::Any(sal_Int64(hWnd)),
                 aProcessIdent,
                 lang::SystemDependent::SYSTEM_WIN32),
             uno::UNO_QUERY);
 
-        RECT wi;
-        memset(&wi,0,sizeof(wi));
+        RECT wi = {};
         if(xWin.is() && m_pIOleIPFrame->GetBorder(&wi) == NOERROR) {
             xWin->setVisible(true);
             xWin->setPosSize(

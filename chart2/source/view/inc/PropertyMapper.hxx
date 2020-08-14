@@ -23,10 +23,10 @@
 
 #include <map>
 
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/drawing/XShape.hpp>
+#include <com/sun/star/uno/Sequence.h>
+#include <com/sun/star/uno/Reference.h>
 
-#include "charttoolsdllapi.hxx"
+namespace com::sun::star::beans { class XPropertySet; }
 
 namespace chart
 {
@@ -42,14 +42,14 @@ typedef css::uno::Sequence< css::uno::Any > tAnySequence;
  * shape objects (those whose service names begin with
  * com.sun.star.drawing.).
  */
-class OOO_DLLPUBLIC_CHARTTOOLS PropertyMapper
+class PropertyMapper
 {
 public:
     static void setMappedProperties(
           const css::uno::Reference< css::beans::XPropertySet >& xTarget
         , const css::uno::Reference< css::beans::XPropertySet >& xSource
         , const tPropertyNameMap& rMap
-        , tPropertyNameValueMap* pOverwriteMap=nullptr );
+        , tPropertyNameValueMap const * pOverwriteMap=nullptr );
 
     /**
      * Fetch property values from the source object and map it to the

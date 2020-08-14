@@ -17,32 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ContainerMediator.hxx"
-#include "apitools.hxx"
-#include "column.hxx"
-#include "core_resource.hrc"
-#include "core_resource.hxx"
-#include "dbastrings.hrc"
-#include "sdbcoretools.hxx"
+#include <ContainerMediator.hxx>
+#include <column.hxx>
+#include <strings.hrc>
+#include <strings.hxx>
+#include <core_resource.hxx>
+#include <stringconstants.hxx>
+#include <sdbcoretools.hxx>
 
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
-#include <com/sun/star/sdbc/DataType.hpp>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/sdb/tools/XTableAlteration.hpp>
 
-#include <comphelper/enumhelper.hxx>
-#include <comphelper/extract.hxx>
-#include <comphelper/property.hxx>
-#include <comphelper/seqstream.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/types.hxx>
+#include <comphelper/uno3.hxx>
 #include <connectivity/TTableHelper.hxx>
 #include <connectivity/dbexception.hxx>
-#include <connectivity/dbtools.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/typeprovider.hxx>
 #include <osl/diagnose.h>
-
-#include <algorithm>
 
 using namespace dbaccess;
 using namespace connectivity;
@@ -89,7 +81,7 @@ IMPLEMENT_FORWARD_XINTERFACE2( OColumn, OColumnBase, ::comphelper::OPropertyCont
 // css::lang::XServiceInfo
 OUString OColumn::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdb.OColumn");
+    return "com.sun.star.sdb.OColumn";
 }
 
 sal_Bool OColumn::supportsService( const OUString& _rServiceName )
@@ -99,8 +91,7 @@ sal_Bool OColumn::supportsService( const OUString& _rServiceName )
 
 Sequence< OUString > OColumn::getSupportedServiceNames(  )
 {
-    Sequence<OUString> aSNS { SERVICE_SDBCX_COLUMN };
-    return aSNS;
+    return { SERVICE_SDBCX_COLUMN };
 }
 
 // OComponentHelper
@@ -125,11 +116,6 @@ void SAL_CALL OColumn::setName( const OUString& _rName )
     m_sName = _rName;
 }
 
-void OColumn::fireValueChange(const ::connectivity::ORowSetValue& /*_rOldValue*/)
-{
-    OSL_FAIL( "OColumn::fireValueChange: not implemented!" );
-}
-
 void OColumn::registerProperty( const OUString& _rName, sal_Int32 _nHandle, sal_Int32 _nAttributes, void* _pPointerToMember, const Type& _rMemberType )
 {
     ::comphelper::OPropertyContainer::registerProperty( _rName, _nHandle, _nAttributes, _pPointerToMember, _rMemberType );
@@ -152,7 +138,6 @@ OColumns::OColumns(::cppu::OWeakObject& _rParent,
                    bool _bUseHardRef)
                    : OColumns_BASE(_rParent,_bCaseSensitive,_rMutex,_rVector,_bUseHardRef)
     ,m_pMediator(nullptr)
-    ,m_xDrvColumns(nullptr)
     ,m_pColFactoryImpl(_pColFactory)
     ,m_pRefreshColumns(_pRefresh)
     ,m_bInitialized(false)
@@ -187,7 +172,7 @@ OColumns::~OColumns()
 // XServiceInfo
 OUString OColumns::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdb.OColumns");
+    return "com.sun.star.sdb.OColumns";
 }
 
 sal_Bool OColumns::supportsService( const OUString& _rServiceName )
@@ -197,8 +182,7 @@ sal_Bool OColumns::supportsService( const OUString& _rServiceName )
 
 Sequence< OUString > OColumns::getSupportedServiceNames(  )
 {
-    Sequence<OUString> aSNS { SERVICE_SDBCX_CONTAINER };
-    return aSNS;
+    return { SERVICE_SDBCX_CONTAINER };
 }
 
 void OColumns::append( const OUString& _rName, OColumn* _pColumn )
@@ -220,7 +204,7 @@ void OColumns::clearColumns()
     disposing();
 }
 
-void SAL_CALL OColumns::disposing()
+void OColumns::disposing()
 {
     MutexGuard aGuard(m_rMutex);
     m_xDrvColumns = nullptr;
@@ -320,9 +304,12 @@ Sequence< Type > SAL_CALL OColumns::getTypes(  )
     }
     else
     {
-        nSize = ((m_pTable && m_pTable->isNew()) ? 0 :
-                    ((m_bDropColumn ?
-                        (m_bAddColumn ? 0 : 1) : (m_bAddColumn ? 1 : 2))));
+        if (m_pTable && m_pTable->isNew())
+            nSize = 0;
+        else if (m_bDropColumn)
+            nSize = m_bAddColumn ? 0 : 1;
+        else
+            nSize = m_bAddColumn ? 1 : 2;
         bDropFound      = (m_pTable && m_pTable->isNew()) || m_bDropColumn;
         bAppendFound    = (m_pTable && m_pTable->isNew()) || m_bAddColumn;
     }
@@ -376,7 +363,7 @@ sdbcx::ObjectType OColumns::appendObject( const OUString& _rForName, const Refer
     if ( m_pColFactoryImpl )
         m_pColFactoryImpl->columnAppended( descriptor );
 
-    ::dbaccess::notifyDataSourceModified(m_xParent,true);
+    ::dbaccess::notifyDataSourceModified(m_xParent);
 
     return xReturn;
 }
@@ -406,7 +393,7 @@ void OColumns::dropObject(sal_Int32 _nPos, const OUString& _sElementName)
     if ( m_pColFactoryImpl )
         m_pColFactoryImpl->columnDropped(_sElementName);
 
-    ::dbaccess::notifyDataSourceModified(m_xParent,true);
+    ::dbaccess::notifyDataSourceModified(m_xParent);
 }
 
 Reference< XInterface > SAL_CALL OColumns::getParent(  )

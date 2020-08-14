@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASCTL_SOURCE_BASICIDE_IDERDLL2_HXX
-#define INCLUDED_BASCTL_SOURCE_BASICIDE_IDERDLL2_HXX
+#pragma once
 
 class StarBASIC;
 class SvxSearchItem;
@@ -27,16 +26,11 @@ class SvxSearchItem;
 #include <bastypes.hxx>
 #include <bastype2.hxx>
 
-#include <memory>
-
 namespace basctl
 {
 
-class ExtraData
+class ExtraData final
 {
-private:
-    std::unique_ptr<SvxSearchItem> pSearchItem;
-
     LibInfo        aLibInfo;
 
     EntryDescriptor m_aLastEntryDesc;
@@ -47,7 +41,6 @@ private:
     bool            bChoosingMacro;
     bool            bShellInCriticalSection;
 
-protected:
     DECL_STATIC_LINK( ExtraData, GlobalBasicBreakHdl, StarBASIC *, BasicDebugFlags );
 
 public:
@@ -57,13 +50,10 @@ public:
     LibInfo&         GetLibInfo () { return aLibInfo; }
 
     EntryDescriptor&  GetLastEntryDescriptor () { return m_aLastEntryDesc; }
-    void              SetLastEntryDescriptor (EntryDescriptor& rDesc) { m_aLastEntryDesc = rDesc; }
+    void              SetLastEntryDescriptor (EntryDescriptor const & rDesc) { m_aLastEntryDesc = rDesc; }
 
     bool&             ChoosingMacro()          { return bChoosingMacro; }
     bool&             ShellInCriticalSection() { return bShellInCriticalSection; }
-
-    SvxSearchItem&    GetSearchItem() const { return *pSearchItem; }
-    void              SetSearchItem( const SvxSearchItem& rItem );
 
     const OUString&   GetAddLibPath() const   { return aAddLibPath; }
     void              SetAddLibPath( const OUString& rPath ) { aAddLibPath = rPath; }
@@ -73,7 +63,5 @@ public:
 };
 
 } // namespace basctl
-
-#endif // INCLUDED_BASCTL_SOURCE_BASICIDE_IDERDLL2_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

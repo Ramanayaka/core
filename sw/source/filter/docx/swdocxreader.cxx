@@ -21,41 +21,83 @@
 
 #include <com/sun/star/document/XFilter.hpp>
 #include <com/sun/star/document/XImporter.hpp>
-#include <com/sun/star/xml/dom/XDocument.hpp>
-#include <com/sun/star/xml/dom/XElement.hpp>
-#include <com/sun/star/xml/dom/XNode.hpp>
-#include <com/sun/star/xml/dom/XNodeList.hpp>
+#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/propertyvalue.hxx>
 #include <comphelper/propertysequence.hxx>
-#include <comphelper/sequenceashashmap.hxx>
+#include <doc.hxx>
 #include <docsh.hxx>
 #include <IDocumentStylePoolAccess.hxx>
 #include <ndtxt.hxx>
 #include <poolfmt.hxx>
-#include <svl/urihelper.hxx>
 #include <swerror.h>
-#include <tools/ref.hxx>
-#include <unotxdoc.hxx>
 #include <unotools/streamwrap.hxx>
+#include <unotextrange.hxx>
+#include <sfx2/docfile.hxx>
+#include <tools/diagnose_ex.h>
 
 #define AUTOTEXT_GALLERY "autoTxt"
 
 using namespace css;
 
-extern "C" SAL_DLLPUBLIC_EXPORT Reader* SAL_CALL ImportDOCX()
+extern "C" SAL_DLLPUBLIC_EXPORT Reader* ImportDOCX()
 {
     return new SwDOCXReader;
 }
 
-ErrCode SwDOCXReader::Read( SwDoc& /* rDoc */, const OUString& /* rBaseURL */, SwPaM& /* rPaM */, const OUString& /* FileName */ )
+ErrCode SwDOCXReader::Read(SwDoc& rDoc, const OUString& /* rBaseURL */, SwPaM& rPam, const OUString& /* FileName */ )
 {
-    return ERR_SWG_READ_ERROR;
+    if (!m_pMedium->GetInStream())
+        return ERR_SWG_READ_ERROR;
+
+    // We want to work in an empty paragraph.
+    const SwPosition* pPos = rPam.GetPoint();
+    rDoc.getIDocumentContentOperations().SplitNode(*pPos, false);
+    rDoc.SetTextFormatColl(rPam, rDoc.getIDocumentStylePoolAccess().GetTextCollFromPool(RES_POOLCOLL_STANDARD, false));
+
+    uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
+    uno::Reference<uno::XInterface> xInterface(xMultiServiceFactory->createInstance("com.sun.star.comp.Writer.WriterFilter"), uno::UNO_SET_THROW);
+
+    SwDocShell* pDocShell(rDoc.GetDocShell());
+    uno::Reference<lang::XComponent> xDstDoc(pDocShell->GetModel(), uno::UNO_QUERY_THROW);
+    uno::Reference<document::XImporter> xImporter(xInterface, uno::UNO_QUERY_THROW);
+    xImporter->setTargetDocument(xDstDoc);
+
+    const uno::Reference<text::XTextRange> xInsertTextRange = SwXTextRange::CreateXTextRange(rDoc, *rPam.GetPoint(), nullptr);
+    uno::Reference<io::XStream> xStream(new utl::OStreamWrapper(*m_pMedium->GetInStream()));
+
+    //SetLoading hack because the document properties will be re-initted
+    //by the xml filter and during the init, while it's considered uninitialized,
+    //setting a property will inform the document it's modified, which attempts
+    //to update the properties, which throws cause the properties are uninitialized
+    pDocShell->SetLoading(SfxLoadedFlags::NONE);
+
+    uno::Sequence<beans::PropertyValue> aDescriptor(comphelper::InitPropertySequence(
+    {
+        { "InputStream", uno::Any(xStream) },
+        { "InsertMode", uno::Any(true) },
+        { "TextInsertModeRange", uno::Any(xInsertTextRange) }
+    }));
+
+    ErrCode ret = ERRCODE_NONE;
+    uno::Reference<document::XFilter> xFilter(xInterface, uno::UNO_QUERY_THROW);
+    try
+    {
+        xFilter->filter(aDescriptor);
+    }
+    catch (uno::Exception const&)
+    {
+        TOOLS_WARN_EXCEPTION("sw.docx", "SwDOCXReader::Read()");
+        ret = ERR_SWG_READ_ERROR;
+    }
+    pDocShell->SetLoading(SfxLoadedFlags::ALL);
+
+    return ret;
 }
 
-int SwDOCXReader::GetReaderType()
+SwReaderType SwDOCXReader::GetReaderType()
 {
-    return SW_STORAGE_READER | SW_STREAM_READER;
+    return SwReaderType::Storage | SwReaderType::Stream;
 }
 
 bool SwDOCXReader::HasGlossaries() const
@@ -71,7 +113,7 @@ bool SwDOCXReader::ReadGlossaries( SwTextBlocks& rBlocks, bool /* bSaveRelFiles 
 
     uno::Reference<uno::XInterface> xInterface(
                 xMultiServiceFactory->createInstance( "com.sun.star.comp.Writer.WriterFilter" ),
-                uno::UNO_QUERY_THROW );
+                uno::UNO_SET_THROW );
 
     uno::Reference<document::XFilter> xFilter( xInterface, uno::UNO_QUERY_THROW );
     uno::Reference<document::XImporter> xImporter( xFilter, uno::UNO_QUERY_THROW );
@@ -82,7 +124,7 @@ bool SwDOCXReader::ReadGlossaries( SwTextBlocks& rBlocks, bool /* bSaveRelFiles 
         uno::Reference<lang::XComponent> xDstDoc( xDocSh->GetModel(), uno::UNO_QUERY_THROW );
         xImporter->setTargetDocument( xDstDoc );
 
-        uno::Reference<io::XStream> xStream( new utl::OStreamWrapper( *pMedium->GetInStream() ) );
+        uno::Reference<io::XStream> xStream( new utl::OStreamWrapper( *m_pMedium->GetInStream() ) );
 
         uno::Sequence<beans::PropertyValue> aDescriptor( comphelper::InitPropertySequence({
                 { "InputStream", uno::Any(xStream) },
@@ -90,7 +132,14 @@ bool SwDOCXReader::ReadGlossaries( SwTextBlocks& rBlocks, bool /* bSaveRelFiles 
             }));
 
         if( xFilter->filter( aDescriptor ) )
-            return MakeEntries( static_cast<SwDocShell*>( &xDocSh )->GetDoc(), rBlocks );
+        {
+            if (rBlocks.StartPutMuchBlockEntries())
+            {
+                bool bRet = MakeEntries(static_cast<SwDocShell*>(&xDocSh)->GetDoc(), rBlocks);
+                rBlocks.EndPutMuchBlockEntries();
+                return bRet;
+            }
+        }
     }
 
     return false;
@@ -111,8 +160,8 @@ bool SwDOCXReader::MakeEntries( SwDoc *pD, SwTextBlocks &rBlocks )
     {
         SwTextFormatColl* pColl = pD->getIDocumentStylePoolAccess().GetTextCollFromPool
             (RES_POOLCOLL_STANDARD, false);
-        sal_uInt16 nGlosEntry = 0;
         SwContentNode* pCNd = nullptr;
+        bRet = true;
         do {
             // Get name - first paragraph
             OUString aLNm;
@@ -135,7 +184,8 @@ bool SwDOCXReader::MakeEntries( SwDoc *pD, SwTextBlocks &rBlocks )
             {
                 SwNodeIndex& rIdx = aPam.GetPoint()->nNode;
                 ++rIdx;
-                if( nullptr == ( pCNd = rIdx.GetNode().GetTextNode() ) )
+                pCNd = rIdx.GetNode().GetTextNode();
+                if( nullptr == pCNd )
                 {
                     pCNd = pD->GetNodes().MakeTextNode( rIdx, pColl );
                     rIdx = *pCNd;
@@ -151,7 +201,8 @@ bool SwDOCXReader::MakeEntries( SwDoc *pD, SwTextBlocks &rBlocks )
                 if( rIdx.GetNode().GetTextNode() &&
                     rIdx.GetNode().GetTextNode()->GetText().isEmpty() )
                     rIdx = aStart.GetNode().EndOfSectionIndex() - 2;
-                if( nullptr == ( pCNd = rIdx.GetNode().GetContentNode() ) )
+                pCNd = rIdx.GetNode().GetContentNode();
+                if( nullptr == pCNd )
                 {
                     ++rIdx;
                     pCNd = pD->GetNodes().MakeTextNode( rIdx, pColl );
@@ -170,13 +221,11 @@ bool SwDOCXReader::MakeEntries( SwDoc *pD, SwTextBlocks &rBlocks )
                 // Need to check make sure the shortcut is not already being used
                 sal_Int32 nStart = 0;
                 sal_uInt16 nCurPos = rBlocks.GetIndex( sShortcut );
-                sal_Int32 nLen = sShortcut.getLength();
 
-                while( (sal_uInt16)-1 != nCurPos )
+                while( sal_uInt16(-1) != nCurPos )
                 {
-                    sShortcut = sShortcut.copy( 0, nLen );
-                    // add an Number to it
-                    sShortcut += OUString::number( ++nStart );
+                    // add a Number to it
+                    sShortcut = aLNm + OUString::number( ++nStart );
                     nCurPos = rBlocks.GetIndex( sShortcut );
                 }
 
@@ -185,16 +234,18 @@ bool SwDOCXReader::MakeEntries( SwDoc *pD, SwTextBlocks &rBlocks )
                     SwDoc* pGlDoc = rBlocks.GetDoc();
                     SwNodeIndex aIdx( pGlDoc->GetNodes().GetEndOfContent(), -1 );
                     pCNd = aIdx.GetNode().GetContentNode();
-                    SwPosition aPos( aIdx, SwIndex( pCNd, ( pCNd ) ? pCNd->Len() : 0 ) );
-                    pD->getIDocumentContentOperations().CopyRange( aPam, aPos, /*bCopyAll=*/false, /*bCheckPos=*/true );
+                    SwPosition aPos( aIdx, SwIndex( pCNd, pCNd ? pCNd->Len() : 0 ) );
+                    pD->getIDocumentContentOperations().CopyRange(aPam, aPos, SwCopyFlags::CheckPosInFly);
                     rBlocks.PutDoc();
+                }
+                else
+                {
+                    bRet = false;
                 }
             }
 
             aStart = aStart.GetNode().EndOfSectionIndex() + 1;
-            ++nGlosEntry;
         } while( aStart < aDocEnd && aStart.GetNode().IsStartNode() );
-        bRet = true;
     }
 
     rBlocks.SetBaseURL( aOldURL );

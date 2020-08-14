@@ -18,8 +18,20 @@
  */
 #ifndef INCLUDED_SW_SOURCE_CORE_TEXT_PORRST_HXX
 #define INCLUDED_SW_SOURCE_CORE_TEXT_PORRST_HXX
-#include "porlay.hxx"
-#include "porexp.hxx"
+
+#include <tools/gen.hxx>
+
+#include <TextFrameIndex.hxx>
+#include <txttypes.hxx>
+
+#include "porlin.hxx"
+#include "portxt.hxx"
+#include "possiz.hxx"
+
+class SwPortionHandler;
+class SwTextPaintInfo;
+class SwTextSizeInfo;
+class SwFont;
 
 #define LINE_BREAK_WIDTH        150
 #define SPECIAL_FONT_HEIGHT     200
@@ -31,7 +43,6 @@ class SwTmpEndPortion : public SwLinePortion
 public:
     explicit SwTmpEndPortion( const SwLinePortion &rPortion );
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 class SwBreakPortion : public SwLinePortion
@@ -43,12 +54,10 @@ public:
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
     virtual bool Format( SwTextFormatInfo &rInf ) override;
     virtual sal_uInt16 GetViewWidth( const SwTextSizeInfo &rInf ) const override;
-    virtual sal_Int32 GetCursorOfst( const sal_uInt16 nOfst ) const override;
+    virtual TextFrameIndex GetModelPositionForViewPoint(sal_uInt16 nOfst) const override;
 
     // Accessibility: pass information about this portion to the PortionHandler
     virtual void HandlePortion( SwPortionHandler& rPH ) const override;
-
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 class SwKernPortion : public SwLinePortion
@@ -73,8 +82,6 @@ public:
 
     virtual void FormatEOL( SwTextFormatInfo &rInf ) override;
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
-
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 class SwArrowPortion : public SwLinePortion
@@ -88,7 +95,6 @@ public:
     virtual SwLinePortion *Compress() override;
     bool IsLeft() const { return bLeft; }
     const Point& GetPos() const { return aPos; }
-    OUTPUT_OPERATOR_OVERRIDE
 };
 
 // The characters which are forbidden at the start of a line like the dot and
@@ -100,7 +106,11 @@ class SwHangingPortion : public SwTextPortion
     sal_uInt16 nInnerWidth;
 public:
     explicit SwHangingPortion( SwPosSize aSize ) : nInnerWidth( aSize.Width() )
-        { SetWhichPor( POR_HNG );  SetLen( 1 ); Height( aSize.Height() ); }
+    {
+        SetWhichPor( PortionType::Hanging );
+        SetLen(TextFrameIndex(1));
+        Height( aSize.Height() );
+    }
 
     sal_uInt16 GetInnerWidth() const { return nInnerWidth; }
 };
@@ -109,8 +119,10 @@ public:
 class SwHiddenTextPortion : public SwLinePortion
 {
 public:
-    explicit SwHiddenTextPortion( sal_Int32 nLen )
-        { SetWhichPor( POR_HIDDEN_TXT );  SetLen( nLen ); }
+    explicit SwHiddenTextPortion(TextFrameIndex const nLen)
+    {
+        SetWhichPor( PortionType::HiddenText );  SetLen( nLen );
+    }
 
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
     virtual bool Format( SwTextFormatInfo &rInf ) override;
@@ -122,6 +134,7 @@ class SwControlCharPortion : public SwLinePortion
 private:
     mutable sal_uInt16 mnViewWidth;            // used to cache a calculated value
     mutable sal_uInt16 mnHalfCharWidth;        // used to cache a calculated value
+protected:
     sal_Unicode mcChar;
 
 public:
@@ -129,12 +142,31 @@ public:
     explicit SwControlCharPortion( sal_Unicode cChar )
         : mnViewWidth( 0 ), mnHalfCharWidth( 0 ), mcChar( cChar )
     {
-        SetWhichPor( POR_CONTROLCHAR ); SetLen( 1 );
+        SetWhichPor( PortionType::ControlChar ); SetLen( TextFrameIndex(1) );
     }
 
+    virtual bool DoPaint(SwTextPaintInfo const& rInf,
+        OUString & rOutString, SwFont & rTmpFont, int & rDeltaY) const;
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
     virtual bool Format( SwTextFormatInfo &rInf ) override;
     virtual sal_uInt16 GetViewWidth( const SwTextSizeInfo& rInf ) const override;
+};
+
+/// for showing bookmark starts and ends; note that in contrast to
+/// SwControlCharPortion these do not have a character in the text.
+class SwBookmarkPortion : public SwControlCharPortion
+{
+public:
+    explicit SwBookmarkPortion(sal_Unicode const cChar)
+        : SwControlCharPortion(cChar)
+    {
+        SetWhichPor(PortionType::Bookmark);
+        SetLen(TextFrameIndex(0));
+    }
+
+    virtual bool DoPaint(SwTextPaintInfo const& rInf,
+        OUString & rOutString, SwFont & rTmpFont, int & rDeltaY) const override;
+    virtual SwLinePortion * Compress() override { return this; }
 };
 
 #endif

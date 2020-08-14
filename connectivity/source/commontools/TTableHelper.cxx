@@ -18,23 +18,24 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <connectivity/TTableHelper.hxx>
+#include <com/sun/star/sdb/tools/XTableRename.hpp>
+#include <com/sun/star/sdb/tools/XTableAlteration.hpp>
+#include <com/sun/star/sdb/tools/XKeyAlteration.hpp>
+#include <com/sun/star/sdb/tools/XIndexAlteration.hpp>
+#include <sdbcx/VKey.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbcx/KeyType.hpp>
-#include <com/sun/star/sdbc/KeyRule.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/typeprovider.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/sdbc/ColumnValue.hpp>
-#include <comphelper/sequence.hxx>
 #include <comphelper/types.hxx>
 #include <connectivity/dbtools.hxx>
 #include <connectivity/sdbcx/VCollection.hxx>
 #include <unotools/sharedunocomponent.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 
 #include <o3tl/functional.hxx>
 
@@ -89,12 +90,12 @@ public:
     {
     }
     void clear() { m_pComponent = nullptr; }
-    void add(const OUString& _sRefName) { m_aRefNames.insert(std::map< OUString,bool>::value_type(_sRefName,true)); }
+    void add(const OUString& _sRefName) { m_aRefNames.emplace(_sRefName,true); }
 };
 }
 namespace connectivity
 {
-    OUString lcl_getServiceNameForSetting(const Reference< css::sdbc::XConnection >& _xConnection,const OUString& i_sSetting)
+    static OUString lcl_getServiceNameForSetting(const Reference< css::sdbc::XConnection >& _xConnection,const OUString& i_sSetting)
     {
         OUString sSupportService;
         Any aValue;
@@ -221,11 +222,8 @@ namespace
 
         // collect all used ordinals
         std::set< OrdinalPosition > aUsedOrdinals;
-        for (   std::vector< ColumnDesc >::const_iterator collect = _rColumns.begin();
-                collect != _rColumns.end();
-                ++collect
-            )
-            aUsedOrdinals.insert( collect->nOrdinalPosition );
+        for ( const auto& collect : _rColumns )
+            aUsedOrdinals.insert( collect.nOrdinalPosition );
 
         // we need to have as much different ordinals as we have different columns
         bool bDuplicates = aUsedOrdinals.size() != _rColumns.size();
@@ -239,29 +237,23 @@ namespace
             OSL_FAIL( "lcl_sanitizeColumnDescs: database did provide invalid ORDINAL_POSITION values!" );
 
             OrdinalPosition nNormalizedPosition = 1;
-            for (   std::vector< ColumnDesc >::iterator normalize = _rColumns.begin();
-                    normalize != _rColumns.end();
-                    ++normalize
-                )
-                normalize->nOrdinalPosition = nNormalizedPosition++;
+            for ( auto& normalize : _rColumns )
+                normalize.nOrdinalPosition = nNormalizedPosition++;
             return;
         }
 
         // what's left is that the range might not be from 1 to <column count>, but for instance
         // 0 to <column count>-1.
         size_t nOffset = *aUsedOrdinals.begin() - 1;
-        for (   std::vector< ColumnDesc >::iterator offset = _rColumns.begin();
-                offset != _rColumns.end();
-                ++offset
-            )
-            offset->nOrdinalPosition -= nOffset;
+        for ( auto& offset : _rColumns )
+            offset.nOrdinalPosition -= nOffset;
     }
 }
 
 
 void OTableHelper::refreshColumns()
 {
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
     if(!isNew())
     {
         Any aCatalog;
@@ -284,43 +276,35 @@ void OTableHelper::refreshColumns()
 
         // sort by ordinal position
         std::map< OrdinalPosition, OUString > aSortedColumns;
-        for (   std::vector< ColumnDesc >::const_iterator copy = m_pImpl->m_aColumnDesc.begin();
-                copy != m_pImpl->m_aColumnDesc.end();
-                ++copy
-            )
-            aSortedColumns[ copy->nOrdinalPosition ] = copy->sName;
+        for (const auto& copy : m_pImpl->m_aColumnDesc)
+            aSortedColumns[ copy.nOrdinalPosition ] = copy.sName;
 
         // copy them to aVector, now that we have the proper ordering
         std::transform(
             aSortedColumns.begin(),
             aSortedColumns.end(),
-            std::insert_iterator< TStringVector >( aVector, aVector.begin() ),
+            std::insert_iterator< ::std::vector< OUString> >( aVector, aVector.begin() ),
             ::o3tl::select2nd< std::map< OrdinalPosition, OUString >::value_type >()
             );
     }
 
-    if(m_pColumns)
-        m_pColumns->reFill(aVector);
+    if(m_xColumns)
+        m_xColumns->reFill(aVector);
     else
-        m_pColumns  = createColumns(aVector);
+        m_xColumns = createColumns(aVector);
 }
 
 const ColumnDesc* OTableHelper::getColumnDescription(const OUString& _sName) const
 {
     const ColumnDesc* pRet = nullptr;
-    std::vector< ColumnDesc >::const_iterator aEnd = m_pImpl->m_aColumnDesc.end();
-    for (std::vector< ColumnDesc >::const_iterator aIter = m_pImpl->m_aColumnDesc.begin();aIter != aEnd;++aIter)
-    {
-        if ( aIter->sName == _sName )
-        {
-            pRet = &*aIter;
-            break;
-        }
-    } // for (std::vector< ColumnDesc >::const_iterator aIter = m_pImpl->m_aColumnDesc.begin();aIter != aEnd;++aIter)
+    auto aIter = std::find_if(m_pImpl->m_aColumnDesc.begin(), m_pImpl->m_aColumnDesc.end(),
+        [&_sName](const ColumnDesc& rColumnDesc) { return rColumnDesc.sName == _sName; });
+    if (aIter != m_pImpl->m_aColumnDesc.end())
+        pRet = &*aIter;
     return pRet;
 }
 
-void OTableHelper::refreshPrimaryKeys(TStringVector& _rNames)
+void OTableHelper::refreshPrimaryKeys(::std::vector< OUString>& _rNames)
 {
     Any aCatalog;
     if ( !m_CatalogName.isEmpty() )
@@ -329,7 +313,7 @@ void OTableHelper::refreshPrimaryKeys(TStringVector& _rNames)
 
     if ( xResult.is() )
     {
-        std::shared_ptr<sdbcx::KeyProperties> pKeyProps(new sdbcx::KeyProperties(OUString(),KeyType::PRIMARY,0,0));
+        auto pKeyProps = std::make_shared<sdbcx::KeyProperties>(OUString(),KeyType::PRIMARY,0,0);
         OUString aPkName;
         bool bAlreadyFetched = false;
         const Reference< XRow > xRow(xResult,UNO_QUERY);
@@ -348,15 +332,15 @@ void OTableHelper::refreshPrimaryKeys(TStringVector& _rNames)
         if(bAlreadyFetched)
         {
             SAL_WARN_IF(aPkName.isEmpty(),"connectivity.commontools", "empty Primary Key name");
-            SAL_WARN_IF(pKeyProps->m_aKeyColumnNames.size() == 0,"connectivity.commontools", "Primary Key has no columns");
-            m_pImpl->m_aKeys.insert(TKeyMap::value_type(aPkName,pKeyProps));
+            SAL_WARN_IF(pKeyProps->m_aKeyColumnNames.empty(),"connectivity.commontools", "Primary Key has no columns");
+            m_pImpl->m_aKeys.emplace(aPkName,pKeyProps);
             _rNames.push_back(aPkName);
         }
     } // if ( xResult.is() && xResult->next() )
     ::comphelper::disposeComponent(xResult);
 }
 
-void OTableHelper::refreshForeignKeys(TStringVector& _rNames)
+void OTableHelper::refreshForeignKeys(::std::vector< OUString>& _rNames)
 {
     Any aCatalog;
     if ( !m_CatalogName.isEmpty() )
@@ -364,75 +348,70 @@ void OTableHelper::refreshForeignKeys(TStringVector& _rNames)
     Reference< XResultSet > xResult = getMetaData()->getImportedKeys(aCatalog,m_SchemaName,m_Name);
     Reference< XRow > xRow(xResult,UNO_QUERY);
 
-    if ( xRow.is() )
+    if ( !xRow.is() )
+        return;
+
+    std::shared_ptr<sdbcx::KeyProperties> pKeyProps;
+    OUString aName,sCatalog,aSchema,sOldFKName;
+    while( xResult->next() )
     {
-        std::shared_ptr<sdbcx::KeyProperties> pKeyProps;
-        OUString aName,sCatalog,aSchema,sOldFKName;
-        while( xResult->next() )
+        // this must be outside the "if" because we have to call in a right order
+        sCatalog    = xRow->getString(1);
+        if ( xRow->wasNull() )
+            sCatalog.clear();
+        aSchema     = xRow->getString(2);
+        aName       = xRow->getString(3);
+
+        const OUString sForeignKeyColumn = xRow->getString(8);
+        const sal_Int32 nUpdateRule = xRow->getInt(10);
+        const sal_Int32 nDeleteRule = xRow->getInt(11);
+        const OUString sFkName = xRow->getString(12);
+
+        if ( !sFkName.isEmpty() && !xRow->wasNull() )
         {
-            // this must be outside the "if" because we have to call in a right order
-            sCatalog    = xRow->getString(1);
-            if ( xRow->wasNull() )
-                sCatalog.clear();
-            aSchema     = xRow->getString(2);
-            aName       = xRow->getString(3);
-
-            const OUString sForeignKeyColumn = xRow->getString(8);
-            const sal_Int32 nUpdateRule = xRow->getInt(10);
-            const sal_Int32 nDeleteRule = xRow->getInt(11);
-            const OUString sFkName = xRow->getString(12);
-
-                if ( pKeyProps.get() )
-                {
-                }
-
-
-            if ( !sFkName.isEmpty() && !xRow->wasNull() )
+            if ( sOldFKName != sFkName )
             {
-                if ( sOldFKName != sFkName )
-                {
-                    if ( pKeyProps.get() )
-                        m_pImpl->m_aKeys.insert(TKeyMap::value_type(sOldFKName,pKeyProps));
+                if ( pKeyProps )
+                    m_pImpl->m_aKeys.emplace(sOldFKName,pKeyProps);
 
-                    const OUString sReferencedName = ::dbtools::composeTableName(getMetaData(),sCatalog,aSchema,aName,false,::dbtools::EComposeRule::InDataManipulation);
-                    pKeyProps.reset(new sdbcx::KeyProperties(sReferencedName,KeyType::FOREIGN,nUpdateRule,nDeleteRule));
-                    pKeyProps->m_aKeyColumnNames.push_back(sForeignKeyColumn);
-                    _rNames.push_back(sFkName);
-                    if ( m_pTables->hasByName(sReferencedName) )
-                    {
-                        if ( !m_pImpl->m_xTablePropertyListener.is() )
-                            m_pImpl->m_xTablePropertyListener = new OTableContainerListener(this);
-                        m_pTables->addContainerListener(m_pImpl->m_xTablePropertyListener.get());
-                        m_pImpl->m_xTablePropertyListener->add(sReferencedName);
-                    } // if ( m_pTables->hasByName(sReferencedName) )
-                    sOldFKName = sFkName;
-                } // if ( sOldFKName != sFkName )
-                else if ( pKeyProps.get() )
+                const OUString sReferencedName = ::dbtools::composeTableName(getMetaData(),sCatalog,aSchema,aName,false,::dbtools::EComposeRule::InDataManipulation);
+                pKeyProps = std::make_shared<sdbcx::KeyProperties>(sReferencedName,KeyType::FOREIGN,nUpdateRule,nDeleteRule);
+                pKeyProps->m_aKeyColumnNames.push_back(sForeignKeyColumn);
+                _rNames.push_back(sFkName);
+                if ( m_pTables->hasByName(sReferencedName) )
                 {
-                    pKeyProps->m_aKeyColumnNames.push_back(sForeignKeyColumn);
-                }
+                    if ( !m_pImpl->m_xTablePropertyListener.is() )
+                        m_pImpl->m_xTablePropertyListener = new OTableContainerListener(this);
+                    m_pTables->addContainerListener(m_pImpl->m_xTablePropertyListener.get());
+                    m_pImpl->m_xTablePropertyListener->add(sReferencedName);
+                } // if ( m_pTables->hasByName(sReferencedName) )
+                sOldFKName = sFkName;
+            } // if ( sOldFKName != sFkName )
+            else if ( pKeyProps )
+            {
+                pKeyProps->m_aKeyColumnNames.push_back(sForeignKeyColumn);
             }
-        } // while( xResult->next() )
-        if ( pKeyProps.get() )
-            m_pImpl->m_aKeys.insert(TKeyMap::value_type(sOldFKName,pKeyProps));
-        ::comphelper::disposeComponent(xResult);
-    }
+        }
+    } // while( xResult->next() )
+    if ( pKeyProps )
+        m_pImpl->m_aKeys.emplace(sOldFKName,pKeyProps);
+    ::comphelper::disposeComponent(xResult);
 }
 
 void OTableHelper::refreshKeys()
 {
     m_pImpl->m_aKeys.clear();
 
-    TStringVector aNames;
+    ::std::vector< OUString> aNames;
 
     if(!isNew())
     {
         refreshPrimaryKeys(aNames);
         refreshForeignKeys(aNames);
-        m_pKeys = createKeys(aNames);
+        m_xKeys = createKeys(aNames);
     } // if(!isNew())
-    else if (!m_pKeys )
-        m_pKeys = createKeys(aNames);
+    else if (!m_xKeys )
+        m_xKeys = createKeys(aNames);
     /*if(m_pKeys)
         m_pKeys->reFill(aVector);
     else*/
@@ -441,7 +420,7 @@ void OTableHelper::refreshKeys()
 
 void OTableHelper::refreshIndexes()
 {
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
     if(!isNew())
     {
         // fill indexes
@@ -453,12 +432,11 @@ void OTableHelper::refreshIndexes()
         if(xResult.is())
         {
             Reference< XRow > xRow(xResult,UNO_QUERY);
-            OUString aName;
             OUString sCatalogSep = getMetaData()->getCatalogSeparator();
             OUString sPreviousRoundName;
             while( xResult->next() )
             {
-                aName = xRow->getString(5);
+                OUString aName = xRow->getString(5);
                 if(!aName.isEmpty())
                     aName += sCatalogSep;
                 aName += xRow->getString(6);
@@ -474,10 +452,10 @@ void OTableHelper::refreshIndexes()
         }
     }
 
-    if(m_pIndexes)
-        m_pIndexes->reFill(aVector);
+    if(m_xIndexes)
+        m_xIndexes->reFill(aVector);
     else
-        m_pIndexes  = createIndexes(aVector);
+        m_xIndexes = createIndexes(aVector);
 }
 
 OUString OTableHelper::getRenameStart() const
@@ -554,7 +532,7 @@ void SAL_CALL OTableHelper::alterColumnByIndex( sal_Int32 index, const Reference
         );
 
     Reference< XPropertySet > xOld(
-        m_pColumns->getByIndex(index), css::uno::UNO_QUERY);
+        m_xColumns->getByIndex(index), css::uno::UNO_QUERY);
     if(xOld.is())
         alterColumnByName(getString(xOld->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_NAME))),descriptor);
 }
@@ -562,8 +540,7 @@ void SAL_CALL OTableHelper::alterColumnByIndex( sal_Int32 index, const Reference
 
 OUString SAL_CALL OTableHelper::getName()
 {
-    OUString sComposedName;
-    sComposedName = ::dbtools::composeTableName(getMetaData(),m_CatalogName,m_SchemaName,m_Name,false,::dbtools::EComposeRule::InDataManipulation);
+    OUString sComposedName = ::dbtools::composeTableName(getMetaData(),m_CatalogName,m_SchemaName,m_Name,false,::dbtools::EComposeRule::InDataManipulation);
     return sComposedName;
 }
 
@@ -578,7 +555,7 @@ std::shared_ptr<sdbcx::KeyProperties> OTableHelper::getKeyProperties(const OUStr
     else // only a fall back
     {
         OSL_FAIL("No key with the given name found");
-        pKeyProps.reset(new sdbcx::KeyProperties());
+        pKeyProps = std::make_shared<sdbcx::KeyProperties>();
     }
 
     return pKeyProps;
@@ -586,7 +563,7 @@ std::shared_ptr<sdbcx::KeyProperties> OTableHelper::getKeyProperties(const OUStr
 
 void OTableHelper::addKey(const OUString& _sName,const std::shared_ptr<sdbcx::KeyProperties>& _aKeyProperties)
 {
-    m_pImpl->m_aKeys.insert(TKeyMap::value_type(_sName,_aKeyProperties));
+    m_pImpl->m_aKeys.emplace(_sName,_aKeyProperties);
 }
 
 OUString OTableHelper::getTypeCreatePattern() const
@@ -594,27 +571,27 @@ OUString OTableHelper::getTypeCreatePattern() const
     return OUString();
 }
 
-Reference< XConnection> OTableHelper::getConnection() const
+Reference< XConnection> const & OTableHelper::getConnection() const
 {
     return m_pImpl->m_xConnection;
 }
 
-Reference< css::sdb::tools::XTableRename>      OTableHelper::getRenameService() const
+Reference< css::sdb::tools::XTableRename> const & OTableHelper::getRenameService() const
 {
     return m_pImpl->m_xRename;
 }
 
-Reference< css::sdb::tools::XTableAlteration>  OTableHelper::getAlterService() const
+Reference< css::sdb::tools::XTableAlteration> const & OTableHelper::getAlterService() const
 {
     return m_pImpl->m_xAlter;
 }
 
-Reference< css::sdb::tools::XKeyAlteration>  OTableHelper::getKeyService() const
+Reference< css::sdb::tools::XKeyAlteration> const & OTableHelper::getKeyService() const
 {
     return m_pImpl->m_xKeyAlter;
 }
 
-Reference< css::sdb::tools::XIndexAlteration>  OTableHelper::getIndexService() const
+Reference< css::sdb::tools::XIndexAlteration> const & OTableHelper::getIndexService() const
 {
     return m_pImpl->m_xIndexAlter;
 }

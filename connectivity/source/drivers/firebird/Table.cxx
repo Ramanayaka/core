@@ -12,13 +12,15 @@
 #include "Keys.hxx"
 #include "Table.hxx"
 
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 
+#include <sal/log.hxx>
 #include <comphelper/sequence.hxx>
 #include <connectivity/dbtools.hxx>
 
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbcx/Privilege.hpp>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 
 using namespace ::connectivity;
 using namespace ::connectivity::firebird;
@@ -68,41 +70,41 @@ Table::Table(Tables* pTables,
 void Table::construct()
 {
     OTableHelper::construct();
-    if (!isNew())
-    {
-        // TODO: get privileges when in non-embedded mode.
-        m_nPrivileges = Privilege::DROP         |
-                        Privilege::REFERENCE    |
-                        Privilege::ALTER        |
-                        Privilege::CREATE       |
-                        Privilege::READ         |
-                        Privilege::DELETE       |
-                        Privilege::UPDATE       |
-                        Privilege::INSERT       |
-                        Privilege::SELECT;
-        registerProperty(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_PRIVILEGES),
-                         PROPERTY_ID_PRIVILEGES,
-                         PropertyAttribute::READONLY,
-                         &m_nPrivileges,
-                         cppu::UnoType<decltype(m_nPrivileges)>::get());
-    }
+    if (isNew())
+        return;
+
+    // TODO: get privileges when in non-embedded mode.
+    m_nPrivileges = Privilege::DROP         |
+                    Privilege::REFERENCE    |
+                    Privilege::ALTER        |
+                    Privilege::CREATE       |
+                    Privilege::READ         |
+                    Privilege::DELETE       |
+                    Privilege::UPDATE       |
+                    Privilege::INSERT       |
+                    Privilege::SELECT;
+    registerProperty(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_PRIVILEGES),
+                     PROPERTY_ID_PRIVILEGES,
+                     PropertyAttribute::READONLY,
+                     &m_nPrivileges,
+                     cppu::UnoType<decltype(m_nPrivileges)>::get());
 }
 //----- OTableHelper ---------------------------------------------------------
-OCollection* Table::createColumns(const TStringVector& rNames)
+OCollection* Table::createColumns(const ::std::vector< OUString>& rNames)
 {
     return new Columns(*this,
                        m_rMutex,
                        rNames);
 }
 
-OCollection* Table::createKeys(const TStringVector& rNames)
+OCollection* Table::createKeys(const ::std::vector< OUString>& rNames)
 {
     return new Keys(this,
                     m_rMutex,
                     rNames);
 }
 
-OCollection* Table::createIndexes(const TStringVector& rNames)
+OCollection* Table::createIndexes(const ::std::vector< OUString>& rNames)
 {
     return new Indexes(this,
                        m_rMutex,
@@ -116,7 +118,7 @@ void SAL_CALL Table::alterColumnByName(const OUString& rColName,
     MutexGuard aGuard(m_rMutex);
     checkDisposed(WeakComponentImplHelperBase::rBHelper.bDisposed);
 
-    uno::Reference< XPropertySet > xColumn(m_pColumns->getByName(rColName), UNO_QUERY);
+    uno::Reference< XPropertySet > xColumn(m_xColumns->getByName(rColName), UNO_QUERY);
 
     // sdbcx::Descriptor
     const bool bNameChanged = xColumn->getPropertyValue("Name") != rDescriptor->getPropertyValue("Name");
@@ -194,8 +196,7 @@ void SAL_CALL Table::alterColumnByName(const OUString& rColName,
 
     if (bDefaultChanged)
     {
-        OUString sOldDefault, sNewDefault;
-        xColumn->getPropertyValue("DefaultValue") >>= sOldDefault;
+        OUString sNewDefault;
         rDescriptor->getPropertyValue("DefaultValue") >>= sNewDefault;
 
         OUString sSql;
@@ -218,13 +219,13 @@ void SAL_CALL Table::alterColumnByName(const OUString& rColName,
     }
 
 
-    m_pColumns->refresh();
+    m_xColumns->refresh();
 }
 
 // ----- XRename --------------------------------------------------------------
 void SAL_CALL Table::rename(const OUString&)
 {
-    throw RuntimeException(); // Firebird doesn't support this.
+    throw RuntimeException("Table renaming not supported by Firebird.");
 }
 
 // ----- XInterface -----------------------------------------------------------

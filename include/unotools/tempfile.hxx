@@ -22,6 +22,7 @@
 
 #include <unotools/unotoolsdllapi.h>
 #include <tools/stream.hxx>
+#include <memory>
 
 namespace utl
 {
@@ -45,12 +46,10 @@ namespace utl
 class UNOTOOLS_DLLPUBLIC TempFile
 {
     OUString    aName;
-    SvStream*   pStream;
+    std::unique_ptr<SvStream>
+                pStream;
     bool        bIsDirectory;
     bool        bKillingFileEnabled;
-
-    TempFile( const TempFile& ) = delete;
-    TempFile& operator=(const TempFile&) = delete;
 
 public:
                     /**
@@ -72,6 +71,8 @@ public:
                     TempFile( const OUString& rLeadingChars, bool _bStartWithZero=true, const OUString* pExtension=nullptr,
                               const OUString* pParent=nullptr, bool bCreateParentDirs=false );
 
+                    TempFile(TempFile && other) noexcept;
+
                     /**
                     TempFile will be removed from disk in dtor if EnableKillingFile(true) was called before.
                     Temporary directories will be removed recursively in that case.
@@ -87,7 +88,7 @@ public:
                     Returns the URL of the tempfile object.
                     If you want to have the system path file name, use the GetFileName() method of this object
                     */
-    OUString const & GetURL();
+    OUString const & GetURL() const;
 
                     /**
                     Returns the system path name of the tempfile in host notation
@@ -131,6 +132,10 @@ public:
                     It is not a URL because all URLs must be "UCB compatible", so there may be no suitable URL at all.
                     */
     static OUString SetTempNameBaseDirectory( const OUString &rBaseName );
+
+    // Return the URL of the temp directory (the one set with SetTempNameBaseDirectory or the
+    // default tempfile folder):
+    static OUString GetTempNameBaseDirectory();
 };
 
 }

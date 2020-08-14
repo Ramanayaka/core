@@ -18,11 +18,8 @@
  */
 
 
-#include <cstddef>
-
-#include "osl/mutex.hxx"
-#include "sal/log.hxx"
-#include "uno/data.h"
+#include <sal/log.hxx>
+#include <uno/data.h>
 
 #include "constr.hxx"
 #include "destr.hxx"
@@ -31,7 +28,6 @@
 #include "eq.hxx"
 
 using namespace ::cppu;
-using namespace ::osl;
 
 namespace cppu
 {
@@ -44,22 +40,20 @@ typelib_TypeDescriptionReference * g_pVoidType = nullptr;
 void * binuno_queryInterface( void * pUnoI, typelib_TypeDescriptionReference * pDestType )
 {
     // init queryInterface() td
-    static typelib_TypeDescription * g_pQITD = nullptr;
-    if (nullptr == g_pQITD)
-    {
-        MutexGuard aGuard( Mutex::getGlobalMutex() );
-        if (nullptr == g_pQITD)
-        {
-            typelib_TypeDescriptionReference * type_XInterface =
-                * typelib_static_type_getByTypeClass( typelib_TypeClass_INTERFACE );
-            typelib_InterfaceTypeDescription * pTXInterfaceDescr = nullptr;
-            TYPELIB_DANGER_GET( reinterpret_cast<typelib_TypeDescription **>(&pTXInterfaceDescr), type_XInterface );
-            assert(pTXInterfaceDescr->ppAllMembers);
-            typelib_typedescriptionreference_getDescription(
-                &g_pQITD, pTXInterfaceDescr->ppAllMembers[ 0 ] );
-            TYPELIB_DANGER_RELEASE( &pTXInterfaceDescr->aBase );
-        }
-    }
+    static typelib_TypeDescription* g_pQITD = []() {
+        typelib_TypeDescriptionReference* type_XInterface
+            = *typelib_static_type_getByTypeClass(typelib_TypeClass_INTERFACE);
+        typelib_InterfaceTypeDescription* pTXInterfaceDescr = nullptr;
+        TYPELIB_DANGER_GET(reinterpret_cast<typelib_TypeDescription**>(&pTXInterfaceDescr),
+                           type_XInterface);
+        assert(pTXInterfaceDescr->ppAllMembers);
+        typelib_TypeDescription* pQITD = nullptr;
+        typelib_typedescriptionreference_getDescription(&pQITD,
+                                                        pTXInterfaceDescr->ppAllMembers[0]);
+        // coverity[callee_ptr_arith] - not a bug
+        TYPELIB_DANGER_RELEASE(&pTXInterfaceDescr->aBase);
+        return pQITD;
+    }();
 
     uno_Any aRet, aExc;
     uno_Any * pExc = &aExc;

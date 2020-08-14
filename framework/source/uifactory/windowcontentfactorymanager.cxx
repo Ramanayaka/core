@@ -54,7 +54,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.framework.WindowContentFactoryManager");
+        return "com.sun.star.comp.framework.WindowContentFactoryManager";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -109,10 +109,10 @@ uno::Reference< uno::XInterface > SAL_CALL WindowContentFactoryManager::createIn
     uno::Reference< frame::XFrame >   xFrame;
     OUString                   aResourceURL;
 
-    for (sal_Int32 i=0; i < Arguments.getLength(); i++ )
+    for (auto const & arg : Arguments )
     {
         beans::PropertyValue aPropValue;
-        if ( Arguments[i] >>= aPropValue )
+        if ( arg >>= aPropValue )
         {
             if ( aPropValue.Name == "Frame" )
                 aPropValue.Value >>= xFrame;
@@ -176,7 +176,7 @@ uno::Reference< uno::XInterface > SAL_CALL WindowContentFactoryManager::createIn
                     }
                     catch ( uno::Exception& )
                     {
-                        DBG_UNHANDLED_EXCEPTION();
+                        DBG_UNHANDLED_EXCEPTION("fwk");
                     }
                 }
             }
@@ -211,7 +211,7 @@ struct Singleton:
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_WindowContentFactoryManager_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

@@ -17,22 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <stdlib.h>
 #include <stdio.h>
+#include <iostream>
+
+#include <sal/log.hxx>
 
 #include <X11/Xlib.h>
 #include <X11/XKBlib.h>
 
-#include "unx/saldisp.hxx"
-#include "unx/i18n_xkb.hxx"
+#include <unx/i18n_xkb.hxx>
 
 SalI18N_KeyboardExtension::SalI18N_KeyboardExtension( Display* pDisplay )
     : mbUseExtension(true)
-    , mnDefaultGroup(0)
     , mnEventBase(0)
-    , mnErrorBase(0)
-    , mpDisplay(pDisplay)
 {
-
     // allow user to set the default keyboard group idx or to disable the usage
     // of x keyboard extension at all:
     //      setenv SAL_XKEYBOARDGROUP       disables keyboard extension
@@ -42,10 +41,6 @@ SalI18N_KeyboardExtension::SalI18N_KeyboardExtension( Display* pDisplay )
     if ( pUseKeyboardExtension != nullptr )
     {
         mbUseExtension = pUseKeyboardExtension[0] != '\0' ;
-        if ( mbUseExtension )
-            mnDefaultGroup = strtol( pUseKeyboardExtension, nullptr, 0 );
-        if ( mnDefaultGroup > XkbMaxKbdGroup )
-            mnDefaultGroup = 0;
     }
 
     // query XServer support for XKB Extension,
@@ -56,19 +51,20 @@ SalI18N_KeyboardExtension::SalI18N_KeyboardExtension( Display* pDisplay )
         int nMajorExtOpcode;
         int nExtMajorVersion = XkbMajorVersion;
         int nExtMinorVersion = XkbMinorVersion;
+        int nErrorBase = 0;
 
-        mbUseExtension = XkbQueryExtension( mpDisplay,
-            &nMajorExtOpcode, &mnEventBase, &mnErrorBase,
+        mbUseExtension = XkbQueryExtension( pDisplay,
+            &nMajorExtOpcode, &mnEventBase, &nErrorBase,
             &nExtMajorVersion, &nExtMinorVersion ) != 0;
     }
 
     // query notification for changes of the keyboard group
     if ( mbUseExtension )
     {
-        #define XkbGroupMask (  XkbGroupStateMask | XkbGroupBaseMask \
-                                | XkbGroupLatchMask | XkbGroupLockMask )
+        constexpr auto XkbGroupMask = XkbGroupStateMask | XkbGroupBaseMask
+                                | XkbGroupLatchMask | XkbGroupLockMask;
 
-        mbUseExtension = XkbSelectEventDetails( mpDisplay,
+        mbUseExtension = XkbSelectEventDetails( pDisplay,
             XkbUseCoreKbd, XkbStateNotify, XkbGroupMask, XkbGroupMask );
     }
 
@@ -76,7 +72,7 @@ SalI18N_KeyboardExtension::SalI18N_KeyboardExtension( Display* pDisplay )
     if ( mbUseExtension )
     {
         XkbStateRec aStateRecord;
-        XkbGetState( mpDisplay, XkbUseCoreKbd, &aStateRecord );
+        XkbGetState( pDisplay, XkbUseCoreKbd, &aStateRecord );
     }
 }
 
@@ -97,11 +93,13 @@ SalI18N_KeyboardExtension::Dispatch( XEvent* pEvent )
             break;
 
         default:
-
-            #if OSL_DEBUG_LEVEL > 1
-            fprintf(stderr, "Got unrequested XkbAnyEvent %#x/%i\n",
-                    static_cast<unsigned int>(nXKBType), static_cast<int>(nXKBType) );
-            #endif
+#if OSL_DEBUG_LEVEL > 1
+            SAL_WARN("vcl.app", "Got unrequested XkbAnyEvent "
+                    << std::hex << std::showbase
+                    << static_cast<unsigned int>(nXKBType)
+                    << "/" << std::dec
+                    << static_cast<int>(nXKBType));
+#endif
             break;
     }
 }

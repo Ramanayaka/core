@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.18.3 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
-  <requires lib="LibreOffice" version="1.0"/>
+<!-- Generated with glade 3.22.1 -->
+<interface domain="cui">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkBox" id="HyperlinkInternetPage">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
     <property name="hexpand">True</property>
-    <property name="vexpand">True</property>
+    <property name="border_width">6</property>
     <property name="orientation">vertical</property>
-    <property name="spacing">24</property>
+    <property name="spacing">12</property>
     <child>
       <object class="GtkFrame" id="frame1">
         <property name="visible">True</property>
@@ -20,6 +19,7 @@
           <object class="GtkAlignment" id="alignment1">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
+            <property name="hexpand">False</property>
             <property name="top_padding">6</property>
             <property name="left_padding">12</property>
             <child>
@@ -27,7 +27,6 @@
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
                 <property name="hexpand">True</property>
-                <property name="vexpand">True</property>
                 <property name="row_spacing">6</property>
                 <property name="column_spacing">12</property>
                 <child>
@@ -39,8 +38,7 @@
                     <property name="column_spacing">12</property>
                     <child>
                       <object class="GtkRadioButton" id="linktyp_internet">
-                        <property name="label" translatable="yes">_Web</property>
-                        <property name="use_action_appearance">False</property>
+                        <property name="label" translatable="yes" context="hyperlinkinternetpage|linktyp_internet">_Web</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
@@ -56,8 +54,7 @@
                     </child>
                     <child>
                       <object class="GtkRadioButton" id="linktyp_ftp">
-                        <property name="label" translatable="yes">_FTP</property>
-                        <property name="use_action_appearance">False</property>
+                        <property name="label" translatable="yes" context="hyperlinkinternetpage|linktyp_ftp">_FTP</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
@@ -83,7 +80,7 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
-                    <property name="label" translatable="yes">_URL:</property>
+                    <property name="label" translatable="yes" context="hyperlinkinternetpage|target_label">_URL:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">target</property>
                     <property name="xalign">0</property>
@@ -94,30 +91,18 @@
                   </packing>
                 </child>
                 <child>
-                  <object class="cuilo-SvxHyperURLBox" id="target">
-                    <property name="visible">True</property>
-                    <property name="can_focus">True</property>
-                    <property name="hexpand">True</property>
-                    <property name="invisible_char">•</property>
-                  </object>
-                  <packing>
-                    <property name="left_attach">1</property>
-                    <property name="top_attach">1</property>
-                  </packing>
-                </child>
-                <child>
                   <object class="GtkLabel" id="login_label">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
-                    <property name="label" translatable="yes">_Login name:</property>
+                    <property name="label" translatable="yes" context="hyperlinkinternetpage|login_label">_Login name:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">login</property>
                     <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
-                    <property name="top_attach">2</property>
+                    <property name="top_attach">3</property>
                   </packing>
                 </child>
                 <child>
@@ -125,14 +110,14 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
-                    <property name="label" translatable="yes">_Password:</property>
+                    <property name="label" translatable="yes" context="hyperlinkinternetpage|password_label">_Password:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">password</property>
                     <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
-                    <property name="top_attach">3</property>
+                    <property name="top_attach">4</property>
                   </packing>
                 </child>
                 <child>
@@ -140,19 +125,7 @@
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="hexpand">True</property>
-                    <property name="invisible_char">•</property>
-                  </object>
-                  <packing>
-                    <property name="left_attach">1</property>
-                    <property name="top_attach">2</property>
-                  </packing>
-                </child>
-                <child>
-                  <object class="GtkEntry" id="password">
-                    <property name="visible">True</property>
-                    <property name="can_focus">True</property>
-                    <property name="hexpand">True</property>
-                    <property name="invisible_char">•</property>
+                    <property name="activates_default">True</property>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
@@ -160,9 +133,20 @@
                   </packing>
                 </child>
                 <child>
+                  <object class="GtkEntry" id="password">
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="hexpand">True</property>
+                    <property name="activates_default">True</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">4</property>
+                  </packing>
+                </child>
+                <child>
                   <object class="GtkCheckButton" id="anonymous">
-                    <property name="label" translatable="yes">Anonymous _user</property>
-                    <property name="use_action_appearance">False</property>
+                    <property name="label" translatable="yes" context="hyperlinkinternetpage|anonymous">Anonymous _user</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">False</property>
@@ -172,11 +156,66 @@
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
-                    <property name="top_attach">4</property>
+                    <property name="top_attach">5</property>
                   </packing>
                 </child>
                 <child>
-                  <placeholder/>
+                  <object class="GtkComboBoxText" id="target">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="hexpand">True</property>
+                    <property name="has_entry">True</property>
+                    <child internal-child="entry">
+                      <object class="GtkEntry">
+                        <property name="can_focus">True</property>
+                        <property name="activates_default">True</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="indication_label">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="label" translatable="yes" context="hyperlinkinternetpage|indication_label">Te_xt:</property>
+                    <property name="use_underline">True</property>
+                    <property name="mnemonic_widget">indication</property>
+                    <property name="xalign">0</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">0</property>
+                    <property name="top_attach">2</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkEntry" id="indication">
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="activates_default">True</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">2</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="lbProtocol">
+                    <property name="name">lbProtocol</property>
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="label" translatable="yes" context="hyperlinkinternetpage|protocol_label">Proto_col:</property>
+                    <property name="use_underline">True</property>
+                    <property name="mnemonic_widget">linktyp_internet</property>
+                    <property name="xalign">0</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">0</property>
+                    <property name="top_attach">0</property>
+                  </packing>
                 </child>
                 <child>
                   <placeholder/>
@@ -189,7 +228,7 @@
           <object class="GtkLabel" id="label2">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Hyperlink Type</property>
+            <property name="label" translatable="yes" context="hyperlinkinternetpage|label2">Hyperlink Type</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -206,6 +245,7 @@
       <object class="GtkFrame" id="frame2">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
+        <property name="valign">end</property>
         <property name="hexpand">True</property>
         <property name="vexpand">True</property>
         <property name="label_xalign">0</property>
@@ -227,7 +267,7 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
-                    <property name="label" translatable="yes">F_rame:</property>
+                    <property name="label" translatable="yes" context="hyperlinkinternetpage|frame_label">F_rame:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">frame</property>
                     <property name="xalign">0</property>
@@ -238,43 +278,17 @@
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkLabel" id="indication_label">
-                    <property name="visible">True</property>
-                    <property name="can_focus">False</property>
-                    <property name="halign">start</property>
-                    <property name="label" translatable="yes">Te_xt:</property>
-                    <property name="use_underline">True</property>
-                    <property name="mnemonic_widget">indication</property>
-                    <property name="xalign">0</property>
-                  </object>
-                  <packing>
-                    <property name="left_attach">0</property>
-                    <property name="top_attach">1</property>
-                  </packing>
-                </child>
-                <child>
                   <object class="GtkLabel" id="name_label">
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="halign">start</property>
-                    <property name="label" translatable="yes">N_ame:</property>
+                    <property name="label" translatable="yes" context="hyperlinkinternetpage|name_label">Na_me:</property>
                     <property name="use_underline">True</property>
                     <property name="mnemonic_widget">name</property>
                     <property name="xalign">0</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
-                    <property name="top_attach">2</property>
-                  </packing>
-                </child>
-                <child>
-                  <object class="GtkEntry" id="indication">
-                    <property name="visible">True</property>
-                    <property name="can_focus">True</property>
-                    <property name="invisible_char">•</property>
-                  </object>
-                  <packing>
-                    <property name="left_attach">1</property>
                     <property name="top_attach">1</property>
                   </packing>
                 </child>
@@ -282,11 +296,11 @@
                   <object class="GtkEntry" id="name">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
-                    <property name="invisible_char">•</property>
+                    <property name="activates_default">True</property>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
-                    <property name="top_attach">2</property>
+                    <property name="top_attach">1</property>
                   </packing>
                 </child>
                 <child>
@@ -295,12 +309,12 @@
                     <property name="can_focus">False</property>
                     <property name="hexpand">True</property>
                     <property name="row_spacing">6</property>
-                    <property name="column_spacing">6</property>
+                    <property name="column_spacing">12</property>
                     <child>
                       <object class="GtkLabel" id="form_label">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
-                        <property name="label" translatable="yes">F_orm:</property>
+                        <property name="label" translatable="yes" context="hyperlinkinternetpage|form_label">F_orm:</property>
                         <property name="use_underline">True</property>
                         <property name="mnemonic_widget">form</property>
                         <property name="xalign">0</property>
@@ -311,9 +325,9 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkComboBox" id="form">
+                      <object class="GtkComboBoxText" id="form">
                         <property name="visible">True</property>
-                        <property name="can_focus">True</property>
+                        <property name="can_focus">False</property>
                         <property name="hexpand">True</property>
                       </object>
                       <packing>
@@ -323,11 +337,11 @@
                     </child>
                     <child>
                       <object class="GtkButton" id="script">
-                        <property name="use_action_appearance">False</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">True</property>
-                        <property name="tooltip_text" translatable="yes">Events</property>
+                        <property name="tooltip_text" translatable="yes" context="hyperlinkinternetpage|script|tooltip_text">Events</property>
+                        <property name="always_show_image">True</property>
                       </object>
                       <packing>
                         <property name="left_attach">3</property>
@@ -335,14 +349,15 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkComboBox" id="frame">
+                      <object class="GtkComboBoxText" id="frame">
                         <property name="visible">True</property>
                         <property name="can_focus">False</property>
                         <property name="hexpand">True</property>
                         <property name="has_entry">True</property>
                         <child internal-child="entry">
                           <object class="GtkEntry" id="combobox-entry">
-                            <property name="can_focus">False</property>
+                            <property name="can_focus">True</property>
+                            <property name="activates_default">True</property>
                           </object>
                         </child>
                       </object>
@@ -365,7 +380,7 @@
           <object class="GtkLabel" id="label1">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <property name="label" translatable="yes">Further Settings</property>
+            <property name="label" translatable="yes" context="hyperlinkinternetpage|label1">Further Settings</property>
             <attributes>
               <attribute name="weight" value="bold"/>
             </attributes>
@@ -387,6 +402,7 @@
       <widget name="frame_label"/>
       <widget name="indication_label"/>
       <widget name="name_label"/>
+      <widget name="lbProtocol"/>
     </widgets>
   </object>
 </interface>

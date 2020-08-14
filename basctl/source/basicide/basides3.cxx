@@ -18,14 +18,18 @@
  */
 
 
-#include <baside2.hxx>
 #include <baside3.hxx>
+#include <basidesh.hxx>
 #include <localizationmgr.hxx>
 #include <dlgedview.hxx>
 #include <xmlscript/xmldlg_imexp.hxx>
-#include <sfx2/dispatch.hxx>
 #include <sfx2/request.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <sfx2/viewfrm.hxx>
+#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
+#include <comphelper/processfactory.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 namespace basctl
 {
@@ -39,7 +43,7 @@ VclPtr<DialogWindow> Shell::CreateDlgWin( const ScriptDocument& rDocument, const
 {
     bCreatingWindow = true;
 
-    sal_uLong nKey = 0;
+    sal_uInt16 nKey = 0;
     VclPtr<DialogWindow> pWin;
     OUString aLibName( rLibName );
     OUString aDlgName( rDlgName );
@@ -77,14 +81,14 @@ VclPtr<DialogWindow> Shell::CreateDlgWin( const ScriptDocument& rDocument, const
 
                 // new dialog window
                 if (!pDialogLayout)
-                    pDialogLayout.reset(VclPtr<DialogWindowLayout>::Create(&GetViewFrame()->GetWindow(), *aObjectCatalog.get()));
+                    pDialogLayout.reset(VclPtr<DialogWindowLayout>::Create(&GetViewFrame()->GetWindow(), *aObjectCatalog));
                 pWin = VclPtr<DialogWindow>::Create(pDialogLayout.get(), rDocument, aLibName, aDlgName, xDialogModel);
                 nKey = InsertWindowInTable( pWin );
             }
         }
         catch (const uno::Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("basctl.basicide");
         }
     }
     else
@@ -97,7 +101,7 @@ VclPtr<DialogWindow> Shell::CreateDlgWin( const ScriptDocument& rDocument, const
     if( pWin )
     {
         pWin->GrabScrollBars( aHScrollBar.get(), aVScrollBar.get() );
-        pTabBar->InsertPage( (sal_uInt16)nKey, aDlgName );
+        pTabBar->InsertPage( nKey, aDlgName );
         pTabBar->Sort();
         if ( !pCurWin )
             SetCurWindow( pWin, false, false );
@@ -120,9 +124,9 @@ VclPtr<DialogWindow> Shell::FindDlgWin (
 
 sal_uInt16 Shell::GetWindowId(const BaseWindow* pWin) const
 {
-    for (WindowTableIt it = aWindowTable.begin(); it != aWindowTable.end(); ++it)
-        if ( it->second == pWin )
-            return it->first;
+    for (auto const& window : aWindowTable)
+        if ( window.second == pWin )
+            return window.first;
     return 0;
 }
 

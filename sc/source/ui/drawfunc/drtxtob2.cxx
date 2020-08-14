@@ -17,41 +17,31 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
 #include <editeng/adjustitem.hxx>
-#include <svx/drawitem.hxx>
 #include <svx/fontwork.hxx>
+#include <editeng/eeitem.hxx>
 #include <editeng/frmdiritem.hxx>
-#include <editeng/outlobj.hxx>
-#include <svx/svdocapt.hxx>
-#include <svx/xtextit.hxx>
 #include <editeng/writingmodeitem.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/viewfrm.hxx>
-#include <sfx2/objsh.hxx>
 #include <sfx2/request.hxx>
-#include <sot/formats.hxx>
 #include <svl/whiter.hxx>
 #include <svx/svdoashp.hxx>
-#include "sc.hrc"
-#include "drtxtob.hxx"
-#include "viewdata.hxx"
-#include "drawview.hxx"
-#include "tabvwsh.hxx"
-#include "impex.hxx"
-#include "docsh.hxx"
-#include "transobj.hxx"
-#include "drwtrans.hxx"
-#include "drwlayer.hxx"
+#include <sc.hrc>
+#include <drtxtob.hxx>
+#include <viewdata.hxx>
+#include <drawview.hxx>
+#include <tabvwsh.hxx>
+#include <drwlayer.hxx>
 
 sal_uInt16 ScGetFontWorkId()
 {
     return SvxFontWorkChildWindow::GetChildWindowId();
 }
 
-bool ScDrawTextObjectBar::IsNoteEdit()
+bool ScDrawTextObjectBar::IsNoteEdit() const
 {
-    return ScDrawLayer::IsNoteCaption( pViewData->GetView()->GetSdrView()->GetTextEditObject() );
+    return ScDrawLayer::IsNoteCaption( pViewData->GetView()->GetScDrawView()->GetTextEditObject() );
 }
 
 //  if no text edited, functions like in drawsh
@@ -75,6 +65,7 @@ void ScDrawTextObjectBar::ExecuteGlobal( SfxRequest &rReq )
 
         case SID_PASTE:
         case SID_PASTE_SPECIAL:
+        case SID_PASTE_UNFORMATTED:
         case SID_CLIPBOARD_FORMAT_ITEMS:
         case SID_HYPERLINK_SETLINK:
             {
@@ -181,7 +172,7 @@ void ScDrawTextObjectBar::ExecuteExtra( SfxRequest &rReq )
     }
 }
 
-void ScDrawTextObjectBar::ExecFormText(SfxRequest& rReq)
+void ScDrawTextObjectBar::ExecFormText(const SfxRequest& rReq)
 {
     ScTabView*          pTabView    = pViewData->GetView();
     ScDrawView*         pDrView     = pTabView->GetScDrawView();

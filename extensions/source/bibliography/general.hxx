@@ -26,12 +26,7 @@
 #include <com/sun/star/sdbc/XRowSetListener.hpp>
 
 #include <vcl/layout.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/group.hxx>
-#include <svtools/svmedit.hxx>
 #include <vcl/tabpage.hxx>
-#include <vcl/combobox.hxx>
-#include <vcl/scrbar.hxx>
 #include <cppuhelper/implbase1.hxx>
 #include "bibshortcuthandler.hxx"
 
@@ -109,7 +104,6 @@ class BibGeneralPage : public TabPage, public BibShortCutHandler
     css::uno::Reference< css::awt::XWindow >
                         aControls[ FIELD_COUNT ];
 
-    OUString            sErrorPrefix;
     OUString            sTableErrorString;
 
     OUString            sTypeColumnName;
@@ -127,7 +121,7 @@ class BibGeneralPage : public TabPage, public BibShortCutHandler
 
     BibDataManager*     pDatMan;
 
-    css::uno::Reference< css::awt::XControlModel >
+    bool
                                 AddXControl( const OUString& rName, FixedText& rLabel, const OString& sHelpId,
                                             sal_Int16& rIndex, std::vector<vcl::Window*>& rChildren );
 
@@ -159,8 +153,6 @@ public:
     virtual void                GetFocus() override;
 
     virtual bool                HandleShortCutKey( const KeyEvent& rKeyEvent ) override; // returns true, if key was handled
-
-    const rtl::Reference<BibGeneralPageFocusListener>& GetFocusListener() { return mxBibGeneralPageFocusListener; }
 
     /// @throws css::uno::RuntimeException
     void focusGained(const css::awt::FocusEvent& rEvent);

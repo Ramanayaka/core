@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_CANVASFONT_HXX
-#define INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_CANVASFONT_HXX
+#pragma once
 
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
@@ -30,10 +29,9 @@
 
 #include <vcl/font.hxx>
 
-#include <canvas/vclwrapper.hxx>
+#include <vclwrapper.hxx>
 
-#include "cairo_spritecanvas.hxx"
-
+#include "cairo_surfaceprovider.hxx"
 
 
 /* Definition of CanvasFont class */
@@ -72,7 +70,7 @@ namespace cairocanvas
         virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-        vcl::Font getVCLFont() const;
+        vcl::Font const & getVCLFont() const;
 
     private:
         ::canvas::vcltools::VCLObject<vcl::Font> maFont;
@@ -81,7 +79,5 @@ namespace cairocanvas
     };
 
 }
-
-#endif // INCLUDED_CANVAS_SOURCE_CAIRO_CAIRO_CANVASFONT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

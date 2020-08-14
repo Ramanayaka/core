@@ -20,13 +20,14 @@
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_MULTIPLECHARTCONVERTERS_HXX
 
 #include "MultipleItemConverter.hxx"
-#include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+
+namespace com::sun::star::awt { struct Size; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
 
 class SdrModel;
 
-namespace chart { namespace wrapper {
+namespace chart::wrapper {
 
 class AllAxisItemConverter : public MultipleItemConverter
 {
@@ -35,8 +36,7 @@ public:
         const css::uno::Reference<css::frame::XModel> & xChartModel,
         SfxItemPool& rItemPool,
         SdrModel& rDrawModel,
-        const css::uno::Reference<css::lang::XMultiServiceFactory>& xNamedPropertyContainerFactory,
-        const css::awt::Size* pRefSize = nullptr );
+        const css::awt::Size* pRefSize );
 
     virtual ~AllAxisItemConverter() override;
 
@@ -98,8 +98,7 @@ protected:
     virtual const sal_uInt16 * GetWhichPairs() const override;
 };
 
-} //  namespace wrapper
-} //  namespace chart
+} // namespace chart::wrapper
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_INC_MULTIPLECHARTCONVERTERS_HXX
 #endif

@@ -27,7 +27,7 @@ SvxCharHiddenItem::SvxCharHiddenItem( const bool bHidden, const sal_uInt16 nId )
 {
 }
 
-SfxPoolItem* SvxCharHiddenItem::Clone( SfxItemPool * ) const
+SvxCharHiddenItem* SvxCharHiddenItem::Clone( SfxItemPool * ) const
 {
     return new SvxCharHiddenItem( *this );
 }
@@ -38,14 +38,14 @@ bool SvxCharHiddenItem::GetPresentation
     MapUnit             /*eCoreUnit*/,
     MapUnit             /*ePresUnit*/,
     OUString&           rText,
-    const IntlWrapper * /*pIntl*/
+    const IntlWrapper & /*rIntl*/
 )   const
 {
-    sal_uInt16 nId = RID_SVXITEMS_CHARHIDDEN_FALSE;
+    const char* pId = RID_SVXITEMS_CHARHIDDEN_FALSE;
 
     if ( GetValue() )
-        nId = RID_SVXITEMS_CHARHIDDEN_TRUE;
-    rText = EditResId::GetString(nId);
+        pId = RID_SVXITEMS_CHARHIDDEN_TRUE;
+    rText = EditResId(pId);
     return true;
 }
 

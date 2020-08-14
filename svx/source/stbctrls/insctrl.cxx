@@ -19,12 +19,11 @@
 
 #include <vcl/status.hxx>
 #include <svl/eitem.hxx>
-#include <sfx2/app.hxx>
-#include <sfx2/dispatch.hxx>
+#include <tools/debug.hxx>
 
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
 
-#include "svx/insctrl.hxx"
+#include <svx/insctrl.hxx>
 #include <svx/dialmgr.hxx>
 
 SFX_IMPL_STATUSBAR_CONTROL(SvxInsertStatusBarControl, SfxBoolItem);
@@ -64,12 +63,17 @@ void SvxInsertStatusBarControl::StateChanged( sal_uInt16 , SfxItemState eState,
 
 void SvxInsertStatusBarControl::Paint( const UserDrawEvent& )
 {
-    DrawItemText_Impl();
 }
 
 void SvxInsertStatusBarControl::DrawItemText_Impl()
 {
-    OUString aText;
+    OUString aText = "";
+    // tdf#107918 on macOS without an Insert key it's hard to figure out how to switch modes
+    // so we show both Insert and Overwrite
+#ifdef MACOSX
+    if ( bInsert )
+        aText = SvxResId( RID_SVXSTR_INSERT_TEXT );
+#endif
     if ( !bInsert )
         aText = SvxResId( RID_SVXSTR_OVERWRITE_TEXT );
 

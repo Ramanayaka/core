@@ -13,18 +13,14 @@
 #include <memory>
 #include <vector>
 
-#include <com/sun/star/document/XDocumentProperties.hpp>
-
 #include <rtl/ustring.hxx>
 #include <sfx2/dllapi.h>
 #include <sfx2/infobar.hxx>
 
-class SfxObjectShell;
+namespace com::sun::star::beans { class XPropertyContainer; }
+namespace com::sun::star::document { class XDocumentProperties; }
+
 class SfxViewFrame;
-namespace basegfx
-{
-class BColor;
-}
 
 /// Return code of SfxClassificationHelper::CheckPaste().
 enum class SfxClassificationCheckPasteResult
@@ -45,7 +41,7 @@ enum class SfxClassificationPolicyType
 /// Shared code to handle Business Authorization Identification and Labeling Scheme (BAILS) properties.
 class SFX2_DLLPUBLIC SfxClassificationHelper
 {
-    class Impl;
+    class SAL_DLLPRIVATE Impl;
     std::unique_ptr<Impl> m_pImpl;
 
 public:
@@ -57,17 +53,27 @@ public:
     /// Wrapper around CheckPaste(): informs the user if necessary and finds out if the paste can be continued or not.
     static bool ShowPasteInfo(SfxClassificationCheckPasteResult eResult);
 
-    SfxClassificationHelper(const css::uno::Reference<css::document::XDocumentProperties>& xDocumentProperties);
+    SfxClassificationHelper(const css::uno::Reference<css::document::XDocumentProperties>& xDocumentProperties, bool bUseLocalizedPolicy = true);
     ~SfxClassificationHelper();
     /// Get the currently selected category for eType.
-    const OUString& GetBACName(SfxClassificationPolicyType eType);
+    const OUString& GetBACName(SfxClassificationPolicyType eType) const;
     /// Return all possible valid category names, based on the policy.
     std::vector<OUString> GetBACNames();
+    /// Return all possible valid category identifiers, based on the policy.
+    std::vector<OUString> GetBACIdentifiers();
+    /// Get the currently selected category abbreviation for eType. Returns full name if no abbreviation defined.
+    const OUString& GetAbbreviatedBACName(const OUString& sFullName);
+    /// Get the currently selected category for the identifier.
+    OUString GetBACNameForIdentifier(const OUString& sIdentifier);
+    /// Return all possible valid abbreviated category names, based on the policy.
+    std::vector<OUString> GetAbbreviatedBACNames();
     /// Setting this sets all the other properties, based on the policy.
     void SetBACName(const OUString& rName, SfxClassificationPolicyType eType);
+    /// Returns the class with the higher priority (based on sensitivity).
+    OUString GetHigherClass(const OUString& first, const OUString& second);
     /// If GetImpactScale() and GetImpactLevel*() will return something meaningful.
     bool HasImpactLevel();
-    InfoBarType GetImpactLevelType();
+    InfobarType GetImpactLevelType();
     /// Larger value means more confidential.
     sal_Int32 GetImpactLevel();
     /// Comparing the GetImpactLevel() result is only meaningful when the impact scale is the same.
@@ -78,6 +84,11 @@ public:
     /// The selected category has some content for the document footer.
     bool HasDocumentFooter();
     void UpdateInfobar(SfxViewFrame& rViewFrame);
+
+    std::vector<OUString> const & GetMarkings() const;
+    std::vector<OUString> const & GetIntellectualPropertyParts() const;
+    std::vector<OUString> const & GetIntellectualPropertyPartNumbers() const;
+
     /// Does a best-effort conversion of rType to SfxClassificationPolicyType.
     static SfxClassificationPolicyType stringToPolicyType(const OUString& rType);
     /// Returns the string representation of a SfxClassificationPolicyType element.
@@ -91,7 +102,125 @@ public:
     static const OUString& PROP_DOCWATERMARK();
     /// Get the property prefix for the IntellectualProperty policy type.
     static const OUString& PROP_PREFIX_INTELLECTUALPROPERTY();
+
+    static SfxClassificationPolicyType getPolicyType();
 };
+
+namespace sfx
+{
+
+/// Specifies the origin: either defined by the BAF policy or manual via. the advanced classification dialog
+enum class ClassificationCreationOrigin
+{
+    NONE,
+    BAF_POLICY,
+    MANUAL
+};
+
+class ClassificationKeyCreator
+{
+private:
+    const SfxClassificationPolicyType m_ePolicyType;
+    const OUString m_sPolicy;
+    sal_Int32 m_nTextNumber;
+    sal_Int32 m_nIPPartNumber;
+    sal_Int32 m_nMarkingNumber;
+
+    OUString const & getPolicyKey() const
+    {
+        return m_sPolicy;
+    }
+public:
+    ClassificationKeyCreator(SfxClassificationPolicyType ePolicyType)
+        : m_ePolicyType(ePolicyType)
+        , m_sPolicy(SfxClassificationHelper::policyTypeToString(m_ePolicyType))
+        , m_nTextNumber(1)
+        , m_nIPPartNumber(1)
+        , m_nMarkingNumber(1)
+    {}
+
+    OUString makeTextKey() const
+    {
+        return getPolicyKey() + "Custom:Text";
+    }
+
+    OUString makeNumberedTextKey()
+    {
+        return makeTextKey() + ":n" + OUString::number(m_nTextNumber++);
+    }
+
+    bool isMarkingTextKey(OUString const & aKey) const
+    {
+        return aKey.startsWith(makeTextKey());
+    }
+
+    OUString makeCategoryNameKey() const
+    {
+        return getPolicyKey() + "BusinessAuthorizationCategory:Name";
+    }
+
+    bool isCategoryNameKey(OUString const & aKey) const
+    {
+        return aKey.startsWith(makeCategoryNameKey());
+    }
+
+    OUString makeCategoryIdentifierKey() const
+    {
+        return getPolicyKey() + "BusinessAuthorizationCategory:Identifier";
+    }
+
+    bool isCategoryIdentifierKey(OUString const & aKey) const
+    {
+        return aKey.startsWith(makeCategoryIdentifierKey());
+    }
+
+    OUString makeMarkingKey() const
+    {
+        return getPolicyKey() + "Custom:Marking";
+    }
+
+    OUString makeNumberedMarkingKey()
+    {
+        return makeMarkingKey() + ":n" + OUString::number(m_nMarkingNumber++);
+    }
+
+    bool isMarkingKey(OUString const & aKey) const
+    {
+        return aKey.startsWith(makeMarkingKey());
+    }
+
+    OUString makeIntellectualPropertyPartKey() const
+    {
+        return getPolicyKey() + "Custom:IntellectualPropertyPart";
+    }
+
+    OUString makeNumberedIntellectualPropertyPartKey()
+    {
+        return makeIntellectualPropertyPartKey() + ":n" + OUString::number(m_nIPPartNumber++);
+    }
+
+    bool isIntellectualPropertyPartKey(OUString const & aKey) const
+    {
+        return aKey.startsWith(makeIntellectualPropertyPartKey());
+    }
+
+    OUString makeFullTextualRepresentationKey() const
+    {
+        return getPolicyKey() + "Custom:FullTexturalRepresentation";
+    }
+
+    /// Classification creation origin key
+    OUString makeCreationOriginKey() const
+    {
+        return getPolicyKey() + "CreationOrigin";
+    }
+};
+
+SFX2_DLLPUBLIC sfx::ClassificationCreationOrigin getCreationOriginProperty(
+    css::uno::Reference<css::beans::XPropertyContainer> const & rxPropertyContainer,
+    sfx::ClassificationKeyCreator const & rKeyCreator);
+
+}
 
 #endif
 

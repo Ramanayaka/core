@@ -1,5 +1,6 @@
 import os
 import hashlib
+import zipfile
 import tarfile
 
 def uncompress_file_to_dir(compressed_file, uncompress_dir):
@@ -16,7 +17,15 @@ def uncompress_file_to_dir(compressed_file, uncompress_dir):
         tar.extractall(uncompress_dir)
         tar.close()
     elif extension == '.zip':
-        pass
+        zip_file = zipfile.ZipFile(compressed_file)
+        zip_file.extractall(uncompress_dir)
+        zip_file.close()
+
+        uncompress_dir = os.path.join(uncompress_dir, os.listdir(uncompress_dir)[0])
+        if " " in os.listdir(uncompress_dir)[0]:
+            print("replacing whitespace in directory name")
+            os.rename(os.path.join(uncompress_dir, os.listdir(uncompress_dir)[0]),
+                            os.path.join(uncompress_dir, os.listdir(uncompress_dir)[0].replace(" ", "_")))
     else:
         print("Error: unknown extension " + extension)
 

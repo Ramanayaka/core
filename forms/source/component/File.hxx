@@ -20,7 +20,7 @@
 #ifndef INCLUDED_FORMS_SOURCE_COMPONENT_FILE_HXX
 #define INCLUDED_FORMS_SOURCE_COMPONENT_FILE_HXX
 
-#include "FormComponent.hxx"
+#include <FormComponent.hxx>
 
 
 namespace frm
@@ -44,7 +44,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return OUString("com.sun.star.form.OFileControlModel"); }
+    { return "com.sun.star.form.OFileControlModel"; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 

@@ -9,17 +9,17 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_FRAMECONTROLSMANAGER_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_FRAMECONTROLSMANAGER_HXX
 
-#include <viewsh.hxx>
-#include <FrameControl.hxx>
+#include "FrameControl.hxx"
 
 #include <tools/gen.hxx>
 
 #include <map>
 #include <memory>
-#include <vector>
 
 class SwPageFrame;
 class SwEditWin;
+class SwContentFrame;
+class SwTextNode;
 
 typedef std::shared_ptr< SwFrameControl > SwFrameControlPtr;
 
@@ -32,14 +32,12 @@ class SwFrameControlsManager
     private:
         VclPtr<SwEditWin> m_pEditWin;
         std::map< FrameControlType, SwFrameControlPtrMap > m_aControls;
+        std::map<const SwTextNode*, const SwContentFrame*> m_aTextNodeContentFrameMap;
 
     public:
         SwFrameControlsManager( SwEditWin* pEditWin );
         ~SwFrameControlsManager();
         void dispose();
-
-        SwFrameControlsManager( const SwFrameControlsManager& rCopy );
-        SwFrameControlsManager& operator=( const SwFrameControlsManager& rCopy );
 
         SwFrameControlPtr GetControl( FrameControlType eType, const SwFrame* pFrame );
         void RemoveControls( const SwFrame* pFrame );
@@ -50,6 +48,9 @@ class SwFrameControlsManager
         // Helper methods
         void SetHeaderFooterControl( const SwPageFrame* pPageFrame, FrameControlType eType, Point aOffset );
         void SetPageBreakControl( const SwPageFrame* pPageFrame );
+        void SetUnfloatTableButton( const SwFlyFrame* pFlyFrame, bool bShow, Point aTopRightPixel = Point() );
+        void SetOutlineContentVisibilityButton(const SwTextNode* pTextNd);
+        void SetOutlineContentVisibilityButtons();
 };
 
 #endif

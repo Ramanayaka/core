@@ -20,9 +20,8 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_BROWSER_DBTREEMODEL_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_BROWSER_DBTREEMODEL_HXX
 
-#include <com/sun/star/container/XNameAccess.hpp>
-#include "unodatbr.hxx"
-#include "commontypes.hxx"
+#include <unodatbr.hxx>
+#include <commontypes.hxx>
 
 // syntax of the tree           userdata
 // datasource                   holds the connection
@@ -34,7 +33,7 @@
 #define CONTAINER_QUERIES       sal_uLong( 0 )
 #define CONTAINER_TABLES        sal_uLong( 1 )
 
-namespace com { namespace sun { namespace star { namespace lang { class XMultiServiceFactory; } } } }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
 
 namespace dbaui
 {
@@ -43,7 +42,7 @@ namespace dbaui
         /// if the entry denotes a table or query, this is the respective UNO object
         css::uno::Reference< css::beans::XPropertySet >
                                         xObjectProperties;
-        /// if the entry denotes a object container, this is the UNO interface for this container
+        /// if the entry denotes an object container, this is the UNO interface for this container
         css::uno::Reference< css::uno::XInterface >
                                         xContainer;
         /// if the entry denotes a data source, this is the connection for this data source (if already connection)

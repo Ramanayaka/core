@@ -20,9 +20,12 @@
 #define INCLUDED_SW_INC_HHCWRP_HXX
 
 #include <editeng/hangulhanja.hxx>
+#include <editeng/svxenum.hxx>
+#include <vcl/vclptr.hxx>
+#include <vcl/window.hxx>
+#include "swdllapi.h"
 
 class SwView;
-namespace vcl { class Window; }
 class SwWrtShell;
 struct SwConversionArgs;
 class SwPaM;
@@ -33,8 +36,8 @@ class SW_DLLPUBLIC SwHHCWrapper : public editeng::HangulHanjaConversion
     VclPtr<vcl::Window>     m_pWin;
     SwWrtShell &m_rWrtShell;
 
-    SwConversionArgs *m_pConvArgs;    /**< object for arguments (and results) needed
-                                       to find of next convertible text portion */
+    std::unique_ptr<SwConversionArgs> m_pConvArgs;    /**< object for arguments (and results) needed
+                                                       to find of next convertible text portion */
 
     sal_Int32       m_nLastPos;       /**< starting position of the last found text part
                                        (needs to be sth that gets not moved like
@@ -53,10 +56,10 @@ class SW_DLLPUBLIC SwHHCWrapper : public editeng::HangulHanjaConversion
 
     /// from SvxSpellWrapper copied and modified
     bool        ConvNext_impl();        ///< former SpellNext
-    bool        FindConvText_impl();    ///< former FindSpellError
+    void        FindConvText_impl();    ///< former FindSpellError
 
     void        ConvStart_impl( SwConversionArgs *pConvArgs, SvxSpellArea eSpell );   ///< former SpellStart
-    void        ConvEnd_impl( SwConversionArgs *pConvArgs );                          ///< former SpellEnd
+    void        ConvEnd_impl( SwConversionArgs const *pConvArgs );                          ///< former SpellEnd
     bool        ConvContinue_impl( SwConversionArgs *pConvArgs );                     ///< former SpellContinue
 
     void        SelectNewUnit_impl( const sal_Int32 nUnitStart,

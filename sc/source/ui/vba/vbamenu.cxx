@@ -9,6 +9,7 @@
 
 #include "vbamenu.hxx"
 #include "vbamenuitems.hxx"
+#include <ooo/vba/XCommandBarControls.hpp>
 
 using namespace com::sun::star;
 using namespace ooo::vba;
@@ -50,18 +51,16 @@ ScVbaMenu::MenuItems( const uno::Any& aIndex )
 OUString
 ScVbaMenu::getServiceImplName()
 {
-    return OUString("ScVbaMenu");
+    return "ScVbaMenu";
 }
 
 uno::Sequence<OUString>
 ScVbaMenu::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Menu";
-    }
+        "ooo.vba.excel.Menu"
+    };
     return aServiceNames;
 }
 

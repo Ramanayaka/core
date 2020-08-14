@@ -18,6 +18,8 @@
  */
 
 #include <sal/main.h>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 #include <tools/extendapplicationenvironment.hxx>
 
 #include <cppuhelper/bootstrap.hxx>
@@ -29,14 +31,13 @@
 #include <vcl/event.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/wrkwin.hxx>
-#include <vcl/msgbox.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace cppu;
 
 // Forward declaration
-void Main();
+static void Main();
 
 SAL_IMPLEMENT_MAIN()
 {
@@ -56,9 +57,9 @@ SAL_IMPLEMENT_MAIN()
         ::Main();
         DeInitVCL();
     }
-    catch (const Exception& e)
+    catch (const Exception&)
     {
-        SAL_WARN("vcl.app", "Fatal exception: " << e.Message);
+        TOOLS_WARN_EXCEPTION("vcl.app", "Fatal");
         return 1;
     }
     catch (const std::exception &e)
@@ -70,11 +71,15 @@ SAL_IMPLEMENT_MAIN()
     return 0;
 }
 
+namespace {
+
 class MyWin : public WorkWindow
 {
 public:
                 MyWin( vcl::Window* pParent, WinBits nWinStyle );
 };
+
+}
 
 void Main()
 {

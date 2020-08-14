@@ -7,18 +7,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "ChartToolbarController.hxx"
+#include <ChartToolbarController.hxx>
 
-#include <rtl/ref.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
-#include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/XFramesSupplier.hpp>
-#include <comphelper/namedvaluecollection.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <sal/log.hxx>
+
+namespace com::sun::star::uno { class XComponentContext; }
 
 namespace chart {
 
@@ -103,7 +100,7 @@ void ChartToolbarController::update()
 
 OUString ChartToolbarController::getImplementationName()
 {
-    return OUString("org.libreoffice.chart2.Chart2ToolboxController");
+    return "org.libreoffice.chart2.Chart2ToolboxController";
 }
 
 sal_Bool ChartToolbarController::supportsService(OUString const & ServiceName)
@@ -118,7 +115,7 @@ css::uno::Sequence<OUString> ChartToolbarController::getSupportedServiceNames()
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 org_libreoffice_chart2_Chart2ToolboxController(css::uno::XComponentContext*, css::uno::Sequence<css::uno::Any> const & rProperties)
 {
     return cppu::acquire(new ::chart::ChartToolbarController(rProperties));

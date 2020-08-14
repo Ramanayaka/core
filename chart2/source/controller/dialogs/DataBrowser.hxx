@@ -21,18 +21,23 @@
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_DIALOGS_DATABROWSER_HXX
 
 #include <svtools/editbrowsebox.hxx>
-#include <vcl/outdev.hxx>
-#include <svtools/fmtfield.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
+#include <vcl/weld.hxx>
 
 #include <memory>
 #include <vector>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
+    namespace awt {
+        class XWindow;
+    }
     namespace chart2 {
         class XChartDocument;
     }
-}}}
+}
+
+namespace com::sun::star::uno { class XComponentContext; }
+
+class OutputDevice;
 
 namespace chart
 {
@@ -64,7 +69,9 @@ protected:
     virtual void MouseButtonDown( const BrowserMouseEvent& rEvt ) override;
 
 public:
-    DataBrowser( vcl::Window* pParent, WinBits nStyle, bool bLiveUpdate );
+    DataBrowser(const css::uno::Reference<css::awt::XWindow> &rParent,
+                weld::Container* pColumns, weld::Container* pColors);
+
     virtual ~DataBrowser() override;
     virtual void dispose() override;
 
@@ -131,8 +138,8 @@ public:
 
     sal_uInt32 GetNumberFormatKey( sal_uInt16 nCol ) const;
 
-    bool IsEnableItem() { return m_bDataValid;}
-    bool IsDataValid();
+    bool IsEnableItem() const { return m_bDataValid;}
+    bool IsDataValid() const;
     void ShowWarningBox();
     bool ShowQueryBox();
 
@@ -150,11 +157,12 @@ private:
     /// the row that is currently painted
     long                m_nSeekRow;
     bool                m_bIsReadOnly;
-    bool                m_bLiveUpdate;
     bool                m_bDataValid;
 
-    VclPtr<FormattedField>      m_aNumberEditField;
-    VclPtr<Edit>                m_aTextEditField;
+    VclPtr<svt::FormattedControl> m_aNumberEditField;
+    VclPtr<svt::EditControl>    m_aTextEditField;
+    weld::Container*            m_pColumnsWin;
+    weld::Container*            m_pColorsWin;
 
     /// note: m_aNumberEditField must precede this member!
     ::svt::CellControllerRef    m_rNumberEditController;
@@ -169,8 +177,8 @@ private:
 
     OUString GetColString( sal_Int32 nColumnId ) const;
 
-    DECL_LINK( SeriesHeaderGotFocus, Control&, void );
-    DECL_LINK( SeriesHeaderChanged,  impl::SeriesHeaderEdit*, void );
+    DECL_LINK( SeriesHeaderGotFocus, impl::SeriesHeaderEdit&, void );
+    DECL_LINK( SeriesHeaderChanged,  impl::SeriesHeaderEdit&, void );
 
     DataBrowser( const DataBrowser & ) = delete;
 };

@@ -20,16 +20,17 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_TOOLS_SLOTSTATELISTENER_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_TOOLS_SLOTSTATELISTENER_HXX
 
-#include "MutexOwner.hxx"
+#include <MutexOwner.hxx>
 #include <com/sun/star/frame/XStatusListener.hpp>
-#include <com/sun/star/frame/FeatureStateEvent.hpp>
-#include <com/sun/star/frame/XDispatchProvider.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <tools/link.hxx>
 
-namespace sd { namespace tools {
+namespace com::sun::star::frame { class XDispatch; }
+namespace com::sun::star::frame { class XDispatchProvider; }
+namespace com::sun::star::frame { class XStatusListener; }
+namespace com::sun::star::frame { struct FeatureStateEvent; }
+
+namespace sd::tools {
 
 typedef cppu::WeakComponentImplHelper<
     css::frame::XStatusListener
@@ -50,7 +51,7 @@ public:
         explanations about the parameters.
     */
     SlotStateListener (
-        Link<const OUString&,void>& rCallback,
+        Link<const OUString&,void> const & rCallback,
         const css::uno::Reference<css::frame::XDispatchProvider>& rxDispatchProvider,
         const OUString& rSlotName);
 
@@ -111,8 +112,7 @@ private:
     /** Remember the URLs that describe slots whose state changes we are
         listening to.
     */
-    typedef ::std::vector<css::util::URL> RegisteredURLList;
-    RegisteredURLList maRegisteredURLList;
+    std::vector<css::util::URL> maRegisteredURLList;
 
     css::uno::WeakReference<css::frame::XDispatchProvider> mxDispatchProviderWeak;
 
@@ -136,7 +136,7 @@ private:
             const css::util::URL& rURL) const;
 };
 
-} } // end of namespace ::sd::tools
+} // end of namespace ::sd::tools
 
 #endif
 

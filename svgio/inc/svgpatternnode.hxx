@@ -20,12 +20,12 @@
 #ifndef INCLUDED_SVGIO_INC_SVGPATTERNNODE_HXX
 #define INCLUDED_SVGIO_INC_SVGPATTERNNODE_HXX
 
-#include <svgnode.hxx>
-#include <svgstyleattributes.hxx>
+#include "svgnode.hxx"
+#include "svgstyleattributes.hxx"
+#include <basegfx/matrix/b2dhommatrix.hxx>
+#include <memory>
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
         class SvgPatternNode : public SvgNode
         {
@@ -37,19 +37,24 @@ namespace svgio
             SvgStyleAttributes      maSvgStyleAttributes;
 
             /// variable scan values, dependent of given XAttributeList
-            basegfx::B2DRange*      mpViewBox;
+            std::unique_ptr<basegfx::B2DRange>
+                                    mpViewBox;
             SvgAspectRatio          maSvgAspectRatio;
             SvgNumber               maX;
             SvgNumber               maY;
             SvgNumber               maWidth;
             SvgNumber               maHeight;
-            SvgUnits*               mpPatternUnits;
-            SvgUnits*               mpPatternContentUnits;
-            basegfx::B2DHomMatrix*  mpaPatternTransform;
+            std::unique_ptr<SvgUnits>
+                                    mpPatternUnits;
+            std::unique_ptr<SvgUnits>
+                                    mpPatternContentUnits;
+            std::unique_ptr<basegfx::B2DHomMatrix>
+                                    mpaPatternTransform;
 
             /// link to another pattern used as style. If maXLink
             /// is set, the node can be fetched on demand by using
             // tryToFindLink (buffered)
+            mutable bool mbResolvingLink; // protect against infinite link recursion
             OUString           maXLink;
             const SvgPatternNode*   mpXLink;
 
@@ -66,17 +71,17 @@ namespace svgio
             virtual void parseAttribute(const OUString& rTokenName, SVGToken aSVGToken, const OUString& aContent) override;
 
             /// global helpers
-            void getValuesRelative(double& rfX, double& rfY, double& rfW, double& rfH, const basegfx::B2DRange& rGeoRange, SvgNode& rUser) const;
+            void getValuesRelative(double& rfX, double& rfY, double& rfW, double& rfH, const basegfx::B2DRange& rGeoRange, SvgNode const & rUser) const;
 
             /// get pattern primitives buffered, uses decomposeSvgNode internally
             const drawinglayer::primitive2d::Primitive2DContainer& getPatternPrimitives() const;
 
             /// InfoProvider support for % values
-            virtual const basegfx::B2DRange getCurrentViewPort() const override;
+            virtual basegfx::B2DRange getCurrentViewPort() const override;
 
             /// viewBox content
             const basegfx::B2DRange* getViewBox() const;
-            void setViewBox(const basegfx::B2DRange* pViewBox) { if(mpViewBox) delete mpViewBox; mpViewBox = nullptr; if(pViewBox) mpViewBox = new basegfx::B2DRange(*pViewBox); }
+            void setViewBox(const basegfx::B2DRange* pViewBox) { mpViewBox.reset(); if(pViewBox) mpViewBox.reset(new basegfx::B2DRange(*pViewBox)); }
 
             /// SvgAspectRatio content
             const SvgAspectRatio& getSvgAspectRatio() const;
@@ -95,19 +100,19 @@ namespace svgio
 
             /// PatternUnits content
             const SvgUnits* getPatternUnits() const;
-            void setPatternUnits(const SvgUnits aPatternUnits) { if(mpPatternUnits) delete mpPatternUnits; mpPatternUnits = nullptr; mpPatternUnits = new SvgUnits(aPatternUnits); }
+            void setPatternUnits(const SvgUnits aPatternUnits) { mpPatternUnits.reset( new SvgUnits(aPatternUnits) ); }
 
             /// PatternContentUnits content
             const SvgUnits* getPatternContentUnits() const;
-            void setPatternContentUnits(const SvgUnits aPatternContentUnits) { if(mpPatternContentUnits) delete mpPatternContentUnits; mpPatternContentUnits = nullptr; mpPatternContentUnits = new SvgUnits(aPatternContentUnits); }
+            void setPatternContentUnits(const SvgUnits aPatternContentUnits) { mpPatternContentUnits.reset( new SvgUnits(aPatternContentUnits) ); }
 
             /// PatternTransform content
             const basegfx::B2DHomMatrix* getPatternTransform() const;
-            void setPatternTransform(const basegfx::B2DHomMatrix* pMatrix) { if(mpaPatternTransform) delete mpaPatternTransform; mpaPatternTransform = nullptr; if(pMatrix) mpaPatternTransform = new basegfx::B2DHomMatrix(*pMatrix); }
+            void setPatternTransform(const basegfx::B2DHomMatrix* pMatrix) { mpaPatternTransform.reset(); if(pMatrix) mpaPatternTransform.reset(new basegfx::B2DHomMatrix(*pMatrix)); }
 
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGPATTERNNODE_HXX
 

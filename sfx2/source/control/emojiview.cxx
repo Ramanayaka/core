@@ -7,27 +7,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <sfx2/emojiview.hxx>
-#include <sfx2/emojiviewitem.hxx>
-#include <sfx2/templatelocalview.hxx>
-#include <sfx2/sfxresid.hxx>
-#include <tools/urlobj.hxx>
-#include <vcl/layout.hxx>
+#include <emojiview.hxx>
+#include <emojiviewitem.hxx>
 #include <rtl/bootstrap.hxx>
+#include <sal/log.hxx>
 #include <config_folders.h>
 #include <officecfg/Office/Common.hxx>
 #include <comphelper/processfactory.hxx>
+#include <vcl/event.hxx>
+#include <vcl/svapp.hxx>
 
 #include <orcus/json_document_tree.hpp>
 #include <orcus/config.hpp>
 #include <orcus/pstring.hpp>
 #include <string>
 #include <fstream>
-#include <streambuf>
 
-#include <doc.hrc>
-
-#include <vcl/builderfactory.hxx>
 using namespace ::com::sun::star;
 
 bool ViewFilter_Category::isFilteredCategory(FILTER_CATEGORY filter, const OUString &rCategory)
@@ -65,8 +60,8 @@ bool ViewFilter_Category::operator () (const ThumbnailViewItem *pItem)
     return true;
 }
 
-EmojiView::EmojiView (vcl::Window *pParent)
-    : ThumbnailView(pParent, WB_TABSTOP | WB_VSCROLL)
+EmojiView::EmojiView(std::unique_ptr<weld::ScrolledWindow> xWindow)
+    : SfxThumbnailView(std::move(xWindow), nullptr)
 {
     // locate json data file
     OUString sPath("$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/emojiconfig/emoji.json");
@@ -80,19 +75,28 @@ EmojiView::EmojiView (vcl::Window *pParent)
     msJSONData = std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     if(msJSONData.empty())
         return;
-
-    uno::Reference< uno::XComponentContext > xContext( comphelper::getProcessComponentContext() );
-    OUString sFontName(officecfg::Office::Common::Misc::EmojiFont::get(xContext));
-    vcl::Font aFont = GetControlFont();
-    aFont.SetFamilyName( sFontName );
-    SetControlFont(aFont);
 }
 
-VCL_BUILDER_FACTORY(EmojiView)
+void EmojiView::SetDrawingArea(weld::DrawingArea* pDrawingArea)
+{
+    SfxThumbnailView::SetDrawingArea(pDrawingArea);
+
+    if (vcl::Window* pDefaultDevice = dynamic_cast<vcl::Window*>(Application::GetDefaultDevice()))
+    {
+        uno::Reference<uno::XComponentContext> xContext(comphelper::getProcessComponentContext());
+        OUString sFontName(officecfg::Office::Common::Misc::EmojiFont::get(xContext));
+        vcl::Font aFont = pDrawingArea->get_font();
+        aFont.SetFamilyName(sFontName);
+        OutputDevice& rDevice = pDrawingArea->get_ref_device();
+        pDefaultDevice->SetPointFont(rDevice, aFont);
+    }
+
+    mpItemAttrs->aFontSize.setX(ITEM_MAX_WIDTH - 2*ITEM_PADDING);
+    mpItemAttrs->aFontSize.setY(ITEM_MAX_HEIGHT - 2*ITEM_PADDING);
+}
 
 EmojiView::~EmojiView()
 {
-    disposeOnce();
 }
 
 void EmojiView::Populate()
@@ -104,12 +108,12 @@ void EmojiView::Populate()
     }
 
     // Populate view using the orcus json parser
-    using node = orcus::json_document_tree::node;
+    using node = orcus::json::node;
 
     // default json config
     orcus::json_config config;
 
-    orcus::json_document_tree aEmojiInfo;
+    orcus::json::document_tree aEmojiInfo;
 
     // Load JSON string into a document tree.
     aEmojiInfo.load(msJSONData, config);
@@ -117,37 +121,35 @@ void EmojiView::Populate()
     node root = aEmojiInfo.get_document_root();
     std::vector<orcus::pstring> keys = root.keys();
 
-    for (auto it = keys.begin(), ite = keys.end(); it != ite; ++it)
+    for (auto const& key : keys)
     {
-        orcus::pstring key = *it;
         node value = root.child(key);
 
-        if(value.type() == orcus::json_node_t::object)
+        if(value.type() == orcus::json::node_t::object)
         {
             // iterate each element to get the keys
             std::vector<orcus::pstring> aEmojiParams = value.keys();
             OUString sTitle, sCategory, sName;
             bool bDuplicate = false;
 
-            for (auto paramIter = aEmojiParams.begin(); paramIter != aEmojiParams.end(); ++paramIter)
+            for (auto const& emojiParam : aEmojiParams)
             {
-                orcus::pstring paramVal = *paramIter;
-                node prop = value.child(paramVal);
+                node prop = value.child(emojiParam);
 
                 // get values of parameters in AppendItem() function
-                if(paramVal == "unicode")
+                if(emojiParam == "unicode")
                 {
-                    sTitle = rtl::OStringToOUString(OString( prop.string_value().get(), prop.string_value().size() ), RTL_TEXTENCODING_UTF8);
+                    sTitle = OStringToOUString(OString( prop.string_value().get(), prop.string_value().size() ), RTL_TEXTENCODING_UTF8);
                 }
-                else if(paramVal == "category")
+                else if(emojiParam == "category")
                 {
-                    sCategory = rtl::OStringToOUString(OString( prop.string_value().get(), prop.string_value().size() ), RTL_TEXTENCODING_UTF8);
+                    sCategory = OStringToOUString(OString( prop.string_value().get(), prop.string_value().size() ), RTL_TEXTENCODING_UTF8);
                 }
-                else if(paramVal == "name")
+                else if(emojiParam == "name")
                 {
-                    sName = rtl::OStringToOUString(OString( prop.string_value().get(), prop.string_value().size() ), RTL_TEXTENCODING_UTF8);
+                    sName = OStringToOUString(OString( prop.string_value().get(), prop.string_value().size() ), RTL_TEXTENCODING_UTF8);
                 }
-                else if(paramVal == "duplicate")
+                else if(emojiParam == "duplicate")
                 {
                     bDuplicate = true;
                 }
@@ -162,14 +164,7 @@ void EmojiView::Populate()
     }
 }
 
-void EmojiView::ApplySettings(vcl::RenderContext& rRenderContext)
-{
-    ThumbnailView::ApplySettings(rRenderContext);
-    mpItemAttrs->aFontSize.setX(ITEM_MAX_WIDTH - 2*ITEM_PADDING);
-    mpItemAttrs->aFontSize.setY(ITEM_MAX_HEIGHT - 2*ITEM_PADDING);
-}
-
-void EmojiView::MouseButtonDown( const MouseEvent& rMEvt )
+bool EmojiView::MouseButtonDown( const MouseEvent& rMEvt )
 {
     GrabFocus();
 
@@ -181,9 +176,11 @@ void EmojiView::MouseButtonDown( const MouseEvent& rMEvt )
         if(pItem)
             maInsertEmojiHdl.Call(pItem);
     }
+
+    return true;
 }
 
-void EmojiView::KeyInput( const KeyEvent& rKEvt )
+bool EmojiView::KeyInput( const KeyEvent& rKEvt )
 {
     vcl::KeyCode aKeyCode = rKEvt.GetKeyCode();
 
@@ -194,16 +191,15 @@ void EmojiView::KeyInput( const KeyEvent& rKEvt )
             if (!pItem->isSelected())
             {
                 pItem->setSelection(true);
-                maItemStateHdl.Call(pItem);
             }
         }
 
         if (IsReallyVisible() && IsUpdateMode())
             Invalidate();
-        return;
+        return true;
     }
 
-    ThumbnailView::KeyInput(rKEvt);
+    return SfxThumbnailView::KeyInput(rKEvt);
 }
 
 void EmojiView::setInsertEmojiHdl(const Link<ThumbnailViewItem*, void> &rLink)
@@ -213,13 +209,13 @@ void EmojiView::setInsertEmojiHdl(const Link<ThumbnailViewItem*, void> &rLink)
 
 void EmojiView::AppendItem(const OUString &rTitle, const OUString &rCategory, const OUString &rName)
 {
-    EmojiViewItem *pItem = new EmojiViewItem(*this, getNextItemId());
+    std::unique_ptr<EmojiViewItem> pItem(new EmojiViewItem(*this, getNextItemId()));
 
     pItem->maTitle = rTitle;
     pItem->setCategory(rCategory);
     pItem->setHelpText(rName);
 
-    ThumbnailView::AppendItem(pItem);
+    SfxThumbnailView::AppendItem(std::move(pItem));
 
     CalculateItemPositions();
 }

@@ -12,8 +12,6 @@
 #ifndef PLUGIN_H
 #define PLUGIN_H
 
-#include <config_clang.h>
-
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <clang/Basic/FileManager.h>
@@ -21,8 +19,12 @@
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Lex/Preprocessor.h>
 #include <unordered_map>
+#include <vector>
 
 #include <clang/Rewrite/Core/Rewriter.h>
+
+#include "compat.hxx"
+#include "pluginhandler.hxx"
 
 using namespace clang;
 using namespace llvm;
@@ -30,7 +32,13 @@ using namespace llvm;
 namespace loplugin
 {
 
-class PluginHandler;
+struct InstantiationData
+{
+    const char* name;
+    PluginHandler& handler;
+    CompilerInstance& compiler;
+    Rewriter* rewriter;
+};
 
 /**
     Base class for plugins.
@@ -41,52 +49,82 @@ class PluginHandler;
 class Plugin
 {
 public:
-    struct InstantiationData
-    {
-        const char* name;
-        PluginHandler& handler;
-        CompilerInstance& compiler;
-        Rewriter* rewriter;
-    };
-
     explicit Plugin( const InstantiationData& data );
     virtual ~Plugin() {}
+    // The main function of the plugin.
+    // Note that for shared plugins, its functionality must be split into preRun() and postRun(),
+    // see sharedvisitor/generator.cxx .
     virtual void run() = 0;
+    // Should be called from run() before TraverseDecl().
+    // If returns false, run() should not do anything.
+    virtual bool preRun() { return true; }
+    virtual void postRun() {}
     template< typename T > class Registration;
-    enum { isPPCallback = false };
     // Returns location right after the end of the token that starts at the given location.
     SourceLocation locationAfterToken( SourceLocation location );
+    virtual bool setSharedPlugin( Plugin* /*plugin*/, const char* /*name*/ ) { return false; }
+    enum { isPPCallback = false };
+    enum { isSharedPlugin = false };
 protected:
     DiagnosticBuilder report( DiagnosticsEngine::Level level, StringRef message, SourceLocation loc = SourceLocation()) const;
-    bool ignoreLocation( SourceLocation loc );
-    bool ignoreLocation( const Decl* decl );
-    bool ignoreLocation( const Stmt* stmt );
+    bool ignoreLocation( SourceLocation loc ) const
+    { return handler.ignoreLocation(loc); }
+    bool ignoreLocation( const Decl* decl ) const;
+    bool ignoreLocation( const Stmt* stmt ) const;
+    bool ignoreLocation(TypeLoc tloc) const;
     CompilerInstance& compiler;
     PluginHandler& handler;
     /**
      Returns the parent of the given AST node. Clang's internal AST representation doesn't provide this information,
      it can only provide children, but getting the parent is often useful for inspecting a part of the AST.
     */
-    const Stmt* parentStmt( const Stmt* stmt );
-    Stmt* parentStmt( Stmt* stmt );
-    const FunctionDecl* parentFunctionDecl( const Stmt* stmt );
+    const Stmt* getParentStmt( const Stmt* stmt );
+    Stmt* getParentStmt( Stmt* stmt );
+    const FunctionDecl* getParentFunctionDecl( const Stmt* stmt );
+
     /**
-     Checks if the location is inside an UNO file, more specifically, if it forms part of the URE stable interface,
+     Get filename of the given location. Use this instead of SourceManager::getFilename(), as that one
+     does not handle source with expanded #inline directives (used by Icecream for remote compilation).
+    */
+    StringRef getFilenameOfLocation(SourceLocation spellingLocation) const;
+    /**
+     Checks if the location is inside a UNO file, more specifically, if it forms part of the URE stable interface,
      which is not allowed to be changed.
     */
     bool isInUnoIncludeFile(SourceLocation spellingLocation) const;
     bool isInUnoIncludeFile(const FunctionDecl*) const;
 
-    static void normalizeDotDotInFilePath(std::string&);
+    bool isDebugMode() const { return handler.isDebugMode(); }
 
     static bool isUnitTestMode();
+
+    bool containsPreprocessingConditionalInclusion(SourceRange range);
+
+    enum class IdenticalDefaultArgumentsResult { No, Yes, Maybe };
+    IdenticalDefaultArgumentsResult checkIdenticalDefaultArguments(
+        Expr const * argument1, Expr const * argument2);
+
 private:
-    static void registerPlugin( Plugin* (*create)( const InstantiationData& ), const char* optionName, bool isPPCallback, bool byDefault );
+    static void registerPlugin( Plugin* (*create)( const InstantiationData& ), const char* optionName,
+        bool isPPCallback, bool isSharedPlugin, bool byDefault );
     template< typename T > static Plugin* createHelper( const InstantiationData& data );
+    bool evaluate(const Expr* expr, APSInt& x);
+
     enum { isRewriter = false };
     const char* name;
-    static std::unordered_map< const Stmt*, const Stmt* > parents;
-    static void buildParents( CompilerInstance& compiler );
+};
+
+template<typename Derived>
+class FilteringPlugin : public RecursiveASTVisitor<Derived>, public Plugin
+{
+public:
+    explicit FilteringPlugin( const InstantiationData& data ) : Plugin(data) {}
+
+    bool TraverseNamespaceDecl(NamespaceDecl * decl) {
+        if (ignoreLocation(compat::getBeginLoc(decl)))
+            return true;
+        return RecursiveASTVisitor<Derived>::TraverseNamespaceDecl(decl);
+    }
 };
 
 /**
@@ -169,21 +207,29 @@ public:
 class RegistrationCreate
 {
 public:
-    template< typename T, bool > static T* create( const Plugin::InstantiationData& data );
+    template< typename T, bool > static T* create( const InstantiationData& data );
 };
 
 inline
-bool Plugin::ignoreLocation( const Decl* decl )
+bool Plugin::ignoreLocation( const Decl* decl ) const
 {
     return ignoreLocation( decl->getLocation());
 }
 
 inline
-bool Plugin::ignoreLocation( const Stmt* stmt )
+bool Plugin::ignoreLocation( const Stmt* stmt ) const
 {
     // Invalid location can happen at least for ImplicitCastExpr of
     // ImplicitParam 'self' in Objective C method declarations:
-    return stmt->getLocStart().isValid() && ignoreLocation( stmt->getLocStart());
+    return compat::getBeginLoc(stmt).isValid() && ignoreLocation( compat::getBeginLoc(stmt));
+}
+
+inline bool Plugin::ignoreLocation(TypeLoc tloc) const
+{
+    // Invalid locations appear to happen at least with Clang 5.0.2 (but no longer with at least
+    // recent Clang 10 trunk):
+    auto const loc = tloc.getBeginLoc();
+    return loc.isValid() && ignoreLocation(loc);
 }
 
 template< typename T >
@@ -196,7 +242,7 @@ template< typename T >
 inline
 Plugin::Registration< T >::Registration( const char* optionName, bool byDefault )
 {
-    registerPlugin( &T::template createHelper< T >, optionName, T::isPPCallback, byDefault );
+    registerPlugin( &T::template createHelper< T >, optionName, T::isPPCallback, T::isSharedPlugin, byDefault );
 }
 
 inline
@@ -205,7 +251,7 @@ RewritePlugin::RewriteOptions::RewriteOptions( RewriteOption option )
 {
     // Note that 'flags' stores also RemoveLineIfEmpty, it must be kept in sync with the base class.
     if( flags & RewritePlugin::RemoveLineIfEmpty )
-        this->RemoveLineIfEmpty = true;
+        RemoveLineIfEmpty = true;
 }
 
 inline
@@ -214,13 +260,55 @@ RewritePlugin::RewriteOption operator|( RewritePlugin::RewriteOption option1, Re
     return static_cast< RewritePlugin::RewriteOption >( int( option1 ) | int( option2 ));
 }
 
-// Same as pathname.startswith(prefix), except on Windows, where pathname (but
-// not prefix) may also contain backslashes:
+template<typename Derived>
+class FilteringRewritePlugin : public RecursiveASTVisitor<Derived>, public RewritePlugin
+{
+public:
+    explicit FilteringRewritePlugin( const InstantiationData& data ) : RewritePlugin(data) {}
+
+    bool TraverseNamespaceDecl(NamespaceDecl * decl) {
+        if (ignoreLocation(compat::getBeginLoc(decl)))
+            return true;
+        return RecursiveASTVisitor<Derived>::TraverseNamespaceDecl(decl);
+    }
+};
+
+void normalizeDotDotInFilePath(std::string&);
+
+// Same as pathname.startswith(prefix), except on Windows, where pathname and
+// prefix may also contain backslashes:
 bool hasPathnamePrefix(StringRef pathname, StringRef prefix);
 
-// Same as pathname == other, except on Windows, where pathname (but not other)
-// may also contain backslashes:
+// Same as pathname == other, except on Windows, where pathname and other may
+// also contain backslashes:
 bool isSamePathname(StringRef pathname, StringRef other);
+
+// It appears that, given a function declaration, there is no way to determine
+// the language linkage of the function's type, only of the function's name
+// (via FunctionDecl::isExternC); however, in a case like
+//
+//   extern "C" { static void f(); }
+//
+// the function's name does not have C language linkage while the function's
+// type does (as clarified in C++11 [decl.link]); cf. <http://clang-developers.
+// 42468.n3.nabble.com/Language-linkage-of-function-type-tt4037248.html>
+// "Language linkage of function type":
+bool hasCLanguageLinkageType(FunctionDecl const * decl);
+
+// Count the number of times the base class is present in the subclass hierarchy
+//
+int derivedFromCount(clang::QualType subclassType, clang::QualType baseclassType);
+int derivedFromCount(const CXXRecordDecl* subtypeRecord, const CXXRecordDecl* baseRecord);
+
+// It looks like Clang wrongly implements DR 4
+// (<http://www.open-std.org/jtc1/sc22/wg21/docs/cwg_defects.html#4>) and treats
+// a variable declared in an 'extern "..." {...}'-style linkage-specification as
+// if it contained the 'extern' specifier:
+bool hasExternalLinkage(VarDecl const * decl);
+
+bool isSmartPointerType(const Expr*);
+
+const Decl* getFunctionDeclContext(ASTContext& context, const Stmt* stmt);
 
 } // namespace
 

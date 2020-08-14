@@ -57,18 +57,15 @@
  * @file
  * Frame style include position,size,rotation and so on.
  ************************************************************************/
-#include "xfframestyle.hxx"
-#include "xfcolumns.hxx"
-#include "xfborders.hxx"
-#include "xfshadow.hxx"
-#include "xfbgimage.hxx"
+#include <xfilter/xfframestyle.hxx>
+#include <xfilter/xfcolumns.hxx>
+#include <xfilter/xfborders.hxx>
+#include <xfilter/xfshadow.hxx>
+#include <xfilter/xfbgimage.hxx>
+#include <xfilter/xfutil.hxx>
 
 XFFrameStyle::XFFrameStyle()
     : m_eWrap(enumXFWrapNone)
-    , m_pBorders(nullptr)
-    , m_pColumns(nullptr)
-    , m_pShadow(nullptr)
-    , m_pBGImage(nullptr)
     , m_bProtectContent(false)
     , m_bProtectSize(false)
     , m_bProtectPos(false)
@@ -82,34 +79,26 @@ XFFrameStyle::XFFrameStyle()
 
 XFFrameStyle::~XFFrameStyle()
 {
-    delete m_pBorders;
-    delete m_pColumns;
-    delete m_pShadow;
-    delete m_pBGImage;
 }
 
-void    XFFrameStyle::SetBorders(XFBorders *pBorders)
+void    XFFrameStyle::SetBorders(std::unique_ptr<XFBorders> pBorders)
 {
-    delete m_pBorders;
-    m_pBorders = pBorders;
+    m_pBorders = std::move(pBorders);
 }
 
 void    XFFrameStyle::SetColumns(XFColumns *pColumns)
 {
-    delete m_pColumns;
-    m_pColumns = pColumns;
+    m_pColumns.reset(pColumns);
 }
 
 void    XFFrameStyle::SetShadow(XFShadow *pShadow)
 {
-    delete m_pShadow;
-    m_pShadow = pShadow;
+    m_pShadow.reset(pShadow);
 }
 
-void    XFFrameStyle::SetBackImage(XFBGImage *image)
+void    XFFrameStyle::SetBackImage(std::unique_ptr<XFBGImage>& rImage)
 {
-    delete m_pBGImage;
-    m_pBGImage = image;
+    m_pBGImage = std::move(rImage);
 }
 
 enumXFStyle XFFrameStyle::GetStyleFamily()
@@ -152,7 +141,7 @@ void    XFFrameStyle::ToXml(IXFStream *pStrm)
     if( m_aBackColor.IsValid() )
     {
         pAttrList->AddAttribute( "fo:background-color", m_aBackColor.ToString() );
-        pAttrList->AddAttribute( "style:background-transparency", OUString::number((sal_Int32)m_nTransparency) + "%");
+        pAttrList->AddAttribute( "style:background-transparency", OUString::number(static_cast<sal_Int32>(m_nTransparency)) + "%");
     }
 
     //pad

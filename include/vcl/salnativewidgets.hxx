@@ -20,7 +20,6 @@
 #ifndef INCLUDED_VCL_SALNATIVEWIDGETS_HXX
 #define INCLUDED_VCL_SALNATIVEWIDGETS_HXX
 
-#include <rtl/ustring.hxx>
 #include <vcl/dllapi.h>
 #include <tools/gen.hxx>
 #include <o3tl/typed_flags_set.hxx>
@@ -157,7 +156,7 @@ enum class ControlPart
 
     So all places using HitTestNativeScrollbar on ControlPart::ThumbHorz, ControlPart::ThumbVert,
     ControlPart::TrackHorzLeft, ControlPart::TrackHorzRight, ControlPart::TrackVertUpper, ControlPart::TrackVertLower
-    do not use the control rectangle as region but the actuall part rectangle, making
+    do not use the control rectangle as region but the actual part rectangle, making
     only small deviations feasible.
 */
 
@@ -181,6 +180,9 @@ enum class ControlPart
 // GTK+ also draws tabs right->left since there is a
 // hardcoded 2 pixel overlap between adjacent tabs
     TabsDrawRtl             = 3000,
+
+// Qt doesn't have a separate header to draw
+    TabPaneWithHeader       = 3001,
 
 // For themes that do not want to have the focus
 // rectangle part drawn by VCL but take care of the
@@ -217,13 +219,11 @@ enum class ControlState {
     PRESSED         = 0x0004,
     ROLLOVER        = 0x0008,
     DEFAULT         = 0x0020,
-    SELECTED        = 0x0040,
-    DOUBLEBUFFERING = 0x4000,  ///< Set when the control is painted using double-buffering via VirtualDevice.
-    CACHING_ALLOWED = 0x8000,  ///< Set when the control is completely visible (i.e. not clipped).
+    SELECTED        = 0x0040
 };
 namespace o3tl
 {
-    template<> struct typed_flags<ControlState> : is_typed_flags<ControlState, 0xc06f> {};
+    template<> struct typed_flags<ControlState> : is_typed_flags<ControlState, 0x006f> {};
 }
 
 /* ButtonValue:
@@ -269,6 +269,11 @@ class VCL_DLLPUBLIC ImplControlValue
 
         virtual ~ImplControlValue();
 
+        ImplControlValue(ImplControlValue const &) = default;
+        ImplControlValue(ImplControlValue &&) = default;
+        ImplControlValue & operator =(ImplControlValue const &) = delete; // due to const mType
+        ImplControlValue & operator =(ImplControlValue &&) = delete; // due to const mType
+
         virtual ImplControlValue* clone() const;
 
         ControlType getType() const { return mType; }
@@ -284,7 +289,7 @@ class VCL_DLLPUBLIC ImplControlValue
  *
  *   Value container for scrollbars.
  */
-class VCL_DLLPUBLIC ScrollbarValue : public ImplControlValue
+class SAL_DLLPUBLIC_RTTI ScrollbarValue final : public ImplControlValue
 {
     public:
         long            mnMin;
@@ -297,21 +302,24 @@ class VCL_DLLPUBLIC ScrollbarValue : public ImplControlValue
         ControlState    mnButton1State;
         ControlState    mnButton2State;
         ControlState    mnThumbState;
-        ControlState    mnPage1State;
-        ControlState    mnPage2State;
 
         ScrollbarValue()
         : ImplControlValue( ControlType::Scrollbar, 0 )
         {
             mnMin = 0; mnMax = 0; mnCur = 0; mnVisibleSize = 0;
             mnButton1State = ControlState::NONE; mnButton2State = ControlState::NONE;
-            mnThumbState = ControlState::NONE; mnPage1State = ControlState::NONE; mnPage2State = ControlState::NONE;
+            mnThumbState = ControlState::NONE;
         };
         virtual ~ScrollbarValue() override;
         virtual ScrollbarValue* clone() const override;
+
+        ScrollbarValue(ScrollbarValue const &) = default;
+        ScrollbarValue(ScrollbarValue &&) = default;
+        ScrollbarValue & operator =(ScrollbarValue const &) = delete; // due to ImplControlValue
+        ScrollbarValue & operator =(ScrollbarValue &&) = delete; // due to ImplControlValue
 };
 
-class VCL_DLLPUBLIC SliderValue : public ImplControlValue
+class SAL_DLLPUBLIC_RTTI SliderValue final : public ImplControlValue
 {
     public:
         long            mnMin;
@@ -326,6 +334,34 @@ class VCL_DLLPUBLIC SliderValue : public ImplControlValue
         {}
         virtual ~SliderValue() override;
         virtual SliderValue* clone() const override;
+
+        SliderValue(SliderValue const &) = default;
+        SliderValue(SliderValue &&) = default;
+        SliderValue & operator =(SliderValue const &) = delete; // due to ImplControlValue
+        SliderValue & operator =(SliderValue &&) = delete; // due to ImplControlValue
+};
+
+class VCL_DLLPUBLIC TabPaneValue final : public ImplControlValue
+{
+public:
+    tools::Rectangle m_aTabHeaderRect;
+    tools::Rectangle m_aSelectedTabRect;
+    // increased tab size, so it'll overlab the frame rect when drawing
+    // static value, as there is currently no sane way to return additional data
+    static int m_nOverlap;
+
+    TabPaneValue(const tools::Rectangle &rTabHeaderRect, const tools::Rectangle &rSelectedTabRect)
+        : ImplControlValue(ControlType::TabPane, 0)
+        , m_aTabHeaderRect(rTabHeaderRect)
+        , m_aSelectedTabRect(rSelectedTabRect)
+    {
+    }
+    TabPaneValue* clone() const override;
+
+    TabPaneValue(TabPaneValue const &) = default;
+    TabPaneValue(TabPaneValue &&) = default;
+    TabPaneValue & operator =(TabPaneValue const &) = delete;
+    TabPaneValue & operator =(TabPaneValue &&) = delete;
 };
 
 /* TabitemValue:
@@ -347,7 +383,7 @@ namespace o3tl
     template<> struct typed_flags<TabitemFlags> : is_typed_flags<TabitemFlags, 0x0f> {};
 }
 
-class VCL_DLLPUBLIC TabitemValue : public ImplControlValue
+class SAL_DLLPUBLIC_RTTI TabitemValue final : public ImplControlValue
 {
     public:
         TabitemFlags    mnAlignment;
@@ -361,6 +397,11 @@ class VCL_DLLPUBLIC TabitemValue : public ImplControlValue
         }
         virtual ~TabitemValue() override;
         virtual TabitemValue* clone() const override;
+
+        TabitemValue(TabitemValue const &) = default;
+        TabitemValue(TabitemValue &&) = default;
+        TabitemValue & operator =(TabitemValue const &) = delete; // due to ImplControlValue
+        TabitemValue & operator =(TabitemValue &&) = delete; // due to ImplControlValue
 
         bool isLeftAligned() const  { return bool(mnAlignment & TabitemFlags::LeftAligned); }
         bool isRightAligned() const { return bool(mnAlignment & TabitemFlags::RightAligned); }
@@ -377,7 +418,7 @@ class VCL_DLLPUBLIC TabitemValue : public ImplControlValue
  *   Note: the other parameters of DrawNativeControl will have no meaning
  *         all parameters for spinbuttons are carried here
  */
-class VCL_DLLPUBLIC SpinbuttonValue : public ImplControlValue
+class SAL_DLLPUBLIC_RTTI SpinbuttonValue final : public ImplControlValue
 {
     public:
         tools::Rectangle       maUpperRect;
@@ -398,19 +439,30 @@ class VCL_DLLPUBLIC SpinbuttonValue : public ImplControlValue
 
         virtual ~SpinbuttonValue() override;
         virtual SpinbuttonValue* clone() const override;
+
+        SpinbuttonValue(SpinbuttonValue const &) = default;
+        SpinbuttonValue(SpinbuttonValue &&) = default;
+        SpinbuttonValue & operator =(SpinbuttonValue const &) = delete; // due to ImplControlValue
+        SpinbuttonValue & operator =(SpinbuttonValue &&) = delete; // due to ImplControlValue
 };
 
 /*  Toolbarvalue:
  *
  *  Value container for toolbars detailing the grip position
  */
-class VCL_DLLPUBLIC ToolbarValue : public ImplControlValue
+class ToolbarValue final : public ImplControlValue
 {
 public:
     ToolbarValue() : ImplControlValue( ControlType::Toolbar, 0 )
     { mbIsTopDockingArea = false; }
     virtual ~ToolbarValue() override;
     virtual ToolbarValue* clone() const override;
+
+    ToolbarValue(ToolbarValue const &) = default;
+    ToolbarValue(ToolbarValue &&) = default;
+    ToolbarValue & operator =(ToolbarValue const &) = delete; // due to ImplControlValue
+    ToolbarValue & operator =(ToolbarValue &&) = delete; // due to ImplControlValue
+
     tools::Rectangle           maGripRect;
     bool                mbIsTopDockingArea; // indicates that this is the top aligned dockingarea
                                             // adjacent to the menubar, only used on Windows
@@ -420,13 +472,17 @@ public:
  *
  *  Value container for menubars specifying height of adjacent docking area
  */
-class VCL_DLLPUBLIC MenubarValue : public ImplControlValue
+class MenubarValue final : public ImplControlValue
 {
 public:
     MenubarValue() : ImplControlValue( ControlType::Menubar, 0 )
     { maTopDockingAreaHeight=0; }
     virtual ~MenubarValue() override;
     virtual MenubarValue* clone() const override;
+    MenubarValue(MenubarValue const &) = default;
+    MenubarValue(MenubarValue &&) = default;
+    MenubarValue & operator =(MenubarValue const &) = delete; // due to ImplControlValue
+    MenubarValue & operator =(MenubarValue &&) = delete; // due to ImplControlValue
     int             maTopDockingAreaHeight;
 };
 
@@ -435,7 +491,7 @@ public:
  * Value container for menu items; specifies the rectangle for the whole item which
  * may be useful when drawing parts with a smaller rectangle.
  */
-class VCL_DLLPUBLIC MenupopupValue : public ImplControlValue
+class SAL_DLLPUBLIC_RTTI MenupopupValue final : public ImplControlValue
 {
 public:
     MenupopupValue( long i_nGutterWidth, const tools::Rectangle& i_rItemRect )
@@ -444,6 +500,10 @@ public:
     {}
     virtual ~MenupopupValue() override;
     virtual MenupopupValue* clone() const override;
+    MenupopupValue(MenupopupValue const &) = default;
+    MenupopupValue(MenupopupValue &&) = default;
+    MenupopupValue & operator =(MenupopupValue const &) = delete; // due to ImplControlValue
+    MenupopupValue & operator =(MenupopupValue &&) = delete; // due to ImplControlValue
     tools::Rectangle       maItemRect;
 };
 
@@ -451,17 +511,27 @@ public:
  *
  *  Value container for pushbuttons specifying additional drawing hints
  */
-class VCL_DLLPUBLIC PushButtonValue : public ImplControlValue
+class VCL_DLLPUBLIC PushButtonValue final : public ImplControlValue
 {
 public:
     PushButtonValue()
-    : ImplControlValue( ControlType::Pushbutton, 0 )
-    , mbBevelButton( false ), mbSingleLine( true ) {}
+        : ImplControlValue( ControlType::Pushbutton, 0 )
+        , mbBevelButton(false)
+        , mbSingleLine(true)
+        , mbIsAction(false)
+    {}
+
     virtual ~PushButtonValue() override;
     virtual PushButtonValue* clone() const override;
 
-    bool            mbBevelButton:1; // only used on OSX
-    bool            mbSingleLine:1;  // only used on OSX
+    PushButtonValue(PushButtonValue const &) = default;
+    PushButtonValue(PushButtonValue &&) = default;
+    PushButtonValue & operator =(PushButtonValue const &) = delete; // due to ImplControlValue
+    PushButtonValue & operator =(PushButtonValue &&) = delete; // due to ImplControlValue
+
+    bool mbBevelButton:1; // only used on OSX
+    bool mbSingleLine:1;  // only used on OSX
+    bool mbIsAction:1;
 };
 
 

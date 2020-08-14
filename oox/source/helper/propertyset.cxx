@@ -17,13 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/helper/propertyset.hxx"
+#include <oox/helper/propertyset.hxx>
 
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <osl/diagnose.h>
-#include <rtl/strbuf.hxx>
-#include "oox/helper/propertymap.hxx"
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
+#include <oox/helper/propertymap.hxx>
 
 namespace oox {
 
@@ -88,11 +89,9 @@ void PropertySet::setProperties( const Sequence< OUString >& rPropNames, const S
 
     if( mxPropSet.is() )
     {
-        const OUString* pPropName = rPropNames.getConstArray();
-        const OUString* pPropNameEnd = pPropName + rPropNames.getLength();
         const Any* pValue = rValues.getConstArray();
-        for( ; pPropName != pPropNameEnd; ++pPropName, ++pValue )
-            implSetPropertyValue( *pPropName, *pValue );
+        for( const OUString& rPropName : rPropNames )
+            implSetPropertyValue( rPropName, *pValue++ );
     }
 }
 
@@ -116,10 +115,10 @@ bool PropertySet::implGetPropertyValue( Any& orValue, const OUString& rPropName 
         orValue = mxPropSet->getPropertyValue( rPropName );
         return true;
     }
-    catch( Exception& e)
+    catch( const Exception&)
     {
-        SAL_WARN( "oox", "PropertySet::implGetPropertyValue - cannot get property \"" <<
-                  rPropName << "\" Error: " << e.Message);
+        TOOLS_WARN_EXCEPTION( "oox", "PropertySet::implGetPropertyValue - cannot get property \"" <<
+                  rPropName << "\"");
     }
     return false;
 }
@@ -131,10 +130,10 @@ bool PropertySet::implSetPropertyValue( const OUString& rPropName, const Any& rV
         mxPropSet->setPropertyValue( rPropName, rValue );
         return true;
     }
-    catch( Exception& e)
+    catch( const Exception&)
     {
-        SAL_WARN( "oox", "PropertySet::implSetPropertyValue - cannot set property \"" <<
-                  rPropName << "\" Error: " << e.Message);
+        TOOLS_WARN_EXCEPTION( "oox", "PropertySet::implSetPropertyValue - cannot set property \"" <<
+                  rPropName << "\"");
     }
     return false;
 }

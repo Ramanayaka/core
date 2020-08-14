@@ -21,22 +21,18 @@
 
 #include <sdr/contact/viewobjectcontactofsdrmediaobj.hxx>
 #include <svx/sdr/contact/viewcontactofsdrmediaobj.hxx>
-#include <svx/sdr/contact/displayinfo.hxx>
 #include <svx/sdr/contact/objectcontact.hxx>
-#include <svx/svdomedia.hxx>
-#include <svx/svdpagv.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/window.hxx>
 #include <avmedia/mediaitem.hxx>
 #include "sdrmediawindow.hxx"
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 ViewObjectContactOfSdrMediaObj::ViewObjectContactOfSdrMediaObj( ObjectContact& rObjectContact,
                                                                 ViewContact& rViewContact,
                                                                 const ::avmedia::MediaItem& rMediaItem ) :
-    ViewObjectContactOfSdrObj( rObjectContact, rViewContact ),
-    mpMediaWindow( nullptr )
+    ViewObjectContactOfSdrObj( rObjectContact, rViewContact )
 {
 #if HAVE_FEATURE_AVMEDIA
     vcl::Window* pWindow = getWindow();
@@ -61,12 +57,12 @@ vcl::Window* ViewObjectContactOfSdrMediaObj::getWindow() const
 {
     vcl::Window* pRetval = nullptr;
 
-    boost::optional<const OutputDevice&> oPageOutputDev = getPageViewOutputDevice();
+    const OutputDevice* oPageOutputDev = getPageViewOutputDevice();
     if( oPageOutputDev )
     {
         if(OUTDEV_WINDOW == oPageOutputDev->GetOutDevType())
         {
-            pRetval = static_cast< vcl::Window* >(&const_cast<OutputDevice&>(oPageOutputDev.get()));
+            pRetval = static_cast< vcl::Window* >(&const_cast<OutputDevice&>(*oPageOutputDev));
         }
     }
 
@@ -78,8 +74,12 @@ Size ViewObjectContactOfSdrMediaObj::getPreferredSize() const
 {
     Size aRet;
 
+#if HAVE_FEATURE_AVMEDIA
     if( mpMediaWindow )
         aRet = mpMediaWindow->getPreferredSize();
+#else
+   aRet = Size(0,0);
+#endif
 
     return aRet;
 }
@@ -87,33 +87,56 @@ Size ViewObjectContactOfSdrMediaObj::getPreferredSize() const
 
 void ViewObjectContactOfSdrMediaObj::updateMediaItem( ::avmedia::MediaItem& rItem ) const
 {
-    if( mpMediaWindow )
+#if HAVE_FEATURE_AVMEDIA
+    if( !mpMediaWindow )
+        return;
+
+    mpMediaWindow->updateMediaItem( rItem );
+
+    // show/hide is now dependent of play state
+    if(avmedia::MediaState::Stop == rItem.getState())
     {
-        mpMediaWindow->updateMediaItem( rItem );
-
-        // show/hide is now dependent of play state
-        if(avmedia::MediaState::Stop == rItem.getState())
-        {
-            mpMediaWindow->hide();
-        }
-        else
-        {
-            basegfx::B2DRange aViewRange(getObjectRange());
-            aViewRange.transform(GetObjectContact().getViewInformation2D().getViewTransformation());
-
-            const tools::Rectangle aViewRectangle(
-                (sal_Int32)floor(aViewRange.getMinX()), (sal_Int32)floor(aViewRange.getMinY()),
-                (sal_Int32)ceil(aViewRange.getMaxX()), (sal_Int32)ceil(aViewRange.getMaxY()));
-
-            mpMediaWindow->setPosSize(aViewRectangle);
-            mpMediaWindow->show();
-        }
+        mpMediaWindow->hide();
     }
+    else
+    {
+        basegfx::B2DRange aViewRange(getObjectRange());
+        aViewRange.transform(GetObjectContact().getViewInformation2D().getViewTransformation());
+
+        const tools::Rectangle aViewRectangle(
+            static_cast<sal_Int32>(floor(aViewRange.getMinX())), static_cast<sal_Int32>(floor(aViewRange.getMinY())),
+            static_cast<sal_Int32>(ceil(aViewRange.getMaxX())), static_cast<sal_Int32>(ceil(aViewRange.getMaxY())));
+
+        // mpMediaWindow contains a SalObject window and gtk won't accept
+        // the size until after the SalObject widget is shown but if we
+        // show it before setting a size then vcl will detect that the
+        // vcl::Window has no size and make it invisible instead. If we
+        // call setPosSize twice with the same size before and after show
+        // then the second attempt is a no-op as vcl caches the size.
+
+        // so call it initially with a size arbitrarily 1 pixel wider than
+        // we want so we have an initial size to make vcl happy
+        tools::Rectangle aInitialRect(aViewRectangle);
+        aInitialRect.AdjustRight(1);
+        mpMediaWindow->setPosSize(aInitialRect);
+
+        // then make it visible
+        mpMediaWindow->show();
+
+        // set the final desired size which is different to let vcl send it
+        // through to gtk which will now accept it as the underlying
+        // m_pSocket of GtkSalObject::SetPosSize is now visible
+        mpMediaWindow->setPosSize(aViewRectangle);
+    }
+#else
+    (void) rItem;
+#endif
 }
 
 
 void ViewObjectContactOfSdrMediaObj::executeMediaItem( const ::avmedia::MediaItem& rItem )
 {
+#if HAVE_FEATURE_AVMEDIA
     if( mpMediaWindow )
     {
         ::avmedia::MediaItem aUpdatedItem;
@@ -124,9 +147,12 @@ void ViewObjectContactOfSdrMediaObj::executeMediaItem( const ::avmedia::MediaIte
         updateMediaItem( aUpdatedItem );
         static_cast< ViewContactOfSdrMediaObj& >( GetViewContact() ).mediaPropertiesChanged( aUpdatedItem );
     }
+#else
+    (void) rItem;
+#endif
 }
 
 
-}} // end of namespace sdr::contact
+} // end of namespace sdr::contact
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

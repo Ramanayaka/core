@@ -19,19 +19,22 @@
 
 #include <xmloff/XMLGraphicsDefaultStyle.hxx>
 
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 #include <tools/color.hxx>
 
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/families.hxx>
 #include <xmloff/xmltypes.hxx>
 #include <xmloff/maptype.hxx>
+#include <xmloff/xmlimppr.hxx>
+#include <xmloff/xmlprmap.hxx>
 
-#include "XMLShapePropertySetContext.hxx"
+#include <XMLShapePropertySetContext.hxx>
 #include <algorithm>
 
 using namespace ::com::sun::star;
@@ -47,7 +50,7 @@ using ::xmloff::token::XML_PARAGRAPH_PROPERTIES;
 
 
 XMLGraphicsDefaultStyle::XMLGraphicsDefaultStyle( SvXMLImport& rImport, sal_uInt16 nPrfx, const OUString& rLName, const Reference< XAttributeList >& xAttrList, SvXMLStylesContext& rStyles )
-: XMLPropStyleContext( rImport, nPrfx, rLName, xAttrList, rStyles, XML_STYLE_FAMILY_SD_GRAPHICS_ID, true )
+: XMLPropStyleContext( rImport, nPrfx, rLName, xAttrList, rStyles, XmlStyleFamily::SD_GRAPHICS_ID, true )
 {
 }
 
@@ -55,9 +58,9 @@ XMLGraphicsDefaultStyle::~XMLGraphicsDefaultStyle()
 {
 }
 
-SvXMLImportContext *XMLGraphicsDefaultStyle::CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName, const Reference< XAttributeList > & xAttrList )
+SvXMLImportContextRef XMLGraphicsDefaultStyle::CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName, const Reference< XAttributeList > & xAttrList )
 {
-    SvXMLImportContext *pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     if( XML_NAMESPACE_STYLE == nPrefix || XML_NAMESPACE_LO_EXT == nPrefix )
     {
@@ -72,15 +75,17 @@ SvXMLImportContext *XMLGraphicsDefaultStyle::CreateChildContext( sal_uInt16 nPre
         {
             rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap = GetStyles()->GetImportPropertyMapper( GetFamily() );
             if( xImpPrMap.is() )
-                pContext = new XMLShapePropertySetContext( GetImport(), nPrefix, rLocalName, xAttrList, nFamily, GetProperties(), xImpPrMap );
+                xContext = new XMLShapePropertySetContext( GetImport(), nPrefix, rLocalName, xAttrList, nFamily, GetProperties(), xImpPrMap );
         }
     }
 
-    if( !pContext )
-        pContext = XMLPropStyleContext::CreateChildContext( nPrefix, rLocalName, xAttrList );
+    if (!xContext)
+        xContext = XMLPropStyleContext::CreateChildContext( nPrefix, rLocalName, xAttrList );
 
-    return pContext;
+    return xContext;
 }
+
+namespace {
 
 struct XMLPropertyByIndex {
     sal_Int32 const m_nIndex;
@@ -89,6 +94,8 @@ struct XMLPropertyByIndex {
         return m_nIndex == rProp.mnIndex;
     }
 };
+
+}
 
 // This method is called for every default style
 void XMLGraphicsDefaultStyle::SetDefaults()
@@ -152,12 +159,12 @@ void XMLGraphicsDefaultStyle::SetDefaults()
         if (std::none_of(GetProperties().begin(), GetProperties().end(),
                          XMLPropertyByIndex(nStrokeIndex)))
         {
-            sal_Int32 const nStroke(
-                    (bIsAOO4) ? RGB_COLORDATA(128, 128, 128) : COL_BLACK);
+            Color const nStroke(
+                    bIsAOO4 ? Color(128, 128, 128) : COL_BLACK);
             xDefaults->setPropertyValue("LineColor", makeAny(nStroke));
         }
-        sal_Int32 const nFillColor( (bIsAOO4)
-            ? RGB_COLORDATA(0xCF, 0xE7, 0xF5) : RGB_COLORDATA(153, 204, 255));
+        Color const nFillColor( bIsAOO4
+            ? Color(0xCF, 0xE7, 0xF5) : Color(153, 204, 255));
         sal_Int32 const nFillIndex(
             pImpPrMap->GetEntryIndex(XML_NAMESPACE_DRAW, "fill-color", 0));
         if (std::none_of(GetProperties().begin(), GetProperties().end(),
@@ -172,7 +179,7 @@ void XMLGraphicsDefaultStyle::SetDefaults()
             if (std::none_of(GetProperties().begin(), GetProperties().end(),
                              XMLPropertyByIndex(nFill2Index)))
             {
-                xDefaults->setPropertyValue("FillColor2", makeAny(nFillColor));
+                xDefaults->setPropertyValue("FillColor2", makeAny(sal_Int32(nFillColor)));
             }
         }
     }

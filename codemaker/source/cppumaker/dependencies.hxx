@@ -20,21 +20,21 @@
 #ifndef INCLUDED_CODEMAKER_SOURCE_CPPUMAKER_DEPENDENCIES_HXX
 #define INCLUDED_CODEMAKER_SOURCE_CPPUMAKER_DEPENDENCIES_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <map>
 
-#include "rtl/ref.hxx"
+#include <rtl/ref.hxx>
 
 namespace rtl { class OUString; }
 class TypeManager;
 
 /// @HTML
 
-namespace codemaker { namespace cppumaker {
+namespace codemaker::cppumaker {
 
 /**
-   A simple class to track which other entites a given entity depends on.
+   A simple class to track which other entities a given entity depends on.
 
    <p>This class is not multi-thread&ndash;safe.</p>
  */
@@ -47,7 +47,7 @@ public:
      */
     enum Kind { KIND_NORMAL, KIND_BASE, KIND_EXCEPTION };
 
-    typedef std::map< rtl::OUString, Kind > Map;
+    typedef std::map< OUString, Kind > Map;
 
     /**
        Constructs the dependencies for a given entity.
@@ -62,7 +62,7 @@ public:
      */
     Dependencies(
         rtl::Reference< TypeManager > const & manager,
-        rtl::OUString const & name);
+        OUString const & name);
 
     ~Dependencies();
 
@@ -82,6 +82,9 @@ public:
 
     bool hasLongDependency() const { return m_longDependency; }
 
+    bool hasUnsignedLongDependency() const
+    { return m_unsignedLongDependency; }
+
     bool hasHyperDependency() const { return m_hyperDependency; }
 
     bool hasUnsignedHyperDependency() const
@@ -98,7 +101,7 @@ public:
     bool hasSequenceDependency() const { return m_sequenceDependency; }
 
 private:
-    void insert(rtl::OUString const & name, Kind kind);
+    void insert(OUString const & name, Kind kind);
 
     rtl::Reference< TypeManager > m_manager;
     Map m_map;
@@ -111,8 +114,6 @@ private:
     bool m_unsignedLongDependency;
     bool m_hyperDependency;
     bool m_unsignedHyperDependency;
-    bool m_floatDependency;
-    bool m_doubleDependency;
     bool m_charDependency;
     bool m_stringDependency;
     bool m_typeDependency;
@@ -120,7 +121,7 @@ private:
     bool m_sequenceDependency;
 };
 
-} }
+}
 
 #endif
 

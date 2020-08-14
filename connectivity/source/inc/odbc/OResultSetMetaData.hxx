@@ -22,24 +22,21 @@
 
 #include <com/sun/star/sdbc/XResultSetMetaData.hpp>
 #include <cppuhelper/implbase.hxx>
-#include "odbc/OFunctions.hxx"
-#include "odbc/odbcbasedllapi.hxx"
+#include <odbc/OFunctions.hxx>
+#include <odbc/odbcbasedllapi.hxx>
 #include <vector>
-#include "odbc/OConnection.hxx"
+#include <odbc/OConnection.hxx>
 
-namespace connectivity
-{
-    namespace odbc
+namespace connectivity::odbc
     {
 
         //************ Class: ResultSetMetaData
 
         typedef ::cppu::WeakImplHelper<        css::sdbc::XResultSetMetaData>   OResultSetMetaData_BASE;
 
-        class OOO_DLLPUBLIC_ODBCBASE OResultSetMetaData :
+        class OOO_DLLPUBLIC_ODBCBASE OResultSetMetaData final :
             public  OResultSetMetaData_BASE
         {
-        protected:
             std::vector<sal_Int32> m_vMapping; // when not every column is needed
             std::map<sal_Int32,sal_Int32> m_aColumnTypes;
 
@@ -74,7 +71,7 @@ namespace connectivity
 
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            static SQLLEN getNumColAttrib(OConnection* _pConnection
+            static SQLLEN getNumColAttrib(OConnection const * _pConnection
                                               ,SQLHANDLE _aStatementHandle
                                               ,const css::uno::Reference< css::uno::XInterface >& _xInterface
                                               ,sal_Int32 _column
@@ -82,7 +79,7 @@ namespace connectivity
 
             /// @throws css::sdbc::SQLException
             /// @throws css::uno::RuntimeException
-            static SQLSMALLINT getColumnODBCType(OConnection* _pConnection
+            static SQLSMALLINT getColumnODBCType(OConnection const * _pConnection
                                               ,SQLHANDLE _aStatementHandle
                                               ,const css::uno::Reference< css::uno::XInterface >& _xInterface
                                               ,sal_Int32 column);
@@ -114,7 +111,7 @@ namespace connectivity
             virtual sal_Bool SAL_CALL isDefinitelyWritable( sal_Int32 column ) override;
             virtual OUString SAL_CALL getColumnServiceName( sal_Int32 column ) override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ODBC_ORESULTSETMETADATA_HXX
 

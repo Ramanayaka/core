@@ -22,18 +22,16 @@
 
 #include <drawingml/chart/converterbase.hxx>
 
-namespace com { namespace sun { namespace star {
-    namespace chart2 { namespace data { class XDataSequence; } }
-} } }
+namespace com::sun::star {
+    namespace chart2::data { class XDataSequence; }
+}
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 
 struct DataSequenceModel;
 
-class DataSequenceConverter : public ConverterBase< DataSequenceModel >
+class DataSequenceConverter final : public ConverterBase< DataSequenceModel >
 {
 public:
     explicit            DataSequenceConverter( const ConverterRoot& rParent, DataSequenceModel& rModel );
@@ -47,7 +45,7 @@ public:
 
 struct DataSourceModel;
 
-class DataSourceConverter : public ConverterBase< DataSourceModel >
+class DataSourceConverter final : public ConverterBase< DataSourceModel >
 {
 public:
     explicit            DataSourceConverter( const ConverterRoot& rParent, DataSourceModel& rModel );
@@ -59,9 +57,7 @@ public:
 };
 
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 #endif
 

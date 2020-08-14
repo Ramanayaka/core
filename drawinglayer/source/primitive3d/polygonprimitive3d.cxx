@@ -19,19 +19,16 @@
 
 #include <drawinglayer/primitive3d/polygonprimitive3d.hxx>
 #include <basegfx/polygon/b3dpolygontools.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/polygon/b3dpolypolygontools.hxx>
-#include <drawinglayer/primitive3d/polygontubeprimitive3d.hxx>
+#include <basegfx/polygon/b3dpolypolygon.hxx>
+#include <primitive3d/polygontubeprimitive3d.hxx>
 #include <drawinglayer/primitive3d/drawinglayer_primitivetypes3d.hxx>
 
 
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         PolygonHairlinePrimitive3D::PolygonHairlinePrimitive3D(
             const basegfx::B3DPolygon& rPolygon,
             const basegfx::BColor& rBColor)
@@ -56,20 +53,14 @@ namespace drawinglayer
 
         basegfx::B3DRange PolygonHairlinePrimitive3D::getB3DRange(const geometry::ViewInformation3D& /*rViewInformation*/) const
         {
-            return basegfx::tools::getRange(getB3DPolygon());
+            return basegfx::utils::getRange(getB3DPolygon());
         }
 
         // provide unique ID
         ImplPrimitive3DIDBlock(PolygonHairlinePrimitive3D, PRIMITIVE3D_ID_POLYGONHAIRLINEPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
 
 
-namespace drawinglayer
-{
-    namespace primitive3d
-    {
         Primitive3DContainer PolygonStrokePrimitive3D::create3DDecomposition(const geometry::ViewInformation3D& /*rViewInformation*/) const
         {
             Primitive3DContainer aRetval;
@@ -85,7 +76,7 @@ namespace drawinglayer
                 else
                 {
                     // apply LineStyle
-                    basegfx::tools::applyLineDashing(getB3DPolygon(), getStrokeAttribute().getDotDashArray(), &aHairLinePolyPolygon, nullptr, getStrokeAttribute().getFullDotDashLen());
+                    basegfx::utils::applyLineDashing(getB3DPolygon(), getStrokeAttribute().getDotDashArray(), &aHairLinePolyPolygon, getStrokeAttribute().getFullDotDashLen());
                 }
 
                 // prepare result
@@ -98,7 +89,7 @@ namespace drawinglayer
                     const basegfx::B2DLineJoin aLineJoin(getLineAttribute().getLineJoin());
                     const css::drawing::LineCap aLineCap(getLineAttribute().getLineCap());
 
-                    for(sal_uInt32 a(0L); a < aHairLinePolyPolygon.count(); a++)
+                    for(sal_uInt32 a(0); a < aHairLinePolyPolygon.count(); a++)
                     {
                         // create tube primitives
                         const Primitive3DReference xRef(
@@ -114,9 +105,9 @@ namespace drawinglayer
                 else
                 {
                     // create hair line data for all sub polygons
-                    for(sal_uInt32 a(0L); a < aHairLinePolyPolygon.count(); a++)
+                    for(sal_uInt32 a(0); a < aHairLinePolyPolygon.count(); a++)
                     {
-                        const basegfx::B3DPolygon aCandidate = aHairLinePolyPolygon.getB3DPolygon(a);
+                        const basegfx::B3DPolygon& aCandidate = aHairLinePolyPolygon.getB3DPolygon(a);
                         const Primitive3DReference xRef(new PolygonHairlinePrimitive3D(aCandidate, getLineAttribute().getColor()));
                         aRetval[a] = xRef;
                     }
@@ -154,7 +145,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive3DIDBlock(PolygonStrokePrimitive3D, PRIMITIVE3D_ID_POLYGONSTROKEPRIMITIVE3D)
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

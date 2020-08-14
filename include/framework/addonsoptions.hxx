@@ -19,15 +19,15 @@
 #ifndef INCLUDED_FRAMEWORK_ADDONSOPTIONS_HXX
 #define INCLUDED_FRAMEWORK_ADDONSOPTIONS_HXX
 
+#include <config_options.h>
 #include <sal/types.h>
-#include <osl/mutex.hxx>
-#include <vcl/image.hxx>
-#include <vcl/bitmap.hxx>
-#include <vcl/svapp.hxx>
-#include <com/sun/star/uno/Sequence.h>
+#include <vcl/bitmapex.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <framework/fwedllapi.h>
+#include <com/sun/star/uno/Sequence.h>
+#include <framework/fwkdllapi.h>
 #include <memory>
+
+namespace osl { class Mutex; }
 
 /*-************************************************************************************************************
     @descr          The method GetAddonsMenu() returns a list of property values.
@@ -45,7 +45,7 @@
 namespace framework
 {
 
-struct FWE_DLLPUBLIC MergeMenuInstruction
+struct FWK_DLLPUBLIC MergeMenuInstruction
 {
     OUString     aMergePoint;
     OUString     aMergeCommand;
@@ -56,7 +56,7 @@ struct FWE_DLLPUBLIC MergeMenuInstruction
 };
 typedef ::std::vector< MergeMenuInstruction > MergeMenuInstructionContainer;
 
-struct FWE_DLLPUBLIC MergeToolbarInstruction
+struct FWK_DLLPUBLIC MergeToolbarInstruction
 {
     OUString     aMergeToolbar;
     OUString     aMergePoint;
@@ -69,12 +69,25 @@ struct FWE_DLLPUBLIC MergeToolbarInstruction
 
 typedef ::std::vector< MergeToolbarInstruction > MergeToolbarInstructionContainer;
 
-struct FWE_DLLPUBLIC MergeStatusbarInstruction
+struct FWK_DLLPUBLIC MergeNotebookBarInstruction
 {
-    ::rtl::OUString     aMergePoint;
-    ::rtl::OUString     aMergeCommand;
-    ::rtl::OUString     aMergeCommandParameter;
-    ::rtl::OUString     aMergeContext;
+    OUString     aMergeNotebookBar;
+    OUString     aMergePoint;
+    OUString     aMergeCommand;
+    OUString     aMergeCommandParameter;
+    OUString     aMergeFallback;
+    OUString     aMergeContext;
+    css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue > > aMergeNotebookBarItems;
+};
+
+typedef ::std::vector< MergeNotebookBarInstruction >    MergeNotebookBarInstructionContainer;
+
+struct FWK_DLLPUBLIC MergeStatusbarInstruction
+{
+    OUString     aMergePoint;
+    OUString     aMergeCommand;
+    OUString     aMergeCommandParameter;
+    OUString     aMergeContext;
     css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue > > aMergeStatusbarItems;
 };
 
@@ -94,7 +107,7 @@ class AddonsOptions_Impl;
     @devstatus      ready to use
 *//*-*************************************************************************************************************/
 
-class FWE_DLLPUBLIC AddonsOptions
+class UNLESS_MERGELIBS(FWK_DLLPUBLIC) AddonsOptions
 {
     public:
          AddonsOptions();
@@ -102,7 +115,7 @@ class FWE_DLLPUBLIC AddonsOptions
 
         /*-****************************************************************************************************
             @short      returns if an addons menu is available
-            @descr      Call to retrieve if a addons menu is available
+            @descr      Call to retrieve if an addons menu is available
 
             @return     true if there is a menu otherwise false
         *//*-*****************************************************************************************************/
@@ -118,9 +131,17 @@ class FWE_DLLPUBLIC AddonsOptions
         sal_Int32   GetAddonsToolBarCount() const ;
 
         /*-****************************************************************************************************
+            @short      returns number of addons notebookbar
+            @descr      Call to retrieve the number of addons notebookbar
+
+            @return     number of addons notebookar
+        *//*-*****************************************************************************************************/
+        sal_Int32   GetAddonsNotebookBarCount() const ;
+
+        /*-****************************************************************************************************
             @short      returns the  complete addons menu
             @descr      Call it to get all entries of the addon menu.
-                        We return a list of all nodes with his names and properties.
+                        We return a list of all nodes with its names and properties.
             @return     A list of menu items is returned.
 
             @onerror    We return an empty list.
@@ -138,7 +159,7 @@ class FWE_DLLPUBLIC AddonsOptions
         const css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue > >& GetAddonsMenuBarPart() const;
 
         /*-****************************************************************************************************
-            @short      Gets a toolbar part of an single addon
+            @short      Gets a toolbar part of a single addon
             @return     A complete
 
             @onerror    We return sal_False
@@ -147,13 +168,31 @@ class FWE_DLLPUBLIC AddonsOptions
         const css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue > >& GetAddonsToolBarPart( sal_uInt32 nIndex ) const;
 
         /*-****************************************************************************************************
-            @short      Gets a unique toolbar resource name of an single addon
+            @short      Gets a unique toolbar resource name of a single addon
             @return     A complete
 
             @onerror    We return sal_False
         *//*-*****************************************************************************************************/
 
-        const OUString GetAddonsToolbarResourceName( sal_uInt32 nIndex ) const;
+        OUString GetAddonsToolbarResourceName( sal_uInt32 nIndex ) const;
+
+        /*-****************************************************************************************************
+            @short      Gets a NotebookBar part of a single addon
+            @return     A complete
+
+            @onerror    We return sal_False
+        *//*-*****************************************************************************************************/
+
+        const css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue > >& GetAddonsNotebookBarPart( sal_uInt32 nIndex ) const;
+
+        /*-****************************************************************************************************
+            @short      Gets a unique NotebookBar resource name of a single addon
+            @return     A complete
+
+            @onerror    We return sal_False
+        *//*-*****************************************************************************************************/
+
+        OUString GetAddonsNotebookBarResourceName( sal_uInt32    ) const;
 
         /*-****************************************************************************************************
             @short      Retrieves all available merge instructions for the Office menu bar
@@ -171,6 +210,14 @@ class FWE_DLLPUBLIC AddonsOptions
             @onerror    We return sal_False
         *//*-*****************************************************************************************************/
         bool GetMergeToolbarInstructions( const OUString& rToolbarName, MergeToolbarInstructionContainer& rToolbar ) const;
+
+        /*-****************************************************************************************************
+            @short      Retrieves all available merge instructions for Notebookbar
+            @return     The filled
+
+            @onerror    We return sal_False
+        *//*-*****************************************************************************************************/
+        bool GetMergeNotebookBarInstructions( const OUString& rNotebookBarName, MergeNotebookBarInstructionContainer& rNotebookBar ) const;
 
         /*-****************************************************************************************************
             @short      Gets the Add-On help menu part of all addon components registered
@@ -191,15 +238,15 @@ class FWE_DLLPUBLIC AddonsOptions
             @onerror    An empty image
         *//*-*****************************************************************************************************/
 
-        Image GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale ) const;
-        Image GetImageFromURL( const OUString& aURL, bool bBig ) const;
+        BitmapEx GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale ) const;
+        BitmapEx GetImageFromURL( const OUString& aURL, bool bBig ) const;
 
     //  private methods
 
         /*-****************************************************************************************************
             @short      return a reference to a static mutex
             @descr      These class is partially threadsafe (for de-/initialization only).
-                        All access methods are'nt safe!
+                        All access methods aren't safe!
                         We create a static mutex only for one ime and use at different times.
             @return     A reference to a static mutex member.
         *//*-*****************************************************************************************************/

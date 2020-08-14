@@ -17,8 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef __RSC
-
 #ifndef INCLUDED_VCL_ERRINF_HXX
 #define INCLUDED_VCL_ERRINF_HXX
 
@@ -32,11 +30,10 @@
 
 #include <limits.h>
 
-namespace vcl { class Window; }
+namespace weld { class Window; }
 
 class ErrorHandler;
 class ErrorContext;
-class ErrorStringFactory;
 class ErrorInfo;
 class DynamicErrorInfo;
 class ImplDynamicErrorInfo;
@@ -45,7 +42,7 @@ enum class DialogMask;
 typedef void (* DisplayFnPtr)();
 
 typedef DialogMask WindowDisplayErrorFunc(
-    vcl::Window*, DialogMask eMask, const OUString &rErr, const OUString &rAction);
+    weld::Window*, DialogMask eMask, const OUString &rErr, const OUString &rAction);
 
 typedef void BasicDisplayErrorFunc(
     const OUString &rErr, const OUString &rAction);
@@ -62,6 +59,7 @@ public:
 
     static void                 RegisterDisplay(BasicDisplayErrorFunc*);
     static void                 RegisterDisplay(WindowDisplayErrorFunc*);
+    static void                 Reset();
 
 private:
     DisplayFnPtr                pDsp;
@@ -80,11 +78,9 @@ enum class DialogMask
     ButtonsOk               = 0x0001,
     ButtonsCancel           = 0x0002,
     ButtonsRetry            = 0x0004,
-    ButtonsOkCancel         = 0x0003,
     ButtonsNo               = 0x0008,
     ButtonsYes              = 0x0010,
     ButtonsYesNo            = 0x0018,
-    ButtonsYesNoCancel      = 0x001a,
 
     ButtonDefaultsOk        = 0x0100,
     ButtonDefaultsCancel    = 0x0200,
@@ -101,12 +97,6 @@ namespace o3tl
 {
     template<> struct typed_flags<DialogMask> : is_typed_flags<DialogMask, 0xffff> {};
 }
-
-typedef DialogMask WindowDisplayErrorFunc(
-    vcl::Window*, DialogMask nMask, const OUString &rErr, const OUString &rAction);
-
-typedef void BasicDisplayErrorFunc(
-    const OUString &rErr, const OUString &rAction);
 
 class SAL_WARN_UNUSED VCL_DLLPUBLIC ErrorHandler
 {
@@ -127,11 +117,12 @@ public:
         4. Default ButtonsOk, MessageError
 
         @param nErrCodeId        error id
+        @param pParent           parent window the error dialog will be modal for. nullptr for unrecommended "pick default"
         @param nFlags            error flags.
 
         @return what sort of dialog to use, with what buttons
     */
-    static DialogMask       HandleError(ErrCode nId, DialogMask nMask = DialogMask::MAX);
+    static DialogMask       HandleError(ErrCode nId, weld::Window* pParent = nullptr, DialogMask nMask = DialogMask::MAX);
     static bool             GetErrorString(ErrCode nId, OUString& rStr);
 
 protected:
@@ -146,9 +137,9 @@ public:
                                 nUserId(nArgUserId) {}
     virtual                 ~ErrorInfo();
 
-    ErrCode                 GetErrorCode() const { return nUserId; }
+    ErrCode const &         GetErrorCode() const { return nUserId; }
 
-    static ErrorInfo*       GetErrorInfo(ErrCode);
+    static std::unique_ptr<ErrorInfo> GetErrorInfo(ErrCode);
 
 private:
     ErrCode                 nUserId;
@@ -170,7 +161,7 @@ private:
 
 };
 
-class SAL_WARN_UNUSED VCL_DLLPUBLIC StringErrorInfo : public DynamicErrorInfo
+class SAL_WARN_UNUSED VCL_DLLPUBLIC StringErrorInfo final : public DynamicErrorInfo
 {
 public:
                             StringErrorInfo(ErrCode nUserId,
@@ -184,7 +175,7 @@ private:
 
 };
 
-class SAL_WARN_UNUSED VCL_DLLPUBLIC TwoStringErrorInfo: public DynamicErrorInfo
+class SAL_WARN_UNUSED VCL_DLLPUBLIC TwoStringErrorInfo final : public DynamicErrorInfo
 {
 public:
     TwoStringErrorInfo(ErrCode nUserID, const OUString & rTheArg1,
@@ -207,11 +198,11 @@ class SAL_WARN_UNUSED VCL_DLLPUBLIC ErrorContext
     friend class ErrorHandler;
 
 public:
-                            ErrorContext(vcl::Window *pWin);
+                            ErrorContext(weld::Window *pWin);
     virtual                 ~ErrorContext();
 
     virtual bool            GetString(ErrCode nErrId, OUString& rCtxStr) = 0;
-    vcl::Window*            GetParent();
+    weld::Window*           GetParent();
 
     static ErrorContext*    GetContext();
 
@@ -220,7 +211,6 @@ private:
 
 };
 
-#endif
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

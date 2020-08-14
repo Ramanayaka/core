@@ -21,13 +21,16 @@
 #ifndef INCLUDED_XMLOFF_SOURCE_TEXT_XMLPROPERTYBACKPATCHER_HXX
 #define INCLUDED_XMLOFF_SOURCE_TEXT_XMLPROPERTYBACKPATCHER_HXX
 
+#include <rtl/ustring.hxx>
+
 #include <map>
+#include <memory>
 #include <vector>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { class XPropertySet; }
     namespace uno { template<class A> class Reference; }
-} } }
+}
 
 
 /** This class maintains an OUString->sal_Int16 mapping for cases in
@@ -65,13 +68,8 @@ class XMLPropertyBackpatcher
     typedef ::std::vector<
                 css::uno::Reference<css::beans::XPropertySet> > BackpatchListType;
 
-    /* use void* instead of BackpatchListType to avoid linker problems
-       with long typenames. The real typename (commented out) contains
-       >1200 chars. */
-
     /// backpatch list for unresolved IDs
-    //::std::map<const OUString, BackpatchListType*> aBackpatchListMap;
-    ::std::map<const OUString, void*> aBackpatchListMap;
+    ::std::map<const OUString, std::unique_ptr<BackpatchListType>> aBackpatchListMap;
 
     /// mapping of names -> IDs
     ::std::map<const OUString, A> aIDMap;
@@ -92,14 +90,8 @@ public:
     /// Set property with the proper value for this name. If the value
     /// is not yet known, store the XPropertySet in the backpatch list.
     /// Use this whenever the value should be set, even if it is not yet known.
-    /// const version
     void SetProperty(
         const css::uno::Reference<css::beans::XPropertySet> & xPropSet,
-        const OUString& sName);
-
-    /// non-const version of SetProperty
-    void SetProperty(
-        css::uno::Reference<css::beans::XPropertySet> & xPropSet,
         const OUString& sName);
 };
 

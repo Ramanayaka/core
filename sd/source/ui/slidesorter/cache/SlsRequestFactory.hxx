@@ -20,9 +20,9 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_CACHE_SLSREQUESTFACTORY_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_CACHE_SLSREQUESTFACTORY_HXX
 
-#include "cache/SlsCacheContext.hxx"
+#include <cache/SlsCacheContext.hxx>
 
-namespace sd { namespace slidesorter { namespace cache {
+namespace sd::slidesorter::cache {
 
 class RequestQueue;
 
@@ -34,7 +34,7 @@ public:
         const SharedCacheContext& rpCacheContext);
 };
 
-} } } // end of namespace ::sd::slidesorter::cache
+} // end of namespace ::sd::slidesorter::cache
 
 #endif
 

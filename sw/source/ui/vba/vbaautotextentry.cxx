@@ -19,7 +19,6 @@
 #include "vbaautotextentry.hxx"
 #include <vbahelper/vbahelper.hxx>
 #include <com/sun/star/text/XParagraphCursor.hpp>
-#include <tools/diagnose_ex.h>
 #include "wordvbahelper.hxx"
 #include "vbarange.hxx"
 
@@ -59,12 +58,11 @@ uno::Reference< word::XRange > SAL_CALL SwVbaAutoTextEntry::Insert( const uno::R
             if( xParaCursor->isStartOfParagraph() && xParaCursor->isEndOfParagraph() )
             {
                 //remove the blank paragraph
-                uno::Reference< frame::XModel > xModel( getCurrentWordDoc( mxContext ), uno::UNO_QUERY_THROW );
+                uno::Reference< frame::XModel > xModel( getCurrentWordDoc( mxContext ), uno::UNO_SET_THROW );
                 uno::Reference< text::XTextViewCursor > xTVCursor = word::getXTextViewCursor( xModel );
-                uno::Reference< text::XTextRange > xCurrentRange( xTC->getEnd(), uno::UNO_QUERY_THROW );
+                uno::Reference< text::XTextRange > xCurrentRange( xTC->getEnd(), uno::UNO_SET_THROW );
                 xTVCursor->gotoRange( xCurrentRange, false );
-                OUString url = ".uno:Delete";
-                dispatchRequests( xModel,url );
+                dispatchRequests( xModel,".uno:Delete" );
                 xTVCursor->gotoRange( xEndMarker->getEnd(), false );
             }
         }
@@ -78,18 +76,16 @@ uno::Reference< word::XRange > SAL_CALL SwVbaAutoTextEntry::Insert( const uno::R
 OUString
 SwVbaAutoTextEntry::getServiceImplName()
 {
-    return OUString("SwVbaAutoTextEntry");
+    return "SwVbaAutoTextEntry";
 }
 
 uno::Sequence< OUString >
 SwVbaAutoTextEntry::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.AutoTextEntry";
-    }
+        "ooo.vba.word.AutoTextEntry"
+    };
     return aServiceNames;
 }
 
@@ -119,18 +115,16 @@ SwVbaAutoTextEntries::createCollectionObject( const css::uno::Any& aSource )
 OUString
 SwVbaAutoTextEntries::getServiceImplName()
 {
-    return OUString("SwVbaAutoTextEntries");
+    return "SwVbaAutoTextEntries";
 }
 
 css::uno::Sequence<OUString>
 SwVbaAutoTextEntries::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.word.AutoTextEntries";
-    }
+        "ooo.vba.word.AutoTextEntries"
+    };
     return sNames;
 }
 

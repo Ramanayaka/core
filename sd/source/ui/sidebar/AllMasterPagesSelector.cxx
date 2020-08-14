@@ -18,14 +18,11 @@
  */
 
 #include "AllMasterPagesSelector.hxx"
-#include "PreviewValueSet.hxx"
-#include "ViewShellBase.hxx"
+#include <ViewShellBase.hxx>
 #include "MasterPageContainer.hxx"
 #include "MasterPageDescriptor.hxx"
-#include "app.hrc"
-#include "helpids.h"
+#include <helpids.h>
 
-#include <tools/link.hxx>
 #include <set>
 
 namespace {
@@ -68,7 +65,7 @@ public:
 
 } // end of anonymous namespace
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 class AllMasterPagesSelector::SortedMasterPageDescriptorList
     : public ::std::set<SharedMasterPageDescriptor,MasterPageDescriptorOrder>
@@ -86,7 +83,7 @@ VclPtr<vcl::Window> AllMasterPagesSelector::Create (
     if (pDocument == nullptr)
         return nullptr;
 
-    std::shared_ptr<MasterPageContainer> pContainer (new MasterPageContainer());
+    auto pContainer = std::make_shared<MasterPageContainer>();
 
     VclPtrInstance<AllMasterPagesSelector> pSelector(
             pParent,
@@ -174,12 +171,10 @@ void AllMasterPagesSelector::AddItem (MasterPageContainer::Token aToken)
 
 void AllMasterPagesSelector::UpdatePageSet (ItemList& rItemList)
 {
-    SortedMasterPageDescriptorList::const_iterator iDescriptor;
-    SortedMasterPageDescriptorList::const_iterator iEnd (mpSortedMasterPages->end());
-    for (iDescriptor=mpSortedMasterPages->begin(); iDescriptor!=iEnd; ++iDescriptor)
-        rItemList.push_back((*iDescriptor)->maToken);
+    for (const auto& rxDescriptor : *mpSortedMasterPages)
+        rItemList.push_back(rxDescriptor->maToken);
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

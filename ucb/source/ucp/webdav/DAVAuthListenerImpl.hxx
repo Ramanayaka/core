@@ -22,13 +22,13 @@
 #define INCLUDED_UCB_SOURCE_UCP_WEBDAV_DAVAUTHLISTENERIMPL_HXX
 
 #include "DAVAuthListener.hxx"
+#include <com/sun/star/ucb/XCommandEnvironment.hpp>
 
 
 namespace http_dav_ucp
 {
 
 
-// class DAVAuthListenerImpl.
 
 
     class DAVAuthListener_Impl : public DAVAuthListener

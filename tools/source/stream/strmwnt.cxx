@@ -23,13 +23,16 @@
 #include <limits.h>
 
 #ifdef _WIN32
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #endif
 
 #include <osl/thread.h>
 #include <tools/stream.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 
-// class FileBase
 #include <osl/file.hxx>
 using namespace osl;
 
@@ -38,9 +41,8 @@ class StreamData
 public:
     HANDLE      hFile;
 
-                StreamData()
+                StreamData() : hFile(nullptr)
                 {
-                    hFile = nullptr;
                 }
 };
 
@@ -83,7 +85,7 @@ static ErrCode GetSvError( DWORD nWntError )
         { ERROR_WRITE_PROTECT,          SVSTREAM_ACCESS_DENIED },
         { ERROR_DISK_FULL,              SVSTREAM_DISK_FULL },
 
-        { (DWORD)0xFFFFFFFF, SVSTREAM_GENERALERROR }
+        { DWORD(0xFFFFFFFF), SVSTREAM_GENERALERROR }
     };
 
     ErrCode nRetVal = SVSTREAM_GENERALERROR;    // default error
@@ -96,7 +98,7 @@ static ErrCode GetSvError( DWORD nWntError )
             break;
         }
         i++;
-    } while( errArr[i].wnt != (DWORD)0xFFFFFFFF );
+    } while( errArr[i].wnt != DWORD(0xFFFFFFFF) );
     return nRetVal;
 }
 
@@ -105,7 +107,7 @@ SvFileStream::SvFileStream( const OUString& rFileName, StreamMode nMode )
     bIsOpen             = false;
     nLockCounter        = 0;
     m_isWritable        = false;
-    pInstanceData       = new StreamData;
+    pInstanceData.reset( new StreamData );
 
     SetBufferSize( 8192 );
     // convert URL to SystemPath, if necessary
@@ -121,7 +123,7 @@ SvFileStream::SvFileStream()
     bIsOpen             = false;
     nLockCounter        = 0;
     m_isWritable        = false;
-    pInstanceData       = new StreamData;
+    pInstanceData.reset( new StreamData );
 
     SetBufferSize( 8192 );
 }
@@ -129,7 +131,6 @@ SvFileStream::SvFileStream()
 SvFileStream::~SvFileStream()
 {
     Close();
-    delete pInstanceData;
 }
 
 /// Does not check for EOF, makes isEof callable
@@ -175,7 +176,7 @@ sal_uInt64 SvFileStream::SeekPos(sal_uInt64 const nPos)
         if( nNewPos == 0xFFFFFFFF )
         {
             SetError(::GetSvError( GetLastError() ) );
-            nNewPos = 0L;
+            nNewPos = 0;
         }
     }
     else
@@ -192,39 +193,20 @@ void SvFileStream::FlushData()
     }
 }
 
-bool SvFileStream::LockRange(sal_uInt64 const nByteOffset, std::size_t nBytes)
-{
-    bool bRetVal = false;
-    if( IsOpen() )
-    {
-        bRetVal = ::LockFile(pInstanceData->hFile,nByteOffset,0L,nBytes,0L );
-        if( !bRetVal )
-            SetError(::GetSvError(GetLastError()));
-    }
-    return bRetVal;
-}
-
-bool SvFileStream::UnlockRange(sal_uInt64 const nByteOffset, std::size_t nBytes)
-{
-    bool bRetVal = false;
-    if( IsOpen() )
-    {
-        bRetVal = ::UnlockFile(pInstanceData->hFile,nByteOffset,0L,nBytes,0L );
-        if( !bRetVal )
-            SetError(::GetSvError(GetLastError()));
-    }
-    return bRetVal;
-}
-
 bool SvFileStream::LockFile()
 {
     bool bRetVal = false;
     if( !nLockCounter )
     {
-        if( LockRange( 0L, LONG_MAX ) )
+        if( IsOpen() )
         {
-            nLockCounter = 1;
-            bRetVal = true;
+            bRetVal = ::LockFile(pInstanceData->hFile,0L,0L,LONG_MAX,0L );
+            if( bRetVal )
+            {
+                nLockCounter = 1;
+            }
+            else
+                SetError(::GetSvError(GetLastError()));
         }
     }
     else
@@ -241,9 +223,14 @@ void SvFileStream::UnlockFile()
     {
         if( nLockCounter == 1)
         {
-            if( UnlockRange( 0L, LONG_MAX ) )
+            if( IsOpen() )
             {
-                nLockCounter = 0;
+                if( ::UnlockFile(pInstanceData->hFile,0L,0L,LONG_MAX,0L ) )
+                {
+                    nLockCounter = 0;
+                }
+                else
+                    SetError(::GetSvError(GetLastError()));
             }
         }
         else
@@ -273,12 +260,11 @@ void SvFileStream::Open( const OUString& rFilename, StreamMode nMode )
     m_eStreamMode &= ~StreamMode::TRUNC; // don't truncate on reopen
 
     aFilename = aParsedFilename;
-    OString aFileNameA(OUStringToOString(aFilename, osl_getThreadTextEncoding()));
     SetLastError( ERROR_SUCCESS );  // might be changed by Redirector
 
     DWORD   nOpenAction;
     DWORD   nShareMode      = FILE_SHARE_READ | FILE_SHARE_WRITE;
-    DWORD   nAccessMode     = 0L;
+    DWORD   nAccessMode     = 0;
     UINT    nOldErrorMode = SetErrorMode( SEM_FAILCRITICALERRORS|SEM_NOOPENFILEERRORBOX );
 
     if( nMode & StreamMode::SHARE_DENYREAD)
@@ -290,9 +276,9 @@ void SvFileStream::Open( const OUString& rFilename, StreamMode nMode )
     if( nMode & StreamMode::SHARE_DENYALL)
         nShareMode = 0;
 
-    if( (nMode & StreamMode::READ) )
+    if( nMode & StreamMode::READ )
         nAccessMode |= GENERIC_READ;
-    if( (nMode & StreamMode::WRITE) )
+    if( nMode & StreamMode::WRITE )
         nAccessMode |= GENERIC_WRITE;
 
     if( nAccessMode == GENERIC_READ )       // ReadOnly ?
@@ -314,13 +300,18 @@ void SvFileStream::Open( const OUString& rFilename, StreamMode nMode )
             nOpenAction = OPEN_EXISTING;
     }
 
-    pInstanceData->hFile = CreateFile(
-        aFileNameA.getStr(),
+    DWORD nAttributes = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS;
+
+    if ( nMode & StreamMode::TEMPORARY )
+        nAttributes |= FILE_ATTRIBUTE_TEMPORARY;
+
+    pInstanceData->hFile = CreateFileW(
+        o3tl::toW(aFilename.getStr()),
         nAccessMode,
         nShareMode,
         nullptr,
         nOpenAction,
-        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS,
+        nAttributes,
         nullptr
     );
 
@@ -342,14 +333,14 @@ void SvFileStream::Open( const OUString& rFilename, StreamMode nMode )
         ErrCode nErr = ::GetSvError( GetLastError() );
         if(nErr==SVSTREAM_ACCESS_DENIED || nErr==SVSTREAM_SHARING_VIOLATION)
         {
-            nMode &= (~StreamMode::WRITE);
+            nMode &= ~StreamMode::WRITE;
             nAccessMode = GENERIC_READ;
             // OV, 28.1.97: Win32 sets file to length 0
             // if Openaction is CREATE_ALWAYS
             nOpenAction = OPEN_EXISTING;
             SetLastError( ERROR_SUCCESS );
-            pInstanceData->hFile = CreateFile(
-                aFileNameA.getStr(),
+            pInstanceData->hFile = CreateFileW(
+                o3tl::toW(aFilename.getStr()),
                 GENERIC_READ,
                 nShareMode,
                 nullptr,

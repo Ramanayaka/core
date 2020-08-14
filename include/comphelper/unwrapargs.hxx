@@ -20,12 +20,14 @@
 #ifndef INCLUDED_COMPHELPER_UNWRAPARGS_HXX
 #define INCLUDED_COMPHELPER_UNWRAPARGS_HXX
 
-#include <rtl/ustrbuf.hxx>
+#include <sal/config.h>
+
+#include <optional>
+
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <cppu/unotype.hxx>
-#include <boost/optional.hpp>
 
 namespace comphelper {
 
@@ -64,7 +66,7 @@ namespace detail {
     template< typename T, typename... Args >
     inline void unwrapArgs(
         const css::uno::Sequence< css::uno::Any >& seq,
-        sal_Int32 nArg, ::boost::optional< T >& v, Args&... args );
+        sal_Int32 nArg, ::std::optional< T >& v, Args&... args );
 
     template< typename T, typename... Args >
     inline void unwrapArgs(
@@ -78,13 +80,13 @@ namespace detail {
         }
         if( !fromAny( seq[nArg], &v ) )
         {
-            OUStringBuffer buf;
-            buf.append( "Cannot extract ANY { " );
-            buf.append( seq[nArg].getValueType().getTypeName() );
-            buf.append( " } to " );
-            buf.append( ::cppu::UnoType<T>::get().getTypeName() );
-            buf.append( u'!' );
-            return unwrapArgsError( buf.makeStringAndClear(), nArg, args... );
+            OUString msg =
+                "Cannot extract ANY { " +
+                seq[nArg].getValueType().getTypeName() +
+                " } to " +
+                ::cppu::UnoType<T>::get().getTypeName() +
+                "!";
+            return unwrapArgsError( msg, nArg, args... );
         }
         return unwrapArgs( seq, ++nArg, args... );
     }
@@ -92,7 +94,7 @@ namespace detail {
     template< typename T, typename... Args >
     inline void unwrapArgs(
         const css::uno::Sequence< css::uno::Any >& seq,
-        sal_Int32 nArg, ::boost::optional< T >& v, Args&... args )
+        sal_Int32 nArg, ::std::optional< T >& v, Args&... args )
     {
         if( nArg < seq.getLength() )
         {

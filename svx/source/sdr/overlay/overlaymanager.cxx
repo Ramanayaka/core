@@ -18,13 +18,14 @@
  */
 
 #include <svx/sdr/overlay/overlaymanager.hxx>
-#include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/range/b2drange.hxx>
 #include <tools/gen.hxx>
+#include <vcl/canvastools.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/window.hxx>
 #include <svx/sdr/overlay/overlayobject.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
+#include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processor2dtools.hxx>
 #include <memory>
 
@@ -32,60 +33,58 @@
 using namespace com::sun::star;
 
 
-namespace sdr
+namespace sdr::overlay
 {
-    namespace overlay
-    {
         void OverlayManager::ImpDrawMembers(const basegfx::B2DRange& rRange, OutputDevice& rDestinationDevice) const
         {
             const sal_uInt32 nSize(maOverlayObjects.size());
 
-            if(nSize)
+            if(!nSize)
+                return;
+
+            const AntialiasingFlags nOriginalAA(rDestinationDevice.GetAntialiasing());
+            const bool bIsAntiAliasing(getDrawinglayerOpt().IsAntiAliasing());
+
+            // create processor
+            std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> pProcessor(drawinglayer::processor2d::createProcessor2DFromOutputDevice(
+                rDestinationDevice,
+                getCurrentViewInformation2D()));
+
+            if(pProcessor)
             {
-                const AntialiasingFlags nOriginalAA(rDestinationDevice.GetAntialiasing());
-                const bool bIsAntiAliasing(getDrawinglayerOpt().IsAntiAliasing());
-
-                // create processor
-                std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> pProcessor(drawinglayer::processor2d::createProcessor2DFromOutputDevice(
-                    rDestinationDevice,
-                    getCurrentViewInformation2D()));
-
-                if(pProcessor)
+                for(const auto& rpOverlayObject : maOverlayObjects)
                 {
-                    for(OverlayObjectVector::const_iterator aIter(maOverlayObjects.begin()); aIter != maOverlayObjects.end(); ++aIter)
+                    OSL_ENSURE(rpOverlayObject, "Corrupted OverlayObject List (!)");
+                    const OverlayObject& rCandidate = *rpOverlayObject;
+
+                    if(rCandidate.isVisible())
                     {
-                        OSL_ENSURE(*aIter, "Corrupted OverlayObject List (!)");
-                        const OverlayObject& rCandidate = **aIter;
+                        const drawinglayer::primitive2d::Primitive2DContainer& rSequence = rCandidate.getOverlayObjectPrimitive2DSequence();
 
-                        if(rCandidate.isVisible())
+                        if(!rSequence.empty())
                         {
-                            const drawinglayer::primitive2d::Primitive2DContainer& rSequence = rCandidate.getOverlayObjectPrimitive2DSequence();
-
-                            if(!rSequence.empty())
+                            if(rRange.overlaps(rCandidate.getBaseRange()))
                             {
-                                if(rRange.overlaps(rCandidate.getBaseRange()))
+                                if(bIsAntiAliasing && rCandidate.allowsAntiAliase())
                                 {
-                                    if(bIsAntiAliasing && rCandidate.allowsAntiAliase())
-                                    {
-                                        rDestinationDevice.SetAntialiasing(nOriginalAA | AntialiasingFlags::EnableB2dDraw);
-                                    }
-                                    else
-                                    {
-                                        rDestinationDevice.SetAntialiasing(nOriginalAA & ~AntialiasingFlags::EnableB2dDraw);
-                                    }
-
-                                    pProcessor->process(rSequence);
+                                    rDestinationDevice.SetAntialiasing(nOriginalAA | AntialiasingFlags::EnableB2dDraw);
                                 }
+                                else
+                                {
+                                    rDestinationDevice.SetAntialiasing(nOriginalAA & ~AntialiasingFlags::EnableB2dDraw);
+                                }
+
+                                pProcessor->process(rSequence);
                             }
                         }
                     }
-
-                    pProcessor.reset();
                 }
 
-                // restore AA settings
-                rDestinationDevice.SetAntialiasing(nOriginalAA);
+                pProcessor.reset();
             }
+
+            // restore AA settings
+            rDestinationDevice.SetAntialiasing(nOriginalAA);
         }
 
         void OverlayManager::ImpStripeDefinitionChanged()
@@ -94,11 +93,10 @@ namespace sdr
 
             if(nSize)
             {
-                OverlayObjectVector::const_iterator aEnd(maOverlayObjects.end());
-                for(OverlayObjectVector::iterator aIter(maOverlayObjects.begin()); aIter != aEnd; ++aIter)
+                for(const auto& rpOverlayObject : maOverlayObjects)
                 {
-                    OSL_ENSURE(*aIter, "Corrupted OverlayObject List (!)");
-                    OverlayObject& rCandidate = **aIter;
+                    OSL_ENSURE(rpOverlayObject, "Corrupted OverlayObject List (!)");
+                    OverlayObject& rCandidate = *rpOverlayObject;
                     rCandidate.stripeDefinitionHasChanged();
                 }
             }
@@ -119,8 +117,8 @@ namespace sdr
         :   Scheduler(),
             mrOutputDevice(rOutputDevice),
             maOverlayObjects(),
-            maStripeColorA(Color(COL_BLACK)),
-            maStripeColorB(Color(COL_WHITE)),
+            maStripeColorA(COL_BLACK),
+            maStripeColorB(COL_WHITE),
             mnStripeLengthPixel(5),
             maDrawinglayerOpt(),
             maViewTransformation(),
@@ -129,15 +127,10 @@ namespace sdr
         {
             // set Property 'ReducedDisplayQuality' to true to allow simpler interaction
             // visualisations
-            static bool bUseReducedDisplayQualityForDrag(true);
-
-            if(bUseReducedDisplayQualityForDrag)
-            {
-                uno::Sequence< beans::PropertyValue > xProperties(1);
-                xProperties[0].Name = "ReducedDisplayQuality";
-                xProperties[0].Value <<= true;
-                maViewInformation2D = drawinglayer::geometry::ViewInformation2D(xProperties);
-            }
+            uno::Sequence< beans::PropertyValue > xProperties(1);
+            xProperties[0].Name = "ReducedDisplayQuality";
+            xProperties[0].Value <<= true;
+            maViewInformation2D = drawinglayer::geometry::ViewInformation2D(xProperties);
         }
 
         rtl::Reference<OverlayManager> OverlayManager::create(OutputDevice& rOutputDevice)
@@ -155,7 +148,7 @@ namespace sdr
                 {
                     const Size aOutputSizePixel(getOutputDevice().GetOutputSizePixel());
 
-                    // only set when we *have* a output size, else let aViewRange
+                    // only set when we *have* an output size, else let aViewRange
                     // stay on empty
                     if(aOutputSizePixel.Width() && aOutputSizePixel.Height())
                     {
@@ -224,11 +217,10 @@ namespace sdr
 
             if(nSize)
             {
-                OverlayObjectVector::const_iterator aEnd = maOverlayObjects.end();
-                for(OverlayObjectVector::iterator aIter(maOverlayObjects.begin()); aIter != aEnd; ++aIter)
+                for(const auto& rpOverlayObject : maOverlayObjects)
                 {
-                    OSL_ENSURE(*aIter, "Corrupted OverlayObject List (!)");
-                    OverlayObject& rCandidate = **aIter;
+                    OSL_ENSURE(rpOverlayObject, "Corrupted OverlayObject List (!)");
+                    OverlayObject& rCandidate = *rpOverlayObject;
                     impApplyRemoveActions(rCandidate);
                 }
 
@@ -239,31 +231,24 @@ namespace sdr
 
         void OverlayManager::completeRedraw(const vcl::Region& rRegion, OutputDevice* pPreRenderDevice) const
         {
-            if(!rRegion.IsEmpty() && maOverlayObjects.size())
-            {
-                // check for changed MapModes. That may influence the
-                // logical size of pixel based OverlayObjects (like BitmapHandles)
-                //ImpCheckMapModeChange();
+            if(rRegion.IsEmpty() || maOverlayObjects.empty())
+                return;
 
-                // paint members
-                const tools::Rectangle aRegionBoundRect(rRegion.GetBoundRect());
-                const basegfx::B2DRange aRegionRange(
-                    aRegionBoundRect.Left(), aRegionBoundRect.Top(),
-                    aRegionBoundRect.Right(), aRegionBoundRect.Bottom());
+            // check for changed MapModes. That may influence the
+            // logical size of pixel based OverlayObjects (like BitmapHandles)
+            //ImpCheckMapModeChange();
 
-                OutputDevice& rTarget = (pPreRenderDevice) ? *pPreRenderDevice : getOutputDevice();
-                ImpDrawMembers(aRegionRange, rTarget);
-            }
+            // paint members
+            const tools::Rectangle aRegionBoundRect(rRegion.GetBoundRect());
+            const basegfx::B2DRange aRegionRange = vcl::unotools::b2DRectangleFromRectangle(aRegionBoundRect);
+
+            OutputDevice& rTarget = pPreRenderDevice ? *pPreRenderDevice : getOutputDevice();
+            ImpDrawMembers(aRegionRange, rTarget);
         }
 
         void OverlayManager::flush()
         {
             // default has nothing to do
-        }
-
-        void OverlayManager::restoreBackground(const vcl::Region& /*rRegion*/) const
-        {
-            // unbuffered versions do nothing here
         }
 
         void OverlayManager::add(OverlayObject& rOverlayObject)
@@ -295,34 +280,37 @@ namespace sdr
             }
         }
 
+        tools::Rectangle OverlayManager::RangeToInvalidateRectangle(const basegfx::B2DRange& rRange) const
+        {
+            if (getDrawinglayerOpt().IsAntiAliasing())
+            {
+                // assume AA needs one pixel more and invalidate one pixel more
+                const double fDiscreteOne(getDiscreteOne());
+                const tools::Rectangle aInvalidateRectangle(
+                    static_cast<sal_Int32>(floor(rRange.getMinX() - fDiscreteOne)),
+                    static_cast<sal_Int32>(floor(rRange.getMinY() - fDiscreteOne)),
+                    static_cast<sal_Int32>(ceil(rRange.getMaxX() + fDiscreteOne)),
+                    static_cast<sal_Int32>(ceil(rRange.getMaxY() + fDiscreteOne)));
+                return aInvalidateRectangle;
+            }
+            else
+            {
+                // #i77674# transform to rectangle. Use floor/ceil to get all covered
+                // discrete pixels, see #i75163# and OverlayManagerBuffered::invalidateRange
+                const tools::Rectangle aInvalidateRectangle(
+                    static_cast<sal_Int32>(floor(rRange.getMinX())), static_cast<sal_Int32>(floor(rRange.getMinY())),
+                    static_cast<sal_Int32>(ceil(rRange.getMaxX())), static_cast<sal_Int32>(ceil(rRange.getMaxY())));
+                return aInvalidateRectangle;
+            }
+        }
+
         void OverlayManager::invalidateRange(const basegfx::B2DRange& rRange)
         {
-            if(OUTDEV_WINDOW == getOutputDevice().GetOutDevType())
+            if (OUTDEV_WINDOW == getOutputDevice().GetOutDevType())
             {
-                if(getDrawinglayerOpt().IsAntiAliasing())
-                {
-                    // assume AA needs one pixel more and invalidate one pixel more
-                    const double fDiscreteOne(getDiscreteOne());
-                    const tools::Rectangle aInvalidateRectangle(
-                        (sal_Int32)floor(rRange.getMinX() - fDiscreteOne),
-                        (sal_Int32)floor(rRange.getMinY() - fDiscreteOne),
-                        (sal_Int32)ceil(rRange.getMaxX() + fDiscreteOne),
-                        (sal_Int32)ceil(rRange.getMaxY() + fDiscreteOne));
-
-                    // simply invalidate
-                    static_cast<vcl::Window&>(getOutputDevice()).Invalidate(aInvalidateRectangle, InvalidateFlags::NoErase);
-                }
-                else
-                {
-                    // #i77674# transform to rectangle. Use floor/ceil to get all covered
-                    // discrete pixels, see #i75163# and OverlayManagerBuffered::invalidateRange
-                    const tools::Rectangle aInvalidateRectangle(
-                        (sal_Int32)floor(rRange.getMinX()), (sal_Int32)floor(rRange.getMinY()),
-                        (sal_Int32)ceil(rRange.getMaxX()), (sal_Int32)ceil(rRange.getMaxY()));
-
-                    // simply invalidate
-                    static_cast<vcl::Window&>(getOutputDevice()).Invalidate(aInvalidateRectangle, InvalidateFlags::NoErase);
-                }
+                tools::Rectangle aInvalidateRectangle(RangeToInvalidateRectangle(rRange));
+                // simply invalidate
+                static_cast<vcl::Window&>(getOutputDevice()).Invalidate(aInvalidateRectangle, InvalidateFlags::NoErase);
             }
         }
 
@@ -356,7 +344,6 @@ namespace sdr
             }
         }
 
-    } // end of namespace overlay
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

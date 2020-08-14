@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETOOLBOX_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETOOLBOX_HXX
+#pragma once
 
 #include <map>
 #include <toolkit/awt/vclxaccessiblecomponent.hxx>
@@ -25,7 +24,6 @@
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 
 
-//  class VCLXAccessibleToolBox
 
 
 typedef ::cppu::ImplHelper1 < css::accessibility::XAccessibleSelection > VCLXAccessibleToolBox_BASE;
@@ -35,7 +33,7 @@ typedef std::map< sal_Int32, css::uno::Reference< css::accessibility::XAccessibl
 class VCLXAccessibleToolBoxItem;
 class ToolBox;
 
-class VCLXAccessibleToolBox : public VCLXAccessibleComponent, public VCLXAccessibleToolBox_BASE
+class VCLXAccessibleToolBox final : public VCLXAccessibleComponent, public VCLXAccessibleToolBox_BASE
 {
 private:
     ToolBoxItemsMap             m_aAccessibleChildren;
@@ -53,8 +51,8 @@ private:
     void                        UpdateCustomPopupItemp_Impl( vcl::Window* pWindow, bool bOpen );
     void                        HandleSubToolBarEvent( const VclWindowEvent& rVclWindowEvent );
     void                        ReleaseSubToolBox( ToolBox* _pSubToolBox );
+    sal_Int32                   implGetAccessibleChildCount();
 
-protected:
     virtual ~VCLXAccessibleToolBox() override;
 
     virtual void    FillAccessibleStateSet( utl::AccessibleStateSetHelper& rStateSet ) override;
@@ -96,11 +94,10 @@ public:
 
 private:
     void implReleaseToolboxItem(
-            ToolBoxItemsMap::iterator& _rMapPos,
+            ToolBoxItemsMap::iterator const & _rMapPos,
             bool _bNotifyRemoval
         );
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETOOLBOX_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <tools/time.hxx>
+#include <sal/log.hxx>
 #include <vcl/timer.hxx>
-#include "saltimer.hxx"
+#include <vcl/scheduler.hxx>
+#include <schedulerimpl.hxx>
 
 void Timer::SetDeletionFlags()
 {
@@ -28,37 +29,22 @@ void Timer::SetDeletionFlags()
         Task::SetDeletionFlags();
 }
 
-bool Timer::ReadyForSchedule( bool /* bIdle */, sal_uInt64 nTimeNow ) const
-{
-    return (GetSchedulerData()->mnUpdateTime + mnTimeout) <= nTimeNow;
-}
-
-bool Timer::IsIdle() const
-{
-    return false;
-}
-
-sal_uInt64 Timer::UpdateMinPeriod( sal_uInt64 nMinPeriod, sal_uInt64 nTimeNow ) const
+sal_uInt64 Timer::UpdateMinPeriod( sal_uInt64 nTimeNow ) const
 {
     sal_uInt64 nWakeupTime = GetSchedulerData()->mnUpdateTime + mnTimeout;
-    if( nWakeupTime <= nTimeNow )
-        return Scheduler::ImmediateTimeoutMs;
-    else
-    {
-        sal_uInt64 nSleepTime = nWakeupTime - nTimeNow;
-        return ( nSleepTime < nMinPeriod ) ? nSleepTime : nMinPeriod;
-    }
+    return ( nWakeupTime <= nTimeNow )
+        ? Scheduler::ImmediateTimeoutMs : nWakeupTime - nTimeNow;
 }
 
-Timer::Timer( bool bAuto, const sal_Char *pDebugName )
+Timer::Timer( bool bAuto, const char *pDebugName )
     : Task( pDebugName )
     , mnTimeout( Scheduler::ImmediateTimeoutMs )
     , mbAuto( bAuto )
 {
-    SetPriority( TaskPriority::HIGHEST );
+    SetPriority( TaskPriority::DEFAULT );
 }
 
-Timer::Timer( const sal_Char *pDebugName )
+Timer::Timer( const char *pDebugName )
     : Timer( false, pDebugName )
 {
 }
@@ -108,7 +94,7 @@ void Timer::SetTimeout( sal_uInt64 nNewTimeout )
         StartTimer( mnTimeout );
 }
 
-AutoTimer::AutoTimer( const sal_Char *pDebugName )
+AutoTimer::AutoTimer( const char *pDebugName )
     : Timer( true, pDebugName )
 {
 }

@@ -21,9 +21,7 @@
 
 #include <connectivity/sdbcx/VCollection.hxx>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
-namespace connectivity
-{
-    namespace mork
+namespace connectivity::mork
     {
         class OTables : public sdbcx::OCollection
         {
@@ -33,14 +31,14 @@ namespace connectivity
             virtual void impl_refresh() override;
         public:
             OTables(const css::uno::Reference< css::sdbc::XDatabaseMetaData >& _rMetaData,::cppu::OWeakObject& _rParent, ::osl::Mutex& _rMutex,
-                const TStringVector &_rVector) : sdbcx::OCollection(_rParent, true, _rMutex, _rVector)
+                const ::std::vector< OUString> &_rVector) : sdbcx::OCollection(_rParent, true, _rMutex, _rVector)
                 ,m_xMetaData(_rMetaData)
             {}
 
             // only the name is identical to ::cppu::OComponentHelper
-            virtual void SAL_CALL disposing() override;
+            virtual void disposing() override;
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MTABLES_HXX
 

@@ -19,27 +19,20 @@
 #ifndef INCLUDED_SW_INC_ACCESSIBILITYOPTIONS_HXX
 #define INCLUDED_SW_INC_ACCESSIBILITYOPTIONS_HXX
 
-#include <tools/solar.h>
-
 struct SwAccessibilityOptions
 {
     bool bIsAlwaysAutoColor         :1;
-    bool bIsStopAnimatedText        :1;
     bool bIsStopAnimatedGraphics    :1;
 
     SwAccessibilityOptions() :
         bIsAlwaysAutoColor(false),
-        bIsStopAnimatedText(false),
         bIsStopAnimatedGraphics(false) {}
 
     bool IsAlwaysAutoColor() const       { return bIsAlwaysAutoColor; }
     void SetAlwaysAutoColor( bool b )    { bIsAlwaysAutoColor = b; }
 
-    bool IsStopAnimatedGraphics() const       { return bIsStopAnimatedText;}
-    void SetStopAnimatedGraphics( bool b )    { bIsStopAnimatedText = b; }
-
-    bool IsStopAnimatedText() const       { return bIsStopAnimatedGraphics; }
-    void SetStopAnimatedText( bool b )    { bIsStopAnimatedGraphics = b;}
+    bool IsStopAnimatedGraphics() const       { return bIsStopAnimatedGraphics;}
+    void SetStopAnimatedGraphics( bool b )    { bIsStopAnimatedGraphics = b; }
 };
 #endif
 

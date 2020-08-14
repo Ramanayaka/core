@@ -23,46 +23,21 @@
 #include <memory>
 
 #include <sfx2/tabdlg.hxx>
-#include <svx/Palette.hxx>
-#include <vcl/group.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/menubtn.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/field.hxx>
 #include <editeng/numdef.hxx>
 #include <editeng/svxenum.hxx>
 #include <svtools/ctrlbox.hxx>
-#include <vcl/dialog.hxx>
+#include <vcl/customweld.hxx>
+#include <vcl/timer.hxx>
+#include <cui/numberingpreview.hxx>
 
-class SvxColorListBox;
+#define MN_GALLERY_ENTRY 100
+
+class ColorListBox;
+class SvxNumValueSet;
 class SvxNumRule;
 class SvxBmpNumValueSet;
-class SvxNumValueSet;
 class SvxBrushItem;
-class ValueSet;
-
-class SvxNumberingPreview : public vcl::Window
-{
-    const SvxNumRule*   pActNum;
-    vcl::Font           aStdFont;
-    long                nPageWidth;
-    bool                bPosition;
-    sal_uInt16          nActLevel;
-
-    protected:
-        virtual void        Paint( vcl::RenderContext& rRenderContext, const ::tools::Rectangle& rRect ) override;
-
-    public:
-        SvxNumberingPreview(vcl::Window* pParent, WinBits nWinBits = WB_BORDER);
-
-        void    SetNumRule(const SvxNumRule* pNum)
-                    {pActNum = pNum; Invalidate();};
-        void    SetPositionMode()
-                        { bPosition = true;}
-        void    SetLevel(sal_uInt16 nSet) {nActLevel = nSet;}
-
-};
+struct ImplSVEvent;
 
 struct SvxNumSettings_Impl
 {
@@ -81,33 +56,28 @@ struct SvxNumSettings_Impl
 typedef std::vector<std::unique_ptr<SvxNumSettings_Impl> > SvxNumSettingsArr_Impl;
 
 
-class SvxSingleNumPickTabPage : public SfxTabPage
+class SvxSingleNumPickTabPage final : public SfxTabPage
 {
-    using TabPage::ActivatePage;
-    using TabPage::DeactivatePage;
-
-    VclPtr<SvxNumValueSet>         m_pExamplesVS;
     SvxNumSettingsArr_Impl  aNumSettingsArr;
-    SvxNumRule*             pActNum;
-    SvxNumRule*             pSaveNum;
-    sal_uInt16                  nActNumLvl;
+    std::unique_ptr<SvxNumRule> pActNum;
+    std::unique_ptr<SvxNumRule> pSaveNum;
+    sal_uInt16              nActNumLvl;
     bool                    bModified   : 1;
     bool                    bPreset     : 1;
 
-    OUString              sNumCharFmtName;
     sal_uInt16              nNumItemId;
 
-protected:
-        DECL_LINK(NumSelectHdl_Impl, ValueSet*, void);
-        DECL_LINK(DoubleClickHdl_Impl, ValueSet*, void);
+    std::unique_ptr<SvxNumValueSet> m_xExamplesVS;
+    std::unique_ptr<weld::CustomWeld> m_xExamplesVSWin;
+
+    DECL_LINK(NumSelectHdl_Impl, ValueSet*, void);
+    DECL_LINK(DoubleClickHdl_Impl, ValueSet*, void);
 
 public:
-        SvxSingleNumPickTabPage(vcl::Window* pParent,
-                               const SfxItemSet& rSet);
+    SvxSingleNumPickTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~SvxSingleNumPickTabPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent,
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController,
                                 const SfxItemSet* rAttrSet);
 
     virtual void        ActivatePage(const SfxItemSet& rSet) override;
@@ -116,31 +86,27 @@ public:
     virtual void        Reset( const SfxItemSet* rSet ) override;
 };
 
-
-class SvxBulletPickTabPage : public SfxTabPage
+class SvxBulletPickTabPage final : public SfxTabPage
 {
-    using TabPage::ActivatePage;
-    using TabPage::DeactivatePage;
-
-    VclPtr<SvxNumValueSet>     m_pExamplesVS;
-    SvxNumRule*         pActNum;
-    SvxNumRule*         pSaveNum;
+    std::unique_ptr<SvxNumRule> pActNum;
+    std::unique_ptr<SvxNumRule> pSaveNum;
     sal_uInt16          nActNumLvl;
     bool                bModified   : 1;
     bool                bPreset     : 1;
     sal_uInt16          nNumItemId;
 
     OUString            sBulletCharFormatName;
-protected:
-        DECL_LINK(NumSelectHdl_Impl, ValueSet*, void);
-        DECL_LINK(DoubleClickHdl_Impl, ValueSet*, void);
-public:
-        SvxBulletPickTabPage(vcl::Window* pParent,
-                               const SfxItemSet& rSet);
-    virtual ~SvxBulletPickTabPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent,
+    std::unique_ptr<SvxNumValueSet> m_xExamplesVS;
+    std::unique_ptr<weld::CustomWeld> m_xExamplesVSWin;
+
+    DECL_LINK(NumSelectHdl_Impl, ValueSet*, void);
+    DECL_LINK(DoubleClickHdl_Impl, ValueSet*, void);
+public:
+    SvxBulletPickTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
+    virtual ~SvxBulletPickTabPage() override;
+
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController,
                                 const SfxItemSet* rAttrSet);
 
     virtual void        ActivatePage(const SfxItemSet& rSet) override;
@@ -154,36 +120,31 @@ public:
 #define NUM_VALUSET_COUNT 16
 
 /// TabPage for complete numeration
-class SvxNumPickTabPage : public SfxTabPage
+class SvxNumPickTabPage final : public SfxTabPage
 {
-    using TabPage::ActivatePage;
-    using TabPage::DeactivatePage;
-
-    VclPtr<SvxNumValueSet>     m_pExamplesVS;
     OUString            sNumCharFmtName;
     OUString            sBulletCharFormatName;
 
     SvxNumSettingsArr_Impl  aNumSettingsArrays[NUM_VALUSET_COUNT];  // is initialized with the five formats
 
-    SvxNumRule*         pActNum;
-    SvxNumRule*         pSaveNum;
+    std::unique_ptr<SvxNumRule> pActNum;
+    std::unique_ptr<SvxNumRule> pSaveNum;
     sal_uInt16              nActNumLvl;
     sal_uInt16              nNumItemId;
     bool                bModified   : 1;
     bool                bPreset     : 1;
 
+    std::unique_ptr<SvxNumValueSet> m_xExamplesVS;
+    std::unique_ptr<weld::CustomWeld> m_xExamplesVSWin;
 
-protected:
-        DECL_LINK(NumSelectHdl_Impl, ValueSet*, void);
-        DECL_LINK(DoubleClickHdl_Impl, ValueSet*, void);
+    DECL_LINK(NumSelectHdl_Impl, ValueSet*, void);
+    DECL_LINK(DoubleClickHdl_Impl, ValueSet*, void);
 
 public:
-    SvxNumPickTabPage(vcl::Window* pParent,
-                               const SfxItemSet& rSet);
+    SvxNumPickTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~SvxNumPickTabPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent,
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController,
                                 const SfxItemSet* rAttrSet);
 
     virtual void        ActivatePage(const SfxItemSet& rSet) override;
@@ -197,41 +158,33 @@ public:
     virtual void        PageCreated(const SfxAllItemSet& aSet) override;
 };
 
-
-class SvxBitmapPickTabPage : public SfxTabPage
+class SvxBitmapPickTabPage final : public SfxTabPage
 {
-    using TabPage::ActivatePage;
-    using TabPage::DeactivatePage;
-
-    VclPtr<FixedText>          m_pErrorText;
-    VclPtr<SvxBmpNumValueSet>  m_pExamplesVS;
-    VclPtr<Button>             m_pBtBrowseFile;
-
     std::vector<OUString> aGrfNames;
-    OUString            sNumCharFmtName;
 
-    SvxNumRule*         pActNum;
-    SvxNumRule*         pSaveNum;
+    std::unique_ptr<SvxNumRule> pActNum;
+    std::unique_ptr<SvxNumRule> pSaveNum;
     sal_uInt16              nActNumLvl;
     sal_uInt16              nNumItemId;
     MapUnit             eCoreUnit;
     bool                bModified   : 1;
     bool                bPreset     : 1;
 
-protected:
-        DECL_LINK(NumSelectHdl_Impl, ValueSet*, void);
-        DECL_LINK(DoubleClickHdl_Impl, ValueSet*, void);
-        DECL_LINK(ClickAddBrowseHdl_Impl, Button*, void );
+    std::unique_ptr<weld::Label> m_xErrorText;
+    std::unique_ptr<weld::Button> m_xBtBrowseFile;
+    std::unique_ptr<SvxBmpNumValueSet> m_xExamplesVS;
+    std::unique_ptr<weld::CustomWeld> m_xExamplesVSWin;
 
+    DECL_LINK(NumSelectHdl_Impl, ValueSet*, void);
+    DECL_LINK(DoubleClickHdl_Impl, ValueSet*, void);
+    DECL_LINK(ClickAddBrowseHdl_Impl, weld::Button&, void);
 
 public:
-        SvxBitmapPickTabPage(vcl::Window* pParent,
-                               const SfxItemSet& rSet);
-        virtual ~SvxBitmapPickTabPage() override;
-    virtual void dispose() override;
+    SvxBitmapPickTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
+    virtual ~SvxBitmapPickTabPage() override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent,
-                                const SfxItemSet* rAttrSet);
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController,
+                                      const SfxItemSet* rAttrSet);
 
     virtual void        ActivatePage(const SfxItemSet& rSet) override;
     virtual DeactivateRC   DeactivatePage(SfxItemSet *pSet) override;
@@ -239,67 +192,25 @@ public:
     virtual void        Reset( const SfxItemSet* rSet ) override;
 };
 
-
 class SvxNumOptionsTabPage : public SfxTabPage
 {
-    using TabPage::ActivatePage;
-    using TabPage::DeactivatePage;
-
-    VclPtr<ListBox>        m_pLevelLB;
-
-    VclPtr<ListBox>        m_pFmtLB;
-
-    VclPtr<FixedText>      m_pSeparatorFT;
-    VclPtr<FixedText>      m_pPrefixFT;
-    VclPtr<Edit>           m_pPrefixED;
-    VclPtr<FixedText>      m_pSuffixFT;
-    VclPtr<Edit>           m_pSuffixED;
-    VclPtr<FixedText>      m_pCharFmtFT;
-    VclPtr<ListBox>        m_pCharFmtLB;
-    VclPtr<FixedText>      m_pBulColorFT;
-    VclPtr<SvxColorListBox> m_pBulColLB;
-    VclPtr<FixedText>      m_pBulRelSizeFT;
-    VclPtr<MetricField>    m_pBulRelSizeMF;
-    VclPtr<FixedText>      m_pAllLevelFT;
-    VclPtr<NumericField>   m_pAllLevelNF;
-    VclPtr<FixedText>      m_pStartFT;
-    VclPtr<NumericField>   m_pStartED;
-    VclPtr<FixedText>      m_pBulletFT;
-    VclPtr<PushButton>     m_pBulletPB;
-    VclPtr<FixedText>      m_pAlignFT;
-    VclPtr<ListBox>        m_pAlignLB;
-    VclPtr<FixedText>      m_pBitmapFT;
-    VclPtr<MenuButton>     m_pBitmapMB;
-    sal_uInt16      m_nGalleryId;
-    VclPtr<FixedText>      m_pWidthFT;
-    VclPtr<MetricField>    m_pWidthMF;
-    VclPtr<FixedText>      m_pHeightFT;
-    VclPtr<MetricField>    m_pHeightMF;
-    VclPtr<CheckBox>       m_pRatioCB;
-    VclPtr<FixedText>      m_pOrientFT;
-    VclPtr<ListBox>        m_pOrientLB;
-
-    VclPtr<VclContainer>   m_pAllLevelsFrame;
-    VclPtr<CheckBox>       m_pSameLevelCB;
-
-    VclPtr<SvxNumberingPreview> m_pPreviewWIN;
-
     OUString        m_sNumCharFmtName;
     OUString        m_sBulletCharFormatName;
 
     Timer           aInvalidateTimer;
 
-    SvxNumRule*         pActNum;
-    SvxNumRule*         pSaveNum;
+    std::unique_ptr<SvxNumRule> pActNum;
+    std::unique_ptr<SvxNumRule> pSaveNum;
 
     Size                aInitSize[SVX_MAX_NUM];
+
+    ImplSVEvent*        m_pLevelHdlEvent;
 
     bool                bLastWidthModified  : 1;
     bool                bModified           : 1;
     bool                bPreset             : 1;
     bool                bAutomaticCharStyles: 1;
     bool                bHTMLMode           : 1;
-    bool                bMenuButtonInitialized : 1;
 
     std::vector<OUString> aGrfNames;
     vcl::Font             aActBulletFont;
@@ -309,6 +220,41 @@ class SvxNumOptionsTabPage : public SfxTabPage
     sal_uInt16          nNumItemId;
     MapUnit             eCoreUnit;
 
+    SvxNumberingPreview m_aPreviewWIN;
+    std::unique_ptr<weld::Widget> m_xGrid;
+    std::unique_ptr<weld::TreeView> m_xLevelLB;
+    std::unique_ptr<weld::ComboBox> m_xFmtLB;
+    std::unique_ptr<weld::Label> m_xSeparatorFT;
+    std::unique_ptr<weld::Label> m_xPrefixFT;
+    std::unique_ptr<weld::Entry> m_xPrefixED;
+    std::unique_ptr<weld::Label> m_xSuffixFT;
+    std::unique_ptr<weld::Entry> m_xSuffixED;
+    std::unique_ptr<weld::Label> m_xCharFmtFT;
+    std::unique_ptr<weld::ComboBox> m_xCharFmtLB;
+    std::unique_ptr<weld::Label> m_xBulColorFT;
+    std::unique_ptr<ColorListBox> m_xBulColLB;
+    std::unique_ptr<weld::Label> m_xBulRelSizeFT;
+    std::unique_ptr<weld::MetricSpinButton> m_xBulRelSizeMF;
+    std::unique_ptr<weld::Label> m_xAllLevelFT;
+    std::unique_ptr<weld::SpinButton> m_xAllLevelNF;
+    std::unique_ptr<weld::Label> m_xStartFT;
+    std::unique_ptr<weld::SpinButton> m_xStartED;
+    std::unique_ptr<weld::Label> m_xBulletFT;
+    std::unique_ptr<weld::Button> m_xBulletPB;
+    std::unique_ptr<weld::Label> m_xBitmapFT;
+    std::unique_ptr<weld::MenuButton> m_xBitmapMB;
+    std::unique_ptr<weld::Label> m_xWidthFT;
+    std::unique_ptr<weld::MetricSpinButton> m_xWidthMF;
+    std::unique_ptr<weld::Label> m_xHeightFT;
+    std::unique_ptr<weld::MetricSpinButton> m_xHeightMF;
+    std::unique_ptr<weld::CheckButton> m_xRatioCB;
+    std::unique_ptr<weld::Label> m_xOrientFT;
+    std::unique_ptr<weld::ComboBox> m_xOrientLB;
+    std::unique_ptr<weld::Widget> m_xAllLevelsFrame;
+    std::unique_ptr<weld::Menu> m_xGalleryMenu;
+    std::unique_ptr<weld::CheckButton> m_xSameLevelCB;
+    std::unique_ptr<weld::CustomWeld> m_xPreviewWIN;
+
     void                InitControls();
     /** To switch between the numbering type
         0 - Number;
@@ -317,31 +263,29 @@ class SvxNumOptionsTabPage : public SfxTabPage
     void                SwitchNumberType( sal_uInt8 nType );
     void                CheckForStartValue_Impl(sal_uInt16 nNumberingType);
 
-        DECL_LINK( NumberTypeSelectHdl_Impl, ListBox&, void );
-        DECL_LINK( LevelHdl_Impl, ListBox&, void );
-        DECL_LINK( PopupActivateHdl_Impl, MenuButton *, void );
-        DECL_LINK( GraphicHdl_Impl, MenuButton *, void );
-        DECL_LINK( BulletHdl_Impl, Button*, void);
-        DECL_LINK( SizeHdl_Impl, Edit&, void );
-        DECL_LINK( RatioHdl_Impl, Button*, void );
-        DECL_LINK( CharFmtHdl_Impl, ListBox&, void );
-        DECL_LINK( EditModifyHdl_Impl, Edit&, void );
-        DECL_LINK( EditListBoxHdl_Impl, ListBox&, void );
-        DECL_LINK( AllLevelHdl_Impl, Edit&, void );
-        DECL_LINK( OrientHdl_Impl, ListBox&, void );
-        DECL_LINK( SameLevelHdl_Impl, Button*, void );
-        DECL_LINK( BulColorHdl_Impl, SvxColorListBox&, void );
-        DECL_LINK( BulRelSizeHdl_Impl, Edit&, void);
-        DECL_LINK( PreviewInvalidateHdl_Impl, Timer *, void);
-        void EditModifyHdl_Impl(Edit*);
+    DECL_LINK(NumberTypeSelectHdl_Impl, weld::ComboBox&, void);
+    DECL_LINK(LevelHdl_Impl, weld::TreeView&, void);
+    DECL_LINK(LevelHdl, void *, void);
+    DECL_LINK(PopupActivateHdl_Impl, weld::ToggleButton&, void);
+    DECL_LINK(GraphicHdl_Impl, const OString&, void);
+    DECL_LINK(BulletHdl_Impl, weld::Button&, void);
+    DECL_LINK(SizeHdl_Impl, weld::MetricSpinButton&, void);
+    DECL_LINK(RatioHdl_Impl, weld::ToggleButton&, void);
+    DECL_LINK(CharFmtHdl_Impl, weld::ComboBox&, void);
+    DECL_LINK(EditModifyHdl_Impl, weld::Entry&, void);
+    DECL_LINK(AllLevelHdl_Impl, weld::SpinButton&, void);
+    DECL_LINK(OrientHdl_Impl, weld::ComboBox&, void);
+    DECL_LINK(SameLevelHdl_Impl, weld::ToggleButton&, void);
+    DECL_LINK(BulColorHdl_Impl, ColorListBox&, void);
+    DECL_LINK(BulRelSizeHdl_Impl, weld::MetricSpinButton&, void);
+    DECL_LINK(PreviewInvalidateHdl_Impl, Timer*, void);
+    void EditModifyHdl_Impl(const weld::Entry*);
 
 public:
-        SvxNumOptionsTabPage(vcl::Window* pParent,
-                               const SfxItemSet& rSet);
-        virtual ~SvxNumOptionsTabPage() override;
-    virtual void dispose() override;
+    SvxNumOptionsTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
+    virtual ~SvxNumOptionsTabPage() override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent,
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController,
                                 const SfxItemSet* rAttrSet);
 
     virtual void        ActivatePage(const SfxItemSet& rSet) override;
@@ -363,45 +307,12 @@ public:
 
 class SvxNumPositionTabPage : public SfxTabPage
 {
-    using TabPage::ActivatePage;
-    using TabPage::DeactivatePage;
+    std::unique_ptr<SvxNumRule> pActNum;
+    std::unique_ptr<SvxNumRule> pSaveNum;
 
-    VclPtr<ListBox>            m_pLevelLB;
-
-    // former set of controls shown for numbering rules containing list level
-    // attributes in SvxNumberFormat::SvxNumPositionAndSpaceMode == LABEL_WIDTH_AND_POSITION
-    VclPtr<FixedText>          m_pDistBorderFT;
-    VclPtr<MetricField>        m_pDistBorderMF;
-    VclPtr<CheckBox>           m_pRelativeCB;
-    VclPtr<FixedText>          m_pIndentFT;
-    VclPtr<MetricField>        m_pIndentMF;
-    VclPtr<FixedText>          m_pDistNumFT;
-    VclPtr<MetricField>        m_pDistNumMF;
-    VclPtr<FixedText>          m_pAlignFT;
-    VclPtr<ListBox>            m_pAlignLB;
-
-    // new set of controls shown for numbering rules containing list level
-    // attributes in SvxNumberFormat::SvxNumPositionAndSpaceMode == LABEL_ALIGNMENT
-    VclPtr<FixedText>          m_pLabelFollowedByFT;
-    VclPtr<ListBox>            m_pLabelFollowedByLB;
-    VclPtr<FixedText>          m_pListtabFT;
-    VclPtr<MetricField>        m_pListtabMF;
-    VclPtr<FixedText>          m_pAlign2FT;
-    VclPtr<ListBox>            m_pAlign2LB;
-    VclPtr<FixedText>          m_pAlignedAtFT;
-    VclPtr<MetricField>        m_pAlignedAtMF;
-    VclPtr<FixedText>          m_pIndentAtFT;
-    VclPtr<MetricField>        m_pIndentAtMF;
-
-    VclPtr<PushButton>         m_pStandardPB;
-
-    VclPtr<SvxNumberingPreview> m_pPreviewWIN;
-
-    SvxNumRule*         pActNum;
-    SvxNumRule*         pSaveNum;
-
-    sal_uInt16              nActNumLvl;
-    sal_uInt16              nNumItemId;
+    ImplSVEvent*        m_pLevelHdlEvent;
+    sal_uInt16          nActNumLvl;
+    sal_uInt16          nNumItemId;
     MapUnit             eCoreUnit;
 
     bool                bModified           : 1;
@@ -409,38 +320,61 @@ class SvxNumPositionTabPage : public SfxTabPage
     bool                bInInintControl     : 1;  // workaround for Modify-error, is said to be corrected from 391 on
     bool                bLabelAlignmentPosAndSpaceModeActive;
 
+    SvxNumberingPreview m_aPreviewWIN;
+    std::unique_ptr<weld::TreeView> m_xLevelLB;
+    // former set of controls shown for numbering rules containing list level
+    // attributes in SvxNumberFormat::SvxNumPositionAndSpaceMode == LABEL_WIDTH_AND_POSITION
+    std::unique_ptr<weld::Label> m_xDistBorderFT;
+    std::unique_ptr<weld::MetricSpinButton> m_xDistBorderMF;
+    std::unique_ptr<weld::CheckButton> m_xRelativeCB;
+    std::unique_ptr<weld::Label> m_xIndentFT;
+    std::unique_ptr<weld::MetricSpinButton> m_xIndentMF;
+    std::unique_ptr<weld::Label> m_xDistNumFT;
+    std::unique_ptr<weld::MetricSpinButton> m_xDistNumMF;
+    std::unique_ptr<weld::Label> m_xAlignFT;
+    std::unique_ptr<weld::ComboBox> m_xAlignLB;
+    // new set of controls shown for numbering rules containing list level
+    // attributes in SvxNumberFormat::SvxNumPositionAndSpaceMode == LABEL_ALIGNMENT
+    std::unique_ptr<weld::Label> m_xLabelFollowedByFT;
+    std::unique_ptr<weld::ComboBox> m_xLabelFollowedByLB;
+    std::unique_ptr<weld::Label> m_xListtabFT;
+    std::unique_ptr<weld::MetricSpinButton> m_xListtabMF;
+    std::unique_ptr<weld::Label>m_xAlign2FT;
+    std::unique_ptr<weld::ComboBox> m_xAlign2LB;
+    std::unique_ptr<weld::Label> m_xAlignedAtFT;
+    std::unique_ptr<weld::MetricSpinButton> m_xAlignedAtMF;
+    std::unique_ptr<weld::Label> m_xIndentAtFT;
+    std::unique_ptr<weld::MetricSpinButton> m_xIndentAtMF;
+    std::unique_ptr<weld::Button> m_xStandardPB;
+    std::unique_ptr<weld::CustomWeld> m_xPreviewWIN;
+
     void                InitControls();
 
-    DECL_LINK( LevelHdl_Impl, ListBox&, void );
-    DECL_LINK( EditModifyHdl_Impl, ListBox&, void);
-    DECL_LINK( DistanceHdl_Impl, SpinField&, void );
-    DECL_LINK( DistanceFocusHdl_Impl, Control&, void );
-    DECL_LINK( RelativeHdl_Impl, Button*, void );
-    DECL_LINK( StandardHdl_Impl, Button*, void);
+    DECL_LINK(LevelHdl_Impl, weld::TreeView&, void);
+    DECL_LINK(LevelHdl, void *, void);
+    DECL_LINK(EditModifyHdl_Impl, weld::ComboBox&, void);
+    DECL_LINK(DistanceHdl_Impl, weld::MetricSpinButton&, void);
+    DECL_LINK(RelativeHdl_Impl, weld::ToggleButton&, void);
+    DECL_LINK(StandardHdl_Impl, weld::Button&, void);
 
     void InitPosAndSpaceMode();
     void ShowControlsDependingOnPosAndSpaceMode();
 
-    DECL_LINK(LabelFollowedByHdl_Impl, ListBox&, void);
-    DECL_LINK( ListtabPosHdl_Impl, SpinField&, void );
-    DECL_LINK( ListtabPosFocusHdl_Impl, Control&, void );
-    DECL_LINK( AlignAtHdl_Impl, SpinField&, void );
-    DECL_LINK( AlignAtFocusHdl_Impl, Control&, void );
-    DECL_LINK( IndentAtHdl_Impl, SpinField&, void );
-    DECL_LINK( IndentAtFocusHdl_Impl, Control&, void );
+    DECL_LINK(LabelFollowedByHdl_Impl, weld::ComboBox&, void);
+    DECL_LINK(ListtabPosHdl_Impl, weld::MetricSpinButton&, void);
+    DECL_LINK(AlignAtHdl_Impl, weld::MetricSpinButton&, void);
+    DECL_LINK(IndentAtHdl_Impl, weld::MetricSpinButton&, void);
 
 public:
-        SvxNumPositionTabPage(vcl::Window* pParent,
-                               const SfxItemSet& rSet);
-        virtual ~SvxNumPositionTabPage() override;
-    virtual void dispose() override;
+    SvxNumPositionTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
+    virtual ~SvxNumPositionTabPage() override;
 
     virtual void        ActivatePage(const SfxItemSet& rSet) override;
     virtual DeactivateRC   DeactivatePage(SfxItemSet *pSet) override;
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent,
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController,
                                 const SfxItemSet* rAttrSet);
 
     void                SetMetric(FieldUnit eSet);

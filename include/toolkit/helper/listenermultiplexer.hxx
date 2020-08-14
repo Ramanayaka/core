@@ -20,6 +20,7 @@
 #ifndef INCLUDED_TOOLKIT_HELPER_LISTENERMULTIPLEXER_HXX
 #define INCLUDED_TOOLKIT_HELPER_LISTENERMULTIPLEXER_HXX
 
+#include <config_options.h>
 #include <toolkit/dllapi.h>
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/awt/XFocusListener.hpp>
@@ -41,7 +42,6 @@
 #include <com/sun/star/awt/tree/XTreeExpansionListener.hpp>
 #include <com/sun/star/awt/tree/XTreeEditListener.hpp>
 #include <com/sun/star/view/XSelectionChangeListener.hpp>
-#include <com/sun/star/util/VetoException.hpp>
 #include <cppuhelper/weak.hxx>
 #include <comphelper/interfacecontainer2.hxx>
 #include <toolkit/helper/mutexhelper.hxx>
@@ -52,7 +52,7 @@
 //  class ListenerMultiplexerBase
 
 
-class TOOLKIT_DLLPUBLIC ListenerMultiplexerBase : public MutexHelper,
+class UNLESS_MERGELIBS(TOOLKIT_DLLPUBLIC) ListenerMultiplexerBase : public MutexHelper,
                                 public ::comphelper::OInterfaceContainerHelper2,
                                 public css::uno::XInterface
 {
@@ -160,21 +160,21 @@ DECL_LISTENERMULTIPLEXER_END
 
 //  class ActionListenerMultiplexer
 
-DECL_LISTENERMULTIPLEXER_START_DLLPUB( ActionListenerMultiplexer, css::awt::XActionListener )
+DECL_LISTENERMULTIPLEXER_START( ActionListenerMultiplexer, css::awt::XActionListener )
     void SAL_CALL actionPerformed( const css::awt::ActionEvent& rEvent ) override;
 DECL_LISTENERMULTIPLEXER_END
 
 
 //  class ItemListenerMultiplexer
 
-DECL_LISTENERMULTIPLEXER_START_DLLPUB( ItemListenerMultiplexer, css::awt::XItemListener )
+DECL_LISTENERMULTIPLEXER_START( ItemListenerMultiplexer, css::awt::XItemListener )
     void SAL_CALL itemStateChanged( const css::awt::ItemEvent& rEvent ) override;
 DECL_LISTENERMULTIPLEXER_END
 
 
 //  class TabListenerMultiplexer
 
-DECL_LISTENERMULTIPLEXER_START_DLLPUB( TabListenerMultiplexer, css::awt::XTabListener )
+DECL_LISTENERMULTIPLEXER_START( TabListenerMultiplexer, css::awt::XTabListener )
     void SAL_CALL inserted( ::sal_Int32 ID ) override;
     void SAL_CALL removed( ::sal_Int32 ID ) override;
     void SAL_CALL changed( ::sal_Int32 ID, const css::uno::Sequence< css::beans::NamedValue >& Properties ) override;
@@ -221,14 +221,14 @@ DECL_LISTENERMULTIPLEXER_END
 
 //  class TreeSelectionListenerMultiplexer
 
-DECL_LISTENERMULTIPLEXER_START_DLLPUB( TreeSelectionListenerMultiplexer, css::view::XSelectionChangeListener )
+DECL_LISTENERMULTIPLEXER_START( TreeSelectionListenerMultiplexer, css::view::XSelectionChangeListener )
     virtual void SAL_CALL selectionChanged( const css::lang::EventObject& aEvent ) override;
 DECL_LISTENERMULTIPLEXER_END
 
 
 //  class TreeExpansionListenerMultiplexer
 
-DECL_LISTENERMULTIPLEXER_START_DLLPUB( TreeExpansionListenerMultiplexer, css::awt::tree::XTreeExpansionListener )
+DECL_LISTENERMULTIPLEXER_START( TreeExpansionListenerMultiplexer, css::awt::tree::XTreeExpansionListener )
     virtual void SAL_CALL requestChildNodes( const css::awt::tree::TreeExpansionEvent& aEvent ) override;
     virtual void SAL_CALL treeExpanding( const css::awt::tree::TreeExpansionEvent& aEvent ) override;
     virtual void SAL_CALL treeCollapsing( const css::awt::tree::TreeExpansionEvent& aEvent ) override;
@@ -239,7 +239,7 @@ DECL_LISTENERMULTIPLEXER_END
 
 //  class TreeEditListenerMultiplexer
 
-DECL_LISTENERMULTIPLEXER_START_DLLPUB( TreeEditListenerMultiplexer, css::awt::tree::XTreeEditListener )
+DECL_LISTENERMULTIPLEXER_START( TreeEditListenerMultiplexer, css::awt::tree::XTreeEditListener )
     virtual void SAL_CALL nodeEditing( const css::uno::Reference< css::awt::tree::XTreeNode >& Node ) override;
     virtual void SAL_CALL nodeEdited( const css::uno::Reference< css::awt::tree::XTreeNode >& Node, const OUString& NewText ) override;
 DECL_LISTENERMULTIPLEXER_END
@@ -254,7 +254,7 @@ DECL_LISTENERMULTIPLEXER_END
 
 //  class TabPageListenerMultiplexer
 
-DECL_LISTENERMULTIPLEXER_START_DLLPUB( TabPageListenerMultiplexer, css::awt::tab::XTabPageContainerListener )
+DECL_LISTENERMULTIPLEXER_START( TabPageListenerMultiplexer, css::awt::tab::XTabPageContainerListener )
     void SAL_CALL tabPageActivated( const css::awt::tab::TabPageActivatedEvent& aEvent ) override;
 DECL_LISTENERMULTIPLEXER_END
 

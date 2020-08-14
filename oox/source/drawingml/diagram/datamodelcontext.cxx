@@ -18,26 +18,27 @@
  */
 
 #include "datamodelcontext.hxx"
-#include "oox/helper/attributelist.hxx"
-#include "drawingml/misccontexts.hxx"
-#include "drawingml/shapepropertiescontext.hxx"
-#include "drawingml/textbodycontext.hxx"
+#include <oox/helper/attributelist.hxx>
+#include <drawingml/misccontexts.hxx>
+#include <drawingml/shapepropertiescontext.hxx>
+#include <drawingml/textbodycontext.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
-#include <osl/diagnose.h>
 
 using namespace ::oox::core;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::uno;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
+
+namespace {
 
 // CT_CxnList
 class CxnListContext
     : public ContextHandler2
 {
 public:
-    CxnListContext( ContextHandler2Helper& rParent,
+    CxnListContext( ContextHandler2Helper const & rParent,
                     dgm::Connections & aConnections )
         : ContextHandler2( rParent )
         , mrConnection( aConnections )
@@ -52,11 +53,10 @@ public:
             {
                 case DGM_TOKEN( cxn ):
                 {
-                    mrConnection.push_back( dgm::Connection() );
+                    mrConnection.emplace_back( );
                     dgm::Connection& rConnection=mrConnection.back();
 
-                    const sal_Int32 nType = rAttribs.getToken( XML_type, XML_parOf );
-                    rConnection.mnType = nType;
+                    rConnection.mnType = rAttribs.getToken( XML_type, XML_parOf );
                     rConnection.msModelId = rAttribs.getString( XML_modelId ).get();
                     rConnection.msSourceId = rAttribs.getString( XML_srcId ).get();
                     rConnection.msDestId  = rAttribs.getString( XML_destId ).get();
@@ -84,7 +84,7 @@ class PresLayoutVarsContext
     : public ContextHandler2
 {
 public:
-    PresLayoutVarsContext( ContextHandler2Helper& rParent,
+    PresLayoutVarsContext( ContextHandler2Helper const & rParent,
                            dgm::Point & rPoint ) :
         ContextHandler2( rParent ),
         mrPoint( rPoint )
@@ -113,7 +113,7 @@ public:
                 mrPoint.mnDirection = rAttribs.getToken( XML_val, XML_norm );
                 break;
             case DGM_TOKEN( hierBranch ):
-                mrPoint.mnHierarchyBranch = rAttribs.getToken( XML_val, XML_std );
+                mrPoint.moHierarchyBranch = rAttribs.getToken( XML_val );
                 break;
             case DGM_TOKEN( orgChart ):
                 mrPoint.mbOrgChartEnabled = rAttribs.getBool( XML_val, false );
@@ -137,7 +137,7 @@ class PropertiesContext
     : public ContextHandler2
 {
 public:
-    PropertiesContext( ContextHandler2Helper& rParent,
+    PropertiesContext( ContextHandler2Helper const & rParent,
                        dgm::Point & rPoint,
                        const AttributeList& rAttribs ) :
         ContextHandler2( rParent ),
@@ -201,7 +201,7 @@ class PtContext
     : public ContextHandler2
 {
 public:
-    PtContext( ContextHandler2Helper& rParent,
+    PtContext( ContextHandler2Helper const & rParent,
                const AttributeList& rAttribs,
                dgm::Point & rPoint):
         ContextHandler2( rParent ),
@@ -230,13 +230,13 @@ public:
                 return new PropertiesContext( *this, mrPoint, rAttribs );
             case DGM_TOKEN( spPr ):
                 if( !mrPoint.mpShape )
-                    mrPoint.mpShape.reset( new Shape() );
+                    mrPoint.mpShape = std::make_shared<Shape>();
                 return new ShapePropertiesContext( *this, *(mrPoint.mpShape) );
             case DGM_TOKEN( t ):
             {
-                TextBodyPtr xTextBody( new TextBody );
+                TextBodyPtr xTextBody = std::make_shared<TextBody>();
                 if( !mrPoint.mpShape )
-                    mrPoint.mpShape.reset( new Shape() );
+                    mrPoint.mpShape = std::make_shared<Shape>();
                 mrPoint.mpShape->setTextBody( xTextBody );
                 return new TextBodyContext( *this, *xTextBody );
             }
@@ -255,7 +255,7 @@ class PtListContext
     : public ContextHandler2
 {
 public:
-    PtListContext( ContextHandler2Helper& rParent,  dgm::Points& rPoints) :
+    PtListContext( ContextHandler2Helper const & rParent,  dgm::Points& rPoints) :
         ContextHandler2( rParent ),
         mrPoints( rPoints )
     {}
@@ -268,7 +268,7 @@ public:
             case DGM_TOKEN( pt ):
             {
                 // CT_Pt
-                mrPoints.push_back( dgm::Point() );
+                mrPoints.emplace_back( );
                 return new PtContext( *this, rAttribs, mrPoints.back() );
             }
             default:
@@ -286,11 +286,11 @@ class BackgroundFormattingContext
     : public ContextHandler2
 {
 public:
-    BackgroundFormattingContext( ContextHandler2Helper& rParent, DiagramDataPtr & pModel )
+    BackgroundFormattingContext( ContextHandler2Helper const & rParent, DiagramDataPtr const & pModel )
         : ContextHandler2( rParent )
         , mpDataModel( pModel )
         {
-            OSL_ENSURE( pModel, "the data model MUST NOT be NULL" );
+            assert( pModel && "the data model MUST NOT be NULL" );
         }
 
     virtual ContextHandlerRef
@@ -322,12 +322,14 @@ private:
     DiagramDataPtr mpDataModel;
 };
 
-DataModelContext::DataModelContext( ContextHandler2Helper& rParent,
+}
+
+DataModelContext::DataModelContext( ContextHandler2Helper const & rParent,
                                     const DiagramDataPtr & pDataModel )
     : ContextHandler2( rParent )
     , mpDataModel( pDataModel )
 {
-    OSL_ENSURE( pDataModel, "Data Model must not be NULL" );
+    assert( pDataModel && "Data Model must not be NULL" );
 }
 
 DataModelContext::~DataModelContext()
@@ -368,6 +370,6 @@ DataModelContext::onCreateContext( ::sal_Int32 aElement,
     return this;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

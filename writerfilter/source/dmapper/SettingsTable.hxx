@@ -21,20 +21,15 @@
 #define INCLUDED_WRITERFILTER_SOURCE_DMAPPER_SETTINGSTABLE_HXX
 
 #include "LoggedResources.hxx"
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/text/XTextDocument.hpp>
-#include <map>
 #include <memory>
 
-namespace com{ namespace sun{ namespace star{
-namespace lang{
-class XMultiServiceFactory;
-struct Locale;
+namespace com::sun::star::lang {
+    class XMultiServiceFactory;
+    struct Locale;
 }
-}}}
 
-namespace writerfilter {
-namespace dmapper
+namespace writerfilter::dmapper
 {
 class DomainMapper;
 
@@ -57,6 +52,9 @@ class SettingsTable : public LoggedProperties, public LoggedTable
     /// What's the zoom factor set in percents?
     sal_Int16 GetZoomFactor() const;
 
+    /// Gets the type of the zoom.
+    sal_Int16 GetZoomType() const;
+
     /// What's the requested view? E.g. "web".
     Id GetView() const;
 
@@ -71,14 +69,27 @@ class SettingsTable : public LoggedProperties, public LoggedTable
     bool GetSplitPgBreakAndParaMark() const;
     bool GetMirrorMarginSettings() const;
     bool GetDisplayBackgroundShape() const;
+    bool GetDoNotExpandShiftReturn() const;
     bool GetNoColumnBalance() const;
     bool GetProtectForm() const;
+    bool GetReadOnly() const;
+    bool GetLongerSpaceSequence() const;
+    bool GetNoLeading() const;
+    bool GetNoHyphenateCaps() const;
+    sal_Int16 GetHypenationZone() const;
 
-    css::uno::Sequence<css::beans::PropertyValue> GetThemeFontLangProperties() const;
+    css::uno::Sequence<css::beans::PropertyValue> const & GetThemeFontLangProperties() const;
 
     css::uno::Sequence<css::beans::PropertyValue> GetCompatSettings() const;
 
+    css::uno::Sequence<css::beans::PropertyValue> GetDocumentProtectionSettings() const;
+
     void ApplyProperties(css::uno::Reference<css::text::XTextDocument> const& xDoc);
+
+    bool GetCompatSettingValue( const OUString& sCompatName ) const;
+    sal_Int32 GetWordCompatibilityMode() const;
+
+    const OUString & GetCurrentDatabaseDataSource() const;
 
  private:
     // Properties
@@ -86,11 +97,11 @@ class SettingsTable : public LoggedProperties, public LoggedTable
     virtual void lcl_sprm(Sprm & sprm) override;
 
     // Table
-    virtual void lcl_entry(int pos, writerfilter::Reference<Properties>::Pointer_t ref) override;
+    virtual void lcl_entry(writerfilter::Reference<Properties>::Pointer_t ref) override;
 
 };
-typedef std::shared_ptr< SettingsTable >          SettingsTablePtr;
-}}
+typedef tools::SvRef< SettingsTable >          SettingsTablePtr;
+}
 
 #endif
 

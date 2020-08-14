@@ -20,29 +20,24 @@
 #ifndef INCLUDED_OOX_DRAWINGML_TABLE_TABLESTYLEPART_HXX
 #define INCLUDED_OOX_DRAWINGML_TABLE_TABLESTYLEPART_HXX
 
-#include <rtl/ustring.hxx>
-#include <boost/optional.hpp>
+#include <optional>
 #include <oox/drawingml/color.hxx>
 #include <drawingml/textfont.hxx>
 #include <oox/drawingml/shape.hxx>
 
-#include "drawingml/fillproperties.hxx"
-#include "drawingml/lineproperties.hxx"
-
 #include <map>
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
 class TableStylePart
 {
 public:
 
     TableStylePart();
-    ~TableStylePart();
 
     ::oox::drawingml::Color&            getTextColor(){ return maTextColor; }
-    ::boost::optional< bool >&          getTextBoldStyle(){ return maTextBoldStyle; }
-    ::boost::optional< bool >&          getTextItalicStyle(){ return maTextItalicStyle; }
+    ::std::optional< bool >&          getTextBoldStyle(){ return maTextBoldStyle; }
+    ::std::optional< bool >&          getTextItalicStyle(){ return maTextItalicStyle; }
     ::oox::drawingml::TextFont&         getAsianFont(){ return maAsianFont; }
     ::oox::drawingml::TextFont&         getComplexFont(){ return maComplexFont; }
     ::oox::drawingml::TextFont&         getSymbolFont(){ return maSymbolFont; }
@@ -56,8 +51,8 @@ public:
 private:
 
     ::oox::drawingml::Color             maTextColor;
-    ::boost::optional< bool >           maTextBoldStyle;
-    ::boost::optional< bool >           maTextItalicStyle;
+    ::std::optional< bool >           maTextBoldStyle;
+    ::std::optional< bool >           maTextItalicStyle;
     ::oox::drawingml::TextFont          maAsianFont;
     ::oox::drawingml::TextFont          maComplexFont;
     ::oox::drawingml::TextFont          maSymbolFont;
@@ -68,7 +63,7 @@ private:
     ::oox::drawingml::ShapeStyleRefMap  maStyleRefs;
 };
 
-} } }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_TABLE_TABLESTYLEPART_HXX
 

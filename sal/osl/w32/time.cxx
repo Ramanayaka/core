@@ -20,65 +20,61 @@
 #include <sal/config.h>
 #include "system.h"
 
-#include <filetime.hxx>
-#include <time.hxx>
+#include "filetime.hxx"
+#include "time.hxx"
 
 #include <osl/diagnose.h>
 #include <osl/time.h>
 #include <sys/timeb.h>
 
-// osl_getSystemTime
-
 sal_Bool SAL_CALL osl_getSystemTime(TimeValue* pTimeVal)
 {
-    SYSTEMTIME SystemTime;
-    FILETIME   CurTime, OffTime;
-    __int64    Value;
+    unsigned __int64 CurTime;
 
     typedef VOID (WINAPI *GetSystemTimePreciseAsFileTime_PROC)(LPFILETIME);
 
-    static HMODULE hModule = nullptr;
-    static GetSystemTimePreciseAsFileTime_PROC pGetSystemTimePreciseAsFileTime = nullptr;
-
     OSL_ASSERT(pTimeVal != nullptr);
 
-    if ( !hModule )
+    static GetSystemTimePreciseAsFileTime_PROC pGetSystemTimePreciseAsFileTime = [&]()
     {
-        hModule = GetModuleHandleA( "Kernel32.dll" );
-        if ( hModule )
-            pGetSystemTimePreciseAsFileTime = reinterpret_cast<GetSystemTimePreciseAsFileTime_PROC>(
+        HMODULE hModule = GetModuleHandleW( L"Kernel32.dll" );
+        return reinterpret_cast<GetSystemTimePreciseAsFileTime_PROC>(
                 GetProcAddress(hModule, "GetSystemTimePreciseAsFileTime"));
-    }
+    }();
 
     // use ~1 microsecond resolution if available
     if (pGetSystemTimePreciseAsFileTime)
-        pGetSystemTimePreciseAsFileTime(&CurTime);
+        pGetSystemTimePreciseAsFileTime(reinterpret_cast<LPFILETIME>(&CurTime));
     else
     {
+        SYSTEMTIME SystemTime;
         GetSystemTime(&SystemTime);
-        SystemTimeToFileTime(&SystemTime, &CurTime);
+        SystemTimeToFileTime(&SystemTime, reinterpret_cast<LPFILETIME>(&CurTime));
     }
 
-    SystemTime.wYear         = 1970;
-    SystemTime.wMonth        = 1;
-    SystemTime.wDayOfWeek    = 0;
-    SystemTime.wDay          = 1;
-    SystemTime.wHour         = 0;
-    SystemTime.wMinute       = 0;
-    SystemTime.wSecond       = 0;
-    SystemTime.wMilliseconds = 0;
+    static const unsigned __int64 OffTime = [] {
+        SYSTEMTIME SystemTime;
+        SystemTime.wYear = 1970;
+        SystemTime.wMonth = 1;
+        SystemTime.wDayOfWeek = 0;
+        SystemTime.wDay = 1;
+        SystemTime.wHour = 0;
+        SystemTime.wMinute = 0;
+        SystemTime.wSecond = 0;
+        SystemTime.wMilliseconds = 0;
 
-    SystemTimeToFileTime(&SystemTime, &OffTime);
+        unsigned __int64 ft;
+        SystemTimeToFileTime(&SystemTime, reinterpret_cast<LPFILETIME>(&ft));
+        return ft;
+    }();
 
-    Value = *reinterpret_cast<__int64 *>(&CurTime) - *reinterpret_cast<__int64 *>(&OffTime);
+    const unsigned __int64 Value = CurTime - OffTime;
 
-    pTimeVal->Seconds  = (unsigned long) (Value / 10000000L);
-    pTimeVal->Nanosec  = (unsigned long)((Value % 10000000L) * 100);
+    pTimeVal->Seconds  = static_cast<unsigned long>(Value / 10000000L);
+    pTimeVal->Nanosec  = static_cast<unsigned long>((Value % 10000000L) * 100);
 
     return true;
 }
-
-// osl_getDateTimeFromTimeValue
 
 sal_Bool SAL_CALL osl_getDateTimeFromTimeValue( const TimeValue* pTimeVal, oslDateTime* pDateTime )
 {
@@ -106,8 +102,6 @@ sal_Bool SAL_CALL osl_getDateTimeFromTimeValue( const TimeValue* pTimeVal, oslDa
     return false;
 }
 
-// osl_getTimeValueFromDateTime
-
 sal_Bool SAL_CALL osl_getTimeValueFromDateTime( const oslDateTime* pDateTime, TimeValue* pTimeVal )
 {
     FILETIME    aFileTime;
@@ -134,8 +128,6 @@ sal_Bool SAL_CALL osl_getTimeValueFromDateTime( const oslDateTime* pDateTime, Ti
     return false;
 }
 
-// osl_getLocalTimeFromSystemTime
-
 sal_Bool SAL_CALL osl_getLocalTimeFromSystemTime( const TimeValue* pSystemTimeVal, TimeValue* pLocalTimeVal )
 {
     TIME_ZONE_INFORMATION aTimeZoneInformation;
@@ -151,9 +143,9 @@ sal_Bool SAL_CALL osl_getLocalTimeFromSystemTime( const TimeValue* pSystemTimeVa
         if ( Success== TIME_ZONE_ID_DAYLIGHT )
             bias+=aTimeZoneInformation.DaylightBias;
 
-        if ( (sal_Int64) pSystemTimeVal->Seconds > ( bias * 60 ) )
+        if ( static_cast<sal_Int64>(pSystemTimeVal->Seconds) > ( bias * 60 ) )
         {
-            pLocalTimeVal->Seconds = (sal_uInt32) (pSystemTimeVal->Seconds - ( bias * 60) );
+            pLocalTimeVal->Seconds = static_cast<sal_uInt32>(pSystemTimeVal->Seconds - ( bias * 60) );
             pLocalTimeVal->Nanosec = pSystemTimeVal->Nanosec;
 
             return true;
@@ -162,8 +154,6 @@ sal_Bool SAL_CALL osl_getLocalTimeFromSystemTime( const TimeValue* pSystemTimeVa
 
     return false;
 }
-
-// osl_getSystemTimeFromLocalTime
 
 sal_Bool SAL_CALL osl_getSystemTimeFromLocalTime( const TimeValue* pLocalTimeVal, TimeValue* pSystemTimeVal )
 {
@@ -180,9 +170,9 @@ sal_Bool SAL_CALL osl_getSystemTimeFromLocalTime( const TimeValue* pLocalTimeVal
         if ( Success== TIME_ZONE_ID_DAYLIGHT )
             bias+=aTimeZoneInformation.DaylightBias;
 
-        if ( (sal_Int64) pLocalTimeVal->Seconds + ( bias * 60 ) > 0 )
+        if ( static_cast<sal_Int64>(pLocalTimeVal->Seconds) + ( bias * 60 ) > 0 )
         {
-            pSystemTimeVal->Seconds = (sal_uInt32) ( pLocalTimeVal->Seconds + ( bias * 60) );
+            pSystemTimeVal->Seconds = static_cast<sal_uInt32>( pLocalTimeVal->Seconds + ( bias * 60) );
             pSystemTimeVal->Nanosec = pLocalTimeVal->Nanosec;
 
             return true;
@@ -205,9 +195,9 @@ sal_uInt32 SAL_CALL osl_getGlobalTimer(void)
 
   _ftime( &currentTime );
 
-  nSeconds = (sal_uInt32)( currentTime.time - startTime.time );
+  nSeconds = static_cast<sal_uInt32>( currentTime.time - startTime.time );
 
-  return ( nSeconds * 1000 ) + (long)( currentTime.millitm - startTime.millitm );
+  return ( nSeconds * 1000 ) + static_cast<long>( currentTime.millitm - startTime.millitm );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

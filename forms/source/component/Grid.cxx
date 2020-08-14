@@ -17,22 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
-
 #include "Columns.hxx"
 #include "findpos.hxx"
 #include "Grid.hxx"
-#include "property.hrc"
-#include "property.hxx"
-#include "services.hxx"
+#include <property.hxx>
+#include <services.hxx>
 #include <com/sun/star/form/FormComponentType.hpp>
-#include <com/sun/star/form/XForm.hpp>
-#include <com/sun/star/form/XLoadable.hpp>
+#include <com/sun/star/io/XMarkableStream.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
 #include <comphelper/basicio.hxx>
-#include <comphelper/container.hxx>
-#include <comphelper/processfactory.hxx>
-#include <cppuhelper/queryinterface.hxx>
+#include <comphelper/property.hxx>
+#include <comphelper/servicehelper.hxx>
+#include <comphelper/types.hxx>
 #include <vcl/unohelp.hxx>
 #include <vcl/svapp.hxx>
 
@@ -43,7 +39,6 @@ namespace frm
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -138,12 +133,11 @@ void OGridControlModel::cloneColumns( const OGridControlModel* _pOriginalContain
     try
     {
         Reference< XCloneable > xColCloneable;
-        const OInterfaceArray::const_iterator pColumnStart = _pOriginalContainer->m_aItems.begin();
-        const OInterfaceArray::const_iterator pColumnEnd = _pOriginalContainer->m_aItems.end();
-        for ( OInterfaceArray::const_iterator pColumn = pColumnStart; pColumn != pColumnEnd; ++pColumn )
+        sal_Int32 nIndex = 0;
+        for (auto const& column : _pOriginalContainer->m_aItems)
         {
             // ask the col for a factory for the clone
-            xColCloneable.set(*pColumn, css::uno::UNO_QUERY);
+            xColCloneable.set(column, css::uno::UNO_QUERY);
             DBG_ASSERT( xColCloneable.is(), "OGridControlModel::cloneColumns: column is not cloneable!" );
             if ( xColCloneable.is() )
             {
@@ -153,9 +147,10 @@ void OGridControlModel::cloneColumns( const OGridControlModel* _pOriginalContain
                 if ( xColClone.is() )
                 {
                     // insert this clone into our own container
-                    insertByIndex( pColumn - pColumnStart, xColClone->queryInterface( m_aElementType ) );
+                    insertByIndex( nIndex, xColClone->queryInterface( m_aElementType ) );
                 }
             }
+            ++nIndex;
         }
     }
     catch( const Exception& )
@@ -463,7 +458,7 @@ void OGridControlModel::getFastPropertyValue(Any& rValue, sal_Int32 nHandle ) co
             rValue <<= m_bEnableVisible;
             break;
         case PROPERTY_ID_BORDER:
-            rValue <<= (sal_Int16)m_nBorder;
+            rValue <<= m_nBorder;
             break;
         case PROPERTY_ID_BORDERCOLOR:
             rValue = m_aBorderColor;
@@ -671,7 +666,7 @@ Any OGridControlModel::getPropertyDefaultByHandle( sal_Int32 nHandle ) const
             aReturn <<= OUString();
             break;
         case PROPERTY_ID_BORDER:
-            aReturn <<= (sal_Int16)1;
+            aReturn <<= sal_Int16(1);
             break;
         case PROPERTY_ID_BORDERCOLOR:
         case PROPERTY_ID_TABSTOP:
@@ -687,15 +682,6 @@ Any OGridControlModel::getPropertyDefaultByHandle( sal_Int32 nHandle ) const
                 aReturn = OControlModel::getPropertyDefaultByHandle(nHandle);
     }
     return aReturn;
-}
-
-OGridColumn* OGridControlModel::getColumnImplementation(const css::uno::Reference<css::uno::XInterface>& _rxIFace)
-{
-    OGridColumn* pImplementation = nullptr;
-    Reference< XUnoTunnel > xUnoTunnel( _rxIFace, UNO_QUERY );
-    if ( xUnoTunnel.is() )
-        pImplementation = reinterpret_cast<OGridColumn*>(xUnoTunnel->getSomething(OGridColumn::getUnoTunnelImplementationId()));
-    return pImplementation;
 }
 
 void OGridControlModel::gotColumn( const Reference< XInterface >& _rxColumn )
@@ -754,7 +740,7 @@ ElementDescription* OGridControlModel::createElementMetaData( )
 
 void OGridControlModel::approveNewElement( const Reference< XPropertySet >& _rxObject, ElementDescription* _pElement )
 {
-    OGridColumn* pCol = getColumnImplementation( _rxObject );
+    OGridColumn* pCol = comphelper::getUnoTunnelImplementation<OGridColumn>( _rxObject );
     if ( !pCol )
         throw IllegalArgumentException();
     OInterfaceContainer::approveNewElement( _rxObject, _pElement );
@@ -763,7 +749,7 @@ void OGridControlModel::approveNewElement( const Reference< XPropertySet >& _rxO
 // XPersistObject
 OUString SAL_CALL OGridControlModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_GRID);  // old (non-sun) name for compatibility!
+    return FRM_COMPONENT_GRID;  // old (non-sun) name for compatibility!
 }
 
 void OGridControlModel::write(const Reference<XObjectOutputStream>& _rxOutStream)
@@ -778,7 +764,7 @@ void OGridControlModel::write(const Reference<XObjectOutputStream>& _rxOutStream
     for (sal_Int32 i = 0; i < nLen; i++)
     {
         // first the service name for the underlying model
-        OGridColumn* pCol = getColumnImplementation(m_aItems[i]);
+        OGridColumn* pCol = comphelper::getUnoTunnelImplementation<OGridColumn>(m_aItems[i]);
         DBG_ASSERT(pCol != nullptr, "OGridControlModel::write : such items should never reach it into my container !");
         _rxOutStream << pCol->getModelName();
         // then the object itself
@@ -844,7 +830,7 @@ void OGridControlModel::write(const Reference<XObjectOutputStream>& _rxOutStream
         _rxOutStream->writeBoolean(getBOOL(m_aTabStop));
     _rxOutStream->writeBoolean(m_bNavigation);
     if (nAnyMask & TEXTCOLOR)
-        _rxOutStream->writeLong( getTextColor() );
+        _rxOutStream->writeLong( sal_Int32(getTextColor()) );
     // new since version 6
     _rxOutStream << m_sHelpText;
     if (nAnyMask & FONTDESCRIPTOR)
@@ -882,7 +868,7 @@ void OGridControlModel::read(const Reference<XObjectInputStream>& _rxInStream)
                 sal_Int32 nMark = xMark->createMark();
                 if (xCol.is())
                 {
-                    OGridColumn* pCol = getColumnImplementation(xCol);
+                    OGridColumn* pCol = comphelper::getUnoTunnelImplementation<OGridColumn>(xCol);
                     pCol->read(_rxInStream);
                 }
                 xMark->jumpToMark(nMark);
@@ -929,19 +915,19 @@ void OGridControlModel::read(const Reference<XObjectInputStream>& _rxInStream)
     FontDescriptor aFont( getFont() );
     if ( nAnyMask & FONTATTRIBS )
     {
-        aFont.Weight = (float)vcl::unohelper::ConvertFontWeight( _rxInStream->readShort() );
-        aFont.Slant = (FontSlant)_rxInStream->readShort();
+        aFont.Weight = static_cast<float>(vcl::unohelper::ConvertFontWeight( _rxInStream->readShort() ));
+        aFont.Slant = static_cast<FontSlant>(_rxInStream->readShort());
         aFont.Underline = _rxInStream->readShort();
         aFont.Strikeout = _rxInStream->readShort();
-        aFont.Orientation = ( (float)_rxInStream->readShort() ) / 10;
+        aFont.Orientation = static_cast<float>(_rxInStream->readShort()) / 10;
         aFont.Kerning = _rxInStream->readBoolean() != 0;
         aFont.WordLineMode = _rxInStream->readBoolean() != 0;
     }
     if ( nAnyMask & FONTSIZE )
     {
-        aFont.Width = (sal_Int16)_rxInStream->readLong();
-        aFont.Height = (sal_Int16)_rxInStream->readLong();
-        aFont.CharacterWidth = (float)vcl::unohelper::ConvertFontWidth( _rxInStream->readShort() );
+        aFont.Width = static_cast<sal_Int16>(_rxInStream->readLong());
+        aFont.Height = static_cast<sal_Int16>(_rxInStream->readLong());
+        aFont.CharacterWidth = static_cast<float>(vcl::unohelper::ConvertFontWidth( _rxInStream->readShort() ));
     }
     if ( nAnyMask & FONTTYPE )
     {
@@ -966,7 +952,7 @@ void OGridControlModel::read(const Reference<XObjectInputStream>& _rxInStream)
     if (nAnyMask & TEXTCOLOR)
     {
         sal_Int32 nValue = _rxInStream->readLong();
-        setTextColor( nValue );
+        setTextColor( ::Color(nValue) );
     }
     // new since version 6
     if (nVersion > 5)
@@ -991,7 +977,7 @@ void OGridControlModel::read(const Reference<XObjectInputStream>& _rxInStream)
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT XInterface*
 com_sun_star_form_OGridControlModel_get_implementation(XComponentContext* component,
         Sequence<Any> const &)
 {

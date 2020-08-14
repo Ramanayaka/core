@@ -20,6 +20,8 @@
 #include "attributedispatcher.hxx"
 
 #include <editeng/editview.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 
 namespace frm
@@ -87,7 +89,7 @@ namespace frm
         checkDisposed();
 
         OSL_ENSURE( _rURL.Complete == getFeatureURL().Complete, "OAttributeDispatcher::dispatch: invalid URL!" );
-        SAL_WARN_IF( _rArguments.getLength(), "forms.richtext",
+        SAL_WARN_IF( _rArguments.hasElements(), "forms.richtext",
                 "OAttributeDispatcher::dispatch: found arguments, but can't handle arguments at all"
                 " (URL: " << _rURL.Complete << ")");
 
@@ -96,7 +98,7 @@ namespace frm
     }
 
 
-    void OAttributeDispatcher::onAttributeStateChanged( AttributeId _nAttributeId, const AttributeState& /*_rState*/ )
+    void OAttributeDispatcher::onAttributeStateChanged( AttributeId _nAttributeId )
     {
         OSL_ENSURE( _nAttributeId == m_nAttributeId, "OAttributeDispatcher::onAttributeStateChanged: wrong attribute!" );
 

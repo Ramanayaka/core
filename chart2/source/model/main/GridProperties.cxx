@@ -18,15 +18,17 @@
  */
 
 #include "GridProperties.hxx"
-#include "LinePropertiesHelper.hxx"
-#include "UserDefinedProperties.hxx"
-#include "PropertyHelper.hxx"
-#include "macros.hxx"
-#include <com/sun/star/style/XStyle.hpp>
+#include <LinePropertiesHelper.hxx>
+#include <UserDefinedProperties.hxx>
+#include <PropertyHelper.hxx>
+#include <ModifyListenerHelper.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <tools/diagnose_ex.h>
+
+namespace com::sun::star::beans { class XPropertySetInfo; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 using namespace ::com::sun::star;
 
@@ -45,12 +47,11 @@ enum
 void lcl_AddPropertiesToVector(
     std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "Show",
+    rOutProperties.emplace_back( "Show",
                   PROP_GRID_SHOW,
                   cppu::UnoType<bool>::get(),
                   beans::PropertyAttribute::BOUND
-                  | beans::PropertyAttribute::MAYBEDEFAULT ));
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
 }
 
 struct StaticGridDefaults_Initializer
@@ -125,20 +126,13 @@ struct StaticGridInfo : public rtl::StaticAggregate< uno::Reference< beans::XPro
 namespace chart
 {
 
-GridProperties::GridProperties( Reference< uno::XComponentContext > const & /* xContext */ ) :
-        ::property::OPropertySet( m_aMutex ),
-    m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder())
-{
-}
-
 GridProperties::GridProperties() :
         ::property::OPropertySet( m_aMutex ),
     m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder())
 {}
 
 GridProperties::GridProperties( const GridProperties & rOther ) :
-        MutexContainer(),
-        impl::GridProperties_Base(),
+        impl::GridProperties_Base(rOther),
         ::property::OPropertySet( rOther, m_aMutex ),
     m_xModifyEventForwarder( ModifyListenerHelper::createModifyEventForwarder())
 {
@@ -182,9 +176,9 @@ void SAL_CALL GridProperties::addModifyListener( const Reference< util::XModifyL
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->addModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -195,9 +189,9 @@ void SAL_CALL GridProperties::removeModifyListener( const Reference< util::XModi
         Reference< util::XModifyBroadcaster > xBroadcaster( m_xModifyEventForwarder, uno::UNO_QUERY_THROW );
         xBroadcaster->removeModifyListener( aListener );
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -222,7 +216,7 @@ void GridProperties::firePropertyChangeEvent()
 // implement XServiceInfo methods basing upon getSupportedServiceNames_Static
 OUString SAL_CALL GridProperties::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart2.GridProperties");
+    return "com.sun.star.comp.chart2.GridProperties";
 }
 
 sal_Bool SAL_CALL GridProperties::supportsService( const OUString& rServiceName )
@@ -245,11 +239,11 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( GridProperties, GridProperties_Base, ::propert
 
 } //  namespace chart
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
-com_sun_star_comp_chart2_GridProperties_get_implementation(css::uno::XComponentContext *context,
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_chart2_GridProperties_get_implementation(css::uno::XComponentContext *,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new ::chart::GridProperties(context));
+    return cppu::acquire(new ::chart::GridProperties);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

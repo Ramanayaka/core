@@ -22,8 +22,8 @@
 #include "xformsapi.hxx"
 
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmlimp.hxx>
 
@@ -39,28 +39,27 @@
 #include <com/sun/star/xsd/WhiteSpaceTreatment.hpp>
 
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 
 using com::sun::star::uno::Reference;
 using com::sun::star::uno::Exception;
 using com::sun::star::uno::Any;
 using com::sun::star::uno::makeAny;
-using com::sun::star::uno::UNO_QUERY;
 using namespace com::sun::star;
 using com::sun::star::util::Duration;
 using com::sun::star::xml::sax::XAttributeList;
-using com::sun::star::beans::XPropertySet;
 using com::sun::star::xforms::XDataTypeRepository;
 using namespace xmloff::token;
 
 
-static const SvXMLTokenMapEntry aAttributes[] =
+const SvXMLTokenMapEntry aAttributes[] =
 {
     TOKEN_MAP_ENTRY( NONE, BASE ),
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aChildren[] =
+const SvXMLTokenMapEntry aChildren[] =
 {
     TOKEN_MAP_ENTRY( XSD, LENGTH         ),
     TOKEN_MAP_ENTRY( XSD, MINLENGTH      ),
@@ -82,7 +81,7 @@ SchemaRestrictionContext::SchemaRestrictionContext(
     SvXMLImport& rImport,
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
-    Reference<css::xforms::XDataTypeRepository>& rRepository,
+    Reference<css::xforms::XDataTypeRepository> const & rRepository,
     const OUString& sTypeName ) :
         TokenContext( rImport, nPrefix, rLocalName, aAttributes, aChildren ),
         mxRepository( rRepository ),
@@ -104,13 +103,11 @@ void SchemaRestrictionContext::CreateDataType()
     try
     {
         mxDataType =
-            Reference<XPropertySet>(
                 mxRepository->cloneDataType(
                     xforms_getBasicTypeName( mxRepository,
                                           GetImport().GetNamespaceMap(),
                                           msBaseName ),
-                    msTypeName ),
-                UNO_QUERY );
+                    msTypeName );
     }
     catch( const Exception& )
     {
@@ -131,26 +128,26 @@ void SchemaRestrictionContext::HandleAttribute(
 
 typedef Any (*convert_t)( const OUString& );
 
-Any xforms_string( const OUString& rValue )
+static Any xforms_string( const OUString& rValue )
 {
     return makeAny( rValue );
 }
 
-Any xforms_int32( const OUString& rValue )
+static Any xforms_int32( const OUString& rValue )
 {
     sal_Int32 nValue;
     bool bSuccess = ::sax::Converter::convertNumber( nValue, rValue );
     return bSuccess ? makeAny( nValue ) : Any();
 }
 
-Any xforms_int16( const OUString& rValue )
+static Any xforms_int16( const OUString& rValue )
 {
     sal_Int32 nValue;
     bool bSuccess = ::sax::Converter::convertNumber( nValue, rValue );
     return bSuccess ? makeAny( static_cast<sal_Int16>( nValue ) ) : Any();
 }
 
-Any xforms_whitespace( const OUString& rValue )
+static Any xforms_whitespace( const OUString& rValue )
 {
     Any aValue;
     if( IsXMLToken( rValue, XML_PRESERVE ) )
@@ -162,14 +159,14 @@ Any xforms_whitespace( const OUString& rValue )
     return aValue;
 }
 
-Any xforms_double( const OUString& rValue )
+static Any xforms_double( const OUString& rValue )
 {
     double fValue;
     bool bSuccess = ::sax::Converter::convertDouble( fValue, rValue );
     return bSuccess ? makeAny( fValue ) : Any();
 }
 
-Any xforms_date( const OUString& rValue )
+static Any xforms_date( const OUString& rValue )
 {
     Any aAny;
 
@@ -190,14 +187,14 @@ Any xforms_date( const OUString& rValue )
     return aAny;
 }
 
-Any xforms_dateTime( const OUString& rValue )
+static Any xforms_dateTime( const OUString& rValue )
 {
     util::DateTime aDateTime;
-    bool const bSuccess = ::sax::Converter::parseDateTime(aDateTime, nullptr, rValue);
+    bool const bSuccess = ::sax::Converter::parseDateTime(aDateTime, rValue);
     return bSuccess ? makeAny( aDateTime ) : Any();
 }
 
-Any xforms_time( const OUString& rValue )
+static Any xforms_time( const OUString& rValue )
 {
     Any aAny;
     Duration aDuration;

@@ -17,17 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <limits.h>
-#include <vcl/svapp.hxx>
-#include <editeng/editrids.hrc>
+#include <vcl/print.hxx>
 #include <editeng/paperinf.hxx>
-#include <editeng/eerdll.hxx>
 
 /*--------------------------------------------------------------------
     Description:    Is the printer valid
  --------------------------------------------------------------------*/
 
-inline bool IsValidPrinter( const Printer* pPtr )
+static bool IsValidPrinter( const Printer* pPtr )
 {
     return !pPtr->GetName().isEmpty();
 }
@@ -37,7 +34,9 @@ Size SvxPaperInfo::GetPaperSize( Paper ePaper, MapUnit eUnit )
 {
     PaperInfo aInfo(ePaper);
     Size aRet(aInfo.getWidth(), aInfo.getHeight()); // in 100thMM
-    return eUnit == MapUnit::Map100thMM ? aRet : OutputDevice::LogicToLogic(aRet, MapUnit::Map100thMM, eUnit);
+    return eUnit == MapUnit::Map100thMM
+        ? aRet
+        : OutputDevice::LogicToLogic(aRet, MapMode(MapUnit::Map100thMM), MapMode(eUnit));
 }
 
 /*------------------------------------------------------------------------
@@ -65,7 +64,7 @@ Size SvxPaperInfo::GetPaperSize( const Printer* pPrinter )
 
         if ( aPaperSize == aInvalidSize )
             return GetPaperSize(PAPER_A4);
-        MapMode aMap1 = pPrinter->GetMapMode();
+        const MapMode& aMap1 = pPrinter->GetMapMode();
         MapMode aMap2;
 
         if ( aMap1 == aMap2 )
@@ -83,12 +82,11 @@ Size SvxPaperInfo::GetPaperSize( const Printer* pPrinter )
 }
 
 
-Paper SvxPaperInfo::GetSvxPaper( const Size &rSize, MapUnit eUnit, bool bSloppy )
+Paper SvxPaperInfo::GetSvxPaper( const Size &rSize, MapUnit eUnit )
 {
-    Size aSize(eUnit == MapUnit::Map100thMM ? rSize : OutputDevice::LogicToLogic(rSize, eUnit, MapUnit::Map100thMM));
+    Size aSize(eUnit == MapUnit::Map100thMM ? rSize : OutputDevice::LogicToLogic(rSize, MapMode(eUnit), MapMode(MapUnit::Map100thMM)));
     PaperInfo aInfo(aSize.Width(), aSize.Height());
-    if (bSloppy)
-        aInfo.doSloppyFit();
+    aInfo.doSloppyFit();
     return aInfo.getPaper();
 }
 
@@ -105,7 +103,9 @@ Size SvxPaperInfo::GetDefaultPaperSize( MapUnit eUnit )
 {
     PaperInfo aInfo(PaperInfo::getSystemDefaultPaper());
     Size aRet(aInfo.getWidth(), aInfo.getHeight());
-    return eUnit == MapUnit::Map100thMM ? aRet : OutputDevice::LogicToLogic(aRet, MapUnit::Map100thMM, eUnit);
+    return eUnit == MapUnit::Map100thMM
+        ? aRet
+        : OutputDevice::LogicToLogic(aRet, MapMode(MapUnit::Map100thMM), MapMode(eUnit));
 }
 
 /*------------------------------------------------------------------------

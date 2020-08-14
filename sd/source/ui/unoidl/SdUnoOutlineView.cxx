@@ -17,16 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "SdUnoOutlineView.hxx"
+#include <SdUnoOutlineView.hxx>
 
-#include "DrawController.hxx"
-#include "OutlineViewShell.hxx"
-#include "sdpage.hxx"
-#include "unopage.hxx"
+#include <DrawController.hxx>
+#include <OutlineViewShell.hxx>
+#include <sdpage.hxx>
 
 #include <cppuhelper/supportsservice.hxx>
 #include <svx/unopage.hxx>
-#include <vcl/svapp.hxx>
 
 using namespace ::cppu;
 using namespace ::com::sun::star;
@@ -75,7 +73,7 @@ void SAL_CALL SdUnoOutlineView::removeSelectionChangeListener (
 void SAL_CALL SdUnoOutlineView::setCurrentPage (
     const Reference< drawing::XDrawPage >& xPage)
 {
-    SvxDrawPage* pDrawPage = SvxDrawPage::getImplementation( xPage );
+    SvxDrawPage* pDrawPage = comphelper::getUnoTunnelImplementation<SvxDrawPage>( xPage );
     SdrPage *pSdrPage = pDrawPage ? pDrawPage->GetSdrPage() : nullptr;
     SdPage *pSdPage = dynamic_cast<SdPage*>(pSdrPage);
 
@@ -140,7 +138,7 @@ Any SAL_CALL SdUnoOutlineView::getFastPropertyValue (
 // XServiceInfo
 OUString SAL_CALL SdUnoOutlineView::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.sd.SdUnoOutlineView");
+    return "com.sun.star.comp.sd.SdUnoOutlineView";
 }
 
 sal_Bool SAL_CALL SdUnoOutlineView::supportsService( const OUString& ServiceName )
@@ -150,9 +148,7 @@ sal_Bool SAL_CALL SdUnoOutlineView::supportsService( const OUString& ServiceName
 
 Sequence< OUString > SAL_CALL SdUnoOutlineView::getSupportedServiceNames(  )
 {
-    OUString aSN( "com.sun.star.presentation.OutlineView" );
-    uno::Sequence< OUString > aSeq( &aSN, 1 );
-    return aSeq;
+    return { "com.sun.star.presentation.OutlineView" };
 }
 
 } // end of namespace sd

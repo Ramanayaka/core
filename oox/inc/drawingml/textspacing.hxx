@@ -20,13 +20,11 @@
 #ifndef INCLUDED_OOX_DRAWINGML_TEXTSPACING_HXX
 #define INCLUDED_OOX_DRAWINGML_TEXTSPACING_HXX
 
-#include <rtl/ustring.hxx>
-
 #include <com/sun/star/style/LineSpacing.hpp>
 #include <com/sun/star/style/LineSpacingMode.hpp>
 #include <oox/drawingml/drawingmltypes.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 
     /** carries a CT_TextSpacing */
@@ -38,16 +36,19 @@ namespace oox { namespace drawingml {
             Percent
         };
         TextSpacing()
-            : nUnit( Unit::Points ), nValue( 0 ), bHasValue( false )
+            : nUnit( Unit::Points ), nValue( 0 ), bHasValue( false ), bExactValue( false )
             {
             }
-        TextSpacing( sal_Int32 nPoints ) : nUnit( Unit::Points ), nValue( nPoints ), bHasValue( true ){};
+        TextSpacing( sal_Int32 nPoints ) : nUnit( Unit::Points ), nValue( nPoints ), bHasValue( true ), bExactValue ( false ){};
         css::style::LineSpacing toLineSpacing() const
             {
                 css::style::LineSpacing aSpacing;
-                aSpacing.Mode = ( nUnit == Unit::Percent
-                                  ? css::style::LineSpacingMode::PROP
-                                  :   css::style::LineSpacingMode::MINIMUM );
+                if (nUnit == Unit::Percent)
+                    aSpacing.Mode = css::style::LineSpacingMode::PROP;
+                else if (bExactValue)
+                    aSpacing.Mode = css::style::LineSpacingMode::FIX;
+                else
+                    aSpacing.Mode = css::style::LineSpacingMode::MINIMUM;
                 aSpacing.Height = static_cast< sal_Int16 >( nUnit == Unit::Percent ? nValue / 1000 :  nValue );
                 return aSpacing;
             }
@@ -61,9 +62,10 @@ namespace oox { namespace drawingml {
         Unit      nUnit;
         sal_Int32 nValue;
         bool      bHasValue;
+        bool      bExactValue;
     };
 
-} }
+}
 
 #endif
 

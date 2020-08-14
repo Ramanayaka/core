@@ -22,12 +22,11 @@
 
 #include <xmloff/xmlprhdl.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlement.hxx>
 
 /**
     PropertyHandler for a named xml bool type:
 */
-class XMLNamedBoolPropertyHdl : public XMLPropertyHandler
+class XMLOFF_DLLPUBLIC XMLNamedBoolPropertyHdl final : public XMLPropertyHandler
 {
 private:
     const OUString maTrueStr;

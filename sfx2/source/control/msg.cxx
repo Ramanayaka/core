@@ -18,9 +18,9 @@
  */
 
 #include <svl/itempool.hxx>
-#include <svl/eitem.hxx>
 #include <sfx2/msg.hxx>
 
+#include <climits>
 
 SfxSlotKind SfxSlot::GetKind() const
 {
@@ -45,9 +45,7 @@ sal_uInt16 SfxSlot::GetWhich( const SfxItemPool &rPool ) const
 
 OString SfxSlot::GetCommand() const
 {
-    OString sRet(".uno:");
-    sRet += pUnoName;
-    return sRet;
+    return OStringLiteral(".uno:") + pUnoName;
 }
 
 OUString SfxSlot::GetCommandString() const

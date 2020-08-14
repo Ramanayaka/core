@@ -20,15 +20,12 @@
 #ifndef INCLUDED_SVGIO_INC_SVGTSPANNODE_HXX
 #define INCLUDED_SVGIO_INC_SVGTSPANNODE_HXX
 
-#include <svgcharacternode.hxx>
-#include <svgstyleattributes.hxx>
-#include <svgtools.hxx>
+#include "svgcharacternode.hxx"
+#include "svgstyleattributes.hxx"
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
-        class SvgTspanNode : public SvgNode
+        class SvgTspanNode final : public SvgNode
         {
         private:
             /// use styles
@@ -51,8 +48,8 @@ namespace svgio
             /// access to SvgTextPositions
             const SvgTextPositions& getSvgTextPositions() const { return maSvgTextPositions; }
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGTSPANNODE_HXX
 

@@ -20,12 +20,11 @@
 #ifndef INCLUDED_CHART2_SOURCE_INC_CHARTTYPEHELPER_HXX
 #define INCLUDED_CHART2_SOURCE_INC_CHARTTYPEHELPER_HXX
 
-#include <com/sun/star/chart2/XChartType.hpp>
-#include <com/sun/star/chart2/AxisType.hpp>
-#include <com/sun/star/chart2/XDataSeries.hpp>
-#include <com/sun/star/chart2/XDiagram.hpp>
 #include <com/sun/star/drawing/Direction3D.hpp>
 #include "charttoolsdllapi.hxx"
+
+namespace com::sun::star::chart2 { class XChartType; }
+namespace com::sun::star::chart2 { class XDataSeries; }
 
 namespace chart
 {
@@ -47,9 +46,10 @@ public:
     static bool isSupportingStartingAngle(       const css::uno::Reference< css::chart2::XChartType >& xChartType );
     //starting value for bars or baseline for areas for example
     static bool isSupportingBaseValue(           const css::uno::Reference< css::chart2::XChartType >& xChartType );
-    static bool shiftCategoryPosAtXAxisPerDefault(     const css::uno::Reference< css::chart2::XChartType >& xChartType );
     static bool isSupportingAxisPositioning(     const css::uno::Reference< css::chart2::XChartType >& xChartType, sal_Int32 nDimensionCount, sal_Int32 nDimensionIndex );
     static bool isSupportingDateAxis( const css::uno::Reference< css::chart2::XChartType >& xChartType, sal_Int32 nDimensionIndex );
+    static bool isSupportingComplexCategory( const css::uno::Reference< css::chart2::XChartType >& xChartType );
+    static bool isSupportingCategoryPositioning( const css::uno::Reference< css::chart2::XChartType >& xChartType, sal_Int32 nDimensionCount );
 
     //returns sequence of css::chart::DataLabelPlacement
     static css::uno::Sequence < sal_Int32 > getSupportedLabelPlacements(
@@ -77,9 +77,6 @@ public:
         css::chart2::XChartType >& xChartType );
 
     static OUString getRoleOfSequenceForDataLabelNumberFormatDetection( const css::uno::Reference<
-        css::chart2::XChartType >& xChartType );
-
-    static bool shouldLabelNumberFormatKeyBeDetectedFromYAxis( const css::uno::Reference<
         css::chart2::XChartType >& xChartType );
 
     static bool isSupportingOnlyDeepStackingFor3D( const css::uno::Reference< css::chart2::XChartType >& xChartType );

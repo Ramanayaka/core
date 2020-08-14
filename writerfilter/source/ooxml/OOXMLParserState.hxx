@@ -23,8 +23,7 @@
 #include "OOXMLDocumentImpl.hxx"
 #include "OOXMLPropertySet.hxx"
 
-namespace writerfilter {
-namespace ooxml
+namespace writerfilter::ooxml
 {
 
 /**
@@ -39,7 +38,7 @@ struct SavedAlternateState
     bool m_bTookChoice; ///< Did we take the Choice or want Fallback instead?
 };
 
-class OOXMLParserState final
+class OOXMLParserState final : public virtual SvRefBase
 {
     bool mbInSectionGroup;
     bool mbInParagraphGroup;
@@ -59,13 +58,13 @@ class OOXMLParserState final
     bool savedInCharacterGroup;
     bool savedLastParagraphInSection;
     std::vector<SavedAlternateState> maSavedAlternateStates;
-    OOXMLPropertySet::Pointer_t mpPostponedBreak;
+    std::vector<OOXMLPropertySet::Pointer_t> mvPostponedBreaks;
 
 public:
-    typedef std::shared_ptr<OOXMLParserState> Pointer_t;
+    typedef tools::SvRef<OOXMLParserState> Pointer_t;
 
     OOXMLParserState();
-    ~OOXMLParserState();
+    ~OOXMLParserState() override;
 
     bool isInSectionGroup() const { return mbInSectionGroup;}
     void setInSectionGroup(bool bInSectionGroup);
@@ -84,7 +83,7 @@ public:
     void setForwardEvents(bool bForwardEvents);
     bool isForwardEvents() const { return mbForwardEvents;}
 
-    const std::string getHandle() const;
+    std::string getHandle() const;
     void setHandle();
 
     void setDocument(OOXMLDocumentImpl* pDocument);
@@ -117,7 +116,7 @@ public:
 
 };
 
-}}
+}
 
 #endif // INCLUDED_WRITERFILTER_SOURCE_OOXML_OOXMLPARSERSTATE_HXX
 

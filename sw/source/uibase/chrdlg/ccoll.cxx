@@ -17,30 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "cmdid.h"
-#include "swmodule.hxx"
-#include "view.hxx"
-#include "wrtsh.hxx"
-#include "globals.hrc"
-#include "helpid.h"
+#include <cmdid.h>
 
-#include <sfx2/styfitem.hxx>
-
-#include "uitool.hxx"
-#include "ccoll.hxx"
-#include "fmtcol.hxx"
-#include "hintids.hxx"
-#include "docsh.hxx"
-#include "docstyle.hxx"
-#include "hints.hxx"
-
-#include "chrdlg.hrc"
-#include <vcl/svapp.hxx>
-
-#include <unomid.h>
+#include <ccoll.hxx>
+#include <fmtcol.hxx>
 
 //!! order of entries has to be the same as in
 //!! CommandStruct SwCondCollItem::aCmds[]
+
+// note: also keep this in sync with the list of conditions in xmloff/source/style/prstylecond.cxx
 
 const char * const aCommandContext[COND_COMMAND_COUNT] =
 {
@@ -140,7 +125,7 @@ SwCondCollItem::~SwCondCollItem()
 {
 }
 
-SfxPoolItem*   SwCondCollItem::Clone( SfxItemPool * /*pPool*/ ) const
+SwCondCollItem* SwCondCollItem::Clone( SfxItemPool * /*pPool*/ ) const
 {
     return new SwCondCollItem(*this);
 }
@@ -169,7 +154,7 @@ void
 SwCondCollItem::SetStyle(OUString const*const pStyle, sal_uInt16 const nPos)
 {
     if( nPos < COND_COMMAND_COUNT )
-        m_sStyles[nPos] = (pStyle) ? *pStyle : OUString();
+        m_sStyles[nPos] = pStyle ? *pStyle : OUString();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

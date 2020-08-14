@@ -19,10 +19,11 @@
 #ifndef INCLUDED_SVX_PARSECONTEXT_HXX
 #define INCLUDED_SVX_PARSECONTEXT_HXX
 
+#include <com/sun/star/lang/Locale.hpp>
+
 #include <connectivity/IParseContext.hxx>
 #include <rtl/ustring.hxx>
 #include <svx/svxdllapi.h>
-#include <unotools/localedatawrapper.hxx>
 #include <vector>
 
 namespace svxform
@@ -30,7 +31,7 @@ namespace svxform
 
     //= OSystemParseContext
 
-    class SVX_DLLPUBLIC OSystemParseContext : public ::connectivity::IParseContext
+    class SVXCORE_DLLPUBLIC OSystemParseContext final : public ::connectivity::IParseContext
     {
     private:
 
@@ -49,7 +50,7 @@ namespace svxform
         // finds out, if we have an international keyword (only ASCII allowed)
         virtual InternationalKeyCode getIntlKeyCode(const OString& rToken) const override;
 
-        /** get's a locale instance which should be used when parsing in the context specified by this instance
+        /** gets a locale instance which should be used when parsing in the context specified by this instance
             <p>if this is not overridden by derived classes, it returns the static default locale.</p>
         */
         virtual css::lang::Locale getPreferredLocale( ) const override;
@@ -62,7 +63,7 @@ namespace svxform
     /** helper class which needs access to a (shared and ref-counted) OSystemParseContext
         instance.
     */
-    class SVX_DLLPUBLIC OParseContextClient
+    class SVXCORE_DLLPUBLIC OParseContextClient
     {
     protected:
         OParseContextClient();

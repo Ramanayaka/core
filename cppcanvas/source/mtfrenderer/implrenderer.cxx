@@ -18,25 +18,20 @@
  */
 
 #include <tools/diagnose_ex.h>
+#include <tools/debug.hxx>
 #include <vcl/svapp.hxx>
-#include <comphelper/sequence.hxx>
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <cppcanvas/canvas.hxx>
 #include <com/sun/star/rendering/XGraphicDevice.hpp>
 #include <com/sun/star/rendering/TexturingMode.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/geometry/RealPoint2D.hpp>
 #include <com/sun/star/rendering/PanoseProportion.hpp>
-#include <com/sun/star/rendering/ViewState.hpp>
-#include <com/sun/star/rendering/RenderState.hpp>
 #include <com/sun/star/rendering/XCanvasFont.hpp>
-#include <com/sun/star/rendering/XPolyPolygon2D.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
 #include <com/sun/star/rendering/PathCapType.hpp>
 #include <com/sun/star/rendering/PathJoinType.hpp>
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/tools/gradienttools.hxx>
+#include <basegfx/utils/canvastools.hxx>
+#include <basegfx/utils/gradienttools.hxx>
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
@@ -48,34 +43,33 @@
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/tuple/b2dtuple.hxx>
 #include <basegfx/polygon/b2dpolygonclipper.hxx>
-#include <basegfx/polygon/b2dpolypolygoncutter.hxx>
 #include <canvas/canvastools.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <vcl/canvastools.hxx>
-#include <vcl/salbtype.hxx>
 #include <vcl/gdimtf.hxx>
 #include <vcl/metaact.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/metric.hxx>
 #include <vcl/graphictools.hxx>
+#include <vcl/BitmapPalette.hxx>
 #include <tools/poly.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <implrenderer.hxx>
 #include <tools.hxx>
 #include <outdevstate.hxx>
 #include <action.hxx>
-#include <bitmapaction.hxx>
-#include <lineaction.hxx>
-#include <pointaction.hxx>
-#include <polypolyaction.hxx>
-#include <textaction.hxx>
-#include <transparencygroupaction.hxx>
+#include <sal/log.hxx>
+#include "bitmapaction.hxx"
+#include "lineaction.hxx"
+#include "pointaction.hxx"
+#include "polypolyaction.hxx"
+#include "textaction.hxx"
+#include "transparencygroupaction.hxx"
 #include <utility>
 #include <vector>
 #include <algorithm>
-#include <iterator>
 #include <memory>
 #include "mtftools.hxx"
-#include <basegfx/matrix/b2dhommatrixtools.hxx>
 
 using namespace ::com::sun::star;
 
@@ -90,20 +84,20 @@ namespace
                                                           const cppcanvas::CanvasSharedPtr& rCanvas )
     {
         rIsColorSet = pAct->IsSetting();
-        if (rIsColorSet)
-        {
-            ::Color aColor( pAct->GetColor() );
+        if (!rIsColorSet)
+            return;
 
-            // force alpha part of color to
-            // opaque. transparent painting is done
-            // explicitly via MetaActionType::Transparent
-            aColor.SetTransparency(0);
-            //aColor.SetTransparency(128);
+        ::Color aColor( pAct->GetColor() );
 
-            rColorSequence = vcl::unotools::colorToDoubleSequence(
-                aColor,
-                rCanvas->getUNOCanvas()->getDevice()->getDeviceColorSpace() );
-        }
+        // force alpha part of color to
+        // opaque. transparent painting is done
+        // explicitly via MetaActionType::Transparent
+        aColor.SetTransparency(0);
+        //aColor.SetTransparency(128);
+
+        rColorSequence = vcl::unotools::colorToDoubleSequence(
+            aColor,
+            rCanvas->getUNOCanvas()->getDevice()->getDeviceColorSpace() );
     }
 
     void setupStrokeAttributes( rendering::StrokeAttributes&                          o_rStrokeAttributes,
@@ -157,46 +151,46 @@ namespace
             }
         }
 
-        if( LineStyle::Dash == rLineInfo.GetStyle() )
+        if( LineStyle::Dash != rLineInfo.GetStyle() )
+            return;
+
+        const ::cppcanvas::internal::OutDevState& rState( rParms.mrStates.getState() );
+
+        // TODO(F1): Interpret OutDev::GetRefPoint() for the start of the dashing.
+
+        // interpret dash info only if explicitly enabled as
+        // style
+        const ::basegfx::B2DSize aDistance( rLineInfo.GetDistance(), 0 );
+        const double nDistance( (rState.mapModeTransform * aDistance).getX() );
+
+        const ::basegfx::B2DSize aDashLen( rLineInfo.GetDashLen(), 0 );
+        const double nDashLen( (rState.mapModeTransform * aDashLen).getX() );
+
+        const ::basegfx::B2DSize aDotLen( rLineInfo.GetDotLen(), 0 );
+        const double nDotLen( (rState.mapModeTransform * aDotLen).getX() );
+
+        const sal_Int32 nNumArryEntries( 2*rLineInfo.GetDashCount() +
+                                         2*rLineInfo.GetDotCount() );
+
+        o_rStrokeAttributes.DashArray.realloc( nNumArryEntries );
+        double* pDashArray = o_rStrokeAttributes.DashArray.getArray();
+
+
+        // iteratively fill dash array, first with dashes, then
+        // with dots.
+
+
+        sal_Int32 nCurrEntry=0;
+
+        for( sal_Int32 i=0; i<rLineInfo.GetDashCount(); ++i )
         {
-            const ::cppcanvas::internal::OutDevState& rState( rParms.mrStates.getState() );
-
-            // TODO(F1): Interpret OutDev::GetRefPoint() for the start of the dashing.
-
-            // interpret dash info only if explicitly enabled as
-            // style
-            const ::basegfx::B2DSize aDistance( rLineInfo.GetDistance(), 0 );
-            const double nDistance( (rState.mapModeTransform * aDistance).getX() );
-
-            const ::basegfx::B2DSize aDashLen( rLineInfo.GetDashLen(), 0 );
-            const double nDashLen( (rState.mapModeTransform * aDashLen).getX() );
-
-            const ::basegfx::B2DSize aDotLen( rLineInfo.GetDotLen(), 0 );
-            const double nDotLen( (rState.mapModeTransform * aDotLen).getX() );
-
-            const sal_Int32 nNumArryEntries( 2*rLineInfo.GetDashCount() +
-                                             2*rLineInfo.GetDotCount() );
-
-            o_rStrokeAttributes.DashArray.realloc( nNumArryEntries );
-            double* pDashArray = o_rStrokeAttributes.DashArray.getArray();
-
-
-            // iteratively fill dash array, first with dashes, then
-            // with dots.
-
-
-            sal_Int32 nCurrEntry=0;
-
-            for( sal_Int32 i=0; i<rLineInfo.GetDashCount(); ++i )
-            {
-                pDashArray[nCurrEntry++] = nDashLen;
-                pDashArray[nCurrEntry++] = nDistance;
-            }
-            for( sal_Int32 i=0; i<rLineInfo.GetDotCount(); ++i )
-            {
-                pDashArray[nCurrEntry++] = nDotLen;
-                pDashArray[nCurrEntry++] = nDistance;
-            }
+            pDashArray[nCurrEntry++] = nDashLen;
+            pDashArray[nCurrEntry++] = nDistance;
+        }
+        for( sal_Int32 i=0; i<rLineInfo.GetDotCount(); ++i )
+        {
+            pDashArray[nCurrEntry++] = nDotLen;
+            pDashArray[nCurrEntry++] = nDistance;
         }
     }
 
@@ -235,10 +229,8 @@ namespace
     }
 }
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
         // state stack manipulators
 
         void VectorOfOutDevStates::clearStateStack()
@@ -285,19 +277,19 @@ namespace cppcanvas
 
                 const OutDevState& rNewState( getState() );
 
-                if( (aCalculatedNewState.pushFlags & PushFlags::LINECOLOR) )
+                if( aCalculatedNewState.pushFlags & PushFlags::LINECOLOR )
                 {
                     aCalculatedNewState.lineColor      = rNewState.lineColor;
                     aCalculatedNewState.isLineColorSet = rNewState.isLineColorSet;
                 }
 
-                if( (aCalculatedNewState.pushFlags & PushFlags::FILLCOLOR) )
+                if( aCalculatedNewState.pushFlags & PushFlags::FILLCOLOR )
                 {
                     aCalculatedNewState.fillColor      = rNewState.fillColor;
                     aCalculatedNewState.isFillColorSet = rNewState.isFillColorSet;
                 }
 
-                if( (aCalculatedNewState.pushFlags & PushFlags::FONT) )
+                if( aCalculatedNewState.pushFlags & PushFlags::FONT )
                 {
                     aCalculatedNewState.xFont                   = rNewState.xFont;
                     aCalculatedNewState.fontRotation            = rNewState.fontRotation;
@@ -305,23 +297,23 @@ namespace cppcanvas
                     aCalculatedNewState.textOverlineStyle       = rNewState.textOverlineStyle;
                     aCalculatedNewState.textUnderlineStyle      = rNewState.textUnderlineStyle;
                     aCalculatedNewState.textStrikeoutStyle      = rNewState.textStrikeoutStyle;
-                    aCalculatedNewState.textEmphasisMarkStyle   = rNewState.textEmphasisMarkStyle;
+                    aCalculatedNewState.textEmphasisMark        = rNewState.textEmphasisMark;
                     aCalculatedNewState.isTextEffectShadowSet   = rNewState.isTextEffectShadowSet;
                     aCalculatedNewState.isTextWordUnderlineSet  = rNewState.isTextWordUnderlineSet;
                     aCalculatedNewState.isTextOutlineModeSet    = rNewState.isTextOutlineModeSet;
                 }
 
-                if( (aCalculatedNewState.pushFlags & PushFlags::TEXTCOLOR) )
+                if( aCalculatedNewState.pushFlags & PushFlags::TEXTCOLOR )
                 {
                     aCalculatedNewState.textColor = rNewState.textColor;
                 }
 
-                if( (aCalculatedNewState.pushFlags & PushFlags::MAPMODE) )
+                if( aCalculatedNewState.pushFlags & PushFlags::MAPMODE )
                 {
                     aCalculatedNewState.mapModeTransform = rNewState.mapModeTransform;
                 }
 
-                if( (aCalculatedNewState.pushFlags & PushFlags::CLIPREGION) )
+                if( aCalculatedNewState.pushFlags & PushFlags::CLIPREGION )
                 {
                     aCalculatedNewState.clip        = rNewState.clip;
                     aCalculatedNewState.clipRect    = rNewState.clipRect;
@@ -333,13 +325,13 @@ namespace cppcanvas
                 // {
                 // }
 
-                if( (aCalculatedNewState.pushFlags & PushFlags::TEXTFILLCOLOR) )
+                if( aCalculatedNewState.pushFlags & PushFlags::TEXTFILLCOLOR )
                 {
                     aCalculatedNewState.textFillColor      = rNewState.textFillColor;
                     aCalculatedNewState.isTextFillColorSet = rNewState.isTextFillColorSet;
                 }
 
-                if( (aCalculatedNewState.pushFlags & PushFlags::TEXTALIGN) )
+                if( aCalculatedNewState.pushFlags & PushFlags::TEXTALIGN )
                 {
                     aCalculatedNewState.textReferencePoint = rNewState.textReferencePoint;
                 }
@@ -349,13 +341,19 @@ namespace cppcanvas
                 // {
                 // }
 
-                if( (aCalculatedNewState.pushFlags & PushFlags::TEXTLINECOLOR) )
+                if( aCalculatedNewState.pushFlags & PushFlags::TEXTLINECOLOR )
                 {
                     aCalculatedNewState.textLineColor      = rNewState.textLineColor;
                     aCalculatedNewState.isTextLineColorSet = rNewState.isTextLineColorSet;
                 }
 
-                if( (aCalculatedNewState.pushFlags & PushFlags::TEXTLAYOUTMODE) )
+                if( aCalculatedNewState.pushFlags & PushFlags::OVERLINECOLOR )
+                {
+                    aCalculatedNewState.textOverlineColor = rNewState.textOverlineColor;
+                    aCalculatedNewState.isTextOverlineColorSet = rNewState.isTextOverlineColorSet;
+                }
+
+                if( aCalculatedNewState.pushFlags & PushFlags::TEXTLAYOUTMODE )
                 {
                     aCalculatedNewState.textAlignment = rNewState.textAlignment;
                     aCalculatedNewState.textDirection = rNewState.textDirection;
@@ -384,22 +382,21 @@ namespace cppcanvas
             const OutDevState& rState( rParms.mrStates.getState() );
             if( (!rState.isLineColorSet &&
                  !rState.isFillColorSet) ||
-                (rState.lineColor.getLength() == 0 &&
-                 rState.fillColor.getLength() == 0) )
+                (!rState.lineColor.hasElements() &&
+                 !rState.fillColor.hasElements()) )
             {
                 return false;
             }
 
-            ActionSharedPtr pPolyAction(
+            std::shared_ptr<Action> pPolyAction(
                 internal::PolyPolyActionFactory::createPolyPolyAction(
                     rPolyPoly, rParms.mrCanvas, rState ) );
 
             if( pPolyAction )
             {
-                maActions.push_back(
-                    MtfAction(
+                maActions.emplace_back(
                         pPolyAction,
-                        rParms.mrCurrActionIndex ) );
+                        rParms.mrCurrActionIndex );
 
                 rParms.mrCurrActionIndex += pPolyAction->getActionCount()-1;
             }
@@ -528,15 +525,15 @@ namespace cppcanvas
                     // scale color coefficients with gradient intensities
                     const sal_uInt16 nStartIntensity( rGradient.GetStartIntensity() );
                     ::Color aVCLStartColor( rGradient.GetStartColor() );
-                    aVCLStartColor.SetRed( (sal_uInt8)(aVCLStartColor.GetRed() * nStartIntensity / 100) );
-                    aVCLStartColor.SetGreen( (sal_uInt8)(aVCLStartColor.GetGreen() * nStartIntensity / 100) );
-                    aVCLStartColor.SetBlue( (sal_uInt8)(aVCLStartColor.GetBlue() * nStartIntensity / 100) );
+                    aVCLStartColor.SetRed( static_cast<sal_uInt8>(aVCLStartColor.GetRed() * nStartIntensity / 100) );
+                    aVCLStartColor.SetGreen( static_cast<sal_uInt8>(aVCLStartColor.GetGreen() * nStartIntensity / 100) );
+                    aVCLStartColor.SetBlue( static_cast<sal_uInt8>(aVCLStartColor.GetBlue() * nStartIntensity / 100) );
 
                     const sal_uInt16 nEndIntensity( rGradient.GetEndIntensity() );
                     ::Color aVCLEndColor( rGradient.GetEndColor() );
-                    aVCLEndColor.SetRed( (sal_uInt8)(aVCLEndColor.GetRed() * nEndIntensity / 100) );
-                    aVCLEndColor.SetGreen( (sal_uInt8)(aVCLEndColor.GetGreen() * nEndIntensity / 100) );
-                    aVCLEndColor.SetBlue( (sal_uInt8)(aVCLEndColor.GetBlue() * nEndIntensity / 100) );
+                    aVCLEndColor.SetRed( static_cast<sal_uInt8>(aVCLEndColor.GetRed() * nEndIntensity / 100) );
+                    aVCLEndColor.SetGreen( static_cast<sal_uInt8>(aVCLEndColor.GetGreen() * nEndIntensity / 100) );
+                    aVCLEndColor.SetBlue( static_cast<sal_uInt8>(aVCLEndColor.GetBlue() * nEndIntensity / 100) );
 
                     uno::Reference<rendering::XColorSpace> xColorSpace(
                         rParms.mrCanvas->getUNOCanvas()->getDevice()->getDeviceColorSpace());
@@ -573,7 +570,7 @@ namespace cppcanvas
                     }
 
                     const ::basegfx::B2DRectangle aBounds(
-                        ::basegfx::tools::getRange(aDevicePoly) );
+                        ::basegfx::utils::getRange(aDevicePoly) );
                     const ::basegfx::B2DVector aOffset(
                         rGradient.GetOfsX() / 100.0,
                         rGradient.GetOfsY() / 100.0);
@@ -588,7 +585,7 @@ namespace cppcanvas
                     switch( rGradient.GetStyle() )
                     {
                         case GradientStyle::Linear:
-                            aGradInfo = basegfx::tools::createLinearODFGradientInfo(
+                            aGradInfo = basegfx::utils::createLinearODFGradientInfo(
                                                                         aBounds,
                                                                         nSteps,
                                                                         fBorder,
@@ -614,7 +611,7 @@ namespace cppcanvas
                             // border value, hence the second (left
                             // most 1-...
                             const double fAxialBorder (1-2*(1-fBorder));
-                            aGradInfo = basegfx::tools::createAxialODFGradientInfo(
+                            aGradInfo = basegfx::utils::createAxialODFGradientInfo(
                                                                         aBounds,
                                                                         nSteps,
                                                                         fAxialBorder,
@@ -634,7 +631,7 @@ namespace cppcanvas
                         }
 
                         case GradientStyle::Radial:
-                            aGradInfo = basegfx::tools::createRadialODFGradientInfo(
+                            aGradInfo = basegfx::utils::createRadialODFGradientInfo(
                                                                         aBounds,
                                                                         aOffset,
                                                                         nSteps,
@@ -643,7 +640,7 @@ namespace cppcanvas
                             break;
 
                         case GradientStyle::Elliptical:
-                            aGradInfo = basegfx::tools::createEllipticalODFGradientInfo(
+                            aGradInfo = basegfx::utils::createEllipticalODFGradientInfo(
                                                                             aBounds,
                                                                             aOffset,
                                                                             nSteps,
@@ -653,7 +650,7 @@ namespace cppcanvas
                             break;
 
                         case GradientStyle::Square:
-                            aGradInfo = basegfx::tools::createSquareODFGradientInfo(
+                            aGradInfo = basegfx::utils::createSquareODFGradientInfo(
                                                                         aBounds,
                                                                         aOffset,
                                                                         nSteps,
@@ -663,7 +660,7 @@ namespace cppcanvas
                             break;
 
                         case GradientStyle::Rect:
-                            aGradInfo = basegfx::tools::createRectangularODFGradientInfo(
+                            aGradInfo = basegfx::utils::createRectangularODFGradientInfo(
                                                                              aBounds,
                                                                              aOffset,
                                                                              nSteps,
@@ -681,25 +678,19 @@ namespace cppcanvas
                     ::basegfx::unotools::affineMatrixFromHomMatrix( aTexture.AffineTransform,
                                                                     aGradInfo.getTextureTransform() );
 
-                    uno::Sequence<uno::Any> args(3);
-                    beans::PropertyValue aProp;
-                    aProp.Name = "Colors";
-                    aProp.Value <<= aColors;
-                    args[0] <<= aProp;
-                    aProp.Name = "Stops";
-                    aProp.Value <<= aStops;
-                    args[1] <<= aProp;
-                    aProp.Name = "AspectRatio";
-                    aProp.Value <<= aGradInfo.getAspectRatio();
-                    args[2] <<= aProp;
-
+                    uno::Sequence<uno::Any> args(comphelper::InitAnyPropertySequence(
+                    {
+                        {"Colors", uno::Any(aColors)},
+                        {"Stops", uno::Any(aStops)},
+                        {"AspectRatio", uno::Any(aGradInfo.getAspectRatio())},
+                    }));
                     aTexture.Gradient.set(
                         xFactory->createInstanceWithArguments(aGradientService,
                                                               args),
                         uno::UNO_QUERY);
                     if( aTexture.Gradient.is() )
                     {
-                        ActionSharedPtr pPolyAction(
+                        std::shared_ptr<Action> pPolyAction(
                             internal::PolyPolyActionFactory::createPolyPolyAction(
                                 aDevicePoly,
                                 rParms.mrCanvas,
@@ -708,10 +699,9 @@ namespace cppcanvas
 
                         if( pPolyAction )
                         {
-                            maActions.push_back(
-                                MtfAction(
+                            maActions.emplace_back(
                                     pPolyAction,
-                                    rParms.mrCurrActionIndex ) );
+                                    rParms.mrCurrActionIndex );
 
                             rParms.mrCurrActionIndex += pPolyAction->getActionCount()-1;
                         }
@@ -754,7 +744,7 @@ namespace cppcanvas
         {
             rendering::FontRequest aFontRequest;
 
-            if( rParms.mrParms.maFontName.is_initialized() )
+            if( rParms.mrParms.maFontName )
                 aFontRequest.FontDescription.FamilyName = *rParms.mrParms.maFontName;
             else
                 aFontRequest.FontDescription.FamilyName = rFont.GetFamilyName();
@@ -766,16 +756,14 @@ namespace cppcanvas
 
             // TODO(F2): improve vclenum->panose conversion
             aFontRequest.FontDescription.FontDescription.Weight =
-                rParms.mrParms.maFontWeight.is_initialized() ?
+                rParms.mrParms.maFontWeight ?
                 *rParms.mrParms.maFontWeight :
                 ::canvas::tools::numeric_cast<sal_Int8>( ::basegfx::fround( rFont.GetWeight() ) );
             aFontRequest.FontDescription.FontDescription.Letterform =
-                rParms.mrParms.maFontLetterForm.is_initialized() ?
+                rParms.mrParms.maFontLetterForm ?
                 *rParms.mrParms.maFontLetterForm :
                 (rFont.GetItalic() == ITALIC_NONE) ? 0 : 9;
             aFontRequest.FontDescription.FontDescription.Proportion =
-                rParms.mrParms.maFontProportion.is_initialized() ?
-                *rParms.mrParms.maFontProportion :
                 (rFont.GetPitch() == PITCH_FIXED)
                     ? rendering::PanoseProportion::MONO_SPACED
                     : rendering::PanoseProportion::ANYTHING;
@@ -814,7 +802,7 @@ namespace cppcanvas
                 rFontSizeLog = ::Size(0, 16);
 
                 // convert to target MapUnit if not pixels
-                rFontSizeLog = OutputDevice::LogicToLogic(rFontSizeLog, MapUnit::MapPixel, rParms.mrVDev.GetMapMode());
+                rFontSizeLog = OutputDevice::LogicToLogic(rFontSizeLog, MapMode(MapUnit::MapPixel), rParms.mrVDev.GetMapMode());
             }
 
             const sal_Int32 nFontWidthLog = rFontSizeLog.Width();
@@ -825,7 +813,7 @@ namespace cppcanvas
                 sal_Int32 nNormalWidth = rParms.mrVDev.GetFontMetric( aTestFont ).GetAverageFontWidth();
                 if( nNormalWidth != nFontWidthLog )
                     if( nNormalWidth )
-                        aFontMatrix.m00 = (double)nFontWidthLog / nNormalWidth;
+                        aFontMatrix.m00 = static_cast<double>(nFontWidthLog) / nNormalWidth;
             }
 
             // #i52608# apply map mode scale also to font matrix - an
@@ -848,6 +836,16 @@ namespace cppcanvas
                     aFontMatrix.m11 *= nScaleY / nScaleX;
             }
             aFontRequest.CellSize = (rState.mapModeTransform * vcl::unotools::b2DSizeFromSize(rFontSizeLog)).getY();
+
+            if (rFont.GetEmphasisMark() != FontEmphasisMark::NONE)
+            {
+                uno::Sequence< beans::PropertyValue > aProperties(1);
+                aProperties[0].Name = "EmphasisMark";
+                aProperties[0].Value <<= sal_uInt32(rFont.GetEmphasisMark());
+                return rParms.mrCanvas->getUNOCanvas()->createFont(aFontRequest,
+                                                                aProperties,
+                                                                aFontMatrix);
+            }
 
             return rParms.mrCanvas->getUNOCanvas()->createFont( aFontRequest,
                                                                 uno::Sequence< beans::PropertyValue >(),
@@ -874,6 +872,7 @@ namespace cppcanvas
             // TODO(F2): implement all text effects
             // if( rState.textAlignment );             // TODO(F2): NYI
 
+            ::Color aTextFillColor( COL_AUTO );
             ::Color aShadowColor( COL_AUTO );
             ::Color aReliefColor( COL_AUTO );
             ::Size  aShadowOffset;
@@ -896,7 +895,7 @@ namespace cppcanvas
                 // determine shadow color (from outdev3.cxx)
                 ::Color aTextColor = vcl::unotools::doubleSequenceToColor(
                     rState.textColor, xColorSpace );
-                bool bIsDark = (aTextColor.GetColor() == COL_BLACK)
+                bool bIsDark = (aTextColor == COL_BLACK)
                     || (aTextColor.GetLuminance() < 8);
 
                 aShadowColor = bIsDark ? COL_LIGHTGRAY : COL_BLACK;
@@ -921,32 +920,36 @@ namespace cppcanvas
                 ::Color aTextColor = vcl::unotools::doubleSequenceToColor(
                     rState.textColor, xColorSpace );
 
-                aReliefColor = ::Color( COL_LIGHTGRAY );
+                aReliefColor = COL_LIGHTGRAY;
 
-                // we don't have a automatic color, so black is always
+                // we don't have an automatic color, so black is always
                 // drawn on white (literally copied from
                 // vcl/source/gdi/outdev3.cxx)
-                if( aTextColor.GetColor() == COL_BLACK )
+                if( aTextColor == COL_BLACK )
                 {
-                    aTextColor = ::Color( COL_WHITE );
+                    aTextColor = COL_WHITE;
                     rParms.mrStates.getState().textColor =
                         vcl::unotools::colorToDoubleSequence(
                             aTextColor, xColorSpace );
                 }
 
-                if( aTextColor.GetColor() == COL_WHITE )
-                    aReliefColor = ::Color( COL_BLACK );
+                if( aTextColor == COL_WHITE )
+                    aReliefColor = COL_BLACK;
                 aReliefColor.SetTransparency( aTextColor.GetTransparency() );
             }
 
+            if (rState.isTextFillColorSet)
+                aTextFillColor = vcl::unotools::doubleSequenceToColor(rState.textFillColor, xColorSpace);
+
             // create the actual text action
-            ActionSharedPtr pTextAction(
+            std::shared_ptr<Action> pTextAction(
                 TextActionFactory::createTextAction(
                     rStartPoint,
                     aReliefOffset,
                     aReliefColor,
                     aShadowOffset,
                     aShadowColor,
+                    aTextFillColor,
                     rString,
                     nIndex,
                     nLength,
@@ -957,7 +960,7 @@ namespace cppcanvas
                     rParms.mrParms,
                     bSubsettableActions ) );
 
-            ActionSharedPtr pStrikeoutTextAction;
+            std::shared_ptr<Action> pStrikeoutTextAction;
 
             if ( rState.textStrikeoutStyle == STRIKEOUT_X || rState.textStrikeoutStyle == STRIKEOUT_SLASH )
             {
@@ -982,9 +985,9 @@ namespace cppcanvas
                 nMaxWidth += nWidth + 1;
 
                 long nFullStrikeoutWidth = 0;
-                OUString aStrikeoutText;
+                OUStringBuffer aStrikeoutText;
                 while( (nFullStrikeoutWidth+=nStrikeoutWidth ) < nMaxWidth+1 )
-                    aStrikeoutText += OUStringLiteral1(pChars[0]);
+                    aStrikeoutText.append(pChars[0]);
 
                 sal_Int32 nLen = aStrikeoutText.getLength();
 
@@ -1011,9 +1014,10 @@ namespace cppcanvas
                             aReliefColor,
                             aShadowOffset,
                             aShadowColor,
-                            aStrikeoutText,
+                            aTextFillColor,
+                            aStrikeoutText.makeStringAndClear(),
                             0/*nStartPos*/,
-                            aStrikeoutText.getLength(),
+                            nLen,
                             pStrikeoutCharWidths,
                             rParms.mrVDev,
                             rParms.mrCanvas,
@@ -1023,23 +1027,21 @@ namespace cppcanvas
                 }
             }
 
-            if( pTextAction )
+            if( !pTextAction )
+                return;
+
+            maActions.emplace_back(
+                    pTextAction,
+                    rParms.mrCurrActionIndex );
+
+            if ( pStrikeoutTextAction )
             {
-                maActions.push_back(
-                    MtfAction(
-                        pTextAction,
-                        rParms.mrCurrActionIndex ) );
-
-                if ( pStrikeoutTextAction )
-                {
-                    maActions.push_back(
-                        MtfAction(
-                        pStrikeoutTextAction,
-                        rParms.mrCurrActionIndex ) );
-                }
-
-                rParms.mrCurrActionIndex += pTextAction->getActionCount()-1;
+                maActions.emplace_back(
+                    pStrikeoutTextAction,
+                    rParms.mrCurrActionIndex );
             }
+
+            rParms.mrCurrActionIndex += pTextAction->getActionCount()-1;
         }
 
         void ImplRenderer::updateClipping( const ::basegfx::B2DPolyPolygon& rClipPoly,
@@ -1068,19 +1070,19 @@ namespace cppcanvas
 
                     // convert rect to polygon beforehand, must revert
                     // to general polygon clipping here.
+                    ::tools::Rectangle aRect = rState.clipRect;
+                    // #121100# VCL rectangular clips always
+                    // include one more pixel to the right
+                    // and the bottom
+                    aRect.AdjustRight(1);
+                    aRect.AdjustBottom(1);
                     rState.clip = ::basegfx::B2DPolyPolygon(
-                        ::basegfx::tools::createPolygonFromRect(
-                            // #121100# VCL rectangular clips always
-                            // include one more pixel to the right
-                            // and the bottom
-                            ::basegfx::B2DRectangle( rState.clipRect.Left(),
-                                                     rState.clipRect.Top(),
-                                                     rState.clipRect.Right()+1,
-                                                     rState.clipRect.Bottom()+1 ) ) );
+                        ::basegfx::utils::createPolygonFromRect(
+                            vcl::unotools::b2DRectangleFromRectangle(aRect) ) );
                 }
 
                 // AW: Simplified
-                rState.clip = basegfx::tools::clipPolyPolygonOnPolyPolygon(
+                rState.clip = basegfx::utils::clipPolyPolygonOnPolyPolygon(
                     rClipPoly, rState.clip, true, false);
             }
 
@@ -1096,17 +1098,17 @@ namespace cppcanvas
                 }
                 else
                 {
+                    ::tools::Rectangle aRect = rState.clipRect;
+                    // #121100# VCL rectangular clips
+                    // always include one more pixel to
+                    // the right and the bottom
+                    aRect.AdjustRight(1);
+                    aRect.AdjustBottom(1);
                     rState.xClipPoly = ::basegfx::unotools::xPolyPolygonFromB2DPolyPolygon(
                         rParms.mrCanvas->getUNOCanvas()->getDevice(),
                         ::basegfx::B2DPolyPolygon(
-                            ::basegfx::tools::createPolygonFromRect(
-                                // #121100# VCL rectangular clips
-                                // always include one more pixel to
-                                // the right and the bottom
-                                ::basegfx::B2DRectangle( rState.clipRect.Left(),
-                                                         rState.clipRect.Top(),
-                                                         rState.clipRect.Right()+1,
-                                                         rState.clipRect.Bottom()+1 ) ) ) );
+                            ::basegfx::utils::createPolygonFromRect(
+                                vcl::unotools::b2DRectangleFromRectangle(aRect) ) ) );
                 }
             }
             else
@@ -1152,16 +1154,13 @@ namespace cppcanvas
                 // convert rect to polygon beforehand, must revert
                 // to general polygon clipping here.
                 ::basegfx::B2DPolyPolygon aClipPoly(
-                    ::basegfx::tools::createPolygonFromRect(
-                        ::basegfx::B2DRectangle( rClipRect.Left(),
-                                                 rClipRect.Top(),
-                                                 rClipRect.Right(),
-                                                 rClipRect.Bottom() ) ) );
+                    ::basegfx::utils::createPolygonFromRect(
+                        vcl::unotools::b2DRectangleFromRectangle(rClipRect) ) );
 
                 rState.clipRect.SetEmpty();
 
                 // AW: Simplified
-                rState.clip = basegfx::tools::clipPolyPolygonOnPolyPolygon(
+                rState.clip = basegfx::utils::clipPolyPolygonOnPolyPolygon(
                     aClipPoly, rState.clip, true, false);
             }
 
@@ -1173,17 +1172,17 @@ namespace cppcanvas
                 }
                 else
                 {
+                    // #121100# VCL rectangular clips
+                    // always include one more pixel to
+                    // the right and the bottom
+                    ::tools::Rectangle aRect = rState.clipRect;
+                    aRect.AdjustRight(1);
+                    aRect.AdjustBottom(1);
                     rState.xClipPoly = ::basegfx::unotools::xPolyPolygonFromB2DPolyPolygon(
                         rParms.mrCanvas->getUNOCanvas()->getDevice(),
                         ::basegfx::B2DPolyPolygon(
-                            ::basegfx::tools::createPolygonFromRect(
-                                // #121100# VCL rectangular clips
-                                // always include one more pixel to
-                                // the right and the bottom
-                                ::basegfx::B2DRectangle( rState.clipRect.Left(),
-                                                         rState.clipRect.Top(),
-                                                         rState.clipRect.Right()+1,
-                                                         rState.clipRect.Bottom()+1 ) ) ) );
+                            ::basegfx::utils::createPolygonFromRect(
+                                vcl::unotools::b2DRectangleFromRectangle(aRect) ) ) );
                 }
             }
             else
@@ -1194,7 +1193,7 @@ namespace cppcanvas
             }
         }
 
-        bool ImplRenderer::createActions( GDIMetaFile&                   rMtf,
+        void ImplRenderer::createActions( GDIMetaFile&                   rMtf,
                                           const ActionFactoryParameters& rFactoryParms,
                                           bool                           bSubsettableActions )
         {
@@ -1262,7 +1261,6 @@ namespace cppcanvas
                         break;
 
                     case MetaActionType::TEXTLANGUAGE:
-                        // FALLTHROUGH intended
                     case MetaActionType::REFPOINT:
                         // handled via pCurrAct->Execute( &rVDev )
                         break;
@@ -1380,7 +1378,7 @@ namespace cppcanvas
                         break;
 
                     case MetaActionType::LINECOLOR:
-                        if( !rParms.maLineColor.is_initialized() )
+                        if( !rParms.maLineColor )
                         {
                             setStateColor( static_cast<MetaLineColorAction*>(pCurrAct),
                                            rStates.getState().isLineColorSet,
@@ -1389,7 +1387,7 @@ namespace cppcanvas
                         }
                         else
                         {
-                            // #120994# Do switch on/off LineColor, even when a overriding one is set
+                            // #120994# Do switch on/off LineColor, even when an overriding one is set
                             bool bSetting(static_cast<MetaLineColorAction*>(pCurrAct)->IsSetting());
 
                             rStates.getState().isLineColorSet = bSetting;
@@ -1397,7 +1395,7 @@ namespace cppcanvas
                         break;
 
                     case MetaActionType::FILLCOLOR:
-                        if( !rParms.maFillColor.is_initialized() )
+                        if( !rParms.maFillColor )
                         {
                             setStateColor( static_cast<MetaFillColorAction*>(pCurrAct),
                                            rStates.getState().isFillColorSet,
@@ -1406,7 +1404,7 @@ namespace cppcanvas
                         }
                         else
                         {
-                            // #120994# Do switch on/off FillColor, even when a overriding one is set
+                            // #120994# Do switch on/off FillColor, even when an overriding one is set
                             bool bSetting(static_cast<MetaFillColorAction*>(pCurrAct)->IsSetting());
 
                             rStates.getState().isFillColorSet = bSetting;
@@ -1415,7 +1413,7 @@ namespace cppcanvas
 
                     case MetaActionType::TEXTCOLOR:
                     {
-                        if( !rParms.maTextColor.is_initialized() )
+                        if( !rParms.maTextColor )
                         {
                             // Text color is set unconditionally, thus, no
                             // use of setStateColor here
@@ -1435,7 +1433,7 @@ namespace cppcanvas
                     break;
 
                     case MetaActionType::TEXTFILLCOLOR:
-                        if( !rParms.maTextColor.is_initialized() )
+                        if( !rParms.maTextColor )
                         {
                             setStateColor( static_cast<MetaTextFillColorAction*>(pCurrAct),
                                            rStates.getState().isTextFillColorSet,
@@ -1444,7 +1442,7 @@ namespace cppcanvas
                         }
                         else
                         {
-                            // #120994# Do switch on/off TextFillColor, even when a overriding one is set
+                            // #120994# Do switch on/off TextFillColor, even when an overriding one is set
                             bool bSetting(static_cast<MetaTextFillColorAction*>(pCurrAct)->IsSetting());
 
                             rStates.getState().isTextFillColorSet = bSetting;
@@ -1452,7 +1450,7 @@ namespace cppcanvas
                         break;
 
                     case MetaActionType::TEXTLINECOLOR:
-                        if( !rParms.maTextColor.is_initialized() )
+                        if( !rParms.maTextColor )
                         {
                             setStateColor( static_cast<MetaTextLineColorAction*>(pCurrAct),
                                            rStates.getState().isTextLineColorSet,
@@ -1461,10 +1459,26 @@ namespace cppcanvas
                         }
                         else
                         {
-                            // #120994# Do switch on/off TextLineColor, even when a overriding one is set
+                            // #120994# Do switch on/off TextLineColor, even when an overriding one is set
                             bool bSetting(static_cast<MetaTextLineColorAction*>(pCurrAct)->IsSetting());
 
                             rStates.getState().isTextLineColorSet = bSetting;
+                        }
+                        break;
+
+                    case MetaActionType::OVERLINECOLOR:
+                        if( !rParms.maTextColor )
+                        {
+                            setStateColor( static_cast<MetaOverlineColorAction*>(pCurrAct),
+                                           rStates.getState().isTextOverlineColorSet,
+                                           rStates.getState().textOverlineColor,
+                                           rCanvas );
+                        }
+                        else
+                        {
+                            bool bSetting(static_cast<MetaOverlineColorAction*>(pCurrAct)->IsSetting());
+
+                            rStates.getState().isTextOverlineColorSet = bSetting;
                         }
                         break;
 
@@ -1488,12 +1502,12 @@ namespace cppcanvas
 
                         // TODO(Q2): define and use appropriate enumeration types
                         rState.textReliefStyle          = rFont.GetRelief();
-                        rState.textOverlineStyle        = (sal_Int8)rFont.GetOverline();
-                        rState.textUnderlineStyle       = rParms.maFontUnderline.is_initialized() ?
-                            (*rParms.maFontUnderline ? (sal_Int8)LINESTYLE_SINGLE : (sal_Int8)LINESTYLE_NONE) :
-                            (sal_Int8)rFont.GetUnderline();
-                        rState.textStrikeoutStyle       = (sal_Int8)rFont.GetStrikeout();
-                        rState.textEmphasisMarkStyle    = rFont.GetEmphasisMark() & FontEmphasisMark::Style;
+                        rState.textOverlineStyle        = static_cast<sal_Int8>(rFont.GetOverline());
+                        rState.textUnderlineStyle       = rParms.maFontUnderline ?
+                            (*rParms.maFontUnderline ? sal_Int8(LINESTYLE_SINGLE) : sal_Int8(LINESTYLE_NONE)) :
+                            static_cast<sal_Int8>(rFont.GetUnderline());
+                        rState.textStrikeoutStyle       = static_cast<sal_Int8>(rFont.GetStrikeout());
+                        rState.textEmphasisMark         = rFont.GetEmphasisMark();
                         rState.isTextEffectShadowSet    = rFont.IsShadow();
                         rState.isTextWordUnderlineSet   = rFont.IsWordLineMode();
                         rState.isTextOutlineModeSet     = rFont.IsOutline();
@@ -1573,7 +1587,7 @@ namespace cppcanvas
                         // #i44110# correct null-sized output - there
                         // are metafiles which have zero size in at
                         // least one dimension
-                      
+
                         // Remark the 1L cannot be replaced, that would cause max to compare long/int
                         const Size aMtfSizePix( std::max( aMtfSizePixPre.Width(), 1L ),
                                                 std::max( aMtfSizePixPre.Height(), 1L ) );
@@ -1591,8 +1605,8 @@ namespace cppcanvas
 
                         rStates.getState().transform.translate( rPos.X(),
                                                                  rPos.Y() );
-                        rStates.getState().transform.scale( (double)rSize.Width() / aMtfSizePix.Width(),
-                                                             (double)rSize.Height() / aMtfSizePix.Height() );
+                        rStates.getState().transform.scale( static_cast<double>(rSize.Width()) / aMtfSizePix.Width(),
+                                                             static_cast<double>(rSize.Height()) / aMtfSizePix.Height() );
 
                         createActions( const_cast<GDIMetaFile&>(pAct->GetSubstitute()),
                                        rFactoryParms,
@@ -1615,9 +1629,11 @@ namespace cppcanvas
                         {
                             MetaGradientExAction* pGradAction = nullptr;
                             bool bDone( false );
-                            while( !bDone &&
-                                   (pCurrAct=rMtf.NextAction()) != nullptr )
+                            while( !bDone )
                             {
+                                pCurrAct=rMtf.NextAction();
+                                if (!pCurrAct)
+                                    break;
                                 switch( pCurrAct->GetType() )
                                 {
                                     // extract gradient info
@@ -1720,10 +1736,7 @@ namespace cppcanvas
                                         aMatrix );
 
                                     aTexture.Alpha = 1.0 - aFill.getTransparency();
-                                    aTexture.Bitmap =
-                                        vcl::unotools::xBitmapFromBitmapEx(
-                                            rCanvas->getUNOCanvas()->getDevice(),
-                                            aBmpEx );
+                                    aTexture.Bitmap = vcl::unotools::xBitmapFromBitmapEx( aBmpEx );
                                     if( aFill.isTiling() )
                                     {
                                         aTexture.RepeatModeX = rendering::TexturingMode::REPEAT;
@@ -1740,7 +1753,7 @@ namespace cppcanvas
 
                                     ::basegfx::B2DPolyPolygon aPoly( aPath.getB2DPolyPolygon() );
                                     aPoly.transform( rStates.getState().mapModeTransform );
-                                    ActionSharedPtr pPolyAction(
+                                    std::shared_ptr<Action> pPolyAction(
                                         internal::PolyPolyActionFactory::createPolyPolyAction(
                                             aPoly,
                                             rCanvas,
@@ -1749,10 +1762,9 @@ namespace cppcanvas
 
                                     if( pPolyAction )
                                     {
-                                        maActions.push_back(
-                                            MtfAction(
+                                        maActions.emplace_back(
                                                 pPolyAction,
-                                                io_rCurrActionIndex ) );
+                                                io_rCurrActionIndex );
 
                                         io_rCurrActionIndex += pPolyAction->getActionCount()-1;
                                     }
@@ -1766,18 +1778,7 @@ namespace cppcanvas
                         }
                         // Handle drawing layer fills
                         else if( pAct->GetComment() == "EMF_PLUS" ) {
-                            static int count = -1, limit = 0x7fffffff;
-                            if (count == -1) {
-                                count = 0;
-                                if (char *env = getenv ("EMF_PLUS_LIMIT")) {
-                                    limit = atoi (env);
-                                    SAL_INFO ("cppcanvas.emf", "EMF+ records limit: " << limit);
-                                }
-                            }
-                            SAL_INFO ("cppcanvas.emf", "EMF+ passed to canvas mtf renderer, size: " << pAct->GetDataSize ());
-                            if (count < limit)
-                                processEMFPlus( pAct, rFactoryParms, rStates.getState(), rCanvas );
-                            count ++;
+                            SAL_WARN ("cppcanvas.emf", "EMF+ code was refactored and removed");
                         } else if( pAct->GetComment() == "EMF_PLUS_HEADER_INFO" ) {
                             SAL_INFO ("cppcanvas.emf", "EMF+ passed to canvas mtf renderer - header info, size: " << pAct->GetDataSize ());
 
@@ -1804,9 +1805,9 @@ namespace cppcanvas
                     case MetaActionType::POINT:
                     {
                         const OutDevState& rState( rStates.getState() );
-                        if( rState.lineColor.getLength() )
+                        if( rState.lineColor.hasElements() )
                         {
-                            ActionSharedPtr pPointAction(
+                            std::shared_ptr<Action> pPointAction(
                                 internal::PointActionFactory::createPointAction(
                                     rState.mapModeTransform * vcl::unotools::b2DPointFromPoint(
                                         static_cast<MetaPointAction*>(pCurrAct)->GetPoint() ),
@@ -1815,10 +1816,9 @@ namespace cppcanvas
 
                             if( pPointAction )
                             {
-                                maActions.push_back(
-                                    MtfAction(
+                                maActions.emplace_back(
                                         pPointAction,
-                                        io_rCurrActionIndex ) );
+                                        io_rCurrActionIndex );
 
                                 io_rCurrActionIndex += pPointAction->getActionCount()-1;
                             }
@@ -1829,9 +1829,9 @@ namespace cppcanvas
                     case MetaActionType::PIXEL:
                     {
                         const OutDevState& rState( rStates.getState() );
-                        if( rState.lineColor.getLength() )
+                        if( rState.lineColor.hasElements() )
                         {
-                            ActionSharedPtr pPointAction(
+                            std::shared_ptr<Action> pPointAction(
                                 internal::PointActionFactory::createPointAction(
                                     rState.mapModeTransform * vcl::unotools::b2DPointFromPoint(
                                         static_cast<MetaPixelAction*>(pCurrAct)->GetPoint() ),
@@ -1841,10 +1841,9 @@ namespace cppcanvas
 
                             if( pPointAction )
                             {
-                                maActions.push_back(
-                                    MtfAction(
+                                maActions.emplace_back(
                                         pPointAction,
-                                        io_rCurrActionIndex ) );
+                                        io_rCurrActionIndex );
 
                                 io_rCurrActionIndex += pPointAction->getActionCount()-1;
                             }
@@ -1855,7 +1854,7 @@ namespace cppcanvas
                     case MetaActionType::LINE:
                     {
                         const OutDevState& rState( rStates.getState() );
-                        if( rState.lineColor.getLength() )
+                        if( rState.lineColor.hasElements() )
                         {
                             MetaLineAction* pLineAct = static_cast<MetaLineAction*>(pCurrAct);
 
@@ -1866,7 +1865,7 @@ namespace cppcanvas
                             const ::basegfx::B2DPoint aEndPoint(
                                 rState.mapModeTransform * vcl::unotools::b2DPointFromPoint( pLineAct->GetEndPoint() ));
 
-                            ActionSharedPtr pLineAction;
+                            std::shared_ptr<Action> pLineAction;
 
                             if( rLineInfo.IsDefault() )
                             {
@@ -1880,10 +1879,9 @@ namespace cppcanvas
 
                                 if( pLineAction )
                                 {
-                                    maActions.push_back(
-                                        MtfAction(
+                                    maActions.emplace_back(
                                             pLineAction,
-                                            io_rCurrActionIndex ) );
+                                            io_rCurrActionIndex );
 
                                     io_rCurrActionIndex += pLineAction->getActionCount()-1;
                                 }
@@ -1911,10 +1909,9 @@ namespace cppcanvas
 
                                 if( pLineAction )
                                 {
-                                    maActions.push_back(
-                                        MtfAction(
+                                    maActions.emplace_back(
                                             pLineAction,
-                                            io_rCurrActionIndex ) );
+                                            io_rCurrActionIndex );
 
                                     io_rCurrActionIndex += pLineAction->getActionCount()-1;
                                 }
@@ -1943,7 +1940,7 @@ namespace cppcanvas
                             // additional pixel to the right and bottom.
                             ::basegfx::B2DPoint(1,1) );
 
-                        createFillAndStroke( ::basegfx::tools::createPolygonFromRect(
+                        createFillAndStroke( ::basegfx::utils::createPolygonFromRect(
                                                  ::basegfx::B2DRange( aTopLeftPixel,
                                                                       aBottomRightPixel )),
                                              rFactoryParms );
@@ -1959,13 +1956,13 @@ namespace cppcanvas
                             break;
 
                         ::basegfx::B2DPolygon aPoly(
-                            ::basegfx::tools::createPolygonFromRect(
+                            ::basegfx::utils::createPolygonFromRect(
                                 ::basegfx::B2DRange(
                                     vcl::unotools::b2DPointFromPoint( rRect.TopLeft() ),
                                     vcl::unotools::b2DPointFromPoint( rRect.BottomRight() ) +
                                     ::basegfx::B2DPoint(1,1) ),
-                                ( (double) static_cast<MetaRoundRectAction*>(pCurrAct)->GetHorzRound() ) / rRect.GetWidth(),
-                                ( (double) static_cast<MetaRoundRectAction*>(pCurrAct)->GetVertRound() ) / rRect.GetHeight() ) );
+                                static_cast<double>(static_cast<MetaRoundRectAction*>(pCurrAct)->GetHorzRound()) / rRect.GetWidth(),
+                                static_cast<double>(static_cast<MetaRoundRectAction*>(pCurrAct)->GetVertRound()) / rRect.GetHeight() ) );
                         aPoly.transform( rStates.getState().mapModeTransform );
 
                         createFillAndStroke( aPoly,
@@ -1987,7 +1984,7 @@ namespace cppcanvas
                             ::basegfx::B2DPoint(1,1) );
 
                         ::basegfx::B2DPolygon aPoly(
-                            ::basegfx::tools::createPolygonFromEllipse(
+                            ::basegfx::utils::createPolygonFromEllipse(
                                 aRange.getCenter(),
                                 aRange.getWidth() / 2,       // divide by 2 since createPolygonFromEllipse
                                 aRange.getHeight() / 2 ));   // expects the radius and NOT the diameter!
@@ -2043,8 +2040,8 @@ namespace cppcanvas
                     case MetaActionType::POLYLINE:
                     {
                         const OutDevState& rState( rStates.getState() );
-                        if( rState.lineColor.getLength() ||
-                            rState.fillColor.getLength() )
+                        if( rState.lineColor.hasElements() ||
+                            rState.fillColor.hasElements() )
                         {
                             MetaPolyLineAction* pPolyLineAct = static_cast<MetaPolyLineAction*>(pCurrAct);
 
@@ -2052,7 +2049,7 @@ namespace cppcanvas
                             ::basegfx::B2DPolygon aPoly( pPolyLineAct->GetPolygon().getB2DPolygon() );
                             aPoly.transform( rState.mapModeTransform );
 
-                            ActionSharedPtr pLineAction;
+                            std::shared_ptr<Action> pLineAction;
 
                             if( rLineInfo.IsDefault() )
                             {
@@ -2065,10 +2062,9 @@ namespace cppcanvas
 
                                 if( pLineAction )
                                 {
-                                    maActions.push_back(
-                                        MtfAction(
+                                    maActions.emplace_back(
                                             pLineAction,
-                                            io_rCurrActionIndex ) );
+                                            io_rCurrActionIndex );
 
                                     io_rCurrActionIndex += pLineAction->getActionCount()-1;
                                 }
@@ -2091,10 +2087,9 @@ namespace cppcanvas
 
                                 if( pLineAction )
                                 {
-                                    maActions.push_back(
-                                        MtfAction(
+                                    maActions.emplace_back(
                                             pLineAction,
-                                            io_rCurrActionIndex ) );
+                                            io_rCurrActionIndex );
 
                                     io_rCurrActionIndex += pLineAction->getActionCount()-1;
                                 }
@@ -2127,9 +2122,9 @@ namespace cppcanvas
                     {
                         MetaBmpAction* pAct = static_cast<MetaBmpAction*>(pCurrAct);
 
-                        ActionSharedPtr pBmpAction(
+                        std::shared_ptr<Action> pBmpAction(
                                 internal::BitmapActionFactory::createBitmapAction(
-                                    pAct->GetBitmap(),
+                                    BitmapEx(pAct->GetBitmap()),
                                     rStates.getState().mapModeTransform *
                                     vcl::unotools::b2DPointFromPoint( pAct->GetPoint() ),
                                     rCanvas,
@@ -2137,10 +2132,9 @@ namespace cppcanvas
 
                         if( pBmpAction )
                         {
-                            maActions.push_back(
-                                MtfAction(
+                            maActions.emplace_back(
                                     pBmpAction,
-                                    io_rCurrActionIndex ) );
+                                    io_rCurrActionIndex );
 
                             io_rCurrActionIndex += pBmpAction->getActionCount()-1;
                         }
@@ -2151,9 +2145,9 @@ namespace cppcanvas
                     {
                         MetaBmpScaleAction* pAct = static_cast<MetaBmpScaleAction*>(pCurrAct);
 
-                        ActionSharedPtr pBmpAction(
+                        std::shared_ptr<Action> pBmpAction(
                                 internal::BitmapActionFactory::createBitmapAction(
-                                    pAct->GetBitmap(),
+                                    BitmapEx(pAct->GetBitmap()),
                                     rStates.getState().mapModeTransform *
                                     vcl::unotools::b2DPointFromPoint( pAct->GetPoint() ),
                                     rStates.getState().mapModeTransform *
@@ -2163,10 +2157,9 @@ namespace cppcanvas
 
                         if( pBmpAction )
                         {
-                            maActions.push_back(
-                                MtfAction(
+                            maActions.emplace_back(
                                     pBmpAction,
-                                    io_rCurrActionIndex ) );
+                                    io_rCurrActionIndex );
 
                             io_rCurrActionIndex += pBmpAction->getActionCount()-1;
                         }
@@ -2184,9 +2177,9 @@ namespace cppcanvas
                                                     pAct->GetSrcSize() );
                         aBmp.Crop( aCropRect );
 
-                        ActionSharedPtr pBmpAction(
+                        std::shared_ptr<Action> pBmpAction(
                                 internal::BitmapActionFactory::createBitmapAction(
-                                    aBmp,
+                                    BitmapEx(aBmp),
                                     rStates.getState().mapModeTransform *
                                     vcl::unotools::b2DPointFromPoint( pAct->GetDestPoint() ),
                                     rStates.getState().mapModeTransform *
@@ -2196,10 +2189,9 @@ namespace cppcanvas
 
                         if( pBmpAction )
                         {
-                            maActions.push_back(
-                                MtfAction(
+                            maActions.emplace_back(
                                     pBmpAction,
-                                    io_rCurrActionIndex ) );
+                                    io_rCurrActionIndex );
 
                             io_rCurrActionIndex += pBmpAction->getActionCount()-1;
                         }
@@ -2210,7 +2202,7 @@ namespace cppcanvas
                     {
                         MetaBmpExAction* pAct = static_cast<MetaBmpExAction*>(pCurrAct);
 
-                        ActionSharedPtr pBmpAction(
+                        std::shared_ptr<Action> pBmpAction(
                                 internal::BitmapActionFactory::createBitmapAction(
                                     pAct->GetBitmapEx(),
                                     rStates.getState().mapModeTransform *
@@ -2220,10 +2212,9 @@ namespace cppcanvas
 
                         if( pBmpAction )
                         {
-                            maActions.push_back(
-                                MtfAction(
+                            maActions.emplace_back(
                                     pBmpAction,
-                                    io_rCurrActionIndex ) );
+                                    io_rCurrActionIndex );
 
                             io_rCurrActionIndex += pBmpAction->getActionCount()-1;
                         }
@@ -2234,7 +2225,7 @@ namespace cppcanvas
                     {
                         MetaBmpExScaleAction* pAct = static_cast<MetaBmpExScaleAction*>(pCurrAct);
 
-                        ActionSharedPtr pBmpAction(
+                        std::shared_ptr<Action> pBmpAction(
                                 internal::BitmapActionFactory::createBitmapAction(
                                     pAct->GetBitmapEx(),
                                     rStates.getState().mapModeTransform *
@@ -2246,10 +2237,9 @@ namespace cppcanvas
 
                         if( pBmpAction )
                         {
-                            maActions.push_back(
-                                MtfAction(
+                            maActions.emplace_back(
                                     pBmpAction,
-                                    io_rCurrActionIndex ) );
+                                    io_rCurrActionIndex );
 
                             io_rCurrActionIndex += pBmpAction->getActionCount()-1;
                         }
@@ -2267,7 +2257,7 @@ namespace cppcanvas
                                                    pAct->GetSrcSize() );
                         aBmp.Crop( aCropRect );
 
-                        ActionSharedPtr pBmpAction(
+                        std::shared_ptr<Action> pBmpAction(
                             internal::BitmapActionFactory::createBitmapAction(
                                 aBmp,
                                 rStates.getState().mapModeTransform *
@@ -2279,10 +2269,9 @@ namespace cppcanvas
 
                         if( pBmpAction )
                         {
-                            maActions.push_back(
-                                MtfAction(
+                            maActions.emplace_back(
                                     pBmpAction,
-                                    io_rCurrActionIndex ) );
+                                    io_rCurrActionIndex );
 
                             io_rCurrActionIndex += pBmpAction->getActionCount()-1;
                         }
@@ -2299,7 +2288,7 @@ namespace cppcanvas
                         BitmapEx aBmp( createMaskBmpEx( pAct->GetBitmap(),
                                                         pAct->GetColor() ));
 
-                        ActionSharedPtr pBmpAction(
+                        std::shared_ptr<Action> pBmpAction(
                             internal::BitmapActionFactory::createBitmapAction(
                                 aBmp,
                                 rStates.getState().mapModeTransform *
@@ -2309,10 +2298,9 @@ namespace cppcanvas
 
                         if( pBmpAction )
                         {
-                            maActions.push_back(
-                                MtfAction(
+                            maActions.emplace_back(
                                     pBmpAction,
-                                    io_rCurrActionIndex ) );
+                                    io_rCurrActionIndex );
 
                             io_rCurrActionIndex += pBmpAction->getActionCount()-1;
                         }
@@ -2329,7 +2317,7 @@ namespace cppcanvas
                         BitmapEx aBmp( createMaskBmpEx( pAct->GetBitmap(),
                                                         pAct->GetColor() ));
 
-                        ActionSharedPtr pBmpAction(
+                        std::shared_ptr<Action> pBmpAction(
                             internal::BitmapActionFactory::createBitmapAction(
                                 aBmp,
                                 rStates.getState().mapModeTransform *
@@ -2341,10 +2329,9 @@ namespace cppcanvas
 
                         if( pBmpAction )
                         {
-                            maActions.push_back(
-                                MtfAction(
+                            maActions.emplace_back(
                                     pBmpAction,
-                                    io_rCurrActionIndex ) );
+                                    io_rCurrActionIndex );
 
                             io_rCurrActionIndex += pBmpAction->getActionCount()-1;
                         }
@@ -2367,7 +2354,7 @@ namespace cppcanvas
                                                    pAct->GetSrcSize() );
                         aBmp.Crop( aCropRect );
 
-                        ActionSharedPtr pBmpAction(
+                        std::shared_ptr<Action> pBmpAction(
                             internal::BitmapActionFactory::createBitmapAction(
                                 aBmp,
                                 rStates.getState().mapModeTransform *
@@ -2379,10 +2366,9 @@ namespace cppcanvas
 
                         if( pBmpAction )
                         {
-                            maActions.push_back(
-                                MtfAction(
+                            maActions.emplace_back(
                                     pBmpAction,
-                                    io_rCurrActionIndex ) );
+                                    io_rCurrActionIndex );
 
                             io_rCurrActionIndex += pBmpAction->getActionCount()-1;
                         }
@@ -2401,14 +2387,14 @@ namespace cppcanvas
                     case MetaActionType::Transparent:
                     {
                         const OutDevState& rState( rStates.getState() );
-                        if( rState.lineColor.getLength() ||
-                            rState.fillColor.getLength() )
+                        if( rState.lineColor.hasElements() ||
+                            rState.fillColor.hasElements() )
                         {
                             MetaTransparentAction* pAct = static_cast<MetaTransparentAction*>(pCurrAct);
                             ::basegfx::B2DPolyPolygon aPoly( pAct->GetPolyPolygon().getB2DPolyPolygon() );
                             aPoly.transform( rState.mapModeTransform );
 
-                            ActionSharedPtr pPolyAction(
+                            std::shared_ptr<Action> pPolyAction(
                                 internal::PolyPolyActionFactory::createPolyPolyAction(
                                     aPoly,
                                     rCanvas,
@@ -2417,10 +2403,9 @@ namespace cppcanvas
 
                             if( pPolyAction )
                             {
-                                maActions.push_back(
-                                    MtfAction(
+                                maActions.emplace_back(
                                         pPolyAction,
-                                        io_rCurrActionIndex ) );
+                                        io_rCurrActionIndex );
 
                                 io_rCurrActionIndex += pPolyAction->getActionCount()-1;
                             }
@@ -2441,7 +2426,7 @@ namespace cppcanvas
 
                         DBG_TESTSOLARMUTEX();
 
-                        ActionSharedPtr pFloatTransAction(
+                        std::shared_ptr<Action> pFloatTransAction(
                             internal::TransparencyGroupActionFactory::createTransparencyGroupAction(
                                 std::move(pMtf),
                                 std::move(pGradient),
@@ -2454,10 +2439,9 @@ namespace cppcanvas
 
                         if( pFloatTransAction )
                         {
-                            maActions.push_back(
-                                MtfAction(
+                            maActions.emplace_back(
                                     pFloatTransAction,
-                                    io_rCurrActionIndex ) );
+                                    io_rCurrActionIndex );
 
                             io_rCurrActionIndex += pFloatTransAction->getActionCount()-1;
                         }
@@ -2517,7 +2501,7 @@ namespace cppcanvas
                                                         ::basegfx::B2DSize(pAct->GetWidth(),
                                                                            0 ));
 
-                        ActionSharedPtr pPolyAction(
+                        std::shared_ptr<Action> pPolyAction(
                             PolyPolyActionFactory::createPolyPolyAction(
                                 tools::createTextLinesPolyPolygon(
                                     rState.mapModeTransform *
@@ -2530,12 +2514,11 @@ namespace cppcanvas
                                 rCanvas,
                                 rState ) );
 
-                        if( pPolyAction.get() )
+                        if( pPolyAction )
                         {
-                            maActions.push_back(
-                                MtfAction(
+                            maActions.emplace_back(
                                     pPolyAction,
-                                    io_rCurrActionIndex ) );
+                                    io_rCurrActionIndex );
 
                             io_rCurrActionIndex += pPolyAction->getActionCount()-1;
                         }
@@ -2601,7 +2584,7 @@ namespace cppcanvas
                             // entry represents the 'end' position of
                             // the corresponding character, thus, we
                             // let i run from 1 to nLen.
-                            *p++ += (long)i*nWidthDifference/nLen;
+                            *p++ += static_cast<long>(i)*nWidthDifference/nLen;
                         }
 
                         createTextAction(
@@ -2627,8 +2610,6 @@ namespace cppcanvas
                 // correction for the unconditional increment here).
                 ++io_rCurrActionIndex;
             }
-
-            return true;
         }
 
 
@@ -2795,7 +2776,7 @@ namespace cppcanvas
                     aSubset.mnSubsetBegin = 0;
                     aSubset.mnSubsetEnd   = nEndIndex - aRangeEnd->mnOrigIndex;
 
-                    ENSURE_OR_RETURN_FALSE( aSubset.mnSubsetBegin >= 0 && aSubset.mnSubsetEnd >= 0,
+                    ENSURE_OR_RETURN_FALSE(aSubset.mnSubsetEnd >= 0,
                                       "ImplRenderer::forSubsetRange(): Invalid indices" );
 
                     rFunctor( *aRangeEnd, aSubset );
@@ -2844,10 +2825,10 @@ namespace cppcanvas
             // find start and end action
             // =========================
             o_rRangeBegin = std::lower_bound( aBegin, aEnd,
-                                                MtfAction( ActionSharedPtr(), io_rStartIndex ),
+                                                MtfAction( std::shared_ptr<Action>(), io_rStartIndex ),
                                                 UpperBoundActionIndexComparator() );
             o_rRangeEnd   = std::lower_bound( aBegin, aEnd,
-                                                MtfAction( ActionSharedPtr(), io_rEndIndex ),
+                                                MtfAction( std::shared_ptr<Action>(), io_rEndIndex ),
                                                 UpperBoundActionIndexComparator() );
             return true;
         }
@@ -2861,11 +2842,6 @@ namespace cppcanvas
                                     const Parameters&       rParams )
             : CanvasGraphicHelper(rCanvas)
             , maActions()
-            , fPageScale(0.0)
-            , nOriginX(0)
-            , nOriginY(0)
-            , nHDPI(0)
-            , nVDPI(0)
             , nFrameLeft(0)
             , nFrameTop(0)
             , nFrameRight(0)
@@ -2874,21 +2850,17 @@ namespace cppcanvas
             , nPixY(0)
             , nMmX(0)
             , nMmY(0)
-            , mbMultipart(false)
-            , mMFlags(0)
         {
-            memset (aObjects, 0, sizeof (aObjects));
-
             SAL_INFO( "cppcanvas.emf", "::cppcanvas::internal::ImplRenderer::ImplRenderer(mtf)" );
 
-            OSL_ENSURE( rCanvas.get() != nullptr && rCanvas->getUNOCanvas().is(),
+            OSL_ENSURE( rCanvas && rCanvas->getUNOCanvas().is(),
                         "ImplRenderer::ImplRenderer(): Invalid canvas" );
             OSL_ENSURE( rCanvas->getUNOCanvas()->getDevice().is(),
                         "ImplRenderer::ImplRenderer(): Invalid graphic device" );
 
             // make sure canvas and graphic device are valid; action
             // creation don't check that every time
-            if( rCanvas.get() == nullptr ||
+            if( !rCanvas ||
                 !rCanvas->getUNOCanvas().is() ||
                 !rCanvas->getUNOCanvas()->getDevice().is() )
             {
@@ -2919,7 +2891,7 @@ namespace cppcanvas
             sal_Int32 nCurrActions(0);
             ActionFactoryParameters aParms(aStateStack,
                                            rCanvas,
-                                           *aVDev.get(),
+                                           *aVDev,
                                            rParams,
                                            nCurrActions );
 
@@ -2933,45 +2905,45 @@ namespace cppcanvas
                                                      1.0 / aMtfSizePix.Height() );
 
             tools::calcLogic2PixelAffineTransform( aStateStack.getState().mapModeTransform,
-                                                   *aVDev.get() );
-
-            ColorSharedPtr pColor( getCanvas()->createColor() );
+                                                   *aVDev );
 
             {
                 ::cppcanvas::internal::OutDevState& rState = aStateStack.getState();
                 // setup default text color to black
                 rState.textColor =
                     rState.textFillColor =
-                    rState.textLineColor = pColor->getDeviceColor( 0x000000FF );
+                    rState.textOverlineColor =
+                    rState.textLineColor = tools::intSRGBAToDoubleSequence( 0x000000FF );
             }
 
             // apply overrides from the Parameters struct
-            if( rParams.maFillColor.is_initialized() )
+            if( rParams.maFillColor )
             {
                 ::cppcanvas::internal::OutDevState& rState = aStateStack.getState();
                 rState.isFillColorSet = true;
-                rState.fillColor = pColor->getDeviceColor( *rParams.maFillColor );
+                rState.fillColor = tools::intSRGBAToDoubleSequence( *rParams.maFillColor );
             }
-            if( rParams.maLineColor.is_initialized() )
+            if( rParams.maLineColor )
             {
                 ::cppcanvas::internal::OutDevState& rState = aStateStack.getState();
                 rState.isLineColorSet = true;
-                rState.lineColor = pColor->getDeviceColor( *rParams.maLineColor );
+                rState.lineColor = tools::intSRGBAToDoubleSequence( *rParams.maLineColor );
             }
-            if( rParams.maTextColor.is_initialized() )
+            if( rParams.maTextColor )
             {
                 ::cppcanvas::internal::OutDevState& rState = aStateStack.getState();
                 rState.isTextFillColorSet = true;
+                rState.isTextOverlineColorSet = true;
                 rState.isTextLineColorSet = true;
                 rState.textColor =
                     rState.textFillColor =
-                    rState.textLineColor = pColor->getDeviceColor( *rParams.maTextColor );
+                    rState.textOverlineColor =
+                    rState.textLineColor = tools::intSRGBAToDoubleSequence( *rParams.maTextColor );
             }
-            if( rParams.maFontName.is_initialized() ||
-                rParams.maFontWeight.is_initialized() ||
-                rParams.maFontLetterForm.is_initialized() ||
-                rParams.maFontUnderline.is_initialized() ||
-                rParams.maFontProportion.is_initialized() )
+            if( rParams.maFontName ||
+                rParams.maFontWeight ||
+                rParams.maFontLetterForm ||
+                rParams.maFontUnderline )
             {
                 ::cppcanvas::internal::OutDevState& rState = aStateStack.getState();
 
@@ -2996,9 +2968,6 @@ namespace cppcanvas
 
         ImplRenderer::~ImplRenderer()
         {
-            // don't leak EMFPObjects
-            for(EMFPObject* aObject : aObjects)
-                delete aObject;
         }
 
         bool ImplRenderer::drawSubset( sal_Int32    nStartIndex,
@@ -3041,7 +3010,7 @@ namespace cppcanvas
             }
             catch( uno::Exception& )
             {
-                SAL_WARN("cppcanvas.emf", "" << comphelper::anyToString( cppu::getCaughtException() ) );
+                DBG_UNHANDLED_EXCEPTION("cppcanvas.emf");
                 // convert error to return value
                 return false;
             }
@@ -3099,11 +3068,10 @@ namespace cppcanvas
             }
             catch( uno::Exception& )
             {
-                SAL_WARN( "cppcanvas.emf", "" << comphelper::anyToString( cppu::getCaughtException() ) );
+                DBG_UNHANDLED_EXCEPTION( "cppcanvas.emf");
                 return false;
             }
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

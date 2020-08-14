@@ -20,83 +20,76 @@
 #ifndef INCLUDED_OOX_SOURCE_DRAWINGML_DIAGRAM_LAYOUTATOMVISITORS_HXX
 #define INCLUDED_OOX_SOURCE_DRAWINGML_DIAGRAM_LAYOUTATOMVISITORS_HXX
 
-#include <memory>
-
-#include "oox/drawingml/shape.hxx"
+#include <oox/drawingml/drawingmltypes.hxx>
 #include "diagram.hxx"
 #include "diagramlayoutatoms.hxx"
+#include "layoutatomvisitorbase.hxx"
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-class ShapeCreationVisitor : public LayoutAtomVisitor
+class ShapeCreationVisitor : public LayoutAtomVisitorBase
 {
+public:
+    ShapeCreationVisitor(const Diagram& rDgm,
+                         const dgm::Point* pRootPoint,
+                         const ShapePtr& rParentShape) :
+        LayoutAtomVisitorBase(rDgm, pRootPoint),
+        mpParentShape(rParentShape)
+    {}
+
+    using LayoutAtomVisitorBase::visit;
+    virtual void visit(ConstraintAtom& rAtom) override;
+    virtual void visit(RuleAtom& rAtom) override;
+    virtual void visit(AlgAtom& rAtom) override;
+    virtual void visit(LayoutNode& rAtom) override;
+    virtual void visit(ShapeAtom& rAtom) override;
+
+private:
     ShapePtr mpParentShape;
-    const Diagram& mrDgm;
-    sal_Int32 mnCurrIdx;
-
-    void defaultVisit(LayoutAtom& rAtom);
-    virtual void visit(ConstraintAtom& rAtom) override;
-    virtual void visit(AlgAtom& rAtom) override;
-    virtual void visit(ForEachAtom& rAtom) override;
-    virtual void visit(ConditionAtom& rAtom) override;
-    virtual void visit(ChooseAtom& rAtom) override;
-    virtual void visit(LayoutNode& rAtom) override;
-
-public:
-    ShapeCreationVisitor(const ShapePtr& rParentShape,
-                         const Diagram& rDgm) :
-        mpParentShape(rParentShape),
-        mrDgm(rDgm),
-        mnCurrIdx(0)
-    {}
 };
 
-class ShapeLayoutingVisitor : public LayoutAtomVisitor
+class ShapeTemplateVisitor : public LayoutAtomVisitorBase
 {
-    ShapePtr mpParentShape;
-    OUString maName;
-
-    virtual void visit(ConstraintAtom& rAtom) override;
-    virtual void visit(AlgAtom& rAtom) override;
-    virtual void visit(ForEachAtom& rAtom) override;
-    virtual void visit(ConditionAtom& rAtom) override;
-    virtual void visit(ChooseAtom& rAtom) override;
-    virtual void visit(LayoutNode& rAtom) override;
-
 public:
-    ShapeLayoutingVisitor(const ShapePtr& rParentShape,
-                          const OUString& rName) :
-        mpParentShape(rParentShape),
-        maName(rName)
+    ShapeTemplateVisitor(const Diagram& rDgm, const dgm::Point* pRootPoint)
+        : LayoutAtomVisitorBase(rDgm, pRootPoint)
     {}
 
-    void defaultVisit(LayoutAtom& rAtom);
+    using LayoutAtomVisitorBase::visit;
+    virtual void visit(ConstraintAtom& rAtom) override;
+    virtual void visit(RuleAtom& rAtom) override;
+    virtual void visit(AlgAtom& rAtom) override;
+    virtual void visit(ForEachAtom& rAtom) override;
+    virtual void visit(LayoutNode& rAtom) override;
+    virtual void visit(ShapeAtom& rAtom) override;
+
+    ShapePtr const & getShapeCopy() const
+        { return mpShape; }
+
+private:
+    ShapePtr mpShape;
 };
 
-class ShallowPresNameVisitor : public LayoutAtomVisitor
+class ShapeLayoutingVisitor : public LayoutAtomVisitorBase
 {
-    const Diagram& mrDgm;
-    size_t mnCnt;
-
-    void defaultVisit(LayoutAtom& rAtom);
-    virtual void visit(ConstraintAtom& rAtom) override;
-    virtual void visit(AlgAtom& rAtom) override;
-    virtual void visit(ForEachAtom& rAtom) override;
-    virtual void visit(ConditionAtom& rAtom) override;
-    virtual void visit(ChooseAtom& rAtom) override;
-    virtual void visit(LayoutNode& rAtom) override;
-
 public:
-    explicit ShallowPresNameVisitor(const Diagram& rDgm) :
-        mrDgm(rDgm),
-        mnCnt(0)
+    ShapeLayoutingVisitor(const Diagram& rDgm, const dgm::Point* pRootPoint) :
+        LayoutAtomVisitorBase(rDgm, pRootPoint)
     {}
 
-    size_t getCount() const
-        { return mnCnt; }
+    using LayoutAtomVisitorBase::visit;
+    virtual void visit(ConstraintAtom& rAtom) override;
+    virtual void visit(RuleAtom& rAtom) override;
+    virtual void visit(AlgAtom& rAtom) override;
+    virtual void visit(LayoutNode& rAtom) override;
+    virtual void visit(ShapeAtom& rAtom) override;
+
+private:
+    std::vector<Constraint> maConstraints;
+    std::vector<Rule> maRules;
 };
 
-} }
+}
 
 #endif
 

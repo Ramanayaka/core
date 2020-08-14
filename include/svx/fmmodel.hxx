@@ -27,13 +27,9 @@
 class SfxObjectShell;
 class SfxItemPool;
 class FmXUndoEnvironment;
-class SfxObjectShell;
-class SbxObject;
-class SbxArray;
-class SbxValue;
 
 struct FmFormModelImplData;
-class SVX_DLLPUBLIC FmFormModel :
+class SVXCORE_DLLPUBLIC FmFormModel :
     public SdrModel
 {
 private:
@@ -47,12 +43,9 @@ private:
     void operator=(const FmFormModel& rSrcModel) = delete;
 
 public:
-
-    FmFormModel(SfxItemPool* pPool=nullptr, SfxObjectShell* pPers=nullptr );
-    FmFormModel(const OUString& rPath, SfxItemPool* pPool=nullptr,
-                SfxObjectShell* pPers=nullptr );
-    FmFormModel(const OUString& rPath, SfxItemPool* pPool, SfxObjectShell* pPers,
-                bool bUseExtColorTable);
+    FmFormModel(
+        SfxItemPool* pPool = nullptr,
+        SfxObjectShell* pPers = nullptr);
 
     virtual ~FmFormModel() override;
 

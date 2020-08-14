@@ -15,21 +15,26 @@
 #include <sal/types.h>
 #include <sal/config.h>
 #include <rtl/ustring.hxx>
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/implbase.hxx>
 
-#include <com/sun/star/uno/Exception.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <com/sun/star/uno/SecurityException.hpp>
 #include <com/sun/star/security/CertificateKind.hpp>
 #include <com/sun/star/security/XCertificate.hpp>
 
+#if defined _MSC_VER && defined __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundef"
+#endif
 #include <key.h>
+#if defined _MSC_VER && defined __clang__
+#pragma clang diagnostic pop
+#endif
 
 class CertificateImpl : public cppu::WeakImplHelper< css::security::XCertificate,
-                                                     css::lang::XUnoTunnel >,
+                                                     css::lang::XUnoTunnel,
+                                                     css::lang::XServiceInfo >,
                         public xmlsecurity::Certificate
 {
 private:
@@ -79,11 +84,18 @@ public:
 
     /// @see xmlsecurity::Certificate::getSHA256Thumbprint().
     virtual css::uno::Sequence<sal_Int8> getSHA256Thumbprint() override;
-    virtual css::security::CertificateKind getCertificateKind() override;
+    /// @see xmlsecurity::Certificate::getSignatureMethodAlgorithm().
+    virtual svl::crypto::SignatureMethodAlgorithm getSignatureMethodAlgorithm() override;
+    virtual css::security::CertificateKind SAL_CALL getCertificateKind() override;
 
     // Helper methods
     void setCertificate(GpgME::Context* ctx, const GpgME::Key& key);
     const GpgME::Key* getCertificate() const;
+
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
+    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 } ;
 
 #endif // INCLUDED_XMLSECURITY_SOURCE_GPG_X509CERTIFICATE_HXX

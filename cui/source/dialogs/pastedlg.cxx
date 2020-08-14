@@ -18,71 +18,50 @@
  */
 
 #include <memory>
-#include <com/sun/star/embed/Aspects.hpp>
 
 #include <pastedlg.hxx>
-#include <svtools/svmedit.hxx>
 #include <svtools/insdlg.hxx>
-#include <vcl/dialog.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/group.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/msgbox.hxx>
 #include <sot/exchange.hxx>
 #include <sot/formats.hxx>
-#include <svtools/sores.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/settings.hxx>
+#include <svtools/strings.hrc>
+#include <svtools/svtresid.hxx>
+#include <tools/lineend.hxx>
+#include <comphelper/propertysequence.hxx>
+#include <comphelper/dispatchcommand.hxx>
 
-#include <dialmgr.hxx>
-
-SvPasteObjectDialog::SvPasteObjectDialog( vcl::Window* pParent )
-    : ModalDialog(pParent, "PasteSpecialDialog", "cui/ui/pastespecial.ui")
+SvPasteObjectDialog::SvPasteObjectDialog(weld::Window* pParent)
+    : GenericDialogController(pParent, "cui/ui/pastespecial.ui", "PasteSpecialDialog")
+    , m_xFtObjectSource(m_xBuilder->weld_label("source"))
+    , m_xLbInsertList(m_xBuilder->weld_tree_view("list"))
+    , m_xOKButton(m_xBuilder->weld_button("ok"))
 {
-    get(m_pFtObjectSource, "source");
-    get(m_pLbInsertList, "list");
-    get(m_pOKButton, "ok");
+    m_xLbInsertList->set_size_request(m_xLbInsertList->get_approximate_digit_width() * 40,
+                                      m_xLbInsertList->get_height_rows(6));
+    m_xOKButton->set_sensitive(false);
 
-    m_pLbInsertList->SetDropDownLineCount(8);
-    m_pLbInsertList->set_width_request(m_pLbInsertList->approximate_char_width() * 32);
-    m_pOKButton->Disable();
-
-    ObjectLB().SetSelectHdl( LINK( this, SvPasteObjectDialog, SelectHdl ) );
-    ObjectLB().SetDoubleClickHdl( LINK( this, SvPasteObjectDialog, DoubleClickHdl ) );
-}
-
-SvPasteObjectDialog::~SvPasteObjectDialog()
-{
-    disposeOnce();
-}
-
-void SvPasteObjectDialog::dispose()
-{
-    m_pFtObjectSource.clear();
-    m_pLbInsertList.clear();
-    m_pOKButton.clear();
-    ModalDialog::dispose();
+    ObjectLB().connect_changed(LINK(this, SvPasteObjectDialog, SelectHdl));
+    ObjectLB().connect_row_activated(LINK( this, SvPasteObjectDialog, DoubleClickHdl));
 }
 
 void SvPasteObjectDialog::SelectObject()
 {
-    if (m_pLbInsertList->GetEntryCount())
+    if (m_xLbInsertList->n_children())
     {
-        m_pLbInsertList->SelectEntryPos(0);
-        SelectHdl(*m_pLbInsertList);
+        m_xLbInsertList->select(0);
+        SelectHdl(*m_xLbInsertList);
     }
 }
 
-IMPL_LINK_NOARG( SvPasteObjectDialog, SelectHdl, ListBox&, void )
+IMPL_LINK_NOARG(SvPasteObjectDialog, SelectHdl, weld::TreeView&, void)
 {
-    if ( !m_pOKButton->IsEnabled() )
-        m_pOKButton->Enable();
+    if (!m_xOKButton->get_sensitive())
+        m_xOKButton->set_sensitive(true);
 }
 
-IMPL_LINK_NOARG( SvPasteObjectDialog, DoubleClickHdl, ListBox&, void )
+IMPL_LINK_NOARG(SvPasteObjectDialog, DoubleClickHdl, weld::TreeView&, bool)
 {
-    EndDialog( RET_OK );
+    m_xDialog->response(RET_OK);
+    return true;
 }
 
 /*************************************************************************
@@ -93,7 +72,14 @@ void SvPasteObjectDialog::Insert( SotClipboardFormatId nFormat, const OUString& 
     aSupplementMap.insert( std::make_pair( nFormat, rFormatName ) );
 }
 
-SotClipboardFormatId SvPasteObjectDialog::GetFormat( const TransferableDataHelper& rHelper)
+void SvPasteObjectDialog::InsertUno(const OUString& sCmd, const OUString& sLabel)
+{
+    aExtraCommand.first = sCmd;
+    aExtraCommand.second = sLabel;
+}
+
+
+void SvPasteObjectDialog::PreGetFormat( const TransferableDataHelper &rHelper )
 {
     //TODO/LATER: why is the Descriptor never used?!
     TransferableObjectDescriptor aDesc;
@@ -106,10 +92,10 @@ SotClipboardFormatId SvPasteObjectDialog::GetFormat( const TransferableDataHelpe
 
     // create and fill dialog box
     OUString aSourceName, aTypeName;
-    SotClipboardFormatId nSelFormat = SotClipboardFormatId::NONE;
     SvGlobalName aEmptyNm;
 
-    ObjectLB().SetUpdateMode( false );
+    //ObjectLB().SetUpdateMode( false );
+    ObjectLB().freeze();
 
     DataFlavorExVector::iterator aIter( const_cast<DataFlavorExVector&>(*pFormats).begin() ),
                                  aEnd( const_cast<DataFlavorExVector&>(*pFormats).end() );
@@ -160,9 +146,20 @@ SotClipboardFormatId SvPasteObjectDialog::GetFormat( const TransferableDataHelpe
             else if( aName.isEmpty() )
                 aName = SvPasteObjectHelper::GetSotFormatUIName( nFormat );
 
-            if( LISTBOX_ENTRY_NOTFOUND == ObjectLB().GetEntryPos( aName ) )
-                ObjectLB().SetEntryData(
-                    ObjectLB().InsertEntry( aName ), reinterpret_cast<void*>(nFormat) );
+            // Show RICHTEXT only in case RTF is not present.
+            if (nFormat == SotClipboardFormatId::RICHTEXT &&
+                std::any_of(pFormats->begin(), pFormats->end(),
+                            [](const DataFlavorEx& rFlavor) {
+                                return rFlavor.mnSotId == SotClipboardFormatId::RTF;
+                            }))
+            {
+                continue;
+            }
+
+            if (ObjectLB().find_text(aName) == -1)
+            {
+                ObjectLB().append(OUString::number(static_cast<sal_uInt32>(nFormat)), aName);
+            }
         }
     }
 
@@ -176,14 +173,12 @@ SotClipboardFormatId SvPasteObjectDialog::GetFormat( const TransferableDataHelpe
 
         if( aTypeName.isEmpty() && aSourceName.isEmpty() )
         {
-            std::unique_ptr<ResMgr> pMgr(ResMgr::CreateResMgr( "svt", Application::GetSettings().GetUILanguageTag() ));
             // global resource from svtools (former so3 resource)
-            if( pMgr )
-                aSourceName = OUString( ResId( STR_UNKNOWN_SOURCE, *pMgr ) );
+            aSourceName = SvtResId(STR_UNKNOWN_SOURCE);
         }
     }
 
-    ObjectLB().SetUpdateMode( true );
+    ObjectLB().thaw();
     SelectObject();
 
     if( !aSourceName.isEmpty() )
@@ -195,11 +190,141 @@ SotClipboardFormatId SvPasteObjectDialog::GetFormat( const TransferableDataHelpe
         aTypeName = convertLineEnd(aTypeName, GetSystemLineEnd());
     }
 
-    m_pFtObjectSource->SetText( aTypeName );
+    m_xFtObjectSource->set_label(aTypeName);
+}
 
-    if( Dialog::Execute() == RET_OK )
+SotClipboardFormatId SvPasteObjectDialog::GetFormatOnly()
+{
+    return static_cast<SotClipboardFormatId>(ObjectLB().get_selected_id().toUInt32());
+}
+
+SotClipboardFormatId SvPasteObjectDialog::GetFormat( const TransferableDataHelper& rHelper)
+{
+    //TODO/LATER: why is the Descriptor never used?!
+    TransferableObjectDescriptor aDesc;
+    if (rHelper.HasFormat(SotClipboardFormatId::OBJECTDESCRIPTOR))
     {
-        nSelFormat = static_cast<SotClipboardFormatId>(reinterpret_cast<sal_uLong>(ObjectLB().GetSelectEntryData()));
+        (void)const_cast<TransferableDataHelper&>(rHelper).GetTransferableObjectDescriptor(
+                                SotClipboardFormatId::OBJECTDESCRIPTOR, aDesc);
+    }
+    const DataFlavorExVector* pFormats = &rHelper.GetDataFlavorExVector();
+
+    // create and fill dialog box
+    OUString aSourceName, aTypeName;
+    SotClipboardFormatId nSelFormat = SotClipboardFormatId::NONE;
+    SvGlobalName aEmptyNm;
+
+    ObjectLB().freeze();
+
+    for (auto const& format : *pFormats)
+    {
+        SotClipboardFormatId nFormat = format.mnSotId;
+
+        std::map< SotClipboardFormatId, OUString >::iterator itName =
+            aSupplementMap.find( nFormat );
+
+        // if there is an "Embed Source" or and "Embedded Object" on the
+        // Clipboard we read the Description and the Source of this object
+        // from an accompanied "Object Descriptor" format on the clipboard
+        // Remember: these formats mostly appear together on the clipboard
+        OUString aName;
+        const OUString* pName = nullptr;
+        if ( itName == aSupplementMap.end() )
+        {
+            SvPasteObjectHelper::GetEmbeddedName(rHelper,aName,aSourceName,nFormat);
+            if ( !aName.isEmpty() )
+                pName = &aName;
+        }
+        else
+        {
+            pName = &(itName->second);
+        }
+
+        if( pName )
+        {
+            aName = *pName;
+
+            if( SotClipboardFormatId::EMBED_SOURCE == nFormat )
+            {
+                if( aDesc.maClassName != aEmptyNm )
+                {
+                    aSourceName = aDesc.maDisplayName;
+
+                    if( aDesc.maClassName == aObjClassName )
+                        aName = aObjName;
+                    else
+                        aName = aTypeName = aDesc.maTypeName;
+                }
+            }
+            else if( SotClipboardFormatId::LINK_SOURCE == nFormat )
+            {
+                continue;
+            }
+            else if( aName.isEmpty() )
+                aName = SvPasteObjectHelper::GetSotFormatUIName( nFormat );
+
+            // Show RICHTEXT only in case RTF is not present.
+            if (nFormat == SotClipboardFormatId::RICHTEXT &&
+                std::any_of(pFormats->begin(), pFormats->end(),
+                            [](const DataFlavorEx& rFlavor) {
+                                return rFlavor.mnSotId == SotClipboardFormatId::RTF;
+                            }))
+            {
+                continue;
+            }
+
+            if (ObjectLB().find_text(aName) == -1)
+            {
+                ObjectLB().append(OUString::number(static_cast<sal_uInt32>(nFormat)), aName);
+            }
+        }
+    }
+
+    if( aTypeName.isEmpty() && aSourceName.isEmpty() )
+    {
+        if( aDesc.maClassName != aEmptyNm )
+        {
+            aSourceName = aDesc.maDisplayName;
+            aTypeName = aDesc.maTypeName;
+        }
+
+        if( aTypeName.isEmpty() && aSourceName.isEmpty() )
+        {
+            // global resource from svtools (former so3 resource)
+            aSourceName = SvtResId(STR_UNKNOWN_SOURCE);
+        }
+    }
+
+    if (!aExtraCommand.first.isEmpty())
+    {
+        ObjectLB().append(aExtraCommand.first, aExtraCommand.second);
+    }
+
+    ObjectLB().thaw();
+    SelectObject();
+
+    if( !aSourceName.isEmpty() )
+    {
+        if( !aTypeName.isEmpty() )
+            aTypeName += "\n";
+
+        aTypeName += aSourceName;
+        aTypeName = convertLineEnd(aTypeName, GetSystemLineEnd());
+    }
+
+    m_xFtObjectSource->set_label(aTypeName);
+
+    if (run() == RET_OK)
+    {
+        if (ObjectLB().get_selected_id().startsWithIgnoreAsciiCase(".uno"))
+        {
+            comphelper::dispatchCommand(aExtraCommand.first, {});
+            nSelFormat = SotClipboardFormatId::NONE;
+        }
+        else
+        {
+            nSelFormat = static_cast<SotClipboardFormatId>(ObjectLB().get_selected_id().toUInt32());
+        }
     }
 
     return nSelFormat;

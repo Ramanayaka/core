@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "framework/DrawModule.hxx"
+#include <framework/DrawModule.hxx>
 
-#include "framework/FrameworkHelper.hxx"
+#include <framework/FrameworkHelper.hxx>
 #include "CenterViewFocusModule.hxx"
 #include "SlideSorterModule.hxx"
 #include "ToolBarModule.hxx"
@@ -27,9 +27,9 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
-void DrawModule::Initialize (Reference<frame::XController>& rxController)
+void DrawModule::Initialize (Reference<frame::XController> const & rxController)
 {
     new sd::framework::CenterViewFocusModule(rxController);
     new sd::framework::SlideSorterModule(
@@ -38,6 +38,6 @@ void DrawModule::Initialize (Reference<frame::XController>& rxController)
     new ToolBarModule(rxController);
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

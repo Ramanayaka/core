@@ -17,8 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "parser.hxx"
-#include "iosys.hxx"
+#include <basic/sberrors.hxx>
+#include <parser.hxx>
+#include <iosys.hxx>
 #include <memory>
 
 // test if there's an I/O channel
@@ -200,7 +201,7 @@ void SbiParser::Open()
             if( Peek() == WRITE )
             {
                 Next();
-                nMode |= (StreamMode::READ | StreamMode::WRITE);
+                nMode |= StreamMode::READ | StreamMode::WRITE;
             }
             else
                 nMode |= StreamMode::READ;
@@ -236,8 +237,6 @@ void SbiParser::Open()
     TestToken( AS );
     // channel number
     std::unique_ptr<SbiExpression> pChan(new SbiExpression( this ));
-    if( !pChan )
-        Error( ERRCODE_BASIC_SYNTAX );
     std::unique_ptr<SbiExpression> pLen;
     if( Peek() == SYMBOL )
     {
@@ -254,8 +253,7 @@ void SbiParser::Open()
     // channel number
     // file name
     pLen->Gen();
-    if( pChan )
-        pChan->Gen();
+    pChan->Gen();
     aFileName.Gen();
     aGen.Gen( SbiOpcode::OPEN_, static_cast<sal_uInt32>(nMode), static_cast<sal_uInt32>(nFlags) );
     bInStatement = false;
@@ -293,18 +291,18 @@ void SbiParser::Close()
     if( IsEoln( eCurTok ) )
         aGen.Gen( SbiOpcode::CLOSE_, 0 );
     else
-    for( ;; )
-    {
-        SbiExpression aExpr( this );
-        while( Peek() == COMMA || Peek() == SEMICOLON )
-            Next();
-        aExpr.Gen();
-        aGen.Gen( SbiOpcode::CHANNEL_ );
-        aGen.Gen( SbiOpcode::CLOSE_, 1 );
+        for( ;; )
+        {
+            SbiExpression aExpr( this );
+            while( Peek() == COMMA || Peek() == SEMICOLON )
+                Next();
+            aExpr.Gen();
+            aGen.Gen( SbiOpcode::CHANNEL_ );
+            aGen.Gen( SbiOpcode::CLOSE_, 1 );
 
-        if( IsEoln( Peek() ) )
-            break;
-    }
+            if( IsEoln( Peek() ) )
+                break;
+        }
 }
 
 

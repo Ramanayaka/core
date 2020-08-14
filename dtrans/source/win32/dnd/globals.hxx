@@ -24,30 +24,16 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <osl/mutex.hxx>
 
-namespace com { namespace sun { namespace star { namespace datatransfer {
-    class XTransferable;
-} } } }
+namespace com::sun::star::datatransfer { class XTransferable; }
 
-#if defined _MSC_VER
-#pragma warning(push,1)
-#endif
 #include <wtypes.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 #include <sal/types.h>
-
-#define DNDSOURCE_SERVICE_NAME  "com.sun.star.datatransfer.dnd.OleDragSource"
-#define DNDSOURCE_IMPL_NAME  "com.sun.star.comp.datatransfer.dnd.OleDragSource_V1"
-
-#define DNDTARGET_SERVICE_NAME  "com.sun.star.datatransfer.dnd.OleDropTarget"
-#define DNDTARGET_IMPL_NAME  "com.sun.star.comp.datatransfer.dnd.OleDropTarget_V1"
 
 // This maps key states as occur as parameter, e.g. in IDropTarget::DragEnter,
 // IDropSource::QueryContinueDrag, to actions as are declared in
 // css::datatransfer::dnd::DNDConstants ( ACTION_MOVE etc).
 // If the grfKeyState indicates the ALt or right mousebutton then the returned
-// values combines all possible actions. This is because those key and button are
+// values combines all possible actions. This is because those keys and buttons are
 // used when the user expect a menu to appear when he drops. The menu then
 // contains entries, such as move, copy, link, cancel.
 // An odd fact is that the argument grfKeyState in IDropTarget::Drop does not

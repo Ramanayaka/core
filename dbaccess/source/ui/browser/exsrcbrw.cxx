@@ -17,20 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "exsrcbrw.hxx"
-#include "uiservices.hxx"
-#include <com/sun/star/form/FormComponentType.hpp>
+#include <exsrcbrw.hxx>
 #include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/form/XGridColumnFactory.hpp>
 #include <com/sun/star/form/XLoadable.hpp>
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
-#include "formadapter.hxx"
+#include <formadapter.hxx>
 #include <comphelper/processfactory.hxx>
-#include "dbustrings.hrc"
-#include "dbu_reghelper.hxx"
+#include <strings.hxx>
 #include <o3tl/any.hxx>
 #include <tools/diagnose_ex.h>
-#include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
@@ -44,9 +41,11 @@ using namespace ::com::sun::star::frame;
 using namespace dbaui;
 
 // SbaExternalSourceBrowser
-extern "C" void SAL_CALL createRegistryInfo_OFormGridView()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+org_openoffice_comp_dbu_OFormGridView_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static OMultiInstanceAutoRegistration< SbaExternalSourceBrowser > aAutoRegistration;
+    return cppu::acquire(new SbaExternalSourceBrowser(context));
 }
 
 Any SAL_CALL SbaExternalSourceBrowser::queryInterface(const Type& _rType)
@@ -71,33 +70,16 @@ SbaExternalSourceBrowser::SbaExternalSourceBrowser(const Reference< css::uno::XC
 
 SbaExternalSourceBrowser::~SbaExternalSourceBrowser()
 {
-
 }
 
 css::uno::Sequence<OUString> SAL_CALL SbaExternalSourceBrowser::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_Static();
-}
-
-OUString SbaExternalSourceBrowser::getImplementationName_Static()
-{
-    return OUString("org.openoffice.comp.dbu.OFormGridView");
-}
-
-css::uno::Sequence<OUString> SbaExternalSourceBrowser::getSupportedServiceNames_Static()
-{
-    css::uno::Sequence<OUString> aSupported { "com.sun.star.sdb.FormGridView" };
-    return aSupported;
-}
-
-Reference< XInterface > SAL_CALL SbaExternalSourceBrowser::Create(const Reference<XMultiServiceFactory >& _rxFactory)
-{
-    return *(new SbaExternalSourceBrowser( comphelper::getComponentContext(_rxFactory)));
+    return { "com.sun.star.sdb.FormGridView" };
 }
 
 OUString SAL_CALL SbaExternalSourceBrowser::getImplementationName()
 {
-    return getImplementationName_Static();
+    return "org.openoffice.comp.dbu.OFormGridView";
 }
 
 Reference< XRowSet >  SbaExternalSourceBrowser::CreateForm()
@@ -131,46 +113,45 @@ void SbaExternalSourceBrowser::modified(const css::lang::EventObject& aEvent)
 
 void SAL_CALL SbaExternalSourceBrowser::dispatch(const css::util::URL& aURL, const Sequence< css::beans::PropertyValue>& aArgs)
 {
-    const css::beans::PropertyValue* pArguments = aArgs.getConstArray();
     if ( aURL.Complete == ".uno:FormSlots/AddGridColumn" )
     {
         // search the argument describing the column to create
         OUString sControlType;
         sal_Int32 nControlPos = -1;
         Sequence< css::beans::PropertyValue> aControlProps;
-        for ( sal_Int32 i = 0; i < aArgs.getLength(); ++i, ++pArguments )
+        for ( const css::beans::PropertyValue& rArgument : aArgs )
         {
-            if ( pArguments->Name == "ColumnType" )
+            if ( rArgument.Name == "ColumnType" )
             {
-                auto s = o3tl::tryAccess<OUString>(pArguments->Value);
+                auto s = o3tl::tryAccess<OUString>(rArgument.Value);
                 OSL_ENSURE(s, "invalid type for argument \"ColumnType\" !");
                 if (s)
                     sControlType = *s;
             }
-            else if ( pArguments->Name == "ColumnPosition" )
+            else if ( rArgument.Name == "ColumnPosition" )
             {
-                auto n = o3tl::tryAccess<sal_Int16>(pArguments->Value);
+                auto n = o3tl::tryAccess<sal_Int16>(rArgument.Value);
                 OSL_ENSURE(n, "invalid type for argument \"ColumnPosition\" !");
                 if (n)
                     nControlPos = *n;
             }
-            else if ( pArguments->Name == "ColumnProperties" )
+            else if ( rArgument.Name == "ColumnProperties" )
             {
                 auto s = o3tl::tryAccess<Sequence<css::beans::PropertyValue>>(
-                    pArguments->Value);
+                    rArgument.Value);
                 OSL_ENSURE(s, "invalid type for argument \"ColumnProperties\" !");
                 if (s)
                     aControlProps = *s;
             }
             else
-                SAL_WARN("dbaccess.ui", "SbaExternalSourceBrowser::dispatch(AddGridColumn) : unknown argument (" << pArguments->Name << ") !");
+                SAL_WARN("dbaccess.ui", "SbaExternalSourceBrowser::dispatch(AddGridColumn) : unknown argument (" << rArgument.Name << ") !");
         }
         if (sControlType.isEmpty())
         {
             SAL_WARN("dbaccess.ui", "SbaExternalSourceBrowser::dispatch(AddGridColumn) : missing argument (ColumnType) !");
             sControlType = "TextField";
         }
-        OSL_ENSURE(aControlProps.getLength(), "SbaExternalSourceBrowser::dispatch(AddGridColumn) : missing argument (ColumnProperties) !");
+        OSL_ENSURE(aControlProps.hasElements(), "SbaExternalSourceBrowser::dispatch(AddGridColumn) : missing argument (ColumnProperties) !");
 
         // create the col
         Reference< css::form::XGridColumnFactory >  xColFactory(getControlModel(), UNO_QUERY);
@@ -181,17 +162,16 @@ void SAL_CALL SbaExternalSourceBrowser::dispatch(const css::util::URL& aURL, con
         // set its properties
         if (xNewColProperties.is())
         {
-            const css::beans::PropertyValue* pControlProps = aControlProps.getConstArray();
-            for (sal_Int32 i=0; i<aControlProps.getLength(); ++i, ++pControlProps)
+            for (const css::beans::PropertyValue& rControlProp : std::as_const(aControlProps))
             {
                 try
                 {
-                    if (xNewColProperties->hasPropertyByName(pControlProps->Name))
-                        xNewCol->setPropertyValue(pControlProps->Name, pControlProps->Value);
+                    if (xNewColProperties->hasPropertyByName(rControlProp.Name))
+                        xNewCol->setPropertyValue(rControlProp.Name, rControlProp.Value);
                 }
                 catch (const Exception&)
                 {
-                    SAL_WARN("dbaccess.ui", "SbaExternalSourceBrowser::dispatch : could not set a column property (" << pControlProps->Name << ")!");
+                    SAL_WARN("dbaccess.ui", "SbaExternalSourceBrowser::dispatch : could not set a column property (" << rControlProp.Name << ")!");
                 }
             }
         }
@@ -218,11 +198,11 @@ void SAL_CALL SbaExternalSourceBrowser::dispatch(const css::util::URL& aURL, con
 
         Reference< XRowSet >  xMasterForm;
         // search the arguments for the master form
-        for (sal_Int32 i=0; i<aArgs.getLength(); ++i, ++pArguments)
+        for (const css::beans::PropertyValue& rArgument : aArgs)
         {
-            if ( (pArguments->Name == "MasterForm") && (pArguments->Value.getValueTypeClass() == TypeClass_INTERFACE) )
+            if ( (rArgument.Name == "MasterForm") && (rArgument.Value.getValueTypeClass() == TypeClass_INTERFACE) )
             {
-                xMasterForm.set(pArguments->Value, UNO_QUERY);
+                xMasterForm.set(rArgument.Value, UNO_QUERY);
                 break;
             }
         }
@@ -266,7 +246,7 @@ Reference< css::frame::XDispatch >  SAL_CALL SbaExternalSourceBrowser::queryDisp
         css::util::URL aNewUrl = aURL;
 
         // split the css::util::URL
-        OSL_ENSURE( m_xUrlTransformer.is(), "SbaExternalSourceBrowser::queryDispatch : could not create an URLTransformer !" );
+        OSL_ENSURE( m_xUrlTransformer.is(), "SbaExternalSourceBrowser::queryDispatch : could not create a URLTransformer !" );
         if ( m_xUrlTransformer.is() )
             m_xUrlTransformer->parseStrict( aNewUrl );
 
@@ -353,7 +333,7 @@ void SbaExternalSourceBrowser::Attach(const Reference< XRowSet > & xMaster)
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 
     onStartLoading( Reference< XLoadable >( xMaster, UNO_QUERY ) );
@@ -362,37 +342,36 @@ void SbaExternalSourceBrowser::Attach(const Reference< XRowSet > & xMaster)
     m_pDataSourceImpl->AttachForm(xMaster);
     startListening();
 
-    if (xMaster.is())
-    {
-        // at this point we have to reset the formatter for the new form
-        initFormatter();
-        // assume that the master form is already loaded
+    if (!xMaster.is())
+        return;
+
+    // at this point we have to reset the formatter for the new form
+    initFormatter();
+    // assume that the master form is already loaded
 #if OSL_DEBUG_LEVEL > 0
-        {
-            Reference< XLoadable > xLoadable( xMaster, UNO_QUERY );
-            OSL_ENSURE( xLoadable.is() && xLoadable->isLoaded(), "SbaExternalSourceBrowser::Attach: master is not loaded!" );
-        }
+    {
+        Reference< XLoadable > xLoadable( xMaster, UNO_QUERY );
+        OSL_ENSURE( xLoadable.is() && xLoadable->isLoaded(), "SbaExternalSourceBrowser::Attach: master is not loaded!" );
+    }
 #endif
 
-        LoadFinished(true);
+    LoadFinished(true);
 
-        Reference< XResultSetUpdate >  xUpdate(xMaster, UNO_QUERY);
-        try
-        {
-            if (bWasInsertRow && xUpdate.is())
-                xUpdate->moveToInsertRow();
-            else if (xCursor.is() && aOldPos.hasValue())
-                xCursor->moveToBookmark(aOldPos);
-            else if(bBeforeFirst && xMaster.is())
-                xMaster->beforeFirst();
-            else if(bAfterLast && xMaster.is())
-                xMaster->afterLast();
-        }
-        catch(Exception&)
-        {
-            SAL_WARN("dbaccess.ui", "SbaExternalSourceBrowser::Attach : couldn't restore the cursor position !");
-        }
-
+    Reference< XResultSetUpdate >  xUpdate(xMaster, UNO_QUERY);
+    try
+    {
+        if (bWasInsertRow && xUpdate.is())
+            xUpdate->moveToInsertRow();
+        else if (xCursor.is() && aOldPos.hasValue())
+            xCursor->moveToBookmark(aOldPos);
+        else if(bBeforeFirst && xMaster.is())
+            xMaster->beforeFirst();
+        else if(bAfterLast && xMaster.is())
+            xMaster->afterLast();
+    }
+    catch(Exception&)
+    {
+        SAL_WARN("dbaccess.ui", "SbaExternalSourceBrowser::Attach : couldn't restore the cursor position !");
     }
 }
 

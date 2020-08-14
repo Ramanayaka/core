@@ -19,40 +19,34 @@
 
 #include <config_features.h>
 
-#include "ViewShellImplementation.hxx"
+#include <ViewShellImplementation.hxx>
 
-#include "sdpage.hxx"
-#include "drawdoc.hxx"
-#include "sdresid.hxx"
-#include "glob.hrc"
-#include "app.hrc"
-#include "strings.hrc"
-#include "helpids.h"
-#include "sdattr.hxx"
-#include "sdabstdlg.hxx"
-#include "unmodpg.hxx"
-#include "Window.hxx"
-#include "optsitem.hxx"
-#include "DrawDocShell.hxx"
-#include "DrawController.hxx"
-#include "FactoryIds.hxx"
-#include "slideshow.hxx"
-#include "ViewShellBase.hxx"
-#include "FrameView.hxx"
-#include "DrawViewShell.hxx"
-#include "ViewShellHint.hxx"
+#include <sdpage.hxx>
+#include <drawdoc.hxx>
+#include <sdresid.hxx>
+#include <unokywds.hxx>
+#include <strings.hrc>
+#include <app.hrc>
+#include <unmodpg.hxx>
+#include <DrawDocShell.hxx>
+#include <FactoryIds.hxx>
+#include <ViewShellBase.hxx>
 
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/request.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <sfx2/viewfrm.hxx>
 #include <sfx2/sidebar/Sidebar.hxx>
-#include <svl/aeitem.hxx>
+#include <svl/intitem.hxx>
+#include <svl/stritem.hxx>
 #include <svx/imapdlg.hxx>
-#include <vcl/msgbox.hxx>
 #include <basic/sbstar.hxx>
+#include <basic/sberrors.hxx>
 #include <xmloff/autolayout.hxx>
+#include <vcl/svapp.hxx>
 
-#include "undo/undoobjects.hxx"
+#include <undo/undoobjects.hxx>
 
 #include <com/sun/star/drawing/framework/XControllerManager.hpp>
 
@@ -71,12 +65,12 @@ ViewShell::Implementation::Implementation (ViewShell& rViewShell)
 {
 }
 
-ViewShell::Implementation::~Implementation()
+ViewShell::Implementation::~Implementation() COVERITY_NOEXCEPT_FALSE
 {
     if ( ! mpUpdateLockForMouse.expired())
     {
         std::shared_ptr<ToolBarManagerLock> pLock(mpUpdateLockForMouse);
-        if (pLock.get() != nullptr)
+        if (pLock != nullptr)
         {
             // Force the ToolBarManagerLock to be released even when the
             // IsUICaptured() returns <TRUE/>.
@@ -119,7 +113,7 @@ void ViewShell::Implementation::ProcessModifyPageSlot (
             mrViewShell.GetDrawView()->SdrEndTextEdit();
             mrViewShell.GetDrawView()->UnmarkAll();
             mrViewShell.GetViewFrame()->ShowChildWindow(SID_SIDEBAR);
-            sfx2::sidebar::Sidebar::ShowPanel(
+            sfx2::sidebar::Sidebar::TogglePanel(
                 "SdLayoutsPanel",
                 mrViewShell.GetViewFrame()->GetFrame().GetFrameInterface());
             break;
@@ -130,12 +124,12 @@ void ViewShell::Implementation::ProcessModifyPageSlot (
             const SfxUInt32Item* pNewAutoLayout = rRequest.GetArg<SfxUInt32Item>(ID_VAL_WHATLAYOUT);
             const SfxBoolItem* pBVisible = rRequest.GetArg<SfxBoolItem>(ID_VAL_ISPAGEBACK);
             const SfxBoolItem* pBObjsVisible = rRequest.GetArg<SfxBoolItem>(ID_VAL_ISPAGEOBJ);
-            AutoLayout aLayout ((AutoLayout)pNewAutoLayout->GetValue ());
+            AutoLayout aLayout (static_cast<AutoLayout>(pNewAutoLayout->GetValue ()));
             if (aLayout >= AUTOLAYOUT_START
                 && aLayout < AUTOLAYOUT_END)
             {
                 aNewName        = pNewName->GetValue ();
-                aNewAutoLayout = (AutoLayout) pNewAutoLayout->GetValue ();
+                aNewAutoLayout = static_cast<AutoLayout>(pNewAutoLayout->GetValue ());
                 bBVisible       = pBVisible->GetValue ();
                 bBObjsVisible   = pBObjsVisible->GetValue ();
             }
@@ -165,16 +159,16 @@ void ViewShell::Implementation::ProcessModifyPageSlot (
         SdPage* pUndoPage =
             bHandoutMode ? pHandoutMPage : pCurrentPage;
 
-        ::svl::IUndoManager* pUndoManager = mrViewShell.GetDocSh()->GetUndoManager();
+        SfxUndoManager* pUndoManager = mrViewShell.GetDocSh()->GetUndoManager();
         DBG_ASSERT(pUndoManager, "No UNDO MANAGER ?!?");
 
         if( pUndoManager )
         {
             OUString aComment( SdResId(STR_UNDO_MODIFY_PAGE) );
             pUndoManager->EnterListAction(aComment, aComment, 0, mrViewShell.GetViewShellBase().GetViewShellId());
-            ModifyPageUndoAction* pAction = new ModifyPageUndoAction(
-                pDocument, pUndoPage, aNewName, aNewAutoLayout, bBVisible, bBObjsVisible);
-            pUndoManager->AddUndoAction(pAction);
+            pUndoManager->AddUndoAction(
+                std::make_unique<ModifyPageUndoAction>(
+                    pDocument, pUndoPage, aNewName, aNewAutoLayout, bBVisible, bBObjsVisible));
 
             // Clear the selection because the selected object may be removed as
             // a result of the assignment of the layout.
@@ -197,8 +191,8 @@ void ViewShell::Implementation::ProcessModifyPageSlot (
 
                 pCurrentPage->SetAutoLayout(aNewAutoLayout, true);
 
-                SdrLayerID aBckgrnd = rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRND));
-                SdrLayerID aBckgrndObj = rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRNDOBJ));
+                SdrLayerID aBckgrnd = rLayerAdmin.GetLayerID(sUNO_LayerName_background);
+                SdrLayerID aBckgrndObj = rLayerAdmin.GetLayerID(sUNO_LayerName_background_objects);
                 aVisibleLayers.Set(aBckgrnd, bBVisible);
                 aVisibleLayers.Set(aBckgrndObj, bBObjsVisible);
                 pCurrentPage->TRG_SetMasterPageVisibleLayers(aVisibleLayers);
@@ -213,12 +207,12 @@ void ViewShell::Implementation::ProcessModifyPageSlot (
 
             bool bSetModified = true;
 
-            if (pArgs && pArgs->Count() == 1)
+            if (pArgs->Count() == 1)
             {
                 bSetModified = static_cast<const SfxBoolItem&>(pArgs->Get(SID_MODIFYPAGE)).GetValue();
             }
 
-            pUndoManager->AddUndoAction( new UndoAutoLayoutPosAndSize( *pUndoPage ) );
+            pUndoManager->AddUndoAction( std::make_unique<UndoAutoLayoutPosAndSize>( *pUndoPage ) );
             pUndoManager->LeaveListAction();
 
             pDocument->SetChanged(bSetModified);
@@ -230,7 +224,7 @@ void ViewShell::Implementation::ProcessModifyPageSlot (
     rRequest.Done ();
 }
 
-void ViewShell::Implementation::AssignLayout ( SfxRequest& rRequest, PageKind ePageKind )
+void ViewShell::Implementation::AssignLayout ( SfxRequest const & rRequest, PageKind ePageKind )
 {
     const SfxUInt32Item* pWhatPage = rRequest.GetArg<SfxUInt32Item>(ID_VAL_WHATPAGE);
     const SfxUInt32Item* pWhatLayout = rRequest.GetArg<SfxUInt32Item>(ID_VAL_WHATLAYOUT);
@@ -248,38 +242,38 @@ void ViewShell::Implementation::AssignLayout ( SfxRequest& rRequest, PageKind eP
     if( pPage == nullptr )
         pPage = mrViewShell.getCurrentPage();
 
-    if( pPage )
-    {
-        AutoLayout eLayout = pPage->GetAutoLayout();
+    if( !pPage )
+        return;
 
-        if( pWhatLayout )
-            eLayout = static_cast< AutoLayout >( pWhatLayout->GetValue() );
+    AutoLayout eLayout = pPage->GetAutoLayout();
 
-        // Transform the given request into the four argument form that is
-        // understood by ProcessModifyPageSlot().
-        SdrLayerAdmin& rLayerAdmin (mrViewShell.GetViewShellBase().GetDocument()->GetLayerAdmin());
-        SdrLayerID aBackground (rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRND)));
-        SdrLayerID aBackgroundObject (rLayerAdmin.GetLayerID(SdResId(STR_LAYER_BCKGRNDOBJ)));
+    if( pWhatLayout )
+        eLayout = static_cast< AutoLayout >( pWhatLayout->GetValue() );
 
-        SdrLayerIDSet aVisibleLayers;
+    // Transform the given request into the four argument form that is
+    // understood by ProcessModifyPageSlot().
+    SdrLayerAdmin& rLayerAdmin (mrViewShell.GetViewShellBase().GetDocument()->GetLayerAdmin());
+    SdrLayerID aBackground (rLayerAdmin.GetLayerID(sUNO_LayerName_background));
+    SdrLayerID aBackgroundObject (rLayerAdmin.GetLayerID(sUNO_LayerName_background_objects));
 
-        if( pPage->GetPageKind() == PageKind::Handout )
-            aVisibleLayers.SetAll();
-        else
-            aVisibleLayers = pPage->TRG_GetMasterPageVisibleLayers();
+    SdrLayerIDSet aVisibleLayers;
 
-        SfxRequest aRequest (mrViewShell.GetViewShellBase().GetViewFrame(), SID_MODIFYPAGE);
-        aRequest.AppendItem(SfxStringItem (ID_VAL_PAGENAME, pPage->GetName()));
-        aRequest.AppendItem(SfxUInt32Item (ID_VAL_WHATLAYOUT, eLayout));
-        aRequest.AppendItem(SfxBoolItem(ID_VAL_ISPAGEBACK, aVisibleLayers.IsSet(aBackground)));
-        aRequest.AppendItem(SfxBoolItem(ID_VAL_ISPAGEOBJ, aVisibleLayers.IsSet(aBackgroundObject)));
+    if( pPage->GetPageKind() == PageKind::Handout )
+        aVisibleLayers.SetAll();
+    else
+        aVisibleLayers = pPage->TRG_GetMasterPageVisibleLayers();
 
-        // Forward the call with the new arguments.
-        ProcessModifyPageSlot( aRequest, pPage, pPage->GetPageKind());
-    }
+    SfxRequest aRequest (mrViewShell.GetViewShellBase().GetViewFrame(), SID_MODIFYPAGE);
+    aRequest.AppendItem(SfxStringItem (ID_VAL_PAGENAME, pPage->GetName()));
+    aRequest.AppendItem(SfxUInt32Item (ID_VAL_WHATLAYOUT, eLayout));
+    aRequest.AppendItem(SfxBoolItem(ID_VAL_ISPAGEBACK, aVisibleLayers.IsSet(aBackground)));
+    aRequest.AppendItem(SfxBoolItem(ID_VAL_ISPAGEOBJ, aVisibleLayers.IsSet(aBackgroundObject)));
+
+    // Forward the call with the new arguments.
+    ProcessModifyPageSlot( aRequest, pPage, pPage->GetPageKind());
 }
 
-SfxInterfaceId ViewShell::Implementation::GetViewId()
+SfxInterfaceId ViewShell::Implementation::GetViewId() const
 {
     switch (mrViewShell.GetShellType())
     {
@@ -316,7 +310,7 @@ SvxIMapDlg* ViewShell::Implementation::GetImageMapDialog()
     SfxChildWindow* pChildWindow = SfxViewFrame::Current()->GetChildWindow(
         SvxIMapDlgChildWindow::GetChildWindowId());
     if (pChildWindow != nullptr)
-        pDialog = dynamic_cast<SvxIMapDlg*>(pChildWindow->GetWindow());
+        pDialog = dynamic_cast<SvxIMapDlg*>(pChildWindow->GetController().get());
     return pDialog;
 }
 

@@ -26,7 +26,7 @@
 
 #include <sax/tools/converter.hxx>
 
-#include <tools/diagnose_ex.h>
+#include <osl/diagnose.h>
 #include <tools/date.hxx>
 
 namespace xmloff
@@ -40,12 +40,6 @@ namespace xmloff
     //= VCLDateHandler
     VCLDateHandler::VCLDateHandler()
     {
-    }
-
-    OUString VCLDateHandler::getAttributeValue( const PropertyValues& /*i_propertyValues*/ ) const
-    {
-        OSL_ENSURE( false, "VCLDateHandler::getAttributeValue: unexpected call!" );
-        return OUString();
     }
 
     OUString VCLDateHandler::getAttributeValue( const Any& i_propertyValue ) const
@@ -67,7 +61,7 @@ namespace xmloff
     {
         DateTime aDateTime;
         Date aDate;
-        if (::sax::Converter::parseDateTime( aDateTime, nullptr, i_attributeValue ))
+        if (::sax::Converter::parseDateTime( aDateTime, i_attributeValue ))
         {
             aDate.Day = aDateTime.Day;
             aDate.Month = aDateTime.Month;
@@ -88,12 +82,9 @@ namespace xmloff
         const Any aPropertyValue( makeAny( aDate ) );
 
         OSL_ENSURE( o_propertyValues.size() == 1, "VCLDateHandler::getPropertyValues: date strings represent exactly one property - not more, not less!" );
-        for (   PropertyValues::iterator prop = o_propertyValues.begin();
-                prop != o_propertyValues.end();
-                ++prop
-            )
+        for ( auto& prop : o_propertyValues )
         {
-            prop->second = aPropertyValue;
+            prop.second = aPropertyValue;
         }
         return true;
     }

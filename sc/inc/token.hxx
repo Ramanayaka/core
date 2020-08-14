@@ -20,14 +20,12 @@
 #ifndef INCLUDED_SC_INC_TOKEN_HXX
 #define INCLUDED_SC_INC_TOKEN_HXX
 
+#include <memory>
 #include <vector>
-#include <boost/intrusive_ptr.hpp>
 
 #include <formula/opcode.hxx>
 #include "refdata.hxx"
-#include <tools/mempool.hxx>
 #include "scdllapi.h"
-#include <formula/IFunctionDescription.hxx>
 #include <formula/token.hxx>
 #include "calcmacros.hxx"
 #include "types.hxx"
@@ -35,14 +33,9 @@
 // Matrix token constants.
 #define MATRIX_TOKEN_HAS_RANGE 1
 
-namespace sc {
-
-struct RangeMatrix;
-
-}
-
 class ScJumpMatrix;
 class ScMatrix;
+struct ScSheetLimits;
 
 typedef ::std::vector< ScComplexRefData > ScRefList;
 
@@ -62,35 +55,31 @@ void DumpToken(formula::FormulaToken const & rToken);
         A reused or new'ed ScDoubleRefToken, or a NULL TokenRef if rTok1 or
         rTok2 are not of sv(Single|Double)Ref
 */
-formula::FormulaTokenRef extendRangeReference( formula::FormulaToken & rTok1, formula::FormulaToken & rTok2, const ScAddress & rPos, bool bReuseDoubleRef );
+formula::FormulaTokenRef extendRangeReference( ScSheetLimits& rLimits, formula::FormulaToken & rTok1, formula::FormulaToken & rTok2, const ScAddress & rPos, bool bReuseDoubleRef );
 
-class ScSingleRefToken : public formula::FormulaToken
+class ScSingleRefToken final : public formula::FormulaToken
 {
 private:
-            ScSingleRefData       aSingleRef;
+    ScSheetLimits&    mrSheetLimits; // don't use rtl::Reference to avoid ref-counting traffic
+    ScSingleRefData   aSingleRef;
 public:
-                                ScSingleRefToken( const ScSingleRefData& r, OpCode e = ocPush ) :
-                                    FormulaToken( formula::svSingleRef, e ), aSingleRef( r ) {}
-                                ScSingleRefToken( const ScSingleRefToken& r ) :
-                                    FormulaToken( r ), aSingleRef( r.aSingleRef ) {}
+                                ScSingleRefToken( ScSheetLimits& rLimits, const ScSingleRefData& r, OpCode e = ocPush ) :
+                                    FormulaToken( formula::svSingleRef, e ), mrSheetLimits(rLimits), aSingleRef( r ) {}
     virtual const ScSingleRefData*    GetSingleRef() const override;
     virtual ScSingleRefData*      GetSingleRef() override;
     virtual bool                TextEqual( const formula::FormulaToken& rToken ) const override;
     virtual bool                operator==( const formula::FormulaToken& rToken ) const override;
     virtual FormulaToken*       Clone() const override { return new ScSingleRefToken(*this); }
-
-    DECL_FIXEDMEMPOOL_NEWDEL( ScSingleRefToken );
 };
 
-class ScDoubleRefToken : public formula::FormulaToken
+class ScDoubleRefToken final : public formula::FormulaToken
 {
 private:
-            ScComplexRefData        aDoubleRef;
+    ScSheetLimits&    mrSheetLimits; // don't use rtl::Reference to avoid ref-counting traffic
+    ScComplexRefData  aDoubleRef;
 public:
-                                ScDoubleRefToken( const ScComplexRefData& r, OpCode e = ocPush  ) :
-                                    FormulaToken( formula::svDoubleRef, e ), aDoubleRef( r ) {}
-                                ScDoubleRefToken( const ScDoubleRefToken& r ) :
-                                    FormulaToken( r ), aDoubleRef( r.aDoubleRef ) {}
+                                ScDoubleRefToken( ScSheetLimits& rLimits, const ScComplexRefData& r, OpCode e = ocPush  ) :
+                                    FormulaToken( formula::svDoubleRef, e ), mrSheetLimits(rLimits), aDoubleRef( r ) {}
     virtual const ScSingleRefData*    GetSingleRef() const override;
     virtual ScSingleRefData*      GetSingleRef() override;
     virtual const ScComplexRefData* GetDoubleRef() const override;
@@ -100,17 +89,15 @@ public:
     virtual bool                TextEqual( const formula::FormulaToken& rToken ) const override;
     virtual bool                operator==( const formula::FormulaToken& rToken ) const override;
     virtual FormulaToken*       Clone() const override { return new ScDoubleRefToken(*this); }
-
-    DECL_FIXEDMEMPOOL_NEWDEL( ScDoubleRefToken );
 };
 
-class ScMatrixToken : public formula::FormulaToken
+class ScMatrixToken final : public formula::FormulaToken
 {
 private:
             ScMatrixRef         pMatrix;
 public:
     ScMatrixToken( const ScMatrixRef& p );
-    ScMatrixToken( const ScMatrixToken& r );
+    ScMatrixToken( const ScMatrixToken& );
 
     virtual const ScMatrix*     GetMatrix() const override;
     virtual ScMatrix*           GetMatrix() override;
@@ -123,14 +110,13 @@ public:
  * both the values in matrix form, and the range address the matrix
  * represents.
  */
-class ScMatrixRangeToken : public formula::FormulaToken
+class ScMatrixRangeToken final : public formula::FormulaToken
 {
     ScMatrixRef mpMatrix;
     ScComplexRefData maRef;
 public:
-    ScMatrixRangeToken( const ScMatrixRef& p, const ScComplexRefData& rRef );
     ScMatrixRangeToken( const sc::RangeMatrix& rMat );
-    ScMatrixRangeToken( const ScMatrixRangeToken& r );
+    ScMatrixRangeToken( const ScMatrixRangeToken& );
 
     virtual sal_uInt8 GetByte() const override;
     virtual const ScMatrix* GetMatrix() const override;
@@ -141,7 +127,7 @@ public:
     virtual FormulaToken* Clone() const override;
 };
 
-class ScExternalSingleRefToken : public formula::FormulaToken
+class ScExternalSingleRefToken final : public formula::FormulaToken
 {
     sal_uInt16                  mnFileId;
     svl::SharedString           maTabName;
@@ -149,9 +135,13 @@ class ScExternalSingleRefToken : public formula::FormulaToken
 
 public:
     ScExternalSingleRefToken( sal_uInt16 nFileId, const svl::SharedString& rTabName, const ScSingleRefData& r );
-    ScExternalSingleRefToken( const ScExternalSingleRefToken& r );
     ScExternalSingleRefToken() = delete;
     virtual ~ScExternalSingleRefToken() override;
+
+    ScExternalSingleRefToken(ScExternalSingleRefToken const &) = default;
+    ScExternalSingleRefToken(ScExternalSingleRefToken &&) = default;
+    ScExternalSingleRefToken & operator =(ScExternalSingleRefToken const &) = delete; // due to FormulaToken
+    ScExternalSingleRefToken & operator =(ScExternalSingleRefToken &&) = delete; // due to FormulaToken
 
     virtual sal_uInt16                  GetIndex() const override;
     virtual svl::SharedString GetString() const override;
@@ -161,7 +151,7 @@ public:
     virtual FormulaToken*       Clone() const override { return new ScExternalSingleRefToken(*this); }
 };
 
-class ScExternalDoubleRefToken : public formula::FormulaToken
+class ScExternalDoubleRefToken final : public formula::FormulaToken
 {
     sal_uInt16                  mnFileId;
     svl::SharedString           maTabName;  // name of the first sheet
@@ -170,8 +160,12 @@ class ScExternalDoubleRefToken : public formula::FormulaToken
 public:
     ScExternalDoubleRefToken() = delete;
     ScExternalDoubleRefToken( sal_uInt16 nFileId, const svl::SharedString& rTabName, const ScComplexRefData& r );
-    ScExternalDoubleRefToken( const ScExternalDoubleRefToken& r );
     virtual ~ScExternalDoubleRefToken() override;
+
+    ScExternalDoubleRefToken(ScExternalDoubleRefToken const &) = default;
+    ScExternalDoubleRefToken(ScExternalDoubleRefToken &&) = default;
+    ScExternalDoubleRefToken & operator =(ScExternalDoubleRefToken const &) = delete; // due to FormulaToken
+    ScExternalDoubleRefToken & operator =(ScExternalDoubleRefToken &&) = delete; // due to FormulaToken
 
     virtual sal_uInt16                 GetIndex() const override;
     virtual svl::SharedString GetString() const override;
@@ -185,7 +179,7 @@ public:
     virtual FormulaToken*       Clone() const override { return new ScExternalDoubleRefToken(*this); }
 };
 
-class ScExternalNameToken : public formula::FormulaToken
+class ScExternalNameToken final : public formula::FormulaToken
 {
     sal_uInt16                  mnFileId;
     svl::SharedString           maName;
@@ -193,8 +187,12 @@ class ScExternalNameToken : public formula::FormulaToken
 public:
     ScExternalNameToken() = delete;
     ScExternalNameToken( sal_uInt16 nFileId, const svl::SharedString& rName );
-    ScExternalNameToken( const ScExternalNameToken& r );
     virtual ~ScExternalNameToken() override;
+
+    ScExternalNameToken(ScExternalNameToken const &) = default;
+    ScExternalNameToken(ScExternalNameToken &&) = default;
+    ScExternalNameToken & operator =(ScExternalNameToken const &) = delete; // due to FormulaToken
+    ScExternalNameToken & operator =(ScExternalNameToken &&) = delete; // due to FormulaToken
 
     virtual sal_uInt16              GetIndex() const override;
     virtual svl::SharedString GetString() const override;
@@ -203,7 +201,7 @@ public:
 };
 
 /** Special token to remember details of ocTableRef "structured references". */
-class ScTableRefToken : public formula::FormulaToken
+class ScTableRefToken final : public formula::FormulaToken
 {
 public:
 
@@ -244,15 +242,13 @@ private:
 
 // Only created from within the interpreter, no conversion from ScRawToken,
 // never added to ScTokenArray!
-class ScJumpMatrixToken : public formula::FormulaToken
+class ScJumpMatrixToken final : public formula::FormulaToken
 {
 private:
-            ScJumpMatrix*       pJumpMatrix;
+    std::shared_ptr<ScJumpMatrix> mpJumpMatrix;
 public:
-                                ScJumpMatrixToken( ScJumpMatrix* p ) :
-                                    FormulaToken( formula::svJumpMatrix ), pJumpMatrix( p ) {}
-                                ScJumpMatrixToken( const ScJumpMatrixToken& r ) :
-                                    FormulaToken( r ), pJumpMatrix( r.pJumpMatrix ) {}
+                                ScJumpMatrixToken( std::shared_ptr<ScJumpMatrix> p );
+                                ScJumpMatrixToken( const ScJumpMatrixToken & );
     virtual                     ~ScJumpMatrixToken() override;
     virtual ScJumpMatrix*       GetJumpMatrix() const override;
     virtual bool                operator==( const formula::FormulaToken& rToken ) const override;
@@ -261,7 +257,7 @@ public:
 
 // Only created from within the interpreter, no conversion from ScRawToken,
 // never added to ScTokenArray!
-class ScRefListToken : public formula::FormulaToken
+class ScRefListToken final : public formula::FormulaToken
 {
 private:
             ScRefList           aRefList;
@@ -271,8 +267,6 @@ public:
                                     FormulaToken( formula::svRefList ), mbArrayResult(false) {}
             explicit            ScRefListToken( bool bArrayResult ) :
                                     FormulaToken( formula::svRefList ), mbArrayResult( bArrayResult ) {}
-                                ScRefListToken( const ScRefListToken & r ) :
-                                    FormulaToken( r ), aRefList( r.aRefList ), mbArrayResult( r.mbArrayResult ) {}
             bool                IsArrayResult() const;
     virtual const ScRefList*    GetRefList() const override;
     virtual       ScRefList*    GetRefList() override;
@@ -280,7 +274,7 @@ public:
     virtual FormulaToken*       Clone() const override { return new ScRefListToken(*this); }
 };
 
-class SC_DLLPUBLIC ScEmptyCellToken : public formula::FormulaToken
+class ScEmptyCellToken final : public formula::FormulaToken
 {
             bool                bInherited          :1;
             bool                bDisplayedAsString  :1;
@@ -289,10 +283,6 @@ public:
                                     FormulaToken( formula::svEmptyCell ),
                                     bInherited( bInheritedP ),
                                     bDisplayedAsString( bDisplayAsString ) {}
-                                ScEmptyCellToken( const ScEmptyCellToken& r ) :
-                                    FormulaToken( r ),
-                                    bInherited( r.bInherited ),
-                                    bDisplayedAsString( r.bDisplayedAsString ) {}
             bool                IsInherited() const { return bInherited; }
             bool                IsDisplayedAsString() const { return bDisplayedAsString; }
     virtual double              GetDouble() const override;
@@ -302,7 +292,7 @@ public:
 };
 
 /**  Transports the result from the interpreter to the formula cell. */
-class SC_DLLPUBLIC ScMatrixCellResultToken : public formula::FormulaToken
+class ScMatrixCellResultToken : public formula::FormulaToken
 {
     // No non-const access implemented, silence down unxsols4 complaining about
     // the public GetMatrix() hiding the one from FormulaToken.
@@ -312,8 +302,8 @@ protected:
     ScConstMatrixRef xMatrix;
     formula::FormulaConstTokenRef     xUpperLeft;
 public:
-    ScMatrixCellResultToken( const ScConstMatrixRef& pMat, formula::FormulaToken* pUL );
-    ScMatrixCellResultToken( const ScMatrixCellResultToken& r );
+    ScMatrixCellResultToken( const ScConstMatrixRef& pMat, const formula::FormulaToken* pUL );
+    ScMatrixCellResultToken( const ScMatrixCellResultToken& );
     virtual ~ScMatrixCellResultToken() override;
     virtual double              GetDouble() const override;
     virtual svl::SharedString GetString() const override;
@@ -332,13 +322,13 @@ public:
 
 /** Stores the matrix result at the formula cell, additionally the range the
     matrix formula occupies. */
-class SC_DLLPUBLIC ScMatrixFormulaCellToken : public ScMatrixCellResultToken
+class ScMatrixFormulaCellToken final : public ScMatrixCellResultToken
 {
 private:
             SCROW               nRows;
             SCCOL               nCols;
 public:
-    ScMatrixFormulaCellToken( SCCOL nC, SCROW nR, const ScConstMatrixRef& pMat, formula::FormulaToken* pUL );
+    ScMatrixFormulaCellToken( SCCOL nC, SCROW nR, const ScConstMatrixRef& pMat, const formula::FormulaToken* pUL );
     ScMatrixFormulaCellToken( SCCOL nC, SCROW nR );
     ScMatrixFormulaCellToken( const ScMatrixFormulaCellToken& r );
     virtual ~ScMatrixFormulaCellToken() override;
@@ -386,7 +376,7 @@ private:
     void CloneUpperLeftIfNecessary();
 };
 
-class SC_DLLPUBLIC ScHybridCellToken : public formula::FormulaToken
+class ScHybridCellToken final : public formula::FormulaToken
 {
 private:
     double mfDouble;
@@ -431,8 +421,7 @@ public:
                         {
                             pS = nullptr;
                             pD = rT.GetDoubleRef();
-                            // aDub intentionally not initialized, unnecessary
-                            // because unused.
+                            // coverity[uninit_member] - aDub intentionally not initialized, unnecessary because unused.
                         }
                     }
                 SingleDoubleRefModifier( ScSingleRefData& rS )

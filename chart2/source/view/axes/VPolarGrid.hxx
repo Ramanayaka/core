@@ -21,9 +21,10 @@
 
 #include "VAxisOrGridBase.hxx"
 #include "Tickmarks.hxx"
-#include "VLineProperties.hxx"
 #include <com/sun/star/drawing/PointSequenceSequence.hpp>
 #include <memory>
+
+namespace chart { struct VLineProperties; }
 
 namespace chart
 {
@@ -49,7 +50,7 @@ public:
                     , TickInfoArraysType& rAllTickInfos
                     , const ExplicitIncrementData& rIncrement
                     , const ExplicitScaleData& rScale
-                    , PolarPlottingPositionHelper* pPosHelper
+                    , PolarPlottingPositionHelper const * pPosHelper
                     , double fLogicRadius, double fLogicZ );
 
 private: //member

@@ -18,7 +18,7 @@
  */
 
 #include "SchXMLChartContext.hxx"
-#include "SchXMLImport.hxx"
+#include <SchXMLImport.hxx>
 #include "SchXMLLegendContext.hxx"
 #include "SchXMLPlotAreaContext.hxx"
 #include "SchXMLParagraphContext.hxx"
@@ -26,27 +26,24 @@
 #include "SchXMLSeries2Context.hxx"
 #include "SchXMLTools.hxx"
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
+#include <tools/diagnose_ex.h>
 #include <unotools/mediadescriptor.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/xmlement.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmlstyle.hxx>
-#include <xmloff/prstylei.hxx>
 #include <xmloff/SchXMLSeriesHelper.hxx>
 
-#include "vector"
+#include <vector>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/chart/XChartDocument.hpp>
 #include <com/sun/star/chart/XDiagram.hpp>
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
-#include <com/sun/star/util/XStringMapping.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/chart/ChartDataRowSource.hpp>
-#include <com/sun/star/chart/ChartSeriesAddress.hpp>
-#include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/embed/XVisualObject.hpp>
 
@@ -92,7 +89,7 @@ void lcl_MoveDataToCandleStickSeries(
     {
         uno::Sequence< uno::Reference< chart2::data::XLabeledDataSequence > > aLabeledSeq(
             xDataSource->getDataSequences());
-        if( aLabeledSeq.getLength())
+        if( aLabeledSeq.hasElements())
         {
             lcl_setRoleAtLabeledSequence( aLabeledSeq[0], rRole );
 
@@ -120,7 +117,7 @@ void lcl_setRoleAtFirstSequence(
     if( xSource.is())
     {
         uno::Sequence< uno::Reference< chart2::data::XLabeledDataSequence > > aSeq( xSource->getDataSequences());
-        if( aSeq.getLength())
+        if( aSeq.hasElements())
             lcl_setRoleAtLabeledSequence( aSeq[0], rRole );
     }
 }
@@ -139,11 +136,11 @@ void lcl_removeEmptyChartTypeGroups( const uno::Reference< chart2::XChartDocumen
         // count all charttype groups to be able to leave at least one
         sal_Int32 nRemainingGroups = 0;
         uno::Reference< chart2::XCoordinateSystemContainer > xCooSysCnt( xDia, uno::UNO_QUERY_THROW );
-        uno::Sequence< uno::Reference< chart2::XCoordinateSystem > >
+        const uno::Sequence< uno::Reference< chart2::XCoordinateSystem > >
             aCooSysSeq( xCooSysCnt->getCoordinateSystems());
-        for( sal_Int32 nI = aCooSysSeq.getLength(); nI--; )
+        for( auto const & i : aCooSysSeq )
         {
-            uno::Reference< chart2::XChartTypeContainer > xCTCnt( aCooSysSeq[nI], uno::UNO_QUERY_THROW );
+            uno::Reference< chart2::XChartTypeContainer > xCTCnt( i, uno::UNO_QUERY_THROW );
             nRemainingGroups += xCTCnt->getChartTypes().getLength();
         }
 
@@ -155,7 +152,7 @@ void lcl_removeEmptyChartTypeGroups( const uno::Reference< chart2::XChartDocumen
             for( sal_Int32 nJ=aCTSeq.getLength(); nJ-- && (nRemainingGroups > 1); )
             {
                 uno::Reference< chart2::XDataSeriesContainer > xDSCnt( aCTSeq[nJ], uno::UNO_QUERY_THROW );
-                if( xDSCnt->getDataSeries().getLength() == 0 )
+                if( !xDSCnt->getDataSeries().hasElements() )
                 {
                     // note: iterator stays valid as we have a local sequence
                     xCTCnt->removeChartType( aCTSeq[nJ] );
@@ -164,10 +161,9 @@ void lcl_removeEmptyChartTypeGroups( const uno::Reference< chart2::XChartDocumen
             }
         }
     }
-    catch(const uno::Exception& ex)
+    catch(const uno::Exception&)
     {
-        OString aBStr(OUStringToOString(ex.Message, RTL_TEXTENCODING_ASCII_US));
-        SAL_INFO("xmloff.chart", "Exception caught while removing empty chart types: " << aBStr);
+        TOOLS_INFO_EXCEPTION("xmloff.chart", "Exception caught while removing empty chart types");
     }
 }
 
@@ -193,7 +189,7 @@ uno::Sequence< sal_Int32 > lcl_getNumberSequenceFromString( const OUString& rStr
     if( nLastPos != 0 &&
         rStr.getLength() > nLastPos )
     {
-        aVec.push_back( rStr.copy( nLastPos, (rStr.getLength() - nLastPos) ).toInt32() );
+        aVec.push_back( rStr.copy( nLastPos ).toInt32() );
     }
 
     const sal_Int32 nVecSize = aVec.size();
@@ -241,14 +237,14 @@ SchXMLChartContext::SchXMLChartContext( SchXMLImportHelper& rImpHelper,
 SchXMLChartContext::~SchXMLChartContext()
 {}
 
-bool lcl_hasServiceName(Reference<lang::XMultiServiceFactory> & xFactory, OUString const & rServiceName)
+static bool lcl_hasServiceName(Reference<lang::XMultiServiceFactory> const & xFactory, OUString const & rServiceName)
 {
     const uno::Sequence<OUString> aServiceNames(xFactory->getAvailableServiceNames());
 
     return std::find(aServiceNames.begin(), aServiceNames.end(), rServiceName) != aServiceNames.end();
 }
 
-void lcl_setDataProvider(uno::Reference<chart2::XChartDocument> const & xChartDoc, OUString const & sDataPilotSource)
+static void lcl_setDataProvider(uno::Reference<chart2::XChartDocument> const & xChartDoc, OUString const & sDataPilotSource)
 {
     if (!xChartDoc.is())
         return;
@@ -301,10 +297,9 @@ void lcl_setDataProvider(uno::Reference<chart2::XChartDocument> const & xChartDo
                 xChartDoc->createInternalDataProvider(false);
         }
     }
-    catch (const uno::Exception & rEx)
+    catch (const uno::Exception &)
     {
-        OString aBStr(OUStringToOString(rEx.Message, RTL_TEXTENCODING_ASCII_US));
-        SAL_INFO("xmloff.chart", "SchXMLChartContext::StartElement(): Exception caught: " << aBStr);
+        TOOLS_INFO_EXCEPTION("xmloff.chart", "SchXMLChartContext::StartElement()");
     }
 }
 
@@ -342,7 +337,7 @@ void SchXMLChartContext::StartElement( const uno::Reference< xml::sax::XAttribut
                 {
                     OUString sClassName;
                     sal_uInt16 nClassPrefix =
-                        GetImport().GetNamespaceMap().GetKeyByAttrName(
+                        GetImport().GetNamespaceMap().GetKeyByAttrValueQName(
                                 aValue, &sClassName );
                     if( XML_NAMESPACE_CHART == nClassPrefix )
                     {
@@ -436,7 +431,7 @@ void SchXMLChartContext::StartElement( const uno::Reference< xml::sax::XAttribut
     }
 
     // set auto-styles for Area
-    uno::Reference<beans::XPropertySet> xProp(mrImportHelper.GetChartDocument()->getArea(), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xProp = mrImportHelper.GetChartDocument()->getArea();
     mrImportHelper.FillAutoStyle(sAutoStyleName, xProp);
 }
 
@@ -474,21 +469,19 @@ struct NewDonutSeries
             m_aPointStyles[nPointIndex]=rStyleName;
     }
 
-    ::std::list< DataRowPointStyle > creatStyleList()
+    ::std::vector< DataRowPointStyle > creatStyleVector()
     {
-        ::std::list< DataRowPointStyle > aRet;
+        ::std::vector< DataRowPointStyle > aRet;
 
         DataRowPointStyle aSeriesStyle( DataRowPointStyle::DATA_SERIES
             , m_xSeries, -1, 1, msStyleName, mnAttachedAxis );
         aRet.push_back( aSeriesStyle );
 
         sal_Int32 nPointIndex=0;
-        ::std::vector< OUString >::iterator aPointIt( m_aPointStyles.begin() );
-        ::std::vector< OUString >::iterator aPointEnd( m_aPointStyles.end() );
-        while( aPointIt != aPointEnd )
+        for (auto const& pointStyle : m_aPointStyles)
         {
             DataRowPointStyle aPointStyle( DataRowPointStyle::DATA_POINT
-                , m_xSeries, nPointIndex, 1, *aPointIt, mnAttachedAxis );
+                , m_xSeries, nPointIndex, 1, pointStyle, mnAttachedAxis );
             if( nPointIndex < static_cast<sal_Int32>(m_aSeriesStyles.size()) )
             {
                 aPointStyle.msSeriesStyleNameForDonuts = m_aSeriesStyles[nPointIndex];
@@ -496,7 +489,6 @@ struct NewDonutSeries
             if( !aPointStyle.msSeriesStyleNameForDonuts.isEmpty()
                 || !aPointStyle.msStyleName.isEmpty() )
                 aRet.push_back( aPointStyle );
-            ++aPointIt;
             ++nPointIndex;
         }
 
@@ -504,12 +496,9 @@ struct NewDonutSeries
     }
 };
 
-void lcl_swapPointAndSeriesStylesForDonutCharts( ::std::list< DataRowPointStyle >& rStyleList
+void lcl_swapPointAndSeriesStylesForDonutCharts( ::std::vector< DataRowPointStyle >& rStyleVector
         , const ::std::map< css::uno::Reference< css::chart2::XDataSeries> , sal_Int32 >& rSeriesMap )
 {
-    ::std::list< DataRowPointStyle >::iterator aIt(rStyleList.begin());
-    ::std::list< DataRowPointStyle >::iterator aEnd(rStyleList.end());
-
     //detect old series count
     //and add old series to aSeriesMap
     ::std::map< css::uno::Reference<
@@ -518,9 +507,9 @@ void lcl_swapPointAndSeriesStylesForDonutCharts( ::std::list< DataRowPointStyle 
     {
         sal_Int32 nMaxOldSeriesIndex = 0;
         sal_Int32 nOldSeriesIndex = 0;
-        for( aIt = rStyleList.begin(); aIt != aEnd; ++aIt )
+        for (auto const& style : rStyleVector)
         {
-            DataRowPointStyle aStyle(*aIt);
+            DataRowPointStyle aStyle(style);
             if(aStyle.meType == DataRowPointStyle::DATA_SERIES &&
                     aStyle.m_xSeries.is() )
             {
@@ -536,62 +525,55 @@ void lcl_swapPointAndSeriesStylesForDonutCharts( ::std::list< DataRowPointStyle 
     }
 
     //initialize new series styles
-    ::std::map< Reference< chart2::XDataSeries >, sal_Int32 >::const_iterator aSeriesMapIt( aSeriesMap.begin() );
     ::std::map< Reference< chart2::XDataSeries >, sal_Int32 >::const_iterator aSeriesMapEnd( aSeriesMap.end() );
 
     //sort by index
     ::std::vector< NewDonutSeries > aNewSeriesVector;
     {
         ::std::map< sal_Int32, Reference< chart2::XDataSeries > > aIndexSeriesMap;
-        for( ; aSeriesMapIt != aSeriesMapEnd; ++aSeriesMapIt )
-            aIndexSeriesMap[aSeriesMapIt->second] = aSeriesMapIt->first;
+        for (auto const& series : aSeriesMap)
+            aIndexSeriesMap[series.second] = series.first;
 
-        ::std::map< sal_Int32, Reference< chart2::XDataSeries > >::const_iterator aIndexIt( aIndexSeriesMap.begin() );
-        ::std::map< sal_Int32, Reference< chart2::XDataSeries > >::const_iterator aIndexEnd( aIndexSeriesMap.end() );
-
-        for( ; aIndexIt != aIndexEnd; ++aIndexIt )
-            aNewSeriesVector.push_back( NewDonutSeries(aIndexIt->second,nOldSeriesCount) );
+        for (auto const& indexSeries : aIndexSeriesMap)
+            aNewSeriesVector.emplace_back(indexSeries.second,nOldSeriesCount );
     }
 
     //overwrite attached axis information according to old series styles
-    for( aIt = rStyleList.begin(); aIt != aEnd; ++aIt )
+    for (auto const& style : rStyleVector)
     {
-        DataRowPointStyle aStyle(*aIt);
+        DataRowPointStyle aStyle(style);
         if(aStyle.meType == DataRowPointStyle::DATA_SERIES )
         {
-            aSeriesMapIt = aSeriesMap.find( aStyle.m_xSeries );
+            auto aSeriesMapIt = aSeriesMap.find( aStyle.m_xSeries );
             if( aSeriesMapIt != aSeriesMapEnd && aSeriesMapIt->second < static_cast<sal_Int32>(aNewSeriesVector.size()) )
                 aNewSeriesVector[aSeriesMapIt->second].mnAttachedAxis = aStyle.mnAttachedAxis;
         }
     }
 
     //overwrite new series style names with old series style name information
-    for( aIt = rStyleList.begin(); aIt != aEnd; ++aIt )
+    for (auto const& style : rStyleVector)
     {
-        DataRowPointStyle aStyle(*aIt);
+        DataRowPointStyle aStyle(style);
         if( aStyle.meType == DataRowPointStyle::DATA_SERIES )
         {
-            aSeriesMapIt = aSeriesMap.find(aStyle.m_xSeries);
+            auto aSeriesMapIt = aSeriesMap.find(aStyle.m_xSeries);
             if( aSeriesMapEnd != aSeriesMapIt )
             {
                 sal_Int32 nNewPointIndex = aSeriesMapIt->second;
 
-                ::std::vector< NewDonutSeries >::iterator aNewSeriesIt( aNewSeriesVector.begin() );
-                ::std::vector< NewDonutSeries >::iterator aNewSeriesEnd( aNewSeriesVector.end() );
-
-                for( ;aNewSeriesIt!=aNewSeriesEnd; ++aNewSeriesIt)
-                    aNewSeriesIt->setSeriesStyleNameToPoint( aStyle.msStyleName, nNewPointIndex );
+                for (auto & newSeries : aNewSeriesVector)
+                    newSeries.setSeriesStyleNameToPoint( aStyle.msStyleName, nNewPointIndex );
             }
         }
     }
 
     //overwrite new series style names with point style name information
-    for( aIt = rStyleList.begin(); aIt != aEnd; ++aIt )
+    for (auto const& style : rStyleVector)
     {
-        DataRowPointStyle aStyle(*aIt);
+        DataRowPointStyle aStyle(style);
         if( aStyle.meType == DataRowPointStyle::DATA_POINT )
         {
-            aSeriesMapIt = aSeriesMap.find(aStyle.m_xSeries);
+            auto aSeriesMapIt = aSeriesMap.find(aStyle.m_xSeries);
             if( aSeriesMapEnd != aSeriesMapIt )
             {
                 sal_Int32 nNewPointIndex = aSeriesMapIt->second;
@@ -610,15 +592,13 @@ void lcl_swapPointAndSeriesStylesForDonutCharts( ::std::list< DataRowPointStyle 
         }
     }
 
-    //put information from aNewSeriesVector to output parameter rStyleList
-    rStyleList.clear();
+    //put information from aNewSeriesVector to output parameter rStyleVector
+    rStyleVector.clear();
 
-    ::std::vector< NewDonutSeries >::iterator aNewSeriesIt( aNewSeriesVector.begin() );
-    ::std::vector< NewDonutSeries >::iterator aNewSeriesEnd( aNewSeriesVector.end() );
-    for( ;aNewSeriesIt!=aNewSeriesEnd; ++aNewSeriesIt)
+    for (auto & newSeries : aNewSeriesVector)
     {
-        ::std::list< DataRowPointStyle > aList( aNewSeriesIt->creatStyleList() );
-        rStyleList.insert(rStyleList.end(),aList.begin(),aList.end());
+        ::std::vector< DataRowPointStyle > aVector( newSeries.creatStyleVector() );
+        rStyleVector.insert(rStyleVector.end(),aVector.begin(),aVector.end());
     }
 }
 
@@ -692,10 +672,9 @@ static void lcl_ApplyDataFromRectangularRangeToDiagram(
     //work around wrong writer ranges ( see Issue 58464 )
     {
         OUString aChartOleObjectName;
-        uno::Reference< frame::XModel > xModel(xNewDoc, uno::UNO_QUERY );
-        if( xModel.is() )
+        if( xNewDoc.is() )
         {
-            utl::MediaDescriptor aMediaDescriptor( xModel->getArgs() );
+            utl::MediaDescriptor aMediaDescriptor( xNewDoc->getArgs() );
 
             utl::MediaDescriptor::const_iterator aIt(
                 aMediaDescriptor.find( OUString(  "HierarchicalDocumentName" )));
@@ -838,7 +817,7 @@ void SchXMLChartContext::EndElement()
         if( xNewDoc->hasInternalDataProvider() )
             SchXMLTableHelper::applyTableToInternalDataProvider( maTable, xNewDoc );
 
-        bool bOlderThan2_3 = SchXMLTools::isDocumentGeneratedWithOpenOfficeOlderThan2_3( Reference< frame::XModel >( xNewDoc, uno::UNO_QUERY ));
+        bool bOlderThan2_3 = SchXMLTools::isDocumentGeneratedWithOpenOfficeOlderThan2_3( xNewDoc );
         bool bOldFileWithOwnDataFromRows = (bOlderThan2_3 && bHasOwnData && (meDataRowSource==chart::ChartDataRowSource_ROWS)); // in this case there are range addresses that are simply wrong.
 
         if( mbAllRangeAddressesAvailable && !bSpecialHandlingForDonutChart && !mbIsStockChart &&
@@ -897,11 +876,11 @@ void SchXMLChartContext::EndElement()
         if( bSpecialHandlingForDonutChart )
         {
             uno::Reference< chart2::XDiagram > xNewDiagram( xNewDoc->getFirstDiagram() );
-            lcl_swapPointAndSeriesStylesForDonutCharts( maSeriesDefaultsAndStyles.maSeriesStyleList
+            lcl_swapPointAndSeriesStylesForDonutCharts( maSeriesDefaultsAndStyles.maSeriesStyleVector
                 , SchXMLSeriesHelper::getDataSeriesIndexMapFromDiagram(xNewDiagram) );
         }
 
-        SchXMLSeries2Context::initSeriesPropertySets( maSeriesDefaultsAndStyles, uno::Reference< frame::XModel >(xDoc, uno::UNO_QUERY ) );
+        SchXMLSeries2Context::initSeriesPropertySets( maSeriesDefaultsAndStyles, xDoc );
 
         //set defaults from diagram to the new series:
         //check whether we need to remove lines from symbol only charts
@@ -913,7 +892,7 @@ void SchXMLChartContext::EndElement()
                 if( maChartTypeServiceName == "com.sun.star.chart2.ScatterChartType" )
                 {
                     bSwitchOffLinesForScatter = true;
-                    SchXMLSeries2Context::switchSeriesLinesOff( maSeriesDefaultsAndStyles.maSeriesStyleList );
+                    SchXMLSeries2Context::switchSeriesLinesOff( maSeriesDefaultsAndStyles.maSeriesStyleVector );
                 }
             }
         }
@@ -978,20 +957,18 @@ void SchXMLChartContext::MergeSeriesForStockChart()
         bool bHasJapaneseCandlestick = true;
         uno::Reference< chart2::XDataSeriesContainer > xDSContainer;
         uno::Reference< chart2::XCoordinateSystemContainer > xCooSysCnt( xDiagram, uno::UNO_QUERY_THROW );
-        uno::Sequence< uno::Reference< chart2::XCoordinateSystem > > aCooSysSeq( xCooSysCnt->getCoordinateSystems());
-        for( sal_Int32 nCooSysIdx=0; nCooSysIdx<aCooSysSeq.getLength(); ++nCooSysIdx )
+        const uno::Sequence< uno::Reference< chart2::XCoordinateSystem > > aCooSysSeq( xCooSysCnt->getCoordinateSystems());
+        for( const auto& rCooSys : aCooSysSeq )
         {
-            uno::Reference< chart2::XChartTypeContainer > xCTCnt( aCooSysSeq[nCooSysIdx], uno::UNO_QUERY_THROW );
+            uno::Reference< chart2::XChartTypeContainer > xCTCnt( rCooSys, uno::UNO_QUERY_THROW );
             uno::Sequence< uno::Reference< chart2::XChartType > > aChartTypes( xCTCnt->getChartTypes());
-            for( sal_Int32 nCTIdx=0; nCTIdx<aChartTypes.getLength(); ++nCTIdx )
+            auto pChartType = std::find_if(aChartTypes.begin(), aChartTypes.end(),
+                [](const auto& rChartType) { return rChartType->getChartType() == "com.sun.star.chart2.CandleStickChartType"; });
+            if (pChartType != aChartTypes.end())
             {
-                if( aChartTypes[nCTIdx]->getChartType() == "com.sun.star.chart2.CandleStickChartType" )
-                {
-                    xDSContainer.set( aChartTypes[nCTIdx], uno::UNO_QUERY_THROW );
-                    uno::Reference< beans::XPropertySet > xCTProp( aChartTypes[nCTIdx], uno::UNO_QUERY_THROW );
-                    xCTProp->getPropertyValue("Japanese") >>= bHasJapaneseCandlestick;
-                    break;
-                }
+                xDSContainer.set( *pChartType, uno::UNO_QUERY_THROW );
+                uno::Reference< beans::XPropertySet > xCTProp( *pChartType, uno::UNO_QUERY_THROW );
+                xCTProp->getPropertyValue("Japanese") >>= bHasJapaneseCandlestick;
             }
         }
 
@@ -1042,7 +1019,7 @@ void SchXMLChartContext::MergeSeriesForStockChart()
     }
 }
 
-SvXMLImportContext* SchXMLChartContext::CreateChildContext(
+SvXMLImportContextRef SchXMLChartContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const uno::Reference< xml::sax::XAttributeList >& xAttrList )
@@ -1073,7 +1050,7 @@ SvXMLImportContext* SchXMLChartContext::CreateChildContext(
                 {
                     xProp->setPropertyValue("HasMainTitle", uno::makeAny(true) );
                 }
-                uno::Reference< drawing::XShape > xTitleShape( xDoc->getTitle(), uno::UNO_QUERY );
+                uno::Reference< drawing::XShape > xTitleShape = xDoc->getTitle();
                 pContext = new SchXMLTitleContext( mrImportHelper, GetImport(),
                                                    rLocalName, maMainTitle, xTitleShape );
             }
@@ -1086,7 +1063,7 @@ SvXMLImportContext* SchXMLChartContext::CreateChildContext(
                 {
                     xProp->setPropertyValue("HasSubTitle", uno::makeAny(true) );
                 }
-                uno::Reference< drawing::XShape > xTitleShape( xDoc->getSubTitle(), uno::UNO_QUERY );
+                uno::Reference< drawing::XShape > xTitleShape = xDoc->getSubTitle();
                 pContext = new SchXMLTitleContext( mrImportHelper, GetImport(),
                                                    rLocalName, maSubTitle, xTitleShape );
             }
@@ -1134,7 +1111,7 @@ SvXMLImportContext* SchXMLChartContext::CreateChildContext(
             {
                 uno::Reference< drawing::XDrawPageSupplier  > xSupp( xDoc, uno::UNO_QUERY );
                 if( xSupp.is())
-                    mxDrawPage.set( xSupp->getDrawPage(), uno::UNO_QUERY );
+                    mxDrawPage = xSupp->getDrawPage();
 
                 SAL_WARN_IF( !mxDrawPage.is(), "xmloff.chart", "Invalid Chart Page" );
             }
@@ -1143,9 +1120,6 @@ SvXMLImportContext* SchXMLChartContext::CreateChildContext(
                     GetImport(), nPrefix, rLocalName, xAttrList, mxDrawPage );
             break;
     }
-
-    if( ! pContext )
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }
@@ -1190,7 +1164,7 @@ void SchXMLChartContext::InitChart(
 SchXMLTitleContext::SchXMLTitleContext( SchXMLImportHelper& rImpHelper, SvXMLImport& rImport,
                                         const OUString& rLocalName,
                                         OUString& rTitle,
-                                        uno::Reference< drawing::XShape >& xTitleShape ) :
+                                        uno::Reference< drawing::XShape > const & xTitleShape ) :
         SvXMLImportContext( rImport, XML_NAMESPACE_CHART, rLocalName ),
         mrImportHelper( rImpHelper ),
         mrTitle( rTitle ),
@@ -1248,7 +1222,7 @@ void SchXMLTitleContext::StartElement( const uno::Reference< xml::sax::XAttribut
     }
 }
 
-SvXMLImportContext* SchXMLTitleContext::CreateChildContext(
+SvXMLImportContextRef SchXMLTitleContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const uno::Reference< xml::sax::XAttributeList >& )
@@ -1261,8 +1235,6 @@ SvXMLImportContext* SchXMLTitleContext::CreateChildContext(
     {
         pContext = new SchXMLParagraphContext( GetImport(), rLocalName, mrTitle );
     }
-    else
-        pContext = new SvXMLImportContext( GetImport(), nPrefix, rLocalName );
 
     return pContext;
 }

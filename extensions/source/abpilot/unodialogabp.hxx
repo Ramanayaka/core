@@ -22,7 +22,7 @@
 
 #include <svtools/genericunodialog.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include "componentmodule.hxx"
+#include <componentmodule.hxx>
 #include <com/sun/star/task/XJob.hpp>
 #include <cppuhelper/implbase1.hxx>
 
@@ -33,10 +33,9 @@ namespace abp
     typedef ::comphelper::OPropertyArrayUsageHelper< OABSPilotUno > OABSPilotUno_PBase;
     /// the UNO wrapper for the address book source pilot
     class OABSPilotUno
-            :public compmodule::OModuleResourceClient
-            ,public svt::OGenericUnoDialog
-            ,public OABSPilotUno_JBase
-            ,public OABSPilotUno_PBase
+            : public svt::OGenericUnoDialog
+            , public OABSPilotUno_JBase
+            , public OABSPilotUno_PBase
     {
         OUString m_sDataSourceName;
 
@@ -72,7 +71,7 @@ namespace abp
 
         using svt::OGenericUnoDialog::execute;
         // OGenericUnoDialog overridables
-        virtual VclPtr<Dialog> createDialog(vcl::Window* _pParent) override;
+        virtual std::unique_ptr<weld::DialogController> createDialog(const css::uno::Reference<css::awt::XWindow>& rParent) override;
         virtual void executedDialog(sal_Int16 _nExecutionResult) override;
     };
 

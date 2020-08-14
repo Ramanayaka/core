@@ -21,17 +21,17 @@
 #include <svx/svdsnpv.hxx>
 #include <math.h>
 
-#include <svx/svdetc.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/svdpage.hxx>
-#include "svx/svditer.hxx"
+#include <svx/svditer.hxx>
 #include <svx/sdr/overlay/overlayobjectlist.hxx>
 #include <sdr/overlay/overlaycrosshair.hxx>
 #include <sdr/overlay/overlayhelpline.hxx>
 #include <svx/sdr/overlay/overlaymanager.hxx>
-#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <svx/sdrpaintwindow.hxx>
+#include <tools/debug.hxx>
+#include <vcl/ptrstyle.hxx>
 
 
 class ImplPageOriginOverlay
@@ -39,7 +39,7 @@ class ImplPageOriginOverlay
     // The OverlayObjects
     sdr::overlay::OverlayObjectList               maObjects;
 
-    // The current position in logical coodinates
+    // The current position in logical coordinates
     basegfx::B2DPoint                               maPosition;
 
 public:
@@ -55,40 +55,40 @@ public:
 ImplPageOriginOverlay::ImplPageOriginOverlay(const SdrPaintView& rView, const basegfx::B2DPoint& rStartPos)
 :   maPosition(rStartPos)
 {
-    for(sal_uInt32 a(0L); a < rView.PaintWindowCount(); a++)
+    for(sal_uInt32 a(0); a < rView.PaintWindowCount(); a++)
     {
         SdrPaintWindow* pCandidate = rView.GetPaintWindow(a);
-        rtl::Reference< sdr::overlay::OverlayManager > xTargetOverlay = pCandidate->GetOverlayManager();
+        const rtl::Reference< sdr::overlay::OverlayManager >& xTargetOverlay = pCandidate->GetOverlayManager();
 
         if (xTargetOverlay.is())
         {
-            sdr::overlay::OverlayCrosshairStriped* aNew = new sdr::overlay::OverlayCrosshairStriped(
-                maPosition);
+            std::unique_ptr<sdr::overlay::OverlayCrosshairStriped> aNew(new sdr::overlay::OverlayCrosshairStriped(
+                maPosition));
             xTargetOverlay->add(*aNew);
-            maObjects.append(aNew);
+            maObjects.append(std::move(aNew));
         }
     }
 }
 
 void ImplPageOriginOverlay::SetPosition(const basegfx::B2DPoint& rNewPosition)
 {
-    if(rNewPosition != maPosition)
+    if(rNewPosition == maPosition)
+        return;
+
+    // apply to OverlayObjects
+    for(sal_uInt32 a(0); a < maObjects.count(); a++)
     {
-        // apply to OverlayObjects
-        for(sal_uInt32 a(0); a < maObjects.count(); a++)
+        sdr::overlay::OverlayCrosshairStriped* pCandidate =
+            static_cast< sdr::overlay::OverlayCrosshairStriped* >(&maObjects.getOverlayObject(a));
+
+        if(pCandidate)
         {
-            sdr::overlay::OverlayCrosshairStriped* pCandidate =
-                static_cast< sdr::overlay::OverlayCrosshairStriped* >(&maObjects.getOverlayObject(a));
-
-            if(pCandidate)
-            {
-                pCandidate->setBasePosition(rNewPosition);
-            }
+            pCandidate->setBasePosition(rNewPosition);
         }
-
-        // remember new position
-        maPosition = rNewPosition;
     }
+
+    // remember new position
+    maPosition = rNewPosition;
 }
 
 
@@ -97,7 +97,7 @@ class ImplHelpLineOverlay
     // The OverlayObjects
     sdr::overlay::OverlayObjectList               maObjects;
 
-    // The current position in logical coodinates
+    // The current position in logical coordinates
     basegfx::B2DPoint                               maPosition;
 
     // HelpLine specific stuff
@@ -129,66 +129,67 @@ ImplHelpLineOverlay::ImplHelpLineOverlay(
     mnHelpLineNumber(nHelpLineNumber),
     meHelpLineKind(eKind)
 {
-    for(sal_uInt32 a(0L); a < rView.PaintWindowCount(); a++)
+    for(sal_uInt32 a(0); a < rView.PaintWindowCount(); a++)
     {
         SdrPaintWindow* pCandidate = rView.GetPaintWindow(a);
-        rtl::Reference< sdr::overlay::OverlayManager > xTargetOverlay = pCandidate->GetOverlayManager();
+        const rtl::Reference< sdr::overlay::OverlayManager >& xTargetOverlay = pCandidate->GetOverlayManager();
 
         if (xTargetOverlay.is())
         {
-            sdr::overlay::OverlayHelplineStriped* aNew = new sdr::overlay::OverlayHelplineStriped(
-                maPosition, meHelpLineKind);
+            std::unique_ptr<sdr::overlay::OverlayHelplineStriped> aNew(new sdr::overlay::OverlayHelplineStriped(
+                maPosition, meHelpLineKind));
             xTargetOverlay->add(*aNew);
-            maObjects.append(aNew);
+            maObjects.append(std::move(aNew));
         }
     }
 }
 
 void ImplHelpLineOverlay::SetPosition(const basegfx::B2DPoint& rNewPosition)
 {
-    if(rNewPosition != maPosition)
+    if(rNewPosition == maPosition)
+        return;
+
+    // apply to OverlayObjects
+    for(sal_uInt32 a(0); a < maObjects.count(); a++)
     {
-        // apply to OverlayObjects
-        for(sal_uInt32 a(0); a < maObjects.count(); a++)
+        sdr::overlay::OverlayHelplineStriped* pCandidate =
+            static_cast< sdr::overlay::OverlayHelplineStriped* >(&maObjects.getOverlayObject(a));
+
+        if(pCandidate)
         {
-            sdr::overlay::OverlayHelplineStriped* pCandidate =
-                static_cast< sdr::overlay::OverlayHelplineStriped* >(&maObjects.getOverlayObject(a));
-
-            if(pCandidate)
-            {
-                pCandidate->setBasePosition(rNewPosition);
-            }
+            pCandidate->setBasePosition(rNewPosition);
         }
-
-        // remember new position
-        maPosition = rNewPosition;
     }
+
+    // remember new position
+    maPosition = rNewPosition;
 }
 
-
-SdrSnapView::SdrSnapView(SdrModel* pModel1, OutputDevice* pOut)
-    : SdrPaintView(pModel1,pOut)
-    , mpPageOriginOverlay(nullptr)
-    , mpHelpLineOverlay(nullptr)
-    , nMagnSizPix(4)
-    , nSnapAngle(1500)
-    , nEliminatePolyPointLimitAngle(0)
-    , eCrookMode(SdrCrookMode::Rotate)
-    , bSnapEnab(true)
-    , bGridSnap(true)
-    , bBordSnap(true)
-    , bHlplSnap(true)
-    , bOFrmSnap(true)
-    , bOPntSnap(false)
-    , bOConSnap(true)
-    , bMoveSnapOnlyTopLeft(false)
-    , bOrtho(false)
-    , bBigOrtho(true)
-    , bAngleSnapEnab(false)
-    , bMoveOnlyDragging(false)
-    , bSlantButShear(false)
-    , bCrookNoContortion(false)
-    , bEliminatePolyPoints(false)
+SdrSnapView::SdrSnapView(
+    SdrModel& rSdrModel,
+    OutputDevice* pOut)
+:   SdrPaintView(rSdrModel, pOut)
+    ,mpPageOriginOverlay(nullptr)
+    ,mpHelpLineOverlay(nullptr)
+    ,nMagnSizPix(4)
+    ,nSnapAngle(1500)
+    ,nEliminatePolyPointLimitAngle(0)
+    ,eCrookMode(SdrCrookMode::Rotate)
+    ,bSnapEnab(true)
+    ,bGridSnap(true)
+    ,bBordSnap(true)
+    ,bHlplSnap(true)
+    ,bOFrmSnap(true)
+    ,bOPntSnap(false)
+    ,bOConSnap(true)
+    ,bMoveSnapOnlyTopLeft(false)
+    ,bOrtho(false)
+    ,bBigOrtho(true)
+    ,bAngleSnapEnab(false)
+    ,bMoveOnlyDragging(false)
+    ,bSlantButShear(false)
+    ,bCrookNoContortion(false)
+    ,bEliminatePolyPoints(false)
 {
 }
 
@@ -303,12 +304,12 @@ SdrSnap SdrSnapView::SnapPos(Point& rPnt, const SdrPageView* pPV) const
     }
     if (mbBordVisible && bBordSnap) {
         SdrPage* pPage=pPV->GetPage();
-        long xs=pPage->GetWdt();
-        long ys=pPage->GetHgt();
-        long lft=pPage->GetLftBorder();
-        long rgt=pPage->GetRgtBorder();
-        long upp=pPage->GetUppBorder();
-        long lwr=pPage->GetLwrBorder();
+        long xs=pPage->GetWidth();
+        long ys=pPage->GetHeight();
+        long lft=pPage->GetLeftBorder();
+        long rgt=pPage->GetRightBorder();
+        long upp=pPage->GetUpperBorder();
+        long lwr=pPage->GetLowerBorder();
         long a;
         a=x- lft    ; if (std::abs(a)<=mx) { dx1=-a; if (std::abs(dx1)<std::abs(dx)) dx=dx1; } // left margin
         a=x-(xs-rgt); if (std::abs(a)<=mx) { dx1=-a; if (std::abs(dx1)<std::abs(dx)) dx=dx1; } // right margin
@@ -324,20 +325,20 @@ SdrSnap SdrSnapView::SnapPos(Point& rPnt, const SdrPageView* pPV) const
         sal_uInt32 nMaxFrameSnapCount=200;
 
         // go back to SdrIterMode::DeepNoGroups runthrough for snap to object comparisons
-        SdrObjListIter aIter(*pPV->GetPage(),SdrIterMode::DeepNoGroups,true);
+        SdrObjListIter aIter(pPV->GetPage(),SdrIterMode::DeepNoGroups,true);
 
         while (aIter.IsMore() && (nMaxPointSnapCount>0 || nMaxFrameSnapCount>0)) {
             SdrObject* pO=aIter.Next();
             tools::Rectangle aRect(pO->GetCurrentBoundRect());
-            aRect.Left  ()-=mx;
-            aRect.Right ()+=mx;
-            aRect.Top   ()-=my;
-            aRect.Bottom()+=my;
+            aRect.AdjustLeft( -mx );
+            aRect.AdjustRight(mx );
+            aRect.AdjustTop( -my );
+            aRect.AdjustBottom(my );
             if (aRect.IsInside(rPnt)) {
                 if (bOPntSnap && nMaxPointSnapCount>0)
                 {
                     sal_uInt32 nCount(pO->GetSnapPointCount());
-                    for (sal_uInt32 i(0L); i < nCount && nMaxPointSnapCount > 0L; i++)
+                    for (sal_uInt32 i(0); i < nCount && nMaxPointSnapCount > 0; i++)
                     {
                         Point aP(pO->GetSnapPoint(i));
                         dx1=x-aP.X();
@@ -352,10 +353,10 @@ SdrSnap SdrSnapView::SnapPos(Point& rPnt, const SdrPageView* pPV) const
                 if (bOFrmSnap && nMaxFrameSnapCount>0) {
                     tools::Rectangle aLog(pO->GetSnapRect());
                     tools::Rectangle aR1(aLog);
-                    aR1.Left  ()-=mx;
-                    aR1.Right ()+=mx;
-                    aR1.Top   ()-=my;
-                    aR1.Bottom()+=my;
+                    aR1.AdjustLeft( -mx );
+                    aR1.AdjustRight(mx );
+                    aR1.AdjustTop( -my );
+                    aR1.AdjustBottom(my );
                     if (aR1.IsInside(rPnt)) {
                         if (std::abs(x-aLog.Left  ())<=mx) { dx1=-(x-aLog.Left  ()); if (std::abs(dx1)<std::abs(dx)) dx=dx1; }
                         if (std::abs(x-aLog.Right ())<=mx) { dx1=-(x-aLog.Right ()); if (std::abs(dx1)<std::abs(dx)) dx=dx1; }
@@ -369,42 +370,42 @@ SdrSnap SdrSnapView::SnapPos(Point& rPnt, const SdrPageView* pPV) const
     }
     if(bGridSnap)
     {
-        double fSnapWidth = aSnapWdtX;
+        double fSnapWidth(aSnapWdtX);
         if(dx == NOT_SNAPPED && fSnapWidth != 0.0)
         {
-            double fx = (double)x;
+            double fx = static_cast<double>(x);
 
             // round instead of trunc
-            if(fx - (double)pPV->GetPageOrigin().X() >= 0.0)
+            if(fx - static_cast<double>(pPV->GetPageOrigin().X()) >= 0.0)
                 fx += fSnapWidth / 2.0;
             else
                 fx -= fSnapWidth / 2.0;
 
-            x = (long)((fx - (double)pPV->GetPageOrigin().X()) / fSnapWidth);
-            x = (long)((double)x * fSnapWidth + (double)pPV->GetPageOrigin().X());
+            x = static_cast<long>((fx - static_cast<double>(pPV->GetPageOrigin().X())) / fSnapWidth);
+            x = static_cast<long>(static_cast<double>(x) * fSnapWidth + static_cast<double>(pPV->GetPageOrigin().X()));
             dx = 0;
         }
-        fSnapWidth = aSnapWdtY;
+        fSnapWidth = double(aSnapWdtY);
         if(dy == NOT_SNAPPED && fSnapWidth)
         {
-            double fy = (double)y;
+            double fy = static_cast<double>(y);
 
             // round instead of trunc
-            if(fy - (double)pPV->GetPageOrigin().Y() >= 0.0)
+            if(fy - static_cast<double>(pPV->GetPageOrigin().Y()) >= 0.0)
                 fy += fSnapWidth / 2.0;
             else
                 fy -= fSnapWidth / 2.0;
 
-            y = (long)((fy - (double)pPV->GetPageOrigin().Y()) / fSnapWidth);
-            y = (long)((double)y * fSnapWidth + (double)pPV->GetPageOrigin().Y());
+            y = static_cast<long>((fy - static_cast<double>(pPV->GetPageOrigin().Y())) / fSnapWidth);
+            y = static_cast<long>(static_cast<double>(y) * fSnapWidth + static_cast<double>(pPV->GetPageOrigin().Y()));
             dy = 0;
         }
     }
     SdrSnap bRet=SdrSnap::NOTSNAPPED;
     if (dx==NOT_SNAPPED) dx=0; else bRet|=SdrSnap::XSNAPPED;
     if (dy==NOT_SNAPPED) dy=0; else bRet|=SdrSnap::YSNAPPED;
-    rPnt.X()=x+dx;
-    rPnt.Y()=y+dy;
+    rPnt.setX(x+dx );
+    rPnt.setY(y+dy );
     return bRet;
 }
 
@@ -440,7 +441,7 @@ void SdrSnapView::BegSetPageOrg(const Point& rPnt)
 {
     BrkAction();
 
-    DBG_ASSERT(nullptr == mpPageOriginOverlay, "SdrSnapView::BegSetPageOrg: There exists a ImplPageOriginOverlay (!)");
+    DBG_ASSERT(nullptr == mpPageOriginOverlay, "SdrSnapView::BegSetPageOrg: There exists an ImplPageOriginOverlay (!)");
     basegfx::B2DPoint aStartPos(rPnt.X(), rPnt.Y());
     mpPageOriginOverlay = new ImplPageOriginOverlay(*this, aStartPos);
     maDragStat.Reset(GetSnapPos(rPnt,nullptr));
@@ -459,19 +460,19 @@ void SdrSnapView::MovSetPageOrg(const Point& rPnt)
 
 void SdrSnapView::EndSetPageOrg()
 {
-    if(IsSetPageOrg())
+    if(!IsSetPageOrg())
+        return;
+
+    SdrPageView* pPV = GetSdrPageView();
+
+    if(pPV)
     {
-        SdrPageView* pPV = GetSdrPageView();
-
-        if(pPV)
-        {
-            Point aPnt(maDragStat.GetNow());
-            pPV->SetPageOrigin(aPnt);
-        }
-
-        // cleanup
-        BrkSetPageOrg();
+        Point aPnt(maDragStat.GetNow());
+        pPV->SetPageOrigin(aPnt);
     }
+
+    // cleanup
+    BrkSetPageOrg();
 }
 
 void SdrSnapView::BrkSetPageOrg()
@@ -518,7 +519,7 @@ bool SdrSnapView::BegDragHelpLine(sal_uInt16 nHelpLineNum, SdrPageView* pPV)
         Point aHelpLinePos = rHelpLine.GetPos();
         basegfx::B2DPoint aStartPos(aHelpLinePos.X(), aHelpLinePos.Y());
 
-        DBG_ASSERT(nullptr == mpHelpLineOverlay, "SdrSnapView::BegDragHelpLine: There exists a ImplHelpLineOverlay (!)");
+        DBG_ASSERT(nullptr == mpHelpLineOverlay, "SdrSnapView::BegDragHelpLine: There exists an ImplHelpLineOverlay (!)");
         mpHelpLineOverlay = new ImplHelpLineOverlay(*this, aStartPos, pPV, nHelpLineNum, rHelpLine.GetKind());
 
         maDragStat.Reset(GetSnapPos(aHelpLinePos, pPV));
@@ -537,26 +538,26 @@ void SdrSnapView::BegDragHelpLine(const Point& rPnt, SdrHelpLineKind eNewKind)
 
     if(GetSdrPageView())
     {
-        DBG_ASSERT(nullptr == mpHelpLineOverlay, "SdrSnapView::BegDragHelpLine: There exists a ImplHelpLineOverlay (!)");
+        DBG_ASSERT(nullptr == mpHelpLineOverlay, "SdrSnapView::BegDragHelpLine: There exists an ImplHelpLineOverlay (!)");
         basegfx::B2DPoint aStartPos(rPnt.X(), rPnt.Y());
         mpHelpLineOverlay = new ImplHelpLineOverlay(*this, aStartPos, nullptr, 0, eNewKind);
         maDragStat.Reset(GetSnapPos(rPnt, nullptr));
     }
 }
 
-Pointer SdrSnapView::GetDraggedHelpLinePointer() const
+PointerStyle SdrSnapView::GetDraggedHelpLinePointer() const
 {
     if(IsDragHelpLine())
     {
         switch(mpHelpLineOverlay->GetHelpLineKind())
         {
-            case SdrHelpLineKind::Vertical  : return Pointer(PointerStyle::ESize);
-            case SdrHelpLineKind::Horizontal: return Pointer(PointerStyle::SSize);
-            default                    : return Pointer(PointerStyle::Move);
+            case SdrHelpLineKind::Vertical  : return PointerStyle::ESize;
+            case SdrHelpLineKind::Horizontal: return PointerStyle::SSize;
+            default                    : return PointerStyle::Move;
         }
     }
 
-    return Pointer(PointerStyle::Move);
+    return PointerStyle::Move;
 }
 
 void SdrSnapView::MovDragHelpLine(const Point& rPnt)

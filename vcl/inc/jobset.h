@@ -21,6 +21,8 @@
 #define INCLUDED_VCL_INC_JOBSET_H
 
 #include <rtl/ustring.hxx>
+#include <i18nutil/paper.hxx>
+#include <vcl/dllapi.h>
 #include <vcl/prntypes.hxx>
 #include <unordered_map>
 
@@ -29,7 +31,7 @@
 #define JOBSETUP_SYSTEM_UNIX        3
 #define JOBSETUP_SYSTEM_MAC         4
 
-class ImplJobSetup
+class VCL_DLLPUBLIC ImplJobSetup
 {
 private:
     sal_uInt16      mnSystem;           //< System - JOBSETUP_SYSTEM_xxxx
@@ -44,7 +46,10 @@ private:
     sal_uInt32      mnDriverDataLen;    //< length of system specific data
     sal_uInt8*      mpDriverData;       //< system specific data (will be streamed a byte block)
     bool            mbPapersizeFromSetup;
-    std::unordered_map< OUString, OUString, OUStringHash > maValueMap;
+    // setup mode
+    PrinterSetupMode meSetupMode;
+    // TODO: orig paper size
+    std::unordered_map< OUString, OUString > maValueMap;
 
 public:
     ImplJobSetup();
@@ -89,7 +94,10 @@ public:
     bool             GetPapersizeFromSetup() const { return mbPapersizeFromSetup; }
     void             SetPapersizeFromSetup(bool bPapersizeFromSetup);
 
-    const std::unordered_map< OUString, OUString, OUStringHash >& GetValueMap() const
+    PrinterSetupMode GetPrinterSetupMode() const { return meSetupMode; }
+    void             SetPrinterSetupMode(PrinterSetupMode eMode);
+
+    const std::unordered_map< OUString, OUString >& GetValueMap() const
                     { return maValueMap; }
     void            SetValueMap(const OUString& rKey, const OUString& rValue);
 };

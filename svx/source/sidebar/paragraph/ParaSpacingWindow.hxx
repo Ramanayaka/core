@@ -16,26 +16,18 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SVX_SOURCE_SIDEBAR_PARAGRAPH_PARASPACINGWINDOW_HXX
-#define INCLUDED_SVX_SOURCE_SIDEBAR_PARAGRAPH_PARASPACINGWINDOW_HXX
+#pragma once
 
-#include <cppuhelper/queryinterface.hxx>
 #include <editeng/ulspitem.hxx>
-#include <editeng/lrspitem.hxx>
-#include <vcl/builder.hxx>
-#include <vcl/layout.hxx>
 #include <vcl/EnumContext.hxx>
+#include <vcl/InterimItemWindow.hxx>
 #include <svx/relfld.hxx>
-#include <svtools/unitconv.hxx>
-#include <sfx2/sidebar/ControllerItem.hxx>
 
 using namespace com::sun::star;
 
-namespace svx {
-
-class ParaULSpacingWindow : public VclVBox,
-                            public VclBuilderContainer
-
+namespace svx
+{
+class ParaULSpacingWindow : public InterimItemWindow
 {
 public:
     virtual ~ParaULSpacingWindow() override;
@@ -45,31 +37,31 @@ public:
     void SetUnit(FieldUnit eUnit);
 
 protected:
-    ParaULSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame);
-    VclPtr<SvxRelativeField> m_pAboveSpacing;
-    VclPtr<SvxRelativeField> m_pBelowSpacing;
-    VclPtr<VclHBox> m_pAboveContainer;
-    VclPtr<VclHBox> m_pBelowContainer;
+    ParaULSpacingWindow(vcl::Window* pParent);
+
+    std::unique_ptr<SvxRelativeField> m_xAboveSpacing;
+    std::unique_ptr<SvxRelativeField> m_xBelowSpacing;
+    std::unique_ptr<weld::Container> m_xAboveContainer;
+    std::unique_ptr<weld::Container> m_xBelowContainer;
 
     MapUnit m_eUnit;
 
-    DECL_LINK(ModifySpacingHdl, Edit&, void);
+    DECL_LINK(ModifySpacingHdl, weld::MetricSpinButton&, void);
 };
 
 class ParaAboveSpacingWindow : public ParaULSpacingWindow
 {
 public:
-    explicit ParaAboveSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame);
+    explicit ParaAboveSpacingWindow(vcl::Window* pParent);
 };
 
 class ParaBelowSpacingWindow : public ParaULSpacingWindow
 {
 public:
-    explicit ParaBelowSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame);
+    explicit ParaBelowSpacingWindow(vcl::Window* pParent);
 };
 
-class ParaLRSpacingWindow : public VclVBox,
-                            public VclBuilderContainer
+class ParaLRSpacingWindow : public InterimItemWindow
 {
 public:
     virtual ~ParaLRSpacingWindow() override;
@@ -80,42 +72,39 @@ public:
     void SetContext(const vcl::EnumContext& eContext);
 
 protected:
-    ParaLRSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame);
+    ParaLRSpacingWindow(vcl::Window* pParent);
 
-    VclPtr<SvxRelativeField> m_pBeforeSpacing;
-    VclPtr<SvxRelativeField> m_pAfterSpacing;
-    VclPtr<SvxRelativeField> m_pFLSpacing;
-    VclPtr<VclHBox> m_pBeforeContainer;
-    VclPtr<VclHBox> m_pAfterContainer;
-    VclPtr<VclHBox> m_pFirstLineContainer;
+    std::unique_ptr<SvxRelativeField> m_xBeforeSpacing;
+    std::unique_ptr<SvxRelativeField> m_xAfterSpacing;
+    std::unique_ptr<SvxRelativeField> m_xFLSpacing;
+    std::unique_ptr<weld::Container> m_xBeforeContainer;
+    std::unique_ptr<weld::Container> m_xAfterContainer;
+    std::unique_ptr<weld::Container> m_xFirstLineContainer;
 
     MapUnit m_eUnit;
 
     vcl::EnumContext m_aContext;
 
-    DECL_LINK(ModifySpacingHdl, Edit&, void);
+    DECL_LINK(ModifySpacingHdl, weld::MetricSpinButton&, void);
 };
 
 class ParaLeftSpacingWindow : public ParaLRSpacingWindow
 {
 public:
-    explicit ParaLeftSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame);
+    explicit ParaLeftSpacingWindow(vcl::Window* pParent);
 };
 
 class ParaRightSpacingWindow : public ParaLRSpacingWindow
 {
 public:
-    explicit ParaRightSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame);
+    explicit ParaRightSpacingWindow(vcl::Window* pParent);
 };
 
 class ParaFirstLineSpacingWindow : public ParaLRSpacingWindow
 {
 public:
-    explicit ParaFirstLineSpacingWindow(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame>& xFrame);
+    explicit ParaFirstLineSpacingWindow(vcl::Window* pParent);
 };
-
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

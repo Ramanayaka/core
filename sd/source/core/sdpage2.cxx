@@ -19,35 +19,31 @@
 
 #include <vector>
 #include <libxml/xmlwriter.h>
-#include <o3tl/make_unique.hxx>
 #include <sfx2/docfile.hxx>
-#include <vcl/svapp.hxx>
-#include <editeng/outliner.hxx>
 #include <sfx2/linkmgr.hxx>
-#include <svx/svdotext.hxx>
+#include <svx/svdundo.hxx>
 #include <editeng/outlobj.hxx>
-#include <svl/urihelper.hxx>
 #include <editeng/xmlcnitm.hxx>
 #include <svx/svditer.hxx>
+#include <com/sun/star/text/XTextCopy.hpp>
+#include <tools/debug.hxx>
+#include <svx/svddef.hxx>
+#include <rtl/math.hxx>
 
-#include "Annotation.hxx"
-#include "notifydocumentevent.hxx"
-#include "sdresid.hxx"
-#include "sdpage.hxx"
-#include "glob.hxx"
-#include "glob.hrc"
-#include "drawdoc.hxx"
-#include "stlpool.hxx"
-#include "pglink.hxx"
-#include "anminfo.hxx"
+#include <Annotation.hxx>
+#include <notifydocumentevent.hxx>
+#include <sdresid.hxx>
+#include <sdpage.hxx>
+#include <glob.hxx>
+#include <strings.hrc>
+#include <drawdoc.hxx>
+#include <stlpool.hxx>
+#include <pglink.hxx>
 
-#include "strings.hrc"
-#include "strings.hxx"
-#include "DrawDocShell.hxx"
+#include <strings.hxx>
+#include <DrawDocShell.hxx>
 
-#include <tools/tenccvt.hxx>
 #include <svl/itemset.hxx>
-#include <rtl/strbuf.hxx>
 
 using namespace ::sd;
 using namespace ::com::sun::star;
@@ -84,9 +80,7 @@ void SdPage::SetPresentationLayout(const OUString& rLayoutName,
     |* Name of the layout of the page
     \********************************************************************/
     OUString aOldLayoutName(maLayoutName);    // memorize
-    OUStringBuffer aBuf(rLayoutName);
-    aBuf.append(SD_LT_SEPARATOR).append(STR_LAYOUT_OUTLINE);
-    maLayoutName = aBuf.makeStringAndClear();
+    maLayoutName = rLayoutName + SD_LT_SEPARATOR STR_LAYOUT_OUTLINE;
 
     /*********************************************************************
     |* search and replace master page if necessary
@@ -96,13 +90,13 @@ void SdPage::SetPresentationLayout(const OUString& rLayoutName,
         SdPage* pMaster;
         SdPage* pFoundMaster = nullptr;
         sal_uInt16 nMaster = 0;
-        sal_uInt16 nMasterCount = pModel->GetMasterPageCount();
+        sal_uInt16 nMasterCount = getSdrModelFromSdrPage().GetMasterPageCount();
 
         if( !bReverseOrder )
         {
             for ( nMaster = 0; nMaster < nMasterCount; nMaster++ )
             {
-                pMaster = static_cast<SdPage*>(pModel->GetMasterPage(nMaster));
+                pMaster = static_cast<SdPage*>(getSdrModelFromSdrPage().GetMasterPage(nMaster));
                 if (pMaster->GetPageKind() == mePageKind && pMaster->GetLayoutName() == maLayoutName)
                 {
                     pFoundMaster = pMaster;
@@ -114,7 +108,7 @@ void SdPage::SetPresentationLayout(const OUString& rLayoutName,
         {
             for ( nMaster = nMasterCount; nMaster > 0; nMaster-- )
             {
-                pMaster = static_cast<SdPage*>(pModel->GetMasterPage(nMaster - 1));
+                pMaster = static_cast<SdPage*>(getSdrModelFromSdrPage().GetMasterPage(nMaster - 1));
                 if (pMaster->GetPageKind() == mePageKind && pMaster->GetLayoutName() == maLayoutName)
                 {
                     pFoundMaster = pMaster;
@@ -127,7 +121,7 @@ void SdPage::SetPresentationLayout(const OUString& rLayoutName,
 
         // this should never happen, but we play failsafe here
         if( pFoundMaster == nullptr )
-            pFoundMaster = static_cast< SdDrawDocument *>(pModel)->GetSdPage( 0, mePageKind );
+            pFoundMaster = static_cast< SdDrawDocument& >(getSdrModelFromSdrPage()).GetSdPage( 0, mePageKind );
 
         if( pFoundMaster )
             TRG_SetMasterPage(*pFoundMaster);
@@ -158,7 +152,7 @@ void SdPage::SetPresentationLayout(const OUString& rLayoutName,
                 OUString aFullName;
                 OUString aOldFullName;
                 SfxStyleSheetBase* pSheet = nullptr;
-                SfxStyleSheetBasePool* pStShPool = pModel->GetStyleSheetPool();
+                SfxStyleSheetBasePool* pStShPool = getSdrModelFromSdrPage().GetStyleSheetPool();
 
                 for (sal_Int16 i = -1; i < 9; i++)
                 {
@@ -166,11 +160,11 @@ void SdPage::SetPresentationLayout(const OUString& rLayoutName,
                                 OUString::number( (i <= 0 ) ? 1 : i + 1 );
                     aFullName = maLayoutName + " " +
                                 OUString::number( (i <= 0 ) ? 1 : i + 1);
-                    pSheet = pStShPool->Find(aOldFullName, SD_STYLE_FAMILY_MASTERPAGE);
+                    pSheet = pStShPool->Find(aOldFullName, SfxStyleFamily::Page);
                     DBG_ASSERT(pSheet, "Old outline style sheet not found");
                     aOldOutlineStyles.push_back(pSheet);
 
-                    pSheet = pStShPool->Find(aFullName, SD_STYLE_FAMILY_MASTERPAGE);
+                    pSheet = pStShPool->Find(aFullName, SfxStyleFamily::Page);
                     DBG_ASSERT(pSheet, "New outline style sheet not found");
                     aOutlineStyles.push_back(pSheet);
 
@@ -189,7 +183,7 @@ void SdPage::SetPresentationLayout(const OUString& rLayoutName,
                         OutlinerParaObject* pOPO = pObj->GetOutlinerParaObject();
 
                         if( pOPO )
-                            pOPO->SetStyleSheets( i,  aFullName, SD_STYLE_FAMILY_MASTERPAGE );
+                            pOPO->SetStyleSheets( i,  aFullName, SfxStyleFamily::Page );
                     }
                 }
 
@@ -197,12 +191,11 @@ void SdPage::SetPresentationLayout(const OUString& rLayoutName,
             }
 
 
-            std::vector<SfxStyleSheetBase*>::iterator iterOut = aOutlineStyles.begin();
             std::vector<SfxStyleSheetBase*>::iterator iterOldOut = aOldOutlineStyles.begin();
 
-            while (iterOut != aOutlineStyles.end())
+            for (const auto& rpOut : aOutlineStyles)
             {
-                SfxStyleSheet* pSheet = static_cast<SfxStyleSheet*>(*iterOut);
+                SfxStyleSheet* pSheet = static_cast<SfxStyleSheet*>(rpOut);
                 SfxStyleSheet* pOldSheet = static_cast<SfxStyleSheet*>(*iterOldOut);
 
                 if (pSheet != pOldSheet)
@@ -214,28 +207,25 @@ void SdPage::SetPresentationLayout(const OUString& rLayoutName,
                         pObj->StartListening(*pSheet);
                 }
 
-                ++iterOut;
                 ++iterOldOut;
             }
 
             OutlinerParaObject* pOPO = pObj->GetOutlinerParaObject();
             if ( bReplaceStyleSheets && pOPO )
             {
-                std::vector<StyleReplaceData>::const_iterator it = aReplList.begin();
-                while (it != aReplList.end())
+                for (const auto& rRepl : aReplList)
                 {
-                    pOPO->ChangeStyleSheets( it->aName, it->nFamily, it->aNewName, it->nNewFamily );
-                    ++it;
+                    pOPO->ChangeStyleSheets( rRepl.aName, rRepl.nFamily, rRepl.aNewName, rRepl.nNewFamily );
                 }
             }
         }
         else if (pObj->GetObjInventor() == SdrInventor::Default &&
                  pObj->GetObjIdentifier() == OBJ_TITLETEXT)
         {
-            // We do net get PresObjKind via GetPresObjKind() since there are
+            // We do not get PresObjKind via GetPresObjKind() since there are
             // only PresObjListe considered. But we want to consider all "Title
             // objects" here (paste from clipboard etc.)
-            SfxStyleSheet* pSheet = GetStyleSheetForPresObj(PRESOBJ_TITLE);
+            SfxStyleSheet* pSheet = GetStyleSheetForPresObj(PresObjKind::Title);
 
             if (pSheet)
                 pObj->SetStyleSheet(pSheet, true);
@@ -258,43 +248,26 @@ void SdPage::SetPresentationLayout(const OUString& rLayoutName,
 
 void SdPage::EndListenOutlineText()
 {
-    SdrObject* pOutlineTextObj = GetPresObj(PRESOBJ_OUTLINE);
+    SdrObject* pOutlineTextObj = GetPresObj(PresObjKind::Outline);
 
-    if (pOutlineTextObj)
+    if (!pOutlineTextObj)
+        return;
+
+    SdStyleSheetPool* pSPool = static_cast<SdStyleSheetPool*>(getSdrModelFromSdrPage().GetStyleSheetPool());
+    DBG_ASSERT(pSPool, "StyleSheetPool missing");
+    OUString aTrueLayoutName(maLayoutName);
+    sal_Int32 nIndex = aTrueLayoutName.indexOf( SD_LT_SEPARATOR );
+    if( nIndex != -1 )
+        aTrueLayoutName = aTrueLayoutName.copy(0, nIndex);
+
+    std::vector<SfxStyleSheetBase*> aOutlineStyles;
+    pSPool->CreateOutlineSheetList(aTrueLayoutName,aOutlineStyles);
+
+    for (const auto& rpStyle : aOutlineStyles)
     {
-        SdStyleSheetPool* pSPool = static_cast<SdStyleSheetPool*>(pModel->GetStyleSheetPool());
-        DBG_ASSERT(pSPool, "StyleSheetPool missing");
-        OUString aTrueLayoutName(maLayoutName);
-        sal_Int32 nIndex = aTrueLayoutName.indexOf( SD_LT_SEPARATOR );
-        if( nIndex != -1 )
-            aTrueLayoutName = aTrueLayoutName.copy(0, nIndex);
-
-        std::vector<SfxStyleSheetBase*> aOutlineStyles;
-        pSPool->CreateOutlineSheetList(aTrueLayoutName,aOutlineStyles);
-
-        std::vector<SfxStyleSheetBase*>::iterator iter;
-        for (iter = aOutlineStyles.begin(); iter != aOutlineStyles.end(); ++iter)
-        {
-            SfxStyleSheet *pSheet = static_cast<SfxStyleSheet*>(*iter);
-            pOutlineTextObj->EndListening(*pSheet);
-        }
+        SfxStyleSheet *pSheet = static_cast<SfxStyleSheet*>(rpStyle);
+        pOutlineTextObj->EndListening(*pSheet);
     }
-}
-
-/*************************************************************************
-|*
-|* Set new model
-|*
-\************************************************************************/
-
-void SdPage::SetModel(SdrModel* pNewModel)
-{
-    DisconnectLink();
-
-    // assign model
-    FmFormPage::SetModel(pNewModel);
-
-    ConnectLink();
 }
 
 /*************************************************************************
@@ -316,27 +289,27 @@ bool SdPage::IsReadOnly() const
 
 void SdPage::ConnectLink()
 {
-    sfx2::LinkManager* pLinkManager = pModel!=nullptr ? pModel->GetLinkManager() : nullptr;
+    sfx2::LinkManager* pLinkManager(getSdrModelFromSdrPage().GetLinkManager());
 
-    if (pLinkManager && !mpPageLink && !maFileName.isEmpty() && !maBookmarkName.isEmpty() &&
+    if (!(pLinkManager && !mpPageLink && !maFileName.isEmpty() && !maBookmarkName.isEmpty() &&
         mePageKind==PageKind::Standard && !IsMasterPage() &&
-        static_cast<SdDrawDocument*>(pModel)->IsNewOrLoadCompleted())
-    {
-        /**********************************************************************
-        * Connect
-        * Only standard pages are allowed to be linked
-        **********************************************************************/
-        ::sd::DrawDocShell* pDocSh = static_cast<SdDrawDocument*>(pModel)->GetDocSh();
+        static_cast< SdDrawDocument& >(getSdrModelFromSdrPage()).IsNewOrLoadCompleted()))
+        return;
 
-        if (!pDocSh || !pDocSh->GetMedium()->GetOrigURL().equals(maFileName))
-        {
-            // No links to document owned pages!
-            mpPageLink = new SdPageLink(this, maFileName, maBookmarkName);
-            OUString aFilterName(SdResId(STR_IMPRESS));
-            pLinkManager->InsertFileLink(*mpPageLink, OBJECT_CLIENT_FILE,
-                                         maFileName, &aFilterName, &maBookmarkName);
-            mpPageLink->Connect();
-        }
+    /**********************************************************************
+    * Connect
+    * Only standard pages are allowed to be linked
+    **********************************************************************/
+    ::sd::DrawDocShell* pDocSh = static_cast< SdDrawDocument& >(getSdrModelFromSdrPage()).GetDocSh();
+
+    if (!pDocSh || pDocSh->GetMedium()->GetOrigURL() != maFileName)
+    {
+        // No links to document owned pages!
+        mpPageLink = new SdPageLink(this, maFileName, maBookmarkName);
+        OUString aFilterName(SdResId(STR_IMPRESS));
+        pLinkManager->InsertFileLink(*mpPageLink, sfx2::SvBaseLinkObjectType::ClientFile,
+                                     maFileName, &aFilterName, &maBookmarkName);
+        mpPageLink->Connect();
     }
 }
 
@@ -348,7 +321,7 @@ void SdPage::ConnectLink()
 
 void SdPage::DisconnectLink()
 {
-    sfx2::LinkManager* pLinkManager = pModel!=nullptr ? pModel->GetLinkManager() : nullptr;
+    sfx2::LinkManager* pLinkManager(getSdrModelFromSdrPage().GetLinkManager());
 
     if (pLinkManager && mpPageLink)
     {
@@ -361,65 +334,81 @@ void SdPage::DisconnectLink()
     }
 }
 
-/*************************************************************************
-|*
-|* Copy-Ctor
-|*
-\************************************************************************/
-
-SdPage::SdPage(const SdPage& rSrcPage)
-:   FmFormPage(rSrcPage)
-,   SdrObjUserCall()
-,   mpItems(nullptr)
-,   mnPageId(mnLastPageId++)
+void SdPage::lateInit(const SdPage& rSrcPage)
 {
-    mePageKind           = rSrcPage.mePageKind;
-    meAutoLayout         = rSrcPage.meAutoLayout;
+    // call parent
+    FmFormPage::lateInit(rSrcPage);
 
-    mbSelected           = false;
-    mnTransitionType    = rSrcPage.mnTransitionType;
+    // copy local variables (former stuff from copy constructor)
+    mePageKind = rSrcPage.mePageKind;
+    meAutoLayout = rSrcPage.meAutoLayout;
+    mbSelected = false;
+    mnTransitionType = rSrcPage.mnTransitionType;
     mnTransitionSubtype = rSrcPage.mnTransitionSubtype;
     mbTransitionDirection = rSrcPage.mbTransitionDirection;
     mnTransitionFadeColor = rSrcPage.mnTransitionFadeColor;
     mfTransitionDuration = rSrcPage.mfTransitionDuration;
-    mePresChange            = rSrcPage.mePresChange;
-    mfTime               = rSrcPage.mfTime;
-    mbSoundOn            = rSrcPage.mbSoundOn;
-    mbExcluded           = rSrcPage.mbExcluded;
-
-    maLayoutName         = rSrcPage.maLayoutName;
-    maSoundFile          = rSrcPage.maSoundFile;
-    mbLoopSound          = rSrcPage.mbLoopSound;
-    mbStopSound          = rSrcPage.mbStopSound;
+    mePresChange = rSrcPage.mePresChange;
+    mfTime = rSrcPage.mfTime;
+    mbSoundOn = rSrcPage.mbSoundOn;
+    mbExcluded = rSrcPage.mbExcluded;
+    maLayoutName = rSrcPage.maLayoutName;
+    maSoundFile = rSrcPage.maSoundFile;
+    mbLoopSound = rSrcPage.mbLoopSound;
+    mbStopSound = rSrcPage.mbStopSound;
     maCreatedPageName.clear();
-    maFileName           = rSrcPage.maFileName;
-    maBookmarkName       = rSrcPage.maBookmarkName;
-    mbScaleObjects       = rSrcPage.mbScaleObjects;
+    maFileName = rSrcPage.maFileName;
+    maBookmarkName = rSrcPage.maBookmarkName;
+    mbScaleObjects = rSrcPage.mbScaleObjects;
     mbBackgroundFullSize = rSrcPage.mbBackgroundFullSize;
-    meCharSet            = rSrcPage.meCharSet;
-    mnPaperBin           = rSrcPage.mnPaperBin;
-    meOrientation        = rSrcPage.meOrientation;
-
-    mpPageLink           = nullptr;    // is set when inserting via ConnectLink()
-
-    mbIsPrecious         = false;
-}
-
-void SdPage::lateInit(const SdPage& rSrcPage)
-{
-    FmFormPage::lateInit(rSrcPage);
+    meCharSet = rSrcPage.meCharSet;
+    mnPaperBin = rSrcPage.mnPaperBin;
+    mpPageLink = nullptr;    // is set when inserting via ConnectLink()
+    mbIsPrecious = false;
 
     // use shape list directly to preserve constness of rSrcPage
     const std::list< SdrObject* >& rShapeList = rSrcPage.maPresentationShapeList.getList();
-    for( std::list< SdrObject* >::const_iterator aIter = rShapeList.begin();
-         aIter != rShapeList.end(); ++aIter )
+    const size_t nObjCount = GetObjCount();
+    for( SdrObject* pObj : rShapeList )
     {
-        SdrObject* pObj = *aIter;
-        InsertPresObj(GetObj(pObj->GetOrdNum()), rSrcPage.GetPresObjKind(pObj));
+        size_t nOrdNum = pObj->GetOrdNum();
+        InsertPresObj(nOrdNum < nObjCount ? GetObj(nOrdNum) : nullptr, rSrcPage.GetPresObjKind(pObj));
     }
 
     // header footer
     setHeaderFooterSettings( rSrcPage.getHeaderFooterSettings() );
+
+    // animations
+    rSrcPage.cloneAnimations(*this);
+
+    // annotations
+    for(const Reference< XAnnotation >& srcAnnotation : rSrcPage.maAnnotations)
+    {
+        Reference< XAnnotation > ref;
+        createAnnotation(ref);
+        ref->setPosition(srcAnnotation->getPosition());
+        ref->setSize(srcAnnotation->getSize());
+        ref->setAuthor(srcAnnotation->getAuthor());
+        ref->setInitials(srcAnnotation->getInitials());
+        ref->setDateTime(srcAnnotation->getDateTime());
+        Reference< ::css::text::XTextCopy > srcRange ( srcAnnotation->getTextRange(), uno::UNO_QUERY);
+        Reference< ::css::text::XTextCopy > range ( ref->getTextRange(), uno::UNO_QUERY);
+        if(srcRange.is() && range.is())
+            range->copyText( srcRange );
+    }
+
+    // fix user calls for duplicated slide
+    SdrObjListIter aSourceIter( &rSrcPage, SdrIterMode::DeepWithGroups );
+    SdrObjListIter aTargetIter( this, SdrIterMode::DeepWithGroups );
+
+    while( aSourceIter.IsMore() && aTargetIter.IsMore() )
+    {
+        SdrObject* pSource = aSourceIter.Next();
+        SdrObject* pTarget = aTargetIter.Next();
+
+        if( pSource->GetUserCall() )
+            pTarget->SetUserCall(this);
+    }
 }
 
 /*************************************************************************
@@ -428,34 +417,15 @@ void SdPage::lateInit(const SdPage& rSrcPage)
 |*
 \************************************************************************/
 
-SdrPage* SdPage::Clone() const
+SdrPage* SdPage::CloneSdrPage(SdrModel& rTargetModel) const
 {
-    return Clone(nullptr);
-}
-
-SdrPage* SdPage::Clone(SdrModel* pNewModel) const
-{
-    DBG_ASSERT( pNewModel == nullptr, "sd::SdPage::Clone(), new page ignored, please check code! CL" );
-
-    SdPage* pNewPage = new SdPage(*this);
-    pNewPage->lateInit( *this );
-
-    cloneAnimations( *pNewPage );
-
-    // fix user calls for duplicated slide
-    SdrObjListIter aSourceIter( *this, SdrIterMode::DeepWithGroups );
-    SdrObjListIter aTargetIter( *pNewPage, SdrIterMode::DeepWithGroups );
-
-    while( aSourceIter.IsMore() && aTargetIter.IsMore() )
-    {
-        SdrObject* pSource = aSourceIter.Next();
-        SdrObject* pTarget = aTargetIter.Next();
-
-        if( pSource->GetUserCall() )
-            pTarget->SetUserCall( pNewPage );
-    }
-
-    return pNewPage;
+    SdDrawDocument& rSdDrawDocument(static_cast< SdDrawDocument& >(rTargetModel));
+    SdPage* pClonedSdPage(
+        new SdPage(
+            rSdDrawDocument,
+            IsMasterPage()));
+    pClonedSdPage->lateInit(*this);
+    return pClonedSdPage;
 }
 
 /*************************************************************************
@@ -467,7 +437,7 @@ SdrPage* SdPage::Clone(SdrModel* pNewModel) const
 SfxStyleSheet* SdPage::GetTextStyleSheetForObject( SdrObject* pObj ) const
 {
     const PresObjKind eKind = GetPresObjKind(pObj);
-    if( eKind != PRESOBJ_NONE )
+    if( eKind != PresObjKind::NONE )
     {
         return GetStyleSheetForPresObj(eKind);
     }
@@ -478,7 +448,7 @@ SfxStyleSheet* SdPage::GetTextStyleSheetForObject( SdrObject* pObj ) const
 SfxItemSet* SdPage::getOrCreateItems()
 {
     if( mpItems == nullptr )
-        mpItems = o3tl::make_unique<SfxItemSet>( pModel->GetItemPool(), svl::Items<SDRATTR_XMLATTRIBUTES, SDRATTR_XMLATTRIBUTES>{} );
+        mpItems = std::make_unique<SfxItemSet>( getSdrModelFromSdrPage().GetItemPool(), svl::Items<SDRATTR_XMLATTRIBUTES, SDRATTR_XMLATTRIBUTES>{} );
 
     return mpItems.get();
 }
@@ -514,17 +484,15 @@ void SdPage::getAlienAttributes( css::uno::Any& rAttributes )
 
 void SdPage::RemoveEmptyPresentationObjects()
 {
-    SdrObjListIter  aShapeIter( *this, SdrIterMode::DeepWithGroups );
+    SdrObjListIter  aShapeIter( this, SdrIterMode::DeepWithGroups );
 
-    SdrObject* pShape;
-    for( pShape = aShapeIter.Next(); pShape; pShape = aShapeIter.Next() )
+    for (SdrObject* pShape = aShapeIter.Next(); pShape; pShape = aShapeIter.Next())
     {
-        if( pShape && pShape->IsEmptyPresObj() )
+        if (pShape->IsEmptyPresObj())
         {
             RemoveObject( pShape->GetOrdNum() );
             SdrObject::Free( pShape );
         }
-
     }
 }
 
@@ -558,25 +526,37 @@ void SdPage::setTransitionDuration ( double fTranstionDuration )
     ActionChanged();
 }
 
-OString SdPage::stringify() const
+bool SdPage::Equals(const SdPage& rOtherPage) const
 {
-    OStringBuffer aString(100);
-    aString.append((sal_Int32)mePageKind).append((sal_Int32)meAutoLayout).append((sal_Int32)mePresChange).append(mfTime).append(mbSoundOn).append(mbExcluded).
-             append(OUStringToOString( maLayoutName, RTL_TEXTENCODING_UTF8 )).
-             append(OUStringToOString(maSoundFile, RTL_TEXTENCODING_UTF8 )).
-             append(mbLoopSound).append(mbStopSound).
-             /*append(OUStringToOString(maCreatedPageName, RTL_TEXTENCODING_UTF8)).
-             append(OUStringToOString(maFileName, RTL_TEXTENCODING_UTF8)).*/
-             append(OUStringToOString(maBookmarkName, RTL_TEXTENCODING_UTF8)).
-             append(mbScaleObjects).append(mbBackgroundFullSize).append((sal_Int32)meCharSet).append((sal_Int32)mnPaperBin).
-             append((sal_Int32)meOrientation).append((sal_Int32)mnTransitionType).append((sal_Int32)mnTransitionSubtype).append(mbTransitionDirection).
-             append(mnTransitionFadeColor).append(mfTransitionDuration);//.append(mbIsPrecious);
+    if (GetObjCount() != rOtherPage.GetObjCount() ||
+        mePageKind != rOtherPage.mePageKind ||
+        meAutoLayout != rOtherPage.meAutoLayout ||
+        mePresChange != rOtherPage.mePresChange ||
+        !rtl::math::approxEqual(mfTime, rOtherPage.mfTime) ||
+        mbSoundOn != rOtherPage.mbSoundOn ||
+        mbExcluded != rOtherPage.mbExcluded ||
+        maLayoutName != rOtherPage.maLayoutName ||
+        maSoundFile != rOtherPage.maSoundFile ||
+        mbLoopSound != rOtherPage.mbLoopSound ||
+        mbStopSound != rOtherPage.mbStopSound ||
+        maBookmarkName != rOtherPage.maBookmarkName ||
+        mbScaleObjects != rOtherPage.mbScaleObjects ||
+        mbBackgroundFullSize != rOtherPage.mbBackgroundFullSize ||
+        meCharSet != rOtherPage.meCharSet ||
+        mnPaperBin != rOtherPage.mnPaperBin ||
+        mnTransitionType != rOtherPage.mnTransitionType ||
+        mnTransitionSubtype != rOtherPage.mnTransitionSubtype ||
+        mbTransitionDirection != rOtherPage.mbTransitionDirection ||
+        mnTransitionFadeColor != rOtherPage.mnTransitionFadeColor ||
+        !rtl::math::approxEqual(mfTransitionDuration, rOtherPage.mfTransitionDuration))
+        return false;
 
-    const size_t n = GetObjCount();
-    for(size_t i = 0; i < n; ++i)
-        aString.append(GetObj(i)->stringify());
-    return aString.makeStringAndClear();
-}
+    for(size_t i = 0; i < GetObjCount(); ++i)
+        if (!GetObj(i)->Equals(*(rOtherPage.GetObj(i))))
+            return false;
+
+    return true;
+ }
 
 void SdPage::createAnnotation( css::uno::Reference< css::office::XAnnotation >& xAnnotation )
 {
@@ -585,7 +565,7 @@ void SdPage::createAnnotation( css::uno::Reference< css::office::XAnnotation >& 
 
 void SdPage::addAnnotation( const Reference< XAnnotation >& xAnnotation, int nIndex )
 {
-    if( (nIndex == -1) || (nIndex > (int)maAnnotations.size()) )
+    if( (nIndex == -1) || (nIndex > static_cast<int>(maAnnotations.size())) )
     {
         maAnnotations.push_back( xAnnotation );
     }
@@ -594,40 +574,39 @@ void SdPage::addAnnotation( const Reference< XAnnotation >& xAnnotation, int nIn
         maAnnotations.insert( maAnnotations.begin() + nIndex, xAnnotation );
     }
 
-    if( pModel && pModel->IsUndoEnabled() )
+    if( getSdrModelFromSdrPage().IsUndoEnabled() )
     {
-        SdrUndoAction* pAction = CreateUndoInsertOrRemoveAnnotation( xAnnotation, true );
+        std::unique_ptr<SdrUndoAction> pAction = CreateUndoInsertOrRemoveAnnotation( xAnnotation, true );
         if( pAction )
-            pModel->AddUndo( pAction );
+            getSdrModelFromSdrPage().AddUndo( std::move(pAction) );
     }
 
     SetChanged();
-
-    if( pModel )
-    {
-        pModel->SetChanged();
-        NotifyDocumentEvent( static_cast< SdDrawDocument* >( pModel ), "OnAnnotationInserted", Reference<XInterface>( xAnnotation, UNO_QUERY ) );
-    }
+    getSdrModelFromSdrPage().SetChanged();
+    NotifyDocumentEvent(
+        static_cast< SdDrawDocument& >(getSdrModelFromSdrPage()),
+        "OnAnnotationInserted",
+        Reference<XInterface>(xAnnotation, UNO_QUERY));
 }
 
 void SdPage::removeAnnotation( const Reference< XAnnotation >& xAnnotation )
 {
-    if( pModel && pModel->IsUndoEnabled() )
+    if( getSdrModelFromSdrPage().IsUndoEnabled() )
     {
-        SdrUndoAction* pAction = CreateUndoInsertOrRemoveAnnotation( xAnnotation, false );
+        std::unique_ptr<SdrUndoAction> pAction = CreateUndoInsertOrRemoveAnnotation( xAnnotation, false );
         if( pAction )
-            pModel->AddUndo( pAction );
+            getSdrModelFromSdrPage().AddUndo( std::move(pAction) );
     }
 
     AnnotationVector::iterator iter = std::find( maAnnotations.begin(), maAnnotations.end(), xAnnotation );
     if( iter != maAnnotations.end() )
         maAnnotations.erase( iter );
 
-    if( pModel )
-    {
-        pModel->SetChanged();
-        NotifyDocumentEvent( static_cast< SdDrawDocument* >( pModel ), "OnAnnotationRemoved", Reference<XInterface>( xAnnotation, UNO_QUERY ) );
-    }
+    getSdrModelFromSdrPage().SetChanged();
+    NotifyDocumentEvent(
+        static_cast< SdDrawDocument& >( getSdrModelFromSdrPage() ),
+        "OnAnnotationRemoved",
+        Reference<XInterface>( xAnnotation, UNO_QUERY ) );
 }
 
 void SdPage::dumpAsXml(xmlTextWriterPtr pWriter) const

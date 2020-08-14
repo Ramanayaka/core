@@ -21,7 +21,6 @@
 #define INCLUDED_EXTENSIONS_SOURCE_PROPCTRLR_ENUMREPRESENTATION_HXX
 
 #include <com/sun/star/uno/Any.hxx>
-#include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
 #include <salhelper/simplereferenceobject.hxx>
 
@@ -39,19 +38,19 @@ namespace pcr
     public:
         /** retrieves all descriptions of all possible values of the enumeration property
         */
-        virtual std::vector< OUString > SAL_CALL getDescriptions(
+        virtual std::vector< OUString > getDescriptions(
             ) const = 0;
 
         /** converts a given description into a property value
         */
-        virtual void SAL_CALL getValueFromDescription(
+        virtual void getValueFromDescription(
                 const OUString& _rDescription,
                 css::uno::Any& _out_rValue
             ) const = 0;
 
         /** converts a given property value into a description
         */
-        virtual OUString SAL_CALL getDescriptionForValue(
+        virtual OUString getDescriptionForValue(
                 const css::uno::Any& _rEnumValue
             ) const = 0;
 

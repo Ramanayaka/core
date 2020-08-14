@@ -19,39 +19,93 @@
 
 #ifndef IOS
 
-#include "headless/svpbmp.hxx"
-#include "headless/svpinst.hxx"
-#include "headless/svpvd.hxx"
-#include "headless/svpgdi.hxx"
+#include <headless/svpbmp.hxx>
+#include <headless/svpinst.hxx>
+#include <headless/svpvd.hxx>
+#include <headless/svpgdi.hxx>
 
 #include <basegfx/vector/b2ivector.hxx>
+#include <comphelper/lok.hxx>
 
 #include <cairo.h>
 
 using namespace basegfx;
 
+SvpSalVirtualDevice::SvpSalVirtualDevice(DeviceFormat eFormat, cairo_surface_t* pRefSurface, cairo_surface_t* pPreExistingTarget)
+    : m_eFormat(eFormat)
+    , m_pRefSurface(pRefSurface)
+    , m_pSurface(pPreExistingTarget)
+    , m_bOwnsSurface(!pPreExistingTarget)
+{
+    cairo_surface_reference(m_pRefSurface);
+}
+
 SvpSalVirtualDevice::~SvpSalVirtualDevice()
 {
-    cairo_surface_destroy(m_pSurface);
+    if (m_bOwnsSurface)
+        cairo_surface_destroy(m_pSurface);
+    cairo_surface_destroy(m_pRefSurface);
+}
+
+SvpSalGraphics* SvpSalVirtualDevice::AddGraphics(SvpSalGraphics* pGraphics)
+{
+    pGraphics->setSurface(m_pSurface, m_aFrameSize);
+    m_aGraphics.push_back(pGraphics);
+    return pGraphics;
 }
 
 SalGraphics* SvpSalVirtualDevice::AcquireGraphics()
 {
-    SvpSalGraphics* pGraphics = new SvpSalGraphics();
-    pGraphics->setSurface(m_pSurface, m_aFrameSize);
-    m_aGraphics.push_back( pGraphics );
-    return pGraphics;
+    return AddGraphics(new SvpSalGraphics());
 }
 
 void SvpSalVirtualDevice::ReleaseGraphics( SalGraphics* pGraphics )
 {
-    m_aGraphics.remove( dynamic_cast<SvpSalGraphics*>(pGraphics) );
+    m_aGraphics.erase(std::remove(m_aGraphics.begin(), m_aGraphics.end(), dynamic_cast<SvpSalGraphics*>(pGraphics)), m_aGraphics.end());
     delete pGraphics;
 }
 
 bool SvpSalVirtualDevice::SetSize( long nNewDX, long nNewDY )
 {
     return SetSizeUsingBuffer(nNewDX, nNewDY, nullptr);
+}
+
+void SvpSalVirtualDevice::CreateSurface(long nNewDX, long nNewDY, sal_uInt8 *const pBuffer)
+{
+    if (m_pSurface)
+    {
+        cairo_surface_destroy(m_pSurface);
+    }
+
+    if (m_eFormat == DeviceFormat::BITMASK)
+    {
+        m_pSurface = cairo_surface_create_similar(m_pRefSurface, CAIRO_CONTENT_ALPHA,
+                            nNewDX, nNewDY);
+    }
+    else if (pBuffer)
+    {
+        double fXScale, fYScale;
+        if (comphelper::LibreOfficeKit::isActive())
+        {
+            // Force scaling of the painting
+            fXScale = fYScale = comphelper::LibreOfficeKit::getDPIScale();
+        }
+        else
+        {
+            dl_cairo_surface_get_device_scale(m_pRefSurface, &fXScale, &fYScale);
+            nNewDX *= fXScale;
+            nNewDY *= fYScale;
+        }
+
+        m_pSurface = cairo_image_surface_create_for_data(pBuffer, CAIRO_FORMAT_ARGB32,
+                            nNewDX, nNewDY, cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, nNewDX));
+
+        dl_cairo_surface_set_device_scale(m_pSurface, fXScale, fYScale);
+    }
+    else
+    {
+        m_pSurface = cairo_surface_create_similar(m_pRefSurface, CAIRO_CONTENT_COLOR_ALPHA, nNewDX, nNewDY);
+    }
 }
 
 bool SvpSalVirtualDevice::SetSizeUsingBuffer( long nNewDX, long nNewDY,
@@ -63,42 +117,18 @@ bool SvpSalVirtualDevice::SetSizeUsingBuffer( long nNewDX, long nNewDY,
         nNewDY = 1;
 
     if (!m_pSurface || m_aFrameSize.getX() != nNewDX ||
-                       m_aFrameSize.getY() != nNewDY )
+                       m_aFrameSize.getY() != nNewDY)
     {
         m_aFrameSize = basegfx::B2IVector(nNewDX, nNewDY);
 
-        nNewDX *= m_fScale;
-        nNewDY *= m_fScale;
+        if (m_bOwnsSurface)
+            CreateSurface(nNewDX, nNewDY, pBuffer);
 
-        if (m_pSurface)
-        {
-            cairo_surface_destroy(m_pSurface);
-        }
-
-        if (m_eFormat == DeviceFormat::BITMASK)
-        {
-            m_pSurface = cairo_image_surface_create(CAIRO_FORMAT_A1,
-                                nNewDX, nNewDY);
-        }
-        else
-        {
-            m_pSurface = pBuffer ?
-                             cairo_image_surface_create_for_data(pBuffer, CAIRO_FORMAT_ARGB32,
-                                   nNewDX, nNewDY,
-                                   cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, nNewDX))
-                                 :
-                             cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
-                                   nNewDX, nNewDY);
-        }
-
-#if CAIRO_VERSION >= CAIRO_VERSION_ENCODE(1, 14, 0)
-        cairo_surface_set_device_scale(m_pSurface, m_fScale, m_fScale);
-#endif
+        assert(m_pSurface);
 
         // update device in existing graphics
-        for( std::list< SvpSalGraphics* >::iterator it = m_aGraphics.begin();
-             it != m_aGraphics.end(); ++it )
-            (*it)->setSurface(m_pSurface, m_aFrameSize);
+        for (auto const& graphic : m_aGraphics)
+            graphic->setSurface(m_pSurface, m_aFrameSize);
     }
     return true;
 }

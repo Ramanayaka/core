@@ -12,12 +12,12 @@
 #define INCLUDED_VCL_INC_OPENGL_PACKEDTEXTUREATLAS_HXX
 
 #include <memory>
-#include "opengl/texture.hxx"
+#include <opengl/texture.hxx>
 
 struct PackedTexture;
 
 /**
- * Pack texutres into one texutre atlas.
+ * Pack textures into one texture atlas.
  *
  * This is based on algorithm described in [1] and is an
  * adaptation of "texture atlas generator" from [2].
@@ -26,7 +26,7 @@ struct PackedTexture;
  * [2]: https://github.com/lukaszdk/texture-atlas-generator
  *
  */
-class VCL_PLUGIN_PUBLIC PackedTextureAtlasManager
+class VCL_DLLPUBLIC PackedTextureAtlasManager final
 {
     std::vector<std::unique_ptr<PackedTexture>> maPackedTextures;
 
@@ -34,6 +34,9 @@ class VCL_PLUGIN_PUBLIC PackedTextureAtlasManager
     int mnTextureHeight;
 
     void CreateNewTexture();
+
+    PackedTextureAtlasManager( const PackedTextureAtlasManager& ) = delete;
+    PackedTextureAtlasManager& operator=( const PackedTextureAtlasManager& ) = delete;
 
 public:
 
@@ -43,7 +46,8 @@ public:
      */
     PackedTextureAtlasManager(int nTextureWidth, int nTextureHeight);
     ~PackedTextureAtlasManager();
-    OpenGLTexture InsertBuffer(int nWidth, int nHeight, int nFormat, int nType, sal_uInt8* pData);
+
+    OpenGLTexture InsertBuffer(int nWidth, int nHeight, int nFormat, int nType, sal_uInt8 const * pData);
     OpenGLTexture Reserve(int nWidth, int nHeight);
     std::vector<GLuint> ReduceTextureNumber(int nMaxNumberOfTextures);
 };

@@ -19,13 +19,11 @@
 
 #include "XMLAutoTextEventImport.hxx"
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <facreg.hxx>
 #include "XMLAutoTextContainerEventImport.hxx"
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <tools/debug.hxx>
 #include <comphelper/processfactory.hxx>
@@ -37,17 +35,13 @@ using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::Type;
 using ::com::sun::star::uno::XInterface;
-using ::com::sun::star::uno::RuntimeException;
-using ::com::sun::star::uno::Exception;
-using ::com::sun::star::xml::sax::XAttributeList;
 using ::com::sun::star::document::XEventsSupplier;
 using ::com::sun::star::container::XNameReplace;
 using ::com::sun::star::lang::XMultiServiceFactory;
-using ::xmloff::token::IsXMLToken;
 using ::xmloff::token::XML_AUTO_TEXT_EVENTS;
 
 XMLAutoTextEventImport::XMLAutoTextEventImport(
-    const css::uno::Reference< css::uno::XComponentContext >& xContext) throw()
+    const css::uno::Reference< css::uno::XComponentContext >& xContext)
 :   SvXMLImport(xContext, "")
 {
 }
@@ -61,21 +55,20 @@ void XMLAutoTextEventImport::initialize(
 {
     // The events may come as either an XNameReplace or XEventsSupplier.
 
-    const sal_Int32 nLength = rArguments.getLength();
-    for( sal_Int32 i = 0; i < nLength; i++ )
+    for( const auto& rArgument : rArguments )
     {
-        const Type& rType = rArguments[i].getValueType();
+        const Type& rType = rArgument.getValueType();
         if ( rType == cppu::UnoType<XEventsSupplier>::get())
         {
             Reference<XEventsSupplier> xSupplier;
-            rArguments[i] >>= xSupplier;
+            rArgument >>= xSupplier;
             DBG_ASSERT(xSupplier.is(), "need XEventsSupplier or XNameReplace");
 
             xEvents = xSupplier->getEvents();
         }
         else if (rType == cppu::UnoType<XNameReplace>::get())
         {
-            rArguments[i] >>= xEvents;
+            rArgument >>= xEvents;
             DBG_ASSERT(xEvents.is(), "need XEventsSupplier or XNameReplace");
         }
     }
@@ -85,41 +78,22 @@ void XMLAutoTextEventImport::initialize(
 }
 
 
-SvXMLImportContext* XMLAutoTextEventImport::CreateContext(
-    sal_uInt16 nPrefix,
-    const OUString& rLocalName,
-    const Reference<XAttributeList > & xAttrList )
+SvXMLImportContext* XMLAutoTextEventImport::CreateFastContext(
+    sal_Int32 nElement,
+    const Reference<css::xml::sax::XFastAttributeList> & /*xAttrList*/ )
 {
-    if ( xEvents.is() && (XML_NAMESPACE_OOO == nPrefix) &&
-         IsXMLToken( rLocalName, XML_AUTO_TEXT_EVENTS) )
+    if ( xEvents.is() && nElement == XML_ELEMENT(OOO, XML_AUTO_TEXT_EVENTS) )
     {
-        return new XMLAutoTextContainerEventImport(
-            *this, nPrefix, rLocalName, xEvents);
+        return new XMLAutoTextContainerEventImport(*this, xEvents);
     }
-    else
-    {
-        return SvXMLImport::CreateContext(nPrefix, rLocalName, xAttrList);
-    }
+    return nullptr;
 }
 
-
-Sequence< OUString > SAL_CALL
-    XMLAutoTextEventImport_getSupportedServiceNames()
-        throw()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_Writer_XMLOasisAutotextEventsImporter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    Sequence<OUString> aSeq { XMLAutoTextEventImport_getImplementationName() };
-    return aSeq;
-}
-
-OUString SAL_CALL XMLAutoTextEventImport_getImplementationName() throw()
-{
-    return OUString( "com.sun.star.comp.Writer.XMLOasisAutotextEventsImporter" );
-}
-
-Reference< XInterface > SAL_CALL XMLAutoTextEventImport_createInstance(
-        const Reference< XMultiServiceFactory > & rSMgr)
-{
-    return static_cast<cppu::OWeakObject*>(new XMLAutoTextEventImport( comphelper::getComponentContext(rSMgr) ));
+    return cppu::acquire(new XMLAutoTextEventImport(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

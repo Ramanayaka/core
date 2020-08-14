@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TableFieldDescription.hxx"
+#include <TableFieldDescription.hxx>
 
 #include <osl/diagnose.h>
 #include <com/sun/star/sdbc/DataType.hpp>
@@ -38,7 +38,7 @@ OTableFieldDesc::OTableFieldDesc()
     ,m_eOrderDir( ORDER_NONE )
     ,m_nIndex(0)
     ,m_nColWidth(0)
-    ,m_nColumnId((sal_uInt16)-1)
+    ,m_nColumnId(sal_uInt16(-1))
     ,m_bGroupBy(false)
     ,m_bVisible(false)
 {
@@ -59,7 +59,7 @@ OTableFieldDesc::OTableFieldDesc(const OUString& rT, const OUString& rF )
     ,m_eOrderDir( ORDER_NONE )
     ,m_nIndex(0)
     ,m_nColWidth(0)
-    ,m_nColumnId((sal_uInt16)-1)
+    ,m_nColumnId(sal_uInt16(-1))
     ,m_bGroupBy(false)
     ,m_bVisible(false)
 {
@@ -151,8 +151,8 @@ void OTableFieldDesc::Load( const css::beans::PropertyValue& i_rSettings, const 
         const Sequence< PropertyValue > aCriteria( aFieldDesc.getOrDefault( "Criteria", Sequence< PropertyValue >() ) );
         m_aCriteria.resize( aCriteria.getLength() );
         std::transform(
-            aCriteria.getConstArray(),
-            aCriteria.getConstArray() + aCriteria.getLength(),
+            aCriteria.begin(),
+            aCriteria.end(),
             m_aCriteria.begin(),
             SelectPropertyValueAsString()
         );
@@ -169,30 +169,28 @@ void OTableFieldDesc::Save( ::comphelper::NamedValueCollection& o_rSettings, con
     o_rSettings.put( "FunctionName", m_aFunctionName );
     o_rSettings.put( "DataType", m_eDataType );
     o_rSettings.put( "FunctionType", m_eFunctionType );
-    o_rSettings.put( "FieldType", (sal_Int32)m_eFieldType );
-    o_rSettings.put( "OrderDir", (sal_Int32)m_eOrderDir );
+    o_rSettings.put( "FieldType", static_cast<sal_Int32>(m_eFieldType) );
+    o_rSettings.put( "OrderDir", static_cast<sal_Int32>(m_eOrderDir) );
     o_rSettings.put( "ColWidth", m_nColWidth );
     o_rSettings.put( "GroupBy", m_bGroupBy );
     o_rSettings.put( "Visible", m_bVisible );
 
-    if ( i_bIncludingCriteria )
-    {
-        if ( !m_aCriteria.empty() )
-        {
-            sal_Int32 c = 0;
-            Sequence< PropertyValue > aCriteria( m_aCriteria.size() );
-            for (   std::vector< OUString >::const_iterator crit = m_aCriteria.begin();
-                    crit != m_aCriteria.end();
-                    ++crit, ++c
-                )
-            {
-                aCriteria[c].Name = "Criterion_" + OUString::number( c );
-                aCriteria[c].Value <<= *crit;
-            }
+    if ( !i_bIncludingCriteria )
+        return;
 
-            o_rSettings.put( "Criteria", aCriteria );
-        }
+    if ( m_aCriteria.empty() )
+        return;
+
+    sal_Int32 c = 0;
+    Sequence< PropertyValue > aCriteria( m_aCriteria.size() );
+    for (auto const& criteria : m_aCriteria)
+    {
+        aCriteria[c].Name = "Criterion_" + OUString::number( c );
+        aCriteria[c].Value <<= criteria;
+        ++c;
     }
+
+    o_rSettings.put( "Criteria", aCriteria );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

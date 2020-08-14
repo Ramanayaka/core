@@ -17,10 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <utility>
-
 #include <X11/Xlib.h>
-#include <X11/Xutil.h>
 #include <X11/extensions/Xrender.h>
 
 #include "cairo_xlib_cairo.hxx"
@@ -28,8 +25,7 @@
 #include <vcl/sysdata.hxx>
 #include <vcl/bitmap.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/window.hxx>
-#include <basegfx/vector/b2isize.hxx>
+#include <sal/log.hxx>
 
 #include <cairo-xlib.h>
 #include <cairo-xlib-xrender.h>
@@ -254,15 +250,14 @@ namespace cairo
 
         aSystemGraphicsData.nSize = sizeof(SystemGraphicsData);
         aSystemGraphicsData.hDrawable = mpPixmap ? mpPixmap->mhDrawable : maSysData.hDrawable;
-        aSystemGraphicsData.pXRenderFormat = getRenderFormat();
+        aSystemGraphicsData.pXRenderFormat = maSysData.pRenderFormat;
 
         int width = cairo_xlib_surface_get_width(mpSurface.get());
         int height = cairo_xlib_surface_get_height(mpSurface.get());
 
-        return VclPtr<VirtualDevice>(
-            VclPtr<VirtualDevice>::Create(&aSystemGraphicsData,
+        return VclPtr<VirtualDevice>::Create(aSystemGraphicsData,
                               Size(width, height),
-                              getFormat()));
+                              getFormat());
     }
 
     /**

@@ -19,7 +19,6 @@
 
 #include <sal/config.h>
 
-#include "service.hxx"
 #include "vbawrapformat.hxx"
 #include <ooo/vba/word/WdWrapSideType.hpp>
 #include <ooo/vba/word/WdWrapType.hpp>
@@ -27,7 +26,6 @@
 #include <com/sun/star/text/WrapTextMode.hpp>
 #include <basic/sberrors.hxx>
 #include <vbahelper/vbahelper.hxx>
-#include <vbahelper/helperdecl.hxx>
 
 using namespace ooo::vba;
 using namespace com::sun::star;
@@ -221,29 +219,25 @@ void SAL_CALL SwVbaWrapFormat::setDistanceRight( float _distanceright )
 OUString
 SwVbaWrapFormat::getServiceImplName()
 {
-    return OUString("SwVbaWrapFormat");
+    return "SwVbaWrapFormat";
 }
 
 uno::Sequence< OUString >
 SwVbaWrapFormat::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.WrapFormat";
-    }
+        "ooo.vba.word.WrapFormat"
+    };
     return aServiceNames;
 }
 
-namespace wrapformat
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+Writer_SwVbaWrapFormat_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
 {
-namespace sdecl = comphelper::service_decl;
-sdecl::vba_service_class_<SwVbaWrapFormat, sdecl::with_args<true> > const serviceImpl;
-sdecl::ServiceDecl const serviceDecl(
-    serviceImpl,
-    "SwVbaWrapFormat",
-    "ooo.vba.word.WrapFormat" );
+    return cppu::acquire(new SwVbaWrapFormat(args, context));
 }
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

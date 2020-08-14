@@ -20,14 +20,13 @@
 #ifndef INCLUDED_XMLSECURITY_SOURCE_XMLSEC_NSS_SEINITIALIZER_NSSIMPL_HXX
 #define INCLUDED_XMLSECURITY_SOURCE_XMLSEC_NSS_SEINITIALIZER_NSSIMPL_HXX
 
-#include <com/sun/star/xml/crypto/XXMLSecurityContext.hpp>
 #include <com/sun/star/xml/crypto/XSEInitializer.hpp>
 
 #include <cppuhelper/implbase.hxx>
 
-#include <libxml/tree.h>
-
 #include "nssinitializer.hxx"
+
+namespace com::sun::star::xml::crypto { class XXMLSecurityContext; }
 
 class SEInitializer_NssImpl : public cppu::ImplInheritanceHelper
 <
@@ -53,16 +52,6 @@ public:
 
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 };
-
-/// @throws css::uno::RuntimeException
-OUString SEInitializer_NssImpl_getImplementationName();
-
-/// @throws css::uno::RuntimeException
-css::uno::Sequence< OUString > SAL_CALL SEInitializer_NssImpl_getSupportedServiceNames(  );
-
-/// @throws css::uno::Exception
-css::uno::Reference< css::uno::XInterface >
-SAL_CALL SEInitializer_NssImpl_createInstance( const css::uno::Reference< css::lang::XMultiServiceFactory > & rxMSF);
 
 #endif
 

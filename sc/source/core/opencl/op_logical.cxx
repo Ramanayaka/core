@@ -9,18 +9,12 @@
 
 #include "op_logical.hxx"
 
-#include "formulagroup.hxx"
-#include "document.hxx"
-#include "formulacell.hxx"
-#include "tokenarray.hxx"
-#include "compiler.hxx"
-#include "interpre.hxx"
 #include <formula/vectortoken.hxx>
 #include <sstream>
 
 using namespace formula;
 
-namespace sc { namespace opencl {
+namespace sc::opencl {
 void OpAnd::GenSlidingWindowFunction(std::stringstream &ss,
     const std::string &sSymName, SubArguments &vSubArguments)
 {
@@ -320,50 +314,47 @@ void OpIf::GenSlidingWindowFunction(std::stringstream &ss,
     {
         throw UnhandledToken("unknown operand for ocPush", __FILE__, __LINE__);
     }
-    else
+    if(vSubArguments.size()==3)
     {
-        if(vSubArguments.size()==3)
-        {
-            ss << "    if(isnan(";
-            ss << vSubArguments[0]->GenSlidingWindowDeclRef();
-            ss << ")||  ";
-            ss << vSubArguments[0]->GenSlidingWindowDeclRef();
-            ss << " == 0)\n";
-            ss << "         return ";
-            ss << vSubArguments[2]->GenSlidingWindowDeclRef();
-            ss << ";\n";
-            ss << "     else";
-            ss <<"          return ";
-            ss << vSubArguments[1]->GenSlidingWindowDeclRef();
-            ss <<";\n";
-        }
-        if(vSubArguments.size()==2)
-        {
-            ss << "    if(isnan(";
-            ss << vSubArguments[0]->GenSlidingWindowDeclRef();
-            ss << ")||  ";
-            ss << vSubArguments[0]->GenSlidingWindowDeclRef();
-            ss << " == 0)\n";
-            ss << "         return 0;\n";
-            ss << "     else";
-            ss <<"          return ";
-            ss << vSubArguments[1]->GenSlidingWindowDeclRef();
-            ss <<";\n";
-        }
-        if(vSubArguments.size()==1)
-        {
-            ss << "    if(isnan(";
-            ss << vSubArguments[0]->GenSlidingWindowDeclRef();
-            ss << ")||  ";
-            ss << vSubArguments[0]->GenSlidingWindowDeclRef();
-            ss << " == 0)\n";
-            ss << "         return 0;\n";
-            ss << "     else";
-            ss <<"          return 1;\n";
-        }
+        ss << "    if(isnan(";
+        ss << vSubArguments[0]->GenSlidingWindowDeclRef();
+        ss << ")||  ";
+        ss << vSubArguments[0]->GenSlidingWindowDeclRef();
+        ss << " == 0)\n";
+        ss << "         return ";
+        ss << vSubArguments[2]->GenSlidingWindowDeclRef();
+        ss << ";\n";
+        ss << "     else";
+        ss <<"          return ";
+        ss << vSubArguments[1]->GenSlidingWindowDeclRef();
+        ss <<";\n";
+    }
+    if(vSubArguments.size()==2)
+    {
+        ss << "    if(isnan(";
+        ss << vSubArguments[0]->GenSlidingWindowDeclRef();
+        ss << ")||  ";
+        ss << vSubArguments[0]->GenSlidingWindowDeclRef();
+        ss << " == 0)\n";
+        ss << "         return 0;\n";
+        ss << "     else";
+        ss <<"          return ";
+        ss << vSubArguments[1]->GenSlidingWindowDeclRef();
+        ss <<";\n";
+    }
+    if(vSubArguments.size()==1)
+    {
+        ss << "    if(isnan(";
+        ss << vSubArguments[0]->GenSlidingWindowDeclRef();
+        ss << ")||  ";
+        ss << vSubArguments[0]->GenSlidingWindowDeclRef();
+        ss << " == 0)\n";
+        ss << "         return 0;\n";
+        ss << "     else";
+        ss <<"          return 1;\n";
     }
     ss << "}\n";
 }
 
-}}
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

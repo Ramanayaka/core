@@ -5,12 +5,15 @@ import android.graphics.PointF;
 import android.graphics.RectF;
 import android.net.Uri;
 import android.util.Log;
+import android.widget.EditText;
+import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.libreoffice.canvas.SelectionHandle;
 import org.libreoffice.kit.Document;
+import org.libreoffice.kit.Office;
 import org.libreoffice.overlay.DocumentOverlay;
 import org.mozilla.gecko.gfx.GeckoLayerClient;
 
@@ -21,7 +24,7 @@ import java.util.List;
 /**
  * Parses (interprets) and handles invalidation messages from LibreOffice.
  */
-public class InvalidationHandler implements Document.MessageCallback {
+public class InvalidationHandler implements Document.MessageCallback, Office.MessageCallback {
     private static String LOGTAG = InvalidationHandler.class.getSimpleName();
     private final DocumentOverlay mDocumentOverlay;
     private final GeckoLayerClient mLayerClient;
@@ -47,13 +50,22 @@ public class InvalidationHandler implements Document.MessageCallback {
     @Override
     public void messageRetrieved(int messageID, String payload) {
         if (!LOKitShell.isEditingEnabled()) {
-            // enable handling of hyperlinks even in the Viewer
-            if (messageID != Document.CALLBACK_INVALIDATE_TILES && messageID != Document.CALLBACK_HYPERLINK_CLICKED)
+            // enable handling of hyperlinks and search result even in the Viewer
+            if (messageID != Document.CALLBACK_INVALIDATE_TILES
+                    && messageID != Document.CALLBACK_DOCUMENT_PASSWORD
+                    && messageID != Document.CALLBACK_HYPERLINK_CLICKED
+                    && messageID != Document.CALLBACK_SEARCH_RESULT_SELECTION
+                    && messageID != Document.CALLBACK_TEXT_SELECTION
+                    && messageID != Document.CALLBACK_TEXT_SELECTION_START
+                    && messageID != Document.CALLBACK_TEXT_SELECTION_END)
                 return;
         }
         switch (messageID) {
             case Document.CALLBACK_INVALIDATE_TILES:
                 invalidateTiles(payload);
+                break;
+            case Document.CALLBACK_UNO_COMMAND_RESULT:
+                unoCommandResult(payload);
                 break;
             case Document.CALLBACK_INVALIDATE_VISIBLE_CURSOR:
                 invalidateCursor(payload);
@@ -86,13 +98,119 @@ public class InvalidationHandler implements Document.MessageCallback {
                 break;
             case Document.CALLBACK_SEARCH_RESULT_SELECTION:
                 searchResultSelection(payload);
+                // when doing a search, CALLBACK_SEARCH_RESULT_SELECTION is called in addition
+                // to the CALLBACK_TEXT_SELECTION{,_START,_END} callbacks and the handling of
+                // the previous 3 makes the cursor shown in addition to the selection rectangle,
+                // so hide the cursor again to just show the selection rectangle for the search result
+                mDocumentOverlay.hideCursor();
+                mDocumentOverlay.hideHandle(SelectionHandle.HandleType.MIDDLE);
+                mDocumentOverlay.hideHandle(SelectionHandle.HandleType.START);
+                mDocumentOverlay.hideHandle(SelectionHandle.HandleType.END);
                 break;
             case Document.CALLBACK_SEARCH_NOT_FOUND:
                 Log.d(LOGTAG, "LOK_CALLBACK: Search not found.");
                 // this callback is never caught. Hope someone fix this.
                 break;
+            case Document.CALLBACK_CELL_CURSOR:
+                invalidateCellCursor(payload);
+                break;
+            case Document.CALLBACK_INVALIDATE_HEADER:
+                invalidateHeader();
+                break;
+            case Document.CALLBACK_CELL_ADDRESS:
+                cellAddress(payload);
+                break;
+            case Document.CALLBACK_CELL_FORMULA:
+                cellFormula(payload);
+                break;
+            case Document.CALLBACK_DOCUMENT_PASSWORD:
+                documentPassword();
+                break;
+            case Document.CALLBACK_DOCUMENT_SIZE_CHANGED:
+                pageSizeChanged(payload);
             default:
+
                 Log.d(LOGTAG, "LOK_CALLBACK uncaught: " + messageID + " : " + payload);
+        }
+    }
+
+    private void unoCommandResult(String payload) {
+        try {
+            JSONObject payloadObject = new JSONObject(payload);
+            if (payloadObject.getString("commandName").equals(".uno:Save")) {
+                if (payloadObject.getString("success").equals("true")) {
+                    mContext.saveFilesToCloud();
+                }
+            }else if(payloadObject.getString("commandName").equals(".uno:Name") ||
+                    payloadObject.getString("commandName").equals(".uno:RenamePage")){
+                //success returns false even though its true for some reason,
+                LOKitShell.getMainHandler().post(new Runnable() {
+                    @Override
+                    public void run() {
+                        mContext.getTileProvider().resetParts();
+                        mContext.getDocumentPartViewListAdapter().notifyDataSetChanged();
+                        LibreOfficeMainActivity.setDocumentChanged(true);
+                        Toast.makeText(mContext, mContext.getString(R.string.part_name_changed), Toast.LENGTH_SHORT).show();
+                    }
+                });
+            } else if(payloadObject.getString("commandName").equals(".uno:Remove") ||
+                    payloadObject.getString("commandName").equals(".uno:DeletePage") ) {
+                LOKitShell.getMainHandler().post(new Runnable() {
+                    @Override
+                    public void run() {
+                        mContext.getTileProvider().resetParts();
+                        mContext.getDocumentPartViewListAdapter().notifyDataSetChanged();
+                        LibreOfficeMainActivity.setDocumentChanged(true);
+                        Toast.makeText(mContext, mContext.getString(R.string.part_deleted), Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
+        }catch(JSONException e){
+            e.printStackTrace();
+        }
+    }
+
+    private void cellFormula(final String payload) {
+        LOKitShell.getMainHandler().post(new Runnable() {
+            @Override
+            public void run() {
+                ((EditText)mContext.findViewById(R.id.calc_formula)).setText(payload);
+            }
+        });
+    }
+
+    private void cellAddress(final String payload) {
+        LOKitShell.getMainHandler().post(new Runnable() {
+            @Override
+            public void run() {
+                ((EditText)mContext.findViewById(R.id.calc_address)).setText(payload);
+            }
+        });
+    }
+
+    private void invalidateHeader() {
+        LOKitShell.sendEvent(new LOEvent(LOEvent.UPDATE_CALC_HEADERS));
+    }
+
+    private void documentPassword() {
+        mContext.setPasswordProtected(true);
+        mContext.promptForPassword();
+        synchronized (this) {
+            try {
+                this.wait();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        mContext.setPassword();
+    }
+
+    private void invalidateCellCursor(String payload) {
+        RectF cellCursorRect = convertPayloadToRectangle(payload);
+
+        if (cellCursorRect != null) {
+            mDocumentOverlay.showCellSelection(cellCursorRect);
+            moveViewportToMakeSelectionVisible(cellCursorRect);
         }
     }
 
@@ -165,6 +283,15 @@ public class InvalidationHandler implements Document.MessageCallback {
         LOKitShell.moveViewportTo(mContext, new PointF(newLeft, newTop), newZoom);
     }
 
+    private void pageSizeChanged(String payload){
+        if(mContext.getTileProvider().isTextDocument()){
+            String[] bounds = payload.split(",");
+            int pageWidth = Integer.parseInt(bounds[0]);
+            int pageHeight = Integer.parseInt(bounds[1].trim());
+            LOKitShell.sendEvent(new LOEvent(LOEvent.PAGE_SIZE_CHANGED, pageWidth, pageHeight));
+        }
+    }
+
     private void stateChanged(String payload) {
         String[] parts = payload.split("=");
         if (parts.length < 2) {
@@ -173,7 +300,10 @@ public class InvalidationHandler implements Document.MessageCallback {
         }
         final String value = parts[1];
         boolean pressed = Boolean.parseBoolean(value);
-
+        if (!mContext.getTileProvider().isReady()) {
+            Log.w(LOGTAG, "tile provider not ready, ignoring payload "+payload);
+            return;
+        }
         if (parts[0].equals(".uno:Bold")) {
             mContext.getFormattingController().onToggleStateChanged(Document.BOLD, pressed);
         } else if (parts[0].equals(".uno:Italic")) {
@@ -198,6 +328,14 @@ public class InvalidationHandler implements Document.MessageCallback {
             mContext.getFormattingController().onToggleStateChanged(Document.BULLET_LIST, pressed);
         } else if (parts[0].equals(".uno:DefaultNumbering")) {
             mContext.getFormattingController().onToggleStateChanged(Document.NUMBERED_LIST, pressed);
+        } else if (parts[0].equals(".uno:Color")) {
+            mContext.getFontController().colorPaletteListener.updateColorPickerPosition(Integer.parseInt(value));
+        } else if (mContext.getTileProvider().isTextDocument() && parts[0].equals(".uno:BackColor")) {
+            mContext.getFontController().backColorPaletteListener.updateColorPickerPosition(Integer.parseInt(value));
+        } else if (mContext.getTileProvider().isPresentation() && parts[0].equals(".uno:CharBackColor")) {
+            mContext.getFontController().backColorPaletteListener.updateColorPickerPosition(Integer.parseInt(value));
+        } else if (mContext.getTileProvider().isSpreadsheet() && parts[0].equals(".uno:BackgroundColor")) {
+            mContext.getFontController().backColorPaletteListener.updateColorPickerPosition(Integer.parseInt(value));
         } else if (parts[0].equals(".uno:StatePageNumber")) {
             // get the total page number and compare to the current value and update accordingly
             String[] splitStrings = parts[1].split(" ");
@@ -366,7 +504,11 @@ public class InvalidationHandler implements Document.MessageCallback {
             if (mState == OverlayState.SELECTION) {
                 changeStateTo(OverlayState.TRANSITION);
             }
-            mDocumentOverlay.changeSelections(Collections.EMPTY_LIST);
+            mDocumentOverlay.changeSelections(Collections.<RectF>emptyList());
+            if (mContext.isSpreadsheet()) {
+                mDocumentOverlay.showHeaderSelection(null);
+            }
+            mContext.getToolbarController().showHideClipboardCutAndCopy(false);
         } else {
             List<RectF> rectangles = convertPayloadToRectangles(payload);
             if (mState != OverlayState.SELECTION) {
@@ -374,6 +516,11 @@ public class InvalidationHandler implements Document.MessageCallback {
             }
             changeStateTo(OverlayState.SELECTION);
             mDocumentOverlay.changeSelections(rectangles);
+            if (mContext.isSpreadsheet()) {
+                mDocumentOverlay.showHeaderSelection(rectangles.get(0));
+            }
+            String selectedText = mContext.getTileProvider().getTextSelection("");
+            mContext.getToolbarController().showClipboardActions(selectedText);
         }
     }
 
@@ -506,14 +653,18 @@ public class InvalidationHandler implements Document.MessageCallback {
      * Handle a transition to OverlayState.TRANSITION state.
      */
     private void handleTransitionState(OverlayState previous) {
-        if (previous == OverlayState.SELECTION) {
-            mDocumentOverlay.hideHandle(SelectionHandle.HandleType.START);
-            mDocumentOverlay.hideHandle(SelectionHandle.HandleType.END);
-            mDocumentOverlay.hideSelections();
-        } else if (previous == OverlayState.CURSOR) {
-            mDocumentOverlay.hideHandle(SelectionHandle.HandleType.MIDDLE);
-        } else if (previous == OverlayState.GRAPHIC_SELECTION) {
-            mDocumentOverlay.hideGraphicSelection();
+        switch (previous) {
+            case SELECTION:
+                mDocumentOverlay.hideHandle(SelectionHandle.HandleType.START);
+                mDocumentOverlay.hideHandle(SelectionHandle.HandleType.END);
+                mDocumentOverlay.hideSelections();
+                break;
+            case CURSOR:
+                mDocumentOverlay.hideHandle(SelectionHandle.HandleType.MIDDLE);
+                break;
+            case GRAPHIC_SELECTION:
+                mDocumentOverlay.hideGraphicSelection();
+                break;
         }
     }
 

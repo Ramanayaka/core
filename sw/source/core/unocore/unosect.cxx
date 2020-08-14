@@ -21,19 +21,23 @@
 #include <unosection.hxx>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/text/SectionFileLink.hpp>
 
 #include <comphelper/interfacecontainer2.hxx>
+#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <cmdid.h>
 #include <hintids.hxx>
 #include <svl/urihelper.hxx>
+#include <svl/listener.hxx>
 #include <editeng/brushitem.hxx>
 #include <editeng/xmlcnitm.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <sfx2/lnkbase.hxx>
 #include <osl/mutex.hxx>
+#include <osl/diagnose.h>
 #include <vcl/svapp.hxx>
 #include <fmtclds.hxx>
 #include <unotextrange.hxx>
@@ -41,7 +45,6 @@
 #include <unoport.hxx>
 #include <redline.hxx>
 #include <unomap.hxx>
-#include <unocrsr.hxx>
 #include <section.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
@@ -49,7 +52,6 @@
 #include <sfx2/docfile.hxx>
 #include <docary.hxx>
 #include <swundo.hxx>
-#include <hints.hxx>
 #include <tox.hxx>
 #include <unoidx.hxx>
 #include <doctxm.hxx>
@@ -62,6 +64,8 @@
 #include <comphelper/string.hxx>
 
 using namespace ::com::sun::star;
+
+namespace {
 
 struct SwTextSectionProperties_Impl
 {
@@ -99,8 +103,10 @@ struct SwTextSectionProperties_Impl
 
 };
 
+}
+
 class SwXTextSection::Impl
-    : public SwClient
+    : public SvtListener
 {
 private:
     ::osl::Mutex m_Mutex; // just for OInterfaceContainerHelper2
@@ -114,24 +120,32 @@ public:
     bool                        m_bIsDescriptor;
     OUString             m_sName;
     std::unique_ptr<SwTextSectionProperties_Impl> m_pProps;
+    SwSectionFormat* m_pFormat;
 
-    Impl(   SwXTextSection & rThis,
-            SwSectionFormat *const pFormat, const bool bIndexHeader)
-        : SwClient(pFormat)
+    Impl(   SwXTextSection& rThis,
+            SwSectionFormat* const pFormat, const bool bIndexHeader)
+        : SvtListener()
         , m_rThis(rThis)
         , m_rPropSet(*aSwMapProvider.GetPropertySet(PROPERTY_MAP_SECTION))
         , m_EventListeners(m_Mutex)
         , m_bIndexHeader(bIndexHeader)
         , m_bIsDescriptor(nullptr == pFormat)
-        , m_pProps((pFormat) ? nullptr : new SwTextSectionProperties_Impl())
+        , m_pProps(pFormat ? nullptr : new SwTextSectionProperties_Impl())
+        , m_pFormat(pFormat)
     {
+        if(m_pFormat)
+            StartListening(m_pFormat->GetNotifier());
     }
 
-    SwSectionFormat * GetSectionFormat() const
+    void Attach(SwSectionFormat* pFormat)
     {
-        return static_cast<SwSectionFormat*>(const_cast<SwModify*>(
-                    GetRegisteredIn()));
+        EndListeningAll();
+        StartListening(pFormat->GetNotifier());
+        m_pFormat = pFormat;
     }
+
+    SwSectionFormat* GetSectionFormat() const
+        { return m_pFormat; }
 
     SwSectionFormat & GetSectionFormatOrThrow() const {
         SwSectionFormat *const pFormat( GetSectionFormat() );
@@ -146,36 +160,31 @@ public:
     /// @throws lang::IllegalArgumentException
     /// @throws lang::WrappedTargetException,
     /// @throws uno::RuntimeException
-    void SAL_CALL SetPropertyValues_Impl(
+    void SetPropertyValues_Impl(
             const uno::Sequence< OUString >& rPropertyNames,
             const uno::Sequence< uno::Any >& aValues);
     /// @throws beans::UnknownPropertyException
     /// @throws lang::WrappedTargetException,
     /// @throws uno::RuntimeException
-    uno::Sequence< uno::Any > SAL_CALL
+    uno::Sequence< uno::Any >
         GetPropertyValues_Impl(
             const uno::Sequence< OUString >& rPropertyNames);
-protected:
-    // SwClient
-    virtual void Modify(const SfxPoolItem *pOld, const SfxPoolItem *pNew) override;
-
+    virtual void Notify(const SfxHint& rHint) override;
 };
 
-void SwXTextSection::Impl::Modify( const SfxPoolItem *pOld, const SfxPoolItem *pNew)
+void SwXTextSection::Impl::Notify(const SfxHint& rHint)
 {
-    ClientModify(this, pOld, pNew);
-    if (GetRegisteredIn())
+    if(rHint.GetId() == SfxHintId::Dying)
     {
-        return; // core object still alive
+        m_pFormat = nullptr;
+        uno::Reference<uno::XInterface> const xThis(m_wThis);
+        if (!xThis.is())
+        {   // fdo#72695: if UNO object is already dead, don't revive it with event
+            return;
+        }
+        lang::EventObject const ev(xThis);
+        m_EventListeners.disposeAndClear(ev);
     }
-
-    uno::Reference<uno::XInterface> const xThis(m_wThis);
-    if (!xThis.is())
-    {   // fdo#72695: if UNO object is already dead, don't revive it with event
-        return;
-    }
-    lang::EventObject const ev(xThis);
-    m_EventListeners.disposeAndClear(ev);
 }
 
 SwSectionFormat * SwXTextSection::GetFormat() const
@@ -243,7 +252,7 @@ SwXTextSection::getParentSection()
 
     SwSectionFormat *const pParentFormat = rSectionFormat.GetParent();
     const uno::Reference< text::XTextSection > xRet =
-        (pParentFormat) ? CreateXTextSection(pParentFormat) : nullptr;
+        pParentFormat ? CreateXTextSection(pParentFormat) : nullptr;
     return xRet;
 }
 
@@ -287,7 +296,7 @@ SwXTextSection::attach(const uno::Reference< text::XTextRange > & xTextRange)
     }
 
     SwDoc *const pDoc =
-        (pRange) ? &pRange->GetDoc() : ((pCursor) ? pCursor->GetDoc() : nullptr);
+        pRange ? &pRange->GetDoc() : (pCursor ? pCursor->GetDoc() : nullptr);
     if (!pDoc)
     {
         throw lang::IllegalArgumentException();
@@ -303,11 +312,11 @@ SwXTextSection::attach(const uno::Reference< text::XTextRange > & xTextRange)
     {
         m_pImpl->m_sName = "TextSection";
     }
-    SectionType eType(FILE_LINK_SECTION);
+    SectionType eType(SectionType::FileLink);
     if( m_pImpl->m_pProps->m_bDDE )
-        eType = DDE_LINK_SECTION;
+        eType = SectionType::DdeLink;
     else if( m_pImpl->m_pProps->m_sLinkFileName.isEmpty() && m_pImpl->m_pProps->m_sSectionRegion.isEmpty() )
-        eType = CONTENT_SECTION;
+        eType = SectionType::Content;
     // index header section?
     if (m_pImpl->m_bIndexHeader)
     {
@@ -329,12 +338,12 @@ SwXTextSection::attach(const uno::Reference< text::XTextRange > & xTextRange)
             bool bHeaderPresent = false;
             for(size_t i = 0; i < nCount; ++i)
             {
-                if (aSectionsArr[i]->GetType() == TOX_HEADER_SECTION)
+                if (aSectionsArr[i]->GetType() == SectionType::ToxHeader)
                     bHeaderPresent = true;
             }
             if (! bHeaderPresent)
             {
-                eType = TOX_HEADER_SECTION;
+                eType = SectionType::ToxHeader;
             }
         }
     }
@@ -342,9 +351,9 @@ SwXTextSection::attach(const uno::Reference< text::XTextRange > & xTextRange)
     SwSectionData aSect(eType, pDoc->GetUniqueSectionName(&m_pImpl->m_sName));
     aSect.SetCondition(m_pImpl->m_pProps->m_sCondition);
     aSect.SetLinkFileName(m_pImpl->m_pProps->m_sLinkFileName +
-        OUStringLiteral1(sfx2::cTokenSeparator) +
+        OUStringChar(sfx2::cTokenSeparator) +
         m_pImpl->m_pProps->m_sSectionFilter +
-        OUStringLiteral1(sfx2::cTokenSeparator) +
+        OUStringChar(sfx2::cTokenSeparator) +
         m_pImpl->m_pProps->m_sSectionRegion);
 
     aSect.SetHidden(m_pImpl->m_pProps->m_bHidden);
@@ -359,40 +368,40 @@ SwXTextSection::attach(const uno::Reference< text::XTextRange > & xTextRange)
             RES_COL, RES_COL,
             RES_FTN_AT_TXTEND, RES_FRAMEDIR,
             RES_UNKNOWNATR_CONTAINER,RES_UNKNOWNATR_CONTAINER>{});
-    if (m_pImpl->m_pProps->m_pBrushItem.get())
+    if (m_pImpl->m_pProps->m_pBrushItem)
     {
         aSet.Put(*m_pImpl->m_pProps->m_pBrushItem);
     }
-    if (m_pImpl->m_pProps->m_pColItem.get())
+    if (m_pImpl->m_pProps->m_pColItem)
     {
         aSet.Put(*m_pImpl->m_pProps->m_pColItem);
     }
-    if (m_pImpl->m_pProps->m_pFootnoteItem.get())
+    if (m_pImpl->m_pProps->m_pFootnoteItem)
     {
         aSet.Put(*m_pImpl->m_pProps->m_pFootnoteItem);
     }
-    if (m_pImpl->m_pProps->m_pEndItem.get())
+    if (m_pImpl->m_pProps->m_pEndItem)
     {
         aSet.Put(*m_pImpl->m_pProps->m_pEndItem);
     }
-    if (m_pImpl->m_pProps->m_pXMLAttr.get())
+    if (m_pImpl->m_pProps->m_pXMLAttr)
     {
         aSet.Put(*m_pImpl->m_pProps->m_pXMLAttr);
     }
-    if (m_pImpl->m_pProps->m_pNoBalanceItem.get())
+    if (m_pImpl->m_pProps->m_pNoBalanceItem)
     {
         aSet.Put(*m_pImpl->m_pProps->m_pNoBalanceItem);
     }
-    if (m_pImpl->m_pProps->m_pFrameDirItem.get())
+    if (m_pImpl->m_pProps->m_pFrameDirItem)
     {
         aSet.Put(*m_pImpl->m_pProps->m_pFrameDirItem);
     }
-    if (m_pImpl->m_pProps->m_pLRSpaceItem.get())
+    if (m_pImpl->m_pProps->m_pLRSpaceItem)
     {
         aSet.Put(*m_pImpl->m_pProps->m_pLRSpaceItem);
     }
     // section password
-    if (m_pImpl->m_pProps->m_Password.getLength() > 0)
+    if (m_pImpl->m_pProps->m_Password.hasElements())
     {
         aSect.SetPassword(m_pImpl->m_pProps->m_Password);
     }
@@ -407,7 +416,7 @@ SwXTextSection::attach(const uno::Reference< text::XTextRange > & xTextRange)
                 "SwXTextSection::attach(): invalid TextRange",
                 static_cast< ::cppu::OWeakObject*>(this), 0);
     }
-    pRet->GetFormat()->Add(m_pImpl.get());
+    m_pImpl->Attach(pRet->GetFormat());
     pRet->GetFormat()->SetXObject(static_cast< ::cppu::OWeakObject*>(this));
 
     // XML import must hide sections depending on their old
@@ -422,13 +431,13 @@ SwXTextSection::attach(const uno::Reference< text::XTextRange > & xTextRange)
     {
         if (! pRet->IsConnected())
         {
-            pRet->CreateLink(CREATE_CONNECT);
+            pRet->CreateLink(LinkCreateType::Connect);
         }
         pRet->SetUpdateType( m_pImpl->m_pProps->m_bUpdateType ?
                 SfxLinkUpdateMode::ALWAYS : SfxLinkUpdateMode::ONCALL );
     }
 
-    // Undo-Klammerung hier beenden
+    // end the Undo bracketing here
     pDoc->GetIDocumentUndoRedo().EndUndo( SwUndoId::INSSECTION, nullptr );
     m_pImpl->m_pProps.reset();
     m_pImpl->m_bIsDescriptor = false;
@@ -490,21 +499,18 @@ uno::Reference< beans::XPropertySetInfo > SAL_CALL
 SwXTextSection::getPropertySetInfo()
 {
     SolarMutexGuard g;
-
-    static const uno::Reference< beans::XPropertySetInfo >  aRef =
-        m_pImpl->m_rPropSet.getPropertySetInfo();
-    return aRef;
+    return m_pImpl->m_rPropSet.getPropertySetInfo();
 }
 
 static void
 lcl_UpdateLinkType(SwSection & rSection, bool const bLinkUpdateAlways)
 {
-    if (rSection.GetType() == DDE_LINK_SECTION)
+    if (rSection.GetType() == SectionType::DdeLink)
     {
         // set update type; needs an established link
         if (!rSection.IsConnected())
         {
-            rSection.CreateLink(CREATE_CONNECT);
+            rSection.CreateLink(LinkCreateType::Connect);
         }
         rSection.SetUpdateType( bLinkUpdateAlways
             ? SfxLinkUpdateMode::ALWAYS : SfxLinkUpdateMode::ONCALL );
@@ -517,32 +523,32 @@ lcl_UpdateSection(SwSectionFormat *const pFormat,
     std::unique_ptr<SfxItemSet> const& pItemSet,
     bool const bLinkModeChanged, bool const bLinkUpdateAlways = true)
 {
-    if (pFormat)
-    {
-        SwSection & rSection = *pFormat->GetSection();
-        SwDoc *const pDoc = pFormat->GetDoc();
-        SwSectionFormats const& rFormats = pDoc->GetSections();
-        UnoActionContext aContext(pDoc);
-        for (size_t i = 0; i < rFormats.size(); ++i)
-        {
-            if (rFormats[i]->GetSection()->GetSectionName()
-                    == rSection.GetSectionName())
-            {
-                pDoc->UpdateSection(i, *pSectionData, pItemSet.get(),
-                        pDoc->IsInReading());
-                {
-                    // temporarily remove actions to allow cursor update
-                    // TODO: why? no table cursor here!
-                    UnoActionRemoveContext aRemoveContext( pDoc );
-                }
+    if (!pFormat)
+        return;
 
-                if (bLinkModeChanged)
-                {
-                    lcl_UpdateLinkType(rSection, bLinkUpdateAlways);
-                }
-                // section found and processed: break from loop
-                break;
+    SwSection & rSection = *pFormat->GetSection();
+    SwDoc *const pDoc = pFormat->GetDoc();
+    SwSectionFormats const& rFormats = pDoc->GetSections();
+    UnoActionContext aContext(pDoc);
+    for (size_t i = 0; i < rFormats.size(); ++i)
+    {
+        if (rFormats[i]->GetSection()->GetSectionName()
+                == rSection.GetSectionName())
+        {
+            pDoc->UpdateSection(i, *pSectionData, pItemSet.get(),
+                    pDoc->IsInReading());
+            {
+                // temporarily remove actions to allow cursor update
+                // TODO: why? no table cursor here!
+                UnoActionRemoveContext aRemoveContext( pDoc );
             }
+
+            if (bLinkModeChanged)
+            {
+                lcl_UpdateLinkType(rSection, bLinkUpdateAlways);
+            }
+            // section found and processed: break from loop
+            break;
         }
     }
 }
@@ -562,7 +568,7 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
     }
 
     std::unique_ptr<SwSectionData> const pSectionData(
-        (pFormat) ? new SwSectionData(*pFormat->GetSection()) : nullptr);
+        pFormat ? new SwSectionData(*pFormat->GetSection()) : nullptr);
 
     OUString const*const pPropertyNames = rPropertyNames.getConstArray();
     uno::Any const*const pValues = rValues.getConstArray();
@@ -614,7 +620,7 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                     if (!m_pProps->m_bDDE)
                     {
                         m_pProps->m_sLinkFileName =
-                            OUStringLiteral1(sfx2::cTokenSeparator) + OUStringLiteral1(sfx2::cTokenSeparator);
+                            OUStringChar(sfx2::cTokenSeparator) + OUStringChar(sfx2::cTokenSeparator);
                         m_pProps->m_bDDE = true;
                     }
                     m_pProps->m_sLinkFileName = comphelper::string::setToken(
@@ -624,10 +630,10 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                 else
                 {
                     OUString sLinkFileName(pSectionData->GetLinkFileName());
-                    if (pSectionData->GetType() != DDE_LINK_SECTION)
+                    if (pSectionData->GetType() != SectionType::DdeLink)
                     {
-                        sLinkFileName = OUStringLiteral1(sfx2::cTokenSeparator) + OUStringLiteral1(sfx2::cTokenSeparator);
-                        pSectionData->SetType(DDE_LINK_SECTION);
+                        sLinkFileName = OUStringChar(sfx2::cTokenSeparator) + OUStringChar(sfx2::cTokenSeparator);
+                        pSectionData->SetType(SectionType::DdeLink);
                     }
                     sLinkFileName = comphelper::string::setToken(sLinkFileName,
                         pEntry->nWID - WID_SECT_DDE_TYPE,
@@ -669,10 +675,10 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                 }
                 else
                 {
-                    if (pSectionData->GetType() != FILE_LINK_SECTION &&
+                    if (pSectionData->GetType() != SectionType::FileLink &&
                         !aLink.FileURL.isEmpty())
                     {
-                        pSectionData->SetType(FILE_LINK_SECTION);
+                        pSectionData->SetType(SectionType::FileLink);
                     }
                     const OUString sTmp(!aLink.FileURL.isEmpty()
                         ? URIHelper::SmartRel2Abs(
@@ -680,13 +686,13 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                             aLink.FileURL, URIHelper::GetMaybeFileHdl())
                         : OUString());
                     const OUString sFileName(
-                        sTmp + OUStringLiteral1(sfx2::cTokenSeparator) +
-                        aLink.FilterName + OUStringLiteral1(sfx2::cTokenSeparator) +
+                        sTmp + OUStringChar(sfx2::cTokenSeparator) +
+                        aLink.FilterName + OUStringChar(sfx2::cTokenSeparator) +
                         pSectionData->GetLinkFileName().getToken(2, sfx2::cTokenSeparator));
                     pSectionData->SetLinkFileName(sFileName);
                     if (sFileName.getLength() < 3)
                     {
-                        pSectionData->SetType(CONTENT_SECTION);
+                        pSectionData->SetType(SectionType::Content);
                     }
                 }
             }
@@ -702,22 +708,22 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                 }
                 else
                 {
-                    if (pSectionData->GetType() != FILE_LINK_SECTION &&
+                    if (pSectionData->GetType() != SectionType::FileLink &&
                         !sLink.isEmpty())
                     {
-                        pSectionData->SetType(FILE_LINK_SECTION);
+                        pSectionData->SetType(SectionType::FileLink);
                     }
                     OUString sSectLink(pSectionData->GetLinkFileName());
                     for (sal_Int32 i = comphelper::string::getTokenCount(sSectLink, sfx2::cTokenSeparator);
                          i < 3; ++i)
                     {
-                        sSectLink += OUStringLiteral1(sfx2::cTokenSeparator);
+                        sSectLink += OUStringChar(sfx2::cTokenSeparator);
                     }
                     sSectLink = comphelper::string::setToken(sSectLink, 2, sfx2::cTokenSeparator, sLink);
                     pSectionData->SetLinkFileName(sSectLink);
                     if (sSectLink.getLength() < 3)
                     {
-                        pSectionData->SetType(CONTENT_SECTION);
+                        pSectionData->SetType(SectionType::Content);
                     }
                 }
             }
@@ -822,7 +828,7 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                     SfxPoolItem* pPutItem = nullptr;
                     if (RES_COL == pEntry->nWID)
                     {
-                        if (!m_pProps->m_pColItem.get())
+                        if (!m_pProps->m_pColItem)
                         {
                             m_pProps->m_pColItem.reset(new SwFormatCol);
                         }
@@ -830,7 +836,7 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                     }
                     else if (RES_BACKGROUND == pEntry->nWID)
                     {
-                        if (!m_pProps->m_pBrushItem.get())
+                        if (!m_pProps->m_pBrushItem)
                         {
                             m_pProps->m_pBrushItem.reset(
                                 new SvxBrushItem(RES_BACKGROUND));
@@ -839,7 +845,7 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                     }
                     else if (RES_FTN_AT_TXTEND == pEntry->nWID)
                     {
-                        if (!m_pProps->m_pFootnoteItem.get())
+                        if (!m_pProps->m_pFootnoteItem)
                         {
                             m_pProps->m_pFootnoteItem.reset(new SwFormatFootnoteAtTextEnd);
                         }
@@ -847,7 +853,7 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                     }
                     else if (RES_END_AT_TXTEND == pEntry->nWID)
                     {
-                        if (!m_pProps->m_pEndItem.get())
+                        if (!m_pProps->m_pEndItem)
                         {
                             m_pProps->m_pEndItem.reset(new SwFormatEndAtTextEnd);
                         }
@@ -855,7 +861,7 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                     }
                     else if (RES_UNKNOWNATR_CONTAINER== pEntry->nWID)
                     {
-                        if (!m_pProps->m_pXMLAttr.get())
+                        if (!m_pProps->m_pXMLAttr)
                         {
                             m_pProps->m_pXMLAttr.reset(
                                 new SvXMLAttrContainerItem(
@@ -865,7 +871,7 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                     }
                     else if (RES_COLUMNBALANCE== pEntry->nWID)
                     {
-                        if (!m_pProps->m_pNoBalanceItem.get())
+                        if (!m_pProps->m_pNoBalanceItem)
                         {
                             m_pProps->m_pNoBalanceItem.reset(
                                 new SwFormatNoBalancedColumns(true));
@@ -874,7 +880,7 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                     }
                     else if (RES_FRAMEDIR == pEntry->nWID)
                     {
-                        if (!m_pProps->m_pFrameDirItem.get())
+                        if (!m_pProps->m_pFrameDirItem)
                         {
                             m_pProps->m_pFrameDirItem.reset(
                                 new SvxFrameDirectionItem(
@@ -884,7 +890,7 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                     }
                     else if (RES_LR_SPACE == pEntry->nWID)
                     {
-                        if (!m_pProps->m_pLRSpaceItem.get())
+                        if (!m_pProps->m_pLRSpaceItem)
                         {
                             m_pProps->m_pLRSpaceItem.reset(
                                 new SvxLRSpaceItem( RES_LR_SPACE ));
@@ -945,12 +951,12 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
     SwSectionFormat *const pFormat = GetSectionFormat();
     if (!pFormat && !m_bIsDescriptor)
     {
-        throw uno::RuntimeException();
+        throw uno::RuntimeException( "non-descriptor section without format");
     }
 
     uno::Sequence< uno::Any > aRet(rPropertyNames.getLength());
     uno::Any* pRet = aRet.getArray();
-    SwSection *const pSect = (pFormat) ? pFormat->GetSection() : nullptr;
+    SwSection *const pSect = pFormat ? pFormat->GetSection() : nullptr;
     const OUString* pPropertyNames = rPropertyNames.getConstArray();
 
     for (sal_Int32 nProperty = 0; nProperty < rPropertyNames.getLength();
@@ -968,7 +974,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
         {
             case WID_SECT_CONDITION:
             {
-                const OUString uTmp( (m_bIsDescriptor)
+                const OUString uTmp( m_bIsDescriptor
                     ? m_pProps->m_sCondition
                     : pSect->GetCondition());
                 pRet[nProperty] <<= uTmp;
@@ -986,7 +992,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                         sRet = m_pProps->m_sLinkFileName;
                     }
                 }
-                else if (DDE_LINK_SECTION == pSect->GetType())
+                else if (SectionType::DdeLink == pSect->GetType())
                 {
                     sRet = pSect->GetLinkFileName();
                 }
@@ -1016,9 +1022,9 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                         aLink.FilterName = m_pProps->m_sSectionFilter;
                     }
                 }
-                else if (FILE_LINK_SECTION == pSect->GetType())
+                else if (SectionType::FileLink == pSect->GetType())
                 {
-                    const OUString sRet( pSect->GetLinkFileName() );
+                    const OUString& sRet( pSect->GetLinkFileName() );
                     sal_Int32 nIndex(0);
                     aLink.FileURL =
                         sRet.getToken(0, sfx2::cTokenSeparator, nIndex);
@@ -1035,7 +1041,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                 {
                     sRet = m_pProps->m_sSectionRegion;
                 }
-                else if (FILE_LINK_SECTION == pSect->GetType())
+                else if (SectionType::FileLink == pSect->GetType())
                 {
                     sRet = pSect->GetLinkFileName().getToken(2,
                             sfx2::cTokenSeparator);
@@ -1045,28 +1051,28 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
             break;
             case WID_SECT_VISIBLE   :
             {
-                const bool bTemp = (m_bIsDescriptor)
+                const bool bTemp = m_bIsDescriptor
                     ? !m_pProps->m_bHidden : !pSect->IsHidden();
                 pRet[nProperty] <<= bTemp;
             }
             break;
             case WID_SECT_CURRENTLY_VISIBLE:
             {
-                const bool bTemp = (m_bIsDescriptor)
+                const bool bTemp = m_bIsDescriptor
                     ? !m_pProps->m_bCondHidden : !pSect->IsCondHidden();
                 pRet[nProperty] <<= bTemp;
             }
             break;
             case WID_SECT_PROTECTED:
             {
-                const bool bTemp = (m_bIsDescriptor)
+                const bool bTemp = m_bIsDescriptor
                     ? m_pProps->m_bProtect : pSect->IsProtect();
                 pRet[nProperty] <<= bTemp;
             }
             break;
             case WID_SECT_EDIT_IN_READONLY:
             {
-                const bool bTemp = (m_bIsDescriptor)
+                const bool bTemp = m_bIsDescriptor
                     ? m_pProps->m_bEditInReadonly : pSect->IsEditInReadonly();
                 pRet[nProperty] <<= bTemp;
             }
@@ -1084,7 +1090,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                 // search enclosing index
                 SwSection* pEnclosingSection = pSect;
                 while ((pEnclosingSection != nullptr) &&
-                       (TOX_CONTENT_SECTION != pEnclosingSection->GetType()))
+                       (SectionType::ToxContent != pEnclosingSection->GetType()))
                 {
                     pEnclosingSection = pEnclosingSection->GetParent();
                 }
@@ -1147,7 +1153,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
             break;
             case WID_SECT_PASSWORD:
             {
-                pRet[nProperty] <<= (m_bIsDescriptor)
+                pRet[nProperty] <<= m_bIsDescriptor
                     ? m_pProps->m_Password : pSect->GetPassword();
             }
             break;
@@ -1163,7 +1169,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                     const SfxPoolItem* pQueryItem = nullptr;
                     if (RES_COL == pEntry->nWID)
                     {
-                        if (!m_pProps->m_pColItem.get())
+                        if (!m_pProps->m_pColItem)
                         {
                             m_pProps->m_pColItem.reset(new SwFormatCol);
                         }
@@ -1171,7 +1177,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                     }
                     else if (RES_BACKGROUND == pEntry->nWID)
                     {
-                        if (!m_pProps->m_pBrushItem.get())
+                        if (!m_pProps->m_pBrushItem)
                         {
                             m_pProps->m_pBrushItem.reset(
                                 new SvxBrushItem(RES_BACKGROUND));
@@ -1180,7 +1186,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                     }
                     else if (RES_FTN_AT_TXTEND == pEntry->nWID)
                     {
-                        if (!m_pProps->m_pFootnoteItem.get())
+                        if (!m_pProps->m_pFootnoteItem)
                         {
                             m_pProps->m_pFootnoteItem.reset(new SwFormatFootnoteAtTextEnd);
                         }
@@ -1188,7 +1194,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                     }
                     else if (RES_END_AT_TXTEND == pEntry->nWID)
                     {
-                        if (!m_pProps->m_pEndItem.get())
+                        if (!m_pProps->m_pEndItem)
                         {
                             m_pProps->m_pEndItem.reset(new SwFormatEndAtTextEnd);
                         }
@@ -1196,7 +1202,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                     }
                     else if (RES_UNKNOWNATR_CONTAINER== pEntry->nWID)
                     {
-                        if (!m_pProps->m_pXMLAttr.get())
+                        if (!m_pProps->m_pXMLAttr)
                         {
                             m_pProps->m_pXMLAttr.reset(
                                 new SvXMLAttrContainerItem);
@@ -1205,7 +1211,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                     }
                     else if (RES_COLUMNBALANCE== pEntry->nWID)
                     {
-                        if (!m_pProps->m_pNoBalanceItem.get())
+                        if (!m_pProps->m_pNoBalanceItem)
                         {
                             m_pProps->m_pNoBalanceItem.reset(
                                 new SwFormatNoBalancedColumns);
@@ -1214,7 +1220,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                     }
                     else if (RES_FRAMEDIR == pEntry->nWID)
                     {
-                        if (!m_pProps->m_pFrameDirItem.get())
+                        if (!m_pProps->m_pFrameDirItem)
                         {
                             m_pProps->m_pFrameDirItem.reset(
                                 new SvxFrameDirectionItem(
@@ -1224,7 +1230,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                     }
                     else if (RES_LR_SPACE == pEntry->nWID)
                     {
-                        if (!m_pProps->m_pLRSpaceItem.get())
+                        if (!m_pProps->m_pLRSpaceItem)
                         {
                             m_pProps->m_pLRSpaceItem.reset(
                                 new SvxLRSpaceItem( RES_LR_SPACE ));
@@ -1257,13 +1263,15 @@ SwXTextSection::getPropertyValues(
     }
     catch (beans::UnknownPropertyException &)
     {
-        throw uno::RuntimeException("Unknown property exception caught",
-            static_cast<cppu::OWeakObject *>(this));
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw lang::WrappedTargetRuntimeException("Unknown property exception caught",
+                static_cast < cppu::OWeakObject * > ( this ), anyEx );
     }
     catch (lang::WrappedTargetException &)
     {
-        throw uno::RuntimeException("WrappedTargetException caught",
-            static_cast<cppu::OWeakObject *>(this));
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw lang::WrappedTargetRuntimeException("WrappedTargetException caught",
+                static_cast < cppu::OWeakObject * > ( this ), anyEx );
     }
 
     return aValues;
@@ -1394,7 +1402,7 @@ SwXTextSection::getPropertyStates(
                 {
                     if (RES_COL == pEntry->nWID)
                     {
-                        if (!m_pImpl->m_pProps->m_pColItem.get())
+                        if (!m_pImpl->m_pProps->m_pColItem)
                         {
                             pStates[i] = beans::PropertyState_DEFAULT_VALUE;
                         }
@@ -1405,7 +1413,7 @@ SwXTextSection::getPropertyStates(
                     }
                     else
                     {
-                        if (!m_pImpl->m_pProps->m_pBrushItem.get())
+                        if (!m_pImpl->m_pProps->m_pBrushItem)
                         {
                             pStates[i] = beans::PropertyState_DEFAULT_VALUE;
                         }
@@ -1448,7 +1456,7 @@ SwXTextSection::setPropertyToDefault(const OUString& rPropertyName)
     }
 
     std::unique_ptr<SwSectionData> const pSectionData(
-        (pFormat) ? new SwSectionData(*pFormat->GetSection()) : nullptr);
+        pFormat ? new SwSectionData(*pFormat->GetSection()) : nullptr);
 
     std::unique_ptr<SfxItemSet> pNewAttrSet;
     bool bLinkModeChanged = false;
@@ -1459,7 +1467,7 @@ SwXTextSection::setPropertyToDefault(const OUString& rPropertyName)
         {
             if (m_pImpl->m_bIsDescriptor)
             {
-                (m_pImpl->m_pProps->m_sCondition).clear();
+                m_pImpl->m_pProps->m_sCondition.clear();
             }
             else
             {
@@ -1475,13 +1483,13 @@ SwXTextSection::setPropertyToDefault(const OUString& rPropertyName)
             if (m_pImpl->m_bIsDescriptor)
             {
                 m_pImpl->m_pProps->m_bDDE = false;
-                (m_pImpl->m_pProps->m_sLinkFileName).clear();
-                (m_pImpl->m_pProps->m_sSectionRegion).clear();
-                (m_pImpl->m_pProps->m_sSectionFilter).clear();
+                m_pImpl->m_pProps->m_sLinkFileName.clear();
+                m_pImpl->m_pProps->m_sSectionRegion.clear();
+                m_pImpl->m_pProps->m_sSectionFilter.clear();
             }
             else
             {
-                pSectionData->SetType(CONTENT_SECTION);
+                pSectionData->SetType(SectionType::Content);
             }
         break;
         case WID_SECT_DDE_AUTOUPDATE:
@@ -1688,15 +1696,8 @@ void SAL_CALL SwXTextSection::setName(const OUString& rName)
 OUString SAL_CALL
 SwXTextSection::getImplementationName()
 {
-    return OUString("SwXTextSection");
+    return "SwXTextSection";
 }
-
-static char const*const g_ServicesTextSection[] =
-{
-    "com.sun.star.text.TextContent",
-    "com.sun.star.text.TextSection",
-    "com.sun.star.document.LinkTarget",
-};
 
 sal_Bool SAL_CALL SwXTextSection::supportsService(const OUString& rServiceName)
 {
@@ -1706,9 +1707,11 @@ sal_Bool SAL_CALL SwXTextSection::supportsService(const OUString& rServiceName)
 uno::Sequence< OUString > SAL_CALL
 SwXTextSection::getSupportedServiceNames()
 {
-    return ::sw::GetSupportedServiceNamesImpl(
-                SAL_N_ELEMENTS(g_ServicesTextSection),
-                g_ServicesTextSection);
+    return {
+        "com.sun.star.text.TextContent",
+        "com.sun.star.text.TextSection",
+        "com.sun.star.document.LinkTarget"
+    };
 }
 
 // MetadatableMixin
@@ -1724,7 +1727,7 @@ uno::Reference<frame::XModel> SwXTextSection::GetModel()
     if (pSectionFormat)
     {
         SwDocShell const*const pShell( pSectionFormat->GetDoc()->GetDocShell() );
-        return (pShell) ? pShell->GetModel() : nullptr;
+        return pShell ? pShell->GetModel() : nullptr;
     }
     return nullptr;
 }

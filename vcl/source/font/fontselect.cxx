@@ -18,25 +18,19 @@
  */
 
 #include <sal/config.h>
+#include <o3tl/safeint.hxx>
+#include <tools/gen.hxx>
+#include <vcl/font.hxx>
 
 #include <PhysicalFontFace.hxx>
-#include "svdata.hxx"
+#include <fontselect.hxx>
 
 // These mustn't conflict with font name lists which use ; and ,
-const char FontSelectPatternAttributes::FEAT_PREFIX = ':';
-const char FontSelectPatternAttributes::FEAT_SEPARATOR = '&';
+const char FontSelectPattern::FEAT_PREFIX = ':';
+const char FontSelectPattern::FEAT_SEPARATOR = '&';
 
 FontSelectPattern::FontSelectPattern( const vcl::Font& rFont,
-    const OUString& rSearchName, const Size& rSize, float fExactHeight)
-    : FontSelectPatternAttributes(rFont, rSearchName, rSize, fExactHeight)
-    , mpFontData( nullptr )
-    , mpFontInstance( nullptr )
-{
-}
-
-
-FontSelectPatternAttributes::FontSelectPatternAttributes( const vcl::Font& rFont,
-    const OUString& rSearchName, const Size& rSize, float fExactHeight )
+    const OUString& rSearchName, const Size& rSize, float fExactHeight, bool bNonAntialias)
     : maSearchName( rSearchName )
     , mnWidth( rSize.Width() )
     , mnHeight( rSize.Height() )
@@ -44,7 +38,7 @@ FontSelectPatternAttributes::FontSelectPatternAttributes( const vcl::Font& rFont
     , mnOrientation( rFont.GetOrientation() )
     , meLanguage( rFont.GetLanguage() )
     , mbVertical( rFont.IsVertical() )
-    , mbNonAntialiased( false )
+    , mbNonAntialiased(bNonAntialias)
     , mbEmbolden( false )
 {
     maTargetName = GetFamilyName();
@@ -52,7 +46,7 @@ FontSelectPatternAttributes::FontSelectPatternAttributes( const vcl::Font& rFont
     rFont.GetFontAttributes( *this );
 
     // normalize orientation between 0 and 3600
-    if( 3600 <= (unsigned)mnOrientation )
+    if( 3600 <= static_cast<unsigned>(mnOrientation) )
     {
         if( mnOrientation >= 0 )
             mnOrientation %= 3600;
@@ -62,15 +56,15 @@ FontSelectPatternAttributes::FontSelectPatternAttributes( const vcl::Font& rFont
 
     // normalize width and height
     if( mnHeight < 0 )
-        mnHeight = -mnHeight;
+        mnHeight = o3tl::saturating_toggle_sign(mnHeight);
     if( mnWidth < 0 )
-        mnWidth = -mnWidth;
+        mnWidth = o3tl::saturating_toggle_sign(mnWidth);
 }
 
 
 // NOTE: this ctor is still used on Windows. Do not remove.
 #ifdef _WIN32
-FontSelectPatternAttributes::FontSelectPatternAttributes( const PhysicalFontFace& rFontData,
+FontSelectPattern::FontSelectPattern( const PhysicalFontFace& rFontData,
     const Size& rSize, float fExactHeight, int nOrientation, bool bVertical )
     : FontAttributes( rFontData )
     , mnWidth( rSize.Width() )
@@ -86,26 +80,14 @@ FontSelectPatternAttributes::FontSelectPatternAttributes( const PhysicalFontFace
     // NOTE: no normalization for width/height/orientation
 }
 
-FontSelectPattern::FontSelectPattern( const PhysicalFontFace& rFontData,
-    const Size& rSize, float fExactHeight, int nOrientation, bool bVertical )
-    : FontSelectPatternAttributes(rFontData, rSize, fExactHeight, nOrientation, bVertical)
-    , mpFontData( &rFontData )
-    , mpFontInstance( nullptr )
-{
-}
 #endif
 
-void FontSelectPattern::copyAttributes(const FontSelectPatternAttributes &rAttributes)
-{
-    static_cast<FontSelectPatternAttributes&>(*this) = rAttributes;
-}
-
-size_t FontSelectPatternAttributes::hashCode() const
+size_t FontSelectPattern::hashCode() const
 {
     // TODO: does it pay off to improve this hash function?
     size_t nHash;
     // check for features and generate a unique hash if necessary
-    if (maTargetName.indexOf(FontSelectPatternAttributes::FEAT_PREFIX)
+    if (maTargetName.indexOf(FontSelectPattern::FEAT_PREFIX)
         != -1)
     {
         nHash = maTargetName.hashCode();
@@ -114,17 +96,17 @@ size_t FontSelectPatternAttributes::hashCode() const
     {
         nHash = maSearchName.hashCode();
     }
-    nHash += 11 * mnHeight;
+    nHash += 11U * mnHeight;
     nHash += 19 * GetWeight();
     nHash += 29 * GetItalic();
     nHash += 37 * mnOrientation;
-    nHash += 41 * (sal_uInt16)meLanguage;
+    nHash += 41 * static_cast<sal_uInt16>(meLanguage);
     if( mbVertical )
         nHash += 53;
     return nHash;
 }
 
-bool FontSelectPatternAttributes::operator==(const FontSelectPatternAttributes& rOther) const
+bool FontSelectPattern::operator==(const FontSelectPattern& rOther) const
 {
     if (!CompareDeviceIndependentFontAttributes(rOther))
         return false;

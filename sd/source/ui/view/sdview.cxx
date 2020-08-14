@@ -18,73 +18,56 @@
  */
 
 #include <com/sun/star/embed/NoVisualAreaSizeException.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/linguistic2/XSpellChecker1.hpp>
 
-#include "View.hxx"
+#include <View.hxx>
+#include <editeng/outlobj.hxx>
 #include <editeng/unolingu.hxx>
-#include <sfx2/request.hxx>
 #include <svx/obj3d.hxx>
 #include <svx/fmview.hxx>
 #include <editeng/outliner.hxx>
-#include <svx/svxids.hrc>
 #include <svx/svdograf.hxx>
 #include <svx/svdoole2.hxx>
 #include <svx/svdundo.hxx>
 
 #include <vcl/settings.hxx>
-#include <vcl/msgbox.hxx>
 
 #include <sfx2/dispatch.hxx>
-#include <sfx2/app.hxx>
 #include <svx/svdpagv.hxx>
-#include <sfx2/docfile.hxx>
 #include <svx/svdoutl.hxx>
 #include <svx/sdr/contact/displayinfo.hxx>
 
 #include <svx/svdetc.hxx>
 #include <editeng/editstat.hxx>
 
-#include <svx/dialogs.hrc>
 #include <sfx2/viewfrm.hxx>
-#include <vcl/EnumContext.hxx>
-#include <svx/svdopage.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <svx/xlndsit.hxx>
-#include <svx/xlineit0.hxx>
-#include <svx/xlnclit.hxx>
-#include <svx/sidebar/ContextChangeEventMultiplexer.hxx>
-#include <vcl/virdev.hxx>
+#include <svx/xfillit0.hxx>
 
-#include "app.hrc"
-#include "strings.hrc"
-#include "Window.hxx"
-#include "Client.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-#include "sdmod.hxx"
-#include "sdpage.hxx"
-#include "glob.hrc"
-#include "sdresid.hxx"
-#include "DrawViewShell.hxx"
-#include "futext.hxx"
-#include "fuinsfil.hxx"
-#include "slideshow.hxx"
-#include "stlpool.hxx"
-#include "FrameView.hxx"
-#include "ViewClipboard.hxx"
-#include "undo/undomanager.hxx"
+#include <app.hrc>
+#include <strings.hrc>
+#include <Window.hxx>
+#include <Client.hxx>
+#include <drawdoc.hxx>
+#include <DrawDocShell.hxx>
+#include <sdmod.hxx>
+#include <sdpage.hxx>
+#include <sdresid.hxx>
+#include <unokywds.hxx>
+#include <ViewClipboard.hxx>
+#include <undo/undomanager.hxx>
 #include <svx/sdr/contact/viewobjectcontact.hxx>
 #include <svx/sdr/contact/viewcontact.hxx>
 #include <svx/svdotable.hxx>
-#include "EventMultiplexer.hxx"
-#include "ViewShellBase.hxx"
-#include "ViewShellManager.hxx"
+#include <EventMultiplexer.hxx>
+#include <ViewShellBase.hxx>
+#include <ViewShell.hxx>
 
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/color/bcolor.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
 #include <drawinglayer/primitive2d/textlayoutdevice.hxx>
-#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 #include <svx/sdr/contact/objectcontact.hxx>
 #include <svx/sdr/table/tablecontroller.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
@@ -94,7 +77,7 @@
 #include <comphelper/lok.hxx>
 #include <sfx2/lokhelper.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
-#include "DrawController.hxx"
+#include <DrawController.hxx>
 
 #include <memory>
 #include <numeric>
@@ -104,16 +87,15 @@ using namespace com::sun::star::uno;
 using namespace sdr::table;
 namespace sd {
 
-
-View::View(SdDrawDocument& rDrawDoc, OutputDevice* pOutDev,
-               ViewShell* pViewShell)
-  : FmFormView(&rDrawDoc, pOutDev),
+View::View(
+    SdDrawDocument& rDrawDoc,
+    OutputDevice* pOutDev,
+    ViewShell* pViewShell)
+:   FmFormView(rDrawDoc, pOutDev),
     mrDoc(rDrawDoc),
     mpDocSh(rDrawDoc.GetDocSh()),
     mpViewSh(pViewShell),
-    mpDragSrcMarkList(nullptr),
     mpDropMarkerObj(nullptr),
-    mpDropMarker(nullptr),
     mnDragSrcPgNum(SDRPAGE_NOTFOUND),
     mnAction(DND_ACTION_NONE),
     maDropErrorIdle("sd View DropError"),
@@ -136,22 +118,16 @@ View::View(SdDrawDocument& rDrawDoc, OutputDevice* pOutDev,
 
     SetMinMoveDistancePixel(2);
     SetHitTolerancePixel(2);
-    SetMeasureLayer(SdResId(STR_LAYER_MEASURELINES));
+    SetMeasureLayer(sUNO_LayerName_measurelines);
 
     // Timer for delayed drop (has to be for MAC)
     maDropErrorIdle.SetInvokeHandler( LINK(this, View, DropErrorHdl) );
-    maDropErrorIdle.SetPriority(TaskPriority::MEDIUM);
     maDropInsertFileIdle.SetInvokeHandler( LINK(this, View, DropInsertFileHdl) );
-    maDropInsertFileIdle.SetPriority(TaskPriority::MEDIUM);
 }
 
 void View::ImplClearDrawDropMarker()
 {
-    if(mpDropMarker)
-    {
-        delete mpDropMarker;
-        mpDropMarker = nullptr;
-    }
+    mpDropMarker.reset();
 }
 
 View::~View()
@@ -173,6 +149,8 @@ View::~View()
     }
 }
 
+namespace {
+
 class ViewRedirector : public sdr::contact::ViewObjectContactRedirector
 {
 public:
@@ -185,6 +163,8 @@ public:
         const sdr::contact::DisplayInfo& rDisplayInfo) override;
 };
 
+}
+
 ViewRedirector::ViewRedirector()
 {
 }
@@ -196,20 +176,21 @@ drawinglayer::primitive2d::Primitive2DContainer ViewRedirector::createRedirected
     SdrObject* pObject = rOriginal.GetViewContact().TryToGetSdrObject();
     drawinglayer::primitive2d::Primitive2DContainer xRetval;
 
-    if(pObject && pObject->GetPage())
+    if(pObject && pObject->getSdrPageFromSdrObject())
     {
-        const bool bDoCreateGeometry(pObject->GetPage()->checkVisibility( rOriginal, rDisplayInfo, true ));
+        const bool bDoCreateGeometry(pObject->getSdrPageFromSdrObject()->checkVisibility( rOriginal, rDisplayInfo, true ));
 
-        if(!bDoCreateGeometry && !(( pObject->GetObjInventor() == SdrInventor::Default ) && ( pObject->GetObjIdentifier() == OBJ_PAGE )) )
+        if(!bDoCreateGeometry &&
+            (( pObject->GetObjInventor() != SdrInventor::Default ) || ( pObject->GetObjIdentifier() != OBJ_PAGE )) )
             return xRetval;
 
-        PresObjKind eKind(PRESOBJ_NONE);
+        PresObjKind eKind(PresObjKind::NONE);
         const bool bSubContentProcessing(rDisplayInfo.GetSubContentActive());
-        const bool bIsMasterPageObject(pObject->GetPage()->IsMasterPage());
+        const bool bIsMasterPageObject(pObject->getSdrPageFromSdrObject()->IsMasterPage());
         const bool bIsPrinting(rOriginal.GetObjectContact().isOutputToPrinter());
         const SdrPageView* pPageView = rOriginal.GetObjectContact().TryToGetSdrPageView();
         const SdrPage* pVisualizedPage = GetSdrPageFromXDrawPage(rOriginal.GetObjectContact().getViewInformation2D().getVisualizedPage());
-        const SdPage* pObjectsSdPage = dynamic_cast< SdPage* >(pObject->GetPage());
+        const SdPage* pObjectsSdPage = dynamic_cast< SdPage* >(pObject->getSdrPageFromSdrObject());
         const bool bIsInsidePageObj(pPageView && pPageView->GetPage() != pVisualizedPage);
 
         // check if we need to draw a placeholder border. Never do it for
@@ -222,7 +203,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewRedirector::createRedirected
             {
                 if( !bSubContentProcessing || !pObject->IsNotVisibleAsMaster() )
                 {
-                    eKind = pObjectsSdPage ? pObjectsSdPage->GetPresObjKind(pObject) : PRESOBJ_NONE;
+                    eKind = pObjectsSdPage ? pObjectsSdPage->GetPresObjKind(pObject) : PresObjKind::NONE;
                     bCreateOutline = true;
                 }
             }
@@ -232,7 +213,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewRedirector::createRedirected
                 {
                     eKind = pObjectsSdPage->GetPresObjKind(pObject);
 
-                    if((eKind == PRESOBJ_FOOTER) || (eKind == PRESOBJ_HEADER) || (eKind == PRESOBJ_DATETIME) || (eKind == PRESOBJ_SLIDENUMBER) )
+                    if((eKind == PresObjKind::Footer) || (eKind == PresObjKind::Header) || (eKind == PresObjKind::DateTime) || (eKind == PresObjKind::SlideNumber) )
                     {
                         if( !bSubContentProcessing )
                         {
@@ -261,7 +242,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewRedirector::createRedirected
                 if( aColor.bIsVisible )
                 {
                     // get basic object transformation
-                    const basegfx::BColor aRGBColor(Color(aColor.nColor).getBColor());
+                    const basegfx::BColor aRGBColor(aColor.nColor.getBColor());
                     basegfx::B2DHomMatrix aObjectMatrix;
                     basegfx::B2DPolyPolygon aObjectPolyPolygon;
                     pObject->TRGetBaseGeometry(aObjectMatrix, aObjectPolyPolygon);
@@ -269,7 +250,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewRedirector::createRedirected
                     // create dashed border
                     {
                         // create object polygon
-                        basegfx::B2DPolygon aPolygon(basegfx::tools::createUnitPolygon());
+                        basegfx::B2DPolygon aPolygon(basegfx::utils::createUnitPolygon());
                         aPolygon.transform(aObjectMatrix);
 
                         // create line and stroke attribute
@@ -298,7 +279,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewRedirector::createRedirected
 
                         switch( eKind )
                         {
-                            case PRESOBJ_TITLE:
+                            case PresObjKind::Title:
                             {
                                 if(pObjectsSdPage && pObjectsSdPage->GetPageKind() == PageKind::Standard)
                                 {
@@ -308,37 +289,37 @@ drawinglayer::primitive2d::Primitive2DContainer ViewRedirector::createRedirected
 
                                 break;
                             }
-                            case PRESOBJ_OUTLINE:
+                            case PresObjKind::Outline:
                             {
                                 static OUString aOutlineAreaStr(SdResId(STR_PLACEHOLDER_DESCRIPTION_OUTLINE));
                                 aObjectString = aOutlineAreaStr;
                                 break;
                             }
-                            case PRESOBJ_FOOTER:
+                            case PresObjKind::Footer:
                             {
                                 static OUString aFooterAreaStr(SdResId(STR_PLACEHOLDER_DESCRIPTION_FOOTER));
                                 aObjectString = aFooterAreaStr;
                                 break;
                             }
-                            case PRESOBJ_HEADER:
+                            case PresObjKind::Header:
                             {
                                 static OUString aHeaderAreaStr(SdResId(STR_PLACEHOLDER_DESCRIPTION_HEADER));
                                 aObjectString = aHeaderAreaStr;
                                 break;
                             }
-                            case PRESOBJ_DATETIME:
+                            case PresObjKind::DateTime:
                             {
                                 static OUString aDateTimeStr(SdResId(STR_PLACEHOLDER_DESCRIPTION_DATETIME));
                                 aObjectString = aDateTimeStr;
                                 break;
                             }
-                            case PRESOBJ_NOTES:
+                            case PresObjKind::Notes:
                             {
                                 static OUString aDateTimeStr(SdResId(STR_PLACEHOLDER_DESCRIPTION_NOTES));
                                 aObjectString = aDateTimeStr;
                                 break;
                             }
-                            case PRESOBJ_SLIDENUMBER:
+                            case PresObjKind::SlideNumber:
                             {
                                 if(pObjectsSdPage && pObjectsSdPage->GetPageKind() == PageKind::Standard)
                                 {
@@ -373,7 +354,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewRedirector::createRedirected
 
                             // use a text size factor to get more reliable text sizes from the text layouter
                             // (and from vcl), tipp from HDU
-                            static sal_uInt32 nTextSizeFactor(100);
+                            static const sal_uInt32 nTextSizeFactor(100);
 
                             // use a factor to get more linear text size calculations
                             aScaledVclFont.SetFontHeight( 500 * nTextSizeFactor );
@@ -410,7 +391,7 @@ drawinglayer::primitive2d::Primitive2DContainer ViewRedirector::createRedirected
                                     false));
 
                             // fill text matrix
-                            const basegfx::B2DHomMatrix aTextMatrix(basegfx::tools::createScaleShearXRotateTranslateB2DHomMatrix(
+                            const basegfx::B2DHomMatrix aTextMatrix(basegfx::utils::createScaleShearXRotateTranslateB2DHomMatrix(
                                 aTextSizeAttribute.getX(), aTextSizeAttribute.getY(),
                                 fShearX,
                                 fRotate,
@@ -460,44 +441,38 @@ drawinglayer::primitive2d::Primitive2DContainer ViewRedirector::createRedirected
 /**
  * The event will be forwarded to the View
  */
-void View::CompleteRedraw(OutputDevice* pOutDev, const vcl::Region& rReg, sdr::contact::ViewObjectContactRedirector* pRedirector /*=0L*/)
+void View::CompleteRedraw(OutputDevice* pOutDev, const vcl::Region& rReg, sdr::contact::ViewObjectContactRedirector* pRedirector /*=0*/)
 {
     // execute ??
-    if (mnLockRedrawSmph == 0)
+    if (mnLockRedrawSmph != 0)
+        return;
+
+    SdrPageView* pPgView = GetSdrPageView();
+
+    if (pPgView)
     {
-        SdrPageView* pPgView = GetSdrPageView();
-
-        if (pPgView)
+        SdPage* pPage = static_cast<SdPage*>( pPgView->GetPage() );
+        if( pPage )
         {
-            SdPage* pPage = static_cast<SdPage*>( pPgView->GetPage() );
-            if( pPage )
-            {
-                SdrOutliner& rOutl = mrDoc.GetDrawOutliner();
-                bool bScreenDisplay(true);
+            SdrOutliner& rOutl = mrDoc.GetDrawOutliner();
+            bool bScreenDisplay(true);
 
-                if(bScreenDisplay && pOutDev && OUTDEV_PRINTER == pOutDev->GetOutDevType())
-                {
-                    // #i75566# printing; suppress AutoColor BackgroundColor generation
-                    // for visibility reasons by giving GetPageBackgroundColor()
-                    // the needed hint
-                    bScreenDisplay = false;
-                }
+            // #i75566# printing; suppress AutoColor BackgroundColor generation
+            // for visibility reasons by giving GetPageBackgroundColor()
+            // the needed hint
+            // #i75566# PDF export; suppress AutoColor BackgroundColor generation (see printing)
+            if (pOutDev && ((OUTDEV_PRINTER == pOutDev->GetOutDevType())
+                    || (OUTDEV_PDF == pOutDev->GetOutDevType())))
+                bScreenDisplay = false;
 
-                if(bScreenDisplay && pOutDev && pOutDev->GetPDFWriter())
-                {
-                    // #i75566# PDF export; suppress AutoColor BackgroundColor generation (see above)
-                    bScreenDisplay = false;
-                }
-
-                // #i75566# Name change GetBackgroundColor -> GetPageBackgroundColor and
-                // hint value if screen display. Only then the AutoColor mechanisms shall be applied
-                rOutl.SetBackgroundColor( pPage->GetPageBackgroundColor(pPgView, bScreenDisplay) );
-            }
+            // #i75566# Name change GetBackgroundColor -> GetPageBackgroundColor and
+            // hint value if screen display. Only then the AutoColor mechanisms shall be applied
+            rOutl.SetBackgroundColor( pPage->GetPageBackgroundColor(pPgView, bScreenDisplay) );
         }
-
-        ViewRedirector aViewRedirector;
-        FmFormView::CompleteRedraw(pOutDev, rReg, pRedirector ? pRedirector : &aViewRedirector);
     }
+
+    ViewRedirector aViewRedirector;
+    FmFormView::CompleteRedraw(pOutDev, rReg, pRedirector ? pRedirector : &aViewRedirector);
 }
 
 void View::MarkListHasChanged()
@@ -508,7 +483,7 @@ void View::MarkListHasChanged()
         maSmartTags.deselect();
 }
 
-bool View::SetAttributes(const SfxItemSet& rSet, bool bReplaceAll)
+bool View::SetAttributes(const SfxItemSet& rSet, bool bReplaceAll, bool /*bSlide*/, bool /*bMaster*/)
 {
     bool bOk = FmFormView::SetAttributes(rSet, bReplaceAll);
     return bOk;
@@ -532,7 +507,7 @@ bool View::IsPresObjSelected(bool bOnPage, bool bOnMasterPage, bool bCheckPresOb
         /* Drag&Drop is in progress
            Source and destination page are different:
            we use the saved mark list */
-        pMarkList = mpDragSrcMarkList;
+        pMarkList = mpDragSrcMarkList.get();
     }
     else
     {
@@ -555,7 +530,7 @@ bool View::IsPresObjSelected(bool bOnPage, bool bOnMasterPage, bool bCheckPresOb
 
         if ( pObj && ( bCheckPresObjListOnly || pObj->IsEmptyPresObj() || pObj->GetUserCall() ) )
         {
-            pPage = static_cast<SdPage*>( pObj->GetPage() );
+            pPage = static_cast<SdPage*>( pObj->getSdrPageFromSdrObject() );
             bMasterPage = pPage && pPage->IsMasterPage();
 
             if ( (bMasterPage && bOnMasterPage) || (!bMasterPage && bOnPage) )
@@ -566,7 +541,7 @@ bool View::IsPresObjSelected(bool bOnPage, bool bOnMasterPage, bool bCheckPresOb
                     {
                         PresObjKind eKind = pPage->GetPresObjKind(pObj);
 
-                        if((eKind != PRESOBJ_FOOTER) && (eKind != PRESOBJ_HEADER) && (eKind != PRESOBJ_DATETIME) && (eKind != PRESOBJ_SLIDENUMBER) )
+                        if((eKind != PresObjKind::Footer) && (eKind != PresObjKind::Header) && (eKind != PresObjKind::DateTime) && (eKind != PresObjKind::SlideNumber) )
                             bSelected = true;
                     }
                     else
@@ -578,7 +553,7 @@ bool View::IsPresObjSelected(bool bOnPage, bool bOnMasterPage, bool bCheckPresOb
         }
     }
 
-    if (pMarkList != mpDragSrcMarkList)
+    if (pMarkList != mpDragSrcMarkList.get())
     {
        delete pMarkList;
     }
@@ -603,7 +578,8 @@ void View::SelectAll()
 bool View::SetStyleSheet(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAttr)
 {
     // forward to SdrView
-    return FmFormView::SetStyleSheet(pStyleSheet, bDontRemoveHardAttr);
+    FmFormView::SetStyleSheet(pStyleSheet, bDontRemoveHardAttr);
+    return true;
 }
 
 /**
@@ -653,14 +629,14 @@ bool View::SdrBeginTextEdit(
     SdrOutliner* pOutl, OutlinerView* pGivenOutlinerView,
     bool bDontDeleteOutliner, bool bOnlyOneView, bool bGrabFocus )
 {
-    SdrPage* pPage = pObj ? pObj->GetPage() : nullptr;
+    SdrPage* pPage = pObj ? pObj->getSdrPageFromSdrObject() : nullptr;
     bool bMasterPage = pPage && pPage->IsMasterPage();
 
     GetViewShell()->GetViewShellBase().GetEventMultiplexer()->MultiplexEvent(
         EventMultiplexerEventId::BeginTextEdit, static_cast<void*>(pObj) );
 
     if( pOutl==nullptr && pObj )
-        pOutl = SdrMakeOutliner(OutlinerMode::TextObject, *pObj->GetModel());
+        pOutl = SdrMakeOutliner(OutlinerMode::TextObject, pObj->getSdrModelFromSdrObject()).release();
 
     // make draw&impress specific initialisations
     if( pOutl )
@@ -700,55 +676,51 @@ bool View::SdrBeginTextEdit(
     {
         mpViewSh->GetViewShellBase().GetDrawController().FireSelectionChangeListener();
 
+        if (pObj && pObj->GetObjIdentifier() == OBJ_TABLE)
+            mpViewSh->UpdateScrollBars();
+
         if (comphelper::LibreOfficeKit::isActive())
         {
             if (OutlinerView* pView = GetTextEditOutlinerView())
             {
                 ::tools::Rectangle aRectangle = pView->GetOutputArea();
                 if (pWin && pWin->GetMapMode().GetMapUnit() == MapUnit::Map100thMM)
-                    aRectangle = OutputDevice::LogicToLogic(aRectangle, MapUnit::Map100thMM, MapUnit::MapTwip);
+                    aRectangle = OutputDevice::LogicToLogic(aRectangle, MapMode(MapUnit::Map100thMM), MapMode(MapUnit::MapTwip));
                 OString sRectangle = aRectangle.toString();
                 SfxLokHelper::notifyOtherViews(&mpViewSh->GetViewShellBase(), LOK_CALLBACK_VIEW_LOCK, "rectangle", sRectangle);
             }
         }
     }
 
-    if (bReturn)
+    if (::Outliner* pOL = bReturn ? GetTextEditOutliner() : nullptr)
     {
-        ::Outliner* pOL = GetTextEditOutliner();
-
-        if( pObj && pObj->GetPage() )
+        if (pObj)
         {
-            Color aBackground;
             if( pObj->GetObjInventor() == SdrInventor::Default && pObj->GetObjIdentifier() == OBJ_TABLE )
             {
-                aBackground = GetTextEditBackgroundColor(*this);
+                Color aBackground = GetTextEditBackgroundColor(*this);
+                pOL->SetBackgroundColor( aBackground  );
             }
             else
             {
-                aBackground = pObj->GetPage()->GetPageBackgroundColor(pPV);
+                pObj->setSuitableOutlinerBg(*pOL);
             }
-            if (pOL != nullptr)
-                pOL->SetBackgroundColor( aBackground  );
         }
 
-        if (pOL != nullptr)
-        {
-            pOL->SetParaInsertedHdl(LINK(this, View, OnParagraphInsertedHdl));
-            pOL->SetParaRemovingHdl(LINK(this, View, OnParagraphRemovingHdl));
-        }
+        pOL->SetParaInsertedHdl(LINK(this, View, OnParagraphInsertedHdl));
+        pOL->SetParaRemovingHdl(LINK(this, View, OnParagraphRemovingHdl));
     }
 
     if (bMasterPage && bReturn && pOutl)
     {
         const SdrTextObj* pTextObj = pOutl->GetTextObj();
-        const SdPage* pSdPage = pTextObj ? static_cast<const SdPage*>(pTextObj->GetPage()) : nullptr;
-        const PresObjKind eKind = pSdPage ? pSdPage->GetPresObjKind(const_cast<SdrTextObj*>(pTextObj)) : PRESOBJ_NONE;
+        const SdPage* pSdPage = pTextObj ? static_cast<const SdPage*>(pTextObj->getSdrPageFromSdrObject()) : nullptr;
+        const PresObjKind eKind = pSdPage ? pSdPage->GetPresObjKind(const_cast<SdrTextObj*>(pTextObj)) : PresObjKind::NONE;
         switch (eKind)
         {
-            case PRESOBJ_TITLE:
-            case PRESOBJ_OUTLINE:
-            case PRESOBJ_TEXT:
+            case PresObjKind::Title:
+            case PresObjKind::Outline:
+            case PresObjKind::Text:
                 maMasterViewFilter.Start(pOutl);
                 break;
             default:
@@ -764,9 +736,9 @@ SdrEndTextEditKind View::SdrEndTextEdit(bool bDontDeleteReally)
 {
     maMasterViewFilter.End();
 
-    SdrObjectWeakRef xObj( GetTextEditObject() );
+    ::tools::WeakReference<SdrTextObj> xObj( GetTextEditObject() );
 
-    bool bDefaultTextRestored = RestoreDefaultText( dynamic_cast< SdrTextObj* >( GetTextEditObject() ) );
+    bool bDefaultTextRestored = RestoreDefaultText( xObj.get() );
 
     SdrEndTextEditKind eKind = FmFormView::SdrEndTextEdit(bDontDeleteReally);
 
@@ -783,10 +755,10 @@ SdrEndTextEditKind View::SdrEndTextEdit(bool bDontDeleteReally)
     }
     else if( xObj.is() && xObj->IsEmptyPresObj() )
     {
-        SdrTextObj* pObj = dynamic_cast< SdrTextObj* >( xObj.get() );
+        SdrTextObj* pObj = xObj.get();
         if( pObj && pObj->HasText() )
         {
-            SdrPage* pPage = pObj->GetPage();
+            SdrPage* pPage = pObj->getSdrPageFromSdrObject();
             if( !pPage || !pPage->IsMasterPage() )
                 pObj->SetEmptyPresObj( false );
         }
@@ -807,7 +779,7 @@ SdrEndTextEditKind View::SdrEndTextEdit(bool bDontDeleteReally)
 
         }
 
-        SdPage* pPage = dynamic_cast< SdPage* >( xObj->GetPage() );
+        SdPage* pPage = dynamic_cast< SdPage* >( xObj->getSdrPageFromSdrObject() );
         if( pPage )
             pPage->onEndTextEdit( xObj.get() );
     }
@@ -825,7 +797,7 @@ bool View::RestoreDefaultText( SdrTextObj* pTextObj )
     {
         if( !pTextObj->HasText() )
         {
-            SdPage* pPage = dynamic_cast< SdPage* >( pTextObj->GetPage() );
+            SdPage* pPage = dynamic_cast< SdPage* >( pTextObj->getSdrPageFromSdrObject() );
 
             if(pPage)
             {
@@ -850,7 +822,7 @@ bool View::RestoreDefaultText( SdrTextObj* pTextObj )
  */
 void View::SetMarkedOriginalSize()
 {
-    SdrUndoGroup* pUndoGroup = new SdrUndoGroup(mrDoc);
+    std::unique_ptr<SdrUndoGroup> pUndoGroup(new SdrUndoGroup(mrDoc));
     const size_t nCount = GetMarkedObjectCount();
     bool            bOK = false;
 
@@ -867,7 +839,7 @@ void View::SetMarkedOriginalSize()
                 {
                     // TODO/LEAN: working with VisualArea can switch object to running state
 
-                       sal_Int64 nAspect = static_cast<SdrOle2Obj*>(pObj)->GetAspect();
+                    sal_Int64 nAspect = static_cast<SdrOle2Obj*>(pObj)->GetAspect();
                     Size aOleSize;
 
                     if ( nAspect == embed::Aspects::MSOLE_ICON )
@@ -882,7 +854,7 @@ void View::SetMarkedOriginalSize()
                         try
                         {
                             awt::Size aSz = xObj->getVisualAreaSize( nAspect );
-                            aOleSize = OutputDevice::LogicToLogic( Size( aSz.Width, aSz.Height ), aUnit, MapUnit::Map100thMM );
+                            aOleSize = OutputDevice::LogicToLogic(Size(aSz.Width, aSz.Height), MapMode(aUnit), MapMode(MapUnit::Map100thMM));
                             bOK = true;
                         }
                         catch( embed::NoVisualAreaSizeException& )
@@ -915,10 +887,8 @@ void View::SetMarkedOriginalSize()
     if( bOK )
     {
         pUndoGroup->SetComment(SdResId(STR_UNDO_ORIGINALSIZE));
-        mpDocSh->GetUndoManager()->AddUndoAction(pUndoGroup);
+        mpDocSh->GetUndoManager()->AddUndoAction(std::move(pUndoGroup));
     }
-    else
-        delete pUndoGroup;
 }
 
 /**
@@ -926,37 +896,37 @@ void View::SetMarkedOriginalSize()
  */
 void View::DoConnect(SdrOle2Obj* pObj)
 {
-    if (mpViewSh)
+    if (!mpViewSh)
+        return;
+
+    uno::Reference < embed::XEmbeddedObject > xObj( pObj->GetObjRef() );
+    if( !xObj.is() )
+        return;
+
+    ::sd::Window* pWindow = mpViewSh->GetActiveWindow();
+    SfxInPlaceClient* pSdClient = mpViewSh-> GetViewShellBase().FindIPClient( xObj, pWindow );
+    if ( pSdClient )
+        return;
+
+    pSdClient = new Client(pObj, mpViewSh, pWindow);
+    ::tools::Rectangle aRect = pObj->GetLogicRect();
     {
-        uno::Reference < embed::XEmbeddedObject > xObj( pObj->GetObjRef() );
-        if( xObj.is() )
-        {
-            ::sd::Window* pWindow = mpViewSh->GetActiveWindow();
-            SfxInPlaceClient* pSdClient = mpViewSh-> GetViewShellBase().FindIPClient( xObj, pWindow );
-            if ( !pSdClient )
-            {
-                pSdClient = new Client(pObj, mpViewSh, pWindow);
-                ::tools::Rectangle aRect = pObj->GetLogicRect();
-                {
-                    // TODO/LEAN: working with visual area can switch object to running state
-                    Size aDrawSize = aRect.GetSize();
+        // TODO/LEAN: working with visual area can switch object to running state
+        Size aDrawSize = aRect.GetSize();
 
-                    MapMode aMapMode( mrDoc.GetScaleUnit() );
-                    Size aObjAreaSize = pObj->GetOrigObjSize( &aMapMode );
+        MapMode aMapMode( mrDoc.GetScaleUnit() );
+        Size aObjAreaSize = pObj->GetOrigObjSize( &aMapMode );
 
-                    Fraction aScaleWidth (aDrawSize.Width(),  aObjAreaSize.Width() );
-                    Fraction aScaleHeight(aDrawSize.Height(), aObjAreaSize.Height() );
-                    aScaleWidth.ReduceInaccurate(10);       // compatible to SdrOle2Obj
-                    aScaleHeight.ReduceInaccurate(10);
-                    pSdClient->SetSizeScale(aScaleWidth, aScaleHeight);
+        Fraction aScaleWidth (aDrawSize.Width(),  aObjAreaSize.Width() );
+        Fraction aScaleHeight(aDrawSize.Height(), aObjAreaSize.Height() );
+        aScaleWidth.ReduceInaccurate(10);       // compatible to SdrOle2Obj
+        aScaleHeight.ReduceInaccurate(10);
+        pSdClient->SetSizeScale(aScaleWidth, aScaleHeight);
 
-                    // visible area is only changed in-place!
-                    // the object area must be set after the scaling, since it triggers resize
-                    aRect.SetSize(aObjAreaSize);
-                    pSdClient->SetObjArea(aRect);
-                }
-            }
-        }
+        // visible area is only changed in-place!
+        // the object area must be set after the scaling, since it triggers resize
+        aRect.SetSize(aObjAreaSize);
+        pSdClient->SetObjArea(aRect);
     }
 }
 
@@ -994,8 +964,8 @@ bool View::IsMorphingAllowed() const
             aSet1.Put(pObj1->GetMergedItemSet());
             aSet2.Put(pObj2->GetMergedItemSet());
 
-            const drawing::FillStyle eFillStyle1 = static_cast<const XFillStyleItem&>( aSet1.Get( XATTR_FILLSTYLE ) ).GetValue();
-            const drawing::FillStyle eFillStyle2 = static_cast<const XFillStyleItem&>( aSet2.Get( XATTR_FILLSTYLE ) ).GetValue();
+            const drawing::FillStyle eFillStyle1 = aSet1.Get( XATTR_FILLSTYLE ).GetValue();
+            const drawing::FillStyle eFillStyle2 = aSet2.Get( XATTR_FILLSTYLE ).GetValue();
 
             if( ( eFillStyle1 == drawing::FillStyle_NONE || eFillStyle1 == drawing::FillStyle_SOLID ) &&
                 ( eFillStyle2 == drawing::FillStyle_NONE || eFillStyle2 == drawing::FillStyle_SOLID ) )
@@ -1017,7 +987,7 @@ bool View::IsVectorizeAllowed() const
 
         if(pObj)
         {
-            if(GraphicType::Bitmap == pObj->GetGraphicType() && !pObj->isEmbeddedSvg())
+            if(GraphicType::Bitmap == pObj->GetGraphicType() && !pObj->isEmbeddedVectorGraphicData())
             {
                 bRet = true;
             }
@@ -1029,44 +999,44 @@ bool View::IsVectorizeAllowed() const
 
 void View::onAccessibilityOptionsChanged()
 {
-    if( mpViewSh )
+    if( !mpViewSh )
+        return;
+
+    ::sd::Window* pWindow = mpViewSh->GetActiveWindow();
+    if( !pWindow )
+        return;
+
+    const StyleSettings& rStyleSettings = pWindow->GetSettings().GetStyleSettings();
+
+    sal_uInt16 nOutputSlot, nPreviewSlot;
+
+    SvtAccessibilityOptions& aAccOptions = getAccessibilityOptions();
+
+    if( mpViewSh->GetViewFrame() && mpViewSh->GetViewFrame()->GetDispatcher() )
     {
-        ::sd::Window* pWindow = mpViewSh->GetActiveWindow();
-        if( pWindow )
+        if( rStyleSettings.GetHighContrastMode() )
         {
-            const StyleSettings& rStyleSettings = pWindow->GetSettings().GetStyleSettings();
-
-            sal_uInt16 nOutputSlot, nPreviewSlot;
-
-            SvtAccessibilityOptions& aAccOptions = getAccessibilityOptions();
-
-            if( mpViewSh->GetViewFrame() && mpViewSh->GetViewFrame()->GetDispatcher() )
-            {
-                if( rStyleSettings.GetHighContrastMode() )
-                {
-                    nOutputSlot = SID_OUTPUT_QUALITY_CONTRAST;
-                }
-                else
-                {
-                    nOutputSlot = SID_OUTPUT_QUALITY_COLOR;
-                }
-
-                if( rStyleSettings.GetHighContrastMode() && aAccOptions.GetIsForPagePreviews() )
-                {
-                    nPreviewSlot = SID_PREVIEW_QUALITY_CONTRAST;
-                }
-                else
-                {
-                    nPreviewSlot = SID_PREVIEW_QUALITY_COLOR;
-                }
-
-                mpViewSh->GetViewFrame()->GetDispatcher()->Execute( nOutputSlot, SfxCallMode::ASYNCHRON );
-                mpViewSh->GetViewFrame()->GetDispatcher()->Execute( nPreviewSlot, SfxCallMode::ASYNCHRON );
-            }
-
-            mpViewSh->Invalidate();
+            nOutputSlot = SID_OUTPUT_QUALITY_CONTRAST;
         }
+        else
+        {
+            nOutputSlot = SID_OUTPUT_QUALITY_COLOR;
+        }
+
+        if( rStyleSettings.GetHighContrastMode() && aAccOptions.GetIsForPagePreviews() )
+        {
+            nPreviewSlot = SID_PREVIEW_QUALITY_CONTRAST;
+        }
+        else
+        {
+            nPreviewSlot = SID_PREVIEW_QUALITY_COLOR;
+        }
+
+        mpViewSh->GetViewFrame()->GetDispatcher()->Execute( nOutputSlot, SfxCallMode::ASYNCHRON );
+        mpViewSh->GetViewFrame()->GetDispatcher()->Execute( nPreviewSlot, SfxCallMode::ASYNCHRON );
     }
+
+    mpViewSh->Invalidate();
 }
 
 IMPL_LINK( View, OnParagraphInsertedHdl, ::Outliner::ParagraphHdlParam, aParam, void )
@@ -1075,7 +1045,7 @@ IMPL_LINK( View, OnParagraphInsertedHdl, ::Outliner::ParagraphHdlParam, aParam, 
 
     if( aParam.pPara && pObj )
     {
-        SdPage* pPage = dynamic_cast< SdPage* >( pObj->GetPage() );
+        SdPage* pPage = dynamic_cast< SdPage* >( pObj->getSdrPageFromSdrObject() );
         if( pPage )
             pPage->onParagraphInserted( aParam.pOutliner, aParam.pPara, pObj );
     }
@@ -1090,7 +1060,7 @@ IMPL_LINK( View, OnParagraphRemovingHdl, ::Outliner::ParagraphHdlParam, aParam, 
 
     if( aParam.pPara && pObj )
     {
-        SdPage* pPage = dynamic_cast< SdPage* >( pObj->GetPage() );
+        SdPage* pPage = dynamic_cast< SdPage* >( pObj->getSdrPageFromSdrObject() );
         if( pPage )
             pPage->onParagraphRemoving( aParam.pOutliner, aParam.pPara, pObj );
     }
@@ -1136,9 +1106,9 @@ bool View::HasMarkablePoints() const
         return FmFormView::HasMarkablePoints();
 }
 
-sal_uLong View::GetMarkablePointCount() const
+sal_Int32 View::GetMarkablePointCount() const
 {
-    sal_uLong nCount = FmFormView::GetMarkablePointCount();
+    sal_Int32 nCount = FmFormView::GetMarkablePointCount();
     nCount += maSmartTags.GetMarkablePointCount();
     return nCount;
 }
@@ -1149,21 +1119,6 @@ bool View::HasMarkedPoints() const
         return true;
     else
         return FmFormView::HasMarkedPoints();
-}
-
-sal_uLong View::GetMarkedPointCount() const
-{
-    sal_uLong nCount = FmFormView::GetMarkedPointCount();
-    nCount += maSmartTags.GetMarkedPointCount();
-    return nCount;
-}
-
-bool View::IsPointMarkable(const SdrHdl& rHdl) const
-{
-    if( SmartTagSet::IsPointMarkable( rHdl ) )
-        return true;
-    else
-        return FmFormView::IsPointMarkable( rHdl );
 }
 
 bool View::MarkPoint(SdrHdl& rHdl, bool bUnmark )
@@ -1188,8 +1143,17 @@ void View::CheckPossibilities()
     maSmartTags.CheckPossibilities();
 }
 
-void View::OnBeginPasteOrDrop( PasteOrDropInfos* /*pInfo*/ )
+void View::OnBeginPasteOrDrop( PasteOrDropInfos* pInfo )
 {
+    SdrOutliner* pOutliner = GetTextEditOutliner();
+    if (!pOutliner)
+        return;
+
+    // Turn character attributes of the paragraph of the insert position into
+    // character-level attributes, so they are not lost when OnEndPasteOrDrop()
+    // sets the paragraph stylesheet.
+    SfxItemSet aSet(pOutliner->GetParaAttribs(pInfo->nStartPara));
+    pOutliner->SetCharAttribs(pInfo->nStartPara, aSet);
 }
 
 /** this is called after a paste or drop operation, make sure that the newly inserted paragraphs
@@ -1197,20 +1161,20 @@ void View::OnBeginPasteOrDrop( PasteOrDropInfos* /*pInfo*/ )
 void View::OnEndPasteOrDrop( PasteOrDropInfos* pInfo )
 {
     /* Style Sheet handling */
-    SdrTextObj* pTextObj = dynamic_cast< SdrTextObj* >( GetTextEditObject() );
+    SdrTextObj* pTextObj = GetTextEditObject();
     SdrOutliner* pOutliner = GetTextEditOutliner();
-    if( !pOutliner || !pTextObj || !pTextObj->GetPage() )
+    if( !pOutliner || !pTextObj || !pTextObj->getSdrPageFromSdrObject() )
         return;
 
-    SdPage* pPage = static_cast< SdPage* >( pTextObj->GetPage() );
+    SdPage* pPage = static_cast< SdPage* >( pTextObj->getSdrPageFromSdrObject() );
     const PresObjKind eKind = pPage->GetPresObjKind(pTextObj);
 
     // outline kinds are taken care of in Outliner::ImplSetLevelDependentStyleSheet
-    if( eKind == PRESOBJ_OUTLINE )
+    if( eKind == PresObjKind::Outline )
         return;
 
     SfxStyleSheet* pStyleSheet = nullptr;
-    if( eKind != PRESOBJ_NONE )
+    if( eKind != PresObjKind::NONE )
         pStyleSheet = pPage->GetStyleSheetForPresObj(eKind);
     else
          pStyleSheet = pTextObj->GetStyleSheet();
@@ -1267,7 +1231,7 @@ bool View::ShouldToggleOn(
                         continue;
                     pOutliner->SetText(*(pText->GetOutlinerParaObject()));
                     sal_Int16 nStatus = pOutliner->GetBulletsNumberingStatus();
-                    bToggleOn = (bNormalBullet && nStatus != 0) || (!bNormalBullet && nStatus != 1) || bToggleOn;
+                    bToggleOn = (bNormalBullet && nStatus != 0) || (!bNormalBullet && nStatus != 1);
                     pOutliner->Clear();
                 }
             }
@@ -1279,7 +1243,7 @@ bool View::ShouldToggleOn(
                 continue;
             pOutliner->SetText(*pParaObj);
             sal_Int16 nStatus = pOutliner->GetBulletsNumberingStatus();
-            bToggleOn = (bNormalBullet && nStatus != 0) || (!bNormalBullet && nStatus != 1) || bToggleOn;
+            bToggleOn = (bNormalBullet && nStatus != 0) || (!bNormalBullet && nStatus != 1);
             pOutliner->Clear();
         }
     }
@@ -1297,7 +1261,7 @@ void View::ChangeMarkedObjectsBulletsNumbering(
         return;
 
     const bool bUndoEnabled = pSdrModel->IsUndoEnabled();
-    SdrUndoGroup* pUndoGroup = bUndoEnabled ? new SdrUndoGroup(*pSdrModel) : nullptr;
+    std::unique_ptr<SdrUndoGroup> pUndoGroup(bUndoEnabled ? new SdrUndoGroup(*pSdrModel) : nullptr);
 
     const bool bToggleOn = ShouldToggleOn( bToggle, bHandleBullets );
 
@@ -1339,8 +1303,7 @@ void View::ChangeMarkedObjectsBulletsNumbering(
                     pOutliner->SetText(*(pText->GetOutlinerParaObject()));
                     if (bUndoEnabled)
                     {
-                        SdrUndoObjSetText* pTxtUndo = dynamic_cast< SdrUndoObjSetText* >(pSdrModel->GetSdrUndoFactory().CreateUndoObjectSetText(*pTextObj, nCellIndex));
-                        pUndoGroup->AddAction(pTxtUndo);
+                        pUndoGroup->AddAction(pSdrModel->GetSdrUndoFactory().CreateUndoObjectSetText(*pTextObj, nCellIndex));
                     }
                     if ( !bToggleOn )
                     {
@@ -1351,7 +1314,7 @@ void View::ChangeMarkedObjectsBulletsNumbering(
                         pOutlinerView->ApplyBulletsNumbering( bHandleBullets, pNumRule, bToggle );
                     }
                     sal_uInt32 nParaCount = pOutliner->GetParagraphCount();
-                    pText->SetOutlinerParaObject(pOutliner->CreateParaObject(0, (sal_uInt16)nParaCount));
+                    pText->SetOutlinerParaObject(pOutliner->CreateParaObject(0, static_cast<sal_uInt16>(nParaCount)));
                     pOutliner->Clear();
                 }
             }
@@ -1370,8 +1333,8 @@ void View::ChangeMarkedObjectsBulletsNumbering(
             pOutliner->SetText(*pParaObj);
             if (bUndoEnabled)
             {
-                SdrUndoObjSetText* pTxtUndo = dynamic_cast< SdrUndoObjSetText* >(pSdrModel->GetSdrUndoFactory().CreateUndoObjectSetText(*pTextObj, 0));
-                pUndoGroup->AddAction(pTxtUndo);
+                pUndoGroup->AddAction(
+                    pSdrModel->GetSdrUndoFactory().CreateUndoObjectSetText(*pTextObj, 0));
             }
             if ( !bToggleOn )
             {
@@ -1382,7 +1345,7 @@ void View::ChangeMarkedObjectsBulletsNumbering(
                 pOutlinerView->ApplyBulletsNumbering( bHandleBullets, pNumRule, bToggle );
             }
             sal_uInt32 nParaCount = pOutliner->GetParagraphCount();
-            pTextObj->SetOutlinerParaObject(pOutliner->CreateParaObject(0, (sal_uInt16)nParaCount));
+            pTextObj->SetOutlinerParaObject(pOutliner->CreateParaObject(0, static_cast<sal_uInt16>(nParaCount)));
             pOutliner->Clear();
         }
     }
@@ -1390,11 +1353,9 @@ void View::ChangeMarkedObjectsBulletsNumbering(
     if ( bUndoEnabled && pUndoGroup->GetActionCount() > 0 )
     {
         pSdrModel->BegUndo();
-        pSdrModel->AddUndo(pUndoGroup);
+        pSdrModel->AddUndo(std::move(pUndoGroup));
         pSdrModel->EndUndo();
     }
-    else
-        delete pUndoGroup;
 }
 
 } // end of namespace sd

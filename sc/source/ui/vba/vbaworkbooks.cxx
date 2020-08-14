@@ -16,28 +16,20 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <comphelper/processfactory.hxx>
 
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/util/XModifiable.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/beans/PropertyVetoException.hpp>
-#include <com/sun/star/util/XCloseable.hpp>
-#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/document/XTypeDetection.hpp>
 
-#include <sfx2/objsh.hxx>
 #include <tools/urlobj.hxx>
 
-#include "vbaglobals.hxx"
+#include "excelvbahelper.hxx"
 #include "vbaworkbook.hxx"
 #include "vbaworkbooks.hxx"
 #include <vbahelper/vbahelper.hxx>
 
-#include <vector>
 #include <osl/file.hxx>
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
@@ -45,7 +37,9 @@ using namespace ::com::sun::star;
 const sal_Int16 CUSTOM_CHAR = 5;
 
 static uno::Any
-getWorkbook( uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< sheet::XSpreadsheetDocument > &xDoc, const uno::Reference< XHelperInterface >& xParent )
+getWorkbook( const uno::Reference< uno::XComponentContext >& xContext,
+             const uno::Reference< sheet::XSpreadsheetDocument > &xDoc,
+             const uno::Reference< XHelperInterface >& xParent )
 {
     // FIXME: fine as long as ScVbaWorkbook is stateless ...
     uno::Reference< frame::XModel > xModel( xDoc, uno::UNO_QUERY );
@@ -62,6 +56,8 @@ getWorkbook( uno::Reference< uno::XComponentContext >& xContext, const uno::Refe
     return uno::Any( uno::Reference< excel::XWorkbook > (pWb) );
 }
 
+namespace {
+
 class WorkBookEnumImpl : public EnumerationHelperImpl
 {
 public:
@@ -75,6 +71,8 @@ public:
     }
 
 };
+
+}
 
 ScVbaWorkbooks::ScVbaWorkbooks( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< css::uno::XComponentContext >& xContext ) : ScVbaWorkbooks_BASE( xParent, xContext, VbaDocumentsBase::EXCEL_DOCUMENT )
 {
@@ -168,6 +166,7 @@ ScVbaWorkbooks::isSpreadSheetFile( const OUString& sType )
 {
     // include calc_QPro etc. ? ( not for the moment anyway )
     return sType.startsWith( "calc_MS" )
+      || sType.startsWith( "MS Excel" )
       || sType.startsWith( "calc8" )
       || sType.startsWith( "calc_StarOffice" );
 }
@@ -214,7 +213,7 @@ ScVbaWorkbooks::Open( const OUString& rFileName, const uno::Any& /*UpdateLinks*/
         // no format means use the current delimiter
         sProps.realloc( 3 );
         sProps[ nIndex ].Name = "FilterOptions";
-        sal_Int16 delims[] = { 0 /*default not used*/, 9/*tab*/, 44/*comma*/, 32/*space*/, 59/*semicolon*/ };
+        sal_Int16 const delims[] { 0 /*default not used*/, 9/*tab*/, 44/*comma*/, 32/*space*/, 59/*semicolon*/ };
 
         OUString sFormat;
         sal_Int16 nFormat = 0; // default indicator
@@ -240,10 +239,11 @@ ScVbaWorkbooks::Open( const OUString& rFileName, const uno::Any& /*UpdateLinks*/
                 throw uno::RuntimeException("Expected value for Delimiter" );
             OUString sStr;
             Delimiter >>= sStr;
-            if ( !sStr.isEmpty() )
-                nDelim = sStr[0];
-            else
+            if ( sStr.isEmpty() )
                 throw uno::RuntimeException("Incorrect value for Delimiter" );
+
+            nDelim = sStr[0];
+
         }
 
         getCurrentDelim() = nDelim; //set new current
@@ -251,7 +251,7 @@ ScVbaWorkbooks::Open( const OUString& rFileName, const uno::Any& /*UpdateLinks*/
         sFormat = OUString::number( nDelim ) + ",34,0,1";
         sProps[ nIndex++ ].Value <<= sFormat;
         sProps[ nIndex ].Name = "FilterName";
-        sProps[ nIndex++ ].Value <<= OUString( "Text - txt - csv (StarCalc)" );
+        sProps[ nIndex++ ].Value <<= OUString( SC_TEXT_CSV_FILTER_NAME );
         // Ensure WORKAROUND_CSV_TXT_BUG_i60158 gets called in typedetection.cxx so
         // csv is forced for deep detected 'writerxxx' types
         sProps[ nIndex ].Name = "DocumentService";
@@ -271,18 +271,16 @@ ScVbaWorkbooks::Open( const OUString& rFileName, const uno::Any& /*UpdateLinks*/
 OUString
 ScVbaWorkbooks::getServiceImplName()
 {
-    return OUString("ScVbaWorkbooks");
+    return "ScVbaWorkbooks";
 }
 
 css::uno::Sequence<OUString>
 ScVbaWorkbooks::getServiceNames()
 {
-    static uno::Sequence< OUString > sNames;
-    if ( sNames.getLength() == 0 )
+    static uno::Sequence< OUString > const sNames
     {
-        sNames.realloc( 1 );
-        sNames[0] = "ooo.vba.excel.Workbooks";
-    }
+        "ooo.vba.excel.Workbooks"
+    };
     return sNames;
 }
 

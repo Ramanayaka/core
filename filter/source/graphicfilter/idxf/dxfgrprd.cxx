@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <string.h>
 #include <stdlib.h>
 #include <rtl/strbuf.hxx>
 #include <tools/stream.hxx>
@@ -27,14 +26,14 @@
 // a 0-sign occurs; this function converts 0-signs to blanks and reads
 // a complete line until a cr/lf is found
 
-OString DXFReadLine(SvStream& rIStm)
+static OString DXFReadLine(SvStream& rIStm)
 {
     char  buf[256 + 1];
     bool  bEnd = false;
-    sal_uLong nOldFilePos = rIStm.Tell();
+    sal_uInt64 nOldFilePos = rIStm.Tell();
     char  c = 0;
 
-    OStringBuffer aBuf;
+    OStringBuffer aBuf(512);
 
     while( !bEnd && !rIStm.GetError() )   // !!! do not check for EOF
                                           // !!! because we read blockwise
@@ -84,7 +83,7 @@ OString DXFReadLine(SvStream& rIStm)
     return aBuf.makeStringAndClear();
 }
 
-void DXFSkipLine(SvStream& rIStm)
+static void DXFSkipLine(SvStream& rIStm)
 {
     while (rIStm.good())
     {
@@ -110,12 +109,9 @@ DXFGroupReader::DXFGroupReader(SvStream & rIStream)
   : rIS(rIStream)
   , bStatus(true)
   , nLastG(0)
-  , nGCount(0)
   , S()
   , I(0)
 {
-    rIS.Seek(STREAM_SEEK_TO_END);
-    nFileSize=rIS.Tell();
     rIS.Seek(0);
 }
 
@@ -124,8 +120,7 @@ sal_uInt16 DXFGroupReader::Read()
     sal_uInt16 nG = 0;
     if ( bStatus )
     {
-        nGCount++;
-        nG = (sal_uInt16)ReadI();
+        nG = static_cast<sal_uInt16>(ReadI());
         if ( bStatus )
         {
             if      (nG<  10) ReadS();
@@ -155,11 +150,6 @@ sal_uInt16 DXFGroupReader::Read()
     {
         nG = 0;
         S = "EOF";
-        if ( nGCount != 0xffffffff )
-        {
-            // InfoBox(NULL,String("Error in group # ")+String(nGCount)).Execute();
-            nGCount=0xffffffff;
-        }
     }
     nLastG = nG;
     return nG;
@@ -178,15 +168,13 @@ long DXFGroupReader::ReadI()
         return 0;
     }
 
-    long res = 0, nv = 1;
+    OStringBuffer aNumber;
     if (*p == '-') {
-        nv=-1;
-        p++;
+        aNumber.append(*p++);
     }
 
     while ((p != end) && *p >= '0' && *p <= '9') {
-        res=res*10+static_cast<long>(*p-'0');
-        p++;
+        aNumber.append(*p++);
     }
 
     while ((p != end) && (*p==0x20)) p++;
@@ -195,7 +183,7 @@ long DXFGroupReader::ReadI()
         return 0;
     }
 
-    return res*nv;
+    return aNumber.toString().toInt32();
 }
 
 double DXFGroupReader::ReadF()

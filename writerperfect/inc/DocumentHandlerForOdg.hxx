@@ -12,18 +12,14 @@
 
 #include "DocumentHandlerFor.hxx"
 
+#include <rtl/ustring.hxx>
+
 namespace writerperfect
 {
-
-template<>
-struct DocumentHandlerFor<OdgGenerator>
+template <> struct DocumentHandlerFor<OdgGenerator>
 {
-    static const rtl::OUString name()
-    {
-        return rtl::OUString("com.sun.star.comp.Draw.XMLOasisImporter");
-    }
+    static OUString name() { return "com.sun.star.comp.Draw.XMLOasisImporter"; }
 };
-
 }
 
 #endif

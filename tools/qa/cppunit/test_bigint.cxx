@@ -17,17 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <limits>
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
-
-#include <rtl/math.hxx>
 
 #include <tools/bigint.hxx>
 
 namespace tools
 {
-
 class BigIntTest : public CppUnit::TestFixture
 {
 public:
@@ -47,7 +43,7 @@ void BigIntTest::testConstructionFromLongLong()
         CPPUNIT_ASSERT(!bi.IsZero());
         CPPUNIT_ASSERT(!bi.IsNeg());
         CPPUNIT_ASSERT(bi.IsLong());
-        CPPUNIT_ASSERT_EQUAL(42L, static_cast<long>(bi));
+        CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(42), static_cast<sal_Int32>(bi));
     }
 
     // small negative number
@@ -57,7 +53,7 @@ void BigIntTest::testConstructionFromLongLong()
         CPPUNIT_ASSERT(!bi.IsZero());
         CPPUNIT_ASSERT(bi.IsNeg());
         CPPUNIT_ASSERT(bi.IsLong());
-        CPPUNIT_ASSERT_EQUAL(-42L, static_cast<long>(bi));
+        CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(-42), static_cast<sal_Int32>(bi));
     }
 
 #if SAL_TYPES_SIZEOFLONG < SAL_TYPES_SIZEOFLONGLONG
@@ -83,7 +79,8 @@ void BigIntTest::testConstructionFromLongLong()
 
     // positive number not fitting to long
     {
-        BigInt bi(static_cast<sal_Int64>(std::numeric_limits<long>::max()) + static_cast<sal_Int64>(1));
+        BigInt bi(static_cast<sal_Int64>(std::numeric_limits<long>::max())
+                  + static_cast<sal_Int64>(1));
         CPPUNIT_ASSERT(bi.IsSet());
         CPPUNIT_ASSERT(!bi.IsZero());
         CPPUNIT_ASSERT(!bi.IsNeg());
@@ -92,7 +89,8 @@ void BigIntTest::testConstructionFromLongLong()
 
     // negative number not fitting to long
     {
-        BigInt bi(static_cast<sal_Int64>(std::numeric_limits<long>::min()) - static_cast<sal_Int64>(1));
+        BigInt bi(static_cast<sal_Int64>(std::numeric_limits<long>::min())
+                  - static_cast<sal_Int64>(1));
         CPPUNIT_ASSERT(bi.IsSet());
         CPPUNIT_ASSERT(!bi.IsZero());
         CPPUNIT_ASSERT(bi.IsNeg());
@@ -102,7 +100,6 @@ void BigIntTest::testConstructionFromLongLong()
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(BigIntTest);
-
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

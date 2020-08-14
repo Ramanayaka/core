@@ -17,33 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TableWindow.hxx"
-#include "TableWindowListBox.hxx"
-#include "QueryTableView.hxx"
-#include "QueryDesignView.hxx"
-#include "TableWindowData.hxx"
-#include "imageprovider.hxx"
-#include <tools/diagnose_ex.h>
+#include <TableWindow.hxx>
+#include <TableWindowListBox.hxx>
+#include <TableWindowData.hxx>
+#include <imageprovider.hxx>
+#include <JoinController.hxx>
+#include <JoinTableView.hxx>
+#include <JoinDesignView.hxx>
 #include <osl/diagnose.h>
 #include <vcl/svapp.hxx>
 #include <vcl/wall.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/commandevent.hxx>
+#include <vcl/event.hxx>
+#include <vcl/ptrstyle.hxx>
 
-#include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
+#include <com/sun/star/container/XContainer.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include "querycontroller.hxx"
-#include "dbu_qry.hrc"
-#include "dbustrings.hrc"
-#include "bitmaps.hlst"
-#include <comphelper/extract.hxx>
-#include "UITools.hxx"
-#include "TableWindowAccess.hxx"
-#include "browserids.hxx"
+#include <com/sun/star/sdb/application/DatabaseObject.hpp>
+#include <bitmaps.hlst>
+#include <TableWindowAccess.hxx>
 #include <connectivity/dbtools.hxx>
-#include "svtools/treelistentry.hxx"
+#include <vcl/builder.hxx>
+#include <vcl/menu.hxx>
 
 using namespace dbaui;
 using namespace ::utl;
@@ -89,7 +86,6 @@ void Draw3DBorder(vcl::RenderContext& rRenderContext, const tools::Rectangle& rR
 
 }
 
-// class OTableWindow
 OTableWindow::OTableWindow( vcl::Window* pParent, const TTableWindowData::value_type& pTabWinData )
           : ::comphelper::OContainerListener(m_aMutex)
           ,Window( pParent, WB_3DLOOK|WB_MOVEABLE )
@@ -127,7 +123,7 @@ void OTableWindow::dispose()
 {
     if (m_xListBox)
     {
-        OSL_ENSURE(m_xListBox->GetEntryCount()==0,"Forgot to call EmptyListbox()!");
+        OSL_ENSURE(m_xListBox->get_widget().n_children()==0,"Forgot to call EmptyListbox()!");
     }
     m_xListBox.disposeAndClear();
     if ( m_pContainerListener.is() )
@@ -167,9 +163,9 @@ void OTableWindow::SetSizePixel( const Size& rNewSize )
 {
     Size aOutSize(rNewSize);
     if( aOutSize.Width() < TABWIN_WIDTH_MIN )
-        aOutSize.Width() = TABWIN_WIDTH_MIN;
+        aOutSize.setWidth( TABWIN_WIDTH_MIN );
     if( aOutSize.Height() < TABWIN_HEIGHT_MIN )
-        aOutSize.Height() = TABWIN_HEIGHT_MIN;
+        aOutSize.setHeight( TABWIN_HEIGHT_MIN );
 
     GetData()->SetSize( aOutSize );
     Window::SetSizePixel( aOutSize );
@@ -181,9 +177,12 @@ void OTableWindow::SetPosSizePixel( const Point& rNewPos, const Size& rNewSize )
     SetSizePixel( rNewSize );
 }
 
-bool OTableWindow::FillListBox()
+void OTableWindow::FillListBox()
 {
-    m_xListBox->Clear();
+    clearListBox();
+    weld::TreeView& rTreeView = m_xListBox->get_widget();
+    assert(!rTreeView.n_children());
+
     if ( !m_pContainerListener.is() )
     {
         Reference< XContainer> xContainer(m_pData->getColumns(),UNO_QUERY);
@@ -192,12 +191,11 @@ bool OTableWindow::FillListBox()
     }
 
     // mark all primary keys with special image
-    Image aPrimKeyImage = Image(BitmapEx(BMP_PRIMARY_KEY));
+    OUString aPrimKeyImage(BMP_PRIMARY_KEY);
 
     if (GetData()->IsShowAll())
     {
-        SvTreeListEntry* pEntry = m_xListBox->InsertEntry( OUString("*") );
-        pEntry->SetUserData( createUserData(nullptr,false) );
+        rTreeView.append(OUString::number(reinterpret_cast<sal_uInt64>(createUserData(nullptr,false))), OUString("*"));
     }
 
     Reference<XNameAccess> xPKeyColumns;
@@ -218,28 +216,28 @@ bool OTableWindow::FillListBox()
             const OUString* pIter = aColumns.getConstArray();
             const OUString* pEnd = pIter + aColumns.getLength();
 
-            SvTreeListEntry* pEntry = nullptr;
             for (; pIter != pEnd; ++pIter)
             {
                 bool bPrimaryKeyColumn = xPKeyColumns.is() && xPKeyColumns->hasByName( *pIter );
+
+                OUString sId;
+                Reference<XPropertySet> xColumn(xColumns->getByName(*pIter),UNO_QUERY);
+                if (xColumn.is())
+                    sId = OUString::number(reinterpret_cast<sal_uInt64>(createUserData(xColumn, bPrimaryKeyColumn)));
+
+                rTreeView.append(sId, *pIter);
+
                 // is this column in the primary key
                 if ( bPrimaryKeyColumn )
-                    pEntry = m_xListBox->InsertEntry(*pIter, aPrimKeyImage, aPrimKeyImage);
-                else
-                    pEntry = m_xListBox->InsertEntry(*pIter);
-
-                Reference<XPropertySet> xColumn(xColumns->getByName(*pIter),UNO_QUERY);
-                if ( xColumn.is() )
-                    pEntry->SetUserData( createUserData(xColumn,bPrimaryKeyColumn) );
+                    rTreeView.set_image(rTreeView.n_children() - 1, aPrimKeyImage);
             }
+
         }
     }
     catch(Exception&)
     {
         OSL_FAIL("Exception occurred!");
     }
-
-    return true;
 }
 
 void* OTableWindow::createUserData(const Reference< XPropertySet>& /*_xColumn*/,bool /*_bPrimaryKey*/)
@@ -255,19 +253,17 @@ void OTableWindow::deleteUserData(void*& _pUserData)
 
 void OTableWindow::clearListBox()
 {
-    if ( m_xListBox )
-    {
-        SvTreeListEntry* pEntry = m_xListBox->First();
+    if ( !m_xListBox )
+        return;
 
-        while(pEntry)
-        {
-            void* pUserData = pEntry->GetUserData();
-            deleteUserData(pUserData);
-            SvTreeListEntry* pNextEntry = m_xListBox->Next(pEntry);
-            m_xListBox->GetModel()->Remove(pEntry);
-            pEntry = pNextEntry;
-        }
-    }
+    weld::TreeView& rTreeView = m_xListBox->get_widget();
+    rTreeView.all_foreach([this, &rTreeView](weld::TreeIter& rEntry){
+        void* pUserData = reinterpret_cast<void*>(rTreeView.get_id(rEntry).toUInt64());
+        deleteUserData(pUserData);
+        return false;
+    });
+
+    rTreeView.clear();
 }
 
 void OTableWindow::impl_updateImage()
@@ -293,8 +289,8 @@ bool OTableWindow::Init()
     if ( !m_xListBox )
     {
         m_xListBox = VclPtr<OTableWindowListBox>::Create(this);
-        OSL_ENSURE( m_xListBox != nullptr, "OTableWindow::Init() : CreateListBox returned NULL !" );
-        m_xListBox->SetSelectionMode( SelectionMode::Multiple );
+        assert(m_xListBox && "OTableWindow::Init() : CreateListBox returned NULL !");
+        m_xListBox->get_widget().set_selection_mode(SelectionMode::Multiple);
     }
 
     // Set the title
@@ -304,14 +300,12 @@ bool OTableWindow::Init()
     m_xListBox->Show();
 
     // add the fields to the ListBox
-    clearListBox();
-    bool bSuccess = FillListBox();
-    if ( bSuccess )
-        m_xListBox->SelectAll( false );
+    FillListBox();
+    m_xListBox->get_widget().unselect_all();
 
     impl_updateImage();
 
-    return bSuccess;
+    return true;
 }
 
 void OTableWindow::DataChanged(const DataChangedEvent& rDCEvt)
@@ -321,7 +315,7 @@ void OTableWindow::DataChanged(const DataChangedEvent& rDCEvt)
         // In the worst-case the colours have changed so
         // adapt myself to the new colours
         const StyleSettings&  aSystemStyle = Application::GetSettings().GetStyleSettings();
-        SetBackground(Wallpaper(Color(aSystemStyle.GetFaceColor())));
+        SetBackground(Wallpaper(aSystemStyle.GetFaceColor()));
         SetTextColor(aSystemStyle.GetButtonTextColor());
     }
 }
@@ -335,38 +329,38 @@ void OTableWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Rectan
 
 tools::Rectangle OTableWindow::getSizingRect(const Point& _rPos,const Size& _rOutputSize) const
 {
-    tools::Rectangle aSizingRect = tools::Rectangle( GetPosPixel(), GetSizePixel() );
+    tools::Rectangle aSizingRect( GetPosPixel(), GetSizePixel() );
 
     if( m_nSizingFlags & SizingFlags::Top )
     {
         if( _rPos.Y() < 0 )
-            aSizingRect.Top() = 0;
+            aSizingRect.SetTop( 0 );
         else
-            aSizingRect.Top() = _rPos.Y();
+            aSizingRect.SetTop( _rPos.Y() );
     }
 
     if( m_nSizingFlags & SizingFlags::Bottom )
     {
         if( _rPos.Y() > _rOutputSize.Height() )
-            aSizingRect.Bottom() = _rOutputSize.Height();
+            aSizingRect.SetBottom( _rOutputSize.Height() );
         else
-            aSizingRect.Bottom() = _rPos.Y();
+            aSizingRect.SetBottom( _rPos.Y() );
     }
 
     if( m_nSizingFlags & SizingFlags::Right )
     {
         if( _rPos.X() > _rOutputSize.Width() )
-            aSizingRect.Right() = _rOutputSize.Width();
+            aSizingRect.SetRight( _rOutputSize.Width() );
         else
-            aSizingRect.Right() = _rPos.X();
+            aSizingRect.SetRight( _rPos.X() );
     }
 
     if( m_nSizingFlags & SizingFlags::Left )
     {
         if( _rPos.X() < 0 )
-            aSizingRect.Left() = 0;
+            aSizingRect.SetLeft( 0 );
         else
-            aSizingRect.Left() = _rPos.X();
+            aSizingRect.SetLeft( _rPos.X() );
     }
     return aSizingRect;
 }
@@ -400,21 +394,21 @@ void OTableWindow::MouseMove( const MouseEvent& rEvt )
 
     Point   aPos = rEvt.GetPosPixel();
     setSizingFlag(aPos);
-    Pointer aPointer;
+    PointerStyle aPointer = PointerStyle::Arrow;
 
     // Set the mouse cursor when it is in the sizing area
     if ( m_nSizingFlags == SizingFlags::Top ||
          m_nSizingFlags == SizingFlags::Bottom )
-        aPointer = Pointer( PointerStyle::SSize );
+        aPointer = PointerStyle::SSize;
     else if ( m_nSizingFlags == SizingFlags::Left ||
               m_nSizingFlags ==SizingFlags::Right )
-        aPointer = Pointer( PointerStyle::ESize );
+        aPointer = PointerStyle::ESize;
     else if ( m_nSizingFlags == (SizingFlags::Left | SizingFlags::Top) ||
               m_nSizingFlags == (SizingFlags::Right | SizingFlags::Bottom) )
-        aPointer = Pointer( PointerStyle::SESize );
+        aPointer = PointerStyle::SESize;
     else if ( m_nSizingFlags == (SizingFlags::Right | SizingFlags::Top) ||
               m_nSizingFlags == (SizingFlags::Left | SizingFlags::Bottom) )
-        aPointer = Pointer( PointerStyle::NESize );
+        aPointer = PointerStyle::NESize;
 
     SetPointer( aPointer );
 }
@@ -482,33 +476,21 @@ void OTableWindow::GetFocus()
 void OTableWindow::setActive(bool _bActive)
 {
     SetBoldTitle( _bActive );
-    if (!_bActive && m_xListBox && m_xListBox->GetSelectionCount() != 0)
-        m_xListBox->SelectAll(false);
+    if (_bActive || !m_xListBox)
+        return;
+
+    weld::TreeView& rTreeView = m_xListBox->get_widget();
+    if (rTreeView.get_selected_index() != -1)
+        rTreeView.unselect_all();
 }
 
 void OTableWindow::Remove()
 {
     // Delete the window
     OJoinTableView* pTabWinCont = getTableView();
+    VclPtr<OTableWindow> aHoldSelf(this); // keep ourselves alive during the RemoveTabWin process
     pTabWinCont->RemoveTabWin( this );
     pTabWinCont->Invalidate();
-}
-
-bool OTableWindow::HandleKeyInput( const KeyEvent& rEvt )
-{
-    const vcl::KeyCode& rCode = rEvt.GetKeyCode();
-    sal_uInt16 nCode = rCode.GetCode();
-    bool   bShift = rCode.IsShift();
-    bool   bCtrl = rCode.IsMod1();
-
-    bool bHandle = false;
-
-    if( !bCtrl && !bShift && (nCode==KEY_DELETE) )
-    {
-        Remove();
-        bHandle = true;
-    }
-    return bHandle;
 }
 
 bool OTableWindow::ExistsAConn() const
@@ -519,17 +501,13 @@ bool OTableWindow::ExistsAConn() const
 void OTableWindow::EnumValidFields(std::vector< OUString>& arrstrFields)
 {
     arrstrFields.clear();
+    weld::TreeView& rTreeView = m_xListBox->get_widget();
+
     // This default implementation counts every item in the ListBox ... for any other behaviour it must be over-written
-    if ( m_xListBox )
-    {
-        arrstrFields.reserve(m_xListBox->GetEntryCount());
-        SvTreeListEntry* pEntryLoop = m_xListBox->First();
-        while (pEntryLoop)
-        {
-            arrstrFields.push_back(m_xListBox->GetEntryText(pEntryLoop));
-            pEntryLoop = m_xListBox->Next(pEntryLoop);
-        }
-    }
+    rTreeView.all_foreach([&rTreeView, &arrstrFields](weld::TreeIter& rEntry){
+        arrstrFields.push_back(rTreeView.get_text(rEntry));
+        return false;
+    });
 }
 
 void OTableWindow::StateChanged( StateChangedType nType )
@@ -538,20 +516,20 @@ void OTableWindow::StateChanged( StateChangedType nType )
 
     // FIXME RenderContext
 
-    if ( nType == StateChangedType::Zoom )
-    {
-        const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
+    if ( nType != StateChangedType::Zoom )
+        return;
 
-        vcl::Font aFont = rStyleSettings.GetGroupFont();
-        if ( IsControlFont() )
-            aFont.Merge( GetControlFont() );
-        SetZoomedPointFont(*this, aFont);
+    const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
 
-        m_xTitle->SetZoom(GetZoom());
-        m_xListBox->SetZoom(GetZoom());
-        Resize();
-        Invalidate();
-    }
+    vcl::Font aFont = rStyleSettings.GetGroupFont();
+    if ( IsControlFont() )
+        aFont.Merge( GetControlFont() );
+    SetZoomedPointFont(*this, aFont);
+
+    m_xTitle->SetZoom(GetZoom());
+    m_xListBox->SetZoom(GetZoom());
+    Resize();
+    Invalidate();
 }
 
 Reference< XAccessible > OTableWindow::CreateAccessible()
@@ -573,14 +551,15 @@ void OTableWindow::Command(const CommandEvent& rEvt)
                     ptWhere = rEvt.GetMousePosPixel();
                 else
                 {
-                    SvTreeListEntry* pCurrent = m_xListBox->GetCurEntry();
-                    if ( pCurrent )
-                        ptWhere = m_xListBox->GetEntryPosition(pCurrent);
+                    weld::TreeView& rTreeView = m_xListBox->get_widget();
+                    std::unique_ptr<weld::TreeIter> xCurrent = rTreeView.make_iterator();
+                    if (rTreeView.get_cursor(xCurrent.get()))
+                        ptWhere = rTreeView.get_row_area(*xCurrent).Center();
                     else
                         ptWhere = m_xTitle->GetPosPixel();
                 }
 
-                VclBuilder aBuilder(nullptr, VclBuilderContainer::getUIRootDir(), "dbaccess/ui/jointablemenu.ui", "");
+                VclBuilder aBuilder(nullptr, AllSettings::GetUIRootDir(), "dbaccess/ui/jointablemenu.ui", "");
                 VclPtr<PopupMenu> aContextMenu(aBuilder.get_menu("menu"));
                 if (aContextMenu->Execute(this, ptWhere))
                     Remove();
@@ -609,27 +588,27 @@ bool OTableWindow::PreNotify(NotifyEvent& rNEvt)
                 Point aStartPoint = GetPosPixel();
                 if ( rCode.IsShift() )
                 {
-                    aStartPoint.X() = GetSizePixel().Width();
-                    aStartPoint.Y() = GetSizePixel().Height();
+                    aStartPoint.setX( GetSizePixel().Width() );
+                    aStartPoint.setY( GetSizePixel().Height() );
                 }
 
                 switch( rCode.GetCode() )
                 {
                     case KEY_DOWN:
                         bHandled = true;
-                        aStartPoint.Y() += m_nMoveIncrement;
+                        aStartPoint.AdjustY(m_nMoveIncrement );
                         break;
                     case KEY_UP:
                         bHandled = true;
-                        aStartPoint.Y() += -m_nMoveIncrement;
+                        aStartPoint.AdjustY(-m_nMoveIncrement );
                         break;
                     case KEY_LEFT:
                         bHandled = true;
-                        aStartPoint.X() += -m_nMoveIncrement;
+                        aStartPoint.AdjustX(-m_nMoveIncrement );
                         break;
                     case KEY_RIGHT:
                         bHandled = true;
-                        aStartPoint.X()  += m_nMoveIncrement;
+                        aStartPoint.AdjustX(m_nMoveIncrement );
                         break;
                 }
                 if ( bHandled )
@@ -644,9 +623,9 @@ bool OTableWindow::PreNotify(NotifyEvent& rNEvt)
                             && ((ptOld.Y() + aNewSize.Height()) <= aSize.Height()) )
                         {
                             if ( aNewSize.Width() < TABWIN_WIDTH_MIN )
-                                aNewSize.Width() = TABWIN_WIDTH_MIN;
+                                aNewSize.setWidth( TABWIN_WIDTH_MIN );
                             if ( aNewSize.Height() < TABWIN_HEIGHT_MIN )
-                                aNewSize.Height() = TABWIN_HEIGHT_MIN;
+                                aNewSize.setHeight( TABWIN_HEIGHT_MIN );
 
                             Size szOld = GetSizePixel();
 

@@ -31,7 +31,6 @@ using namespace ::com::sun::star;
 using namespace ::comphelper;
 
 
-// class VCLXAccessibleMenuBar
 
 
 VCLXAccessibleMenuBar::VCLXAccessibleMenuBar( Menu* pMenu )
@@ -43,10 +42,6 @@ VCLXAccessibleMenuBar::VCLXAccessibleMenuBar( Menu* pMenu )
 
         if ( m_pWindow )
             m_pWindow->AddEventListener( LINK( this, VCLXAccessibleMenuBar, WindowEventListener ) );
-    }
-    else
-    {
-        m_pWindow = nullptr;
     }
 }
 
@@ -126,7 +121,7 @@ void VCLXAccessibleMenuBar::disposing()
 
 OUString VCLXAccessibleMenuBar::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.toolkit.AccessibleMenuBar" );
+    return "com.sun.star.comp.toolkit.AccessibleMenuBar";
 }
 
 
@@ -185,7 +180,7 @@ sal_Int32 VCLXAccessibleMenuBar::getBackground(  )
 {
     OExternalLockGuard aGuard( this );
 
-    return Application::GetSettings().GetStyleSettings().GetMenuBarColor().GetColor();
+    return sal_Int32(Application::GetSettings().GetStyleSettings().GetMenuBarColor());
 }
 
 

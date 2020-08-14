@@ -19,21 +19,20 @@
 
 #include <sal/config.h>
 
-#include <o3tl/make_unique.hxx>
 #include <sdr/properties/customshapeproperties.hxx>
 #include <svl/itemset.hxx>
 #include <svl/style.hxx>
 #include <svx/svdoashp.hxx>
+#include <svx/sdooitm.hxx>
 #include <editeng/eeitem.hxx>
-#include <svx/sdtagitm.hxx>
 #include <svl/whiter.hxx>
 #include <svl/hint.hxx>
 
+#include <sal/log.hxx>
 
-namespace sdr
+
+namespace sdr::properties
 {
-    namespace properties
-    {
         void CustomShapeProperties::UpdateTextFrameStatus(bool bInvalidateRenderGeometry)
         {
             SdrObjCustomShape& rObj = static_cast< SdrObjCustomShape& >(GetSdrObject());
@@ -41,7 +40,7 @@ namespace sdr
 
             // change TextFrame flag when bResizeShapeToFitText changes (which is mapped
             // on the item SDRATTR_TEXT_AUTOGROWHEIGHT for custom shapes, argh)
-            rObj.bTextFrame = static_cast< const SdrOnOffItem& >(GetObjectItemSet().Get(SDRATTR_TEXT_AUTOGROWHEIGHT)).GetValue();
+            rObj.bTextFrame = GetObjectItemSet().Get(SDRATTR_TEXT_AUTOGROWHEIGHT).GetValue();
 
             // check if it did change
             if(rObj.bTextFrame != bOld)
@@ -64,7 +63,7 @@ namespace sdr
 
         std::unique_ptr<SfxItemSet> CustomShapeProperties::CreateObjectSpecificItemSet(SfxItemPool& rPool)
         {
-            return o3tl::make_unique<SfxItemSet>(
+            return std::make_unique<SfxItemSet>(
                 rPool,
                 svl::Items<
                     // Ranges from SdrAttrObj:
@@ -74,6 +73,7 @@ namespace sdr
                     // Graphic attributes, 3D properties, CustomShape
                     // properties:
                     SDRATTR_GRAF_FIRST, SDRATTR_CUSTOMSHAPE_LAST,
+                    SDRATTR_GLOW_FIRST, SDRATTR_SOFTEDGE_LAST,
                     // Range from SdrTextObj:
                     EE_ITEMS_START, EE_ITEMS_END>{});
         }
@@ -165,7 +165,7 @@ namespace sdr
 
         void CustomShapeProperties::SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr)
         {
-            // call parent
+            // call parent (always first thing to do, may create the SfxItemSet)
             TextProperties::SetStyleSheet( pNewStyleSheet, bDontRemoveHardAttr );
 
             // update bTextFrame and RenderGeometry
@@ -195,9 +195,9 @@ namespace sdr
         {
         }
 
-        BaseProperties& CustomShapeProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> CustomShapeProperties::Clone(SdrObject& rObj) const
         {
-            return *(new CustomShapeProperties(*this, rObj));
+            return std::unique_ptr<BaseProperties>(new CustomShapeProperties(*this, rObj));
         }
 
         void CustomShapeProperties::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
@@ -216,7 +216,7 @@ namespace sdr
                         bRemoveRenderGeometry = true;
                     break;
                     default: break;
-                };
+                }
             }
             else if ( rHint.GetId() == SfxHintId::DataChanged )
             {
@@ -226,7 +226,6 @@ namespace sdr
                 // update bTextFrame and RenderGeometry
             UpdateTextFrameStatus(bRemoveRenderGeometry);
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

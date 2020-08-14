@@ -23,30 +23,25 @@
 #include "PresenterAccessibility.hxx"
 #include "PresenterPaneContainer.hxx"
 #include "PresenterTheme.hxx"
-#include "PresenterSprite.hxx"
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <com/sun/star/awt/FontDescriptor.hpp>
-#include <com/sun/star/awt/XFocusListener.hpp>
 #include <com/sun/star/awt/XKeyListener.hpp>
 #include <com/sun/star/awt/XMouseListener.hpp>
 #include <com/sun/star/drawing/XPresenterHelper.hpp>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/presentation/XSlideShowController.hpp>
 #include <com/sun/star/frame/XFrameActionListener.hpp>
 #include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
 #include <com/sun/star/drawing/framework/XConfigurationController.hpp>
 #include <com/sun/star/drawing/framework/XPane.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/util/Color.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
 #include <rtl/ref.hxx>
 #include <map>
 #include <memory>
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 class PresenterCanvasHelper;
 class PresenterPaintManager;
@@ -60,9 +55,7 @@ typedef ::cppu::WeakComponentImplHelper <
     css::drawing::framework::XConfigurationChangeListener,
     css::frame::XFrameActionListener,
     css::awt::XKeyListener,
-    css::awt::XFocusListener,
-    css::awt::XMouseListener,
-    css::awt::XMouseMotionListener
+    css::awt::XMouseListener
 > PresenterControllerInterfaceBase;
 
 /// Represents an element in the toolbar that shows the time elapsed since the presentation started.
@@ -70,6 +63,8 @@ class IPresentationTime
 {
 public:
     virtual void restart() = 0;
+    virtual bool isPaused() = 0;
+    virtual void setPauseStatus(const bool pauseStatus) = 0;
     virtual ~IPresentationTime();
 };
 
@@ -115,6 +110,7 @@ public:
     void ShowView (const OUString& rsViewURL);
     void HideView (const OUString& rsViewURL);
     void SwitchMonitors();
+    void ExitPresenter();
     void DispatchUnoCommand (const OUString& rsCommand) const;
     css::uno::Reference<css::frame::XDispatch> GetDispatch (
         const css::util::URL& rURL) const;
@@ -122,8 +118,8 @@ public:
     const css::uno::Reference<css::drawing::framework::XConfigurationController>&
         GetConfigurationController() const;
     const css::uno::Reference<css::drawing::XDrawPage>& GetCurrentSlide() const;
-    static bool HasTransition (css::uno::Reference<css::drawing::XDrawPage>& rxPage);
-    static bool HasCustomAnimation (css::uno::Reference<css::drawing::XDrawPage>& rxPage);
+    static bool HasTransition (css::uno::Reference<css::drawing::XDrawPage> const & rxPage);
+    static bool HasCustomAnimation (css::uno::Reference<css::drawing::XDrawPage> const & rxPage);
     void SetAccessibilityActiveState (const bool bIsActive);
     bool IsAccessibilityActive() const { return mbIsAccessibilityActive;}
 
@@ -161,11 +157,6 @@ public:
     virtual void SAL_CALL keyPressed (const css::awt::KeyEvent& rEvent) override;
     virtual void SAL_CALL keyReleased (const css::awt::KeyEvent& rEvent) override;
 
-    // XFocusListener
-
-    virtual void SAL_CALL focusGained (const css::awt::FocusEvent& rEvent) override;
-    virtual void SAL_CALL focusLost (const css::awt::FocusEvent& rEvent) override;
-
     // XMouseListener
 
     virtual void SAL_CALL mousePressed (const css::awt::MouseEvent& rEvent) override;
@@ -175,12 +166,6 @@ public:
     virtual void SAL_CALL mouseEntered (const css::awt::MouseEvent& rEvent) override;
 
     virtual void SAL_CALL mouseExited (const css::awt::MouseEvent& rEvent) override;
-
-    // XMouseMotionListener
-
-    virtual void SAL_CALL mouseMoved (const css::awt::MouseEvent& rEvent) override;
-
-    virtual void SAL_CALL mouseDragged (const css::awt::MouseEvent& rEvent) override;
 
 private:
     typedef ::std::map<css::uno::Reference<css::frame::XFrame>,rtl::Reference<PresenterController> > InstanceContainer;
@@ -230,7 +215,7 @@ private:
     void HandleNumericKeyPress (const sal_Int32 nKey, const sal_Int32 nModifiers);
 };
 
-} } // end of namespace ::sdext::presenter
+} // end of namespace ::sdext::presenter
 
 #endif
 

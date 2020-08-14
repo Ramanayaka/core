@@ -17,22 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "svx/XPropertyTable.hxx"
+#include <XPropertyTable.hxx>
 
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
 #include <vcl/virdev.hxx>
-#include <svx/dialogs.hrc>
+#include <svx/strings.hrc>
 #include <svx/dialmgr.hxx>
 #include <svx/xtable.hxx>
+
+#include <comphelper/lok.hxx>
 
 #include <drawinglayer/attribute/lineattribute.hxx>
 #include <drawinglayer/attribute/strokeattribute.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
+#include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processor2dtools.hxx>
 #include <memory>
-#include <o3tl/make_unique.hxx>
 
 using namespace com::sun::star;
 
@@ -68,14 +70,14 @@ bool XDashList::Create()
 {
     const OUString aStr(SvxResId(RID_SVXSTR_LINESTYLE));
 
-    Insert(o3tl::make_unique<XDashEntry>(XDash(css::drawing::DashStyle_RECT,1, 50,1, 50, 50),aStr + " 1"));
-    Insert(o3tl::make_unique<XDashEntry>(XDash(css::drawing::DashStyle_RECT,1,500,1,500,500),aStr + " 2"));
-    Insert(o3tl::make_unique<XDashEntry>(XDash(css::drawing::DashStyle_RECT,2, 50,3,250,120),aStr + " 3"));
+    Insert(std::make_unique<XDashEntry>(XDash(css::drawing::DashStyle_RECT,1, 50,1, 50, 50),aStr + " 1"));
+    Insert(std::make_unique<XDashEntry>(XDash(css::drawing::DashStyle_RECT,1,500,1,500,500),aStr + " 2"));
+    Insert(std::make_unique<XDashEntry>(XDash(css::drawing::DashStyle_RECT,2, 50,3,250,120),aStr + " 3"));
 
     return true;
 }
 
-Bitmap XDashList::ImpCreateBitmapForXDash(const XDash* pDash)
+BitmapEx XDashList::ImpCreateBitmapForXDash(const XDash* pDash)
 {
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
     const Size& rSize = rStyleSettings.GetListBoxPreviewDefaultPixelSize();
@@ -90,7 +92,7 @@ Bitmap XDashList::ImpCreateBitmapForXDash(const XDash* pDash)
 
     // prepare LineAttribute
     const basegfx::BColor aLineColor(rStyleSettings.GetFieldTextColor().getBColor());
-    const double fLineWidth(rStyleSettings.GetListBoxPreviewDefaultLineWidth() * (nFactor * 1.1));
+    const double fLineWidth(StyleSettings::GetListBoxPreviewDefaultLineWidth() * (nFactor * 1.1));
     const drawinglayer::attribute::LineAttribute aLineAttribute(
         aLineColor,
         fLineWidth);
@@ -101,7 +103,7 @@ Bitmap XDashList::ImpCreateBitmapForXDash(const XDash* pDash)
 
     if(pDash && (pDash->GetDots() || pDash->GetDashes()))
     {
-        const basegfx::B2DHomMatrix aScaleMatrix(OutputDevice::LogicToLogic(MapUnit::Map100thMM, MapUnit::MapPixel));
+        const basegfx::B2DHomMatrix aScaleMatrix(OutputDevice::LogicToLogic(MapMode(MapUnit::Map100thMM), MapMode(MapUnit::MapPixel)));
         const basegfx::B2DVector aScaleVector(aScaleMatrix * basegfx::B2DVector(1.0, 0.0));
         const double fScaleValue(aScaleVector.getLength() * (nFactor * (1.4 / 2.0)));
         const double fLineWidthInUnits(fLineWidth / fScaleValue);
@@ -156,7 +158,7 @@ Bitmap XDashList::ImpCreateBitmapForXDash(const XDash* pDash)
 
     // create processor and draw primitives
     std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> pProcessor2D(drawinglayer::processor2d::createPixelProcessor2DFromOutputDevice(
-        *pVirtualDevice.get(),
+        *pVirtualDevice,
         aNewViewInformation2D));
 
     if(pProcessor2D)
@@ -168,7 +170,7 @@ Bitmap XDashList::ImpCreateBitmapForXDash(const XDash* pDash)
     }
 
     // get result bitmap and scale
-    Bitmap aRetval(pVirtualDevice->GetBitmap(Point(0, 0), pVirtualDevice->GetOutputSizePixel()));
+    BitmapEx aRetval(pVirtualDevice->GetBitmapEx(Point(0, 0), pVirtualDevice->GetOutputSizePixel()));
 
     if(1 != nFactor)
     {
@@ -178,14 +180,14 @@ Bitmap XDashList::ImpCreateBitmapForXDash(const XDash* pDash)
     return aRetval;
 }
 
-Bitmap XDashList::CreateBitmapForUI( long nIndex )
+BitmapEx XDashList::CreateBitmapForUI( long nIndex )
 {
     const XDash& rDash = GetDash(nIndex)->GetDash();
 
     return ImpCreateBitmapForXDash(&rDash);
 }
 
-Bitmap const & XDashList::GetBitmapForUISolidLine() const
+BitmapEx const & XDashList::GetBitmapForUISolidLine() const
 {
     if(maBitmapSolidLine.IsEmpty())
     {
@@ -211,7 +213,8 @@ OUString const & XDashList::GetStringForUiNoLine() const
     {
         // formerly was RID_SVXSTR_INVISIBLE, but to make equal
         // everywhere, use RID_SVXSTR_NONE
-        const_cast< XDashList* >(this)->maStringNoLine = SvxResId(RID_SVXSTR_NONE);
+        const_cast< XDashList* >(this)->maStringNoLine = comphelper::LibreOfficeKit::isActive() ? SvxResId(RID_SVXSTR_INVISIBLE) :
+            SvxResId(RID_SVXSTR_NONE);
     }
 
     return maStringNoLine;

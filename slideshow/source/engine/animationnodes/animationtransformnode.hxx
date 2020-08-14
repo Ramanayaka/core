@@ -21,10 +21,9 @@
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_ANIMATIONTRANSFORMNODE_HXX
 
 #include "animationbasenode.hxx"
-#include "com/sun/star/animations/XAnimateTransform.hpp"
+#include <com/sun/star/animations/XAnimateTransform.hpp>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 class AnimationTransformNode : public AnimationBaseNode
 {
@@ -50,8 +49,7 @@ private:
     css::uno::Reference<css::animations::XAnimateTransform >   mxTransformNode;
 };
 
-} // namespace internal
-} // namespace slideshow
+} // namespace slideshow::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_ANIMATIONNODES_ANIMATIONTRANSFORMNODE_HXX
 

@@ -21,8 +21,8 @@
 #define INCLUDED_SC_SOURCE_UI_INC_HDRCONT_HXX
 
 #include <vcl/window.hxx>
-#include <vcl/seleng.hxx>
-#include "address.hxx"
+#include <scdllapi.h>
+#include <types.hxx>
 
 #define HDR_SIZE_OPTIMUM    0xFFFF
 
@@ -30,6 +30,7 @@
 #define HDR_SLIDERSIZE      2
 
 class ScTabView;
+class SelectionEngine;
 
 class ScHeaderControl : public vcl::Window
 {
@@ -55,6 +56,7 @@ private:
     SCCOLROW        nDragNo;
     long            nDragStart;
     long            nDragPos;
+    void*           nTipVisible;
     bool            bDragMoved;
 
     bool            bIgnoreMove;
@@ -67,8 +69,6 @@ private:
     void            ShowDragHelp();
 
     void            DoPaint( SCCOLROW nStart, SCCOLROW nEnd );
-
-    void            DrawShadedRect( long nStart, long nEnd, const Color& rBaseColor );
 
 protected:
     ScTabView*      pTabView;
@@ -121,6 +121,7 @@ public:
     long    GetSmallWidth() const               { return nSmallWidth; }
     long    GetBigWidth() const                 { return nBigWidth; }
     void    SetWidth( long nNew );
+    void    GetMarkRange(SCCOLROW& rStart, SCCOLROW& rEnd) const;
 };
 
 #endif

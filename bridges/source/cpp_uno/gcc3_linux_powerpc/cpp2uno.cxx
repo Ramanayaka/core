@@ -48,7 +48,7 @@ static typelib_TypeClass cpp2uno_call(
 {
         int ng = 0; //number of gpr registers used
 #ifndef __NO_FPRS__
-        int nf = 0; //number of fpr regsiters used
+        int nf = 0; //number of fpr registers used
 #endif
         void ** pCppStack; //temporary stack pointer
 
@@ -631,7 +631,7 @@ unsigned char *  codeSnippet( unsigned char * code, sal_Int32 functionIndex, sal
 
     // #now load up the pointer to the saved fpr registers
     //  addi    r6,r1,-2016
-    // if no dedicated floating point registers are used than we have NULL
+    // if no dedicated floating point registers are used then we have NULL
     // pointer there
     //  li      r6, 0
 

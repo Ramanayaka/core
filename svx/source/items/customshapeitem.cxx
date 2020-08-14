@@ -21,7 +21,8 @@
 
 #include <o3tl/any.hxx>
 #include <svx/sdasitm.hxx>
-#include <svx/svdattr.hxx>
+
+#include <com/sun/star/beans/PropertyValue.hpp>
 
 using namespace ::std;
 using namespace com::sun::star;
@@ -89,7 +90,7 @@ css::uno::Any* SdrCustomShapeGeometryItem::GetPropertyValueByName( const OUStrin
             PropertyPairHashMap::iterator aHashIter( aPropPairHashMap.find( PropertyPair( rSequenceName, rPropName ) ) );
             if ( aHashIter != aPropPairHashMap.end() )
             {
-                pRet = const_cast<css::uno::Any *>(&(*rSecSequence)[ (*aHashIter).second ].Value);
+                pRet = &const_cast<css::uno::Sequence<css::beans::PropertyValue> &>(*rSecSequence)[ (*aHashIter).second ].Value;
             }
         }
     }
@@ -119,12 +120,11 @@ void SdrCustomShapeGeometryItem::SetPropertyValue( const css::beans::PropertyVal
     css::uno::Any* pAny = GetPropertyValueByName( rPropVal.Name );
     if ( pAny )
     {   // property is already available
-        sal_Int32 i;
         if ( auto rSecSequence = o3tl::tryAccess<css::uno::Sequence<beans::PropertyValue>>(*pAny) )
         {   // old property is a sequence->each entry has to be removed from the HashPairMap
-            for ( i = 0; i < rSecSequence->getLength(); i++ )
+            for ( auto const & i : *rSecSequence )
             {
-                PropertyPairHashMap::iterator aHashIter( aPropPairHashMap.find( PropertyPair( rPropVal.Name, (*rSecSequence)[ i ].Name ) ) );
+                PropertyPairHashMap::iterator aHashIter( aPropPairHashMap.find( PropertyPair( rPropVal.Name, i.Name ) ) );
                 if ( aHashIter != aPropPairHashMap.end() )
                     aPropPairHashMap.erase( aHashIter );
             }
@@ -132,7 +132,7 @@ void SdrCustomShapeGeometryItem::SetPropertyValue( const css::beans::PropertyVal
         *pAny = rPropVal.Value;
         if ( auto rSecSequence = o3tl::tryAccess<css::uno::Sequence<beans::PropertyValue>>(*pAny) )
         {   // the new property is a sequence->each entry has to be inserted into the HashPairMap
-            for ( i = 0; i < rSecSequence->getLength(); i++ )
+            for ( sal_Int32 i = 0; i < rSecSequence->getLength(); i++ )
             {
                 beans::PropertyValue const & rPropVal2 = (*rSecSequence)[ i ];
                 aPropPairHashMap[ PropertyPair( rPropVal.Name, rPropVal2.Name ) ] = i;
@@ -141,7 +141,7 @@ void SdrCustomShapeGeometryItem::SetPropertyValue( const css::beans::PropertyVal
     }
     else
     {   // it's a new property
-        assert(aPropSeq.end() == std::find_if(aPropSeq.begin(), aPropSeq.end(),
+        assert(std::none_of(aPropSeq.begin(), aPropSeq.end(),
             [&rPropVal](beans::PropertyValue const& rVal)
                 { return rVal.Name == rPropVal.Name; } ));
         sal_uInt32 nIndex = aPropSeq.getLength();
@@ -167,7 +167,7 @@ void SdrCustomShapeGeometryItem::SetPropertyValue( const OUString& rSequenceName
             aValue.Name = rSequenceName;
             aValue.Value <<= aSeq;
 
-            assert(aPropSeq.end() == std::find_if(aPropSeq.begin(), aPropSeq.end(),
+            assert(std::none_of(aPropSeq.begin(), aPropSeq.end(),
                 [&rSequenceName](beans::PropertyValue const& rV)
                     { return rV.Name == rSequenceName; } ));
             sal_uInt32 nIndex = aPropSeq.getLength();
@@ -178,25 +178,22 @@ void SdrCustomShapeGeometryItem::SetPropertyValue( const OUString& rSequenceName
             pSeqAny = &aPropSeq[ nIndex ].Value;
         }
 
-        DBG_ASSERT( pSeqAny, "SdrCustomShapeGeometryItem::SetPropertyValue() - No Value??" );
-
-        if( pSeqAny )
+        if (auto pSecSequence = o3tl::tryAccess<css::uno::Sequence<beans::PropertyValue>>(*pSeqAny))
         {
-            if ( auto rSecSequence = o3tl::tryAccess<css::uno::Sequence<beans::PropertyValue>>(*pSeqAny) )
+            PropertyPairHashMap::iterator aHashIter(
+                aPropPairHashMap.find(PropertyPair(rSequenceName, rPropVal.Name)));
+            auto& rSeq = const_cast<css::uno::Sequence<css::beans::PropertyValue>&>(*pSecSequence);
+            if (aHashIter != aPropPairHashMap.end())
             {
-                PropertyPairHashMap::iterator aHashIter( aPropPairHashMap.find( PropertyPair( rSequenceName, rPropVal.Name ) ) );
-                if ( aHashIter != aPropPairHashMap.end() )
-                {
-                    const_cast<css::uno::Sequence<css::beans::PropertyValue> &>(*rSecSequence)[ (*aHashIter).second ].Value = rPropVal.Value;
-                }
-                else
-                {
-                    sal_Int32 nCount = rSecSequence->getLength();
-                    const_cast<css::uno::Sequence<css::beans::PropertyValue> &>(*rSecSequence).realloc( nCount + 1 );
-                    const_cast<css::uno::Sequence<css::beans::PropertyValue> &>(*rSecSequence)[ nCount ] = rPropVal;
+                rSeq[(*aHashIter).second].Value = rPropVal.Value;
+            }
+            else
+            {
+                const sal_Int32 nCount = pSecSequence->getLength();
+                rSeq.realloc(nCount + 1);
+                rSeq[nCount] = rPropVal;
 
-                    aPropPairHashMap[ PropertyPair( rSequenceName, rPropVal.Name ) ] = nCount;
-                }
+                aPropPairHashMap[PropertyPair(rSequenceName, rPropVal.Name)] = nCount;
             }
         }
     }
@@ -204,40 +201,37 @@ void SdrCustomShapeGeometryItem::SetPropertyValue( const OUString& rSequenceName
 
 void SdrCustomShapeGeometryItem::ClearPropertyValue( const OUString& rPropName )
 {
-    if ( aPropSeq.getLength() )
+    if ( !aPropSeq.hasElements() )
+        return;
+
+    PropertyHashMap::iterator aHashIter( aPropHashMap.find( rPropName ) );
+    if ( aHashIter == aPropHashMap.end() )
+        return;
+
+    css::uno::Any& rSeqAny = aPropSeq[(*aHashIter).second].Value;
+    if (auto pSecSequence
+        = o3tl::tryAccess<css::uno::Sequence<beans::PropertyValue>>(rSeqAny))
     {
-        PropertyHashMap::iterator aHashIter( aPropHashMap.find( rPropName ) );
-        if ( aHashIter != aPropHashMap.end() )
+        for (const auto& rPropVal : *pSecSequence)
         {
-             css::uno::Any* pSeqAny = &aPropSeq[ (*aHashIter).second ].Value;
-            if ( pSeqAny )
-            {
-                if ( auto rSecSequence = o3tl::tryAccess<css::uno::Sequence<beans::PropertyValue>>(*pSeqAny) )
-                {
-                    sal_Int32 i;
-                    for ( i = 0; i < rSecSequence->getLength(); i++ )
-                    {
-                        PropertyPairHashMap::iterator _aHashIter( aPropPairHashMap.find( PropertyPair( rPropName, (*rSecSequence)[ i ].Name ) ) );
-                        if ( _aHashIter != aPropPairHashMap.end() )
-                            aPropPairHashMap.erase( _aHashIter );       // removing property from pair hashmap
-                    }
-                }
-            }
-            sal_Int32 nLength = aPropSeq.getLength();
-            if ( nLength )
-            {
-                sal_Int32 nIndex  = (*aHashIter).second;
-                if ( nIndex != ( nLength - 1 ) )                        // resizing sequence
-                {
-                    PropertyHashMap::iterator aHashIter2( aPropHashMap.find( aPropSeq[ nLength - 1 ].Name ) );
-                    (*aHashIter2).second = nIndex;
-                    aPropSeq[ (*aHashIter).second ] = aPropSeq[ aPropSeq.getLength() - 1 ];
-                }
-                aPropSeq.realloc( aPropSeq.getLength() - 1 );
-            }
-            aPropHashMap.erase( aHashIter );                            // removing property from hashmap
+            auto _aHashIter(aPropPairHashMap.find(PropertyPair(rPropName, rPropVal.Name)));
+            if (_aHashIter != aPropPairHashMap.end())
+                aPropPairHashMap.erase(_aHashIter); // removing property from pair hashmap
         }
     }
+    sal_Int32 nLength = aPropSeq.getLength();
+    if ( nLength )
+    {
+        sal_Int32 nIndex  = (*aHashIter).second;
+        if ( nIndex != ( nLength - 1 ) )                        // resizing sequence
+        {
+            PropertyHashMap::iterator aHashIter2( aPropHashMap.find( aPropSeq[ nLength - 1 ].Name ) );
+            (*aHashIter2).second = nIndex;
+            aPropSeq[ nIndex ] = aPropSeq[ nLength - 1 ];
+        }
+        aPropSeq.realloc( nLength - 1 );
+    }
+    aPropHashMap.erase( aHashIter );                            // removing property from hashmap
 }
 
 SdrCustomShapeGeometryItem::~SdrCustomShapeGeometryItem()
@@ -253,7 +247,7 @@ bool SdrCustomShapeGeometryItem::operator==( const SfxPoolItem& rCmp ) const
 
 bool SdrCustomShapeGeometryItem::GetPresentation(
     SfxItemPresentation ePresentation, MapUnit /*eCoreMetric*/,
-    MapUnit /*ePresentationMetric*/, OUString &rText, const IntlWrapper *) const
+    MapUnit /*ePresentationMetric*/, OUString &rText, const IntlWrapper&) const
 {
     rText += " ";
     if ( ePresentation == SfxItemPresentation::Complete )
@@ -266,56 +260,37 @@ bool SdrCustomShapeGeometryItem::GetPresentation(
     return false;
 }
 
-SfxPoolItem* SdrCustomShapeGeometryItem::Create( SvStream& /*rIn*/, sal_uInt16 /*nItemVersion*/ ) const
-{
-    return new SdrCustomShapeGeometryItem;
-}
-
-SvStream& SdrCustomShapeGeometryItem::Store( SvStream& rOut, sal_uInt16 /*nItemVersion*/ ) const
-{
-    return rOut;
-}
-
-SfxPoolItem* SdrCustomShapeGeometryItem::Clone( SfxItemPool * /*pPool*/ ) const
+SdrCustomShapeGeometryItem* SdrCustomShapeGeometryItem::Clone( SfxItemPool * /*pPool*/ ) const
 {
     return new SdrCustomShapeGeometryItem( aPropSeq );
 }
 
-sal_uInt16 SdrCustomShapeGeometryItem::GetVersion( sal_uInt16 /*nFileFormatVersion*/ ) const
-{
-    return 1;
-}
 bool SdrCustomShapeGeometryItem::QueryValue( uno::Any& rVal, sal_uInt8 /*nMemberId*/ ) const
 {
     rVal <<= aPropSeq;
     return true;
 }
+
 bool SdrCustomShapeGeometryItem::PutValue( const uno::Any& rVal, sal_uInt8 /*nMemberId*/ )
 {
     if ( ! ( rVal >>= aPropSeq ) )
         return false;
-    else
-    {
-        for (sal_Int32 i = 0; i < aPropSeq.getLength(); ++i)
-        {
-            for (sal_Int32 j = i+1; j < aPropSeq.getLength(); ++j)
-            {
-                if (aPropSeq[i].Name == aPropSeq[j].Name)
-                {
-                    assert(false); // serious bug: duplicate xml attribute exported
-                    OUString const name(aPropSeq[i].Name);
-                    aPropSeq.realloc(0);
-                    throw uno::RuntimeException(
-                        "CustomShapeGeometry has duplicate property " + name);
-                }
-            }
-        }
-        return true;
-    }
-}
 
-SdrCustomShapeReplacementURLItem::SdrCustomShapeReplacementURLItem()
-:   SfxStringItem( SDRATTR_CUSTOMSHAPE_REPLACEMENT_URL, "" )
-{}
+    for (sal_Int32 i = 0; i < aPropSeq.getLength(); ++i)
+    {
+        const auto& rName = aPropSeq[i].Name;
+        bool isDuplicated = std::any_of(std::next(aPropSeq.begin(), i + 1), aPropSeq.end(),
+            [&rName](const css::beans::PropertyValue& rProp) { return rProp.Name == rName; });
+        if (isDuplicated)
+        {
+            assert(false); // serious bug: duplicate xml attribute exported
+            OUString const name(aPropSeq[i].Name);
+            aPropSeq.realloc(0);
+            throw uno::RuntimeException(
+                "CustomShapeGeometry has duplicate property " + name);
+        }
+    }
+    return true;
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

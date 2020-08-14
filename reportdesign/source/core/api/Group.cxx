@@ -16,26 +16,24 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "Group.hxx"
-#include "Section.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <Group.hxx>
+#include <Section.hxx>
 #include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/report/GroupOn.hpp>
 #include <com/sun/star/report/KeepTogether.hpp>
-#include "corestrings.hrc"
-#include "core_resource.hrc"
-#include "core_resource.hxx"
-#include "Tools.hxx"
-#include <comphelper/property.hxx>
+#include <strings.hxx>
+#include <strings.hrc>
+#include <core_resource.hxx>
+#include <Tools.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "Functions.hxx"
+#include <comphelper/types.hxx>
+#include <Functions.hxx>
 
 
 namespace reportdesign
 {
 
     using namespace com::sun::star;
-    using namespace comphelper;
 
 OGroup::OGroup(const uno::Reference< report::XGroups >& _xParent
                ,const uno::Reference< uno::XComponentContext >& _xContext)
@@ -61,7 +59,7 @@ IMPLEMENT_FORWARD_XINTERFACE2(OGroup,GroupBase,GroupPropertySet)
 
 OUString SAL_CALL OGroup::getImplementationName(  )
 {
-    return OUString("com.sun.star.comp.report.Group");
+    return "com.sun.star.comp.report.Group";
 }
 
 uno::Sequence< OUString> OGroup::getSupportedServiceNames_Static()
@@ -118,7 +116,7 @@ void SAL_CALL OGroup::setHeaderOn( sal_Bool _headeron )
 {
     if ( bool(_headeron) != m_xHeader.is() )
     {
-        OUString sName(RPT_RESSTRING(RID_STR_GROUP_HEADER));
+        OUString sName(RptResId(RID_STR_GROUP_HEADER));
         setSection(PROPERTY_HEADERON,_headeron,sName,m_xHeader);
     }
 }
@@ -133,7 +131,7 @@ void SAL_CALL OGroup::setFooterOn( sal_Bool _footeron )
 {
     if ( bool(_footeron) != m_xFooter.is() )
     {
-        OUString sName(RPT_RESSTRING(RID_STR_GROUP_FOOTER));
+        OUString sName(RptResId(RID_STR_GROUP_FOOTER));
         setSection(PROPERTY_FOOTERON,_footeron,sName,m_xFooter);
     }
 }
@@ -302,7 +300,7 @@ void OGroup::setSection(     const OUString& _sProperty
 
         // create section if needed
         if ( _bOn && !_member.is() )
-            _member = OSection::createOSection(this, getContext());
+            _member = OSection::createOSection(this, m_xContext);
         else if ( !_bOn )
             ::comphelper::disposeComponent(_member);
 

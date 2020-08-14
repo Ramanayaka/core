@@ -17,16 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/AUsers.hxx"
-#include "ado/AUser.hxx"
-#include "ado/ATable.hxx"
-#include "ado/AConnection.hxx"
+#include <ado/AUsers.hxx>
+#include <ado/AUser.hxx>
+#include <ado/ATable.hxx>
+#include <ado/AConnection.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <connectivity/sdbcx/IRefreshable.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/types.hxx>
 #include <connectivity/dbexception.hxx>
-#include "resource/ado_res.hrc"
+#include <strings.hrc>
 
 using namespace comphelper;
 using namespace connectivity;
@@ -55,11 +56,11 @@ Reference< XPropertySet > OUsers::createDescriptor()
 // XAppend
 sdbcx::ObjectType OUsers::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
-    OUserExtend* pUser = nullptr;
-    if ( !getImplementation( pUser, descriptor ) || pUser == nullptr )
+    OUserExtend* pUser = getUnoTunnelImplementation<OUserExtend>( descriptor );
+    if ( pUser == nullptr )
         m_pCatalog->getConnection()->throwGenericSQLException( STR_INVALID_USER_DESCRIPTOR_ERROR,static_cast<XTypeProvider*>(this) );
 
-    ADOUsers* pUsers = static_cast<ADOUsers*>(m_aCollection);
+    ADOUsers* pUsers = m_aCollection;
     pUsers->Append(OLEVariant(pUser->getImpl()),OLEString(pUser->getPassword()).asBSTR());
 
     return createObject( _rForName );

@@ -210,14 +210,6 @@ End
     End
 #endif
 
-#define STD_RES_FILE(id,name) \
-    File id \
-        TXT_FILE_BODY; \
-        RESFILE_ALL_LANG(name); \
-        Dir     = gid_Dir_Resource; \
-        Styles  = (PACKED); \
-    End
-
 #define LIBO_JAR_FILE(id,name) \
     File id \
         TXT_FILE_BODY; \
@@ -277,16 +269,6 @@ End
         Subkey = STRING(CONCAT2(.,key)); \
         Name = STRING(Content Type); \
         Value = STRING(mediatype); \
-        ComponentCondition = STRING(CONCAT3(REGISTER_,cond,=1)); \
-    End
-
-#define CONDITIONAL_REGISTRY_ENTRY_MEDIATYPE_DEF_EXT(name,cond,key,mediatype) \
-    RegistryItem gid_Regitem__MediaType_DefExt_##name \
-        ParentID = PREDEFINED_HKEY_CLASSES_ROOT; \
-        ModuleID = gid_Module_Root_Reg_##name; \
-        Subkey = STRING(CONCAT2(MIME\Database\Content Type\,mediatype)); \
-        Name = STRING(Extension); \
-        Value = STRING(CONCAT2(.,key)); \
         ComponentCondition = STRING(CONCAT3(REGISTER_,cond,=1)); \
     End
 
@@ -515,12 +497,12 @@ End
 
 #include <langmacros.inc>
 
-#define UI_FILELIST_ALL_LANG(name, file) \
-    File CONCAT3(gid_File_Share_Config_Sofficecfg_uiconfig_, name, _Lang) \
+#define MO_FILELIST_ALL_LANG(name) \
+    File CONCAT3(gid_File_Res_, name, _Lang) \
         TXT_FILE_BODY; \
         Styles = (PACKED); \
-        Dir = gid_Dir_Share_Config_Sofficecfg; \
-        UI_ALL_LANG_BUT_EN_US(file); \
+        Dir = gid_Dir_Resource; \
+        MO_ALL_LANG_EXCEPT_EN_US_AND_QTZ(name); \
     End
 
 #define URE_PRIVATE_LIB(id,name) \

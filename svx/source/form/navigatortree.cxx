@@ -23,48 +23,41 @@
 #include <svx/fmmodel.hxx>
 #include <svx/fmpage.hxx>
 #include <svx/svdpagv.hxx>
-#include "svx/svditer.hxx"
+#include <svx/svditer.hxx>
 
-#include "fmhelp.hrc"
-#include "fmexpl.hxx"
-#include "svx/fmresids.hrc"
-#include "fmshimp.hxx"
-#include "fmservs.hxx"
-#include "fmundo.hxx"
-#include "fmpgeimp.hxx"
-#include "fmitems.hxx"
-#include "fmobj.hxx"
-#include "fmprop.hrc"
-#include <vcl/wrkwin.hxx>
+#include <helpids.h>
+#include <fmexpl.hxx>
+#include <fmshimp.hxx>
+#include <fmservs.hxx>
+#include <fmundo.hxx>
+#include <fmpgeimp.hxx>
+#include <fmobj.hxx>
+#include <fmprop.hxx>
+#include <sal/log.hxx>
+#include <vcl/svapp.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/property.hxx>
+#include <comphelper/types.hxx>
 #include <com/sun/star/form/FormComponentType.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/script/XEventAttacherManager.hpp>
 #include <com/sun/star/datatransfer/clipboard/XClipboard.hpp>
 #include <com/sun/star/datatransfer/XTransferable.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <svx/sdrpaintwindow.hxx>
 
-#include <svx/svxdlg.hxx>
-#include <svx/dialogs.hrc>
-#include "bitmaps.hlst"
-#include "svtools/treelistentry.hxx"
+#include <svx/strings.hrc>
+#include <tools/diagnose_ex.h>
+#include <svx/svxids.hrc>
+#include <bitmaps.hlst>
+#include <vcl/commandevent.hxx>
 
 namespace svxform
 {
-
-
-    #define DROP_ACTION_TIMER_INITIAL_TICKS     10
-        // Time until scroll starts
-    #define DROP_ACTION_TIMER_SCROLL_TICKS      3
-        // Time to scroll one line
-    #define DROP_ACTION_TIMER_TICK_BASE         10
-        // factor for both declarations (in ms)
-
     #define EXPLORER_SYNC_DELAY                 200
         // Time (in ms) until explorer synchronizes the view after select or deselect
 
@@ -83,18 +76,16 @@ namespace svxform
     // helper
 
 
-    typedef ::std::map< Reference< XInterface >, SdrObject*, ::comphelper::OInterfaceCompare< XInterface > >
-            MapModelToShape;
-    typedef MapModelToShape::value_type ModelShapePair;
+    typedef ::std::map< Reference< XInterface >, SdrObject* > MapModelToShape;
 
 
-    void    collectShapeModelMapping( SdrPage* _pPage, MapModelToShape& _rMapping )
+    static void    collectShapeModelMapping( SdrPage const * _pPage, MapModelToShape& _rMapping )
     {
         OSL_ENSURE( _pPage, "collectShapeModelMapping: invalid arg!" );
 
         _rMapping.clear();
 
-        SdrObjListIter aIter( *_pPage );
+        SdrObjListIter aIter( _pPage );
         while ( aIter.IsMore() )
         {
             SdrObject* pSdrObject = aIter.Next();
@@ -106,64 +97,73 @@ namespace svxform
                 // note that this is normalized (i.e. queried for XInterface explicitly)
 
             ::std::pair< MapModelToShape::iterator, bool > aPos =
-                  _rMapping.insert( ModelShapePair( xNormalizedModel, pSdrObject ) );
+                  _rMapping.emplace( xNormalizedModel, pSdrObject );
             DBG_ASSERT( aPos.second, "collectShapeModelMapping: model was already existent!" );
                 // if this asserts, this would mean we have 2 shapes pointing to the same model
         }
     }
 
-    NavigatorTree::NavigatorTree( vcl::Window* pParent )
-        :SvTreeListBox( pParent, WB_HASBUTTONS|WB_HASLINES|WB_BORDER|WB_HSCROLL ) // #100258# OJ WB_HSCROLL added
-        ,m_aControlExchange(this)
-        ,m_pNavModel( nullptr )
-        ,m_pRootEntry(nullptr)
-        ,m_pEditEntry(nullptr)
+    NavigatorTreeDropTarget::NavigatorTreeDropTarget(NavigatorTree& rTreeView)
+        : DropTargetHelper(rTreeView.get_widget().get_drop_target())
+        , m_rTreeView(rTreeView)
+    {
+    }
+
+    sal_Int8 NavigatorTreeDropTarget::AcceptDrop(const AcceptDropEvent& rEvt)
+    {
+        sal_Int8 nAccept = m_rTreeView.AcceptDrop(rEvt);
+
+        if (nAccept != DND_ACTION_NONE)
+        {
+            // to enable the autoscroll when we're close to the edges
+            weld::TreeView& rWidget = m_rTreeView.get_widget();
+            rWidget.get_dest_row_at_pos(rEvt.maPosPixel, nullptr, true);
+        }
+
+        return nAccept;
+    }
+
+    sal_Int8 NavigatorTreeDropTarget::ExecuteDrop(const ExecuteDropEvent& rEvt)
+    {
+        return m_rTreeView.ExecuteDrop(rEvt);
+    }
+
+    NavigatorTree::NavigatorTree(std::unique_ptr<weld::TreeView> xTreeView)
+        :m_xTreeView(std::move(xTreeView))
+        ,m_aDropTargetHelper(*this)
+        ,m_aControlExchange()
         ,nEditEvent(nullptr)
         ,m_sdiState(SDI_DIRTY)
-        ,m_aTimerTriggered(-1,-1)
-        ,m_aDropActionType( DA_SCROLLUP )
         ,m_nSelectLock(0)
         ,m_nFormsSelected(0)
         ,m_nControlsSelected(0)
         ,m_nHiddenControls(0)
-        ,m_aTimerCounter( DROP_ACTION_TIMER_INITIAL_TICKS )
         ,m_bDragDataDirty(false)
         ,m_bPrevSelectionMixed(false)
-        ,m_bMarkingObjects(false)
         ,m_bRootSelected(false)
         ,m_bInitialUpdate(true)
         ,m_bKeyboardCut( false )
+        ,m_bEditing( false )
     {
-        SetHelpId( HID_FORM_NAVIGATOR );
+        m_xTreeView->set_help_id(HID_FORM_NAVIGATOR);
 
-        SetNodeBitmaps(
-            Image(BitmapEx(RID_SVXBMP_COLLAPSEDNODE)),
-            Image(BitmapEx(RID_SVXBMP_EXPANDEDNODE))
-        );
+        m_xTreeView->set_selection_mode(SelectionMode::Multiple);
 
-        SetDragDropMode(DragDropMode::ALL);
-        EnableInplaceEditing( true );
-        SetSelectionMode(SelectionMode::Multiple);
-
-        m_pNavModel = new NavigatorTreeModel();
+        m_pNavModel.reset(new NavigatorTreeModel());
         Clear();
 
         StartListening( *m_pNavModel );
 
-        m_aDropActionTimer.SetInvokeHandler(LINK(this, NavigatorTree, OnDropActionTimer));
-
         m_aSynchronizeTimer.SetInvokeHandler(LINK(this, NavigatorTree, OnSynchronizeTimer));
-        SetSelectHdl(LINK(this, NavigatorTree, OnEntrySelDesel));
-        SetDeselectHdl(LINK(this, NavigatorTree, OnEntrySelDesel));
+        m_xTreeView->connect_changed(LINK(this, NavigatorTree, OnEntrySelDesel));
+        m_xTreeView->connect_key_press(LINK(this, NavigatorTree, KeyInputHdl));
+        m_xTreeView->connect_popup_menu(LINK(this, NavigatorTree, PopupMenuHdl));
+        m_xTreeView->connect_editing(LINK(this, NavigatorTree, EditingEntryHdl),
+                                     LINK(this, NavigatorTree, EditedEntryHdl));
+        m_xTreeView->connect_drag_begin(LINK(this, NavigatorTree, DragBeginHdl));
     }
-
 
     NavigatorTree::~NavigatorTree()
-    {
-        disposeOnce();
-    }
-
-    void NavigatorTree::dispose()
     {
         if( nEditEvent )
             Application::RemoveUserEvent( nEditEvent );
@@ -174,16 +174,13 @@ namespace svxform
         DBG_ASSERT(GetNavModel() != nullptr, "NavigatorTree::~NavigatorTree : unexpected : no ExplorerModel");
         EndListening( *m_pNavModel );
         Clear();
-        delete m_pNavModel;
-        SvTreeListBox::dispose();
+        m_pNavModel.reset();
     }
-
 
     void NavigatorTree::Clear()
     {
         m_pNavModel->Clear();
     }
-
 
     void NavigatorTree::UpdateContent( FmFormShell* pFormShell )
     {
@@ -201,29 +198,36 @@ namespace svxform
         {
             // new shell during editing
             if (IsEditingActive())
-                CancelTextEditing();
+            {
+                m_xTreeView->end_editing();
+                m_bEditing = false;
+            }
 
             m_bDragDataDirty = true;    // as a precaution, although I don't drag
         }
         GetNavModel()->UpdateContent( pFormShell );
 
         // if there is a form, expand root
-        if (m_pRootEntry && !IsExpanded(m_pRootEntry))
-            Expand(m_pRootEntry);
+        if (m_xRootEntry && !m_xTreeView->get_row_expanded(*m_xRootEntry))
+            m_xTreeView->expand_row(*m_xRootEntry);
         // if there is EXACTLY ONE form, expand it too
-        if (m_pRootEntry)
+        if (m_xRootEntry)
         {
-            SvTreeListEntry* pFirst = FirstChild(m_pRootEntry);
-            if (pFirst && !NextSibling(pFirst))
-                Expand(pFirst);
+            std::unique_ptr<weld::TreeIter> xFirst(m_xTreeView->make_iterator(m_xRootEntry.get()));
+            bool bFirst = m_xTreeView->iter_children(*xFirst);
+            if (bFirst)
+            {
+                std::unique_ptr<weld::TreeIter> xSibling(m_xTreeView->make_iterator(xFirst.get()));
+                if (!m_xTreeView->iter_next_sibling(*xSibling))
+                    m_xTreeView->expand_row(*xFirst);
+            }
         }
     }
 
-
     bool NavigatorTree::implAllowExchange( sal_Int8 _nAction, bool* _pHasNonHidden )
     {
-        SvTreeListEntry* pCurEntry = GetCurEntry();
-        if (!pCurEntry)
+        bool bCurEntry = m_xTreeView->get_cursor(nullptr);
+        if (!bCurEntry)
             return false;
 
         // Information for AcceptDrop and Execute Drop
@@ -234,16 +238,11 @@ namespace svxform
 
         // check whether there are only hidden controls
         // I may add a format to pCtrlExch
-        bool bHasNonHidden = false;
-        for ( SvLBoxEntrySortedArray::const_iterator it = m_arrCurrentSelection.begin();
-              it != m_arrCurrentSelection.end(); ++it )
-        {
-            FmEntryData* pCurrent = static_cast< FmEntryData* >( (*it)->GetUserData() );
-            if ( IsHiddenControl( pCurrent ) )
-                continue;
-            bHasNonHidden = true;
-            break;
-        }
+        bool bHasNonHidden = std::any_of(m_arrCurrentSelection.begin(), m_arrCurrentSelection.end(),
+            [this](const auto& rEntry) {
+                FmEntryData* pCurrent = reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(*rEntry).toInt64());
+                return !IsHiddenControl( pCurrent );
+            });
 
         if ( bHasNonHidden && ( 0 == ( _nAction & DND_ACTION_MOVE ) ) )
             // non-hidden controls need to be moved
@@ -255,34 +254,31 @@ namespace svxform
         return true;
     }
 
-
     bool NavigatorTree::implPrepareExchange( sal_Int8 _nAction )
     {
-        EndSelection();
-
         bool bHasNonHidden = false;
         if ( !implAllowExchange( _nAction, &bHasNonHidden ) )
             return false;
 
         m_aControlExchange.prepareDrag();
-        m_aControlExchange->setFocusEntry( GetCurEntry() );
+        m_aControlExchange->setFocusEntry(m_xTreeView->get_cursor(nullptr));
 
-        for ( SvLBoxEntrySortedArray::const_iterator it = m_arrCurrentSelection.begin();
-              it != m_arrCurrentSelection.end(); ++it )
-            m_aControlExchange->addSelectedEntry(*it);
+        for (const auto& rpEntry : m_arrCurrentSelection)
+            m_aControlExchange->addSelectedEntry(m_xTreeView->make_iterator(rpEntry.get()));
 
         m_aControlExchange->setFormsRoot( GetNavModel()->GetFormPage()->GetForms() );
-        m_aControlExchange->buildPathFormat( this, m_pRootEntry );
+        m_aControlExchange->buildPathFormat(m_xTreeView.get(), m_xRootEntry.get());
 
         if (!bHasNonHidden)
         {
             // create a sequence
             Sequence< Reference< XInterface > > seqIFaces(m_arrCurrentSelection.size());
             Reference< XInterface >* pArray = seqIFaces.getArray();
-            for ( SvLBoxEntrySortedArray::const_iterator it = m_arrCurrentSelection.begin();
-                  it != m_arrCurrentSelection.end(); ++it, ++pArray )
-                *pArray = static_cast< FmEntryData* >( (*it)->GetUserData() )->GetElement();
-
+            for (const auto& rpEntry : m_arrCurrentSelection)
+            {
+                *pArray = reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(*rpEntry).toInt64())->GetElement();
+                ++pArray;
+            }
             // and the new format
             m_aControlExchange->addHiddenControlsFormat(seqIFaces);
         }
@@ -291,21 +287,22 @@ namespace svxform
         return true;
     }
 
-
-    void NavigatorTree::StartDrag( sal_Int8 /*nAction*/, const ::Point& /*rPosPixel*/ )
+    IMPL_LINK(NavigatorTree, DragBeginHdl, bool&, rUnsetDragIcon, bool)
     {
-        EndSelection();
+        rUnsetDragIcon = false;
 
-        if ( !implPrepareExchange( DND_ACTION_COPYMOVE ) )
-            // nothing to do or something went wrong
-            return;
-
-        // collected all possible formats for current situation, we can start now
-        m_aControlExchange.startDrag( DND_ACTION_COPYMOVE );
+        bool bSuccess = implPrepareExchange(DND_ACTION_COPYMOVE);
+        if (bSuccess)
+        {
+            OControlExchange& rExchange = *m_aControlExchange;
+            rtl::Reference<TransferDataContainer> xHelper(&rExchange);
+            m_xTreeView->enable_drag_source(xHelper, DND_ACTION_COPYMOVE);
+            rExchange.setDragging(true);
+        }
+        return !bSuccess;
     }
 
-
-    void NavigatorTree::Command( const CommandEvent& rEvt )
+    IMPL_LINK(NavigatorTree, PopupMenuHdl, const CommandEvent&, rEvt, bool)
     {
         bool bHandled = false;
         switch( rEvt.GetCommand() )
@@ -317,14 +314,14 @@ namespace svxform
                 if (rEvt.IsMouseEvent())
                 {
                     ptWhere = rEvt.GetMousePosPixel();
-                    SvTreeListEntry* ptClickedOn = GetEntry(ptWhere);
-                    if (ptClickedOn == nullptr)
+                    std::unique_ptr<weld::TreeIter> xClickedOn(m_xTreeView->make_iterator());
+                    if (!m_xTreeView->get_dest_row_at_pos(ptWhere, xClickedOn.get(), false))
                         break;
-                    if ( !IsSelected(ptClickedOn) )
+                    if (!m_xTreeView->is_selected(*xClickedOn))
                     {
-                        SelectAll(false);
-                        Select(ptClickedOn);
-                        SetCurEntry(ptClickedOn);
+                        m_xTreeView->unselect_all();
+                        m_xTreeView->select(*xClickedOn);
+                        m_xTreeView->set_cursor(*xClickedOn);
                     }
                 }
                 else
@@ -332,10 +329,10 @@ namespace svxform
                     if (m_arrCurrentSelection.empty()) // only happens with context menu via keyboard
                         break;
 
-                    SvTreeListEntry* pCurrent = GetCurEntry();
-                    if (!pCurrent)
+                    std::unique_ptr<weld::TreeIter> xCurrent(m_xTreeView->make_iterator());
+                    if (!m_xTreeView->get_cursor(xCurrent.get()))
                         break;
-                    ptWhere = GetEntryPosition(pCurrent);
+                    ptWhere = m_xTreeView->get_row_area(*xCurrent).Center();
                 }
 
                 // update my selection data
@@ -344,13 +341,14 @@ namespace svxform
                 // if there is at least one no-root-entry and the root selected, I deselect root
                 if ( (m_arrCurrentSelection.size() > 1) && m_bRootSelected )
                 {
-                    Select( m_pRootEntry, false );
-                    SetCursor( *m_arrCurrentSelection.begin(), true);
+                    const std::unique_ptr<weld::TreeIter>& rIter = *m_arrCurrentSelection.begin();
+                    m_xTreeView->set_cursor(*rIter);
+                    m_xTreeView->unselect(*m_xRootEntry);
                 }
                 bool bSingleSelection = (m_arrCurrentSelection.size() == 1);
 
 
-                DBG_ASSERT( (m_arrCurrentSelection.size() > 0) || m_bRootSelected, "no entries selected" );
+                DBG_ASSERT( (!m_arrCurrentSelection.empty()) || m_bRootSelected, "no entries selected" );
                     // shouldn't happen, because I would have selected one during call to IsSelected,
                     // if there was none before
 
@@ -360,94 +358,100 @@ namespace svxform
                 FmFormModel* pFormModel = pFormShell ? pFormShell->GetFormModel() : nullptr;
                 if( pFormShell && pFormModel )
                 {
-                    VclBuilder aBuilder(nullptr, VclBuilderContainer::getUIRootDir(), "svx/ui/formnavimenu.ui", "");
-                    VclPtr<PopupMenu> aContextMenu(aBuilder.get_menu("menu"));
-                    const sal_uInt16 nNewId = aContextMenu->GetItemId("new");
-                    PopupMenu* pSubMenuNew = aContextMenu->GetPopupMenu(nNewId);
+                    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xTreeView.get(), "svx/ui/formnavimenu.ui"));
+                    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
+                    std::unique_ptr<weld::Menu> xSubMenuNew(xBuilder->weld_menu("submenu"));
 
                     // menu 'New' only exists, if only the root or only one form is selected
-                    aContextMenu->EnableItem(nNewId, bSingleSelection && (m_nFormsSelected || m_bRootSelected));
+                    bool bShowNew = bSingleSelection && (m_nFormsSelected || m_bRootSelected);
+                    if (!bShowNew)
+                        xContextMenu->remove("new");
 
                     // 'New'\'Form' under the same terms
-                    const sal_uInt16 nFormId = pSubMenuNew->GetItemId("form");
-                    pSubMenuNew->EnableItem(nFormId, bSingleSelection && (m_nFormsSelected || m_bRootSelected));
-                    pSubMenuNew->SetItemImage(nFormId, Image(BitmapEx(RID_SVXBMP_FORM)));
+                    bool bShowForm = bSingleSelection && (m_nFormsSelected || m_bRootSelected);
+                    if (bShowForm)
+                        xSubMenuNew->append("form", SvxResId(RID_STR_FORM), RID_SVXBMP_FORM);
 
                     // 'New'\'hidden...', if exactly one form is selected
-                    const sal_uInt16 nHiddenId = pSubMenuNew->GetItemId("hidden");
-                    pSubMenuNew->EnableItem(nHiddenId, bSingleSelection && m_nFormsSelected);
-                    pSubMenuNew->SetItemImage(nHiddenId, Image(BitmapEx(RID_SVXBMP_HIDDEN)));
+                    bool bShowHidden = bSingleSelection && m_nFormsSelected;
+                    if (bShowHidden)
+                        xSubMenuNew->append("hidden", SvxResId(RID_STR_HIDDEN), RID_SVXBMP_HIDDEN);
 
                     // 'Delete': everything which is not root can be removed
-                    aContextMenu->EnableItem(aContextMenu->GetItemId("delete"), !m_bRootSelected);
+                    if (m_bRootSelected)
+                        xContextMenu->remove("delete");
 
                     // 'Cut', 'Copy' and 'Paste'
-                    aContextMenu->EnableItem(aContextMenu->GetItemId("cut"), !m_bRootSelected && implAllowExchange(DND_ACTION_MOVE));
-                    aContextMenu->EnableItem(aContextMenu->GetItemId("copy"), !m_bRootSelected && implAllowExchange(DND_ACTION_COPY));
-                    aContextMenu->EnableItem(aContextMenu->GetItemId("paste"), implAcceptPaste());
+                    bool bShowCut = !m_bRootSelected && implAllowExchange(DND_ACTION_MOVE);
+                    if (!bShowCut)
+                        xContextMenu->remove("cut");
+                    bool bShowCopy = !m_bRootSelected && implAllowExchange(DND_ACTION_COPY);
+                    if (!bShowCopy)
+                        xContextMenu->remove("copy");
+                    if (!implAcceptPaste())
+                        xContextMenu->remove("paste");
 
                     // TabDialog, if exactly one form
-                    aContextMenu->EnableItem(aContextMenu->GetItemId("taborder"), bSingleSelection && m_nFormsSelected);
+                    bool bShowTabOrder = bSingleSelection && m_nFormsSelected;
+                    if (!bShowTabOrder)
+                        xContextMenu->remove("taborder");
 
-                    const sal_uInt16 nBrowserId = aContextMenu->GetItemId("props");
+                    bool bShowProps = true;
                     // in XML forms, we don't allow for the properties of a form
                     // #i36484#
-                    if ( pFormShell->GetImpl()->isEnhancedForm() && !m_nControlsSelected )
-                        aContextMenu->RemoveItem(aContextMenu->GetItemPos(nBrowserId));
-
+                    if (pFormShell->GetImpl()->isEnhancedForm_Lock() && !m_nControlsSelected)
+                        bShowProps = false;
                     // if the property browser is already open, we don't allow for the properties, too
-                    if( pFormShell->GetImpl()->IsPropBrwOpen() )
-                        aContextMenu->RemoveItem(aContextMenu->GetItemPos(nBrowserId));
+                    if (pFormShell->GetImpl()->IsPropBrwOpen_Lock())
+                        bShowProps = false;
+
                     // and finally, if there's a mixed selection of forms and controls, disable the entry, too
-                    else
-                        aContextMenu->EnableItem(nBrowserId,
-                            (m_nControlsSelected && !m_nFormsSelected) || (!m_nControlsSelected && m_nFormsSelected) );
+                    if (bShowProps && !pFormShell->GetImpl()->IsPropBrwOpen_Lock())
+                        bShowProps =
+                            (m_nControlsSelected && !m_nFormsSelected) || (!m_nControlsSelected && m_nFormsSelected);
+
+                    if (!bShowProps)
+                        xContextMenu->remove("props");
 
                     // rename, if one element and no root
-                    aContextMenu->EnableItem(aContextMenu->GetItemId("rename"), bSingleSelection && !m_bRootSelected);
+                    bool bShowRename = bSingleSelection && !m_bRootSelected;
+                    if (!bShowRename)
+                        xContextMenu->remove("rename");
 
-                    // Readonly-entry is only for root
-                    aContextMenu->EnableItem(aContextMenu->GetItemId("designmode"), m_bRootSelected);
-                    // the same for automatic control focus
-                    aContextMenu->EnableItem(aContextMenu->GetItemId("controlfocus"), m_bRootSelected);
+                    if (!m_bRootSelected)
+                    {
+                        // Readonly-entry is only for root
+                        xContextMenu->remove("designmode");
+                        // the same for automatic control focus
+                        xContextMenu->remove("controlfocus");
+                    }
 
-                    std::unique_ptr<VclBuilder> xBuilder;
-                    VclPtr<PopupMenu> xConversionMenu;
+                    std::unique_ptr<weld::Menu> xConversionMenu(xBuilder->weld_menu("changemenu"));
                     // ConvertTo-Slots are enabled, if one control is selected
                     // the corresponding slot is disabled
-                    const sal_Int16 nChangeId = aContextMenu->GetItemId("change");
                     if (!m_bRootSelected && !m_nFormsSelected && (m_nControlsSelected == 1))
                     {
-                        xBuilder.reset(FmXFormShell::GetConversionMenu());
-                        xConversionMenu = xBuilder->get_menu("menu");
-                        aContextMenu->SetPopupMenu(nChangeId, xConversionMenu);
+                        FmXFormShell::GetConversionMenu_Lock(*xConversionMenu);
 #if OSL_DEBUG_LEVEL > 0
-                        FmControlData* pCurrent = static_cast<FmControlData*>((*m_arrCurrentSelection.begin())->GetUserData());
-                        OSL_ENSURE( pFormShell->GetImpl()->isSolelySelected( pCurrent->GetFormComponent() ),
+                        const std::unique_ptr<weld::TreeIter>& rIter = *m_arrCurrentSelection.begin();
+                        FmControlData* pCurrent = reinterpret_cast<FmControlData*>(m_xTreeView->get_id(*rIter).toInt64());
+                        OSL_ENSURE( pFormShell->GetImpl()->isSolelySelected_Lock( pCurrent->GetFormComponent() ),
                             "NavigatorTree::Command: inconsistency between the navigator selection, and the selection as the shell knows it!" );
 #endif
 
-                        pFormShell->GetImpl()->checkControlConversionSlotsForCurrentSelection(*aContextMenu->GetPopupMenu(nChangeId));
+                        pFormShell->GetImpl()->checkControlConversionSlotsForCurrentSelection_Lock(*xConversionMenu);
                     }
                     else
-                        aContextMenu->EnableItem(nChangeId, false );
+                        xContextMenu->remove("change");
 
-                    // remove all disabled entries
-                    aContextMenu->RemoveDisabledEntries(true, true);
+                    if (m_bRootSelected)
+                    {
+                        // set OpenReadOnly
+                        xContextMenu->set_active("designmode", pFormModel->GetOpenInDesignMode());
+                        xContextMenu->set_active("controlfocus", pFormModel->GetAutoControlFocus());
+                    }
 
-                    // set OpenReadOnly
-
-                    aContextMenu->CheckItem(aContextMenu->GetItemId("designmode"), pFormModel->GetOpenInDesignMode());
-                    aContextMenu->CheckItem(aContextMenu->GetItemId("controlfocus"), pFormModel->GetAutoControlFocus());
-
-                    aContextMenu->Execute(this, ptWhere);
-                    OString sIdent;
-                    if (xConversionMenu)
-                        sIdent = xConversionMenu->GetCurItemIdent();
-                    if (sIdent.isEmpty())
-                        sIdent = pSubMenuNew->GetCurItemIdent();
-                    if (sIdent.isEmpty())
-                        sIdent = aContextMenu->GetCurItemIdent();
+                    OString sIdent = xContextMenu->popup_at_rect(m_xTreeView.get(), tools::Rectangle(ptWhere, ::Size(1, 1)));
                     if (sIdent == "form")
                     {
                         OUString aStr(SvxResId(RID_STR_FORM));
@@ -456,7 +460,8 @@ namespace svxform
                         pFormModel->BegUndo(aUndoStr);
                         // slot was only available, if there is only one selected entry,
                         // which is a root or a form
-                        NewForm( *m_arrCurrentSelection.begin() );
+                        const std::unique_ptr<weld::TreeIter>& rIter = *m_arrCurrentSelection.begin();
+                        NewForm(*rIter);
                         pFormModel->EndUndo();
                     }
                     else if (sIdent == "hidden")
@@ -466,8 +471,8 @@ namespace svxform
 
                         pFormModel->BegUndo(aUndoStr);
                         // slot was valid for (exactly) one selected form
-                        OUString fControlName = FM_COMPONENT_HIDDEN;
-                        NewControl( fControlName, *m_arrCurrentSelection.begin(), true );
+                        const std::unique_ptr<weld::TreeIter>& rIter = *m_arrCurrentSelection.begin();
+                        NewControl(FM_COMPONENT_HIDDEN, *rIter, true);
                         pFormModel->EndUndo();
                     }
                     else if (sIdent == "cut")
@@ -481,23 +486,25 @@ namespace svxform
                     else if (sIdent == "taborder")
                     {
                         // this slot was effective for exactly one selected form
-                        SvTreeListEntry* pSelectedForm = *m_arrCurrentSelection.begin();
-                        DBG_ASSERT( IsFormEntry(pSelectedForm), "NavigatorTree::Command: This entry must be a FormEntry." );
+                        const std::unique_ptr<weld::TreeIter>& rSelectedForm = *m_arrCurrentSelection.begin();
+                        DBG_ASSERT( IsFormEntry(*rSelectedForm), "NavigatorTree::Command: This entry must be a FormEntry." );
 
-                        FmFormData* pFormData = static_cast<FmFormData*>(pSelectedForm->GetUserData());
-                        Reference< XForm >  xForm(  pFormData->GetFormIface());
+                        FmFormData* pFormData = reinterpret_cast<FmFormData*>(m_xTreeView->get_id(*rSelectedForm).toInt64());
+                        const Reference< XForm >&  xForm(  pFormData->GetFormIface());
 
                         Reference< XTabControllerModel >  xTabController(xForm, UNO_QUERY);
                         if( !xTabController.is() )
                             break;
-                        GetNavModel()->GetFormShell()->GetImpl()->ExecuteTabOrderDialog( xTabController );
+                        GetNavModel()->GetFormShell()->GetImpl()->ExecuteTabOrderDialog_Lock(xTabController);
                     }
                     else if (sIdent == "props")
                         ShowSelectionProperties(true);
                     else if (sIdent == "rename")
                     {
                         // only allowed for one no-root-entry
-                        EditEntry( *m_arrCurrentSelection.begin() );
+                        const std::unique_ptr<weld::TreeIter>& rIter = *m_arrCurrentSelection.begin();
+                        m_xTreeView->start_editing(*rIter);
+                        m_bEditing = true;
                     }
                     else if (sIdent == "designmode")
                     {
@@ -511,8 +518,9 @@ namespace svxform
                     }
                     else if (FmXFormShell::isControlConversionSlot(sIdent))
                     {
-                        FmControlData* pCurrent = static_cast<FmControlData*>((*m_arrCurrentSelection.begin())->GetUserData());
-                        if (pFormShell->GetImpl()->executeControlConversionSlot(pCurrent->GetFormComponent(), sIdent))
+                        const std::unique_ptr<weld::TreeIter>& rIter = *m_arrCurrentSelection.begin();
+                        FmControlData* pCurrent = reinterpret_cast<FmControlData*>(m_xTreeView->get_id(*rIter).toInt64());
+                        if (pFormShell->GetImpl()->executeControlConversionSlot_Lock(pCurrent->GetFormComponent(), sIdent))
                             ShowSelectionProperties();
                     }
                 }
@@ -522,27 +530,27 @@ namespace svxform
             default: break;
         }
 
-        if (!bHandled)
-            SvTreeListBox::Command( rEvt );
+        return bHandled;
     }
 
-
-    SvTreeListEntry* NavigatorTree::FindEntry( FmEntryData* pEntryData )
+    std::unique_ptr<weld::TreeIter> NavigatorTree::FindEntry(FmEntryData* pEntryData)
     {
-        if( !pEntryData ) return nullptr;
-        SvTreeListEntry* pCurEntry = First();
-        while( pCurEntry )
-        {
-            FmEntryData* pCurEntryData = static_cast<FmEntryData*>(pCurEntry->GetUserData());
-            if( pCurEntryData && pCurEntryData->IsEqualWithoutChildren(pEntryData) )
-                return pCurEntry;
+        std::unique_ptr<weld::TreeIter> xRet;
+        if(!pEntryData)
+            return xRet;
 
-            pCurEntry = Next( pCurEntry );
-        }
+        m_xTreeView->all_foreach([this, pEntryData, &xRet](weld::TreeIter& rEntry){
+            FmEntryData* pCurEntryData = reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(rEntry).toInt64());
+            if (pCurEntryData && pCurEntryData->IsEqualWithoutChildren(pEntryData))
+            {
+                xRet = m_xTreeView->make_iterator(&rEntry);
+                return true;
+            }
+            return false;
+        });
 
-        return nullptr;
+        return xRet;
     }
-
 
     void NavigatorTree::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
     {
@@ -564,34 +572,38 @@ namespace svxform
         else if( dynamic_cast<const FmNavModelReplacedHint*>(&rHint) )
         {
             FmEntryData* pData = static_cast<const FmNavModelReplacedHint*>(&rHint)->GetEntryData();
-            SvTreeListEntry* pEntry = FindEntry( pData );
-            if (pEntry)
-            {   // reset image
-                SetCollapsedEntryBmp( pEntry, pData->GetNormalImage() );
-                SetExpandedEntryBmp( pEntry, pData->GetNormalImage() );
+            std::unique_ptr<weld::TreeIter> xEntry = FindEntry(pData);
+            if (xEntry)
+            {
+                // reset image
+                m_xTreeView->set_image(*xEntry, pData->GetNormalImage());
             }
         }
 
         else if( dynamic_cast<const FmNavNameChangedHint*>(&rHint) )
         {
             const FmNavNameChangedHint* pNameChangedHint = static_cast<const FmNavNameChangedHint*>(&rHint);
-            SvTreeListEntry* pEntry = FindEntry( pNameChangedHint->GetEntryData() );
-            SetEntryText( pEntry, pNameChangedHint->GetNewName() );
+            std::unique_ptr<weld::TreeIter> xEntry = FindEntry(pNameChangedHint->GetEntryData());
+            m_xTreeView->set_text(*xEntry, pNameChangedHint->GetNewName());
         }
 
         else if( dynamic_cast<const FmNavClearedHint*>(&rHint) )
         {
-            SvTreeListBox::Clear();
+            m_aCutEntries.clear();
+            if (m_aControlExchange.isDataExchangeActive())
+                m_aControlExchange.clear();
+            m_xTreeView->clear();
 
             // default-entry "Forms"
-            Image aRootImage(BitmapEx(RID_SVXBMP_FORMS));
-            m_pRootEntry = InsertEntry( SvxResId(RID_STR_FORMS), aRootImage, aRootImage,
-                nullptr, false, 0 );
+            OUString sText(SvxResId(RID_STR_FORMS));
+            m_xRootEntry = m_xTreeView->make_iterator();
+            m_xTreeView->insert(nullptr, -1, &sText, nullptr, nullptr, nullptr,
+                                false, m_xRootEntry.get());
+            m_xTreeView->set_image(*m_xRootEntry, RID_SVXBMP_FORMS);
+            m_xTreeView->set_sensitive(*m_xRootEntry, true);
         }
-        else if (!m_bMarkingObjects && dynamic_cast<const FmNavRequestSelectHint*>(&rHint))
-        {   // if m_bMarkingObjects is sal_True, I mark objects myself
-            // and because of the synchronous mechanism, its exactly the hint,
-            // which was triggered by myself, and thus can be ignored
+        else if (dynamic_cast<const FmNavRequestSelectHint*>(&rHint))
+        {
             FmNavRequestSelectHint* pershHint = const_cast<FmNavRequestSelectHint*>(static_cast<const FmNavRequestSelectHint*>(&rHint));
             FmEntryDataArray& arredToSelect = pershHint->GetItems();
             SynchronizeSelection(arredToSelect);
@@ -603,29 +615,30 @@ namespace svxform
         }
     }
 
-
-    SvTreeListEntry* NavigatorTree::Insert( FmEntryData* pEntryData, sal_uIntPtr nRelPos )
+    std::unique_ptr<weld::TreeIter> NavigatorTree::Insert(FmEntryData* pEntryData, int nRelPos)
     {
-
         // insert current entry
-        SvTreeListEntry* pParentEntry = FindEntry( pEntryData->GetParent() );
-        SvTreeListEntry* pNewEntry;
+        std::unique_ptr<weld::TreeIter> xParentEntry = FindEntry( pEntryData->GetParent() );
+        std::unique_ptr<weld::TreeIter> xNewEntry(m_xTreeView->make_iterator());
+        OUString sId(OUString::number(reinterpret_cast<sal_Int64>(pEntryData)));
 
-        if( !pParentEntry )
-            pNewEntry = InsertEntry( pEntryData->GetText(),
-                pEntryData->GetNormalImage(), pEntryData->GetNormalImage(),
-                m_pRootEntry, false, nRelPos, pEntryData );
-
+        if(!xParentEntry)
+        {
+            m_xTreeView->insert(m_xRootEntry.get(), nRelPos, &pEntryData->GetText(), &sId,
+                                nullptr, nullptr, false, xNewEntry.get());
+        }
         else
-            pNewEntry = InsertEntry( pEntryData->GetText(),
-                pEntryData->GetNormalImage(), pEntryData->GetNormalImage(),
-                pParentEntry, false, nRelPos, pEntryData );
+        {
+            m_xTreeView->insert(xParentEntry.get(), nRelPos, &pEntryData->GetText(), &sId,
+                                nullptr, nullptr, false, xNewEntry.get());
+        }
 
+        m_xTreeView->set_image(*xNewEntry, pEntryData->GetNormalImage());
+        m_xTreeView->set_sensitive(*xNewEntry, true);
 
         // If root-entry, expand root
-        if( !pParentEntry )
-            Expand( m_pRootEntry );
-
+        if (!xParentEntry)
+            m_xTreeView->expand_row(*m_xRootEntry);
 
         // insert children
         FmEntryDataList* pChildList = pEntryData->GetChildList();
@@ -633,12 +646,11 @@ namespace svxform
         for( size_t i = 0; i < nChildCount; i++ )
         {
             FmEntryData* pChildData = pChildList->at( i );
-            Insert( pChildData, TREELIST_APPEND );
+            Insert(pChildData, -1);
         }
 
-        return pNewEntry;
+        return xNewEntry;
     }
-
 
     void NavigatorTree::Remove( FmEntryData* pEntryData )
     {
@@ -646,8 +658,8 @@ namespace svxform
             return;
 
         // entry for the data
-        SvTreeListEntry* pEntry = FindEntry( pEntryData );
-        if (!pEntry)
+        std::unique_ptr<weld::TreeIter> xEntry = FindEntry(pEntryData);
+        if (!xEntry)
             return;
 
         // delete entry from TreeListBox
@@ -659,53 +671,52 @@ namespace svxform
 
         // little problem: I remember the selected data, but if somebody deletes one of these entries,
         // I get inconsistent... this would be bad
-        Select(pEntry, false);
+        m_xTreeView->unselect(*xEntry);
 
         // selection can be modified during deletion,
         // but because I disabled SelectionHandling, I have to do it later
-        sal_uIntPtr nExpectedSelectionCount = GetSelectionCount();
+        auto nExpectedSelectionCount = m_xTreeView->count_selected_rows();
 
-        if( pEntry )
-            GetModel()->Remove( pEntry );
+        ModelHasRemoved(xEntry.get());
+        m_xTreeView->remove(*xEntry);
 
-        if (nExpectedSelectionCount != GetSelectionCount())
+        if (nExpectedSelectionCount != m_xTreeView->count_selected_rows())
             SynchronizeSelection();
 
         // by default I treat the selection of course
         UnlockSelectionHandling();
     }
 
-
-    bool NavigatorTree::IsFormEntry( SvTreeListEntry* pEntry )
+    bool NavigatorTree::IsFormEntry(const weld::TreeIter& rEntry)
     {
-        FmEntryData* pEntryData = static_cast<FmEntryData*>(pEntry->GetUserData());
+        FmEntryData* pEntryData = reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(rEntry).toInt64());
         return !pEntryData || dynamic_cast<const FmFormData*>( pEntryData) !=  nullptr;
     }
 
-
-    bool NavigatorTree::IsFormComponentEntry( SvTreeListEntry* pEntry )
+    bool NavigatorTree::IsFormComponentEntry(const weld::TreeIter& rEntry)
     {
-        FmEntryData* pEntryData = static_cast<FmEntryData*>(pEntry->GetUserData());
-        return pEntryData && dynamic_cast<const FmControlData*>( pEntryData) !=  nullptr;
+        FmEntryData* pEntryData = reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(rEntry).toInt64());
+        return dynamic_cast<const FmControlData*>( pEntryData) != nullptr;
     }
-
 
     bool NavigatorTree::implAcceptPaste( )
     {
-        SvTreeListEntry* pFirstSelected = FirstSelected();
-        if ( !pFirstSelected || NextSelected( pFirstSelected ) )
+        auto nSelectedEntries = m_xTreeView->count_selected_rows();
+        if (nSelectedEntries != 1)
             // no selected entry, or at least two selected entries
             return false;
 
         // get the clipboard
-        TransferableDataHelper aClipboardContent( TransferableDataHelper::CreateFromSystemClipboard( this ) );
+        TransferableDataHelper aClipboardContent(TransferableDataHelper::CreateFromClipboard(GetSystemClipboard()));
 
         sal_Int8 nAction = m_aControlExchange.isClipboardOwner() && doingKeyboardCut( ) ? DND_ACTION_MOVE : DND_ACTION_COPY;
-        return ( nAction == implAcceptDataTransfer( aClipboardContent.GetDataFlavorExVector(), nAction, pFirstSelected, false ) );
+        std::unique_ptr<weld::TreeIter> xSelected(m_xTreeView->make_iterator());
+        if (!m_xTreeView->get_selected(xSelected.get()))
+            xSelected.reset();
+        return nAction == implAcceptDataTransfer(aClipboardContent.GetDataFlavorExVector(), nAction, xSelected.get(), false);
     }
 
-
-    sal_Int8 NavigatorTree::implAcceptDataTransfer( const DataFlavorExVector& _rFlavors, sal_Int8 _nAction, SvTreeListEntry* _pTargetEntry, bool _bDnD )
+    sal_Int8 NavigatorTree::implAcceptDataTransfer( const DataFlavorExVector& _rFlavors, sal_Int8 _nAction, weld::TreeIter* _pTargetEntry, bool _bDnD )
     {
         // no target -> no drop
         if (!_pTargetEntry)
@@ -724,7 +735,7 @@ namespace svxform
         {   // bHasHiddenControlsFormat means that only hidden controls are part of the data
 
             // hidden controls can be copied to a form only
-            if ( !_pTargetEntry || ( _pTargetEntry == m_pRootEntry ) || !IsFormEntry( _pTargetEntry ) )
+            if (m_xTreeView->iter_compare(*_pTargetEntry, *m_xRootEntry) == 0 || !IsFormEntry(*_pTargetEntry))
                 return DND_ACTION_NONE;
 
             return bSelfSource ? ( DND_ACTION_COPYMOVE & _nAction ) : DND_ACTION_COPY;
@@ -772,20 +783,19 @@ namespace svxform
 
             // I must recreate the list of the ExchangeObjects, because the shell was changed during dragging
             // (there are SvLBoxEntries in it, and we lost them during change)
-            m_aControlExchange->buildListFromPath(this, m_pRootEntry);
+            m_aControlExchange->buildListFromPath(m_xTreeView.get(), m_xRootEntry.get());
             m_bDragDataDirty = false;
         }
 
         // List of dropped entries from DragServer
-        const ListBoxEntrySet& aDropped = m_aControlExchange->selected();
-        DBG_ASSERT(aDropped.size() >= 1, "NavigatorTree::implAcceptDataTransfer: no entries !");
+        const ListBoxEntrySet& rDropped = m_aControlExchange->selected();
+        DBG_ASSERT(!rDropped.empty(), "NavigatorTree::implAcceptDataTransfer: no entries !");
 
-        bool bDropTargetIsComponent = IsFormComponentEntry( _pTargetEntry );
-        //SvTreeListEntry* pDropTargetParent = GetParent( _pTargetEntry );
+        bool bDropTargetIsComponent = IsFormComponentEntry( *_pTargetEntry );
 
         // conditions to disallow the drop
         // 0) the root entry is part of the list (can't DnD the root!)
-        // 1) one of the draged entries is to be dropped onto it's own parent
+        // 1) one of the dragged entries is to be dropped onto its own parent
         // 2) -               "       - is to be dropped onto itself
         // 3) -               "       - is a Form and to be dropped onto one of its descendants
         // 4) one of the entries is a control and to be dropped onto the root
@@ -794,126 +804,81 @@ namespace svxform
 
         // collect the ancestors of the drop target (speeds up 3)
         SvLBoxEntrySortedArray arrDropAnchestors;
-        SvTreeListEntry* pLoop = _pTargetEntry;
-        while (pLoop)
+        std::unique_ptr<weld::TreeIter> xLoop(m_xTreeView->make_iterator(_pTargetEntry));
+        do
         {
-            arrDropAnchestors.insert(pLoop);
-            pLoop = GetParent(pLoop);
+            arrDropAnchestors.emplace(m_xTreeView->make_iterator(xLoop.get()));
         }
+        while (m_xTreeView->iter_parent(*xLoop));
 
-        for (   ListBoxEntrySet::const_iterator dropped = aDropped.begin();
-                dropped != aDropped.end();
-                ++dropped
-            )
+        for (const auto& rCurrent : rDropped)
         {
-            SvTreeListEntry* pCurrent = *dropped;
-            SvTreeListEntry* pCurrentParent = GetParent(pCurrent);
-
             // test for 0)
-            if (pCurrent == m_pRootEntry)
+            if (m_xTreeView->iter_compare(*rCurrent, *m_xRootEntry) == 0)
                 return DND_ACTION_NONE;
 
+            std::unique_ptr<weld::TreeIter> xCurrentParent(m_xTreeView->make_iterator(rCurrent.get()));
+            m_xTreeView->iter_parent(*xCurrentParent);
+
             // test for 1)
-            if ( _pTargetEntry == pCurrentParent )
+            if (m_xTreeView->iter_compare(*_pTargetEntry, *xCurrentParent) == 0)
                 return DND_ACTION_NONE;
 
             // test for 2)
-            if (pCurrent == _pTargetEntry)
+            if (m_xTreeView->iter_compare(*rCurrent, *_pTargetEntry) == 0)
                 return DND_ACTION_NONE;
 
             // test for 5)
-    //      if ( bDropTargetIsComponent && (pDropTargetParent != pCurrentParent) )
-            if ( bDropTargetIsComponent )   // TODO : the line above can be inserted, if ExecuteDrop can handle inversion
+            if (bDropTargetIsComponent)
                 return DND_ACTION_NONE;
 
             // test for 3)
-            if ( IsFormEntry(pCurrent) )
+            if (IsFormEntry(*rCurrent))
             {
-                if ( arrDropAnchestors.find(pCurrent) != arrDropAnchestors.end() )
+                auto aIter = std::find_if(arrDropAnchestors.begin(), arrDropAnchestors.end(),
+                                          [this, &rCurrent](const auto& rElem) {
+                                            return m_xTreeView->iter_compare(*rElem, *rCurrent) == 0;
+                                          });
+
+                if ( aIter != arrDropAnchestors.end() )
                     return DND_ACTION_NONE;
-            } else if ( IsFormComponentEntry(pCurrent) )
+            }
+            else if (IsFormComponentEntry(*rCurrent))
             {
                 // test for 4)
-                if (_pTargetEntry == m_pRootEntry)
+                if (m_xTreeView->iter_compare(*_pTargetEntry, *m_xRootEntry) == 0)
                     return DND_ACTION_NONE;
             }
         }
-
         return DND_ACTION_MOVE;
     }
-
 
     sal_Int8 NavigatorTree::AcceptDrop( const AcceptDropEvent& rEvt )
     {
         ::Point aDropPos = rEvt.maPosPixel;
-
-        // first handle possible DropActions (Scroll and swing open)
-        if (rEvt.mbLeaving)
-        {
-            if (m_aDropActionTimer.IsActive())
-                m_aDropActionTimer.Stop();
-        } else
-        {
-            bool bNeedTrigger = false;
-            // on the first entry ?
-            if ((aDropPos.Y() >= 0) && (aDropPos.Y() < GetEntryHeight()))
-            {
-                m_aDropActionType = DA_SCROLLUP;
-                bNeedTrigger = true;
-            } else
-                // on the last one (respectively the area, an entry would tale, if it flush with the bottom ?
-                if ((aDropPos.Y() < GetSizePixel().Height()) && (aDropPos.Y() >= GetSizePixel().Height() - GetEntryHeight()))
-                {
-                    m_aDropActionType = DA_SCROLLDOWN;
-                    bNeedTrigger = true;
-                } else
-                {   // on an entry with children, not swang open
-                    SvTreeListEntry* pDropppedOn = GetEntry(aDropPos);
-                    if (pDropppedOn && (GetChildCount(pDropppedOn) > 0) && !IsExpanded(pDropppedOn))
-                    {
-                        // -> swing open
-                        m_aDropActionType = DA_EXPANDNODE;
-                        bNeedTrigger = true;
-                    }
-                }
-
-            if (bNeedTrigger && (m_aTimerTriggered != aDropPos))
-            {
-                // restart counting
-                m_aTimerCounter = DROP_ACTION_TIMER_INITIAL_TICKS;
-                // remember pos, because I get AcceptDrops, although mouse hasn't moved
-                m_aTimerTriggered = aDropPos;
-                // start Timer
-                if (!m_aDropActionTimer.IsActive()) // exist Timer?
-                {
-                    m_aDropActionTimer.SetTimeout(DROP_ACTION_TIMER_TICK_BASE);
-                    m_aDropActionTimer.Start();
-                }
-            } else if (!bNeedTrigger)
-                m_aDropActionTimer.Stop();
-        }
-
-        return implAcceptDataTransfer( GetDataFlavorExVector(), rEvt.mnAction, GetEntry( aDropPos ), true );
+        std::unique_ptr<weld::TreeIter> xDropTarget(m_xTreeView->make_iterator());
+        // get_dest_row_at_pos with false cause we must drop exactly "on" a form to paste a control into it
+        if (!m_xTreeView->get_dest_row_at_pos(aDropPos, xDropTarget.get(), false))
+            xDropTarget.reset();
+        return implAcceptDataTransfer(m_aDropTargetHelper.GetDataFlavorExVector(), rEvt.mnAction, xDropTarget.get(), true);
     }
-
 
     sal_Int8 NavigatorTree::implExecuteDataTransfer( const OControlTransferData& _rData, sal_Int8 _nAction, const ::Point& _rDropPos, bool _bDnD )
     {
-        return implExecuteDataTransfer( _rData, _nAction, GetEntry( _rDropPos ), _bDnD );
+        std::unique_ptr<weld::TreeIter> xDrop(m_xTreeView->make_iterator());
+        // get_dest_row_at_pos with false cause we must drop exactly "on" a form to paste a control into it
+        if (!m_xTreeView->get_dest_row_at_pos(_rDropPos, xDrop.get(), false))
+            xDrop.reset();
+        return implExecuteDataTransfer( _rData, _nAction, xDrop.get(), _bDnD );
     }
 
-
-    sal_Int8 NavigatorTree::implExecuteDataTransfer( const OControlTransferData& _rData, sal_Int8 _nAction, SvTreeListEntry* _pTargetEntry, bool _bDnD )
+    sal_Int8 NavigatorTree::implExecuteDataTransfer( const OControlTransferData& _rData, sal_Int8 _nAction, weld::TreeIter* _pTargetEntry, bool _bDnD )
     {
         const DataFlavorExVector& rDataFlavors = _rData.GetDataFlavorExVector();
 
         if ( DND_ACTION_NONE == implAcceptDataTransfer( rDataFlavors, _nAction, _pTargetEntry, _bDnD ) )
             // under some platforms, it may happen that ExecuteDrop is called though AcceptDrop returned DND_ACTION_NONE
             return DND_ACTION_NONE;
-
-        // would be bad, if we scroll after drop
-        if (m_aDropActionTimer.IsActive())
-            m_aDropActionTimer.Stop();
 
         if (!_pTargetEntry)
             // no target -> no drop
@@ -926,7 +891,7 @@ namespace svxform
         DBG_ASSERT(!bForeignCollection || bHasHiddenControlsFormat, "NavigatorTree::implExecuteDataTransfer: invalid format (AcceptDrop shouldn't have let this pass) !");
         DBG_ASSERT(bForeignCollection || !m_bDragDataDirty, "NavigatorTree::implExecuteDataTransfer: invalid state (shell changed since last exchange resync) !");
             // this should be done in AcceptDrop: the list of controls is created in _rData
-            // and m_bDragDataDirty is resetted
+            // and m_bDragDataDirty is reset
 #endif
 
         if ( DND_ACTION_COPY == _nAction )
@@ -934,7 +899,7 @@ namespace svxform
 #ifdef DBG_UTIL
             DBG_ASSERT( bHasHiddenControlsFormat, "NavigatorTree::implExecuteDataTransfer: copy allowed for hidden controls only!" );
 #endif
-            DBG_ASSERT( _pTargetEntry && ( _pTargetEntry != m_pRootEntry ) && IsFormEntry( _pTargetEntry ),
+            DBG_ASSERT( _pTargetEntry && m_xTreeView->iter_compare(*_pTargetEntry, *m_xRootEntry) != 0 && IsFormEntry( *_pTargetEntry ),
                 "NavigatorTree::implExecuteDataTransfer: should not be here!" );
                 // implAcceptDataTransfer should have caught both cases
 
@@ -944,7 +909,7 @@ namespace svxform
 #endif
 
             // because i want to select all targets (and only them)
-            SelectAll(false);
+            m_xTreeView->unselect_all();
 
             const Sequence< Reference< XInterface > >& aControls = _rData.hiddenControls();
             sal_Int32 nCount = aControls.getLength();
@@ -965,8 +930,7 @@ namespace svxform
             for (sal_Int32 i=0; i<nCount; ++i)
             {
                 // create new control
-                OUString fControlName = FM_COMPONENT_HIDDEN;
-                FmControlData* pNewControlData = NewControl( fControlName, _pTargetEntry, false);
+                FmControlData* pNewControlData = NewControl( FM_COMPONENT_HIDDEN, *_pTargetEntry, false);
                 Reference< XPropertySet >  xNewPropSet( pNewControlData->GetPropertySet() );
 
                 // copy properties form old control to new one
@@ -979,22 +943,20 @@ namespace svxform
                     // should only contain hidden controls
 #endif // (OSL_DEBUG_LEVEL > 0)
                 Reference< XPropertySetInfo >  xPropInfo( xCurrent->getPropertySetInfo());
-                Sequence< Property> seqAllCurrentProps = xPropInfo->getProperties();
-                Property* pAllCurrentProps = seqAllCurrentProps.getArray();
-                for (sal_Int32 j=0; j<seqAllCurrentProps.getLength(); ++j)
+                const Sequence< Property> seqAllCurrentProps = xPropInfo->getProperties();
+                for (Property const & currentProp : seqAllCurrentProps)
                 {
-                    OUString sCurrentProp = pAllCurrentProps[j].Name;
-                    if (((pAllCurrentProps[j].Attributes & PropertyAttribute::READONLY) == 0) && (sCurrentProp != FM_PROP_NAME))
+                    if (((currentProp.Attributes & PropertyAttribute::READONLY) == 0) && (currentProp.Name != FM_PROP_NAME))
                     {   // (read-only attribs aren't set, ditto name,
                         // NewControl defined it uniquely
-                        xNewPropSet->setPropertyValue(sCurrentProp, xCurrent->getPropertyValue(sCurrentProp));
+                        xNewPropSet->setPropertyValue(currentProp.Name, xCurrent->getPropertyValue(currentProp.Name));
                     }
                 }
 
-                SvTreeListEntry* pToSelect = FindEntry(pNewControlData);
-                Select(pToSelect);
+                std::unique_ptr<weld::TreeIter> xToSelect = FindEntry(pNewControlData);
+                m_xTreeView->select(*xToSelect);
                 if (i == 0)
-                    SetCurEntry(pToSelect);
+                    m_xTreeView->set_cursor(*xToSelect);
             }
 
             if (pFormModel)
@@ -1011,14 +973,19 @@ namespace svxform
         }
 
         // some data for the target
-        bool bDropTargetIsForm = IsFormEntry(_pTargetEntry);
-        FmFormData* pTargetData = bDropTargetIsForm ? static_cast<FmFormData*>(_pTargetEntry->GetUserData()) : nullptr;
+        bool bDropTargetIsForm = IsFormEntry(*_pTargetEntry);
+        FmFormData* pTargetData = bDropTargetIsForm ? reinterpret_cast<FmFormData*>(m_xTreeView->get_id(*_pTargetEntry).toInt64()) : nullptr;
 
         DBG_ASSERT( DND_ACTION_COPY != _nAction, "NavigatorTree::implExecuteDataTransfer: somebody changed the logics!" );
 
         // list of dragged entries
-        ListBoxEntrySet aDropped = _rData.selected();
-        DBG_ASSERT(aDropped.size() >= 1, "NavigatorTree::implExecuteDataTransfer: no entries!");
+        const ListBoxEntrySet& rDropped = _rData.selected();
+        DBG_ASSERT(!rDropped.empty(), "NavigatorTree::implExecuteDataTransfer: no entries!");
+
+        // make a copy because rDropped is updated on deleting an entry which we do in the processing loop
+        ListBoxEntrySet aDropped;
+        for (const auto& rEntry : rDropped)
+            aDropped.emplace(m_xTreeView->make_iterator(rEntry.get()));
 
         // shell and model
         FmFormShell* pFormShell = GetNavModel()->GetFormShell();
@@ -1045,15 +1012,17 @@ namespace svxform
                 ++dropped
             )
         {
+            bool bFirstEntry = aDropped.begin() == dropped;
+
             // some data of the current element
-            SvTreeListEntry* pCurrent = *dropped;
-            DBG_ASSERT(pCurrent != nullptr, "NavigatorTree::implExecuteDataTransfer: invalid entry");
-            DBG_ASSERT(GetParent(pCurrent) != nullptr, "NavigatorTree::implExecuteDataTransfer: invalid entry");
+            const auto& rCurrent = *dropped;
+            DBG_ASSERT(rCurrent, "NavigatorTree::implExecuteDataTransfer: invalid entry");
+            DBG_ASSERT(m_xTreeView->get_iter_depth(*rCurrent) != 0, "NavigatorTree::implExecuteDataTransfer: invalid entry");
                 // don't drag root
 
-            FmEntryData* pCurrentUserData = static_cast<FmEntryData*>(pCurrent->GetUserData());
+            FmEntryData* pCurrentUserData = reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(*rCurrent).toInt64());
 
-            Reference< XChild >  xCurrentChild(pCurrentUserData->GetChildIFace(), UNO_QUERY);
+            Reference< XChild >  xCurrentChild = pCurrentUserData->GetChildIFace();
             Reference< XIndexContainer >  xContainer(xCurrentChild->getParent(), UNO_QUERY);
 
             FmFormData* pCurrentParentUserData = static_cast<FmFormData*>(pCurrentUserData->GetParent());
@@ -1061,9 +1030,9 @@ namespace svxform
 
             // remove from parent
             if (pCurrentParentUserData)
-                pCurrentParentUserData->GetChildList()->remove( pCurrentUserData );
+                pCurrentParentUserData->GetChildList()->removeNoDelete( pCurrentUserData );
             else
-                GetNavModel()->GetRootList()->remove( pCurrentUserData );
+                GetNavModel()->GetRootList()->removeNoDelete( pCurrentUserData );
 
             // remove from container
             sal_Int32 nIndex = getElementPos(xContainer, xCurrentChild);
@@ -1071,7 +1040,7 @@ namespace svxform
             // UndoAction for removal
             if ( bUndo && GetNavModel()->m_pPropChangeList->CanUndo())
             {
-                pFormModel->AddUndo(new FmUndoContainerAction(*pFormModel, FmUndoContainerAction::Removed,
+                pFormModel->AddUndo(std::make_unique<FmUndoContainerAction>(*pFormModel, FmUndoContainerAction::Removed,
                                                             xContainer, xCurrentChild, nIndex));
             }
             else if( !GetNavModel()->m_pPropChangeList->CanUndo() )
@@ -1088,7 +1057,7 @@ namespace svxform
             xContainer->removeByIndex(nIndex);
 
             // remove selection
-            Select(pCurrent, false);
+            m_xTreeView->unselect(*rCurrent);
             // and delete it
             Remove(pCurrentUserData);
 
@@ -1096,14 +1065,14 @@ namespace svxform
             if (pTargetData)
                 xContainer.set(pTargetData->GetElement(), UNO_QUERY);
             else
-                xContainer.set(GetNavModel()->GetForms(), UNO_QUERY);
+                xContainer = GetNavModel()->GetForms();
 
             // always insert at the end
             nIndex = xContainer->getCount();
 
             // UndoAction for insertion
             if ( bUndo && GetNavModel()->m_pPropChangeList->CanUndo())
-                pFormModel->AddUndo(new FmUndoContainerAction(*pFormModel, FmUndoContainerAction::Inserted,
+                pFormModel->AddUndo(std::make_unique<FmUndoContainerAction>(*pFormModel, FmUndoContainerAction::Inserted,
                                                          xContainer, xCurrentChild, nIndex));
 
             // insert in new container
@@ -1119,7 +1088,7 @@ namespace svxform
                     makeAny( Reference< XForm >( xCurrentChild, UNO_QUERY ) ) );
             }
 
-            if (aEvts.getLength())
+            if (aEvts.hasElements())
             {
                 xManager.set(xContainer, UNO_QUERY);
                 if (xManager.is())
@@ -1133,17 +1102,16 @@ namespace svxform
 
             // give parent the new child
             if (pTargetData)
-                pTargetData->GetChildList()->insert( pCurrentUserData, nIndex );
+                pTargetData->GetChildList()->insert( std::unique_ptr<FmEntryData>(pCurrentUserData), nIndex );
             else
-                GetNavModel()->GetRootList()->insert( pCurrentUserData, nIndex );
+                GetNavModel()->GetRootList()->insert( std::unique_ptr<FmEntryData>(pCurrentUserData), nIndex );
 
             // announce to myself and reselect
-            SvTreeListEntry* pNew = Insert( pCurrentUserData, nIndex );
-            if ( ( aDropped.begin() == dropped ) && pNew )
+            std::unique_ptr<weld::TreeIter> xNew = Insert( pCurrentUserData, nIndex );
+            if (bFirstEntry && xNew)
             {
-                SvTreeListEntry* pParent = GetParent( pNew );
-                if ( pParent )
-                    Expand( pParent );
+                if (m_xTreeView->iter_parent(*xNew))
+                    m_xTreeView->expand_row(*xNew);
             }
         }
 
@@ -1160,7 +1128,7 @@ namespace svxform
         // in addition, with the move of controls such things as "the current form" may have changed - force the shell
         // to update itself accordingly
         if( pFormShell && pFormShell->GetImpl() && pFormShell->GetFormView() )
-            pFormShell->GetImpl()->DetermineSelection( pFormShell->GetFormView()->GetMarkedObjectList() );
+            pFormShell->GetImpl()->DetermineSelection_Lock( pFormShell->GetFormView()->GetMarkedObjectList() );
 
         if ( m_aControlExchange.isClipboardOwner() && ( DND_ACTION_MOVE == _nAction ) )
             m_aControlExchange->clear();
@@ -1168,11 +1136,9 @@ namespace svxform
         return _nAction;
     }
 
-
     sal_Int8 NavigatorTree::ExecuteDrop( const ExecuteDropEvent& rEvt )
     {
         sal_Int8 nResult( DND_ACTION_NONE );
-
         if ( m_aControlExchange.isDragSource() )
             nResult = implExecuteDataTransfer( *m_aControlExchange, rEvt.mnAction, rEvt.maPosPixel, true );
         else
@@ -1180,37 +1146,38 @@ namespace svxform
             OControlTransferData aDroppedData( rEvt.maDropEvent.Transferable );
             nResult = implExecuteDataTransfer( aDroppedData, rEvt.mnAction, rEvt.maPosPixel, true );
         }
-
         return nResult;
     }
 
-
     void NavigatorTree::doPaste()
     {
-           try
+        std::unique_ptr<weld::TreeIter> xSelected(m_xTreeView->make_iterator());
+        if (!m_xTreeView->get_selected(xSelected.get()))
+            xSelected.reset();
+
+        try
         {
             if ( m_aControlExchange.isClipboardOwner() )
             {
-                implExecuteDataTransfer( *m_aControlExchange, doingKeyboardCut( ) ? DND_ACTION_MOVE : DND_ACTION_COPY, FirstSelected(), false );
+                implExecuteDataTransfer( *m_aControlExchange, doingKeyboardCut( ) ? DND_ACTION_MOVE : DND_ACTION_COPY, xSelected.get(), false );
             }
             else
             {
                 // the clipboard content
-                Reference< XClipboard > xClipboard( GetClipboard() );
+                Reference< XClipboard > xClipboard( GetSystemClipboard() );
                 Reference< XTransferable > xTransferable;
                 if ( xClipboard.is() )
                     xTransferable = xClipboard->getContents();
 
                 OControlTransferData aClipboardContent( xTransferable );
-                implExecuteDataTransfer( aClipboardContent, DND_ACTION_COPY, FirstSelected(), false );
+                implExecuteDataTransfer( aClipboardContent, DND_ACTION_COPY, xSelected.get(), false );
             }
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "NavigatorTree::doPaste: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "svx", "NavigatorTree::doPaste" );
         }
     }
-
 
     void NavigatorTree::doCopy()
     {
@@ -1221,16 +1188,21 @@ namespace svxform
         }
     }
 
-
-    void NavigatorTree::ModelHasRemoved( SvTreeListEntry* _pEntry )
+    void NavigatorTree::ModelHasRemoved(weld::TreeIter* pTypedEntry)
     {
-        SvTreeListEntry* pTypedEntry = _pEntry;
-        if ( doingKeyboardCut() )
-            m_aCutEntries.erase( pTypedEntry );
-
-        if ( m_aControlExchange.isDataExchangeActive() )
+        if (doingKeyboardCut())
         {
-            if ( 0 == m_aControlExchange->onEntryRemoved( pTypedEntry ) )
+            auto aIter = std::find_if(m_aCutEntries.begin(), m_aCutEntries.end(),
+                                      [this, pTypedEntry](const auto& rElem) {
+                                        return m_xTreeView->iter_compare(*rElem, *pTypedEntry) == 0;
+                                      });
+            if (aIter != m_aCutEntries.end())
+                m_aCutEntries.erase(aIter);
+        }
+
+        if (m_aControlExchange.isDataExchangeActive())
+        {
+            if (0 == m_aControlExchange->onEntryRemoved(m_xTreeView.get(), pTypedEntry))
             {
                 // last of the entries which we put into the clipboard has been deleted from the tree.
                 // Give up the clipboard ownership.
@@ -1239,40 +1211,34 @@ namespace svxform
         }
     }
 
-
     void NavigatorTree::doCut()
     {
-        if ( implPrepareExchange( DND_ACTION_MOVE ) )
-        {
-            m_aControlExchange.setClipboardListener( LINK( this, NavigatorTree, OnClipboardAction ) );
-            m_aControlExchange.copyToClipboard( );
-            m_bKeyboardCut = true;
+        if ( !implPrepareExchange( DND_ACTION_MOVE ) )
+            return;
 
-            // mark all the entries we just "cut" into the clipboard as "nearly moved"
-            for ( SvLBoxEntrySortedArray::const_iterator it = m_arrCurrentSelection.begin();
-                  it != m_arrCurrentSelection.end(); ++it )
-            {
-                SvTreeListEntry* pEntry = *it;
-                if ( pEntry )
-                {
-                    m_aCutEntries.insert( pEntry );
-                    pEntry->SetFlags( pEntry->GetFlags() | SvTLEntryFlags::SEMITRANSPARENT );
-                    InvalidateEntry( pEntry );
-                }
-            }
+        m_aControlExchange.setClipboardListener( LINK( this, NavigatorTree, OnClipboardAction ) );
+        m_aControlExchange.copyToClipboard( );
+        m_bKeyboardCut = true;
+
+        // mark all the entries we just "cut" into the clipboard as "nearly moved"
+        for (const auto& rEntry : m_arrCurrentSelection )
+        {
+            if (!rEntry)
+                continue;
+            m_aCutEntries.emplace(m_xTreeView->make_iterator(rEntry.get()));
+            m_xTreeView->set_sensitive(*rEntry, false);
         }
     }
 
-
-    void NavigatorTree::KeyInput(const ::KeyEvent& rKEvt)
+    IMPL_LINK(NavigatorTree, KeyInputHdl, const ::KeyEvent&, rKEvt, bool)
     {
         const vcl::KeyCode& rCode = rKEvt.GetKeyCode();
 
         // delete?
-        if (rKEvt.GetKeyCode().GetCode() == KEY_DELETE && !rKEvt.GetKeyCode().GetModifier())
+        if (rCode.GetCode() == KEY_DELETE && !rCode.GetModifier())
         {
             DeleteSelection();
-            return;
+            return true;
         }
 
         // copy'n'paste?
@@ -1295,28 +1261,23 @@ namespace svxform
                 break;
         }
 
-        SvTreeListBox::KeyInput(rKEvt);
+        return false;
     }
 
-
-    bool NavigatorTree::EditingEntry( SvTreeListEntry* pEntry, ::Selection& rSelection )
+    IMPL_LINK(NavigatorTree, EditingEntryHdl, const weld::TreeIter&, rIter, bool)
     {
-        if (!SvTreeListBox::EditingEntry( pEntry, rSelection ))
-            return false;
-
-        return (pEntry && (pEntry->GetUserData() != nullptr));
-            // root, which isn't allowed to be renamed, has UserData=NULL
+        // root, which isn't allowed to be renamed, has UserData=NULL
+        m_bEditing = !m_xTreeView->get_id(rIter).isEmpty();
+        return m_bEditing;
     }
 
-
-    void NavigatorTree::NewForm( SvTreeListEntry* pParentEntry )
+    void NavigatorTree::NewForm(const weld::TreeIter& rParentEntry)
     {
-
         // get ParentFormData
-        if( !IsFormEntry(pParentEntry) )
+        if (!IsFormEntry(rParentEntry))
             return;
 
-        FmFormData* pParentFormData = static_cast<FmFormData*>(pParentEntry->GetUserData());
+        FmFormData* pParentFormData = reinterpret_cast<FmFormData*>(m_xTreeView->get_id(rParentEntry).toInt64());
 
 
         // create new form
@@ -1349,7 +1310,7 @@ namespace svxform
 
 
         // insert form
-        GetNavModel()->Insert( pNewFormData, TREELIST_APPEND, true );
+        GetNavModel()->Insert(pNewFormData, SAL_MAX_UINT32, true);
 
 
         // set new form as active
@@ -1358,31 +1319,28 @@ namespace svxform
         {
             InterfaceBag aSelection;
             aSelection.insert( Reference<XInterface>( xNewForm, UNO_QUERY ) );
-            pFormShell->GetImpl()->setCurrentSelection( aSelection );
+            pFormShell->GetImpl()->setCurrentSelection_Lock(aSelection);
 
             pFormShell->GetViewShell()->GetViewFrame()->GetBindings().Invalidate(SID_FM_PROPERTIES, true, true);
         }
         GetNavModel()->SetModified();
 
-
         // switch to EditMode
-        SvTreeListEntry* pNewEntry = FindEntry( pNewFormData );
-        EditEntry( pNewEntry );
+        std::unique_ptr<weld::TreeIter> xNewEntry = FindEntry(pNewFormData);
+        m_xTreeView->start_editing(*xNewEntry);
+        m_bEditing = true;
     }
 
-
-    FmControlData* NavigatorTree::NewControl( const OUString& rServiceName, SvTreeListEntry* pParentEntry, bool bEditName )
+    FmControlData* NavigatorTree::NewControl(const OUString& rServiceName, const weld::TreeIter& rParentEntry, bool bEditName)
     {
-
         // get ParentForm
         if (!GetNavModel()->GetFormShell())
             return nullptr;
-        if (!IsFormEntry(pParentEntry))
+        if (!IsFormEntry(rParentEntry))
             return nullptr;
 
-        FmFormData* pParentFormData = static_cast<FmFormData*>(pParentEntry->GetUserData());
-        Reference< XForm >  xParentForm( pParentFormData->GetFormIface());
-
+        FmFormData* pParentFormData = reinterpret_cast<FmFormData*>(m_xTreeView->get_id(rParentEntry).toInt64());
+        Reference<XForm>  xParentForm(pParentFormData->GetFormIface());
 
         // create new component
         Reference<XComponentContext> xContext = comphelper::getProcessComponentContext();
@@ -1392,35 +1350,32 @@ namespace svxform
 
         FmControlData* pNewFormControlData = new FmControlData(xNewComponent, pParentFormData);
 
-
         // set name
         OUString sName = FmFormPageImpl::setUniqueName( xNewComponent, xParentForm );
 
         pNewFormControlData->SetText( sName );
 
-
         // insert FormComponent
-        GetNavModel()->Insert( pNewFormControlData, TREELIST_APPEND, true );
+        GetNavModel()->Insert(pNewFormControlData, SAL_MAX_UINT32, true);
         GetNavModel()->SetModified();
 
         if (bEditName)
         {
-
             // switch to EditMode
-            SvTreeListEntry* pNewEntry = FindEntry( pNewFormControlData );
-            Select( pNewEntry );
-            EditEntry( pNewEntry );
+            std::unique_ptr<weld::TreeIter> xNewEntry = FindEntry( pNewFormControlData );
+            m_xTreeView->select(*xNewEntry);
+
+            m_xTreeView->start_editing(*xNewEntry);
+            m_bEditing = true;
         }
 
         return pNewFormControlData;
     }
 
-
-    OUString NavigatorTree::GenerateName( FmEntryData* pEntryData )
+    OUString NavigatorTree::GenerateName( FmEntryData const * pEntryData )
     {
         const sal_uInt16 nMaxCount = 99;
         OUString aNewName;
-
 
         // create base name
         OUString aBaseName;
@@ -1438,8 +1393,7 @@ namespace svxform
             aNewName = aBaseName;
             if( i>0 )
             {
-                aNewName += " ";
-                aNewName += OUString::number(i).getStr();
+                aNewName += " " + OUString::number(i);
             }
 
             if( GetNavModel()->FindData(aNewName, pFormParentData,false) == nullptr )
@@ -1449,70 +1403,32 @@ namespace svxform
         return aNewName;
     }
 
-
-    bool NavigatorTree::EditedEntry( SvTreeListEntry* pEntry, const OUString& rNewText )
+    IMPL_LINK(NavigatorTree, EditedEntryHdl, const IterString&, rIterString, bool)
     {
-        if (EditingCanceled())
-            return true;
+        m_bEditing = false;
 
-        GrabFocus();
-        FmEntryData* pEntryData = static_cast<FmEntryData*>(pEntry->GetUserData());
-        bool bRes = NavigatorTreeModel::Rename( pEntryData, rNewText);
-        if( !bRes )
+        const weld::TreeIter& rIter = rIterString.first;
+
+        FmEntryData* pEntryData = reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(rIter).toInt64());
+        bool bRes = NavigatorTreeModel::Rename(pEntryData, rIterString.second);
+        if (!bRes)
         {
-            m_pEditEntry = pEntry;
-            nEditEvent = Application::PostUserEvent( LINK(this, NavigatorTree, OnEdit), nullptr, true );
-        } else
-            SetCursor(pEntry, true);
+            m_xEditEntry = m_xTreeView->make_iterator(&rIter);
+            nEditEvent = Application::PostUserEvent(LINK(this, NavigatorTree, OnEdit));
+        }
 
         return bRes;
     }
 
-
     IMPL_LINK_NOARG(NavigatorTree, OnEdit, void*, void)
     {
         nEditEvent = nullptr;
-        EditEntry( m_pEditEntry );
-        m_pEditEntry = nullptr;
+        m_xTreeView->start_editing(*m_xEditEntry);
+        m_bEditing = true;
+        m_xEditEntry.reset();
     }
 
-
-    IMPL_LINK_NOARG(NavigatorTree, OnDropActionTimer, Timer *, void)
-    {
-        if (--m_aTimerCounter > 0)
-            return;
-
-        switch ( m_aDropActionType )
-        {
-        case DA_EXPANDNODE:
-        {
-            SvTreeListEntry* pToExpand = GetEntry(m_aTimerTriggered);
-            if (pToExpand && (GetChildCount(pToExpand) > 0) &&  !IsExpanded(pToExpand))
-                // normally, we have to test, if the node is expanded,
-                // but there is no method for this either in base class nor the model
-                // the base class should tolerate it anyway
-                Expand(pToExpand);
-
-            // After expansion there is nothing to do like after scrolling
-            m_aDropActionTimer.Stop();
-        }
-        break;
-
-        case DA_SCROLLUP :
-            ScrollOutputArea( 1 );
-            m_aTimerCounter = DROP_ACTION_TIMER_SCROLL_TICKS;
-            break;
-
-        case DA_SCROLLDOWN :
-            ScrollOutputArea( -1 );
-            m_aTimerCounter = DROP_ACTION_TIMER_SCROLL_TICKS;
-            break;
-
-        }
-    }
-
-
-    IMPL_LINK_NOARG(NavigatorTree, OnEntrySelDesel, SvTreeListBox*, void)
+    IMPL_LINK_NOARG(NavigatorTree, OnEntrySelDesel, weld::TreeView&, void)
     {
         m_sdiState = SDI_DIRTY;
 
@@ -1526,39 +1442,30 @@ namespace svxform
         m_aSynchronizeTimer.Start();
     }
 
-
     IMPL_LINK_NOARG(NavigatorTree, OnSynchronizeTimer, Timer *, void)
     {
         SynchronizeMarkList();
     }
 
-
     IMPL_LINK_NOARG(NavigatorTree, OnClipboardAction, OLocalExchange&, void)
     {
-        if ( !m_aControlExchange.isClipboardOwner() )
+        if ( m_aControlExchange.isClipboardOwner() )
+            return;
+
+        if ( !doingKeyboardCut() )
+            return;
+
+        for (const auto& rEntry : m_aCutEntries)
         {
-            if ( doingKeyboardCut() )
-            {
-                for (   ListBoxEntrySet::const_iterator i = m_aCutEntries.begin();
-                        i != m_aCutEntries.end();
-                        ++i
-                    )
-                {
-                    SvTreeListEntry* pEntry = *i;
-                    if ( !pEntry )
-                        continue;
-
-                    pEntry->SetFlags( pEntry->GetFlags() & ~SvTLEntryFlags::SEMITRANSPARENT );
-                    InvalidateEntry( pEntry );
-                }
-                ListBoxEntrySet aEmpty;
-                m_aCutEntries.swap( aEmpty );
-
-                m_bKeyboardCut = false;
-            }
+            if (!rEntry)
+                continue;
+            m_xTreeView->set_sensitive(*rEntry, true);
         }
-    }
+        ListBoxEntrySet aEmpty;
+        m_aCutEntries.swap( aEmpty );
 
+        m_bKeyboardCut = false;
+    }
 
     void NavigatorTree::ShowSelectionProperties(bool bForce)
     {
@@ -1588,14 +1495,15 @@ namespace svxform
         {   // either only forms, or only controls are selected
             if (m_arrCurrentSelection.size() == 1)
             {
+                const std::unique_ptr<weld::TreeIter>& rIter = *m_arrCurrentSelection.begin();
                 if (m_nFormsSelected > 0)
                 {   // exactly one form is selected
-                    FmFormData* pFormData = static_cast<FmFormData*>((*m_arrCurrentSelection.begin())->GetUserData());
+                    FmFormData* pFormData = reinterpret_cast<FmFormData*>(m_xTreeView->get_id(*rIter).toInt64());
                     aSelection.insert( Reference< XInterface >( pFormData->GetFormIface(), UNO_QUERY ) );
                 }
                 else
                 {   // exactly one control is selected (whatever hidden or normal)
-                    FmEntryData* pEntryData = static_cast<FmEntryData*>((*m_arrCurrentSelection.begin())->GetUserData());
+                    FmEntryData* pEntryData = reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(*rIter).toInt64());
 
                     aSelection.insert( Reference< XInterface >( pEntryData->GetElement(), UNO_QUERY ) );
                 }
@@ -1605,10 +1513,11 @@ namespace svxform
                 if (m_nFormsSelected > 0)
                 {   // ... only forms
                     // first of all collect PropertySet-Interfaces of the forms
-                   SvLBoxEntrySortedArray::const_iterator it = m_arrCurrentSelection.begin();
+                    SvLBoxEntrySortedArray::const_iterator it = m_arrCurrentSelection.begin();
                     for ( sal_Int32 i = 0; i < m_nFormsSelected; ++i )
                     {
-                        FmFormData* pFormData = static_cast<FmFormData*>((*it)->GetUserData());
+                        const std::unique_ptr<weld::TreeIter>& rIter = *it;
+                        FmFormData* pFormData = reinterpret_cast<FmFormData*>(m_xTreeView->get_id(*rIter).toInt64());
                         aSelection.insert( pFormData->GetPropertySet().get() );
                         ++it;
                     }
@@ -1620,7 +1529,8 @@ namespace svxform
                         SvLBoxEntrySortedArray::const_iterator it = m_arrCurrentSelection.begin();
                         for ( sal_Int32 i = 0; i < m_nHiddenControls; ++i )
                         {
-                            FmEntryData* pEntryData = static_cast<FmEntryData*>((*it)->GetUserData());
+                            const std::unique_ptr<weld::TreeIter>& rIter = *it;
+                            FmEntryData* pEntryData = reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(*rIter).toInt64());
                             aSelection.insert( pEntryData->GetPropertySet().get() );
                             ++it;
                         }
@@ -1636,11 +1546,11 @@ namespace svxform
 
         // and now my form and my SelObject
         if ( bSetSelectionAsMarkList )
-            pFormShell->GetImpl()->setCurrentSelectionFromMark( pFormShell->GetFormView()->GetMarkedObjectList() );
+            pFormShell->GetImpl()->setCurrentSelectionFromMark_Lock(pFormShell->GetFormView()->GetMarkedObjectList());
         else
-            pFormShell->GetImpl()->setCurrentSelection( aSelection );
+            pFormShell->GetImpl()->setCurrentSelection_Lock(aSelection);
 
-        if ( pFormShell->GetImpl()->IsPropBrwOpen() || bForce )
+        if (pFormShell->GetImpl()->IsPropBrwOpen_Lock() || bForce)
         {
             // and now deliver all to the PropertyBrowser
             pFormShell->GetViewShell()->GetViewFrame()->GetDispatcher()->Execute( SID_FM_SHOW_PROPERTY_BROWSER, SfxCallMode::ASYNCHRON );
@@ -1651,10 +1561,10 @@ namespace svxform
     void NavigatorTree::DeleteSelection()
     {
         // of course, i can't delete root
-        bool bRootSelected = IsSelected(m_pRootEntry);
-        sal_uIntPtr nSelectedEntries = GetSelectionCount();
+        bool bRootSelected = m_xTreeView->is_selected(*m_xRootEntry);
+        auto nSelectedEntries = m_xTreeView->count_selected_rows();
         if (bRootSelected && (nSelectedEntries > 1))     // root and other elements ?
-            Select(m_pRootEntry, false);                // yes -> remove root from selection
+            m_xTreeView->unselect(*m_xRootEntry);                // yes -> remove root from selection
 
         if ((nSelectedEntries == 0) || bRootSelected)    // still root ?
             return;                                     // -> only selected element -> leave
@@ -1692,11 +1602,12 @@ namespace svxform
         // form). The other way round, the EntryDatas would be invalid, if I'd first delete the controls and
         // then go on to the structure. This means I have to delete the forms *after* the normal controls, so
         // that during UNDO, they're restored in the proper order.
-        pFormShell->GetImpl()->EnableTrackProperties(false);
+        pFormShell->GetImpl()->EnableTrackProperties_Lock(false);
         for (SvLBoxEntrySortedArray::reverse_iterator it = m_arrCurrentSelection.rbegin();
              it != m_arrCurrentSelection.rend(); )
         {
-            FmEntryData* pCurrent = static_cast<FmEntryData*>((*it)->GetUserData());
+            const std::unique_ptr<weld::TreeIter>& rIter = *it;
+            FmEntryData* pCurrent = reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(*rIter).toInt64());
 
             // a form ?
             bool bIsForm = dynamic_cast<const FmFormData*>( pCurrent) !=  nullptr;
@@ -1732,7 +1643,7 @@ namespace svxform
             else
                 ++it;
         }
-        pFormShell->GetImpl()->EnableTrackProperties(true);
+        pFormShell->GetImpl()->EnableTrackProperties_Lock(true);
 
         // let the view delete the marked controls
         pFormShell->GetFormView()->DeleteMarked();
@@ -1763,10 +1674,9 @@ namespace svxform
         }
 
         // remove remaining structure
-        for (SvLBoxEntrySortedArray::const_iterator it = m_arrCurrentSelection.begin();
-             it != m_arrCurrentSelection.end(); ++it)
+        for (const auto& rpSelection : m_arrCurrentSelection)
         {
-            FmEntryData* pCurrent = static_cast<FmEntryData*>((*it)->GetUserData());
+            FmEntryData* pCurrent = reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(*rpSelection).toInt64());
 
             // if the entry still has children, we skipped deletion of one of those children.
             // This may for instance be because the shape is in a hidden layer, where we're unable
@@ -1779,8 +1689,8 @@ namespace svxform
             if (dynamic_cast<const FmFormData*>( pCurrent) !=  nullptr)
             {
                 Reference< XForm >  xCurrentForm( static_cast< FmFormData* >( pCurrent )->GetFormIface() );
-                if ( pFormShell->GetImpl()->getCurrentForm() == xCurrentForm )  // shell knows form to be deleted ?
-                    pFormShell->GetImpl()->forgetCurrentForm();                 // -> take away ...
+                if (pFormShell->GetImpl()->getCurrentForm_Lock() == xCurrentForm)  // shell knows form to be deleted ?
+                    pFormShell->GetImpl()->forgetCurrentForm_Lock();                 // -> take away ...
             }
             GetNavModel()->Remove(pCurrent, true);
         }
@@ -1798,20 +1708,18 @@ namespace svxform
         m_nFormsSelected = m_nControlsSelected = m_nHiddenControls = 0;
         m_bRootSelected = false;
 
-        SvTreeListEntry* pSelectionLoop = FirstSelected();
-        while (pSelectionLoop)
-        {
+        m_xTreeView->selected_foreach([this, sdiHow](weld::TreeIter& rSelectionLoop){
             // count different elements
-            if (pSelectionLoop == m_pRootEntry)
+            if (m_xTreeView->iter_compare(rSelectionLoop, *m_xRootEntry) == 0)
                 m_bRootSelected = true;
             else
             {
-                if (IsFormEntry(pSelectionLoop))
+                if (IsFormEntry(rSelectionLoop))
                     ++m_nFormsSelected;
                 else
                 {
                     ++m_nControlsSelected;
-                    if (IsHiddenControl(static_cast<FmEntryData*>(pSelectionLoop->GetUserData())))
+                    if (IsHiddenControl(reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(rSelectionLoop).toInt64())))
                         ++m_nHiddenControls;
                 }
             }
@@ -1819,64 +1727,62 @@ namespace svxform
             if (sdiHow == SDI_NORMALIZED)
             {
                 // don't take something with a selected ancestor
-                if (pSelectionLoop == m_pRootEntry)
-                    m_arrCurrentSelection.insert(pSelectionLoop);
+                if (m_xTreeView->iter_compare(rSelectionLoop, *m_xRootEntry) == 0)
+                    m_arrCurrentSelection.emplace(m_xTreeView->make_iterator(&rSelectionLoop));
                 else
                 {
-                    SvTreeListEntry* pParentLoop = GetParent(pSelectionLoop);
-                    while (pParentLoop)
+                    std::unique_ptr<weld::TreeIter> xParentLoop(m_xTreeView->make_iterator(&rSelectionLoop));
+                    bool bParentLoop = m_xTreeView->iter_parent(*xParentLoop);
+                    while (bParentLoop)
                     {
                         // actually i would have to test, if parent is part of m_arr_CurrentSelection ...
-                        // but if it's selected, than it's in m_arrCurrentSelection
+                        // but if it's selected, then it's in m_arrCurrentSelection
                         // or one of its ancestors, which was selected earlier.
                         // In both cases IsSelected is enough
-                        if (IsSelected(pParentLoop))
+                        if (m_xTreeView->is_selected(*xParentLoop))
                             break;
                         else
                         {
-                            if (m_pRootEntry == pParentLoop)
+                            if (m_xTreeView->iter_compare(*xParentLoop, *m_xRootEntry) == 0)
                             {
                                 // until root (exclusive), there was no selected parent -> entry belongs to normalized list
-                                m_arrCurrentSelection.insert(pSelectionLoop);
+                                m_arrCurrentSelection.emplace(m_xTreeView->make_iterator(&rSelectionLoop));
                                 break;
                             }
                             else
-                                pParentLoop = GetParent(pParentLoop);
+                                bParentLoop = m_xTreeView->iter_parent(*xParentLoop);
                         }
                     }
                 }
             }
             else if (sdiHow == SDI_NORMALIZED_FORMARK)
             {
-                SvTreeListEntry* pParent = GetParent(pSelectionLoop);
-                if (!pParent || !IsSelected(pParent) || IsFormEntry(pSelectionLoop))
-                    m_arrCurrentSelection.insert(pSelectionLoop);
+                std::unique_ptr<weld::TreeIter> xParent(m_xTreeView->make_iterator(&rSelectionLoop));
+                bool bParent = m_xTreeView->iter_parent(*xParent);
+                if (!bParent || !m_xTreeView->is_selected(*xParent) || IsFormEntry(rSelectionLoop))
+                    m_arrCurrentSelection.emplace(m_xTreeView->make_iterator(&rSelectionLoop));
             }
             else
-                m_arrCurrentSelection.insert(pSelectionLoop);
+                m_arrCurrentSelection.emplace(m_xTreeView->make_iterator(&rSelectionLoop));
 
-
-            pSelectionLoop = NextSelected(pSelectionLoop);
-        }
+            return false;
+        });
 
         m_sdiState = sdiHow;
     }
-
 
     void NavigatorTree::SynchronizeSelection(FmEntryDataArray& arredToSelect)
     {
         LockSelectionHandling();
         if (arredToSelect.empty())
         {
-            SelectAll(false);
+            m_xTreeView->unselect_all();
         }
         else
         {
             // compare current selection with requested SelectList
-            SvTreeListEntry* pSelection = FirstSelected();
-            while (pSelection)
-            {
-                FmEntryData* pCurrent = static_cast<FmEntryData*>(pSelection->GetUserData());
+            m_xTreeView->selected_foreach([this, &arredToSelect](weld::TreeIter& rSelection) {
+                FmEntryData* pCurrent = reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(rSelection).toInt64());
                 if (pCurrent != nullptr)
                 {
                     FmEntryDataArray::iterator it = arredToSelect.find(pCurrent);
@@ -1886,17 +1792,17 @@ namespace svxform
                         arredToSelect.erase(it);
                     } else
                     {   // entry selected, but not in SelectList -> remove selection
-                        Select(pSelection, false);
+                        m_xTreeView->unselect(rSelection);
                         // make it visible (maybe it's the only modification i do in this handler
                         // so you should see it
-                        MakeVisible(pSelection);
+                        m_xTreeView->scroll_to_row(rSelection);
                     }
                 }
                 else
-                    Select(pSelection, false);
+                    m_xTreeView->unselect(rSelection);
 
-                pSelection = NextSelected(pSelection);
-            }
+                return false;
+            });
 
             // now SelectList contains only entries, which have to be selected
             // two possibilities : 1) run through SelectList, get SvTreeListEntry for every entry and select it (is more intuitive)
@@ -1906,21 +1812,17 @@ namespace svxform
             // 2) needs =(n*log k), duplicates some code from FindEntry
             // This may be a frequently used code ( at every change in mark of the view!),
             // so i use latter one
-            SvTreeListEntry* pLoop = First();
-            FmEntryDataArray::const_iterator aEnd = arredToSelect.end();
-            while(pLoop)
-            {
-                FmEntryData* pCurEntryData = static_cast<FmEntryData*>(pLoop->GetUserData());
+            m_xTreeView->all_foreach([this, &arredToSelect](weld::TreeIter& rLoop){
+                FmEntryData* pCurEntryData = reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(rLoop).toInt64());
                 FmEntryDataArray::iterator it = arredToSelect.find(pCurEntryData);
-                if (it != aEnd)
+                if (it != arredToSelect.end())
                 {
-                    Select(pLoop);
-                    MakeVisible(pLoop);
-                    SetCursor(pLoop, true);
+                    m_xTreeView->select(rLoop);
+                    m_xTreeView->scroll_to_row(rLoop);
                 }
 
-                pLoop = Next(pLoop);
-            }
+                return false;
+            });
         }
         UnlockSelectionHandling();
     }
@@ -1948,22 +1850,20 @@ namespace svxform
         CollectSelectionData(SDI_NORMALIZED_FORMARK);
 
         // the view shouldn't notify now if MarkList changed
-        pFormShell->GetImpl()->EnableTrackProperties(false);
+        pFormShell->GetImpl()->EnableTrackProperties_Lock(false);
 
         UnmarkAllViewObj();
 
-        for (SvLBoxEntrySortedArray::const_iterator it = m_arrCurrentSelection.begin();
-             it != m_arrCurrentSelection.end(); ++it)
+        for (auto& rSelectionLoop : m_arrCurrentSelection)
         {
-            SvTreeListEntry* pSelectionLoop = *it;
             // When form selection, mark all controls of form
-            if (IsFormEntry(pSelectionLoop) && (pSelectionLoop != m_pRootEntry))
-                MarkViewObj(static_cast<FmFormData*>(pSelectionLoop->GetUserData()), false/*deep*/);
+            if (IsFormEntry(*rSelectionLoop) && m_xTreeView->iter_compare(*rSelectionLoop, *m_xRootEntry) != 0)
+                MarkViewObj(reinterpret_cast<FmFormData*>(m_xTreeView->get_id(*rSelectionLoop).toInt64()), false/*deep*/);
 
             // When control selection, mark Control-SdrObjects
-            else if (IsFormComponentEntry(pSelectionLoop))
+            else if (IsFormComponentEntry(*rSelectionLoop))
             {
-                FmControlData* pControlData = static_cast<FmControlData*>(pSelectionLoop->GetUserData());
+                FmControlData* pControlData = reinterpret_cast<FmControlData*>(m_xTreeView->get_id(*rSelectionLoop).toInt64());
                 if (pControlData)
                 {
 
@@ -1988,26 +1888,29 @@ namespace svxform
         ShowSelectionProperties();
 
         // reset flag at view
-        pFormShell->GetImpl()->EnableTrackProperties(true);
+        pFormShell->GetImpl()->EnableTrackProperties_Lock(true);
 
         // if exactly one form is selected now, shell should notice it as CurrentForm
         // (if selection handling isn't locked, view cares about it in MarkListHasChanged
         // but mechanism doesn't work, if form is empty for example
-        if ((m_arrCurrentSelection.size() == 1) && (m_nFormsSelected == 1))
+        if ((m_arrCurrentSelection.size() != 1) || (m_nFormsSelected != 1))
+            return;
+
+        std::unique_ptr<weld::TreeIter> xSelected(m_xTreeView->make_iterator());
+        if (!m_xTreeView->get_selected(xSelected.get()))
+            xSelected.reset();
+        FmFormData* pSingleSelectionData = xSelected ? dynamic_cast<FmFormData*>(reinterpret_cast<FmEntryData*>(m_xTreeView->get_id(*xSelected).toInt64()))
+                                                     : nullptr;
+        DBG_ASSERT( pSingleSelectionData, "NavigatorTree::SynchronizeMarkList: invalid selected form!" );
+        if ( pSingleSelectionData )
         {
-            FmFormData* pSingleSelectionData = dynamic_cast<FmFormData*>( static_cast< FmEntryData* >( FirstSelected()->GetUserData() )  );
-            DBG_ASSERT( pSingleSelectionData, "NavigatorTree::SynchronizeMarkList: invalid selected form!" );
-            if ( pSingleSelectionData )
-            {
-                InterfaceBag aSelection;
-                aSelection.insert( Reference< XInterface >( pSingleSelectionData->GetFormIface(), UNO_QUERY ) );
-                pFormShell->GetImpl()->setCurrentSelection( aSelection );
-            }
+            InterfaceBag aSelection;
+            aSelection.insert( Reference< XInterface >( pSingleSelectionData->GetFormIface(), UNO_QUERY ) );
+            pFormShell->GetImpl()->setCurrentSelection_Lock(aSelection);
         }
     }
 
-
-    bool NavigatorTree::IsHiddenControl(FmEntryData* pEntryData)
+    bool NavigatorTree::IsHiddenControl(FmEntryData const * pEntryData)
     {
         if (pEntryData == nullptr) return false;
 
@@ -2020,16 +1923,6 @@ namespace svxform
         return false;
     }
 
-
-    bool NavigatorTree::Select( SvTreeListEntry* pEntry, bool bSelect )
-    {
-        if (bSelect == IsSelected(pEntry))  // this happens sometimes, maybe base class is to exact ;)
-            return true;
-
-        return SvTreeListBox::Select(pEntry, bSelect );
-    }
-
-
     void NavigatorTree::UnmarkAllViewObj()
     {
         FmFormShell* pFormShell = GetNavModel()->GetFormShell();
@@ -2039,7 +1932,7 @@ namespace svxform
         pFormView->UnMarkAll();
     }
 
-    void NavigatorTree::MarkViewObj(FmFormData* pFormData, bool bDeep )
+    void NavigatorTree::MarkViewObj(FmFormData const * pFormData, bool bDeep )
     {
         FmFormShell* pFormShell = GetNavModel()->GetFormShell();
         if( !pFormShell )
@@ -2056,7 +1949,7 @@ namespace svxform
         SdrPage*        pPage           = pPageView->GetPage();
         //FmFormPage*     pFormPage       = dynamic_cast< FmFormPage* >( pPage );
 
-        SdrObjListIter aIter( *pPage );
+        SdrObjListIter aIter( pPage );
         while ( aIter.IsMore() )
         {
             SdrObject* pSdrObject = aIter.Next();
@@ -2084,7 +1977,7 @@ namespace svxform
         } // for ( sal_uInt32 i = 0; i < pFormView->PaintWindowCount(); ++i )
     }
 
-    void NavigatorTree::CollectObjects(FmFormData* pFormData, bool bDeep, ::std::set< Reference< XFormComponent > >& _rObjects)
+    void NavigatorTree::CollectObjects(FmFormData const * pFormData, bool bDeep, ::std::set< Reference< XFormComponent > >& _rObjects)
     {
         FmEntryDataList* pChildList = pFormData->GetChildList();
         FmControlData* pControlData;
@@ -2101,7 +1994,7 @@ namespace svxform
         } // for( sal_uInt32 i=0; i<pChildList->Count(); i++ )
     }
 
-    void NavigatorTree::MarkViewObj( FmControlData* pControlData)
+    void NavigatorTree::MarkViewObj( FmControlData const * pControlData)
     {
         if( !pControlData )
             return;
@@ -2117,7 +2010,7 @@ namespace svxform
         SdrPage*        pPage           = pPageView->GetPage();
 
         bool bPaint = false;
-        SdrObjListIter aIter( *pPage );
+        SdrObjListIter aIter( pPage );
         while ( aIter.IsMore() )
         {
             SdrObject* pSdrObject = aIter.Next();
@@ -2137,20 +2030,20 @@ namespace svxform
             bPaint = true;
 
         } // while ( aIter.IsMore() )
-        if ( bPaint )
+        if ( !bPaint )
+            return;
+
+        // make the mark visible
+        ::tools::Rectangle aMarkRect( pFormView->GetAllMarkedRect());
+        for ( sal_uInt32 i = 0; i < pFormView->PaintWindowCount(); ++i )
         {
-            // make the mark visible
-            ::tools::Rectangle aMarkRect( pFormView->GetAllMarkedRect());
-            for ( sal_uInt32 i = 0; i < pFormView->PaintWindowCount(); ++i )
+            SdrPaintWindow* pPaintWindow = pFormView->GetPaintWindow( i );
+            OutputDevice& rOutDev = pPaintWindow->GetOutputDevice();
+            if ( OUTDEV_WINDOW == rOutDev.GetOutDevType() )
             {
-                SdrPaintWindow* pPaintWindow = pFormView->GetPaintWindow( i );
-                OutputDevice& rOutDev = pPaintWindow->GetOutputDevice();
-                if ( OUTDEV_WINDOW == rOutDev.GetOutDevType() )
-                {
-                    pFormView->MakeVisible( aMarkRect, static_cast<vcl::Window&>(rOutDev) );
-                }
-            } // for ( sal_uInt32 i = 0; i < pFormView->PaintWindowCount(); ++i )
-        }
+                pFormView->MakeVisible( aMarkRect, static_cast<vcl::Window&>(rOutDev) );
+            }
+        } // for ( sal_uInt32 i = 0; i < pFormView->PaintWindowCount(); ++i )
     }
 
 

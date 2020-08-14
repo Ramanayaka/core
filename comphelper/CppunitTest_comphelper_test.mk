@@ -13,6 +13,9 @@ $(eval $(call gb_CppunitTest_add_exception_objects,comphelper_test, \
     comphelper/qa/string/test_string \
     comphelper/qa/container/testifcontainer \
     comphelper/qa/unit/test_hash \
+    comphelper/qa/unit/base64_test \
+    comphelper/qa/unit/types_test \
+    comphelper/qa/unit/test_guards \
 ))
 
 $(eval $(call gb_CppunitTest_use_sdk_api,comphelper_test))
@@ -23,5 +26,12 @@ $(eval $(call gb_CppunitTest_use_libraries,comphelper_test, \
     cppu \
     sal \
 ))
+
+ifeq ($(TLS),NSS)
+$(eval $(call gb_CppunitTest_use_externals,comphelper_test,\
+       plc4 \
+       nss3 \
+))
+endif
 
 # vim: set noet sw=4 ts=4:

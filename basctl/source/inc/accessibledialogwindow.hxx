@@ -44,14 +44,13 @@ class DlgEdModel;
 class DlgEdObj;
 
 
-//  class AccessibleDialogWindow
 
 typedef ::cppu::ImplHelper3 <
     css::accessibility::XAccessible,
     css::accessibility::XAccessibleSelection,
     css::lang::XServiceInfo > AccessibleDialogWindow_BASE;
 
-class AccessibleDialogWindow :  public comphelper::OAccessibleExtendedComponentHelper,
+class AccessibleDialogWindow final : public comphelper::OAccessibleExtendedComponentHelper,
                                 public AccessibleDialogWindow_BASE,
                                 public SfxListener
 {
@@ -64,10 +63,6 @@ private:
         css::uno::Reference< css::accessibility::XAccessible >    rxAccessible;
 
         ChildDescriptor( DlgEdObj* _pDlgEdObj );
-        ~ChildDescriptor();
-
-        ChildDescriptor( const ChildDescriptor& rDesc );
-        ChildDescriptor& operator=( const ChildDescriptor& rDesc );
 
         bool operator==( const ChildDescriptor& rDesc );
         bool operator<( const ChildDescriptor& rDesc ) const;
@@ -77,10 +72,8 @@ private:
 
     AccessibleChildren             m_aAccessibleChildren;
     VclPtr<basctl::DialogWindow>   m_pDialogWindow;
-    DlgEditor*                     m_pDlgEditor;
     DlgEdModel*                    m_pDlgEdModel;
 
-protected:
     void                    UpdateFocused();
     void                    UpdateSelected();
     void                    UpdateBounds();

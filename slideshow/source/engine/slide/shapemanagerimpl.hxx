@@ -19,27 +19,26 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_SHAPEMANAGERIMPL_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_SHAPEMANAGERIMPL_HXX
 
-#include <cppuhelper/interfacecontainer.h>
-#include <com/sun/star/presentation/XShapeEventListener.hpp>
+#include <com/sun/star/drawing/XDrawPage.hpp>
+#include <com/sun/star/uno/Reference.hxx>
 
-#include "shape.hxx"
-#include "subsettableshapemanager.hxx"
-#include "eventmultiplexer.hxx"
+#include <shape.hxx>
+#include <subsettableshapemanager.hxx>
+#include <eventmultiplexer.hxx>
 #include "layermanager.hxx"
-#include "viewupdate.hxx"
-#include "shapemaps.hxx"
-#include "cursormanager.hxx"
-#include "hyperlinkarea.hxx"
-#include "listenercontainer.hxx"
-#include "shapelistenereventhandler.hxx"
-#include "mouseeventhandler.hxx"
+#include <viewupdate.hxx>
+#include <shapemaps.hxx>
+#include <cursormanager.hxx>
+#include <hyperlinkarea.hxx>
+#include <listenercontainer.hxx>
+#include <shapelistenereventhandler.hxx>
+#include <mouseeventhandler.hxx>
 
 #include <set>
 #include <map>
 #include <memory>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /** Listener class for shape events
 
@@ -58,13 +57,14 @@ public:
 
         @param rEventMultiplexer
         The slideshow-global event source, where this class
-        registeres its event handlers.
+        registers its event handlers.
     */
     ShapeManagerImpl( EventMultiplexer&            rMultiplexer,
                       LayerManagerSharedPtr const& rLayerManager,
                       CursorManager&               rCursorManager,
                       const ShapeEventListenerMap& rGlobalListenersMap,
-                      const ShapeCursorMap&        rGlobalCursorMap );
+                      const ShapeCursorMap&        rGlobalCursorMap,
+                      const css::uno::Reference<css::drawing::XDrawPage>& xDrawPage);
 
     /// Forbid copy construction
     ShapeManagerImpl(const ShapeManagerImpl&) = delete;
@@ -119,18 +119,19 @@ private:
     virtual void notifyShapeUpdate( const ShapeSharedPtr& rShape ) override;
     virtual ShapeSharedPtr lookupShape(
         css::uno::Reference< css::drawing::XShape > const & xShape ) const override;
-    virtual void addHyperlinkArea( const std::shared_ptr<HyperlinkArea>& rArea ) override;
+    virtual const XShapeToShapeMap& getXShapeToShapeMap() const override;
+    virtual void addHyperlinkArea( const HyperlinkAreaSharedPtr& rArea ) override;
 
 
     // SubsettableShapeManager interface
 
 
-    virtual std::shared_ptr<AttributableShape> getSubsetShape(
-        const std::shared_ptr<AttributableShape>& rOrigShape,
-        const DocTreeNode&                          rTreeNode ) override;
+    virtual AttributableShapeSharedPtr getSubsetShape(
+        const AttributableShapeSharedPtr& rOrigShape,
+        const DocTreeNode&                rTreeNode ) override;
     virtual void revokeSubset(
-        const std::shared_ptr<AttributableShape>& rOrigShape,
-        const std::shared_ptr<AttributableShape>& rSubsetShape ) override;
+        const AttributableShapeSharedPtr& rOrigShape,
+        const AttributableShapeSharedPtr& rSubsetShape ) override;
 
     virtual void addIntrinsicAnimationHandler(
         const IntrinsicAnimationEventHandlerSharedPtr& rHandler ) override;
@@ -143,17 +144,16 @@ private:
     // ShapeListenerEventHandler
 
 
-    virtual bool listenerAdded( const css::uno::Reference< css::presentation::XShapeEventListener>& xListener,
-                                const css::uno::Reference< css::drawing::XShape>&                   xShape ) override;
+    virtual bool listenerAdded( const css::uno::Reference< css::drawing::XShape>& xShape ) override;
 
-    virtual bool listenerRemoved( const css::uno::Reference< css::presentation::XShapeEventListener>& xListener,
-                                  const css::uno::Reference< css::drawing::XShape>&                   xShape ) override;
+    virtual bool listenerRemoved( const css::uno::Reference< css::drawing::XShape>& xShape ) override;
 
     void cursorChanged( const css::uno::Reference< css::drawing::XShape>&   xShape,
                               sal_Int16                                     nCursor );
 
 
     OUString checkForHyperlink( ::basegfx::B2DPoint const& hitPos )const;
+    OUString checkForImageMap( css::awt::MouseEvent const& evt ) const;
 
 
     typedef std::map<ShapeSharedPtr,
@@ -178,10 +178,10 @@ private:
     AreaSet                             maHyperlinkShapes;
     ImplIntrinsicAnimationEventHandlers maIntrinsicAnimationEventHandlers;
     bool                                mbEnabled;
+    const css::uno::Reference<css::drawing::XDrawPage> mxDrawPage;
 };
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SLIDE_SHAPEMANAGERIMPL_HXX
 

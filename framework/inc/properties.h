@@ -20,7 +20,7 @@
 #ifndef INCLUDED_FRAMEWORK_INC_PROPERTIES_H
 #define INCLUDED_FRAMEWORK_INC_PROPERTIES_H
 
-#include "general.h"
+#include <com/sun/star/uno/Any.hxx>
 
 namespace framework{
 
@@ -119,7 +119,6 @@ namespace framework{
 
 /** properties for office module config (Setup.xcu) */
 
-#define OFFICEFACTORY_PROPNAME_ASCII_WINDOWATTRIBUTES   "ooSetupFactoryWindowAttributes"
 #define OFFICEFACTORY_PROPNAME_ASCII_UINAME             "ooSetupFactoryUIName"
 #define OFFICEFACTORY_PROPNAME_ASCII_ICON               "ooSetupFactoryIcon"
 
@@ -164,7 +163,7 @@ class PropHelper
         aChangedValue.clear();
 
         // if value change ...
-        bChanged = !(aCurrentValue==aNewValue);
+        bChanged = aCurrentValue != aNewValue;
         if (bChanged)
         {
             // ... set information of change.

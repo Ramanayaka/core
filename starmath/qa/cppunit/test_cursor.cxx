@@ -10,7 +10,7 @@
 #include <sal/config.h>
 #include <test/bootstrapfixture.hxx>
 
-#include <vcl/svapp.hxx>
+#include <vcl/virdev.hxx>
 #include <sfx2/sfxmodelfactory.hxx>
 #include <smdll.hxx>
 
@@ -67,9 +67,8 @@ void Test::tearDown()
 
 void Test::testCopyPaste()
 {
-    OUString const sInput("a * b + c");
-    std::unique_ptr<SmNode> xTree(SmParser().Parse(sInput));
-    xTree->Prepare(xDocShRef->GetFormat(), *xDocShRef);
+    auto xTree = SmParser().Parse("a * b + c");
+    xTree->Prepare(xDocShRef->GetFormat(), *xDocShRef, 0);
 
     SmCursor aCursor(xTree.get(), xDocShRef.get());
     ScopedVclPtrInstance<VirtualDevice> pOutputDevice;
@@ -90,9 +89,8 @@ void Test::testCopyPaste()
 
 void Test::testCopySelectPaste()
 {
-    OUString const sInput("a * b + c");
-    std::unique_ptr<SmNode> xTree(SmParser().Parse(sInput));
-    xTree->Prepare(xDocShRef->GetFormat(), *xDocShRef);
+    auto xTree = SmParser().Parse("a * b + c");
+    xTree->Prepare(xDocShRef->GetFormat(), *xDocShRef, 0);
 
     SmCursor aCursor(xTree.get(), xDocShRef.get());
     ScopedVclPtrInstance<VirtualDevice> pOutputDevice;
@@ -117,9 +115,8 @@ void Test::testCopySelectPaste()
 
 void Test::testCutPaste()
 {
-    OUString const sInput("a * b + c");
-    std::unique_ptr<SmNode> xTree(SmParser().Parse(sInput));
-    xTree->Prepare(xDocShRef->GetFormat(), *xDocShRef);
+    auto xTree = SmParser().Parse("a * b + c");
+    xTree->Prepare(xDocShRef->GetFormat(), *xDocShRef, 0);
 
     SmCursor aCursor(xTree.get(), xDocShRef.get());
     ScopedVclPtrInstance<VirtualDevice> pOutputDevice;
@@ -140,9 +137,8 @@ void Test::testCutPaste()
 
 void Test::testCutSelectPaste()
 {
-    OUString const sInput("a * b + c");
-    std::unique_ptr<SmNode> xTree(SmParser().Parse(sInput));
-    xTree->Prepare(xDocShRef->GetFormat(), *xDocShRef);
+    auto xTree = SmParser().Parse("a * b + c");
+    xTree->Prepare(xDocShRef->GetFormat(), *xDocShRef, 0);
 
     SmCursor aCursor(xTree.get(), xDocShRef.get());
     ScopedVclPtrInstance<VirtualDevice> pOutputDevice;

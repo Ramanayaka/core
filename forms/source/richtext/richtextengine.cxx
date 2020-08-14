@@ -30,10 +30,9 @@
 #include <vcl/outdev.hxx>
 #include <vcl/settings.hxx>
 #include <unotools/lingucfg.hxx>
-#include <svl/undo.hxx>
+#include <osl/diagnose.h>
 
 #include <algorithm>
-#include <functional>
 #include <memory>
 
 namespace frm
@@ -50,7 +49,7 @@ namespace frm
 
         RichTextEngine* pReturn = new RichTextEngine( pPool );
         OutputDevice* pOutputDevice = pReturn->GetRefDevice();
-        MapMode aDeviceMapMode( pOutputDevice->GetMapMode() );
+        const MapMode& aDeviceMapMode( pOutputDevice->GetMapMode() );
 
         pReturn->SetStatusEventHdl( LINK( pReturn, RichTextEngine, EditEngineStatusChanged ) );
 
@@ -114,12 +113,12 @@ namespace frm
     }
 
 
-    void RichTextEngine::revokeEngineStatusListener( IEngineStatusListener* _pListener )
+    void RichTextEngine::revokeEngineStatusListener( IEngineStatusListener const * _pListener )
     {
-        ::std::vector< IEngineStatusListener* >::iterator aPos = ::std::find_if(
+        ::std::vector< IEngineStatusListener* >::iterator aPos = ::std::find(
             m_aStatusListeners.begin(),
             m_aStatusListeners.end(),
-            ::std::bind2nd( ::std::equal_to< IEngineStatusListener* >( ), _pListener )
+            _pListener
         );
         OSL_ENSURE( aPos != m_aStatusListeners.end(), "RichTextEngine::revokeEngineStatusListener: listener not registered!" );
         if ( aPos != m_aStatusListeners.end() )
@@ -129,11 +128,8 @@ namespace frm
 
     IMPL_LINK( RichTextEngine, EditEngineStatusChanged, EditStatus&, _rStatus, void )
     {
-        for ( ::std::vector< IEngineStatusListener* >::const_iterator aLoop = m_aStatusListeners.begin();
-              aLoop != m_aStatusListeners.end();
-              ++aLoop
-            )
-            (*aLoop)->EditEngineStatusChanged( _rStatus );
+        for (auto const& statusListener : m_aStatusListeners)
+            statusListener->EditEngineStatusChanged( _rStatus );
     }
 
 

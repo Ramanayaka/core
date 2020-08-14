@@ -10,7 +10,6 @@
 #include <string>
 #include <set>
 
-#include "compat.hxx"
 #include "plugin.hxx"
 
 // Find places where we are returning a pointer to something, where we can be returning a reference.
@@ -26,10 +25,10 @@
 namespace {
 
 class ReturnByRef:
-    public RecursiveASTVisitor<ReturnByRef>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<ReturnByRef>
 {
 public:
-    explicit ReturnByRef(InstantiationData const & data): Plugin(data) {}
+    explicit ReturnByRef(InstantiationData const & data): FilteringPlugin(data) {}
 
     virtual void run() override { TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()); }
 
@@ -55,7 +54,7 @@ bool ReturnByRef::VisitCXXMethodDecl(const CXXMethodDecl * functionDecl) {
     if (isInUnoIncludeFile(functionDecl)) {
         return true;
     }
-    QualType t1 { compat::getReturnType(*functionDecl) };
+    QualType t1 { functionDecl->getReturnType() };
     if (!t1->isPointerType()) {
         return true;
     }
@@ -129,7 +128,7 @@ nextStmt->dump();
 std::string ReturnByRef::getFilename(SourceLocation loc)
 {
     SourceLocation spellingLocation = compiler.getSourceManager().getSpellingLoc(loc);
-    return compiler.getSourceManager().getFilename(spellingLocation);
+    return getFilenameOfLocation(spellingLocation);
 }
 
 loplugin::Plugin::Registration< ReturnByRef > X("returnbyref");

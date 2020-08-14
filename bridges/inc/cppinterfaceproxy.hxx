@@ -20,30 +20,26 @@
 #ifndef INCLUDED_BRIDGES_INC_CPPINTERFACEPROXY_HXX
 #define INCLUDED_BRIDGES_INC_CPPINTERFACEPROXY_HXX
 
-#include "osl/interlck.h"
-#include "rtl/ustring.hxx"
-#include "sal/types.h"
-#include "typelib/typedescription.h"
-#include "uno/dispatcher.h"
-#include "uno/environment.h"
+#include <sal/config.h>
+
+#include <atomic>
+#include <cstddef>
+
+#include <rtl/ustring.hxx>
+#include <sal/types.h>
+#include <typelib/typedescription.h>
+#include <uno/dispatcher.h>
+#include <uno/environment.h>
 #include "vtablefactory.hxx"
 
-namespace com { namespace sun { namespace star { namespace uno {
-    class XInterface;
-} } } }
+namespace com::sun::star::uno { class XInterface; }
 
-#if !defined __GNUG__
-void dso_init();
-void dso_exit();
-#endif
-
-namespace bridges { namespace cpp_uno { namespace shared {
+namespace bridges::cpp_uno::shared {
 
 class Bridge;
 
-extern "C" typedef void SAL_CALL FreeCppInterfaceProxy(
+extern "C" void freeCppInterfaceProxy(
     uno_ExtEnvironment * pEnv, void * pInterface);
-FreeCppInterfaceProxy freeCppInterfaceProxy;
 
 /**
  * A cpp proxy wrapping a uno interface.
@@ -62,7 +58,7 @@ public:
     Bridge * getBridge() { return pBridge; }
     uno_Interface * getUnoI() { return pUnoI; }
     typelib_InterfaceTypeDescription * getTypeDescr() { return pTypeDescr; }
-    const OUString& getOid() { return oid; }
+    const OUString& getOid() const { return oid; }
 
     // non virtual methods called on incoming vtable calls #1, #2
     void acquireProxy();
@@ -71,8 +67,8 @@ public:
     static CppInterfaceProxy * castInterfaceToProxy(void * pInterface);
 
 private:
-    CppInterfaceProxy(CppInterfaceProxy &) = delete;
-    void operator =(const CppInterfaceProxy&) = delete;
+    CppInterfaceProxy(CppInterfaceProxy const &) = delete;
+    CppInterfaceProxy& operator =(const CppInterfaceProxy&) = delete;
 
     CppInterfaceProxy(
         Bridge * pBridge_, uno_Interface * pUnoI_,
@@ -84,7 +80,7 @@ private:
     static com::sun::star::uno::XInterface * castProxyToInterface(
         CppInterfaceProxy * pProxy);
 
-    oslInterlockedCount nRef;
+    std::atomic<std::size_t> nRef;
     Bridge * pBridge;
 
     // mapping information
@@ -92,13 +88,13 @@ private:
     typelib_InterfaceTypeDescription * pTypeDescr;
     OUString oid;
 
-    VtableFactory::Slot * vtables[1];
+    VtableFactory::Slot * vtables[1] = {};
 
-    friend void SAL_CALL freeCppInterfaceProxy(
+    friend void freeCppInterfaceProxy(
         uno_ExtEnvironment * pEnv, void * pInterface);
 };
 
-} } }
+}
 
 #endif
 

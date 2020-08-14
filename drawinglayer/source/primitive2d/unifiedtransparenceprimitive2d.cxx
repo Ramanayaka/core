@@ -21,7 +21,7 @@
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/color/bcolor.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/transparenceprimitive2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
@@ -30,10 +30,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         UnifiedTransparencePrimitive2D::UnifiedTransparencePrimitive2D(
             const Primitive2DContainer& rChildren,
             double fTransparence)
@@ -87,7 +85,7 @@ namespace drawinglayer
                 // I will take the last one here. The small overhead of two primitives will only be
                 // used when UnifiedTransparencePrimitive2D is not handled directly.
                 const basegfx::B2DRange aPolygonRange(getChildren().getB2DRange(rViewInformation));
-                const basegfx::B2DPolygon aPolygon(basegfx::tools::createPolygonFromRect(aPolygonRange));
+                const basegfx::B2DPolygon aPolygon(basegfx::utils::createPolygonFromRect(aPolygonRange));
                 const basegfx::BColor aGray(getTransparence(), getTransparence(), getTransparence());
                 Primitive2DContainer aTransparenceContent(2);
 
@@ -106,7 +104,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(UnifiedTransparencePrimitive2D, PRIMITIVE2D_ID_UNIFIEDTRANSPARENCEPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

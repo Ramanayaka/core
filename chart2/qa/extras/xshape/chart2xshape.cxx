@@ -7,20 +7,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "charttest.hxx"
-#include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
-#include <com/sun/star/chart2/CurveStyle.hpp>
-#include <com/sun/star/chart/ErrorBarStyle.hpp>
-#include <com/sun/star/chart2/XChartDocument.hpp>
+#include <charttest.hxx>
 #include <com/sun/star/chart/XChartDocument.hpp>
-#include <com/sun/star/chart/XChartData.hpp>
-#include <com/sun/star/chart2/XInternalDataProvider.hpp>
-#include <com/sun/star/chart/XChartDataArray.hpp>
 
 #include <com/sun/star/qa/XDumper.hpp>
 
 #include <test/xmldiff.hxx>
 #include <test/xmltesttools.hxx>
+#include <vcl/outdev.hxx>
+#include <vcl/svapp.hxx>
 
 #include <fstream>
 
@@ -53,7 +48,7 @@ private:
 
     void compareAgainstReference(const OUString& rReferenceFile, bool bCreateReference = false);
     OUString getXShapeDumpString();
-    xmlDocPtr getXShapeDumpXmlDoc();
+    xmlDocUniquePtr getXShapeDumpXmlDoc();
 };
 
 namespace {
@@ -78,11 +73,11 @@ OUString Chart2XShapeTest::getXShapeDumpString()
     return xDumper->dump();
 }
 
-xmlDocPtr Chart2XShapeTest::getXShapeDumpXmlDoc()
+xmlDocUniquePtr Chart2XShapeTest::getXShapeDumpXmlDoc()
 {
     OUString rDump = getXShapeDumpString();
     OString aXmlDump = OUStringToOString(rDump, RTL_TEXTENCODING_UTF8);
-    return xmlParseDoc(reinterpret_cast<const xmlChar*>(aXmlDump.getStr()));
+    return xmlDocUniquePtr(xmlParseDoc(reinterpret_cast<const xmlChar*>(aXmlDump.getStr())));
 }
 
 void Chart2XShapeTest::compareAgainstReference(const OUString& rReferenceFile, bool bCreateReference)
@@ -95,7 +90,7 @@ void Chart2XShapeTest::compareAgainstReference(const OUString& rReferenceFile, b
         OString aOFile = OUStringToOString(aReference, RTL_TEXTENCODING_UTF8);
         OString aODump = OUStringToOString(aDump, RTL_TEXTENCODING_UTF8);
         std::ofstream aReferenceFile(aOFile.getStr());
-        aReferenceFile << aODump.getStr();
+        aReferenceFile << aODump;
     }
     else
     {
@@ -121,6 +116,12 @@ void Chart2XShapeTest::testPropertyMappingBarChart()
 
 void Chart2XShapeTest::testPieChartLabels1()
 {
+    // FIXME: the DPI check should be removed when either (1) the test is fixed to work with
+    // non-default DPI; or (2) unit tests on Windows are made to use svp VCL plugin.
+    if (Application::GetDefaultDevice()->GetDPIX() != 96
+        || Application::GetDefaultDevice()->GetDPIY() != 96)
+        return;
+
     // inside placement for the best fit case
     load("chart2/qa/extras/xshape/data/xlsx/", "tdf90839-1.xlsx");
     compareAgainstReference("tdf90839-1.xml");
@@ -128,6 +129,12 @@ void Chart2XShapeTest::testPieChartLabels1()
 
 void Chart2XShapeTest::testPieChartLabels2()
 {
+    // FIXME: the DPI check should be removed when either (1) the test is fixed to work with
+    // non-default DPI; or (2) unit tests on Windows are made to use svp VCL plugin.
+    if (Application::GetDefaultDevice()->GetDPIX() != 96
+        || Application::GetDefaultDevice()->GetDPIY() != 96)
+        return;
+
     // text wrap: wrap all text labels except one
     load("chart2/qa/extras/xshape/data/xlsx/", "tdf90839-2.xlsx");
     compareAgainstReference("tdf90839-2.xml");
@@ -135,6 +142,12 @@ void Chart2XShapeTest::testPieChartLabels2()
 
 void Chart2XShapeTest::testPieChartLabels3()
 {
+    // FIXME: the DPI check should be removed when either (1) the test is fixed to work with
+    // non-default DPI; or (2) unit tests on Windows are made to use svp VCL plugin.
+    if (Application::GetDefaultDevice()->GetDPIX() != 96
+        || Application::GetDefaultDevice()->GetDPIY() != 96)
+        return;
+
     // text wrap: wrap no text label except one
     load("chart2/qa/extras/xshape/data/xlsx/", "tdf90839-3.xlsx");
     compareAgainstReference("tdf90839-3.xml");
@@ -142,6 +155,12 @@ void Chart2XShapeTest::testPieChartLabels3()
 
 void Chart2XShapeTest::testPieChartLabels4()
 {
+    // FIXME: the DPI check should be removed when either (1) the test is fixed to work with
+    // non-default DPI; or (2) unit tests on Windows are made to use svp VCL plugin.
+    if (Application::GetDefaultDevice()->GetDPIX() != 96
+        || Application::GetDefaultDevice()->GetDPIY() != 96)
+        return;
+
     // data value and percent value are centered horizontally
     load("chart2/qa/extras/xshape/data/ods/", "tdf90839-4.ods");
     compareAgainstReference("tdf90839-4.xml");
@@ -154,7 +173,7 @@ void Chart2XShapeTest::testTdf76649TrendLineBug()
 
     load("chart2/qa/extras/xshape/data/ods/", "tdf76649_TrendLineBug.ods");
 
-    xmlDocPtr pXmlDoc = getXShapeDumpXmlDoc();
+    xmlDocUniquePtr pXmlDoc = getXShapeDumpXmlDoc();
 
     // Check if the regression curve exists (which means a XShape with a certain
     // name should exist in the dump)
@@ -168,7 +187,7 @@ void Chart2XShapeTest::testTdf88154LabelRotatedLayout()
     uno::Reference< qa::XDumper > xDumper( xChartDoc, UNO_QUERY_THROW );
     OUString rDump = xDumper->dump();
     OString aXmlDump = OUStringToOString(rDump, RTL_TEXTENCODING_UTF8);
-    xmlDocPtr pXmlDoc = xmlParseDoc(reinterpret_cast<const xmlChar*>(aXmlDump.getStr()));
+    xmlDocUniquePtr pXmlDoc(xmlParseDoc(reinterpret_cast<const xmlChar*>(aXmlDump.getStr())));
 
     {
         OString aPath( "//XShape[@text='Oct-12']/Transformation" );

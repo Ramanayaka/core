@@ -18,16 +18,16 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <boost/cast.hpp>
 
-#include <basegfx/range/b2drectangle.hxx>
-#include <basegfx/tools/canvastools.hxx>
-#include <comphelper/scopeguard.hxx>
+#include <basegfx/range/b2irange.hxx>
 #include <tools/diagnose_ex.h>
-#include <vcl/canvastools.hxx>
 
 #include <canvas/canvastools.hxx>
+
+#include <cairo.h>
 
 #include "cairo_canvascustomsprite.hxx"
 #include "cairo_spritecanvashelper.hxx"
@@ -169,7 +169,7 @@ namespace cairocanvas
         CairoSharedPtr pCompositingCairo = pCompositingSurface->getCairo();
         CairoSharedPtr pWindowCairo = pWindowSurface->getCairo();
 
-        // TODO(P1): Might be worthwile to track areas of background
+        // TODO(P1): Might be worthwhile to track areas of background
         // changes, too.
         if( !bUpdateAll && !io_bSurfaceDirty && !mbCompositingSurfaceDirty )
         {
@@ -336,7 +336,8 @@ namespace cairocanvas
             const ::canvas::SpriteRedrawManager::SpriteConnectedRanges::ComponentListType::const_iterator
                 aFirst( rUpdateArea.maComponentList.begin() );
             ::canvas::SpriteRedrawManager::SpriteConnectedRanges::ComponentListType::const_iterator
-                  aSecond( aFirst ); ++aSecond;
+                  aSecond( aFirst );
+            ++aSecond;
 
             ENSURE_OR_THROW( aFirst->second.getSprite().is(),
                              "VCLCanvas::scrollUpdate(): no sprite" );

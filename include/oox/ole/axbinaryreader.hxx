@@ -30,10 +30,9 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace oox { namespace ole { struct AxFontData; } }
+namespace oox::ole { struct AxFontData; }
 
-namespace oox {
-namespace ole {
+namespace oox::ole {
 
 
 /** A wrapper for a binary input stream that supports aligned read operations.
@@ -44,7 +43,7 @@ namespace ole {
     possible to construct this wrapper with an unseekable input stream without
     losing any functionality.
  */
-class AxAlignedInputStream : public BinaryInputStream
+class AxAlignedInputStream final : public BinaryInputStream
 {
 public:
     explicit            AxAlignedInputStream( BinaryInputStream& rInStrm );
@@ -76,7 +75,7 @@ public:
 
     /** Aligns the stream according to the passed type and reads a value. */
     template< typename Type >
-    SAL_WARN_UNUSED_RESULT
+    [[nodiscard]]
     Type                readAligned() { align( sizeof( Type ) ); return readValue< Type >(); }
     /** Aligns the stream according to the passed type and skips the size of the type. */
     template< typename Type >
@@ -245,8 +244,7 @@ private:
 };
 
 
-} // namespace ole
-} // namespace oox
+} // namespace oox::ole
 
 #endif
 

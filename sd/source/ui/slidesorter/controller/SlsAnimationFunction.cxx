@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "controller/SlsAnimationFunction.hxx"
-#include "model/SlsPageDescriptor.hxx"
-#include "view/SlideSorterView.hxx"
+#include <sal/config.h>
 
-#include <osl/diagnose.hxx>
-#include <rtl/math.hxx>
+#include <o3tl/safeint.hxx>
 
-namespace sd { namespace slidesorter { namespace controller {
+#include <controller/SlsAnimationFunction.hxx>
+
+namespace sd::slidesorter::controller {
 
 //===== AnimationBezierFunction ===============================================
 
@@ -82,7 +81,7 @@ AnimationParametricFunction::AnimationParametricFunction (const ParametricFuncti
     for (sal_Int32 nIndex=0; nIndex<nSampleCount; ++nIndex)
     {
         const double nT (nIndex/double(nSampleCount-1));
-        aPoints.push_back(basegfx::B2DPoint(rFunction(nT)));
+        aPoints.emplace_back(rFunction(nT));
     }
 
     // Interpolate at evenly spaced points.
@@ -119,13 +118,13 @@ double AnimationParametricFunction::operator() (const double nX)
 
     if (nIndex0<=0)
         return maY[0];
-    else if (sal_uInt32(nIndex0)>=maY.size() || nIndex1>=maY.size())
+    else if (o3tl::make_unsigned(nIndex0)>=maY.size() || nIndex1>=maY.size())
         return maY[maY.size()-1];
 
     const double nU ((nX-nX1) / (nX0 - nX1));
     return maY[nIndex0]*nU + maY[nIndex1]*(1-nU);
 }
 
-} } } // end of namespace ::sd::slidesorter::controller
+} // end of namespace ::sd::slidesorter::controller
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

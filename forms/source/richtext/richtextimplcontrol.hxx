@@ -58,14 +58,14 @@ namespace frm
         VclPtr<ScrollBar>              m_pVScroll;
         VclPtr<ScrollBarBox>           m_pScrollCorner;
         RichTextEngine*         m_pEngine;
-        EditView*               m_pView;
+        std::unique_ptr<EditView> m_pView;
         ITextAttributeListener* m_pTextAttrListener;
         ITextSelectionListener* m_pSelectionListener;
         bool                    m_bHasEverBeenShown;
 
     public:
         struct GrantAccess { friend class RichTextControl; private: GrantAccess() { } };
-        EditView*        getView( const GrantAccess& ) const     { return m_pView; }
+        EditView*        getView( const GrantAccess& ) const     { return m_pView.get(); }
         RichTextEngine*  getEngine( const GrantAccess& ) const   { return m_pEngine; }
         vcl::Window*          getViewport( const GrantAccess& ) const { return m_pViewport; }
 
@@ -145,7 +145,7 @@ namespace frm
         void    Draw( OutputDevice* _pDev, const Point& _rPos, const Size& _rSize );
 
         /// handles command events arrived at the anti-impl control
-        long    HandleCommand( const CommandEvent& _rEvent );
+        bool    HandleCommand( const CommandEvent& _rEvent );
 
     private:
         // updates the cache with the state provided by the given attribute handler

@@ -7,6 +7,7 @@
 
 import subprocess
 import time
+import traceback
 import uuid
 import os
 
@@ -25,9 +26,7 @@ class OfficeConnection:
     def __init__(self, args):
         self.args = args
         self.soffice = None
-        self.socket = None
         self.xContext = None
-        self.pro = None
 
     def setUp(self):
         """  Create a new connection to a LibreOffice process
@@ -53,7 +52,15 @@ class OfficeConnection:
             raise Exception("unsupported connection method: " + method)
 
         # connect to the soffice instance
-        self.xContext = self.connect(socket)
+        success = False
+        try:
+            self.xContext = self.connect(socket)
+            success = True
+        finally:
+            if not success and self.soffice:
+                self.soffice.terminate()
+                self.soffice.wait()
+                self.soffice = None
 
     def bootstrap(self, soffice, userdir, socket):
         """ Creates a new LibreOffice process
@@ -83,8 +90,7 @@ class OfficeConnection:
             env = environ
             env['LC_ALL'] = environ['LIBO_LANG']
 
-        self.pro = subprocess.Popen(argv, env=env)
-        return self.pro
+        return subprocess.Popen(argv, env=env)
 
     def connect(self, socket):
         """ Tries to connect to the LibreOffice instance through the specified socket"""
@@ -94,7 +100,7 @@ class OfficeConnection:
         url = "uno:" + socket + ";urp;StarOffice.ComponentContext"
         print("OfficeConnection: connecting to: " + url)
         while True:
-            if self.soffice.poll() is not None:
+            if self.soffice and self.soffice.poll() is not None:
                 raise Exception("soffice has stopped.")
 
             try:
@@ -107,10 +113,9 @@ class OfficeConnection:
     def tearDown(self):
         """Terminate a LibreOffice instance created with the path connection method.
 
-        First tries to terminate the soffice instance through the normal
-        XDesktop::terminate method and waits for about 30 seconds before
-        considering this attempt failed. After the 30 seconds the subprocess
-        is terminated """
+        Tries to terminate the soffice instance through the normal
+        XDesktop::terminate method and waits indefinitely for the subprocess
+        to terminate """
 
         if self.soffice:
             if self.xContext:
@@ -122,31 +127,16 @@ class OfficeConnection:
                     xDesktop.terminate()
                     print("...done")
                 except pyuno.getClass("com.sun.star.beans.UnknownPropertyException"):
-                    print("caught UnknownPropertyException while TearDown")
+                    print("caught while TearDown:\n", traceback.format_exc())
                     pass  # ignore, also means disposed
                 except pyuno.getClass("com.sun.star.lang.DisposedException"):
-                    print("caught DisposedException while TearDown")
+                    print("caught while TearDown:\n", traceback.format_exc())
                     pass  # ignore
             else:
                 self.soffice.terminate()
 
-            DEFAULT_SLEEP = 0.1
-            time_ = 0
-            while time_ < 30:
-                time_ += DEFAULT_SLEEP
-                ret_attr = self.soffice.poll()
-                if ret_attr is not None:
-                    break
-                time.sleep(DEFAULT_SLEEP)
-
-            ret = 0
-            if ret_attr is None:
-                ret = 1
-                self.soffice.terminate()
-
-            # ret = self.soffice.wait()
+            ret = self.soffice.wait()
             self.xContext = None
-            self.socket = None
             self.soffice = None
             if ret != 0:
                 raise Exception("Exit status indicates failure: " + str(ret))

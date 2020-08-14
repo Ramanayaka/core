@@ -29,14 +29,12 @@
 |*
 \************************************************************************/
 
-class SVX_DLLPUBLIC XFormTextMirrorItem : public SfxBoolItem
+class SVXCORE_DLLPUBLIC XFormTextMirrorItem final : public SfxBoolItem
 {
 public:
                             static SfxPoolItem* CreateDefault();
                             XFormTextMirrorItem(bool bMirror = false);
-                            XFormTextMirrorItem(SvStream& rIn);
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual XFormTextMirrorItem* Clone(SfxItemPool* pPool = nullptr) const override;
 };
 
 #endif

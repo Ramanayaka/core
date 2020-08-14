@@ -14,7 +14,7 @@
 #include <com/sun/star/sheet/XSheetAnnotation.hpp>
 #include <com/sun/star/text/XTextRange.hpp>
 
-#include "cppunit/extensions/HelperMacros.h"
+#include <cppunit/TestAssert.h>
 #include <rtl/ustring.hxx>
 
 using namespace css;
@@ -31,7 +31,7 @@ void XSheetAnnotations::testCount()
     sal_Int32 nBefore = xAnnotationsIndex->getCount();
 
     // get Sheet 2 annotations
-    uno::Reference< sheet::XSheetAnnotations > xSheet2Annotations( getAnnotations(1), UNO_QUERY_THROW);
+    uno::Reference< sheet::XSheetAnnotations > xSheet2Annotations( getAnnotations(1), UNO_SET_THROW);
 
     // insert a note on sheet 2
     table::CellAddress aTargetCellAddress (1,0,0);
@@ -157,7 +157,7 @@ void XSheetAnnotations::testRemoveByIndex()
         OUString("an inserted annotation 1"), aPreviousString);
 }
 
-void XSheetAnnotations::testGetByIndex()
+void XSheetAnnotations::testIndex()
 {
 
     // testing #fdo80551 - getByIndex not on the first sheet
@@ -172,7 +172,7 @@ void XSheetAnnotations::testGetByIndex()
     aSheet0Annotations->insertNew(aThirdCellAddress0, "an inserted annotation 3 on sheet 1");
 
     // insert annotations in third sheet
-    uno::Reference< sheet::XSheetAnnotations > aSheet2Annotations (getAnnotations(2), UNO_QUERY_THROW);
+    uno::Reference< sheet::XSheetAnnotations > aSheet2Annotations (getAnnotations(2), UNO_SET_THROW);
     table::CellAddress aTargetCellAddress2 (2,4,5);
     aSheet2Annotations->insertNew(aTargetCellAddress2, "an inserted annotation 1 on sheet 3");
     table::CellAddress aSecondTargetCellAddress2 (2,5,6);
@@ -181,7 +181,7 @@ void XSheetAnnotations::testGetByIndex()
     aSheet2Annotations->insertNew(aThirdCellAddress2, "an inserted annotation 3 on sheet 3");
 
     // get second annotation for second sheet
-    uno::Reference< sheet::XSheetAnnotations > aSheetAnnotations (getAnnotations(2), UNO_QUERY_THROW);
+    uno::Reference< sheet::XSheetAnnotations > aSheetAnnotations (getAnnotations(2), UNO_SET_THROW);
     uno::Reference< container::XIndexAccess > xAnnotationsIndex (aSheetAnnotations, UNO_QUERY_THROW);
     uno::Reference< sheet::XSheetAnnotation > aAnnotation (xAnnotationsIndex->getByIndex(1), UNO_QUERY_THROW);
 

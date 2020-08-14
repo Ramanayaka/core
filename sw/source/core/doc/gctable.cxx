@@ -18,28 +18,31 @@
  */
 
 #include <hintids.hxx>
-#include <editeng/boxitem.hxx>
 #include <tblrwcl.hxx>
-#include <swtblfmt.hxx>
 #include <algorithm>
+#include <editeng/borderline.hxx>
+#include <editeng/boxitem.hxx>
+#include <osl/diagnose.h>
 
 using namespace ::editeng;
 
-inline const SvxBorderLine* GetLineTB( const SvxBoxItem* pBox, bool bTop )
+static const SvxBorderLine* GetLineTB( const SvxBoxItem* pBox, bool bTop )
 {
     return bTop ? pBox->GetTop() : pBox->GetBottom();
 }
 
 bool SwGCBorder_BoxBrd::CheckLeftBorderOfFormat( const SwFrameFormat& rFormat )
 {
-    const SvxBorderLine* pBrd;
     const SfxPoolItem* pItem;
-    if( SfxItemState::SET == rFormat.GetItemState( RES_BOX, true, &pItem ) &&
-        nullptr != ( pBrd = static_cast<const SvxBoxItem*>(pItem)->GetLeft() ) )
+    if( SfxItemState::SET == rFormat.GetItemState( RES_BOX, true, &pItem ) )
     {
-        if( *pBrdLn == *pBrd )
-            bAnyBorderFnd = true;
-        return true;
+        const SvxBorderLine* pBrd = static_cast<const SvxBoxItem*>(pItem)->GetLeft();
+        if( pBrd )
+        {
+            if( *m_pBorderLine == *pBrd )
+                m_bAnyBorderFind = true;
+            return true;
+        }
     }
     return false;
 }
@@ -101,16 +104,17 @@ static sal_uInt16 lcl_FindEndPosOfBorder( const SwCollectTableLineBoxes& rCollTL
         const SvxBorderLine* pBrd;
         const SwTableBox& rBox = rCollTLB.GetBox( rStt, &nPos );
 
-        if( SfxItemState::SET != rBox.GetFrameFormat()->GetItemState(RES_BOX,true, &pItem )
-            || nullptr == ( pBrd = GetLineTB( static_cast<const SvxBoxItem*>(pItem), bTop ))
-            || !( *pBrd == rBrdLn ))
+        if( SfxItemState::SET != rBox.GetFrameFormat()->GetItemState(RES_BOX,true, &pItem ) )
+            break;
+        pBrd = GetLineTB( static_cast<const SvxBoxItem*>(pItem), bTop );
+        if( !pBrd || *pBrd != rBrdLn )
             break;
         nLastPos = nPos;
     }
     return nLastPos;
 }
 
-static inline const SvxBorderLine* lcl_GCBorder_GetBorder( const SwTableBox& rBox,
+static const SvxBorderLine* lcl_GCBorder_GetBorder( const SwTableBox& rBox,
                                                 bool bTop,
                                                 const SfxPoolItem** ppItem )
 {
@@ -180,22 +184,24 @@ void sw_GC_Line_Border( const SwTableLine* pLine, SwGCLineBorder* pGCPara )
 
             for( SwTableBoxes::size_type i = aBoxes.size(); i; )
             {
-                SwTableBox* pBox;
-                if( SfxItemState::SET == (pBox = aBoxes[ --i ])->GetFrameFormat()->
-                    GetItemState( RES_BOX, true, &pItem ) &&
-                    nullptr != ( pBrd = static_cast<const SvxBoxItem*>(pItem)->GetRight() ) )
+                SwTableBox* pBox = aBoxes[ --i ];
+                if( SfxItemState::SET == pBox->GetFrameFormat()->GetItemState( RES_BOX, true, &pItem ) )
                 {
-                    aBPara.SetBorder( *pBrd );
-                    const SwTableBox* pNextBox = rBoxes[n+1];
-                    if( lcl_GCBorder_ChkBoxBrd_B( pNextBox, &aBPara ) &&
-                        aBPara.IsAnyBorderFound() )
+                    pBrd = static_cast<const SvxBoxItem*>(pItem)->GetRight();
+                    if( pBrd )
                     {
-                        SvxBoxItem aBox( *static_cast<const SvxBoxItem*>(pItem) );
-                        aBox.SetLine( nullptr, SvxBoxItemLine::RIGHT );
-                        if( pGCPara->pShareFormats )
-                            pGCPara->pShareFormats->SetAttr( *pBox, aBox );
-                        else
-                            pBox->ClaimFrameFormat()->SetFormatAttr( aBox );
+                        aBPara.SetBorder( *pBrd );
+                        const SwTableBox* pNextBox = rBoxes[n+1];
+                        if( lcl_GCBorder_ChkBoxBrd_B( pNextBox, &aBPara ) &&
+                            aBPara.IsAnyBorderFound() )
+                        {
+                            SvxBoxItem aBox( *static_cast<const SvxBoxItem*>(pItem) );
+                            aBox.SetLine( nullptr, SvxBoxItemLine::RIGHT );
+                            if( pGCPara->pShareFormats )
+                                pGCPara->pShareFormats->SetAttr( *pBox, aBox );
+                            else
+                                pBox->ClaimFrameFormat()->SetFormatAttr( aBox );
+                        }
                     }
                 }
             }
@@ -301,9 +307,8 @@ void sw_GC_Line_Border( const SwTableLine* pLine, SwGCLineBorder* pGCPara )
         } while( true );
     }
 
-    for( SwTableBoxes::const_iterator it = pLine->GetTabBoxes().begin();
-             it != pLine->GetTabBoxes().end(); ++it)
-        lcl_GC_Box_Border(*it, pGCPara );
+    for( const auto& rpBox : pLine->GetTabBoxes() )
+        lcl_GC_Box_Border(rpBox, pGCPara );
 
     ++pGCPara->nLinePos;
 }
@@ -319,6 +324,8 @@ static void lcl_GC_Box_Border( const SwTableBox* pBox, SwGCLineBorder* pPara )
     }
 }
 
+namespace {
+
 struct GCLinePara
 {
     SwTableLines* pLns;
@@ -328,6 +335,8 @@ struct GCLinePara
         : pLns( &rLns ), pShareFormats( pPara ? pPara->pShareFormats : nullptr )
     {}
 };
+
+}
 
 static bool lcl_MergeGCLine(SwTableLine* pLine, GCLinePara* pPara);
 

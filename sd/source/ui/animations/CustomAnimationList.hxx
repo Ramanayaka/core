@@ -24,15 +24,17 @@
 
 #include <memory>
 
-#include <com/sun/star/drawing/XShape.hpp>
-#include <svtools/treelistbox.hxx>
+#include <vcl/transfer.hxx>
+#include <vcl/weld.hxx>
 #include <CustomAnimationEffect.hxx>
-#include "CustomAnimationPreset.hxx"
-#include "CustomAnimation.hrc"
+
+namespace com::sun::star::drawing { class XShape; }
+
+struct ImplSVEvent;
+class VclBuilder;
 
 namespace sd {
 
-class CustomAnimationEffect;
 typedef std::shared_ptr< CustomAnimationEffect > CustomAnimationEffectPtr;
 
 class ICustomAnimationListController
@@ -41,18 +43,35 @@ public:
     virtual void onSelect() = 0;
     virtual void onDoubleClick() = 0;
     virtual void onContextMenu(const OString &rIdent) = 0;
+    virtual void onDragNDropComplete( std::vector< CustomAnimationEffectPtr > pEffectsDragged, CustomAnimationEffectPtr pEffectInsertBefore ) = 0;
     virtual ~ICustomAnimationListController() {}
 };
 
-class CustomAnimationList : public SvTreeListBox, public ISequenceListener
+class CustomAnimationList;
+class CustomAnimationListEntryItem;
+
+class CustomAnimationListDropTarget : public DropTargetHelper
+{
+private:
+    CustomAnimationList& m_rTreeView;
+
+    virtual sal_Int8 AcceptDrop( const AcceptDropEvent& rEvt ) override;
+    virtual sal_Int8 ExecuteDrop( const ExecuteDropEvent& rEvt ) override;
+
+public:
+    CustomAnimationListDropTarget(CustomAnimationList& rTreeView);
+};
+
+class CustomAnimationList : public ISequenceListener
 {
     friend class CustomAnimationListEntryItem;
     friend struct stl_append_effect_func;
 
 public:
-    explicit CustomAnimationList( vcl::Window* pParent );
-    virtual ~CustomAnimationList() override;
-    virtual void dispose() override;
+    explicit CustomAnimationList(std::unique_ptr<weld::TreeView> xTreeView,
+                                 std::unique_ptr<weld::Label> xLabel,
+                                 std::unique_ptr<weld::Widget> xScrolledWindow);
+    virtual ~CustomAnimationList();
 
     // methods
 
@@ -70,22 +89,14 @@ public:
     // events
     void onSelectionChanged(const css::uno::Any& rSelection);
 
-    // overrides
-    virtual void    SelectHdl() override;
-    virtual bool    DoubleClickHdl() override;
-
-    virtual void    Paint( vcl::RenderContext& rRenderContext, const ::tools::Rectangle& rRect ) override;
-
-    virtual VclPtr<PopupMenu> CreateContextMenu() override;
-    virtual void    ExecuteContextMenuAction( sal_uInt16 nSelectedPopupEntry ) override;
-
-    virtual void KeyInput( const KeyEvent& rKEvt ) override;
+    void Select();
 
     virtual void notify_change() override;
 
     bool isExpanded( const CustomAnimationEffectPtr& pEffect ) const;
+    bool isVisible( const CustomAnimationEffectPtr& pEffect ) const;
 
-    /// clears all entries from the listbox
+    // clears all entries from the listbox
     void clear();
 
     void setController( ICustomAnimationListController* pController )
@@ -93,11 +104,40 @@ public:
         mpController = pController;
     };
 
+    sal_Int8     AcceptDrop(const AcceptDropEvent& rEvt);
+    sal_Int8     ExecuteDrop(const ExecuteDropEvent& rEvt);
+
+    void set_sensitive(bool bSensitive) { mxTreeView->set_sensitive(bSensitive); }
+    int get_height_rows(int nRows) { return mxTreeView->get_height_rows(nRows); }
+    int get_approximate_digit_width() const { return mxTreeView->get_approximate_digit_width(); }
+    void set_size_request(int nWidth, int nHeight) { mxTreeView->set_size_request(nWidth, nHeight); }
+    void unselect_all() { mxTreeView->unselect_all(); }
+    weld::TreeView& get_widget() { return *mxTreeView; }
+
+    DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
+    DECL_LINK(ExpandHdl, const weld::TreeIter&, bool);
+    DECL_LINK(PostExpandHdl, void*, void);
+    DECL_LINK(CollapseHdl, const weld::TreeIter&, bool);
+    DECL_LINK(PostCollapseHdl, void*, void);
+
 private:
-    std::unique_ptr<VclBuilder> mxBuilder;
-    VclPtr<PopupMenu> mxMenu;
+    std::unique_ptr<weld::TreeView> mxTreeView;
+    CustomAnimationListDropTarget maDropTargetHelper;
+    std::unique_ptr<weld::Label> mxEmptyLabel;
+    std::unique_ptr<weld::Widget> mxEmptyLabelParent;
+    std::vector<std::unique_ptr<CustomAnimationListEntryItem>> mxEntries;
+    std::vector<std::unique_ptr<weld::TreeIter>> lastSelectedEntries;
 
     bool    mbIgnorePaint;
+
+    DECL_LINK(SelectHdl, weld::TreeView&, void);
+    DECL_LINK(CommandHdl, const CommandEvent&, bool);
+    DECL_LINK(DoubleClickHdl, weld::TreeView&, bool);
+    DECL_LINK(DragBeginHdl, bool&, bool);
+    DECL_STATIC_LINK(CustomAnimationList, CustomRenderHdl, weld::TreeView::render_args, void);
+    DECL_STATIC_LINK(CustomAnimationList, CustomGetSizeHdl, weld::TreeView::get_size_args, Size);
+
+    void ExecuteContextMenuAction(const OString& rSelectedPopupEntry);
 
     /** appends the given effect to the list*/
     void append( CustomAnimationEffectPtr pEffect );
@@ -108,8 +148,14 @@ private:
 
     css::uno::Reference< css::drawing::XShape > mxLastTargetShape;
     sal_Int32 mnLastGroupId;
-    SvTreeListEntry* mpLastParentEntry;
+    ImplSVEvent* mnPostExpandEvent;
+    ImplSVEvent* mnPostCollapseEvent;
 
+    std::unique_ptr<weld::TreeIter> mxLastParentEntry;
+
+    // drag & drop
+    std::unique_ptr<weld::TreeIter> mxDndEffectDragging;
+    std::vector<std::unique_ptr<weld::TreeIter>> mDndEffectsSelected;
 };
 
 OUString getPropertyName( sal_Int32 nPropertyType );

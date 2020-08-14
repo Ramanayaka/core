@@ -17,22 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fucushow.hxx"
+#include <fucushow.hxx>
 
 #include <svx/svxids.hrc>
 
-#include "app.hrc"
-#include "sdresid.hxx"
-#include "ViewShell.hxx"
-#include "Window.hxx"
-#include "drawdoc.hxx"
-#include "sdpage.hxx"
-#include <vcl/msgbox.hxx>
+#include <ViewShell.hxx>
+#include <Window.hxx>
+#include <drawdoc.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/viewfrm.hxx>
 
-#include "sdabstdlg.hxx"
-#include <memory>
+#include <sdabstdlg.hxx>
 
 namespace sd {
 
@@ -57,25 +52,23 @@ rtl::Reference<FuPoor> FuCustomShowDlg::Create( ViewShell* pViewSh, ::sd::Window
 void FuCustomShowDlg::DoExecute( SfxRequest& )
 {
     SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
-    ScopedVclPtr<AbstractSdCustomShowDlg> pDlg(pFact ? pFact->CreateSdCustomShowDlg(mpViewShell->GetActiveWindow(), *mpDoc) : nullptr);
-    if( pDlg )
+    vcl::Window* pWin = mpViewShell->GetActiveWindow();
+    ScopedVclPtr<AbstractSdCustomShowDlg> pDlg( pFact->CreateSdCustomShowDlg(pWin ? pWin->GetFrameWeld() : nullptr, *mpDoc) );
+    sal_uInt16 nRet = pDlg->Execute();
+    if( pDlg->IsModified() )
     {
-        sal_uInt16 nRet = pDlg->Execute();
-        if( pDlg->IsModified() )
-        {
-            mpDoc->SetChanged();
-            sd::PresentationSettings& rSettings = mpDoc->getPresentationSettings();
-            rSettings.mbCustomShow = pDlg->IsCustomShow();
-        }
-        pDlg.disposeAndClear();
+        mpDoc->SetChanged();
+        sd::PresentationSettings& rSettings = mpDoc->getPresentationSettings();
+        rSettings.mbCustomShow = pDlg->IsCustomShow();
+    }
+    pDlg.disposeAndClear();
 
-        if( nRet == RET_YES )
-        {
-            mpViewShell->SetStartShowWithDialog(true);
+    if( nRet == RET_YES )
+    {
+        mpViewShell->SetStartShowWithDialog(true);
 
-            mpViewShell->GetViewFrame()->GetDispatcher()->Execute( SID_PRESENTATION,
-                    SfxCallMode::ASYNCHRON | SfxCallMode::RECORD );
-        }
+        mpViewShell->GetViewFrame()->GetDispatcher()->Execute( SID_PRESENTATION,
+                SfxCallMode::ASYNCHRON | SfxCallMode::RECORD );
     }
 }
 

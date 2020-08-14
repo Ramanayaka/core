@@ -20,45 +20,38 @@
 #ifndef INCLUDED_COMPHELPER_SEQUENCE_HXX
 #define INCLUDED_COMPHELPER_SEQUENCE_HXX
 
-#include <algorithm>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <osl/diagnose.h>
-#include <comphelper/comphelperdllapi.h>
 
+#include <algorithm>
 #include <vector>
 
 namespace comphelper
 {
-    /** search the given string within the given sequence, return the positions where it was found.
-        if _bOnlyFirst is sal_True, only the first occurrence will be returned.
+    /** Search the given value within the given sequence, return the position of the first occurrence.
+        Returns -1 if nothing found.
     */
-    COMPHELPER_DLLPUBLIC css::uno::Sequence<sal_Int16> findValue(const css::uno::Sequence< OUString >& _rList, const OUString& _rValue, bool _bOnlyFirst);
-
-    namespace internal
+    template <class T1, class T2>
+    inline sal_Int32 findValue(const css::uno::Sequence<T1>& _rList, const T2& _rValue)
     {
-        template <class T>
-        inline void implCopySequence(const T* _pSource, T*& _pDest, sal_Int32 _nSourceLen)
+        // at which position do I find the value?
+        for (sal_Int32 i = 0; i < _rList.getLength(); ++i)
         {
-            for (sal_Int32 i=0; i<_nSourceLen; ++i, ++_pSource, ++_pDest)
-                *_pDest = *_pSource;
+            if (_rList[i] == _rValue)
+                return i;
         }
+
+        return -1;
     }
 
-    /// concat two sequences
-    template <class T>
-    inline css::uno::Sequence<T> concatSequences(const css::uno::Sequence<T>& _rLeft, const css::uno::Sequence<T>& _rRight)
+    /// concat several sequences
+    template <class T, class... Ss>
+    inline css::uno::Sequence<T> concatSequences(const css::uno::Sequence<T>& rS1, const Ss&... rSn)
     {
-        sal_Int32 nLeft(_rLeft.getLength()), nRight(_rRight.getLength());
-        const T* pLeft = _rLeft.getConstArray();
-        const T* pRight = _rRight.getConstArray();
-
-        sal_Int32 nReturnLen(nLeft + nRight);
-        css::uno::Sequence<T> aReturn(nReturnLen);
-        T* pReturn = aReturn.getArray();
-
-        internal::implCopySequence(pLeft, pReturn, nLeft);
-        internal::implCopySequence(pRight, pReturn, nRight);
-
+        // unary fold to disallow empty parameter pack: at least have one sequence in rSn
+        css::uno::Sequence<T> aReturn(std::size(rS1) + (... + std::size(rSn)));
+        T* pReturn = std::copy(std::begin(rS1), std::end(rS1), aReturn.begin());
+        (..., (pReturn = std::copy(std::begin(rSn), std::end(rSn), pReturn)));
         return aReturn;
     }
 
@@ -71,8 +64,7 @@ namespace comphelper
         sal_Int32 n1 = left.getLength();
         css::uno::Sequence<T> ret(n1 + right.getLength());
             //TODO: check for overflow
-        T * p = ret.getArray();
-        internal::implCopySequence(left.getConstArray(), p, n1);
+        std::copy_n(left.getConstArray(), n1, ret.getArray());
         sal_Int32 n2 = n1;
         for (sal_Int32 i = 0; i != right.getLength(); ++i) {
             bool found = false;
@@ -90,27 +82,6 @@ namespace comphelper
         return ret;
     }
 
-    /// concat three sequences
-    template <class T>
-    inline css::uno::Sequence<T> concatSequences(const css::uno::Sequence<T>& _rLeft, const css::uno::Sequence<T>& _rMiddle, const css::uno::Sequence<T>& _rRight)
-    {
-        sal_Int32 nLeft(_rLeft.getLength()), nMiddle(_rMiddle.getLength()), nRight(_rRight.getLength());
-        const T* pLeft = _rLeft.getConstArray();
-        const T* pMiddle = _rMiddle.getConstArray();
-        const T* pRight = _rRight.getConstArray();
-
-        sal_Int32 nReturnLen(nLeft + nMiddle + nRight);
-        css::uno::Sequence<T> aReturn(nReturnLen);
-        T* pReturn = aReturn.getArray();
-
-        internal::implCopySequence(pLeft, pReturn, nLeft);
-        internal::implCopySequence(pMiddle, pReturn, nMiddle);
-        internal::implCopySequence(pRight, pReturn, nRight);
-
-        return aReturn;
-    }
-
-
     /// remove a specified element from a sequences
     template<class T>
     inline void removeElementAt(css::uno::Sequence<T>& _rSeq, sal_Int32 _nPos)
@@ -119,85 +90,10 @@ namespace comphelper
 
         OSL_ENSURE(0 <= _nPos && _nPos < nLength, "invalid index");
 
-        for (sal_Int32 i = _nPos + 1; i < nLength; ++i)
-        {
-            _rSeq[i-1] = _rSeq[i];
-        }
+        T* pPos = _rSeq.getArray() + _nPos;
+        std::move(pPos + 1, pPos + nLength - _nPos, pPos);
 
         _rSeq.realloc(nLength-1);
-    }
-
-
-    //= iterating through sequences
-
-    /** a helper class for iterating through a sequence
-    */
-    template <class TYPE>
-    class OSequenceIterator
-    {
-        const TYPE* m_pElements;
-        sal_Int32   m_nLen;
-        const TYPE* m_pCurrent;
-
-    public:
-        /** construct a sequence iterator from a sequence
-        */
-        OSequenceIterator(const css::uno::Sequence< TYPE >& _rSeq);
-        /** construct a sequence iterator from a Any containing a sequence
-        */
-        OSequenceIterator(const css::uno::Any& _rSequenceAny);
-
-        bool hasMoreElements() const;
-        css::uno::Any  nextElement();
-
-    private:
-        inline void construct(const css::uno::Sequence< TYPE >& _rSeq);
-    };
-
-
-    template <class TYPE>
-    inline OSequenceIterator<TYPE>::OSequenceIterator(const css::uno::Sequence< TYPE >& _rSeq)
-        :m_pElements(nullptr)
-        ,m_nLen(0)
-        ,m_pCurrent(nullptr)
-    {
-        construct(_rSeq);
-    }
-
-
-    template <class TYPE>
-    inline OSequenceIterator<TYPE>::OSequenceIterator(const css::uno::Any& _rSequenceAny)
-        :m_pElements(nullptr)
-        ,m_nLen(0)
-        ,m_pCurrent(nullptr)
-    {
-        css::uno::Sequence< TYPE > aContainer;
-        bool bSuccess = _rSequenceAny >>= aContainer;
-        OSL_ENSURE(bSuccess, "OSequenceIterator::OSequenceIterator: invalid Any!");
-        construct(aContainer);
-    }
-
-
-    template <class TYPE>
-    void OSequenceIterator<TYPE>::construct(const css::uno::Sequence< TYPE >& _rSeq)
-    {
-        m_pElements = _rSeq.getConstArray();
-        m_nLen = _rSeq.getLength();
-        m_pCurrent = m_pElements;
-    }
-
-
-    template <class TYPE>
-    inline bool OSequenceIterator<TYPE>::hasMoreElements() const
-    {
-        return m_pCurrent - m_pElements < m_nLen;
-    }
-
-
-    template <class TYPE>
-    inline css::uno::Any OSequenceIterator<TYPE>::nextElement()
-    {
-        return css::uno::toAny(*m_pCurrent++);
     }
 
     /** Copy from a plain C/C++ array into a Sequence.
@@ -322,15 +218,13 @@ namespace comphelper
         elements
 
         @tpl DstType
-        Container type. This type must fulfill the STL container and
-        sequence concepts, in particular, the begin(), end() and the
-        unary constructor DstType(int) methods must be available and
-        have the usual semantics.
+        Container type. This type must have a constructor taking a pair
+        of iterators defining a range to copy from
 
         @param i_Sequence
         Reference to a Sequence of SrcType elements
 
-        @return the generated container
+        @return the generated container. C++17 copy elision rules apply
 
         @attention this function always performs a copy. Furthermore,
         when copying from e.g. a Sequence<double> to a vector<int>, no
@@ -341,18 +235,14 @@ namespace comphelper
     template < typename DstType, typename SrcType >
     inline DstType sequenceToContainer( const css::uno::Sequence< SrcType >& i_Sequence )
     {
-        DstType result( i_Sequence.getLength() );
-        ::std::copy( i_Sequence.begin(), i_Sequence.end(), result.begin() );
-        return result;
+        return DstType(i_Sequence.begin(), i_Sequence.end());
     }
 
     // this one does better type deduction, but does not allow us to copy into a different element type
     template < typename DstType >
     inline DstType sequenceToContainer( const css::uno::Sequence< typename DstType::value_type >& i_Sequence )
     {
-        DstType result( i_Sequence.getLength() );
-        ::std::copy( i_Sequence.begin(), i_Sequence.end(), result.begin() );
-        return result;
+        return DstType(i_Sequence.begin(), i_Sequence.end());
     }
 
     /** Copy from a Sequence into an existing container
@@ -393,7 +283,7 @@ namespace comphelper
         return o_Output;
     }
 
-    /** Copy (keys or values) from a associate container into a Sequence
+    /** Copy (keys or values) from an associate container into a Sequence
 
         @tpl M map container type eg. std::map/std::unordered_map
 

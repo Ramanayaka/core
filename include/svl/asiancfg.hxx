@@ -24,12 +24,11 @@
 
 #include <memory>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <sal/types.h>
 #include <svl/svldllapi.h>
 
-namespace com { namespace sun { namespace star { namespace lang {
+namespace com::sun::star::lang {
     struct Locale;
-} } } }
+}
 
 /// These constants define character compression in Asian text.
 /// Must match the values in com::sun::star::text::CharacterCompressionType.

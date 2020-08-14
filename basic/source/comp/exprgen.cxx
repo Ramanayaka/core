@@ -17,19 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <basic/sberrors.hxx>
 
-#include "codegen.hxx"
-#include "expr.hxx"
-#include "parser.hxx"
+#include <codegen.hxx>
+#include <expr.hxx>
+#include <parser.hxx>
 
 // Transform table for token operators and opcodes
 
-typedef struct {
+namespace {
+
+struct OpTable {
         SbiToken  eTok;                 // Token
         SbiOpcode eOp;                  // Opcode
-} OpTable;
+};
 
-static const OpTable aOpTable [] = {
+}
+
+const OpTable aOpTable [] = {
     { EXPON,SbiOpcode::EXP_ },
     { MUL,  SbiOpcode::MUL_ },
     { DIV,  SbiOpcode::DIV_ },
@@ -67,14 +72,14 @@ void SbiExprNode::Gen( SbiCodeGen& rGen, RecursiveMode eRecMode )
         case SbxEMPTY:
             rGen.Gen( SbiOpcode::EMPTY_ );
             break;
-        case SbxINTEGER:
-            rGen.Gen( SbiOpcode::CONST_,  (short) nVal );
-            break;
         case SbxSTRING:
             nStringId = rGen.GetParser()->aGblStrings.Add( aStrVal );
             rGen.Gen( SbiOpcode::SCONST_, nStringId );
             break;
         default:
+            // tdf#131296 - generate SbiOpcode::NUMBER_ instead of SbiOpcode::CONST_
+            // for SbxINTEGER and SbxLONG including their numeric value and its data type,
+            // which will be restored in SbiRuntime::StepLOADNC.
             nStringId = rGen.GetParser()->aGblStrings.Add( nVal, eType );
             rGen.Gen( SbiOpcode::NUMBER_, nStringId );
             break;
@@ -205,51 +210,49 @@ void SbiExprNode::GenElement( SbiCodeGen& rGen, SbiOpcode eOp )
 
 void SbiExprList::Gen(SbiCodeGen& rGen)
 {
-    if( !aData.empty() )
+    if( aData.empty() )
+        return;
+
+    rGen.Gen( SbiOpcode::ARGC_ );
+    // Type adjustment at DECLARE
+
+    for( auto& pExpr: aData )
     {
-        rGen.Gen( SbiOpcode::ARGC_ );
-        // Type adjustment at DECLARE
-        sal_uInt16 nCount = 1;
-
-        for( auto& pExpr: aData )
+        pExpr->Gen();
+        if( !pExpr->GetName().isEmpty() )
         {
-            pExpr->Gen();
-            if( !pExpr->GetName().isEmpty() )
-            {
-                // named arg
-                sal_uInt16 nSid = rGen.GetParser()->aGblStrings.Add( pExpr->GetName() );
-                rGen.Gen( SbiOpcode::ARGN_, nSid );
+            // named arg
+            sal_uInt16 nSid = rGen.GetParser()->aGblStrings.Add( pExpr->GetName() );
+            rGen.Gen( SbiOpcode::ARGN_, nSid );
 
-                /* TODO: Check after Declare concept change
-                // From 1996-01-10: Type adjustment at named -> search suitable parameter
-                if( pProc )
-                {
-                    // For the present: trigger an error
-                    pParser->Error( ERRCODE_BASIC_NO_NAMED_ARGS );
-
-                    // Later, if Named Args at DECLARE is possible
-                    //for( sal_uInt16 i = 1 ; i < nParAnz ; i++ )
-                    //{
-                    //  SbiSymDef* pDef = pPool->Get( i );
-                    //  const String& rName = pDef->GetName();
-                    //  if( rName.Len() )
-                    //  {
-                    //      if( pExpr->GetName().ICompare( rName )
-                    //          == COMPARE_EQUAL )
-                    //      {
-                    //          pParser->aGen.Gen( ARGTYP_, pDef->GetType() );
-                    //          break;
-                    //      }
-                    //  }
-                    //}
-                }
-                */
-            }
-            else
+            /* TODO: Check after Declare concept change
+            // From 1996-01-10: Type adjustment at named -> search suitable parameter
+            if( pProc )
             {
-                rGen.Gen( SbiOpcode::ARGV_ );
+                // For the present: trigger an error
+                pParser->Error( ERRCODE_BASIC_NO_NAMED_ARGS );
+
+                // Later, if Named Args at DECLARE is possible
+                //for( sal_uInt16 i = 1 ; i < nParAnz ; i++ )
+                //{
+                //  SbiSymDef* pDef = pPool->Get( i );
+                //  const String& rName = pDef->GetName();
+                //  if( rName.Len() )
+                //  {
+                //      if( pExpr->GetName().ICompare( rName )
+                //          == COMPARE_EQUAL )
+                //      {
+                //          pParser->aGen.Gen( ARGTYP_, pDef->GetType() );
+                //          break;
+                //      }
+                //  }
+                //}
             }
-            nCount++;
+            */
+        }
+        else
+        {
+            rGen.Gen( SbiOpcode::ARGV_ );
         }
     }
 }

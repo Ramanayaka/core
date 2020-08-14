@@ -17,28 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <cassert>
+
 #include <svx/swframeposstrings.hxx>
-#include <tools/resary.hxx>
-#include <tools/debug.hxx>
 #include <svx/dialmgr.hxx>
-#include <svx/dialogs.hrc>
+#include <swframeposstrings.hrc>
 
-SvxSwFramePosString::SvxSwFramePosString() :
-    pImpl(new ResStringArray(ResId(RID_SVXSW_FRAMEPOSITIONS, DIALOG_MGR())))
+OUString SvxSwFramePosString::GetString(StringId eId)
 {
-    assert(pImpl->Count() == SvxSwFramePosString::STR_MAX);
-}
-
-SvxSwFramePosString::~SvxSwFramePosString()
-{
-}
-
-OUString SvxSwFramePosString::GetString(StringId eId) const
-{
-    DBG_ASSERT(eId >= 0 && eId < STR_MAX, "invalid StringId");
-    if(!(eId >= 0 && eId < STR_MAX))
-        eId = LEFT;
-    return pImpl->GetString(eId);
+    static_assert(
+        (SAL_N_ELEMENTS(RID_SVXSW_FRAMEPOSITIONS)
+         == SvxSwFramePosString::STR_MAX),
+        "RID_SVXSW_FRAMEPOSITIONS too small");
+    assert(eId >= 0 && eId < STR_MAX);
+    return SvxResId(RID_SVXSW_FRAMEPOSITIONS[eId]);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

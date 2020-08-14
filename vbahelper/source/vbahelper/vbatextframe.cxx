@@ -16,10 +16,10 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <vbahelper/helperdecl.hxx>
+
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/drawing/TextFitToSizeType.hpp>
-#include <com/sun/star/text/XText.hpp>
+#include <com/sun/star/drawing/XShape.hpp>
 #include <vbahelper/vbatextframe.hxx>
 
 using namespace ::ooo::vba;
@@ -34,7 +34,7 @@ void
 VbaTextFrame::setAsMSObehavior()
 {
     //set property TextWordWrap default as False.
-    // TextFitToSize control the text content. it seems we should set the default as False.
+    // TextFitToSize control the text content. It seems we should set the default as False.
     // com.sun.star.drawing.TextFitToSizeType.NONE
     m_xPropertySet->setPropertyValue( "TextWordWrap", uno::makeAny( false ) );
     m_xPropertySet->setPropertyValue( "TextFitToSize", uno::makeAny( drawing::TextFitToSizeType_NONE ) );
@@ -78,7 +78,7 @@ float SAL_CALL
 VbaTextFrame::getMarginBottom()
 {
     sal_Int32 nMargin = getMargin( "TextLowerDistance" );
-    float fMargin = (float)Millimeter::getInPoints( nMargin );
+    float fMargin = static_cast<float>(Millimeter::getInPoints( nMargin ));
     return fMargin;
 }
 
@@ -92,7 +92,7 @@ float SAL_CALL
 VbaTextFrame::getMarginTop()
 {
     sal_Int32 nMargin = getMargin( "TextUpperDistance" );
-    float fMargin = (float)Millimeter::getInPoints( nMargin );
+    float fMargin = static_cast<float>(Millimeter::getInPoints( nMargin ));
     return fMargin;
 }
 
@@ -106,7 +106,7 @@ float SAL_CALL
 VbaTextFrame::getMarginLeft()
 {
     sal_Int32 nMargin = getMargin( "TextLeftDistance" );
-    float fMargin = (float)Millimeter::getInPoints( nMargin );
+    float fMargin = static_cast<float>(Millimeter::getInPoints( nMargin ));
     return fMargin;
 }
 
@@ -120,7 +120,7 @@ float SAL_CALL
 VbaTextFrame::getMarginRight()
 {
     sal_Int32 nMargin = getMargin( "TextRightDistance" );
-    float fMargin = (float)Millimeter::getInPoints( nMargin );
+    float fMargin = static_cast<float>(Millimeter::getInPoints( nMargin ));
     return fMargin;
 }
 
@@ -141,18 +141,16 @@ VbaTextFrame::Characters()
 OUString
 VbaTextFrame::getServiceImplName()
 {
-    return OUString("VbaTextFrame");
+    return "VbaTextFrame";
 }
 
 uno::Sequence< OUString >
 VbaTextFrame::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.TextFrame";
-    }
+        "ooo.vba.msforms.TextFrame"
+    };
     return aServiceNames;
 }
 

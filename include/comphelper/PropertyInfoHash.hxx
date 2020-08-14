@@ -21,7 +21,7 @@
 #define INCLUDED_COMPHELPER_PROPERTYINFOHASH_HXX
 
 #include <rtl/ustring.hxx>
-#include <com/sun/star/uno/Type.hxx>
+#include <com/sun/star/uno/Type.h>
 #include <unordered_map>
 
 namespace comphelper
@@ -29,14 +29,19 @@ namespace comphelper
     struct PropertyInfo
     {
         OUString maName;
-        sal_Int32 mnHandle;
         css::uno::Type maType;
+        sal_Int32 mnHandle;
         sal_Int16 mnAttributes;
+
+        PropertyInfo(OUString const & aName, sal_Int32 nHandle, css::uno::Type const & aType, sal_Int16 nAttributes)
+            : maName(aName), maType(aType), mnHandle(nHandle), mnAttributes(nAttributes) {}
+        PropertyInfo(OUString && aName, sal_Int32 nHandle, css::uno::Type const & aType, sal_Int16 nAttributes)
+            : maName(std::move(aName)), maType(aType), mnHandle(nHandle), mnAttributes(nAttributes) {}
     };
     struct PropertyData
     {
         sal_uInt8 mnMapId;
-        PropertyInfo const *mpInfo;
+        const PropertyInfo *mpInfo;
         PropertyData ( sal_uInt8 nMapId, PropertyInfo const *pInfo )
         : mnMapId ( nMapId )
         , mpInfo ( pInfo ) {}
@@ -44,11 +49,9 @@ namespace comphelper
 }
 
 typedef std::unordered_map < OUString,
-                        ::comphelper::PropertyInfo const *,
-                        OUStringHash > PropertyInfoHash;
+                        ::comphelper::PropertyInfo const * > PropertyInfoHash;
 typedef std::unordered_map < OUString,
-                        ::comphelper::PropertyData*,
-                        OUStringHash > PropertyDataHash;
+                        ::comphelper::PropertyData* > PropertyDataHash;
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

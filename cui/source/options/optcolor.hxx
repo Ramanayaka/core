@@ -16,51 +16,48 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_CUI_SOURCE_OPTIONS_OPTCOLOR_HXX
-#define INCLUDED_CUI_SOURCE_OPTIONS_OPTCOLOR_HXX
+#pragma once
 
 #include <sfx2/tabdlg.hxx>
-#include <vcl/group.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/lstbox.hxx>
 
 namespace svtools {class EditableColorConfig;class EditableExtendedColorConfig;}
 class ColorConfigCtrl_Impl;
 class AbstractSvxNameDialog;
 class SvxColorOptionsTabPage : public SfxTabPage
 {
-    using SfxTabPage::DeactivatePage;
-
-    VclPtr<ListBox> m_pColorSchemeLB;
-    VclPtr<PushButton> m_pSaveSchemePB;
-    VclPtr<PushButton> m_pDeleteSchemePB;
-    VclPtr<ColorConfigCtrl_Impl> m_pColorConfigCT;
-
     bool bFillItemSetCalled;
 
-    svtools::EditableColorConfig* pColorConfig;
-    svtools::EditableExtendedColorConfig* pExtColorConfig;
+    std::unique_ptr<weld::ComboBox> m_xColorSchemeLB;
+    std::unique_ptr<weld::Button> m_xSaveSchemePB;
+    std::unique_ptr<weld::Button> m_xDeleteSchemePB;
+    std::unique_ptr<ColorConfigCtrl_Impl> m_xColorConfigCT;
+    std::unique_ptr<weld::Widget> m_xTable;
+    std::unique_ptr<weld::Label> m_xOnFT;
+    std::unique_ptr<weld::Label> m_xElementFT;
+    std::unique_ptr<weld::Label> m_xColorFT;
+    weld::Widget& m_rWidget1;
+    weld::Widget& m_rWidget2;
 
-    DECL_LINK(SchemeChangedHdl_Impl, ListBox&, void);
-    DECL_LINK(SaveDeleteHdl_Impl, Button*, void);
+    std::unique_ptr<svtools::EditableColorConfig> pColorConfig;
+    std::unique_ptr<svtools::EditableExtendedColorConfig> pExtColorConfig;
+
+    DECL_LINK(SchemeChangedHdl_Impl, weld::ComboBox&, void);
+    DECL_LINK(SaveDeleteHdl_Impl, weld::Button&, void);
     DECL_LINK(CheckNameHdl_Impl, AbstractSvxNameDialog&, bool);
+    DECL_LINK(AdjustHeaderBar, const Size&, void);
     void UpdateColorConfig();
 
 public:
-    SvxColorOptionsTabPage( vcl::Window* pParent, const SfxItemSet& rSet );
-    virtual ~SvxColorOptionsTabPage(  ) override;
-    virtual void        dispose() override;
+    SvxColorOptionsTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
+    virtual ~SvxColorOptionsTabPage() override;
 
-    static VclPtr<SfxTabPage>  Create( vcl::Window* pParent, const SfxItemSet* rAttrSet );
+    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet );
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;
 
     virtual DeactivateRC   DeactivatePage( SfxItemSet* pSet ) override;
     virtual void        FillUserData() override;
-
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

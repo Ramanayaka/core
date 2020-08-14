@@ -30,10 +30,7 @@
 
 using namespace std;
 
-/**
-@author Jocelyn Merand
- */
-class Guess{
+class Guess final {
     public:
 
         /**
@@ -46,15 +43,12 @@ class Guess{
          */
         Guess(const char * guess_str);
 
-        ~Guess();
+        const string& GetLanguage() const { return language_str;}
+        const string& GetCountry() const { return country_str;}
 
-        const string& GetLanguage() { return language_str;}
-        const string& GetCountry() { return country_str;}
-
-    protected:
+    private:
         string language_str;
         string country_str;
-        string encoding_str;
 };
 
 #endif

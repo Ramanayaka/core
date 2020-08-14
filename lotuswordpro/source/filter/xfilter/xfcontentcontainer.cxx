@@ -57,8 +57,8 @@
  * @file
  * Container for content.It will destroy all children when destroy.
  ************************************************************************/
-#include "xfcontentcontainer.hxx"
-#include "xftextcontent.hxx"
+#include <xfilter/xfcontentcontainer.hxx>
+#include <xfilter/xftextcontent.hxx>
 
 XFContentContainer::XFContentContainer()
 {
@@ -68,24 +68,42 @@ XFContentContainer::~XFContentContainer()
 {
 }
 
-void    XFContentContainer::Add(XFContent *pContent)
+void XFContentContainer::Add(XFContent *pContent)
 {
-    m_aContents.push_back(pContent);
+    m_aContents.emplace_back(pContent);
 }
 
-void    XFContentContainer::Add(const OUString& text)
+void XFContentContainer::Add(const OUString& text)
 {
-    XFTextContent *pTC = new XFTextContent();
-    pTC->SetText(text);
-    Add(pTC);
+    rtl::Reference<XFTextContent> xTC(new XFTextContent);
+    xTC->SetText(text);
+    Add(xTC.get());
 }
 
-int     XFContentContainer::GetCount() const
+bool XFContentContainer::HierarchyContains(const XFContent *pContent) const
+{
+    if (pContent == this)
+        return true;
+
+    for (int i = 0, nCount = GetCount(); i < nCount; i++)
+    {
+        rtl::Reference<XFContent> xContent = GetContent(i);
+        if (xContent.get() == pContent)
+            return true;
+        const XFContentContainer *pChildCont = dynamic_cast<const XFContentContainer*>(xContent.get());
+        if (pChildCont && pChildCont->HierarchyContains(pContent))
+            return true;
+    }
+
+    return false;
+}
+
+int XFContentContainer::GetCount() const
 {
     return m_aContents.size();
 }
 
-void    XFContentContainer::Reset()
+void XFContentContainer::Reset()
 {
     m_aContents.clear();
 }
@@ -125,11 +143,9 @@ enumXFContent   XFContentContainer::GetContentType()
 
 void    XFContentContainer::ToXml(IXFStream *pStrm)
 {
-    std::vector< rtl::Reference<XFContent> >::iterator it;
-
-    for( it = m_aContents.begin(); it != m_aContents.end(); ++it )
+    for (auto const& content : m_aContents)
     {
-        XFContent *pContent = it->get();
+        XFContent *pContent = content.get();
         if( pContent )
             pContent->DoToXml(pStrm);
     }
@@ -137,6 +153,7 @@ void    XFContentContainer::ToXml(IXFStream *pStrm)
 
 rtl::Reference<XFContent> XFContentContainer::GetLastContent()
 {
+    // TODO JNA : if m_aContents size is 0, there's some pb
     sal_uInt32 index = m_aContents.size()-1;
     if(index >0)
     {

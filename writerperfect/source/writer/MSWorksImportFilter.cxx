@@ -10,108 +10,120 @@
  */
 
 #include <cppuhelper/supportsservice.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <libwps/libwps.h>
 
-#include "WPFTEncodingDialog.hxx"
-#include "WPFTResMgr.hxx"
+#include <WPFTEncodingDialog.hxx>
+#include <WPFTResMgr.hxx>
 #include "MSWorksImportFilter.hxx"
-#include "strings.hrc"
+#include <strings.hrc>
 
-using com::sun::star::uno::Sequence;
-using com::sun::star::uno::XInterface;
-using com::sun::star::uno::Exception;
-using com::sun::star::uno::RuntimeException;
-using com::sun::star::uno::XComponentContext;
-
-static bool handleEmbeddedWKSObject(const librevenge::RVNGBinaryData &data, OdfDocumentHandler *pHandler,  const OdfStreamType streamType)
+static bool handleEmbeddedWKSObject(const librevenge::RVNGBinaryData& data,
+                                    OdfDocumentHandler* pHandler, const OdfStreamType streamType)
 {
     OdsGenerator exporter;
     exporter.addDocumentHandler(pHandler, streamType);
-    return libwps::WPSDocument::parse(data.getDataStream(), &exporter)==libwps::WPS_OK;
+    return libwps::WPSDocument::parse(data.getDataStream(), &exporter) == libwps::WPS_OK;
 }
 
-bool MSWorksImportFilter::doImportDocument(librevenge::RVNGInputStream &rInput, OdtGenerator &rGenerator, utl::MediaDescriptor &)
+bool MSWorksImportFilter::doImportDocument(weld::Window* pParent,
+                                           librevenge::RVNGInputStream& rInput,
+                                           OdtGenerator& rGenerator,
+                                           utl::MediaDescriptor& mediaDescriptor)
 {
     libwps::WPSKind kind = libwps::WPS_TEXT;
     libwps::WPSCreator creator;
     bool needEncoding = false;
-    const libwps::WPSConfidence confidence = libwps::WPSDocument::isFileFormatSupported(&rInput, kind, creator, needEncoding);
+    const libwps::WPSConfidence confidence
+        = libwps::WPSDocument::isFileFormatSupported(&rInput, kind, creator, needEncoding);
 
     std::string fileEncoding;
-    try
+    if ((kind == libwps::WPS_TEXT) && (confidence == libwps::WPS_CONFIDENCE_EXCELLENT)
+        && needEncoding)
     {
-        if ((kind == libwps::WPS_TEXT) && (confidence == libwps::WPS_CONFIDENCE_EXCELLENT) && needEncoding)
+        OUString encoding;
+        // first check if we can find the encoding in the filter options (headless mode)
+        mediaDescriptor[utl::MediaDescriptor::PROP_FILTEROPTIONS()] >>= encoding;
+        if (!encoding.isEmpty()) // TODO: check if the encoding string is valid
+            fileEncoding = encoding.toUtf8().getStr();
+        else
         {
-            OUString title, encoding;
+            OUString title;
 
             switch (creator)
             {
-            case libwps::WPS_MSWORKS:
-                title = WpResId(STR_ENCODING_DIALOG_TITLE_MSWORKS);
-                encoding = "CP850";
-                break;
-            case libwps::WPS_RESERVED_0: // MS Write
-                title = WpResId(STR_ENCODING_DIALOG_TITLE_MSWRITE);
-                encoding = "CP1252";
-                break;
-            case libwps::WPS_RESERVED_1: // DosWord
-                title = WpResId(STR_ENCODING_DIALOG_TITLE_DOSWORD);
-                encoding = "CP850";
-                break;
-            default:
-                title = WpResId(STR_ENCODING_DIALOG_TITLE);
-                encoding = "CP850";
-                break;
+                case libwps::WPS_MSWORKS:
+                    title = WpResId(STR_ENCODING_DIALOG_TITLE_MSWORKS);
+                    encoding = "CP850";
+                    break;
+                case libwps::WPS_RESERVED_0: // MS Write
+                    title = WpResId(STR_ENCODING_DIALOG_TITLE_MSWRITE);
+                    encoding = "CP1252";
+                    break;
+                case libwps::WPS_RESERVED_1: // DosWord
+                    title = WpResId(STR_ENCODING_DIALOG_TITLE_DOSWORD);
+                    encoding = "CP850";
+                    break;
+                default:
+                    title = WpResId(STR_ENCODING_DIALOG_TITLE);
+                    encoding = "CP850";
+                    break;
             }
 
-            const ScopedVclPtrInstance<writerperfect::WPFTEncodingDialog> pDlg(title, encoding);
-            if (pDlg->Execute() == RET_OK)
+            fileEncoding = encoding.toUtf8().getStr(); // set default to the proposed encoding
+            try
             {
-                if (!pDlg->GetEncoding().isEmpty())
-                    fileEncoding=pDlg->GetEncoding().toUtf8().getStr();
+                writerperfect::WPFTEncodingDialog aDlg(pParent, title, encoding);
+                if (aDlg.run() == RET_OK)
+                {
+                    if (!aDlg.GetEncoding().isEmpty())
+                        fileEncoding = aDlg.GetEncoding().toUtf8().getStr();
+                }
+                // we can fail because we are in headless mode, the user has cancelled conversion, ...
+                else if (aDlg.hasUserCalledCancel())
+                    return false;
             }
-            // we can fail because we are in headless mode, the user has cancelled conversion, ...
-            else if (pDlg->hasUserCalledCancel())
-                return false;
+            catch (css::uno::Exception&)
+            {
+                TOOLS_WARN_EXCEPTION("writerperfect", "ignoring");
+            }
         }
     }
-    catch (css::uno::Exception &e)
-    {
-        SAL_WARN("writerperfect", "ignoring Exception " << e.Message);
-    }
-    return libwps::WPS_OK == libwps::WPSDocument::parse(&rInput, &rGenerator, "", fileEncoding.c_str());
+    return libwps::WPS_OK
+           == libwps::WPSDocument::parse(&rInput, &rGenerator, "", fileEncoding.c_str());
 }
 
-bool MSWorksImportFilter::doDetectFormat(librevenge::RVNGInputStream &rInput, OUString &rTypeName)
+bool MSWorksImportFilter::doDetectFormat(librevenge::RVNGInputStream& rInput, OUString& rTypeName)
 {
     libwps::WPSKind kind = libwps::WPS_TEXT;
     libwps::WPSCreator creator;
     bool needEncoding;
-    const libwps::WPSConfidence confidence = libwps::WPSDocument::isFileFormatSupported(&rInput, kind, creator, needEncoding);
+    const libwps::WPSConfidence confidence
+        = libwps::WPSDocument::isFileFormatSupported(&rInput, kind, creator, needEncoding);
 
     if ((kind == libwps::WPS_TEXT) && (confidence == libwps::WPS_CONFIDENCE_EXCELLENT))
     {
-        if (creator == libwps::WPS_MSWORKS)
+        switch (creator)
         {
-            rTypeName = "writer_MS_Works_Document";
+            case libwps::WPS_MSWORKS:
+                rTypeName = "writer_MS_Works_Document";
+                break;
+            case libwps::WPS_RESERVED_0:
+                rTypeName = "writer_MS_Write";
+                break;
+            case libwps::WPS_RESERVED_1:
+                rTypeName = "writer_DosWord";
+                break;
+            default:
+                break;
         }
-        else if (creator == libwps::WPS_RESERVED_0)
-        {
-            rTypeName = "writer_MS_Write";
-        }
-        else
-        {
-            rTypeName = "writer_DosWord";
-        }
-
-        return true;
     }
 
-    return false;
+    return !rTypeName.isEmpty();
 }
 
-void MSWorksImportFilter::doRegisterHandlers(OdtGenerator &rGenerator)
+void MSWorksImportFilter::doRegisterHandlers(OdtGenerator& rGenerator)
 {
     rGenerator.registerEmbeddedObjectHandler("image/wks-ods", &handleEmbeddedWKSObject);
 }
@@ -119,28 +131,22 @@ void MSWorksImportFilter::doRegisterHandlers(OdtGenerator &rGenerator)
 // XServiceInfo
 OUString SAL_CALL MSWorksImportFilter::getImplementationName()
 {
-    return OUString("com.sun.star.comp.Writer.MSWorksImportFilter");
+    return "com.sun.star.comp.Writer.MSWorksImportFilter";
 }
 
-sal_Bool SAL_CALL MSWorksImportFilter::supportsService(const OUString &rServiceName)
+sal_Bool SAL_CALL MSWorksImportFilter::supportsService(const OUString& rServiceName)
 {
     return cppu::supportsService(this, rServiceName);
 }
 
-Sequence< OUString > SAL_CALL MSWorksImportFilter::getSupportedServiceNames()
+css::uno::Sequence<OUString> SAL_CALL MSWorksImportFilter::getSupportedServiceNames()
 {
-    Sequence < OUString > aRet(2);
-    OUString *pArray = aRet.getArray();
-    pArray[0] =  "com.sun.star.document.ImportFilter";
-    pArray[1] =  "com.sun.star.document.ExtendedTypeDetection";
-    return aRet;
+    return { "com.sun.star.document.ImportFilter", "com.sun.star.document.ExtendedTypeDetection" };
 }
 
-extern "C"
-SAL_DLLPUBLIC_EXPORT css::uno::XInterface *SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_MSWorksImportFilter_get_implementation(
-    css::uno::XComponentContext *const context,
-    const css::uno::Sequence<css::uno::Any> &)
+    css::uno::XComponentContext* const context, const css::uno::Sequence<css::uno::Any>&)
 {
     return cppu::acquire(new MSWorksImportFilter(context));
 }

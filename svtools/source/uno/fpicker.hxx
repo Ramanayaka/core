@@ -17,31 +17,29 @@
  * the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVTOOLS_SOURCE_UNO_FPICKER_HXX
-#define INCLUDED_SVTOOLS_SOURCE_UNO_FPICKER_HXX
+#pragma once
 
 #include <sal/config.h>
-#include <sal/types.h>
 #include <rtl/ustring.hxx>
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace lang { class XMultiServiceFactory; }
     namespace uno { class XInterface; }
-} } }
+}
 
-css::uno::Reference<css::uno::XInterface> SAL_CALL FilePicker_CreateInstance(
+css::uno::Reference<css::uno::XInterface> FilePicker_CreateInstance(
         css::uno::Reference< css::uno::XComponentContext > const & context);
 css::uno::Sequence<OUString> FilePicker_getSupportedServiceNames();
 OUString FilePicker_getImplementationName();
 
-css::uno::Reference<css::uno::XInterface> SAL_CALL FolderPicker_CreateInstance(
+css::uno::Reference<css::uno::XInterface> FolderPicker_CreateInstance(
         css::uno::Reference< css::uno::XComponentContext > const & context);
 css::uno::Sequence<OUString> FolderPicker_getSupportedServiceNames();
 OUString FolderPicker_getImplementationName();
 
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

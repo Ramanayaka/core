@@ -17,38 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "GraphicObjectBar.hxx"
+#include <GraphicObjectBar.hxx>
 
-#include <limits.h>
-#include <vcl/msgbox.hxx>
-#include <svl/whiter.hxx>
-#include <svl/itempool.hxx>
-#include <sfx2/app.hxx>
 #include <sfx2/shell.hxx>
 #include <svx/svxids.hrc>
 #include <sfx2/request.hxx>
-#include <sfx2/basedlgs.hxx>
 #include <svx/svdograf.hxx>
 #include <svx/grfflt.hxx>
-#include <svl/aeitem.hxx>
 #include <svx/grafctrl.hxx>
 
 #include <sfx2/objface.hxx>
 
-#include "app.hrc"
-#include "res_bmp.hrc"
-#include "glob.hrc"
-#include "strings.hrc"
-#include "DrawDocShell.hxx"
-#include "ViewShell.hxx"
-#include "Window.hxx"
-#include "drawview.hxx"
-#include "sdresid.hxx"
-#include "drawdoc.hxx"
+#include <strings.hrc>
+#include <DrawDocShell.hxx>
+#include <ViewShell.hxx>
+#include <sdresid.hxx>
 
 using namespace sd;
-#define GraphicObjectBar
-#include "sdslots.hxx"
+#define ShellClass_GraphicObjectBar
+#include <sdslots.hxx>
 
 namespace sd {
 
@@ -64,10 +51,9 @@ GraphicObjectBar::GraphicObjectBar (
     ViewShell* pSdViewShell,
     ::sd::View* pSdView )
     : SfxShell (pSdViewShell->GetViewShell()),
-      mpView   ( pSdView ),
-      mpViewSh ( pSdViewShell )
+      mpView   ( pSdView )
 {
-    DrawDocShell* pDocShell = mpViewSh->GetDocSh();
+    DrawDocShell* pDocShell = pSdViewShell->GetDocSh();
 
     SetPool( &pDocShell->GetPool() );
     SetUndoManager( pDocShell->GetUndoManager() );
@@ -104,7 +90,7 @@ void GraphicObjectBar::GetFilterState( SfxItemSet& rSet )
     {
         SdrObject* pObj = rMarkList.GetMark( 0 )->GetMarkedSdrObj();
 
-        if( pObj && dynamic_cast< SdrGrafObj *>( pObj ) != nullptr && ( static_cast<SdrGrafObj*>(pObj)->GetGraphicType() == GraphicType::Bitmap ) )
+        if( dynamic_cast< SdrGrafObj *>( pObj ) && ( static_cast<SdrGrafObj*>(pObj)->GetGraphicType() == GraphicType::Bitmap ) )
             bEnable = true;
     }
 
@@ -112,7 +98,7 @@ void GraphicObjectBar::GetFilterState( SfxItemSet& rSet )
         SvxGraphicFilter::DisableGraphicFilterSlots( rSet );
 }
 
-void GraphicObjectBar::ExecuteFilter( SfxRequest& rReq )
+void GraphicObjectBar::ExecuteFilter( SfxRequest const & rReq )
 {
     const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
 
@@ -120,20 +106,20 @@ void GraphicObjectBar::ExecuteFilter( SfxRequest& rReq )
     {
         SdrObject* pObj = rMarkList.GetMark( 0 )->GetMarkedSdrObj();
 
-        if( pObj && dynamic_cast< SdrGrafObj *>( pObj ) != nullptr && static_cast<SdrGrafObj*>(pObj)->GetGraphicType() == GraphicType::Bitmap )
+        if( dynamic_cast< SdrGrafObj *>( pObj ) && static_cast<SdrGrafObj*>(pObj)->GetGraphicType() == GraphicType::Bitmap )
         {
             GraphicObject aFilterObj( static_cast<SdrGrafObj*>(pObj)->GetGraphicObject() );
 
-            if( SVX_GRAPHICFILTER_ERRCODE_NONE ==
+            if( SvxGraphicFilterResult::NONE ==
                 SvxGraphicFilter::ExecuteGrfFilterSlot( rReq, aFilterObj ) )
             {
                 SdrPageView* pPageView = mpView->GetSdrPageView();
 
                 if( pPageView )
                 {
-                    SdrGrafObj* pFilteredObj = static_cast<SdrGrafObj*>( pObj->Clone() );
-                    OUString    aStr = mpView->GetDescriptionOfMarkedObjects();
-                    aStr += " " + SdResId(STR_UNDO_GRAFFILTER);
+                    SdrGrafObj* pFilteredObj = static_cast<SdrGrafObj*>( pObj->CloneSdrObject(pObj->getSdrModelFromSdrObject()) );
+                    OUString aStr = mpView->GetDescriptionOfMarkedObjects() +
+                        " " + SdResId(STR_UNDO_GRAFFILTER);
                     mpView->BegUndo( aStr );
                     pFilteredObj->SetGraphicObject( aFilterObj );
                     ::sd::View* const pView = mpView;

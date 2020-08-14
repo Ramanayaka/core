@@ -17,26 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "definitioncontainer.hxx"
-#include "dbastrings.hrc"
-#include "apitools.hxx"
-#include "core_resource.hxx"
-#include "core_resource.hrc"
+#include <definitioncontainer.hxx>
+#include <apitools.hxx>
+#include <core_resource.hxx>
+#include <strings.hrc>
 
-#include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
 #include <osl/diagnose.h>
-#include <comphelper/sequence.hxx>
 #include <comphelper/enumhelper.hxx>
-#include <comphelper/extract.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/ucb/CommandInfo.hpp>
+#include <com/sun/star/lang/WrappedTargetRuntimeException.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sdb/ErrorCondition.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/types.hxx>
-#include <ucbhelper/contentidentifier.hxx>
+#include <cppuhelper/interfacecontainer.hxx>
+#include <rtl/ref.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
@@ -94,18 +91,14 @@ ODefinitionContainer::ODefinitionContainer(   const Reference< XComponentContext
     ,m_bInPropertyChange(false)
     ,m_bCheckSlash(_bCheckSlash)
 {
+    assert(m_pImpl);
     m_pImpl->m_aProps.bIsDocument = false;
     m_pImpl->m_aProps.bIsFolder = true;
 
     const ODefinitionContainer_Impl& rDefinitions( getDefinitions() );
-    ODefinitionContainer_Impl::const_iterator aEnd = rDefinitions.end();
-    for (   ODefinitionContainer_Impl::const_iterator aDefinition = rDefinitions.begin();
-            aDefinition != aEnd;
-            ++aDefinition
-        )
+    for (auto const& definition : rDefinitions)
         m_aDocuments.push_back(
-            m_aDocumentMap.insert(
-                Documents::value_type( aDefinition->first, Documents::mapped_type() ) ).first );
+            m_aDocumentMap.emplace(definition.first, Documents::mapped_type() ).first );
 
 }
 
@@ -121,12 +114,9 @@ void SAL_CALL ODefinitionContainer::disposing()
     m_aContainerListeners.disposeAndClear(aEvt);
 
     // dispose our elements
-    Documents::const_iterator aIter = m_aDocumentMap.begin();
-    Documents::const_iterator aEnd = m_aDocumentMap.end();
-
-    for (; aIter != aEnd; ++aIter)
+    for (auto const& elem : m_aDocumentMap)
     {
-        Reference<XContent> xProp = aIter->second;
+        Reference<XContent> xProp = elem.second;
         if ( xProp.is() )
         {
             removeObjectListener(xProp);
@@ -155,15 +145,12 @@ css::uno::Sequence<sal_Int8> ODefinitionContainer::getImplementationId()
 // XServiceInfo
 OUString SAL_CALL ODefinitionContainer::getImplementationName(  )
 {
-    return OUString("com.sun.star.sdb.ODefinitionContainer");
+    return "com.sun.star.sdb.ODefinitionContainer";
 }
 
 Sequence< OUString > SAL_CALL ODefinitionContainer::getSupportedServiceNames(  )
 {
-    Sequence< OUString > aReturn(2);
-    aReturn.getArray()[0] = "com.sun.star.sdb.DefinitionContainer";
-    aReturn.getArray()[1] = "com.sun.star.ucb.Content";
-    return aReturn;
+    return { "com.sun.star.sdb.DefinitionContainer", "com.sun.star.ucb.Content" };
 }
 
 // XNameContainer
@@ -379,7 +366,7 @@ Any SAL_CALL ODefinitionContainer::getByIndex( sal_Int32 _nIndex )
 {
     MutexGuard aGuard(m_aMutex);
 
-    if ((_nIndex < 0) || (_nIndex >= (sal_Int32)m_aDocuments.size()))
+    if ((_nIndex < 0) || (_nIndex >= static_cast<sal_Int32>(m_aDocuments.size())))
         throw IndexOutOfBoundsException();
 
     Documents::iterator aPos = m_aDocuments[_nIndex];
@@ -429,13 +416,10 @@ Sequence< OUString > SAL_CALL ODefinitionContainer::getElementNames(  )
 
     Sequence< OUString > aNames(m_aDocumentMap.size());
     OUString* pNames = aNames.getArray();
-    Documents::const_iterator aEnd = m_aDocumentMap.end();
-    for (   Documents::const_iterator aNameIter = m_aDocumentMap.begin();
-            aNameIter != aEnd;
-            ++pNames, ++aNameIter
-        )
+    for (auto const& elem : m_aDocumentMap)
     {
-        *pNames = aNameIter->first;
+        *pNames = elem.first;
+        ++pNames;
     }
 
     return aNames;
@@ -452,16 +436,14 @@ void SAL_CALL ODefinitionContainer::disposing( const EventObject& _rSource )
 {
     MutexGuard aGuard(m_aMutex);
     Reference< XContent > xSource(_rSource.Source, UNO_QUERY);
-    // it's one of our documents ....
-    Documents::iterator aIter = m_aDocumentMap.begin();
-    Documents::const_iterator aEnd = m_aDocumentMap.end();
-    for (;aIter != aEnd;++aIter )
+    // it's one of our documents...
+    for (auto & elem : m_aDocumentMap)
     {
-        if ( xSource == aIter->second.get() )
+        if ( xSource == elem.second.get() )
         {
             removeObjectListener(xSource);
             // and clear our document map/vector, so the object will be recreated on next access
-            aIter->second = Documents::mapped_type();
+            elem.second = Documents::mapped_type();
         }
     }
 }
@@ -497,13 +479,13 @@ namespace
             {
                 OUString sCurrentName;
                 OSL_VERIFY( xProps->getPropertyValue( PROPERTY_NAME ) >>= sCurrentName );
-                if ( sCurrentName.equals( _rName ) )
+                if ( sCurrentName == _rName )
                     return true;
             }
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "lcl_ensureName: caught an exception while obtaining the current name!" );
+            TOOLS_WARN_EXCEPTION( "dbaccess", "lcl_ensureName: caught an exception while obtaining the current name!" );
         }
 
         // set the new name
@@ -518,7 +500,7 @@ namespace
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "lcl_ensureName: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "dbaccess", "lcl_ensureName" );
         }
         return false;
     }
@@ -544,7 +526,7 @@ void ODefinitionContainer::implAppend(const OUString& _rName, const Reference< X
             // #i44786#
             lcl_ensureName( _rxNewObject, _rName );
 
-            ::rtl::Reference< OContentHelper > pContent = OContentHelper::getImplementation( _rxNewObject );
+            ::rtl::Reference< OContentHelper > pContent = comphelper::getUnoTunnelImplementation<OContentHelper>( _rxNewObject );
             if ( pContent.is() )
             {
                 TContentPtr pImpl = pContent->getImpl();
@@ -554,7 +536,7 @@ void ODefinitionContainer::implAppend(const OUString& _rName, const Reference< X
             }
         }
 
-        m_aDocuments.push_back(m_aDocumentMap.insert(Documents::value_type(_rName,_rxNewObject)).first);
+        m_aDocuments.push_back(m_aDocumentMap.emplace(_rName,_rxNewObject).first);
         notifyDataSourceModified();
         // now update our structures
         if ( _rxNewObject.is() )
@@ -603,7 +585,7 @@ void ODefinitionContainer::approveNewObject(const OUString& _sName,const Referen
             DBA_RES( RID_STR_NAME_ALREADY_USED ),
             *this );
 
-    ::rtl::Reference< OContentHelper > pContent( OContentHelper::getImplementation( _rxObject ) );
+    ::rtl::Reference< OContentHelper > pContent( comphelper::getUnoTunnelImplementation<OContentHelper>( _rxObject ) );
     if ( !pContent.is() )
         throw IllegalArgumentException(
             DBA_RES( RID_STR_OBJECT_CONTAINER_MISMATCH ),
@@ -619,27 +601,29 @@ void ODefinitionContainer::approveNewObject(const OUString& _sName,const Referen
 // XPropertyChangeListener
 void SAL_CALL ODefinitionContainer::propertyChange( const PropertyChangeEvent& evt )
 {
-    ClearableMutexGuard aGuard(m_aMutex);
-    if( evt.PropertyName == PROPERTY_NAME || evt.PropertyName ==  "Title" )
+    if( evt.PropertyName != PROPERTY_NAME && evt.PropertyName !=  "Title" )
+        return;
+
+    MutexGuard aGuard(m_aMutex);
+
+    m_bInPropertyChange = true;
+    try
     {
-        m_bInPropertyChange = true;
-        try
-        {
-            OUString sNewName,sOldName;
-            evt.OldValue >>= sOldName;
-            evt.NewValue >>= sNewName;
-            Reference<XContent> xContent( evt.Source, UNO_QUERY );
-            removeObjectListener( xContent );
-            implRemove( sOldName );
-            implAppend( sNewName, xContent );
-        }
-        catch(const Exception&)
-        {
-            DBG_UNHANDLED_EXCEPTION();
-            throw RuntimeException();
-        }
-        m_bInPropertyChange = false;
+        OUString sNewName,sOldName;
+        evt.OldValue >>= sOldName;
+        evt.NewValue >>= sNewName;
+        Reference<XContent> xContent( evt.Source, UNO_QUERY );
+        removeObjectListener( xContent );
+        implRemove( sOldName );
+        implAppend( sNewName, xContent );
     }
+    catch(const Exception& ex)
+    {
+        css::uno::Any anyEx = cppu::getCaughtException();
+        throw css::lang::WrappedTargetRuntimeException( ex.Message,
+                        nullptr, anyEx );
+    }
+    m_bInPropertyChange = false;
 }
 
 // XVetoableChangeListener

@@ -20,6 +20,11 @@
 #ifndef INCLUDED_FILTER_SOURCE_GRAPHICFILTER_ICGM_CHART_HXX
 #define INCLUDED_FILTER_SOURCE_GRAPHICFILTER_ICGM_CHART_HXX
 
+#include <sal/types.h>
+
+#include <memory>
+#include <vector>
+
 /* FILE TYPE CONSTANTS: */
 #define BULCHART        32      /* Bullet chart file.       */
 /* the following were added although SPC doesn't have a #define */
@@ -58,25 +63,23 @@ struct DataNode
 
 class CGM;
 class CGMImpressOutAct;
-class CGMChart
+class CGMChart final
 {
     friend class CGM;
     friend class CGMImpressOutAct;
 
-    protected:
         sal_Int8                mnCurrentFileType;
-        ::std::vector< TextEntry* > maTextEntryList;
+        ::std::vector< std::unique_ptr<TextEntry> > maTextEntryList;
         DataNode                mDataNode[ 7 ];
 
     public:
                                 CGMChart();
                                 ~CGMChart();
 
-        void                    DeleteTextEntry( TextEntry* );
-        void                    InsertTextEntry( TextEntry* );
+        void                    InsertTextEntry( std::unique_ptr<TextEntry> );
 
         void                    ResetAnnotation();
-        bool                    IsAnnotation();
+        bool                    IsAnnotation() const;
 };
 
 #endif

@@ -17,20 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "odbc/OTools.hxx"
-#include "odbc/OConnection.hxx"
-#include "odbc/ODatabaseMetaData.hxx"
-#include "odbc/OFunctions.hxx"
-#include "odbc/ODriver.hxx"
-#include "odbc/OStatement.hxx"
-#include "odbc/OPreparedStatement.hxx"
-#include <com/sun/star/sdbc/ColumnValue.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
+#include <odbc/OTools.hxx>
+#include <odbc/OConnection.hxx>
+#include <odbc/ODatabaseMetaData.hxx>
+#include <odbc/OFunctions.hxx>
+#include <odbc/ODriver.hxx>
+#include <odbc/OStatement.hxx>
+#include <odbc/OPreparedStatement.hxx>
 #include <connectivity/dbcharset.hxx>
-#include <connectivity/FValue.hxx>
-#include <comphelper/extract.hxx>
 #include <connectivity/dbexception.hxx>
+
+#include <sal/log.hxx>
 
 #include <string.h>
 
@@ -45,20 +42,17 @@ using namespace com::sun::star::beans;
 using namespace com::sun::star::sdbc;
 
 OConnection::OConnection(const SQLHANDLE _pDriverHandle,ODBCDriver* _pDriver)
-                         : OSubComponent<OConnection, OConnection_BASE>(static_cast<cppu::OWeakObject*>(_pDriver), this)
-                         ,m_pDriver(_pDriver)
+                         :m_xDriver(_pDriver)
                          ,m_aConnectionHandle(nullptr)
                          ,m_pDriverHandleCopy(_pDriverHandle)
                          ,m_nStatementCount(0)
                          ,m_bClosed(false)
                          ,m_bUseCatalog(false)
                          ,m_bUseOldDateFormat(false)
-                         ,m_bParameterSubstitution(false)
                          ,m_bIgnoreDriverPrivileges(false)
                          ,m_bPreventGetVersionColumns(false)
                          ,m_bReadOnly(true)
 {
-    m_pDriver->acquire();
 }
 
 OConnection::~OConnection()
@@ -66,32 +60,27 @@ OConnection::~OConnection()
     if(!isClosed(  ))
         close();
 
-    if ( SQL_NULL_HANDLE != m_aConnectionHandle )
-    {
-        SQLRETURN rc;
+    if ( SQL_NULL_HANDLE == m_aConnectionHandle )
+        return;
 
+    SQLRETURN rc;
+
+    if (!m_bClosed)
+    {
         rc = N3SQLDisconnect( m_aConnectionHandle );
         OSL_ENSURE( rc == SQL_SUCCESS || rc == SQL_SUCCESS_WITH_INFO, "Failure from SQLDisconnect" );
-
-        rc = N3SQLFreeHandle( SQL_HANDLE_DBC, m_aConnectionHandle );
-        OSL_ENSURE( rc == SQL_SUCCESS , "Failure from SQLFreeHandle for connection");
-
-        m_aConnectionHandle = SQL_NULL_HANDLE;
     }
 
-    m_pDriver->release();
-    m_pDriver = nullptr;
-}
+    rc = N3SQLFreeHandle( SQL_HANDLE_DBC, m_aConnectionHandle );
+    OSL_ENSURE( rc == SQL_SUCCESS , "Failure from SQLFreeHandle for connection");
 
-void SAL_CALL OConnection::release() throw()
-{
-    release_ChildImpl();
+    m_aConnectionHandle = SQL_NULL_HANDLE;
 }
 
 oslGenericFunction OConnection::getOdbcFunction(ODBC3SQLFunctionId _nIndex)  const
 {
-    OSL_ENSURE(m_pDriver,"OConnection::getOdbcFunction: m_pDriver is null!");
-    return m_pDriver->getOdbcFunction(_nIndex);
+    OSL_ENSURE(m_xDriver, "OConnection::getOdbcFunction: m_xDriver is null!");
+    return m_xDriver->getOdbcFunction(_nIndex);
 }
 
 SQLRETURN OConnection::OpenConnection(const OUString& aConnectStr, sal_Int32 nTimeOut, bool bSilent)
@@ -102,13 +91,11 @@ SQLRETURN OConnection::OpenConnection(const OUString& aConnectStr, sal_Int32 nTi
         return -1;
 
     SQLRETURN nSQLRETURN = 0;
-    SDB_ODBC_CHAR szConnStrOut[4096];
-    SDB_ODBC_CHAR szConnStrIn[2048];
+    SDB_ODBC_CHAR szConnStrOut[4096] = {};
+    SDB_ODBC_CHAR szConnStrIn[2048] = {};
     SQLSMALLINT cbConnStrOut;
-    memset(szConnStrOut,'\0',4096);
-    memset(szConnStrIn,'\0',2048);
     OString aConStr(OUStringToOString(aConnectStr,getTextEncoding()));
-    memcpy(szConnStrIn, aConStr.getStr(), std::min<sal_Int32>((sal_Int32)2048,aConStr.getLength()));
+    memcpy(szConnStrIn, aConStr.getStr(), std::min<sal_Int32>(sal_Int32(2048),aConStr.getLength()));
 
 #ifndef MACOSX
     N3SQLSetConnectAttr(m_aConnectionHandle,SQL_ATTR_LOGIN_TIMEOUT,reinterpret_cast<SQLPOINTER>(nTimeOut),SQL_IS_UINTEGER);
@@ -121,9 +108,9 @@ SQLRETURN OConnection::OpenConnection(const OUString& aConnectStr, sal_Int32 nTi
     nSQLRETURN = N3SQLDriverConnect(m_aConnectionHandle,
                       nullptr,
                       szConnStrIn,
-                      (SQLSMALLINT) std::min((sal_Int32)2048,aConStr.getLength()),
+                      static_cast<SQLSMALLINT>(std::min(sal_Int32(2048),aConStr.getLength())),
                       szConnStrOut,
-                      (SQLSMALLINT) (sizeof(szConnStrOut)/sizeof(SDB_ODBC_CHAR)) -1,
+                      SQLSMALLINT(sizeof(szConnStrOut)/sizeof(SDB_ODBC_CHAR)) -1,
                       &cbConnStrOut,
                       SQL_DRIVER_NOPROMPT);
     if (nSQLRETURN == SQL_ERROR || nSQLRETURN == SQL_NO_DATA || SQL_SUCCESS_WITH_INFO == nSQLRETURN)
@@ -134,9 +121,9 @@ SQLRETURN OConnection::OpenConnection(const OUString& aConnectStr, sal_Int32 nTi
     nSQLRETURN = N3SQLDriverConnect(m_aConnectionHandle,
                       nullptr,
                       szConnStrIn,
-                      (SQLSMALLINT) std::min<sal_Int32>((sal_Int32)2048,aConStr.getLength()),
+                      static_cast<SQLSMALLINT>(std::min<sal_Int32>(sal_Int32(2048),aConStr.getLength())),
                       szConnStrOut,
-                      (SQLSMALLINT) sizeof szConnStrOut,
+                      SQLSMALLINT(sizeof szConnStrOut),
                       &cbConnStrOut,
                       nSilent);
     if (nSQLRETURN == SQL_ERROR || nSQLRETURN == SQL_NO_DATA)
@@ -197,54 +184,70 @@ SQLRETURN OConnection::Construct(const OUString& url,const Sequence< PropertyVal
     for(;pBegin != pEnd;++pBegin)
     {
         if( pBegin->Name == "Timeout")
-            OSL_VERIFY( pBegin->Value >>= nTimeout );
+        {
+            if( ! (pBegin->Value >>= nTimeout) )
+                SAL_WARN("connectivity.odbc", "Construct: unable to get property Timeout");
+        }
         else if( pBegin->Name == "Silent")
-            OSL_VERIFY( pBegin->Value >>= bSilent );
+        {
+            if( ! (pBegin->Value >>= bSilent) )
+                SAL_WARN("connectivity.odbc", "Construct: unable to get property Silent");
+        }
         else if( pBegin->Name == "IgnoreDriverPrivileges")
-            OSL_VERIFY( pBegin->Value >>= m_bIgnoreDriverPrivileges );
+        {
+            if( ! (pBegin->Value >>= m_bIgnoreDriverPrivileges) )
+                SAL_WARN("connectivity.odbc", "Construct: unable to get property IgnoreDriverPrivileges");
+        }
         else if( pBegin->Name == "PreventGetVersionColumns")
-            OSL_VERIFY( pBegin->Value >>= m_bPreventGetVersionColumns );
-        else if( pBegin->Name == "ParameterNameSubstitution")
-            OSL_VERIFY( pBegin->Value >>= m_bParameterSubstitution );
+        {
+            if( ! (pBegin->Value >>= m_bPreventGetVersionColumns) )
+                SAL_WARN("connectivity.odbc", "Construct: unable to get property PreventGetVersionColumns");
+        }
         else if( pBegin->Name == "IsAutoRetrievingEnabled")
         {
             bool bAutoRetrievingEnabled = false;
-            OSL_VERIFY( pBegin->Value >>= bAutoRetrievingEnabled );
+            if( ! (pBegin->Value >>= bAutoRetrievingEnabled) )
+                SAL_WARN("connectivity.odbc", "Construct: unable to get property IsAutoRetrievingEnabled");
             enableAutoRetrievingEnabled(bAutoRetrievingEnabled);
         }
         else if( pBegin->Name == "AutoRetrievingStatement")
         {
             OUString sGeneratedValueStatement;
-            OSL_VERIFY( pBegin->Value >>= sGeneratedValueStatement );
+            if( ! (pBegin->Value >>= sGeneratedValueStatement) )
+                SAL_WARN("connectivity.odbc", "Construct: unable to get property AutoRetrievingStatement");
             setAutoRetrievingStatement(sGeneratedValueStatement);
         }
         else if( pBegin->Name == "user")
         {
-            OSL_VERIFY( pBegin->Value >>= aUID );
-            aDSN = aDSN + ";UID=" + aUID;
+            if( ! (pBegin->Value >>= aUID) )
+                SAL_WARN("connectivity.odbc", "Construct: unable to get property user");
+            aDSN += ";UID=" + aUID;
         }
         else if( pBegin->Name == "password")
         {
-            OSL_VERIFY( pBegin->Value >>= aPWD );
-            aDSN = aDSN + ";PWD=" + aPWD;
+            if( ! (pBegin->Value >>= aPWD) )
+                SAL_WARN("connectivity.odbc", "Construct: unable to get property password");
+            aDSN += ";PWD=" + aPWD;
         }
         else if( pBegin->Name == "UseCatalog")
         {
-             OSL_VERIFY( pBegin->Value >>= m_bUseCatalog );
+             if( !( pBegin->Value >>= m_bUseCatalog) )
+                SAL_WARN("connectivity.odbc", "Construct: unable to get property UseCatalog");
         }
         else if( pBegin->Name == "SystemDriverSettings")
         {
-            OSL_VERIFY( pBegin->Value >>= aSysDrvSettings );
-            aDSN += ";";
-            aDSN += aSysDrvSettings;
+            if( ! (pBegin->Value >>= aSysDrvSettings) )
+                SAL_WARN("connectivity.odbc", "Construct: unable to get property SystemDriverSettings");
+            aDSN += ";" + aSysDrvSettings;
         }
         else if( pBegin->Name == "CharSet")
         {
             OUString sIanaName;
-            OSL_VERIFY( pBegin->Value >>= sIanaName );
+            if( ! (pBegin->Value >>= sIanaName) )
+                SAL_WARN("connectivity.odbc", "Construct: unable to get property CharSet");
 
             ::dbtools::OCharsetMap aLookupIanaName;
-            ::dbtools::OCharsetMap::const_iterator aLookup = aLookupIanaName.find(sIanaName, ::dbtools::OCharsetMap::IANA());
+            ::dbtools::OCharsetMap::const_iterator aLookup = aLookupIanaName.findIanaName(sIanaName);
             if (aLookup != aLookupIanaName.end())
                 m_nTextEncoding = (*aLookup).getEncoding();
             else
@@ -297,7 +300,7 @@ OUString SAL_CALL OConnection::nativeSQL( const OUString& sql )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
 
-    OString aSql(OUStringToOString(sql.getStr(),getTextEncoding()));
+    OString aSql(OUStringToOString(sql,getTextEncoding()));
     char pOut[2048];
     SQLINTEGER nOutLen;
     OTools::ThrowException(this,N3SQLNativeSql(m_aConnectionHandle,reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(aSql.getStr())),aSql.getLength(),reinterpret_cast<SDB_ODBC_CHAR*>(pOut),sizeof pOut - 1,&nOutLen),m_aConnectionHandle,SQL_HANDLE_DBC,*this);
@@ -391,7 +394,7 @@ void SAL_CALL OConnection::setCatalog( const OUString& catalog )
     checkDisposed(OConnection_BASE::rBHelper.bDisposed);
 
 
-    OString aCat(OUStringToOString(catalog.getStr(),getTextEncoding()));
+    OString aCat(OUStringToOString(catalog,getTextEncoding()));
     OTools::ThrowException(this,
         N3SQLSetConnectAttr(m_aConnectionHandle,SQL_ATTR_CURRENT_CATALOG,const_cast<char *>(aCat.getStr()),SQL_NTS),
         m_aConnectionHandle,SQL_HANDLE_DBC,*this);
@@ -479,31 +482,28 @@ void OConnection::disposing()
 
     OConnection_BASE::disposing();
 
-    for (std::map< SQLHANDLE,OConnection*>::iterator aConIter = m_aConnections.begin();aConIter != m_aConnections.end();++aConIter )
-        aConIter->second->dispose();
+    for (auto const& connection : m_aConnections)
+        connection.second->dispose();
 
-    std::map< SQLHANDLE,OConnection*>().swap(m_aConnections);
+    m_aConnections.clear();
 
     if(!m_bClosed)
         N3SQLDisconnect(m_aConnectionHandle);
     m_bClosed   = true;
-
-    dispose_ChildImpl();
 }
 
 SQLHANDLE OConnection::createStatementHandle()
 {
-    OConnection* pConnectionTemp = this;
+    rtl::Reference<OConnection> xConnectionTemp = this;
     bool bNew = false;
     try
     {
         sal_Int32 nMaxStatements = getMetaData()->getMaxStatements();
         if(nMaxStatements && nMaxStatements <= m_nStatementCount)
         {
-            OConnection* pConnection = new OConnection(m_pDriverHandleCopy,m_pDriver);
-            pConnection->acquire();
-            pConnection->Construct(m_sURL,getConnectionInfo());
-            pConnectionTemp = pConnection;
+            rtl::Reference xConnection(new OConnection(m_pDriverHandleCopy,m_xDriver.get()));
+            xConnection->Construct(m_sURL,getConnectionInfo());
+            xConnectionTemp = xConnection;
             bNew = true;
         }
     }
@@ -512,10 +512,10 @@ SQLHANDLE OConnection::createStatementHandle()
     }
 
     SQLHANDLE aStatementHandle = SQL_NULL_HANDLE;
-    N3SQLAllocHandle(SQL_HANDLE_STMT,pConnectionTemp->getConnection(),&aStatementHandle);
+    N3SQLAllocHandle(SQL_HANDLE_STMT,xConnectionTemp->getConnection(),&aStatementHandle);
     ++m_nStatementCount;
     if(bNew)
-        m_aConnections.insert(std::map< SQLHANDLE,OConnection*>::value_type(aStatementHandle,pConnectionTemp));
+        m_aConnections.emplace(aStatementHandle,xConnectionTemp);
 
     return aStatementHandle;
 
@@ -526,7 +526,7 @@ void OConnection::freeStatementHandle(SQLHANDLE& _pHandle)
     if( SQL_NULL_HANDLE == _pHandle )
         return;
 
-    std::map< SQLHANDLE,OConnection*>::iterator aFind = m_aConnections.find(_pHandle);
+    auto aFind = m_aConnections.find(_pHandle);
 
     N3SQLFreeStmt(_pHandle,SQL_RESET_PARAMS);
     N3SQLFreeStmt(_pHandle,SQL_UNBIND);

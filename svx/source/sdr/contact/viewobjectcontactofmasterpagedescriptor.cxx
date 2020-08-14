@@ -22,19 +22,14 @@
 #include <sdr/contact/viewcontactofmasterpagedescriptor.hxx>
 #include <svx/sdr/contact/displayinfo.hxx>
 #include <svx/sdr/contact/objectcontact.hxx>
-#include <svx/svdpagv.hxx>
-#include <svx/svdview.hxx>
 #include <svx/svdpage.hxx>
 #include <drawinglayer/primitive2d/maskprimitive2d.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <comphelper/sequence.hxx>
 
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
         ViewObjectContactOfMasterPageDescriptor::ViewObjectContactOfMasterPageDescriptor(ObjectContact& rObjectContact, ViewContact& rViewContact)
         :   ViewObjectContact(rObjectContact, rViewContact)
         {
@@ -68,8 +63,8 @@ namespace sdr
             // used range (retval) is fixed here, it's the MasterPage fill range
             const SdrPage& rOwnerPage = rDescriptor.GetOwnerPage();
             const basegfx::B2DRange aPageFillRange(
-                rOwnerPage.GetLftBorder(), rOwnerPage.GetUppBorder(),
-                rOwnerPage.GetWdt() - rOwnerPage.GetRgtBorder(), rOwnerPage.GetHgt() - rOwnerPage.GetLwrBorder());
+                rOwnerPage.GetLeftBorder(), rOwnerPage.GetUpperBorder(),
+                rOwnerPage.GetWidth() - rOwnerPage.GetRightBorder(), rOwnerPage.GetHeight() - rOwnerPage.GetLowerBorder());
 
             // Modify DisplayInfo for MasterPageContent collection; remember original layers and
             // set combined SdrLayerIDSet; set MasterPagePaint flag
@@ -123,7 +118,7 @@ namespace sdr
 
                     // need to create a clip primitive, add clipped list to target
                     const drawinglayer::primitive2d::Primitive2DReference xReference(new drawinglayer::primitive2d::MaskPrimitive2D(
-                        basegfx::B2DPolyPolygon(basegfx::tools::createPolygonFromRect(aCommonArea)), xMasterPageSequence));
+                        basegfx::B2DPolyPolygon(basegfx::utils::createPolygonFromRect(aCommonArea)), xMasterPageSequence));
                     xRetval.push_back(xReference);
                 }
             }
@@ -131,7 +126,6 @@ namespace sdr
             // return grouped primitive
             return xRetval;
         }
-    } // end of namespace contact
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

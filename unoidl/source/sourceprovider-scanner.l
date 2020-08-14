@@ -13,6 +13,8 @@
 %option never-interactive
 %option nounistd
 %option noyywrap
+%option noinput
+%option nounput
 %option reentrant
 %option warn
 %option yylineno
@@ -30,17 +32,18 @@
 
 %{
 
-#include "rtl/math.h"
-#include "rtl/string.hxx"
-#include "rtl/ustring.hxx"
-#include "rtl/textenc.h"
-#include "sal/types.h"
+#include <rtl/math.h>
+#include <rtl/string.hxx>
+#include <rtl/ustring.hxx>
+#include <rtl/textenc.h>
+#include <sal/types.h>
+#include <unoidl/unoidl.hxx>
 
 #include "sourceprovider-parser-requires.hxx"
-#include "sourceprovider-parser.hxx"
+#include <sourceprovider-parser.hxx>
 #include "sourceprovider-scanner.hxx"
 
-namespace unoidl { namespace detail {
+namespace unoidl::detail {
 
 static std::size_t sourceProviderScannerInput(
     SourceProviderScannerData * data, char * buffer, std::size_t size)
@@ -56,7 +59,7 @@ static std::size_t sourceProviderScannerInput(
     return size;
 }
 
-} }
+}
 
 #define YY_INPUT(buf, result, max_size) ((result) = \
     ::unoidl::detail::sourceProviderScannerInput(yyextra, (buf), (max_size)))
@@ -240,11 +243,12 @@ ALNUM {DIGIT}|{ALPHA}
 }
 
 . {
-    unsigned char c = yytext[0];
+    char c = yytext[0];
     yyextra->errorMessage = c >= ' ' && c <= '~'
-        ? OUString("invalid character \"" + OUStringLiteral1(c) + "\"")
+        ? OUString("invalid character \"" + OUStringChar(c) + "\"")
         : OUString(
-            "invalid byte x" + OUString::number(c, 16).toAsciiUpperCase());
+            "invalid byte x"
+            + OUString::number(static_cast<unsigned char>(c), 16).toAsciiUpperCase());
     return TOK_ERROR;
 }
 

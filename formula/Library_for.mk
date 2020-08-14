@@ -11,7 +11,7 @@ $(eval $(call gb_Library_Library,for))
 
 $(eval $(call gb_Library_set_include,for,\
     $$(INCLUDE) \
-    -I$(SRCDIR)/formula/source/core/inc \
+    -I$(SRCDIR)/formula/inc \
 ))
 
 $(eval $(call gb_Library_add_defs,for,\
@@ -41,13 +41,9 @@ $(eval $(call gb_Library_add_exception_objects,for,\
     formula/source/core/api/FormulaCompiler \
     formula/source/core/api/FormulaOpCodeMapperObj \
     formula/source/core/api/grammar \
-    formula/source/core/api/services \
     formula/source/core/api/token \
     formula/source/core/api/vectortoken \
     formula/source/core/resource/core_resource \
 ))
-
-# Runtime dependency for unit-tests
-$(eval $(call gb_Library_use_restarget,for,for))
 
 # vim: set noet sw=4 ts=4:

@@ -17,14 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <rtl/alloc.h>
-
 #include <limits>
 #include <string.h>
 
 #include <com/sun/star/uno/Sequence.hxx>
 
-#include <com/sun/star/uno/Exception.hpp>
+#include <com/sun/star/io/BufferSizeExceededException.hpp>
 
 using namespace ::com::sun::star::uno;
 
@@ -48,19 +46,13 @@ void MemFIFO::skip( sal_Int32 nBytesToSkip )
     forgetFromStart( nBytesToSkip );
 }
 
-MemRingBuffer::MemRingBuffer()
+MemRingBuffer::MemRingBuffer() : m_p(nullptr), m_nBufferLen(0), m_nStart(0), m_nOccupiedBuffer(0)
 {
-    m_nBufferLen            = 0;
-    m_p                     = nullptr;
-    m_nStart                = 0;
-    m_nOccupiedBuffer       = 0;
 }
 
 MemRingBuffer::~MemRingBuffer()
 {
-    if( m_p ) {
-        rtl_freeMemory( m_p );
-    }
+    std::free( m_p );
 }
 
 void MemRingBuffer::resizeBuffer( sal_Int32 nMinSize )
@@ -76,19 +68,22 @@ void MemRingBuffer::resizeBuffer( sal_Int32 nMinSize )
         nNewLen = m_nBufferLen;
     }
 
-    if( nNewLen != m_nBufferLen ) {
-        m_p = static_cast<sal_Int8 *>(rtl_reallocateMemory( m_p , nNewLen ));
-        if( !m_p ) {
-            throw css::io::BufferSizeExceededException(
-                "MemRingBuffer::resizeBuffer BufferSizeExceededException");
-        }
+    if( nNewLen == m_nBufferLen )
+        return;
 
-        if( m_nStart + m_nOccupiedBuffer > m_nBufferLen ) {
-            memmove( &( m_p[m_nStart+(nNewLen-m_nBufferLen)]) , &(m_p[m_nStart]) , m_nBufferLen - m_nStart );
-            m_nStart += nNewLen - m_nBufferLen;
-        }
-        m_nBufferLen = nNewLen;
+    auto p = static_cast<sal_Int8*>(std::realloc(m_p, nNewLen));
+    if (!p)
+        throw css::io::BufferSizeExceededException(
+            "MemRingBuffer::resizeBuffer BufferSizeExceededException");
+
+    m_p = p;
+
+
+    if( m_nStart + m_nOccupiedBuffer > m_nBufferLen ) {
+        memmove( &( m_p[m_nStart+(nNewLen-m_nBufferLen)]) , &(m_p[m_nStart]) , m_nBufferLen - m_nStart );
+        m_nStart += nNewLen - m_nBufferLen;
     }
+    m_nBufferLen = nNewLen;
 }
 
 
@@ -120,7 +115,7 @@ void MemRingBuffer::readAt( sal_Int32 nPos, Sequence<sal_Int8> &seq , sal_Int32 
 void MemRingBuffer::writeAt( sal_Int32 nPos, const Sequence<sal_Int8> &seq )
 {
     checkInvariants();
-    sal_Int32 nLen = seq.getLength();
+    const sal_Int32 nLen = seq.getLength();
 
     if( nPos < 0 || nPos > std::numeric_limits< sal_Int32 >::max() - nLen )
     {
@@ -129,7 +124,8 @@ void MemRingBuffer::writeAt( sal_Int32 nPos, const Sequence<sal_Int8> &seq )
     }
 
     if( nPos + nLen - m_nOccupiedBuffer > 0 ) {
-        resizeBuffer( nPos + seq.getLength() );
+        resizeBuffer( nPos + nLen );
+        m_nOccupiedBuffer = nPos + nLen;
     }
 
     sal_Int32 nStartWritingIndex = m_nStart + nPos;
@@ -137,18 +133,16 @@ void MemRingBuffer::writeAt( sal_Int32 nPos, const Sequence<sal_Int8> &seq )
         nStartWritingIndex -= m_nBufferLen;
     }
 
-    if( nLen + nStartWritingIndex > m_nBufferLen ) {
+    if( const sal_Int32 nBufferRestLen = m_nBufferLen-nStartWritingIndex; nLen > nBufferRestLen ) {
         // two area copy
-        memcpy( &(m_p[nStartWritingIndex]) , seq.getConstArray(), m_nBufferLen-nStartWritingIndex );
-        memcpy( m_p , &( seq.getConstArray()[m_nBufferLen-nStartWritingIndex] ),
-                                        nLen - (m_nBufferLen-nStartWritingIndex) );
+        memcpy( &(m_p[nStartWritingIndex]) , seq.getConstArray(), nBufferRestLen );
+        memcpy( m_p , &( seq.getConstArray()[nBufferRestLen] ), nLen - nBufferRestLen );
 
     }
     else {
         // one area copy
         memcpy( &( m_p[nStartWritingIndex]), seq.getConstArray() , nLen );
     }
-    m_nOccupiedBuffer = Max( nPos + seq.getLength() , m_nOccupiedBuffer );
     checkInvariants();
 }
 

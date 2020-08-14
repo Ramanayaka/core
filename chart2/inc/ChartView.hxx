@@ -16,32 +16,36 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_CHART2_INC_CHARTVIEW_HXX
-#define INCLUDED_CHART2_INC_CHARTVIEW_HXX
+#pragma once
 
-#include "ChartModel.hxx"
-#include "chartview/ExplicitValueProvider.hxx"
+#include <chartview/ExplicitValueProvider.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
+#include <cppuhelper/interfacecontainer.h>
 
 #include <svl/lstner.hxx>
+#include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/datatransfer/XTransferable.hpp>
-#include <com/sun/star/drawing/XDrawPage.hpp>
-#include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/util/XModifyListener.hpp>
-#include <com/sun/star/util/XModeChangeBroadcaster.hpp>
-#include <com/sun/star/util/XUpdatable2.hpp>
 #include <com/sun/star/qa/XDumper.hpp>
+#include <com/sun/star/util/XModeChangeBroadcaster.hpp>
+#include <com/sun/star/util/XModifyListener.hpp>
+#include <com/sun/star/util/XUpdatable2.hpp>
 
 #include <vector>
 #include <memory>
 
 #include <vcl/timer.hxx>
+#include <sfx2/xmldump.hxx>
+
+namespace com::sun::star::drawing { class XDrawPage; }
+namespace com::sun::star::drawing { class XShapes; }
+namespace com::sun::star::io { class XOutputStream; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::util { class XUpdatable2; }
 
 class SdrPage;
 
@@ -50,8 +54,6 @@ namespace chart {
 class VCoordinateSystem;
 class DrawModelWrapper;
 class VDataSeries;
-class GL3DPlotterBase;
-class GL2DRenderer;
 struct CreateShapeParam2D;
 
 struct TimeBasedInfo
@@ -77,7 +79,7 @@ struct TimeBasedInfo
  * The View is not responsible to handle single user events (that is instead
  * done by the ChartWindow).
  */
-class ChartView : public ::cppu::WeakImplHelper<
+class ChartView final : public ::cppu::WeakImplHelper<
     css::lang::XInitialization
         ,css::lang::XServiceInfo
         ,css::datatransfer::XTransferable
@@ -91,8 +93,8 @@ class ChartView : public ::cppu::WeakImplHelper<
         >
         , public ExplicitValueProvider
         , private SfxListener
+        , public sfx2::XmlDump
 {
-    friend class GL2DRenderer;
 private:
     void init();
 
@@ -178,14 +180,14 @@ public:
     virtual OUString SAL_CALL dump() override;
 
     void setViewDirty();
-    void updateOpenGLWindow();
+
+    /// See sfx2::XmlDump::dumpAsXml().
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 
 private: //methods
     void createShapes();
     void createShapes2D( const css::awt::Size& rPageSize );
-    bool createAxisTitleShapes2D( CreateShapeParam2D& rParam, const css::awt::Size& rPageSize );
-    void createShapes3D();
-    bool isReal3DChart();
+    bool createAxisTitleShapes2D( CreateShapeParam2D& rParam, const css::awt::Size& rPageSize, bool bHasRelativeSize );
     void getMetaFile( const css::uno::Reference< css::io::XOutputStream >& xOutStream
                       , bool bUseHighContrast );
     SdrPage* getSdrPage();
@@ -196,8 +198,6 @@ private: //methods
     void impl_refreshAddIn();
 
     void impl_updateView( bool bCheckLockedCtrler = true );
-
-    void render();
 
     css::awt::Rectangle impl_createDiagramAndContent( const CreateShapeParam2D& rParam, const css::awt::Size& rPageSize );
 
@@ -227,7 +227,7 @@ private: //member
 
     std::shared_ptr< DrawModelWrapper > m_pDrawModelWrapper;
 
-    std::vector< VCoordinateSystem* > m_aVCooSysList;
+    std::vector< std::unique_ptr<VCoordinateSystem> > m_aVCooSysList;
 
     ::cppu::OMultiTypeInterfaceContainerHelper
                         m_aListenerContainer;
@@ -251,14 +251,10 @@ private: //member
 
     css::awt::Rectangle m_aResultingDiagramRectangleExcludingAxes;
 
-    std::shared_ptr<GL3DPlotterBase> m_pGL3DPlotter;
     TimeBasedInfo maTimeBased;
     osl::Mutex maTimeMutex;
-    std::unique_ptr<GL2DRenderer> mp2DRenderer;
 };
 
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

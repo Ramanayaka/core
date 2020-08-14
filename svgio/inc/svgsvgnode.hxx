@@ -20,14 +20,12 @@
 #ifndef INCLUDED_SVGIO_INC_SVGSVGNODE_HXX
 #define INCLUDED_SVGIO_INC_SVGSVGNODE_HXX
 
-#include <svgstyleattributes.hxx>
+#include "svgstyleattributes.hxx"
 #include <memory>
 
-namespace svgio
-{
-    namespace svgreader
+namespace svgio::svgreader
     {
-        class SvgSvgNode : public SvgNode
+        class SvgSvgNode final : public SvgNode
         {
         private:
             /// use styles
@@ -69,7 +67,7 @@ namespace svgio
             // The returned 'CurrentViewPort' is the viewport as it is set by this svg element
             // and as it is needed to resolve relative values in children
             // The method does not check for invalid width and height
-            virtual const basegfx::B2DRange getCurrentViewPort() const override;
+            virtual basegfx::B2DRange getCurrentViewPort() const override;
 
             /// viewBox content
             const basegfx::B2DRange* getViewBox() const { return mpViewBox.get(); }
@@ -90,8 +88,8 @@ namespace svgio
             /// height content
             const SvgNumber& getHeight() const { return maHeight; }
         };
-    } // end of namespace svgreader
-} // end of namespace svgio
+
+} // end of namespace svgio::svgreader
 
 #endif // INCLUDED_SVGIO_INC_SVGSVGNODE_HXX
 

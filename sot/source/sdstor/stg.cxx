@@ -19,21 +19,16 @@
 
 
 #include <sot/storinfo.hxx>
-#include <sot/exchange.hxx>
 #include <osl/file.hxx>
 #include <unotools/tempfile.hxx>
 #include <tools/stream.hxx>
 #include <tools/debug.hxx>
 
-#include "sot/stg.hxx"
+#include <sot/stg.hxx>
 #include "stgelem.hxx"
-#include "stgcache.hxx"
-#include "stgstrms.hxx"
 #include "stgdir.hxx"
 #include "stgio.hxx"
 #include "stgole.hxx"
-
-#include <memory>
 
 static long nTmpCount = 0;
 
@@ -123,7 +118,7 @@ bool OLEStorageBase::Validate_Impl( bool bWrite ) const
         &&  ( !bWrite || !pEntry->m_bDirect || ( nStreamMode & StreamMode::WRITE ) );
 }
 
-bool OLEStorageBase::ValidateMode_Impl( StreamMode m, StgDirEntry* p )
+bool OLEStorageBase::ValidateMode_Impl( StreamMode m, StgDirEntry const * p )
 {
     if( m == INTERNAL_MODE )
         return true;
@@ -154,7 +149,7 @@ bool OLEStorageBase::ValidateMode_Impl( StreamMode m, StgDirEntry* p )
 
 
 StorageStream::StorageStream( StgIo* p, StgDirEntry* q, StreamMode m )
-             : OLEStorageBase( p, q, m_nMode ), nPos( 0L )
+             : OLEStorageBase( p, q, m_nMode ), nPos( 0 )
 {
     // The dir entry may be 0; this means that the stream is invalid.
     if( q && p )
@@ -190,12 +185,12 @@ sal_uLong StorageStream::Read( void* pData, sal_uLong nSize )
     if( Validate() )
     {
         pEntry->Seek( nPos );
-        nSize = pEntry->Read( pData, (sal_Int32) nSize );
+        nSize = pEntry->Read( pData, static_cast<sal_Int32>(nSize) );
         pIo->MoveError( *this );
         nPos += nSize;
     }
     else
-        nSize = 0L;
+        nSize = 0;
     return nSize;
 }
 
@@ -204,19 +199,22 @@ sal_uLong StorageStream::Write( const void* pData, sal_uLong nSize )
     if( Validate( true ) )
     {
         pEntry->Seek( nPos );
-        nSize = pEntry->Write( pData, (sal_Int32) nSize );
+        nSize = pEntry->Write( pData, static_cast<sal_Int32>(nSize) );
         pIo->MoveError( *this );
         nPos += nSize;
     }
     else
-        nSize = 0L;
+        nSize = 0;
     return nSize;
 }
 
 sal_uInt64 StorageStream::Seek( sal_uInt64 n )
 {
     if( Validate() )
-        return nPos = pEntry->Seek( n );
+    {
+        nPos = pEntry->Seek( n );
+        return nPos;
+    }
     else
         return n;
 }
@@ -231,7 +229,7 @@ bool StorageStream::SetSize( sal_uLong nNewSize )
 {
     if( Validate( true ) )
     {
-        bool b = pEntry->SetSize( (sal_Int32) nNewSize );
+        bool b = pEntry->SetSize( static_cast<sal_Int32>(nNewSize) );
         pIo->MoveError( *this );
         return b;
     }
@@ -316,10 +314,10 @@ bool Storage::IsStorageFile( SvStream* pStream )
     if ( pStream )
     {
         StgHeader aHdr;
-        sal_uLong nPos = pStream->Tell();
+        sal_uInt64 nPos = pStream->Tell();
         bRet = ( aHdr.Load( *pStream ) && aHdr.Check() );
 
-        // It's not a stream error if it is too small for a OLE storage header
+        // It's not a stream error if it is too small for an OLE storage header
         if ( pStream->GetErrorCode() == ERRCODE_IO_CANTSEEK )
             pStream->ResetError();
         pStream->Seek( nPos );
@@ -374,8 +372,8 @@ Storage::Storage( SvStream& r, bool bDirect )
     if( r.GetError() == ERRCODE_NONE )
     {
         pIo->SetStrm( &r, false );
-        sal_uLong nSize = r.Seek( STREAM_SEEK_TO_END );
-        r.Seek( 0L );
+        sal_uInt64 nSize = r.TellEnd();
+        r.Seek( 0 );
         // Initializing is OK if the stream is empty
         Init( nSize == 0 );
         if( pEntry )
@@ -419,8 +417,8 @@ Storage::Storage( UCBStorageStream& rStrm, bool bDirect )
 
     pIo->SetStrm( &rStrm );
 
-    sal_uLong nSize = pStream->Seek( STREAM_SEEK_TO_END );
-    pStream->Seek( 0L );
+    sal_uInt64 nSize = pStream->TellEnd();
+    pStream->Seek( 0 );
     // Initializing is OK if the stream is empty
     Init( nSize == 0 );
     if( pEntry )
@@ -444,8 +442,8 @@ void Storage::Init( bool bCreate )
     OSL_ENSURE( pIo, "The pointer may not be empty at this point!" );
     if( pIo->Good() && pIo->GetStrm() )
     {
-        sal_uLong nSize = pIo->GetStrm()->Seek( STREAM_SEEK_TO_END );
-        pIo->GetStrm()->Seek( 0L );
+        sal_uInt64 nSize = pIo->GetStrm()->TellEnd();
+        pIo->GetStrm()->Seek( 0 );
         if( nSize )
         {
             bHdrLoaded = pIo->Load();
@@ -518,19 +516,19 @@ const OUString& Storage::GetName() const
 
 void Storage::FillInfoList( SvStorageInfoList* pList ) const
 {
-    if( Validate() && pList )
+    if( !(Validate() && pList) )
+        return;
+
+    StgIterator aIter( *pEntry );
+    StgDirEntry* p = aIter.First();
+    while( p )
     {
-        StgIterator aIter( *pEntry );
-        StgDirEntry* p = aIter.First();
-        while( p )
+        if( !p->m_bInvalid )
         {
-            if( !p->m_bInvalid )
-            {
-                SvStorageInfo aInfo( *p );
-                pList->push_back( aInfo );
-            }
-            p = aIter.Next();
+            SvStorageInfo aInfo( *p );
+            pList->push_back( aInfo );
         }
+        p = aIter.Next();
     }
 }
 
@@ -554,7 +552,7 @@ BaseStorage* Storage::OpenStorage( const OUString& rName, StreamMode m, bool bDi
     if( bDirect && !pEntry->m_bDirect )
         bDirect = false;
 
-    StgDirEntry* p = pIo->m_pTOC->Find( *pEntry, rName );
+    StgDirEntry* p = StgDirStrm::Find( *pEntry, rName );
     if( !p )
     {
         if( !( m & StreamMode::NOCREATE ) )
@@ -605,7 +603,7 @@ BaseStorageStream* Storage::OpenStream( const OUString& rName, StreamMode m, boo
 {
     if( !Validate() || !ValidateMode( m ) )
         return new StorageStream( pIo, nullptr, m );
-    StgDirEntry* p = pIo->m_pTOC->Find( *pEntry, rName );
+    StgDirEntry* p = StgDirStrm::Find( *pEntry, rName );
     bool bTemp = false;
     if( !p )
     {
@@ -650,7 +648,7 @@ void Storage::Remove( const OUString& rName )
 {
     if( !Validate( true ) )
         return;
-    StgDirEntry* p = pIo->m_pTOC->Find( *pEntry, rName );
+    StgDirEntry* p = StgDirStrm::Find( *pEntry, rName );
     if( p )
     {
         p->Invalidate( true );
@@ -667,14 +665,14 @@ bool Storage::CopyTo( const OUString& rElem, BaseStorage* pDest, const OUString&
 {
     if( !Validate() || !pDest || !pDest->Validate( true ) )
         return false;
-    StgDirEntry* pElem = pIo->m_pTOC->Find( *pEntry, rElem );
+    StgDirEntry* pElem = StgDirStrm::Find( *pEntry, rElem );
     if( pElem )
     {
         if( pElem->m_aEntry.GetType() == STG_STORAGE )
         {
             // copy the entire storage
-            BaseStorage* p1 = OpenStorage( rElem, INTERNAL_MODE );
-            BaseStorage* p2 = pDest->OpenOLEStorage( rNew, StreamMode::WRITE | StreamMode::SHARE_DENYALL, pEntry->m_bDirect );
+            tools::SvRef<BaseStorage> p1 = OpenStorage( rElem, INTERNAL_MODE );
+            tools::SvRef<BaseStorage> p2 = pDest->OpenOLEStorage( rNew, StreamMode::WRITE | StreamMode::SHARE_DENYALL, pEntry->m_bDirect );
 
             if ( p2 )
             {
@@ -682,7 +680,7 @@ bool Storage::CopyTo( const OUString& rElem, BaseStorage* pDest, const OUString&
                 if( !nTmpErr )
                 {
                     p2->SetClassId( p1->GetClassId() );
-                    p1->CopyTo( p2 );
+                    p1->CopyTo( p2.get() );
                     SetError( p1->GetError() );
 
                     nTmpErr = p2->GetError();
@@ -695,22 +693,20 @@ bool Storage::CopyTo( const OUString& rElem, BaseStorage* pDest, const OUString&
                     pDest->SetError( nTmpErr );
             }
 
-            delete p1;
-            delete p2;
             return Good() && pDest->Good();
         }
         else
         {
             // stream copy
-            BaseStorageStream* p1 = OpenStream( rElem, INTERNAL_MODE );
-            BaseStorageStream* p2 = pDest->OpenStream( rNew, StreamMode::WRITE | StreamMode::SHARE_DENYALL, pEntry->m_bDirect );
+            tools::SvRef<BaseStorageStream> p1 = OpenStream( rElem, INTERNAL_MODE );
+            tools::SvRef<BaseStorageStream> p2 = pDest->OpenStream( rNew, StreamMode::WRITE | StreamMode::SHARE_DENYALL, pEntry->m_bDirect );
 
             if ( p2 )
             {
                 ErrCode nTmpErr = p2->GetError();
                 if( !nTmpErr )
                 {
-                    p1->CopyTo( p2 );
+                    p1->CopyTo( p2.get() );
                     SetError( p1->GetError() );
 
                     nTmpErr = p2->GetError();
@@ -723,8 +719,6 @@ bool Storage::CopyTo( const OUString& rElem, BaseStorage* pDest, const OUString&
                     pDest->SetError( nTmpErr );
             }
 
-            delete p1;
-            delete p2;
             return Good() && pDest->Good();
         }
     }
@@ -759,7 +753,7 @@ bool Storage::IsStorage( const OUString& rName ) const
 {
     if( Validate() )
     {
-        StgDirEntry* p = pIo->m_pTOC->Find( *pEntry, rName );
+        StgDirEntry* p = StgDirStrm::Find( *pEntry, rName );
         if( p )
             return p->m_aEntry.GetType() == STG_STORAGE;
     }
@@ -770,7 +764,7 @@ bool Storage::IsStream( const OUString& rName ) const
 {
     if( Validate() )
     {
-        StgDirEntry* p = pIo->m_pTOC->Find( *pEntry, rName );
+        StgDirEntry* p = StgDirStrm::Find( *pEntry, rName );
         if( p )
             return p->m_aEntry.GetType() == STG_STREAM;
     }
@@ -780,7 +774,7 @@ bool Storage::IsStream( const OUString& rName ) const
 bool Storage::IsContained( const OUString& rName ) const
 {
     if( Validate() )
-        return pIo->m_pTOC->Find( *pEntry, rName ) != nullptr;
+        return StgDirStrm::Find( *pEntry, rName ) != nullptr;
     else
         return false;
 }
@@ -884,9 +878,7 @@ OUString Storage::GetUserName()
 
 bool Storage::ValidateFAT()
 {
-    Link<StgLinkArg&,void> aLink = StgIo::GetErrorLink();
     FatError nErr = pIo->ValidateFATs();
-    StgIo::SetErrorLink( aLink );
     return nErr == FatError::Ok;
 }
 
@@ -907,7 +899,7 @@ const ClsId& Storage::GetClassId() const
     if ( pEntry )
         return pEntry->m_aEntry.GetClassId();
 
-    static ClsId aDummyId = {0,0,0,{0,0,0,0,0,0,0,0}};
+    static const ClsId aDummyId = {0,0,0,{0,0,0,0,0,0,0,0}};
     return aDummyId;
 }
 
@@ -927,7 +919,7 @@ bool Storage::ValidateMode( StreamMode nMode ) const
     return bRet;
 }
 
-bool Storage::ValidateMode( StreamMode nMode, StgDirEntry* p ) const
+bool Storage::ValidateMode( StreamMode nMode, StgDirEntry const * p ) const
 {
     bool bRet = ValidateMode_Impl( nMode, p );
     if ( !bRet )
@@ -940,6 +932,5 @@ bool Storage::Equals( const BaseStorage& rStorage ) const
     const Storage* pOther =  dynamic_cast<const Storage*>( &rStorage );
     return pOther && ( pOther->pEntry == pEntry );
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

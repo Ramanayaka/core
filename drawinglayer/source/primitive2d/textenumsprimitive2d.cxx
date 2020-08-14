@@ -20,10 +20,8 @@
 #include <drawinglayer/primitive2d/textenumsprimitive2d.hxx>
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         TextLine mapFontLineStyleToTextLine(FontLineStyle eLineStyle)
         {
             switch(eLineStyle)
@@ -70,7 +68,7 @@ namespace drawinglayer
                 case TEXT_LINE_BOLDDASH:      return LINESTYLE_BOLDDASH;
                 case TEXT_LINE_BOLDLONGDASH:  return LINESTYLE_LONGDASH;
                 case TEXT_LINE_BOLDDASHDOT:   return LINESTYLE_BOLDDASHDOT;
-                case TEXT_LINE_BOLDDASHDOTDOT:return LINESTYLE_BOLDDASHDOT;
+                case TEXT_LINE_BOLDDASHDOTDOT:return LINESTYLE_BOLDDASHDOTDOT;
                 case TEXT_LINE_BOLDWAVE:      return LINESTYLE_BOLDWAVE;
             }
         }
@@ -102,7 +100,6 @@ namespace drawinglayer
             }
         }
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

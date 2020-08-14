@@ -35,14 +35,17 @@
 #include <com/sun/star/awt/XControl.hpp>
 #include <com/sun/star/awt/XCheckBox.hpp>
 #include <com/sun/star/awt/XButton.hpp>
-#include <com/sun/star/beans/XFastPropertySet.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/form/XChangeBroadcaster.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 
 #include <comphelper/propmultiplex.hxx>
 #include <comphelper/interfacecontainer2.hxx>
+#include <comphelper/uno3.hxx>
+#include <connectivity/formattedcolumnvalue.hxx>
 #include <cppuhelper/component.hxx>
+#include <cppuhelper/implbase1.hxx>
 #include <cppuhelper/implbase2.hxx>
 #include <tools/diagnose_ex.h>
 
@@ -83,7 +86,7 @@ private:
     sal_Int16               m_nTypeId;
     sal_uInt16              m_nId;
     sal_Int16               m_nFieldPos;
-    sal_Int16               m_nAlign;                       // specified with TXT_ALIGN_LEFT ....
+    sal_Int16               m_nAlign;                       // specified with TXT_ALIGN_LEFT...
     bool                m_bReadOnly : 1;
     bool                m_bAutoValue : 1;
     bool                m_bInSave : 1;
@@ -96,8 +99,7 @@ private:
         // used by locked columns
 public:
     DbGridColumn(sal_uInt16 _nId, DbGridControl& rParent)
-        :m_pCell(nullptr)
-        ,m_rParent(rParent)
+        :m_rParent(rParent)
         ,m_nLastVisibleWidth(-1)
         ,m_nFormatKey(0)
         ,m_nFieldType(0)
@@ -166,7 +168,7 @@ public:
     void    SetReadOnly(bool bRead){m_bReadOnly = bRead;}
     void    SetObject(sal_Int16 nPos) {m_bObject = m_bReadOnly = true; m_nFieldPos = nPos;}
 
-    void    ImplInitWindow( vcl::Window& rParent, const InitWindowFacet _eInitWhat );
+    void    ImplInitWindow( vcl::Window const & rParent, const InitWindowFacet _eInitWhat );
 
     // properties that can bleed through onto the css::frame::Controller
     sal_Int16   SetAlignment(sal_Int16 _nAlign);
@@ -275,7 +277,7 @@ public:
     void SetTextLineColor(const Color& _rColor);
 
     // initializing before a control is displayed
-    virtual void Init( vcl::Window& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor );
+    virtual void Init( BrowserDataWin& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor );
     virtual ::svt::CellControllerRef CreateController() const = 0;
 
     // writing the value into the model
@@ -292,7 +294,7 @@ public:
     virtual void PaintFieldToCell( OutputDevice& rDev, const tools::Rectangle& rRect, const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter);
     virtual void PaintCell( OutputDevice& _rDev, const tools::Rectangle& _rRect );
 
-    void  ImplInitWindow( vcl::Window& rParent, const InitWindowFacet _eInitWhat );
+    void  ImplInitWindow( vcl::Window const & rParent, const InitWindowFacet _eInitWhat );
 
     double GetValue(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter) const;
 
@@ -369,7 +371,7 @@ protected:
 protected:
     void implSetMaxTextLen( sal_Int16 _nMaxLen )
     {
-        implSetEffectiveMaxTextLen( _nMaxLen ? _nMaxLen : EDIT_NOLIMIT );
+        implSetEffectiveMaxTextLen(_nMaxLen);
     }
     virtual void implSetEffectiveMaxTextLen( sal_Int32 _nMaxLen );
 };
@@ -377,8 +379,8 @@ protected:
 
 class DbTextField : public DbLimitedLengthField
 {
-    ::svt::IEditImplementation* m_pEdit;
-    ::svt::IEditImplementation* m_pPainterImplementation;
+    std::unique_ptr<::svt::IEditImplementation> m_pEdit;
+    std::unique_ptr<::svt::IEditImplementation> m_pPainterImplementation;
     bool                    m_bIsSimpleEdit;
 
 protected:
@@ -387,10 +389,10 @@ protected:
 public:
     DbTextField(DbGridColumn& _rColumn);
 
-    ::svt::IEditImplementation* GetEditImplementation() { return m_pEdit; }
+    ::svt::IEditImplementation* GetEditImplementation() { return m_pEdit.get(); }
     bool                    IsSimpleEdit() const { return m_bIsSimpleEdit; }
 
-    virtual void Init( vcl::Window& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
+    virtual void Init( BrowserDataWin& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
     virtual OUString GetFormatText(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter, Color** ppColor = nullptr) override;
     virtual void UpdateFromField(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter) override;
     virtual ::svt::CellControllerRef CreateController() const override;
@@ -407,29 +409,26 @@ protected:
 };
 
 
-class DbFormattedField : public DbLimitedLengthField
+class DbFormattedField final : public DbLimitedLengthField
 {
-protected:
-    css::uno::Reference< css::util::XNumberFormatsSupplier >  m_xSupplier;
-
-
 public:
     DbFormattedField(DbGridColumn& _rColumn);
     virtual ~DbFormattedField() override;
 
-
-    virtual void Init( vcl::Window& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
+    virtual void Init( BrowserDataWin& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
     virtual OUString GetFormatText(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter, Color** ppColor = nullptr) override;
     virtual void UpdateFromField(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter) override;
     virtual ::svt::CellControllerRef CreateController() const override;
 
-protected:
+private:
     // DbCellControl
     virtual bool        commitControl( ) override;
     virtual void        updateFromModel( css::uno::Reference< css::beans::XPropertySet > _rxModel ) override;
 
     // OPropertyChangeListener
     virtual void _propertyChanged(const css::beans::PropertyChangeEvent& evt) override;
+
+    css::uno::Reference< css::util::XNumberFormatsSupplier >  m_xSupplier;
 };
 
 
@@ -438,7 +437,7 @@ class DbCheckBox : public DbCellControl
 public:
     DbCheckBox(DbGridColumn& _rColumn);
 
-    virtual void Init( vcl::Window& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
+    virtual void Init( BrowserDataWin& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
     virtual void UpdateFromField(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter) override;
     virtual ::svt::CellControllerRef CreateController() const override;
     virtual void PaintFieldToCell(OutputDevice& rDev, const tools::Rectangle& rRect,
@@ -459,7 +458,7 @@ class DbComboBox : public DbCellControl
 public:
     DbComboBox(DbGridColumn& _rColumn);
 
-    virtual void Init( vcl::Window& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
+    virtual void Init( BrowserDataWin& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
     virtual OUString GetFormatText(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter, Color** ppColor = nullptr) override;
     virtual void UpdateFromField(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter) override;
     virtual ::svt::CellControllerRef CreateController() const override;
@@ -486,7 +485,7 @@ class DbListBox     :public DbCellControl
 public:
     DbListBox(DbGridColumn& _rColumn);
 
-    virtual void Init( vcl::Window& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
+    virtual void Init( BrowserDataWin& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
     virtual OUString GetFormatText(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter, Color** ppColor = nullptr) override;
     virtual void UpdateFromField(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter) override;
     virtual ::svt::CellControllerRef CreateController() const override;
@@ -509,7 +508,7 @@ class DbPatternField : public DbCellControl
 {
 public:
     DbPatternField( DbGridColumn& _rColumn, const css::uno::Reference<css::uno::XComponentContext>& _rContext );
-    virtual void Init( vcl::Window& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
+    virtual void Init( BrowserDataWin& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
     virtual OUString GetFormatText(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter, Color** ppColor = nullptr) override;
     virtual void UpdateFromField(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter) override;
     virtual ::svt::CellControllerRef CreateController() const override;
@@ -542,17 +541,16 @@ protected:
     DbSpinField( DbGridColumn& _rColumn, sal_Int16 _nStandardAlign = css::awt::TextAlign::RIGHT );
 
 public:
-    virtual void                        Init( vcl::Window& rParent, const css::uno::Reference< css::sdbc::XRowSet >& _rxCursor ) override;
+    virtual void                        Init( BrowserDataWin& rParent, const css::uno::Reference< css::sdbc::XRowSet >& _rxCursor ) override;
     virtual ::svt::CellControllerRef    CreateController() const override;
 
 protected:
-    virtual VclPtr<SpinField> createField(
-                            vcl::Window* _pParent,
-                            WinBits _nFieldStyle,
+    virtual VclPtr<Control> createField(
+                            BrowserDataWin* _pParent,
+                            bool bSpinButton,
                             const css::uno::Reference< css::beans::XPropertySet >& _rxModel
                         ) = 0;
 };
-
 
 class DbDateField : public DbSpinField
 {
@@ -567,16 +565,15 @@ protected:
     virtual void        updateFromModel( css::uno::Reference< css::beans::XPropertySet > _rxModel ) override;
 
     // DbSpinField
-    virtual VclPtr<SpinField> createField(
-                            vcl::Window* _pParent,
-                            WinBits _nFieldStyle,
+    virtual VclPtr<Control> createField(
+                            BrowserDataWin* _pParent,
+                            bool bSpinButton,
                             const css::uno::Reference< css::beans::XPropertySet >& _rxModel
                         ) override;
 
     /// initializes everything which relates to the properties describing the numeric behaviour
     virtual void    implAdjustGenericFieldSetting( const css::uno::Reference< css::beans::XPropertySet >& _rxModel ) override;
 };
-
 
 class DbTimeField : public DbSpinField
 {
@@ -591,9 +588,9 @@ protected:
     virtual void        updateFromModel( css::uno::Reference< css::beans::XPropertySet > _rxModel ) override;
 
     // DbSpinField
-    virtual VclPtr<SpinField> createField(
-                            vcl::Window* _pParent,
-                            WinBits _nFieldStyle,
+    virtual VclPtr<Control> createField(
+                            BrowserDataWin* _pParent,
+                            bool bSpinButton,
                             const css::uno::Reference< css::beans::XPropertySet >& _rxModel
                         ) override;
 
@@ -601,27 +598,22 @@ protected:
     virtual void    implAdjustGenericFieldSetting( const css::uno::Reference< css::beans::XPropertySet >& _rxModel ) override;
 };
 
-
 class DbCurrencyField : public DbSpinField
 {
-    sal_Int16  m_nScale;
-
 public:
     DbCurrencyField(DbGridColumn& _rColumn);
     virtual OUString GetFormatText(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter, Color** ppColor = nullptr) override;
     virtual void UpdateFromField(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter) override;
 
-    double GetCurrency(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter) const;
-
 protected:
     // DbCellControl
     virtual bool        commitControl( ) override;
     virtual void        updateFromModel( css::uno::Reference< css::beans::XPropertySet > _rxModel ) override;
 
     // DbSpinField
-    virtual VclPtr<SpinField> createField(
-                            vcl::Window* _pParent,
-                            WinBits _nFieldStyle,
+    virtual VclPtr<Control> createField(
+                            BrowserDataWin* _pParent,
+                            bool bSpinButton,
                             const css::uno::Reference< css::beans::XPropertySet >& _rxModel
                         ) override;
 
@@ -629,11 +621,11 @@ protected:
     virtual void    implAdjustGenericFieldSetting( const css::uno::Reference< css::beans::XPropertySet >& _rxModel ) override;
 };
 
-
 class DbNumericField : public DbSpinField
 {
 public:
     DbNumericField(DbGridColumn& _rColumn);
+
     virtual OUString GetFormatText(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter, Color** ppColor = nullptr) override;
     virtual void UpdateFromField(const css::uno::Reference< css::sdb::XColumn >& _rxField, const css::uno::Reference< css::util::XNumberFormatter >& xFormatter) override;
 
@@ -643,9 +635,9 @@ protected:
     virtual void        updateFromModel( css::uno::Reference< css::beans::XPropertySet > _rxModel ) override;
 
     // DbSpinField
-    virtual VclPtr<SpinField> createField(
-                            vcl::Window* _pParent,
-                            WinBits _nFieldStyle,
+    virtual VclPtr<Control> createField(
+                            BrowserDataWin* _pParent,
+                            bool bSpinButton,
                             const css::uno::Reference< css::beans::XPropertySet >& _rxModel
                         ) override;
 
@@ -653,23 +645,15 @@ protected:
     void    implAdjustGenericFieldSetting( const css::uno::Reference< css::beans::XPropertySet >& _rxModel ) override;
 };
 
-
-class DbFilterField
+class DbFilterField final
         :public DbCellControl
         ,public ::svxform::OSQLParserClient
 {
-    css::uno::Sequence< OUString >  m_aValueList;
-    OUString    m_aText;
-    Link<DbFilterField&,void> m_aCommitLink;
-    sal_Int16   m_nControlClass;
-    bool        m_bFilterList : 1;
-    bool        m_bFilterListFilled : 1;
-
 public:
     DbFilterField(const css::uno::Reference< css::uno::XComponentContext >& rxContext, DbGridColumn& _rColumn);
     virtual ~DbFilterField() override;
 
-    virtual void Init( vcl::Window& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
+    virtual void Init( BrowserDataWin& rParent, const css::uno::Reference< css::sdbc::XRowSet >& xCursor ) override;
     virtual ::svt::CellControllerRef CreateController() const override;
     virtual void PaintCell(OutputDevice& rDev, const tools::Rectangle& rRect) override;
     virtual void Update() override;
@@ -681,16 +665,21 @@ public:
 
     void SetCommitHdl( const Link<DbFilterField&,void>& rLink ) { m_aCommitLink = rLink; }
 
-protected:
-
+private:
     // DbCellControl
     virtual bool        commitControl( ) override;
     virtual void        updateFromModel( css::uno::Reference< css::beans::XPropertySet > _rxModel ) override;
 
-protected:
     void SetList(const css::uno::Any& rItems, bool bComboBox);
-    void CreateControl(vcl::Window* pParent, const css::uno::Reference< css::beans::XPropertySet >& xModel);
-    DECL_LINK( OnClick, VclPtr<CheckBox>, void );
+    void CreateControl(BrowserDataWin* pParent, const css::uno::Reference< css::beans::XPropertySet >& xModel);
+    DECL_LINK( OnClick, weld::Button&, void );
+
+    css::uno::Sequence< OUString >  m_aValueList;
+    OUString    m_aText;
+    Link<DbFilterField&,void> m_aCommitLink;
+    sal_Int16   m_nControlClass;
+    bool        m_bFilterList : 1;
+    bool        m_bFilterListFilled : 1;
 };
 
 
@@ -708,7 +697,7 @@ class FmXGridCell   :public ::cppu::OComponentHelper
 protected:
     ::osl::Mutex        m_aMutex;
     DbGridColumn*       m_pColumn;
-    DbCellControl*      m_pCellControl;
+    std::unique_ptr<DbCellControl> m_pCellControl;
 
 private:
     ::comphelper::OInterfaceContainerHelper2   m_aWindowListeners;
@@ -721,7 +710,7 @@ protected:
     virtual ~FmXGridCell() override;
 
 public:
-    FmXGridCell( DbGridColumn* pColumn, DbCellControl* pControl );
+    FmXGridCell( DbGridColumn* pColumn, std::unique_ptr<DbCellControl> pControl );
     void init();
 
     DECLARE_UNO3_AGG_DEFAULTS(FmXGridCell, OComponentHelper)
@@ -779,7 +768,7 @@ public:
     virtual void SAL_CALL removePaintListener( const css::uno::Reference< css::awt::XPaintListener >& xListener ) override;
 
     bool Commit() {return m_pCellControl->Commit();}
-    void ImplInitWindow( vcl::Window& rParent, const InitWindowFacet _eInitWhat )
+    void ImplInitWindow( vcl::Window const & rParent, const InitWindowFacet _eInitWhat )
         { m_pCellControl->ImplInitWindow( rParent, _eInitWhat ); }
 
     bool isAlignedController() const { return m_pCellControl->isAlignedController(); }
@@ -787,14 +776,14 @@ public:
         { m_pCellControl->AlignControl(nAlignment);}
 
 protected:
-    virtual vcl::Window* getEventWindow() const;
-    virtual void onWindowEvent( const VclEventId _nEventId, const vcl::Window& _rWindow, const void* _pEventData );
+    void onWindowEvent( const VclEventId _nEventId, const vcl::Window& _rWindow, const void* _pEventData );
 
     // default implementations call our focus listeners, don't forget to call them if you override this
     virtual void onFocusGained( const css::awt::FocusEvent& _rEvent );
     virtual void onFocusLost( const css::awt::FocusEvent& _rEvent );
 
 private:
+    vcl::Window* getEventWindow() const;
     DECL_LINK( OnWindowEvent, VclWindowEvent&, void );
 };
 
@@ -802,8 +791,8 @@ private:
 class FmXDataCell : public FmXGridCell
 {
 public:
-    FmXDataCell( DbGridColumn* pColumn, DbCellControl& _rControl )
-        :FmXGridCell( pColumn, &_rControl )
+    FmXDataCell( DbGridColumn* pColumn, std::unique_ptr<DbCellControl> pControl )
+        :FmXGridCell( pColumn, std::move(pControl) )
     {
     }
 
@@ -840,7 +829,7 @@ protected:
     bool    m_bFastPaint;
 
 public:
-    FmXTextCell( DbGridColumn* pColumn, DbCellControl& _rControl );
+    FmXTextCell( DbGridColumn* pColumn, std::unique_ptr<DbCellControl> pControl );
 
     virtual void PaintFieldToCell(OutputDevice& rDev,
                const tools::Rectangle& rRect,
@@ -857,21 +846,11 @@ public:
 typedef ::cppu::ImplHelper2 <   css::awt::XTextComponent
                             ,   css::form::XChangeBroadcaster
                             >   FmXEditCell_Base;
-class FmXEditCell : public FmXTextCell,
+class FmXEditCell final : public FmXTextCell,
                     public FmXEditCell_Base
 {
-private:
-    OUString                     m_sValueOnEnter;
-
-protected:
-    ::comphelper::OInterfaceContainerHelper2   m_aTextListeners;
-    ::comphelper::OInterfaceContainerHelper2   m_aChangeListeners;
-    ::svt::IEditImplementation*         m_pEditImplementation;
-    bool                                m_bOwnEditImplementation;
-
-    virtual ~FmXEditCell() override;
 public:
-    FmXEditCell( DbGridColumn* pColumn, DbCellControl& _rControl );
+    FmXEditCell( DbGridColumn* pColumn, std::unique_ptr<DbCellControl> pControl );
 
     DECLARE_UNO3_AGG_DEFAULTS(FmXEditCell, FmXTextCell)
     virtual css::uno::Any SAL_CALL queryAggregation( const css::uno::Type& _rType ) override;
@@ -901,16 +880,22 @@ public:
     virtual void SAL_CALL addChangeListener( const css::uno::Reference< css::form::XChangeListener >& aListener ) override;
     virtual void SAL_CALL removeChangeListener( const css::uno::Reference< css::form::XChangeListener >& aListener ) override;
 
-protected:
-    virtual void onWindowEvent( const VclEventId _nEventId, const vcl::Window& _rWindow, const void* _pEventData ) override;
+private:
+    virtual ~FmXEditCell() override;
 
     virtual void onFocusGained( const css::awt::FocusEvent& _rEvent ) override;
     virtual void onFocusLost( const css::awt::FocusEvent& _rEvent ) override;
 
-private:
-    void onTextChanged();
-};
+    DECL_LINK(ModifyHdl, LinkParamNone*, void);
 
+    void onTextChanged();
+
+    OUString                            m_sValueOnEnter;
+    ::comphelper::OInterfaceContainerHelper2   m_aTextListeners;
+    ::comphelper::OInterfaceContainerHelper2   m_aChangeListeners;
+    ::svt::IEditImplementation*         m_pEditImplementation;
+    bool                                m_bOwnEditImplementation;
+};
 
 typedef ::cppu::ImplHelper2 <   css::awt::XCheckBox
                             ,   css::awt::XButton
@@ -921,13 +906,15 @@ class FmXCheckBoxCell : public FmXDataCell,
     ::comphelper::OInterfaceContainerHelper2   m_aItemListeners;
     ::comphelper::OInterfaceContainerHelper2   m_aActionListeners;
     OUString                            m_aActionCommand;
-    VclPtr<CheckBox>                    m_pBox;
+    VclPtr<::svt::CheckBoxControl> m_pBox;
+
+    DECL_LINK(ModifyHdl, LinkParamNone*, void);
 
 protected:
     virtual ~FmXCheckBoxCell() override;
 
 public:
-    FmXCheckBoxCell( DbGridColumn* pColumn, DbCellControl& _rControl );
+    FmXCheckBoxCell( DbGridColumn* pColumn, std::unique_ptr<DbCellControl> pControl );
 
 // UNO
     DECLARE_UNO3_AGG_DEFAULTS(FmXCheckBoxCell, FmXDataCell)
@@ -951,64 +938,28 @@ public:
     virtual void SAL_CALL removeActionListener( const css::uno::Reference< css::awt::XActionListener >& l ) override;
     //virtual void SAL_CALL setLabel( const OUString& Label ) throw (css::uno::RuntimeException);
     virtual void SAL_CALL setActionCommand( const OUString& Command ) override;
-
-protected:
-    virtual vcl::Window* getEventWindow() const override;
-    virtual void onWindowEvent( const VclEventId _nEventId, const vcl::Window& _rWindow, const void* _pEventData ) override;
 };
 
-
-typedef ::cppu::ImplHelper1 <   css::awt::XListBox
-                            >   FmXListBoxCell_Base;
-class FmXListBoxCell    :public FmXTextCell
-                        ,public FmXListBoxCell_Base
+class FmXListBoxCell final :public FmXTextCell
 {
-    ::comphelper::OInterfaceContainerHelper2   m_aItemListeners,
-                                        m_aActionListeners;
-    VclPtr<ListBox>                     m_pBox;
-
-protected:
-    virtual ~FmXListBoxCell() override;
-
 public:
-    FmXListBoxCell( DbGridColumn* pColumn, DbCellControl& _rControl );
+    FmXListBoxCell( DbGridColumn* pColumn, std::unique_ptr<DbCellControl> pControl );
 
-    DECLARE_UNO3_AGG_DEFAULTS(FmXListBoxCell, FmXTextCell)
-    virtual css::uno::Any SAL_CALL queryAggregation( const css::uno::Type& _rType ) override;
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
     virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
 
 // OComponentHelper
     virtual void SAL_CALL disposing() override;
 
-// css::awt::XListBox
-    virtual void SAL_CALL addItemListener(const css::uno::Reference< css::awt::XItemListener >& l) override;
-    virtual void SAL_CALL removeItemListener(const css::uno::Reference< css::awt::XItemListener >& l) override;
-    virtual void SAL_CALL addActionListener(const css::uno::Reference< css::awt::XActionListener >& l) override;
-    virtual void SAL_CALL removeActionListener(const css::uno::Reference< css::awt::XActionListener >& l) override;
-    virtual void SAL_CALL addItem(const OUString& aItem, sal_Int16 nPos) override;
-    virtual void SAL_CALL addItems(const css::uno::Sequence< OUString >& aItems, sal_Int16 nPos) override;
-    virtual void SAL_CALL removeItems(sal_Int16 nPos, sal_Int16 nCount) override;
-    virtual sal_Int16 SAL_CALL getItemCount() override;
-    virtual OUString SAL_CALL getItem(sal_Int16 nPos) override;
-    virtual css::uno::Sequence< OUString > SAL_CALL getItems() override;
-    virtual sal_Int16 SAL_CALL getSelectedItemPos() override;
-    virtual css::uno::Sequence< sal_Int16 > SAL_CALL getSelectedItemsPos() override;
-    virtual OUString SAL_CALL getSelectedItem() override;
-    virtual css::uno::Sequence< OUString > SAL_CALL getSelectedItems() override;
-    virtual void SAL_CALL SAL_CALL selectItemPos(sal_Int16 nPos, sal_Bool bSelect) override;
-    virtual void SAL_CALL SAL_CALL selectItemsPos(const css::uno::Sequence< sal_Int16 >& aPositions, sal_Bool bSelect) override;
-    virtual void SAL_CALL SAL_CALL selectItem(const OUString& aItem, sal_Bool bSelect) override;
-    virtual sal_Bool SAL_CALL isMutipleMode() override;
-    virtual void SAL_CALL SAL_CALL setMultipleMode(sal_Bool bMulti) override;
-    virtual sal_Int16 SAL_CALL getDropDownLineCount() override;
-    virtual void SAL_CALL SAL_CALL setDropDownLineCount(sal_Int16 nLines) override;
-    virtual void SAL_CALL SAL_CALL makeVisible(sal_Int16 nEntry) override;
+private:
+    virtual ~FmXListBoxCell() override;
 
-protected:
-    virtual void onWindowEvent( const VclEventId _nEventId, const vcl::Window& _rWindow, const void* _pEventData ) override;
+    DECL_LINK(ChangedHdl, weld::ComboBox&, void);
 
-    DECL_LINK( OnDoubleClick, ListBox&, void );
+    void OnDoubleClick();
+
+    ::comphelper::OInterfaceContainerHelper2   m_aItemListeners,
+                                        m_aActionListeners;
+    weld::ComboBox* m_pBox;
 };
 
 
@@ -1020,13 +971,16 @@ class FmXComboBoxCell   :public FmXTextCell
 private:
     ::comphelper::OInterfaceContainerHelper2   m_aItemListeners,
                                         m_aActionListeners;
-    VclPtr<ComboBox>                    m_pComboBox;
+    weld::ComboBox* m_pComboBox;
+    sal_uInt16 m_nLines;
+
+    DECL_LINK(ChangedHdl, weld::ComboBox&, void);
 
 protected:
     virtual ~FmXComboBoxCell() override;
 
 public:
-    FmXComboBoxCell( DbGridColumn* pColumn, DbCellControl& _rControl );
+    FmXComboBoxCell( DbGridColumn* pColumn, std::unique_ptr<DbCellControl> pControl );
 
     DECLARE_UNO3_AGG_DEFAULTS(FmXListBoxCell, FmXTextCell)
     virtual css::uno::Any SAL_CALL queryAggregation( const css::uno::Type& _rType ) override;
@@ -1049,23 +1003,16 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getItems(  ) override;
     virtual ::sal_Int16 SAL_CALL getDropDownLineCount(  ) override;
     virtual void SAL_CALL setDropDownLineCount( ::sal_Int16 Lines ) override;
-
-protected:
-    virtual void onWindowEvent( const VclEventId _nEventId, const vcl::Window& _rWindow, const void* _pEventData ) override;
 };
-
 
 typedef ::cppu::ImplHelper2 <   css::awt::XTextComponent
                             ,   css::lang::XUnoTunnel
                             >   FmXFilterCell_Base;
-class FmXFilterCell :public FmXGridCell
+class FmXFilterCell final : public FmXGridCell
                     ,public FmXFilterCell_Base
 {
-    ::comphelper::OInterfaceContainerHelper2 m_aTextListeners;
-protected:
-    virtual ~FmXFilterCell() override;
 public:
-    FmXFilterCell(DbGridColumn* pColumn, DbCellControl* pControl = nullptr);
+    FmXFilterCell(DbGridColumn* pColumn, std::unique_ptr<DbFilterField> pControl);
 
 
     DECLARE_UNO3_AGG_DEFAULTS(FmXFilterCell, FmXGridCell)
@@ -1100,8 +1047,11 @@ public:
     virtual void SAL_CALL setMaxTextLen(sal_Int16 nLen) override;
     virtual sal_Int16 SAL_CALL getMaxTextLen() override;
 
-protected:
+private:
     DECL_LINK( OnCommit, DbFilterField&, void );
+    virtual ~FmXFilterCell() override;
+
+    ::comphelper::OInterfaceContainerHelper2 m_aTextListeners;
 };
 
 #endif // INCLUDED_SVX_SOURCE_INC_GRIDCELL_HXX

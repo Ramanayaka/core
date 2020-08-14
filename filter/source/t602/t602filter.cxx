@@ -18,7 +18,7 @@
  */
 
 #include "t602filter.hxx"
-#include "t602filter.hrc"
+#include <strings.hrc>
 
 #include <stdio.h>
 
@@ -26,17 +26,15 @@
 #include <cppuhelper/bootstrap.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/awt/Toolkit.hpp>
-#include <com/sun/star/bridge/XUnoUrlResolver.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/ucb/XSimpleFileAccess.hpp>
-#include <com/sun/star/text/XTextDocument.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/awt/UnoControlDialog.hpp>
 #include <com/sun/star/awt/XControl.hpp>
-#include <com/sun/star/awt/XDialog.hpp>
 #include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
+#include <osl/diagnose.h>
 #include <rtl/ref.hxx>
 #include <rtl/character.hxx>
+#include <unotools/resmgr.hxx>
 #include <unotools/streamwrap.hxx>
 
 using namespace ::cppu;
@@ -132,8 +130,8 @@ namespace T602ImportFilter {
 
 static inistruct ini;
 
-T602ImportFilter::T602ImportFilter(const css::uno::Reference<css::lang::XMultiServiceFactory > &r )
-    : mxMSF(r)
+T602ImportFilter::T602ImportFilter(const css::uno::Reference<css::uno::XComponentContext > &r )
+    : mxContext(r)
     , mpAttrList(nullptr)
     , node(tnode::START)
 {
@@ -167,15 +165,13 @@ OUString T602ImportFilter::detect( Sequence<PropertyValue>& Descriptor)
 
     css::uno::Sequence< sal_Int8 > aData;
     const size_t numBytes = 4;
-    size_t numBytesRead = 0;
-
-    numBytesRead = mxInputStream->readSomeBytes (aData, numBytes);
+    size_t numBytesRead = mxInputStream->readSomeBytes (aData, numBytes);
 
     if ((numBytesRead != numBytes) || (aData[0] != '@') ||
         (aData[1] != 'C') || (aData[2] != 'T') || (aData[3] != ' '))
         return OUString();
 
-    return OUString(  "writer_T602_Document"  );
+    return "writer_T602_Document";
 }
 
 // XFilter
@@ -229,7 +225,7 @@ void T602ImportFilter::inschr(unsigned char ch)
     inschrdef(ch);
 }
 
-bool SAL_CALL T602ImportFilter::importImpl( const Sequence< css::beans::PropertyValue >& aDescriptor )
+bool T602ImportFilter::importImpl( const Sequence< css::beans::PropertyValue >& aDescriptor )
 {
     Reset602();
 
@@ -247,10 +243,10 @@ bool SAL_CALL T602ImportFilter::importImpl( const Sequence< css::beans::Property
         return false;
     }
 
-    // An XML import service: what we push sax messages to..
-    mxHandler.set( mxMSF->createInstance( "com.sun.star.comp.Writer.XMLImporter" ), UNO_QUERY );
+    // An XML import service: what we push sax messages to...
+    mxHandler.set( mxContext->getServiceManager()->createInstanceWithContext( "com.sun.star.comp.Writer.XMLImporter", mxContext ), UNO_QUERY );
 
-    // The XImporter sets up an empty target document for XDocumentHandler to write to..
+    // The XImporter sets up an empty target document for XDocumentHandler to write to...
     Reference < XImporter > xImporter(mxHandler, UNO_QUERY);
     xImporter->setTargetDocument(mxDoc);
 
@@ -436,11 +432,10 @@ bool SAL_CALL T602ImportFilter::importImpl( const Sequence< css::beans::Property
     return true;
 }
 
-bool SAL_CALL T602ImportFilter::test()
+void T602ImportFilter::test()
 {
     Reset602();
     Read602();
-    return true;
 }
 
 void T602ImportFilter::Reset602()
@@ -505,7 +500,7 @@ void T602ImportFilter::inschrdef(unsigned char ch)
 void T602ImportFilter::wrtfnt()
 {
     Reference < XAttributeList > xAttrList ( mpAttrList );
-    const sal_Char *style = "P1";
+    const char *style = "P1";
 
     switch(fst.nowfnt) {
         case standard : style = fst.uline ? "T7" : "T1"; break;
@@ -573,26 +568,27 @@ void T602ImportFilter::par602(bool endofpage)
         pst.waspar = true;
     }
 
-    if(!pst.comment) {
-        switch(format602.lh) {
-            case 3: pst.pars += 4; break;
-            case 4: pst.pars += 3; break;
-            case 6: pst.pars += 2; break;
-            default: pst.pars +=2; break;
-        }
-        endp = format602.pl-format602.mt-format602.mb;
-        if(((pst.pars+1)/2) >= endp || endofpage) {
-            pst.pars = 0;
-            if(!ini.reformatpars) {
-                End_("text:span");
-                End_("text:p");
-                if (mpAttrList)
-                    mpAttrList->AddAttribute("text:style-name", "P2");
-                Start_("text:p");
-                Start_("text:span");
-                wrtfnt();
-            }
-        }
+    if(pst.comment)
+        return;
+
+    switch(format602.lh) {
+        case 3: pst.pars += 4; break;
+        case 4: pst.pars += 3; break;
+        case 6: pst.pars += 2; break;
+        default: pst.pars +=2; break;
+    }
+    endp = format602.pl-format602.mt-format602.mb;
+    if(!(((pst.pars+1)/2) >= endp || endofpage))        return;
+
+    pst.pars = 0;
+    if(!ini.reformatpars) {
+        End_("text:span");
+        End_("text:p");
+        if (mpAttrList)
+            mpAttrList->AddAttribute("text:style-name", "P2");
+        Start_("text:p");
+        Start_("text:span");
+        wrtfnt();
     }
 }
 
@@ -610,7 +606,7 @@ sal_Int16 T602ImportFilter::readnum(unsigned char *ch, bool show)
     buff[i]='\0';
 
     // mba: cast from unsigned char via int to sal_Int16 seems to be safe
-    return (sal_Int16) atoi(reinterpret_cast<char const *>(buff));
+    return static_cast<sal_Int16>(atoi(reinterpret_cast<char const *>(buff)));
 }
 
 unsigned char T602ImportFilter::Setformat602(const char *cmd)
@@ -620,7 +616,7 @@ unsigned char T602ImportFilter::Setformat602(const char *cmd)
 
     ch = Readchar602();
 
-         if (cmd[0]=='M' && cmd[1]=='T') format602.mt = readnum(&ch,false);
+    if (cmd[0]=='M' && cmd[1]=='T') format602.mt = readnum(&ch,false);
     else if (cmd[0]=='M' && cmd[1]=='B') format602.mb = readnum(&ch,false);
     // else if (cmd[0]=='T' && cmd[1]=='B') {}
     // else if (cmd[0]=='H' && cmd[1]=='E') {}
@@ -656,16 +652,16 @@ tnode T602ImportFilter::PointCmd602(unsigned char *ch)
     char pcmd[2];
 
     // warning: uChar -> char
-    pcmd[0] = (char) rtl::toAsciiUpperCase(*ch); inschr(*ch);
+    pcmd[0] = static_cast<char>(rtl::toAsciiUpperCase(*ch)); inschr(*ch);
     *ch = Readchar602();
     if (!*ch) return tnode::EEND;
     if (*ch=='\n') return tnode::EOL;
     if (!rtl::isAsciiAlpha(*ch)) return (*ch<32) ? tnode::SETCH : tnode::WRITE;
 
     // warning: uChar -> char
-    pcmd[1] = (char) rtl::toAsciiUpperCase(*ch); inschr(*ch);
+    pcmd[1] = static_cast<char>(rtl::toAsciiUpperCase(*ch)); inschr(*ch);
 
-         if (pcmd[0]=='P' && pcmd[1]=='A') { if (pst.pars) pst.willbeeop = true; }
+    if (pcmd[0]=='P' && pcmd[1]=='A') { if (pst.pars) pst.willbeeop = true; }
     else if (pcmd[0]=='C' && pcmd[1]=='P') { if (pst.pars) pst.willbeeop = true; }
     else if (pcmd[0]=='P' && pcmd[1]=='I') {
         while (*ch && (*ch != '\n') && (*ch != ','))
@@ -851,7 +847,7 @@ void T602ImportFilter::Read602()
 // XServiceInfo
 OUString SAL_CALL T602ImportFilter::getImplementationName(  )
 {
-    return T602ImportFilter_getImplementationName();
+    return "com.sun.star.comp.Writer.T602ImportFilter";
 }
 
 sal_Bool SAL_CALL T602ImportFilter::supportsService( const OUString& rServiceName )
@@ -861,30 +857,14 @@ sal_Bool SAL_CALL T602ImportFilter::supportsService( const OUString& rServiceNam
 
 Sequence< OUString > SAL_CALL T602ImportFilter::getSupportedServiceNames(  )
 {
-    return T602ImportFilter_getSupportedServiceNames();
+    return { "com.sun.star.document.ImportFilter", "com.sun.star.document.ExtendedTypeDetection" };
 }
 
-OUString T602ImportFilter_getImplementationName ()
+T602ImportFilterDialog::T602ImportFilterDialog()
+    : maLocale(SvtSysLocale().GetUILanguageTag())
+    , maResLocale(Translate::Create("flt"))
 {
-    return OUString ( "com.sun.star.comp.Writer.T602ImportFilter" );
 }
-
-Sequence< OUString > SAL_CALL T602ImportFilter_getSupportedServiceNames(  )
-{
-    Sequence < OUString > aRet(2);
-    OUString* pArray = aRet.getArray();
-    pArray[0] =  "com.sun.star.document.ImportFilter";
-    pArray[1] =  "com.sun.star.document.ExtendedTypeDetection";
-    return aRet;
-}
-
-Reference< XInterface > SAL_CALL T602ImportFilter_createInstance( const Reference< XMultiServiceFactory > & rSMgr)
-{
-    return static_cast<cppu::OWeakObject*>(new T602ImportFilter( rSMgr ));
-}
-
-T602ImportFilterDialog::T602ImportFilterDialog() :
-    mpResMgr( nullptr ) {}
 
 T602ImportFilterDialog::~T602ImportFilterDialog()
 {
@@ -892,25 +872,29 @@ T602ImportFilterDialog::~T602ImportFilterDialog()
 
 // XLocalizable
 
-void SAL_CALL T602ImportFilterDialog::setLocale( const Locale& eLocale )
+void SAL_CALL T602ImportFilterDialog::setLocale(const Locale& rLocale)
 {
-    meLocale = eLocale;
-    initLocale();
+    LanguageTag aLocale(rLocale);
+    if (maLocale != aLocale)
+    {
+        maLocale = aLocale;
+        maResLocale = Translate::Create("flt", maLocale);
+    }
 }
 
 Locale SAL_CALL T602ImportFilterDialog::getLocale()
 {
-    return meLocale;
+    return maLocale.getLocale(false);
 }
 
 bool T602ImportFilterDialog::OptionsDlg()
 {
     Any any;
 #define propInt_(_prop,_nam,_val) \
-    any <<= (sal_Int32)_val;\
+    any <<= static_cast<sal_Int32>(_val);\
     _prop->setPropertyValue(_nam, any);
 #define propShort_(_prop,_nam,_val) \
-    any <<= (sal_Int16)_val;\
+    any <<= static_cast<sal_Int16>(_val);\
     _prop->setPropertyValue(_nam, any);
 #define propBool_(_prop,_nam,_val) \
     any <<= _val;\
@@ -979,7 +963,7 @@ bool T602ImportFilterDialog::OptionsDlg()
     xPSetCodeLB->setPropertyValue("StringItemList", any);
 
     Sequence < sal_Int16 > shr(1);
-    shr[0] = ini.forcecode ? ((sal_Int16) ini.xcode) + 1 : 0;
+    shr[0] = ini.forcecode ? static_cast<sal_Int16>(ini.xcode) + 1 : 0;
     any <<= shr;
     xPSetCodeLB->setPropertyValue("SelectedItems", any);
 
@@ -1072,7 +1056,7 @@ bool T602ImportFilterDialog::OptionsDlg()
         any = propGet_(xPSetCodeLB,   "SelectedItems"); any >>= shr;
 
         if( shr[0] > 0 ) {
-            ini.xcode = (tcode)(shr[0]-1);
+            ini.xcode = static_cast<tcode>(shr[0]-1);
             ini.forcecode = true;
         } else {
             ini.forcecode = false;
@@ -1082,18 +1066,6 @@ bool T602ImportFilterDialog::OptionsDlg()
     Reference<XControl>(dialog)->dispose();
 
     return ret;
-}
-
-void T602ImportFilterDialog::initLocale()
-{
-    mpResMgr.reset( ResMgr::CreateResMgr( "t602filter", LanguageTag( meLocale) ) );
-}
-
-ResMgr* T602ImportFilterDialog::getResMgr()
-{
-    if( !mpResMgr )
-        initLocale();
-    return mpResMgr.get();
 }
 
 void SAL_CALL T602ImportFilterDialog::setTitle( const OUString& )
@@ -1108,10 +1080,9 @@ sal_Int16 SAL_CALL T602ImportFilterDialog::execute()
         return css::ui::dialogs::ExecutableDialogResults::CANCEL;
 }
 
-OUString T602ImportFilterDialog::getResStr( sal_Int16 resid )
+OUString T602ImportFilterDialog::getResStr(const char* resid)
 {
-    OUString sStr( ResId( resid, *getResMgr() ) );
-    return sStr;
+    return Translate::get(resid, maResLocale);
 }
 
 uno::Sequence<beans::PropertyValue> SAL_CALL T602ImportFilterDialog::getPropertyValues()
@@ -1127,7 +1098,7 @@ void SAL_CALL T602ImportFilterDialog::setPropertyValues( const uno::Sequence<bea
 // XServiceInfo
 OUString SAL_CALL T602ImportFilterDialog::getImplementationName(  )
 {
-    return T602ImportFilterDialog_getImplementationName();
+    return "com.sun.star.comp.Writer.T602ImportFilterDialog";
 }
 
 sal_Bool SAL_CALL T602ImportFilterDialog::supportsService( const OUString& rServiceName )
@@ -1137,33 +1108,32 @@ sal_Bool SAL_CALL T602ImportFilterDialog::supportsService( const OUString& rServ
 
 Sequence< OUString > SAL_CALL T602ImportFilterDialog::getSupportedServiceNames(  )
 {
-    return T602ImportFilterDialog_getSupportedServiceNames();
+    return { "com.sun.star.ui.dialogs.FilterOptionsDialog" };
 }
 
-OUString T602ImportFilterDialog_getImplementationName ()
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_T602ImportFilterDialog_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    return OUString ( "com.sun.star.comp.Writer.T602ImportFilterDialog" );
+    return cppu::acquire(new T602ImportFilter::T602ImportFilterDialog());
 }
 
-Sequence< OUString > SAL_CALL T602ImportFilterDialog_getSupportedServiceNames(  )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_T602ImportFilter_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-    Sequence<OUString> aRet { "com.sun.star.ui.dialogs.FilterOptionsDialog" };
-    return aRet;
+    return cppu::acquire(new T602ImportFilter::T602ImportFilter(context));
 }
 
-Reference< XInterface > SAL_CALL T602ImportFilterDialog_createInstance( const Reference< XMultiServiceFactory > & )
-{
-    return static_cast<cppu::OWeakObject*>(new T602ImportFilterDialog);
-}
-
-}
-
-extern "C" SAL_DLLPUBLIC_EXPORT bool SAL_CALL TestImport602(SvStream &rStream)
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImport602(SvStream &rStream)
 {
     css::uno::Reference<io::XInputStream> xStream(new utl::OSeekableInputStreamWrapper(rStream));
     rtl::Reference<T602ImportFilter::T602ImportFilter> aImport(
         new T602ImportFilter::T602ImportFilter(xStream));
-    return aImport->test();
+    aImport->test();
+    return true;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

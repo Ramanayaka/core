@@ -16,25 +16,23 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <sfx2/sidebar/ControlFactory.hxx>
+#include <sidebar/ControlFactory.hxx>
 
-#include <sfx2/sidebar/MenuButton.hxx>
-#include <sfx2/sidebar/TabItem.hxx>
-#include <sfx2/sidebar/SidebarToolBox.hxx>
-#include <vcl/toolbox.hxx>
+#include <sidebar/MenuButton.hxx>
+#include <sidebar/TabItem.hxx>
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
-VclPtr<CheckBox> ControlFactory::CreateMenuButton (vcl::Window* pParentWindow)
+VclPtr<RadioButton> ControlFactory::CreateMenuButton (vcl::Window* pParentWindow)
 {
     return VclPtr<MenuButton>::Create(pParentWindow);
 }
 
-VclPtr<ImageRadioButton> ControlFactory::CreateTabItem (vcl::Window* pParentWindow)
+VclPtr<RadioButton> ControlFactory::CreateTabItem (vcl::Window* pParentWindow)
 {
     return VclPtr<TabItem>::Create(pParentWindow);
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

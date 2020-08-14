@@ -7,14 +7,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <config_gpgme.h>
+
 #include "CertificateImpl.hxx"
 
 #include <comphelper/servicehelper.hxx>
 #include <comphelper/sequence.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 #include <com/sun/star/security/KeyUsage.hpp>
+#include <officecfg/Office/Common.hxx>
+#include <svl/sigstruct.hxx>
 
-#include <gpgme.h>
 #include <context.h>
 #include <data.h>
 
@@ -40,10 +44,9 @@ sal_Int16 SAL_CALL CertificateImpl::getVersion()
 
 Sequence< sal_Int8 > SAL_CALL CertificateImpl::getSerialNumber()
 {
-    // This is mapped to the fingerprint for gpg
-    const char* keyId = m_pKey.primaryFingerprint();
-    return comphelper::arrayToSequence<sal_Int8>(
-        keyId, strlen(keyId));
+    // TODO: perhaps map to subkey's cardSerialNumber - if you have
+    // one to test
+    return Sequence< sal_Int8 >();
 }
 
 OUString SAL_CALL CertificateImpl::getIssuerName()
@@ -57,8 +60,8 @@ OUString SAL_CALL CertificateImpl::getIssuerName()
 
 OUString SAL_CALL CertificateImpl::getSubjectName()
 {
-    // Empty for gpg
-    return OUString();
+    // Same as issuer name (user ID)
+    return getIssuerName();
 }
 
 namespace {
@@ -153,26 +156,32 @@ OUString SAL_CALL CertificateImpl::getSignatureAlgorithm()
 
 Sequence< sal_Int8 > SAL_CALL CertificateImpl::getSHA1Thumbprint()
 {
-    // This is mapped to the short keyID for gpg
-    const char* keyId = m_pKey.shortKeyID();
+    // This is mapped to the fingerprint for gpg
+    const char* keyId = m_pKey.primaryFingerprint();
     return comphelper::arrayToSequence<sal_Int8>(
-        keyId, strlen(keyId));
+        keyId, strlen(keyId)+1);
 }
 
-uno::Sequence<sal_Int8> CertificateImpl::getSHA256Thumbprint()
+Sequence<sal_Int8> CertificateImpl::getSHA256Thumbprint()
 {
-    // This is mapped to the long keyID for gpg
-    const char* keyId = m_pKey.keyID();
+    // This is mapped to the fingerprint for gpg (though that's only
+    // SHA1 actually)
+    const char* keyId = m_pKey.primaryFingerprint();
     return comphelper::arrayToSequence<sal_Int8>(
-        keyId, strlen(keyId));
+        keyId, strlen(keyId)+1);
+}
+
+svl::crypto::SignatureMethodAlgorithm CertificateImpl::getSignatureMethodAlgorithm()
+{
+    return svl::crypto::SignatureMethodAlgorithm::RSA;
 }
 
 Sequence< sal_Int8 > SAL_CALL CertificateImpl::getMD5Thumbprint()
 {
-    // This is mapped to the short keyID for gpg
-    const char* keyId = m_pKey.shortKeyID();
+    // This is mapped to the shorter keyID for gpg
+    const char* keyId = m_pKey.keyID();
     return comphelper::arrayToSequence<sal_Int8>(
-        keyId, strlen(keyId));
+        keyId, strlen(keyId)+1);
 }
 
 CertificateKind SAL_CALL CertificateImpl::getCertificateKind()
@@ -188,7 +197,7 @@ sal_Int32 SAL_CALL CertificateImpl::getCertificateUsage()
 /* XUnoTunnel */
 sal_Int64 SAL_CALL CertificateImpl::getSomething(const Sequence< sal_Int8 >& aIdentifier)
 {
-    if( aIdentifier.getLength() == 16 && 0 == memcmp( getUnoTunnelId().getConstArray(), aIdentifier.getConstArray(), 16 ) ) {
+    if( isUnoTunnelId<CertificateImpl>(aIdentifier) ) {
         return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_uIntPtr>(this));
     }
     return 0 ;
@@ -212,7 +221,13 @@ void CertificateImpl::setCertificate(GpgME::Context* ctx, const GpgME::Key& key)
     // extract key data, store into m_aBits
     GpgME::Data data_out;
     ctx->setArmor(false); // caller will base64-encode anyway
-    GpgME::Error err = ctx->exportPublicKeys(key.keyID(), data_out);
+    GpgME::Error err = ctx->exportPublicKeys(
+        key.primaryFingerprint(),
+        data_out
+#if GPGME_CAN_EXPORT_MINIMAL_KEY
+        , officecfg::Office::Common::Security::OpenPGP::MinimalKeyExport::get()
+#endif
+    );
 
     if (err)
         throw RuntimeException("The GpgME library failed to retrieve the public key");
@@ -236,5 +251,20 @@ const GpgME::Key* CertificateImpl::getCertificate() const
 {
     return &m_pKey;
 }
+
+/* XServiceInfo */
+OUString SAL_CALL CertificateImpl::getImplementationName()
+{
+    return "com.sun.star.xml.security.gpg.XCertificate_GpgImpl";
+}
+
+/* XServiceInfo */
+sal_Bool SAL_CALL CertificateImpl::supportsService(const OUString& serviceName)
+{
+    return cppu::supportsService(this, serviceName);
+}
+
+/* XServiceInfo */
+Sequence<OUString> SAL_CALL CertificateImpl::getSupportedServiceNames() { return { OUString() }; }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -29,7 +29,7 @@ import java.sql.*;
 
 /**
  * Implements a log mechanism to create a protocol of all steps of e.g. an api test
- * It provides the possibility to write the logged meesages to a file and/or
+ * It provides the possibility to write the logged messages to a file and/or
  * to stdout/stderr (if necessary at the same time!).
  *
  *  TODO
@@ -49,7 +49,7 @@ public class Protocol extends JComponent
      * @const   TYPE_SCOPE_OPEN         open, mark or count a new scope for following log statements
      * @const   TYPE_SCOPE_CLOSE        close, mark or count the current scope
      * @const   TYPE_TESTMARK           it marks the beginning of a (sub)test, can be used for statistic purposes
-     * @const   TYPE_OK                 this protocol line is marked as a OK message
+     * @const   TYPE_OK                 this protocol line is marked as an OK message
      * @const   TYPE_ERROR              this protocol line is marked as an error
      * @const   TYPE_WARNING            this protocol line is marked as a warning
      * @const   TYPE_INFO               this protocol line represent some debug data for analyzing
@@ -478,7 +478,7 @@ public class Protocol extends JComponent
     /**
      * log an unspecified message.
      *
-     * Sometimes it's not necessary to set a special type for an message.
+     * Sometimes it's not necessary to set a special type for a message.
      * The pure message seems to be enough. The type of such "pure messages"
      * will be set to INFO.
      *
@@ -592,7 +592,7 @@ public class Protocol extends JComponent
         // no else - it's a bit field of possible reactions!
         // But these both conditions must be handled together.
         // Because we can't generate different types of log contents to the same log file.
-        // We preferr HTML if both types are set.
+        // We prefer HTML if both types are set.
         if (
             ((m_nMode & MODE_HTML ) == MODE_HTML ) ||
             ((m_nMode & MODE_ASCII) == MODE_ASCII)
@@ -663,7 +663,7 @@ public class Protocol extends JComponent
      * returns a generic html header for generating html log files
      *
      * It's used from the method finish() to generate a valid html formatted file.
-     * For that its necessary to open some special html targets like e.g. <html>.
+     * For that it's necessary to open some special html targets like e.g. <html>.
      *
      * @return  A string, which includes the whole header.
      *
@@ -725,7 +725,7 @@ public class Protocol extends JComponent
 
 
     /**
-     * it trys to convert the given any into a suitable string notation .-)
+     * it tries to convert the given any into a suitable string notation .-)
     */
     private synchronized void impl_logAny( /*OUT*/ StringBuffer sOut ,
                                            /*IN */ Object       aAny )

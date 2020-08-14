@@ -17,20 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/chart/axiscontext.hxx"
+#include <drawingml/chart/axiscontext.hxx>
 
-#include "drawingml/shapepropertiescontext.hxx"
-#include "drawingml/textbodycontext.hxx"
-#include "drawingml/chart/axismodel.hxx"
-#include "drawingml/chart/titlecontext.hxx"
+#include <drawingml/shapepropertiescontext.hxx>
+#include <drawingml/textbodycontext.hxx>
+#include <drawingml/chart/axismodel.hxx>
+#include <drawingml/chart/titlecontext.hxx>
 #include <oox/core/xmlfilterbase.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 using ::oox::core::ContextHandlerRef;
 using ::oox::core::ContextHandler2Helper;
@@ -281,7 +279,7 @@ ContextHandlerRef ValAxisContext::onCreateContext( sal_Int32 nElement, const Att
     if( isRootElement() ) switch( nElement )
     {
         case C_TOKEN( crossBetween ):
-            mrModel.mnCrossBetween = rAttribs.getToken( XML_val, XML_between );
+            mrModel.mnCrossBetween = rAttribs.getToken( XML_val, -1 );
             return nullptr;
         case C_TOKEN( dispUnits ):
             return new AxisDispUnitsContext( *this, mrModel.mxDispUnits.create() );
@@ -295,8 +293,6 @@ ContextHandlerRef ValAxisContext::onCreateContext( sal_Int32 nElement, const Att
     return AxisContextBase::onCreateContext( nElement, rAttribs );
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

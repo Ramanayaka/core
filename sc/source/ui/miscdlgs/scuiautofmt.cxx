@@ -19,42 +19,26 @@
 
 #undef SC_DLLIMPLEMENTATION
 
-#include "scitems.hxx"
-#include <svx/algitem.hxx>
-#include <editeng/boxitem.hxx>
-#include <editeng/brushitem.hxx>
-#include <editeng/contouritem.hxx>
-#include <editeng/colritem.hxx>
-#include <editeng/crossedoutitem.hxx>
-#include <editeng/fontitem.hxx>
-#include <editeng/postitem.hxx>
-#include <editeng/shdditem.hxx>
-#include <editeng/udlnitem.hxx>
-#include <editeng/wghtitem.hxx>
-#include <svl/zforlist.hxx>
-#include <vcl/msgbox.hxx>
-#include <comphelper/processfactory.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
+#include <sfx2/strings.hrc>
 #include <sfx2/sfxresid.hxx>
-#include "scres.hrc"
-#include "scmod.hxx"
-#include "attrib.hxx"
-#include "zforauto.hxx"
-#include "global.hxx"
-#include "globstr.hrc"
-#include "autoform.hxx"
-#include "strindlg.hxx"
-#include "scuiautofmt.hxx"
-#include "scresid.hxx"
-#include "document.hxx"
+#include <strings.hrc>
+#include <global.hxx>
+#include <globstr.hrc>
+#include <autoform.hxx>
+#include <strindlg.hxx>
+#include <scuiautofmt.hxx>
+#include <scresid.hxx>
+#include <helpids.h>
 
 // AutoFormat-Dialog:
 
-ScAutoFormatDlg::ScAutoFormatDlg(vcl::Window* pParent,
+ScAutoFormatDlg::ScAutoFormatDlg(weld::Window* pParent,
     ScAutoFormat* pAutoFormat,
     const ScAutoFormatData* pSelFormatData,
-    ScViewData *pViewData)
-    : ModalDialog(pParent, "AutoFormatTableDialog",
-        "modules/scalc/ui/autoformattable.ui")
+    const ScViewData *pViewData)
+    : GenericDialogController(pParent, "modules/scalc/ui/autoformattable.ui", "AutoFormatTableDialog")
     , aStrTitle(ScResId(STR_ADD_AUTOFORMAT_TITLE))
     , aStrLabel(ScResId(STR_ADD_AUTOFORMAT_LABEL))
     , aStrClose(ScResId(STR_BTN_AUTOFORMAT_CLOSE))
@@ -65,84 +49,69 @@ ScAutoFormatDlg::ScAutoFormatDlg(vcl::Window* pParent,
     , nIndex(0)
     , bCoreDataChanged(false)
     , bFmtInserted(false)
+    , m_xLbFormat(m_xBuilder->weld_tree_view("formatlb"))
+    , m_xBtnOk(m_xBuilder->weld_button("ok"))
+    , m_xBtnCancel(m_xBuilder->weld_button("cancel"))
+    , m_xBtnAdd(m_xBuilder->weld_button("add"))
+    , m_xBtnRemove(m_xBuilder->weld_button("remove"))
+    , m_xBtnRename(m_xBuilder->weld_button("rename"))
+    , m_xBtnNumFormat(m_xBuilder->weld_check_button("numformatcb"))
+    , m_xBtnBorder(m_xBuilder->weld_check_button("bordercb"))
+    , m_xBtnFont(m_xBuilder->weld_check_button("fontcb"))
+    , m_xBtnPattern(m_xBuilder->weld_check_button("patterncb"))
+    , m_xBtnAlignment(m_xBuilder->weld_check_button("alignmentcb"))
+    , m_xBtnAdjust(m_xBuilder->weld_check_button("autofitcb"))
+    , m_xWndPreview(new weld::CustomWeld(*m_xBuilder, "preview", m_aWndPreview))
 {
-    get(m_pLbFormat, "formatlb");
-    get(m_pWndPreview, "preview");
-    m_pWndPreview->DetectRTL(pViewData);
-    get(m_pBtnOk, "ok");
-    get(m_pBtnCancel, "cancel");
-    get(m_pBtnAdd, "add");
-    get(m_pBtnRemove, "remove");
-    get(m_pBtnRename, "rename");
-    get(m_pBtnNumFormat, "numformatcb");
-    get(m_pBtnBorder, "bordercb");
-    get(m_pBtnFont, "fontcb");
-    get(m_pBtnPattern, "patterncb");
-    get(m_pBtnAlignment, "alignmentcb");
-    get(m_pBtnAdjust, "autofitcb");
+    m_aWndPreview.DetectRTL(pViewData);
+
+    const int nWidth = m_xLbFormat->get_approximate_digit_width() * 32;
+    const int nHeight = m_xLbFormat->get_height_rows(8);
+    m_xLbFormat->set_size_request(nWidth, nHeight);
+    m_xWndPreview->set_size_request(nWidth, nHeight);
 
     Init();
     ScAutoFormat::iterator it = pFormat->begin();
-    m_pWndPreview->NotifyChange(it->second.get());
+    m_aWndPreview.NotifyChange(it->second.get());
 }
 
 ScAutoFormatDlg::~ScAutoFormatDlg()
 {
-    disposeOnce();
-}
-
-void ScAutoFormatDlg::dispose()
-{
-    m_pLbFormat.clear();
-    m_pWndPreview.clear();
-    m_pBtnOk.clear();
-    m_pBtnCancel.clear();
-    m_pBtnAdd.clear();
-    m_pBtnRemove.clear();
-    m_pBtnRename.clear();
-    m_pBtnNumFormat.clear();
-    m_pBtnBorder.clear();
-    m_pBtnFont.clear();
-    m_pBtnPattern.clear();
-    m_pBtnAlignment.clear();
-    m_pBtnAdjust.clear();
-    ModalDialog::dispose();
 }
 
 void ScAutoFormatDlg::Init()
 {
-    m_pLbFormat->SetSelectHdl( LINK( this, ScAutoFormatDlg, SelFmtHdl ) );
-    m_pBtnNumFormat->SetClickHdl ( LINK( this, ScAutoFormatDlg, CheckHdl ) );
-    m_pBtnBorder->SetClickHdl ( LINK( this, ScAutoFormatDlg, CheckHdl ) );
-    m_pBtnFont->SetClickHdl ( LINK( this, ScAutoFormatDlg, CheckHdl ) );
-    m_pBtnPattern->SetClickHdl ( LINK( this, ScAutoFormatDlg, CheckHdl ) );
-    m_pBtnAlignment->SetClickHdl ( LINK( this, ScAutoFormatDlg, CheckHdl ) );
-    m_pBtnAdjust->SetClickHdl ( LINK( this, ScAutoFormatDlg, CheckHdl ) );
-    m_pBtnAdd->SetClickHdl ( LINK( this, ScAutoFormatDlg, AddHdl ) );
-    m_pBtnRemove->SetClickHdl ( LINK( this, ScAutoFormatDlg, RemoveHdl ) );
-    m_pBtnOk->SetClickHdl ( LINK( this, ScAutoFormatDlg, CloseHdl ) );
-    m_pBtnCancel->SetClickHdl ( LINK( this, ScAutoFormatDlg, CloseHdl ) );
-    m_pBtnRename->SetClickHdl ( LINK( this, ScAutoFormatDlg, RenameHdl ) );
-    m_pLbFormat->SetDoubleClickHdl( LINK( this, ScAutoFormatDlg, DblClkHdl ) );
+    m_xLbFormat->connect_changed( LINK( this, ScAutoFormatDlg, SelFmtHdl ) );
+    m_xBtnNumFormat->connect_toggled( LINK( this, ScAutoFormatDlg, CheckHdl ) );
+    m_xBtnBorder->connect_toggled( LINK( this, ScAutoFormatDlg, CheckHdl ) );
+    m_xBtnFont->connect_toggled( LINK( this, ScAutoFormatDlg, CheckHdl ) );
+    m_xBtnPattern->connect_toggled( LINK( this, ScAutoFormatDlg, CheckHdl ) );
+    m_xBtnAlignment->connect_toggled( LINK( this, ScAutoFormatDlg, CheckHdl ) );
+    m_xBtnAdjust->connect_toggled( LINK( this, ScAutoFormatDlg, CheckHdl ) );
+    m_xBtnAdd->connect_clicked ( LINK( this, ScAutoFormatDlg, AddHdl ) );
+    m_xBtnRemove->connect_clicked ( LINK( this, ScAutoFormatDlg, RemoveHdl ) );
+    m_xBtnOk->connect_clicked ( LINK( this, ScAutoFormatDlg, CloseHdl ) );
+    m_xBtnCancel->connect_clicked ( LINK( this, ScAutoFormatDlg, CloseHdl ) );
+    m_xBtnRename->connect_clicked ( LINK( this, ScAutoFormatDlg, RenameHdl ) );
+    m_xLbFormat->connect_row_activated( LINK( this, ScAutoFormatDlg, DblClkHdl ) );
 
-    ScAutoFormat::const_iterator it = pFormat->begin(), itEnd = pFormat->end();
-    for (; it != itEnd; ++it)
-        m_pLbFormat->InsertEntry(it->second->GetName());
+    for (const auto& rEntry : *pFormat)
+        m_xLbFormat->append_text(rEntry.second->GetName());
 
     if (pFormat->size() == 1)
-        m_pBtnRemove->Disable();
+        m_xBtnRemove->set_sensitive(false);
 
-    m_pLbFormat->SelectEntryPos( 0 );
-    m_pBtnRename->Disable();
-    m_pBtnRemove->Disable();
+    m_xLbFormat->select(0);
+    m_xBtnRename->set_sensitive(false);
+    m_xBtnRemove->set_sensitive(false);
 
     nIndex = 0;
     UpdateChecks();
 
     if ( !pSelFmtData )
     {
-        m_pBtnAdd->Disable();
-        m_pBtnRemove->Disable();
+        m_xBtnAdd->set_sensitive(false);
+        m_xBtnRemove->set_sensitive(false);
         bFmtInserted = true;
     }
 }
@@ -151,150 +120,149 @@ void ScAutoFormatDlg::UpdateChecks()
 {
     const ScAutoFormatData* pData = pFormat->findByIndex(nIndex);
 
-    m_pBtnNumFormat->Check( pData->GetIncludeValueFormat() );
-    m_pBtnBorder->Check( pData->GetIncludeFrame() );
-    m_pBtnFont->Check( pData->GetIncludeFont() );
-    m_pBtnPattern->Check( pData->GetIncludeBackground() );
-    m_pBtnAlignment->Check( pData->GetIncludeJustify() );
-    m_pBtnAdjust->Check( pData->GetIncludeWidthHeight() );
+    m_xBtnNumFormat->set_active( pData->GetIncludeValueFormat() );
+    m_xBtnBorder->set_active( pData->GetIncludeFrame() );
+    m_xBtnFont->set_active( pData->GetIncludeFont() );
+    m_xBtnPattern->set_active( pData->GetIncludeBackground() );
+    m_xBtnAlignment->set_active( pData->GetIncludeJustify() );
+    m_xBtnAdjust->set_active( pData->GetIncludeWidthHeight() );
 }
 
 // Handler:
 
-IMPL_LINK( ScAutoFormatDlg, CloseHdl, Button *, pBtn, void )
+IMPL_LINK(ScAutoFormatDlg, CloseHdl, weld::Button&, rBtn, void)
 {
-    if (pBtn == m_pBtnOk || pBtn == m_pBtnCancel)
+    if (&rBtn == m_xBtnOk.get() || &rBtn == m_xBtnCancel.get())
     {
         if ( bCoreDataChanged )
             ScGlobal::GetOrCreateAutoFormat()->Save();
 
-        EndDialog( (pBtn == m_pBtnOk) ? RET_OK : RET_CANCEL );
+        m_xDialog->response( (&rBtn == m_xBtnOk.get()) ? RET_OK : RET_CANCEL );
     }
 }
 
-IMPL_LINK_NOARG(ScAutoFormatDlg, DblClkHdl, ListBox&, void)
+IMPL_LINK_NOARG(ScAutoFormatDlg, DblClkHdl, weld::TreeView&, bool)
 {
     if ( bCoreDataChanged )
         ScGlobal::GetOrCreateAutoFormat()->Save();
 
-    EndDialog( RET_OK );
+    m_xDialog->response( RET_OK );
+
+    return true;
 }
 
-IMPL_LINK( ScAutoFormatDlg, CheckHdl, Button *, pBtn, void )
+IMPL_LINK(ScAutoFormatDlg, CheckHdl, weld::ToggleButton&, rBtn, void)
 {
     ScAutoFormatData* pData = pFormat->findByIndex(nIndex);
-    bool bCheck = static_cast<CheckBox*>(pBtn)->IsChecked();
+    bool bCheck = rBtn.get_active();
 
-    if ( pBtn == m_pBtnNumFormat )
+    if (&rBtn == m_xBtnNumFormat.get())
         pData->SetIncludeValueFormat( bCheck );
-    else if ( pBtn == m_pBtnBorder )
+    else if (&rBtn == m_xBtnBorder.get())
         pData->SetIncludeFrame( bCheck );
-    else if ( pBtn == m_pBtnFont )
+    else if (&rBtn == m_xBtnFont.get())
         pData->SetIncludeFont( bCheck );
-    else if ( pBtn == m_pBtnPattern )
+    else if (&rBtn == m_xBtnPattern.get())
         pData->SetIncludeBackground( bCheck );
-    else if ( pBtn == m_pBtnAlignment )
+    else if (&rBtn == m_xBtnAlignment.get())
         pData->SetIncludeJustify( bCheck );
-    else if ( pBtn == m_pBtnAdjust )
+    else if (&rBtn == m_xBtnAdjust.get())
         pData->SetIncludeWidthHeight( bCheck );
 
     if ( !bCoreDataChanged )
     {
-        m_pBtnCancel->SetText( aStrClose );
+        m_xBtnCancel->set_label(aStrClose);
         bCoreDataChanged = true;
     }
 
-    m_pWndPreview->NotifyChange( pData );
+    m_aWndPreview.NotifyChange( pData );
 }
 
-IMPL_LINK_NOARG(ScAutoFormatDlg, AddHdl, Button*, void)
+IMPL_LINK_NOARG(ScAutoFormatDlg, AddHdl, weld::Button&, void)
 {
-    if ( !bFmtInserted && pSelFmtData )
+    if ( bFmtInserted || !pSelFmtData )
+        return;
+
+    OUString aStrStandard( SfxResId(STR_STANDARD) );
+    OUString aFormatName;
+    bool bOk = false;
+
+    while ( !bOk )
     {
-        OUString aStrStandard( SfxResId(STR_STANDARD) );
-        OUString aFormatName;
-        bool bOk = false;
+        ScStringInputDlg aDlg(m_xDialog.get(), aStrTitle, aStrLabel, aFormatName,
+                              HID_SC_ADD_AUTOFMT, HID_SC_AUTOFMT_NAME);
 
-        while ( !bOk )
+        if (aDlg.run() == RET_OK)
         {
-            VclPtrInstance<ScStringInputDlg> pDlg( this,
-                                                   aStrTitle,
-                                                   aStrLabel,
-                                                   aFormatName,
-                                                   HID_SC_ADD_AUTOFMT, HID_SC_AUTOFMT_NAME );
+            aFormatName = aDlg.GetInputString();
 
-            if ( pDlg->Execute() == RET_OK )
+            if ( !aFormatName.isEmpty() && aFormatName != aStrStandard && pFormat->find(aFormatName) == pFormat->end() )
             {
-                aFormatName = pDlg->GetInputString();
+                std::unique_ptr<ScAutoFormatData> pNewData(
+                    new ScAutoFormatData( *pSelFmtData ));
 
-                if ( !aFormatName.isEmpty() && !aFormatName.equals(aStrStandard) && pFormat->find(aFormatName) == pFormat->end() )
+                pNewData->SetName( aFormatName );
+                ScAutoFormat::iterator it = pFormat->insert(std::move(pNewData));
+                bFmtInserted = it != pFormat->end();
+
+                if ( bFmtInserted )
                 {
-                    ScAutoFormatData* pNewData
-                        = new ScAutoFormatData( *pSelFmtData );
+                    size_t nPos = std::distance(pFormat->begin(), it);
+                    m_xLbFormat->insert_text(nPos, aFormatName);
+                    m_xLbFormat->select_text( aFormatName );
+                    m_xBtnAdd->set_sensitive(false);
 
-                    pNewData->SetName( aFormatName );
-                    bFmtInserted = pFormat->insert(pNewData);
-
-                    if ( bFmtInserted )
+                    if ( !bCoreDataChanged )
                     {
-                        ScAutoFormat::const_iterator it = pFormat->find(pNewData);
-                        ScAutoFormat::const_iterator itBeg = pFormat->begin();
-                        size_t nPos = std::distance(itBeg, it);
-                        m_pLbFormat->InsertEntry(aFormatName, nPos);
-                        m_pLbFormat->SelectEntry( aFormatName );
-                        m_pBtnAdd->Disable();
-
-                        if ( !bCoreDataChanged )
-                        {
-                            m_pBtnCancel->SetText( aStrClose );
-                            bCoreDataChanged = true;
-                        }
-
-                        SelFmtHdl( *m_pLbFormat.get() );
-                        bOk = true;
+                        m_xBtnCancel->set_label( aStrClose );
+                        bCoreDataChanged = true;
                     }
-                    else
-                        delete pNewData;
 
-                }
-
-                if ( !bFmtInserted )
-                {
-                    sal_uInt16 nRet = ScopedVclPtrInstance<MessageDialog>(this,
-                                            ScGlobal::GetRscString(STR_INVALID_AFNAME),
-                                            VclMessageType::Error,
-                                            VclButtonsType::OkCancel
-                                          )->Execute();
-
-                    bOk = ( nRet == RET_CANCEL );
+                    SelFmtHdl( *m_xLbFormat );
+                    bOk = true;
                 }
             }
-            else
-                bOk = true;
+
+            if ( !bFmtInserted )
+            {
+                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(),
+                            VclMessageType::Error, VclButtonsType::OkCancel,
+                            ScResId(STR_INVALID_AFNAME)));
+
+                sal_uInt16 nRet = xBox->run();
+
+                bOk = ( nRet == RET_CANCEL );
+            }
         }
+        else
+            bOk = true;
     }
 }
 
-IMPL_LINK_NOARG(ScAutoFormatDlg, RemoveHdl, Button*, void)
+IMPL_LINK_NOARG(ScAutoFormatDlg, RemoveHdl, weld::Button&, void)
 {
-    if ( (nIndex > 0) && (m_pLbFormat->GetEntryCount() > 0) )
+    if ( (nIndex > 0) && (m_xLbFormat->n_children() > 0) )
     {
         OUString aMsg = aStrDelMsg.getToken( 0, '#' )
-                      + m_pLbFormat->GetSelectEntry()
+                      + m_xLbFormat->get_selected_text()
                       + aStrDelMsg.getToken( 1, '#' );
 
-        if ( RET_YES ==
-             ScopedVclPtrInstance<QueryBox>( this, WinBits( WB_YES_NO | WB_DEF_YES ), aMsg )->Execute() )
+        std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(m_xDialog.get(),
+                                                       VclMessageType::Question, VclButtonsType::YesNo,
+                                                       aMsg));
+        xQueryBox->set_default_response(RET_YES);
+
+        if (RET_YES == xQueryBox->run())
         {
-            m_pLbFormat->RemoveEntry( nIndex );
-            m_pLbFormat->SelectEntryPos( nIndex-1 );
+            m_xLbFormat->remove(nIndex);
+            m_xLbFormat->select(nIndex-1);
 
             if ( nIndex-1 == 0 )
-                m_pBtnRemove->Disable();
+                m_xBtnRemove->set_sensitive(false);
 
             if ( !bCoreDataChanged )
             {
-                m_pBtnCancel->SetText( aStrClose );
+                m_xBtnCancel->set_label( aStrClose );
                 bCoreDataChanged = true;
             }
 
@@ -303,31 +271,28 @@ IMPL_LINK_NOARG(ScAutoFormatDlg, RemoveHdl, Button*, void)
             pFormat->erase(it);
             nIndex--;
 
-            SelFmtHdl( *m_pLbFormat.get() );
+            SelFmtHdl( *m_xLbFormat );
         }
     }
 
-    SelFmtHdl( *m_pLbFormat.get() );
+    SelFmtHdl( *m_xLbFormat );
 }
 
-IMPL_LINK_NOARG(ScAutoFormatDlg, RenameHdl, Button*, void)
+IMPL_LINK_NOARG(ScAutoFormatDlg, RenameHdl, weld::Button&, void)
 {
     bool bOk = false;
     while( !bOk )
     {
 
-        OUString aFormatName = m_pLbFormat->GetSelectEntry();
+        OUString aFormatName = m_xLbFormat->get_selected_text();
         OUString aEntry;
 
-        VclPtrInstance<ScStringInputDlg> pDlg( this,
-                                               aStrRename,
-                                               aStrLabel,
-                                               aFormatName,
-                                               HID_SC_REN_AFMT_DLG, HID_SC_REN_AFMT_NAME );
-        if( pDlg->Execute() == RET_OK )
+        ScStringInputDlg aDlg(m_xDialog.get(), aStrRename, aStrLabel, aFormatName,
+                              HID_SC_REN_AFMT_DLG, HID_SC_REN_AFMT_NAME);
+        if (aDlg.run() == RET_OK)
         {
             bool bFmtRenamed = false;
-            aFormatName = pDlg->GetInputString();
+            aFormatName = aDlg.GetInputString();
 
             if (!aFormatName.isEmpty())
             {
@@ -335,17 +300,16 @@ IMPL_LINK_NOARG(ScAutoFormatDlg, RenameHdl, Button*, void)
                 for (; it != itEnd; ++it)
                 {
                     aEntry = it->second->GetName();
-                    if (aFormatName.equals(aEntry))
+                    if (aFormatName == aEntry)
                         break;
                 }
                 if (it == itEnd)
                 {
                     // no format with this name yet, so we can rename
 
-                    m_pLbFormat->RemoveEntry(nIndex );
+                    m_xLbFormat->remove(nIndex);
                     const ScAutoFormatData* p = pFormat->findByIndex(nIndex);
-                    ScAutoFormatData* pNewData
-                        = new ScAutoFormatData(*p);
+                    std::unique_ptr<ScAutoFormatData> pNewData(new ScAutoFormatData(*p));
 
                     it = pFormat->begin();
                     std::advance(it, nIndex);
@@ -353,37 +317,37 @@ IMPL_LINK_NOARG(ScAutoFormatDlg, RenameHdl, Button*, void)
 
                     pNewData->SetName( aFormatName );
 
-                    pFormat->insert(pNewData);
+                    pFormat->insert(std::move(pNewData));
 
-                    m_pLbFormat->SetUpdateMode(false);
-                    m_pLbFormat->Clear();
+                    m_xLbFormat->freeze();
+                    m_xLbFormat->clear();
                     for (it = pFormat->begin(); it != itEnd; ++it)
                     {
                         aEntry = it->second->GetName();
-                        m_pLbFormat->InsertEntry( aEntry );
+                        m_xLbFormat->append_text(aEntry);
                     }
 
-                    m_pLbFormat->SetUpdateMode(true);
-                    m_pLbFormat->SelectEntry( aFormatName);
+                    m_xLbFormat->thaw();
+                    m_xLbFormat->select_text(aFormatName);
 
                     if ( !bCoreDataChanged )
                     {
-                        m_pBtnCancel->SetText( aStrClose );
+                        m_xBtnCancel->set_label( aStrClose );
                         bCoreDataChanged = true;
                     }
 
-                    SelFmtHdl( *m_pLbFormat.get() );
+                    SelFmtHdl( *m_xLbFormat );
                     bOk = true;
                     bFmtRenamed = true;
                 }
             }
             if( !bFmtRenamed )
             {
-                bOk = RET_CANCEL == ScopedVclPtrInstance<MessageDialog>( this,
-                                      ScGlobal::GetRscString(STR_INVALID_AFNAME),
-                                      VclMessageType::Error,
-                                      VclButtonsType::OkCancel
-                                      )->Execute();
+                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(),
+                            VclMessageType::Error, VclButtonsType::OkCancel,
+                            ScResId(STR_INVALID_AFNAME)));
+
+                bOk = RET_CANCEL == xBox->run();
             }
         }
         else
@@ -391,24 +355,24 @@ IMPL_LINK_NOARG(ScAutoFormatDlg, RenameHdl, Button*, void)
     }
 }
 
-IMPL_LINK_NOARG(ScAutoFormatDlg, SelFmtHdl, ListBox&, void)
+IMPL_LINK_NOARG(ScAutoFormatDlg, SelFmtHdl, weld::TreeView&, void)
 {
-    nIndex = m_pLbFormat->GetSelectEntryPos();
+    nIndex = m_xLbFormat->get_selected_index();
     UpdateChecks();
 
     if ( nIndex == 0 )
     {
-        m_pBtnRename->Disable();
-        m_pBtnRemove->Disable();
+        m_xBtnRename->set_sensitive(false);
+        m_xBtnRemove->set_sensitive(false);
     }
     else
     {
-        m_pBtnRename->Enable();
-        m_pBtnRemove->Enable();
+        m_xBtnRename->set_sensitive(true);
+        m_xBtnRemove->set_sensitive(true);
     }
 
     ScAutoFormatData* p = pFormat->findByIndex(nIndex);
-    m_pWndPreview->NotifyChange(p);
+    m_aWndPreview.NotifyChange(p);
 }
 
 OUString ScAutoFormatDlg::GetCurrFormatName()

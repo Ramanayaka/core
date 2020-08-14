@@ -22,25 +22,24 @@
 #include <vcl/keycodes.hxx>
 
 SvxSwAutoFormatFlags::SvxSwAutoFormatFlags()
-    : aBulletFont( OUString("StarSymbol"),
-                    Size( 0, 14 ) )
+    : aBulletFont( "StarSymbol", Size( 0, 14 ) )
 {
     bAutoCorrect =
     bCapitalStartSentence =
     bCapitalStartWord =
-    bChkFontAttr =
     bChgUserColl =
     bChgEnumNum =
     bAddNonBrkSpace =
     bChgOrdinalNumber =
+    bTransliterateRTL =
+    bChgAngleQuotes =
     bChgToEnEmDash =
     bChgWeightUnderl =
     bSetINetAttr =
     bAFormatDelSpacesAtSttEnd =
     bAFormatDelSpacesBetweenLines =
     bAFormatByInpDelSpacesAtSttEnd =
-    bAFormatByInpDelSpacesBetweenLines =
-    bDummy = true;
+    bAFormatByInpDelSpacesBetweenLines = true;
 
     bReplaceStyles =
     bDelEmptyNode =
@@ -57,9 +56,6 @@ SvxSwAutoFormatFlags::SvxSwAutoFormatFlags()
     bAutoCompleteWords =
     bAutoCmpltCollectWords =
     bAutoCmpltKeepList = true;
-
-    bDummy6 = bDummy7 = bDummy8 =
-         false;
 
     nRightMargin = 50;      // default 50%
     nAutoCmpltExpandKey = KEY_RETURN;
@@ -78,66 +74,6 @@ SvxSwAutoFormatFlags::SvxSwAutoFormatFlags()
     nAutoCmpltListLen = 1000;
     m_pAutoCompleteList = nullptr;
     pSmartTagMgr = nullptr;
-}
-
-
-SvxSwAutoFormatFlags& SvxSwAutoFormatFlags::operator=( const SvxSwAutoFormatFlags& rAFFlags )
-{
-    bAutoCorrect = rAFFlags.bAutoCorrect;
-    bCapitalStartSentence = rAFFlags.bCapitalStartSentence;
-    bCapitalStartWord = rAFFlags.bCapitalStartWord;
-    bChkFontAttr = rAFFlags.bChkFontAttr;
-
-    bChgUserColl = rAFFlags.bChgUserColl;
-    bChgEnumNum = rAFFlags.bChgEnumNum;
-    bDelEmptyNode = rAFFlags.bDelEmptyNode;
-    bSetNumRule = rAFFlags.bSetNumRule;
-    bAFormatByInput = rAFFlags.bAFormatByInput;
-
-    bAddNonBrkSpace = rAFFlags.bAddNonBrkSpace;
-    bChgOrdinalNumber = rAFFlags.bChgOrdinalNumber;
-    bChgToEnEmDash = rAFFlags.bChgToEnEmDash;
-    bChgWeightUnderl = rAFFlags.bChgWeightUnderl;
-    bSetINetAttr = rAFFlags.bSetINetAttr;
-    bSetBorder = rAFFlags.bSetBorder;
-    bCreateTable = rAFFlags.bCreateTable;
-    bReplaceStyles = rAFFlags.bReplaceStyles;
-    bAFormatDelSpacesAtSttEnd = rAFFlags.bAFormatDelSpacesAtSttEnd;
-    bAFormatDelSpacesBetweenLines = rAFFlags.bAFormatDelSpacesBetweenLines;
-    bAFormatByInpDelSpacesAtSttEnd = rAFFlags.bAFormatByInpDelSpacesAtSttEnd;
-    bAFormatByInpDelSpacesBetweenLines = rAFFlags.bAFormatByInpDelSpacesBetweenLines;
-
-    bDummy = rAFFlags.bDummy;
-
-    bDummy6 = rAFFlags.bDummy6;
-    bDummy7 = rAFFlags.bDummy7;
-    bDummy8 = rAFFlags.bDummy8;
-
-    bWithRedlining = rAFFlags.bWithRedlining;
-
-    bRightMargin = rAFFlags.bRightMargin;
-    nRightMargin = rAFFlags.nRightMargin;
-
-    cBullet = rAFFlags.cBullet;
-    aBulletFont = rAFFlags.aBulletFont;
-
-    cByInputBullet = rAFFlags.cByInputBullet;
-    aByInputBulletFont = rAFFlags.aByInputBulletFont;
-
-    bAutoCompleteWords = rAFFlags.bAutoCompleteWords;
-    bAutoCmpltCollectWords = rAFFlags.bAutoCmpltCollectWords;
-    bAutoCmpltKeepList = rAFFlags.bAutoCmpltKeepList;
-    bAutoCmpltEndless = rAFFlags.bAutoCmpltEndless;
-    bAutoCmpltAppendBlanc = rAFFlags.bAutoCmpltAppendBlanc;
-    bAutoCmpltShowAsTip = rAFFlags.bAutoCmpltShowAsTip;
-    m_pAutoCompleteList = rAFFlags.m_pAutoCompleteList;
-    pSmartTagMgr = rAFFlags.pSmartTagMgr;
-    nAutoCmpltExpandKey = rAFFlags.nAutoCmpltExpandKey;
-
-    nAutoCmpltWordLen = rAFFlags.nAutoCmpltWordLen;
-    nAutoCmpltListLen = rAFFlags.nAutoCmpltListLen;
-
-    return *this;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

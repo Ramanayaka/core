@@ -22,8 +22,6 @@
 #include <svl/intitem.hxx>
 #include <editeng/editengdllapi.h>
 
-class SvXMLUnitConverter;
-
 // class SvxKerningItem --------------------------------------------------
 
 // Note: Twips value
@@ -34,7 +32,7 @@ class SvXMLUnitConverter;
     This item describes the kerning.
 */
 
-class EDITENG_DLLPUBLIC SvxKerningItem : public SfxInt16Item
+class EDITENG_DLLPUBLIC SvxKerningItem final : public SfxInt16Item
 {
 public:
     static SfxPoolItem* CreateDefault();
@@ -42,21 +40,14 @@ public:
     SvxKerningItem( const short nKern /*= 0*/, const sal_uInt16 nId  );
 
     // "pure virtual Methods" from SfxPoolItem
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*    Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&       Store(SvStream &, sal_uInt16 nItemVersion) const override;
+    virtual SvxKerningItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual void            ScaleMetrics( long nMult, long nDiv ) override;
     virtual bool            HasMetrics() const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
-
-    SvxKerningItem& operator=(const SvxKerningItem& rKern) {
-            SetValue( rKern.GetValue() );
-            return *this;
-        }
+                                  OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;

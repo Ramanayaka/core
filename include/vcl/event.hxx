@@ -20,23 +20,16 @@
 #ifndef INCLUDED_VCL_EVENT_HXX
 #define INCLUDED_VCL_EVENT_HXX
 
-#include <tools/solar.h>
 #include <vcl/dllapi.h>
 #include <tools/gen.hxx>
 #include <vcl/keycod.hxx>
-#include <vcl/commandevent.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/vclptr.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/window.hxx>
+#include <optional>
 
-class AllSettings;
-struct IDataObject;
-
-namespace com { namespace sun { namespace star { namespace awt {
-    struct KeyEvent;
-    struct MouseEvent;
-} } } }
+class CommandEvent;
 
 enum class TextDirectionality {
     LeftToRight_TopToBottom,
@@ -62,8 +55,6 @@ public:
     sal_uInt16          GetRepeat() const       { return mnRepeat;   }
 
     KeyEvent        LogicalTextDirectionality (TextDirectionality eMode) const;
-                    KeyEvent (const KeyEvent& rKeyEvent);
-
 };
 
 inline KeyEvent::KeyEvent()
@@ -104,11 +95,10 @@ namespace o3tl
     template<> struct typed_flags<MouseEventModifiers> : is_typed_flags<MouseEventModifiers, 0xff7> {};
 }
 
-// Maus-Buttons
-#define MOUSE_LEFT              ((sal_uInt16)0x0001)
-#define MOUSE_MIDDLE            ((sal_uInt16)0x0002)
-#define MOUSE_RIGHT             ((sal_uInt16)0x0004)
-
+// Mouse buttons
+#define MOUSE_LEFT              (sal_uInt16(0x0001))
+#define MOUSE_MIDDLE            (sal_uInt16(0x0002))
+#define MOUSE_RIGHT             (sal_uInt16(0x0004))
 
 class VCL_DLLPUBLIC MouseEvent
 {
@@ -117,6 +107,9 @@ private:
     MouseEventModifiers mnMode;
     sal_uInt16          mnClicks;
     sal_uInt16          mnCode;
+
+    // Set, if the document relative logic position are available
+    std::optional<Point> maLogicPosition;
 
 public:
     explicit        MouseEvent();
@@ -128,6 +121,16 @@ public:
     MouseEventModifiers GetMode() const         { return mnMode; }
 
     sal_uInt16      GetClicks() const       { return mnClicks; }
+
+    void setLogicPosition(Point aLogicPosition)
+    {
+        maLogicPosition = aLogicPosition;
+    }
+
+    std::optional<Point> getLogicPosition() const
+    {
+        return maLogicPosition;
+    }
 
     bool            IsEnterWindow() const
                         { return bool(mnMode & MouseEventModifiers::ENTERWINDOW); }
@@ -180,13 +183,12 @@ enum class HelpEventMode
 {
     NONE           = 0x0000,
     CONTEXT        = 0x0001,
-    EXTENDED       = 0x0002,
-    BALLOON        = 0x0004,
-    QUICK          = 0x0008
+    BALLOON        = 0x0002,
+    QUICK          = 0x0004
 };
 namespace o3tl
 {
-    template<> struct typed_flags<HelpEventMode> : is_typed_flags<HelpEventMode, 0x0f> {};
+    template<> struct typed_flags<HelpEventMode> : is_typed_flags<HelpEventMode, 0x07> {};
 }
 
 class VCL_DLLPUBLIC HelpEvent
@@ -222,31 +224,27 @@ private:
     /// RenderContext to which we should draw - can be a VirtualDevice or anything.
     VclPtr<vcl::RenderContext> mpRenderContext;
 
-    tools::Rectangle           maOutRect;
+    tools::Rectangle    maOutRect;
     sal_uInt16          mnItemId;
-    sal_uInt16          mnStyle;
+    bool                mbSelected;
 
 public:
     UserDrawEvent(vcl::Window* pWindow, vcl::RenderContext* pRenderContext,
-            const tools::Rectangle& rOutRect, sal_uInt16 nId, sal_uInt16 nStyle = 0);
+                  const tools::Rectangle& rOutRect, sal_uInt16 nId, bool bSelected = false)
+        : mpWindow(pWindow)
+        , mpRenderContext(pRenderContext)
+        , maOutRect( rOutRect )
+        , mnItemId(nId)
+        , mbSelected(bSelected)
+    {
+    }
 
     vcl::Window*        GetWindow() const { return mpWindow; }
     vcl::RenderContext* GetRenderContext() const { return mpRenderContext; }
     const tools::Rectangle&    GetRect() const { return maOutRect; }
     sal_uInt16          GetItemId() const { return mnItemId; }
-    sal_uInt16          GetStyle() const { return mnStyle; }
+    bool                IsSelected() const { return mbSelected; }
 };
-
-inline UserDrawEvent::UserDrawEvent(vcl::Window* pWindow, vcl::RenderContext* pRenderContext,
-        const tools::Rectangle& rOutRect, sal_uInt16 nId, sal_uInt16 nStyle)
-    : mpWindow(pWindow)
-    , mpRenderContext(pRenderContext)
-    , maOutRect( rOutRect )
-    , mnItemId(nId)
-    , mnStyle(nStyle)
-{
-}
-
 
 class VCL_DLLPUBLIC TrackingEvent
 {
@@ -287,11 +285,7 @@ enum class MouseNotifyEvent
     GETFOCUS         = 6,
     LOSEFOCUS        = 7,
     COMMAND          = 8,
-    DESTROY          = 9,
-    INPUTENABLE      = 10,
-    INPUTDISABLE     = 11,
-    EXECUTEDIALOG    = 100,
-    ENDEXECUTEDIALOG = 101
+    INPUTENABLE      = 10
 };
 
 class VCL_DLLPUBLIC NotifyEvent
@@ -345,8 +339,7 @@ enum class DataChangedEventType {
     DISPLAY            = 2,
     FONTS              = 4,
     PRINTER            = 5,
-    FONTSUBSTITUTION   = 6,
-    USER               = 10000
+    FONTSUBSTITUTION   = 6
 };
 
 class VCL_DLLPUBLIC DataChangedEvent

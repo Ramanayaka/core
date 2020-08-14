@@ -81,6 +81,11 @@ enum class FormulaError : sal_uInt16
     RetryCircular        = 537,
 // If matrix could not be allocated.
     MatrixSize           = 538,
+// Bad inline array content, non-value/non-string.
+    BadArrayContent      = 539,
+// Interpreter: signal result not available because updating links is not
+// allowed (yet) and tell to try hybrid string as result.
+    LinkFormulaNeedingCheck = 540,
 
 // Interpreter: NA() not available condition, not a real error
     NotAvailable         = 0x7fff
@@ -99,9 +104,9 @@ inline double CreateDoubleError( FormulaError nErr )
 /** Recreate the error code of a coded double error, if any. */
 inline FormulaError GetDoubleErrorValue( double fVal )
 {
-    if ( ::rtl::math::isFinite( fVal ) )
+    if ( std::isfinite( fVal ) )
         return FormulaError::NONE;
-    if ( ::rtl::math::isInf( fVal ) )
+    if ( std::isinf( fVal ) )
         return FormulaError::IllegalFPOperation;       // normal INF
     sal_uInt32 nErr = reinterpret_cast< sal_math_Double * >( &fVal)->nan_parts.fraction_lo;
     if ( nErr & 0xffff0000 )
@@ -110,7 +115,7 @@ inline FormulaError GetDoubleErrorValue( double fVal )
         // Another NAN, e.g. -nan(0x8000000000000) from calculating with -inf
         return FormulaError::IllegalFPOperation;
     // Any other error known to us as error code.
-    return (FormulaError)(nErr & 0x0000ffff);
+    return static_cast<FormulaError>(nErr & 0x0000ffff);
 }
 
 /** Error values that are accepted as detailed "#ERRxxx!" constants.
@@ -159,6 +164,7 @@ inline bool isPublishedFormulaError( FormulaError nErr )
         case FormulaError::NoMacro:
         case FormulaError::DivisionByZero:
         case FormulaError::NestedArray:
+        case FormulaError::BadArrayContent:
             return true;
 
         case FormulaError::NotNumericString:
@@ -168,6 +174,7 @@ inline bool isPublishedFormulaError( FormulaError nErr )
             return false;
 
         case FormulaError::MatrixSize:
+        case FormulaError::LinkFormulaNeedingCheck:
             return true;
 
         case FormulaError::NotAvailable:

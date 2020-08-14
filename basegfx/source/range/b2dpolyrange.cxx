@@ -21,7 +21,6 @@
 
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/range/b2drangeclipper.hxx>
-#include <basegfx/tuple/b2dtuple.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 
 #include <algorithm>
@@ -53,10 +52,10 @@ namespace basegfx
             return std::make_tuple(maRanges[nIndex], maOrient[nIndex]);
         }
 
-        void appendElement(const B2DRange& rRange, B2VectorOrientation eOrient, sal_uInt32 nCount)
+        void appendElement(const B2DRange& rRange, B2VectorOrientation eOrient)
         {
-            maRanges.insert(maRanges.end(), nCount, rRange);
-            maOrient.insert(maOrient.end(), nCount, eOrient);
+            maRanges.push_back(rRange);
+            maOrient.push_back(eOrient);
             maBounds.expand(rRange);
         }
 
@@ -84,7 +83,7 @@ namespace basegfx
 
         B2DPolyPolygon solveCrossovers() const
         {
-            return tools::solveCrossovers(maRanges,maOrient);
+            return utils::solveCrossovers(maRanges,maOrient);
         }
 
         void transform(const basegfx::B2DHomMatrix& rTranslate)
@@ -100,22 +99,13 @@ namespace basegfx
         std::vector<B2VectorOrientation> maOrient;
     };
 
-    B2DPolyRange::B2DPolyRange() :
-        mpImpl()
-    {}
+    B2DPolyRange::B2DPolyRange() = default;
 
-    B2DPolyRange::~B2DPolyRange()
-    {}
+    B2DPolyRange::~B2DPolyRange() = default;
 
-    B2DPolyRange::B2DPolyRange( const B2DPolyRange& rRange ) :
-        mpImpl( rRange.mpImpl )
-    {}
+    B2DPolyRange::B2DPolyRange( const B2DPolyRange& ) = default;
 
-    B2DPolyRange& B2DPolyRange::operator=( const B2DPolyRange& rRange )
-    {
-        mpImpl = rRange.mpImpl;
-        return *this;
-    }
+    B2DPolyRange& B2DPolyRange::operator=( const B2DPolyRange& ) = default;
 
     bool B2DPolyRange::operator==(const B2DPolyRange& rRange) const
     {
@@ -140,9 +130,9 @@ namespace basegfx
         return mpImpl->getElement(nIndex);
     }
 
-    void B2DPolyRange::appendElement(const B2DRange& rRange, B2VectorOrientation eOrient, sal_uInt32 nCount)
+    void B2DPolyRange::appendElement(const B2DRange& rRange, B2VectorOrientation eOrient)
     {
-        mpImpl->appendElement(rRange, eOrient, nCount );
+        mpImpl->appendElement(rRange, eOrient);
     }
 
     void B2DPolyRange::clear()

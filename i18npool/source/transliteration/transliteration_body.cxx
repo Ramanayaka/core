@@ -17,26 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <rtl/ustrbuf.hxx>
 #include <rtl/ref.hxx>
 #include <i18nutil/casefolding.hxx>
 #include <i18nutil/unicode.hxx>
 #include <com/sun/star/i18n/MultipleCharsOutputException.hpp>
+#include <com/sun/star/i18n/TransliterationType.hpp>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/string.hxx>
+#include <comphelper/sequence.hxx>
 
-#include <string.h>
+#include <characterclassificationImpl.hxx>
 
-#include "characterclassificationImpl.hxx"
-#include "breakiteratorImpl.hxx"
-
-#include "transliteration_body.hxx"
+#include <transliteration_body.hxx>
 #include <memory>
+#include <numeric>
 
 using namespace ::com::sun::star::uno;
+using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::lang;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 Transliteration_body::Transliteration_body()
 {
@@ -88,99 +87,72 @@ static MappingType lcl_getMappingTypeForToggleCase( MappingType nMappingType, sa
     return nRes;
 }
 
-OUString SAL_CALL
-Transliteration_body::transliterate(
+OUString
+Transliteration_body::transliterateImpl(
     const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
-    Sequence< sal_Int32 >& offset)
+    Sequence< sal_Int32 >& offset, bool useOffset)
 {
     const sal_Unicode *in = inStr.getStr() + startPos;
 
-    // Two different blocks to eliminate the if(useOffset) condition inside the
-    // inner k loop. Yes, on massive use even such small things do count.
+    // We could assume that most calls result in identical string lengths,
+    // thus using a preallocated OUStringBuffer could be an easy way
+    // to assemble the return string without too much hassle. However,
+    // for single characters the OUStringBuffer::append() method is quite
+    // expensive compared to a simple array operation, so it pays here
+    // to copy the final result instead.
+
+    // Allocate the max possible buffer. Try to use stack instead of heap,
+    // which would have to be reallocated most times anyways.
+    constexpr sal_Int32 nLocalBuf = 2048;
+    sal_Unicode aLocalBuf[ nLocalBuf * NMAPPINGMAX ], *out = aLocalBuf;
+    std::unique_ptr<sal_Unicode[]> pHeapBuf;
+    if (nCount > nLocalBuf)
+    {
+        pHeapBuf.reset(new sal_Unicode[ nCount * NMAPPINGMAX ]);
+        out = pHeapBuf.get();
+    }
+
+    sal_Int32 j = 0;
+    // Two different blocks to eliminate the if(useOffset) condition inside the loop.
+    // Yes, on massive use even such small things do count.
     if ( useOffset )
     {
-        sal_Int32 nOffCount = 0, i;
-        for (i = 0; i < nCount; i++)
+        std::vector<sal_Int32> aVec;
+        aVec.reserve(std::max<sal_Int32>(nLocalBuf, nCount) * NMAPPINGMAX);
+
+        for (sal_Int32 i = 0; i < nCount; i++)
         {
             // take care of TOGGLE_CASE transliteration:
-            MappingType nTmpMappingType = nMappingType;
-            if (nMappingType == (MappingType::LowerToUpper | MappingType::UpperToLower))
-                nTmpMappingType = lcl_getMappingTypeForToggleCase( nMappingType, in[i] );
+            MappingType nTmpMappingType = lcl_getMappingTypeForToggleCase( nMappingType, in[i] );
 
-            const Mapping &map = casefolding::getValue( in, i, nCount, aLocale, nTmpMappingType );
-            nOffCount += map.nmap;
+            const i18nutil::Mapping &map = i18nutil::casefolding::getValue( in, i, nCount, aLocale, nTmpMappingType );
+            std::fill_n(std::back_inserter(aVec), map.nmap, i + startPos);
+            std::copy_n(map.map, map.nmap, out + j);
+            j += map.nmap;
         }
-        rtl_uString* pStr = rtl_uString_alloc(nOffCount);
-        sal_Unicode* out = pStr->buffer;
 
-        if ( nOffCount != offset.getLength() )
-            offset.realloc( nOffCount );
-
-        sal_Int32 j = 0;
-        sal_Int32 * pArr = offset.getArray();
-        for (i = 0; i < nCount; i++)
-        {
-            // take care of TOGGLE_CASE transliteration:
-            MappingType nTmpMappingType = nMappingType;
-            if (nMappingType == (MappingType::LowerToUpper | MappingType::UpperToLower))
-                nTmpMappingType = lcl_getMappingTypeForToggleCase( nMappingType, in[i] );
-
-            const Mapping &map = casefolding::getValue( in, i, nCount, aLocale, nTmpMappingType );
-            for (sal_Int32 k = 0; k < map.nmap; k++)
-            {
-                pArr[j] = i + startPos;
-                out[j++] = map.map[k];
-            }
-        }
-        out[j] = 0;
-
-        return OUString( pStr, SAL_NO_ACQUIRE );
+        offset = comphelper::containerToSequence(aVec);
     }
     else
     {
-        // In the simple case of no offset sequence used we can eliminate the
-        // first getValue() loop. We could also assume that most calls result
-        // in identical string lengths, thus using a preallocated
-        // OUStringBuffer could be an easy way to assemble the return string
-        // without too much hassle. However, for single characters the
-        // OUStringBuffer::append() method is quite expensive compared to a
-        // simple array operation, so it pays here to copy the final result
-        // instead.
-
-        // Allocate the max possible buffer. Try to use stack instead of heap,
-        // which would have to be reallocated most times anyways.
-        const sal_Int32 nLocalBuf = 2048;
-        sal_Unicode aLocalBuf[ nLocalBuf * NMAPPINGMAX ], *out = aLocalBuf;
-        std::unique_ptr<sal_Unicode[]> pHeapBuf;
-        if ( nCount > nLocalBuf ) {
-            pHeapBuf.reset(new sal_Unicode[ nCount * NMAPPINGMAX ]);
-            out = pHeapBuf.get();
-        }
-
-        sal_Int32 j = 0;
         for ( sal_Int32 i = 0; i < nCount; i++)
         {
             // take care of TOGGLE_CASE transliteration:
-            MappingType nTmpMappingType = nMappingType;
-            if (nMappingType == (MappingType::LowerToUpper | MappingType::UpperToLower))
-                nTmpMappingType = lcl_getMappingTypeForToggleCase( nMappingType, in[i] );
+            MappingType nTmpMappingType = lcl_getMappingTypeForToggleCase( nMappingType, in[i] );
 
-            const Mapping &map = casefolding::getValue( in, i, nCount, aLocale, nTmpMappingType );
-            for (sal_Int32 k = 0; k < map.nmap; k++)
-            {
-                out[j++] = map.map[k];
-            }
+            const i18nutil::Mapping &map = i18nutil::casefolding::getValue( in, i, nCount, aLocale, nTmpMappingType );
+            std::copy_n(map.map, map.nmap, out + j);
+            j += map.nmap;
         }
-
-        OUString aRet( out, j );
-        return aRet;
     }
+
+    return OUString(out, j);
 }
 
 OUString SAL_CALL
 Transliteration_body::transliterateChar2String( sal_Unicode inChar )
 {
-    const Mapping &map = casefolding::getValue(&inChar, 0, 1, aLocale, nMappingType);
+    const i18nutil::Mapping &map = i18nutil::casefolding::getValue(&inChar, 0, 1, aLocale, nMappingType);
     rtl_uString* pStr = rtl_uString_alloc(map.nmap);
     sal_Unicode* out = pStr->buffer;
     sal_Int32 i;
@@ -195,17 +167,17 @@ Transliteration_body::transliterateChar2String( sal_Unicode inChar )
 sal_Unicode SAL_CALL
 Transliteration_body::transliterateChar2Char( sal_Unicode inChar )
 {
-    const Mapping &map = casefolding::getValue(&inChar, 0, 1, aLocale, nMappingType);
+    const i18nutil::Mapping &map = i18nutil::casefolding::getValue(&inChar, 0, 1, aLocale, nMappingType);
     if (map.nmap > 1)
         throw MultipleCharsOutputException();
     return map.map[0];
 }
 
-OUString SAL_CALL
-Transliteration_body::folding( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
-    Sequence< sal_Int32 >& offset)
+OUString
+Transliteration_body::foldingImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
+    Sequence< sal_Int32 >& offset, bool useOffset)
 {
-    return this->transliterate(inStr, startPos, nCount, offset);
+    return transliterateImpl(inStr, startPos, nCount, offset, useOffset);
 }
 
 Transliteration_casemapping::Transliteration_casemapping()
@@ -215,7 +187,7 @@ Transliteration_casemapping::Transliteration_casemapping()
     implementationName = "com.sun.star.i18n.Transliteration.Transliteration_casemapping";
 }
 
-void SAL_CALL
+void
 Transliteration_casemapping::setMappingType( const MappingType rMappingType, const Locale& rLocale )
 {
     nMappingType = rMappingType;
@@ -284,28 +256,21 @@ static OUString transliterate_titlecase_Impl(
 
         // now we can properly use toTitle to get the expected result for the resolved string.
         // The rest of the text should just become lowercase.
-        aRes = xCharClassImpl->toTitle( aResolvedLigature, 0, nResolvedLen, rLocale );
-        aRes += xCharClassImpl->toLower( aText, 1, aText.getLength() - 1, rLocale );
+        aRes = xCharClassImpl->toTitle( aResolvedLigature, 0, nResolvedLen, rLocale ) +
+               xCharClassImpl->toLower( aText, 1, aText.getLength() - 1, rLocale );
         offset.realloc( aRes.getLength() );
 
-        sal_Int32 *pOffset = offset.getArray();
-        sal_Int32 nLen = offset.getLength();
-        for (sal_Int32 i = 0; i < nLen; ++i)
-        {
-            sal_Int32 nIdx = 0;
-            if (i >= nResolvedLen)
-                nIdx = i - nResolvedLen + 1;
-            pOffset[i] = nIdx;
-        }
+        sal_Int32* pOffset = std::fill_n(offset.begin(), nResolvedLen, 0);
+        std::iota(pOffset, offset.end(), 1);
     }
     return aRes;
 }
 
 // this function expects to be called on a word-by-word basis,
 // namely that startPos points to the first char of the word
-OUString SAL_CALL Transliteration_titlecase::transliterate(
+OUString Transliteration_titlecase::transliterateImpl(
     const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
-    Sequence< sal_Int32 >& offset )
+    Sequence< sal_Int32 >& offset, bool )
 {
     return transliterate_titlecase_Impl( inStr, startPos, nCount, aLocale, offset );
 }
@@ -319,13 +284,13 @@ Transliteration_sentencecase::Transliteration_sentencecase()
 
 // this function expects to be called on a sentence-by-sentence basis,
 // namely that startPos points to the first word (NOT first char!) in the sentence
-OUString SAL_CALL Transliteration_sentencecase::transliterate(
+OUString Transliteration_sentencecase::transliterateImpl(
     const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount,
-    Sequence< sal_Int32 >& offset )
+    Sequence< sal_Int32 >& offset, bool )
 {
     return transliterate_titlecase_Impl( inStr, startPos, nCount, aLocale, offset );
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

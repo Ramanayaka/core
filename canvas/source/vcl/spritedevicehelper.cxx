@@ -19,15 +19,11 @@
 
 #include <sal/config.h>
 
-#include <basegfx/tools/canvastools.hxx>
-#include <canvas/canvastools.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <vcl/canvastools.hxx>
+#include <osl/diagnose.h>
+#include <vcl/bitmapex.hxx>
 #include <vcl/dibtools.hxx>
+#include <tools/stream.hxx>
 
-#include "canvasbitmap.hxx"
-#include "spritecanvas.hxx"
-#include "spritecanvashelper.hxx"
 #include "spritedevicehelper.hxx"
 
 using namespace ::com::sun::star;
@@ -45,7 +41,7 @@ namespace vclcanvas
 
         // setup back buffer
         OutputDevice& rOutDev( pOutDev->getOutDev() );
-        mpBackBuffer.reset( new BackBuffer( rOutDev ));
+        mpBackBuffer = std::make_shared<BackBuffer>( rOutDev );
         mpBackBuffer->setSize( rOutDev.GetOutputSizePixel() );
 
         // #i95645#
@@ -121,7 +117,7 @@ namespace vclcanvas
             const ::Point aEmptyPoint;
             mpBackBuffer->getOutDev().EnableMapMode( false );
             mpBackBuffer->getOutDev().SetAntialiasing( AntialiasingFlags::EnableB2dDraw );
-            WriteDIB(mpBackBuffer->getOutDev().GetBitmap(aEmptyPoint, mpBackBuffer->getOutDev().GetOutputSizePixel()), aStream, false, true);
+            WriteDIB(mpBackBuffer->getOutDev().GetBitmapEx(aEmptyPoint, mpBackBuffer->getOutDev().GetOutputSizePixel()), aStream, false);
         }
 
         ++nFilePostfixCount;

@@ -24,47 +24,52 @@
 
  *************************************************************************/
 
-#include "osl/diagnose.h"
-#include "rtl/ustrbuf.hxx"
-#include "com/sun/star/beans/IllegalTypeException.hpp"
-#include "com/sun/star/beans/PropertyAttribute.hpp"
-#include "com/sun/star/beans/PropertyValue.hpp"
-#include "com/sun/star/beans/XPropertySet.hpp"
-#include "com/sun/star/embed/ElementModes.hpp"
-#include "com/sun/star/embed/InvalidStorageException.hpp"
-#include "com/sun/star/embed/StorageWrappedTargetException.hpp"
-#include "com/sun/star/embed/XStorage.hpp"
-#include "com/sun/star/embed/XTransactedObject.hpp"
-#include "com/sun/star/io/BufferSizeExceededException.hpp"
-#include "com/sun/star/io/IOException.hpp"
-#include "com/sun/star/io/NotConnectedException.hpp"
-#include "com/sun/star/io/XActiveDataSink.hpp"
-#include "com/sun/star/io/XActiveDataStreamer.hpp"
-#include "com/sun/star/lang/IllegalAccessException.hpp"
-#include "com/sun/star/sdbc/XRow.hpp"
-#include "com/sun/star/ucb/ContentAction.hpp"
-#include "com/sun/star/ucb/ContentInfoAttribute.hpp"
-#include "com/sun/star/ucb/IllegalIdentifierException.hpp"
-#include "com/sun/star/ucb/InsertCommandArgument.hpp"
-#include "com/sun/star/ucb/InteractiveBadTransferURLException.hpp"
-#include "com/sun/star/ucb/MissingInputStreamException.hpp"
-#include "com/sun/star/ucb/MissingPropertiesException.hpp"
-#include "com/sun/star/ucb/NameClash.hpp"
-#include "com/sun/star/ucb/NameClashException.hpp"
-#include "com/sun/star/ucb/OpenCommandArgument2.hpp"
-#include "com/sun/star/ucb/OpenMode.hpp"
-#include "com/sun/star/ucb/TransferInfo.hpp"
-#include "com/sun/star/ucb/UnsupportedCommandException.hpp"
-#include "com/sun/star/ucb/UnsupportedDataSinkException.hpp"
-#include "com/sun/star/ucb/UnsupportedNameClashException.hpp"
-#include "com/sun/star/ucb/UnsupportedOpenModeException.hpp"
-#include "com/sun/star/ucb/XCommandInfo.hpp"
-#include "com/sun/star/ucb/XPersistentPropertySet.hpp"
+#include <sal/config.h>
 
-#include "comphelper/processfactory.hxx"
-#include "ucbhelper/cancelcommandexecution.hxx"
-#include "ucbhelper/contentidentifier.hxx"
-#include "ucbhelper/propertyvalueset.hxx"
+#include <string_view>
+
+#include <osl/diagnose.h>
+#include <rtl/ustrbuf.hxx>
+#include <com/sun/star/beans/IllegalTypeException.hpp>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/embed/InvalidStorageException.hpp>
+#include <com/sun/star/embed/StorageWrappedTargetException.hpp>
+#include <com/sun/star/embed/XTransactedObject.hpp>
+#include <com/sun/star/io/BufferSizeExceededException.hpp>
+#include <com/sun/star/io/IOException.hpp>
+#include <com/sun/star/io/NotConnectedException.hpp>
+#include <com/sun/star/io/XActiveDataSink.hpp>
+#include <com/sun/star/io/XActiveDataStreamer.hpp>
+#include <com/sun/star/lang/IllegalAccessException.hpp>
+#include <com/sun/star/packages/WrongPasswordException.hpp>
+#include <com/sun/star/task/DocumentPasswordRequest.hpp>
+#include <com/sun/star/task/XInteractionPassword.hpp>
+#include <com/sun/star/ucb/CommandFailedException.hpp>
+#include <com/sun/star/ucb/ContentAction.hpp>
+#include <com/sun/star/ucb/ContentInfoAttribute.hpp>
+#include <com/sun/star/ucb/IllegalIdentifierException.hpp>
+#include <com/sun/star/ucb/InsertCommandArgument.hpp>
+#include <com/sun/star/ucb/InteractiveBadTransferURLException.hpp>
+#include <com/sun/star/ucb/MissingInputStreamException.hpp>
+#include <com/sun/star/ucb/NameClash.hpp>
+#include <com/sun/star/ucb/NameClashException.hpp>
+#include <com/sun/star/ucb/OpenCommandArgument2.hpp>
+#include <com/sun/star/ucb/OpenMode.hpp>
+#include <com/sun/star/ucb/TransferInfo.hpp>
+#include <com/sun/star/ucb/UnsupportedCommandException.hpp>
+#include <com/sun/star/ucb/UnsupportedDataSinkException.hpp>
+#include <com/sun/star/ucb/UnsupportedNameClashException.hpp>
+#include <com/sun/star/ucb/UnsupportedOpenModeException.hpp>
+#include <com/sun/star/ucb/XCommandInfo.hpp>
+#include <com/sun/star/ucb/XPersistentPropertySet.hpp>
+
+#include <comphelper/propertysequence.hxx>
+#include <cppuhelper/queryinterface.hxx>
+#include <ucbhelper/cancelcommandexecution.hxx>
+#include <ucbhelper/contentidentifier.hxx>
+#include <ucbhelper/propertyvalueset.hxx>
+#include <ucbhelper/macros.hxx>
 
 #include "tdoc_content.hxx"
 #include "tdoc_resultset.hxx"
@@ -257,7 +262,7 @@ uno::Sequence< uno::Type > SAL_CALL Content::getTypes()
 // virtual
 OUString SAL_CALL Content::getImplementationName()
 {
-    return OUString( "com.sun.star.comp.ucb.TransientDocumentsContent" );
+    return "com.sun.star.comp.ucb.TransientDocumentsContent";
 }
 
 
@@ -359,7 +364,7 @@ uno::Any SAL_CALL Content::execute(
             // Unreachable
         }
 
-        if ( !aProperties.getLength() )
+        if ( !aProperties.hasElements() )
         {
             ucbhelper::cancelCommandExecution(
                 uno::makeAny( lang::IllegalArgumentException(
@@ -491,17 +496,13 @@ uno::Any SAL_CALL Content::execute(
         // Remove own and all children's persistent data.
         if ( !removeData() )
         {
-            uno::Any aProps
-                = uno::makeAny(
-                         beans::PropertyValue(
-                             "Uri",
-                             -1,
-                             uno::makeAny(m_xIdentifier->
-                                              getContentIdentifier()),
-                             beans::PropertyState_DIRECT_VALUE));
+            uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+            {
+                 {"Uri", uno::Any(m_xIdentifier->getContentIdentifier())}
+            }));
             ucbhelper::cancelCommandExecution(
                 ucb::IOErrorCode_CANT_WRITE,
-                uno::Sequence< uno::Any >(&aProps, 1),
+                aArgs,
                 Environment,
                 "Cannot remove persistent data!",
                 this );
@@ -726,12 +727,9 @@ void Content::queryChildren( ContentRefList& rChildren )
 
     sal_Int32 nLen = aURL.getLength();
 
-    ::ucbhelper::ContentRefList::const_iterator it  = aAllContents.begin();
-    ::ucbhelper::ContentRefList::const_iterator end = aAllContents.end();
-
-    while ( it != end )
+    for ( const auto& rContent : aAllContents )
     {
-        ::ucbhelper::ContentImplHelperRef xChild = (*it);
+        ::ucbhelper::ContentImplHelperRef xChild = rContent;
         OUString aChildURL
             = xChild->getIdentifier()->getContentIdentifier();
 
@@ -739,19 +737,16 @@ void Content::queryChildren( ContentRefList& rChildren )
         if ( ( aChildURL.getLength() > nLen ) &&
              ( aChildURL.startsWith( aURL ) ) )
         {
-            sal_Int32 nPos = nLen;
-            nPos = aChildURL.indexOf( '/', nPos );
+            sal_Int32 nPos = aChildURL.indexOf( '/', nLen );
 
             if ( ( nPos == -1 ) ||
                  ( nPos == ( aChildURL.getLength() - 1 ) ) )
             {
                 // No further slashes / only a final slash. It's a child!
-                rChildren.push_back(
-                    ContentRef(
-                        static_cast< Content * >( xChild.get() ) ) );
+                rChildren.emplace_back(
+                        static_cast< Content * >( xChild.get() ) );
             }
         }
-        ++it;
     }
 }
 
@@ -799,12 +794,9 @@ bool Content::exchangeIdentity(
                 ContentRefList aChildren;
                 queryChildren( aChildren );
 
-                ContentRefList::const_iterator it  = aChildren.begin();
-                ContentRefList::const_iterator end = aChildren.end();
-
-                while ( it != end )
+                for ( const auto& rChild : aChildren )
                 {
-                    ContentRef xChild = (*it);
+                    ContentRef xChild = rChild;
 
                     // Create new content identifier for the child...
                     uno::Reference< ucb::XContentIdentifier > xOldChildId
@@ -821,8 +813,6 @@ bool Content::exchangeIdentity(
 
                     if ( !xChild->exchangeIdentity( xNewChildId ) )
                         return false;
-
-                    ++it;
                 }
             }
             return true;
@@ -853,13 +843,8 @@ uno::Reference< sdbc::XRow > Content::getPropertyValues(
         rtl::Reference< ::ucbhelper::PropertyValueSet > xRow
             = new ::ucbhelper::PropertyValueSet( rxContext );
 
-        sal_Int32 nCount = rProperties.getLength();
-        if ( nCount )
-        {
-            const beans::Property* pProps = rProperties.getConstArray();
-            for ( sal_Int32 n = 0; n < nCount; ++n )
-                xRow->appendVoid( pProps[ n ] );
-        }
+        for ( const beans::Property& rProp : rProperties )
+            xRow->appendVoid( rProp );
 
         return uno::Reference< sdbc::XRow >( xRow.get() );
     }
@@ -879,17 +864,13 @@ uno::Reference< sdbc::XRow > Content::getPropertyValues(
     rtl::Reference< ::ucbhelper::PropertyValueSet > xRow
         = new ::ucbhelper::PropertyValueSet( rxContext );
 
-    sal_Int32 nCount = rProperties.getLength();
-    if ( nCount )
+    if ( rProperties.hasElements() )
     {
         uno::Reference< beans::XPropertySet > xAdditionalPropSet;
         bool bTriedToGetAdditionalPropSet = false;
 
-        const beans::Property* pProps = rProperties.getConstArray();
-        for ( sal_Int32 n = 0; n < nCount; ++n )
+        for ( const beans::Property& rProp : rProperties )
         {
-            const beans::Property& rProp = pProps[ n ];
-
             // Process Core properties.
 
             if ( rProp.Name == "ContentType" )
@@ -943,10 +924,9 @@ uno::Reference< sdbc::XRow > Content::getPropertyValues(
 
                 if ( !bTriedToGetAdditionalPropSet && !xAdditionalPropSet.is() )
                 {
-                    xAdditionalPropSet.set(
+                    xAdditionalPropSet =
                             pProvider->getAdditionalPropertySet( rContentId,
-                                                                 false ),
-                            uno::UNO_QUERY );
+                                                                 false );
                     bTriedToGetAdditionalPropSet = true;
                 }
 
@@ -1037,9 +1017,8 @@ uno::Reference< sdbc::XRow > Content::getPropertyValues(
 
         // Append all Additional Core Properties.
 
-        uno::Reference< beans::XPropertySet > xSet(
-            pProvider->getAdditionalPropertySet( rContentId, false ),
-            uno::UNO_QUERY );
+        uno::Reference< beans::XPropertySet > xSet =
+            pProvider->getAdditionalPropertySet( rContentId, false );
         xRow->appendPropertySet( xSet );
     }
 
@@ -1305,17 +1284,13 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
         {
             if ( !storeData( uno::Reference< io::XInputStream >(), xEnv ) )
             {
-                uno::Any aProps
-                    = uno::makeAny(
-                             beans::PropertyValue(
-                                 "Uri",
-                                 -1,
-                                 uno::makeAny(m_xIdentifier->
-                                                  getContentIdentifier()),
-                                 beans::PropertyState_DIRECT_VALUE));
+                uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+                {
+                     {"Uri", uno::Any(m_xIdentifier->getContentIdentifier())}
+                }));
                 ucbhelper::cancelCommandExecution(
                     ucb::IOErrorCode_CANT_WRITE,
-                    uno::Sequence< uno::Any >(&aProps, 1),
+                    aArgs,
                     xEnv,
                     "Cannot store persistent data!",
                     this );
@@ -1379,17 +1354,13 @@ uno::Any Content::open(
             if ( !xStream.is() )
             {
                 // No interaction if we are not persistent!
-                uno::Any aProps
-                    = uno::makeAny(
-                             beans::PropertyValue(
-                                 "Uri",
-                                 -1,
-                                 uno::makeAny(m_xIdentifier->
-                                                  getContentIdentifier()),
-                                 beans::PropertyState_DIRECT_VALUE));
+                uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+                {
+                    {"Uri", uno::Any(m_xIdentifier->getContentIdentifier())}
+                }));
                 ucbhelper::cancelCommandExecution(
                     ucb::IOErrorCode_CANT_READ,
-                    uno::Sequence< uno::Any >(&aProps, 1),
+                    aArgs,
                     m_eState == PERSISTENT
                         ? xEnv
                         : uno::Reference< ucb::XCommandEnvironment >(),
@@ -1413,17 +1384,13 @@ uno::Any Content::open(
                 if ( !xIn.is() )
                 {
                     // No interaction if we are not persistent!
-                    uno::Any aProps
-                        = uno::makeAny(
-                                 beans::PropertyValue(
-                                     "Uri",
-                                     -1,
-                                     uno::makeAny(m_xIdentifier->
-                                                      getContentIdentifier()),
-                                     beans::PropertyState_DIRECT_VALUE));
+                    uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+                    {
+                        {"Uri", uno::Any(m_xIdentifier->getContentIdentifier())}
+                    }));
                     ucbhelper::cancelCommandExecution(
                         ucb::IOErrorCode_CANT_READ,
-                        uno::Sequence< uno::Any >(&aProps, 1),
+                        aArgs,
                         m_eState == PERSISTENT
                             ? xEnv
                             : uno::Reference< ucb::XCommandEnvironment >(),
@@ -1473,17 +1440,13 @@ uno::Any Content::open(
                     if ( !xIn.is() )
                     {
                         // No interaction if we are not persistent!
-                        uno::Any aProps
-                            = uno::makeAny(
-                                     beans::PropertyValue(
-                                         "Uri",
-                                         -1,
-                                         uno::makeAny(m_xIdentifier->
-                                                          getContentIdentifier()),
-                                         beans::PropertyState_DIRECT_VALUE));
+                        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+                        {
+                            {"Uri", uno::Any(m_xIdentifier->getContentIdentifier())}
+                        }));
                         ucbhelper::cancelCommandExecution(
                             ucb::IOErrorCode_CANT_READ,
-                            uno::Sequence< uno::Any >(&aProps, 1),
+                            aArgs,
                             m_eState == PERSISTENT
                                 ? xEnv
                                 : uno::Reference<
@@ -1657,16 +1620,13 @@ void Content::insert( const uno::Reference< io::XInputStream >& xData,
 
     if ( !storeData( xData, xEnv ) )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Uri",
-                                  -1,
-                                  uno::makeAny(m_xIdentifier->
-                                                   getContentIdentifier()),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(m_xIdentifier->getContentIdentifier())}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_WRITE,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             xEnv,
             "Cannot store persistent data!",
             this );
@@ -1723,13 +1683,9 @@ void Content::destroy( bool bDeletePhysical,
         ContentRefList aChildren;
         queryChildren( aChildren );
 
-        ContentRefList::const_iterator it  = aChildren.begin();
-        ContentRefList::const_iterator end = aChildren.end();
-
-        while ( it != end )
+        for ( auto& rChild : aChildren )
         {
-            (*it)->destroy( bDeletePhysical, xEnv );
-            ++it;
+            rChild->destroy( bDeletePhysical, xEnv );
         }
     }
 }
@@ -1764,7 +1720,7 @@ Content::queryChildContent( const OUString & rRelativeChildUri )
     if ( !rRelativeChildUri.startsWith("/") )
         aBuf.append( rRelativeChildUri );
     else
-        aBuf.append( rRelativeChildUri.copy( 1 ) );
+        aBuf.append( std::u16string_view(rRelativeChildUri).substr(1) );
 
     uno::Reference< ucb::XContentIdentifier > xChildId
         = new ::ucbhelper::ContentIdentifier( aBuf.makeStringAndClear() );
@@ -1793,19 +1749,19 @@ void Content::notifyChildRemoved( const OUString & rRelativeChildUri )
     uno::Reference< ucb::XContent > xChild
         = queryChildContent( rRelativeChildUri );
 
-    if ( xChild.is() )
-    {
-        // callback follows!
-        aGuard.clear();
+    if ( !xChild.is() )
+        return;
 
-        // Notify "REMOVED" event.
-        ucb::ContentEvent aEvt(
-            static_cast< cppu::OWeakObject * >( this ),
-            ucb::ContentAction::REMOVED,
-            xChild,
-            getIdentifier() );
-        notifyContentEvent( aEvt );
-    }
+    // callback follows!
+    aGuard.clear();
+
+    // Notify "REMOVED" event.
+    ucb::ContentEvent aEvt(
+        static_cast< cppu::OWeakObject * >( this ),
+        ucb::ContentAction::REMOVED,
+        xChild,
+        getIdentifier() );
+    notifyContentEvent( aEvt );
 }
 
 
@@ -1817,19 +1773,19 @@ void Content::notifyChildInserted( const OUString & rRelativeChildUri )
     uno::Reference< ucb::XContent > xChild
         = queryChildContent( rRelativeChildUri );
 
-    if ( xChild.is() )
-    {
-        // callback follows!
-        aGuard.clear();
+    if ( !xChild.is() )
+        return;
 
-        // Notify "INSERTED" event.
-        ucb::ContentEvent aEvt(
-            static_cast< cppu::OWeakObject * >( this ),
-            ucb::ContentAction::INSERTED,
-            xChild,
-            getIdentifier() );
-        notifyContentEvent( aEvt );
-    }
+    // callback follows!
+    aGuard.clear();
+
+    // Notify "INSERTED" event.
+    ucb::ContentEvent aEvt(
+        static_cast< cppu::OWeakObject * >( this ),
+        ucb::ContentAction::INSERTED,
+        xChild,
+        getIdentifier() );
+    notifyContentEvent( aEvt );
 }
 
 
@@ -1852,7 +1808,7 @@ void Content::transfer(
 
     // Does source URI scheme match? Only vnd.sun.star.tdoc is supported.
 
-    if ( ( rInfo.SourceURL.getLength() < TDOC_URL_SCHEME_LENGTH + 2 ) )
+    if ( rInfo.SourceURL.getLength() < TDOC_URL_SCHEME_LENGTH + 2 )
     {
         // Invalid length (to short).
         ucbhelper::cancelCommandExecution(
@@ -1914,15 +1870,13 @@ void Content::transfer(
     {
         if ( aId.startsWith( rInfo.SourceURL ) )
         {
-            uno::Any aProps
-                = uno::makeAny(beans::PropertyValue(
-                                      "Uri",
-                                      -1,
-                                      uno::makeAny( rInfo.SourceURL ),
-                                      beans::PropertyState_DIRECT_VALUE));
+            uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+            {
+                {"Uri", uno::Any(rInfo.SourceURL)}
+            }));
             ucbhelper::cancelCommandExecution(
                 ucb::IOErrorCode_RECURSIVE,
-                uno::Sequence< uno::Any >(&aProps, 1),
+                aArgs,
                 xEnv,
                 "Target is equal to or is a child of source!",
                 this );
@@ -1992,16 +1946,13 @@ void Content::transfer(
 
     if ( !copyData( aSourceUri, aNewName ) )
     {
-        uno::Any aProps
-            = uno::makeAny(
-                     beans::PropertyValue(
-                         "Uri",
-                         -1,
-                         uno::makeAny( rInfo.SourceURL ),
-                         beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(rInfo.SourceURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_WRITE,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             xEnv,
             "Cannot copy data!",
             this );
@@ -2023,16 +1974,13 @@ void Content::transfer(
 
     if ( !copyAdditionalPropertySet( aSourceUri.getUri(), aTargetUri ) )
     {
-        uno::Any aProps
-            = uno::makeAny(
-                     beans::PropertyValue(
-                         "Uri",
-                         -1,
-                         uno::makeAny( rInfo.SourceURL ),
-                         beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(rInfo.SourceURL)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_WRITE,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             xEnv,
             "Cannot copy additional properties!",
             this );
@@ -2062,15 +2010,13 @@ void Content::transfer(
 
     if ( !xTarget.is() )
     {
-        uno::Any aProps
-            = uno::makeAny(beans::PropertyValue(
-                                  "Uri",
-                                  -1,
-                                  uno::makeAny( aTargetUri ),
-                                  beans::PropertyState_DIRECT_VALUE));
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+        {
+            {"Uri", uno::Any(aTargetUri)}
+        }));
         ucbhelper::cancelCommandExecution(
             ucb::IOErrorCode_CANT_READ,
-            uno::Sequence< uno::Any >(&aProps, 1),
+            aArgs,
             xEnv,
             "Cannot instantiate target object!",
             this );
@@ -2084,88 +2030,79 @@ void Content::transfer(
     // Remove source, if requested
 
 
-    if ( rInfo.MoveData )
+    if ( !rInfo.MoveData )
+        return;
+
+    rtl::Reference< Content > xSource;
+    try
     {
-        rtl::Reference< Content > xSource;
-        try
+        uno::Reference< ucb::XContentIdentifier >
+            xSourceId = new ::ucbhelper::ContentIdentifier( rInfo.SourceURL );
+
+        // Note: The static cast is okay here, because its sure
+        //       that m_xProvider is always the ContentProvider.
+        xSource = static_cast< Content * >(
+            m_xProvider->queryContent( xSourceId ).get() );
+    }
+    catch ( ucb::IllegalIdentifierException const & )
+    {
+        // queryContent
+    }
+
+    if ( !xSource.is() )
+    {
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
         {
-            uno::Reference< ucb::XContentIdentifier >
-                xSourceId = new ::ucbhelper::ContentIdentifier( rInfo.SourceURL );
+            {"Uri", uno::Any(rInfo.SourceURL)}
+        }));
+        ucbhelper::cancelCommandExecution(
+            ucb::IOErrorCode_CANT_READ,
+            aArgs,
+            xEnv,
+            "Cannot instantiate target object!",
+            this );
+        // Unreachable
+    }
 
-            // Note: The static cast is okay here, because its sure
-            //       that m_xProvider is always the ContentProvider.
-            xSource = static_cast< Content * >(
-                m_xProvider->queryContent( xSourceId ).get() );
-        }
-        catch ( ucb::IllegalIdentifierException const & )
+    // Propagate destruction (recursively).
+    xSource->destroy( true, xEnv );
+
+    // Remove all persistent data of source and its children.
+    if ( !xSource->removeData() )
+    {
+        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
         {
-            // queryContent
-        }
+            {"Uri", uno::Any(rInfo.SourceURL)}
+        }));
+        ucbhelper::cancelCommandExecution(
+            ucb::IOErrorCode_CANT_WRITE,
+            aArgs,
+            xEnv,
+            "Cannot remove persistent data of source object!",
+            this );
+        // Unreachable
+    }
 
-        if ( !xSource.is() )
-        {
-            uno::Any aProps
-                = uno::makeAny(beans::PropertyValue(
-                                      "Uri",
-                                      -1,
-                                      uno::makeAny( rInfo.SourceURL ),
-                                      beans::PropertyState_DIRECT_VALUE));
-            ucbhelper::cancelCommandExecution(
-                ucb::IOErrorCode_CANT_READ,
-                uno::Sequence< uno::Any >(&aProps, 1),
-                xEnv,
-                "Cannot instantiate target object!",
-                this );
-            // Unreachable
-        }
+    // Remove own and all children's Additional Core Properties.
+    if ( xSource->removeAdditionalPropertySet() )
+        return;
 
-        // Propagate destruction (recursively).
-        xSource->destroy( true, xEnv );
-
-        // Remove all persistent data of source and its children.
-        if ( !xSource->removeData() )
-        {
-            uno::Any aProps
-                = uno::makeAny(
-                         beans::PropertyValue(
-                             "Uri",
-                             -1,
-                             uno::makeAny( rInfo.SourceURL ),
-                             beans::PropertyState_DIRECT_VALUE));
-            ucbhelper::cancelCommandExecution(
-                ucb::IOErrorCode_CANT_WRITE,
-                uno::Sequence< uno::Any >(&aProps, 1),
-                xEnv,
-                "Cannot remove persistent data of source object!",
-                this );
-            // Unreachable
-        }
-
-        // Remove own and all children's Additional Core Properties.
-        if ( !xSource->removeAdditionalPropertySet() )
-        {
-            uno::Any aProps
-                = uno::makeAny(
-                         beans::PropertyValue(
-                             "Uri",
-                             -1,
-                             uno::makeAny( rInfo.SourceURL ),
-                             beans::PropertyState_DIRECT_VALUE));
-            ucbhelper::cancelCommandExecution(
-                ucb::IOErrorCode_CANT_WRITE,
-                uno::Sequence< uno::Any >(&aProps, 1),
-                xEnv,
-                "Cannot remove additional properties of source object!",
-                this );
-            // Unreachable
-        }
-
-    } // rInfo.MoveData
+    uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
+    {
+        {"Uri", uno::Any(rInfo.SourceURL)}
+    }));
+    ucbhelper::cancelCommandExecution(
+        ucb::IOErrorCode_CANT_WRITE,
+        aArgs,
+        xEnv,
+        "Cannot remove additional properties of source object!",
+        this );
+    // Unreachable
 }
 
 
 //static
-bool Content::hasData( ContentProvider* pProvider, const Uri & rUri )
+bool Content::hasData( ContentProvider const * pProvider, const Uri & rUri )
 {
     if ( rUri.isRoot() )
     {
@@ -2190,18 +2127,13 @@ bool Content::hasData( ContentProvider* pProvider, const Uri & rUri )
         if ( !xStorage.is() )
             return false;
 
-        uno::Reference< container::XNameAccess > xParentNA(
-            xStorage, uno::UNO_QUERY );
-
-        OSL_ENSURE( xParentNA.is(), "Got no css.container.XNameAccess!" );
-
-        return xParentNA->hasByName( rUri.getDecodedName() );
+        return xStorage->hasByName( rUri.getDecodedName() );
     }
 }
 
 
 //static
-bool Content::loadData( ContentProvider* pProvider,
+bool Content::loadData( ContentProvider const * pProvider,
                         const Uri & rUri,
                         ContentProperties& rProps )
 {
@@ -2437,7 +2369,7 @@ void Content::renameData(
     }
     catch ( embed::InvalidStorageException const & )
     {
-        // this storage is in invalid state for eny reason
+        // this storage is in invalid state for any reason
         OSL_FAIL( "Caught InvalidStorageException!" );
         return;
     }
@@ -2501,7 +2433,7 @@ bool Content::removeData()
     }
     catch ( embed::InvalidStorageException const & )
     {
-        // this storage is in invalid state for eny reason
+        // this storage is in invalid state for any reason
         OSL_FAIL( "Caught InvalidStorageException!" );
         return false;
     }
@@ -2566,7 +2498,7 @@ bool Content::copyData( const Uri & rSourceUri, const OUString & rNewName )
     }
     catch ( embed::InvalidStorageException const & )
     {
-        // this storage is in invalid state for eny reason
+        // this storage is in invalid state for any reason
         OSL_FAIL( "Caught InvalidStorageException!" );
         return false;
     }
@@ -2737,8 +2669,7 @@ uno::Reference< io::XInputStream > Content::getInputStream(
         try
         {
             osl::Guard< osl::Mutex > aGuard( m_aMutex );
-            return uno::Reference< io::XInputStream >(
-                m_pProvider->queryInputStream( aUri, aPassword ) );
+            return m_pProvider->queryInputStream( aUri, aPassword );
         }
         catch ( packages::WrongPasswordException const & )
         {
@@ -2759,7 +2690,7 @@ uno::Reference< io::XInputStream > Content::getInputStream(
 /// @throws uno::RuntimeException
 static uno::Reference< io::XOutputStream > lcl_getTruncatedOutputStream(
                 const OUString & rUri,
-                ContentProvider * pProvider,
+                ContentProvider const * pProvider,
                 const uno::Reference< ucb::XCommandEnvironment > & xEnv )
 {
     OUString aPassword;
@@ -2768,9 +2699,8 @@ static uno::Reference< io::XOutputStream > lcl_getTruncatedOutputStream(
     {
         try
         {
-            return uno::Reference< io::XOutputStream >(
-                pProvider->queryOutputStream(
-                    rUri, aPassword, true /* truncate */ ) );
+            return pProvider->queryOutputStream(
+                    rUri, aPassword, true /* truncate */ );
         }
         catch ( packages::WrongPasswordException const & )
         {
@@ -2815,9 +2745,8 @@ uno::Reference< io::XStream > Content::getStream(
     {
         try
         {
-            return uno::Reference< io::XStream >(
-                m_pProvider->queryStream(
-                    aUri, aPassword, false /* no truncate */ ) );
+            return m_pProvider->queryStream(
+                    aUri, aPassword, false /* no truncate */ );
         }
         catch ( packages::WrongPasswordException const & )
         {

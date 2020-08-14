@@ -20,12 +20,11 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_DLG_CHARTTYPE_UNO_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_DLG_CHARTTYPE_UNO_HXX
 
-#include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <vcl/vclevent.hxx>
-
+#include <comphelper/proparrhlp.hxx>
 #include <svtools/genericunodialog.hxx>
+
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::beans { class XPropertySetInfo; }
 
 namespace chart
 {
@@ -41,7 +40,7 @@ private:
 
     // OGenericUnoDialog overridables
     virtual void implInitialize(const css::uno::Any& _rValue) override;
-    virtual VclPtr<Dialog> createDialog(vcl::Window* _pParent) override;
+    virtual std::unique_ptr<weld::DialogController> createDialog(const css::uno::Reference<css::awt::XWindow>& rParent) override;
 
     // XTypeProvider
     virtual css::uno::Sequence<sal_Int8> SAL_CALL getImplementationId(  ) override;

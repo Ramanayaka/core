@@ -20,50 +20,17 @@
 #ifndef INCLUDED_VCL_INC_GENERIC_GENINST_H
 #define INCLUDED_VCL_INC_GENERIC_GENINST_H
 
+#include <memory>
 #include <comphelper/solarmutex.hxx>
-#include <tools/solar.h>
-#include <osl/thread.hxx>
-#include <vclpluginapi.h>
 #include <salinst.hxx>
 #include <saldatabasic.hxx>
-#include "unx/genprn.h"
-
-class VCL_DLLPUBLIC SalYieldMutexReleaser
-{
-    sal_uLong m_nYieldCount;
-public:
-    inline SalYieldMutexReleaser();
-    inline ~SalYieldMutexReleaser();
-};
-
-inline SalYieldMutexReleaser::SalYieldMutexReleaser()
-{
-    m_nYieldCount = GetSalData()->m_pInstance->ReleaseYieldMutex();
-}
-
-inline SalYieldMutexReleaser::~SalYieldMutexReleaser()
-{
-    GetSalData()->m_pInstance->AcquireYieldMutex( m_nYieldCount );
-}
+#include <unx/genprn.h>
 
 class VCL_DLLPUBLIC SalYieldMutex : public comphelper::SolarMutex
 {
-    osl::Mutex m_mutex;
-
-protected:
-    sal_uIntPtr         mnCount;
-    oslThreadIdentifier mnThreadId;
-
 public:
-                        SalYieldMutex();
-                        virtual ~SalYieldMutex() override;
-
-    virtual void        acquire() override;
-    virtual void        release() override;
-    virtual bool        tryToAcquire() override;
-
-    sal_uIntPtr GetAcquireCount() const { return mnCount; }
-    oslThreadIdentifier GetThreadId() const { return mnThreadId; }
+    SalYieldMutex();
+    virtual ~SalYieldMutex() override;
 };
 
 /*
@@ -75,35 +42,26 @@ class VCL_DLLPUBLIC SalGenericInstance : public SalInstance
 {
 protected:
     bool           mbPrinterInit;
-    std::unique_ptr<SalYieldMutex> mpSalYieldMutex;
 
 public:
-    SalGenericInstance( SalYieldMutex* pMutex )
-        : mbPrinterInit( false ), mpSalYieldMutex( pMutex ) {}
+    SalGenericInstance( std::unique_ptr<comphelper::SolarMutex> pMutex )
+        : SalInstance(std::move(pMutex)), mbPrinterInit(false) {}
     virtual ~SalGenericInstance() override;
-
-    // Yield mutex
-    virtual comphelper::SolarMutex* GetYieldMutex() override;
-    virtual sal_uIntPtr         ReleaseYieldMutex() override;
-    virtual void                AcquireYieldMutex( sal_uIntPtr nCount ) override;
-    virtual bool                CheckYieldMutex() override;
 
     // Printing
     virtual SalInfoPrinter*     CreateInfoPrinter      ( SalPrinterQueueInfo* pQueueInfo,
                                                          ImplJobSetup* pSetupData ) override;
     virtual void                DestroyInfoPrinter     ( SalInfoPrinter* pPrinter ) override;
-    virtual SalPrinter*         CreatePrinter          ( SalInfoPrinter* pInfoPrinter ) override;
-    virtual void                DestroyPrinter         ( SalPrinter* pPrinter ) override;
+    virtual std::unique_ptr<SalPrinter> CreatePrinter  ( SalInfoPrinter* pInfoPrinter ) override;
     virtual void                GetPrinterQueueInfo    ( ImplPrnQueueList* pList ) override;
     virtual void                GetPrinterQueueState   ( SalPrinterQueueInfo* pInfo ) override;
-    virtual void                DeletePrinterQueueInfo ( SalPrinterQueueInfo* pInfo ) override;
     virtual OUString            GetDefaultPrinter() override;
     virtual void                PostPrintersChanged() = 0;
     virtual void                updatePrinterUpdate() override;
     virtual void                jobStartedPrinterUpdate() override;
     virtual void                jobEndedPrinterUpdate() override;
     bool isPrinterInit() const { return mbPrinterInit; }
-    virtual GenPspGraphics     *CreatePrintGraphics() = 0;
+    virtual std::unique_ptr<GenPspGraphics> CreatePrintGraphics() = 0;
 
     virtual OUString            getOSVersion() override;
 
@@ -112,7 +70,7 @@ public:
 
 protected:
     static void configurePspInfoPrinter( PspSalInfoPrinter* pInfoPrinter,
-                                         SalPrinterQueueInfo* pQueueInfo,
+                                         SalPrinterQueueInfo const * pQueueInfo,
                                          ImplJobSetup* pSetupData );
 };
 

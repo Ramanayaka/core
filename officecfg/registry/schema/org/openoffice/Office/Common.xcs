@@ -645,7 +645,7 @@
       </info>
       <prop oor:name="URL" oor:type="xs:string">
         <info>
-          <desc>Specifies an URL that should be recovered after the next Office
+          <desc>Specifies a URL that should be recovered after the next Office
           start.</desc>
         </info>
       </prop>
@@ -810,6 +810,11 @@
       <info>
         <desc>Stores the details of the installed personas.</desc>
       </info>
+      <prop oor:name="Slug" oor:type="xs:string" oor:nillable="false">
+        <info>
+          <desc>Unique pretty id of the persona, also part of its url</desc>
+        </info>
+      </prop>
       <prop oor:name="Name" oor:type="xs:string" oor:nillable="false">
         <info>
           <desc>The Persona's name</desc>
@@ -838,12 +843,6 @@
         </info>
         <value/>
       </prop>
-      <prop oor:name="AccentColor" oor:type="xs:string" oor:nillable="false">
-        <info>
-          <desc>Value of the accent color for the Persona</desc>
-        </info>
-        <value/>
-      </prop>
     </group>
   </templates>
   <component>
@@ -862,7 +861,30 @@
         <info>
            <desc>Specifies if OpenGL rendering should be used in VCL backends
                supporting it. This one forces the use of OpenGL even if the
-                blacklist would block the OpenGL driver.</desc>
+                denylist would block the OpenGL driver.</desc>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="UseSkia" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+           <desc>Specifies if Skia rendering should be used in VCL backends
+                supporting it.</desc>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="ForceSkia" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+           <desc>Specifies if Skia rendering should be used in VCL backends
+               supporting it. This one forces the use of Skia even if the
+                denylist would block the driver.</desc>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="ForceSkiaRaster" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+           <desc>Specifies if Skia rendering should be used in VCL backends
+               supporting it. This one forces the use of Skia software rendering
+               instead of trying to use the graphics driver.</desc>
         </info>
         <value>false</value>
       </prop>
@@ -877,6 +899,22 @@
           <label>Defines if the user interface animations are disabled.</label>
         </info>
         <value>true</value>
+      </prop>
+      <prop oor:name="ReduceTransparencyMinArea" oor:type="xs:int" oor:nillable="false">
+        <info>
+           <desc>Specifies minimal area of an object for applying "Reduce Transparency"
+           printer configuration option (removing object transparency). This value
+           is counted in percents of the printable area.</desc>
+        </info>
+        <value>25</value>
+      </prop>
+      <prop oor:name="PDFExportImageCacheSize" oor:type="xs:int" oor:nillable="false">
+        <info>
+           <desc>Specifies number of PDF image instances to cache on
+           export - can save potentially huge amount of CPU time on
+           re-compressing the same JPEG image over and over again.</desc>
+        </info>
+        <value>15</value>
       </prop>
     </group>
     <group oor:name="InternalMSExport">
@@ -1052,20 +1090,20 @@
       <prop oor:name="MaximumPaperWidth" oor:type="xs:int" oor:nillable="false">
         <info>
           <desc>Specifies the maximum allowed Paper Width for page definitions
-          in cm. Default is 3m, i.e. 300 cm. When this is changed to higher
+          in cm. Default is 6m, i.e. 600 cm. When this is changed to higher
           values, it is done on own risk.</desc>
           <label>Maximum allowed Paper Width for page definitions</label>
         </info>
-        <value>300</value>
+        <value>600</value>
       </prop>
       <prop oor:name="MaximumPaperHeight" oor:type="xs:int" oor:nillable="false">
         <info>
           <desc>Specifies the maximum allowed Paper Height for page definitions
-          in cm. Default is 3m, i.e. 300 cm. When this is changed to higher
+          in cm. Default is 6m, i.e. 600 cm. When this is changed to higher
           values, it is done on own risk.</desc>
           <label>Maximum allowed Paper Height for page definitions</label>
         </info>
-        <value>300</value>
+        <value>600</value>
       </prop>
       <prop oor:name="MaximumPaperLeftMargin" oor:type="xs:int" oor:nillable="false">
         <info>
@@ -1272,7 +1310,7 @@
              /italic/, -strikeout- and _underline_ -->
         <info>
           <desc>Specifies if text should be formatted in bold or underlined when
-          the corresponding characters are entered (*bold*, /italic/, -strikeout-, 
+          the corresponding characters are entered (*bold*, /italic/, -strikeout-,
           _underline_).</desc>
           <label>Apply bold, italics, strikeout or underline</label>
         </info>
@@ -1284,7 +1322,7 @@
         <!-- UIHints: Tools  AutoCorrect/AutoFormat  Options - URL
              recognition -->
         <info>
-          <desc>Specifies if character strings which could represent an URL
+          <desc>Specifies if character strings which could represent a URL
           should be converted to a hyperlink.</desc>
           <label>Detect URL</label>
         </info>
@@ -1323,6 +1361,22 @@
           <desc>Adds a non-breaking space before the characters :;!? in
           french.</desc>
           <label>Add non-breaking space</label>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="TransliterateRTL" oor:type="xs:boolean" oor:nillable="false">
+        <!-- UIHints: Tools  AutoCorrect/AutoFormat  Options - Transliterate Hungarian to Old Hungarian -->
+        <info>
+          <desc>Transliterates RTL Hungarian text to Old Hungarian script.</desc>
+          <label>Transliterate RTL text to Old Hungarian</label>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="ChangeAngleQuotes" oor:type="xs:boolean" oor:nillable="false">
+        <!-- UIHints: Tools  AutoCorrect/AutoFormat  Options - Replace << and >> with angle quotes -->
+        <info>
+          <desc>Specifies if &lt;&lt; or &gt;&gt; should be replaced by angle quotes automatically.</desc>
+          <label>Replace angle quotes</label>
         </info>
         <value>true</value>
       </prop>
@@ -1418,12 +1472,13 @@
           <!-- OldPath: AutoCorrect/Options/All -->
           <!-- OldLocation: Soffice.cfg -->
           <!-- UIHints: Tools - AutoCorrect/AutoFormat - Exceptions - Words with
-               2 initial capitals -->
+               2 initial capitals or small initial -->
           <info>
             <desc>Specifies if defined words with two initial capital letters
-            should not be included in the AutoCorrect replacement.</desc>
-            <label>Words with two initial capital letters - Add
-            automatically</label>
+            or a small initial letter should not be included in the AutoCorrect
+            replacement.</desc>
+            <label>Words with two initial capital letters or a small initial -
+            Add automatically</label>
           </info>
           <value>true</value>
         </prop>
@@ -1491,14 +1546,16 @@
         </info>
         <prop oor:name="TotalCacheSize" oor:type="xs:int" oor:nillable="false">
           <info>
+            <deprecated>Not used anymore</deprecated>
             <desc>Specifies the maximum cache size for all graphical display
             objects.</desc>
             <label>Total Image Cache Size</label>
           </info>
-          <value>200000000</value>
+          <value>400000000</value>
         </prop>
         <prop oor:name="ObjectCacheSize" oor:type="xs:int" oor:nillable="false">
           <info>
+            <deprecated>Not used anymore</deprecated>
             <desc>Specifies the maximum cache size for a single graphic display
             object.</desc>
             <label>Image Object Cache Size</label>
@@ -1507,11 +1564,38 @@
         </prop>
         <prop oor:name="ObjectReleaseTime" oor:type="xs:int" oor:nillable="false">
           <info>
+            <deprecated>Not used anymore</deprecated>
             <desc>Specifies the time in seconds after which a cached object is
             freed from the cache.</desc>
             <label>Image Object Release Timeout</label>
           </info>
           <value>600</value>
+        </prop>
+        <prop oor:name="GraphicSwappingEnabled" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Whether graphics will be swapped to disk when `GraphicMemoryLimit`
+            is reached. Disable at your own risk.</desc>
+            <label>Graphic Swapping Enabled</label>
+          </info>
+          <value>true</value>
+        </prop>
+        <prop oor:name="GraphicMemoryLimit" oor:type="xs:int" oor:nillable="false">
+          <info>
+            <desc>Specifies the allowed cumulated memory that the
+            graphic objects can occupy before they start to get swapped
+            to the disk to save memory.</desc>
+            <label>Graphic Memory Limit Size</label>
+          </info>
+          <value>300000000</value>
+        </prop>
+        <prop oor:name="GraphicAllowedIdleTime" oor:type="xs:int" oor:nillable="false">
+          <info>
+            <desc>Specifies the time in seconds when the graphic object
+            can be idle (time since it was last used) before it is
+            considered to be swapped to the disk to save memory.</desc>
+            <label>Graphic Allowed Idle Time</label>
+          </info>
+          <value>10</value>
         </prop>
       </group>
     </group>
@@ -1523,18 +1607,6 @@
         <desc>Contains the current and default path settings used by the
         Office.</desc>
       </info>
-      <group oor:name="Info">
-        <info>
-          <desc>Contains various properties information purpose only.</desc>
-        </info>
-        <prop oor:name="WorkPathChanged" oor:type="xs:boolean" oor:nillable="false">
-          <info>
-            <desc>A flag which is set by the tools options dialog whenever a
-            user changed the work path.</desc>
-          </info>
-          <value>true</value>
-        </prop>
-      </group>
       <group oor:name="Current">
         <info>
           <desc>Contains the global path settings, mainly those of the Options
@@ -1596,7 +1668,7 @@
           </info>
           <value>$(insturl)/@LIBO_SHARE_FOLDER@/config</value>
         </prop>
-        <prop oor:name="Dictionary" oor:type="xs:string" oor:nillable="false">
+        <prop oor:name="Dictionary" oor:type="xs:string">
           <info>
             <desc>Contains the provided dictionaries.</desc>
           </info>
@@ -2029,6 +2101,36 @@
           <desc>Contains all help bookmarks.</desc>
         </info>
       </set>
+      <prop oor:name="SendFeedbackURL" oor:type="xs:string" oor:nillable="false">
+        <info>
+          <desc>Specifies the URL used with the UNO command SendFeedback (SID_SEND_FEEDBACK).</desc>
+        </info>
+      </prop>
+      <prop oor:name="QA_URL" oor:type="xs:string" oor:nillable="false">
+        <info>
+          <desc>Specifies the URL used with the UNO command QuestionAnswers (SID_Q_AND_A).</desc>
+        </info>
+      </prop>
+      <prop oor:name="DocumentationURL" oor:type="xs:string" oor:nillable="false">
+        <info>
+          <desc>Specifies the URL used with the UNO command Documentation (SID_DOCUMENTATION).</desc>
+        </info>
+      </prop>
+      <prop oor:name="GetInvolvedURL" oor:type="xs:string" oor:nillable="false">
+        <info>
+          <desc>Specifies the URL used with the UNO command GetInvolved (SID_GETINVOLVED).</desc>
+        </info>
+      </prop>
+      <prop oor:name="DonationURL" oor:type="xs:string" oor:nillable="false">
+        <info>
+          <desc>Specifies the URL used with the UNO command Donation (SID_DONATION).</desc>
+        </info>
+      </prop>
+      <prop oor:name="ReleaseNotesURL" oor:type="xs:string" oor:nillable="false">
+        <info>
+          <desc>Specifies the URL used with the UNO command WhatsNew (SID_WHATSNEW).</desc>
+        </info>
+      </prop>
     </group>
     <group oor:name="History">
       <!-- OldLocation: soffice.ini -->
@@ -2288,14 +2390,6 @@
           </info>
           <value>false</value>
         </prop>
-        <prop oor:name="SaveBackwardCompatibleODF" oor:type="xs:boolean" oor:nillable="false">
-          <info>
-            <desc>If the  value is "true", then the ODF that is saved by
-            OpenOffice.org will be backward compatible to previous minor
-            versions.</desc>
-          </info>
-          <value>true</value>
-        </prop>
         <prop oor:name="LoadPrinter" oor:type="xs:boolean" oor:nillable="false">
           <!-- UIHints: Tools - Options - Load/Save - General - Load - Load
                printer settings with the document -->
@@ -2339,6 +2433,13 @@
             </enumeration>
           </constraints>
           <value>1</value>
+        </prop>
+        <prop oor:name="AddReplacementImages" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Export replacement objects as fallback images for vector graphics (True).</desc>
+            <label>Export replacement objects as fallback images for vector graphics</label>
+          </info>
+          <value>true</value>
         </prop>
       </group>
       <group oor:name="URL">
@@ -2401,6 +2502,21 @@
                 <desc>ODFVER_012</desc>
               </info>
             </enumeration>
+            <enumeration oor:value="8">
+              <info>
+                <desc>ODFVER_012_EXT_COMPAT</desc>
+              </info>
+            </enumeration>
+            <enumeration oor:value="9">
+              <info>
+                <desc>ODFVER_012_EXTENDED</desc>
+              </info>
+            </enumeration>
+            <enumeration oor:value="10">
+              <info>
+                <desc>ODFVER_013</desc>
+              </info>
+            </enumeration>
             <enumeration oor:value="3">
               <info>
                 <desc>ODFVER_LATEST</desc>
@@ -2408,21 +2524,6 @@
             </enumeration>
           </constraints>
           <value>3</value>
-        </prop>
-        <prop oor:name="UseSHA1InODF12" oor:type="xs:boolean" oor:nillable="false">
-          <info>
-            <desc>Specifies whether SHA1 algorithm instead of SHA256 should be
-            used in ODF12 for StartKey and Checksum generation during
-            encryption.</desc>
-          </info>
-          <value>false</value>
-        </prop>
-        <prop oor:name="UseBlowfishInODF12" oor:type="xs:boolean" oor:nillable="false">
-          <info>
-            <desc>Specifies whether Blowfish algorithm instead of AES should be
-            used in ODF12 for encryption.</desc>
-          </info>
-          <value>false</value>
         </prop>
       </group>
     </group>
@@ -2453,6 +2554,29 @@
       <info>
         <desc>Contains security specific Office settings.</desc>
       </info>
+      <prop oor:name="LoadExoticFileFormats" oor:type="xs:int" oor:nillable="false">
+        <info>
+          <desc>Determines how exotic file formats should be handled.</desc>
+        </info>
+        <constraints>
+          <enumeration oor:value="0">
+            <info>
+              <desc>Refuse loading without question</desc>
+            </info>
+          </enumeration>
+          <enumeration oor:value="1">
+            <info>
+              <desc>Display a warning and let the user decide</desc>
+            </info>
+          </enumeration>
+          <enumeration oor:value="2">
+            <info>
+              <desc>Always load without question</desc>
+            </info>
+          </enumeration>
+        </constraints>
+        <value>2</value>
+      </prop>
       <prop oor:name="EnableExpertConfiguration" oor:type="xs:boolean" oor:nillable="false">
         <info>
           <desc>Determines if the user has access to the entire
@@ -2460,6 +2584,19 @@
         </info>
         <value>true</value>
       </prop>
+      <group oor:name="OpenPGP">
+        <info>
+          <desc>Contains security settings regarding the GnuPG/OpenPGP backend.</desc>
+        </info>
+        <prop oor:name="MinimalKeyExport" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Determines if the PGPKeyPacket element on signed
+            documents will contain the full public key (default), or
+            the potentially much smaller minimal one, without any signatures.</desc>
+          </info>
+          <value>false</value>
+        </prop>
+      </group>
       <group oor:name="Scripting">
         <info>
           <desc>Contains security settings regarding Basic scripts.</desc>
@@ -2545,6 +2682,11 @@
             <desc>Contains the path to the users NSS certificate directory.</desc>
           </info>
         </prop>
+        <prop oor:name="ManualCertDir" oor:type="xs:string" oor:nillable="false">
+          <info>
+            <desc>Contains the last path manually selected by the user for the CertDir property.</desc>
+          </info>
+        </prop>
         <prop oor:name="TSAURLs" oor:type="oor:string-list">
           <info>
             <desc>Contains the URLs or Time Stamping Authority servers.</desc>
@@ -2613,11 +2755,18 @@
         <prop oor:name="DisableMacrosExecution" oor:type="xs:boolean" oor:nillable="false">
           <info>
             <desc>Specifies whether the macro execution is disabled in general.
+            This will disable Basic, Beanshell, Javascript and Python scripts.
             If it is set to true, the "MacroSecurityLevel" is ignored. If it is
             set to false, the mentioned entry specified the level of macro
             security.</desc>
           </info>
           <value>false</value>
+        </prop>
+        <prop oor:name="CheckDocumentEvents" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Warn on load when a document binds an event to a macro</desc>
+          </info>
+          <value>true</value>
         </prop>
         <set oor:name="TrustedAuthors" oor:node-type="TrustedAuthor">
           <info>
@@ -2951,82 +3100,6 @@
           <value/>
           <!-- JB: Empty default inserted into empty property node. Remove if
                NIL was intended -->
-        </prop>
-      </group>
-      <group oor:name="SplitWindow">
-        <info>
-          <deprecated/>
-          <desc>Specifies the properties of window containers for docked
-          windows.</desc>
-        </info>
-        <prop oor:name="Key" oor:type="xs:string" oor:nillable="false">
-          <!-- OldPath: soffice_View/SplitWindow -->
-          <!-- OldLocation: soffice.ini -->
-          <!-- Notice: LM: Description is missing 0SplitWindow=V1,2,1,0,6308 -->
-          <info>
-            <deprecated/>
-            <desc>Deprecated.</desc>
-          </info>
-          <value/>
-          <!-- JB: Empty default inserted into empty property node. Remove if
-               NIL was intended -->
-        </prop>
-        <prop oor:name="Version" oor:type="xs:int">
-          <!-- OldPath: soffice_View/SplitWindow -->
-          <!-- OldLocation: soffice.ini -->
-          <!-- Notice: LM: Description is missing -->
-          <info>
-            <deprecated/>
-            <desc>Deprecated.</desc>
-          </info>
-        </prop>
-        <prop oor:name="State" oor:type="xs:int">
-          <!-- OldPath: soffice_View/SplitWindow -->
-          <!-- OldLocation: soffice.ini -->
-          <info>
-            <deprecated/>
-            <desc>Deprecated.</desc>
-          </info>
-          <constraints>
-            <enumeration oor:value="0">
-              <info>
-                <desc>Stick/Hidden</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="1">
-              <info>
-                <desc>Floating/Hidden</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="2">
-              <info>
-                <desc>Stick/Visible</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="3">
-              <info>
-                <desc>Floating/Visible</desc>
-              </info>
-            </enumeration>
-          </constraints>
-        </prop>
-        <prop oor:name="Count" oor:type="xs:int">
-          <info>
-            <deprecated/>
-            <desc>Deprecated.</desc>
-          </info>
-          <!-- OldPath: soffice_View/SplitWindow -->
-          <!-- OldLocation: soffice.ini -->
-          <!-- Notice: LM: Description is missing -->
-        </prop>
-        <prop oor:name="Sequence" oor:type="xs:int">
-          <info>
-            <deprecated/>
-            <desc>Deprecated.</desc>
-          </info>
-          <!-- OldPath: soffice_View/SplitWindow -->
-          <!-- OldLocation: soffice.ini -->
-          <!-- Notice: LM: Description is missing -->
         </prop>
       </group>
       <group oor:name="FontAntiAliasing">
@@ -3493,6 +3566,49 @@
         <value/>
       </prop>
     </group>
+    <group oor:name="FavoriteCharacters">
+      <info>
+        <desc>Contains Favorite characters</desc>
+      </info>
+      <prop oor:name="FavoriteCharacterList" oor:type="oor:string-list" oor:nillable="false">
+        <info>
+          <desc>List of Favorite characters</desc>
+        </info>
+          <value>
+          <it>€</it>
+          <it>¥</it>
+          <it>£</it>
+          <it>©</it>
+          <it>Σ</it>
+          <it>Ω</it>
+          <it>≤</it>
+          <it>≥</it>
+          <it>∞</it>
+          <it>π</it>
+          <it>†</it>
+          <it>‡</it>
+        </value>
+      </prop>
+      <prop oor:name="FavoriteCharacterFontList" oor:type="oor:string-list" oor:nillable="false">
+        <info>
+          <desc>List of Favorite character font</desc>
+        </info>
+        <value>
+          <it>Liberation Serif</it>
+          <it>Liberation Serif</it>
+          <it>Liberation Serif</it>
+          <it>Liberation Serif</it>
+          <it>Liberation Serif</it>
+          <it>Liberation Serif</it>
+          <it>Liberation Serif</it>
+          <it>Liberation Serif</it>
+          <it>Liberation Serif</it>
+          <it>Liberation Serif</it>
+          <it>Liberation Serif</it>
+          <it>Liberation Serif</it>
+        </value>
+      </prop>
+    </group>
     <group oor:name="Help">
       <info>
         <desc>Contains settings that specify the common help settings.</desc>
@@ -3538,12 +3654,25 @@
         </info>
         <value>false</value>
       </prop>
+      <prop oor:name="BuiltInHelpNotInstalledPopUp" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Activates "Built-in help is not installed" pop-up</desc>
+        </info>
+        <value>true</value>
+      </prop>
       <prop oor:name="HelpStyleSheet" oor:type="xs:string" oor:nillable="false">
         <info>
           <desc>Specifies the name of the stylesheet used to display help
           content.</desc>
         </info>
         <value>Default</value>
+      </prop>
+      <prop oor:name="HelpRootURL" oor:type="xs:string" oor:nillable="false">
+        <info>
+          <desc>Specifies the root URL to the Office help pages. Blank disables
+          Help buttons on dialogs in LibreOffice Online.</desc>
+        </info>
+        <value>https://help.libreoffice.org/help.html?</value>
       </prop>
       <group oor:name="StartCenter">
         <info>
@@ -3569,13 +3698,6 @@
             additional template documents</desc>
           </info>
           <value/>
-        </prop>
-        <prop oor:name="StartCenterHideExternalLinks" oor:type="xs:int" oor:nillable="false">
-          <info>
-            <desc>Contains a number deciding whether to show or hide buttons
-            with external links</desc>
-          </info>
-          <value>0</value>
         </prop>
         <prop oor:name="StartCenterBackgroundColor" oor:type="xs:int" oor:nillable="false">
           <!-- Default 14540253 = 0xdddddd as specified in tdf#90452, comment 45 -->
@@ -3618,26 +3740,6 @@
             <desc>Specifies the text color of the highlight of a thumbnail in the start center.</desc>
           </info>
           <value>3355443</value>
-        </prop>
-      </group>
-    </group>
-    <group oor:name="Java">
-      <info>
-        <desc>Contains Java related settings.</desc>
-      </info>
-      <group oor:name="Applet">
-        <info>
-          <desc>Contains Applet related settings.</desc>
-        </info>
-        <prop oor:name="Enable" oor:type="xs:boolean" oor:nillable="false">
-          <!-- OldPath: Java -->
-          <!-- OldLocation: java.ini -->
-          <!-- UIHints: Tools  Options  Security Enable Applets -->
-          <info>
-            <desc>Enables/disables Java applets in Office documents.</desc>
-            <label>Enable Applets</label>
-          </info>
-          <value>false</value>
         </prop>
       </group>
     </group>
@@ -3731,277 +3833,6 @@
         <value>32</value>
       </prop>
     </group>
-    <group oor:name="Image">
-      <info>
-        <desc>Specifies the options for images.</desc>
-        <label>Image</label>
-      </info>
-      <group oor:name="Color">
-        <info>
-          <desc>Specifies the color options for images.</desc>
-          <label>Image Color</label>
-        </info>
-        <prop oor:name="Grayscale" oor:type="xs:short" oor:nillable="false">
-          <!-- OldPath: Image/Colors -->
-          <!-- OldLocation: Soffice.cfg -->
-          <!-- UIHints: Tools  Options - Picture  Colors  [Section]
-               Grayscale -->
-          <info>
-            <deprecated/>
-            <desc>Deprecated.</desc>
-            <label>Number</label>
-          </info>
-          <constraints>
-            <minInclusive oor:value="4">
-              <info>
-                <desc>Deprecated.</desc>
-              </info>
-            </minInclusive>
-            <maxInclusive oor:value="256">
-              <info>
-                <desc>Deprecated.</desc>
-              </info>
-            </maxInclusive>
-          </constraints>
-          <value>256</value>
-        </prop>
-        <prop oor:name="Brightness" oor:type="xs:int" oor:nillable="false">
-          <!-- OldPath: Image/Colors -->
-          <!-- OldLocation: Soffice.cfg -->
-          <!-- UIHints: Tools  Options - Picture  Colors  [Section] Brightness
-               and Contrast -->
-          <info>
-            <deprecated/>
-            <desc>Deprecated.</desc>
-            <label>Brightness</label>
-          </info>
-          <constraints>
-            <minInclusive oor:value="0">
-              <info>
-                <desc>Deprecated.</desc>
-              </info>
-            </minInclusive>
-            <maxInclusive oor:value="100">
-              <info>
-                <desc>Deprecated.</desc>
-              </info>
-            </maxInclusive>
-          </constraints>
-          <value>10</value>
-        </prop>
-        <prop oor:name="Contrast" oor:type="xs:int" oor:nillable="false">
-          <!-- OldPath: Image/Colors -->
-          <!-- OldLocation: Soffice.cfg -->
-          <!-- UIHints: Tools  Options - Picture  Colors  [Section] Brightness
-               and Contrast -->
-          <info>
-            <deprecated/>
-            <desc>Deprecated.</desc>
-            <label>Contrast</label>
-          </info>
-          <constraints>
-            <minInclusive oor:value="0">
-              <info>
-                <desc>Deprecated.</desc>
-              </info>
-            </minInclusive>
-            <maxInclusive oor:value="100">
-              <info>
-                <desc>Deprecated.</desc>
-              </info>
-            </maxInclusive>
-          </constraints>
-          <value>10</value>
-        </prop>
-        <group oor:name="RGB">
-          <info>
-            <desc>Specifies the RGB color options for images.</desc>
-            <label>Image RGB Color</label>
-          </info>
-          <prop oor:name="Red" oor:type="xs:int" oor:nillable="false">
-            <!-- OldPath: Image/Colors/RGB -->
-            <!-- OldLocation: Soffice.cfg -->
-            <!-- UIHints: Tools  Options - Picture  Colors - [Section] RGB
-                 values -->
-            <info>
-              <deprecated/>
-              <desc>Deprecated.</desc>
-              <label>Red</label>
-            </info>
-            <constraints>
-              <minInclusive oor:value="0">
-                <info>
-                  <desc>Deprecated.</desc>
-                </info>
-              </minInclusive>
-              <maxInclusive oor:value="100">
-                <info>
-                  <desc>Deprecated.</desc>
-                </info>
-              </maxInclusive>
-            </constraints>
-            <value>10</value>
-          </prop>
-          <prop oor:name="Green" oor:type="xs:int" oor:nillable="false">
-            <!-- OldPath: Image/Colors/RGB -->
-            <!-- OldLocation: Soffice.cfg -->
-            <!-- UIHints: Tools  Options - Picture  Colors - [Section] RGB
-                 values -->
-            <info>
-              <deprecated/>
-              <desc>Deprecated.</desc>
-              <label>Green</label>
-            </info>
-            <constraints>
-              <minInclusive oor:value="0">
-                <info>
-                  <desc>Deprecated.</desc>
-                </info>
-              </minInclusive>
-              <maxInclusive oor:value="100">
-                <info>
-                  <desc>Deprecated.</desc>
-                </info>
-              </maxInclusive>
-            </constraints>
-            <value>10</value>
-          </prop>
-          <prop oor:name="Blue" oor:type="xs:int" oor:nillable="false">
-            <!-- OldPath: Image/Colors/RGB -->
-            <!-- OldLocation: Soffice.cfg -->
-            <!-- UIHints: Tools  Options - Picture  Colors - [Section] RGB
-                 values -->
-            <info>
-              <deprecated/>
-              <desc>Deprecated.</desc>
-              <label>Blue</label>
-            </info>
-            <constraints>
-              <minInclusive oor:value="0">
-                <info>
-                  <desc>Deprecated.</desc>
-                </info>
-              </minInclusive>
-              <maxInclusive oor:value="100">
-                <info>
-                  <desc>Deprecated.</desc>
-                </info>
-              </maxInclusive>
-            </constraints>
-            <value>10</value>
-          </prop>
-        </group>
-      </group>
-      <group oor:name="Effect">
-        <info>
-          <desc>Specifies the effects options for images.</desc>
-          <label>Image Effects</label>
-        </info>
-        <prop oor:name="Definition" oor:type="xs:short" oor:nillable="false">
-          <!-- OldPath: Image/Effects -->
-          <!-- OldLocation: Soffice.cfg -->
-          <!-- UIHints: Tools  Options - Picture  Effects - [Section] Mosaic -->
-          <info>
-            <deprecated/>
-            <desc>Deprecated.</desc>
-            <label>Definition</label>
-          </info>
-          <constraints>
-            <enumeration oor:value="0">
-              <info>
-                <desc>Deprecated</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="1">
-              <info>
-                <desc>Deprecated</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="2">
-              <info>
-                <desc>Deprecated</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="3">
-              <info>
-                <desc>Deprecated</desc>
-              </info>
-            </enumeration>
-          </constraints>
-          <value>2</value>
-        </prop>
-        <prop oor:name="Invert" oor:type="xs:boolean" oor:nillable="false">
-          <!-- OldPath: Image/Effects -->
-          <!-- OldLocation: Soffice.cfg -->
-          <!-- UIHints: Tools  Options - Picture  Effects - [Section]
-               Solarization -->
-          <info>
-            <deprecated/>
-            <desc>Deprecated.</desc>
-            <label>Invert</label>
-          </info>
-          <value>false</value>
-        </prop>
-        <prop oor:name="Degree" oor:type="xs:short" oor:nillable="false">
-          <!-- OldPath: Image/Effects -->
-          <!-- OldLocation: Soffice.cfg -->
-          <!-- UIHints: Tools  Options - Picture  Effects - [Section]
-               Definition -->
-          <!-- Notice: Description in the enumeration is missing -->
-          <info>
-            <deprecated/>
-            <desc>Deprecated.</desc>
-            <label>Degree</label>
-          </info>
-          <constraints>
-            <enumeration oor:value="0">
-              <info>
-                <desc>Deprecated</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="1">
-              <info>
-                <desc>Deprecated</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="2">
-              <info>
-                <desc>Deprecated</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="3">
-              <info>
-                <desc>Deprecated</desc>
-              </info>
-            </enumeration>
-          </constraints>
-          <value>2</value>
-        </prop>
-        <prop oor:name="Intensity" oor:type="xs:int" oor:nillable="false">
-          <!-- OldPath: Image/Effects -->
-          <!-- OldLocation: Soffice.cfg -->
-          <!-- UIHints: Tools  Options - Picture  Effects - [Section] Aging -->
-          <info>
-            <deprecated/>
-            <desc>Deprecated.</desc>
-            <label>Intensity</label>
-          </info>
-          <constraints>
-            <minInclusive oor:value="0">
-              <info>
-                <desc>Specifies that the minimum intensity is 0.</desc>
-              </info>
-            </minInclusive>
-            <maxInclusive oor:value="100">
-              <info>
-                <desc>Specifies that the maximum intensity is 100.</desc>
-              </info>
-            </maxInclusive>
-          </constraints>
-          <value>10</value>
-        </prop>
-      </group>
-    </group>
     <group oor:name="DateFormat">
       <info>
         <desc>Specifies settings for the date formats used.</desc>
@@ -4023,6 +3854,23 @@
         <desc>Specifies default settings of Microsoft-, Graphic- and HTML
         filters.</desc>
       </info>
+      <group oor:name="Adobe">
+        <info>
+          <desc>Specifies default settings of Adobe filters.</desc>
+        </info>
+        <group oor:name="Import">
+          <info>
+            <desc>Specifies default settings of Adobe import filters.</desc>
+          </info>
+          <prop oor:name="PDFToDraw" oor:type="xs:boolean" oor:nillable="false">
+            <info>
+              <desc>Specifies if convertible PDF OLE objects are converted
+              into Draw objects.</desc>
+            </info>
+            <value>true</value>
+          </prop>
+        </group>
+      </group>
       <group oor:name="Microsoft">
         <info>
           <desc>Specifies default settings of Microsoft filters.</desc>
@@ -4068,6 +3916,27 @@
           <prop oor:name="ImportWWFieldsAsEnhancedFields" oor:type="xs:boolean" oor:nillable="false">
             <info>
               <desc>Flag to control use of enhanced fields.</desc>
+            </info>
+            <value>true</value>
+          </prop>
+          <prop oor:name="ForceImportWWFieldsAsGenericFields" oor:type="xs:boolean" oor:nillable="false">
+            <info>
+              <desc>Experimental: force all fields in RTF/DOCX to be imported as dumb generic enhanced fields.</desc>
+            </info>
+            <value>false</value>
+          </prop>
+          <prop oor:name="CreateMSOLockFiles" oor:type="xs:boolean" oor:nillable="false">
+            <info>
+              <desc>Specifies if LO should create MSO lock files next to the LO lock files
+              when opening a file. This makes MSO to be able to read the user name from
+              the lock file and show it for the user.</desc>
+            </info>
+            <value>false</value>
+          </prop>
+          <prop oor:name="VisioToDraw" oor:type="xs:boolean" oor:nillable="false">
+            <info>
+              <desc>Specifies if convertible Visio OLE objects are converted
+              into Draw objects.</desc>
             </info>
             <value>true</value>
           </prop>
@@ -4130,7 +3999,7 @@
               <desc>Specifies if character background is exported as highlighting
               (and not as shading) when saving to Word document</desc>
             </info>
-            <value>true</value>
+            <value>false</value>
           </prop>
         </group>
       </group>
@@ -4764,6 +4633,28 @@
               </constraints>
               <value>1</value>
             </prop>
+            <prop oor:name="Translucent" oor:type="xs:int" oor:nillable="false">
+              <!-- OldPath: PNG-EXPORT-TRANSLUCENT -->
+              <!-- OldLocation: fltopt.ini -->
+              <!-- UIHints: File  Export  Filetype  PNG-Portable Network Graphic -->
+              <info>
+                <desc>Specifies if the graphic background is stored as
+                transparent.</desc>
+              </info>
+              <constraints>
+                <enumeration oor:value="0">
+                  <info>
+                    <desc>No transparency</desc>
+                  </info>
+                </enumeration>
+                <enumeration oor:value="1">
+                  <info>
+                    <desc>Transparency</desc>
+                  </info>
+                </enumeration>
+              </constraints>
+              <value>1</value>
+            </prop>
           </group>
           <group oor:name="SVG">
             <info>
@@ -4786,7 +4677,7 @@
             <prop oor:name="UseNativeTextDecoration" oor:type="xs:boolean" oor:nillable="false">
               <info>
                 <desc>Specifies if text decoration like underlining and
-                strike-through be drawm by using SVG attributes (true) or by
+                strike-through be drawn by using SVG attributes (true) or by
                 drawing SVG primitives (false).</desc>
               </info>
               <value>true</value>
@@ -5132,7 +5023,7 @@
             <info>
               <desc>Specifies if placeholder fields are exported to PDF.</desc>
             </info>
-            <value>true</value>
+            <value>false</value>
           </prop>
           <prop oor:name="OpenBookmarkLevels" oor:type="xs:int" oor:nillable="false">
             <info>
@@ -5166,6 +5057,13 @@
             <info>
               <desc>Specifies if hidden slides are exported to PDF. (Hidden slides
               are available in Impress documents only).</desc>
+            </info>
+            <value>false</value>
+          </prop>
+          <prop oor:name="SinglePageSheets" oor:type="xs:boolean" oor:nillable="false">
+            <info>
+              <desc>Specifies if each sheet is exported to PDF as a single page.
+              (Available in Calc documents only).</desc>
             </info>
             <value>false</value>
           </prop>
@@ -5478,7 +5376,17 @@
             <constraints>
               <enumeration oor:value="0">
                 <info>
-                  <desc>PDF 1.4 (default selection).</desc>
+                  <desc>PDF 1.6 (default selection).</desc>
+                </info>
+              </enumeration>
+              <enumeration oor:value="15">
+                <info>
+                  <desc>PDF 1.5</desc>
+                </info>
+              </enumeration>
+              <enumeration oor:value="16">
+                <info>
+                  <desc>PDF 1.6</desc>
                 </info>
               </enumeration>
               <enumeration oor:value="1">
@@ -5486,10 +5394,23 @@
                   <desc>PDF/A-1 (ISO 19005-1:2005)</desc>
                 </info>
               </enumeration>
+              <enumeration oor:value="2">
+                <info>
+                  <desc>PDF/A-2 (ISO 19005-2:2011)</desc>
+                </info>
+              </enumeration>
             </constraints>
             <value>0</value>
           </prop>
           <!-- END PDF Version selection -->
+          <!-- PDF/UA Compliance -->
+          <prop oor:name="PDFUACompliance" oor:type="xs:boolean" oor:nillable="false">
+            <info>
+              <desc>Specifies if the document is PDF/UA (Universal Accessibility) compliant</desc>
+            </info>
+            <value>false</value>
+          </prop>
+          <!-- END PDF/UA Compliance -->
           <!-- PDF Relative Link -->
           <prop oor:name="ExportLinksRelativeFsys" oor:type="xs:boolean" oor:nillable="false">
             <info>
@@ -5497,7 +5418,7 @@
               protocol) present in the document will be exported as relative to
               the source document location.</desc>
             </info>
-            <value>false</value>
+            <value>true</value>
           </prop>
           <prop oor:name="PDFViewSelection" oor:type="xs:int" oor:nillable="false">
             <info>
@@ -5570,6 +5491,18 @@
         </info>
         <value>EmojiOne Color</value>
       </prop>
+      <prop oor:name="FontsUseWinMetrics" oor:type="oor:string-list" oor:nillable="false">
+        <info>
+          <desc>
+            Fonts where the win metrics need to be considered in order to display the font correctly
+            Fonts are identified by their name and the font metrics (see fontmetric.cxx:ShouldUseWinMetrics).
+          </desc>
+        </info>
+        <value>
+          <!-- DIN Light (ttf version) has odd metrics. The otf version works fine. -->
+          <it>DIN Light,1509,-503,1509,-483,1997,483</it>
+        </value>
+      </prop>
       <prop oor:name="PluginsEnabled" oor:type="xs:boolean" oor:nillable="false">
         <!-- OldPath: ? -->
         <!-- OldLocation: soffice.ini -->
@@ -5596,6 +5529,15 @@
         </info>
         <value>true</value>
       </prop>
+      <prop oor:name="UseWebDAVFileLocking" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Determines if WebDAV-specific file locking is used for documents
+          on WebDAV shares. It is not recommended to set this option to 'false' in
+          scenarios where multi-user, concurrent read/write access to WebDAV share
+          is required</desc>
+        </info>
+        <value>true</value>
+      </prop>
       <prop oor:name="UseDocumentOOoLockFile" oor:type="xs:boolean" oor:nillable="false">
         <info>
           <desc>Allows to specify whether the OOo document file locking
@@ -5607,6 +5549,12 @@
         <info>
           <desc>Allows to specify whether locking should be used at all.
           Use this setting only for debugging purpose.</desc>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="AllowOverrideLocking" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Whether the user can open a file for editing although it has been locked by another user.</desc>
         </info>
         <value>true</value>
       </prop>
@@ -5633,6 +5581,15 @@
         </info>
         <value>false</value>
       </prop>
+      <prop oor:name="WriteLayerStateAsConfigItem" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>If 'true', the config items VisibleLayers, PrintableLayers and
+          LockedLayers are written to 'office:settings' element, otherwise not.
+          Since LO 6.2 the ODF attributes of 'draw:layer' element are used on
+          file open, if these config items do not exist.</desc>
+        </info>
+        <value>true</value>
+      </prop>
       <prop oor:name="ExperimentalMode" oor:type="xs:boolean" oor:nillable="false">
         <info>
           <desc>Determines if various experimental, and potentially unstable
@@ -5654,6 +5611,32 @@
         </info>
         <value>false</value>
       </prop>
+      <prop oor:name="CrashReport" oor:type="xs:boolean" oor:nillable="false">
+        <!-- UIHints: Tools - Options - General -->
+        <info>
+          <desc>Enable sending crash reports to The Document Foundation</desc>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="ShowTipOfTheDay" oor:type="xs:boolean" oor:nillable="false">
+        <!-- UIHints: Tools - Options - General -->
+        <info>
+          <desc>Determines whether the Tip-of-the-Day dialog is shown on startup.</desc>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="LastTipOfTheDayShown" oor:type="xs:int" oor:nillable="false">
+          <info>
+              <desc>The last time when the Tip-of-the-Day dialog was shown.</desc>
+          </info>
+          <value>-1</value> <!-- +1 every 24h -->
+      </prop>
+      <prop oor:name="LastTipOfTheDayID" oor:type="xs:int" oor:nillable="false">
+          <info>
+              <desc>The last shown Tip-of-the-Day.</desc>
+          </info>
+          <value>0</value>
+      </prop>
       <prop oor:name="UseOpenCL" oor:type="xs:boolean" oor:nillable="false">
         <info>
           <desc>Determines whether OpenCL can be used, when available, to speed up
@@ -5661,17 +5644,17 @@
         </info>
         <value>true</value>
       </prop>
-      <prop oor:name="OpenCLBlackList" oor:type="oor:string-list" oor:nillable="false">
+      <prop oor:name="OpenCLDenyList" oor:type="oor:string-list" oor:nillable="false">
         <!-- UIHints: Tools - Options General OpenCL -->
         <info>
-          <desc>Combinations of (OS, OS version, OpenCL platform vendor, OpenCL device name, OpenCL driver version) that are known to be bad. Each entry is a string consisting of five parts separated by slashes. An empty part matches anything. In case a slash, percent or semicolon occurs inside a part, it is replaced by a percent followed by the corresponding number as two hex digits. The parts except OS can contain regular expressions. Inside these regular expressions the usual characters .*()[]\ are special and should be quoted with a backslash to be interpreted literally. OS should be just one of "Linux", "OS X" (including the space) or "Windows" (without quotes). Has higher priority than OpenCLWhiteList.</desc>
+          <desc>Combinations of (OS, OS version, OpenCL platform vendor, OpenCL device name, OpenCL driver version) that are known to be bad. Each entry is a string consisting of five parts separated by slashes. An empty part matches anything. In case a slash, percent or semicolon occurs inside a part, it is replaced by a percent followed by the corresponding number as two hex digits. The parts except OS can contain regular expressions. Inside these regular expressions the usual characters .*()[]\ are special and should be quoted with a backslash to be interpreted literally. OS should be just one of "Linux", "OS X" (including the space) or "Windows" (without quotes). Has higher priority than OpenCLAllowList.</desc>
         </info>
-  <value oor:separator=";">Windows//Intel\(R\) Corporation//9\.17\.10\.2884;Windows//Intel\(R\) Corporation//4\.2\.0\.99;Windows//Intel\(R\) Corporation//5\.2\.0\.10049;Windows//Intel\(R\) Corporation//3\.0\.1\.10891</value>
+        <value oor:separator=";">Windows//Intel\(R\) Corporation//9\.17\.10\.2884;Windows//Intel\(R\) Corporation//4\.2\.0\.99;Windows//Intel\(R\) Corporation//5\.2\.0\.10049;Windows//Intel\(R\) Corporation//3\.0\.1\.10891</value>
       </prop>
-      <prop oor:name="OpenCLWhiteList" oor:type="oor:string-list" oor:nillable="false">
+      <prop oor:name="OpenCLAllowList" oor:type="oor:string-list" oor:nillable="false">
         <!-- UIHints: Tools - Options General OpenCL  -->
         <info>
-          <desc>Like OpenCLBlackList, but for combinations known to be good.</desc>
+          <desc>Like OpenCLDenyList, but for combinations known to be good.</desc>
         </info>
         <value oor:separator=";">Linux//Advanced Micro Devices, Inc\.//1445\.5 \(sse2,avx\);//Advanced Micro Devices, Inc\.//;//Intel\(R\) Corporation//;//NVIDIA Corporation//</value>
       </prop>
@@ -5680,13 +5663,6 @@
           <desc>A string identifying the OpenCL device that was successfully selected and passed the OpenCL calculation tests. The syntax of this value is purposely not documented. For LibreOffice internal use only, do not inspect this value or try to modify it from any level of user code.</desc>
         </info>
         <value>none</value>
-      </prop>
-      <prop oor:name="UseSwInterpreter" oor:type="xs:boolean" oor:nillable="false">
-        <info>
-          <desc>Determines whether Software Interpreter can be used to speed
-          up some operations on Calc formulas.</desc>
-        </info>
-        <value>true</value>
       </prop>
       <prop oor:name="MacroRecorderMode" oor:type="xs:boolean" oor:nillable="false">
         <info>
@@ -5848,16 +5824,6 @@
         </info>
         <value>true</value>
       </prop>
-      <prop oor:name="TemplateRepositoryUrls" oor:type="oor:string-list" oor:nillable="false">
-        <info>
-          <desc>List of template repositories URLs bookmarked in the Templates dialog.</desc>
-        </info>
-      </prop>
-      <prop oor:name="TemplateRepositoryNames" oor:type="oor:string-list" oor:nillable="false">
-        <info>
-          <desc>List of template repositories names bookmarked in the Templates dialog.</desc>
-        </info>
-      </prop>
       <prop oor:name="FilePickerPlacesUrls" oor:type="oor:string-list" oor:nillable="false">
         <info>
           <desc>List of URLs of the places the user bookmarked in the file picker dialog.</desc>
@@ -5888,6 +5854,17 @@
           <desc>Contains the Personas installed through extensions</desc>
         </info>
       </set>
+      <prop oor:name="FindReplaceRememberedSearches" oor:type="xs:int" oor:nillable="false">
+        <info>
+          <desc>Number of saved searches in the Find and Replace dialog.</desc>
+        </info>
+      </prop>
+      <prop oor:name="AllowEditReadonlyDocs" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Allow the user to edit read-only docs (via menu or Infobar)</desc>
+        </info>
+        <value>true</value>
+      </prop>
     </group>
     <group oor:name="Forms">
       <info>
@@ -5994,7 +5971,7 @@
         <info>
           <desc>Determines the type of character distance compression in Asian
           text: 0 - no compression; 1 - compress punctuation only; 2 - compress
-          interpunction an japanese kana.</desc>
+          interpunction a Japanese kana.</desc>
           <label>CompressCharacterDistance</label>
         </info>
         <value>0</value>
@@ -6015,7 +5992,7 @@
       <prop oor:name="IsWholeWordsOnly" oor:type="xs:boolean" oor:nillable="false">
         <!-- OldPath: -->
         <!-- OldLocation: -->
-        <!-- UIHints: Edit/Find & Replace -->
+        <!-- UIHints: Edit/Find and Replace -->
         <info>
           <desc>Specifies search for whole words only.</desc>
         </info>
@@ -6024,7 +6001,7 @@
       <prop oor:name="IsBackwards" oor:type="xs:boolean" oor:nillable="false">
         <!-- OldPath: -->
         <!-- OldLocation: -->
-        <!-- UIHints: Edit/Find & Replace -->
+        <!-- UIHints: Edit/Find and Replace -->
         <info>
           <desc>Specifies search backwards.</desc>
         </info>
@@ -6033,7 +6010,7 @@
       <prop oor:name="IsUseWildcard" oor:type="xs:boolean" oor:nillable="false">
         <!-- OldPath: -->
         <!-- OldLocation: -->
-        <!-- UIHints: Edit/Find & Replace -->
+        <!-- UIHints: Edit/Find and Replace -->
         <info>
           <desc>Specifies search with the use of wildcards.</desc>
         </info>
@@ -6042,7 +6019,7 @@
       <prop oor:name="IsUseRegularExpression" oor:type="xs:boolean" oor:nillable="false">
         <!-- OldPath: -->
         <!-- OldLocation: -->
-        <!-- UIHints: Edit/Find & Replace -->
+        <!-- UIHints: Edit/Find and Replace -->
         <info>
           <desc>Specifies search with the use of regular expressions.</desc>
         </info>
@@ -6051,7 +6028,7 @@
       <prop oor:name="IsSearchForStyles" oor:type="xs:boolean" oor:nillable="false">
         <!-- OldPath: -->
         <!-- OldLocation: -->
-        <!-- UIHints: Edit/Find & Replace -->
+        <!-- UIHints: Edit/Find and Replace -->
         <info>
           <desc>Specifies search for styles only.</desc>
         </info>
@@ -6060,7 +6037,7 @@
       <prop oor:name="IsSimilaritySearch" oor:type="xs:boolean" oor:nillable="false">
         <!-- OldPath: -->
         <!-- OldLocation: -->
-        <!-- UIHints: Edit/Find & Replace -->
+        <!-- UIHints: Edit/Find and Replace -->
         <info>
           <desc>Specifies search with similarity.</desc>
         </info>
@@ -6069,7 +6046,7 @@
       <prop oor:name="IsMatchCase" oor:type="xs:boolean" oor:nillable="false">
         <!-- OldPath: -->
         <!-- OldLocation: -->
-        <!-- UIHints: Edit/Find & Replace -->
+        <!-- UIHints: Edit/Find and Replace -->
         <info>
           <desc>Specifies search as case sensitive.</desc>
         </info>
@@ -6078,16 +6055,16 @@
       <prop oor:name="IsIgnoreDiacritics_CTL" oor:type="xs:boolean" oor:nillable="false">
         <!-- OldPath: -->
         <!-- OldLocation: -->
-        <!-- UIHints: Edit/Find & Replace -->
+        <!-- UIHints: Edit/Find and Replace -->
         <info>
-          <desc>Specifies search with the use of CTL option.</desc>
+          <desc>Specifies search ignores diacritics, not only CTL though.</desc>
         </info>
-        <value>true</value>
+        <value>false</value>
       </prop>
       <prop oor:name="IsIgnoreKashida_CTL" oor:type="xs:boolean" oor:nillable="false">
         <!-- OldPath: -->
         <!-- OldLocation: -->
-        <!-- UIHints: Edit/Find & Replace -->
+        <!-- UIHints: Edit/Find and Replace -->
         <info>
           <desc>Specifies search with the use of CTL option.</desc>
         </info>
@@ -6096,28 +6073,28 @@
       <prop oor:name="IsUseAsianOptions" oor:type="xs:boolean" oor:nillable="false">
         <!-- OldPath: -->
         <!-- OldLocation: -->
-        <!-- UIHints: Edit/Find & Replace -->
+        <!-- UIHints: Edit/Find and Replace -->
         <info>
           <desc>Specifies search with the use of Asian options.</desc>
         </info>
         <value>false</value>
       </prop>
       <prop oor:name="ComponentSearchGroupLabel" oor:type="xs:string" oor:localized="true">
-        <!-- UIHints: Edit/Find & Replace -->
+        <!-- UIHints: Edit/Find and Replace -->
         <info>
           <desc>Specifies the divider label in case of a component-based search
           extension.</desc>
         </info>
       </prop>
       <prop oor:name="ComponentSearchCommandLabel1" oor:type="xs:string" oor:localized="true">
-        <!-- UIHints: Edit/Find & Replace -->
+        <!-- UIHints: Edit/Find and Replace -->
         <info>
           <desc>Specifies the label of the first component-based search
           command.</desc>
         </info>
       </prop>
       <prop oor:name="ComponentSearchCommandLabel2" oor:type="xs:string" oor:localized="true">
-        <!-- UIHints: Edit/Find & Replace -->
+        <!-- UIHints: Edit/Find and Replace -->
         <info>
           <desc>Specifies the label of the second component-based search
           command.</desc>
@@ -6131,7 +6108,7 @@
         <value>false</value>
       </prop>
       <prop oor:name="IsSearchFormatted" oor:type="xs:boolean" oor:nillable="false">
-        <!-- UIHints: Edit / Find & Replace  -->
+        <!-- UIHints: Edit / Find and Replace  -->
         <info>
           <desc>Specifies if formatted display strings are searched instead of cell content (Calc).</desc>
         </info>
@@ -6404,14 +6381,6 @@
         </info>
         <value>false</value>
       </prop>
-      <prop oor:name="IsSystemFont" oor:type="xs:boolean" oor:nillable="false">
-        <info>
-          <desc>Allows the user to change the UI font to the system
-          default.</desc>
-          <label>Use system default user interface font</label>
-        </info>
-        <value>true</value>
-      </prop>
       <prop oor:name="IsSelectionInReadonly" oor:type="xs:boolean" oor:nillable="false">
         <info>
           <desc>Indicates whether the cursor is displayed in read-only
@@ -6557,7 +6526,7 @@
           <!-- UIHints: setup -->
           <info>
             <desc>Specifies whether case mapping to half and full width,
-            hiragana and katagana are available (true) or not (false).</desc>
+            hiragana and katakana are available (true) or not (false).</desc>
           </info>
           <value>false</value>
         </prop>
@@ -6692,11 +6661,57 @@
     </group>
     <group oor:name="StylesAndFormatting">
       <info>
-        <desc>Contains settings for Styles and Formatting.</desc>
+        <desc>Contains settings for Styles.</desc>
       </info>
       <prop oor:name="Preview" oor:type="xs:boolean" oor:nillable="false">
         <info>
-           <desc>Specifies if the styles and formatting preview is enabled.</desc>
+           <desc>Specifies if the styles preview is enabled.</desc>
+        </info>
+        <value>true</value>
+      </prop>
+    </group>
+    <group oor:name="PackageKit">
+      <info>
+        <desc>Contains settings related to PackageKit (Unix only).</desc>
+      </info>
+      <prop oor:name="EnableFontInstallation" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+           <desc>Specifies if missing font installation should be triggered.</desc>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="EnableLangpackInstallation" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+           <desc>Specifies if missing langpack installation should be triggered.</desc>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="EnableBaseInstallation" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+           <desc>Specifies if missing LibreOffice Base installation should be triggered.</desc>
+        </info>
+        <value>true</value>
+      </prop>
+    </group>
+    <group oor:name="Classification">
+      <info>
+        <desc>TSCP Classification</desc>
+      </info>
+      <prop oor:name="Policy" oor:type="xs:short" oor:nillable="false">
+        <info>
+           <desc>The policy type used at classification</desc>
+        </info>
+        <value>3</value>
+      </prop>
+      <prop oor:name="IntellectualPropertySectionExpanded" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+           <desc>Specifies if the intellectual property section in the advanced classification dialog should be expanded when the dialog is open.</desc>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="IntellectualPropertyTextInputIsFreeForm" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+           <desc>Specifies if the intellectual property text in the advanced classification is free-form or limited to ';', '/' and ' ' (space) and delete key.</desc>
         </info>
         <value>true</value>
       </prop>

@@ -24,8 +24,8 @@
 
 #include <memory>
 
-#include "address.hxx"
-#include "types.hxx"
+#include <address.hxx>
+#include <types.hxx>
 
 class ScDocument;
 struct ScDBQueryParamBase;
@@ -38,8 +38,6 @@ enum class FormulaError : sal_uInt16;
 class ScDBRangeBase
 {
 public:
-    enum RefType { INTERNAL, EXTERNAL }; // TODO: We may not need this after all... (kohei)
-
     ScDBRangeBase() = delete;
 
     virtual ~ScDBRangeBase() = 0;

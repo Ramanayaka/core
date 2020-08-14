@@ -34,9 +34,11 @@
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/uno3.hxx>
 
-#include <canvas/base/integerbitmapbase.hxx>
-#include <canvas/base/basemutexhelper.hxx>
-#include <canvas/base/graphicdevicebase.hxx>
+#include <base/integerbitmapbase.hxx>
+#include <base/basemutexhelper.hxx>
+#include <base/graphicdevicebase.hxx>
+#include <base/canvasbase.hxx>
+#include <base/bitmapcanvasbase.hxx>
 
 #include "dx_bitmapprovider.hxx"
 #include "dx_canvashelper.hxx"
@@ -52,7 +54,8 @@ namespace dxcanvas
                                              css::lang::XMultiServiceFactory,
                                              css::util::XUpdatable,
                                              css::beans::XPropertySet,
-                                             css::lang::XServiceName >    GraphicDeviceBase1_Base;
+                                             css::lang::XServiceName,
+                                             css::lang::XServiceInfo>    GraphicDeviceBase1_Base;
     typedef ::canvas::GraphicDeviceBase< ::canvas::BaseMutexHelper< GraphicDeviceBase1_Base >,
                                            DeviceHelper,
                                            ::osl::MutexGuard,
@@ -94,13 +97,15 @@ namespace dxcanvas
         // XServiceName
         virtual OUString SAL_CALL getServiceName(  ) override;
 
+        // XServiceInfo
+        virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames(  ) override;
+        virtual OUString SAL_CALL getImplementationName(  ) override;
+        virtual sal_Bool SAL_CALL supportsService( const OUString& ) override;
+
     private:
         css::uno::Sequence< css::uno::Any >                maArguments;
         css::uno::Reference< css::uno::XComponentContext > mxComponentContext;
     };
-
-    typedef ::rtl::Reference< Canvas > CanvasRef;
-
 
     typedef ::cppu::WeakComponentImplHelper< css::rendering::XBitmapCanvas,
                                              css::rendering::XIntegerBitmap,
@@ -108,7 +113,8 @@ namespace dxcanvas
                                              css::lang::XMultiServiceFactory,
                                              css::util::XUpdatable,
                                              css::beans::XPropertySet,
-                                             css::lang::XServiceName >    GraphicDeviceBase2_Base;
+                                             css::lang::XServiceName,
+                                             css::lang::XServiceInfo >    GraphicDeviceBase2_Base;
     typedef ::canvas::GraphicDeviceBase< ::canvas::BaseMutexHelper< GraphicDeviceBase2_Base >,
                                            DeviceHelper,
                                            ::osl::MutexGuard,
@@ -150,6 +156,11 @@ namespace dxcanvas
         // XServiceName
         virtual OUString SAL_CALL getServiceName(  ) override;
 
+        // XServiceInfo
+        virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames(  ) override;
+        virtual OUString SAL_CALL getImplementationName(  ) override;
+        virtual sal_Bool SAL_CALL supportsService( const OUString& ) override;
+
         // BitmapProvider
         virtual IBitmapSharedPtr getBitmap() const override;
 
@@ -158,8 +169,6 @@ namespace dxcanvas
         css::uno::Reference< css::uno::XComponentContext > mxComponentContext;
         IBitmapSharedPtr                                                             mpTarget;
     };
-
-    typedef ::rtl::Reference< BitmapCanvas > BitmapCanvasRef;
 }
 
 #endif

@@ -16,27 +16,22 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "ImageControl.hxx"
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include "corestrings.hrc"
-#include "core_resource.hrc"
-#include "core_resource.hxx"
-#include "Tools.hxx"
+#include <ImageControl.hxx>
+#include <strings.hxx>
+#include <strings.hrc>
+#include <core_resource.hxx>
+#include <Tools.hxx>
 #include <tools/color.hxx>
-#include <comphelper/property.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "FormatCondition.hxx"
+#include <FormatCondition.hxx>
 #include <com/sun/star/awt/ImageScaleMode.hpp>
-#include <com/sun/star/text/ParagraphVertAlign.hpp>
-#include "ReportHelperImpl.hxx"
+#include <ReportHelperImpl.hxx>
 
 namespace reportdesign
 {
 
     using namespace com::sun::star;
-    using namespace comphelper;
-uno::Sequence< OUString > lcl_getImageOptionals()
+static uno::Sequence< OUString > lcl_getImageOptionals()
 {
     OUString pProps[] = {
             OUString(PROPERTY_CHARCOLOR)
@@ -119,7 +114,7 @@ OImageControl::OImageControl(uno::Reference< uno::XComponentContext > const & _x
 ,m_nScaleMode(awt::ImageScaleMode::NONE)
 ,m_bPreserveIRI(true)
 {
-    m_aProps.aComponent.m_sName  = RPT_RESSTRING(RID_STR_IMAGECONTROL);
+    m_aProps.aComponent.m_sName  = RptResId(RID_STR_IMAGECONTROL);
 }
 
 OImageControl::OImageControl(uno::Reference< uno::XComponentContext > const & _xContext
@@ -131,7 +126,7 @@ OImageControl::OImageControl(uno::Reference< uno::XComponentContext > const & _x
 ,m_nScaleMode(awt::ImageScaleMode::NONE)
 ,m_bPreserveIRI(true)
 {
-    m_aProps.aComponent.m_sName  = RPT_RESSTRING(RID_STR_IMAGECONTROL);
+    m_aProps.aComponent.m_sName  = RptResId(RID_STR_IMAGECONTROL);
     m_aProps.aComponent.m_xFactory = _xFactory;
     osl_atomic_increment( &m_refCount );
     {
@@ -166,33 +161,14 @@ void SAL_CALL OImageControl::dispose()
     cppu::WeakComponentImplHelperBase::dispose();
 }
 
-OUString OImageControl::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.report.OImageControl");
-}
-
-
 OUString SAL_CALL OImageControl::getImplementationName(  )
 {
-    return getImplementationName_Static();
+    return "com.sun.star.comp.report.OImageControl";
 }
-
-uno::Sequence< OUString > OImageControl::getSupportedServiceNames_Static(  )
-{
-    uno::Sequence< OUString > aServices { SERVICE_IMAGECONTROL };
-
-    return aServices;
-}
-
-uno::Reference< uno::XInterface > OImageControl::create(uno::Reference< uno::XComponentContext > const & xContext)
-{
-    return *(new OImageControl(xContext));
-}
-
 
 uno::Sequence< OUString > SAL_CALL OImageControl::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_Static();
+    return { SERVICE_IMAGECONTROL };
 }
 
 sal_Bool SAL_CALL OImageControl::supportsService(const OUString& ServiceName)
@@ -237,7 +213,7 @@ void SAL_CALL OImageControl::setHyperLinkName(const OUString & the_value)
 ::sal_Int32 SAL_CALL OImageControl::getControlBackground()
 {
     ::osl::MutexGuard aGuard(m_aMutex);
-    return m_aProps.aFormatProperties.m_bBackgroundTransparent ? COL_TRANSPARENT : m_aProps.aFormatProperties.nBackgroundColor;
+    return sal_Int32(m_aProps.aFormatProperties.m_bBackgroundTransparent ? COL_TRANSPARENT : m_aProps.aFormatProperties.nBackgroundColor);
 }
 
 void SAL_CALL OImageControl::setControlBackground( ::sal_Int32 _backgroundcolor )
@@ -454,7 +430,7 @@ OUString SAL_CALL OImageControl::getShapeType(  )
     ::osl::MutexGuard aGuard(m_aMutex);
     if ( m_aProps.aComponent.m_xShape.is() )
         return m_aProps.aComponent.m_xShape->getShapeType();
-    return OUString("com.sun.star.drawing.ControlShape");
+    return "com.sun.star.drawing.ControlShape";
 }
 
 ::sal_Int16 SAL_CALL OImageControl::getScaleMode()
@@ -482,6 +458,13 @@ void SAL_CALL OImageControl::setPreserveIRI( sal_Bool _preserveiri )
 }
 
 } // namespace reportdesign
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+reportdesign_OImageControl_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new reportdesign::OImageControl(context));
+}
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

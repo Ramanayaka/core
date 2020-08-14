@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+// /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -19,24 +19,27 @@
 
 #include <sal/config.h>
 
+#include <memory>
+#include <utility>
+
+#include <sal/log.hxx>
+
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <com/sun/star/awt/XSystemDependentWindowPeer.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/registry/XRegistryKey.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <comphelper/servicedecl.hxx>
-#include <cppuhelper/factory.hxx>
-#include <cppuhelper/implementationentry.hxx>
+#include <cppuhelper/supportsservice.hxx>
 #include <osl/mutex.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
 #include <tools/diagnose_ex.h>
 #include <vcl/sysdata.hxx>
 #include <vcl/opengl/OpenGLWrapper.hxx>
+#include <vcl/skia/SkiaHelper.hxx>
 
 #include <canvas/canvastools.hxx>
 
@@ -44,27 +47,22 @@
 #include "dx_graphicsprovider.hxx"
 #include "dx_winstuff.hxx"
 
-#define CANVAS_TECH "GDI+"
-#define CANVAS_SERVICE_NAME              "com.sun.star.rendering.Canvas."            CANVAS_TECH
-#define CANVAS_IMPLEMENTATION_NAME       "com.sun.star.comp.rendering.Canvas."       CANVAS_TECH
-#define BITMAPCANVAS_SERVICE_NAME        "com.sun.star.rendering.BitmapCanvas."      CANVAS_TECH
-#define BITMAPCANVAS_IMPLEMENTATION_NAME "com.sun.star.comp.rendering.BitmapCanvas." CANVAS_TECH
-
-
 using namespace ::com::sun::star;
-
-namespace sdecl = comphelper::service_decl;
 
 namespace dxcanvas
 {
+    namespace {
+
     /// Actual canonical implementation of the GraphicsProvider interface
     class GraphicsProviderImpl : public GraphicsProvider
     {
         GraphicsSharedPtr mpGraphics;
     public:
-        explicit GraphicsProviderImpl( Gdiplus::Graphics* pGraphics ) : mpGraphics( pGraphics ) {}
+        explicit GraphicsProviderImpl( GraphicsSharedPtr && pGraphics ) : mpGraphics( std::move(pGraphics) ) {}
         virtual GraphicsSharedPtr getGraphics() override { return mpGraphics; }
     };
+
+    }
 
     Canvas::Canvas( const uno::Sequence< uno::Any >&                aArguments,
                     const uno::Reference< uno::XComponentContext >& rxContext ) :
@@ -81,18 +79,19 @@ namespace dxcanvas
 
         // tdf#93870 - force VCL canvas in OpenGL mode for now.
         assert( !OpenGLWrapper::isVCLOpenGLEnabled() );
+        assert( !SkiaHelper::isVCLSkiaEnabled() );
 
         SAL_INFO("canvas.directx", "Canvas::initialize called" );
 
         // At index 1, we expect a HWND handle here, containing a
         // pointer to a valid window, on which to output
         // At index 2, we expect the current window bound rect
-        ENSURE_ARG_OR_THROW( maArguments.getLength() >= 6 &&
-                             maArguments[5].getValueTypeClass() == uno::TypeClass_SEQUENCE,
+        ENSURE_ARG_OR_THROW( maArguments.getLength() >= 5 &&
+                             maArguments[4].getValueTypeClass() == uno::TypeClass_SEQUENCE,
                              "Canvas::initialize: wrong number of arguments, or wrong types" );
 
         uno::Sequence<sal_Int8> aSeq;
-        maArguments[5] >>= aSeq;
+        maArguments[4] >>= aSeq;
 
         const SystemGraphicsData* pSysData=reinterpret_cast<const SystemGraphicsData*>(aSeq.getConstArray());
         if( !pSysData || !pSysData->hDC )
@@ -107,9 +106,8 @@ namespace dxcanvas
         maDeviceHelper.init( pSysData->hDC, pOutDev, *this );
         maCanvasHelper.setDevice( *this );
         maCanvasHelper.setTarget(
-            GraphicsProviderSharedPtr(
-                new GraphicsProviderImpl(
-                    Gdiplus::Graphics::FromHDC(pSysData->hDC))));
+            std::make_shared<GraphicsProviderImpl>(
+                    GraphicsSharedPtr(Gdiplus::Graphics::FromHDC(pSysData->hDC))));
 
         maArguments.realloc(0);
     }
@@ -126,7 +124,21 @@ namespace dxcanvas
 
     OUString SAL_CALL Canvas::getServiceName(  )
     {
-        return OUString( CANVAS_SERVICE_NAME );
+        return "com.sun.star.rendering.Canvas.GDI+";
+    }
+
+    // XServiceInfo
+    css::uno::Sequence<OUString> Canvas::getSupportedServiceNames(  )
+    {
+        return { "com.sun.star.rendering.Canvas.GDI+" };
+    }
+    OUString Canvas::getImplementationName(  )
+    {
+        return "com.sun.star.comp.rendering.Canvas.GDI+";
+    }
+    sal_Bool Canvas::supportsService( const OUString& sServiceName )
+    {
+        return cppu::supportsService(this, sServiceName);
     }
 
     BitmapCanvas::BitmapCanvas( const uno::Sequence< uno::Any >&                aArguments,
@@ -148,12 +160,12 @@ namespace dxcanvas
         // At index 1, we expect a HWND handle here, containing a
         // pointer to a valid window, on which to output
         // At index 2, we expect the current window bound rect
-        ENSURE_ARG_OR_THROW( maArguments.getLength() >= 6 &&
-                             maArguments[5].getValueTypeClass() == uno::TypeClass_SEQUENCE,
+        ENSURE_ARG_OR_THROW( maArguments.getLength() >= 5 &&
+                             maArguments[4].getValueTypeClass() == uno::TypeClass_SEQUENCE,
                              "Canvas::initialize: wrong number of arguments, or wrong types" );
 
         uno::Sequence<sal_Int8> aSeq;
-        maArguments[5] >>= aSeq;
+        maArguments[4] >>= aSeq;
 
         const SystemGraphicsData* pSysData=reinterpret_cast<const SystemGraphicsData*>(aSeq.getConstArray());
         if( !pSysData || !pSysData->hDC )
@@ -178,11 +190,11 @@ namespace dxcanvas
             throw lang::NoSupportException( "Passed HDC is no mem DC/has no bitmap selected!");
         }
 
-        mpTarget.reset( new DXBitmap(
+        mpTarget = std::make_shared<DXBitmap>(
                             BitmapSharedPtr(
                                 Gdiplus::Bitmap::FromHBITMAP(
                                     hBmp, nullptr) ),
-                            false ));
+                            false );
 
         maCanvasHelper.setTarget( mpTarget );
 
@@ -202,7 +214,21 @@ namespace dxcanvas
 
     OUString SAL_CALL BitmapCanvas::getServiceName(  )
     {
-        return OUString( BITMAPCANVAS_SERVICE_NAME );
+        return "com.sun.star.rendering.BitmapCanvas.GDI+";
+    }
+
+    // XServiceInfo
+    css::uno::Sequence<OUString> BitmapCanvas::getSupportedServiceNames(  )
+    {
+        return { "com.sun.star.rendering.BitmapCanvas.GDI+" };
+    }
+    OUString BitmapCanvas::getImplementationName(  )
+    {
+        return "com.sun.star.comp.rendering.BitmapCanvas.GDI+";
+    }
+    sal_Bool BitmapCanvas::supportsService( const OUString& sServiceName )
+    {
+        return cppu::supportsService(this, sServiceName);
     }
 
     IBitmapSharedPtr BitmapCanvas::getBitmap() const
@@ -210,40 +236,25 @@ namespace dxcanvas
         return mpTarget;
     }
 
-    static uno::Reference<uno::XInterface> initCanvas( Canvas* pCanvas )
+    extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+    canvas_gdiplus_Canvas_get_implementation(
+        css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
     {
-        uno::Reference<uno::XInterface> xRet(static_cast<cppu::OWeakObject*>(pCanvas));
-        pCanvas->initialize();
-        return xRet;
+        rtl::Reference<Canvas> xCanvas(new Canvas(args, context));
+        xCanvas->initialize();
+        xCanvas->acquire();
+        return static_cast<cppu::OWeakObject*>(xCanvas.get());
     }
 
-    sdecl::class_<Canvas, sdecl::with_args<true> > const serviceImpl1(&initCanvas);
-    const sdecl::ServiceDecl dxCanvasDecl(
-        serviceImpl1,
-        CANVAS_IMPLEMENTATION_NAME,
-        CANVAS_SERVICE_NAME );
-
-    static uno::Reference<uno::XInterface> initBitmapCanvas( BitmapCanvas* pCanvas )
+    extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+    canvas_gdiplus_BitmapCanvas_get_implementation(
+        css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
     {
-        uno::Reference<uno::XInterface> xRet(static_cast<cppu::OWeakObject*>(pCanvas));
-        pCanvas->initialize();
-        return xRet;
+        rtl::Reference<BitmapCanvas> xCanvas(new BitmapCanvas(args, context));
+        xCanvas->initialize();
+        xCanvas->acquire();
+        return static_cast<cppu::OWeakObject*>(xCanvas.get());
     }
-
-    namespace sdecl = comphelper::service_decl;
-    sdecl::class_<BitmapCanvas, sdecl::with_args<true> > const serviceImpl2(&initBitmapCanvas);
-    const sdecl::ServiceDecl dxBitmapCanvasDecl(
-        serviceImpl2,
-        BITMAPCANVAS_IMPLEMENTATION_NAME,
-        BITMAPCANVAS_SERVICE_NAME );
-}
-
-// The C shared lib entry points
-extern "C"
-SAL_DLLPUBLIC_EXPORT void* SAL_CALL gdipluscanvas_component_getFactory( sal_Char const* pImplName,
-                                         void*, void* )
-{
-    return sdecl::component_getFactoryHelper( pImplName, {&dxcanvas::dxCanvasDecl, &dxcanvas::dxBitmapCanvasDecl} );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

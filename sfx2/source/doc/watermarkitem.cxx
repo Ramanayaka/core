@@ -26,16 +26,6 @@ SfxPoolItem* SfxWatermarkItem::CreateDefault()
     return new SfxWatermarkItem();
 }
 
-SfxWatermarkItem::SfxWatermarkItem( const SfxWatermarkItem& rCopy )
-: SfxPoolItem( rCopy )
-, m_aText( rCopy.m_aText )
-, m_aFont( rCopy.m_aFont )
-, m_nAngle( rCopy.m_nAngle )
-, m_nTransparency( rCopy.m_nTransparency )
-, m_nColor( rCopy.m_nColor )
-{
-}
-
 bool SfxWatermarkItem::operator==( const SfxPoolItem& rCmp ) const
 {
     return ( SfxPoolItem::operator==( rCmp ) &&
@@ -46,7 +36,7 @@ bool SfxWatermarkItem::operator==( const SfxPoolItem& rCmp ) const
              m_nColor == static_cast<const SfxWatermarkItem&>(rCmp).m_nColor );
 }
 
-SfxPoolItem* SfxWatermarkItem::Clone( SfxItemPool *) const
+SfxWatermarkItem* SfxWatermarkItem::Clone( SfxItemPool *) const
 {
     return new SfxWatermarkItem(*this);
 }
@@ -70,7 +60,7 @@ bool SfxWatermarkItem::PutValue( const css::uno::Any& rVal, sal_uInt8 /*nMemberI
 
     if ( rVal >>= aSequence )
     {
-        for(const auto& aEntry : aSequence)
+        for(const auto& aEntry : std::as_const(aSequence))
         {
             if(aEntry.Name == "Text")
                 aEntry.Value >>= m_aText;

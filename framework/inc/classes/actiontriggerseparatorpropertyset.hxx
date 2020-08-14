@@ -26,8 +26,6 @@
 #include <rtl/ustring.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <framework/fwedllapi.h>
 
 #define SERVICENAME_ACTIONTRIGGERSEPARATOR          "com.sun.star.ui.ActionTriggerSeparator"
 #define IMPLEMENTATIONNAME_ACTIONTRIGGERSEPARATOR   "com.sun.star.comp.ui.ActionTriggerSeparator"
@@ -35,7 +33,7 @@
 namespace framework
 {
 
-class ActionTriggerSeparatorPropertySet :   private cppu::BaseMutex,
+class ActionTriggerSeparatorPropertySet final : private cppu::BaseMutex,
                                             public css::lang::XServiceInfo ,
                                             public css::lang::XTypeProvider,
                                             public ::cppu::OBroadcastHelper             ,
@@ -78,7 +76,7 @@ class ActionTriggerSeparatorPropertySet :   private cppu::BaseMutex,
 
         virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo() override;
 
-        static const css::uno::Sequence< css::beans::Property > impl_getStaticPropertyDescriptor();
+        static css::uno::Sequence< css::beans::Property > impl_getStaticPropertyDescriptor();
 
         //  helper
 

@@ -21,16 +21,12 @@
 #define INCLUDED_SC_SOURCE_UI_INC_UNDOBASE_HXX
 
 #include <svl/undo.hxx>
-#include "global.hxx"
-#include "address.hxx"
+#include <address.hxx>
 #include "docsh.hxx"
-#include <columnspanset.hxx>
 
 #include <memory>
 #include <map>
 
-class ScDocument;
-class ScDocShell;
 class SdrUndoAction;
 class ScRefUndoData;
 class ScDBData;
@@ -43,7 +39,6 @@ public:
     typedef std::map<SCTAB, std::unique_ptr<sc::ColumnSpanSet>> DataSpansType;
 
                     ScSimpleUndo( ScDocShell* pDocSh );
-    virtual         ~ScSimpleUndo() override;
 
     virtual bool    Merge( SfxUndoAction *pNextAction ) override;
     /// See SfxUndoAction::GetViewShellId().
@@ -89,7 +84,7 @@ public:
 
 protected:
     ScRange         aBlockRange;
-    SdrUndoAction*  pDrawUndo;
+    std::unique_ptr<SdrUndoAction> pDrawUndo;
     ScBlockUndoMode eMode;
 
     void            BeginUndo();
@@ -109,14 +104,12 @@ public:
 
 protected:
     ScRangeList     maBlockRanges;
-    SdrUndoAction*  mpDrawUndo;
-    ScBlockUndoMode meMode;
+    std::unique_ptr<SdrUndoAction> mpDrawUndo;
 
     void BeginUndo();
     void EndUndo();
     void EndRedo();
 
-    void AdjustHeight();
     void ShowBlock();
 };
 
@@ -126,7 +119,7 @@ protected:
 class ScDBFuncUndo: public ScSimpleUndo
 {
 protected:
-    ScDBData*       pAutoDBRange;
+    std::unique_ptr<ScDBData> pAutoDBRange;
     ScRange         aOriginalRange;
 
 public:
@@ -139,21 +132,17 @@ public:
     void            EndRedo();
 };
 
-enum ScMoveUndoMode { SC_UNDO_REFFIRST, SC_UNDO_REFLAST };
-
 class ScMoveUndo: public ScSimpleUndo               // with references
 {
 public:
                     ScMoveUndo( ScDocShell* pDocSh,
-                                ScDocument* pRefDoc, ScRefUndoData* pRefData,
-                                ScMoveUndoMode eRefMode );
+                                ScDocumentUniquePtr pRefDoc, std::unique_ptr<ScRefUndoData> pRefData );
     virtual         ~ScMoveUndo() override;
 
 protected:
-    SdrUndoAction*  pDrawUndo;
-    ScDocument*     pRefUndoDoc;
-    ScRefUndoData*  pRefUndoData;
-    ScMoveUndoMode  eMode;
+    std::unique_ptr<SdrUndoAction>  pDrawUndo;
+    ScDocumentUniquePtr             pRefUndoDoc;
+    std::unique_ptr<ScRefUndoData>  pRefUndoData;
 
     void            BeginUndo();
     void            EndUndo();
@@ -170,7 +159,7 @@ class ScUndoWrapper: public SfxUndoAction           // for manual merging of act
     ViewShellId                     mnViewShellId;
 
 public:
-                            ScUndoWrapper( SfxUndoAction* pUndo );
+                            ScUndoWrapper( std::unique_ptr<SfxUndoAction> pUndo );
     virtual                 ~ScUndoWrapper() override;
 
     SfxUndoAction*          GetWrappedUndo()        { return pWrappedUndo.get(); }

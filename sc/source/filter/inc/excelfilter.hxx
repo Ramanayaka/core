@@ -22,8 +22,7 @@
 
 #include <oox/core/xmlfilterbase.hxx>
 
-namespace oox {
-namespace xls {
+namespace oox::xls {
 
 class WorkbookGlobals;
 
@@ -44,7 +43,7 @@ public:
 
     virtual const ::oox::drawingml::Theme* getCurrentTheme() const override;
     virtual ::oox::vml::Drawing* getVmlDrawing() override;
-    virtual const ::oox::drawingml::table::TableStyleListPtr getTableStyles() override;
+    virtual ::oox::drawingml::table::TableStyleListPtr getTableStyles() override;
     virtual ::oox::drawingml::chart::ChartConverter* getChartConverter() override;
     virtual void useInternalChartDataTable( bool bInternal ) override;
 
@@ -58,8 +57,7 @@ private:
     WorkbookGlobals*    mpBookGlob;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

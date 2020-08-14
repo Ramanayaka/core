@@ -20,45 +20,59 @@
 #ifndef INCLUDED_SVX_SPHERE3D_HXX
 #define INCLUDED_SVX_SPHERE3D_HXX
 
+#include <svl/intitem.hxx>
+#include <svl/itemset.hxx>
 #include <svx/obj3d.hxx>
 #include <svx/svxdllapi.h>
+#include <svx/svddef.hxx>
+
+class E3dDefaultAttributes;
 
 /**
  * SphereObject with diameter r3DSize.
  * The count of planes depends on the horizontal and vertical segment count.
  */
-class SVX_DLLPUBLIC E3dSphereObj : public E3dCompoundObject
+class SVXCORE_DLLPUBLIC E3dSphereObj final : public E3dCompoundObject
 {
 private:
     basegfx::B3DPoint               aCenter;
     basegfx::B3DVector              aSize;
 
-protected:
-    virtual sdr::contact::ViewContact* CreateObjectSpecificViewContact() override;
-    virtual sdr::properties::BaseProperties* CreateObjectSpecificProperties() override;
-    void SetDefaultAttributes(E3dDefaultAttributes& rDefault);
+    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
+    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
+    void SetDefaultAttributes(const E3dDefaultAttributes& rDefault);
+
+private:
+    // protected destructor - due to final, make private
+    virtual ~E3dSphereObj() override;
 
 public:
-    E3dSphereObj(E3dDefaultAttributes& rDefault, const basegfx::B3DPoint& rCenter, const basegfx::B3DVector& r3DSize);
+    E3dSphereObj(
+        SdrModel& rSdrModel,
+        const E3dDefaultAttributes& rDefault,
+        const basegfx::B3DPoint& rCenter,
+        const basegfx::B3DVector& r3DSize);
 
     // FG: This constructor is only called from MakeObject from the 3d-Objectfactory
     //     when a document with a sphere is loaded.  This constructor does not call
     //     CreateSphere, or create any spheres.
-    enum Dummy { DUMMY };
-    E3dSphereObj(Dummy dummy);
+    E3dSphereObj(SdrModel& rSdrModel);
 
     // horizontal segments:
     sal_uInt32 GetHorizontalSegments() const
-        { return static_cast<const SfxUInt32Item&>(GetObjectItemSet().Get(SDRATTR_3DOBJ_HORZ_SEGS)).GetValue(); }
+        { return GetObjectItemSet().Get(SDRATTR_3DOBJ_HORZ_SEGS).GetValue(); }
 
     // VerticalSegments:
     sal_uInt32 GetVerticalSegments() const
-        { return static_cast<const SfxUInt32Item&>(GetObjectItemSet().Get(SDRATTR_3DOBJ_VERT_SEGS)).GetValue(); }
+        { return GetObjectItemSet().Get(SDRATTR_3DOBJ_VERT_SEGS).GetValue(); }
 
     virtual sal_uInt16 GetObjIdentifier() const override;
-    virtual SdrObject* DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
+    virtual SdrObjectUniquePtr DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
 
-    virtual E3dSphereObj* Clone() const override;
+    virtual E3dSphereObj* CloneSdrObject(SdrModel& rTargetModel) const override;
+
+    // implemented mainly for the purposes of Clone()
+    E3dSphereObj& operator=(const E3dSphereObj& rObj);
 
     const basegfx::B3DPoint& Center() const { return aCenter; }
     const basegfx::B3DVector& Size() const { return aSize; }

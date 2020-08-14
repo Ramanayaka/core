@@ -16,37 +16,25 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include "AddField.hxx"
-#include "UITools.hxx"
-#include <svx/dbaexchange.hxx>
-#include <svx/svdpagv.hxx>
+#include <AddField.hxx>
+#include <UITools.hxx>
 #include <com/sun/star/sdb/CommandType.hpp>
-#include <com/sun/star/util/URL.hpp>
 #include <com/sun/star/sdb/XDocumentDataSource.hpp>
-#include <com/sun/star/i18n/XCollator.hpp>
 
-#include <vcl/waitobj.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/settings.hxx>
 
 #include <tools/diagnose_ex.h>
-#include "rptui_slotid.hrc"
 
 #include <connectivity/dbtools.hxx>
-#include "helpids.hrc"
-#include "RptResId.hrc"
-#include "ModuleHelper.hxx"
-#include "uistrings.hrc"
-#include "ColumnInfo.hxx"
+#include <core_resource.hxx>
+#include <helpids.h>
+#include <strings.hrc>
+#include <strings.hxx>
 
-#include <comphelper/property.hxx>
-#include <svtools/imgdef.hxx>
-#include <svtools/treelistentry.hxx>
+#include <comphelper/sequence.hxx>
 
 namespace rptui
 {
-const long STD_WIN_SIZE_X = 180;
-const long STD_WIN_SIZE_Y = 320;
 
 using namespace ::com::sun::star;
 using namespace sdbc;
@@ -58,211 +46,98 @@ using namespace lang;
 using namespace container;
 using namespace ::svx;
 
-class OAddFieldWindowListBox: public SvTreeListBox
+IMPL_LINK(OAddFieldWindow, DragBeginHdl, bool&, rUnsetDragIcon, bool)
 {
-    VclPtr<OAddFieldWindow>                    m_pTabWin;
-
-public:
-    explicit OAddFieldWindowListBox(Window* pParent, OAddFieldWindow* pFieldWindow);
-    virtual ~OAddFieldWindowListBox() override;
-    virtual void dispose() override;
-
-    sal_Int8 AcceptDrop( const AcceptDropEvent& rEvt ) override;
-    sal_Int8 ExecuteDrop( const ExecuteDropEvent& rEvt ) override;
-
-    uno::Sequence< beans::PropertyValue > getSelectedFieldDescriptors();
-
-protected:
-    // DragSourceHelper
-    virtual void StartDrag( sal_Int8 nAction, const Point& rPosPixel ) override;
-
-private:
-    using SvTreeListBox::ExecuteDrop;
-};
-
-uno::Sequence< beans::PropertyValue > OAddFieldWindowListBox::getSelectedFieldDescriptors()
-{
-    uno::Sequence< beans::PropertyValue > aArgs(GetSelectionCount());
-    sal_Int32 i = 0;
-    SvTreeListEntry* pSelected = FirstSelected();
-    while( pSelected )
+    rUnsetDragIcon = false;
+    if (m_xListBox->get_selected_index() == -1)
     {
-        // build a descriptor for the currently selected field
-        svx::ODataAccessDescriptor aDescriptor;
-        m_pTabWin->fillDescriptor(pSelected,aDescriptor);
-        aArgs[i++].Value <<= aDescriptor.createPropertyValueSequence();
-        pSelected = NextSelected(pSelected);
-    }
-    return aArgs;
-}
-
-// class OAddFieldWindowListBox
-
-
-OAddFieldWindowListBox::OAddFieldWindowListBox(Window *pParent, OAddFieldWindow* pFieldWindow)
-    : SvTreeListBox(pParent, WB_TABSTOP|WB_BORDER|WB_SORT)
-    , m_pTabWin(pFieldWindow)
-{
-    SetHelpId( HID_RPT_FIELD_SEL );
-    SetSelectionMode(SelectionMode::Multiple);
-    SetDragDropMode( DragDropMode::ALL );
-    SetHighlightRange( );
-}
-
-
-OAddFieldWindowListBox::~OAddFieldWindowListBox()
-{
-    disposeOnce();
-}
-
-void OAddFieldWindowListBox::dispose()
-{
-    m_pTabWin.clear();
-    SvTreeListBox::dispose();
-}
-
-sal_Int8 OAddFieldWindowListBox::AcceptDrop( const AcceptDropEvent& /*rEvt*/ )
-{
-    return DND_ACTION_NONE;
-}
-
-
-sal_Int8 OAddFieldWindowListBox::ExecuteDrop( const ExecuteDropEvent& /*rEvt*/ )
-{
-    return DND_ACTION_NONE;
-}
-
-
-void OAddFieldWindowListBox::StartDrag( sal_Int8 /*_nAction*/, const Point& /*_rPosPixel*/ )
-{
-    if ( GetSelectionCount() < 1 )
         // no drag without a field
-        return;
+        return true;
+    }
 
-    rtl::Reference<OMultiColumnTransferable> pDataContainer = new OMultiColumnTransferable(getSelectedFieldDescriptors());
-
-    EndSelection();
-    pDataContainer->StartDrag( this, DND_ACTION_COPYMOVE | DND_ACTION_LINK );
+    m_xHelper->setDescriptors(getSelectedFieldDescriptors());
+    return false;
 }
 
-OAddFieldWindow::OAddFieldWindow(vcl::Window* pParent ,const uno::Reference< beans::XPropertySet >& _xRowSet)
-    : FloatingWindow(pParent, "FloatingField", "modules/dbreport/ui/floatingfield.ui")
+OAddFieldWindow::OAddFieldWindow(weld::Window* pParent, const uno::Reference< beans::XPropertySet >& xRowSet)
+    : GenericDialogController(pParent, "modules/dbreport/ui/floatingfield.ui", "FloatingField")
     , ::comphelper::OPropertyChangeListener(m_aMutex)
     , ::comphelper::OContainerListener(m_aMutex)
-    , m_xRowSet(_xRowSet)
-    , m_pListBox(VclPtr<OAddFieldWindowListBox>::Create(get<vcl::Window>("box"), this))
+    , m_xRowSet(xRowSet)
+    , m_xActions(m_xBuilder->weld_toolbar("toolbox"))
+    , m_xListBox(m_xBuilder->weld_tree_view("treeview"))
+    , m_xHelpText(m_xBuilder->weld_label("helptext"))
     , m_nCommandType(0)
     , m_bEscapeProcessing(false)
-    , m_pChangeListener(nullptr)
-    , m_pContainerListener(nullptr)
 {
-    get(m_aActions, "toolbox");
-    m_nSortUpId = m_aActions->GetItemId(0);
-    m_nSortDownId = m_aActions->GetItemId(1);
-    m_nRemoveSortId = m_aActions->GetItemId(2);
-    m_nInsertId = m_aActions->GetItemId(4);
-    get(m_aHelpText, "helptext");
+    m_xListBox->set_help_id(HID_RPT_FIELD_SEL);
+    m_xListBox->set_selection_mode(SelectionMode::Multiple);
+    m_xHelper.set(new svx::OMultiColumnTransferable);
+    rtl::Reference<TransferDataContainer> xHelper(m_xHelper.get());
+    m_xListBox->enable_drag_source(xHelper, DND_ACTION_COPYMOVE | DND_ACTION_LINK);
+    m_xListBox->connect_drag_begin(LINK(this, OAddFieldWindow, DragBeginHdl));
 
-    SetHelpId( HID_RPT_FIELD_SEL_WIN );
-    SetBackground( Wallpaper( Application::GetSettings().GetStyleSettings().GetFaceColor()) );
-    SetMinOutputSizePixel(Size(STD_WIN_SIZE_X,STD_WIN_SIZE_Y));
+    m_xDialog->connect_toplevel_focus_changed(LINK(this, OAddFieldWindow, FocusChangeHdl));
 
-    m_aActions->SetStyle(m_aActions->GetStyle()|WB_LINESPACING);
-    m_aActions->SetBackground( Wallpaper( Application::GetSettings().GetStyleSettings().GetFaceColor()) );
+    m_xDialog->set_help_id(HID_RPT_FIELD_SEL_WIN);
 
-    m_aActions->SetSelectHdl(LINK(this, OAddFieldWindow, OnSortAction));
-    setToolBox(m_aActions.get());
-    m_aActions->CheckItem(m_nSortUpId);
-    m_aActions->EnableItem(m_nInsertId, false);
+    m_xActions->connect_clicked(LINK(this, OAddFieldWindow, OnSortAction));
+    m_xActions->set_item_active("up", true);
+    m_xListBox->make_sorted();
+    m_xActions->set_item_sensitive("insert", false);
 
-    m_pListBox->SetDoubleClickHdl(LINK( this, OAddFieldWindow, OnDoubleClickHdl ) );
-    m_pListBox->SetSelectHdl(LINK( this, OAddFieldWindow, OnSelectHdl ) );
-    m_pListBox->SetDeselectHdl(LINK( this, OAddFieldWindow, OnSelectHdl ) );
-    m_pListBox->SetDoubleClickHdl(LINK( this, OAddFieldWindow, OnDoubleClickHdl ) );
-    m_pListBox->set_expand(true);
-    m_pListBox->set_height_request(m_pListBox->GetTextHeight() * 8);
-    m_pListBox->set_width_request(m_pListBox->approximate_char_width() * 40);
-    m_pListBox->Show();
+    m_xListBox->connect_row_activated(LINK( this, OAddFieldWindow, OnDoubleClickHdl ) );
+    m_xListBox->connect_changed(LINK( this, OAddFieldWindow, OnSelectHdl ) );
+    m_xListBox->set_size_request(m_xListBox->get_approximate_digit_width() * 45, m_xListBox->get_height_rows(8));
 
-    m_aHelpText->SetControlBackground( GetSettings().GetStyleSettings().GetFaceColor() );
+    if (!m_xRowSet.is())
+        return;
 
-    SetSizePixel(Size(STD_WIN_SIZE_X,STD_WIN_SIZE_Y));
-
-    if ( m_xRowSet.is() )
+    try
     {
-        try
-        {
-            // be notified when the settings of report definition change
-            m_pChangeListener = new ::comphelper::OPropertyChangeMultiplexer( this, m_xRowSet );
-            m_pChangeListener->addProperty( PROPERTY_COMMAND );
-            m_pChangeListener->addProperty( PROPERTY_COMMANDTYPE );
-            m_pChangeListener->addProperty( PROPERTY_ESCAPEPROCESSING );
-            m_pChangeListener->addProperty( PROPERTY_FILTER );
-        }
-        catch( const Exception& )
-        {
-            DBG_UNHANDLED_EXCEPTION();
-        }
+        // be notified when the settings of report definition change
+        m_pChangeListener = new ::comphelper::OPropertyChangeMultiplexer( this, m_xRowSet );
+        m_pChangeListener->addProperty( PROPERTY_COMMAND );
+        m_pChangeListener->addProperty( PROPERTY_COMMANDTYPE );
+        m_pChangeListener->addProperty( PROPERTY_ESCAPEPROCESSING );
+        m_pChangeListener->addProperty( PROPERTY_FILTER );
+    }
+    catch( const Exception& )
+    {
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
     }
 }
 
 OAddFieldWindow::~OAddFieldWindow()
 {
-    disposeOnce();
-}
-
-void OAddFieldWindow::dispose()
-{
-    if ( m_pListBox.get() )
-    {
-        SvTreeList* pModel = m_pListBox->GetModel();
-        sal_uLong nCount = pModel->GetEntryCount();
-        for(sal_uLong i = 0; i< nCount;++i)
-        {
-            delete static_cast<ColumnInfo*>(pModel->GetEntry(i)->GetUserData());
-        }
-    }
+    m_aListBoxData.clear();
     if (m_pChangeListener.is())
         m_pChangeListener->dispose();
     if ( m_pContainerListener.is() )
         m_pContainerListener->dispose();
-
-    m_aActions.clear();
-    m_aHelpText.clear();
-    m_pListBox.disposeAndClear();
-    FloatingWindow::dispose();
 }
 
-void OAddFieldWindow::GetFocus()
+IMPL_LINK_NOARG(OAddFieldWindow, FocusChangeHdl, weld::Widget&, void)
 {
-    if ( m_pListBox.get() )
-        m_pListBox->GrabFocus();
-    else
-        FloatingWindow::GetFocus();
+    if (m_xDialog->has_toplevel_focus())
+        m_xListBox->grab_focus();
 }
 
 uno::Sequence< beans::PropertyValue > OAddFieldWindow::getSelectedFieldDescriptors()
 {
-    return m_pListBox->getSelectedFieldDescriptors();
-}
+    std::vector<beans::PropertyValue> aArgs;
 
+    m_xListBox->selected_foreach([this, &aArgs](weld::TreeIter& rEntry){
+        // build a descriptor for the currently selected field
+        svx::ODataAccessDescriptor aDescriptor;
+        fillDescriptor(rEntry, aDescriptor);
+        aArgs.push_back(beans::PropertyValue());
+        aArgs.back().Value <<= aDescriptor.createPropertyValueSequence();
 
-bool OAddFieldWindow::PreNotify( NotifyEvent& _rNEvt )
-{
-    if ( MouseNotifyEvent::KEYINPUT == _rNEvt.GetType() )
-    {
-        const vcl::KeyCode& rKeyCode = _rNEvt.GetKeyEvent()->GetKeyCode();
-        if ( ( 0 == rKeyCode.GetModifier() ) && ( KEY_RETURN == rKeyCode.GetCode() ) )
-        {
-            if ( m_aCreateLink.IsSet() )
-            {
-                m_aCreateLink.Call(*this);
-                return true;
-            }
-        }
-    }
+        return false;
+    });
 
-    return FloatingWindow::PreNotify( _rNEvt );
+    return comphelper::containerToSequence(aArgs);
 }
 
 void OAddFieldWindow::_propertyChanged( const beans::PropertyChangeEvent& _evt )
@@ -271,35 +146,33 @@ void OAddFieldWindow::_propertyChanged( const beans::PropertyChangeEvent& _evt )
     Update();
 }
 
-
-namespace
+void OAddFieldWindow::addToList(const uno::Sequence< OUString >& rEntries)
 {
-    void lcl_addToList( OAddFieldWindowListBox& _rListBox, const uno::Sequence< OUString >& _rEntries )
+    for (const OUString& rEntry : rEntries)
     {
-        const OUString* pEntries = _rEntries.getConstArray();
-        sal_Int32 nEntries = _rEntries.getLength();
-        for ( sal_Int32 i = 0; i < nEntries; ++i, ++pEntries )
-            _rListBox.InsertEntry( *pEntries,nullptr,false,TREELIST_APPEND,new ColumnInfo(*pEntries) );
-    }
-    void lcl_addToList( OAddFieldWindowListBox& _rListBox, const uno::Reference< container::XNameAccess>& i_xColumns )
-    {
-        uno::Sequence< OUString > aEntries = i_xColumns->getElementNames();
-        const OUString* pEntries = aEntries.getConstArray();
-        sal_Int32 nEntries = aEntries.getLength();
-        for ( sal_Int32 i = 0; i < nEntries; ++i, ++pEntries )
-        {
-            uno::Reference< beans::XPropertySet> xColumn(i_xColumns->getByName(*pEntries),UNO_QUERY_THROW);
-            OUString sLabel;
-            if ( xColumn->getPropertySetInfo()->hasPropertyByName(PROPERTY_LABEL) )
-                xColumn->getPropertyValue(PROPERTY_LABEL) >>= sLabel;
-            if ( !sLabel.isEmpty() )
-                _rListBox.InsertEntry( sLabel,nullptr,false,TREELIST_APPEND,new ColumnInfo(*pEntries,sLabel) );
-            else
-                _rListBox.InsertEntry( *pEntries,nullptr,false,TREELIST_APPEND,new ColumnInfo(*pEntries,sLabel) );
-        }
+        m_aListBoxData.emplace_back(new ColumnInfo(rEntry));
+        OUString sId(OUString::number(reinterpret_cast<sal_Int64>(m_aListBoxData.back().get())));
+        m_xListBox->append(sId, rEntry);
     }
 }
 
+void OAddFieldWindow::addToList(const uno::Reference< container::XNameAccess>& i_xColumns)
+{
+    const uno::Sequence< OUString > aEntries = i_xColumns->getElementNames();
+    for ( const OUString& rEntry : aEntries )
+    {
+        uno::Reference< beans::XPropertySet> xColumn(i_xColumns->getByName(rEntry),UNO_QUERY_THROW);
+        OUString sLabel;
+        if ( xColumn->getPropertySetInfo()->hasPropertyByName(PROPERTY_LABEL) )
+            xColumn->getPropertyValue(PROPERTY_LABEL) >>= sLabel;
+        m_aListBoxData.emplace_back(new ColumnInfo(rEntry, sLabel));
+        OUString sId(OUString::number(reinterpret_cast<sal_Int64>(m_aListBoxData.back().get())));
+        if ( !sLabel.isEmpty() )
+            m_xListBox->append(sId, sLabel);
+        else
+            m_xListBox->append(sId, rEntry);
+    }
+}
 
 void OAddFieldWindow::Update()
 {
@@ -313,15 +186,14 @@ void OAddFieldWindow::Update()
     try
     {
         // ListBox loeschen
-        m_pListBox->Clear();
-        const ToolBox::ImplToolItems::size_type nItemCount = m_aActions->GetItemCount();
-        for (ToolBox::ImplToolItems::size_type j = 0; j< nItemCount; ++j)
-        {
-            m_aActions->EnableItem(m_aActions->GetItemId(j),false);
-        }
+        m_xListBox->clear();
+        m_aListBoxData.clear();
+        const OString aIds[] = { "up", "down" };
+        for (size_t j = 0; j< SAL_N_ELEMENTS(aIds); ++j)
+            m_xActions->set_item_sensitive(aIds[j], false);
 
-        OUString aTitle(ModuleRes(RID_STR_FIELDSELECTION));
-        SetText(aTitle);
+        OUString aTitle(RptResId(RID_STR_FIELDSELECTION));
+        m_xDialog->set_title(aTitle);
         if ( m_xRowSet.is() )
         {
             OUString sCommand( m_aCommandName );
@@ -345,7 +217,7 @@ void OAddFieldWindow::Update()
                 m_xColumns = dbtools::getFieldsByCommandDescriptor( xCon, GetCommandType(), GetCommand(), m_xHoldAlive );
             if ( m_xColumns.is() )
             {
-                lcl_addToList( *m_pListBox, m_xColumns );
+                addToList(m_xColumns);
                 uno::Reference< container::XContainer> xContainer(m_xColumns,uno::UNO_QUERY);
                 if ( xContainer.is() )
                     m_pContainerListener = new ::comphelper::OContainerListenerAdapter(this,xContainer);
@@ -354,24 +226,22 @@ void OAddFieldWindow::Update()
             // add the parameter columns to the list
             uno::Reference< css::sdbc::XRowSet > xRowSet(m_xRowSet,uno::UNO_QUERY);
             Sequence< OUString > aParamNames( getParameterNames( xRowSet ) );
-            lcl_addToList( *m_pListBox, aParamNames );
+            addToList(aParamNames);
 
             // set title
-            aTitle += " " + OUString( m_aCommandName.getStr() );
-            SetText( aTitle );
+            aTitle += " " + m_aCommandName;
+            m_xDialog->set_title(aTitle);
             if ( !m_aCommandName.isEmpty() )
             {
-                for (ToolBox::ImplToolItems::size_type i = 0; i < nItemCount; ++i)
-                {
-                    m_aActions->EnableItem(m_aActions->GetItemId(i));
-                }
+                for (size_t i = 0; i < SAL_N_ELEMENTS(aIds); ++i)
+                    m_xActions->set_item_sensitive(aIds[i], true);
             }
-                OnSelectHdl(nullptr);
+            OnSelectHdl(*m_xListBox);
         }
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("reportdesign");
     }
 }
 
@@ -380,125 +250,103 @@ uno::Reference< sdbc::XConnection> OAddFieldWindow::getConnection() const
     return uno::Reference< sdbc::XConnection>(m_xRowSet->getPropertyValue( PROPERTY_ACTIVECONNECTION ),uno::UNO_QUERY);
 }
 
-void OAddFieldWindow::fillDescriptor(SvTreeListEntry* _pSelected,svx::ODataAccessDescriptor& _rDescriptor)
+void OAddFieldWindow::fillDescriptor(const weld::TreeIter& rSelected, svx::ODataAccessDescriptor& rDescriptor)
 {
-    if ( _pSelected && m_xColumns.is() )
+    if (!m_xColumns.is())
+        return;
+
+    uno::Reference<container::XChild> xChild(getConnection(),uno::UNO_QUERY);
+    if ( xChild.is( ) )
     {
-        uno::Reference<container::XChild> xChild(getConnection(),uno::UNO_QUERY);
-        if ( xChild.is( ) )
+        uno::Reference<sdb::XDocumentDataSource> xDocument( xChild->getParent(), uno::UNO_QUERY );
+        if ( xDocument.is() )
         {
-            uno::Reference<sdb::XDocumentDataSource> xDocument( xChild->getParent(), uno::UNO_QUERY );
-            if ( xDocument.is() )
-            {
-                uno::Reference<frame::XModel> xModel(xDocument->getDatabaseDocument(),uno::UNO_QUERY);
-                if ( xModel.is() )
-                    _rDescriptor[ DataAccessDescriptorProperty::DatabaseLocation ] <<= xModel->getURL();
-            }
+            uno::Reference<frame::XModel> xModel(xDocument->getDatabaseDocument(),uno::UNO_QUERY);
+            if ( xModel.is() )
+                rDescriptor[ DataAccessDescriptorProperty::DatabaseLocation ] <<= xModel->getURL();
         }
-
-        _rDescriptor[ svx::DataAccessDescriptorProperty::Command ]            <<= GetCommand();
-        _rDescriptor[ svx::DataAccessDescriptorProperty::CommandType ]        <<= GetCommandType();
-        _rDescriptor[ svx::DataAccessDescriptorProperty::EscapeProcessing ]   <<= GetEscapeProcessing();
-        _rDescriptor[ svx::DataAccessDescriptorProperty::Connection ]         <<= getConnection();
-
-        ColumnInfo* pInfo = static_cast<ColumnInfo*>(_pSelected->GetUserData());
-        _rDescriptor[ svx::DataAccessDescriptorProperty::ColumnName ]         <<= pInfo->sColumnName;
-        if ( m_xColumns->hasByName( pInfo->sColumnName ) )
-            _rDescriptor[ svx::DataAccessDescriptorProperty::ColumnObject ] = m_xColumns->getByName(pInfo->sColumnName);
     }
+
+    rDescriptor[ svx::DataAccessDescriptorProperty::Command ]            <<= GetCommand();
+    rDescriptor[ svx::DataAccessDescriptorProperty::CommandType ]        <<= GetCommandType();
+    rDescriptor[ svx::DataAccessDescriptorProperty::EscapeProcessing ]   <<= m_bEscapeProcessing;
+    rDescriptor[ svx::DataAccessDescriptorProperty::Connection ]         <<= getConnection();
+
+    ColumnInfo* pInfo = reinterpret_cast<ColumnInfo*>(m_xListBox->get_id(rSelected).toInt64());
+    rDescriptor[ svx::DataAccessDescriptorProperty::ColumnName ]         <<= pInfo->sColumnName;
+    if ( m_xColumns->hasByName( pInfo->sColumnName ) )
+        rDescriptor[ svx::DataAccessDescriptorProperty::ColumnObject ] = m_xColumns->getByName(pInfo->sColumnName);
 }
 
 void OAddFieldWindow::_elementInserted( const container::ContainerEvent& _rEvent )
 {
-    if ( m_pListBox.get() )
-    {
-        OUString sName;
-        if ( (_rEvent.Accessor >>= sName) && m_xColumns->hasByName(sName) )
-        {
-            uno::Reference< beans::XPropertySet> xColumn(m_xColumns->getByName(sName),UNO_QUERY_THROW);
-            OUString sLabel;
-            if ( xColumn->getPropertySetInfo()->hasPropertyByName(PROPERTY_LABEL) )
-                xColumn->getPropertyValue(PROPERTY_LABEL) >>= sLabel;
-            if ( !sLabel.isEmpty() )
-                m_pListBox->InsertEntry( sLabel,nullptr,false,TREELIST_APPEND,new ColumnInfo(sName,sLabel) );
-            else
-                m_pListBox->InsertEntry( sName,nullptr,false,TREELIST_APPEND,new ColumnInfo(sName,sLabel) );
-        }
-    }
+    OUString sName;
+    if ( !((_rEvent.Accessor >>= sName) && m_xColumns->hasByName(sName)) )
+        return;
+
+    uno::Reference< beans::XPropertySet> xColumn(m_xColumns->getByName(sName),UNO_QUERY_THROW);
+    OUString sLabel;
+    if ( xColumn->getPropertySetInfo()->hasPropertyByName(PROPERTY_LABEL) )
+        xColumn->getPropertyValue(PROPERTY_LABEL) >>= sLabel;
+    m_aListBoxData.emplace_back(new ColumnInfo(sName, sLabel));
+    OUString sId(OUString::number(reinterpret_cast<sal_Int64>(m_aListBoxData.back().get())));
+    if (!sLabel.isEmpty())
+        m_xListBox->append(sId, sLabel);
+    else
+        m_xListBox->append(sId, sName);
 }
 
 void OAddFieldWindow::_elementRemoved( const container::ContainerEvent& /*_rEvent*/ )
 {
-    if ( m_pListBox.get() )
-    {
-        m_pListBox->Clear();
-        if ( m_xColumns.is() )
-            lcl_addToList( *m_pListBox, m_xColumns );
-    }
+    m_xListBox->clear();
+    m_aListBoxData.clear();
+    if ( m_xColumns.is() )
+        addToList(m_xColumns);
 }
 
 void OAddFieldWindow::_elementReplaced( const container::ContainerEvent& /*_rEvent*/ )
 {
 }
 
-IMPL_LINK_NOARG( OAddFieldWindow, OnSelectHdl, SvTreeListBox*, void )
+IMPL_LINK_NOARG( OAddFieldWindow, OnSelectHdl, weld::TreeView&, void )
 {
-    m_aActions->EnableItem(m_nInsertId, ( m_pListBox.get() && m_pListBox->GetSelectionCount() > 0 ));
+    m_xActions->set_item_sensitive("insert", m_xListBox->get_selected_index() != -1);
 }
 
-IMPL_LINK_NOARG( OAddFieldWindow, OnDoubleClickHdl, SvTreeListBox*, bool )
+IMPL_LINK_NOARG( OAddFieldWindow, OnDoubleClickHdl, weld::TreeView&, bool )
 {
     m_aCreateLink.Call(*this);
-
-    return false;
+    return true;
 }
 
-void OAddFieldWindow::resizeControls(const Size& _rDiff)
+IMPL_LINK(OAddFieldWindow, OnSortAction, const OString&, rCurItem, void)
 {
-    // we use large images so we must change them
-    if ( _rDiff.Width() || _rDiff.Height() )
+    if (rCurItem == "insert")
     {
-        Invalidate();
+        OnDoubleClickHdl(*m_xListBox);
+        return;
     }
-}
 
-IMPL_LINK_NOARG( OAddFieldWindow, OnSortAction, ToolBox*, void )
-{
-    const sal_uInt16 nCurItem = m_aActions->GetCurItemId();
-    if (nCurItem == m_nInsertId)
-        OnDoubleClickHdl(nullptr);
-    else
+    const OString aIds[] = { "up", "down" };
+
+    if (rCurItem == "delete")
     {
-        if (nCurItem == m_nRemoveSortId || !m_aActions->IsItemChecked(nCurItem))
-        {
-            const ToolBox::ImplToolItems::size_type nItemCount = m_aActions->GetItemCount();
-            for (ToolBox::ImplToolItems::size_type j = 0; j< nItemCount; ++j)
-            {
-                const sal_uInt16 nItemId = m_aActions->GetItemId(j);
-                if ( nCurItem != nItemId )
-                    m_aActions->CheckItem(nItemId,false);
-            }
-            SvSortMode eSortMode = SortNone;
-            if (nCurItem != m_nRemoveSortId)
-            {
-                m_aActions->CheckItem(nCurItem,!m_aActions->IsItemChecked(nCurItem));
-                if (m_aActions->IsItemChecked(m_nSortUpId))
-                    eSortMode = SortAscending;
-                else if (m_aActions->IsItemChecked(m_nSortDownId))
-                    eSortMode = SortDescending;
-            }
+        for (size_t j = 0; j< SAL_N_ELEMENTS(aIds); ++j)
+            m_xActions->set_item_active(aIds[j], false);
 
-            m_pListBox->GetModel()->SetSortMode(eSortMode);
-            if (nCurItem == m_nRemoveSortId)
-                Update();
-
-            m_pListBox->GetModel()->Resort();
-        }
+        m_xListBox->make_unsorted();
+        Update();
+        return;
     }
-}
 
+    for (size_t j = 0; j< SAL_N_ELEMENTS(aIds); ++j)
+        m_xActions->set_item_active(aIds[j], rCurItem == aIds[j]);
+
+    m_xListBox->make_sorted();
+    if (m_xActions->get_item_active("down"))
+        m_xListBox->set_sort_order(false);
+}
 
 } // namespace rptui
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

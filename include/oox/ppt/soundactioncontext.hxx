@@ -31,12 +31,12 @@ namespace oox {
     class PropertyMap;
 }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-class SoundActionContext : public ::oox::core::FragmentHandler2
+class SoundActionContext final : public ::oox::core::FragmentHandler2
 {
 public:
-    SoundActionContext( ::oox::core::FragmentHandler2& rParent, PropertyMap & aProperties ) throw();
+    SoundActionContext( ::oox::core::FragmentHandler2 const & rParent, PropertyMap & aProperties ) throw();
     virtual ~SoundActionContext() throw() override;
 
     virtual void onEndElement() override;
@@ -50,7 +50,7 @@ private:
     OUString                   msSndName;
 };
 
-} }
+}
 
 
 #endif

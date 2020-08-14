@@ -115,8 +115,8 @@ public:
     virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
 
 protected:
-    virtual OUString SAL_CALL createAccessibleDescription() override;
-    virtual OUString SAL_CALL createAccessibleName() override;
+    virtual OUString createAccessibleDescription() override;
+    virtual OUString createAccessibleName() override;
 
     virtual tools::Rectangle GetBoundingBoxOnScreen() const override;
     virtual tools::Rectangle GetBoundingBox() const override;
@@ -124,7 +124,7 @@ protected:
 private:
     ScPreviewShell*     mpViewShell;
     sal_Int32           mnIndex;
-    mutable ScPreviewTableInfo* mpTableInfo;
+    mutable std::unique_ptr<ScPreviewTableInfo> mpTableInfo;
 
     bool IsDefunc(
         const css::uno::Reference<css::accessibility::XAccessibleStateSet>& rxParentStates);

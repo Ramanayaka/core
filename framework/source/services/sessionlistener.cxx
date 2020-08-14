@@ -18,13 +18,11 @@
  */
 
 #include <sal/types.h>
+#include <sal/log.hxx>
 
-#include <services/desktop.hxx>
-#include <protocols.h>
-#include <general.h>
+#include <framework/desktop.hxx>
 
-#include <vcl/svapp.hxx>
-#include <unotools/tempfile.hxx>
+#include <tools/diagnose_ex.h>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/frame/theAutoRecovery.hpp>
@@ -41,7 +39,6 @@
 #include <com/sun/star/util/URL.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <unotools/pathoptions.hxx>
 
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
@@ -63,8 +60,6 @@ namespace {
             can be used to get more information about this format. Further this
             class provides full access to the configuration data and following
             implementations will support some special query modes.
-
-    @author     as96863
 
     @docdate    10.03.2003 by as96863
 
@@ -112,7 +107,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return OUString("com.sun.star.comp.frame.SessionListener");
+        return "com.sun.star.comp.frame.SessionListener";
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -187,9 +182,9 @@ void SessionListener::StoreSession( bool bAsync )
         Sequence< PropertyValue > args(1);
         args[0] = PropertyValue("DispatchAsynchron",-1,makeAny(bAsync),PropertyState_DIRECT_VALUE);
         xDispatch->dispatch(aURL, args);
-    } catch (const css::uno::Exception& e) {
-        SAL_WARN("fwk.session",e.Message);
-        // save failed, but tell manager to go on if we havent yet dispatched the request
+    } catch (const css::uno::Exception&) {
+        TOOLS_WARN_EXCEPTION("fwk.session", "");
+        // save failed, but tell manager to go on if we haven't yet dispatched the request
         // in case of synchronous saving the notification is done by the caller
         if ( bAsync && m_rSessionManager.is() )
             m_rSessionManager->saveDone(this);
@@ -215,8 +210,8 @@ void SessionListener::QuitSessionQuietly()
         Sequence< PropertyValue > args(1);
         args[0] = PropertyValue("DispatchAsynchron",-1,makeAny(false),PropertyState_DIRECT_VALUE);
         xDispatch->dispatch(aURL, args);
-    } catch (const css::uno::Exception& e) {
-        SAL_WARN("fwk.session",e.Message);
+    } catch (const css::uno::Exception&) {
+        TOOLS_WARN_EXCEPTION("fwk.session", "");
     }
 }
 
@@ -235,12 +230,12 @@ void SAL_CALL SessionListener::initialize(const Sequence< Any  >& args)
     OUString aSMgr("com.sun.star.frame.SessionManagerClient");
     if ( (args.getLength() == 1) && (args[0] >>= m_bAllowUserInteractionOnQuit) )
        ;// do nothing
-    else if (args.getLength() > 0)
+    else if (args.hasElements())
     {
         NamedValue v;
-        for (int i = 0; i < args.getLength(); i++)
+        for (const Any& rArg : args)
         {
-            if (args[i] >>= v)
+            if (rArg >>= v)
             {
                 if ( v.Name == "SessionManagerName" )
                     v.Value >>= aSMgr;
@@ -265,11 +260,11 @@ void SAL_CALL SessionListener::initialize(const Sequence< Any  >& args)
 
 void SAL_CALL SessionListener::statusChanged(const frame::FeatureStateEvent& event)
 {
-   SAL_INFO("fwk.session", "SessionListener::statusChanged");
+    SAL_INFO("fwk.session", "SessionListener::statusChanged");
 
-   SAL_INFO("fwk.session.debug", "  ev.Feature = " << event.FeatureURL.Complete <<
-                                 ", ev.Descript = " << event.FeatureDescriptor);
-   if ( event.FeatureURL.Complete == "vnd.sun.star.autorecovery:/doSessionRestore" )
+    SAL_INFO("fwk.session.debug", "  ev.Feature = " << event.FeatureURL.Complete <<
+                                  ", ev.Descript = " << event.FeatureDescriptor);
+    if ( event.FeatureURL.Complete == "vnd.sun.star.autorecovery:/doSessionRestore" )
     {
         if (event.FeatureDescriptor == "update")
             m_bRestored = true; // a document was restored
@@ -303,8 +298,8 @@ sal_Bool SAL_CALL SessionListener::doRestore()
         xDispatch->dispatch(aURL, args);
         m_bRestored = true;
 
-    } catch (const css::uno::Exception& e) {
-        SAL_WARN("fwk.session",e.Message);
+    } catch (const css::uno::Exception&) {
+        TOOLS_WARN_EXCEPTION("fwk.session", "");
     }
 
     return m_bRestored;
@@ -404,7 +399,7 @@ void SessionListener::doQuit()
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_frame_SessionListener_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

@@ -10,16 +10,15 @@
 #ifndef INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFLOOKAHEAD_HXX
 #define INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFLOOKAHEAD_HXX
 
-#include <memory>
-#include <rtflistener.hxx>
-#include <rtftokenizer.hxx>
+#include <sal/types.h>
+#include <tools/ref.hxx>
+#include "rtflistener.hxx"
 
 class SvStream;
 
-namespace writerfilter
+namespace writerfilter::rtftok
 {
-namespace rtftok
-{
+class RTFTokenizer;
 /**
  * This acts like an importer, but used for looking ahead, e.g. to
  * determine if the current group contains a table, etc.
@@ -45,17 +44,16 @@ public:
     void setSkipUnknown(bool bSkipUnknown) override;
     void finishSubstream() override;
     bool isSubstream() const override;
-    bool hasTable()
-    {
-        return m_bHasTable;
-    }
+    bool hasTable() const { return m_bHasTable; }
+    bool hasColumns() const { return m_bHasColumns; }
+
 private:
-    std::shared_ptr<RTFTokenizer> m_pTokenizer;
+    tools::SvRef<RTFTokenizer> m_pTokenizer;
     SvStream& m_rStream;
     bool m_bHasTable;
+    bool m_bHasColumns;
 };
-} // namespace rtftok
-} // namespace writerfilter
+} // namespace writerfilter::rtftok
 
 #endif // INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFLOOKAHEAD_HXX
 

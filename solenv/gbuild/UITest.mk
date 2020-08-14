@@ -9,7 +9,7 @@
 
 # UITest class
 
-gb_UITest_UNITTESTFAILED ?= $(GBUILDDIR)/platform/unittest-failed-default.sh
+gb_UITest_UNITTESTFAILED ?= $(GBUILDDIR)/uitest-failed-default.sh
 
 ifeq ($(SYSTEM_PYTHON),)
 gb_UITest_EXECUTABLE := $(gb_Python_INSTALLED_EXECUTABLE)
@@ -30,7 +30,16 @@ gb_UITest_GDBTRACE := --gdb
 gb_UITest__interactive := $(true)
 endif
 
-gb_UITest_COMMAND := LIBO_LANG=en_US.UTF-8 $(gb_UITest_EXECUTABLE) $(SRCDIR)/uitest/test_main.py
+ifneq ($(gb_UITest_DEBUGRUN),)
+gb_UITest_SOFFICEARG:=connect:pipe,name=$(USER)
+gb_UITest__interactive := $(true)
+else
+gb_UITest_SOFFICEARG:=path:$(INSTROOT)/$(LIBO_BIN_FOLDER)/soffice
+endif
+
+gb_UITest_COMMAND = $(ICECREAM_RUN) $(gb_CppunitTest_RR) $(gb_UITest_EXECUTABLE) $(SRCDIR)/uitest/test_main.py
+
+gb_TEST_ENV_VARS += LIBO_LANG=C
 
 .PHONY : $(call gb_UITest_get_clean_target,%)
 $(call gb_UITest_get_clean_target,%) :
@@ -39,15 +48,19 @@ $(call gb_UITest_get_clean_target,%) :
 
 ifneq ($(DISABLE_PYTHON),TRUE)
 
+# qadevOOo/qa/registrymodifications.xcu is copied to user profile directory to ensure en_US locale;
+# this might be overwritten later when gb_UITest_use_config is set
 .PHONY : $(call gb_UITest_get_target,%)
 $(call gb_UITest_get_target,%) :| $(gb_UITest_DEPS)
 ifneq ($(gb_SUPPRESS_TESTS),)
 	@true
 else
 	$(call gb_Output_announce,$*,$(true),UIT,2)
+	$(call gb_Trace_StartRange,$*,UIT)
 	$(call gb_Helper_abbreviate_dirs,\
 		rm -rf $(dir $(call gb_UITest_get_target,$*)) && \
-		mkdir -p $(dir $(call gb_UITest_get_target,$*)) && \
+		mkdir -p $(dir $(call gb_UITest_get_target,$*))/user/user && \
+		cp $(SRCDIR)/qadevOOo/qa/registrymodifications.xcu $(dir $(call gb_UITest_get_target,$*))/user/user/ && \
 		$(if $(gb_UITest__interactive),, \
 		    rm -fr $@.core && mkdir -p $(dir $(call gb_UITest_get_target,$*))user/ && mkdir $@.core && cd $@.core && ) \
 		$(if $(gb_UITest_use_config), \
@@ -56,17 +69,16 @@ else
 		$(if $(G_SLICE),G_SLICE=$(G_SLICE)) \
 		$(if $(GLIBCXX_FORCE_NEW),GLIBCXX_FORCE_NEW=$(GLIBCXX_FORCE_NEW)) \
 		$(DEFS) \
-		SAL_LOG_FILE="$(dir $(call gb_UITest_get_target,$*))/soffice.out.log" \
+		$(if $(filter WNT,$(OS)),SAL_LOG_FILE="$(dir $(call gb_UITest_get_target,$*))/soffice.out.log") \
 		TEST_LIB=$(call gb_Library_get_target,test) \
 		URE_BOOTSTRAP=vnd.sun.star.pathname:$(call gb_Helper_get_rcfile,$(INSTROOT)/$(LIBO_ETC_FOLDER)/fundamental) \
 		PYTHONPATH="$(PYPATH)" \
 		TestUserDir="$(call gb_Helper_make_url,$(dir $(call gb_UITest_get_target,$*)))" \
 		PYTHONDONTWRITEBYTECODE=0 \
-		$(if $(filter-out MACOSX WNT,$(OS_FOR_BUILD)),$(if $(ENABLE_HEADLESS),, \
-			SAL_USE_VCLPLUGIN=svp \
-		)) \
+		$(if $(ENABLE_WERROR),PYTHONWARNINGS=error) \
+		$(gb_TEST_ENV_VARS) \
 		$(gb_UITest_COMMAND) \
-		--soffice=path:$(INSTROOT)/$(LIBO_BIN_FOLDER)/soffice \
+		--soffice="$(gb_UITest_SOFFICEARG)" \
 		--userdir=$(call gb_Helper_make_url,$(dir $(call gb_UITest_get_target,$*))user) \
 		--dir=$(strip $(MODULES)) \
 		$(gb_UITest_GDBTRACE) \
@@ -75,14 +87,20 @@ else
 		    || ($(if $(value gb_CppunitTest_postprocess), \
 				    RET=$$?; \
 				    $(call gb_CppunitTest_postprocess,$(gb_UITest_EXECUTABLE_GDB),$@.core,$$RET) >> $@.log 2>&1;) \
+                $(if $(filter WNT,$(OS)), \
+                    printf '%s: <<<\n' $(dir $(call gb_UITest_get_target,$*))/soffice.out.log; \
+                    cat $(dir $(call gb_UITest_get_target,$*))/soffice.out.log; \
+                    printf ' >>>\n\n';) \
 			    cat $@.log; $(gb_UITest_UNITTESTFAILED) UI $*))))
+	$(call gb_Trace_EndRange,$*,UIT)
 endif
 
 # always use udkapi and URE services
 define gb_UITest_UITest
-$(call gb_UITest_get_target,$(1)) : PYPATH := $(SRCDIR)/uitest$$(gb_CLASSPATHSEP)$(INSTROOT)/$(LIBO_LIB_PYUNO_FOLDER)$(if $(filter-out $(LIBO_LIB_PYUNO_FOLDER),$(LIBO_LIB_FOLDER)),$(gb_CLASSPATHSEP)$(INSTROOT)/$(LIBO_LIB_FOLDER))
+$(call gb_UITest_get_target,$(1)) : PYPATH := $(SRCDIR)/uitest$$(gb_CLASSPATHSEP)$(SRCDIR)/unotest/source/python$$(gb_CLASSPATHSEP)$(INSTROOT)/$(LIBO_LIB_PYUNO_FOLDER)$(if $(filter-out $(LIBO_LIB_PYUNO_FOLDER),$(LIBO_LIB_FOLDER)),$(gb_CLASSPATHSEP)$(INSTROOT)/$(LIBO_LIB_FOLDER))
 $(call gb_UITest_get_target,$(1)) : MODULES :=
 
+$(eval $(call gb_TestHelpers_use_more_fonts,$(call gb_UITest_get_target,$(1))))
 $(eval $(call gb_Module_register_target,$(call gb_UITest_get_target,$(1)),$(call gb_UITest_get_clean_target,$(1))))
 $(call gb_Helper_make_userfriendly_targets,$(1),UITest)
 

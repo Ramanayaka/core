@@ -20,25 +20,25 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_MODULECONTROLLER_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_FRAMEWORK_MODULECONTROLLER_HXX
 
-#include "MutexOwner.hxx"
+#include <MutexOwner.hxx>
 
 #include <com/sun/star/drawing/framework/XModuleController.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/frame/XController.hpp>
 #include <cppuhelper/compbase.hxx>
 
 #include <memory>
-#include <set>
 
-namespace sd { namespace framework {
+namespace com::sun::star::frame { class XController; }
+namespace com::sun::star::uno { class XComponentContext; }
+
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::drawing::framework::XModuleController,
     css::lang::XInitialization
     > ModuleControllerInterfaceBase;
 
-/** The ModuleController has to tasks:
+/** The ModuleController has two tasks:
 
     1. It reads the
     org.openoffice.Office.Impress/MultiPaneGUI/Framework/ResourceFactories
@@ -114,7 +114,7 @@ private:
     void ProcessStartupService (const ::std::vector<css::uno::Any>& rValues);
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

@@ -21,12 +21,8 @@
 
 #include <memory>
 
-#include "config.hxx"
-#include "utilities.hxx"
-
-#ifdef _WIN32_WINNT_WINBLUE
-#include <VersionHelpers.h>
-#endif
+#include <config.hxx>
+#include <utilities.hxx>
 
 // constants
 
@@ -87,32 +83,10 @@ std::wstring GetResString(int ResId)
 
     int rc = LoadStringW( GetModuleHandleW(MODULE_NAME), ResId, szResStr, sizeof(szResStr) );
 
-    OutputDebugStringFormatA( "GetResString: read %d chars\n", rc );
+    OutputDebugStringFormatW( L"GetResString: read %d chars\n", rc );
     // OSL_ENSURE(rc, "String resource not found");
 
     return std::wstring(szResStr);
-}
-
-
-bool is_windows_xp_or_above()
-{
-// the Win32 SDK 8.1 deprecates GetVersionEx()
-#ifdef _WIN32_WINNT_WINBLUE
-    return IsWindowsXPOrGreater();
-#else
-    OSVERSIONINFO osvi;
-    ZeroMemory(&osvi, sizeof(osvi));
-    osvi.dwOSVersionInfoSize = sizeof(osvi);
-    GetVersionEx(&osvi);
-
-    // LLA: check for windows xp or above (Vista)
-    if (osvi.dwMajorVersion > 5 ||
-        (5 == osvi.dwMajorVersion && osvi.dwMinorVersion >= 1))
-    {
-        return true;
-    }
-    return false;
-#endif
 }
 
 
@@ -141,7 +115,7 @@ bool HasOnlySpaces(const std::wstring& String)
 
 /** helper function to convert windows paths to short form.
     @returns
-        shortend path.
+        shortened path.
 */
 
 std::wstring getShortPathName( const std::wstring& aLongName )
@@ -151,7 +125,7 @@ std::wstring getShortPathName( const std::wstring& aLongName )
 
     if ( length != 0 )
     {
-        auto buffer = std::unique_ptr<WCHAR[]>(new WCHAR[ length+1 ]);
+        auto buffer = std::make_unique<WCHAR[]>( length+1 );
         length = GetShortPathNameW( aLongName.c_str(), buffer.get(), length );
         if ( length != 0 )
             shortName = std::wstring( buffer.get() );

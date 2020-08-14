@@ -24,7 +24,7 @@ $(eval $(call gb_Library_set_include,tl,\
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,tl,$(SRCDIR)/tools/inc/pch/precompiled_tl))
+$(eval $(call gb_Library_set_precompiled_header,tl,tools/inc/pch/precompiled_tl))
 
 $(eval $(call gb_Library_add_defs,tl,\
     -DTOOLS_DLLIMPLEMENTATION \
@@ -37,17 +37,19 @@ $(eval $(call gb_Library_use_libraries,tl,\
     comphelper \
     i18nlangtag \
     cppu \
+    cppuhelper \
     sal \
-    sax \
 ))
 
 
 $(eval $(call gb_Library_add_exception_objects,tl,\
     tools/source/datetime/datetime \
     tools/source/datetime/datetimeutils \
+    tools/source/datetime/systemdatetime \
     tools/source/datetime/tdate \
     tools/source/datetime/ttime \
     tools/source/debug/debug \
+    tools/source/fsys/fileutil \
     tools/source/fsys/urlobj \
     tools/source/fsys/wldcrd \
     tools/source/generic/b3dtrans \
@@ -64,22 +66,21 @@ $(eval $(call gb_Library_add_exception_objects,tl,\
     tools/source/inet/inetmime \
     tools/source/inet/inetmsg \
     tools/source/inet/inetstrm \
-    tools/source/memtools/mempool \
     tools/source/memtools/multisel \
-    tools/source/memtools/unqidx \
     tools/source/misc/cpuid \
     tools/source/misc/extendapplicationenvironment \
-    tools/source/rc/rc \
-    tools/source/rc/resary \
-    tools/source/rc/resmgr \
+    tools/source/misc/json_writer \
     tools/source/ref/globname \
-    tools/source/ref/pstm \
     tools/source/ref/ref \
     tools/source/stream/stream \
     tools/source/stream/vcompat \
+    tools/source/stream/GenericTypeSerializer \
     tools/source/string/tenccvt \
     tools/source/zcodec/zcodec \
+    tools/source/xml/XmlWriter \
+    tools/source/xml/XmlWalker \
 ))
+
 ifeq ($(OS),WNT)
 $(eval $(call gb_Library_add_exception_objects,tl, \
     tools/source/stream/strmwnt \
@@ -97,6 +98,7 @@ $(eval $(call gb_Library_add_generated_exception_objects,tl,\
 $(eval $(call gb_Library_use_externals,tl,\
 	boost_headers \
 	zlib \
+	libxml2 \
 ))
 
 ifeq ($(OS),LINUX)
@@ -109,9 +111,11 @@ ifeq ($(OS),WNT)
 
 $(eval $(call gb_Library_use_system_win32_libs,tl,\
 	mpr \
+	netapi32 \
 	ole32 \
 	shell32 \
 	uuid \
+	winmm \
 ))
 
 endif

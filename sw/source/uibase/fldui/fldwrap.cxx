@@ -18,22 +18,11 @@
  */
 
 #include <cmdid.h>
-#include <swtypes.hxx>
 #include <sfx2/basedlgs.hxx>
-#include <sfx2/dispatch.hxx>
-#include <vcl/msgbox.hxx>
-#include <sfx2/htmlmode.hxx>
-#include <viewopt.hxx>
 #include <docsh.hxx>
 #include <fldwrap.hxx>
-#include <wrtsh.hxx>
-#include <view.hxx>
-#include <swmodule.hxx>
 
-#include <helpid.h>
-#include <fldui.hrc>
-#include <globals.hrc>
-#include "swabstdlg.hxx"
+#include <swabstdlg.hxx>
 
 SFX_IMPL_CHILDWINDOW_WITHID(SwFieldDlgWrapper, FN_INSERT_FIELD)
 
@@ -48,7 +37,8 @@ SwChildWinWrapper::SwChildWinWrapper(vcl::Window *pParentWindow, sal_uInt16 nId)
 
 IMPL_LINK_NOARG(SwChildWinWrapper, UpdateHdl, Timer *, void)
 {
-    GetWindow()->Activate();    // update dialog
+    if (GetController())
+        GetController()->Activate();    // update dialog
 }
 
 // newly initialise dialog after Doc switch
@@ -70,7 +60,6 @@ bool SwChildWinWrapper::ReInitDlg(SwDocShell *)
 SfxChildWinInfo SwFieldDlgWrapper::GetInfo() const
 {
     SfxChildWinInfo aInfo = SfxChildWindow::GetInfo();
-    aInfo.aPos = GetWindow()->OutputToAbsoluteScreenPixel(aInfo.aPos);
     return aInfo;
 }
 
@@ -80,11 +69,9 @@ SwFieldDlgWrapper::SwFieldDlgWrapper( vcl::Window* _pParent, sal_uInt16 nId,
     : SwChildWinWrapper( _pParent, nId )
 {
     SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-    assert(pFact && "SwAbstractDialogFactory fail!");
-    pDlgInterface = pFact->CreateSwFieldDlg(pB, this, _pParent);
-    assert(pDlgInterface && "Dialog creation failed!");
-    SetWindow( pDlgInterface->GetWindow() );
-    pDlgInterface->Start();
+    pDlgInterface = pFact->CreateSwFieldDlg(pB, this, _pParent->GetFrameWeld());
+    SetController(pDlgInterface->GetController());
+    pDlgInterface->StartExecuteAsync(nullptr);
 }
 
 // newly initialise dialog after Doc switch
@@ -121,14 +108,11 @@ SwFieldDataOnlyDlgWrapper::SwFieldDataOnlyDlgWrapper( vcl::Window* _pParent, sal
     : SwChildWinWrapper( _pParent, nId )
 {
     SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-    OSL_ENSURE(pFact, "SwAbstractDialogFactory fail!");
+    pDlgInterface = pFact->CreateSwFieldDlg(pB, this, _pParent->GetFrameWeld());
 
-    pDlgInterface = pFact->CreateSwFieldDlg(pB, this, _pParent);
-    OSL_ENSURE(pDlgInterface, "Dialog creation failed!");
-
-    SetWindow( pDlgInterface->GetWindow() );
+    SetController(pDlgInterface->GetController());
     pDlgInterface->ActivateDatabasePage();
-    pDlgInterface->Start();
+    pDlgInterface->StartExecuteAsync(nullptr);
     pDlgInterface->Initialize( pInfo );
 }
 

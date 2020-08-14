@@ -17,74 +17,55 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scres.hrc"
-#include "retypepassdlg.hxx"
-#include "scresid.hxx"
-#include "document.hxx"
-#include "tabprotection.hxx"
+#include <vcl/svapp.hxx>
+#include <strings.hrc>
+#include <retypepassdlg.hxx>
+#include <scresid.hxx>
+#include <document.hxx>
+#include <tabprotection.hxx>
 
-#include <vcl/msgbox.hxx>
-
-ScRetypePassDlg::ScRetypePassDlg(vcl::Window* pParent) :
-    ModalDialog(pParent, "RetypePass", "modules/scalc/ui/retypepassdialog.ui"),
-
-    maTextNotProtected(ScResId(STR_NOT_PROTECTED)),
-    maTextNotPassProtected(ScResId(STR_NOT_PASS_PROTECTED)),
-    maTextHashBad(ScResId(STR_HASH_BAD)),
-    maTextHashGood(ScResId(STR_HASH_GOOD)),
-
-    mpDocItem(static_cast<ScDocProtection*>(nullptr)),
-    meDesiredHash(PASSHASH_SHA1)
+ScRetypePassDlg::ScRetypePassDlg(weld::Window* pParent)
+    : GenericDialogController(pParent, "modules/scalc/ui/retypepassdialog.ui", "RetypePass")
+    , maTextNotProtected(ScResId(STR_NOT_PROTECTED))
+    , maTextNotPassProtected(ScResId(STR_NOT_PASS_PROTECTED))
+    , maTextHashBad(ScResId(STR_HASH_BAD))
+    , maTextHashGood(ScResId(STR_HASH_GOOD))
+    , meDesiredHash(PASSHASH_SHA1)
+    , mxBtnOk(m_xBuilder->weld_button("ok"))
+    , mxTextDocStatus(m_xBuilder->weld_label("docStatusLabel"))
+    , mxBtnRetypeDoc(m_xBuilder->weld_button("retypeDocButton"))
+    , mxScrolledWindow(m_xBuilder->weld_scrolled_window("scrolledwindow"))
+    , mxSheetsBox(m_xBuilder->weld_container("sheetsBox"))
 {
-    get(mpBtnOk ,"ok");
-    get(mpTextDocStatus, "docStatusLabel");
-    get(mpBtnRetypeDoc, "retypeDocButton");
-    vcl::Window *pScrolledWindow = get<vcl::Window>("scrolledwindow");
-    Size aSize(LogicToPixel(Size(190, 90), MapUnit::MapAppFont));
-    pScrolledWindow->set_width_request(aSize.Width());
-    pScrolledWindow->set_height_request(aSize.Height());
-    get(mpSheetsBox, "sheetsBox");
-
+    mxScrolledWindow->set_size_request(mxScrolledWindow->get_approximate_digit_width() * 46,
+                                       mxScrolledWindow->get_text_height() * 10);
     Init();
 }
 
 ScRetypePassDlg::~ScRetypePassDlg()
 {
-    disposeOnce();
-}
-
-void ScRetypePassDlg::dispose()
-{
-    DeleteSheets();
-    mpBtnOk.clear();
-    mpTextDocStatus.clear();
-    mpBtnRetypeDoc.clear();
-    mpSheetsBox.clear();
-    maSheets.clear();
-    ModalDialog::dispose();
 }
 
 void ScRetypePassDlg::DeleteSheets()
 {
-    for(auto it = maSheets.begin(); it != maSheets.end(); ++it)
-    {
-        VclPtr<vcl::Window> pWindow = (*it);
-        vcl::Window *pChild = pWindow->GetWindow(GetWindowType::FirstChild);
-        while (pChild)
-        {
-            VclPtr<vcl::Window> pOldChild = pChild;
-            pChild = pChild->GetWindow(GetWindowType::Next);
-            pOldChild.disposeAndClear();
-        }
-        pWindow.disposeAndClear();
-    }
+    maSheets.clear();
 }
 
-short ScRetypePassDlg::Execute()
+short ScRetypePassDlg::run()
 {
     PopulateDialog();
     CheckHashStatus();
-    return ModalDialog::Execute();
+    return GenericDialogController::run();
+}
+
+PassFragment::PassFragment(weld::Widget* pParent)
+    : m_xBuilder(Application::CreateBuilder(pParent, "modules/scalc/ui/passfragment.ui"))
+    , m_xSheetsBox(m_xBuilder->weld_container("PassEntry"))
+    , m_xName(m_xBuilder->weld_label("name"))
+    , m_xStatus(m_xBuilder->weld_label("status"))
+    , m_xButton(m_xBuilder->weld_button("button"))
+{
+    m_xButton->set_label(ScResId(STR_RETYPE));
 }
 
 void ScRetypePassDlg::SetDataFromDocument(const ScDocument& rDoc)
@@ -92,7 +73,7 @@ void ScRetypePassDlg::SetDataFromDocument(const ScDocument& rDoc)
     DeleteSheets();
     const ScDocProtection* pDocProtect = rDoc.GetDocProtection();
     if (pDocProtect && pDocProtect->isProtected())
-        mpDocItem.reset(new ScDocProtection(*pDocProtect));
+        mpDocItem = std::make_shared<ScDocProtection>(*pDocProtect);
 
     SCTAB nTabCount = rDoc.GetTableCount();
     maTableItems.reserve(nTabCount);
@@ -104,26 +85,11 @@ void ScRetypePassDlg::SetDataFromDocument(const ScDocument& rDoc)
 
         const ScTableProtection* pTabProtect = rDoc.GetTabProtection(i);
         if (pTabProtect && pTabProtect->isProtected())
-            aTabItem.mpProtect.reset(new ScTableProtection(*pTabProtect));
+            aTabItem.mpProtect = std::make_shared<ScTableProtection>(*pTabProtect);
 
         maTableItems.push_back(aTabItem);
-        VclPtr<VclHBox> pSheet = VclPtr<VclHBox>::Create(mpSheetsBox, false, 12);
-        pSheet->Show();
-
-        VclPtr<FixedText> pFtSheetName = VclPtr<FixedText>::Create(pSheet);
-        pFtSheetName->Show();
-        pFtSheetName->SetStyle(WB_VCENTER);
-        VclPtr<FixedText> pFtSheetStatus = VclPtr<FixedText>::Create(pSheet);
-        pFtSheetStatus->Show();
-        pFtSheetStatus->SetStyle(WB_VCENTER);
-
-        VclPtr<PushButton> pBtnSheet = VclPtr<PushButton>::Create(static_cast<vcl::Window*>(pSheet));
-        pBtnSheet->SetText(ScResId(STR_RETYPE));
-        pBtnSheet->SetClickHdl(LINK(this, ScRetypePassDlg, RetypeBtnHdl));
-        pBtnSheet->Disable();
-        pBtnSheet->Show();
-
-        maSheets.push_back(pSheet);
+        maSheets.emplace_back(new PassFragment(mxSheetsBox.get()));
+        maSheets.back()->m_xButton->connect_clicked(LINK(this, ScRetypePassDlg, RetypeBtnHdl));
     }
 }
 
@@ -134,7 +100,7 @@ void ScRetypePassDlg::SetDesiredHash(ScPasswordHash eHash)
 
 void ScRetypePassDlg::WriteNewDataToDocument(ScDocument& rDoc) const
 {
-    if (mpDocItem.get())
+    if (mpDocItem)
         rDoc.SetDocProtection(mpDocItem.get());
 
     size_t nTabCount = static_cast<size_t>(rDoc.GetTableCount());
@@ -152,14 +118,14 @@ void ScRetypePassDlg::WriteNewDataToDocument(ScDocument& rDoc) const
 
 void ScRetypePassDlg::Init()
 {
-    Link<Button*,void> aLink = LINK( this, ScRetypePassDlg, OKHdl );
-    mpBtnOk->SetClickHdl(aLink);
+    Link<weld::Button&,void> aLink = LINK( this, ScRetypePassDlg, OKHdl );
+    mxBtnOk->connect_clicked(aLink);
 
     aLink = LINK( this, ScRetypePassDlg, RetypeBtnHdl );
-    mpBtnRetypeDoc->SetClickHdl(aLink);
+    mxBtnRetypeDoc->connect_clicked(aLink);
 
-    mpTextDocStatus->SetText(maTextNotProtected);
-    mpBtnRetypeDoc->Disable();
+    mxTextDocStatus->set_label(maTextNotProtected);
+    mxBtnRetypeDoc->set_sensitive(false);
 }
 
 void ScRetypePassDlg::PopulateDialog()
@@ -175,54 +141,54 @@ void ScRetypePassDlg::PopulateDialog()
 void ScRetypePassDlg::SetDocData()
 {
     bool bBtnEnabled = false;
-    if (mpDocItem.get() && mpDocItem->isProtected())
+    if (mpDocItem && mpDocItem->isProtected())
     {
         if (mpDocItem->isPasswordEmpty())
-            mpTextDocStatus->SetText(maTextNotPassProtected);
+            mxTextDocStatus->set_label(maTextNotPassProtected);
         else if (mpDocItem->hasPasswordHash(meDesiredHash))
-            mpTextDocStatus->SetText(maTextHashGood);
+            mxTextDocStatus->set_label(maTextHashGood);
         else
         {
             // incompatible hash
-            mpTextDocStatus->SetText(maTextHashBad);
+            mxTextDocStatus->set_label(maTextHashBad);
             bBtnEnabled = true;
         }
     }
-    mpBtnRetypeDoc->Enable(bBtnEnabled);
+    mxBtnRetypeDoc->set_sensitive(bBtnEnabled);
 }
 
 void ScRetypePassDlg::SetTableData(size_t nRowPos, SCTAB nTab)
 {
-    if(nRowPos < maSheets.size())
+    if (nRowPos >= maSheets.size())
+        return;
+
+    weld::Label& rName = *maSheets[nRowPos]->m_xName;
+    weld::Label& rStatus = *maSheets[nRowPos]->m_xStatus;
+    weld::Button& rBtn = *maSheets[nRowPos]->m_xButton;
+
+    bool bBtnEnabled = false;
+    rName.set_label(maTableItems[nTab].maName);
+    const ScTableProtection* pTabProtect = maTableItems[nTab].mpProtect.get();
+    if (pTabProtect && pTabProtect->isProtected())
     {
-        FixedText* pName = static_cast<FixedText*>(maSheets[nRowPos]->GetChild(0));
-        FixedText* pStatus = static_cast<FixedText*>(maSheets[nRowPos]->GetChild(1));
-        PushButton* pBtn = static_cast<PushButton*>(maSheets[nRowPos]->GetChild(2));
-
-        bool bBtnEnabled = false;
-        pName->SetText(maTableItems[nTab].maName);
-        const ScTableProtection* pTabProtect = maTableItems[nTab].mpProtect.get();
-        if (pTabProtect && pTabProtect->isProtected())
-        {
-            if (pTabProtect->isPasswordEmpty())
-                pStatus->SetText(maTextNotPassProtected);
-            else if (pTabProtect->hasPasswordHash(meDesiredHash))
-                pStatus->SetText(maTextHashGood);
-            else
-            {
-                // incompatible hash
-                pStatus->SetText(maTextHashBad);
-                bBtnEnabled = true;
-            }
-        }
+        if (pTabProtect->isPasswordEmpty())
+            rStatus.set_label(maTextNotPassProtected);
+        else if (pTabProtect->hasPasswordHash(meDesiredHash))
+            rStatus.set_label(maTextHashGood);
         else
-            pStatus->SetText(maTextNotProtected);
-
-        pBtn->Enable(bBtnEnabled);
+        {
+            // incompatible hash
+            rStatus.set_label(maTextHashBad);
+            bBtnEnabled = true;
+        }
     }
+    else
+        rStatus.set_label(maTextNotProtected);
+
+    rBtn.set_sensitive(bBtnEnabled);
 }
 
-static bool lcl_IsInGoodStatus(ScPassHashProtectable* pProtected, ScPasswordHash eDesiredHash)
+static bool lcl_IsInGoodStatus(const ScPassHashProtectable* pProtected, ScPasswordHash eDesiredHash)
 {
     if (!pProtected || !pProtected->isProtected())
         // Not protected.
@@ -254,23 +220,23 @@ void ScRetypePassDlg::CheckHashStatus()
         if (!bStatusGood)
             break;
 
-        mpBtnOk->Enable();
+        mxBtnOk->set_sensitive(true);
         return;
     }
     while (false);
 
-    mpBtnOk->Disable();
+    mxBtnOk->set_sensitive(false);
 }
 
-IMPL_LINK_NOARG(ScRetypePassDlg, OKHdl, Button*, void)
+IMPL_LINK_NOARG(ScRetypePassDlg, OKHdl, weld::Button&, void)
 {
-    EndDialog(RET_OK);
+    m_xDialog->response(RET_OK);
 }
 
-IMPL_LINK( ScRetypePassDlg, RetypeBtnHdl, Button*, pBtn, void )
+IMPL_LINK(ScRetypePassDlg, RetypeBtnHdl, weld::Button&, rBtn, void)
 {
     ScPassHashProtectable* pProtected = nullptr;
-    if (pBtn == mpBtnRetypeDoc)
+    if (&rBtn == mxBtnRetypeDoc.get())
     {
         // document protection.
         pProtected = mpDocItem.get();
@@ -279,7 +245,7 @@ IMPL_LINK( ScRetypePassDlg, RetypeBtnHdl, Button*, pBtn, void )
     {
         // sheet protection.
         size_t aPos = 0;
-        while(aPos < maSheets.size() && pBtn != maSheets[aPos]->GetChild(2))
+        while (aPos < maSheets.size() && &rBtn != maSheets[aPos]->m_xButton.get())
             ++aPos;
 
         pProtected = aPos < maSheets.size() ? maTableItems[aPos].mpProtect.get() : nullptr;
@@ -289,152 +255,132 @@ IMPL_LINK( ScRetypePassDlg, RetypeBtnHdl, Button*, pBtn, void )
         // What the ... !?
         return;
 
-    ScopedVclPtrInstance< ScRetypePassInputDlg > aDlg(this, pProtected);
-    if (aDlg->Execute() == RET_OK)
-    {
-        // OK is pressed.  Update the protected item.
-        if (aDlg->IsRemovePassword())
-        {
-            // Remove password from this item.
-            pProtected->setPassword(OUString());
-        }
-        else
-        {
-            // Set a new password.
-            OUString aNewPass = aDlg->GetNewPassword();
-            pProtected->setPassword(aNewPass);
-        }
+    ScRetypePassInputDlg aDlg(m_xDialog.get(), pProtected);
+    if (aDlg.run() != RET_OK)
+        return;
 
-        SetDocData();
-        CheckHashStatus();
+    // OK is pressed.  Update the protected item.
+    if (aDlg.IsRemovePassword())
+    {
+        // Remove password from this item.
+        pProtected->setPassword(OUString());
     }
+    else
+    {
+        // Set a new password.
+        OUString aNewPass = aDlg.GetNewPassword();
+        pProtected->setPassword(aNewPass);
+    }
+
+    SetDocData();
+    CheckHashStatus();
 }
 
-ScRetypePassInputDlg::ScRetypePassInputDlg(vcl::Window* pParent, ScPassHashProtectable* pProtected)
-    : ModalDialog(pParent, "RetypePasswordDialog",
-        "modules/scalc/ui/retypepassworddialog.ui")
-    , mpProtected(pProtected)
+ScRetypePassInputDlg::ScRetypePassInputDlg(weld::Window* pParent, ScPassHashProtectable* pProtected)
+    : GenericDialogController(pParent, "modules/scalc/ui/retypepassworddialog.ui", "RetypePasswordDialog")
+    , m_pProtected(pProtected)
+    , m_xBtnOk(m_xBuilder->weld_button("ok"))
+    , m_xBtnRetypePassword(m_xBuilder->weld_radio_button("retypepassword"))
+    , m_xPasswordGrid(m_xBuilder->weld_widget("passwordgrid"))
+    , m_xPassword1Edit(m_xBuilder->weld_entry("newpassEntry"))
+    , m_xPassword2Edit(m_xBuilder->weld_entry("confirmpassEntry"))
+    , m_xBtnMatchOldPass(m_xBuilder->weld_check_button("mustmatch"))
+    , m_xBtnRemovePassword(m_xBuilder->weld_radio_button("removepassword"))
 {
-    get(m_pBtnOk, "ok");
-    get(m_pBtnRetypePassword, "retypepassword");
-    get(m_pBtnRemovePassword, "removepassword");
-    get(m_pPasswordGrid, "passwordgrid");
-    get(m_pPassword1Edit, "newpassEntry");
-    get(m_pPassword2Edit, "confirmpassEntry");
-    get(m_pBtnMatchOldPass, "mustmatch");
-
     Init();
 }
 
 ScRetypePassInputDlg::~ScRetypePassInputDlg()
 {
-    disposeOnce();
-}
-
-void ScRetypePassInputDlg::dispose()
-{
-    m_pBtnOk.clear();
-    m_pBtnRetypePassword.clear();
-    m_pPasswordGrid.clear();
-    m_pPassword1Edit.clear();
-    m_pPassword2Edit.clear();
-    m_pBtnMatchOldPass.clear();
-    m_pBtnRemovePassword.clear();
-    ModalDialog::dispose();
 }
 
 bool ScRetypePassInputDlg::IsRemovePassword() const
 {
-    return m_pBtnRemovePassword->IsChecked();
+    return m_xBtnRemovePassword->get_active();
 }
 
 OUString ScRetypePassInputDlg::GetNewPassword() const
 {
-    return m_pPassword1Edit->GetText();
+    return m_xPassword1Edit->get_text();
 }
 
 void ScRetypePassInputDlg::Init()
 {
-    Link<Button*,void> aLink = LINK( this, ScRetypePassInputDlg, OKHdl );
-    m_pBtnOk->SetClickHdl(aLink);
-    aLink = LINK( this, ScRetypePassInputDlg, RadioBtnHdl );
-    m_pBtnRetypePassword->SetClickHdl(aLink);
-    m_pBtnRemovePassword->SetClickHdl(aLink);
-    aLink = LINK( this, ScRetypePassInputDlg, CheckBoxHdl );
-    m_pBtnMatchOldPass->SetClickHdl(aLink);
-    Link<Edit&,void> aLink2 = LINK( this, ScRetypePassInputDlg, PasswordModifyHdl );
-    m_pPassword1Edit->SetModifyHdl(aLink2);
-    m_pPassword2Edit->SetModifyHdl(aLink2);
+    m_xBtnOk->connect_clicked(LINK(this, ScRetypePassInputDlg, OKHdl));
+    m_xBtnRetypePassword->connect_toggled(LINK(this, ScRetypePassInputDlg, RadioBtnHdl));
+    m_xBtnRemovePassword->connect_toggled(LINK(this, ScRetypePassInputDlg, RadioBtnHdl));
+    m_xBtnMatchOldPass->connect_toggled(LINK(this, ScRetypePassInputDlg, CheckBoxHdl));
+    Link<weld::Entry&,void> aLink2 = LINK( this, ScRetypePassInputDlg, PasswordModifyHdl );
+    m_xPassword1Edit->connect_changed(aLink2);
+    m_xPassword2Edit->connect_changed(aLink2);
 
-    m_pBtnOk->Disable();
-    m_pBtnRetypePassword->Check();
-    m_pBtnMatchOldPass->Check();
-    m_pPassword1Edit->GrabFocus();
+    m_xBtnOk->set_sensitive(false);
+    m_xBtnRetypePassword->set_active(true);
+    m_xBtnMatchOldPass->set_active(true);
+    m_xPassword1Edit->grab_focus();
 }
 
 void ScRetypePassInputDlg::CheckPasswordInput()
 {
-    OUString aPass1 = m_pPassword1Edit->GetText();
-    OUString aPass2 = m_pPassword2Edit->GetText();
+    OUString aPass1 = m_xPassword1Edit->get_text();
+    OUString aPass2 = m_xPassword2Edit->get_text();
 
     if (aPass1.isEmpty() || aPass2.isEmpty())
     {
         // Empty password is not allowed.
-        m_pBtnOk->Disable();
+        m_xBtnOk->set_sensitive(false);
         return;
     }
 
     if (aPass1 != aPass2)
     {
         // The two passwords differ.
-        m_pBtnOk->Disable();
+        m_xBtnOk->set_sensitive(false);
         return;
     }
 
-    if (!m_pBtnMatchOldPass->IsChecked())
+    if (!m_xBtnMatchOldPass->get_active())
     {
-        m_pBtnOk->Enable();
+        m_xBtnOk->set_sensitive(true);
         return;
     }
 
-    if (!mpProtected)
+    if (!m_pProtected)
     {
         // This should never happen!
-        m_pBtnOk->Disable();
+        m_xBtnOk->set_sensitive(false);
         return;
     }
 
-    bool bPassGood = mpProtected->verifyPassword(aPass1);
-    m_pBtnOk->Enable(bPassGood);
+    bool bPassGood = m_pProtected->verifyPassword(aPass1);
+    m_xBtnOk->set_sensitive(bPassGood);
 }
 
-IMPL_LINK_NOARG(ScRetypePassInputDlg, OKHdl, Button*, void)
+IMPL_LINK_NOARG(ScRetypePassInputDlg, OKHdl, weld::Button&, void)
 {
-    EndDialog(RET_OK);
+    m_xDialog->response(RET_OK);
 }
 
-IMPL_LINK( ScRetypePassInputDlg, RadioBtnHdl, Button*, pBtn, void )
+IMPL_LINK_NOARG(ScRetypePassInputDlg, RadioBtnHdl, weld::ToggleButton&, void)
 {
-    if (pBtn == m_pBtnRetypePassword)
+    if (m_xBtnRetypePassword->get_active())
     {
-        m_pBtnRemovePassword->Check(false);
-        m_pPasswordGrid->Enable();
+        m_xPasswordGrid->set_sensitive(true);
         CheckPasswordInput();
     }
-    else if (pBtn == m_pBtnRemovePassword)
+    else
     {
-        m_pBtnRetypePassword->Check(false);
-        m_pPasswordGrid->Disable();
-        m_pBtnOk->Enable();
+        m_xPasswordGrid->set_sensitive(false);
+        m_xBtnOk->set_sensitive(false);
     }
 }
 
-IMPL_LINK_NOARG(ScRetypePassInputDlg, CheckBoxHdl, Button*, void)
+IMPL_LINK_NOARG(ScRetypePassInputDlg, CheckBoxHdl, weld::ToggleButton&, void)
 {
     CheckPasswordInput();
 }
 
-IMPL_LINK_NOARG(ScRetypePassInputDlg, PasswordModifyHdl, Edit&, void)
+IMPL_LINK_NOARG(ScRetypePassInputDlg, PasswordModifyHdl, weld::Entry&, void)
 {
     CheckPasswordInput();
 }

@@ -20,25 +20,25 @@
 #ifndef INCLUDED_UCB_SOURCE_CACHER_CACHEDCONTENTRESULTSET_HXX
 #define INCLUDED_UCB_SOURCE_CACHER_CACHEDCONTENTRESULTSET_HXX
 
-#include <contentresultsetwrapper.hxx>
+#include "contentresultsetwrapper.hxx"
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/ucb/XFetchProvider.hpp>
 #include <com/sun/star/ucb/XFetchProviderForContentAccess.hpp>
 #include <com/sun/star/ucb/FetchResult.hpp>
 #include <com/sun/star/ucb/XContentIdentifierMapping.hpp>
 #include <com/sun/star/ucb/XCachedContentResultSetFactory.hpp>
+#include <cppuhelper/implbase.hxx>
 #include <rtl/ref.hxx>
 
 #include <memory>
 
-#define CACHED_CONTENT_RESULTSET_SERVICE_NAME "com.sun.star.ucb.CachedContentResultSet"
-#define CACHED_CONTENT_RESULTSET_FACTORY_NAME "com.sun.star.ucb.CachedContentResultSetFactory"
-
-
-namespace com { namespace sun { namespace star { namespace script {
+namespace com::sun::star::script {
     class XTypeConverter;
-} } } }
+}
 
 class CCRS_PropertySetInfo;
 class CachedContentResultSet
@@ -47,7 +47,6 @@ class CachedContentResultSet
                 , public css::lang::XServiceInfo
 {
 
-    // class CCRS_Cache
 
     class CCRS_Cache
     {
@@ -56,57 +55,56 @@ class CachedContentResultSet
                                          m_pResult;
         css::uno::Reference< css::ucb::XContentIdentifierMapping >
                                          m_xContentIdentifierMapping;
-        css::uno::Sequence< sal_Bool >*  m_pMappedReminder;
+        std::unique_ptr<css::uno::Sequence< sal_Bool >>  m_pMappedReminder;
 
     private:
         /// @throws css::sdbc::SQLException
         /// @throws css::uno::RuntimeException
-        css::uno::Any& SAL_CALL
+        css::uno::Any&
         getRowAny( sal_Int32 nRow );
 
-        void SAL_CALL clear();
+        void clear();
 
 
-        void SAL_CALL remindMapped( sal_Int32 nRow );
-        bool SAL_CALL isRowMapped( sal_Int32 nRow );
-        void SAL_CALL clearMappedReminder();
-        css::uno::Sequence< sal_Bool >* SAL_CALL getMappedReminder();
+        void remindMapped( sal_Int32 nRow );
+        bool isRowMapped( sal_Int32 nRow );
+        css::uno::Sequence< sal_Bool >* getMappedReminder();
 
     public:
         CCRS_Cache( const css::uno::Reference<
                 css::ucb::XContentIdentifierMapping > & xMapping );
         ~CCRS_Cache();
 
-        void SAL_CALL loadData(
+        void loadData(
             const css::ucb::FetchResult& rResult );
 
-        bool SAL_CALL
+        bool
         hasRow( sal_Int32 nRow );
 
-        bool SAL_CALL
+        bool
         hasCausedException( sal_Int32 nRow );
 
-        sal_Int32 SAL_CALL
-        getMaxRow();
+        sal_Int32
+        getMaxRow() const;
 
-        bool SAL_CALL
-        hasKnownLast();
+        bool
+        hasKnownLast() const;
 
         /// @throws css::sdbc::SQLException
         /// @throws css::uno::RuntimeException
-        const css::uno::Any& SAL_CALL
+        const css::uno::Any&
         getAny( sal_Int32 nRow, sal_Int32 nColumnIndex );
 
         /// @throws css::uno::RuntimeException
-        OUString SAL_CALL
+        OUString const &
         getContentIdentifierString( sal_Int32 nRow );
 
         /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::ucb::XContentIdentifier > SAL_CALL
+        css::uno::Reference< css::ucb::XContentIdentifier >
         getContentIdentifier( sal_Int32 nRow );
 
         /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::ucb::XContent > SAL_CALL
+        css::uno::Reference< css::ucb::XContent >
         getContent( sal_Int32 nRow );
     };
 
@@ -155,28 +153,28 @@ class CachedContentResultSet
 private:
 
     //helping XPropertySet methods.
-    virtual void SAL_CALL impl_initPropertySetInfo() override;
+    virtual void impl_initPropertySetInfo() override;
 
     /// @throws css::sdbc::SQLException
     /// @throws css::uno::RuntimeException
-    bool SAL_CALL
+    bool
     applyPositionToOrigin( sal_Int32 nRow );
 
     /// @throws css::uno::RuntimeException
-    void SAL_CALL
+    void
     impl_fetchData( sal_Int32 nRow, sal_Int32 nCount
                     , sal_Int32 nFetchDirection );
 
-    bool SAL_CALL
+    bool
     impl_isKnownValidPosition( sal_Int32 nRow );
 
-    bool SAL_CALL
+    bool
     impl_isKnownInvalidPosition( sal_Int32 nRow );
 
-    void SAL_CALL
+    void
     impl_changeRowCount( sal_Int32 nOld, sal_Int32 nNew );
 
-    void SAL_CALL
+    void
     impl_changeIsRowCountFinal( bool bOld, bool bNew );
 
 public:
@@ -218,13 +216,13 @@ public:
 
     // own inherited
 
-    virtual void SAL_CALL
+    virtual void
     impl_disposing( const css::lang::EventObject& Source ) override;
 
-    virtual void SAL_CALL
+    virtual void
     impl_propertyChange( const css::beans::PropertyChangeEvent& evt ) override;
 
-    virtual void SAL_CALL
+    virtual void
     impl_vetoableChange( const css::beans::PropertyChangeEvent& aEvent ) override;
 
 
@@ -362,13 +360,11 @@ private:
 };
 
 
-class CachedContentResultSetFactory
-                : public cppu::OWeakObject
-                , public css::lang::XTypeProvider
-                , public css::lang::XServiceInfo
-                , public css::ucb::XCachedContentResultSetFactory
+class CachedContentResultSetFactory final :
+                public cppu::WeakImplHelper<
+                    css::lang::XServiceInfo,
+                    css::ucb::XCachedContentResultSetFactory>
 {
-protected:
     css::uno::Reference< css::uno::XComponentContext >    m_xContext;
 
 public:
@@ -377,29 +373,10 @@ public:
 
     virtual ~CachedContentResultSetFactory() override;
 
-
-    // XInterface
-    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire()
-        throw() override;
-    virtual void SAL_CALL release()
-        throw() override;
-
-    // XTypeProvider
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
-
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    static OUString getImplementationName_Static();
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-
-    static css::uno::Reference< css::lang::XSingleServiceFactory >
-    createServiceFactory( const css::uno::Reference<
-                          css::lang::XMultiServiceFactory >& rxServiceMgr );
 
     // XCachedContentResultSetFactory
 

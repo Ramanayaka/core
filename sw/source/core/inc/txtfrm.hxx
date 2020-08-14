@@ -20,42 +20,149 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_TXTFRM_HXX
 
 #include <com/sun/star/uno/Sequence.hxx>
-#include <tools/mempool.hxx>
 #include "cntfrm.hxx"
-#include "ndtxt.hxx"
+#include "TextFrameIndex.hxx"
 
+#include <set>
+
+namespace com::sun::star::linguistic2 { class XHyphenatedWord; }
+
+namespace sw::mark { class IMark; }
 class SwCharRange;
 class SwTextNode;
+class SwTextAttrEnd;
 class SwTextFormatter;
 class SwTextFormatInfo;
 class SwParaPortion;
 class WidowsAndOrphans;
-class SwBodyFrame;
 class SwTextFootnote;
 class SwInterHyphInfo;      // Hyphenate()
 class SwCache;
 class SwBorderAttrs;
 class SwFrameFormat;
-class OutputDevice;
-class SwTestFormat;
 struct SwCursorMoveState;
 struct SwFillData;
 class SwPortionHandler;
 class SwScriptInfo;
+enum class ExpandMode;
+class SwTextAttr;
 
-#define NON_PRINTING_CHARACTER_COLOR RGB_COLORDATA(0x26, 0x8b, 0xd2)
+#define NON_PRINTING_CHARACTER_COLOR Color(0x26, 0x8b, 0xd2)
 
-/// Represents the visualization of a paragraph.
+/// a clone of SwInterHyphInfo, but with TextFrameIndex instead of node index
+class SwInterHyphInfoTextFrame
+{
+private:
+    /// output: hyphenated word
+    css::uno::Reference<css::linguistic2::XHyphenatedWord> m_xHyphWord;
+public:
+    /// input: requested range to hyphenate
+    TextFrameIndex m_nStart;
+    TextFrameIndex m_nEnd;
+    /// output: found word
+    TextFrameIndex m_nWordStart;
+    TextFrameIndex m_nWordLen;
+
+    SwInterHyphInfoTextFrame(SwTextFrame const& rFrame,
+            SwTextNode const& rNode, SwInterHyphInfo const& rHyphInfo);
+    void UpdateTextNodeHyphInfo(SwTextFrame const& rFrame,
+            SwTextNode const& rNode, SwInterHyphInfo & o_rHyphInfo);
+
+    void SetHyphWord(const css::uno::Reference<css::linguistic2::XHyphenatedWord> &xHW)
+    {
+        m_xHyphWord = xHW;
+    }
+};
+
+namespace sw {
+
+/**
+ * Describes a part of a single text node, which will be part of a text frame,
+ * even when redlines are hidden at a layout level.
+ */
+struct Extent
+{
+    SwTextNode * /*const logically, but need assignment for std::vector*/ pNode;
+    sal_Int32 nStart;
+    sal_Int32 nEnd;
+    Extent(SwTextNode *const p, sal_Int32 const s, sal_Int32 const e)
+        : pNode(p), nStart(s), nEnd(e)
+    {
+        assert(pNode);
+        assert(nStart != nEnd);
+    }
+};
+
+struct MergedPara;
+
+std::pair<SwTextNode*, sal_Int32> MapViewToModel(MergedPara const&, TextFrameIndex nIndex);
+TextFrameIndex MapModelToView(MergedPara const&, SwTextNode const* pNode, sal_Int32 nIndex);
+
+// warning: Existing must be used only once; a second use would delete the frame created by the first one...
+enum class FrameMode { New, Existing };
+std::unique_ptr<sw::MergedPara> CheckParaRedlineMerge(SwTextFrame & rFrame, SwTextNode & rTextNode, FrameMode eMode);
+SwTextFrame * MakeTextFrame(SwTextNode & rNode, SwFrame *, sw::FrameMode eMode);
+
+bool FrameContainsNode(SwContentFrame const& rFrame, sal_uLong nNodeIndex);
+bool IsParaPropsNode(SwRootFrame const& rLayout, SwTextNode const& rNode);
+SwTextNode * GetParaPropsNode(SwRootFrame const& rLayout, SwNodeIndex const& rNode);
+SwPosition GetParaPropsPos(SwRootFrame const& rLayout, SwPosition const& rPos);
+std::pair<SwTextNode *, SwTextNode *>
+GetFirstAndLastNode(SwRootFrame const& rLayout, SwNodeIndex const& rPos);
+
+SwTextNode const& GetAttrMerged(SfxItemSet & rFormatSet,
+        SwTextNode const& rNode, SwRootFrame const* pLayout);
+
+void GotoPrevLayoutTextFrame(SwNodeIndex & rIndex, SwRootFrame const* pLayout);
+void GotoNextLayoutTextFrame(SwNodeIndex & rIndex, SwRootFrame const* pLayout);
+
+TextFrameIndex UpdateMergedParaForDelete(MergedPara & rMerged,
+        bool isRealDelete,
+        SwTextNode const& rNode, sal_Int32 nIndex, sal_Int32 nLen);
+
+void MoveMergedFlysAndFootnotes(std::vector<SwTextFrame*> const& rFrames,
+        SwTextNode const& rFirstNode, SwTextNode & rSecondNode, bool);
+
+void MoveDeletedPrevFrames(const SwTextNode & rDeletedPrev, SwTextNode & rNode);
+enum class Recreate { No, ThisNode, Predecessor };
+void CheckResetRedlineMergeFlag(SwTextNode & rNode, Recreate eRecreateMerged);
+
+void UpdateFramesForAddDeleteRedline(SwDoc & rDoc, SwPaM const& rPam);
+void UpdateFramesForRemoveDeleteRedline(SwDoc & rDoc, SwPaM const& rPam);
+
+void AddRemoveFlysAnchoredToFrameStartingAtNode(
+        SwTextFrame & rFrame, SwTextNode & rTextNode,
+        std::set<sal_uLong> *pSkipped);
+
+OUString GetExpandTextMerged(SwRootFrame const* pLayout,
+        SwTextNode const& rNode, bool bWithNumber,
+        bool bWithSpacesForLevel, ExpandMode i_mode);
+
+bool IsMarkHidden(SwRootFrame const& rLayout, ::sw::mark::IMark const& rMark);
+bool IsMarkHintHidden(SwRootFrame const& rLayout,
+        SwTextNode const& rNode, SwTextAttrEnd const& rHint);
+
+void RecreateStartTextFrames(SwTextNode & rNode);
+
+} // namespace sw
+
+/// Represents the visualization of a paragraph. Typical upper is an
+/// SwBodyFrame. The first text portion of the first line is az SwParaPortion.
 class SW_DLLPUBLIC SwTextFrame: public SwContentFrame
 {
     friend class SwTextIter;
     friend class SwTestFormat;
     friend class WidowsAndOrphans;
     friend class TextFrameLockGuard; // May Lock()/Unlock()
-    friend bool sw_ChangeOffset( SwTextFrame* pFrame, sal_Int32 nNew );
+    friend bool sw_ChangeOffset(SwTextFrame* pFrame, TextFrameIndex nNew);
 
-    static SwCache *pTextCache;  // Pointer to the Line Cache
-    static long nMinPrtLine;    // This Line must not be underrun when printing
+    /// SwLineLayout cache: the lines are not actually owned by the SwTextFrame
+    /// but by this SwCache, so they will be deleted in large documents
+    /// if there are too many of them, but the "valid" flags of the frame
+    /// will still be set; GetFormatted() is the function that forces
+    /// recreation of the SwLineLayout by Format() if necessary.
+    static SwCache *s_pTextCache;
+    static constexpr long nMinPrtLine = 0;    // This Line must not be underrun when printing
                                 // Hack for table cells stretching multiple pages
 
     sal_uLong  mnAllLines        :24; // Line count for the Paint (including nThisLines)
@@ -78,13 +185,16 @@ class SW_DLLPUBLIC SwTextFrame: public SwContentFrame
     // It is NOT used for the determination of printing area.
     SwTwips mnAdditionalFirstLineOffset;
 
-    sal_Int32 mnOffset; // Is the offset in the Content (character count)
+    /// redline merge data
+    std::unique_ptr<sw::MergedPara> m_pMergedPara;
+
+    TextFrameIndex mnOffset; // Is the offset in the Content (character count)
 
     sal_uInt16 mnCacheIndex; // Index into the cache, USHRT_MAX if there's definitely no fitting object in the cache
 
     // Separates the Master and creates a Follow or adjusts the data in the Follow
-    void AdjustFollow_( SwTextFormatter &rLine, const sal_Int32 nOffset,
-                               const sal_Int32 nStrEnd, const sal_uInt8 nMode );
+    void AdjustFollow_( SwTextFormatter &rLine, TextFrameIndex nOffset,
+                               TextFrameIndex nStrEnd, const sal_uInt8 nMode );
 
     // Iterates all Lines and sets the line spacing using the attribute
     void CalcLineSpace();
@@ -100,16 +210,18 @@ class SW_DLLPUBLIC SwTextFrame: public SwContentFrame
 
     // WidowsAndOrphans, AdjustFrame, AdjustFollow
     void FormatAdjust( SwTextFormatter &rLine, WidowsAndOrphans &rFrameBreak,
-                       const sal_Int32 nStrLen, const bool bDummy );
+                       TextFrameIndex nStrLen, const bool bDummy );
+    void ChangeOffset( SwTextFrame* pFrame, TextFrameIndex nNew );
 
     bool mbLocked        : 1;        // In the Format?
-    bool mbWidow         : 1;        // Are we a Widow?
-    bool mbJustWidow     : 1;        // Did we just request to be a Widow?
+    bool mbWidow         : 1;        // Is our follow a Widow?
+    bool mbJustWidow     : 1;        // Did we just request Widow flag on master?
     bool mbEmpty         : 1;        // Are we an empty paragraph?
     bool mbInFootnoteConnect  : 1;        // Is in Connect at the moment
     bool mbFootnote           : 1;        // Has at least one footnote
     bool mbRepaint       : 1;        // TextFrame: Repaint is ready to be fetched
-    bool mbHasBlinkPortions      : 1;        // Contains Blink Portions
+    /// Contains rotated portions.
+    bool mbHasRotatedPortions : 1;
     bool mbFieldFollow   : 1;        // Start with Field rest of the Master
     bool mbHasAnimation  : 1;        // Contains animated SwGrfNumPortion
     bool mbIsSwapped     : 1;        // during text formatting we swap the
@@ -128,10 +240,10 @@ class SW_DLLPUBLIC SwTextFrame: public SwContentFrame
     void SetEmpty( const bool bNew ) { mbEmpty = bNew; }
     void SetFieldFollow( const bool bNew ) { mbFieldFollow = bNew; }
 
-    bool IsIdxInside( const sal_Int32 nPos, const sal_Int32 nLen ) const;
+    bool IsIdxInside(TextFrameIndex nPos, TextFrameIndex nLen) const;
 
     // Changes the Frame or not (cf. FlyCnt)
-    bool GetCursorOfst_(SwPosition *pPos, const Point &rPoint,
+    bool GetModelPositionForViewPoint_(SwPosition *pPos, const Point &rPoint,
                       const bool bChgFrame, SwCursorMoveState* = nullptr ) const;
     void FillCursorPos( SwFillData &rFill ) const;
 
@@ -146,11 +258,13 @@ class SW_DLLPUBLIC SwTextFrame: public SwContentFrame
     void FormatOnceMore( SwTextFormatter &rLine, SwTextFormatInfo &rInf );
 
     // Formats the Follow and ensures disposing on orphans
-    bool CalcFollow(  const sal_Int32 nTextOfst );
+    bool CalcFollow(TextFrameIndex nTextOfst);
+
+    virtual void MakePos() override;
 
     // Corrects the position from which we need to format
-    static sal_Int32 FindBrk(const OUString &rText, const sal_Int32 nStart,
-                                       const sal_Int32 nEnd);
+    static TextFrameIndex FindBrk(const OUString &rText, TextFrameIndex nStart,
+                                  TextFrameIndex nEnd);
 
     // inline branch
     SwTwips GetFootnoteFrameHeight_() const;
@@ -200,9 +314,12 @@ class SW_DLLPUBLIC SwTextFrame: public SwContentFrame
     virtual ~SwTextFrame() override;
 
 protected:
-    virtual void Modify( const SfxPoolItem*, const SfxPoolItem* ) override;
+    virtual void SwClientNotify(SwModify const& rModify, SfxHint const& rHint) override;
 
 public:
+
+    virtual const SvxFormatBreakItem& GetBreakItem() const override;
+    virtual const SwFormatPageDesc& GetPageDescItem() const override;
 
     css::uno::Sequence< css::style::TabStop >  GetTabStopInfo( SwTwips CurrentPos ) override;
 
@@ -212,14 +329,14 @@ public:
      */
     void Init();
 
-    /// Is called by FormatSpelling()
-    SwRect AutoSpell_( const SwContentNode*, sal_Int32 );
+    /// Is called by DoIdleJob_() and ExecSpellPopup()
+    SwRect AutoSpell_(SwTextNode &, sal_Int32);
 
-    /// Is called by FormatSpelling()
-    SwRect SmartTagScan();
+    /// Is called by DoIdleJob_()
+    SwRect SmartTagScan(SwTextNode &);
 
-    /// Is called by CollectAutoCmplWords()
-    void CollectAutoCmplWrds( SwContentNode* , sal_Int32 );
+    /// Is called by DoIdleJob_()
+    void CollectAutoCmplWrds(SwTextNode &, sal_Int32);
 
     /**
      * Returns the screen position of rPos. The values are relative to the upper
@@ -266,7 +383,7 @@ public:
      * @returns false if the SPoint is outside of the SSize else
      *          returns true
      */
-    virtual bool GetCursorOfst( SwPosition *, Point&,
+    virtual bool GetModelPositionForViewPoint( SwPosition *, Point&,
                                   SwCursorMoveState* = nullptr, bool bTestBackground = false ) const override;
 
     /**
@@ -274,11 +391,11 @@ public:
      * character-bound Frame)
      */
     bool GetKeyCursorOfst(SwPosition *pPos, const Point &rPoint ) const
-            { return GetCursorOfst_( pPos, rPoint, false ); }
+            { return GetModelPositionForViewPoint_( pPos, rPoint, false ); }
 
     void   PaintExtraData( const SwRect & rRect ) const; /// Page number etc.
-    SwRect Paint();
-    virtual void Paint( vcl::RenderContext& rRenderContext, SwRect const&,
+    SwRect GetPaintSwRect();
+    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const&,
                         SwPrintData const*const pPrintData = nullptr ) const override;
     virtual bool GetInfo( SfxPoolItem & ) const override;
 
@@ -295,39 +412,47 @@ public:
     virtual bool UnitDown(SwPaM *, const SwTwips nOffset,
                             bool bSetInReadOnly ) const override;
     bool UnitUp_(SwPaM *, const SwTwips nOffset,
-                            bool bSetInReadOnly = false ) const;
+                            bool bSetInReadOnly ) const;
     bool UnitDown_(SwPaM *, const SwTwips nOffset,
-                            bool bSetInReadOnly = false ) const;
+                            bool bSetInReadOnly ) const;
 
     /**
      * Prepares the cursor position for a visual cursor move (BiDi).
      * The behaviour is different for insert and overwrite cursors
      */
-    void PrepareVisualMove( sal_Int32& nPos, sal_uInt8& nCursorLevel,
+    void PrepareVisualMove( TextFrameIndex& nPos, sal_uInt8& nCursorLevel,
                             bool& bRight, bool bInsertCursor );
 
     /// Methods to manage the FollowFrame
-    void            SplitFrame( const sal_Int32 nTextPos );
+    void            SplitFrame(TextFrameIndex nTextPos);
     SwContentFrame *JoinFrame();
-    sal_Int32  GetOfst() const { return mnOffset; }
-           void        SetOfst_( const sal_Int32 nNewOfst );
-    inline void        SetOfst ( const sal_Int32 nNewOfst );
-    void        ManipOfst ( const sal_Int32 nNewOfst ){ mnOffset = nNewOfst; }
+    TextFrameIndex GetOffset() const { return mnOffset; }
+           void        SetOffset_(TextFrameIndex nNewOfst);
+    inline void        SetOffset (TextFrameIndex nNewOfst);
+    void ManipOfst(TextFrameIndex const nNewOfst) { mnOffset = nNewOfst; }
            SwTextFrame   *GetFrameAtPos ( const SwPosition &rPos);
     inline const SwTextFrame *GetFrameAtPos ( const SwPosition &rPos) const;
-    SwTextFrame&   GetFrameAtOfst( const sal_Int32 nOfst );
+    SwTextFrame&   GetFrameAtOfst(TextFrameIndex nOfst);
     /// If there's a Follow and we don't contain text ourselves
     bool IsEmptyMaster() const
-        { return GetFollow() && !GetFollow()->GetOfst(); }
+        { return GetFollow() && !GetFollow()->GetOffset(); }
+
+    void SetMergedPara(std::unique_ptr<sw::MergedPara> p);
+    sw::MergedPara      * GetMergedPara()       { return m_pMergedPara.get(); }
+    sw::MergedPara const* GetMergedPara() const { return m_pMergedPara.get(); }
 
     /// Returns the text portion we want to edit (for inline see underneath)
     const OUString& GetText() const;
-    SwTextNode *GetTextNode()
-        { return static_cast< SwTextNode* >( SwContentFrame::GetNode()); }
-    const SwTextNode *GetTextNode() const
-        { return static_cast< const SwTextNode* >( SwContentFrame::GetNode()); }
+    SwTextNode const* GetTextNodeForParaProps() const;
+    SwTextNode const* GetTextNodeForFirstText() const;
+    SwTextNode      * GetTextNodeFirst()
+        { return const_cast<SwTextNode*>(const_cast<SwTextFrame const*>(this)->GetTextNodeFirst()); };
+    SwTextNode const* GetTextNodeFirst() const;
+    SwDoc      & GetDoc()
+        { return const_cast<SwDoc &>(const_cast<SwTextFrame const*>(this)->GetDoc()); }
+    SwDoc const& GetDoc() const;
 
-    SwTextFrame(SwTextNode * const, SwFrame* );
+    SwTextFrame(SwTextNode * const, SwFrame*, sw::FrameMode eMode);
 
     /**
      * SwContentFrame: the shortcut for the Frames
@@ -337,7 +462,7 @@ public:
      * return true if the Portion associated with this SwTextFrame was
      * potentially destroyed and replaced by Prepare
      */
-    virtual bool Prepare( const PrepareHint ePrep = PREP_CLEAR,
+    virtual bool Prepare( const PrepareHint ePrep = PrepareHint::Clear,
                           const void *pVoid = nullptr, bool bNotify = true ) override;
 
     /**
@@ -359,7 +484,7 @@ public:
      * We format a Line for interactive hyphenation
      * @return found
      */
-    bool Hyphenate( SwInterHyphInfo &rInf );
+    bool Hyphenate(SwInterHyphInfoTextFrame & rInf);
 
     /// Test grow
     inline SwTwips GrowTst( const SwTwips nGrow );
@@ -369,12 +494,15 @@ public:
     inline bool HasPara() const;
     bool HasPara_() const;
 
+    /// map position in potentially merged text frame to SwPosition
+    std::pair<SwTextNode*, sal_Int32> MapViewToModel(TextFrameIndex nIndex) const;
+    SwPosition MapViewToModelPos(TextFrameIndex nIndex) const;
+    TextFrameIndex MapModelToView(SwTextNode const* pNode, sal_Int32 nIndex) const;
+    TextFrameIndex MapModelToViewPos(SwPosition const& rPos) const;
+
     // If there are any hanging punctuation portions in the margin
     // the offset will be returned.
     SwTwips HangingMargin() const;
-
-    // RTTI
-    DECL_FIXEDMEMPOOL_NEWDEL(SwTextFrame)
 
     // Locking
     bool IsLocked()      const { return mbLocked;     }
@@ -389,9 +517,8 @@ public:
     inline void SetRepaint() const;
     inline void ResetRepaint() const;
     bool HasRepaint() const { return mbRepaint; }
-    inline void SetBlinkPor() const;
-    inline void ResetBlinkPor() const;
-    bool HasBlinkPor() const { return mbHasBlinkPortions; }
+    void SetHasRotatedPortions(bool bHasRotatedPortions);
+    bool GetHasRotatedPortions() const { return mbHasRotatedPortions; }
     void SetAnimation() const
         { const_cast<SwTextFrame*>(this)->mbHasAnimation = true; }
     bool HasAnimation() const { return mbHasAnimation; }
@@ -400,7 +527,7 @@ public:
 
     /// Does the Frame have a local footnote (in this Frame or Follow)?
 #ifdef DBG_UTIL
-    void CalcFootnoteFlag( sal_Int32 nStop = COMPLETE_STRING ); //For testing SplitFrame
+    void CalcFootnoteFlag(TextFrameIndex nStop = TextFrameIndex(COMPLETE_STRING)); //For testing SplitFrame
 #else
     void CalcFootnoteFlag();
 #endif
@@ -408,7 +535,7 @@ public:
     /// Hidden
     bool IsHiddenNow() const;       // bHidden && pOut == pPrt
     void HideHidden();              // Remove appendage if Hidden
-    void HideFootnotes( sal_Int32 nStart, sal_Int32 nEnd );
+    void HideFootnotes(TextFrameIndex nStart, TextFrameIndex nEnd);
 
     /**
      * Hides respectively shows objects, which are anchored at paragraph,
@@ -418,8 +545,8 @@ public:
     void HideAndShowObjects();
 
     /// Footnote
-    void RemoveFootnote( const sal_Int32 nStart,
-                    const sal_Int32 nLen = COMPLETE_STRING );
+    void RemoveFootnote(TextFrameIndex nStart,
+                        TextFrameIndex nLen = TextFrameIndex(COMPLETE_STRING));
     inline SwTwips GetFootnoteFrameHeight() const;
     SwTextFrame *FindFootnoteRef( const SwTextFootnote *pFootnote );
     const SwTextFrame *FindFootnoteRef( const SwTextFootnote *pFootnote ) const
@@ -431,6 +558,11 @@ public:
      * public, because it's needed by SwContentFrame::MakeAll
      */
     SwTwips GetFootnoteLine( const SwTextFootnote *pFootnote ) const;
+
+    TextFrameIndex GetDropLen(TextFrameIndex nWishLen) const;
+
+    LanguageType GetLangOfChar(TextFrameIndex nIndex, sal_uInt16 nScript,
+            bool bNoChar = false) const;
 
     virtual void Format( vcl::RenderContext* pRenderContext, const SwBorderAttrs *pAttrs = nullptr ) override;
     virtual void CheckDirection( bool bVert ) override;
@@ -445,7 +577,7 @@ public:
     SwTextFrame *FindQuoVadisFrame();
 
     /**
-     * Makes up for formatting if the Idle Handler has struck
+     * In case the SwLineLayout was cleared out of the s_pTextCache, recreate it
      *
      * #i29062# GetFormatted() can trigger a full formatting
      * of the paragraph, causing other layout frames to become invalid. This
@@ -458,24 +590,24 @@ public:
     void SetFootnote( const bool bNew ) { mbFootnote = bNew; }
 
     /// Respect the Follows
-    inline bool IsInside( const sal_Int32 nPos ) const;
-
-    const SwBodyFrame   *FindBodyFrame()   const;
+    inline bool IsInside(TextFrameIndex nPos) const;
 
     /// DropCaps and selections
     bool GetDropRect( SwRect &rRect ) const
     { return HasPara() && GetDropRect_( rRect ); }
 
-    static SwCache *GetTextCache() { return pTextCache; }
-    static void     SetTextCache( SwCache *pNew ) { pTextCache = pNew; }
+    static SwCache *GetTextCache() { return s_pTextCache; }
+    static void     SetTextCache( SwCache *pNew ) { s_pTextCache = pNew; }
 
     static long GetMinPrtLine() { return nMinPrtLine; }
 
     sal_uInt16 GetCacheIdx() const { return mnCacheIndex; }
     void   SetCacheIdx( const sal_uInt16 nNew ) { mnCacheIndex = nNew; }
 
-    /// Removes the Line information from the Cache
+    /// Removes the Line information from the Cache but retains the entry itself
     void ClearPara();
+    /// Removes this frame completely from the Cache
+    void RemoveFromCache();
 
     /// Am I a FootnoteFrame, with a number at the start of the paragraph?
     bool IsFootnoteNumFrame() const
@@ -511,16 +643,16 @@ public:
     sal_uInt16 FirstLineHeight() const;
 
     /// Rewires FlyInContentFrame, if nEnd > Index >= nStart
-    void MoveFlyInCnt( SwTextFrame *pNew, sal_Int32 nStart, sal_Int32 nEnd );
+    void MoveFlyInCnt(SwTextFrame *pNew, TextFrameIndex nStart, TextFrameIndex nEnd);
 
     /// Calculates the position of FlyInContentFrames
-    sal_Int32 CalcFlyPos( SwFrameFormat* pSearch );
+    TextFrameIndex CalcFlyPos( SwFrameFormat const * pSearch );
 
     /// Determines the start position and step size of the register
     bool FillRegister( SwTwips& rRegStart, sal_uInt16& rRegDiff );
 
     /// Determines the line count
-    sal_uInt16 GetLineCount( sal_Int32 nPos );
+    sal_uInt16 GetLineCount(TextFrameIndex nPos);
 
     /// For displaying the line numbers
     sal_uLong GetAllLines()  const { return mnAllLines; }
@@ -552,7 +684,7 @@ public:
     void SwitchHorizontalToVertical( Point& rPoint ) const;
 
     /**
-     * Calculates the a limit value when switching from
+     * Calculates the limit value when switching from
      * horizontal to vertical layout
      */
     long SwitchHorizontalToVertical( long nLimit ) const;
@@ -614,7 +746,7 @@ public:
         mbFollowFormatAllowed = false;
     }
 
-    SwTwips GetBaseOfstForFly( bool bIgnoreFlysAnchoredAtThisFrame ) const
+    SwTwips GetBaseOffsetForFly( bool bIgnoreFlysAnchoredAtThisFrame ) const
     {
         return ( bIgnoreFlysAnchoredAtThisFrame ?
                  mnFlyAnchorOfst :
@@ -629,6 +761,12 @@ public:
     }
 
     static void repaintTextFrames( const SwTextNode& rNode );
+
+    void RegisterToNode(SwTextNode &, bool isForceNodeAsFirst = false);
+
+    bool IsSymbolAt(TextFrameIndex) const;
+    OUString GetCurWord(SwPosition const&) const;
+    sal_uInt16 GetScalingOfSelectedText(TextFrameIndex nStt, TextFrameIndex nEnd);
 
     virtual void dumpAsXmlAttributes(xmlTextWriterPtr writer) const override;
 };
@@ -679,15 +817,15 @@ inline SwTwips SwTextFrame::GrowTst( const SwTwips nGrow )
     return Grow( nGrow, true );
 }
 
-inline bool SwTextFrame::IsInside( const sal_Int32 nPos ) const
+inline bool SwTextFrame::IsInside(TextFrameIndex const nPos) const
 {
     bool bRet = true;
-    if( nPos < GetOfst() )
+    if( nPos < GetOffset() )
         bRet = false;
     else
     {
         const SwTextFrame *pFoll = GetFollow();
-        if( pFoll && nPos >= pFoll->GetOfst() )
+        if( pFoll && nPos >= pFoll->GetOffset() )
             bRet = false;
     }
     return bRet;
@@ -715,10 +853,10 @@ inline const SwTextFrame *SwTextFrame::GetFrameAtPos( const SwPosition &rPos) co
     return const_cast<SwTextFrame*>(this)->GetFrameAtPos( rPos );
 }
 
-inline void SwTextFrame::SetOfst( const sal_Int32 nNewOfst )
+inline void SwTextFrame::SetOffset(TextFrameIndex const nNewOfst)
 {
     if ( mnOffset != nNewOfst )
-        SetOfst_( nNewOfst );
+        SetOffset_( nNewOfst );
 }
 
 inline void SwTextFrame::SetRepaint() const
@@ -728,15 +866,6 @@ inline void SwTextFrame::SetRepaint() const
 inline void SwTextFrame::ResetRepaint() const
 {
     const_cast<SwTextFrame*>(this)->mbRepaint = false;
-}
-
-inline void SwTextFrame::SetBlinkPor() const
-{
-    const_cast<SwTextFrame*>(this)->mbHasBlinkPortions = true;
-}
-inline void SwTextFrame::ResetBlinkPor() const
-{
-    const_cast<SwTextFrame*>(this)->mbHasBlinkPortions = false;
 }
 
 class TemporarySwap {
@@ -757,8 +886,8 @@ protected:
     }
 
 private:
-    TemporarySwap(TemporarySwap &) = delete;
-    void operator =(TemporarySwap &) = delete;
+    TemporarySwap(TemporarySwap const &) = delete;
+    void operator =(TemporarySwap const &) = delete;
 
     SwTextFrame * m_frame;
     bool m_undo;
@@ -808,6 +937,87 @@ public:
     SwDigitModeModifier( const OutputDevice& rOutp, LanguageType eCurLang );
     ~SwDigitModeModifier();
 };
+
+namespace sw {
+
+/**
+ * Describes parts of multiple text nodes, which will form a text frame, even
+ * when redlines are hidden at a layout level.
+ */
+struct MergedPara
+{
+    sw::WriterMultiListener listener;
+    std::vector<Extent> extents;
+    /// note: cannot be const currently to avoid UB because SwTextGuess::Guess
+    /// const_casts it and modifies it (also, Update will modify it)
+    OUString mergedText;
+    /// most paragraph properties are taken from the first non-empty node
+    SwTextNode * pParaPropsNode;
+    /// except break attributes, those are taken from the first node
+    SwTextNode *const pFirstNode;
+    /// mainly for sanity checks
+    SwTextNode const* pLastNode;
+    MergedPara(SwTextFrame & rFrame, std::vector<Extent>&& rExtents,
+            OUString const& rText,
+            SwTextNode *const pProps, SwTextNode *const pFirst,
+            SwTextNode const*const pLast)
+        : listener(rFrame), extents(std::move(rExtents)), mergedText(rText)
+        , pParaPropsNode(pProps), pFirstNode(pFirst), pLastNode(pLast)
+    {
+        assert(pParaPropsNode);
+        assert(pFirstNode);
+        assert(pLastNode);
+    }
+};
+
+/// iterate SwTextAttr in potentially merged text frame
+class MergedAttrIterBase
+{
+protected:
+#if BOOST_VERSION < 105600
+    sw::MergedPara const* m_pMerged;
+    SwTextNode const* m_pNode;
+#else
+    sw::MergedPara const*const m_pMerged;
+    SwTextNode const*const m_pNode;
+#endif
+    size_t m_CurrentExtent;
+    size_t m_CurrentHint;
+    MergedAttrIterBase(SwTextFrame const& rFrame);
+};
+
+class MergedAttrIter
+    : public MergedAttrIterBase
+{
+public:
+    MergedAttrIter(SwTextFrame const& rFrame) : MergedAttrIterBase(rFrame) {}
+    SwTextAttr const* NextAttr(SwTextNode const** ppNode = nullptr);
+};
+
+class MergedAttrIterByEnd
+{
+private:
+    std::vector<std::pair<SwTextNode const*, SwTextAttr const*>> m_Hints;
+    SwTextNode const*const m_pNode;
+    size_t m_CurrentHint;
+public:
+    MergedAttrIterByEnd(SwTextFrame const& rFrame);
+    SwTextAttr const* NextAttr(SwTextNode const*& rpNode);
+    void PrevAttr();
+};
+
+class MergedAttrIterReverse
+    : public MergedAttrIterBase
+{
+public:
+    MergedAttrIterReverse(SwTextFrame const& rFrame);
+    SwTextAttr const* PrevAttr(SwTextNode const** ppNode = nullptr);
+};
+
+
+const SwTwips WIDOW_MAGIC = (SAL_MAX_INT32 - 1)/2;
+
+} // namespace sw
 
 #endif
 

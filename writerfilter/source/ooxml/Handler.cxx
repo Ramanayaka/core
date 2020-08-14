@@ -20,8 +20,9 @@
 #include <ooxml/resourceids.hxx>
 #include "Handler.hxx"
 
-namespace writerfilter {
-namespace ooxml
+#include <sal/log.hxx>
+
+namespace writerfilter::ooxml
 {
 
 /*
@@ -236,7 +237,7 @@ void OOXMLHeaderHandler::sprm(Sprm & /*sprm*/)
   class OOXMLBreakHandler
  */
 OOXMLBreakHandler::OOXMLBreakHandler(Stream &rStream)
-: mnType(0), mnClear(0),
+: mnType(0),
   mrStream(rStream)
 {
 }
@@ -268,7 +269,6 @@ void OOXMLBreakHandler::attribute(Id name, Value & val)
         mnType = val.getInt();
         break;
     case NS_ooxml::LN_CT_Br_clear:
-        mnClear = val.getInt();
         break;
     default:
         break;
@@ -299,7 +299,7 @@ void OOXMLPictureHandler::attribute(Id name, Value & val)
     {
         writerfilter::Reference<Properties>::Pointer_t pProps
             (val.getProperties());
-        if (pProps.get() != nullptr)
+        if (pProps)
             pProps->resolve(*this);
     }
 }
@@ -309,7 +309,7 @@ void OOXMLPictureHandler::sprm(Sprm & rSprm)
     writerfilter::Reference<Properties>::Pointer_t pProps
         (rSprm.getProps());
 
-    if (pProps.get() != nullptr)
+    if (pProps)
         pProps->resolve(*this);
 }
 
@@ -328,12 +328,7 @@ OOXMLHyperlinkHandler::~OOXMLHyperlinkHandler()
 
 void OOXMLHyperlinkHandler::writetext()
 {
-    OUString sReturn(" HYPERLINK \"");
-
-    sReturn += mURL;
-    sReturn += "\"";
-    sReturn += mFieldCode;
-
+    OUString sReturn = " HYPERLINK \"" + mURL + "\"" + mFieldCode;
     mpFastContext->text(sReturn);
 }
 
@@ -403,6 +398,6 @@ void OOXMLHyperlinkURLHandler::sprm(Sprm & /*rSprm*/)
 {
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,13 +22,13 @@
 #include <memory>
 
 #include <basegfx/polygon/b2dpolypolygon.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 #include <com/sun/star/rendering/FontRequest.hpp>
 #include <com/sun/star/rendering/PanoseProportion.hpp>
 #include <com/sun/star/rendering/XCanvasFont.hpp>
 #include <comphelper/scopeguard.hxx>
-#include <comphelper/sequence.hxx>
 #include <i18nlangtag/languagetag.hxx>
+#include <rtl/math.hxx>
 #include <tools/color.hxx>
 #include <tools/diagnose_ex.h>
 #include <tools/poly.hxx>
@@ -60,7 +60,7 @@ namespace dxcanvas
     }
 
     void TextLayoutDrawHelper::drawText(
-        const GraphicsSharedPtr&               rGraphics,
+        const std::shared_ptr<Gdiplus::Graphics>& rGraphics,
         const css::rendering::ViewState&       rViewState,
         const css::rendering::RenderState&     rRenderState,
         const ::basegfx::B2ISize&              rOutputOffset,
@@ -69,18 +69,19 @@ namespace dxcanvas
         const css::uno::Reference<
             css::rendering::XCanvasFont >&     rCanvasFont,
         const css::geometry::Matrix2D&         rFontMatrix,
-        bool                                   bAlphaSurface )
+        bool                                   bAlphaSurface,
+        bool bIsRTL)
     {
         HDC hdc = rGraphics->GetHDC();
 
-        // issue an ReleaseHDC() when leaving the scope
+        // issue a ReleaseHDC() when leaving the scope
         const ::comphelper::ScopeGuard aGuard(
             [&rGraphics, &hdc]() mutable { rGraphics->ReleaseHDC(hdc); } );
 
         SystemGraphicsData aSystemGraphicsData;
         aSystemGraphicsData.nSize = sizeof(SystemGraphicsData);
         aSystemGraphicsData.hDC = reinterpret_cast< ::HDC >(hdc);
-        ScopedVclPtrInstance<VirtualDevice> xVirtualDevice(&aSystemGraphicsData, Size(1, 1), DeviceFormat::DEFAULT);
+        ScopedVclPtrInstance<VirtualDevice> xVirtualDevice(aSystemGraphicsData, Size(1, 1), DeviceFormat::DEFAULT);
 
         // disable font antialiasing - GDI does not handle alpha
         // surfaces properly.
@@ -125,12 +126,16 @@ namespace dxcanvas
             aFont.SetColor( aColor );
             aFont.SetFillColor( aColor );
 
+            CanvasFont::ImplRef pFont(tools::canvasFontFromXFont(rCanvasFont));
+            if (pFont.is() && pFont->getEmphasisMark())
+                aFont.SetEmphasisMark(FontEmphasisMark(pFont->getEmphasisMark()));
+
             // adjust to stretched font
             if(!::rtl::math::approxEqual(rFontMatrix.m00, rFontMatrix.m11))
             {
                 const Size aSize = xVirtualDevice->GetFontMetric( aFont ).GetFontSize();
                 const double fDividend( rFontMatrix.m10 + rFontMatrix.m11 );
-                double fStretch = (rFontMatrix.m00 + rFontMatrix.m01);
+                double fStretch = rFontMatrix.m00 + rFontMatrix.m01;
 
                 if( !::basegfx::fTools::equalZero( fDividend) )
                     fStretch /= fDividend;
@@ -179,19 +184,19 @@ namespace dxcanvas
 
             // set world transform
             XFORM aXForm;
-            aXForm.eM11 = (FLOAT)aWorldTransform.get(0, 0);
-            aXForm.eM12 = (FLOAT)aWorldTransform.get(1, 0);
-            aXForm.eM21 = (FLOAT)aWorldTransform.get(0, 1);
-            aXForm.eM22 = (FLOAT)aWorldTransform.get(1, 1);
-            aXForm.eDx = (FLOAT)aWorldTransform.get(0, 2);
-            aXForm.eDy = (FLOAT)aWorldTransform.get(1, 2);
+            aXForm.eM11 = static_cast<FLOAT>(aWorldTransform.get(0, 0));
+            aXForm.eM12 = static_cast<FLOAT>(aWorldTransform.get(1, 0));
+            aXForm.eM21 = static_cast<FLOAT>(aWorldTransform.get(0, 1));
+            aXForm.eM22 = static_cast<FLOAT>(aWorldTransform.get(1, 1));
+            aXForm.eDx = static_cast<FLOAT>(aWorldTransform.get(0, 2));
+            aXForm.eDy = static_cast<FLOAT>(aWorldTransform.get(1, 2));
 
             // TODO(F3): This is NOT supported on 95/98/ME!
             SetGraphicsMode(hdc, GM_ADVANCED);
             SetTextAlign(hdc, TA_BASELINE);
             SetWorldTransform(hdc, &aXForm);
 
-            // use a empty StartPosition for text rendering
+            // use an empty StartPosition for text rendering
             const Point aEmptyPoint(0, 0);
 
             // create the String
@@ -210,7 +215,8 @@ namespace dxcanvas
                                               aText,
                                               pDXArray.get(),
                                               rText.StartPosition,
-                                              rText.Length );
+                                              rText.Length,
+                                              bIsRTL ? SalLayoutFlags::BiDiRtl : SalLayoutFlags::NONE);
             }
             else
             {
@@ -236,7 +242,7 @@ namespace dxcanvas
         SystemGraphicsData aSystemGraphicsData;
         aSystemGraphicsData.nSize = sizeof(SystemGraphicsData);
         aSystemGraphicsData.hDC = reinterpret_cast< ::HDC >(GetDC( nullptr ));
-        ScopedVclPtrInstance<VirtualDevice> xVirtualDevice(&aSystemGraphicsData, Size(1, 1), DeviceFormat::DEFAULT);
+        ScopedVclPtrInstance<VirtualDevice> xVirtualDevice(aSystemGraphicsData, Size(1, 1), DeviceFormat::DEFAULT);
 
         // create the font
         const css::rendering::FontRequest& rFontRequest = rCanvasFont->getFontRequest();
@@ -259,7 +265,7 @@ namespace dxcanvas
         {
             const Size aSize = xVirtualDevice->GetFontMetric( aFont ).GetFontSize();
             const double fDividend( rFontMatrix.m10 + rFontMatrix.m11 );
-            double fStretch = (rFontMatrix.m00 + rFontMatrix.m01);
+            double fStretch = rFontMatrix.m00 + rFontMatrix.m01;
 
             if( !::basegfx::fTools::equalZero( fDividend) )
                 fStretch /= fDividend;
@@ -268,6 +274,10 @@ namespace dxcanvas
 
             aFont.SetAverageFontWidth( nNewWidth );
         }
+
+        CanvasFont::ImplRef pFont(tools::canvasFontFromXFont(rCanvasFont));
+        if (pFont.is() && pFont->getEmphasisMark())
+            aFont.SetEmphasisMark(FontEmphasisMark(pFont->getEmphasisMark()));
 
         // set font
         xVirtualDevice->SetFont(aFont);

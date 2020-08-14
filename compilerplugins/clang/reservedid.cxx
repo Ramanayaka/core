@@ -7,6 +7,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#ifndef LO_CLANG_SHARED_PLUGINS
+
 #include <algorithm>
 #include <cassert>
 #include <limits>
@@ -33,12 +35,14 @@ bool isJniFunction(NamedDecl const * decl) {
 }
 
 class ReservedId:
-    public RecursiveASTVisitor<ReservedId>, public loplugin::Plugin
+    public loplugin::FilteringPlugin<ReservedId>
 {
 public:
-    explicit ReservedId(InstantiationData const & data): Plugin(data) {}
+    explicit ReservedId(loplugin::InstantiationData const & data): FilteringPlugin(data)
+    {}
 
     void run() override;
+    void postRun() override;
 
     bool VisitNamedDecl(NamedDecl const * decl);
 
@@ -55,26 +59,59 @@ private:
 
 void ReservedId::run() {
     //TODO: Rules for C?
-    if (TraverseDecl(compiler.getASTContext().getTranslationUnitDecl())
-        && compiler.hasPreprocessor())
+    if (TraverseDecl(compiler.getASTContext().getTranslationUnitDecl()))
+        postRun();
+}
+
+void ReservedId::postRun() {
+    if( compiler.hasPreprocessor())
     {
-#if CLANG_VERSION >= 30700
         auto & prep = compiler.getPreprocessor();
         for (auto const & m: prep.macros(false)) {
             auto id = m.first->getName();
-            if (determineKind(id) != Kind::Ok && id != "_GLIBCXX_CDTOR_CALLABI"
+            if (determineKind(id) != Kind::Ok
+                && id != "_ATL_APARTMENT_THREADED"
+                    // extensions/source/activex/StdAfx2.h
+                && id != "_ATL_STATIC_REGISTRY"
+                    // extensions/source/activex/StdAfx2.h
+                && id != "_GLIBCXX_CDTOR_CALLABI"
+                && id != "_HAS_AUTO_PTR_ETC" // unotools/source/i18n/resmgr.cxx
+                && id != "_LIBCPP_ENABLE_CXX17_REMOVED_AUTO_PTR" // unotools/source/i18n/resmgr.cxx
+                && id != "_MAX_PATH" // Windows
                 && id != "_POSIX_SOURCE"
+                && id != "_USE_MATH_DEFINES" // include/sal/config.h, Windows
+                && id != "_WIN32_DCOM" // embedserv/source/embed/esdll.cxx
+                && id != "_WTL_NO_CSTRING"
+                    // fpicker/source/win32/filepicker/platform_vista.h (TODO:
+                    // needed?)
                 && id != "__ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES"
-                && id != "__ORCUS_STATIC_LIB" && id != "__USE_GNU"
-                && id != "_MAX_PATH") //TODO: win32
+                && id != "__Column_FWD_DEFINED__"
+                    // connectivity/source/inc/ado/Awrapadox.hxx, MS SDK
+                    // adoctint.h
+                && id != "__Group_FWD_DEFINED__"
+                    // connectivity/source/inc/ado/Awrapadox.hxx, MS SDK
+                    // adoctint.h
+                && id != "__Index_FWD_DEFINED__"
+                    // connectivity/source/inc/ado/Awrapadox.hxx, MS SDK
+                    // adoctint.h
+                && id != "__Key_FWD_DEFINED__"
+                    // connectivity/source/inc/ado/Awrapadox.hxx, MS SDK
+                    // adoctint.h
+                && id != "__ORCUS_STATIC_LIB"
+                && id != "__Table_FWD_DEFINED__"
+                    // connectivity/source/inc/ado/Awrapadox.hxx, MS SDK
+                    // adoctint.h
+                && id != "__USE_GNU"
+                && id != "__User_FWD_DEFINED__")
+                    // connectivity/source/inc/ado/Awrapadox.hxx, MS SDK
+                    // adoctint.h
             {
                 auto d = prep.getLocalMacroDirectiveHistory(m.first);
                 for (;;) {
                     if (d->getKind() == MacroDirective::MD_Define) {
                         auto loc = d->getLocation();
                         if (loc.isValid() && !ignoreLocation(loc)) {
-                            auto file = compiler.getSourceManager()
-                                .getFilename(loc);
+                            auto file = getFilenameOfLocation(loc);
                             if (!loplugin::isSamePathname(
                                     file,
                                     SRCDIR
@@ -97,7 +134,6 @@ void ReservedId::run() {
                 }
             }
         }
-#endif
     }
 }
 
@@ -107,7 +143,7 @@ bool ReservedId::VisitNamedDecl(NamedDecl const * decl) {
     if (ignoreLocation(spelLoc)) {
         return true;
     }
-    auto filename = compiler.getSourceManager().getFilename(spelLoc);
+    auto filename = getFilenameOfLocation(spelLoc);
     if (loplugin::hasPathnamePrefix(filename, SRCDIR "/bridges/source/cpp_uno/")
         && filename.endswith("share.hxx"))
     {
@@ -130,13 +166,14 @@ bool ReservedId::VisitNamedDecl(NamedDecl const * decl) {
                 // xmlsecurity/source/xmlsec/nss/nssrenam.h
             && s != "__CTFont"
                 // vcl/source/window/cairo_cairo.cxx -> include/vcl/sysdata.hxx
+            && s != "__CxxDetectRethrow"
+                // bridges/source/cpp_uno/msvc_win32_x86-64/mscx.hxx
             && s != "__GLXcontextRec" // vcl/unx/glxtest.cxx
             && s != "__GLXFBConfigRec" // vcl/unx/glxtest.cxx
             && s != "__PK11_GetKeyData"
                 // xmlsecurity/source/xmlsec/nss/nssrenam.h
-            && s != "__data_start" // sal/osl/unx/system.cxx
-            && s != "__lxstat64" // setup_native/scripts/source/getuid.c
-            && s != "__lxstat") // setup_native/scripts/source/getuid.c
+            && s != "__current_exception" // bridges/inc/except.hxx, Windows
+            && s != "__data_start") // sal/osl/unx/system.cxx
         {
             report(
                 DiagnosticsEngine::Warning,
@@ -148,6 +185,20 @@ bool ReservedId::VisitNamedDecl(NamedDecl const * decl) {
         break;
     case Kind::UnderscoreUppercase:
         if (!isApi(decl)
+            && s != "_ADOColumn"
+                // connectivity/source/inc/ado/Awrapadox.hxx, MS SDK adoctint.h
+            && s != "_ADOGroup"
+                // connectivity/source/inc/ado/Awrapadox.hxx, MS SDK adoctint.h
+            && s != "_ADOIndex"
+                // connectivity/source/inc/ado/Awrapadox.hxx, MS SDK adoctint.h
+            && s != "_ADOKey"
+                // connectivity/source/inc/ado/Awrapadox.hxx, MS SDK adoctint.h
+            && s != "_ADOTable"
+                // connectivity/source/inc/ado/Awrapadox.hxx, MS SDK adoctint.h
+            && s != "_ADOUser"
+                // connectivity/source/inc/ado/Awrapadox.hxx, MS SDK adoctint.h
+            && s != "_DllMainCRTStartup"
+                // odk/source/unowinreg/win/unowinreg.cxx (TODO: needed?)
             && s != "_FcPattern" // vcl/inc/unx/fc_fontoptions.hxx
             && s != "_GdkDisplay"
                 // vcl/unx/gtk/xid_fullscreen_on_all_monitors.c
@@ -157,6 +208,7 @@ bool ReservedId::VisitNamedDecl(NamedDecl const * decl) {
                 // vcl/unx/gtk/xid_fullscreen_on_all_monitors.c
             && s != "_GstVideoOverlay"
                 // avmedia/source/gstreamer/gstplayer.hxx
+            && s != "_Module" // extensions/source/activex/StdAfx2.h, CComModule
             && s != "_XRegion" // vcl/unx/generic/gdi/x11cairotextrender.cxx
             && s != "_XTrap") // vcl/unx/generic/gdi/xrender_peer.hxx
         {
@@ -222,7 +274,7 @@ ReservedId::Kind ReservedId::determineKind(llvm::StringRef const & id) {
 
 bool ReservedId::isInLokIncludeFile(SourceLocation spellingLocation) const {
     return loplugin::hasPathnamePrefix(
-        compiler.getSourceManager().getFilename(spellingLocation),
+        getFilenameOfLocation(spellingLocation),
         SRCDIR "/include/LibreOfficeKit/");
 }
 
@@ -257,8 +309,10 @@ bool ReservedId::isApi(NamedDecl const * decl) {
     return false;
 }
 
-loplugin::Plugin::Registration<ReservedId> X("reservedid");
+loplugin::Plugin::Registration<ReservedId> reservedid("reservedid");
 
 }
+
+#endif // LO_CLANG_SHARED_PLUGINS
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

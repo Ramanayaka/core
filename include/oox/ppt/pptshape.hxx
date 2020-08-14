@@ -31,10 +31,10 @@
 
 namespace basegfx { class B2DHomMatrix; }
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt { struct Rectangle; }
     namespace drawing { class XShapes; }
-} } }
+}
 
 namespace oox {
     namespace core { class XmlFilterBase; }
@@ -42,30 +42,32 @@ namespace oox {
     template <typename Type> class OptValue;
 }
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
-class PPTShape : public oox::drawingml::Shape
+class PPTShape final : public oox::drawingml::Shape
 {
     OUString                    msModelId;              // fallback dgs smartart shape reference
     ShapeLocation               meShapeLocation;        // placeholdershapes (mnSubType != 0) on Master are never displayed
     bool                        mbReferenced;           // placeholdershapes on Layout are displayed only, if they are not referenced
                                                         // placeholdershapes on Slide are displayed always
+    oox::drawingml::ShapePtr mpPlaceholder;
 
 public:
 
     PPTShape( const oox::ppt::ShapeLocation eShapeLocation,
-                const sal_Char* pServiceType );
+                const char* pServiceType );
     virtual ~PPTShape() override;
 
     using oox::drawingml::Shape::addShape;
     // addShape is creating and inserting the corresponding XShape.
     void addShape(
             oox::core::XmlFilterBase& rFilterBase,
-            SlidePersist& rPersist,
+            const SlidePersist& rPersist,
             const oox::drawingml::Theme* pTheme,
             const css::uno::Reference< css::drawing::XShapes >& rxShapes,
             basegfx::B2DHomMatrix& aTransformation,
-            ::oox::drawingml::ShapeIdMap* pShapeMap );
+            ::oox::drawingml::ShapeIdMap* pShapeMap,
+            bool bhasSameSubTypeIndex = false );
 
     ShapeLocation getShapeLocation() const { return meShapeLocation; };
     void setReferenced( bool bReferenced ){ mbReferenced = bReferenced; };
@@ -79,13 +81,9 @@ public:
             std::vector< oox::drawingml::ShapePtr >& rShapes, bool bMasterOnly = false );
 
     static oox::drawingml::TextListStylePtr getSubTypeTextListStyle( const SlidePersist& rSlidePersist, sal_Int32 nSubType );
-
-protected:
-
-    oox::drawingml::ShapePtr mpPlaceholder;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_PPT_PPTSHAPE_HXX
 

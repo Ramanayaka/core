@@ -18,10 +18,9 @@
  */
 
 
-#include "svx/formatpaintbrushctrl.hxx"
+#include <svx/formatpaintbrushctrl.hxx>
 
 #include <svl/eitem.hxx>
-#include <sfx2/app.hxx>
 #include <vcl/toolbox.hxx>
 #include <vcl/settings.hxx>
 
@@ -68,7 +67,7 @@ void FormatPaintBrushToolBoxControl::DoubleClick()
     m_aDoubleClickTimer.Stop();
 
     m_bPersistentCopy = true;
-    this->impl_executePaintBrush();
+    impl_executePaintBrush();
 }
 
 
@@ -82,7 +81,7 @@ void FormatPaintBrushToolBoxControl::Click()
 IMPL_LINK_NOARG(FormatPaintBrushToolBoxControl, WaitDoubleClickHdl, Timer *, void)
 {
     //there was no second click during waiting
-    this->impl_executePaintBrush();
+    impl_executePaintBrush();
 }
 
 

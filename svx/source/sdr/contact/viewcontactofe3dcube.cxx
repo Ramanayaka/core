@@ -21,16 +21,14 @@
 #include <sdr/contact/viewcontactofe3dcube.hxx>
 #include <svx/cube3d.hxx>
 #include <drawinglayer/primitive3d/sdrcubeprimitive3d.hxx>
-#include <svx/sdr/primitive2d/sdrattributecreator.hxx>
+#include <sdr/primitive2d/sdrattributecreator.hxx>
 #include <sdr/primitive3d/sdrattributecreator3d.hxx>
 #include <basegfx/range/b3drange.hxx>
 #include <memory>
 
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
         ViewContactOfE3dCube::ViewContactOfE3dCube(E3dCubeObj& rCubeObj)
         :   ViewContactOfE3d(rCubeObj)
         {
@@ -85,7 +83,7 @@ namespace sdr
 
             return xRetval;
         }
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

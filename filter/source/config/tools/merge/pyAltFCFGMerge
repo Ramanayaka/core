@@ -44,7 +44,7 @@ PROP_SHARE_SUBDIR_NAME = "share_subdir_name"      # // <= cmdline
 PROP_ITEMS           = "items"                    # // <= pkg cfg files!
 
 #---begin java.util.Properties copy---#
-"""
+r"""
 
 An incomplete clean room implementation of 
 java.util.Properties written in Python.
@@ -58,7 +58,7 @@ Based on:
 Missing:
 
  - Currently, u\XXXX sequences are escaped when saving, but not unescaped
-   when read..
+   when read...
 
 License: Python License
 
@@ -273,9 +273,7 @@ def readprops(buff):
 #   It's a simple command line tool, which can merge different XML fragments
 #   together. Such fragments must exist as files on disk, will be moved into
 #   one file together on disk.
-# 
-#  @author  Andreas Schluens
-# 
+
 def run(sCmdLine):
     aCfg = ConfigHelper(CFGFILE, sCmdLine)
     if aCfg.getValueWithDefault(PROP_VERBOSE,None) == None:
@@ -339,8 +337,7 @@ def StringTokenizer(mstring, separators, isSepIncluded = 0):
 # and merge it together with might existing config
 # files. That provides the possibility to overwrite
 # config values via command line parameter.
-# 
-# @author Andreas Schluens
+
 class ConfigHelper:
     def __init__(self, sPropFile, lCommandLineArgs):
         self.m_bEmpty = 1
@@ -361,7 +358,7 @@ class ConfigHelper:
         # printOut(lCommandLineArgs, "and len is", count)
         for arg in range(count):
             # is it a named-value argument?
-            # Note: We ignores double "=" signs! => search from left to right
+            # Note: we ignore double "=" signs! => search from left to right
             pos = lCommandLineArgs[arg].find('=')
             if pos != -1:
                 sArg   = lCommandLineArgs[arg][0:pos]
@@ -444,7 +441,7 @@ def generateFooter():
     return "</oor:component-data>\n"
 
 # Can merge different xml fragments together.
-#   @author Caolan McNamara converted from the original java by Andreas Schluens
+
 class Merger:
     def __init__(self, aCfg):
         self.m_aCfg = aCfg
@@ -538,7 +535,7 @@ class Merger:
         sBuffer = sBuffer + generateFooter()
 
         # Attention!
-        # If the package seem to be empty, it make no sense to generate a
+        # If the package seem to be empty, it makes no sense to generate a
         # corresponding xml file. We should suppress writing of this file on 
         # disk completely ...
         if nItemCount < 1:

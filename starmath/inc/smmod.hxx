@@ -20,16 +20,14 @@
 #ifndef INCLUDED_STARMATH_INC_SMMOD_HXX
 #define INCLUDED_STARMATH_INC_SMMOD_HXX
 
-#include <tools/resary.hxx>
-#include <svl/lstner.hxx>
-#include <svtools/colorcfg.hxx>
-
 #include <sfx2/module.hxx>
-
-#include "starmath.hrc"
+#include <sfx2/app.hxx>
+#include <vcl/vclptr.hxx>
 
 #include <unotools/options.hxx>
 #include <memory>
+
+namespace svtools { class ColorConfig; }
 
 class SfxObjectFactory;
 class SmSymbolManager;
@@ -51,39 +49,27 @@ class SvtSysLocale;
 class VirtualDevice;
 
 
-OUString SmResId(sal_uInt16 nId);
+OUString SmResId(const char* pId);
 
 class SmLocalizedSymbolData
 {
-    ResStringArray      aUiSymbolNamesAry;
-    ResStringArray      aExportSymbolNamesAry;
-    ResStringArray      aUiSymbolSetNamesAry;
-    ResStringArray      aExportSymbolSetNamesAry;
-
 public:
-    SmLocalizedSymbolData();
-    ~SmLocalizedSymbolData();
+    SmLocalizedSymbolData() = delete;
 
-    const ResStringArray& GetUiSymbolNamesArray() const     { return aUiSymbolNamesAry; }
-    const ResStringArray& GetExportSymbolNamesArray() const { return aExportSymbolNamesAry; }
-    static const OUString GetUiSymbolName( const OUString &rExportName );
-    static const OUString GetExportSymbolName( const OUString &rUiName );
+    static OUString GetUiSymbolName( const OUString &rExportName );
+    static OUString GetExportSymbolName( const OUString &rUiName );
 
-    const ResStringArray& GetUiSymbolSetNamesArray() const     { return aUiSymbolSetNamesAry; }
-    const ResStringArray& GetExportSymbolSetNamesArray() const { return aExportSymbolSetNamesAry; }
-    static const OUString GetUiSymbolSetName( const OUString &rExportName );
-    static const OUString GetExportSymbolSetName( const OUString &rUiName );
+    static OUString GetUiSymbolSetName( const OUString &rExportName );
+    static OUString GetExportSymbolSetName( const OUString &rUiName );
 };
 
-class SmModule : public SfxModule, public utl::ConfigurationListener
+class SmModule final : public SfxModule, public utl::ConfigurationListener
 {
     std::unique_ptr<svtools::ColorConfig> mpColorConfig;
     std::unique_ptr<SmMathConfig> mpConfig;
     std::unique_ptr<SmLocalizedSymbolData> mpLocSymbolData;
     std::unique_ptr<SvtSysLocale> mpSysLocale;
     VclPtr<VirtualDevice>    mpVirtualDev;
-
-    static void ApplyColorConfigValues( const svtools::ColorConfig &rColorCfg );
 
 public:
     SFX_DECL_INTERFACE(SFX_INTERFACE_SMA_START + SfxInterfaceId(0))
@@ -103,8 +89,6 @@ public:
     SmMathConfig *          GetConfig();
     SmSymbolManager &       GetSymbolManager();
 
-    SmLocalizedSymbolData &   GetLocSymbolData();
-
     static void GetState(SfxItemSet&);
 
     const SvtSysLocale& GetSysLocale();
@@ -114,7 +98,7 @@ public:
     //virtual methods for options dialog
     virtual std::unique_ptr<SfxItemSet> CreateItemSet( sal_uInt16 nId ) override;
     virtual void         ApplyItemSet( sal_uInt16 nId, const SfxItemSet& rSet ) override;
-    virtual VclPtr<SfxTabPage> CreateTabPage( sal_uInt16 nId, vcl::Window* pParent, const SfxItemSet& rSet ) override;
+    virtual std::unique_ptr<SfxTabPage> CreateTabPage( sal_uInt16 nId, weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet ) override;
 };
 
 #define SM_MOD() ( static_cast<SmModule*>(SfxApplication::GetModule(SfxToolsModule::Math)) )

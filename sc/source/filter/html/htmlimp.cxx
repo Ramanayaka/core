@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include <comphelper/string.hxx>
-#include <editeng/eeitem.hxx>
+#include <scitems.hxx>
+#include <osl/diagnose.h>
+#include <unotools/charclass.hxx>
 
 #include <editeng/lrspitem.hxx>
 #include <editeng/paperinf.hxx>
@@ -28,21 +28,21 @@
 #include <editeng/boxitem.hxx>
 #include <vcl/svapp.hxx>
 
-#include "htmlimp.hxx"
-#include "htmlpars.hxx"
-#include "filter.hxx"
-#include "global.hxx"
-#include "document.hxx"
-#include "editutil.hxx"
-#include "stlpool.hxx"
-#include "stlsheet.hxx"
-#include "compiler.hxx"
-#include "rangenam.hxx"
-#include "attrib.hxx"
-#include "ftools.hxx"
-#include "tokenarray.hxx"
+#include <htmlimp.hxx>
+#include <htmlpars.hxx>
+#include <filter.hxx>
+#include <global.hxx>
+#include <document.hxx>
+#include <editutil.hxx>
+#include <stlpool.hxx>
+#include <stlsheet.hxx>
+#include <refdata.hxx>
+#include <rangenam.hxx>
+#include <attrib.hxx>
+#include <ftools.hxx>
+#include <tokenarray.hxx>
 
-ErrCode ScFormatFilterPlugin::ScImportHTML( SvStream &rStream, const OUString& rBaseURL, ScDocument *pDoc,
+ErrCode ScFormatFilterPluginImpl::ScImportHTML( SvStream &rStream, const OUString& rBaseURL, ScDocument *pDoc,
         ScRange& rRange, double nOutputFactor, bool bCalcWidthHeight, SvNumberFormatter* pFormatter,
         bool bConvertDate )
 {
@@ -54,9 +54,9 @@ ErrCode ScFormatFilterPlugin::ScImportHTML( SvStream &rStream, const OUString& r
     return nErr;
 }
 
-ScEEAbsImport *ScFormatFilterPlugin::CreateHTMLImport( ScDocument* pDocP, const OUString& rBaseURL, const ScRange& rRange )
+std::unique_ptr<ScEEAbsImport> ScFormatFilterPluginImpl::CreateHTMLImport( ScDocument* pDocP, const OUString& rBaseURL, const ScRange& rRange )
 {
-    return new ScHTMLImport( pDocP, rBaseURL, rRange, true/*bCalcWidthHeight*/ );
+    return std::make_unique<ScHTMLImport>( pDocP, rBaseURL, rRange, true/*bCalcWidthHeight*/ );
 }
 
 ScHTMLImport::ScHTMLImport( ScDocument* pDocP, const OUString& rBaseURL, const ScRange& rRange, bool bCalcWidthHeight ) :
@@ -70,20 +70,20 @@ ScHTMLImport::ScHTMLImport( ScDocument* pDocP, const OUString& rBaseURL, const S
     if ( pStyleSheet )
     {
         const SfxItemSet& rSet = pStyleSheet->GetItemSet();
-        const SvxLRSpaceItem* pLRItem = static_cast<const SvxLRSpaceItem*>( &rSet.Get( ATTR_LRSPACE ) );
+        const SvxLRSpaceItem* pLRItem = &rSet.Get( ATTR_LRSPACE );
         long nLeftMargin   = pLRItem->GetLeft();
         long nRightMargin  = pLRItem->GetRight();
-        const SvxULSpaceItem* pULItem = static_cast<const SvxULSpaceItem*>( &rSet.Get( ATTR_ULSPACE ) );
+        const SvxULSpaceItem* pULItem = &rSet.Get( ATTR_ULSPACE );
         long nTopMargin    = pULItem->GetUpper();
         long nBottomMargin = pULItem->GetLower();
-        aPageSize = static_cast<const SvxSizeItem&>(rSet.Get(ATTR_PAGE_SIZE)).GetSize();
+        aPageSize = rSet.Get(ATTR_PAGE_SIZE).GetSize();
         if ( !aPageSize.Width() || !aPageSize.Height() )
         {
             OSL_FAIL("PageSize Null ?!?!?");
             aPageSize = SvxPaperInfo::GetPaperSize( PAPER_A4 );
         }
-        aPageSize.Width() -= nLeftMargin + nRightMargin;
-        aPageSize.Height() -= nTopMargin + nBottomMargin;
+        aPageSize.AdjustWidth( -(nLeftMargin + nRightMargin) );
+        aPageSize.AdjustHeight( -(nTopMargin + nBottomMargin) );
         aPageSize = pDefaultDev->LogicToPixel( aPageSize, MapMode( MapUnit::MapTwip ) );
     }
     else
@@ -102,7 +102,9 @@ void ScHTMLImport::InsertRangeName( ScDocument* pDoc, const OUString& rName, con
 {
     ScComplexRefData aRefData;
     aRefData.InitRange( rRange );
-    ScTokenArray aTokArray;
+    aRefData.Ref1.SetFlag3D( true );
+    aRefData.Ref2.SetFlag3D( aRefData.Ref2.Tab() != aRefData.Ref1.Tab() );
+    ScTokenArray aTokArray(pDoc);
     aTokArray.AddDoubleReference( aRefData );
     ScRangeData* pRangeData = new ScRangeData( pDoc, rName, aTokArray );
     pDoc->GetRangeName()->insert( pRangeData );
@@ -128,25 +130,24 @@ void ScHTMLImport::WriteToDocument(
         if( (pEntry->nColOverlap > 1) || (pEntry->nRowOverlap > 1) )
         {
             SCTAB nTab = maRange.aStart.Tab();
-            const ScMergeAttr* pItem = static_cast<const ScMergeAttr*>( mpDoc->GetAttr( pEntry->nCol, pEntry->nRow, nTab, ATTR_MERGE ) );
+            const ScMergeAttr* pItem = mpDoc->GetAttr( pEntry->nCol, pEntry->nRow, nTab, ATTR_MERGE );
             if( pItem->IsMerged() )
             {
                 SCCOL nColMerge = pItem->GetColMerge();
                 SCROW nRowMerge = pItem->GetRowMerge();
 
-                const SvxBoxItem* pToItem = static_cast<const SvxBoxItem*>(
-                    mpDoc->GetAttr( pEntry->nCol, pEntry->nRow, nTab, ATTR_BORDER ) );
+                const SvxBoxItem* pToItem = mpDoc->GetAttr( pEntry->nCol, pEntry->nRow, nTab, ATTR_BORDER );
                 SvxBoxItem aNewItem( *pToItem );
                 if( nColMerge > 1 )
                 {
-                    const SvxBoxItem* pFromItem = static_cast<const SvxBoxItem*>(
-                        mpDoc->GetAttr( pEntry->nCol + nColMerge - 1, pEntry->nRow, nTab, ATTR_BORDER ) );
+                    const SvxBoxItem* pFromItem =
+                        mpDoc->GetAttr( pEntry->nCol + nColMerge - 1, pEntry->nRow, nTab, ATTR_BORDER );
                     aNewItem.SetLine( pFromItem->GetLine( SvxBoxItemLine::RIGHT ), SvxBoxItemLine::RIGHT );
                 }
                 if( nRowMerge > 1 )
                 {
-                    const SvxBoxItem* pFromItem = static_cast<const SvxBoxItem*>(
-                        mpDoc->GetAttr( pEntry->nCol, pEntry->nRow + nRowMerge - 1, nTab, ATTR_BORDER ) );
+                    const SvxBoxItem* pFromItem =
+                        mpDoc->GetAttr( pEntry->nCol, pEntry->nRow + nRowMerge - 1, nTab, ATTR_BORDER );
                     aNewItem.SetLine( pFromItem->GetLine( SvxBoxItemLine::BOTTOM ), SvxBoxItemLine::BOTTOM );
                 }
                 mpDoc->ApplyAttr( pEntry->nCol, pEntry->nRow, nTab, aNewItem );
@@ -185,53 +186,52 @@ void ScHTMLImport::WriteToDocument(
         if (!pTable->GetTableName().isEmpty())
         {
             OUString aName( ScfTools::GetNameFromHTMLName( pTable->GetTableName() ) );
-            if (!mpDoc->GetRangeName()->findByUpperName(ScGlobal::pCharClass->uppercase(aName)))
+            if (!mpDoc->GetRangeName()->findByUpperName(ScGlobal::getCharClassPtr()->uppercase(aName)))
                 InsertRangeName( mpDoc, aName, aNewRange );
         }
     }
 }
 
-OUString ScFormatFilterPlugin::GetHTMLRangeNameList( ScDocument* pDoc, const OUString& rOrigName )
+OUString ScFormatFilterPluginImpl::GetHTMLRangeNameList( ScDocument* pDoc, const OUString& rOrigName )
 {
     return ScHTMLImport::GetHTMLRangeNameList( pDoc, rOrigName );
 }
 
-OUString ScHTMLImport::GetHTMLRangeNameList( ScDocument* pDoc, const OUString& rOrigName )
+OUString ScHTMLImport::GetHTMLRangeNameList( const ScDocument* pDoc, const OUString& rOrigName )
 {
     OSL_ENSURE( pDoc, "ScHTMLImport::GetHTMLRangeNameList - missing document" );
+
+    if (rOrigName.isEmpty())
+        return OUString();
 
     OUString aNewName;
     ScRangeName* pRangeNames = pDoc->GetRangeName();
     ScRangeList aRangeList;
-    sal_Int32 nTokenCnt = comphelper::string::getTokenCount(rOrigName, ';');
     sal_Int32 nStringIx = 0;
-    for( sal_Int32 nToken = 0; nToken < nTokenCnt; nToken++ )
+    do
     {
         OUString aToken( rOrigName.getToken( 0, ';', nStringIx ) );
         if( pRangeNames && ScfTools::IsHTMLTablesName( aToken ) )
         {   // build list with all HTML tables
             sal_uLong nIndex = 1;
-            bool bLoop = true;
-            while( bLoop )
+            for(;;)
             {
                 aToken = ScfTools::GetNameFromHTMLIndex( nIndex++ );
-                const ScRangeData* pRangeData = pRangeNames->findByUpperName(ScGlobal::pCharClass->uppercase(aToken));
-                if (pRangeData)
+                const ScRangeData* pRangeData = pRangeNames->findByUpperName(ScGlobal::getCharClassPtr()->uppercase(aToken));
+                if (!pRangeData)
+                    break;
+                ScRange aRange;
+                if( pRangeData->IsReference( aRange ) && !aRangeList.In( aRange ) )
                 {
-                    ScRange aRange;
-                    if( pRangeData->IsReference( aRange ) && !aRangeList.In( aRange ) )
-                    {
-                        aNewName = ScGlobal::addToken(aNewName, aToken, ';');
-                        aRangeList.Append( aRange );
-                    }
+                    aNewName = ScGlobal::addToken(aNewName, aToken, ';');
+                    aRangeList.push_back( aRange );
                 }
-                else
-                    bLoop = false;
             }
         }
         else
             aNewName = ScGlobal::addToken(aNewName, aToken, ';');
     }
+    while (nStringIx>0);
     return aNewName;
 }
 

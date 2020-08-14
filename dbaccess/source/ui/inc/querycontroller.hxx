@@ -21,25 +21,20 @@
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_QUERYCONTROLLER_HXX
 
 #include "JoinController.hxx"
-#include "JoinTableView.hxx"
 #include "querycontainerwindow.hxx"
-#include "svx/ParseContext.hxx"
+#include <svx/ParseContext.hxx>
 #include "TableFieldDescription.hxx"
 
-#include <com/sun/star/io/XObjectInputStream.hpp>
-#include <com/sun/star/io/XObjectOutputStream.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <com/sun/star/sdb/XSQLQueryComposer.hpp>
-#include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdbcx/XAlterView.hpp>
 
 #include <comphelper/proparrhlp.hxx>
 #include <comphelper/propertycontainer.hxx>
 #include <comphelper/uno3.hxx>
 #include <connectivity/sqliterator.hxx>
-#include <connectivity/sqlnode.hxx>
 #include <connectivity/sqlparse.hxx>
-#include <svl/undo.hxx>
 
 namespace comphelper
 {
@@ -61,9 +56,9 @@ namespace dbaui
 
         css::uno::Sequence< css::beans::PropertyValue >       m_aFieldInformation;
 
-        ::svxform::OSystemParseContext*         m_pParseContext;
+        std::unique_ptr<::svxform::OSystemParseContext>       m_pParseContext;
         ::connectivity::OSQLParser              m_aSqlParser;
-        ::connectivity::OSQLParseTreeIterator*  m_pSqlIterator;
+        std::unique_ptr<::connectivity::OSQLParseTreeIterator> m_pSqlIterator;
 
         css::uno::Reference< css::sdb::XSQLQueryComposer >    m_xComposer;
         /// if we're editing an existing view, this is non-NULL
@@ -72,7 +67,6 @@ namespace dbaui
         OUString        m_sStatement;           // contains the current sql statement
         OUString        m_sUpdateCatalogName;   // catalog for update data
         OUString        m_sUpdateSchemaName;    // schema for update data
-        OUString        m_sUpdateTableName;     // table for update data
         mutable OUString
                         m_sName;                // name of the query
 
@@ -175,13 +169,6 @@ namespace dbaui
 
         virtual OUString SAL_CALL getImplementationName() override;
         virtual css::uno::Sequence< OUString> SAL_CALL getSupportedServiceNames() override;
-        // need by registration
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static();
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-        static css::uno::Reference< css::uno::XInterface >
-                SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
 
         // XController
         virtual css::uno::Any SAL_CALL getViewData() override;

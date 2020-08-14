@@ -18,37 +18,32 @@
  */
 
 #include "lotfilter.hxx"
-#include "lotimpop.hxx"
+#include <lotimpop.hxx>
 
 #include <sfx2/docfile.hxx>
 #include <tools/urlobj.hxx>
 
-#include "scerrors.hxx"
-#include "root.hxx"
-#include "filtopt.hxx"
-#include "ftools.hxx"
+#include <scerrors.hxx>
+#include <root.hxx>
+#include <filtopt.hxx>
+#include <ftools.hxx>
 
-ErrCode ScFormatFilterPlugin::ScImportLotus123( SfxMedium& rMedium, ScDocument* pDocument, rtl_TextEncoding eSrc )
+ErrCode ScFormatFilterPluginImpl::ScImportLotus123( SfxMedium& rMedium, ScDocument* pDocument, rtl_TextEncoding eSrc )
 {
-    ScFilterOptions aFilterOpt;
-    bool bWithWK3 = aFilterOpt.GetWK3Flag();
-
-    SvStream*           pStream = rMedium.GetInStream();
-
-    if( !pStream )
+    SvStream* pStream = rMedium.GetInStream();
+    if (!pStream)
         return SCERR_IMPORT_OPEN;
 
-    ErrCode            eRet;
-
-    pStream->Seek( 0UL );
+    pStream->Seek( 0 );
 
     pStream->SetBufferSize( 32768 );
 
-    LotusContext aContext;
+    LotusContext aContext(pDocument, eSrc);
 
     ImportLotus aLotusImport(aContext, *pStream, pDocument, eSrc);
 
-    if( bWithWK3 )
+    ErrCode eRet;
+    if (ScFilterOptions().GetWK3Flag())
         eRet = aLotusImport.Read();
     else
         eRet = ErrCode(0xFFFFFFFF);  // force WK1 /WKS
@@ -56,21 +51,17 @@ ErrCode ScFormatFilterPlugin::ScImportLotus123( SfxMedium& rMedium, ScDocument* 
     // WARNING: QUICK-HACK for WK1 / WKS  <->  WK3 / WK4
     if( eRet == ErrCode(0xFFFFFFFF) )
     {
-        pStream->Seek( 0UL );
-
+        pStream->Seek( 0 );
         pStream->SetBufferSize( 32768 );
-
         eRet = ScImportLotus123old(aContext, *pStream, pDocument, eSrc);
-
         pStream->SetBufferSize( 0 );
-
         return eRet;
     }
 
     if( eRet != ERRCODE_NONE )
         return eRet;
 
-    if (aContext.pLotusRoot->eFirstType == Lotus123Typ::WK3)
+    if (aContext.eFirstType == Lotus123Typ::WK3)
     {
         // try to load *.FM3 file
         INetURLObject aURL( rMedium.GetURLObject() );
@@ -88,5 +79,25 @@ ErrCode ScFormatFilterPlugin::ScImportLotus123( SfxMedium& rMedium, ScDocument* 
 
     return eRet;
 }
+
+LotusContext::LotusContext(ScDocument* pDocP, rtl_TextEncoding eQ)
+    : eTyp(eWK_UNKNOWN)
+    , bEOF(false)
+    , eCharset(eQ)
+    , pDoc(pDocP)
+    , pAttrRight(nullptr)
+    , pAttrLeft(nullptr)
+    , pAttrCenter(nullptr)
+    , pAttrRepeat(nullptr)
+    , pAttrStandard(nullptr)
+    , pValueFormCache(nullptr)
+    , maRangeNames()
+    , eFirstType( Lotus123Typ::X)
+    , eActType( Lotus123Typ::X)
+    , pRngNmBffWK3( new RangeNameBufferWK3(pDocP) )
+    , maAttrTable( *this )
+{
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

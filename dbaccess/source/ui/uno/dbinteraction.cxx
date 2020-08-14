@@ -18,13 +18,11 @@
  */
 
 #include "dbinteraction.hxx"
-#include "dbu_reghelper.hxx"
-#include "uiservices.hxx"
+#include <apitools.hxx>
 #include <tools/diagnose_ex.h>
 #include <osl/diagnose.h>
-#include <vcl/msgbox.hxx>
 #include <connectivity/dbexception.hxx>
-#include "sqlmessage.hxx"
+#include <sqlmessage.hxx>
 #include <com/sun/star/task/InteractionHandler.hpp>
 #include <com/sun/star/task/XInteractionApprove.hpp>
 #include <com/sun/star/task/XInteractionDisapprove.hpp>
@@ -33,17 +31,24 @@
 #include <com/sun/star/sdb/XInteractionSupplyParameters.hpp>
 #include <com/sun/star/sdb/XInteractionDocumentSave.hpp>
 #include <sfx2/QuerySaveDocument.hxx>
-#include "dbu_uno.hrc"
-#include "paramdialog.hxx"
+#include <paramdialog.hxx>
 #include <vcl/svapp.hxx>
-#include "CollectionView.hxx"
-#include "UITools.hxx"
+#include <CollectionView.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/sequenceashashmap.hxx>
 
-extern "C" void SAL_CALL createRegistryInfo_OInteractionHandler()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_dbaccess_DatabaseInteractionHandler_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
 {
-    static ::dbaui::OMultiInstanceAutoRegistration< ::dbaui::SQLExceptionInteractionHandler > aSQLExceptionInteractionHandler_AutoRegistration;
-    static ::dbaui::OMultiInstanceAutoRegistration< ::dbaui::LegacyInteractionHandler > aLegacyInteractionHandler_AutoRegistration;
+    return cppu::acquire(new ::dbaui::SQLExceptionInteractionHandler(context));
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_dbaccess_LegacyInteractionHandler_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& )
+{
+    return cppu::acquire(new ::dbaui::LegacyInteractionHandler(context));
 }
 
 namespace dbaui
@@ -63,6 +68,12 @@ namespace dbaui
     {
         OSL_ENSURE( !m_bFallbackToGeneric,
             "BasicInteractionHandler::BasicInteractionHandler: enabling legacy behavior, there should be no clients of this anymore!" );
+    }
+
+    void SAL_CALL BasicInteractionHandler::initialize(const Sequence<Any>& rArgs)
+    {
+        comphelper::SequenceAsHashMap aMap(rArgs);
+        m_xParentWindow.set(aMap.getValue("Parent"), UNO_QUERY);
     }
 
     sal_Bool SAL_CALL BasicInteractionHandler::handleInteractionRequest( const Reference< XInteractionRequest >& i_rRequest )
@@ -126,8 +137,8 @@ namespace dbaui
             xParamCallback.set(_rContinuations[nParamPos], UNO_QUERY);
         OSL_ENSURE(xParamCallback.is(), "BasicInteractionHandler::implHandle(ParametersRequest): can't set the parameters without an appropriate interaction handler!s");
 
-        ScopedVclPtrInstance< OParameterDialog > aDlg(nullptr, _rParamRequest.Parameters, _rParamRequest.Connection, m_xContext);
-        sal_Int16 nResult = aDlg->Execute();
+        OParameterDialog aDlg(Application::GetFrameWeld(m_xParentWindow), _rParamRequest.Parameters, _rParamRequest.Connection, m_xContext);
+        sal_Int16 nResult = aDlg.run();
         try
         {
             switch (nResult)
@@ -135,7 +146,7 @@ namespace dbaui
                 case RET_OK:
                     if (xParamCallback.is())
                     {
-                        xParamCallback->setParameters(aDlg->getValues());
+                        xParamCallback->setParameters(aDlg.getValues());
                         xParamCallback->select();
                     }
                     break;
@@ -147,7 +158,7 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 
@@ -162,28 +173,28 @@ namespace dbaui
         sal_Int32 nRetryPos = getContinuation(RETRY, _rContinuations);
 
         // determine the style of the dialog, dependent on the present continuation types
-        WinBits nDialogStyle = 0;
+        MessBoxStyle nDialogStyle = MessBoxStyle::NONE;
         bool bHaveCancel = nAbortPos != -1;
         // "approve" means "Yes", "disapprove" means "No"
         // VCL only supports having both (which makes sense ...)
         if ( ( nApprovePos != -1 ) || ( nDisapprovePos != -1 ) )
-            nDialogStyle = ( bHaveCancel ? WB_YES_NO_CANCEL : WB_YES_NO ) | WB_DEF_YES;
+            nDialogStyle = ( bHaveCancel ? MessBoxStyle::YesNoCancel : MessBoxStyle::YesNo ) | MessBoxStyle::DefaultYes;
         else
         {
             // if there's no yes/no, then use a default OK button
-            nDialogStyle = ( bHaveCancel ? WB_OK_CANCEL : WB_OK ) | WB_DEF_OK;
+            nDialogStyle = ( bHaveCancel ? MessBoxStyle::OkCancel : MessBoxStyle::Ok ) | MessBoxStyle::DefaultOk;
         }
 
         // If there's a "Retry" continuation, have a "Retry" button
         if ( nRetryPos != -1 )
         {
-            nDialogStyle = WB_RETRY_CANCEL | WB_DEF_RETRY;
+            nDialogStyle = MessBoxStyle::RetryCancel | MessBoxStyle::DefaultRetry;
         }
 
         // execute the dialog
-        ScopedVclPtrInstance< OSQLMessageBox > aDialog(nullptr, _rSqlInfo, nDialogStyle);
+        OSQLMessageBox aDialog(nullptr, _rSqlInfo, nDialogStyle);
         // TODO: need a way to specify the parent window
-        sal_Int16 nResult = aDialog->Execute();
+        sal_Int16 nResult = aDialog.run();
         try
         {
             switch (nResult)
@@ -221,13 +232,13 @@ namespace dbaui
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
     void BasicInteractionHandler::implHandle(const DocumentSaveRequest& _rDocuRequest, const Sequence< Reference< XInteractionContinuation > >& _rContinuations)
     {
         SolarMutexGuard aGuard;
-        // want to open a dialog ....
+        // want to open a dialog...
 
         sal_Int32 nApprovePos = getContinuation(APPROVE, _rContinuations);
         sal_Int32 nDisApprovePos = getContinuation(DISAPPROVE, _rContinuations);
@@ -237,7 +248,7 @@ namespace dbaui
         if ( -1 != nApprovePos )
         {
             // ask whether it should be saved
-            nRet = ExecuteQuerySaveDocument(nullptr,_rDocuRequest.Name);
+            nRet = ExecuteQuerySaveDocument(Application::GetFrameWeld(m_xParentWindow), _rDocuRequest.Name);
         }
 
         if ( RET_CANCEL == nRet )
@@ -255,8 +266,8 @@ namespace dbaui
                 Reference< XInteractionDocumentSave > xCallback(_rContinuations[nDocuPos], UNO_QUERY);
                 OSL_ENSURE(xCallback.is(), "BasicInteractionHandler::implHandle(DocumentSaveRequest): can't save document without an appropriate interaction handler!s");
 
-                ScopedVclPtrInstance< OCollectionView > aDlg(nullptr, _rDocuRequest.Content, _rDocuRequest.Name, m_xContext);
-                sal_Int16 nResult = aDlg->Execute();
+                OCollectionView aDlg(Application::GetFrameWeld(m_xParentWindow), _rDocuRequest.Content, _rDocuRequest.Name, m_xContext);
+                sal_Int16 nResult = aDlg.run();
                 try
                 {
                     switch (nResult)
@@ -264,7 +275,7 @@ namespace dbaui
                         case RET_OK:
                             if (xCallback.is())
                             {
-                                xCallback->setName(aDlg->getName(), aDlg->getSelectedFolder());
+                                xCallback->setName(aDlg.getName(), aDlg.getSelectedFolder());
                                 xCallback->select();
                             }
                             break;
@@ -276,7 +287,7 @@ namespace dbaui
                 }
                 catch( const Exception& )
                 {
-                    DBG_UNHANDLED_EXCEPTION();
+                    DBG_UNHANDLED_EXCEPTION("dbaccess");
                 }
             }
             else if ( -1 != nApprovePos )
@@ -336,25 +347,25 @@ namespace dbaui
     }
 
     // SQLExceptionInteractionHandler
-    IMPLEMENT_SERVICE_INFO_IMPLNAME_STATIC(SQLExceptionInteractionHandler, "com.sun.star.comp.dbaccess.DatabaseInteractionHandler")
-    IMPLEMENT_SERVICE_INFO_SUPPORTS(SQLExceptionInteractionHandler)
-    IMPLEMENT_SERVICE_INFO_GETSUPPORTED1_STATIC(SQLExceptionInteractionHandler, "com.sun.star.sdb.DatabaseInteractionHandler")
-
-    Reference< XInterface >
-        SAL_CALL SQLExceptionInteractionHandler::Create(const Reference< XMultiServiceFactory >& _rxORB)
+    OUString SAL_CALL SQLExceptionInteractionHandler::getImplementationName()
     {
-        return static_cast< XServiceInfo* >(new SQLExceptionInteractionHandler(comphelper::getComponentContext(_rxORB)));
+        return "com.sun.star.comp.dbaccess.DatabaseInteractionHandler";
+    }
+    IMPLEMENT_SERVICE_INFO_SUPPORTS(SQLExceptionInteractionHandler)
+    css::uno::Sequence< OUString > SAL_CALL SQLExceptionInteractionHandler::getSupportedServiceNames()
+    {
+        return { "com.sun.star.sdb.DatabaseInteractionHandler" };
     }
 
     // LegacyInteractionHandler
-    IMPLEMENT_SERVICE_INFO_IMPLNAME_STATIC(LegacyInteractionHandler, "com.sun.star.comp.dbaccess.LegacyInteractionHandler")
-    IMPLEMENT_SERVICE_INFO_SUPPORTS(LegacyInteractionHandler)
-    IMPLEMENT_SERVICE_INFO_GETSUPPORTED1_STATIC(LegacyInteractionHandler, "com.sun.star.sdb.InteractionHandler")
-
-    Reference< XInterface >
-        SAL_CALL LegacyInteractionHandler::Create(const Reference< XMultiServiceFactory >& _rxORB)
+    OUString SAL_CALL LegacyInteractionHandler::getImplementationName()
     {
-        return static_cast< XServiceInfo* >(new LegacyInteractionHandler(comphelper::getComponentContext(_rxORB)));
+        return "com.sun.star.comp.dbaccess.LegacyInteractionHandler";
+    }
+    IMPLEMENT_SERVICE_INFO_SUPPORTS(LegacyInteractionHandler)
+    css::uno::Sequence< OUString > SAL_CALL LegacyInteractionHandler::getSupportedServiceNames()
+    {
+        return { "com.sun.star.sdb.InteractionHandler" };
     }
 
 }   // namespace dbaui

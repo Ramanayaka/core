@@ -23,28 +23,23 @@
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 
-#include <unotools/misccfg.hxx>
 #include <unotools/useroptions.hxx>
 #include <unotools/cmdoptions.hxx>
 #include <unotools/compatibility.hxx>
 #include <unotools/defaultoptions.hxx>
 #include <unotools/dynamicmenuoptions.hxx>
-#include <unotools/eventcfg.hxx>
-#include <unotools/extendedsecurityoptions.hxx>
-#include <unotools/fltrcfg.hxx>
-#include <unotools/fontoptions.hxx>
 #include <unotools/historyoptions.hxx>
 #include <unotools/lingucfg.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <unotools/pathoptions.hxx>
-#include <unotools/printwarningoptions.hxx>
 #include <unotools/optionsdlg.hxx>
-#include <unotools/saveopt.hxx>
-#include <unotools/searchopt.hxx>
 #include <unotools/securityoptions.hxx>
 #include <unotools/viewoptions.hxx>
 #include <unotools/options.hxx>
 #include <unotools/syslocaleoptions.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
+#include <tools/diagnose_ex.h>
 
 ItemHolder1::ItemHolder1()
     : ItemHolderMutexBase()
@@ -58,13 +53,14 @@ ItemHolder1::ItemHolder1()
         xCfg->addEventListener(static_cast< css::lang::XEventListener* >(this));
     }
 #ifdef DBG_UTIL
-    catch(const css::uno::Exception& rEx)
+    catch(const css::uno::Exception&)
     {
         static bool bMessage = true;
         if(bMessage)
         {
             bMessage = false;
-            SAL_WARN( "unotools", "CreateInstance with arguments exception: " <<  rEx.Message);
+            css::uno::Any ex( cppu::getCaughtException() );
+            SAL_WARN( "unotools", "CreateInstance with arguments exception: " << exceptionToString(ex));
         }
     }
 #else
@@ -91,14 +87,10 @@ void SAL_CALL ItemHolder1::disposing(const css::lang::EventObject&)
 
 void ItemHolder1::impl_addItem(EItem eItem)
 {
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
-    TItems::const_iterator pIt;
-    for (  pIt  = m_lItems.begin();
-           pIt != m_lItems.end();
-         ++pIt                    )
+    for ( auto const & rInfo : m_lItems )
     {
-        const TItemInfo& rInfo = *pIt;
         if (rInfo.eItem == eItem)
             return;
     }
@@ -107,22 +99,18 @@ void ItemHolder1::impl_addItem(EItem eItem)
     aNewItem.eItem = eItem;
     impl_newItem(aNewItem);
     if (aNewItem.pItem)
-        m_lItems.push_back(aNewItem);
+        m_lItems.emplace_back(std::move(aNewItem));
 }
 
 void ItemHolder1::impl_releaseAllItems()
 {
-    ::osl::ResettableMutexGuard aLock(m_aLock);
-
-    TItems::iterator pIt;
-    for (  pIt  = m_lItems.begin();
-           pIt != m_lItems.end();
-         ++pIt                    )
+    std::vector< TItemInfo > items;
     {
-        TItemInfo& rInfo = *pIt;
-        impl_deleteItem(rInfo);
+        ::osl::MutexGuard aLock(m_aLock);
+        items.swap(m_lItems);
     }
-    m_lItems.clear();
+
+    // items will be freed when the block exits
 }
 
 void ItemHolder1::impl_newItem(TItemInfo& rItem)
@@ -130,105 +118,76 @@ void ItemHolder1::impl_newItem(TItemInfo& rItem)
     switch(rItem.eItem)
     {
         case EItem::CmdOptions :
-            rItem.pItem = new SvtCommandOptions();
+            rItem.pItem.reset( new SvtCommandOptions() );
             break;
 
         case EItem::Compatibility :
-            rItem.pItem = new SvtCompatibilityOptions();
+            rItem.pItem.reset( new SvtCompatibilityOptions() );
             break;
 
         case EItem::DefaultOptions :
-            rItem.pItem = new SvtDefaultOptions();
+            rItem.pItem.reset( new SvtDefaultOptions() );
             break;
 
         case EItem::DynamicMenuOptions :
-            rItem.pItem = new SvtDynamicMenuOptions();
+            rItem.pItem.reset( new SvtDynamicMenuOptions() );
             break;
 
         case EItem::EventConfig :
-            //rItem.pItem = new GlobalEventConfig();
-            break;
-
-        case EItem::ExtendedSecurityOptions :
-            rItem.pItem = new SvtExtendedSecurityOptions();
-            break;
-
-        case EItem::FontOptions :
-            rItem.pItem = new SvtFontOptions();
+            //rItem.pItem.reset( new GlobalEventConfig() );
             break;
 
         case EItem::HistoryOptions :
-            rItem.pItem = new SvtHistoryOptions();
+            rItem.pItem.reset( new SvtHistoryOptions() );
             break;
 
         case EItem::LinguConfig :
-            rItem.pItem = new SvtLinguConfig();
+            rItem.pItem.reset( new SvtLinguConfig() );
             break;
 
         case EItem::ModuleOptions :
-            rItem.pItem = new SvtModuleOptions();
+            rItem.pItem.reset( new SvtModuleOptions() );
             break;
 
         case EItem::OptionsDialogOptions :
-            rItem.pItem = new SvtOptionsDialogOptions();
+            rItem.pItem.reset( new SvtOptionsDialogOptions() );
             break;
 
         case EItem::PathOptions :
-            rItem.pItem = new SvtPathOptions();
-            break;
-
-        case EItem::PrintWarningOptions :
-            rItem.pItem = new SvtPrintWarningOptions();
-            break;
-
-        case EItem::MiscConfig :
-            rItem.pItem = new ::utl::MiscCfg();
-            break;
-
-        case EItem::SaveOptions :
-            rItem.pItem = new SvtSaveOptions();
+            rItem.pItem.reset( new SvtPathOptions() );
             break;
 
         case EItem::SecurityOptions :
-            rItem.pItem = new SvtSecurityOptions();
+            rItem.pItem.reset( new SvtSecurityOptions() );
             break;
 
         case EItem::ViewOptionsDialog :
-            rItem.pItem = new SvtViewOptions(EViewType::Dialog, OUString());
+            rItem.pItem.reset( new SvtViewOptions(EViewType::Dialog, OUString()) );
             break;
 
         case EItem::ViewOptionsTabDialog :
-            rItem.pItem = new SvtViewOptions(EViewType::TabDialog, OUString());
+            rItem.pItem.reset( new SvtViewOptions(EViewType::TabDialog, OUString()) );
             break;
 
         case EItem::ViewOptionsTabPage :
-            rItem.pItem = new SvtViewOptions(EViewType::TabPage, OUString());
+            rItem.pItem.reset( new SvtViewOptions(EViewType::TabPage, OUString()) );
             break;
 
         case EItem::ViewOptionsWindow :
-            rItem.pItem = new SvtViewOptions(EViewType::Window, OUString());
+            rItem.pItem.reset( new SvtViewOptions(EViewType::Window, OUString()) );
             break;
 
         case EItem::UserOptions :
-            rItem.pItem = new SvtUserOptions();
+            rItem.pItem.reset( new SvtUserOptions() );
             break;
 
         case EItem::SysLocaleOptions :
-            rItem.pItem = new SvtSysLocaleOptions();
+            rItem.pItem.reset( new SvtSysLocaleOptions() );
             break;
 
         default:
             OSL_FAIL( "unknown item type" );
             break;
-    }
-}
-
-void ItemHolder1::impl_deleteItem(TItemInfo& rItem)
-{
-    if (rItem.pItem)
-    {
-        delete rItem.pItem;
-        rItem.pItem = nullptr;
     }
 }
 

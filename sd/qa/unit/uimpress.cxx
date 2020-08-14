@@ -8,10 +8,10 @@
  */
 
 #include <sal/types.h>
-#include "cppunit/TestAssert.h"
-#include "cppunit/TestFixture.h"
-#include "cppunit/extensions/HelperMacros.h"
-#include "cppunit/plugin/TestPlugIn.h"
+#include <cppunit/TestAssert.h>
+#include <cppunit/TestFixture.h>
+#include <cppunit/extensions/HelperMacros.h>
+#include <cppunit/plugin/TestPlugIn.h>
 
 #include <cppuhelper/bootstrap.hxx>
 #include <comphelper/processfactory.hxx>
@@ -20,8 +20,9 @@
 #include <sddll.hxx>
 #include <drawdoc.hxx>
 
-#include <iostream>
-#include <vector>
+#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/lang/XMultiComponentFactory.hpp>
 
 using namespace ::com::sun::star;
 
@@ -30,7 +31,6 @@ namespace {
 class Test : public CppUnit::TestFixture {
 public:
     Test();
-    virtual ~Test() override;
 
     virtual void setUp() override;
     virtual void tearDown() override;
@@ -45,20 +45,19 @@ public:
 
 private:
     uno::Reference< uno::XComponentContext > m_xContext;
-    SdDrawDocument* m_pDoc;
+    std::unique_ptr<SdDrawDocument> m_pDoc;
 };
 
 Test::Test()
-    : m_pDoc(nullptr)
+    : m_xContext(cppu::defaultBootstrap_InitialComponentContext())
 {
-    m_xContext = cppu::defaultBootstrap_InitialComponentContext();
 
     uno::Reference<lang::XMultiComponentFactory> xFactory(m_xContext->getServiceManager());
     uno::Reference<lang::XMultiServiceFactory> xSM(xFactory, uno::UNO_QUERY_THROW);
 
     //Without this we're crashing because callees are using
     //getProcessServiceFactory.  In general those should be removed in favour
-    //of retaining references to the root ServiceFactory as its passed around
+    //of retaining references to the root ServiceFactory as it's passed around
     comphelper::setProcessServiceFactory(xSM);
 
     InitVCL();
@@ -68,17 +67,12 @@ Test::Test()
 
 void Test::setUp()
 {
-    m_pDoc = new SdDrawDocument(DocumentType::Impress, nullptr);
+    m_pDoc.reset(new SdDrawDocument(DocumentType::Impress, nullptr));
 }
 
 void Test::tearDown()
 {
-    delete m_pDoc;
-}
-
-Test::~Test()
-{
-    uno::Reference< lang::XComponent >(m_xContext, uno::UNO_QUERY_THROW)->dispose();
+    m_pDoc.reset();
 }
 
 void Test::testAddPage()

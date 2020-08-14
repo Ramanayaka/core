@@ -20,9 +20,10 @@
 #define INCLUDED_SD_SOURCE_UI_SIDEBAR_SLIDETRANSITIONPANEL_HXX
 
 #include "PanelBase.hxx"
-#include <sfx2/sidebar/ControlFactory.hxx>
 
-namespace sd { namespace sidebar {
+namespace com::sun::star::frame { class XFrame; }
+
+namespace sd::sidebar {
 
 class SlideTransitionPanel
     : public PanelBase
@@ -46,7 +47,7 @@ private:
     css::uno::Reference<css::frame::XFrame> mxFrame;
 };
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 #endif
 

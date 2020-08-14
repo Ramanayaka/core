@@ -10,7 +10,6 @@
 #include <sal/config.h>
 
 #include <cassert>
-#include <cmath>
 #include <random>
 
 #include <oox/ole/vbaexport.hxx>
@@ -25,15 +24,12 @@
 
 #include <ooo/vba/excel/XWorkbook.hpp>
 
-#include <oox/helper/binaryoutputstream.hxx>
-#include "oox/helper/propertyset.hxx"
-#include "oox/token/properties.hxx"
+#include <oox/helper/propertyset.hxx>
+#include <oox/token/properties.hxx>
 
 #include <sot/storage.hxx>
 
-#include <rtl/uuid.h>
-
-#include <comphelper/string.hxx>
+#include <comphelper/xmltools.hxx>
 
 #define USE_UTF8_CODEPAGE 0
 #if USE_UTF8_CODEPAGE
@@ -88,28 +84,6 @@ OUString createHexStringFromDigit(sal_uInt8 nDigit)
     return aString.toAsciiUpperCase();
 }
 
-OUString createGuidStringFromInt(sal_uInt8 nGuid[16])
-{
-    OUStringBuffer aBuffer;
-    aBuffer.append('{');
-    for(size_t i = 0; i < 16; ++i)
-    {
-        aBuffer.append(createHexStringFromDigit(nGuid[i]));
-        if(i == 3|| i == 5 || i == 7 || i == 9 )
-            aBuffer.append('-');
-    }
-    aBuffer.append('}');
-    OUString aString = aBuffer.makeStringAndClear();
-    return aString.toAsciiUpperCase();
-}
-
-OUString generateGUIDString()
-{
-    sal_uInt8 nGuid[16];
-    rtl_createUuid(nGuid, nullptr, true);
-    return createGuidStringFromInt(nGuid);
-}
-
 }
 
 VBACompressionChunk::VBACompressionChunk(SvStream& rCompressedStream, const sal_uInt8* pData, std::size_t nChunkSize)
@@ -124,7 +98,7 @@ VBACompressionChunk::VBACompressionChunk(SvStream& rCompressedStream, const sal_
 {
 }
 
-void setUInt16(sal_uInt8* pBuffer, size_t nPos, sal_uInt16 nVal)
+static void setUInt16(sal_uInt8* pBuffer, size_t nPos, sal_uInt16 nVal)
 {
     pBuffer[nPos] = nVal & 0xFF;
     pBuffer[nPos+1] = (nVal & 0xFF00) >> 8;
@@ -193,7 +167,7 @@ void VBACompressionChunk::PackCompressedChunkSize(size_t nSize, sal_uInt16& rHea
 void VBACompressionChunk::PackCompressedChunkFlag(bool bCompressed, sal_uInt16& rHeader)
 {
     sal_uInt16 nTemp1 = rHeader & 0x7FFF;
-    sal_uInt16 nTemp2 = ((sal_uInt16)bCompressed) << 15;
+    sal_uInt16 nTemp2 = static_cast<sal_uInt16>(bCompressed) << 15;
     rHeader = nTemp1 | nTemp2;
 }
 
@@ -260,7 +234,7 @@ void VBACompressionChunk::compressToken(size_t index, sal_uInt8& nFlagByte)
 // section 2.4.1.3.18
 void VBACompressionChunk::SetFlagBit(size_t index, bool bVal, sal_uInt8& rFlag)
 {
-    size_t nTemp1 = ((int)bVal) << index;
+    size_t nTemp1 = static_cast<int>(bVal) << index;
     sal_uInt8 nTemp2 = rFlag & (~nTemp1);
     rFlag = nTemp2 | nTemp1;
 }
@@ -382,7 +356,7 @@ void VBACompression::write()
     std::size_t nRemainingSize = nSize;
     while(bStreamNotEnded)
     {
-        std::size_t nChunkSize = nRemainingSize > 4096 ? 4096 : nRemainingSize;
+        std::size_t nChunkSize = std::min<size_t>(nRemainingSize, 4096);
         VBACompressionChunk aChunk(mrCompressedStream, &pData[nSize - nRemainingSize], nChunkSize);
         aChunk.write();
 
@@ -427,12 +401,7 @@ void VBAEncryption::writeVersionEnc()
 
 sal_uInt8 VBAEncryption::calculateProjKey(const OUString& rProjectKey)
 {
-    sal_uInt32 nProjKey = 0;
-        // use sal_uInt32 instead of sal_uInt8 to avoid miscompilation at least
-        // under "Microsoft (R) C/C++ Optimizing Compiler Version 18.00.31101
-        // for x64" with --enable-64-bit and non-debug, causing
-        // CppunitTest_oox_vba_encryption's TestVbaEncryption::testProjKey1 to
-        // fail with actual 53 vs. expected 223
+    sal_uInt8 nProjKey = 0;
     sal_Int32 n = rProjectKey.getLength();
     const sal_Unicode* pString = rProjectKey.getStr();
     for (sal_Int32 i = 0; i < n; ++i)
@@ -762,7 +731,7 @@ void writePROJECTMODULE(SvStream& rStrm, const OUString& name, const sal_uInt16 
 // section 2.3.4.2.3
 void writePROJECTMODULES(SvStream& rStrm, const css::uno::Reference<css::container::XNameContainer>& xNameContainer, const std::vector<sal_Int32>& rLibrayMap)
 {
-    css::uno::Sequence<OUString> aElementNames = xNameContainer->getElementNames();
+    const css::uno::Sequence<OUString> aElementNames = xNameContainer->getElementNames();
     sal_Int32 n = aElementNames.getLength();
     css::uno::Reference<css::script::vba::XVBAModuleInfo> xModuleInfo(xNameContainer, css::uno::UNO_QUERY);
     assert(xModuleInfo.is());
@@ -812,7 +781,7 @@ void exportDirStream(SvStream& rStrm, const css::uno::Reference<css::container::
 }
 
 // section 2.3.4.3 Module Stream
-void exportModuleStream(SvStream& rStrm, const OUString& rSourceCode, const OUString& aElementName, css::script::ModuleInfo& rInfo)
+void exportModuleStream(SvStream& rStrm, const OUString& rSourceCode, const OUString& aElementName, css::script::ModuleInfo const & rInfo)
 {
     SvMemoryStream aModuleStream(4096, 4096);
 
@@ -868,7 +837,7 @@ void exportVBAProjectStream(SvStream& rStrm)
 void exportPROJECTStream(SvStream& rStrm, const css::uno::Reference<css::container::XNameContainer>& xNameContainer,
         const OUString& projectName, const std::vector<sal_Int32>& rLibraryMap)
 {
-    css::uno::Sequence<OUString> aElementNames = xNameContainer->getElementNames();
+    const css::uno::Sequence<OUString> aElementNames = xNameContainer->getElementNames();
     sal_Int32 n = aElementNames.getLength();
     css::uno::Reference<css::script::vba::XVBAModuleInfo> xModuleInfo(xNameContainer, css::uno::UNO_QUERY);
     assert(xModuleInfo.is());
@@ -877,7 +846,8 @@ void exportPROJECTStream(SvStream& rStrm, const css::uno::Reference<css::contain
 
     // section 2.3.1.2 ProjectId
     exportString(rStrm, "ID=\"");
-    OUString aProjectID = generateGUIDString();
+    OUString aProjectID
+        = OStringToOUString(comphelper::xml::generateGUIDString(), RTL_TEXTENCODING_UTF8);
     exportString(rStrm, aProjectID);
     exportString(rStrm, "\"\r\n");
 
@@ -992,7 +962,7 @@ void exportPROJECTwmStream(SvStream& rStrm, const css::uno::Sequence<OUString>& 
 
 void getCorrectExportOrder(const css::uno::Reference<css::container::XNameContainer>& xNameContainer, std::vector<sal_Int32>& rLibraryMap)
 {
-    css::uno::Sequence<OUString> aElementNames = xNameContainer->getElementNames();
+    const css::uno::Sequence<OUString> aElementNames = xNameContainer->getElementNames();
     sal_Int32 n = aElementNames.getLength();
     css::uno::Reference<css::script::vba::XVBAModuleInfo> xModuleInfo(xNameContainer, css::uno::UNO_QUERY);
 
@@ -1055,7 +1025,7 @@ void VbaExport::exportVBA(SotStorage* pRootStorage)
     if (!xNameContainer.is()) {
         return;
     }
-    css::uno::Sequence<OUString> aElementNames = xNameContainer->getElementNames();
+    const css::uno::Sequence<OUString> aElementNames = xNameContainer->getElementNames();
     sal_Int32 n = aElementNames.getLength(); // get the number of modules
     // export the elements in the order MSO expects them
     // we store the index of the
@@ -1146,7 +1116,7 @@ void VbaExport::exportVBA(SotStorage* pRootStorage)
     pRootStorage->Commit();
 }
 
-css::uno::Reference<css::script::XLibraryContainer> VbaExport::getLibraryContainer()
+css::uno::Reference<css::script::XLibraryContainer> VbaExport::getLibraryContainer() const
 {
     oox::PropertySet aDocProp(mxModel);
     css::uno::Reference<css::script::XLibraryContainer> xLibContainer(aDocProp.getAnyProperty(oox::PROP_BasicLibraries), css::uno::UNO_QUERY);
@@ -1154,7 +1124,7 @@ css::uno::Reference<css::script::XLibraryContainer> VbaExport::getLibraryContain
     return xLibContainer;
 }
 
-css::uno::Reference<css::container::XNameContainer> VbaExport::getBasicLibrary()
+css::uno::Reference<css::container::XNameContainer> VbaExport::getBasicLibrary() const
 {
     css::uno::Reference<css::container::XNameContainer> xLibrary;
     try
@@ -1185,7 +1155,7 @@ bool VbaExport::containsVBAProject()
     return bVBACompatibilty;
 }
 
-OUString VbaExport::getProjectName()
+OUString VbaExport::getProjectName() const
 {
     css::uno::Reference<css::script::vba::XVBACompatibility> xVbaCompatibility(getLibraryContainer(), css::uno::UNO_QUERY);
     if (xVbaCompatibility.is())

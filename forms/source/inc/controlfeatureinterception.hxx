@@ -20,11 +20,12 @@
 #ifndef INCLUDED_FORMS_SOURCE_INC_CONTROLFEATUREINTERCEPTION_HXX
 #define INCLUDED_FORMS_SOURCE_INC_CONTROLFEATUREINTERCEPTION_HXX
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/frame/XDispatchProviderInterceptor.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <memory>
+
+#include "urltransformer.hxx"
 
 
 namespace frm
@@ -61,12 +62,12 @@ namespace frm
 
         // XDispatchProviderInterception
         /// @throws css::uno::RuntimeException
-        void SAL_CALL registerDispatchProviderInterceptor( const css::uno::Reference< css::frame::XDispatchProviderInterceptor >& Interceptor );
+        void registerDispatchProviderInterceptor( const css::uno::Reference< css::frame::XDispatchProviderInterceptor >& Interceptor );
         /// @throws css::uno::RuntimeException
-        void SAL_CALL releaseDispatchProviderInterceptor( const css::uno::Reference< css::frame::XDispatchProviderInterceptor >& Interceptor );
+        void releaseDispatchProviderInterceptor( const css::uno::Reference< css::frame::XDispatchProviderInterceptor >& Interceptor );
 
         // XComponent
-        void SAL_CALL dispose();
+        void dispose();
 
         /** queries the interceptor chain for the given dispatch, with a blank target frame and no frame search flags
         */
@@ -77,7 +78,7 @@ namespace frm
             with a blank target frame and no frame search flags
         */
         css::uno::Reference< css::frame::XDispatch >
-            queryDispatch( const sal_Char* _pAsciiURL );
+            queryDispatch( const char* _pAsciiURL );
     };
 
 

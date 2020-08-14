@@ -19,6 +19,7 @@
 #ifndef INCLUDED_SVX_SOURCE_INC_FMEXPL_HXX
 #define INCLUDED_SVX_SOURCE_INC_FMEXPL_HXX
 
+#include <config_options.h>
 #include <svl/lstner.hxx>
 #include <svl/SfxBroadcaster.hxx>
 #include <vcl/window.hxx>
@@ -29,23 +30,13 @@
 #include <sfx2/ctrlitem.hxx>
 #include <vcl/image.hxx>
 
-#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/form/XForm.hpp>
 #include <com/sun/star/form/XFormComponent.hpp>
 #include <com/sun/star/beans/PropertyChangeEvent.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
-#include <com/sun/star/container/XContainer.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/container/XIndexContainer.hpp>
 
-#include <svtools/treelistbox.hxx>
-
-#include <vcl/dialog.hxx>
-#include <vcl/group.hxx>
-#include <vcl/button.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/dockwin.hxx>
 #include <svx/fmview.hxx>
 
 #include "fmexch.hxx"
@@ -141,10 +132,11 @@ private:
     css::uno::Reference< css::container::XChild >     m_xChild;
 
 protected:
-    Image               m_aNormalImage;
+    OUString            m_aNormalImage;
     OUString            aText;
 
-    FmEntryDataList*    pChildList;
+    std::unique_ptr<FmEntryDataList>
+                        pChildList;
     FmEntryData*        pParent;
 
 protected:
@@ -159,14 +151,14 @@ public:
     void    SetText( const OUString& rText ){ aText = rText; }
     void    SetParent( FmEntryData* pParentData ){ pParent = pParentData; }
 
-    const Image&    GetNormalImage() const { return m_aNormalImage; }
+    const OUString& GetNormalImage() const { return m_aNormalImage; }
 
     const OUString& GetText() const { return aText; }
     FmEntryData*    GetParent() const { return pParent; }
-    FmEntryDataList* GetChildList() const { return pChildList; }
+    FmEntryDataList* GetChildList() const { return pChildList.get(); }
 
     virtual bool IsEqualWithoutChildren( FmEntryData* pEntryData );
-    virtual FmEntryData* Clone() = 0;
+    virtual std::unique_ptr<FmEntryData> Clone() = 0;
 
     // note that the interface returned is normalized, i.e. querying the given XInterface of the object
     // for XInterface must return the interface itself.
@@ -187,23 +179,21 @@ public:
 };
 
 
-typedef ::std::vector< FmEntryData* > FmEntryDataBaseList;
-
 class FmEntryDataList final
 {
 private:
-    FmEntryDataBaseList maEntryDataList;
+    std::vector< std::unique_ptr<FmEntryData> > maEntryDataList;
 
 public:
     FmEntryDataList();
     ~FmEntryDataList();
 
     FmEntryData*    at( size_t Index )
-        { return ( Index < maEntryDataList.size() ) ? maEntryDataList[ Index ] : nullptr; }
+        { return maEntryDataList.at(Index).get(); }
 
     size_t          size() const { return maEntryDataList.size(); }
-    FmEntryData*    remove( FmEntryData* pItem );
-    void            insert( FmEntryData* pItem, size_t Index );
+    void            removeNoDelete( FmEntryData* pItem );
+    void            insert( std::unique_ptr<FmEntryData> pItem, size_t Index );
     void            clear();
 };
 
@@ -233,7 +223,6 @@ public:
 class FmFormData : public FmEntryData
 {
     css::uno::Reference< css::form::XForm >           m_xForm;
-    css::uno::Reference< css::container::XContainer > m_xContainer;
 
 public:
     FmFormData(const css::uno::Reference< css::form::XForm >& _rxForm, FmFormData* _pParent);
@@ -241,10 +230,9 @@ public:
     virtual ~FmFormData() override;
 
     const css::uno::Reference< css::form::XForm >& GetFormIface() const { return m_xForm; }
-    const css::uno::Reference< css::container::XContainer >& GetContainer() const { return m_xContainer; }
 
     virtual bool IsEqualWithoutChildren( FmEntryData* pEntryData ) override;
-    virtual FmEntryData* Clone() override;
+    virtual std::unique_ptr<FmEntryData> Clone() override;
 };
 
 
@@ -252,7 +240,7 @@ class FmControlData : public FmEntryData
 {
     css::uno::Reference< css::form::XFormComponent >  m_xFormComponent;
 
-    Image GetImage() const;
+    OUString GetImage() const;
 
 public:
 
@@ -265,7 +253,7 @@ public:
 
     const css::uno::Reference< css::form::XFormComponent >& GetFormComponent() const { return m_xFormComponent; }
     virtual bool IsEqualWithoutChildren( FmEntryData* pEntryData ) override;
-    virtual FmEntryData* Clone() override;
+    virtual std::unique_ptr<FmEntryData> Clone() override;
 
     void ModelReplaced(const css::uno::Reference< css::form::XFormComponent >& _rxNew);
 };
@@ -277,7 +265,7 @@ namespace svxform
 
     class NavigatorTreeModel;
 
-    class OFormComponentObserver
+    class OFormComponentObserver final
         :public ::cppu::WeakImplHelper <   css::beans::XPropertyChangeListener
                                         ,   css::container::XContainerListener
                                         >
@@ -306,7 +294,7 @@ namespace svxform
         bool IsLocked() const { return m_nLocks != 0; }
         bool CanUndo() const { return m_bCanUndo; }
         void ReleaseModel() { m_pNavModel = nullptr; }
-    protected:
+    private:
         void Insert(const css::uno::Reference< css::uno::XInterface >& xIface, sal_Int32 nIndex);
         void Remove( const css::uno::Reference< css::uno::XInterface >& _rxElement );
     };
@@ -317,7 +305,8 @@ namespace svxform
         friend class NavigatorTree;
         friend class OFormComponentObserver;
 
-        FmEntryDataList*            m_pRootList;
+        std::unique_ptr<FmEntryDataList>
+                                    m_pRootList;
         FmFormShell*                m_pFormShell;
         FmFormPage*                 m_pFormPage;
         FmFormModel*                m_pFormModel;
@@ -326,10 +315,10 @@ namespace svxform
         void UpdateContent( const css::uno::Reference< css::form::XForms >& xForms );
 
         void InsertForm(const css::uno::Reference< css::form::XForm >& xForm, sal_uInt32 nRelPos);
-        void RemoveForm(FmFormData* pFormData);
+        void RemoveForm(FmFormData const * pFormData);
 
         void InsertFormComponent(const css::uno::Reference< css::form::XFormComponent >& xComp, sal_uInt32 nRelPos);
-        void RemoveFormComponent(FmControlData* pControlData);
+        void RemoveFormComponent(FmControlData const * pControlData);
         void InsertSdrObj(const SdrObject* pSdrObj);
         void RemoveSdrObj(const SdrObject* pSdrObj);
 
@@ -346,12 +335,11 @@ namespace svxform
         virtual ~NavigatorTreeModel() override;
 
         void FillBranch( FmFormData* pParentData );
-        void ClearBranch( FmFormData* pParentData );
         void UpdateContent( FmFormShell* pNewShell );
 
-        void Insert( FmEntryData* pEntryData, sal_uLong nRelPos = CONTAINER_APPEND,
-                                              bool bAlterModel = false );
-        void Remove( FmEntryData* pEntryData, bool bAlterModel = false );
+        void Insert(FmEntryData* pEntryData, sal_uInt32 nRelPos = SAL_MAX_UINT32,
+                                             bool bAlterModel = false);
+        void Remove(FmEntryData* pEntryData, bool bAlterModel = false);
 
         static bool Rename( FmEntryData* pEntryData, const OUString& rNewText );
 
@@ -362,59 +350,67 @@ namespace svxform
         FmFormShell*        GetFormShell() const { return m_pFormShell; }
         FmFormPage*         GetFormPage() const { return m_pFormPage; }
         FmEntryData*        FindData( const css::uno::Reference< css::uno::XInterface >& xElement, FmEntryDataList* pDataList, bool bRecurs=true );
-        FmEntryData*        FindData( const OUString& rText, FmFormData* pParentData, bool bRecurs );
-        FmEntryDataList*    GetRootList() const { return m_pRootList; }
-        static css::uno::Reference< css::container::XIndexContainer >   GetFormComponents( FmFormData* pParentFormData );
-        SdrObject*          Search(SdrObjListIter& rIter, const css::uno::Reference< css::form::XFormComponent >& xComp);
+        FmEntryData*        FindData( const OUString& rText, FmFormData const * pParentData, bool bRecurs );
+        FmEntryDataList*    GetRootList() const { return m_pRootList.get(); }
+        static css::uno::Reference< css::container::XIndexContainer >   GetFormComponents( FmFormData const * pParentFormData );
 
         virtual void Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
     };
 
+    class NavigatorTree;
 
-    typedef std::set<SvTreeListEntry*> SvLBoxEntrySortedArray;
-
-    class NavigatorTree : public SvTreeListBox, public SfxListener
+    class NavigatorTreeDropTarget : public DropTargetHelper
     {
-        enum DROP_ACTION        { DA_SCROLLUP, DA_SCROLLDOWN, DA_EXPANDNODE };
+    private:
+        NavigatorTree& m_rTreeView;
+
+        virtual sal_Int8 AcceptDrop( const AcceptDropEvent& rEvt ) override;
+        virtual sal_Int8 ExecuteDrop( const ExecuteDropEvent& rEvt ) override;
+
+    public:
+        NavigatorTreeDropTarget(NavigatorTree& rTreeView);
+    };
+
+    typedef std::set<std::unique_ptr<weld::TreeIter>> SvLBoxEntrySortedArray;
+
+    class NavigatorTree final : public SfxListener
+    {
+        std::unique_ptr<weld::TreeView> m_xTreeView;
+        NavigatorTreeDropTarget m_aDropTargetHelper;
+
         enum SELDATA_ITEMS      { SDI_DIRTY, SDI_ALL, SDI_NORMALIZED, SDI_NORMALIZED_FORMARK };
 
-        // when dropping I want to be able to scroll and to expand folders, for this:
-        AutoTimer           m_aDropActionTimer;
         Timer               m_aSynchronizeTimer;
         // the meta-data about my current selection
         SvLBoxEntrySortedArray  m_arrCurrentSelection;
         // the entries which, in the view, are currently marked as "cut" (painted semi-transparent)
         ListBoxEntrySet         m_aCutEntries;
 
-        ::svxform::OControlExchangeHelper   m_aControlExchange;
+        ::svxform::OControlExchangeHelper m_aControlExchange;
 
-        NavigatorTreeModel* m_pNavModel;
-        SvTreeListEntry*        m_pRootEntry;
-        SvTreeListEntry*        m_pEditEntry;
+        std::unique_ptr<NavigatorTreeModel> m_pNavModel;
+        std::unique_ptr<weld::TreeIter> m_xRootEntry;
+        std::unique_ptr<weld::TreeIter> m_xEditEntry;
 
         ImplSVEvent *       nEditEvent;
 
         SELDATA_ITEMS       m_sdiState;
-        Point               m_aTimerTriggered;      // the position at which the DropTimer was switched on
-        DROP_ACTION         m_aDropActionType;
 
         sal_uInt16          m_nSelectLock;
         sal_uInt16          m_nFormsSelected;
         sal_uInt16          m_nControlsSelected;
         sal_uInt16          m_nHiddenControls;      // (the number is included in m_nControlsSelected)
 
-        unsigned short      m_aTimerCounter;
-
         bool            m_bDragDataDirty        : 1;    // ditto
         bool            m_bPrevSelectionMixed   : 1;
-        bool            m_bMarkingObjects       : 1;    // if this is sal_True, I do not need to react to the RequestSelectHints
         bool            m_bRootSelected         : 1;
         bool            m_bInitialUpdate        : 1;    // am I the first time in the UpdateContent?
         bool            m_bKeyboardCut          : 1;
+        bool            m_bEditing              : 1;
 
-        FmControlData*  NewControl( const OUString& rServiceName, SvTreeListEntry* pParentEntry, bool bEditName );
-        void            NewForm( SvTreeListEntry* pParentEntry );
-        SvTreeListEntry*    Insert( FmEntryData* pEntryData, sal_uLong nRelPos );
+        FmControlData*  NewControl(const OUString& rServiceName, const weld::TreeIter& rParentEntry, bool bEditName);
+        void            NewForm(const weld::TreeIter& rParentEntry);
+        std::unique_ptr<weld::TreeIter> Insert(FmEntryData* pEntryData, int nRelPos);
         void            Remove( FmEntryData* pEntryData );
 
 
@@ -441,7 +437,7 @@ namespace svxform
         void SynchronizeMarkList();
             // reverse direction of SynchronizeMarkList: selects in the view all controls corresponding to the current selection
 
-        void CollectObjects(FmFormData* pFormData, bool bDeep, ::std::set< css::uno::Reference< css::form::XFormComponent > >& _rObjects);
+        void CollectObjects(FmFormData const * pFormData, bool bDeep, ::std::set< css::uno::Reference< css::form::XFormComponent > >& _rObjects);
 
         // in the Select I usually update the Marklist of the corresponding view,
         // with the following functions I can control the locking of this behavior
@@ -449,59 +445,58 @@ namespace svxform
         void UnlockSelectionHandling() { --m_nSelectLock; }
         bool IsSelectionHandlingLocked() const { return m_nSelectLock>0; }
 
-        static bool IsHiddenControl(FmEntryData* pEntryData);
+        bool IsEditingActive() const { return m_bEditing; }
+
+        static bool IsHiddenControl(FmEntryData const * pEntryData);
+
+        DECL_LINK( KeyInputHdl, const KeyEvent&, bool );
+        DECL_LINK( PopupMenuHdl, const CommandEvent&, bool );
+
+        DECL_LINK(EditingEntryHdl, const weld::TreeIter&, bool);
+        typedef std::pair<const weld::TreeIter&, OUString> IterString;
+        DECL_LINK(EditedEntryHdl, const IterString&, bool);
 
         DECL_LINK( OnEdit, void*, void );
-        DECL_LINK( OnDropActionTimer, Timer*, void );
 
-        DECL_LINK( OnEntrySelDesel, SvTreeListBox*, void );
+        DECL_LINK( OnEntrySelDesel, weld::TreeView&, void );
         DECL_LINK( OnSynchronizeTimer, Timer*, void );
 
         DECL_LINK( OnClipboardAction, OLocalExchange&, void );
 
-    protected:
-        virtual void    Command( const CommandEvent& rEvt ) override;
-
-        virtual sal_Int8    AcceptDrop( const AcceptDropEvent& rEvt ) override;
-        virtual sal_Int8    ExecuteDrop( const ExecuteDropEvent& rEvt ) override;
-        virtual void        StartDrag( sal_Int8 nAction, const Point& rPosPixel ) override;
+        DECL_LINK( DragBeginHdl, bool&, bool );
 
     public:
-        NavigatorTree(vcl::Window* pParent );
+        NavigatorTree(std::unique_ptr<weld::TreeView> xTreeView);
         virtual ~NavigatorTree() override;
-        virtual void dispose() override;
 
         void Clear();
         void UpdateContent( FmFormShell* pFormShell );
-        void MarkViewObj( FmFormData* pFormData, bool bDeep );
-        void MarkViewObj( FmControlData* pControlData );
+        void MarkViewObj( FmFormData const * pFormData, bool bDeep );
+        void MarkViewObj( FmControlData const * pControlData );
         void UnmarkAllViewObj();
 
-        static bool IsFormEntry( SvTreeListEntry* pEntry );
-        static bool IsFormComponentEntry( SvTreeListEntry* pEntry );
+        void GrabFocus() { m_xTreeView->grab_focus(); }
 
-        OUString GenerateName( FmEntryData* pEntryData );
+        bool IsFormEntry(const weld::TreeIter& rEntry);
+        bool IsFormComponentEntry(const weld::TreeIter& rEntry);
 
-        NavigatorTreeModel*    GetNavModel() const { return m_pNavModel; }
-        SvTreeListEntry*        FindEntry( FmEntryData* pEntryData );
+        OUString GenerateName( FmEntryData const * pEntryData );
 
-        virtual bool EditedEntry( SvTreeListEntry* pEntry, const OUString& rNewText ) override;
-        virtual bool Select( SvTreeListEntry* pEntry, bool bSelect=true ) override;
-        virtual bool EditingEntry( SvTreeListEntry* pEntry, Selection& ) override;
+        NavigatorTreeModel*    GetNavModel() const { return m_pNavModel.get(); }
+        std::unique_ptr<weld::TreeIter> FindEntry(FmEntryData* pEntryData);
+
         virtual void Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
-        virtual void KeyInput( const KeyEvent& rKEvt ) override;
 
-        virtual void ModelHasRemoved( SvTreeListEntry* _pEntry ) override;
+        weld::TreeView& get_widget() { return *m_xTreeView; }
 
-        using SvTreeListBox::Insert;
-        using SvTreeListBox::ExecuteDrop;
-        using SvTreeListBox::Select;
+        sal_Int8    AcceptDrop(const AcceptDropEvent& rEvt);
+        sal_Int8    ExecuteDrop(const ExecuteDropEvent& rEvt);
 
     private:
-        sal_Int8    implAcceptDataTransfer( const DataFlavorExVector& _rFlavors, sal_Int8 _nAction, SvTreeListEntry* _pTargetEntry, bool _bDnD );
+        sal_Int8    implAcceptDataTransfer( const DataFlavorExVector& _rFlavors, sal_Int8 _nAction, weld::TreeIter* _pTargetEntry, bool _bDnD );
 
         sal_Int8    implExecuteDataTransfer( const OControlTransferData& _rData, sal_Int8 _nAction, const Point& _rDropPos, bool _bDnD );
-        sal_Int8    implExecuteDataTransfer( const OControlTransferData& _rData, sal_Int8 _nAction, SvTreeListEntry* _pTargetEntry, bool _bDnD );
+        sal_Int8    implExecuteDataTransfer( const OControlTransferData& _rData, sal_Int8 _nAction, weld::TreeIter* _pTargetEntry, bool _bDnD );
 
         // check if a cut, copy, or drag operation can be started in the current situation
         bool        implAllowExchange( sal_Int8 _nAction, bool* _pHasNonHidden = nullptr );
@@ -511,6 +506,8 @@ namespace svxform
         // fills m_aControlExchange in preparation of a DnD or clipboard operation
         bool        implPrepareExchange( sal_Int8 _nAction );
 
+        void        ModelHasRemoved(weld::TreeIter* _pEntry);
+
         void        doPaste();
         void        doCopy();
         void        doCut();
@@ -518,14 +515,12 @@ namespace svxform
         bool    doingKeyboardCut( ) const { return m_bKeyboardCut; }
     };
 
-
     class NavigatorFrame : public SfxDockingWindow, public SfxControllerItem
     {
     private:
-        VclPtr< ::svxform::NavigatorTree> m_pNavigatorTree;
+        std::unique_ptr<NavigatorTree> m_xNavigatorTree;
 
     protected:
-        virtual void Resize() override;
         virtual bool Close() override;
         virtual void GetFocus() override;
         virtual Size CalcDockingSize( SfxChildAlignment ) override;
@@ -544,18 +539,14 @@ namespace svxform
         void FillInfo( SfxChildWinInfo& rInfo ) const override;
     };
 
-
-    class SVX_DLLPUBLIC NavigatorFrameManager : public SfxChildWindow
+    class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) NavigatorFrameManager : public SfxChildWindow
     {
     public:
         SVX_DLLPRIVATE NavigatorFrameManager( vcl::Window *pParent, sal_uInt16 nId, SfxBindings *pBindings,
                           SfxChildWinInfo *pInfo );
         SFX_DECL_CHILDWINDOW( NavigatorFrameManager );
     };
-
-
 }
-
 
 #endif // INCLUDED_SVX_SOURCE_INC_FMEXPL_HXX
 

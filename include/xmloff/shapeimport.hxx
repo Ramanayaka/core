@@ -22,28 +22,28 @@
 
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
-#include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/drawing/HomogenMatrix.hpp>
 #include <com/sun/star/drawing/ProjectionMode.hpp>
 #include <com/sun/star/drawing/ShadeMode.hpp>
 #include <salhelper/simplereferenceobject.hxx>
 #include <xmloff/xmlictxt.hxx>
 
-#include <xmloff/table/XMLTableImport.hxx>
 #include <basegfx/vector/b3dvector.hxx>
 #include <vector>
 #include <memory>
 
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::drawing { class XShape; }
+namespace com::sun::star::drawing { class XShapes; }
+namespace com::sun::star::frame { class XModel; }
+namespace com::sun::star::xml::sax { class XAttributeList; }
+
 class SvXMLImport;
-class SvXMLImportContext;
 class SvXMLTokenMap;
 class SvXMLStylesContext;
 class XMLSdPropHdlFactory;
-class XMLPropertySetMapper;
 class SvXMLImportPropertyMapper;
+class XMLTableImport;
 
 
 enum SdXMLGroupShapeElemTokenMap
@@ -131,7 +131,7 @@ enum SdXML3DLightAttrTokenMap
 
 // dr3d:3dlight context
 
-class SdXML3DLightContext: public SvXMLImportContext
+class SdXML3DLightContext final : public SvXMLImportContext
 {
     // local parameters which need to be read
     sal_Int32                   maDiffuseColor;
@@ -147,9 +147,9 @@ public:
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList);
     virtual ~SdXML3DLightContext() override;
 
-    sal_Int32 GetDiffuseColor() { return maDiffuseColor; }
-    const ::basegfx::B3DVector& GetDirection() { return maDirection; }
-    bool GetEnabled() { return mbEnabled; }
+    sal_Int32 GetDiffuseColor() const { return maDiffuseColor; }
+    const ::basegfx::B3DVector& GetDirection() const { return maDirection; }
+    bool GetEnabled() const { return mbEnabled; }
 };
 
 
@@ -213,9 +213,9 @@ public:
 };
 
 
-class ShapeSortContext;
 struct XMLShapeImportHelperImpl;
 struct XMLShapeImportPageContextImpl;
+struct SdXMLEventContextData;
 
 class XMLOFF_DLLPUBLIC XMLShapeImportHelper : public salhelper::SimpleReferenceObject
 {
@@ -242,11 +242,6 @@ class XMLOFF_DLLPUBLIC XMLShapeImportHelper : public salhelper::SimpleReferenceO
     std::unique_ptr<SvXMLTokenMap>              mp3DSphereObjectAttrTokenMap;
     std::unique_ptr<SvXMLTokenMap>              mp3DLightAttrTokenMap;
 
-    const OUString       msStartShape;
-    const OUString       msEndShape;
-    const OUString       msStartGluePointIndex;
-    const OUString       msEndGluePointIndex;
-
     rtl::Reference< XMLTableImport > mxShapeTableImport;
 
 protected:
@@ -262,22 +257,22 @@ public:
     SvXMLShapeContext* CreateGroupChildContext(
         SvXMLImport& rImport, sal_uInt16 nPrefix, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList,
-        css::uno::Reference< css::drawing::XShapes >& rShapes,
+        css::uno::Reference< css::drawing::XShapes > const & rShapes,
         bool bTemporaryShape = false);
 
     SvXMLShapeContext* CreateFrameChildContext(
         SvXMLImport& rImport, sal_uInt16 nPrefix, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList,
-        css::uno::Reference< css::drawing::XShapes >& rShapes,
+        css::uno::Reference< css::drawing::XShapes > const & rShapes,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xFrameAttrList);
-    static SvXMLImportContext* CreateFrameChildContext(
+    static SvXMLImportContextRef CreateFrameChildContext(
         SvXMLImportContext *pThisContext, sal_uInt16 nPrefix, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList );
 
     SvXMLShapeContext* Create3DSceneChildContext(
         SvXMLImport& rImport, sal_uInt16 nPrefix, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList,
-        css::uno::Reference< css::drawing::XShapes >& rShapes);
+        css::uno::Reference< css::drawing::XShapes > const & rShapes);
 
     const SvXMLTokenMap& GetGroupShapeElemTokenMap();
     const SvXMLTokenMap& GetFrameShapeElemTokenMap();
@@ -313,24 +308,28 @@ public:
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList,
         css::uno::Reference< css::drawing::XShapes >& rShapes);
 
-    // helper functions for z-order sorting
-    void pushGroupForSorting( css::uno::Reference< css::drawing::XShapes >& rShapes );
-    void popGroupAndSort();
+    // tdf#127791 help function for group shape events
+    void addShapeEvents(SdXMLEventContextData& rData);
 
-    void shapeWithZIndexAdded( css::uno::Reference< css::drawing::XShape >& rShape,
+    // helper functions processing groups after their component shapes are collected
+    // e.g. for z-order sorting or adding events to the group
+    void pushGroupForPostProcessing( css::uno::Reference< css::drawing::XShapes >& rShapes );
+    void popGroupAndPostProcess();
+
+    void shapeWithZIndexAdded( css::uno::Reference< css::drawing::XShape > const & rShape,
                                sal_Int32 nZIndex );
     /// Updates the z-order of other shapes to be consistent again, needed due
     /// to the removal of rShape.
     void shapeRemoved(const css::uno::Reference<css::drawing::XShape>& rShape);
 
-    void addShapeConnection( css::uno::Reference< css::drawing::XShape >& rConnectorShape,
+    void addShapeConnection( css::uno::Reference< css::drawing::XShape > const & rConnectorShape,
                              bool bStart,
                              const OUString& rDestShapeId,
                              sal_Int32 nDestGlueId );
 
     /** adds a mapping for a glue point identifier from an xml file to the identifier created after inserting
         the new glue point into the core. The saved mappings can be retrieved by getGluePointId() */
-    void addGluePointMapping( css::uno::Reference< css::drawing::XShape >& xShape,
+    void addGluePointMapping( css::uno::Reference< css::drawing::XShape > const & xShape,
                               sal_Int32 nSourceId, sal_Int32 nDestinnationId );
 
     /** moves all current DestinationId's for rXShape by n */
@@ -342,11 +341,11 @@ public:
 
     /** this method must be calling before the first shape is imported for the given page.
         Calls to this method can be nested */
-    void startPage( css::uno::Reference< css::drawing::XShapes >& rShapes );
+    void startPage( css::uno::Reference< css::drawing::XShapes > const & rShapes );
 
     /** this method must be calling after the last shape is imported for the given page
         Calls to this method can be nested */
-    void endPage( css::uno::Reference< css::drawing::XShapes >& rShapes );
+    void endPage( css::uno::Reference< css::drawing::XShapes > const & rShapes );
 
     void restoreConnections();
 
@@ -359,7 +358,7 @@ public:
     bool IsHandleProgressBarEnabled() const;
 
     /** queries the capability of the current model to create presentation shapes */
-    bool IsPresentationShapesSupported();
+    bool IsPresentationShapesSupported() const;
 
     XMLSdPropHdlFactory* GetSdPropHdlFactory() const { return mpSdPropHdlFactory.get(); }
 

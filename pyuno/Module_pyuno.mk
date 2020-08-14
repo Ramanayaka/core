@@ -48,17 +48,14 @@ endif # SYSTEM_PYTHON
 
 ifneq ($(OS),MACOSX)
 $(eval $(call gb_Module_add_check_targets,pyuno, \
-    PythonTest_pyuno_pytests_ssl \
+    PythonTest_pyuno_pytests_testssl \
 ))
 endif
 
-ifneq (,$(filter PythonTest_pytests,$(MAKECMDGOALS)))
-$(eval $(call gb_Module_add_targets,pyuno, \
-    PythonTest_pytests \
+$(eval $(call gb_Module_add_subsequentcheck_targets,pyuno, \
     PythonTest_pyuno_pytests_testcollections \
     PythonTest_pyuno_pytests_insertremovecells \
 ))
-endif
 
 endif # DISABLE_PYTHON
 

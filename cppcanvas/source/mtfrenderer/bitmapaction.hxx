@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_BITMAPACTION_HXX
-#define INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_BITMAPACTION_HXX
+#pragma once
 
 #include <cppcanvas/canvas.hxx>
 #include <action.hxx>
@@ -31,10 +30,8 @@ class BitmapEx;
 
 /* Definition of internal::BitmapActionFactory */
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
         struct OutDevState;
 
         /** Creates encapsulated converters between GDIMetaFile and
@@ -47,21 +44,18 @@ namespace cppcanvas
         namespace BitmapActionFactory
         {
             /// Unscaled bitmap action, only references destination point
-            ActionSharedPtr createBitmapAction( const ::BitmapEx&,
+            std::shared_ptr<Action> createBitmapAction( const ::BitmapEx&,
                                                        const ::basegfx::B2DPoint& rDstPoint,
                                                        const CanvasSharedPtr&,
                                                        const OutDevState& );
 
             /// Scaled bitmap action, dest point and dest size
-            ActionSharedPtr createBitmapAction( const ::BitmapEx&,
+            std::shared_ptr<Action> createBitmapAction( const ::BitmapEx&,
                                                        const ::basegfx::B2DPoint&  rDstPoint,
                                                        const ::basegfx::B2DVector& rDstSize,
                                                        const CanvasSharedPtr&,
                                                        const OutDevState& );
         }
-    }
 }
-
-#endif // INCLUDED_CPPCANVAS_SOURCE_MTFRENDERER_BITMAPACTION_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,6 +19,7 @@
 #ifndef INCLUDED_SVX_SVX3DITEMS_HXX
 #define INCLUDED_SVX_SVX3DITEMS_HXX
 
+#include <config_options.h>
 #include <svl/intitem.hxx>
 #include <svl/eitem.hxx>
 
@@ -63,43 +64,41 @@ inline SfxBoolItem makeSvx3DDoubleSidedItem(bool bVal) {
 class Svx3DReducedLineGeometryItem : public SfxBoolItem {
 public:
     Svx3DReducedLineGeometryItem(bool bVal = false);
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nItemVersion) const override;
-    virtual sal_uInt16 GetVersion(sal_uInt16 nFileFormatVersion) const override;
-    SfxPoolItem * Clone(SfxItemPool * = nullptr) const override;
+    Svx3DReducedLineGeometryItem* Clone(SfxItemPool * = nullptr) const override;
 };
 
-class SVX_DLLPUBLIC Svx3DNormalsKindItem : public SfxUInt16Item {
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) Svx3DNormalsKindItem : public SfxUInt16Item {
 public:
     Svx3DNormalsKindItem(sal_uInt16 nVal = 0);
 
     // use drawing::NormalsKind
     SVX_DLLPRIVATE virtual  bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     SVX_DLLPRIVATE virtual  bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-    SVX_DLLPRIVATE virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
+    SVX_DLLPRIVATE virtual Svx3DNormalsKindItem* Clone(SfxItemPool* pPool = nullptr) const override;
 };
 
 inline SfxBoolItem makeSvx3DNormalsInvertItem(bool bVal) {
     return SfxBoolItem(SDRATTR_3DOBJ_NORMALS_INVERT, bVal);
 }
 
-class SVX_DLLPUBLIC Svx3DTextureProjectionXItem : public SfxUInt16Item {
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) Svx3DTextureProjectionXItem : public SfxUInt16Item {
 public:
     Svx3DTextureProjectionXItem(sal_uInt16 nVal = 0);
 
     // use drawing::TextureProjectionMode
     SVX_DLLPRIVATE virtual  bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     SVX_DLLPRIVATE virtual  bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-    SVX_DLLPRIVATE virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
+    SVX_DLLPRIVATE virtual Svx3DTextureProjectionXItem* Clone(SfxItemPool* pPool = nullptr) const override;
 };
 
-class SVX_DLLPUBLIC Svx3DTextureProjectionYItem : public SfxUInt16Item {
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) Svx3DTextureProjectionYItem : public SfxUInt16Item {
 public:
     Svx3DTextureProjectionYItem(sal_uInt16 nVal = 0);
 
     // use drawing::TextureProjectionMode
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
+    virtual Svx3DTextureProjectionYItem* Clone(SfxItemPool* pPool = nullptr) const override;
 };
 
 inline SfxBoolItem makeSvx3DShadow3DItem(bool bVal) {
@@ -118,24 +117,24 @@ inline SfxUInt16Item makeSvx3DMaterialSpecularIntensityItem(sal_uInt16 nVal) {
     return SfxUInt16Item(SDRATTR_3DOBJ_MAT_SPECULAR_INTENSITY, nVal);
 }
 
-class SVX_DLLPUBLIC Svx3DTextureKindItem : public SfxUInt16Item {
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) Svx3DTextureKindItem final : public SfxUInt16Item {
 public:
     Svx3DTextureKindItem(sal_uInt16 nVal = 3);
 
     // use drawing::TextureKind
     SVX_DLLPRIVATE virtual  bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     SVX_DLLPRIVATE virtual  bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-    SVX_DLLPRIVATE virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
+    SVX_DLLPRIVATE virtual Svx3DTextureKindItem* Clone(SfxItemPool* pPool = nullptr) const override;
 };
 
-class SVX_DLLPUBLIC Svx3DTextureModeItem : public SfxUInt16Item {
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) Svx3DTextureModeItem final : public SfxUInt16Item {
 public:
     Svx3DTextureModeItem(sal_uInt16 nVal = 2);
 
     // use drawing:TextureMode
     SVX_DLLPRIVATE virtual  bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     SVX_DLLPRIVATE virtual  bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-    SVX_DLLPRIVATE virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
+    SVX_DLLPRIVATE virtual Svx3DTextureModeItem* Clone(SfxItemPool* pPool = nullptr) const override;
 };
 
 inline SfxBoolItem makeSvx3DTextureFilterItem(bool bVal) {
@@ -143,14 +142,14 @@ inline SfxBoolItem makeSvx3DTextureFilterItem(bool bVal) {
 }
 
 // Svx3D _3DSCENE_ Items
-class SVX_DLLPUBLIC Svx3DPerspectiveItem : public SfxUInt16Item {
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) Svx3DPerspectiveItem : public SfxUInt16Item {
 public:
     Svx3DPerspectiveItem(ProjectionType nVal = ProjectionType::Perspective);
 
     // use drawing::ProjectionMode
     SVX_DLLPRIVATE virtual  bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     SVX_DLLPRIVATE virtual  bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-    SVX_DLLPRIVATE virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
+    SVX_DLLPRIVATE virtual Svx3DPerspectiveItem* Clone(SfxItemPool* pPool = nullptr) const override;
 };
 
 inline SfxUInt32Item makeSvx3DDistanceItem(sal_uInt32 nVal) {
@@ -269,14 +268,14 @@ inline SfxUInt16Item makeSvx3DShadowSlantItem(sal_uInt16 nVal) {
     return SfxUInt16Item(SDRATTR_3DSCENE_SHADOW_SLANT, nVal);
 }
 
-class SVX_DLLPUBLIC Svx3DShadeModeItem : public SfxUInt16Item {
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) Svx3DShadeModeItem : public SfxUInt16Item {
 public:
     Svx3DShadeModeItem(sal_uInt16 nVal = 2);
 
     // use drawing::ShadeMode
     SVX_DLLPRIVATE virtual  bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     SVX_DLLPRIVATE virtual  bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-    SVX_DLLPRIVATE virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
+    SVX_DLLPRIVATE virtual Svx3DShadeModeItem* Clone(SfxItemPool* pPool = nullptr) const override;
 };
 
 
@@ -284,45 +283,35 @@ public:
 class Svx3DSmoothNormalsItem : public SfxBoolItem {
 public:
     Svx3DSmoothNormalsItem(bool bVal = true);
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nItemVersion) const override;
-    virtual sal_uInt16 GetVersion(sal_uInt16 nFileFormatVersion) const override;
-    SfxPoolItem * Clone(SfxItemPool * = nullptr) const override;
+    Svx3DSmoothNormalsItem* Clone(SfxItemPool * = nullptr) const override;
 };
 
 // #107245# Item to replace bExtrudeSmoothFrontBack and bLatheSmoothFrontBack
 class Svx3DSmoothLidsItem : public SfxBoolItem {
 public:
     Svx3DSmoothLidsItem(bool bVal = false);
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nItemVersion) const override;
-    virtual sal_uInt16 GetVersion(sal_uInt16 nFileFormatVersion) const override;
-    SfxPoolItem * Clone(SfxItemPool * = nullptr) const override;
+    Svx3DSmoothLidsItem* Clone(SfxItemPool * = nullptr) const override;
 };
 
 // #107245# Item to replace bExtrudeCharacterMode and bLatheCharacterMode
 class Svx3DCharacterModeItem : public SfxBoolItem {
 public:
     Svx3DCharacterModeItem(bool bVal = false);
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nItemVersion) const override;
-    virtual sal_uInt16 GetVersion(sal_uInt16 nFileFormatVersion) const override;
-    SfxPoolItem * Clone(SfxItemPool * = nullptr) const override;
+    Svx3DCharacterModeItem* Clone(SfxItemPool * = nullptr) const override;
 };
 
 // #107245# Item to replace bExtrudeCloseFront and bLatheCloseFront
-class SVX_DLLPUBLIC Svx3DCloseFrontItem : public SfxBoolItem {
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) Svx3DCloseFrontItem : public SfxBoolItem {
 public:
     Svx3DCloseFrontItem(bool bVal = true);
-    SVX_DLLPRIVATE virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nItemVersion) const override;
-    SVX_DLLPRIVATE virtual sal_uInt16 GetVersion(sal_uInt16 nFileFormatVersion) const override;
-    SfxPoolItem * Clone(SfxItemPool * = nullptr) const override;
+    Svx3DCloseFrontItem* Clone(SfxItemPool * = nullptr) const override;
 };
 
 // #107245# Item to replace bExtrudeCloseBack and bLatheCloseBack
-class SVX_DLLPUBLIC Svx3DCloseBackItem : public SfxBoolItem {
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) Svx3DCloseBackItem : public SfxBoolItem {
 public:
     Svx3DCloseBackItem(bool bVal = true);
-    SVX_DLLPRIVATE virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nItemVersion) const override;
-    SVX_DLLPRIVATE virtual sal_uInt16 GetVersion(sal_uInt16 nFileFormatVersion) const override;
-    SfxPoolItem * Clone(SfxItemPool * = nullptr) const override;
+    Svx3DCloseBackItem* Clone(SfxItemPool * = nullptr) const override;
 };
 
 #endif // INCLUDED_SVX_SVX3DITEMS_HXX

@@ -20,13 +20,15 @@
 #define INCLUDED_CHART2_SOURCE_INC_NUMBERFORMATTERWRAPPER_HXX
 
 #include "charttoolsdllapi.hxx"
-#include <svl/zforlist.hxx>
 #include <com/sun/star/util/XNumberFormatsSupplier.hpp>
+#include <tools/solar.h>
+#include <tools/date.hxx>
+
+class SvNumberFormatter;
+class Color;
 
 namespace chart
 {
-
-class FixedNumberFormatter;
 
 class OOO_DLLPUBLIC_CHARTTOOLS NumberFormatterWrapper final
 {
@@ -36,9 +38,9 @@ public:
 
     SvNumberFormatter* getSvNumberFormatter() const { return m_pNumberFormatter;}
     const css::uno::Reference< css::util::XNumberFormatsSupplier >&
-                getNumberFormatsSupplier() { return m_xNumberFormatsSupplier; };
+                getNumberFormatsSupplier() const { return m_xNumberFormatsSupplier; };
 
-    OUString getFormattedString( sal_Int32 nNumberFormatKey, double fValue, sal_Int32& rLabelColor, bool& rbColorChanged ) const;
+    OUString getFormattedString( sal_Int32 nNumberFormatKey, double fValue, Color& rLabelColor, bool& rbColorChanged ) const;
     Date    getNullDate() const;
 
 private: //private member
@@ -49,14 +51,14 @@ private: //private member
     css::uno::Any m_aNullDate;
 };
 
-class OOO_DLLPUBLIC_CHARTTOOLS FixedNumberFormatter final
+class FixedNumberFormatter final
 {
 public:
     FixedNumberFormatter( const css::uno::Reference< css::util::XNumberFormatsSupplier >& xSupplier
         , sal_Int32 nNumberFormatKey );
     ~FixedNumberFormatter();
 
-    OUString getFormattedString( double fValue, sal_Int32& rLabelColor, bool& rbColorChanged ) const;
+    OUString getFormattedString( double fValue, Color& rLabelColor, bool& rbColorChanged ) const;
 
 private:
     NumberFormatterWrapper      m_aNumberFormatterWrapper;

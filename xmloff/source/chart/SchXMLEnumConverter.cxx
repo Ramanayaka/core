@@ -20,6 +20,7 @@
 #include <com/sun/star/chart/ChartLegendPosition.hpp>
 #include <com/sun/star/chart/ChartLegendExpansion.hpp>
 #include "SchXMLEnumConverter.hxx"
+#include <xmloff/xmlement.hxx>
 #include <rtl/instance.hxx>
 
 using namespace ::xmloff::token;
@@ -34,7 +35,7 @@ const SvXMLEnumMapEntry<chart::ChartLegendPosition> aXMLLegendPositionEnumMap[] 
     { XML_TOP,      chart::ChartLegendPosition_TOP      },
     { XML_END,      chart::ChartLegendPosition_RIGHT    },
     { XML_BOTTOM,   chart::ChartLegendPosition_BOTTOM   },
-    { XML_TOKEN_INVALID, (chart::ChartLegendPosition)0 }
+    { XML_TOKEN_INVALID, chart::ChartLegendPosition(0) }
 };
 
 class XMLLegendPositionPropertyHdl : public XMLEnumPropertyHdl
@@ -54,7 +55,7 @@ const SvXMLEnumMapEntry<chart::ChartLegendExpansion> aXMLLegendExpansionEnumMap[
     { XML_HIGH,        chart::ChartLegendExpansion_HIGH },
     { XML_BALANCED,    chart::ChartLegendExpansion_BALANCED },
     { XML_CUSTOM,      chart::ChartLegendExpansion_CUSTOM },
-    { XML_TOKEN_INVALID, (chart::ChartLegendExpansion)0 }
+    { XML_TOKEN_INVALID, chart::ChartLegendExpansion(0) }
 };
 
 class XMLLegendExpansionPropertyHdl : public XMLEnumPropertyHdl

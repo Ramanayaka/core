@@ -21,7 +21,7 @@
 #define INCLUDED_L10NTOOLS_INC_XRMMERGE_HXX
 
 #include <memory>
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <fstream>
 
@@ -56,7 +56,7 @@ protected:
         const OString &rCloseTag
     )=0;
 
-    const OString& GetGID() { return sGID; }
+    const OString& GetGID() const { return sGID; }
 
 public:
     XRMResParser();
@@ -65,18 +65,18 @@ public:
     void Execute( int nToken, char * pToken );
 
     void SetError() { bError = true; }
-    bool GetError() { return bError; }
+    bool GetError() const { return bError; }
 };
 
 
 /// Export strings from *.xrm and description.xml files
-class XRMResExport : public XRMResParser
+class XRMResExport final : public XRMResParser
 {
 private:
     std::unique_ptr<ResData> pResData;
     OString sPath;
     PoOfstream pOutputStream;
-protected:
+
     void WorkOnDesc(
         const OString &rOpenTag,
         OString &rText
@@ -101,16 +101,15 @@ public:
 
 
 /// Merge strings to *.xrm and description.xml files
-class XRMResMerge : public XRMResParser
+class XRMResMerge final : public XRMResParser
 {
 private:
-    MergeDataFile *pMergeDataFile;
+    std::unique_ptr<MergeDataFile> pMergeDataFile;
     OString sFilename;
     std::unique_ptr<ResData> pResData;
     std::ofstream pOutputStream;
     std::vector<OString> aLanguages;
 
-protected:
     void WorkOnDesc(
         const OString &rOpenTag,
         OString &rText

@@ -20,13 +20,11 @@
 #ifndef INCLUDED_FRAMEWORK_INC_JOBS_SHELLJOB_HXX
 #define INCLUDED_FRAMEWORK_INC_JOBS_SHELLJOB_HXX
 
-#include <macros/xserviceinfo.hxx>
-
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/task/XJob.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 namespace framework{
 
@@ -38,16 +36,14 @@ namespace framework{
             registered for. Further there is a generic
             way to configure the shell command and it's list
             of arguments.
-
-    @author as96863
  */
-class ShellJob : public ::cppu::WeakImplHelper< css::lang::XServiceInfo,css::task::XJob >
+class ShellJob final : public ::cppu::WeakImplHelper< css::lang::XServiceInfo,css::task::XJob >
 {
 
     // member
     private:
 
-        /** @short  reference to an uno service manager. */
+        /** @short  reference to a uno service manager. */
         css::uno::Reference< css::uno::XComponentContext > m_xContext;
 
     // native interface
@@ -72,12 +68,10 @@ class ShellJob : public ::cppu::WeakImplHelper< css::lang::XServiceInfo,css::tas
     // uno interface
     public:
 
-        // css.lang.XServiceInfo
-        DECLARE_XSERVICEINFO_NOFACTORY
-        /* Helper for registry */
-        /// @throws css::uno::Exception
-        static css::uno::Reference< css::uno::XInterface >             SAL_CALL impl_createInstance                ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
-        static css::uno::Reference< css::lang::XSingleServiceFactory > SAL_CALL impl_createFactory                 ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
+        /* interface XServiceInfo */
+        virtual OUString SAL_CALL getImplementationName() override;
+        virtual sal_Bool SAL_CALL supportsService( const OUString& sServiceName ) override;
+        virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
         // css.task.XJob
         virtual css::uno::Any SAL_CALL execute(const css::uno::Sequence< css::beans::NamedValue >& lArguments) override;
@@ -117,8 +111,8 @@ class ShellJob : public ::cppu::WeakImplHelper< css::lang::XServiceInfo,css::tas
 
             @param  bCheckExitCode
                     bind the execution result to the exit code of the started process.
-                    If it's set to false we return false only in case executable couldnt be found
-                    or couldnt be started.
+                    If it's set to false we return false only in case executable couldn't be found
+                    or couldn't be started.
 
             @return sal_True if command was executed successfully; sal_False otherwise.
          */

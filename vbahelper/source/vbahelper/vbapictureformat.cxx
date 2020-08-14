@@ -118,18 +118,16 @@ ScVbaPictureFormat::IncrementContrast( double increment )
 OUString
 ScVbaPictureFormat::getServiceImplName()
 {
-    return OUString("ScVbaPictureFormat");
+    return "ScVbaPictureFormat";
 }
 
 uno::Sequence< OUString >
 ScVbaPictureFormat::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msform.PictureFormat";
-    }
+        "ooo.vba.msform.PictureFormat"
+    };
     return aServiceNames;
 }
 

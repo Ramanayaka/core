@@ -26,10 +26,10 @@
 #include <com/sun/star/uno/genfunc.hxx>
 #include <uno/data.h>
 
-#include "bridge.hxx"
-#include "types.hxx"
-#include "unointerfaceproxy.hxx"
-#include "vtables.hxx"
+#include <bridge.hxx>
+#include <types.hxx>
+#include <unointerfaceproxy.hxx>
+#include <vtables.hxx>
 
 #include "mscx.hxx"
 
@@ -308,7 +308,7 @@ bool cpp_call(
 
 }
 
-namespace bridges { namespace cpp_uno { namespace shared {
+namespace bridges::cpp_uno::shared {
 
 void unoInterfaceProxyDispatch(
     uno_Interface * pUnoI,
@@ -423,7 +423,7 @@ void unoInterfaceProxyDispatch(
                 }
                 TYPELIB_DANGER_RELEASE( pTD );
             }
-            SAL_FALLTHROUGH; // else perform queryInterface()
+            [[fallthrough]]; // else perform queryInterface()
         }
         default:
             if ( ! cpp_call(
@@ -452,6 +452,6 @@ void unoInterfaceProxyDispatch(
     }
 }
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

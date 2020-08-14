@@ -10,19 +10,21 @@
 #ifndef INCLUDED_SC_SOURCE_CORE_INC_GROUPTOKENCONVERTER_HXX
 #define INCLUDED_SC_SOURCE_CORE_INC_GROUPTOKENCONVERTER_HXX
 
-#include "document.hxx"
-#include "formulacell.hxx"
-#include "scdllapi.h"
-#include "tokenarray.hxx"
-#include "types.hxx"
+#include <scdllapi.h>
+#include <types.hxx>
 #include <formulalogger.hxx>
 
-class SC_DLLPUBLIC ScGroupTokenConverter
+class ScDocument;
+class ScFormulaCell;
+class ScTokenArray;
+namespace sc { struct FormulaGroupContext; }
+
+class ScGroupTokenConverter
 {
     ScTokenArray& mrGroupTokens;
     ScDocument& mrDoc;
     std::shared_ptr<sc::FormulaGroupContext> mxFormulaGroupContext;
-    ScFormulaCell& mrCell;
+    const ScFormulaCell& mrCell;
     const ScAddress& mrPos;
 
     bool isSelfReferenceRelative(const ScAddress& rRefPos, SCROW nRelRow);
@@ -30,9 +32,9 @@ class SC_DLLPUBLIC ScGroupTokenConverter
     SCROW trimLength(SCTAB nTab, SCCOL nCol1, SCCOL nCol2, SCROW nRow, SCROW nRowLen);
 
 public:
-    ScGroupTokenConverter(ScTokenArray& rGroupTokens, ScDocument& rDoc, ScFormulaCell& rCell, const ScAddress& rPos);
+    ScGroupTokenConverter(ScTokenArray& rGroupTokens, ScDocument& rDoc, const ScFormulaCell& rCell, const ScAddress& rPos);
 
-    bool convert( ScTokenArray& rCode, sc::FormulaLogger::GroupScope& rScope );
+    bool convert( const ScTokenArray& rCode, sc::FormulaLogger::GroupScope& rScope );
 };
 
 #endif // INCLUDED_SC_SOURCE_CORE_INC_GROUPTOKENCONVERTER_HXX

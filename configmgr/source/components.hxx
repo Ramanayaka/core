@@ -22,25 +22,24 @@
 
 #include <sal/config.h>
 
-#include <map>
-#include <memory>
 #include <set>
 
 #include <com/sun/star/beans/Optional.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <rtl/ref.hxx>
+#include <o3tl/sorted_vector.hxx>
 
 #include "additions.hxx"
 #include "data.hxx"
 #include "modifications.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace beans { class XPropertySet; }
     namespace uno {
         class Any;
         class XComponentContext;
     }
-} } }
+}
 
 namespace configmgr {
 
@@ -133,15 +132,11 @@ private:
     void parseXcsXcuIniLayer(
         int layer, OUString const & url, bool recordAdditions);
 
-    void parseModuleLayer(int layer, OUString const & url);
-
     void parseResLayer(int layer, OUString const & url);
 
     void parseModificationLayer(int layer, OUString const & url);
 
-    int getExtensionLayer(bool shared);
-
-    typedef std::set< RootAccess * > WeakRootSet;
+    int getExtensionLayer(bool shared) const;
 
     typedef
         config_map<
@@ -156,7 +151,7 @@ private:
     css::uno::Reference< css::uno::XComponentContext >
         context_;
     Data data_;
-    WeakRootSet roots_;
+    o3tl::sorted_vector< RootAccess * > roots_;
     ExternalServices externalServices_;
     rtl::Reference< WriteThread > writeThread_;
     int sharedExtensionLayer_;

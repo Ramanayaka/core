@@ -20,7 +20,10 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_COMMANDINFO_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_COMMANDINFO_HXX
 
-#include <stdtypes.h>
+#include <rtl/ustring.hxx>
+
+#include <unordered_map>
+#include <vector>
 
 namespace framework
 {
@@ -35,7 +38,7 @@ struct CommandInfo
     sal_Int16                   nImageInfo;
 };
 
-typedef std::unordered_map<OUString, CommandInfo, OUStringHash> CommandToInfoMap;
+typedef std::unordered_map<OUString, CommandInfo> CommandToInfoMap;
 
 } // namespace framework
 

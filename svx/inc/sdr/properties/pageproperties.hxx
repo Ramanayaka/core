@@ -23,13 +23,10 @@
 #include <sdr/properties/emptyproperties.hxx>
 
 
-namespace sdr
-{
-    namespace properties
+namespace sdr::properties
     {
-        class PageProperties : public EmptyProperties
+        class PageProperties final : public EmptyProperties
         {
-        protected:
             // create a new object specific itemset with object specific ranges.
             virtual std::unique_ptr<SfxItemSet> CreateObjectSpecificItemSet(SfxItemPool& pPool) override;
 
@@ -50,7 +47,7 @@ namespace sdr
             virtual ~PageProperties() override;
 
             // Clone() operator, normally just calls the local copy constructor
-            virtual BaseProperties& Clone(SdrObject& rObj) const override;
+            virtual std::unique_ptr<BaseProperties> Clone(SdrObject& rObj) const override;
 
             // get itemset. Override here to allow creating the empty itemset
             // without asserting
@@ -65,8 +62,7 @@ namespace sdr
             // clear single item
             virtual void ClearObjectItem(const sal_uInt16 nWhich = 0) override;
         };
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace sdr::properties
 
 
 #endif // INCLUDED_SVX_INC_SDR_PROPERTIES_PAGEPROPERTIES_HXX

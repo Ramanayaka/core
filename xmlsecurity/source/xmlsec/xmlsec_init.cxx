@@ -7,12 +7,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "xmlsec/xmlsec_init.hxx"
+#include <sal/config.h>
+#include <xmlsec-wrapper.h>
+
+#include <xmlsec/xmlsec_init.hxx>
 
 #include <com/sun/star/uno/RuntimeException.hpp>
 
-#include "xmlsec/xmlstreamio.hxx"
-#include "xmlsec-wrapper.h"
+#include <xmlsec/xmlstreamio.hxx>
+#ifdef XMLSEC_CRYPTO_MSCRYPTO
+#include <xmlsec/mscng/crypto.h>
+#else
+#include <xmlsec/nss/crypto.h>
+#endif
 
 using namespace css::uno;
 
@@ -24,14 +31,25 @@ XSECXMLSEC_DLLPUBLIC void initXmlSec()
     }
 
     //Init xmlsec crypto engine library
-    if( xmlSecCryptoInit() < 0 ) {
-        xmlSecShutdown() ;
-        throw RuntimeException() ;
+#ifdef XMLSEC_CRYPTO_MSCRYPTO
+    if( xmlSecMSCngInit() < 0 ) {
+        xmlSecShutdown();
+        throw RuntimeException();
     }
+#else
+    if( xmlSecNssInit() < 0 ) {
+        xmlSecShutdown();
+        throw RuntimeException();
+    }
+#endif
 
     //Enable external stream handlers
     if( xmlEnableStreamInputCallbacks() < 0 ) {
-        xmlSecCryptoShutdown() ;
+#ifdef XMLSEC_CRYPTO_MSCRYPTO
+        xmlSecMSCngShutdown();
+#else
+        xmlSecNssShutdown();
+#endif
         xmlSecShutdown() ;
         throw RuntimeException() ;
     }
@@ -40,7 +58,11 @@ XSECXMLSEC_DLLPUBLIC void initXmlSec()
 XSECXMLSEC_DLLPUBLIC void deInitXmlSec()
 {
     xmlDisableStreamInputCallbacks();
-    xmlSecCryptoShutdown();
+#ifdef XMLSEC_CRYPTO_MSCRYPTO
+    xmlSecMSCngShutdown();
+#else
+    xmlSecNssShutdown();
+#endif
     xmlSecShutdown();
 }
 

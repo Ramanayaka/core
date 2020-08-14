@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/AIndex.hxx"
+#include <ado/AIndex.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <cppuhelper/typeprovider.hxx>
-#include <comphelper/sequence.hxx>
-#include "ado/AColumns.hxx"
-#include <comphelper/extract.hxx>
-#include "TConnection.hxx"
+#include <ado/AColumns.hxx>
+#include <TConnection.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/types.hxx>
 
 using namespace ::comphelper;
@@ -56,7 +55,7 @@ OAdoIndex::OAdoIndex(bool _bCase,OConnection* _pConnection)
 
 void OAdoIndex::refreshColumns()
 {
-    TStringVector aVector;
+    ::std::vector< OUString> aVector;
 
     WpADOColumns aColumns;
     if ( m_aIndex.IsValid() )
@@ -68,11 +67,11 @@ void OAdoIndex::refreshColumns()
     if ( m_pColumns )
         m_pColumns->reFill(aVector);
     else
-        m_pColumns = new OColumns(*this,m_aMutex,aVector,aColumns,isCaseSensitive(),m_pConnection);
+        m_pColumns.reset(new OColumns(*this, m_aMutex, aVector, aColumns, isCaseSensitive(), m_pConnection));
 }
 
 
-Sequence< sal_Int8 > OAdoIndex::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > OAdoIndex::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
@@ -83,7 +82,7 @@ Sequence< sal_Int8 > OAdoIndex::getUnoTunnelImplementationId()
 
 sal_Int64 OAdoIndex::getSomething( const Sequence< sal_Int8 > & rId )
 {
-    return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    return isUnoTunnelId<OAdoIndex>(rId)
                 ? reinterpret_cast< sal_Int64 >( this )
                 : sdbcx::OIndex::getSomething(rId);
 }

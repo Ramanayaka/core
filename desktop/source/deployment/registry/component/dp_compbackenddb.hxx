@@ -23,18 +23,12 @@
 #include <rtl/ustring.hxx>
 #include <rtl/string.hxx>
 #include <vector>
-#include <list>
-#include "dp_backenddb.hxx"
+#include <deque>
+#include <dp_backenddb.hxx>
 
-namespace com { namespace sun { namespace star {
-        namespace uno {
-        class XComponentContext;
-        }
-}}}
+namespace com::sun::star::uno { class XComponentContext; }
 
-namespace dp_registry {
-namespace backend {
-namespace component {
+namespace dp_registry::backend::component {
 
 /* The XML file stores the extensions which are currently registered.
    They will be removed when they are revoked.
@@ -75,7 +69,7 @@ public:
     {
         Data(): javaTypeLibrary(false) {};
 
-        std::list< OUString> implementationNames;
+        std::deque< OUString> implementationNames;
         std::vector< std::pair< OUString, OUString> >singletons;
             // map from singleton names to implementation names
         bool javaTypeLibrary;
@@ -95,8 +89,8 @@ public:
 
 
 }
-}
-}
+
+
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

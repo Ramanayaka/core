@@ -26,24 +26,13 @@
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/supportsservice.hxx>
+#include <rtl/ref.hxx>
 #include "../misc/ImplHelper.hxx"
 
-#if defined _MSC_VER
-#pragma warning(push,1)
-#pragma warning(disable:4917)
-#endif
 #include <shlobj.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
-
-#define IMPL_NAME  "com.sun.star.datatransfer.DataFormatTranslator"
 
 #define CPPUTYPE_SEQSALINT8       cppu::UnoType<Sequence< sal_Int8 >>::get()
 #define CPPUTYPE_DEFAULT          CPPUTYPE_SEQSALINT8
-#define CPPUTYPE_OUSTR            cppu::UnoType<OUString>::get()
-#define CPPUTYPE_SALINT32         cppu::UnoType<sal_Int32>::get()
-#define EMPTY_OUSTR               OUString()
 
 const OUString Windows_FormatName ("windows_formatname");
 const css::uno::Type CppuType_ByteSequence = cppu::UnoType<css::uno::Sequence<sal_Int8>>::get();
@@ -59,12 +48,6 @@ using namespace com::sun::star::container;
 
 namespace
 {
-    Sequence< OUString > SAL_CALL DataFormatTranslator_getSupportedServiceNames( )
-    {
-        Sequence< OUString > aRet { "com.sun.star.datatransfer.DataFormatTranslator" };
-        return aRet;
-    }
-}
 
 struct FormatEntry
 {
@@ -80,6 +63,8 @@ struct FormatEntry
     OUString                      aNativeFormatName;
     sal_Int32                     aStandardFormatId;
 };
+
+}
 
 FormatEntry::FormatEntry(
     const char *mime_content_type,
@@ -104,7 +89,7 @@ FormatEntry::FormatEntry(
 // format number we can stop if we find the first
 // CF_INVALID
 
-static const std::vector< FormatEntry > g_TranslTable {
+const std::vector< FormatEntry > g_TranslTable {
     //SotClipboardFormatId::DIF
         FormatEntry("application/x-openoffice-dif;windows_formatname=\"DIF\"", "DIF", "DIF", CF_DIF, CPPUTYPE_DEFAULT),
     // SotClipboardFormatId::BITMAP
@@ -144,9 +129,7 @@ static const std::vector< FormatEntry > g_TranslTable {
     // SotClipboardFormatId::SVIM
         FormatEntry("application/x-openoffice-svim;windows_formatname=\"SVIM (StarView ImageMap)\"", "SVIM (StarView ImageMap)", nullptr, CF_INVALID, CPPUTYPE_DEFAULT),
     // SotClipboardFormatId::XFA
-        FormatEntry("application/x-openoffice-xfa;windows_formatname=\"XFA (XOutDev FillAttr)\"", "XFA (XOutDev FillAttr)", nullptr, CF_INVALID, CPPUTYPE_DEFAULT),
-    // SotClipboardFormatId::EDITENGINE
-        FormatEntry("application/x-openoffice-editengine;windows_formatname=\"EditEngineFormat\"", "EditEngineFormat", nullptr, CF_INVALID, CPPUTYPE_DEFAULT),
+        FormatEntry("application/x-libreoffice-xfa;windows_formatname=\"XFA (XOutDev FillAttr Any)\"", "XFA (XOutDev FillAttr Any)", nullptr, CF_INVALID, CPPUTYPE_DEFAULT),
     // SotClipboardFormatId::EDITENGINE_ODF_TEXT_FLAT
         FormatEntry("application/vnd.oasis.opendocument.text-flat-xml", "EditEngine ODF", nullptr, CF_INVALID, CPPUTYPE_DEFAULT),
     // SotClipboardFormatId::INTERNALLINK_STATE
@@ -362,44 +345,33 @@ static const std::vector< FormatEntry > g_TranslTable {
 
 namespace {
 
-void SAL_CALL findDataFlavorForStandardFormatId( sal_Int32 aStandardFormatId, DataFlavor& aDataFlavor )
+void findDataFlavorForStandardFormatId( sal_Int32 aStandardFormatId, DataFlavor& aDataFlavor )
 {
     /*
-        we break the for loop if we find the first CF_INVALID
+        we stop search if we find the first CF_INVALID
         because in the translation table the entries with a
         standard clipboard format id appear before the other
         entries with CF_INVALID
     */
-    vector< FormatEntry >::const_iterator citer_end = g_TranslTable.end( );
-    for ( vector< FormatEntry >::const_iterator citer = g_TranslTable.begin( ); citer != citer_end; ++citer )
-    {
-        sal_Int32 stdId = citer->aStandardFormatId;
-        if ( aStandardFormatId == stdId )
-        {
-            aDataFlavor = citer->aDataFlavor;
-            break;
-        }
-        else if ( stdId == CF_INVALID )
-            break;
-    }
+    vector< FormatEntry >::const_iterator citer = std::find_if(g_TranslTable.begin(), g_TranslTable.end(),
+        [&aStandardFormatId](const FormatEntry& rEntry) {
+            return rEntry.aStandardFormatId == aStandardFormatId
+                || rEntry.aStandardFormatId == CF_INVALID;
+        });
+    if (citer != g_TranslTable.end() && citer->aStandardFormatId == aStandardFormatId)
+        aDataFlavor = citer->aDataFlavor;
 }
 
-void SAL_CALL findDataFlavorForNativeFormatName( const OUString& aNativeFormatName, DataFlavor& aDataFlavor )
+void findDataFlavorForNativeFormatName( const OUString& aNativeFormatName, DataFlavor& aDataFlavor )
 {
-    vector< FormatEntry >::const_iterator citer_end = g_TranslTable.end( );
-    for ( vector< FormatEntry >::const_iterator citer = g_TranslTable.begin( );
-          citer != citer_end;
-          ++citer )
-    {
-        if ( aNativeFormatName.equalsIgnoreAsciiCase( citer->aNativeFormatName ) )
-        {
-            aDataFlavor = citer->aDataFlavor;
-            break;
-        }
-    }
+    vector< FormatEntry >::const_iterator citer = std::find_if(g_TranslTable.begin(), g_TranslTable.end(),
+        [&aNativeFormatName](const FormatEntry& rEntry) {
+            return aNativeFormatName.equalsIgnoreAsciiCase(rEntry.aNativeFormatName); });
+    if (citer != g_TranslTable.end())
+        aDataFlavor = citer->aDataFlavor;
 }
 
-void SAL_CALL findStandardFormatIdForCharset( const OUString& aCharset, Any& aAny )
+void findStandardFormatIdForCharset( const OUString& aCharset, Any& aAny )
 {
     if ( aCharset.equalsIgnoreAsciiCase( "utf-16" ) )
         aAny <<= static_cast< sal_Int32 >( CF_UNICODETEXT );
@@ -411,52 +383,47 @@ void SAL_CALL findStandardFormatIdForCharset( const OUString& aCharset, Any& aAn
     }
 }
 
-void SAL_CALL setStandardFormatIdForNativeFormatName( const OUString& aNativeFormatName, Any& aAny )
+void setStandardFormatIdForNativeFormatName( const OUString& aNativeFormatName, Any& aAny )
 {
-    vector< FormatEntry >::const_iterator citer_end = g_TranslTable.end( );
-    for ( vector< FormatEntry >::const_iterator citer = g_TranslTable.begin( ); citer != citer_end; ++citer )
-    {
-        if ( aNativeFormatName.equalsIgnoreAsciiCase( citer->aNativeFormatName ) &&
-             (CF_INVALID != citer->aStandardFormatId) )
-        {
-            aAny <<= citer->aStandardFormatId;
-            break;
-        }
-    }
+    vector< FormatEntry >::const_iterator citer = std::find_if(g_TranslTable.begin(), g_TranslTable.end(),
+        [&aNativeFormatName](const FormatEntry& rEntry) {
+            return aNativeFormatName.equalsIgnoreAsciiCase(rEntry.aNativeFormatName)
+                && (CF_INVALID != rEntry.aStandardFormatId);
+        });
+    if (citer != g_TranslTable.end())
+        aAny <<= citer->aStandardFormatId;
 }
 
-void SAL_CALL findStdFormatIdOrNativeFormatNameForFullMediaType(
+void findStdFormatIdOrNativeFormatNameForFullMediaType(
     const Reference< XMimeContentTypeFactory >& aRefXMimeFactory,
     const OUString& aFullMediaType,
     Any& aAny )
 {
-    vector< FormatEntry >::const_iterator citer_end = g_TranslTable.end( );
-    for ( vector< FormatEntry >::const_iterator citer = g_TranslTable.begin( ); citer != citer_end; ++citer )
+    vector< FormatEntry >::const_iterator citer = std::find_if(g_TranslTable.begin(), g_TranslTable.end(),
+        [&aRefXMimeFactory, &aFullMediaType](const FormatEntry& rEntry) {
+            Reference<XMimeContentType> refXMime( aRefXMimeFactory->createMimeContentType(rEntry.aDataFlavor.MimeType) );
+            return aFullMediaType.equalsIgnoreAsciiCase(refXMime->getFullMediaType());
+        });
+    if (citer != g_TranslTable.end())
     {
-        Reference< XMimeContentType >
-        refXMime( aRefXMimeFactory->createMimeContentType( citer->aDataFlavor.MimeType ) );
-        if ( aFullMediaType.equalsIgnoreAsciiCase( refXMime->getFullMediaType( ) ) )
+        sal_Int32 cf = citer->aStandardFormatId;
+        if ( CF_INVALID != cf )
+            aAny <<= cf;
+        else
         {
-            sal_Int32 cf = citer->aStandardFormatId;
-            if ( CF_INVALID != cf )
-                aAny <<= cf;
-            else
-            {
-                OSL_ENSURE( citer->aNativeFormatName.getLength( ),
-                    "Invalid standard format id and empty native format name in translation table" );
-                aAny <<= citer->aNativeFormatName;
-            }
-            break;
+            OSL_ENSURE( citer->aNativeFormatName.getLength( ),
+                "Invalid standard format id and empty native format name in translation table" );
+            aAny <<= citer->aNativeFormatName;
         }
     }
 }
 
-inline bool isTextPlainMediaType( const OUString& fullMediaType )
+bool isTextPlainMediaType( const OUString& fullMediaType )
 {
     return fullMediaType.equalsIgnoreAsciiCase("text/plain");
 }
 
-DataFlavor SAL_CALL mkDataFlv(const OUString& cnttype, const OUString& hpname, Type dtype)
+DataFlavor mkDataFlv(const OUString& cnttype, const OUString& hpname, Type dtype)
 {
     DataFlavor dflv;
     dflv.MimeType             = cnttype;
@@ -530,16 +497,16 @@ DataFlavor SAL_CALL CDataFormatTranslatorUNO::getDataFlavorFromSystemDataType( c
 {
     OSL_PRECOND( aSysDataType.hasValue( ), "Empty system data type delivered" );
 
-    DataFlavor aFlavor = mkDataFlv( EMPTY_OUSTR, EMPTY_OUSTR, CPPUTYPE_SEQSALINT8 );
+    DataFlavor aFlavor = mkDataFlv( OUString(), OUString(), CPPUTYPE_SEQSALINT8 );
 
-    if ( aSysDataType.getValueType( ) == CPPUTYPE_SALINT32 )
+    if ( aSysDataType.getValueType( ) == cppu::UnoType<sal_Int32>::get() )
     {
         sal_Int32 clipformat = CF_INVALID;
         aSysDataType >>= clipformat;
         if ( CF_INVALID != clipformat )
             findDataFlavorForStandardFormatId( clipformat, aFlavor );
     }
-    else if ( aSysDataType.getValueType( ) == CPPUTYPE_OUSTR )
+    else if ( aSysDataType.getValueType( ) == cppu::UnoType<OUString>::get() )
     {
         OUString nativeFormatName;
         aSysDataType >>= nativeFormatName;
@@ -556,7 +523,7 @@ DataFlavor SAL_CALL CDataFormatTranslatorUNO::getDataFlavorFromSystemDataType( c
 
 OUString SAL_CALL CDataFormatTranslatorUNO::getImplementationName(  )
 {
-    return OUString( IMPL_NAME );
+    return "com.sun.star.datatransfer.DataFormatTranslator";
 }
 
 sal_Bool SAL_CALL CDataFormatTranslatorUNO::supportsService( const OUString& ServiceName )
@@ -566,7 +533,15 @@ sal_Bool SAL_CALL CDataFormatTranslatorUNO::supportsService( const OUString& Ser
 
 Sequence< OUString > SAL_CALL CDataFormatTranslatorUNO::getSupportedServiceNames( )
 {
-    return DataFormatTranslator_getSupportedServiceNames( );
+    return { "com.sun.star.datatransfer.DataFormatTranslator" };
 }
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+dtrans_CDataFormatTranslatorUNO_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    static rtl::Reference<CDataFormatTranslatorUNO> g_Instance(new CDataFormatTranslatorUNO(context));
+    g_Instance->acquire();
+    return static_cast<cppu::OWeakObject*>(g_Instance.get());
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

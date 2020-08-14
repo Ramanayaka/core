@@ -23,6 +23,8 @@ $(eval $(call gb_Library_use_sdk_api,winaccessibility))
 
 $(eval $(call gb_Library_set_componentfile,winaccessibility,winaccessibility/source/service/winaccessibility))
 
+$(eval $(call gb_Library_use_common_precompiled_header,winaccessibility))
+
 $(eval $(call gb_Library_add_exception_objects,winaccessibility,\
 	winaccessibility/source/service/AccObject \
 	winaccessibility/source/service/ResIDGenerator \
@@ -44,7 +46,6 @@ $(eval $(call gb_Library_add_exception_objects,winaccessibility,\
 	winaccessibility/source/service/AccTreeEventListener \
 	winaccessibility/source/service/AccTopWindowListener \
 	winaccessibility/source/service/msaaservice_impl \
-	winaccessibility/source/service/AccResource \
 ))
 
 $(eval $(call gb_Library_use_externals,winaccessibility,\
@@ -53,6 +54,7 @@ $(eval $(call gb_Library_use_externals,winaccessibility,\
 
 $(eval $(call gb_Library_use_libraries,winaccessibility,\
 	UAccCOM \
+	comphelper \
 	cppu \
 	cppuhelper \
 	vcl \

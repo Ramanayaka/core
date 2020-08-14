@@ -27,7 +27,9 @@
 #include <comphelper/sequenceashashmap.hxx>
 #include <sfx2/app.hxx>
 #include <sal/macros.h>
-#include "app.hrc"
+#include <sfx2/sfxresid.hxx>
+#include <sfx2/strings.hrc>
+#include <vcl/svapp.hxx>
 #include "shutdownicon.hxx"
 
 #include <com/sun/star/util/XStringWidth.hpp>
@@ -37,10 +39,10 @@
 #include <set>
 #include <vector>
 
-#include "premac.h"
+#include <premac.h>
 #include <objc/objc-runtime.h>
 #include <Cocoa/Cocoa.h>
-#include "postmac.h"
+#include <postmac.h>
 
 #define MI_OPEN                    1
 #define MI_WRITER                  2
@@ -115,17 +117,19 @@ static QSMenuExecute* pExecute = nil;
 
 static std::set< OUString > aShortcuts;
 
-static NSString* getAutoreleasedString( const rtl::OUString& rStr )
+static NSString* getAutoreleasedString( const OUString& rStr )
 {
     return [[[NSString alloc] initWithCharacters: reinterpret_cast<unichar const *>(rStr.getStr()) length: rStr.getLength()] autorelease];
 }
 
+namespace {
+
 struct RecentMenuEntry
 {
-    rtl::OUString aURL;
-    rtl::OUString aFilter;
-    rtl::OUString aTitle;
-    rtl::OUString aPassword;
+    OUString aURL;
+    OUString aFilter;
+    OUString aTitle;
+    OUString aPassword;
 };
 
 class RecentFilesStringLength : public ::cppu::WeakImplHelper< css::util::XStringWidth >
@@ -134,11 +138,13 @@ class RecentFilesStringLength : public ::cppu::WeakImplHelper< css::util::XStrin
         RecentFilesStringLength() {}
 
         // XStringWidth
-        sal_Int32 SAL_CALL queryStringWidth( const ::rtl::OUString& aString ) override
+        sal_Int32 SAL_CALL queryStringWidth( const OUString& aString ) override
         {
             return aString.getLength();
         }
 };
+
+}
 
 @interface RecentMenuDelegate : NSObject
 {
@@ -179,24 +185,24 @@ class RecentFilesStringLength : public ::cppu::WeakImplHelper< css::util::XStrin
     int nPickListMenuItems = ( aHistoryList.getLength() > 99 ) ? 99 : aHistoryList.getLength();
 
     m_pRecentFilesItems->clear();
-    if( ( nPickListMenuItems > 0 ) )
+    if( nPickListMenuItems > 0 )
     {
         for ( int i = 0; i < nPickListMenuItems; i++ )
         {
-            css::uno::Sequence< css::beans::PropertyValue >& rPickListEntry = aHistoryList[i];
+            css::uno::Sequence< css::beans::PropertyValue > const & rPickListEntry = aHistoryList[i];
             RecentMenuEntry aRecentFile;
 
-            for ( int j = 0; j < rPickListEntry.getLength(); j++ )
+            for ( const css::beans::PropertyValue& rProp : rPickListEntry )
             {
-                css::uno::Any a = rPickListEntry[j].Value;
+                const css::uno::Any& a = rProp.Value;
 
-                if ( rPickListEntry[j].Name == HISTORY_PROPERTYNAME_URL )
+                if ( rProp.Name == HISTORY_PROPERTYNAME_URL )
                     a >>= aRecentFile.aURL;
-                else if ( rPickListEntry[j].Name == HISTORY_PROPERTYNAME_FILTER )
+                else if ( rProp.Name == HISTORY_PROPERTYNAME_FILTER )
                     a >>= aRecentFile.aFilter;
-                else if ( rPickListEntry[j].Name == HISTORY_PROPERTYNAME_TITLE )
+                else if ( rProp.Name == HISTORY_PROPERTYNAME_TITLE )
                     a >>= aRecentFile.aTitle;
-                else if ( rPickListEntry[j].Name == HISTORY_PROPERTYNAME_PASSWORD )
+                else if ( rProp.Name == HISTORY_PROPERTYNAME_PASSWORD )
                     a >>= aRecentFile.aPassword;
             }
 
@@ -207,15 +213,15 @@ class RecentFilesStringLength : public ::cppu::WeakImplHelper< css::util::XStrin
     // insert new recent items
     for ( std::vector<RecentMenuEntry>::size_type i = 0; i < m_pRecentFilesItems->size(); i++ )
     {
-        rtl::OUString   aMenuTitle;
+        OUString   aMenuTitle;
         INetURLObject   aURL( (*m_pRecentFilesItems)[i].aURL );
 
         if ( aURL.GetProtocol() == INetProtocol::File )
         {
             // Do handle file URL differently => convert it to a system
             // path and abbreviate it with a special function:
-            ::rtl::OUString aSystemPath( aURL.getFSysPath( FSysStyle::Detect ) );
-            ::rtl::OUString aCompactedSystemPath;
+            OUString aSystemPath( aURL.getFSysPath( FSysStyle::Detect ) );
+            OUString aCompactedSystemPath;
 
             oslFileError nError = osl_abbreviateSystemPath( aSystemPath.pData, &aCompactedSystemPath.pData, 46, nullptr );
             if ( !nError )
@@ -257,11 +263,11 @@ class RecentFilesStringLength : public ::cppu::WeakImplHelper< css::util::XStrin
         aArgsList[1].Name = "AsTemplate";
         aArgsList[1].Value <<= false;
 
-        ::rtl::OUString  aFilter( rRecentFile.aFilter );
+        OUString  aFilter( rRecentFile.aFilter );
         sal_Int32 nPos = aFilter.indexOf( '|' );
         if ( nPos >= 0 )
         {
-            rtl::OUString aFilterOptions;
+            OUString aFilterOptions;
 
             if ( nPos < ( aFilter.getLength() - 1 ) )
                 aFilterOptions = aFilter.copy( nPos+1 );
@@ -283,13 +289,13 @@ class RecentFilesStringLength : public ::cppu::WeakImplHelper< css::util::XStrin
 
 static RecentMenuDelegate* pRecentDelegate = nil;
 
-static rtl::OUString getShortCut( const rtl::OUString& i_rTitle )
+static OUString getShortCut( const OUString& i_rTitle )
 {
     // create shortcut
-    rtl::OUString aKeyEquiv;
+    OUString aKeyEquiv;
     for( sal_Int32 nIndex = 0; nIndex < i_rTitle.getLength(); nIndex++ )
     {
-        rtl::OUString aShortcut( i_rTitle.copy( nIndex, 1 ).toAsciiLowerCase() );
+        OUString aShortcut( i_rTitle.copy( nIndex, 1 ).toAsciiLowerCase() );
         if( aShortcuts.find( aShortcut ) == aShortcuts.end() )
         {
             aShortcuts.insert( aShortcut );
@@ -301,7 +307,7 @@ static rtl::OUString getShortCut( const rtl::OUString& i_rTitle )
     return aKeyEquiv;   
 }
 
-static void appendMenuItem( NSMenu* i_pMenu, NSMenu* i_pDockMenu, const rtl::OUString& i_rTitle, int i_nTag, const rtl::OUString& i_rKeyEquiv )
+static void appendMenuItem( NSMenu* i_pMenu, NSMenu* i_pDockMenu, const OUString& i_rTitle, int i_nTag, const OUString& i_rKeyEquiv )
 {
     if( ! i_rTitle.getLength() )
         return;
@@ -349,7 +355,8 @@ static void appendRecentMenu( NSMenu* i_pMenu, NSMenu* i_pDockMenu, const OUStri
     // confused. Anyway, to avoid warnings, instead of this:
     // [pRecentMenu setDelegate: pRecentDelegate];
     // do this:
-    objc_msgSend(pRecentMenu, @selector(setDelegate:), pRecentDelegate);
+    reinterpret_cast<id (*)(id, SEL, ...)>(objc_msgSend)(
+        pRecentMenu, @selector(setDelegate:), pRecentDelegate);
 
     [pRecentMenu setAutoenablesItems: NO];
     [pItem setSubmenu: pRecentMenu];
@@ -366,7 +373,8 @@ static void appendRecentMenu( NSMenu* i_pMenu, NSMenu* i_pDockMenu, const OUStri
 
         // See above
         // [pRecentMenu setDelegate: pRecentDelegate];
-        objc_msgSend(pRecentMenu, @selector(setDelegate:), pRecentDelegate);
+        reinterpret_cast<id (*)(id, SEL, ...)>(objc_msgSend)(
+            pRecentMenu, @selector(setDelegate:), pRecentDelegate);
 
         [pRecentMenu setAutoenablesItems: NO];
         [pItem setSubmenu: pRecentMenu];
@@ -396,25 +404,23 @@ void aqua_init_systray()
             aShortcuts.clear();
 
             pExecute = [[QSMenuExecute alloc] init];
-            pDefMenu = [[NSMenuItem alloc] initWithTitle: getAutoreleasedString( pShutdownIcon->GetResString( STR_QUICKSTART_FILE ) ) action: nullptr keyEquivalent: @""];
-            pDockSubMenu = [[NSMenuItem alloc] initWithTitle: getAutoreleasedString( pShutdownIcon->GetResString( STR_QUICKSTART_FILE ) ) action: nullptr keyEquivalent: @""];
-            NSMenu* pMenu = [[NSMenu alloc] initWithTitle: getAutoreleasedString( pShutdownIcon->GetResString( STR_QUICKSTART_FILE ) )];
+            pDefMenu = [[NSMenuItem alloc] initWithTitle: getAutoreleasedString( SfxResId(STR_QUICKSTART_FILE) ) action: nullptr keyEquivalent: @""];
+            pDockSubMenu = [[NSMenuItem alloc] initWithTitle: getAutoreleasedString( SfxResId(STR_QUICKSTART_FILE) ) action: nullptr keyEquivalent: @""];
+            NSMenu* pMenu = [[NSMenu alloc] initWithTitle: getAutoreleasedString( SfxResId(STR_QUICKSTART_FILE) )];
             [pMenu setAutoenablesItems: NO];
-            NSMenu* pDockMenu = [[NSMenu alloc] initWithTitle: getAutoreleasedString( pShutdownIcon->GetResString( STR_QUICKSTART_FILE ) )];
+            NSMenu* pDockMenu = [[NSMenu alloc] initWithTitle: getAutoreleasedString( SfxResId(STR_QUICKSTART_FILE) )];
             [pDockMenu setAutoenablesItems: NO];
 
             // collect the URLs of the entries in the File/New menu
             SvtModuleOptions    aModuleOptions;
-            std::set< rtl::OUString > aFileNewAppsAvailable;
+            std::set< OUString > aFileNewAppsAvailable;
             SvtDynamicMenuOptions aOpt;
-            css::uno::Sequence < css::uno::Sequence < css::beans::PropertyValue > > aNewMenu = aOpt.GetMenu( EDynamicMenuType::NewMenu );
+            css::uno::Sequence < css::uno::Sequence < css::beans::PropertyValue > > const aNewMenu = aOpt.GetMenu( EDynamicMenuType::NewMenu );
 
-            const css::uno::Sequence< css::beans::PropertyValue >* pNewMenu = aNewMenu.getConstArray();
-            const css::uno::Sequence< css::beans::PropertyValue >* pNewMenuEnd = aNewMenu.getConstArray() + aNewMenu.getLength();
-            for ( ; pNewMenu != pNewMenuEnd; ++pNewMenu )
+            for ( auto const & newMenuProp : aNewMenu )
             {
-                comphelper::SequenceAsHashMap aEntryItems( *pNewMenu );
-                rtl::OUString sURL( aEntryItems.getUnpackedValueOrDefault( "URL", rtl::OUString() ) );
+                comphelper::SequenceAsHashMap aEntryItems( newMenuProp );
+                OUString sURL( aEntryItems.getUnpackedValueOrDefault( "URL", OUString() ) );
                 if ( sURL.getLength() )
                     aFileNewAppsAvailable.insert( sURL );
             }
@@ -438,7 +444,7 @@ void aqua_init_systray()
             // insert entry for startcenter
             if( aModuleOptions.IsModuleInstalled( SvtModuleOptions::EModule::STARTMODULE ) )
             {
-                appendMenuItem( pMenu, nil, pShutdownIcon->GetResString( STR_QUICKSTART_STARTCENTER ), MI_STARTMODULE, "n" );
+                appendMenuItem( pMenu, nil, SfxResId(STR_QUICKSTART_STARTCENTER), MI_STARTMODULE, "n" );
                 if( [NSApp respondsToSelector: @selector(setDockIconClickHandler:)] )
                     [NSApp performSelector:@selector(setDockIconClickHandler:) withObject: pExecute];
                 else
@@ -453,14 +459,14 @@ void aqua_init_systray()
                     // the complete application is not even installed
                     continue;
 
-                rtl::OUString sURL( ::rtl::OUString::createFromAscii( aMenuItems[i].pAsciiURLDescription ) );
+                OUString sURL( OUString::createFromAscii( aMenuItems[i].pAsciiURLDescription ) );
 
                 if ( aFileNewAppsAvailable.find( sURL ) == aFileNewAppsAvailable.end() )
                     // the application is installed, but the entry has been configured to *not* appear in the File/New
                     // menu => also let not appear it in the quickstarter
                     continue;
 
-                rtl::OUString aKeyEquiv( getShortCut( ShutdownIcon::GetUrlDescription( sURL ) ) );
+                OUString aKeyEquiv( getShortCut( ShutdownIcon::GetUrlDescription( sURL ) ) );
 
                 appendMenuItem( pMenu, pDockMenu, ShutdownIcon::GetUrlDescription( sURL ), aMenuItems[i].nMenuTag, aKeyEquiv );
             }
@@ -468,12 +474,12 @@ void aqua_init_systray()
             // insert the remaining menu entries
 
             // add recent menu
-            appendRecentMenu( pMenu, pDockMenu, pShutdownIcon->GetResString( STR_QUICKSTART_RECENTDOC ) );
+            appendRecentMenu( pMenu, pDockMenu, SfxResId(STR_QUICKSTART_RECENTDOC) );
 
-            rtl::OUString aTitle( pShutdownIcon->GetResString( STR_QUICKSTART_FROMTEMPLATE ) );
-            rtl::OUString aKeyEquiv( getShortCut( aTitle ) );
+            OUString aTitle( SfxResId(STR_QUICKSTART_FROMTEMPLATE) );
+            OUString aKeyEquiv( getShortCut( aTitle ) );
             appendMenuItem( pMenu, pDockMenu, aTitle, MI_TEMPLATE, aKeyEquiv );
-            aTitle = pShutdownIcon->GetResString( STR_QUICKSTART_FILEOPEN );
+            aTitle = SfxResId(STR_QUICKSTART_FILEOPEN);
             aKeyEquiv = getShortCut( aTitle );
             appendMenuItem( pMenu, pDockMenu, aTitle, MI_OPEN, aKeyEquiv );
 

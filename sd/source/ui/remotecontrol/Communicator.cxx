@@ -17,22 +17,23 @@
 #include <config_version.h>
 #include <rtl/string.hxx>
 #include <rtl/strbuf.hxx>
+#include <sal/log.hxx>
 
 #include "Communicator.hxx"
+#include "IBluetoothSocket.hxx"
 #include "Listener.hxx"
 #include "Receiver.hxx"
-#include "RemoteServer.hxx"
+#include "Transmitter.hxx"
+#include <RemoteServer.hxx>
 
 using namespace sd;
 using namespace std;
 using namespace com::sun::star;
 using namespace osl;
 
-Communicator::Communicator( IBluetoothSocket *pSocket ):
+Communicator::Communicator( std::unique_ptr<IBluetoothSocket> pSocket ):
     Thread( "CommunicatorThread" ),
-    mpSocket( pSocket ),
-    pTransmitter( nullptr ),
-    mListener( nullptr )
+    mpSocket( std::move(pSocket) )
 {
 }
 
@@ -51,21 +52,20 @@ void Communicator::forceClose()
 // Run as a thread
 void Communicator::execute()
 {
-    pTransmitter = new Transmitter( mpSocket );
+    pTransmitter.reset( new Transmitter( mpSocket.get() ) );
     pTransmitter->create();
 
     pTransmitter->addMessage( "LO_SERVER_SERVER_PAIRED\n\n",
                               Transmitter::PRIORITY_HIGH );
 
-    OStringBuffer aServerInformationBuffer;
-    aServerInformationBuffer.append( "LO_SERVER_INFO\n" LIBO_VERSION_DOTTED "\n\n" );
+    OString aServerInformation = "LO_SERVER_INFO\n" LIBO_VERSION_DOTTED "\n\n";
 
-    pTransmitter->addMessage( aServerInformationBuffer.makeStringAndClear(), Transmitter::PRIORITY_HIGH );
+    pTransmitter->addMessage( aServerInformation, Transmitter::PRIORITY_HIGH );
 
-    Receiver aReceiver( pTransmitter );
+    Receiver aReceiver( pTransmitter.get() );
     try {
         uno::Reference< frame::XDesktop2 > xFramesSupplier = frame::Desktop::create( ::comphelper::getProcessComponentContext() );
-        uno::Reference< frame::XFrame > xFrame ( xFramesSupplier->getActiveFrame(), uno::UNO_QUERY );
+        uno::Reference< frame::XFrame > xFrame = xFramesSupplier->getActiveFrame();
 
         uno::Reference<presentation::XPresentationSupplier> xPS;
         if( xFrame.is() )
@@ -125,8 +125,7 @@ void Communicator::execute()
     pTransmitter = nullptr;
 
     mpSocket->close();
-    delete mpSocket;
-    mpSocket = nullptr;
+    mpSocket.reset();
 
     RemoteServer::removeCommunicator( this );
 }
@@ -144,7 +143,7 @@ void Communicator::presentationStarted( const css::uno::Reference<
 {
     if ( pTransmitter )
     {
-        mListener.set( new Listener( this, pTransmitter ) );
+        mListener.set( new Listener( this, pTransmitter.get() ) );
         mListener->init( rController );
     }
 }

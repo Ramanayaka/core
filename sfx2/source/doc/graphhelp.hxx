@@ -23,6 +23,7 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/io/XStream.hpp>
 #include <rtl/ustring.hxx>
+#include <tools/gen.hxx>
 
 class SvMemoryStream;
 class GDIMetaFile;
@@ -33,7 +34,7 @@ class GraphicHelper
 {
 public:
 
-    static SvMemoryStream* getFormatStrFromGDI_Impl( const GDIMetaFile* pGDIMeta, ConvertDataFormat nFormat );
+    static std::unique_ptr<SvMemoryStream> getFormatStrFromGDI_Impl( const GDIMetaFile* pGDIMeta, ConvertDataFormat nFormat );
 
     static void* getEnhMetaFileFromGDI_Impl( const GDIMetaFile* pGDIMeta );
 
@@ -49,7 +50,7 @@ public:
     }
 
     static bool getThumbnailFormatFromGDI_Impl(
-            GDIMetaFile* pMetaFile,
+            GDIMetaFile const * pMetaFile,
             const css::uno::Reference< css::io::XStream >& xStream );
 
     static OUString getThumbnailReplacementIDByFactoryName_Impl(const OUString& aFactoryShortName);

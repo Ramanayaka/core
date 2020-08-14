@@ -17,48 +17,48 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hintids.hxx"
-#include "cntfrm.hxx"
-#include "doc.hxx"
+#include <hintids.hxx>
+#include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <IDocumentLayoutAccess.hxx>
-#include "pam.hxx"
-#include "flyfrm.hxx"
-#include "ndtxt.hxx"
-#include "frmfmt.hxx"
+#include <pam.hxx>
+#include <flyfrm.hxx>
+#include <ndtxt.hxx>
+#include <frmfmt.hxx>
 #include <fmtflcnt.hxx>
 #include <txtflcnt.hxx>
 #include <fmtanchr.hxx>
-#include "swfont.hxx"
-#include "txtfrm.hxx"
-#include "flyfrms.hxx"
+#include <txtfrm.hxx>
+#include <flyfrms.hxx>
 #include <objectformatter.hxx>
 #include <calbck.hxx>
+#include <dcontact.hxx>
+#include <textboxhelper.hxx>
 
 SwFormatFlyCnt::SwFormatFlyCnt( SwFrameFormat *pFrameFormat )
     : SfxPoolItem( RES_TXTATR_FLYCNT ),
-    pTextAttr( nullptr ),
-    pFormat( pFrameFormat )
+    m_pTextAttr( nullptr ),
+    m_pFormat( pFrameFormat )
 {
 }
 
 bool SwFormatFlyCnt::operator==( const SfxPoolItem& rAttr ) const
 {
     assert(SfxPoolItem::operator==(rAttr));
-    return( pTextAttr && static_cast<const SwFormatFlyCnt&>(rAttr).pTextAttr &&
-            pTextAttr->GetStart() == static_cast<const SwFormatFlyCnt&>(rAttr).pTextAttr->GetStart() &&
-            pFormat == static_cast<const SwFormatFlyCnt&>(rAttr).GetFrameFormat() );
+    return( m_pTextAttr && static_cast<const SwFormatFlyCnt&>(rAttr).m_pTextAttr &&
+            m_pTextAttr->GetStart() == static_cast<const SwFormatFlyCnt&>(rAttr).m_pTextAttr->GetStart() &&
+            m_pFormat == static_cast<const SwFormatFlyCnt&>(rAttr).GetFrameFormat() );
 }
 
-SfxPoolItem* SwFormatFlyCnt::Clone( SfxItemPool* ) const
+SwFormatFlyCnt* SwFormatFlyCnt::Clone( SfxItemPool* ) const
 {
-    return new SwFormatFlyCnt( pFormat );
+    return new SwFormatFlyCnt( m_pFormat );
 }
 
 SwTextFlyCnt::SwTextFlyCnt( SwFormatFlyCnt& rAttr, sal_Int32 nStartPos )
     : SwTextAttr( rAttr, nStartPos )
 {
-    rAttr.pTextAttr = this;
+    rAttr.m_pTextAttr = this;
     SetHasDummyChar(true);
 }
 
@@ -193,7 +193,40 @@ void SwTextFlyCnt::SetAnchor( const SwTextNode *pNode )
     else
     {
         assert(!pFormat->IsModifyLocked()); // need to notify anchor node
+        if (RES_DRAWFRMFMT == pFormat->Which())
+        {
+            if (SdrObject const*const pObj = pFormat->FindSdrObject())
+            {   // tdf#123259 disconnect with *old* anchor position
+                static_cast<SwDrawContact*>(::GetUserCall(pObj))->DisconnectFromLayout(false);
+            }
+        }
         pFormat->SetFormatAttr( aAnchor );  // only set the anchor
+
+        // If the draw format has a TextBox, then set its anchor as well.
+        if (SwFrameFormat* pTextBox
+            = SwTextBoxHelper::getOtherTextBoxFormat(pFormat, RES_DRAWFRMFMT))
+        {
+            SwFormatAnchor aTextBoxAnchor(pTextBox->GetAnchor());
+            aTextBoxAnchor.SetAnchor(aAnchor.GetContentAnchor());
+
+            // SwFlyAtContentFrame::Modify() assumes the anchor has a matching layout frame, which
+            // may not be the case when we're in the process of a node split, so block
+            // notifications.
+            bool bIsInSplitNode = pNode->GetpSwpHints() && pNode->GetpSwpHints()->IsInSplitNode();
+            if (bIsInSplitNode)
+            {
+                pTextBox->LockModify();
+            }
+
+            pTextBox->SetFormatAttr(aTextBoxAnchor);
+
+            if (bIsInSplitNode)
+            {
+                pOldNode->RemoveAnchoredFly(pTextBox);
+                aPos.nNode.GetNode().AddAnchoredFly(pTextBox);
+                pTextBox->UnlockModify();
+            }
+        }
     }
 
     // The node may have several SwTextFrames - for every SwTextFrame a
@@ -214,7 +247,7 @@ SwFlyInContentFrame *SwTextFlyCnt::GetFlyFrame_( const SwFrame *pCurrFrame )
         return nullptr;
     }
 
-    SwIterator<SwFlyFrame,SwFormat> aIter( *GetFlyCnt().pFormat );
+    SwIterator<SwFlyFrame,SwFormat> aIter( *GetFlyCnt().m_pFormat );
     assert(pCurrFrame->IsTextFrame());
     SwFrame* pFrame = aIter.First();
     if ( pFrame )

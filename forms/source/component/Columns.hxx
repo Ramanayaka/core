@@ -17,15 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_FORMS_SOURCE_COMPONENT_COLUMNS_HXX
-#define INCLUDED_FORMS_SOURCE_COMPONENT_COLUMNS_HXX
+#pragma once
 
-#include "cloneable.hxx"
-#include "frm_strings.hxx"
+#include <cloneable.hxx>
 
 #include <com/sun/star/io/XObjectInputStream.hpp>
 #include <com/sun/star/io/XObjectOutputStream.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
 
 #include <comphelper/propagg.hxx>
@@ -33,7 +32,6 @@
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase2.hxx>
-#include <cppuhelper/component.hxx>
 
 using namespace comphelper;
 
@@ -48,7 +46,6 @@ class OGridColumn   :public ::cppu::BaseMutex
                     ,public OPropertySetAggregationHelper
                     ,public OCloneableAggregation
 {
-protected:
 // [properties]
     css::uno::Any  m_aWidth;  // column width
     css::uno::Any  m_aAlign;  // column alignment
@@ -70,7 +67,7 @@ public:
     DECLARE_UNO3_AGG_DEFAULTS(OGridControlModel, OGridColumn_BASE)
     virtual css::uno::Any SAL_CALL queryAggregation( const css::uno::Type& _rType ) override;
 
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelImplementationId();
+    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
     // XUnoTunnel
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence<sal_Int8>& _rIdentifier) override;
 
@@ -85,8 +82,8 @@ public:
     virtual void SAL_CALL disposing(const css::lang::EventObject& _rSource) override;
 
     // XPersistObject
-    void SAL_CALL write(const css::uno::Reference< css::io::XObjectOutputStream>& _rxOutStream);
-    void SAL_CALL read(const css::uno::Reference< css::io::XObjectInputStream>& _rxInStream);
+    void write(const css::uno::Reference< css::io::XObjectOutputStream>& _rxOutStream);
+    void read(const css::uno::Reference< css::io::XObjectInputStream>& _rxInStream);
 
     // XPropertySet
     virtual ::cppu::IPropertyArrayHelper& SAL_CALL getInfoHelper() override = 0;
@@ -196,10 +193,6 @@ DECL_COLUMN(ComboBoxColumn)
 DECL_COLUMN(ListBoxColumn)
 DECL_COLUMN(FormattedFieldColumn)
 
-#endif // INCLUDED_FORMS_SOURCE_COMPONENT_COLUMNS_HXX
-
-
 }   // namespace frm
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,20 +19,17 @@
 #ifndef INCLUDED_SD_SOURCE_UI_UNOIDL_UNOOBJ_HXX
 #define INCLUDED_SD_SOURCE_UI_UNOIDL_UNOOBJ_HXX
 
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/drawing/XShape.hpp>
+#include <com/sun/star/beans/PropertyState.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <svx/svdpool.hxx>
 #include <svx/unomaster.hxx>
 
-#include <editeng/unoipset.hxx>
+namespace com::sun::star::beans { class XPropertySetInfo; }
 
-class SdrObject;
 class SdXImpressDocument;
 class SdAnimationInfo;
+class SvxItemPropertySet;
+class SvxShape;
+struct SfxItemPropertyMapEntry;
 
 class SdXShape : public SvxShapeMaster,
                  public css::document::XEventsSupplier
@@ -67,12 +64,11 @@ private:
     OUString GetPlaceholderText() const;
 
 public:
-    SdXShape(SvxShape* pShape, SdXImpressDocument* pModel) throw();
+    SdXShape(SvxShape* pShape, SdXImpressDocument* pModel);
     virtual ~SdXShape() throw();
 
     virtual bool queryAggregation( const css::uno::Type & rType, css::uno::Any& aAny ) override;
     virtual void dispose() override;
-    virtual void modelChanged( SdrModel* pNewModel ) override;
 
     // XInterface
     virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;

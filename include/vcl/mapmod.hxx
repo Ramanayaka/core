@@ -24,22 +24,22 @@
 #include <tools/mapunit.hxx>
 #include <o3tl/cow_wrapper.hxx>
 
+#include <ostream>
+
 class Point;
 class Fraction;
 class SvStream;
-class OutputDevice;
 
-
-class VCL_DLLPUBLIC MapMode
+class SAL_WARN_UNUSED VCL_DLLPUBLIC MapMode
 {
     friend class        OutputDevice;
 
 public:
-    struct ImplMapMode;
+    struct SAL_DLLPRIVATE ImplMapMode;
 
     MapMode();
     MapMode( const MapMode& rMapMode );
-    MapMode( MapUnit eUnit );
+    explicit MapMode( MapUnit eUnit );
     MapMode( MapUnit eUnit, const Point& rLogicOrg,
         const Fraction& rScaleX, const Fraction& rScaleY );
     ~MapMode();
@@ -55,9 +55,6 @@ public:
     void            SetScaleY( const Fraction& rScaleY );
     const Fraction& GetScaleY() const;
 
-    /// Gets the multiplier, which is relative to 1/100 mm units
-    double          GetUnitMultiplier() const;
-
     MapMode&        operator=( const MapMode& rMapMode );
     MapMode&        operator=( MapMode&& rMapMode );
     bool            operator==( const MapMode& rMapMode ) const;
@@ -65,16 +62,26 @@ public:
                         { return !(MapMode::operator==( rMapMode )); }
     bool            IsDefault() const;
 
-    friend VCL_DLLPUBLIC SvStream& ReadMapMode( SvStream& rIStm, MapMode& rMapMode );
-    friend VCL_DLLPUBLIC SvStream& WriteMapMode( SvStream& rOStm, const MapMode& rMapMode );
+    friend SvStream& ReadMapMode( SvStream& rIStm, MapMode& rMapMode );
+    friend SvStream& WriteMapMode( SvStream& rOStm, const MapMode& rMapMode );
 
-    typedef o3tl::cow_wrapper< ImplMapMode > ImplType;
+    // tdf#117984 needs to be thread-safe due to being used e.g. in Bitmaps
+    // vcl::ScopedBitmapAccess in parallelized 3D renderer
+    typedef o3tl::cow_wrapper< ImplMapMode, o3tl::ThreadSafeRefCountingPolicy > ImplType;
 
 private:
     ImplType        mpImplMapMode;
 
     SAL_DLLPRIVATE bool IsSimple() const;
 };
+
+template<typename charT, typename traits>
+inline std::basic_ostream<charT, traits> & operator <<(
+    std::basic_ostream<charT, traits> & rStream, const MapMode& rMode)
+{
+    rStream << "MapMode(" << static_cast<unsigned>(rMode.GetMapUnit()) << ",(" << rMode.GetScaleX() << "," << rMode.GetScaleY() << ")@(" << rMode.GetOrigin() << "))";
+    return rStream;
+}
 
 #endif // INCLUDED_VCL_MAPMOD_HXX
 

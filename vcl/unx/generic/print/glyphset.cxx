@@ -18,27 +18,22 @@
  */
 
 #include "glyphset.hxx"
-#include "psputil.hxx"
 
-#include "sft.hxx"
+#include <sft.hxx>
 
-#include "unx/printergfx.hxx"
-#include "fontsubset.hxx"
-#include "unx/fontmanager.hxx"
+#include <unx/printergfx.hxx>
+#include <fontsubset.hxx>
+#include <unx/fontmanager.hxx>
 
 #include <tools/gen.hxx>
 
-#include "osl/thread.h"
+#include <osl/thread.h>
 
-#include "sal/alloca.h"
-
-#include "rtl/ustring.hxx"
-#include "rtl/strbuf.hxx"
+#include <rtl/ustring.hxx>
+#include <rtl/strbuf.hxx>
 
 #include <unotools/tempfile.hxx>
 
-#include <set>
-#include <map>
 #include <algorithm>
 
 using namespace vcl;
@@ -53,20 +48,15 @@ GlyphSet::GlyphSet (sal_Int32 nFontID, bool bVertical)
                                            RTL_TEXTENCODING_ASCII_US);
 }
 
-GlyphSet::~GlyphSet ()
-{
-    /* FIXME delete the glyphlist ??? */
-}
-
-bool
+void
 GlyphSet::GetGlyphID (
                       sal_GlyphId nGlyph,
                       unsigned char* nOutGlyphID,
                       sal_Int32* nOutGlyphSetID
                      )
 {
-    return    LookupGlyphID (nGlyph, nOutGlyphID, nOutGlyphSetID)
-           || AddGlyphID    (nGlyph, nOutGlyphID, nOutGlyphSetID);
+    if (!LookupGlyphID(nGlyph, nOutGlyphID, nOutGlyphSetID))
+        AddGlyphID(nGlyph, nOutGlyphID, nOutGlyphSetID);
 }
 
 bool
@@ -76,23 +66,21 @@ GlyphSet::LookupGlyphID (
                         sal_Int32* nOutGlyphSetID
                         )
 {
-    glyph_list_t::iterator aGlyphSet;
-    sal_Int32             nGlyphSetID;
+    sal_Int32             nGlyphSetID = 1;
 
     // loop through all the font subsets
-    for (aGlyphSet  = maGlyphList.begin(), nGlyphSetID = 1;
-         aGlyphSet != maGlyphList.end();
-         ++aGlyphSet, nGlyphSetID++)
+    for (auto const& glyph : maGlyphList)
     {
         // check every subset if it contains the queried unicode char
-        glyph_map_t::const_iterator aGlyph = (*aGlyphSet).find (nGlyph);
-        if (aGlyph != (*aGlyphSet).end())
+        glyph_map_t::const_iterator aGlyph = glyph.find (nGlyph);
+        if (aGlyph != glyph.end())
         {
             // success: found the glyph id, return the mapped glyphid and the glyphsetid
             *nOutGlyphSetID = nGlyphSetID;
-            *nOutGlyphID    = (*aGlyph).second;
+            *nOutGlyphID    = aGlyph->second;
             return true;
         }
+        ++nGlyphSetID;
     }
 
     *nOutGlyphSetID = -1;
@@ -107,7 +95,7 @@ GlyphSet::AddNotdef (glyph_map_t &rGlyphMap)
         rGlyphMap[0] = 0;
 }
 
-bool
+void
 GlyphSet::AddGlyphID (
                      sal_GlyphId nGlyph,
                      unsigned char* nOutGlyphID,
@@ -138,8 +126,6 @@ GlyphSet::AddGlyphID (
     aGlyphSet [nGlyph] = nSize;
     *nOutGlyphSetID   = maGlyphList.size();
     *nOutGlyphID      = aGlyphSet [nGlyph];
-
-    return true;
 }
 
 OString
@@ -160,14 +146,13 @@ GlyphSet::GetReencodedFontName (rtl_TextEncoding nEnc, const OString &rFontName)
     if (   nEnc == RTL_TEXTENCODING_MS_1252
         || nEnc == RTL_TEXTENCODING_ISO_8859_1)
     {
-        return rFontName
-               + OString("-iso1252");
+        return rFontName + "-iso1252";
     }
     else
     if (nEnc >= RTL_TEXTENCODING_USER_START && nEnc <= RTL_TEXTENCODING_USER_END)
     {
         return rFontName
-               + OString("-enc")
+               + "-enc"
                + OString::number ((nEnc - RTL_TEXTENCODING_USER_START));
     }
     else
@@ -178,8 +163,7 @@ GlyphSet::GetReencodedFontName (rtl_TextEncoding nEnc, const OString &rFontName)
 
 void GlyphSet::DrawGlyph(PrinterGfx& rGfx,
                          const Point& rPoint,
-                         const sal_GlyphId nGlyphId,
-                         const sal_Int32 nDelta)
+                         const sal_GlyphId nGlyphId)
 {
     unsigned char nGlyphID;
     sal_Int32 nGlyphSetID;
@@ -187,16 +171,14 @@ void GlyphSet::DrawGlyph(PrinterGfx& rGfx,
     // convert to font glyph id and font subset
     GetGlyphID (nGlyphId, &nGlyphID, &nGlyphSetID);
 
-    // show the text using the PrinterGfx text api
-    Point aPoint = rPoint;
-    aPoint.Move (nDelta, 0);
-
     OString aGlyphSetName = GetGlyphSetName(nGlyphSetID);
 
     rGfx.PSSetFont  (aGlyphSetName, RTL_TEXTENCODING_DONTKNOW);
     rGfx.PSMoveTo   (rPoint);
     rGfx.PSShowGlyph(nGlyphID);
 }
+
+namespace {
 
 struct EncEntry
 {
@@ -209,10 +191,12 @@ struct EncEntry
     { return aEnc < rRight.aEnc; }
 };
 
+}
+
 static void CreatePSUploadableFont( TrueTypeFont* pSrcFont, FILE* pTmpFile,
     const char* pGlyphSetName, int nGlyphCount,
     /*const*/ const sal_uInt16* pRequestedGlyphs, /*const*/ const unsigned char* pEncoding,
-    bool bAllowType42, bool /*bAllowCID*/ )
+    bool bAllowType42 )
 {
     // match the font-subset to the printer capabilities
      // TODO: allow CFF for capable printers
@@ -242,17 +226,17 @@ static void CreatePSUploadableFont( TrueTypeFont* pSrcFont, FILE* pTmpFile,
     aInfo.LoadFont( pSrcFont );
 
     aInfo.CreateFontSubset( nTargetMask, pTmpFile, pGlyphSetName,
-        &aRequestedGlyphs[0], &aEncoding[0], nGlyphCount );
+        aRequestedGlyphs.data(), aEncoding.data(), nGlyphCount );
 }
 
 void
-GlyphSet::PSUploadFont (osl::File& rOutFile, PrinterGfx &rGfx, bool bAllowType42, std::list< OString >& rSuppliedFonts )
+GlyphSet::PSUploadFont (osl::File& rOutFile, PrinterGfx &rGfx, bool bAllowType42, std::vector< OString >& rSuppliedFonts )
 {
     TrueTypeFont *pTTFont;
     OString aTTFileName (rGfx.GetFontMgr().getFontFileSysPath(mnFontID));
     int nFace = rGfx.GetFontMgr().getFontFaceNumber(mnFontID);
-    sal_Int32 nSuccess = OpenTTFontFile(aTTFileName.getStr(), nFace, &pTTFont);
-    if (nSuccess != SF_OK)
+    SFErrCodes nSuccess = OpenTTFontFile(aTTFileName.getStr(), nFace, &pTTFont);
+    if (nSuccess != SFErrCodes::Ok)
         return;
 
     utl::TempFile aTmpFile;
@@ -265,35 +249,34 @@ GlyphSet::PSUploadFont (osl::File& rOutFile, PrinterGfx &rGfx, bool bAllowType42
     // of the glyph in the output file
     unsigned char  pEncoding[256];
     sal_uInt16 pTTGlyphMapping[256];
-    const bool bAllowCID = false; // TODO: nPSLanguageLevel>=3
 
     // loop through all the font glyph subsets
-    sal_Int32 nGlyphSetID;
-    glyph_list_t::iterator aGlyphSet;
-    for (aGlyphSet = maGlyphList.begin(), nGlyphSetID = 1;
-         aGlyphSet != maGlyphList.end();
-         ++aGlyphSet, nGlyphSetID++)
+    sal_Int32 nGlyphSetID = 1;
+    for (auto const& glyph : maGlyphList)
     {
-        if ((*aGlyphSet).empty())
+        if (glyph.empty())
+        {
+            ++nGlyphSetID;
             continue;
+        }
 
         // loop through all the glyphs in the subset
-        glyph_map_t::const_iterator aGlyph;
         sal_Int32 n = 0;
-        for (aGlyph = (*aGlyphSet).begin(); aGlyph != (*aGlyphSet).end(); ++aGlyph)
+        for (auto const& elem : glyph)
         {
-            pTTGlyphMapping [n] = (*aGlyph).first;
-            pEncoding       [n] = (*aGlyph).second;
+            pTTGlyphMapping [n] = elem.first;
+            pEncoding       [n] = elem.second;
             n++;
         }
 
         // create the current subset
         OString aGlyphSetName = GetGlyphSetName(nGlyphSetID);
         fprintf( pTmpFile, "%%%%BeginResource: font %s\n", aGlyphSetName.getStr() );
-        CreatePSUploadableFont( pTTFont, pTmpFile, aGlyphSetName.getStr(), (*aGlyphSet).size(),
-                                pTTGlyphMapping, pEncoding, bAllowType42, bAllowCID );
+        CreatePSUploadableFont( pTTFont, pTmpFile, aGlyphSetName.getStr(), glyph.size(),
+                                pTTGlyphMapping, pEncoding, bAllowType42 );
         fprintf( pTmpFile, "%%%%EndResource\n" );
         rSuppliedFonts.push_back( aGlyphSetName );
+        ++nGlyphSetID;
     }
 
     // copy the file into the page header

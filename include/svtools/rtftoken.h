@@ -20,12 +20,14 @@
 #ifndef INCLUDED_SVTOOLS_RTFTOKEN_H
 #define INCLUDED_SVTOOLS_RTFTOKEN_H
 
+#include <rtl/ustring.hxx>
+
 namespace rtl {
   class OUString;
 };
 
 // search the TokenID for the token
-int GetRTFToken( const rtl::OUString& rSearch );
+int GetRTFToken( const OUString& rSearch );
 
 enum RTF_TOKEN_RANGES {
     RTF_NOGROUP                     = 0x0100,

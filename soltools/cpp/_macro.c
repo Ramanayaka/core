@@ -287,7 +287,10 @@ void
         if (np->flag & ISMAC)
             builtin(trp, np->val);
         else
+        {
+            // coverity[overrun-buffer-arg: FALSE] - a multiple of trp->max is allocated, not trp->max itself
             expand(trp, np, &validators);
+        }
         tp = trp->tp;
     }   // end for
     if (flag)
@@ -408,6 +411,7 @@ int
         ntok++;
         if (trp->tp >= trp->lp)
         {
+            // coverity[overrun-buffer-arg: FALSE] - a multiple of trp->max is allocated, not trp->max itself
             gettokens(trp, 0);
             if ((trp->lp - 1)->type == END)
             {
@@ -430,7 +434,10 @@ int
     while (parens > 0)
     {
         if (trp->tp >= trp->lp)
+        {
+            // coverity[overrun-buffer-arg: FALSE] - a multiple of trp->max is allocated, not trp->max itself
             gettokens(trp, 0);
+        }
         if (needspace)
         {
             needspace = 0;
@@ -577,7 +584,7 @@ void
                 {
                     if (len + ntp->len + ntp->wslen > sizeof(tt))
                     {
-                        error(ERROR, "## string concatination buffer overrun");
+                        error(ERROR, "## string concatenation buffer overrun");
                         break;
                     }
 
@@ -587,8 +594,9 @@ void
                                 ntp->len + ntp->wslen);
                         len += ntp->len + ntp->wslen;
                     }
-                    else    // Leerzeichen um ## herum entfernen:
+                    else
                     {
+                        // remove spaces around ##
                         strncpy((char *) tt + len, (char *) ntp->t, ntp->len);
                         len += ntp->len;
                     }
@@ -601,6 +609,7 @@ void
                 tt[len] = '\0';
                 setsource("<##>", -1, -1, tt, 0);
                 maketokenrow(3, &ntr);
+                // coverity[overrun-buffer-arg: FALSE] - a multiple of trp->max is allocated, not trp->max itself
                 gettokens(&ntr, 1);
                 unsetsource();
                 if (ntr.bp->type == UNCLASS)
@@ -624,7 +633,7 @@ void
  * corresponding index in the argname array.  Return -1 if not found.
  */
 int
-    lookuparg(Nlist * mac, Token * tp)
+    lookuparg(Nlist * mac, Token const * tp)
 {
     Token *ap;
 

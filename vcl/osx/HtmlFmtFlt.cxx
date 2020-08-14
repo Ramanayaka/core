@@ -34,7 +34,7 @@ using namespace com::sun::star::uno;
 // well known under MS Windows
 // the MS HTML Format has a header before the real html data
 
-// Version:1.0      Version number of the clipboard. Staring is 0.9
+// Version:1.0      Version number of the clipboard. Starting is 0.9
 // StartHTML:       Byte count from the beginning of the clipboard to the start
 //                  of the context, or -1 if no context
 // EndHTML:         Byte count from the beginning of the clipboard to the end
@@ -70,19 +70,19 @@ std::string GetHtmlFormatHeader(size_t startHtml, size_t endHtml, size_t startFr
 
 // the office always writes the start and end html tag in upper cases and
 // without spaces both tags don't allow parameters
-const std::string TAG_HTML = std::string("<html>");
-const std::string TAG_END_HTML = std::string("</html>");
+const std::string TAG_HTML("<html>");
+const std::string TAG_END_HTML("</html>");
 
 // The body tag may have parameters so we need to search for the
 // closing '>' manually e.g. <BODY param> #92840#
-const std::string TAG_BODY = std::string("<body");
-const std::string TAG_END_BODY = std::string("</body");
+const std::string TAG_BODY("<body");
+const std::string TAG_END_BODY("</body");
 
-Sequence<sal_Int8> SAL_CALL TextHtmlToHTMLFormat(Sequence<sal_Int8>& aTextHtml)
+Sequence<sal_Int8> TextHtmlToHTMLFormat(Sequence<sal_Int8> const & aTextHtml)
 {
     OSL_ASSERT(aTextHtml.getLength() > 0);
 
-    if (!(aTextHtml.getLength() > 0))
+    if (aTextHtml.getLength() <= 0)
         return Sequence<sal_Int8>();
 
     // fill the buffer with dummy values to calc the exact length
@@ -90,8 +90,8 @@ Sequence<sal_Int8> SAL_CALL TextHtmlToHTMLFormat(Sequence<sal_Int8>& aTextHtml)
     size_t lHtmlFormatHeader = dummyHtmlHeader.length();
 
     std::string textHtml(
-        reinterpret_cast<const sal_Char*>(aTextHtml.getConstArray()),
-        reinterpret_cast<const sal_Char*>(aTextHtml.getConstArray()) + aTextHtml.getLength());
+        reinterpret_cast<const char*>(aTextHtml.getConstArray()),
+        reinterpret_cast<const char*>(aTextHtml.getConstArray()) + aTextHtml.getLength());
 
     std::string::size_type nStartHtml = textHtml.find(TAG_HTML) + lHtmlFormatHeader - 1; // we start one before '<HTML>' Word 2000 does also so
     std::string::size_type nEndHtml = textHtml.find(TAG_END_HTML) + lHtmlFormatHeader + TAG_END_HTML.length() + 1; // our SOffice 5.2 wants 2 behind </HTML>?
@@ -122,9 +122,9 @@ Sequence<sal_Int8> HTMLFormatToTextHtml(const Sequence<sal_Int8>& aHTMLFormat)
   assert(isHTMLFormat(aHTMLFormat) && "No HTML Format provided");
 
   Sequence<sal_Int8>& nonconstHTMLFormatRef = const_cast< Sequence<sal_Int8>& >(aHTMLFormat);
-  sal_Char* dataStart = reinterpret_cast<sal_Char*>(nonconstHTMLFormatRef.getArray());
-  sal_Char* dataEnd = dataStart + nonconstHTMLFormatRef.getLength() - 1;
-  const sal_Char* htmlStartTag = strcasestr(dataStart, HtmlStartTag);
+  char* dataStart = reinterpret_cast<char*>(nonconstHTMLFormatRef.getArray());
+  char* dataEnd = dataStart + nonconstHTMLFormatRef.getLength() - 1;
+  const char* htmlStartTag = strcasestr(dataStart, HtmlStartTag);
 
   assert(htmlStartTag && "Seems to be no HTML at all");
 
@@ -149,7 +149,7 @@ Sequence<sal_Int8> HTMLFormatToTextHtml(const Sequence<sal_Int8>& aHTMLFormat)
    can improve this
 */
 const char HtmlFormatStart[] = "Version:";
-int const HtmlFormatStartLen = (sizeof(HtmlFormatStart) - 1);
+int const HtmlFormatStartLen = sizeof(HtmlFormatStart) - 1;
 
 bool isHTMLFormat(const Sequence<sal_Int8>& aHtmlSequence)
 {
@@ -158,7 +158,7 @@ bool isHTMLFormat(const Sequence<sal_Int8>& aHtmlSequence)
 
   return rtl_str_compareIgnoreAsciiCase_WithLength(HtmlFormatStart,
                                                    HtmlFormatStartLen,
-                                                   reinterpret_cast<const sal_Char*>(aHtmlSequence.getConstArray()),
+                                                   reinterpret_cast<const char*>(aHtmlSequence.getConstArray()),
                                                    HtmlFormatStartLen) == 0;
 }
 

@@ -21,12 +21,10 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ACOLUMN_HXX
 
 #include <connectivity/sdbcx/VColumn.hxx>
-#include "ado/Awrapadox.hxx"
+#include <ado/Awrapadox.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         class OConnection;
         typedef sdbcx::OColumn OColumn_ADO;
         class OAdoColumn :  public OColumn_ADO
@@ -49,11 +47,10 @@ namespace connectivity
             virtual void construct() override;
             // css::lang::XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
             WpADOColumn     getColumnImpl() const;
         };
-    }
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ACOLUMN_HXX
 

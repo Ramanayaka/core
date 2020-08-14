@@ -17,14 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/drawingml/chart/modelbase.hxx"
+#include <oox/drawingml/chart/modelbase.hxx>
 
-#include "oox/helper/attributelist.hxx"
+#include <oox/helper/attributelist.hxx>
 #include <oox/token/tokens.hxx>
 
-namespace oox {
-namespace drawingml {
-namespace chart {
+namespace oox::drawingml::chart {
 
 NumberFormat::NumberFormat() :
     mbSourceLinked( true )
@@ -55,8 +53,6 @@ LayoutModel::~LayoutModel()
 {
 }
 
-} // namespace chart
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml::chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

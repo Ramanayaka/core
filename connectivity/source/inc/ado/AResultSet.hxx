@@ -33,14 +33,12 @@
 #include <com/sun/star/sdbc/XRowUpdate.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include "ado/AStatement.hxx"
+#include <ado/AStatement.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         /*
         **  java_sql_ResultSet
         */
@@ -230,7 +228,6 @@ namespace connectivity
             virtual css::uno::Sequence< sal_Int32 > SAL_CALL deleteRows( const css::uno::Sequence< css::uno::Any >& rows ) override;
 
         };
-    }
 
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_ARESULTSET_HXX

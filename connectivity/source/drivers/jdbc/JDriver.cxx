@@ -17,21 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "java/sql/Driver.hxx"
-#include "java/lang/Object.hxx"
-#include "java/lang/Class.hxx"
-#include "java/sql/DriverPropertyInfo.hxx"
-#include "java/sql/Connection.hxx"
-#include "java/util/Property.hxx"
-#include "java/tools.hxx"
+#include <java/sql/Driver.hxx>
+#include <java/sql/Connection.hxx>
+#include <sal/log.hxx>
 #include <connectivity/dbexception.hxx>
 #include <jvmfwk/framework.hxx>
-#include "resource/conn_shared_res.hrc"
-#include "resource/common_res.hrc"
-#include "resource/sharedresources.hxx"
-#include <comphelper/processfactory.hxx>
+#include <strings.hrc>
+#include <resource/sharedresources.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "strings.hxx"
+#include <strings.hxx>
 
 using namespace connectivity;
 using namespace ::com::sun::star::uno;
@@ -51,29 +45,11 @@ java_sql_Driver::~java_sql_Driver()
 {
 }
 
-// static ServiceInfo
-
-OUString java_sql_Driver::getImplementationName_Static(  )
-{
-    return OUString("com.sun.star.comp.sdbc.JDBCDriver");
-        // this name is referenced in the configuration and in the jdbc.xml
-        // Please take care when changing it.
-}
-
-Sequence< OUString > java_sql_Driver::getSupportedServiceNames_Static(  )
-{
-    Sequence<OUString> aSNS { "com.sun.star.sdbc.Driver" };
-    return aSNS;
-}
-
-css::uno::Reference< css::uno::XInterface > SAL_CALL connectivity::java_sql_Driver_CreateInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxFactory)
-{
-    return *(new java_sql_Driver( comphelper::getComponentContext(_rxFactory)));
-}
-
 OUString SAL_CALL java_sql_Driver::getImplementationName(  )
 {
-    return getImplementationName_Static();
+    return "com.sun.star.comp.sdbc.JDBCDriver";
+        // this name is referenced in the configuration and in the jdbc.xml
+        // Please take care when changing it.
 }
 
 sal_Bool SAL_CALL java_sql_Driver::supportsService( const OUString& _rServiceName )
@@ -84,7 +60,7 @@ sal_Bool SAL_CALL java_sql_Driver::supportsService( const OUString& _rServiceNam
 
 Sequence< OUString > SAL_CALL java_sql_Driver::getSupportedServiceNames(  )
 {
-    return getSupportedServiceNames_Static();
+    return { "com.sun.star.sdbc.Driver" };
 }
 
 Reference< XConnection > SAL_CALL java_sql_Driver::connect( const OUString& url, const
@@ -229,7 +205,7 @@ Sequence< DriverPropertyInfo > SAL_CALL java_sql_Driver::getPropertyInfo( const 
                 ,OUString( )
                 ,Sequence< OUString > ())
         );
-        return Sequence< DriverPropertyInfo >(&aDriverInfo[0],aDriverInfo.size());
+        return Sequence< DriverPropertyInfo >(aDriverInfo.data(),aDriverInfo.size());
     }
     ::connectivity::SharedResources aResources;
     const OUString sMessage = aResources.getResourceString(STR_URI_SYNTAX_ERROR);
@@ -247,5 +223,11 @@ sal_Int32 SAL_CALL java_sql_Driver::getMinorVersion(  )
     return 0;
 }
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+connectivity_java_sql_Driver_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new java_sql_Driver(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

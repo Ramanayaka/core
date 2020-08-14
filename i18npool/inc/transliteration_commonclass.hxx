@@ -20,13 +20,11 @@
 #define INCLUDED_I18NPOOL_INC_TRANSLITERATION_COMMONCLASS_HXX
 
 #include <com/sun/star/i18n/XExtendedTransliteration.hpp>
-#include <com/sun/star/i18n/TransliterationType.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <rtl/ustrbuf.h>
 #include <rtl/ustring.hxx>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 class transliteration_commonclass : public cppu::WeakImplHelper<
                                                                   css::i18n::XExtendedTransliteration,
@@ -38,10 +36,10 @@ public:
 
         // Methods which are shared.
         void SAL_CALL
-        loadModule( TransliterationModules modName, const css::lang::Locale& rLocale ) override;
+        loadModule( css::i18n::TransliterationModules modName, const css::lang::Locale& rLocale ) override;
 
         void SAL_CALL
-        loadModuleNew( const css::uno::Sequence< TransliterationModulesNew >& modName, const css::lang::Locale& rLocale ) override;
+        loadModuleNew( const css::uno::Sequence< css::i18n::TransliterationModulesNew >& modName, const css::lang::Locale& rLocale ) override;
 
         void SAL_CALL
         loadModuleByImplName( const OUString& implName, const css::lang::Locale& rLocale ) override;
@@ -58,10 +56,12 @@ public:
         virtual sal_Int16 SAL_CALL getType(  ) override = 0;
 
         virtual OUString SAL_CALL
-        transliterate( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 >& offset  ) override = 0;
+        transliterate( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 >& offset ) override final
+            { return transliterateImpl( inStr, startPos, nCount, offset, true ); }
 
         virtual OUString SAL_CALL
-        folding( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 >& offset) override = 0;
+        folding( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 >& offset) override final
+            { return foldingImpl( inStr, startPos, nCount, offset, true ); }
 
         // Methods in XExtendedTransliteration
         virtual OUString SAL_CALL
@@ -88,13 +88,18 @@ public:
         virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 protected:
+        virtual OUString
+        transliterateImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 >& offset, bool useOffset ) = 0;
+
+        virtual OUString
+        foldingImpl( const OUString& inStr, sal_Int32 startPos, sal_Int32 nCount, css::uno::Sequence< sal_Int32 >& offset, bool useOffset ) = 0;
+
         css::lang::Locale   aLocale;
-        const sal_Char* transliterationName;
-        const sal_Char* implementationName;
-        bool useOffset;
+        const char*         transliterationName;
+        const char*         implementationName;
 };
 
-} } } }
+}
 
 #endif // INCLUDED_I18NPOOL_INC_TRANSLITERATION_COMMONCLASS_HXX
 

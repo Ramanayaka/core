@@ -37,9 +37,9 @@ namespace pcr
 
     namespace
     {
-        static const sal_Int32 s_nFirstVirtualButtonType = 1 + (sal_Int32)FormButtonType_URL;
+        const sal_Int32 s_nFirstVirtualButtonType = 1 + sal_Int32(FormButtonType_URL);
 
-        static const sal_Char* pNavigationURLs[] =
+        const char* pNavigationURLs[] =
         {
             ".uno:FormController/moveToFirst",
             ".uno:FormController/moveToPrev",
@@ -55,7 +55,7 @@ namespace pcr
 
         sal_Int32 lcl_getNavigationURLIndex( const OUString& _rNavURL )
         {
-            const sal_Char** pLookup = pNavigationURLs;
+            const char** pLookup = pNavigationURLs;
             while ( *pLookup )
             {
                 if ( _rNavURL.equalsAscii( *pLookup ) )
@@ -65,9 +65,9 @@ namespace pcr
             return -1;
         }
 
-        const sal_Char* lcl_getNavigationURL( sal_Int32 _nButtonTypeIndex )
+        const char* lcl_getNavigationURL( sal_Int32 _nButtonTypeIndex )
         {
-            const sal_Char** pLookup = pNavigationURLs;
+            const char** pLookup = pNavigationURLs;
             while ( _nButtonTypeIndex-- && *pLookup++ )
                 ;
             OSL_ENSURE( *pLookup, "lcl_getNavigationURL: invalid index!" );
@@ -91,19 +91,19 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "PushButtonNavigation::PushButtonNavigation: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "PushButtonNavigation::PushButtonNavigation" );
         }
     }
 
 
     FormButtonType PushButtonNavigation::implGetCurrentButtonType() const
     {
-        sal_Int32 nButtonType = (sal_Int32)FormButtonType_PUSH;
+        sal_Int32 nButtonType = sal_Int32(FormButtonType_PUSH);
         if ( !m_xControlModel.is() )
-            return (FormButtonType)nButtonType;
+            return static_cast<FormButtonType>(nButtonType);
         OSL_VERIFY( ::cppu::enum2int( nButtonType, m_xControlModel->getPropertyValue( PROPERTY_BUTTONTYPE ) ) );
 
-        if ( nButtonType == (sal_Int32)FormButtonType_URL )
+        if ( nButtonType == sal_Int32(FormButtonType_URL) )
         {
             // there's a chance that this is a "virtual" button type
             // (which are realized by special URLs)
@@ -115,7 +115,7 @@ namespace pcr
                 // it actually *is* a virtual button type
                 nButtonType = s_nFirstVirtualButtonType + nNavigationURLIndex;
         }
-        return (FormButtonType)nButtonType;
+        return static_cast<FormButtonType>(nButtonType);
     }
 
 
@@ -130,7 +130,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "PushButtonNavigation::getCurrentButtonType: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "PushButtonNavigation::getCurrentButtonType" );
         }
         return aReturn;
     }
@@ -144,17 +144,17 @@ namespace pcr
 
         try
         {
-            sal_Int32 nButtonType = (sal_Int32)FormButtonType_PUSH;
+            sal_Int32 nButtonType = sal_Int32(FormButtonType_PUSH);
             OSL_VERIFY( ::cppu::enum2int( nButtonType, _rValue ) );
             OUString sTargetURL;
 
             bool bIsVirtualButtonType = nButtonType >= s_nFirstVirtualButtonType;
             if ( bIsVirtualButtonType )
             {
-                const sal_Char* pURL = lcl_getNavigationURL( nButtonType - s_nFirstVirtualButtonType );
+                const char* pURL = lcl_getNavigationURL( nButtonType - s_nFirstVirtualButtonType );
                 sTargetURL = OUString::createFromAscii( pURL );
 
-                nButtonType = (sal_Int32)FormButtonType_URL;
+                nButtonType = sal_Int32(FormButtonType_URL);
             }
 
             m_xControlModel->setPropertyValue( PROPERTY_BUTTONTYPE, makeAny( static_cast< FormButtonType >( nButtonType ) ) );
@@ -162,7 +162,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "PushButtonNavigation::setCurrentButtonType: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "PushButtonNavigation::setCurrentButtonType" );
         }
     }
 
@@ -181,10 +181,10 @@ namespace pcr
                 eState = xStateAccess->getPropertyState( PROPERTY_BUTTONTYPE );
                 if ( eState == PropertyState_DIRECT_VALUE )
                 {
-                    sal_Int32 nRealButtonType = (sal_Int32)FormButtonType_PUSH;
+                    sal_Int32 nRealButtonType = sal_Int32(FormButtonType_PUSH);
                     OSL_VERIFY( ::cppu::enum2int( nRealButtonType, m_xControlModel->getPropertyValue( PROPERTY_BUTTONTYPE ) ) );
                     // perhaps it's one of the virtual button types?
-                    if ( (sal_Int32)FormButtonType_URL == nRealButtonType )
+                    if ( sal_Int32(FormButtonType_URL) == nRealButtonType )
                     {
                         // yes, it is -> rely on the state of the URL property
                         eState = xStateAccess->getPropertyState( PROPERTY_TARGET_URL );
@@ -194,7 +194,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "PushButtonNavigation::getCurrentButtonTypeState: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "PushButtonNavigation::getCurrentButtonTypeState" );
         }
 
         return eState;
@@ -213,7 +213,7 @@ namespace pcr
             if ( m_bIsPushButton )
             {
                 FormButtonType nCurrentButtonType = implGetCurrentButtonType();
-                bool bIsVirtualButtonType = nCurrentButtonType >= (FormButtonType)s_nFirstVirtualButtonType;
+                bool bIsVirtualButtonType = nCurrentButtonType >= FormButtonType(s_nFirstVirtualButtonType);
                 if ( bIsVirtualButtonType )
                 {
                     // pretend (to the user) that there's no URL set - since
@@ -225,7 +225,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "PushButtonNavigation::getCurrentTargetURL: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "PushButtonNavigation::getCurrentTargetURL" );
         }
         return aReturn;
     }
@@ -242,7 +242,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "PushButtonNavigation::setCurrentTargetURL: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "PushButtonNavigation::setCurrentTargetURL" );
         }
     }
 
@@ -261,7 +261,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "PushButtonNavigation::setCurrentTargetURL: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "PushButtonNavigation::setCurrentTargetURL" );
         }
 
         return eState;
@@ -277,7 +277,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
         return nButtonType == FormButtonType_URL;
     }

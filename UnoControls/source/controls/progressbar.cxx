@@ -17,17 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "progressbar.hxx"
+#include <progressbar.hxx>
 
-#include <com/sun/star/awt/GradientStyle.hpp>
-#include <com/sun/star/awt/RasterOperation.hpp>
-#include <com/sun/star/awt/Gradient.hpp>
 #include <com/sun/star/awt/XGraphics.hpp>
 #include <tools/debug.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/typeprovider.hxx>
 
-#include <math.h>
 #include <limits.h>
 
 using namespace ::cppu;
@@ -36,7 +32,7 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::awt;
 
-namespace unocontrols{
+namespace unocontrols {
 
 //  construct/destruct
 
@@ -67,13 +63,13 @@ Any SAL_CALL ProgressBar::queryInterface( const Type& rType )
     Reference< XInterface > xDel = BaseControl::impl_getDelegator();
     if ( xDel.is() )
     {
-        // If an delegator exist, forward question to his queryInterface.
-        // Delegator will ask his own queryAggregation!
+        // If a delegator exists, forward question to its queryInterface.
+        // Delegator will ask its own queryAggregation!
         aReturn = xDel->queryInterface( rType );
     }
     else
     {
-        // If an delegator unknown, forward question to own queryAggregation.
+        // If a delegator is unknown, forward question to own queryAggregation.
         aReturn = queryAggregation( rType );
     }
 
@@ -144,7 +140,7 @@ void SAL_CALL ProgressBar::setForegroundColor( sal_Int32 nColor )
     MutexGuard  aGuard (m_aMutex);
 
     // Safe color for later use.
-    m_nForegroundColor = nColor;
+    m_nForegroundColor = Color(nColor);
 
     // Repaint control
     impl_paint ( 0, 0, impl_getGraphicsPeer() );
@@ -158,7 +154,7 @@ void SAL_CALL ProgressBar::setBackgroundColor ( sal_Int32 nColor )
     MutexGuard  aGuard (m_aMutex);
 
     // Safe color for later use.
-    m_nBackgroundColor = nColor;
+    m_nBackgroundColor = Color(nColor);
 
     // Repaint control
     impl_paint ( 0, 0, impl_getGraphicsPeer() );
@@ -204,7 +200,7 @@ void SAL_CALL ProgressBar::setRange ( sal_Int32 nMin, sal_Int32 nMax )
 
     // save impossible cases
     // This method is only defined for valid values
-    // If you ignore this, the release version wil produce an error "division by zero" in "ProgressBar::setValue()"!
+    // If you ignore this, the release version will produce an error "division by zero" in "ProgressBar::setValue()"!
     DBG_ASSERT ( ( nMin != nMax ) , "ProgressBar::setRange()\nValues for MIN and MAX are the same. This is not allowed!\n" );
 
     // Ready for multithreading
@@ -225,7 +221,7 @@ void SAL_CALL ProgressBar::setRange ( sal_Int32 nMin, sal_Int32 nMax )
     }
 
     // assure that m_nValue is within the range
-    if (!(m_nMinRange < m_nValue  &&  m_nValue < m_nMaxRange))
+    if (m_nMinRange >= m_nValue  ||  m_nValue >= m_nMaxRange)
         m_nValue = m_nMinRange;
 
     impl_recalcRange ();
@@ -287,20 +283,6 @@ Reference< XControlModel > SAL_CALL ProgressBar::getModel()
     return Reference< XControlModel >();
 }
 
-//  impl but public method to register service
-
-const Sequence< OUString > ProgressBar::impl_getStaticSupportedServiceNames()
-{
-    return css::uno::Sequence<OUString>();
-}
-
-//  impl but public method to register service
-
-const OUString ProgressBar::impl_getStaticImplementationName()
-{
-    return OUString("stardiv.UnoControls.ProgressBar");
-}
-
 //  protected method
 
 void ProgressBar::impl_paint ( sal_Int32 nX, sal_Int32 nY, const Reference< XGraphics > & rGraphics )
@@ -310,68 +292,68 @@ void ProgressBar::impl_paint ( sal_Int32 nX, sal_Int32 nY, const Reference< XGra
 
     // This paint method is not buffered !!
     // Every request paint the completely control. ( but only, if peer exist )
-     if ( rGraphics.is () )
+    if ( !rGraphics.is () )
+        return;
+
+    MutexGuard  aGuard (m_aMutex);
+
+    // Clear background
+    // (same color for line and fill)
+    rGraphics->setFillColor ( sal_Int32(m_nBackgroundColor) );
+    rGraphics->setLineColor ( sal_Int32(m_nBackgroundColor) );
+    rGraphics->drawRect     ( nX, nY, impl_getWidth(), impl_getHeight() );
+
+    // same color for line and fill for blocks
+    rGraphics->setFillColor ( sal_Int32(m_nForegroundColor) );
+    rGraphics->setLineColor ( sal_Int32(m_nForegroundColor) );
+
+    sal_Int32   nBlockStart     =   0;   // = left site of new block
+    sal_Int32   nBlockCount     =   m_nBlockValue!=0.00 ? static_cast<sal_Int32>((m_nValue-m_nMinRange)/m_nBlockValue) : 0;   // = number of next block
+
+    // Draw horizontal progressbar
+    // decision in "recalcRange()"
+    if (m_bHorizontal)
     {
-        MutexGuard  aGuard (m_aMutex);
+        // Step to left side of window
+        nBlockStart = nX;
 
-        // Clear background
-        // (same color for line and fill)
-        rGraphics->setFillColor ( m_nBackgroundColor                        );
-        rGraphics->setLineColor ( m_nBackgroundColor                        );
-        rGraphics->drawRect     ( nX, nY, impl_getWidth(), impl_getHeight() );
-
-        // same color for line and fill for blocks
-        rGraphics->setFillColor ( m_nForegroundColor );
-        rGraphics->setLineColor ( m_nForegroundColor );
-
-        sal_Int32   nBlockStart     =   0;   // = left site of new block
-        sal_Int32   nBlockCount     =   m_nBlockValue!=0.00 ? (sal_Int32)((m_nValue-m_nMinRange)/m_nBlockValue) : 0;   // = number of next block
-
-        // Draw horizontal progressbar
-        // decision in "recalcRange()"
-        if (m_bHorizontal)
+        for ( sal_Int32 i=1; i<=nBlockCount; ++i )
         {
-            // Step to left side of window
-            nBlockStart = nX;
-
-            for ( sal_Int32 i=1; i<=nBlockCount; ++i )
-            {
-                // step free field
-                nBlockStart +=  PROGRESSBAR_FREESPACE;
-                // paint block
-                rGraphics->drawRect (nBlockStart, nY+PROGRESSBAR_FREESPACE, m_aBlockSize.Width, m_aBlockSize.Height);
-                // step next free field
-                nBlockStart +=  m_aBlockSize.Width;
-            }
+            // step free field
+            nBlockStart +=  PROGRESSBAR_FREESPACE;
+            // paint block
+            rGraphics->drawRect (nBlockStart, nY+PROGRESSBAR_FREESPACE, m_aBlockSize.Width, m_aBlockSize.Height);
+            // step next free field
+            nBlockStart +=  m_aBlockSize.Width;
         }
-        // draw vertikal progressbar
-        // decision in "recalcRange()"
-        else
-        {
-            // step to bottom side of window
-            nBlockStart  =  nY+impl_getHeight();
-            nBlockStart -=  m_aBlockSize.Height;
-
-            for ( sal_Int32 i=1; i<=nBlockCount; ++i )
-            {
-                // step free field
-                nBlockStart -=  PROGRESSBAR_FREESPACE;
-                // paint block
-                rGraphics->drawRect (nX+PROGRESSBAR_FREESPACE, nBlockStart, m_aBlockSize.Width, m_aBlockSize.Height);
-                // step next free field
-                nBlockStart -=  m_aBlockSize.Height;
-            }
-        }
-
-        // Paint shadow border around the progressbar
-        rGraphics->setLineColor ( PROGRESSBAR_LINECOLOR_SHADOW                          );
-        rGraphics->drawLine     ( nX, nY, impl_getWidth(), nY               );
-        rGraphics->drawLine     ( nX, nY, nX             , impl_getHeight() );
-
-        rGraphics->setLineColor ( PROGRESSBAR_LINECOLOR_BRIGHT                                                              );
-        rGraphics->drawLine     ( impl_getWidth()-1, impl_getHeight()-1, impl_getWidth()-1, nY                  );
-        rGraphics->drawLine     ( impl_getWidth()-1, impl_getHeight()-1, nX               , impl_getHeight()-1  );
     }
+    // draw vertical progressbar
+    // decision in "recalcRange()"
+    else
+    {
+        // step to bottom side of window
+        nBlockStart  =  nY+impl_getHeight();
+        nBlockStart -=  m_aBlockSize.Height;
+
+        for ( sal_Int32 i=1; i<=nBlockCount; ++i )
+        {
+            // step free field
+            nBlockStart -=  PROGRESSBAR_FREESPACE;
+            // paint block
+            rGraphics->drawRect (nX+PROGRESSBAR_FREESPACE, nBlockStart, m_aBlockSize.Width, m_aBlockSize.Height);
+            // step next free field
+            nBlockStart -=  m_aBlockSize.Height;
+        }
+    }
+
+    // Paint shadow border around the progressbar
+    rGraphics->setLineColor ( PROGRESSBAR_LINECOLOR_SHADOW                          );
+    rGraphics->drawLine     ( nX, nY, impl_getWidth(), nY               );
+    rGraphics->drawLine     ( nX, nY, nX             , impl_getHeight() );
+
+    rGraphics->setLineColor ( PROGRESSBAR_LINECOLOR_BRIGHT                                                              );
+    rGraphics->drawLine     ( impl_getWidth()-1, impl_getHeight()-1, impl_getWidth()-1, nY                  );
+    rGraphics->drawLine     ( impl_getWidth()-1, impl_getHeight()-1, nX               , impl_getHeight()-1  );
 }
 
 //  protected method
@@ -405,10 +387,16 @@ void ProgressBar::impl_recalcRange ()
     double fBlockValue  = fRange/fMaxBlocks;
 
     m_nBlockValue       = fBlockValue;
-    m_aBlockSize.Height = (sal_Int32)fBlockHeight;
-    m_aBlockSize.Width  = (sal_Int32)fBlockWidth;
+    m_aBlockSize.Height = static_cast<sal_Int32>(fBlockHeight);
+    m_aBlockSize.Width  = static_cast<sal_Int32>(fBlockWidth);
 }
 
 }   // namespace unocontrols
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+stardiv_UnoControls_ProgressBar_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new unocontrols::ProgressBar(context));
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

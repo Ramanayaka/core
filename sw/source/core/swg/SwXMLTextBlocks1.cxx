@@ -19,18 +19,20 @@
 
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/embed/XTransactedObject.hpp>
+#include <osl/diagnose.h>
 #include <svl/macitem.hxx>
 #include <svtools/unoevent.hxx>
 #include <sfx2/docfile.hxx>
-#include <unotools/streamwrap.hxx>
+#include <tools/diagnose_ex.h>
+#include <comphelper/fileformat.h>
 #include <comphelper/processfactory.hxx>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/xml/sax/InputSource.hpp>
 #include <com/sun/star/io/IOException.hpp>
-#include <com/sun/star/io/XActiveDataSource.hpp>
-#include <com/sun/star/xml/sax/Parser.hpp>
 #include <com/sun/star/xml/sax/FastParser.hpp>
 #include <com/sun/star/xml/sax/FastToken.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
+#include <com/sun/star/xml/sax/SAXParseException.hpp>
 #include <com/sun/star/document/XStorageBasedDocument.hpp>
 #include <doc.hxx>
 #include <docsh.hxx>
@@ -38,8 +40,8 @@
 #include <SwXMLTextBlocks.hxx>
 #include <SwXMLBlockImport.hxx>
 #include <SwXMLBlockExport.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <swevent.hxx>
+#include <xmloff/xmlnamespace.hxx>
+#include <sfx2/event.hxx>
 #include <swerror.h>
 
 const char XMLN_BLOCKLIST[] = "BlockList.xml";
@@ -63,8 +65,8 @@ ErrCode SwXMLTextBlocks::GetDoc( sal_uInt16 nIdx )
         try
         {
             xRoot = xBlkRoot->openStorageElement( aFolderName, embed::ElementModes::READ );
-            xMedium = new SfxMedium( xRoot, GetBaseURL(), OUString( "writer8" ) );
-            SwReader aReader( *xMedium, aFolderName, m_pDoc );
+            xMedium = new SfxMedium( xRoot, GetBaseURL(), "writer8" );
+            SwReader aReader( *xMedium, aFolderName, m_xDoc.get() );
             ReadXML->SetBlockMode( true );
             aReader.Read( *ReadXML );
             ReadXML->SetBlockMode( false );
@@ -73,7 +75,7 @@ ErrCode SwXMLTextBlocks::GetDoc( sal_uInt16 nIdx )
             OUString sObjReplacements( "ObjectReplacements" );
             if ( xRoot->hasByName( sObjReplacements ) )
             {
-                uno::Reference< document::XStorageBasedDocument > xDocStor( m_pDoc->GetDocShell()->GetModel(), uno::UNO_QUERY_THROW );
+                uno::Reference< document::XStorageBasedDocument > xDocStor( m_xDoc->GetDocShell()->GetModel(), uno::UNO_QUERY_THROW );
                 uno::Reference< embed::XStorage > xStr( xDocStor->getDocumentStorage() );
                 if ( xStr.is() )
                 {
@@ -152,9 +154,9 @@ ErrCode SwXMLTextBlocks::GetDoc( sal_uInt16 nIdx )
 // taken from unocore/unoevents.cxx or ui/unotxt.cxx
 const struct SvEventDescription aAutotextEvents[] =
 {
-    { SW_EVENT_START_INS_GLOSSARY,  "OnInsertStart" },
-    { SW_EVENT_END_INS_GLOSSARY,    "OnInsertDone" },
-    { 0, nullptr }
+    { SvMacroItemId::SwStartInsGlossary,  "OnInsertStart" },
+    { SvMacroItemId::SwEndInsGlossary,    "OnInsertDone" },
+    { SvMacroItemId::NONE, nullptr }
 };
 
 ErrCode SwXMLTextBlocks::GetMacroTable( sal_uInt16 nIdx,
@@ -165,100 +167,83 @@ ErrCode SwXMLTextBlocks::GetMacroTable( sal_uInt16 nIdx,
     m_aLong = m_aNames[nIdx]->aLong;
     aPackageName = m_aNames[nIdx]->aPackageName;
 
-    ErrCode nRet = ERRCODE_NONE;
-
     // open stream in proper sub-storage
     CloseFile();
-    nRet = OpenFile();
-    if ( ERRCODE_NONE == nRet )
+    if ( OpenFile() != ERRCODE_NONE )
+        return ERR_SWG_READ_ERROR;
+
+    try
     {
+        xRoot = xBlkRoot->openStorageElement( aPackageName, embed::ElementModes::READ );
+        bool bOasis = SotStorage::GetVersion( xRoot ) > SOFFICE_FILEFORMAT_60;
+
+        uno::Reference < io::XStream > xDocStream = xRoot->openStreamElement(
+            "atevent.xml", embed::ElementModes::READ );
+        OSL_ENSURE(xDocStream.is(), "Can't create stream");
+        if ( !xDocStream.is() )
+            return ERR_SWG_READ_ERROR;
+
+        uno::Reference<io::XInputStream> xInputStream = xDocStream->getInputStream();
+
+        // prepare ParserInputSrouce
+        xml::sax::InputSource aParserInput;
+        aParserInput.sSystemId = m_aName;
+        aParserInput.aInputStream = xInputStream;
+
+        // get service factory
+        uno::Reference< uno::XComponentContext > xContext =
+            comphelper::getProcessComponentContext();
+
+        // create descriptor and reference to it. Either
+        // both or neither must be kept because of the
+        // reference counting!
+        SvMacroTableEventDescriptor* pDescriptor =
+            new SvMacroTableEventDescriptor(aAutotextEvents);
+        uno::Reference<XNameReplace> xReplace = pDescriptor;
+        Sequence<Any> aFilterArguments( 1 );
+        aFilterArguments[0] <<= xReplace;
+
+        // get filter
+        OUString sFilterComponent = bOasis
+            ? OUString("com.sun.star.comp.Writer.XMLOasisAutotextEventsImporter")
+            : OUString("com.sun.star.comp.Writer.XMLAutotextEventsImporter");
+        uno::Reference< xml::sax::XFastParser > xFilter(
+            xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
+                sFilterComponent, aFilterArguments, xContext),
+            UNO_QUERY_THROW );
+
+        // parse the stream
         try
         {
-            xRoot = xBlkRoot->openStorageElement( aPackageName, embed::ElementModes::READ );
-            bool bOasis = SotStorage::GetVersion( xRoot ) > SOFFICE_FILEFORMAT_60;
-
-            uno::Reference < io::XStream > xDocStream = xRoot->openStreamElement(
-                "atevent.xml", embed::ElementModes::READ );
-            OSL_ENSURE(xDocStream.is(), "Can't create stream");
-            if ( xDocStream.is() )
-            {
-                uno::Reference<io::XInputStream> xInputStream = xDocStream->getInputStream();
-
-                // prepare ParserInputSrouce
-                xml::sax::InputSource aParserInput;
-                aParserInput.sSystemId = m_aName;
-                aParserInput.aInputStream = xInputStream;
-
-                // get service factory
-                uno::Reference< uno::XComponentContext > xContext =
-                    comphelper::getProcessComponentContext();
-
-                // get parser
-                uno::Reference< xml::sax::XParser > xParser = xml::sax::Parser::create( xContext );
-
-                // create descriptor and reference to it. Either
-                // both or neither must be kept because of the
-                // reference counting!
-                SvMacroTableEventDescriptor* pDescriptor =
-                    new SvMacroTableEventDescriptor(aAutotextEvents);
-                uno::Reference<XNameReplace> xReplace = pDescriptor;
-                Sequence<Any> aFilterArguments( 1 );
-                aFilterArguments[0] <<= xReplace;
-
-                // get filter
-                OUString sFilterComponent = bOasis
-                    ? OUString("com.sun.star.comp.Writer.XMLOasisAutotextEventsImporter")
-                    : OUString("com.sun.star.comp.Writer.XMLAutotextEventsImporter");
-                uno::Reference< xml::sax::XDocumentHandler > xFilter(
-                    xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-                        sFilterComponent, aFilterArguments, xContext),
-                    UNO_QUERY );
-                OSL_ENSURE( xFilter.is(),
-                            "can't instantiate atevent filter");
-                if ( xFilter.is() )
-                {
-                    // connect parser and filter
-                    xParser->setDocumentHandler( xFilter );
-
-                    // parse the stream
-                    try
-                    {
-                        xParser->parseStream( aParserInput );
-                    }
-                    catch( xml::sax::SAXParseException& )
-                    {
-                        // workaround for #83452#: SetSize doesn't work
-                        // nRet = ERR_SWG_READ_ERROR;
-                    }
-                    catch( xml::sax::SAXException& )
-                    {
-                        nRet = ERR_SWG_READ_ERROR;
-                    }
-                    catch( io::IOException& )
-                    {
-                        nRet = ERR_SWG_READ_ERROR;
-                    }
-
-                    // and finally, copy macro into table
-                    if (ERRCODE_NONE == nRet)
-                        pDescriptor->copyMacrosIntoTable(rMacroTable);
-                }
-                else
-                    nRet = ERR_SWG_READ_ERROR;
-            }
-            else
-                nRet = ERR_SWG_READ_ERROR;
+            xFilter->parseStream( aParserInput );
         }
-        catch( uno::Exception& )
+        catch( xml::sax::SAXParseException& )
         {
-            nRet = ERR_SWG_READ_ERROR;
+            // workaround for #83452#: SetSize doesn't work
+            // nRet = ERR_SWG_READ_ERROR;
         }
+        catch( xml::sax::SAXException& )
+        {
+            TOOLS_WARN_EXCEPTION("sw", "");
+            return ERR_SWG_READ_ERROR;
+        }
+        catch( io::IOException& )
+        {
+            TOOLS_WARN_EXCEPTION("sw", "");
+            return ERR_SWG_READ_ERROR;
+        }
+
+        // and finally, copy macro into table
+        pDescriptor->copyMacrosIntoTable(rMacroTable);
     }
-    else
-        nRet = ERR_SWG_READ_ERROR;
+    catch( uno::Exception& )
+    {
+        TOOLS_WARN_EXCEPTION("sw", "");
+        return ERR_SWG_READ_ERROR;
+    }
 
     // success!
-    return nRet;
+    return ERRCODE_NONE;
 }
 
 ErrCode SwXMLTextBlocks::GetBlockText( const OUString& rShort, OUString& rText )
@@ -272,8 +257,7 @@ ErrCode SwXMLTextBlocks::GetBlockText( const OUString& rShort, OUString& rText )
         bool bTextOnly = true;
 
         xRoot = xBlkRoot->openStorageElement( aFolderName, embed::ElementModes::READ );
-        uno::Reference < container::XNameAccess > xAccess( xRoot, uno::UNO_QUERY );
-        if ( !xAccess->hasByName( aStreamName ) || !xRoot->isStreamElement( aStreamName ) )
+        if ( !xRoot->hasByName( aStreamName ) || !xRoot->isStreamElement( aStreamName ) )
         {
             bTextOnly = false;
             aStreamName = "content.xml";
@@ -355,13 +339,9 @@ ErrCode SwXMLTextBlocks::PutBlockText( const OUString& rShort,
     uno::Reference < beans::XPropertySet > xSet( xDocStream, uno::UNO_QUERY );
     xSet->setPropertyValue("MediaType", Any(OUString( "text/xml" )) );
     uno::Reference < io::XOutputStream > xOut = xDocStream->getOutputStream();
-       uno::Reference<io::XActiveDataSource> xSrc(xWriter, uno::UNO_QUERY);
-       xSrc->setOutputStream(xOut);
+    xWriter->setOutputStream(xOut);
 
-       uno::Reference<xml::sax::XDocumentHandler> xHandler(xWriter,
-        uno::UNO_QUERY);
-
-    rtl::Reference<SwXMLTextBlockExport> xExp( new SwXMLTextBlockExport( xContext, *this, GetXMLToken ( XML_UNFORMATTED_TEXT ), xHandler) );
+    rtl::Reference<SwXMLTextBlockExport> xExp( new SwXMLTextBlockExport( xContext, *this, GetXMLToken ( XML_UNFORMATTED_TEXT ), xWriter) );
 
     xExp->exportDoc( rText );
 
@@ -400,12 +380,12 @@ ErrCode SwXMLTextBlocks::PutBlockText( const OUString& rShort,
 
 void SwXMLTextBlocks::ReadInfo()
 {
+    const OUString sDocName( XMLN_BLOCKLIST );
     try
     {
-    const OUString sDocName( XMLN_BLOCKLIST );
-    uno::Reference < container::XNameAccess > xAccess( xBlkRoot, uno::UNO_QUERY );
-    if ( xAccess.is() && xAccess->hasByName( sDocName ) && xBlkRoot->isStreamElement( sDocName ) )
-    {
+        if ( !xBlkRoot.is() || !xBlkRoot->hasByName( sDocName ) || !xBlkRoot->isStreamElement( sDocName ) )
+            return;
+
         uno::Reference< uno::XComponentContext > xContext =
                 comphelper::getProcessComponentContext();
 
@@ -426,74 +406,56 @@ void SwXMLTextBlocks::ReadInfo()
         xParser->setTokenHandler( xTokenHandler );
 
         // parse
-        try
-        {
-            xParser->parseStream( aParserInput );
-        }
-        catch( xml::sax::SAXParseException&  )
-        {
-            // re throw ?
-        }
-        catch( xml::sax::SAXException&  )
-        {
-            // re throw ?
-        }
-        catch( io::IOException& )
-        {
-            // re throw ?
-        }
-    }
+        xParser->parseStream( aParserInput );
     }
     catch ( uno::Exception& )
     {
+        TOOLS_WARN_EXCEPTION("sw", "when loading " << sDocName);
+        // re throw ?
     }
 }
 void SwXMLTextBlocks::WriteInfo()
 {
-    if ( xBlkRoot.is() || ERRCODE_NONE == OpenFile ( false ) )
-    {
-        uno::Reference< uno::XComponentContext > xContext =
-            comphelper::getProcessComponentContext();
-
-        uno::Reference < xml::sax::XWriter > xWriter = xml::sax::Writer::create(xContext);
-        OUString sDocName( XMLN_BLOCKLIST );
-
-        /*
-        if ( xBlkRoot->IsContained( sDocName) )
-        {
-            xBlkRoot->Remove ( sDocName );
-            xBlkRoot->Commit();
-        }
-        */
-
-        try
-        {
-        uno::Reference < io::XStream > xDocStream = xBlkRoot->openStreamElement( sDocName,
-                    embed::ElementModes::WRITE | embed::ElementModes::TRUNCATE );
-
-        uno::Reference < beans::XPropertySet > xSet( xDocStream, uno::UNO_QUERY );
-        xSet->setPropertyValue("MediaType", Any(OUString( "text/xml" )) );
-        uno::Reference < io::XOutputStream > xOut = xDocStream->getOutputStream();
-        uno::Reference<io::XActiveDataSource> xSrc(xWriter, uno::UNO_QUERY);
-        xSrc->setOutputStream(xOut);
-
-        uno::Reference<xml::sax::XDocumentHandler> xHandler(xWriter, uno::UNO_QUERY);
-
-        rtl::Reference<SwXMLBlockListExport> xExp(new SwXMLBlockListExport( xContext, *this, XMLN_BLOCKLIST, xHandler) );
-
-        xExp->exportDoc( XML_BLOCK_LIST );
-
-        uno::Reference < embed::XTransactedObject > xTrans( xBlkRoot, uno::UNO_QUERY );
-        if ( xTrans.is() )
-            xTrans->commit();
-        }
-        catch ( uno::Exception& )
-        {
-        }
-
-        m_bInfoChanged = false;
+    if ( !(xBlkRoot.is() || ERRCODE_NONE == OpenFile ( false )) )
         return;
+
+    uno::Reference< uno::XComponentContext > xContext =
+        comphelper::getProcessComponentContext();
+
+    uno::Reference < xml::sax::XWriter > xWriter = xml::sax::Writer::create(xContext);
+
+    /*
+    if ( xBlkRoot->IsContained( sDocName) )
+    {
+        xBlkRoot->Remove ( sDocName );
+        xBlkRoot->Commit();
     }
+    */
+
+    try
+    {
+    uno::Reference < io::XStream > xDocStream = xBlkRoot->openStreamElement( XMLN_BLOCKLIST,
+                embed::ElementModes::WRITE | embed::ElementModes::TRUNCATE );
+
+    uno::Reference < beans::XPropertySet > xSet( xDocStream, uno::UNO_QUERY );
+    xSet->setPropertyValue("MediaType", Any(OUString( "text/xml" )) );
+    uno::Reference < io::XOutputStream > xOut = xDocStream->getOutputStream();
+    xWriter->setOutputStream(xOut);
+
+    rtl::Reference<SwXMLBlockListExport> xExp(new SwXMLBlockListExport( xContext, *this, XMLN_BLOCKLIST, xWriter) );
+
+    xExp->exportDoc( XML_BLOCK_LIST );
+
+    uno::Reference < embed::XTransactedObject > xTrans( xBlkRoot, uno::UNO_QUERY );
+    if ( xTrans.is() )
+        xTrans->commit();
+    }
+    catch ( uno::Exception& )
+    {
+    }
+
+    m_bInfoChanged = false;
+    return;
 }
 
 ErrCode SwXMLTextBlocks::SetMacroTable(
@@ -512,8 +474,8 @@ ErrCode SwXMLTextBlocks::SetMacroTable(
         comphelper::getProcessComponentContext();
 
     // Get model
-    uno::Reference< lang::XComponent > xModelComp(
-        m_pDoc->GetDocShell()->GetModel(), UNO_QUERY );
+    uno::Reference< lang::XComponent > xModelComp =
+        m_xDoc->GetDocShell()->GetModel();
     OSL_ENSURE( xModelComp.is(), "XMLWriter::Write: got no model" );
     if( !xModelComp.is() )
         return ERR_SWG_WRITE_ERROR;
@@ -542,8 +504,6 @@ ErrCode SwXMLTextBlocks::SetMacroTable(
 
             // connect XML writer to output stream
             xSaxWriter->setOutputStream( xOutputStream );
-            uno::Reference<xml::sax::XDocumentHandler> xDocHandler(
-                xSaxWriter, UNO_QUERY);
 
             // construct events object
             uno::Reference<XNameAccess> xEvents =
@@ -551,7 +511,7 @@ ErrCode SwXMLTextBlocks::SetMacroTable(
 
             // prepare arguments (prepend doc handler to given arguments)
             Sequence<Any> aParams(2);
-            aParams[0] <<= xDocHandler;
+            aParams[0] <<= xSaxWriter;
             aParams[1] <<= xEvents;
 
             // get filter component

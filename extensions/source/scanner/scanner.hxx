@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_EXTENSIONS_SOURCE_SCANNER_SCANNER_HXX
-#define INCLUDED_EXTENSIONS_SOURCE_SCANNER_SCANNER_HXX
+#pragma once
 
 #include <osl/mutex.hxx>
 #include <rtl/ustring.hxx>
@@ -26,24 +25,23 @@
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/awt/XBitmap.hpp>
+#include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XEventListener.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/EventObject.hpp>
 #include <com/sun/star/scanner/XScannerManager2.hpp>
-#include <com/sun/star/scanner/ScannerException.hpp>
 
 using namespace cppu;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::scanner;
 
-class ScannerManager:
+class ScannerManager final :
     public cppu::WeakImplHelper<
-        XScannerManager2, css::awt::XBitmap, css::lang::XServiceInfo>
+        XScannerManager2, css::awt::XBitmap, css::lang::XServiceInfo, css::lang::XInitialization>
 {
-protected:
-
     osl::Mutex                              maProtector;
+    css::uno::Reference<css::awt::XWindow>  mxDialogParent;
     void*                                   mpData;
 
     static void                             AcquireData();
@@ -73,9 +71,7 @@ public:
 
     css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
-    // Misc
-    static OUString                         getImplementationName_Static() throw();
-    static Sequence< OUString >             getSupportedServiceNames_Static() throw();
+    virtual void SAL_CALL                   initialize(const css::uno::Sequence<css::uno::Any>& rArguments) override;
 
 #ifdef _WIN32
     void*                                   GetData() const { return mpData; }
@@ -84,8 +80,6 @@ public:
  };
 
 /// @throws Exception
-Reference< XInterface > SAL_CALL ScannerManager_CreateInstance( const Reference< css::lang::XMultiServiceFactory >& rxFactory );
-
-#endif
+Reference< XInterface > ScannerManager_CreateInstance( const Reference< css::lang::XMultiServiceFactory >& rxFactory );
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

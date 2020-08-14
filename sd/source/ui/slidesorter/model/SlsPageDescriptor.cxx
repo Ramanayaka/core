@@ -17,20 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "model/SlsPageDescriptor.hxx"
+#include <model/SlsPageDescriptor.hxx>
 
-#include "sdpage.hxx"
-#include "drawdoc.hxx"
-
-#include <svx/svdopage.hxx>
-#include <svx/svdpagv.hxx>
-#include <svx/sdr/contact/viewcontact.hxx>
-#include <svx/sdr/contact/viewobjectcontact.hxx>
+#include <sdpage.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
 
-namespace sd {  namespace slidesorter { namespace model {
+namespace sd::slidesorter::model {
 
 PageDescriptor::PageDescriptor (
     const Reference<drawing::XDrawPage>& rxPage,
@@ -183,8 +177,6 @@ bool PageDescriptor::SetState (const State eState, const bool bNewStateValue)
             break;
     }
 
-    if (bModified)
-        maVisualState.UpdateVisualState(*this);
     return bModified;
 }
 
@@ -230,6 +222,6 @@ void PageDescriptor::SetBoundingBox (const ::tools::Rectangle& rBoundingBox)
     maBoundingBox = rBoundingBox;
 }
 
-} } } // end of namespace ::sd::slidesorter::model
+} // end of namespace ::sd::slidesorter::model
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

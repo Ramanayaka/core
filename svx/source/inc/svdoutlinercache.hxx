@@ -20,9 +20,9 @@
 #ifndef INCLUDED_SVX_SOURCE_INC_SVDOUTLINERCACHE_HXX
 #define INCLUDED_SVX_SOURCE_INC_SVDOUTLINERCACHE_HXX
 
-#include <sal/types.h>
+#include <memory>
 #include <vector>
-#include <set>
+#include <o3tl/sorted_vector.hxx>
 
 class SdrModel;
 class SdrOutliner;
@@ -32,16 +32,16 @@ class SdrOutlinerCache
 {
 private:
     SdrModel*                    mpModel;
-    std::vector< SdrOutliner* >  maModeOutline;
-    std::vector< SdrOutliner* >  maModeText;
-    std::set< SdrOutliner* >     maActiveOutliners;
+    std::vector< std::unique_ptr<SdrOutliner> >  maModeOutline;
+    std::vector< std::unique_ptr<SdrOutliner> >  maModeText;
+    o3tl::sorted_vector< SdrOutliner* >          maActiveOutliners;
 
 public:
     SdrOutlinerCache( SdrModel* pModel );
     ~SdrOutlinerCache();
 
-    SdrOutliner* createOutliner( OutlinerMode nOutlinerMode );
-    void disposeOutliner( SdrOutliner* pOutliner );
+    std::unique_ptr<SdrOutliner> createOutliner( OutlinerMode nOutlinerMode );
+    void disposeOutliner( std::unique_ptr<SdrOutliner> pOutliner );
     std::vector< SdrOutliner* > GetActiveOutliners() const;
 };
 

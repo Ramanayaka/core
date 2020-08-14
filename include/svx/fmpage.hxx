@@ -22,26 +22,24 @@
 
 #include <memory>
 #include <svx/svdpage.hxx>
-#include <comphelper/uno3.hxx>
 #include <svx/svxdllapi.h>
-#include <tools/contnr.hxx>
 
-class StarBASIC;
 class FmFormModel;
 class FmFormPageImpl;   // contains a list of all forms
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace form {
         class XForms;
     }
-}}}
+}
 
 class SdrView;
 class HelpEvent;
 
-class SVX_DLLPUBLIC FmFormPage : public SdrPage
+class SVXCORE_DLLPUBLIC FmFormPage : public SdrPage
 {
     FmFormPage& operator=(const FmFormPage&) = delete;
+    FmFormPage(const FmFormPage&) = delete;
 
     friend class FmFormObj;
     std::unique_ptr<FmFormPageImpl>     m_pImpl;
@@ -52,10 +50,7 @@ public:
     explicit FmFormPage(FmFormModel& rModel, bool bMasterPage=false);
     virtual ~FmFormPage() override;
 
-    virtual void    SetModel(SdrModel* pNewModel) override;
-
-    virtual SdrPage* Clone() const override;
-    virtual SdrPage* Clone(SdrModel* pNewModel) const override;
+    virtual SdrPage* CloneSdrPage(SdrModel& rTargetModel) const override;
 
     virtual void    InsertObject(SdrObject* pObj, size_t nPos = SAL_MAX_SIZE) override;
 
@@ -71,13 +66,12 @@ public:
     void                SetName( const OUString& rName ) { m_sPageName = rName; }
     static bool         RequestHelp(
                             vcl::Window* pWin,
-                            SdrView* pView,
+                            SdrView const * pView,
                             const HelpEvent& rEvt );
 
 protected:
-    FmFormPage(const FmFormPage& rPage);
-
-    void lateInit(const FmFormPage& rPage, FmFormModel* pNewModel = nullptr);
+    // lateInit -> copyValuesToClonedInstance (?)
+    void lateInit(const FmFormPage& rPage);
 };
 
 #endif // INCLUDED_SVX_FMPAGE_HXX

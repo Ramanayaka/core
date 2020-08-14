@@ -19,6 +19,11 @@
 
 $(eval $(call gb_Library_Library,canvastools))
 
+$(eval $(call gb_Library_set_include,canvastools,\
+    $$(INCLUDE) \
+    -I$(SRCDIR)/canvas/inc \
+))
+
 $(eval $(call gb_Library_use_sdk_api,canvastools))
 
 $(eval $(call gb_Library_add_defs,canvastools,\
@@ -67,12 +72,6 @@ $(eval $(call gb_Library_add_defs,canvastools,\
 	-DAGG_VERSION=$(AGG_VERSION) \
 ))
 endif
-endif
-
-ifeq ($(OS),WNT)
-$(eval $(call gb_Library_use_system_win32_libs,canvastools,\
-	winmm \
-))
 endif
 
 # vim: set noet sw=4 ts=4:

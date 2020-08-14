@@ -19,20 +19,14 @@
 #ifndef INCLUDED_SVX_SOURCE_SIDEBAR_LINE_LINEPROPERTYPANELBASE_HXX
 #define INCLUDED_SVX_SOURCE_SIDEBAR_LINE_LINEPROPERTYPANELBASE_HXX
 
-#include <svx/xdash.hxx>
-#include <vcl/ctrl.hxx>
-#include <sfx2/sidebar/SidebarPanelBase.hxx>
-#include <sfx2/sidebar/ControllerItem.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/field.hxx>
-#include <vcl/layout.hxx>
+#include <vcl/weld.hxx>
 #include <memory>
-#include <svx/sidebar/PanelLayout.hxx>
-#include <svx/xtable.hxx>
-#include "LineWidthPopup.hxx"
+#include <svl/poolitem.hxx>
+#include <sfx2/sidebar/PanelLayout.hxx>
+#include <svx/sidebar/LineWidthPopup.hxx>
 #include <svx/svxdllapi.h>
 
-
+class ToolbarUnoDispatcher;
 class XLineStyleItem;
 class XLineDashItem;
 class XLineStartItem;
@@ -43,22 +37,11 @@ class XLineJointItem;
 class XLineCapItem;
 class XLineTransparenceItem;
 class XDashList;
-class ListBox;
-class ToolBox;
-class FloatingWindow;
 
-#define SIDEBAR_LINE_WIDTH_GLOBAL_VALUE "PopupPanel_LineWidth"
-
-namespace sfx2 { namespace sidebar {
-
-class SidebarToolBox;
-
-} }
-
-namespace svx
+namespace svx::sidebar
 {
-namespace sidebar
-{
+
+class DisableArrowsWrapper;
 
 class SVX_DLLPUBLIC LinePropertyPanelBase : public PanelLayout
 {
@@ -66,12 +49,11 @@ public:
     virtual ~LinePropertyPanelBase() override;
     virtual void dispose() override;
 
-    virtual void DataChanged(
-        const DataChangedEvent& rEvent) override;
-
     void SetWidth(long nWidth);
     void SetWidthIcon(int n);
     void SetWidthIcon();
+
+    void EndLineWidthPopup();
 
     // constructor/destructor
     LinePropertyPanelBase(
@@ -80,91 +62,81 @@ public:
 
     virtual void setLineWidth(const XLineWidthItem& rItem) = 0;
 
+    void SetNoneLineStyle(bool bNoneLineStyle)
+    {
+        if (bNoneLineStyle != mbNoneLineStyle)
+        {
+            mbNoneLineStyle = bNoneLineStyle;
+            ActivateControls();
+        }
+    }
+
 protected:
 
-    virtual void setLineStyle(const XLineStyleItem& rItem) = 0;
-    virtual void setLineDash(const XLineDashItem& rItem) = 0;
-    virtual void setLineEndStyle(const XLineEndItem* pItem) = 0;
-    virtual void setLineStartStyle(const XLineStartItem* pItem) = 0;
+    void ActivateControls();
+
     virtual void setLineTransparency(const XLineTransparenceItem& rItem) = 0;
     virtual void setLineJoint(const XLineJointItem* pItem) = 0;
     virtual void setLineCap(const XLineCapItem* pItem) = 0;
 
-
-    void updateLineStyle(bool bDisabled, bool bSetOrDefault, const SfxPoolItem* pItem);
-    void updateLineDash(bool bDisabled, bool bSetOrDefault, const SfxPoolItem* pItem);
     void updateLineTransparence(bool bDisabled, bool bSetOrDefault, const SfxPoolItem* pItem);
     void updateLineWidth(bool bDisabled, bool bSetOrDefault, const SfxPoolItem* pItem);
-    void updateLineStart(bool bDisabled, bool bSetOrDefault, const SfxPoolItem* pItem);
-    void updateLineEnd(bool bDisabled, bool bSetOrDefault, const SfxPoolItem* pItem);
     void updateLineJoint(bool bDisabled, bool bSetOrDefault, const SfxPoolItem* pItem);
     void updateLineCap(bool bDisabled, bool bSetOrDefault, const SfxPoolItem* pItem);
 
-    void FillLineEndList();
-    void FillLineStyleList();
-    void SelectEndStyle(bool bStart);
-    void SelectLineStyle();
-    void ActivateControls();
-
     void setMapUnit(MapUnit eMapUnit);
 
+    void enableArrowHead();
     void disableArrowHead();
 
 protected:
 
-    VclPtr<sfx2::sidebar::SidebarToolBox> mpTBColor;
+    std::unique_ptr<weld::Toolbar> mxTBColor;
+    std::unique_ptr<ToolbarUnoDispatcher> mxColorDispatch;
+
+    std::unique_ptr<weld::Toolbar> mxLineStyleTB;
+    std::unique_ptr<ToolbarUnoDispatcher> mxLineStyleDispatch;
 
 private:
     //ui controls
-    VclPtr<FixedText>   mpFTWidth;
-    VclPtr<ToolBox>     mpTBWidth;
-    VclPtr<ListBox>     mpLBStyle;
-    VclPtr<FixedText>   mpFTTransparency;
-    VclPtr<MetricField> mpMFTransparent;
-    VclPtr<ListBox>     mpLBStart;
-    VclPtr<ListBox>     mpLBEnd;
-    VclPtr<FixedText>   mpFTEdgeStyle;
-    VclPtr<ListBox>     mpLBEdgeStyle;
-    VclPtr<FixedText>   mpFTCapStyle;
-    VclPtr<ListBox>     mpLBCapStyle;
-    VclPtr<VclGrid>     mpGridLineProps;
-    VclPtr<VclVBox>     mpBoxArrowProps;
+    std::unique_ptr<weld::Label> mxFTWidth;
+    std::unique_ptr<weld::Toolbar> mxTBWidth;
+    std::unique_ptr<weld::Label> mxFTTransparency;
+    std::unique_ptr<weld::MetricSpinButton> mxMFTransparent;
+    std::unique_ptr<weld::Label> mxFTEdgeStyle;
+    std::unique_ptr<weld::ComboBox> mxLBEdgeStyle;
+    std::unique_ptr<weld::Label> mxFTCapStyle;
+    std::unique_ptr<weld::ComboBox> mxLBCapStyle;
+    std::unique_ptr<weld::Widget> mxGridLineProps;
+    std::unique_ptr<weld::Widget> mxBoxArrowProps;
+    //popup windows
+    std::unique_ptr<LineWidthPopup> mxLineWidthPopup;
 
-    std::unique_ptr<XLineStyleItem> mpStyleItem;
-    std::unique_ptr<XLineDashItem>  mpDashItem;
+    std::unique_ptr<DisableArrowsWrapper> mxDisableArrowsWrapper;
 
     sal_uInt16      mnTrans;
     MapUnit         meMapUnit;
     sal_Int32       mnWidthCoreValue;
-    XLineEndListRef mxLineEndList;
-    XDashListRef    mxLineStyleList;
-    std::unique_ptr<XLineStartItem> mpStartItem;
-    std::unique_ptr<XLineEndItem>   mpEndItem;
-
-    //popup windows
-    VclPtr<LineWidthPopup> mxLineWidthPopup;
 
     // images from resource
-    Image maIMGNone;
+    OUString maIMGNone;
 
     // multi-images
-    std::unique_ptr<Image[]> mpIMGWidthIcon;
+    OUString maIMGWidthIcon[8];
 
     bool                mbWidthValuable : 1;
     bool mbArrowSupported;
+    bool mbNoneLineStyle;
 
     void Initialize();
 
-    DECL_LINK(ChangeLineStyleHdl, ListBox&, void);
-    DECL_LINK(ToolboxWidthSelectHdl, ToolBox*, void);
-    DECL_LINK(ChangeTransparentHdl, Edit&, void );
-    DECL_LINK(ChangeStartHdl, ListBox&, void);
-    DECL_LINK(ChangeEndHdl, ListBox&, void);
-    DECL_LINK(ChangeEdgeStyleHdl, ListBox&, void);
-    DECL_LINK(ChangeCapStyleHdl, ListBox&, void);
+    DECL_LINK(ToolboxWidthSelectHdl, const OString&, void);
+    DECL_LINK(ChangeTransparentHdl, weld::MetricSpinButton&, void );
+    DECL_LINK(ChangeEdgeStyleHdl, weld::ComboBox&, void);
+    DECL_LINK(ChangeCapStyleHdl, weld::ComboBox&, void);
 };
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 #endif
 

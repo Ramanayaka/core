@@ -20,35 +20,32 @@
 #ifndef INCLUDED_OOX_DRAWINGML_TEXTPARAGRAPHPROPERTIESCONTEXT_HXX
 #define INCLUDED_OOX_DRAWINGML_TEXTPARAGRAPHPROPERTIESCONTEXT_HXX
 
-#include <list>
+#include <vector>
 
 #include <com/sun/star/style/TabStop.hpp>
-#include <oox/drawingml/drawingmltypes.hxx>
 #include <drawingml/textparagraphproperties.hxx>
-#include <drawingml/textspacing.hxx>
 #include <oox/core/contexthandler2.hxx>
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
-class TextParagraphPropertiesContext : public ::oox::core::ContextHandler2
+class TextParagraphPropertiesContext final : public ::oox::core::ContextHandler2
 {
 public:
-    TextParagraphPropertiesContext( ::oox::core::ContextHandler2Helper& rParent,
+    TextParagraphPropertiesContext( ::oox::core::ContextHandler2Helper const & rParent,
             const ::oox::AttributeList& rAttributes,
             TextParagraphProperties& rTextParagraphProperties );
     virtual ~TextParagraphPropertiesContext() override;
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( ::sal_Int32 Element, const ::oox::AttributeList& rAttribs ) override;
 
-protected:
+private:
     TextParagraphProperties& mrTextParagraphProperties;
-    TextSpacing     maLineSpacing;
     BulletList&     mrBulletList;
-    std::list< css::style::TabStop >  maTabList;
+    std::vector< css::style::TabStop >  maTabList;
     std::shared_ptr< BlipFillProperties > mxBlipProps;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_TEXTPARAGRAPHPROPERTIESCONTEXT_HXX
 

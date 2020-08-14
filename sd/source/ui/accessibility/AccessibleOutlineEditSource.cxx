@@ -20,10 +20,9 @@
 #include <memory>
 #include <editeng/unoedhlp.hxx>
 #include <svx/svdoutl.hxx>
+#include <svx/svdview.hxx>
 
 #include <AccessibleOutlineEditSource.hxx>
-#include "OutlineView.hxx"
-#include <svx/sdrpaintwindow.hxx>
 
 namespace accessibility
 {
@@ -53,9 +52,9 @@ namespace accessibility
         Broadcast( TextHint( SfxHintId::Dying ) );
     }
 
-    SvxEditSource* AccessibleOutlineEditSource::Clone() const
+    std::unique_ptr<SvxEditSource> AccessibleOutlineEditSource::Clone() const
     {
-        return new AccessibleOutlineEditSource(*mpOutliner, mrView, *mpOutlinerView, mrWindow);
+        return std::unique_ptr<SvxEditSource>(new AccessibleOutlineEditSource(*mpOutliner, mrView, *mpOutlinerView, mrWindow));
     }
 
     SvxTextForwarder* AccessibleOutlineEditSource::GetTextForwarder()
@@ -101,7 +100,7 @@ namespace accessibility
 
     SfxBroadcaster& AccessibleOutlineEditSource::GetBroadcaster() const
     {
-        return *( const_cast< AccessibleOutlineEditSource* > (this) );
+        return * const_cast< AccessibleOutlineEditSource* > (this);
     }
 
     bool AccessibleOutlineEditSource::IsValid() const
@@ -119,26 +118,6 @@ namespace accessibility
         }
 
         return false;
-    }
-
-    ::tools::Rectangle AccessibleOutlineEditSource::GetVisArea() const
-    {
-        if( IsValid() )
-        {
-            SdrPaintWindow* pPaintWindow = mrView.FindPaintWindow(mrWindow);
-            ::tools::Rectangle aVisArea;
-
-            if(pPaintWindow)
-            {
-                aVisArea = pPaintWindow->GetVisibleArea();
-            }
-
-            MapMode aMapMode(mrWindow.GetMapMode());
-            aMapMode.SetOrigin(Point());
-            return mrWindow.LogicToPixel( aVisArea, aMapMode );
-        }
-
-        return ::tools::Rectangle();
     }
 
     Point AccessibleOutlineEditSource::LogicToPixel( const Point& rPoint, const MapMode& rMapMode ) const
@@ -184,12 +163,14 @@ namespace accessibility
         }
         else
         {
-            const SdrHint* pSdrHint = dynamic_cast< const SdrHint* >( &rHint );
-
-            if( pSdrHint && ( pSdrHint->GetKind() == SdrHintKind::ModelCleared ) )
+            if (rHint.GetId() == SfxHintId::ThisIsAnSdrHint)
             {
-                // model is dying under us, going defunc
-                bDispose = true;
+                const SdrHint* pSdrHint = static_cast< const SdrHint* >( &rHint );
+                if( pSdrHint->GetKind() == SdrHintKind::ModelCleared )
+                {
+                    // model is dying under us, going defunc
+                    bDispose = true;
+                }
             }
         }
 
@@ -207,9 +188,9 @@ namespace accessibility
     {
         ::std::unique_ptr< SfxHint > aHint( SvxEditSourceHelper::EENotification2Hint( &rNotify) );
 
-         if( aHint.get() )
-         {
-             Broadcast( *aHint.get() );
+        if (aHint)
+        {
+            Broadcast(*aHint);
          }
     }
 

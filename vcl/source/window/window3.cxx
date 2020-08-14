@@ -19,7 +19,8 @@
 
 #include <vcl/window.hxx>
 #include <vcl/waitobj.hxx>
-#include <vcl/button.hxx>
+#include <window.h>
+#include <vcl/cursor.hxx>
 
 WaitObject::~WaitObject()
 {
@@ -36,29 +37,32 @@ Size Window::GetOptimalSize() const
 
 void Window::ImplAdjustNWFSizes()
 {
-    switch( GetType() )
-    {
-    case WindowType::CHECKBOX:
-        static_cast<CheckBox*>(this)->ImplSetMinimumNWFSize();
-        break;
-    case WindowType::RADIOBUTTON:
-        static_cast<RadioButton*>(this)->ImplSetMinimumNWFSize();
-        break;
-    default:
-        {
-            // iterate over children
-            vcl::Window* pWin = GetWindow( GetWindowType::FirstChild );
-            while( pWin )
-            {
-                pWin->ImplAdjustNWFSizes();
-                pWin = pWin->GetWindow( GetWindowType::Next );
-            }
-        }
-        break;
-    }
+    for (Window* pWin = GetWindow(GetWindowType::FirstChild); pWin;
+         pWin = pWin->GetWindow(GetWindowType::Next))
+        pWin->ImplAdjustNWFSizes();
+}
+
+void Window::ImplClearFontData(bool bNewFontLists)
+{
+    OutputDevice::ImplClearFontData(bNewFontLists);
+    for (Window* pChild = mpWindowImpl->mpFirstChild; pChild; pChild = pChild->mpWindowImpl->mpNext)
+        pChild->ImplClearFontData(bNewFontLists);
+}
+
+void Window::ImplRefreshFontData(bool bNewFontLists)
+{
+    OutputDevice::ImplRefreshFontData(bNewFontLists);
+    for (Window* pChild = mpWindowImpl->mpFirstChild; pChild; pChild = pChild->mpWindowImpl->mpNext)
+        pChild->ImplRefreshFontData(bNewFontLists);
+}
+
+void Window::ImplInitMapModeObjects()
+{
+    OutputDevice::ImplInitMapModeObjects();
+    if (mpWindowImpl->mpCursor)
+        mpWindowImpl->mpCursor->ImplNew();
 }
 
 } /* namespace vcl */
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

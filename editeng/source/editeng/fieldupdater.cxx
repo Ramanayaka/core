@@ -8,9 +8,8 @@
  */
 
 #include <memory>
-#include "editeng/fieldupdater.hxx"
-#include "editeng/flditem.hxx"
-#include <editeng/edtdlg.hxx>
+#include <editeng/fieldupdater.hxx>
+#include <editeng/flditem.hxx>
 #include "editobj2.hxx"
 
 #include <com/sun/star/text/textfield/Type.hpp>
@@ -23,8 +22,7 @@ class FieldUpdaterImpl
 {
     EditTextObjectImpl& mrObj;
 public:
-    explicit FieldUpdaterImpl(EditTextObject& rObj) : mrObj(*rObj.mpImpl) {}
-    FieldUpdaterImpl(const FieldUpdaterImpl& r) : mrObj(r.mrObj) {}
+    explicit FieldUpdaterImpl(EditTextObject const & rObj) : mrObj(*rObj.mpImpl) {}
 
     void updateTableFields(int nTab)
     {
@@ -32,11 +30,11 @@ public:
         EditTextObjectImpl::ContentInfosType& rContents = mrObj.GetContents();
         for (std::unique_ptr<ContentInfo> & i : rContents)
         {
-            ContentInfo& rContent = *i.get();
+            ContentInfo& rContent = *i;
             ContentInfo::XEditAttributesType& rAttribs = rContent.GetCharAttribs();
             for (std::unique_ptr<XEditAttribute> & rAttrib : rAttribs)
             {
-                XEditAttribute& rAttr = *rAttrib.get();
+                XEditAttribute& rAttr = *rAttrib;
                 const SfxPoolItem* pItem = rAttr.GetItem();
                 if (pItem->Which() != EE_FEATURE_FIELD)
                     // This is not a field item.
@@ -57,7 +55,7 @@ public:
     }
 };
 
-FieldUpdater::FieldUpdater(EditTextObject& rObj) : mpImpl(new FieldUpdaterImpl(rObj)) {}
+FieldUpdater::FieldUpdater(EditTextObject const & rObj) : mpImpl(new FieldUpdaterImpl(rObj)) {}
 FieldUpdater::FieldUpdater(const FieldUpdater& r) : mpImpl(new FieldUpdaterImpl(*r.mpImpl)) {}
 
 FieldUpdater::~FieldUpdater()

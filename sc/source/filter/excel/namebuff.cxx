@@ -17,37 +17,38 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "namebuff.hxx"
+#include <namebuff.hxx>
 
-#include "document.hxx"
-#include "compiler.hxx"
-#include "scextopt.hxx"
+#include <document.hxx>
+#include <scextopt.hxx>
+#include <tokenarray.hxx>
 
-#include "root.hxx"
-#include "tokstack.hxx"
-#include "xltools.hxx"
-#include "xiroot.hxx"
+#include <root.hxx>
+#include <xiroot.hxx>
 
-#include <string.h>
+#include <osl/diagnose.h>
 
 sal_uInt32 StringHashEntry::MakeHashCode( const OUString& r )
 {
     sal_uInt32             n = 0;
-    const sal_Unicode*     pAkt = r.getStr();
-    sal_Unicode            cAkt = *pAkt;
+    const sal_Unicode*     pCurrent = r.getStr();
+    sal_Unicode            cCurrent = *pCurrent;
 
-    while( cAkt )
+    while( cCurrent )
     {
         n *= 70;
-        n += ( sal_uInt32 ) cAkt;
-        pAkt++;
-        cAkt = *pAkt;
+        n += static_cast<sal_uInt32>(cCurrent);
+        pCurrent++;
+        cCurrent = *pCurrent;
     }
 
     return n;
 }
 
-SharedFormulaBuffer::SharedFormulaBuffer( RootData* pRD ) : ExcRoot(pRD) {}
+SharedFormulaBuffer::SharedFormulaBuffer(RootData* pRD)
+    : ExcRoot(pRD)
+{
+}
 
 SharedFormulaBuffer::~SharedFormulaBuffer()
 {
@@ -56,18 +57,14 @@ SharedFormulaBuffer::~SharedFormulaBuffer()
 
 void SharedFormulaBuffer::Clear()
 {
-    TokenArraysType::iterator it = maTokenArrays.begin(), itEnd = maTokenArrays.end();
-    for (; it != itEnd; ++it)
-        delete it->second;
-
     maTokenArrays.clear();
 }
 
 void SharedFormulaBuffer::Store( const ScAddress& rPos, const ScTokenArray& rArray )
 {
-    ScTokenArray* pCode = rArray.Clone();
-    pCode->GenHash();
-    maTokenArrays.insert(TokenArraysType::value_type(rPos, pCode));
+    std::unique_ptr<ScTokenArray> xCode(rArray.Clone());
+    xCode->GenHash();
+    maTokenArrays.emplace(rPos, std::move(xCode));
 }
 
 const ScTokenArray* SharedFormulaBuffer::Find( const ScAddress& rRefPos ) const
@@ -76,12 +73,12 @@ const ScTokenArray* SharedFormulaBuffer::Find( const ScAddress& rRefPos ) const
     if (it == maTokenArrays.end())
         return nullptr;
 
-    return it->second;
+    return it->second.get();
 }
 
 sal_Int16 ExtSheetBuffer::Add( const OUString& rFPAN, const OUString& rTN, const bool bSWB )
 {
-    maEntries.push_back( Cont( rFPAN, rTN, bSWB ) );
+    maEntries.emplace_back( rFPAN, rTN, bSWB );
     // return 1-based index of EXTERNSHEET
     return static_cast< sal_Int16 >( maEntries.size() );
 }

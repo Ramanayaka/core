@@ -6,27 +6,29 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-#include <stdlib.h>
+
 #include <algorithm>
 #include <vector>
 
-#include <officecfg/Office/Common.hxx>
 #include <officecfg/Office/Impress.hxx>
 
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/configuration.hxx>
+#include <comphelper/sequence.hxx>
 #include <sal/log.hxx>
+#include <vcl/svapp.hxx>
+#include <osl/socket.hxx>
 
-#include "sddll.hxx"
+#include <sddll.hxx>
 
 #include "DiscoveryService.hxx"
 #include "Listener.hxx"
-#include "Receiver.hxx"
-#include "RemoteServer.hxx"
+#include <RemoteServer.hxx>
 #include "BluetoothServer.hxx"
 #include "Communicator.hxx"
 #include "BufferedStreamSocket.hxx"
@@ -83,7 +85,7 @@ void RemoteServer::execute()
         spServer = nullptr;
         return;
     }
-    osl::SocketAddr aAddr( "0", PORT );
+    osl::SocketAddr aAddr( "0.0.0.0", PORT );
     if ( !mSocket.bind( aAddr ) )
     {
         SAL_WARN( "sdremote", "bind failed" << mSocket.getErrorAsString() );
@@ -110,8 +112,8 @@ void RemoteServer::execute()
         BufferedStreamSocket *pSocket = new BufferedStreamSocket( aSocket);
         OString aLine;
         if ( pSocket->readLine( aLine)
-            && aLine.equals( "LO_SERVER_CLIENT_PAIR" ) &&
-            pSocket->readLine( aLine ) )
+            && aLine == "LO_SERVER_CLIENT_PAIR"
+            && pSocket->readLine( aLine ) )
         {
             OString aName( aLine );
 
@@ -126,10 +128,10 @@ void RemoteServer::execute()
             pSocket->getPeerAddr( aClientAddr );
 
             MutexGuard aGuard( sDataMutex );
-            std::shared_ptr< ClientInfoInternal > pClient(
-                new ClientInfoInternal(
+            std::shared_ptr< ClientInfoInternal > pClient =
+                std::make_shared<ClientInfoInternal>(
                     OStringToOUString( aName, RTL_TEXTENCODING_UTF8 ),
-                    pSocket, OStringToOUString( aPin, RTL_TEXTENCODING_UTF8 ) ) );
+                    pSocket, OStringToOUString( aPin, RTL_TEXTENCODING_UTF8 ) );
             mAvailableClients.push_back( pClient );
 
             // Read off any additional non-empty lines
@@ -142,25 +144,24 @@ void RemoteServer::execute()
 
             // Check if we already have this server.
             Reference< XNameAccess > const xConfig = officecfg::Office::Impress::Misc::AuthorisedRemotes::get();
-            Sequence< OUString > aNames = xConfig->getElementNames();
+            const Sequence< OUString > aNames = xConfig->getElementNames();
             bool aFound = false;
-            for ( int i = 0; i < aNames.getLength(); i++ )
+            for ( const auto& rName : aNames )
             {
-                if ( aNames[i].equals( pClient->mName ) )
+                if ( rName == pClient->mName )
                 {
-                    Reference<XNameAccess> xSetItem( xConfig->getByName(aNames[i]), UNO_QUERY );
+                    Reference<XNameAccess> xSetItem( xConfig->getByName(rName), UNO_QUERY );
                     Any axPin(xSetItem->getByName("PIN"));
                     OUString sPin;
                     axPin >>= sPin;
 
-                    if ( sPin.equals( pClient->mPin ) ) {
+                    if ( sPin == pClient->mPin ) {
                         SAL_INFO( "sdremote", "client found on validated list -- connecting" );
                         connectClient( pClient, sPin );
                         aFound = true;
                         break;
                     }
                 }
-
             }
             // Pin not found so inform the client.
             if ( !aFound )
@@ -201,10 +202,9 @@ void RemoteServer::presentationStarted( const css::uno::Reference<
     if ( !spServer )
         return;
     MutexGuard aGuard( sDataMutex );
-    for ( vector<Communicator*>::const_iterator aIt = sCommunicators.begin();
-         aIt != sCommunicators.end(); ++aIt )
+    for ( const auto& rpCommunicator : sCommunicators )
     {
-        (*aIt)->presentationStarted( rController );
+        rpCommunicator->presentationStarted( rController );
     }
 }
 void RemoteServer::presentationStopped()
@@ -212,27 +212,20 @@ void RemoteServer::presentationStopped()
     if ( !spServer )
         return;
     MutexGuard aGuard( sDataMutex );
-    for ( vector<Communicator*>::const_iterator aIt = sCommunicators.begin();
-         aIt != sCommunicators.end(); ++aIt )
+    for ( const auto& rpCommunicator : sCommunicators )
     {
-        (*aIt)->disposeListener();
+        rpCommunicator->disposeListener();
     }
 }
 
-void RemoteServer::removeCommunicator( Communicator* mCommunicator )
+void RemoteServer::removeCommunicator( Communicator const * mCommunicator )
 {
     if ( !spServer )
         return;
     MutexGuard aGuard( sDataMutex );
-    for ( vector<Communicator*>::iterator aIt = sCommunicators.begin();
-         aIt != sCommunicators.end(); ++aIt )
-    {
-        if ( mCommunicator == *aIt )
-        {
-            sCommunicators.erase( aIt );
-            break;
-        }
-    }
+    auto aIt = std::find(sCommunicators.begin(), sCommunicators.end(), mCommunicator);
+    if (aIt != sCommunicators.end())
+        sCommunicators.erase( aIt );
 }
 
 std::vector< std::shared_ptr< ClientInfo > > RemoteServer::getClients()
@@ -260,10 +253,9 @@ std::vector< std::shared_ptr< ClientInfo > > RemoteServer::getClients()
     // authorised AND connected client.
     Reference< XNameAccess > const xConfig = officecfg::Office::Impress::Misc::AuthorisedRemotes::get();
     Sequence< OUString > aNames = xConfig->getElementNames();
-    for ( int i = 0; i < aNames.getLength(); i++ )
-    {
-        aClients.push_back( std::make_shared< ClientInfo > ( aNames[i], true ) );
-    }
+    std::transform(aNames.begin(), aNames.end(), std::back_inserter(aClients),
+        [](const OUString& rName) -> std::shared_ptr<ClientInfo> {
+            return std::make_shared<ClientInfo>(rName, true); });
 
     return aClients;
 }
@@ -281,7 +273,7 @@ bool RemoteServer::connectClient( const std::shared_ptr< ClientInfo >& pClient, 
         return false;
     }
 
-    if ( apClient->mPin.equals( aPin ) )
+    if ( apClient->mPin == aPin )
     {
         // Save in settings first
         std::shared_ptr< ConfigurationChanges > aChanges = ConfigurationChanges::create();
@@ -290,42 +282,28 @@ bool RemoteServer::connectClient( const std::shared_ptr< ClientInfo >& pClient, 
         Reference<XSingleServiceFactory> xChildFactory (
             xConfig, UNO_QUERY);
         Reference<XNameReplace> xChild( xChildFactory->createInstance(), UNO_QUERY);
-                Any aValue;
+        Any aValue;
         if (xChild.is())
         {
             // Check whether the client is already saved
-            bool aSaved = false;
             Sequence< OUString > aNames = xConfig->getElementNames();
-            for ( int i = 0; i < aNames.getLength(); i++ )
-            {
-                if ( aNames[i].equals( apClient->mName ) )
-                {
-                    xConfig->replaceByName( apClient->mName, makeAny( xChild ) );
-                    aSaved = true;
-                    break;
-                }
-            }
-            if ( !aSaved )
+            if (comphelper::findValue(aNames, apClient->mName) != -1)
+                xConfig->replaceByName( apClient->mName, makeAny( xChild ) );
+            else
                 xConfig->insertByName( apClient->mName, makeAny( xChild ) );
             aValue <<= apClient->mPin;
             xChild->replaceByName("PIN", aValue);
             aChanges->commit();
         }
 
-        Communicator* pCommunicator = new Communicator( apClient->mpStreamSocket );
+        Communicator* pCommunicator = new Communicator( std::unique_ptr<IBluetoothSocket>(apClient->mpStreamSocket) );
         MutexGuard aGuard( sDataMutex );
 
         sCommunicators.push_back( pCommunicator );
 
-        for ( vector< std::shared_ptr< ClientInfoInternal > >::iterator aIt = spServer->mAvailableClients.begin();
-            aIt != spServer->mAvailableClients.end(); ++aIt )
-        {
-            if ( pClient == *aIt )
-            {
-                spServer->mAvailableClients.erase( aIt );
-                break;
-            }
-        }
+        auto aIt = std::find(spServer->mAvailableClients.begin(), spServer->mAvailableClients.end(), pClient);
+        if (aIt != spServer->mAvailableClients.end())
+            spServer->mAvailableClients.erase( aIt );
         pCommunicator->launch();
         return true;
     }

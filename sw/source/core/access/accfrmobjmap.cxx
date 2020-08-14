@@ -17,18 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <accfrmobjmap.hxx>
-#include <accframe.hxx>
+#include "accfrmobjmap.hxx"
 #include <accmap.hxx>
-#include <acccontext.hxx>
+#include "acccontext.hxx"
 
 #include <viewsh.hxx>
 #include <doc.hxx>
 #include <IDocumentDrawModelAccess.hxx>
-#include <frmfmt.hxx>
 #include <pagefrm.hxx>
-#include <txtfrm.hxx>
-#include <node.hxx>
 #include <sortedobjs.hxx>
 #include <anchoredobject.hxx>
 
@@ -39,8 +35,8 @@ using namespace sw::access;
 SwAccessibleChildMap::SwAccessibleChildMap( const SwRect& rVisArea,
                                             const SwFrame& rFrame,
                                             SwAccessibleMap& rAccMap )
-    : nHellId( rAccMap.GetShell()->GetDoc()->getIDocumentDrawModelAccess().GetHellId() )
-    , nControlsId( rAccMap.GetShell()->GetDoc()->getIDocumentDrawModelAccess().GetControlsId() )
+    : mnHellId( rAccMap.GetShell()->GetDoc()->getIDocumentDrawModelAccess().GetHellId() )
+    , mnControlsId( rAccMap.GetShell()->GetDoc()->getIDocumentDrawModelAccess().GetControlsId() )
 {
     const bool bVisibleChildrenOnly = SwAccessibleChild( &rFrame ).IsVisibleChildrenOnly();
 
@@ -107,11 +103,9 @@ SwAccessibleChildMap::SwAccessibleChildMap( const SwRect& rVisArea,
                     pAccImpl->GetAdditionalAccessibleChildren( &aAdditionalChildren );
 
                     sal_Int32 nCounter( 0 );
-                    for ( std::vector< vcl::Window* >::iterator aIter = aAdditionalChildren.begin();
-                          aIter != aAdditionalChildren.end();
-                          ++aIter )
+                    for ( const auto& rpChild : aAdditionalChildren )
                     {
-                        aLower = (*aIter);
+                        aLower = rpChild;
                         insert( ++nCounter, SwAccessibleChildMapKey::XWINDOW, aLower );
                     }
                 }
@@ -126,8 +120,7 @@ std::pair< SwAccessibleChildMap::iterator, bool > SwAccessibleChildMap::insert(
                                                 const SwAccessibleChild& rLower )
 {
     SwAccessibleChildMapKey aKey( eLayerId, nPos );
-    value_type aEntry( aKey, rLower );
-    return insert( aEntry );
+    return emplace( aKey, rLower );
 }
 
 std::pair< SwAccessibleChildMap::iterator, bool > SwAccessibleChildMap::insert(
@@ -136,14 +129,13 @@ std::pair< SwAccessibleChildMap::iterator, bool > SwAccessibleChildMap::insert(
 {
     const SdrLayerID nLayer = pObj->GetLayer();
     SwAccessibleChildMapKey::LayerId eLayerId =
-                    (nHellId == nLayer)
+                    (mnHellId == nLayer)
                     ? SwAccessibleChildMapKey::HELL
-                    : ( (nControlsId == nLayer)
+                    : ( (mnControlsId == nLayer)
                         ? SwAccessibleChildMapKey::CONTROLS
                         : SwAccessibleChildMapKey::HEAVEN );
     SwAccessibleChildMapKey aKey( eLayerId, pObj->GetOrdNum() );
-    value_type aEntry( aKey, rLower );
-    return insert( aEntry );
+    return emplace( aKey, rLower );
 }
 
 bool SwAccessibleChildMap::IsSortingRequired( const SwFrame& rFrame )

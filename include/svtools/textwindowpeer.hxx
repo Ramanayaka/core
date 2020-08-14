@@ -23,12 +23,11 @@
 #include <sal/config.h>
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <sal/types.h>
 #include <svtools/svtdllapi.h>
 
-namespace com { namespace sun { namespace star { namespace awt {
+namespace com::sun::star::awt {
     class XWindowPeer;
-} } } }
+}
 class TextView;
 
 namespace svt {

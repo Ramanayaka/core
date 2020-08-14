@@ -17,9 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <pdfwriter_impl.hxx>
+#include "pdfwriter_impl.hxx"
 #include <vcl/bitmapex.hxx>
-#include <vcl/image.hxx>
 
 using namespace vcl;
 
@@ -27,30 +26,20 @@ PDFWriter::AnyWidget::~AnyWidget()
 {
 }
 
-PDFWriter::PDFSignContext::PDFSignContext(OStringBuffer& rCMSHexBuffer)
-    : m_pDerEncoded(nullptr),
-      m_nDerEncoded(0),
-      m_pByteRange1(nullptr),
-      m_nByteRange1(0),
-      m_pByteRange2(nullptr),
-      m_nByteRange2(0),
-      m_rCMSHexBuffer(rCMSHexBuffer)
-{
-}
-
 PDFWriter::PDFWriter( const PDFWriter::PDFWriterContext& rContext, const css::uno::Reference< css::beans::XMaterialHolder >& xEnc )
         :
-        xImplementation( new PDFWriterImpl( rContext, xEnc, *this ) )
+        xImplementation( VclPtr<PDFWriterImpl>::Create(rContext, xEnc, *this) )
 {
 }
 
 PDFWriter::~PDFWriter()
 {
+    xImplementation.disposeAndClear();
 }
 
 OutputDevice* PDFWriter::GetReferenceDevice()
 {
-    return xImplementation->getReferenceDevice();
+    return xImplementation.get();
 }
 
 void PDFWriter::NewPage( double nPageWidth, double nPageHeight, Orientation eOrientation )
@@ -408,19 +397,19 @@ void PDFWriter::EndStructureElement()
     xImplementation->endStructureElement();
 }
 
-bool PDFWriter::SetCurrentStructureElement( sal_Int32 nID )
+void PDFWriter::SetCurrentStructureElement( sal_Int32 nID )
 {
-    return xImplementation->setCurrentStructureElement( nID );
+    xImplementation->setCurrentStructureElement( nID );
 }
 
-bool PDFWriter::SetStructureAttribute( enum StructAttribute eAttr, enum StructAttributeValue eVal )
+void PDFWriter::SetStructureAttribute( enum StructAttribute eAttr, enum StructAttributeValue eVal )
 {
-    return xImplementation->setStructureAttribute( eAttr, eVal );
+    xImplementation->setStructureAttribute( eAttr, eVal );
 }
 
-bool PDFWriter::SetStructureAttributeNumerical( enum StructAttribute eAttr, sal_Int32 nValue )
+void PDFWriter::SetStructureAttributeNumerical( enum StructAttribute eAttr, sal_Int32 nValue )
 {
-    return xImplementation->setStructureAttributeNumerical( eAttr, nValue );
+    xImplementation->setStructureAttributeNumerical( eAttr, nValue );
 }
 
 void PDFWriter::SetStructureBoundingBox( const tools::Rectangle& rRect )
@@ -457,18 +446,17 @@ void PDFWriter::AddStream( const OUString& rMimeType, PDFOutputStream* pStream )
     xImplementation->addStream( rMimeType, pStream );
 }
 
-std::set< PDFWriter::ErrorCode > PDFWriter::GetErrors()
+std::set< PDFWriter::ErrorCode > const & PDFWriter::GetErrors() const
 {
     return xImplementation->getErrors();
 }
 
 css::uno::Reference< css::beans::XMaterialHolder >
 PDFWriter::InitEncryption( const OUString& i_rOwnerPassword,
-                           const OUString& i_rUserPassword,
-                           bool b128Bit
+                           const OUString& i_rUserPassword
                           )
 {
-    return PDFWriterImpl::initEncryption( i_rOwnerPassword, i_rUserPassword, b128Bit );
+    return PDFWriterImpl::initEncryption( i_rOwnerPassword, i_rUserPassword );
 }
 
 void PDFWriter::PlayMetafile( const GDIMetaFile& i_rMTF, const vcl::PDFWriter::PlayMetafileContext& i_rPlayContext, PDFExtOutDevData* i_pData )

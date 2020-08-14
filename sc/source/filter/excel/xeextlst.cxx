@@ -7,33 +7,21 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "xeextlst.hxx"
-#include "xeroot.hxx"
-#include "xehelper.hxx"
-#include "xestyle.hxx"
-#include "xename.hxx"
-#include "xecontent.hxx"
-#include "tokenarray.hxx"
+#include <xeextlst.hxx>
+#include <xeroot.hxx>
+#include <stlsheet.hxx>
+#include <ftools.hxx>
+#include <xestyle.hxx>
+#include <stlpool.hxx>
+#include <scitems.hxx>
+#include <svl/itemset.hxx>
+#include <svl/intitem.hxx>
 
+#include <oox/export/utils.hxx>
 #include <oox/token/namespaces.hxx>
+#include <comphelper/processfactory.hxx>
 
 using namespace ::oox;
-
-namespace {
-
-const char* getIconSetName( ScIconSetType eType )
-{
-    const ScIconSetMap* pMap = ScIconSetFormat::g_IconSetMap;
-    for(; pMap->pName; ++pMap)
-    {
-        if(pMap->eType == eType)
-            return pMap->pName;
-    }
-
-    return "";
-}
-
-}
 
 XclExpExt::XclExpExt( const XclExpRoot& rRoot ):
     XclExpRoot(rRoot)
@@ -53,8 +41,7 @@ XclExpExtNegativeColor::XclExpExtNegativeColor( const Color& rColor ):
 void XclExpExtNegativeColor::SaveXml( XclExpXmlStream& rStrm )
 {
     rStrm.GetCurrentStream()->singleElementNS( XML_x14, XML_negativeFillColor,
-                                                XML_rgb, XclXmlUtils::ToOString( maColor ).getStr(),
-                                                FSEND );
+                                               XML_rgb, XclXmlUtils::ToOString(maColor) );
 }
 
 XclExpExtAxisColor::XclExpExtAxisColor( const Color& rColor ):
@@ -65,15 +52,14 @@ XclExpExtAxisColor::XclExpExtAxisColor( const Color& rColor ):
 void XclExpExtAxisColor::SaveXml( XclExpXmlStream& rStrm )
 {
     rStrm.GetCurrentStream()->singleElementNS( XML_x14, XML_axisColor,
-                                                XML_rgb, XclXmlUtils::ToOString( maAxisColor ).getStr(),
-                                                FSEND );
+                                               XML_rgb, XclXmlUtils::ToOString(maAxisColor) );
 }
 
 XclExpExtIcon::XclExpExtIcon(const XclExpRoot& rRoot, const std::pair<ScIconSetType, sal_Int32>& rCustomEntry):
     XclExpRoot(rRoot),
     nIndex(rCustomEntry.second)
 {
-    pIconSetName = getIconSetName(rCustomEntry.first);
+    pIconSetName = ScIconSetFormat::getIconSetName(rCustomEntry.first);
 }
 
 void XclExpExtIcon::SaveXml(XclExpXmlStream& rStrm)
@@ -88,8 +74,7 @@ void XclExpExtIcon::SaveXml(XclExpXmlStream& rStrm)
 
     rWorksheet->singleElementNS(XML_x14, XML_cfIcon,
             XML_iconSet, pIconSetName,
-            XML_iconId, OString::number(nIndex).getStr(),
-            FSEND);
+            XML_iconId, OString::number(nIndex));
 }
 
 XclExpExtCfvo::XclExpExtCfvo( const XclExpRoot& rRoot, const ScColorScaleEntry& rEntry, const ScAddress& rSrcPos, bool bFirst ):
@@ -143,16 +128,14 @@ const char* getColorScaleType( ScColorScaleEntryType eType, bool bFirst )
 void XclExpExtCfvo::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
-    rWorksheet->startElementNS( XML_x14, XML_cfvo,
-                                XML_type, getColorScaleType(meType, mbFirst),
-                                FSEND );
+    rWorksheet->startElementNS(XML_x14, XML_cfvo, XML_type, getColorScaleType(meType, mbFirst));
 
     if (meType == COLORSCALE_FORMULA ||
             meType == COLORSCALE_PERCENT ||
             meType == COLORSCALE_PERCENTILE ||
             meType == COLORSCALE_VALUE)
     {
-        rWorksheet->startElementNS(XML_xm, XML_f, FSEND);
+        rWorksheet->startElementNS(XML_xm, XML_f);
         rWorksheet->writeEscaped(maValue.getStr());
         rWorksheet->endElementNS(XML_xm, XML_f);
     }
@@ -160,14 +143,74 @@ void XclExpExtCfvo::SaveXml( XclExpXmlStream& rStrm )
     rWorksheet->endElementNS(XML_x14, XML_cfvo);
 }
 
+XclExpExtCF::XclExpExtCF( const XclExpRoot& rRoot, const ScCondFormatEntry& rFormat ):
+    XclExpRoot(rRoot),
+    mrFormat(rFormat)
+{
+}
+
+void XclExpExtCF::SaveXml( XclExpXmlStream& rStrm )
+{
+    OUString aStyleName = mrFormat.GetStyle();
+    SfxStyleSheetBasePool* pPool = GetDoc().GetStyleSheetPool();
+    SfxStyleSheetBase* pStyle = pPool->Find(aStyleName, SfxStyleFamily::Para);
+    SfxItemSet& rSet = pStyle->GetItemSet();
+
+    std::unique_ptr<ScTokenArray> pTokenArray(mrFormat.CreateFlatCopiedTokenArray(0));
+    aFormula = XclXmlUtils::ToOUString( GetCompileFormulaContext(), mrFormat.GetValidSrcPos(), pTokenArray.get());
+
+    std::unique_ptr<XclExpColor> pColor(new XclExpColor);
+    if(!pColor->FillFromItemSet( rSet ))
+        pColor.reset();
+
+    std::unique_ptr<XclExpCellBorder> pBorder(new XclExpCellBorder);
+    if (!pBorder->FillFromItemSet( rSet, GetPalette(), GetBiff()) )
+        pBorder.reset();
+
+    std::unique_ptr<XclExpCellAlign> pAlign(new XclExpCellAlign);
+    if (!pAlign->FillFromItemSet( rSet, false, GetBiff()))
+        pAlign.reset();
+
+    std::unique_ptr<XclExpCellProt> pCellProt(new XclExpCellProt);
+    if (!pCellProt->FillFromItemSet( rSet ))
+        pCellProt.reset();
+
+    std::unique_ptr<XclExpDxfFont> pFont(new XclExpDxfFont(GetRoot(), rSet));
+
+    std::unique_ptr<XclExpNumFmt> pNumFormat;
+    const SfxPoolItem *pPoolItem = nullptr;
+    if( rSet.GetItemState( ATTR_VALUE_FORMAT, true, &pPoolItem ) == SfxItemState::SET )
+    {
+        sal_uInt32 nScNumFmt = static_cast< const SfxUInt32Item* >(pPoolItem)->GetValue();
+        XclExpNumFmtBuffer& rNumFmtBuffer = GetRoot().GetNumFmtBuffer();
+        sal_uInt32 nXclNumFmt = rNumFmtBuffer.Insert(nScNumFmt);
+        pNumFormat.reset(new XclExpNumFmt(nScNumFmt, nXclNumFmt, rNumFmtBuffer.GetFormatCode(nScNumFmt)));
+    }
+
+    XclExpDxf rDxf( GetRoot(),
+                    std::move(pAlign),
+                    std::move(pBorder),
+                    std::move(pFont),
+                    std::move(pNumFormat),
+                    std::move(pCellProt),
+                    std::move(pColor) );
+
+    sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
+
+    rWorksheet->startElementNS( XML_xm, XML_f );
+    rWorksheet->writeEscaped( aFormula );
+    rWorksheet->endElementNS( XML_xm, XML_f );
+    rDxf.SaveXmlExt( rStrm );
+}
+
 XclExpExtDataBar::XclExpExtDataBar( const XclExpRoot& rRoot, const ScDataBarFormat& rFormat, const ScAddress& rPos ):
     XclExpRoot(rRoot)
 {
     const ScDataBarFormatData& rFormatData = *rFormat.GetDataBarData();
-    mpLowerLimit.reset( new XclExpExtCfvo( *this, *rFormatData.mpLowerLimit.get(), rPos, true ) );
-    mpUpperLimit.reset( new XclExpExtCfvo( *this, *rFormatData.mpUpperLimit.get(), rPos, false ) );
-    if(rFormatData.mpNegativeColor.get())
-        mpNegativeColor.reset( new XclExpExtNegativeColor( *rFormatData.mpNegativeColor.get() ) );
+    mpLowerLimit.reset(new XclExpExtCfvo(*this, *rFormatData.mpLowerLimit, rPos, true));
+    mpUpperLimit.reset(new XclExpExtCfvo(*this, *rFormatData.mpUpperLimit, rPos, false));
+    if (rFormatData.mpNegativeColor)
+        mpNegativeColor.reset(new XclExpExtNegativeColor(*rFormatData.mpNegativeColor));
     else
         mpNegativeColor.reset( new XclExpExtNegativeColor( rFormatData.maPositiveColor ) );
     mpAxisColor.reset( new XclExpExtAxisColor( rFormatData.maAxisColor ) );
@@ -194,17 +237,72 @@ const char* getAxisPosition(databar::ScAxisPosition eAxisPosition)
     return "";
 }
 
+const char* GetOperatorString(ScConditionMode eMode)
+{
+    const char* pRet = nullptr;
+    switch(eMode)
+    {
+        case ScConditionMode::Equal:
+            pRet = "equal";
+            break;
+        case ScConditionMode::Less:
+            pRet = "lessThan";
+            break;
+        case ScConditionMode::Greater:
+            pRet = "greaterThan";
+            break;
+        case ScConditionMode::EqLess:
+            pRet = "lessThanOrEqual";
+            break;
+        case ScConditionMode::EqGreater:
+            pRet = "greaterThanOrEqual";
+            break;
+        case ScConditionMode::NotEqual:
+            pRet = "notEqual";
+            break;
+        case ScConditionMode::Between:
+            pRet = "between";
+            break;
+        case ScConditionMode::NotBetween:
+            pRet = "notBetween";
+            break;
+        case ScConditionMode::Duplicate:
+            pRet = nullptr;
+            break;
+        case ScConditionMode::NotDuplicate:
+            pRet = nullptr;
+            break;
+        case ScConditionMode::BeginsWith:
+            pRet = "beginsWith";
+        break;
+        case ScConditionMode::EndsWith:
+            pRet = "endsWith";
+        break;
+        case ScConditionMode::ContainsText:
+            pRet = "containsText";
+        break;
+        case ScConditionMode::NotContainsText:
+            pRet = "notContains";
+        break;
+        case ScConditionMode::Direct:
+            break;
+        case ScConditionMode::NONE:
+        default:
+            break;
+    }
+    return pRet;
+}
+
 }
 
 void XclExpExtDataBar::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElementNS( XML_x14, XML_dataBar,
-                                XML_minLength, OString::number(mnMinLength).getStr(),
-                                XML_maxLength, OString::number(mnMaxLength).getStr(),
+                                XML_minLength, OString::number(mnMinLength),
+                                XML_maxLength, OString::number(mnMaxLength),
                                 XML_axisPosition, getAxisPosition(meAxisPosition),
-                                XML_gradient, XclXmlUtils::ToPsz(mbGradient),
-                                FSEND );
+                                XML_gradient, ToPsz(mbGradient) );
 
     mpLowerLimit->SaveXml( rStrm );
     mpUpperLimit->SaveXml( rStrm );
@@ -225,13 +323,13 @@ XclExpExtIconSet::XclExpExtIconSet(const XclExpRoot& rRoot, const ScIconSetForma
     mbCustom = rData.mbCustom;
     mbReverse = rData.mbReverse;
     mbShowValue = rData.mbShowValue;
-    mpIconSetName = getIconSetName(rData.eIconSetType);
+    mpIconSetName = ScIconSetFormat::getIconSetName(rData.eIconSetType);
 
     if (mbCustom)
     {
-        for (auto itr = rData.maCustomVector.begin(); itr != rData.maCustomVector.end(); ++itr)
+        for (const auto& rItem : rData.maCustomVector)
         {
-            maCustom.AppendNewRecord(new XclExpExtIcon(*this, *itr));
+            maCustom.AppendNewRecord(new XclExpExtIcon(*this, rItem));
         }
     }
 }
@@ -242,10 +340,9 @@ void XclExpExtIconSet::SaveXml(XclExpXmlStream& rStrm)
 
     rWorksheet->startElementNS(XML_x14, XML_iconSet,
             XML_iconSet, mpIconSetName,
-            XML_custom, mbCustom ? XclXmlUtils::ToPsz10(mbCustom) : nullptr,
-            XML_reverse, XclXmlUtils::ToPsz10(mbReverse),
-            XML_showValue, XclXmlUtils::ToPsz10(mbShowValue),
-            FSEND);
+            XML_custom, sax_fastparser::UseIf(ToPsz10(mbCustom), mbCustom),
+            XML_reverse, ToPsz10(mbReverse),
+            XML_showValue, ToPsz10(mbShowValue));
 
     maCfvos.SaveXml(rStrm);
 
@@ -261,22 +358,31 @@ XclExpExtCfRule::XclExpExtCfRule( const XclExpRoot& rRoot, const ScFormatEntry& 
     XclExpRoot(rRoot),
     maId(rId),
     pType(nullptr),
-    mnPriority(nPriority)
+    mnPriority(nPriority),
+    mOperator(nullptr)
 {
     switch (rFormat.GetType())
     {
-        case condformat::DATABAR:
+        case ScFormatEntry::Type::Databar:
         {
             const ScDataBarFormat& rDataBar = static_cast<const ScDataBarFormat&>(rFormat);
-            mxEntry.reset( new XclExpExtDataBar( *this, rDataBar, rPos ) );
+            mxEntry = new XclExpExtDataBar( *this, rDataBar, rPos );
             pType = "dataBar";
         }
         break;
-        case condformat::ICONSET:
+        case ScFormatEntry::Type::Iconset:
         {
             const ScIconSetFormat& rIconSet = static_cast<const ScIconSetFormat&>(rFormat);
-            mxEntry.reset(new XclExpExtIconSet(*this, rIconSet, rPos));
+            mxEntry = new XclExpExtIconSet(*this, rIconSet, rPos);
             pType = "iconSet";
+        }
+        break;
+        case ScFormatEntry::Type::ExtCondition:
+        {
+            const ScCondFormatEntry& rCondFormat = static_cast<const ScCondFormatEntry&>(rFormat);
+            mxEntry = new XclExpExtCF(*this, rCondFormat);
+            pType = "cellIs";
+            mOperator = GetOperatorString( rCondFormat.GetOperation() );
         }
         break;
         default:
@@ -292,9 +398,9 @@ void XclExpExtCfRule::SaveXml( XclExpXmlStream& rStrm )
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElementNS( XML_x14, XML_cfRule,
                                 XML_type, pType,
-                                XML_priority, mnPriority == -1 ? nullptr : OString::number(mnPriority).getStr(),
-                                XML_id, maId.getStr(),
-                                FSEND );
+                                XML_priority, sax_fastparser::UseIf(OString::number(mnPriority + 1), mnPriority != -1),
+                                XML_operator, mOperator,
+                                XML_id, maId );
 
     mxEntry->SaveXml( rStrm );
 
@@ -307,13 +413,13 @@ XclExpExtConditionalFormatting::XclExpExtConditionalFormatting( const XclExpRoot
     XclExpRoot(rRoot),
     maRange(rRange)
 {
-    ScAddress aAddr = maRange.front()->aStart;
-    for (auto itr = rData.begin(), itrEnd = rData.end(); itr != itrEnd; ++itr)
+    ScAddress aAddr = maRange.front().aStart;
+    for (const auto& rItem : rData)
     {
-        const ScFormatEntry* pEntry = itr->pEntry;
+        const ScFormatEntry* pEntry = rItem.pEntry;
         switch (pEntry->GetType())
         {
-            case condformat::ICONSET:
+            case ScFormatEntry::Type::Iconset:
             {
                 const ScIconSetFormat& rIconSet = static_cast<const ScIconSetFormat&>(*pEntry);
                 bool bNeedsExt = false;
@@ -335,12 +441,15 @@ XclExpExtConditionalFormatting::XclExpExtConditionalFormatting( const XclExpRoot
 
                 if (bNeedsExt)
                 {
-                    maCfRules.AppendNewRecord(new XclExpExtCfRule(*this, *pEntry, aAddr, itr->aGUID, itr->nPriority));
+                    maCfRules.AppendNewRecord(new XclExpExtCfRule(*this, *pEntry, aAddr, rItem.aGUID, rItem.nPriority));
                 }
             }
             break;
-            case condformat::DATABAR:
-                maCfRules.AppendNewRecord(new XclExpExtCfRule( *this, *pEntry, aAddr, itr->aGUID, itr->nPriority));
+            case ScFormatEntry::Type::Databar:
+                maCfRules.AppendNewRecord(new XclExpExtCfRule( *this, *pEntry, aAddr, rItem.aGUID, rItem.nPriority));
+            break;
+            case ScFormatEntry::Type::ExtCondition:
+                maCfRules.AppendNewRecord(new XclExpExtCfRule( *this, *pEntry, aAddr, rItem.aGUID, rItem.nPriority));
             break;
             default:
             break;
@@ -352,12 +461,11 @@ void XclExpExtConditionalFormatting::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElementNS( XML_x14, XML_conditionalFormatting,
-                                FSNS( XML_xmlns, XML_xm ), XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(xm))).getStr(),
-                                FSEND );
+                                FSNS( XML_xmlns, XML_xm ), rStrm.getNamespaceURL(OOX_NS(xm)) );
 
     maCfRules.SaveXml( rStrm );
-    rWorksheet->startElementNS( XML_xm, XML_sqref, FSEND );
-    rWorksheet->write(XclXmlUtils::ToOString(maRange).getStr());
+    rWorksheet->startElementNS(XML_xm, XML_sqref);
+    rWorksheet->write(XclXmlUtils::ToOString(rStrm.GetRoot().GetDoc(), maRange));
 
     rWorksheet->endElementNS( XML_xm, XML_sqref );
 
@@ -365,12 +473,11 @@ void XclExpExtConditionalFormatting::SaveXml( XclExpXmlStream& rStrm )
 }
 
 XclExpExtCalcPr::XclExpExtCalcPr( const XclExpRoot& rRoot, formula::FormulaGrammar::AddressConvention eConv ):
-    XclExpExt( rRoot ),
-    meConv( eConv )
+    XclExpExt( rRoot )
 {
     maURI = OString("{7626C862-2A13-11E5-B345-FEFF819CDC9F}");
 
-    switch (meConv)
+    switch (eConv)
     {
         case formula::FormulaGrammar::CONV_OOO:
             maSyntax = OString("CalcA1");
@@ -398,13 +505,10 @@ void XclExpExtCalcPr::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElement( XML_ext,
-                                FSNS( XML_xmlns, XML_loext ), XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(loext))).getStr(),
-                                XML_uri, maURI.getStr(),
-                                FSEND );
+                                FSNS(XML_xmlns, XML_loext), rStrm.getNamespaceURL(OOX_NS(loext)),
+                                XML_uri, maURI );
 
-    rWorksheet->singleElementNS( XML_loext, XML_extCalcPr,
-                                 XML_stringRefSyntax, maSyntax.getStr(),
-                                 FSEND );
+    rWorksheet->singleElementNS(XML_loext, XML_extCalcPr, XML_stringRefSyntax, maSyntax);
 
     rWorksheet->endElement( XML_ext );
 }
@@ -419,12 +523,10 @@ void XclExpExtCondFormat::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
     rWorksheet->startElement( XML_ext,
-                                FSNS( XML_xmlns, XML_x14 ), XclXmlUtils::ToOString(rStrm.getNamespaceURL(OOX_NS(xls14Lst))).getStr(),
-                                XML_uri, maURI.getStr(),
-                                FSEND );
+                                FSNS(XML_xmlns, XML_x14), rStrm.getNamespaceURL(OOX_NS(xls14Lst)),
+                                XML_uri, maURI );
 
-    rWorksheet->startElementNS( XML_x14, XML_conditionalFormattings,
-                                FSEND );
+    rWorksheet->startElementNS(XML_x14, XML_conditionalFormattings);
 
     maCF.SaveXml( rStrm );
 
@@ -432,9 +534,9 @@ void XclExpExtCondFormat::SaveXml( XclExpXmlStream& rStrm )
     rWorksheet->endElement( XML_ext );
 }
 
-void XclExpExtCondFormat::AddRecord( const XclExpExtConditionalFormattingRef& aEntry )
+void XclExpExtCondFormat::AddRecord( XclExpExtConditionalFormatting* pEntry )
 {
-    maCF.AppendRecord( aEntry );
+    maCF.AppendRecord( pEntry );
 }
 
 void XclExtLst::SaveXml( XclExpXmlStream& rStrm )
@@ -443,20 +545,19 @@ void XclExtLst::SaveXml( XclExpXmlStream& rStrm )
         return;
 
     sax_fastparser::FSHelperPtr& rWorksheet = rStrm.GetCurrentStream();
-    rWorksheet->startElement( XML_extLst,
-                                FSEND );
+    rWorksheet->startElement(XML_extLst);
 
     maExtEntries.SaveXml(rStrm);
 
     rWorksheet->endElement( XML_extLst );
 }
 
-void XclExtLst::AddRecord( const XclExpExtRef& aEntry )
+void XclExtLst::AddRecord( XclExpExt* pEntry )
 {
-    maExtEntries.AppendRecord( aEntry );
+    maExtEntries.AppendRecord( pEntry );
 }
 
-XclExpExtRef XclExtLst::GetItem( XclExpExtType eType )
+XclExpExt* XclExtLst::GetItem( XclExpExtType eType )
 {
     size_t n = maExtEntries.GetSize();
     for( size_t i = 0; i < n; ++i )
@@ -465,7 +566,8 @@ XclExpExtRef XclExtLst::GetItem( XclExpExtType eType )
             return maExtEntries.GetRecord( i );
     }
 
-    return XclExpExtRef();
+    return nullptr;
 }
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

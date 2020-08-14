@@ -31,10 +31,9 @@
 
 #include <vcl/font.hxx>
 
-#include <canvas/vclwrapper.hxx>
+#include <vclwrapper.hxx>
 
-#include "spritecanvas.hxx"
-#include "impltools.hxx"
+#include "outdevprovider.hxx"
 
 
 /* Definition of CanvasFont class */
@@ -75,7 +74,7 @@ namespace vclcanvas
         virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-        vcl::Font getVCLFont() const;
+        vcl::Font const & getVCLFont() const;
 
     private:
         ::canvas::vcltools::VCLObject<vcl::Font>                          maFont;

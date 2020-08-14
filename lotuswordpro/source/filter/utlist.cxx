@@ -53,8 +53,7 @@
  *
  *
  ************************************************************************/
-#include "first.hxx"
-
+#include "utlist.hxx"
 namespace OpenStormBento
 {
 
@@ -92,7 +91,7 @@ CUtList::~CUtList()
 // in list after pCurr or NULL if no more items in list.  Terminating item
 // is never returned
 CUtListElmt *
-CUtList::GetNextOrNULL(CUtListElmt * pCurr)
+CUtList::GetNextOrNULL(CUtListElmt const * pCurr)
 {
     CUtListElmt * pNext;
 

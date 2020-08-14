@@ -17,33 +17,33 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "decl.h"
-#include "lotform.hxx"
-#include "compiler.hxx"
+#include <decl.h>
+#include <lotform.hxx>
 #include "lotfilter.hxx"
-#include "lotrange.hxx"
-#include "namebuff.hxx"
-#include "root.hxx"
-#include "ftools.hxx"
-#include "tool.h"
+#include <lotrange.hxx>
+#include <namebuff.hxx>
+#include <root.hxx>
+#include <ftools.hxx>
+#include <tool.h>
+#include <document.hxx>
 
-#include <math.h>
 #include <comphelper/string.hxx>
+#include <sal/log.hxx>
 #include <memory>
 
-static const sal_Char*      GetAddInName( const sal_uInt8 nIndex );
+static const char*      GetAddInName( const sal_uInt8 nIndex );
 
 static DefTokenId           lcl_KnownAddIn(const OString& rTest);
 
-void LotusToSc::DoFunc( DefTokenId eOc, sal_uInt8 nAnz, const sal_Char* pExtString )
+void LotusToSc::DoFunc( DefTokenId eOc, sal_uInt8 nCnt, const char* pExtString )
 {
     TokenId                     eParam[ 256 ];
-    sal_Int32                       nLauf;
-    TokenId                     nMerk0, nMerk1;
+    sal_Int32                   nPass;
+    TokenId                     nBuf0, nBuf1;
 
     bool                        bAddIn = false;
 
-    OSL_ENSURE( nAnz < 128, "-LotusToSc::DoFunc(): Too many (128)!" );
+    SAL_WARN_IF( nCnt > 128, "sc.filter", "-LotusToSc::DoFunc(): Too many (128)!" );
 
     if( eOc == ocNoName )
     {
@@ -63,7 +63,7 @@ void LotusToSc::DoFunc( DefTokenId eOc, sal_uInt8 nAnz, const sal_Char* pExtStri
             eOc = lcl_KnownAddIn( t );
 
             if( eOc == ocNoName )
-                t = OString("L123_") + t;
+                t = "L123_" + t;
         }
         else
             t = "#UNKNOWN FUNC NAME#";
@@ -71,44 +71,48 @@ void LotusToSc::DoFunc( DefTokenId eOc, sal_uInt8 nAnz, const sal_Char* pExtStri
         if( eOc == ocNoName )
         {
             bAddIn = true;
-            nMerk0 = aPool.Store(eOc, OStringToOUString(t, eSrcChar));
+            nBuf0 = aPool.Store(eOc, OStringToOUString(t, eSrcChar));
 
-            aPool << nMerk0;
+            aPool << nBuf0;
         }
     }
 
-    for( nLauf = 0 ; nLauf < nAnz ; nLauf++ )
-        aStack >> eParam[ nLauf ];
+    for( nPass = 0 ; nPass < nCnt && aStack.HasMoreTokens() ; nPass++ )
+        aStack >> eParam[ nPass ];
+
+    if (nPass < nCnt)
+        // Adapt count to reality. All sort of binary crap is possible.
+        nCnt = static_cast<sal_uInt8>(nPass);
 
     // special cases...
     switch( eOc )
     {
         case ocIndex:
-            OSL_ENSURE( nAnz > 2, "+LotusToSc::DoFunc(): ocIndex needs at least 2 parameters!" );
-            nMerk0 = eParam[ 0 ];
+            SAL_WARN_IF( nCnt < 2, "sc.filter", "+LotusToSc::DoFunc(): ocIndex needs at least 2 parameters!" );
+            nBuf0 = eParam[ 0 ];
             eParam[ 0 ] = eParam[ 1 ];
-            eParam[ 1 ] = nMerk0;
+            eParam[ 1 ] = nBuf0;
             IncToken( eParam[ 0 ] );
             IncToken( eParam[ 1 ] );
             break;
         case ocIRR:
         {
-            OSL_ENSURE( nAnz == 2, "+LotusToSc::DoFunc(): ocIRR needs 2 parameters!" );
-            nMerk0 = eParam[ 0 ];
+            SAL_WARN_IF( nCnt != 2, "sc.filter", "+LotusToSc::DoFunc(): ocIRR needs 2 parameters!" );
+            nBuf0 = eParam[ 0 ];
             eParam[ 0 ] = eParam[ 1 ];
-            eParam[ 1 ] = nMerk0;
+            eParam[ 1 ] = nBuf0;
         }
             break;
         case ocGetYear:
         {
-            nMerk0 = aPool.Store( 1900.0 );
+            nBuf0 = aPool.Store( 1900.0 );
             aPool << ocOpen;
         }
             break;
         case ocChoose:
         {// 1. Parameter ++
-            if (nAnz >= 1)
-                IncToken( eParam[ nAnz - 1 ] );
+            if (nCnt >= 1)
+                IncToken( eParam[ nCnt - 1 ] );
         }
             break;
         case ocFind:
@@ -121,16 +125,16 @@ void LotusToSc::DoFunc( DefTokenId eOc, sal_uInt8 nAnz, const sal_Char* pExtStri
         case ocMid:
         case ocReplace:
         {// 2. Parameter ++
-            if (nAnz >= 2)
-                IncToken( eParam[ nAnz - 2 ] );
+            if (nCnt >= 2)
+                IncToken( eParam[ nCnt - 2 ] );
         }
             break;
         case ocRate:
         {
             // new quantity = 4!
-            OSL_ENSURE( nAnz == 3,
+            SAL_WARN_IF( nCnt != 3, "sc.filter",
                 "*LotusToSc::DoFunc(): ZINS() needs 3 parameters!" );
-            nAnz = 4;
+            nCnt = 4;
             eParam[ 3 ] = eParam[ 0 ];  // 3. -> 1.
             eParam[ 0 ] = eParam[ 2 ];  // 1. -> 4.
             NegToken( eParam[ 1 ] );    // 2. -> -2. (+ 2. -> 3.)
@@ -139,9 +143,9 @@ void LotusToSc::DoFunc( DefTokenId eOc, sal_uInt8 nAnz, const sal_Char* pExtStri
             break;
         case ocNper:
         {
-            OSL_ENSURE( nAnz == 3,
+            SAL_WARN_IF( nCnt != 3, "sc.filter",
                 "*LotusToSc::DoFunc(): TERM() or CTERM() need 3 parameters!" );
-            nAnz = 4;
+            nCnt = 4;
             if ( OString(pExtString) == "TERM" )
             {
                 // @TERM(pmt,int,fv) -> NPER(int,-pmt,pv=0,fv)
@@ -153,9 +157,9 @@ void LotusToSc::DoFunc( DefTokenId eOc, sal_uInt8 nAnz, const sal_Char* pExtStri
             {
                 // @CTERM(int,fv,pv) -> NPER(int,pmt=0,-pv,fv)
                 NegToken( eParam[ 0 ] );
-                nMerk0 = eParam[ 1 ];
+                nBuf0 = eParam[ 1 ];
                 eParam[ 1 ] = eParam[ 0 ];
-                eParam[ 0 ] = nMerk0;
+                eParam[ 0 ] = nBuf0;
                 eParam[ 3 ] = eParam[ 2 ];
                 eParam[ 2 ] = aPool.Store( 0.0 );
             }
@@ -165,11 +169,11 @@ void LotusToSc::DoFunc( DefTokenId eOc, sal_uInt8 nAnz, const sal_Char* pExtStri
         case ocRoundDown:
         {
             // omit optional 3rd parameter
-            if ( nAnz == 3 )
+            if ( nCnt == 3 )
             {
                 eParam[ 0 ] = eParam[ 1 ];
                 eParam[ 1 ] = eParam[ 2 ];
-                nAnz = 2;
+                nCnt = 2;
             }
 
         }
@@ -182,29 +186,39 @@ void LotusToSc::DoFunc( DefTokenId eOc, sal_uInt8 nAnz, const sal_Char* pExtStri
 
     aPool << ocOpen;
 
-    if( nAnz > 0 )
+    if( nCnt > 0 )
     {
-            // ATTENTION: 0 is the last parameter, nAnz-1 the first one
+            // ATTENTION: 0 is the last parameter, nCnt-1 the first one
 
-        sal_Int16 nLast = nAnz - 1;
+        sal_Int16 nLast = nCnt - 1;
 
         if( eOc == ocPMT )
-        {   // special case ocPMT, ignore (negate?) last parameter!
+        {   // special case ocPMT, negate last parameter!
             // additionally: 1. -> 3., 3. -> 2., 2. -> 1.
-            OSL_ENSURE( nAnz == 3,
-                "+LotusToSc::DoFunc(): ocPMT needs 3 parameters!" );
-            aPool << eParam[ 1 ] << ocSep << eParam[ 0 ] << ocSep
-                << ocNegSub << eParam[ 2 ];
+            SAL_WARN_IF( nCnt != 3, "sc.filter", "+LotusToSc::DoFunc(): ocPMT needs 3 parameters!" );
+            // There should be at least 3 arguments, but with binary crap may not...
+            switch (nCnt)
+            {
+                case 1:
+                    aPool << eParam[ 1 ];
+                break;
+                case 2:
+                    aPool << eParam[ 1 ] << ocSep << eParam[ 0 ];
+                break;
+                default:
+                case 3:
+                    aPool << eParam[ 1 ] << ocSep << eParam[ 0 ] << ocSep << ocNegSub << eParam[ 2 ];
+                break;
+            }
         }
         else
         {   // default
             // [Parameter{;Parameter}]
             aPool << eParam[ nLast ];
 
-            for( nLauf = nLast - 1 ; nLauf >= 0 ; nLauf-- )
+            for( nPass = nLast - 1 ; nPass >= 0 ; nPass-- )
             {
-                if( nLauf != -1 ) // lists the parameter to be excluded
-                    aPool << ocSep << eParam[ nLauf ];
+                aPool << ocSep << eParam[nPass];
             }
         }
     }
@@ -212,7 +226,7 @@ void LotusToSc::DoFunc( DefTokenId eOc, sal_uInt8 nAnz, const sal_Char* pExtStri
     // special cases ...
     if( eOc == ocGetYear )
     {
-        aPool << ocClose << ocSub << nMerk0;
+        aPool << ocClose << ocSub << nBuf0;
     }
     else if( eOc == ocFixed )
     {
@@ -220,9 +234,9 @@ void LotusToSc::DoFunc( DefTokenId eOc, sal_uInt8 nAnz, const sal_Char* pExtStri
     }
     else if( eOc == ocFind )
     {
-        nMerk1 = aPool.Store();
-        DecToken( nMerk1 );
-        aPool << nMerk1;
+        nBuf1 = aPool.Store();
+        DecToken( nBuf1 );
+        aPool << nBuf1;
     }
 
     aPool << ocClose;
@@ -272,7 +286,7 @@ void LotusToSc::LotusRelToScRel( sal_uInt16 nCol, sal_uInt16 nRow, ScSingleRefDa
                     nRow &= 0x1FFF;
                 break;
             default:
-                OSL_FAIL( "*LotusToSc::LotusRelToScRel(): unhandeled case?" );
+                SAL_WARN( "sc.filter", "*LotusToSc::LotusRelToScRel(): unhandled case? " << m_rContext.eTyp );
         }
     }
     else
@@ -292,7 +306,7 @@ void LotusToSc::LotusRelToScRel( sal_uInt16 nCol, sal_uInt16 nRow, ScSingleRefDa
                 nRow &= 0x3FFF;
                 break;
             default:
-                OSL_FAIL( "*LotusToSc::LotusRelToScRel(): unhandeled case?" );
+                SAL_WARN( "sc.filter", "*LotusToSc::LotusRelToScRel(): unhandled case? " << m_rContext.eTyp );
         }
     }
 
@@ -303,7 +317,7 @@ void LotusToSc::LotusRelToScRel( sal_uInt16 nCol, sal_uInt16 nRow, ScSingleRefDa
         rSRD.SetAbsRow(static_cast<SCROW>(nRow));
 }
 
-void LotusToSc::ReadSRD( ScSingleRefData& rSRD, sal_uInt8 nRelBit )
+void LotusToSc::ReadSRD( const ScDocument* pDoc, ScSingleRefData& rSRD, sal_uInt8 nRelBit )
 {
     sal_uInt8           nTab, nCol;
     sal_uInt16          nRow;
@@ -319,7 +333,7 @@ void LotusToSc::ReadSRD( ScSingleRefData& rSRD, sal_uInt8 nRelBit )
     rSRD.SetTabRel( ( ( nRelBit & 0x04) != 0 ) || !b3D );
     rSRD.SetFlag3D( b3D );
 
-    rSRD.SetAddress(ScAddress(nCol, nRow, nTab), aEingPos);
+    rSRD.SetAddress(pDoc->GetSheetLimits(), ScAddress(nCol, nRow, nTab), aEingPos);
 }
 
 void LotusToSc::IncToken( TokenId &rParam )
@@ -368,18 +382,18 @@ LotusToSc::LotusToSc(LotusContext &rContext, SvStream &rStream, svl::SharedStrin
 typedef FUNC_TYPE ( FuncType1 ) ( sal_uInt8 );
 typedef DefTokenId ( FuncType2 ) ( sal_uInt8 );
 
-void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
+void LotusToSc::Convert( std::unique_ptr<ScTokenArray>& rpErg, sal_Int32& rRest )
 {
     sal_uInt8               nOc;
-    sal_uInt8               nAnz;
+    sal_uInt8               nCnt;
     sal_uInt8               nRelBits;
     sal_uInt16              nStrLen;
     sal_uInt16              nRngIndex;
     FUNC_TYPE           eType = FT_NOP;
-    TokenId             nMerk0;
+    TokenId             nBuf0;
     DefTokenId          eOc;
-    const sal_Char*     pExtName = nullptr;
-    RangeNameBufferWK3& rRangeNameBufferWK3 = *m_rContext.pLotusRoot->pRngNmBffWK3;
+    const char*         pExtName = nullptr;
+    RangeNameBufferWK3& rRangeNameBufferWK3 = *m_rContext.pRngNmBffWK3;
 
     ScComplexRefData        aCRD;
     aCRD.InitFlags();
@@ -388,7 +402,7 @@ void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
     LR_ID               nId;
     TokenId             nNewId;
 
-    LotusRangeList&     rRangeList = m_rContext.pLotusRoot->maRangeNames;
+    LotusRangeList&     rRangeList = m_rContext.maRangeNames;
 
     FuncType1*          pIndexToType;
     FuncType2*          pIndexToToken;
@@ -422,12 +436,12 @@ void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
 
         if( nBytesLeft < 0 )
         {
-            rpErg = aPool[ aStack.Get() ];
+            rpErg = aPool.GetTokenArray(m_rContext.pDoc, aStack.Get());
             return;
         }
 
-        eType = ( pIndexToType )( nOc );
-        eOc = ( pIndexToToken)( nOc );
+        eType = pIndexToType( nOc );
+        eOc   = pIndexToToken( nOc );
         if( eOc == ocNoName )
             pExtName = GetAddInName( nOc );
 
@@ -446,16 +460,16 @@ void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
             case FT_FuncFix3:   DoFunc( eOc, 3, pExtName ); break;
             case FT_FuncFix4:   DoFunc( eOc, 4, pExtName ); break;
                 case FT_FuncVar:
-                Read( nAnz );
-                DoFunc( eOc, nAnz, pExtName );
+                Read( nCnt );
+                DoFunc( eOc, nCnt, pExtName );
                 break;
             case FT_Neg:
                 aPool << ocOpen << ocNegSub << aStack << ocClose;
                 aPool >> aStack;
                 break;
             case FT_Op:
-                aStack >> nMerk0;
-                aPool << aStack << eOc << nMerk0;
+                aStack >> nBuf0;
+                aPool << aStack << eOc << nBuf0;
                 aPool >> aStack;
                 break;
             case FT_ConstFloat:
@@ -483,7 +497,7 @@ void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
                         // missing range
                         nNewId = aPool.Store( rR );
                     else
-                        nNewId = aPool.Store( ( sal_uInt16 ) nId );
+                        nNewId = aPool.Store( static_cast<sal_uInt16>(nId) );
                 }
 
                 aStack << nNewId;
@@ -510,7 +524,7 @@ void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
                         // missing range
                         nNewId = aPool.Store( aCRD );
                     else
-                        nNewId = aPool.Store( ( sal_uInt16 ) nId );
+                        nNewId = aPool.Store( static_cast<sal_uInt16>(nId) );
                 }
 
                 aStack << nNewId;
@@ -524,7 +538,7 @@ void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
             {
                 sal_Int16   nVal;
                 Read( nVal );
-                aStack << aPool.Store( ( double ) nVal );
+                aStack << aPool.Store( static_cast<double>(nVal) );
             }
                 break;
             case FT_ConstString:
@@ -538,12 +552,12 @@ void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
             // for > WK3
             case FT_Cref:
                 Read( nRelBits );
-                ReadSRD( rR, nRelBits );
+                ReadSRD( m_rContext.pDoc, rR, nRelBits );
                 aStack << aPool.Store( rR );
                 break;
             case FT_Rref:
                 Read( nRelBits );
-                ReadCRD( aCRD, nRelBits );
+                ReadCRD( m_rContext.pDoc, aCRD, nRelBits );
                 aStack << aPool.Store( aCRD );
                 break;
             case FT_Nrref:
@@ -553,8 +567,7 @@ void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
                     aStack << aPool.Store( nRngIndex );
                 else
             {
-                    OUString  aText( "NRREF ");
-                    aText += aTmp;
+                    OUString aText = "NRREF " + aTmp;
                     aStack << aPool.Store( aText );
             }
             }
@@ -566,8 +579,7 @@ void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
                     aStack << aPool.Store( nRngIndex );
                 else
                 {
-                    OUString  aText( "ABSNREF " );
-                    aText += aTmp;
+                    OUString aText = "ABSNREF " + aTmp;
                     aStack << aPool.Store( aText );
                 }
             }
@@ -589,7 +601,7 @@ void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
                 break;
             case FT_Splfunc:
             {
-                Read( nAnz );
+                Read( nCnt );
                 Read( nStrLen );
 
                 const size_t nMaxEntries = aIn.remainingSize();
@@ -598,19 +610,19 @@ void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
 
                 if( nStrLen )
                 {
-                    std::unique_ptr<sal_Char[]> p(new (::std::nothrow) sal_Char[ nStrLen + 1 ]);
+                    std::unique_ptr<char[]> p(new (::std::nothrow) char[ nStrLen + 1 ]);
                     if (p)
                     {
                         aIn.ReadBytes(p.get(), nStrLen);
                         p[ nStrLen ] = 0x00;
 
-                        DoFunc( ocNoName, nAnz, p.get() );
+                        DoFunc( ocNoName, nCnt, p.get() );
                     }
                     else
-                        DoFunc( ocNoName, nAnz, nullptr );
+                        DoFunc( ocNoName, nCnt, nullptr );
                 }
                 else
-                    DoFunc( ocNoName, nAnz, nullptr );
+                    DoFunc( ocNoName, nCnt, nullptr );
             }
                 break;
             case FT_Const10Float:
@@ -623,11 +635,11 @@ void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
                     else aStack << aPool.Store( ScfTools::ReadLongDouble( aIn ) );
                     break;
             case FT_Snum:
-                    if ( bWK123 )
+                if ( bWK123 )
                 {
-                         sal_uInt32   nValue;
+                     sal_uInt32   nValue;
 
-                         Read( nValue );
+                     Read( nValue );
                      double  fValue = Snum32ToDouble( nValue );
                      aStack << aPool.Store( fValue );
                 }
@@ -638,15 +650,15 @@ void LotusToSc::Convert( const ScTokenArray*& rpErg, sal_Int32& rRest )
                         aStack << aPool.Store( SnumToDouble( nVal ) );
                 }
                 break;
-                default:
-                OSL_FAIL( "*LotusToSc::Convert(): unknown enum!" );
+            default:
+                    SAL_WARN( "sc.filter", "*LotusToSc::Convert(): unknown enum!" );
         }
     }
 
-    rpErg = aPool[ aStack.Get() ];
+    rpErg = aPool.GetTokenArray( m_rContext.pDoc, aStack.Get());
 
-    OSL_ENSURE( nBytesLeft >= 0, "*LotusToSc::Convert(): processed too much!");
-    OSL_ENSURE( nBytesLeft <= 0, "*LotusToSc::Convert(): what happens with the rest?" );
+    SAL_WARN_IF( nBytesLeft < 0, "sc.filter", "*LotusToSc::Convert(): processed too much!");
+    SAL_WARN_IF( nBytesLeft > 0, "sc.filter", "*LotusToSc::Convert(): what happens with the rest?" );
 
     if( rRest )
         aIn.SeekRel( nBytesLeft );  // Correct any remainder/overflow
@@ -1712,9 +1724,9 @@ DefTokenId LotusToSc::IndexToTokenWK123( sal_uInt8 nIndex )
     return pToken[ nIndex ];
 }
 
-const sal_Char* GetAddInName( const sal_uInt8 n )
+const char* GetAddInName( const sal_uInt8 n )
 {
-    static const sal_Char*  pNames[ 256 ] =
+    static const char*  pNames[ 256 ] =
     {
         nullptr,                       //    0 8-Byte-IEEE-Float
         nullptr,                       //    1 Variable

@@ -21,10 +21,9 @@
 
 #include <xmloff/dllapi.h>
 #include <xmloff/xmlimppr.hxx>
+#include <memory>
 
-class XMLFontStylesContext;
-
-class XMLOFF_DLLPUBLIC XMLTextImportPropertyMapper : public SvXMLImportPropertyMapper
+class XMLOFF_DLLPUBLIC XMLTextImportPropertyMapper final : public SvXMLImportPropertyMapper
 {
     sal_Int32 nSizeTypeIndex;
     sal_Int32 nWidthTypeIndex;
@@ -37,17 +36,16 @@ class XMLOFF_DLLPUBLIC XMLTextImportPropertyMapper : public SvXMLImportPropertyM
                 XMLPropertyState *pFontCharsetState );
 
     void FontDefaultsCheck(
-                XMLPropertyState*pFontFamilyName,
-                XMLPropertyState* pFontStyleName,
-                XMLPropertyState* pFontFamily,
-                XMLPropertyState* pFontPitch,
-                XMLPropertyState* pFontCharSet,
-                XMLPropertyState** ppNewFontStyleName,
-                XMLPropertyState** ppNewFontFamily,
-                XMLPropertyState** ppNewFontPitch,
-                XMLPropertyState** ppNewFontCharSet ) const;
+                XMLPropertyState const * pFontFamilyName,
+                XMLPropertyState const * pFontStyleName,
+                XMLPropertyState const * pFontFamily,
+                XMLPropertyState const * pFontPitch,
+                XMLPropertyState const * pFontCharSet,
+                std::unique_ptr<XMLPropertyState>* ppNewFontStyleName,
+                std::unique_ptr<XMLPropertyState>* ppNewFontFamily,
+                std::unique_ptr<XMLPropertyState>* ppNewFontPitch,
+                std::unique_ptr<XMLPropertyState>* ppNewFontCharSet ) const;
 
-protected:
     virtual bool handleSpecialItem(
             XMLPropertyState& rProperty,
             ::std::vector< XMLPropertyState >& rProperties,

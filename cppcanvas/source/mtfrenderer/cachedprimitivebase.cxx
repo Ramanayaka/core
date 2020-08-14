@@ -25,13 +25,12 @@
 #include <cppcanvas/canvas.hxx>
 
 #include "cachedprimitivebase.hxx"
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
         CachedPrimitiveBase::CachedPrimitiveBase( const CanvasSharedPtr& rCanvas,
                                                   bool                   bOnlyRedrawWithSameTransform ) :
             mpCanvas( rCanvas ),
@@ -77,7 +76,6 @@ namespace cppcanvas
             return renderPrimitive( mxCachedPrimitive,
                                     rTransformation );
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

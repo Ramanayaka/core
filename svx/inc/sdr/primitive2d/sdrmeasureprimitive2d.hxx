@@ -21,12 +21,12 @@
 #define INCLUDED_SVX_INC_SDR_PRIMITIVE2D_SDRMEASUREPRIMITIVE2D_HXX
 
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
-#include <svx/sdr/attribute/sdrlineshadowtextattribute.hxx>
+#include <sdr/attribute/sdrlineeffectstextattribute.hxx>
 
 
 // predefines
 
-namespace drawinglayer { namespace primitive2d {
+namespace drawinglayer::primitive2d {
     enum MeasureTextPosition
     {
         MEASURETEXTPOSITION_AUTOMATIC,
@@ -34,21 +34,19 @@ namespace drawinglayer { namespace primitive2d {
         MEASURETEXTPOSITION_CENTERED,
         MEASURETEXTPOSITION_POSITIVE
     };
-}}
+}
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class SdrLineAttribute;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class SdrMeasurePrimitive2D : public BufferedDecompositionPrimitive2D
+        class SdrMeasurePrimitive2D final : public BufferedDecompositionPrimitive2D
         {
         private:
-            attribute::SdrLineShadowTextAttribute       maSdrLSTAttribute;
+            attribute::SdrLineEffectsTextAttribute       maSdrLSTAttribute;
             basegfx::B2DPoint                           maStart;
             basegfx::B2DPoint                           maEnd;
             MeasureTextPosition                         meHorizontal;
@@ -72,13 +70,12 @@ namespace drawinglayer
                 bool bLeftActive,
                 bool bRightActive) const;
 
-        protected:
             // local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
 
         public:
             SdrMeasurePrimitive2D(
-                const attribute::SdrLineShadowTextAttribute& rSdrLSTAttribute,
+                const attribute::SdrLineEffectsTextAttribute& rSdrLSTAttribute,
                 const basegfx::B2DPoint& rStart,
                 const basegfx::B2DPoint& rEnd,
                 MeasureTextPosition eHorizontal,
@@ -93,7 +90,7 @@ namespace drawinglayer
                 bool bTextAutoAngle);
 
             // data access
-            const attribute::SdrLineShadowTextAttribute& getSdrLSTAttribute() const { return maSdrLSTAttribute; }
+            const attribute::SdrLineEffectsTextAttribute& getSdrLSTAttribute() const { return maSdrLSTAttribute; }
             const basegfx::B2DPoint& getStart() const { return maStart; }
             const basegfx::B2DPoint& getEnd() const { return maEnd; }
             MeasureTextPosition getHorizontal() const { return meHorizontal; }
@@ -111,10 +108,9 @@ namespace drawinglayer
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
 
             // provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
 #endif // INCLUDED_SVX_INC_SDR_PRIMITIVE2D_SDRMEASUREPRIMITIVE2D_HXX

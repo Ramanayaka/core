@@ -18,9 +18,9 @@
  */
 
 #include <tools/stream.hxx>
-#include <tools/debug.hxx>
 #include <regionband.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 RegionBand::RegionBand()
 :   mpFirstBand(nullptr),
@@ -37,27 +37,29 @@ RegionBand::RegionBand(const RegionBand& rRef)
 
 RegionBand& RegionBand::operator=(const RegionBand& rRef)
 {
-    ImplRegionBand* pPrevBand = nullptr;
-    ImplRegionBand* pBand = rRef.mpFirstBand;
-
-    while(pBand)
+    if (this != &rRef)
     {
-        ImplRegionBand* pNewBand = new ImplRegionBand(*pBand);
+        ImplRegionBand* pPrevBand = nullptr;
+        ImplRegionBand* pBand = rRef.mpFirstBand;
 
-        // first element? -> set as first into the list
-        if(pBand == rRef.mpFirstBand)
+        while(pBand)
         {
-            mpFirstBand = pNewBand;
-        }
-        else
-        {
-            pPrevBand->mpNextBand = pNewBand;
-        }
+            ImplRegionBand* pNewBand = new ImplRegionBand(*pBand);
 
-        pPrevBand = pNewBand;
-        pBand = pBand->mpNextBand;
+            // first element? -> set as first into the list
+            if(pBand == rRef.mpFirstBand)
+            {
+                mpFirstBand = pNewBand;
+            }
+            else
+            {
+                pPrevBand->mpNextBand = pNewBand;
+            }
+
+            pPrevBand = pNewBand;
+            pBand = pBand->mpNextBand;
+        }
     }
-
     return *this;
 }
 
@@ -188,9 +190,13 @@ bool RegionBand::operator==( const RegionBand& rRegionBand ) const
     return true;
 }
 
+namespace {
+
 enum StreamEntryType { STREAMENTRY_BANDHEADER, STREAMENTRY_SEPARATION, STREAMENTRY_END };
 
-void RegionBand::load(SvStream& rIStrm)
+}
+
+bool RegionBand::load(SvStream& rIStrm)
 {
     // clear this instance data
     implReset();
@@ -202,21 +208,21 @@ void RegionBand::load(SvStream& rIStrm)
     sal_uInt16 nTmp16(STREAMENTRY_END);
     rIStrm.ReadUInt16(nTmp16);
 
-    if (STREAMENTRY_END == (StreamEntryType)nTmp16)
-        return;
+    if (STREAMENTRY_END == static_cast<StreamEntryType>(nTmp16))
+        return false;
 
     size_t nRecordsPossible = rIStrm.remainingSize() / (2*sizeof(sal_Int32));
     if (!nRecordsPossible)
     {
         OSL_ENSURE(false, "premature end of region stream" );
         implReset();
-        return;
+        return false;
     }
 
     do
     {
         // insert new band or new separation?
-        if(STREAMENTRY_BANDHEADER == (StreamEntryType)nTmp16)
+        if(STREAMENTRY_BANDHEADER == static_cast<StreamEntryType>(nTmp16))
         {
             sal_Int32 nYTop(0);
             sal_Int32 nYBottom(0);
@@ -255,17 +261,23 @@ void RegionBand::load(SvStream& rIStrm)
             }
         }
 
-        if( rIStrm.IsEof() )
+        if( rIStrm.eof() )
         {
             OSL_ENSURE(false, "premature end of region stream" );
             implReset();
-            return;
+            return false;
         }
 
         // get next header
         rIStrm.ReadUInt16( nTmp16 );
     }
-    while (STREAMENTRY_END != (StreamEntryType)nTmp16 && rIStrm.good());
+    while (STREAMENTRY_END != static_cast<StreamEntryType>(nTmp16) && rIStrm.good());
+    if (!CheckConsistency())
+    {
+        implReset();
+        return false;
+    }
+    return true;
 }
 
 void RegionBand::save(SvStream& rOStrm) const
@@ -410,7 +422,7 @@ void RegionBand::CreateBandRange(long nYTop, long nYBottom)
     mpLastCheckedBand = mpFirstBand;
     ImplRegionBand* pBand = mpFirstBand;
 
-    for ( int i = nYTop; i <= nYBottom+1; i++ )
+    for ( long i = nYTop; i <= nYBottom+1; i++ )
     {
         // create new band
         ImplRegionBand* pNewBand = new ImplRegionBand( i, i );
@@ -436,7 +448,7 @@ void RegionBand::InsertLine(const Point& rStartPt, const Point& rEndPt, long nLi
         return;
     }
 
-    LineType eLineType = (rStartPt.Y() > rEndPt.Y()) ? LINE_DESCENDING : LINE_ASCENDING;
+    LineType eLineType = (rStartPt.Y() > rEndPt.Y()) ? LineType::Descending : LineType::Ascending;
     if ( rStartPt.X() == rEndPt.X() )
     {
         // vertical line
@@ -641,11 +653,8 @@ bool RegionBand::OptimizeBandList()
         if ( pBand->mnYBottom < pBand->mnYTop )
             OSL_ENSURE(false, "RegionBand::OptimizeBandList(): YBottomBoundary < YTopBoundary" );
 
-        if ( pBand->mpNextBand )
-        {
-            if ( pBand->mnYBottom >= pBand->mpNextBand->mnYTop )
-                OSL_ENSURE(false, "RegionBand::OptimizeBandList(): overlapping bands in region!" );
-        }
+        if ( pBand->mpNextBand && pBand->mnYBottom >= pBand->mpNextBand->mnYTop )
+            OSL_ENSURE(false, "RegionBand::OptimizeBandList(): overlapping bands in region!" );
 
         pBand = pBand->mpNextBand;
     }
@@ -1155,6 +1164,21 @@ bool RegionBand::Exclude(const RegionBand& rSource)
     return true;
 }
 
+bool RegionBand::CheckConsistency() const
+{
+    if (!mpFirstBand)
+        return true;
+    // look in the band list (don't test first band again!)
+    const ImplRegionBand* pBand = mpFirstBand->mpNextBand;
+    while (pBand)
+    {
+        if (!pBand->mpFirstSep)
+            return false;
+        pBand = pBand->mpNextBand;
+    }
+    return true;
+}
+
 tools::Rectangle RegionBand::GetBoundRect() const
 {
 
@@ -1233,13 +1257,13 @@ void RegionBand::GetRegionRectangles(RectangleVector& rTarget) const
     {
         ImplRegionBandSep* pCurrRectBandSep = pCurrRectBand->mpFirstSep;
 
-        aRectangle.Top() = pCurrRectBand->mnYTop;
-        aRectangle.Bottom() = pCurrRectBand->mnYBottom;
+        aRectangle.SetTop( pCurrRectBand->mnYTop );
+        aRectangle.SetBottom( pCurrRectBand->mnYBottom );
 
         while(pCurrRectBandSep)
         {
-            aRectangle.Left() = pCurrRectBandSep->mnXLeft;
-            aRectangle.Right() = pCurrRectBandSep->mnXRight;
+            aRectangle.SetLeft( pCurrRectBandSep->mnXLeft );
+            aRectangle.SetRight( pCurrRectBandSep->mnXRight );
             rTarget.push_back(aRectangle);
             pCurrRectBandSep = pCurrRectBandSep->mpNextSep;
         }

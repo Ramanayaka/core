@@ -92,7 +92,7 @@ namespace dbtools
     }
 
 
-    OCharsetMap::CharsetIterator    OCharsetMap::find(const OUString& _rIanaName, const IANA&) const
+    OCharsetMap::CharsetIterator    OCharsetMap::findIanaName(const OUString& _rIanaName) const
     {
         ensureConstructed( );
 
@@ -141,19 +141,6 @@ namespace dbtools
     {
         OSL_ENSURE( m_pContainer, "OCharsetMap::CharsetIterator::CharsetIterator : invalid container!" );
     }
-
-
-    OCharsetMap::CharsetIterator::CharsetIterator(const CharsetIterator& _rSource)
-        :m_pContainer( _rSource.m_pContainer )
-        ,m_aPos( _rSource.m_aPos )
-    {
-    }
-
-
-    OCharsetMap::CharsetIterator::~CharsetIterator()
-    {
-    }
-
 
     CharsetIteratorDerefHelper OCharsetMap::CharsetIterator::operator*() const
     {

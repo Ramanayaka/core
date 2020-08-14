@@ -25,14 +25,20 @@
 #include <oox/helper/refvector.hxx>
 #include "workbookhelper.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace oox { class AttributeList; }
+namespace oox { class SequenceInputStream; }
+
+namespace com::sun::star {
     namespace sheet { class XDataPilotField; }
-} } }
+}
 
-namespace oox { namespace core { class Relations; } }
+namespace oox::core { class Relations; }
 
-namespace oox {
-namespace xls {
+class ScDPSaveDimension;
+class ScDPObject;
+class DateTime;
+
+namespace oox::xls {
 
 class WorksheetHelper;
 
@@ -53,7 +59,7 @@ public:
     /** Reads the boolean value from a pivot cache item. */
     void                readBool( const AttributeList& rAttribs );
     /** Reads the error code value from a pivot cache item. */
-    void                readError( const AttributeList& rAttribs, const UnitConverter& rUnitConverter );
+    void                readError( const AttributeList& rAttribs );
     /** Reads the index of a shared item. */
     void                readIndex( const AttributeList& rAttribs );
 
@@ -76,6 +82,9 @@ public:
     const css::uno::Any& getValue() const { return maValue; }
     /** Returns the string representation of the item. */
     OUString     getName() const;
+
+    /** Returns the string representation of the item, using the actual formatting. */
+    OUString     getFormattedName(const ScDPSaveDimension& rSaveDim, ScDPObject* pObj, const DateTime& rNullDate) const;
     /** Returns true if the item is unused. */
     bool         isUnused() const { return mbUnused; }
 
@@ -116,8 +125,7 @@ private:
     void                importArray( SequenceInputStream& rStrm );
 
 private:
-    typedef ::std::vector< PivotCacheItem > CacheItemVector;
-    CacheItemVector     maItems;            /// All items of this list.
+    std::vector< PivotCacheItem >  maItems;            /// All items of this list.
 };
 
 struct PCFieldModel
@@ -272,23 +280,23 @@ public:
                             PivotCacheGroupItemVector& orItemNames ) const;
 
     /** Writes the title of the field into the passed sheet at the passed address. */
-    void                writeSourceHeaderCell( WorksheetHelper& rSheetHelper,
+    void                writeSourceHeaderCell( const WorksheetHelper& rSheetHelper,
                             sal_Int32 nCol, sal_Int32 nRow ) const;
     /** Writes a source field item value into the passed sheet. */
-    void                writeSourceDataCell( WorksheetHelper& rSheetHelper,
+    void                writeSourceDataCell( const WorksheetHelper& rSheetHelper,
                             sal_Int32 nCol, sal_Int32 nRow,
                             const PivotCacheItem& rItem ) const;
 
     /** Reads an item from the PCRECORD record and writes it to the passed sheet. */
     void                importPCRecordItem( SequenceInputStream& rStrm,
-                            WorksheetHelper& rSheetHelper, sal_Int32 nCol, sal_Int32 nRow ) const;
+                            const WorksheetHelper& rSheetHelper, sal_Int32 nCol, sal_Int32 nRow ) const;
 
 private:
     /** Tries to write the passed value to the passed sheet position. */
-    static void         writeItemToSourceDataCell( WorksheetHelper& rSheetHelper,
+    static void         writeItemToSourceDataCell( const WorksheetHelper& rSheetHelper,
                             sal_Int32 nCol, sal_Int32 nRow, const PivotCacheItem& rItem );
     /** Tries to write the value of a shared item to the passed sheet position. */
-    void                writeSharedItemToSourceDataCell( WorksheetHelper& rSheetHelper,
+    void                writeSharedItemToSourceDataCell( const WorksheetHelper& rSheetHelper,
                             sal_Int32 nCol, sal_Int32 nRow, sal_Int32 nItemIdx ) const;
 
 private:
@@ -383,15 +391,15 @@ public:
     sal_Int32           getCacheDatabaseIndex( sal_Int32 nFieldIdx ) const;
 
     /** Writes the titles of all source fields into the passed sheet. */
-    void                writeSourceHeaderCells( WorksheetHelper& rSheetHelper ) const;
+    void                writeSourceHeaderCells( const WorksheetHelper& rSheetHelper ) const;
     /** Writes a source field item value into the passed sheet. */
-    void                writeSourceDataCell( WorksheetHelper& rSheetHelper,
+    void                writeSourceDataCell( const WorksheetHelper& rSheetHelper,
                             sal_Int32 nColIdx, sal_Int32 nRowIdx,
                             const PivotCacheItem& rItem ) const;
 
     /** Reads a PCRECORD record and writes all item values to the passed sheet. */
     void                importPCRecord( SequenceInputStream& rStrm,
-                            WorksheetHelper& rSheetHelper, sal_Int32 nRowIdx ) const;
+                            const WorksheetHelper& rSheetHelper, sal_Int32 nRowIdx ) const;
 
 private:
 
@@ -402,7 +410,7 @@ private:
     /** Creates a dummy sheet that will be filled with the pivot cache data. */
     void                prepareSourceDataSheet();
     /** Checks, if the row index has changed since last call, and initializes the sheet data buffer. */
-    void                updateSourceDataRow( WorksheetHelper& rSheetHelper, sal_Int32 nRow ) const;
+    void                updateSourceDataRow( const WorksheetHelper& rSheetHelper, sal_Int32 nRow ) const;
 
 private:
     typedef RefVector< PivotCacheField >    PivotCacheFieldVector;
@@ -440,15 +448,13 @@ private:
 private:
     typedef ::std::map< sal_Int32, OUString >    FragmentPathMap;
     typedef RefMap< sal_Int32, PivotCache >             PivotCacheMap;
-    typedef ::std::vector< sal_Int32 >                  PivotCacheIdVector;
 
-    FragmentPathMap     maFragmentPaths;
-    PivotCacheMap       maCaches;
-    PivotCacheIdVector  maCacheIds;
+    FragmentPathMap           maFragmentPaths;
+    PivotCacheMap             maCaches;
+    std::vector< sal_Int32 >  maCacheIds;
 };
 
-} // namespace xls
-} // namespace oox
+} // namespace oox::xls
 
 #endif
 

@@ -17,18 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-
-#include "extended/AccessibleGridControlHeaderCell.hxx"
-#include <svtools/accessibletable.hxx>
-#include "extended/AccessibleGridControl.hxx"
+#include <com/sun/star/accessibility/AccessibleStateType.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <extended/AccessibleGridControlHeaderCell.hxx>
+#include <vcl/accessibletable.hxx>
+#include <vcl/svapp.hxx>
 
 namespace accessibility
 {
     using namespace ::com::sun::star::accessibility;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::uno;
-    using namespace ::svt;
-    using namespace ::svt::table;
+    using namespace ::vcl;
+    using namespace ::vcl::table;
 
 AccessibleGridControlHeaderCell::AccessibleGridControlHeaderCell(sal_Int32 _nColumnRowId,
                                   const Reference< XAccessible >& rxParent,
@@ -93,7 +94,7 @@ Reference<XAccessible > SAL_CALL AccessibleGridControlHeaderCell::getAccessibleC
         return aRet;
     }
 
-    /** Aquires the object (calls acquire() on base class). */
+    /** Acquires the object (calls acquire() on base class). */
     void SAL_CALL AccessibleGridControlHeaderCell::acquire() throw ()
     {
         AccessibleGridControlCell::acquire();
@@ -122,7 +123,7 @@ void SAL_CALL AccessibleGridControlHeaderCell::grabFocus()
 */
 OUString SAL_CALL AccessibleGridControlHeaderCell::getImplementationName()
 {
-    return OUString( "com.sun.star.accessibility.AccessibleGridControlHeaderCell" );
+    return "com.sun.star.accessibility.AccessibleGridControlHeaderCell";
 }
 
 tools::Rectangle AccessibleGridControlHeaderCell::implGetBoundingBox()

@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <pattern/window.hxx>
 #include <helper/persistentwindowstate.hxx>
 
 #include <com/sun/star/awt/XWindow.hpp>
@@ -25,7 +24,6 @@
 #include <com/sun/star/frame/ModuleManager.hpp>
 
 #include <comphelper/lok.hxx>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/configurationhelper.hxx>
 #include <vcl/window.hxx>
 #include <vcl/syswin.hxx>
@@ -33,7 +31,6 @@
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/wrkwin.hxx>
-#include <rtl/string.hxx>
 
 namespace framework{
 
@@ -51,7 +48,7 @@ void SAL_CALL PersistentWindowState::initialize(const css::uno::Sequence< css::u
 {
     // check arguments
     css::uno::Reference< css::frame::XFrame > xFrame;
-    if (lArguments.getLength() < 1)
+    if (!lArguments.hasElements())
         throw css::lang::IllegalArgumentException(
                 "Empty argument list!",
                 static_cast< ::cppu::OWeakObject* >(this),
@@ -211,12 +208,9 @@ OUString PersistentWindowState::implst_getWindowStateFromWindow(const css::uno::
 
         VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow(xWindow);
         // check for system window is necessary to guarantee correct pointer cast!
-        if (
-            (pWindow                  ) &&
-            (pWindow->IsSystemWindow())
-           )
+        if ( pWindow && pWindow->IsSystemWindow() )
         {
-            WindowStateMask const nMask = WindowStateMask::All & ~(WindowStateMask::Minimized);
+            WindowStateMask const nMask = WindowStateMask::All & ~WindowStateMask::Minimized;
             sWindowState = OStringToOUString(
                             static_cast<SystemWindow*>(pWindow.get())->GetWindowState(nMask),
                             RTL_TEXTENCODING_UTF8);
@@ -243,7 +237,7 @@ void PersistentWindowState::implst_setWindowStateOnWindow(const css::uno::Refere
     if (!pWindow)
         return;
 
-    // check for system and work window - its necessary to guarantee correct pointer cast!
+    // check for system and work window - it's necessary to guarantee correct pointer cast!
     bool bSystemWindow = pWindow->IsSystemWindow();
     bool bWorkWindow   = (pWindow->GetType() == WindowType::WORKWINDOW);
 

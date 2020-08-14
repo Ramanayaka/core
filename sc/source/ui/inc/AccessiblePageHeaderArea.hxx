@@ -39,12 +39,11 @@ public:
         const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
         ScPreviewShell* pViewShell,
         const EditTextObject* pEditObj,
-        bool bHeader,
         SvxAdjust eAdjust);
 protected:
     virtual ~ScAccessiblePageHeaderArea() override;
 public:
-    const EditTextObject* GetEditTextObject() const { return mpEditObj; }
+    const EditTextObject* GetEditTextObject() const { return mpEditObj.get(); }
 
     using ScAccessibleContextBase::disposing;
     virtual void SAL_CALL disposing() override;
@@ -91,23 +90,22 @@ public:
 
     ///=====  XTypeProvider  ===================================================
 
-    /** Returns a implementation id.
+    /** Returns an implementation id.
     */
     virtual css::uno::Sequence<sal_Int8> SAL_CALL
         getImplementationId() override;
 
 protected:
-    virtual OUString SAL_CALL createAccessibleDescription() override;
-    virtual OUString SAL_CALL createAccessibleName() override;
+    virtual OUString createAccessibleDescription() override;
+    virtual OUString createAccessibleName() override;
 
     virtual tools::Rectangle GetBoundingBoxOnScreen() const override;
     virtual tools::Rectangle GetBoundingBox() const override;
 
 private:
-    EditTextObject* mpEditObj;
-    accessibility::AccessibleTextHelper* mpTextHelper;
+    std::unique_ptr<EditTextObject> mpEditObj;
+    std::unique_ptr<accessibility::AccessibleTextHelper> mpTextHelper;
     ScPreviewShell* mpViewShell;
-    bool            mbHeader;
     SvxAdjust       meAdjust;
 
     void CreateTextHelper();

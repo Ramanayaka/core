@@ -48,6 +48,7 @@ public class NumberFormatter
     private XNumberFormatTypes xNumberFormatTypes;
     private XPropertySet xNumberFormatSettings;
     private final Locale aLocale;
+    static private final Locale enLocale = new Locale( "en", "US", "" );
 
 
     public NumberFormatter(XMultiServiceFactory _xMSF, XNumberFormatsSupplier _xNumberFormatsSupplier, Locale _aLocale) throws Exception
@@ -93,7 +94,7 @@ public class NumberFormatter
             int NewFormatKey = xNumberFormats.queryKey(_FormatString, aLocale, true);
             if (NewFormatKey == -1)
             {
-                NewFormatKey = xNumberFormats.addNew(_FormatString, aLocale);
+                NewFormatKey = xNumberFormats.addNewConverted(_FormatString, enLocale, aLocale);
             }
             return NewFormatKey;
         }
@@ -151,7 +152,7 @@ public class NumberFormatter
             }
             else
             {
-                // TODO: throws a exception in a try catch environment, very helpful?
+                // TODO: throws an exception in a try catch environment, very helpful?
                 throw new Exception();
             }
         }

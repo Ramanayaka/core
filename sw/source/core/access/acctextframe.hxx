@@ -25,10 +25,6 @@
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 
 class SwFlyFrame;
-namespace utl { class AccessibleRelationSetHelper; }
-namespace com { namespace star {
-    namespace accessibility { struct AccessibleRelation; }
-} }
 
 class SwAccessibleTextFrame : public SwAccessibleFrameBase,
         public css::accessibility::XAccessibleSelection
@@ -40,7 +36,7 @@ private:
 
 protected:
     virtual ~SwAccessibleTextFrame() override;
-    virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem *pNew) override;
+    virtual void Notify(const SfxHint&) override;
 
 public:
     SwAccessibleTextFrame(std::shared_ptr<SwAccessibleMap> const& pInitMap,

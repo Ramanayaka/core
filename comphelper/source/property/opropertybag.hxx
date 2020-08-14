@@ -21,11 +21,9 @@
 #define INCLUDED_COMPHELPER_SOURCE_PROPERTY_OPROPERTYBAG_HXX
 
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
 #include <com/sun/star/beans/XPropertyBag.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/container/XSet.hpp>
 
 #include <cppuhelper/implbase5.hxx>
@@ -66,7 +64,7 @@ namespace comphelper
                                         >   OPropertyBag_Base;
     typedef ::comphelper::OPropertyStateHelper  OPropertyBag_PBase;
 
-    class OPropertyBag  :public ::comphelper::OMutexAndBroadcastHelper  // must be before OPropertyBag_PBase
+    class OPropertyBag final : public ::comphelper::OMutexAndBroadcastHelper  // must be before OPropertyBag_PBase
                         ,public OPropertyBag_PBase
                         ,public OPropertyBag_Base
                         ,public ::cppu::IEventNotificationHook
@@ -94,7 +92,7 @@ namespace comphelper
         OPropertyBag();
         virtual ~OPropertyBag() override;
 
-    protected:
+    private:
         DECLARE_XINTERFACE()
         DECLARE_XTYPEPROVIDER()
 
@@ -129,17 +127,17 @@ namespace comphelper
 
         // XPropertySet
         virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo(  ) override;
-        virtual void SAL_CALL setPropertyValue(const rtl::OUString& p1, const css::uno::Any& p2) override
+        virtual void SAL_CALL setPropertyValue(const OUString& p1, const css::uno::Any& p2) override
            { OPropertyBag_PBase::setPropertyValue(p1, p2); }
-        virtual css::uno::Any SAL_CALL getPropertyValue(const rtl::OUString& p1) override
+        virtual css::uno::Any SAL_CALL getPropertyValue(const OUString& p1) override
            { return OPropertyBag_PBase::getPropertyValue(p1); }
-        virtual void SAL_CALL addPropertyChangeListener(const rtl::OUString& p1, const css::uno::Reference<css::beans::XPropertyChangeListener>& p2) override
+        virtual void SAL_CALL addPropertyChangeListener(const OUString& p1, const css::uno::Reference<css::beans::XPropertyChangeListener>& p2) override
            { OPropertyBag_PBase::addPropertyChangeListener(p1, p2); }
-        virtual void SAL_CALL removePropertyChangeListener(const rtl::OUString& p1, const css::uno::Reference<css::beans::XPropertyChangeListener>& p2) override
+        virtual void SAL_CALL removePropertyChangeListener(const OUString& p1, const css::uno::Reference<css::beans::XPropertyChangeListener>& p2) override
            { OPropertyBag_PBase::removePropertyChangeListener(p1, p2); }
-        virtual void SAL_CALL addVetoableChangeListener(const rtl::OUString& p1, const css::uno::Reference<css::beans::XVetoableChangeListener>& p2) override
+        virtual void SAL_CALL addVetoableChangeListener(const OUString& p1, const css::uno::Reference<css::beans::XVetoableChangeListener>& p2) override
            { OPropertyBag_PBase::addVetoableChangeListener(p1, p2); }
-        virtual void SAL_CALL removeVetoableChangeListener(const rtl::OUString& p1, const css::uno::Reference<css::beans::XVetoableChangeListener>& p2) override
+        virtual void SAL_CALL removeVetoableChangeListener(const OUString& p1, const css::uno::Reference<css::beans::XVetoableChangeListener>& p2) override
            { OPropertyBag_PBase::removeVetoableChangeListener(p1, p2); }
 
         // XSet
@@ -174,10 +172,9 @@ namespace comphelper
             sal_Bool bVetoable,
             bool bIgnoreRuntimeExceptionsWhileFiring) override;
 
-        void SAL_CALL setModifiedImpl( bool bModified,
+        void setModifiedImpl( bool bModified,
             bool bIgnoreRuntimeExceptionsWhileFiring);
 
-    private:
         /** finds a free property handle
             @precond
                 our mutex is locked
@@ -210,7 +207,6 @@ namespace comphelper
         */
         void impl_setPropertyValues_throw( const css::uno::Sequence< css::beans::PropertyValue >& _rProps );
 
-    protected:
         using ::cppu::OPropertySetHelper::getPropertyValues;
         using ::cppu::OPropertySetHelper::setPropertyValues;
         using ::cppu::OPropertySetHelper::getFastPropertyValue;

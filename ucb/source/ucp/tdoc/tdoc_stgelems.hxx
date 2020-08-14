@@ -22,17 +22,18 @@
 
 #include <memory>
 
-#include "osl/mutex.hxx"
-#include "rtl/ref.hxx"
+#include <osl/mutex.hxx>
+#include <rtl/ref.hxx>
 
 #include <cppuhelper/implbase.hxx>
 
-#include "com/sun/star/embed/XStorage.hpp"
-#include "com/sun/star/embed/XTransactedObject.hpp"
-#include "com/sun/star/io/XOutputStream.hpp"
-#include "com/sun/star/io/XStream.hpp"
-#include "com/sun/star/io/XTruncate.hpp"
-#include "com/sun/star/lang/XComponent.hpp"
+#include <com/sun/star/embed/XStorage.hpp>
+#include <com/sun/star/embed/XTransactedObject.hpp>
+#include <com/sun/star/io/XOutputStream.hpp>
+#include <com/sun/star/io/XStream.hpp>
+#include <com/sun/star/io/XTruncate.hpp>
+#include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/uno/XAggregation.hpp>
 
 #include "tdoc_storage.hxx"
 
@@ -173,7 +174,7 @@ private:
     css::uno::Reference< css::embed::XTransactedObject >  m_xWrappedTransObj;
     css::uno::Reference< css::lang::XComponent >          m_xWrappedComponent;
     css::uno::Reference< css::lang::XTypeProvider >       m_xWrappedTypeProv;
-    bool                                            m_bIsDocumentStorage;
+    bool                                                  m_bIsDocumentStorage;
 
     StorageElementFactory::StorageMap::iterator m_aContainerIt;
 

@@ -18,6 +18,7 @@
  */
 
 #include <rtl/ref.hxx>
+#include <sal/log.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implementationentry.hxx>
@@ -40,21 +41,12 @@ using namespace ::com::sun::star::accessibility;
 
 using namespace ::com::sun::star::awt;
 
-#include "AccTopWindowListener.hxx"
+#include <AccTopWindowListener.hxx>
 
 namespace my_sc_impl
 {
 
-static Sequence< OUString > getSupportedServiceNames_MSAAServiceImpl()
-{
-    Sequence< OUString > seqNames { "com.sun.star.accessibility.MSAAService" };
-    return seqNames;
-}
-
-static OUString getImplementationName_MSAAServiceImpl()
-{
-    return OUString( "com.sun.star.accessibility.my_sc_implementation.MSAAService" );
-}
+namespace {
 
 class MSAAServiceImpl : public ::cppu::WeakImplHelper<
             XMSAAService, lang::XServiceInfo >
@@ -82,6 +74,8 @@ public:
     virtual sal_Bool SAL_CALL supportsService( OUString const & serviceName ) override;
     virtual Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
+
+}
 
 /**
    * Implementation of getAccObjectPtr.
@@ -122,7 +116,7 @@ void MSAAServiceImpl::handleWindowOpened(sal_Int64 nAcc)
 
 OUString MSAAServiceImpl::getImplementationName()
 {
-    return getImplementationName_MSAAServiceImpl();
+    return "com.sun.star.accessibility.my_sc_implementation.MSAAService";
 }
 
 /**
@@ -142,7 +136,7 @@ sal_Bool MSAAServiceImpl::supportsService( OUString const & serviceName )
    */
 Sequence< OUString > MSAAServiceImpl::getSupportedServiceNames()
 {
-    return getSupportedServiceNames_MSAAServiceImpl();
+   return { "com.sun.star.accessibility.MSAAService" };
 }
 
 static void AccessBridgeHandleExistingWindow(const Reference< XMSAAService > &xAccMgr,
@@ -216,7 +210,7 @@ static void AccessBridgeHandleExistingWindow(const Reference< XMSAAService > &xA
  */
 static void AccessBridgeUpdateOldTopWindows( const Reference< XMSAAService > &xAccMgr )
 {
-    sal_uInt16 nTopWindowCount = (sal_uInt16)Application::GetTopWindowCount();
+    sal_uInt16 nTopWindowCount = static_cast<sal_uInt16>(Application::GetTopWindowCount());
 
     for ( sal_uInt16 i = 0; i < nTopWindowCount; i++ )
     {
@@ -234,26 +228,9 @@ static void AccessBridgeUpdateOldTopWindows( const Reference< XMSAAService > &xA
     }
 }
 
-/**
- * Static method that can create an entity of our MSAA Service
- * @param xContext No use here.
- * @return The object interface.
- */
-Reference< XInterface > SAL_CALL create_MSAAServiceImpl( Reference< XComponentContext > const & /*xContext*/ )
-{
-    Reference< XMSAAService > xAccMgr( new MSAAServiceImpl() );
-
-    AccessBridgeUpdateOldTopWindows( xAccMgr );
-
-    SAL_INFO("iacc2", "Created new IAccessible2 service impl.");
-
-    return xAccMgr;
-}
-
 MSAAServiceImpl::MSAAServiceImpl()
 {
-    Reference< XExtendedToolkit > xToolkit =
-        Reference< XExtendedToolkit >(Application::GetVCLToolkit(), UNO_QUERY);
+    Reference< XExtendedToolkit > xToolkit(Application::GetVCLToolkit(), UNO_QUERY);
 
     if( xToolkit.is() )
     {
@@ -279,32 +256,20 @@ void MSAAServiceImpl::dispose()
     m_pTopWindowListener.clear();
 }
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+winaccessibility_MSAAServiceImpl_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    Reference< XMSAAService > xAccMgr( new MSAAServiceImpl() );
+
+    AccessBridgeUpdateOldTopWindows( xAccMgr );
+
+    SAL_INFO("iacc2", "Created new IAccessible2 service impl.");
+
+    xAccMgr->acquire();
+    return xAccMgr.get();
 }
 
-/* shared lib exports implemented without helpers in service_impl1.cxx */
-namespace my_sc_impl
-{
-static struct ::cppu::ImplementationEntry s_component_entries [] =
-    {
-        {
-            create_MSAAServiceImpl, getImplementationName_MSAAServiceImpl,
-            getSupportedServiceNames_MSAAServiceImpl,
-            ::cppu::createSingleComponentFactory,
-            nullptr, 0
-        },
-        { nullptr, nullptr, nullptr, nullptr, nullptr, 0 }
-    };
-}
-
-extern "C"
-{
-    SAL_DLLPUBLIC_EXPORT void * SAL_CALL iacc2_component_getFactory(
-        sal_Char const * implName, lang::XMultiServiceFactory * xMgr,
-        registry::XRegistryKey * xRegistry )
-    {
-        return ::cppu::component_getFactoryHelper(
-                   implName, xMgr, xRegistry, ::my_sc_impl::s_component_entries );
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

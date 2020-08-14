@@ -17,21 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "framework/PresentationModule.hxx"
+#include <framework/PresentationModule.hxx>
 
 #include "CenterViewFocusModule.hxx"
-#include "SlideSorterModule.hxx"
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
-void PresentationModule::Initialize (Reference<frame::XController>& rxController)
+void PresentationModule::Initialize (Reference<frame::XController> const & rxController)
 {
     new sd::framework::CenterViewFocusModule(rxController);
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

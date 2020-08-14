@@ -17,11 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "framework/Configuration.hxx"
+#include <framework/Configuration.hxx>
 
-#include "framework/FrameworkHelper.hxx"
+#include <framework/FrameworkHelper.hxx>
 
-#include <facreg.hxx>
+#include <com/sun/star/drawing/framework/ConfigurationChangeEvent.hpp>
+#include <com/sun/star/drawing/framework/XConfigurationControllerBroadcaster.hpp>
+#include <comphelper/sequence.hxx>
+#include <cppuhelper/supportsservice.hxx>
+#include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -33,7 +38,6 @@ namespace {
     for STL containers.
 */
 class XResourceIdLess
-    :   public ::std::binary_function <Reference<XResourceId>, Reference<XResourceId>, bool>
 {
 public:
     bool operator () (const Reference<XResourceId>& rId1, const Reference<XResourceId>& rId2) const
@@ -44,7 +48,7 @@ public:
 
 } // end of anonymous namespace
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 class Configuration::ResourceContainer
     : public ::std::set<Reference<XResourceId>, XResourceIdLess>
@@ -96,11 +100,10 @@ void SAL_CALL Configuration::addResource (const Reference<XResourceId>& rxResour
     if ( ! rxResourceId.is() || rxResourceId->getResourceURL().isEmpty())
         throw css::lang::IllegalArgumentException();
 
-    if (mpResourceContainer->find(rxResourceId) == mpResourceContainer->end())
+    if (mpResourceContainer->insert(rxResourceId).second)
     {
         SAL_INFO("sd.fwk", OSL_THIS_FUNC << ": Configuration::addResource() " <<
                 FrameworkHelper::ResourceIdToString(rxResourceId));
-        mpResourceContainer->insert(rxResourceId);
         PostEvent(rxResourceId, true);
     }
 }
@@ -130,16 +133,13 @@ Sequence<Reference<XResourceId> > SAL_CALL Configuration::getResources (
     ::osl::MutexGuard aGuard (maMutex);
     ThrowIfDisposed();
 
-    bool bFilterResources (!rsResourceURLPrefix.isEmpty());
+    const bool bFilterResources (!rsResourceURLPrefix.isEmpty());
 
     // Collect the matching resources in a vector.
     ::std::vector<Reference<XResourceId> > aResources;
-    ResourceContainer::const_iterator iResource;
-    for (iResource=mpResourceContainer->begin();
-         iResource!=mpResourceContainer->end();
-         ++iResource)
+    for (const auto& rxResource : *mpResourceContainer)
     {
-        if ( ! (*iResource)->isBoundTo(rxAnchorId,eMode))
+        if ( ! rxResource->isBoundTo(rxAnchorId,eMode))
             continue;
 
         if (bFilterResources)
@@ -148,19 +148,19 @@ Sequence<Reference<XResourceId> > SAL_CALL Configuration::getResources (
 
             // Make sure that the resource is bound directly to the anchor.
             if (eMode != AnchorBindingMode_DIRECT
-                && ! (*iResource)->isBoundTo(rxAnchorId, AnchorBindingMode_DIRECT))
+                && ! rxResource->isBoundTo(rxAnchorId, AnchorBindingMode_DIRECT))
             {
                 continue;
             }
 
             // Make sure that the resource URL matches the given prefix.
-            if ( ! (*iResource)->getResourceURL().match(rsResourceURLPrefix))
+            if ( ! rxResource->getResourceURL().match(rsResourceURLPrefix))
             {
                 continue;
             }
         }
 
-        aResources.push_back(*iResource);
+        aResources.push_back(rxResource);
     }
 
     return comphelper::containerToSequence(aResources);
@@ -195,11 +195,11 @@ Reference<util::XCloneable> SAL_CALL Configuration::createClone()
 OUString SAL_CALL Configuration::getName()
 {
     ::osl::MutexGuard aGuard (maMutex);
-    OUString aString;
+    OUStringBuffer aString;
 
     if (rBHelper.bDisposed || rBHelper.bInDispose)
-        aString += "DISPOSED ";
-    aString += "Configuration[";
+        aString.append("DISPOSED ");
+    aString.append("Configuration[");
 
     ResourceContainer::const_iterator iResource;
     for (iResource=mpResourceContainer->begin();
@@ -207,12 +207,12 @@ OUString SAL_CALL Configuration::getName()
          ++iResource)
     {
         if (iResource != mpResourceContainer->begin())
-            aString += ", ";
-        aString += FrameworkHelper::ResourceIdToString(*iResource);
+            aString.append(", ");
+        aString.append(FrameworkHelper::ResourceIdToString(*iResource));
     }
-    aString += "]";
+    aString.append("]");
 
-    return aString;
+    return aString.makeStringAndClear();
 }
 
 void SAL_CALL Configuration::setName (const OUString&)
@@ -222,8 +222,8 @@ void SAL_CALL Configuration::setName (const OUString&)
 
 OUString Configuration::getImplementationName()
 {
-    return OUString(
-        "com.sun.star.comp.Draw.framework.configuration.Configuration");
+    return
+        "com.sun.star.comp.Draw.framework.configuration.Configuration";
 }
 
 sal_Bool Configuration::supportsService(OUString const & ServiceName)
@@ -243,24 +243,24 @@ void Configuration::PostEvent (
 {
     OSL_ASSERT(rxResourceId.is());
 
-    if (mxBroadcaster.is())
-    {
-        ConfigurationChangeEvent aEvent;
-        aEvent.ResourceId = rxResourceId;
-        if (bActivation)
-            if (mbBroadcastRequestEvents)
-                aEvent.Type = FrameworkHelper::msResourceActivationRequestEvent;
-            else
-                aEvent.Type = FrameworkHelper::msResourceActivationEvent;
-        else
-            if (mbBroadcastRequestEvents)
-                aEvent.Type = FrameworkHelper::msResourceDeactivationRequestEvent;
-            else
-                aEvent.Type = FrameworkHelper::msResourceDeactivationEvent;
-        aEvent.Configuration = this;
+    if (!mxBroadcaster.is())
+        return;
 
-        mxBroadcaster->notifyEvent(aEvent);
-    }
+    ConfigurationChangeEvent aEvent;
+    aEvent.ResourceId = rxResourceId;
+    if (bActivation)
+        if (mbBroadcastRequestEvents)
+            aEvent.Type = FrameworkHelper::msResourceActivationRequestEvent;
+        else
+            aEvent.Type = FrameworkHelper::msResourceActivationEvent;
+    else
+        if (mbBroadcastRequestEvents)
+            aEvent.Type = FrameworkHelper::msResourceDeactivationRequestEvent;
+        else
+            aEvent.Type = FrameworkHelper::msResourceDeactivationEvent;
+    aEvent.Configuration = this;
+
+    mxBroadcaster->notifyEvent(aEvent);
 }
 
 void Configuration::ThrowIfDisposed() const
@@ -291,35 +291,20 @@ bool AreConfigurationsEquivalent (
 
     // When the number of resources differ then the configurations can not
     // be equivalent.
-    const sal_Int32 nCount (aResources1.getLength());
-    const sal_Int32 nCount2 (aResources2.getLength());
-    if (nCount != nCount2)
-        return false;
-
     // Comparison of the two lists of resource ids relies on their
     // ordering.
-    for (sal_Int32 nIndex=0; nIndex<nCount; ++nIndex)
-    {
-        const Reference<XResourceId> xResource1 (aResources1[nIndex]);
-        const Reference<XResourceId> xResource2 (aResources2[nIndex]);
-        if (xResource1.is() && xResource2.is())
-        {
-            if (xResource1->compareTo(xResource2) != 0)
-                return false;
-        }
-        else if (xResource1.is() != xResource2.is())
-        {
-            return false;
-        }
-    }
-
-    return true;
+    return std::equal(aResources1.begin(), aResources1.end(), aResources2.begin(), aResources2.end(),
+        [](const Reference<XResourceId>& a, const Reference<XResourceId>& b) {
+            if (a.is() && b.is())
+                return a->compareTo(b) == 0;
+            return a.is() == b.is();
+        });
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Draw_framework_configuration_Configuration_get_implementation(
         css::uno::XComponentContext*,
         css::uno::Sequence<css::uno::Any> const &)

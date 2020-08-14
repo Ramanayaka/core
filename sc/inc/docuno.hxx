@@ -21,6 +21,8 @@
 #define INCLUDED_SC_INC_DOCUNO_HXX
 
 #include "address.hxx"
+
+#include <sal/types.h>
 #include <sfx2/sfxbasemodel.hxx>
 #include <svl/lstner.hxx>
 #include <svx/fmdmod.hxx>
@@ -37,6 +39,7 @@
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheets2.hpp>
 #include <com/sun/star/sheet/XDocumentAuditing.hpp>
+#include <com/sun/star/chart2/XDataProviderAccess.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/util/XProtectable.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
@@ -46,19 +49,21 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sheet/XCellRangesAccess.hpp>
 #include <com/sun/star/sheet/opencl/XOpenCLSelection.hpp>
-#include <com/sun/star/sheet/opencl/OpenCLPlatform.hpp>
 #include <com/sun/star/util/XChangesNotifier.hpp>
+#include <com/sun/star/uno/XAggregation.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/interfacecontainer2.hxx>
 #include <svl/itemprop.hxx>
-#include <vcl/event.hxx>
 #include <vcl/ITiledRenderable.hxx>
-#include "drwlayer.hxx"
+
+namespace com::sun::star::chart2::data { class XDataProvider; }
+namespace com::sun::star::sheet::opencl { struct OpenCLPlatform; }
 
 class ScDocShell;
 class ScAnnotationObj;
 class ScMarkData;
 class ScPrintFuncCache;
+struct ScPrintState;
 class ScPrintSelectionStatus;
 class ScTableColumnObj;
 class ScTableRowObj;
@@ -85,13 +90,15 @@ class SC_DLLPUBLIC ScModelObj : public SfxBaseModel,
                     public SvxFmMSFactory,  ///< derived from XMultiServiceFactory
                     public css::lang::XServiceInfo,
                     public css::util::XChangesNotifier,
+                    public css::chart2::XDataProviderAccess,
                     public css::sheet::opencl::XOpenCLSelection
 {
 private:
     SfxItemPropertySet      aPropSet;
     ScDocShell*             pDocShell;
-    ScPrintFuncCache*       pPrintFuncCache;
-    ScPrintUIOptions*       pPrinterOptions;
+    std::unique_ptr<ScPrintFuncCache> pPrintFuncCache;
+    std::unique_ptr<ScPrintUIOptions> pPrinterOptions;
+    std::unique_ptr<ScPrintState> m_pPrintState;
     css::uno::Reference<css::uno::XAggregation> xNumberAgg;
     css::uno::Reference<css::uno::XInterface> xDrawGradTab;
     css::uno::Reference<css::uno::XInterface> xDrawHatchTab;
@@ -106,7 +113,8 @@ private:
 
     bool                    FillRenderMarkData( const css::uno::Any& aSelection,
                                                 const css::uno::Sequence< css::beans::PropertyValue >& rOptions,
-                                                ScMarkData& rMark, ScPrintSelectionStatus& rStatus, OUString& rPagesStr ) const;
+                                                ScMarkData& rMark, ScPrintSelectionStatus& rStatus, OUString& rPagesStr,
+                                                bool& rbRenderToGraphic ) const;
     css::uno::Reference<css::uno::XAggregation> const & GetFormatter();
     void                    HandleCalculateEvents();
 
@@ -114,9 +122,15 @@ private:
         OUString const & aServiceSpecifier,
         css::uno::Sequence<css::uno::Any> const * arguments);
 
-    OUString           maBuildId;
+    static bool             IsOnEvenPage( sal_Int32 nPage ) { return nPage % 2 == 0; };
+
+    OUString                maBuildId;
+    std::vector<sal_Int32>  maValidPages;
 protected:
     const SfxItemPropertySet&   GetPropertySet() const { return aPropSet; }
+
+    /** abstract SdrModel provider */
+    virtual SdrModel& getSdrModelFromUnoModel() const override;
 
 public:
                             ScModelObj(ScDocShell* pDocSh);
@@ -152,6 +166,10 @@ public:
                             /// XSpreadsheetDocument
     virtual css::uno::Reference< css::sheet::XSpreadsheets > SAL_CALL
                             getSheets() override;
+
+                            /// XDataProviderAccess
+    virtual ::css::uno::Reference< css::chart2::data::XDataProvider > SAL_CALL
+                            createDataProvider() override;
 
                             /// XStyleFamiliesSupplier
     virtual css::uno::Reference< css::container::XNameAccess > SAL_CALL
@@ -244,7 +262,6 @@ public:
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
 
     static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
-    static ScModelObj* getImplementation(const css::uno::Reference<css::uno::XInterface>& rObj);
 
                             /// XTypeProvider
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
@@ -303,11 +320,17 @@ public:
     /// @see vcl::ITiledRenderable::getParts().
     virtual int getParts() override;
 
+    /// @see vcl::ITiledRenderable::getPartInfo().
+    virtual OUString getPartInfo( int nPart ) override;
+
     /// @see vcl::ITiledRenderable::getPartName().
     virtual OUString getPartName(int nPart) override;
 
     /// @see vcl::ITiledRenderable::getPartHash().
     virtual OUString getPartHash( int nPart ) override;
+
+    /// @see vcl::ITiledRenderable::getDocWindow().
+    virtual VclPtr<vcl::Window> getDocWindow() override;
 
     /// @see vcl::ITiledRenderable::initializeForTiledRendering().
     virtual void initializeForTiledRendering(const css::uno::Sequence<css::beans::PropertyValue>& rArguments) override;
@@ -321,8 +344,8 @@ public:
     /// @see vcl::ITiledRenderable::setTextSelection().
     virtual void setTextSelection(int nType, int nX, int nY) override;
 
-    /// @see vcl::ITiledRenderable::getTextSelection().
-    virtual OString getTextSelection(const char* pMimeType, OString& rUsedMimeType) override;
+    /// @see vcl::ITiledRenderable::getSelection().
+    virtual css::uno::Reference<css::datatransfer::XTransferable> getSelection() override;
 
     /// @see vcl::ITiledRenderable::setGraphicSelection().
     virtual void setGraphicSelection(int nType, int nX, int nY) override;
@@ -339,32 +362,39 @@ public:
     /// @see vcl::ITiledRenderable::setClientZoom().
     virtual void setClientZoom(int nTilePixelWidth, int nTilePixelHeight, int nTileTwipWidth, int nTileTwipHeight) override;
 
+    /// @see vcl::ITiledRenderable::setOutlineState().
+    virtual void setOutlineState(bool bColumn, int nLevel, int nIndex, bool bHidden) override;
+
     /// @see vcl::ITiledRenderable::getRowColumnHeaders().
-    virtual OUString getRowColumnHeaders(const tools::Rectangle& rRectangle) override;
+    virtual void getRowColumnHeaders(const tools::Rectangle& rRectangle, tools::JsonWriter& rJsonWriter) override;
+
+    /// @see vcl::ITiledRenderable::getSheetGeometryData().
+    virtual OString getSheetGeometryData(bool bColumns, bool bRows, bool bSizes, bool bHidden,
+                                         bool bFiltered, bool bGroups) override;
 
     /// @see vcl::ITiledRenderable::getCellCursor().
-    virtual OString getCellCursor( int nOutputWidth,
-                                   int nOutputHeight,
-                                   long nTileWidth,
-                                   long nTileHeight ) override;
+    virtual void getCellCursor(tools::JsonWriter& rJsonWriter) override;
 
     /// @see vcl::ITiledRenderable::getPointer().
-    virtual Pointer getPointer() override;
+    virtual PointerStyle getPointer() override;
 
     /// @see vcl::ITiledRenderable::getTrackedChanges().
-    OUString getTrackedChanges() override;
+    void getTrackedChanges(tools::JsonWriter&) override;
 
     /// @see vcl::ITiledRenderable::setClientVisibleArea().
     virtual void setClientVisibleArea(const tools::Rectangle& rRectangle) override;
 
     /// @see vcl::ITiledRenderable::getPostIts().
-    OUString getPostIts() override;
+    void getPostIts(tools::JsonWriter& rJsonWriter) override;
 
     /// @see vcl::ITiledRenderable::getPostItsPos().
-    OUString getPostItsPos() override;
+    void getPostItsPos(tools::JsonWriter& rJsonWriter) override;
+
+    /// @see vcl::ITiledRenderable::completeFunction().
+    virtual void completeFunction(const OUString& rFunctionName) override;
 };
 
-class ScDrawPagesObj : public cppu::WeakImplHelper<
+class ScDrawPagesObj final : public cppu::WeakImplHelper<
                                 css::drawing::XDrawPages,
                                 css::lang::XServiceInfo>,
                         public SfxListener
@@ -400,7 +430,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScTableSheetsObj : public cppu::WeakImplHelper<
+class ScTableSheetsObj final : public cppu::WeakImplHelper<
                                 css::sheet::XSpreadsheets2,
                                 css::sheet::XCellRangesAccess,
                                 css::container::XEnumerationAccess,
@@ -475,7 +505,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScTableColumnsObj : public cppu::WeakImplHelper<
+class ScTableColumnsObj final : public cppu::WeakImplHelper<
                                 css::table::XTableColumns,
                                 css::container::XEnumerationAccess,
                                 css::container::XNameAccess,
@@ -542,7 +572,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScTableRowsObj : public cppu::WeakImplHelper<
+class ScTableRowsObj final : public cppu::WeakImplHelper<
                                 css::table::XTableRows,
                                 css::container::XEnumerationAccess,
                                 css::beans::XPropertySet,
@@ -601,7 +631,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScSpreadsheetSettingsObj : public cppu::WeakImplHelper<
+class ScSpreadsheetSettingsObj final : public cppu::WeakImplHelper<
                                     css::beans::XPropertySet,
                                     css::lang::XServiceInfo>,
                                  public SfxListener
@@ -630,7 +660,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScAnnotationsObj : public cppu::WeakImplHelper<
+class SAL_DLLPUBLIC_RTTI ScAnnotationsObj final : public cppu::WeakImplHelper<
                                 css::sheet::XSheetAnnotations,
                                 css::container::XEnumerationAccess,
                                 css::lang::XServiceInfo>,
@@ -648,6 +678,8 @@ public:
     virtual                 ~ScAnnotationsObj() override;
 
     virtual void            Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
+
+    ScDocShell*             GetDocShell() const { return pDocShell; }
 
                             /// XSheetAnnotations
     virtual void SAL_CALL   insertNew( const css::table::CellAddress& aPosition,
@@ -672,7 +704,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScScenariosObj : public cppu::WeakImplHelper<
+class ScScenariosObj final : public cppu::WeakImplHelper<
                                 css::sheet::XScenarios,
                                 css::container::XEnumerationAccess,
                                 css::container::XIndexAccess,

@@ -15,18 +15,20 @@ $(eval $(call gb_Library_use_externals,staroffice,\
     revenge \
 ))
 
-$(eval $(call gb_Library_set_warnings_not_errors,staroffice))
+$(eval $(call gb_Library_set_warnings_disabled,staroffice))
+
+$(eval $(call gb_Library_set_precompiled_header,staroffice,external/libstaroffice/inc/pch/precompiled_staroffice))
 
 $(eval $(call gb_Library_set_include,staroffice,\
     -I$(call gb_UnpackedTarball_get_dir,libstaroffice)/inc \
+    -I$(call gb_UnpackedTarball_get_dir,libstaroffice)/src/lib \
     $$(INCLUDE) \
 ))
 
 $(eval $(call gb_Library_add_defs,staroffice,\
 	-DBUILD_STOFF \
-	-DDLL_EXPORT \
+	-D_WINDLL \
 	-DNDEBUG \
-	-DSHAREDPTR_STD \
 ))
 
 $(eval $(call gb_Library_add_generated_exception_objects,staroffice,\
@@ -62,6 +64,7 @@ $(eval $(call gb_Library_add_generated_exception_objects,staroffice,\
 	UnpackedTarball/libstaroffice/src/lib/STOFFSpreadsheetDecoder \
 	UnpackedTarball/libstaroffice/src/lib/STOFFSpreadsheetEncoder \
 	UnpackedTarball/libstaroffice/src/lib/STOFFSpreadsheetListener \
+	UnpackedTarball/libstaroffice/src/lib/STOFFStarMathToMMLConverter \
 	UnpackedTarball/libstaroffice/src/lib/STOFFStringStream \
 	UnpackedTarball/libstaroffice/src/lib/STOFFSubDocument \
 	UnpackedTarball/libstaroffice/src/lib/STOFFTable \
@@ -91,6 +94,7 @@ $(eval $(call gb_Library_add_generated_exception_objects,staroffice,\
 	UnpackedTarball/libstaroffice/src/lib/StarObject \
 	UnpackedTarball/libstaroffice/src/lib/StarObjectChart \
 	UnpackedTarball/libstaroffice/src/lib/StarObjectDraw \
+	UnpackedTarball/libstaroffice/src/lib/StarObjectMath \
 	UnpackedTarball/libstaroffice/src/lib/StarObjectModel \
 	UnpackedTarball/libstaroffice/src/lib/StarObjectNumericRuler \
 	UnpackedTarball/libstaroffice/src/lib/StarObjectPageStyle \

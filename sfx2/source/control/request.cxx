@@ -27,9 +27,12 @@
 #include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/frame/XDispatchRecorderSupplier.hpp>
 #include <svl/itemiter.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
+#include <tools/debug.hxx>
 
 #include <svl/itempool.hxx>
-#include "itemdel.hxx"
+#include <itemdel.hxx>
 
 #include <comphelper/processfactory.hxx>
 
@@ -40,7 +43,7 @@
 #include <sfx2/msg.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/objface.hxx>
-#include <rtl/strbuf.hxx>
+#include <sfx2/sfxuno.hxx>
 
 
 using namespace ::com::sun::star;
@@ -56,7 +59,7 @@ struct SfxRequest_Impl: public SfxListener
     SfxRequest*     pAnti;       // Owner because of dying pool
     OUString        aTarget;     // if possible from target object set by App
     SfxItemPool*    pPool;       // ItemSet build with this pool
-    SfxPoolItem*    pRetVal;     // Return value belongs to itself
+    std::unique_ptr<SfxPoolItem> pRetVal; // Return value belongs to itself
     SfxShell*       pShell;      // run from this shell
     const SfxSlot*  pSlot;       // executed Slot
     sal_uInt16      nModifier;   // which Modifier was pressed?
@@ -70,12 +73,11 @@ struct SfxRequest_Impl: public SfxListener
     SfxViewFrame*   pViewFrame;
 
     css::uno::Reference< css::frame::XDispatchRecorder > xRecorder;
-    css::uno::Reference< uno::XComponentContext > xContext;
+    css::uno::Reference< css::util::XURLTransformer > xTransform;
 
     explicit SfxRequest_Impl( SfxRequest *pOwner )
         : pAnti( pOwner)
         , pPool(nullptr)
-        , pRetVal(nullptr)
         , pShell(nullptr)
         , pSlot(nullptr)
         , nModifier(0)
@@ -85,7 +87,6 @@ struct SfxRequest_Impl: public SfxListener
         , nCallMode( SfxCallMode::SYNCHRON )
         , bAllowRecording( false )
         , pViewFrame(nullptr)
-        , xContext(comphelper::getProcessComponentContext())
     {
     }
 
@@ -122,9 +123,9 @@ SfxRequest::~SfxRequest()
         pImpl->Record( uno::Sequence < beans::PropertyValue >() );
 
     // Clear object
-    delete pArgs;
+    pArgs.reset();
     if ( pImpl->pRetVal )
-        DeleteItemOnIdle(pImpl->pRetVal);
+        DeleteItemOnIdle(std::move(pImpl->pRetVal));
 }
 
 
@@ -140,7 +141,6 @@ SfxRequest::SfxRequest
     pImpl->bAllowRecording = rOrig.pImpl->bAllowRecording;
     pImpl->bDone = false;
     pImpl->bIgnored = false;
-    pImpl->pRetVal = nullptr;
     pImpl->pShell = nullptr;
     pImpl->pSlot = nullptr;
     pImpl->nCallMode = rOrig.pImpl->nCallMode;
@@ -154,6 +154,25 @@ SfxRequest::SfxRequest
         pImpl->SetPool( pArgs->GetPool() );
     else
         pImpl->SetPool( rOrig.pImpl->pPool );
+
+    // setup macro recording if it was in the original SfxRequest
+    if (!rOrig.pImpl->pViewFrame || !rOrig.pImpl->xRecorder.is())
+        return;
+
+    nSlot = rOrig.nSlot;
+    pImpl->pViewFrame = rOrig.pImpl->pViewFrame;
+    if (pImpl->pViewFrame->GetDispatcher()->GetShellAndSlot_Impl(nSlot, &pImpl->pShell, &pImpl->pSlot, true, true))
+    {
+        pImpl->SetPool( &pImpl->pShell->GetPool() );
+        pImpl->xRecorder = SfxRequest::GetMacroRecorder(pImpl->pViewFrame);
+        if (pImpl->xRecorder)
+            pImpl->xTransform = util::URLTransformer::create(comphelper::getProcessComponentContext());
+        pImpl->aTarget = pImpl->pShell->GetName();
+    }
+    else
+    {
+        SAL_WARN("sfx", "Recording unsupported slot: " << pImpl->pPool->GetSlotId(nSlot));
+    }
 }
 
 
@@ -174,13 +193,11 @@ SfxRequest::SfxRequest
 */
 
 :   nSlot(nSlotId),
-    pArgs(nullptr),
     pImpl( new SfxRequest_Impl(this) )
 {
     pImpl->bDone = false;
     pImpl->bIgnored = false;
     pImpl->SetPool( &pViewFrame->GetPool() );
-    pImpl->pRetVal = nullptr;
     pImpl->pShell = nullptr;
     pImpl->pSlot = nullptr;
     pImpl->nCallMode = SfxCallMode::SYNCHRON;
@@ -189,6 +206,8 @@ SfxRequest::SfxRequest
     {
         pImpl->SetPool( &pImpl->pShell->GetPool() );
         pImpl->xRecorder = SfxRequest::GetMacroRecorder( pViewFrame );
+        if (pImpl->xRecorder)
+            pImpl->xTransform = util::URLTransformer::create(comphelper::getProcessComponentContext());
         pImpl->aTarget = pImpl->pShell->GetName();
     }
     else
@@ -208,13 +227,11 @@ SfxRequest::SfxRequest
 // creates a SfxRequest without arguments
 
 :   nSlot(nSlotId),
-    pArgs(nullptr),
     pImpl( new SfxRequest_Impl(this) )
 {
     pImpl->bDone = false;
     pImpl->bIgnored = false;
     pImpl->SetPool( &rPool );
-    pImpl->pRetVal = nullptr;
     pImpl->pShell = nullptr;
     pImpl->pSlot = nullptr;
     pImpl->nCallMode = nMode;
@@ -234,7 +251,6 @@ SfxRequest::SfxRequest
     pImpl->bDone = false;
     pImpl->bIgnored = false;
     pImpl->SetPool( &rPool );
-    pImpl->pRetVal = nullptr;
     pImpl->pShell = nullptr;
     pImpl->pSlot = nullptr;
     pImpl->nCallMode = nMode;
@@ -258,7 +274,6 @@ SfxRequest::SfxRequest
     pImpl->bDone = false;
     pImpl->bIgnored = false;
     pImpl->SetPool( rSfxArgs.GetPool() );
-    pImpl->pRetVal = nullptr;
     pImpl->pShell = nullptr;
     pImpl->pSlot = nullptr;
     pImpl->nCallMode = nMode;
@@ -320,45 +335,42 @@ void SfxRequest_Impl::Record
 */
 
 {
-    OUString aCommand(".uno:");
-    aCommand += OUString( pSlot->GetUnoName(), strlen( pSlot->GetUnoName() ), RTL_TEXTENCODING_UTF8 );
-    OUString aCmd( aCommand );
-    if(xRecorder.is())
+    if(!xRecorder.is())
+        return;
+
+    OUString aCmd = ".uno:" + OUString::createFromAscii( pSlot->GetUnoName() );
+
+    uno::Reference< container::XIndexReplace > xReplace( xRecorder, uno::UNO_QUERY );
+    if ( xReplace.is() && aCmd == ".uno:InsertText" )
     {
-        uno::Reference< container::XIndexReplace > xReplace( xRecorder, uno::UNO_QUERY );
-        if ( xReplace.is() && aCmd == ".uno:InsertText" )
+        sal_Int32 nCount = xReplace->getCount();
+        if ( nCount )
         {
-            sal_Int32 nCount = xReplace->getCount();
-            if ( nCount )
+            frame::DispatchStatement aStatement;
+            uno::Any aElement = xReplace->getByIndex(nCount-1);
+            if ( (aElement >>= aStatement) && aStatement.aCommand == aCmd )
             {
-                frame::DispatchStatement aStatement;
-                uno::Any aElement = xReplace->getByIndex(nCount-1);
-                if ( (aElement >>= aStatement) && aStatement.aCommand == aCmd )
-                {
-                    OUString aStr;
-                    OUString aNew;
-                    aStatement.aArgs[0].Value >>= aStr;
-                    rArgs[0].Value >>= aNew;
-                    aStr += aNew;
-                    aStatement.aArgs[0].Value <<= aStr;
-                    aElement <<= aStatement;
-                    xReplace->replaceByIndex( nCount-1, aElement );
-                    return;
-                }
+                OUString aStr;
+                OUString aNew;
+                aStatement.aArgs[0].Value >>= aStr;
+                rArgs[0].Value >>= aNew;
+                aStr += aNew;
+                aStatement.aArgs[0].Value <<= aStr;
+                aElement <<= aStatement;
+                xReplace->replaceByIndex( nCount-1, aElement );
+                return;
             }
         }
-
-        uno::Reference< util::XURLTransformer > xTransform = util::URLTransformer::create( xContext );
-
-        css::util::URL aURL;
-        aURL.Complete = aCmd;
-        xTransform->parseStrict(aURL);
-
-        if (bDone)
-            xRecorder->recordDispatch(aURL,rArgs);
-        else
-            xRecorder->recordDispatchAsComment(aURL,rArgs);
     }
+
+    css::util::URL aURL;
+    aURL.Complete = aCmd;
+    xTransform->parseStrict(aURL);
+
+    if (bDone)
+        xRecorder->recordDispatch(aURL,rArgs);
+    else
+        xRecorder->recordDispatchAsComment(aURL,rArgs);
 }
 
 
@@ -381,6 +393,8 @@ void SfxRequest::Record_Impl
     pImpl->pShell = &rSh;
     pImpl->pSlot = &rSlot;
     pImpl->xRecorder = xRecorder;
+    if (pImpl->xRecorder && !pImpl->xTransform)
+        pImpl->xTransform = util::URLTransformer::create(comphelper::getProcessComponentContext());
     pImpl->aTarget = rSh.GetName();
     pImpl->pViewFrame = pViewFrame;
 }
@@ -388,8 +402,7 @@ void SfxRequest::Record_Impl
 
 void SfxRequest::SetArgs( const SfxAllItemSet& rArgs )
 {
-    delete pArgs;
-    pArgs = new SfxAllItemSet(rArgs);
+    pArgs.reset(new SfxAllItemSet(rArgs));
     pImpl->SetPool( pArgs->GetPool() );
 }
 
@@ -397,7 +410,7 @@ void SfxRequest::SetArgs( const SfxAllItemSet& rArgs )
 void SfxRequest::AppendItem(const SfxPoolItem &rItem)
 {
     if(!pArgs)
-        pArgs = new SfxAllItemSet(*pImpl->pPool);
+        pArgs.reset( new SfxAllItemSet(*pImpl->pPool) );
     pArgs->Put(rItem, rItem.Which());
 }
 
@@ -408,21 +421,20 @@ void SfxRequest::RemoveItem( sal_uInt16 nID )
     {
         pArgs->ClearItem(nID);
         if ( !pArgs->Count() )
-            DELETEZ(pArgs);
+            pArgs.reset();
     }
 }
 
 void SfxRequest::SetReturnValue(const SfxPoolItem &rItem)
 {
     DBG_ASSERT(!pImpl->pRetVal, "Set Return value multiple times?");
-    delete pImpl->pRetVal;
-    pImpl->pRetVal = rItem.Clone();
+    pImpl->pRetVal.reset(rItem.Clone());
 }
 
 
 const SfxPoolItem* SfxRequest::GetReturnValue() const
 {
-    return pImpl->pRetVal;
+    return pImpl->pRetVal.get();
 }
 
 
@@ -447,7 +459,7 @@ void SfxRequest::Done
 
     [Note]
 
-    'Done ()' is not called, for example when a dialoge started by the function
+    'Done ()' is not called, for example when a dialog started by the function
     was canceled by the user or if the execution could not be performed due to
     a wrong context (without use of separate <SfxShell>s). 'Done ()' will be
     launched, when executing the function led to a regular error
@@ -460,18 +472,16 @@ void SfxRequest::Done
     // Keep items if possible, so they can be queried by StarDraw.
     if ( !pArgs )
     {
-        pArgs = new SfxAllItemSet( rSet );
+        pArgs.reset( new SfxAllItemSet( rSet ) );
         pImpl->SetPool( pArgs->GetPool() );
     }
     else
     {
         SfxItemIter aIter(rSet);
-        const SfxPoolItem* pItem = aIter.FirstItem();
-        while(pItem)
+        for (const SfxPoolItem* pItem = aIter.GetCurItem(); pItem; pItem = aIter.NextItem())
         {
             if(!IsInvalidItem(pItem))
                 pArgs->Put(*pItem,pItem->Which());
-            pItem = aIter.NextItem();
         }
     }
 }
@@ -480,15 +490,15 @@ void SfxRequest::Done
 void SfxRequest::Done( bool bRelease )
 //  [<SfxRequest::Done(SfxItemSet&)>]
 {
-    Done_Impl( pArgs );
+    Done_Impl( pArgs.get() );
     if( bRelease )
-        DELETEZ( pArgs );
+        pArgs.reset();
 }
 
 
 void SfxRequest::ForgetAllArgs()
 {
-    DELETEZ( pArgs );
+    pArgs.reset();
     pImpl->pInternalArgs.reset();
 }
 
@@ -510,7 +520,7 @@ void SfxRequest::Cancel()
 {
     pImpl->bCancelled = true;
     pImpl->SetPool( nullptr );
-    DELETEZ( pArgs );
+    pArgs.reset();
 }
 
 
@@ -609,7 +619,7 @@ void SfxRequest::Done_Impl
         {
             // iterate over Items
             SfxItemIter aIter(*pSet);
-            for ( const SfxPoolItem* pItem = aIter.FirstItem(); pItem; pItem = aIter.NextItem() )
+            for ( const SfxPoolItem* pItem = aIter.GetCurItem(); pItem; pItem = aIter.NextItem() )
             {
                 // to determine the slot ID for the individual item
                 sal_uInt16 nSlotId = rPool.GetSlotId( pItem->Which() );
@@ -618,7 +628,7 @@ void SfxRequest::Done_Impl
                     // play it safe; repair the wrong flags
                     OSL_FAIL( "recursion RecordPerItem - use RecordPerSet!" );
                     SfxSlot *pSlot = const_cast<SfxSlot*>(pImpl->pSlot);
-                    pSlot->nFlags &= ~(SfxSlotMode::RECORDPERITEM);
+                    pSlot->nFlags &= ~SfxSlotMode::RECORDPERITEM;
                     pSlot->nFlags &=  SfxSlotMode::RECORDPERSET;
                 }
 
@@ -660,7 +670,7 @@ bool SfxRequest::IsDone() const
 }
 
 
-css::uno::Reference< css::frame::XDispatchRecorder > SfxRequest::GetMacroRecorder( SfxViewFrame* pView )
+css::uno::Reference< css::frame::XDispatchRecorder > SfxRequest::GetMacroRecorder( SfxViewFrame const * pView )
 
 /*  [Description]
 
@@ -690,7 +700,7 @@ css::uno::Reference< css::frame::XDispatchRecorder > SfxRequest::GetMacroRecorde
     return xRecorder;
 }
 
-bool SfxRequest::HasMacroRecorder( SfxViewFrame* pView )
+bool SfxRequest::HasMacroRecorder( SfxViewFrame const * pView )
 {
     return GetMacroRecorder( pView ).is();
 }
@@ -737,7 +747,7 @@ bool SfxRequest::AllowsRecording() const
 
 void SfxRequest::ReleaseArgs()
 {
-    DELETEZ( pArgs );
+    pArgs.reset();
     pImpl->pInternalArgs.reset();
 }
 

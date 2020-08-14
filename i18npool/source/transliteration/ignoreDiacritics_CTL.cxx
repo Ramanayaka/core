@@ -7,12 +7,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <comphelper/sequence.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <transliteration_Ignore.hxx>
 #include <unicode/translit.h>
-#include <unicode/uchar.h>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 ignoreDiacritics_CTL::ignoreDiacritics_CTL()
 {
@@ -35,7 +35,7 @@ ignoreDiacritics_CTL::transliterateChar2Char(sal_Unicode nInChar)
     if (!m_transliterator)
         throw css::uno::RuntimeException();
 
-    UnicodeString aChar(nInChar);
+    icu::UnicodeString aChar(nInChar);
     m_transliterator->transliterate(aChar);
 
     if (aChar.isEmpty())
@@ -47,9 +47,9 @@ ignoreDiacritics_CTL::transliterateChar2Char(sal_Unicode nInChar)
     return aChar[0];
 }
 
-OUString SAL_CALL
-ignoreDiacritics_CTL::folding(const OUString& rInStr, sal_Int32 nStartPos,
-    sal_Int32 nCount, css::uno::Sequence<sal_Int32>& rOffset)
+OUString
+ignoreDiacritics_CTL::foldingImpl(const OUString& rInStr, sal_Int32 nStartPos,
+    sal_Int32 nCount, css::uno::Sequence<sal_Int32>& rOffset, bool useOffset)
 {
     if (!m_transliterator)
         throw css::uno::RuntimeException();
@@ -60,39 +60,36 @@ ignoreDiacritics_CTL::folding(const OUString& rInStr, sal_Int32 nStartPos,
     if (useOffset)
     {
         OUStringBuffer aOutBuf(nCount);
-        rOffset.realloc(nCount);
+
+        std::vector<sal_Int32> aOffset;
+        aOffset.reserve(nCount);
 
         sal_Int32 nPosition = nStartPos;
-        sal_Int32 nOffset = 0;
         while (nPosition < nStartPos + nCount)
         {
             sal_Int32 nIndex = nPosition;
             UChar32 nChar = rInStr.iterateCodePoints(&nIndex);
-            UnicodeString aUStr(nChar);
+            icu::UnicodeString aUStr(nChar);
             m_transliterator->transliterate(aUStr);
-
-            if (nOffset + aUStr.length() > rOffset.getLength())
-                rOffset.realloc(rOffset.getLength() + aUStr.length());
 
             aOutBuf.append(reinterpret_cast<const sal_Unicode*>(aUStr.getBuffer()), aUStr.length());
 
-            for (int32_t i = 0; i < aUStr.length(); i++)
-                rOffset[nOffset++] = nPosition;
+            std::fill_n(std::back_inserter(aOffset), aUStr.length(), nPosition);
 
             nPosition = nIndex;
         }
 
-        rOffset.realloc(aOutBuf.getLength());
+        rOffset = comphelper::containerToSequence(aOffset);
         return aOutBuf.makeStringAndClear();
     }
     else
     {
-        UnicodeString aUStr(reinterpret_cast<const UChar*>(rInStr.getStr()) + nStartPos, nCount);
+        icu::UnicodeString aUStr(reinterpret_cast<const UChar*>(rInStr.getStr()) + nStartPos, nCount);
         m_transliterator->transliterate(aUStr);
         return OUString(reinterpret_cast<const sal_Unicode*>(aUStr.getBuffer()), aUStr.length());
     }
 }
 
-} } } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

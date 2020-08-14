@@ -17,18 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/textfont.hxx"
+#include <drawingml/textfont.hxx>
 #include <com/sun/star/awt/FontFamily.hpp>
 #include <com/sun/star/awt/FontPitch.hpp>
-#include "oox/drawingml/theme.hxx"
-#include "oox/core/xmlfilterbase.hxx"
-#include "oox/helper/attributelist.hxx"
+#include <oox/drawingml/theme.hxx>
+#include <oox/core/xmlfilterbase.hxx>
+#include <oox/helper/attributelist.hxx>
 #include <oox/token/tokens.hxx>
 
 using ::oox::core::XmlFilterBase;
 
-namespace oox {
-namespace drawingml {
+namespace oox::drawingml {
 
 namespace {
 
@@ -92,7 +91,6 @@ bool TextFont::implGetFontData( OUString& rFontName, sal_Int16& rnFontPitch, sal
     return !rFontName.isEmpty();
 }
 
-} // namespace drawingml
-} // namespace oox
+} // namespace oox::drawingml
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

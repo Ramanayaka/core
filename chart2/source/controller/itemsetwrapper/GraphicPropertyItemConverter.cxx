@@ -17,15 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "GraphicPropertyItemConverter.hxx"
+#include <GraphicPropertyItemConverter.hxx>
 #include "SchWhichPairs.hxx"
-#include "macros.hxx"
-#include "ItemPropertyMap.hxx"
-#include "PropertyHelper.hxx"
-#include "CommonConverters.hxx"
-#include <editeng/memberids.hrc>
-#include <svx/xflclit.hxx>
-#include <svx/xlnclit.hxx>
+#include <ItemPropertyMap.hxx>
+#include <PropertyHelper.hxx>
+#include <CommonConverters.hxx>
+#include <editeng/memberids.h>
+#include <svx/unomid.hxx>
 #include <svx/xflbmtit.hxx>
 #include <svx/xflbstit.hxx>
 #include <svx/xbtmpit.hxx>
@@ -35,17 +33,17 @@
 #include <svx/xflgrit.hxx>
 #include <svx/xfltrit.hxx>
 #include <svx/xlntrit.hxx>
-#include <editeng/eeitem.hxx>
-#include <svl/eitem.hxx>
 #include <svx/xgrscit.hxx>
 #include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/chart2/FillBitmap.hpp>
-#include <com/sun/star/awt/Gradient.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/drawing/BitmapMode.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 
-namespace chart { namespace wrapper {
+namespace chart::wrapper {
 
 namespace {
 
@@ -73,7 +71,8 @@ ItemPropertyMapType & lcl_GetDataPointLinePropertyMap()
     static ItemPropertyMapType aDataPointPropertyLineMap{
         {XATTR_LINECOLOR, {"Color", 0}},
         {XATTR_LINESTYLE, {"LineStyle", 0}},
-        {XATTR_LINEWIDTH, {"LineWidth", 0}}};
+        {XATTR_LINEWIDTH, {"LineWidth", 0}},
+        {XATTR_LINECAP, {"LineCap", 0}}};
     return aDataPointPropertyLineMap;
 }
 ItemPropertyMapType & lcl_GetLinePropertyMap()
@@ -82,7 +81,8 @@ ItemPropertyMapType & lcl_GetLinePropertyMap()
         {XATTR_LINESTYLE, {"LineStyle", 0}},
         {XATTR_LINEWIDTH, {"LineWidth", 0}},
         {XATTR_LINECOLOR, {"LineColor", 0}},
-        {XATTR_LINEJOINT, {"LineJoint", 0}}};
+        {XATTR_LINEJOINT, {"LineJoint", 0}},
+        {XATTR_LINECAP, {"LineCap", 0}}};
     return aLinePropertyMap;
 }
 ItemPropertyMapType & lcl_GetFillPropertyMap()
@@ -256,9 +256,9 @@ void GraphicPropertyItemConverter::FillSpecialItem(
                     }
                 }
             }
-            catch( const beans::UnknownPropertyException &ex )
+            catch( const beans::UnknownPropertyException & )
             {
-                ASSERT_EXCEPTION( ex );
+                DBG_UNHANDLED_EXCEPTION("chart2");
             }
         break;
 
@@ -295,10 +295,10 @@ void GraphicPropertyItemConverter::FillSpecialItem(
 
             // translate model name to UI-name for predefined entries, so
             // that the correct entry is chosen in the list of UI-names
-            XLineDashItem* pItemToPut = aItem.checkForUniqueItem( & m_rDrawModel );
+            std::unique_ptr<XLineDashItem> pItemToPut = aItem.checkForUniqueItem( & m_rDrawModel );
 
             if(pItemToPut)
-                 rOutItemSet.Put( *pItemToPut );
+                 rOutItemSet.Put( std::move(pItemToPut) );
             else
                 rOutItemSet.Put(aItem);
         }
@@ -321,10 +321,10 @@ void GraphicPropertyItemConverter::FillSpecialItem(
 
                 // translate model name to UI-name for predefined entries, so
                 // that the correct entry is chosen in the list of UI-names
-                XFillGradientItem* pItemToPut = aItem.checkForUniqueItem( & m_rDrawModel );
+                std::unique_ptr<XFillGradientItem> pItemToPut = aItem.checkForUniqueItem( & m_rDrawModel );
 
                 if(pItemToPut)
-                    rOutItemSet.Put( *pItemToPut );
+                    rOutItemSet.Put(std::move(pItemToPut) );
                 else
                     rOutItemSet.Put(aItem);
             }
@@ -347,10 +347,10 @@ void GraphicPropertyItemConverter::FillSpecialItem(
 
                 // translate model name to UI-name for predefined entries, so
                 // that the correct entry is chosen in the list of UI-names
-                XFillHatchItem* pItemToPut = aItem.checkForUniqueItem( & m_rDrawModel );
+                std::unique_ptr<XFillHatchItem> pItemToPut = aItem.checkForUniqueItem( & m_rDrawModel );
 
                 if(pItemToPut)
-                    rOutItemSet.Put( *pItemToPut );
+                    rOutItemSet.Put( std::move(pItemToPut) );
                 else
                     rOutItemSet.Put(aItem);
             }
@@ -364,14 +364,14 @@ void GraphicPropertyItemConverter::FillSpecialItem(
 
                 lcl_SetContentForNamedProperty(
                     m_xNamedPropertyTableFactory, "com.sun.star.drawing.BitmapTable" ,
-                    aItem, MID_GRAFURL );
+                    aItem, MID_BITMAP );
 
                 // translate model name to UI-name for predefined entries, so
                 // that the correct entry is chosen in the list of UI-names
-                XFillBitmapItem* pItemToPut = aItem.checkForUniqueItem( & m_rDrawModel );
+                std::unique_ptr<XFillBitmapItem> pItemToPut = aItem.checkForUniqueItem( & m_rDrawModel );
 
                 if(pItemToPut)
-                    rOutItemSet.Put( *pItemToPut );
+                    rOutItemSet.Put( std::move(pItemToPut) );
                 else
                     rOutItemSet.Put(aItem);
             }
@@ -427,13 +427,17 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
             if( lcl_supportsFillProperties( m_GraphicObjectType ))
             {
                 const OUString aModePropName("FillBitmapMode");
-                bool bStretched = static_cast< const XFillBmpStretchItem & >(
-                    rItemSet.Get( XATTR_FILLBMP_STRETCH )).GetValue();
+                bool bStretched = rItemSet.Get( XATTR_FILLBMP_STRETCH ).GetValue();
                 drawing::BitmapMode aMode =
                     (bStretched ? drawing::BitmapMode_STRETCH : drawing::BitmapMode_NO_REPEAT);
+                drawing::BitmapMode aOtherMode = drawing::BitmapMode_NO_REPEAT;
 
                 aValue <<= aMode;
-                if( aValue != GetPropertySet()->getPropertyValue( aModePropName ))
+                GetPropertySet()->getPropertyValue( aModePropName ) >>= aOtherMode;
+
+                // don't overwrite if it has been set to BitmapMode_REPEAT (= tiled) already
+                // XATTR_FILLBMP_STRETCH and XATTR_FILLBMP_TILE often come in pairs, tdf#104658
+                if( aMode != aOtherMode && aOtherMode != drawing::BitmapMode_REPEAT )
                 {
                     GetPropertySet()->setPropertyValue( aModePropName, aValue );
                     bChanged = true;
@@ -445,8 +449,7 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
             if( lcl_supportsFillProperties( m_GraphicObjectType ))
             {
                 const OUString aModePropName("FillBitmapMode");
-                bool bTiled = static_cast< const XFillBmpTileItem & >(
-                    rItemSet.Get( XATTR_FILLBMP_TILE )).GetValue();
+                bool bTiled = rItemSet.Get( XATTR_FILLBMP_TILE ).GetValue();
                 drawing::BitmapMode aMode =
                     (bTiled ? drawing::BitmapMode_REPEAT : drawing::BitmapMode_NO_REPEAT);
 
@@ -505,9 +508,9 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
                     }
                 }
             }
-            catch( const beans::UnknownPropertyException &ex )
+            catch( const beans::UnknownPropertyException & )
             {
-                ASSERT_EXCEPTION( ex );
+                DBG_UNHANDLED_EXCEPTION("chart2");
             }
         break;
 
@@ -520,8 +523,8 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
                     ? OUString( "GradientStepCount" )
                     : OUString( "FillGradientStepCount" );
 
-                sal_Int16 nStepCount = ( static_cast< const XGradientStepCountItem & >(
-                            rItemSet.Get( nWhichId ))).GetValue();
+                sal_Int16 nStepCount = static_cast< const XGradientStepCountItem & >(
+                            rItemSet.Get( nWhichId )).GetValue();
 
                 aValue <<= nStepCount;
                 if( aValue != GetPropertySet()->getPropertyValue( aPropName ))
@@ -643,7 +646,7 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
                     {
                         // add Bitmap to list
                         uno::Any aBitmap;
-                        rItem.QueryValue( aBitmap, MID_GRAFURL );
+                        rItem.QueryValue(aBitmap, MID_BITMAP);
                         OUString aPreferredName;
                         aValue >>= aPreferredName;
                         aValue <<= PropertyHelper::addBitmapUniqueNameToTable(
@@ -744,7 +747,6 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
     return bChanged;
 }
 
-} //  namespace wrapper
 } //  namespace chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

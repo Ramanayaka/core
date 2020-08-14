@@ -20,10 +20,14 @@
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_DIALOGS_TP_POLAROPTIONS_HXX
 
 #include <sfx2/tabdlg.hxx>
-#include <vcl/fixed.hxx>
-#include <vcl/button.hxx>
-#include <vcl/field.hxx>
 #include <svx/dialcontrol.hxx>
+
+namespace weld {
+    class CheckButton;
+    class CustomWeld;
+    class Frame;
+    class SpinButton;
+}
 
 namespace chart
 {
@@ -32,21 +36,21 @@ class PolarOptionsTabPage : public SfxTabPage
 {
 
 public:
-    PolarOptionsTabPage(vcl::Window* pParent, const SfxItemSet& rInAttrs );
+    PolarOptionsTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs);
     virtual ~PolarOptionsTabPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage> Create(vcl::Window* pParent, const SfxItemSet* rInAttrs);
+    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rInAttrs);
     virtual bool FillItemSet(SfxItemSet* rOutAttrs) override;
     virtual void Reset(const SfxItemSet* rInAttrs) override;
 
 private:
-    VclPtr<CheckBox>         m_pCB_Clockwise;
-    VclPtr<VclFrame>         m_pFL_StartingAngle;
-    VclPtr<svx::DialControl> m_pAngleDial;
-    VclPtr<NumericField>     m_pNF_StartingAngle;
-    VclPtr<VclFrame>         m_pFL_PlotOptions;
-    VclPtr<CheckBox>         m_pCB_IncludeHiddenCells;
+    std::unique_ptr<weld::CheckButton> m_xCB_Clockwise;
+    std::unique_ptr<weld::Frame> m_xFL_StartingAngle;
+    std::unique_ptr<weld::MetricSpinButton> m_xNF_StartingAngle;
+    std::unique_ptr<weld::Frame> m_xFL_PlotOptions;
+    std::unique_ptr<weld::CheckButton> m_xCB_IncludeHiddenCells;
+    std::unique_ptr<svx::DialControl> m_xAngleDial;
+    std::unique_ptr<weld::CustomWeld> m_xAngleDialWin;
 };
 
 } //namespace chart

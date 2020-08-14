@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.16.1 -->
-<interface>
-  <requires lib="gtk+" version="3.0"/>
+<!-- Generated with glade 3.22.2 -->
+<interface domain="cui">
+  <requires lib="gtk+" version="3.18"/>
   <object class="GtkGrid" id="GalleryGeneralPage">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
@@ -18,14 +18,12 @@
           <object class="GtkLabel" id="label1">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
+            <property name="label" translatable="yes" context="gallerygeneralpage|label1">Modified:</property>
             <property name="xalign">0</property>
-            <property name="label" translatable="yes">Modified:</property>
           </object>
           <packing>
             <property name="left_attach">0</property>
             <property name="top_attach">0</property>
-            <property name="width">1</property>
-            <property name="height">1</property>
           </packing>
         </child>
         <child>
@@ -37,16 +35,12 @@
           <packing>
             <property name="left_attach">1</property>
             <property name="top_attach">0</property>
-            <property name="width">1</property>
-            <property name="height">1</property>
           </packing>
         </child>
       </object>
       <packing>
         <property name="left_attach">0</property>
         <property name="top_attach">2</property>
-        <property name="width">1</property>
-        <property name="height">1</property>
       </packing>
     </child>
     <child>
@@ -59,14 +53,12 @@
           <object class="GtkLabel" id="label2">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
+            <property name="label" translatable="yes" context="gallerygeneralpage|label2">Type:</property>
             <property name="xalign">0</property>
-            <property name="label" translatable="yes">Type:</property>
           </object>
           <packing>
             <property name="left_attach">0</property>
             <property name="top_attach">0</property>
-            <property name="width">1</property>
-            <property name="height">1</property>
           </packing>
         </child>
         <child>
@@ -78,36 +70,30 @@
           <packing>
             <property name="left_attach">1</property>
             <property name="top_attach">0</property>
-            <property name="width">1</property>
-            <property name="height">1</property>
           </packing>
         </child>
         <child>
           <object class="GtkLabel" id="label3">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
+            <property name="label" translatable="yes" context="gallerygeneralpage|label3">Location:</property>
             <property name="xalign">0</property>
-            <property name="label" translatable="yes">Location:</property>
           </object>
           <packing>
             <property name="left_attach">0</property>
             <property name="top_attach">1</property>
-            <property name="width">1</property>
-            <property name="height">1</property>
           </packing>
         </child>
         <child>
           <object class="GtkLabel" id="label4">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
+            <property name="label" translatable="yes" context="gallerygeneralpage|label4">Contents:</property>
             <property name="xalign">0</property>
-            <property name="label" translatable="yes">Contents:</property>
           </object>
           <packing>
             <property name="left_attach">0</property>
             <property name="top_attach">2</property>
-            <property name="width">1</property>
-            <property name="height">1</property>
           </packing>
         </child>
         <child>
@@ -119,8 +105,6 @@
           <packing>
             <property name="left_attach">1</property>
             <property name="top_attach">1</property>
-            <property name="width">1</property>
-            <property name="height">1</property>
           </packing>
         </child>
         <child>
@@ -132,16 +116,12 @@
           <packing>
             <property name="left_attach">1</property>
             <property name="top_attach">2</property>
-            <property name="width">1</property>
-            <property name="height">1</property>
           </packing>
         </child>
       </object>
       <packing>
         <property name="left_attach">0</property>
         <property name="top_attach">1</property>
-        <property name="width">1</property>
-        <property name="height">1</property>
       </packing>
     </child>
     <child>
@@ -151,30 +131,44 @@
         <property name="hexpand">True</property>
         <property name="column_spacing">12</property>
         <child>
-          <object class="GtkImage" id="image">
+          <object class="GtkBox" id="imagecontainer">
             <property name="visible">True</property>
             <property name="can_focus">False</property>
-            <accessibility>
-              <relation type="label-for" target="name"/>
-            </accessibility>
-            <child internal-child="accessible">
-              <object class="AtkObject" id="image-atkobject">
-                <property name="AtkObject::accessible-name" translatable="yes">Theme Name</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkImage" id="image">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="halign">center</property>
+                <property name="valign">center</property>
+                <accessibility>
+                  <relation type="label-for" target="name"/>
+                </accessibility>
+                <child internal-child="accessible">
+                  <object class="AtkObject" id="image-atkobject">
+                    <property name="AtkObject::accessible-name" translatable="yes" context="gallerygeneralpage|image-atkobject">Theme Name</property>
+                  </object>
+                </child>
               </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
             </child>
           </object>
           <packing>
             <property name="left_attach">0</property>
             <property name="top_attach">0</property>
-            <property name="width">1</property>
-            <property name="height">1</property>
           </packing>
         </child>
         <child>
           <object class="GtkEntry" id="name">
             <property name="visible">True</property>
             <property name="can_focus">True</property>
+            <property name="valign">center</property>
             <property name="hexpand">True</property>
+            <property name="activates_default">True</property>
             <accessibility>
               <relation type="labelled-by" target="image"/>
             </accessibility>
@@ -182,16 +176,12 @@
           <packing>
             <property name="left_attach">1</property>
             <property name="top_attach">0</property>
-            <property name="width">1</property>
-            <property name="height">1</property>
           </packing>
         </child>
       </object>
       <packing>
         <property name="left_attach">0</property>
         <property name="top_attach">0</property>
-        <property name="width">1</property>
-        <property name="height">1</property>
       </packing>
     </child>
   </object>
@@ -201,7 +191,7 @@
       <widget name="label2"/>
       <widget name="label3"/>
       <widget name="label4"/>
-      <widget name="image"/>
+      <widget name="imagecontainer"/>
     </widgets>
   </object>
 </interface>

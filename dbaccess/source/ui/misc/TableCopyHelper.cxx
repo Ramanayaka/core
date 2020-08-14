@@ -17,44 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TableCopyHelper.hxx"
-#include "dbustrings.hrc"
-#include "sqlmessage.hxx"
-#include <vcl/msgbox.hxx>
-#include "WCopyTable.hxx"
+#include <TableCopyHelper.hxx>
+#include <core_resource.hxx>
+#include <strings.hrc>
+#include <strings.hxx>
 #include <dbaccess/genericcontroller.hxx>
-#include "WCPage.hxx"
+#include <com/sun/star/task/InteractionHandler.hpp>
 #include <com/sun/star/task/XInteractionHandler.hpp>
-#include <com/sun/star/sdb/XSingleSelectQueryComposer.hpp>
 #include <com/sun/star/sdb/application/CopyTableOperation.hpp>
 #include <com/sun/star/sdb/application/CopyTableWizard.hpp>
 #include <com/sun/star/sdb/DataAccessDescriptorFactory.hpp>
+#include <com/sun/star/sdb/CommandType.hpp>
 
-#include "RtfReader.hxx"
-#include "HtmlReader.hxx"
-#include "TokenWriter.hxx"
-#include "UITools.hxx"
+#include <TokenWriter.hxx>
+#include <UITools.hxx>
 #include <dbaccess/dataview.hxx>
-#include "dbu_resource.hrc"
+#include <svx/dbaexchange.hxx>
 #include <unotools/ucbhelper.hxx>
 #include <tools/urlobj.hxx>
 #include <tools/diagnose_ex.h>
-#include <comphelper/processfactory.hxx>
-#include <com/sun/star/sdbcx/XTablesSupplier.hpp>
-#include <com/sun/star/sdbcx/XViewsSupplier.hpp>
-#include <com/sun/star/sdb/XQueryDefinitionsSupplier.hpp>
-#include <com/sun/star/sdb/SQLContext.hpp>
-#include <com/sun/star/sdbc/XParameters.hpp>
-#include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
-#include <com/sun/star/sdb/XQueriesSupplier.hpp>
-#include <com/sun/star/sdbc/XColumnLocate.hpp>
-#include <com/sun/star/sdbcx/XRowLocate.hpp>
-#include <vcl/waitobj.hxx>
-#include <com/sun/star/sdb/XSQLQueryComposerFactory.hpp>
+#include <sal/log.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 #include <unotools/tempfile.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 
-#include "dbexchange.hxx"
 namespace dbaui
 {
 using namespace ::dbtools;
@@ -113,7 +99,9 @@ void OTableCopyHelper::insertTable( const OUString& i_rSourceDataSource, const R
         Reference< XPropertySet > xDest( xFactory->createDataAccessDescriptor(), UNO_SET_THROW );
         xDest->setPropertyValue( PROPERTY_ACTIVE_CONNECTION, makeAny( i_rDestConnection ) );
 
-        Reference< XCopyTableWizard > xWizard( CopyTableWizard::create( aContext, xSource, xDest ), UNO_SET_THROW );
+        auto xInteractionHandler = InteractionHandler::createWithParent(aContext, VCLUnoHelper::GetInterface(m_pController->getView()));
+
+        Reference<XCopyTableWizard> xWizard(CopyTableWizard::createWithInteractionHandler(aContext, xSource, xDest, xInteractionHandler), UNO_SET_THROW);
 
         OUString sTableNameForAppend( GetTableNameForAppend() );
         xWizard->setDestinationTableName( GetTableNameForAppend() );
@@ -129,7 +117,7 @@ void OTableCopyHelper::insertTable( const OUString& i_rSourceDataSource, const R
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
 }
 
@@ -204,7 +192,7 @@ void OTableCopyHelper::pasteTable( SotClipboardFormatId _nFormatId
             aTrans.bHtml            = SotClipboardFormatId::HTML == _nFormatId;
             aTrans.sDefaultTableName = GetTableNameForAppend();
             if ( !bOk || !copyTagTable(aTrans,false,_xConnection) )
-                m_pController->showError(SQLException(ModuleRes(STR_NO_TABLE_FORMAT_INSIDE), *m_pController, "S1000", 0, Any()));
+                m_pController->showError(SQLException(DBA_RES(STR_NO_TABLE_FORMAT_INSIDE), *m_pController, "S1000", 0, Any()));
         }
         catch(const SQLException&)
         {
@@ -212,11 +200,11 @@ void OTableCopyHelper::pasteTable( SotClipboardFormatId _nFormatId
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
     else
-        m_pController->showError(SQLException(ModuleRes(STR_NO_TABLE_FORMAT_INSIDE), *m_pController, "S1000", 0, Any()));
+        m_pController->showError(SQLException(DBA_RES(STR_NO_TABLE_FORMAT_INSIDE), *m_pController, "S1000", 0, Any()));
 }
 
 void OTableCopyHelper::pasteTable( const TransferableDataHelper& _rTransData
@@ -231,7 +219,7 @@ void OTableCopyHelper::pasteTable( const TransferableDataHelper& _rTransData
         pasteTable( SotClipboardFormatId::RTF,_rTransData,i_rDestDataSource,_xConnection);
 }
 
-bool OTableCopyHelper::copyTagTable(OTableCopyHelper::DropDescriptor& _rDesc, bool _bCheck, const SharedConnection& _xConnection)
+bool OTableCopyHelper::copyTagTable(OTableCopyHelper::DropDescriptor const & _rDesc, bool _bCheck, const SharedConnection& _xConnection)
 {
     Reference<XEventListener> xEvt;
     ODatabaseImportExport* pImport = nullptr;
@@ -241,7 +229,7 @@ bool OTableCopyHelper::copyTagTable(OTableCopyHelper::DropDescriptor& _rDesc, bo
         pImport = new ORTFImportExport(_xConnection,getNumberFormatter(_xConnection, m_pController->getORB()),m_pController->getORB());
 
     xEvt = pImport;
-    SvStream* pStream = static_cast<SvStream*>(_rDesc.aHtmlRtfStorage.get());
+    SvStream* pStream = _rDesc.aHtmlRtfStorage.get();
     if ( _bCheck )
         pImport->enableCheckOnly();
 
@@ -313,7 +301,7 @@ void OTableCopyHelper::asyncCopyTagTable(  DropDescriptor& _rDesc
     else if ( !_rDesc.bError )
         pasteTable(_rDesc.aDroppedData,i_rDestDataSource,_xConnection);
     else
-        m_pController->showError(SQLException(ModuleRes(STR_NO_TABLE_FORMAT_INSIDE), *m_pController, "S1000", 0, Any()));
+        m_pController->showError(SQLException(DBA_RES(STR_NO_TABLE_FORMAT_INSIDE), *m_pController, "S1000", 0, Any()));
 }
 
 }   // namespace dbaui

@@ -20,13 +20,11 @@
 #ifndef INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AGROUP_HXX
 #define INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AGROUP_HXX
 
-#include <connectivity/sdbcx/VGroup.hxx>
-#include "ado/Awrapadox.hxx"
+#include <sdbcx/VGroup.hxx>
+#include <ado/Awrapadox.hxx>
 
-namespace connectivity
+namespace connectivity::ado
 {
-    namespace ado
-    {
         typedef sdbcx::OGroup OGroup_ADO;
         class OCatalog;
 
@@ -50,7 +48,7 @@ namespace connectivity
 
             // css::lang::XUnoTunnel
             virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
-            static css::uno::Sequence< sal_Int8 > getUnoTunnelImplementationId();
+            static css::uno::Sequence< sal_Int8 > getUnoTunnelId();
 
             // XAuthorizable
             virtual sal_Int32 SAL_CALL getPrivileges( const OUString& objName, sal_Int32 objType ) override;
@@ -60,7 +58,6 @@ namespace connectivity
 
             WpADOGroup getImpl() const { return m_aGroup; }
         };
-    }
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_INC_ADO_AGROUP_HXX
 

@@ -72,6 +72,7 @@
     <node oor:name="Caption">
       <prop oor:name="CaptionOrderNumberingFirst">
         <value xml:lang="hu">true</value>
+        <value xml:lang="lt">true</value>
       </prop>
       <node oor:name="WriterObject">
         <node oor:name="Table">
@@ -79,8 +80,14 @@
             <prop oor:name="Category">
               <value xml:lang="en-US">Table</value>
             </prop>
+            <prop oor:name="NumberingSeparator">
+              <value xml:lang="lt"> </value>
+            </prop>
             <prop oor:name="CaptionText">
               <value xml:lang="en-US">: </value>
+            </prop>
+            <prop oor:name="Position">
+              <value>0</value>
             </prop>
           </node>
         </node>
@@ -88,6 +95,9 @@
           <node oor:name="Settings">
             <prop oor:name="Category">
               <value xml:lang="en-US">Text</value>
+            </prop>
+            <prop oor:name="NumberingSeparator">
+              <value xml:lang="lt"> </value>
             </prop>
             <prop oor:name="CaptionText">
               <value xml:lang="en-US">: </value>
@@ -98,6 +108,9 @@
           <node oor:name="Settings">
             <prop oor:name="Category">
               <value xml:lang="en-US">Illustration</value>
+            </prop>
+            <prop oor:name="NumberingSeparator">
+              <value xml:lang="lt"> </value>
             </prop>
             <prop oor:name="CaptionText">
               <value xml:lang="en-US">: </value>
@@ -111,6 +124,9 @@
             <prop oor:name="Category">
               <value xml:lang="en-US">Illustration</value>
             </prop>
+            <prop oor:name="NumberingSeparator">
+              <value xml:lang="lt"> </value>
+            </prop>
             <prop oor:name="CaptionText">
               <value xml:lang="en-US">: </value>
             </prop>
@@ -120,6 +136,9 @@
           <node oor:name="Settings">
             <prop oor:name="Category">
               <value xml:lang="en-US">Illustration</value>
+            </prop>
+            <prop oor:name="NumberingSeparator">
+              <value xml:lang="lt"> </value>
             </prop>
             <prop oor:name="CaptionText">
               <value xml:lang="en-US">: </value>
@@ -131,6 +150,9 @@
             <prop oor:name="Category">
               <value xml:lang="en-US">Illustration</value>
             </prop>
+            <prop oor:name="NumberingSeparator">
+              <value xml:lang="lt"> </value>
+            </prop>
             <prop oor:name="CaptionText">
               <value xml:lang="en-US">: </value>
             </prop>
@@ -140,6 +162,9 @@
           <node oor:name="Settings">
             <prop oor:name="Category">
               <value xml:lang="en-US">Illustration</value>
+            </prop>
+            <prop oor:name="NumberingSeparator">
+              <value xml:lang="lt"> </value>
             </prop>
             <prop oor:name="CaptionText">
               <value xml:lang="en-US">: </value>
@@ -151,6 +176,9 @@
             <prop oor:name="Category">
               <value xml:lang="en-US">Illustration</value>
             </prop>
+            <prop oor:name="NumberingSeparator">
+              <value xml:lang="lt"> </value>
+            </prop>
             <prop oor:name="CaptionText">
               <value xml:lang="en-US">: </value>
             </prop>
@@ -161,6 +189,9 @@
             <prop oor:name="Category">
               <value xml:lang="en-US">Illustration</value>
             </prop>
+            <prop oor:name="NumberingSeparator">
+              <value xml:lang="lt"> </value>
+            </prop>
             <prop oor:name="CaptionText">
               <value xml:lang="en-US">: </value>
             </prop>
@@ -170,6 +201,9 @@
           <node oor:name="Settings">
             <prop oor:name="Category">
               <value xml:lang="en-US">Illustration</value>
+            </prop>
+            <prop oor:name="NumberingSeparator">
+              <value xml:lang="lt"> </value>
             </prop>
             <prop oor:name="CaptionText">
               <value xml:lang="en-US">: </value>

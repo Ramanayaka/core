@@ -22,10 +22,9 @@
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <osl/diagnose.h>
-#include <tools/stream.hxx>
 
 #include <svl/poolitem.hxx>
-#include <svl/memberid.hrc>
+#include <svl/memberid.h>
 
 
 SfxPoolItem* SfxRectangleItem::CreateDefault() { return new SfxRectangleItem; }
@@ -43,20 +42,13 @@ SfxRectangleItem::SfxRectangleItem( sal_uInt16 nW, const tools::Rectangle& rVal 
 }
 
 
-SfxRectangleItem::SfxRectangleItem( const SfxRectangleItem& rItem ) :
-    SfxPoolItem( rItem ),
-    aVal( rItem.aVal )
-{
-}
-
-
 bool SfxRectangleItem::GetPresentation
 (
     SfxItemPresentation     /*ePresentation*/,
     MapUnit                 /*eCoreMetric*/,
     MapUnit                 /*ePresentationMetric*/,
     OUString&               rText,
-    const IntlWrapper *
+    const IntlWrapper&
 )   const
 {
     rText = OUString::number(aVal.Top())    + ", " +
@@ -73,27 +65,10 @@ bool SfxRectangleItem::operator==( const SfxPoolItem& rItem ) const
     return static_cast<const SfxRectangleItem&>(rItem).aVal == aVal;
 }
 
-
-SfxPoolItem* SfxRectangleItem::Clone(SfxItemPool *) const
+SfxRectangleItem* SfxRectangleItem::Clone(SfxItemPool *) const
 {
     return new SfxRectangleItem( *this );
 }
-
-
-SfxPoolItem* SfxRectangleItem::Create(SvStream &rStream, sal_uInt16 ) const
-{
-    tools::Rectangle aStr;
-    ReadRectangle( rStream, aStr );
-    return new SfxRectangleItem(Which(), aStr);
-}
-
-
-SvStream& SfxRectangleItem::Store(SvStream &rStream, sal_uInt16 ) const
-{
-    WriteRectangle( rStream, aVal );
-    return rStream;
-}
-
 
 bool SfxRectangleItem::QueryValue( css::uno::Any& rVal,
                                    sal_uInt8 nMemberId) const

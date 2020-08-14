@@ -18,31 +18,18 @@
  */
 
 #include <comphelper/accimplaccess.hxx>
-#include <com/sun/star/accessibility/XAccessible.hpp>
 #include <cppuhelper/typeprovider.hxx>
 
-#include <set>
 #include <string.h>
-#include <memory>
 
 
 namespace comphelper
 {
 
 
-    using ::com::sun::star::uno::Reference;
     using ::com::sun::star::uno::Sequence;
-    using ::com::sun::star::uno::RuntimeException;
-    using ::com::sun::star::accessibility::XAccessible;
-
-    struct OAccImpl_Impl
-    {
-        Reference< XAccessible >    m_xAccParent;
-        sal_Int64                   m_nForeignControlledStates;
-    };
 
     OAccessibleImplementationAccess::OAccessibleImplementationAccess( )
-        :m_pImpl( new OAccImpl_Impl )
     {
     }
 
@@ -51,19 +38,7 @@ namespace comphelper
     {
     }
 
-
-    const Reference< XAccessible >& OAccessibleImplementationAccess::implGetForeignControlledParent( ) const
-    {
-        return m_pImpl->m_xAccParent;
-    }
-
-
-    sal_Int64 OAccessibleImplementationAccess::implGetForeignControlledStates( ) const
-    {
-        return m_pImpl->m_nForeignControlledStates;
-    }
-
-    const Sequence< sal_Int8 > OAccessibleImplementationAccess::getUnoTunnelImplementationId()
+    Sequence< sal_Int8 > OAccessibleImplementationAccess::getUnoTunnelImplementationId()
     {
         static cppu::OImplementationId implID;
 

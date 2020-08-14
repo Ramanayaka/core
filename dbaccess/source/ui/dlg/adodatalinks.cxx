@@ -19,17 +19,13 @@
 
 
 #if defined(_WIN32)
-#if defined _MSC_VER
-#pragma warning(push, 1)
-#pragma warning(disable: 4917)
-#endif
 // LO/windows.h conflict
 #undef WB_LEFT
 #undef WB_RIGHT
-#include "msdasc.h"
-#if defined _MSC_VER
-#pragma warning(push, 1)
-#endif
+#include <msdasc.h>
+
+#include <comphelper/scopeguard.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 
 #include <initguid.h>
 #include <adoid.h>
@@ -46,11 +42,18 @@ OUString PromptNew(long hWnd)
     ADOConnection* piTmpConnection = nullptr;
     BSTR _result=nullptr;
 
-     // Initialize COM
-     ::CoInitialize( nullptr );
+    // Initialize COM
+    hr = ::CoInitializeEx( nullptr, COINIT_APARTMENTTHREADED );
+    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE)
+        std::abort();
+    const bool bDoUninit = SUCCEEDED(hr);
+    comphelper::ScopeGuard g([bDoUninit] () {
+        if (bDoUninit)
+            CoUninitialize();
+    });
 
     // Instantiate DataLinks object.
-      hr = CoCreateInstance(
+    hr = CoCreateInstance(
                     CLSID_DataLinks,                //clsid -- Data Links UI
                     nullptr,                        //pUnkOuter
                     CLSCTX_INPROC_SERVER,           //dwClsContext
@@ -88,8 +91,8 @@ OUString PromptNew(long hWnd)
 
     piTmpConnection->Release( );
     dlPrompt->Release( );
-    CoUninitialize();
-    return OUString(reinterpret_cast<sal_Unicode const *>(_result));
+    // Don't we need SysFreeString(_result)?
+    return o3tl::toU(_result);
 }
 
 OUString PromptEdit(long hWnd, OUString const & connstr)
@@ -99,10 +102,10 @@ OUString PromptEdit(long hWnd, OUString const & connstr)
     ADOConnection* piTmpConnection = nullptr;
     BSTR _result=nullptr;
 
-     // Initialize COM
-     ::CoInitialize( nullptr );
+    // Initialize COM
+    ::CoInitializeEx( nullptr, COINIT_APARTMENTTHREADED );
 
-     hr = CoCreateInstance(CLSID_CADOConnection,
+    hr = CoCreateInstance(CLSID_CADOConnection,
                 nullptr,
                 CLSCTX_INPROC_SERVER,
                 IID_IADOConnection,
@@ -115,7 +118,7 @@ OUString PromptEdit(long hWnd, OUString const & connstr)
 
 
     hr = piTmpConnection->put_ConnectionString(
-        const_cast<BSTR>(reinterpret_cast<wchar_t const *>(connstr.getStr())));
+        const_cast<BSTR>(o3tl::toW(connstr.getStr())));
     if( FAILED( hr ) )
     {
         piTmpConnection->Release( );
@@ -123,7 +126,7 @@ OUString PromptEdit(long hWnd, OUString const & connstr)
     }
 
     // Instantiate DataLinks object.
-      hr = CoCreateInstance(
+    hr = CoCreateInstance(
                     CLSID_DataLinks,                //clsid -- Data Links UI
                     nullptr,                        //pUnkOuter
                     CLSCTX_INPROC_SERVER,           //dwClsContext
@@ -180,12 +183,13 @@ OUString PromptEdit(long hWnd, OUString const & connstr)
     piTmpConnection->Release( );
     dlPrompt->Release( );
     CoUninitialize();
-    return OUString(reinterpret_cast<sal_Unicode const *>(_result));
+    // Don't we need SysFreeString(_result)?
+    return o3tl::toU(_result);
 }
 
 }
 
-OUString getAdoDatalink(long hWnd,OUString& oldLink)
+OUString getAdoDatalink(long hWnd,OUString const & oldLink)
 {
     OUString dataLink;
     if (!oldLink.isEmpty())

@@ -33,7 +33,7 @@ class TestXCellRange(CollectionsTestBase):
     def test_XCellRange_Spreadsheet_Cell_00(self):
         # Given
         spr = self.createBlankSpreadsheet()
-        sht = spr.Sheets.getByIndex(0)
+        sht = spr.Sheets[0]
 
         # When
         cell = sht[0, 0]
@@ -42,6 +42,8 @@ class TestXCellRange(CollectionsTestBase):
         self.assertEqual(0, cell.CellAddress.Sheet)
         self.assertEqual(0, cell.CellAddress.Row)
         self.assertEqual(0, cell.CellAddress.Column)
+
+        spr.close(True)
 
     # Tests syntax:
     #    cell = cellrange[0,0]       # Access cell by indices
@@ -55,13 +57,15 @@ class TestXCellRange(CollectionsTestBase):
         text_table.initialize(10, 10)
         cursor = doc.Text.createTextCursor()
         doc.Text.insertTextContent(cursor, text_table, False)
-        tbl = doc.TextTables.getByIndex(0)
+        tbl = doc.TextTables[0]
 
         # When
         cell = tbl[0, 0]
 
         # Then
         self.assertEqual('A1', cell.CellName)
+
+        doc.close(True)
 
     # Tests syntax:
     #    cell = cellrange[0,0]       # Access cell by indices
@@ -71,7 +75,7 @@ class TestXCellRange(CollectionsTestBase):
     def test_XCellRange_Spreadsheet_Cell_37(self):
         # Given
         spr = self.createBlankSpreadsheet()
-        sht = spr.Sheets.getByIndex(0)
+        sht = spr.Sheets[0]
 
         # When
         rng = sht[3, 7]
@@ -80,6 +84,8 @@ class TestXCellRange(CollectionsTestBase):
         self.assertEqual(0, rng.CellAddress.Sheet)
         self.assertEqual(3, rng.CellAddress.Row)
         self.assertEqual(7, rng.CellAddress.Column)
+
+        spr.close(True)
 
     # Tests syntax:
     #    cell = cellrange[0,0]       # Access cell by indices
@@ -93,13 +99,15 @@ class TestXCellRange(CollectionsTestBase):
         text_table.initialize(10, 10)
         cursor = doc.Text.createTextCursor()
         doc.Text.insertTextContent(cursor, text_table, False)
-        tbl = doc.TextTables.getByIndex(0)
+        tbl = doc.TextTables[0]
 
         # When
         cell = tbl[3, 7]
 
         # Then
         self.assertEqual('H4', cell.CellName)
+
+        doc.close(True)
 
     # Tests syntax:
     #    rng = cellrange[0,1:2]      # Access cell range by index,slice
@@ -108,7 +116,7 @@ class TestXCellRange(CollectionsTestBase):
     def test_XCellRange_Spreadsheet_Range_Index_Slice(self):
         # Given
         spr = self.createBlankSpreadsheet()
-        sht = spr.Sheets.getByIndex(0)
+        sht = spr.Sheets[0]
 
         # When
         rng = sht[0, 1:3]
@@ -119,6 +127,8 @@ class TestXCellRange(CollectionsTestBase):
         self.assertEqual(1, rng.RangeAddress.StartColumn)
         self.assertEqual(0, rng.RangeAddress.EndRow)
         self.assertEqual(2, rng.RangeAddress.EndColumn)
+
+        spr.close(True)
 
     # Tests syntax:
     #    rng = cellrange[0,1:2]      # Access cell range by index,slice
@@ -131,7 +141,7 @@ class TestXCellRange(CollectionsTestBase):
         text_table.initialize(10, 10)
         cursor = doc.Text.createTextCursor()
         doc.Text.insertTextContent(cursor, text_table, False)
-        tbl = doc.TextTables.getByIndex(0)
+        tbl = doc.TextTables[0]
         doc.lockControllers()
         tbl.DataArray = tuple(tuple(str(100 + y) for y in range(10*x, 10*x + 10)) for x in range(10))
         doc.unlockControllers()
@@ -142,6 +152,8 @@ class TestXCellRange(CollectionsTestBase):
         # Then
         self.assertEqual((('101', '102'),), rng.DataArray)
 
+        doc.close(True)
+
     # Tests syntax:
     #    rng = cellrange[1:2,0]      # Access cell range by slice,index
     # For:
@@ -149,7 +161,7 @@ class TestXCellRange(CollectionsTestBase):
     def test_XCellRange_Spreadsheet_Range_Slice_Index(self):
         # Given
         spr = self.createBlankSpreadsheet()
-        sht = spr.Sheets.getByIndex(0)
+        sht = spr.Sheets[0]
 
         # When
         rng = sht[1:3, 0]
@@ -160,6 +172,8 @@ class TestXCellRange(CollectionsTestBase):
         self.assertEqual(0, rng.RangeAddress.StartColumn)
         self.assertEqual(2, rng.RangeAddress.EndRow)
         self.assertEqual(0, rng.RangeAddress.EndColumn)
+
+        spr.close(True)
 
     # Tests syntax:
     #    rng = cellrange[1:2,0]      # Access cell range by index,slice
@@ -172,7 +186,7 @@ class TestXCellRange(CollectionsTestBase):
         text_table.initialize(10, 10)
         cursor = doc.Text.createTextCursor()
         doc.Text.insertTextContent(cursor, text_table, False)
-        tbl = doc.TextTables.getByIndex(0)
+        tbl = doc.TextTables[0]
         doc.lockControllers()
         tbl.DataArray = tuple(tuple(str(100 + y) for y in range(10*x, 10*x + 10)) for x in range(10))
         doc.unlockControllers()
@@ -183,6 +197,8 @@ class TestXCellRange(CollectionsTestBase):
         # Then
         self.assertEqual((('110',), ('120',)), rng.DataArray)
 
+        doc.close(True)
+
     # Tests syntax:
     #    rng = cellrange[0:1,2:3]    # Access cell range by slices
     # For:
@@ -190,7 +206,7 @@ class TestXCellRange(CollectionsTestBase):
     def test_XCellRange_Spreadsheet_Range_Slices(self):
         # Given
         spr = self.createBlankSpreadsheet()
-        sht = spr.Sheets.getByIndex(0)
+        sht = spr.Sheets[0]
 
         # When
         rng = sht[1:3, 3:5]
@@ -202,6 +218,8 @@ class TestXCellRange(CollectionsTestBase):
         self.assertEqual(2, rng.RangeAddress.EndRow)
         self.assertEqual(4, rng.RangeAddress.EndColumn)
 
+        spr.close(True)
+
     # Tests syntax:
     #    rng = cellrange[0:1,2:3]    # Access cell range by slices
     # For:
@@ -210,13 +228,15 @@ class TestXCellRange(CollectionsTestBase):
     def test_XCellRange_Spreadsheet_Range_Slices_Invalid(self):
         # Given
         spr = self.createBlankSpreadsheet()
-        sht = spr.Sheets.getByIndex(0)
+        sht = spr.Sheets[0]
 
         # When / Then
         with self.assertRaises(KeyError):
             rng = sht[1:1, 3:5]
         with self.assertRaises(KeyError):
             rng = sht[1:3, 3:3]
+
+        spr.close(True)
 
     # Tests syntax:
     #    rng = cellrange[0:1,2:3]    # Access cell range by slices
@@ -229,7 +249,7 @@ class TestXCellRange(CollectionsTestBase):
         text_table.initialize(10, 10)
         cursor = doc.Text.createTextCursor()
         doc.Text.insertTextContent(cursor, text_table, False)
-        tbl = doc.TextTables.getByIndex(0)
+        tbl = doc.TextTables[0]
         doc.lockControllers()
         tbl.DataArray = tuple(tuple(str(100 + y) for y in range(10*x, 10*x + 10)) for x in range(10))
         doc.unlockControllers()
@@ -240,6 +260,8 @@ class TestXCellRange(CollectionsTestBase):
         # Then
         self.assertEqual((('113', '114'), ('123', '124')), rng.DataArray)
 
+        doc.close(True)
+
     # Tests syntax:
     #    rng = cellrange['A1:B2']    # Access cell range by descriptor
     # For:
@@ -247,7 +269,7 @@ class TestXCellRange(CollectionsTestBase):
     def test_XCellRange_Spreadsheet_Range_Descriptor(self):
         # Given
         spr = self.createBlankSpreadsheet()
-        sht = spr.Sheets.getByIndex(0)
+        sht = spr.Sheets[0]
 
         # When
         rng = sht['A3:B4']
@@ -258,6 +280,8 @@ class TestXCellRange(CollectionsTestBase):
         self.assertEqual(0, rng.RangeAddress.StartColumn)
         self.assertEqual(3, rng.RangeAddress.EndRow)
         self.assertEqual(1, rng.RangeAddress.EndColumn)
+
+        spr.close(True)
 
     # Tests syntax:
     #    rng = cellrange['A1:B2']    # Access cell range by descriptor
@@ -270,7 +294,7 @@ class TestXCellRange(CollectionsTestBase):
         text_table.initialize(10, 10)
         cursor = doc.Text.createTextCursor()
         doc.Text.insertTextContent(cursor, text_table, False)
-        tbl = doc.TextTables.getByIndex(0)
+        tbl = doc.TextTables[0]
         doc.lockControllers()
         tbl.DataArray = tuple(tuple(str(100 + y) for y in range(10*x, 10*x + 10)) for x in range(10))
         doc.unlockControllers()
@@ -281,6 +305,8 @@ class TestXCellRange(CollectionsTestBase):
         # Then
         self.assertEqual((('120', '121'), ('130', '131')), rng.DataArray)
 
+        doc.close(True)
+
     # Tests syntax:
     #    rng = cellrange['Name']     # Access cell range by name
     # For:
@@ -288,7 +314,7 @@ class TestXCellRange(CollectionsTestBase):
     def test_XCellRange_Spreadsheet_Range_Name(self):
         # Given
         spr = self.createBlankSpreadsheet()
-        sht = spr.Sheets.getByIndex(0)
+        sht = spr.Sheets[0]
         expr = '$' + sht.Name + '.$C2:F10'
         addr = CellAddress(Sheet=0, Row=1, Column=2)
         sht.NamedRanges.addNewByName('foo', expr, addr, 0)
@@ -303,6 +329,8 @@ class TestXCellRange(CollectionsTestBase):
         self.assertEqual(9, rng.RangeAddress.EndRow)
         self.assertEqual(5, rng.RangeAddress.EndColumn)
 
+        spr.close(True)
+
     # Tests syntax:
     #    rng = cellrange[0]          # Access cell range by row index
     # For:
@@ -310,7 +338,7 @@ class TestXCellRange(CollectionsTestBase):
     def test_XCellRange_Spreadsheet_Range_RowIndex(self):
         # Given
         spr = self.createBlankSpreadsheet()
-        sht = spr.Sheets.getByIndex(0)
+        sht = spr.Sheets[0]
 
         # When
         rng = sht[0]
@@ -322,6 +350,8 @@ class TestXCellRange(CollectionsTestBase):
         self.assertEqual(0, rng.RangeAddress.EndRow)
         self.assertEqual(1023, rng.RangeAddress.EndColumn)
 
+        spr.close(True)
+
     # Tests syntax:
     #    rng = cellrange[0,:]        # Access cell range by row index
     # For:
@@ -329,7 +359,7 @@ class TestXCellRange(CollectionsTestBase):
     def test_XCellRange_Spreadsheet_Range_RowIndex_FullSlice(self):
         # Given
         spr = self.createBlankSpreadsheet()
-        sht = spr.Sheets.getByIndex(0)
+        sht = spr.Sheets[0]
 
         # When
         rng = sht[0, :]
@@ -341,6 +371,8 @@ class TestXCellRange(CollectionsTestBase):
         self.assertEqual(0, rng.RangeAddress.EndRow)
         self.assertEqual(1023, rng.RangeAddress.EndColumn)
 
+        spr.close(True)
+
     # Tests syntax:
     #    rng = cellrange[:,0]        # Access cell range by column index
     # For:
@@ -348,7 +380,7 @@ class TestXCellRange(CollectionsTestBase):
     def test_XCellRange_Spreadsheet_Range_FullSlice_ColumnIndex(self):
         # Given
         spr = self.createBlankSpreadsheet()
-        sht = spr.Sheets.getByIndex(0)
+        sht = spr.Sheets[0]
 
         # When
         rng = sht[:, 0]
@@ -359,6 +391,8 @@ class TestXCellRange(CollectionsTestBase):
         self.assertEqual(0, rng.RangeAddress.StartColumn)
         self.assertEqual(1048575, rng.RangeAddress.EndRow)
         self.assertEqual(0, rng.RangeAddress.EndColumn)
+
+        spr.close(True)
 
 
 if __name__ == '__main__':

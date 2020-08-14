@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CUI_SOURCE_OPTIONS_CONNPOOLSETTINGS_HXX
-#define INCLUDED_CUI_SOURCE_OPTIONS_CONNPOOLSETTINGS_HXX
+#pragma once
 
 #include <sal/config.h>
 
@@ -43,9 +42,8 @@ namespace offapp
         bool operator != (const DriverPooling& _rR) const { return !operator ==(_rR); }
     };
 
-    class DriverPoolingSettings
+    class DriverPoolingSettings final
     {
-    protected:
         typedef std::vector<DriverPooling> DriverSettings;
         DriverSettings      m_aDrivers;
 
@@ -53,10 +51,11 @@ namespace offapp
         typedef DriverSettings::const_iterator const_iterator;
         typedef DriverSettings::iterator iterator;
 
-    public:
         DriverPoolingSettings();
 
-        sal_Int32 size() const { return m_aDrivers.size(); }
+        size_t size() const { return m_aDrivers.size(); }
+        DriverPooling& operator[]( size_t nPos ) { return m_aDrivers[nPos]; }
+        bool empty() const { return m_aDrivers.empty(); }
 
         const_iterator  begin() const   { return m_aDrivers.begin(); }
         const_iterator  end() const     { return m_aDrivers.end(); }
@@ -67,9 +66,8 @@ namespace offapp
         void push_back(const DriverPooling& _rElement) { m_aDrivers.push_back(_rElement); }
     };
 
-    class DriverPoolingSettingsItem : public SfxPoolItem
+    class DriverPoolingSettingsItem final : public SfxPoolItem
     {
-    protected:
         DriverPoolingSettings   m_aSettings;
 
     public:
@@ -77,16 +75,12 @@ namespace offapp
         DriverPoolingSettingsItem( sal_uInt16 _nId, const DriverPoolingSettings &_rSettings );
 
         virtual bool             operator==( const SfxPoolItem& ) const override;
-        virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
+        virtual DriverPoolingSettingsItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
         const DriverPoolingSettings& getSettings() const    { return m_aSettings; }
     };
 
 
 }   // namespace offapp
-
-
-#endif // INCLUDED_CUI_SOURCE_OPTIONS_CONNPOOLSETTINGS_HXX
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

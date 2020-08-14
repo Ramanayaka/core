@@ -18,19 +18,19 @@
  */
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_SWMODALREDLINEACCEPTDLG_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_SWMODALREDLINEACCEPTDLG_HXX
-#include "chldwrap.hxx"
+
 #include <sfx2/basedlgs.hxx>
 
 class SwRedlineAcceptDlg;
 
-class SwModalRedlineAcceptDlg : public SfxModalDialog
+class SwModalRedlineAcceptDlg : public SfxDialogController
 {
-    SwRedlineAcceptDlg*     pImplDlg;
+    std::unique_ptr<weld::Container> m_xContentArea;
+    std::unique_ptr<SwRedlineAcceptDlg> m_xImplDlg;
 
 public:
-    SwModalRedlineAcceptDlg(vcl::Window *pParent);
+    SwModalRedlineAcceptDlg(weld::Window *pParent);
     virtual ~SwModalRedlineAcceptDlg() override;
-    virtual void    dispose() override;
 
     void            AcceptAll( bool bAccept );
     virtual void    Activate() override;

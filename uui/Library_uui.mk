@@ -9,6 +9,11 @@
 
 $(eval $(call gb_Library_Library,uui))
 
+$(eval $(call gb_Library_set_include,uui,\
+    $$(INCLUDE) \
+    -I$(SRCDIR)/uui/inc \
+))
+
 $(eval $(call gb_Library_set_componentfile,uui,uui/util/uui))
 
 $(eval $(call gb_Library_use_external,uui,boost_headers))
@@ -17,7 +22,7 @@ $(eval $(call gb_Library_use_custom_headers,uui,\
     officecfg/registry \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,uui,$(SRCDIR)/uui/inc/pch/precompiled_uui))
+$(eval $(call gb_Library_set_precompiled_header,uui,uui/inc/pch/precompiled_uui))
 
 $(eval $(call gb_Library_use_sdk_api,uui))
 
@@ -29,7 +34,7 @@ $(eval $(call gb_Library_use_libraries,uui,\
 	i18nlangtag \
 	svl \
 	svt \
-	tk \
+	svx \
 	tl \
 	utl \
 	vcl \
@@ -59,7 +64,6 @@ $(eval $(call gb_Library_add_exception_objects,uui,\
 	uui/source/passworddlg \
 	uui/source/requeststringresolver \
 	uui/source/secmacrowarnings \
-	uui/source/services \
 	uui/source/sslwarndlg \
 	uui/source/trylater \
 	uui/source/unknownauthdlg \

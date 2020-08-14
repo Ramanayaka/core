@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <drawinglayer/processor3d/geometry2dextractor.hxx>
+#include <processor3d/geometry2dextractor.hxx>
 #include <drawinglayer/primitive3d/drawinglayer_primitivetypes3d.hxx>
 #include <drawinglayer/primitive3d/transformprimitive3d.hxx>
 #include <drawinglayer/primitive3d/modifiedcolorprimitive3d.hxx>
@@ -26,17 +26,15 @@
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
 #include <drawinglayer/primitive3d/polypolygonprimitive3d.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
-#include <drawinglayer/primitive3d/textureprimitive3d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
+#include <primitive3d/textureprimitive3d.hxx>
 
 
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::processor3d
 {
-    namespace processor3d
-    {
         // as tooling, the process() implementation takes over API handling and calls this
         // virtual render method when the primitive implementation is BasePrimitive3D-based.
         void Geometry2DExtractingProcessor::processBasePrimitive3D(const primitive3d::BasePrimitive3D& rCandidate)
@@ -85,7 +83,7 @@ namespace drawinglayer
                 {
                     // PolygonHairlinePrimitive3D
                     const primitive3d::PolygonHairlinePrimitive3D& rPrimitive = static_cast< const primitive3d::PolygonHairlinePrimitive3D& >(rCandidate);
-                    basegfx::B2DPolygon a2DHairline(basegfx::tools::createB2DPolygonFromB3DPolygon(rPrimitive.getB3DPolygon(), getViewInformation3D().getObjectToView()));
+                    basegfx::B2DPolygon a2DHairline(basegfx::utils::createB2DPolygonFromB3DPolygon(rPrimitive.getB3DPolygon(), getViewInformation3D().getObjectToView()));
 
                     if(a2DHairline.count())
                     {
@@ -100,7 +98,7 @@ namespace drawinglayer
                 {
                     // PolyPolygonMaterialPrimitive3D
                     const primitive3d::PolyPolygonMaterialPrimitive3D& rPrimitive = static_cast< const primitive3d::PolyPolygonMaterialPrimitive3D& >(rCandidate);
-                    basegfx::B2DPolyPolygon a2DFill(basegfx::tools::createB2DPolyPolygonFromB3DPolyPolygon(rPrimitive.getB3DPolyPolygon(), getViewInformation3D().getObjectToView()));
+                    basegfx::B2DPolyPolygon a2DFill(basegfx::utils::createB2DPolyPolygonFromB3DPolyPolygon(rPrimitive.getB3DPolyPolygon(), getViewInformation3D().getObjectToView()));
 
                     if(a2DFill.count())
                     {
@@ -150,7 +148,7 @@ namespace drawinglayer
             maBColorModifierStack()
         {
         }
-    } // end of namespace processor3d
-} // end of namespace drawinglayer
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

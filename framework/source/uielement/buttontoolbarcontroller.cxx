@@ -17,30 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "uielement/buttontoolbarcontroller.hxx"
+#include <uielement/buttontoolbarcontroller.hxx>
 
 #include <com/sun/star/util/URLTransformer.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/util/XMacroExpander.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 
-#include <rtl/uri.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <comphelper/processfactory.hxx>
-#include <unotools/ucbstreamhelper.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/mnemonic.hxx>
-#include <vcl/window.hxx>
-#include <vcl/graph.hxx>
-#include <vcl/bitmap.hxx>
-#include <vcl/graphicfilter.hxx>
 #include <vcl/toolbox.hxx>
-#include <svtools/miscopt.hxx>
 
 using namespace ::com::sun::star;
 using namespace css::awt;
@@ -112,25 +100,25 @@ void SAL_CALL ButtonToolbarController::initialize(
         bInitialized = m_bInitialized;
     }
 
-    if ( !bInitialized )
-    {
-        SolarMutexGuard aSolarMutexGuard;
-        m_bInitialized = true;
+    if ( bInitialized )
+        return;
 
-        PropertyValue aPropValue;
-        for ( int i = 0; i < aArguments.getLength(); i++ )
+    SolarMutexGuard aSolarMutexGuard;
+    m_bInitialized = true;
+
+    PropertyValue aPropValue;
+    for ( const css::uno::Any& rArg : aArguments )
+    {
+        if ( rArg >>= aPropValue )
         {
-            if ( aArguments[i] >>= aPropValue )
+            if ( aPropValue.Name == "Frame" )
+                m_xFrame.set(aPropValue.Value,UNO_QUERY);
+            else if ( aPropValue.Name == "CommandURL" )
+                aPropValue.Value >>= m_aCommandURL;
+            else if ( aPropValue.Name == "ServiceManager" )
             {
-                if ( aPropValue.Name == "Frame" )
-                    m_xFrame.set(aPropValue.Value,UNO_QUERY);
-                else if ( aPropValue.Name == "CommandURL" )
-                    aPropValue.Value >>= m_aCommandURL;
-                else if ( aPropValue.Name == "ServiceManager" )
-                {
-                    Reference<XMultiServiceFactory> xServiceManager(aPropValue.Value,UNO_QUERY);
-                    m_xContext = comphelper::getComponentContext(xServiceManager);
-                }
+                Reference<XMultiServiceFactory> xServiceManager(aPropValue.Value,UNO_QUERY);
+                m_xContext = comphelper::getComponentContext(xServiceManager);
             }
         }
     }
@@ -139,7 +127,7 @@ void SAL_CALL ButtonToolbarController::initialize(
 // XComponent
 void SAL_CALL ButtonToolbarController::dispose()
 {
-    Reference< XComponent > xThis( static_cast< OWeakObject* >(this), UNO_QUERY );
+    Reference< XComponent > xThis = this;
 
     {
         SolarMutexGuard aSolarMutexGuard;
@@ -236,21 +224,21 @@ void SAL_CALL ButtonToolbarController::execute( sal_Int16 KeyModifier )
         xDispatch = xDispatchProvider->queryDispatch( aTargetURL, OUString(), 0 );
     }
 
-    if ( xDispatch.is() )
+    if ( !xDispatch.is() )
+        return;
+
+    try
     {
-        try
-        {
-            Sequence<PropertyValue>   aArgs( 1 );
+        Sequence<PropertyValue>   aArgs( 1 );
 
-            // Provide key modifier information to dispatch function
-            aArgs[0].Name   = "KeyModifier";
-            aArgs[0].Value  <<= KeyModifier;
+        // Provide key modifier information to dispatch function
+        aArgs[0].Name   = "KeyModifier";
+        aArgs[0].Value  <<= KeyModifier;
 
-            xDispatch->dispatch( aTargetURL, aArgs );
-        }
-        catch ( const DisposedException& )
-        {
-        }
+        xDispatch->dispatch( aTargetURL, aArgs );
+    }
+    catch ( const DisposedException& )
+    {
     }
 }
 
@@ -261,7 +249,7 @@ void SAL_CALL ButtonToolbarController::click()
     if ( m_bDisposed )
         throw DisposedException();
 
-    sal_Int16   nKeyModifier( (sal_Int16)m_pToolbar->GetModifier() );
+    sal_Int16   nKeyModifier( static_cast<sal_Int16>(m_pToolbar->GetModifier()) );
     execute( nKeyModifier );
 }
 

@@ -20,22 +20,13 @@
 #ifndef INCLUDED_FRAMEWORK_INC_UIELEMENT_MACROSMENUCONTROLLER_HXX
 #define INCLUDED_FRAMEWORK_INC_UIELEMENT_MACROSMENUCONTROLLER_HXX
 
-#include <macros/xserviceinfo.hxx>
-#include <stdtypes.h>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <svtools/popupmenucontrollerbase.hxx>
-#include <toolkit/awt/vclxmenu.hxx>
-#include <cppuhelper/weak.hxx>
 #include <vcl/menu.hxx>
-#include <rtl/ustring.hxx>
 
 namespace framework
 {
-    class MacrosMenuController :  public svt::PopupMenuControllerBase
+    class MacrosMenuController final : public svt::PopupMenuControllerBase
     {
         using svt::PopupMenuControllerBase::disposing;
 
@@ -45,12 +36,10 @@ namespace framework
             MacrosMenuController( const css::uno::Reference< css::uno::XComponentContext >& xContext );
             virtual ~MacrosMenuController() override;
 
-            // XServiceInfo
-            DECLARE_XSERVICEINFO_NOFACTORY
-            /* Helper for registry */
-            /// @throws css::uno::Exception
-            static css::uno::Reference< css::uno::XInterface >             SAL_CALL impl_createInstance                ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
-            static css::uno::Reference< css::lang::XSingleServiceFactory > SAL_CALL impl_createFactory                 ( const css::uno::Reference< css::lang::XMultiServiceFactory >& xServiceManager );
+            /* interface XServiceInfo */
+            virtual OUString SAL_CALL getImplementationName() override;
+            virtual sal_Bool SAL_CALL supportsService( const OUString& sServiceName ) override;
+            virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
             // XStatusListener
             virtual void SAL_CALL statusChanged( const css::frame::FeatureStateEvent& Event ) override;
@@ -59,7 +48,7 @@ namespace framework
             virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
         private:
-            void fillPopupMenu( css::uno::Reference< css::awt::XPopupMenu >& rPopupMenu );
+            void fillPopupMenu( css::uno::Reference< css::awt::XPopupMenu > const & rPopupMenu );
             void addScriptItems( PopupMenu* pPopupMenu, sal_uInt16 startItemId );
     };
 }

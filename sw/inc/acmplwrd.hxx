@@ -29,7 +29,6 @@
 
 class SwDoc;
 class SwAutoCompleteWord_Impl;
-class SwAutoCompleteClient;
 class SwAutoCompleteString;
 
 typedef std::deque<SwAutoCompleteString*> SwAutoCompleteStringPtrDeque;
@@ -41,28 +40,28 @@ class SwAutoCompleteWord
     /// contains extended strings carrying source information
     editeng::SortedAutoCompleteStrings m_WordList;
     editeng::Trie m_LookupTree;
-    SwAutoCompleteStringPtrDeque aLRULst;
+    SwAutoCompleteStringPtrDeque m_aLRUList;
 
-    std::unique_ptr<SwAutoCompleteWord_Impl> pImpl;
-    editeng::SortedAutoCompleteStrings::size_type nMaxCount;
-    sal_uInt16 nMinWrdLen;
-    bool bLockWordLst;
+    std::unique_ptr<SwAutoCompleteWord_Impl> m_pImpl;
+    editeng::SortedAutoCompleteStrings::size_type m_nMaxCount;
+    sal_uInt16 m_nMinWordLen;
+    bool m_bLockWordList;
 
     void DocumentDying(const SwDoc& rDoc);
 public:
     SwAutoCompleteWord(
         editeng::SortedAutoCompleteStrings::size_type nWords,
-        sal_uInt16 nMWrdLen = 10 );
+        sal_uInt16 nMWrdLen );
     ~SwAutoCompleteWord();
 
     bool InsertWord( const OUString& rWord, SwDoc& rDoc );
 
-    bool IsLockWordLstLocked() const           { return bLockWordLst; }
-    void SetLockWordLstLocked( bool bFlag ) { bLockWordLst = bFlag; }
+    bool IsLockWordLstLocked() const           { return m_bLockWordList; }
+    void SetLockWordLstLocked( bool bFlag ) { m_bLockWordList = bFlag; }
 
     void SetMaxCount( editeng::SortedAutoCompleteStrings::size_type n );
 
-    sal_uInt16 GetMinWordLen() const                { return nMinWrdLen; }
+    sal_uInt16 GetMinWordLen() const                { return m_nMinWordLen; }
     void SetMinWordLen( sal_uInt16 n );
 
     const editeng::SortedAutoCompleteStrings& GetWordList() const

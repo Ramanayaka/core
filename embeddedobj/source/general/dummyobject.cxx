@@ -18,13 +18,9 @@
  */
 
 #include <com/sun/star/embed/EmbedStates.hpp>
-#include <com/sun/star/embed/EmbedVerbs.hpp>
-#include <com/sun/star/embed/EmbedUpdateModes.hpp>
 #include <com/sun/star/embed/UnreachableStateException.hpp>
+#include <com/sun/star/embed/WrongStateException.hpp>
 #include <com/sun/star/embed/XEmbeddedClient.hpp>
-#include <com/sun/star/embed/XInplaceClient.hpp>
-#include <com/sun/star/embed/XWindowSupplier.hpp>
-#include <com/sun/star/embed/StateChangeInProgressException.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/embed/EmbedMapUnits.hpp>
 #include <com/sun/star/embed/EntryInitModes.hpp>
@@ -61,35 +57,35 @@ void ODummyEmbeddedObject::CheckInit_Runtime()
 }
 void ODummyEmbeddedObject::PostEvent_Impl( const OUString& aEventName )
 {
-    if ( m_pInterfaceContainer )
-    {
-        ::cppu::OInterfaceContainerHelper* pIC = m_pInterfaceContainer->getContainer(
-                                            cppu::UnoType<document::XEventListener>::get());
-        if( pIC )
-        {
-            document::EventObject aEvent;
-            aEvent.EventName = aEventName;
-            aEvent.Source.set( static_cast< ::cppu::OWeakObject* >( this ) );
-            // For now all the events are sent as object events
-            // aEvent.Source = ( xSource.is() ? xSource
-            //                     : uno::Reference< uno::XInterface >( static_cast< ::cppu::OWeakObject* >( this ) ) );
-            ::cppu::OInterfaceIteratorHelper aIt( *pIC );
-            while( aIt.hasMoreElements() )
-            {
-                try
-                {
-                    static_cast<document::XEventListener *>(aIt.next())->notifyEvent( aEvent );
-                }
-                catch( const uno::RuntimeException& )
-                {
-                    aIt.remove();
-                }
+    if ( !m_pInterfaceContainer )
+        return;
 
-                // the listener could dispose the object.
-                if ( m_bDisposed )
-                    return;
-            }
+    ::cppu::OInterfaceContainerHelper* pIC = m_pInterfaceContainer->getContainer(
+                                        cppu::UnoType<document::XEventListener>::get());
+    if( !pIC )
+        return;
+
+    document::EventObject aEvent;
+    aEvent.EventName = aEventName;
+    aEvent.Source.set( static_cast< ::cppu::OWeakObject* >( this ) );
+    // For now all the events are sent as object events
+    // aEvent.Source = ( xSource.is() ? xSource
+    //                     : uno::Reference< uno::XInterface >( static_cast< ::cppu::OWeakObject* >( this ) ) );
+    ::cppu::OInterfaceIteratorHelper aIt( *pIC );
+    while( aIt.hasMoreElements() )
+    {
+        try
+        {
+            static_cast<document::XEventListener *>(aIt.next())->notifyEvent( aEvent );
         }
+        catch( const uno::RuntimeException& )
+        {
+            aIt.remove();
+        }
+
+        // the listener could dispose the object.
+        if ( m_bDisposed )
+            return;
     }
 }
 
@@ -293,34 +289,29 @@ void SAL_CALL ODummyEmbeddedObject::setPersistentEntry(
 
     if ( m_bWaitSaveCompleted )
     {
-        if ( nEntryConnectionMode == embed::EntryInitModes::NO_INIT )
-            saveCompleted( ( m_xParentStorage != xStorage || !m_aEntryName.equals( sEntName ) ) );
-        else
+        if ( nEntryConnectionMode != embed::EntryInitModes::NO_INIT )
             throw embed::WrongStateException(
                         "The object waits for saveCompleted() call!",
                         static_cast< ::cppu::OWeakObject* >(this) );
-    }
 
-    if ( nEntryConnectionMode == embed::EntryInitModes::DEFAULT_INIT
-      || nEntryConnectionMode == embed::EntryInitModes::NO_INIT )
-    {
-        if ( xStorage->hasByName( sEntName ) )
-
-        {
-            m_xParentStorage = xStorage;
-            m_aEntryName = sEntName;
-            m_nObjectState = embed::EmbedStates::LOADED;
-        }
-        else
-            throw lang::IllegalArgumentException( "Wrong entry is provided!",
-                                static_cast< ::cppu::OWeakObject* >(this),
-                                2 );
+        saveCompleted( m_xParentStorage != xStorage || m_aEntryName != sEntName );
 
     }
-    else
+
+    if ( nEntryConnectionMode != embed::EntryInitModes::DEFAULT_INIT
+        && nEntryConnectionMode != embed::EntryInitModes::NO_INIT )
         throw lang::IllegalArgumentException( "Wrong connection mode is provided!",
                                 static_cast< ::cppu::OWeakObject* >(this),
                                 3 );
+
+    if ( !xStorage->hasByName( sEntName ) )
+        throw lang::IllegalArgumentException( "Wrong entry is provided!",
+                            static_cast< ::cppu::OWeakObject* >(this),
+                            2 );
+
+    m_xParentStorage = xStorage;
+    m_aEntryName = sEntName;
+    m_nObjectState = embed::EmbedStates::LOADED;
 }
 
 

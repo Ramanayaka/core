@@ -20,7 +20,8 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_AREASAVE_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_AREASAVE_HXX
 
-#include "address.hxx"
+#include <address.hxx>
+#include <tools/solar.h>
 
 #include <vector>
 
@@ -39,7 +40,6 @@ private:
 
 public:
     ScAreaLinkSaver( const ScAreaLink& rSource );
-    ScAreaLinkSaver( const ScAreaLinkSaver& rCopy );
 
     bool        IsEqual( const ScAreaLink& rCompare ) const;
     bool        IsEqualSource( const ScAreaLink& rCompare ) const;
@@ -54,14 +54,13 @@ class ScAreaLinkSaveCollection
     DataType maData;
 public:
     ScAreaLinkSaveCollection();
-    ScAreaLinkSaveCollection( const ScAreaLinkSaveCollection& r );
     ~ScAreaLinkSaveCollection();
 
     bool        IsEqual( const ScDocument* pDoc ) const;
     void Restore( ScDocument* pDoc );
 
     // returns NULL if empty
-    static ScAreaLinkSaveCollection* CreateFromDoc( const ScDocument* pDoc );
+    static std::unique_ptr<ScAreaLinkSaveCollection> CreateFromDoc( const ScDocument* pDoc );
 
     ScAreaLinkSaver& operator[](size_t nIndex);
     const ScAreaLinkSaver& operator[](size_t nIndex) const;

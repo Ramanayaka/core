@@ -13,7 +13,6 @@
 #include <sal/types.h>
 #include <rtl/ustring.hxx>
 #include <osl/mutex.hxx>
-#include <list>
 #include <map>
 #include <vector>
 
@@ -42,15 +41,13 @@ namespace webdav_ucp
     public:
         PropertyNames();
         explicit PropertyNames( const OUString& rURL );
-        PropertyNames( const PropertyNames& theOther );
-        ~PropertyNames();
 
         sal_uInt32 getStaleTime() const { return m_nStaleTime; };
         void setStaleTime( const sal_uInt32 nStaleTime ) { m_nStaleTime = nStaleTime; };
 
         OUString& getURL() { return m_sURL; };
 
-        const std::vector< DAVResourceInfo >& getPropertiesNames() { return m_aPropertiesNames; };
+        const std::vector< DAVResourceInfo >& getPropertiesNames() const { return m_aPropertiesNames; };
         void setPropertiesNames( const std::vector< DAVResourceInfo >& aPropertiesNames ) { m_aPropertiesNames = aPropertiesNames; };
     };
 

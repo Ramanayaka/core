@@ -21,23 +21,20 @@
 #define INCLUDED_SVX_INC_SDR_CONTACT_VIEWCONTACTOFUNOCONTROL_HXX
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <svx/sdr/contact/viewcontactofsdrmediaobj.hxx>
+#include <svx/sdr/contact/viewcontactofsdrobj.hxx>
 #include <svx/svdouno.hxx>
-#include <svx/svxdllapi.h>
-
-#include <memory>
 
 class OutputDevice;
 namespace vcl { class Window; }
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt {
         class XControl;
         class XControlContainer;
     }
-} } }
+}
 
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 
     //= ViewContactOfUnoControl
@@ -74,7 +71,7 @@ namespace sdr { namespace contact {
     };
 
 
-} } // namespace sdr::contact
+} // namespace sdr::contact
 
 
 #endif // INCLUDED_SVX_INC_SDR_CONTACT_VIEWCONTACTOFUNOCONTROL_HXX

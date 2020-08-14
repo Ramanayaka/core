@@ -21,17 +21,19 @@
 #include <vcl/outdev.hxx>
 
 class SwRect;               // SwSaveClip
-#include <txtfrm.hxx>
+class SwTextFrame;
 
-class SwSaveClip
+class SwSaveClip final
 {
     vcl::Region   aClip;
     const bool     bOn;
           bool     bChg;
-protected:
+
     VclPtr<OutputDevice> pOut;
     void ChgClip_( const SwRect &rRect, const SwTextFrame* pFrame,
-                   bool bEnlargeRect );
+                   bool bEnlargeRect,
+                   sal_Int32 nEnlargeTop,
+                   sal_Int32 nEnlargeBottom );
 public:
     explicit SwSaveClip(OutputDevice* pOutDev)
         : bOn(pOutDev && pOutDev->IsClipRegion())
@@ -42,8 +44,11 @@ public:
 
     ~SwSaveClip();
     void ChgClip( const SwRect &rRect, const SwTextFrame* pFrame = nullptr,
-                         bool bEnlargeRect = false)
-             { if( pOut ) ChgClip_( rRect, pFrame, bEnlargeRect ); }
+                         bool bEnlargeRect = false,
+                         sal_Int32 nEnlargeTop = 0,
+                         sal_Int32 nEnlargeBottom = 0)
+             { if( pOut ) ChgClip_( rRect, pFrame,
+                         bEnlargeRect, nEnlargeTop, nEnlargeBottom ); }
     bool IsOn()  const { return bOn; }
     bool IsChg() const { return bChg; }
 };
@@ -56,14 +61,14 @@ class SwDbgOut
 protected:
         VclPtr<OutputDevice> pOut;
 public:
-        inline SwDbgOut( OutputDevice* pOutDev, const bool bOn = true );
+        inline SwDbgOut( OutputDevice* pOutDev, const bool bOn );
 };
 
 class DbgBackColor : public SwDbgOut
 {
         Color   aOldFillColor;
 public:
-        DbgBackColor( OutputDevice* pOut, const bool bOn = true );
+        DbgBackColor( OutputDevice* pOut, const bool bOn );
        ~DbgBackColor();
 };
 
@@ -71,8 +76,8 @@ class DbgRect : public SwDbgOut
 {
 public:
         DbgRect( OutputDevice* pOut, const tools::Rectangle &rRect,
-                 const bool bOn = true,
-                 ColorData eColor = COL_LIGHTBLUE );
+                 const bool bOn,
+                 Color eColor );
 };
 
 inline SwDbgOut::SwDbgOut( OutputDevice* pOutDev, const bool bOn )
@@ -85,7 +90,7 @@ inline DbgBackColor::DbgBackColor( OutputDevice* pOutDev, const bool bOn )
     if( pOut )
     {
         aOldFillColor = pOut->GetFillColor();
-        pOut->SetFillColor( Color(COL_RED) );
+        pOut->SetFillColor( COL_RED );
     }
 }
 
@@ -99,7 +104,7 @@ inline DbgBackColor::~DbgBackColor()
 
 inline DbgRect::DbgRect( OutputDevice* pOutDev, const tools::Rectangle &rRect,
                          const bool bOn,
-                         ColorData eColor )
+                         Color eColor )
     : SwDbgOut( pOutDev, bOn )
 {
     if( pOut )
@@ -108,7 +113,7 @@ inline DbgRect::DbgRect( OutputDevice* pOutDev, const tools::Rectangle &rRect,
         Color aLineColor = pOut->GetLineColor();
         pOut->SetLineColor( aColor );
         Color aFillColor = pOut->GetFillColor();
-        pOut->SetFillColor( Color(COL_TRANSPARENT) );
+        pOut->SetFillColor( COL_TRANSPARENT );
         pOut->DrawRect( rRect );
         pOut->SetLineColor( aLineColor );
         pOut->SetFillColor( aFillColor );

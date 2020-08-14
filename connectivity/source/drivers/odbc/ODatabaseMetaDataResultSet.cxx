@@ -17,21 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 
-#include "odbc/ODatabaseMetaDataResultSet.hxx"
+#include <odbc/ODatabaseMetaDataResultSet.hxx>
 #include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/sdbc/KeyRule.hpp>
-#include <com/sun/star/sdbc/ProcedureResult.hpp>
-#include <com/sun/star/sdbc/IndexType.hpp>
 #include <comphelper/property.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
 #include <cppuhelper/typeprovider.hxx>
 #include <comphelper/sequence.hxx>
-#include "odbc/OResultSetMetaData.hxx"
-#include "odbc/OTools.hxx"
+#include <odbc/OResultSetMetaData.hxx>
+#include <odbc/OTools.hxx>
 #include <comphelper/types.hxx>
-#include "FDatabaseMetaDataResultSetMetaData.hxx"
 #include <connectivity/dbexception.hxx>
 
 using namespace ::comphelper;
@@ -53,8 +48,6 @@ ODatabaseMetaDataResultSet::ODatabaseMetaDataResultSet(OConnection* _pConnection
 
     ,m_aStatementHandle(_pConnection->createStatementHandle())
     ,m_aStatement(nullptr)
-    ,m_xMetaData(nullptr)
-    ,m_pRowStatusArray(nullptr)
     ,m_pConnection(_pConnection)
     ,m_nTextEncoding(_pConnection->getTextEncoding())
     ,m_nRowPos(-1)
@@ -68,9 +61,8 @@ ODatabaseMetaDataResultSet::ODatabaseMetaDataResultSet(OConnection* _pConnection
         throw RuntimeException();
 
     osl_atomic_increment( &m_refCount );
-    m_pRowStatusArray = new SQLUSMALLINT[1]; // the default value
+    m_pRowStatusArray.reset( new SQLUSMALLINT[1] ); // the default value
     osl_atomic_decrement( &m_refCount );
-    //  allocBuffer();
 }
 
 
@@ -82,7 +74,6 @@ ODatabaseMetaDataResultSet::~ODatabaseMetaDataResultSet()
         osl_atomic_increment( &m_refCount );
         dispose();
     }
-    delete [] m_pRowStatusArray;
 }
 
 void ODatabaseMetaDataResultSet::disposing()
@@ -178,7 +169,7 @@ template < typename T, SQLSMALLINT sqlTypeId > T ODatabaseMetaDataResultSet::get
 
         if ( !m_aValueRange.empty() )
         {
-            std::map<sal_Int32, ::connectivity::TInt2IntMap >::iterator aValueRangeIter (m_aValueRange.find(columnIndex));
+            auto aValueRangeIter = m_aValueRange.find(columnIndex);
             if ( aValueRangeIter != m_aValueRange.end() )
                 return static_cast<T>(aValueRangeIter->second[nVal]);
         }
@@ -254,7 +245,7 @@ Sequence< sal_Int8 > SAL_CALL ODatabaseMetaDataResultSet::getBytes( sal_Int32 co
             case DataType::VARCHAR:
             case DataType::LONGVARCHAR:
             {
-                OUString aRet = OTools::getStringValue(m_pConnection.get(),m_aStatementHandle,columnIndex,SQL_C_BINARY,m_bWasNull,**this,m_nTextEncoding);
+                OUString const & aRet = OTools::getStringValue(m_pConnection.get(),m_aStatementHandle,columnIndex,SQL_C_BINARY,m_bWasNull,**this,m_nTextEncoding);
                 return Sequence<sal_Int8>(reinterpret_cast<const sal_Int8*>(aRet.getStr()),sizeof(sal_Unicode)*aRet.getLength());
             }
         }
@@ -760,7 +751,7 @@ void ODatabaseMetaDataResultSet::setFastPropertyValue_NoBroadcast( sal_Int32 nHa
         case PROPERTY_ID_RESULTSETTYPE:
         case PROPERTY_ID_FETCHDIRECTION:
         case PROPERTY_ID_FETCHSIZE:
-            throw Exception();
+            throw Exception("cannot set prop " + OUString::number(nHandle), nullptr);
         default:
             OSL_FAIL("setFastPropertyValue_NoBroadcast: Illegal handle value!");
     }
@@ -790,7 +781,7 @@ void ODatabaseMetaDataResultSet::getFastPropertyValue( Any& rValue, sal_Int32 nH
 
 void ODatabaseMetaDataResultSet::openTypeInfo()
 {
-    TInt2IntMap aMap;
+    ::std::map<sal_Int32,sal_Int32> aMap;
     aMap[SQL_BIT]               = DataType::BIT;
     aMap[SQL_TINYINT]           = DataType::TINYINT;
     aMap[SQL_SMALLINT]          = DataType::SMALLINT;
@@ -858,8 +849,7 @@ void ODatabaseMetaDataResultSet::openTables(const Any& catalog, const OUString& 
     const OUString* pEnd = pBegin + types.getLength();
     for(;pBegin != pEnd;++pBegin)
     {
-        aCOL += OUStringToOString(*pBegin,m_nTextEncoding);
-        aCOL += pComma;
+        aCOL += OUStringToOString(*pBegin,m_nTextEncoding) + pComma;
     }
     if ( !aCOL.isEmpty() )
     {
@@ -992,7 +982,7 @@ void ODatabaseMetaDataResultSet::openColumns(   const Any& catalog,             
                             reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(pCOL)), SQL_NTS);
 
     OTools::ThrowException(m_pConnection.get(),nRetcode,m_aStatementHandle,SQL_HANDLE_STMT,*this);
-    TInt2IntMap aMap;
+    ::std::map<sal_Int32,sal_Int32> aMap;
     aMap[SQL_BIT]               = DataType::BIT;
     aMap[SQL_TINYINT]           = DataType::TINYINT;
     aMap[SQL_SMALLINT]          = DataType::SMALLINT;
@@ -1126,7 +1116,7 @@ void ODatabaseMetaDataResultSet::openSpecialColumns(bool _bRowVer,const Any& cat
                             reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(pPKQ)), (catalog.hasValue() && !aPKQ.isEmpty()) ? SQL_NTS : 0,
                             reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(pPKO)), pPKO ? SQL_NTS : 0 ,
                             reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(pPKN)), SQL_NTS,
-                            (SQLSMALLINT)scope,
+                            static_cast<SQLSMALLINT>(scope),
                             nullable ? SQL_NULLABLE : SQL_NO_NULLS);
     OTools::ThrowException(m_pConnection.get(),nRetcode,m_aStatementHandle,SQL_HANDLE_STMT,*this);
     checkColumnCount();
@@ -1155,13 +1145,32 @@ void ODatabaseMetaDataResultSet::openForeignKeys( const Any& catalog, const OUSt
     if ( catalog2.hasValue() )
         aFKQ = OUStringToOString(comphelper::getString(catalog2),m_nTextEncoding);
 
-    const char  *pPKQ = catalog.hasValue() && !aPKQ.isEmpty() ? aPKQ.getStr()  : nullptr,
-                *pPKO = schema && !schema->isEmpty() ? (aPKO = OUStringToOString(*schema,m_nTextEncoding)).getStr() : nullptr,
-                *pPKN = table   ? (aPKN = OUStringToOString(*table,m_nTextEncoding)).getStr(): nullptr,
-                *pFKQ = catalog2.hasValue() && !aFKQ.isEmpty() ? aFKQ.getStr() : nullptr,
-                *pFKO = schema2 && !schema2->isEmpty() ? (aFKO = OUStringToOString(*schema2,m_nTextEncoding)).getStr() : nullptr,
-                *pFKN = table2  ? (aFKN = OUStringToOString(*table2,m_nTextEncoding)).getStr() : nullptr;
-
+    const char *pPKQ = catalog.hasValue() && !aPKQ.isEmpty() ? aPKQ.getStr()  : nullptr;
+    const char *pPKO = nullptr;
+    if (schema && !schema->isEmpty())
+    {
+        aPKO = OUStringToOString(*schema,m_nTextEncoding);
+        pPKO = aPKO.getStr();
+    }
+    const char *pPKN = nullptr;
+    if (table)
+    {
+        aPKN = OUStringToOString(*table,m_nTextEncoding);
+        pPKN = aPKN.getStr();
+    }
+    const char *pFKQ = catalog2.hasValue() && !aFKQ.isEmpty() ? aFKQ.getStr() : nullptr;
+    const char *pFKO = nullptr;
+    if (schema2 && !schema2->isEmpty())
+    {
+        aFKO = OUStringToOString(*schema2,m_nTextEncoding);
+        pFKO = aFKO.getStr();
+    }
+    const char *pFKN = nullptr;
+    if (table2)
+    {
+        aFKN = OUStringToOString(*table2,m_nTextEncoding);
+        pFKN = aFKN.getStr();
+    }
 
     SQLRETURN nRetcode = N3SQLForeignKeys(m_aStatementHandle,
                             reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(pPKQ)), (catalog.hasValue() && !aPKQ.isEmpty()) ? SQL_NTS : 0,
@@ -1203,10 +1212,11 @@ void ODatabaseMetaDataResultSet::openPrimaryKeys(const Any& catalog, const OUStr
     if ( catalog.hasValue() )
         aPKQ = OUStringToOString(comphelper::getString(catalog),m_nTextEncoding);
     aPKO = OUStringToOString(schema,m_nTextEncoding);
+    aPKN = OUStringToOString(table,m_nTextEncoding);
 
     const char  *pPKQ = catalog.hasValue() && !aPKQ.isEmpty() ? aPKQ.getStr()  : nullptr,
                 *pPKO = pSchemaPat && !pSchemaPat->isEmpty() && !aPKO.isEmpty() ? aPKO.getStr() : nullptr,
-                *pPKN = (aPKN = OUStringToOString(table,m_nTextEncoding)).getStr();
+                *pPKN = aPKN.getStr();
 
 
     SQLRETURN nRetcode = N3SQLPrimaryKeys(m_aStatementHandle,
@@ -1232,11 +1242,11 @@ void ODatabaseMetaDataResultSet::openTablePrivileges(const Any& catalog, const O
     if ( catalog.hasValue() )
         aPKQ = OUStringToOString(comphelper::getString(catalog),m_nTextEncoding);
     aPKO = OUStringToOString(schemaPattern,m_nTextEncoding);
+    aPKN = OUStringToOString(tableNamePattern,m_nTextEncoding);
 
     const char  *pPKQ = catalog.hasValue() && !aPKQ.isEmpty() ? aPKQ.getStr()  : nullptr,
                 *pPKO = pSchemaPat && !pSchemaPat->isEmpty() && !aPKO.isEmpty() ? aPKO.getStr() : nullptr,
-                *pPKN = (aPKN = OUStringToOString(tableNamePattern,m_nTextEncoding)).getStr();
-
+                *pPKN = aPKN.getStr();
 
     SQLRETURN nRetcode = N3SQLTablePrivileges(m_aStatementHandle,
                             reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(pPKQ)), (catalog.hasValue() && !aPKQ.isEmpty()) ? SQL_NTS : 0,
@@ -1261,11 +1271,11 @@ void ODatabaseMetaDataResultSet::openIndexInfo( const Any& catalog, const OUStri
     if ( catalog.hasValue() )
         aPKQ = OUStringToOString(comphelper::getString(catalog),m_nTextEncoding);
     aPKO = OUStringToOString(schema,m_nTextEncoding);
+    aPKN = OUStringToOString(table,m_nTextEncoding);
 
     const char  *pPKQ = catalog.hasValue() && !aPKQ.isEmpty() ? aPKQ.getStr()  : nullptr,
                 *pPKO = pSchemaPat && !pSchemaPat->isEmpty() && !aPKO.isEmpty() ? aPKO.getStr() : nullptr,
-                *pPKN = (aPKN = OUStringToOString(table,m_nTextEncoding)).getStr();
-
+                *pPKN = aPKN.getStr();
 
     SQLRETURN nRetcode = N3SQLStatistics(m_aStatementHandle,
                             reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(pPKQ)), (catalog.hasValue() && !aPKQ.isEmpty()) ? SQL_NTS : 0,
@@ -1289,7 +1299,10 @@ SWORD ODatabaseMetaDataResultSet::impl_getColumnType_nothrow(sal_Int32 columnInd
 {
     std::map<sal_Int32,SWORD>::iterator aFind = m_aODBCColumnTypes.find(columnIndex);
     if ( aFind == m_aODBCColumnTypes.end() )
-        aFind = m_aODBCColumnTypes.insert(std::map<sal_Int32,SWORD>::value_type(columnIndex,OResultSetMetaData::getColumnODBCType(m_pConnection.get(),m_aStatementHandle,*this,columnIndex))).first;
+        aFind = m_aODBCColumnTypes.emplace(
+                        columnIndex,
+                        OResultSetMetaData::getColumnODBCType(m_pConnection.get(),m_aStatementHandle,*this,columnIndex)
+                    ).first;
     return aFind->second;
 }
 

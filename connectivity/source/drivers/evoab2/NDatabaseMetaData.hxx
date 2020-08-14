@@ -21,14 +21,12 @@
 #define INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_EVOAB2_NDATABASEMETADATA_HXX
 
 #include "NConnection.hxx"
-#include "TDatabaseMetaDataBase.hxx"
-#include "FDatabaseMetaDataResultSet.hxx"
+#include <TDatabaseMetaDataBase.hxx>
+#include <FDatabaseMetaDataResultSet.hxx>
 
 
-namespace connectivity
+namespace connectivity::evoab
 {
-    namespace evoab
-    {
 
         //************ Class: OEvoabDatabaseMetaData
 
@@ -64,7 +62,7 @@ namespace connectivity
         {
             OEvoabConnection*                      m_pConnection;
 
-            ODatabaseMetaDataResultSet::ORows& getColumnRows( const OUString& columnNamePattern );
+            ODatabaseMetaDataResultSet::ORows getColumnRows( const OUString& columnNamePattern );
 
         protected:
             virtual css::uno::Reference< css::sdbc::XResultSet > impl_getTypeInfo_throw() override;
@@ -85,8 +83,6 @@ namespace connectivity
 
             virtual ~OEvoabDatabaseMetaData() override;
         public:
-            OEvoabConnection* getOwnConnection() const { return m_pConnection; }
-
             explicit OEvoabDatabaseMetaData(OEvoabConnection* _pCon);
 
             // as I mentioned before this interface is really BIG
@@ -215,8 +211,8 @@ namespace connectivity
             virtual sal_Bool SAL_CALL supportsBatchUpdates(  ) override;
             virtual css::uno::Reference< css::sdbc::XResultSet > SAL_CALL getUDTs( const css::uno::Any& catalog, const OUString& schemaPattern, const OUString& typeNamePattern, const css::uno::Sequence< sal_Int32 >& types ) override;
         };
-    }
 }
+
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_EVOAB2_NDATABASEMETADATA_HXX
 

@@ -22,15 +22,17 @@
 
 #include <comphelper/propertycontainerhelper.hxx>
 #include <cppuhelper/propshlp.hxx>
-#include <com/sun/star/uno/Type.hxx>
 #include <comphelper/comphelperdllapi.h>
 
+
+namespace com::sun::star::uno { class Any; }
+namespace com::sun::star::uno { class Type; }
 
 namespace comphelper
 {
 
 
-/** a OPropertySetHelper implementation which is just a simple container for properties represented
+/** an OPropertySetHelper implementation which is just a simple container for properties represented
     by class members, usually in a derived class.
     <BR>
     A restriction of this class is that no value conversions are made on a setPropertyValue call. Though
@@ -72,7 +74,7 @@ protected:
                                      ) const override;
 
     // disambiguate a base class method (XFastPropertySet)
-    virtual void SAL_CALL setFastPropertyValue( sal_Int32 nHandle, const css::uno::Any& rValue ) override;
+    using OPropertySetHelper::setFastPropertyValue;
 };
 
 

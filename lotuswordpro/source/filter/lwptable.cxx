@@ -58,9 +58,14 @@
  *  For LWP filter architecture prototype - table object
  */
 
+#include <sal/config.h>
+
+#include <algorithm>
+
+#include <lwpfilehdr.hxx>
  #include "lwptable.hxx"
 
- LwpSuperTable::LwpSuperTable(LwpObjectHeader &objHdr, LwpSvStream* pStrm):LwpContent(objHdr, pStrm)
+ LwpSuperTable::LwpSuperTable(LwpObjectHeader const &objHdr, LwpSvStream* pStrm):LwpContent(objHdr, pStrm)
 {}
 
 LwpSuperTable::~LwpSuperTable()
@@ -82,7 +87,7 @@ void LwpSuperTable::XFConvert(XFContentContainer* /*pCont*/)
 }
 
 /*****************************************************************************/
- LwpTable::LwpTable(LwpObjectHeader &objHdr, LwpSvStream* pStrm)
+ LwpTable::LwpTable(LwpObjectHeader const &objHdr, LwpSvStream* pStrm)
      : LwpContent(objHdr, pStrm)
      , m_nRow(0)
      , m_nColumn(0)
@@ -123,7 +128,7 @@ void LwpTable::Read()
     m_pObjStrm->SkipExtra();
 }
 
-bool LwpTable::IsNumberDown()
+bool LwpTable::IsNumberDown() const
 {
     return (m_nAttributes & NUMBER_DOWN) != 0;
 }
@@ -142,7 +147,7 @@ void  LwpTable::Parse(IXFStream* /*pOutputStream*/)
 }
 
  /*****************************************************************************/
- LwpTableHeading::LwpTableHeading(LwpObjectHeader &objHdr, LwpSvStream* pStrm):LwpTable(objHdr, pStrm)
+ LwpTableHeading::LwpTableHeading(LwpObjectHeader const &objHdr, LwpSvStream* pStrm):LwpTable(objHdr, pStrm)
 {}
 
 LwpTableHeading::~LwpTableHeading()
@@ -158,7 +163,7 @@ void  LwpTableHeading::Parse(IXFStream* /*pOutputStream*/)
 }
 
  /*****************************************************************************/
-LwpParallelColumns::LwpParallelColumns(LwpObjectHeader &objHdr, LwpSvStream* pStrm):LwpTable(objHdr, pStrm)
+LwpParallelColumns::LwpParallelColumns(LwpObjectHeader const &objHdr, LwpSvStream* pStrm):LwpTable(objHdr, pStrm)
 {
 }
 
@@ -175,14 +180,14 @@ void LwpParallelColumns::Read()
     m_pObjStrm->SkipExtra();
 }
  /*****************************************************************************/
-LwpGlossary::LwpGlossary(LwpObjectHeader &objHdr, LwpSvStream* pStrm):LwpParallelColumns(objHdr, pStrm)
+LwpGlossary::LwpGlossary(LwpObjectHeader const &objHdr, LwpSvStream* pStrm):LwpParallelColumns(objHdr, pStrm)
 {
 }
 
 LwpGlossary::~LwpGlossary()
 {
 }
-sal_uInt16 LwpGlossary::GetNumIndexRows()
+sal_uInt16 LwpGlossary::GetNumIndexRows() const
 {
     if (GetRow() > 0 && GetRow() <= MAX_NUM_ROWS)
         return GetRow() - 1;    // Minus one row for repeated heading.
@@ -205,7 +210,7 @@ void LwpGlossary::Read()
     {
         if (NumIndexRows)
         {
-            sal_uInt16 EntriesRead = (FiledEntries > NumIndexRows)? NumIndexRows:FiledEntries;
+            sal_uInt16 EntriesRead = std::min(FiledEntries, NumIndexRows);
 
             for (sal_uInt16 EntryCount = 1; EntryCount <= EntriesRead; EntryCount++)
                 m_pObjStrm->QuickReaduInt16();

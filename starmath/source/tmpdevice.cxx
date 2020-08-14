@@ -17,10 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "smmod.hxx"
+#include <smmod.hxx>
 #include "tmpdevice.hxx"
 
+#include <svtools/colorcfg.hxx>
 #include <vcl/window.hxx>
+#include <sal/log.hxx>
 
 // SmTmpDevice
 // Allows for font and color changes. The original settings will be restored
@@ -33,46 +35,32 @@
 SmTmpDevice::SmTmpDevice(OutputDevice &rTheDev, bool bUseMap100th_mm) :
     rOutDev(rTheDev)
 {
-    rOutDev.Push( PushFlags::FONT | PushFlags::MAPMODE |
-                  PushFlags::LINECOLOR | PushFlags::FILLCOLOR | PushFlags::TEXTCOLOR );
+    rOutDev.Push(PushFlags::FONT | PushFlags::MAPMODE |
+                 PushFlags::LINECOLOR | PushFlags::FILLCOLOR | PushFlags::TEXTCOLOR);
     if (bUseMap100th_mm  &&  MapUnit::Map100thMM != rOutDev.GetMapMode().GetMapUnit())
     {
         SAL_WARN("starmath", "incorrect MapMode?");
-        rOutDev.SetMapMode( MapUnit::Map100thMM );     //format for 100% always
+        rOutDev.SetMapMode(MapMode(MapUnit::Map100thMM)); // format for 100% always
     }
 }
 
 
-Color SmTmpDevice::Impl_GetColor( const Color& rColor )
+Color SmTmpDevice::GetTextColor(const Color& rTextColor)
 {
-    ColorData nNewCol = rColor.GetColor();
-    if (COL_AUTO == nNewCol)
+    if (rTextColor == COL_AUTO)
     {
-        if (OUTDEV_PRINTER == rOutDev.GetOutDevType())
-            nNewCol = COL_BLACK;
-        else
-        {
-            Color aBgCol( rOutDev.GetBackground().GetColor() );
-            if (OUTDEV_WINDOW == rOutDev.GetOutDevType())
-                aBgCol = static_cast<vcl::Window &>(rOutDev).GetDisplayBackground().GetColor();
-
-            nNewCol = SM_MOD()->GetColorConfig().GetColorValue(svtools::FONTCOLOR).nColor;
-
-            Color aTmpColor( nNewCol );
-            if (aBgCol.IsDark() && aTmpColor.IsDark())
-                nNewCol = COL_WHITE;
-            else if (aBgCol.IsBright() && aTmpColor.IsBright())
-                nNewCol = COL_BLACK;
-        }
+        Color aConfigFontColor = SM_MOD()->GetColorConfig().GetColorValue(svtools::FONTCOLOR).nColor;
+        return rOutDev.GetReadableFontColor(aConfigFontColor, rOutDev.GetBackgroundColor());
     }
-    return Color( nNewCol );
+
+    return rTextColor;
 }
 
 
 void SmTmpDevice::SetFont(const vcl::Font &rNewFont)
 {
-    rOutDev.SetFont( rNewFont );
-    rOutDev.SetTextColor( Impl_GetColor( rNewFont.GetColor() ) );
+    rOutDev.SetFont(rNewFont);
+    rOutDev.SetTextColor(GetTextColor(rNewFont.GetColor()));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

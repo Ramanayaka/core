@@ -17,25 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <classes/resource.hrc>
-#include "bitmaps.hlst"
-#include <classes/fwkresid.hxx>
+#include <bitmaps.hlst>
 
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/propertyvalue.hxx>
-#include <comphelper/propertysequence.hxx>
-#include <framework/menuconfiguration.hxx>
-#include <rtl/ref.hxx>
+#include <menuconfiguration.hxx>
 #include <svtools/imagemgr.hxx>
 #include <svtools/miscopt.hxx>
 #include <svtools/toolboxcontroller.hxx>
 #include <toolkit/awt/vclxmenu.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
+#include <tools/diagnose_ex.h>
 #include <tools/urlobj.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <vcl/commandinfoprovider.hxx>
+#include <vcl/menu.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/toolbox.hxx>
 
@@ -46,6 +43,7 @@
 #include <com/sun/star/frame/XStorable.hpp>
 #include <com/sun/star/frame/XSubToolbarController.hpp>
 #include <com/sun/star/frame/XUIControllerFactory.hpp>
+#include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/ucb/CommandFailedException.hpp>
 #include <com/sun/star/ucb/ContentCreationException.hpp>
@@ -79,7 +77,6 @@ protected:
     virtual ToolBoxItemBits getDropDownStyle() const;
     void createPopupMenuController();
 
-    css::uno::Reference< css::uno::XComponentContext >      m_xContext;
     bool                                                    m_bHasController;
     OUString                                                m_aPopupCommand;
     css::uno::Reference< css::awt::XPopupMenu >             m_xPopupMenu;
@@ -92,7 +89,7 @@ private:
 PopupMenuToolbarController::PopupMenuToolbarController(
     const css::uno::Reference< css::uno::XComponentContext >& xContext,
     const OUString &rPopupCommand )
-    : m_xContext( xContext )
+    : ToolBarBase( xContext, css::uno::Reference< css::frame::XFrame >(), /*aCommandURL*/OUString() )
     , m_bHasController( false )
     , m_aPopupCommand( rPopupCommand )
 {
@@ -140,9 +137,9 @@ void SAL_CALL PopupMenuToolbarController::initialize(
         m_bHasController = m_xPopupMenuFactory->hasController(
             m_aPopupCommand, getModuleName() );
     }
-    catch (const css::uno::Exception& e)
+    catch (const css::uno::Exception&)
     {
-        SAL_INFO( "fwk.uielement", "Caught an exception: " << e.Message );
+        TOOLS_INFO_EXCEPTION( "fwk.uielement", "" );
     }
 
     SolarMutexGuard aSolarLock;
@@ -165,6 +162,7 @@ void SAL_CALL PopupMenuToolbarController::statusChanged( const css::frame::Featu
     sal_uInt16 nItemId = 0;
     if ( getToolboxId( nItemId, &pToolBox ) )
     {
+        SolarMutexGuard aSolarLock;
         pToolBox->EnableItem( nItemId, rEvent.IsEnabled );
         bool bValue;
         if ( rEvent.State >>= bValue )
@@ -247,10 +245,10 @@ void PopupMenuToolbarController::createPopupMenuController()
 
             m_xPopupMenuController->setPopupMenu( m_xPopupMenu );
         }
-        catch ( const css::uno::Exception &e )
+        catch ( const css::uno::Exception & )
         {
+            TOOLS_INFO_EXCEPTION( "fwk.uielement", "" );
             m_xPopupMenu.clear();
-            SAL_INFO( "fwk.uielement", "Caught an exception: " << e.Message );
         }
     }
 }
@@ -291,10 +289,11 @@ GenericPopupToolbarController::GenericPopupToolbarController(
     {
         if ( ( arg >>= aPropValue ) && aPropValue.Name == "Value" )
         {
+            sal_Int32 nIdx{ 0 };
             OUString aValue;
             aPropValue.Value >>= aValue;
-            m_aPopupCommand = aValue.getToken(0, ';');
-            m_bReplaceWithLast = aValue.getToken(1, ';').toBoolean();
+            m_aPopupCommand = aValue.getToken(0, ';', nIdx);
+            m_bReplaceWithLast = aValue.getToken(0, ';', nIdx).toBoolean();
             break;
         }
     }
@@ -303,7 +302,7 @@ GenericPopupToolbarController::GenericPopupToolbarController(
 
 OUString GenericPopupToolbarController::getImplementationName()
 {
-    return OUString("com.sun.star.comp.framework.GenericPopupToolbarController");
+    return "com.sun.star.comp.framework.GenericPopupToolbarController";
 }
 
 sal_Bool GenericPopupToolbarController::supportsService(OUString const & rServiceName)
@@ -330,7 +329,7 @@ void GenericPopupToolbarController::statusChanged( const css::frame::FeatureStat
 
     if ( m_bReplaceWithLast && !rEvent.IsEnabled && m_xPopupMenu.is() )
     {
-        Menu* pVclMenu = VCLXMenu::GetImplementation( m_xPopupMenu )->GetMenu();
+        Menu* pVclMenu = comphelper::getUnoTunnelImplementation<VCLXMenu>( m_xPopupMenu )->GetMenu();
 
         ToolBox* pToolBox = nullptr;
         sal_uInt16 nId = 0;
@@ -356,27 +355,28 @@ void GenericPopupToolbarController::statusChanged( const css::frame::FeatureStat
 
 void GenericPopupToolbarController::functionExecuted( const OUString& rCommand )
 {
-    if ( m_bReplaceWithLast )
+    if ( !m_bReplaceWithLast )
+        return;
+
+    removeStatusListener( m_aCommandURL );
+
+    auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(rCommand, m_sModuleName);
+    OUString aRealCommand( vcl::CommandInfoProvider::GetRealCommandForCommand(aProperties) );
+    m_aCommandURL = aRealCommand.isEmpty() ? rCommand : aRealCommand;
+    addStatusListener( m_aCommandURL );
+
+    ToolBox* pToolBox = nullptr;
+    sal_uInt16 nId = 0;
+    if ( getToolboxId( nId, &pToolBox ) )
     {
-        removeStatusListener( m_aCommandURL );
+        pToolBox->SetItemCommand( nId, rCommand );
+        pToolBox->SetHelpText( nId, OUString() ); // Will retrieve the new one from help.
+        pToolBox->SetItemText(nId, vcl::CommandInfoProvider::GetLabelForCommand(aProperties));
+        pToolBox->SetQuickHelpText(nId, vcl::CommandInfoProvider::GetTooltipForCommand(rCommand, aProperties, m_xFrame));
 
-        OUString aRealCommand( vcl::CommandInfoProvider::GetRealCommandForCommand( rCommand, m_sModuleName ) );
-        m_aCommandURL = aRealCommand.isEmpty() ? rCommand : aRealCommand;
-        addStatusListener( m_aCommandURL );
-
-        ToolBox* pToolBox = nullptr;
-        sal_uInt16 nId = 0;
-        if ( getToolboxId( nId, &pToolBox ) )
-        {
-            pToolBox->SetItemCommand( nId, rCommand );
-            pToolBox->SetHelpText( nId, OUString() ); // Will retrieve the new one from help.
-            pToolBox->SetItemText( nId, vcl::CommandInfoProvider::GetLabelForCommand( rCommand, m_sModuleName ) );
-            pToolBox->SetQuickHelpText( nId, vcl::CommandInfoProvider::GetTooltipForCommand( rCommand, m_xFrame ) );
-
-            Image aImage = vcl::CommandInfoProvider::GetImageForCommand(rCommand, m_xFrame, pToolBox->GetImageSize());
-            if ( !!aImage )
-                pToolBox->SetItemImage( nId, aImage );
-        }
+        Image aImage = vcl::CommandInfoProvider::GetImageForCommand(rCommand, m_xFrame, pToolBox->GetImageSize());
+        if ( !!aImage )
+            pToolBox->SetItemImage( nId, aImage );
     }
 }
 
@@ -396,7 +396,7 @@ public:
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
 
     // XSubToolbarController
-    // Ugly HACK to cause ToolBarManager ask our controller for updated image, in case of icon theme change.
+    // Make ToolBarManager ask our controller for updated image, in case of icon theme change.
     virtual sal_Bool SAL_CALL opensSubToolbar() override;
     virtual OUString SAL_CALL getSubToolbarName() override;
     virtual void SAL_CALL functionSelected( const OUString& aCommand ) override;
@@ -442,7 +442,7 @@ void SaveToolbarController::initialize( const css::uno::Sequence< css::uno::Any 
     if ( !getToolboxId( nId, &pToolBox ) )
         return;
 
-    css::uno::Reference< css::frame::XController > xController( m_xFrame->getController(), css::uno::UNO_QUERY );
+    css::uno::Reference< css::frame::XController > xController = m_xFrame->getController();
     if ( xController.is() )
         m_xModifiable.set( xController->getModel(), css::uno::UNO_QUERY );
 
@@ -496,11 +496,11 @@ void SaveToolbarController::updateImage()
     else if ( m_bModified )
     {
         if (eImageType == vcl::ImageType::Size26)
-            aImage = Image(BitmapEx(BMP_SAVEMODIFIED_LARGE));
+            aImage = Image(StockImage::Yes, BMP_SAVEMODIFIED_LARGE);
         else if (eImageType == vcl::ImageType::Size32)
-            aImage = Image(BitmapEx(BMP_SAVEMODIFIED_EXTRALARGE));
+            aImage = Image(StockImage::Yes, BMP_SAVEMODIFIED_EXTRALARGE);
         else
-            aImage = Image(BitmapEx(BMP_SAVEMODIFIED_SMALL));
+            aImage = Image(StockImage::Yes, BMP_SAVEMODIFIED_SMALL);
     }
 
     if ( !aImage )
@@ -521,8 +521,11 @@ void SaveToolbarController::statusChanged( const css::frame::FeatureStateEvent& 
     m_bReadOnly = m_xStorable.is() && m_xStorable->isReadonly();
     if ( bLastReadOnly != m_bReadOnly )
     {
+        OUString sCommand = m_bReadOnly ? OUString( ".uno:SaveAs" ) : m_aCommandURL;
+        auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(sCommand,
+            vcl::CommandInfoProvider::GetModuleIdentifier(m_xFrame));
         pToolBox->SetQuickHelpText( nId,
-            vcl::CommandInfoProvider::GetTooltipForCommand( m_bReadOnly ? OUString( ".uno:SaveAs" ) : m_aCommandURL, m_xFrame ) );
+            vcl::CommandInfoProvider::GetTooltipForCommand(sCommand, aProperties, m_xFrame) );
         pToolBox->SetItemBits( nId, pToolBox->GetItemBits( nId ) & ~( m_bReadOnly ? ToolBoxItemBits::DROPDOWN : ToolBoxItemBits::DROPDOWNONLY ) );
         pToolBox->SetItemBits( nId, pToolBox->GetItemBits( nId ) |  ( m_bReadOnly ? ToolBoxItemBits::DROPDOWNONLY : ToolBoxItemBits::DROPDOWN ) );
         updateImage();
@@ -564,7 +567,7 @@ void SaveToolbarController::dispose()
 
 OUString SaveToolbarController::getImplementationName()
 {
-    return OUString("com.sun.star.comp.framework.SaveToolbarController");
+    return "com.sun.star.comp.framework.SaveToolbarController";
 }
 
 sal_Bool SaveToolbarController::supportsService( OUString const & rServiceName )
@@ -577,7 +580,7 @@ css::uno::Sequence< OUString > SaveToolbarController::getSupportedServiceNames()
     return {"com.sun.star.frame.ToolbarController"};
 }
 
-class NewToolbarController : public PopupMenuToolbarController
+class NewToolbarController : public cppu::ImplInheritanceHelper<PopupMenuToolbarController, css::frame::XSubToolbarController>
 {
 public:
     explicit NewToolbarController( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
@@ -591,24 +594,32 @@ public:
 
     void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
 
+    // XSubToolbarController
+    // Make ToolBarManager ask our controller for updated image, in case of icon theme change.
+    sal_Bool SAL_CALL opensSubToolbar() override { return true; }
+    OUString SAL_CALL getSubToolbarName() override { return OUString(); }
+    void SAL_CALL functionSelected( const OUString& ) override {}
+    void SAL_CALL updateImage() override;
+
 private:
     void functionExecuted( const OUString &rCommand ) override;
     void SAL_CALL statusChanged( const css::frame::FeatureStateEvent& rEvent ) override;
     void SAL_CALL execute( sal_Int16 KeyModifier ) override;
-    void setItemImage( const OUString &rCommand );
+    sal_uInt16 getMenuIdForCommand( const OUString &rCommand );
 
-    OUString m_aLastURL;
+    sal_uInt16 m_nMenuId;
 };
 
 NewToolbarController::NewToolbarController(
     const css::uno::Reference< css::uno::XComponentContext >& xContext )
-    : PopupMenuToolbarController( xContext )
+    : ImplInheritanceHelper( xContext )
+    , m_nMenuId( 0 )
 {
 }
 
 OUString NewToolbarController::getImplementationName()
 {
-    return OUString("org.apache.openoffice.comp.framework.NewToolbarController");
+    return "org.apache.openoffice.comp.framework.NewToolbarController";
 }
 
 sal_Bool NewToolbarController::supportsService(OUString const & rServiceName)
@@ -638,8 +649,8 @@ void SAL_CALL NewToolbarController::statusChanged( const css::frame::FeatureStat
         try
         {
             // set the image even if the state is not a string
-            // this will set the image of the default module
-            setItemImage( aState );
+            // the toolbar item command will be used as a fallback
+            functionExecuted( aState );
         }
         catch (const css::ucb::CommandFailedException&)
         {
@@ -655,163 +666,93 @@ void SAL_CALL NewToolbarController::statusChanged( const css::frame::FeatureStat
 void SAL_CALL NewToolbarController::execute( sal_Int16 /*KeyModifier*/ )
 {
     osl::MutexGuard aGuard( m_aMutex );
-    if ( !m_aLastURL.getLength() )
-        return;
 
-    OUString aTarget( "_default" );
-    if ( m_xPopupMenu.is() )
+    OUString aURL, aTarget;
+    if ( m_xPopupMenu.is() && m_nMenuId )
     {
         // TODO investigate how to wrap Get/SetUserValue in css::awt::XMenu
-        MenuAttributes* pMenuAttributes( nullptr );
-        VCLXPopupMenu*  pTkPopupMenu =
-            static_cast<VCLXPopupMenu *>( VCLXMenu::GetImplementation( m_xPopupMenu ) );
-
         SolarMutexGuard aSolarMutexGuard;
-        PopupMenu* pVCLPopupMenu = pTkPopupMenu ?
-            dynamic_cast< PopupMenu * >( pTkPopupMenu->GetMenu() ) : nullptr;
+        Menu* pVclMenu = comphelper::getUnoTunnelImplementation<VCLXMenu>( m_xPopupMenu )->GetMenu();
+        aURL = pVclMenu->GetItemCommand( m_nMenuId );
 
-        if ( pVCLPopupMenu )
-            pMenuAttributes = reinterpret_cast< MenuAttributes* >(
-                pVCLPopupMenu->GetUserValue( pVCLPopupMenu->GetCurItemId() ) );
-
+        MenuAttributes* pMenuAttributes( static_cast<MenuAttributes*>( pVclMenu->GetUserValue( m_nMenuId ) ) );
         if ( pMenuAttributes )
             aTarget = pMenuAttributes->aTargetFrame;
+        else
+            aTarget = "_default";
     }
+    else
+        aURL = m_aCommandURL;
 
     css::uno::Sequence< css::beans::PropertyValue > aArgs( 1 );
     aArgs[0].Name = "Referer";
     aArgs[0].Value <<= OUString( "private:user" );
 
-    dispatchCommand( m_aLastURL, aArgs, aTarget );
+    dispatchCommand( aURL, aArgs, aTarget );
 }
 
 void NewToolbarController::functionExecuted( const OUString &rCommand )
 {
-    setItemImage( rCommand );
+    m_nMenuId = getMenuIdForCommand( rCommand );
+    updateImage();
 }
 
-/**
-    it return the existing state of the given URL in the popupmenu of this toolbox control.
-
-    If the given URL can be located as an action command of one menu item of the
-    popup menu of this control, we return sal_True. Otherwhise we return sal_False.
-    Further we return a fallback URL, in case we have to return sal_False. Because
-    the outside code must select a valid item of the popup menu every time ...
-    and we define it here. By the way this method was written to handle
-    error situations gracefully. E.g. it can be called during creation time
-    but then we have no valid menu. For this case we know another fallback URL.
-    Then we return the private:factory/ URL of the default factory.
-
-    @param  rPopupMenu
-                points to the popup menu, on which item we try to locate the given URL
-                Can be NULL! Search will be suppressed then.
-
-    @param  sURL
-                the URL for searching
-
-    @param  sFallback
-                contains the fallback URL in case we return FALSE
-                Must point to valid memory!
-
-    @param  aImage
-                contains the image of the menu for the URL.
-
-    @return sal_True - if URL could be located as an item of the popup menu.
-            sal_False - otherwhise.
-*/
-bool Impl_ExistURLInMenu(
-    const css::uno::Reference< css::awt::XPopupMenu > &rPopupMenu,
-    OUString &sURL,
-    OUString &sFallback,
-    Image &aImage )
+sal_uInt16 NewToolbarController::getMenuIdForCommand( const OUString &rCommand )
 {
-    bool bValidFallback( false );
-    sal_uInt16 nCount( 0 );
-    if ( rPopupMenu.is() && ( nCount = rPopupMenu->getItemCount() ) != 0 && sURL.getLength() )
+    if ( m_xPopupMenu.is() && !rCommand.isEmpty() )
     {
+        Menu* pVclMenu( comphelper::getUnoTunnelImplementation<VCLXMenu>( m_xPopupMenu )->GetMenu() );
+        sal_uInt16 nCount = pVclMenu->GetItemCount();
         for ( sal_uInt16 n = 0; n < nCount; ++n )
         {
-            sal_uInt16 nId = rPopupMenu->getItemId( n );
-            OUString aCmd( rPopupMenu->getCommand( nId ) );
-
-            if ( !bValidFallback && aCmd.getLength() )
-            {
-                sFallback = aCmd;
-                bValidFallback = true;
-            }
+            sal_uInt16 nId = pVclMenu->GetItemId( n );
+            OUString aCmd( pVclMenu->GetItemCommand( nId ) );
 
             // match even if the menu command is more detailed
             // (maybe an additional query) #i28667#
-            if ( aCmd.match( sURL ) )
-            {
-                sURL = aCmd;
-                const css::uno::Reference< css::graphic::XGraphic > xGraphic(
-                    rPopupMenu->getItemImage( nId ) );
-                if ( xGraphic.is() )
-                    aImage = Image( xGraphic );
-                return true;
-            }
+            if ( aCmd.match( rCommand ) )
+                return nId;
         }
     }
 
-    if ( !bValidFallback )
-    {
-        OUStringBuffer aBuffer;
-        aBuffer.append( "private:factory/" );
-        aBuffer.append( SvtModuleOptions().GetDefaultModuleName() );
-        sFallback = aBuffer.makeStringAndClear();
-    }
-
-    return false;
+    return 0;
 }
 
-/** We accept URL's here only, which exist as items of our internal popup menu.
-    All other ones will be ignored and a fallback is used.
- */
-void NewToolbarController::setItemImage( const OUString &rCommand )
+void SAL_CALL NewToolbarController::updateImage()
 {
     SolarMutexGuard aSolarLock;
     VclPtr< ToolBox> pToolBox = static_cast< ToolBox* >( VCLUnoHelper::GetWindow( getParent() ).get() );
     if ( !pToolBox )
         return;
 
-    OUString aURL = rCommand;
-    OUString sFallback;
-    Image aMenuImage;
+    OUString aURL, aImageId;
+    if ( m_xPopupMenu.is() && m_nMenuId )
+    {
+        Menu* pVclMenu = comphelper::getUnoTunnelImplementation<VCLXMenu>( m_xPopupMenu )->GetMenu();
+        aURL = pVclMenu->GetItemCommand( m_nMenuId );
 
-    bool bValid( Impl_ExistURLInMenu( m_xPopupMenu, aURL, sFallback, aMenuImage ) );
-    if ( !bValid )
-        aURL = sFallback;
+        MenuAttributes* pMenuAttributes( static_cast<MenuAttributes*>( pVclMenu->GetUserValue( m_nMenuId ) ) );
+        if ( pMenuAttributes )
+            aImageId = pMenuAttributes->aImageId;
+    }
+    else
+        aURL = m_aCommandURL;
 
-    bool bBig = SvtMiscOptions().AreCurrentSymbolsLarge();
-
-    INetURLObject aURLObj( aURL );
-    Image aImage = SvFileInformationManager::GetImageNoDefault( aURLObj, bBig );
+    INetURLObject aURLObj( aImageId.isEmpty() ? aURL : aImageId );
+    vcl::ImageType eImageType( pToolBox->GetImageSize() );
+    Image aImage = SvFileInformationManager::GetImageNoDefault( aURLObj, eImageType );
     if ( !aImage )
-        aImage = !!aMenuImage ?
-            aMenuImage :
-            SvFileInformationManager::GetImage( aURLObj, bBig );
+        aImage = vcl::CommandInfoProvider::GetImageForCommand( aURL, m_xFrame, eImageType );
 
-    // if everything failed, just use the image associated with the toolbar item command
     if ( !aImage )
         return;
 
-    Size aBigSize( pToolBox->GetDefaultImageSize() );
-    if ( bBig && aImage.GetSizePixel() != aBigSize )
-    {
-        BitmapEx aScaleBmpEx( aImage.GetBitmapEx() );
-        aScaleBmpEx.Scale( aBigSize, BmpScaleFlag::Interpolate );
-        pToolBox->SetItemImage( m_nToolBoxId, Image( aScaleBmpEx ) );
-    }
-    else
-        pToolBox->SetItemImage( m_nToolBoxId, aImage );
-
-    m_aLastURL = aURL;
+    pToolBox->SetItemImage( m_nToolBoxId, aImage );
 }
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_GenericPopupToolbarController_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &args)
@@ -819,7 +760,7 @@ com_sun_star_comp_framework_GenericPopupToolbarController_get_implementation(
     return cppu::acquire(new GenericPopupToolbarController(context, args));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_comp_framework_SaveToolbarController_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
@@ -827,7 +768,7 @@ com_sun_star_comp_framework_SaveToolbarController_get_implementation(
     return cppu::acquire(new SaveToolbarController(context));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 org_apache_openoffice_comp_framework_NewToolbarController_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)

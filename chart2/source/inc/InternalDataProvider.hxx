@@ -24,18 +24,16 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/chart/XDateCategories.hpp>
 #include <com/sun/star/chart2/XAnyDescriptionAccess.hpp>
-#include <com/sun/star/chart2/data/XDataProvider.hpp>
 #include <com/sun/star/chart2/XInternalDataProvider.hpp>
-#include <com/sun/star/chart2/data/XLabeledDataSequence.hpp>
 #include <com/sun/star/chart2/data/XRangeXMLConversion.hpp>
-#include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
 #include <cppuhelper/implbase.hxx>
-
-#include "CachedDataSequence.hxx"
+#include <cppuhelper/weakref.hxx>
 
 #include <map>
+
+namespace com::sun::star::chart2 { class XChartDocument; }
 
 namespace chart
 {
@@ -68,7 +66,7 @@ class InternalDataProvider :
         public impl::InternalDataProvider_Base
 {
 public:
-    explicit InternalDataProvider(const css::uno::Reference< css::uno::XComponentContext > & _xContext);
+    explicit InternalDataProvider();
 
     // #i120559# allow handing over a default for data orientation
     // (DataInColumns) that will be used when no data is available
@@ -201,7 +199,6 @@ private:
             css::uno::WeakReference< css::chart2::data::XDataSequence > >
         tSequenceMap;
     typedef std::pair< tSequenceMap::iterator, tSequenceMap::iterator > tSequenceMapRange;
-    typedef std::pair< tSequenceMap::const_iterator, tSequenceMap::const_iterator > tConstSequenceMapRange;
 
     /** cache for all sequences that have been returned.
 

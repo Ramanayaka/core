@@ -7,7 +7,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <vcl/opengl/GLMHelper.hxx>
 #include <vcl/opengl/OpenGLHelper.hxx>
 
 #include <osl/file.hxx>
@@ -15,12 +14,11 @@
 #include <rtl/digest.h>
 #include <rtl/strbuf.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
+#include <tools/stream.hxx>
 #include <config_folders.h>
-#include <vcl/salbtype.hxx>
-#include <vcl/bitmapaccess.hxx>
 #include <memory>
 #include <vcl/pngwrite.hxx>
-#include <vcl/graph.hxx>
 #include <vcl/svapp.hxx>
 #include <officecfg/Office/Common.hxx>
 #include <com/sun/star/util/XFlushable.hpp>
@@ -28,28 +26,26 @@
 
 #include <stdarg.h>
 #include <vector>
-#include <deque>
 #include <unordered_map>
 
-#include "svdata.hxx"
-#include "salgdi.hxx"
-#include "salinst.hxx"
-#include "opengl/zone.hxx"
-#include "opengl/watchdog.hxx"
-#include <osl/conditn.hxx>
+#include <opengl/zone.hxx>
 #include <vcl/opengl/OpenGLWrapper.hxx>
 #include <vcl/opengl/OpenGLContext.hxx>
 #include <desktop/crashreport.hxx>
+#include <bitmapwriteaccess.hxx>
+#include <watchdog.hxx>
+#include <vcl/skia/SkiaHelper.hxx>
+#include <vcl/glxtestprocess.hxx>
 
-#if defined UNX && !defined MACOSX && !defined IOS && !defined ANDROID
-#include "opengl/x11/X11DeviceInfo.hxx"
+#if defined UNX && !defined MACOSX && !defined IOS && !defined ANDROID && !defined HAIKU
+#include <opengl/x11/X11DeviceInfo.hxx>
 #elif defined (_WIN32)
-#include "opengl/win/WinDeviceInfo.hxx"
+#include <opengl/win/WinDeviceInfo.hxx>
 #endif
 
+#include "GLMHelper.hxx"
+
 static bool volatile gbInShaderCompile = false;
-sal_uInt64 volatile OpenGLZone::gnEnterCount = 0;
-sal_uInt64 volatile OpenGLZone::gnLeaveCount = 0;
 
 namespace {
 
@@ -77,7 +73,7 @@ OString loadShader(const OUString& rFilename)
         assert(nSize == nBytesRead);
         content.get()[nBytesRead] = 0;
         SAL_INFO("vcl.opengl", "Read " << nBytesRead << " bytes from " << aFileURL);
-        return OString(content.get());
+        return content.get();
     }
     else
     {
@@ -89,7 +85,7 @@ OString loadShader(const OUString& rFilename)
 
 OString& getShaderSource(const OUString& rFilename)
 {
-    static std::unordered_map<OUString, OString, OUStringHash> aMap;
+    static std::unordered_map<OUString, OString> aMap;
 
     if (aMap.find(rFilename) == aMap.end())
     {
@@ -102,8 +98,8 @@ OString& getShaderSource(const OUString& rFilename)
 }
 
 namespace {
-    int LogCompilerError(GLuint nId, const rtl::OUString &rDetail,
-                         const rtl::OUString &rName, bool bShaderNotProgram)
+    int LogCompilerError(GLuint nId, const OUString &rDetail,
+                         const OUString &rName, bool bShaderNotProgram)
     {
         OpenGLZone aZone;
 
@@ -122,16 +118,20 @@ namespace {
         {
             std::vector<char> ErrorMessage(InfoLogLength+1);
             if (bShaderNotProgram)
-                glGetShaderInfoLog (nId, InfoLogLength, nullptr, &ErrorMessage[0]);
+                glGetShaderInfoLog (nId, InfoLogLength, nullptr, ErrorMessage.data());
             else
-                glGetProgramInfoLog(nId, InfoLogLength, nullptr, &ErrorMessage[0]);
+                glGetProgramInfoLog(nId, InfoLogLength, nullptr, ErrorMessage.data());
             CHECK_GL_ERROR();
 
             ErrorMessage.push_back('\0');
-            SAL_WARN("vcl.opengl", rDetail << " shader " << nId << " compile for " << rName << " failed : " << &ErrorMessage[0]);
+            SAL_WARN("vcl.opengl", rDetail << " shader " << nId << " compile for " << rName << " failed : " << ErrorMessage.data());
         }
         else
             SAL_WARN("vcl.opengl", rDetail << " shader: " << rName << " compile " << nId << " failed without error log");
+
+#ifdef DBG_UTIL
+        abort();
+#endif
         return 0;
     }
 }
@@ -165,7 +165,7 @@ static void addPreamble(OString& rShaderSource, const OString& rPreamble)
 
 namespace
 {
-    static const sal_uInt32 GLenumSize = sizeof(GLenum);
+    const sal_uInt32 GLenumSize = sizeof(GLenum);
 
     OString getHexString(const sal_uInt8* pData, sal_uInt32 nLength)
     {
@@ -197,6 +197,28 @@ namespace
         return getHexString(pBuffer, RTL_DIGEST_LENGTH_MD5);
     }
 
+    OString getDeviceInfoString()
+    {
+#if defined( SAL_UNX ) && !defined( MACOSX ) && !defined( IOS )&& !defined( ANDROID ) && !defined( HAIKU )
+        const X11OpenGLDeviceInfo aInfo;
+        return aInfo.GetOS() +
+            aInfo.GetOSRelease() +
+            aInfo.GetRenderer() +
+            aInfo.GetVendor() +
+            aInfo.GetVersion();
+#elif defined( _WIN32 )
+        const WinOpenGLDeviceInfo aInfo;
+        return OUStringToOString(aInfo.GetAdapterVendorID(), RTL_TEXTENCODING_UTF8) +
+            OUStringToOString(aInfo.GetAdapterDeviceID(), RTL_TEXTENCODING_UTF8) +
+            OUStringToOString(aInfo.GetDriverVersion(), RTL_TEXTENCODING_UTF8) +
+            OString::number(DriverBlocklist::GetWindowsVersion());
+#else
+        return rtl::OStringView(reinterpret_cast<const char*>(glGetString(GL_VENDOR))) +
+            reinterpret_cast<const char*>(glGetString(GL_RENDERER)) +
+            reinterpret_cast<const char*>(glGetString(GL_VERSION));
+#endif
+    }
+
     OString getStringDigest( const OUString& rVertexShaderName,
                              const OUString& rFragmentShaderName,
                              const OString& rPreamble )
@@ -206,33 +228,12 @@ namespace
         OString aFragmentShaderSource = getShaderSource( rFragmentShaderName );
 
         // get info about the graphic device
-#if defined( SAL_UNX ) && !defined( MACOSX ) && !defined( IOS )&& !defined( ANDROID )
-        static const X11OpenGLDeviceInfo aInfo;
-        static const OString aDeviceInfo (
-                aInfo.GetOS() +
-                aInfo.GetOSRelease() +
-                aInfo.GetRenderer() +
-                aInfo.GetVendor() +
-                aInfo.GetVersion() );
-#elif defined( _WIN32 )
-        static const WinOpenGLDeviceInfo aInfo;
-        static const OString aDeviceInfo (
-                OUStringToOString( aInfo.GetAdapterVendorID(), RTL_TEXTENCODING_UTF8 ) +
-                OUStringToOString( aInfo.GetAdapterDeviceID(), RTL_TEXTENCODING_UTF8 ) +
-                OUStringToOString( aInfo.GetDriverVersion(), RTL_TEXTENCODING_UTF8 ) +
-                OString::number( aInfo.GetWindowsVersion() ) );
-#else
-        static const OString aDeviceInfo (
-                OString( reinterpret_cast<const char*>(glGetString(GL_VENDOR)) ) +
-                OString( reinterpret_cast<const char*>(glGetString(GL_RENDERER)) ) +
-                OString( reinterpret_cast<const char*>(glGetString(GL_VERSION)) ) );
-#endif
+        static const OString aDeviceInfo (getDeviceInfoString());
 
-        OString aMessage;
-        aMessage += rPreamble;
-        aMessage += aVertexShaderSource;
-        aMessage += aFragmentShaderSource;
-        aMessage += aDeviceInfo;
+        OString aMessage = rPreamble +
+            aVertexShaderSource +
+            aFragmentShaderSource +
+            aDeviceInfo;
 
         return generateMD5(aMessage.getStr(), aMessage.getLength());
     }
@@ -244,14 +245,14 @@ namespace
 
         osl::Directory::create(url);
 
-        return rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8);
+        return OUStringToOString(url, RTL_TEXTENCODING_UTF8);
     }
 
 
     bool writeProgramBinary( const OString& rBinaryFileName,
                              const std::vector<sal_uInt8>& rBinary )
     {
-        osl::File aFile(rtl::OStringToOUString(rBinaryFileName, RTL_TEXTENCODING_UTF8));
+        osl::File aFile(OStringToOUString(rBinaryFileName, RTL_TEXTENCODING_UTF8));
         osl::FileBase::RC eStatus = aFile.open(
                 osl_File_OpenFlag_Write | osl_File_OpenFlag_Create );
 
@@ -280,7 +281,7 @@ namespace
     bool readProgramBinary( const OString& rBinaryFileName,
                             std::vector<sal_uInt8>& rBinary )
     {
-        osl::File aFile( rtl::OStringToOUString( rBinaryFileName, RTL_TEXTENCODING_UTF8 ) );
+        osl::File aFile( OStringToOUString( rBinaryFileName, RTL_TEXTENCODING_UTF8 ) );
         if(aFile.open( osl_File_OpenFlag_Read ) == osl::FileBase::E_None)
         {
             sal_uInt64 nSize = 0;
@@ -305,12 +306,11 @@ namespace
                             const OUString& rGeometryShaderName,
                             const OString& rDigest )
     {
-        OString aFileName;
-        aFileName += getCacheFolder();
-        aFileName += rtl::OUStringToOString( rVertexShaderName, RTL_TEXTENCODING_UTF8 ) + "-";
-        aFileName += rtl::OUStringToOString( rFragmentShaderName, RTL_TEXTENCODING_UTF8 ) + "-";
+        OString aFileName = getCacheFolder() +
+            OUStringToOString( rVertexShaderName, RTL_TEXTENCODING_UTF8 ) + "-" +
+            OUStringToOString( rFragmentShaderName, RTL_TEXTENCODING_UTF8 ) + "-";
         if (!rGeometryShaderName.isEmpty())
-            aFileName += rtl::OUStringToOString( rGeometryShaderName, RTL_TEXTENCODING_UTF8 ) + "-";
+            aFileName += OUStringToOString( rGeometryShaderName, RTL_TEXTENCODING_UTF8 ) + "-";
         aFileName += rDigest + ".bin";
         return aFileName;
     }
@@ -346,7 +346,7 @@ namespace
         GLenum nBinaryFormat = GL_NONE;
 
         glGetProgramiv( nProgramID, GL_PROGRAM_BINARY_LENGTH, &nBinaryLength );
-        if( !( nBinaryLength > 0 ) )
+        if( nBinaryLength <= 0 )
         {
             SAL_WARN( "vcl.opengl", "Binary size is zero" );
             return;
@@ -370,7 +370,7 @@ namespace
     }
 }
 
-rtl::OString OpenGLHelper::GetDigest( const OUString& rVertexShaderName,
+OString OpenGLHelper::GetDigest( const OUString& rVertexShaderName,
                                       const OUString& rFragmentShaderName,
                                       const OString& rPreamble )
 {
@@ -531,37 +531,13 @@ GLint OpenGLHelper::LoadShaders(const OUString& rVertexShaderName,
     return LoadShaders(rVertexShaderName, rFragmentShaderName, OUString(), "", "");
 }
 
-void OpenGLHelper::ConvertBitmapExToRGBATextureBuffer(const BitmapEx& rBitmapEx, sal_uInt8* o_pRGBABuffer, const bool bFlip)
-{
-    long nBmpWidth = rBitmapEx.GetSizePixel().Width();
-    long nBmpHeight = rBitmapEx.GetSizePixel().Height();
-
-    Bitmap aBitmap (rBitmapEx.GetBitmap());
-    AlphaMask aAlpha (rBitmapEx.GetAlpha());
-    Bitmap::ScopedReadAccess pReadAccces( aBitmap );
-    AlphaMask::ScopedReadAccess pAlphaReadAccess( aAlpha );
-    size_t i = 0;
-    for (long ny = (bFlip ? nBmpHeight - 1 : 0); (bFlip ? ny >= 0 : ny < nBmpHeight); (bFlip ? ny-- : ny++))
-    {
-        Scanline pAScan = pAlphaReadAccess ? pAlphaReadAccess->GetScanline(ny) : nullptr;
-        for(long nx = 0; nx < nBmpWidth; nx++)
-        {
-            BitmapColor aCol = pReadAccces->GetColor( ny, nx );
-            o_pRGBABuffer[i++] = aCol.GetRed();
-            o_pRGBABuffer[i++] = aCol.GetGreen();
-            o_pRGBABuffer[i++] = aCol.GetBlue();
-            o_pRGBABuffer[i++] = pAScan ? 255 - *pAScan++ : 255;
-        }
-    }
-}
-
 void OpenGLHelper::renderToFile(long nWidth, long nHeight, const OUString& rFileName)
 {
     OpenGLZone aZone;
 
     std::unique_ptr<sal_uInt8[]> pBuffer(new sal_uInt8[nWidth*nHeight*4]);
-    glReadPixels(0, 0, nWidth, nHeight, GL_BGRA, GL_UNSIGNED_BYTE, pBuffer.get());
-    BitmapEx aBitmap = ConvertBGRABufferToBitmapEx(pBuffer.get(), nWidth, nHeight);
+    glReadPixels(0, 0, nWidth, nHeight, OptimalBufferFormat(), GL_UNSIGNED_BYTE, pBuffer.get());
+    BitmapEx aBitmap = ConvertBufferToBitmapEx(pBuffer.get(), nWidth, nHeight);
     try {
         vcl::PNGWriter aWriter( aBitmap );
         SvFileStream sOutput( rFileName, StreamMode::WRITE );
@@ -574,21 +550,45 @@ void OpenGLHelper::renderToFile(long nWidth, long nHeight, const OUString& rFile
     CHECK_GL_ERROR();
 }
 
-BitmapEx OpenGLHelper::ConvertBGRABufferToBitmapEx(const sal_uInt8* const pBuffer, long nWidth, long nHeight)
+GLenum OpenGLHelper::OptimalBufferFormat()
+{
+#ifdef _WIN32
+    return GL_BGRA; // OpenGLSalBitmap is internally ScanlineFormat::N24BitTcBgr
+#else
+    return GL_RGBA; // OpenGLSalBitmap is internally ScanlineFormat::N24BitTcRgb
+#endif
+}
+
+BitmapEx OpenGLHelper::ConvertBufferToBitmapEx(const sal_uInt8* const pBuffer, long nWidth, long nHeight)
 {
     assert(pBuffer);
     Bitmap aBitmap( Size(nWidth, nHeight), 24 );
     AlphaMask aAlpha( Size(nWidth, nHeight) );
 
     {
-        Bitmap::ScopedWriteAccess pWriteAccess( aBitmap );
-        AlphaMask::ScopedWriteAccess pAlphaWriteAccess( aAlpha );
+        BitmapScopedWriteAccess pWriteAccess( aBitmap );
+        AlphaScopedWriteAccess pAlphaWriteAccess( aAlpha );
+#ifdef _WIN32
+        assert(pWriteAccess->GetScanlineFormat() == ScanlineFormat::N24BitTcBgr);
+        assert(pWriteAccess->IsTopDown());
+        assert(pAlphaWriteAccess->IsTopDown());
+#else
+        assert(pWriteAccess->GetScanlineFormat() == ScanlineFormat::N24BitTcRgb);
+        assert(!pWriteAccess->IsTopDown());
+        assert(!pAlphaWriteAccess->IsTopDown());
+#endif
+        assert(pAlphaWriteAccess->GetScanlineFormat() == ScanlineFormat::N8BitPal);
 
         size_t nCurPos = 0;
         for( long y = 0; y < nHeight; ++y)
         {
+#ifdef _WIN32
             Scanline pScan = pWriteAccess->GetScanline(y);
             Scanline pAlphaScan = pAlphaWriteAccess->GetScanline(y);
+#else
+            Scanline pScan = pWriteAccess->GetScanline(nHeight-1-y);
+            Scanline pAlphaScan = pAlphaWriteAccess->GetScanline(nHeight-1-y);
+#endif
             for( long x = 0; x < nWidth; ++x )
             {
                 *pScan++ = pBuffer[nCurPos];
@@ -664,7 +664,7 @@ std::ostream& operator<<(std::ostream& rStrm, const glm::mat4& rMatrix)
 }
 
 void OpenGLHelper::createFramebuffer(long nWidth, long nHeight, GLuint& nFramebufferId,
-        GLuint& nRenderbufferDepthId, GLuint& nRenderbufferColorId, bool bRenderbuffer)
+        GLuint& nRenderbufferDepthId, GLuint& nRenderbufferColorId)
 {
     OpenGLZone aZone;
 
@@ -674,29 +674,18 @@ void OpenGLHelper::createFramebuffer(long nWidth, long nHeight, GLuint& nFramebu
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, nWidth, nHeight);
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
-    if(bRenderbuffer)
-    {
-        // create a renderbuffer for color attachment
-        glGenRenderbuffers(1, &nRenderbufferColorId);
-        glBindRenderbuffer(GL_RENDERBUFFER, nRenderbufferColorId);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, nWidth, nHeight);
-        glBindRenderbuffer(GL_RENDERBUFFER, 0);
-    }
-    else
-    {
-        glGenTextures(1, &nRenderbufferColorId);
-        glBindTexture(GL_TEXTURE_2D, nRenderbufferColorId);
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, nWidth, nHeight, 0,
-                             GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-        glBindTexture(GL_TEXTURE_2D, 0);
+    glGenTextures(1, &nRenderbufferColorId);
+    glBindTexture(GL_TEXTURE_2D, nRenderbufferColorId);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, nWidth, nHeight, 0,
+                         GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                GL_TEXTURE_2D, nRenderbufferColorId, 0);
-    }
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+            GL_TEXTURE_2D, nRenderbufferColorId, 0);
 
     // create a framebuffer object and attach renderbuffer
     glGenFramebuffers(1, &nFramebufferId);
@@ -764,56 +753,80 @@ void OpenGLHelper::checkGLError(const char* pFile, size_t nLine)
     }
 }
 
-bool OpenGLHelper::isDeviceBlacklisted()
+bool OpenGLHelper::isDeviceDenylisted()
 {
     static bool bSet = false;
-    static bool bBlacklisted = true; // assume the worst
+    static bool bDenylisted = true; // assume the worst
     if (!bSet)
     {
         OpenGLZone aZone;
 
-#if defined UNX && !defined MACOSX && !defined IOS && !defined ANDROID
+#if defined UNX && !defined MACOSX && !defined IOS && !defined ANDROID && !defined HAIKU
         X11OpenGLDeviceInfo aInfo;
-        bBlacklisted = aInfo.isDeviceBlocked();
-        SAL_INFO("vcl.opengl", "blacklisted: " << bBlacklisted);
+        bDenylisted = aInfo.isDeviceBlocked();
+        SAL_INFO("vcl.opengl", "denylisted: " << bDenylisted);
 #elif defined( _WIN32 )
         WinOpenGLDeviceInfo aInfo;
-        bBlacklisted = aInfo.isDeviceBlocked();
+        bDenylisted = aInfo.isDeviceBlocked();
 
-        if (aInfo.GetWindowsVersion() == 0x00060001 && /* Windows 7 */
+        if (DriverBlocklist::GetWindowsVersion() == 0x00060001 && /* Windows 7 */
             (aInfo.GetAdapterVendorID() == "0x1002" || aInfo.GetAdapterVendorID() == "0x1022")) /* AMD */
         {
             SAL_INFO("vcl.opengl", "Relaxing watchdog timings.");
             OpenGLZone::relaxWatchdogTimings();
         }
 #else
-        bBlacklisted = false;
+        bDenylisted = false;
 #endif
         bSet = true;
     }
 
-    return bBlacklisted;
+    return bDenylisted;
 }
 
 bool OpenGLHelper::supportsVCLOpenGL()
 {
     static bool bDisableGL = !!getenv("SAL_DISABLEGL");
-    bool bBlacklisted = isDeviceBlacklisted();
+    bool bDenylisted = isDeviceDenylisted();
 
-    return !bDisableGL && !bBlacklisted;
+    return !bDisableGL && !bDenylisted;
 }
 
-void OpenGLZone::enter() { gnEnterCount++; }
-void OpenGLZone::leave() { gnLeaveCount++; }
+namespace
+{
 
-namespace {
-    static volatile bool gbWatchdogFiring = false;
-    static osl::Condition* gpWatchdogExit = nullptr;
-    static WatchdogTimings gWatchdogTimings;
-    static rtl::Reference<OpenGLWatchdogThread> gxWatchdog;
-}
+enum class CrashWatchdogTimingMode
+{
+    NORMAL,
+    SHADER_COMPILE
+};
 
-WatchdogTimings::WatchdogTimings()
+class CrashWatchdogTimings
+{
+private:
+    std::vector<CrashWatchdogTimingsValues> maTimingValues;
+    std::atomic<bool> mbRelaxed;
+
+public:
+    CrashWatchdogTimings();
+
+    void setRelax(bool bRelaxed)
+    {
+        mbRelaxed = bRelaxed;
+    }
+
+    CrashWatchdogTimingsValues const & getWatchdogTimingsValues(CrashWatchdogTimingMode eMode)
+    {
+        size_t index = (eMode == CrashWatchdogTimingMode::SHADER_COMPILE) ? 1 : 0;
+        index = mbRelaxed ? index + 2 : index;
+
+        return maTimingValues[index];
+    }
+};
+
+CrashWatchdogTimings gWatchdogTimings;
+
+CrashWatchdogTimings::CrashWatchdogTimings()
     : maTimingValues{
                      {{6,   20} /* 1.5s,  5s */, {20, 120} /*  5s, 30s */,
                       {60, 240} /*  15s, 60s */, {60, 240} /* 15s, 60s */}
@@ -822,105 +835,7 @@ WatchdogTimings::WatchdogTimings()
 {
 }
 
-OpenGLWatchdogThread::OpenGLWatchdogThread()
-    : salhelper::Thread("OpenGL Watchdog")
-{
-}
-
-void OpenGLWatchdogThread::execute()
-{
-    int nUnchanged = 0; // how many unchanged nEnters
-    TimeValue aQuarterSecond(0, 1000*1000*1000*0.25);
-    bool bAbortFired = false;
-
-    do {
-        sal_uInt64 nLastEnters = OpenGLZone::gnEnterCount;
-
-        gpWatchdogExit->wait(&aQuarterSecond);
-
-        if (OpenGLZone::isInZone())
-        {
-            // The shader compiler can take a long time, first time.
-            WatchdogTimingMode eMode = gbInShaderCompile ? WatchdogTimingMode::SHADER_COMPILE : WatchdogTimingMode::NORMAL;
-            WatchdogTimingsValues aTimingValues = gWatchdogTimings.getWatchdogTimingsValues(eMode);
-
-            if (nLastEnters == OpenGLZone::gnEnterCount)
-                nUnchanged++;
-            else
-                nUnchanged = 0;
-            SAL_INFO("vcl.opengl", "GL watchdog - unchanged " <<
-                     nUnchanged << " enter count " <<
-                     OpenGLZone::gnEnterCount << " type " <<
-                     (eMode == WatchdogTimingMode::SHADER_COMPILE ? "in shader" : "normal gl") <<
-                     "breakpoints mid: " << aTimingValues.mnDisableEntries <<
-                     " max " << aTimingValues.mnAbortAfter);
-
-            // Not making progress
-            if (nUnchanged >= aTimingValues.mnDisableEntries)
-            {
-                static bool bFired = false;
-                if (!bFired)
-                {
-                    gbWatchdogFiring = true;
-                    SAL_WARN("vcl.opengl", "Watchdog triggered: hard disable GL");
-                    OpenGLZone::hardDisable();
-                    gbWatchdogFiring = false;
-                }
-                bFired = true;
-
-                // we can hang using VCL in the abort handling -> be impatient
-                if (bAbortFired)
-                {
-                    SAL_WARN("vcl.opengl", "Watchdog gave up: hard exiting");
-                    _exit(1);
-                }
-            }
-
-            // Not making even more progress
-            if (nUnchanged >= aTimingValues.mnAbortAfter)
-            {
-                if (!bAbortFired)
-                {
-                    SAL_WARN("vcl.opengl", "Watchdog gave up: aborting");
-                    gbWatchdogFiring = true;
-                    std::abort();
-                }
-                // coverity[dead_error_line] - we might have caught SIGABRT and failed to exit yet
-                bAbortFired = true;
-            }
-        }
-        else
-        {
-            nUnchanged = 0;
-        }
-    } while (!gpWatchdogExit->check());
-}
-
-void OpenGLWatchdogThread::start()
-{
-    assert (gxWatchdog == nullptr);
-    gpWatchdogExit = new osl::Condition();
-    gxWatchdog.set(new OpenGLWatchdogThread());
-    gxWatchdog->launch();
-}
-
-void OpenGLWatchdogThread::stop()
-{
-    if (gbWatchdogFiring)
-        return; // in watchdog thread
-
-    if (gpWatchdogExit)
-        gpWatchdogExit->set();
-
-    if (gxWatchdog.is())
-    {
-        gxWatchdog->join();
-        gxWatchdog.clear();
-    }
-
-    delete gpWatchdogExit;
-    gpWatchdogExit = nullptr;
-}
+} // namespace
 
 /**
  * Called from a signal handler or watchdog thread if we get
@@ -930,29 +845,43 @@ void OpenGLZone::hardDisable()
 {
     // protect ourselves from double calling etc.
     static bool bDisabled = false;
-    if (!bDisabled)
-    {
-        bDisabled = true;
+    if (bDisabled)
+        return;
 
-        // Disable the OpenGL support
-        std::shared_ptr<comphelper::ConfigurationChanges> xChanges(
-            comphelper::ConfigurationChanges::create());
-        officecfg::Office::Common::VCL::UseOpenGL::set(false,  xChanges);
-        xChanges->commit();
+    bDisabled = true;
 
-        // Force synchronous config write
-        css::uno::Reference< css::util::XFlushable >(
-            css::configuration::theDefaultProvider::get(
-                comphelper::getProcessComponentContext()),
-            css::uno::UNO_QUERY_THROW)->flush();
+    // Disable the OpenGL support
+    std::shared_ptr<comphelper::ConfigurationChanges> xChanges(
+        comphelper::ConfigurationChanges::create());
+    officecfg::Office::Common::VCL::UseOpenGL::set(false,  xChanges);
+    xChanges->commit();
 
-        OpenGLWatchdogThread::stop();
-    }
+    // Force synchronous config write
+    css::uno::Reference< css::util::XFlushable >(
+        css::configuration::theDefaultProvider::get(
+            comphelper::getProcessComponentContext()),
+        css::uno::UNO_QUERY_THROW)->flush();
 }
 
 void OpenGLZone::relaxWatchdogTimings()
 {
     gWatchdogTimings.setRelax(true);
+}
+
+void OpenGLZone::checkDebug( int nUnchanged, const CrashWatchdogTimingsValues& aTimingValues )
+{
+    SAL_INFO("vcl.watchdog", "GL watchdog - unchanged "
+                                 << nUnchanged << " enter count " << enterCount() << " type "
+                                 << (gbInShaderCompile ? "in shader" : "normal gl")
+                                 << " breakpoints mid: " << aTimingValues.mnDisableEntries
+                                 << " max " << aTimingValues.mnAbortAfter);
+}
+
+const CrashWatchdogTimingsValues& OpenGLZone::getCrashWatchdogTimingsValues()
+{
+    // The shader compiler can take a long time, first time.
+    CrashWatchdogTimingMode eMode = gbInShaderCompile ? CrashWatchdogTimingMode::SHADER_COMPILE : CrashWatchdogTimingMode::NORMAL;
+    return gWatchdogTimings.getWatchdogTimingsValues(eMode);
 }
 
 OpenGLVCLContextZone::OpenGLVCLContextZone()
@@ -975,8 +904,27 @@ PreDefaultWinNoOpenGLZone::~PreDefaultWinNoOpenGLZone()
     bTempOpenGLDisabled = false;
 }
 
+static void reapGlxTest()
+{
+    // Reap the glxtest child, or it'll stay around as a zombie,
+    // as X11OpenGLDeviceInfo::GetData() will not get called.
+    static bool bTestReaped = false;
+    if(!bTestReaped)
+    {
+        reap_glxtest_process();
+        bTestReaped = true;
+    }
+}
+
 bool OpenGLHelper::isVCLOpenGLEnabled()
 {
+    // Skia always takes precedence if enabled
+    if( SkiaHelper::isVCLSkiaEnabled())
+    {
+        reapGlxTest();
+        return false;
+    }
+
     /**
      * The !bSet part should only be called once! Changing the results in the same
      * run will mix OpenGL and normal rendering.
@@ -986,12 +934,12 @@ bool OpenGLHelper::isVCLOpenGLEnabled()
     static bool bEnable = false;
     static bool bForceOpenGL = false;
 
-    // If we are a console app, then we don't use OpenGL
-    if ( Application::IsConsoleOnly() )
+    // No hardware rendering, so no OpenGL
+    if (Application::IsBitmapRendering())
         return false;
 
     //tdf#106155, disable GL while loading certain bitmaps needed for the initial toplevel windows
-    //under raw X (kde4) vclplug
+    //under raw X (kde) vclplug
     if (bTempOpenGLDisabled)
         return false;
 
@@ -1002,9 +950,7 @@ bool OpenGLHelper::isVCLOpenGLEnabled()
     /*
      * There are a number of cases that these environment variables cover:
      *  * SAL_FORCEGL forces OpenGL independent of any other option
-     *  * SAL_DISABLEGL or a blacklisted driver avoid the use of OpenGL if SAL_FORCEGL is not set
-     *  * SAL_ENABLEGL overrides VCL_HIDE_WINDOWS and the configuration variable
-     *  * the configuration variable is checked if no environment variable is set
+     *  * SAL_DISABLEGL or a denylisted driver avoid the use of OpenGL if SAL_FORCEGL is not set
      */
 
     bSet = true;
@@ -1023,10 +969,7 @@ bool OpenGLHelper::isVCLOpenGLEnabled()
 
         bEnable = bEnableGLEnv;
 
-        static bool bDuringBuild = getenv("VCL_HIDE_WINDOWS");
-        if (bDuringBuild && !bEnable /* env. enable overrides */)
-            bEnable = false;
-        else if (officecfg::Office::Common::VCL::UseOpenGL::get())
+        if (officecfg::Office::Common::VCL::UseOpenGL::get())
             bEnable = true;
 
         // Force disable in safe mode
@@ -1037,11 +980,11 @@ bool OpenGLHelper::isVCLOpenGLEnabled()
     }
 
     if (bRet)
-    {
-        if (!getenv("SAL_DISABLE_GL_WATCHDOG"))
-            OpenGLWatchdogThread::start();
-    }
-    CrashReporter::AddKeyValue("UseOpenGL", OUString::boolean(bRet));
+        WatchdogThread::start();
+    else
+        reapGlxTest();
+
+    CrashReporter::addKeyValue("UseOpenGL", OUString::boolean(bRet), CrashReporter::Write);
 
     return bRet;
 }
@@ -1053,12 +996,14 @@ bool OpenGLWrapper::isVCLOpenGLEnabled()
 
 void OpenGLHelper::debugMsgStream(std::ostringstream const &pStream)
 {
-    debugMsgPrint(0, "%x: %s", osl_getThreadIdentifier(nullptr), pStream.str().c_str());
+    debugMsgPrint(
+        0, "%" SAL_PRIxUINT32 ": %s", osl_getThreadIdentifier(nullptr), pStream.str().c_str());
 }
 
 void OpenGLHelper::debugMsgStreamWarn(std::ostringstream const &pStream)
 {
-    debugMsgPrint(1, "%x: %s", osl_getThreadIdentifier(nullptr), pStream.str().c_str());
+    debugMsgPrint(
+        1, "%" SAL_PRIxUINT32 ": %s", osl_getThreadIdentifier(nullptr), pStream.str().c_str());
 }
 
 void OpenGLHelper::debugMsgPrint(const int nType, const char *pFormat, ...)

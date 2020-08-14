@@ -17,25 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ItemConverter.hxx"
-#include "macros.hxx"
+#include <ItemConverter.hxx>
 #include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <osl/diagnose.h>
 #include <svl/itempool.hxx>
-#include <svl/itemprop.hxx>
 #include <svl/itemiter.hxx>
 #include <svl/whiter.hxx>
 #include <svx/svxids.hrc>
+#include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 using namespace ::com::sun::star;
 
-namespace chart { namespace wrapper {
+namespace chart::wrapper {
 
 ItemConverter::ItemConverter(
     const uno::Reference< beans::XPropertySet > & rPropertySet,
     SfxItemPool& rItemPool ) :
         m_xPropertySet( rPropertySet ),
-        m_xPropertySetInfo( nullptr ),
         m_rItemPool( rItemPool )
 {
     resetPropertySet( m_xPropertySet );
@@ -49,18 +49,18 @@ ItemConverter::~ItemConverter()
 void ItemConverter::resetPropertySet(
     const uno::Reference< beans::XPropertySet > & xPropSet )
 {
-    if( xPropSet.is())
-    {
-        stopAllComponentListening();
-        m_xPropertySet = xPropSet;
-        m_xPropertySetInfo = m_xPropertySet->getPropertySetInfo();
+    if( !xPropSet.is())
+        return;
 
-        uno::Reference< lang::XComponent > xComp( m_xPropertySet, uno::UNO_QUERY );
-        if( xComp.is())
-        {
-            // method of base class ::utl::OEventListenerAdapter
-            startComponentListening( xComp );
-        }
+    stopAllComponentListening();
+    m_xPropertySet = xPropSet;
+    m_xPropertySetInfo = m_xPropertySet->getPropertySetInfo();
+
+    uno::Reference< lang::XComponent > xComp( m_xPropertySet, uno::UNO_QUERY );
+    if( xComp.is())
+    {
+        // method of base class ::utl::OEventListenerAdapter
+        startComponentListening( xComp );
     }
 }
 
@@ -85,9 +85,9 @@ void ItemConverter::FillItemSet( SfxItemSet & rOutItemSet ) const
 
     while( (*pRanges) != 0)
     {
-        sal_uInt16 nBeg = (*pRanges);
+        sal_uInt16 nBeg = *pRanges;
         ++pRanges;
-        sal_uInt16 nEnd = (*pRanges);
+        sal_uInt16 nEnd = *pRanges;
         ++pRanges;
 
         OSL_ASSERT( nBeg <= nEnd );
@@ -96,33 +96,27 @@ void ItemConverter::FillItemSet( SfxItemSet & rOutItemSet ) const
             if( GetItemProperty( nWhich, aProperty ))
             {
                 // put the Property into the itemset
-                SfxPoolItem * pItem = rPool.GetDefaultItem( nWhich ).Clone();
+                std::unique_ptr<SfxPoolItem> pItem(rPool.GetDefaultItem( nWhich ).Clone());
 
                 if( pItem )
                 {
                     try
                     {
-                        if( ! pItem->PutValue( m_xPropertySet->getPropertyValue( aProperty.first ),
+                        if( pItem->PutValue( m_xPropertySet->getPropertyValue( aProperty.first ),
                                                aProperty.second // nMemberId
                                 ))
                         {
-                            delete pItem;
-                        }
-                        else
-                        {
                             pItem->SetWhich(nWhich);
-                            rOutItemSet.Put( *pItem );
-                            delete pItem;
+                            rOutItemSet.Put( std::move(pItem) );
                         }
                     }
-                    catch( const beans::UnknownPropertyException &ex )
+                    catch( const beans::UnknownPropertyException & )
                     {
-                        delete pItem;
-                        SAL_WARN( "chart2", ex.Message << " - unknown Property: " << aProperty.first);
+                        TOOLS_WARN_EXCEPTION( "chart2", "unknown Property: " << aProperty.first);
                     }
-                    catch( const uno::Exception &ex )
+                    catch( const uno::Exception & )
                     {
-                        ASSERT_EXCEPTION( ex );
+                        DBG_UNHANDLED_EXCEPTION("chart2");
                     }
                 }
             }
@@ -132,9 +126,9 @@ void ItemConverter::FillItemSet( SfxItemSet & rOutItemSet ) const
                 {
                     FillSpecialItem( nWhich, rOutItemSet );
                 }
-                catch( const uno::Exception &ex )
+                catch( const uno::Exception & )
                 {
-                    ASSERT_EXCEPTION( ex );
+                    DBG_UNHANDLED_EXCEPTION("chart2");
                 }
             }
         }
@@ -160,11 +154,10 @@ bool ItemConverter::ApplyItemSet( const SfxItemSet & rItemSet )
 
     bool bItemsChanged = false;
     SfxItemIter aIter( rItemSet );
-    const SfxPoolItem * pItem = aIter.FirstItem();
     tPropertyNameWithMemberId aProperty;
     uno::Any aValue;
 
-    while( pItem )
+    for (const SfxPoolItem* pItem = aIter.GetCurItem(); pItem; pItem = aIter.NextItem())
     {
         if( rItemSet.GetItemState( pItem->Which(), false ) == SfxItemState::SET )
         {
@@ -180,13 +173,13 @@ bool ItemConverter::ApplyItemSet( const SfxItemSet & rItemSet )
                         bItemsChanged = true;
                     }
                 }
-                catch( const beans::UnknownPropertyException &ex )
+                catch( const beans::UnknownPropertyException & )
                 {
-                    SAL_WARN( "chart2", ex.Message << " - unknown Property: " << aProperty.first);
+                    TOOLS_WARN_EXCEPTION( "chart2", "unknown Property: " << aProperty.first);
                 }
-                catch( const uno::Exception &ex )
+                catch( const uno::Exception & )
                 {
-                    SAL_WARN( "chart2", ex.Message );
+                    TOOLS_WARN_EXCEPTION( "chart2", "" );
                 }
             }
             else
@@ -194,7 +187,6 @@ bool ItemConverter::ApplyItemSet( const SfxItemSet & rItemSet )
                 bItemsChanged = ApplySpecialItem( pItem->Which(), rItemSet ) || bItemsChanged;
             }
         }
-        pItem = aIter.NextItem();
     }
 
     return bItemsChanged;
@@ -226,6 +218,6 @@ void ItemConverter::InvalidateUnequalItems( SfxItemSet  &rDestSet, const SfxItem
     }
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

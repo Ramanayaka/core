@@ -24,13 +24,10 @@
 #include <unotools/confignode.hxx>
 
 #include <unordered_map>
-#include <vector>
 
-namespace connectivity
-{
-    namespace mork
+namespace connectivity::mork
     {
-        class SAL_DLLPUBLIC_EXPORT OColumnAlias
+        class OColumnAlias
         {
         public:
             struct AliasEntry
@@ -43,13 +40,13 @@ namespace connectivity
                     ,columnPosition( 0 )
                 {
                 }
-                AliasEntry( const sal_Char* _programmaticAsciiName, size_t _columnPosition )
+                AliasEntry( const char* _programmaticAsciiName, size_t _columnPosition )
                     :programmaticAsciiName( _programmaticAsciiName )
                     ,columnPosition( _columnPosition )
                 {
                 }
             };
-            typedef std::unordered_map< OUString, AliasEntry, OUStringHash > AliasMap;
+            typedef std::unordered_map< OUString, AliasEntry > AliasMap;
 
         private:
             AliasMap    m_aAliasMap;
@@ -66,7 +63,7 @@ namespace connectivity
         private:
             void initialize( const css::uno::Reference< css::lang::XMultiServiceFactory >& _rxORB );
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_MORK_MCOLUMNALIAS_HXX
 

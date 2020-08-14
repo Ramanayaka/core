@@ -19,18 +19,18 @@
 #ifndef INCLUDED_I18NPOOL_INC_INPUTSEQUENCECHECKER_HXX
 #define INCLUDED_I18NPOOL_INC_INPUTSEQUENCECHECKER_HXX
 
-#include <comphelper/processfactory.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/i18n/XExtendedInputSequenceChecker.hpp>
 
 #include <vector>
+#include <memory>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace com::sun::star::uno { class XComponentContext; }
+
+namespace i18npool {
 
 
-//  class InputSequenceCheckerImpl
 
 class InputSequenceCheckerImpl : public cppu::WeakImplHelper
 <
@@ -55,25 +55,25 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
 private:
-    const sal_Char *serviceName;
+    const char *serviceName;
 
     struct lookupTableItem {
-        lookupTableItem(const sal_Char* rLanguage, const css::uno::Reference < css::i18n::XExtendedInputSequenceChecker >& rxISC) :
+        lookupTableItem(const char* rLanguage, const css::uno::Reference < css::i18n::XExtendedInputSequenceChecker >& rxISC) :
             aLanguage(rLanguage), xISC(rxISC) {}
-        const sal_Char* aLanguage;
+        const char* aLanguage;
         css::uno::Reference < css::i18n::XExtendedInputSequenceChecker > xISC;
     };
-    std::vector<lookupTableItem*> lookupTable;
+    std::vector<std::unique_ptr<lookupTableItem>> lookupTable;
     lookupTableItem *cachedItem;
 
     css::uno::Reference < css::uno::XComponentContext > m_xContext;
 
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::i18n::XExtendedInputSequenceChecker >& SAL_CALL getInputSequenceChecker(sal_Char* rLanguage);
-    static sal_Char* SAL_CALL getLanguageByScripType(sal_Unicode cChar, sal_Unicode nChar);
+    css::uno::Reference< css::i18n::XExtendedInputSequenceChecker >& getInputSequenceChecker(char const * rLanguage);
+    static char* getLanguageByScripType(sal_Unicode cChar, sal_Unicode nChar);
 };
 
-} } } }
+}
 
 #endif // INCLUDED_I18NPOOL_INC_INPUTSEQUENCECHECKER_HXX
 

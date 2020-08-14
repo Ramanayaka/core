@@ -70,7 +70,7 @@ service TextRangeContentProperties
     /** may contain a footnote. */
     [optional, readonly, property] com::sun::star::text::XFootnote Footnote;
 
-    /** may contain a endnote. */
+    /** may contain an endnote. */
     [optional, readonly, property] com::sun::star::text::XFootnote Endnote;
 
     /** may contain a nested text content.
@@ -80,6 +80,12 @@ service TextRangeContentProperties
      */
     [optional, readonly, property] com::sun::star::text::XTextContent
         NestedTextContent;
+
+    /** Paragraph for the start of this range.
+
+        @since LibreOffice 6.0
+     */
+    [optional, readonly, property] com::sun::star::text::XTextContent TextParagraph;
 
 };
 

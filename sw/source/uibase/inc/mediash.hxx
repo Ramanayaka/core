@@ -19,7 +19,11 @@
 #ifndef INCLUDED_SW_SOURCE_UIBASE_INC_MEDIASH_HXX
 #define INCLUDED_SW_SOURCE_UIBASE_INC_MEDIASH_HXX
 
-#include "frmsh.hxx"
+#include <sfx2/module.hxx>
+#include <sfx2/shell.hxx>
+
+#include "basesh.hxx"
+#include <shellid.hxx>
 
 class SwMediaShell: public SwBaseShell
 {
@@ -31,7 +35,7 @@ private:
     static void InitInterface_Impl();
 
 public:
-    void    ExecMedia(SfxRequest &);
+    void    ExecMedia(SfxRequest const &);
     void    GetMediaState(SfxItemSet &);
 
             SwMediaShell(SwView &rView);

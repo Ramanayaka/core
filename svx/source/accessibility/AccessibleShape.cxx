@@ -18,22 +18,18 @@
  */
 
 #include <svx/AccessibleShape.hxx>
-#include "svx/DescriptionGenerator.hxx"
 #include <svx/AccessibleShapeInfo.hxx>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/accessibility/AccessibleTextType.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleRelationType.hpp>
+#include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/drawing/XShapeDescriptor.hpp>
+#include <com/sun/star/document/XShapeEventBroadcaster.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/drawing/FillStyle.hpp>
 #include <com/sun/star/text/XText.hpp>
-#include <editeng/outlobj.hxx>
-#include <rtl/ref.hxx>
+#include <sal/log.hxx>
 #include <editeng/unoedsrc.hxx>
 #include <svx/AccessibleTextHelper.hxx>
 #include <svx/ChildrenManager.hxx>
@@ -41,28 +37,23 @@
 #include <svx/IAccessibleViewForwarder.hxx>
 #include <svx/unoshtxt.hxx>
 #include <svx/svdobj.hxx>
-#include <svx/svdmodel.hxx>
 #include <svx/unoapi.hxx>
 #include <svx/svdpage.hxx>
-#include <com/sun/star/uno/Exception.hpp>
 #include <svx/ShapeTypeHandler.hxx>
 #include <svx/SvxShapeTypes.hxx>
 
-#include "accessibility.hrc"
-#include "svx/svdstr.hrc"
-#include <svx/dialmgr.hxx>
 #include <vcl/svapp.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
 #include <svx/svdview.hxx>
+#include <tools/diagnose_ex.h>
 #include <cppuhelper/queryinterface.hxx>
-#include <comphelper/servicehelper.hxx>
+#include <comphelper/sequence.hxx>
 #include "AccessibleEmptyEditSource.hxx"
 
 #include <algorithm>
 #include <memory>
-#include <utility>
-#include <o3tl/make_unique.hxx>
+
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 using ::com::sun::star::uno::Reference;
@@ -106,11 +97,9 @@ AccessibleShape::AccessibleShape (
     const AccessibleShapeInfo& rShapeInfo,
     const AccessibleShapeTreeInfo& rShapeTreeInfo)
     : AccessibleContextBase (rShapeInfo.mxParent,AccessibleRole::SHAPE),
-      mpChildrenManager(nullptr),
       mxShape (rShapeInfo.mxShape),
       maShapeTreeInfo (rShapeTreeInfo),
       m_nIndexInParent(-1),
-      mpText (nullptr),
       mpParent (rShapeInfo.mpChildrenManager)
 {
     m_pShape = GetSdrObjectFromXShape(mxShape);
@@ -119,8 +108,8 @@ AccessibleShape::AccessibleShape (
 
 AccessibleShape::~AccessibleShape()
 {
-    delete mpChildrenManager;
-    delete mpText;
+    mpChildrenManager.reset();
+    mpText.reset();
     SAL_INFO("svx", "~AccessibleShape");
 
     // Unregistering from the various broadcasters should be unnecessary
@@ -136,62 +125,51 @@ void AccessibleShape::Init()
     // Create a children manager when this shape has children of its own.
     Reference<drawing::XShapes> xShapes (mxShape, uno::UNO_QUERY);
     if (xShapes.is() && xShapes->getCount() > 0)
-        mpChildrenManager = new ChildrenManager (
-            this, xShapes, maShapeTreeInfo, *this);
+        mpChildrenManager.reset( new ChildrenManager (
+            this, xShapes, maShapeTreeInfo, *this) );
     if (mpChildrenManager != nullptr)
         mpChildrenManager->Update();
 
     // Register at model as document::XEventListener.
-    if (maShapeTreeInfo.GetModelBroadcaster().is())
-        maShapeTreeInfo.GetModelBroadcaster()->addEventListener (
-            static_cast<document::XEventListener*>(this));
+    if (mxShape.is() && maShapeTreeInfo.GetModelBroadcaster().is())
+        maShapeTreeInfo.GetModelBroadcaster()->addShapeEventListener(mxShape,
+            static_cast<document::XShapeEventListener*>(this));
 
     // Beware! Here we leave the paths of the UNO API and descend into the
     // depths of the core.  Necessary for making the edit engine
     // accessible.
     Reference<text::XText> xText (mxShape, uno::UNO_QUERY);
-    if (xText.is())
+    if (!xText.is())
+        return;
+
+    SdrView* pView = maShapeTreeInfo.GetSdrView ();
+    const vcl::Window* pWindow = maShapeTreeInfo.GetWindow ();
+    if (!(pView != nullptr && pWindow != nullptr && mxShape.is()))
+        return;
+
+    // #107948# Determine whether shape text is empty
+    SdrObject* pSdrObject = GetSdrObjectFromXShape(mxShape);
+    if( !pSdrObject )
+        return;
+
+    SdrTextObj* pTextObj = dynamic_cast<SdrTextObj*>( pSdrObject  );
+    const bool hasOutlinerParaObject = (pTextObj && pTextObj->CanCreateEditOutlinerParaObject()) || (pSdrObject->GetOutlinerParaObject() != nullptr);
+
+    // create AccessibleTextHelper to handle this shape's text
+    if( !hasOutlinerParaObject )
     {
-        SdrView* pView = maShapeTreeInfo.GetSdrView ();
-        const vcl::Window* pWindow = maShapeTreeInfo.GetWindow ();
-        if (pView != nullptr && pWindow != nullptr && mxShape.is())
-        {
-            // #107948# Determine whether shape text is empty
-            SdrObject* pSdrObject = GetSdrObjectFromXShape(mxShape);
-            if( pSdrObject )
-            {
-                SdrTextObj* pTextObj = dynamic_cast<SdrTextObj*>( pSdrObject  );
-                OutlinerParaObject* pOutlinerParaObject = nullptr;
-
-                if( pTextObj )
-                    pOutlinerParaObject = pTextObj->GetEditOutlinerParaObject(); // Get the OutlinerParaObject if text edit is active
-
-                bool bOwnParaObj = pOutlinerParaObject != nullptr;
-
-                if( !pOutlinerParaObject && pSdrObject )
-                    pOutlinerParaObject = pSdrObject->GetOutlinerParaObject();
-
-                // create AccessibleTextHelper to handle this shape's text
-                if( !pOutlinerParaObject )
-                {
-                    // empty text -> use proxy edit source to delay creation of EditEngine
-                    mpText = new AccessibleTextHelper( o3tl::make_unique<AccessibleEmptyEditSource >(*pSdrObject, *pView, *pWindow) );
-                }
-                else
-                {
-                    // non-empty text -> use full-fledged edit source right away
-                    mpText = new AccessibleTextHelper( o3tl::make_unique<SvxTextEditSource >(*pSdrObject, nullptr, *pView, *pWindow) );
-                }
-                if( pWindow->HasFocus() )
-                    mpText->SetFocus();
-
-                if( bOwnParaObj )
-                    delete pOutlinerParaObject;
-
-                mpText->SetEventSource(this);
-            }
-        }
+        // empty text -> use proxy edit source to delay creation of EditEngine
+        mpText.reset( new AccessibleTextHelper( std::make_unique<AccessibleEmptyEditSource >(*pSdrObject, *pView, *pWindow) ) );
     }
+    else
+    {
+        // non-empty text -> use full-fledged edit source right away
+        mpText.reset( new AccessibleTextHelper( std::make_unique<SvxTextEditSource >(*pSdrObject, nullptr, *pView, *pWindow) ) );
+    }
+    if( pWindow->HasFocus() )
+        mpText->SetFocus();
+
+    mpText->SetEventSource(this);
 }
 
 
@@ -304,7 +282,7 @@ bool AccessibleShape::GetState (sal_Int16 aState)
 // OverWrite the parent's getAccessibleName method
 OUString SAL_CALL AccessibleShape::getAccessibleName()
 {
-        ThrowIfDisposed ();
+    ThrowIfDisposed ();
     if (m_pShape && !m_pShape->GetTitle().isEmpty())
         return CreateAccessibleName() + " " + m_pShape->GetTitle();
     else
@@ -317,7 +295,7 @@ OUString SAL_CALL AccessibleShape::getAccessibleDescription()
     if( m_pShape && !m_pShape->GetDescription().isEmpty())
         return m_pShape->GetDescription() ;
     else
-        return OUString(" ");
+        return " ";
 }
 
 // XAccessibleContext
@@ -388,7 +366,7 @@ uno::Reference<XAccessibleRelationSet> SAL_CALL
 
     //this mxshape is the captioned shape
     uno::Sequence< uno::Reference< uno::XInterface > > aSequence { mpParent->GetAccessibleCaption(mxShape) };
-    if(aSequence[0].get())
+    if(aSequence[0])
     {
         pRelationSet->AddRelation(
                                   AccessibleRelation( AccessibleRelationType::DESCRIBED_BY, aSequence ) );
@@ -406,65 +384,61 @@ uno::Reference<XAccessibleStateSet> SAL_CALL
     AccessibleShape::getAccessibleStateSet()
 {
     ::osl::MutexGuard aGuard (maMutex);
-    Reference<XAccessibleStateSet> xStateSet;
 
     if (IsDisposed())
     {
         // Return a minimal state set that only contains the DEFUNC state.
-        xStateSet = AccessibleContextBase::getAccessibleStateSet ();
+        return AccessibleContextBase::getAccessibleStateSet ();
     }
-    else
-    {
-        ::utl::AccessibleStateSetHelper* pStateSet =
-              static_cast< ::utl::AccessibleStateSetHelper*>(mxStateSet.get());
 
-        if (pStateSet != nullptr)
+    ::utl::AccessibleStateSetHelper* pStateSet =
+          static_cast<::utl::AccessibleStateSetHelper*>(mxStateSet.get());
+
+    if (!pStateSet)
+        return Reference<XAccessibleStateSet>();
+
+    // Merge current FOCUSED state from edit engine.
+    if (mpText)
+    {
+        if (mpText->HaveFocus())
+            pStateSet->AddState (AccessibleStateType::FOCUSED);
+        else
+            pStateSet->RemoveState (AccessibleStateType::FOCUSED);
+    }
+    //Just when the document is not read-only,set states EDITABLE,RESIZABLE,MOVEABLE
+    css::uno::Reference<XAccessible> xTempAcc = getAccessibleParent();
+    if( xTempAcc.is() )
+    {
+        css::uno::Reference<XAccessibleContext>
+                                xTempAccContext = xTempAcc->getAccessibleContext();
+        if( xTempAccContext.is() )
         {
-            // Merge current FOCUSED state from edit engine.
-            if (mpText != nullptr)
+            css::uno::Reference<XAccessibleStateSet> rState =
+                xTempAccContext->getAccessibleStateSet();
+            if (rState.is())
             {
-                if (mpText->HaveFocus())
-                    pStateSet->AddState (AccessibleStateType::FOCUSED);
-                else
-                    pStateSet->RemoveState (AccessibleStateType::FOCUSED);
-            }
-            //Just when the document is not read-only,set states EDITABLE,RESIZABLE,MOVEABLE
-            css::uno::Reference<XAccessible> xTempAcc = getAccessibleParent();
-            if( xTempAcc.is() )
-            {
-                css::uno::Reference<XAccessibleContext>
-                                        xTempAccContext = xTempAcc->getAccessibleContext();
-                if( xTempAccContext.is() )
+                css::uno::Sequence<short> aStates = rState->getStates();
+                if (std::find(aStates.begin(), aStates.end(), AccessibleStateType::EDITABLE) != aStates.end())
                 {
-                    css::uno::Reference<XAccessibleStateSet> rState =
-                        xTempAccContext->getAccessibleStateSet();
-                    if( rState.is() )           {
-                        css::uno::Sequence<short> aStates = rState->getStates();
-                        int count = aStates.getLength();
-                        for( int iIndex = 0;iIndex < count;iIndex++ )
-                        {
-                            if( aStates[iIndex] == AccessibleStateType::EDITABLE )
-                            {
-                                pStateSet->AddState (AccessibleStateType::EDITABLE);
-                                pStateSet->AddState (AccessibleStateType::RESIZABLE);
-                                pStateSet->AddState (AccessibleStateType::MOVEABLE);
-                                break;
-                            }
-                        }
-                    }
+                    pStateSet->AddState (AccessibleStateType::EDITABLE);
+                    pStateSet->AddState (AccessibleStateType::RESIZABLE);
+                    pStateSet->AddState (AccessibleStateType::MOVEABLE);
                 }
             }
-            // Create a copy of the state set that may be modified by the
-            // caller without affecting the current state set.
-            xStateSet.set( new ::utl::AccessibleStateSetHelper (*pStateSet));
         }
     }
+
+    // Create a copy of the state set that may be modified by the
+    // caller without affecting the current state set.
+    Reference<XAccessibleStateSet> xStateSet(new ::utl::AccessibleStateSetHelper(*pStateSet));
+
     if (mpParent && mpParent->IsDocumentSelAll())
     {
-        ::utl::AccessibleStateSetHelper* pStateSet =
-            static_cast< ::utl::AccessibleStateSetHelper*>(xStateSet.get());
-        pStateSet->AddState (AccessibleStateType::SELECTED);
+        ::utl::AccessibleStateSetHelper* pCopyStateSet =
+            static_cast<::utl::AccessibleStateSetHelper*>(xStateSet.get());
+        pCopyStateSet->AddState (AccessibleStateType::SELECTED);
     }
+
     return xStateSet;
 }
 
@@ -685,7 +659,7 @@ sal_Int32 SAL_CALL AccessibleShape::getForeground()
 sal_Int32 SAL_CALL AccessibleShape::getBackground()
 {
     ThrowIfDisposed ();
-    sal_Int32 nColor (0L);
+    Color nColor;
 
     try
     {
@@ -708,14 +682,14 @@ sal_Int32 SAL_CALL AccessibleShape::getBackground()
                 nTrans = short(256 - nTrans / 100. * 256);
                 crBk.SetTransparency(sal_uInt8(nTrans));
             }
-            nColor = crBk.GetColor();
+            nColor = crBk;
         }
     }
     catch (const css::beans::UnknownPropertyException &)
     {
         // Ignore exception and return default color.
     }
-    return nColor;
+    return sal_Int32(nColor);
 }
 
 // XAccessibleEventBroadcaster
@@ -756,8 +730,7 @@ css::uno::Any SAL_CALL
             static_cast<XAccessibleExtendedComponent*>(this),
             static_cast< css::accessibility::XAccessibleSelection* >(this),
             static_cast< css::accessibility::XAccessibleExtendedAttributes* >(this),
-            static_cast<lang::XEventListener*>(this),
-            static_cast<document::XEventListener*>(this),
+            static_cast<document::XShapeEventListener*>(this),
             static_cast<lang::XUnoTunnel*>(this),
             static_cast<XAccessibleGroupPosition*>(this),
             static_cast<XAccessibleHypertext*>(this)
@@ -814,13 +787,7 @@ sal_Bool SAL_CALL AccessibleShape::isAccessibleChildSelected( sal_Int32 nChildIn
                 return false;
 
             uno::Sequence<short> aStates = pRState->getStates();
-            int nCount = aStates.getLength();
-            for( int i = 0; i < nCount; i++ )
-            {
-                if(aStates[i] == AccessibleStateType::SELECTED)
-                    return true;
-            }
-            return false;
+            return std::find(aStates.begin(), aStates.end(), AccessibleStateType::SELECTED) != aStates.end();
         }
     }
 
@@ -889,7 +856,7 @@ uno::Any SAL_CALL AccessibleShape::getExtendedAttributes()
 OUString SAL_CALL
     AccessibleShape::getImplementationName()
 {
-    return OUString("AccessibleShape");
+    return "AccessibleShape";
 }
 
 
@@ -897,16 +864,8 @@ uno::Sequence<OUString> SAL_CALL
     AccessibleShape::getSupportedServiceNames()
 {
     ThrowIfDisposed ();
-    // Get list of supported service names from base class...
-    uno::Sequence<OUString> aServiceNames =
-        AccessibleContextBase::getSupportedServiceNames();
-    sal_Int32 nCount (aServiceNames.getLength());
-
-    // ...and add additional names.
-    aServiceNames.realloc (nCount + 1);
-    aServiceNames[nCount] = "com.sun.star.drawing.AccessibleShape";
-
-    return aServiceNames;
+    const css::uno::Sequence<OUString> vals { "com.sun.star.drawing.AccessibleShape" };
+    return comphelper::concatSequences(AccessibleContextBase::getSupportedServiceNames(), vals);
 }
 
 // XTypeProvider
@@ -918,29 +877,14 @@ uno::Sequence<uno::Type> SAL_CALL
     uno::Sequence<uno::Type> aTypeList (AccessibleContextBase::getTypes());
     // ... get list of types from component base implementation, ...
     uno::Sequence<uno::Type> aComponentTypeList (AccessibleComponentBase::getTypes());
-    // ... define local types, ...
-    const uno::Type aLangEventListenerType =
-        cppu::UnoType<lang::XEventListener>::get();
-    const uno::Type aDocumentEventListenerType =
-        cppu::UnoType<document::XEventListener>::get();
-    const uno::Type aUnoTunnelType =
-        cppu::UnoType<lang::XUnoTunnel>::get();
+    // ... define local types
+    uno::Sequence<uno::Type> localTypesList = {
+        cppu::UnoType<lang::XEventListener>::get(),
+        cppu::UnoType<document::XEventListener>::get(),
+        cppu::UnoType<lang::XUnoTunnel>::get()
+    };
 
-    // ... and merge them all into one list.
-    sal_Int32   nTypeCount (aTypeList.getLength()),
-        nComponentTypeCount (aComponentTypeList.getLength());
-    int         i;
-
-    aTypeList.realloc (nTypeCount + nComponentTypeCount + 3);
-
-    for (i=0; i<nComponentTypeCount; i++)
-        aTypeList[nTypeCount + i] = aComponentTypeList[i];
-
-    aTypeList[nTypeCount + i++ ] = aLangEventListenerType;
-    aTypeList[nTypeCount + i++ ] = aDocumentEventListenerType;
-    aTypeList[nTypeCount + i ] = aUnoTunnelType;
-
-    return aTypeList;
+    return comphelper::concatSequences(aTypeList, aComponentTypeList, localTypesList);
 }
 
 // lang::XEventListener
@@ -948,8 +892,7 @@ uno::Sequence<uno::Type> SAL_CALL
     reference to the model in the shape tree info.  Otherwise this object
     remains functional.
 */
-void SAL_CALL
-    AccessibleShape::disposing (const lang::EventObject& aEvent)
+void AccessibleShape::disposing (const lang::EventObject& aEvent)
 {
     SolarMutexGuard aSolarGuard;
     ::osl::MutexGuard aGuard (maMutex);
@@ -966,78 +909,36 @@ void SAL_CALL
     }
     catch (uno::RuntimeException const&)
     {
-        SAL_WARN("svx", "caught exception while disposing");
+        TOOLS_WARN_EXCEPTION("svx", "caught exception while disposing");
     }
 }
 
-// document::XEventListener
+// document::XShapeEventListener
 void SAL_CALL
-    AccessibleShape::notifyEvent (const document::EventObject& rEventObject)
+    AccessibleShape::notifyShapeEvent (const document::EventObject& rEventObject)
 {
-    // First check if the event is for us.
-    uno::Reference<drawing::XShape> xShape (
-        rEventObject.Source, uno::UNO_QUERY);
-    if ( xShape.get() == mxShape.get() )
-    {
-        if (rEventObject.EventName == "ShapeModified")
-        {
-            //Need to update text children when receiving ShapeModified hint when exiting edit mode for text box
-            if (mpText)
-                mpText->UpdateChildren();
+    if (rEventObject.EventName != "ShapeModified")
+        return;
+
+    //Need to update text children when receiving ShapeModified hint when exiting edit mode for text box
+    if (mpText)
+        mpText->UpdateChildren();
 
 
-            // Some property of a shape has been modified.  Send an event
-            // that indicates a change of the visible data to all listeners.
-            CommitChange (
-                AccessibleEventId::VISIBLE_DATA_CHANGED,
-                uno::Any(),
-                uno::Any());
+    // Some property of a shape has been modified.  Send an event
+    // that indicates a change of the visible data to all listeners.
+    CommitChange (
+        AccessibleEventId::VISIBLE_DATA_CHANGED,
+        uno::Any(),
+        uno::Any());
 
-            // Name and Description may have changed.  Update the local
-            // values accordingly.
-            UpdateNameAndDescription();
-        }
-    }
+    // Name and Description may have changed.  Update the local
+    // values accordingly.
+    UpdateNameAndDescription();
 }
 
 // lang::XUnoTunnel
-namespace
-{
-    class theAccessibleShapeImplementationId : public rtl::Static< UnoTunnelIdInit, theAccessibleShapeImplementationId > {};
-}
-
-const uno::Sequence< sal_Int8 >&
-    AccessibleShape::getUnoTunnelImplementationId()
-    throw()
-{
-    return theAccessibleShapeImplementationId::get().getSeq();
-}
-
-
-AccessibleShape*
-    AccessibleShape::getImplementation( const uno::Reference< uno::XInterface >& rxIFace )
-    throw()
-{
-    uno::Reference< lang::XUnoTunnel >  xTunnel( rxIFace, uno::UNO_QUERY );
-    AccessibleShape*                    pReturn = nullptr;
-
-    if( xTunnel.is() )
-        pReturn = reinterpret_cast< AccessibleShape* >( xTunnel->getSomething( getUnoTunnelImplementationId() ) );
-
-    return pReturn;
-}
-
-
-sal_Int64 SAL_CALL
-    AccessibleShape::getSomething( const uno::Sequence< sal_Int8 >& rIdentifier )
-{
-    sal_Int64 nReturn( 0 );
-
-    if( ( rIdentifier.getLength() == 16 ) && ( 0 == memcmp( getUnoTunnelImplementationId().getConstArray(), rIdentifier.getConstArray(), 16 ) ) )
-        nReturn = reinterpret_cast< sal_Int64 >( this );
-
-    return nReturn;
-}
+UNO3_GETIMPLEMENTATION_IMPL(AccessibleShape)
 
 // IAccessibleViewForwarderListener
 void AccessibleShape::ViewForwarderChanged()
@@ -1105,70 +1006,6 @@ OUString AccessibleShape::GetFullAccessibleName (AccessibleShape *shape)
     return sName;
 }
 
-OUString
-    AccessibleShape::CreateAccessibleDescription()
-{
-    DescriptionGenerator aDG (mxShape);
-    aDG.Initialize (CreateAccessibleBaseName());
-    switch (ShapeTypeHandler::Instance().GetTypeId (mxShape))
-    {
-        case DRAWING_3D_CUBE:
-        case DRAWING_3D_EXTRUDE:
-        case DRAWING_3D_LATHE:
-        case DRAWING_3D_SPHERE:
-            aDG.Add3DProperties ();
-            break;
-
-        case DRAWING_3D_SCENE:
-        case DRAWING_GROUP:
-        case DRAWING_PAGE:
-            // No further information is appended.
-            break;
-
-        case DRAWING_CAPTION:
-        case DRAWING_CLOSED_BEZIER:
-        case DRAWING_CLOSED_FREEHAND:
-        case DRAWING_ELLIPSE:
-        case DRAWING_POLY_POLYGON:
-        case DRAWING_POLY_POLYGON_PATH:
-        case DRAWING_RECTANGLE:
-            aDG.AddLineProperties ();
-            aDG.AddFillProperties ();
-            break;
-
-        case DRAWING_CONNECTOR:
-        case DRAWING_LINE:
-        case DRAWING_MEASURE:
-        case DRAWING_OPEN_BEZIER:
-        case DRAWING_OPEN_FREEHAND:
-        case DRAWING_POLY_LINE:
-        case DRAWING_POLY_LINE_PATH:
-            aDG.AddLineProperties ();
-            break;
-
-        case DRAWING_CONTROL:
-            aDG.AddProperty ("ControlBackground", DescriptionGenerator::PropertyType::Color, "");
-            aDG.AddProperty ("ControlBorder", DescriptionGenerator::PropertyType::Integer, "");
-            break;
-
-        case DRAWING_TEXT:
-            aDG.AddTextProperties ();
-            break;
-
-        default:
-            aDG.Initialize ("Unknown accessible shape");
-            uno::Reference<drawing::XShapeDescriptor> xDescriptor (mxShape, uno::UNO_QUERY);
-            if (xDescriptor.is())
-            {
-                aDG.AppendString ("service name=");
-                aDG.AppendString (xDescriptor->getShapeType());
-            }
-    }
-
-    return aDG();
-}
-
-
 // protected
 void AccessibleShape::disposing()
 {
@@ -1182,27 +1019,20 @@ void AccessibleShape::disposing()
     if (pStateSet != nullptr)
         pStateSet->RemoveState (AccessibleStateType::FOCUSED);
 
-    // Unregister from broadcasters.
-    Reference<lang::XComponent> xComponent (mxShape, uno::UNO_QUERY);
-    if (xComponent.is())
-        xComponent->removeEventListener (this);
-
     // Unregister from model.
-    if (maShapeTreeInfo.GetModelBroadcaster().is())
-        maShapeTreeInfo.GetModelBroadcaster()->removeEventListener (
-            static_cast<document::XEventListener*>(this));
+    if (mxShape.is() && maShapeTreeInfo.GetModelBroadcaster().is())
+        maShapeTreeInfo.GetModelBroadcaster()->removeShapeEventListener(mxShape,
+            static_cast<document::XShapeEventListener*>(this));
 
     // Release the child containers.
     if (mpChildrenManager != nullptr)
     {
-        delete mpChildrenManager;
-        mpChildrenManager = nullptr;
+        mpChildrenManager.reset();
     }
     if (mpText != nullptr)
     {
         mpText->Dispose();
-        delete mpText;
-        mpText = nullptr;
+        mpText.reset();
     }
 
     // Cleanup.  Remove references to objects to allow them to be
@@ -1234,10 +1064,9 @@ void AccessibleShape::UpdateNameAndDescription()
     try
     {
         Reference<beans::XPropertySet> xSet (mxShape, uno::UNO_QUERY_THROW);
-        OUString sString;
 
         // Get the accessible name.
-        sString = GetOptionalProperty(xSet, "Title");
+        OUString sString = GetOptionalProperty(xSet, "Title");
         if (!sString.isEmpty())
         {
             SetAccessibleName(sString, AccessibleContextBase::FromShape);
@@ -1278,6 +1107,7 @@ sal_Int16 SAL_CALL AccessibleShape::getAccessibleRole()
     return nAccessibleRole;
 }
 
+namespace {
 
 //sort the drawing objects from up to down, from left to right
 struct XShapePosCompareHelper
@@ -1293,6 +1123,8 @@ struct XShapePosCompareHelper
             return false;
     }
 };
+
+}
 //end of group position
 
 // XAccessibleGroupPosition
@@ -1323,11 +1155,11 @@ AccessibleShape::getGroupPosition( const uno::Any& )
 
     // Compute object's group level.
     sal_Int32 nGroupLevel = 0;
-    SdrObject * pUper = pObj->GetUpGroup();
+    SdrObject * pUper = pObj->getParentSdrObjectFromSdrObject();
     while( pUper )
     {
         ++nGroupLevel;
-        pUper = pUper->GetUpGroup();
+        pUper = pUper->getParentSdrObjectFromSdrObject();
     }
 
     css::uno::Reference<XAccessibleContext> xParentContext = xParent->getAccessibleContext();
@@ -1349,8 +1181,8 @@ AccessibleShape::getGroupPosition( const uno::Any& )
     }
 
     SdrObjList *pGrpList = nullptr;
-    if( pObj->GetUpGroup() )
-        pGrpList = pObj->GetUpGroup()->GetSubList();
+    if( pObj->getParentSdrObjectFromSdrObject() )
+        pGrpList = pObj->getParentSdrObjectFromSdrObject()->GetSubList();
     else
         return aRet;
 
@@ -1374,9 +1206,9 @@ AccessibleShape::getGroupPosition( const uno::Any& )
     //get the index of the selected object in the group
     //we start counting position from 1
     sal_Int32 nPos = 1;
-    for ( std::vector< uno::Reference<drawing::XShape> >::const_iterator aIter = vXShapes.begin(); aIter != vXShapes.end(); ++aIter, nPos++ )
+    for ( const auto& rpShape : vXShapes )
     {
-        if ( (*aIter).get() == mxShape.get() )
+        if ( rpShape.get() == mxShape.get() )
         {
             sal_Int32* pArray = aRet.getArray();
             pArray[0] = nGroupLevel;
@@ -1384,6 +1216,7 @@ AccessibleShape::getGroupPosition( const uno::Any& )
             pArray[2] = nPos;
             break;
         }
+        nPos++;
     }
 
     return aRet;
@@ -1413,7 +1246,7 @@ OUString AccessibleShape::getObjectLink( const uno::Any& )
 sal_Int32 SAL_CALL AccessibleShape::getHyperLinkCount()
 {
     // MT: Introduced with IA2 CWS, but SvxAccessibleHyperlink was redundant to svx::AccessibleHyperlink which we introduced meanwhile.
-    // Code need to be adapted....
+    // Code need to be adapted...
     return 0;
 
     /*
@@ -1429,7 +1262,7 @@ uno::Reference< XAccessibleHyperlink > SAL_CALL
 {
     uno::Reference< XAccessibleHyperlink > xRet;
     // MT: Introduced with IA2 CWS, but SvxAccessibleHyperlink was redundant to svx::AccessibleHyperlink which we introduced meanwhile.
-    // Code need to be adapted....
+    // Code need to be adapted...
     /*
     SvxAccessibleHyperlink* pLink = new SvxAccessibleHyperlink(m_pShape,this);
     if (pLink->IsValidHyperlink())
@@ -1480,6 +1313,7 @@ css::accessibility::TextSegment SAL_CALL AccessibleShape::getTextBehindIndex( sa
     return aResult;
 }
 sal_Bool SAL_CALL AccessibleShape::copyText( sal_Int32, sal_Int32 ){return true;}
+sal_Bool SAL_CALL AccessibleShape::scrollSubstringTo( sal_Int32, sal_Int32, AccessibleScrollType ){return false;}
 
 } // end of namespace accessibility
 

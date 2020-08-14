@@ -20,20 +20,21 @@
 #ifndef INCLUDED_SD_SOURCE_UI_FRAMEWORK_MODULE_TOOLBARMODULE_HXX
 #define INCLUDED_SD_SOURCE_UI_FRAMEWORK_MODULE_TOOLBARMODULE_HXX
 
-#include "ToolBarManager.hxx"
+#include <ToolBarManager.hxx>
 #include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XTabBar.hpp>
-#include <com/sun/star/frame/XController.hpp>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
+#include <o3tl/deleter.hxx>
 #include <memory>
+
+namespace com::sun::star::drawing::framework { class XConfigurationController; }
+namespace com::sun::star::frame { class XController; }
 
 namespace sd {
 class ViewShellBase;
 }
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 typedef ::cppu::WeakComponentImplHelper <
     css::drawing::framework::XConfigurationChangeListener
@@ -71,14 +72,14 @@ private:
     css::uno::Reference<
         css::drawing::framework::XConfigurationController> mxConfigurationController;
     ViewShellBase* mpBase;
-    std::unique_ptr<ToolBarManager::UpdateLock> mpToolBarManagerLock;
+    std::unique_ptr<ToolBarManager::UpdateLock, o3tl::default_delete<ToolBarManager::UpdateLock>> mpToolBarManagerLock;
     bool mbMainViewSwitchUpdatePending;
 
     void HandleUpdateStart();
     void HandleUpdateEnd();
 };
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 #endif
 

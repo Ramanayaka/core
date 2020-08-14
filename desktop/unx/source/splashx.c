@@ -7,9 +7,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <config_features.h>
 #include "splashx.h"
 
-#ifdef ENABLE_QUICKSTART_LIBPNG
+#if defined(ENABLE_QUICKSTART_LIBPNG) && HAVE_FEATURE_UI
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -55,6 +56,8 @@ struct splash
     Colormap color_map;
     Window win;
     GC gc;
+    //true when intro-highres loaded successfully
+    sal_Bool bHasHiDpiImage;
 
 // Progress bar values
 // taken from desktop/source/splash/splash.cxx
@@ -117,7 +120,7 @@ static int splash_load_bmp( struct splash* splash, const char *filename )
     return 1;
 }
 
-static void setup_color( int val[3], color_t *col )
+static void setup_color( int const val[3], color_t *col )
 {
     if ( val[0] < 0 || val[1] < 0 || val[2] < 0 )
         return;
@@ -160,7 +163,7 @@ static void get_bootstrap_value( int *array, int size, rtlBootstrapHandle handle
 }
 
 // setup
-static void splash_setup( struct splash* splash, int barc[3], int framec[3], int posx, int posy, int w, int h )
+static void splash_setup( struct splash* splash, int const barc[3], int const framec[3], int posx, int posy, int w, int h )
 {
     if ( splash->width <= 500 )
     {
@@ -191,7 +194,7 @@ static void splash_setup( struct splash* splash, int barc[3], int framec[3], int
 #define SHIFT( x, bits ) ( ( (bits) >= 0 )? ( (x) << (bits) ): ( (x) >> -(bits) ) )
 
 // Position of the highest bit (more or less integer log2)
-static inline int HIGHEST_BIT( unsigned long x )
+static int HIGHEST_BIT( unsigned long x )
 {
     int i = 0;
     for ( ; x; ++i )
@@ -201,7 +204,7 @@ static inline int HIGHEST_BIT( unsigned long x )
 }
 
 // Number of bits set to 1
-static inline int BITS( unsigned long x )
+static int BITS( unsigned long x )
 {
     int i = 0;
     for ( ; x; x >>= 1 )
@@ -552,7 +555,7 @@ static sal_Bool isHiDPI(struct splash* splash)
     double nDPI;
 
     /*
-     * GNOME currently enables hi-dpi support when the screen resolution is at least 192 dpi
+     * GNOME currently enables HiDPI support when the screen resolution is at least 192 dpi
      * and the screen height (in device pixels) is at least 1200.
      */
 
@@ -560,7 +563,7 @@ static sal_Bool isHiDPI(struct splash* splash)
         return sal_False;
 
     pValStr = XGetDefault(splash->display, "Xft", "dpi");
-    /* if its too old to have this, assume its not hidpi */
+    /* if it's too old to have this, assume it's not hidpi */
     if (!pValStr)
         return sal_False;
 
@@ -611,12 +614,15 @@ static void splash_load_image( struct splash* splash, rtl_uString* pUAppPath )
         goto cleanup; /* success */
 
     /* load high resolution splash image */
+    splash->bHasHiDpiImage = sal_False;
     if (isHiDPI(splash))
     {
-        /* TODO- change progress bar parameters after getting size of intro-highres.png */
         strcpy (pSuffix, "intro-highres" IMG_SUFFIX);
         if ( splash_load_bmp( splash, pBuffer ) )
+        {
+            splash->bHasHiDpiImage = sal_True;
             goto cleanup; /* success */
+        }
     }
     /* load standard resolution splash image */
     strcpy (pSuffix, "intro" IMG_SUFFIX);
@@ -655,8 +661,16 @@ static void splash_load_defaults( struct splash* splash, rtl_uString* pAppPath, 
     get_bootstrap_value( logo,  1, handle, "Logo" );
     get_bootstrap_value( bar,   3, handle, "ProgressBarColor" );
     get_bootstrap_value( frame, 3, handle, "ProgressFrameColor" );
-    get_bootstrap_value( pos,   2, handle, "ProgressPosition" );
-    get_bootstrap_value( size,  2, handle, "ProgressSize" );
+    if (isHiDPI(splash) && splash->bHasHiDpiImage)
+    {
+       get_bootstrap_value( pos,   2, handle, "ProgressPositionHigh" );
+       get_bootstrap_value( size,  2, handle, "ProgressSizeHigh" );
+    }
+    else
+    {
+       get_bootstrap_value( pos,   2, handle, "ProgressPosition" );
+       get_bootstrap_value( size,  2, handle, "ProgressSize" );
+    }
 
     if ( logo[0] == 0 )
     {
@@ -713,22 +727,22 @@ void splash_draw_progress( struct splash* splash, int progress )
 
 void splash_destroy(struct splash* splash)
 {
-    if(splash)
-    {
-        if(splash->display)
-        {
-            if(splash->gc)
-            {
-                XFreeGC(splash->display, splash->gc);
-                splash->gc = NULL;
-            }
+    if(!splash)
+        return;
 
-            XCloseDisplay( splash->display );
-            splash->display = NULL;
-            png_destroy_read_struct( &(splash->png_ptr), &(splash->info_ptr), NULL );
+    if(splash->display)
+    {
+        if(splash->gc)
+        {
+            XFreeGC(splash->display, splash->gc);
+            splash->gc = NULL;
         }
-        free(splash);
+
+        XCloseDisplay( splash->display );
+        splash->display = NULL;
+        png_destroy_read_struct( &(splash->png_ptr), &(splash->info_ptr), NULL );
     }
+    free(splash);
 }
 
 struct splash* splash_create(rtl_uString* pAppPath, int argc, char** argv)

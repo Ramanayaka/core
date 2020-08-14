@@ -21,13 +21,13 @@
 #include "ChangeRequestQueueProcessor.hxx"
 #include "ConfigurationTracer.hxx"
 
-#include "framework/ConfigurationController.hxx"
 #include "ConfigurationUpdater.hxx"
 
 #include <vcl/svapp.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 #include <com/sun/star/container/XNamed.hpp>
-#include <com/sun/star/drawing/framework/XConfiguration.hpp>
-#include <com/sun/star/drawing/framework/ConfigurationChangeEvent.hpp>
+#include <com/sun/star/drawing/framework/XConfigurationChangeRequest.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -48,7 +48,7 @@ void TraceRequest (const Reference<XConfigurationChangeRequest>& rxRequest)
 
 } // end of anonymous namespace
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 ChangeRequestQueueProcessor::ChangeRequestQueueProcessor (
     const std::shared_ptr<ConfigurationUpdater>& rpConfigurationUpdater)
@@ -91,7 +91,7 @@ void ChangeRequestQueueProcessor::AddRequest (
     TraceRequest(rxRequest);
 #endif
 
-    maQueue.push_back(rxRequest);
+    maQueue.push(rxRequest);
     StartProcessing();
 }
 
@@ -130,36 +130,35 @@ void ChangeRequestQueueProcessor::ProcessOneEvent()
 
     SAL_INFO("sd.fwk", OSL_THIS_FUNC << ": ProcessOneEvent");
 
-    if (mxConfiguration.is()
-        && ! maQueue.empty())
+    if (!mxConfiguration.is() || maQueue.empty())
+        return;
+
+    // Get and remove the first entry from the queue.
+    Reference<XConfigurationChangeRequest> xRequest (maQueue.front());
+    maQueue.pop();
+
+    // Execute the change request.
+    if (xRequest.is())
     {
-        // Get and remove the first entry from the queue.
-        Reference<XConfigurationChangeRequest> xRequest (maQueue.front());
-        maQueue.pop_front();
-
-        // Execute the change request.
-        if (xRequest.is())
-        {
 #if DEBUG_SD_CONFIGURATION_TRACE
-            TraceRequest(xRequest);
+        TraceRequest(xRequest);
 #endif
-            xRequest->execute(mxConfiguration);
-        }
+        xRequest->execute(mxConfiguration);
+    }
 
-        if (maQueue.empty())
-        {
-            SAL_INFO("sd.fwk", OSL_THIS_FUNC << ": All requests are processed");
-            // The queue is empty so tell the ConfigurationManager to update
-            // its state.
-            if (mpConfigurationUpdater.get() != nullptr)
-            {
+    if (!maQueue.empty())
+        return;
+
+    SAL_INFO("sd.fwk", OSL_THIS_FUNC << ": All requests are processed");
+    // The queue is empty so tell the ConfigurationManager to update
+    // its state.
+    if (mpConfigurationUpdater != nullptr)
+    {
 #if DEBUG_SD_CONFIGURATION_TRACE
-                ConfigurationTracer::TraceConfiguration (
-                    mxConfiguration, "updating to configuration");
+        ConfigurationTracer::TraceConfiguration (
+            mxConfiguration, "updating to configuration");
 #endif
-                mpConfigurationUpdater->RequestUpdate(mxConfiguration);
-            }
-        }
+        mpConfigurationUpdater->RequestUpdate(mxConfiguration);
     }
 }
 
@@ -177,9 +176,10 @@ void ChangeRequestQueueProcessor::ProcessUntilEmpty()
 void ChangeRequestQueueProcessor::Clear()
 {
     ::osl::MutexGuard aGuard (maMutex);
-    maQueue.clear();
+    ChangeRequestQueue aEmpty;
+    maQueue.swap(aEmpty);
 }
 
-} } // end of namespace sd::framework::configuration
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

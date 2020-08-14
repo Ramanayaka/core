@@ -21,16 +21,14 @@
 #define INCLUDED_XMLOFF_INC_XMLNUMBERSTYLESIMPORT_HXX
 
 #include <xmloff/xmlnumfi.hxx>
-#include <com/sun/star/container/XNameAccess.hpp>
 
 // presentations:animations
 
 struct SdXMLFixedDataStyle;
 class SdXMLImport;
 
-class SdXMLNumberFormatImportContext : public SvXMLNumFormatContext
+class SdXMLNumberFormatImportContext final : public SvXMLNumFormatContext
 {
-private:
     friend class SdXMLNumberFormatMemberImportContext;
 
     bool    mbTimeStyle;
@@ -42,8 +40,7 @@ private:
 
     bool compareStyle( const SdXMLFixedDataStyle* pStyle, sal_Int16& nIndex ) const;
 
-protected:
-    void add( OUString& rNumberStyle, bool bLong, bool bTextual, bool  bDecimal02, OUString& rText );
+    void add( OUString const & rNumberStyle, bool bLong, bool bTextual, bool bDecimal02, OUString const & rText );
 
 public:
 
@@ -57,7 +54,7 @@ public:
 
     virtual void EndElement() override;
 
-    virtual SvXMLImportContext * CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList>& xAttrList ) override;
 
     sal_Int32 GetDrawKey() const { return mnKey; }

@@ -17,17 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "doubleref.hxx"
-#include "formulacell.hxx"
-#include "global.hxx"
-#include "document.hxx"
-#include "queryparam.hxx"
-#include "queryentry.hxx"
-#include "globstr.hrc"
-#include "scmatrix.hxx"
+#include <doubleref.hxx>
+#include <formulacell.hxx>
+#include <global.hxx>
+#include <document.hxx>
+#include <queryparam.hxx>
+#include <queryentry.hxx>
+#include <globstr.hrc>
+#include <scresid.hxx>
+#include <scmatrix.hxx>
 
 #include <svl/sharedstringpool.hxx>
 #include <osl/diagnose.h>
+#include <unotools/charclass.hxx>
 
 #include <memory>
 #include <utility>
@@ -40,10 +42,11 @@ namespace {
 
 void lcl_uppercase(OUString& rStr)
 {
-    rStr = ScGlobal::pCharClass->uppercase(rStr.trim());
+    rStr = ScGlobal::getCharClassPtr()->uppercase(rStr.trim());
 }
 
 bool lcl_createStarQuery(
+    const ScDocument* pDoc,
     svl::SharedStringPool& rPool, ScQueryParamBase* pParam, const ScDBRangeBase* pDBRef, const ScDBRangeBase* pQueryRef)
 {
     // A valid StarQuery must be at least 4 columns wide. To be precise it
@@ -77,12 +80,12 @@ bool lcl_createStarQuery(
             // For all entries after the first one, check the and/or connector in the first column.
             aCellStr = pQueryRef->getString(0, nRow);
             lcl_uppercase(aCellStr);
-            if ( aCellStr.equals(ScGlobal::GetRscString(STR_TABLE_UND)) )
+            if ( aCellStr == ScResId(STR_TABLE_AND) )
             {
                 rEntry.eConnect = SC_AND;
                 bValid = true;
             }
-            else if ( aCellStr.equals(ScGlobal::GetRscString(STR_TABLE_ODER)) )
+            else if ( aCellStr == ScResId(STR_TABLE_OR) )
             {
                 rEntry.eConnect = SC_OR;
                 bValid = true;
@@ -94,7 +97,7 @@ bool lcl_createStarQuery(
             // field name in the 2nd column.
             aCellStr = pQueryRef->getString(1, nRow);
             SCCOL nField = pDBRef->findFieldColumn(aCellStr); // TODO: must be case insensitive comparison.
-            if (ValidCol(nField))
+            if (pDoc->ValidCol(nField))
             {
                 rEntry.nField = nField;
                 bValid = true;
@@ -145,6 +148,7 @@ bool lcl_createStarQuery(
 }
 
 bool lcl_createExcelQuery(
+    const ScDocument* pDoc,
     svl::SharedStringPool& rPool, ScQueryParamBase* pParam, const ScDBRangeBase* pDBRef, const ScDBRangeBase* pQueryRef)
 {
     bool bValid = true;
@@ -156,7 +160,7 @@ bool lcl_createExcelQuery(
     {
         OUString aQueryStr = pQueryRef->getString(nCol, 0);
         SCCOL nField = pDBRef->findFieldColumn(aQueryStr);
-        if (ValidCol(nField))
+        if (pDoc->ValidCol(nField))
             aFields[nCol] = nField;
         else
             bValid = false;
@@ -186,7 +190,7 @@ bool lcl_createExcelQuery(
             while (nCol < nCols)
             {
                 aCellStr = pQueryRef->getString(nCol, nRow);
-                aCellStr = ScGlobal::pCharClass->uppercase( aCellStr );
+                aCellStr = ScGlobal::getCharClassPtr()->uppercase( aCellStr );
                 if (!aCellStr.isEmpty())
                 {
                     if (nIndex < nNewEntries)
@@ -211,6 +215,7 @@ bool lcl_createExcelQuery(
 }
 
 bool lcl_fillQueryEntries(
+    const ScDocument* pDoc,
     svl::SharedStringPool& rPool, ScQueryParamBase* pParam, const ScDBRangeBase* pDBRef, const ScDBRangeBase* pQueryRef)
 {
     SCSIZE nCount = pParam->GetEntryCount();
@@ -218,10 +223,10 @@ bool lcl_fillQueryEntries(
         pParam->GetEntry(i).Clear();
 
     // Standard QueryTabelle
-    bool bValid = lcl_createStarQuery(rPool, pParam, pDBRef, pQueryRef);
+    bool bValid = lcl_createStarQuery(pDoc, rPool, pParam, pDBRef, pQueryRef);
     // Excel QueryTabelle
     if (!bValid)
-        bValid = lcl_createExcelQuery(rPool, pParam, pDBRef, pQueryRef);
+        bValid = lcl_createExcelQuery(pDoc, rPool, pParam, pDBRef, pQueryRef);
 
     nCount = pParam->GetEntryCount();
     if (bValid)
@@ -255,7 +260,7 @@ bool ScDBRangeBase::fillQueryEntries(ScQueryParamBase* pParam, const ScDBRangeBa
     if (!pDBRef)
         return false;
 
-    return lcl_fillQueryEntries(getDoc()->GetSharedStringPool(), pParam, pDBRef, this);
+    return lcl_fillQueryEntries(getDoc(), getDoc()->GetSharedStringPool(), pParam, pDBRef, this);
 }
 
 void ScDBRangeBase::fillQueryOptions(ScQueryParamBase* pParam)
@@ -444,7 +449,7 @@ SCCOL ScDBExternalRange::findFieldColumn(const OUString& rStr, FormulaError* pEr
     {
         OUString aUpperVal = mpMatrix->GetString(i, 0).getString();
         lcl_uppercase(aUpperVal);
-        if (aUpper.equals(aUpperVal))
+        if (aUpper == aUpperVal)
             return i;
     }
     return -1;

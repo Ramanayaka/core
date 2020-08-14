@@ -17,8 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "embeddoc.hxx"
+#include <embeddoc.hxx>
 #include <osl/diagnose.h>
+#include <o3tl/char16_t2wchar_t.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
 
 
@@ -27,33 +28,31 @@ using namespace ::com::sun::star;
 // IOleObject
 
 
-STDMETHODIMP EmbedDocument_Impl::SetClientSite( IOleClientSite* pSite )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::SetClientSite( IOleClientSite* pSite )
 {
     m_pClientSite = pSite;
     return S_OK;
 }
 
-STDMETHODIMP EmbedDocument_Impl::GetClientSite( IOleClientSite** pSite )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::GetClientSite( IOleClientSite** pSite )
 {
     *pSite = m_pClientSite;
     return S_OK;
 }
 
-STDMETHODIMP EmbedDocument_Impl::SetHostNames( LPCOLESTR szContainerApp, LPCOLESTR szContainerObj )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::SetHostNames( LPCOLESTR szContainerApp, LPCOLESTR szContainerObj )
 {
     // the code should be ignored for links
     if ( !m_aFileName.getLength() )
     {
-        m_pDocHolder->setTitle(
-            OUString(reinterpret_cast<sal_Unicode const *>(szContainerObj)));
-        m_pDocHolder->setContainerName(
-            OUString(reinterpret_cast<sal_Unicode const *>(szContainerApp)));
+        m_pDocHolder->setTitle(o3tl::toU(szContainerObj));
+        m_pDocHolder->setContainerName(o3tl::toU(szContainerApp));
     }
 
     return S_OK;
 }
 
-STDMETHODIMP EmbedDocument_Impl::Close( DWORD dwSaveOption )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::Close( DWORD dwSaveOption )
 {
     HRESULT hr = S_OK;
 
@@ -91,33 +90,32 @@ HRESULT EmbedDocument_Impl::OLENotifyClosing()
 {
     AdviseSinkHashMap aAHM(m_aAdviseHashMap);
 
-    for ( AdviseSinkHashMapIterator iAdvise = aAHM.begin();
-          iAdvise != aAHM.end(); iAdvise++ )
+    for (auto const& advise : aAHM)
     {
-        if ( iAdvise->second )
-            iAdvise->second->OnClose();
+        if (advise.second)
+            advise.second->OnClose();
     }
 
     return S_OK;
 
 }
 
-STDMETHODIMP EmbedDocument_Impl::SetMoniker( DWORD /*dwWhichMoniker*/, IMoniker * /*pmk*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::SetMoniker( DWORD /*dwWhichMoniker*/, IMoniker * /*pmk*/ )
 {
     return E_NOTIMPL;
 }
 
-STDMETHODIMP EmbedDocument_Impl::GetMoniker( DWORD /*dwAssign*/, DWORD /*dwWhichMoniker*/, IMoniker ** /*ppmk*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::GetMoniker( DWORD /*dwAssign*/, DWORD /*dwWhichMoniker*/, IMoniker ** /*ppmk*/ )
 {
     return E_NOTIMPL;
 }
 
-STDMETHODIMP EmbedDocument_Impl::InitFromData( IDataObject * /*pDataObject*/, BOOL /*fCreation*/, DWORD /*dwReserved*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::InitFromData( IDataObject * /*pDataObject*/, BOOL /*fCreation*/, DWORD /*dwReserved*/ )
 {
     return E_NOTIMPL;
 }
 
-STDMETHODIMP EmbedDocument_Impl::GetClipboardData( DWORD /*dwReserved*/, IDataObject ** /*ppDataObject*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::GetClipboardData( DWORD /*dwReserved*/, IDataObject ** /*ppDataObject*/ )
 {
     return E_NOTIMPL;
 }
@@ -127,7 +125,7 @@ STDMETHODIMP EmbedDocument_Impl::GetClipboardData( DWORD /*dwReserved*/, IDataOb
  *
  */
 
-STDMETHODIMP EmbedDocument_Impl::DoVerb(
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::DoVerb(
     LONG iVerb,
     LPMSG,
     IOleClientSite *pActiveSite,
@@ -183,7 +181,7 @@ STDMETHODIMP EmbedDocument_Impl::DoVerb(
                         pActiveSite,TRUE)))
                     return NOERROR;
 
-                SAL_FALLTHROUGH;
+                [[fallthrough]];
             case OLEIVERB_OPEN:
                 OSL_ENSURE(m_pDocHolder,"no document to open");
 
@@ -235,34 +233,34 @@ STDMETHODIMP EmbedDocument_Impl::DoVerb(
 }
 
 
-STDMETHODIMP EmbedDocument_Impl::EnumVerbs( IEnumOLEVERB ** /*ppEnumOleVerb*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::EnumVerbs( IEnumOLEVERB ** /*ppEnumOleVerb*/ )
 {
     return OLE_S_USEREG;
 }
 
-STDMETHODIMP EmbedDocument_Impl::Update()
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::Update()
 {
     return S_OK;
 //    HRESULT hr = CACHE_E_NOCACHE_UPDATED;
 //    return hr;
 }
 
-STDMETHODIMP EmbedDocument_Impl::IsUpToDate()
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::IsUpToDate()
 {
     return S_OK;
 }
 
-STDMETHODIMP EmbedDocument_Impl::GetUserClassID( CLSID *pClsid )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::GetUserClassID( CLSID *pClsid )
 {
     return GetClassID( pClsid );
 }
 
-STDMETHODIMP EmbedDocument_Impl::GetUserType( DWORD /*dwFormOfTypeUe*/, LPOLESTR * /*pszUserType*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::GetUserType( DWORD /*dwFormOfTypeUe*/, LPOLESTR * /*pszUserType*/ )
 {
     return OLE_S_USEREG;
 }
 
-STDMETHODIMP EmbedDocument_Impl::SetExtent( DWORD /*dwDrawAspect*/, SIZEL *psizel )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::SetExtent( DWORD /*dwDrawAspect*/, SIZEL *psizel )
 {
     if ( !psizel )
         return E_FAIL;
@@ -272,7 +270,7 @@ STDMETHODIMP EmbedDocument_Impl::SetExtent( DWORD /*dwDrawAspect*/, SIZEL *psize
     return S_OK;
 }
 
-STDMETHODIMP EmbedDocument_Impl::GetExtent( DWORD /*dwDrawAspect*/, SIZEL * psizel )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::GetExtent( DWORD /*dwDrawAspect*/, SIZEL * psizel )
 {
     if ( !psizel )
         return E_INVALIDARG;
@@ -287,7 +285,7 @@ STDMETHODIMP EmbedDocument_Impl::GetExtent( DWORD /*dwDrawAspect*/, SIZEL * psiz
     return S_OK;
 }
 
-STDMETHODIMP EmbedDocument_Impl::Advise( IAdviseSink *pAdvSink, DWORD *pdwConnection )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::Advise( IAdviseSink *pAdvSink, DWORD *pdwConnection )
 {
     if ( m_nAdviseNum == 0xFFFFFFFF )
         return E_OUTOFMEMORY;
@@ -299,9 +297,9 @@ STDMETHODIMP EmbedDocument_Impl::Advise( IAdviseSink *pAdvSink, DWORD *pdwConnec
     return S_OK;
 }
 
-STDMETHODIMP EmbedDocument_Impl::Unadvise( DWORD dwConnection )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::Unadvise( DWORD dwConnection )
 {
-    AdviseSinkHashMapIterator iAdvise = m_aAdviseHashMap.find( dwConnection );
+    auto iAdvise = m_aAdviseHashMap.find( dwConnection );
     if ( iAdvise != m_aAdviseHashMap.end() )
     {
         iAdvise->second->Release();
@@ -313,17 +311,17 @@ STDMETHODIMP EmbedDocument_Impl::Unadvise( DWORD dwConnection )
     return S_OK;
 }
 
-STDMETHODIMP EmbedDocument_Impl::EnumAdvise( IEnumSTATDATA ** /*ppenumAdvise*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::EnumAdvise( IEnumSTATDATA ** /*ppenumAdvise*/ )
 {
     return E_NOTIMPL;
 }
 
-STDMETHODIMP EmbedDocument_Impl::GetMiscStatus( DWORD /*dwAspect*/, DWORD * /*pdwStatus*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::GetMiscStatus( DWORD /*dwAspect*/, DWORD * /*pdwStatus*/ )
 {
     return OLE_S_USEREG;
 }
 
-STDMETHODIMP EmbedDocument_Impl::SetColorScheme( LOGPALETTE * /*pLogpal*/ )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::SetColorScheme( LOGPALETTE * /*pLogpal*/ )
 {
     return E_NOTIMPL;
 }
@@ -331,7 +329,7 @@ STDMETHODIMP EmbedDocument_Impl::SetColorScheme( LOGPALETTE * /*pLogpal*/ )
 
 // IDispatch
 
-STDMETHODIMP EmbedDocument_Impl::GetTypeInfoCount( unsigned int FAR*  pctinfo )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::GetTypeInfoCount( unsigned int FAR*  pctinfo )
 {
     if ( m_pDocHolder->GetIDispatch() )
         return m_pDocHolder->GetIDispatch()->GetTypeInfoCount( pctinfo );
@@ -339,7 +337,7 @@ STDMETHODIMP EmbedDocument_Impl::GetTypeInfoCount( unsigned int FAR*  pctinfo )
     return E_NOTIMPL;
 }
 
-STDMETHODIMP EmbedDocument_Impl::GetTypeInfo( unsigned int iTInfo, LCID lcid, ITypeInfo FAR* FAR* ppTInfo )
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::GetTypeInfo( unsigned int iTInfo, LCID lcid, ITypeInfo FAR* FAR* ppTInfo )
 {
     if ( m_pDocHolder->GetIDispatch() )
         return m_pDocHolder->GetIDispatch()->GetTypeInfo( iTInfo, lcid, ppTInfo );
@@ -347,7 +345,7 @@ STDMETHODIMP EmbedDocument_Impl::GetTypeInfo( unsigned int iTInfo, LCID lcid, IT
     return DISP_E_BADINDEX; // the only error that can be returned
 }
 
-STDMETHODIMP EmbedDocument_Impl::GetIDsOfNames( REFIID riid,
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::GetIDsOfNames( REFIID riid,
                                                 OLECHAR FAR* FAR* rgszNames,
                                                 unsigned int cNames,
                                                 LCID lcid,
@@ -362,7 +360,7 @@ STDMETHODIMP EmbedDocument_Impl::GetIDsOfNames( REFIID riid,
     return DISP_E_UNKNOWNNAME;
 }
 
-STDMETHODIMP EmbedDocument_Impl::Invoke( DISPID dispIdMember,
+COM_DECLSPEC_NOTHROW STDMETHODIMP EmbedDocument_Impl::Invoke( DISPID dispIdMember,
                                          REFIID riid,
                                          LCID lcid,
                                          WORD wFlags,
@@ -406,12 +404,9 @@ HRESULT EmbedDocument_Impl::SaveObject()
     if(m_pClientSite) {
         hr = m_pClientSite->SaveObject();
 
-        for ( AdviseSinkHashMapIterator iAdvise =
-                  m_aAdviseHashMap.begin();
-              iAdvise != m_aAdviseHashMap.end();
-              iAdvise++ )
-            if ( iAdvise->second )
-                iAdvise->second->OnSave( );
+        for (auto const& advise : m_aAdviseHashMap)
+            if (advise.second)
+                advise.second->OnSave();
     }
     else if ( m_aFileName.getLength() && IsDirty() == S_OK )
     {
@@ -419,8 +414,7 @@ HRESULT EmbedDocument_Impl::SaveObject()
 
         // in case of links the containers does not provide client site sometimes
         hr = Save( static_cast<LPCOLESTR>(nullptr), FALSE ); // triggers saving to the link location
-        SaveCompleted(
-            reinterpret_cast<wchar_t const *>(aPreservFileName.getStr()));
+        SaveCompleted(o3tl::toW(aPreservFileName.getStr()));
     }
 
     notify( false );
@@ -442,12 +436,9 @@ HRESULT EmbedDocument_Impl::ShowObject()
 
 void EmbedDocument_Impl::notify( bool bDataChanged )
 {
-    for ( AdviseSinkHashMapIterator iAdvise =
-              m_aAdviseHashMap.begin();
-          iAdvise != m_aAdviseHashMap.end();
-          iAdvise++ )
-        if ( iAdvise->second )
-            iAdvise->second->OnViewChange( DVASPECT_CONTENT, -1 );
+    for (auto const& advise : m_aAdviseHashMap)
+        if (advise.second)
+            advise.second->OnViewChange( DVASPECT_CONTENT, -1 );
 
     if ( m_pDAdviseHolder && bDataChanged )
         m_pDAdviseHolder->SendOnDataChange( static_cast<IDataObject*>(this), 0, 0 );

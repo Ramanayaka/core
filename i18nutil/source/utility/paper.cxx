@@ -18,7 +18,6 @@
  */
 
 
-#include <osl/diagnose.h>
 #include <officecfg/Setup.hxx>
 #include <officecfg/System.hxx>
 #include <sal/config.h>
@@ -26,20 +25,21 @@
 #include <rtl/ustring.hxx>
 #include <rtl/string.hxx>
 
-#include "i18nutil/paper.hxx"
+#include <i18nutil/paper.hxx>
 
-#include <utility>
 #include <cstdlib>
 #include <unotools/configmgr.hxx>
+#include <com/sun/star/lang/Locale.hpp>
 
 #ifdef UNX
 #include <stdio.h>
-#include <string.h>
 #include <locale.h>
 #if defined(LC_PAPER) && defined(_GNU_SOURCE)
 #include <langinfo.h>
 #endif
 #endif
+
+namespace {
 
 struct PageDesc
 {
@@ -49,20 +49,25 @@ struct PageDesc
     const char *m_pAltPSName;
 };
 
+}
+
 #define PT2MM100( v ) \
-    (long)(((v) * 35.27777778) + 0.5)
+    long(((v) * 35.27777778) + 0.5)
 
 #define IN2MM100( v ) \
-    ((long)(((v) * 2540) + 0.5))
+    (long(((v) * 2540) + 0.5))
 
 #define MM2MM100( v ) \
-    ((long)((v) * 100))
+    (long((v) * 100))
 
 //PostScript Printer Description File Format Specification
 //http://partners.adobe.com/public/developer/en/ps/5003.PPD_Spec_v4.3.pdf
 //https://web.archive.org/web/20040912070512/http://www.y-adagio.com/public/committees/docsii/doc_00-49/symp_ulaan/china_ppr.pdf (Kai)
 //http://www.sls.psi.ch/controls/help/howto/Howto_Print_a_A0_Poster_at_WSLA_012_2.pdf (Dia)
-static const PageDesc aDinTab[] =
+
+//!! The order of these entries must correspond to enum Paper in <i18nutil/paper.hxx>
+
+const PageDesc aDinTab[] =
 {
     { MM2MM100( 841 ),   MM2MM100( 1189 ),   "A0",  nullptr },
     { MM2MM100( 594 ),   MM2MM100( 841 ),    "A1",  nullptr },
@@ -99,7 +104,7 @@ static const PageDesc aDinTab[] =
     { IN2MM100( 4.125 ), IN2MM100( 9.5 ),    "Env10",  "Comm10" },
     { IN2MM100( 4.5 ),   IN2MM100( 10.375 ), "Env11",  nullptr },
     { IN2MM100( 4.75 ),  IN2MM100( 11 ),     "Env12",  nullptr },
-    { MM2MM100( 184 ),   MM2MM100( 260 ),    nullptr,  nullptr }, //Kai16
+    { MM2MM100( 184 ),   MM2MM100( 260 ),    nullptr,  nullptr }, //Kai16 / 16k
     { MM2MM100( 130 ),   MM2MM100( 184 ),    nullptr,  nullptr }, //Kai32
     { MM2MM100( 140 ),   MM2MM100( 203 ),    nullptr,  nullptr }, //BigKai32
     { MM2MM100( 257 ),   MM2MM100( 364 ),    "B4",  nullptr }, //JIS
@@ -147,18 +152,20 @@ static const PageDesc aDinTab[] =
     { IN2MM100( 24 ),    IN2MM100( 36 ),     "ARCHD",  nullptr },
     { IN2MM100( 36 ),    IN2MM100( 48 ),     "ARCHE",  nullptr },
     { MM2MM100( 157.5),  MM2MM100( 280 ),    nullptr,  nullptr }, //Screen 16:9
-    { MM2MM100( 175 ),   MM2MM100( 280 ),    nullptr,  nullptr }  //Screen 16:10
+    { MM2MM100( 175 ),   MM2MM100( 280 ),    nullptr,  nullptr }, //Screen 16:10
+    { MM2MM100( 195 ),   MM2MM100( 270 ),    nullptr,  nullptr }, // 16k
+    { MM2MM100( 197 ),   MM2MM100( 273 ),    nullptr,  nullptr }  // 16k
 
 };
 
-static const size_t nTabSize = SAL_N_ELEMENTS(aDinTab);
+const size_t nTabSize = SAL_N_ELEMENTS(aDinTab);
 
 #define MAXSLOPPY 21
 
-bool PaperInfo::doSloppyFit()
+void PaperInfo::doSloppyFit()
 {
     if (m_eType != PAPER_USER)
-        return true;
+        return;
 
     for ( size_t i = 0; i < nTabSize; ++i )
     {
@@ -166,17 +173,18 @@ bool PaperInfo::doSloppyFit()
 
         long lDiffW = labs(aDinTab[i].m_nWidth - m_nPaperWidth);
         long lDiffH = labs(aDinTab[i].m_nHeight - m_nPaperHeight);
+        long lFlipDiffW = labs(aDinTab[i].m_nHeight - m_nPaperWidth);
+        long lFlipDiffH = labs(aDinTab[i].m_nWidth - m_nPaperHeight);
 
-        if ( lDiffW < MAXSLOPPY && lDiffH < MAXSLOPPY )
+        if ( (lDiffW < MAXSLOPPY && lDiffH < MAXSLOPPY) ||
+            (lFlipDiffW < MAXSLOPPY && lFlipDiffH < MAXSLOPPY) )
         {
             m_nPaperWidth = aDinTab[i].m_nWidth;
             m_nPaperHeight = aDinTab[i].m_nHeight;
-            m_eType = (Paper)i;
-            return true;
+            m_eType = static_cast<Paper>(i);
+            return;
         }
     }
-
-    return false;
 }
 
 bool PaperInfo::sloppyEqual(const PaperInfo &rOther) const
@@ -208,7 +216,7 @@ long PaperInfo::sloppyFitPageDimension(long nDimension)
 
 PaperInfo PaperInfo::getSystemDefaultPaper()
 {
-    if (utl::ConfigManager::IsAvoidConfig())
+    if (utl::ConfigManager::IsFuzzing())
         return PaperInfo(PAPER_A4);
 
     OUString aLocaleStr = officecfg::Setup::L10N::ooSetupSystemLocale::get();
@@ -223,6 +231,7 @@ PaperInfo PaperInfo::getSystemDefaultPaper()
         if (bInitialized)
             return aInstance;
 
+#ifndef MACOSX
         // try libpaper
         // #i78617# workaround missing paperconf command
         FILE* pPipe = popen( "paperconf 2>/dev/null", "r" );
@@ -285,8 +294,10 @@ PaperInfo PaperInfo::getSystemDefaultPaper()
                 }
             }
         }
+#endif
 
-#if defined(LC_PAPER) && defined(_GNU_SOURCE)
+// _NL_PAPER_WIDTH / HEIGHT not available with android unified headers
+#if defined(LC_PAPER) && defined(_GNU_SOURCE) && !defined(ANDROID)
         // try LC_PAPER
         locale_t loc = newlocale(LC_PAPER_MASK, "", static_cast<locale_t>(0));
         if (loc != static_cast<locale_t>(0))
@@ -348,7 +359,7 @@ PaperInfo PaperInfo::getSystemDefaultPaper()
 
 PaperInfo::PaperInfo(Paper eType) : m_eType(eType)
 {
-    OSL_ENSURE( SAL_N_ELEMENTS(aDinTab) == NUM_PAPER_ENTRIES,
+    static_assert( SAL_N_ELEMENTS(aDinTab) == NUM_PAPER_ENTRIES,
             "mismatch between array entries and enum values" );
 
     m_nPaperWidth = aDinTab[m_eType].m_nWidth;

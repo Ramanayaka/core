@@ -20,16 +20,15 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_ACTIVITIES_ACTIVITYPARAMETERS_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_ACTIVITIES_ACTIVITYPARAMETERS_HXX
 
-#include "event.hxx"
-#include "eventqueue.hxx"
-#include "expressionnode.hxx"
-#include "wakeupevent.hxx"
+#include <event.hxx>
+#include <eventqueue.hxx>
+#include <expressionnode.hxx>
+#include <wakeupevent.hxx>
 
-#include <boost/optional.hpp>
+#include <optional>
 #include <vector>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /** Parameter struct for animation activities
 
@@ -80,7 +79,7 @@ struct ActivityParameters
         EventQueue&                                 rEventQueue,
         ActivitiesQueue&                            rActivitiesQueue,
         double                                      nMinDuration,
-        ::boost::optional<double> const&            rRepeats,
+        ::std::optional<double> const&            rRepeats,
         double                                      nAccelerationFraction,
         double                                      nDecelerationFraction,
         sal_uInt32                                  nMinNumberOfFrames,
@@ -117,7 +116,7 @@ struct ActivityParameters
 
     /// Total duration of activity (including all repeats)
     const double                                mnMinDuration;
-    ::boost::optional<double> const&            mrRepeats;
+    ::std::optional<double> const&            mrRepeats;
     const double                                mnAccelerationFraction;
     const double                                mnDecelerationFraction;
 
@@ -128,8 +127,7 @@ struct ActivityParameters
     const bool                                  mbAutoReverse;
 };
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_ACTIVITIES_ACTIVITYPARAMETERS_HXX
 

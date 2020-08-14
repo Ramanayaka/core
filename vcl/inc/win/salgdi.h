@@ -20,13 +20,13 @@
 #ifndef INCLUDED_VCL_INC_WIN_SALGDI_H
 #define INCLUDED_VCL_INC_WIN_SALGDI_H
 
-#include "sallayout.hxx"
-#include "salgeom.hxx"
-#include "salgdi.hxx"
-#include "fontinstance.hxx"
-#include "fontattributes.hxx"
-#include "PhysicalFontFace.hxx"
-#include "impfont.hxx"
+#include <sallayout.hxx>
+#include <salgeom.hxx>
+#include <salgdi.hxx>
+#include <fontinstance.hxx>
+#include <fontattributes.hxx>
+#include <PhysicalFontFace.hxx>
+#include <impfont.hxx>
 #include <vcl/fontcapabilities.hxx>
 #include <vcl/fontcharmap.hxx>
 
@@ -35,8 +35,8 @@
 
 #ifndef INCLUDED_PRE_POST_WIN_H
 #define INCLUDED_PRE_POST_WIN_H
-#  include "prewin.h"
-#  include "postwin.h"
+#  include <prewin.h>
+#  include <postwin.h>
 #endif
 
 #include <hb-ot.h>
@@ -45,12 +45,10 @@
 class FontSelectPattern;
 class WinFontInstance;
 class ImplFontAttrCache;
-class OpenGLTexture;
 class PhysicalFontCollection;
 class SalGraphicsImpl;
-class WinOpenGLSalGraphicsImpl;
+class WinSalGraphicsImplBase;
 class ImplFontMetricData;
-class CommonSalLayout;
 
 #define RGB_TO_PALRGB(nRGB)         ((nRGB)|0x02000000)
 #define PALRGB_TO_RGB(nPalRGB)      ((nPalRGB)&0x00ffffff)
@@ -60,12 +58,11 @@ class WinFontFace : public PhysicalFontFace
 {
 public:
     explicit                WinFontFace( const FontAttributes&,
-                                int nFontHeight, BYTE eWinCharSet,
+                                BYTE eWinCharSet,
                                 BYTE nPitchAndFamily  );
     virtual                 ~WinFontFace() override;
 
-    virtual PhysicalFontFace* Clone() const override;
-    virtual LogicalFontInstance* CreateFontInstance( FontSelectPattern& ) const override;
+    virtual rtl::Reference<LogicalFontInstance> CreateFontInstance( const FontSelectPattern& ) const override;
     virtual sal_IntPtr      GetFontId() const override;
     void                    SetFontId( sal_IntPtr nId ) { mnId = nId; }
     void                    UpdateFromHDC( HDC ) const;
@@ -90,23 +87,19 @@ private:
     BYTE                    mnPitchAndFamily;
     bool                    mbAliasSymbolsHigh;
     bool                    mbAliasSymbolsLow;
-private:
+
     void                    ReadCmapTable( HDC ) const;
     void                    GetFontCapabilities( HDC hDC ) const;
-
-    mutable hb_font_t*      mpHbFont;
-public:
-    hb_font_t*              GetHbFont() const { return mpHbFont; }
-    void                    SetHbFont( hb_font_t* pHbFont ) const { mpHbFont = pHbFont; }
 };
 
 /** Class that creates (and destroys) a compatible Device Context.
 
-This is to be used for GDI drawing into a DIB that we later use as a texture for OpenGL drawing.
+This is to be used for GDI drawing into a DIB that we later use for a different
+drawing method, such as a texture for OpenGL drawing or surface for Skia drawing.
 */
-class OpenGLCompatibleDC
+class CompatibleDC
 {
-private:
+protected:
     /// The compatible DC that we create for our purposes.
     HDC mhCompatibleDC;
 
@@ -122,27 +115,40 @@ private:
     /// Mapping between the GDI position and OpenGL, to use for OpenGL drawing.
     SalTwoRect maRects;
 
-    /// The OpenGL-based SalGraphicsImpl where we will draw.  If null, we ignore the drawing, it means it happened directly to the DC...
-    WinOpenGLSalGraphicsImpl *mpImpl;
+    /// The SalGraphicsImpl where we will draw.  If null, we ignore the drawing, it means it happened directly to the DC...
+    WinSalGraphicsImplBase *mpImpl;
+
+    // If 'disable' is true, this class is a simple wrapper for drawing directly. Subclasses should use true.
+    CompatibleDC(SalGraphics &rGraphics, int x, int y, int width, int height, bool disable=true);
 
 public:
-    OpenGLCompatibleDC(SalGraphics &rGraphics, int x, int y, int width, int height);
-    ~OpenGLCompatibleDC();
+    static std::unique_ptr< CompatibleDC > create(SalGraphics &rGraphics, int x, int y, int width, int height);
+
+    virtual ~CompatibleDC();
 
     HDC getCompatibleHDC() { return mhCompatibleDC; }
 
-    SalTwoRect getTwoRect() { return maRects; }
+    SalTwoRect getTwoRect() const { return maRects; }
 
-    Size getBitmapSize() { return Size(maRects.mnSrcWidth, maRects.mnSrcHeight); }
+    long getBitmapWidth() const { return maRects.mnSrcWidth; }
+    long getBitmapHeight() const { return maRects.mnSrcHeight; }
 
     /// Reset the DC with the defined color.
     void fill(sal_uInt32 color);
 
-    /// Obtain the texture; the caller must delete it after use.
-    OpenGLTexture* getTexture();
+    /// Base texture class (OpenGL and Skia will provide their implementations).
+    struct Texture;
 
-    /// Copy bitmap data to the texture. Texutre must be initialized and the correct size to hold the bitmap.
-    bool copyToTexture(OpenGLTexture& aTexture);
+    /// Obtain the texture in format for WinSalGraphicsImplBase::DrawTextMask().
+    virtual std::unique_ptr<Texture> getAsMaskTexture() const { abort(); };
+};
+
+struct CompatibleDC::Texture
+{
+    virtual ~Texture() {};
+    virtual bool isValid() const = 0;
+    virtual int GetWidth() const = 0;
+    virtual int GetHeight() const = 0;
 };
 
 class WinSalGraphics : public SalGraphics
@@ -150,7 +156,6 @@ class WinSalGraphics : public SalGraphics
     friend class WinSalGraphicsImpl;
     friend class WinOpenGLSalGraphicsImpl;
     friend class ScopedFont;
-    friend class OpenGLCompatibleDC;
 
 protected:
     std::unique_ptr<SalGraphicsImpl> mpImpl;
@@ -163,9 +168,8 @@ private:
     bool                    mbScreen : 1;           // is Screen compatible
     HWND                    mhWnd;              // Window-Handle, when Window-Graphics
 
-    HFONT                   mhFonts[ MAX_FALLBACK ];        // Font + Fallbacks
-    const WinFontFace*  mpWinFontData[ MAX_FALLBACK ];  // pointer to the most recent font face
-    WinFontInstance*       mpWinFontEntry[ MAX_FALLBACK ]; // pointer to the most recent font instance
+    rtl::Reference<WinFontInstance>
+                            mpWinFontEntry[ MAX_FALLBACK ]; // pointer to the most recent font instance
     HRGN                    mhRegion;           // vcl::Region Handle
     HPEN                    mhDefPen;           // DefaultPen
     HBRUSH                  mhDefBrush;         // DefaultBrush
@@ -174,14 +178,14 @@ private:
     COLORREF                mnTextColor;        // TextColor
     RGNDATA*                mpClipRgnData;      // ClipRegion-Data
     RGNDATA*                mpStdClipRgnData;   // Cache Standard-ClipRegion-Data
-    int                     mnPenWidth;         // Linienbreite
+    int                     mnPenWidth;         // line width
 
-    LogicalFontInstance* GetWinFontEntry(int nFallbackLevel);
-
-    bool CacheGlyphs(const CommonSalLayout& rLayout);
-    bool DrawCachedGlyphs(const CommonSalLayout& rLayout);
+    bool CacheGlyphs(const GenericSalLayout& rLayout);
+    bool DrawCachedGlyphs(const GenericSalLayout& rLayout);
 
 public:
+    HFONT ImplDoSetFont(FontSelectPattern const & i_rFont, const PhysicalFontFace * i_pFontFace, float& o_rFontScale, HFONT& o_rOldFont);
+
     HDC getHDC() const { return mhLocalDC; }
     void setHDC(HDC aNew) { mhLocalDC = aNew; }
 
@@ -205,7 +209,6 @@ public:
 
     HWND gethWnd();
 
-    HFONT                   ImplDoSetFont( FontSelectPattern* i_pFont, HFONT& o_rOldFont );
 
 public:
     explicit WinSalGraphics(WinSalGraphics::Type eType, bool bScreen, HWND hWnd,
@@ -224,20 +227,26 @@ protected:
     virtual bool        setClipRegion( const vcl::Region& ) override;
     // draw --> LineColor and FillColor and RasterOp and ClipRegion
     virtual void        drawPixel( long nX, long nY ) override;
-    virtual void        drawPixel( long nX, long nY, SalColor nSalColor ) override;
+    virtual void        drawPixel( long nX, long nY, Color nColor ) override;
     virtual void        drawLine( long nX1, long nY1, long nX2, long nY2 ) override;
     virtual void        drawRect( long nX, long nY, long nWidth, long nHeight ) override;
     virtual void        drawPolyLine( sal_uInt32 nPoints, const SalPoint* pPtAry ) override;
     virtual void        drawPolygon( sal_uInt32 nPoints, const SalPoint* pPtAry ) override;
     virtual void        drawPolyPolygon( sal_uInt32 nPoly, const sal_uInt32* pPoints, PCONSTSALPOINT* pPtAry ) override;
-    virtual bool        drawPolyPolygon( const basegfx::B2DPolyPolygon&, double fTransparency ) override;
+    virtual bool        drawPolyPolygon(
+        const basegfx::B2DHomMatrix& rObjectToDevice,
+        const basegfx::B2DPolyPolygon&,
+        double fTransparency) override;
     virtual bool        drawPolyLine(
+        const basegfx::B2DHomMatrix& rObjectToDevice,
         const basegfx::B2DPolygon&,
         double fTransparency,
-        const basegfx::B2DVector& rLineWidth,
+        double fLineWidth,
+        const std::vector< double >* pStroke, // MM01
         basegfx::B2DLineJoin,
         css::drawing::LineCap,
-        double fMiterMinimumAngle) override;
+        double fMiterMinimumAngle,
+        bool bPixelSnapHairline) override;
     virtual bool        drawPolyLineBezier( sal_uInt32 nPoints, const SalPoint* pPtAry, const PolyFlags* pFlgAry ) override;
     virtual bool        drawPolygonBezier( sal_uInt32 nPoints, const SalPoint* pPtAry, const PolyFlags* pFlgAry ) override;
     virtual bool        drawPolyPolygonBezier( sal_uInt32 nPoly, const sal_uInt32* pPoints, const SalPoint* const* pPtAry, const PolyFlags* const* pFlgAry ) override;
@@ -256,18 +265,20 @@ protected:
                                     const SalBitmap& rTransparentBitmap ) override;
     virtual void        drawMask( const SalTwoRect& rPosAry,
                                   const SalBitmap& rSalBitmap,
-                                  SalColor nMaskColor ) override;
+                                  Color nMaskColor ) override;
 
-    virtual SalBitmap*  getBitmap( long nX, long nY, long nWidth, long nHeight ) override;
-    virtual SalColor    getPixel( long nX, long nY ) override;
+    virtual std::shared_ptr<SalBitmap> getBitmap( long nX, long nY, long nWidth, long nHeight ) override;
+    virtual Color       getPixel( long nX, long nY ) override;
 
     // invert --> ClipRegion (only Windows or VirDevs)
     virtual void        invert( long nX, long nY, long nWidth, long nHeight, SalInvert nFlags) override;
     virtual void        invert( sal_uInt32 nPoints, const SalPoint* pPtAry, SalInvert nFlags ) override;
 
-    virtual bool        drawEPS( long nX, long nY, long nWidth, long nHeight, void* pPtr, sal_uIntPtr nSize ) override;
+    virtual bool        drawEPS( long nX, long nY, long nWidth, long nHeight, void* pPtr, sal_uInt32 nSize ) override;
 
     // native widget rendering methods that require mirroring
+protected:
+    virtual bool        isNativeControlSupported( ControlType nType, ControlPart nPart ) override;
     virtual bool        hitTestNativeControl( ControlType nType, ControlPart nPart, const tools::Rectangle& rControlRegion,
                                               const Point& aPos, bool& rIsInside ) override;
     virtual bool        drawNativeControl( ControlType nType, ControlPart nPart, const tools::Rectangle& rControlRegion,
@@ -277,6 +288,7 @@ protected:
                                                 const ImplControlValue& aValue, const OUString& aCaption,
                                                 tools::Rectangle &rNativeBoundingRegion, tools::Rectangle &rNativeContentRegion ) override;
 
+public:
     virtual bool        blendBitmap( const SalTwoRect&,
                                      const SalBitmap& rBitmap ) override;
 
@@ -299,7 +311,7 @@ protected:
 private:
     // local helpers
 
-    void                    DrawTextLayout(const CommonSalLayout&, HDC, bool bUseDWrite);
+    void                    DrawTextLayout(const GenericSalLayout&, HDC, bool bUseDWrite);
 
 public:
     // public SalGraphics methods, the interface to the independent vcl part
@@ -317,26 +329,26 @@ public:
     // set the line color to transparent (= don't draw lines)
     virtual void            SetLineColor() override;
     // set the line color to a specific color
-    virtual void            SetLineColor( SalColor nSalColor ) override;
+    virtual void            SetLineColor( Color nColor ) override;
     // set the fill color to transparent (= don't fill)
     virtual void            SetFillColor() override;
     // set the fill color to a specific color, shapes will be
     // filled accordingly
-    virtual void            SetFillColor( SalColor nSalColor ) override;
+    virtual void            SetFillColor( Color nColor ) override;
     // enable/disable XOR drawing
-    virtual void            SetXORMode( bool bSet ) override;
+    virtual void            SetXORMode( bool bSet, bool ) override;
     // set line color for raster operations
     virtual void            SetROPLineColor( SalROPColor nROPColor ) override;
     // set fill color for raster operations
     virtual void            SetROPFillColor( SalROPColor nROPColor ) override;
     // set the text color to a specific color
-    virtual void            SetTextColor( SalColor nSalColor ) override;
+    virtual void            SetTextColor( Color nColor ) override;
     // set the font
-    virtual void            SetFont( FontSelectPattern*, int nFallbackLevel ) override;
+    virtual void            SetFont( LogicalFontInstance*, int nFallbackLevel ) override;
     // get the current font's metrics
     virtual void            GetFontMetric( ImplFontMetricDataRef&, int nFallbackLevel ) override;
     // get the repertoire of the current font
-    virtual const FontCharMapRef GetFontCharMap() const override;
+    virtual FontCharMapRef  GetFontCharMap() const override;
     // get the layout capabilities of the current font
     virtual bool GetFontCapabilities(vcl::FontCapabilities &rGetFontCapabilities) const override;
     // graphics must fill supplied font list
@@ -347,7 +359,7 @@ public:
     // CreateFontSubset: a method to get a subset of glyhps of a font
     // inside a new valid font file
     // returns TRUE if creation of subset was successful
-    // parameters: rToFile: contains a osl file URL to write the subset to
+    // parameters: rToFile: contains an osl file URL to write the subset to
     //             pFont: describes from which font to create a subset
     //             pGlyphIDs: the glyph ids to be extracted
     //             pEncoding: the character code corresponding to each glyph
@@ -377,15 +389,11 @@ public:
                                             std::vector< sal_Int32 >& rWidths,
                                             Ucs2UIntMap& rUnicodeEnc ) override;
 
-    virtual bool            GetGlyphBoundRect(const GlyphItem&, tools::Rectangle&) override;
-    virtual bool            GetGlyphOutline(const GlyphItem&, basegfx::B2DPolyPolygon&) override;
-
-    virtual SalLayout*      GetTextLayout( ImplLayoutArgs&, int nFallbackLevel ) override;
-    virtual void            DrawTextLayout( const CommonSalLayout& ) override;
+    virtual std::unique_ptr<GenericSalLayout>
+                            GetTextLayout(int nFallbackLevel) override;
+    virtual void            DrawTextLayout( const GenericSalLayout& ) override;
 
     virtual bool            supportsOperation( OutDevSupportType ) const override;
-    // Query the platform layer for control support
-    virtual bool            IsNativeControlSupported( ControlType nType, ControlPart nPart ) override;
 
     virtual SystemGraphicsData GetGraphicsData() const override;
 
@@ -395,9 +403,9 @@ public:
 
 // Init/Deinit Graphics
 void    ImplUpdateSysColorEntries();
-int     ImplIsSysColorEntry( SalColor nSalColor );
-void    ImplGetLogFontFromFontSelect( HDC, const FontSelectPattern*,
-            LOGFONTW&, bool bTestVerticalAvail );
+int     ImplIsSysColorEntry( Color nColor );
+void    ImplGetLogFontFromFontSelect( HDC, const FontSelectPattern&,
+            const PhysicalFontFace*, LOGFONTW& );
 
 #define MAX_64KSALPOINTS    ((((sal_uInt16)0xFFFF)-8)/sizeof(POINTS))
 

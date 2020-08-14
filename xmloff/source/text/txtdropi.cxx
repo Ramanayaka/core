@@ -26,8 +26,8 @@
 
 #include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmluconv.hxx>
-#include <xmloff/nmspmap.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmltoken.hxx>
 
@@ -37,6 +37,7 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::style;
 using namespace ::xmloff::token;
 
+namespace {
 
 enum SvXMLTokenMapDropAttrs
 {
@@ -46,7 +47,9 @@ enum SvXMLTokenMapDropAttrs
     XML_TOK_DROP_STYLE
 };
 
-static const SvXMLTokenMapEntry aDropAttrTokenMap[] =
+}
+
+const SvXMLTokenMapEntry aDropAttrTokenMap[] =
 {
     { XML_NAMESPACE_STYLE, XML_LINES,       XML_TOK_DROP_LINES  },
     { XML_NAMESPACE_STYLE, XML_LENGTH,      XML_TOK_DROP_LENGTH },
@@ -58,7 +61,7 @@ static const SvXMLTokenMapEntry aDropAttrTokenMap[] =
 void XMLTextDropCapImportContext::ProcessAttrs(
         const Reference< xml::sax::XAttributeList >& xAttrList )
 {
-    SvXMLTokenMap aTokenMap( aDropAttrTokenMap );
+    static const SvXMLTokenMap aTokenMap( aDropAttrTokenMap );
 
     DropCapFormat aFormat;
     bool bWholeWord = false;
@@ -79,7 +82,7 @@ void XMLTextDropCapImportContext::ProcessAttrs(
         case XML_TOK_DROP_LINES:
             if (::sax::Converter::convertNumber( nTmp, rValue, 0, 255 ))
             {
-                aFormat.Lines = nTmp < 2 ? 0 : (sal_Int8)nTmp;
+                aFormat.Lines = nTmp < 2 ? 0 : static_cast<sal_Int8>(nTmp);
             }
             break;
 
@@ -91,7 +94,7 @@ void XMLTextDropCapImportContext::ProcessAttrs(
             else if (::sax::Converter::convertNumber( nTmp, rValue, 1, 255 ))
             {
                 bWholeWord = false;
-                aFormat.Count = (sal_Int8)nTmp;
+                aFormat.Count = static_cast<sal_Int8>(nTmp);
             }
             break;
 
@@ -99,7 +102,7 @@ void XMLTextDropCapImportContext::ProcessAttrs(
             if (GetImport().GetMM100UnitConverter().convertMeasureToCore(
                         nTmp, rValue, 0 ))
             {
-                aFormat.Distance = (sal_uInt16)nTmp;
+                aFormat.Distance = static_cast<sal_uInt16>(nTmp);
             }
             break;
 

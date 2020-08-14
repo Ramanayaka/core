@@ -18,6 +18,7 @@
  */
 
 #include <toolkit/helper/listenermultiplexer.hxx>
+#include <toolkit/helper/macros.hxx>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <cppuhelper/queryinterface.hxx>
 
@@ -35,7 +36,7 @@ ListenerMultiplexerBase::~ListenerMultiplexerBase()
 // css::uno::XInterface
 css::uno::Any ListenerMultiplexerBase::queryInterface( const css::uno::Type & rType )
 {
-    return ::cppu::queryInterface( rType, (static_cast< css::uno::XInterface* >(this)) );
+    return ::cppu::queryInterface( rType, static_cast< css::uno::XInterface* >(this) );
 }
 
 
@@ -59,7 +60,7 @@ void SAL_CALL EventListenerMultiplexer::release() throw ()
 css::uno::Any EventListenerMultiplexer::queryInterface( const css::uno::Type & rType )
 {
     css::uno::Any aRet = ::cppu::queryInterface( rType,
-                                        (static_cast< css::lang::XEventListener* >(this)) );
+                                        static_cast< css::lang::XEventListener* >(this) );
     return (aRet.hasValue() ? aRet : ListenerMultiplexerBase::queryInterface( rType ));
 }
 
@@ -179,9 +180,9 @@ void TabListenerMultiplexer::changed( sal_Int32 evt, const css::uno::Sequence< c
             if ( e.Context == xListener || !e.Context.is() )
                 aIt.remove();
         }
-        catch(const css::uno::RuntimeException& e)
+        catch(const css::uno::RuntimeException&)
         {
-            DISPLAY_EXCEPTION( TabListenerMultiplexer, changed, e )
+            DISPLAY_EXCEPTION( TabListenerMultiplexer, changed )
         }
     }
 }

@@ -18,14 +18,15 @@
  */
 
 
-#include "osl/mutex.hxx"
+#include <osl/mutex.hxx>
 
-#include "com/sun/star/lang/XTypeProvider.hpp"
-#include "com/sun/star/task/DocumentPasswordRequest.hpp"
+#include <com/sun/star/lang/XTypeProvider.hpp>
+#include <com/sun/star/task/DocumentPasswordRequest.hpp>
+#include <com/sun/star/task/XInteractionPassword.hpp>
 
 #include <cppuhelper/queryinterface.hxx>
-#include "cppuhelper/typeprovider.hxx"
-#include "ucbhelper/interactionrequest.hxx"
+#include <cppuhelper/typeprovider.hxx>
+#include <ucbhelper/interactionrequest.hxx>
 
 #include "tdoc_passwordrequest.hxx"
 
@@ -34,6 +35,8 @@ using namespace tdoc_ucp;
 
 namespace tdoc_ucp
 {
+    namespace {
+
     class InteractionSupplyPassword :
                       public ucbhelper::InteractionContinuation,
                       public lang::XTypeProvider,
@@ -65,6 +68,8 @@ namespace tdoc_ucp
         osl::Mutex m_aMutex;
         OUString m_aPassword;
     };
+
+    }
 } // namespace tdoc_ucp
 
 

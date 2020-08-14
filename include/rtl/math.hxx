@@ -20,13 +20,13 @@
 #ifndef INCLUDED_RTL_MATH_HXX
 #define INCLUDED_RTL_MATH_HXX
 
-#include <rtl/math.h>
-#include <rtl/strbuf.hxx>
-#include <rtl/string.hxx>
-#include <rtl/ustring.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <sal/mathconf.h>
-#include <sal/types.h>
+#include "rtl/math.h"
+#include "rtl/strbuf.hxx"
+#include "rtl/string.hxx"
+#include "rtl/ustring.hxx"
+#include "rtl/ustrbuf.hxx"
+#include "sal/mathconf.h"
+#include "sal/types.h"
 
 #include <cstddef>
 #include <math.h>
@@ -181,7 +181,7 @@ inline double stringToDouble(rtl::OString const & rString,
                                              cDecSeparator, cGroupSeparator,
                                              pStatus, &pEnd);
     if (pParsedEnd != NULL)
-        *pParsedEnd = (sal_Int32)(pEnd - pBegin);
+        *pParsedEnd = static_cast<sal_Int32>(pEnd - pBegin);
     return fResult;
 }
 
@@ -200,7 +200,7 @@ inline double stringToDouble(rtl::OUString const & rString,
                                               cDecSeparator, cGroupSeparator,
                                               pStatus, &pEnd);
     if (pParsedEnd != NULL)
-        *pParsedEnd = (sal_Int32)(pEnd - pBegin);
+        *pParsedEnd = static_cast<sal_Int32>(pEnd - pBegin);
     return fResult;
 }
 

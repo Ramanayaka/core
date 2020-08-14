@@ -24,12 +24,13 @@
 
 #include <memory>
 
-#include "sal/types.h"
-#include "rtl/ref.hxx"
+#include <sal/types.h>
 
-#include "store/types.h"
-#include "storbase.hxx"
+#include <store/types.h>
 #include "object.hxx"
+
+namespace rtl { template <class reference_type> class Reference; }
+namespace store { struct PageData; }
 
 namespace store
 {
@@ -44,7 +45,7 @@ class PageCache :
     static_assert((theTableSize & (theTableSize-1)) == 0, "table size should be a power of 2");
 
     Entry **     m_hash_table;
-    Entry *      m_hash_table_0[theTableSize];
+    Entry *      m_hash_table_0[theTableSize] = {};
     size_t       m_hash_size;
     size_t       m_hash_shift;
     size_t const m_page_shift;
@@ -55,7 +56,7 @@ class PageCache :
 
     static int hash_Impl(sal_uInt32 a, size_t s, size_t q, size_t m)
     {
-        return static_cast<int>((((a) + ((a) >> (s)) + ((a) >> ((s) << 1))) >> (q)) & (m));
+        return static_cast<int>(((a + (a >> s) + (a >> (s << 1))) >> q) & m);
     }
     int hash_index_Impl (sal_uInt32 nOffset)
     {

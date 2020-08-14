@@ -26,8 +26,8 @@
 #include <set>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/script/ScriptEventDescriptor.hpp>
+#include <xmloff/xmlexp.hxx>
 #include "propertyexport.hxx"
 #include "callbacks.hxx"
 #include "controlelement.hxx"
@@ -56,7 +56,7 @@ namespace xmloff
 
     protected:
         /// get the name of the XML element
-        virtual const sal_Char* getXMLElementName() const = 0;
+        virtual const char* getXMLElementName() const = 0;
         /// examine the element we're exporting
         virtual void examine();
         /// export the attributes
@@ -73,7 +73,7 @@ namespace xmloff
         virtual void exportServiceNameAttribute();
 
         /// start the XML element
-        virtual void implStartElement(const sal_Char* _pName);
+        virtual void implStartElement(const char* _pName);
 
         /// ends the XML element
         virtual void implEndElement();
@@ -91,8 +91,8 @@ namespace xmloff
         typedef std::set<sal_Int16> Int16Set;
             // used below
 
-        OUString         m_sControlId;           // the control id to use when exporting
-        OUString         m_sReferringControls;   // list of referring controls (i.e. their id's)
+        OUString                m_sControlId;           // the control id to use when exporting
+        OUString                m_sReferringControls;   // list of referring controls (i.e. their id's)
         sal_Int16               m_nClassId;             // class id of the control we're representing
         ElementType             m_eType;                // (XML) type of the control we're representing
         CCAFlags                m_nIncludeCommon;       // common control attributes to include
@@ -123,16 +123,16 @@ namespace xmloff
 
     protected:
         /// start the XML element
-        virtual void implStartElement(const sal_Char* _pName) override;
+        virtual void implStartElement(const char* _pName) override;
 
         /// ends the XML element
         virtual void implEndElement() override;
 
         /// get the name of the outer XML element
-        virtual const sal_Char* getOuterXMLElementName() const;
+        virtual const char* getOuterXMLElementName() const;
 
         // get the name of the XML element
-        virtual const sal_Char* getXMLElementName() const override;
+        virtual const char* getXMLElementName() const override;
 
         /** examine the control. Some kind of CtorImpl.
         */
@@ -199,7 +199,7 @@ namespace xmloff
         */
         void exportListSourceAsElements();
 
-        /** get's a Sequence&lt; sal_Int16 &gt; property value as set of sal_Int16's
+        /** gets a Sequence&lt; sal_Int16 &gt; property value as set of sal_Int16's
             @param _rPropertyName
                 the property name to use
             @param _rOut
@@ -275,7 +275,7 @@ namespace xmloff
 
     protected:
         // OControlExport overridables
-        virtual const sal_Char* getOuterXMLElementName() const override;
+        virtual const char* getOuterXMLElementName() const override;
         virtual void exportServiceNameAttribute() override;
         virtual void exportAttributes() override;
 
@@ -303,7 +303,7 @@ namespace xmloff
             );
 
     protected:
-        virtual const sal_Char* getXMLElementName() const override;
+        virtual const char* getXMLElementName() const override;
         virtual void exportSubTags() override;
         virtual void exportAttributes() override;
     };

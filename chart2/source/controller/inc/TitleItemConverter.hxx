@@ -20,14 +20,15 @@
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_TITLEITEMCONVERTER_HXX
 
 #include "ItemConverter.hxx"
-#include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 #include <vector>
 
+namespace com::sun::star::awt { struct Size; }
+namespace com::sun::star::lang { class XMultiServiceFactory; }
+
 class SdrModel;
 
-namespace chart { namespace wrapper {
+namespace chart::wrapper {
 
 class TitleItemConverter : public ItemConverter
 {
@@ -36,7 +37,7 @@ public:
         const css::uno::Reference<css::beans::XPropertySet>& rPropertySet,
         SfxItemPool& rItemPool, SdrModel& rDrawModel,
         const css::uno::Reference<css::lang::XMultiServiceFactory>& xNamedPropertyContainerFactory,
-        const css::awt::Size* pRefSize = nullptr );
+        const css::awt::Size* pRefSize );
 
     virtual ~TitleItemConverter() override;
 
@@ -51,10 +52,10 @@ protected:
     virtual bool ApplySpecialItem( sal_uInt16 nWhichId, const SfxItemSet & rItemSet ) override;
 
 private:
-    std::vector< ItemConverter * >    m_aConverters;
+    std::vector< std::unique_ptr<ItemConverter> >    m_aConverters;
 };
 
-}}
+}
 
 #endif
 

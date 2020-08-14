@@ -7,13 +7,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "EventHandler.hxx"
+#include <wrapper/EventHandler.hxx>
 
-namespace avmedia
-{
-namespace vlc
-{
-namespace wrapper
+namespace avmedia::vlc::wrapper
 {
 EventHandler::EventHandler()
     : ::osl::Thread()
@@ -40,8 +36,6 @@ void EventHandler::run()
 
         callback();
     } while ( true );
-}
-}
 }
 }
 

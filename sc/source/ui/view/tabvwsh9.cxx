@@ -20,29 +20,29 @@
 #include <svx/imapdlg.hxx>
 #include <svx/svdmark.hxx>
 #include <svx/svdview.hxx>
-#include <svx/gallery.hxx>
-#include <svx/hlnkitem.hxx>
+#include <svx/ImageMapInfo.hxx>
+#include <svx/svxids.hrc>
 #include <sfx2/bindings.hxx>
 #include <sfx2/request.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/sidebar/Sidebar.hxx>
 #include <svl/whiter.hxx>
+#include <svl/stritem.hxx>
 
 #include "imapwrap.hxx"
-#include "tabvwsh.hxx"
-#include "viewdata.hxx"
-#include "tabview.hxx"
-#include "drwlayer.hxx"
-#include "userdat.hxx"
-#include "docsh.hxx"
+#include <tabvwsh.hxx>
+#include <viewdata.hxx>
+#include <drwlayer.hxx>
+#include <userdat.hxx>
+#include <docsh.hxx>
 
 #include <svx/galleryitem.hxx>
 #include <com/sun/star/gallery/GalleryItemType.hpp>
 
 class SvxIMapDlg;
 
-void ScTabViewShell::ExecChildWin(SfxRequest& rReq)
+void ScTabViewShell::ExecChildWin(const SfxRequest& rReq)
 {
     sal_uInt16 nSlot = rReq.GetSlot();
     switch(nSlot)
@@ -60,7 +60,7 @@ void ScTabViewShell::ExecChildWin(SfxRequest& rReq)
     }
 }
 
-void ScTabViewShell::ExecGallery( SfxRequest& rReq )
+void ScTabViewShell::ExecGallery( const SfxRequest& rReq )
 {
     const SfxItemSet* pArgs = rReq.GetArgs();
 
@@ -76,8 +76,7 @@ void ScTabViewShell::ExecGallery( SfxRequest& rReq )
         Graphic aGraphic( pGalleryItem->GetGraphic() );
         Point   aPos     = GetInsertPos();
 
-        OUString aPath, aFilter;
-        PasteGraphic( aPos, aGraphic, aPath, aFilter );
+        PasteGraphic( aPos, aGraphic, OUString(), OUString() );
     }
     else if ( nType == css::gallery::GalleryItemType::MEDIA )
     {
@@ -106,7 +105,7 @@ void ScTabViewShell::ExecImageMap( SfxRequest& rReq )
                 SvxIMapDlg* pDlg = GetIMapDlg();
                 if ( pDlg )
                 {
-                    SdrView* pDrView = GetSdrView();
+                    SdrView* pDrView = GetScDrawView();
                     if ( pDrView )
                     {
                         const SdrMarkList& rMarkList = pDrView->GetMarkedObjectList();
@@ -122,7 +121,7 @@ void ScTabViewShell::ExecImageMap( SfxRequest& rReq )
 
         case SID_IMAP_EXEC:
         {
-            SdrView* pDrView = GetSdrView();
+            SdrView* pDrView = GetScDrawView();
             SdrMark* pMark = pDrView ? pDrView->GetMarkedObjectList().GetMark(0) : nullptr;
 
             if ( pMark )
@@ -133,10 +132,10 @@ void ScTabViewShell::ExecImageMap( SfxRequest& rReq )
                 if ( ScIMapDlgGetObj(pDlg) == static_cast<void*>(pSdrObj) )
                 {
                     const ImageMap& rImageMap = ScIMapDlgGetMap(pDlg);
-                    ScIMapInfo*     pIMapInfo = ScDrawLayer::GetIMapInfo( pSdrObj );
+                    SvxIMapInfo*     pIMapInfo = SvxIMapInfo::GetIMapInfo( pSdrObj );
 
                     if ( !pIMapInfo )
-                        pSdrObj->AppendUserData( new ScIMapInfo( rImageMap ) );
+                        pSdrObj->AppendUserData( std::unique_ptr<SdrObjUserData>(new SvxIMapInfo( rImageMap )) );
                     else
                         pIMapInfo->SetImageMap( rImageMap );
 
@@ -184,7 +183,7 @@ void ScTabViewShell::GetImageMapState( SfxItemSet& rSet )
                 {
                     bool bDisable = true;
 
-                    SdrView* pDrView = GetSdrView();
+                    SdrView* pDrView = GetScDrawView();
                     if ( pDrView )
                     {
                         const SdrMarkList& rMarkList = pDrView->GetMarkedObjectList();

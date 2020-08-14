@@ -30,10 +30,10 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace awt { struct Point; }
     namespace drawing { class XShape; }
-} } }
+}
 
 namespace oox {
     class GraphicHelper;
@@ -41,8 +41,7 @@ namespace oox {
     namespace drawingml { class ShapePropertyMap; }
 }
 
-namespace oox {
-namespace vml {
+namespace oox::vml {
 
 
 typedef ::std::pair< sal_Int32, sal_Int32 > Int32Pair;
@@ -153,8 +152,8 @@ namespace ConversionHelper
                             const GraphicHelper& rGraphicHelper,
                             const OptValue< OUString >& roVmlColor,
                             const OptValue< double >& roVmlOpacity,
-                            sal_Int32 nDefaultRgb,
-                            sal_Int32 nPrimaryRgb = API_RGB_TRANSPARENT );
+                            ::Color nDefaultRgb,
+                            ::Color nPrimaryRgb = API_RGB_TRANSPARENT );
 
     /** Converts VML path string into point and flag vectors.
 
@@ -175,7 +174,7 @@ namespace ConversionHelper
 }
 
 
-/** The stroke arrow model structure contains all properties for an line end arrow. */
+/** The stroke arrow model structure contains all properties for a line end arrow. */
 struct StrokeArrowModel
 {
     OptValue< sal_Int32 > moArrowType;
@@ -250,10 +249,11 @@ struct OOX_DLLPUBLIC ShadowModel
 };
 
 /** The shadow model structure contains all shape textpath properties. */
-struct OOX_DLLPUBLIC TextpathModel
+struct TextpathModel
 {
     OptValue<OUString> moString;                  ///< Specifies the string of the textpath.
     OptValue<OUString> moStyle;                   ///< Specifies the style of the textpath.
+    OptValue<bool>     moTrim;                    ///< Specifies whether extra space is removed above and below the text
 
     TextpathModel();
 
@@ -262,8 +262,7 @@ struct OOX_DLLPUBLIC TextpathModel
                        const GraphicHelper& rGraphicHelper) const;
 };
 
-} // namespace vml
-} // namespace oox
+} // namespace oox::vml
 
 #endif
 

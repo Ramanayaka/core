@@ -27,7 +27,7 @@
 #include "TransformerActions.hxx"
 #include "FlatTContext.hxx"
 #include "AttrTransformerAction.hxx"
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/namespacemap.hxx>
 #include <osl/diagnose.h>
 
 using namespace ::com::sun::star::uno;
@@ -69,7 +69,7 @@ void XMLCreateElemTransformerContext::StartElement(
             XMLTransformerActions::key_type aKey( nPrefix, aLocalName );
             XMLTransformerActions::const_iterator aIter =
                     pActions->find( aKey );
-            if( !(aIter == pActions->end() ) )
+            if( aIter != pActions->end() )
             {
                 if( !pMutableAttrList )
                 {

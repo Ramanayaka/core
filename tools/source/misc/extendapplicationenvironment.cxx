@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
 #include <config_folders.h>
 
 #include <sal/config.h>
@@ -26,17 +25,11 @@
 
 #if defined UNX
 #include <sys/resource.h>
-#include <sys/time.h>
-#include <sys/types.h>
 #endif
 
 #include <osl/process.h>
-#include <osl/thread.h>
 #include <rtl/bootstrap.hxx>
-#include <rtl/string.hxx>
-#include <rtl/textcvt.h>
 #include <rtl/ustrbuf.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <tools/extendapplicationenvironment.hxx>
@@ -54,7 +47,7 @@ void extendApplicationEnvironment() {
 #endif
 
     // Make sure URE_BOOTSTRAP environment variable is set (failure is fatal):
-    OUStringBuffer env;
+    OUStringBuffer env(512);
     OUString envVar("URE_BOOTSTRAP");
     OUString uri;
     if (rtl::Bootstrap::get(envVar, uri))

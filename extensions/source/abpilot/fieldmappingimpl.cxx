@@ -18,21 +18,20 @@
  */
 
 #include "fieldmappingimpl.hxx"
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
 #include <com/sun/star/ui/AddressBookSourceDialog.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/sdb/CommandType.hpp>
 #include <tools/debug.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <vcl/stdtext.hxx>
+#include <vcl/weld.hxx>
 #include <com/sun/star/util/AliasProgrammaticPair.hpp>
-#include "abpresid.hrc"
-#include "componentmodule.hxx"
+#include <strings.hrc>
+#include <componentmodule.hxx>
 #include <unotools/confignode.hxx>
-#include "sal/macros.h"
+#include <sal/macros.h>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 
 namespace abp
@@ -50,15 +49,12 @@ namespace abp
     using namespace ::com::sun::star::ui::dialogs;
 
 
-    static const char sDriverSettingsNodeName[] = "/org.openoffice.Office.DataAccess/DriverSettings/com.sun.star.comp.sdbc.MozabDriver";
-    static const char sAddressBookNodeName[] = "/org.openoffice.Office.DataAccess/AddressBook";
-
+    const char sDriverSettingsNodeName[] = "/org.openoffice.Office.DataAccess/DriverSettings/com.sun.star.comp.sdbc.MozabDriver";
+    const char sAddressBookNodeName[] = "/org.openoffice.Office.DataAccess/AddressBook";
 
     namespace fieldmapping
     {
-
-
-        bool invokeDialog( const Reference< XComponentContext >& _rxORB, class vcl::Window* _pParent,
+        bool invokeDialog( const Reference< XComponentContext >& _rxORB, class weld::Window* _pParent,
             const Reference< XPropertySet >& _rxDataSource, AddressSettings& _rSettings )
         {
             _rSettings.aFieldMapping.clear();
@@ -72,7 +68,7 @@ namespace abp
             {
 
                 // create an instance of the dialog service
-                Reference< XWindow > xDialogParent = VCLUnoHelper::GetInterface( _pParent );
+                Reference< XWindow > xDialogParent = _pParent->GetXWindow();
                 OUString sTitle(compmodule::ModuleRes(RID_STR_FIELDDIALOGTITLE));
                 Reference< XExecutableDialog > xDialog = AddressBookSourceDialog::createWithDataSource(_rxORB,
                                                            // the parent window
@@ -126,7 +122,7 @@ namespace abp
                 //    For this, the driver uses programmatic names, too, but they differ from the programmatic names the
                 //    template documents have.
                 // So what we need first is a mapping from programmatic names (1) to programmatic names (2)
-                const sal_Char* pMappingProgrammatics[] =
+                const char* pMappingProgrammatics[] =
                 {
                     "FirstName",            "FirstName",
                     "LastName",             "LastName",
@@ -170,7 +166,7 @@ namespace abp
                 // number of pairs
                 sal_Int32 const nIntersectedProgrammatics = SAL_N_ELEMENTS( pMappingProgrammatics ) / 2;
 
-                const sal_Char** pProgrammatic = pMappingProgrammatics;
+                const char** pProgrammatic = pMappingProgrammatics;
                 OUString sAddressProgrammatic;
                 OUString sDriverProgrammatic;
                 OUString sDriverUI;
@@ -201,7 +197,7 @@ namespace abp
             catch( const Exception& )
             {
                 OSL_FAIL("fieldmapping::defaultMapping: code is assumed to throw no exceptions!");
-                    // the config nodes we're using herein should not do this ....
+                    // the config nodes we're using herein should not do this...
             }
         }
 
@@ -235,7 +231,7 @@ namespace abp
                      != *pExistentFields),
                     "extensions.abpilot",
                     "fieldmapping::writeTemplateAddressFieldMapping: inconsistent config data!");
-                    // there should be a redundancy in the config data .... if this asserts, there isn't anymore!
+                    // there should be a redundancy in the config data... if this asserts, there isn't anymore!
 
                 // do we have a new alias for the programmatic?
                 MapString2String::iterator aPos = aFieldAssignment.find( *pExistentFields );
@@ -256,18 +252,15 @@ namespace abp
 
             // now everything remaining in aFieldAssignment marks a mapping entry which was not present
             // in the config before
-            for (   MapString2String::const_iterator aNewMapping = aFieldAssignment.begin();
-                    aNewMapping != aFieldAssignment.end();
-                    ++aNewMapping
-                )
+            for (auto const& elem : aFieldAssignment)
             {
-                DBG_ASSERT( !aFields.hasByName( aNewMapping->first ),
+                DBG_ASSERT( !aFields.hasByName( elem.first ),
                     "fieldmapping::writeTemplateAddressFieldMapping: inconsistence!" );
                     // in case the config node for the fields already has the node named <aNewMapping->first>,
                     // the entry should have been removed from aNewMapping (in the above loop)
-                OConfigurationNode aNewField =  aFields.createNode( aNewMapping->first );
-                aNewField.setNodeValue( sProgrammaticNodeName, makeAny( aNewMapping->first ) );
-                aNewField.setNodeValue( sAssignedNodeName, makeAny( aNewMapping->second ) );
+                OConfigurationNode aNewField =  aFields.createNode( elem.first );
+                aNewField.setNodeValue( sProgrammaticNodeName, makeAny( elem.first ) );
+                aNewField.setNodeValue( sAssignedNodeName, makeAny( elem.second ) );
             }
 
             // commit the changes done
@@ -293,7 +286,7 @@ namespace abp
 
             aAddressBookSettings.setNodeValue( OUString( "DataSourceName" ), makeAny( _rDataSourceName ) );
             aAddressBookSettings.setNodeValue( OUString( "Command" ), makeAny( _rTableName ) );
-            aAddressBookSettings.setNodeValue( OUString( "CommandType" ), makeAny( (sal_Int16)CommandType::TABLE ) );
+            aAddressBookSettings.setNodeValue( OUString( "CommandType" ), makeAny( sal_Int16(CommandType::TABLE) ) );
 
             // commit the changes done
             aAddressBookSettings.commit();

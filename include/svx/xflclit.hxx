@@ -28,19 +28,16 @@
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
-// class XFillColorItem
 
-class SVX_DLLPUBLIC XFillColorItem : public XColorItem
+class SVXCORE_DLLPUBLIC XFillColorItem final : public XColorItem
 {
 public:
             static SfxPoolItem* CreateDefault();
             XFillColorItem() {}
             XFillColorItem(sal_Int32 nIndex, const Color& rTheColor);
             XFillColorItem(const OUString& rName, const Color& rTheColor);
-            XFillColorItem(SvStream& rIn);
 
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual XFillColorItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -48,9 +45,10 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
-                                  OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                  OUString &rText, const IntlWrapper& ) const override;
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
+    virtual boost::property_tree::ptree dumpAsJSON() const override;
 };
 
 #endif

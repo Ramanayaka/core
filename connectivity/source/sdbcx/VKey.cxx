@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <connectivity/sdbcx/VKey.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
+#include <sdbcx/VKey.hxx>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/sdbc/KeyRule.hpp>
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <connectivity/sdbcx/VColumn.hxx>
 #include <connectivity/sdbcx/VCollection.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
 
 using namespace connectivity;
 using namespace connectivity::sdbcx;
@@ -39,19 +38,13 @@ using namespace ::com::sun::star::lang;
 OUString SAL_CALL OKey::getImplementationName(  )
 {
     if(isNew())
-        return OUString("com.sun.star.sdbcx.VKeyDescription");
-    return OUString("com.sun.star.sdbcx.VKey");
+        return "com.sun.star.sdbcx.VKeyDescriptor";
+    return "com.sun.star.sdbcx.VKey";
 }
 
 css::uno::Sequence< OUString > SAL_CALL OKey::getSupportedServiceNames(  )
 {
-    css::uno::Sequence< OUString > aSupported(1);
-    if(isNew())
-        aSupported[0] = "com.sun.star.sdbcx.KeyDescription";
-    else
-        aSupported[0] = "com.sun.star.sdbcx.Key";
-
-    return aSupported;
+    return { isNew()?OUString("com.sun.star.sdbcx.KeyDescriptor"):OUString("com.sun.star.sdbcx.Key") };
 }
 
 sal_Bool SAL_CALL OKey::supportsService( const OUString& _rServiceName )
@@ -61,8 +54,7 @@ sal_Bool SAL_CALL OKey::supportsService( const OUString& _rServiceName )
 
 OKey::OKey(bool _bCase) :   ODescriptor_BASE(m_aMutex)
             ,   ODescriptor(ODescriptor_BASE::rBHelper, _bCase, true)
-            ,   m_aProps(new KeyProperties())
-            ,   m_pColumns(nullptr)
+            ,   m_aProps(std::make_shared<KeyProperties>())
 {
 }
 
@@ -70,7 +62,6 @@ OKey::OKey(const OUString& Name,const std::shared_ptr<KeyProperties>& _rProps, b
 : ODescriptor_BASE(m_aMutex)
  ,ODescriptor(ODescriptor_BASE::rBHelper, _bCase)
  ,m_aProps(_rProps)
- ,m_pColumns(nullptr)
 {
     m_Name = Name;
 }

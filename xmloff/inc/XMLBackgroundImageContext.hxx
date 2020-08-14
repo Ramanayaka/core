@@ -23,11 +23,11 @@
 #include <com/sun/star/style/GraphicLocation.hpp>
 #include "XMLElementPropertyContext.hxx"
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace io { class XOutputStream; }
-} } }
+}
 
-class XMLBackgroundImageContext : public XMLElementPropertyContext
+class XMLBackgroundImageContext final : public XMLElementPropertyContext
 {
     XMLPropertyState aPosProp;
     sal_Int32 m_nBitmapModeIdx;
@@ -35,11 +35,11 @@ class XMLBackgroundImageContext : public XMLElementPropertyContext
     XMLPropertyState aTransparencyProp;
 
     css::style::GraphicLocation ePos;
-    OUString sURL;
+    OUString m_sURL;
     OUString sFilter;
     sal_Int8 nTransparency;
 
-    css::uno::Reference < css::io::XOutputStream > xBase64Stream;
+    css::uno::Reference < css::io::XOutputStream > m_xBase64Stream;
 
 private:
     void ProcessAttrs(
@@ -61,7 +61,7 @@ public:
 
     virtual ~XMLBackgroundImageContext() override;
 
-    SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                 const OUString& rLocalName,
                  const css::uno::Reference<css::xml::sax::XAttributeList > & xAttrList ) override;
 

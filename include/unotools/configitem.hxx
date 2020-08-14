@@ -28,7 +28,7 @@
 #include <unotools/options.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
-namespace com{ namespace sun{ namespace star{
+namespace com::sun::star {
     namespace uno{
         class Any;
     }
@@ -41,18 +41,18 @@ namespace com{ namespace sun{ namespace star{
     namespace util{
         class XChangesListener;
     }
-}}}
+}
 
 enum class ConfigItemMode
 {
-    ImmediateUpdate    = 0x00,
-    DelayedUpdate      = 0x01,
+    NONE               = 0x00,
     AllLocales         = 0x02,
     ReleaseTree        = 0x04,
 };
+
 namespace o3tl
 {
-    template<> struct typed_flags<ConfigItemMode> : is_typed_flags<ConfigItemMode, 0x07> {};
+    template<> struct typed_flags<ConfigItemMode> : is_typed_flags<ConfigItemMode, 0x06> {};
 }
 
 namespace utl
@@ -63,9 +63,6 @@ namespace utl
         LocalNode,     // local node name, for use in XNameAccess etc. ("Item", "Q & A")
         LocalPath,     // one-level relative path, for use when building paths etc.  ("Item", "Typ['Q &amp; A']")
     };
-
-    class ConfigChangeListener_Impl;
-    class ConfigManager;
 
     class UNOTOOLS_DLLPUBLIC ConfigItem : public ConfigurationBroadcaster
     {
@@ -112,7 +109,7 @@ namespace utl
 
         protected:
             explicit ConfigItem(const OUString &rSubTree,
-                        ConfigItemMode nMode = ConfigItemMode::DelayedUpdate);
+                        ConfigItemMode nMode = ConfigItemMode::NONE);
 
             void                    SetModified  (); // mark item as modified
             void                    ClearModified(); // reset state after commit!
@@ -154,7 +151,7 @@ namespace utl
             bool                ClearNodeSet(const OUString& rNode);
             // remove selected members of a set
             bool                ClearNodeElements(const OUString& rNode,
-                                        css::uno::Sequence< OUString >& rElements);
+                                        css::uno::Sequence< OUString > const & rElements);
             // change or add members to a set
             bool                SetSetProperties(const OUString& rNode, const css::uno::Sequence< css::beans::PropertyValue >& rValues);
             // remove, change or add members of a set
@@ -164,6 +161,11 @@ namespace utl
 
         public:
             virtual ~ConfigItem() override;
+
+            ConfigItem(ConfigItem const &) = default;
+            ConfigItem(ConfigItem &&) = default;
+            ConfigItem & operator =(ConfigItem const &) = delete; // due to const sSubTree
+            ConfigItem & operator =(ConfigItem &&) = delete; // due to const sSubTree
 
             /** is called from the ConfigManager before application ends of from the
                 PropertyChangeListener if the sub tree broadcasts changes. */

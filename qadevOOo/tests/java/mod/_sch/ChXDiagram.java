@@ -156,7 +156,7 @@ public class ChXDiagram extends TestCase {
     /**
     * Creating a TestEnvironment for the interfaces to be tested.
     * Retrieves a collection of spreadsheets from a document
-    * and takes one of them. Inserts some values into the cells of the some cell
+    * and takes one of them. Inserts some values into the cells of the same cell
     * range address. Adds and retrieves the chart that using the data from
     * the cells of this cell range address. Obtains the chart document which is
     * embedded into the retrieved chart using the interface
@@ -338,7 +338,7 @@ public class ChXDiagram extends TestCase {
     } // finish method getTestEnvironment
 
     /**
-    * Inserts a value or a formula in the cell of the spreasheet.
+    * Inserts a value or a formula in the cell of the spreadsheet.
     * @param CellX is the column index of the cell
     * @param CellY is the row index of the cell
     * @param theValue string representation of the value

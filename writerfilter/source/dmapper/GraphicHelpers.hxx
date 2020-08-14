@@ -23,12 +23,9 @@
 #include "LoggedResources.hxx"
 #include <com/sun/star/text/WrapTextMode.hpp>
 
-#include <memory>
-#include <map>
 #include <utility>
 
-namespace writerfilter {
-namespace dmapper
+namespace writerfilter::dmapper
 {
 
 class PositionHandler: public LoggedProperties
@@ -39,6 +36,7 @@ public:
     sal_Int16 orientation() const;
     sal_Int16 relation() const { return m_nRelation;}
     sal_Int32 position() const { return m_nPosition;}
+    bool GetPageToggle() const { return m_bPageToggle; }
  private:
     virtual void lcl_attribute( Id aName, Value& rVal ) override;
     virtual void lcl_sprm( Sprm& rSprm ) override;
@@ -47,8 +45,8 @@ public:
     sal_Int32 m_nPosition;
     std::pair<OUString, OUString>& m_rPositionOffsets;
     std::pair<OUString, OUString>& m_rAligns;
+    bool m_bPageToggle = false;
 };
-typedef std::shared_ptr<PositionHandler> PositionHandlerPtr;
 
 class WrapHandler: public LoggedProperties
 {
@@ -56,14 +54,14 @@ public:
     WrapHandler( );
     virtual ~WrapHandler( ) override;
 
-    sal_Int32 m_nType;
-    sal_Int32 m_nSide;
-
-    css::text::WrapTextMode getWrapMode( );
+    css::text::WrapTextMode getWrapMode( ) const;
 
  private:
     virtual void lcl_attribute( Id aName, Value& rVal ) override;
     virtual void lcl_sprm( Sprm& rSprm ) override;
+
+    sal_Int32 m_nType;
+    sal_Int32 m_nSide;
 };
 
 /// Keeps track of the next available unique automatic name.
@@ -77,7 +75,7 @@ public:
     OUString NameGraphic(const OUString& rTemplate);
 };
 
-} }
+}
 
 #endif
 

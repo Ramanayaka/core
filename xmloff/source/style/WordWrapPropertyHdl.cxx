@@ -18,18 +18,16 @@
  */
 
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/WordWrapPropertyHdl.hxx>
+#include <WordWrapPropertyHdl.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <comphelper/extract.hxx>
 #include <rtl/ustring.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <com/sun/star/uno/Any.hxx>
 
 using namespace ::com::sun::star::uno;
 
 
-// class XMLWordWrapPropertyHdl
 
 
 XMLWordWrapPropertyHdl::XMLWordWrapPropertyHdl( SvXMLImport* pImport )

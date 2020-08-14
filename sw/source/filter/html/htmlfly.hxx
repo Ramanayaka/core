@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SW_SOURCE_FILTER_HTML_HTMLFLY_HXX
 #define INCLUDED_SW_SOURCE_FILTER_HTML_HTMLFLY_HXX
 
-#include <tools/solar.h>
 #include <o3tl/sorted_vector.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
@@ -87,11 +86,11 @@ struct AllHtmlFlags {
     HtmlPosition       nPosition;
     HtmlContainerFlags nContainer;
 };
-extern AllHtmlFlags aHTMLOutFramePageFlyTable[MAX_FRMTYPES][MAX_BROWSERS];
-extern AllHtmlFlags aHTMLOutFrameParaFrameTable[MAX_FRMTYPES][MAX_BROWSERS];
-extern AllHtmlFlags aHTMLOutFrameParaPrtAreaTable[MAX_FRMTYPES][MAX_BROWSERS];
-extern AllHtmlFlags aHTMLOutFrameParaOtherTable[MAX_FRMTYPES][MAX_BROWSERS];
-extern AllHtmlFlags aHTMLOutFrameAsCharTable[MAX_FRMTYPES][MAX_BROWSERS];
+extern AllHtmlFlags const aHTMLOutFramePageFlyTable[MAX_FRMTYPES][MAX_BROWSERS];
+extern AllHtmlFlags const aHTMLOutFrameParaFrameTable[MAX_FRMTYPES][MAX_BROWSERS];
+extern AllHtmlFlags const aHTMLOutFrameParaPrtAreaTable[MAX_FRMTYPES][MAX_BROWSERS];
+extern AllHtmlFlags const aHTMLOutFrameParaOtherTable[MAX_FRMTYPES][MAX_BROWSERS];
+extern AllHtmlFlags const aHTMLOutFrameAsCharTable[MAX_FRMTYPES][MAX_BROWSERS];
 
 class SwHTMLPosFlyFrame
 {
@@ -116,14 +115,14 @@ public:
     const SdrObject*     GetSdrObject() const    { return pSdrObject; }
     const SwNodeIndex&   GetNdIndex() const      { return *pNdIdx; }
     sal_Int32            GetContentIndex() const { return nContentIdx; }
-    AllHtmlFlags         GetOutMode() const      { return nAllFlags; }
+    AllHtmlFlags const & GetOutMode() const      { return nAllFlags; }
     HtmlOut              GetOutFn() const        { return nAllFlags.nOut; }
     HtmlPosition         GetOutPos() const       { return nAllFlags.nPosition; }
 };
 
 class SwHTMLPosFlyFrames
-    : public o3tl::sorted_vector<SwHTMLPosFlyFrame*,
-                o3tl::less_ptr_to<SwHTMLPosFlyFrame>,
+    : public o3tl::sorted_vector<std::unique_ptr<SwHTMLPosFlyFrame>,
+                o3tl::less_uniqueptr_to<SwHTMLPosFlyFrame>,
                 o3tl::find_partialorder_ptrequals>
 {};
 

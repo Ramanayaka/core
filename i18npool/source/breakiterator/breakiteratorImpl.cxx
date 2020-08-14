@@ -24,10 +24,17 @@
 #include <i18nutil/unicode.hxx>
 #include <rtl/ustrbuf.hxx>
 
+#include <com/sun/star/i18n/CharType.hpp>
+#include <com/sun/star/i18n/ScriptType.hpp>
+#include <com/sun/star/i18n/WordType.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+
+using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
+using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::lang;
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace i18npool {
 
 BreakIteratorImpl::BreakIteratorImpl( const Reference < XComponentContext >& rxContext ) : m_xContext( rxContext )
 {
@@ -39,10 +46,6 @@ BreakIteratorImpl::BreakIteratorImpl()
 
 BreakIteratorImpl::~BreakIteratorImpl()
 {
-    // Clear lookuptable
-    for (lookupTableItem* p : lookupTable)
-        delete p;
-    lookupTable.clear();
 }
 
 #define LBI getLocaleSpecificBreakIterator(rLocale)
@@ -50,7 +53,9 @@ BreakIteratorImpl::~BreakIteratorImpl()
 sal_Int32 SAL_CALL BreakIteratorImpl::nextCharacters( const OUString& Text, sal_Int32 nStartPos,
         const Locale &rLocale, sal_Int16 nCharacterIteratorMode, sal_Int32 nCount, sal_Int32& nDone )
 {
-    if (nCount < 0) throw RuntimeException();
+    if (nCount < 0)
+        throw RuntimeException("BreakIteratorImpl::nextCharacters: expected nCount >=0, got "
+                               + OUString::number(nCount));
 
     return LBI->nextCharacters( Text, nStartPos, rLocale, nCharacterIteratorMode, nCount, nDone);
 }
@@ -58,7 +63,9 @@ sal_Int32 SAL_CALL BreakIteratorImpl::nextCharacters( const OUString& Text, sal_
 sal_Int32 SAL_CALL BreakIteratorImpl::previousCharacters( const OUString& Text, sal_Int32 nStartPos,
         const Locale& rLocale, sal_Int16 nCharacterIteratorMode, sal_Int32 nCount, sal_Int32& nDone )
 {
-    if (nCount < 0) throw RuntimeException();
+    if (nCount < 0)
+        throw RuntimeException("BreakIteratorImpl::previousCharacters: expected nCount >=0, got "
+                               + OUString::number(nCount));
 
     return LBI->previousCharacters( Text, nStartPos, rLocale, nCharacterIteratorMode, nCount, nDone);
 }
@@ -72,23 +79,57 @@ static sal_Int32 skipSpace(const OUString& Text, sal_Int32 nPos, sal_Int32 len, 
     switch (rWordType) {
         case WordType::ANYWORD_IGNOREWHITESPACES:
             if (bDirection)
-                while (nPos < len && (u_isWhitespace(ch = Text.iterateCodePoints(&pos)) || isZWSP(ch))) nPos=pos;
+                while (nPos < len)
+                {
+                    ch = Text.iterateCodePoints(&pos);
+                    if (!u_isWhitespace(ch) && !isZWSP(ch))
+                        break;
+                    nPos = pos;
+                }
             else
-                while (nPos > 0 && (u_isWhitespace(ch = Text.iterateCodePoints(&pos, -1)) || isZWSP(ch))) nPos=pos;
+                while (nPos > 0)
+                {
+                    ch = Text.iterateCodePoints(&pos, -1);
+                    if (!u_isWhitespace(ch) && !isZWSP(ch))
+                        break;
+                    nPos = pos;
+                }
             break;
         case WordType::DICTIONARY_WORD:
             if (bDirection)
-                while (nPos < len && (u_isWhitespace(ch = Text.iterateCodePoints(&pos)) || isZWSP(ch) ||
-                            ! (ch == 0x002E || u_isalnum(ch)))) nPos=pos;
+                while (nPos < len)
+                {
+                    ch = Text.iterateCodePoints(&pos);
+                    if (!u_isWhitespace(ch) && !isZWSP(ch) && (ch == 0x002E || u_isalnum(ch)))
+                        break;
+                    nPos = pos;
+                }
             else
-                while (nPos > 0 && (u_isWhitespace(ch = Text.iterateCodePoints(&pos, -1)) || isZWSP(ch) ||
-                            ! (ch == 0x002E || u_isalnum(ch)))) nPos=pos;
+                while (nPos > 0)
+                {
+                    ch = Text.iterateCodePoints(&pos, -1);
+                    if (!u_isWhitespace(ch) && !isZWSP(ch) && (ch == 0x002E || u_isalnum(ch)))
+                        break;
+                    nPos = pos;
+                }
             break;
         case WordType::WORD_COUNT:
             if (bDirection)
-                while (nPos < len && (u_isUWhiteSpace(ch = Text.iterateCodePoints(&pos)) || isZWSP(ch))) nPos=pos;
+                while (nPos < len)
+                {
+                    ch = Text.iterateCodePoints(&pos);
+                    if (!u_isUWhiteSpace(ch) && !isZWSP(ch))
+                        break;
+                    nPos = pos;
+                }
             else
-                while (nPos > 0 && (u_isUWhiteSpace(ch = Text.iterateCodePoints(&pos, -1)) || isZWSP(ch))) nPos=pos;
+                while (nPos > 0)
+                {
+                    ch = Text.iterateCodePoints(&pos, -1);
+                    if (!u_isUWhiteSpace(ch) && !isZWSP(ch))
+                        break;
+                    nPos = pos;
+                }
             break;
     }
     return nPos;
@@ -120,7 +161,7 @@ Boundary SAL_CALL BreakIteratorImpl::nextWord( const OUString& Text, sal_Int32 n
     return result;
 }
 
-static inline bool SAL_CALL isCJK( const Locale& rLocale ) {
+static bool isCJK( const Locale& rLocale ) {
         return rLocale.Language == "zh" || rLocale.Language == "ja" || rLocale.Language == "ko";
 }
 
@@ -250,7 +291,7 @@ sal_Int16 SAL_CALL BreakIteratorImpl::getScriptType( const OUString& Text, sal_I
 /** Increments/decrements position first, then obtains character.
     @return current position, may be -1 or text length if string was consumed.
  */
-static sal_Int32 SAL_CALL iterateCodePoints(const OUString& Text, sal_Int32 &nStartPos, sal_Int32 inc, sal_uInt32& ch) {
+static sal_Int32 iterateCodePoints(const OUString& Text, sal_Int32 &nStartPos, sal_Int32 inc, sal_uInt32& ch) {
         sal_Int32 nLen = Text.getLength();
         if (nStartPos + inc < 0 || nStartPos + inc >= nLen) {
             ch = 0;
@@ -259,7 +300,7 @@ static sal_Int32 SAL_CALL iterateCodePoints(const OUString& Text, sal_Int32 &nSt
             ch = Text.iterateCodePoints(&nStartPos, inc);
             // Fix for #i80436#.
             // erAck: 2009-06-30T21:52+0200  This logic looks somewhat
-            // suspicious as if it cures a symptom.. anyway, had to add
+            // suspicious as if it cures a symptom... anyway, had to add
             // nStartPos < Text.getLength() to silence the (correct) assertion
             // in rtl_uString_iterateCodePoints() if Text was one character
             // (codepoint) only, made up of a surrogate pair.
@@ -323,7 +364,7 @@ sal_Int32  SAL_CALL BreakIteratorImpl::previousScript( const OUString& Text,
 
     sal_uInt32 ch=0;
     while (numberOfChange > 0 && iterateCodePoints(Text, nStartPos, -1, ch) >= 0) {
-        if ((((numberOfChange % 2) == 0) != (ScriptType != getScriptClass(ch))))
+        if (((numberOfChange % 2) == 0) != (ScriptType != getScriptClass(ch)))
             numberOfChange--;
         else if (nStartPos == 0) {
             return -1;
@@ -359,10 +400,10 @@ sal_Int32 SAL_CALL BreakIteratorImpl::beginOfCharBlock( const OUString& Text, sa
 {
     if (CharType == CharType::ANY_CHAR) return 0;
     if (nStartPos < 0 || nStartPos >= Text.getLength()) return -1;
-    if (CharType != (sal_Int16)u_charType( Text.iterateCodePoints(&nStartPos, 0))) return -1;
+    if (CharType != static_cast<sal_Int16>(u_charType( Text.iterateCodePoints(&nStartPos, 0)))) return -1;
 
     sal_Int32 nPos=nStartPos;
-    while(nStartPos > 0 && CharType == (sal_Int16)u_charType(Text.iterateCodePoints(&nPos, -1))) { nStartPos=nPos; }
+    while(nStartPos > 0 && CharType == static_cast<sal_Int16>(u_charType(Text.iterateCodePoints(&nPos, -1)))) { nStartPos=nPos; }
     return nStartPos; // begin of char block is inclusive
 }
 
@@ -373,10 +414,10 @@ sal_Int32 SAL_CALL BreakIteratorImpl::endOfCharBlock( const OUString& Text, sal_
 
     if (CharType == CharType::ANY_CHAR) return strLen; // end of char block is exclusive
     if (nStartPos < 0 || nStartPos >= strLen) return -1;
-    if (CharType != (sal_Int16)u_charType(Text.iterateCodePoints(&nStartPos, 0))) return -1;
+    if (CharType != static_cast<sal_Int16>(u_charType(Text.iterateCodePoints(&nStartPos, 0)))) return -1;
 
     sal_uInt32 ch=0;
-    while(iterateCodePoints(Text, nStartPos, 1, ch) < strLen && CharType == (sal_Int16)u_charType(ch)) {}
+    while(iterateCodePoints(Text, nStartPos, 1, ch) < strLen && CharType == static_cast<sal_Int16>(u_charType(ch))) {}
     return nStartPos; // end of char block is exclusive
 }
 
@@ -386,12 +427,12 @@ sal_Int32 SAL_CALL BreakIteratorImpl::nextCharBlock( const OUString& Text, sal_I
     if (CharType == CharType::ANY_CHAR) return -1;
     if (nStartPos < 0 || nStartPos >= Text.getLength()) return -1;
 
-    sal_Int16 numberOfChange = (CharType == (sal_Int16)u_charType(Text.iterateCodePoints(&nStartPos, 0))) ? 2 : 1;
+    sal_Int16 numberOfChange = (CharType == static_cast<sal_Int16>(u_charType(Text.iterateCodePoints(&nStartPos, 0)))) ? 2 : 1;
     sal_Int32 strLen = Text.getLength();
 
     sal_uInt32 ch=0;
     while (numberOfChange > 0 && iterateCodePoints(Text, nStartPos, 1, ch) < strLen) {
-        if ((CharType != (sal_Int16)u_charType(ch)) != (numberOfChange == 1))
+        if ((CharType != static_cast<sal_Int16>(u_charType(ch))) != (numberOfChange == 1))
             numberOfChange--;
     }
     return numberOfChange == 0 ? nStartPos : -1;
@@ -403,11 +444,11 @@ sal_Int32 SAL_CALL BreakIteratorImpl::previousCharBlock( const OUString& Text, s
     if(CharType == CharType::ANY_CHAR) return -1;
     if (nStartPos < 0 || nStartPos >= Text.getLength()) return -1;
 
-    sal_Int16 numberOfChange = (CharType == (sal_Int16)u_charType(Text.iterateCodePoints(&nStartPos, 0))) ? 3 : 2;
+    sal_Int16 numberOfChange = (CharType == static_cast<sal_Int16>(u_charType(Text.iterateCodePoints(&nStartPos, 0)))) ? 3 : 2;
 
     sal_uInt32 ch=0;
     while (numberOfChange > 0 && iterateCodePoints(Text, nStartPos, -1, ch) >= 0) {
-        if (((numberOfChange % 2) == 0) != (CharType != (sal_Int16)u_charType(ch)))
+        if (((numberOfChange % 2) == 0) != (CharType != static_cast<sal_Int16>(u_charType(ch))))
             numberOfChange--;
         if (nStartPos == 0 && numberOfChange > 0) {
             numberOfChange--;
@@ -439,7 +480,7 @@ struct UBlock2Script
     sal_Int16 script;
 };
 
-static const UBlock2Script scriptList[] =
+const UBlock2Script scriptList[] =
 {
     {UBLOCK_NO_BLOCK, UBLOCK_NO_BLOCK, ScriptType::WEAK},
     {UBLOCK_BASIC_LATIN, UBLOCK_SPACING_MODIFIER_LETTERS, ScriptType::LATIN},
@@ -480,6 +521,9 @@ bool getCompatibilityScriptClassByBlock(sal_uInt32 currentChar, sal_Int16 &rScri
     //  0x02 - this can be inside a word
     //  0x20 & 0xA0 - Bug 102975, declare western space and non-break space as WEAK char.
     if( 0x01 == currentChar || 0x02 == currentChar || 0x20 == currentChar || 0xA0 == currentChar)
+        rScriptType = ScriptType::WEAK;
+    // Few Spacing Modifier Letters that can be Bopomofo tonal marks.
+    else if ( 0x2CA == currentChar || 0x2CB == currentChar || 0x2C7 == currentChar || 0x2D9 == currentChar )
         rScriptType = ScriptType::WEAK;
     // workaround for Coptic
     else if ( 0x2C80 <= currentChar && 0x2CE3 >= currentChar)
@@ -522,12 +566,12 @@ sal_Int16  BreakIteratorImpl::getScriptClass(sal_uInt32 currentChar)
     return nRet;
 }
 
-bool SAL_CALL BreakIteratorImpl::createLocaleSpecificBreakIterator(const OUString& aLocaleName)
+bool BreakIteratorImpl::createLocaleSpecificBreakIterator(const OUString& aLocaleName)
 {
     // to share service between same Language but different Country code, like zh_CN and zh_TW
-    for (lookupTableItem* listItem : lookupTable) {
-        if (aLocaleName == listItem->aLocale.Language) {
-            xBI = listItem->xBI;
+    for (const lookupTableItem& listItem : lookupTable) {
+        if (aLocaleName == listItem.aLocale.Language) {
+            xBI = listItem.xBI;
             return true;
         }
     }
@@ -555,14 +599,14 @@ bool SAL_CALL BreakIteratorImpl::createLocaleSpecificBreakIterator(const OUStrin
     if ( xI.is() ) {
         xBI.set(xI, UNO_QUERY);
         if (xBI.is()) {
-            lookupTable.push_back(new lookupTableItem(Locale(aLocaleName, aLocaleName, aLocaleName), xBI));
+            lookupTable.emplace_back(Locale(aLocaleName, aLocaleName, aLocaleName), xBI);
             return true;
         }
     }
     return false;
 }
 
-Reference < XBreakIterator > SAL_CALL
+Reference < XBreakIterator >
 BreakIteratorImpl::getLocaleSpecificBreakIterator(const Locale& rLocale)
 {
     if (xBI.is() && rLocale == aLocale)
@@ -570,48 +614,50 @@ BreakIteratorImpl::getLocaleSpecificBreakIterator(const Locale& rLocale)
     else if (m_xContext.is()) {
         aLocale = rLocale;
 
-        for (lookupTableItem* listItem : lookupTable) {
-            if (rLocale == listItem->aLocale)
-                return xBI = listItem->xBI;
+        for (const lookupTableItem& listItem : lookupTable) {
+            if (rLocale == listItem.aLocale)
+            {
+                xBI = listItem.xBI;
+                return xBI;
+            }
         }
 
-        sal_Unicode under = '_';
+        OUStringLiteral under("_");
 
         sal_Int32 l = rLocale.Language.getLength();
         sal_Int32 c = rLocale.Country.getLength();
         sal_Int32 v = rLocale.Variant.getLength();
-        OUStringBuffer aBuf(l+c+v+3);
 
         if ((l > 0 && c > 0 && v > 0 &&
                     // load service with name <base>_<lang>_<country>_<variant>
-                    createLocaleSpecificBreakIterator(aBuf.append(rLocale.Language).append(under).append(
-                            rLocale.Country).append(under).append(rLocale.Variant).makeStringAndClear())) ||
+                    createLocaleSpecificBreakIterator(rLocale.Language + under +
+                            rLocale.Country + under + rLocale.Variant)) ||
                 (l > 0 && c > 0 &&
                  // load service with name <base>_<lang>_<country>
-                 createLocaleSpecificBreakIterator(aBuf.append(rLocale.Language).append(under).append(
-                         rLocale.Country).makeStringAndClear())) ||
+                 createLocaleSpecificBreakIterator(rLocale.Language + under +
+                         rLocale.Country)) ||
                 (l > 0 && c > 0 && rLocale.Language == "zh" &&
                  (rLocale.Country == "HK" ||
                   rLocale.Country == "MO" ) &&
                  // if the country code is HK or MO, one more step to try TW.
-                 createLocaleSpecificBreakIterator(aBuf.append(rLocale.Language).append(under).append(
-                         "TW").makeStringAndClear())) ||
+                 createLocaleSpecificBreakIterator(rLocale.Language + under +
+                         "TW")) ||
                 (l > 0 &&
                  // load service with name <base>_<lang>
                  createLocaleSpecificBreakIterator(rLocale.Language)) ||
                 // load default service with name <base>_Unicode
                 createLocaleSpecificBreakIterator("Unicode")) {
-            lookupTable.push_back( new lookupTableItem(aLocale, xBI) );
+            lookupTable.emplace_back( aLocale, xBI );
             return xBI;
         }
     }
-    throw RuntimeException();
+    throw RuntimeException("getLocaleSpecificBreakIterator: iterator not found");
 }
 
 OUString SAL_CALL
 BreakIteratorImpl::getImplementationName()
 {
-    return OUString("com.sun.star.i18n.BreakIterator");
+    return "com.sun.star.i18n.BreakIterator";
 }
 
 sal_Bool SAL_CALL
@@ -623,18 +669,17 @@ BreakIteratorImpl::supportsService(const OUString& rServiceName)
 Sequence< OUString > SAL_CALL
 BreakIteratorImpl::getSupportedServiceNames()
 {
-    Sequence< OUString > aRet { "com.sun.star.i18n.BreakIterator" };
-    return aRet;
+    return { "com.sun.star.i18n.BreakIterator" };
 }
 
-} } } }
+}
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 com_sun_star_i18n_BreakIterator_get_implementation(
     css::uno::XComponentContext *context,
     css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new css::i18n::BreakIteratorImpl(context));
+    return cppu::acquire(new i18npool::BreakIteratorImpl(context));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

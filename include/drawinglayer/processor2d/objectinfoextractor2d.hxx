@@ -22,18 +22,16 @@
 #include <drawinglayer/drawinglayerdllapi.h>
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
 
-namespace drawinglayer { namespace primitive2d { class ObjectInfoPrimitive2D; }}
+namespace drawinglayer::primitive2d { class ObjectInfoPrimitive2D; }
 
-namespace drawinglayer
-{
-    namespace processor2d
+namespace drawinglayer::processor2d
     {
         /** ObjectInfoPrimitiveExtractor2D class
 
             A processor to find the first incarnation of ObjectInfoPrimitive2D
             in a given hierarchy
          */
-        class DRAWINGLAYER_DLLPUBLIC ObjectInfoPrimitiveExtractor2D : public BaseProcessor2D
+        class DRAWINGLAYER_DLLPUBLIC ObjectInfoPrimitiveExtractor2D final : public BaseProcessor2D
         {
         private:
             /// the target
@@ -48,8 +46,8 @@ namespace drawinglayer
 
             const primitive2d::ObjectInfoPrimitive2D* getResult() const { return mpFound; }
         };
-    } // end of namespace processor2d
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::processor2d
 
 #endif // INCLUDED_DRAWINGLAYER_PROCESSOR2D_OBJECTINFOEXTRACTOR2D_HXX
 

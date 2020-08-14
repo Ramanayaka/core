@@ -19,12 +19,15 @@
 
 
 #include "Button.hxx"
+#include <property.hxx>
+#include <services.hxx>
 
 #include <com/sun/star/awt/XVclWindowPeer.hpp>
+#include <com/sun/star/form/FormComponentType.hpp>
 
 #include <comphelper/streamsection.hxx>
 #include <comphelper/basicio.hxx>
-#include <comphelper/processfactory.hxx>
+#include <comphelper/property.hxx>
 #include <o3tl/any.hxx>
 #include <tools/diagnose_ex.h>
 #include <tools/debug.hxx>
@@ -39,7 +42,6 @@ namespace frm
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
@@ -129,7 +131,7 @@ css::uno::Sequence<OUString>  OButtonModel::getSupportedServiceNames()
 
 OUString OButtonModel::getServiceName()
 {
-    return OUString(FRM_COMPONENT_COMMANDBUTTON); // old (non-sun) name for compatibility !
+    return FRM_COMPONENT_COMMANDBUTTON; // old (non-sun) name for compatibility !
 }
 
 
@@ -143,7 +145,7 @@ void OButtonModel::write(const Reference<XObjectOutputStream>& _rxOutStream)
         OStreamSection aSection( _rxOutStream.get() );
             // this will allow readers to skip unknown bytes in their dtor
 
-        _rxOutStream->writeShort( (sal_uInt16)m_eButtonType );
+        _rxOutStream->writeShort( static_cast<sal_uInt16>(m_eButtonType) );
 
         OUString sTmp = INetURLObject::decode( m_sTargetURL, INetURLObject::DecodeMechanism::Unambiguous);
         _rxOutStream << sTmp;
@@ -163,7 +165,7 @@ void OButtonModel::read(const Reference<XObjectInputStream>& _rxInStream)
     {
         case 0x0001:
         {
-            m_eButtonType = (FormButtonType)_rxInStream->readShort();
+            m_eButtonType = static_cast<FormButtonType>(_rxInStream->readShort());
 
             _rxInStream >> m_sTargetURL;
             _rxInStream >> m_sTargetFrame;
@@ -172,7 +174,7 @@ void OButtonModel::read(const Reference<XObjectInputStream>& _rxInStream)
 
         case 0x0002:
         {
-            m_eButtonType = (FormButtonType)_rxInStream->readShort();
+            m_eButtonType = static_cast<FormButtonType>(_rxInStream->readShort());
 
             _rxInStream >> m_sTargetURL;
             _rxInStream >> m_sTargetFrame;
@@ -186,7 +188,7 @@ void OButtonModel::read(const Reference<XObjectInputStream>& _rxInStream)
             // this will skip any unknown bytes in its dtor
 
             // button type
-            m_eButtonType = (FormButtonType)_rxInStream->readShort();
+            m_eButtonType = static_cast<FormButtonType>(_rxInStream->readShort());
 
             // URL
             _rxInStream >> m_sTargetURL;
@@ -249,7 +251,7 @@ void SAL_CALL OButtonModel::getFastPropertyValue( Any& _rValue, sal_Int32 _nHand
     switch ( _nHandle )
     {
     case PROPERTY_ID_DEFAULT_STATE:
-        _rValue <<= (sal_Int16)m_eDefaultState;
+        _rValue <<= static_cast<sal_Int16>(m_eDefaultState);
         break;
 
     default:
@@ -265,9 +267,9 @@ void SAL_CALL OButtonModel::setFastPropertyValue_NoBroadcast( sal_Int32 _nHandle
     {
     case PROPERTY_ID_DEFAULT_STATE:
     {
-        sal_Int16 nDefaultState( (sal_Int16)TRISTATE_FALSE );
+        sal_Int16 nDefaultState = sal_Int16(TRISTATE_FALSE);
         OSL_VERIFY( _rValue >>= nDefaultState );
-        m_eDefaultState = (ToggleState)nDefaultState;
+        m_eDefaultState = static_cast<ToggleState>(nDefaultState);
         impl_resetNoBroadcast_nothrow();
     }
     break;
@@ -285,7 +287,7 @@ sal_Bool SAL_CALL OButtonModel::convertFastPropertyValue( Any& _rConvertedValue,
     switch ( _nHandle )
     {
     case PROPERTY_ID_DEFAULT_STATE:
-        bModified = tryPropertyValue( _rConvertedValue, _rOldValue, _rValue, (sal_Int16)m_eDefaultState );
+        bModified = tryPropertyValue( _rConvertedValue, _rOldValue, _rValue, static_cast<sal_Int16>(m_eDefaultState) );
         break;
 
     default:
@@ -302,7 +304,7 @@ Any OButtonModel::getPropertyDefaultByHandle( sal_Int32 _nHandle ) const
     switch ( _nHandle )
     {
     case PROPERTY_ID_DEFAULT_STATE:
-        aDefault <<= (sal_Int16)TRISTATE_FALSE;
+        aDefault <<= sal_Int16(TRISTATE_FALSE);
         break;
 
     default:
@@ -321,7 +323,7 @@ void OButtonModel::impl_resetNoBroadcast_nothrow()
     }
     catch( const Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("forms.component");
     }
 }
 
@@ -468,7 +470,7 @@ IMPL_LINK_NOARG(OButtonControl, OnClick, void*, void)
 #endif
                 catch( const Exception& )
                 {
-                    OSL_FAIL( "OButtonControl::OnClick: caught a exception other than RuntimeException!" );
+                    OSL_FAIL( "OButtonControl::OnClick: caught an exception other than RuntimeException!" );
                 }
             }
         }
@@ -537,6 +539,7 @@ void SAL_CALL OButtonControl::removeActionListener(const Reference<XActionListen
     m_aActionListeners.removeInterface(_rxListener);
 }
 
+namespace {
 
 class DoPropertyListening
 {
@@ -555,6 +558,7 @@ public:
     void    handleListening( const OUString& _rPropertyName );
 };
 
+}
 
 DoPropertyListening::DoPropertyListening(
         const Reference< XInterface >& _rxComponent, const Reference< XPropertyChangeListener >& _rxListener,
@@ -749,14 +753,14 @@ void SAL_CALL OButtonControl::releaseDispatchProviderInterceptor( const Referenc
 
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OButtonModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new frm::OButtonModel(component));
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_form_OButtonControl_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

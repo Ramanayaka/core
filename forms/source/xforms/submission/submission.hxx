@@ -21,17 +21,12 @@
 #define INCLUDED_FORMS_SOURCE_XFORMS_SUBMISSION_SUBMISSION_HXX
 
 #include <tools/urlobj.hxx>
-#include <rtl/ustring.h>
 #include <osl/conditn.hxx>
 #include <osl/mutex.hxx>
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/Exception.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
-#include <com/sun/star/xml/xpath/XXPathObject.hpp>
 #include <com/sun/star/xml/dom/XDocumentFragment.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
 #include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/ucb/XProgressHandler.hpp>
@@ -50,14 +45,13 @@ class CSubmissionPut;
 class CSubmissionPost;
 class CSubmissionGet;
 
-class CCommandEnvironmentHelper : public cppu::WeakImplHelper< css::ucb::XCommandEnvironment >
+class CCommandEnvironmentHelper final : public cppu::WeakImplHelper< css::ucb::XCommandEnvironment >
 {
     friend class CSubmissionPut;
     friend class CSubmissionPost;
     friend class CSubmissionGet;
     friend class CSubmission;
 
-protected:
     css::uno::Reference< css::task::XInteractionHandler >   m_aInteractionHandler;
     css::uno::Reference< css::ucb::XProgressHandler >       m_aProgressHandler;
 
@@ -72,12 +66,11 @@ public:
     }
 };
 
-class CProgressHandlerHelper : public cppu::WeakImplHelper< css::ucb::XProgressHandler >
+class CProgressHandlerHelper final : public cppu::WeakImplHelper< css::ucb::XProgressHandler >
 {
     friend class CSubmissionPut;
     friend class CSubmissionPost;
     friend class CSubmissionGet;
-protected:
     osl::Condition m_cFinished;
     osl::Mutex m_mLock;
     sal_Int32 m_count;
@@ -112,7 +105,6 @@ protected:
     css::uno::Reference< css::xml::dom::XDocumentFragment > m_aFragment;
     css::uno::Reference< css::io::XInputStream >            m_aResultStream;
     css::uno::Reference< css::uno::XComponentContext >      m_xContext;
-    OUString m_aEncoding;
 
     ::std::unique_ptr< CSerialization > createSerialization(const css::uno::Reference< css::task::XInteractionHandler >& aHandler
                                                   ,css::uno::Reference<css::ucb::XCommandEnvironment>& _rOutEnv);
@@ -129,12 +121,14 @@ public:
         , m_xContext(::comphelper::getProcessComponentContext())
     {}
 
+    bool IsWebProtocol() const
+    {
+        INetProtocol eProtocol = m_aURLObj.GetProtocol();
+        return eProtocol == INetProtocol::Http || eProtocol == INetProtocol::Https;
+    }
+
     virtual ~CSubmission() {}
 
-    void setEncoding(const OUString& aEncoding)
-    {
-        m_aEncoding = aEncoding;
-    }
     virtual SubmissionResult submit(const css::uno::Reference< css::task::XInteractionHandler >& ) = 0;
 
     SubmissionResult replace(const OUString&, const css::uno::Reference< css::xml::dom::XDocument >&, const css::uno::Reference< css::frame::XFrame>&);

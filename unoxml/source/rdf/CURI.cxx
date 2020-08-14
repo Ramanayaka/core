@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "CNodes.hxx"
-
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/rdf/XURI.hpp>
 #include <com/sun/star/rdf/URIs.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 
@@ -61,7 +60,7 @@ private:
     CURI& operator=(CURI const&) = delete;
 
     /// handle css.rdf.URIs
-    void SAL_CALL initFromConstant(const sal_Int16 i_Constant);
+    void initFromConstant(const sal_Int16 i_Constant);
 
     OUString m_Namespace;
     OUString m_LocalName;
@@ -74,7 +73,7 @@ CURI::CURI() :
 // com.sun.star.uno.XServiceInfo:
 OUString SAL_CALL CURI::getImplementationName()
 {
-    return comp_CURI::_getImplementationName();
+    return "CURI";
 }
 
 sal_Bool SAL_CALL CURI::supportsService(OUString const & serviceName)
@@ -84,7 +83,7 @@ sal_Bool SAL_CALL CURI::supportsService(OUString const & serviceName)
 
 css::uno::Sequence< OUString > SAL_CALL CURI::getSupportedServiceNames()
 {
-    return comp_CURI::_getSupportedServiceNames();
+    return { "com.sun.star.rdf.URI" };
 }
 
 const char s_nsXSD      [] = "http://www.w3.org/2001/XMLSchema-datatypes#";
@@ -96,7 +95,7 @@ const char s_nsPkg      [] =
 const char s_nsODF      [] =
     "http://docs.oasis-open.org/ns/office/1.2/meta/odf#";
 
-void SAL_CALL CURI::initFromConstant(const sal_Int16 i_Constant)
+void CURI::initFromConstant(const sal_Int16 i_Constant)
 {
     const char *ns(nullptr);
     const char *ln(nullptr);
@@ -718,7 +717,7 @@ void SAL_CALL CURI::initialize(const css::uno::Sequence< css::uno::Any > & aArgu
     sal_Int16 arg(0);
     OUString arg0;
     OUString arg1;
-    if ((aArguments[0] >>= arg)) {
+    if (aArguments[0] >>= arg) {
         // integer argument: constant from rdf::URIs
         if (len != 1) {
             throw css::lang::IllegalArgumentException(
@@ -742,35 +741,34 @@ void SAL_CALL CURI::initialize(const css::uno::Sequence< css::uno::Any > & aArgu
     }
 
     // split parameter
-    sal_Int32 idx;
-    if (    ((idx = arg0.indexOf    ('#')) >= 0)
-        ||  ((idx = arg0.lastIndexOf('/')) >= 0)
-        ||  ((idx = arg0.lastIndexOf(':')) >= 0))
+    sal_Int32 idx = arg0.indexOf('#');
+    if (idx < 0)
+        idx = arg0.lastIndexOf('/');
+    if (idx < 0)
+        idx = arg0.lastIndexOf(':');
+    if (idx < 0)
     {
-
-        if (idx < arg0.getLength() - 1) {
-            arg1 = arg0.copy(idx+1);
-            arg0 = arg0.copy(0, idx+1);
-        }
-    } else {
         throw css::lang::IllegalArgumentException(
             "CURI::initialize: argument not splittable: no separator [#/:]", *this, 0);
     }
+    if (idx < arg0.getLength() - 1) {
+        arg1 = arg0.copy(idx+1);
+        arg0 = arg0.copy(0, idx+1);
+    }
 
     //FIXME: what is legal?
-    if (!arg0.isEmpty()) {
-        m_Namespace = arg0;
-    } else {
+    if (arg0.isEmpty()) {
         throw css::lang::IllegalArgumentException(
             "CURI::initialize: argument is not valid namespace", *this, 0);
     }
+    m_Namespace = arg0;
+
     //FIXME: what is legal?
-    if (true) {
-        m_LocalName = arg1;
-    } else {
+    if ((false)) {
         throw css::lang::IllegalArgumentException(
             "CURI::initialize: argument is not valid local name", *this, 1);
     }
+    m_LocalName = arg1;
 }
 
 // css::rdf::XNode:
@@ -793,26 +791,11 @@ OUString SAL_CALL CURI::getLocalName()
 } // closing anonymous implementation namespace
 
 
-// component helper namespace
-namespace comp_CURI {
-
-OUString SAL_CALL _getImplementationName() {
-    return OUString(
-        "CURI");
-}
-
-css::uno::Sequence< OUString > SAL_CALL _getSupportedServiceNames()
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+unoxml_CURI_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    css::uno::Sequence< OUString > s { "com.sun.star.rdf.URI" };
-    return s;
+    return cppu::acquire(new CURI());
 }
-
-css::uno::Reference< css::uno::XInterface > SAL_CALL _create(
-    const css::uno::Reference< css::uno::XComponentContext > & )
-{
-    return static_cast< ::cppu::OWeakObject * >(new CURI);
-}
-
-} // closing component helper namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

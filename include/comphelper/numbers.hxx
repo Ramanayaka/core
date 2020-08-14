@@ -20,11 +20,12 @@
 #ifndef INCLUDED_COMPHELPER_NUMBERS_HXX
 #define INCLUDED_COMPHELPER_NUMBERS_HXX
 
-#include <com/sun/star/util/XNumberFormats.hpp>
-#include <com/sun/star/util/XNumberFormatter.hpp>
-#include <com/sun/star/lang/Locale.hpp>
+#include <rtl/ustring.hxx>
+#include <com/sun/star/uno/Reference.h>
 #include <comphelper/comphelperdllapi.h>
 
+namespace com::sun::star::util { class XNumberFormats; }
+namespace com::sun::star::util { class XNumberFormatter; }
 
 namespace comphelper
 {
@@ -38,7 +39,7 @@ namespace comphelper
     /// returns the decimals of the given numeric number formatunder the given formats
     COMPHELPER_DLLPUBLIC css::uno::Any getNumberFormatDecimals(const css::uno::Reference<css::util::XNumberFormats>& xFormats, sal_Int32 nKey);
 
-    /** retrieves a the value of a given property for a given format key, relating to a given formatter
+    /** retrieves the value of a given property for a given format key, relating to a given formatter
     */
     COMPHELPER_DLLPUBLIC css::uno::Any getNumberFormatProperty(
         const css::uno::Reference< css::util::XNumberFormatter >& _rxFormatter,

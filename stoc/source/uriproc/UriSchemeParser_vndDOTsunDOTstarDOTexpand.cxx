@@ -19,31 +19,27 @@
 
 #include <sal/config.h>
 
-#include <exception>
-
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/uno/XInterface.hpp>
-#include <com/sun/star/uri/XUriReference.hpp>
 #include <com/sun/star/uri/XUriSchemeParser.hpp>
 #include <com/sun/star/uri/XVndSunStarExpandUrlReference.hpp>
 #include <com/sun/star/util/XMacroExpander.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/weak.hxx>
-#include <osl/diagnose.h>
 #include <rtl/textenc.h>
 #include <rtl/uri.h>
 #include <rtl/uri.hxx>
-#include <rtl/ustring.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
 #include "UriReference.hxx"
+
+namespace com::sun::star::uno { class XComponentContext; }
+namespace com::sun::star::uno { class XInterface; }
+namespace com::sun::star::uri { class XUriReference; }
 
 namespace {
 
@@ -60,7 +56,7 @@ class UrlReference:
 public:
     UrlReference(OUString const & scheme, OUString const & path):
         base_(
-            scheme, false, false, OUString(), path, false,
+            scheme, false, OUString(), path, false,
             OUString())
     {}
 
@@ -130,7 +126,9 @@ private:
 OUString UrlReference::expand(
     css::uno::Reference< css::util::XMacroExpander > const & expander)
 {
-    OSL_ASSERT(expander.is());
+    if (!expander.is()) {
+        throw css::uno::RuntimeException("null expander passed to XVndSunStarExpandUrl.expand");
+    }
     return expander->expandMacros(
         ::rtl::Uri::decode(
             getPath(), ::rtl_UriDecodeWithCharset, RTL_TEXTENCODING_UTF8));
@@ -165,7 +163,7 @@ private:
 
 OUString Parser::getImplementationName()
 {
-    return OUString("com.sun.star.comp.uri.UriSchemeParser_vndDOTsunDOTstarDOTexpand");
+    return "com.sun.star.comp.uri.UriSchemeParser_vndDOTsunDOTstarDOTexpand";
 }
 
 sal_Bool Parser::supportsService(OUString const & serviceName)
@@ -175,8 +173,7 @@ sal_Bool Parser::supportsService(OUString const & serviceName)
 
 css::uno::Sequence< OUString > Parser::getSupportedServiceNames()
 {
-    css::uno::Sequence< OUString > s { "com.sun.star.uri.UriSchemeParser_vndDOTsunDOTstarDOTexpand" };
-    return s;
+    return { "com.sun.star.uri.UriSchemeParser_vndDOTsunDOTstarDOTexpand" };
 }
 
 css::uno::Reference< css::uri::XUriReference > Parser::parse(
@@ -190,7 +187,7 @@ css::uno::Reference< css::uri::XUriReference > Parser::parse(
 
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_uri_UriSchemeParser_vndDOTsunDOTstarDOTexpand_get_implementation(css::uno::XComponentContext*,
         css::uno::Sequence<css::uno::Any> const &)
 {

@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <salhelper/timer.hxx>
-#include <salhelper/simplereferenceobject.hxx>
 
 #include <osl/thread.hxx>
 #include <osl/conditn.hxx>
@@ -34,23 +33,23 @@ public:
     virtual ~TimerManager() override;
 
     /// register timer
-    void SAL_CALL registerTimer(salhelper::Timer* pTimer);
+    void registerTimer(salhelper::Timer* pTimer);
 
     /// unregister timer
-    void SAL_CALL unregisterTimer(salhelper::Timer* pTimer);
+    void unregisterTimer(salhelper::Timer const * pTimer);
 
     /// lookup timer
-    bool SAL_CALL lookupTimer(const salhelper::Timer* pTimer);
+    bool lookupTimer(const salhelper::Timer* pTimer);
 
     /// retrieves the "Singleton" TimerManager Instance
-    static TimerManager* SAL_CALL getTimerManager();
+    static TimerManager* getTimerManager();
 
 protected:
     /// worker-function of thread
     virtual void SAL_CALL run() override;
 
     /// Checking and triggering of a timer event
-    void SAL_CALL checkForTimeout();
+    void checkForTimeout();
 
     /// cleanup Method
     virtual void SAL_CALL onTerminated() override;
@@ -193,7 +192,7 @@ TTimeValue Timer::getRemainingTime() const
         if (secs > 0)
         {
             secs  -= 1;
-            nsecs += 1000000000L;
+            nsecs += 1000000000;
         }
         else
             return TTimeValue(0, 0);
@@ -292,7 +291,7 @@ void TimerManager::registerTimer(Timer* pTimer)
     }
 }
 
-void TimerManager::unregisterTimer(Timer* pTimer)
+void TimerManager::unregisterTimer(Timer const * pTimer)
 {
     if (!pTimer)
         return;

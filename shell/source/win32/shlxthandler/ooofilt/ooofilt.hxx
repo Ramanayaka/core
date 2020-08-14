@@ -20,7 +20,7 @@
 #ifndef INCLUDED_SHELL_SOURCE_WIN32_SHLXTHANDLER_OOOFILT_OOOFILT_HXX
 #define INCLUDED_SHELL_SOURCE_WIN32_SHLXTHANDLER_OOOFILT_OOOFILT_HXX
 
-#include "types.hxx"
+#include <types.hxx>
 
 //+-------------------------------------------------------------------------
 //  Contents:   LibreOffice filter declarations
@@ -64,7 +64,7 @@ const CLSID CLSID_PERSISTENT_HANDLER_ADDIN =
 const CLSID CLSID_FILTER_HANDLER =
 {0x7bc0e710, 0x5703, 0x45be, {0xa2, 0x9d, 0x5d, 0x46, 0xd8, 0xb3, 0x92, 0x62}};
 
-enum FilterState
+enum class FilterState
 {
     FilteringContent,                           // Filtering the content property
     FilteringProperty                           // Filtering the pseudo property
@@ -73,7 +73,7 @@ class COooFilter : public IFilter, public IPersistFile, public IPersistStream
 {
 public:
     // From IUnknown
-    virtual  SCODE STDMETHODCALLTYPE  QueryInterface(
+    virtual  HRESULT STDMETHODCALLTYPE  QueryInterface(
         REFIID riid,
         void  ** ppvObject) override;
     virtual  ULONG STDMETHODCALLTYPE  AddRef() override;
@@ -100,31 +100,31 @@ public:
         void ** ppunk) override;
 
     // From IPersistFile
-    virtual  SCODE STDMETHODCALLTYPE  GetClassID(
+    virtual  HRESULT STDMETHODCALLTYPE  GetClassID(
         CLSID * pClassID) override;
-    virtual  SCODE STDMETHODCALLTYPE  IsDirty() override;
-    virtual  SCODE STDMETHODCALLTYPE  Load(
-        LPCWSTR pszFileName,
+    virtual  HRESULT STDMETHODCALLTYPE  IsDirty() override;
+    virtual  HRESULT STDMETHODCALLTYPE  Load(
+        LPCOLESTR pszFileName,
         DWORD dwMode) override;
-    virtual  SCODE STDMETHODCALLTYPE  Save(
-        LPCWSTR pszFileName,
+    virtual  HRESULT STDMETHODCALLTYPE  Save(
+        LPCOLESTR pszFileName,
         BOOL fRemember) override;
 
-    virtual  SCODE STDMETHODCALLTYPE  SaveCompleted(
-        LPCWSTR pszFileName) override;
+    virtual  HRESULT STDMETHODCALLTYPE  SaveCompleted(
+        LPCOLESTR pszFileName) override;
 
-    virtual  SCODE STDMETHODCALLTYPE  GetCurFile(
-        LPWSTR  * ppszFileName) override;
+    virtual  HRESULT STDMETHODCALLTYPE  GetCurFile(
+        LPOLESTR  * ppszFileName) override;
 
     // From IPersistStream
-    virtual SCODE STDMETHODCALLTYPE  Load(
+    virtual HRESULT STDMETHODCALLTYPE  Load(
         IStream *pStm) override;
 
-    virtual SCODE STDMETHODCALLTYPE Save(
+    virtual HRESULT STDMETHODCALLTYPE Save(
         IStream *pStm,
         BOOL fClearDirty) override;
 
-    virtual SCODE STDMETHODCALLTYPE  GetSizeMax(
+    virtual HRESULT STDMETHODCALLTYPE  GetSizeMax(
         ULARGE_INTEGER *pcbSize) override;
 
 
@@ -144,8 +144,8 @@ private:
     ULONG                     m_ulPropertyNum;          // Number of properties that has been processed
     ULONG                     m_ulCurrentPropertyNum;   // Current Property that is processing;
     ULONG                     m_ulChunkID;              // Current chunk id
-    BOOL                      m_fContents;              // TRUE if contents requested
-    BOOL                      m_fEof;                   // TRUE if end of file reached
+    bool                      m_fContents;              // TRUE if contents requested
+    bool                      m_fEof;                   // TRUE if end of file reached
     ::std::wstring            m_pwsBuffer;              // Buffer to save UNICODE content from ChunkBuffer.
     ULONG                     m_ChunkPosition;          // Chunk pointer to specify the current Chunk;
     ULONG                     m_cAttributes;            // Count of attributes
@@ -163,7 +163,7 @@ class COooFilterCF : public IClassFactory
 {
 public:
     // From IUnknown
-    virtual  SCODE STDMETHODCALLTYPE  QueryInterface(
+    virtual  HRESULT STDMETHODCALLTYPE  QueryInterface(
         REFIID riid,
         void  ** ppvObject) override;
 
@@ -171,18 +171,18 @@ public:
     virtual  ULONG STDMETHODCALLTYPE  Release() override;
 
     // From IClassFactory
-    virtual  SCODE STDMETHODCALLTYPE  CreateInstance(
+    virtual  HRESULT STDMETHODCALLTYPE  CreateInstance(
         IUnknown * pUnkOuter,
         REFIID riid, void  ** ppvObject) override;
 
-    virtual  SCODE STDMETHODCALLTYPE  LockServer(
+    virtual  HRESULT STDMETHODCALLTYPE  LockServer(
         BOOL fLock) override;
 
 private:
-    friend SCODE STDMETHODCALLTYPE DllGetClassObject(
+    friend HRESULT STDMETHODCALLTYPE DllGetClassObject(
         REFCLSID   cid,
         REFIID     iid,
-        void **    ppvObj);
+        LPVOID *   ppvObj);
 
     COooFilterCF();
     virtual  ~COooFilterCF();

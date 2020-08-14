@@ -20,9 +20,9 @@
 #define INCLUDED_EDITENG_FHGTITEM_HXX
 
 #include <svl/poolitem.hxx>
+#include <tools/debug.hxx>
+#include <tools/solar.h>
 #include <editeng/editengdllapi.h>
-
-class SvXMLUnitConverter;
 
 // class SvxFontHeightItem -----------------------------------------------
 
@@ -33,14 +33,19 @@ class SvXMLUnitConverter;
     This item describes the font height
 */
 
-#define FONTHEIGHT_16_VERSION   ((sal_uInt16)0x0001)
-#define FONTHEIGHT_UNIT_VERSION ((sal_uInt16)0x0002)
+constexpr sal_uInt16 FONTHEIGHT_16_VERSION = 0x0001;
+constexpr sal_uInt16 FONTHEIGHT_UNIT_VERSION = 0x0002;
 
-class EDITENG_DLLPUBLIC SvxFontHeightItem : public SfxPoolItem
+class EDITENG_DLLPUBLIC SvxFontHeightItem final : public SfxPoolItem
 {
     sal_uInt32  nHeight;
     sal_uInt16  nProp;       // default 100%
     MapUnit ePropUnit;       // Percent, Twip, ...
+
+private:
+    friend void Create_legacy_direct_set(SvxFontHeightItem& rItem, sal_uInt32 nH, sal_uInt16 nP, MapUnit eP);
+    void legacy_direct_set(sal_uInt32 nH, sal_uInt16 nP, MapUnit eP) { nHeight = nH; nProp = nP; ePropUnit = eP; }
+
 public:
     static SfxPoolItem* CreateDefault();
 
@@ -55,23 +60,11 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                     MapUnit eCoreMetric,
                                     MapUnit ePresMetric,
-                                    OUString &rText, const IntlWrapper * = nullptr ) const override;
+                                    OUString &rText, const IntlWrapper& ) const override;
 
-    virtual SfxPoolItem*     Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual SfxPoolItem*     Create(SvStream &, sal_uInt16) const override;
-    virtual SvStream&        Store(SvStream &, sal_uInt16 nItemVersion) const override;
-    virtual sal_uInt16           GetVersion( sal_uInt16 nItemVersion) const override;
+    virtual SvxFontHeightItem*   Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual void                 ScaleMetrics( long nMult, long nDiv ) override;
     virtual bool                 HasMetrics() const override;
-
-    SvxFontHeightItem& operator=(const SvxFontHeightItem& rSize)
-        {
-            DBG_ASSERT( GetRefCount() == 0, "SetValue() with pooled item" );
-            nHeight = rSize.nHeight;
-            nProp = rSize.nProp;
-            ePropUnit = rSize.ePropUnit;
-            return *this;
-        }
 
     void SetHeight( sal_uInt32 nNewHeight, const sal_uInt16 nNewProp = 100,
                      MapUnit eUnit = MapUnit::MapRelative );
@@ -92,7 +85,7 @@ public:
 
     MapUnit GetPropUnit() const { return ePropUnit;  }   // Percent, Twip, ...
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 #endif

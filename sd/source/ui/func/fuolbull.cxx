@@ -17,48 +17,45 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fuolbull.hxx"
-#include <vcl/msgbox.hxx>
+#include <fuolbull.hxx>
 #include <svl/intitem.hxx>
+#include <svl/stritem.hxx>
 #include <editeng/outliner.hxx>
 #include <editeng/eeitem.hxx>
 #include <sfx2/request.hxx>
 #include <editeng/numitem.hxx>
-#include "sdresid.hxx"
-#include "glob.hrc"
-#include "strings.hxx"
+#include <strings.hxx>
 
-#include <editeng/editdata.hxx>
 #include <svx/svxids.hrc>
-#include "OutlineView.hxx"
-#include "OutlineViewShell.hxx"
-#include "DrawViewShell.hxx"
-#include "Window.hxx"
-#include "drawdoc.hxx"
-#include "sdabstdlg.hxx"
+#include <OutlineView.hxx>
+#include <DrawDocShell.hxx>
+#include <DrawViewShell.hxx>
+#include <Window.hxx>
+#include <drawdoc.hxx>
+#include <sdabstdlg.hxx>
 #include <svx/nbdtmg.hxx>
 #include <svx/nbdtmgfact.hxx>
 #include <svx/svdoutl.hxx>
 #include <memory>
+
 using namespace svx::sidebar;
 namespace sd {
 
-
-FuOutlineBullet::FuOutlineBullet(ViewShell* pViewShell, ::sd::Window* pWindow,
+FuBulletAndPosition::FuBulletAndPosition(ViewShell* pViewShell, ::sd::Window* pWindow,
                                  ::sd::View* pView, SdDrawDocument* pDoc,
                                  SfxRequest& rReq)
        : FuPoor(pViewShell, pWindow, pView, pDoc, rReq)
 {
 }
 
-rtl::Reference<FuPoor> FuOutlineBullet::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuBulletAndPosition::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuOutlineBullet( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuBulletAndPosition( pViewSh, pWin, pView, pDoc, rReq ) );
     xFunc->DoExecute(rReq);
     return xFunc;
 }
 
-void FuOutlineBullet::DoExecute( SfxRequest& rReq )
+void FuBulletAndPosition::DoExecute( SfxRequest& rReq )
 {
     const sal_uInt16 nSId = rReq.GetSlot();
     if ( nSId == FN_SVX_SET_BULLET || nSId == FN_SVX_SET_NUMBER )
@@ -70,68 +67,45 @@ void FuOutlineBullet::DoExecute( SfxRequest& rReq )
     const SfxItemSet* pArgs = rReq.GetArgs();
     const SfxStringItem* pPageItem = SfxItemSet::GetItem<SfxStringItem>(pArgs, FN_PARAM_1, false);
 
-    if ( !pArgs || pPageItem )
+    if ( pArgs && !pPageItem )
     {
-        // fill ItemSet for Dialog
-        SfxItemSet aEditAttr( mpDoc->GetPool() );
-        mpView->GetAttributes( aEditAttr );
-
-        SfxItemSet aNewAttr( mpViewShell->GetPool(),
-                             svl::Items<EE_ITEMS_START, EE_ITEMS_END>{} );
-        aNewAttr.Put( aEditAttr, false );
-
-        // create and execute dialog
-        SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
-        ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact ? pFact->CreateSdOutlineBulletTabDlg(mpViewShell->GetActiveWindow(), &aNewAttr, mpView) : nullptr);
-        if( pDlg )
-        {
-            if ( pPageItem )
-                pDlg->SetCurPageId( OUStringToOString( pPageItem->GetValue(), RTL_TEXTENCODING_UTF8 ) );
-            sal_uInt16 nResult = pDlg->Execute();
-
-            switch( nResult )
-            {
-                case RET_OK:
-                {
-                    SfxItemSet aSet( *pDlg->GetOutputItemSet() );
-
-                    OutlinerView* pOLV = mpView->GetTextEditOutlinerView();
-
-                    std::unique_ptr< OutlineViewModelChangeGuard > aGuard;
-
-                    if( dynamic_cast< const OutlineView *>( mpView ) !=  nullptr)
-                    {
-                        pOLV = static_cast<OutlineView*>(mpView)
-                            ->GetViewByWindow(mpViewShell->GetActiveWindow());
-
-                        aGuard.reset( new OutlineViewModelChangeGuard( static_cast<OutlineView&>(*mpView) ) );
-                    }
-
-                    if( pOLV )
-                        pOLV->EnableBullets();
-
-                    rReq.Done( aSet );
-                    pArgs = rReq.GetArgs();
-                }
-                break;
-
-                default:
-                    return;
-            }
-        }
+        /* not direct to pOlView; therefore, SdDrawView::SetAttributes can catch
+           changes to master page and redirect to a template */
+        mpView->SetAttributes(*pArgs);
+        return;
     }
 
-    /* not direct to pOlView; therefore, SdDrawView::SetAttributes can catch
-       changes to master page and redirect to a template */
-    mpView->SetAttributes(*pArgs);
+    // fill ItemSet for Dialog
+    SfxItemSet aEditAttr( mpDoc->GetPool() );
+    mpView->GetAttributes( aEditAttr );
 
-/* #i35937#
-    // invalidate possible affected fields
-    mpViewShell->Invalidate( FN_NUM_BULLET_ON );
-*/
+    static const sal_uInt16 aAttrMap[] =
+    {
+        EE_PARA_NUMBULLET,
+        EE_PARA_BULLET,
+        0
+    };
+
+    SfxItemSet aNewAttr( mpViewShell->GetPool(), aAttrMap );
+    aNewAttr.Put( aEditAttr, false );
+
+    auto pView = mpView;
+
+    // create and execute dialog
+    SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
+    ScopedVclPtr<AbstractSvxBulletAndPositionDlg> pDlg(pFact->CreateSvxBulletAndPositionDlg(mpViewShell->GetFrameWeld(), &aNewAttr, mpView));
+    sal_uInt16 nResult = pDlg->Execute();
+
+    if( nResult == RET_OK )
+    {
+        const SfxItemSet pOutputSet( *pDlg->GetOutputItemSet( &aNewAttr ) );
+        pView->SetAttributes(pOutputSet, /*bReplaceAll=*/false, /*bSlide*/ pDlg->IsSlideScope(), /*bMaster=*/pDlg->IsApplyToMaster());
+    }
+
+    rReq.Done();
 }
 
-void FuOutlineBullet::SetCurrentBulletsNumbering(SfxRequest& rReq)
+void FuBulletAndPosition::SetCurrentBulletsNumbering(SfxRequest& rReq)
 {
     if (!mpDoc || !mpView)
         return;
@@ -182,7 +156,7 @@ void FuOutlineBullet::SetCurrentBulletsNumbering(SfxRequest& rReq)
 
     sal_uInt16 nIdx = pItem->GetValue();
     bool bToggle = false;
-    if( nIdx == (sal_uInt16)0xFFFF )
+    if( nIdx == sal_uInt16(0xFFFF) )
     {
         // If the nIdx is (sal_uInt16)0xFFFF, means set bullet status to on/off
         nIdx = 1;
@@ -192,10 +166,10 @@ void FuOutlineBullet::SetCurrentBulletsNumbering(SfxRequest& rReq)
 
     sal_uInt32 nNumItemId = SID_ATTR_NUMBERING_RULE;
     const SfxPoolItem* pTmpItem = GetNumBulletItem( aNewAttr, nNumItemId );
-    SvxNumRule* pNumRule = nullptr;
+    std::unique_ptr<SvxNumRule> pNumRule;
     if ( pTmpItem )
     {
-        pNumRule = new SvxNumRule(*static_cast<const SvxNumBulletItem*>(pTmpItem)->GetNumRule());
+        pNumRule.reset(new SvxNumRule(*static_cast<const SvxNumBulletItem*>(pTmpItem)->GetNumRule()));
 
         // get numbering rule corresponding to <nIdx> and apply the needed number formats to <pNumRule>
         NBOTypeMgrBase* pNumRuleMgr =
@@ -203,7 +177,7 @@ void FuOutlineBullet::SetCurrentBulletsNumbering(SfxRequest& rReq)
                 nSId == FN_SVX_SET_BULLET ? NBOType::Bullets : NBOType::Numbering );
         if ( pNumRuleMgr )
         {
-            sal_uInt16 nActNumLvl = (sal_uInt16)0xFFFF;
+            sal_uInt16 nActNumLvl = sal_uInt16(0xFFFF);
             const SfxPoolItem* pNumLevelItem = nullptr;
             if(SfxItemState::SET == aNewAttr.GetItemState(SID_PARAM_CUR_NUM_LEVEL, false, &pNumLevelItem))
                 nActNumLvl = static_cast<const SfxUInt16Item*>(pNumLevelItem)->GetValue();
@@ -225,7 +199,7 @@ void FuOutlineBullet::SetCurrentBulletsNumbering(SfxRequest& rReq)
             {
                 if(nActNumLvl & nMask)
                 {
-                    SvxNumberFormat aFmt(aTmpRule.GetLevel(i));
+                    const SvxNumberFormat& aFmt(aTmpRule.GetLevel(i));
                     pNumRule->SetLevel(i, aFmt);
                 }
                 nMask <<= 1;
@@ -234,15 +208,11 @@ void FuOutlineBullet::SetCurrentBulletsNumbering(SfxRequest& rReq)
     }
 
     OutlinerView* pOLV = mpView->GetTextEditOutlinerView();
-    std::unique_ptr< OutlineViewModelChangeGuard > aGuard;
+    std::unique_ptr<OutlineViewModelChangeGuard, o3tl::default_delete<OutlineViewModelChangeGuard>> aGuard;
+    if (OutlineView* pView = dynamic_cast<OutlineView*>(mpView))
     {
-        if( dynamic_cast< const OutlineView *>( mpView ) !=  nullptr)
-        {
-            pOLV = static_cast<OutlineView*>(mpView)
-                ->GetViewByWindow(mpViewShell->GetActiveWindow());
-
-            aGuard.reset( new OutlineViewModelChangeGuard( static_cast<OutlineView&>(*mpView) ) );
-        }
+        pOLV = pView->GetViewByWindow(mpViewShell->GetActiveWindow());
+        aGuard.reset(new OutlineViewModelChangeGuard(*pView));
     }
 
     SdrOutliner* pOwner = bInMasterView ? mpView->GetTextEditOutliner() : nullptr;
@@ -261,11 +231,11 @@ void FuOutlineBullet::SetCurrentBulletsNumbering(SfxRequest& rReq)
 
     if ( pOLV )
     {
-        pOLV->ToggleBulletsNumbering( bToggle, nSId == FN_SVX_SET_BULLET, bInMasterView ? nullptr : pNumRule );
+        pOLV->ToggleBulletsNumbering( bToggle, nSId == FN_SVX_SET_BULLET, bInMasterView ? nullptr : pNumRule.get() );
     }
     else
     {
-        mpView->ChangeMarkedObjectsBulletsNumbering( bToggle, nSId == FN_SVX_SET_BULLET, bInMasterView ? nullptr : pNumRule );
+        mpView->ChangeMarkedObjectsBulletsNumbering( bToggle, nSId == FN_SVX_SET_BULLET, bInMasterView ? nullptr : pNumRule.get() );
     }
 
     if (bInMasterView && pNumRule)
@@ -284,11 +254,11 @@ void FuOutlineBullet::SetCurrentBulletsNumbering(SfxRequest& rReq)
         pSdrModel->EndUndo();
     }
 
-    delete pNumRule;
+    pNumRule.reset();
     rReq.Done();
 }
 
-const SfxPoolItem* FuOutlineBullet::GetNumBulletItem(SfxItemSet& aNewAttr, sal_uInt32& nNumItemId)
+const SfxPoolItem* FuBulletAndPosition::GetNumBulletItem(SfxItemSet& aNewAttr, sal_uInt32& nNumItemId)
 {
     //SvxNumBulletItem* pRetItem = NULL;
     const SfxPoolItem* pTmpItem = nullptr;
@@ -335,13 +305,13 @@ const SfxPoolItem* FuOutlineBullet::GetNumBulletItem(SfxItemSet& aNewAttr, sal_u
             if(bOutliner)
             {
                 SfxStyleSheetBasePool* pSSPool = mpView->GetDocSh()->GetStyleSheetPool();
-                SfxStyleSheetBase* pFirstStyleSheet = pSSPool->Find( STR_LAYOUT_OUTLINE " 1", SD_STYLE_FAMILY_PSEUDO);
+                SfxStyleSheetBase* pFirstStyleSheet = pSSPool->Find( STR_LAYOUT_OUTLINE " 1", SfxStyleFamily::Pseudo);
                 if( pFirstStyleSheet )
                     pFirstStyleSheet->GetItemSet().GetItemState(EE_PARA_NUMBULLET, false, reinterpret_cast<const SfxPoolItem**>(&pItem));
             }
 
             if( pItem == nullptr )
-                pItem = static_cast<const SvxNumBulletItem*>( aNewAttr.GetPool()->GetSecondaryPool()->GetPoolDefaultItem(EE_PARA_NUMBULLET) );
+                pItem = aNewAttr.GetPool()->GetSecondaryPool()->GetPoolDefaultItem(EE_PARA_NUMBULLET);
 
             //DBG_ASSERT( pItem, "No EE_PARA_NUMBULLET in the Pool!" );
 
@@ -350,7 +320,7 @@ const SfxPoolItem* FuOutlineBullet::GetNumBulletItem(SfxItemSet& aNewAttr, sal_u
 
             if(bTitle && aNewAttr.GetItemState(EE_PARA_NUMBULLET) == SfxItemState::SET )
             {
-                const SvxNumBulletItem* pBulletItem = static_cast<const SvxNumBulletItem*>( aNewAttr.GetItem(EE_PARA_NUMBULLET) );
+                const SvxNumBulletItem* pBulletItem = aNewAttr.GetItem(EE_PARA_NUMBULLET);
                 SvxNumRule* pLclRule = pBulletItem->GetNumRule();
                 if(pLclRule)
                 {
@@ -371,6 +341,7 @@ const SfxPoolItem* FuOutlineBullet::GetNumBulletItem(SfxItemSet& aNewAttr, sal_u
     }
     return pTmpItem;
 }
+
 
 } // end of namespace sd
 

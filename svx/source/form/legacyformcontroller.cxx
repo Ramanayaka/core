@@ -18,7 +18,7 @@
  */
 
 
-#include "fmservs.hxx"
+#include <fmservs.hxx>
 
 #include <com/sun/star/form/XFormController.hpp>
 #include <com/sun/star/form/runtime/FormController.hpp>
@@ -36,8 +36,6 @@ namespace svxform
 
     using ::com::sun::star::uno::Reference;
     using ::com::sun::star::uno::XInterface;
-    using ::com::sun::star::uno::Exception;
-    using ::com::sun::star::uno::RuntimeException;
     using ::com::sun::star::uno::Sequence;
     using ::com::sun::star::uno::XComponentContext;
     using ::com::sun::star::lang::XMultiServiceFactory;
@@ -55,6 +53,9 @@ namespace svxform
     typedef ::cppu::WeakImplHelper <   form::XFormController
                                     ,   XServiceInfo
                                     >   LegacyFormController_Base;
+
+    namespace {
+
     /** is an implementation of the legacy form controller service, namely css.form.FormController, supporting the
         css.form.XFormController interface.
 
@@ -100,6 +101,7 @@ namespace svxform
         const Reference< form::runtime::XFormController >   m_xDelegator;
     };
 
+    }
 
     Reference< XControl > SAL_CALL LegacyFormController::getCurrentControl(  )
     {
@@ -175,7 +177,7 @@ namespace svxform
 
     OUString SAL_CALL LegacyFormController::getImplementationName(  )
     {
-        return OUString( "org.openoffice.comp.svx.LegacyFormController" );
+        return "org.openoffice.comp.svx.LegacyFormController";
     }
 
     sal_Bool SAL_CALL LegacyFormController::supportsService( const OUString& _serviceName )
@@ -185,15 +187,12 @@ namespace svxform
 
     Sequence< OUString > SAL_CALL LegacyFormController::getSupportedServiceNames(  )
     {
-        Sequence< OUString > aServices(2);
-        aServices.getArray()[0] = "com.sun.star.form.FormController";
-        aServices.getArray()[1] = "com.sun.star.awt.control.TabController";
-        return aServices;
+        return { "com.sun.star.form.FormController", "com.sun.star.awt.control.TabController" };
     }
 
 }
 
-css::uno::Reference< css::uno::XInterface > SAL_CALL
+css::uno::Reference< css::uno::XInterface >
     LegacyFormController_NewInstance_Impl( const css::uno::Reference< css::lang::XMultiServiceFactory > & _rxORB )
 {
     return ::svxform::LegacyFormController::Create( _rxORB );

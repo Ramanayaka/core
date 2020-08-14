@@ -25,13 +25,20 @@
   <implementation name="com.sun.star.comp.datatransfer.dnd.OleDropTarget_V1">
     <service name="com.sun.star.datatransfer.dnd.OleDropTarget"/>
   </implementation>
-  <implementation name="com.sun.star.datatransfer.clipboard.AquaClipboard">
+  <implementation name="com.sun.star.datatransfer.clipboard.AquaClipboard"
+    constructor="vcl_SystemClipboard_get_implementation">
     <service name="com.sun.star.datatransfer.clipboard.SystemClipboard"/>
   </implementation>
-  <implementation name="com.sun.star.frame.VCLSessionManagerClient">
+  <implementation name="com.sun.star.frame.VCLSessionManagerClient"
+    constructor="com_sun_star_frame_VCLSessionManagerClient_get_implementation">
     <service name="com.sun.star.frame.SessionManagerClient"/>
   </implementation>
-  <implementation name="vcl::FontIdentificator">
+  <implementation name="vcl::FontIdentificator"
+    constructor="vcl_FontIdentificator_get_implementation">
     <service name="com.sun.star.awt.FontIdentificator"/>
+  </implementation>
+  <implementation name="org.libreoffice.uitest.UITest"
+      constructor="UITest_get_implementation">
+    <service name="com.sun.star.ui.test.UITest"/>
   </implementation>
 </component>

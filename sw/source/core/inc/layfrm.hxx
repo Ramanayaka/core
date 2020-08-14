@@ -20,10 +20,10 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_LAYFRM_HXX
 
 #include "frame.hxx"
+#include <swdllapi.h>
 
 class SwAnchoredObject;
 class SwContentFrame;
-class SwFlowFrame;
 class SwFormatCol;
 struct SwCursorMoveState;
 class SwFrameFormat;
@@ -31,7 +31,8 @@ class SwBorderAttrs;
 class SwFormatFrameSize;
 class SwCellFrame;
 
-class SwLayoutFrame: public SwFrame
+/// A layout frame is a frame that contains other frames (m_pLower), e.g. SwPageFrame or SwTabFrame.
+class SW_DLLPUBLIC SwLayoutFrame: public SwFrame
 {
     // The SwFrame in disguise
     friend class SwFlowFrame;
@@ -78,7 +79,7 @@ public:
 
     virtual bool    FillSelection( SwSelectionList& rList, const SwRect& rRect ) const override;
 
-    virtual bool GetCursorOfst( SwPosition *, Point&,
+    virtual bool GetModelPositionForViewPoint( SwPosition *, Point&,
                                SwCursorMoveState* = nullptr, bool bTestBackground = false ) const override;
 
     virtual void Cut() override;
@@ -86,16 +87,16 @@ public:
 
     /**
      * Finds the closest Content for the SPoint
-     * Is used for Pages, Flys and Cells if GetCursorOfst failed
+     * Is used for Pages, Flys and Cells if GetModelPositionForViewPoint failed
      */
     const SwContentFrame* GetContentPos( Point &rPoint, const bool bDontLeave,
                                    const bool bBodyOnly = false,
-                                   const SwCursorMoveState *pCMS = nullptr,
+                                   SwCursorMoveState *pCMS = nullptr,
                                    const bool bDefaultExpand = true ) const;
 
     SwLayoutFrame( SwFrameFormat*, SwFrame* );
 
-    virtual void Paint( vcl::RenderContext& rRenderContext, SwRect const&,
+    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const&,
                         SwPrintData const*const pPrintData = nullptr ) const override;
     const SwFrame *Lower() const { return m_pLower; }
           SwFrame *Lower()       { return m_pLower; }

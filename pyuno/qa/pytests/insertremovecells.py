@@ -1,13 +1,10 @@
+import pathlib
+import re
 import unittest
 
 from os import getenv, path
 
-try:
-    from urllib.parse import quote
-except ImportError:
-    from urllib import quote
-
-from org.libreoffice.unotest import pyuno, mkPropertyValue
+from org.libreoffice.unotest import pyuno, mkPropertyValue, makeCopyFromTDOC
 
 
 class InsertRemoveCells(unittest.TestCase):
@@ -27,8 +24,8 @@ class InsertRemoveCells(unittest.TestCase):
           ('Hidden', True),
           ('ReadOnly', False)
         ))
-        tdoc_dir = getenv('TDOC')
-        url = 'file://' + quote(path.join(tdoc_dir, 'fdo74824.ods'))
+        tdoc_path = makeCopyFromTDOC('fdo74824.ods')
+        url = pathlib.Path(tdoc_path).as_uri()
         doc = desktop.loadComponentFromURL(url, "_blank", 0, load_props)
 
         sheet = doc.Sheets.Sheet1

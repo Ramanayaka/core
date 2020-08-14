@@ -19,11 +19,8 @@
 
 
 #include "lzwdecom.hxx"
+#include <sal/log.hxx>
 #include <tools/stream.hxx>
-#include <algorithm>
-#include <set>
-
-#define MAX_TABLE_SIZE 4096
 
 LZWDecompressor::LZWDecompressor()
     : pIStream(nullptr)
@@ -37,23 +34,17 @@ LZWDecompressor::LZWDecompressor()
     , nInputBitsBuf(0)
     , nInputBitsBufSize(0)
 {
-    sal_uInt16 i;
-
-    pTable=new LZWTableEntry[MAX_TABLE_SIZE];
-    pOutBuf=new sal_uInt8[MAX_TABLE_SIZE];
-    for (i=0; i<MAX_TABLE_SIZE; i++)
+    for (sal_uInt16 i=0; i<MAX_TABLE_SIZE; i++)
     {
         pTable[i].nPrevCode=0;
         pTable[i].nDataCount=1;
-        pTable[i].nData=(sal_uInt8)i;
+        pTable[i].nData=static_cast<sal_uInt8>(i);
     }
 }
 
 
 LZWDecompressor::~LZWDecompressor()
 {
-    delete[] pOutBuf;
-    delete[] pTable;
 }
 
 
@@ -82,9 +73,9 @@ void LZWDecompressor::StartDecompression(SvStream & rIStream)
 }
 
 
-sal_uLong LZWDecompressor::Decompress(sal_uInt8 * pTarget, sal_uLong nMaxCount)
+sal_uInt64 LZWDecompressor::Decompress(sal_uInt8 * pTarget, sal_uInt32 nMaxCount)
 {
-    sal_uLong nCount;
+    sal_uInt32 nCount;
 
     if (pIStream==nullptr) return 0;
 
@@ -93,8 +84,8 @@ sal_uLong LZWDecompressor::Decompress(sal_uInt8 * pTarget, sal_uLong nMaxCount)
 
         if (pIStream->GetError()) break;
 
-        if (((sal_uLong)nOutBufDataLen)>=nMaxCount) {
-            nOutBufDataLen = nOutBufDataLen - (sal_uInt16)nMaxCount;
+        if (nOutBufDataLen>=nMaxCount) {
+            nOutBufDataLen = nOutBufDataLen - static_cast<sal_uInt16>(nMaxCount);
             nCount+=nMaxCount;
             while (nMaxCount>0) {
                 *(pTarget++)=*(pOutBufData++);
@@ -103,7 +94,7 @@ sal_uLong LZWDecompressor::Decompress(sal_uInt8 * pTarget, sal_uLong nMaxCount)
             break;
         }
 
-        nMaxCount-=(sal_uLong)nOutBufDataLen;
+        nMaxCount-=static_cast<sal_uInt32>(nOutBufDataLen);
         nCount+=nOutBufDataLen;
         while (nOutBufDataLen>0) {
             *(pTarget++)=*(pOutBufData++);
@@ -214,7 +205,7 @@ void LZWDecompressor::DecompressSome()
     nOldCode=nCode;
 
     nOutBufDataLen=pTable[nCode].nDataCount;
-    pOutBufData=pOutBuf+nOutBufDataLen;
+    pOutBufData=pOutBuf.data()+nOutBufDataLen;
     for (i=0; i<nOutBufDataLen; i++)
     {
         *(--pOutBufData)=pTable[nCode].nData;

@@ -22,18 +22,22 @@
 #include <memory>
 #include <sal/config.h>
 #include <sfx2/dllapi.h>
-
-#include <vcl/button.hxx>
-#include <vcl/lstbox.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/fixed.hxx>
 #include <sfx2/basedlgs.hxx>
+#include <sfx2/objsh.hxx>
+
+#include <vcl/idle.hxx>
+#include <sfx2/doctempl.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
+namespace weld { class Button; }
+namespace weld { class CheckButton; }
+namespace weld { class CustomWeld; }
+namespace weld { class Expander; }
+namespace weld { class Label; }
+namespace weld { class TreeView; }
+namespace weld { class Window; }
 
-class SfxObjectShellLock;
-class SfxObjectShell;
-
+class SfxPreviewWin_Impl;
 
 enum class SfxNewFileDialogMode {
     NONE, Preview, LoadTemplate
@@ -55,19 +59,39 @@ namespace o3tl
 
 #define RET_TEMPLATE_LOAD       100
 
-class SfxNewFileDialog_Impl;
-class SFX2_DLLPUBLIC SfxNewFileDialog : public SfxModalDialog
+class SFX2_DLLPUBLIC SfxNewFileDialog final : public SfxDialogController
 {
-    friend class SfxNewFileDialog_Impl;
-
 private:
-    std::unique_ptr< SfxNewFileDialog_Impl > pImpl;
+    Idle m_aPrevIdle;
+    SfxNewFileDialogMode m_nFlags;
+    SfxDocumentTemplates m_aTemplates;
+    SfxObjectShellLock m_xDocShell;
+
+    std::unique_ptr<SfxPreviewWin_Impl> m_xPreviewController;
+
+    std::unique_ptr<weld::TreeView> m_xRegionLb;
+    std::unique_ptr<weld::TreeView> m_xTemplateLb;
+    std::unique_ptr<weld::CheckButton> m_xTextStyleCB;
+    std::unique_ptr<weld::CheckButton> m_xFrameStyleCB;
+    std::unique_ptr<weld::CheckButton> m_xPageStyleCB;
+    std::unique_ptr<weld::CheckButton> m_xNumStyleCB;
+    std::unique_ptr<weld::CheckButton> m_xMergeStyleCB;
+    std::unique_ptr<weld::Button> m_xLoadFilePB;
+    std::unique_ptr<weld::Expander> m_xMoreBt;
+    std::unique_ptr<weld::CustomWeld> m_xPreviewWin;
+    std::unique_ptr<weld::Label> m_xAltTitleFt;
+
+    DECL_LINK( Update, Timer *, void );
+
+    DECL_LINK(RegionSelect, weld::TreeView&, void);
+    DECL_LINK(TemplateSelect, weld::TreeView&, void);
+    DECL_LINK(DoubleClick, weld::TreeView&, bool);
+    DECL_LINK(Expand, weld::Expander&, void);
+    sal_uInt16  GetSelectedTemplatePos() const;
 
 public:
-
-    SfxNewFileDialog(vcl::Window *pParent, SfxNewFileDialogMode nFlags);
+    SfxNewFileDialog(weld::Window *pParent, SfxNewFileDialogMode nFlags);
     virtual ~SfxNewFileDialog() override;
-    virtual void dispose() override;
 
     // Returns false, when '- No -' is set as Template
     // Template names can only be obtained when IsTemplate() returns true.

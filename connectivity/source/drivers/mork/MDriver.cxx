@@ -11,10 +11,13 @@
 #include "MConnection.hxx"
 
 #include <com/sun/star/mozilla/XMozillaBootstrap.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+
+#include <sal/log.hxx>
 
 using namespace connectivity::mork;
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * SAL_CALL com_sun_star_comp_sdbc_MorkDriver_get_implementation(
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface * com_sun_star_comp_sdbc_MorkDriver_get_implementation(
     css::uno::XComponentContext* context,
     css::uno::Sequence<css::uno::Any> const &)
 {
@@ -30,7 +33,7 @@ MorkDriver::MorkDriver(const css::uno::Reference< css::uno::XComponentContext >&
 
 OUString SAL_CALL MorkDriver::getImplementationName()
 {
-    return OUString(MORK_DRIVER_IMPL_NAME);
+    return MORK_DRIVER_IMPL_NAME;
 }
 
 sal_Bool SAL_CALL MorkDriver::supportsService(const OUString& serviceName)

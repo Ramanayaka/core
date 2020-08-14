@@ -21,18 +21,16 @@
 #define INCLUDED_XMLHELP_SOURCE_CXXHELP_PROVIDER_CONTENT_HXX
 
 #include <ucbhelper/contenthelper.hxx>
-#include <com/sun/star/io/XInputStream.hpp>
 
 #include "urlparameter.hxx"
 
-namespace com { namespace sun { namespace star { namespace beans {
+namespace com::sun::star::beans {
     struct Property;
     struct PropertyValue;
-} } } }
-
-namespace com { namespace sun { namespace star { namespace sdbc {
+}
+namespace com::sun::star::sdbc {
     class XRow;
-} } } }
+}
 
 namespace chelp
 {

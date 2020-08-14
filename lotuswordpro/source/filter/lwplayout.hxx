@@ -63,26 +63,23 @@
 
 #include <memory>
 #include <sal/config.h>
+#include <config_lgpl.h>
 
 #include <rtl/ref.hxx>
 
-#include "lwpheader.hxx"
-#include "lwpobj.hxx"
-#include "lwpobjhdr.hxx"
-#include "lwpobjstrm.hxx"
-#include "lwpobjid.hxx"
+#include <lwpobj.hxx>
+#include <lwpobjhdr.hxx>
+#include <lwpobjstrm.hxx>
+#include <lwpobjid.hxx>
 #include "lwpdlvlist.hxx"
-#include "lwpfilehdr.hxx"
 
 #include "lwplayoutdef.hxx"
-#include "xfilter/xfdefs.hxx"
-#include "xfilter/xffont.hxx"
-#include "xfilter/xfpagemaster.hxx"
-#include "xfilter/xfcolumns.hxx"
-#include "xfilter/xfborders.hxx"
-#include "xfilter/xfframestyle.hxx"
-#include "xfilter/xfframe.hxx"
-#include "xfilter/xfbgimage.hxx"
+#include <xfilter/xfdefs.hxx>
+#include <xfilter/xffont.hxx>
+#include <xfilter/xfpagemaster.hxx>
+#include <xfilter/xfcolumns.hxx>
+#include <xfilter/xfborders.hxx>
+#include <xfilter/xfbgimage.hxx>
 #include "lwpusewhen.hxx"
 #include "lwplaypiece.hxx"
 
@@ -97,18 +94,16 @@ class LwpPara;
 class LwpVirtualLayout : public LwpDLNFPVList
 {
 public:
-    LwpVirtualLayout(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpVirtualLayout(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     virtual sal_uInt16 GetNumCols(){return 1;}
-    virtual double GetColWidth(sal_uInt16 nIndex);
     virtual double GetColGap(sal_uInt16 nIndex);
     virtual bool IsAutoGrow(){ return false;}
     virtual bool IsAutoGrowUp(){ return false;}
-    virtual bool IsAutoGrowDown(){ return false;}
     virtual bool IsAutoGrowLeft(){ return false;}
     virtual bool IsAutoGrowRight(){ return false;}
     bool IsFitGraphic();
     bool IsAutoGrowWidth();
-    bool IsInlineToMargin();
+    bool IsInlineToMargin() const;
     virtual sal_uInt8 GetContentOrientation(){ return TEXT_ORIENT_LRTB;}
     bool GetHonorProtection()
     {
@@ -135,6 +130,15 @@ public:
         m_bGettingIsProtected = true;
         bool bRet = IsProtected();
         m_bGettingIsProtected = false;
+        return bRet;
+    }
+    bool GetIsAutoGrowDown()
+    {
+        if (m_bGettingIsAutoGrowDown)
+            throw std::runtime_error("recursion in layout");
+        m_bGettingIsAutoGrowDown = true;
+        bool bRet = IsAutoGrowDown();
+        m_bGettingIsAutoGrowDown = false;
         return bRet;
     }
     bool GetHasProtection()
@@ -164,8 +168,8 @@ public:
         m_bGettingExtMarginsValue = false;
         return fRet;
     }
-    const OUString& GetStyleName(){ return m_StyleName;}
-    bool IsComplex();
+    const OUString& GetStyleName() const { return m_StyleName;}
+    bool IsComplex() const;
     virtual bool IsAnchorPage(){ return false;}
     virtual bool IsAnchorFrame(){ return false;}
     virtual bool IsAnchorCell(){ return false;}
@@ -185,7 +189,7 @@ public:
     virtual bool IsUseOnAllOddPages(){ return false;}
     virtual bool IsUseOnPage(){ return false;}
     virtual sal_Int32 GetPageNumber(sal_uInt16 /*nLayoutNumber*/) { return -1;}
-    bool IsMinimumHeight();
+    bool IsMinimumHeight() const;
     virtual bool IsForWaterMark(){ return false;}
     virtual LwpPara* GetLastParaOfPreviousStory() { return nullptr; }
     rtl::Reference<LwpVirtualLayout> GetParentLayout();
@@ -193,7 +197,7 @@ public:
     void RegisterChildStyle();
     bool NoContentReference();
     bool IsStyleLayout();
-    enumXFAlignType GetVerticalAlignmentType()
+    enumXFAlignType GetVerticalAlignmentType() const
     {
         if (m_nAttributes & STYLE_CENTEREDVERTICALLY)
         {
@@ -216,6 +220,7 @@ protected:
     bool HasProtection();
     virtual bool HonorProtection();
     virtual bool IsProtected();
+    virtual bool IsAutoGrowDown(){ return false;}
     virtual double MarginsValue(sal_uInt8 /*nWhichSide*/){return 0;}
     virtual double ExtMarginsValue(sal_uInt8 /*nWhichSide*/){return 0;}
     virtual bool MarginsSameAsParent();
@@ -224,8 +229,15 @@ protected:
     bool m_bGettingMarginsSameAsParent;
     bool m_bGettingHasProtection;
     bool m_bGettingIsProtected;
+    bool m_bGettingIsAutoGrowDown;
     bool m_bGettingMarginsValue;
     bool m_bGettingExtMarginsValue;
+    bool m_bGettingUsePrinterSettings;
+    bool m_bGettingScaleCenter;
+    bool m_bGettingBorderStuff;
+    bool m_bGettingUseWhen;
+    bool m_bGettingStyleLayout;
+    bool m_bGettingAutoGrowUp;
     sal_uInt32 m_nAttributes;
     sal_uInt32 m_nAttributes2;
     sal_uInt32 m_nAttributes3;
@@ -280,14 +292,14 @@ public:
     LwpVirtualLayout* FindChildByType(LWP_LAYOUT_TYPE eType);
 };
 
-class LwpAssociatedLayouts
+class LwpAssociatedLayouts final
 {
 public:
     LwpAssociatedLayouts(){}
     void Read(LwpObjectStream* pStrm);
     LwpObjectID& GetOnlyLayout() { return m_OnlyLayout;}
-    rtl::Reference<LwpVirtualLayout> GetLayout(LwpVirtualLayout* pStartLayout);
-protected:
+    rtl::Reference<LwpVirtualLayout> GetLayout(LwpVirtualLayout const * pStartLayout);
+private:
     LwpObjectID m_OnlyLayout; //LwpVirtualLayout
     LwpDLVListHeadTail m_Layouts;
 };
@@ -295,7 +307,7 @@ protected:
 class LwpHeadLayout : public LwpVirtualLayout
 {
 public:
-    LwpHeadLayout(LwpObjectHeader &objHdr, LwpSvStream* pStrm);
+    LwpHeadLayout(LwpObjectHeader const &objHdr, LwpSvStream* pStrm);
     void RegisterStyle() override;
     rtl::Reference<LwpVirtualLayout> FindEnSuperTableLayout();
 protected:
@@ -330,43 +342,31 @@ private:
 class LwpMiddleLayout : public LwpVirtualLayout
 {
 public:
-    LwpMiddleLayout( LwpObjectHeader &objHdr, LwpSvStream* pStrm );
+    LwpMiddleLayout( LwpObjectHeader const &objHdr, LwpSvStream* pStrm );
     virtual ~LwpMiddleLayout() override;
-    LwpLayoutGeometry* GetGeometry()
-    {
-        if (m_bGettingGeometry)
-            throw std::runtime_error("recursion in layout");
-        m_bGettingGeometry = true;
-        auto pRet = Geometry();
-        m_bGettingGeometry = false;
-        return pRet;
-    }
     double GetGeometryHeight();
     double GetGeometryWidth();
     LwpBorderStuff* GetBorderStuff();
     LwpBackgroundStuff* GetBackgroundStuff();
+    LwpLayoutGeometry* GetGeometry();
     enumXFTextDir GetTextDirection();
-    XFBorders* GetXFBorders();
+    std::unique_ptr<XFBorders> GetXFBorders();
     LwpColor* GetBackColor();
     virtual bool IsAutoGrow() override;
     virtual bool IsAutoGrowUp() override;
-    virtual bool IsAutoGrowDown() override;
     virtual bool IsAutoGrowLeft() override;
     virtual bool IsAutoGrowRight() override;
     virtual sal_uInt8 GetContentOrientation() override;
     virtual bool HonorProtection() override;
     virtual bool IsProtected() override;
     rtl::Reference<LwpVirtualLayout> GetWaterMarkLayout();
-    XFBGImage* GetXFBGImage();
+    std::unique_ptr<XFBGImage> GetXFBGImage();
     bool GetUsePrinterSettings();
 
     LwpLayoutScale* GetLayoutScale(){return dynamic_cast<LwpLayoutScale*>(m_LayScale.obj().get());}
         sal_uInt16 GetScaleMode();
     sal_uInt16 GetScaleTile();
     sal_uInt16 GetScaleCenter();
-    sal_uInt32 GetScalePercentage();
-    double GetScaleWidth();
-    double GetScaleHeight();
 
     bool CanSizeRight();
     virtual double GetWidth() override;
@@ -378,7 +378,7 @@ public:
     LwpPoint GetOrigin();
 
     bool IsPatternFill();
-    XFBGImage* GetFillPattern();
+    std::unique_ptr<XFBGImage> GetFillPattern();
 
     //Check whether there are contents in the layout
     virtual bool HasContent() override;
@@ -388,9 +388,9 @@ protected:
     virtual bool MarginsSameAsParent() override;
     virtual double MarginsValue(sal_uInt8 nWhichSide) override;
     virtual double ExtMarginsValue(sal_uInt8 nWhichSide) override;
+    virtual bool IsAutoGrowDown() override;
 private:
     LwpObjectID m_BasedOnStyle;
-    LwpLayoutGeometry* Geometry();
 protected:
     enum
     {
@@ -399,7 +399,7 @@ protected:
     };
 
     LwpObjectID m_Content;
-    rtl::Reference<LwpObject> GetBasedOnStyle();
+    rtl::Reference<LwpObject> GetBasedOnStyle() const;
     LwpObjectID     m_TabPiece;
     LwpLayoutStyle  m_aStyleStuff;
     LwpLayoutMisc   m_aMiscStuff;
@@ -410,6 +410,7 @@ protected:
     LwpObjectID     m_LayBackgroundStuff;
     LwpObjectID     m_LayExtBorderStuff;
     bool            m_bGettingGeometry;
+    bool            m_bGettingBackgroundStuff;
 public:
     LwpObjectID& GetContent() { return m_Content; }
     LwpTabOverride* GetTabOverride();
@@ -417,8 +418,11 @@ public:
 
 class LwpLayout : public LwpMiddleLayout
 {
+private:
+    bool m_bGettingShadow;
+    bool m_bGettingNumCols;
 public:
-    LwpLayout( LwpObjectHeader &objHdr, LwpSvStream* pStrm );
+    LwpLayout( LwpObjectHeader const &objHdr, LwpSvStream* pStrm );
     virtual ~LwpLayout() override;
     XFColumns* GetXFColumns();
     XFColumnSep* GetColumnSep();
@@ -438,7 +442,6 @@ protected:
 public:
     LwpUseWhen* VirtualGetUseWhen() override;
     virtual sal_uInt16 GetNumCols() override;
-    virtual double GetColWidth(sal_uInt16 nIndex) override;
     virtual double GetColGap(sal_uInt16 nIndex) override;
     sal_uInt16 GetUsePage();
 public:
@@ -463,7 +466,7 @@ public:
 class LwpPlacableLayout : public LwpLayout
 {
 public:
-    LwpPlacableLayout( LwpObjectHeader &objHdr, LwpSvStream* pStrm );
+    LwpPlacableLayout( LwpObjectHeader const &objHdr, LwpSvStream* pStrm );
     virtual ~LwpPlacableLayout() override;
     sal_uInt8 GetWrapType();
     LwpLayoutRelativity* GetRelativityPiece();
@@ -477,7 +480,7 @@ public:
      * @descr:   Get font style for setting position of frame
      *
      */
-    const rtl::Reference<XFFont>& GetFont() { return m_pFont; }
+    const rtl::Reference<XFFont>& GetFont() const { return m_pFont; }
     void SetFont(rtl::Reference<XFFont> const & pFont);
     enum WrapType
     {
@@ -495,6 +498,8 @@ public:
 protected:
     void Read() override;
 protected:
+    bool m_bGettingWrapType;
+    bool m_bGettingLayoutRelativity;
     sal_uInt8 m_nWrapType;
     sal_uInt8 m_nBuoyancy;
     sal_Int32 m_nBaseLineOffset;

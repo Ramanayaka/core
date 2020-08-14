@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVTOOLS_SOURCE_CONTROL_VALUEIMP_HXX
-#define INCLUDED_SVTOOLS_SOURCE_CONTROL_VALUEIMP_HXX
+#pragma once
 
 #include <osl/mutex.hxx>
 #include <tools/color.hxx>
@@ -32,7 +31,6 @@
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
 
 #include <vector>
 
@@ -47,11 +45,12 @@ enum ValueSetItemType
     VALUESETITEM_USERDRAW
 };
 
+class ValueItemAcc;
 class ValueSet;
 
 struct ValueSetItem
 {
-    ValueSet&           mrParent;
+    ValueSet&        mrParent;
     sal_uInt16          mnId;
     sal_uInt8           meType;
     bool                mbVisible;
@@ -59,12 +58,12 @@ struct ValueSetItem
     Color               maColor;
     OUString            maText;
     void*               mpData;
-    css::uno::Reference< css::accessibility::XAccessible > mxAcc;
+    rtl::Reference< ValueItemAcc > mxAcc;
 
     explicit ValueSetItem( ValueSet& rParent );
     ~ValueSetItem();
 
-    css::uno::Reference< css::accessibility::XAccessible > const &
+    css::uno::Reference< css::accessibility::XAccessible >
                         GetAccessible( bool bIsTransientChildrenDisabled );
 };
 
@@ -143,16 +142,15 @@ public:
     virtual void SAL_CALL deselectAccessibleChild( sal_Int32 nSelectedChildIndex ) override;
 
     // XUnoTunnel
+    static const css::uno::Sequence< sal_Int8 >& getUnoTunnelId();
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& rId ) override;
 
 private:
     ::std::vector< css::uno::Reference<
         css::accessibility::XAccessibleEventListener > >                mxEventListeners;
-    VclPtr<ValueSet>                                                    mpParent;
+    ValueSet*                                                    mpParent;
     /// The current FOCUSED state.
     bool mbIsFocused;
-
-    static const css::uno::Sequence< sal_Int8 >& getUnoTunnelId();
 
     /** Tell all listeners that the object is dying.  This callback is
         usually called from the WeakComponentImplHelper class.
@@ -202,14 +200,12 @@ private:
     ::std::vector< css::uno::Reference<
         css::accessibility::XAccessibleEventListener > >                mxEventListeners;
     ::osl::Mutex                                                        maMutex;
-    ValueSetItem*                                                       mpParent;
+    ValueSetItem*                                                    mpParent;
     bool                                                                mbIsTransientChildrenDisabled;
-
-    static const css::uno::Sequence< sal_Int8 >& getUnoTunnelId();
 
 public:
 
-    ValueItemAcc( ValueSetItem* pParent, bool bIsTransientChildrenDisabled );
+    ValueItemAcc(ValueSetItem* pParent, bool bIsTransientChildrenDisabled);
     virtual ~ValueItemAcc() override;
 
     void    ParentDestroyed();
@@ -251,9 +247,9 @@ public:
     virtual sal_Int32 SAL_CALL getBackground(  ) override;
 
     // XUnoTunnel
+    static const css::uno::Sequence< sal_Int8 >& getUnoTunnelId();
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& rId ) override;
 };
 
-#endif // INCLUDED_SVTOOLS_SOURCE_CONTROL_VALUEIMP_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

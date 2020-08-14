@@ -11,125 +11,53 @@
 #define INCLUDED_CUI_SOURCE_OPTIONS_PERSONALIZATION_HXX
 
 #include <sfx2/tabdlg.hxx>
-#include <salhelper/thread.hxx>
-#include <rtl/ref.hxx>
-#include <vcl/prgsbar.hxx>
 #include <vector>
-#include <array>
 
-#define CATEGORYCOUNT 6    // Number of persona categories
-
-class FixedText;
-class SearchAndParseThread;
+#define MAX_DEFAULT_PERSONAS 6 // Maximum number of default personas
 
 class SvxPersonalizationTabPage : public SfxTabPage
 {
-    using SfxTabPage::DeactivatePage;
-
 private:
-    VclPtr<RadioButton> m_pNoPersona;                  ///< Just the default look, without any bitmap
-    VclPtr<RadioButton> m_pDefaultPersona;             ///< Use the built-in bitmap
-    VclPtr<RadioButton> m_pOwnPersona;                 ///< Use the user-defined bitmap
-    VclPtr<PushButton> m_pSelectPersona;               ///< Let the user select in the 'own' case
-    VclPtr<PushButton> m_vDefaultPersonaImages[3];     ///< Buttons to show the default persona images
-    VclPtr<PushButton> m_pExtensionPersonaPreview;     ///< Buttons to show the last 3 personas installed via extensions
-    VclPtr<ListBox> m_pPersonaList;                    ///< The ListBox to show the list of installed personas
-    OUString m_aPersonaSettings;                       ///< Header and footer images + color to be set in the settings.
-    VclPtr<FixedText> m_pExtensionLabel;               ///< The "select persona installed via extensions" label
-    VclPtr<FixedText> m_pAppliedThemeLabel;            ///< The label for showing applied custom theme
+    std::unique_ptr<weld::RadioButton> m_xNoPersona; ///< Just the default look, without any bitmap
+    std::unique_ptr<weld::RadioButton> m_xDefaultPersona; ///< Use the built-in bitmap
+    std::unique_ptr<weld::ToggleButton> m_vDefaultPersonaImages
+        [MAX_DEFAULT_PERSONAS]; ///< Buttons to show the default persona images
+    OUString m_aPersonaSettings; ///< Header and footer images + color to be set in the settings.
 
     std::vector<OUString> m_vDefaultPersonaSettings;
-    std::vector<OUString> m_vExtensionPersonaSettings;
 
 public:
-    SvxPersonalizationTabPage( vcl::Window *pParent, const SfxItemSet &rSet );
+    SvxPersonalizationTabPage(weld::Container* pPage, weld::DialogController* pController,
+                              const SfxItemSet& rSet);
     virtual ~SvxPersonalizationTabPage() override;
-    virtual void dispose() override;
 
-    static VclPtr<SfxTabPage> Create( vcl::Window *pParent, const SfxItemSet *rSet );
+    static std::unique_ptr<SfxTabPage>
+    Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet);
 
     /// Apply the settings ([OK] button).
-    virtual bool FillItemSet( SfxItemSet *rSet ) override;
+    virtual bool FillItemSet(SfxItemSet* rSet) override;
 
     /// Reset to default settings ([Revert] button).
-    virtual void Reset( const SfxItemSet *rSet ) override;
+    virtual void Reset(const SfxItemSet* rSet) override;
 
-    void SetPersonaSettings( const OUString& );
-    void CheckAppliedTheme();
-    void ShowAppliedThemeLabel( const OUString& );
-
+    /*
+     * Loads the default personas from the shared personas directory
+     * which resides in the shared gallery.
+     * There needs to be a separate subdirectory for each default persona,
+     * which includes the preview, header, and footer images.
+     * And there needs to be a personas_list.txt file in the personas directory
+     * which keeps the index/info of the default personas, one persona per line.
+     * A line should look like this:
+     * persona_slug;Persona Name;subdir/preview.jpg;subdir/header.jpg;subdir/footer.jpg;#textcolor
+     * (It is recommended to keep the subdir name the same as the slug)
+     * Example line:
+     *  abstract;Abstract;abstract/preview.jpg;abstract/Header2.jpg;abstract/Footer2.jpg;#ffffff
+     */
     void LoadDefaultImages();
-    void LoadExtensionThemes();
 
 private:
-    /// Handle the Persona selection
-    DECL_LINK( SelectPersona, Button*, void );
-
-    /// When 'own' is chosen, but the Persona is not chosen yet.
-    DECL_LINK( ForceSelect, Button*, void );
-
     /// Handle the default Persona selection
-    DECL_LINK( DefaultPersona, Button*, void );
-
-    /// Handle the Personas installed through extensions selection
-    DECL_LINK( SelectInstalledPersona, ListBox&, void );
-};
-
-/** Dialog that will allow the user to choose a Persona to use. */
-class SelectPersonaDialog : public ModalDialog
-{
-private:
-    VclPtr<Edit> m_pEdit;                                   ///< The input line for the search term
-    VclPtr<PushButton> m_pSearchButton;                     ///< The search button
-    VclPtr<FixedText> m_pProgressLabel;                     ///< The label for showing progress of search
-    VclPtr<PushButton> m_vResultList[9];                    ///< List of buttons to show search results
-    VclPtr<PushButton> m_vSearchSuggestions[CATEGORYCOUNT]; ///< List of buttons for the search suggestions
-    VclPtr<PushButton> m_pOkButton;                         ///< The OK button
-    VclPtr<PushButton> m_pCancelButton;                     ///< The Cancel button
-
-    std::vector<OUString> m_vPersonaSettings;
-    OUString m_aSelectedPersona;
-    OUString m_aAppliedPersona;
-
-public:
-    explicit SelectPersonaDialog( vcl::Window *pParent );
-    virtual ~SelectPersonaDialog() override;
-    virtual void dispose() override;
-    ::rtl::Reference< SearchAndParseThread > m_pSearchThread;
-
-    OUString GetSelectedPersona() const;
-    void SetProgress( const OUString& );
-    void SetImages( const Image&, sal_Int32 );
-    void AddPersonaSetting( OUString& );
-    void ClearSearchResults();
-    void SetAppliedPersonaSetting( OUString& );
-    const OUString& GetAppliedPersonaSetting() const;
-
-private:
-    /// Handle the Search button
-    DECL_LINK( SearchPersonas, Button*, void );
-    DECL_LINK( SelectPersona, Button*, void );
-    DECL_LINK( ActionOK, Button*, void );
-    DECL_LINK( ActionCancel, Button*, void );
-};
-
-class SearchAndParseThread: public salhelper::Thread
-{
-private:
-
-    VclPtr<SelectPersonaDialog> m_pPersonaDialog;
-    OUString m_aURL;
-    bool m_bExecute, m_bDirectURL;
-
-    virtual ~SearchAndParseThread() override;
-    virtual void execute() override;
-
-public:
-
-    SearchAndParseThread( SelectPersonaDialog* pDialog,
-                          const OUString& rURL, bool bDirectURL );
-
-    void StopExecution() { m_bExecute = false; }
+    DECL_LINK(DefaultPersona, weld::Button&, void);
 };
 
 #endif // INCLUDED_CUI_SOURCE_OPTIONS_PERSONALIZATION_HXX

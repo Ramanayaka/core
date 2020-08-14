@@ -23,6 +23,7 @@
 #include <vcl/virdev.hxx>
 #include <vcl/image.hxx>
 #include <svx/frmsel.hxx>
+#include <svx/framelink.hxx>
 #include <svx/framelinkarray.hxx>
 #include <editeng/borderline.hxx>
 
@@ -30,12 +31,14 @@ namespace svx {
 
 namespace a11y {
     class AccFrameSelector;
+    class AccFrameSelectorChild;
 }
 
 class FrameBorder
 {
 public:
     explicit FrameBorder(FrameBorderType eType);
+    static double GetDefaultPatternScale() { return 0.05; }
 
     FrameBorderType GetType() const
     {
@@ -135,11 +138,9 @@ struct FrameSelectorImpl
     bool                mbBLTR;         /// true = Bottom-left to top-right frame border enabled.
     bool                mbFullRepaint;  /// Used for repainting (false = only copy virtual device).
     bool                mbAutoSelect;   /// true = Auto select a frame border, if focus reaches control.
-    bool                mbClicked;      /// true = The control has been clicked at least one time.
     bool                mbHCMode;       /// true = High contrast mode.
 
-    rtl::Reference<a11y::AccFrameSelector> mxAccess;   /// Pointer to accessibility object of the control.
-    std::vector<rtl::Reference<a11y::AccFrameSelector>>
+    std::vector<rtl::Reference<a11y::AccFrameSelectorChild>>
                         maChildVec;     /// Pointers to accessibility objects for frame borders.
     explicit            FrameSelectorImpl( FrameSelector& rFrameSel );
                         ~FrameSelectorImpl();
@@ -185,7 +186,7 @@ struct FrameSelectorImpl
     void                CopyVirDevToControl(vcl::RenderContext& rRenderContext);
 
     /** Draws tracking rectangles for all selected frame borders. */
-    void                DrawAllTrackingRects();
+    void                DrawAllTrackingRects(vcl::RenderContext& rRenderContext);
 
     /** Converts a mouse position to the virtual device position. */
     Point               GetDevPosFromMousePos( const Point& rMousePos ) const;
@@ -239,7 +240,6 @@ class FrameBorderIterBase
 public:
     typedef Cont container_type;
     typedef Iter iterator_type;
-    typedef Pred predicate_type;
     typedef typename Cont::value_type value_type;
     typedef FrameBorderIterBase<Cont, Iter, Pred> this_type;
 
@@ -251,7 +251,7 @@ public:
 private:
     iterator_type       maIt;
     iterator_type       maEnd;
-    predicate_type      maPred;
+    Pred                maPred;
 };
 
 /** Iterator for constant svx::FrameBorder containers, iterates over all borders. */

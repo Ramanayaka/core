@@ -28,10 +28,10 @@
 
 //  Platform:   Windows 2000, Windows XP
 
-#include "contentreader.hxx"
-#include "metainforeader.hxx"
-#include "registry.hxx"
-#include "fileextensions.hxx"
+#include <contentreader.hxx>
+#include <metainforeader.hxx>
+#include <registry.hxx>
+#include <fileextensions.hxx>
 
 
 //  Include file    Purpose
@@ -45,24 +45,24 @@
 //  propspec.hxx    PROPSPEC
 
 
-#if defined _MSC_VER
-#pragma warning(push, 1)
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
+
 #include <string.h>
 #include <filter.h>
 #include <filterr.h>
 #include <ntquery.h>
-#include "assert.h"
+#include <assert.h>
 #include "ooofilt.hxx"
 #include <objidl.h>
 #include <stdio.h>
 #include "propspec.hxx"
 
-#include "stream_helper.hxx"
+#include <stream_helper.hxx>
+
+#include <olectl.h> // declarations of DllRegisterServer/DllUnregisterServer
 
 //C-------------------------------------------------------------------------
 //  Class:      COooFilter
@@ -78,14 +78,14 @@ COooFilter::COooFilter() :
     m_lRefs(1),
     m_pContentReader(nullptr),
     m_pMetaInfoReader(nullptr),
-    m_eState(FilteringContent),
+    m_eState(FilterState::FilteringContent),
     m_ulUnicodeBufferLen(0),
     m_ulUnicodeCharsRead(0),
     m_ulPropertyNum(0),
     m_ulCurrentPropertyNum(0),
     m_ulChunkID(1),
-    m_fContents(FALSE),
-    m_fEof(FALSE),
+    m_fContents(false),
+    m_fEof(false),
     m_ChunkPosition(0),
     m_cAttributes(0),
     m_pAttributes(nullptr),
@@ -121,7 +121,7 @@ COooFilter::~COooFilter()
 //              E_NOINTERFACE
 //              Interface is not supported
 
-SCODE STDMETHODCALLTYPE COooFilter::QueryInterface(
+HRESULT STDMETHODCALLTYPE COooFilter::QueryInterface(
     REFIID riid,
     void  ** ppvObject)
 {
@@ -203,7 +203,7 @@ SCODE STDMETHODCALLTYPE COooFilter::Init(
     *pFlags = IFILTER_FLAGS_OLE_PROPERTIES;
     try
     {
-        m_fContents = FALSE;
+        m_fContents = false;
         m_ulPropertyNum = 0;
         m_ulCurrentPropertyNum = 0;
         if ( m_cAttributes > 0 )
@@ -228,7 +228,7 @@ SCODE STDMETHODCALLTYPE COooFilter::Init(
                      pAttrib[ulNumAttr].GetPropertyPropid() == PID_STG_CONTENTS &&
                      pAttrib[ulNumAttr].GetPropSet() == guidStorage )
                 {
-                    m_fContents = TRUE;
+                    m_fContents = true;
                 }
                 // save the requested properties.
                 m_pAttributes[ulNumAttr] = pAttrib[ulNumAttr];
@@ -237,7 +237,7 @@ SCODE STDMETHODCALLTYPE COooFilter::Init(
         else if ( grfFlags & IFILTER_INIT_APPLY_INDEX_ATTRIBUTES )
         {
             // Filter contents and all pseudo-properties
-            m_fContents = TRUE;
+            m_fContents = true;
 
             m_pAttributes = new CFullPropSpec[COUNT_ATTRIBUTES];
             m_cAttributes = COUNT_ATTRIBUTES;
@@ -255,22 +255,22 @@ SCODE STDMETHODCALLTYPE COooFilter::Init(
         else if ( 0 == grfFlags )
         {
             // Filter only contents
-            m_fContents = TRUE;
+            m_fContents = true;
         }
         else
-            m_fContents = FALSE;
+            m_fContents = false;
         // Re-initialize
         if ( m_fContents )
         {
-            m_fEof = FALSE;
-            m_eState = FilteringContent;
+            m_fEof = false;
+            m_eState = FilterState::FilteringContent;
             m_ulUnicodeCharsRead = 0;
             m_ChunkPosition = 0;
         }
         else
         {
-            m_fEof = TRUE;
-            m_eState = FilteringProperty;
+            m_fEof = true;
+            m_eState = FilterState::FilteringProperty;
         }
         m_ulChunkID = 1;
     }
@@ -307,17 +307,17 @@ SCODE STDMETHODCALLTYPE COooFilter::GetChunk(STAT_CHUNK * pStat)
     {
         switch ( m_eState )
         {
-        case FilteringContent:
+        case FilterState::FilteringContent:
         {
             if( m_ChunkPosition == m_pContentReader ->getChunkBuffer().size() )
             {
                 m_ulUnicodeBufferLen=0;
-                m_fEof = TRUE;
+                m_fEof = true;
             }
 
             if ( !m_fContents || m_fEof )
             {
-                m_eState = FilteringProperty;
+                m_eState = FilterState::FilteringProperty;
                 continue;
             }
             m_pwsBuffer = m_pContentReader -> getChunkBuffer()[m_ChunkPosition].second;
@@ -339,7 +339,7 @@ SCODE STDMETHODCALLTYPE COooFilter::GetChunk(STAT_CHUNK * pStat)
             m_ChunkPosition++;
             return S_OK;
         }
-        case FilteringProperty:
+        case FilterState::FilteringProperty:
         {
             if ( m_cAttributes ==  0 )
                 return FILTER_E_END_OF_CHUNKS;
@@ -377,8 +377,6 @@ SCODE STDMETHODCALLTYPE COooFilter::GetChunk(STAT_CHUNK * pStat)
                 return S_OK;
             }
         }
-        default:
-            return E_FAIL;
         }//switch(...)
     }//for(;;)
 }
@@ -401,9 +399,9 @@ SCODE STDMETHODCALLTYPE COooFilter::GetText(ULONG * pcwcBuffer, WCHAR * awcBuffe
 {
     switch ( m_eState )
     {
-    case FilteringProperty:
+    case FilterState::FilteringProperty:
         return FILTER_E_NO_TEXT;
-    case FilteringContent:
+    case FilterState::FilteringContent:
     {
         if ( !m_fContents || 0 == m_ulUnicodeBufferLen )
         {
@@ -425,9 +423,8 @@ SCODE STDMETHODCALLTYPE COooFilter::GetText(ULONG * pcwcBuffer, WCHAR * awcBuffe
         }
         return S_OK;
     }
-    default:
-        return E_FAIL;
     }
+    return E_FAIL; // Should not happen!
 }
 //M-------------------------------------------------------------------------
 //  Method:     GetMetaInfoNameFromPropertyId
@@ -438,7 +435,7 @@ SCODE STDMETHODCALLTYPE COooFilter::GetText(ULONG * pcwcBuffer, WCHAR * awcBuffe
 //  Returns:    corresponding metainfo names.
 
 
-::std::wstring GetMetaInfoNameFromPropertyId( ULONG ulPropID )
+static ::std::wstring GetMetaInfoNameFromPropertyId( ULONG ulPropID )
 {
     switch ( ulPropID )
     {
@@ -452,7 +449,7 @@ SCODE STDMETHODCALLTYPE COooFilter::GetText(ULONG * pcwcBuffer, WCHAR * awcBuffe
 }
 //M-------------------------------------------------------------------------
 //  Method:     COooFilter::GetValue            (IFilter::GetValue)
-//  Summary:    Retrieves properites for index
+//  Summary:    Retrieves properties for index
 //  Arguments:  ppPropValue
 //                  [out] Address that receives pointer to property value
 //  Returns:    FILTER_E_NO_VALUES
@@ -463,9 +460,9 @@ SCODE STDMETHODCALLTYPE COooFilter::GetText(ULONG * pcwcBuffer, WCHAR * awcBuffe
 
 SCODE STDMETHODCALLTYPE COooFilter::GetValue(PROPVARIANT ** ppPropValue)
 {
-    if (m_eState == FilteringContent)
+    if (m_eState == FilterState::FilteringContent)
         return FILTER_E_NO_VALUES;
-    else if (m_eState == FilteringProperty)
+    else // m_eState == FilteringProperty
     {
         if ( m_cAttributes == 0 || ( m_ulCurrentPropertyNum == m_ulPropertyNum ) )
             return FILTER_E_NO_MORE_VALUES;
@@ -489,8 +486,6 @@ SCODE STDMETHODCALLTYPE COooFilter::GetValue(PROPVARIANT ** ppPropValue)
         m_ulCurrentPropertyNum = m_ulPropertyNum;
         return S_OK;
     }
-    else
-        return E_FAIL;
 }
 //M-------------------------------------------------------------------------
 //  Method:     COooFilter::BindRegion          (IFilter::BindRegion)
@@ -525,7 +520,7 @@ SCODE STDMETHODCALLTYPE COooFilter::BindRegion(
 //              E_FAIL
 //                  (not implemented)
 
-SCODE STDMETHODCALLTYPE COooFilter::GetClassID(CLSID * pClassID)
+HRESULT STDMETHODCALLTYPE COooFilter::GetClassID(CLSID * pClassID)
 {
     *pClassID = CLSID_COooFilter;
     return S_OK;
@@ -539,7 +534,7 @@ SCODE STDMETHODCALLTYPE COooFilter::GetClassID(CLSID * pClassID)
 //              S_OK
 //                  (not implemented)
 
-SCODE STDMETHODCALLTYPE COooFilter::IsDirty()
+HRESULT STDMETHODCALLTYPE COooFilter::IsDirty()
 {
     // File is opened read-only and never changes
     return S_FALSE;
@@ -559,7 +554,7 @@ SCODE STDMETHODCALLTYPE COooFilter::IsDirty()
 //              E_FAIL
 //                  (not implemented)
 
-SCODE STDMETHODCALLTYPE COooFilter::Load(LPCWSTR pszFileName, DWORD /*dwMode*/)
+HRESULT STDMETHODCALLTYPE COooFilter::Load(LPCOLESTR pszFileName, DWORD /*dwMode*/)
 {
     // Load just sets the filename for GetChunk to read and ignores the mode
     m_pwszFileName = getShortPathName( pszFileName );
@@ -568,10 +563,10 @@ SCODE STDMETHODCALLTYPE COooFilter::Load(LPCWSTR pszFileName, DWORD /*dwMode*/)
     try
     {
         delete m_pMetaInfoReader;
-        m_pMetaInfoReader = new CMetaInfoReader(WStringToString(m_pwszFileName));
+        m_pMetaInfoReader = new CMetaInfoReader(m_pwszFileName);
 
         delete m_pContentReader;
-        m_pContentReader = new CContentReader(WStringToString(m_pwszFileName), m_pMetaInfoReader->getDefaultLocale());
+        m_pContentReader = new CContentReader(m_pwszFileName, m_pMetaInfoReader->getDefaultLocale());
     }
     catch (const std::exception&)
     {
@@ -592,7 +587,7 @@ SCODE STDMETHODCALLTYPE COooFilter::Load(LPCWSTR pszFileName, DWORD /*dwMode*/)
 //              S_OK
 //                  (not implemented)
 
-SCODE STDMETHODCALLTYPE COooFilter::Save(LPCWSTR /*pszFileName*/, BOOL /*fRemember*/)
+HRESULT STDMETHODCALLTYPE COooFilter::Save(LPCOLESTR /*pszFileName*/, BOOL /*fRemember*/)
 {
     // File is opened read-only; saving it is an error
     return E_FAIL;
@@ -606,7 +601,7 @@ SCODE STDMETHODCALLTYPE COooFilter::Save(LPCWSTR /*pszFileName*/, BOOL /*fRememb
 //  Returns:    S_OK
 //                  Always
 
-SCODE STDMETHODCALLTYPE COooFilter::SaveCompleted(LPCWSTR /*pszFileName*/)
+HRESULT STDMETHODCALLTYPE COooFilter::SaveCompleted(LPCOLESTR /*pszFileName*/)
 {
     // File is opened read-only, so "save" is always finished
     return S_OK;
@@ -621,7 +616,7 @@ SCODE STDMETHODCALLTYPE COooFilter::SaveCompleted(LPCWSTR /*pszFileName*/)
 //              E_OUTOFMEMORY
 //              E_FAIL
 
-SCODE STDMETHODCALLTYPE COooFilter::Load(IStream *pStm)
+HRESULT STDMETHODCALLTYPE COooFilter::Load(IStream *pStm)
 {
     m_pStream = new BufferStream(pStm);
     try
@@ -641,12 +636,12 @@ SCODE STDMETHODCALLTYPE COooFilter::Load(IStream *pStm)
 
 //M-------------------------------------------------------------------------
 //  Method:     COooFilter::GetSizeMax      (IPersistStream::GetSizeMax)
-//  Summary:    Returns the size in bytes of the stream neede to save the object.
+//  Summary:    Returns the size in bytes of the stream needed to save the object.
 //  Arguments:  pcbSize
 //                  [out] Pointer to a 64 bit unsigned int indicating the size needed
 //  Returns:    E_NOTIMPL
 
-SCODE STDMETHODCALLTYPE COooFilter::GetSizeMax(ULARGE_INTEGER * /*pcbSize*/)
+HRESULT STDMETHODCALLTYPE COooFilter::GetSizeMax(ULARGE_INTEGER * /*pcbSize*/)
 {
     return E_NOTIMPL;
 }
@@ -660,7 +655,7 @@ SCODE STDMETHODCALLTYPE COooFilter::GetSizeMax(ULARGE_INTEGER * /*pcbSize*/)
 //                  [in] Indicates whether to clear dirty flag
 //  Returns:    E_NOTIMPL
 
-SCODE STDMETHODCALLTYPE COooFilter::Save(IStream * /*pStm*/, BOOL )
+HRESULT STDMETHODCALLTYPE COooFilter::Save(IStream * /*pStm*/, BOOL )
 {
     return E_NOTIMPL;
 }
@@ -681,7 +676,7 @@ SCODE STDMETHODCALLTYPE COooFilter::Save(IStream * /*pStm*/, BOOL )
 //                  Operation failed due to some reason
 //                  other than insufficient memory
 
-SCODE STDMETHODCALLTYPE COooFilter::GetCurFile(LPWSTR * ppszFileName)
+HRESULT STDMETHODCALLTYPE COooFilter::GetCurFile(LPOLESTR * ppszFileName)
 {
     if ( EMPTY_STRING == m_pwszFileName )
         return E_FAIL;
@@ -723,7 +718,7 @@ COooFilterCF::~COooFilterCF()
 //              E_NOINTERFACE
 //                  Interface is not supported
 
-SCODE STDMETHODCALLTYPE COooFilterCF::QueryInterface(REFIID riid, void  ** ppvObject)
+HRESULT STDMETHODCALLTYPE COooFilterCF::QueryInterface(REFIID riid, void  ** ppvObject)
 {
     IUnknown *pUnkTemp;
 
@@ -785,7 +780,7 @@ ULONG STDMETHODCALLTYPE COooFilterCF::Release()
 //              E_UNEXPECTED
 //                  Unsuccessful due to an unexpected condition
 
-SCODE STDMETHODCALLTYPE COooFilterCF::CreateInstance(
+HRESULT STDMETHODCALLTYPE COooFilterCF::CreateInstance(
     IUnknown * pUnkOuter,
     REFIID riid,
     void  * * ppvObject)
@@ -821,7 +816,7 @@ SCODE STDMETHODCALLTYPE COooFilterCF::CreateInstance(
 //              E_UNEXPECTED
 //                  (not implemented)
 
-SCODE STDMETHODCALLTYPE COooFilterCF::LockServer(BOOL fLock)
+HRESULT STDMETHODCALLTYPE COooFilterCF::LockServer(BOOL fLock)
 {
     if( fLock )
         InterlockedIncrement( &g_lInstances );
@@ -851,7 +846,7 @@ extern "C" BOOL WINAPI DllMain(
     LPVOID    /*lpvReserved*/
 )
 {
-   if ( DLL_PROCESS_ATTACH == fdwReason )
+    if ( DLL_PROCESS_ATTACH == fdwReason )
         DisableThreadLibraryCalls( hInstance );
     return TRUE;
 }
@@ -875,10 +870,10 @@ extern "C" BOOL WINAPI DllMain(
 //              E_UNEXPECTED
 //                  Unsuccessful due to an unexpected condition
 
-extern "C" SCODE STDMETHODCALLTYPE DllGetClassObject(
+extern "C" HRESULT STDMETHODCALLTYPE DllGetClassObject(
     REFCLSID   cid,
     REFIID     iid,
-    void **    ppvObj
+    LPVOID *   ppvObj
 )
 {
     COooFilterCF* pImpl = nullptr;
@@ -910,7 +905,7 @@ extern "C" SCODE STDMETHODCALLTYPE DllGetClassObject(
 //              S_FALSE
 //                  DLL must remain loaded
 
-extern "C" SCODE STDMETHODCALLTYPE DllCanUnloadNow()
+extern "C" HRESULT STDMETHODCALLTYPE DllCanUnloadNow()
 {
     if ( 0 >= g_lInstances )
         return S_OK;

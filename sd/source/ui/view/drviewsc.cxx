@@ -17,67 +17,47 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DrawViewShell.hxx"
-#include "ViewShellImplementation.hxx"
-#include <vcl/waitobj.hxx>
+#include <DrawViewShell.hxx>
 
-#include <svx/svxids.hrc>
-#include <svx/dialogs.hrc>
 #include <svx/imapdlg.hxx>
-#include <vcl/msgbox.hxx>
-#include <sfx2/request.hxx>
-#include <svx/svdogrp.hxx>
 #include <svx/svdoole2.hxx>
 #include <svx/svdograf.hxx>
 #include <svx/svxdlg.hxx>
-#include <sfx2/bindings.hxx>
-#include <sfx2/dispatch.hxx>
-#include <svl/style.hxx>
-#include <svx/svdpagv.hxx>
-#include <svx/grafctrl.hxx>
-#include "stlsheet.hxx"
+#include <svx/ImageMapInfo.hxx>
 
 #include <sfx2/viewfrm.hxx>
 
-#include "app.hrc"
-#include "strings.hrc"
-#include "helpids.h"
-#include "Window.hxx"
-#include "imapinfo.hxx"
-#include "sdresid.hxx"
-#include "drawdoc.hxx"
-#include "DrawDocShell.hxx"
-#include "drawview.hxx"
-#include "sdabstdlg.hxx"
+#include <drawdoc.hxx>
+#include <drawview.hxx>
+#include <memory>
+
 namespace sd {
 
 void DrawViewShell::UpdateIMapDlg( SdrObject* pObj )
 {
-    if( ( dynamic_cast< SdrGrafObj *>( pObj )  != nullptr || dynamic_cast< SdrOle2Obj *>( pObj ) !=  nullptr ) && !mpDrawView->IsTextEdit() &&
-         GetViewFrame()->HasChildWindow( SvxIMapDlgChildWindow::GetChildWindowId() ) )
+    if( ( dynamic_cast< SdrGrafObj *>( pObj ) == nullptr && dynamic_cast< SdrOle2Obj *>( pObj ) == nullptr )
+        || mpDrawView->IsTextEdit()
+        || !GetViewFrame()->HasChildWindow( SvxIMapDlgChildWindow::GetChildWindowId() ) )
+        return;
+
+    Graphic     aGraphic;
+    ImageMap*   pIMap = nullptr;
+    std::unique_ptr<TargetList> pTargetList;
+    SvxIMapInfo* pIMapInfo = SvxIMapInfo::GetIMapInfo( pObj );
+
+    // get graphic from shape
+    SdrGrafObj* pGrafObj = dynamic_cast< SdrGrafObj* >( pObj );
+    if( pGrafObj )
+        aGraphic = pGrafObj->GetGraphic();
+
+    if ( pIMapInfo )
     {
-        Graphic     aGraphic;
-        ImageMap*   pIMap = nullptr;
-        TargetList* pTargetList = nullptr;
-        SdIMapInfo* pIMapInfo = SdDrawDocument::GetIMapInfo( pObj );
-
-        // get graphic from shape
-        SdrGrafObj* pGrafObj = dynamic_cast< SdrGrafObj* >( pObj );
-        if( pGrafObj )
-            aGraphic = pGrafObj->GetGraphic();
-
-        if ( pIMapInfo )
-        {
-            pIMap = const_cast<ImageMap*>(&pIMapInfo->GetImageMap());
-            pTargetList = new TargetList;
-            GetViewFrame()->GetTargetList( *pTargetList );
-        }
-
-        SvxIMapDlgChildWindow::UpdateIMapDlg( aGraphic, pIMap, pTargetList, pObj );
-
-        // We can delete the target list
-        delete pTargetList;
+        pIMap = const_cast<ImageMap*>(&pIMapInfo->GetImageMap());
+        pTargetList.reset(new TargetList);
+        SfxViewFrame::GetTargetList( *pTargetList );
     }
+
+    SvxIMapDlgChildWindow::UpdateIMapDlg( aGraphic, pIMap, pTargetList.get(), pObj );
 }
 
 IMPL_LINK( DrawViewShell, NameObjectHdl, AbstractSvxObjectNameDialog&, rDialog, bool )

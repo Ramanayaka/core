@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "Linear3DTransformation.hxx"
-#include <algorithm>
+#include <Linear3DTransformation.hxx>
 
 using namespace ::com::sun::star;
 
 using ::com::sun::star::uno::Sequence;
-using ::com::sun::star::uno::RuntimeException;
 
 namespace chart
 {

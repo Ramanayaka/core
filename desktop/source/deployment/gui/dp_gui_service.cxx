@@ -19,35 +19,32 @@
 
 
 #include <memory>
-#include "dp_gui_shared.hxx"
-#include "dp_gui.h"
 #include "dp_gui_theextmgr.hxx"
+#include <osl/diagnose.h>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/implementationentry.hxx>
+#include <cppuhelper/supportsservice.hxx>
 #include <unotools/configmgr.hxx>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/servicedecl.hxx>
 #include <comphelper/unwrapargs.hxx>
-#include <vcl/layout.hxx>
+#include <unotools/resmgr.hxx>
+#include <vcl/weld.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/settings.hxx>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/task/XJobExecutor.hpp>
 #include <com/sun/star/ui/dialogs/XAsynchronousExecutableDialog.hpp>
 
-#include <boost/optional.hpp>
+#include <optional>
 #include "license_dialog.hxx"
 #include "dp_gui_dialog2.hxx"
 #include "dp_gui_extensioncmdqueue.hxx"
+#include <dp_misc.h>
 
 using namespace ::dp_misc;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sdecl = comphelper::service_decl;
-
 namespace dp_gui {
 
+namespace {
 
 class MyApp : public Application
 {
@@ -61,6 +58,8 @@ public:
     virtual int Main() override;
     virtual void DeInit() override;
 };
+
+}
 
 MyApp::MyApp()
 {
@@ -82,46 +81,17 @@ void MyApp::DeInit()
     comphelper::setProcessServiceFactory(nullptr);
 }
 
-namespace
-{
-    struct ProductName
-        : public rtl::Static< OUString, ProductName > {};
-    struct Version
-        : public rtl::Static< OUString, Version > {};
-    struct AboutBoxVersion
-        : public rtl::Static< OUString, AboutBoxVersion > {};
-    struct AboutBoxVersionSuffix
-        : public rtl::Static< OUString, AboutBoxVersionSuffix > {};
-    struct OOOVendor
-        : public rtl::Static< OUString, OOOVendor > {};
-    struct Extension
-        : public rtl::Static< OUString, Extension > {};
-}
-
-OUString ReplaceProductNameHookProc( const OUString& rStr )
+static OUString ReplaceProductNameHookProc( const OUString& rStr )
 {
     if (rStr.indexOf( "%PRODUCT" ) == -1)
         return rStr;
 
-    OUString sProductName = ProductName::get();
-    OUString sVersion = Version::get();
-    OUString sAboutBoxVersion = AboutBoxVersion::get();
-    OUString sAboutBoxVersionSuffix = AboutBoxVersionSuffix::get();
-    OUString sExtension = Extension::get();
-    OUString sOOOVendor = OOOVendor::get();
-
-    if ( sProductName.isEmpty() )
-    {
-        sProductName = utl::ConfigManager::getProductName();
-        sVersion = utl::ConfigManager::getProductVersion();
-        sAboutBoxVersion = utl::ConfigManager::getAboutBoxProductVersion();
-        sAboutBoxVersionSuffix = utl::ConfigManager::getAboutBoxProductVersionSuffix();
-        sOOOVendor = utl::ConfigManager::getVendor();
-        if ( sExtension.isEmpty() )
-        {
-            sExtension = utl::ConfigManager::getProductExtension();
-        }
-    }
+    static const OUString sProductName = utl::ConfigManager::getProductName();
+    static const OUString sVersion = utl::ConfigManager::getProductVersion();
+    static const OUString sAboutBoxVersion = utl::ConfigManager::getAboutBoxProductVersion();
+    static const OUString sAboutBoxVersionSuffix = utl::ConfigManager::getAboutBoxProductVersionSuffix();
+    static const OUString sExtension = utl::ConfigManager::getProductExtension();
+    static const OUString sOOOVendor = utl::ConfigManager::getVendor();
 
     OUString sRet = rStr.replaceAll( "%PRODUCTNAME", sProductName );
     sRet = sRet.replaceAll( "%PRODUCTVERSION", sVersion );
@@ -132,23 +102,26 @@ OUString ReplaceProductNameHookProc( const OUString& rStr )
     return sRet;
 }
 
+namespace {
 
 class ServiceImpl
     : public ::cppu::WeakImplHelper<ui::dialogs::XAsynchronousExecutableDialog,
-                                     task::XJobExecutor>
+                                     task::XJobExecutor, css::lang::XServiceInfo>
 {
     Reference<XComponentContext> const m_xComponentContext;
-    boost::optional< Reference<awt::XWindow> > /* const */ m_parent;
-    boost::optional<OUString> /* const */ m_view;
-    /* if true then this service is running in an unopkg process and not in an office process */
-    boost::optional<sal_Bool> /* const */ m_unopkg;
-    boost::optional<OUString> m_extensionURL;
+    std::optional< Reference<awt::XWindow> > /* const */ m_parent;
+    std::optional<OUString> m_extensionURL;
     OUString m_initialTitle;
     bool m_bShowUpdateOnly;
 
 public:
     ServiceImpl( Sequence<Any> const & args,
                  Reference<XComponentContext> const & xComponentContext );
+
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
     // XAsynchronousExecutableDialog
     virtual void SAL_CALL setDialogTitle( OUString const & aTitle ) override;
@@ -159,14 +132,18 @@ public:
     virtual void SAL_CALL trigger( OUString const & event ) override;
 };
 
+}
 
 ServiceImpl::ServiceImpl( Sequence<Any> const& args,
                           Reference<XComponentContext> const& xComponentContext)
     : m_xComponentContext(xComponentContext),
       m_bShowUpdateOnly( false )
 {
+    /* if true then this service is running in a unopkg process and not in an office process */
+    std::optional<sal_Bool> unopkg;
+    std::optional<OUString> view;
     try {
-        comphelper::unwrapArgs( args, m_parent, m_view, m_unopkg );
+        comphelper::unwrapArgs( args, m_parent, view, unopkg );
         return;
     } catch ( const css::lang::IllegalArgumentException & ) {
     }
@@ -175,9 +152,25 @@ ServiceImpl::ServiceImpl( Sequence<Any> const& args,
     } catch ( const css::lang::IllegalArgumentException & ) {
     }
 
-    ResHookProc pProc = ResMgr::GetReadStringHook();
+    ResHookProc pProc = Translate::GetReadStringHook();
     if ( !pProc )
-        ResMgr::SetReadStringHook( ReplaceProductNameHookProc );
+        Translate::SetReadStringHook(ReplaceProductNameHookProc);
+}
+
+// XServiceInfo
+OUString ServiceImpl::getImplementationName()
+{
+    return "com.sun.star.comp.deployment.ui.PackageManagerDialog";
+}
+
+sal_Bool ServiceImpl::supportsService( const OUString& ServiceName )
+{
+    return cppu::supportsService(this, ServiceName);
+}
+
+css::uno::Sequence< OUString > ServiceImpl::getSupportedServiceNames()
+{
+    return { "com.sun.star.deployment.ui.PackageManagerDialog" };
 }
 
 // XAsynchronousExecutableDialog
@@ -214,9 +207,10 @@ void ServiceImpl::startExecuteModal(
         catch (const Exception & exc) {
             if (bAppUp) {
                 const SolarMutexGuard guard;
-                ScopedVclPtrInstance<MessageDialog> box(
-                        Application::GetActiveTopWindow(), exc.Message);
-                box->Execute();
+                vcl::Window* pWin = Application::GetActiveTopWindow();
+                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(pWin ? pWin->GetFrameWeld() : nullptr,
+                                                          VclMessageType::Warning, VclButtonsType::Ok, exc.Message));
+                xBox->run();
             }
             throw;
         }
@@ -261,16 +255,17 @@ void ServiceImpl::startExecuteModal(
             if ( bCloseDialog )
                 myExtMgr->Close();
             else
-                myExtMgr->ToTop( ToTopFlags::RestoreWhenMin );
+                myExtMgr->ToTop();
         }
         else
         {
             myExtMgr->Show();
-            myExtMgr->ToTop( ToTopFlags::RestoreWhenMin );
+            myExtMgr->ToTop();
         }
     }
 
-    if (app.get() != nullptr) {
+    if (app != nullptr)
+    {
         Application::Execute();
         DeInitVCL();
     }
@@ -294,35 +289,27 @@ void ServiceImpl::trigger( OUString const &rEvent )
     startExecuteModal( Reference< ui::dialogs::XDialogClosedListener >() );
 }
 
-sdecl::class_<ServiceImpl, sdecl::with_args<true> > const serviceSI;
-sdecl::ServiceDecl const serviceDecl(
-    serviceSI,
-    "com.sun.star.comp.deployment.ui.PackageManagerDialog",
-    "com.sun.star.deployment.ui.PackageManagerDialog" );
-
-sdecl::class_<LicenseDialog, sdecl::with_args<true> > const licenseSI;
-sdecl::ServiceDecl const licenseDecl(
-    licenseSI,
-    "com.sun.star.comp.deployment.ui.LicenseDialog",
-    "com.sun.star.deployment.ui.LicenseDialog" );
-
-sdecl::class_<UpdateRequiredDialogService, sdecl::with_args<true> > const updateSI;
-sdecl::ServiceDecl const updateDecl(
-    updateSI,
-    "com.sun.star.comp.deployment.ui.UpdateRequiredDialog",
-    "com.sun.star.deployment.ui.UpdateRequiredDialog" );
 } // namespace dp_gui
 
-extern "C" {
-
-SAL_DLLPUBLIC_EXPORT void * SAL_CALL deploymentgui_component_getFactory(
-    sal_Char const * pImplName, void *, void *)
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+desktop_LicenseDialog_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
 {
-    return sdecl::component_getFactoryHelper(
-        pImplName,
-        {&dp_gui::serviceDecl, &dp_gui::licenseDecl, &dp_gui::updateDecl});
+    return cppu::acquire(new dp_gui::LicenseDialog(args, context));
 }
 
-} // extern "C"
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+desktop_ServiceImpl_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
+{
+    return cppu::acquire(new dp_gui::ServiceImpl(args, context));
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+desktop_UpdateRequiredDialogService_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
+{
+    return cppu::acquire(new dp_gui::UpdateRequiredDialogService(args, context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

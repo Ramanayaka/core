@@ -25,8 +25,6 @@
 #include <stack>
 #include <vector>
 
-#include <com/sun/star/container/NoSuchElementException.hpp>
-#include <com/sun/star/uno/RuntimeException.hpp>
 #include <osl/file.h>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
@@ -38,8 +36,6 @@ namespace xmlreader {
 
 class OOO_DLLPUBLIC_XMLREADER XmlReader {
 public:
-    XmlReader(char const *sStr, size_t nLength);
-
     explicit XmlReader(OUString const & fileUrl);
 
     ~XmlReader();
@@ -131,7 +127,7 @@ private:
 
     SAL_DLLPRIVATE char read() { return pos_ == end_ ? '\0' : *pos_++; }
 
-    SAL_DLLPRIVATE char peek() { return pos_ == end_ ? '\0' : *pos_; }
+    SAL_DLLPRIVATE char peek() const { return pos_ == end_ ? '\0' : *pos_; }
 
     SAL_DLLPRIVATE void normalizeLineEnds(Span const & text);
 
@@ -170,7 +166,7 @@ private:
 
     SAL_DLLPRIVATE static int toNamespaceId(NamespaceIris::size_type pos);
 
-    OUString fileUrl_;
+    OUString const fileUrl_;
     oslFileHandle fileHandle_;
     sal_uInt64 fileSize_;
     void * fileAddress_;

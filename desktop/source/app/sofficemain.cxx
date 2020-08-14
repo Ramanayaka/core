@@ -19,48 +19,28 @@
 
 #include <sal/config.h>
 #include <config_features.h>
-#include <config_version.h>
-#include <config_folders.h>
 
 #include <desktop/dllapi.h>
 
-#include "app.hxx"
+#include <app.hxx>
 #include "cmdlineargs.hxx"
 #include "cmdlinehelp.hxx"
 
-#include <desktop/exithelper.h>
-#include <osl/file.hxx>
+// needed before sal/main.h to avoid redefinition of macros
+#include <prewin.h>
+
 #include <rtl/bootstrap.hxx>
 #include <sal/log.hxx>
+#include <sal/main.h>
 #include <tools/extendapplicationenvironment.hxx>
+#include <vcl/glxtestprocess.hxx>
 #include <vcl/svmain.hxx>
 
-#include <com/sun/star/beans/NamedValue.hpp>
-#include <comphelper/storagehelper.hxx>
-#include <cppuhelper/bootstrap.hxx>
-#include <unotools/mediadescriptor.hxx>
-
 #if HAVE_FEATURE_BREAKPAD
-#include <fstream>
 #include <desktop/crashreport.hxx>
-
-#if defined( UNX ) && !defined MACOSX && !defined IOS && !defined ANDROID
-#include <client/linux/handler/exception_handler.h>
-#elif defined WNT
-#if defined __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmicrosoft-enum-value"
-#endif
-#include <client/windows/handler/exception_handler.h>
-#if defined __clang__
-#pragma clang diagnostic pop
-#endif
-#include <locale>
-#include <codecvt>
 #endif
 
-#endif
-
+#include <postwin.h>
 
 #ifdef ANDROID
 #  include <jni.h>
@@ -71,61 +51,16 @@
 #  define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, LOGTAG, __VA_ARGS__))
 #endif
 
-#if HAVE_FEATURE_BREAKPAD
-
-#if defined( UNX ) && !defined MACOSX && !defined IOS && !defined ANDROID
-static bool dumpCallback(const google_breakpad::MinidumpDescriptor& descriptor, void* /*context*/, bool succeeded)
-{
-    std::string ini_path = CrashReporter::getIniFileName();
-    std::ofstream minidump_file(ini_path, std::ios_base::app);
-    minidump_file << "DumpFile=" << descriptor.path() << "\n";
-    minidump_file.close();
-    SAL_WARN("desktop", "minidump generated: " << descriptor.path());
-    return succeeded;
-}
-#elif defined WNT
-static bool dumpCallback(const wchar_t* path, const wchar_t* id,
-                            void* /*context*/, EXCEPTION_POINTERS* /*exinfo*/,
-                            MDRawAssertionInfo* /*assertion*/,
-                            bool succeeded)
-{
-    std::string ini_path = CrashReporter::getIniFileName();
-    std::ofstream minidump_file(ini_path, std::ios_base::app);
-    // TODO: moggi: can we avoid this conversion
-    std::wstring_convert<std::codecvt_utf8<wchar_t>> conv1;
-    std::string aPath = conv1.to_bytes(std::wstring(path)) + conv1.to_bytes(std::wstring(id)) + ".dmp";
-    minidump_file << "DumpFile=" << aPath << "\n";
-    minidump_file << "GDIHandles=" << ::GetGuiResources (::GetCurrentProcess(), GR_GDIOBJECTS) << "\n";
-    minidump_file.close();
-    SAL_WARN("desktop", "minidump generated: " << aPath);
-    return succeeded;
-}
-#endif
-
-#endif
 extern "C" int DESKTOP_DLLPUBLIC soffice_main()
 {
+    sal_detail_initialize(sal::detail::InitializeSoffice, nullptr);
+
 #if HAVE_FEATURE_BREAKPAD
-
-#if defined( UNX ) && !defined MACOSX && !defined IOS && !defined ANDROID
-    google_breakpad::MinidumpDescriptor descriptor("/tmp");
-    google_breakpad::ExceptionHandler eh(descriptor, nullptr, dumpCallback, nullptr, true, -1);
-
-    CrashReporter::storeExceptionHandler(&eh);
-#elif defined WNT
-    google_breakpad::ExceptionHandler eh(L".", nullptr, dumpCallback, nullptr, google_breakpad::ExceptionHandler::HANDLER_ALL);
-
-    CrashReporter::storeExceptionHandler(&eh);
-#endif
+    CrashReporter::installExceptionHandler();
 #endif
 
-#if defined( UNX ) && !defined MACOSX && !defined IOS && !defined ANDROID && !defined(LIBO_HEADLESS) && HAVE_FEATURE_OPENGL
-    /* Run test for OpenGL support in own process to avoid crash with broken
-     * OpenGL drivers. Start process as early as possible.
-     */
     bool bSuccess = fire_glxtest_process();
     SAL_WARN_IF(!bSuccess, "desktop.opengl", "problems with glxtest");
-#endif
 
 #if defined ANDROID
     try {
@@ -136,7 +71,7 @@ extern "C" int DESKTOP_DLLPUBLIC soffice_main()
     desktop::Desktop aDesktop;
     // This string is used during initialization of the Gtk+ VCL module
     Application::SetAppName( "soffice" );
-#ifdef UNX
+
     // handle --version and --help already here, otherwise they would be handled
     // after VCL initialization that might fail if $DISPLAY is not set
     const desktop::CommandLineArgs& rCmdLineArgs = desktop::Desktop::GetCommandLineArgs();
@@ -159,7 +94,7 @@ extern "C" int DESKTOP_DLLPUBLIC soffice_main()
         desktop::displayVersion();
         return EXIT_SUCCESS;
     }
-#endif
+
     return SVMain();
 #if defined ANDROID
     } catch (const css::uno::Exception &e) {

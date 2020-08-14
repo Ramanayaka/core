@@ -22,6 +22,8 @@
 
 #include <sal/config.h>
 
+#include <rtl/ustring.hxx>
+
 #include "type.hxx"
 
 namespace xmlreader {
@@ -29,9 +31,7 @@ namespace xmlreader {
     struct Span;
 }
 
-namespace configmgr {
-
-namespace xmldata {
+namespace configmgr::xmldata {
 
 Type parseType(
     xmlreader::XmlReader const & reader, xmlreader::Span const & text);
@@ -41,8 +41,6 @@ bool parseBoolean(xmlreader::Span const & text);
 OUString parseTemplateReference(
     OUString const & component, bool hasNodeType,
     OUString const & nodeType, OUString const * defaultTemplateName);
-
-}
 
 }
 

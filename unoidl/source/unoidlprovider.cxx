@@ -7,7 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <algorithm>
 #include <cassert>
@@ -15,21 +15,21 @@
 #include <set>
 #include <vector>
 
-#include "osl/endian.h"
-#include "osl/file.h"
-#include "rtl/character.hxx"
-#include "rtl/ref.hxx"
-#include "rtl/textenc.h"
-#include "rtl/textcvt.h"
-#include "rtl/ustring.hxx"
-#include "sal/log.hxx"
-#include "sal/types.h"
-#include "salhelper/simplereferenceobject.hxx"
-#include "unoidl/unoidl.hxx"
+#include <osl/endian.h>
+#include <osl/file.h>
+#include <rtl/character.hxx>
+#include <rtl/ref.hxx>
+#include <rtl/textenc.h>
+#include <rtl/textcvt.h>
+#include <rtl/ustring.hxx>
+#include <sal/log.hxx>
+#include <sal/types.h>
+#include <salhelper/simplereferenceobject.hxx>
+#include <unoidl/unoidl.hxx>
 
 #include "unoidlprovider.hxx"
 
-namespace unoidl { namespace detail {
+namespace unoidl::detail {
 
 class MappedFile: public salhelper::SimpleReferenceObject {
 public:
@@ -456,7 +456,7 @@ struct MapEntry {
     Memory32 data;
 };
 
-bool operator <(const Map& map1, const Map& map2) {
+static bool operator <(const Map& map1, const Map& map2) {
     return map1.begin < map2.begin
         || (map1.begin == map2.begin && map1.size < map2.size);
 }
@@ -1010,6 +1010,7 @@ rtl::Reference< Entity > readEntity(
             }
             offset += 4;
             std::vector< InterfaceTypeEntity::Method > meths;
+            meths.reserve(nMeths);
             for (sal_uInt32 i = 0; i != nMeths; ++i) {
                 OUString methName(file->readIdxName(&offset));
                 checkEntityName(file, methName);
@@ -1283,7 +1284,7 @@ rtl::Reference< Entity > readEntity(
                         file->uri,
                         ("UNOIDL format: bad mode " + OUString::number(v)
                          + " of property " + propName
-                         + " for accumulation-based servcie"));
+                         + " for accumulation-based service"));
                 }
                 props.emplace_back(
                     propName, propType,
@@ -1401,6 +1402,6 @@ rtl::Reference< Entity > UnoidlProvider::findEntity(OUString const & name) const
 
 UnoidlProvider::~UnoidlProvider() throw () {}
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

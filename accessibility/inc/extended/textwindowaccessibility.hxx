@@ -17,24 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_EXTENDED_TEXTWINDOWACCESSIBILITY_HXX
-#define INCLUDED_ACCESSIBILITY_INC_EXTENDED_TEXTWINDOWACCESSIBILITY_HXX
+#pragma once
 
 #include <toolkit/awt/vclxaccessiblecomponent.hxx>
 #include <svl/lstner.hxx>
 #include <vcl/textdata.hxx>
 #include <vcl/texteng.hxx>
 #include <vcl/textview.hxx>
-#include <vcl/txtattr.hxx>
-#include <com/sun/star/awt/FontWeight.hpp>
-#include <com/sun/star/lang/EventObject.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/util/Color.hpp>
-#include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include <com/sun/star/accessibility/AccessibleRelationType.hpp>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <com/sun/star/accessibility/AccessibleTextType.hpp>
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleEditableText.hpp>
@@ -45,12 +36,9 @@
 #include <toolkit/awt/vclxwindow.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase7.hxx>
-#include <comphelper/accessiblecontexthelper.hxx>
 #include <comphelper/accessibletexthelper.hxx>
 #include <rtl/ref.hxx>
 
-#include <svtools/svtools.hrc>
-#include <vcl/svapp.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
 #include <queue>
 #include <memory>
@@ -139,7 +127,7 @@ typedef ::cppu::WeakAggComponentImplHelper7<
 // 0 to N - 1), whereas the Paragraph's index is the position within the text
 // view/accessible parent (from 0 to M - 1).  Paragraphs outside the currently
 // visible range have an index of -1.
-class Paragraph:
+class Paragraph final:
     private cppu::BaseMutex, public ParagraphBase, private ::comphelper::OCommonAccessibleText
 {
 public:
@@ -159,14 +147,15 @@ public:
     void notifyEvent(::sal_Int16 nEventId, css::uno::Any const & rOldValue,
                      css::uno::Any const & rNewValue);
 
-protected:
+private:
     // OCommonAccessibleText
-    virtual void implGetParagraphBoundary( css::i18n::Boundary& rBoundary,
+    virtual void implGetParagraphBoundary( const OUString& rText,
+                                           css::i18n::Boundary& rBoundary,
                                            ::sal_Int32 nIndex ) override;
-    virtual void implGetLineBoundary( css::i18n::Boundary& rBoundary,
+    virtual void implGetLineBoundary( const OUString& rText,
+                                      css::i18n::Boundary& rBoundary,
                                       ::sal_Int32 nIndex ) override;
 
-private:
     virtual css::uno::Reference< css::accessibility::XAccessibleContext >
     SAL_CALL getAccessibleContext() override;
 
@@ -211,9 +200,9 @@ private:
 
     virtual void SAL_CALL grabFocus() override;
 
-    virtual css::util::Color SAL_CALL getForeground() override;
+    virtual sal_Int32 SAL_CALL getForeground() override;
 
-    virtual css::util::Color SAL_CALL getBackground() override;
+    virtual sal_Int32 SAL_CALL getBackground() override;
 
     virtual ::sal_Int32 SAL_CALL getCaretPosition() override;
 
@@ -240,6 +229,8 @@ private:
 
     virtual sal_Bool SAL_CALL setSelection(::sal_Int32 nStartIndex,
                                              ::sal_Int32 nEndIndex) override;
+
+    virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 
     virtual OUString SAL_CALL getText() override;
 
@@ -320,8 +311,7 @@ private:
 
 
 typedef std::unordered_map< OUString,
-                         css::beans::PropertyValue,
-                         OUStringHash > tPropValMap;
+                         css::beans::PropertyValue > tPropValMap;
 
 class Document: public ::VCLXAccessibleComponent, public ::SfxListener
 {
@@ -330,7 +320,7 @@ public:
              ::TextView & rView);
 
     const css::uno::Reference< css::accessibility::XAccessible >&
-    getAccessible() { return m_xAccessible; }
+    getAccessible() const { return m_xAccessible; }
 
     // Must be called only after init has been called.
     css::lang::Locale retrieveLocale();
@@ -422,7 +412,7 @@ public:
     // within Paragraph's constructor (i.e., when the Paragraph's ref count is
     // still zero), pass a "Paragraph const &" instead of a
     // "::rtl::Reference< Paragraph > const &".
-    void changeParagraphText(Paragraph * pParagraph,
+    void changeParagraphText(Paragraph const * pParagraph,
                              OUString const & rText);
 
     // Must be called only after init has been called.
@@ -431,7 +421,7 @@ public:
     // still zero), pass a "Paragraph const &" instead of a
     // "::rtl::Reference< Paragraph > const &".
     // Throws css::lang::IndexOutOfBoundsException.
-    void changeParagraphText(Paragraph * pParagraph, ::sal_Int32 nBegin,
+    void changeParagraphText(Paragraph const * pParagraph, ::sal_Int32 nBegin,
                              ::sal_Int32 nEnd, bool bCut, bool bPaste,
                              OUString const & rText);
 
@@ -451,7 +441,7 @@ public:
     // "::rtl::Reference< Paragraph > const &".
     // Throws css::lang::IndexOutOfBoundsException.
     void changeParagraphAttributes(
-        Paragraph * pParagraph, ::sal_Int32 nBegin, ::sal_Int32 nEnd,
+        Paragraph const * pParagraph, ::sal_Int32 nBegin, ::sal_Int32 nEnd,
         css::uno::Sequence< css::beans::PropertyValue > const &
         rAttributeSet);
 
@@ -461,7 +451,7 @@ public:
     // still zero), pass a "Paragraph const &" instead of a
     // "::rtl::Reference< Paragraph > const &".
     // Throws css::lang::IndexOutOfBoundsException.
-    void changeParagraphSelection(Paragraph * pParagraph,
+    void changeParagraphSelection(Paragraph const * pParagraph,
                                   ::sal_Int32 nBegin, ::sal_Int32 nEnd);
 
     css::i18n::Boundary
@@ -532,7 +522,7 @@ private:
 
     // Must be called with both the external (Solar) and internal mutex
     // locked, and after init has been called:
-    void changeParagraphText(::sal_uLong nNumber, ::sal_uInt16 nBegin, ::sal_uInt16 nEnd,
+    void changeParagraphText(::sal_uInt32 nNumber, ::sal_uInt16 nBegin, ::sal_uInt16 nEnd,
                              bool bCut, bool bPaste,
                              OUString const & rText);
 
@@ -541,7 +531,6 @@ private:
 
     void handleSelectionChangeNotification();
 
-    ::sal_Int32 getSelectionType(::sal_Int32 nNewFirstPara, ::sal_Int32 nNewFirstPos, ::sal_Int32 nNewLastPara, ::sal_Int32 nNewLastPos);
     void sendEvent(::sal_Int32 start, ::sal_Int32 end, ::sal_Int16 nEventId);
 
     void disposeParagraphs();
@@ -606,6 +595,5 @@ private:
 
 }
 
-#endif // INCLUDED_ACCESSIBILITY_INC_EXTENDED_TEXTWINDOWACCESSIBILITY_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -10,6 +10,10 @@
 
 $(eval $(call gb_Library_Library,embobj))
 
+$(eval $(call gb_Library_use_custom_headers,embobj,\
+	officecfg/registry \
+))
+
 $(eval $(call gb_Library_set_componentfile,embobj,embeddedobj/util/embobj))
 
 $(eval $(call gb_Library_set_include,embobj,\
@@ -27,8 +31,10 @@ $(eval $(call gb_Library_use_libraries,embobj,\
 	cppuhelper \
 	sal \
 	svt \
+	utl \
 	vcl \
 	tl \
+	i18nlangtag \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,embobj,\
@@ -36,7 +42,6 @@ $(eval $(call gb_Library_add_exception_objects,embobj,\
 	embeddedobj/source/commonembedding/inplaceobj \
 	embeddedobj/source/commonembedding/miscobj \
 	embeddedobj/source/commonembedding/persistence \
-	embeddedobj/source/commonembedding/register \
 	embeddedobj/source/commonembedding/specialobject \
 	embeddedobj/source/commonembedding/visobj \
 	embeddedobj/source/commonembedding/xfactory \

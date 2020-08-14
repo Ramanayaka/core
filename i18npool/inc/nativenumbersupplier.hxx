@@ -19,20 +19,21 @@
 #ifndef INCLUDED_I18NPOOL_INC_NATIVENUMBERSUPPLIER_HXX
 #define INCLUDED_I18NPOOL_INC_NATIVENUMBERSUPPLIER_HXX
 
-#include <com/sun/star/i18n/XNativeNumberSupplier.hpp>
-#include <com/sun/star/i18n/NativeNumberMode.hpp>
+#include <com/sun/star/i18n/XNativeNumberSupplier2.hpp>
 #include <com/sun/star/i18n/NativeNumberXmlAttributes.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
-namespace com { namespace sun { namespace star { namespace i18n {
+namespace com::sun::star::i18n { class XCharacterClassification; }
+
+namespace i18npool {
 
 //      ----------------------------------------------------
 //      class NativeNumberSupplierService
 //      ----------------------------------------------------
-class NativeNumberSupplierService : public cppu::WeakImplHelper
+class NativeNumberSupplierService final : public cppu::WeakImplHelper
 <
-        css::i18n::XNativeNumberSupplier,
+        css::i18n::XNativeNumberSupplier2,
         css::lang::XServiceInfo
 >
 {
@@ -52,6 +53,11 @@ public:
         virtual sal_Int16 SAL_CALL convertFromXmlAttributes(
                 const css::i18n::NativeNumberXmlAttributes& aAttr ) override;
 
+        // XNativeNumberSupplier2
+        virtual OUString SAL_CALL getNativeNumberStringParams(
+            const OUString& rNumberString, const css::lang::Locale& rLocale,
+            sal_Int16 nNativeNumberMode, const OUString& rNativeNumberParams) override;
+
         //XServiceInfo
         virtual OUString SAL_CALL getImplementationName() override;
         virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
@@ -59,19 +65,22 @@ public:
 
         // following methods are not for XNativeNumberSupplier, they are for calling from transliterations
         /// @throws css::uno::RuntimeException
-        OUString SAL_CALL getNativeNumberString( const OUString& aNumberString,
-                const css::lang::Locale& aLocale, sal_Int16 nNativeNumberMode,
-                css::uno::Sequence< sal_Int32 >& offset  );
+        OUString getNativeNumberString(const OUString& rNumberString,
+                                       const css::lang::Locale& rLocale,
+                                       sal_Int16 nNativeNumberMode,
+                                       css::uno::Sequence<sal_Int32>& offset,
+                                       const OUString& rNativeNumberParams = OUString());
         /// @throws css::uno::RuntimeException
-        sal_Unicode SAL_CALL getNativeNumberChar( const sal_Unicode inChar,
+        sal_Unicode getNativeNumberChar( const sal_Unicode inChar,
                 const css::lang::Locale& aLocale, sal_Int16 nNativeNumberMode ) ;
 
 private:
         css::lang::Locale aLocale;
         bool useOffset;
+        mutable css::uno::Reference< css::i18n::XCharacterClassification > xCharClass;
 };
 
-} } } }
+}
 
 #endif
 

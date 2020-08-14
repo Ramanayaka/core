@@ -21,13 +21,12 @@
 
 #include <sal/log.hxx>
 #include <unotools/cmdoptions.hxx>
-#include <unotools/configmgr.hxx>
 #include <unotools/configitem.hxx>
 #include <tools/debug.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/frame/XFrame.hpp>
 #include <cppuhelper/weakref.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <rtl/instance.hxx>
 
 #include "itemholder1.hxx"
@@ -47,6 +46,8 @@ using namespace ::com::sun::star::beans;
 #define SETNODE_DISABLED                                "Disabled"
 
 #define PROPERTYNAME_CMD                                "Command"
+
+namespace {
 
 /*-****************************************************************************************************************
     @descr  support simple command option structures and operations on it
@@ -74,15 +75,17 @@ class SvtCmdOptions
 
         void AddCommand( const OUString& aCmd )
         {
-            m_aCommandHashMap.insert( CommandHashMap::value_type( aCmd, 0 ) );
+            m_aCommandHashMap.emplace( aCmd, 0 );
         }
 
     private:
-        typedef std::unordered_map<OUString, sal_Int32, OUStringHash>
+        typedef std::unordered_map<OUString, sal_Int32>
             CommandHashMap;
 
         CommandHashMap m_aCommandHashMap;
 };
+
+}
 
 typedef ::std::vector< css::uno::WeakReference< css::frame::XFrame > > SvtFrameVector;
 
@@ -278,11 +281,9 @@ Sequence< OUString > SvtCommandOptions_Impl::impl_GetPropertyNames()
     Sequence< OUString > lDisabledItems      = GetNodeNames( SETNODE_DISABLED, utl::ConfigNameFormat::LocalPath );
 
     // Expand all keys
-    for (sal_Int32 i=0; i<lDisabledItems.getLength(); ++i )
-    {
-        lDisabledItems[i] = SETNODE_DISABLED PATHDELIMITER + lDisabledItems[i]
-            + PATHDELIMITER PROPERTYNAME_CMD;
-    }
+    std::transform(lDisabledItems.begin(), lDisabledItems.end(), lDisabledItems.begin(),
+        [](const OUString& rItem) -> OUString {
+            return SETNODE_DISABLED PATHDELIMITER + rItem + PATHDELIMITER PROPERTYNAME_CMD; });
 
     // Return result.
     return lDisabledItems;

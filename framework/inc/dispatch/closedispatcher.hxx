@@ -20,10 +20,6 @@
 #ifndef INCLUDED_FRAMEWORK_INC_DISPATCH_CLOSEDISPATCHER_HXX
 #define INCLUDED_FRAMEWORK_INC_DISPATCH_CLOSEDISPATCHER_HXX
 
-#include <stdtypes.h>
-#include <general.h>
-
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XStatusListener.hpp>
 #include <com/sun/star/frame/XNotifyingDispatch.hpp>
@@ -31,10 +27,10 @@
 #include <com/sun/star/util/URL.hpp>
 #include <com/sun/star/frame/XDispatchResultListener.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/frame/DispatchResultState.hpp>
 
 #include <memory>
 #include <cppuhelper/implbase.hxx>
+#include <cppuhelper/weakref.hxx>
 #include <vcl/evntpost.hxx>
 #include <vcl/vclptr.hxx>
 
@@ -52,7 +48,7 @@ namespace framework{
                     or some other menu entries. Or we terminate the whole application in case this backing mode should not
                     be used.
  */
-class CloseDispatcher : public  ::cppu::WeakImplHelper<
+class CloseDispatcher final : public  ::cppu::WeakImplHelper<
                                     css::frame::XNotifyingDispatch,             // => XDispatch
                                     css::frame::XDispatchInformationProvider >
 {
@@ -75,7 +71,7 @@ class CloseDispatcher : public  ::cppu::WeakImplHelper<
 
     private:
 
-        /** @short reference to an uno service manager,
+        /** @short reference to a uno service manager,
                    which can be used to create own needed
                    uno resources. */
         css::uno::Reference< css::uno::XComponentContext > m_xContext;
@@ -85,8 +81,8 @@ class CloseDispatcher : public  ::cppu::WeakImplHelper<
         css::uno::WeakReference< css::frame::XFrame > m_xCloseFrame;
 
         /** @short  used for asynchronous callbacks within the main thread.
-            @descr  Internally we work asynchronous. Because our callis
-                    are not aware, that her request can kill its own environment ... */
+            @descr  Internally we work asynchronously. Because our callees
+                    are not aware that their request can kill its own environment... */
         std::unique_ptr<vcl::EventPoster> m_aAsyncCallback;
 
         /** @short  used inside asynchronous callback to decide,
@@ -106,7 +102,7 @@ class CloseDispatcher : public  ::cppu::WeakImplHelper<
     public:
 
         /** @short  connect a new CloseDispatcher instance to its frame.
-            @descr  One CloseDispatcher instance is bound to onw frame only.
+            @descr  One CloseDispatcher instance is bound to own frame only.
                     That makes an implementation (e.g. of listener support)
                     much more easier .-)
 
@@ -162,14 +158,11 @@ class CloseDispatcher : public  ::cppu::WeakImplHelper<
 
         /** @short  prepare m_xCloseFrame so it should be closeable without problems.
 
-            @descr  Thats needed to be sure, that the document can't disagree
+            @descr  That's needed to be sure, that the document can't disagree
                     later with e.g. an office termination.
                     The problem: Closing of documents can show UI. If the user
                     ignores it and open/close other documents, we can't know
                     which state the office has after closing of this frame.
-
-            @param  bAllowSuspend
-                    force calling of XController->suspend().
 
             @param  bCloseAllOtherViewsToo
                     if there are other top level frames, which
@@ -178,12 +171,11 @@ class CloseDispatcher : public  ::cppu::WeakImplHelper<
                     We need it to implement the CLOSE_DOC semantic.
 
             @return [boolean]
-                    sal_True if closing was successfully.
+                    sal_True if closing was successful.
          */
-        bool implts_prepareFrameForClosing(const css::uno::Reference< css::frame::XFrame >& xFrame                ,
-                                                     bool                                   bAllowSuspend         ,
-                                                     bool                                   bCloseAllOtherViewsToo,
-                                                     bool&                                  bControllerSuspended  );
+        bool implts_prepareFrameForClosing(const css::uno::Reference< css::frame::XFrame >& xFrame,
+                                           bool                                   bCloseAllOtherViewsToo,
+                                           bool&                                  bControllerSuspended  );
 
         /** @short  close the member m_xCloseFrame.
 
@@ -194,10 +186,10 @@ class CloseDispatcher : public  ::cppu::WeakImplHelper<
                     Otherwise e.g. the XController->suspend()
                     call is not made and no UI warn the user about
                     losing document changes. Because the
-                    frame is closed ....
+                    frame is closed...
 
             @return [bool]
-                    sal_True if closing was successfully.
+                    sal_True if closing was successful.
          */
         bool implts_closeFrame();
 
@@ -205,7 +197,7 @@ class CloseDispatcher : public  ::cppu::WeakImplHelper<
                     as new component of our m_xCloseFrame.
 
             @return [bool]
-                    sal_True if operation was successfully.
+                    sal_True if operation was successful.
          */
         bool implts_establishBackingMode();
 
@@ -249,7 +241,7 @@ class CloseDispatcher : public  ::cppu::WeakImplHelper<
                     has to be closed itself (target=_self) ... sometimes its parent frame
                     has to be closed - BUT(!) it means a parent frame containing a top level
                     window. _top can't be used then for dispatch - because it address TopFrames
-                    not frames containg top level windows. So normally _magic (which btw does not
+                    not frames containing top level windows. So normally _magic (which btw does not
                     exists at the moment .-) ) should be used. So we interpret target=<empty>
                     as _magic !
 

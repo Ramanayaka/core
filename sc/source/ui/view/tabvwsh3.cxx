@@ -17,10 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
-
-#include <sfx2/app.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/passwd.hxx>
@@ -30,44 +26,34 @@
 #include <svl/stritem.hxx>
 #include <tools/urlobj.hxx>
 #include <sfx2/objface.hxx>
-#include <vcl/msgbox.hxx>
 #include <vcl/vclenum.hxx>
 
-#include "globstr.hrc"
-#include "scmod.hxx"
-#include "appoptio.hxx"
-#include "tabvwsh.hxx"
-#include "document.hxx"
-#include "sc.hrc"
-#include "inputwin.hxx"
-#include "scresid.hxx"
-#include "printfun.hxx"
-#include "docsh.hxx"
-#include "rangelst.hxx"
-#include "prevwsh.hxx"
-#include "rangeutl.hxx"
-#include "reffact.hxx"
-#include "uiitems.hxx"
-#include "formulacell.hxx"
-#include "inputhdl.hxx"
-#include "autoform.hxx"
-#include "autofmt.hxx"
-#include "dwfunctr.hxx"
-#include "shtabdlg.hxx"
-#include "tabprotection.hxx"
-#include "protectiondlg.hxx"
-#include "markdata.hxx"
+#include <globstr.hrc>
+#include <strings.hrc>
+#include <scmod.hxx>
+#include <appoptio.hxx>
+#include <tabvwsh.hxx>
+#include <document.hxx>
+#include <sc.hrc>
+#include <helpids.h>
+#include <inputwin.hxx>
+#include <scresid.hxx>
+#include <docsh.hxx>
+#include <rangeutl.hxx>
+#include <reffact.hxx>
+#include <tabprotection.hxx>
+#include <protectiondlg.hxx>
+#include <markdata.hxx>
 
 #include <svl/ilstitem.hxx>
 #include <vector>
 
 #include <svx/zoomslideritem.hxx>
 #include <svx/svxdlg.hxx>
-#include <svx/dialogs.hrc>
+#include <comphelper/lok.hxx>
 #include <comphelper/string.hxx>
-#include "scabstdlg.hxx"
-
-#include <memory>
+#include <sfx2/lokhelper.hxx>
+#include <scabstdlg.hxx>
 
 namespace
 {
@@ -85,7 +71,7 @@ namespace
     };
 
     ScRefFlagsAndType lcl_ParseRangeOrAddress(ScRange& rScRange, ScAddress& rScAddress,
-                                              const OUString& aAddress, ScDocument* pDoc)
+                                              const OUString& aAddress, const ScDocument* pDoc)
     {
         ScRefFlagsAndType aRet;
 
@@ -336,7 +322,10 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                     if ( nResult & ScRefFlags::TAB_3D )
                     {
                         if( aScRange.aStart.Tab() != nTab )
-                            SetTabNo( nTab = aScRange.aStart.Tab() );
+                        {
+                            nTab = aScRange.aStart.Tab();
+                            SetTabNo( nTab );
+                        }
                     }
                     else
                     {
@@ -350,7 +339,10 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                     if ( nResult & ScRefFlags::TAB_3D )
                     {
                         if( aScAddress.Tab() != nTab )
-                            SetTabNo( nTab = aScAddress.Tab() );
+                        {
+                            nTab = aScAddress.Tab();
+                            SetTabNo( nTab );
+                        }
                     }
                     else
                         aScAddress.SetTab( nTab );
@@ -362,25 +354,27 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                 // Is it a named area (first named ranges then database ranges)?
                 else
                 {
-                    ScRangeUtil     aRangeUtil;
                     formula::FormulaGrammar::AddressConvention eConv = pDoc->GetAddressConvention();
                     if( ScRangeUtil::MakeRangeFromName( aAddress, pDoc, nTab, aScRange, RUTL_NAMES, eConv ) ||
                         ScRangeUtil::MakeRangeFromName( aAddress, pDoc, nTab, aScRange, RUTL_DBASE, eConv ) )
                     {
                         nResult |= ScRefFlags::VALID;
                         if( aScRange.aStart.Tab() != nTab )
-                            SetTabNo( nTab = aScRange.aStart.Tab() );
+                        {
+                            nTab = aScRange.aStart.Tab();
+                            SetTabNo( nTab );
+                        }
                     }
                 }
 
                 if ( !(nResult & ScRefFlags::VALID) && comphelper::string::isdigitAsciiString(aAddress) )
                 {
                     sal_Int32 nNumeric = aAddress.toInt32();
-                    if ( nNumeric > 0 && nNumeric <= MAXROW+1 )
+                    if ( nNumeric > 0 && nNumeric <= pDoc->MaxRow()+1 )
                     {
                         // one-based row numbers
 
-                        aScAddress.SetRow( (SCROW)(nNumeric - 1) );
+                        aScAddress.SetRow( static_cast<SCROW>(nNumeric - 1) );
                         aScAddress.SetCol( rViewData.GetCurX() );
                         aScAddress.SetTab( nTab );
                         aScRange = ScRange( aScAddress, aScAddress );
@@ -389,7 +383,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                     }
                 }
 
-                if ( !ValidRow(aScRange.aStart.Row()) || !ValidRow(aScRange.aEnd.Row()) )
+                if ( !pDoc->ValidRow(aScRange.aStart.Row()) || !pDoc->ValidRow(aScRange.aEnd.Row()) )
                     nResult = ScRefFlags::ZERO;
 
                 // we have found something
@@ -656,9 +650,9 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                 if( pReqArgs && pReqArgs->GetItemState(nSlot, true, &pItem) == SfxItemState::SET )
                     bFormulaMode = static_cast<const SfxBoolItem *>(pItem)->GetValue();
 
-                ScViewOptions rSetOpts = ScViewOptions( rOpts );
-                rSetOpts.SetOption( VOPT_FORMULAS, bFormulaMode );
-                rViewData.SetOptions( rSetOpts );
+                ScViewOptions aSetOpts = rOpts;
+                aSetOpts.SetOption( VOPT_FORMULAS, bFormulaMode );
+                rViewData.SetOptions( aSetOpts );
 
                 rViewData.GetDocShell()->PostPaintGridAll();
 
@@ -691,15 +685,13 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                 SvxZoomType eOldZoomType = GetZoomType();
                 SvxZoomType eNewZoomType = eOldZoomType;
                 const Fraction& rOldY = GetViewData().GetZoomY();  // Y is shown
-                sal_uInt16 nOldZoom = (sal_uInt16)(( rOldY.GetNumerator() * 100 )
-                                            / rOldY.GetDenominator());
+                sal_uInt16 nOldZoom = static_cast<sal_uInt16>(long( rOldY * 100 ));
                 sal_uInt16 nZoom = nOldZoom;
                 bool bCancel = false;
 
                 if ( pReqArgs )
                 {
-                    const SvxZoomItem& rZoomItem = static_cast<const SvxZoomItem&>(
-                                                   pReqArgs->Get(SID_ATTR_ZOOM));
+                    const SvxZoomItem& rZoomItem = pReqArgs->Get(SID_ATTR_ZOOM);
 
                     eNewZoomType = rZoomItem.GetType();
                     nZoom     = rZoomItem.GetValue();
@@ -724,28 +716,20 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                     aZoomItem.SetValueSet( nBtnFlags );
                     aSet.Put( aZoomItem );
                     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                    if(pFact)
+                    pDlg.disposeAndReset(pFact->CreateSvxZoomDialog(GetFrameWeld(), aSet));
+                    pDlg->SetLimits( MINZOOM, MAXZOOM );
+
+                    bCancel = ( RET_CANCEL == pDlg->Execute() );
+
+                    // bCancel is True only if we were in the previous if block,
+                    // so no need to check again pDlg
+                    if ( !bCancel )
                     {
-                        pDlg.disposeAndReset(pFact->CreateSvxZoomDialog(GetDialogParent(), aSet));
-                        OSL_ENSURE(pDlg, "Dialog creation failed!");
-                    }
-                    if (pDlg)
-                    {
-                        pDlg->SetLimits( MINZOOM, MAXZOOM );
+                        const SvxZoomItem&  rZoomItem = pDlg->GetOutputItemSet()->
+                                                    Get( SID_ATTR_ZOOM );
 
-                        bCancel = ( RET_CANCEL == pDlg->Execute() );
-
-                        // bCancel is True only if we were in the previous if block,
-                        // so no need to check again pDlg
-                        if ( !bCancel )
-                        {
-                            const SvxZoomItem&  rZoomItem = static_cast<const SvxZoomItem&>(
-                                                    pDlg->GetOutputItemSet()->
-                                                        Get( SID_ATTR_ZOOM ));
-
-                            eNewZoomType = rZoomItem.GetType();
-                            nZoom     = rZoomItem.GetValue();
-                        }
+                        eNewZoomType = rZoomItem.GetType();
+                        nZoom     = rZoomItem.GetValue();
                     }
                 }
 
@@ -849,10 +833,8 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
             else
             {
                 ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-                OSL_ENSURE(pFact, "ScAbstractFactory create fail!");
 
-                ScopedVclPtr<AbstractScShowTabDlg> pDlg(pFact->CreateScShowTabDlg(GetDialogParent()));
-                OSL_ENSURE(pDlg, "Dialog create fail!");
+                ScopedVclPtr<AbstractScShowTabDlg> pDlg(pFact->CreateScShowTabDlg(GetFrameWeld()));
                 pDlg->SetDescription(
                     ScResId( STR_DLG_SELECTTABLES_TITLE ),
                     ScResId( STR_DLG_SELECTTABLES_LBNAME ),
@@ -868,9 +850,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
 
                 if( pDlg->Execute() == RET_OK )
                 {
-                    const sal_Int32 nSelCount = pDlg->GetSelectEntryCount();
-                    for( sal_Int32 nSelIx = 0; nSelIx < nSelCount; ++nSelIx )
-                        aIndexList.insert( aIndexList.begin()+nSelIx, pDlg->GetSelectEntryPos( nSelIx ) );
+                    aIndexList = pDlg->GetSelectedRows();
                     pDlg.disposeAndClear();
                     rReq.AppendItem( SfxIntegerListItem( SID_SELECT_TABLES, aIndexList ) );
                 }
@@ -887,7 +867,10 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                 // special case: only hidden tables selected -> do nothing
                 bool bVisSelected = false;
                 for( nSelIx = 0; !bVisSelected && (nSelIx < nSelCount); ++nSelIx )
-                    bVisSelected = rDoc.IsVisible( nFirstVisTab = static_cast<SCTAB>(aIndexList[nSelIx]) );
+                {
+                    nFirstVisTab = static_cast<SCTAB>(aIndexList[nSelIx]);
+                    bVisSelected = rDoc.IsVisible( nFirstVisTab );
+                }
                 if( !bVisSelected )
                     nSelCount = 0;
 
@@ -945,24 +928,57 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
             break;
 
         case SID_WINDOW_FIX:
-        case SID_WINDOW_FIX_COL:
-        case SID_WINDOW_FIX_ROW:
             {
-                SplitMethod eSplitMethod = SC_SPLIT_METHOD_CURSOR;
-                if (nSlot == SID_WINDOW_FIX_COL)
-                    eSplitMethod = SC_SPLIT_METHOD_FIRST_COL;
-                else if (nSlot == SID_WINDOW_FIX_ROW)
-                    eSplitMethod = SC_SPLIT_METHOD_FIRST_ROW;
-
                 ScSplitMode eHSplit = GetViewData().GetHSplitMode();
                 ScSplitMode eVSplit = GetViewData().GetVSplitMode();
                 if ( eHSplit == SC_SPLIT_FIX || eVSplit == SC_SPLIT_FIX )           // remove
                     RemoveSplit();
                 else
-                    FreezeSplitters( true, eSplitMethod);        // create or fixate
-                rReq.Done();
+                    FreezeSplitters( true, SC_SPLIT_METHOD_CURSOR);        // create or fixate
 
+                rReq.Done();
                 InvalidateSplit();
+            }
+            break;
+
+        case SID_WINDOW_FIX_COL:
+        case SID_WINDOW_FIX_ROW:
+            {
+                bool bIsCol = (nSlot == SID_WINDOW_FIX_COL);
+                sal_Int32 nFreezeIndex = 1;
+                if (const SfxInt32Item* pItem = rReq.GetArg<SfxInt32Item>(nSlot))
+                {
+                    nFreezeIndex = pItem->GetValue();
+                    if (nFreezeIndex < 0)
+                        nFreezeIndex = 0;
+                }
+
+                if (comphelper::LibreOfficeKit::isActive())
+                {
+                    ScViewData& rViewData = GetViewData();
+                    SCTAB nThisTab = rViewData.GetTabNo();
+                    bool bChanged = rViewData.SetLOKSheetFreezeIndex(nFreezeIndex, bIsCol);
+                    rReq.Done();
+                    if (bChanged)
+                    {
+                        rBindings.Invalidate(nSlot);
+                        // Invalidate the slot for all views on the same tab of the document.
+                        SfxLokHelper::forEachOtherView(this, [nSlot, nThisTab](ScTabViewShell* pOther) {
+                            ScViewData& rOtherViewData = pOther->GetViewData();
+                            if (rOtherViewData.GetTabNo() != nThisTab)
+                                return;
+
+                            SfxBindings& rOtherBind = rOtherViewData.GetBindings();
+                            rOtherBind.Invalidate(nSlot);
+                        });
+                    }
+                }
+                else
+                {
+                    FreezeSplitters( true, bIsCol ? SC_SPLIT_METHOD_COL : SC_SPLIT_METHOD_ROW, nFreezeIndex);
+                    rReq.Done();
+                    InvalidateSplit();
+                }
             }
             break;
 
@@ -1010,7 +1026,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                     }
                     else
                     {
-                        pDocSh->ExecuteChangeCommentDialog( pAction, GetDialogParent() );
+                        pDocSh->ExecuteChangeCommentDialog(pAction, GetFrameWeld());
                         rReq.Done();
                     }
                 }
@@ -1052,14 +1068,14 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                     {
                         OUString aText(ScResId(SCSTR_PASSWORD));
 
-                        VclPtrInstance< SfxPasswordDialog > pDlg(GetDialogParent(), &aText);
-                        pDlg->SetText( ScResId(SCSTR_UNPROTECTDOC) );
-                        pDlg->SetMinLen( 0 );
-                        pDlg->SetHelpId( GetStaticInterface()->GetSlot(FID_PROTECT_DOC)->GetCommand() );
-                        pDlg->SetEditHelpId( HID_PASSWD_DOC );
+                        SfxPasswordDialog aDlg(GetFrameWeld(), &aText);
+                        aDlg.set_title(ScResId(SCSTR_UNPROTECTDOC));
+                        aDlg.SetMinLen(0);
+                        aDlg.set_help_id(GetStaticInterface()->GetSlot(FID_PROTECT_DOC)->GetCommand());
+                        aDlg.SetEditHelpId(HID_PASSWD_DOC);
 
-                        if (pDlg->Execute() == RET_OK)
-                            aPassword = pDlg->GetPassword();
+                        if (aDlg.run() == RET_OK)
+                            aPassword = aDlg.GetPassword();
                         else
                             bCancel = true;
                     }
@@ -1074,17 +1090,17 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                 {
                     OUString aText(ScResId(SCSTR_PASSWORDOPT));
 
-                    VclPtrInstance< SfxPasswordDialog > pDlg(GetDialogParent(), &aText);
-                    pDlg->SetText( ScResId(SCSTR_PROTECTDOC) );
-                    pDlg->SetMinLen( 0 );
-                    pDlg->SetHelpId( GetStaticInterface()->GetSlot(FID_PROTECT_DOC)->GetCommand() );
-                    pDlg->SetEditHelpId( HID_PASSWD_DOC );
-                    pDlg->ShowExtras( SfxShowExtras::CONFIRM );
-                    pDlg->SetConfirmHelpId( HID_PASSWD_DOC_CONFIRM );
+                    SfxPasswordDialog aDlg(GetFrameWeld(), &aText);
+                    aDlg.set_title(ScResId(SCSTR_PROTECTDOC));
+                    aDlg.SetMinLen( 0 );
+                    aDlg.set_help_id(GetStaticInterface()->GetSlot(FID_PROTECT_DOC)->GetCommand());
+                    aDlg.SetEditHelpId(HID_PASSWD_DOC);
+                    aDlg.ShowExtras(SfxShowExtras::CONFIRM);
+                    aDlg.SetConfirmHelpId(HID_PASSWD_DOC_CONFIRM);
 
-                    if (pDlg->Execute() == RET_OK)
+                    if (aDlg.run() == RET_OK)
                     {
-                        OUString aPassword = pDlg->GetPassword();
+                        OUString aPassword = aDlg.GetPassword();
                         Protect( TABLEID_DOC, aPassword );
                         rReq.AppendItem( SfxBoolItem( FID_PROTECT_DOC, true ) );
                         rReq.Done();
@@ -1121,15 +1137,15 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                 if (pProtect && pProtect->isProtectedWithPass())
                 {
                     OUString aText( ScResId(SCSTR_PASSWORDOPT) );
-                    VclPtrInstance< SfxPasswordDialog > pDlg(GetDialogParent(), &aText);
-                    pDlg->SetText( ScResId(SCSTR_UNPROTECTTAB) );
-                    pDlg->SetMinLen( 0 );
-                    pDlg->SetHelpId( GetStaticInterface()->GetSlot(FID_PROTECT_TABLE)->GetCommand() );
-                    pDlg->SetEditHelpId( HID_PASSWD_TABLE );
+                    SfxPasswordDialog aDlg(GetFrameWeld(), &aText);
+                    aDlg.set_title(ScResId(SCSTR_UNPROTECTTAB));
+                    aDlg.SetMinLen(0);
+                    aDlg.set_help_id(GetStaticInterface()->GetSlot(FID_PROTECT_TABLE)->GetCommand());
+                    aDlg.SetEditHelpId(HID_PASSWD_TABLE);
 
-                    if (pDlg->Execute() == RET_OK)
+                    if (aDlg.run() == RET_OK)
                     {
-                        OUString aPassword = pDlg->GetPassword();
+                        OUString aPassword = aDlg.GetPassword();
                         Unprotect(nTab, aPassword);
                     }
                 }
@@ -1147,18 +1163,18 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
             {
                 // Protect a current sheet.
 
-                VclPtrInstance< ScTableProtectionDlg > pDlg(GetDialogParent());
+                ScTableProtectionDlg aDlg(GetFrameWeld());
 
                 ScTableProtection* pProtect = pDoc->GetTabProtection(nTab);
                 if (pProtect)
-                    pDlg->SetDialogData(*pProtect);
+                    aDlg.SetDialogData(*pProtect);
 
-                if (pDlg->Execute() == RET_OK)
+                if (aDlg.run() == RET_OK)
                 {
                     pScMod->InputEnterHandler();
 
                     ScTableProtection aNewProtect;
-                    pDlg->WriteData(aNewProtect);
+                    aDlg.WriteData(aNewProtect);
                     ProtectSheet(nTab, aNewProtect);
                     if (!pReqArgs)
                     {

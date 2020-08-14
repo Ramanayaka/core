@@ -17,30 +17,27 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/xoutbmp.hxx>
-#include <svx/dialogs.hrc>
-#include <svx/svxids.hrc>
-#include <contwnd.hxx>
+#include "contwnd.hxx"
 #include <svx/svdpage.hxx>
 #include <svx/svdopath.hxx>
+#include <svx/xfillit0.hxx>
 #include <svx/xfltrit.hxx>
-#include <svx/xfillit.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
+#include <svx/xflclit.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include "svx/sdrpaintwindow.hxx"
+#include <svx/sdrpaintwindow.hxx>
+#include <vcl/ptrstyle.hxx>
 
 using namespace css;
 
-#define TRANSCOL Color(COL_WHITE)
+#define TRANSCOL COL_WHITE
 
-ContourWindow::ContourWindow(vcl::Window* pParent, WinBits nBits)
-    : GraphCtrl (pParent, nBits)
+ContourWindow::ContourWindow(weld::Dialog* pDialog)
+    : GraphCtrl(pDialog)
     , aWorkRect(0, 0, 0, 0)
     , bPipetteMode(false)
     , bWorkplaceMode(false)
     , bClickValid(false)
 {
-    SetWinStyle(WB_SDRMODE);
 }
 
 void ContourWindow::SetPolyPolygon(const tools::PolyPolygon& rPolyPoly)
@@ -55,13 +52,17 @@ void ContourWindow::SetPolyPolygon(const tools::PolyPolygon& rPolyPoly)
     // them first (!)
     pView->UnmarkAllObj();
 
-    pPage->Clear();
+    // clear SdrObjects with broadcasting
+    pPage->ClearSdrObjList();
 
     for (sal_uInt16 i = 0; i < nPolyCount; i++)
     {
         basegfx::B2DPolyPolygon aPolyPolygon;
         aPolyPolygon.append(aPolyPoly[ i ].getB2DPolygon());
-        SdrPathObj* pPathObj = new SdrPathObj( OBJ_PATHFILL, aPolyPolygon );
+        SdrPathObj* pPathObj = new SdrPathObj(
+            *pModel,
+            OBJ_PATHFILL,
+            aPolyPolygon);
 
         SfxItemSet aSet(pModel->GetItemPool());
 
@@ -96,7 +97,7 @@ const tools::PolyPolygon& ContourWindow::GetPolyPolygon()
             SdrPathObj* pPathObj = static_cast<SdrPathObj*>(pPage->GetObj(0));
             // Not sure if subdivision is needed for ContourWindow, but maybe it cannot handle
             // curves at all. Keeping subdivision here for security
-            const basegfx::B2DPolyPolygon aB2DPolyPolygon(basegfx::tools::adaptiveSubdivideByAngle(pPathObj->GetPathPoly()));
+            const basegfx::B2DPolyPolygon aB2DPolyPolygon(basegfx::utils::adaptiveSubdivideByAngle(pPathObj->GetPathPoly()));
             aPolyPoly = tools::PolyPolygon(aB2DPolyPolygon);
         }
 
@@ -135,11 +136,11 @@ bool ContourWindow::IsContourChanged() const
     return bRet;
 }
 
-void ContourWindow::MouseButtonDown( const MouseEvent& rMEvt )
+bool ContourWindow::MouseButtonDown( const MouseEvent& rMEvt )
 {
     if ( bWorkplaceMode )
     {
-        const Point aLogPt( PixelToLogic( rMEvt.GetPosPixel() ) );
+        const Point aLogPt(GetDrawingArea()->get_ref_device().PixelToLogic(rMEvt.GetPosPixel()));
 
         SetPolyPolygon( tools::PolyPolygon() );
         aWorkRect = tools::Rectangle( aLogPt, aLogPt );
@@ -147,52 +148,57 @@ void ContourWindow::MouseButtonDown( const MouseEvent& rMEvt )
         SetEditMode( true );
     }
 
-    if ( !bPipetteMode )
-        GraphCtrl::MouseButtonDown( rMEvt );
+    if (!bPipetteMode)
+        return GraphCtrl::MouseButtonDown( rMEvt );
+
+    return true;
 }
 
-void ContourWindow::MouseMove( const MouseEvent& rMEvt )
+bool ContourWindow::MouseMove( const MouseEvent& rMEvt )
 {
     bClickValid = false;
 
     if ( bPipetteMode )
     {
-        const Point aLogPt( PixelToLogic( rMEvt.GetPosPixel() ) );
+        const Point aLogPt( GetDrawingArea()->get_ref_device().PixelToLogic( rMEvt.GetPosPixel() ) );
 
-        aPipetteColor = GetPixel( aLogPt );
-        Control::MouseMove( rMEvt );
+        aPipetteColor = GetDrawingArea()->get_ref_device().GetPixel( aLogPt );
+        weld::CustomWidgetController::MouseMove( rMEvt );
 
         if ( aPipetteLink.IsSet() && tools::Rectangle( Point(), GetGraphicSize() ).IsInside( aLogPt ) )
         {
             SetPointer( PointerStyle::RefHand );
             aPipetteLink.Call( *this );
         }
+
+        return true;
     }
-    else
-        GraphCtrl::MouseMove( rMEvt );
+
+    return GraphCtrl::MouseMove( rMEvt );
 }
 
-void ContourWindow::MouseButtonUp(const MouseEvent& rMEvt)
+bool ContourWindow::MouseButtonUp(const MouseEvent& rMEvt)
 {
-    Point aTmpPoint;
-    const tools::Rectangle aGraphRect( aTmpPoint, GetGraphicSize() );
-    const Point     aLogPt( PixelToLogic( rMEvt.GetPosPixel() ) );
+    const tools::Rectangle aGraphRect( Point(), GetGraphicSize() );
+    const Point     aLogPt( GetDrawingArea()->get_ref_device().PixelToLogic( rMEvt.GetPosPixel() ) );
 
     bClickValid = aGraphRect.IsInside( aLogPt );
     ReleaseMouse();
 
     if ( bPipetteMode )
     {
-        Control::MouseButtonUp( rMEvt );
+        weld::CustomWidgetController::MouseButtonUp( rMEvt );
 
         aPipetteClickLink.Call( *this );
+
+        return true;
     }
     else if ( bWorkplaceMode )
     {
         GraphCtrl::MouseButtonUp( rMEvt );
 
-        aWorkRect.Right() = aLogPt.X();
-        aWorkRect.Bottom() = aLogPt.Y();
+        aWorkRect.SetRight( aLogPt.X() );
+        aWorkRect.SetBottom( aLogPt.Y() );
         aWorkRect.Intersection( aGraphRect );
         aWorkRect.Justify();
 
@@ -210,9 +216,11 @@ void ContourWindow::MouseButtonUp(const MouseEvent& rMEvt)
         Invalidate( aGraphRect );
 
         aWorkplaceClickLink.Call( *this );
+
+        return false;
     }
-    else
-        GraphCtrl::MouseButtonUp( rMEvt );
+
+    return GraphCtrl::MouseButtonUp( rMEvt );
 }
 
 void ContourWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect)
@@ -221,12 +229,13 @@ void ContourWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Recta
     // encapsulate the redraw using Begin/End and use the returned
     // data to get the target output device (e.g. when pre-rendering)
     SdrPaintWindow* pPaintWindow = pView->BeginCompleteRedraw(&rRenderContext);
+    pPaintWindow->SetOutputToWindow(true);
     OutputDevice& rTarget = pPaintWindow->GetTargetOutputDevice();
 
     const Graphic& rGraphic = GetGraphic();
     rTarget.Push(PushFlags::LINECOLOR |PushFlags::FILLCOLOR);
-    rTarget.SetLineColor(Color(COL_BLACK));
-    rTarget.SetFillColor(Color(COL_WHITE));
+    rTarget.SetLineColor(COL_BLACK);
+    rTarget.SetFillColor(COL_WHITE);
     rTarget.DrawRect( tools::Rectangle( Point(), GetGraphicSize() ) );
     rTarget.Pop();
 
@@ -235,7 +244,7 @@ void ContourWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Recta
 
     if (aWorkRect.Left() != aWorkRect.Right() && aWorkRect.Top() != aWorkRect.Bottom())
     {
-        tools::PolyPolygon _aPolyPoly(2, 2);
+        tools::PolyPolygon _aPolyPoly(2);
         rTarget.Push(PushFlags::FILLCOLOR);
         _aPolyPoly.Insert(tools::Rectangle(Point(), GetGraphicSize()));
         _aPolyPoly.Insert(aWorkRect);
@@ -250,9 +259,13 @@ void ContourWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Recta
     pView->EndCompleteRedraw(*pPaintWindow, true);
 }
 
-Size ContourWindow::GetOptimalSize() const
+void ContourWindow::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 {
-    return LogicToPixel(Size(270, 170), MapUnit::MapAppFont);
+    GraphCtrl::SetDrawingArea(pDrawingArea);
+    Size aSize(pDrawingArea->get_ref_device().LogicToPixel(Size(270, 170), MapMode(MapUnit::MapAppFont)));
+    pDrawingArea->set_size_request(aSize.Width(), aSize.Height());
+    SetOutputSizePixel(aSize);
+    SetSdrMode(true);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -9,19 +9,13 @@
 
 #include <opencl/openclwrapper.hxx>
 #include <opencl/OpenCLZone.hxx>
-#include "opencl_device.hxx"
+#include <opencl_device.hxx>
 
 #include <memory>
 
 #include <officecfg/Office/Common.hxx>
 #include <com/sun/star/util/XFlushable.hpp>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
-
-// FIXME: templatize me vs. OpenGLZone.
-
-sal_uInt64 volatile OpenCLZone::gnEnterCount = 0;
-sal_uInt64 volatile OpenCLZone::gnLeaveCount = 0;
-bool volatile OpenCLZone::gbInInitialTest = false;
 
 /**
  * Called from a signal handler if we get
@@ -31,26 +25,21 @@ void OpenCLZone::hardDisable()
 {
     // protect ourselves from double calling etc.
     static bool bDisabled = false;
-    if (!bDisabled)
-    {
-        bDisabled = true;
+    if (bDisabled)
+        return;
 
-        std::shared_ptr<comphelper::ConfigurationChanges> xChanges(comphelper::ConfigurationChanges::create());
-        officecfg::Office::Common::Misc::UseOpenCL::set(false, xChanges);
-        xChanges->commit();
+    bDisabled = true;
 
-        // Force synchronous config write
-        auto xConfProvider = css::configuration::theDefaultProvider::get(comphelper::getProcessComponentContext());
-        css::uno::Reference<css::util::XFlushable> xFlushable(xConfProvider, css::uno::UNO_QUERY_THROW);
-        xFlushable->flush();
+    std::shared_ptr<comphelper::ConfigurationChanges> xChanges(comphelper::ConfigurationChanges::create());
+    officecfg::Office::Common::Misc::UseOpenCL::set(false, xChanges);
+    xChanges->commit();
 
-        releaseOpenCLEnv(&opencl::gpuEnv);
-    }
-}
+    // Force synchronous config write
+    auto xConfProvider = css::configuration::theDefaultProvider::get(comphelper::getProcessComponentContext());
+    css::uno::Reference<css::util::XFlushable> xFlushable(xConfProvider, css::uno::UNO_QUERY_THROW);
+    xFlushable->flush();
 
-void OpenCLZone::enterInitialTest()
-{
-    gbInInitialTest = true;
+    releaseOpenCLEnv(&openclwrapper::gpuEnv);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

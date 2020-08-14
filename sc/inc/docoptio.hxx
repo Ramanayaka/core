@@ -20,15 +20,10 @@
 #ifndef INCLUDED_SC_INC_DOCOPTIO_HXX
 #define INCLUDED_SC_INC_DOCOPTIO_HXX
 
-#include <unotools/configitem.hxx>
 #include <unotools/textsearch.hxx>
 #include <svl/poolitem.hxx>
-#include <svl/itemprop.hxx>
 #include "scdllapi.h"
-#include "scmod.hxx"
 #include "optutil.hxx"
-
-#include <formula/grammar.hxx>
 
 class SC_DLLPUBLIC ScDocOptions
 {
@@ -53,8 +48,6 @@ class SC_DLLPUBLIC ScDocOptions
 
 public:
                 ScDocOptions();
-                ScDocOptions( const ScDocOptions& rCpy );
-                ~ScDocOptions();
 
     bool   IsLookUpColRowNames() const       { return bLookUpColRowNames; }
     void   SetLookUpColRowNames( bool bVal ) { bLookUpColRowNames = bVal; }
@@ -140,16 +133,20 @@ inline bool ScDocOptions::operator!=( const ScDocOptions& rOpt ) const
 
 // Item for preferences dialog - calculation
 
-class SC_DLLPUBLIC ScTpCalcItem : public SfxPoolItem
+class SC_DLLPUBLIC ScTpCalcItem final : public SfxPoolItem
 {
 public:
                 ScTpCalcItem( sal_uInt16 nWhich,
                               const ScDocOptions& rOpt );
-                ScTpCalcItem( const ScTpCalcItem& rItem );
                 virtual ~ScTpCalcItem() override;
 
+    ScTpCalcItem(ScTpCalcItem const &) = default;
+    ScTpCalcItem(ScTpCalcItem &&) = default;
+    ScTpCalcItem & operator =(ScTpCalcItem const &) = delete; // due to SfxPoolItem
+    ScTpCalcItem & operator =(ScTpCalcItem &&) = delete; // due to SfxPoolItem
+
     virtual bool            operator==( const SfxPoolItem& ) const override;
-    virtual SfxPoolItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual ScTpCalcItem*   Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const ScDocOptions& GetDocOptions() const { return theOptions; }
 

@@ -17,24 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
 #include <rtl/bootstrap.hxx>
 #include <osl/file.hxx>
 #include <svx/drawitem.hxx>
 #include <svl/asiancfg.hxx>
 #include <editeng/forbiddencharacterstable.hxx>
-#include <editeng/unolingu.hxx>
-#include <orcus/orcus_import_ods.hpp>
-#include <orcusfiltersimpl.hxx>
+#include <orcusfilters.hxx>
 #include <config_folders.h>
+#include <unotools/configmgr.hxx>
+#include <comphelper/processfactory.hxx>
 
-#include "drwlayer.hxx"
-#include "stlpool.hxx"
-#include "docsh.hxx"
-#include "docshimp.hxx"
-#include "docfunc.hxx"
-#include "sc.hrc"
-#include "filter.hxx"
+#include <drwlayer.hxx>
+#include <stlpool.hxx>
+#include <docsh.hxx>
+#include <docfunc.hxx>
+#include <svx/svxids.hrc>
+#include <filter.hxx>
+#include <functional>
 
 using namespace com::sun::star;
 
@@ -42,13 +41,13 @@ bool ScDocShell::InitNew( const uno::Reference < embed::XStorage >& xStor )
 {
     bool bRet = SfxObjectShell::InitNew( xStor );
 
-    aDocument.MakeTable(0);
+    m_aDocument.MakeTable(0);
 
     //  Additional tables are created by the first View, if bIsEmpty is still sal_True
     if( bRet )
     {
-        Size aSize( (long) ( STD_COL_WIDTH           * HMM_PER_TWIPS * OLE_STD_CELLS_X ),
-                    (long) ( ScGlobal::nStdRowHeight * HMM_PER_TWIPS * OLE_STD_CELLS_Y ) );
+        Size aSize( long( STD_COL_WIDTH           * HMM_PER_TWIPS * OLE_STD_CELLS_X ),
+                    static_cast<long>( ScGlobal::nStdRowHeight * HMM_PER_TWIPS * OLE_STD_CELLS_Y ) );
         // Also adjust start here
         SetVisAreaOrSize( tools::Rectangle( Point(), aSize ) );
     }
@@ -56,10 +55,10 @@ bool ScDocShell::InitNew( const uno::Reference < embed::XStorage >& xStor )
     // InitOptions sets the document languages, must be called before CreateStandardStyles
     InitOptions(false);
 
-    aDocument.GetStyleSheetPool()->CreateStandardStyles();
-    aDocument.UpdStlShtPtrsFrmNms();
+    m_aDocument.GetStyleSheetPool()->CreateStandardStyles();
+    m_aDocument.UpdStlShtPtrsFrmNms();
 
-    if (!mbUcalcTest)
+    if (!m_bUcalcTest)
     {
         /* Create styles that are imported through Orcus */
 
@@ -72,8 +71,8 @@ bool ScDocShell::InitNew( const uno::Reference < embed::XStorage >& xStor )
         ScOrcusFilters* pOrcus = ScFormatFilter::Get().GetOrcusFilters();
         if (pOrcus)
         {
-            pOrcus->importODS_Styles(aDocument, aPath);
-            aDocument.GetStyleSheetPool()->setAllStandard();
+            pOrcus->importODS_Styles(m_aDocument, aPath);
+            m_aDocument.GetStyleSheetPool()->setAllParaStandard();
         }
     }
 
@@ -86,7 +85,7 @@ bool ScDocShell::InitNew( const uno::Reference < embed::XStorage >& xStor )
 
 void ScDocShell::SetEmpty(bool bSet)
 {
-    bIsEmpty = bSet;
+    m_bIsEmpty = bSet;
 }
 
 void ScDocShell::InitItems()
@@ -95,7 +94,7 @@ void ScDocShell::InitItems()
     // Printer Options are set in GetPrinter when printing
     UpdateFontList();
 
-    ScDrawLayer* pDrawLayer = aDocument.GetDrawLayer();
+    ScDrawLayer* pDrawLayer = m_aDocument.GetDrawLayer();
     if (pDrawLayer)
     {
         PutItem( SvxColorListItem  ( pDrawLayer->GetColorList(), SID_COLOR_TABLE ) );
@@ -107,74 +106,73 @@ void ScDocShell::InitItems()
         PutItem( SvxLineEndListItem ( pDrawLayer->GetLineEndList(), SID_LINEEND_LIST ) );
 
         // Other modifications after creation of the DrawLayer
-        pDrawLayer->SetNotifyUndoActionHdl( LINK( pDocFunc, ScDocFunc, NotifyDrawUndo ) );
+        pDrawLayer->SetNotifyUndoActionHdl( std::bind( &ScDocFunc::NotifyDrawUndo, m_pDocFunc.get(), std::placeholders::_1 ) );
     }
-    else
+    else if (!utl::ConfigManager::IsFuzzing())
     {
         //  always use global color table instead of local copy
         PutItem( SvxColorListItem( XColorList::GetStdColorList(), SID_COLOR_TABLE ) );
     }
 
-    if ( !aDocument.GetForbiddenCharacters().is() ||
-            !aDocument.IsValidAsianCompression() || !aDocument.IsValidAsianKerning() )
+    if (!(!utl::ConfigManager::IsFuzzing() &&
+        (!m_aDocument.GetForbiddenCharacters() || !m_aDocument.IsValidAsianCompression() || !m_aDocument.IsValidAsianKerning())))
+        return;
+
+    //  get settings from SvxAsianConfig
+    SvxAsianConfig aAsian;
+
+    if (!m_aDocument.GetForbiddenCharacters())
     {
-        //  get settings from SvxAsianConfig
-        SvxAsianConfig aAsian;
-
-        if ( !aDocument.GetForbiddenCharacters().is() )
+        // set forbidden characters if necessary
+        const uno::Sequence<lang::Locale> aLocales = aAsian.GetStartEndCharLocales();
+        if (aLocales.hasElements())
         {
-            // set forbidden characters if necessary
-            uno::Sequence<lang::Locale> aLocales = aAsian.GetStartEndCharLocales();
-            if (aLocales.getLength())
+            std::shared_ptr<SvxForbiddenCharactersTable> xForbiddenTable(
+                SvxForbiddenCharactersTable::makeForbiddenCharactersTable(comphelper::getProcessComponentContext()));
+
+            for (const lang::Locale& rLocale : aLocales)
             {
-                rtl::Reference<SvxForbiddenCharactersTable> xForbiddenTable =
-                        new SvxForbiddenCharactersTable( comphelper::getProcessComponentContext() );
+                i18n::ForbiddenCharacters aForbidden;
+                aAsian.GetStartEndChars( rLocale, aForbidden.beginLine, aForbidden.endLine );
+                LanguageType eLang = LanguageTag::convertToLanguageType(rLocale);
 
-                const lang::Locale* pLocales = aLocales.getConstArray();
-                for (sal_Int32 i = 0; i < aLocales.getLength(); i++)
-                {
-                    i18n::ForbiddenCharacters aForbidden;
-                    aAsian.GetStartEndChars( pLocales[i], aForbidden.beginLine, aForbidden.endLine );
-                    LanguageType eLang = LanguageTag::convertToLanguageType(pLocales[i]);
-
-                    xForbiddenTable->SetForbiddenCharacters( eLang, aForbidden );
-                }
-
-                aDocument.SetForbiddenCharacters( xForbiddenTable );
+                xForbiddenTable->SetForbiddenCharacters( eLang, aForbidden );
             }
-        }
 
-        if ( !aDocument.IsValidAsianCompression() )
-        {
-            // set compression mode from configuration if not already set (e.g. XML import)
-            aDocument.SetAsianCompression( aAsian.GetCharDistanceCompression() );
+            m_aDocument.SetForbiddenCharacters( xForbiddenTable );
         }
+    }
 
-        if ( !aDocument.IsValidAsianKerning() )
-        {
-            // set asian punctuation kerning from configuration if not already set (e.g. XML import)
-            aDocument.SetAsianKerning( !aAsian.IsKerningWesternTextOnly() );    // reversed
-        }
+    if ( !m_aDocument.IsValidAsianCompression() )
+    {
+        // set compression mode from configuration if not already set (e.g. XML import)
+        m_aDocument.SetAsianCompression( aAsian.GetCharDistanceCompression() );
+    }
+
+    if ( !m_aDocument.IsValidAsianKerning() )
+    {
+        // set asian punctuation kerning from configuration if not already set (e.g. XML import)
+        m_aDocument.SetAsianKerning( !aAsian.IsKerningWesternTextOnly() );    // reversed
     }
 }
 
 void ScDocShell::ResetDrawObjectShell()
 {
-    ScDrawLayer* pDrawLayer = aDocument.GetDrawLayer();
+    ScDrawLayer* pDrawLayer = m_aDocument.GetDrawLayer();
     if (pDrawLayer)
         pDrawLayer->SetObjectShell( nullptr );
 }
 
 ScDrawLayer* ScDocShell::MakeDrawLayer()
 {
-    ScDrawLayer* pDrawLayer = aDocument.GetDrawLayer();
+    ScDrawLayer* pDrawLayer = m_aDocument.GetDrawLayer();
     if (!pDrawLayer)
     {
-        aDocument.InitDrawLayer(this);
-        pDrawLayer = aDocument.GetDrawLayer();
+        m_aDocument.InitDrawLayer(this);
+        pDrawLayer = m_aDocument.GetDrawLayer();
         InitItems(); // including Undo and Basic
         Broadcast( SfxHint( SfxHintId::ScDrawLayerNew ) );
-        if (nDocumentLock)
+        if (m_nDocumentLock)
             pDrawLayer->setLock(true);
     }
     return pDrawLayer;

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <ShadowOverlayObject.hxx>
+#include "ShadowOverlayObject.hxx"
 
 #include <view.hxx>
 #include <svx/sdrpaintwindow.hxx>
@@ -28,9 +28,11 @@
 #include <drawinglayer/primitive2d/primitivetools2d.hxx>
 #include <drawinglayer/primitive2d/fillgradientprimitive2d.hxx>
 
-namespace sw { namespace sidebarwindows {
+namespace sw::sidebarwindows {
 
 // helper SwPostItShadowPrimitive
+
+namespace {
 
 // Used to allow view-dependent primitive definition. For that purpose, the
 // initially created primitive (this one) always has to be view-independent,
@@ -64,8 +66,10 @@ public:
 
     virtual bool operator==( const drawinglayer::primitive2d::BasePrimitive2D& rPrimitive ) const override;
 
-    DeclPrimitive2DIDBlock()
+    virtual sal_uInt32 getPrimitive2DID() const override;
 };
+
+}
 
 void ShadowPrimitive::create2DDecomposition(
     drawinglayer::primitive2d::Primitive2DContainer& rContainer,
@@ -84,7 +88,7 @@ void ShadowPrimitive::create2DDecomposition(
                 0.0,
                 0.5,
                 0.5,
-                1800.0 * F_PI1800,
+                F_PI,
                 basegfx::BColor(230.0/255.0,230.0/255.0,230.0/255.0),
                 basegfx::BColor(180.0/255.0,180.0/255.0,180.0/255.0),
                 2);
@@ -103,7 +107,7 @@ void ShadowPrimitive::create2DDecomposition(
                 0.0,
                 0.5,
                 0.5,
-                1800.0 * F_PI1800,
+                F_PI,
                 basegfx::BColor(230.0/255.0,230.0/255.0,230.0/255.0),
                 basegfx::BColor(180.0/255.0,180.0/255.0,180.0/255.0),
                 4);
@@ -122,7 +126,7 @@ void ShadowPrimitive::create2DDecomposition(
                 0.0,
                 0.5,
                 0.5,
-                1800.0 * F_PI1800,
+                F_PI,
                 basegfx::BColor(230.0/255.0,230.0/255.0,230.0/255.0),
                 basegfx::BColor(83.0/255.0,83.0/255.0,83.0/255.0),
                 4);
@@ -156,40 +160,28 @@ bool ShadowPrimitive::operator==( const drawinglayer::primitive2d::BasePrimitive
 
 ImplPrimitive2DIDBlock(ShadowPrimitive, PRIMITIVE2D_ID_SWSIDEBARSHADOWPRIMITIVE)
 
-/* static */ ShadowOverlayObject* ShadowOverlayObject::CreateShadowOverlayObject( SwView& rDocView )
+/* static */ std::unique_ptr<ShadowOverlayObject> ShadowOverlayObject::CreateShadowOverlayObject( SwView const & rDocView )
 {
-    ShadowOverlayObject* pShadowOverlayObject( nullptr );
+    std::unique_ptr<ShadowOverlayObject> pShadowOverlayObject;
 
     if ( rDocView.GetDrawView() )
     {
         SdrPaintWindow* pPaintWindow = rDocView.GetDrawView()->GetPaintWindow(0);
         if( pPaintWindow )
         {
-            rtl::Reference< sdr::overlay::OverlayManager > xOverlayManager = pPaintWindow->GetOverlayManager();
+            const rtl::Reference< sdr::overlay::OverlayManager >& xOverlayManager = pPaintWindow->GetOverlayManager();
 
             if ( xOverlayManager.is() )
             {
-                pShadowOverlayObject = new ShadowOverlayObject( basegfx::B2DPoint(0,0),
+                pShadowOverlayObject.reset( new ShadowOverlayObject( basegfx::B2DPoint(0,0),
                                                                 basegfx::B2DPoint(0,0),
-                                                                Color(0,0,0) );
+                                                                Color(0,0,0) ) );
                 xOverlayManager->add(*pShadowOverlayObject);
             }
         }
     }
 
     return pShadowOverlayObject;
-}
-
-/* static */ void ShadowOverlayObject::DestroyShadowOverlayObject( ShadowOverlayObject* pShadow )
-{
-    if ( pShadow )
-    {
-        if ( pShadow->getOverlayManager() )
-        {
-            pShadow->getOverlayManager()->remove(*pShadow);
-        }
-        delete pShadow;
-    }
 }
 
 ShadowOverlayObject::ShadowOverlayObject( const basegfx::B2DPoint& rBasePos,
@@ -203,6 +195,10 @@ ShadowOverlayObject::ShadowOverlayObject( const basegfx::B2DPoint& rBasePos,
 
 ShadowOverlayObject::~ShadowOverlayObject()
 {
+    if ( getOverlayManager() )
+    {
+        getOverlayManager()->remove(*this);
+    }
 }
 
 drawinglayer::primitive2d::Primitive2DContainer ShadowOverlayObject::createOverlayObjectPrimitive2DSequence()
@@ -236,6 +232,6 @@ void ShadowOverlayObject::SetPosition( const basegfx::B2DPoint& rPoint1,
     }
 }
 
-} } // end of namespace sw::sidebarwindows
+} // end of namespace sw::sidebarwindows
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

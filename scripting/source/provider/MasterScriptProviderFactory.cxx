@@ -17,11 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <cppuhelper/implementationentry.hxx>
-#include <cppuhelper/exc_hlp.hxx>
-#include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/weakref.hxx>
 
 #include "MasterScriptProvider.hxx"
 #include "MasterScriptProviderFactory.hxx"
@@ -46,7 +42,7 @@ MasterScriptProviderFactory::~MasterScriptProviderFactory()
 Reference< provider::XScriptProvider > SAL_CALL
 MasterScriptProviderFactory::createScriptProvider( const Any& context )
 {
-    Reference< provider::XScriptProvider > xMsp( getActiveMSPList() ->getMSPFromAnyContext( context ), UNO_QUERY_THROW );
+    Reference< provider::XScriptProvider > xMsp( getActiveMSPList() ->getMSPFromAnyContext( context ), UNO_SET_THROW );
     return xMsp;
 }
 
@@ -62,35 +58,14 @@ MasterScriptProviderFactory::getActiveMSPList() const
     return m_MSPList;
 }
 
-Sequence< OUString > SAL_CALL mspf_getSupportedServiceNames( )
-{
-    OUString str_name(
-        "com.sun.star.script.provider.MasterScriptProviderFactory");
-
-    return Sequence< OUString >( &str_name, 1 );
-}
-
-OUString SAL_CALL mspf_getImplementationName( )
-{
-    return OUString(
-        "com.sun.star.script.provider.MasterScriptProviderFactory");
-}
-
-Reference< XInterface > SAL_CALL
-mspf_create( Reference< XComponentContext > const & xComponentContext )
-{
-    return static_cast< ::cppu::OWeakObject * >(
-        new MasterScriptProviderFactory( xComponentContext ) );
-}
-
 OUString SAL_CALL MasterScriptProviderFactory::getImplementationName()
 {
-    return mspf_getImplementationName();
+    return "com.sun.star.script.provider.MasterScriptProviderFactory";
 }
 
 Sequence< OUString > SAL_CALL MasterScriptProviderFactory::getSupportedServiceNames()
 {
-    return mspf_getSupportedServiceNames();
+    return { "com.sun.star.script.provider.MasterScriptProviderFactory" };
 }
 
 sal_Bool MasterScriptProviderFactory::supportsService(
@@ -99,6 +74,13 @@ sal_Bool MasterScriptProviderFactory::supportsService(
     return cppu::supportsService(this, serviceName);
 }
 
-} // namespace browsenodefactory
+} // namespace func_provider
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+scripting_MasterScriptProviderFactory_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new func_provider::MasterScriptProviderFactory(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

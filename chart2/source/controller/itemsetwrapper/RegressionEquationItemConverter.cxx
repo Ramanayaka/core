@@ -17,25 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "RegressionEquationItemConverter.hxx"
+#include <RegressionEquationItemConverter.hxx>
 #include "SchWhichPairs.hxx"
-#include "macros.hxx"
-#include "ItemPropertyMap.hxx"
-#include "GraphicPropertyItemConverter.hxx"
-#include "CharacterPropertyItemConverter.hxx"
-#include "MultipleItemConverter.hxx"
+#include <ItemPropertyMap.hxx>
+#include <GraphicPropertyItemConverter.hxx>
+#include <CharacterPropertyItemConverter.hxx>
 #include <unonames.hxx>
+#include <com/sun/star/beans/XPropertySet.hpp>
 
 #include <svl/intitem.hxx>
-#include <rtl/math.hxx>
 
-#include <functional>
-#include <algorithm>
 #include <memory>
 
 using namespace ::com::sun::star;
 
-namespace chart { namespace wrapper {
+namespace chart::wrapper {
 
 namespace {
 
@@ -56,18 +52,17 @@ RegressionEquationItemConverter::RegressionEquationItemConverter(
     const awt::Size* pRefSize ) :
         ItemConverter( rPropertySet, rItemPool )
 {
-    m_aConverters.push_back( new GraphicPropertyItemConverter(
+    m_aConverters.emplace_back( new GraphicPropertyItemConverter(
                                  rPropertySet, rItemPool, rDrawModel,
                                  xNamedPropertyContainerFactory,
                                  GraphicObjectType::LineAndFillProperties ));
 
-    m_aConverters.push_back(
+    m_aConverters.emplace_back(
         new CharacterPropertyItemConverter(rPropertySet, rItemPool, pRefSize, "ReferencePageSize"));
 }
 
 RegressionEquationItemConverter::~RegressionEquationItemConverter()
 {
-    std::for_each(m_aConverters.begin(), m_aConverters.end(), std::default_delete<ItemConverter>());
 }
 
 void RegressionEquationItemConverter::FillItemSet( SfxItemSet & rOutItemSet ) const
@@ -149,6 +144,6 @@ void RegressionEquationItemConverter::FillSpecialItem(
    }
 }
 
-}}
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -12,11 +12,12 @@
 
 #include <vcl/dllapi.h>
 
-#include <com/sun/star/io/XInputStream.hpp>
-#include <com/sun/star/uno/Reference.hxx>
 #include <rtl/ustring.hxx>
 #include <tools/fontenum.hxx>
 #include <vector>
+
+namespace com::sun::star::io { class XInputStream; }
+namespace com::sun::star::uno { template <typename > class Reference; }
 
 /**
  Helper functions for handling embedded fonts in documents.
@@ -51,7 +52,7 @@ public:
         std::vector< unsigned char > key, bool eot = false);
 
     /**
-      Returns an URL for a file where to store contents of a given temporary font.
+      Returns a URL for a file where to store contents of a given temporary font.
       The file may or not may not exist yet, and will be cleaned up automatically as appropriate.
       Use activateTemporaryFont() to actually enable usage of the font.
 

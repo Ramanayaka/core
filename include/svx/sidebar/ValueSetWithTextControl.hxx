@@ -22,12 +22,10 @@
 #include <svx/svxdllapi.h>
 
 #include <svtools/valueset.hxx>
-#include <limits.h>
-#include <vcl/image.hxx>
 
 #include <vector>
 
-namespace svx { namespace sidebar {
+namespace svx::sidebar {
 
 /** Specialization of class <ValueSet>.
     This specialization allows is a one-columned ValueSet which allow
@@ -35,10 +33,12 @@ namespace svx { namespace sidebar {
 
     Especially, used for sidebar related controls.
 */
-class SVX_DLLPUBLIC ValueSetWithTextControl : public ValueSet
+class SVX_DLLPUBLIC ValueSetWithTextControl final : public ValueSet
 {
 public:
-    ValueSetWithTextControl(Window* pParent, WinBits nBits);
+    ValueSetWithTextControl();
+
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
 
     void AddItem(
         const OUString& rItemText,
@@ -53,11 +53,10 @@ private:
         OUString maItemText2;
     };
 
-    typedef ::std::vector< ValueSetWithTextItem > tItemList;
-    tItemList maItems;
+    ::std::vector< ValueSetWithTextItem > maItems;
 };
 
-} } // end of namespace svx::sidebar
+} // end of namespace svx::sidebar
 
 #endif
 

@@ -21,8 +21,6 @@
 #define INCLUDED_SW_SOURCE_FILTER_XML_XMLITEM_HXX
 
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
-#include <tools/solar.h>
-#include <limits.h>
 #include <xmloff/xmlictxt.hxx>
 
 class SfxItemSet;
@@ -48,14 +46,14 @@ public:
 
     virtual ~SvXMLItemSetContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                                      const OUString& rLocalName,
                                      const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
 
     // This method is called from this instance implementation of
     // CreateChildContext if the element matches an entry in the
     // SvXMLImportItemMapper with the mid flag MID_SW_FLAG_ELEMENT_ITEM_IMPORT
-    virtual SvXMLImportContext *CreateChildContext( sal_uInt16 nPrefix,
+    virtual SvXMLImportContextRef CreateChildContext( sal_uInt16 nPrefix,
                                    const OUString& rLocalName,
                                    const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList,
                                     SfxItemSet&  rItemSet,

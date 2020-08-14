@@ -20,21 +20,9 @@
 #ifndef INCLUDED_FRAMEWORK_INC_CLASSES_FWKRESID_HXX
 #define INCLUDED_FRAMEWORK_INC_CLASSES_FWKRESID_HXX
 
-#include <tools/resid.hxx>
-#include <framework/fwedllapi.h>
+#include <rtl/ustring.hxx>
 
-namespace framework
-{
-
-class FWE_DLLPUBLIC FwkResId : public ResId
-{
-    public:
-        FwkResId( sal_uInt16 nId );
-
-    static ResMgr*  GetResManager();
-};
-
-}
+OUString FwkResId(const char* pId);
 
 #endif // __FRAMEWORK_CLASSES_FWKRESID
 

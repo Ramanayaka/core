@@ -78,10 +78,10 @@ void manageDuplicateGroups(std::vector<MacabGroup *> _xGroups)
 }
 
 MacabAddressBook::MacabAddressBook( )
+ : m_aAddressBook(ABGetSharedAddressBook()),
+   m_xMacabRecords(nullptr),
+   m_bRetrievedGroups(false)
 {
-    m_aAddressBook = ABGetSharedAddressBook();
-    m_xMacabRecords = nullptr;
-    m_bRetrievedGroups = false;
 }
 
 
@@ -93,14 +93,8 @@ MacabAddressBook::~MacabAddressBook()
         m_xMacabRecords = nullptr;
     }
 
-    if(!m_xMacabGroups.empty())
-    {
-        std::vector<MacabGroup *>::iterator iter, end;
-        iter = m_xMacabGroups.begin();
-        end = m_xMacabGroups.end();
-        for( ; iter != end; ++iter)
-            delete (*iter);
-    }
+    for(MacabGroup* pMacabGroup : m_xMacabGroups)
+        delete pMacabGroup;
 
     m_bRetrievedGroups = false;
 }

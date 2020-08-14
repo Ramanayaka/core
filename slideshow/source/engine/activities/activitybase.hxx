@@ -20,13 +20,12 @@
 #ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_ACTIVITIES_ACTIVITYBASE_HXX
 #define INCLUDED_SLIDESHOW_SOURCE_ENGINE_ACTIVITIES_ACTIVITYBASE_HXX
 
-#include "animationactivity.hxx"
+#include <animationactivity.hxx>
 #include "activityparameters.hxx"
-#include "animatableshape.hxx"
-#include "shapeattributelayer.hxx"
+#include <animatableshape.hxx>
+#include <shapeattributelayer.hxx>
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 /** Base class for animation activities.
 
@@ -126,7 +125,7 @@ private:
     AnimatableShapeSharedPtr        mpShape; // only to pass on to animation
     ShapeAttributeLayerSharedPtr    mpAttributeLayer; // only to pass on to anim
 
-    ::boost::optional<double> const maRepeats;
+    ::std::optional<double> const maRepeats;
     const double                    mnAccelerationFraction;
     const double                    mnDecelerationFraction;
 
@@ -137,8 +136,7 @@ private:
     bool                            mbIsActive;
 };
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_ACTIVITIES_ACTIVITYBASE_HXX
 

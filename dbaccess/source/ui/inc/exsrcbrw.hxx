@@ -29,7 +29,7 @@
 namespace dbaui
 {
     class SbaXFormAdapter;
-    class SbaExternalSourceBrowser
+    class SbaExternalSourceBrowser final
                 :public SbaXDataBrowserController
                 ,public css::util::XModifyBroadcaster
     {
@@ -42,13 +42,6 @@ namespace dbaui
 
     public:
         SbaExternalSourceBrowser(const css::uno::Reference< css::uno::XComponentContext >& _rM);
-
-        /// @throws css::uno::RuntimeException
-        static OUString getImplementationName_Static();
-        /// @throws css::uno::RuntimeException
-        static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-        static css::uno::Reference< css::uno::XInterface >
-                SAL_CALL Create(const css::uno::Reference< css::lang::XMultiServiceFactory >&);
 
         // UNO
         DECLARE_UNO3_DEFAULTS(SbaExternalSourceBrowser, SbaXDataBrowserController)
@@ -83,7 +76,7 @@ namespace dbaui
         virtual OUString SAL_CALL getImplementationName() override;
         virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
-    protected:
+    private:
         virtual ~SbaExternalSourceBrowser() override;
 
         virtual css::uno::Reference< css::sdbc::XRowSet >  CreateForm() override;

@@ -22,6 +22,7 @@
 
 #include <sal/config.h>
 
+#include <sal/macros.h>
 #include <sal/types.h>
 
 #define DECL_LINK(Member, ArgType, RetType) \
@@ -67,18 +68,44 @@
     RetType Class::Member( \
         SAL_UNUSED_PARAMETER Class *, SAL_UNUSED_PARAMETER ArgType)
 
+#ifdef DBG_UTIL
+#define LINK(Instance, Class, Member) ::tools::detail::makeLink( \
+    ::tools::detail::castTo<Class *>(Instance), &Class::LinkStub##Member, __FILE__, __LINE__, SAL_STRINGIFY(Class::LinkStub##Member))
+#else
 #define LINK(Instance, Class, Member) ::tools::detail::makeLink( \
     ::tools::detail::castTo<Class *>(Instance), &Class::LinkStub##Member)
+#endif
 
 template<typename Arg, typename Ret>
 class SAL_WARN_UNUSED Link {
 public:
     typedef Ret Stub(void *, Arg);
 
+#ifdef DBG_UTIL
+    Link()
+        : function_(nullptr)
+        , instance_(nullptr)
+        , file_("unknown")
+        , line_(0)
+        , target_("unknown")
+    {
+    }
+
+    Link(void* instance, Stub* function, const char* const file = "unknown", const int line = 0,
+         const char* const target = "unknown")
+        : function_(function)
+        , instance_(instance)
+        , file_(file)
+        , line_(line)
+        , target_(target)
+    {
+    }
+#else
     Link(): function_(nullptr), instance_(nullptr) {}
 
     Link(void * instance, Stub * function):
         function_(function), instance_(instance) {}
+#endif
 
     Ret Call(Arg data) const
     { return function_ == nullptr ? Ret() : (*function_)(instance_, data); }
@@ -88,8 +115,8 @@ public:
     bool operator !() const { return !IsSet(); }
 
     bool operator <(Link const & other) const {
-        sal_uIntPtr ptr1 = reinterpret_cast<sal_uIntPtr>(function_);
-        sal_uIntPtr ptr2 = reinterpret_cast<sal_uIntPtr>(other.function_);
+        char* ptr1 = reinterpret_cast<char*>(function_);
+        char* ptr2 = reinterpret_cast<char*>(other.function_);
         if (ptr1 < ptr2)
             return true;
         else if (ptr1 > ptr2)
@@ -103,27 +130,50 @@ public:
 
     void *GetInstance() const { return instance_; }
 
+#ifdef DBG_UTIL
+    const char* getSourceFilename() const { return file_; }
+    int getSourceLineNumber() const { return line_; }
+    const char* getTargetName() const { return target_; }
+#endif
+
 private:
     Stub * function_;
     void * instance_;
+
+#ifdef DBG_UTIL
+    /// Support tracing link source and target.
+    /// When debugging async events, it's often critical
+    /// to find out not only where a link leads (i.e. the target
+    /// function), but also where it was created (file:line).
+    const char* file_;
+    int line_;
+    const char* target_;
+#endif
 };
 
 // Class used to indicate that the Call() parameter is not in use:
 class LinkParamNone { LinkParamNone() = delete; };
 
-namespace tools { namespace detail {
+namespace tools::detail {
 
 // Avoids loplugin:redundantcast in LINK macro, in the common case that Instance
 // is already of type Class * (instead of a derived type):
 template<typename To, typename From> To castTo(From from)
 { return static_cast<To>(from); }
 
+#ifdef DBG_UTIL
+template<typename Arg, typename Ret>
+Link<Arg, Ret> makeLink(void * instance, Ret (* function)(void *, Arg), const char* file, int line, const char* target) {
+    return Link<Arg, Ret>(instance, function, file, line, target);
+}
+#else
 template<typename Arg, typename Ret>
 Link<Arg, Ret> makeLink(void * instance, Ret (* function)(void *, Arg)) {
     return Link<Arg, Ret>(instance, function);
 }
+#endif
 
-} }
+}
 
 #endif
 

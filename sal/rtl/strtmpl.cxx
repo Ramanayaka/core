@@ -46,7 +46,7 @@ inline void rtl_str_ImplCopy( IMPL_RTL_STRCODE* pDest,
 }
 */
 
-static inline void rtl_str_ImplCopy( IMPL_RTL_STRCODE* _pDest,
+static void rtl_str_ImplCopy( IMPL_RTL_STRCODE* _pDest,
                                      const IMPL_RTL_STRCODE* _pSrc,
                                      sal_Int32 _nCount )
 {
@@ -101,10 +101,12 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( compare )( const IMPL_RTL_STRCODE* pStr1,
     else
     {
         sal_Int32 nRet;
-        while ( ((nRet = ((sal_Int32)(IMPL_RTL_USTRCODE(*pStr1)))-
-                         ((sal_Int32)(IMPL_RTL_USTRCODE(*pStr2)))) == 0) &&
-                *pStr2 )
+        for (;;)
         {
+            nRet = static_cast<sal_Int32>(IMPL_RTL_USTRCODE(*pStr1)) -
+                   static_cast<sal_Int32>(IMPL_RTL_USTRCODE(*pStr2));
+            if (!(nRet == 0 && *pStr2 ))
+                break;
             pStr1++;
             pStr2++;
         }
@@ -148,8 +150,8 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( compare_WithLength )( const IMPL_RTL_STRCOD
         while( (--nCount >= 0) && (*++pStr1 == *++pStr2) ) ;
 
         if( nCount >= 0 )
-            nRet = ((sal_Int32)(IMPL_RTL_USTRCODE( *pStr1 )))
-                 - ((sal_Int32)(IMPL_RTL_USTRCODE( *pStr2 )));
+            nRet = static_cast<sal_Int32>(IMPL_RTL_USTRCODE( *pStr1 ))
+                 - static_cast<sal_Int32>(IMPL_RTL_USTRCODE( *pStr2 ));
 
         return nRet;
     }
@@ -193,8 +195,8 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( shortenedCompare_WithLength )( const IMPL_R
         while ( (nShortenedLength > 0) &&
                 (pStr1 < pStr1End) && (pStr2 < pStr2End) )
         {
-            nRet = ((sal_Int32)(IMPL_RTL_USTRCODE( *pStr1 )))-
-                   ((sal_Int32)(IMPL_RTL_USTRCODE( *pStr2 )));
+            nRet = static_cast<sal_Int32>(IMPL_RTL_USTRCODE( *pStr1 ))-
+                   static_cast<sal_Int32>(IMPL_RTL_USTRCODE( *pStr2 ));
             if ( nRet )
                 return nRet;
 
@@ -227,8 +229,8 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( reverseCompare_WithLength )( const IMPL_RTL
     {
         pStr1Run--;
         pStr2Run--;
-        nRet = ((sal_Int32)(IMPL_RTL_USTRCODE( *pStr1Run )))-
-               ((sal_Int32)(IMPL_RTL_USTRCODE( *pStr2Run )));
+        nRet = static_cast<sal_Int32>(IMPL_RTL_USTRCODE( *pStr1Run ))-
+               static_cast<sal_Int32>(IMPL_RTL_USTRCODE( *pStr2Run ));
         if ( nRet )
             return nRet;
     }
@@ -359,7 +361,7 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( indexOfChar )( const IMPL_RTL_STRCODE* pStr
     if (sizeof(IMPL_RTL_STRCODE) == sizeof(wchar_t))
     {
         // take advantage of builtin optimisations
-        wchar_t const * p = wcschr(reinterpret_cast<wchar_t const *>(pStr), (wchar_t)c);
+        wchar_t const * p = wcschr(reinterpret_cast<wchar_t const *>(pStr), static_cast<wchar_t>(c));
         return p ? p - reinterpret_cast<wchar_t const *>(pStr) : -1;
     }
     else
@@ -420,7 +422,7 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( lastIndexOfChar )( const IMPL_RTL_STRCODE* 
     if (sizeof(IMPL_RTL_STRCODE) == sizeof(wchar_t))
     {
         // take advantage of builtin optimisations
-        wchar_t const * p = wcsrchr(reinterpret_cast<wchar_t const *>(pStr), (wchar_t)c);
+        wchar_t const * p = wcsrchr(reinterpret_cast<wchar_t const *>(pStr), static_cast<wchar_t>(c));
         return p ? p - reinterpret_cast<wchar_t const *>(pStr) : -1;
     }
     else
@@ -562,7 +564,7 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( lastIndexOfStr_WithLength )( const IMPL_RTL
                                                                   sal_Int32 nSubLen )
     SAL_THROW_EXTERN_C()
 {
-//    assert(nStrLen >= 0);
+    assert(nStrLen >= 0);
     assert(nSubLen >= 0);
     /* faster search for a single character */
     if ( nSubLen < 2 )
@@ -744,18 +746,9 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( trim_WithLength )( IMPL_RTL_STRCODE* pStr, 
 
     if ( nPreSpaces )
     {
-        IMPL_RTL_STRCODE* pNewStr = pStr+nPreSpaces;
-
         nLen -= nPreSpaces;
-        nIndex = nLen;
-
-        while ( nIndex )
-        {
-            *pStr = *pNewStr;
-            pStr++;
-            pNewStr++;
-            nIndex--;
-        }
+        memmove(pStr, pStr + nPreSpaces, nLen * sizeof(IMPL_RTL_STRCODE));
+        pStr += nLen;
         *pStr = 0;
     }
 
@@ -818,8 +811,9 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( valueOfInt32 )( IMPL_RTL_STRCODE* pStr,
     SAL_THROW_EXTERN_C()
 {
     assert(pStr);
-    sal_Char    aBuf[RTL_STR_MAX_VALUEOFINT32];
-    sal_Char*   pBuf = aBuf;
+    assert( nRadix >= RTL_STR_MIN_RADIX && nRadix <= RTL_STR_MAX_RADIX );
+    char    aBuf[RTL_STR_MAX_VALUEOFINT32];
+    char*   pBuf = aBuf;
     sal_Int32   nLen = 0;
     sal_uInt32  nValue;
 
@@ -827,7 +821,7 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( valueOfInt32 )( IMPL_RTL_STRCODE* pStr,
     if ( (nRadix < RTL_STR_MIN_RADIX) || (nRadix > RTL_STR_MAX_RADIX) )
         nRadix = 10;
 
-    /* is value negativ */
+    /* is value negative */
     if ( n < 0 )
     {
         *pStr = '-';
@@ -841,7 +835,7 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( valueOfInt32 )( IMPL_RTL_STRCODE* pStr,
     /* create a recursive buffer with all values, except the last one */
     do
     {
-        sal_Char nDigit = (sal_Char)(nValue % nRadix);
+        char nDigit = static_cast<char>(nValue % nRadix);
         nValue /= nRadix;
         if ( nDigit > 9 )
             *pBuf = (nDigit-10) + 'a';
@@ -873,8 +867,9 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( valueOfInt64 )( IMPL_RTL_STRCODE* pStr,
     SAL_THROW_EXTERN_C()
 {
     assert(pStr);
-    sal_Char    aBuf[RTL_STR_MAX_VALUEOFINT64];
-    sal_Char*   pBuf = aBuf;
+    assert( nRadix >= RTL_STR_MIN_RADIX && nRadix <= RTL_STR_MAX_RADIX );
+    char    aBuf[RTL_STR_MAX_VALUEOFINT64];
+    char*   pBuf = aBuf;
     sal_Int32   nLen = 0;
     sal_uInt64  nValue;
 
@@ -882,7 +877,7 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( valueOfInt64 )( IMPL_RTL_STRCODE* pStr,
     if ( (nRadix < RTL_STR_MIN_RADIX) || (nRadix > RTL_STR_MAX_RADIX) )
         nRadix = 10;
 
-    /* is value negativ */
+    /* is value negative */
     if ( n < 0 )
     {
         *pStr = '-';
@@ -896,7 +891,7 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( valueOfInt64 )( IMPL_RTL_STRCODE* pStr,
     /* create a recursive buffer with all values, except the last one */
     do
     {
-        sal_Char nDigit = (sal_Char)(nValue % nRadix);
+        char nDigit = static_cast<char>(nValue % nRadix);
         nValue /= nRadix;
         if ( nDigit > 9 )
             *pBuf = (nDigit-10) + 'a';
@@ -928,8 +923,9 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( valueOfUInt64 )( IMPL_RTL_STRCODE* pStr,
     SAL_THROW_EXTERN_C()
 {
     assert(pStr);
-    sal_Char    aBuf[RTL_STR_MAX_VALUEOFUINT64];
-    sal_Char*   pBuf = aBuf;
+    assert( nRadix >= RTL_STR_MIN_RADIX && nRadix <= RTL_STR_MAX_RADIX );
+    char    aBuf[RTL_STR_MAX_VALUEOFUINT64];
+    char*   pBuf = aBuf;
     sal_Int32   nLen = 0;
     sal_uInt64  nValue;
 
@@ -942,7 +938,7 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( valueOfUInt64 )( IMPL_RTL_STRCODE* pStr,
     /* create a recursive buffer with all values, except the last one */
     do
     {
-        sal_Char nDigit = (sal_Char)(nValue % nRadix);
+        char nDigit = static_cast<char>(nValue % nRadix);
         nValue /= nRadix;
         if ( nDigit > 9 )
             *pBuf = (nDigit-10) + 'a';
@@ -995,19 +991,23 @@ sal_Bool SAL_CALL IMPL_RTL_STRNAME( toBoolean )( const IMPL_RTL_STRCODE* pStr )
 
 /* ----------------------------------------------------------------------- */
 namespace {
-    template<typename T, typename U> inline T IMPL_RTL_STRNAME( toInt )( const IMPL_RTL_STRCODE* pStr,
-                                                                     sal_Int16 nRadix )
+    template<typename T, typename U> T IMPL_RTL_STRNAME( toInt_WithLength )( const IMPL_RTL_STRCODE* pStr,
+                                                                  sal_Int16 nRadix,
+                                                                  sal_Int32 nStrLength )
     {
         static_assert(std::numeric_limits<T>::is_signed, "is signed");
+        assert( nRadix >= RTL_STR_MIN_RADIX && nRadix <= RTL_STR_MAX_RADIX );
+        assert( nStrLength >= 0 );
         bool    bNeg;
         sal_Int16   nDigit;
         U           n = 0;
+        const IMPL_RTL_STRCODE* pEnd = pStr + nStrLength;
 
         if ( (nRadix < RTL_STR_MIN_RADIX) || (nRadix > RTL_STR_MAX_RADIX) )
             nRadix = 10;
 
         /* Skip whitespaces */
-        while ( *pStr && rtl_ImplIsWhitespace( IMPL_RTL_USTRCODE( *pStr ) ) )
+        while ( pStr != pEnd && rtl_ImplIsWhitespace( IMPL_RTL_USTRCODE( *pStr ) ) )
             pStr++;
 
         if ( *pStr == '-' )
@@ -1044,7 +1044,7 @@ namespace {
             nMod = std::numeric_limits<T>::max() % nRadix;
         }
 
-        while ( *pStr )
+        while ( pStr != pEnd )
         {
             nDigit = rtl_ImplGetDigit( IMPL_RTL_USTRCODE( *pStr ), nRadix );
             if ( nDigit < 0 )
@@ -1072,7 +1072,7 @@ sal_Int32 SAL_CALL IMPL_RTL_STRNAME( toInt32 )( const IMPL_RTL_STRCODE* pStr,
     SAL_THROW_EXTERN_C()
 {
     assert(pStr);
-    return IMPL_RTL_STRNAME( toInt )<sal_Int32, sal_uInt32>(pStr, nRadix);
+    return IMPL_RTL_STRNAME( toInt_WithLength )<sal_Int32, sal_uInt32>(pStr, nRadix, IMPL_RTL_STRNAME( getLength )(pStr));
 }
 
 sal_Int64 SAL_CALL IMPL_RTL_STRNAME( toInt64 )( const IMPL_RTL_STRCODE* pStr,
@@ -1080,15 +1080,25 @@ sal_Int64 SAL_CALL IMPL_RTL_STRNAME( toInt64 )( const IMPL_RTL_STRCODE* pStr,
     SAL_THROW_EXTERN_C()
 {
     assert(pStr);
-    return IMPL_RTL_STRNAME( toInt )<sal_Int64, sal_uInt64>(pStr, nRadix);
+    return IMPL_RTL_STRNAME( toInt_WithLength )<sal_Int64, sal_uInt64>(pStr, nRadix, IMPL_RTL_STRNAME( getLength )(pStr));
+}
+
+sal_Int64 SAL_CALL IMPL_RTL_STRNAME( toInt64_WithLength )( const IMPL_RTL_STRCODE* pStr,
+                                                sal_Int16 nRadix,
+                                                sal_Int32 nStrLength)
+    SAL_THROW_EXTERN_C()
+{
+    assert(pStr);
+    return IMPL_RTL_STRNAME( toInt_WithLength )<sal_Int64, sal_uInt64>(pStr, nRadix, nStrLength);
 }
 
 /* ----------------------------------------------------------------------- */
 namespace {
-    template <typename T> inline T IMPL_RTL_STRNAME( toUInt )( const IMPL_RTL_STRCODE* pStr,
+    template <typename T> T IMPL_RTL_STRNAME( toUInt )( const IMPL_RTL_STRCODE* pStr,
                                                                       sal_Int16 nRadix )
     {
         static_assert(!std::numeric_limits<T>::is_signed, "is not signed");
+        assert( nRadix >= RTL_STR_MIN_RADIX && nRadix <= RTL_STR_MAX_RADIX );
         sal_Int16   nDigit;
         T           n = 0;
 
@@ -1143,13 +1153,13 @@ sal_uInt64 SAL_CALL IMPL_RTL_STRNAME( toUInt64 )( const IMPL_RTL_STRCODE* pStr,
 /* Internal String-Class help functions                                    */
 /* ======================================================================= */
 
-static IMPL_RTL_STRINGDATA* IMPL_RTL_STRINGNAME( ImplAlloc )( sal_Int32 nLen )
+IMPL_RTL_STRINGDATA* IMPL_RTL_STRINGNAME( ImplAlloc )( sal_Int32 nLen )
 {
     IMPL_RTL_STRINGDATA * pData
         = (sal::static_int_cast< sal_uInt32 >(nLen)
            <= ((SAL_MAX_UINT32 - sizeof (IMPL_RTL_STRINGDATA))
                / sizeof (IMPL_RTL_STRCODE)))
-        ? static_cast<IMPL_RTL_STRINGDATA *>(rtl_allocateMemory(
+        ? static_cast<IMPL_RTL_STRINGDATA *>(rtl_allocateString(
             sizeof (IMPL_RTL_STRINGDATA) + nLen * sizeof (IMPL_RTL_STRCODE)))
         : nullptr;
     if (pData != nullptr) {
@@ -1174,18 +1184,13 @@ static IMPL_RTL_STRCODE* IMPL_RTL_STRINGNAME( ImplNewCopy )( IMPL_RTL_STRINGDATA
 
     pDest   = pData->buffer;
     pSrc    = pStr->buffer;
-    while ( nCount > 0 )
-    {
-        *pDest = *pSrc;
-        pDest++;
-        pSrc++;
-        nCount--;
-    }
+
+    memcpy( pDest, pSrc, nCount * sizeof(IMPL_RTL_STRCODE));
 
     *ppThis = pData;
 
     RTL_LOG_STRING_NEW( pData );
-    return pDest;
+    return pDest + nCount;
 }
 
 /* ======================================================================= */
@@ -1230,7 +1235,7 @@ void SAL_CALL IMPL_RTL_STRINGNAME( release )( IMPL_RTL_STRINGDATA* pThis )
     if ( !osl_atomic_decrement( &(pThis->refCount) ) )
     {
         RTL_LOG_STRING_DELETE( pThis );
-        rtl_freeMemory( pThis );
+        rtl_freeString( pThis );
     }
 }
 
@@ -1251,10 +1256,8 @@ void SAL_CALL IMPL_RTL_STRINGNAME( new )( IMPL_RTL_STRINGDATA** ppThis )
 IMPL_RTL_STRINGDATA* SAL_CALL IMPL_RTL_STRINGNAME( alloc )( sal_Int32 nLen )
     SAL_THROW_EXTERN_C()
 {
-    if ( nLen < 0 )
-        return nullptr;
-    else
-        return IMPL_RTL_STRINGNAME( ImplAlloc )( nLen );
+    assert(nLen >= 0);
+    return IMPL_RTL_STRINGNAME( ImplAlloc )( nLen );
 }
 
 /* ----------------------------------------------------------------------- */
@@ -1263,6 +1266,7 @@ void SAL_CALL IMPL_RTL_STRINGNAME( new_WithLength )( IMPL_RTL_STRINGDATA** ppThi
     SAL_THROW_EXTERN_C()
 {
     assert(ppThis);
+    assert(nLen >= 0);
     if ( nLen <= 0 )
         IMPL_RTL_STRINGNAME( new )( ppThis );
     else
@@ -1313,16 +1317,12 @@ void SAL_CALL IMPL_RTL_STRINGNAME( newFromStr )( IMPL_RTL_STRINGDATA** ppThis,
     SAL_THROW_EXTERN_C()
 {
     assert(ppThis);
-    IMPL_RTL_STRCODE*       pBuffer;
     IMPL_RTL_STRINGDATA*    pOrg;
     sal_Int32               nLen;
 
     if ( pCharStr )
     {
-        const IMPL_RTL_STRCODE* pTempStr = pCharStr;
-        while( *pTempStr )
-            pTempStr++;
-        nLen = pTempStr-pCharStr;
+        nLen = IMPL_RTL_STRNAME( getLength )( pCharStr );
     }
     else
         nLen = 0;
@@ -1336,15 +1336,7 @@ void SAL_CALL IMPL_RTL_STRINGNAME( newFromStr )( IMPL_RTL_STRINGDATA** ppThis,
     pOrg = *ppThis;
     *ppThis = IMPL_RTL_STRINGNAME( ImplAlloc )( nLen );
     OSL_ASSERT(*ppThis != nullptr);
-    pBuffer = (*ppThis)->buffer;
-    do
-    {
-        *pBuffer = *pCharStr;
-        pBuffer++;
-        pCharStr++;
-    }
-    while ( *pCharStr );
-
+    rtl_str_ImplCopy( (*ppThis)->buffer, pCharStr, nLen );
     RTL_LOG_STRING_NEW( *ppThis );
 
     /* must be done last, if pCharStr == *ppThis */
@@ -1360,6 +1352,7 @@ void SAL_CALL IMPL_RTL_STRINGNAME( newFromStr_WithLength )( IMPL_RTL_STRINGDATA*
     SAL_THROW_EXTERN_C()
 {
     assert(ppThis);
+    assert(nLen >= 0);
     IMPL_RTL_STRINGDATA* pOrg;
 
     if ( !pCharStr || (nLen <= 0) )
@@ -1408,7 +1401,7 @@ void SAL_CALL IMPL_RTL_STRINGNAME( newFromSubString )( IMPL_RTL_STRINGDATA** ppT
 
 // Used when creating from string literals.
 void SAL_CALL IMPL_RTL_STRINGNAME( newFromLiteral )( IMPL_RTL_STRINGDATA** ppThis,
-                                                     const sal_Char* pCharStr,
+                                                     const char* pCharStr,
                                                      sal_Int32 nLen,
                                                      sal_Int32 allocExtra )
     SAL_THROW_EXTERN_C()
@@ -1437,7 +1430,7 @@ void SAL_CALL IMPL_RTL_STRINGNAME( newFromLiteral )( IMPL_RTL_STRINGDATA** ppThi
 #if IMPL_RTL_IS_USTRING
         assert(static_cast<unsigned char>(*pCharStr) < 0x80); // ASCII range
 #endif
-        SAL_WARN_IF( ((unsigned char)*pCharStr) == '\0', "rtl.string",
+        SAL_WARN_IF( (static_cast<unsigned char>(*pCharStr)) == '\0', "rtl.string",
                     "rtl_uString_newFromLiteral - Found embedded \\0 character" );
 
         *pBuffer = *pCharStr;
@@ -1558,7 +1551,9 @@ void SAL_CALL IMPL_RTL_STRINGNAME( newReplaceStrAt )( IMPL_RTL_STRINGDATA** ppTh
     SAL_THROW_EXTERN_C()
 {
     assert(ppThis);
-//    assert(nCount >= 0);
+    assert(nIndex >= 0 && nIndex <= pStr->length);
+    assert(nCount >= 0);
+    assert(nCount <= pStr->length - nIndex);
     /* Append? */
     if ( nIndex >= pStr->length )
     {
@@ -1567,7 +1562,7 @@ void SAL_CALL IMPL_RTL_STRINGNAME( newReplaceStrAt )( IMPL_RTL_STRINGDATA** ppTh
         return;
     }
 
-    /* negativ index? */
+    /* negative index? */
     if ( nIndex < 0 )
     {
         nCount -= nIndex;
@@ -1639,7 +1634,7 @@ void SAL_CALL IMPL_RTL_STRINGNAME( newReplace )( IMPL_RTL_STRINGDATA** ppThis,
     assert(ppThis);
     assert(pStr);
     IMPL_RTL_STRINGDATA*    pOrg        = *ppThis;
-    int                     bChanged    = 0;
+    bool                    bChanged    = false;
     sal_Int32               nLen        = pStr->length;
     const IMPL_RTL_STRCODE* pCharStr    = pStr->buffer;
 
@@ -1671,7 +1666,7 @@ void SAL_CALL IMPL_RTL_STRINGNAME( newReplace )( IMPL_RTL_STRINGDATA** ppThis,
                 }
             }
 
-            bChanged = 1;
+            bChanged = true;
             break;
         }
 
@@ -1700,7 +1695,7 @@ void SAL_CALL IMPL_RTL_STRINGNAME( newToAsciiLowerCase )( IMPL_RTL_STRINGDATA** 
     assert(ppThis);
     assert(pStr);
     IMPL_RTL_STRINGDATA*    pOrg        = *ppThis;
-    int                     bChanged    = 0;
+    bool                    bChanged    = false;
     sal_Int32               nLen        = pStr->length;
     const IMPL_RTL_STRCODE* pCharStr    = pStr->buffer;
 
@@ -1729,7 +1724,7 @@ void SAL_CALL IMPL_RTL_STRINGNAME( newToAsciiLowerCase )( IMPL_RTL_STRINGDATA** 
                 }
             }
 
-            bChanged = 1;
+            bChanged = true;
             break;
         }
 
@@ -1758,7 +1753,7 @@ void SAL_CALL IMPL_RTL_STRINGNAME( newToAsciiUpperCase )( IMPL_RTL_STRINGDATA** 
     assert(ppThis);
     assert(pStr);
     IMPL_RTL_STRINGDATA*    pOrg        = *ppThis;
-    int                     bChanged    = 0;
+    bool                    bChanged    = false;
     sal_Int32               nLen        = pStr->length;
     const IMPL_RTL_STRCODE* pCharStr    = pStr->buffer;
 
@@ -1787,7 +1782,7 @@ void SAL_CALL IMPL_RTL_STRINGNAME( newToAsciiUpperCase )( IMPL_RTL_STRINGDATA** 
                 }
             }
 
-            bChanged = 1;
+            bChanged = true;
             break;
         }
 

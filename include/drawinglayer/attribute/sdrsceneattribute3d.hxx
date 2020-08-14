@@ -29,14 +29,12 @@
 
 // predefines
 
-namespace drawinglayer { namespace attribute {
+namespace drawinglayer::attribute {
     class ImpSdrSceneAttribute;
-}}
+}
 
 
-namespace drawinglayer
-{
-    namespace attribute
+namespace drawinglayer::attribute
     {
         class DRAWINGLAYER_DLLPUBLIC SdrSceneAttribute
         {
@@ -55,10 +53,10 @@ namespace drawinglayer
                 css::drawing::ShadeMode aShadeMode,
                 bool bTwoSidedLighting);
             SdrSceneAttribute();
-            SdrSceneAttribute(const SdrSceneAttribute& rCandidate);
-            SdrSceneAttribute(SdrSceneAttribute&& rCandidate);
-            SdrSceneAttribute& operator=(const SdrSceneAttribute& rCandidate);
-            SdrSceneAttribute& operator=(SdrSceneAttribute&& rCandidate);
+            SdrSceneAttribute(const SdrSceneAttribute&);
+            SdrSceneAttribute(SdrSceneAttribute&&);
+            SdrSceneAttribute& operator=(const SdrSceneAttribute&);
+            SdrSceneAttribute& operator=(SdrSceneAttribute&&);
             ~SdrSceneAttribute();
 
             // checks if the incarnation is default constructed
@@ -73,8 +71,8 @@ namespace drawinglayer
             css::drawing::ShadeMode getShadeMode() const;
             bool getTwoSidedLighting() const;
         };
-    } // end of namespace attribute
-} // end of namespace drawinglayer
+
+} // end of namespace drawinglayer::attribute
 
 
 #endif //INCLUDED_DRAWINGLAYER_ATTRIBUTE_SDRSCENEATTRIBUTE3D_HXX

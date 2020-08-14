@@ -23,6 +23,7 @@
 
 #include <rtl/strbuf.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 #include <object.hxx>
 #include <globals.hxx>
@@ -195,10 +196,10 @@ void SvMetaClass::InsertSlots( SvSlotElementList& rList, std::vector<sal_uLong>&
         }
     }
 
-    // All Interfaces already imported by SuperShells should not be
+    // All Interfaces already imported by SuperShell should not be
     // written any more.
     // It is prohibited that Shell and SuperShell directly import the same
-    //class.
+    // class.
     if( GetMetaTypeType() == MetaTypeType::Shell && aSuperClass.is() )
         aSuperClass->FillClasses( rClassList );
 
@@ -208,7 +209,8 @@ void SvMetaClass::InsertSlots( SvSlotElementList& rList, std::vector<sal_uLong>&
     {
         SvClassElement& rElement = aClassElementList[n];
         SvMetaClass * pCl = rElement.GetClass();
-        OStringBuffer rPre(rPrefix);
+        OStringBuffer rPre(rPrefix.getLength() + 1 + rElement.GetPrefix().getLength());
+        rPre.append(rPrefix);
         if( !rPre.isEmpty() && !rElement.GetPrefix().isEmpty() )
             rPre.append('.');
         rPre.append(rElement.GetPrefix());
@@ -250,7 +252,7 @@ void SvMetaClass::FillClasses( SvMetaClassList & rList )
 
 void SvMetaClass::WriteSlotStubs( const OString& rShellName,
                                 SvSlotElementList & rSlotList,
-                                ByteStringList & rList,
+                                std::vector<OString> & rList,
                                 SvStream & rOutStm )
 {
     // write all attributes
@@ -265,9 +267,9 @@ void SvMetaClass::WriteSfx( SvIdlDataBase & rBase, SvStream & rOutStm )
 {
     WriteStars( rOutStm );
     // define class
-    rOutStm.WriteCharPtr( "#ifdef " ).WriteOString( GetName() ) << endl;
+    rOutStm.WriteCharPtr( "#ifdef ShellClass_" ).WriteOString( GetName() ) << endl;
     rOutStm.WriteCharPtr( "#undef ShellClass" ) << endl;
-    rOutStm.WriteCharPtr( "#undef " ).WriteOString( GetName() ) << endl;
+    rOutStm.WriteCharPtr( "#undef ShellClass_" ).WriteOString( GetName() ) << endl;
     rOutStm.WriteCharPtr( "#define ShellClass " ).WriteOString( GetName() ) << endl;
 
     // no slotmaps get written for interfaces
@@ -305,10 +307,8 @@ void SvMetaClass::WriteSfx( SvIdlDataBase & rBase, SvStream & rOutStm )
     rOutStm << endl;
     rOutStm.WriteCharPtr( "};" ) << endl << endl;
 
-    ByteStringList aStringList;
+    std::vector<OString> aStringList;
     WriteSlotStubs( GetName(), aSlotList, aStringList, rOutStm );
-    for ( size_t i = 0, n = aStringList.size(); i < n; ++i )
-        delete aStringList[ i ];
     aStringList.clear();
 
     rOutStm << endl;
@@ -326,7 +326,7 @@ void SvMetaClass::WriteSfx( SvIdlDataBase & rBase, SvStream & rOutStm )
         // at least one dummy
         WriteTab( rOutStm, 1 );
         rOutStm.WriteCharPtr( "SFX_SLOT_ARG(" ).WriteOString( GetName() )
-               .WriteCharPtr( ", 0, SfxGroupId(0), " )
+               .WriteCharPtr( ", 0, SfxGroupId::NONE, " )
                .WriteCharPtr( "SFX_STUB_PTR_EXEC_NONE," )
                .WriteCharPtr( "SFX_STUB_PTR_STATE_NONE," )
                .WriteCharPtr( "SfxSlotMode::NONE, SfxVoidItem, 0, 0, \"\", SfxSlotMode::NONE )" ) << endl;

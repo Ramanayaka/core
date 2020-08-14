@@ -18,14 +18,15 @@
  */
 
 #include "ComponentDefinition.hxx"
-#include "apitools.hxx"
-#include "dbastrings.hrc"
+#include <apitools.hxx>
+#include <stringconstants.hxx>
 
 #include <osl/diagnose.h>
-#include <comphelper/sequence.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <cppuhelper/interfacecontainer.hxx>
 #include <comphelper/property.hxx>
-#include "definitioncolumn.hxx"
+#include <comphelper/propertysequence.hxx>
+#include <definitioncolumn.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdbc;
@@ -77,11 +78,10 @@ void OComponentDefinition::initialize( const Sequence< Any >& aArguments )
     OUString rName;
     if( (aArguments.getLength() == 1) && (aArguments[0] >>= rName) )
     {
-        Sequence< Any > aNewArgs(1);
-        PropertyValue aValue;
-        aValue.Name = PROPERTY_NAME;
-        aValue.Value <<= rName;
-        aNewArgs[0] <<= aValue;
+        Sequence<Any> aNewArgs(comphelper::InitAnyPropertySequence(
+        {
+            {PROPERTY_NAME, Any(rName)}
+        }));
         OContentHelper::initialize(aNewArgs);
     }
     else
@@ -147,7 +147,7 @@ IMPLEMENT_FORWARD_XINTERFACE3( OComponentDefinition,OContentHelper,ODataSettings
 
 OUString SAL_CALL OComponentDefinition::getImplementationName()
 {
-    return OUString("com.sun.star.comp.dba.OComponentDefinition");
+    return "com.sun.star.comp.dba.OComponentDefinition";
 }
 
 Sequence< OUString > SAL_CALL OComponentDefinition::getSupportedServiceNames()
@@ -158,9 +158,10 @@ Sequence< OUString > SAL_CALL OComponentDefinition::getSupportedServiceNames()
 void SAL_CALL OComponentDefinition::disposing()
 {
     OContentHelper::disposing();
-    if ( m_xColumns.is() )
-        m_xColumns->disposing();
-    m_xColumns.clear();
+    if (m_pColumns)
+    {
+        m_pColumns->disposing();
+    }
     m_xColumnPropertyListener->clear();
     m_xColumnPropertyListener.clear();
 }
@@ -195,22 +196,21 @@ Reference< XNameAccess> OComponentDefinition::getColumns()
     ::osl::MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(OContentHelper::rBHelper.bDisposed);
 
-    if ( !m_xColumns.is() )
+    if (!m_pColumns)
     {
         std::vector< OUString> aNames;
 
         const OComponentDefinition_Impl& rDefinition( getDefinition() );
         aNames.reserve( rDefinition.size() );
 
-        OComponentDefinition_Impl::const_iterator aIter = rDefinition.begin();
-        OComponentDefinition_Impl::const_iterator aEnd = rDefinition.end();
-        for ( ; aIter != aEnd; ++aIter )
-            aNames.push_back( aIter->first );
+        for (auto const& definition : rDefinition)
+            aNames.push_back(definition.first);
 
-        m_xColumns = new OColumns( *this, m_aMutex, true, aNames, this, nullptr, true, false, false );
-        m_xColumns->setParent( *this );
+        m_pColumns.reset(new OColumns(*this, m_aMutex, true, aNames, this, nullptr, true, false, false));
+        m_pColumns->setParent(*this);
     }
-    return m_xColumns.get();
+    // see OCollection::acquire
+    return m_pColumns.get();
 }
 
 OColumn* OComponentDefinition::createColumn(const OUString& _rName) const
@@ -267,12 +267,12 @@ void OComponentDefinition::columnAppended( const Reference< XPropertySet >& _rxS
 
 }   // namespace dbaccess
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_dba_OComponentDefinition(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
     return cppu::acquire(new dbaccess::OComponentDefinition(
-            context, nullptr, dbaccess::TContentPtr(new dbaccess::OComponentDefinition_Impl)));
+            context, nullptr, std::make_shared<dbaccess::OComponentDefinition_Impl>()));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,12 +19,12 @@
 #ifndef INCLUDED_IDLC_INC_ASTCONSTANT_HXX
 #define INCLUDED_IDLC_INC_ASTCONSTANT_HXX
 
-#include <astdeclaration.hxx>
-#include <astexpression.hxx>
+#include "astdeclaration.hxx"
+#include "astexpression.hxx"
 
 namespace typereg { class Writer; }
 
-class AstConstant : public AstDeclaration
+class AstConstant final : public AstDeclaration
 {
 public:
     AstConstant(const ExprType type, const NodeType nodeType,

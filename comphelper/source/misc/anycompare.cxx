@@ -49,6 +49,8 @@ namespace comphelper
     using ::com::sun::star::util::Time;
     using ::com::sun::star::util::DateTime;
 
+    namespace {
+
     class DatePredicateLess : public IKeyPredicateLess
     {
     public:
@@ -158,6 +160,7 @@ namespace comphelper
         }
     };
 
+    }
 
     std::unique_ptr< IKeyPredicateLess > getStandardLessPredicate( Type const & i_type, Reference< XCollator > const & i_collator )
     {
@@ -226,6 +229,17 @@ namespace comphelper
         return pComparator;
     }
 
+    bool anyLess( css::uno::Any const & lhs, css::uno::Any const & rhs)
+    {
+        auto lhsTypeClass = lhs.getValueType().getTypeClass();
+        auto rhsTypeClass = rhs.getValueType().getTypeClass();
+        if (lhsTypeClass != rhsTypeClass)
+            return lhsTypeClass < rhsTypeClass;
+        std::unique_ptr< IKeyPredicateLess > pred = getStandardLessPredicate( lhs.getValueType(), Reference< XCollator >() );
+        if (!pred) // type==VOID
+            return false;
+        return pred->isLess(lhs, rhs);
+    }
 
 } // namespace comphelper
 

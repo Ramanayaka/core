@@ -19,16 +19,11 @@
 
 #include "XMLIndexUserSourceContext.hxx"
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/container/XIndexReplace.hpp>
 #include <sax/tools/converter.hxx>
 #include "XMLIndexTemplateContext.hxx"
-#include "XMLIndexTitleTemplateContext.hxx"
-#include "XMLIndexTOCStylesContext.hxx"
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/txtimp.hxx>
-#include <xmloff/xmlnmspe.hxx>
-#include <xmloff/nmspmap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <rtl/ustring.hxx>
 
@@ -129,7 +124,6 @@ void XMLIndexUserSourceContext::ProcessAttribute(
     }
 }
 
-
 void XMLIndexUserSourceContext::EndElement()
 {
     rIndexPropertySet->setPropertyValue("CreateFromEmbeddedObjects", css::uno::Any(bUseObjects));
@@ -148,8 +142,7 @@ void XMLIndexUserSourceContext::EndElement()
     XMLIndexSourceBaseContext::EndElement();
 }
 
-
-SvXMLImportContext* XMLIndexUserSourceContext::CreateChildContext(
+SvXMLImportContextRef XMLIndexUserSourceContext::CreateChildContext(
     sal_uInt16 nPrefix,
     const OUString& rLocalName,
     const Reference<XAttributeList> & xAttrList )

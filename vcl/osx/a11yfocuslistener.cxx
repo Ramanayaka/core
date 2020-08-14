@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "osx/a11yfocustracker.hxx"
-#include "osx/a11yfactory.h"
+#include <osx/a11yfocustracker.hxx>
+#include <osx/a11yfactory.h>
 
 #include "a11yfocuslistener.hxx"
 
@@ -57,7 +57,7 @@ id AquaA11yFocusListener::getFocusedUIElement()
     return m_focusedObject;
 }
 
-void SAL_CALL
+void
 AquaA11yFocusListener::focusedObjectChanged(const Reference< XAccessible >& xAccessible)
 {
     if ( nil != m_focusedObject ) {

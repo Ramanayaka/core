@@ -133,10 +133,7 @@ void SAL_CALL CancelJobsThread::run()
         mbAllJobsCancelled = true;
 
         {
-            TimeValue aSleepTime;
-            aSleepTime.Seconds = 1;
-            aSleepTime.Nanosec = 0;
-            osl_waitThread( &aSleepTime );
+            osl::Thread::wait(std::chrono::seconds(1));
         }
     }
 }
@@ -148,7 +145,7 @@ void SAL_CALL CancelJobsThread::run()
 class TerminateOfficeThread : public osl::Thread
 {
     public:
-        TerminateOfficeThread( CancelJobsThread& rCancelJobsThread,
+        TerminateOfficeThread( CancelJobsThread const & rCancelJobsThread,
                                css::uno::Reference< css::uno::XComponentContext > const & xContext )
             : osl::Thread(),
               maMutex(),
@@ -208,7 +205,7 @@ void TerminateOfficeThread::PerformOfficeTermination()
 {
     css::uno::Reference< css::frame::XDesktop2 > xDesktop = css::frame::Desktop::create(mxContext);
 
-    css::uno::Reference< css::container::XElementAccess > xList( xDesktop->getFrames(), css::uno::UNO_QUERY );
+    css::uno::Reference< css::container::XElementAccess > xList = xDesktop->getFrames();
     if ( !xList.is() )
     {
         OSL_FAIL( "<TerminateOfficeThread::PerformOfficeTermination()> - no XElementAccess!" );
@@ -232,9 +229,7 @@ FinalThreadManager::FinalThreadManager(css::uno::Reference< css::uno::XComponent
     : m_xContext(context),
       maMutex(),
       maThreads(),
-      mpCancelJobsThread( nullptr ),
       mpTerminateOfficeThread( nullptr ),
-      mpPauseThreadStarting( nullptr ),
       mbRegisteredAtDesktop( false )
 {
 
@@ -248,10 +243,9 @@ void FinalThreadManager::registerAsListenerAtDesktop()
 
 FinalThreadManager::~FinalThreadManager()
 {
-    if ( mpPauseThreadStarting != nullptr )
+    if ( mpPauseThreadStarting )
     {
-        delete mpPauseThreadStarting;
-        mpPauseThreadStarting = nullptr;
+        mpPauseThreadStarting.reset();
     }
 
     if ( mpTerminateOfficeThread != nullptr )
@@ -273,15 +267,14 @@ FinalThreadManager::~FinalThreadManager()
 
         mpCancelJobsThread->stopWhenAllJobsCancelled();
         mpCancelJobsThread->join();
-        delete mpCancelJobsThread;
-        mpCancelJobsThread = nullptr;
+        mpCancelJobsThread.reset();
     }
 }
 
 // com.sun.star.uno.XServiceInfo:
 OUString SAL_CALL FinalThreadManager::getImplementationName()
 {
-    return OUString("com.sun.star.util.comp.FinalThreadManager");
+    return "com.sun.star.util.comp.FinalThreadManager";
 }
 
 sal_Bool SAL_CALL FinalThreadManager::supportsService(OUString const & serviceName)
@@ -291,8 +284,7 @@ sal_Bool SAL_CALL FinalThreadManager::supportsService(OUString const & serviceNa
 
 css::uno::Sequence< OUString > SAL_CALL FinalThreadManager::getSupportedServiceNames()
 {
-    css::uno::Sequence< OUString > s { "com.sun.star.util.JobManager" };
-    return s;
+    return { "com.sun.star.util.JobManager" };
 }
 
 // css::util::XJobManager:
@@ -326,27 +318,26 @@ void SAL_CALL FinalThreadManager::cancelAllJobs()
         maThreads.clear();
     }
 
-    if ( !aThreads.empty() )
-    {
-        osl::MutexGuard aGuard(maMutex);
+    if ( aThreads.empty() )
+        return;
 
-        if ( mpCancelJobsThread == nullptr )
+    osl::MutexGuard aGuard(maMutex);
+
+    if ( mpCancelJobsThread == nullptr )
+    {
+        mpCancelJobsThread.reset(new CancelJobsThread( aThreads ));
+        if ( !mpCancelJobsThread->create() )
         {
-            mpCancelJobsThread = new CancelJobsThread( aThreads );
-            if ( !mpCancelJobsThread->create() )
+            mpCancelJobsThread.reset();
+            for (auto const& elem : aThreads)
             {
-                delete mpCancelJobsThread;
-                mpCancelJobsThread = nullptr;
-                while ( !aThreads.empty() )
-                {
-                    aThreads.front()->cancel();
-                    aThreads.pop_front();
-                }
+                elem->cancel();
             }
+            aThreads.clear();
         }
-        else
-            mpCancelJobsThread->addJobs( aThreads );
     }
+    else
+        mpCancelJobsThread->addJobs( aThreads );
 }
 
 // css::frame::XTerminateListener
@@ -360,10 +351,7 @@ void SAL_CALL FinalThreadManager::queryTermination( const css::lang::EventObject
     if ( mpCancelJobsThread != nullptr &&
          !mpCancelJobsThread->allJobsCancelled() )
     {
-        TimeValue aSleepTime;
-        aSleepTime.Seconds = 1;
-        aSleepTime.Nanosec = 0;
-        osl_waitThread( &aSleepTime );
+        osl::Thread::wait(std::chrono::seconds(1));
     }
 
     if ( mpCancelJobsThread != nullptr &&
@@ -389,18 +377,13 @@ void SAL_CALL FinalThreadManager::queryTermination( const css::lang::EventObject
         throw css::frame::TerminationVetoException();
     }
 
-    mpPauseThreadStarting = new SwPauseThreadStarting();
+    mpPauseThreadStarting.reset(new SwPauseThreadStarting());
 }
 
 void SAL_CALL FinalThreadManager::cancelTermination( const css::lang::EventObject& )
 {
-    if ( mpPauseThreadStarting != nullptr )
-    {
-        delete mpPauseThreadStarting;
-        mpPauseThreadStarting = nullptr;
-    }
-
-    }
+    mpPauseThreadStarting.reset();
+}
 
 void SAL_CALL FinalThreadManager::notifyTermination( const css::lang::EventObject& )
 {
@@ -421,8 +404,7 @@ void SAL_CALL FinalThreadManager::notifyTermination( const css::lang::EventObjec
     {
         mpCancelJobsThread->stopWhenAllJobsCancelled();
         mpCancelJobsThread->join();
-        delete mpCancelJobsThread;
-        mpCancelJobsThread = nullptr;
+        mpCancelJobsThread.reset();
     }
 
     // get reference of this
@@ -437,7 +419,7 @@ void SAL_CALL FinalThreadManager::disposing( const css::lang::EventObject& )
     // nothing to do, because instance doesn't hold any references of observed objects
 }
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_util_comp_FinalThreadManager_get_implementation(css::uno::XComponentContext* context,
                                 css::uno::Sequence<css::uno::Any> const &)
 {

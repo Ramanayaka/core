@@ -16,9 +16,9 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_BASCTL_SOURCE_BASICIDE_UNOMODEL_HXX
-#define INCLUDED_BASCTL_SOURCE_BASICIDE_UNOMODEL_HXX
+#pragma once
 
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <sfx2/sfxbasemodel.hxx>
 
@@ -31,7 +31,7 @@ class SIDEModel : public SfxBaseModel,
     /// @throws css::io::IOException
     static void notImplemented();
 public:
-    explicit SIDEModel(SfxObjectShell *pObjSh = nullptr);
+    explicit SIDEModel(SfxObjectShell *pObjSh);
     virtual ~SIDEModel() override;
 
     //XInterface
@@ -54,17 +54,8 @@ public:
                                       const   css::uno::Sequence< css::beans::PropertyValue >&   seqArguments    ) override;
     virtual void SAL_CALL storeToURL( const   OUString& sURL,
                                       const   css::uno::Sequence< css::beans::PropertyValue >&   seqArguments    ) override;
-
-    static css::uno::Sequence< OUString > getSupportedServiceNames_Static();
-    static OUString getImplementationName_Static();
 };
 
-/// @throws com::sun::star::uno::Exception
-css::uno::Reference< css::uno::XInterface > SAL_CALL SIDEModel_createInstance(
-                const css::uno::Reference< css::lang::XMultiServiceFactory > & rSMgr );
-
 } // namespace basctl
-
-#endif // INCLUDED_BASCTL_SOURCE_BASICIDE_UNOMODEL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,7 +22,6 @@
 
 #include <svl/stritem.hxx>
 #include <svx/xtable.hxx>
-#include <svx/xdef.hxx>
 #include <svx/svxdllapi.h>
 
 /************************************************************************/
@@ -33,9 +32,8 @@ class NameOrIndex;
 typedef bool (*SvxCompareValueFunc)( const NameOrIndex* p1, const NameOrIndex* p2 );
 
 
-// class NameOrIndex
 
-class SVX_DLLPUBLIC NameOrIndex : public SfxStringItem
+class SVXCORE_DLLPUBLIC NameOrIndex : public SfxStringItem
 {
     sal_Int32    nPalIndex;
 
@@ -46,15 +44,12 @@ public:
             NameOrIndex() { nPalIndex = -1; }
             NameOrIndex(sal_uInt16 nWhich, sal_Int32 nIndex);
             NameOrIndex(sal_uInt16 nWhich, const OUString& rName);
-            NameOrIndex(sal_uInt16 nWhich, SvStream& rIn);
             NameOrIndex(const NameOrIndex& rNameOrIndex);
 
     virtual bool         operator==(const SfxPoolItem& rItem) const override;
-    virtual SfxPoolItem* Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem* Create(SvStream& rIn, sal_uInt16 nVer) const override;
-    virtual SvStream&    Store(SvStream& rOut, sal_uInt16 nItemVersion ) const override;
+    virtual NameOrIndex* Clone(SfxItemPool* pPool = nullptr) const override;
 
-            OUString     GetName() const              { return GetValue();   }
+            OUString const & GetName() const              { return GetValue();   }
             void         SetName(const OUString& rName) { SetValue(rName);     }
             bool         IsIndex() const          { return (nPalIndex >= 0); }
 
@@ -63,9 +58,9 @@ public:
         Argument pPool2 can be null.
         If returned string equals NameOrIndex->GetName(), the name was already unique.
     */
-    static OUString CheckNamedItem( const NameOrIndex* pCheckItem, const sal_uInt16 nWhich, const SfxItemPool* pPool1, const SfxItemPool* pPool2, SvxCompareValueFunc pCompareValueFunc, sal_uInt16 nPrefixResId, const XPropertyListRef &pDefaults );
+    static OUString CheckNamedItem( const NameOrIndex* pCheckItem, const sal_uInt16 nWhich, const SfxItemPool* pPool1, SvxCompareValueFunc pCompareValueFunc, const char* pPrefixResId, const XPropertyListRef &pDefaults );
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 #endif

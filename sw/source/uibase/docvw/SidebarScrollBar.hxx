@@ -13,20 +13,13 @@
 #include <vcl/scrbar.hxx>
 
 class SwView;
-
-namespace sw
-{
-namespace annotation
+namespace sw::annotation
 {
 class SwAnnotationWin;
 }
-}
 
-namespace sw
+namespace sw::sidebarwindows
 {
-namespace sidebarwindows
-{
-
 /// Similar to the VCL scrollbar, but instrumented with Writer-specific details for LOK.
 class SidebarScrollBar : public ScrollBar
 {
@@ -34,16 +27,15 @@ class SidebarScrollBar : public ScrollBar
     SwView& m_rView;
 
 protected:
-    /// @see OutputDevice::LogicInvalidate().
+    /// @see Window::LogicInvalidate().
     void LogicInvalidate(const tools::Rectangle* pRectangle) override;
     void MouseMove(const MouseEvent& rMouseEvent) override;
     void MouseButtonUp(const MouseEvent& rMouseEvent) override;
+
 public:
     SidebarScrollBar(sw::annotation::SwAnnotationWin& rSidebarWin, WinBits nStyle, SwView& rView);
     ~SidebarScrollBar() override;
 };
-
-}
 }
 
 #endif

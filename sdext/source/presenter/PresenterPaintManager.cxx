@@ -26,7 +26,7 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-namespace sdext { namespace presenter {
+namespace sdext::presenter {
 
 PresenterPaintManager::PresenterPaintManager (
     const css::uno::Reference<css::awt::XWindow>& rxParentWindow,
@@ -56,7 +56,7 @@ void PresenterPaintManager::Invalidate (
 
     PresenterPaneContainer::SharedPaneDescriptor pDescriptor(
         mpPaneContainer->FindContentWindow(rxWindow));
-    if (pDescriptor.get()==nullptr || ! pDescriptor->mbIsOpaque)
+    if (!pDescriptor || ! pDescriptor->mbIsOpaque)
         nInvalidateMode |= awt::InvalidateStyle::TRANSPARENT;
     else
         nInvalidateMode |= awt::InvalidateStyle::NOTRANSPARENT;
@@ -98,7 +98,7 @@ void PresenterPaintManager::Invalidate (
 
     PresenterPaneContainer::SharedPaneDescriptor pDescriptor(
         mpPaneContainer->FindContentWindow(rxWindow));
-    if (pDescriptor.get()==nullptr || ! pDescriptor->mbIsOpaque)
+    if (!pDescriptor || ! pDescriptor->mbIsOpaque)
         nInvalidateMode |= awt::InvalidateStyle::TRANSPARENT;
     else
         nInvalidateMode |= awt::InvalidateStyle::NOTRANSPARENT;
@@ -136,6 +136,6 @@ void PresenterPaintManager::Invalidate (
     }
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

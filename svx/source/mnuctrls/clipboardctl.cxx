@@ -17,13 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/app.hxx>
 #include <sfx2/tbxctrl.hxx>
-#include <sfx2/bindings.hxx>
-#include <sfx2/dispatch.hxx>
 #include <svl/intitem.hxx>
-#include <sot/exchange.hxx>
-#include <svl/eitem.hxx>
+#include <vcl/menu.hxx>
 #include <vcl/toolbox.hxx>
 #include <svx/clipboardctl.hxx>
 #include <svx/clipfmtitem.hxx>
@@ -42,7 +38,6 @@ SvxClipBoardControl::SvxClipBoardControl(
         sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx ) :
 
     SfxToolBoxControl( nSlotId, nId, rTbx ),
-    pClipboardFmtItem( nullptr ),
     pPopup( nullptr ),
     bDisabled( false )
 {
@@ -56,13 +51,11 @@ SvxClipBoardControl::SvxClipBoardControl(
 SvxClipBoardControl::~SvxClipBoardControl()
 {
     DelPopup();
-    delete pClipboardFmtItem;
 }
 
-
-VclPtr<SfxPopupWindow> SvxClipBoardControl::CreatePopupWindow()
+void SvxClipBoardControl::CreatePopupWindow()
 {
-    const SvxClipboardFormatItem* pFmtItem = dynamic_cast<SvxClipboardFormatItem*>( pClipboardFmtItem  );
+    const SvxClipboardFormatItem* pFmtItem = dynamic_cast<SvxClipboardFormatItem*>( pClipboardFmtItem.get()  );
     if ( pFmtItem )
     {
         if (pPopup)
@@ -77,7 +70,7 @@ VclPtr<SfxPopupWindow> SvxClipBoardControl::CreatePopupWindow()
             OUString aFmtStr( pFmtItem->GetClipbrdFormatName( i ) );
             if (aFmtStr.isEmpty())
               aFmtStr = SvPasteObjectHelper::GetSotFormatUIName( nFmtID );
-            pPopup->InsertItem( (sal_uInt16)nFmtID, aFmtStr );
+            pPopup->InsertItem( static_cast<sal_uInt16>(nFmtID), aFmtStr );
         }
 
         ToolBox& rBox = GetToolBox();
@@ -103,18 +96,16 @@ VclPtr<SfxPopupWindow> SvxClipBoardControl::CreatePopupWindow()
 
     GetToolBox().EndSelection();
     DelPopup();
-    return nullptr;
 }
-
 
 void SvxClipBoardControl::StateChanged( sal_uInt16 nSID, SfxItemState eState, const SfxPoolItem* pState )
 {
     if ( SID_CLIPBOARD_FORMAT_ITEMS == nSID )
     {
-        DELETEZ( pClipboardFmtItem );
+        pClipboardFmtItem.reset();
         if ( eState >= SfxItemState::DEFAULT )
         {
-            pClipboardFmtItem = pState->Clone();
+            pClipboardFmtItem.reset( pState->Clone() );
             GetToolBox().SetItemBits( GetId(), GetToolBox().GetItemBits( GetId() ) | ToolBoxItemBits::DROPDOWN );
         }
         else if ( !bDisabled )

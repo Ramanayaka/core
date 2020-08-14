@@ -17,22 +17,31 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sfx2/sidebar/DeckLayouter.hxx>
+#include <sidebar/DeckLayouter.hxx>
 #include <sfx2/sidebar/Theme.hxx>
 #include <sfx2/sidebar/Panel.hxx>
-#include <sfx2/sidebar/PanelTitleBar.hxx>
+#include <sidebar/PanelTitleBar.hxx>
 #include <sfx2/sidebar/Deck.hxx>
+#include <sfx2/sidebar/SidebarController.hxx>
+#include <comphelper/lok.hxx>
 
+#include <comphelper/processfactory.hxx>
 #include <vcl/window.hxx>
 #include <vcl/scrbar.hxx>
+
+#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/frame/Desktop.hpp>
+#include <com/sun/star/frame/XDesktop2.hpp>
+#include <com/sun/star/frame/XFrame.hpp>
+#include <com/sun/star/ui/XSidebarPanel.hpp>
 
 using namespace css;
 using namespace css::uno;
 
-namespace sfx2 { namespace sidebar {
+namespace sfx2::sidebar {
 
 namespace {
-    static const sal_Int32 MinimalPanelHeight (25);
+    const sal_Int32 MinimalPanelHeight (25);
 
     enum LayoutMode
     {
@@ -47,16 +56,21 @@ namespace {
         css::ui::LayoutSize maLayoutSize;
         sal_Int32 mnDistributedHeight;
         sal_Int32 mnWeight;
-        sal_Int32 mnPanelIndex;
         bool mbShowTitleBar;
 
-        LayoutItem()
-            : mpPanel(),maLayoutSize(0,0,0),mnDistributedHeight(0),mnWeight(0),mnPanelIndex(0),mbShowTitleBar(true)
-        {}
+        LayoutItem(const VclPtr<Panel>& rPanel)
+            : mpPanel(rPanel)
+            , maLayoutSize(0, 0, 0)
+            , mnDistributedHeight(0)
+            , mnWeight(0)
+            , mbShowTitleBar(true)
+        {
+        }
     };
     tools::Rectangle LayoutPanels (
         const tools::Rectangle& rContentArea,
         sal_Int32& rMinimalWidth,
+        sal_Int32& rMinimalHeight,
         ::std::vector<LayoutItem>& rLayoutItems,
         vcl::Window& rScrollClipWindow,
         vcl::Window& rScrollContainer,
@@ -72,6 +86,8 @@ namespace {
         const sal_Int32 nHeightToDistribute,
         const sal_Int32 nContainerHeight,
         const bool bMinimumHeightIsBase);
+    bool MoveResizePixel(const VclPtr<vcl::Window> &pWindow,
+                         const Point &rNewPos, const Size &rNewSize);
     sal_Int32 PlacePanels (
         ::std::vector<LayoutItem>& rLayoutItems,
         const sal_Int32 nWidth,
@@ -96,6 +112,7 @@ namespace {
 void DeckLayouter::LayoutDeck (
     const tools::Rectangle& rContentArea,
     sal_Int32& rMinimalWidth,
+    sal_Int32& rMinimalHeight,
     SharedPanelContainer& rPanels,
     vcl::Window& rDeckTitleBar,
     vcl::Window& rScrollClipWindow,
@@ -111,15 +128,14 @@ void DeckLayouter::LayoutDeck (
     {
         // Prepare the layout item container.
         ::std::vector<LayoutItem> aLayoutItems;
-        aLayoutItems.resize(rPanels.size());
-        for (sal_Int32 nIndex(0),nCount(rPanels.size()); nIndex<nCount; ++nIndex)
-        {
-            aLayoutItems[nIndex].mpPanel = rPanels[nIndex];
-            aLayoutItems[nIndex].mnPanelIndex = nIndex;
-        }
+        aLayoutItems.reserve(rPanels.size());
+        for (const auto& rPanel : rPanels)
+            aLayoutItems.emplace_back(rPanel);
+
         aBox = LayoutPanels(
             aBox,
             rMinimalWidth,
+            rMinimalHeight,
             aLayoutItems,
             rScrollClipWindow,
             rScrollContainer,
@@ -134,6 +150,7 @@ namespace {
 tools::Rectangle LayoutPanels (
     const tools::Rectangle& rContentArea,
     sal_Int32& rMinimalWidth,
+    sal_Int32& rMinimalHeight,
     ::std::vector<LayoutItem>& rLayoutItems,
     vcl::Window& rScrollClipWindow,
     vcl::Window& rScrollContainer,
@@ -157,17 +174,14 @@ tools::Rectangle LayoutPanels (
     sal_Int32 nTotalPreferredHeight (0);
     sal_Int32 nTotalMinimumHeight (0);
 
-    for(::std::vector<LayoutItem>::const_iterator iItem(rLayoutItems.begin()),
-         iEnd(rLayoutItems.end());
-        iItem!=iEnd;
-        ++iItem)
+    for (const auto& rItem : rLayoutItems)
     {
-        nTotalMinimumHeight += iItem->maLayoutSize.Minimum;
-        nTotalPreferredHeight += iItem->maLayoutSize.Preferred;
+        nTotalMinimumHeight += rItem.maLayoutSize.Minimum;
+        nTotalPreferredHeight += rItem.maLayoutSize.Preferred;
     }
 
-    if (nTotalMinimumHeight > nAvailableHeight
-        && ! bShowVerticalScrollBar)
+    if (nTotalMinimumHeight > nAvailableHeight && !bShowVerticalScrollBar
+        && !comphelper::LibreOfficeKit::isActive())
     {
         // Not enough space, even when all panels are shrunk to their
         // minimum height.
@@ -175,6 +189,7 @@ tools::Rectangle LayoutPanels (
         return LayoutPanels(
             rContentArea,
             rMinimalWidth,
+            rMinimalHeight,
             rLayoutItems,
             rScrollClipWindow,
             rScrollContainer,
@@ -236,8 +251,20 @@ tools::Rectangle LayoutPanels (
         SetupVerticalScrollBar(rVerticalScrollBar, nContentHeight, aBox.GetHeight());
 
     const sal_Int32 nUsedHeight (PlacePanels(rLayoutItems, nWidth, eMode, rScrollContainer));
-    aBox.Top() += nUsedHeight;
+    aBox.AdjustTop(nUsedHeight );
+    rMinimalHeight = nUsedHeight;
     return aBox;
+}
+
+bool MoveResizePixel(const VclPtr<vcl::Window> &pWindow,
+                     const Point &rNewPos, const Size &rNewSize)
+{
+    Point aCurPos = pWindow->GetPosPixel();
+    Size aCurSize = pWindow->GetSizePixel();
+    if (rNewPos == aCurPos && aCurSize == rNewSize)
+        return false;
+    pWindow->setPosSizePixel(rNewPos.X(), rNewPos.Y(), rNewSize.Width(), rNewSize.Height());
+    return true;
 }
 
 sal_Int32 PlacePanels (
@@ -249,6 +276,8 @@ sal_Int32 PlacePanels (
     ::std::vector<sal_Int32> aSeparators;
     const sal_Int32 nDeckSeparatorHeight (Theme::GetInteger(Theme::Int_DeckSeparatorHeight));
     sal_Int32 nY (0);
+
+    vcl::Region aInvalidRegions;
 
     // Assign heights and places.
     for(::std::vector<LayoutItem>::const_iterator iItem(rLayoutItems.begin()),
@@ -262,8 +291,11 @@ sal_Int32 PlacePanels (
         Panel& rPanel (*iItem->mpPanel);
 
         // Separator above the panel title bar.
-        aSeparators.push_back(nY);
-        nY += nDeckSeparatorHeight;
+        if (!rPanel.IsLurking())
+        {
+            aSeparators.push_back(nY);
+            nY += nDeckSeparatorHeight;
+        }
 
         // Place the title bar.
         VclPtr<PanelTitleBar> pTitleBar = rPanel.GetTitleBar();
@@ -283,7 +315,7 @@ sal_Int32 PlacePanels (
             }
         }
 
-        if (rPanel.IsExpanded())
+        if (rPanel.IsExpanded() && !rPanel.IsLurking())
         {
             rPanel.Show();
 
@@ -307,8 +339,15 @@ sal_Int32 PlacePanels (
             }
 
             // Place the panel.
-            rPanel.setPosSizePixel(0, nY, nWidth, nPanelHeight);
-            rPanel.Invalidate();
+            Point aNewPos(0, nY);
+            Size  aNewSize(nWidth, nPanelHeight);
+
+            // Only invalidate if we moved
+            if (MoveResizePixel(&rPanel, aNewPos, aNewSize))
+            {
+                tools::Rectangle aRect(aNewPos, aNewSize);
+                aInvalidRegions.Union(rPanel.PixelToLogic(aRect));
+            }
 
             nY += nPanelHeight;
         }
@@ -332,6 +371,8 @@ sal_Int32 PlacePanels (
     if (pScrollContainerWindow != nullptr)
         pScrollContainerWindow->SetSeparators(aSeparators);
 
+    rScrollContainer.Invalidate(aInvalidRegions);
+
     return nY;
 }
 
@@ -345,49 +386,75 @@ void GetRequestedSizes (
 
     const sal_Int32 nDeckSeparatorHeight (Theme::GetInteger(Theme::Int_DeckSeparatorHeight));
 
-    ::std::vector<LayoutItem>::const_iterator iEnd(rLayoutItems.end());
-
-    for(::std::vector<LayoutItem>::iterator iItem(rLayoutItems.begin());
-        iItem!=iEnd;
-        ++iItem)
+    for (auto& rItem : rLayoutItems)
     {
-        ui::LayoutSize aLayoutSize (ui::LayoutSize(0,0,0));
-        if (iItem->mpPanel != nullptr)
+        rItem.maLayoutSize = ui::LayoutSize(0,0,0);
+
+        if (rItem.mpPanel == nullptr)
+            continue;
+
+        if (rItem.mpPanel->IsLurking())
         {
-            if (rLayoutItems.size() == 1
-                && iItem->mpPanel->IsTitleBarOptional())
-            {
-                // There is only one panel and its title bar is
-                // optional => hide it.
-                rAvailableHeight -= nDeckSeparatorHeight;
-                iItem->mbShowTitleBar = false;
-            }
-            else
-            {
-                // Show the title bar and a separator above and below
-                // the title bar.
-                const sal_Int32 nPanelTitleBarHeight (Theme::GetInteger(Theme::Int_PanelTitleBarHeight) * iItem->mpPanel->GetDPIScaleFactor());
-
-                rAvailableHeight -= nPanelTitleBarHeight;
-                rAvailableHeight -= nDeckSeparatorHeight;
-            }
-
-            if (iItem->mpPanel->IsExpanded())
-            {
-                Reference<ui::XSidebarPanel> xPanel (iItem->mpPanel->GetPanelComponent());
-                if (xPanel.is())
-                {
-                    aLayoutSize = xPanel->getHeightForWidth(rContentBox.GetWidth());
-
-                    sal_Int32 nWidth = xPanel->getMinimalWidth();
-                    if (nWidth > rMinimalWidth)
-                        rMinimalWidth = nWidth;
-                }
-                else
-                    aLayoutSize = ui::LayoutSize(MinimalPanelHeight, -1, 0);
-            }
+            rItem.mbShowTitleBar = false;
+            continue;
         }
-        iItem->maLayoutSize = aLayoutSize;
+
+        if (rLayoutItems.size() == 1
+            && rItem.mpPanel->IsTitleBarOptional())
+        {
+            // There is only one panel and its title bar is
+            // optional => hide it.
+            rAvailableHeight -= nDeckSeparatorHeight;
+            rItem.mbShowTitleBar = false;
+        }
+        else
+        {
+            // Show the title bar and a separator above and below
+            // the title bar.
+            const sal_Int32 nPanelTitleBarHeight (Theme::GetInteger(Theme::Int_PanelTitleBarHeight) * rItem.mpPanel->GetDPIScaleFactor());
+
+            rAvailableHeight -= nPanelTitleBarHeight;
+            rAvailableHeight -= nDeckSeparatorHeight;
+        }
+
+        if (rItem.mpPanel->IsExpanded() && rItem.mpPanel->GetPanelComponent().is())
+        {
+            Reference<ui::XSidebarPanel> xPanel (rItem.mpPanel->GetPanelComponent());
+
+            rItem.maLayoutSize = xPanel->getHeightForWidth(rContentBox.GetWidth());
+            if (!(0 <= rItem.maLayoutSize.Minimum && rItem.maLayoutSize.Minimum <= rItem.maLayoutSize.Preferred
+                  && rItem.maLayoutSize.Preferred <= rItem.maLayoutSize.Maximum))
+            {
+                SAL_WARN("sfx.sidebar", "Please follow LayoutSize constraints: 0 ≤ "
+                         "Minimum ≤ Preferred ≤ Maximum."
+                         " Currently: Minimum: "
+                         << rItem.maLayoutSize.Minimum
+                         << " Preferred: " << rItem.maLayoutSize.Preferred
+                         << " Maximum: " << rItem.maLayoutSize.Maximum);
+            }
+
+            sal_Int32 nWidth = xPanel->getMinimalWidth();
+
+            uno::Reference<frame::XDesktop2> xDesktop
+                = frame::Desktop::create(comphelper::getProcessComponentContext());
+            uno::Reference<frame::XFrame> xFrame = xDesktop->getActiveFrame();
+            if (xFrame.is())
+            {
+                SidebarController* pController
+                    = SidebarController::GetSidebarControllerForFrame(xFrame);
+                if (pController && pController->getMaximumWidth() < nWidth)
+                {
+                    // Add 100 extra pixels to still have the sidebar resizable
+                    // (See also documentation of XSidebarPanel::getMinimalWidth)
+                    pController->setMaximumWidth(nWidth + 100);
+                }
+            }
+
+            if (nWidth > rMinimalWidth)
+                rMinimalWidth = nWidth;
+        }
+        else
+            rItem.maLayoutSize = ui::LayoutSize(MinimalPanelHeight, -1, 0);
     }
 }
 
@@ -407,25 +474,21 @@ void DistributeHeights (
     sal_Int32 nTotalWeight (0);
     sal_Int32 nNoMaximumCount (0);
 
-    ::std::vector<LayoutItem>::const_iterator iEnd(rLayoutItems.end());
-
-    for(::std::vector<LayoutItem>::iterator iItem(rLayoutItems.begin());
-        iItem!=iEnd;
-        ++iItem)
+    for (auto& rItem : rLayoutItems)
     {
-        if (iItem->maLayoutSize.Maximum == 0)
+        if (rItem.maLayoutSize.Maximum == 0)
             continue;
-        if (iItem->maLayoutSize.Maximum < 0)
+        if (rItem.maLayoutSize.Maximum < 0)
             ++nNoMaximumCount;
 
         const sal_Int32 nBaseHeight (
             bMinimumHeightIsBase
-                ? iItem->maLayoutSize.Minimum
-                : iItem->maLayoutSize.Preferred);
+                ? rItem.maLayoutSize.Minimum
+                : rItem.maLayoutSize.Preferred);
         if (nBaseHeight < nContainerHeight)
         {
-            iItem->mnWeight = nContainerHeight - nBaseHeight;
-            nTotalWeight += iItem->mnWeight;
+            rItem.mnWeight = nContainerHeight - nBaseHeight;
+            nTotalWeight += rItem.mnWeight;
         }
     }
 
@@ -433,21 +496,19 @@ void DistributeHeights (
         return;
 
     // First pass of height distribution.
-    for(::std::vector<LayoutItem>::iterator iItem(rLayoutItems.begin());
-        iItem!=iEnd;
-        ++iItem)
+    for (auto& rItem : rLayoutItems)
     {
         const sal_Int32 nBaseHeight (
             bMinimumHeightIsBase
-                ? iItem->maLayoutSize.Minimum
-                : iItem->maLayoutSize.Preferred);
-        sal_Int32 nDistributedHeight (iItem->mnWeight * nHeightToDistribute / nTotalWeight);
-        if (nBaseHeight+nDistributedHeight > iItem->maLayoutSize.Maximum
-            && iItem->maLayoutSize.Maximum >= 0)
+                ? rItem.maLayoutSize.Minimum
+                : rItem.maLayoutSize.Preferred);
+        sal_Int32 nDistributedHeight (rItem.mnWeight * nHeightToDistribute / nTotalWeight);
+        if (nBaseHeight+nDistributedHeight > rItem.maLayoutSize.Maximum
+            && rItem.maLayoutSize.Maximum >= 0)
         {
-            nDistributedHeight = ::std::max<sal_Int32>(0,iItem->maLayoutSize.Maximum - nBaseHeight);
+            nDistributedHeight = ::std::max<sal_Int32>(0, rItem.maLayoutSize.Maximum - nBaseHeight);
         }
-        iItem->mnDistributedHeight = nDistributedHeight;
+        rItem.mnDistributedHeight = nDistributedHeight;
         nRemainingHeightToDistribute -= nDistributedHeight;
     }
 
@@ -464,18 +525,17 @@ void DistributeHeights (
         // There are no panels with unrestricted height.
         return;
     }
-    const sal_Int32 nAdditionalHeightPerPanel (nRemainingHeightToDistribute / nNoMaximumCount);
+
+    const sal_Int32 nAdditionalHeightPerPanel(nRemainingHeightToDistribute / nNoMaximumCount);
     // Handle rounding error.
     sal_Int32 nAdditionalHeightForFirstPanel (nRemainingHeightToDistribute
         - nNoMaximumCount*nAdditionalHeightPerPanel);
 
-    for(::std::vector<LayoutItem>::iterator iItem(rLayoutItems.begin());
-        iItem!=iEnd;
-        ++iItem)
+    for (auto& rItem : rLayoutItems)
     {
-        if (iItem->maLayoutSize.Maximum < 0)
+        if (rItem.maLayoutSize.Maximum < 0)
         {
-            iItem->mnDistributedHeight += nAdditionalHeightPerPanel + nAdditionalHeightForFirstPanel;
+            rItem.mnDistributedHeight += nAdditionalHeightPerPanel + nAdditionalHeightForFirstPanel;
             nRemainingHeightToDistribute -= nAdditionalHeightPerPanel + nAdditionalHeightForFirstPanel;
         }
     }
@@ -569,6 +629,6 @@ void UpdateFiller (
 
 }
 
-} } // end of namespace sfx2::sidebar
+} // end of namespace sfx2::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

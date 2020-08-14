@@ -17,31 +17,35 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "drawingml/textbodycontext.hxx"
-#include "drawingml/textbodypropertiescontext.hxx"
-#include "drawingml/textparagraph.hxx"
-#include "drawingml/textparagraphpropertiescontext.hxx"
-#include "drawingml/textcharacterpropertiescontext.hxx"
-#include "drawingml/textliststylecontext.hxx"
-#include "drawingml/textfield.hxx"
-#include "drawingml/textfieldcontext.hxx"
+#include <drawingml/textbodycontext.hxx>
+#include <drawingml/textbodypropertiescontext.hxx>
+#include <drawingml/textparagraph.hxx>
+#include <drawingml/textparagraphpropertiescontext.hxx>
+#include <drawingml/textcharacterpropertiescontext.hxx>
+#include <drawingml/textliststylecontext.hxx>
+#include <drawingml/textfield.hxx>
+#include <drawingml/textfieldcontext.hxx>
+#include <oox/drawingml/shape.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
 
 #include <oox/mathml/import.hxx>
+
+#include <sal/log.hxx>
 
 using namespace ::oox::core;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
+
+namespace {
 
 // CT_TextParagraph
 class TextParagraphContext : public ContextHandler2
 {
 public:
-    TextParagraphContext( ContextHandler2Helper& rParent, TextParagraph& rPara );
+    TextParagraphContext( ContextHandler2Helper const & rParent, TextParagraph& rPara );
 
     virtual ContextHandlerRef onCreateContext( sal_Int32 aElementToken, const AttributeList& rAttribs ) override;
 
@@ -49,7 +53,9 @@ protected:
     TextParagraph& mrParagraph;
 };
 
-TextParagraphContext::TextParagraphContext( ContextHandler2Helper& rParent, TextParagraph& rPara )
+}
+
+TextParagraphContext::TextParagraphContext( ContextHandler2Helper const & rParent, TextParagraph& rPara )
 : ContextHandler2( rParent )
 , mrParagraph( rPara )
 {
@@ -64,20 +70,20 @@ ContextHandlerRef TextParagraphContext::onCreateContext( sal_Int32 aElementToken
         case A_TOKEN( r ):      // "CT_RegularTextRun" Regular Text Run.
         case W_TOKEN( r ):
         {
-            TextRunPtr pRun( new TextRun );
+            TextRunPtr pRun = std::make_shared<TextRun>();
             mrParagraph.addRun( pRun );
             return new RegularTextRunContext( *this, pRun );
         }
         case A_TOKEN( br ): // "CT_TextLineBreak" Soft return line break (vertical tab).
         {
-            TextRunPtr pRun( new TextRun );
+            TextRunPtr pRun = std::make_shared<TextRun>();
             pRun->setLineBreak();
             mrParagraph.addRun( pRun );
             return new RegularTextRunContext( *this, pRun );
         }
         case A_TOKEN( fld ):    // "CT_TextField" Text Field.
         {
-            std::shared_ptr< TextField > pField( new TextField );
+            auto pField = std::make_shared<TextField>();
             mrParagraph.addRun( pField );
             return new TextFieldContext( *this, rAttribs, *pField );
         }
@@ -104,7 +110,7 @@ ContextHandlerRef TextParagraphContext::onCreateContext( sal_Int32 aElementToken
     return nullptr;
 }
 
-RegularTextRunContext::RegularTextRunContext( ContextHandler2Helper& rParent, TextRunPtr const & pRunPtr )
+RegularTextRunContext::RegularTextRunContext( ContextHandler2Helper const & rParent, TextRunPtr const & pRunPtr )
 : ContextHandler2( rParent )
 , mpRunPtr( pRunPtr )
 , mbIsInText( false )
@@ -155,10 +161,16 @@ ContextHandlerRef RegularTextRunContext::onCreateContext( sal_Int32 aElementToke
     return this;
 }
 
-TextBodyContext::TextBodyContext( ContextHandler2Helper& rParent, TextBody& rTextBody )
+TextBodyContext::TextBodyContext( ContextHandler2Helper const & rParent, TextBody& rTextBody )
 : ContextHandler2( rParent )
 , mrTextBody( rTextBody )
 {
+}
+
+TextBodyContext::TextBodyContext(ContextHandler2Helper const& rParent, const ShapePtr& pShapePtr)
+    : TextBodyContext(rParent, *pShapePtr->getTextBody())
+{
+    mpShapePtr = pShapePtr;
 }
 
 ContextHandlerRef TextBodyContext::onCreateContext( sal_Int32 aElementToken, const AttributeList& rAttribs )
@@ -166,7 +178,10 @@ ContextHandlerRef TextBodyContext::onCreateContext( sal_Int32 aElementToken, con
     switch( aElementToken )
     {
         case A_TOKEN( bodyPr ):     // CT_TextBodyPropertyBag
-            return new TextBodyPropertiesContext( *this, rAttribs, mrTextBody.getTextProperties() );
+            if ( mpShapePtr )
+                return new TextBodyPropertiesContext( *this, rAttribs, mpShapePtr );
+            else
+                return new TextBodyPropertiesContext( *this, rAttribs, mrTextBody.getTextProperties() );
         case A_TOKEN( lstStyle ):   // CT_TextListStyle
             return new TextListStyleContext( *this, mrTextBody.getTextListStyle() );
         case A_TOKEN( p ):          // CT_TextParagraph
@@ -187,6 +202,6 @@ ContextHandlerRef TextBodyContext::onCreateContext( sal_Int32 aElementToken, con
     return nullptr;
 }
 
-} }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

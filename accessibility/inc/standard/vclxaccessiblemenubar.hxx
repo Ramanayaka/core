@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEMENUBAR_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEMENUBAR_HXX
+#pragma once
 
 #include <standard/accessiblemenucomponent.hxx>
 #include <vcl/vclptr.hxx>
@@ -28,12 +27,10 @@ class VclWindowEvent;
 namespace vcl { class Window; }
 
 
-//  class VCLXAccessibleMenuBar
 
 
-class VCLXAccessibleMenuBar :   public OAccessibleMenuComponent
+class VCLXAccessibleMenuBar final : public OAccessibleMenuComponent
 {
-protected:
     VclPtr<vcl::Window>     m_pWindow;
 
     virtual bool            IsFocused() override;
@@ -61,6 +58,5 @@ public:
     virtual sal_Int32 SAL_CALL getBackground(  ) override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLEMENUBAR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

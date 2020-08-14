@@ -61,11 +61,10 @@
 #ifndef INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPFRIBMARK_HXX
 #define INCLUDED_LOTUSWORDPRO_SOURCE_FILTER_LWPFRIBMARK_HXX
 
-#include "lwpfrib.hxx"
+#include <lwpfrib.hxx>
 #include "lwpstory.hxx"
 #include "lwpmarker.hxx"
-#include "xfilter/xftextspan.hxx"
-#include "xfilter/xfbookmark.hxx"
+#include <xfilter/xfbookmark.hxx>
 
 class LwpFribCHBlock : public LwpFrib
 {
@@ -87,8 +86,8 @@ class LwpFribBookMark : public LwpFrib
 public:
     explicit LwpFribBookMark( LwpPara* pPara );
     void Read(LwpObjectStream* pObjStrm, sal_uInt16 len) override;
-    const LwpObjectID& GetMarkerID(){return m_objMarker;}
-    sal_uInt8 GetType(){return m_nType;}
+    const LwpObjectID& GetMarkerID() const {return m_objMarker;}
+    sal_uInt8 GetType() const {return m_nType;}
     enum{MARKER_START=1,MARKER_END,MARKER_NONE};
     void XFConvert(XFContentContainer* pXFPara);
     void RegisterStyle(LwpFoundry* pFoundry) override;
@@ -105,7 +104,7 @@ public:
     explicit LwpFribField( LwpPara* pPara );
     void Read(LwpObjectStream* pObjStrm, sal_uInt16 len) override;
     LwpFieldMark* GetMarker();
-    sal_uInt8 GetType(){return m_nType;}
+    sal_uInt8 GetType() const {return m_nType;}
     enum{MARKER_START=1,MARKER_END,MARKER_NONE};
     void XFConvert(XFContentContainer* pXFPara);
     void RegisterStyle(LwpFoundry* pFoundry) override;
@@ -127,15 +126,15 @@ private:
     sal_uInt8 m_nDateTimeType;
     sal_uInt8 m_nDocPowerType;
 
-    void RegisterTimeField(LwpFieldMark* pFieldMark);
+    void RegisterTimeField(const LwpFieldMark* pFieldMark);
     void RegisterDateTimeStyle(const OUString& sFormula);
     void RegisterTotalTimeStyle();
     void CheckFieldType(LwpFieldMark* pFieldMark);
     void ConvertDocFieldStart(XFContentContainer* pXFPara,LwpFieldMark* pFieldMark);
-    void ConvertDocFieldEnd(XFContentContainer* pXFPara,LwpFieldMark* pFieldMark);
+    void ConvertDocFieldEnd(XFContentContainer* pXFPara, const LwpFieldMark* pFieldMark);
     void ConvertDateTimeStart(XFContentContainer* pXFPara,LwpFieldMark* pFieldMark);
-    void ConvertDateTimeEnd(XFContentContainer* pXFPara,LwpFieldMark* pFieldMark);
-    static void ConvertCrossRefEnd(XFContentContainer* pXFPara,LwpFieldMark* pFieldMark);
+    void ConvertDateTimeEnd(XFContentContainer* pXFPara, const LwpFieldMark* pFieldMark);
+    static void ConvertCrossRefEnd(XFContentContainer* pXFPara, const LwpFieldMark* pFieldMark);
     void ConvertCrossRefStart(XFContentContainer* pXFPara,LwpFieldMark* pFieldMark);
 };
 

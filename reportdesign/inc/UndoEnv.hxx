@@ -22,10 +22,14 @@
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/beans/PropertyChangeEvent.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
+#include <com/sun/star/container/XIndexAccess.hpp>
+#include <com/sun/star/util/XModifyListener.hpp>
+#include <com/sun/star/report/XSection.hpp>
 
-#include <cppuhelper/compbase.hxx>
 #include <memory>
 #include <svl/lstner.hxx>
+#include "dllapi.h"
+#include "RptPage.hxx"
 
 namespace rptui
 {
@@ -105,7 +109,7 @@ namespace rptui
         *
         * \param _pPage
         */
-        void RemoveSection(OReportPage* _pPage);
+        void RemoveSection(OReportPage const * _pPage);
 
     protected:
         // XEventListener
@@ -127,8 +131,6 @@ namespace rptui
         virtual void Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
     private:
-        void TogglePropertyListening(const css::uno::Reference< css::uno::XInterface>& Element);
-
         void    implSetModified();
 
         void    switchListening( const css::uno::Reference< css::container::XIndexAccess >& _rxContainer, bool _bStartListening );

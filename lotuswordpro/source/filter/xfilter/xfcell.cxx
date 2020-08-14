@@ -57,17 +57,18 @@
  * @file
  * Table cell.
  ************************************************************************/
-#include "xfcell.hxx"
+#include <xfilter/xfcell.hxx>
 
 #include <stdexcept>
 
-#include "xfparagraph.hxx"
-#include "xftable.hxx"
-#include "xfrow.hxx"
+#include <xfilter/ixfattrlist.hxx>
+#include <xfilter/xfparagraph.hxx>
+#include <xfilter/xftable.hxx>
+#include <xfilter/xfrow.hxx>
+#include <xfilter/xfutil.hxx>
 
 XFCell::XFCell()
     : m_pOwnerRow(nullptr)
-    , m_pSubTable(nullptr)
     , m_nCol(0)
     , m_nColSpaned(1)
     , m_nRepeated(0)

@@ -18,22 +18,24 @@
  */
 
 #include "WrappedStockProperties.hxx"
-#include "macros.hxx"
-#include "FastPropertyIdRanges.hxx"
-#include "DiagramHelper.hxx"
-#include "ChartModelHelper.hxx"
-#include "ControllerLockGuard.hxx"
+#include "Chart2ModelContact.hxx"
+#include <FastPropertyIdRanges.hxx>
+#include <DiagramHelper.hxx>
+#include <ControllerLockGuard.hxx>
+#include <WrappedProperty.hxx>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
+#include <tools/diagnose_ex.h>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::beans::Property;
 
-namespace chart
+namespace chart::wrapper
 {
-namespace wrapper
-{
+
+namespace {
 
 class WrappedStockProperty : public WrappedProperty
 {
@@ -53,6 +55,8 @@ protected:
     mutable css::uno::Any                   m_aOuterValue;
     css::uno::Any                           m_aDefaultValue;
 };
+
+}
 
 WrappedStockProperty::WrappedStockProperty( const OUString& rOuterName
     , const css::uno::Any& rDefaulValue
@@ -75,28 +79,28 @@ void WrappedStockProperty::setPropertyValue( const css::uno::Any& rOuterValue, c
     Reference< chart2::XChartDocument > xChartDoc( m_spChart2ModelContact->getChart2Document() );
     Reference< chart2::XDiagram > xDiagram( m_spChart2ModelContact->getChart2Diagram() );
     sal_Int32 nDimension = ::chart::DiagramHelper::getDimension( xDiagram );
-    if( xChartDoc.is() && xDiagram.is() && nDimension==2 )
+    if( !(xChartDoc.is() && xDiagram.is() && nDimension==2) )
+        return;
+
+    Reference< lang::XMultiServiceFactory > xFactory( xChartDoc->getChartTypeManager(), uno::UNO_QUERY );
+    DiagramHelper::tTemplateWithServiceName aTemplateAndService =
+            DiagramHelper::getTemplateForDiagram( xDiagram, xFactory );
+
+    uno::Reference< chart2::XChartTypeTemplate > xTemplate =
+            getNewTemplate( bNewValue, aTemplateAndService.second, xFactory );
+
+    if(!xTemplate.is())
+        return;
+
+    try
     {
-        Reference< lang::XMultiServiceFactory > xFactory( xChartDoc->getChartTypeManager(), uno::UNO_QUERY );
-        DiagramHelper::tTemplateWithServiceName aTemplateAndService =
-                DiagramHelper::getTemplateForDiagram( xDiagram, xFactory );
-
-        uno::Reference< chart2::XChartTypeTemplate > xTemplate =
-                getNewTemplate( bNewValue, aTemplateAndService.second, xFactory );
-
-        if(xTemplate.is())
-        {
-            try
-            {
-                // locked controllers
-                ControllerLockGuardUNO aCtrlLockGuard( m_spChart2ModelContact->getChartModel() );
-                xTemplate->changeDiagram( xDiagram );
-            }
-            catch( const uno::Exception & ex )
-            {
-                ASSERT_EXCEPTION( ex );
-            }
-        }
+        // locked controllers
+        ControllerLockGuardUNO aCtrlLockGuard( m_spChart2ModelContact->getChartModel() );
+        xTemplate->changeDiagram( xDiagram );
+    }
+    catch( const uno::Exception & )
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -104,6 +108,8 @@ css::uno::Any WrappedStockProperty::getPropertyDefault( const css::uno::Referenc
 {
     return m_aDefaultValue;
 }
+
+namespace {
 
 class WrappedVolumeProperty : public WrappedStockProperty
 {
@@ -114,6 +120,8 @@ public:
 
     uno::Reference< chart2::XChartTypeTemplate > getNewTemplate( bool bNewValue, const OUString& rCurrentTemplate, const Reference< lang::XMultiServiceFactory >& xFactory ) const override;
 };
+
+}
 
 WrappedVolumeProperty::WrappedVolumeProperty(const std::shared_ptr<Chart2ModelContact>& spChart2ModelContact)
         : WrappedStockProperty( "Volume", uno::Any(false) , spChart2ModelContact )
@@ -128,7 +136,7 @@ css::uno::Any WrappedVolumeProperty::getPropertyValue( const css::uno::Reference
     {
         std::vector< uno::Reference< chart2::XDataSeries > > aSeriesVector(
             DiagramHelper::getDataSeriesFromDiagram( xDiagram ) );
-        if( aSeriesVector.size() > 0 )
+        if( !aSeriesVector.empty() )
         {
             Reference< lang::XMultiServiceFactory > xFact( xChartDoc->getChartTypeManager(), uno::UNO_QUERY );
             DiagramHelper::tTemplateWithServiceName aTemplateAndService =
@@ -148,7 +156,7 @@ css::uno::Any WrappedVolumeProperty::getPropertyValue( const css::uno::Reference
 
 uno::Reference< chart2::XChartTypeTemplate > WrappedVolumeProperty::getNewTemplate( bool bNewValue, const OUString& rCurrentTemplate, const Reference< lang::XMultiServiceFactory >& xFactory ) const
 {
-    uno::Reference< chart2::XChartTypeTemplate > xTemplate(nullptr);
+    uno::Reference< chart2::XChartTypeTemplate > xTemplate;
 
     if(!xFactory.is())
         return xTemplate;
@@ -170,6 +178,8 @@ uno::Reference< chart2::XChartTypeTemplate > WrappedVolumeProperty::getNewTempla
     return xTemplate;
 }
 
+namespace {
+
 class WrappedUpDownProperty : public WrappedStockProperty
 {
 public:
@@ -179,6 +189,8 @@ public:
 
     uno::Reference< chart2::XChartTypeTemplate > getNewTemplate( bool bNewValue, const OUString& rCurrentTemplate, const Reference< lang::XMultiServiceFactory >& xFactory ) const override;
 };
+
+}
 
 WrappedUpDownProperty::WrappedUpDownProperty(const std::shared_ptr<Chart2ModelContact>& spChart2ModelContact)
         : WrappedStockProperty( "UpDown", uno::Any(false) , spChart2ModelContact )
@@ -193,7 +205,7 @@ css::uno::Any WrappedUpDownProperty::getPropertyValue( const css::uno::Reference
     {
         std::vector< uno::Reference< chart2::XDataSeries > > aSeriesVector(
             DiagramHelper::getDataSeriesFromDiagram( xDiagram ) );
-        if( aSeriesVector.size() > 0 )
+        if( !aSeriesVector.empty() )
         {
             Reference< lang::XMultiServiceFactory > xFact( xChartDoc->getChartTypeManager(), uno::UNO_QUERY );
             DiagramHelper::tTemplateWithServiceName aTemplateAndService =
@@ -212,7 +224,7 @@ css::uno::Any WrappedUpDownProperty::getPropertyValue( const css::uno::Reference
 }
 uno::Reference< chart2::XChartTypeTemplate > WrappedUpDownProperty::getNewTemplate( bool bNewValue, const OUString& rCurrentTemplate, const Reference< lang::XMultiServiceFactory >& xFactory ) const
 {
-    uno::Reference< chart2::XChartTypeTemplate > xTemplate(nullptr);
+    uno::Reference< chart2::XChartTypeTemplate > xTemplate;
     if( bNewValue ) //add open series
     {
         if( rCurrentTemplate == "com.sun.star.chart2.template.StockLowHighClose" )
@@ -243,30 +255,27 @@ enum
 
 void WrappedStockProperties::addProperties( std::vector< Property > & rOutProperties )
 {
-    rOutProperties.push_back(
-        Property( "Volume",
+    rOutProperties.emplace_back( "Volume",
                   PROP_CHART_STOCK_VOLUME,
                   cppu::UnoType<sal_Bool>::get(),
                   beans::PropertyAttribute::BOUND
                   | beans::PropertyAttribute::MAYBEDEFAULT
-                  | beans::PropertyAttribute::MAYBEVOID ));
-    rOutProperties.push_back(
-        Property( "UpDown",
+                  | beans::PropertyAttribute::MAYBEVOID );
+    rOutProperties.emplace_back( "UpDown",
                   PROP_CHART_STOCK_UPDOWN,
                   cppu::UnoType<sal_Bool>::get(),
                   beans::PropertyAttribute::BOUND
                   | beans::PropertyAttribute::MAYBEDEFAULT
-                  | beans::PropertyAttribute::MAYBEVOID ));
+                  | beans::PropertyAttribute::MAYBEVOID );
 }
 
-void WrappedStockProperties::addWrappedProperties( std::vector< WrappedProperty* >& rList
+void WrappedStockProperties::addWrappedProperties( std::vector< std::unique_ptr<WrappedProperty> >& rList
                                     , const std::shared_ptr< Chart2ModelContact >& spChart2ModelContact )
 {
-    rList.push_back( new WrappedVolumeProperty( spChart2ModelContact ) );
-    rList.push_back( new WrappedUpDownProperty( spChart2ModelContact ) );
+    rList.emplace_back( new WrappedVolumeProperty( spChart2ModelContact ) );
+    rList.emplace_back( new WrappedUpDownProperty( spChart2ModelContact ) );
 }
 
-} //namespace wrapper
-} //namespace chart
+} //namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

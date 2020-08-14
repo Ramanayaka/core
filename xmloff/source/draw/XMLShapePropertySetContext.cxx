@@ -17,13 +17,15 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "XMLShapePropertySetContext.hxx"
+#include <XMLShapePropertySetContext.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmlnumi.hxx>
-#include "xmltabi.hxx"
+#include <xmltabi.hxx>
+#include <xmlsdtypes.hxx>
 #include <xmloff/txtprmap.hxx>
+#include <xmloff/xmlimppr.hxx>
 
-#include "sdpropls.hxx"
+#include <com/sun/star/container/XIndexReplace.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -63,34 +65,34 @@ void XMLShapePropertySetContext::EndElement()
     SvXMLPropertySetContext::EndElement();
 }
 
-SvXMLImportContext *XMLShapePropertySetContext::CreateChildContext(
+SvXMLImportContextRef XMLShapePropertySetContext::CreateChildContext(
                    sal_uInt16 nPrefix,
                    const OUString& rLocalName,
                    const Reference< xml::sax::XAttributeList > & xAttrList,
                    ::std::vector< XMLPropertyState > &rProperties,
                    const XMLPropertyState& rProp )
 {
-    SvXMLImportContext *pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     switch( mxMapper->getPropertySetMapper()->GetEntryContextId( rProp.mnIndex ) )
     {
     case CTF_NUMBERINGRULES:
         mnBulletIndex = rProp.mnIndex;
-        mxBulletStyle = pContext = new SvxXMLListStyleContext( GetImport(), nPrefix, rLocalName, xAttrList );
+        mxBulletStyle = xContext = new SvxXMLListStyleContext( GetImport(), nPrefix, rLocalName, xAttrList );
         break;
     case CTF_TABSTOP:
-        pContext = new SvxXMLTabStopImportContext( GetImport(), nPrefix,
+        xContext = new SvxXMLTabStopImportContext( GetImport(), nPrefix,
                                                    rLocalName, rProp,
                                                    rProperties );
         break;
     }
 
-    if( !pContext )
-        pContext = SvXMLPropertySetContext::CreateChildContext( nPrefix, rLocalName,
+    if (!xContext)
+        xContext = SvXMLPropertySetContext::CreateChildContext( nPrefix, rLocalName,
                                                             xAttrList,
                                                             rProperties, rProp );
 
-    return pContext;
+    return xContext;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

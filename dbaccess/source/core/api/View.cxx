@@ -17,27 +17,23 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "View.hxx"
-#include "dbastrings.hrc"
+#include <View.hxx>
+#include <strings.hxx>
 
-#include "connectivity/dbexception.hxx"
-#include "connectivity/dbtools.hxx"
+#include <connectivity/dbtools.hxx>
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
-#include <cppuhelper/exc_hlp.hxx>
 #include <tools/diagnose_ex.h>
-#include <unotools/sharedunocomponent.hxx>
 
 namespace dbaccess
 {
 
     using namespace ::com::sun::star::uno;
-    using ::com::sun::star::sdbc::SQLException;
     using ::com::sun::star::sdbc::XConnection;
     using ::com::sun::star::lang::XMultiServiceFactory;
 
-    OUString lcl_getServiceNameForSetting(const Reference< css::sdbc::XConnection >& _xConnection,const OUString& i_sSetting)
+    static OUString lcl_getServiceNameForSetting(const Reference< css::sdbc::XConnection >& _xConnection,const OUString& i_sSetting)
     {
         OUString sSupportService;
         Any aValue;
@@ -60,7 +56,7 @@ namespace dbaccess
         }
         catch(const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("dbaccess");
         }
     }
 
@@ -93,7 +89,7 @@ namespace dbaccess
         const Type* pEnd = pIter + aTypes.getLength();
         for(;pIter != pEnd ;++pIter)
         {
-            if( (*pIter != aAlterType || m_xViewAccess.is()) )
+            if( *pIter != aAlterType || m_xViewAccess.is() )
                 aOwnTypes.push_back(*pIter);
         }
 

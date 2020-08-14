@@ -19,28 +19,15 @@
 #ifndef INCLUDED_SW_INC_EDITSH_HXX
 #define INCLUDED_SW_INC_EDITSH_HXX
 
-#include <crsrsh.hxx>
+#include "crsrsh.hxx"
 
-#include <IMark.hxx>
-#include <charfmt.hxx>
-#include <fldupde.hxx>
-#include <frmfmt.hxx>
-#include <itabenum.hxx>
-#include <swdbdata.hxx>
-#include <swdllapi.h>
-#include <swundo.hxx>
-#include <tblenum.hxx>
-#include <tox.hxx>
-#include <svtools/embedhlp.hxx>
-
-#include <editeng/swafopt.hxx>
-
-#include <vcl/font.hxx>
-
-#include <com/sun/star/embed/XEmbeddedObject.hpp>
-#include <com/sun/star/linguistic2/ProofreadingResult.hpp>
-#include <com/sun/star/linguistic2/XSpellAlternatives.hpp>
-#include <com/sun/star/text/HoriOrientation.hpp>
+#include "charfmt.hxx"
+#include "fldupde.hxx"
+#include "frmfmt.hxx"
+#include "swdllapi.h"
+#include "swundo.hxx"
+#include "tblenum.hxx"
+#include "tox.hxx"
 
 #include <memory>
 #include <vector>
@@ -48,7 +35,6 @@
 
 namespace tools { class PolyPolygon; }
 class SwDoc;
-class DateTime;
 class CommandExtTextInputData;
 
 class SvNumberFormatter;
@@ -57,8 +43,6 @@ class SfxItemSet;
 class SfxWatermarkItem;
 class SvxAutoCorrect;
 
-class SwField;
-class SwFieldType;
 class SwDDEFieldType;
 class SwDBManager;
 
@@ -71,13 +55,10 @@ class SwNumRule;
 
 class SwTextFormatColl;
 class SwGrfNode;
-class SwFlyFrameFormat;
 
-class SwFrameFormat;
-class SwCharFormat;
-class SwExtTextInput;
 class Graphic;
 class GraphicObject;
+class GraphicAttr;
 class SwFormatINetFormat;
 class SwTable;
 class SwTextBlocks;
@@ -100,18 +81,23 @@ class SwAuthEntry;
 class SwRewriter;
 class SwView;
 struct SwConversionArgs;
+struct SvxSwAutoFormatFlags;
+struct SwInsertTableOptions;
+struct SwDBData;
 enum class SvtScriptType;
 enum class SfxClassificationPolicyType;
 enum class RedlineFlags;
 enum class TransliterationFlags;
+enum class GraphicType;
 
-namespace com { namespace sun { namespace star { namespace uno {
-    template < class > class Sequence;
-}}}}
+namespace com::sun::star::uno { template < class > class Sequence; }
+namespace com::sun::star::linguistic2 { class XSpellAlternatives; }
+namespace com::sun::star::linguistic2 { struct ProofreadingResult; }
 
 namespace svx{
     struct SpellPortion;
     typedef std::vector<SpellPortion> SpellPortions;
+    class ClassificationResult;
 }
 
 namespace sfx2{
@@ -122,8 +108,10 @@ namespace sw {
     class UndoRedoContext;
 }
 
-#define GETSELTXT_PARABRK_TO_BLANK      0
-#define GETSELTXT_PARABRK_TO_ONLYCR     2
+enum class ParaBreakType {
+    ToBlank = 0,
+    ToOnlyCR = 2
+};
 
  /// For querying the INet-attributes for Navigator.
 struct SwGetINetAttr
@@ -184,12 +172,12 @@ public:
 
     /** Delete content of all ranges.
      If whole nodes are selected, these nodes get deleted. */
-    long Delete();
+    bool Delete();
 
     /// Remove a complete paragraph.
     bool DelFullPara();
 
-    /// Change text to Upper/Lower/Hiragana/Katagana/...
+    /// Change text to Upper/Lower/Hiragana/Katakana/...
     void TransliterateText( TransliterationFlags nType );
 
     /// Count words in current selection.
@@ -214,13 +202,13 @@ public:
        Copy all selections to the document. */
     bool CopySelToDoc( SwDoc* pInsDoc );
 
-    long SplitNode( bool bAutoFormat = false, bool bCheckTableStart = true );
+    void SplitNode( bool bAutoFormat = false, bool bCheckTableStart = true );
     bool AppendTextNode();
     void AutoFormatBySplitNode();
 
-    /** If cursor is in a INetAttribute it will be deleted completely
+    /** If cursor is in an INetAttribute it will be deleted completely
      including the descriptive text (needed at drag & drop). */
-    bool DelINetAttrWithText();
+    void DelINetAttrWithText();
 
     /** If Cursor is at the end of a character style in which the DontExpand-flag
      is not yet set, the latter will be set (==> return TRUE). */
@@ -239,8 +227,10 @@ public:
                      const bool bMergeIndentValuesOfNumRule = false ) const;
     bool GetCurAttr( SfxItemSet& ,
                      const bool bMergeIndentValuesOfNumRule = false ) const;
-    void SetAttrItem( const SfxPoolItem&, SetAttrMode nFlags = SetAttrMode::DEFAULT );
-    void SetAttrSet( const SfxItemSet&, SetAttrMode nFlags = SetAttrMode::DEFAULT, SwPaM* pCursor = nullptr );
+    void SetAttrItem( const SfxPoolItem&, SetAttrMode nFlags = SetAttrMode::DEFAULT,
+                     const bool bParagraphSetting = false );
+    void SetAttrSet( const SfxItemSet&, SetAttrMode nFlags = SetAttrMode::DEFAULT,
+                     SwPaM* pCursor = nullptr, const bool bParagraphSetting = false );
 
     /** Get RES_CHRATR_* items of one type in the current selection.
      * @param nWhich WhichId of the collected items.
@@ -256,11 +246,8 @@ public:
      * @param rSet
      * output parameter - the SfxItemSet where the automatic paragraph format attribute(s) will be store.
      * The attributes aren't invalidated or cleared if the function reach the getMaxLookup limit.
-     *
-     * @return true if the function inspect all the nodes point by the pPaM parameter,
-     * false if the function reach the limit of getMaxLookup number of nodes inspected.
      */
-    bool GetCurParAttr( SfxItemSet& rSet ) const;
+    void GetCurParAttr( SfxItemSet& rSet ) const;
     /**
      * Get the paragraph format attribute(s) of the selection(s) described by a SwPaM.
      *
@@ -281,6 +268,10 @@ public:
 
     /// Query default attribute of document.
     const SfxPoolItem& GetDefault( sal_uInt16 nFormatHint ) const;
+    template<class T> const T&  GetDefault( TypedWhichId<T> nWhich ) const
+    {
+        return static_cast<const T&>(GetDefault(sal_uInt16(nWhich)));
+    }
 
     void ResetAttr( const std::set<sal_uInt16> &attrs = std::set<sal_uInt16>(), SwPaM* pCursor = nullptr );
     void GCAttr();
@@ -366,13 +357,50 @@ public:
         { return static_cast<SwCharFormat*>(SwEditShell::GetFormatFromPool( nId )); }
 
     void SetClassification(const OUString& rName, SfxClassificationPolicyType eType);
+    void ApplyAdvancedClassification(std::vector<svx::ClassificationResult> const & rResult);
+    std::vector<svx::ClassificationResult> CollectAdvancedClassification();
 
-    SfxWatermarkItem GetWatermark();
+    SfxWatermarkItem GetWatermark() const;
     void SetWatermark(const SfxWatermarkItem& rText);
 
-    void Insert2(SwField&, const bool bForceExpandHints);
+    /// Sign the paragraph at the cursor.
+    void SignParagraph();
 
-    void UpdateFields( SwField & );   ///< One single field.
+    /// Validate the paragraph signatures, if any, of the current text node.
+    void ValidateParagraphSignatures(SwTextNode* pNode, bool updateDontRemove);
+
+    /// Validate the current paragraph signatures, if any, at the cursor start.
+    void ValidateCurrentParagraphSignatures(bool updateDontRemove);
+
+    /// Validate all paragraph signatures.
+    void ValidateAllParagraphSignatures(bool updateDontRemove);
+
+    /// Restore the metadata fields, if missing, from the RDF metadata
+    /// and validate the signatures and update the signature metadata fields.
+    /// Needed since deleting the metadata field doesn't remove the RDF
+    /// and editing docs using software that don't support paragraph signing.
+    void RestoreMetadataFieldsAndValidateParagraphSignatures();
+
+    /// Ensure that the classification of the doc is never lower than
+    /// the paragraph with the highest classification.
+    void ClassifyDocPerHighestParagraphClass();
+
+    /// Apply the classification to the paragraph at cursor.
+    void ApplyParagraphClassification(std::vector<svx::ClassificationResult> aResult);
+    std::vector<svx::ClassificationResult> CollectParagraphClassification();
+
+    /// Returns true iff the cursor is within a paragraph metadata field.
+    /// Currently there are two variants: signature and classification.
+    bool IsCursorInParagraphMetadataField() const;
+
+    /// Removes the paragraph metadata field at the current cursor, if any.
+    /// Returns true iff a paragraph metadata field was removed.
+    /// Currently there are two variants: signature and classification.
+    bool RemoveParagraphMetadataFieldAtCursor();
+
+    void Insert2(SwField const &, const bool bForceExpandHints);
+
+    void UpdateOneField(SwField &);   ///< One single field.
 
     size_t GetFieldTypeCount(SwFieldIds nResId = SwFieldIds::Unknown) const;
     SwFieldType* GetFieldType(size_t nField, SwFieldIds nResId = SwFieldIds::Unknown) const;
@@ -381,18 +409,18 @@ public:
     void RemoveFieldType(size_t nField);
     void RemoveFieldType(SwFieldIds nResId, const OUString& rName);
 
-    void FieldToText( SwFieldType* pType );
+    void FieldToText( SwFieldType const * pType );
 
     void ChangeAuthorityData(const SwAuthEntry* pNewData);
 
     /// Database information.
-    SwDBData GetDBData() const;
+    SwDBData const & GetDBData() const;
     const SwDBData& GetDBDesc() const;
     void ChgDBData(const SwDBData& SwDBData);
     void ChangeDBFields( const std::vector<OUString>& rOldNames,
                          const OUString& rNewName );
     void GetAllUsedDB( std::vector<OUString>& rDBNameList,
-                       std::vector<OUString>* pAllDBNames );
+                       std::vector<OUString> const * pAllDBNames );
 
     bool IsAnyDatabaseFieldInDoc()const;
 
@@ -423,7 +451,7 @@ public:
 
     void    Insert(const SwTOXMark& rMark);
 
-    void    DeleteTOXMark(SwTOXMark* pMark);
+    void    DeleteTOXMark(SwTOXMark const * pMark);
 
     /// Get all marks at current SPoint.
     void    GetCurTOXMarks(SwTOXMarks& rMarks) const ;
@@ -431,7 +459,7 @@ public:
     /// Insert content table. Renew if required.
     void                InsertTableOf(const SwTOXBase& rTOX,
                                         const SfxItemSet* pSet = nullptr);
-    bool                UpdateTableOf(const SwTOXBase& rTOX,
+    void                UpdateTableOf(const SwTOXBase& rTOX,
                                         const SfxItemSet* pSet = nullptr);
     const SwTOXBase*    GetCurTOX() const;
     const SwTOXBase*    GetDefaultTOXBase( TOXTypes eTyp, bool bCreate = false );
@@ -454,7 +482,7 @@ public:
     void                InsertTOXType(const SwTOXType& rTyp);
 
     /// AutoMark file
-    OUString        GetTOIAutoMarkURL() const;
+    OUString const & GetTOIAutoMarkURL() const;
     void            SetTOIAutoMarkURL(const OUString& rSet);
     void            ApplyAutoMark();
 
@@ -466,7 +494,7 @@ public:
 
     bool OutlineUpDown( short nOffset = 1 );
 
-    bool MoveOutlinePara( SwOutlineNodes::difference_type nOffset = 1);
+    bool MoveOutlinePara( SwOutlineNodes::difference_type nOffset );
 
     bool IsProtectedOutlinePara() const;
 
@@ -490,12 +518,12 @@ public:
                         const bool bResetIndentAttrs = false );
 
     /// Paragraphs without enumeration but with indents.
-    bool NoNum();
+    void NoNum();
 
     /// Delete, split enumeration list.
     void DelNumRules();
 
-    bool NumUpDown( bool bDown = true );
+    void NumUpDown( bool bDown = true );
 
     bool MoveParagraph( long nOffset = 1);
     bool MoveNumParas( bool bUpperLower, bool bUpperLeft );
@@ -507,7 +535,7 @@ public:
     // #i90078#
     /// Remove unused default parameter <nLevel> and <bRelative>.
     // Adjust method name and parameter name
-    void ChangeIndentOfAllListLevels( short nDiff );
+    void ChangeIndentOfAllListLevels( sal_Int32 nDiff );
     // Adjust method name
     void SetIndent(short nIndent, const SwPosition & rPos);
     bool IsFirstOfNumRuleAtCursorPos() const;
@@ -542,7 +570,7 @@ public:
 
     sal_uInt16 GetNodeNumStart( SwPaM* pPaM ) const;
 
-    bool ReplaceNumRule( const OUString& rOldRule, const OUString& rNewRule );
+    void ReplaceNumRule( const OUString& rOldRule, const OUString& rNewRule );
 
     /** Searches for a text node with a numbering rule.
      in case a list style is found, <sListId> holds the list id, to which the
@@ -579,9 +607,9 @@ public:
     /// should only be called by sw::UndoManager!
     void HandleUndoRedoContext(::sw::UndoRedoContext & rContext);
 
-    bool Undo(sal_uInt16 const nCount = 1);
-    bool Redo(sal_uInt16 const nCount = 1);
-    bool Repeat(sal_uInt16 const nCount);
+    void Undo(sal_uInt16 const nCount = 1);
+    void Redo(sal_uInt16 const nCount = 1);
+    void Repeat(sal_uInt16 const nCount);
 
     /// For all views of this document.
     void StartAllAction();
@@ -599,17 +627,16 @@ public:
     /// Apply ViewOptions with Start-/EndAction.
     virtual void ApplyViewOptions( const SwViewOption &rOpt ) override;
 
-    /** Query text within selection.
-     @returns FALSE, if selected range is too large to be copied
-     into string buffer or if other errors occur. */
-    bool GetSelectedText( OUString &rBuf,
-                        int nHndlParaBreak = GETSELTXT_PARABRK_TO_BLANK );
+    /** Query text within selection. */
+    void GetSelectedText( OUString &rBuf,
+                        ParaBreakType nHndlParaBreak = ParaBreakType::ToBlank );
 
     /** @return graphic, if CurrentCursor->Point() points to a SwGrfNode
      (and mark is not set or points to the same graphic). */
 
     const Graphic* GetGraphic( bool bWait = true ) const;
     const GraphicObject* GetGraphicObj() const;
+    const GraphicAttr* GetGraphicAttr( GraphicAttr& rGA ) const;
 
     bool IsLinkedGrfSwapOut() const;
     GraphicType GetGraphicType() const;
@@ -656,7 +683,7 @@ public:
     /// Update content of all charts for table with given name.
     void UpdateCharts( const OUString &rName );
 
-    OUString GetCurWord();
+    OUString GetCurWord() const;
 
     /** Glossary from glossary document in current document.
      Styles only if not already existent. */
@@ -688,11 +715,11 @@ public:
     /// For Inserting SoftHyphen. Position is offset within the syllabificated word.
     static void InsertSoftHyph( const sal_Int32 nHyphPos );
 
-    const SwTable& InsertTable( const SwInsertTableOptions& rInsTableOpts,  ///< ALL_TBL_INS_ATTR
+    const SwTable& InsertTable( const SwInsertTableOptions& rInsTableOpts,  ///< All
                                 sal_uInt16 nRows, sal_uInt16 nCols,
                                 const SwTableAutoFormat* pTAFormat = nullptr );
 
-    void InsertDDETable( const SwInsertTableOptions& rInsTableOpts,  ///< HEADLINE_NO_BORDER
+    void InsertDDETable( const SwInsertTableOptions& rInsTableOpts,  ///< HeadlineNoBorder
                          SwDDEFieldType* pDDEType,
                          sal_uInt16 nRows, sal_uInt16 nCols  );
 
@@ -700,7 +727,7 @@ public:
     void SetTableName( SwFrameFormat& rTableFormat, const OUString &rNewName );
 
     SwFrameFormat *GetTableFormat();
-    bool TextToTable( const SwInsertTableOptions& rInsTableOpts,  ///< ALL_TBL_INS_ATTR
+    bool TextToTable( const SwInsertTableOptions& rInsTableOpts,  ///< All
                       sal_Unicode cCh,
                       const SwTableAutoFormat* pTAFormat = nullptr );
     bool TableToText( sal_Unicode cCh );
@@ -716,7 +743,7 @@ public:
     void SetTableChgMode( TableChgMode eMode );
 
     /// Split table at cursor position.
-    bool SplitTable( SplitTable_HeadlineOption eMode );
+    void SplitTable( SplitTable_HeadlineOption eMode );
 
     /** Merge tables.
 
@@ -735,10 +762,10 @@ public:
                      SwDocPositions eCurr, SwConversionArgs *pConvArgs = nullptr );
 
     /// Restore selections.
-    void SpellEnd( SwConversionArgs *pConvArgs = nullptr, bool bRestoreSelection = true );
+    void SpellEnd( SwConversionArgs const *pConvArgs = nullptr, bool bRestoreSelection = true );
     css::uno::Any SpellContinue(
                     sal_uInt16* pPageCnt, sal_uInt16* pPageSt,
-                    SwConversionArgs *pConvArgs );
+                    SwConversionArgs const *pConvArgs );
 
     /** Spells on a sentence basis - the SpellPortions are needed
      @return false if no error could be found. */
@@ -762,6 +789,9 @@ public:
     /// Is hyphenation active somewhere else?
     static bool HasHyphIter();
 
+    void HandleCorrectionError(const OUString& aText, SwPosition aPos, sal_Int32 nBegin,
+                               sal_Int32 nLen, const Point* pPt,
+                               SwRect& rSelectRect);
     css::uno::Reference< css::linguistic2::XSpellAlternatives >
             GetCorrection( const Point* pPt, SwRect& rSelectRect );
 
@@ -784,13 +814,17 @@ public:
     /// Call AutoCorrect
     void AutoCorrect( SvxAutoCorrect& rACorr, bool bInsertMode,
                         sal_Unicode cChar );
-    bool GetPrevAutoCorrWord( SvxAutoCorrect& rACorr, OUString& rWord );
+    OUString GetPrevAutoCorrWord(SvxAutoCorrect& rACorr);
+
+    // We consider no more than 9 characters before the cursor, and they must not start in the
+    // middle of a word (leading spaces are OK)
+    std::vector<OUString> GetChunkForAutoText();
 
     /// Set our styles according to the respective rules.
     void AutoFormat( const SvxSwAutoFormatFlags* pAFlags );
 
     static SvxSwAutoFormatFlags* GetAutoFormatFlags();
-    static void SetAutoFormatFlags(SvxSwAutoFormatFlags *);
+    static void SetAutoFormatFlags(SvxSwAutoFormatFlags const *);
 
     /// Calculates selection.
     OUString Calculate();
@@ -809,7 +843,7 @@ public:
 
     sal_uInt16 GetLineCount();
 
-    /// Query and set footnote-text/number. Set.. to current SSelection!
+    /// Query and set footnote-text/number. Set... to current SSelection!
     bool GetCurFootnote( SwFormatFootnote* pToFillFootnote = nullptr );
     bool SetCurFootnote( const SwFormatFootnote& rFillFootnote );
     bool HasFootnotes( bool bEndNotes = false ) const;
@@ -852,7 +886,7 @@ public:
      section/table. The purpose of the method is to allow users to inert text
      at certain 'impossible' position, e.g. before a table at the document
      start or between to sections. */
-    bool DoSpecialInsert();
+    void DoSpecialInsert();
     bool CanSpecialInsert() const;
 
     /// Optimizing UI.
@@ -877,17 +911,17 @@ public:
     void SetGlblDocSaveLinks( bool bFlag );
     bool IsGlblDocSaveLinks() const;
     void GetGlobalDocContent( SwGlblDocContents& rArr ) const;
-    bool InsertGlobalDocContent( const SwGlblDocContent& rPos,
+    void InsertGlobalDocContent( const SwGlblDocContent& rPos,
                                  SwSectionData & rNew );
     bool InsertGlobalDocContent( const SwGlblDocContent& rPos,
                                  const SwTOXBase& rTOX );
     bool InsertGlobalDocContent( const SwGlblDocContent& rPos );
-    bool DeleteGlobalDocContent( const SwGlblDocContents& rArr,
+    void DeleteGlobalDocContent( const SwGlblDocContents& rArr,
                                 size_t nPos );
     bool MoveGlobalDocContent( const SwGlblDocContents& rArr ,
                                 size_t nFromPos, size_t nToPos,
                                 size_t nNewPos );
-    bool GotoGlobalDocContent( const SwGlblDocContent& rPos );
+    void GotoGlobalDocContent( const SwGlblDocContent& rPos );
 
     /// For Redlining.
     RedlineFlags GetRedlineFlags() const;
@@ -935,12 +969,24 @@ public:
     OUString DeleteExtTextInput( bool bInsText = true);
     void SetExtTextInputData( const CommandExtTextInputData& );
 
+    /// Returns true iff paragraph signature validation is enabled.
+    bool IsParagraphSignatureValidationEnabled() const { return m_bDoParagraphSignatureValidation; }
+    /// Enable/Disable paragraph signature validation and return the previous value.
+    bool SetParagraphSignatureValidation(const bool bEnable)
+    {
+        const bool bOldFlag = m_bDoParagraphSignatureValidation;
+        m_bDoParagraphSignatureValidation = bEnable;
+        return bOldFlag;
+    }
+
     /// Interface for access to AutoComplete-list.
     static SwAutoCompleteWord& GetAutoCompleteWords();
 
     /** @return a scaling factor of selected text. Used for the rotated
      character attribute dialog. */
     sal_uInt16 GetScalingOfSelectedText() const;
+
+    bool IsNbspRunNext() const { return m_bNbspRunNext; }
 
     /// Ctor/Dtor.
     SwEditShell( SwDoc&, vcl::Window*, const SwViewOption *pOpt );
@@ -952,6 +998,17 @@ public:
 private:
     SwEditShell(const SwEditShell &) = delete;
     const SwEditShell &operator=(const SwEditShell &) = delete;
+
+    /* TODO: this flag may have to be invalidated / reset to false at various
+     * places if it was true and the edit cursor position changes. It's somehow
+     * overkill though because it can only be true if a NO-BREAK SPACE was
+     * inserted by the last DoAutoCorrect() call (in French language), any
+     * subsequent call will reset it anyway and just if the cursor is
+     * positioned behind "x :" and the next character inserted is not a space
+     * the existing nb-space will be removed. Bear this in mind if that problem
+     * arises. */
+    bool m_bNbspRunNext;    ///< NO-BREAK SPACE state flag passed to and maintained by SvxAutoCorrect::DoAutoCorrect()
+    bool m_bDoParagraphSignatureValidation; ///< Prevent nested calls of ValidateParagraphSignatures.
 };
 
 inline const sfx2::LinkManager& SwEditShell::GetLinkManager() const

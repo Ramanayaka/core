@@ -20,25 +20,21 @@
 #define INCLUDED_CHART2_SOURCE_INC_BASEGFXHELPER_HXX
 
 #include <basegfx/matrix/b3dhommatrix.hxx>
-#include <basegfx/polygon/b3dpolypolygon.hxx>
-#include <basegfx/polygon/b3dpolygon.hxx>
-#include <basegfx/point/b3dpoint.hxx>
 #include <basegfx/range/b2irectangle.hxx>
 #include <basegfx/tuple/b3dtuple.hxx>
 #include <basegfx/vector/b3dvector.hxx>
 #include <basegfx/range/b3drange.hxx>
 #include <com/sun/star/awt/Point.hpp>
-#include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/drawing/HomogenMatrix.hpp>
 #include <com/sun/star/drawing/Direction3D.hpp>
 #include <com/sun/star/drawing/Position3D.hpp>
-#include <com/sun/star/drawing/PolyPolygonShape3D.hpp>
 #include "charttoolsdllapi.hxx"
 
-namespace chart
-{
-namespace BaseGFXHelper
+namespace com::sun::star::awt { struct Rectangle; }
+namespace com::sun::star::drawing { struct PolyPolygonShape3D; }
+
+namespace chart::BaseGFXHelper
 {
 
 OOO_DLLPUBLIC_CHARTTOOLS ::basegfx::B3DRange getBoundVolume( const css::drawing::PolyPolygonShape3D& rPolyPoly );
@@ -82,8 +78,7 @@ OOO_DLLPUBLIC_CHARTTOOLS ::basegfx::B3DTuple GetScaleFromMatrix(
 
 void ReduceToRotationMatrix( ::basegfx::B3DHomMatrix & rB3DMatrix );
 
-} //  namespace BaseGFXHelper
-} //  namespace chart
+} //  namespace chart::BaseGFXHelper
 
 // INCLUDED_CHART2_SOURCE_INC_BASEGFXHELPER_HXX
 #endif

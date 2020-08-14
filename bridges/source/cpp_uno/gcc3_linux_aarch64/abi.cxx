@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -24,7 +24,6 @@
 #include <cstring>
 #include <typeinfo>
 
-#include <cxxabi.h>
 #include <dlfcn.h>
 
 #include <com/sun/star/uno/RuntimeException.hpp>
@@ -32,13 +31,14 @@
 #include <rtl/strbuf.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 #include <sal/types.h>
 #include <typelib/typeclass.h>
 #include <typelib/typedescription.h>
 #include <uno/any2.h>
 #include <uno/mapping.h>
 
-#include <abi.hxx>
+#include "abi.hxx"
 #include <osl/mutex.hxx>
 #include <unordered_map>
 
@@ -81,7 +81,7 @@ public:
     std::type_info * getRtti(typelib_TypeDescription const & type);
 
 private:
-    typedef std::unordered_map<OUString, std::type_info *, OUStringHash> Map;
+    typedef std::unordered_map<OUString, std::type_info *> Map;
 
     void * app_;
 
@@ -107,6 +107,31 @@ std::type_info * Rtti::getRtti(typelib_TypeDescription const & type) {
         OString sym(b.makeStringAndClear());
         std::type_info * rtti = static_cast<std::type_info *>(
             dlsym(app_, sym.getStr()));
+#if defined MACOSX
+
+        // Horrible but hopefully temporary hack.
+
+        // For some reason, with the Xcode 12 betas, when compiling for arm64-apple-macos, the
+        // symbols for the typeinfos for the UNO exception types
+        // (_ZTIN3com3sun4star3uno16RuntimeExceptionE etc) end up as "weak private external" in the
+        // object file, as displayed by "nm -f darwin". We try to look them up with dlsym() above,
+        // but that then fails. So use a hackaround... introduce separate real variables (see end of
+        // this file) that point to these typeinfos.
+
+        // When compiling for x86_64-apple-macos, the typeinfo symbols end up as "weak external"
+        // which is fine.
+
+        if (rtti == nullptr)
+        {
+            const OString ptrSym = "ptr" + sym;
+            auto ptr = static_cast<std::type_info **>(dlsym(app_, ptrSym.getStr()));
+            if (ptr != nullptr)
+                rtti = *ptr;
+            else
+                SAL_WARN("bridges.osx", dlerror());
+        }
+#endif
+
         if (rtti == 0) {
             char const * rttiName = sym.getStr() + std::strlen("_ZTI");
             assert(type.eTypeClass == typelib_TypeClass_EXCEPTION);
@@ -135,8 +160,61 @@ std::type_info * getRtti(typelib_TypeDescription const & type) {
 }
 
 extern "C" void _GLIBCXX_CDTOR_CALLABI deleteException(void * exception) {
-    abi_aarch64::__cxa_exception * header =
-        static_cast<abi_aarch64::__cxa_exception *>(exception) - 1;
+    __cxxabiv1::__cxa_exception * header =
+        static_cast<__cxxabiv1::__cxa_exception *>(exception) - 1;
+#if !defined MACOSX && defined _LIBCPPABI_VERSION // detect libc++abi
+    // First, the libcxxabi commit
+    // <http://llvm.org/viewvc/llvm-project?view=revision&revision=303175>
+    // "[libcxxabi] Align unwindHeader on a double-word boundary" towards
+    // LLVM 5.0 changed the size of __cxa_exception by adding
+    //
+    //   __attribute__((aligned))
+    //
+    // to the final member unwindHeader, on x86-64 effectively adding a hole of
+    // size 8 in front of that member (changing its offset from 88 to 96,
+    // sizeof(__cxa_exception) from 120 to 128, and alignof(__cxa_exception)
+    // from 8 to 16); the "header1" hack below to dynamically determine whether we run against a
+    // LLVM 5 libcxxabi is to look at the exceptionDestructor member, which must
+    // point to this function (the use of __cxa_exception in mapException is
+    // unaffected, as it only accesses members towards the start of the struct,
+    // through a pointer known to actually point at the start).  The libcxxabi commit
+    // <https://github.com/llvm/llvm-project/commit/9ef1daa46edb80c47d0486148c0afc4e0d83ddcf>
+    // "Insert padding before the __cxa_exception header to ensure the thrown" in LLVM 6
+    // removes the need for this hack, so the "header1" hack can be removed again once we can be
+    // sure that we only run against libcxxabi from LLVM >= 6.
+    //
+    // Second, the libcxxabi commit
+    // <https://github.com/llvm/llvm-project/commit/674ec1eb16678b8addc02a4b0534ab383d22fa77>
+    // "[libcxxabi] Insert padding in __cxa_exception struct for compatibility" in LLVM 10 changed
+    // the layout of the start of __cxa_exception to
+    //
+    //  [8 byte  void *reserve]
+    //   8 byte  size_t referenceCount
+    //
+    // so the "header2" hack below to dynamically determine whether we run against a LLVM >= 10
+    // libcxxabi is to look whether the exceptionDestructor (with its known value) has increased its
+    // offset by 8.  As described in the definition of __cxa_exception
+    // (bridges/source/cpp_uno/gcc3_linux_aarch64/abi.hxx), the "header2" hack (together with the
+    // "#ifdef MACOSX" in the definition of __cxa_exception and the corresponding hack in call in
+    // bridges/source/cpp_uno/gcc3_linux_aarch64/uno2cpp.cxx) can be dropped once we can be sure
+    // that we only run against new libcxxabi that has the reserve member.
+    if (header->exceptionDestructor != &deleteException) {
+        auto const header1 = reinterpret_cast<__cxxabiv1::__cxa_exception *>(
+            reinterpret_cast<char *>(header) - 8);
+        if (header1->exceptionDestructor == &deleteException) {
+            header = header1;
+        } else {
+            auto const header2 = reinterpret_cast<__cxxabiv1::__cxa_exception *>(
+                reinterpret_cast<char *>(header) + 8);
+            if (header2->exceptionDestructor == &deleteException) {
+                header = header2;
+            } else {
+                assert(false);
+            }
+        }
+    }
+#endif
+    assert(header->exceptionDestructor == &deleteException);
     OUString unoName(toUnoName(header->exceptionType->name()));
     typelib_TypeDescription * td = 0;
     typelib_typedescription_getByName(&td, unoName.pData);
@@ -198,7 +276,7 @@ StructKind getStructKind(typelib_CompoundTypeDescription const * type) {
         case STRUCT_KIND_EMPTY:
             // this means an empty sub-object, which nevertheless obtains a byte
             // of storage (TODO: does it?), so the full object cannot be a
-            // homogenous collection of float or double
+            // homogeneous collection of float or double
         case STRUCT_KIND_POD:
             assert(k != STRUCT_KIND_DTOR);
             k = STRUCT_KIND_POD;
@@ -224,10 +302,11 @@ StructKind getStructKind(typelib_CompoundTypeDescription const * type) {
 namespace abi_aarch64 {
 
 void mapException(
-    __cxa_exception * exception, uno_Any * any, uno_Mapping * mapping)
+    __cxxabiv1::__cxa_exception * exception, std::type_info const * type, uno_Any * any, uno_Mapping * mapping)
 {
     assert(exception != 0);
-    OUString unoName(toUnoName(exception->exceptionType->name()));
+    assert(type != nullptr);
+    OUString unoName(toUnoName(type->name()));
     typelib_TypeDescription * td = 0;
     typelib_typedescription_getByName(&td, unoName.pData);
     if (td == 0) {
@@ -261,7 +340,9 @@ ReturnKind getReturnKind(typelib_TypeDescription const * type) {
     switch (type->eTypeClass) {
     default:
         assert(false);
-        // fall through to avoid warnings
+#ifdef NDEBUG
+        [[fallthrough]];
+#endif
     case typelib_TypeClass_VOID:
     case typelib_TypeClass_BOOLEAN:
     case typelib_TypeClass_BYTE:
@@ -304,5 +385,31 @@ ReturnKind getReturnKind(typelib_TypeDescription const * type) {
 }
 
 }
+
+#ifdef MACOSX
+
+// See the comment about the horrible hack above.
+
+// This set of types are compiled based on what 'make check' needs, but I haven't been able to run
+// it completely yet. And of course as such this hack isn't a viable long-term solution.
+
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/task/ClassifiedInteractionRequest.hpp>
+#include <com/sun/star/ucb/InteractiveAugmentedIOException.hpp>
+#include <com/sun/star/ucb/InteractiveIOException.hpp>
+#include <com/sun/star/ucb/NameClashException.hpp>
+#include <com/sun/star/uno/Exception.hpp>
+
+extern "C" {
+    const std::type_info* __attribute((visibility("default"),used)) ptr_ZTIN3com3sun4star4lang24IllegalArgumentExceptionE = &typeid(css::lang::IllegalArgumentException);
+    const std::type_info* __attribute((visibility("default"),used)) ptr_ZTIN3com3sun4star3uno9ExceptionE = &typeid(css::uno::Exception);
+    const std::type_info* __attribute((visibility("default"),used)) ptr_ZTIN3com3sun4star3uno16RuntimeExceptionE = &typeid(css::uno::RuntimeException);
+    const std::type_info* __attribute((visibility("default"),used)) ptr_ZTIN3com3sun4star3ucb31InteractiveAugmentedIOExceptionE = &typeid(css::ucb::InteractiveAugmentedIOException);
+    const std::type_info* __attribute((visibility("default"),used)) ptr_ZTIN3com3sun4star3ucb22InteractiveIOExceptionE = &typeid(css::ucb::InteractiveIOException);
+    const std::type_info* __attribute((visibility("default"),used)) ptr_ZTIN3com3sun4star3ucb18NameClashExceptionE = &typeid(css::ucb::NameClashException);
+    const std::type_info* __attribute((visibility("default"),used)) ptr_ZTIN3com3sun4star4task28ClassifiedInteractionRequestE = &typeid(css::task::ClassifiedInteractionRequest);
+}
+
+#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

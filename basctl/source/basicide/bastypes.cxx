@@ -17,21 +17,32 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "basidesh.hrc"
-#include "helpid.hrc"
+#include <strings.hrc>
+#include <helpids.h>
+#include <iderid.hxx>
 
 #include "baside2.hxx"
-#include "baside3.hxx"
-#include "iderdll.hxx"
+#include <baside3.hxx>
+#include <basidesh.hxx>
+#include <basobj.hxx>
+#include <iderdll.hxx>
 #include "iderdll2.hxx"
 
-#include <basic/basmgr.hxx>
 #include <com/sun/star/script/XLibraryContainerPassword.hpp>
+#include <sal/log.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/passwd.hxx>
+#include <sfx2/sfxsids.hrc>
 #include <svl/intitem.hxx>
 #include <svl/stritem.hxx>
 #include <svl/srchdefs.hxx>
+#include <vcl/commandevent.hxx>
+#include <vcl/event.hxx>
+#include <vcl/layout.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
+#include <tools/stream.hxx>
+#include <boost/functional/hash.hpp>
 
 namespace basctl
 {
@@ -140,11 +151,6 @@ void BaseWindow::StoreData()
 {
 }
 
-bool BaseWindow::CanClose()
-{
-    return true;
-}
-
 bool BaseWindow::AllowUndo()
 {
     return true;
@@ -194,12 +200,7 @@ bool BaseWindow::IsModified ()
     return true;
 }
 
-bool BaseWindow::IsPasteAllowed ()
-{
-    return false;
-}
-
-::svl::IUndoManager* BaseWindow::GetUndoManager()
+SfxUndoManager* BaseWindow::GetUndoManager()
 {
     return nullptr;
 }
@@ -255,11 +256,16 @@ WinBits const DockingWindow::StyleBits =
     WB_BORDER | WB_3DLOOK | WB_CLIPCHILDREN |
     WB_MOVEABLE | WB_SIZEABLE | WB_ROLLABLE | WB_DOCKABLE;
 
-DockingWindow::DockingWindow (vcl::Window* pParent) :
-    ::DockingWindow(pParent, StyleBits),
+DockingWindow::DockingWindow(vcl::Window* pParent, const OUString& rUIXMLDescription, const OString& rID) :
+    ::DockingWindow(pParent, "DockingWindow", "sfx/ui/dockingwindow.ui"),
     pLayout(nullptr),
     nShowCount(0)
-{ }
+{
+    m_xVclContentArea = VclPtr<VclVBox>::Create(this);
+    m_xVclContentArea->Show();
+    m_xBuilder.reset(Application::CreateInterimBuilder(m_xVclContentArea, rUIXMLDescription));
+    m_xContainer = m_xBuilder->weld_container(rID);
+}
 
 DockingWindow::DockingWindow (Layout* pParent) :
     ::DockingWindow(pParent, StyleBits),
@@ -274,6 +280,9 @@ DockingWindow::~DockingWindow()
 
 void DockingWindow::dispose()
 {
+    m_xContainer.reset();
+    m_xBuilder.reset();
+    m_xVclContentArea.disposeAndClear();
     pLayout.clear();
     ::DockingWindow::dispose();
 }
@@ -412,30 +421,6 @@ void DockingWindow::DockThis ()
     }
 }
 
-ExtendedEdit::ExtendedEdit(vcl::Window* pParent, WinBits nStyle)
-    : Edit(pParent, nStyle)
-{
-    aAcc.SetSelectHdl( LINK( this, ExtendedEdit, EditAccHdl ) );
-    Control::SetGetFocusHdl( LINK( this, ExtendedEdit, ImplGetFocusHdl ) );
-    Control::SetLoseFocusHdl( LINK( this, ExtendedEdit, ImplLoseFocusHdl ) );
-}
-
-IMPL_LINK_NOARG(ExtendedEdit, ImplGetFocusHdl, Control&, void)
-{
-    Application::InsertAccel( &aAcc );
-    aLoseFocusHdl.Call( this );
-}
-
-IMPL_LINK_NOARG(ExtendedEdit, ImplLoseFocusHdl, Control&, void)
-{
-    Application::RemoveAccel( &aAcc );
-}
-
-IMPL_LINK( ExtendedEdit, EditAccHdl, Accelerator&, rAcc, void )
-{
-    aAccHdl.Call( rAcc );
-}
-
 TabBar::TabBar( vcl::Window* pParent ) :
     ::TabBar( pParent, WinBits( WB_3DLOOK | WB_SCROLL | WB_BORDER | WB_SIZEABLE | WB_DRAG ) )
 {
@@ -478,7 +463,11 @@ TabBarAllowRenamingReturnCode TabBar::AllowRenaming()
     bool const bValid = IsValidSbxName(GetEditText());
 
     if ( !bValid )
-        ScopedVclPtrInstance<MessageDialog>(this, IDEResId(RID_STR_BADSBXNAME))->Execute();
+    {
+        std::unique_ptr<weld::MessageDialog> xError(Application::CreateMessageDialog(GetFrameWeld(),
+                                                    VclMessageType::Warning, VclButtonsType::Ok, IDEResId(RID_STR_BADSBXNAME)));
+        xError->run();
+    }
 
     return bValid ? TABBAR_RENAMING_YES : TABBAR_RENAMING_NO;
 }
@@ -516,56 +505,57 @@ struct TabBarSortHelper
 
 void TabBar::Sort()
 {
-    if (Shell* pShell = GetShell())
+    Shell* pShell = GetShell();
+    if (!pShell)
+        return;
+
+    Shell::WindowTable& aWindowTable = pShell->GetWindowTable();
+    TabBarSortHelper aTabBarSortHelper;
+    std::vector<TabBarSortHelper> aModuleList;
+    std::vector<TabBarSortHelper> aDialogList;
+    sal_uInt16 nPageCount = GetPageCount();
+    sal_uInt16 i;
+
+    // create module and dialog lists for sorting
+    for ( i = 0; i < nPageCount; i++)
     {
-        Shell::WindowTable& aWindowTable = pShell->GetWindowTable();
-        TabBarSortHelper aTabBarSortHelper;
-        std::vector<TabBarSortHelper> aModuleList;
-        std::vector<TabBarSortHelper> aDialogList;
-        sal_uInt16 nPageCount = GetPageCount();
-        sal_uInt16 i;
+        sal_uInt16 nId = GetPageId( i );
+        aTabBarSortHelper.nPageId = nId;
+        aTabBarSortHelper.aPageText = GetPageText( nId );
+        BaseWindow* pWin = aWindowTable[ nId ].get();
 
-        // create module and dialog lists for sorting
-        for ( i = 0; i < nPageCount; i++)
+        if (dynamic_cast<ModulWindow*>(pWin))
         {
-            sal_uInt16 nId = GetPageId( i );
-            aTabBarSortHelper.nPageId = nId;
-            aTabBarSortHelper.aPageText = GetPageText( nId );
-            BaseWindow* pWin = aWindowTable[ nId ].get();
-
-            if (dynamic_cast<ModulWindow*>(pWin))
-            {
-                aModuleList.push_back( aTabBarSortHelper );
-            }
-            else if (dynamic_cast<DialogWindow*>(pWin))
-            {
-                aDialogList.push_back( aTabBarSortHelper );
-            }
+            aModuleList.push_back( aTabBarSortHelper );
         }
-
-        // sort module and dialog lists by page text
-        std::sort( aModuleList.begin() , aModuleList.end() );
-        std::sort( aDialogList.begin() , aDialogList.end() );
-
-
-        sal_uInt16 nModules = sal::static_int_cast<sal_uInt16>( aModuleList.size() );
-        sal_uInt16 nDialogs = sal::static_int_cast<sal_uInt16>( aDialogList.size() );
-
-        // move module pages to new positions
-        for (i = 0; i < nModules; i++)
+        else if (dynamic_cast<DialogWindow*>(pWin))
         {
-            MovePage( aModuleList[i].nPageId , i );
+            aDialogList.push_back( aTabBarSortHelper );
         }
+    }
 
-        // move dialog pages to new positions
-        for (i = 0; i < nDialogs; i++)
-        {
-            MovePage( aDialogList[i].nPageId , nModules + i );
-        }
+    // sort module and dialog lists by page text
+    std::sort( aModuleList.begin() , aModuleList.end() );
+    std::sort( aDialogList.begin() , aDialogList.end() );
+
+
+    sal_uInt16 nModules = sal::static_int_cast<sal_uInt16>( aModuleList.size() );
+    sal_uInt16 nDialogs = sal::static_int_cast<sal_uInt16>( aDialogList.size() );
+
+    // move module pages to new positions
+    for (i = 0; i < nModules; i++)
+    {
+        MovePage( aModuleList[i].nPageId , i );
+    }
+
+    // move dialog pages to new positions
+    for (i = 0; i < nDialogs; i++)
+    {
+        MovePage( aDialogList[i].nPageId , nModules + i );
     }
 }
 
-void CutLines( OUString& rStr, sal_Int32 nStartLine, sal_Int32 nLines, bool bEraseTrailingEmptyLines )
+void CutLines( OUString& rStr, sal_Int32 nStartLine, sal_Int32 nLines )
 {
     sal_Int32 nStartPos = 0;
     sal_Int32 nLine = 0;
@@ -597,7 +587,7 @@ void CutLines( OUString& rStr, sal_Int32 nStartLine, sal_Int32 nLines, bool bEra
     rStr = rStr.copy( 0, nStartPos );
     rStr += aEndStr;
 
-    if ( bEraseTrailingEmptyLines )
+    // erase trailing empty lines
     {
         sal_Int32 n = nStartPos;
         sal_Int32 nLen = rStr.getLength();
@@ -616,15 +606,15 @@ void CutLines( OUString& rStr, sal_Int32 nStartLine, sal_Int32 nLines, bool bEra
     }
 }
 
-sal_uLong CalcLineCount( SvStream& rStream )
+sal_uInt32 CalcLineCount( SvStream& rStream )
 {
-    sal_uLong nLFs = 0;
-    sal_uLong nCRs = 0;
+    sal_uInt32 nLFs = 0;
+    sal_uInt32 nCRs = 0;
     char c;
 
     rStream.Seek( 0 );
     rStream.ReadChar( c );
-    while ( !rStream.IsEof() )
+    while ( !rStream.eof() )
     {
         if ( c == '\n' )
             nLFs++;
@@ -658,15 +648,13 @@ void LibInfo::InsertInfo (
 {
     Key aKey(rDocument, rLibName);
     m_aMap.erase(aKey);
-    m_aMap.insert(Map::value_type(aKey, Item(rCurrentName, eCurrentType)));
+    m_aMap.emplace(aKey, Item(rCurrentName, eCurrentType));
 }
 
 void LibInfo::RemoveInfoFor (ScriptDocument const& rDocument)
 {
-    Map::iterator it;
-    for (it = m_aMap.begin(); it != m_aMap.end(); ++it)
-        if (it->first.GetDocument() == rDocument)
-            break;
+    Map::iterator it = std::find_if(m_aMap.begin(), m_aMap.end(),
+        [&rDocument](Map::reference rEntry) { return rEntry.first.GetDocument() == rDocument; });
     if (it != m_aMap.end())
         m_aMap.erase(it);
 }
@@ -683,9 +671,6 @@ LibInfo::Key::Key (ScriptDocument const& rDocument, OUString const& rLibName) :
     m_aDocument(rDocument), m_aLibName(rLibName)
 { }
 
-LibInfo::Key::~Key ()
-{ }
-
 bool LibInfo::Key::operator == (Key const& rKey) const
 {
     return m_aDocument == rKey.m_aDocument && m_aLibName == rKey.m_aLibName;
@@ -693,7 +678,10 @@ bool LibInfo::Key::operator == (Key const& rKey) const
 
 size_t LibInfo::Key::Hash::operator () (Key const& rKey) const
 {
-    return rKey.m_aDocument.hashCode() + rKey.m_aLibName.hashCode();
+    std::size_t seed = 0;
+    boost::hash_combine(seed, rKey.m_aDocument.hashCode());
+    boost::hash_combine(seed, rKey.m_aLibName.hashCode());
+    return seed;
 }
 
 LibInfo::Item::Item (
@@ -704,46 +692,41 @@ LibInfo::Item::Item (
     m_eCurrentType(eCurrentType)
 { }
 
-LibInfo::Item::~Item ()
-{ }
-
-bool QueryDel( const OUString& rName, const ResId& rId, vcl::Window* pParent )
+static bool QueryDel(const OUString& rName, const OUString &rStr, weld::Widget* pParent)
 {
-    OUString aQuery(rId);
-    OUStringBuffer aNameBuf( rName );
-    aNameBuf.append('\'');
-    aNameBuf.insert(0, '\'');
-    aQuery = aQuery.replaceAll("XX", aNameBuf.makeStringAndClear());
-    ScopedVclPtrInstance< MessageDialog > aQueryBox(pParent, aQuery, VclMessageType::Question, VclButtonsType::YesNo);
-    return ( aQueryBox->Execute() == RET_YES );
+    OUString aName = "\'" + rName + "\'";
+    OUString aQuery = rStr.replaceAll("XX", aName);
+    std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(pParent,
+                                                   VclMessageType::Question, VclButtonsType::YesNo, aQuery));
+    return (xQueryBox->run() == RET_YES);
 }
 
-bool QueryDelMacro( const OUString& rName, vcl::Window* pParent )
+bool QueryDelMacro( const OUString& rName, weld::Widget* pParent )
 {
     return QueryDel( rName, IDEResId( RID_STR_QUERYDELMACRO ), pParent );
 }
 
-bool QueryReplaceMacro( const OUString& rName, vcl::Window* pParent )
+bool QueryReplaceMacro( const OUString& rName, weld::Widget* pParent )
 {
     return QueryDel( rName, IDEResId( RID_STR_QUERYREPLACEMACRO ), pParent );
 }
 
-bool QueryDelDialog( const OUString& rName, vcl::Window* pParent )
+bool QueryDelDialog( const OUString& rName, weld::Widget* pParent )
 {
     return QueryDel( rName, IDEResId( RID_STR_QUERYDELDIALOG ), pParent );
 }
 
-bool QueryDelLib( const OUString& rName, bool bRef, vcl::Window* pParent )
+bool QueryDelLib( const OUString& rName, bool bRef, weld::Widget* pParent )
 {
     return QueryDel( rName, IDEResId( bRef ? RID_STR_QUERYDELLIBREF : RID_STR_QUERYDELLIB ), pParent );
 }
 
-bool QueryDelModule( const OUString& rName, vcl::Window* pParent )
+bool QueryDelModule( const OUString& rName, weld::Widget* pParent )
 {
     return QueryDel( rName, IDEResId( RID_STR_QUERYDELMODULE ), pParent );
 }
 
-bool QueryPassword( const Reference< script::XLibraryContainer >& xLibContainer, const OUString& rLibName, OUString& rPassword, bool bRepeat, bool bNewTitle )
+bool QueryPassword(weld::Widget* pDialogParent, const Reference< script::XLibraryContainer >& xLibContainer, const OUString& rLibName, OUString& rPassword, bool bRepeat, bool bNewTitle)
 {
     bool bOK = false;
     sal_uInt16 nRet = 0;
@@ -751,19 +734,19 @@ bool QueryPassword( const Reference< script::XLibraryContainer >& xLibContainer,
     do
     {
         // password dialog
-        ScopedVclPtrInstance< SfxPasswordDialog > aDlg(Application::GetDefDialogParent());
-        aDlg->SetMinLen( 1 );
+        SfxPasswordDialog aDlg(pDialogParent);
+        aDlg.SetMinLen(1);
 
         // set new title
         if ( bNewTitle )
         {
             OUString aTitle(IDEResId(RID_STR_ENTERPASSWORD));
             aTitle = aTitle.replaceAll("XX", rLibName);
-            aDlg->SetText( aTitle );
+            aDlg.set_title(aTitle);
         }
 
         // execute dialog
-        nRet = aDlg->Execute();
+        nRet = aDlg.run();
 
         // verify password
         if ( nRet == RET_OK )
@@ -773,14 +756,14 @@ bool QueryPassword( const Reference< script::XLibraryContainer >& xLibContainer,
                 Reference< script::XLibraryContainerPassword > xPasswd( xLibContainer, UNO_QUERY );
                 if ( xPasswd.is() && xPasswd->isLibraryPasswordProtected( rLibName ) && !xPasswd->isLibraryPasswordVerified( rLibName ) )
                 {
-                    rPassword = aDlg->GetPassword();
-                    //                    OUString aOUPassword( rPassword );
+                    rPassword = aDlg.GetPassword();
                     bOK = xPasswd->verifyLibraryPassword( rLibName, rPassword );
 
                     if ( !bOK )
                     {
-                        ScopedVclPtrInstance< MessageDialog > aErrorBox(Application::GetDefDialogParent(), IDEResId(RID_STR_WRONGPASSWORD));
-                        aErrorBox->Execute();
+                        std::unique_ptr<weld::MessageDialog> xErrorBox(Application::CreateMessageDialog(pDialogParent,
+                                                                       VclMessageType::Warning, VclButtonsType::Ok, IDEResId(RID_STR_WRONGPASSWORD)));
+                        xErrorBox->run();
                     }
                 }
             }

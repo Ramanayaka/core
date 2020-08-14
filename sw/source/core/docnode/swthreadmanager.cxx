@@ -20,7 +20,7 @@
 #include <swthreadmanager.hxx>
 #include <swthreadjoiner.hxx>
 #include <observablethread.hxx>
-#include <threadmanager.hxx>
+#include "threadmanager.hxx"
 
 /** class to manage threads in Writer - it conforms the singleton pattern
 
@@ -39,7 +39,11 @@ SwThreadManager::~SwThreadManager()
 {
 }
 
+namespace {
+
 struct InitInstance : public rtl::Static<SwThreadManager, InitInstance> {};
+
+}
 
 SwThreadManager& SwThreadManager::GetThreadManager()
 {

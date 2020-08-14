@@ -23,6 +23,7 @@
 
 #include <config_features.h>
 
+#include "soffice.hxx"
 /* system headers */
 #include "system.hxx"
 
@@ -54,8 +55,7 @@
 
 #include <osl/diagnose.h>
 #include <osl/signal.h>
-#include <osl/process.h>
-#include <osl/thread.h>
+#include <sal/log.hxx>
 #include <sal/macros.h>
 #include <rtl/bootstrap.h>
 #include <rtl/digest.h>
@@ -154,41 +154,6 @@ bool bSetILLHandler = false;
 
 void signalHandlerFunction(int, siginfo_t *, void *);
 
-void getExecutableName_Impl (rtl_String ** ppstrProgName)
-{
-    rtl_uString* ustrProgFile = nullptr;
-    osl_getExecutableFile (&ustrProgFile);
-    if (ustrProgFile)
-    {
-        rtl_uString * ustrProgName = nullptr;
-        osl_systemPathGetFileNameOrLastDirectoryPart (ustrProgFile, &ustrProgName);
-        if (ustrProgName != nullptr)
-        {
-            rtl_uString2String (
-                ppstrProgName,
-                rtl_uString_getStr (ustrProgName), rtl_uString_getLength (ustrProgName),
-                osl_getThreadTextEncoding(),
-                OUSTRING_TO_OSTRING_CVTFLAGS);
-            rtl_uString_release (ustrProgName);
-        }
-        rtl_uString_release (ustrProgFile);
-    }
-}
-
-bool is_soffice_Impl()
-{
-    sal_Int32 idx = -1;
-    rtl_String* strProgName = nullptr;
-
-    getExecutableName_Impl (&strProgName);
-    if (strProgName)
-    {
-        idx = rtl_str_indexOfStr (rtl_string_getStr (strProgName), "soffice");
-        rtl_string_release (strProgName);
-    }
-    return (idx != -1);
-}
-
 #if HAVE_FEATURE_BREAKPAD
 bool is_unset_signal(int signal)
 {
@@ -207,7 +172,7 @@ bool is_unset_signal(int signal)
 
 bool onInitSignal()
 {
-    if (is_soffice_Impl())
+    if (sal::detail::isSoffice())
     {
         // WORKAROUND FOR SEGV HANDLER CONFLICT
         //
@@ -293,7 +258,7 @@ bool onInitSignal()
         }
     }
 
-    /* Clear signal mask inherited from parent process (on Mac OS X, upon a
+    /* Clear signal mask inherited from parent process (on macOS, upon a
        crash soffice re-execs itself from within the signal handler, so the
        second soffice would have the guilty signal blocked and would freeze upon
        encountering a similar crash again): */
@@ -315,7 +280,10 @@ bool onDeInitSignal()
 
     /* Initialize the rest of the signals */
     for (int i = NoSignals - 1; i >= 0; i--)
-        if (Signals[i].Action != ACT_SYSTEM)
+        if (Signals[i].Action != ACT_SYSTEM
+            && ((bSetSEGVHandler || Signals[i].Signal != SIGSEGV)
+                && (bSetWINCHHandler || Signals[i].Signal != SIGWINCH)
+                && (bSetILLHandler || Signals[i].Signal != SIGILL)))
         {
             if (Signals[i].siginfo) {
                 act.sa_sigaction = reinterpret_cast<Handler2>(
@@ -366,42 +334,42 @@ void callSystemHandler(int signal, siginfo_t * info, void * context)
             break;
     }
 
-    if (i < NoSignals)
+    if (i >= NoSignals)
+        return;
+
+    if ((Signals[i].Handler == SIG_DFL) ||
+        (Signals[i].Handler == SIG_IGN) ||
+         (Signals[i].Handler == SIG_ERR))
     {
-        if ((Signals[i].Handler == SIG_DFL) ||
-            (Signals[i].Handler == SIG_IGN) ||
-             (Signals[i].Handler == SIG_ERR))
+        switch (Signals[i].Action)
         {
-            switch (Signals[i].Action)
-            {
-                case ACT_EXIT:      /* terminate */
-                    /* prevent dumping core on exit() */
-                    _exit(255);
-                    break;
+            case ACT_EXIT:      /* terminate */
+                /* prevent dumping core on exit() */
+                _exit(255);
+                break;
 
-                case ACT_ABORT:     /* terminate with core dump */
-                    struct sigaction act;
-                    act.sa_handler = SIG_DFL;
-                    act.sa_flags   = 0;
-                    sigemptyset(&(act.sa_mask));
-                    sigaction(SIGABRT, &act, nullptr);
-                    printStack( signal );
-                    abort();
-                    break;
+            case ACT_ABORT:     /* terminate with core dump */
+                struct sigaction act;
+                act.sa_handler = SIG_DFL;
+                act.sa_flags   = 0;
+                sigemptyset(&(act.sa_mask));
+                sigaction(SIGABRT, &act, nullptr);
+                printStack( signal );
+                abort();
+                break;
 
-                case ACT_IGNORE:    /* ignore */
-                    break;
+            case ACT_IGNORE:    /* ignore */
+                break;
 
-                default:            /* should never happen */
-                    OSL_ASSERT(false);
-            }
+            default:            /* should never happen */
+                OSL_ASSERT(false);
         }
-        else if (Signals[i].siginfo) {
-            (*reinterpret_cast<Handler2>(Signals[i].Handler))(
-                signal, info, context);
-        } else {
-            (*Signals[i].Handler)(signal);
-        }
+    }
+    else if (Signals[i].siginfo) {
+        (*reinterpret_cast<Handler2>(Signals[i].Handler))(
+            signal, info, context);
+    } else {
+        (*Signals[i].Handler)(signal);
     }
 }
 
@@ -476,22 +444,7 @@ void signalHandlerFunction(int signal, siginfo_t * info, void * context)
             Info.Signal == osl_Signal_IntegerDivideByZero ||
             Info.Signal == osl_Signal_FloatDivideByZero) && !is_unset_signal(signal))
     {
-        for (SignalAction & rSignal : Signals)
-        {
-            if (rSignal.Signal == signal)
-            {
-                if (rSignal.siginfo)
-                {
-                    (*reinterpret_cast<Handler2>(rSignal.Handler))(
-                        signal, info, context);
-                }
-                else
-                {
-                    rSignal.Handler(signal);
-                }
-                break;
-            }
-        }
+        callSystemHandler(signal, info, context);
     }
 #endif
 

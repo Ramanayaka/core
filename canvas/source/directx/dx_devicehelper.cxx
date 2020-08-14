@@ -19,9 +19,10 @@
 
 #include <sal/config.h>
 
-#include <basegfx/tools/canvastools.hxx>
+#include <memory>
+
+#include <basegfx/utils/canvastools.hxx>
 #include <com/sun/star/lang/NoSupportException.hpp>
-#include <toolkit/helper/vclunohelper.hxx>
 #include <tools/diagnose_ex.h>
 #include <vcl/canvastools.hxx>
 #include <vcl/outdev.hxx>
@@ -134,10 +135,9 @@ namespace dxcanvas
         if( !mpDevice )
             return uno::Reference< rendering::XBitmap >(); // we're disposed
 
-        DXBitmapSharedPtr pBitmap(
-            new DXBitmap(
+        DXBitmapSharedPtr pBitmap = std::make_shared<DXBitmap>(
                 ::basegfx::unotools::b2ISizeFromIntegerSize2D(size),
-                false));
+                false);
 
         // create a 24bit RGB system memory surface
         return uno::Reference< rendering::XBitmap >(new CanvasBitmap(pBitmap,mpDevice));
@@ -157,10 +157,9 @@ namespace dxcanvas
         if( !mpDevice )
             return uno::Reference< rendering::XBitmap >(); // we're disposed
 
-        DXBitmapSharedPtr pBitmap(
-            new DXBitmap(
+        DXBitmapSharedPtr pBitmap = std::make_shared<DXBitmap>(
                 ::basegfx::unotools::b2ISizeFromIntegerSize2D(size),
-                true));
+                true);
 
         // create a 32bit ARGB system memory surface
         return uno::Reference< rendering::XBitmap >(new CanvasBitmap(pBitmap,mpDevice));

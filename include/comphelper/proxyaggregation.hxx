@@ -20,19 +20,18 @@
 #ifndef INCLUDED_COMPHELPER_PROXYAGGREGATION_HXX
 #define INCLUDED_COMPHELPER_PROXYAGGREGATION_HXX
 
-#include <com/sun/star/uno/XAggregation.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <cppuhelper/implbase1.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
+#include <cppuhelper/interfacecontainer.h>
 #include <cppuhelper/basemutex.hxx>
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/compbase_ex.hxx>
 #include <comphelper/comphelperdllapi.h>
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class XComponentContext;
-} } } }
+}
+namespace com::sun::star::uno { class XAggregation; }
+namespace com::sun::star::lang { class XComponent; }
 
 /* class hierarchy herein:
 
@@ -88,7 +87,7 @@ namespace comphelper
         css::uno::Reference< css::uno::XComponentContext >        m_xContext;
 
     protected:
-        const css::uno::Reference< css::uno::XComponentContext >& getComponentContext()
+        const css::uno::Reference< css::uno::XComponentContext >& getComponentContext() const
         {
             return m_xContext;
         }
@@ -127,7 +126,7 @@ namespace comphelper
         calls which your derived class gets to the dispose method of this class.</p>
     */
 
-    class COMPHELPER_DLLPUBLIC OComponentProxyAggregationHelper :public ::cppu::ImplHelper1 <   css::lang::XEventListener
+    class OComponentProxyAggregationHelper :public ::cppu::ImplHelper1 <   css::lang::XEventListener
                                                                         >
                                             ,private OProxyAggregation
     {

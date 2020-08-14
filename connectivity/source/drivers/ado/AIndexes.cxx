@@ -17,16 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "ado/AIndexes.hxx"
-#include "ado/AIndex.hxx"
-#include "ado/AConnection.hxx"
+#include <ado/AIndexes.hxx>
+#include <ado/AIndex.hxx>
+#include <ado/AConnection.hxx>
 #include <com/sun/star/sdbc/XRow.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/IndexType.hpp>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/types.hxx>
 #include <connectivity/dbexception.hxx>
-#include "resource/ado_res.hrc"
+#include <strings.hrc>
+
 using namespace ::comphelper;
 
 
@@ -56,8 +58,8 @@ Reference< XPropertySet > OIndexes::createDescriptor()
 // XAppend
 sdbcx::ObjectType OIndexes::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
-    OAdoIndex* pIndex = nullptr;
-    if ( !getImplementation(pIndex,descriptor) || pIndex == nullptr )
+    OAdoIndex* pIndex = getUnoTunnelImplementation<OAdoIndex>(descriptor);
+    if ( pIndex == nullptr )
         m_pConnection->throwGenericSQLException( STR_INVALID_INDEX_DESCRIPTOR_ERROR,static_cast<XTypeProvider*>(this) );
 
     ADOIndexes* pIndexes = m_aCollection;

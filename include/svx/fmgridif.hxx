@@ -22,13 +22,13 @@
 #include <svx/svxdllapi.h>
 
 #include <com/sun/star/view/XSelectionSupplier.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/container/XContainer.hpp>
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <com/sun/star/sdbc/XRowSetListener.hpp>
 #include <com/sun/star/sdb/XRowSetSupplier.hpp>
-#include <com/sun/star/form/XReset.hpp>
+#include <com/sun/star/form/XResetListener.hpp>
 #include <com/sun/star/form/XBoundComponent.hpp>
 #include <com/sun/star/form/XLoadListener.hpp>
 #include <com/sun/star/form/XGridControl.hpp>
@@ -37,7 +37,6 @@
 #include <com/sun/star/frame/XStatusListener.hpp>
 #include <com/sun/star/frame/XDispatchProviderInterception.hpp>
 #include <com/sun/star/view/XSelectionChangeListener.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XModeSelector.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
@@ -45,9 +44,14 @@
 #include <tools/wintypes.hxx>
 #include <toolkit/controls/unocontrol.hxx>
 #include <toolkit/awt/vclxwindow.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/implbase10.hxx>
+#include <memory>
+
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::uno { class XComponentContext; }
 
 class DbGridColumn;
 enum class DbGridControlNavigationBarState;
@@ -67,7 +71,7 @@ public:
 
 // FmXModifyMultiplexer
 
-class SAL_WARN_UNUSED FmXModifyMultiplexer  :public OWeakSubObject
+class SAL_WARN_UNUSED FmXModifyMultiplexer final : public OWeakSubObject
                             ,public ::comphelper::OInterfaceContainerHelper2
                             ,public css::util::XModifyListener
 {
@@ -83,14 +87,14 @@ public:
     virtual void SAL_CALL modified(const css::lang::EventObject& Source) override;
 
 // resolve ambiguity : both OWeakObject and OInterfaceContainerHelper2 have these memory operators
-    void * SAL_CALL operator new( size_t size ) throw() { return OWeakSubObject::operator new(size); }
-    void SAL_CALL operator delete( void * p ) throw() { OWeakSubObject::operator delete(p); }
+    using OWeakSubObject::operator new;
+    using OWeakSubObject::operator delete;
 };
 
 
 // FmXUpdateMultiplexer
 
-class SAL_WARN_UNUSED FmXUpdateMultiplexer : public OWeakSubObject,
+class SAL_WARN_UNUSED FmXUpdateMultiplexer final : public OWeakSubObject,
                              public ::comphelper::OInterfaceContainerHelper2,
                              public css::form::XUpdateListener
 {
@@ -108,14 +112,14 @@ public:
     virtual void SAL_CALL updated(const css::lang::EventObject &) override;
 
 // resolve ambiguity : both OWeakObject and OInterfaceContainerHelper2 have these memory operators
-    void * SAL_CALL operator new( size_t size ) throw() { return OWeakSubObject::operator new(size); }
-    void SAL_CALL operator delete( void * p ) throw() { OWeakSubObject::operator delete(p); }
+    using OWeakSubObject::operator new;
+    using OWeakSubObject::operator delete;
 };
 
 
 // FmXSelectionMultiplexer
 
-class SAL_WARN_UNUSED FmXSelectionMultiplexer   :public OWeakSubObject
+class SAL_WARN_UNUSED FmXSelectionMultiplexer final : public OWeakSubObject
                                 ,public ::comphelper::OInterfaceContainerHelper2
                                 ,public css::view::XSelectionChangeListener
 {
@@ -132,14 +136,14 @@ public:
     virtual void SAL_CALL selectionChanged( const css::lang::EventObject& aEvent ) override;
 
 // resolve ambiguity : both OWeakObject and OInterfaceContainerHelper2 have these memory operators
-    void * SAL_CALL operator new( size_t size ) throw() { return OWeakSubObject::operator new(size); }
-    void SAL_CALL operator delete( void * p ) throw() { OWeakSubObject::operator delete(p); }
+    using OWeakSubObject::operator new;
+    using OWeakSubObject::operator delete;
 };
 
 
 // FmXGridControlMultiplexer
 
-class SAL_WARN_UNUSED FmXGridControlMultiplexer :public OWeakSubObject
+class SAL_WARN_UNUSED FmXGridControlMultiplexer final : public OWeakSubObject
                                 ,public ::comphelper::OInterfaceContainerHelper2
                                 ,public css::form::XGridControlListener
 {
@@ -156,14 +160,14 @@ public:
     virtual void SAL_CALL columnChanged( const css::lang::EventObject& _event ) override;
 
 // resolve ambiguity : both OWeakObject and OInterfaceContainerHelper2 have these memory operators
-    void * SAL_CALL operator new( size_t size ) throw() { return OWeakSubObject::operator new(size); }
-    void SAL_CALL operator delete( void * p ) throw() { OWeakSubObject::operator delete(p); }
+    using OWeakSubObject::operator new;
+    using OWeakSubObject::operator delete;
 };
 
 
 // FmXContainerMultiplexer
 
-class SAL_WARN_UNUSED FmXContainerMultiplexer : public OWeakSubObject,
+class SAL_WARN_UNUSED FmXContainerMultiplexer final : public OWeakSubObject,
                                 public ::comphelper::OInterfaceContainerHelper2,
                                 public css::container::XContainerListener
 {
@@ -181,8 +185,8 @@ public:
     virtual void SAL_CALL elementReplaced(const css::container::ContainerEvent& Event) override;
 
 // resolve ambiguity : both OWeakObject and OInterfaceContainerHelper2 have these memory operators
-    void * SAL_CALL operator new( size_t size ) throw() { return OWeakSubObject::operator new(size); }
-    void SAL_CALL operator delete( void * p ) throw() { OWeakSubObject::operator delete(p); }
+    using OWeakSubObject::operator new;
+    using OWeakSubObject::operator delete;
 };
 
 
@@ -201,7 +205,7 @@ typedef ::cppu::ImplHelper10<   css::form::XBoundComponent,
                             >   FmXGridControl_BASE;
 
 class FmXGridPeer;
-class SAL_WARN_UNUSED SVX_DLLPUBLIC FmXGridControl  :public UnoControl
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC FmXGridControl  :public UnoControl
                         ,public FmXGridControl_BASE
 {
     FmXModifyMultiplexer        m_aModifyListeners;
@@ -302,17 +306,17 @@ public:
     virtual void SAL_CALL addSelectionChangeListener( const css::uno::Reference< css::view::XSelectionChangeListener >& xListener ) override;
     virtual void SAL_CALL removeSelectionChangeListener( const css::uno::Reference< css::view::XSelectionChangeListener >& xListener ) override;
 
+// css::awt::XWindow
+    virtual void SAL_CALL setFocus() override;
+
 protected:
     virtual FmXGridPeer*    imp_CreatePeer(vcl::Window* pParent);
         // ImplCreatePeer would be better, but doesn't work because it's not exported
-
 };
 
-
 // FmXGridPeer -> Peer for the Gridcontrol
-
 class FmGridControl;
-class SAL_WARN_UNUSED SVX_DLLPUBLIC FmXGridPeer:
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC FmXGridPeer:
     public cppu::ImplInheritanceHelper<
         VCLXWindow,
         css::form::XGridPeer,
@@ -335,6 +339,11 @@ class SAL_WARN_UNUSED SVX_DLLPUBLIC FmXGridPeer:
         css::form::XResetListener,
         css::view::XSelectionSupplier>
 {
+protected:
+    css::uno::Reference< css::uno::XComponentContext >    m_xContext;
+    ::osl::Mutex                                          m_aMutex;
+
+private:
     css::uno::Reference< css::container::XIndexContainer >    m_xColumns;
     css::uno::Reference< css::sdbc::XRowSet >                 m_xCursor;
     ::comphelper::OInterfaceContainerHelper2       m_aModifyListeners,
@@ -350,20 +359,16 @@ class SAL_WARN_UNUSED SVX_DLLPUBLIC FmXGridPeer:
 
     bool                                m_bInterceptingDispatch;
 
-    bool*                               m_pStateCache;
+    std::unique_ptr<bool[]>                 m_pStateCache;
         // one bool for each supported url
-    css::uno::Reference< css::frame::XDispatch > *                    m_pDispatchers;
+    std::unique_ptr<css::uno::Reference< css::frame::XDispatch >[]>   m_pDispatchers;
         // one dispatcher for each supported url
         // (I would like to have a vector here but including the stl in an exported file seems
-        // very risky to me ....)
+        // very risky to me...)
 
-    class GridListenerDelegator;
+    class SAL_DLLPRIVATE GridListenerDelegator;
     friend class GridListenerDelegator;
-    GridListenerDelegator*  m_pGridListener;
-
-protected:
-    css::uno::Reference< css::uno::XComponentContext >    m_xContext;
-    ::osl::Mutex                                              m_aMutex;
+    std::unique_ptr<GridListenerDelegator>  m_pGridListener;
 
 public:
     FmXGridPeer(const css::uno::Reference< css::uno::XComponentContext >&);
@@ -373,13 +378,11 @@ public:
     void Create(vcl::Window* pParent, WinBits nStyle);
 
 // css::lang::XUnoTunnel
-    static const css::uno::Sequence< sal_Int8 >&   getUnoTunnelImplementationId() throw();
-    static FmXGridPeer*                                         getImplementation( const css::uno::Reference< css::uno::XInterface >& _rxIFace ) throw();
-    sal_Int64                                                   SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& _rIdentifier ) override;
+    UNO3_GETIMPLEMENTATION_DECL(FmXGridPeer)
 
 // css::form::XGridPeer
     virtual css::uno::Reference< css::container::XIndexContainer > SAL_CALL getColumns(  ) override;
-    virtual void SAL_CALL setColumns( const css::uno::Reference< css::container::XIndexContainer >& aColumns ) override;
+    virtual void SAL_CALL setColumns( const css::uno::Reference< css::container::XIndexContainer >& aColumns ) override final;
 
 // css::lang::XComponent
     virtual void SAL_CALL dispose() override;
@@ -404,7 +407,7 @@ public:
     virtual css::uno::Any SAL_CALL getByIndex(sal_Int32 _rIndex) override;
 
 // css::beans::XPropertyChangeListener
-    virtual void SAL_CALL SAL_CALL propertyChange(const css::beans::PropertyChangeEvent& evt) override;
+    virtual void SAL_CALL propertyChange(const css::beans::PropertyChangeEvent& evt) override;
 
 // css::form::XLoadListener
     virtual void SAL_CALL loaded(const css::lang::EventObject& rEvent) override;
@@ -443,14 +446,14 @@ public:
 
 // css::sdb::XRowSetSupplier
     virtual css::uno::Reference< css::sdbc::XRowSet >  SAL_CALL getRowSet() override;
-    virtual void SAL_CALL setRowSet(const css::uno::Reference< css::sdbc::XRowSet >& xDataSource) override;
+    virtual void SAL_CALL setRowSet(const css::uno::Reference< css::sdbc::XRowSet >& xDataSource) override final;
 
 // css::util::XModifyBroadcaster
     virtual void SAL_CALL addModifyListener(const css::uno::Reference< css::util::XModifyListener >& l) override;
     virtual void SAL_CALL removeModifyListener(const css::uno::Reference< css::util::XModifyListener >& l) override;
 
 // UnoControl
-    virtual void SAL_CALL SAL_CALL setDesignMode(sal_Bool bOn) override;
+    virtual void SAL_CALL setDesignMode(sal_Bool bOn) override;
     virtual sal_Bool SAL_CALL isDesignMode() override;
 
 // css::view::XSelectionChangeListener
@@ -473,8 +476,8 @@ public:
     virtual void SAL_CALL addContainerListener(const css::uno::Reference< css::container::XContainerListener >& l) override;
     virtual void SAL_CALL removeContainerListener(const css::uno::Reference< css::container::XContainerListener >& l) override;
 
-    void columnVisible(DbGridColumn* pColumn);
-    void columnHidden(DbGridColumn* pColumn);
+    void columnVisible(DbGridColumn const * pColumn);
+    void columnHidden(DbGridColumn const * pColumn);
 
 // css::awt::XView
     virtual void SAL_CALL draw( sal_Int32 x, sal_Int32 y ) override;

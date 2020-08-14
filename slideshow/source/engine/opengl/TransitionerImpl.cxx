@@ -27,8 +27,6 @@
  ************************************************************************/
 
 #include <sal/types.h>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
 #include <memory>
 
@@ -48,13 +46,13 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/rendering/XIntegerBitmap.hpp>
 #include <com/sun/star/geometry/IntegerSize2D.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
-#include <cppuhelper/factory.hxx>
+#include <cppuhelper/supportsservice.hxx>
 #include <rtl/ref.hxx>
-
-#include <comphelper/servicedecl.hxx>
+#include <sal/log.hxx>
 
 #include <canvas/canvastools.hxx>
 
@@ -66,8 +64,6 @@
 #include <vcl/window.hxx>
 
 #include "TransitionImpl.hxx"
-
-#include <vcl/sysdata.hxx>
 
 #if OSL_DEBUG_LEVEL > 0
 #include <chrono>
@@ -297,7 +293,7 @@ bool OGLTransitionerImpl::initWindowFromSlideShowView( const Reference< presenta
     if (isDisposed())
         return false;
 
-    mxView.set( xView, UNO_QUERY );
+    mxView = xView;
     if( !mxView.is() )
         return false;
 
@@ -344,7 +340,6 @@ bool OGLTransitionerImpl::initWindowFromSlideShowView( const Reference< presenta
 
     mpContext->swapBuffers();
 
-    glViewport(0, 0, aCanvasArea.Width, aCanvasArea.Height);
     CHECK_GL_ERROR();
 
     return true;
@@ -371,20 +366,21 @@ void OGLTransitionerImpl::setSlides( const uno::Reference< rendering::XBitmap >&
     //pixmap of the non-opengl parent window. If any expose events occur around the start and end of
     //the transition then those windows are default filled by X with the desired start/end image so there's
     //no visible flash
-    if (SystemChildWindow* pChildWindow = mpContext->getChildWindow())
+    SystemChildWindow* pChildWindow = mpContext->getChildWindow();
+    if (!pChildWindow)
+        return;
+
+    css::uno::Reference<css::beans::XFastPropertySet> xEnteringFastPropertySet(mxEnteringBitmap, css::uno::UNO_QUERY);
+    css::uno::Reference<css::beans::XFastPropertySet> xLeavingFastPropertySet(mxLeavingBitmap, css::uno::UNO_QUERY);
+    css::uno::Sequence<css::uno::Any> aEnteringBitmap;
+    css::uno::Sequence<css::uno::Any> aLeavingBitmap;
+    if (xEnteringFastPropertySet && xLeavingFastPropertySet)
     {
-        css::uno::Reference<css::beans::XFastPropertySet> xEnteringFastPropertySet(mxEnteringBitmap, css::uno::UNO_QUERY);
-        css::uno::Reference<css::beans::XFastPropertySet> xLeavingFastPropertySet(mxLeavingBitmap, css::uno::UNO_QUERY);
-        css::uno::Sequence<css::uno::Any> aEnteringBitmap;
-        css::uno::Sequence<css::uno::Any> aLeavingBitmap;
-        if (xEnteringFastPropertySet.get() && xLeavingFastPropertySet.get())
-        {
-            xEnteringFastPropertySet->getFastPropertyValue(1) >>= aEnteringBitmap;
-            xLeavingFastPropertySet->getFastPropertyValue(1) >>= aLeavingBitmap;
-        }
-        if (aEnteringBitmap.getLength() == 3 && aLeavingBitmap.getLength() == 3)
-            pChildWindow->SetLeaveEnterBackgrounds(aLeavingBitmap, aEnteringBitmap);
+        xEnteringFastPropertySet->getFastPropertyValue(1) >>= aEnteringBitmap;
+        xLeavingFastPropertySet->getFastPropertyValue(1) >>= aLeavingBitmap;
     }
+    if (aEnteringBitmap.getLength() == 3 && aLeavingBitmap.getLength() == 3)
+        pChildWindow->SetLeaveEnterBackgrounds(aLeavingBitmap, aEnteringBitmap);
 }
 
 
@@ -465,358 +461,334 @@ void OGLTransitionerImpl::createTexture( GLuint* texID,
     CHECK_GL_ERROR();
 }
 
-namespace
+class OGLColorSpace : public cppu::WeakImplHelper< css::rendering::XIntegerBitmapColorSpace >
 {
-    class OGLColorSpace : public cppu::WeakImplHelper< css::rendering::XIntegerBitmapColorSpace >
-    {
-    private:
-        uno::Sequence< sal_Int8 >  maComponentTags;
-        uno::Sequence< sal_Int32 > maBitCounts;
+private:
+    uno::Sequence< sal_Int8 >  maComponentTags;
+    uno::Sequence< sal_Int32 > maBitCounts;
 
-        virtual sal_Int8 SAL_CALL getType(  ) override
+    virtual sal_Int8 SAL_CALL getType(  ) override
+    {
+        return rendering::ColorSpaceType::RGB;
+    }
+    virtual uno::Sequence< sal_Int8 > SAL_CALL getComponentTags(  ) override
+    {
+        return maComponentTags;
+    }
+    virtual sal_Int8 SAL_CALL getRenderingIntent(  ) override
+    {
+        return rendering::RenderingIntent::PERCEPTUAL;
+    }
+    virtual uno::Sequence< beans::PropertyValue > SAL_CALL getProperties(  ) override
+    {
+        return uno::Sequence< beans::PropertyValue >();
+    }
+    virtual uno::Sequence< double > SAL_CALL convertColorSpace( const uno::Sequence< double >& deviceColor,
+                                                                const uno::Reference< rendering::XColorSpace >& targetColorSpace ) override
+    {
+        // TODO(P3): if we know anything about target
+        // colorspace, this can be greatly sped up
+        uno::Sequence<rendering::ARGBColor> aIntermediate(
+            convertToARGB(deviceColor));
+        return targetColorSpace->convertFromARGB(aIntermediate);
+    }
+    virtual uno::Sequence< rendering::RGBColor > SAL_CALL convertToRGB( const uno::Sequence< double >& deviceColor ) override
+    {
+        const double*  pIn( deviceColor.getConstArray() );
+        const std::size_t nLen( deviceColor.getLength() );
+        ENSURE_ARG_OR_THROW2(nLen%4==0,
+                                "number of channels no multiple of 4",
+                                static_cast<rendering::XColorSpace*>(this), 0);
+
+        uno::Sequence< rendering::RGBColor > aRes(nLen/4);
+        rendering::RGBColor* pOut( aRes.getArray() );
+        for( std::size_t i=0; i<nLen; i+=4 )
         {
-            return rendering::ColorSpaceType::RGB;
+            *pOut++ = rendering::RGBColor(pIn[0],pIn[1],pIn[2]);
+            pIn += 4;
         }
-        virtual uno::Sequence< sal_Int8 > SAL_CALL getComponentTags(  ) override
+        return aRes;
+    }
+    virtual uno::Sequence< rendering::ARGBColor > SAL_CALL convertToARGB( const uno::Sequence< double >& deviceColor ) override
+    {
+        const double*  pIn( deviceColor.getConstArray() );
+        const std::size_t nLen( deviceColor.getLength() );
+        ENSURE_ARG_OR_THROW2(nLen%4==0,
+                                "number of channels no multiple of 4",
+                                static_cast<rendering::XColorSpace*>(this), 0);
+
+        uno::Sequence< rendering::ARGBColor > aRes(nLen/4);
+        rendering::ARGBColor* pOut( aRes.getArray() );
+        for( std::size_t i=0; i<nLen; i+=4 )
         {
-            return maComponentTags;
+            *pOut++ = rendering::ARGBColor(pIn[3],pIn[0],pIn[1],pIn[2]);
+            pIn += 4;
         }
-        virtual sal_Int8 SAL_CALL getRenderingIntent(  ) override
+        return aRes;
+    }
+    virtual uno::Sequence< rendering::ARGBColor > SAL_CALL convertToPARGB( const uno::Sequence< double >& deviceColor ) override
+    {
+        const double*  pIn( deviceColor.getConstArray() );
+        const std::size_t nLen( deviceColor.getLength() );
+        ENSURE_ARG_OR_THROW2(nLen%4==0,
+                                "number of channels no multiple of 4",
+                                static_cast<rendering::XColorSpace*>(this), 0);
+
+        uno::Sequence< rendering::ARGBColor > aRes(nLen/4);
+        rendering::ARGBColor* pOut( aRes.getArray() );
+        for( std::size_t i=0; i<nLen; i+=4 )
         {
-            return rendering::RenderingIntent::PERCEPTUAL;
+            *pOut++ = rendering::ARGBColor(pIn[3],pIn[3]*pIn[0],pIn[3]*pIn[1],pIn[3]*pIn[2]);
+            pIn += 4;
         }
-        virtual uno::Sequence< beans::PropertyValue > SAL_CALL getProperties(  ) override
+        return aRes;
+    }
+    virtual uno::Sequence< double > SAL_CALL convertFromRGB( const uno::Sequence< rendering::RGBColor >& rgbColor ) override
+    {
+        const sal_Int32 nLen( rgbColor.getLength() );
+
+        uno::Sequence< double > aRes(nLen*4);
+        double* pColors=aRes.getArray();
+        for( const rendering::RGBColor& rIn : rgbColor )
         {
-            return uno::Sequence< beans::PropertyValue >();
+            *pColors++ = rIn.Red;
+            *pColors++ = rIn.Green;
+            *pColors++ = rIn.Blue;
+            *pColors++ = 1.0;
         }
-        virtual uno::Sequence< double > SAL_CALL convertColorSpace( const uno::Sequence< double >& deviceColor,
-                                                                    const uno::Reference< rendering::XColorSpace >& targetColorSpace ) override
+        return aRes;
+    }
+    virtual uno::Sequence< double > SAL_CALL convertFromARGB( const uno::Sequence< rendering::ARGBColor >& rgbColor ) override
+    {
+        const sal_Int32 nLen( rgbColor.getLength() );
+
+        uno::Sequence< double > aRes(nLen*4);
+        double* pColors=aRes.getArray();
+        for( const rendering::ARGBColor& rIn : rgbColor )
+        {
+            *pColors++ = rIn.Red;
+            *pColors++ = rIn.Green;
+            *pColors++ = rIn.Blue;
+            *pColors++ = rIn.Alpha;
+        }
+        return aRes;
+    }
+    virtual uno::Sequence< double > SAL_CALL convertFromPARGB( const uno::Sequence< rendering::ARGBColor >& rgbColor ) override
+    {
+        const sal_Int32 nLen( rgbColor.getLength() );
+
+        uno::Sequence< double > aRes(nLen*4);
+        double* pColors=aRes.getArray();
+        for( const rendering::ARGBColor& rIn : rgbColor )
+        {
+            *pColors++ = rIn.Red/rIn.Alpha;
+            *pColors++ = rIn.Green/rIn.Alpha;
+            *pColors++ = rIn.Blue/rIn.Alpha;
+            *pColors++ = rIn.Alpha;
+        }
+        return aRes;
+    }
+
+    // XIntegerBitmapColorSpace
+    virtual sal_Int32 SAL_CALL getBitsPerPixel(  ) override
+    {
+        return 32;
+    }
+    virtual uno::Sequence< sal_Int32 > SAL_CALL getComponentBitCounts(  ) override
+    {
+        return maBitCounts;
+    }
+    virtual sal_Int8 SAL_CALL getEndianness(  ) override
+    {
+        return util::Endianness::LITTLE;
+    }
+    virtual uno::Sequence<double> SAL_CALL convertFromIntegerColorSpace( const uno::Sequence< sal_Int8 >& deviceColor,
+                                                                            const uno::Reference< rendering::XColorSpace >& targetColorSpace ) override
+    {
+        if( dynamic_cast<OGLColorSpace*>(targetColorSpace.get()) )
+        {
+            const sal_Int32  nLen( deviceColor.getLength() );
+            ENSURE_ARG_OR_THROW2(nLen%4==0,
+                                    "number of channels no multiple of 4",
+                                    static_cast<rendering::XColorSpace*>(this), 0);
+
+            uno::Sequence<double> aRes(nLen);
+            std::transform(deviceColor.begin(), deviceColor.end(), aRes.begin(),
+                           vcl::unotools::toDoubleColor);
+            return aRes;
+        }
+        else
         {
             // TODO(P3): if we know anything about target
             // colorspace, this can be greatly sped up
             uno::Sequence<rendering::ARGBColor> aIntermediate(
-                convertToARGB(deviceColor));
+                convertIntegerToARGB(deviceColor));
             return targetColorSpace->convertFromARGB(aIntermediate);
         }
-        virtual uno::Sequence< rendering::RGBColor > SAL_CALL convertToRGB( const uno::Sequence< double >& deviceColor ) override
-        {
-            const double*  pIn( deviceColor.getConstArray() );
-            const std::size_t nLen( deviceColor.getLength() );
-            ENSURE_ARG_OR_THROW2(nLen%4==0,
-                                    "number of channels no multiple of 4",
-                                    static_cast<rendering::XColorSpace*>(this), 0);
-
-            uno::Sequence< rendering::RGBColor > aRes(nLen/4);
-            rendering::RGBColor* pOut( aRes.getArray() );
-            for( std::size_t i=0; i<nLen; i+=4 )
-            {
-                *pOut++ = rendering::RGBColor(pIn[0],pIn[1],pIn[2]);
-                pIn += 4;
-            }
-            return aRes;
-        }
-        virtual uno::Sequence< rendering::ARGBColor > SAL_CALL convertToARGB( const uno::Sequence< double >& deviceColor ) override
-        {
-            const double*  pIn( deviceColor.getConstArray() );
-            const std::size_t nLen( deviceColor.getLength() );
-            ENSURE_ARG_OR_THROW2(nLen%4==0,
-                                    "number of channels no multiple of 4",
-                                    static_cast<rendering::XColorSpace*>(this), 0);
-
-            uno::Sequence< rendering::ARGBColor > aRes(nLen/4);
-            rendering::ARGBColor* pOut( aRes.getArray() );
-            for( std::size_t i=0; i<nLen; i+=4 )
-            {
-                *pOut++ = rendering::ARGBColor(pIn[3],pIn[0],pIn[1],pIn[2]);
-                pIn += 4;
-            }
-            return aRes;
-        }
-        virtual uno::Sequence< rendering::ARGBColor > SAL_CALL convertToPARGB( const uno::Sequence< double >& deviceColor ) override
-        {
-            const double*  pIn( deviceColor.getConstArray() );
-            const std::size_t nLen( deviceColor.getLength() );
-            ENSURE_ARG_OR_THROW2(nLen%4==0,
-                                    "number of channels no multiple of 4",
-                                    static_cast<rendering::XColorSpace*>(this), 0);
-
-            uno::Sequence< rendering::ARGBColor > aRes(nLen/4);
-            rendering::ARGBColor* pOut( aRes.getArray() );
-            for( std::size_t i=0; i<nLen; i+=4 )
-            {
-                *pOut++ = rendering::ARGBColor(pIn[3],pIn[3]*pIn[0],pIn[3]*pIn[1],pIn[3]*pIn[2]);
-                pIn += 4;
-            }
-            return aRes;
-        }
-        virtual uno::Sequence< double > SAL_CALL convertFromRGB( const uno::Sequence< rendering::RGBColor >& rgbColor ) override
-        {
-            const rendering::RGBColor* pIn( rgbColor.getConstArray() );
-            const std::size_t             nLen( rgbColor.getLength() );
-
-            uno::Sequence< double > aRes(nLen*4);
-            double* pColors=aRes.getArray();
-            for( std::size_t i=0; i<nLen; ++i )
-            {
-                *pColors++ = pIn->Red;
-                *pColors++ = pIn->Green;
-                *pColors++ = pIn->Blue;
-                *pColors++ = 1.0;
-                ++pIn;
-            }
-            return aRes;
-        }
-        virtual uno::Sequence< double > SAL_CALL convertFromARGB( const uno::Sequence< rendering::ARGBColor >& rgbColor ) override
-        {
-            const rendering::ARGBColor* pIn( rgbColor.getConstArray() );
-            const std::size_t              nLen( rgbColor.getLength() );
-
-            uno::Sequence< double > aRes(nLen*4);
-            double* pColors=aRes.getArray();
-            for( std::size_t i=0; i<nLen; ++i )
-            {
-                *pColors++ = pIn->Red;
-                *pColors++ = pIn->Green;
-                *pColors++ = pIn->Blue;
-                *pColors++ = pIn->Alpha;
-                ++pIn;
-            }
-            return aRes;
-        }
-        virtual uno::Sequence< double > SAL_CALL convertFromPARGB( const uno::Sequence< rendering::ARGBColor >& rgbColor ) override
-        {
-            const rendering::ARGBColor* pIn( rgbColor.getConstArray() );
-            const std::size_t              nLen( rgbColor.getLength() );
-
-            uno::Sequence< double > aRes(nLen*4);
-            double* pColors=aRes.getArray();
-            for( std::size_t i=0; i<nLen; ++i )
-            {
-                *pColors++ = pIn->Red/pIn->Alpha;
-                *pColors++ = pIn->Green/pIn->Alpha;
-                *pColors++ = pIn->Blue/pIn->Alpha;
-                *pColors++ = pIn->Alpha;
-                ++pIn;
-            }
-            return aRes;
-        }
-
-        // XIntegerBitmapColorSpace
-        virtual sal_Int32 SAL_CALL getBitsPerPixel(  ) override
-        {
-            return 32;
-        }
-        virtual uno::Sequence< sal_Int32 > SAL_CALL getComponentBitCounts(  ) override
-        {
-            return maBitCounts;
-        }
-        virtual sal_Int8 SAL_CALL getEndianness(  ) override
-        {
-            return util::Endianness::LITTLE;
-        }
-        virtual uno::Sequence<double> SAL_CALL convertFromIntegerColorSpace( const uno::Sequence< sal_Int8 >& deviceColor,
-                                                                                const uno::Reference< rendering::XColorSpace >& targetColorSpace ) override
-        {
-            if( dynamic_cast<OGLColorSpace*>(targetColorSpace.get()) )
-            {
-                const sal_Int8* pIn( deviceColor.getConstArray() );
-                const std::size_t  nLen( deviceColor.getLength() );
-                ENSURE_ARG_OR_THROW2(nLen%4==0,
-                                        "number of channels no multiple of 4",
-                                        static_cast<rendering::XColorSpace*>(this), 0);
-
-                uno::Sequence<double> aRes(nLen);
-                double* pOut( aRes.getArray() );
-                for( std::size_t i=0; i<nLen; i+=4 )
-                {
-                    *pOut++ = vcl::unotools::toDoubleColor(*pIn++);
-                    *pOut++ = vcl::unotools::toDoubleColor(*pIn++);
-                    *pOut++ = vcl::unotools::toDoubleColor(*pIn++);
-                    *pOut++ = vcl::unotools::toDoubleColor(*pIn++);
-                }
-                return aRes;
-            }
-            else
-            {
-                // TODO(P3): if we know anything about target
-                // colorspace, this can be greatly sped up
-                uno::Sequence<rendering::ARGBColor> aIntermediate(
-                    convertIntegerToARGB(deviceColor));
-                return targetColorSpace->convertFromARGB(aIntermediate);
-            }
-        }
-        virtual uno::Sequence< sal_Int8 > SAL_CALL convertToIntegerColorSpace( const uno::Sequence< sal_Int8 >& deviceColor,
-                                                                                    const uno::Reference< rendering::XIntegerBitmapColorSpace >& targetColorSpace ) override
-        {
-            if( dynamic_cast<OGLColorSpace*>(targetColorSpace.get()) )
-            {
-                // it's us, so simply pass-through the data
-                return deviceColor;
-            }
-            else
-            {
-                // TODO(P3): if we know anything about target
-                // colorspace, this can be greatly sped up
-                uno::Sequence<rendering::ARGBColor> aIntermediate(
-                    convertIntegerToARGB(deviceColor));
-                return targetColorSpace->convertIntegerFromARGB(aIntermediate);
-            }
-        }
-        virtual uno::Sequence< rendering::RGBColor > SAL_CALL convertIntegerToRGB( const uno::Sequence< sal_Int8 >& deviceColor ) override
-        {
-            const sal_Int8* pIn( deviceColor.getConstArray() );
-            const std::size_t  nLen( deviceColor.getLength() );
-            ENSURE_ARG_OR_THROW2(nLen%4==0,
-                                    "number of channels no multiple of 4",
-                                    static_cast<rendering::XColorSpace*>(this), 0);
-
-            uno::Sequence< rendering::RGBColor > aRes(nLen/4);
-            rendering::RGBColor* pOut( aRes.getArray() );
-            for( std::size_t i=0; i<nLen; i+=4 )
-            {
-                *pOut++ = rendering::RGBColor(
-                    vcl::unotools::toDoubleColor(pIn[0]),
-                    vcl::unotools::toDoubleColor(pIn[1]),
-                    vcl::unotools::toDoubleColor(pIn[2]));
-                pIn += 4;
-            }
-            return aRes;
-        }
-
-        virtual uno::Sequence< rendering::ARGBColor > SAL_CALL convertIntegerToARGB( const uno::Sequence< sal_Int8 >& deviceColor ) override
-        {
-            const sal_Int8* pIn( deviceColor.getConstArray() );
-            const std::size_t  nLen( deviceColor.getLength() );
-            ENSURE_ARG_OR_THROW2(nLen%4==0,
-                                    "number of channels no multiple of 4",
-                                    static_cast<rendering::XColorSpace*>(this), 0);
-
-            uno::Sequence< rendering::ARGBColor > aRes(nLen/4);
-            rendering::ARGBColor* pOut( aRes.getArray() );
-            for( std::size_t i=0; i<nLen; i+=4 )
-            {
-                *pOut++ = rendering::ARGBColor(
-                    vcl::unotools::toDoubleColor(pIn[3]),
-                    vcl::unotools::toDoubleColor(pIn[0]),
-                    vcl::unotools::toDoubleColor(pIn[1]),
-                    vcl::unotools::toDoubleColor(pIn[2]));
-                pIn += 4;
-            }
-            return aRes;
-        }
-
-        virtual uno::Sequence< rendering::ARGBColor > SAL_CALL convertIntegerToPARGB( const uno::Sequence< sal_Int8 >& deviceColor ) override
-        {
-            const sal_Int8* pIn( deviceColor.getConstArray() );
-            const std::size_t  nLen( deviceColor.getLength() );
-            ENSURE_ARG_OR_THROW2(nLen%4==0,
-                                    "number of channels no multiple of 4",
-                                    static_cast<rendering::XColorSpace*>(this), 0);
-
-            uno::Sequence< rendering::ARGBColor > aRes(nLen/4);
-            rendering::ARGBColor* pOut( aRes.getArray() );
-            for( std::size_t i=0; i<nLen; i+=4 )
-            {
-                const sal_Int8 nAlpha( pIn[3] );
-                *pOut++ = rendering::ARGBColor(
-                    vcl::unotools::toDoubleColor(nAlpha),
-                    vcl::unotools::toDoubleColor(nAlpha*pIn[0]),
-                    vcl::unotools::toDoubleColor(nAlpha*pIn[1]),
-                    vcl::unotools::toDoubleColor(nAlpha*pIn[2]));
-                pIn += 4;
-            }
-            return aRes;
-        }
-
-        virtual uno::Sequence< sal_Int8 > SAL_CALL convertIntegerFromRGB( const uno::Sequence< rendering::RGBColor >& rgbColor ) override
-        {
-            const rendering::RGBColor* pIn( rgbColor.getConstArray() );
-            const std::size_t             nLen( rgbColor.getLength() );
-
-            uno::Sequence< sal_Int8 > aRes(nLen*4);
-            sal_Int8* pColors=aRes.getArray();
-            for( std::size_t i=0; i<nLen; ++i )
-            {
-                *pColors++ = vcl::unotools::toByteColor(pIn->Red);
-                *pColors++ = vcl::unotools::toByteColor(pIn->Green);
-                *pColors++ = vcl::unotools::toByteColor(pIn->Blue);
-                *pColors++ = -1;
-                ++pIn;
-            }
-            return aRes;
-        }
-
-        virtual uno::Sequence< sal_Int8 > SAL_CALL convertIntegerFromARGB( const uno::Sequence< rendering::ARGBColor >& rgbColor ) override
-        {
-            const rendering::ARGBColor* pIn( rgbColor.getConstArray() );
-            const std::size_t              nLen( rgbColor.getLength() );
-
-            uno::Sequence< sal_Int8 > aRes(nLen*4);
-            sal_Int8* pColors=aRes.getArray();
-            for( std::size_t i=0; i<nLen; ++i )
-            {
-                *pColors++ = vcl::unotools::toByteColor(pIn->Red);
-                *pColors++ = vcl::unotools::toByteColor(pIn->Green);
-                *pColors++ = vcl::unotools::toByteColor(pIn->Blue);
-                *pColors++ = vcl::unotools::toByteColor(pIn->Alpha);
-                ++pIn;
-            }
-            return aRes;
-        }
-
-        virtual uno::Sequence< sal_Int8 > SAL_CALL convertIntegerFromPARGB( const uno::Sequence< rendering::ARGBColor >& rgbColor ) override
-        {
-            const rendering::ARGBColor* pIn( rgbColor.getConstArray() );
-            const std::size_t              nLen( rgbColor.getLength() );
-
-            uno::Sequence< sal_Int8 > aRes(nLen*4);
-            sal_Int8* pColors=aRes.getArray();
-            for( std::size_t i=0; i<nLen; ++i )
-            {
-                *pColors++ = vcl::unotools::toByteColor(pIn->Red/pIn->Alpha);
-                *pColors++ = vcl::unotools::toByteColor(pIn->Green/pIn->Alpha);
-                *pColors++ = vcl::unotools::toByteColor(pIn->Blue/pIn->Alpha);
-                *pColors++ = vcl::unotools::toByteColor(pIn->Alpha);
-                ++pIn;
-            }
-            return aRes;
-        }
-
-    public:
-        OGLColorSpace() :
-            maComponentTags(4),
-            maBitCounts(4)
-        {
-            sal_Int8*  pTags = maComponentTags.getArray();
-            sal_Int32* pBitCounts = maBitCounts.getArray();
-            pTags[0] = rendering::ColorComponentTag::RGB_RED;
-            pTags[1] = rendering::ColorComponentTag::RGB_GREEN;
-            pTags[2] = rendering::ColorComponentTag::RGB_BLUE;
-            pTags[3] = rendering::ColorComponentTag::ALPHA;
-
-            pBitCounts[0] =
-            pBitCounts[1] =
-            pBitCounts[2] =
-            pBitCounts[3] = 8;
-        }
-    };
-
-    struct OGLColorSpaceHolder : public rtl::StaticWithInit<uno::Reference<rendering::XIntegerBitmapColorSpace>, OGLColorSpaceHolder>
-    {
-        uno::Reference<rendering::XIntegerBitmapColorSpace> operator()()
-        {
-            return new OGLColorSpace();
-        }
-    };
-
-    uno::Reference<rendering::XIntegerBitmapColorSpace>
-    getOGLColorSpace()
-    {
-        return OGLColorSpaceHolder::get();
     }
-}
+    virtual uno::Sequence< sal_Int8 > SAL_CALL convertToIntegerColorSpace( const uno::Sequence< sal_Int8 >& deviceColor,
+                                                                                const uno::Reference< rendering::XIntegerBitmapColorSpace >& targetColorSpace ) override
+    {
+        if( dynamic_cast<OGLColorSpace*>(targetColorSpace.get()) )
+        {
+            // it's us, so simply pass-through the data
+            return deviceColor;
+        }
+        else
+        {
+            // TODO(P3): if we know anything about target
+            // colorspace, this can be greatly sped up
+            uno::Sequence<rendering::ARGBColor> aIntermediate(
+                convertIntegerToARGB(deviceColor));
+            return targetColorSpace->convertIntegerFromARGB(aIntermediate);
+        }
+    }
+    virtual uno::Sequence< rendering::RGBColor > SAL_CALL convertIntegerToRGB( const uno::Sequence< sal_Int8 >& deviceColor ) override
+    {
+        const sal_Int8* pIn( deviceColor.getConstArray() );
+        const std::size_t  nLen( deviceColor.getLength() );
+        ENSURE_ARG_OR_THROW2(nLen%4==0,
+                                "number of channels no multiple of 4",
+                                static_cast<rendering::XColorSpace*>(this), 0);
 
-namespace {
+        uno::Sequence< rendering::RGBColor > aRes(nLen/4);
+        rendering::RGBColor* pOut( aRes.getArray() );
+        for( std::size_t i=0; i<nLen; i+=4 )
+        {
+            *pOut++ = rendering::RGBColor(
+                vcl::unotools::toDoubleColor(pIn[0]),
+                vcl::unotools::toDoubleColor(pIn[1]),
+                vcl::unotools::toDoubleColor(pIn[2]));
+            pIn += 4;
+        }
+        return aRes;
+    }
+
+    virtual uno::Sequence< rendering::ARGBColor > SAL_CALL convertIntegerToARGB( const uno::Sequence< sal_Int8 >& deviceColor ) override
+    {
+        const sal_Int8* pIn( deviceColor.getConstArray() );
+        const std::size_t  nLen( deviceColor.getLength() );
+        ENSURE_ARG_OR_THROW2(nLen%4==0,
+                                "number of channels no multiple of 4",
+                                static_cast<rendering::XColorSpace*>(this), 0);
+
+        uno::Sequence< rendering::ARGBColor > aRes(nLen/4);
+        rendering::ARGBColor* pOut( aRes.getArray() );
+        for( std::size_t i=0; i<nLen; i+=4 )
+        {
+            *pOut++ = rendering::ARGBColor(
+                vcl::unotools::toDoubleColor(pIn[3]),
+                vcl::unotools::toDoubleColor(pIn[0]),
+                vcl::unotools::toDoubleColor(pIn[1]),
+                vcl::unotools::toDoubleColor(pIn[2]));
+            pIn += 4;
+        }
+        return aRes;
+    }
+
+    virtual uno::Sequence< rendering::ARGBColor > SAL_CALL convertIntegerToPARGB( const uno::Sequence< sal_Int8 >& deviceColor ) override
+    {
+        const sal_Int8* pIn( deviceColor.getConstArray() );
+        const std::size_t  nLen( deviceColor.getLength() );
+        ENSURE_ARG_OR_THROW2(nLen%4==0,
+                                "number of channels no multiple of 4",
+                                static_cast<rendering::XColorSpace*>(this), 0);
+
+        uno::Sequence< rendering::ARGBColor > aRes(nLen/4);
+        rendering::ARGBColor* pOut( aRes.getArray() );
+        for( std::size_t i=0; i<nLen; i+=4 )
+        {
+            const sal_Int8 nAlpha( pIn[3] );
+            *pOut++ = rendering::ARGBColor(
+                vcl::unotools::toDoubleColor(nAlpha),
+                vcl::unotools::toDoubleColor(nAlpha*pIn[0]),
+                vcl::unotools::toDoubleColor(nAlpha*pIn[1]),
+                vcl::unotools::toDoubleColor(nAlpha*pIn[2]));
+            pIn += 4;
+        }
+        return aRes;
+    }
+
+    virtual uno::Sequence< sal_Int8 > SAL_CALL convertIntegerFromRGB( const uno::Sequence< rendering::RGBColor >& rgbColor ) override
+    {
+        const sal_Int32 nLen( rgbColor.getLength() );
+
+        uno::Sequence< sal_Int8 > aRes(nLen*4);
+        sal_Int8* pColors=aRes.getArray();
+        for( const rendering::RGBColor& rIn : rgbColor )
+        {
+            *pColors++ = vcl::unotools::toByteColor(rIn.Red);
+            *pColors++ = vcl::unotools::toByteColor(rIn.Green);
+            *pColors++ = vcl::unotools::toByteColor(rIn.Blue);
+            *pColors++ = -1;
+        }
+        return aRes;
+    }
+
+    virtual uno::Sequence< sal_Int8 > SAL_CALL convertIntegerFromARGB( const uno::Sequence< rendering::ARGBColor >& rgbColor ) override
+    {
+        const sal_Int32 nLen( rgbColor.getLength() );
+
+        uno::Sequence< sal_Int8 > aRes(nLen*4);
+        sal_Int8* pColors=aRes.getArray();
+        for( const rendering::ARGBColor& rIn : rgbColor )
+        {
+            *pColors++ = vcl::unotools::toByteColor(rIn.Red);
+            *pColors++ = vcl::unotools::toByteColor(rIn.Green);
+            *pColors++ = vcl::unotools::toByteColor(rIn.Blue);
+            *pColors++ = vcl::unotools::toByteColor(rIn.Alpha);
+        }
+        return aRes;
+    }
+
+    virtual uno::Sequence< sal_Int8 > SAL_CALL convertIntegerFromPARGB( const uno::Sequence< rendering::ARGBColor >& rgbColor ) override
+    {
+        const sal_Int32 nLen( rgbColor.getLength() );
+
+        uno::Sequence< sal_Int8 > aRes(nLen*4);
+        sal_Int8* pColors=aRes.getArray();
+        for( const rendering::ARGBColor& rIn : rgbColor )
+        {
+            *pColors++ = vcl::unotools::toByteColor(rIn.Red/rIn.Alpha);
+            *pColors++ = vcl::unotools::toByteColor(rIn.Green/rIn.Alpha);
+            *pColors++ = vcl::unotools::toByteColor(rIn.Blue/rIn.Alpha);
+            *pColors++ = vcl::unotools::toByteColor(rIn.Alpha);
+        }
+        return aRes;
+    }
+
+public:
+    OGLColorSpace() :
+        maComponentTags(4),
+        maBitCounts(4)
+    {
+        sal_Int8*  pTags = maComponentTags.getArray();
+        sal_Int32* pBitCounts = maBitCounts.getArray();
+        pTags[0] = rendering::ColorComponentTag::RGB_RED;
+        pTags[1] = rendering::ColorComponentTag::RGB_GREEN;
+        pTags[2] = rendering::ColorComponentTag::RGB_BLUE;
+        pTags[3] = rendering::ColorComponentTag::ALPHA;
+
+        pBitCounts[0] =
+        pBitCounts[1] =
+        pBitCounts[2] =
+        pBitCounts[3] = 8;
+    }
+};
+
+struct OGLColorSpaceHolder : public rtl::StaticWithInit<uno::Reference<rendering::XIntegerBitmapColorSpace>, OGLColorSpaceHolder>
+{
+    uno::Reference<rendering::XIntegerBitmapColorSpace> operator()()
+    {
+        return new OGLColorSpace();
+    }
+};
+
+uno::Reference<rendering::XIntegerBitmapColorSpace> const &
+getOGLColorSpace()
+{
+    return OGLColorSpaceHolder::get();
+}
 
 void buildMipmaps(
     GLint internalFormat, GLsizei width, GLsizei height, GLenum format,
@@ -839,8 +811,6 @@ void buildMipmaps(
         GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 }
 
-}
-
 void OGLTransitionerImpl::impl_createTexture(
                      bool useMipmap,
                      uno::Sequence<sal_Int8>& data,
@@ -861,10 +831,13 @@ void OGLTransitionerImpl::impl_createTexture(
                           GL_UNSIGNED_BYTE,
                           &tempBytes[0]);
 
-        //anistropic filtering (to make texturing not suck when looking at polygons from oblique angles)
-        GLfloat largest_supported_anisotropy;
-        glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &largest_supported_anisotropy);
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, largest_supported_anisotropy);
+        if (epoxy_has_gl_extension("GL_EXT_texture_filter_anisotropic"))
+        {
+            //anistropic filtering (to make texturing not suck when looking at polygons from oblique angles)
+            GLfloat largest_supported_anisotropy;
+            glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &largest_supported_anisotropy);
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, largest_supported_anisotropy);
+        }
     } else {
         if( mpTransition && !mbBrokenTexturesATI && !useMipmap) {
             glTexImage2D( GL_TEXTURE_2D, 0, pFormat->nInternalFormat, maSlideSize.Width, maSlideSize.Height, 0, pFormat->eFormat, pFormat->eType, &data[0] );
@@ -873,10 +846,13 @@ void OGLTransitionerImpl::impl_createTexture(
         } else {
             buildMipmaps( pFormat->nInternalFormat, maSlideSize.Width, maSlideSize.Height, pFormat->eFormat, pFormat->eType, &data[0] );
 
-            //anistropic filtering (to make texturing not suck when looking at polygons from oblique angles)
-            GLfloat largest_supported_anisotropy;
-            glGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &largest_supported_anisotropy );
-            glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, largest_supported_anisotropy );
+            if (epoxy_has_gl_extension("GL_EXT_texture_filter_anisotropic"))
+            {
+                //anistropic filtering (to make texturing not suck when looking at polygons from oblique angles)
+                GLfloat largest_supported_anisotropy;
+                glGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &largest_supported_anisotropy );
+                glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, largest_supported_anisotropy );
+            }
         }
     }
     CHECK_GL_ERROR();
@@ -888,8 +864,8 @@ const OGLFormat* OGLTransitionerImpl::chooseFormats()
     uno::Reference<rendering::XIntegerBitmapColorSpace> xIntColorSpace(
         maSlideBitmapLayout.ColorSpace);
 
-    if( (xIntColorSpace->getType() == rendering::ColorSpaceType::RGB ||
-         xIntColorSpace->getType() == rendering::ColorSpaceType::SRGB) )
+    if( xIntColorSpace->getType() == rendering::ColorSpaceType::RGB ||
+        xIntColorSpace->getType() == rendering::ColorSpaceType::SRGB )
     {
         /* table for canvas->OGL format mapping. outer index is number
            of color components (0:3, 1:4), then comes bits per pixel
@@ -1075,7 +1051,7 @@ void SAL_CALL OGLTransitionerImpl::update( double nTime )
 
     SAL_INFO("slideshow.opengl", "update time: " << nTime);
     SAL_INFO("slideshow.opengl", "update took: " << std::chrono::duration_cast<std::chrono::milliseconds>(m_UpdateEndTime - m_UpdateStartTime).count());
-    m_TotalUpdateDuration += (m_UpdateEndTime - m_UpdateStartTime);
+    m_TotalUpdateDuration += m_UpdateEndTime - m_UpdateStartTime;
 #endif
 }
 
@@ -1133,10 +1109,10 @@ void OGLTransitionerImpl::disposing()
                 "whole transition (frames: " << mnFrameCount
                 << ") took: " << std::chrono::duration_cast<std::chrono::microseconds>(duration).count()
                 << " fps: "
-                << (((double)mnFrameCount*1000000000.0)/std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count())
+                << ((static_cast<double>(mnFrameCount)*1000000000.0)/std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count())
                 << " time spent in updates: " << std::chrono::duration_cast<std::chrono::microseconds>(m_TotalUpdateDuration).count()
                 << " percentage of transition time: "
-                << (100*(((double)std::chrono::duration_cast<std::chrono::nanoseconds>(m_TotalUpdateDuration).count())/((double)std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count())))
+                << (100*((static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(m_TotalUpdateDuration).count()))/(static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count()))))
                 << '%'
             );
     }
@@ -1177,14 +1153,28 @@ OGLTransitionerImpl::OGLTransitionerImpl()
 {
 }
 
-typedef cppu::WeakComponentImplHelper<presentation::XTransitionFactory> OGLTransitionFactoryImplBase;
+typedef cppu::WeakComponentImplHelper<presentation::XTransitionFactory, lang::XServiceInfo> OGLTransitionFactoryImplBase;
 
 class OGLTransitionFactoryImpl : private cppu::BaseMutex, public OGLTransitionFactoryImplBase
 {
 public:
-    explicit OGLTransitionFactoryImpl( const uno::Reference< uno::XComponentContext >& ) :
+    explicit OGLTransitionFactoryImpl() :
         OGLTransitionFactoryImplBase(m_aMutex)
     {}
+
+    // XServiceInfo
+    virtual Sequence< OUString > SAL_CALL getSupportedServiceNames() override
+    {
+        return { "com.sun.star.presentation.TransitionFactory" };
+    }
+    virtual OUString SAL_CALL getImplementationName() override
+    {
+        return "com.sun.star.comp.presentation.OGLTransitionFactory";
+    }
+    virtual sal_Bool SAL_CALL supportsService(const OUString& aServiceName) override
+    {
+        return cppu::supportsService(this, aServiceName);
+    }
 
     // XTransitionFactory
     virtual sal_Bool SAL_CALL hasTransition( sal_Int16 transitionType, sal_Int16 transitionSubType ) override
@@ -1237,6 +1227,7 @@ public:
     virtual uno::Reference< presentation::XTransition > SAL_CALL createTransition(
         sal_Int16                                             transitionType,
         sal_Int16                                             transitionSubType,
+        sal_Int32                                             transitionFadeColor,
         const uno::Reference< presentation::XSlideShowView >& view,
         const uno::Reference< rendering::XBitmap >&           leavingBitmap,
         const uno::Reference< rendering::XBitmap >&           enteringBitmap ) override
@@ -1311,7 +1302,7 @@ public:
         } else if( transitionType == animations::TransitionType::FADE && transitionSubType == animations::TransitionSubType::CROSSFADE ) {
             pTransition = makeFadeSmoothly();
         } else if( transitionType == animations::TransitionType::FADE && transitionSubType == animations::TransitionSubType::FADEOVERCOLOR ) {
-            pTransition = makeFadeThroughBlack();
+            pTransition = makeFadeThroughColor( transitionFadeColor == 0xffffff );
         } else if( transitionType == animations::TransitionType::IRISWIPE && transitionSubType == animations::TransitionSubType::DIAMOND ) {
             pTransition = makeDiamond();
         } else if( transitionType == animations::TransitionType::ZOOM && transitionSubType == animations::TransitionSubType::ROTATEIN ) {
@@ -1327,18 +1318,10 @@ public:
 
 }
 
-namespace sdecl = comphelper::service_decl;
- const sdecl::ServiceDecl OGLTransitionFactoryDecl(
-     sdecl::class_<OGLTransitionFactoryImpl>(),
-    "com.sun.star.comp.presentation.OGLTransitionFactory",
-    "com.sun.star.presentation.TransitionFactory" );
-
-// The C shared lib entry points
-extern "C"
-SAL_DLLPUBLIC_EXPORT void* SAL_CALL ogltrans_component_getFactory( sal_Char const* pImplName,
-                                         void*, void* )
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+slideshow_OGLTransitionFactoryImpl_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    return sdecl::component_getFactoryHelper( pImplName, {&OGLTransitionFactoryDecl} );
+    return cppu::acquire(new OGLTransitionFactoryImpl());
 }
-
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

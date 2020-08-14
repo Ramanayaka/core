@@ -22,6 +22,7 @@
 
 #include <com/sun/star/i18n/UnicodeType.hpp>
 #include <com/sun/star/i18n/WordType.hpp>
+#include <com/sun/star/i18n/XBreakIterator.hpp>
 
 #include <unotools/charclass.hxx>
 
@@ -29,8 +30,6 @@
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <IDocumentContentOperations.hxx>
-#include <docary.hxx>
-#include <mvsave.hxx>
 #include <ndtxt.hxx>
 #include <txatbase.hxx>
 #include <rubylist.hxx>
@@ -84,8 +83,10 @@ sal_uInt16 SwDoc::FillRubyList( const SwPaM& rPam, SwRubyList& rList )
                 }
             } while( 30 > rList.size() && *aPam.GetPoint() < *pEnd );
         }
-    } while( 30 > rList.size() &&
-        (_pStartCursor = _pStartCursor->GetNext()) != _pStartCursor2 );
+        if( 30 <= rList.size() )
+            break;
+        _pStartCursor = _pStartCursor->GetNext();
+    } while( _pStartCursor != _pStartCursor2 );
 
     return rList.size();
 }
@@ -170,8 +171,10 @@ void SwDoc::SetRubyList( const SwPaM& rPam, const SwRubyList& rList )
                 }
             } while( nListEntry < rList.size() && *aPam.GetPoint() < *pEnd );
         }
-    } while( 30 > rList.size() &&
-        (_pStartCursor = _pStartCursor->GetNext()) != _pStartCursor2 );
+        if( 30 <= rList.size() )
+            break;
+        _pStartCursor = _pStartCursor->GetNext();
+    } while( _pStartCursor != _pStartCursor2 );
 
     GetIDocumentUndoRedo().EndUndo( SwUndoId::SETRUBYATTR, nullptr );
 }
@@ -180,7 +183,7 @@ bool SwDoc::SelectNextRubyChars( SwPaM& rPam, SwRubyListEntry& rEntry )
 {
     // Point must be the startposition, Mark is optional the end position
     SwPosition* pPos = rPam.GetPoint();
-       const SwTextNode* pTNd = pPos->nNode.GetNode().GetTextNode();
+    const SwTextNode* pTNd = pPos->nNode.GetNode().GetTextNode();
     OUString const& rText = pTNd->GetText();
     sal_Int32 nStart = pPos->nContent.GetIndex();
     sal_Int32 nEnd = rText.getLength();
@@ -209,7 +212,7 @@ bool SwDoc::SelectNextRubyChars( SwPaM& rPam, SwRubyListEntry& rEntry )
         {
             const SwTextAttr* pHt = pHts->Get(nHtIdx);
             if( RES_TXTATR_CJK_RUBY == pHt->Which() &&
-                *pHt->GetAnyEnd() > nStart )
+                pHt->GetAnyEnd() > nStart )
             {
                 if( pHt->GetStart() < nEnd )
                 {
@@ -251,7 +254,7 @@ bool SwDoc::SelectNextRubyChars( SwPaM& rPam, SwRubyListEntry& rEntry )
             if( !rPam.HasMark() )
             {
                 rPam.SetMark();
-                pPos->nContent = *pAttr->GetAnyEnd();
+                pPos->nContent = pAttr->GetAnyEnd();
                 if( pPos->nContent.GetIndex() > nEnd )
                     pPos->nContent = nEnd;
                 rEntry.SetRubyAttr( pAttr->GetRuby() );
@@ -280,7 +283,7 @@ bool SwDoc::SelectNextRubyChars( SwPaM& rPam, SwRubyListEntry& rEntry )
 
         case UnicodeType::OTHER_LETTER:
             bChkNxtWrd = true;
-            SAL_FALLTHROUGH;
+            [[fallthrough]];
         default:
                 bIsAlphaNum = false;
                 break;

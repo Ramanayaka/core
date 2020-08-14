@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "oox/helper/binaryoutputstream.hxx"
+#include <oox/helper/binaryoutputstream.hxx>
 
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/io/XSeekable.hpp>
@@ -82,19 +82,19 @@ void BinaryXOutputStream::writeData( const StreamDataSequence& rData, size_t /*n
 
 void BinaryXOutputStream::writeMemory( const void* pMem, sal_Int32 nBytes, size_t nAtomSize )
 {
-    if( mxOutStrm.is() && (nBytes > 0) )
+    if( !(mxOutStrm.is() && (nBytes > 0)) )
+        return;
+
+    sal_Int32 nBufferSize = getLimitedValue< sal_Int32, sal_Int32 >( nBytes, 0, (OUTPUTSTREAM_BUFFERSIZE / nAtomSize) * nAtomSize );
+    const sal_uInt8* pnMem = static_cast< const sal_uInt8* >( pMem );
+    while( nBytes > 0 )
     {
-        sal_Int32 nBufferSize = getLimitedValue< sal_Int32, sal_Int32 >( nBytes, 0, (OUTPUTSTREAM_BUFFERSIZE / nAtomSize) * nAtomSize );
-        const sal_uInt8* pnMem = static_cast< const sal_uInt8* >( pMem );
-        while( nBytes > 0 )
-        {
-            sal_Int32 nWriteSize = getLimitedValue< sal_Int32, sal_Int32 >( nBytes, 0, nBufferSize );
-            maBuffer.realloc( nWriteSize );
-            memcpy( maBuffer.getArray(), pnMem, static_cast< size_t >( nWriteSize ) );
-            writeData( maBuffer, nAtomSize );
-            pnMem += nWriteSize;
-            nBytes -= nWriteSize;
-        }
+        sal_Int32 nWriteSize = getLimitedValue< sal_Int32, sal_Int32 >( nBytes, 0, nBufferSize );
+        maBuffer.realloc( nWriteSize );
+        memcpy( maBuffer.getArray(), pnMem, static_cast< size_t >( nWriteSize ) );
+        writeData( maBuffer, nAtomSize );
+        pnMem += nWriteSize;
+        nBytes -= nWriteSize;
     }
 }
 
@@ -109,8 +109,7 @@ BinaryOutputStream::writeCharArrayUC( const OUString& rString, rtl_TextEncoding 
 void
 BinaryOutputStream::writeUnicodeArray( const OUString& rString )
 {
-    OUString sBuf( rString );
-    sBuf = sBuf.replace( '\0', '?' );
+    OUString sBuf = rString.replace( '\0', '?' );
 #ifdef OSL_BIGENDIAN
     // need a non-const buffer for swapping byte order
     sal_Unicode notConst[sBuf.getLength()];
@@ -130,9 +129,10 @@ void BinaryOutputStream::writeCompressedUnicodeArray( const OUString& rString, b
         writeUnicodeArray( rString );
 }
 
-SequenceOutputStream::SequenceOutputStream( StreamDataSequence& rData ) :
+SequenceOutputStream::SequenceOutputStream( StreamDataSequence & rData ) :
     BinaryStreamBase( true ),
-    SequenceSeekableStream( rData )
+    mpData( &rData ),
+    mnPos( 0 )
 {
 }
 
@@ -147,11 +147,37 @@ void SequenceOutputStream::writeMemory( const void* pMem, sal_Int32 nBytes, size
     if( mpData && (nBytes > 0) )
     {
         if( mpData->getLength() - mnPos < nBytes )
-            const_cast< StreamDataSequence* >( mpData )->realloc( mnPos + nBytes );
-        memcpy( const_cast< StreamDataSequence* >( mpData )->getArray() + mnPos, pMem, static_cast< size_t >( nBytes ) );
+            mpData->realloc( mnPos + nBytes );
+        memcpy( mpData->getArray() + mnPos, pMem, static_cast< size_t >( nBytes ) );
         mnPos += nBytes;
     }
 }
+
+sal_Int64 SequenceOutputStream::size() const
+{
+    return mpData ? mpData->getLength() : -1;
+}
+
+sal_Int64 SequenceOutputStream::tell() const
+{
+    return mpData ? mnPos : -1;
+}
+
+void SequenceOutputStream::seek( sal_Int64 nPos )
+{
+    if( mpData )
+    {
+        mnPos = getLimitedValue< sal_Int32, sal_Int64 >( nPos, 0, mpData->getLength() );
+        mbEof = mnPos != nPos;
+    }
+}
+
+void SequenceOutputStream::close()
+{
+    mpData = nullptr;
+    mbEof = true;
+}
+
 
 } // namespace oox
 

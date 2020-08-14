@@ -20,18 +20,20 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_VIEW_SLSLAYEREDDEVICE_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_VIEW_SLSLAYEREDDEVICE_HXX
 
-#include "view/SlsILayerPainter.hxx"
-#include "SlideSorter.hxx"
+#include <view/SlsILayerPainter.hxx>
 
-#include <vcl/region.hxx>
-#include <vcl/virdev.hxx>
+#include <vcl/vclptr.hxx>
+#include <vcl/mapmod.hxx>
 
 #include <memory>
-#include <vector>
 
+namespace sd { class Window; }
 namespace tools { class Rectangle; }
+namespace vcl { class Region; }
 
-namespace sd { namespace slidesorter { namespace view {
+class VirtualDevice;
+
+namespace sd::slidesorter::view {
 
 /** A simple wrapper around an OutputDevice that provides support for
     independent layers and buffering.
@@ -78,7 +80,7 @@ private:
     void RepaintRectangle (const ::tools::Rectangle& rRepaintRectangle);
 };
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 #endif
 

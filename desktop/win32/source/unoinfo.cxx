@@ -23,13 +23,7 @@
 #include <wchar.h>
 
 #define WIN32_LEAN_AND_MEAN
-#if defined _MSC_VER
-#pragma warning(push, 1)
-#endif
 #include <windows.h>
-#if defined _MSC_VER
-#pragma warning(pop)
-#endif
 
 #include <tools/pathutils.hxx>
 
@@ -81,13 +75,7 @@ int wmain(int argc, wchar_t ** argv, wchar_t **) {
         }
         wchar_t path[MAX_PATH];
         wchar_t * pathEnd = getBrandPath(path);
-        writePath(path, pathEnd, MY_STRING(L"classes\\ridl.jar"));
-        writeNull();
-        writePath(path, pathEnd, MY_STRING(L"classes\\jurt.jar"));
-        writeNull();
-        writePath(path, pathEnd, MY_STRING(L"classes\\juh.jar"));
-        writeNull();
-        writePath(path, pathEnd, MY_STRING(L"classes\\unoil.jar"));
+        writePath(path, pathEnd, MY_STRING(L"classes\\libreoffice.jar"));
         writeNull();
         writePath(path, pathEnd, MY_STRING(L""));
     } else {

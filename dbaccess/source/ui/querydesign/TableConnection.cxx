@@ -17,19 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TableConnection.hxx"
-#include "ConnectionLine.hxx"
-#include "TableConnectionData.hxx"
-#include "JoinTableView.hxx"
-#include <comphelper/stl_types.hxx>
-#include "ConnectionLineAccess.hxx"
+#include <TableConnection.hxx>
+#include <ConnectionLine.hxx>
+#include <TableConnectionData.hxx>
+#include <JoinTableView.hxx>
 
 using namespace dbaui;
 using namespace comphelper;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::accessibility;
 
-// class OTableConnection
 namespace dbaui
 {
     OTableConnection::OTableConnection( OJoinTableView* _pContainer,const TTableConnectionData::value_type& _pTabConnData )
@@ -55,18 +52,13 @@ namespace dbaui
     {
         // initialise linelist with defaults
         OConnectionLineDataVec& rLineData = GetData()->GetConnLineDataList();
-        OConnectionLineDataVec::const_iterator aIter = rLineData.begin();
-        OConnectionLineDataVec::const_iterator aEnd = rLineData.end();
         m_vConnLine.reserve(rLineData.size());
-        for(;aIter != aEnd;++aIter)
-            m_vConnLine.push_back( new OConnectionLine(this, *aIter) );
+        for (auto const& elem : rLineData)
+            m_vConnLine.emplace_back( new OConnectionLine(this, elem) );
     }
 
     void OTableConnection::clearLineData()
     {
-        std::vector<OConnectionLine*>::const_iterator aLineEnd = m_vConnLine.end();
-        for(std::vector<OConnectionLine*>::const_iterator aLineIter = m_vConnLine.begin();aLineIter != aLineEnd;++aLineIter)
-            delete *aLineIter;
         m_vConnLine.clear();
     }
     void OTableConnection::UpdateLineList()
@@ -88,12 +80,10 @@ namespace dbaui
         // copy linelist
         if(! rConn.GetConnLineList().empty() )
         {
-            const std::vector<OConnectionLine*>& rLine = rConn.GetConnLineList();
-            std::vector<OConnectionLine*>::const_iterator aIter = rLine.begin();
-            std::vector<OConnectionLine*>::const_iterator aEnd = rLine.end();
+            const std::vector<std::unique_ptr<OConnectionLine>>& rLine = rConn.GetConnLineList();
             m_vConnLine.reserve(rLine.size());
-            for(;aIter != aEnd;++aIter)
-                m_vConnLine.push_back( new OConnectionLine( **aIter ));
+            for (auto const& elem : rLine)
+                m_vConnLine.emplace_back( new OConnectionLine(*elem));
         }
 
         // as the data are not mine, I also do not delete the old
@@ -151,19 +141,19 @@ namespace dbaui
         return std::any_of(m_vConnLine.begin(),
                              m_vConnLine.end(),
                              [&rMousePos]
-                             ( const OConnectionLine* pLine )
+                             ( const std::unique_ptr<OConnectionLine> & pLine )
                              { return pLine->CheckHit( rMousePos ); } );
     }
 
     void OTableConnection::InvalidateConnection()
     {
         tools::Rectangle rcBounding = GetBoundingRect();
-        rcBounding.Bottom() += 1;
-        rcBounding.Right() += 1;
+        rcBounding.AdjustBottom(1 );
+        rcBounding.AdjustRight(1 );
         // I believe Invalidate and Draw(Rectangle) do not behave consistent: in any case it
         // could explain, why without the fake here when deleting a connection a dash remains at the lower end:
         // Invalidate records obviously one pixel line less as Draw.
-        // Or everything works differently .....  in any case it works ....
+        // Or everything works differently... in any case it works...
         m_pParent->Invalidate( rcBounding, InvalidateFlags::NoChildren );
     }
 
@@ -172,10 +162,9 @@ namespace dbaui
         // determine all lines of the surrounding rectangle
         tools::Rectangle aBoundingRect( Point(0,0), Point(0,0) );
         tools::Rectangle aTempRect;
-        std::vector<OConnectionLine*>::const_iterator aEnd = m_vConnLine.end();
-        for(std::vector<OConnectionLine*>::const_iterator aIter = m_vConnLine.begin();aIter != aEnd;++aIter)
+        for (auto const& elem : m_vConnLine)
         {
-            aTempRect = (*aIter)->GetBoundingRect();
+            aTempRect = elem->GetBoundingRect();
 
             // is the BoundingRect of this line valid?
             if( (aTempRect.GetWidth()!=1) && (aTempRect.GetHeight()!=1) )

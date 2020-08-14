@@ -7,31 +7,28 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <sfx2/templateviewitem.hxx>
+#include <templateviewitem.hxx>
 
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <drawinglayer/attribute/fillgraphicattribute.hxx>
 #include <drawinglayer/primitive2d/fillgraphicprimitive2d.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonSelectionPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/discretebitmapprimitive2d.hxx>
-#include <drawinglayer/primitive2d/textlayoutdevice.hxx>
-#include <drawinglayer/primitive2d/textprimitive2d.hxx>
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
-#include <vcl/button.hxx>
+#include <tools/poly.hxx>
 #include <vcl/graph.hxx>
-#include <sfx2/sfxresid.hxx>
 
-#include <templateview.hrc>
-#include "bitmaps.hlst"
+#include <bitmaps.hlst>
 
 using namespace basegfx;
-using namespace basegfx::tools;
+using namespace basegfx::utils;
 using namespace drawinglayer::attribute;
 using namespace drawinglayer::primitive2d;
 
-TemplateViewItem::TemplateViewItem (ThumbnailView &rView, sal_uInt16 nId)
+TemplateViewItem::TemplateViewItem (ThumbnailViewBase &rView, sal_uInt16 nId)
     : ThumbnailViewItem(rView, nId),
       mnRegionId(USHRT_MAX),
       mnDocId(USHRT_MAX),
@@ -94,7 +91,7 @@ void TemplateViewItem::Paint(drawinglayer::processor2d::BaseProcessor2D *pProces
     aBounds.setClosed(true);
 
     aSeq[1] = drawinglayer::primitive2d::Primitive2DReference( new PolyPolygonColorPrimitive2D(
-                                        B2DPolyPolygon(aBounds), Color(COL_WHITE).getBColor()));
+                                        B2DPolyPolygon(aBounds), COL_WHITE.getBColor()));
 
     aSeq[2] = drawinglayer::primitive2d::Primitive2DReference( new FillGraphicPrimitive2D(
                                         createTranslateB2DHomMatrix(maPrev1Pos.X(),maPrev1Pos.Y()),

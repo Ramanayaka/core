@@ -21,9 +21,9 @@
 #define INCLUDED_SVX_SDR_CONTACT_VIEWOBJECTCONTACTREDIRECTOR_HXX
 
 #include <svx/svxdllapi.h>
-#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
+#include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
 
-namespace sdr { namespace contact {
+namespace sdr::contact {
 
 class DisplayInfo;
 class ViewObjectContact;
@@ -32,7 +32,7 @@ class ViewObjectContact;
 // single ViewObjectContacts. An own derivation may be set at single ViewContacts
 // or at the ObjectContact for redirecting all. If both is used, the one at single
 // objects will have priority.
-class SVX_DLLPUBLIC ViewObjectContactRedirector
+class SVXCORE_DLLPUBLIC ViewObjectContactRedirector
 {
 public:
     // basic constructor.
@@ -48,7 +48,7 @@ public:
         const sdr::contact::DisplayInfo& rDisplayInfo);
 };
 
-}}
+}
 
 #endif // INCLUDED_SVX_SDR_CONTACT_VIEWOBJECTCONTACTREDIRECTOR_HXX
 

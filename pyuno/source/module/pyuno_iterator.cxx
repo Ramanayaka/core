@@ -19,14 +19,13 @@
 
 #include <sal/config.h>
 
-#include <cassert>
-
 #include "pyuno_impl.hxx"
 
 #include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/WrappedTargetException.hpp>
+#include <com/sun/star/script/CannotConvertException.hpp>
 
 using com::sun::star::container::XEnumeration;
 using com::sun::star::container::XIndexAccess;
@@ -40,7 +39,7 @@ using com::sun::star::uno::RuntimeException;
 namespace pyuno
 {
 
-void PyUNO_iterator_del( PyObject* self )
+static void PyUNO_iterator_del( PyObject* self )
 {
     PyUNO_iterator* me = reinterpret_cast<PyUNO_iterator*>(self);
 
@@ -51,13 +50,13 @@ void PyUNO_iterator_del( PyObject* self )
     PyObject_Del( self );
 }
 
-PyObject* PyUNO_iterator_iter( PyObject *self )
+static PyObject* PyUNO_iterator_iter( PyObject *self )
 {
     Py_INCREF( self );
     return self;
 }
 
-PyObject* PyUNO_iterator_next( PyObject *self )
+static PyObject* PyUNO_iterator_next( PyObject *self )
 {
     PyUNO_iterator* me = reinterpret_cast<PyUNO_iterator*>(self);
 
@@ -111,7 +110,6 @@ PyObject* PyUNO_iterator_next( PyObject *self )
     return nullptr;
 }
 
-
 static PyTypeObject PyUNO_iterator_Type =
 {
     PyVarObject_HEAD_INIT( &PyType_Type, 0 )
@@ -119,7 +117,11 @@ static PyTypeObject PyUNO_iterator_Type =
     sizeof (PyUNO_iterator),
     0,
     PyUNO_iterator_del,
-    nullptr,
+#if PY_VERSION_HEX >= 0x03080000
+    0, // Py_ssize_t tp_vectorcall_offset
+#else
+    nullptr, // printfunc tp_print
+#endif
     nullptr,
     nullptr,
     nullptr,
@@ -163,6 +165,19 @@ static PyTypeObject PyUNO_iterator_Type =
     0
 #if PY_VERSION_HEX >= 0x03040000
     , nullptr
+#if PY_VERSION_HEX >= 0x03080000
+    , nullptr // vectorcallfunc tp_vectorcall
+#if PY_VERSION_HEX < 0x03090000
+#if defined __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+    , nullptr // tp_print
+#if defined __clang__
+#pragma clang diagnostic pop
+#endif
+#endif
+#endif
 #endif
 };
 
@@ -178,7 +193,7 @@ PyObject* PyUNO_iterator_new( const Reference< XEnumeration >& xEnumeration )
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void PyUNO_list_iterator_del( PyObject* self )
+static void PyUNO_list_iterator_del( PyObject* self )
 {
     PyUNO_list_iterator* me = reinterpret_cast<PyUNO_list_iterator*>(self);
 
@@ -190,7 +205,7 @@ void PyUNO_list_iterator_del( PyObject* self )
 }
 
 
-PyObject* PyUNO_list_iterator_next( PyObject *self )
+static PyObject* PyUNO_list_iterator_next( PyObject *self )
 {
     PyUNO_list_iterator* me = reinterpret_cast<PyUNO_list_iterator*>(self);
 
@@ -205,7 +220,7 @@ PyObject* PyUNO_list_iterator_next( PyObject *self )
             try {
                 aRet = me->members->xIndexAccess->getByIndex( me->members->index );
             }
-            catch( css::lang::IndexOutOfBoundsException )
+            catch( const css::lang::IndexOutOfBoundsException & )
             {
                 noMoreElements = true;
             }
@@ -241,7 +256,6 @@ PyObject* PyUNO_list_iterator_next( PyObject *self )
     return nullptr;
 }
 
-
 static PyTypeObject PyUNO_list_iterator_Type =
 {
     PyVarObject_HEAD_INIT( &PyType_Type, 0 )
@@ -249,7 +263,11 @@ static PyTypeObject PyUNO_list_iterator_Type =
     sizeof (PyUNO_list_iterator),
      0,
     PyUNO_list_iterator_del,
-    nullptr,
+#if PY_VERSION_HEX >= 0x03080000
+    0, // Py_ssize_t tp_vectorcall_offset
+#else
+    nullptr, // printfunc tp_print
+#endif
     nullptr,
     nullptr,
     nullptr,
@@ -293,6 +311,19 @@ static PyTypeObject PyUNO_list_iterator_Type =
     0
 #if PY_VERSION_HEX >= 0x03040000
     , nullptr
+#if PY_VERSION_HEX >= 0x03080000
+    , nullptr // vectorcallfunc tp_vectorcall
+#if PY_VERSION_HEX < 0x03090000
+#if defined __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+    , nullptr // tp_print
+#if defined __clang__
+#pragma clang diagnostic pop
+#endif
+#endif
+#endif
 #endif
 };
 

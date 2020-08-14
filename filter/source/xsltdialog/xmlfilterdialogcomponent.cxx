@@ -18,17 +18,13 @@
  */
 
 #include <osl/mutex.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
 
-#include <osl/thread.h>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <cppuhelper/component.hxx>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
-#include <com/sun/star/frame/TerminationVetoException.hpp>
 #include <com/sun/star/frame/XTerminateListener.hpp>
-#include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
@@ -36,11 +32,8 @@
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <vcl/svapp.hxx>
-#include <vcl/settings.hxx>
 #include <rtl/instance.hxx>
 #include <comphelper/processfactory.hxx>
-
-#include <svl/solar.hrc>
 
 #include "xmlfiltersettingsdialog.hxx"
 
@@ -52,6 +45,7 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::registry;
 using namespace ::com::sun::star::frame;
 
+namespace {
 
 class XMLFilterDialogComponentBase
 {
@@ -70,13 +64,13 @@ class XMLFilterDialogComponent :    public XMLFilterDialogComponentBase,
 public:
     explicit XMLFilterDialogComponent( const Reference< XComponentContext >& rxContext );
 
-protected:
     // XInterface
     virtual Any SAL_CALL queryInterface( const Type& aType ) override;
     virtual Any SAL_CALL queryAggregation( Type const & rType ) override;
     virtual void SAL_CALL acquire() throw () override;
     virtual void SAL_CALL release() throw () override;
 
+protected:
     // XTypeProvider
     virtual Sequence< sal_Int8 > SAL_CALL getImplementationId() override;
     virtual Sequence< Type > SAL_CALL getTypes() override;
@@ -106,13 +100,14 @@ private:
     css::uno::Reference<css::awt::XWindow>   mxParent;  /// parent window
     css::uno::Reference< XComponentContext > mxContext;
 
-    VclPtr<XMLFilterSettingsDialog>          mpDialog;
+    std::shared_ptr<XMLFilterSettingsDialog> mxDialog;
 };
 
-XMLFilterDialogComponent::XMLFilterDialogComponent( const css::uno::Reference< XComponentContext >& rxContext ) :
-    OComponentHelper( maMutex ),
-    mxContext( rxContext ),
-    mpDialog( nullptr )
+}
+
+XMLFilterDialogComponent::XMLFilterDialogComponent(const css::uno::Reference< XComponentContext >& rxContext)
+    : OComponentHelper(maMutex)
+    , mxContext(rxContext)
 {
     Reference< XDesktop2 > xDesktop = Desktop::create( rxContext );
     Reference< XTerminateListener > xListener( this );
@@ -163,28 +158,10 @@ void SAL_CALL XMLFilterDialogComponent::release() throw ()
     OComponentHelper::release();
 }
 
-/// @throws RuntimeException
-OUString XMLFilterDialogComponent_getImplementationName()
-{
-    return OUString( "com.sun.star.comp.ui.XSLTFilterDialog" );
-}
-
-/// @throws RuntimeException
-Sequence< OUString > SAL_CALL XMLFilterDialogComponent_getSupportedServiceNames()
-{
-    Sequence< OUString > aSupported { "com.sun.star.ui.dialogs.XSLTFilterDialog" };
-    return aSupported;
-}
-
-/// @throws Exception
-Reference< XInterface > SAL_CALL XMLFilterDialogComponent_createInstance( const Reference< XMultiServiceFactory > & rSMgr)
-{
-    return static_cast<OWeakObject*>(new XMLFilterDialogComponent( comphelper::getComponentContext(rSMgr) ));
-}
 
 OUString SAL_CALL XMLFilterDialogComponent::getImplementationName()
 {
-    return XMLFilterDialogComponent_getImplementationName();
+    return "com.sun.star.comp.ui.XSLTFilterDialog";
 }
 
 namespace { struct lcl_ImplId : public rtl::Static< ::cppu::OImplementationId, lcl_ImplId > {}; }
@@ -227,7 +204,7 @@ Sequence< Type > XMLFilterDialogComponent::getTypes()
 
 Sequence< OUString > SAL_CALL XMLFilterDialogComponent::getSupportedServiceNames()
 {
-    return XMLFilterDialogComponent_getSupportedServiceNames();
+    return { "com.sun.star.ui.dialogs.XSLTFilterDialog" };
 }
 
 sal_Bool SAL_CALL XMLFilterDialogComponent::supportsService(const OUString& ServiceName)
@@ -241,7 +218,8 @@ void SAL_CALL XMLFilterDialogComponent::disposing()
 {
     ::SolarMutexGuard aGuard;
 
-    mpDialog.disposeAndClear();
+    if (mxDialog)
+        mxDialog->response(RET_CLOSE);
 }
 
 
@@ -249,25 +227,19 @@ void SAL_CALL XMLFilterDialogComponent::disposing()
 void SAL_CALL XMLFilterDialogComponent::queryTermination( const EventObject& /* Event */ )
 {
     ::SolarMutexGuard aGuard;
-
-    if (!mpDialog)
+    if (!mxDialog)
         return;
-
-    // we will never give a veto here
-    if (!mpDialog->isClosable())
-    {
-        mpDialog->ToTop();
-        throw TerminationVetoException(
-            "The office cannot be closed while the XMLFilterDialog is running",
-            static_cast<XTerminateListener*>(this));
-    }
-    else
-        mpDialog->Close();
+    mxDialog->present();
 }
-
 
 void SAL_CALL XMLFilterDialogComponent::notifyTermination( const EventObject& /* Event */ )
 {
+    {
+        ::SolarMutexGuard aGuard;
+        if (mxDialog)
+            mxDialog->response(RET_CLOSE);
+    }
+
     // we are going down, so dispose us!
     dispose();
 }
@@ -276,42 +248,44 @@ void SAL_CALL XMLFilterDialogComponent::disposing( const EventObject& /* Source 
 {
 }
 
-
 void SAL_CALL XMLFilterDialogComponent::setTitle( const OUString& /* _rTitle */ )
 {
 }
 
-
-sal_Int16 SAL_CALL XMLFilterDialogComponent::execute(  )
+sal_Int16 SAL_CALL XMLFilterDialogComponent::execute()
 {
     ::SolarMutexGuard aGuard;
 
-    if( nullptr == mpDialog )
+    bool bLaunch = false;
+    if (!mxDialog)
     {
-        Reference< XComponent > xComp( this );
-        if (mxParent.is())
-            mpDialog = VclPtr<XMLFilterSettingsDialog>::Create(VCLUnoHelper::GetWindow(mxParent), mxContext);
-        else
-            mpDialog = VclPtr<XMLFilterSettingsDialog>::Create(nullptr, mxContext, Dialog::InitFlag::NoParent);
-        mpDialog->Execute();
+        Reference< XComponent > xKeepAlive( this );
+        mxDialog = std::make_shared<XMLFilterSettingsDialog>(Application::GetFrameWeld(mxParent), mxContext);
+        bLaunch = true;
     }
-    else if( !mpDialog->IsVisible() )
+
+    mxDialog->UpdateWindow();
+
+    if (!bLaunch)
     {
-        mpDialog->Execute();
+        mxDialog->present();
+        return 0;
     }
-    mpDialog->ToTop();
+
+    weld::DialogController::runAsync(mxDialog, [this](sal_Int32)
+    {
+        mxDialog.reset();
+    });
 
     return 0;
 }
 
-
 void SAL_CALL XMLFilterDialogComponent::initialize( const Sequence< Any >& aArguments )
 {
-    const Any* pArguments = aArguments.getConstArray();
-    for(sal_Int32 i=0; i<aArguments.getLength(); ++i, ++pArguments)
+    for(const Any& rArgument : aArguments)
     {
         PropertyValue aProperty;
-        if(*pArguments >>= aProperty)
+        if(rArgument >>= aProperty)
         {
             if( aProperty.Name == "ParentWindow" )
             {
@@ -322,36 +296,12 @@ void SAL_CALL XMLFilterDialogComponent::initialize( const Sequence< Any >& aArgu
 }
 
 
-extern "C"
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_XSLTFilterDialog_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
-SAL_DLLPUBLIC_EXPORT void * SAL_CALL xsltdlg_component_getFactory(
-    const sal_Char * pImplName, void * pServiceManager, void * /* pRegistryKey */ )
-{
-    void * pRet = nullptr;
-
-    if( pServiceManager )
-    {
-        Reference< XSingleServiceFactory > xFactory;
-
-        OUString implName = OUString::createFromAscii( pImplName );
-        if ( implName.equals(XMLFilterDialogComponent_getImplementationName()) )
-        {
-            xFactory = createOneInstanceFactory(
-                static_cast< XMultiServiceFactory * >( pServiceManager ),
-                OUString::createFromAscii( pImplName ),
-                XMLFilterDialogComponent_createInstance, XMLFilterDialogComponent_getSupportedServiceNames() );
-
-        }
-
-        if (xFactory.is())
-        {
-            xFactory->acquire();
-            pRet = xFactory.get();
-        }
-    }
-
-    return pRet;
+    return cppu::acquire(static_cast<cppu::OWeakObject*>(new XMLFilterDialogComponent(context)));
 }
-}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

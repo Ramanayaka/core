@@ -149,7 +149,7 @@
           <desc>Specifies the short name of the factory.</desc>
         </info>
       </prop>
-      <prop oor:name="ooSetupFactoryUIName" oor:type="xs:string">
+      <prop oor:name="ooSetupFactoryUIName" oor:type="xs:string" oor:localized="true">
         <!-- UIHints: setup -->
         <info>
           <desc>Specifies the UI name of the factory.</desc>
@@ -251,24 +251,6 @@
         <!-- JB: Empty default inserted into empty property node. Remove if NIL
              was intended -->
       </prop>
-      <prop oor:name="ooXMLFileFormatVersion" oor:type="xs:string" oor:nillable="false">
-        <info>
-          <desc>Specifies the version of the SO 6/7 or OOo 1.0 xml file
-          formats.</desc>
-        </info>
-        <value/>
-        <!-- JB: Empty default inserted into empty property node. Remove if NIL
-             was intended -->
-      </prop>
-      <prop oor:name="ooXMLFileFormatName" oor:type="xs:string" oor:nillable="false">
-        <info>
-          <desc>Specifies the name of the SO6/7 or OOo1.0 xml file
-          formats.</desc>
-        </info>
-        <value/>
-        <!-- JB: Empty default inserted into empty property node. Remove if NIL
-             was intended -->
-      </prop>
       <prop oor:name="ooSetupVersion" oor:type="xs:string" oor:nillable="false">
         <info>
           <desc>Specifies the version number of the product that appears on the
@@ -277,6 +259,12 @@
         <value/>
         <!-- JB: Empty default inserted into empty property node. Remove if NIL
              was intended -->
+      </prop>
+      <prop oor:name="ooSetupLastVersion" oor:type="xs:string" oor:nillable="true">
+        <info>
+          <desc>Specifies the version number of the previously used product for
+          whats-new comparison.</desc>
+        </info>
       </prop>
       <prop oor:name="ooSetupVersionAboutBox" oor:type="xs:string" oor:nillable="false">
         <info>
@@ -307,12 +295,17 @@
         <!-- JB: Empty default inserted into empty property node. Remove if NIL
              was intended -->
       </prop>
-      <prop oor:name="ooOpenSourceContext" oor:type="xs:int" oor:nillable="false">
-        <info>
-          <desc>Specifies the context of the product. A value greater than 0 is
-          specifying an OpenSource context.</desc>
-        </info>
-        <value>0</value>
+      <prop oor:name="LastTimeGetInvolvedShown" oor:type="xs:long" oor:nillable="false">
+          <info>
+              <desc>The last time when the Get Involved infobar was shown.</desc>
+          </info>
+          <value>0</value>
+      </prop>
+      <prop oor:name="LastTimeDonateShown" oor:type="xs:long" oor:nillable="false">
+          <info>
+              <desc>The last time when the Donate infobar was shown.</desc>
+          </info>
+          <value>0</value>
       </prop>
     </group>
     <group oor:name="Office">
@@ -339,7 +332,7 @@
         <!-- OldPath: Common-->
         <!-- OldLocation: soffice.ini -->
         <info>
-          <desc>Specifies the URL for an UNO connection that can be used to
+          <desc>Specifies the URL for a UNO connection that can be used to
           script the office from outside.</desc>
         </info>
         <value/>

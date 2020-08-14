@@ -17,61 +17,43 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "pcrservices.hxx"
 #include "propcontroller.hxx"
-#include "pcrstrings.hxx"
+#include "handlerhelper.hxx"
 #include "standardcontrol.hxx"
 #include "linedescriptor.hxx"
-#include "propresid.hrc"
-#include "formresid.hrc"
+#include <strings.hrc>
 #include "propertyeditor.hxx"
 #include "modulepcr.hxx"
 #include "formstrings.hxx"
-#include "formmetadata.hxx"
 #include "formbrowsertools.hxx"
 #include "propertycomposer.hxx"
 
 #include <com/sun/star/awt/XWindow.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
-#include <com/sun/star/util/XCloseable.hpp>
 #include <com/sun/star/inspection/PropertyControlType.hpp>
 #include <com/sun/star/ucb/AlreadyInitializedException.hpp>
+#include <com/sun/star/lang/XSingleComponentFactory.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/util/VetoException.hpp>
 #include <tools/debug.hxx>
 #include <tools/diagnose_ex.h>
-#include <comphelper/types.hxx>
-#include <comphelper/extract.hxx>
 #include <toolkit/awt/vclxwindow.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <comphelper/property.hxx>
-#include <vcl/msgbox.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/tabpage.hxx>
+#include <vcl/weld.hxx>
+#include <vcl/weldutils.hxx>
 #include <osl/mutex.hxx>
 #include <cppuhelper/queryinterface.hxx>
-#include <cppuhelper/component_context.hxx>
-#include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <algorithm>
-#include <functional>
-#include <sal/macros.h>
-
-
-// !!! outside the namespace !!!
-extern "C" void SAL_CALL createRegistryInfo_OPropertyBrowserController()
-{
-    ::pcr::OAutoRegistration< ::pcr::OPropertyBrowserController > aAutoRegistration;
-}
-
+#include <sal/log.hxx>
 
 namespace pcr
 {
-
-
     using namespace ::com::sun::star;
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::awt;
-    using namespace ::com::sun::star::form;
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::script;
     using namespace ::com::sun::star::lang;
@@ -82,22 +64,17 @@ namespace pcr
     using namespace ::com::sun::star::ucb;
     using namespace ::comphelper;
 
-
     //= OPropertyBrowserController
-
-
     OPropertyBrowserController::OPropertyBrowserController( const Reference< XComponentContext >& _rxContext )
             :m_xContext(_rxContext)
             ,m_aDisposeListeners( m_aMutex )
             ,m_aControlObservers( m_aMutex )
-            ,m_pView(nullptr)
             ,m_bContainerFocusListening( false )
             ,m_bSuspendingPropertyHandlers( false )
             ,m_bConstructed( false )
             ,m_bBindingIntrospectee( false )
     {
     }
-
 
     OPropertyBrowserController::~OPropertyBrowserController()
     {
@@ -106,9 +83,7 @@ namespace pcr
         stopInspection( true );
     }
 
-
     IMPLEMENT_FORWARD_REFCOUNT( OPropertyBrowserController, OPropertyBrowserController_Base )
-
 
     Any SAL_CALL OPropertyBrowserController::queryInterface( const Type& _rType )
     {
@@ -179,11 +154,10 @@ namespace pcr
         try
         {
             getPropertyBox().EnableHelpSection( m_xModel->getHasHelpSection() );
-            getPropertyBox().SetHelpLineLimites( m_xModel->getMinHelpTextLines(), m_xModel->getMaxHelpTextLines() );
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
     }
 
@@ -217,7 +191,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
     }
 
@@ -271,7 +245,7 @@ namespace pcr
             throw VetoException();
 
         m_bBindingIntrospectee = true;
-        impl_rebindToInspectee_nothrow( InterfaceArray( _rObjects.getConstArray(), _rObjects.getConstArray() + _rObjects.getLength() ) );
+        impl_rebindToInspectee_nothrow( InterfaceArray( _rObjects.begin(), _rObjects.end() ) );
         m_bBindingIntrospectee = false;
 
     }
@@ -290,7 +264,7 @@ namespace pcr
         sal_Int32 nLen = Requests.getLength();
         aReturn.realloc( nLen );
 
-                Reference< XDispatch >* pReturn     = aReturn.getArray();
+        Reference< XDispatch >* pReturn     = aReturn.getArray();
         const   Reference< XDispatch >* pReturnEnd  = aReturn.getArray() + nLen;
         const   DispatchDescriptor*     pDescripts  = Requests.getConstArray();
 
@@ -349,6 +323,9 @@ namespace pcr
         // revoke as focus listener from the old container window
         stopContainerWindowListening();
 
+        m_xPropView.reset();
+        m_xBuilder.reset();
+
         m_xFrame = _rxFrame;
         if (!m_xFrame.is())
             return;
@@ -356,29 +333,30 @@ namespace pcr
         // TODO: this construction perhaps should be done outside. Don't know the exact meaning of attachFrame.
         // Maybe it is intended to only announce the frame to the controller, and the instance doing this
         // announcement is responsible for calling setComponent, too.
-        Reference< XWindow > xContainerWindow = m_xFrame->getContainerWindow();
-        VCLXWindow* pContainerWindow = VCLXWindow::GetImplementation(xContainerWindow);
-        VclPtr<vcl::Window> pParentWin = pContainerWindow ? pContainerWindow->GetWindow() : VclPtr<vcl::Window>();
-        if (!pParentWin)
-            throw RuntimeException("The frame is invalid. Unable to extract the container window.",*this);
+        Reference<XWindow> xContainerWindow = m_xFrame->getContainerWindow();
 
-        if ( Construct( pParentWin ) )
+        OUString sUIFile("modules/spropctrlr/ui/formproperties.ui");
+        std::unique_ptr<weld::Builder> xBuilder;
+
+        if (weld::TransportAsXWindow* pTunnel = dynamic_cast<weld::TransportAsXWindow*>(xContainerWindow.get()))
         {
-            try
-            {
-                m_xFrame->setComponent( VCLUnoHelper::GetInterface( m_pView ), this );
-            }
-            catch( const Exception& )
-            {
-                OSL_FAIL( "OPropertyBrowserController::attachFrame: caught an exception!" );
-            }
+            xBuilder.reset(Application::CreateBuilder(pTunnel->getWidget(), sUIFile));
         }
+        else
+        {
+            VCLXWindow* pContainerWindow = comphelper::getUnoTunnelImplementation<VCLXWindow>(xContainerWindow);
+            VclPtr<vcl::Window> pParentWin = pContainerWindow ? pContainerWindow->GetWindow() : VclPtr<vcl::Window>();
+            if (!pParentWin)
+                throw RuntimeException("The frame is invalid. Unable to extract the container window.",*this);
+            xBuilder.reset(Application::CreateInterimBuilder(pParentWin, sUIFile));
+        }
+
+        Construct(xContainerWindow, std::move(xBuilder));
 
         startContainerWindowListening();
 
         UpdateUI();
     }
-
 
     sal_Bool SAL_CALL OPropertyBrowserController::attachModel( const Reference< XModel >& _rxModel )
     {
@@ -403,43 +381,34 @@ namespace pcr
         m_bSuspendingPropertyHandlers = true;
         bool bHandlerVeto = !suspendPropertyHandlers_nothrow( true );
         m_bSuspendingPropertyHandlers = false;
-        if ( bHandlerVeto )
-            return false;
-
-        return true;
+        return !bHandlerVeto;
     }
 
 
     bool OPropertyBrowserController::suspendPropertyHandlers_nothrow( bool _bSuspend )
     {
         PropertyHandlerArray aAllHandlers;  // will contain every handler exactly once
-        for (   PropertyHandlerRepository::const_iterator handler = m_aPropertyHandlers.begin();
-                handler != m_aPropertyHandlers.end();
-                ++handler
-            )
+        for (auto const& propertyHandler : m_aPropertyHandlers)
         {
-            if ( std::find( aAllHandlers.begin(), aAllHandlers.end(), handler->second ) != aAllHandlers.end() )
+            if ( std::find( aAllHandlers.begin(), aAllHandlers.end(), propertyHandler.second ) != aAllHandlers.end() )
                 // already visited this particular handler (m_aPropertyHandlers usually contains
                 // the same handler more than once)
                 continue;
-            aAllHandlers.push_back( handler->second );
+            aAllHandlers.push_back(propertyHandler.second);
         }
 
-        for ( PropertyHandlerArray::iterator loop = aAllHandlers.begin();
-              loop != aAllHandlers.end();
-              ++loop
-            )
+        for (auto const& handler : aAllHandlers)
         {
             try
             {
-                if ( !(*loop)->suspend( _bSuspend ) )
+                if ( !handler->suspend( _bSuspend ) )
                     if ( _bSuspend )
                         // if we're not suspending, but reactivating, ignore the error
                         return false;
             }
             catch( const Exception& )
             {
-                OSL_FAIL( "OPropertyBrowserController::suspendPropertyHandlers_nothrow: caught an exception!" );
+                TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "OPropertyBrowserController::suspendPropertyHandlers_nothrow" );
             }
         }
         return true;
@@ -468,7 +437,7 @@ namespace pcr
         // stop listening
         stopContainerWindowListening();
 
-        // outtahere
+        // outta here
         return true;
     }
 
@@ -489,21 +458,18 @@ namespace pcr
         }
     }
 
-
     Reference< XModel > SAL_CALL OPropertyBrowserController::getModel(  )
     {
         // have no model
         return Reference< XModel >();
     }
 
-
     Reference< XFrame > SAL_CALL OPropertyBrowserController::getFrame(  )
     {
         return m_xFrame;
     }
 
-
-    void SAL_CALL OPropertyBrowserController::dispose(  )
+    void SAL_CALL OPropertyBrowserController::dispose()
     {
         SolarMutexGuard aSolarGuard;
 
@@ -516,34 +482,30 @@ namespace pcr
         m_aDisposeListeners.disposeAndClear(aEvt);
         m_aControlObservers.disposeAndClear(aEvt);
 
-        // don't delete explicitly (this is done by the frame we reside in)
-        m_pView = nullptr;
+        m_xPropView.reset();
+        m_xBuilder.reset();
 
-        Reference< XComponent > xViewAsComp( m_xView, UNO_QUERY );
-        if ( xViewAsComp.is() )
-            xViewAsComp->removeEventListener( static_cast< XPropertyChangeListener* >( this ) );
+        if ( m_xView.is() )
+            m_xView->removeEventListener( static_cast< XPropertyChangeListener* >( this ) );
         m_xView.clear( );
 
         m_aInspectedObjects.clear();
         impl_bindToNewModel_nothrow( nullptr );
     }
 
-
     void SAL_CALL OPropertyBrowserController::addEventListener( const Reference< XEventListener >& _rxListener )
     {
         m_aDisposeListeners.addInterface(_rxListener);
     }
-
 
     void SAL_CALL OPropertyBrowserController::removeEventListener( const Reference< XEventListener >& _rxListener )
     {
         m_aDisposeListeners.removeInterface(_rxListener);
     }
 
-
     OUString SAL_CALL OPropertyBrowserController::getImplementationName(  )
     {
-        return getImplementationName_static();
+        return "org.openoffice.comp.extensions.ObjectInspector";
     }
 
     sal_Bool SAL_CALL OPropertyBrowserController::supportsService( const OUString& ServiceName )
@@ -554,26 +516,7 @@ namespace pcr
 
     Sequence< OUString > SAL_CALL OPropertyBrowserController::getSupportedServiceNames(  )
     {
-        return getSupportedServiceNames_static();
-    }
-
-
-    OUString OPropertyBrowserController::getImplementationName_static(  )
-    {
-        return OUString("org.openoffice.comp.extensions.ObjectInspector");
-    }
-
-
-    Sequence< OUString > OPropertyBrowserController::getSupportedServiceNames_static(  )
-    {
-        Sequence< OUString > aSupported { "com.sun.star.inspection.ObjectInspector" };
-        return aSupported;
-    }
-
-
-    Reference< XInterface > SAL_CALL OPropertyBrowserController::Create(const Reference< XComponentContext >& _rxContext)
-    {
-        return *(new OPropertyBrowserController( _rxContext ) );
+        return { "com.sun.star.inspection.ObjectInspector" };
     }
 
 
@@ -603,20 +546,14 @@ namespace pcr
         if ( m_xView.is() && ( m_xView == _rSource.Source ) )
         {
             m_xView = nullptr;
-            m_pView = nullptr;
+            m_xPropView.reset();
+            m_xBuilder.reset();
         }
 
-        for (   InterfaceArray::iterator loop = m_aInspectedObjects.begin();
-                loop != m_aInspectedObjects.end();
-                ++loop
-            )
-        {
-            if ( *loop == _rSource.Source )
-            {
-                m_aInspectedObjects.erase( loop );
-                break;
-            }
-        }
+        auto it = std::find_if(m_aInspectedObjects.begin(), m_aInspectedObjects.end(),
+            [&_rSource](const InterfaceArray::value_type& rxObj) { return rxObj == _rSource.Source; });
+        if (it != m_aInspectedObjects.end())
+            m_aInspectedObjects.erase(it);
     }
 
 
@@ -634,17 +571,14 @@ namespace pcr
         OUString sOldSelection = m_sPageSelection;
         m_sPageSelection.clear();
 
-        const sal_uInt16 nCurrentPage = m_pView->getActivaPage();
-        if ( (sal_uInt16)-1 != nCurrentPage )
+        const sal_uInt16 nCurrentPage = m_xPropView->getActivePage();
+        if ( sal_uInt16(-1) != nCurrentPage )
         {
-            for (   HashString2Int16::const_iterator pageId = m_aPageIds.begin();
-                    pageId != m_aPageIds.end();
-                    ++pageId
-                )
+            for (auto const& pageId : m_aPageIds)
             {
-                if ( nCurrentPage == pageId->second )
+                if ( nCurrentPage == pageId.second )
                 {
-                    m_sPageSelection = pageId->first;
+                    m_sPageSelection = pageId.first;
                     break;
                 }
             }
@@ -659,51 +593,45 @@ namespace pcr
 
     sal_uInt16 OPropertyBrowserController::impl_getPageIdForCategory_nothrow( const OUString& _rCategoryName ) const
     {
-        sal_uInt16 nPageId = (sal_uInt16)-1;
+        sal_uInt16 nPageId = sal_uInt16(-1);
         HashString2Int16::const_iterator pagePos = m_aPageIds.find( _rCategoryName );
         if ( pagePos != m_aPageIds.end() )
             nPageId = pagePos->second;
         return nPageId;
     }
 
-
     void OPropertyBrowserController::selectPageFromViewData()
     {
         sal_uInt16 nNewPage = impl_getPageIdForCategory_nothrow( m_sPageSelection );
 
-        if ( haveView() && ( nNewPage != (sal_uInt16)-1 ) )
-            m_pView->activatePage( nNewPage );
+        if ( haveView() && ( nNewPage != sal_uInt16(-1) ) )
+            m_xPropView->activatePage( nNewPage );
 
         // just in case ...
         updateViewDataFromActivePage();
     }
 
-
-    bool OPropertyBrowserController::Construct(vcl::Window* _pParentWin)
+    void OPropertyBrowserController::Construct(const Reference<XWindow>& rContainerWindow, std::unique_ptr<weld::Builder> xBuilder)
     {
         DBG_ASSERT(!haveView(), "OPropertyBrowserController::Construct: already have a view!");
-        DBG_ASSERT(_pParentWin, "OPropertyBrowserController::Construct: invalid parent window!");
+        assert(xBuilder && "OPropertyBrowserController::Construct: invalid parent window!");
 
-        m_pView = VclPtr<OPropertyBrowserView>::Create(_pParentWin);
-        m_pView->setPageActivationHandler(LINK(this, OPropertyBrowserController, OnPageActivation));
+        m_xBuilder = std::move(xBuilder);
+
+        m_xPropView.reset(new OPropertyBrowserView(m_xContext, *m_xBuilder));
+        m_xPropView->setPageActivationHandler(LINK(this, OPropertyBrowserController, OnPageActivation));
 
         // add as dispose listener for our view. The view is disposed by the frame we're plugged into,
-        // and this disposal _deletes_ the view, so it would be deadly if we use our m_pView member
+        // and this disposal _deletes_ the view, so it would be deadly if we use our m_xPropView member
         // after that
-        m_xView = VCLUnoHelper::GetInterface(m_pView);
-        Reference< XComponent > xViewAsComp(m_xView, UNO_QUERY);
-        if (xViewAsComp.is())
-            xViewAsComp->addEventListener( static_cast< XPropertyChangeListener* >( this ) );
+        m_xView = rContainerWindow;
+        if (m_xView.is())
+            m_xView->addEventListener( static_cast< XPropertyChangeListener* >( this ) );
 
         getPropertyBox().SetLineListener(this);
         getPropertyBox().SetControlObserver(this);
         impl_initializeView_nothrow();
-
-        m_pView->Show();
-
-        return true;
     }
-
 
     void SAL_CALL OPropertyBrowserController::propertyChange( const PropertyChangeEvent& _rEvent )
     {
@@ -742,76 +670,128 @@ namespace pcr
             getPropertyBox().SetPropertyValue( _rEvent.PropertyName, aNewValue, bAmbiguousValue );
         }
 
-        // if it's a actuating property, then update the UI for any dependent
+        // if it's an actuating property, then update the UI for any dependent
         // properties
         if ( impl_isActuatingProperty_nothrow( _rEvent.PropertyName ) )
             impl_broadcastPropertyChange_nothrow( _rEvent.PropertyName, aNewValue, _rEvent.OldValue, false );
     }
 
-
-    Reference< XPropertyControl > SAL_CALL OPropertyBrowserController::createPropertyControl( ::sal_Int16 ControlType, sal_Bool CreateReadOnly )
+    Reference< XPropertyControl > SAL_CALL OPropertyBrowserController::createPropertyControl( ::sal_Int16 ControlType, sal_Bool bCreateReadOnly )
     {
         ::osl::MutexGuard aGuard( m_aMutex );
 
         Reference< XPropertyControl > xControl;
 
-        // default winbits: a border only
-        WinBits nWinBits = WB_BORDER;
-
         // read-only-ness
-        CreateReadOnly |= impl_isReadOnlyModel_throw() ? 1 : 0;
-        if ( CreateReadOnly )
-            nWinBits |= WB_READONLY;
+        bCreateReadOnly |= impl_isReadOnlyModel_throw() ? 1 : 0;
 
         switch ( ControlType )
         {
-            case PropertyControlType::StringListField:
-                xControl = new OMultilineEditControl( &getPropertyBox(), eStringList, nWinBits | WB_DROPDOWN | WB_TABSTOP );
-                break;
-
             case PropertyControlType::MultiLineTextField:
-                xControl = new OMultilineEditControl( &getPropertyBox(), eMultiLineText, nWinBits | WB_DROPDOWN | WB_TABSTOP );
+            case PropertyControlType::StringListField:
+            {
+                bool bMultiLineTextField = ControlType == PropertyControlType::MultiLineTextField;
+                std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/multiline.ui", m_xContext));
+                auto pContainer = xBuilder->weld_container("multiline");
+                auto pControl = new OMultilineEditControl(std::move(pContainer), std::move(xBuilder),
+                                                          bMultiLineTextField ? eMultiLineText : eStringList, bCreateReadOnly);
+                pControl->SetModifyHandler();
+                xControl = pControl;
                 break;
+            }
 
             case PropertyControlType::ListBox:
-                xControl = new OListboxControl( &getPropertyBox(), nWinBits | WB_TABSTOP | WB_DROPDOWN);
+            {
+                std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/listbox.ui", m_xContext));
+                auto pComboBox = xBuilder->weld_combo_box("listbox");
+                auto pControl = new OListboxControl(std::move(pComboBox), std::move(xBuilder), bCreateReadOnly);
+                pControl->SetModifyHandler();
+                xControl = pControl;
                 break;
+            }
 
             case PropertyControlType::ComboBox:
-                xControl = new OComboboxControl( &getPropertyBox(), nWinBits | WB_TABSTOP | WB_DROPDOWN);
+            {
+                std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/combobox.ui", m_xContext));
+                auto pComboBox = xBuilder->weld_combo_box("combobox");
+                auto pControl = new OComboboxControl(std::move(pComboBox), std::move(xBuilder), bCreateReadOnly);
+                pControl->SetModifyHandler();
+                xControl = pControl;
                 break;
+            }
 
             case PropertyControlType::TextField:
-                xControl = new OEditControl( &getPropertyBox(), false, nWinBits | WB_TABSTOP );
-                break;
-
             case PropertyControlType::CharacterField:
-                xControl = new OEditControl( &getPropertyBox(), true, nWinBits | WB_TABSTOP );
+            {
+                bool bCharacterField = ControlType == PropertyControlType::CharacterField;
+                std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/textfield.ui", m_xContext));
+                auto pEntry = xBuilder->weld_entry("textfield");
+                auto pControl = new OEditControl(std::move(pEntry), std::move(xBuilder), bCharacterField, bCreateReadOnly);
+                pControl->SetModifyHandler();
+                xControl = pControl;
                 break;
+            }
 
             case PropertyControlType::NumericField:
-                xControl = new ONumericControl( &getPropertyBox(), nWinBits | WB_TABSTOP | WB_SPIN | WB_REPEAT );
+            {
+                std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/numericfield.ui", m_xContext));
+                auto pSpinButton = xBuilder->weld_metric_spin_button("numericfield", FieldUnit::NONE);
+                auto pControl = new ONumericControl(std::move(pSpinButton), std::move(xBuilder), bCreateReadOnly);
+                pControl->SetModifyHandler();
+                xControl = pControl;
                 break;
+            }
 
             case PropertyControlType::DateTimeField:
-                xControl = new ODateTimeControl( &getPropertyBox(), nWinBits | WB_TABSTOP );
+            {
+                std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/datetimefield.ui", m_xContext));
+                auto pContainer = xBuilder->weld_container("datetimefield");
+                auto pControl = new ODateTimeControl(std::move(pContainer), std::move(xBuilder), bCreateReadOnly);
+                pControl->SetModifyHandler();
+                xControl = pControl;
                 break;
+            }
 
             case PropertyControlType::DateField:
-                xControl = new ODateControl( &getPropertyBox(), nWinBits | WB_TABSTOP | WB_SPIN | WB_REPEAT );
+            {
+                std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/datefield.ui", m_xContext));
+                auto pMenuButton = xBuilder->weld_menu_button("datefield");
+                auto pControl = new ODateControl(std::make_unique<SvtCalendarBox>(std::move(pMenuButton)), std::move(xBuilder), bCreateReadOnly);
+                pControl->SetModifyHandler();
+                xControl = pControl;
                 break;
+            }
 
             case PropertyControlType::TimeField:
-                xControl = new OTimeControl( &getPropertyBox(), nWinBits | WB_TABSTOP | WB_SPIN | WB_REPEAT );
+            {
+                std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/timefield.ui", m_xContext));
+                auto pTimeSpinButton = xBuilder->weld_formatted_spin_button("timefield");
+                auto pControl = new OTimeControl(std::move(pTimeSpinButton), std::move(xBuilder), bCreateReadOnly);
+                pControl->SetModifyHandler();
+                xControl = pControl;
                 break;
+            }
 
             case PropertyControlType::ColorListBox:
-                xControl = new OColorControl( &getPropertyBox(), nWinBits | WB_TABSTOP | WB_DROPDOWN );
+            {
+                weld::Window* pTopLevel = PropertyHandlerHelper::getDialogParentFrame(m_xContext);
+                std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/colorlistbox.ui", m_xContext));
+                auto pMenuButton = xBuilder->weld_menu_button("colorlistbox");
+                auto pControl = new OColorControl(std::make_unique<ColorListBox>(std::move(pMenuButton), pTopLevel), std::move(xBuilder), bCreateReadOnly);
+                pControl->SetModifyHandler();
+                xControl = pControl;
                 break;
+            }
 
             case PropertyControlType::HyperlinkField:
-                xControl = new OHyperlinkControl( &getPropertyBox(), nWinBits | WB_TABSTOP | WB_DROPDOWN );
+            {
+                std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/hyperlinkfield.ui", m_xContext));
+                auto pContainer = xBuilder->weld_container("hyperlinkfield");
+                auto pControl = new OHyperlinkControl(std::move(pContainer), std::move(xBuilder), bCreateReadOnly);
+                pControl->SetModifyHandler();
+                xControl = pControl;
                 break;
+            }
 
             default:
                 throw IllegalArgumentException( OUString(), *this, 1 );
@@ -823,14 +803,11 @@ namespace pcr
 
     void OPropertyBrowserController::impl_toggleInspecteeListening_nothrow( bool _bOn )
     {
-        for (   InterfaceArray::const_iterator loop = m_aInspectedObjects.begin();
-                loop != m_aInspectedObjects.end();
-                ++loop
-            )
+        for (auto const& inspectedObject : m_aInspectedObjects)
         {
             try
             {
-                Reference< XComponent > xComp( *loop, UNO_QUERY );
+                Reference< XComponent > xComp( inspectedObject, UNO_QUERY );
                 if ( xComp.is() )
                 {
                     if ( _bOn )
@@ -841,7 +818,7 @@ namespace pcr
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
             }
         }
     }
@@ -866,11 +843,8 @@ namespace pcr
         if ( haveView() )
         {
             // remove the pages
-            for (   HashString2Int16::const_iterator erase = m_aPageIds.begin();
-                    erase != m_aPageIds.end();
-                    ++erase
-                )
-                getPropertyBox().RemovePage( erase->second );
+            for (auto const& pageId : m_aPageIds)
+                getPropertyBox().RemovePage( pageId.second );
             clearContainer( m_aPageIds );
         }
 
@@ -880,35 +854,29 @@ namespace pcr
         impl_toggleInspecteeListening_nothrow( false );
 
         // handlers are obsolete, so is our "composer" for their UI requests
-        if ( m_pUIRequestComposer.get() )
+        if (m_pUIRequestComposer)
             m_pUIRequestComposer->dispose();
         m_pUIRequestComposer.reset();
 
         // clean up the property handlers
         PropertyHandlerArray aAllHandlers;  // will contain every handler exactly once
-        for ( PropertyHandlerRepository::const_iterator aHandler = m_aPropertyHandlers.begin();
-              aHandler != m_aPropertyHandlers.end();
-              ++aHandler
-            )
-            if ( std::find( aAllHandlers.begin(), aAllHandlers.end(), aHandler->second ) == aAllHandlers.end() )
-                aAllHandlers.push_back( aHandler->second );
+        for (auto const& propertyHandler : m_aPropertyHandlers)
+            if ( std::find( aAllHandlers.begin(), aAllHandlers.end(), propertyHandler.second ) == aAllHandlers.end() )
+                aAllHandlers.push_back( propertyHandler.second );
 
-        for ( PropertyHandlerArray::iterator loop = aAllHandlers.begin();
-              loop != aAllHandlers.end();
-              ++loop
-            )
+        for (auto const& handler : aAllHandlers)
         {
             try
             {
-                (*loop)->removePropertyChangeListener( this );
-                (*loop)->dispose();
+                handler->removePropertyChangeListener( this );
+                handler->dispose();
             }
             catch( const DisposedException& )
             {
             }
             catch( const Exception& )
             {
-                DBG_UNHANDLED_EXCEPTION();
+                DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
             }
         }
 
@@ -924,7 +892,7 @@ namespace pcr
     }
 
 
-    OPropertyBrowserController::PropertyHandlerRef OPropertyBrowserController::impl_getHandlerForProperty_throw( const OUString& _rPropertyName ) const
+    OPropertyBrowserController::PropertyHandlerRef const & OPropertyBrowserController::impl_getHandlerForProperty_throw( const OUString& _rPropertyName ) const
     {
         PropertyHandlerRepository::const_iterator handlerPos = m_aPropertyHandlers.find( _rPropertyName );
         if ( handlerPos == m_aPropertyHandlers.end() )
@@ -992,12 +960,12 @@ namespace pcr
                 aProperties.reserve( aProperties.size() + aThisHandlersProperties.size() );
                 for (const auto & aThisHandlersPropertie : aThisHandlersProperties)
                 {
-                    std::vector< Property >::const_iterator previous = std::find_if(
+                    auto noPrevious = std::none_of(
                         aProperties.begin(),
                         aProperties.end(),
                         FindPropertyByName( aThisHandlersPropertie.Name )
                     );
-                    if ( previous == aProperties.end() )
+                    if ( noPrevious )
                     {
                         aProperties.push_back( aThisHandlersPropertie );
                         continue;
@@ -1047,8 +1015,7 @@ namespace pcr
                 StlSyntaxSequence< OUString > aInterestingActuations( (*aHandler)->getActuatingProperties() );
                 for (const auto & aInterestingActuation : aInterestingActuations)
                 {
-                    m_aDependencyHandlers.insert( PropertyHandlerMultiRepository::value_type(
-                        aInterestingActuation, *aHandler ) );
+                    m_aDependencyHandlers.emplace( aInterestingActuation, *aHandler );
                 }
 
                 ++aHandler;
@@ -1058,15 +1025,14 @@ namespace pcr
             m_pUIRequestComposer.reset( new ComposedPropertyUIUpdate( getInspectorUI(), this ) );
 
             // sort the properties by relative position, as indicated by the model
-            for (   std::vector< Property >::const_iterator sourceProps = aProperties.begin();
-                    sourceProps != aProperties.end();
-                    ++sourceProps
-                )
+            sal_Int32 nPos = 0;
+            for (auto const& sourceProps : aProperties)
             {
-                sal_Int32 nRelativePropertyOrder = sourceProps - aProperties.begin();
+                sal_Int32 nRelativePropertyOrder = nPos;
                 if ( m_xModel.is() )
-                    nRelativePropertyOrder = m_xModel->getPropertyOrderIndex( sourceProps->Name );
-                m_aProperties.insert(OrderedPropertyMap::value_type(nRelativePropertyOrder, *sourceProps));
+                    nRelativePropertyOrder = m_xModel->getPropertyOrderIndex( sourceProps.Name );
+                m_aProperties.emplace(nRelativePropertyOrder, sourceProps);
+                ++nPos;
             }
 
             // be notified when one of our inspectees dies
@@ -1082,8 +1048,8 @@ namespace pcr
     css::awt::Size SAL_CALL OPropertyBrowserController::getMinimumSize()
     {
         css::awt::Size aSize;
-        if( m_pView )
-            return m_pView->getMinimumSize();
+        if( m_xPropView )
+            return m_xPropView->getMinimumSize();
         else
             return aSize;
     }
@@ -1142,7 +1108,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "OPropertyBrowserController::describePropertyLine: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "OPropertyBrowserController::describePropertyLine" );
         }
     }
 
@@ -1155,16 +1121,13 @@ namespace pcr
         if ( m_xModel.is() )
             aCategories = StlSyntaxSequence< PropertyCategoryDescriptor >(m_xModel->describeCategories());
 
-        for (   StlSyntaxSequence< PropertyCategoryDescriptor >::const_iterator category = aCategories.begin();
-                category != aCategories.end();
-                ++category
-            )
+        for (auto const& category : aCategories)
         {
-            OSL_ENSURE( m_aPageIds.find( category->ProgrammaticName ) == m_aPageIds.end(),
+            OSL_ENSURE( m_aPageIds.find( category.ProgrammaticName ) == m_aPageIds.end(),
                 "OPropertyBrowserController::impl_buildCategories_throw: duplicate programmatic name!" );
 
-            m_aPageIds[ category->ProgrammaticName ] =
-                getPropertyBox().AppendPage( category->UIName, HelpIdUrl::getHelpId( category->HelpURL ) );
+            m_aPageIds[ category.ProgrammaticName ] =
+                getPropertyBox().AppendPage( category.UIName, HelpIdUrl::getHelpId( category.HelpURL ) );
         }
     }
 
@@ -1177,36 +1140,31 @@ namespace pcr
                 // too early, will return later
                 return;
 
-            getPropertyBox().DisableUpdate();
-
-            bool bHaveFocus = getPropertyBox().HasChildPathFocus();
-
             // create our tab pages
             impl_buildCategories_throw();
             // (and allow for pages to be actually unused)
             std::set< sal_uInt16 > aUsedPages;
 
             // when building the UI below, remember which properties are actuating,
-            // to allow for a initial actuatingPropertyChanged call
+            // to allow for an initial actuatingPropertyChanged call
             std::vector< OUString > aActuatingProperties;
             std::vector< Any > aActuatingPropertyValues;
 
             // ask the handlers to describe the property UI, and insert the resulting
             // entries into our list boxes
-            OrderedPropertyMap::const_iterator property( m_aProperties.begin() );
-            for ( ; property != m_aProperties.end(); ++property )
+            for (auto const& property : m_aProperties)
             {
                 OLineDescriptor aDescriptor;
-                describePropertyLine( property->second, aDescriptor );
+                describePropertyLine( property.second, aDescriptor );
 
-                bool bIsActuatingProperty = impl_isActuatingProperty_nothrow( property->second.Name );
+                bool bIsActuatingProperty = impl_isActuatingProperty_nothrow( property.second.Name );
 
                 SAL_WARN_IF( aDescriptor.Category.isEmpty(), "extensions.propctrlr",
                         "OPropertyBrowserController::UpdateUI: empty category provided for property '"
-                        << property->second.Name << "'!");
+                        << property.second.Name << "'!");
                 // finally insert this property control
                 sal_uInt16 nTargetPageId = impl_getPageIdForCategory_nothrow( aDescriptor.Category );
-                if ( nTargetPageId == (sal_uInt16)-1 )
+                if ( nTargetPageId == sal_uInt16(-1) )
                 {
                     // this category does not yet exist. This is allowed, as an inspector model might be lazy, and not provide
                     // any category information of its own. In this case, we have a fallback ...
@@ -1221,48 +1179,43 @@ namespace pcr
                 // if it's an actuating property, remember it
                 if ( bIsActuatingProperty )
                 {
-                    aActuatingProperties.push_back( property->second.Name );
-                    aActuatingPropertyValues.push_back( impl_getPropertyValue_throw( property->second.Name ) );
+                    aActuatingProperties.push_back( property.second.Name );
+                    aActuatingPropertyValues.push_back( impl_getPropertyValue_throw( property.second.Name ) );
                 }
             }
 
             // update any dependencies for the actuating properties which we encountered
             {
-                std::vector< OUString >::const_iterator aProperty = aActuatingProperties.begin();
                 std::vector< Any >::const_iterator aPropertyValue = aActuatingPropertyValues.begin();
-                for ( ; aProperty != aActuatingProperties.end(); ++aProperty, ++aPropertyValue )
-                    impl_broadcastPropertyChange_nothrow( *aProperty, *aPropertyValue, *aPropertyValue, true );
+                for (auto const& actuatingProperty : aActuatingProperties)
+                {
+                    impl_broadcastPropertyChange_nothrow( actuatingProperty, *aPropertyValue, *aPropertyValue, true );
+                    ++aPropertyValue;
+                }
             }
 
             // remove any unused pages (which we did not encounter properties for)
             HashString2Int16 aSurvivingPageIds;
-            for (   HashString2Int16::iterator pageId = m_aPageIds.begin();
-                    pageId != m_aPageIds.end();
-                    ++pageId
-                )
+            for (auto const& pageId : m_aPageIds)
             {
-                if ( aUsedPages.find( pageId->second ) == aUsedPages.end() )
-                    getPropertyBox().RemovePage( pageId->second );
+                if ( aUsedPages.find( pageId.second ) == aUsedPages.end() )
+                    getPropertyBox().RemovePage( pageId.second );
                 else
-                    aSurvivingPageIds.insert( *pageId );
+                    aSurvivingPageIds.insert(pageId);
             }
             m_aPageIds.swap( aSurvivingPageIds );
 
-
             getPropertyBox().Show();
-            getPropertyBox().EnableUpdate();
-            if ( bHaveFocus )
-                getPropertyBox().GrabFocus();
 
             // activate the first page
             if ( !m_aPageIds.empty() )
             {
                 Sequence< PropertyCategoryDescriptor > aCategories( m_xModel->describeCategories() );
-                if ( aCategories.getLength() )
-                    m_pView->activatePage( m_aPageIds[ aCategories[0].ProgrammaticName ] );
+                if ( aCategories.hasElements() )
+                    m_xPropView->activatePage( m_aPageIds[ aCategories[0].ProgrammaticName ] );
                 else
                     // allowed: if we default-created the pages ...
-                    m_pView->activatePage( m_aPageIds.begin()->second );
+                    m_xPropView->activatePage( m_aPageIds.begin()->second );
             }
 
             // activate the previously active page (if possible)
@@ -1272,7 +1225,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
     }
 
@@ -1315,19 +1268,16 @@ namespace pcr
         }
         catch (const Exception&)
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
         m_xInteractiveHandler = nullptr;
     }
 
 
-    bool SAL_CALL OPropertyBrowserController::hasPropertyByName( const OUString& _rName )
+    bool OPropertyBrowserController::hasPropertyByName( const OUString& _rName )
     {
-        for (   OrderedPropertyMap::const_iterator search = m_aProperties.begin();
-                search != m_aProperties.end();
-                ++search
-            )
-            if ( search->second.Name == _rName )
+        for (auto const& property : m_aProperties)
+            if ( property.second.Name == _rName )
                 return true;
         return false;
     }
@@ -1346,7 +1296,7 @@ namespace pcr
                 // can ignore it
                 OUString sVal;
                 _rValue >>= sVal;
-                if ( sVal.equals( sPlcHolder ) )
+                if ( sVal == sPlcHolder )
                     bIsPlaceHolderValue = true;
             }
             m_sCommittingProperty = rName;
@@ -1378,7 +1328,10 @@ namespace pcr
         }
         catch(const PropertyVetoException& eVetoException)
         {
-            ScopedVclPtrInstance<InfoBox>(m_pView, eVetoException.Message)->Execute();
+            std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(m_xPropView->getPropertyBox().getWidget(),
+                                                          VclMessageType::Info, VclButtonsType::Ok,
+                                                          eVetoException.Message));
+            xInfoBox->run();
             PropertyHandlerRef handler = impl_getHandlerForProperty_throw( rName );
             Any aNormalizedValue = handler->getPropertyValue( rName );
             getPropertyBox().SetPropertyValue( rName, aNormalizedValue, false );
@@ -1432,37 +1385,15 @@ namespace pcr
         if ( _rObjects.empty() )
             return;
 
-        // create a component context for the handlers, containing some information about where
-        // they live
-        Reference< XComponentContext > xHandlerContext( m_xContext );
-
-        // if our own creator did not pass a dialog parent window, use our own view for this
-        Reference< XWindow > xParentWindow;
-        Any any = m_xContext->getValueByName( "DialogParentWindow" );
-        any >>= xParentWindow;
-        if ( !xParentWindow.is() )
-        {
-            ::cppu::ContextEntry_Init aHandlerContextInfo[] =
-            {
-                ::cppu::ContextEntry_Init( "DialogParentWindow", makeAny( VCLUnoHelper::GetInterface( m_pView ) ) )
-            };
-            xHandlerContext = ::cppu::createComponentContext(
-                aHandlerContextInfo, SAL_N_ELEMENTS( aHandlerContextInfo ),
-                m_xContext );
-        }
-
         Sequence< Any > aHandlerFactories;
         if ( m_xModel.is() )
             aHandlerFactories = m_xModel->getHandlerFactories();
 
-        const Any* pHandlerFactory = aHandlerFactories.getConstArray();
-        const Any* pHandlerFactoryEnd = aHandlerFactories.getConstArray() + aHandlerFactories.getLength();
-
-        while ( pHandlerFactory != pHandlerFactoryEnd )
+        for ( auto const & handlerFactory : std::as_const(aHandlerFactories) )
         {
             if ( _rObjects.size() == 1 )
             {   // we're inspecting only one object -> one handler
-                Reference< XPropertyHandler > xHandler( lcl_createHandler( m_xContext, *pHandlerFactory ) );
+                Reference< XPropertyHandler > xHandler( lcl_createHandler( m_xContext, handlerFactory ) );
                 if ( xHandler.is() )
                 {
                     xHandler->inspect( _rObjects[0] );
@@ -1475,15 +1406,12 @@ namespace pcr
                 std::vector< Reference< XPropertyHandler > > aSingleHandlers( _rObjects.size() );
                 std::vector< Reference< XPropertyHandler > >::iterator pHandler = aSingleHandlers.begin();
 
-                InterfaceArray::const_iterator pObject = _rObjects.begin();
-                InterfaceArray::const_iterator pObjectEnd = _rObjects.end();
-
-                for ( ; pObject != pObjectEnd; ++pObject )
+                for (auto const& elem : _rObjects)
                 {
-                    *pHandler = lcl_createHandler( m_xContext, *pHandlerFactory );
+                    *pHandler = lcl_createHandler( m_xContext, handlerFactory );
                     if ( pHandler->is() )
                     {
-                        (*pHandler)->inspect( *pObject );
+                        (*pHandler)->inspect(elem);
                         ++pHandler;
                     }
                 }
@@ -1493,8 +1421,6 @@ namespace pcr
                 if ( !aSingleHandlers.empty() )
                     _rHandlers.push_back( new PropertyComposer( aSingleHandlers ) );
             }
-
-            ++pHandlerFactory;
         }
 
         // note that the handlers will not be used by our caller, if they indicate that there are no
@@ -1504,10 +1430,8 @@ namespace pcr
 
     bool OPropertyBrowserController::impl_findObjectProperty_nothrow( const OUString& _rName, OrderedPropertyMap::const_iterator* _pProperty )
     {
-        OrderedPropertyMap::const_iterator search = m_aProperties.begin();
-        for ( ; search != m_aProperties.end(); ++search )
-            if ( search->second.Name == _rName )
-                break;
+        OrderedPropertyMap::const_iterator search = std::find_if(m_aProperties.begin(), m_aProperties.end(),
+            [&_rName](const OrderedPropertyMap::value_type& rEntry) { return rEntry.second.Name == _rName; });
         if ( _pProperty )
             *_pProperty = search;
         return ( search != m_aProperties.end() );
@@ -1531,7 +1455,7 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            OSL_FAIL( "OPropertyBrowserController::rebuildPropertyUI: caught an exception!" );
+            TOOLS_WARN_EXCEPTION( "extensions.propctrlr", "OPropertyBrowserController::rebuildPropertyUI" );
         }
 
         getPropertyBox().ChangeEntry( aDescriptor );
@@ -1627,16 +1551,16 @@ namespace pcr
     }
 
 
-    void OPropertyBrowserController::showCategory( const OUString& _rCategory, sal_Bool _bShow )
+    void OPropertyBrowserController::showCategory( const OUString& rCategory, sal_Bool bShow )
     {
         ::osl::MutexGuard aGuard( m_aMutex );
         if ( !haveView() )
             throw RuntimeException();
 
-        sal_uInt16 nPageId = impl_getPageIdForCategory_nothrow( _rCategory );
-        OSL_ENSURE( nPageId != (sal_uInt16)-1, "OPropertyBrowserController::showCategory: invalid category!" );
+        sal_uInt16 nPageId = impl_getPageIdForCategory_nothrow( rCategory );
+        OSL_ENSURE( nPageId != sal_uInt16(-1), "OPropertyBrowserController::showCategory: invalid category!" );
 
-        getPropertyBox().ShowPropertyPage( nPageId, _bShow );
+        getPropertyBox().ShowPropertyPage( nPageId, bShow );
     }
 
 
@@ -1702,12 +1626,18 @@ namespace pcr
         }
         catch( const Exception& )
         {
-            DBG_UNHANDLED_EXCEPTION();
+            DBG_UNHANDLED_EXCEPTION("extensions.propctrlr");
         }
     }
 
 
 } // namespace pcr
 
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+extensions_propctrlr_OPropertyBrowserController_get_implementation(
+    css::uno::XComponentContext* context , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new pcr::OPropertyBrowserController(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

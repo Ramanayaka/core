@@ -17,10 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "extended/AccessibleGridControlTable.hxx"
-#include "extended/AccessibleGridControlTableCell.hxx"
-#include <svtools/accessibletable.hxx>
-
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <extended/AccessibleGridControlTable.hxx>
+#include <extended/AccessibleGridControlTableCell.hxx>
+#include <toolkit/helper/convert.hxx>
+#include <vcl/accessibletable.hxx>
+#include <vcl/svapp.hxx>
+#include <tools/debug.hxx>
 
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Sequence;
@@ -28,8 +31,8 @@ using ::com::sun::star::uno::Any;
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
-using namespace ::svt;
-using namespace ::svt::table;
+using namespace ::vcl;
+using namespace ::vcl::table;
 
 
 namespace accessibility {
@@ -39,12 +42,6 @@ AccessibleGridControlTable::AccessibleGridControlTable(
         const Reference< XAccessible >& rxParent,
         IAccessibleTable& rTable) :
     AccessibleGridControlTableBase( rxParent, rTable, TCTYPE_TABLE )
-        ,m_pCellVector( )
-        ,m_pAccessCellVector( )
-{
-}
-
-AccessibleGridControlTable::~AccessibleGridControlTable()
 {
 }
 
@@ -58,7 +55,7 @@ AccessibleGridControlTable::getAccessibleChild( sal_Int32 nChildIndex )
     ensureIsAlive();
     ensureIsValidIndex( nChildIndex );
     sal_Int32 nCount = getAccessibleChildCount();
-    if(m_pAccessCellVector.empty() || m_pAccessCellVector.size() != (unsigned)nCount)
+    if(m_pAccessCellVector.empty() || m_pAccessCellVector.size() != static_cast<unsigned>(nCount))
     {
         m_pAccessCellVector.resize(nCount);
         m_pCellVector.resize(nCount);
@@ -116,7 +113,7 @@ OUString SAL_CALL AccessibleGridControlTable::getAccessibleRowDescription( sal_I
 
     ensureIsAlive();
     ensureIsValidRow( nRow );
-    return m_aTable.GetRowDescription( nRow );
+    return "row description";
 }
 
 OUString SAL_CALL AccessibleGridControlTable::getAccessibleColumnDescription( sal_Int32 nColumn )
@@ -125,7 +122,7 @@ OUString SAL_CALL AccessibleGridControlTable::getAccessibleColumnDescription( sa
 
     ensureIsAlive();
     ensureIsValidColumn( nColumn );
-    return m_aTable.GetColumnDescription( (sal_uInt16)nColumn );
+    return "col description";
 }
 
 Reference< XAccessibleTable > SAL_CALL AccessibleGridControlTable::getAccessibleRowHeaders()
@@ -170,17 +167,8 @@ sal_Bool SAL_CALL AccessibleGridControlTable::isAccessibleRowSelected( sal_Int32
 
     ensureIsAlive();
     ensureIsValidRow( nRow );
-    bool bSelected = false;
     Sequence< sal_Int32 > selectedRows = getSelectedAccessibleRows();
-    for(int i=0; i<selectedRows.getLength(); i++)
-    {
-        if(nRow == selectedRows[i])
-        {
-            bSelected = true;
-            continue;
-        }
-    }
-    return bSelected;
+    return comphelper::findValue(selectedRows, nRow) != -1;
 }
 
 //columns aren't selectable
@@ -198,7 +186,7 @@ Reference< XAccessible > SAL_CALL AccessibleGridControlTable::getAccessibleCellA
     ensureIsValidAddress( nRow, nColumn );
     sal_Int32 nCount = getAccessibleChildCount();
     sal_Int32 nChildIndex = nRow*m_aTable.GetColumnCount() + nColumn;
-    if(m_pAccessCellVector.empty() || m_pAccessCellVector.size() != (unsigned)nCount)
+    if(m_pAccessCellVector.empty() || m_pAccessCellVector.size() != static_cast<unsigned>(nCount))
     {
         m_pAccessCellVector.resize(nCount);
         m_pCellVector.resize(nCount);
@@ -229,7 +217,7 @@ void SAL_CALL AccessibleGridControlTable::selectAccessibleChild( sal_Int32 nChil
     ensureIsAlive();
     ensureIsValidIndex( nChildIndex );
     sal_Int32 nColumns = m_aTable.GetColumnCount();
-    sal_Int32 nRow = (nChildIndex / nColumns);
+    sal_Int32 nRow = nChildIndex / nColumns;
     m_aTable.SelectRow( nRow, true );
 }
 sal_Bool SAL_CALL AccessibleGridControlTable::isAccessibleChildSelected( sal_Int32 nChildIndex )
@@ -239,7 +227,7 @@ sal_Bool SAL_CALL AccessibleGridControlTable::isAccessibleChildSelected( sal_Int
     ensureIsAlive();
     ensureIsValidIndex( nChildIndex );
     sal_Int32 nColumns = m_aTable.GetColumnCount();
-    sal_Int32 nRow = (nChildIndex / nColumns);
+    sal_Int32 nRow = nChildIndex / nColumns;
     return isAccessibleRowSelected(nRow);
 }
 void SAL_CALL AccessibleGridControlTable::clearAccessibleSelection()
@@ -308,7 +296,7 @@ void SAL_CALL AccessibleGridControlTable::release() throw ()
 
 OUString SAL_CALL AccessibleGridControlTable::getImplementationName()
 {
-    return OUString( "com.sun.star.accessibility.AccessibleGridControlTable" );
+    return "com.sun.star.accessibility.AccessibleGridControlTable";
 }
 
 // internal virtual methods ---------------------------------------------------

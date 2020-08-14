@@ -18,9 +18,9 @@
  */
 
 
-#include "drawingml/table/tablestylecontext.hxx"
-#include "drawingml/table/tablebackgroundstylecontext.hxx"
-#include "drawingml/table/tablepartstylecontext.hxx"
+#include <drawingml/table/tablestylecontext.hxx>
+#include <drawingml/table/tablebackgroundstylecontext.hxx>
+#include <drawingml/table/tablepartstylecontext.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
@@ -30,9 +30,9 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
-namespace oox { namespace drawingml { namespace table {
+namespace oox::drawingml::table {
 
-TableStyleContext::TableStyleContext( ContextHandler2Helper& rParent,
+TableStyleContext::TableStyleContext( ContextHandler2Helper const & rParent,
     const AttributeList& rAttribs, TableStyle& rTableStyle )
 : ContextHandler2( rParent )
 , mrTableStyle( rTableStyle )
@@ -84,6 +84,6 @@ TableStyleContext::onCreateContext( ::sal_Int32 aElementToken, const AttributeLi
     return this;
 }
 
-} } }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

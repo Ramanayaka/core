@@ -29,52 +29,31 @@ OFSInputStreamContainer::OFSInputStreamContainer( const uno::Reference< io::XInp
 , m_xSeekable( xStream, uno::UNO_QUERY )
 , m_bSeekable( false )
 , m_bDisposed( false )
-, m_pListenersContainer( nullptr )
 {
     m_bSeekable = m_xSeekable.is();
 }
 
 OFSInputStreamContainer::~OFSInputStreamContainer()
 {
-    if ( m_pListenersContainer )
-    {
-        delete m_pListenersContainer;
-        m_pListenersContainer = nullptr;
-    }
 }
 
 uno::Sequence< uno::Type > SAL_CALL OFSInputStreamContainer::getTypes()
 {
-    static ::cppu::OTypeCollection* pTypeCollection = nullptr ;
-
-    if ( pTypeCollection == nullptr )
+    if (m_bSeekable)
     {
-        ::osl::MutexGuard aGuard( m_aMutex ) ;
+        static cppu::OTypeCollection aTypeCollection(cppu::UnoType<io::XStream>::get(),
+                                                     cppu::UnoType<io::XInputStream>::get(),
+                                                     cppu::UnoType<io::XSeekable>::get());
 
-        if ( pTypeCollection == nullptr )
-        {
-            if ( m_bSeekable )
-            {
-                static ::cppu::OTypeCollection aTypeCollection(
-                        cppu::UnoType<io::XStream>::get(),
-                        cppu::UnoType<io::XInputStream>::get(),
-                        cppu::UnoType<io::XSeekable>::get());
-
-                pTypeCollection = &aTypeCollection ;
-            }
-            else
-            {
-                static ::cppu::OTypeCollection aTypeCollection(
-                        cppu::UnoType<io::XStream>::get(),
-                        cppu::UnoType<io::XInputStream>::get());
-
-                pTypeCollection = &aTypeCollection ;
-            }
-        }
+        return aTypeCollection.getTypes();
     }
+    else
+    {
+        static cppu::OTypeCollection aTypeCollection(cppu::UnoType<io::XStream>::get(),
+                                                     cppu::UnoType<io::XInputStream>::get());
 
-    return pTypeCollection->getTypes() ;
-
+        return aTypeCollection.getTypes();
+    }
 }
 
 uno::Any SAL_CALL OFSInputStreamContainer::queryInterface( const uno::Type& rType )
@@ -267,7 +246,7 @@ void SAL_CALL OFSInputStreamContainer::addEventListener( const uno::Reference< l
         throw lang::DisposedException();
 
     if ( !m_pListenersContainer )
-        m_pListenersContainer = new ::comphelper::OInterfaceContainerHelper2( m_aMutex );
+        m_pListenersContainer.reset( new ::comphelper::OInterfaceContainerHelper2( m_aMutex ) );
 
     m_pListenersContainer->addInterface( xListener );
 }

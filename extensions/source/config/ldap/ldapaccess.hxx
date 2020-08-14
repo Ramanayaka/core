@@ -20,24 +20,25 @@
 #ifndef INCLUDED_EXTENSIONS_SOURCE_CONFIG_LDAP_LDAPACCESS_HXX
 #define INCLUDED_EXTENSIONS_SOURCE_CONFIG_LDAP_LDAPACCESS_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <map>
 
 #ifdef _WIN32
+#if !defined WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #include <winldap.h>
-#else // !defined WNT
+#else // !defined _WIN32
 #include <ldap.h>
-#endif // WNT
+#endif // _WIN32
 
 #include <com/sun/star/ldap/LdapGenericException.hpp>
 
-#include <com/sun/star/ldap/LdapConnectionException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <osl/module.h>
 
-namespace extensions { namespace config { namespace ldap {
+namespace extensions::config::ldap {
 
 namespace uno = css::uno ;
 namespace lang = css::lang ;
@@ -127,7 +128,7 @@ private:
 } ;
 
 
-}} }
+}
 
 #endif // EXTENSIONS_CONFIG_LDAP_LDAPUSERPROFILE_HXX_
 

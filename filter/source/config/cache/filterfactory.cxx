@@ -19,21 +19,17 @@
 
 
 #include "filterfactory.hxx"
-#include "macros.hxx"
 #include "constant.hxx"
-#include "versions.hxx"
 
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/enumhelper.hxx>
 #include <comphelper/sequence.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <officecfg/Setup.hxx>
 #include <officecfg/TypeDetection/UISort.hxx>
 
 
-namespace filter{
-    namespace config{
+namespace filter::config{
 
 /** @short  define all possible parts of a filter query.
 
@@ -55,8 +51,8 @@ FilterFactory::FilterFactory(const css::uno::Reference< css::uno::XComponentCont
     : m_xContext(rxContext)
 {
     BaseContainer::init(rxContext                                         ,
-                        FilterFactory::impl_getImplementationName()   ,
-                        FilterFactory::impl_getSupportedServiceNames(),
+                        "com.sun.star.comp.filter.config.FilterFactory"   ,
+                         { "com.sun.star.document.FilterFactory" },
                         FilterCache::E_FILTER                         );
 }
 
@@ -76,47 +72,12 @@ css::uno::Reference< css::uno::XInterface > SAL_CALL FilterFactory::createInstan
                                                                                                 const css::uno::Sequence< css::uno::Any >& lArguments)
 {
     // SAFE ->
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::MutexGuard aLock(m_aLock);
 
-    OUString sRealFilter = sFilter;
-
-    #ifdef FILTER_CONFIG_MIGRATION_Q_
-
-        /* -> TODO - HACK
-            check if the given filter name really exist ...
-            Because our old implementation worked with an internal
-            type name instead of a filter name. For a small migration time
-            we must simulate this old feature :-( */
-
-        auto & cache = TheFilterCache::get();
-
-        if (!cache.hasItem(FilterCache::E_FILTER, sFilter) && cache.hasItem(FilterCache::E_TYPE, sFilter))
-        {
-            OSL_FAIL("Who use this deprecated functionality?");
-            FILTER_CONFIG_LOG_("FilterFactory::createInstanceWithArguments() ... simulate old type search functionality!\n");
-
-            css::uno::Sequence< css::beans::NamedValue > lQuery { { PROPNAME_TYPE, css::uno::makeAny(sFilter) } };
-
-            css::uno::Reference< css::container::XEnumeration > xSet = createSubSetEnumerationByProperties(lQuery);
-            while(xSet->hasMoreElements())
-            {
-                ::comphelper::SequenceAsHashMap lHandlerProps(xSet->nextElement());
-                if (!(lHandlerProps[PROPNAME_NAME] >>= sRealFilter))
-                    continue;
-            }
-
-            // prevent outside code against NoSuchElementException!
-            // But don't implement such defensive strategy for our new create handling :-)
-            if (!cache.hasItem(FilterCache::E_FILTER, sRealFilter))
-                return css::uno::Reference< css::uno::XInterface>();
-        }
-
-        /* <- HACK */
-
-    #endif // FILTER_CONFIG_MIGRATION_Q_
+    auto & cache = TheFilterCache::get();
 
     // search filter on cache
-    CacheItem aFilter = cache.getItem(FilterCache::E_FILTER, sRealFilter);
+    CacheItem aFilter = cache.getItem(FilterCache::E_FILTER, sFilter);
     OUString sFilterService;
     aFilter[PROPNAME_FILTERSERVICE] >>= sFilterService;
 
@@ -150,16 +111,16 @@ css::uno::Reference< css::uno::XInterface > SAL_CALL FilterFactory::createInstan
 css::uno::Sequence< OUString > SAL_CALL FilterFactory::getAvailableServiceNames()
 {
     /* Attention: Instead of getElementNames() this method have to return only filter names,
-                  which can be created as UNO Services really. Thats why we search for filters,
+                  which can be created as UNO Services really. That's why we search for filters,
                   which don't have a valid value for the property "FilterService".
                   Of course we can't check for corrupted service names here. We can check
-                  for empty strings only ...
+                  for empty strings only...
     */
     CacheItem lIProps;
     CacheItem lEProps;
     lEProps[PROPNAME_FILTERSERVICE] <<= OUString();
 
-    OUStringList lUNOFilters;
+    std::vector<OUString> lUNOFilters;
     try
     {
         lUNOFilters = TheFilterCache::get().getMatchingItemsByProps(FilterCache::E_FILTER, lIProps, lEProps);
@@ -193,19 +154,19 @@ css::uno::Reference< css::container::XEnumeration > SAL_CALL FilterFactory::crea
 
     // analyze query and split it into its tokens
     QueryTokenizer                  lTokens(sNewQuery);
-    QueryTokenizer::const_iterator  pIt;
-    OUStringList                    lEnumSet;
+    std::vector<OUString>           lEnumSet;
 
     // start query
     // (see attention comment below!)
     if (lTokens.valid())
     {
         // SAFE -> ----------------------
-        ::osl::ResettableMutexGuard aLock(m_aLock);
-        // May be not all filters was loaded ...
-        // But we need it now!
-        impl_loadOnDemand();
-        aLock.clear();
+        {
+            osl::MutexGuard aLock(m_aLock);
+            // May be not all filters was loaded ...
+            // But we need it now!
+            impl_loadOnDemand();
+        }
         // <- SAFE ----------------------
 
         if (lTokens.find(QUERY_IDENTIFIER_GETPREFERREDFILTERFORTYPE) != lTokens.end())
@@ -227,7 +188,7 @@ css::uno::Reference< css::container::XEnumeration > SAL_CALL FilterFactory::crea
 }
 
 
-OUStringList FilterFactory::impl_queryMatchByDocumentService(const QueryTokenizer& lTokens) const
+std::vector<OUString> FilterFactory::impl_queryMatchByDocumentService(const QueryTokenizer& lTokens) const
 {
     // analyze query
     QueryTokenizer::const_iterator pIt;
@@ -288,22 +249,18 @@ OUStringList FilterFactory::impl_queryMatchByDocumentService(const QueryTokenize
         nEFlags = pIt->second.toInt32();
 
     // SAFE -> ----------------------
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::ClearableMutexGuard aLock(m_aLock);
 
     // search suitable filters
     FilterCache* pCache       = impl_getWorkingCache();
-    OUStringList lFilterNames = pCache->getItemNames(FilterCache::E_FILTER);
-    OUStringList lResult      ;
+    std::vector<OUString> lFilterNames = pCache->getItemNames(FilterCache::E_FILTER);
+    std::vector<OUString> lResult      ;
 
-    for (OUStringList::const_iterator pName  = lFilterNames.begin();
-                                      pName != lFilterNames.end()  ;
-                                    ++pName                        )
+    for (auto const& filterName : lFilterNames)
     {
         try
         {
-            const OUString&          sName   = *pName;
-            const CacheItem                 aFilter = pCache->getItem(FilterCache::E_FILTER, sName);
-                CacheItem::const_iterator pProp   ;
+            const CacheItem aFilter = pCache->getItem(FilterCache::E_FILTER, filterName);
 
             // "matchByDocumentService="                    => any filter will be addressed here
             // "matchByDocumentService=all"                 => any filter will be addressed here
@@ -312,7 +269,7 @@ OUStringList FilterFactory::impl_queryMatchByDocumentService(const QueryTokenize
             if (
                 (!sDocumentService.isEmpty()                   ) &&
                 (sDocumentService != QUERY_CONSTVALUE_ALL      ) &&
-                (!sCheckValue.equals(sDocumentService)         )
+                (sCheckValue != sDocumentService         )
             )
             {
                 continue; // ignore filter -> try next one!
@@ -322,7 +279,7 @@ OUStringList FilterFactory::impl_queryMatchByDocumentService(const QueryTokenize
             // "iflags=-1"      => not allowed
             // "iflags=0"       => not useful
             // "iflags=283648"  => only filter, which has set these flag field will be addressed
-            sal_Int32 nCheckValue = aFilter.getUnpackedValueOrDefault(PROPNAME_FLAGS, (sal_Int32)0);
+            sal_Int32 nCheckValue = aFilter.getUnpackedValueOrDefault(PROPNAME_FLAGS, sal_Int32(0));
             if (
                 (nIFlags > 0                       ) &&
                 ((nCheckValue & nIFlags) != nIFlags)
@@ -345,7 +302,7 @@ OUStringList FilterFactory::impl_queryMatchByDocumentService(const QueryTokenize
 
             // OK - this filter passed all checks.
             // It match the query ...
-            lResult.push_back(sName);
+            lResult.push_back(filterName);
         }
         catch(const css::uno::RuntimeException&)
             { throw; }
@@ -359,6 +316,7 @@ OUStringList FilterFactory::impl_queryMatchByDocumentService(const QueryTokenize
     return lResult;
 }
 
+namespace {
 
 class stlcomp_removeIfMatchFlags
 {
@@ -381,14 +339,14 @@ class stlcomp_removeIfMatchFlags
             try
             {
                 const CacheItem aFilter = m_pCache->getItem(FilterCache::E_FILTER, sFilter);
-                        sal_Int32 nFlags  = aFilter.getUnpackedValueOrDefault(PROPNAME_FLAGS, ((sal_Int32)0));
+                sal_Int32 nFlags  = aFilter.getUnpackedValueOrDefault(PROPNAME_FLAGS, (sal_Int32(0)));
 
                 bool bMatch = false;
                 if (m_bIFlags)
                     // IFlags are interpreted as ALL_FLAGS_MUST_MATCH !
                     bMatch = ((nFlags & m_nFlags) == m_nFlags);
                 else
-                    // EFlags are interpreted as ATE_LEAST_ONE_FLAG_MUST_MATCH !
+                    // EFlags are interpreted as AT_LEAST_ONE_FLAG_MUST_MATCH !
                     bMatch = !(nFlags & m_nFlags);
                 // We are asked for bRemove ! And bMatch = !bRemove => so bRemove = !bMatch .-)
                 return !bMatch;
@@ -400,8 +358,9 @@ class stlcomp_removeIfMatchFlags
         }
 };
 
+}
 
-OUStringList FilterFactory::impl_getSortedFilterList(const QueryTokenizer& lTokens) const
+std::vector<OUString> FilterFactory::impl_getSortedFilterList(const QueryTokenizer& lTokens) const
 {
     // analyze the given query parameter
     QueryTokenizer::const_iterator pIt1;
@@ -421,28 +380,20 @@ OUStringList FilterFactory::impl_getSortedFilterList(const QueryTokenizer& lToke
         nEFlags = pIt1->second.toInt32();
 
     // simple search for filters of one specific module.
-    OUStringList lFilterList;
+    std::vector<OUString> lFilterList;
     if (!sModule.isEmpty())
         lFilterList = impl_getSortedFilterListForModule(sModule, nIFlags, nEFlags);
     else
     {
         // more complex search for all filters
-        // We check first, which office modules are installed ...
-        OUStringList lModules = impl_getListOfInstalledModules();
-        OUStringList::const_iterator pIt2;
-        for (  pIt2  = lModules.begin();
-               pIt2 != lModules.end()  ;
-             ++pIt2                    )
+        // We check first, which office modules are installed...
+        std::vector<OUString> lModules = impl_getListOfInstalledModules();
+        for (auto const& module : lModules)
         {
-            sModule = *pIt2;
-            OUStringList lFilters4Module = impl_getSortedFilterListForModule(sModule, nIFlags, nEFlags);
-            OUStringList::const_iterator pIt3;
-            for (  pIt3  = lFilters4Module.begin();
-                   pIt3 != lFilters4Module.end()  ;
-                 ++pIt3                           )
+            std::vector<OUString> lFilters4Module = impl_getSortedFilterListForModule(module, nIFlags, nEFlags);
+            for (auto const& filter4Module : lFilters4Module)
             {
-                const OUString& sFilter = *pIt3;
-                lFilterList.push_back(sFilter);
+                lFilterList.push_back(filter4Module);
             }
         }
     }
@@ -451,34 +402,34 @@ OUStringList FilterFactory::impl_getSortedFilterList(const QueryTokenizer& lToke
 }
 
 
-OUStringList FilterFactory::impl_getListOfInstalledModules() const
+std::vector<OUString> FilterFactory::impl_getListOfInstalledModules() const
 {
     // SAFE -> ----------------------
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::ClearableMutexGuard aLock(m_aLock);
     css::uno::Reference< css::uno::XComponentContext > xContext = m_xContext;
     aLock.clear();
     // <- SAFE ----------------------
 
     css::uno::Reference< css::container::XNameAccess > xModuleConfig = officecfg::Setup::Office::Factories::get(xContext);
-    OUStringList lModules(comphelper::sequenceToContainer<OUStringList>(xModuleConfig->getElementNames()));
+    std::vector<OUString> lModules(comphelper::sequenceToContainer< std::vector<OUString> >(xModuleConfig->getElementNames()));
     return lModules;
 }
 
 
-OUStringList FilterFactory::impl_getSortedFilterListForModule(const OUString& sModule,
+std::vector<OUString> FilterFactory::impl_getSortedFilterListForModule(const OUString& sModule,
                                                                     sal_Int32        nIFlags,
                                                                     sal_Int32        nEFlags) const
 {
-    OUStringList lSortedFilters = impl_readSortedFilterListFromConfig(sModule);
+    std::vector<OUString> lSortedFilters = impl_readSortedFilterListFromConfig(sModule);
 
     // get all filters for the requested module
     CacheItem lIProps;
     lIProps[PROPNAME_DOCUMENTSERVICE] <<= sModule;
 
     // SAFE -> ----------------------
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::ClearableMutexGuard aLock(m_aLock);
     FilterCache* pCache        = impl_getWorkingCache();
-    OUStringList lOtherFilters = pCache->getMatchingItemsByProps(FilterCache::E_FILTER, lIProps);
+    std::vector<OUString> lOtherFilters = pCache->getMatchingItemsByProps(FilterCache::E_FILTER, lIProps);
     aLock.clear();
     // <- SAFE ----------------------
 
@@ -487,28 +438,23 @@ OUStringList FilterFactory::impl_getSortedFilterListForModule(const OUString& sM
     ::std::sort(lOtherFilters.begin(), lOtherFilters.end());
 
     // merge both lists together
-    OUStringList           lMergedFilters = lSortedFilters;
-    const OUStringList::const_iterator itlOtherFiltersEnd = lOtherFilters.end();
-    const OUStringList::const_iterator itlSortedFiltersEnd = lSortedFilters.end();
-    for (OUStringList::const_iterator  pIt  = lOtherFilters.begin();
-           pIt != itlOtherFiltersEnd  ;
-         ++pIt                         )
+    std::vector<OUString> lMergedFilters = lSortedFilters;
+    const auto itlSortedFiltersEnd = lSortedFilters.cend();
+    for (auto const& otherFilter : lOtherFilters)
     {
-        if (::std::find(lSortedFilters.begin(), lSortedFilters.end(), *pIt) == itlSortedFiltersEnd)
-            lMergedFilters.push_back(*pIt);
+        if (::std::find(lSortedFilters.cbegin(), lSortedFilters.cend(), otherFilter) == itlSortedFiltersEnd)
+            lMergedFilters.push_back(otherFilter);
     }
-
-    OUStringList::iterator pItToErase;
 
     // remove all filters from this merged list, which does not fit the flag specification
     if (nIFlags != -1)
     {
-        pItToErase = ::std::remove_if(lMergedFilters.begin(), lMergedFilters.end(), stlcomp_removeIfMatchFlags(pCache, nIFlags, true));
+        auto pItToErase = ::std::remove_if(lMergedFilters.begin(), lMergedFilters.end(), stlcomp_removeIfMatchFlags(pCache, nIFlags, true));
         lMergedFilters.erase(pItToErase, lMergedFilters.end());
     }
     if (nEFlags != -1)
     {
-        pItToErase = ::std::remove_if(lMergedFilters.begin(), lMergedFilters.end(), stlcomp_removeIfMatchFlags(pCache, nEFlags, false));
+        auto pItToErase = ::std::remove_if(lMergedFilters.begin(), lMergedFilters.end(), stlcomp_removeIfMatchFlags(pCache, nEFlags, false));
         lMergedFilters.erase(pItToErase, lMergedFilters.end());
     }
 
@@ -519,10 +465,10 @@ OUStringList FilterFactory::impl_getSortedFilterListForModule(const OUString& sM
 }
 
 
-OUStringList FilterFactory::impl_readSortedFilterListFromConfig(const OUString& sModule) const
+std::vector<OUString> FilterFactory::impl_readSortedFilterListFromConfig(const OUString& sModule) const
 {
     // SAFE -> ----------------------
-    ::osl::ResettableMutexGuard aLock(m_aLock);
+    osl::ClearableMutexGuard aLock(m_aLock);
     css::uno::Reference< css::uno::XComponentContext > xContext = m_xContext;
     aLock.clear();
     // <- SAFE ----------------------
@@ -536,11 +482,11 @@ OUStringList FilterFactory::impl_readSortedFilterListFromConfig(const OUString& 
         xUISortConfig->getByName(sModule) >>= xModule;
         if (xModule.is()) // only to be on the safe side of life if the exception was not thrown .-)
         {
-            // Note: conversion of the returned Any to OUStringList throws
+            // Note: conversion of the returned Any to std::vector<OUString> throws
             // an IllegalArgumentException if the type does not match ...
-            // but it resets the OUStringList to a length of 0 if the Any is empty!
-            OUStringList lSortedFilters(
-                    comphelper::sequenceToContainer<OUStringList>(xModule->getByName(PROPNAME_SORTEDFILTERLIST).get<css::uno::Sequence<OUString> >()));
+            // but it resets the std::vector<OUString> to a length of 0 if the Any is empty!
+            std::vector<OUString> lSortedFilters(
+                    comphelper::sequenceToContainer< std::vector<OUString> >(xModule->getByName(PROPNAME_SORTEDFILTERLIST).get<css::uno::Sequence<OUString> >()));
             return lSortedFilters;
         }
     }
@@ -549,29 +495,16 @@ OUStringList FilterFactory::impl_readSortedFilterListFromConfig(const OUString& 
     catch(const css::uno::Exception&)
         {}
 
-    return OUStringList();
+    return std::vector<OUString>();
 }
 
-
-OUString FilterFactory::impl_getImplementationName()
-{
-    return OUString( "com.sun.star.comp.filter.config.FilterFactory" );
-}
-
-
-css::uno::Sequence< OUString > FilterFactory::impl_getSupportedServiceNames()
-{
-    return { "com.sun.star.document.FilterFactory" };
-}
-
-
-css::uno::Reference< css::uno::XInterface > SAL_CALL FilterFactory::impl_createInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& xSMGR)
-{
-    FilterFactory* pNew = new FilterFactory( comphelper::getComponentContext(xSMGR) );
-    return css::uno::Reference< css::uno::XInterface >(static_cast< css::lang::XMultiServiceFactory* >(pNew), css::uno::UNO_QUERY);
-}
-
-    } // namespace config
 } // namespace filter
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+filter_FilterFactory_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new filter::config::FilterFactory(context));
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

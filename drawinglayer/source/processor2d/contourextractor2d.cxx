@@ -20,7 +20,7 @@
 #include <drawinglayer/processor2d/contourextractor2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 #include <drawinglayer/primitive2d/polygonprimitive2d.hxx>
-#include <drawinglayer/primitive2d/polypolygonprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/bitmapprimitive2d.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <drawinglayer/primitive2d/metafileprimitive2d.hxx>
@@ -33,10 +33,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::processor2d
 {
-    namespace processor2d
-    {
         ContourExtractor2D::ContourExtractor2D(
             const geometry::ViewInformation2D& rViewInformation,
             bool bExtractFillOnly)
@@ -67,10 +65,10 @@ namespace drawinglayer
                         {
                             // line polygons need to be represented as open polygons to differentiate them
                             // from filled polygons
-                            basegfx::tools::openWithGeometryChange(aLocalPolygon);
+                            basegfx::utils::openWithGeometryChange(aLocalPolygon);
                         }
 
-                        maExtractedContour.push_back(basegfx::B2DPolyPolygon(aLocalPolygon));
+                        maExtractedContour.emplace_back(aLocalPolygon);
                     }
                     break;
                 }
@@ -88,9 +86,9 @@ namespace drawinglayer
                     // extract BoundRect from bitmaps in world coordinates
                     const primitive2d::BitmapPrimitive2D& rBitmapCandidate(static_cast< const primitive2d::BitmapPrimitive2D& >(rCandidate));
                     basegfx::B2DHomMatrix aLocalTransform(getViewInformation2D().getObjectTransformation() * rBitmapCandidate.getTransform());
-                    basegfx::B2DPolygon aPolygon(basegfx::tools::createUnitPolygon());
+                    basegfx::B2DPolygon aPolygon(basegfx::utils::createUnitPolygon());
                     aPolygon.transform(aLocalTransform);
-                    maExtractedContour.push_back(basegfx::B2DPolyPolygon(aPolygon));
+                    maExtractedContour.emplace_back(aPolygon);
                     break;
                 }
                 case PRIMITIVE2D_ID_METAFILEPRIMITIVE2D :
@@ -98,9 +96,9 @@ namespace drawinglayer
                     // extract BoundRect from MetaFiles in world coordinates
                     const primitive2d::MetafilePrimitive2D& rMetaCandidate(static_cast< const primitive2d::MetafilePrimitive2D& >(rCandidate));
                     basegfx::B2DHomMatrix aLocalTransform(getViewInformation2D().getObjectTransformation() * rMetaCandidate.getTransform());
-                    basegfx::B2DPolygon aPolygon(basegfx::tools::createUnitPolygon());
+                    basegfx::B2DPolygon aPolygon(basegfx::utils::createUnitPolygon());
                     aPolygon.transform(aLocalTransform);
-                    maExtractedContour.push_back(basegfx::B2DPolyPolygon(aPolygon));
+                    maExtractedContour.emplace_back(aPolygon);
                     break;
                 }
                 case PRIMITIVE2D_ID_TRANSPARENCEPRIMITIVE2D :
@@ -176,8 +174,11 @@ namespace drawinglayer
                 {
                     // primitives who's BoundRect will be added in world coordinates
                     basegfx::B2DRange aRange(rCandidate.getB2DRange(getViewInformation2D()));
-                    aRange.transform(getViewInformation2D().getObjectTransformation());
-                    maExtractedContour.push_back(basegfx::B2DPolyPolygon(basegfx::tools::createPolygonFromRect(aRange)));
+                    if (!aRange.isEmpty())
+                    {
+                        aRange.transform(getViewInformation2D().getObjectTransformation());
+                        maExtractedContour.emplace_back(basegfx::utils::createPolygonFromRect(aRange));
+                    }
                     break;
                 }
                 default :
@@ -189,7 +190,6 @@ namespace drawinglayer
             }
         }
 
-    } // end of namespace processor2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

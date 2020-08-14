@@ -21,10 +21,10 @@
 #define INCLUDED_SVX_VIEW3D_HXX
 
 #include <svx/svdview.hxx>
-#include <svx/def3d.hxx>
 #include <svx/deflt3d.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <svx/svxdllapi.h>
+#include <memory>
 
 /*
  * Forward declarations
@@ -38,32 +38,31 @@ class Impl3DMirrorConstructOverlay;
  * Derived class of SdrView to edit 3D objects.
  */
 
-class SVX_DLLPUBLIC E3dView : public SdrView
+class SVXCORE_DLLPUBLIC E3dView : public SdrView
 {
-protected:
     E3dDefaultAttributes        a3DDefaultAttr;
     MouseEvent                  aMouseEvent;                    // The parameters of the last Events (Mouse, Keyboard)
-    Color                       aDefaultLightColor;             // The parameters for the last colors
-    Color                       aDefaultAmbientColor;
-
-    E3dDragConstraint           eDragConstraint;
 
     // Migrate selections
-    Impl3DMirrorConstructOverlay*                   mpMirrorOverlay;
+    std::unique_ptr<Impl3DMirrorConstructOverlay> mpMirrorOverlay;
 
+protected:
     void InitView();
 
-    void ImpCreate3DObject(E3dScene* pScene, SdrObject* pObj, bool bExtrude, double fDepth, basegfx::B2DHomMatrix& rLatheMat);
-    void ImpCreateSingle3DObjectFlat(E3dScene* pScene, SdrObject* pObj, bool bExtrude, double fDepth, basegfx::B2DHomMatrix& rLatheMat);
+    void ImpCreate3DObject(E3dScene* pScene, SdrObject* pObj, bool bExtrude, double fDepth, basegfx::B2DHomMatrix const & rLatheMat);
+    void ImpCreateSingle3DObjectFlat(E3dScene* pScene, SdrObject* pObj, bool bExtrude, double fDepth, basegfx::B2DHomMatrix const & rLatheMat);
     void ImpChangeSomeAttributesFor3DConversion(SdrObject* pObj);
     void ImpChangeSomeAttributesFor3DConversion2(SdrObject* pObj);
 
     void InitScene(E3dScene* pScene, double fW, double fH, double fCamZ);
-    void ImpIsConvertTo3DPossible(SdrObject* pObj, bool& rAny3D, bool& rGroupSelected) const;
+    void ImpIsConvertTo3DPossible(SdrObject const * pObj, bool& rAny3D, bool& rGroupSelected) const;
     void BreakSingle3DObj(E3dObject* pObj);
 
 public:
-    E3dView(SdrModel* pModel, OutputDevice* pOut);
+    E3dView(
+        SdrModel& rSdrModel,
+        OutputDevice* pOut);
+
     virtual ~E3dView() override;
 
     // Output all marked Objects on the given OutputDevice.
@@ -76,10 +75,10 @@ public:
 
     // Get/Set Event
     void SetMouseEvent(const MouseEvent& rNew) { aMouseEvent = rNew; }
-    const MouseEvent& GetMouseEvent() { return aMouseEvent; }
+    const MouseEvent& GetMouseEvent() const { return aMouseEvent; }
 
     // Override getting the model, as we need to supply a Scene together with individual 3D Objects.
-    virtual SdrModel* GetMarkedObjModel() const override;
+    virtual std::unique_ptr<SdrModel> CreateMarkedObjModel() const override;
 
     // On Paste: We need to insert the objects of the Scene, but not the Scene itself
     using SdrView::Paste;
@@ -87,13 +86,13 @@ public:
         const SdrModel& rMod, const Point& rPos, SdrObjList* pLst, SdrInsertFlags nOptions) override;
 
     // #83403# Service routine used from local Clone() and from SdrCreateView::EndCreateObj(...)
-    bool ImpCloneAll3DObjectsToDestScene(E3dScene* pSrcScene, E3dScene* pDstScene, Point aOffset);
+    bool ImpCloneAll3DObjectsToDestScene(E3dScene const * pSrcScene, E3dScene* pDstScene, Point aOffset);
 
     bool IsConvertTo3DObjPossible() const;
     void ConvertMarkedObjTo3D(bool bExtrude=true, const basegfx::B2DPoint& rPnt1 = basegfx::B2DPoint(0.0, 0.0), const basegfx::B2DPoint& rPnt2 = basegfx::B2DPoint(0.0, 1.0));
 
     // Means to create all Extrudes in a certain depth order.
-    static void DoDepthArrange(E3dScene* pScene, double fDepth);
+    static void DoDepthArrange(E3dScene const * pScene, double fDepth);
     void ConvertMarkedToPolyObj();
     E3dScene* SetCurrent3DObj(E3dObject* p3DObj);
     void Start3DCreation();

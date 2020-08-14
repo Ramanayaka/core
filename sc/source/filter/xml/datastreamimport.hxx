@@ -15,6 +15,8 @@
 #include <importfilterdata.hxx>
 #include <address.hxx>
 
+namespace sax_fastparser { class FastAttributeList; }
+
 class ScXMLDataStreamContext : public ScXMLImportContext
 {
     OUString maURL;
@@ -24,8 +26,8 @@ class ScXMLDataStreamContext : public ScXMLImportContext
 
 public:
     ScXMLDataStreamContext(
-        ScXMLImport& rImport, sal_Int32 nElement,
-        const css::uno::Reference< css::xml::sax::XFastAttributeList>& xAttrList );
+        ScXMLImport& rImport,
+        const rtl::Reference<sax_fastparser::FastAttributeList>& rAttrList );
 
     virtual ~ScXMLDataStreamContext() override;
 

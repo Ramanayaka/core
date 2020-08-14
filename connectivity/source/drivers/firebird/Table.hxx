@@ -14,9 +14,7 @@
 
 #include <connectivity/TTableHelper.hxx>
 
-namespace connectivity
-{
-    namespace firebird
+namespace connectivity::firebird
     {
 
         /**
@@ -33,7 +31,7 @@ namespace connectivity
              * Get the ALTER TABLE [TABLE] ALTER [COLUMN] String.
              * Includes a trailing space.
              */
-            ::rtl::OUString getAlterTableColumn(const ::rtl::OUString& rColumn);
+            OUString getAlterTableColumn(const OUString& rColumn);
 
         protected:
             void construct() override;
@@ -45,17 +43,17 @@ namespace connectivity
             Table(Tables* pTables,
                   ::osl::Mutex& rMutex,
                   const css::uno::Reference< css::sdbc::XConnection >& _xConnection,
-                  const ::rtl::OUString& rName,
-                  const ::rtl::OUString& rType,
-                  const ::rtl::OUString& rDescription);
+                  const OUString& rName,
+                  const OUString& rType,
+                  const OUString& rDescription);
 
             // OTableHelper
             virtual ::connectivity::sdbcx::OCollection* createColumns(
-                const ::connectivity::TStringVector& rNames) override;
+                const ::std::vector< OUString>& rNames) override;
             virtual ::connectivity::sdbcx::OCollection* createKeys(
-                const ::connectivity::TStringVector& rNames) override;
+                const ::std::vector< OUString>& rNames) override;
             virtual ::connectivity::sdbcx::OCollection* createIndexes(
-                const ::connectivity::TStringVector& rNames) override;
+                const ::std::vector< OUString>& rNames) override;
 
             // XAlterTable
             /**
@@ -63,11 +61,11 @@ namespace connectivity
              * rDescriptor.
              */
             virtual void SAL_CALL alterColumnByName(
-                    const ::rtl::OUString& rColName,
+                    const OUString& rColName,
                     const css::uno::Reference< css::beans::XPropertySet >& rDescriptor) override;
 
             // XRename -- UNSUPPORTED
-            virtual void SAL_CALL rename(const ::rtl::OUString& sName) override;
+            virtual void SAL_CALL rename(const OUString& sName) override;
 
             //XInterface
             virtual css::uno::Any
@@ -79,8 +77,7 @@ namespace connectivity
 
         };
 
-    } // namespace firebird
-} // namespace connectivity
+} // namespace connectivity::firebird
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_TABLE_HXX
 

@@ -20,20 +20,17 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SIDEBAR_RECENTLYUSEDMASTERPAGES_HXX
 #define INCLUDED_SD_SOURCE_UI_SIDEBAR_RECENTLYUSEDMASTERPAGES_HXX
 
-#include "tools/SdGlobalResourceContainer.hxx"
+#include <tools/SdGlobalResourceContainer.hxx>
 #include <tools/link.hxx>
-#include <vcl/image.hxx>
 #include <vector>
 
-#include "DrawDocShell.hxx"
 #include "MasterPageContainer.hxx"
-#include <com/sun/star/uno/XInterface.hpp>
 
 namespace sd {
 class MasterPageObserverEvent;
 }
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 /** This singleton holds a list of the most recently used master pages.
 */
@@ -87,7 +84,6 @@ private:
 
     typedef ::std::vector<Descriptor> MasterPageList;
     MasterPageList mvMasterPages;
-    unsigned long int mnMaxListSize;
     std::shared_ptr<MasterPageContainer> mpContainer;
 
     RecentlyUsedMasterPages();
@@ -118,14 +114,14 @@ private:
     void LoadPersistentValues();
 
     /** Save the list of recently used master pages to the registry to make
-        it presistent.
+        it persistent.
     */
     void SavePersistentValues();
 
     void ResolveList();
 };
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 #endif
 

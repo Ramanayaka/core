@@ -19,17 +19,14 @@
 
 #include <drawinglayer/primitive3d/sdrprimitive3d.hxx>
 #include <basegfx/polygon/b3dpolypolygontools.hxx>
-#include <drawinglayer/primitive3d/sdrdecompositiontools3d.hxx>
 #include <drawinglayer/attribute/sdrlineattribute.hxx>
 
 
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive3d
 {
-    namespace primitive3d
-    {
         basegfx::B3DRange SdrPrimitive3D::getStandard3DRange() const
         {
             basegfx::B3DRange aUnitRange(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
@@ -57,7 +54,7 @@ namespace drawinglayer
             {
                 for(const auto & rSlice : rSlices)
                 {
-                    aRetval.expand(basegfx::tools::getRange(rSlice.getB3DPolyPolygon()));
+                    aRetval.expand(basegfx::utils::getRange(rSlice.getB3DPolyPolygon()));
                 }
 
                 aRetval.transform(getTransform());
@@ -105,7 +102,6 @@ namespace drawinglayer
             return false;
         }
 
-    } // end of namespace primitive3d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

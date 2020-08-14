@@ -18,15 +18,18 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
+#include <atomic>
 #include <cassert>
+#include <cstddef>
 #include <memory>
 
 #include <sal/alloca.h>
 
-#include "com/sun/star/uno/RuntimeException.hpp"
+#include <com/sun/star/uno/RuntimeException.hpp>
 
-#include "rtl/ustrbuf.hxx"
+#include <rtl/ustrbuf.hxx>
 
 #include "jni_bridge.h"
 #include "jniunoenvironmentdata.hxx"
@@ -37,19 +40,19 @@ extern "C"
 {
 
 
-void SAL_CALL UNO_proxy_free( uno_ExtEnvironment * env, void * proxy )
+void UNO_proxy_free( uno_ExtEnvironment * env, void * proxy )
     SAL_THROW_EXTERN_C();
 
 
-void SAL_CALL UNO_proxy_acquire( uno_Interface * pUnoI )
+void UNO_proxy_acquire( uno_Interface * pUnoI )
     SAL_THROW_EXTERN_C();
 
 
-void SAL_CALL UNO_proxy_release( uno_Interface * pUnoI )
+void UNO_proxy_release( uno_Interface * pUnoI )
     SAL_THROW_EXTERN_C();
 
 
-void SAL_CALL UNO_proxy_dispatch(
+void UNO_proxy_dispatch(
     uno_Interface * pUnoI, typelib_TypeDescription const * member_td,
     void * uno_ret, void * uno_args[], uno_Any ** uno_exc )
     SAL_THROW_EXTERN_C();
@@ -380,10 +383,12 @@ void Bridge::call_java(
     }
 }
 
-// an UNO proxy wrapping a Java interface
+namespace {
+
+// a UNO proxy wrapping a Java interface
 struct UNO_proxy : public uno_Interface
 {
-    mutable oslInterlockedCount         m_ref;
+    mutable std::atomic<std::size_t>    m_ref;
     Bridge const *                      m_bridge;
 
     // mapping information
@@ -402,6 +407,7 @@ struct UNO_proxy : public uno_Interface
         JNI_interface_type_info const * info );
 };
 
+}
 
 inline UNO_proxy::UNO_proxy(
     JNI_context const & jni, Bridge const * bridge,
@@ -438,7 +444,7 @@ inline UNO_proxy::UNO_proxy(
 
 inline void UNO_proxy::acquire() const
 {
-    if (osl_atomic_increment( &m_ref ) == 1)
+    if (++m_ref == 1)
     {
         // rebirth of proxy zombie
         void * that = const_cast< UNO_proxy * >( this );
@@ -454,7 +460,7 @@ inline void UNO_proxy::acquire() const
 
 inline void UNO_proxy::release() const
 {
-    if (osl_atomic_decrement( &m_ref ) == 0)
+    if (--m_ref == 0)
     {
         // revoke from uno env on last release
         (*m_bridge->m_uno_env->revokeInterface)(
@@ -500,7 +506,7 @@ extern "C"
 {
 
 
-void SAL_CALL UNO_proxy_free( uno_ExtEnvironment * env, void * proxy )
+void UNO_proxy_free( uno_ExtEnvironment * env, void * proxy )
     SAL_THROW_EXTERN_C()
 {
     UNO_proxy * that = static_cast< UNO_proxy * >( proxy );
@@ -538,7 +544,7 @@ void SAL_CALL UNO_proxy_free( uno_ExtEnvironment * env, void * proxy )
 }
 
 
-void SAL_CALL UNO_proxy_acquire( uno_Interface * pUnoI )
+void UNO_proxy_acquire( uno_Interface * pUnoI )
     SAL_THROW_EXTERN_C()
 {
     UNO_proxy const * that = static_cast< UNO_proxy const * >( pUnoI );
@@ -546,7 +552,7 @@ void SAL_CALL UNO_proxy_acquire( uno_Interface * pUnoI )
 }
 
 
-void SAL_CALL UNO_proxy_release( uno_Interface * pUnoI )
+void UNO_proxy_release( uno_Interface * pUnoI )
     SAL_THROW_EXTERN_C()
 {
     UNO_proxy const * that = static_cast< UNO_proxy const * >( pUnoI );
@@ -554,7 +560,7 @@ void SAL_CALL UNO_proxy_release( uno_Interface * pUnoI )
 }
 
 
-void SAL_CALL UNO_proxy_dispatch(
+void UNO_proxy_dispatch(
     uno_Interface * pUnoI, typelib_TypeDescription const * member_td,
     void * uno_ret, void * uno_args [], uno_Any ** uno_exc )
     SAL_THROW_EXTERN_C()

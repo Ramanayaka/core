@@ -23,18 +23,20 @@
 #include <sal/config.h>
 
 #include <com/sun/star/embed/XOLESimpleStorage.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/embed/XTransactedObject.hpp>
-#include <com/sun/star/embed/XClassifiedObject.hpp>
-#include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <comphelper/interfacecontainer2.hxx>
 
 #include <osl/mutex.hxx>
-#include <sot/stg.hxx>
+
+namespace com::sun::star::container { class XNameAccess; }
+namespace com::sun::star::io { class XInputStream; }
+namespace com::sun::star::io { class XStream; }
+namespace com::sun::star::lang { class XEventListener; }
+namespace com::sun::star::uno { class XComponentContext; }
+namespace comphelper { class OInterfaceContainerHelper2; }
+
+class BaseStorage;
+class SvStream;
 
 class OLESimpleStorage : public cppu::WeakImplHelper<css::embed::XOLESimpleStorage, css::lang::XServiceInfo>
 {
@@ -44,8 +46,8 @@ class OLESimpleStorage : public cppu::WeakImplHelper<css::embed::XOLESimpleStora
 
     css::uno::Reference< css::io::XStream > m_xStream;
     css::uno::Reference< css::io::XStream > m_xTempStream;
-    SvStream* m_pStream;
-    BaseStorage* m_pStorage;
+    std::unique_ptr<SvStream> m_pStream;
+    std::unique_ptr<BaseStorage> m_pStorage;
 
     ::comphelper::OInterfaceContainerHelper2* m_pListenersContainer; // list of listeners
     css::uno::Reference<css::uno::XComponentContext> m_xContext;

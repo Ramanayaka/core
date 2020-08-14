@@ -21,7 +21,7 @@
 
 #include <sfx2/tabdlg.hxx>
 #include <com/sun/star/frame/XModel.hpp>
-#include <labelcfg.hxx>
+#include "labelcfg.hxx"
 #include <vector>
 
 class SwLabItem;
@@ -29,31 +29,27 @@ class SwLabPrtPage;
 class SwDBManager;
 class Printer;
 
-class SwLabDlg : public SfxTabDialog
+class SwLabDlg : public SfxTabDialogController
 {
     SwLabelConfig   aLabelsCfg;
-    SwDBManager*     pDBManager;
-    VclPtr<SwLabPrtPage>   pPrtPage;
+    SwDBManager*    pDBManager;
+    SwLabPrtPage* m_pPrtPage;
 
     std::vector<sal_uInt16> aTypeIds;
     std::vector<OUString> aMakes;
 
-    SwLabRecs* m_pRecs;
+    std::unique_ptr<SwLabRecs> m_pRecs;
     OUString   aLstGroup;
     OUString   m_sBusinessCardDlg;
     bool       m_bLabel;
-    sal_uInt16 m_nOptionsId;
-    sal_uInt16 m_nLabelId;
-    sal_uInt16 m_nCardsId;
     void          ReplaceGroup_( const OUString &rMake );
 
-    virtual void PageCreated( sal_uInt16 nId, SfxTabPage &rPage ) override;
+    virtual void PageCreated(const OString& rId, SfxTabPage &rPage) override;
 public:
 
-     SwLabDlg( vcl::Window* pParent, const SfxItemSet& rSet,
-                 SwDBManager* pDBManager, bool bLabel);
+    SwLabDlg(weld::Window* pParent, const SfxItemSet& rSet,
+             SwDBManager* pDBManager, bool bLabel);
     virtual ~SwLabDlg() override;
-    virtual void dispose() override;
 
     SwLabRec*   GetRecord(const OUString &rRecName, bool bCont);
     void        GetLabItem(SwLabItem &rItem);
@@ -68,21 +64,20 @@ public:
     const std::vector<OUString> &Makes() const { return aMakes; }
 
     Printer *GetPrt();
-    inline void ReplaceGroup( const OUString &rMake );
+    void ReplaceGroup( const OUString &rMake )
+    {
+        if ( rMake != aLstGroup )
+            ReplaceGroup_( rMake );
+    }
+
     void UpdateGroup( const OUString &rMake ) {ReplaceGroup_( rMake );}
-    static void UpdateFieldInformation(css::uno::Reference< css::frame::XModel>& xModel,
-                                                                                const SwLabItem& rItem);
+    static void UpdateFieldInformation(css::uno::Reference< css::frame::XModel> const & xModel,
+                                       const SwLabItem& rItem);
     const OUString& GetBusinessCardStr() const {return m_sBusinessCardDlg;}
 
     SwLabelConfig& GetLabelsConfig() {return aLabelsCfg;}
 
 };
-
-inline void SwLabDlg::ReplaceGroup( const OUString &rMake )
-{
-    if ( rMake != aLstGroup )
-        ReplaceGroup_( rMake );
-}
 
 #endif
 

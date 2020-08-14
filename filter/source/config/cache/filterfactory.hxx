@@ -23,12 +23,10 @@
 #include "basecontainer.hxx"
 #include "querytokenizer.hxx"
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <cppuhelper/implbase.hxx>
 
 
-namespace filter{
-    namespace config{
+namespace filter::config {
 
 
 /** @short      implements the service <type scope="com.sun.star.document">FilterFactory</type>.
@@ -93,12 +91,12 @@ class FilterFactory : public ::cppu::ImplInheritanceHelper< BaseContainer       
             @return A string list of internal filter names, including
                     all filters, which match this query.
          */
-        OUStringList impl_queryMatchByDocumentService(const QueryTokenizer& lTokens) const;
+        std::vector<OUString> impl_queryMatchByDocumentService(const QueryTokenizer& lTokens) const;
 
 
         /** TODO document me
          */
-        OUStringList impl_getListOfInstalledModules() const;
+        std::vector<OUString> impl_getListOfInstalledModules() const;
 
 
         /** @short  implement the container string query:
@@ -110,12 +108,12 @@ class FilterFactory : public ::cppu::ImplInheritanceHelper< BaseContainer       
             @return A string list of internal filter names, including
                     all filters, which match this query.
          */
-        OUStringList impl_getSortedFilterList(const QueryTokenizer& lTokens) const;
+        std::vector<OUString> impl_getSortedFilterList(const QueryTokenizer& lTokens) const;
 
 
         /** TODO document me
          */
-        OUStringList impl_getSortedFilterListForModule(const OUString& sModule,
+        std::vector<OUString> impl_getSortedFilterListForModule(const OUString& sModule,
                                                              sal_Int32        nIFlags,
                                                              sal_Int32        nEFlags) const;
 
@@ -129,53 +127,11 @@ class FilterFactory : public ::cppu::ImplInheritanceHelper< BaseContainer       
             @return A string list of internal filter names.
                     Can be empty.
          */
-        OUStringList impl_readSortedFilterListFromConfig(const OUString& sModule) const;
+        std::vector<OUString> impl_readSortedFilterListFromConfig(const OUString& sModule) const;
 
-
-    // static uno helper!
-
-    public:
-
-
-        /** @short  return the uno implementation name of this class.
-
-            @descr  Because this information is used at several places
-                    (and mostly an object instance of this class is not possible)
-                    its implemented as a static function!
-
-            @return The fix uno implementation name of this class.
-         */
-        static OUString impl_getImplementationName();
-
-
-        /** @short  return the list of supported uno services of this class.
-
-            @descr  Because this information is used at several places
-                    (and mostly an object instance of this class is not possible)
-                    its implemented as a static function!
-
-            @return The fix list of uno services supported by this class.
-         */
-        static css::uno::Sequence< OUString > impl_getSupportedServiceNames();
-
-
-        /** @short  return a new intsnace of this class.
-
-            @descr  This method is used by the uno service manager, to create
-                    a new instance of this service if needed.
-
-            @param  xSMGR
-                    reference to the uno service manager, which require
-                    this new instance. It should be passed to the new object
-                    so it can be used internally to create own needed uno resources.
-
-            @return The new instance of this service as an uno reference.
-         */
-        static css::uno::Reference< css::uno::XInterface > impl_createInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& xSMGR);
 };
 
-    } // namespace config
-} // namespace filter
+} // namespace filter::config
 
 #endif // INCLUDED_FILTER_SOURCE_CONFIG_CACHE_FILTERFACTORY_HXX
 

@@ -17,31 +17,59 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <sfx2/emojipopup.hxx>
-#include <sfx2/emojicontrol.hxx>
-#include <unotools/viewoptions.hxx>
+#include <emojicontrol.hxx>
 #include <vcl/toolbox.hxx>
 
-SFX_IMPL_TOOLBOX_CONTROL(EmojiPopup, SfxVoidItem);
-
-EmojiPopup::EmojiPopup(sal_uInt16 nSlotId, sal_uInt16 nId, ToolBox& rTbx)
-    : SfxToolBoxControl(nSlotId, nId, rTbx)
+EmojiPopup::EmojiPopup(const css::uno::Reference<css::uno::XComponentContext>& rContext)
+    : PopupWindowController(rContext, nullptr, OUString())
 {
-    rTbx.SetItemBits(nId, ToolBoxItemBits::DROPDOWNONLY | rTbx.GetItemBits(nId));
+}
+
+void EmojiPopup::initialize( const css::uno::Sequence< css::uno::Any >& rArguments )
+{
+    PopupWindowController::initialize(rArguments);
+
+    ToolBox* pToolBox = nullptr;
+    sal_uInt16 nId = 0;
+    if (getToolboxId(nId, &pToolBox))
+        pToolBox->SetItemBits(nId, ToolBoxItemBits::DROPDOWNONLY | pToolBox->GetItemBits(nId));
 }
 
 EmojiPopup::~EmojiPopup()
 {
 }
 
-VclPtr<SfxPopupWindow> EmojiPopup::CreatePopupWindow()
+std::unique_ptr<WeldToolbarPopup> EmojiPopup::weldPopupWindow()
 {
-    VclPtr<SfxEmojiControl> pControl = VclPtr<SfxEmojiControl>::Create(GetSlotId(), m_xFrame);
+    return std::make_unique<SfxEmojiControl>(this, m_pToolbar);
+}
 
-    pControl->StartPopupMode(&GetToolBox(), FloatWinPopupFlags::GrabFocus);
+VclPtr<vcl::Window> EmojiPopup::createVclPopupWindow( vcl::Window* pParent )
+{
+    mxInterimPopover = VclPtr<InterimToolbarPopup>::Create(getFrameInterface(), pParent,
+        std::make_unique<SfxEmojiControl>(this, pParent->GetFrameWeld()));
 
-    SetPopupWindow(pControl);
+    mxInterimPopover->Show();
 
-    return pControl;
+    return mxInterimPopover;
+}
+
+OUString EmojiPopup::getImplementationName()
+{
+    return "com.sun.star.comp.sfx2.InsertEmojiToolBoxControl";
+}
+
+css::uno::Sequence<OUString> EmojiPopup::getSupportedServiceNames()
+{
+    return { "com.sun.star.frame.ToolbarController" };
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
+com_sun_star_comp_sfx2_InsertEmojiToolBoxControl_get_implementation(
+    css::uno::XComponentContext* rContext,
+    css::uno::Sequence<css::uno::Any> const & )
+{
+    return cppu::acquire(new EmojiPopup(rContext));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

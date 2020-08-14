@@ -18,18 +18,12 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
-#include <basegfx/tools/canvastools.hxx>
-#include <basegfx/tools/unopolypolygon.hxx>
-#include <com/sun/star/lang/NoSupportException.hpp>
-#include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/cairo.hxx>
-#include <vcl/canvastools.hxx>
-#include <vcl/syschild.hxx>
 
-#include <canvas/canvastools.hxx>
+#include <cairo.h>
 
-#include "cairo_canvasbitmap.hxx"
 #include "cairo_devicehelper.hxx"
 #include "cairo_spritecanvas.hxx"
 
@@ -124,7 +118,7 @@ namespace cairocanvas
         setSize( ::basegfx::B2ISize(rBounds.Width, rBounds.Height) );
     }
 
-    SurfaceSharedPtr SpriteDeviceHelper::getWindowSurface()
+    SurfaceSharedPtr const & SpriteDeviceHelper::getWindowSurface() const
     {
         return DeviceHelper::getSurface();
     }
@@ -137,7 +131,7 @@ namespace cairocanvas
         return SurfaceSharedPtr();
     }
 
-    SurfaceSharedPtr SpriteDeviceHelper::createSurface( BitmapSystemData& rData, const Size& rSize )
+    SurfaceSharedPtr SpriteDeviceHelper::createSurface( BitmapSystemData const & rData, const Size& rSize )
     {
         OutputDevice *pDevice = getOutputDevice();
         if (pDevice)

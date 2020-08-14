@@ -19,11 +19,11 @@
 
 #include <sal/config.h>
 
-#include "osl/file.h"
+#include <osl/file.h>
 
-#include "osl/diagnose.h"
-#include "osl/thread.h"
-#include "rtl/alloc.h"
+#include <osl/diagnose.h>
+#include <osl/thread.h>
+#include <rtl/alloc.h>
 
 #include "file_error_transl.hxx"
 #include "file_url.hxx"
@@ -86,7 +86,7 @@
  *
  *****************************************************************************/
 
-static oslFileError osl_psz_getVolumeInformation(const sal_Char* , oslVolumeInfo* pInfo, sal_uInt32 uFieldMask);
+static oslFileError osl_psz_getVolumeInformation(const char* , oslVolumeInfo* pInfo, sal_uInt32 uFieldMask);
 
 /****************************************************************************/
 /*  osl_getVolumeInformation */
@@ -107,7 +107,7 @@ oslFileError osl_getVolumeInformation( rtl_uString* ustrDirectoryURL, oslVolumeI
 
 #ifdef MACOSX
     if ( macxp_resolveAlias( path, PATH_MAX ) != 0 )
-      return oslTranslateFileError( OSL_FET_ERROR, errno );
+      return oslTranslateFileError( errno );
 #endif/* MACOSX */
 
     return osl_psz_getVolumeInformation( path, pInfo, uFieldMask);
@@ -124,7 +124,7 @@ oslFileError osl_getVolumeInformation( rtl_uString* ustrDirectoryURL, oslVolumeI
 #if defined(FREEBSD) || defined(MACOSX) || defined(OPENBSD) || defined(DRAGONFLY)
 #   define OSL_detail_STATFS_STRUCT                  struct statfs
 #   define OSL_detail_STATFS(dir, sfs)               statfs((dir), (sfs))
-#   define OSL_detail_STATFS_BLKSIZ(a)               ((sal_uInt64)((a).f_bsize))
+#   define OSL_detail_STATFS_BLKSIZ(a)               (static_cast<sal_uInt64>((a).f_bsize))
 #   define OSL_detail_STATFS_TYPENAME(a)             ((a).f_fstypename)
 #if defined(OPENBSD)
 #   define OSL_detail_STATFS_ISREMOTE(a)             (rtl_str_compare((a).f_fstypename, "nfs") == 0)
@@ -140,8 +140,6 @@ oslFileError osl_getVolumeInformation( rtl_uString* ustrDirectoryURL, oslVolumeI
 #endif /* FREEBSD || MACOSX || OPENBSD */
 
 #if defined(NETBSD)
-
-#include <sys/param.h>
 
 #   define OSL_detail_STATFS_STRUCT              struct statvfs
 #   define OSL_detail_STATFS(dir, sfs)           statvfs((dir), (sfs))
@@ -161,7 +159,7 @@ oslFileError osl_getVolumeInformation( rtl_uString* ustrDirectoryURL, oslVolumeI
 #   define OSL_detail_NTFS_SUPER_MAGIC                0x5346544e
 #   define OSL_detail_STATFS_STRUCT                   struct statfs
 #   define OSL_detail_STATFS(dir, sfs)                statfs((dir), (sfs))
-#   define OSL_detail_STATFS_BLKSIZ(a)                ((sal_uInt64)((a).f_bsize))
+#   define OSL_detail_STATFS_BLKSIZ(a)                (static_cast<sal_uInt64>((a).f_bsize))
 #   define OSL_detail_STATFS_IS_NFS(a)                (OSL_detail_NFS_SUPER_MAGIC == (a).f_type)
 #   define OSL_detail_STATFS_IS_SMB(a)                (OSL_detail_SMB_SUPER_MAGIC == (a).f_type)
 #   define OSL_detail_STATFS_ISREMOTE(a)              (OSL_detail_STATFS_IS_NFS((a)) || OSL_detail_STATFS_IS_SMB((a)))
@@ -196,7 +194,7 @@ oslFileError osl_getVolumeInformation( rtl_uString* ustrDirectoryURL, oslVolumeI
 #endif /* HAVE_STATFS_H */
 
 static oslFileError osl_psz_getVolumeInformation (
-    const sal_Char* pszDirectory, oslVolumeInfo* pInfo, sal_uInt32 uFieldMask)
+    const char* pszDirectory, oslVolumeInfo* pInfo, sal_uInt32 uFieldMask)
 {
     if (!pInfo)
         return osl_File_E_INVAL;
@@ -216,16 +214,19 @@ static oslFileError osl_psz_getVolumeInformation (
     {
         OSL_detail_STATFS_STRUCT sfs;
         OSL_detail_STATFS_INIT(sfs);
-        if ((OSL_detail_STATFS(pszDirectory, &sfs)) < 0)
+        // coverity[fs_check_call : FALSE]
+        if ((OSL_detail_STATFS(pszDirectory, &sfs)) < (0))
         {
-            oslFileError result = oslTranslateFileError(OSL_FET_ERROR, errno);
+            oslFileError result = oslTranslateFileError(errno);
             return result;
         }
 
         /* FIXME: how to detect the kind of storage (fixed, cdrom, ...) */
         if (uFieldMask & osl_VolumeInfo_Mask_Attributes)
         {
-            if (OSL_detail_STATFS_ISREMOTE(sfs))
+            bool const remote = OSL_detail_STATFS_ISREMOTE(sfs);
+                // extracted from the 'if' to avoid Clang -Wunreachable-code
+            if (remote)
                 pInfo->uAttributes  |= osl_Volume_Attribute_Remote;
 
             pInfo->uValidFields |= osl_VolumeInfo_Mask_Attributes;
@@ -248,7 +249,7 @@ static oslFileError osl_psz_getVolumeInformation (
             (uFieldMask & osl_VolumeInfo_Mask_UsedSpace))
         {
             pInfo->uTotalSpace   = OSL_detail_STATFS_BLKSIZ(sfs);
-            pInfo->uTotalSpace  *= (sal_uInt64)(sfs.f_blocks);
+            pInfo->uTotalSpace  *= static_cast<sal_uInt64>(sfs.f_blocks);
             pInfo->uValidFields |= osl_VolumeInfo_Mask_TotalSpace;
         }
 
@@ -258,9 +259,9 @@ static oslFileError osl_psz_getVolumeInformation (
             pInfo->uFreeSpace = OSL_detail_STATFS_BLKSIZ(sfs);
 
             if (getuid() == 0)
-                pInfo->uFreeSpace *= (sal_uInt64)(sfs.f_bfree);
+                pInfo->uFreeSpace *= static_cast<sal_uInt64>(sfs.f_bfree);
             else
-                pInfo->uFreeSpace *= (sal_uInt64)(sfs.f_bavail);
+                pInfo->uFreeSpace *= static_cast<sal_uInt64>(sfs.f_bavail);
 
             pInfo->uValidFields |= osl_VolumeInfo_Mask_FreeSpace;
         }
@@ -298,7 +299,7 @@ static oslFileError osl_psz_getVolumeInformation (
         long nLen = pathconf(pszDirectory, _PC_NAME_MAX);
         if (nLen > 0)
         {
-            pInfo->uMaxNameLength = (sal_uInt32)nLen;
+            pInfo->uMaxNameLength = static_cast<sal_uInt32>(nLen);
             pInfo->uValidFields |= osl_VolumeInfo_Mask_MaxNameLength;
         }
     }
@@ -309,7 +310,7 @@ static oslFileError osl_psz_getVolumeInformation (
         long nLen = pathconf (pszDirectory, _PC_PATH_MAX);
         if (nLen > 0)
         {
-            pInfo->uMaxPathLength  = (sal_uInt32)nLen;
+            pInfo->uMaxPathLength  = static_cast<sal_uInt32>(nLen);
             pInfo->uValidFields   |= osl_VolumeInfo_Mask_MaxPathLength;
         }
     }

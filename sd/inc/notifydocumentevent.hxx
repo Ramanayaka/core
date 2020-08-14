@@ -21,12 +21,14 @@
 #define INCLUDED_SD_INC_NOTIFYDOCUMENTEVENT_HXX
 
 #include <sal/config.h>
+#include <rtl/ustring.hxx>
+#include <com/sun/star/uno/Reference.hxx>
 
 class SdDrawDocument;
 
-void NotifyDocumentEvent( SdDrawDocument* pDocument, const OUString& rEventName );
+void NotifyDocumentEvent( SdDrawDocument const & rDocument, const OUString& rEventName );
 
-void NotifyDocumentEvent( SdDrawDocument* pDocument, const OUString& rEventName, const css::uno::Reference< css::uno::XInterface >& xSource );
+void NotifyDocumentEvent( SdDrawDocument const & rDocument, const OUString& rEventName, const css::uno::Reference< css::uno::XInterface >& xSource );
 
 #endif
 

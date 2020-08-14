@@ -17,7 +17,7 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace oox { namespace ppt {
+namespace oox::ppt {
 
 struct CommentAuthor
 {
@@ -80,19 +80,19 @@ class Comment
         {
             text = _text;
         }
-        const OUString& get_text()
+        const OUString& get_text() const
         {
             return text;
         }
-        const css::util::DateTime& getDateTime()
+        const css::util::DateTime& getDateTime() const
         {
             return aDateTime;
         }
-        sal_Int32 getIntX()
+        sal_Int32 getIntX() const
         {
             return x.toInt32();
         }
-        sal_Int32 getIntY()
+        sal_Int32 getIntY() const
         {
             return y.toInt32();
         }
@@ -103,14 +103,14 @@ class CommentList
 {
     public:
         std::vector<Comment> cmLst;
-        int getSize ()
+        int getSize () const
         {
-            return (int)cmLst.size();
+            return static_cast<int>(cmLst.size());
         }
         const Comment& getCommentAtIndex (int index);
 };
 
-} }
+}
 
 #endif
 

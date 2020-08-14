@@ -20,23 +20,21 @@
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/numeric/ftools.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include "transitiontools.hxx"
 #include "zigzagwipe.hxx"
 
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 ZigZagWipe::ZigZagWipe( sal_Int32 nZigs ) : m_zigEdge( 1.0 / nZigs )
 {
     const double d = m_zigEdge;
-    const double d2 = (d / 2.0);
+    const double d2 = d / 2.0;
     m_stdZigZag.append( ::basegfx::B2DPoint( -1.0 - d, -d ) );
     m_stdZigZag.append( ::basegfx::B2DPoint( -1.0 - d, 1.0 + d ) );
     m_stdZigZag.append( ::basegfx::B2DPoint( -d, 1.0 + d ) );
-    for ( sal_Int32 pos = (nZigs + 2); pos--; ) {
+    for ( sal_Int32 pos = nZigs + 2; pos--; ) {
         m_stdZigZag.append( ::basegfx::B2DPoint( 0.0, ((pos - 1) * d) + d2 ) );
         m_stdZigZag.append( ::basegfx::B2DPoint( -d, (pos - 1) * d ) );
     }
@@ -46,7 +44,7 @@ ZigZagWipe::ZigZagWipe( sal_Int32 nZigs ) : m_zigEdge( 1.0 / nZigs )
 ::basegfx::B2DPolyPolygon ZigZagWipe::operator () ( double t )
 {
     ::basegfx::B2DPolyPolygon res(m_stdZigZag);
-    res.transform(basegfx::tools::createTranslateB2DHomMatrix((1.0 + m_zigEdge) * t, 0.0));
+    res.transform(basegfx::utils::createTranslateB2DHomMatrix((1.0 + m_zigEdge) * t, 0.0));
     return res;
 }
 
@@ -55,7 +53,7 @@ ZigZagWipe::ZigZagWipe( sal_Int32 nZigs ) : m_zigEdge( 1.0 / nZigs )
     ::basegfx::B2DPolyPolygon res( createUnitRect() );
     ::basegfx::B2DPolygon poly( m_stdZigZag );
     poly.flip();
-    basegfx::B2DHomMatrix aTransform(basegfx::tools::createTranslateB2DHomMatrix(
+    basegfx::B2DHomMatrix aTransform(basegfx::utils::createTranslateB2DHomMatrix(
         (1.0 + m_zigEdge) * (1.0 - t) / 2.0, 0.0));
     poly.transform( aTransform );
     res.append( poly );
@@ -67,7 +65,6 @@ ZigZagWipe::ZigZagWipe( sal_Int32 nZigs ) : m_zigEdge( 1.0 / nZigs )
     return res;
 }
 
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

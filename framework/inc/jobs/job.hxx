@@ -20,13 +20,8 @@
 #ifndef INCLUDED_FRAMEWORK_INC_JOBS_JOB_HXX
 #define INCLUDED_FRAMEWORK_INC_JOBS_JOB_HXX
 
-#include <jobs/jobresult.hxx>
 #include <jobs/jobdata.hxx>
-#include <stdtypes.h>
-#include <general.h>
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XDesktop2.hpp>
 #include <com/sun/star/frame/XDispatchResultListener.hpp>
@@ -35,18 +30,17 @@
 
 #include <cppuhelper/implbase.hxx>
 #include <osl/conditn.hxx>
-#include <rtl/ustring.hxx>
 
 namespace framework{
 
 /**
     @short  it represent a job; execute it and control its lifetime
 
-    @descr  This implementation can be used to wrapp jobs, execute it
+    @descr  This implementation can be used to wrap jobs, execute it
             synchronously or asynchronous, control its lifetime
             and differe between jobs with and without configuration.
  */
-class Job : public  ::cppu::WeakImplHelper<
+class Job final : public  ::cppu::WeakImplHelper<
                         css::task::XJobListener
                       , css::frame::XTerminateListener
                       , css::util::XCloseListener >
@@ -137,7 +131,7 @@ class Job : public  ::cppu::WeakImplHelper<
         /**
             Holds the state, if we are listen for desktop/frame or model closing events or not.
             The used references are not really enough to detect a valid listener connection.
-            Thats why we use this additional information here too.
+            That's why we use this additional information here too.
          */
         bool m_bListenOnDesktop;
         bool m_bListenOnFrame;

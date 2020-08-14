@@ -17,14 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <connectivity/sdbcx/VIndex.hxx>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <connectivity/sdbcx/VColumn.hxx>
+#include <sdbcx/VIndex.hxx>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <connectivity/dbexception.hxx>
 #include <comphelper/sequence.hxx>
 #include <connectivity/sdbcx/VCollection.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include "TConnection.hxx"
+#include <TConnection.hxx>
+#include <tools/diagnose_ex.h>
 
 using namespace ::connectivity;
 using namespace ::dbtools;
@@ -41,19 +41,13 @@ using namespace ::com::sun::star::lang;
 OUString SAL_CALL OIndex::getImplementationName(  )
 {
     if(isNew())
-        return OUString("com.sun.star.sdbcx.VIndexDescriptor");
-    return OUString("com.sun.star.sdbcx.VIndex");
+        return "com.sun.star.sdbcx.VIndexDescriptor";
+    return "com.sun.star.sdbcx.VIndex";
 }
 
 css::uno::Sequence< OUString > SAL_CALL OIndex::getSupportedServiceNames(  )
 {
-    css::uno::Sequence< OUString > aSupported(1);
-    if(isNew())
-        aSupported[0] = "com.sun.star.sdbcx.IndexDescriptor";
-    else
-        aSupported[0] = "com.sun.star.sdbcx.Index";
-
-    return aSupported;
+    return { isNew()?OUString("com.sun.star.sdbcx.IndexDescriptor"):OUString("com.sun.star.sdbcx.Index") };
 }
 
 sal_Bool SAL_CALL OIndex::supportsService( const OUString& _rServiceName )
@@ -66,7 +60,6 @@ OIndex::OIndex(bool _bCase) : ODescriptor_BASE(m_aMutex)
                 ,m_IsUnique(false)
                 ,m_IsPrimaryKeyIndex(false)
                 ,m_IsClustered(false)
-                ,m_pColumns(nullptr)
 {
 }
 
@@ -81,7 +74,6 @@ OIndex::OIndex( const OUString& Name,
                         ,m_IsUnique(_isUnique)
                         ,m_IsPrimaryKeyIndex(_isPrimaryKeyIndex)
                         ,m_IsClustered(_isClustered)
-                        ,m_pColumns(nullptr)
 {
     m_Name = Name;
 }
@@ -159,7 +151,7 @@ Reference< css::container::XNameAccess > SAL_CALL OIndex::getColumns(  )
     }
     catch( const Exception& )
     {
-        OSL_FAIL( "OIndex::getColumns: caught an exception!" );
+        TOOLS_WARN_EXCEPTION( "connectivity.commontools", "OIndex::getColumns" );
     }
 
     return m_pColumns.get();

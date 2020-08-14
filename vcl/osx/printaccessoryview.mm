@@ -17,10 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "sal/config.h"
+#include <sal/config.h>
+#include <sal/log.hxx>
 
-#include "tools/resary.hxx"
-
+#include <i18nlangtag/languagetag.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <vcl/print.hxx>
 #include <vcl/image.hxx>
 #include <vcl/virdev.hxx>
@@ -28,24 +29,30 @@
 #include <vcl/unohelp.hxx>
 #include <vcl/settings.hxx>
 
-#include "osx/printview.h"
-#include "osx/salinst.h"
-#include "quartz/utils.h"
+#include <osx/printview.h>
+#include <osx/salinst.h>
+#include <quartz/utils.h>
 
-#include "svdata.hxx"
-#include "svids.hrc"
+#include <svdata.hxx>
+#include <strings.hrc>
+#include <printaccessoryview.hrc>
 
-#include "com/sun/star/i18n/XBreakIterator.hpp"
-#include "com/sun/star/i18n/WordType.hpp"
+#include <com/sun/star/i18n/XBreakIterator.hpp>
+#include <com/sun/star/i18n/WordType.hpp>
 
 #include <map>
+#include <utility>
 
 using namespace vcl;
 using namespace com::sun::star;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::uno;
 
+namespace {
+
 class ControllerProperties;
+
+}
 
 @interface ControlTarget : NSObject
 {
@@ -148,49 +155,45 @@ class ControllerProperties;
 
 @end
 
+namespace {
+
 class ControllerProperties
 {
-    std::map< int, rtl::OUString >      maTagToPropertyName;
+    std::map< int, OUString >      maTagToPropertyName;
     std::map< int, sal_Int32 >          maTagToValueInt;
     std::map< NSView*, NSView* >        maViewPairMap;
     std::vector< NSObject* >            maViews;
     int                                 mnNextTag;
     sal_Int32                           mnLastPageCount;
-    ResStringArray                      maLocalizedStrings;
     AquaPrintPanelAccessoryController*  mpAccessoryController;
 
 public:
     ControllerProperties( AquaPrintPanelAccessoryController* i_pAccessoryController )
     : mnNextTag( 0 )
     , mnLastPageCount( [i_pAccessoryController printerController]->getFilteredPageCount() )
-    , maLocalizedStrings( VclResId( SV_PRINT_NATIVE_STRINGS ) )
     , mpAccessoryController( i_pAccessoryController )
     {
-        assert( maLocalizedStrings.Count() >= 5 && "resources not found" );
+        static_assert( SAL_N_ELEMENTS(SV_PRINT_NATIVE_STRINGS) == 5, "resources not found" );
     }
 
-    rtl::OUString getMoreString()
+    static OUString getMoreString()
     {
-        return maLocalizedStrings.Count() >= 4
-               ? maLocalizedStrings.GetString( 3 )
-               : OUString( "More" );
+        return VclResId(SV_PRINT_NATIVE_STRINGS[3]);
     }
 
-    rtl::OUString getPrintSelectionString()
+    static OUString getPrintSelectionString()
     {
-        return maLocalizedStrings.Count() >= 5
-               ? maLocalizedStrings.GetString( 4 )
-               : OUString( "Print selection only" );
+        return VclResId(SV_PRINT_NATIVE_STRINGS[4]);
     }
 
-    int addNameTag( const rtl::OUString& i_rPropertyName )
+    int addNameTag( const OUString& i_rPropertyName )
     {
         int nNewTag = mnNextTag++;
         maTagToPropertyName[ nNewTag ] = i_rPropertyName;
         return nNewTag;
     }
 
-    int addNameAndValueTag( const rtl::OUString& i_rPropertyName, sal_Int32 i_nValue )
+    int addNameAndValueTag( const OUString& i_rPropertyName, sal_Int32 i_nValue )
     {
         int nNewTag = mnNextTag++;
         maTagToPropertyName[ nNewTag ] = i_rPropertyName;
@@ -220,7 +223,7 @@ public:
 
     void changePropertyWithIntValue( int i_nTag )
     {
-        std::map< int, rtl::OUString >::const_iterator name_it = maTagToPropertyName.find( i_nTag );
+        std::map< int, OUString >::const_iterator name_it = maTagToPropertyName.find( i_nTag );
         std::map< int, sal_Int32 >::const_iterator value_it = maTagToValueInt.find( i_nTag );
         if( name_it != maTagToPropertyName.end() && value_it != maTagToValueInt.end() )
         {
@@ -236,7 +239,7 @@ public:
 
     void changePropertyWithIntValue( int i_nTag, sal_Int64 i_nValue )
     {
-        std::map< int, rtl::OUString >::const_iterator name_it = maTagToPropertyName.find( i_nTag );
+        std::map< int, OUString >::const_iterator name_it = maTagToPropertyName.find( i_nTag );
         if( name_it != maTagToPropertyName.end() )
         {
             vcl::PrinterController * mpController = [mpAccessoryController printerController];
@@ -251,7 +254,7 @@ public:
 
     void changePropertyWithBoolValue( int i_nTag, bool i_bValue )
     {
-        std::map< int, rtl::OUString >::const_iterator name_it = maTagToPropertyName.find( i_nTag );
+        std::map< int, OUString >::const_iterator name_it = maTagToPropertyName.find( i_nTag );
         if( name_it != maTagToPropertyName.end() )
         {
             vcl::PrinterController * mpController = [mpAccessoryController printerController];
@@ -261,7 +264,7 @@ public:
                 // ugly
                 if( name_it->second == "PrintContent" )
                    pVal->Value <<= i_bValue ? sal_Int32(2) : sal_Int32(0);
-               else
+                else
                    pVal->Value <<= i_bValue;
 
                 mnLastPageCount = [mpAccessoryController updatePrintOperation: mnLastPageCount];
@@ -269,9 +272,9 @@ public:
         }
     }
 
-    void changePropertyWithStringValue( int i_nTag, const rtl::OUString& i_rValue )
+    void changePropertyWithStringValue( int i_nTag, const OUString& i_rValue )
     {
-        std::map< int, rtl::OUString >::const_iterator name_it = maTagToPropertyName.find( i_nTag );
+        std::map< int, OUString >::const_iterator name_it = maTagToPropertyName.find( i_nTag );
         if( name_it != maTagToPropertyName.end() )
         {
             vcl::PrinterController * mpController = [mpAccessoryController printerController];
@@ -292,25 +295,25 @@ public:
             NSControl* pCtrl = nil;
             NSCell* pCell = nil;
             if( [pObj isKindOfClass: [NSControl class]] )
-                pCtrl = (NSControl*)pObj;
+                pCtrl = static_cast<NSControl*>(pObj);
             else if( [pObj isKindOfClass: [NSCell class]] )
-                pCell = (NSCell*)pObj;
+                pCell = static_cast<NSCell*>(pObj);
 
             int nTag = pCtrl ? [pCtrl tag] :
                        pCell ? [pCell tag] :
                        -1;
 
-            std::map< int, rtl::OUString >::const_iterator name_it = maTagToPropertyName.find( nTag );
+            std::map< int, OUString >::const_iterator name_it = maTagToPropertyName.find( nTag );
             if( name_it != maTagToPropertyName.end() && name_it->second != "PrintContent" )
             {
                 vcl::PrinterController * mpController = [mpAccessoryController printerController];
-                BOOL bEnabled = mpController->isUIOptionEnabled( name_it->second ) ? YES : NO;
+                bool bEnabled = mpController->isUIOptionEnabled( name_it->second ) ? YES : NO;
                 if( pCtrl )
                 {
                     [pCtrl setEnabled: bEnabled];
                     NSView* pOther = getPair( pCtrl );
                     if( pOther && [pOther isKindOfClass: [NSControl class]] )
-                        [(NSControl*)pOther setEnabled: bEnabled];
+                        [static_cast<NSControl*>(pOther) setEnabled: bEnabled];
                 }
                 else if( pCell )
                     [pCell setEnabled: bEnabled];
@@ -320,9 +323,11 @@ public:
 
 };
 
-static OUString filterAccelerator( rtl::OUString const & rText )
+}
+
+static OUString filterAccelerator( OUString const & rText )
 {
-    rtl::OUStringBuffer aBuf( rText.getLength() );
+    OUStringBuffer aBuf( rText.getLength() );
     for( sal_Int32 nIndex = 0; nIndex != -1; )
         aBuf.append( rText.getToken( 0, '~', nIndex ) );
     return aBuf.makeStringAndClear();
@@ -343,7 +348,7 @@ static OUString filterAccelerator( rtl::OUString const & rText )
 {
     if( [pSender isMemberOfClass: [NSPopUpButton class]] )
     {
-        NSPopUpButton* pBtn = (NSPopUpButton*)pSender;
+        NSPopUpButton* pBtn = static_cast<NSPopUpButton*>(pSender);
         NSMenuItem* pSelected = [pBtn selectedItem];
         if( pSelected )
         {
@@ -353,25 +358,25 @@ static OUString filterAccelerator( rtl::OUString const & rText )
     }
     else if( [pSender isMemberOfClass: [NSButton class]] )
     {
-        NSButton* pBtn = (NSButton*)pSender;
+        NSButton* pBtn = static_cast<NSButton*>(pSender);
         int nTag = [pBtn tag];
-        mpController->changePropertyWithBoolValue( nTag, [pBtn state] == NSOnState );
+        mpController->changePropertyWithBoolValue( nTag, [pBtn state] == NSControlStateValueOn );
     }
     else if( [pSender isMemberOfClass: [NSMatrix class]] )
     {
-        NSObject* pObj = [(NSMatrix*)pSender selectedCell];
+        NSObject* pObj = [static_cast<NSMatrix*>(pSender) selectedCell];
         if( [pObj isMemberOfClass: [NSButtonCell class]] )
         {
-            NSButtonCell* pCell = (NSButtonCell*)pObj;
+            NSButtonCell* pCell = static_cast<NSButtonCell*>(pObj);
             int nTag = [pCell tag];
             mpController->changePropertyWithIntValue( nTag );
         }
     }
     else if( [pSender isMemberOfClass: [NSTextField class]] )
     {
-        NSTextField* pField = (NSTextField*)pSender;
+        NSTextField* pField = static_cast<NSTextField*>(pSender);
         int nTag = [pField tag];
-        rtl::OUString aValue = GetOUString( [pSender stringValue] );
+        OUString aValue = GetOUString( [pSender stringValue] );
         mpController->changePropertyWithStringValue( nTag, aValue );
     }
     else
@@ -386,25 +391,25 @@ static OUString filterAccelerator( rtl::OUString const & rText )
 {
     if( [pSender isMemberOfClass: [NSTextField class]] )
     {
-        NSTextField* pField = (NSTextField*)pSender;
+        NSTextField* pField = static_cast<NSTextField*>(pSender);
         int nTag = [pField tag];
         sal_Int64 nValue = [pField intValue];
         
         NSView* pOther = mpController->getPair( pField );
         if( pOther )
-            [(NSControl*)pOther setIntValue: nValue];
+            [static_cast<NSControl*>(pOther) setIntValue: nValue];
 
         mpController->changePropertyWithIntValue( nTag, nValue );
     }
     else if( [pSender isMemberOfClass: [NSStepper class]] )
     {
-        NSStepper* pStep = (NSStepper*)pSender;
+        NSStepper* pStep = static_cast<NSStepper*>(pSender);
         int nTag = [pStep tag];
         sal_Int64 nValue = [pStep intValue];
 
         NSView* pOther = mpController->getPair( pStep );
         if( pOther )
-            [(NSControl*)pOther setIntValue: nValue];
+            [static_cast<NSControl*>(pOther) setIntValue: nValue];
 
         mpController->changePropertyWithIntValue( nTag, nValue );
     }
@@ -423,6 +428,8 @@ static OUString filterAccelerator( rtl::OUString const & rText )
 }
 
 @end
+
+namespace {
 
 struct ColumnItem
 {
@@ -454,6 +461,8 @@ struct ColumnItem
         return nWidth;
     }
 };
+
+}
 
 static void adjustViewAndChildren( NSView* pNSView, NSSize& rMaxSize,
                                    std::vector< ColumnItem >& rLeftColumn,
@@ -553,7 +562,7 @@ static void adjustTabViews( NSTabView* pTabView, NSSize aTabSize )
     int nViews = [pTabbedViews count];
     for( int i = 0; i < nViews; i++ )
     {
-        NSTabViewItem* pItem = (NSTabViewItem*)[pTabbedViews objectAtIndex: i];
+        NSTabViewItem* pItem = static_cast<NSTabViewItem*>([pTabbedViews objectAtIndex: i]);
         NSView* pNSView = [pItem view];
         if( pNSView )
         {
@@ -583,7 +592,7 @@ static void adjustTabViews( NSTabView* pTabView, NSSize aTabSize )
     }
 }
 
-static NSControl* createLabel( const rtl::OUString& i_rText )
+static NSControl* createLabel( const OUString& i_rText )
 {
     NSString* pText = CreateNSString( i_rText );
     NSRect aTextRect = { NSZeroPoint, {20, 15} };
@@ -599,7 +608,7 @@ static NSControl* createLabel( const rtl::OUString& i_rText )
     return pTextView;
 }
 
-static sal_Int32 findBreak( const rtl::OUString& i_rText, sal_Int32 i_nPos )
+static sal_Int32 findBreak( const OUString& i_rText, sal_Int32 i_nPos )
 {
     sal_Int32 nRet = i_rText.getLength();
     Reference< i18n::XBreakIterator > xBI( vcl::unohelper::CreateBreakIterator() );
@@ -615,7 +624,7 @@ static sal_Int32 findBreak( const rtl::OUString& i_rText, sal_Int32 i_nPos )
     return nRet;
 }
 
-static void linebreakCell( NSCell* pBtn, const rtl::OUString& i_rText )
+static void linebreakCell( NSCell* pBtn, const OUString& i_rText )
 {
     NSString* pText = CreateNSString( i_rText );
     [pBtn setTitle: pText];
@@ -629,7 +638,7 @@ static void linebreakCell( NSCell* pBtn, const rtl::OUString& i_rText )
         nIndex = findBreak( i_rText, nIndex );
         if( nIndex < nLen )
         {
-            rtl::OUStringBuffer aBuf( i_rText );
+            OUStringBuffer aBuf( i_rText );
             aBuf[nIndex] = '\n';
             pText = CreateNSString( aBuf.makeStringAndClear() );
             [pBtn setTitle: pText];
@@ -638,7 +647,7 @@ static void linebreakCell( NSCell* pBtn, const rtl::OUString& i_rText )
     }
 }
 
-static void addSubgroup( NSView* pCurParent, long& rCurY, const rtl::OUString& rText )
+static void addSubgroup( NSView* pCurParent, long& rCurY, const OUString& rText )
 {
     NSControl* pTextView = createLabel( rText );
     [pCurParent addSubview: [pTextView autorelease]];                
@@ -656,9 +665,9 @@ static void addSubgroup( NSView* pCurParent, long& rCurY, const rtl::OUString& r
     rCurY = aTextRect.origin.y - 5;
 }
 
-static void addBool( NSView* pCurParent, long& rCurX, long& rCurY, long nAttachOffset,
-                    const rtl::OUString& rText, bool bEnabled,
-                    const rtl::OUString& rProperty, bool bValue,
+static void addBool( NSView* pCurParent, long rCurX, long& rCurY, long nAttachOffset,
+                    const OUString& rText, bool bEnabled,
+                    const OUString& rProperty, bool bValue,
                     std::vector<ColumnItem >& rRightColumn,
                     ControllerProperties* pControllerProperties,
                     ControlTarget* pCtrlTarget
@@ -666,8 +675,8 @@ static void addBool( NSView* pCurParent, long& rCurX, long& rCurY, long nAttachO
 {
     NSRect aCheckRect = { { static_cast<CGFloat>(rCurX + nAttachOffset), 0 }, { 0, 15 } };
     NSButton* pBtn = [[NSButton alloc] initWithFrame: aCheckRect];
-    [pBtn setButtonType: NSSwitchButton];                
-    [pBtn setState: bValue ? NSOnState : NSOffState];
+    [pBtn setButtonType: NSButtonTypeSwitch];                
+    [pBtn setState: bValue ? NSControlStateValueOn : NSControlStateValueOff];
     if( ! bEnabled )
         [pBtn setEnabled: NO];
     linebreakCell( [pBtn cell], rText );
@@ -699,9 +708,9 @@ static void addBool( NSView* pCurParent, long& rCurX, long& rCurY, long nAttachO
     rCurY = aCheckRect.origin.y - 5;
 }
 
-static void addRadio( NSView* pCurParent, long& rCurX, long& rCurY, long nAttachOffset,
-                     const rtl::OUString& rText,
-                     const rtl::OUString& rProperty, Sequence<rtl::OUString> const & rChoices, sal_Int32 nSelectValue,
+static void addRadio( NSView* pCurParent, long rCurX, long& rCurY, long nAttachOffset,
+                     const OUString& rText,
+                     const OUString& rProperty, Sequence<OUString> const & rChoices, sal_Int32 nSelectValue,
                      std::vector<ColumnItem >& rLeftColumn,
                      std::vector<ColumnItem >& rRightColumn,
                      ControllerProperties* pControllerProperties,
@@ -737,10 +746,10 @@ static void addRadio( NSView* pCurParent, long& rCurX, long& rCurY, long nAttach
                           { static_cast<CGFloat>(280 - rCurX),
                             static_cast<CGFloat>(5*rChoices.getLength()) } };
     [pProto setTitle: @"RadioButtonGroup"];
-    [pProto setButtonType: NSRadioButton];
+    [pProto setButtonType: NSButtonTypeRadio];
     NSMatrix* pMatrix = [[NSMatrix alloc] initWithFrame: aRadioRect
                                           mode: NSRadioModeMatrix
-                                          prototype: (NSCell*)pProto
+                                          prototype: static_cast<NSCell*>(pProto)
                                           numberOfRows: rChoices.getLength()
                                           numberOfColumns: 1];
     // set individual titles
@@ -776,8 +785,8 @@ static void addRadio( NSView* pCurParent, long& rCurX, long& rCurY, long nAttach
 }
 
 static void addList( NSView* pCurParent, long& rCurX, long& rCurY, long /*nAttachOffset*/,
-                    const rtl::OUString& rText,
-                    const rtl::OUString& rProperty, Sequence<rtl::OUString> const & rChoices, sal_Int32 nSelectValue,
+                    const OUString& rText,
+                    const OUString& rProperty, Sequence<OUString> const & rChoices, sal_Int32 nSelectValue,
                     std::vector<ColumnItem >& rLeftColumn,
                     std::vector<ColumnItem >& rRightColumn,
                     ControllerProperties* pControllerProperties,
@@ -835,10 +844,10 @@ static void addList( NSView* pCurParent, long& rCurX, long& rCurY, long /*nAttac
     rCurY = aBtnRect.origin.y - 5;
 }
 
-static void addEdit( NSView* pCurParent, long& rCurX, long& rCurY, long nAttachOffset,
-                    const rtl::OUString& rCtrlType,
-                    const rtl::OUString& rText,
-                    const rtl::OUString& rProperty, const PropertyValue* pValue,
+static void addEdit( NSView* pCurParent, long rCurX, long& rCurY, long nAttachOffset,
+                    const OUString& rCtrlType,
+                    const OUString& rText,
+                    const OUString& rProperty, const PropertyValue* pValue,
                     sal_Int64 nMinValue, sal_Int64 nMaxValue,
                     std::vector<ColumnItem >& rLeftColumn,
                     std::vector<ColumnItem >& rRightColumn,
@@ -944,7 +953,7 @@ static void addEdit( NSView* pCurParent, long& rCurX, long& rCurY, long nAttachO
 
         if( pValue && pValue->Value.hasValue() )
         {
-            rtl::OUString aValue;
+            OUString aValue;
             pValue->Value >>= aValue;
             if( aValue.getLength() )
             {
@@ -998,19 +1007,18 @@ static void addEdit( NSView* pCurParent, long& rCurX, long& rCurY, long nAttachO
     // prepend a "selection" checkbox if the properties have such a selection in PrintContent
     bool bAddSelectionCheckBox = false, bSelectionBoxEnabled = false, bSelectionBoxChecked = false;
 
-    for( int i = 0; i < rOptions.getLength(); i++ )
+    for( const PropertyValue & prop : rOptions )
     {
         Sequence< beans::PropertyValue > aOptProp;
-        rOptions[i].Value >>= aOptProp;
+        prop.Value >>= aOptProp;
 
-        rtl::OUString aCtrlType;
-        rtl::OUString aPropertyName;
-        Sequence< rtl::OUString > aChoices;
+        OUString aCtrlType;
+        OUString aPropertyName;
+        Sequence< OUString > aChoices;
         Sequence< sal_Bool > aChoicesDisabled;
         sal_Int32 aSelectionChecked = 0;
-        for( int n = 0; n < aOptProp.getLength(); n++ )
+        for( const beans::PropertyValue& rEntry : std::as_const(aOptProp) )
         {
-            const beans::PropertyValue& rEntry( aOptProp[ n ] );
             if( rEntry.Name == "ControlType" )
             {
                 rEntry.Value >>= aCtrlType;
@@ -1043,25 +1051,24 @@ static void addEdit( NSView* pCurParent, long& rCurX, long& rCurY, long nAttachO
         }
     }
 
-    for( int i = 0; i < rOptions.getLength(); i++ )
+    for( const PropertyValue & prop : rOptions )
     {
         Sequence< beans::PropertyValue > aOptProp;
-        rOptions[i].Value >>= aOptProp;
+        prop.Value >>= aOptProp;
 
         // extract ui element
-        rtl::OUString aCtrlType;
-        rtl::OUString aText;
-        rtl::OUString aPropertyName;
-        rtl::OUString aGroupHint;
-        Sequence< rtl::OUString > aChoices;
+        OUString aCtrlType;
+        OUString aText;
+        OUString aPropertyName;
+        OUString aGroupHint;
+        Sequence< OUString > aChoices;
         bool bEnabled = true;
         sal_Int64 nMinValue = 0, nMaxValue = 0;
         long nAttachOffset = 0;
         bool bIgnore = false;
 
-        for( int n = 0; n < aOptProp.getLength(); n++ )
+        for( const beans::PropertyValue& rEntry : std::as_const(aOptProp) )
         {
-            const beans::PropertyValue& rEntry( aOptProp[ n ] );
             if( rEntry.Name == "Text" )
             {
                 rEntry.Value >>= aText;
@@ -1128,9 +1135,9 @@ static void addEdit( NSView* pCurParent, long& rCurX, long& rCurY, long nAttachO
                 || ( aCtrlType == "Subgroup" && nCurY < -250 && ! bIgnore )
                )
             {
-                rtl::OUString aGroupTitle( aText );
+                OUString aGroupTitle( aText );
                 if( aCtrlType == "Subgroup" )
-                    aGroupTitle = pControllerProperties->getMoreString();
+                    aGroupTitle = ControllerProperties::getMoreString();
 
                 // set size of current parent
                 if( pCurParent )
@@ -1156,7 +1163,7 @@ static void addEdit( NSView* pCurParent, long& rCurX, long& rCurY, long nAttachO
                 if( bAddSelectionCheckBox )
                 {
                     addBool( pCurParent, nCurX, nCurY, 0,
-                             pControllerProperties->getPrintSelectionString(), bSelectionBoxEnabled,
+                             ControllerProperties::getPrintSelectionString(), bSelectionBoxEnabled,
                              "PrintContent", bSelectionBoxChecked,
                              aRightColumn, pControllerProperties, pCtrlTarget );
                     bAddSelectionCheckBox = false;

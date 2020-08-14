@@ -33,7 +33,7 @@ class SwView;
 
 namespace sw {
 
-class UndoManager
+class SAL_DLLPUBLIC_RTTI UndoManager
     : public IDocumentUndoRedo
     , public SdrUndoManager
 {
@@ -74,18 +74,19 @@ public:
     virtual bool Repeat(::sw::RepeatContext & rContext,
                         sal_uInt16 const nRepeatCnt) override;
     virtual SwUndoId GetRepeatInfo(OUString *const o_pStr) const override;
-    virtual void AppendUndo(SwUndo *const pUndo) override;
+    virtual void AppendUndo(std::unique_ptr<SwUndo> pUndo) override;
     virtual void ClearRedo() override;
     virtual bool IsUndoNodes(SwNodes const& rNodes) const override;
     virtual size_t GetUndoActionCount(const bool bCurrentLevel = true) const override;
     size_t GetRedoActionCount(const bool bCurrentLevel = true) const override;
     void SetView(SwView* pView) override;
 
-    // ::svl::IUndoManager
-    virtual void AddUndoAction(SfxUndoAction *pAction,
+    // SfxUndoManager
+    virtual void AddUndoAction(std::unique_ptr<SfxUndoAction> pAction,
                                    bool bTryMerg = false) override;
     virtual bool Undo() override;
     virtual bool Redo() override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 
     SwUndo * RemoveLastUndo();
     SwUndo * GetLastUndo();
@@ -93,6 +94,9 @@ public:
     SwNodes const& GetUndoNodes() const;
     SwNodes      & GetUndoNodes();
     void SetDocShell(SwDocShell* pDocShell);
+
+protected:
+    virtual void EmptyActionsChanged() override;
 
 private:
     IDocumentDrawModelAccess & m_rDrawModelAccess;

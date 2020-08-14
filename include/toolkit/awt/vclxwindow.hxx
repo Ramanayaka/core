@@ -22,42 +22,37 @@
 
 #include <toolkit/dllapi.h>
 #include <toolkit/awt/vclxdevice.hxx>
-#include <toolkit/helper/listenermultiplexer.hxx>
 #include <vcl/window.hxx>
 
 #include <com/sun/star/awt/XWindow2.hpp>
 #include <com/sun/star/awt/XVclWindowPeer.hpp>
 #include <com/sun/star/awt/XLayoutConstrains.hpp>
 #include <com/sun/star/awt/XView.hpp>
-#include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/awt/XDockableWindow.hpp>
 #include <com/sun/star/awt/XStyleSettingsSupplier.hpp>
 
+#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/weak.hxx>
-#include <osl/mutex.hxx>
 
 #include <tools/gen.hxx>
 #include <tools/link.hxx>
 
-#include <stdarg.h>
+#include <memory>
 #include <vector>
 #include <functional>
 
+namespace comphelper { class OInterfaceContainerHelper2; }
+namespace com::sun::star::accessibility { class XAccessibleContext; }
 
-class VclSimpleEvent;
 class VclWindowEvent;
-struct SystemParentData;
 
 namespace toolkit
 {
     class IAccessibleFactory;
 }
 
-//  class VCLXWINDOW
 
 class UnoPropertyArrayHelper;
 class VCLXWindowImpl;
@@ -76,7 +71,7 @@ typedef cppu::ImplInheritanceHelper< VCLXDevice,
 class TOOLKIT_DLLPUBLIC VCLXWindow : public VCLXWindow_Base
 {
 private:
-    VCLXWindowImpl*                 mpImpl;
+    std::unique_ptr<VCLXWindowImpl>  mpImpl;
 
     UnoPropertyArrayHelper *GetPropHelper();
 
@@ -136,12 +131,10 @@ public:
     void    suspendVclEventListening( );
     void    resumeVclEventListening( );
 
-    void    notifyWindowRemoved( vcl::Window& _rWindow );
+    void    notifyWindowRemoved( vcl::Window const & _rWindow );
 
     // css::lang::XUnoTunnel
-    static const css::uno::Sequence< sal_Int8 >&   GetUnoTunnelId() throw();
-    static VCLXWindow*                                          GetImplementation( const css::uno::Reference< css::uno::XInterface >& rxIFace );
-    sal_Int64                                                   SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& rIdentifier ) override;
+    UNO3_GETIMPLEMENTATION_DECL(VCLXWindow)
 
     // css::lang::XEventListener
     virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;

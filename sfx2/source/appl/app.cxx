@@ -17,93 +17,53 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
+#include <config_feature_desktop.h>
+#include <sal/log.hxx>
+#include <tools/debug.hxx>
 
 #include <sfx2/app.hxx>
 #include <sfx2/frame.hxx>
-#include <basic/basrdll.hxx>
-#include <basic/sbmeth.hxx>
-#include <basic/sbmod.hxx>
-#include <svtools/asynclink.hxx>
-#include <svl/stritem.hxx>
-#include <svl/eitem.hxx>
-#include <svl/urlbmk.hxx>
-#include <vcl/msgbox.hxx>
-#include <svtools/sfxecode.hxx>
-#include <svtools/ehdl.hxx>
+#include <basic/sberrors.hxx>
+#include <tools/svlibrary.h>
 
 #include <svl/svdde.hxx>
 #include <unotools/configmgr.hxx>
-#include <unotools/tempfile.hxx>
-#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
-#include <com/sun/star/loader/XImplementationLoader.hpp>
-#include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
 #include <com/sun/star/uri/XVndSunStarScriptUrl.hpp>
 #include <basic/basmgr.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/svapp.hxx>
 #include <sfx2/sfxhelp.hxx>
-#include <sfx2/request.hxx>
-#include "sfxtypes.hxx"
-#include <sfx2/sfxresid.hxx>
-#include "arrdecl.hxx"
 #include <sfx2/progress.hxx>
 #include <sfx2/objsh.hxx>
-#include <sfx2/docfac.hxx>
-#include <sfx2/docfile.hxx>
-#include <sfx2/docfilt.hxx>
-#include <sfx2/new.hxx>
-#include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/viewfrm.hxx>
-#include "appdata.hxx"
-#include "openflag.hxx"
-#include "app.hrc"
+#include <appdata.hxx>
 #include <sfx2/module.hxx>
 #include <sfx2/event.hxx>
-#include "imestatuswindow.hxx"
-#include "workwin.hxx"
+#include <workwin.hxx>
 #include <sfx2/sidebar/Theme.hxx>
 #include <sfx2/tbxctrl.hxx>
 #include <sfx2/sfxdlg.hxx>
 #include <sfx2/stbitem.hxx>
-#include "eventsupplier.hxx"
 #include <sfx2/dockwin.hxx>
-#include "shellimpl.hxx"
+#include <shellimpl.hxx>
 
-#include <unotools/saveopt.hxx>
 #include <svtools/helpopt.hxx>
-#include <unotools/pathoptions.hxx>
 #include <unotools/viewoptions.hxx>
-#include <unotools/moduleoptions.hxx>
-#include <unotools/historyoptions.hxx>
-#include <svtools/menuoptions.hxx>
-#include <svtools/miscopt.hxx>
-#include <unotools/useroptions.hxx>
-#include <unotools/securityoptions.hxx>
-#include <unotools/fontoptions.hxx>
-#include <unotools/syslocaleoptions.hxx>
-#include <unotools/syslocale.hxx>
-#include <framework/addonsoptions.hxx>
-#include <unotools/extendedsecurityoptions.hxx>
 #include <rtl/instance.hxx>
 #include <rtl/strbuf.hxx>
 #include <memory>
 #include <framework/sfxhelperfunctions.hxx>
-#include "fwkhelper.hxx"
+#include <fwkhelper.hxx>
+
+#include "getbasctlfunction.hxx"
 
 using namespace ::com::sun::star;
 
 static SfxApplication* g_pSfxApplication = nullptr;
-
-#if HAVE_FEATURE_SCRIPTING
-static BasicDLL*       pBasic   = nullptr;
-#endif
 
 #if HAVE_FEATURE_DESKTOP
 static SfxHelp*        pSfxHelp = nullptr;
@@ -156,11 +116,11 @@ SfxApplication* SfxApplication::GetOrCreate()
         ::framework::SetIsDockingWindowVisible( IsDockingWindowVisible );
 #if HAVE_FEATURE_DESKTOP
         Application::SetHelp( pSfxHelp );
-        if (!utl::ConfigManager::IsAvoidConfig() && SvtHelpOptions().IsHelpTips())
+        if (!utl::ConfigManager::IsFuzzing() && SvtHelpOptions().IsHelpTips())
             Help::EnableQuickHelp();
         else
             Help::DisableQuickHelp();
-        if (!utl::ConfigManager::IsAvoidConfig() && SvtHelpOptions().IsHelpTips() && SvtHelpOptions().IsExtendedHelp())
+        if (!utl::ConfigManager::IsFuzzing() && SvtHelpOptions().IsHelpTips() && SvtHelpOptions().IsExtendedHelp())
             Help::EnableBalloonHelp();
         else
             Help::DisableBalloonHelp();
@@ -173,10 +133,8 @@ SfxApplication::SfxApplication()
     : pImpl( new SfxAppData_Impl )
 {
     SetName( "StarOffice" );
-    if (!utl::ConfigManager::IsAvoidConfig())
+    if (!utl::ConfigManager::IsFuzzing())
         SvtViewOptions::AcquireOptions();
-
-    pImpl->m_xImeStatusWindow->init();
 
     SAL_INFO( "sfx.appl", "{ initialize DDE" );
 
@@ -201,9 +159,9 @@ SfxApplication::SfxApplication()
 #endif
 
 #if HAVE_FEATURE_SCRIPTING
-    pBasic   = new BasicDLL;
     StarBASIC::SetGlobalErrorHdl( LINK( this, SfxApplication, GlobalBasicErrorHdl_Impl ) );
 #endif
+
     SAL_INFO( "sfx.appl", "} initialize DDE" );
 }
 
@@ -222,15 +180,11 @@ SfxApplication::~SfxApplication()
 #endif
 
     // delete global options
-    if (!utl::ConfigManager::IsAvoidConfig())
+    if (!utl::ConfigManager::IsFuzzing())
         SvtViewOptions::ReleaseOptions();
 
     if ( !pImpl->bDowning )
         Deinitialize();
-
-#if HAVE_FEATURE_SCRIPTING
-    delete pBasic;
-#endif
 
     g_pSfxApplication = nullptr;
 }
@@ -281,7 +235,7 @@ void SfxApplication::ResetLastDir()
 
 SfxDispatcher* SfxApplication::GetDispatcher_Impl()
 {
-    return pImpl->pViewFrame? pImpl->pViewFrame->GetDispatcher(): pImpl->pAppDispat;
+    return pImpl->pViewFrame ? pImpl->pViewFrame->GetDispatcher() : pImpl->pAppDispat.get();
 }
 
 
@@ -343,15 +297,9 @@ void SfxApplication::SetViewFrame_Impl( SfxViewFrame *pFrame )
         pFrame->GetViewShell()->SetCurrentDocument();
 }
 
-ResMgr* SfxApplication::GetSfxResManager()
-{
-    return SfxResMgr::GetResMgr();
-}
-
 void SfxApplication::SetProgress_Impl
 (
     SfxProgress *pProgress
-
 )
 {
     DBG_ASSERT( ( !pImpl->pProgress && pProgress ) ||
@@ -361,7 +309,6 @@ void SfxApplication::SetProgress_Impl
     if ( pImpl->pProgress && pProgress )
     {
         pImpl->pProgress->Suspend();
-        pImpl->pProgress->UnLock();
         delete pImpl->pProgress;
     }
 
@@ -422,15 +369,13 @@ void SfxApplication::Invalidate( sal_uInt16 nId )
 
 #ifndef DISABLE_DYNLOADING
 
-typedef long (SAL_CALL *basicide_handle_basic_error)(void*);
-typedef void (SAL_CALL *basicide_macro_organizer)(sal_Int16);
-
-extern "C" { static void SAL_CALL thisModule() {} }
+typedef long (*basicide_handle_basic_error)(void const *);
+typedef void (*basicide_macro_organizer)(void *, sal_Int16);
 
 #else
 
-extern "C" long basicide_handle_basic_error(void*);
-extern "C" void basicide_macro_organizer(sal_Int16);
+extern "C" long basicide_handle_basic_error(void const*);
+extern "C" void basicide_macro_organizer(void*, sal_Int16);
 
 #endif
 
@@ -444,17 +389,10 @@ IMPL_STATIC_LINK( SfxApplication, GlobalBasicErrorHdl_Impl, StarBASIC*, pStarBas
 #else
 
 #ifndef DISABLE_DYNLOADING
-    // load basctl module
-    osl::Module aMod;
-    aMod.loadRelative(&thisModule, SVLIBRARY("basctl"));
-
-    // get symbol
-    basicide_handle_basic_error pSymbol = reinterpret_cast<basicide_handle_basic_error>(aMod.getFunctionSymbol("basicide_handle_basic_error"));
-
-    aMod.release();
+    basicide_handle_basic_error pSymbol = reinterpret_cast<basicide_handle_basic_error>(sfx2::getBasctlFunction("basicide_handle_basic_error"));
 
     // call basicide_handle_basic_error in basctl
-    bool bRet = pSymbol && pSymbol( pStarBasic );
+    bool bRet = pSymbol( pStarBasic );
 
 #else
 
@@ -499,64 +437,52 @@ bool SfxApplication::IsXScriptURL( const OUString& rScriptURL )
 }
 
 OUString
-SfxApplication::ChooseScript()
+SfxApplication::ChooseScript(weld::Window *pParent)
 {
     OUString aScriptURL;
 
 #if HAVE_FEATURE_SCRIPTING
     SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
-    if ( pFact )
+    SAL_INFO( "sfx.appl", "create selector dialog");
+
+    const SfxViewFrame* pViewFrame = SfxViewFrame::Current();
+    const SfxFrame* pFrame = pViewFrame ? &pViewFrame->GetFrame() : nullptr;
+    uno::Reference< frame::XFrame > xFrame( pFrame ? pFrame->GetFrameInterface() : uno::Reference< frame::XFrame >() );
+
+    ScopedVclPtr<AbstractScriptSelectorDialog> pDlg(pFact->CreateScriptSelectorDialog(pParent, xFrame));
+
+    SAL_INFO( "sfx.appl", "done, now exec it");
+
+    sal_uInt16 nRet = pDlg->Execute();
+
+    SAL_INFO( "sfx.appl", "has returned");
+
+    if ( nRet == RET_OK )
     {
-        SAL_INFO( "sfx.appl", "create selector dialog");
-
-        const SfxViewFrame* pViewFrame = SfxViewFrame::Current();
-        const SfxFrame* pFrame = pViewFrame ? &pViewFrame->GetFrame() : nullptr;
-        uno::Reference< frame::XFrame > xFrame( pFrame ? pFrame->GetFrameInterface() : uno::Reference< frame::XFrame >() );
-
-        ScopedVclPtr<AbstractScriptSelectorDialog> pDlg(
-            pFact->CreateScriptSelectorDialog( nullptr, xFrame ));
-
-        SAL_INFO( "sfx.appl", "done, now exec it");
-
-          sal_uInt16 nRet = pDlg->Execute();
-
-        SAL_INFO( "sfx.appl", "has returned");
-
-        if ( nRet == RET_OK )
-        {
-            aScriptURL = pDlg->GetScriptURL();
-        }
+        aScriptURL = pDlg->GetScriptURL();
     }
+#else
+    (void) pParent;
 #endif
     return aScriptURL;
 }
 
-void SfxApplication::MacroOrganizer( sal_Int16 nTabId )
+void SfxApplication::MacroOrganizer(weld::Window* pParent, sal_Int16 nTabId)
 {
 #if !HAVE_FEATURE_SCRIPTING
+    (void) pParent;
     (void) nTabId;
 #else
 
 #ifndef DISABLE_DYNLOADING
-    // load basctl module
-    osl::Module aMod;
-    aMod.loadRelative(&thisModule, SVLIBRARY("basctl"));
-
-    // get symbol
-    basicide_macro_organizer pSymbol = reinterpret_cast<basicide_macro_organizer>(aMod.getFunctionSymbol("basicide_macro_organizer"));
-
-    aMod.release();
-
-    SAL_WARN_IF(!pSymbol, "sfx.appl", "SfxApplication::MacroOrganizer, no symbol!");
-    if (!pSymbol)
-        return;
+    basicide_macro_organizer pSymbol = reinterpret_cast<basicide_macro_organizer>(sfx2::getBasctlFunction("basicide_macro_organizer"));
 
     // call basicide_macro_organizer in basctl
-    pSymbol( nTabId );
+    pSymbol(pParent, nTabId);
 
 #else
 
-    basicide_macro_organizer( nTabId );
+    basicide_macro_organizer(pParent, nTabId);
 
 #endif
 
@@ -572,6 +498,7 @@ ErrCode SfxApplication::CallBasic( const OUString& rCode, BasicManager* pMgr, Sb
     (void) pRet;
     return ERRCODE_BASIC_CANNOT_LOAD;
 #else
+    (void) ERRCODE_BASIC_CANNOT_LOAD; // So that the !HAVE_FEATURE_SCRIPTING case isn't broken again by IWYU
     return pMgr->ExecuteMacro( rCode, pArgs, pRet);
 #endif
 }

@@ -27,6 +27,7 @@ openldap_LDFLAGS += -pthread
 endif
 
 $(call gb_ExternalProject_get_state_target,openldap,build) :
+	$(call gb_Trace_StartRange,openldap,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		./configure \
 			--disable-slapd \
@@ -41,14 +42,15 @@ $(call gb_ExternalProject_get_state_target,openldap,build) :
 				ac_cv_func_memcmp_working=yes \
 			) \
 			$(if $(SYSTEM_NSS), \
-				CPPFLAGS="$(CPPFLAGS) $(NSS_CFLAGS)" CFLAGS="$(CFLAGS) $(NSS_CFLAGS)" LDFLAGS="$(LDFLAGS) $(NSS_LIBS)" \
+				CPPFLAGS="$(CPPFLAGS) $(NSS_CFLAGS)" CFLAGS="$(CFLAGS) $(NSS_CFLAGS) $(if $(ENABLE_OPTIMIZED),$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS))" LDFLAGS="$(LDFLAGS) $(NSS_LIBS)" \
 				, \
 				CPPFLAGS="$(CPPFLAGS) -I$(call gb_UnpackedTarball_get_dir,nss)/dist/public/nss -I$(call gb_UnpackedTarball_get_dir,nss)/dist/out/include" \
-				CFLAGS="$(CFLAGS) -I$(call gb_UnpackedTarball_get_dir,nss)/dist/public/nss -I$(call gb_UnpackedTarball_get_dir,nss)/dist/out/include" \
+				CFLAGS="$(CFLAGS) $(if $(ENABLE_OPTIMIZED),$(gb_COMPILEROPTFLAGS),$(gb_COMPILERNOOPTFLAGS)) -I$(call gb_UnpackedTarball_get_dir,nss)/dist/public/nss -I$(call gb_UnpackedTarball_get_dir,nss)/dist/out/include" \
 			) \
 			$(if $(openldap_LDFLAGS),LDFLAGS="$(LDFLAGS) $(openldap_LDFLAGS)") \
 		&& MAKEFLAGS= && $(MAKE) \
 	)
+	$(call gb_Trace_EndRange,openldap,EXTERNAL)
 
 
 # vim: set noet sw=4 ts=4:

@@ -20,7 +20,6 @@
 #ifndef INCLUDED_FILTER_SOURCE_XSLTDIALOG_TYPEDETECTIONIMPORT_HXX
 #define INCLUDED_FILTER_SOURCE_XSLTDIALOG_TYPEDETECTIONIMPORT_HXX
 
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
@@ -28,13 +27,14 @@
 #include "xmlfilterjar.hxx"
 
 #include <map>
+#include <memory>
 #include <vector>
 #include <stack>
 
-namespace com { namespace sun { namespace star {
-    namespace xml { namespace sax { class XAttributeList; } }
+namespace com::sun::star {
+    namespace xml::sax { class XAttributeList; }
     namespace beans { struct PropertyValue; }
-} } }
+}
 
 enum ImportState
 {
@@ -56,15 +56,14 @@ struct Node
     PropertyMap maPropertyMap;
 };
 
-typedef std::vector< Node* > NodeVector;
-
 class TypeDetectionImporter : public cppu::WeakImplHelper < css::xml::sax::XDocumentHandler >
 {
 public:
     TypeDetectionImporter();
     virtual ~TypeDetectionImporter() override;
 
-    static void doImport( const css::uno::Reference< css::uno::XComponentContext >& rxContext, const css::uno::Reference < css::io::XInputStream >& xOS, XMLFilterVector& rFilters );
+    static void doImport( const css::uno::Reference< css::uno::XComponentContext >& rxContext, const css::uno::Reference < css::io::XInputStream >& xOS,
+                          std::vector< std::unique_ptr<filter_info_impl> >& rFilters );
 
     virtual void SAL_CALL startDocument(  ) override;
     virtual void SAL_CALL endDocument(  ) override;
@@ -76,15 +75,15 @@ public:
     virtual void SAL_CALL setDocumentLocator( const css::uno::Reference< css::xml::sax::XLocator >& xLocator ) override;
 
 private:
-    void fillFilterVector(  XMLFilterVector& rFilters );
-    filter_info_impl* createFilterForNode( Node * pNode );
+    void fillFilterVector(  std::vector< std::unique_ptr<filter_info_impl> >& rFilters );
+    std::unique_ptr<filter_info_impl> createFilterForNode( Node * pNode );
     Node* findTypeNode( const OUString& rType );
 
     std::stack< ImportState > maStack;
     PropertyMap maPropertyMap;
 
-    NodeVector maFilterNodes;
-    NodeVector maTypeNodes;
+    std::vector< std::unique_ptr<Node> > maFilterNodes;
+    std::vector< std::unique_ptr<Node> > maTypeNodes;
 
     OUString maValue;
     OUString maNodeName;

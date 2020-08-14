@@ -20,26 +20,20 @@
 #ifndef INCLUDED_SD_SOURCE_UI_INC_GRAPHICOBJECTBAR_HXX
 #define INCLUDED_SD_SOURCE_UI_INC_GRAPHICOBJECTBAR_HXX
 
-#include <sfx2/module.hxx>
 #include <sfx2/shell.hxx>
-#include "glob.hxx"
+#include <glob.hxx>
 
 namespace sd {
 
 class View;
 class ViewShell;
 
-class GraphicObjectBar
+class GraphicObjectBar final
     : public SfxShell
 {
 public:
     SFX_DECL_INTERFACE( SD_IF_SDDRAWGRAFOBJECTBAR )
 
-private:
-    /// SfxInterface initializer.
-    static void InitInterface_Impl();
-
-public:
     GraphicObjectBar (ViewShell* pSdViewShell, ::sd::View* pSdView);
     virtual ~GraphicObjectBar() override;
 
@@ -47,11 +41,13 @@ public:
     void            Execute( SfxRequest& rReq );
 
     void            GetFilterState( SfxItemSet& rSet );
-    void            ExecuteFilter( SfxRequest& rReq );
+    void            ExecuteFilter( SfxRequest const & rReq );
 
-protected:
+private:
+    /// SfxInterface initializer.
+    static void InitInterface_Impl();
+
     ::sd::View* mpView;
-    ViewShell*  mpViewSh;
 };
 
 } // end of namespace sd

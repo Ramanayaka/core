@@ -18,7 +18,6 @@
  */
 #include "vbalisttemplate.hxx"
 #include <vbahelper/vbahelper.hxx>
-#include <tools/diagnose_ex.h>
 #include "vbalistlevels.hxx"
 #include <com/sun/star/beans/XPropertySet.hpp>
 
@@ -27,7 +26,7 @@ using namespace ::com::sun::star;
 
 SwVbaListTemplate::SwVbaListTemplate( const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext, const uno::Reference< text::XTextDocument >& xTextDoc, sal_Int32 nGalleryType, sal_Int32 nTemplateType ) : SwVbaListTemplate_BASE( rParent, rContext )
 {
-    pListHelper.reset( new SwVbaListHelper( xTextDoc, nGalleryType, nTemplateType ) );
+    pListHelper = std::make_shared<SwVbaListHelper>( xTextDoc, nGalleryType, nTemplateType );
 }
 
 SwVbaListTemplate::~SwVbaListTemplate()
@@ -43,7 +42,7 @@ SwVbaListTemplate::ListLevels( const uno::Any& index )
     return uno::makeAny( xCol );
 }
 
-void SwVbaListTemplate::applyListTemplate( uno::Reference< beans::XPropertySet >& xProps )
+void SwVbaListTemplate::applyListTemplate( uno::Reference< beans::XPropertySet > const & xProps )
 {
     uno::Reference< container::XIndexReplace > xNumberingRules = pListHelper->getNumberingRules();
     xProps->setPropertyValue("NumberingRules", uno::makeAny( xNumberingRules ) );
@@ -52,18 +51,16 @@ void SwVbaListTemplate::applyListTemplate( uno::Reference< beans::XPropertySet >
 OUString
 SwVbaListTemplate::getServiceImplName()
 {
-    return OUString("SwVbaListTemplate");
+    return "SwVbaListTemplate";
 }
 
 uno::Sequence< OUString >
 SwVbaListTemplate::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.word.ListTemplate";
-    }
+        "ooo.vba.word.ListTemplate"
+    };
     return aServiceNames;
 }
 

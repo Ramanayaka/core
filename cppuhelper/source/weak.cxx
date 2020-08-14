@@ -18,15 +18,18 @@
  */
 
 #include <sal/config.h>
+#include <sal/log.hxx>
 
+#include <osl/diagnose.h>
 #include <osl/mutex.hxx>
 #include <cppuhelper/weakagg.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <cppuhelper/queryinterface.hxx>
 
+#include <com/sun/star/lang/DisposedException.hpp>
+
 #include <algorithm>
-#include <utility>
+#include <vector>
 
 using namespace osl;
 using namespace com::sun::star::uno;
@@ -37,11 +40,9 @@ namespace cppu
 
 // due to static Reflection destruction from usr, there must be a mutex leak (#73272#)
 // this is used to lock all instances of OWeakConnectionPoint and OWeakRefListener as well as OWeakObject::m_pWeakConnectionPoint
-inline static Mutex & getWeakMutex()
+static Mutex & getWeakMutex()
 {
-    static Mutex * s_pMutex = nullptr;
-    if (! s_pMutex)
-        s_pMutex = new Mutex();
+    static Mutex * s_pMutex = new Mutex();
     return *s_pMutex;
 }
 
@@ -76,7 +77,7 @@ public:
     /// Called from the weak object if the reference count goes to zero.
     ///
     /// @throws css::uno::RuntimeException
-    void SAL_CALL dispose();
+    void dispose();
 
 private:
     virtual ~OWeakConnectionPoint() {}
@@ -109,7 +110,7 @@ void SAL_CALL OWeakConnectionPoint::release() throw()
         delete this;
 }
 
-void SAL_CALL OWeakConnectionPoint::dispose()
+void OWeakConnectionPoint::dispose()
 {
     std::vector<Reference<XReference>> aCopy;
     { // only hold the mutex while we access the field
@@ -182,14 +183,14 @@ void SAL_CALL OWeakConnectionPoint::removeReference(const Reference< XReference 
     // Search from end because the thing that last added a ref is most likely to be the
     // first to remove a ref.
     // It's not really valid to compare the pointer directly, but it's faster.
-    for (auto it = m_aReferences.rbegin(); it != m_aReferences.rend(); ++it) {
-        if (it->get() == rRef.get()) {
-            m_aReferences.erase( it.base()-1 );
-            return;
-        }
+    auto it = std::find_if(m_aReferences.rbegin(), m_aReferences.rend(),
+        [&rRef](const Reference<XReference>& rxRef) { return rxRef.get() == rRef.get(); });
+    if (it != m_aReferences.rend()) {
+        m_aReferences.erase( it.base()-1 );
+        return;
     }
     // interface not found, use the correct compare method
-    auto it = std::find(m_aReferences.rbegin(), m_aReferences.rend(), rRef);
+    it = std::find(m_aReferences.rbegin(), m_aReferences.rend(), rRef);
     if ( it != m_aReferences.rend() )
         m_aReferences.erase( it.base()-1 );
 }
@@ -243,7 +244,7 @@ void OWeakObject::disposeWeakConnectionPoint()
             p->dispose();
         }
         catch (RuntimeException const& exc) {
-            SAL_WARN( "cppuhelper", exc.Message );
+            SAL_WARN( "cppuhelper", exc );
         }
         p->release();
     }
@@ -324,22 +325,13 @@ void OWeakAggObject::setDelegator( const Reference<XInterface > & rDelegator )
 }
 
 /** */ //for docpp
-namespace com
-{
-/** */ //for docpp
-namespace sun
-{
-/** */ //for docpp
-namespace star
-{
-/** */ //for docpp
-namespace uno
+namespace com::sun::star::uno
 {
 
 
 //-- OWeakRefListener -----------------------------------------------------
 
-class OWeakRefListener: public XReference
+class OWeakRefListener final : public XReference
 {
 public:
     explicit OWeakRefListener(const Reference< XInterface >& xInt);
@@ -533,9 +525,6 @@ Reference< XInterface > WeakReferenceHelper::get() const
     return Reference< XInterface >();
 }
 
-}
-}
-}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

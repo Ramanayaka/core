@@ -21,8 +21,15 @@
 #include <basic/sberrors.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <ooo/vba/excel/XWorksheet.hpp>
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/sheet/XSheetPageBreak.hpp>
+#include <com/sun/star/table/XColumnRowRange.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
+
+namespace {
 
 class RangePageBreaks : public ::cppu::WeakImplHelper<container::XIndexAccess >
 {
@@ -35,7 +42,7 @@ private:
 public:
     RangePageBreaks( const uno::Reference< XHelperInterface >& xParent,
                      const uno::Reference< uno::XComponentContext >& xContext,
-                     uno::Reference< sheet::XSheetPageBreak >& xSheetPageBreak,
+                     const uno::Reference< sheet::XSheetPageBreak >& xSheetPageBreak,
                      bool bColumn ) : mxParent( xParent ), mxContext( xContext ), mxSheetPageBreak( xSheetPageBreak ), m_bColumn( bColumn )
     {
     }
@@ -65,7 +72,7 @@ public:
     }
 
     /// @throws uno::RuntimeException
-    uno::Reference<container::XIndexAccess> getRowColContainer()
+    uno::Reference<container::XIndexAccess> getRowColContainer() const
     {
         uno::Reference< table::XColumnRowRange > xColumnRowRange( mxSheetPageBreak, uno::UNO_QUERY_THROW );
         uno::Reference<container::XIndexAccess> xIndexAccess;
@@ -97,6 +104,8 @@ public:
     }
 };
 
+}
+
 /** @TODO Unlike MS Excel this method only considers the pagebreaks that intersect the used range
 *  To become completely compatible the print area has to be considered. As far as I found out this printarea
 *  also considers the position and sizes of shapes and manually inserted page breaks
@@ -104,23 +113,16 @@ public:
 */
 sal_Int32 SAL_CALL RangePageBreaks::getCount(  )
 {
-    sal_Int32 nCount = 0;
     uno::Reference< excel::XWorksheet > xWorksheet( mxParent, uno::UNO_QUERY_THROW );
     uno::Reference< excel::XRange > xRange = xWorksheet->getUsedRange();
     sal_Int32 nUsedStart = getAPIStartofRange( xRange );
     sal_Int32 nUsedEnd = getAPIEndIndexofRange( xRange, nUsedStart );
-    uno::Sequence<sheet::TablePageBreakData> aTablePageBreakData = getAllPageBreaks();
+    const uno::Sequence<sheet::TablePageBreakData> aTablePageBreakData = getAllPageBreaks();
 
-    sal_Int32 nLength = aTablePageBreakData.getLength();
-    for( sal_Int32 i=0; i<nLength; i++ )
-    {
-        sal_Int32 nPos = aTablePageBreakData[i].Position;
-        if( nPos > nUsedEnd + 1)
-            return nCount;
-        nCount++;
-    }
+    auto pPageBreak = std::find_if(aTablePageBreakData.begin(), aTablePageBreakData.end(),
+        [nUsedEnd](const sheet::TablePageBreakData& rPageBreak) { return rPageBreak.Position > nUsedEnd + 1; });
 
-    return nCount;
+    return static_cast<sal_Int32>(std::distance(aTablePageBreakData.begin(), pPageBreak));
 }
 
 uno::Any SAL_CALL RangePageBreaks::getByIndex( sal_Int32 Index )
@@ -149,12 +151,11 @@ sheet::TablePageBreakData RangePageBreaks::getTablePageBreakData( sal_Int32 nAPI
     uno::Reference< excel::XRange > xRange = xWorksheet->getUsedRange();
     sal_Int32 nUsedStart = getAPIStartofRange( xRange );
     sal_Int32 nUsedEnd = getAPIEndIndexofRange( xRange, nUsedStart );
-    uno::Sequence<sheet::TablePageBreakData> aTablePageBreakDataList = getAllPageBreaks();
+    const uno::Sequence<sheet::TablePageBreakData> aTablePageBreakDataList = getAllPageBreaks();
 
-    sal_Int32 nLength = aTablePageBreakDataList.getLength();
-    for( sal_Int32 i=0; i<nLength; i++ )
+    for( const auto& rTablePageBreakData : aTablePageBreakDataList )
     {
-        aTablePageBreakData = aTablePageBreakDataList[i];
+        aTablePageBreakData = rTablePageBreakData;
         sal_Int32 nPos = aTablePageBreakData.Position;
         if( nPos > nUsedEnd + 1 )
             DebugHelper::runtimeexception(ERRCODE_BASIC_METHOD_FAILED);
@@ -187,6 +188,8 @@ uno::Any RangePageBreaks::Add( const css::uno::Any& Before )
     return uno::makeAny( uno::Reference< excel::XHPageBreak >( new ScVbaHPageBreak( mxParent, mxContext, xRowColPropertySet, aTablePageBreakData) ));
 }
 
+namespace {
+
 class RangePageBreaksEnumWrapper : public EnumerationHelper_BASE
 {
     uno::Reference<container::XIndexAccess > m_xIndexAccess;
@@ -206,9 +209,11 @@ public:
     }
 };
 
+}
+
 ScVbaHPageBreaks::ScVbaHPageBreaks( const uno::Reference< XHelperInterface >& xParent,
                                     const uno::Reference< uno::XComponentContext >& xContext,
-                                    uno::Reference< sheet::XSheetPageBreak >& xSheetPageBreak):
+                                    const uno::Reference< sheet::XSheetPageBreak >& xSheetPageBreak):
                           ScVbaHPageBreaks_BASE( xParent,xContext, new RangePageBreaks( xParent, xContext, xSheetPageBreak, false ))
 {
 }
@@ -232,7 +237,7 @@ ScVbaHPageBreaks::createEnumeration()
 uno::Any
 ScVbaHPageBreaks::createCollectionObject( const css::uno::Any& aSource )
 {
-    return aSource; // its already a pagebreak object
+    return aSource; // it's already a pagebreak object
 }
 
 uno::Type
@@ -244,25 +249,23 @@ ScVbaHPageBreaks::getElementType()
 OUString
 ScVbaHPageBreaks::getServiceImplName()
 {
-    return OUString("ScVbaHPageBreaks");
+    return "ScVbaHPageBreaks";
 }
 
 uno::Sequence< OUString >
 ScVbaHPageBreaks::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.HPageBreaks";
-    }
+        "ooo.vba.excel.HPageBreaks"
+    };
     return aServiceNames;
 }
 
 //VPageBreak
 ScVbaVPageBreaks::ScVbaVPageBreaks( const uno::Reference< XHelperInterface >& xParent,
                                     const uno::Reference< uno::XComponentContext >& xContext,
-                                    uno::Reference< sheet::XSheetPageBreak >& xSheetPageBreak )
+                                    const uno::Reference< sheet::XSheetPageBreak >& xSheetPageBreak )
 :   ScVbaVPageBreaks_BASE( xParent, xContext, new RangePageBreaks( xParent, xContext, xSheetPageBreak, true ) )
 {
 }
@@ -291,7 +294,7 @@ ScVbaVPageBreaks::createEnumeration()
 uno::Any
 ScVbaVPageBreaks::createCollectionObject( const css::uno::Any& aSource )
 {
-    return aSource; // its already a pagebreak object
+    return aSource; // it's already a pagebreak object
 }
 
 uno::Type
@@ -303,18 +306,16 @@ ScVbaVPageBreaks::getElementType()
 OUString
 ScVbaVPageBreaks::getServiceImplName()
 {
-    return OUString("ScVbaVPageBreaks");
+    return "ScVbaVPageBreaks";
 }
 
 uno::Sequence< OUString >
 ScVbaVPageBreaks::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.VPageBreaks";
-    }
+        "ooo.vba.excel.VPageBreaks"
+    };
     return aServiceNames;
 }
 

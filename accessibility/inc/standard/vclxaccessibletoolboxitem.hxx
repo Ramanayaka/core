@@ -16,24 +16,20 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETOOLBOXITEM_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETOOLBOXITEM_HXX
+#pragma once
 
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleAction.hpp>
-#include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleStateSet.hpp>
-#include <com/sun/star/accessibility/XAccessibleText.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 #include <com/sun/star/accessibility/XAccessibleValue.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase4.hxx>
 #include <comphelper/accessibletexthelper.hxx>
+#include <vcl/toolbox.hxx>
 #include <vcl/vclptr.hxx>
 
-
-class ToolBox;
 
 typedef ::comphelper::OAccessibleTextHelper AccessibleTextHelper_BASE;
 typedef ::cppu::ImplHelper4 < css::accessibility::XAccessible,
@@ -41,8 +37,8 @@ typedef ::cppu::ImplHelper4 < css::accessibility::XAccessible,
                               css::accessibility::XAccessibleValue,
                               css::lang::XServiceInfo > VCLXAccessibleToolBoxItem_BASE;
 
-class VCLXAccessibleToolBoxItem : public AccessibleTextHelper_BASE,
-                                  public VCLXAccessibleToolBoxItem_BASE
+class VCLXAccessibleToolBoxItem final : public AccessibleTextHelper_BASE,
+                                        public VCLXAccessibleToolBoxItem_BASE
 {
 private:
     OUString                m_sOldName;
@@ -55,12 +51,13 @@ private:
     bool                    m_bIndeterminate;
 
     css::uno::Reference< css::accessibility::XAccessible >    m_xChild;
+    OUString GetText();
 
 public:
     sal_Int32    getIndexInParent() const                    { return m_nIndexInParent; }
     void         setIndexInParent( sal_Int32 _nNewIndex )    { m_nIndexInParent = _nNewIndex; }
 
-protected:
+private:
     virtual ~VCLXAccessibleToolBoxItem() override;
 
     virtual void SAL_CALL                   disposing() override;
@@ -72,8 +69,6 @@ protected:
     virtual OUString                                    implGetText() override;
     virtual css::lang::Locale                           implGetLocale() override;
     virtual void                                        implGetSelection( sal_Int32& nStartIndex, sal_Int32& nEndIndex ) override;
-
-    OUString GetText();
 
 public:
     VCLXAccessibleToolBoxItem( ToolBox* _pToolBox, sal_Int32 _nPos );
@@ -115,6 +110,9 @@ public:
     virtual css::uno::Reference< css::accessibility::XAccessibleStateSet > SAL_CALL getAccessibleStateSet(  ) override;
 
     // XAccessibleText
+    virtual OUString SAL_CALL getText() override;
+    virtual sal_Unicode SAL_CALL getCharacter( sal_Int32 nIndex ) override;
+    virtual sal_Int32 SAL_CALL getCharacterCount() override;
     virtual sal_Int32 SAL_CALL getCaretPosition() override;
     virtual sal_Bool SAL_CALL setCaretPosition( sal_Int32 nIndex ) override;
     virtual css::uno::Sequence< css::beans::PropertyValue > SAL_CALL getCharacterAttributes( sal_Int32 nIndex, const css::uno::Sequence< OUString >& aRequestedAttributes ) override;
@@ -122,6 +120,8 @@ public:
     virtual sal_Int32 SAL_CALL getIndexAtPoint( const css::awt::Point& aPoint ) override;
     virtual sal_Bool SAL_CALL setSelection( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
     virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+    virtual OUString SAL_CALL getTextRange( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+    virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 
     // XAccessibleComponent
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleAtPoint( const css::awt::Point& aPoint ) override;
@@ -147,6 +147,5 @@ public:
     virtual css::uno::Any SAL_CALL getMinimumValue(  ) override;
 };
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETOOLBOXITEM_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

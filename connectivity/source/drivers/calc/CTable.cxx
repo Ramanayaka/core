@@ -17,10 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "calc/CTable.hxx"
+#include <calc/CTable.hxx>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbc/DataType.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
+#include <com/sun/star/sdbc/SQLException.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XCellRangeAddressable.hpp>
@@ -34,20 +34,14 @@
 #include <com/sun/star/util/NumberFormat.hpp>
 #include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 #include <com/sun/star/text/XText.hpp>
-#include <svl/converter.hxx>
-#include "calc/CConnection.hxx"
-#include "calc/CColumns.hxx"
+#include <calc/CConnection.hxx>
 #include <connectivity/sdbcx/VColumn.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <osl/thread.h>
-#include <cppuhelper/queryinterface.hxx>
-#include <comphelper/sequence.hxx>
-#include <svl/zforlist.hxx>
+#include <sal/log.hxx>
 #include <rtl/math.hxx>
-#include <comphelper/extract.hxx>
-#include <connectivity/dbexception.hxx>
-#include <connectivity/dbconversion.hxx>
-#include <comphelper/types.hxx>
+#include <tools/time.hxx>
+#include <comphelper/servicehelper.hxx>
+#include <cppuhelper/typeprovider.hxx>
 
 using namespace connectivity;
 using namespace connectivity::calc;
@@ -71,21 +65,21 @@ static void lcl_UpdateArea( const Reference<XCellRange>& xUsedRange, sal_Int32& 
     //  update rEndCol, rEndRow if any non-empty cell in xUsedRange is right/below
 
     const Reference<XCellRangesQuery> xUsedQuery( xUsedRange, UNO_QUERY );
-    if ( xUsedQuery.is() )
+    if ( !xUsedQuery.is() )
+        return;
+
+    const sal_Int16 nContentFlags =
+        CellFlags::STRING | CellFlags::VALUE | CellFlags::DATETIME | CellFlags::FORMULA | CellFlags::ANNOTATION;
+
+    const Reference<XSheetCellRanges> xUsedRanges = xUsedQuery->queryContentCells( nContentFlags );
+    const Sequence<CellRangeAddress> aAddresses = xUsedRanges->getRangeAddresses();
+
+    const sal_Int32 nCount = aAddresses.getLength();
+    const CellRangeAddress* pData = aAddresses.getConstArray();
+    for ( sal_Int32 i=0; i<nCount; i++ )
     {
-        const sal_Int16 nContentFlags =
-            CellFlags::STRING | CellFlags::VALUE | CellFlags::DATETIME | CellFlags::FORMULA | CellFlags::ANNOTATION;
-
-        const Reference<XSheetCellRanges> xUsedRanges = xUsedQuery->queryContentCells( nContentFlags );
-        const Sequence<CellRangeAddress> aAddresses = xUsedRanges->getRangeAddresses();
-
-        const sal_Int32 nCount = aAddresses.getLength();
-        const CellRangeAddress* pData = aAddresses.getConstArray();
-        for ( sal_Int32 i=0; i<nCount; i++ )
-        {
-            rEndCol = pData[i].EndColumn > rEndCol ? pData[i].EndColumn : rEndCol;
-            rEndRow = pData[i].EndRow    > rEndRow ? pData[i].EndRow    : rEndRow;
-        }
+        rEndCol = std::max(pData[i].EndColumn, rEndCol);
+        rEndRow = std::max(pData[i].EndRow, rEndRow);
     }
 }
 
@@ -146,11 +140,11 @@ static CellContentType lcl_GetContentOrResultType( const Reference<XCell>& xCell
         Reference<XPropertySet> xProp( xCell, UNO_QUERY );
         try
         {
-            xProp->getPropertyValue( "FormulaResultType" ) >>= eCellType;      // type of formula result
+            xProp->getPropertyValue( "CellContentType" ) >>= eCellType;      // type of cell content
         }
         catch (UnknownPropertyException&)
         {
-            eCellType = CellContentType_VALUE;  // if FormulaResultType property not available
+            eCellType = CellContentType_VALUE;  // if CellContentType property not available
         }
     }
     return eCellType;
@@ -243,64 +237,64 @@ static void lcl_GetColumnInfo( const Reference<XSpreadsheet>& xSheet, const Refe
     Reference<XCell> xDataCell = lcl_GetUsedCell( xSheet, nDocColumn, nDataRow );
 
     Reference<XPropertySet> xProp( xDataCell, UNO_QUERY );
-    if ( xProp.is() )
+    if ( !xProp.is() )
+        return;
+
+    rCurrency = false;          // set to true for currency below
+
+    const CellContentType eCellType = lcl_GetContentOrResultType( xDataCell );
+    // #i35178# use "text" type if there is any text cell in the column
+    if ( eCellType == CellContentType_TEXT || lcl_HasTextInColumn( xSheet, nDocColumn, nDataRow ) )
+        rDataType = DataType::VARCHAR;
+    else if ( eCellType == CellContentType_VALUE )
     {
-        rCurrency = false;          // set to true for currency below
+        //  get number format to distinguish between different types
 
-        const CellContentType eCellType = lcl_GetContentOrResultType( xDataCell );
-        // #i35178# use "text" type if there is any text cell in the column
-        if ( eCellType == CellContentType_TEXT || lcl_HasTextInColumn( xSheet, nDocColumn, nDataRow ) )
-            rDataType = DataType::VARCHAR;
-        else if ( eCellType == CellContentType_VALUE )
+        sal_Int16 nNumType = NumberFormat::NUMBER;
+        try
         {
-            //  get number format to distinguish between different types
+            sal_Int32 nKey = 0;
 
-            sal_Int16 nNumType = NumberFormat::NUMBER;
-            try
+            if ( xProp->getPropertyValue( "NumberFormat" ) >>= nKey )
             {
-                sal_Int32 nKey = 0;
-
-                if ( xProp->getPropertyValue( "NumberFormat" ) >>= nKey )
+                const Reference<XPropertySet> xFormat = xFormats->getByKey( nKey );
+                if ( xFormat.is() )
                 {
-                    const Reference<XPropertySet> xFormat = xFormats->getByKey( nKey );
-                    if ( xFormat.is() )
-                    {
-                        xFormat->getPropertyValue( OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_TYPE) ) >>= nNumType;
-                    }
+                    xFormat->getPropertyValue( OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_TYPE) ) >>= nNumType;
                 }
             }
-            catch ( Exception& )
-            {
-            }
-
-            if ( nNumType & NumberFormat::TEXT )
-                rDataType = DataType::VARCHAR;
-            else if ( nNumType & NumberFormat::NUMBER )
-                rDataType = DataType::DECIMAL;
-            else if ( nNumType & NumberFormat::CURRENCY )
-            {
-                rCurrency = true;
-                rDataType = DataType::DECIMAL;
-            }
-            else if ( ( nNumType & NumberFormat::DATETIME ) == NumberFormat::DATETIME )
-            {
-                //  NumberFormat::DATETIME is DATE | TIME
-                rDataType = DataType::TIMESTAMP;
-            }
-            else if ( nNumType & NumberFormat::DATE )
-                rDataType = DataType::DATE;
-            else if ( nNumType & NumberFormat::TIME )
-                rDataType = DataType::TIME;
-            else if ( nNumType & NumberFormat::LOGICAL )
-                rDataType = DataType::BIT;
-            else
-                rDataType = DataType::DECIMAL;
         }
-        else
+        catch ( Exception& )
         {
-            //  whole column empty
-            rDataType = DataType::VARCHAR;
         }
+
+        if ( nNumType & NumberFormat::TEXT )
+            rDataType = DataType::VARCHAR;
+        else if ( nNumType & NumberFormat::NUMBER )
+            rDataType = DataType::DECIMAL;
+        else if ( nNumType & NumberFormat::CURRENCY )
+        {
+            rCurrency = true;
+            rDataType = DataType::DECIMAL;
+        }
+        else if ( ( nNumType & NumberFormat::DATETIME ) == NumberFormat::DATETIME )
+        {
+            //  NumberFormat::DATETIME is DATE | TIME
+            rDataType = DataType::TIMESTAMP;
+        }
+        else if ( nNumType & NumberFormat::DATE )
+            rDataType = DataType::DATE;
+        else if ( nNumType & NumberFormat::TIME )
+            rDataType = DataType::TIME;
+        else if ( nNumType & NumberFormat::LOGICAL )
+            rDataType = DataType::BIT;
+        else
+            rDataType = DataType::DECIMAL;
+    }
+    else
+    {
+        //  whole column empty
+        rDataType = DataType::VARCHAR;
     }
 }
 
@@ -316,104 +310,104 @@ static void lcl_SetValue( ORowSetValue& rValue, const Reference<XSpreadsheet>& x
         ++nDocRow;
 
     const Reference<XCell> xCell = xSheet->getCellByPosition( nDocColumn, nDocRow );
-    if ( xCell.is() )
+    if ( !xCell.is() )
+        return;
+
+    CellContentType eCellType = lcl_GetContentOrResultType( xCell );
+    switch (nType)
     {
-        CellContentType eCellType = lcl_GetContentOrResultType( xCell );
-        switch (nType)
-        {
-            case DataType::VARCHAR:
-                if ( eCellType == CellContentType_EMPTY )
-                    rValue.setNull();
-                else
+        case DataType::VARCHAR:
+            if ( eCellType == CellContentType_EMPTY )
+                rValue.setNull();
+            else
+            {
+                // #i25840# still let Calc convert numbers to text
+                const Reference<XText> xText( xCell, UNO_QUERY );
+                if ( xText.is() )
+                    rValue = xText->getString();
+            }
+            break;
+        case DataType::DECIMAL:
+            if ( eCellType == CellContentType_VALUE )
+                rValue = xCell->getValue();         // double
+            else
+                rValue.setNull();
+            break;
+        case DataType::BIT:
+            if ( eCellType == CellContentType_VALUE )
+                rValue = xCell->getValue() != 0.0;
+            else
+                rValue.setNull();
+            break;
+        case DataType::DATE:
+            if ( eCellType == CellContentType_VALUE )
+            {
+                ::Date aDate( rNullDate );
+                aDate.AddDays(::rtl::math::approxFloor( xCell->getValue() ));
+                rValue = aDate.GetUNODate();
+            }
+            else
+                rValue.setNull();
+            break;
+        case DataType::TIME:
+            if ( eCellType == CellContentType_VALUE )
+            {
+                double fCellVal = xCell->getValue();
+                double fTime = fCellVal - rtl::math::approxFloor( fCellVal );
+                sal_Int64 nIntTime = static_cast<sal_Int64>(rtl::math::round( fTime * static_cast<double>(::tools::Time::nanoSecPerDay) ));
+                if ( nIntTime ==  ::tools::Time::nanoSecPerDay)
+                    nIntTime = 0;                       // 23:59:59.9999999995 and above is 00:00:00.00
+                css::util::Time aTime;
+                aTime.NanoSeconds = static_cast<sal_uInt32>( nIntTime % ::tools::Time::nanoSecPerSec );
+                nIntTime /= ::tools::Time::nanoSecPerSec;
+                aTime.Seconds = static_cast<sal_uInt16>( nIntTime % 60 );
+                nIntTime /= 60;
+                aTime.Minutes = static_cast<sal_uInt16>( nIntTime % 60 );
+                nIntTime /= 60;
+                OSL_ENSURE( nIntTime < 24, "error in time calculation" );
+                aTime.Hours = static_cast<sal_uInt16>(nIntTime);
+                rValue = aTime;
+            }
+            else
+                rValue.setNull();
+            break;
+        case DataType::TIMESTAMP:
+            if ( eCellType == CellContentType_VALUE )
+            {
+                double fCellVal = xCell->getValue();
+                double fDays = ::rtl::math::approxFloor( fCellVal );
+                double fTime = fCellVal - fDays;
+                long nIntDays = static_cast<long>(fDays);
+                sal_Int64 nIntTime = ::rtl::math::round( fTime * static_cast<double>(::tools::Time::nanoSecPerDay) );
+                if ( nIntTime == ::tools::Time::nanoSecPerDay )
                 {
-                    // #i25840# still let Calc convert numbers to text
-                    const Reference<XText> xText( xCell, UNO_QUERY );
-                    if ( xText.is() )
-                        rValue = xText->getString();
+                    nIntTime = 0;                       // 23:59:59.9999999995 and above is 00:00:00.00
+                    ++nIntDays;                         // (next day)
                 }
-                break;
-            case DataType::DECIMAL:
-                if ( eCellType == CellContentType_VALUE )
-                    rValue = xCell->getValue();         // double
-                else
-                    rValue.setNull();
-                break;
-            case DataType::BIT:
-                if ( eCellType == CellContentType_VALUE )
-                    rValue = xCell->getValue() != 0.0;
-                else
-                    rValue.setNull();
-                break;
-            case DataType::DATE:
-                if ( eCellType == CellContentType_VALUE )
-                {
-                    ::Date aDate( rNullDate );
-                    aDate += (long)::rtl::math::approxFloor( xCell->getValue() );
-                    rValue = aDate.GetUNODate();
-                }
-                else
-                    rValue.setNull();
-                break;
-            case DataType::TIME:
-                if ( eCellType == CellContentType_VALUE )
-                {
-                    double fCellVal = xCell->getValue();
-                    double fTime = fCellVal - rtl::math::approxFloor( fCellVal );
-                    sal_Int64 nIntTime = static_cast<sal_Int64>(rtl::math::round( fTime * static_cast<double>(::tools::Time::nanoSecPerDay) ));
-                    if ( nIntTime ==  ::tools::Time::nanoSecPerDay)
-                        nIntTime = 0;                       // 23:59:59.9999999995 and above is 00:00:00.00
-                    css::util::Time aTime;
-                    aTime.NanoSeconds = (sal_uInt32)( nIntTime % ::tools::Time::nanoSecPerSec );
-                    nIntTime /= ::tools::Time::nanoSecPerSec;
-                    aTime.Seconds = (sal_uInt16)( nIntTime % 60 );
-                    nIntTime /= 60;
-                    aTime.Minutes = (sal_uInt16)( nIntTime % 60 );
-                    nIntTime /= 60;
-                    OSL_ENSURE( nIntTime < 24, "error in time calculation" );
-                    aTime.Hours = (sal_uInt16) nIntTime;
-                    rValue = aTime;
-                }
-                else
-                    rValue.setNull();
-                break;
-            case DataType::TIMESTAMP:
-                if ( eCellType == CellContentType_VALUE )
-                {
-                    double fCellVal = xCell->getValue();
-                    double fDays = ::rtl::math::approxFloor( fCellVal );
-                    double fTime = fCellVal - fDays;
-                    long nIntDays = (long)fDays;
-                    sal_Int64 nIntTime = ::rtl::math::round( fTime * static_cast<double>(::tools::Time::nanoSecPerDay) );
-                    if ( nIntTime == ::tools::Time::nanoSecPerDay )
-                    {
-                        nIntTime = 0;                       // 23:59:59.9999999995 and above is 00:00:00.00
-                        ++nIntDays;                         // (next day)
-                    }
 
-                    css::util::DateTime aDateTime;
+                css::util::DateTime aDateTime;
 
-                    aDateTime.NanoSeconds = (sal_uInt16)( nIntTime % ::tools::Time::nanoSecPerSec );
-                    nIntTime /= ::tools::Time::nanoSecPerSec;
-                    aDateTime.Seconds = (sal_uInt16)( nIntTime % 60 );
-                    nIntTime /= 60;
-                    aDateTime.Minutes = (sal_uInt16)( nIntTime % 60 );
-                    nIntTime /= 60;
-                    OSL_ENSURE( nIntTime < 24, "error in time calculation" );
-                    aDateTime.Hours = (sal_uInt16) nIntTime;
+                aDateTime.NanoSeconds = static_cast<sal_uInt16>( nIntTime % ::tools::Time::nanoSecPerSec );
+                nIntTime /= ::tools::Time::nanoSecPerSec;
+                aDateTime.Seconds = static_cast<sal_uInt16>( nIntTime % 60 );
+                nIntTime /= 60;
+                aDateTime.Minutes = static_cast<sal_uInt16>( nIntTime % 60 );
+                nIntTime /= 60;
+                OSL_ENSURE( nIntTime < 24, "error in time calculation" );
+                aDateTime.Hours = static_cast<sal_uInt16>(nIntTime);
 
-                    ::Date aDate( rNullDate );
-                    aDate += nIntDays;
-                    aDateTime.Day = aDate.GetDay();
-                    aDateTime.Month = aDate.GetMonth();
-                    aDateTime.Year = aDate.GetYear();
+                ::Date aDate( rNullDate );
+                aDate.AddDays( nIntDays );
+                aDateTime.Day = aDate.GetDay();
+                aDateTime.Month = aDate.GetMonth();
+                aDateTime.Year = aDate.GetYear();
 
-                    rValue = aDateTime;
-                }
-                else
-                    rValue.setNull();
-                break;
-        } // switch (nType)
-    }
+                rValue = aDateTime;
+            }
+            else
+                rValue.setNull();
+            break;
+    } // switch (nType)
 
 //  rValue.setTypeKind(nType);
 }
@@ -422,13 +416,13 @@ static void lcl_SetValue( ORowSetValue& rValue, const Reference<XSpreadsheet>& x
 static OUString lcl_GetColumnStr( sal_Int32 nColumn )
 {
     if ( nColumn < 26 )
-        return OUString( (sal_Unicode) ( 'A' + nColumn ) );
+        return OUString( static_cast<sal_Unicode>( 'A' + nColumn ) );
     else
     {
         OUStringBuffer aBuffer(2);
         aBuffer.setLength( 2 );
-        aBuffer[0] = (sal_Unicode) ( 'A' + ( nColumn / 26 ) - 1 );
-        aBuffer[1] = (sal_Unicode) ( 'A' + ( nColumn % 26 ) );
+        aBuffer[0] = static_cast<sal_Unicode>( 'A' + ( nColumn / 26 ) - 1 );
+        aBuffer[1] = static_cast<sal_Unicode>( 'A' + ( nColumn % 26 ) );
         return aBuffer.makeStringAndClear();
     }
 }
@@ -484,12 +478,12 @@ void OCalcTable::fillColumns()
 
         // check if the column name already exists
         OUString aAlias = aColumnName;
-        OSQLColumns::Vector::const_iterator aFind = connectivity::find(m_aColumns->get().begin(),m_aColumns->get().end(),aAlias,aCase);
+        OSQLColumns::const_iterator aFind = connectivity::find(m_aColumns->begin(),m_aColumns->end(),aAlias,aCase);
         sal_Int32 nExprCnt = 0;
-        while(aFind != m_aColumns->get().end())
+        while(aFind != m_aColumns->end())
         {
-            (aAlias = aColumnName) += OUString::number(++nExprCnt);
-            aFind = connectivity::find(m_aColumns->get().begin(),m_aColumns->get().end(),aAlias,aCase);
+            aAlias = aColumnName + OUString::number(++nExprCnt);
+            aFind = connectivity::find(m_aColumns->begin(),m_aColumns->end(),aAlias,aCase);
         }
 
         sdbcx::OColumn* pColumn = new sdbcx::OColumn( aAlias, aTypeName, OUString(),OUString(),
@@ -498,10 +492,8 @@ void OCalcTable::fillColumns()
                                                 bStoresMixedCaseQuotedIdentifiers,
                                                 m_CatalogName, getSchema(), getName());
         Reference< XPropertySet> xCol = pColumn;
-        m_aColumns->get().push_back(xCol);
+        m_aColumns->push_back(xCol);
         m_aTypes.push_back(eType);
-        m_aPrecisions.push_back(nPrecision);
-        m_aScales.push_back(nDecimals);
     }
 }
 
@@ -517,11 +509,10 @@ OCalcTable::OCalcTable(sdbcx::OCollection* _pTables,OCalcConnection* _pConnectio
                                   Description,
                                   SchemaName,
                                   CatalogName)
-                ,m_pConnection(_pConnection)
+                ,m_pCalcConnection(_pConnection)
                 ,m_nStartCol(0)
                 ,m_nStartRow(0)
                 ,m_nDataCols(0)
-                ,m_nDataRows(0)
                 ,m_bHasHeaders(false)
                 ,m_aNullDate(::Date::EMPTY)
 {
@@ -530,7 +521,7 @@ OCalcTable::OCalcTable(sdbcx::OCollection* _pTables,OCalcConnection* _pConnectio
 void OCalcTable::construct()
 {
     //  get sheet object
-    Reference< XSpreadsheetDocument> xDoc = m_pConnection->acquireDoc();
+    Reference< XSpreadsheetDocument> xDoc = m_pCalcConnection->acquireDoc();
     if (xDoc.is())
     {
         Reference<XSpreadsheets> xSheets = xDoc->getSheets();
@@ -609,77 +600,18 @@ void OCalcTable::construct()
     refreshColumns();
 }
 
-void OCalcTable::refreshColumns()
-{
-    ::osl::MutexGuard aGuard( m_aMutex );
-
-    TStringVector aVector;
-
-    OSQLColumns::Vector::const_iterator aEnd = m_aColumns->get().end();
-    for(OSQLColumns::Vector::const_iterator aIter = m_aColumns->get().begin();aIter != aEnd;++aIter)
-        aVector.push_back(Reference< XNamed>(*aIter,UNO_QUERY)->getName());
-
-    if(m_pColumns)
-        m_pColumns->reFill(aVector);
-    else
-        m_pColumns  = new OCalcColumns(this,m_aMutex,aVector);
-}
-
-void OCalcTable::refreshIndexes()
-{
-    //  Calc table has no index
-}
-
-
 void SAL_CALL OCalcTable::disposing()
 {
     OFileTable::disposing();
     ::osl::MutexGuard aGuard(m_aMutex);
     m_aColumns = nullptr;
-    if ( m_pConnection )
-        m_pConnection->releaseDoc();
-    m_pConnection = nullptr;
+    if ( m_pCalcConnection )
+        m_pCalcConnection->releaseDoc();
+    m_pCalcConnection = nullptr;
 
 }
 
-Sequence< Type > SAL_CALL OCalcTable::getTypes(  )
-{
-    Sequence< Type > aTypes = OTable_TYPEDEF::getTypes();
-    std::vector<Type> aOwnTypes;
-    aOwnTypes.reserve(aTypes.getLength());
-
-    const Type* pBegin = aTypes.getConstArray();
-    const Type* pEnd = pBegin + aTypes.getLength();
-    for(;pBegin != pEnd;++pBegin)
-    {
-        if(!(   *pBegin == cppu::UnoType<XKeysSupplier>::get()||
-                *pBegin == cppu::UnoType<XIndexesSupplier>::get()||
-                *pBegin == cppu::UnoType<XRename>::get()||
-                *pBegin == cppu::UnoType<XAlterTable>::get()||
-                *pBegin == cppu::UnoType<XDataDescriptorFactory>::get()))
-            aOwnTypes.push_back(*pBegin);
-    }
-    aOwnTypes.push_back(cppu::UnoType<css::lang::XUnoTunnel>::get());
-
-    return Sequence< Type >(aOwnTypes.data(), aOwnTypes.size());
-}
-
-
-Any SAL_CALL OCalcTable::queryInterface( const Type & rType )
-{
-    if( rType == cppu::UnoType<XKeysSupplier>::get()||
-        rType == cppu::UnoType<XIndexesSupplier>::get()||
-        rType == cppu::UnoType<XRename>::get()||
-        rType == cppu::UnoType<XAlterTable>::get()||
-        rType == cppu::UnoType<XDataDescriptorFactory>::get())
-        return Any();
-
-    const Any aRet = ::cppu::queryInterface(rType,static_cast< css::lang::XUnoTunnel*> (this));
-    return aRet.hasValue() ? aRet : OTable_TYPEDEF::queryInterface(rType);
-}
-
-
-Sequence< sal_Int8 > OCalcTable::getUnoTunnelImplementationId()
+Sequence< sal_Int8 > OCalcTable::getUnoTunnelId()
 {
     static ::cppu::OImplementationId implId;
 
@@ -690,85 +622,9 @@ Sequence< sal_Int8 > OCalcTable::getUnoTunnelImplementationId()
 
 sal_Int64 OCalcTable::getSomething( const Sequence< sal_Int8 > & rId )
 {
-    return (rId.getLength() == 16 && 0 == memcmp(getUnoTunnelImplementationId().getConstArray(),  rId.getConstArray(), 16 ) )
+    return (isUnoTunnelId<OCalcTable>(rId))
                 ? reinterpret_cast< sal_Int64 >( this )
                 : OCalcTable_BASE::getSomething(rId);
-}
-
-sal_Int32 OCalcTable::getCurrentLastPos() const
-{
-    return m_nDataRows;
-}
-
-bool OCalcTable::seekRow(IResultSetHelper::Movement eCursorPosition, sal_Int32 nOffset, sal_Int32& nCurPos)
-{
-    // prepare positioning:
-
-    sal_uInt32 nNumberOfRecords = m_nDataRows;
-    sal_uInt32 nTempPos = m_nFilePos;
-    m_nFilePos = nCurPos;
-
-    switch(eCursorPosition)
-    {
-        case IResultSetHelper::NEXT:
-            m_nFilePos++;
-            break;
-        case IResultSetHelper::PRIOR:
-            if (m_nFilePos > 0)
-                m_nFilePos--;
-            break;
-        case IResultSetHelper::FIRST:
-            m_nFilePos = 1;
-            break;
-        case IResultSetHelper::LAST:
-            m_nFilePos = nNumberOfRecords;
-            break;
-        case IResultSetHelper::RELATIVE1:
-            m_nFilePos = (m_nFilePos + nOffset < 0) ? 0L
-                            : (sal_uInt32)(m_nFilePos + nOffset);
-            break;
-        case IResultSetHelper::ABSOLUTE1:
-        case IResultSetHelper::BOOKMARK:
-            m_nFilePos = (sal_uInt32)nOffset;
-            break;
-    }
-
-    if (m_nFilePos > (sal_Int32)nNumberOfRecords)
-        m_nFilePos = (sal_Int32)nNumberOfRecords + 1;
-
-    if (m_nFilePos == 0 || m_nFilePos == (sal_Int32)nNumberOfRecords + 1)
-        goto Error;
-    else
-    {
-        //! read buffer / setup row object etc?
-    }
-    goto End;
-
-Error:
-    switch(eCursorPosition)
-    {
-        case IResultSetHelper::PRIOR:
-        case IResultSetHelper::FIRST:
-            m_nFilePos = 0;
-            break;
-        case IResultSetHelper::LAST:
-        case IResultSetHelper::NEXT:
-        case IResultSetHelper::ABSOLUTE1:
-        case IResultSetHelper::RELATIVE1:
-            if (nOffset > 0)
-                m_nFilePos = nNumberOfRecords + 1;
-            else if (nOffset < 0)
-                m_nFilePos = 0;
-            break;
-        case IResultSetHelper::BOOKMARK:
-            m_nFilePos = nTempPos;   // previous position
-    }
-    //  aStatus.Set(SDB_STAT_NO_DATA_FOUND);
-    return false;
-
-End:
-    nCurPos = m_nFilePos;
-    return true;
 }
 
 bool OCalcTable::fetchRow( OValueRefRow& _rRow, const OSQLColumns & _rCols,
@@ -777,36 +633,25 @@ bool OCalcTable::fetchRow( OValueRefRow& _rRow, const OSQLColumns & _rCols,
     // read the bookmark
 
     _rRow->setDeleted(false);
-    *(_rRow->get())[0] = m_nFilePos;
+    *(*_rRow)[0] = m_nFilePos;
 
     if (!bRetrieveData)
         return true;
 
     // fields
 
-    OSQLColumns::Vector::const_iterator aIter = _rCols.get().begin();
-    OSQLColumns::Vector::const_iterator aEnd = _rCols.get().end();
-    const OValueRefVector::Vector::size_type nCount = _rRow->get().size();
-    for (OValueRefVector::Vector::size_type i = 1; aIter != aEnd && i < nCount;
-         ++aIter, i++)
+    const OValueRefVector::size_type nCount = std::min(_rRow->size(), _rCols.size() + 1);
+    for (OValueRefVector::size_type i = 1; i < nCount; i++)
     {
-        if ( (_rRow->get())[i]->isBound() )
+        if ( (*_rRow)[i]->isBound() )
         {
             sal_Int32 nType = m_aTypes[i-1];
 
-            lcl_SetValue( (_rRow->get())[i]->get(), m_xSheet, m_nStartCol, m_nStartRow, m_bHasHeaders,
+            lcl_SetValue( (*_rRow)[i]->get(), m_xSheet, m_nStartCol, m_nStartRow, m_bHasHeaders,
                                 m_aNullDate, m_nFilePos, i, nType );
         }
     }
     return true;
 }
-
-void OCalcTable::FileClose()
-{
-    ::osl::MutexGuard aGuard(m_aMutex);
-
-    OCalcTable_BASE::FileClose();
-}
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

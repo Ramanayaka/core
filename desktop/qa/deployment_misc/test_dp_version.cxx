@@ -20,11 +20,10 @@
 #include <cstddef>
 #include <sal/types.h>
 
-#include "cppunit/TestAssert.h"
-#include "cppunit/TestFixture.h"
-#include "cppunit/extensions/HelperMacros.h"
-#include "cppunit/plugin/TestPlugIn.h"
-#include <rtl/ustring.h>
+#include <cppunit/TestAssert.h>
+#include <cppunit/TestFixture.h>
+#include <cppunit/extensions/HelperMacros.h>
+#include <cppunit/plugin/TestPlugIn.h>
 #include <rtl/ustring.hxx>
 
 #include "../../source/deployment/inc/dp_version.hxx"

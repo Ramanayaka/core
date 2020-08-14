@@ -22,26 +22,31 @@
 #include <vector>
 
 #include <com/sun/star/container/XEnumerationAccess.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/text/ReferenceFieldSource.hpp>
 #include <com/sun/star/text/XChapterNumberingSupplier.hpp>
+#include <com/sun/star/text/XTextFrame.hpp>
 #include <com/sun/star/text/XTextFieldsSupplier.hpp>
 #include <com/sun/star/text/XTextFramesSupplier.hpp>
 #include <com/sun/star/text/XTextGraphicObjectsSupplier.hpp>
 #include <com/sun/star/text/XTextEmbeddedObjectsSupplier.hpp>
 #include <com/sun/star/text/XFormField.hpp>
 #include <com/sun/star/ucb/XAnyCompareFactory.hpp>
-#include <xmloff/xmlnmspe.hxx>
+#include <com/sun/star/container/XNamed.hpp>
+#include <com/sun/star/style/XStyle.hpp>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/txtstyli.hxx>
 #include <xmloff/xmlnumi.hxx>
 #include <xmloff/maptype.hxx>
 
+#include <sal/log.hxx>
 #include "txtparai.hxx"
 #include <xmloff/txtprmap.hxx>
 #include <xmloff/txtimppr.hxx>
 #include <xmloff/xmlimp.hxx>
-#include "txtvfldi.hxx"
+#include <txtvfldi.hxx>
 #include <xmloff/i18nmap.hxx>
 #include "XMLTextListItemContext.hxx"
 #include "XMLTextListBlockContext.hxx"
@@ -49,14 +54,17 @@
 #include "XMLTextFrameHyperlinkContext.hxx"
 #include "XMLSectionImportContext.hxx"
 #include "XMLIndexTOCContext.hxx"
-#include <xmloff/XMLFontStylesContext.hxx>
 #include <xmloff/XMLEventsImportContext.hxx>
 #include "XMLTrackedChangesImportContext.hxx"
 #include "XMLChangeImportContext.hxx"
 #include "XMLAutoMarkFileContext.hxx"
+#include <xmloff/ProgressBarHelper.hxx>
 
 #include "XMLCalculationSettingsContext.hxx"
-#include "XMLNumberStylesImport.hxx"
+#include <XMLNumberStylesImport.hxx>
+#include <PageMasterStyleMap.hxx>
+#include <PageMasterPropHdlFactory.hxx>
+#include <PageMasterPropMapper.hxx>
 // XML import: reconstrution of assignment of paragraph style to outline levels (#i69629#)
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <txtlists.hxx>
@@ -78,7 +86,7 @@ using namespace ::com::sun::star::lang;
 using namespace ::xmloff::token;
 using namespace ::com::sun::star::ucb;
 
-static const SvXMLTokenMapEntry aTextElemTokenMap[] =
+const SvXMLTokenMapEntry aTextElemTokenMap[] =
 {
     { XML_NAMESPACE_TEXT, XML_P,                XML_TOK_TEXT_P              },
     { XML_NAMESPACE_LO_EXT, XML_P,                XML_TOK_TEXT_P              },
@@ -114,7 +122,7 @@ static const SvXMLTokenMapEntry aTextElemTokenMap[] =
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aTextPElemTokenMap[] =
+const SvXMLTokenMapEntry aTextPElemTokenMap[] =
 {
     { XML_NAMESPACE_TEXT, XML_SPAN, XML_TOK_TEXT_SPAN },
     { XML_NAMESPACE_TEXT, XML_TAB, XML_TOK_TEXT_TAB_STOP },
@@ -156,6 +164,7 @@ static const SvXMLTokenMapEntry aTextPElemTokenMap[] =
     // sender fields
     { XML_NAMESPACE_TEXT, XML_SENDER_FIRSTNAME,XML_TOK_TEXT_SENDER_FIRSTNAME},
     { XML_NAMESPACE_TEXT, XML_SENDER_LASTNAME, XML_TOK_TEXT_SENDER_LASTNAME },
+    // note: loext was written by accident in some LO versions, don't remove!
     { XML_NAMESPACE_LO_EXT, XML_SENDER_INITIALS, XML_TOK_TEXT_SENDER_INITIALS },
     { XML_NAMESPACE_TEXT,   XML_SENDER_INITIALS, XML_TOK_TEXT_SENDER_INITIALS },
     { XML_NAMESPACE_TEXT, XML_SENDER_TITLE, XML_TOK_TEXT_SENDER_TITLE },
@@ -294,7 +303,7 @@ static const SvXMLTokenMapEntry aTextPElemTokenMap[] =
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aTextPAttrTokenMap[] =
+const SvXMLTokenMapEntry aTextPAttrTokenMap[] =
 {
     { XML_NAMESPACE_XML  , XML_ID,          XML_TOK_TEXT_P_XMLID },
     { XML_NAMESPACE_XHTML, XML_ABOUT,       XML_TOK_TEXT_P_ABOUT },
@@ -305,6 +314,7 @@ static const SvXMLTokenMapEntry aTextPAttrTokenMap[] =
     { XML_NAMESPACE_TEXT, XML_STYLE_NAME,   XML_TOK_TEXT_P_STYLE_NAME },
     { XML_NAMESPACE_TEXT, XML_COND_STYLE_NAME,
                                             XML_TOK_TEXT_P_COND_STYLE_NAME },
+    { XML_NAMESPACE_LO_EXT, XML_OUTLINE_CONTENT_VISIBLE, XML_TOK_TEXT_P_OUTLINE_CONTENT_VISIBLE },
     { XML_NAMESPACE_TEXT, XML_OUTLINE_LEVEL,XML_TOK_TEXT_P_LEVEL },
     { XML_NAMESPACE_TEXT, XML_IS_LIST_HEADER,XML_TOK_TEXT_P_IS_LIST_HEADER },
     { XML_NAMESPACE_TEXT, XML_RESTART_NUMBERING,XML_TOK_TEXT_P_RESTART_NUMBERING },
@@ -312,7 +322,7 @@ static const SvXMLTokenMapEntry aTextPAttrTokenMap[] =
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aTextNumberedParagraphAttrTokenMap[] =
+const SvXMLTokenMapEntry aTextNumberedParagraphAttrTokenMap[] =
 {
     { XML_NAMESPACE_XML , XML_ID,    XML_TOK_TEXT_NUMBERED_PARAGRAPH_XMLID },
     { XML_NAMESPACE_TEXT, XML_LIST_ID,
@@ -327,7 +337,7 @@ static const SvXMLTokenMapEntry aTextNumberedParagraphAttrTokenMap[] =
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aTextListBlockAttrTokenMap[] =
+const SvXMLTokenMapEntry aTextListBlockAttrTokenMap[] =
 {
     { XML_NAMESPACE_XML , XML_ID,           XML_TOK_TEXT_LIST_BLOCK_XMLID },
     { XML_NAMESPACE_TEXT, XML_STYLE_NAME,
@@ -339,14 +349,14 @@ static const SvXMLTokenMapEntry aTextListBlockAttrTokenMap[] =
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aTextListBlockElemTokenMap[] =
+const SvXMLTokenMapEntry aTextListBlockElemTokenMap[] =
 {
     { XML_NAMESPACE_TEXT, XML_LIST_HEADER, XML_TOK_TEXT_LIST_HEADER },
     { XML_NAMESPACE_TEXT, XML_LIST_ITEM,    XML_TOK_TEXT_LIST_ITEM   },
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aTextFrameAttrTokenMap[] =
+const SvXMLTokenMapEntry aTextFrameAttrTokenMap[] =
 {
     { XML_NAMESPACE_DRAW, XML_STYLE_NAME, XML_TOK_TEXT_FRAME_STYLE_NAME },
     { XML_NAMESPACE_DRAW, XML_NAME, XML_TOK_TEXT_FRAME_NAME },
@@ -364,7 +374,7 @@ static const SvXMLTokenMapEntry aTextFrameAttrTokenMap[] =
     { XML_NAMESPACE_XLINK, XML_HREF, XML_TOK_TEXT_FRAME_HREF },
     { XML_NAMESPACE_DRAW, XML_NAME, XML_TOK_TEXT_FRAME_FILTER_NAME },
     { XML_NAMESPACE_DRAW, XML_ZINDEX, XML_TOK_TEXT_FRAME_Z_INDEX },
-    { XML_NAMESPACE_SVG, XML_TRANSFORM, XML_TOK_TEXT_FRAME_TRANSFORM },
+    { XML_NAMESPACE_DRAW, XML_TRANSFORM, XML_TOK_TEXT_FRAME_TRANSFORM },
     { XML_NAMESPACE_DRAW, XML_CLASS_ID, XML_TOK_TEXT_FRAME_CLASS_ID },
     { XML_NAMESPACE_DRAW,   XML_CODE,           XML_TOK_TEXT_FRAME_CODE },
     { XML_NAMESPACE_DRAW,   XML_OBJECT,         XML_TOK_TEXT_FRAME_OBJECT },
@@ -378,7 +388,7 @@ static const SvXMLTokenMapEntry aTextFrameAttrTokenMap[] =
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aTextContourAttrTokenMap[] =
+const SvXMLTokenMapEntry aTextContourAttrTokenMap[] =
 {
     { XML_NAMESPACE_SVG, XML_WIDTH,     XML_TOK_TEXT_CONTOUR_WIDTH      },
     { XML_NAMESPACE_SVG, XML_HEIGHT,    XML_TOK_TEXT_CONTOUR_HEIGHT     },
@@ -389,7 +399,7 @@ static const SvXMLTokenMapEntry aTextContourAttrTokenMap[] =
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aTextHyperlinkAttrTokenMap[] =
+const SvXMLTokenMapEntry aTextHyperlinkAttrTokenMap[] =
 {
     { XML_NAMESPACE_XLINK, XML_HREF, XML_TOK_TEXT_HYPERLINK_HREF },
     { XML_NAMESPACE_OFFICE, XML_NAME, XML_TOK_TEXT_HYPERLINK_NAME },
@@ -401,19 +411,21 @@ static const SvXMLTokenMapEntry aTextHyperlinkAttrTokenMap[] =
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aTextMasterPageElemTokenMap[] =
+const SvXMLTokenMapEntry aTextMasterPageElemTokenMap[] =
 {
     { XML_NAMESPACE_STYLE, XML_HEADER, XML_TOK_TEXT_MP_HEADER },
     { XML_NAMESPACE_STYLE, XML_FOOTER, XML_TOK_TEXT_MP_FOOTER },
     { XML_NAMESPACE_STYLE, XML_HEADER_LEFT, XML_TOK_TEXT_MP_HEADER_LEFT },
     { XML_NAMESPACE_STYLE, XML_FOOTER_LEFT, XML_TOK_TEXT_MP_FOOTER_LEFT },
+    { XML_NAMESPACE_LO_EXT, XML_HEADER_FIRST, XML_TOK_TEXT_MP_HEADER_FIRST },
+    { XML_NAMESPACE_LO_EXT, XML_FOOTER_FIRST, XML_TOK_TEXT_MP_FOOTER_FIRST },
     { XML_NAMESPACE_STYLE, XML_HEADER_FIRST, XML_TOK_TEXT_MP_HEADER_FIRST },
     { XML_NAMESPACE_STYLE, XML_FOOTER_FIRST, XML_TOK_TEXT_MP_FOOTER_FIRST },
 
     XML_TOKEN_MAP_END
 };
 
-static const SvXMLTokenMapEntry aTextFieldAttrTokenMap[] =
+const SvXMLTokenMapEntry aTextFieldAttrTokenMap[] =
 {
     { XML_NAMESPACE_TEXT, XML_FIXED, XML_TOK_TEXTFIELD_FIXED },
     { XML_NAMESPACE_TEXT, XML_DESCRIPTION,  XML_TOK_TEXTFIELD_DESCRIPTION },
@@ -480,6 +492,11 @@ static const SvXMLTokenMapEntry aTextFieldAttrTokenMap[] =
                 XML_TOK_TEXTFIELD_CURRENT_VALUE },
     { XML_NAMESPACE_TEXT, XML_TABLE_TYPE, XML_TOK_TEXTFIELD_TABLE_TYPE },
     { XML_NAMESPACE_OFFICE, XML_NAME, XML_TOK_TEXT_NAME },
+    { XML_NAMESPACE_LO_EXT, XML_REFERENCE_LANGUAGE,
+                XML_TOK_TEXTFIELD_REFERENCE_LANGUAGE },
+    { XML_NAMESPACE_TEXT, XML_REFERENCE_LANGUAGE,
+                XML_TOK_TEXTFIELD_REFERENCE_LANGUAGE },
+    { XML_NAMESPACE_LO_EXT, XML_RESOLVED, XML_TOK_TEXT_RESOLVED },
 
     XML_TOKEN_MAP_END
 };
@@ -505,7 +522,7 @@ struct XMLTextImportHelper::Impl
     std::unique_ptr< std::vector<OUString> > m_xNextFrmNames;
     std::unique_ptr<XMLTextListsHelper> m_xTextListsHelper;
 
-    SvXMLImportContextRef m_xAutoStyles;
+    rtl::Reference<SvXMLStylesContext> m_xAutoStyles;
 
     rtl::Reference< SvXMLImportPropertyMapper > m_xParaImpPrMap;
     rtl::Reference< SvXMLImportPropertyMapper > m_xTextImpPrMap;
@@ -540,6 +557,9 @@ struct XMLTextImportHelper::Impl
     // Used for frame deduplication, the name of the last frame imported directly before the current one
     OUString msLastImportedFrameName;
 
+    std::map< OUString, bool > m_bBookmarkHidden;
+    std::map< OUString, OUString > m_sBookmarkCondition;
+
     uno::Reference<text::XText> m_xText;
     uno::Reference<text::XTextCursor> m_xCursor;
     uno::Reference<text::XTextRange> m_xCursorAsRange;
@@ -570,7 +590,7 @@ struct XMLTextImportHelper::Impl
     typedef ::std::pair< OUString, OUString> field_name_type_t;
     typedef ::std::pair< OUString, OUString > field_param_t;
     typedef ::std::vector< field_param_t > field_params_t;
-    typedef ::std::pair< field_name_type_t, field_params_t > field_stack_item_t;
+    typedef ::std::tuple<field_name_type_t, field_params_t, uno::Reference<text::XFormField>> field_stack_item_t;
     typedef ::std::stack< field_stack_item_t > field_stack_t;
 
     field_stack_t m_FieldStack;
@@ -741,7 +761,7 @@ XMLTextListsHelper & XMLTextImportHelper::GetTextListHelper()
 
 const SvXMLTokenMap& XMLTextImportHelper::GetTextElemTokenMap()
 {
-    if (!m_xImpl->m_xTextElemTokenMap.get())
+    if (!m_xImpl->m_xTextElemTokenMap)
     {
         m_xImpl->m_xTextElemTokenMap.reset(
             new SvXMLTokenMap( aTextElemTokenMap ));
@@ -751,7 +771,7 @@ const SvXMLTokenMap& XMLTextImportHelper::GetTextElemTokenMap()
 
 const SvXMLTokenMap& XMLTextImportHelper::GetTextPElemTokenMap()
 {
-    if (!m_xImpl->m_xTextPElemTokenMap.get())
+    if (!m_xImpl->m_xTextPElemTokenMap)
     {
         m_xImpl->m_xTextPElemTokenMap.reset(
             new SvXMLTokenMap( aTextPElemTokenMap ));
@@ -761,7 +781,7 @@ const SvXMLTokenMap& XMLTextImportHelper::GetTextPElemTokenMap()
 
 const SvXMLTokenMap& XMLTextImportHelper::GetTextPAttrTokenMap()
 {
-    if (!m_xImpl->m_xTextPAttrTokenMap.get())
+    if (!m_xImpl->m_xTextPAttrTokenMap)
     {
         m_xImpl->m_xTextPAttrTokenMap.reset(
             new SvXMLTokenMap( aTextPAttrTokenMap ));
@@ -771,7 +791,7 @@ const SvXMLTokenMap& XMLTextImportHelper::GetTextPAttrTokenMap()
 
 const SvXMLTokenMap& XMLTextImportHelper::GetTextFrameAttrTokenMap()
 {
-    if (!m_xImpl->m_xTextFrameAttrTokenMap.get())
+    if (!m_xImpl->m_xTextFrameAttrTokenMap)
     {
         m_xImpl->m_xTextFrameAttrTokenMap.reset(
             new SvXMLTokenMap( aTextFrameAttrTokenMap ));
@@ -781,7 +801,7 @@ const SvXMLTokenMap& XMLTextImportHelper::GetTextFrameAttrTokenMap()
 
 const SvXMLTokenMap& XMLTextImportHelper::GetTextContourAttrTokenMap()
 {
-    if (!m_xImpl->m_xTextContourAttrTokenMap.get())
+    if (!m_xImpl->m_xTextContourAttrTokenMap)
     {
         m_xImpl->m_xTextContourAttrTokenMap.reset(
             new SvXMLTokenMap( aTextContourAttrTokenMap ));
@@ -791,7 +811,7 @@ const SvXMLTokenMap& XMLTextImportHelper::GetTextContourAttrTokenMap()
 
 const SvXMLTokenMap& XMLTextImportHelper::GetTextHyperlinkAttrTokenMap()
 {
-    if (!m_xImpl->m_xTextHyperlinkAttrTokenMap.get())
+    if (!m_xImpl->m_xTextHyperlinkAttrTokenMap)
     {
         m_xImpl->m_xTextHyperlinkAttrTokenMap.reset(
             new SvXMLTokenMap( aTextHyperlinkAttrTokenMap ));
@@ -801,7 +821,7 @@ const SvXMLTokenMap& XMLTextImportHelper::GetTextHyperlinkAttrTokenMap()
 
 const SvXMLTokenMap& XMLTextImportHelper::GetTextMasterPageElemTokenMap()
 {
-    if (!m_xImpl->m_xTextMasterPageElemTokenMap.get())
+    if (!m_xImpl->m_xTextMasterPageElemTokenMap)
     {
         m_xImpl->m_xTextMasterPageElemTokenMap.reset(
             new SvXMLTokenMap( aTextMasterPageElemTokenMap ));
@@ -811,7 +831,7 @@ const SvXMLTokenMap& XMLTextImportHelper::GetTextMasterPageElemTokenMap()
 
 const SvXMLTokenMap& XMLTextImportHelper::GetTextFieldAttrTokenMap()
 {
-    if (!m_xImpl->m_xTextFieldAttrTokenMap.get())
+    if (!m_xImpl->m_xTextFieldAttrTokenMap)
     {
         m_xImpl->m_xTextFieldAttrTokenMap.reset(
             new SvXMLTokenMap( aTextFieldAttrTokenMap ));
@@ -842,27 +862,25 @@ namespace
     {
         ::std::vector<OUString> vListEntries;
         ::std::map<OUString, Any> vOutParams;
-        for(field_params_t::const_iterator pCurrent = m_pInParams->begin();
-            pCurrent != m_pInParams->end();
-            ++pCurrent)
+        for(const auto& rCurrent : *m_pInParams)
         {
-            if(pCurrent->first == ODF_FORMDROPDOWN_RESULT)
+            if(rCurrent.first == ODF_FORMDROPDOWN_RESULT)
             {
                 // sal_Int32
-                vOutParams[pCurrent->first] <<= pCurrent->second.toInt32();
+                vOutParams[rCurrent.first] <<= rCurrent.second.toInt32();
             }
-            else if(pCurrent->first == ODF_FORMCHECKBOX_RESULT)
+            else if(rCurrent.first == ODF_FORMCHECKBOX_RESULT)
             {
                 // bool
-                vOutParams[pCurrent->first] <<= pCurrent->second.toBoolean();
+                vOutParams[rCurrent.first] <<= rCurrent.second.toBoolean();
             }
-            else if(pCurrent->first == ODF_FORMDROPDOWN_LISTENTRY)
+            else if(rCurrent.first == ODF_FORMDROPDOWN_LISTENTRY)
             {
                 // sequence
-                vListEntries.push_back(pCurrent->second);
+                vListEntries.push_back(rCurrent.second);
             }
             else
-                vOutParams[pCurrent->first] <<= pCurrent->second;
+                vOutParams[rCurrent.first] <<= rCurrent.second;
         }
         if(!vListEntries.empty())
         {
@@ -870,13 +888,11 @@ namespace
             copy(vListEntries.begin(), vListEntries.end(), vListEntriesSeq.begin());
             vOutParams[OUString(ODF_FORMDROPDOWN_LISTENTRY)] <<= vListEntriesSeq;
         }
-        for(::std::map<OUString, Any>::const_iterator pCurrent = vOutParams.begin();
-            pCurrent != vOutParams.end();
-            ++pCurrent)
+        for(const auto& rCurrent : vOutParams)
         {
             try
             {
-                m_xOutParams->insertByName(pCurrent->first, pCurrent->second);
+                m_xOutParams->insertByName(rCurrent.first, rCurrent.second);
             }
             catch(const ElementExistException&)
             {
@@ -1032,6 +1048,12 @@ XMLTextImportHelper::~XMLTextImportHelper()
 {
 }
 
+void XMLTextImportHelper::dispose()
+{
+    if (m_xImpl->m_xAutoStyles)
+        m_xImpl->m_xAutoStyles->dispose();
+}
+
 SvXMLImportPropertyMapper *XMLTextImportHelper::CreateShapeExtPropMapper(SvXMLImport& rImport)
 {
     XMLPropertySetMapper *pPropMapper =
@@ -1086,11 +1108,20 @@ SvXMLImportPropertyMapper*
     return new XMLTextImportPropertyMapper( pPropMapper, rImport );
 }
 
+SvXMLImportPropertyMapper*
+XMLTextImportHelper::CreateDrawingPageExtPropMapper(SvXMLImport& rImport)
+{
+    rtl::Reference<XMLPropertyHandlerFactory> const pFactory(new XMLPageMasterPropHdlFactory);
+    XMLPropertySetMapper *const pPropMapper(
+        new XMLPropertySetMapper(g_XMLPageMasterDrawingPageStyleMap, pFactory, false));
+    return new SvXMLImportPropertyMapper(pPropMapper, rImport);
+}
+
 void XMLTextImportHelper::SetCursor( const Reference < XTextCursor > & rCursor )
 {
     m_xImpl->m_xCursor.set(rCursor);
     m_xImpl->m_xText.set(rCursor->getText());
-    m_xImpl->m_xCursorAsRange.set( rCursor, UNO_QUERY );
+    m_xImpl->m_xCursorAsRange = rCursor;
 }
 
 void XMLTextImportHelper::ResetCursor()
@@ -1157,12 +1188,7 @@ bool XMLTextImportHelper::IsDuplicateFrame(const OUString& sName, sal_Int32 nX, 
         }
 
         // In some case, position is not defined for frames, so check whether the two frames follow each other (are anchored to the same position)
-        if (m_xImpl->msLastImportedFrameName != sName)
-        {
-            return false;
-        }
-
-        return true;
+        return m_xImpl->msLastImportedFrameName == sName;
     }
     return false;
 }
@@ -1234,7 +1260,7 @@ void XMLTextImportHelper::InsertControlCharacter( sal_Int16 nControl )
 }
 
 void XMLTextImportHelper::InsertTextContent(
-    Reference < XTextContent > & xContent )
+    Reference < XTextContent > const & xContent )
 {
     assert(m_xImpl->m_xText.is());
     assert(m_xImpl->m_xCursorAsRange.is());
@@ -1296,12 +1322,12 @@ OUString XMLTextImportHelper::ConvertStarFonts( const OUString& rChars,
             if( (rFlags & CONV_STAR_FONT_FLAGS_VALID) == 0 )
             {
                 XMLTextStyleContext *pStyle = nullptr;
-                sal_uInt16 nFamily = bPara ? XML_STYLE_FAMILY_TEXT_PARAGRAPH
-                                           : XML_STYLE_FAMILY_TEXT_TEXT;
+                XmlStyleFamily nFamily = bPara ? XmlStyleFamily::TEXT_PARAGRAPH
+                                               : XmlStyleFamily::TEXT_TEXT;
                 if (!rStyleName.isEmpty() && m_xImpl->m_xAutoStyles.is())
                 {
                     const SvXMLStyleContext* pTempStyle =
-                        static_cast<SvXMLStylesContext *>(m_xImpl->m_xAutoStyles.get())->
+                        m_xImpl->m_xAutoStyles->
                                 FindStyleChildContext( nFamily, rStyleName,
                                                        true );
                     pStyle = const_cast<XMLTextStyleContext*>( dynamic_cast< const XMLTextStyleContext* >(pTempStyle));
@@ -1313,8 +1339,7 @@ OUString XMLTextImportHelper::ConvertStarFonts( const OUString& rChars,
                     if( nCount )
                     {
                         rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap =
-                            static_cast<SvXMLStylesContext *>(m_xImpl->m_xAutoStyles.get())
-                                ->GetImportPropertyMapper(nFamily);
+                            m_xImpl->m_xAutoStyles->GetImportPropertyMapper(nFamily);
                         if( xImpPrMap.is() )
                         {
                             rtl::Reference<XMLPropertySetMapper> rPropMapper =
@@ -1366,10 +1391,10 @@ OUString XMLTextImportHelper::ConvertStarFonts( const OUString& rChars,
    to the found list styles of the parent styles. (#i73973#)
 */
 static bool lcl_HasListStyle( const OUString& sStyleName,
-                                  const Reference < XNameContainer >& xParaStyles,
-                                  SvXMLImport& rImport,
-                                  const OUString& sNumberingStyleName,
-                                  const OUString& sOutlineStyleName )
+                              const Reference < XNameContainer >& xParaStyles,
+                              SvXMLImport const & rImport,
+                              const OUString& sNumberingStyleName,
+                              const OUString& sOutlineStyleName )
 {
     bool bRet( false );
 
@@ -1419,7 +1444,7 @@ static bool lcl_HasListStyle( const OUString& sStyleName,
             if ( !aParentStyle.isEmpty() )
             {
                 aParentStyle =
-                    rImport.GetStyleDisplayName( XML_STYLE_FAMILY_TEXT_PARAGRAPH,
+                    rImport.GetStyleDisplayName( XmlStyleFamily::TEXT_PARAGRAPH,
                                                  aParentStyle );
             }
             if ( aParentStyle.isEmpty() || !xParaStyles->hasByName( aParentStyle ) )
@@ -1484,14 +1509,15 @@ static bool lcl_HasListStyle( const OUString& sStyleName,
     return bRet;
 }
 OUString XMLTextImportHelper::SetStyleAndAttrs(
-        SvXMLImport& rImport,
+        SvXMLImport const & rImport,
         const Reference < XTextCursor >& rCursor,
         const OUString& rStyleName,
         bool bPara,
         bool bOutlineLevelAttrFound,
         sal_Int8 nOutlineLevel,
         // Numberings/Bullets in table not visible after save/reload (#i80724#)
-        bool bSetListAttrs )
+        bool bSetListAttrs,
+        bool bOutlineContentVisible)
 {
     static const char s_NumberingRules[] = "NumberingRules";
     static const char s_NumberingIsNumber[] = "NumberingIsNumber";
@@ -1502,15 +1528,14 @@ OUString XMLTextImportHelper::SetStyleAndAttrs(
     static const char s_PageDescName[] = "PageDescName";
     static const char s_OutlineLevel[] = "OutlineLevel";
 
-    const sal_uInt16 nFamily = bPara ? XML_STYLE_FAMILY_TEXT_PARAGRAPH
-                                     : XML_STYLE_FAMILY_TEXT_TEXT;
+    const XmlStyleFamily nFamily = bPara ? XmlStyleFamily::TEXT_PARAGRAPH
+                                         : XmlStyleFamily::TEXT_TEXT;
     XMLTextStyleContext *pStyle = nullptr;
     OUString sStyleName( rStyleName );
     if (!sStyleName.isEmpty() && m_xImpl->m_xAutoStyles.is())
     {
         const SvXMLStyleContext* pTempStyle =
-            static_cast<SvXMLStylesContext *>(m_xImpl->m_xAutoStyles.get())->
-                    FindStyleChildContext( nFamily, sStyleName, true );
+            m_xImpl->m_xAutoStyles->FindStyleChildContext( nFamily, sStyleName, true );
         pStyle = const_cast<XMLTextStyleContext*>(dynamic_cast< const XMLTextStyleContext* >(pTempStyle));
     }
     if( pStyle )
@@ -1525,7 +1550,7 @@ OUString XMLTextImportHelper::SetStyleAndAttrs(
     {
         sStyleName = rImport.GetStyleDisplayName( nFamily, sStyleName );
         const OUString rPropName = bPara ? OUString("ParaStyleName") : OUString("CharStyleName");
-        const Reference < XNameContainer > & rStyles = (bPara)
+        const Reference < XNameContainer > & rStyles = bPara
             ? m_xImpl->m_xParaStyles
             : m_xImpl->m_xTextStyles;
         if( rStyles.is() &&
@@ -1603,7 +1628,7 @@ OUString XMLTextImportHelper::SetStyleAndAttrs(
                 bool bSameNumRules = xNewNumRules == xNumRules;
                 if( !bSameNumRules && xNewNumRules.is() && xNumRules.is() )
                 {
-                    // If the interface pointers are different then this does
+                    // If the interface pointers are different, then this does
                     // not mean that the num rules are different. Further tests
                     // are required then. However, if only one num rule is
                     // set, no tests are required of course.
@@ -1734,7 +1759,7 @@ OUString XMLTextImportHelper::SetStyleAndAttrs(
         {
             OUString sDisplayName(
                 rImport.GetStyleDisplayName(
-                                XML_STYLE_FAMILY_MASTER_PAGE,
+                                XmlStyleFamily::MASTER_PAGE,
                                 pStyle->GetMasterPageName()) );
             if( sDisplayName.isEmpty() ||
                 (m_xImpl->m_xPageStyles.is() &&
@@ -1749,12 +1774,12 @@ OUString XMLTextImportHelper::SetStyleAndAttrs(
         {
             OUString sDisplayName(
                 rImport.GetStyleDisplayName(
-                                XML_STYLE_FAMILY_TEXT_TEXT,
+                                XmlStyleFamily::TEXT_TEXT,
                                 pStyle->GetDropCapStyleName()) );
             if (m_xImpl->m_xTextStyles->hasByName(sDisplayName) &&
-                xPropSetInfo->hasPropertyByName( pStyle->sDropCapCharStyleName ) )
+                xPropSetInfo->hasPropertyByName("DropCapCharStyleName"))
             {
-                xPropSet->setPropertyValue( pStyle->sDropCapCharStyleName, makeAny(sDisplayName) );
+                xPropSet->setPropertyValue("DropCapCharStyleName", makeAny(sDisplayName));
             }
         }
 
@@ -1846,7 +1871,16 @@ OUString XMLTextImportHelper::SetStyleAndAttrs(
                         makeAny( static_cast<sal_Int16>(nOutlineLevel) ) );
                 }
             }
-
+            if (!bOutlineContentVisible)
+            {
+                uno::Sequence<beans::PropertyValue> aGrabBag;
+                xPropSet->getPropertyValue("ParaInteropGrabBag") >>= aGrabBag;
+                sal_Int32 length = aGrabBag.getLength();
+                aGrabBag.realloc(length + 1);
+                aGrabBag[length].Name = "OutlineContentVisibleAttr";
+                aGrabBag[length].Value <<= bool(bOutlineContentVisible);
+                xPropSet->setPropertyValue("ParaInteropGrabBag", uno::makeAny(aGrabBag));
+            }
             // RFE: inserting headings into text documents (#i70748#)
             if ( bApplyOutlineLevelAsListLevel )
             {
@@ -1949,16 +1983,14 @@ void XMLTextImportHelper::FindOutlineStyleName( OUString& rStyleName,
                 Sequence<PropertyValue> aProperties;
                 m_xImpl->m_xChapterNumbering->getByIndex( nOutlineLevel )
                     >>= aProperties;
-                for( sal_Int32 i = 0; i < aProperties.getLength(); i++ )
+                auto pProp = std::find_if(aProperties.begin(), aProperties.end(),
+                    [](const PropertyValue& rProp) { return rProp.Name == "HeadingStyleName"; });
+                if (pProp != aProperties.end())
                 {
-                    if (aProperties[i].Name == "HeadingStyleName")
-                    {
-                        OUString aOutlineStyle;
-                        aProperties[i].Value >>= aOutlineStyle;
-                        m_xImpl->m_xOutlineStylesCandidates[nOutlineLevel]
-                            .push_back( aOutlineStyle );
-                        break;  // early out, if we found it!.
-                    }
+                    OUString aOutlineStyle;
+                    pProp->Value >>= aOutlineStyle;
+                    m_xImpl->m_xOutlineStylesCandidates[nOutlineLevel]
+                        .push_back( aOutlineStyle );
                 }
             }
 
@@ -1989,102 +2021,102 @@ void XMLTextImportHelper::AddOutlineStyleCandidate( const sal_Int8 nOutlineLevel
 
 void XMLTextImportHelper::SetOutlineStyles( bool bSetEmptyLevels )
 {
-    if ((m_xImpl->m_xOutlineStylesCandidates != nullptr || bSetEmptyLevels) &&
-         m_xImpl->m_xChapterNumbering.is() &&
-         !IsInsertMode())
+    if (!(m_xImpl->m_xOutlineStylesCandidates != nullptr || bSetEmptyLevels) ||
+        !m_xImpl->m_xChapterNumbering.is() ||
+        IsInsertMode())
+        return;
+
+    bool bChooseLastOne( false );
     {
-        bool bChooseLastOne( false );
+        if ( GetXMLImport().IsTextDocInOOoFileFormat() )
         {
-            if ( GetXMLImport().IsTextDocInOOoFileFormat() )
+            bChooseLastOne = true;
+        }
+        else
+        {
+            sal_Int32 nUPD( 0 );
+            sal_Int32 nBuild( 0 );
+            if ( GetXMLImport().getBuildIds( nUPD, nBuild ) )
             {
-                bChooseLastOne = true;
+                // check explicitly on certain versions
+                bChooseLastOne = ( nUPD == 641 ) || ( nUPD == 645 ) ||  // prior OOo 2.0
+                                 ( nUPD == 680 && nBuild <= 9073 ); // OOo 2.0 - OOo 2.0.4
             }
-            else
+        }
+    }
+
+    OUString sOutlineStyleName;
+    {
+        Reference<XPropertySet> xChapterNumRule(
+            m_xImpl->m_xChapterNumbering, UNO_QUERY);
+        xChapterNumRule->getPropertyValue("Name") >>= sOutlineStyleName;
+    }
+
+    const sal_Int32 nCount = m_xImpl->m_xChapterNumbering->getCount();
+    /* First collect all paragraph styles chosen for assignment to each
+       list level of the outline style, then perform the intrinsic assignment.
+       Reason: The assignment of a certain paragraph style to a list level
+               of the outline style causes side effects on the children
+               paragraph styles in Writer. (#i106218#)
+    */
+    ::std::vector<OUString> sChosenStyles(nCount);
+    for( sal_Int32 i=0; i < nCount; ++i )
+    {
+        if ( bSetEmptyLevels ||
+             (m_xImpl->m_xOutlineStylesCandidates &&
+              !m_xImpl->m_xOutlineStylesCandidates[i].empty()))
+        {
+            // determine, which candidate is one to be assigned to the list
+            // level of the outline style
+            if (m_xImpl->m_xOutlineStylesCandidates &&
+                !m_xImpl->m_xOutlineStylesCandidates[i].empty())
             {
-                sal_Int32 nUPD( 0 );
-                sal_Int32 nBuild( 0 );
-                if ( GetXMLImport().getBuildIds( nUPD, nBuild ) )
+                if ( bChooseLastOne )
                 {
-                    // check explicitly on certain versions
-                    bChooseLastOne = ( nUPD == 641 ) || ( nUPD == 645 ) ||  // prior OOo 2.0
-                                     ( nUPD == 680 && nBuild <= 9073 ); // OOo 2.0 - OOo 2.0.4
+                    sChosenStyles[i] =
+                    m_xImpl->m_xOutlineStylesCandidates[i].back();
                 }
-            }
-        }
-
-        OUString sOutlineStyleName;
-        {
-            Reference<XPropertySet> xChapterNumRule(
-                m_xImpl->m_xChapterNumbering, UNO_QUERY);
-            const OUString sName("Name");
-            xChapterNumRule->getPropertyValue(sName) >>= sOutlineStyleName;
-        }
-
-        const sal_Int32 nCount = m_xImpl->m_xChapterNumbering->getCount();
-        /* First collect all paragraph styles chosen for assignment to each
-           list level of the outline style, then perform the intrinsic assignment.
-           Reason: The assignment of a certain paragraph style to a list level
-                   of the outline style causes side effects on the children
-                   paragraph styles in Writer. (#i106218#)
-        */
-        ::std::vector<OUString> sChosenStyles(nCount);
-        for( sal_Int32 i=0; i < nCount; ++i )
-        {
-            if ( bSetEmptyLevels ||
-                 (m_xImpl->m_xOutlineStylesCandidates &&
-                  !m_xImpl->m_xOutlineStylesCandidates[i].empty()))
-            {
-                // determine, which candidate is one to be assigned to the list
-                // level of the outline style
-                if (m_xImpl->m_xOutlineStylesCandidates &&
-                    !m_xImpl->m_xOutlineStylesCandidates[i].empty())
+                else
                 {
-                    if ( bChooseLastOne )
+                    for (size_t j = 0;
+                        j < m_xImpl->m_xOutlineStylesCandidates[i].size();
+                        ++j)
                     {
-                        sChosenStyles[i] =
-                        m_xImpl->m_xOutlineStylesCandidates[i].back();
-                    }
-                    else
-                    {
-                        for (size_t j = 0;
-                            j < m_xImpl->m_xOutlineStylesCandidates[i].size();
-                            ++j)
+                        if (!lcl_HasListStyle(
+                                m_xImpl->m_xOutlineStylesCandidates[i][j],
+                                m_xImpl->m_xParaStyles,
+                                GetXMLImport(),
+                                "NumberingStyleName",
+                                sOutlineStyleName))
                         {
-                            if (!lcl_HasListStyle(
-                                    m_xImpl->m_xOutlineStylesCandidates[i][j],
-                                    m_xImpl->m_xParaStyles,
-                                    GetXMLImport(),
-                                    "NumberingStyleName",
-                                    sOutlineStyleName))
-                            {
-                                sChosenStyles[i] =
-                                    m_xImpl->m_xOutlineStylesCandidates[i][j];
-                                break;
-                            }
+                            sChosenStyles[i] =
+                                m_xImpl->m_xOutlineStylesCandidates[i][j];
+                            break;
                         }
                     }
                 }
             }
         }
-        // Trashed outline numbering in ODF 1.1 text document created by OOo 3.x (#i106218#)
-        Sequence < PropertyValue > aProps( 1 );
-        PropertyValue *pProps = aProps.getArray();
-        pProps->Name = "HeadingStyleName";
-        for ( sal_Int32 i = 0; i < nCount; ++i )
+    }
+    // Trashed outline numbering in ODF 1.1 text document created by OOo 3.x (#i106218#)
+    Sequence < PropertyValue > aProps( 1 );
+    PropertyValue *pProps = aProps.getArray();
+    pProps->Name = "HeadingStyleName";
+    for ( sal_Int32 i = 0; i < nCount; ++i )
+    {
+        // Paragraph style assignments in Outline of template lost from second level on (#i107610#)
+        if ( bSetEmptyLevels || !sChosenStyles[i].isEmpty() )
         {
-            // Paragraph style assignments in Outline of template lost from second level on (#i107610#)
-            if ( bSetEmptyLevels || !sChosenStyles[i].isEmpty() )
-            {
-                pProps->Value <<= sChosenStyles[i];
-                m_xImpl->m_xChapterNumbering->replaceByIndex(i,
-                        makeAny( aProps ));
-            }
+            pProps->Value <<= sChosenStyles[i];
+            m_xImpl->m_xChapterNumbering->replaceByIndex(i,
+                    makeAny( aProps ));
         }
     }
+
 }
 
 void XMLTextImportHelper::SetHyperlink(
-    SvXMLImport& rImport,
+    SvXMLImport const & rImport,
     const Reference < XTextCursor >& rCursor,
     const OUString& rHRef,
     const OUString& rName,
@@ -2142,7 +2174,7 @@ void XMLTextImportHelper::SetHyperlink(
     {
         OUString sDisplayName(
             rImport.GetStyleDisplayName(
-                            XML_STYLE_FAMILY_TEXT_TEXT, rStyleName ) );
+                            XmlStyleFamily::TEXT_TEXT, rStyleName ) );
         if( !sDisplayName.isEmpty() &&
             xPropSetInfo->hasPropertyByName(s_UnvisitedCharStyleName) &&
             m_xImpl->m_xTextStyles->hasByName(sDisplayName))
@@ -2153,7 +2185,7 @@ void XMLTextImportHelper::SetHyperlink(
 
         sDisplayName =
             rImport.GetStyleDisplayName(
-                            XML_STYLE_FAMILY_TEXT_TEXT, rVisitedStyleName );
+                            XmlStyleFamily::TEXT_TEXT, rVisitedStyleName );
         if( !sDisplayName.isEmpty() &&
             xPropSetInfo->hasPropertyByName(s_VisitedCharStyleName) &&
             m_xImpl->m_xTextStyles->hasByName(sDisplayName))
@@ -2165,7 +2197,7 @@ void XMLTextImportHelper::SetHyperlink(
 }
 
 void XMLTextImportHelper::SetRuby(
-    SvXMLImport& rImport,
+    SvXMLImport const & rImport,
     const Reference < XTextCursor >& rCursor,
     const OUString& rStyleName,
     const OUString& rTextStyleName,
@@ -2186,8 +2218,7 @@ void XMLTextImportHelper::SetRuby(
         if (!rStyleName.isEmpty() && m_xImpl->m_xAutoStyles.is())
         {
             const SvXMLStyleContext* pTempStyle =
-                static_cast<SvXMLStylesContext *>(m_xImpl->m_xAutoStyles.get())->
-                FindStyleChildContext( XML_STYLE_FAMILY_TEXT_RUBY,
+                m_xImpl->m_xAutoStyles->FindStyleChildContext( XmlStyleFamily::TEXT_RUBY,
                                        rStyleName, true );
             XMLPropStyleContext *pStyle = const_cast<XMLPropStyleContext*>(dynamic_cast< const XMLPropStyleContext* >(pTempStyle));
 
@@ -2200,7 +2231,7 @@ void XMLTextImportHelper::SetRuby(
         {
             OUString sDisplayName(
                 rImport.GetStyleDisplayName(
-                            XML_STYLE_FAMILY_TEXT_TEXT, rTextStyleName ) );
+                            XmlStyleFamily::TEXT_TEXT, rTextStyleName ) );
             if( (!sDisplayName.isEmpty()) &&
                 m_xImpl->m_xTextStyles->hasByName( sDisplayName ))
             {
@@ -2231,7 +2262,7 @@ SvXMLImportContext *XMLTextImportHelper::CreateTextChildContext(
     {
     case XML_TOK_TEXT_H:
         bHeading = true;
-        SAL_FALLTHROUGH;
+        [[fallthrough]];
     case XML_TOK_TEXT_P:
         pContext = new XMLParaContext( rImport,
                                        nPrefix, rLocalName,
@@ -2425,16 +2456,18 @@ SvXMLImportContext *XMLTextImportHelper::CreateTableChildContext(
 sal_Int32 XMLTextImportHelper::GetDataStyleKey(const OUString& sStyleName,
                                                bool* pIsSystemLanguage )
 {
+    if (!m_xImpl->m_xAutoStyles.is())
+        return -1;
+
     const SvXMLStyleContext* pStyle =
-        static_cast<SvXMLStylesContext *>(m_xImpl->m_xAutoStyles.get())->
-                  FindStyleChildContext( XML_STYLE_FAMILY_DATA_STYLE,
+        m_xImpl->m_xAutoStyles->FindStyleChildContext( XmlStyleFamily::DATA_STYLE,
                                               sStyleName, true );
 
     // get appropriate context
 
 
-    // first check if it's a impress and draw only number format
-    // this is needed since its also a SvXMLNumFormatContext,
+    // first check if it's an Impress and draw only number format
+    // this is needed since it's also a SvXMLNumFormatContext,
     // that was needed to support them for controls in impress/draw also
     const SdXMLNumberFormatImportContext* pSdNumStyle = dynamic_cast<const SdXMLNumberFormatImportContext*>( pStyle  );
     if( pSdNumStyle )
@@ -2462,8 +2495,7 @@ const SvxXMLListStyleContext *XMLTextImportHelper::FindAutoListStyle( const OUSt
     if (m_xImpl->m_xAutoStyles.is())
     {
         const SvXMLStyleContext* pTempStyle =
-            static_cast<SvXMLStylesContext *>(m_xImpl->m_xAutoStyles.get())->
-                    FindStyleChildContext( XML_STYLE_FAMILY_TEXT_LIST, rName,
+            m_xImpl->m_xAutoStyles->FindStyleChildContext( XmlStyleFamily::TEXT_LIST, rName,
                                            true );
         pStyle = dynamic_cast< const SvxXMLListStyleContext* >(pTempStyle);
     }
@@ -2477,8 +2509,7 @@ XMLPropStyleContext *XMLTextImportHelper::FindAutoFrameStyle( const OUString& rN
     if (m_xImpl->m_xAutoStyles.is())
     {
         const SvXMLStyleContext* pTempStyle =
-            static_cast<SvXMLStylesContext *>(m_xImpl->m_xAutoStyles.get())->
-                    FindStyleChildContext( XML_STYLE_FAMILY_SD_GRAPHICS_ID, rName,
+            m_xImpl->m_xAutoStyles->FindStyleChildContext( XmlStyleFamily::SD_GRAPHICS_ID, rName,
                                            true );
         pStyle = const_cast<XMLPropStyleContext*>(dynamic_cast< const XMLPropStyleContext* >(pTempStyle));
     }
@@ -2493,9 +2524,8 @@ XMLPropStyleContext* XMLTextImportHelper::FindSectionStyle(
     if (m_xImpl->m_xAutoStyles.is())
     {
         const SvXMLStyleContext* pTempStyle =
-            static_cast<SvXMLStylesContext *>(m_xImpl->m_xAutoStyles.get())->
-                           FindStyleChildContext(
-                               XML_STYLE_FAMILY_TEXT_SECTION,
+            m_xImpl->m_xAutoStyles->FindStyleChildContext(
+                               XmlStyleFamily::TEXT_SECTION,
                                rName, true );
         pStyle = const_cast<XMLPropStyleContext*>(dynamic_cast< const XMLPropStyleContext* >(pTempStyle));
     }
@@ -2510,9 +2540,8 @@ XMLPropStyleContext* XMLTextImportHelper::FindPageMaster(
     if (m_xImpl->m_xAutoStyles.is())
     {
         const SvXMLStyleContext* pTempStyle =
-            static_cast<SvXMLStylesContext *>(m_xImpl->m_xAutoStyles.get())->
-                           FindStyleChildContext(
-                               XML_STYLE_FAMILY_PAGE_MASTER,
+            m_xImpl->m_xAutoStyles->FindStyleChildContext(
+                               XmlStyleFamily::PAGE_MASTER,
                                rName, true );
         pStyle = const_cast<XMLPropStyleContext*>(dynamic_cast< const XMLPropStyleContext* >(pTempStyle));
     }
@@ -2520,6 +2549,18 @@ XMLPropStyleContext* XMLTextImportHelper::FindPageMaster(
     return pStyle;
 }
 
+XMLPropStyleContext * XMLTextImportHelper::FindDrawingPage(OUString const& rName) const
+{
+    if (!m_xImpl->m_xAutoStyles.is())
+    {
+        return nullptr;
+    }
+    SvXMLStyleContext const* pStyle(
+        m_xImpl->m_xAutoStyles->FindStyleChildContext(
+               XmlStyleFamily::SD_DRAWINGPAGE_ID, rName, true));
+    assert(pStyle == nullptr || dynamic_cast<XMLPropStyleContext const*>(pStyle) != nullptr);
+    return const_cast<XMLPropStyleContext*>(static_cast<XMLPropStyleContext const*>(pStyle));
+}
 
 void XMLTextImportHelper::PushListContext()
 {
@@ -2534,7 +2575,7 @@ void XMLTextImportHelper::PopListContext()
 
 const SvXMLTokenMap& XMLTextImportHelper::GetTextNumberedParagraphAttrTokenMap()
 {
-    if (!m_xImpl->m_xTextNumberedParagraphAttrTokenMap.get())
+    if (!m_xImpl->m_xTextNumberedParagraphAttrTokenMap)
     {
         m_xImpl->m_xTextNumberedParagraphAttrTokenMap.reset(
             new SvXMLTokenMap( aTextNumberedParagraphAttrTokenMap ) );
@@ -2544,7 +2585,7 @@ const SvXMLTokenMap& XMLTextImportHelper::GetTextNumberedParagraphAttrTokenMap()
 
 const SvXMLTokenMap& XMLTextImportHelper::GetTextListBlockAttrTokenMap()
 {
-    if (!m_xImpl->m_xTextListBlockAttrTokenMap.get())
+    if (!m_xImpl->m_xTextListBlockAttrTokenMap)
     {
         m_xImpl->m_xTextListBlockAttrTokenMap.reset(
             new SvXMLTokenMap( aTextListBlockAttrTokenMap ) );
@@ -2554,7 +2595,7 @@ const SvXMLTokenMap& XMLTextImportHelper::GetTextListBlockAttrTokenMap()
 
 const SvXMLTokenMap& XMLTextImportHelper::GetTextListBlockElemTokenMap()
 {
-    if (!m_xImpl->m_xTextListBlockElemTokenMap.get())
+    if (!m_xImpl->m_xTextListBlockElemTokenMap)
     {
         m_xImpl->m_xTextListBlockElemTokenMap.reset(
             new SvXMLTokenMap( aTextListBlockElemTokenMap ) );
@@ -2564,7 +2605,7 @@ const SvXMLTokenMap& XMLTextImportHelper::GetTextListBlockElemTokenMap()
 
 SvI18NMap& XMLTextImportHelper::GetRenameMap()
 {
-    if (!m_xImpl->m_xRenameMap.get())
+    if (!m_xImpl->m_xRenameMap)
     {
         m_xImpl->m_xRenameMap.reset( new SvI18NMap );
     }
@@ -2596,11 +2637,7 @@ bool XMLTextImportHelper::FindAndRemoveBookmarkStartRange(
         o_rXmlId = std::get<1>(rEntry);
         o_rpRDFaAttributes = std::get<2>(rEntry);
         m_xImpl->m_BookmarkStartRanges.erase(sName);
-        auto it(m_xImpl->m_BookmarkVector.begin());
-        while (it != m_xImpl->m_BookmarkVector.end() && it->compareTo(sName)!=0)
-        {
-            ++it;
-        }
+        auto it = std::find(m_xImpl->m_BookmarkVector.begin(), m_xImpl->m_BookmarkVector.end(), sName);
         if (it!=m_xImpl->m_BookmarkVector.end())
         {
             m_xImpl->m_BookmarkVector.erase(it);
@@ -2628,13 +2665,23 @@ OUString XMLTextImportHelper::FindActiveBookmarkName()
 void XMLTextImportHelper::pushFieldCtx( const OUString& name, const OUString& type )
 {
     m_xImpl->m_FieldStack.push(Impl::field_stack_item_t(
-        Impl::field_name_type_t(name, type), Impl::field_params_t()));
+        Impl::field_name_type_t(name, type), Impl::field_params_t(), uno::Reference<text::XFormField>{}));
 }
 
-void XMLTextImportHelper::popFieldCtx()
+uno::Reference<text::XFormField>
+XMLTextImportHelper::popFieldCtx()
 {
+    uno::Reference<text::XFormField> xRet;
     if ( !m_xImpl->m_FieldStack.empty() )
+    {
+        xRet = std::get<2>(m_xImpl->m_FieldStack.top());
         m_xImpl->m_FieldStack.pop();
+    }
+    else
+    {
+        SAL_INFO("xmloff.text", "unexpected fieldmark end");
+    }
+    return xRet;
 }
 
 void XMLTextImportHelper::addFieldParam( const OUString& name, const OUString& value )
@@ -2642,7 +2689,7 @@ void XMLTextImportHelper::addFieldParam( const OUString& name, const OUString& v
     assert(!m_xImpl->m_FieldStack.empty());
     if (!m_xImpl->m_FieldStack.empty()) {
         Impl::field_stack_item_t & FieldStackItem(m_xImpl->m_FieldStack.top());
-        FieldStackItem.second.push_back(Impl::field_param_t( name, value ));
+        std::get<1>(FieldStackItem).emplace_back( name, value );
     }
 }
 
@@ -2651,7 +2698,7 @@ OUString XMLTextImportHelper::getCurrentFieldType()
     assert(!m_xImpl->m_FieldStack.empty());
     if (!m_xImpl->m_FieldStack.empty())
     {
-        return m_xImpl->m_FieldStack.top().first.second;
+        return std::get<0>(m_xImpl->m_FieldStack.top()).second;
     }
     else
     {
@@ -2659,18 +2706,19 @@ OUString XMLTextImportHelper::getCurrentFieldType()
     }
 }
 
-bool XMLTextImportHelper::hasCurrentFieldCtx()
+bool XMLTextImportHelper::hasCurrentFieldCtx() const
 {
     return !m_xImpl->m_FieldStack.empty();
 }
 
-void XMLTextImportHelper::setCurrentFieldParamsTo(css::uno::Reference< css::text::XFormField> &xFormField)
+void XMLTextImportHelper::setCurrentFieldParamsTo(css::uno::Reference< css::text::XFormField> const &xFormField)
 {
     assert(!m_xImpl->m_FieldStack.empty());
     if (!m_xImpl->m_FieldStack.empty() && xFormField.is())
     {
-        FieldParamImporter(&m_xImpl->m_FieldStack.top().second,
+        FieldParamImporter(&std::get<1>(m_xImpl->m_FieldStack.top()),
             xFormField->getParameters()).Import();
+        std::get<2>(m_xImpl->m_FieldStack.top()) = xFormField;
     }
 }
 
@@ -2695,7 +2743,7 @@ void XMLTextImportHelper::ConnectFrameChains(
         }
         else
         {
-            if (!m_xImpl->m_xPrevFrmNames.get())
+            if (!m_xImpl->m_xPrevFrmNames)
             {
                 m_xImpl->m_xPrevFrmNames.reset( new std::vector<OUString> );
                 m_xImpl->m_xNextFrmNames.reset( new std::vector<OUString> );
@@ -2704,11 +2752,11 @@ void XMLTextImportHelper::ConnectFrameChains(
             m_xImpl->m_xNextFrmNames->push_back(sNextFrmName);
         }
     }
-    if (m_xImpl->m_xPrevFrmNames.get() && !m_xImpl->m_xPrevFrmNames->empty())
+    if (m_xImpl->m_xPrevFrmNames && !m_xImpl->m_xPrevFrmNames->empty())
     {
         for(std::vector<OUString>::iterator i = m_xImpl->m_xPrevFrmNames->begin(), j = m_xImpl->m_xNextFrmNames->begin(); i != m_xImpl->m_xPrevFrmNames->end() && j != m_xImpl->m_xNextFrmNames->end(); ++i, ++j)
         {
-            if((*j).equals(rFrmName))
+            if((*j) == rFrmName)
             {
                 // The previous frame must exist, because it existing than
                 // inserting the entry
@@ -2838,7 +2886,7 @@ void XMLTextImportHelper::RedlineSetCursor(
     // dummy implementation: do nothing
 }
 
-void XMLTextImportHelper::RedlineAdjustStartNodeCursor(bool)
+void XMLTextImportHelper::RedlineAdjustStartNodeCursor()
 {
     // dummy implementation: do nothing
 }
@@ -2858,7 +2906,7 @@ void XMLTextImportHelper::SetChangesProtectionKey(const Sequence<sal_Int8> &)
 }
 
 
-OUString XMLTextImportHelper::GetOpenRedlineId()
+OUString const & XMLTextImportHelper::GetOpenRedlineId() const
 {
     return m_xImpl->m_sOpenRedlineIdentifier;
 }
@@ -2879,7 +2927,7 @@ XMLTextImportHelper::SetCellParaStyleDefault(OUString const& rNewValue)
     m_xImpl->m_sCellParaStyleDefault = rNewValue;
 }
 
-OUString const& XMLTextImportHelper::GetCellParaStyleDefault()
+OUString const& XMLTextImportHelper::GetCellParaStyleDefault() const
 {
     return m_xImpl->m_sCellParaStyleDefault;
 }
@@ -2938,6 +2986,22 @@ void XMLTextImportHelper::MapCrossRefHeadingFieldsHorribly()
         }
         xField->setPropertyValue("SourceName", uno::makeAny(iter->second));
     }
+}
+
+void XMLTextImportHelper::setBookmarkAttributes(OUString const& bookmark, bool hidden, OUString const& condition)
+{
+    m_xImpl->m_bBookmarkHidden[bookmark] = hidden;
+    m_xImpl->m_sBookmarkCondition[bookmark] = condition;
+}
+
+bool XMLTextImportHelper::getBookmarkHidden(OUString const& bookmark) const
+{
+    return m_xImpl->m_bBookmarkHidden[bookmark];
+}
+
+const OUString& XMLTextImportHelper::getBookmarkCondition(OUString const& bookmark) const
+{
+    return m_xImpl->m_sBookmarkCondition[bookmark];
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

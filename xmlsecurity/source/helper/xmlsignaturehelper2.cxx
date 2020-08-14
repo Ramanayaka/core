@@ -17,18 +17,16 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <xmlsignaturehelper.hxx>
-#include "xmlsignaturehelper2.hxx"
+#include <xmlsignaturehelper2.hxx>
 
 #include <tools/solar.h>
 #include <unotools/streamhelper.hxx>
 
 #include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/embed/XStorageRawAccess.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <osl/diagnose.h>
 #include <rtl/uri.hxx>
+#include <sal/log.hxx>
 
 using namespace com::sun::star;
 
@@ -57,9 +55,7 @@ uno::Reference< io::XInputStream > SAL_CALL UriBindingHelper::getUriBinding( con
     else
     {
         SvFileStream* pStream = new SvFileStream( uri, StreamMode::READ );
-        pStream->Seek( STREAM_SEEK_TO_END );
-        sal_uLong nBytes = pStream->Tell();
-        pStream->Seek( STREAM_SEEK_TO_BEGIN );
+        sal_uInt64 nBytes = pStream->TellEnd();
         SvLockBytesRef xLockBytes = new SvLockBytes( pStream, true );
         xInputStream = new utl::OInputStreamHelper( xLockBytes, nBytes );
     }
@@ -92,8 +88,7 @@ uno::Reference < io::XInputStream > UriBindingHelper::OpenInputStream( const uno
             throw uno::Exception("Could not decode URI for stream element.", nullptr);
 
         uno::Reference< io::XStream > xStream;
-        uno::Reference<container::XNameAccess> xNameAccess(rxStore, uno::UNO_QUERY);
-        if (!xNameAccess->hasByName(sName))
+        if (!rxStore->hasByName(sName))
             SAL_WARN("xmlsecurity.helper", "expected stream, but not found: " << sName);
         else
             xStream = rxStore->cloneStreamElement( sName );

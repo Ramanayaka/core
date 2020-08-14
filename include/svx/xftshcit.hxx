@@ -29,16 +29,14 @@
 |*
 \************************************************************************/
 
-class SVX_DLLPUBLIC XFormTextShadowColorItem : public XColorItem
+class SVXCORE_DLLPUBLIC XFormTextShadowColorItem final : public XColorItem
 {
 public:
             static SfxPoolItem* CreateDefault();
             XFormTextShadowColorItem() {}
             XFormTextShadowColorItem(const OUString& rName, const Color& rTheColor);
-            XFormTextShadowColorItem(SvStream& rIn);
 
-    virtual SfxPoolItem*    Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual SfxPoolItem*    Create(SvStream& rIn, sal_uInt16 nVer) const override;
+    virtual XFormTextShadowColorItem* Clone(SfxItemPool* pPool = nullptr) const override;
 };
 
 #endif

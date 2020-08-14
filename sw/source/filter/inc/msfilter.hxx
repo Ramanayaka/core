@@ -23,19 +23,16 @@
 #include <sal/config.h>
 
 #include <cstddef>
-#include <set>
 #include <map>
 #include <vector>
 #include <memory>
 #include <swtypes.hxx>
 #include "wwstyles.hxx"
 #include <rtl/textenc.h>
-#include <tools/gen.hxx>
-#include <filter/msfilter/util.hxx>
-#include <fltshell.hxx>
-#include <redline.hxx>
+#include "fltshell.hxx"
 #include <shellio.hxx>
 #include <svl/zforlist.hxx>
+#include <svl/listener.hxx>
 
 class SwDoc;
 class SwPaM;
@@ -78,19 +75,6 @@ namespace sw
         sal_uInt8 rtl_TextEncodingToWinCharsetRTF(OUString const& rFontName,
                 OUString const& rAltName, rtl_TextEncoding eTextEncoding);
 
-        /** Import a MSWord XE field. Suitable for .doc and .rtf
-
-            @param rDoc
-                the document to insert into
-
-            @param rPaM
-                the position in the document to insert into
-
-            @param rXE
-                the arguments of the original word XE field
-        */
-        void ImportXE(SwDoc &rDoc, SwPaM &rPaM, const OUString &rXE);
-
         /** Convert from DTTM to Writer's DateTime
 
         */
@@ -102,15 +86,15 @@ namespace sw
         sal_uLong MSDateTimeFormatToSwFormat(OUString& rParams, SvNumberFormatter *pFormatter, LanguageType &rLang, bool bHijri, LanguageType nDocLang);
 
         /*Used to identify if the previous token is AM time field*/
-        bool IsPreviousAM(OUString& rParams, sal_Int32 nPos);
+        bool IsPreviousAM(OUString const & rParams, sal_Int32 nPos);
 
         /*Used to identify if the next token is PM time field*/
-        bool IsNextPM(OUString& rParams, sal_Int32 nPos);
+        bool IsNextPM(OUString const & rParams, sal_Int32 nPos);
 
         /** Used by MSDateTimeFormatToSwFormat to identify AM time fields
 
         */
-        bool IsNotAM(OUString& rParams, sal_Int32 nPos);
+        bool IsNotAM(OUString const & rParams, sal_Int32 nPos);
 
         /** Another function used by MSDateTimeFormatToSwFormat
 
@@ -130,7 +114,7 @@ namespace sw
             this captures such ones and clips them to values which are
             still outside the document, but of a value that doesn't cause
             problems for writer's layout, e.g. see
-            http://www.openoffice.org/issues/show_bug.cgi?id=i9245
+            https://bz.apache.org/ooo/show_bug.cgi?id=i9245
 
             @param nIn
 
@@ -148,10 +132,10 @@ namespace sw
             Additionally it then has to avoid name collisions such as
 
             a) styles "Normal" and "Default" in a single document, where
-            we can use the original distinct names "Normal" and "Default" and..
+            we can use the original distinct names "Normal" and "Default" and...
             b) styles "Normal" and "Default" in a single document, where
             we can not use the original names, and must come up with an
-            alternative name for one of them..
+            alternative name for one of them...
 
             And it needs to report to the importer if the style being mapped to
             was already in existence, for the cut and paste/insert file mode we
@@ -161,7 +145,7 @@ namespace sw
         class ParaStyleMapper
         {
         private:
-            //I hate these things stupid pImpl things, but its warranted here
+            //I hate these things stupid pImpl things, but it's warranted here
              std::unique_ptr<::myImplHelpers::StyleMapperImpl<SwTextFormatColl> > mpImpl;
         public:
             explicit ParaStyleMapper(SwDoc &rDoc);
@@ -188,7 +172,7 @@ namespace sw
                 for this word style.
 
                 It will only return a failure in the pathological case of
-                catastropic failure elsewhere of there exist already styles
+                catastrophic failure elsewhere of there exist already styles
                 rName and WW-rName[0..SAL_MAX_INT32], which is both unlikely
                 and impossible.
             */
@@ -205,10 +189,10 @@ namespace sw
             Additionally it then has to avoid name collisions such as
 
             a) styles "Normal" and "Default" in a single document, where
-            we can use the original distinct names "Normal" and "Default" and..
+            we can use the original distinct names "Normal" and "Default" and...
             b) styles "Normal" and "Default" in a single document, where
             we can not use the original names, and must come up with an
-            alternative name for one of them..
+            alternative name for one of them...
 
             And it needs to report to the importer if the style being mapped to
             was already in existence, for the cut and paste/insert file mode we
@@ -218,7 +202,7 @@ namespace sw
         class CharStyleMapper
         {
         private:
-            //I hate these things stupid pImpl things, but its warranted here
+            //I hate these things stupid pImpl things, but it's warranted here
             std::unique_ptr<::myImplHelpers::StyleMapperImpl<SwCharFormat>> mpImpl;
         public:
             explicit CharStyleMapper(SwDoc &rDoc);
@@ -245,7 +229,7 @@ namespace sw
                 for this word style.
 
                 It will only return a failure in the pathological case of
-                catastropic failure elsewhere of there exist already styles
+                catastrophic failure elsewhere of there exist already styles
                 rName and WW-rName[0..SAL_MAX_INT32], which is both unlikely
                 and impossible.
             */
@@ -267,11 +251,13 @@ namespace sw
             explicit FontMapExport(const OUString &rFontDescription);
         };
 
-        class InsertedTableClient : public SwClient
+        class InsertedTableListener: public SvtListener
         {
+            SwTableNode* m_pTableNode;
         public:
-            explicit InsertedTableClient(SwTableNode & rNode);
-            SwTableNode * GetTableNode();
+            explicit InsertedTableListener(SwTableNode& rNode);
+            SwTableNode* GetTableNode();
+            virtual void Notify(const SfxHint&) override;
         };
 
         /** Handle requirements for table formatting in insert->file mode.
@@ -293,21 +279,18 @@ namespace sw
         class InsertedTablesManager
         {
         public:
-            typedef std::map<InsertedTableClient *, SwNodeIndex *> TableMap;
-            typedef TableMap::iterator TableMapIter;
             void DelAndMakeTableFrames();
             void InsertTable(SwTableNode &rTableNode, SwPaM &rPaM);
             explicit InsertedTablesManager(const SwDoc &rDoc);
         private:
             bool mbHasRoot;
-            TableMap maTables;
+            std::map<std::unique_ptr<InsertedTableListener>, SwNodeIndex*> maTables;
         };
 
         class RedlineStack
         {
         private:
-            std::vector<SwFltStackEntry *> maStack;
-            typedef std::vector<SwFltStackEntry *>::reverse_iterator myriter;
+            std::vector<std::unique_ptr<SwFltStackEntry>> maStack;
             SwDoc &mrDoc;
 
             RedlineStack(RedlineStack const&) = delete;
@@ -315,10 +298,10 @@ namespace sw
 
         public:
             explicit RedlineStack(SwDoc &rDoc) : mrDoc(rDoc) {}
-            void MoveAttrs(const SwPosition& rPos);
+            void MoveAttrsFieldmarkInserted(const SwPosition& rPos);
             void open(const SwPosition& rPos, const SfxPoolItem& rAttr);
-            bool close(const SwPosition& rPos, RedlineType_t eType);
-            void close(const SwPosition& rPos, RedlineType_t eType,
+            bool close(const SwPosition& rPos, RedlineType eType);
+            void close(const SwPosition& rPos, RedlineType eType,
                 WW8TabDesc* pTabDesc );
             void closeall(const SwPosition& rPos);
             ~RedlineStack();
@@ -330,7 +313,7 @@ namespace sw
             SwDoc &mrDoc;
         public:
             explicit SetInDocAndDelete(SwDoc &rDoc) : mrDoc(rDoc) {}
-            void operator()(SwFltStackEntry *pEntry);
+            void operator()(std::unique_ptr<SwFltStackEntry> & pEntry);
         private:
             SetInDocAndDelete& operator=(const SetInDocAndDelete&) = delete;
         };
@@ -341,7 +324,7 @@ namespace sw
             const SwPosition &mrPos;
         public:
             explicit SetEndIfOpen(const SwPosition &rPos) : mrPos(rPos) {}
-                void operator()(SwFltStackEntry *pEntry) const
+                void operator()(const std::unique_ptr<SwFltStackEntry> & pEntry) const
             {
                 if (pEntry->bOpen)
                     pEntry->SetEndPos(mrPos);
@@ -350,12 +333,10 @@ namespace sw
             SetEndIfOpen& operator=(const SetEndIfOpen&) = delete;
         };
 
-        class CompareRedlines:
-            public std::binary_function<const SwFltStackEntry*, const SwFltStackEntry*,
-            bool>
+        class CompareRedlines
         {
         public:
-            bool operator()(const SwFltStackEntry *pOneE, const SwFltStackEntry *pTwoE)
+            bool operator()(const std::unique_ptr<SwFltStackEntry> & pOneE, const std::unique_ptr<SwFltStackEntry> & pTwoE)
                 const;
         };
 
@@ -391,7 +372,6 @@ namespace sw
         };
 
         typedef std::vector<CharRunEntry> CharRuns;
-        typedef CharRuns::const_iterator cCharRunIter;
 
         /** Collect the ranges of Text which share
 

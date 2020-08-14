@@ -20,15 +20,12 @@
 
 #include <sdr/contact/viewcontactofsdredgeobj.hxx>
 #include <svx/svdoedge.hxx>
-#include <svx/sdr/primitive2d/sdrattributecreator.hxx>
+#include <sdr/primitive2d/sdrattributecreator.hxx>
 #include <sdr/primitive2d/sdrconnectorprimitive2d.hxx>
-#include <basegfx/matrix/b2dhommatrixtools.hxx>
 
 
-namespace sdr
+namespace sdr::contact
 {
-    namespace contact
-    {
         ViewContactOfSdrEdgeObj::ViewContactOfSdrEdgeObj(SdrEdgeObj& rEdgeObj)
         :   ViewContactOfTextObj(rEdgeObj)
         {
@@ -40,20 +37,15 @@ namespace sdr
 
         drawinglayer::primitive2d::Primitive2DContainer ViewContactOfSdrEdgeObj::createViewIndependentPrimitive2DSequence() const
         {
-            basegfx::B2DPolygon aEdgeTrack = GetEdgeObj().getEdgeTrack();
-            Point aGridOff = GetEdgeObj().GetGridOffset();
-            // Hack for calc, transform position of object according
-            // to current zoom so as objects relative position to grid
-            // appears stable
-            aEdgeTrack.transform( basegfx::tools::createTranslateB2DHomMatrix( aGridOff.X(), aGridOff.Y() ) );
+            const basegfx::B2DPolygon aEdgeTrack(GetEdgeObj().getEdgeTrack());
 
             // what to do when no EdgeTrack is provided (HitTest and selectability) ?
             OSL_ENSURE(0 != aEdgeTrack.count(), "Connectors with no geometry are not allowed (!)");
 
             // ckeck attributes
             const SfxItemSet& rItemSet = GetEdgeObj().GetMergedItemSet();
-            const drawinglayer::attribute::SdrLineShadowTextAttribute aAttribute(
-                drawinglayer::primitive2d::createNewSdrLineShadowTextAttribute(
+            const drawinglayer::attribute::SdrLineEffectsTextAttribute aAttribute(
+                drawinglayer::primitive2d::createNewSdrLineEffectsTextAttribute(
                     rItemSet,
                     GetEdgeObj().getText(0)));
 
@@ -67,7 +59,7 @@ namespace sdr
 
             return drawinglayer::primitive2d::Primitive2DContainer { xReference };
         }
-    } // end of namespace contact
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

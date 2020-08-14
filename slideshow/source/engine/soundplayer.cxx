@@ -20,39 +20,35 @@
 
 #include <tools/diagnose_ex.h>
 
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
-
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 
 #include <tools/urlobj.hxx>
 
 #include <avmedia/mediawindow.hxx>
-
-#include "soundplayer.hxx"
+#include <mediafilemanager.hxx>
+#include <soundplayer.hxx>
 
 #include <algorithm>
 
 using namespace ::com::sun::star;
 
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         // TODO(Q3): Move the whole SoundPlayer class to avmedia.
 
         std::shared_ptr<SoundPlayer> SoundPlayer::create(
             EventMultiplexer & rEventMultiplexer,
             const OUString& rSoundURL,
-            const uno::Reference< uno::XComponentContext>&  rComponentContext )
+            const uno::Reference< uno::XComponentContext>&  rComponentContext,
+            MediaFileManager& rMediaFileManager)
         {
             std::shared_ptr<SoundPlayer> pPlayer(
                 new SoundPlayer( rEventMultiplexer,
                                  rSoundURL,
-                                 rComponentContext ) );
+                                 rComponentContext,
+                                 rMediaFileManager) );
             rEventMultiplexer.addPauseHandler( pPlayer );
             pPlayer->mThis = pPlayer;
             return pPlayer;
@@ -85,7 +81,8 @@ namespace slideshow
         SoundPlayer::SoundPlayer(
             EventMultiplexer & rEventMultiplexer,
             const OUString& rSoundURL,
-            const uno::Reference< uno::XComponentContext>&  rComponentContext )
+            const uno::Reference< uno::XComponentContext>&  rComponentContext,
+            MediaFileManager& rMediaFileManager)
             : mrEventMultiplexer(rEventMultiplexer),
               mThis(),
               mxPlayer()
@@ -95,10 +92,13 @@ namespace slideshow
 
             try
             {
-                const INetURLObject aURL( rSoundURL );
-                mxPlayer.set( avmedia::MediaWindow::createPlayer(
-                                aURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous ), ""/*TODO!*/ ),
-                                uno::UNO_QUERY);
+                if (rSoundURL.startsWithIgnoreAsciiCase("vnd.sun.star.Package:"))
+                {
+                    mpMediaTempFile = rMediaFileManager.getMediaTempFile(rSoundURL);
+                }
+                const INetURLObject aURL( mpMediaTempFile ? mpMediaTempFile->m_TempFileURL : rSoundURL );
+                mxPlayer = avmedia::MediaWindow::createPlayer(
+                                aURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous ), ""/*TODO!*/ );
             }
             catch( uno::RuntimeException& )
             {
@@ -120,7 +120,7 @@ namespace slideshow
                 dispose();
             }
             catch (uno::Exception &) {
-                SAL_WARN( "slideshow", comphelper::anyToString( cppu::getCaughtException() ) );
+                TOOLS_WARN_EXCEPTION( "slideshow", "" );
             }
         }
 
@@ -162,7 +162,11 @@ namespace slideshow
             if( mxPlayer.is() )
                 mxPlayer->setPlaybackLoop( bLoop );
         }
-    }
+
+        bool SoundPlayer::isPlaying() const
+        {
+            return mxPlayer->isPlaying();
+        }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

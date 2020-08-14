@@ -7,15 +7,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "cellvalue.hxx"
-#include "document.hxx"
-#include "column.hxx"
-#include "formulacell.hxx"
+#include <cellvalue.hxx>
+#include <document.hxx>
+#include <column.hxx>
+#include <formulacell.hxx>
 #include <editeng/editobj.hxx>
 #include <editeng/editstat.hxx>
-#include "stringutil.hxx"
-#include "editutil.hxx"
-#include "tokenarray.hxx"
+#include <stringutil.hxx>
+#include <editutil.hxx>
+#include <tokenarray.hxx>
 #include <formula/token.hxx>
 #include <formula/errorcodes.hxx>
 #include <svl/sharedstring.hxx>
@@ -115,7 +115,7 @@ void commitToColumn( const ScCellValue& rCell, ScColumn& rColumn, SCROW nRow )
             rColumn.SetRawString(nRow, *rCell.mpString);
         break;
         case CELLTYPE_EDIT:
-            rColumn.SetEditText(nRow, ScEditUtil::Clone(*rCell.mpEditText, rColumn.GetDoc()));
+            rColumn.SetEditText(nRow, ScEditUtil::Clone(*rCell.mpEditText, *rColumn.GetDoc()));
         break;
         case CELLTYPE_VALUE:
             rColumn.SetValue(nRow, rCell.mfValue);
@@ -123,7 +123,7 @@ void commitToColumn( const ScCellValue& rCell, ScColumn& rColumn, SCROW nRow )
         case CELLTYPE_FORMULA:
         {
             ScAddress aDestPos(rColumn.GetCol(), nRow, rColumn.GetTab());
-            rColumn.SetFormulaCell(nRow, new ScFormulaCell(*rCell.mpFormula, rColumn.GetDoc(), aDestPos));
+            rColumn.SetFormulaCell(nRow, new ScFormulaCell(*rCell.mpFormula, *rColumn.GetDoc(), aDestPos));
         }
         break;
         default:
@@ -212,7 +212,7 @@ ScCellValue::ScCellValue( const ScRefCellValue& rCell ) : meType(rCell.meType), 
             mpString = new svl::SharedString(*rCell.mpString);
         break;
         case CELLTYPE_EDIT:
-            mpEditText = rCell.mpEditText->Clone();
+            mpEditText = rCell.mpEditText->Clone().release();
         break;
         case CELLTYPE_FORMULA:
             mpFormula = rCell.mpFormula->Clone();
@@ -234,7 +234,7 @@ ScCellValue::ScCellValue( const ScCellValue& r ) : meType(r.meType), mfValue(r.m
             mpString = new svl::SharedString(*r.mpString);
         break;
         case CELLTYPE_EDIT:
-            mpEditText = r.mpEditText->Clone();
+            mpEditText = r.mpEditText->Clone().release();
         break;
         case CELLTYPE_FORMULA:
             mpFormula = r.mpFormula->Clone();
@@ -244,12 +244,33 @@ ScCellValue::ScCellValue( const ScCellValue& r ) : meType(r.meType), mfValue(r.m
     }
 }
 
+ScCellValue::ScCellValue(ScCellValue&& r) noexcept
+    : meType(r.meType)
+    , mfValue(r.mfValue)
+{
+    switch (r.meType)
+    {
+        case CELLTYPE_STRING:
+            mpString = r.mpString;
+        break;
+        case CELLTYPE_EDIT:
+            mpEditText = r.mpEditText;
+        break;
+        case CELLTYPE_FORMULA:
+            mpFormula = r.mpFormula;
+        break;
+        default:
+            ;
+    }
+    r.meType = CELLTYPE_NONE;
+}
+
 ScCellValue::~ScCellValue()
 {
     clear();
 }
 
-void ScCellValue::clear()
+void ScCellValue::clear() noexcept
 {
     switch (meType)
     {
@@ -289,7 +310,7 @@ void ScCellValue::set( const EditTextObject& rEditText )
 {
     clear();
     meType = CELLTYPE_EDIT;
-    mpEditText = rEditText.Clone();
+    mpEditText = rEditText.Clone().release();
 }
 
 void ScCellValue::set( EditTextObject* pEditText )
@@ -320,7 +341,7 @@ void ScCellValue::assign( const ScDocument& rDoc, const ScAddress& rPos )
         break;
         case CELLTYPE_EDIT:
             if (aRefVal.mpEditText)
-                mpEditText = aRefVal.mpEditText->Clone();
+                mpEditText = aRefVal.mpEditText->Clone().release();
         break;
         case CELLTYPE_VALUE:
             mfValue = aRefVal.mfValue;
@@ -354,15 +375,15 @@ void ScCellValue::assign(const ScCellValue& rOther, ScDocument& rDestDoc, ScClon
                 bool bNewControl = ((nControl & nSpellControl) != nSpellControl);
                 if (bNewControl)
                     rEngine.SetControlWord(nControl | nSpellControl);
-                rEngine.SetText(*rOther.mpEditText);
-                mpEditText = rEngine.CreateTextObject();
+                rEngine.SetTextCurrentDefaults(*rOther.mpEditText);
+                mpEditText = rEngine.CreateTextObject().release();
                 if (bNewControl)
                     rEngine.SetControlWord(nControl);
             }
             else
             {
-                rEngine.SetText(*rOther.mpEditText);
-                mpEditText = rEngine.CreateTextObject();
+                rEngine.SetTextCurrentDefaults(*rOther.mpEditText);
+                mpEditText = rEngine.CreateTextObject().release();
             }
         }
         break;
@@ -423,7 +444,7 @@ void ScCellValue::release( ScDocument& rDoc, const ScAddress& rPos )
         break;
         case CELLTYPE_EDIT:
             // Cell takes the ownership of the text object.
-            rDoc.SetEditText(rPos, mpEditText);
+            rDoc.SetEditText(rPos, std::unique_ptr<EditTextObject>(mpEditText));
         break;
         case CELLTYPE_VALUE:
             rDoc.SetValue(rPos, mfValue);
@@ -453,7 +474,7 @@ void ScCellValue::release( ScColumn& rColumn, SCROW nRow, sc::StartListeningType
         break;
         case CELLTYPE_EDIT:
             // Cell takes the ownership of the text object.
-            rColumn.SetEditText(nRow, mpEditText);
+            rColumn.SetEditText(nRow, std::unique_ptr<EditTextObject>(mpEditText));
         break;
         case CELLTYPE_VALUE:
             rColumn.SetValue(nRow, mfValue);
@@ -470,7 +491,7 @@ void ScCellValue::release( ScColumn& rColumn, SCROW nRow, sc::StartListeningType
     mfValue = 0.0;
 }
 
-OUString ScCellValue::getString( const ScDocument* pDoc )
+OUString ScCellValue::getString( const ScDocument* pDoc ) const
 {
     return getStringImpl(*this, pDoc);
 }
@@ -489,6 +510,33 @@ ScCellValue& ScCellValue::operator= ( const ScCellValue& r )
 {
     ScCellValue aTmp(r);
     swap(aTmp);
+    return *this;
+}
+
+ScCellValue& ScCellValue::operator=(ScCellValue&& rCell) noexcept
+{
+    clear();
+
+    meType = rCell.meType;
+    mfValue = rCell.mfValue;
+    switch (rCell.meType)
+    {
+        case CELLTYPE_STRING:
+            mpString = rCell.mpString;
+        break;
+        case CELLTYPE_EDIT:
+            mpEditText = rCell.mpEditText;
+        break;
+        case CELLTYPE_FORMULA:
+            mpFormula = rCell.mpFormula;
+        break;
+        default:
+            ;
+    }
+    //we don't need to reset mpString/mpEditText/mpFormula if we
+    //set meType to NONE as the ScCellValue dtor keys off the meType
+    rCell.meType = CELLTYPE_NONE;
+
     return *this;
 }
 
@@ -519,6 +567,11 @@ ScRefCellValue::ScRefCellValue( ScDocument& rDoc, const ScAddress& rPos )
     assign( rDoc, rPos);
 }
 
+ScRefCellValue::ScRefCellValue( ScDocument& rDoc, const ScAddress& rPos, sc::ColumnBlockPosition& rBlockPos )
+{
+    assign( rDoc, rPos, rBlockPos );
+}
+
 void ScRefCellValue::clear()
 {
     // Reset to empty value.
@@ -529,6 +582,11 @@ void ScRefCellValue::clear()
 void ScRefCellValue::assign( ScDocument& rDoc, const ScAddress& rPos )
 {
     *this = rDoc.GetRefCellValue(rPos);
+}
+
+void ScRefCellValue::assign( ScDocument& rDoc, const ScAddress& rPos, sc::ColumnBlockPosition& rBlockPos )
+{
+    *this = rDoc.GetRefCellValue(rPos, rBlockPos);
 }
 
 void ScRefCellValue::commit( ScDocument& rDoc, const ScAddress& rPos ) const
@@ -599,7 +657,7 @@ double ScRefCellValue::getRawValue() const
     return 0.0;
 }
 
-OUString ScRefCellValue::getString( const ScDocument* pDoc )
+OUString ScRefCellValue::getString( const ScDocument* pDoc ) const
 {
     return getStringImpl(*this, pDoc);
 }

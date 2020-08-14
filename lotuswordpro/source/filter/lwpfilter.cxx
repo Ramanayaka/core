@@ -58,25 +58,14 @@
  * Circle object.
  ************************************************************************/
 #include "lwpfilter.hxx"
-#include "lwpresource.hxx"
-#include "xfilter/xfsaxstream.hxx"
+#include <xfilter/xfglobal.hxx>
+#include <xfilter/xfsaxstream.hxx>
 #include "lwp9reader.hxx"
-#include "lwpsvstream.hxx"
-#include "xfilter/xffontfactory.hxx"
-#include "xfilter/xfstylemanager.hxx"
+#include <lwpsvstream.hxx>
 
-#include <osl/file.h>
-#include <osl/file.hxx>
 #include <tools/stream.hxx>
-#include <vcl/svapp.hxx>
-#include <xmloff/attrlist.hxx>
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/text/XTextDocument.hpp>
-#include <com/sun/star/text/XText.hpp>
-
-#include <cppuhelper/supportsservice.hxx>
-
-#include <sfx2/docfile.hxx>
 
 #include <memory>
 
@@ -84,8 +73,6 @@ using namespace ::cppu;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::io;
-using namespace ::com::sun::star::registry;
-using namespace ::com::sun::star::document;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star;
 
@@ -98,7 +85,7 @@ using namespace ::com::sun::star;
 #include "bento.hxx"
 using namespace OpenStormBento;
 #include "explode.hxx"
-bool Decompress(SvStream *pCompressed, SvStream * & pOutDecompressed)
+static bool Decompress(SvStream *pCompressed, SvStream * & pOutDecompressed)
 {
     pCompressed->Seek(0);
     std::unique_ptr<SvMemoryStream> aDecompressed(new SvMemoryStream(4096, 4096));
@@ -109,16 +96,14 @@ bool Decompress(SvStream *pCompressed, SvStream * & pOutDecompressed)
     std::unique_ptr<LwpSvStream> aLwpStream(new LwpSvStream(pCompressed));
     std::unique_ptr<OpenStormBento::LtcBenContainer> pBentoContainer;
     {
-        OpenStormBento::LtcBenContainer* pTmp(nullptr);
-        sal_uLong ulRet = BenOpenContainer(aLwpStream.get(), &pTmp);
-        pBentoContainer.reset(pTmp);
+        sal_uLong ulRet = BenOpenContainer(aLwpStream.get(), &pBentoContainer);
         if (ulRet != BenErr_OK)
             return false;
     }
 
     std::unique_ptr<LtcUtBenValueStream> aWordProData(pBentoContainer->FindValueStreamWithPropertyName("WordProData"));
 
-    if (!aWordProData.get())
+    if (!aWordProData)
         return false;
 
     // decompressing
@@ -148,7 +133,7 @@ bool Decompress(SvStream *pCompressed, SvStream * & pOutDecompressed)
  * @param    LwpSvStream * , created inside, deleted outside
  * @param      sal_Bool, sal_True -
  */
- bool GetLwpSvStream(SvStream *pStream, LwpSvStream * & pLwpSvStream)
+static bool GetLwpSvStream(SvStream *pStream, LwpSvStream * & pLwpSvStream)
 {
     SvStream * pDecompressed = nullptr;
 
@@ -181,8 +166,9 @@ bool Decompress(SvStream *pCompressed, SvStream * & pOutDecompressed)
     }
     return bCompressed;
 }
-int ReadWordproFile(SvStream &rStream, uno::Reference<css::xml::sax::XDocumentHandler>& xHandler)
+int ReadWordproFile(SvStream &rStream, uno::Reference<css::xml::sax::XDocumentHandler> const & xHandler)
 {
+    int nRet = 0;
     try
     {
         LwpSvStream *pRawLwpSvStream = nullptr;
@@ -211,13 +197,15 @@ int ReadWordproFile(SvStream &rStream, uno::Reference<css::xml::sax::XDocumentHa
         Lwp9Reader reader(aLwpSvStream.get(), pStrm.get());
         //Reset all static objects,because this function may be called many times.
         XFGlobalReset();
-        reader.Read();
+        const bool bOk = reader.Read();
+        if (!bOk)
+            nRet = 1;
     }
     catch (...)
     {
         return 1;
     }
-    return 0;
+    return nRet;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

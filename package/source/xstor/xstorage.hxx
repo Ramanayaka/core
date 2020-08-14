@@ -48,14 +48,16 @@
 #include <cppuhelper/interfacecontainer.h>
 #include <comphelper/refcountedmutex.hxx>
 #include <comphelper/sequenceashashmap.hxx>
+#include <o3tl/deleter.hxx>
 #include <rtl/ref.hxx>
 
 #include <list>
+#include <vector>
 #include <memory>
 
-namespace com { namespace sun { namespace star { namespace uno {
+namespace com::sun::star::uno {
     class XComponentContext;
-} } } }
+}
 
 #define RELINFO_NO_INIT             1
 #define RELINFO_READ                2
@@ -66,7 +68,7 @@ namespace com { namespace sun { namespace star { namespace uno {
 #define RELINFO_CHANGED_BROKEN      7
 
 #define STOR_MESS_PRECOMMIT 1
-#define STOR_MESS_COMMITED  2
+#define STOR_MESS_COMMITTED  2
 #define STOR_MESS_PREREVERT 3
 #define STOR_MESS_REVERTED  4
 
@@ -78,20 +80,17 @@ struct OWriteStream_Impl;
 
 struct SotElement_Impl
 {
-    OUString             m_aName;
-    OUString             m_aOriginalName;
+    OUString                m_aOriginalName;
     bool                    m_bIsRemoved;
     bool                    m_bIsInserted;
     bool                    m_bIsStorage;
 
     std::unique_ptr<OStorage_Impl> m_xStorage;
-    std::unique_ptr<OWriteStream_Impl> m_xStream;
+    std::unique_ptr<OWriteStream_Impl, o3tl::default_delete<OWriteStream_Impl>> m_xStream;
 
 public:
     SotElement_Impl(const OUString& rName, bool bStor, bool bNew);
 };
-
-typedef ::std::list< SotElement_Impl* > SotElementList_Impl;
 
 // Main storage implementation
 
@@ -103,23 +102,17 @@ struct StorageHolder_Impl
     css::uno::WeakReference< css::embed::XStorage > m_xWeakRef;
 
     explicit inline StorageHolder_Impl( OStorage* pStorage );
-
-    StorageHolder_Impl( const StorageHolder_Impl& aSH )
-    : m_pPointer( aSH.m_pPointer )
-    , m_xWeakRef( aSH.m_xWeakRef )
-    {
-    }
 };
 
 class SwitchablePersistenceStream;
 struct OStorage_Impl
 {
-    typedef std::list<StorageHolder_Impl> StorageHoldersType;
+    typedef std::vector<StorageHolder_Impl> StorageHoldersType;
 
     rtl::Reference<comphelper::RefCountedMutex> m_xMutex;
 
     OStorage*                   m_pAntiImpl;         // only valid if external references exists
-    StorageHoldersType          m_aReadOnlyWrapList; // only valid if readonly external reference exists
+    StorageHoldersType          m_aReadOnlyWrapVector; // only valid if readonly external reference exists
 
     sal_Int32                   m_nStorageMode; // open mode ( read/write/trunc/nocreate )
     bool                        m_bIsModified;  // only modified elements will be sent to the original content
@@ -132,13 +125,13 @@ struct OStorage_Impl
 
     /// Count of registered modification listeners
     oslInterlockedCount         m_nModifiedListenerCount;
-    bool                        HasModifiedListener()
+    bool                        HasModifiedListener() const
     {
         return m_nModifiedListenerCount > 0 && m_pAntiImpl != nullptr;
     }
 
-    SotElementList_Impl                         m_aChildrenList;
-    SotElementList_Impl                         m_aDeletedList;
+    std::unordered_map<OUString, std::vector<SotElement_Impl*>> m_aChildrenMap;
+    std::vector< SotElement_Impl* > m_aDeletedVector;
 
     css::uno::Reference< css::container::XNameContainer > m_xPackageFolder;
 
@@ -203,7 +196,7 @@ struct OStorage_Impl
     void ReadContents();
     void ReadRelInfoIfNecessary();
 
-    SotElementList_Impl& GetChildrenList();
+    bool HasChildren();
     void GetStorageProperties();
 
     css::uno::Sequence< css::uno::Sequence< css::beans::StringPair > > GetAllRelationshipsIfAny();
@@ -231,7 +224,7 @@ struct OStorage_Impl
     SotElement_Impl* InsertStream( const OUString& aName, bool bEncr );
     void InsertRawStream( const OUString& aName, const css::uno::Reference< css::io::XInputStream >& xInStream );
 
-    OStorage_Impl* CreateNewStorageImpl( sal_Int32 nStorageMode );
+    std::unique_ptr<OStorage_Impl> CreateNewStorageImpl( sal_Int32 nStorageMode );
     SotElement_Impl* InsertStorage( const OUString& aName, sal_Int32 nStorageMode );
     SotElement_Impl* InsertElement( const OUString& aName, bool bIsStorage );
 
@@ -240,7 +233,7 @@ struct OStorage_Impl
 
     css::uno::Sequence< OUString > GetElementNames();
 
-    void RemoveElement( SotElement_Impl* pElement );
+    void RemoveElement( OUString const & rName, SotElement_Impl* pElement );
     static void ClearElement( SotElement_Impl* pElement );
 
     /// @throws css::embed::InvalidStorageException
@@ -259,7 +252,7 @@ struct OStorage_Impl
 
     void RemoveStreamRelInfo( const OUString& aOriginalName );
     void CreateRelStorage();
-    void CommitStreamRelInfo( SotElement_Impl* pStreamElement );
+    void CommitStreamRelInfo( const OUString& rName, SotElement_Impl const * pStreamElement );
     css::uno::Reference< css::io::XInputStream > GetRelInfoStreamForName( const OUString& aName );
     void CommitRelInfo( const css::uno::Reference< css::container::XNameContainer >& xNewPackageFolder );
 
@@ -316,11 +309,11 @@ public:
 
     virtual ~OStorage() override;
 
-    void SAL_CALL InternalDispose( bool bNotifyImpl );
+    void InternalDispose( bool bNotifyImpl );
 
     void ChildIsDisposed( const css::uno::Reference< css::uno::XInterface >& xChild );
 
-    sal_Int32 GetRefCount_Impl() { return m_refCount; }
+    sal_Int32 GetRefCount_Impl() const { return m_refCount; }
 
     //  XInterface
 
@@ -457,6 +450,7 @@ public:
     //  XEncryptionProtectedStorage
 
     virtual void SAL_CALL setEncryptionAlgorithms( const css::uno::Sequence< css::beans::NamedValue >& aAlgorithms ) override;
+    virtual void SAL_CALL setGpgProperties( const css::uno::Sequence< css::uno::Sequence< css::beans::NamedValue > >& aCryptProps ) override;
 
     virtual css::uno::Sequence< css::beans::NamedValue > SAL_CALL getEncryptionAlgorithms() override;
 

@@ -20,13 +20,13 @@
 #ifndef INCLUDED_STORE_SOURCE_STORTREE_HXX
 #define INCLUDED_STORE_SOURCE_STORTREE_HXX
 
-#include "sal/config.h"
+#include <sal/config.h>
 
 #include <memory>
 
-#include "sal/types.h"
+#include <sal/types.h>
 
-#include "store/types.h"
+#include <store/types.h>
 
 #include "storbase.hxx"
 
@@ -55,20 +55,6 @@ struct OStoreBTreeEntry
           m_aLink   (rLink),
           m_nAttrib (store::htonl(0))
     {}
-
-    OStoreBTreeEntry (const OStoreBTreeEntry & rhs)
-        : m_aKey    (rhs.m_aKey),
-          m_aLink   (rhs.m_aLink),
-          m_nAttrib (rhs.m_nAttrib)
-    {}
-
-    OStoreBTreeEntry& operator= (const OStoreBTreeEntry & rhs)
-    {
-        m_aKey    = rhs.m_aKey;
-        m_aLink   = rhs.m_aLink;
-        m_nAttrib = rhs.m_nAttrib;
-        return *this;
-    }
 
     /** Comparison.
     */
@@ -156,8 +142,7 @@ struct OStoreBTreeNodeData : public store::PageData
     */
     void guard()
     {
-        sal_uInt32 nCRC32 = 0;
-        nCRC32 = rtl_crc32 (nCRC32, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
+        sal_uInt32 nCRC32 = rtl_crc32 (0, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
         nCRC32 = rtl_crc32 (nCRC32, m_pData, capacity());
         m_aGuard.m_nCRC32 = store::htonl(nCRC32);
     }
@@ -166,8 +151,7 @@ struct OStoreBTreeNodeData : public store::PageData
     */
     storeError verify() const
     {
-        sal_uInt32 nCRC32 = 0;
-        nCRC32 = rtl_crc32 (nCRC32, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
+        sal_uInt32 nCRC32 = rtl_crc32 (0, &m_aGuard.m_nMagic, sizeof(sal_uInt32));
         nCRC32 = rtl_crc32 (nCRC32, m_pData, capacity());
         if (m_aGuard.m_nCRC32 != store::htonl(nCRC32))
             return store_E_InvalidChecksum;
@@ -190,7 +174,7 @@ struct OStoreBTreeNodeData : public store::PageData
     */
     bool querySplit() const
     {
-        return (!(usageCount() < capacityCount()));
+        return usageCount() >= capacityCount();
     }
 
     /** Operation.
@@ -270,7 +254,7 @@ public:
         OStoreBTreeNodeObject & rNode,  // [out]
         sal_uInt16 &            rIndex, // [out]
         OStorePageKey const &   rKey,
-        OStorePageBIOS &        rBIOS);
+        OStorePageBIOS &        rBIOS) const;
 
     /** find_insert (possibly with split()).
      *  Precond: root node page loaded.
@@ -285,7 +269,7 @@ private:
     /** testInvariant.
      *  Precond: root node page loaded.
      */
-    void testInvariant (char const * message);
+    void testInvariant (char const * message) const;
 
     /** change (Root).
      *

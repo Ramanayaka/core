@@ -65,7 +65,8 @@ class InlineFields:
     public RecursiveASTVisitor<InlineFields>, public loplugin::Plugin
 {
 public:
-    explicit InlineFields(InstantiationData const & data): Plugin(data) {}
+    explicit InlineFields(loplugin::InstantiationData const & data):
+        Plugin(data) {}
 
     virtual void run() override
     {
@@ -83,7 +84,7 @@ public:
         for (const MyFieldInfo & s : newedInConstructorSet)
             output += "newedInConstructor:\t" + s.parentClass + "\t" + s.fieldName + "\n";
         std::ofstream myfile;
-        myfile.open( SRCDIR "/loplugin.inlinefields.log", std::ios::app | std::ios::out);
+        myfile.open( WORKDIR "/loplugin.inlinefields.log", std::ios::app | std::ios::out);
         myfile << output;
         myfile.close();
     }
@@ -94,7 +95,7 @@ public:
     bool VisitFieldDecl( const FieldDecl* );
     bool VisitCXXConstructorDecl( const CXXConstructorDecl* );
     bool VisitCXXDeleteExpr( const CXXDeleteExpr* );
-    bool VisitBinAssign( const BinaryOperator* );
+    bool VisitBinaryOperator( const BinaryOperator* );
 private:
     MyFieldInfo niceName(const FieldDecl*);
     void checkTouched(const FieldDecl* fieldDecl, const Expr* memberExpr);
@@ -118,9 +119,9 @@ MyFieldInfo InlineFields::niceName(const FieldDecl* fieldDecl)
     aInfo.fieldName = fieldDecl->getNameAsString();
 
     SourceLocation expansionLoc = compiler.getSourceManager().getExpansionLoc( fieldDecl->getLocation() );
-    StringRef name = compiler.getSourceManager().getFilename(expansionLoc);
+    StringRef name = getFilenameOfLocation(expansionLoc);
     aInfo.sourceLocation = std::string(name.substr(strlen(SRCDIR)+1)) + ":" + std::to_string(compiler.getSourceManager().getSpellingLineNumber(expansionLoc));
-    normalizeDotDotInFilePath(aInfo.sourceLocation);
+    loplugin::normalizeDotDotInFilePath(aInfo.sourceLocation);
 
     return aInfo;
 }
@@ -173,8 +174,11 @@ static bool isSameParent(const CXXMethodDecl* cxxMethodDecl, const FieldDecl* fi
     return cxxMethodDecl->getParent() == dyn_cast<CXXRecordDecl>(fieldDecl->getParent());
 }
 
-bool InlineFields::VisitBinAssign(const BinaryOperator * binaryOp)
+bool InlineFields::VisitBinaryOperator(const BinaryOperator * binaryOp)
 {
+    if (binaryOp->getOpcode() != BO_Assign) {
+        return true;
+    }
     if( ignoreLocation( binaryOp ) )
         return true;
     auto memberExpr = dyn_cast<MemberExpr>(binaryOp->getLHS());
@@ -184,11 +188,11 @@ bool InlineFields::VisitBinAssign(const BinaryOperator * binaryOp)
     if (!fieldDecl || !fieldDecl->getType()->isPointerType()) {
         return true;
     }
-    const FunctionDecl* parentFunction = parentFunctionDecl(binaryOp);
+    const FunctionDecl* parentFunction = getParentFunctionDecl(binaryOp);
     if (!parentFunction) {
         return true;
     }
-    // if the field is being assigned from outside it's own constructor or destructor, exclude
+    // if the field is being assigned from outside its own constructor or destructor, exclude
     auto constructorDecl = dyn_cast<CXXConstructorDecl>(parentFunction);
     if (constructorDecl && isSameParent(constructorDecl, fieldDecl)) {
         if( isa<CXXNewExpr>(binaryOp->getRHS()) )
@@ -227,7 +231,7 @@ bool InlineFields::VisitCXXDeleteExpr(const CXXDeleteExpr * deleteExpr)
     }
     // TODO for some reason, this part is not working properly, it doesn't find the parent
     // function for delete statements properly
-    const FunctionDecl* parentFunction = parentFunctionDecl(deleteExpr);
+    const FunctionDecl* parentFunction = getParentFunctionDecl(deleteExpr);
     if (!parentFunction) {
         return true;
     }

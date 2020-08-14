@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TimerTriggeredControllerLock.hxx"
-
-#include <vcl/edit.hxx>
+#include <com/sun/star/frame/XModel.hpp>
+#include <TimerTriggeredControllerLock.hxx>
+#include <ControllerLockGuard.hxx>
 
 namespace chart
 {
@@ -41,7 +41,7 @@ TimerTriggeredControllerLock::~TimerTriggeredControllerLock()
 
 void TimerTriggeredControllerLock::startTimer()
 {
-    if(!m_apControllerLockGuard.get())
+    if (!m_apControllerLockGuard)
         m_apControllerLockGuard.reset( new  ControllerLockGuardUNO(m_xModel) );
     m_aTimer.Start();
 }

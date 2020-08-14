@@ -17,11 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <rtl/ustrbuf.hxx>
-#include <uno/dispatcher.h>
-#include <uno/mapping.hxx>
 #include <cppuhelper/factory.hxx>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <vcl/dllapi.h>
 
 #include <factory.hxx>
@@ -31,8 +29,8 @@ using namespace com::sun::star::lang;
 
 extern "C" {
 
-    VCL_DLLPUBLIC void* SAL_CALL vcl_component_getFactory(
-        const sal_Char* pImplementationName,
+    VCL_DLLPUBLIC void* vcl_component_getFactory(
+        const char* pImplementationName,
         void* pXUnoSMgr,
         void* /*pXUnoKey*/
         )
@@ -45,23 +43,7 @@ extern "C" {
                 static_cast< css::lang::XMultiServiceFactory* >( pXUnoSMgr )
                 );
             Reference< css::lang::XSingleServiceFactory > xFactory;
-            if( vcl_session_getImplementationName().equalsAscii( pImplementationName ) )
-            {
-                xFactory = ::cppu::createOneInstanceFactory(
-                    xMgr, vcl_session_getImplementationName(), vcl_session_createInstance,
-                    vcl_session_getSupportedServiceNames() );
-            }
-            else if( vcl::FontIdentificator_getImplementationName().equalsAscii( pImplementationName ) )
-            {
-                xFactory = ::cppu::createSingleFactory(
-                    xMgr, vcl::FontIdentificator_getImplementationName(), vcl::FontIdentificator_createInstance,
-                    vcl::FontIdentificator_getSupportedServiceNames() );
-            }
-            else if( vcl::Clipboard_getImplementationName().equalsAscii( pImplementationName ) )
-            {
-                xFactory = vcl::Clipboard_createFactory( xMgr );
-            }
-            else if( vcl::DragSource_getImplementationName().equalsAscii( pImplementationName ) )
+            if( vcl::DragSource_getImplementationName().equalsAscii( pImplementationName ) )
             {
                 xFactory = ::cppu::createSingleFactory(
                     xMgr, vcl::DragSource_getImplementationName(), vcl::DragSource_createInstance,

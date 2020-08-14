@@ -17,28 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hintids.hxx"
-#include <sfx2/app.hxx>
-#include <tools/globname.hxx>
 #include <sfx2/objface.hxx>
-#include <svl/srchitem.hxx>
 
-#include "cmdid.h"
-#include "globals.hrc"
-#include "uitool.hxx"
-#include "helpid.h"
-#include "shells.hrc"
-#include "table.hrc"
-#include "wrtsh.hxx"
-#include "wtabsh.hxx"
+#include <cmdid.h>
+#include <wrtsh.hxx>
+#include <wtabsh.hxx>
 
-#include <sfx2/request.hxx>
     // needed for -fsanitize=function visibility of typeinfo for functions of
     // type void(SfxShell*,SfxRequest&) defined in swslots.hxx
-#define SwWebTableShell
+#define ShellClass_SwWebTableShell
 #include <sfx2/msg.hxx>
-#include "svx/svxids.hrc"
-#include "swslots.hxx"
+#include <swslots.hxx>
 
 SFX_IMPL_INTERFACE(SwWebTableShell, SwTableShell)
 

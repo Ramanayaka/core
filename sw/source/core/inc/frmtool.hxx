@@ -20,31 +20,34 @@
 #ifndef INCLUDED_SW_SOURCE_CORE_INC_FRMTOOL_HXX
 #define INCLUDED_SW_SOURCE_CORE_INC_FRMTOOL_HXX
 
-#include "swtypes.hxx"
-#include "layfrm.hxx"
-#include "frmatr.hxx"
+#include <swtypes.hxx>
+#include "frame.hxx"
+#include "txtfrm.hxx"
 #include "swcache.hxx"
-#include <editeng/lrspitem.hxx>
-#include <swfont.hxx>
-#include <flyfrm.hxx>
-#include <basegfx/tools/b2dclipstate.hxx>
+#include <swatrset.hxx>
 
+class SwLayoutFrame;
+class SwFont;
+class SwTextFrame;
+class SwFormatAnchor;
+class SwViewShell;
 class SwPageFrame;
 class SwFlyFrame;
 class SwContentFrame;
 class SwRootFrame;
 class SwDoc;
-class SwAttrSet;
 class SdrObject;
 class SvxBrushItem;
 class SdrMarkList;
 class SwNodeIndex;
-class OutputDevice;
 class GraphicObject;
 class GraphicAttr;
 class SwPageDesc;
 class SwFrameFormats;
 class SwRegionRects;
+class SwTextNode;
+namespace sw { struct Extent; }
+namespace basegfx::utils { class B2DClipState; }
 
 #define FAR_AWAY (SAL_MAX_INT32 - 20000)  // initial position of a Fly
 #define BROWSE_HEIGHT (56700L * 10L) // 10 Meters
@@ -55,12 +58,27 @@ class SwRegionRects;
 void AppendObjs( const SwFrameFormats *pTable, sal_uLong nIndex,
                        SwFrame *pFrame, SwPageFrame *pPage, SwDoc* doc );
 
+void AppendObjsOfNode(SwFrameFormats const* pTable, sal_uLong nIndex,
+        SwFrame * pFrame, SwPageFrame * pPage, SwDoc * pDoc,
+        std::vector<sw::Extent>::const_iterator const* pIter,
+        std::vector<sw::Extent>::const_iterator const* pEnd,
+        SwTextNode const* pFirstNode, SwTextNode const* pLastNode);
+
+void RemoveHiddenObjsOfNode(SwTextNode const& rNode,
+        std::vector<sw::Extent>::const_iterator const* pIter,
+        std::vector<sw::Extent>::const_iterator const* pEnd,
+        SwTextNode const* pFirstNode, SwTextNode const* pLastNode);
+
+bool IsAnchoredObjShown(SwTextFrame const& rFrame, SwFormatAnchor const& rAnchor);
+
+void AppendAllObjs(const SwFrameFormats* pTable, const SwFrame* pSib);
+
 // draw background with brush or graphics
 // The 6th parameter indicates that the method should consider background
 // transparency, saved in the color of the brush item.
 void DrawGraphic(
     const SvxBrushItem *,
-    OutputDevice *,
+    vcl::RenderContext *,
     const SwRect &rOrg,
     const SwRect &rOut,
     const sal_uInt8 nGrfNum = GRFNUM_NO,
@@ -69,13 +87,27 @@ bool DrawFillAttributes(
     const drawinglayer::attribute::SdrAllFillAttributesHelperPtr& rFillAttributes,
     const SwRect& rOriginalLayoutRect,
     const SwRegionRects& rPaintRegion,
-    const basegfx::tools::B2DClipState& rClipState,
-    OutputDevice& rOut);
+    const basegfx::utils::B2DClipState& rClipState,
+    vcl::RenderContext& rOut);
 
+// RotGrfFlyFrame: Adapted to rotation
 void paintGraphicUsingPrimitivesHelper(
-        OutputDevice & rOutputDevice,
-        GraphicObject const& rGraphicObj, GraphicAttr const& rGraphicAttr,
-        SwRect const& rAlignedGrfArea);
+    vcl::RenderContext & rOutputDevice,
+    GraphicObject const& rGraphicObj,
+    GraphicAttr const& rGraphicAttr,
+    const basegfx::B2DHomMatrix& rGraphicTransform,
+    const OUString& rName,
+    const OUString& rTitle,
+    const OUString& rDescription);
+
+// MM02 new VOC and primitive-based version
+void paintGraphicUsingPrimitivesHelper(
+    vcl::RenderContext & rOutputDevice,
+    drawinglayer::primitive2d::Primitive2DContainer& rContent,
+    const basegfx::B2DHomMatrix& rGraphicTransform,
+    const OUString& rName,
+    const OUString& rTitle,
+    const OUString& rDescription);
 
 // method to align rectangle.
 // Created declaration here to avoid <extern> declarations
@@ -83,7 +115,7 @@ void SwAlignRect( SwRect &rRect, const SwViewShell *pSh, const vcl::RenderContex
 
 // method to align graphic rectangle
 // Created declaration here to avoid <extern> declarations
-void SwAlignGrfRect( SwRect *pGrfRect, const OutputDevice &rOut );
+void SwAlignGrfRect( SwRect *pGrfRect, const vcl::RenderContext &rOut );
 
 /**
  * Paint border around a run of characters using frame painting code.
@@ -91,12 +123,13 @@ void SwAlignGrfRect( SwRect *pGrfRect, const OutputDevice &rOut );
  * @param[in]   rFont            font object of actual text, which specify the border
  * @param[in]   rPaintArea       rectangle area in which line portion takes place
  * @param[in]   bVerticalLayout  corresponding text frame verticality
+ * @param[in]   bVerticalLayoutLRBT corresponding text frame verticality (LRBT subset)
  * @param[in]   bJoinWithPrev    leave border with which actual border joins to the previous portion
  * @param[in]   bJoinWithNext    leave border with which actual border joins to the next portion
 **/
-void PaintCharacterBorder(
-    const SwFont& rFont, const SwRect& rPaintArea, const bool bVerticalLayout,
-    const bool bJoinWithPrev, const bool bJoinWithNext );
+void PaintCharacterBorder(const SwFont& rFont, const SwRect& rPaintArea, const bool bVerticalLayout,
+                          const bool bVerticalLayoutLRBT, const bool bJoinWithPrev,
+                          const bool bJoinWithNext);
 
 // get Fly, if no List is given use the current shell
 // Implementation in feshview.cxx
@@ -108,7 +141,7 @@ void RestoreContent( SwFrame *pSav, SwLayoutFrame *pParent, SwFrame *pSibling );
 // Get ContentNodes, create ContentFrames, and add them to LayFrame.
 void InsertCnt_( SwLayoutFrame *pLay, SwDoc *pDoc, sal_uLong nIndex,
                  bool bPages = false, sal_uLong nEndIndex = 0,
-                 SwFrame *pPrv = nullptr );
+                 SwFrame *pPrv = nullptr, sw::FrameMode eMode = sw::FrameMode::New);
 
 // Creation of frames for a specific section (uses InsertCnt_)
 void MakeFrames( SwDoc *pDoc, const SwNodeIndex &rSttIdx,
@@ -123,11 +156,17 @@ extern bool bDontCreateObjects;
 extern bool bSetCompletePaintOnInvalidate;
 
 // for table settings via keyboard
-long CalcRowRstHeight( SwLayoutFrame *pRow );
+SwTwips CalcRowRstHeight( SwLayoutFrame *pRow );
 long CalcHeightWithFlys( const SwFrame *pFrame );
 
+namespace sw {
+
+bool IsRightPageByNumber(SwRootFrame const& rLayout, sal_uInt16 nPageNum);
+
+} // namespace sw
+
 SwPageFrame *InsertNewPage( SwPageDesc &rDesc, SwFrame *pUpper,
-                          bool bOdd, bool bFirst, bool bInsertEmpty, bool bFootnote,
+                          bool isRightPage, bool bFirst, bool bInsertEmpty, bool bFootnote,
                           SwFrame *pSibling );
 
 // connect Flys with page
@@ -148,19 +187,29 @@ const SwFrame* GetVirtualUpper( const SwFrame* pFrame, const Point& rPos );
 bool Is_Lower_Of( const SwFrame *pCurrFrame, const SdrObject* pObj );
 
 // FIXME: EasyHack (refactoring): rename method and parameter name in all files
-const SwFrame *FindKontext( const SwFrame *pFrame, SwFrameType nAdditionalKontextTyp );
+const SwFrame *FindContext( const SwFrame *pFrame, SwFrameType nAdditionalContextTyp );
 
-bool IsFrameInSameKontext( const SwFrame *pInnerFrame, const SwFrame *pFrame );
+bool IsFrameInSameContext( const SwFrame *pInnerFrame, const SwFrame *pFrame );
 
 const SwFrame * FindPage( const SwRect &rRect, const SwFrame *pPage );
 
-// used by SwContentNode::GetFrame and SwFlyFrame::GetFrame
+/** @see SwContentNode::getLayoutFrame()
+    @param pPos
+      Document model position; for a text frame, the returned frame will be
+      one containing this position.
+    @param pViewPosAndCalcFrame
+      First is a point in the document view; the returned frame will be the one
+      with the minimal distance to this point.  To get the first frame in the
+      document, pass in a default-initialized Point with coordinates 0,0.
+      Second indicates whether the frames should be formatted before retrieving
+      their position for the test; this cannot be done by every caller so use
+      with care!
+ */
 SwFrame* GetFrameOfModify( const SwRootFrame* pLayout,
                        SwModify const&,
                        SwFrameType const nFrameType,
-                       const Point* = nullptr,
                        const SwPosition *pPos = nullptr,
-                       const bool bCalcFrame = false );
+                       std::pair<Point, bool> const* pViewPosAndCalcFrame = nullptr);
 
 // Should extra data (redline stroke, line numbers) be painted?
 bool IsExtraData( const SwDoc *pDoc );
@@ -186,7 +235,7 @@ public:
     SwFrameNotify( SwFrame *pFrame );
     ~SwFrameNotify() COVERITY_NOEXCEPT_FALSE;
 
-    const SwRect &Frame() const { return maFrame; }
+    const SwRect &getFrameArea() const { return maFrame; }
     void SetInvaKeep() { mbInvaKeep = true; }
 };
 
@@ -199,7 +248,7 @@ public:
     ~SwLayNotify();
 
     void SetLowersComplete( bool b ) { m_bLowersComplete = b; }
-    bool IsLowersComplete()          { return m_bLowersComplete; }
+    bool IsLowersComplete() const    { return m_bLowersComplete; }
 };
 
 class SwFlyNotify : public SwLayNotify
@@ -249,13 +298,10 @@ class SwBorderAttrs : public SwCacheObj
     const SwAttrSet      &m_rAttrSet;
     const SvxULSpaceItem &m_rUL;
     // #i96772#
-    SvxLRSpaceItem m_rLR;
+    std::shared_ptr<SvxLRSpaceItem> m_rLR;
     const SvxBoxItem     &m_rBox;
     const SvxShadowItem  &m_rShadow;
     const Size            m_aFrameSize;
-
-    // Is it a frame that can have a margin without a border?
-    bool m_bBorderDist  : 1;
 
     // the following bool values set the cached values to INVALID - until they
     // are calculated for the first time
@@ -266,6 +312,7 @@ class SwBorderAttrs : public SwCacheObj
     bool m_bTop         : 1;
     bool m_bBottom      : 1;
     bool m_bLine        : 1;
+    bool m_bLineSpacing : 1;
 
     bool m_bIsLine      : 1; // border on at least one side?
 
@@ -289,7 +336,8 @@ class SwBorderAttrs : public SwCacheObj
            m_nTop,
            m_nBottom,
            m_nGetTopLine,
-           m_nGetBottomLine;
+           m_nGetBottomLine,
+           m_nLineSpacing;
 
     // only calculate lines and shadow
     void CalcTopLine_();
@@ -325,9 +373,10 @@ class SwBorderAttrs : public SwCacheObj
                        const SwFrame *pCaller,
                        const SwFrame *pCmp ) const;
 
-public:
-    DECL_FIXEDMEMPOOL_NEWDEL(SwBorderAttrs)
+    // tdf#125300 line spacing before cell border
+    void CalcLineSpacing_();
 
+public:
     SwBorderAttrs( const SwModify *pOwner, const SwFrame *pConstructor );
     virtual ~SwBorderAttrs() override;
 
@@ -342,14 +391,13 @@ public:
     inline sal_uInt16 CalcRightLine() const;
     inline sal_uInt16 CalcTop() const;
     inline sal_uInt16 CalcBottom() const;
+    inline sal_uInt16 CalcLineSpacing() const;
            long CalcLeft( const SwFrame *pCaller ) const;
            long CalcRight( const SwFrame *pCaller ) const;
 
     inline bool IsLine() const;
 
     const Size &GetSize()     const { return m_aFrameSize; }
-
-    bool IsBorderDist() const { return m_bBorderDist; }
 
     // Should upper (or lower) border be evaluated for this frame?
     // #i25029# - If <_pPrevFrame> is set, its value is taken for testing, if
@@ -387,7 +435,6 @@ class SwOrderIter
 {
     const SwPageFrame *m_pPage;
     const SdrObject *m_pCurrent;
-    const bool m_bFlysOnly;
 
 public:
     SwOrderIter( const SwPageFrame *pPage );
@@ -485,6 +532,12 @@ inline sal_uInt16 SwBorderAttrs::CalcBottom() const
         const_cast<SwBorderAttrs*>(this)->CalcBottom_();
     return m_nBottom;
 }
+inline sal_uInt16 SwBorderAttrs::CalcLineSpacing() const
+{
+    if ( m_bLineSpacing )
+        const_cast<SwBorderAttrs*>(this)->CalcLineSpacing_();
+    return m_nLineSpacing;
+}
 inline bool SwBorderAttrs::IsLine() const
 {
     if ( m_bLine )
@@ -510,11 +563,14 @@ inline bool SwBorderAttrs::IsLine() const
     output parameter - line spacing of the frame in SwTwips
 
     @param obIsLineSpacingProportional
+
+    @param bIdenticalStyles true if the styles of the actual and the next paragraphs (text-frames) are the same
 */
 void GetSpacingValuesOfFrame( const SwFrame& rFrame,
                             SwTwips& onLowerSpacing,
                             SwTwips& onLineSpacing,
-                            bool& obIsLineSpacingProportional );
+                            bool& obIsLineSpacingProportional,
+                            bool bIdenticalStyles );
 
 /** method to get the content of the table cell
 
@@ -542,18 +598,14 @@ private:
     const SwModify* mpRegIn;
 
 public:
-    SwDeletionChecker( const SwFrame* pFrame )
-            : mpFrame( pFrame ),
-              mpRegIn( pFrame ? const_cast<SwFrame*>(pFrame)->GetRegisteredIn() : nullptr )
-    {
-    }
+    SwDeletionChecker(const SwFrame* pFrame);
 
     /**
      *  return
      *    true if mpFrame != 0 and mpFrame is not client of pRegIn
      *    false otherwise
      */
-    bool HasBeenDeleted();
+    bool HasBeenDeleted() const;
 };
 
 #endif

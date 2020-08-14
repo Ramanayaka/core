@@ -17,12 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "errobject.hxx"
+#include <errobject.hxx>
+#include <sbxbase.hxx>
 
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/script/XDefaultProperty.hpp>
-#include "sbintern.hxx"
-#include "runtime.hxx"
+#include <sbintern.hxx>
+#include <runtime.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::ooo;
@@ -151,7 +152,7 @@ ErrObject::Raise( const uno::Any& Number, const uno::Any& Source, const uno::Any
 OUString SAL_CALL
 ErrObject::getDefaultPropertyName(  )
 {
-    return OUString( "Number" );
+    return "Number";
 }
 
 void ErrObject::setData( const uno::Any& Number, const uno::Any& Source, const uno::Any& Description, const uno::Any& HelpFile, const uno::Any& HelpContext )
@@ -192,8 +193,15 @@ SbxErrObject::getUnoErrObject()
 SbxVariableRef const &
 SbxErrObject::getErrObject()
 {
-    static SbxVariableRef pGlobErr = new SbxErrObject( "Err", uno::Any( uno::Reference< vba::XErrObject >( new ErrObject() ) ) );
-    return pGlobErr;
+    SbxVariableRef& rGlobErr = GetSbxData_Impl().m_aGlobErr;
+    {
+        static osl::Mutex aMutex;
+        osl::MutexGuard aGuard(aMutex);
+        if (!rGlobErr)
+            rGlobErr = new SbxErrObject("Err",
+                                        uno::Any(uno::Reference<vba::XErrObject>(new ErrObject())));
+    }
+    return rGlobErr;
 }
 
 void SbxErrObject::setNumberAndDescription( ::sal_Int32 _number, const OUString& _description )

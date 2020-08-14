@@ -26,7 +26,6 @@
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
 
 #include <sfx2/objsh.hxx>
-#include "types.hxx"
 #include <svl/itempool.hxx>
 #include <svl/itemset.hxx>
 #include <svx/svdtypes.hxx>
@@ -35,6 +34,7 @@
 #include <pam.hxx>
 #include <tools/poly.hxx>
 #include <doc.hxx>
+#include <vcl/graph.hxx>
 
 class SwTextFormatColl;
 class SwCharFormat;
@@ -45,7 +45,6 @@ class SwNumFormat;
 class SwTextNode;
 class SwNoTextNode;
 class SwFormatCharFormat;
-class Graphic;
 class SwDoc;
 class SwNumRule;
 
@@ -54,7 +53,6 @@ namespace sw
     namespace util
     {
         class ItemSort
-            : public std::binary_function<sal_uInt16, sal_uInt16, bool>
         {
         public:
             bool operator()(sal_uInt16 nA, sal_uInt16 nB) const;
@@ -66,12 +64,8 @@ namespace ww8
 {
     /// STL container of Paragraph Styles (SwTextFormatColl)
     typedef std::vector<SwTextFormatColl *> ParaStyles;
-    /// STL iterator for ParaStyles
-    typedef ParaStyles::iterator ParaStyleIter;
     /// STL container of SfxPoolItems (Attributes)
     typedef std::map<sal_uInt16, const SfxPoolItem *, sw::util::ItemSort> PoolItems;
-    /// STL const iterator for ParaStyles
-    typedef PoolItems::const_iterator cPoolItemIter;
 
     /** Make exporting a Writer Frame easy
 
@@ -214,7 +208,7 @@ namespace sw
         /** Provide a dynamic_cast style cast for SfxPoolItems
 
             A SfxPoolItem generally need to be cast back to its original type
-            to be useful, which is both tedious and errorprone. So item_cast is
+            to be useful, which is both tedious and error prone. So item_cast is
             a helper template to aid the process and test if the cast is
             correct.
 
@@ -238,7 +232,7 @@ namespace sw
         /** Provide a dynamic_cast style cast for SfxPoolItems
 
             A SfxPoolItem generally need to be cast back to its original type
-            to be useful, which is both tedious and errorprone. So item_cast is
+            to be useful, which is both tedious and error prone. So item_cast is
             a helper template to aid the process and test if the cast is
             correct.
 
@@ -518,7 +512,7 @@ namespace sw
 
             @return A Frames containing the selections Floating elements
         */
-        ww8::Frames GetFrames(const SwDoc &rDoc, SwPaM *pPaM);
+        ww8::Frames GetFrames(const SwDoc &rDoc, SwPaM const *pPaM);
 
         /** fix up frame positions, must be called after SetRedlineFlags */
         void UpdateFramePositions(ww8::Frames & rFrames);
@@ -541,7 +535,7 @@ namespace sw
 
             There are two differing types of numbering formats that may be on a
             paragraph, normal and outline. The outline is that numbering you
-            see in tools->outline numbering. Theres no difference in the
+            see in tools->outline numbering. There's no difference in the
             numbering itself, just how you get it from the SwTextNode. Needless
             to say the filter generally couldn't care less what type of
             numbering is in use.
@@ -575,7 +569,7 @@ namespace sw
 
             There are two differing types of numbering formats that may be on a
             paragraph, normal and outline. The outline is that numbering you
-            see in tools->outline numbering. Theres no difference in the
+            see in tools->outline numbering. There's no difference in the
             numbering itself, just how you get it from the SwTextNode. Needless
             to say the filter generally couldn't care less what type of
             numbering is in use.
@@ -614,7 +608,7 @@ namespace sw
         tools::Polygon PolygonFromPolyPolygon(const tools::PolyPolygon &rPolyPoly);
 
         /// Undo all scaling / move tricks of the wrap polygon done during import.
-        tools::Polygon CorrectWordWrapPolygonForExport(const tools::PolyPolygon& rPolyPoly, const SwNoTextNode* pNd);
+        tools::Polygon CorrectWordWrapPolygonForExport(const tools::PolyPolygon& rPolyPoly, const SwNoTextNode* pNd, bool bCorrectCrop);
 
         /** Make setting a drawing object's layer in a Writer document easy
 
@@ -632,7 +626,6 @@ namespace sw
             SdrLayerID mnHeavenLayer, mnHellLayer, mnFormLayer;
             enum Layer {eHeaven, eHell};
             void SetObjectLayer(SdrObject &rObject, Layer eLayer) const;
-            void Swap(SetLayer &rOther) throw();
         public:
 
             /** Make Object live in the bottom drawing layer
@@ -642,10 +635,10 @@ namespace sw
             */
             void SendObjectToHell(SdrObject &rObject) const;
 
-            /** Make Object lives in the top top layer
+            /** Make Object lives in the top layer
 
                 @param rObject
-                The object to be set to the bottom layer
+                The object to be set to the top layer
             */
             void SendObjectToHeaven(SdrObject &rObject) const;
 
@@ -656,9 +649,6 @@ namespace sw
                 objects into
             */
             explicit SetLayer(const SwDoc &rDoc);
-
-            SetLayer(const SetLayer &rOther) throw();
-            SetLayer& operator=(const SetLayer &rOther) throw();
         };
     }
 

@@ -12,34 +12,28 @@
 #include <svtools/svtdllapi.h>
 #include <rtl/ustring.hxx>
 #include <unicode/uscript.h>
-#include <i18nlangtag/lang.h>
-#include <com/sun/star/i18n/ScriptType.hpp>
 #include <vcl/fontcapabilities.hxx>
 
 class OutputDevice;
 namespace vcl { class Font; }
 
-SVT_DLLPUBLIC UScriptCode otCoverageToScript(vcl::UnicodeCoverage::UnicodeCoverageEnum eOTCoverage);
+UScriptCode otCoverageToScript(vcl::UnicodeCoverage::UnicodeCoverageEnum eOTCoverage);
 
-SVT_DLLPUBLIC bool isSymbolFont(const vcl::Font &rFont);
-SVT_DLLPUBLIC bool isOpenSymbolFont(const vcl::Font &rFont);
+bool isSymbolFont(const vcl::Font &rFont);
 
-SVT_DLLPUBLIC bool canRenderNameOfSelectedFont(OutputDevice &rDevice);
+bool canRenderNameOfSelectedFont(OutputDevice const &rDevice);
 
 //These ones are typically for use in the font dropdown box beside the
 //fontname, so say things roughly like "Script/Alphabet/Name-Of-Major-Language"
-SVT_DLLPUBLIC OUString makeShortRepresentativeSymbolTextForSelectedFont(OutputDevice &rDevice);
-SVT_DLLPUBLIC OUString makeShortRepresentativeTextForSelectedFont(OutputDevice &rDevice);
-SVT_DLLPUBLIC OUString makeShortRepresentativeTextForScript(UScriptCode eScript);
+OUString makeShortRepresentativeSymbolTextForSelectedFont(OutputDevice const &rDevice);
+OUString makeShortRepresentativeTextForSelectedFont(OutputDevice const &rDevice);
+OUString makeShortRepresentativeTextForScript(UScriptCode eScript);
 //For the cases where the font doesn't fully support a script, but has partial support
 //for a useful subset
-SVT_DLLPUBLIC OUString makeShortMinimalTextForScript(UScriptCode eScript);
+OUString makeShortMinimalTextForScript(UScriptCode eScript);
 
 //These ones are typically for use in the font preview window in format character
 SVT_DLLPUBLIC OUString makeRepresentativeTextForFont(sal_Int16 nScriptType, const vcl::Font &rFont);
-SVT_DLLPUBLIC OUString makeRepresentativeTextForLanguage(LanguageType eLang);
-SVT_DLLPUBLIC OUString makeRepresentativeTextForScript(UScriptCode eScript);
-SVT_DLLPUBLIC OUString makeMinimalTextForScript(UScriptCode eScript);
 
 
 #endif

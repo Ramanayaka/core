@@ -7,15 +7,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_SC_INC_DOCUMENTLINKMGR_HXX
-#define INCLUDED_SC_INC_DOCUMENTLINKMGR_HXX
+#pragma once
 
 #include <rtl/ustring.hxx>
 #include <memory>
 
-class ScDocument;
 class SfxObjectShell;
-namespace vcl { class Window; }
+namespace weld { class Window; }
 
 namespace sfx2 {
 
@@ -55,21 +53,18 @@ public:
     bool idleCheckLinks();
 
     bool hasDdeLinks() const;
-    bool hasDdeOrOleLinks() const;
+    bool hasDdeOrOleOrWebServiceLinks() const;
 
-    bool updateDdeOrOleLinks(vcl::Window* pWin);
+    bool updateDdeOrOleOrWebServiceLinks(weld::Window* pWin);
 
     void updateDdeLink( const OUString& rAppl, const OUString& rTopic, const OUString& rItem );
 
     size_t getDdeLinkCount() const;
 
-    void disconnectDdeLinks();
 private:
-    bool hasDdeOrOleLinks(bool bDde, bool bOle) const;
+    bool hasDdeOrOleOrWebServiceLinks(bool bDde, bool bOle, bool bWebService) const;
 };
 
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

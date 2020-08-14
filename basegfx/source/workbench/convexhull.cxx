@@ -18,10 +18,9 @@
  */
 
 #include <algorithm>
-#include <functional>
 #include <vector>
 
-#include "bezierclip.hxx"
+#include <bezierclip.hxx>
 
 /* Implements the theta function from Sedgewick: Algorithms in XXX, chapter 24 */
 template <class PointType> double theta( const PointType& p1, const PointType& p2 )
@@ -43,7 +42,7 @@ template <class PointType> double theta( const PointType& p1, const PointType& p
 /* Model of LessThanComparable for theta sort.
  * Uses the theta function from Sedgewick: Algorithms in XXX, chapter 24
  */
-template <class PointType> class ThetaCompare : public std::binary_function< const PointType&, const PointType&, bool >
+template <class PointType> class ThetaCompare
 {
 public:
     explicit ThetaCompare( const PointType& rRefPoint ) : maRefPoint( rRefPoint ) {}

@@ -27,10 +27,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void AnimatedSwitchPrimitive2D::setAnimationEntry(const animation::AnimationEntry& rNew)
         {
             // clone given animation description
@@ -66,33 +64,30 @@ namespace drawinglayer
 
         void AnimatedSwitchPrimitive2D::get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& rViewInformation) const
         {
-            if(!getChildren().empty())
+            if(getChildren().empty())
+                return;
+
+            const double fState(getAnimationEntry().getStateAtTime(rViewInformation.getViewTime()));
+            const sal_uInt32 nLen(getChildren().size());
+            sal_uInt32 nIndex(basegfx::fround(fState * static_cast<double>(nLen)));
+
+            if(nIndex >= nLen)
             {
-                const double fState(getAnimationEntry().getStateAtTime(rViewInformation.getViewTime()));
-                const sal_uInt32 nLen(getChildren().size());
-                sal_uInt32 nIndex(basegfx::fround(fState * (double)nLen));
-
-                if(nIndex >= nLen)
-                {
-                    nIndex = nLen - 1;
-                }
-
-                const Primitive2DReference xRef(getChildren()[nIndex], uno::UNO_QUERY_THROW);
-                rVisitor.append(xRef);
+                nIndex = nLen - 1;
             }
+
+            const Primitive2DReference xRef(getChildren()[nIndex], uno::UNO_SET_THROW);
+            rVisitor.append(xRef);
         }
 
         // provide unique ID
         ImplPrimitive2DIDBlock(AnimatedSwitchPrimitive2D, PRIMITIVE2D_ID_ANIMATEDSWITCHPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         AnimatedBlinkPrimitive2D::AnimatedBlinkPrimitive2D(
             const animation::AnimationEntry& rAnimationEntry,
             const Primitive2DContainer& rChildren)
@@ -116,14 +111,11 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(AnimatedBlinkPrimitive2D, PRIMITIVE2D_ID_ANIMATEDBLINKPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         AnimatedInterpolatePrimitive2D::AnimatedInterpolatePrimitive2D(
             const std::vector< basegfx::B2DHomMatrix >& rmMatrixStack,
             const animation::AnimationEntry& rAnimationEntry,
@@ -135,9 +127,9 @@ namespace drawinglayer
             const sal_uInt32 nCount(rmMatrixStack.size());
             maMatrixStack.reserve(nCount);
 
-            for(sal_uInt32 a(0L); a < nCount; a++)
+            for(sal_uInt32 a(0); a < nCount; a++)
             {
-                maMatrixStack.push_back(basegfx::tools::B2DHomMatrixBufferedDecompose(rmMatrixStack[a]));
+                maMatrixStack.emplace_back(rmMatrixStack[a]);
             }
         }
 
@@ -158,11 +150,11 @@ namespace drawinglayer
                     fState = 1.0;
                 }
 
-                const double fIndex(fState * (double)(nSize - 1L));
+                const double fIndex(fState * static_cast<double>(nSize - 1));
                 const sal_uInt32 nIndA(sal_uInt32(floor(fIndex)));
-                const double fOffset(fIndex - (double)nIndA);
+                const double fOffset(fIndex - static_cast<double>(nIndA));
                 basegfx::B2DHomMatrix aTargetTransform;
-                std::vector< basegfx::tools::B2DHomMatrixBufferedDecompose >::const_iterator aMatA(maMatrixStack.begin() + nIndA);
+                std::vector< basegfx::utils::B2DHomMatrixBufferedDecompose >::const_iterator aMatA(maMatrixStack.begin() + nIndA);
 
                 if(basegfx::fTools::equalZero(fOffset))
                 {
@@ -172,8 +164,8 @@ namespace drawinglayer
                 else
                 {
                     // interpolate. Get involved buffered decomposed matrices
-                    const sal_uInt32 nIndB((nIndA + 1L) % nSize);
-                    std::vector< basegfx::tools::B2DHomMatrixBufferedDecompose >::const_iterator aMatB(maMatrixStack.begin() + nIndB);
+                    const sal_uInt32 nIndB((nIndA + 1) % nSize);
+                    std::vector< basegfx::utils::B2DHomMatrixBufferedDecompose >::const_iterator aMatB(maMatrixStack.begin() + nIndB);
 
                     // interpolate for fOffset [0.0 .. 1.0[
                     const basegfx::B2DVector aScale(basegfx::interpolate(aMatA->getScale(), aMatB->getScale(), fOffset));
@@ -182,7 +174,7 @@ namespace drawinglayer
                     const double fShearX(((aMatB->getShearX() - aMatA->getShearX()) * fOffset) + aMatA->getShearX());
 
                     // build matrix for state
-                    aTargetTransform = basegfx::tools::createScaleShearXRotateTranslateB2DHomMatrix(
+                    aTargetTransform = basegfx::utils::createScaleShearXRotateTranslateB2DHomMatrix(
                         aScale, fShearX, fRotate, aTranslate);
                 }
 
@@ -199,7 +191,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(AnimatedInterpolatePrimitive2D, PRIMITIVE2D_ID_ANIMATEDINTERPOLATEPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

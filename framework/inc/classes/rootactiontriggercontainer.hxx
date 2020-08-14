@@ -27,14 +27,14 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
-#include <framework/fwedllapi.h>
+#include <framework/fwkdllapi.h>
 
 #define IMPLEMENTATIONNAME_ROOTACTIONTRIGGERCONTAINER   "com.sun.star.comp.ui.RootActionTriggerContainer"
 
 namespace framework
 {
 
-class FWE_DLLPUBLIC RootActionTriggerContainer :  public PropertySetContainer,
+class RootActionTriggerContainer final : public PropertySetContainer,
                                     public css::lang::XMultiServiceFactory,
                                     public css::lang::XServiceInfo,
                                     public css::lang::XUnoTunnel,
@@ -93,7 +93,6 @@ class FWE_DLLPUBLIC RootActionTriggerContainer :  public PropertySetContainer,
         void FillContainer();
 
         bool            m_bContainerCreated;
-        bool            m_bInContainerCreation;
         VclPtr<const Menu>  m_pMenu;
         const OUString* m_pMenuIdentifier;
 };

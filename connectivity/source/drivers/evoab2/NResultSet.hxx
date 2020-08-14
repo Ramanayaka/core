@@ -40,20 +40,17 @@
 #include <connectivity/FValue.hxx>
 #include <connectivity/warningscontainer.hxx>
 #include "NStatement.hxx"
-#include <connectivity/OSubComponent.hxx>
 #include "NResultSetMetaData.hxx"
 
-namespace connectivity
+namespace connectivity::evoab
 {
-    namespace evoab
-    {
         struct ComparisonData;
 
         class OEvoabVersionHelper
         {
         public:
             virtual EBook* openBook(const char *abname) = 0;
-            virtual bool executeQuery (EBook* pBook, EBookQuery* pQuery, OString &rPassword) = 0;
+            virtual void executeQuery (EBook* pBook, EBookQuery* pQuery, OString &rPassword) = 0;
             virtual void freeContacts() = 0;
             virtual bool isLDAP( EBook *pBook ) = 0;
             virtual bool isLocal( EBook *pBook ) = 0;
@@ -76,7 +73,7 @@ namespace connectivity
                                                >   OResultSet_BASE;
 
 
-        class OEvoabResultSet   :public cppu::BaseMutex
+        class OEvoabResultSet final : public cppu::BaseMutex
                                 ,public OResultSet_BASE
                                 ,public ::comphelper::OPropertyContainer
                                 ,public ::comphelper::OPropertyArrayUsageHelper<OEvoabResultSet>
@@ -84,11 +81,8 @@ namespace connectivity
         private:
             std::unique_ptr<OEvoabVersionHelper> m_pVersionHelper;
 
-        protected:
-
             OCommonStatement*                           m_pStatement;
             OEvoabConnection*                           m_pConnection;
-            css::uno::WeakReferenceHelper               m_aStatement;
             rtl::Reference<OEvoabResultSetMetaData>     m_xMetaData;
             ::dbtools::WarningsContainer                m_aWarnings;
 
@@ -120,13 +114,6 @@ namespace connectivity
 
             OEvoabResultSet( OCommonStatement *pStmt, OEvoabConnection *pConnection );
             void construct( const QueryData& _rData );
-
-            OEvoabConnection * getConnection() { return m_pConnection; }
-
-            css::uno::Reference< css::uno::XInterface > operator *()
-            {
-                return css::uno::Reference< css::uno::XInterface >(*static_cast<OResultSet_BASE*>(this));
-            }
 
             // ::cppu::OComponentHelper
             virtual void SAL_CALL disposing() override;
@@ -190,8 +177,8 @@ namespace connectivity
             // XColumnLocate
             virtual sal_Int32 SAL_CALL findColumn( const OUString& columnName ) override;
         };
-    }
 }
+
 
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_EVOAB2_NRESULTSET_HXX
 

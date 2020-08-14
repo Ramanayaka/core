@@ -2,21 +2,11 @@
 #if !defined(AFX_STDAFX_H_)
 #define AFX_STDAFX_H_
 
-#ifdef _MSC_VER
-#pragma once
-#endif
-
 #define STRICT
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0502
-#endif
 #define _ATL_APARTMENT_THREADED
 // #define _ATL_STATIC_REGISTRY
 
 #ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(push, 1)
-#pragma warning(disable: 4548)
 #if defined __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wall"
@@ -54,8 +44,6 @@ extern CComModule _Module;
 #if defined __clang__
 #pragma clang diagnostic pop
 #endif
-#pragma warning(pop)
-#pragma warning(pop)
 #endif
 
 #endif

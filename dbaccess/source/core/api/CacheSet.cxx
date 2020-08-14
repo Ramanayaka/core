@@ -18,27 +18,24 @@
  */
 
 #include "CacheSet.hxx"
-#include "core_resource.hxx"
-#include "core_resource.hrc"
-#include <com/sun/star/sdbcx/CompareBookmark.hpp>
+#include <core_resource.hxx>
+#include <strings.hrc>
+#include <strings.hxx>
+#include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/sdbc/XDatabaseMetaData.hpp>
 #include <com/sun/star/sdbc/XPreparedStatement.hpp>
 #include <com/sun/star/sdbc/ColumnValue.hpp>
 #include <com/sun/star/sdbc/XParameters.hpp>
-#include "dbastrings.hrc"
-#include <com/sun/star/sdbcx/XKeysSupplier.hpp>
 #include <com/sun/star/sdbcx/XIndexesSupplier.hpp>
 
-#include <limits>
-
 #include <connectivity/dbtools.hxx>
-#include <com/sun/star/sdbcx/KeyType.hpp>
-#include <comphelper/extract.hxx>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <comphelper/types.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 using namespace comphelper;
 
@@ -67,9 +64,9 @@ OCacheSet::OCacheSet(sal_Int32 i_nMaxRows)
 OUString OCacheSet::getIdentifierQuoteString() const
 {
     OUString sQuote;
-    Reference<XDatabaseMetaData> xMeta;
-    if ( m_xConnection.is() && (xMeta = m_xConnection->getMetaData()).is() )
-        sQuote = xMeta->getIdentifierQuoteString();
+    if ( m_xConnection.is() )
+        if (auto xMeta = m_xConnection->getMetaData())
+            sQuote = xMeta->getIdentifierQuoteString();
     return sQuote;
 }
 
@@ -79,36 +76,36 @@ void OCacheSet::construct(  const Reference< XResultSet>& _xDriverSet,const OUSt
 
     m_sRowSetFilter = i_sRowSetFilter;
 
-    if(_xDriverSet.is())
+    if(!_xDriverSet.is())
+        return;
+
+    m_xDriverSet = _xDriverSet;
+    m_xDriverRow.set(_xDriverSet,UNO_QUERY);
+    m_xSetMetaData = Reference<XResultSetMetaDataSupplier>(_xDriverSet,UNO_QUERY_THROW)->getMetaData();
+    if ( m_xSetMetaData.is() )
     {
-        m_xDriverSet = _xDriverSet;
-        m_xDriverRow.set(_xDriverSet,UNO_QUERY);
-        m_xSetMetaData = Reference<XResultSetMetaDataSupplier>(_xDriverSet,UNO_QUERY)->getMetaData();
-        if ( m_xSetMetaData.is() )
+        const sal_Int32 nCount = m_xSetMetaData->getColumnCount();
+        m_aNullable.resize(nCount);
+        m_aSignedFlags.resize(nCount);
+        m_aColumnTypes.resize(nCount);
+        auto pNullableIter = m_aNullable.begin();
+        auto pSignedIter = m_aSignedFlags.begin();
+        auto pColumnIter = m_aColumnTypes.begin();
+        for (sal_Int32 i=1; i <= nCount; ++i,++pSignedIter,++pColumnIter,++pNullableIter)
         {
-            const sal_Int32 nCount = m_xSetMetaData->getColumnCount();
-            m_aNullable.resize(nCount);
-            m_aSignedFlags.resize(nCount);
-            m_aColumnTypes.resize(nCount);
-            auto pNullableIter = m_aNullable.begin();
-            auto pSignedIter = m_aSignedFlags.begin();
-            auto pColumnIter = m_aColumnTypes.begin();
-            for (sal_Int32 i=1; i <= nCount; ++i,++pSignedIter,++pColumnIter,++pNullableIter)
-            {
-                *pNullableIter = m_xSetMetaData->isNullable(i) != ColumnValue::NO_NULLS;
-                *pSignedIter = m_xSetMetaData->isSigned(i);
-                *pColumnIter = m_xSetMetaData->getColumnType(i);
-            }
+            *pNullableIter = m_xSetMetaData->isNullable(i) != ColumnValue::NO_NULLS;
+            *pSignedIter = m_xSetMetaData->isSigned(i);
+            *pColumnIter = m_xSetMetaData->getColumnType(i);
         }
-        Reference< XStatement> xStmt(m_xDriverSet->getStatement(),UNO_QUERY);
-        if(xStmt.is())
-            m_xConnection = xStmt->getConnection();
-        else
-        {
-            Reference< XPreparedStatement> xPrepStmt(m_xDriverSet->getStatement(),UNO_QUERY);
-            if ( xPrepStmt.is() )
-                m_xConnection = xPrepStmt->getConnection();
-        }
+    }
+    Reference< XStatement> xStmt(m_xDriverSet->getStatement(),UNO_QUERY);
+    if(xStmt.is())
+        m_xConnection = xStmt->getConnection();
+    else
+    {
+        Reference< XPreparedStatement> xPrepStmt(m_xDriverSet->getStatement(),UNO_QUERY);
+        if ( xPrepStmt.is() )
+            m_xConnection = xPrepStmt->getConnection();
     }
 }
 
@@ -147,7 +144,7 @@ void OCacheSet::fillTableName(const Reference<XPropertySet>& _xTable)
     }
 }
 
-void SAL_CALL OCacheSet::insertRow( const ORowSetRow& _rInsertRow,const connectivity::OSQLTable& _xTable )
+void OCacheSet::insertRow( const ORowSetRow& _rInsertRow,const connectivity::OSQLTable& _xTable )
 {
     Reference<XPropertySet> xSet(_xTable,UNO_QUERY);
     fillTableName(xSet);
@@ -158,11 +155,11 @@ void SAL_CALL OCacheSet::insertRow( const ORowSetRow& _rInsertRow,const connecti
     OUStringBuffer aValues(" VALUES ( ");
     OUString aQuote = getIdentifierQuoteString();
     sal_Int32 i = 1;
-    ORowVector< ORowSetValue >::Vector::const_iterator aIter = _rInsertRow->get().begin()+1;
-    connectivity::ORowVector< ORowSetValue > ::Vector::iterator aEnd = _rInsertRow->get().end();
+    ORowVector< ORowSetValue >::Vector::const_iterator aIter = _rInsertRow->begin()+1;
+    connectivity::ORowVector< ORowSetValue > ::Vector::iterator aEnd = _rInsertRow->end();
     for(; aIter != aEnd;++aIter)
     {
-        aSql.append(::dbtools::quoteName( aQuote,m_xSetMetaData->getColumnName(i++)) + ",");
+        aSql.append(::dbtools::quoteName( aQuote,m_xSetMetaData->getColumnName(i++)) ).append(",");
         aValues.append("?,");
     }
 
@@ -175,7 +172,7 @@ void SAL_CALL OCacheSet::insertRow( const ORowSetRow& _rInsertRow,const connecti
         Reference< XPreparedStatement > xPrep(m_xConnection->prepareStatement(aSql.makeStringAndClear()));
         Reference< XParameters > xParameter(xPrep,UNO_QUERY);
         i = 1;
-        for(aIter = _rInsertRow->get().begin()+1; aIter != aEnd;++aIter,++i)
+        for(aIter = _rInsertRow->begin()+1; aIter != aEnd;++aIter,++i)
         {
             if(aIter->isNull())
                 xParameter->setNull(i,aIter->getTypeKind());
@@ -216,7 +213,7 @@ void OCacheSet::fillParameters( const ORowSetRow& _rRow
                 && comphelper::getBOOL(xIndexColsSup->getPropertyValue(PROPERTY_ISUNIQUE))
                 && !comphelper::getBOOL(xIndexColsSup->getPropertyValue(PROPERTY_ISPRIMARYKEYINDEX))
               )
-                aAllIndexColumns.push_back(Reference<XColumnsSupplier>(xIndexColsSup,UNO_QUERY)->getColumns());
+                aAllIndexColumns.push_back(Reference<XColumnsSupplier>(xIndexColsSup,UNO_QUERY_THROW)->getColumns());
         }
     }
 
@@ -231,8 +228,8 @@ void OCacheSet::fillParameters( const ORowSetRow& _rRow
 
     OUString sIsNull(" IS NULL");
     OUString sParam(" = ?");
-    ORowVector< ORowSetValue >::Vector::const_iterator aIter = _rRow->get().begin()+1;
-    ORowVector< ORowSetValue >::Vector::const_iterator aEnd = _rRow->get().end()+1;
+    ORowVector< ORowSetValue >::Vector::const_iterator aIter = _rRow->begin()+1;
+    ORowVector< ORowSetValue >::Vector::const_iterator aEnd = _rRow->end();
     for(; aIter != aEnd;++aIter,++nCheckCount,++i)
     {
         aColumnName = m_xSetMetaData->getColumnName(i);
@@ -247,11 +244,9 @@ void OCacheSet::fillParameters( const ORowSetRow& _rRow
             _rOrgValues.push_back(nCheckCount);
 
         }
-        std::vector< Reference<XNameAccess> >::const_iterator aIndexEnd = aAllIndexColumns.end();
-        for( std::vector< Reference<XNameAccess> >::const_iterator aIndexIter = aAllIndexColumns.begin();
-                aIndexIter != aIndexEnd;++aIndexIter)
+        for (auto const& indexColumn : aAllIndexColumns)
         {
-            if((*aIndexIter)->hasByName(aColumnName))
+            if(indexColumn->hasByName(aColumnName))
             {
                 _sCondition.append(::dbtools::quoteName( aQuote,aColumnName));
                 if(aIter->isNull())
@@ -265,12 +260,12 @@ void OCacheSet::fillParameters( const ORowSetRow& _rRow
         }
         if(aIter->isModified())
         {
-            _sParameter.append(::dbtools::quoteName( aQuote,aColumnName) + "?,");
+            _sParameter.append(::dbtools::quoteName( aQuote,aColumnName) ).append("?,");
         }
     }
 }
 
-void SAL_CALL OCacheSet::updateRow(const ORowSetRow& _rInsertRow ,const ORowSetRow& _rOriginalRow,const connectivity::OSQLTable& _xTable  )
+void OCacheSet::updateRow(const ORowSetRow& _rInsertRow ,const ORowSetRow& _rOriginalRow,const connectivity::OSQLTable& _xTable  )
 {
     Reference<XPropertySet> xSet(_xTable,UNO_QUERY);
     fillTableName(xSet);
@@ -286,7 +281,7 @@ void SAL_CALL OCacheSet::updateRow(const ORowSetRow& _rInsertRow ,const ORowSetR
     {
         aCondition.setLength(aCondition.getLength()-5);
 
-        aSql.append(" WHERE " + aCondition.makeStringAndClear());
+        aSql.append(" WHERE " ).append( aCondition.makeStringAndClear());
     }
     else
         ::dbtools::throwSQLException(
@@ -296,8 +291,8 @@ void SAL_CALL OCacheSet::updateRow(const ORowSetRow& _rInsertRow ,const ORowSetR
     Reference< XPreparedStatement > xPrep(m_xConnection->prepareStatement(aSql.makeStringAndClear()));
     Reference< XParameters > xParameter(xPrep,UNO_QUERY);
     sal_Int32 i = 1;
-    connectivity::ORowVector< ORowSetValue > ::Vector::iterator aEnd = _rInsertRow->get().end();
-    for(ORowVector< ORowSetValue >::Vector::const_iterator aIter = _rInsertRow->get().begin()+1; aIter != aEnd;++aIter)
+    connectivity::ORowVector< ORowSetValue > ::Vector::iterator aEnd = _rInsertRow->end();
+    for(ORowVector< ORowSetValue >::Vector::const_iterator aIter = _rInsertRow->begin()+1; aIter != aEnd;++aIter)
     {
         if(aIter->isModified())
         {
@@ -305,16 +300,16 @@ void SAL_CALL OCacheSet::updateRow(const ORowSetRow& _rInsertRow ,const ORowSetR
             ++i;
         }
     }
-    auto aOrgValueEnd = aOrgValues.cend();
-    for(auto aOrgValue = aOrgValues.cbegin(); aOrgValue != aOrgValueEnd;++aOrgValue,++i)
+    for (auto const& orgValue : aOrgValues)
     {
-        setParameter(i,xParameter,(_rOriginalRow->get())[*aOrgValue],m_xSetMetaData->getColumnType(i),m_xSetMetaData->getScale(i));
+        setParameter(i,xParameter,(*_rOriginalRow)[orgValue],m_xSetMetaData->getColumnType(i),m_xSetMetaData->getScale(i));
+        ++i;
     }
 
-     m_bUpdated = xPrep->executeUpdate() > 0;
+    m_bUpdated = xPrep->executeUpdate() > 0;
 }
 
-void SAL_CALL OCacheSet::deleteRow(const ORowSetRow& _rDeleteRow ,const connectivity::OSQLTable& _xTable  )
+void OCacheSet::deleteRow(const ORowSetRow& _rDeleteRow ,const connectivity::OSQLTable& _xTable  )
 {
     Reference<XPropertySet> xSet(_xTable,UNO_QUERY);
     fillTableName(xSet);
@@ -322,9 +317,6 @@ void SAL_CALL OCacheSet::deleteRow(const ORowSetRow& _rDeleteRow ,const connecti
     OUStringBuffer aSql("DELETE FROM " + m_aComposedTableName + " WHERE ");
 
     // use keys and indexes for exact positioning
-    // first the keys
-    const Reference<XNameAccess> xPrimaryKeyColumns = getPrimaryKeyColumns_throw(xSet);
-    // second the indexes
     Reference<XIndexesSupplier> xIndexSup(_xTable,UNO_QUERY);
     Reference<XIndexAccess> xIndexes;
     if(xIndexSup.is())
@@ -342,7 +334,7 @@ void SAL_CALL OCacheSet::deleteRow(const ORowSetRow& _rDeleteRow ,const connecti
                 && comphelper::getBOOL(xIndexColsSup->getPropertyValue(PROPERTY_ISUNIQUE))
                 && !comphelper::getBOOL(xIndexColsSup->getPropertyValue(PROPERTY_ISPRIMARYKEYINDEX))
               )
-                aAllIndexColumns.push_back(Reference<XColumnsSupplier>(xIndexColsSup,UNO_QUERY)->getColumns());
+                aAllIndexColumns.push_back(Reference<XColumnsSupplier>(xIndexColsSup,UNO_QUERY_THROW)->getColumns());
         }
     }
 
@@ -356,10 +348,10 @@ void SAL_CALL OCacheSet::deleteRow(const ORowSetRow& _rDeleteRow ,const connecti
     Reference< XPreparedStatement > xPrep(m_xConnection->prepareStatement(aSql.makeStringAndClear()));
     Reference< XParameters > xParameter(xPrep,UNO_QUERY);
     sal_Int32 i = 1;
-    auto aOrgValueEnd = aOrgValues.cend();
-    for(auto j = aOrgValues.cbegin(); j != aOrgValueEnd; ++j,++i)
+    for (auto const& orgValue : aOrgValues)
     {
-        setParameter(i,xParameter,(_rDeleteRow->get())[*j],m_xSetMetaData->getColumnType(i),m_xSetMetaData->getScale(i));
+        setParameter(i,xParameter,(*_rDeleteRow)[orgValue],m_xSetMetaData->getColumnType(i),m_xSetMetaData->getScale(i));
+        ++i;
     }
 
     m_bDeleted = xPrep->executeUpdate() > 0;
@@ -381,8 +373,8 @@ void OCacheSet::fillValueRow(ORowSetRow& _rRow,sal_Int32 _nPosition)
     if(!aBookmark.hasValue())
         aBookmark <<= _nPosition;
 
-    connectivity::ORowVector< ORowSetValue >::Vector::iterator aIter = _rRow->get().begin();
-    connectivity::ORowVector< ORowSetValue >::Vector::iterator aEnd = _rRow->get().end();
+    connectivity::ORowVector< ORowSetValue >::Vector::iterator aIter = _rRow->begin();
+    connectivity::ORowVector< ORowSetValue >::Vector::iterator aEnd = _rRow->end();
     (*aIter) = aBookmark;
     ++aIter;
     for(sal_Int32 i=1;aIter != aEnd;++aIter,++i)
@@ -493,94 +485,69 @@ Reference< XArray > SAL_CALL OCacheSet::getArray( sal_Int32 columnIndex )
 }
 
 // XResultSet
-bool SAL_CALL OCacheSet::next()
+bool OCacheSet::next()
 {
     m_bInserted = m_bUpdated = m_bDeleted = false;
     return m_xDriverSet->next();
 }
 
-bool SAL_CALL OCacheSet::isBeforeFirst(  )
-{
-    return m_xDriverSet->isBeforeFirst();
-}
-
-bool SAL_CALL OCacheSet::isAfterLast(  )
-{
-    return m_xDriverSet->isAfterLast();
-}
-
-void SAL_CALL OCacheSet::beforeFirst(  )
+void OCacheSet::beforeFirst(  )
 {
     m_bInserted = m_bUpdated = m_bDeleted = false;
     m_xDriverSet->beforeFirst();
 }
 
-void SAL_CALL OCacheSet::afterLast(  )
+void OCacheSet::afterLast(  )
 {
     m_bInserted = m_bUpdated = m_bDeleted = false;
     m_xDriverSet->afterLast();
 }
 
-bool SAL_CALL OCacheSet::first()
+bool OCacheSet::first()
 {
     m_bInserted = m_bUpdated = m_bDeleted = false;
     return m_xDriverSet->first();
 }
 
-bool SAL_CALL OCacheSet::last()
+bool OCacheSet::last()
 {
     m_bInserted = m_bUpdated = m_bDeleted = false;
     return m_xDriverSet->last();
 }
 
-sal_Int32 SAL_CALL OCacheSet::getRow(  )
+sal_Int32 OCacheSet::getRow(  )
 {
     return m_xDriverSet->getRow();
 }
 
-bool SAL_CALL OCacheSet::absolute( sal_Int32 row )
+bool OCacheSet::absolute( sal_Int32 row )
 {
     m_bInserted = m_bUpdated = m_bDeleted = false;
     return m_xDriverSet->absolute(row);
 }
 
-bool SAL_CALL OCacheSet::previous(  )
+bool OCacheSet::previous(  )
 {
     m_bInserted = m_bUpdated = m_bDeleted = false;
     return m_xDriverSet->previous();
 }
 
-bool OCacheSet::last_checked( bool /*i_bFetchRow*/)
-{
-    return last();
-}
-
-bool OCacheSet::previous_checked( bool /*i_bFetchRow*/ )
-{
-    return previous();
-}
-
-bool OCacheSet::absolute_checked( sal_Int32 row,bool /*i_bFetchRow*/ )
-{
-    return absolute(row);
-}
-
-void SAL_CALL OCacheSet::refreshRow(  )
+void OCacheSet::refreshRow(  )
 {
     m_xDriverSet->refreshRow();
 }
 
-bool SAL_CALL OCacheSet::rowUpdated(  )
+bool OCacheSet::rowUpdated(  )
 {
     return m_xDriverSet->rowUpdated();
 }
 
-bool SAL_CALL OCacheSet::rowInserted(  )
+bool OCacheSet::rowInserted(  )
 {
     return m_xDriverSet->rowInserted();
 }
 
-bool SAL_CALL OCacheSet::rowDeleted(  )
+bool OCacheSet::rowDeleted(  )
 {
     return m_xDriverSet->rowDeleted();
 }

@@ -15,7 +15,7 @@ $(eval $(call gb_Library_use_custom_headers,writerfilter,\
 	writerfilter/source \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,writerfilter,$(SRCDIR)/writerfilter/inc/pch/precompiled_writerfilter))
+$(eval $(call gb_Library_set_precompiled_header,writerfilter,writerfilter/inc/pch/precompiled_writerfilter))
 
 $(eval $(call gb_Library_set_include,writerfilter,\
     $$(INCLUDE) \
@@ -26,12 +26,6 @@ $(eval $(call gb_Library_set_include,writerfilter,\
 $(eval $(call gb_Library_use_sdk_api,writerfilter))
 
 $(eval $(call gb_Library_set_componentfile,writerfilter,writerfilter/util/writerfilter))
-
-$(eval $(call gb_Library_add_defs,writerfilter,\
-	$(if $(filter-out 0,$(gb_DEBUGLEVEL)), \
-		-DDEBUG_WRITERFILTER \
-	) \
-))
 
 $(eval $(call gb_Library_use_libraries,writerfilter,\
     basegfx \
@@ -44,6 +38,7 @@ $(eval $(call gb_Library_use_libraries,writerfilter,\
     msfilter \
     oox \
     sal \
+    salhelper \
     sax \
     sfx \
     sot \
@@ -128,7 +123,6 @@ $(eval $(call gb_Library_add_exception_objects,writerfilter,\
     writerfilter/source/ooxml/OOXMLParserState \
     writerfilter/source/ooxml/OOXMLPropertySet \
     writerfilter/source/ooxml/OOXMLStreamImpl \
-    writerfilter/source/ooxml/qnametostrcore \
 ))
 
 $(eval $(call gb_Library_add_generated_exception_objects,writerfilter,\

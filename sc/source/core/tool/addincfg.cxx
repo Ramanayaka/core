@@ -19,11 +19,13 @@
 
 #include <com/sun/star/uno/Sequence.hxx>
 
-#include "global.hxx"
-#include "addincol.hxx"
-#include "addincfg.hxx"
-#include "scmod.hxx"
-#include "sc.hrc"
+#include <sal/log.hxx>
+
+#include <global.hxx>
+#include <addincol.hxx>
+#include <addincfg.hxx>
+#include <scmod.hxx>
+#include <sc.hrc>
 
 using namespace com::sun::star;
 

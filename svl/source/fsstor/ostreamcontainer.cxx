@@ -20,6 +20,7 @@
 #include "ostreamcontainer.hxx"
 
 #include <cppuhelper/queryinterface.hxx>
+#include <comphelper/sequence.hxx>
 
 
 using namespace ::com::sun::star;
@@ -28,8 +29,6 @@ OFSStreamContainer::OFSStreamContainer( const uno::Reference < io::XStream >& xS
 : m_bDisposed( false )
 , m_bInputClosed( false )
 , m_bOutputClosed( false )
-, m_pListenersContainer( nullptr )
-, m_pTypeCollection( nullptr )
 {
     try
     {
@@ -56,19 +55,12 @@ OFSStreamContainer::OFSStreamContainer( const uno::Reference < io::XStream >& xS
 
 OFSStreamContainer::~OFSStreamContainer()
 {
-    if ( m_pListenersContainer )
-    {
-        delete m_pListenersContainer;
-        m_pListenersContainer = nullptr;
-    }
 }
 
 // XInterface
 uno::Any SAL_CALL OFSStreamContainer::queryInterface( const uno::Type& rType )
 {
-    uno::Any aReturn;
-
-    aReturn = ::cppu::queryInterface
+    uno::Any aReturn = ::cppu::queryInterface
                 (   rType
                     ,   static_cast<lang::XTypeProvider*> ( this )
                     ,   static_cast<io::XStream*> ( this )
@@ -143,42 +135,31 @@ void SAL_CALL OFSStreamContainer::release()
 //  XTypeProvider
 uno::Sequence< uno::Type > SAL_CALL OFSStreamContainer::getTypes()
 {
-    if ( m_pTypeCollection == nullptr )
+    if ( !m_aTypes.hasElements() )
     {
         ::osl::MutexGuard aGuard( m_aMutex );
 
-        if ( m_pTypeCollection == nullptr )
+        if ( !m_aTypes.hasElements() )
         {
-            ::cppu::OTypeCollection aTypeCollection
-                                    (   cppu::UnoType<lang::XTypeProvider>::get()
-                                    ,   cppu::UnoType<embed::XExtendedStorageStream>::get());
+            std::vector<uno::Type> tmp;
+            tmp.push_back(cppu::UnoType<lang::XTypeProvider>::get());
+            tmp.push_back(cppu::UnoType<embed::XExtendedStorageStream>::get());
 
             if ( m_xSeekable.is() )
-                aTypeCollection = ::cppu::OTypeCollection
-                                    (   cppu::UnoType<io::XSeekable>::get(),
-                                        aTypeCollection.getTypes() );
+                tmp.push_back(cppu::UnoType<io::XSeekable>::get());
             if ( m_xInputStream.is() )
-                aTypeCollection = ::cppu::OTypeCollection
-                                    (   cppu::UnoType<io::XInputStream>::get(),
-                                        aTypeCollection.getTypes() );
-
+                tmp.push_back(cppu::UnoType<io::XInputStream>::get());
             if ( m_xOutputStream.is() )
-                aTypeCollection = ::cppu::OTypeCollection
-                                    (   cppu::UnoType<io::XOutputStream>::get(),
-                                        aTypeCollection.getTypes() );
+                tmp.push_back(cppu::UnoType<io::XOutputStream>::get());
             if ( m_xTruncate.is() )
-                aTypeCollection = ::cppu::OTypeCollection
-                                    (   cppu::UnoType<io::XTruncate>::get(),
-                                        aTypeCollection.getTypes() );
+                tmp.push_back(cppu::UnoType<io::XTruncate>::get());
             if ( m_xAsyncOutputMonitor.is() )
-                aTypeCollection = ::cppu::OTypeCollection
-                                    (   cppu::UnoType<io::XAsyncOutputMonitor>::get(),
-                                        aTypeCollection.getTypes() );
+                tmp.push_back(cppu::UnoType<io::XAsyncOutputMonitor>::get());
 
-            m_pTypeCollection = new ::cppu::OTypeCollection( aTypeCollection );
+            m_aTypes = comphelper::containerToSequence(tmp);
         }
     }
-    return m_pTypeCollection->getTypes() ;
+    return m_aTypes;
 }
 
 uno::Sequence< sal_Int8 > SAL_CALL OFSStreamContainer::getImplementationId()
@@ -259,7 +240,7 @@ void SAL_CALL OFSStreamContainer::addEventListener( const uno::Reference< lang::
         throw lang::DisposedException();
 
     if ( !m_pListenersContainer )
-        m_pListenersContainer = new ::comphelper::OInterfaceContainerHelper2( m_aMutex );
+        m_pListenersContainer.reset(new ::comphelper::OInterfaceContainerHelper2( m_aMutex ));
 
     m_pListenersContainer->addInterface( xListener );
 }

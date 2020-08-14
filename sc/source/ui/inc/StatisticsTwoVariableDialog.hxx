@@ -11,15 +11,11 @@
 #ifndef INCLUDED_SC_SOURCE_UI_INC_STATISTICSTWOVARIABLEDIALOG_HXX
 #define INCLUDED_SC_SOURCE_UI_INC_STATISTICSTWOVARIABLEDIALOG_HXX
 
-#include "global.hxx"
-#include "address.hxx"
+#include <address.hxx>
 #include "anyrefdg.hxx"
+#include "viewdata.hxx"
 
-#include <vcl/fixed.hxx>
-#include <vcl/group.hxx>
-#include <vcl/lstbox.hxx>
-
-class ScStatisticsTwoVariableDialog : public ScAnyRefDlg
+class ScStatisticsTwoVariableDialog : public ScAnyRefDlgController
 {
 public:
     enum GroupedBy {
@@ -29,64 +25,67 @@ public:
 
     ScStatisticsTwoVariableDialog(
         SfxBindings* pB, SfxChildWindow* pCW,
-        vcl::Window* pParent, ScViewData* pViewData,
-        const OUString& rID, const OUString& rUIXMLDescription );
+        weld::Window* pParent, ScViewData* pViewData,
+        const OUString& rUIXMLDescription, const OString& rID);
 
     virtual ~ScStatisticsTwoVariableDialog() override;
-    virtual void        dispose() override;
 
-    virtual void        SetReference( const ScRange& rRef, ScDocument* pDoc ) override;
+    virtual void        SetReference( const ScRange& rRef, ScDocument& rDoc ) override;
     virtual void        SetActive() override;
 
 protected:
     void CalculateInputAndWriteToOutput();
 
     virtual ScRange ApplyOutput(ScDocShell* pDocShell) = 0;
-    virtual sal_Int16 GetUndoNameId() = 0;
+    virtual const char* GetUndoNameId() = 0;
+    virtual bool InputRangesValid();
+    void ValidateDialogInput();
 
     // Widgets
-    VclPtr<FixedText>          mpVariable1RangeLabel;
-    VclPtr<formula::RefEdit>   mpVariable1RangeEdit;
-    VclPtr<formula::RefButton> mpVariable1RangeButton;
+    std::unique_ptr<weld::Label> mxVariable1RangeLabel;
+    std::unique_ptr<formula::RefEdit> mxVariable1RangeEdit;
+    std::unique_ptr<formula::RefButton> mxVariable1RangeButton;
 
-    VclPtr<FixedText>          mpVariable2RangeLabel;
-    VclPtr<formula::RefEdit>   mpVariable2RangeEdit;
-    VclPtr<formula::RefButton> mpVariable2RangeButton;
+    std::unique_ptr<weld::Label> mxVariable2RangeLabel;
+    std::unique_ptr<formula::RefEdit> mxVariable2RangeEdit;
+    std::unique_ptr<formula::RefButton> mxVariable2RangeButton;
 
-    VclPtr<FixedText>          mpOutputRangeLabel;
-    VclPtr<formula::RefEdit>   mpOutputRangeEdit;
-    VclPtr<formula::RefButton> mpOutputRangeButton;
+    std::unique_ptr<weld::Label> mxOutputRangeLabel;
+    std::unique_ptr<formula::RefEdit> mxOutputRangeEdit;
+    std::unique_ptr<formula::RefButton> mxOutputRangeButton;
 
     // Data
-    ScViewData*         mViewData;
-    ScDocument*         mDocument;
+    ScViewData*               mViewData;
+    ScDocument&               mDocument;
 
-    ScRange             mVariable1Range;
-    ScRange             mVariable2Range;
+    ScRange                   mVariable1Range;
+    ScRange                   mVariable2Range;
 
-    ScAddress::Details  mAddressDetails;
-    ScAddress           mOutputAddress;
-    GroupedBy           mGroupedBy;
+    ScAddress::Details const  mAddressDetails;
+    ScAddress                 mOutputAddress;
+    GroupedBy                 mGroupedBy;
 
 private:
     // Widgets
-    VclPtr<OKButton>           mpButtonOk;
+    std::unique_ptr<weld::Button> mxButtonOk;
 
-    VclPtr<RadioButton>        mpGroupByColumnsRadio;
-    VclPtr<RadioButton>        mpGroupByRowsRadio;
+    std::unique_ptr<weld::RadioButton> mxGroupByColumnsRadio;
+    std::unique_ptr<weld::RadioButton> mxGroupByRowsRadio;
 
-    VclPtr<formula::RefEdit>   mpActiveEdit;
-    ScAddress           mCurrentAddress;
-    bool                mDialogLostFocus;
+    formula::RefEdit*      mpActiveEdit;
+    ScAddress              mCurrentAddress;
+    bool                   mDialogLostFocus;
 
     void Init();
     void GetRangeFromSelection();
 
-    DECL_LINK( GroupByChanged, RadioButton&, void );
-    DECL_LINK( OkClicked, Button*, void );
-    DECL_LINK( GetFocusHandler, Control&, void );
-    DECL_LINK( LoseFocusHandler, Control&, void );
-    DECL_LINK( RefInputModifyHandler, Edit&, void );
+    DECL_LINK( GroupByChanged, weld::ToggleButton&, void );
+    DECL_LINK( OkClicked, weld::Button&, void );
+    DECL_LINK( GetEditFocusHandler, formula::RefEdit&, void );
+    DECL_LINK( GetButtonFocusHandler, formula::RefButton&, void );
+    DECL_LINK( LoseEditFocusHandler, formula::RefEdit&, void );
+    DECL_LINK( LoseButtonFocusHandler, formula::RefButton&, void );
+    DECL_LINK( RefInputModifyHandler, formula::RefEdit&, void );
 };
 
 #endif

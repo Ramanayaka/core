@@ -20,8 +20,6 @@
 #define INCLUDED_DBACCESS_SOURCE_FILTER_XML_XMLFILEBASEDDATABASE_HXX
 
 #include <xmloff/xmlictxt.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <vector>
 
 namespace dbaxml
 {
@@ -30,9 +28,10 @@ namespace dbaxml
     {
     public:
 
-        OXMLFileBasedDatabase( ODBFilter& rImport, sal_uInt16 nPrfx,
-                    const OUString& rLName,
-                    const css::uno::Reference< css::xml::sax::XAttributeList > & xAttrList);
+        OXMLFileBasedDatabase( ODBFilter& rImport,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList > & _xAttrList );
+        virtual void SAL_CALL startFastElement( sal_Int32 /*nElement*/,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& ) override {}
         virtual ~OXMLFileBasedDatabase() override;
     };
 } // namespace dbaxml

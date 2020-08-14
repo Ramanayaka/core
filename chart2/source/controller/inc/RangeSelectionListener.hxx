@@ -19,10 +19,11 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_INC_RANGESELECTIONLISTENER_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_INC_RANGESELECTIONLISTENER_HXX
 
-#include "ControllerLockGuard.hxx"
+#include <ControllerLockGuard.hxx>
 #include <cppuhelper/implbase.hxx>
-#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/sheet/XRangeSelectionListener.hpp>
+
+namespace com::sun::star::frame { class XModel; }
 
 namespace chart
 {

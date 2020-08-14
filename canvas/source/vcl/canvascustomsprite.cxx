@@ -20,23 +20,10 @@
 
 #include <sal/config.h>
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/numeric/ftools.hxx>
 #include <basegfx/point/b2dpoint.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b2dpolypolygontools.hxx>
-#include <basegfx/tools/canvastools.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <rtl/math.hxx>
 #include <tools/diagnose_ex.h>
-#include <vcl/alpha.hxx>
-#include <vcl/bitmap.hxx>
-#include <vcl/bitmapex.hxx>
-#include <vcl/canvastools.hxx>
 #include <vcl/outdev.hxx>
-
-#include <canvas/canvastools.hxx>
 
 #include "canvascustomsprite.hxx"
 
@@ -52,7 +39,7 @@ namespace vclcanvas
                                             const OutDevProviderSharedPtr&            rOutDevProvider,
                                             bool                                      bShowSpriteBounds )
     {
-        ENSURE_OR_THROW( rOwningSpriteCanvas.get() &&
+        ENSURE_OR_THROW( rOwningSpriteCanvas &&
                          rOutDevProvider,
                          "CanvasCustomSprite::CanvasCustomSprite(): Invalid sprite canvas" );
 
@@ -68,12 +55,12 @@ namespace vclcanvas
                                                 ceil( rSpriteSize.Height ))) );
 
         // create content backbuffer in screen depth
-        BackBufferSharedPtr pBackBuffer( new BackBuffer( rOutDevProvider->getOutDev() ) );
+        BackBufferSharedPtr pBackBuffer = std::make_shared<BackBuffer>( rOutDevProvider->getOutDev() );
         pBackBuffer->setSize( aSize );
 
         // create mask backbuffer, with one bit color depth
-        BackBufferSharedPtr pBackBufferMask( new BackBuffer( rOutDevProvider->getOutDev(),
-                                                             true ) );
+        BackBufferSharedPtr pBackBufferMask = std::make_shared<BackBuffer>( rOutDevProvider->getOutDev(),
+                                                             true );
         pBackBufferMask->setSize( aSize );
 
         // TODO(F1): Implement alpha vdev (could prolly enable
@@ -117,7 +104,7 @@ namespace vclcanvas
 
     OUString SAL_CALL CanvasCustomSprite::getImplementationName()
     {
-        return OUString( "VCLCanvas.CanvasCustomSprite" );
+        return "VCLCanvas.CanvasCustomSprite";
     }
 
     sal_Bool SAL_CALL CanvasCustomSprite::supportsService( const OUString& ServiceName )

@@ -21,7 +21,7 @@ $(eval $(call gb_Library_Library,vbaswobj))
 
 $(eval $(call gb_Library_set_componentfile,vbaswobj,sw/util/vbaswobj))
 
-$(eval $(call gb_Library_set_precompiled_header,vbaswobj,$(SRCDIR)/sw/inc/pch/precompiled_vbaswobj))
+$(eval $(call gb_Library_set_precompiled_header,vbaswobj,sw/inc/pch/precompiled_vbaswobj))
 
 $(eval $(call gb_Library_set_include,vbaswobj,\
     -I$(SRCDIR)/sw/source/uibase/inc \
@@ -62,7 +62,6 @@ $(eval $(call gb_Library_use_externals,vbaswobj,\
 ))
 
 $(eval $(call gb_Library_add_exception_objects,vbaswobj,\
-    sw/source/ui/vba/service \
     sw/source/ui/vba/vbarange \
     sw/source/ui/vba/vbacell \
     sw/source/ui/vba/vbacells \
@@ -78,6 +77,7 @@ $(eval $(call gb_Library_add_exception_objects,vbaswobj,\
     sw/source/ui/vba/vbalistlevels \
     sw/source/ui/vba/vbalisttemplate \
     sw/source/ui/vba/vbalisttemplates \
+    sw/source/ui/vba/vbamailmerge \
     sw/source/ui/vba/vbarevision \
     sw/source/ui/vba/vbarevisions \
     sw/source/ui/vba/vbarow \

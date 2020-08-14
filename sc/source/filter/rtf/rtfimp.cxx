@@ -17,15 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "global.hxx"
-#include "document.hxx"
-#include "filter.hxx"
-#include "editutil.hxx"
-#include "rtfimp.hxx"
-#include "rtfparse.hxx"
-#include "ftools.hxx"
+#include <filter.hxx>
+#include <editutil.hxx>
+#include <rtfimp.hxx>
+#include <rtfparse.hxx>
+#include <ftools.hxx>
 
-ErrCode ScFormatFilterPlugin::ScImportRTF( SvStream &rStream, const OUString& rBaseURL, ScDocument *pDoc, ScRange& rRange )
+ErrCode ScFormatFilterPluginImpl::ScImportRTF( SvStream &rStream, const OUString& rBaseURL, ScDocument *pDoc, ScRange& rRange )
 {
     ScRTFImport aImp( pDoc, rRange );
     ErrCode nErr = aImp.Read( rStream, rBaseURL );
@@ -35,9 +33,9 @@ ErrCode ScFormatFilterPlugin::ScImportRTF( SvStream &rStream, const OUString& rB
     return nErr;
 }
 
-ScEEAbsImport *ScFormatFilterPlugin::CreateRTFImport( ScDocument* pDoc, const ScRange& rRange )
+std::unique_ptr<ScEEAbsImport> ScFormatFilterPluginImpl::CreateRTFImport( ScDocument* pDoc, const ScRange& rRange )
 {
-    return new ScRTFImport( pDoc, rRange );
+    return std::make_unique<ScRTFImport>( pDoc, rRange );
 }
 
 ScRTFImport::ScRTFImport( ScDocument* pDocP, const ScRange& rRange ) :

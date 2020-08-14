@@ -19,26 +19,24 @@
 #ifndef INCLUDED_SW_INC_TXATBASE_HXX
 #define INCLUDED_SW_INC_TXATBASE_HXX
 
-#include <tools/solar.h>
 #include <svl/poolitem.hxx>
-#include <hintids.hxx>
-#include <fmtautofmt.hxx>
-#include <fmtinfmt.hxx>
-#include <fmtrfmrk.hxx>
-#include <fmtruby.hxx>
-#include <fmtfld.hxx>
-#include <fmtflcnt.hxx>
-#include <fmtftn.hxx>
-#include <fmtmeta.hxx>
-#include <fchrfmt.hxx>
-#include <tox.hxx>
-
+#include "hintids.hxx"
+#include "fmtautofmt.hxx"
+#include "fmtinfmt.hxx"
+#include "fmtrfmrk.hxx"
+#include "fmtruby.hxx"
+#include "fmtfld.hxx"
+#include "fmtflcnt.hxx"
+#include "fmtftn.hxx"
+#include "fchrfmt.hxx"
+#include "tox.hxx"
+#include "ndhints.hxx"
 
 class SfxItemPool;
-class SvXMLAttrContainerItem;
 
-class SwTextAttr
+class SAL_DLLPUBLIC_RTTI SwTextAttr
 {
+friend class SwpHints;
 private:
     SfxPoolItem * const m_pAttr;
     sal_Int32 m_nStart;
@@ -60,8 +58,10 @@ private:
     SwTextAttr& operator=(SwTextAttr const&) = delete;
 
 protected:
+    SwpHints * m_pHints = nullptr;  // the SwpHints holds a pointer to this, and needs to be notified if the start/end changes
+
     SwTextAttr( SfxPoolItem& rAttr, sal_Int32 nStart );
-    virtual ~SwTextAttr();
+    virtual ~SwTextAttr() COVERITY_NOEXCEPT_FALSE;
 
     void SetLockExpandFlag( bool bFlag )    { m_bLockExpandFlag = bFlag; }
     void SetDontMoveAttr( bool bFlag )      { m_bDontMoveAttr = bFlag; }
@@ -78,14 +78,15 @@ public:
     static void Destroy( SwTextAttr * pToDestroy, SfxItemPool& rPool );
 
     /// start position
-                  sal_Int32& GetStart()        { return m_nStart; }
-            const sal_Int32& GetStart() const  { return m_nStart; }
+    void SetStart(sal_Int32 n) { m_nStart = n; if (m_pHints) m_pHints->StartPosChanged(); }
+    sal_Int32 GetStart() const { return m_nStart; }
 
     /// end position
-    virtual      sal_Int32* GetEnd(); // also used to change the end position
+    virtual const sal_Int32* GetEnd() const;
+    virtual void SetEnd(sal_Int32);
     inline const sal_Int32* End() const;
     /// end (if available), else start
-    inline const sal_Int32* GetAnyEnd() const;
+    inline sal_Int32 GetAnyEnd() const;
 
     inline void SetDontExpand( bool bDontExpand );
     bool DontExpand() const                 { return m_bDontExpand; }
@@ -120,10 +121,10 @@ public:
     inline const SwFormatINetFormat           &GetINetFormat() const;
     inline const SwFormatRuby              &GetRuby() const;
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
-class SwTextAttrEnd : public virtual SwTextAttr
+class SAL_DLLPUBLIC_RTTI SwTextAttrEnd : public virtual SwTextAttr
 {
 protected:
     sal_Int32 m_nEnd;
@@ -131,11 +132,12 @@ protected:
 public:
     SwTextAttrEnd( SfxPoolItem& rAttr, sal_Int32 nStart, sal_Int32 nEnd );
 
-    virtual sal_Int32* GetEnd() override;
+    virtual const sal_Int32* GetEnd() const override;
+    virtual void SetEnd(sal_Int32) override;
 };
 
 // attribute that must not overlap others
-class SwTextAttrNesting : public SwTextAttrEnd
+class SAL_DLLPUBLIC_RTTI SwTextAttrNesting : public SwTextAttrEnd
 {
 protected:
     SwTextAttrNesting( SfxPoolItem & i_rAttr,
@@ -145,13 +147,13 @@ protected:
 
 inline const sal_Int32* SwTextAttr::End() const
 {
-    return const_cast<SwTextAttr * >(this)->GetEnd();
+    return GetEnd();
 }
 
-inline const sal_Int32* SwTextAttr::GetAnyEnd() const
+inline sal_Int32 SwTextAttr::GetAnyEnd() const
 {
     const sal_Int32* pEnd = End();
-    return pEnd ? pEnd : &GetStart();
+    return pEnd ? *pEnd : m_nStart;
 }
 
 inline const SfxPoolItem& SwTextAttr::GetAttr() const

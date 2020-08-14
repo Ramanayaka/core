@@ -11,14 +11,14 @@
 
 #include <rtl/string.hxx>
 #include <rtl/uri.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <o3tl/runtimetooustring.hxx>
 #include <osl/file.hxx>
 #include <osl/thread.h>
-#include <algorithm>
 #include <memory>
 
 #include "LuceneHelper.hxx"
+#include <CLucene.h>
+#include <CLucene/analysis/LanguageBasedAnalyzer.h>
 
 using namespace lucene::document;
 
@@ -26,7 +26,7 @@ HelpIndexer::HelpIndexer(OUString const &lang, OUString const &module,
     OUString const &srcDir, OUString const &outDir)
     : d_lang(lang), d_module(module)
 {
-    d_indexDir = outDir + OUStringLiteral1('/') + module + ".idxl";
+    d_indexDir = outDir + OUStringChar('/') + module + ".idxl";
     d_captionDir = srcDir + "/caption";
     d_contentDir = srcDir + "/content";
 }
@@ -60,8 +60,9 @@ bool HelpIndexer::indexDocuments()
 
         // Index the identified help files
         Document doc;
-        for (std::set<OUString>::iterator i = d_files.begin(); i != d_files.end(); ++i) {
-            helpDocument(*i, &doc);
+        for (auto const& elem : d_files)
+        {
+            helpDocument(elem, &doc);
             writer.addDocument(&doc);
             doc.clear();
         }
@@ -95,7 +96,7 @@ bool HelpIndexer::scanForFiles(OUString const & path) {
     osl::Directory dir(path);
     if (osl::FileBase::E_None != dir.open()) {
         d_error = "Error reading directory " + path;
-        return true;
+        return false;
     }
 
     osl::DirectoryItem item;
@@ -110,12 +111,12 @@ bool HelpIndexer::scanForFiles(OUString const & path) {
     return true;
 }
 
-void HelpIndexer::helpDocument(OUString const & fileName, Document *doc) {
+void HelpIndexer::helpDocument(OUString const & fileName, Document *doc) const {
     // Add the help path as an indexed, untokenized field.
 
     OUString path = "#HLP#" + d_module + "/" + fileName;
     std::vector<TCHAR> aPath(OUStringToTCHARVec(path));
-    doc->add(*_CLNEW Field(_T("path"), &aPath[0], Field::STORE_YES | Field::INDEX_UNTOKENIZED));
+    doc->add(*_CLNEW Field(_T("path"), aPath.data(), int(Field::STORE_YES) | int(Field::INDEX_UNTOKENIZED)));
 
     OUString sEscapedFileName =
         rtl::Uri::encode(fileName,
@@ -123,11 +124,11 @@ void HelpIndexer::helpDocument(OUString const & fileName, Document *doc) {
 
     // Add the caption as a field.
     OUString captionPath = d_captionDir + "/" + sEscapedFileName;
-    doc->add(*_CLNEW Field(_T("caption"), helpFileReader(captionPath), Field::STORE_NO | Field::INDEX_TOKENIZED));
+    doc->add(*_CLNEW Field(_T("caption"), helpFileReader(captionPath), int(Field::STORE_NO) | int(Field::INDEX_TOKENIZED)));
 
     // Add the content as a field.
     OUString contentPath = d_contentDir + "/" + sEscapedFileName;
-    doc->add(*_CLNEW Field(_T("content"), helpFileReader(contentPath), Field::STORE_NO | Field::INDEX_TOKENIZED));
+    doc->add(*_CLNEW Field(_T("content"), helpFileReader(contentPath), int(Field::STORE_NO) | int(Field::INDEX_TOKENIZED)));
 }
 
 lucene::util::Reader *HelpIndexer::helpFileReader(OUString const & path) {

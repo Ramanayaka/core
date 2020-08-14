@@ -17,19 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
-
 #include <o3tl/any.hxx>
 #include <o3tl/typed_flags_set.hxx>
 #include <unotools/fltrcfg.hxx>
 #include <tools/debug.hxx>
-#include <tools/solar.h>
 #include <osl/diagnose.h>
 
 #include <com/sun/star/uno/Sequence.hxx>
 
 using namespace utl;
 using namespace com::sun::star::uno;
+
+namespace {
 
 enum class ConfigFlags {
     NONE                         = 0x0000000,
@@ -54,11 +53,18 @@ enum class ConfigFlags {
     UseEnhancedFields            = 0x0100000,
     WordWbctbl                   = 0x0200000,
     SmartArtShapeLoad            = 0x0400000,
-    CharBackgroundToHighlighting = 0x8000000
+    CharBackgroundToHighlighting = 0x8000000,
+    CreateMSOLockFiles           = 0x2000000,
+    VisioLoad                    = 0x4000000,
 };
-namespace o3tl {
-    template<> struct typed_flags<ConfigFlags> : is_typed_flags<ConfigFlags, 0x87fff3f> {};
+
 }
+
+namespace o3tl {
+    template<> struct typed_flags<ConfigFlags> : is_typed_flags<ConfigFlags, 0xe7fff3f> {};
+}
+
+namespace {
 
 class SvtAppFilterOptions_Impl : public utl::ConfigItem
 {
@@ -94,6 +100,8 @@ public:
                             }
 };
 
+}
+
 SvtAppFilterOptions_Impl::~SvtAppFilterOptions_Impl()
 {
     assert(!IsModified()); // should have been committed
@@ -126,6 +134,8 @@ void    SvtAppFilterOptions_Impl::Load()
         bSaveVBA = *o3tl::doAccess<bool>(pValues[1]);
 }
 
+namespace {
+
 class SvtWriterFilterOptions_Impl : public SvtAppFilterOptions_Impl
 {
 private:
@@ -148,6 +158,8 @@ public:
                                 bLoadExecutable = bSet;
                             }
 };
+
+}
 
 void SvtWriterFilterOptions_Impl::ImplCommit()
 {
@@ -172,6 +184,8 @@ void SvtWriterFilterOptions_Impl::Load()
         bLoadExecutable = *o3tl::doAccess<bool>(pValues[0]);
 }
 
+namespace {
+
 class SvtCalcFilterOptions_Impl : public SvtAppFilterOptions_Impl
 {
 private:
@@ -194,6 +208,8 @@ public:
                                 bLoadExecutable = bSet;
                             }
 };
+
+}
 
 void SvtCalcFilterOptions_Impl::ImplCommit()
 {
@@ -246,7 +262,8 @@ struct SvtFilterOptions_Impl
             ConfigFlags::ImpressSave |
             ConfigFlags::UseEnhancedFields |
             ConfigFlags::SmartArtShapeLoad |
-            ConfigFlags::CharBackgroundToHighlighting;
+            ConfigFlags::CharBackgroundToHighlighting|
+            ConfigFlags::CreateMSOLockFiles;
         Load();
     }
 
@@ -303,13 +320,8 @@ namespace {
 
 const Sequence<OUString>& GetPropertyNames()
 {
-    static Sequence<OUString> aNames;
-    if(!aNames.getLength())
+    static Sequence<OUString> const aNames
     {
-        int nCount = 14;
-        aNames.realloc(nCount);
-        static const char* aPropNames[] =
-        {
             "Import/MathTypeToMath",            //  0
             "Import/WinWordToWriter",           //  1
             "Import/PowerPointToImpress",       //  2
@@ -323,12 +335,10 @@ const Sequence<OUString>& GetPropertyNames()
             "Export/EnableWordPreview",         // 10
             "Import/ImportWWFieldsAsEnhancedFields", // 11
             "Import/SmartArtToShapes",          // 12
-            "Export/CharBackgroundToHighlighting"    // 13
-        };
-        OUString* pNames = aNames.getArray();
-        for(int i = 0; i < nCount; i++)
-            pNames[i] = OUString::createFromAscii(aPropNames[i]);
-    }
+            "Export/CharBackgroundToHighlighting",   // 13
+            "Import/CreateMSOLockFiles",        // 14
+            "Import/VisioToDraw"                // 15
+    };
     return aNames;
 }
 
@@ -365,6 +375,10 @@ static ConfigFlags lcl_GetFlag(sal_Int32 nProp)
         case 11: nFlag = ConfigFlags::UseEnhancedFields; break;
         case 12: nFlag = ConfigFlags::SmartArtShapeLoad; break;
         case 13: nFlag = ConfigFlags::CharBackgroundToHighlighting; break;
+        case 14: nFlag = ConfigFlags::CreateMSOLockFiles; break;
+        case 15:
+            nFlag = ConfigFlags::VisioLoad;
+            break;
 
         default: OSL_FAIL("illegal value");
     }
@@ -604,6 +618,14 @@ void SvtFilterOptions::SetSmartArt2Shape( bool bFlag )
     SetModified();
 }
 
+bool SvtFilterOptions::IsVisio2Draw() const { return pImpl->IsFlag(ConfigFlags::VisioLoad); }
+
+void SvtFilterOptions::SetVisio2Draw(bool bFlag)
+{
+    pImpl->SetFlag(ConfigFlags::VisioLoad, bFlag);
+    SetModified();
+}
+
 namespace
 {
     class theFilterOptions
@@ -632,7 +654,6 @@ bool SvtFilterOptions::IsEnableWordPreview() const
     return pImpl->IsFlag( ConfigFlags::EnableWordPreview );
 }
 
-
 bool SvtFilterOptions::IsCharBackground2Highlighting() const
 {
     return pImpl->IsFlag( ConfigFlags::CharBackgroundToHighlighting );
@@ -652,6 +673,17 @@ void SvtFilterOptions::SetCharBackground2Highlighting()
 void SvtFilterOptions::SetCharBackground2Shading()
 {
     pImpl->SetFlag( ConfigFlags::CharBackgroundToHighlighting, false );
+    SetModified();
+}
+
+bool SvtFilterOptions::IsMSOLockFileCreationIsEnabled() const
+{
+    return pImpl->IsFlag( ConfigFlags::CreateMSOLockFiles );
+}
+
+void SvtFilterOptions::EnableMSOLockFileCreation(bool bEnable)
+{
+    pImpl->SetFlag( ConfigFlags::CreateMSOLockFiles, bEnable );
     SetModified();
 }
 

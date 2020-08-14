@@ -25,7 +25,6 @@
 #include <com/sun/star/ui/XUIElementFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
-#include <toolkit/awt/vclxmenu.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <rtl/ustring.hxx>
@@ -44,7 +43,7 @@ typedef ::cppu::WeakImplHelper<
 
             virtual OUString SAL_CALL getImplementationName() override
             {
-                return OUString("com.sun.star.comp.framework.MenuBarFactory");
+                return "com.sun.star.comp.framework.MenuBarFactory";
             }
 
             virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -63,7 +62,6 @@ typedef ::cppu::WeakImplHelper<
 
             static void CreateUIElement(const OUString& ResourceURL
                         ,const css::uno::Sequence< css::beans::PropertyValue >& Args
-                        ,const char* _pExtraMode
                         ,const OUString& ResourceType
                         ,const css::uno::Reference< css::ui::XUIElement >& _xMenuBar
                         ,const css::uno::Reference< css::uno::XComponentContext >& _rxContext);

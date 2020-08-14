@@ -22,19 +22,20 @@
 
 #include <swtypes.hxx>
 #include <labelcfg.hxx>
-#include <labimp.hxx>
-#include <comphelper/string.hxx>
 #include <rtl/bootstrap.hxx>
+#include <tools/UnitConversion.hxx>
 #include <unotools/configpaths.hxx>
 #include <xmlreader/xmlreader.hxx>
+#include <comphelper/sequence.hxx>
+#include <osl/diagnose.h>
 
-#include <unomid.h>
+#include <com/sun/star/beans/PropertyValue.hpp>
 
 using namespace utl;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 
-static inline void lcl_assertEndingItem(xmlreader::XmlReader& reader)
+static void lcl_assertEndingItem(xmlreader::XmlReader& reader)
 {
     int nsId;
     xmlreader::Span name;
@@ -44,14 +45,14 @@ static inline void lcl_assertEndingItem(xmlreader::XmlReader& reader)
     (void) res;
 }
 
-static inline OUString lcl_getValue(xmlreader::XmlReader& reader,
+static OUString lcl_getValue(xmlreader::XmlReader& reader,
                                     const xmlreader::Span& span)
 {
     int nsId;
     xmlreader::Span name;
     xmlreader::XmlReader::Result res;
     res = reader.nextItem(xmlreader::XmlReader::Text::NONE, &name, &nsId);
-    assert(res == xmlreader::XmlReader::Result::Begin && name.equals(span));
+    assert(res == xmlreader::XmlReader::Result::Begin && name == span);
     res = reader.nextItem(xmlreader::XmlReader::Text::Raw, &name, &nsId);
     assert(res == xmlreader::XmlReader::Result::Text);
     (void) res; (void) span;
@@ -64,8 +65,7 @@ static Sequence<OUString> lcl_CreatePropertyNames(const OUString& rPrefix)
 {
     Sequence<OUString> aProperties(2);
     OUString* pProperties = aProperties.getArray();
-    for(sal_Int32 nProp = 0; nProp < 2; nProp++)
-        pProperties[nProp] = rPrefix;
+    std::fill(aProperties.begin(), aProperties.end(), rPrefix);
 
     pProperties[ 0] += "Name";
     pProperties[ 1] += "Measure";
@@ -90,7 +90,7 @@ SwLabelConfig::SwLabelConfig() :
             xmlreader::XmlReader::Text::NONE, &name, &nsId);
     assert(
         res == xmlreader::XmlReader::Result::Begin
-        && name.equals("manufacturers"));
+        && name == "manufacturers");
     res = reader.nextItem(
             xmlreader::XmlReader::Text::NONE, &name, &nsId);
     while (res != xmlreader::XmlReader::Result::End)
@@ -98,12 +98,12 @@ SwLabelConfig::SwLabelConfig() :
         // Opening manufacturer
         assert(
             res == xmlreader::XmlReader::Result::Begin
-            && name.equals("manufacturer"));
+            && name == "manufacturer");
         // Get the name
         (void)reader.nextAttribute(&nsId, &name);
         assert(
             nsId == xmlreader::XmlReader::NAMESPACE_NONE
-            && name.equals("name"));
+            && name == "name");
         sManufacturer = reader.getAttributeValue(false).convertFromUtf8();
 
         for(;;) {
@@ -114,7 +114,7 @@ SwLabelConfig::SwLabelConfig() :
                 break;
             assert(
                 res == xmlreader::XmlReader::Result::Begin
-                && name.equals("label"));
+                && name == "label");
             // Get name value
             sName = lcl_getValue(reader, xmlreader::Span("name"));
             // Get measure value
@@ -136,18 +136,12 @@ SwLabelConfig::SwLabelConfig() :
 
     // add to m_aLabels and m_aManufacturers the custom labels
     const Sequence<OUString>& rMan = GetNodeNames( OUString() );
-    const OUString* pMan = rMan.getConstArray();
-    for ( sal_Int32 nMan = 0; nMan < rMan.getLength(); nMan++ )
+    for ( const OUString& rManufacturer : rMan )
     {
-        sManufacturer = pMan[nMan];
-        const Sequence<OUString> aLabels = GetNodeNames( sManufacturer );
-        const OUString* pLabels = aLabels.getConstArray();
-        for( sal_Int32 nLabel = 0; nLabel < aLabels.getLength(); nLabel++ )
+        const Sequence<OUString> aLabels = GetNodeNames( rManufacturer );
+        for( const OUString& rLabel : aLabels )
         {
-            OUString sPrefix( sManufacturer );
-            sPrefix += "/";
-            sPrefix += pLabels[nLabel];
-            sPrefix += "/";
+            OUString sPrefix = rManufacturer + "/" + rLabel + "/";
             Sequence<OUString> aPropNames = lcl_CreatePropertyNames( sPrefix );
             Sequence<Any>   aValues = GetProperties( aPropNames );
             const Any* pValues = aValues.getConstArray();
@@ -157,10 +151,10 @@ SwLabelConfig::SwLabelConfig() :
             if (aValues.getLength() >= 2)
                 if(pValues[1].hasValue())
                     pValues[1] >>= sMeasure;
-            if ( m_aLabels.find( sManufacturer ) == m_aLabels.end() )
-                m_aManufacturers.push_back( sManufacturer );
-            m_aLabels[sManufacturer][sName].m_aMeasure = sMeasure;
-            m_aLabels[sManufacturer][sName].m_bPredefined = false;
+            if ( m_aLabels.find( rManufacturer ) == m_aLabels.end() )
+                m_aManufacturers.push_back( rManufacturer );
+            m_aLabels[rManufacturer][sName].m_aMeasure = sMeasure;
+            m_aLabels[rManufacturer][sName].m_bPredefined = false;
         }
     }
 }
@@ -177,44 +171,45 @@ void SwLabelConfig::Notify( const css::uno::Sequence< OUString >& ) {}
 static std::unique_ptr<SwLabRec> lcl_CreateSwLabRec(const OUString& rType, const OUString& rMeasure, const OUString& rManufacturer)
 {
     std::unique_ptr<SwLabRec> pNewRec(new SwLabRec);
-    pNewRec->aMake = rManufacturer;
-    pNewRec->lPWidth = 0;
-    pNewRec->lPHeight = 0;
-    pNewRec->aType = rType;
+    pNewRec->m_aMake = rManufacturer;
+    pNewRec->m_nPWidth = 0;
+    pNewRec->m_nPHeight = 0;
+    pNewRec->m_aType = rType;
     //all values are contained as colon-separated 1/100 mm values
     //except for the continuous flag ('C'/'S') and nCols, nRows (sal_Int32)
-    sal_uInt16 nTokenCount = comphelper::string::getTokenCount(rMeasure, ';');
-    for(sal_uInt16 i = 0; i < nTokenCount; i++)
+    sal_Int32 nTok{0};
+    sal_Int32 nIdx{rMeasure.isEmpty() ? -1 : 0};
+    while (nIdx>=0)
     {
-        OUString sToken(rMeasure.getToken(i, ';' ));
+        const OUString sToken(rMeasure.getToken(0, ';', nIdx));
         int nVal = sToken.toInt32();
-        switch(i)
+        switch(nTok++)
         {
-            case  0 : pNewRec->bCont = sToken[0] == 'C'; break;
-            case  1 : pNewRec->lHDist    = convertMm100ToTwip(nVal);  break;
-            case  2 : pNewRec->lVDist    = convertMm100ToTwip(nVal);  break;
-            case  3 : pNewRec->lWidth    = convertMm100ToTwip(nVal);  break;
-            case  4 : pNewRec->lHeight   = convertMm100ToTwip(nVal);  break;
-            case  5 : pNewRec->lLeft     = convertMm100ToTwip(nVal);  break;
-            case  6 : pNewRec->lUpper    = convertMm100ToTwip(nVal);  break;
-            case  7 : pNewRec->nCols     = nVal;                 break;
-            case  8 : pNewRec->nRows     = nVal;                 break;
-            case  9 : pNewRec->lPWidth   = convertMm100ToTwip(nVal);  break;
-            case 10 : pNewRec->lPHeight  = convertMm100ToTwip(nVal);  break;
+            case  0 : pNewRec->m_bCont = sToken[0] == 'C'; break;
+            case  1 : pNewRec->m_nHDist    = convertMm100ToTwip(nVal);  break;
+            case  2 : pNewRec->m_nVDist    = convertMm100ToTwip(nVal);  break;
+            case  3 : pNewRec->m_nWidth    = convertMm100ToTwip(nVal);  break;
+            case  4 : pNewRec->m_nHeight   = convertMm100ToTwip(nVal);  break;
+            case  5 : pNewRec->m_nLeft     = convertMm100ToTwip(nVal);  break;
+            case  6 : pNewRec->m_nUpper    = convertMm100ToTwip(nVal);  break;
+            case  7 : pNewRec->m_nCols     = nVal;                 break;
+            case  8 : pNewRec->m_nRows     = nVal;                 break;
+            case  9 : pNewRec->m_nPWidth   = convertMm100ToTwip(nVal);  break;
+            case 10 : pNewRec->m_nPHeight  = convertMm100ToTwip(nVal);  break;
         }
     }
     // lines added for compatibility with custom label definitions saved before patch fdo#44516
-    if (pNewRec->lPWidth == 0 || pNewRec->lPHeight == 0)
+    if (pNewRec->m_nPWidth == 0 || pNewRec->m_nPHeight == 0)
     {
         // old style definition (no paper dimensions), calculate probable values
-        pNewRec->lPWidth = 2 * pNewRec->lLeft + (pNewRec->nCols - 1) * pNewRec->lHDist + pNewRec->lWidth;
-        pNewRec->lPHeight = ( pNewRec->bCont ? pNewRec->nRows * pNewRec->lVDist : 2 * pNewRec->lUpper + (pNewRec->nRows - 1) * pNewRec->lVDist + pNewRec->lHeight );
+        pNewRec->m_nPWidth = 2 * pNewRec->m_nLeft + (pNewRec->m_nCols - 1) * pNewRec->m_nHDist + pNewRec->m_nWidth;
+        pNewRec->m_nPHeight = ( pNewRec->m_bCont ? pNewRec->m_nRows * pNewRec->m_nVDist : 2 * pNewRec->m_nUpper + (pNewRec->m_nRows - 1) * pNewRec->m_nVDist + pNewRec->m_nHeight );
     }
     return pNewRec;
 }
 
 static Sequence<PropertyValue> lcl_CreateProperties(
-    Sequence<OUString>& rPropNames, OUString& rMeasure, const SwLabRec& rRec)
+    Sequence<OUString> const & rPropNames, OUString& rMeasure, const SwLabRec& rRec)
 {
     const OUString* pNames = rPropNames.getConstArray();
     Sequence<PropertyValue> aRet(rPropNames.getLength());
@@ -226,21 +221,21 @@ static Sequence<PropertyValue> lcl_CreateProperties(
         pValues[nProp].Name = pNames[nProp];
         switch(nProp)
         {
-            case 0: pValues[nProp].Value <<= rRec.aType; break;
+            case 0: pValues[nProp].Value <<= rRec.m_aType; break;
             case 1:
             {
                 rMeasure.clear();
-                rMeasure += rRec.bCont ? OUString( "C" ) : OUString( "S" );      rMeasure += sColon;
-                rMeasure += OUString::number( convertTwipToMm100( rRec.lHDist ) );   rMeasure += sColon;
-                rMeasure += OUString::number( convertTwipToMm100( rRec.lVDist ) );   rMeasure += sColon;
-                rMeasure += OUString::number( convertTwipToMm100( rRec.lWidth ) );   rMeasure += sColon;
-                rMeasure += OUString::number( convertTwipToMm100( rRec.lHeight ) );  rMeasure += sColon;
-                rMeasure += OUString::number( convertTwipToMm100( rRec.lLeft ) );    rMeasure += sColon;
-                rMeasure += OUString::number( convertTwipToMm100( rRec.lUpper ) );   rMeasure += sColon;
-                rMeasure += OUString::number( rRec.nCols );                     rMeasure += sColon;
-                rMeasure += OUString::number( rRec.nRows );                     rMeasure += sColon;
-                rMeasure += OUString::number( convertTwipToMm100( rRec.lPWidth ) );  rMeasure += sColon;
-                rMeasure += OUString::number( convertTwipToMm100( rRec.lPHeight ) );
+                rMeasure += rRec.m_bCont ? OUStringLiteral( "C" ) : OUStringLiteral( "S" );      rMeasure += sColon;
+                rMeasure += OUString::number( convertTwipToMm100( rRec.m_nHDist ) );   rMeasure += sColon;
+                rMeasure += OUString::number( convertTwipToMm100( rRec.m_nVDist ) );   rMeasure += sColon;
+                rMeasure += OUString::number( convertTwipToMm100( rRec.m_nWidth ) );   rMeasure += sColon;
+                rMeasure += OUString::number( convertTwipToMm100( rRec.m_nHeight ) );  rMeasure += sColon;
+                rMeasure += OUString::number( convertTwipToMm100( rRec.m_nLeft ) );    rMeasure += sColon;
+                rMeasure += OUString::number( convertTwipToMm100( rRec.m_nUpper ) );   rMeasure += sColon;
+                rMeasure += OUString::number( rRec.m_nCols );                     rMeasure += sColon;
+                rMeasure += OUString::number( rRec.m_nRows );                     rMeasure += sColon;
+                rMeasure += OUString::number( convertTwipToMm100( rRec.m_nPWidth ) );  rMeasure += sColon;
+                rMeasure += OUString::number( convertTwipToMm100( rRec.m_nPHeight ) );
                 pValues[nProp].Value <<= rMeasure;
             }
             break;
@@ -254,24 +249,14 @@ void    SwLabelConfig::FillLabels(const OUString& rManufacturer, SwLabRecs& rLab
 {
     if (m_aLabels.find(rManufacturer) == m_aLabels.end())
         return;
-    for (std::map<OUString, SwLabelMeasure>::iterator it = m_aLabels[rManufacturer].begin();
-            it != m_aLabels[rManufacturer].end(); ++it)
-        rLabArr.push_back( lcl_CreateSwLabRec(it->first, it->second.m_aMeasure, rManufacturer) );
+    for (const auto& rEntry : m_aLabels[rManufacturer])
+        rLabArr.push_back( lcl_CreateSwLabRec(rEntry.first, rEntry.second.m_aMeasure, rManufacturer) );
 }
 
 bool    SwLabelConfig::HasLabel(const OUString& rManufacturer, const OUString& rType)
 {
     return ( ( m_aLabels.find(rManufacturer) != m_aLabels.end() ) &&
              ( m_aLabels[rManufacturer].find(rType) != m_aLabels[rManufacturer].end() ) );
-}
-
-static bool lcl_Exists(const OUString& rNode, const Sequence<OUString>& rLabels)
-{
-    const OUString* pLabels = rLabels.getConstArray();
-    for(sal_Int32 i = 0; i < rLabels.getLength(); i++)
-        if(pLabels[i] == rNode)
-            return true;
-    return false;
 }
 
 // label is always saved as a custom label
@@ -282,7 +267,7 @@ void SwLabelConfig::SaveLabel( const OUString& rManufacturer,
     OUString sFoundNode;
     bool bManufacturerNodeFound;
     if ( m_aLabels.find( rManufacturer ) == m_aLabels.end() ||
-         GetNodeNames( rManufacturer ).getLength() == 0 )
+         !GetNodeNames( rManufacturer ).hasElements() )
     {
         bManufacturerNodeFound = false;
         // manufacturer node does not exist, add (and also to m_aManufacturers)
@@ -303,12 +288,10 @@ void SwLabelConfig::SaveLabel( const OUString& rManufacturer,
         const Sequence<OUString> aLabels = GetNodeNames( rManufacturer );
         sal_Int32 nIndex = aLabels.getLength();
         OUString sPrefix( "Label" );
-        sFoundNode = sPrefix;
-        sFoundNode += OUString::number( nIndex );
-        while ( lcl_Exists( sFoundNode, aLabels ) )
+        sFoundNode = sPrefix + OUString::number( nIndex );
+        while ( comphelper::findValue(aLabels, sFoundNode) != -1 )
         {
-            sFoundNode = sPrefix;
-            sFoundNode += OUString::number(nIndex++);
+            sFoundNode = sPrefix + OUString::number(nIndex++);
         }
     }
     else
@@ -316,13 +299,9 @@ void SwLabelConfig::SaveLabel( const OUString& rManufacturer,
         // get the appropriate node
         OUString sManufacturer( wrapConfigurationElementName( rManufacturer ) );
         const Sequence<OUString> aLabels = GetNodeNames( sManufacturer );
-        const OUString* pLabels = aLabels.getConstArray();
-        for (sal_Int32 nLabel = 0; nLabel < aLabels.getLength(); nLabel++)
+        for (const OUString& rLabel : aLabels)
         {
-            OUString sPrefix( sManufacturer );
-            sPrefix += "/";
-            sPrefix += pLabels[nLabel];
-            sPrefix += "/";
+            OUString sPrefix = sManufacturer + "/" + rLabel + "/";
             Sequence<OUString> aProperties { sPrefix };
             aProperties.getArray()[0] += "Name";
             Sequence<Any> aValues = GetProperties( aProperties );
@@ -333,17 +312,15 @@ void SwLabelConfig::SaveLabel( const OUString& rManufacturer,
                 pValues[0] >>= sTmp;
                 if ( rType == sTmp )
                 {
-                    sFoundNode = pLabels[nLabel];
+                    sFoundNode = rLabel;
                     break;
                 }
             }
         }
     }
 
-    OUString sPrefix( wrapConfigurationElementName( rManufacturer ) );
-    sPrefix += "/";
-    sPrefix += sFoundNode;
-    sPrefix += "/";
+    OUString sPrefix = wrapConfigurationElementName( rManufacturer ) +
+        "/" + sFoundNode + "/";
     Sequence<OUString> aPropNames = lcl_CreatePropertyNames( sPrefix );
     OUString sMeasure;
     Sequence<PropertyValue> aPropValues = lcl_CreateProperties( aPropNames, sMeasure, rRec );

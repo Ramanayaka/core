@@ -12,10 +12,7 @@
 
 #include <connectivity/TKeys.hxx>
 
-namespace connectivity
-{
-
-    namespace firebird
+namespace connectivity::firebird
     {
 
         class Table;
@@ -28,13 +25,13 @@ namespace connectivity
         public:
             Keys(Table* pTable,
                  ::osl::Mutex& rMutex,
-                 const ::connectivity::TStringVector& rNames);
+                 const ::std::vector< OUString>& rNames);
 
         // OKeysHelper / XDrop
-        void dropObject(sal_Int32 nPosition, const ::rtl::OUString& sName) override;
+        void dropObject(sal_Int32 nPosition, const OUString& sName) override;
 
         };
-    }
+
 }
 #endif // INCLUDED_CONNECTIVITY_SOURCE_DRIVERS_FIREBIRD_KEYS_HXX
 

@@ -23,16 +23,17 @@
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
+#include <com/sun/star/awt/XDevice.hpp>
+#include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
+#include <i18nlangtag/languagetag.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 #include <toolkit/awt/vclxfont.hxx>
 #include <toolkit/helper/convert.hxx>
-
-#include <vector>
 
 
 namespace accessibility
@@ -46,7 +47,6 @@ namespace accessibility
     using namespace ::comphelper;
 
 
-    //  class AccessibleTabBar
 
 
     AccessibleTabBar::AccessibleTabBar( TabBar* pTabBar )
@@ -54,11 +54,6 @@ namespace accessibility
     {
         if ( m_pTabBar )
             m_aAccessibleChildren.assign( m_pTabBar->GetAccessibleChildWindowCount() + 1, Reference< XAccessible >() );
-    }
-
-
-    AccessibleTabBar::~AccessibleTabBar()
-    {
     }
 
 
@@ -119,27 +114,27 @@ namespace accessibility
 
     void AccessibleTabBar::FillAccessibleStateSet( utl::AccessibleStateSetHelper& rStateSet )
     {
-        if ( m_pTabBar )
+        if ( !m_pTabBar )
+            return;
+
+        if ( m_pTabBar->IsEnabled() )
         {
-            if ( m_pTabBar->IsEnabled() )
-            {
-                rStateSet.AddState( AccessibleStateType::ENABLED );
-                rStateSet.AddState( AccessibleStateType::SENSITIVE );
-            }
-
-            rStateSet.AddState( AccessibleStateType::FOCUSABLE );
-
-            if ( m_pTabBar->HasFocus() )
-                rStateSet.AddState( AccessibleStateType::FOCUSED );
-
-            rStateSet.AddState( AccessibleStateType::VISIBLE );
-
-            if ( m_pTabBar->IsVisible() )
-                rStateSet.AddState( AccessibleStateType::SHOWING );
-
-            if ( m_pTabBar->GetStyle() & WB_SIZEABLE )
-                rStateSet.AddState( AccessibleStateType::RESIZABLE );
+            rStateSet.AddState( AccessibleStateType::ENABLED );
+            rStateSet.AddState( AccessibleStateType::SENSITIVE );
         }
+
+        rStateSet.AddState( AccessibleStateType::FOCUSABLE );
+
+        if ( m_pTabBar->HasFocus() )
+            rStateSet.AddState( AccessibleStateType::FOCUSED );
+
+        rStateSet.AddState( AccessibleStateType::VISIBLE );
+
+        if ( m_pTabBar->IsVisible() )
+            rStateSet.AddState( AccessibleStateType::SHOWING );
+
+        if ( m_pTabBar->GetStyle() & WB_SIZEABLE )
+            rStateSet.AddState( AccessibleStateType::RESIZABLE );
     }
 
 
@@ -176,7 +171,7 @@ namespace accessibility
         AccessibleTabBarBase::disposing();
 
         // dispose all children
-        for (Reference<XAccessible>& i : m_aAccessibleChildren)
+        for (const Reference<XAccessible>& i : m_aAccessibleChildren)
         {
             Reference< XComponent > xComponent( i, UNO_QUERY );
             if ( xComponent.is() )
@@ -191,7 +186,7 @@ namespace accessibility
 
     OUString AccessibleTabBar::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.svtools.AccessibleTabBar" );
+        return "com.sun.star.comp.svtools.AccessibleTabBar";
     }
 
 
@@ -233,7 +228,7 @@ namespace accessibility
     {
         OExternalLockGuard aGuard( this );
 
-        if ( i < 0 || i >= getAccessibleChildCount() )
+        if ( i < 0 || i >= static_cast<sal_Int32>(m_aAccessibleChildren.size()) )
             throw IndexOutOfBoundsException();
 
         Reference< XAccessible > xChild = m_aAccessibleChildren[i];
@@ -245,7 +240,7 @@ namespace accessibility
 
                 if ( i < nCount )
                 {
-                    vcl::Window* pChild = m_pTabBar->GetAccessibleChildWindow( (sal_uInt16)i );
+                    vcl::Window* pChild = m_pTabBar->GetAccessibleChildWindow( static_cast<sal_uInt16>(i) );
                     if ( pChild )
                         xChild = pChild->GetAccessible();
                 }
@@ -419,11 +414,11 @@ namespace accessibility
     {
         OExternalLockGuard aGuard( this );
 
-        sal_Int32 nColor = 0;
+        Color nColor;
         if ( m_pTabBar )
         {
             if ( m_pTabBar->IsControlForeground() )
-                nColor = m_pTabBar->GetControlForeground().GetColor();
+                nColor = m_pTabBar->GetControlForeground();
             else
             {
                 vcl::Font aFont;
@@ -431,11 +426,11 @@ namespace accessibility
                     aFont = m_pTabBar->GetControlFont();
                 else
                     aFont = m_pTabBar->GetFont();
-                nColor = aFont.GetColor().GetColor();
+                nColor = aFont.GetColor();
             }
         }
 
-        return nColor;
+        return sal_Int32(nColor);
     }
 
 
@@ -443,16 +438,16 @@ namespace accessibility
     {
         OExternalLockGuard aGuard( this );
 
-        sal_Int32 nColor = 0;
+        Color nColor;
         if ( m_pTabBar )
         {
             if ( m_pTabBar->IsControlBackground() )
-                nColor = m_pTabBar->GetControlBackground().GetColor();
+                nColor = m_pTabBar->GetControlBackground();
             else
-                nColor = m_pTabBar->GetBackground().GetColor().GetColor();
+                nColor = m_pTabBar->GetBackground().GetColor();
         }
 
-        return nColor;
+        return sal_Int32(nColor);
     }
 
 
@@ -475,7 +470,7 @@ namespace accessibility
                 else
                     aFont = m_pTabBar->GetFont();
                 VCLXFont* pVCLXFont = new VCLXFont;
-                pVCLXFont->Init( *xDev.get(), aFont );
+                pVCLXFont->Init( *xDev, aFont );
                 xFont = pVCLXFont;
             }
         }

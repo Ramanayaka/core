@@ -18,20 +18,17 @@
  */
 
 #include "WallFloorWrapper.hxx"
-#include "macros.hxx"
 #include "Chart2ModelContact.hxx"
+#include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/drawing/FillStyle.hpp>
+#include <com/sun/star/chart2/XDiagram.hpp>
 
-#include "FillProperties.hxx"
-#include "LinePropertiesHelper.hxx"
-#include "UserDefinedProperties.hxx"
-#include "WrappedDirectStateProperty.hxx"
+#include <FillProperties.hxx>
+#include <LinePropertiesHelper.hxx>
+#include <UserDefinedProperties.hxx>
+#include <WrappedDirectStateProperty.hxx>
 
 #include <algorithm>
-#include <rtl/ustrbuf.hxx>
-#include <rtl/math.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -73,9 +70,7 @@ struct StaticWallFloorWrapperPropertyArray : public rtl::StaticAggregate< Sequen
 
 } // anonymous namespace
 
-namespace chart
-{
-namespace wrapper
+namespace chart::wrapper
 {
 
 WallFloorWrapper::WallFloorWrapper( bool bWall,
@@ -97,7 +92,7 @@ void SAL_CALL WallFloorWrapper::dispose()
     Reference< uno::XInterface > xSource( static_cast< ::cppu::OWeakObject* >( this ) );
     m_aEventListenerContainer.disposeAndClear( lang::EventObject( xSource ) );
 
-    MutexGuard aGuard( GetMutex());
+    MutexGuard aGuard( m_aMutex);
     clearWrappedPropertySet();
 }
 
@@ -135,23 +130,23 @@ const Sequence< beans::Property >& WallFloorWrapper::getPropertySequence()
     return *StaticWallFloorWrapperPropertyArray::get();
 }
 
-const std::vector< WrappedProperty* > WallFloorWrapper::createWrappedProperties()
+std::vector< std::unique_ptr<WrappedProperty> > WallFloorWrapper::createWrappedProperties()
 {
-    std::vector< ::chart::WrappedProperty* > aWrappedProperties;
+    std::vector< std::unique_ptr<WrappedProperty> > aWrappedProperties;
 
     // use direct state always, so that in XML the value is always
     // exported. Because in the old chart the defaults is as follows:
     // Floor: SOLID (new and old model default), Wall: NONE, except for some chart types (line, scatter)
     if( m_bWall )
-        aWrappedProperties.push_back( new WrappedDirectStateProperty( "FillStyle", "FillStyle" ));
-    aWrappedProperties.push_back( new WrappedDirectStateProperty( "FillColor", "FillColor" ));
+        aWrappedProperties.emplace_back( new WrappedDirectStateProperty( "FillStyle", "FillStyle" ));
+    aWrappedProperties.emplace_back( new WrappedDirectStateProperty( "FillColor", "FillColor" ));
 
     return aWrappedProperties;
 }
 
 OUString SAL_CALL WallFloorWrapper::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart.WallOrFloor");
+    return "com.sun.star.comp.chart.WallOrFloor";
 }
 
 sal_Bool SAL_CALL WallFloorWrapper::supportsService( const OUString& rServiceName )
@@ -169,7 +164,6 @@ css::uno::Sequence< OUString > SAL_CALL WallFloorWrapper::getSupportedServiceNam
     };
 }
 
-} //  namespace wrapper
-} //  namespace chart
+} //  namespace chart::wrapper
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

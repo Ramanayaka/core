@@ -19,16 +19,16 @@
 #ifndef INCLUDED_SW_INC_TXTFLD_HXX
 #define INCLUDED_SW_INC_TXTFLD_HXX
 
-#include <txatbase.hxx>
+#include "txatbase.hxx"
 #include <rtl/ustring.hxx>
-#include <osl/diagnose.h>
 
 #include <memory>
+#include <cassert>
 
 class SwPaM;
 class SwTextNode;
 
-class SwTextField : public virtual SwTextAttr
+class SAL_DLLPUBLIC_RTTI SwTextField : public virtual SwTextAttr
 {
     mutable OUString m_aExpand; // only used to determine, if field content is changing in <ExpandTextField()>
     SwTextNode * m_pTextNode;
@@ -52,7 +52,7 @@ public:
     }
     SwTextNode& GetTextNode() const
     {
-        OSL_ENSURE( m_pTextNode, "SwTextField:: where is my TextNode?" );
+        assert(m_pTextNode);
         return *m_pTextNode;
     }
     void ChgTextNode( SwTextNode* pNew )
@@ -74,7 +74,7 @@ public:
 
 };
 
-class SwTextInputField
+class SwTextInputField final
     : public SwTextAttrNesting
     , public SwTextField
 {
@@ -87,13 +87,13 @@ public:
 
     virtual ~SwTextInputField() override;
 
-    void LockNotifyContentChange();
+    bool LockNotifyContentChange();
     void UnlockNotifyContentChange();
     virtual void NotifyContentChange( SwFormatField& rFormatField ) override;
 
     void UpdateTextNodeContent( const OUString& rNewContent );
 
-    const OUString GetFieldContent() const;
+    OUString GetFieldContent() const;
     void UpdateFieldContent();
 
 private:

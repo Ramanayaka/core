@@ -23,10 +23,10 @@
 #include <com/sun/star/table/XTableColumns.hpp>
 #include <cppuhelper/implbase1.hxx>
 
-#include "tablemodel.hxx"
+#include <celltypes.hxx>
 
 
-namespace sdr { namespace table {
+namespace sdr::table {
 
 class TableColumns : public ::cppu::WeakAggImplHelper1< css::table::XTableColumns >
 {
@@ -54,7 +54,7 @@ private:
     TableModelRef   mxTableModel;
 };
 
-} }
+}
 
 #endif
 

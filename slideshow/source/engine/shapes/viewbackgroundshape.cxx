@@ -20,17 +20,11 @@
 
 // must be first
 #include <tools/diagnose_ex.h>
+#include <sal/log.hxx>
 
 #include "viewbackgroundshape.hxx"
-#include "tools.hxx"
+#include <tools.hxx>
 
-#include <rtl/math.hxx>
-
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
-
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
@@ -46,10 +40,8 @@
 using namespace ::com::sun::star;
 
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
 
         bool ViewBackgroundShape::prefetch( const ::cppcanvas::CanvasSharedPtr& rDestinationCanvas,
                                             const GDIMetaFileSharedPtr&         rMtf ) const
@@ -105,14 +97,14 @@ namespace slideshow
                 aLinearTransform.set( 1, 2, 0.0 );
                 pBitmapCanvas->setTransformation( aLinearTransform );
 
-                const basegfx::B2DHomMatrix aShapeTransform(basegfx::tools::createScaleTranslateB2DHomMatrix(
+                const basegfx::B2DHomMatrix aShapeTransform(basegfx::utils::createScaleTranslateB2DHomMatrix(
                     maBounds.getWidth(), maBounds.getHeight(),
                     maBounds.getMinX(), maBounds.getMinY()));
 
                 ::cppcanvas::RendererSharedPtr pRenderer(
                     ::cppcanvas::VCLFactory::createRenderer(
                         pBitmapCanvas,
-                        *rMtf.get(),
+                        *rMtf,
                         ::cppcanvas::Renderer::Parameters() ) );
 
                 ENSURE_OR_RETURN_FALSE( pRenderer,
@@ -184,14 +176,13 @@ namespace slideshow
             }
             catch( uno::Exception& )
             {
-                SAL_WARN( "slideshow", comphelper::anyToString( cppu::getCaughtException() ) );
+                TOOLS_WARN_EXCEPTION( "slideshow", "" );
                 return false;
             }
 
             return true;
         }
 
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

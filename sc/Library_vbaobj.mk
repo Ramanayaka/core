@@ -17,7 +17,7 @@ $(eval $(call gb_Library_set_include,vbaobj,\
 	$$(INCLUDE) \
 ))
 
-$(eval $(call gb_Library_set_precompiled_header,vbaobj,$(SRCDIR)/sc/inc/pch/precompiled_vbaobj))
+$(eval $(call gb_Library_set_precompiled_header,vbaobj,sc/inc/pch/precompiled_vbaobj))
 
 $(eval $(call gb_Library_set_componentfile,vbaobj,sc/util/vbaobj))
 
@@ -56,7 +56,6 @@ $(eval $(call gb_Library_use_libraries,vbaobj,\
 
 $(eval $(call gb_Library_add_exception_objects,vbaobj,\
 	sc/source/ui/vba/excelvbahelper \
-	sc/source/ui/vba/service \
 	sc/source/ui/vba/vbaapplication \
 	sc/source/ui/vba/vbaassistant \
 	sc/source/ui/vba/vbaaxes \
@@ -74,6 +73,8 @@ $(eval $(call gb_Library_add_exception_objects,vbaobj,\
 	sc/source/ui/vba/vbadialog \
 	sc/source/ui/vba/vbadialogs \
 	sc/source/ui/vba/vbaeventshelper \
+	sc/source/ui/vba/vbafiledialog \
+	sc/source/ui/vba/vbafiledialogitems \
 	sc/source/ui/vba/vbafont \
 	sc/source/ui/vba/vbaformat \
 	sc/source/ui/vba/vbaformatcondition \
@@ -82,6 +83,7 @@ $(eval $(call gb_Library_add_exception_objects,vbaobj,\
 	sc/source/ui/vba/vbahyperlink \
 	sc/source/ui/vba/vbahyperlinks \
 	sc/source/ui/vba/vbainterior \
+	sc/source/ui/vba/vbalineshape \
 	sc/source/ui/vba/vbamenubar  \
 	sc/source/ui/vba/vbamenubars \
 	sc/source/ui/vba/vbamenu \
@@ -93,6 +95,7 @@ $(eval $(call gb_Library_add_exception_objects,vbaobj,\
 	sc/source/ui/vba/vbaoleobject \
 	sc/source/ui/vba/vbaoleobjects \
 	sc/source/ui/vba/vbaoutline \
+	sc/source/ui/vba/vbaovalshape \
 	sc/source/ui/vba/vbapagebreak \
 	sc/source/ui/vba/vbapagebreaks \
 	sc/source/ui/vba/vbapagesetup \

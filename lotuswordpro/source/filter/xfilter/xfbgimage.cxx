@@ -57,7 +57,9 @@
  * @file
  * Background image.
  ************************************************************************/
-#include "xfbgimage.hxx"
+#include <xfilter/xfbgimage.hxx>
+#include <xfilter/ixfattrlist.hxx>
+#include <xfilter/xfutil.hxx>
 #include "xfbase64.hxx"
 
 XFBGImage::XFBGImage()
@@ -69,7 +71,7 @@ XFBGImage::XFBGImage()
     , m_eVertAlign(enumXFAlignCenter)
 {}
 
-void XFBGImage::SetImageData(sal_uInt8 *buf, int len)
+void XFBGImage::SetImageData(sal_uInt8 const *buf, int len)
 {
     m_strData = XFBase64::Encode(buf,len);
     m_bUserFileLink = false;
@@ -124,7 +126,7 @@ void    XFBGImage::ToXml(IXFStream *pStrm)
     pStrm->EndElement( "style:background-image" );
 }
 
-bool operator==(XFBGImage& img1, XFBGImage& img2)
+bool operator==(XFBGImage const & img1, XFBGImage const & img2)
 {
     if( img1.m_bUserFileLink != img2.m_bUserFileLink )
         return false;
@@ -152,7 +154,7 @@ bool operator==(XFBGImage& img1, XFBGImage& img2)
     return true;
 }
 
-bool operator!=(XFBGImage& img1, XFBGImage& img2)
+bool operator!=(XFBGImage const & img1, XFBGImage const & img2)
 {
     return !(img1==img2);
 }

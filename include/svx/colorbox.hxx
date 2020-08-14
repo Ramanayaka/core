@@ -11,55 +11,58 @@
 #define INCLUDED_SVX_COLORBOX_HXX
 
 #include <memory>
-#include <vcl/menubtn.hxx>
+#include <vcl/weld.hxx>
 #include <svx/colorwindow.hxx>
-#include <sfx2/controlwrapper.hxx>
 
-class SvxColorListBox;
+class ColorListBox;
 
-class SvxListBoxColorWrapper
+class ListBoxColorWrapper
 {
 public:
-    SvxListBoxColorWrapper(SvxColorListBox* pControl);
+    ListBoxColorWrapper(ColorListBox* pControl);
     void operator()(const OUString& rCommand, const NamedColor& rColor);
-    void dispose();
 private:
-    VclPtr<SvxColorListBox> mxControl;
+    ColorListBox* mpControl;
 };
 
-class SVX_DLLPUBLIC SvxColorListBox : public MenuButton
+class SVXCORE_DLLPUBLIC ColorListBox
 {
 private:
-    friend class SvxListBoxColorWrapper;
-    VclPtr<SvxColorWindow> m_xColorWindow;
-    Link<SvxColorListBox&, void> m_aSelectedLink;
-    SvxListBoxColorWrapper m_aColorWrapper;
+    friend class ListBoxColorWrapper;
+    std::unique_ptr<ColorWindow> m_xColorWindow;
+    std::unique_ptr<weld::MenuButton> m_xButton;
+    weld::Window* m_pTopLevel;
+    Link<ColorListBox&, void> m_aSelectedLink;
+    ListBoxColorWrapper m_aColorWrapper;
     Color m_aAutoDisplayColor;
+    Color m_aSaveColor;
     NamedColor m_aSelectedColor;
     sal_uInt16 m_nSlotId;
     bool m_bShowNoneButton;
-    std::unique_ptr<PaletteManager> m_xPaletteManager;
-    BorderColorStatus m_aBorderColorStatus;
+    std::shared_ptr<PaletteManager> m_xPaletteManager;
+    ColorStatus m_aColorStatus;
 
-    DECL_LINK(MenuActivateHdl, MenuButton *, void);
     void Selected(const NamedColor& rNamedColor);
     void createColorWindow();
     void LockWidthRequest();
-    VclPtr<SvxColorWindow> getColorWindow() const;
-public:
-    SvxColorListBox(vcl::Window* pParent, WinBits nStyle = 0);
-    virtual ~SvxColorListBox() override;
-    virtual void dispose() override;
+    ColorWindow* getColorWindow() const;
 
-    void SetSelectHdl(const Link<SvxColorListBox&, void>& rLink)
+    DECL_LINK(ToggleHdl, weld::ToggleButton&, void);
+
+public:
+    // pTopLevelWindow will be used as parent for any color picker dialog created
+    ColorListBox(std::unique_ptr<weld::MenuButton> pControl, weld::Window* pTopLevelWindow);
+    ~ColorListBox();
+
+    void SetSelectHdl(const Link<ColorListBox&, void>& rLink)
     {
         m_aSelectedLink = rLink;
     }
 
     void SetSlotId(sal_uInt16 nSlotId, bool bShowNoneButton = false);
 
-    NamedColor GetSelectEntry() const;
-    Color GetSelectEntryColor() const;
+    Color const & GetSelectEntryColor() const { return m_aSelectedColor.first; }
+    NamedColor const & GetSelectedEntry() const { return m_aSelectedColor; }
 
     void SelectEntry(const NamedColor& rColor);
     void SelectEntry(const Color& rColor);
@@ -68,27 +71,22 @@ public:
     bool IsNoSelection() const { return getColorWindow()->IsNoSelection(); }
 
     void SetAutoDisplayColor(const Color &rColor) { m_aAutoDisplayColor = rColor; }
+
     void ShowPreview(const NamedColor &rColor);
     void EnsurePaletteManager();
-};
 
-/** A wrapper for SvxColorListBox. */
-class SVX_DLLPUBLIC SvxColorListBoxWrapper
-    : public sfx::SingleControlWrapper<SvxColorListBox, Color>
-{
-    /*  Note: cannot use 'const Color&' as template argument, because the
-        SvxColorListBox returns the color by value and not by reference,
-        therefore GetControlValue() must return a temporary object too. */
-public:
-    explicit SvxColorListBoxWrapper(SvxColorListBox& rListBox);
+    void SaveValue() { m_aSaveColor = GetSelectEntryColor(); }
+    bool IsValueChangedFromSaved() const { return m_aSaveColor != GetSelectEntryColor(); }
 
-    virtual ~SvxColorListBoxWrapper() override;
-
-    virtual bool        IsControlDontKnow() const override;
-    virtual void        SetControlDontKnow( bool bSet ) override;
-
-    virtual Color       GetControlValue() const override;
-    virtual void        SetControlValue( Color aColor ) override;
+    void set_sensitive(bool sensitive) { m_xButton->set_sensitive(sensitive); }
+    bool get_sensitive() const { return m_xButton->get_sensitive(); }
+    void show() { m_xButton->show(); }
+    void hide() { m_xButton->hide(); }
+    void set_visible(bool bShow) { m_xButton->set_visible(bShow); }
+    void set_help_id(const OString& rHelpId) { m_xButton->set_help_id(rHelpId); }
+    void connect_focus_in(const Link<weld::Widget&, void>& rLink) { m_xButton->connect_focus_in(rLink); }
+    void connect_focus_out(const Link<weld::Widget&, void>& rLink) { m_xButton->connect_focus_out(rLink); }
+    weld::MenuButton& get_widget() { return *m_xButton; }
 };
 
 #endif

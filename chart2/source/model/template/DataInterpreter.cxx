@@ -18,18 +18,17 @@
  */
 
 #include "DataInterpreter.hxx"
-#include "DataSeries.hxx"
-#include "DataSourceHelper.hxx"
-#include "DataSeriesHelper.hxx"
-#include "macros.hxx"
-#include "CommonConverters.hxx"
+#include <DataSeries.hxx>
+#include <DataSourceHelper.hxx>
+#include <DataSeriesHelper.hxx>
+#include <CommonConverters.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/chart2/data/XDataSink.hpp>
 #include <cppuhelper/supportsservice.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <vector>
 #include <algorithm>
-#include <iterator>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -67,7 +66,7 @@ InterpretedData SAL_CALL DataInterpreter::interpretDataSource(
     lcl_ShowDataSource( xSource );
 #endif
 
-    Sequence< Reference< data::XLabeledDataSequence > > aData( xSource->getDataSequences() );
+    const Sequence< Reference< data::XLabeledDataSequence > > aData( xSource->getDataSequences() );
 
     Reference< data::XLabeledDataSequence > xCategories;
     vector< Reference< data::XLabeledDataSequence > > aSequencesVec;
@@ -78,41 +77,38 @@ InterpretedData SAL_CALL DataInterpreter::interpretDataSource(
 
     // parse data
     bool bCategoriesUsed = false;
-    for( sal_Int32 i=0; i < aData.getLength(); ++i )
+    for( Reference< data::XLabeledDataSequence > const & labeledData : aData )
     {
         try
         {
             if( bHasCategories && ! bCategoriesUsed )
             {
-                xCategories.set( aData[i] );
+                xCategories.set( labeledData );
                 if( xCategories.is())
                     SetRole( xCategories->getValues(), "categories");
                 bCategoriesUsed = true;
             }
             else
             {
-                aSequencesVec.push_back( aData[i] );
-                if( aData[i].is())
-                    SetRole( aData[i]->getValues(), "values-y");
+                aSequencesVec.push_back( labeledData );
+                if( labeledData.is())
+                    SetRole( labeledData->getValues(), "values-y");
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
     // create DataSeries
-    vector< Reference< data::XLabeledDataSequence > >::const_iterator
-          aSequencesVecIt = aSequencesVec.begin();
-
     sal_Int32 nSeriesIndex = 0;
     vector< Reference< XDataSeries > > aSeriesVec;
     aSeriesVec.reserve( aSequencesVec.size());
 
-    for( ;aSequencesVecIt != aSequencesVec.end(); ++aSequencesVecIt, ++nSeriesIndex )
+    for (auto const& elem : aSequencesVec)
     {
-        Sequence< Reference< data::XLabeledDataSequence > > aNewData( & (*aSequencesVecIt), 1 );
+        Sequence< Reference< data::XLabeledDataSequence > > aNewData( &elem, 1 );
         Reference< XDataSeries > xSeries;
         if( nSeriesIndex < aSeriesToReUse.getLength())
             xSeries.set( aSeriesToReUse[nSeriesIndex] );
@@ -124,6 +120,7 @@ InterpretedData SAL_CALL DataInterpreter::interpretDataSource(
         xSink->setData( aNewData );
 
         aSeriesVec.push_back( xSeries );
+        ++nSeriesIndex;
     }
 
     Sequence< Sequence< Reference< XDataSeries > > > aSeries(1);
@@ -168,7 +165,7 @@ InterpretedData SAL_CALL DataInterpreter::reinterpretDataSeries(
             {
 #ifdef DEBUG_CHART2_TEMPLATE
                 sal_Int32 j=0;
-                for( ; j<aSeqs.getLength(); ++j )
+                for( ; j<aSeqs.(); ++j )
                 {
                     assert( aSeqs[j] == xValuesY && "All sequences should be used" );
                 }
@@ -177,9 +174,9 @@ InterpretedData SAL_CALL DataInterpreter::reinterpretDataSeries(
                 xSink->setData( aNewSequences );
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -190,19 +187,19 @@ InterpretedData SAL_CALL DataInterpreter::reinterpretDataSeries(
 sal_Bool SAL_CALL DataInterpreter::isDataCompatible(
     const chart2::InterpretedData& aInterpretedData )
 {
-    Sequence< Reference< XDataSeries > > aSeries( FlattenSequence( aInterpretedData.Series ));
-    for( sal_Int32 i=0; i<aSeries.getLength(); ++i )
+    const Sequence< Reference< XDataSeries > > aSeries( FlattenSequence( aInterpretedData.Series ));
+    for( Reference< XDataSeries > const & i : aSeries )
     {
         try
         {
-            Reference< data::XDataSource > xSrc( aSeries[i], uno::UNO_QUERY_THROW );
+            Reference< data::XDataSource > xSrc( i, uno::UNO_QUERY_THROW );
             Sequence< Reference< data::XLabeledDataSequence > > aSeq( xSrc->getDataSequences());
             if( aSeq.getLength() != 1 )
                 return false;
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
@@ -218,21 +215,21 @@ struct lcl_LabeledSequenceEquals
             m_bHasLabels ( false ),
             m_bHasValues ( false )
     {
-        if( xLSeqToCmp.is())
-        {
-            Reference< data::XDataSequence > xSeq( xLSeqToCmp->getValues());
-            if( xSeq.is())
-            {
-                m_bHasValues = true;
-                m_aValuesRangeRep = xSeq->getSourceRangeRepresentation();
-            }
+        if( !xLSeqToCmp.is())
+            return;
 
-            xSeq.set( xLSeqToCmp->getLabel());
-            if( xSeq.is())
-            {
-                m_bHasLabels = true;
-                m_aLabelRangeRep = xSeq->getSourceRangeRepresentation();
-            }
+        Reference< data::XDataSequence > xSeq( xLSeqToCmp->getValues());
+        if( xSeq.is())
+        {
+            m_bHasValues = true;
+            m_aValuesRangeRep = xSeq->getSourceRangeRepresentation();
+        }
+
+        xSeq.set( xLSeqToCmp->getLabel());
+        if( xSeq.is())
+        {
+            m_bHasLabels = true;
+            m_aLabelRangeRep = xSeq->getSourceRangeRepresentation();
         }
     }
 
@@ -247,9 +244,9 @@ struct lcl_LabeledSequenceEquals
         bool bHasLabels = xSeqLabels.is();
 
         return ( ( (m_bHasValues == bHasValues) &&
-                   (!bHasValues || m_aValuesRangeRep.equals( xSeqValues->getSourceRangeRepresentation())) ) &&
+                   (!bHasValues || m_aValuesRangeRep == xSeqValues->getSourceRangeRepresentation()) ) &&
                  ( (m_bHasLabels == bHasLabels) &&
-                   (!bHasLabels || m_aLabelRangeRep.equals( xSeqLabels->getSourceRangeRepresentation())) )
+                   (!bHasLabels || m_aLabelRangeRep == xSeqLabels->getSourceRangeRepresentation()) )
             );
     }
 
@@ -273,34 +270,32 @@ Reference< data::XDataSource > SAL_CALL DataInterpreter::mergeInterpretedData(
     if( aInterpretedData.Categories.is())
         aResultVec.push_back( aInterpretedData.Categories );
 
-    Sequence< Reference< XDataSeries > > aSeries( FlattenSequence( aInterpretedData.Series ));
-    for( sal_Int32 nSeriesIdx=0; nSeriesIdx<aSeries.getLength(); ++nSeriesIdx )
+    const Sequence< Reference< XDataSeries > > aSeries( FlattenSequence( aInterpretedData.Series ));
+    for( Reference< XDataSeries > const & dataSeries : aSeries )
     {
         try
         {
-            Reference< data::XDataSource > xSrc( aSeries[nSeriesIdx], uno::UNO_QUERY_THROW );
-            Sequence< Reference< data::XLabeledDataSequence > > aSeq( xSrc->getDataSequences());
+            Reference< data::XDataSource > xSrc( dataSeries, uno::UNO_QUERY_THROW );
+            const Sequence< Reference< data::XLabeledDataSequence > > aSeq( xSrc->getDataSequences());
 
             // add all sequences of data series
-            for( sal_Int32 nSeqIdx=0; nSeqIdx<aSeq.getLength(); ++nSeqIdx )
+            for( Reference< data::XLabeledDataSequence > const & xAdd : aSeq )
             {
-                Reference< data::XLabeledDataSequence > xAdd( aSeq[nSeqIdx] );
-
                 // only add if sequence is not yet in the result
-                if( find_if( aResultVec.begin(), aResultVec.end(),
-                             lcl_LabeledSequenceEquals( xAdd )) == aResultVec.end())
+                if( none_of( aResultVec.begin(), aResultVec.end(),
+                             lcl_LabeledSequenceEquals( xAdd )) )
                 {
                     aResultVec.push_back( xAdd );
                 }
             }
         }
-        catch( const uno::Exception & ex )
+        catch( const uno::Exception & )
         {
-            ASSERT_EXCEPTION( ex );
+            DBG_UNHANDLED_EXCEPTION("chart2");
         }
     }
 
-    return Reference< data::XDataSource >( DataSourceHelper::createDataSource( comphelper::containerToSequence( aResultVec ) ) );
+    return DataSourceHelper::createDataSource( comphelper::containerToSequence( aResultVec ) );
 }
 
 // convenience methods
@@ -316,9 +311,9 @@ OUString DataInterpreter::GetRole( const Reference< data::XDataSequence > & xSeq
         Reference< beans::XPropertySet > xProp( xSeq, uno::UNO_QUERY_THROW );
         xProp->getPropertyValue( "Role") >>= aResult;
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
     return aResult;
 }
@@ -332,9 +327,9 @@ void DataInterpreter::SetRole( const Reference< data::XDataSequence > & xSeq, co
         Reference< beans::XPropertySet > xProp( xSeq, uno::UNO_QUERY_THROW );
         xProp->setPropertyValue( "Role", uno::Any( rRole ));
     }
-    catch( const uno::Exception & ex )
+    catch( const uno::Exception & )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
 }
 
@@ -344,7 +339,7 @@ uno::Any DataInterpreter::GetProperty(
 {
     for( sal_Int32 i=aArguments.getLength(); i--; )
     {
-        if( aArguments[i].Name.equals( rName ))
+        if( aArguments[i].Name == rName )
             return aArguments[i].Value;
     }
     return uno::Any();
@@ -356,7 +351,7 @@ bool DataInterpreter::HasCategories(
 {
     bool bHasCategories = false;
 
-    if( rArguments.getLength() > 0 )
+    if( rArguments.hasElements() )
         GetProperty( rArguments, "HasCategories" ) >>= bHasCategories;
 
     for( sal_Int32 nLSeqIdx=0; ! bHasCategories && nLSeqIdx<rData.getLength(); ++nLSeqIdx )
@@ -368,14 +363,14 @@ bool DataInterpreter::HasCategories(
 bool DataInterpreter::UseCategoriesAsX( const Sequence< beans::PropertyValue > & rArguments )
 {
     bool bUseCategoriesAsX = true;
-    if( rArguments.getLength() > 0 )
+    if( rArguments.hasElements() )
         GetProperty( rArguments, "UseCategoriesAsX" ) >>= bUseCategoriesAsX;
     return bUseCategoriesAsX;
 }
 
 OUString SAL_CALL DataInterpreter::getImplementationName()
 {
-    return OUString("com.sun.star.comp.chart2.DataInterpreter");
+    return "com.sun.star.comp.chart2.DataInterpreter";
 }
 
 sal_Bool SAL_CALL DataInterpreter::supportsService( const OUString& rServiceName )

@@ -19,6 +19,7 @@
 
 
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 
 #include <fontsubset.hxx>
 #include <sft.hxx>
@@ -46,7 +47,7 @@ FontSubsetInfo::~FontSubsetInfo()
 }
 
 // prepare subsetting for fonts where the input font file is mapped
-bool FontSubsetInfo::LoadFont(
+void FontSubsetInfo::LoadFont(
     FontType eInFontType,
     const unsigned char* pInFontBytes, int nInByteLength)
 {
@@ -54,16 +55,14 @@ bool FontSubsetInfo::LoadFont(
     meInFontType = eInFontType;
     mpInFontBytes = pInFontBytes;
     mnInByteLength = nInByteLength;
-    return (mnInByteLength > 0);
 }
 
 // prepare subsetting for fonts that are known to the SFT-parser
-bool FontSubsetInfo::LoadFont( vcl::TrueTypeFont* pSftTTFont )
+void FontSubsetInfo::LoadFont( vcl::TrueTypeFont* pSftTTFont )
 {
     SAL_WARN_IF( (mpInFontBytes != nullptr), "vcl", "Subset from SFT and from mapped font-file requested");
     mpSftTTFont = pSftTTFont;
     meInFontType = FontType::ANY_SFNT;
-    return (mpSftTTFont == nullptr);
 }
 
 bool FontSubsetInfo::CreateFontSubset(
@@ -100,9 +99,7 @@ bool FontSubsetInfo::CreateFontSubset(
     case FontType::ANY_TYPE1:
         bOK = CreateFontSubsetFromType1( pOutGlyphWidths);
         break;
-        // fall through
     case FontType::NO_FONT:
-        // fall through
     default:
         OSL_FAIL( "unhandled type in CreateFontSubset()");
         break;
@@ -117,7 +114,7 @@ bool FontSubsetInfo::CreateFontSubsetFromSfnt( sal_Int32* pOutGlyphWidths )
     // handle SFNT_CFF fonts
     int nCffLength = 0;
     const sal_uInt8* pCffBytes = nullptr;
-    if( GetSfntTable( mpSftTTFont, O_CFF, &pCffBytes, &nCffLength))
+    if( GetSfntTable( mpSftTTFont, vcl::O_CFF, &pCffBytes, &nCffLength))
     {
         LoadFont( FontType::CFF_FONT, pCffBytes, nCffLength);
         const bool bOK = CreateFontSubsetFromCff( pOutGlyphWidths);
@@ -130,11 +127,11 @@ bool FontSubsetInfo::CreateFontSubsetFromSfnt( sal_Int32* pOutGlyphWidths )
     std::vector<sal_uInt16> aShortGlyphIds;
     aShortGlyphIds.reserve(mnReqGlyphCount);
     for (int i = 0; i < mnReqGlyphCount; ++i)
-        aShortGlyphIds.push_back((sal_uInt16)mpReqGlyphIds[i]);
+        aShortGlyphIds.push_back(static_cast<sal_uInt16>(mpReqGlyphIds[i]));
     // remove const_cast when sft-subsetter is const-correct
     sal_uInt8* pEncArray = const_cast<sal_uInt8*>( mpReqEncodedIds );
 #endif
-    int nSFTErr = vcl::SF_BADARG;
+    vcl::SFErrCodes nSFTErr = vcl::SFErrCodes::BadArg;
     if( mnReqFontTypeMask & FontType::TYPE42_FONT )
     {
         nSFTErr = CreateT42FromTTGlyphs( mpSftTTFont, mpOutFile, mpReqFontName,
@@ -152,13 +149,14 @@ bool FontSubsetInfo::CreateFontSubsetFromSfnt( sal_Int32* pOutGlyphWidths )
         // TODO: move functionality from callers here
     }
 
-    return (nSFTErr != vcl::SF_OK);
+    return (nSFTErr != vcl::SFErrCodes::Ok);
 }
 
 // TODO: replace dummy implementation
 bool FontSubsetInfo::CreateFontSubsetFromType1( const sal_Int32* /*pOutGlyphWidths*/)
 {
-    fprintf(stderr,"CreateFontSubsetFromType1: replace dummy implementation\n");
+    SAL_WARN("vcl.fonts",
+            "CreateFontSubsetFromType1: replace dummy implementation.");
     return false;
 }
 

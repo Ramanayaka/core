@@ -8,14 +8,11 @@
  */
 
 #include <memory>
-#include "ToxLinkProcessor.hxx"
+#include <ToxLinkProcessor.hxx>
 
-#include "SwStyleNameMapper.hxx"
-#include "ndtxt.hxx"
-#include <o3tl/make_unique.hxx>
-#include <poolfmt.hrc>
-
-#include <stdexcept>
+#include <SwStyleNameMapper.hxx>
+#include <ndtxt.hxx>
+#include <sal/log.hxx>
 
 namespace sw {
 
@@ -23,7 +20,7 @@ void
 ToxLinkProcessor::StartNewLink(sal_Int32 startPosition, const OUString& characterStyle)
 {
     SAL_INFO_IF(m_pStartedLink, "sw.core", "ToxLinkProcessor: LS without LE");
-    m_pStartedLink = o3tl::make_unique<StartedLink>(
+    m_pStartedLink = std::make_unique<StartedLink>(
                 startPosition, characterStyle);
 }
 

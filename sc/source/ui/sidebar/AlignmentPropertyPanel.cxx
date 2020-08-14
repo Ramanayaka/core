@@ -19,56 +19,65 @@
 
 #include "AlignmentPropertyPanel.hxx"
 #include <editeng/justifyitem.hxx>
-#include "sc.hrc"
-#include "scresid.hxx"
-#include "scitems.hxx"
+#include <sc.hrc>
+#include <attrib.hxx>
+#include <scitems.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
-#include <svx/algitem.hxx>
+#include <svl/intitem.hxx>
 #include <svx/rotmodit.hxx>
-#include <svx/dlgutil.hxx>
-#include <vcl/toolbox.hxx>
-#include <svx/sidebar/SidebarDialControl.hxx>
+#include <svx/sdangitm.hxx>
+#include <svtools/unitconv.hxx>
+#include <unotools/localedatawrapper.hxx>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <sfx2/lokhelper.hxx>
+#include <comphelper/lok.hxx>
 
 using namespace css;
 using namespace css::uno;
 
 // namespace open
 
-namespace sc { namespace sidebar {
+namespace sc::sidebar {
 
 AlignmentPropertyPanel::AlignmentPropertyPanel(
     vcl::Window* pParent,
     const css::uno::Reference<css::frame::XFrame>& rxFrame,
     SfxBindings* pBindings)
-    : PanelLayout(pParent, "AlignmentPropertyPanel", "modules/scalc/ui/sidebaralignment.ui", rxFrame),
-      maAlignHorControl(SID_H_ALIGNCELL, *pBindings, *this),
-      maLeftIndentControl(SID_ATTR_ALIGN_INDENT, *pBindings, *this),
-      maMergeCellControl(FID_MERGE_TOGGLE, *pBindings, *this),
-      maWrapTextControl(SID_ATTR_ALIGN_LINEBREAK, *pBindings, *this),
-      maAngleControl(SID_ATTR_ALIGN_DEGREES, *pBindings, *this),
-      maVrtStackControl(SID_ATTR_ALIGN_STACKED, *pBindings, *this),
-      maRefEdgeControl(SID_ATTR_ALIGN_LOCKPOS, *pBindings, *this),
-      mbMultiDisable(false),
-      maContext(),
-      mpBindings(pBindings)
+    : PanelLayout(pParent, "AlignmentPropertyPanel", "modules/scalc/ui/sidebaralignment.ui", rxFrame)
+    , mxFTLeftIndent(m_xBuilder->weld_label("leftindentlabel"))
+    , mxMFLeftIndent(m_xBuilder->weld_metric_spin_button("leftindent", FieldUnit::POINT))
+    , mxCBXWrapText(m_xBuilder->weld_check_button("wraptext"))
+    , mxCBXMergeCell(m_xBuilder->weld_check_button("mergecells"))
+    , mxFtRotate(m_xBuilder->weld_label("orientationlabel"))
+    , mxMtrAngle(m_xBuilder->weld_metric_spin_button("orientationdegrees", FieldUnit::DEGREE))
+    , mxRefEdgeBottom(m_xBuilder->weld_radio_button("bottom"))
+    , mxRefEdgeTop(m_xBuilder->weld_radio_button("top"))
+    , mxRefEdgeStd(m_xBuilder->weld_radio_button("standard"))
+    , mxCBStacked(m_xBuilder->weld_check_button("stacked"))
+    , mxTextOrientBox(m_xBuilder->weld_widget("textorientbox"))
+    , mxHorizontalAlign(m_xBuilder->weld_toolbar("horizontalalignment"))
+    , mxHorizontalAlignDispatch(new ToolbarUnoDispatcher(*mxHorizontalAlign, *m_xBuilder, rxFrame))
+    , mxVertAlign(m_xBuilder->weld_toolbar("verticalalignment"))
+    , mxVertAlignDispatch(new ToolbarUnoDispatcher(*mxVertAlign, *m_xBuilder, rxFrame))
+    , mxWriteDirection(m_xBuilder->weld_toolbar("writedirection"))
+    , mxWriteDirectionDispatch(new ToolbarUnoDispatcher(*mxWriteDirection, *m_xBuilder, rxFrame))
+    , mxIndentButtons(m_xBuilder->weld_toolbar("indentbuttons"))
+    , mxIndentButtonsDispatch(new ToolbarUnoDispatcher(*mxIndentButtons, *m_xBuilder, rxFrame))
+    , maAlignHorControl(SID_H_ALIGNCELL, *pBindings, *this)
+    , maLeftIndentControl(SID_ATTR_ALIGN_INDENT, *pBindings, *this)
+    , maMergeCellControl(FID_MERGE_TOGGLE, *pBindings, *this)
+    , maWrapTextControl(SID_ATTR_ALIGN_LINEBREAK, *pBindings, *this)
+    , maAngleControl(SID_ATTR_ALIGN_DEGREES, *pBindings, *this)
+    , maVrtStackControl(SID_ATTR_ALIGN_STACKED, *pBindings, *this)
+    , maRefEdgeControl(SID_ATTR_ALIGN_LOCKPOS, *pBindings, *this)
+    , mbMultiDisable(false)
+    , mbSettingToggles(false)
+    , maContext()
+    , mpBindings(pBindings)
 {
-    get(mpFTLeftIndent, "leftindentlabel");
-    get(mpMFLeftIndent, "leftindent");
-    get(mpCBXWrapText, "wraptext");
-    get(mpCBXMergeCell, "mergecells");
-    get(mpFtRotate, "orientationlabel");
-    get(mpMtrAngle, "orientationdegrees");
-    get(mpRefEdgeBottom, "bottom");
-    get(mpRefEdgeTop, "top");
-    get(mpRefEdgeStd, "standard");
-    get(mpCBStacked, "stacked");
-    get(mpTextOrientBox , "textorientbox");
-
     Initialize();
-
-    mpFTLeftIndent->SetBackground(Wallpaper());
-    mpFtRotate->SetBackground(Wallpaper());
 }
 
 AlignmentPropertyPanel::~AlignmentPropertyPanel()
@@ -78,17 +87,26 @@ AlignmentPropertyPanel::~AlignmentPropertyPanel()
 
 void AlignmentPropertyPanel::dispose()
 {
-    mpFTLeftIndent.clear();
-    mpMFLeftIndent.clear();
-    mpCBXWrapText.clear();
-    mpCBXMergeCell.clear();
-    mpFtRotate.clear();
-    mpMtrAngle.clear();
-    mpCBStacked.clear();
-    mpRefEdgeBottom.clear();
-    mpRefEdgeTop.clear();
-    mpRefEdgeStd.clear();
-    mpTextOrientBox.clear();
+    mxIndentButtonsDispatch.reset();
+    mxIndentButtons.reset();
+    mxWriteDirectionDispatch.reset();
+    mxWriteDirection.reset();
+    mxVertAlignDispatch.reset();
+    mxVertAlign.reset();
+    mxHorizontalAlignDispatch.reset();
+    mxHorizontalAlign.reset();
+
+    mxFTLeftIndent.reset();
+    mxMFLeftIndent.reset();
+    mxCBXWrapText.reset();
+    mxCBXMergeCell.reset();
+    mxFtRotate.reset();
+    mxMtrAngle.reset();
+    mxCBStacked.reset();
+    mxRefEdgeBottom.reset();
+    mxRefEdgeTop.reset();
+    mxRefEdgeStd.reset();
+    mxTextOrientBox.reset();
 
     maAlignHorControl.dispose();
     maLeftIndentControl.dispose();
@@ -103,123 +121,84 @@ void AlignmentPropertyPanel::dispose()
 
 void AlignmentPropertyPanel::Initialize()
 {
-    mpFTLeftIndent->Disable();
-    mpMFLeftIndent->Disable();
-    Link<Edit&,void> aLink = LINK(this, AlignmentPropertyPanel, MFLeftIndentMdyHdl);
-    mpMFLeftIndent->SetModifyHdl ( aLink );
+    mxFTLeftIndent->set_sensitive(false);
+    mxMFLeftIndent->set_sensitive(false);
+    Link<weld::MetricSpinButton&,void> aLink = LINK(this, AlignmentPropertyPanel, MFLeftIndentMdyHdl);
+    mxMFLeftIndent->connect_value_changed( aLink );
 
-    mpCBXMergeCell->SetClickHdl ( LINK(this, AlignmentPropertyPanel, CBOXMergnCellClkHdl) );
+    mxCBXMergeCell->connect_toggled( LINK(this, AlignmentPropertyPanel, CBOXMergnCellClkHdl) );
 
-    mpCBXWrapText->SetClickHdl ( LINK(this, AlignmentPropertyPanel, CBOXWrapTextClkHdl) );
+    mxCBXWrapText->connect_toggled( LINK(this, AlignmentPropertyPanel, CBOXWrapTextClkHdl) );
 
     //rotation
-    mpMtrAngle->SetModifyHdl(LINK( this, AlignmentPropertyPanel, AngleModifiedHdl));
-    mpMtrAngle->EnableAutocomplete( false );
-    mpCBStacked->SetClickHdl(LINK(this, AlignmentPropertyPanel, ClickStackHdl));
+    mxMtrAngle->connect_value_changed(LINK( this, AlignmentPropertyPanel, AngleModifiedHdl));
+    mxCBStacked->connect_toggled(LINK(this, AlignmentPropertyPanel, ClickStackHdl));
 
-    Link<Button*,void> aLink2 = LINK(this, AlignmentPropertyPanel, ReferenceEdgeHdl);
-    mpRefEdgeBottom->SetClickHdl(aLink2);
-    mpRefEdgeTop->SetClickHdl(aLink2);
-    mpRefEdgeStd->SetClickHdl(aLink2);
-
-    mpMtrAngle->InsertValue(0, FUNIT_CUSTOM);
-    mpMtrAngle->InsertValue(45, FUNIT_CUSTOM);
-    mpMtrAngle->InsertValue(90, FUNIT_CUSTOM);
-    mpMtrAngle->InsertValue(135, FUNIT_CUSTOM);
-    mpMtrAngle->InsertValue(180, FUNIT_CUSTOM);
-    mpMtrAngle->InsertValue(225, FUNIT_CUSTOM);
-    mpMtrAngle->InsertValue(270, FUNIT_CUSTOM);
-    mpMtrAngle->InsertValue(315, FUNIT_CUSTOM);
-    mpMtrAngle->SetDropDownLineCount(mpMtrAngle->GetEntryCount());
+    Link<weld::ToggleButton&,void> aLink2 = LINK(this, AlignmentPropertyPanel, ReferenceEdgeHdl);
+    mxRefEdgeBottom->connect_toggled(aLink2);
+    mxRefEdgeTop->connect_toggled(aLink2);
+    mxRefEdgeStd->connect_toggled(aLink2);
 }
 
-IMPL_LINK( AlignmentPropertyPanel, ReferenceEdgeHdl, Button*, pControl, void )
+IMPL_LINK(AlignmentPropertyPanel, ReferenceEdgeHdl, weld::ToggleButton&, rToggle, void)
 {
+    if (mbSettingToggles)
+        return;
     SvxRotateMode eMode;
-    if(pControl == mpRefEdgeBottom)
+    if (&rToggle == mxRefEdgeBottom.get() && mxRefEdgeBottom->get_active())
         eMode = SVX_ROTATE_MODE_BOTTOM;
-    else if(pControl == mpRefEdgeTop)
+    else if (&rToggle == mxRefEdgeTop.get() && mxRefEdgeTop->get_active())
         eMode = SVX_ROTATE_MODE_TOP;
-    else
+    else if (&rToggle == mxRefEdgeStd.get() && mxRefEdgeStd->get_active())
         eMode = SVX_ROTATE_MODE_STANDARD;
-    SvxRotateModeItem aItem(eMode,ATTR_ROTATE_MODE);
+    else
+        return;
+    SvxRotateModeItem aItem(eMode, ATTR_ROTATE_MODE);
     GetBindings()->GetDispatcher()->ExecuteList(SID_ATTR_ALIGN_LOCKPOS,
             SfxCallMode::RECORD, { &aItem });
 }
 
-IMPL_LINK_NOARG( AlignmentPropertyPanel, AngleModifiedHdl, Edit&, void )
+IMPL_LINK_NOARG( AlignmentPropertyPanel, AngleModifiedHdl, weld::MetricSpinButton&, void )
 {
-    OUString sTmp = mpMtrAngle->GetText();
-    if (sTmp.isEmpty())
-        return;
-    sal_Unicode nChar = sTmp[0];
-    if( nChar == '-' )
-    {
-        if (sTmp.getLength() < 2)
-            return;
-        nChar = sTmp[1];
-    }
-
-    if( (nChar < '0') || (nChar > '9') )
-        return;
-
-    const LocaleDataWrapper& rLocaleWrapper( Application::GetSettings().GetLocaleDataWrapper() );
-    const sal_Unicode cSep = rLocaleWrapper.getNumDecimalSep()[0];
-
-    // Do not check that the entire string was parsed up to its end, there may
-    // be a degree symbol following the number. Note that this also means that
-    // the number recognized just stops at any non-matching character.
-    /* TODO: we could check for the degree symbol stop if there are no other
-     * cases with different symbol characters in any language? */
-    rtl_math_ConversionStatus eStatus;
-    double fTmp = rtl::math::stringToDouble( sTmp, cSep, 0, &eStatus);
-    if (eStatus != rtl_math_ConversionStatus_Ok)
-        return;
-
-    FormatDegrees(fTmp);
-
-    sal_Int64 nTmp = (sal_Int64)fTmp*100;
-    SfxInt32Item aAngleItem( SID_ATTR_ALIGN_DEGREES,(sal_uInt32) nTmp);
+    sal_uInt32 nAngle = mxMtrAngle->get_value(FieldUnit::DEGREE) * 100;
+    ScRotateValueItem aAngleItem(nAngle);
 
     GetBindings()->GetDispatcher()->ExecuteList(
         SID_ATTR_ALIGN_DEGREES, SfxCallMode::RECORD, { &aAngleItem });
 }
-IMPL_LINK_NOARG( AlignmentPropertyPanel, ClickStackHdl, Button*, void )
+
+IMPL_LINK_NOARG( AlignmentPropertyPanel, ClickStackHdl, weld::ToggleButton&, void )
 {
-    bool bVertical = mpCBStacked->IsChecked();
-    SfxBoolItem  aStackItem( SID_ATTR_ALIGN_STACKED, bVertical );
+    bool bVertical = mxCBStacked->get_active();
+    ScVerticalStackCell aStackItem(bVertical);
     GetBindings()->GetDispatcher()->ExecuteList(
         SID_ATTR_ALIGN_STACKED, SfxCallMode::RECORD, { &aStackItem });
 }
-IMPL_LINK_NOARG(AlignmentPropertyPanel, MFLeftIndentMdyHdl, Edit&, void)
+
+IMPL_LINK_NOARG(AlignmentPropertyPanel, MFLeftIndentMdyHdl, weld::MetricSpinButton&, void)
 {
-    mpCBXWrapText->EnableTriState(false);
-    sal_uInt16 nVal = (sal_uInt16)mpMFLeftIndent->GetValue();
-    SfxUInt16Item aItem( SID_ATTR_ALIGN_INDENT,  (sal_uInt16)CalcToUnit( nVal,  MapUnit::MapTwip ) );
+    sal_uInt16 nVal = mxMFLeftIndent->get_value(FieldUnit::NONE);
+    ScIndentItem aItem(static_cast<sal_uInt16>(CalcToUnit(nVal, MapUnit::MapTwip)));
 
     GetBindings()->GetDispatcher()->ExecuteList(SID_ATTR_ALIGN_INDENT,
             SfxCallMode::RECORD, { &aItem });
 }
 
-IMPL_LINK_NOARG(AlignmentPropertyPanel, CBOXMergnCellClkHdl, Button*, void)
+IMPL_LINK_NOARG(AlignmentPropertyPanel, CBOXMergnCellClkHdl, weld::ToggleButton&, void)
 {
-    bool bState = mpCBXMergeCell->IsChecked();
+    bool bState = mxCBXMergeCell->get_active();
 
-    //Modified
-    //SfxBoolItem aItem( FID_MERGE_TOGGLE , bState);
-    //GetBindings()->GetDispatcher()->Execute(FID_MERGE_TOGGLE, SfxCallMode::RECORD, &aItem, false, 0L);
-    if(bState)
+    if( bState)
         GetBindings()->GetDispatcher()->Execute(FID_MERGE_ON, SfxCallMode::RECORD);
     else
         GetBindings()->GetDispatcher()->Execute(FID_MERGE_OFF, SfxCallMode::RECORD);
     GetBindings()->Invalidate(FID_MERGE_TOGGLE,true);
-    //modified end
 }
 
-IMPL_LINK_NOARG(AlignmentPropertyPanel, CBOXWrapTextClkHdl, Button*, void)
+IMPL_LINK_NOARG(AlignmentPropertyPanel, CBOXWrapTextClkHdl, weld::ToggleButton&, void)
 {
-    bool bState = mpCBXWrapText->IsChecked();
-    SfxBoolItem aItem( SID_ATTR_ALIGN_LINEBREAK , bState);
+    bool bState = mxCBXWrapText->get_active();
+    ScLineBreakCell aItem(bState);
     GetBindings()->GetDispatcher()->ExecuteList(SID_ATTR_ALIGN_LINEBREAK,
             SfxCallMode::RECORD, { &aItem });
 }
@@ -259,177 +238,133 @@ void AlignmentPropertyPanel::HandleContextChange(
 void AlignmentPropertyPanel::NotifyItemUpdate(
     sal_uInt16 nSID,
     SfxItemState eState,
-    const SfxPoolItem* pState,
-    const bool)
+    const SfxPoolItem* pState)
 {
     switch(nSID)
     {
     case SID_H_ALIGNCELL:
         {
             SvxCellHorJustify meHorAlignState = SvxCellHorJustify::Standard;
-            if(eState >= SfxItemState::DEFAULT && pState && dynamic_cast<const SvxHorJustifyItem*>( pState) !=  nullptr )
+            if(eState >= SfxItemState::DEFAULT && dynamic_cast<const SvxHorJustifyItem*>( pState) )
             {
                 const SvxHorJustifyItem* pItem = static_cast<const SvxHorJustifyItem*>(pState);
-                meHorAlignState = (SvxCellHorJustify)pItem->GetValue();
+                meHorAlignState = pItem->GetValue();
             }
 
             if( meHorAlignState == SvxCellHorJustify::Repeat )
             {
-                mpFtRotate->Disable();
-                mpMtrAngle->Disable();
+                mxFtRotate->set_sensitive(false);
+                mxMtrAngle->set_sensitive(false);
             }
             else
             {
-                mpFtRotate->Enable(!mbMultiDisable);
-                mpMtrAngle->Enable(!mbMultiDisable);
+                mxFtRotate->set_sensitive(!mbMultiDisable);
+                mxMtrAngle->set_sensitive(!mbMultiDisable);
             }
 
-            mpFTLeftIndent->Enable( meHorAlignState == SvxCellHorJustify::Left );
-            mpMFLeftIndent->Enable( meHorAlignState == SvxCellHorJustify::Left );
+            mxFTLeftIndent->set_sensitive( meHorAlignState == SvxCellHorJustify::Left );
+            mxMFLeftIndent->set_sensitive( meHorAlignState == SvxCellHorJustify::Left );
         }
         break;
     case SID_ATTR_ALIGN_INDENT:
-        if(eState >= SfxItemState::DEFAULT && pState && dynamic_cast<const SfxUInt16Item*>( pState) !=  nullptr )
+        if(eState >= SfxItemState::DEFAULT && dynamic_cast<const SfxUInt16Item*>( pState) )
         {
                 const SfxUInt16Item* pItem = static_cast<const SfxUInt16Item*>(pState);
                 sal_uInt16 nVal = pItem->GetValue();
-                mpMFLeftIndent->SetValue( CalcToPoint(nVal, MapUnit::MapTwip, 1) );
+                mxMFLeftIndent->set_value( CalcToPoint(nVal, MapUnit::MapTwip, 1), FieldUnit::NONE );
         }
         else
         {
-            mpMFLeftIndent->SetValue(0);
-            mpMFLeftIndent->SetText(OUString());
+            mxMFLeftIndent->set_value(0, FieldUnit::NONE);
+            mxMFLeftIndent->set_text(OUString());
         }
         break;
     case FID_MERGE_TOGGLE:
-        if(eState >= SfxItemState::DEFAULT && pState && dynamic_cast<const SfxBoolItem*>( pState) !=  nullptr )
+        if(eState >= SfxItemState::DEFAULT && dynamic_cast<const SfxBoolItem*>( pState) )
         {
-            mpCBXMergeCell->Enable();
+            mxCBXMergeCell->set_sensitive(true);
             const SfxBoolItem* pItem = static_cast<const SfxBoolItem*>(pState);
-            mpCBXMergeCell->Check(pItem->GetValue());
+            mxCBXMergeCell->set_active(pItem->GetValue());
         }
         else
         {
-            mpCBXMergeCell->Check(false);
-            mpCBXMergeCell->Disable();
+            mxCBXMergeCell->set_active(false);
+            mxCBXMergeCell->set_sensitive(false);
         }
         break;
 
     case SID_ATTR_ALIGN_LINEBREAK:
         if(eState == SfxItemState::DISABLED)
         {
-            mpCBXWrapText->EnableTriState(false);
-            mpCBXWrapText->Check(false);
-            mpCBXWrapText->Disable();
+            mxCBXWrapText->set_active(false);
+            mxCBXWrapText->set_sensitive(false);
         }
         else
         {
-            mpCBXWrapText->Enable();
-            if(eState >= SfxItemState::DEFAULT && pState && dynamic_cast<const SfxBoolItem*>( pState) !=  nullptr )
+            mxCBXWrapText->set_sensitive(true);
+            if(eState >= SfxItemState::DEFAULT && dynamic_cast<const ScLineBreakCell*>( pState) )
             {
-                mpCBXWrapText->EnableTriState(false);
-                const SfxBoolItem* pItem = static_cast<const SfxBoolItem*>(pState);
-                mpCBXWrapText->Check(pItem->GetValue());
+                const ScLineBreakCell* pItem = static_cast<const ScLineBreakCell*>(pState);
+                mxCBXWrapText->set_active(pItem->GetValue());
             }
             else if(eState == SfxItemState::DONTCARE)
             {
-                mpCBXWrapText->EnableTriState();
-                mpCBXWrapText->SetState(TRISTATE_INDET);
+                mxCBXWrapText->set_state(TRISTATE_INDET);
             }
         }
         break;
     case SID_ATTR_ALIGN_STACKED:
         if (eState >= SfxItemState::DEFAULT)
         {
-            mpCBStacked->EnableTriState(false);
-            const SfxBoolItem* aStackItem = static_cast<const SfxBoolItem*>(pState);
-            mbMultiDisable = aStackItem->GetValue();
-            mpCBStacked->Check(mbMultiDisable);
-            mpTextOrientBox->Enable(!mbMultiDisable);
+            const SfxBoolItem* pStackItem = static_cast<const ScVerticalStackCell*>(pState);
+            mbMultiDisable = pStackItem->GetValue();
+            mxCBStacked->set_active(mbMultiDisable);
+            mxTextOrientBox->set_sensitive(!mbMultiDisable);
         }
         else
         {
             mbMultiDisable = true;
-            mpTextOrientBox->Disable();
-            mpCBStacked->EnableTriState();
-            mpCBStacked->SetState(TRISTATE_INDET);
+            mxTextOrientBox->set_sensitive(false);
+            mxCBStacked->set_state(TRISTATE_INDET);
         }
         break;
     case SID_ATTR_ALIGN_LOCKPOS:
         if( eState >= SfxItemState::DEFAULT)
         {
+            mbSettingToggles = true;
             const SvxRotateModeItem* pItem = static_cast<const SvxRotateModeItem*>(pState);
-            SvxRotateMode eMode = (SvxRotateMode)pItem->GetValue();
+            SvxRotateMode eMode = pItem->GetValue();
             if(eMode == SVX_ROTATE_MODE_BOTTOM)
             {
-                mpRefEdgeBottom->SetState(true);
-                mpRefEdgeTop->SetState(false);
-                mpRefEdgeStd->SetState(false);
+                mxRefEdgeBottom->set_state(TRISTATE_TRUE);
             }
             else if(eMode == SVX_ROTATE_MODE_TOP)
             {
-                mpRefEdgeBottom->SetState(false);
-                mpRefEdgeStd->SetState(false);
-                mpRefEdgeTop->SetState(true);
+                mxRefEdgeTop->set_state(TRISTATE_TRUE);
             }
             else if(eMode == SVX_ROTATE_MODE_STANDARD)
             {
-                mpRefEdgeBottom->SetState(false);
-                mpRefEdgeTop->SetState(false);
-                mpRefEdgeStd->SetState(true);
+                mxRefEdgeStd->set_state(TRISTATE_TRUE);
             }
+            mbSettingToggles = false;
         }
         break;
     case SID_ATTR_ALIGN_DEGREES:
         if (eState >= SfxItemState::DEFAULT)
         {
-            long nTmp = static_cast<const SfxInt32Item*>(pState)->GetValue();
-            mpMtrAngle->SetValue( nTmp / 100);  //wj
-            switch(nTmp)
-            {
-                case 0:
-                    mpMtrAngle->SelectEntryPos(0);
-                break;
-                case 4500:
-                    mpMtrAngle->SelectEntryPos(1);
-                break;
-                case 9000:
-                    mpMtrAngle->SelectEntryPos(2);
-                break;
-                case 13500:
-                    mpMtrAngle->SelectEntryPos(3);
-                break;
-                case 18000:
-                    mpMtrAngle->SelectEntryPos(4);
-                break;
-                case 22500:
-                    mpMtrAngle->SelectEntryPos(5);
-                break;
-                case 27000:
-                    mpMtrAngle->SelectEntryPos(6);
-                break;
-                case 31500:
-                    mpMtrAngle->SelectEntryPos(7);
-            }
+            long nTmp = static_cast<const ScRotateValueItem*>(pState)->GetValue();
+            mxMtrAngle->set_value(nTmp / 100, FieldUnit::DEGREE);
         }
         else
         {
-            mpMtrAngle->SetText( OUString() );
+            mxMtrAngle->set_text( OUString() );
         }
         break;
     }
 }
 
-void AlignmentPropertyPanel::FormatDegrees(double& dTmp)
-{
-    while(dTmp<0)
-        dTmp += 360;
-    while (dTmp > 359)  //modify
-        dTmp = 359;
-}
-
 // namespace close
 
-}} // end of namespace ::sc::sidebar
+} // end of namespace ::sc::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

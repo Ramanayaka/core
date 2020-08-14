@@ -22,25 +22,24 @@ using namespace com::sun::star;
 using namespace ooo::vba;
 
 
-ScVbaImage::ScVbaImage( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, AbstractGeometryAttributes* pGeomHelper ) : ImageImpl_BASE( xParent, xContext, xControl, xModel, pGeomHelper )
+ScVbaImage::ScVbaImage( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< uno::XInterface >& xControl, const uno::Reference< frame::XModel >& xModel, std::unique_ptr<ov::AbstractGeometryAttributes> pGeomHelper )
+    : ImageImpl_BASE( xParent, xContext, xControl, xModel, std::move(pGeomHelper) )
 {
 }
 
 OUString
 ScVbaImage::getServiceImplName()
 {
-    return OUString("ScVbaImage");
+    return "ScVbaImage";
 }
 
 uno::Sequence< OUString >
 ScVbaImage::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.msforms.Image";
-    }
+        "ooo.vba.msforms.Image"
+    };
     return aServiceNames;
 }
 

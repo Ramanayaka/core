@@ -19,6 +19,7 @@
 
 #include <config_folders.h>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/ucb/SimpleFileAccess.hpp>
 #include <com/sun/star/uri/XVndSunStarScriptUrl.hpp>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
 #include <cppuhelper/supportsservice.hxx>
@@ -34,13 +35,13 @@ namespace ucb = ::com::sun::star::ucb;
 namespace lang = ::com::sun::star::lang;
 namespace uri = ::com::sun::star::uri;
 
-static const char SHARE[] = "share";
+const char SHARE[] = "share";
 
-static const char SHARE_UNO_PACKAGES_URI[] =
+const char SHARE_UNO_PACKAGES_URI[] =
     "vnd.sun.star.expand:$UNO_SHARED_PACKAGES_CACHE";
 
-static const char USER[] = "user";
-static const char USER_URI[] =
+const char USER[] = "user";
+const char USER_URI[] =
     "vnd.sun.star.expand:${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE( "bootstrap") "::UserInstallation}";
 
 
@@ -88,8 +89,7 @@ ScriptingFrameworkURIHelper::initialize(
         throw uno::RuntimeException( "ScriptingFrameworkURIHelper error parsing args" );
     }
 
-    SCRIPTS_PART = "/Scripts/";
-    SCRIPTS_PART = SCRIPTS_PART.concat( m_sLanguage.toAsciiLowerCase() );
+    SCRIPTS_PART = "/Scripts/" + m_sLanguage.toAsciiLowerCase();
 
     if ( !initBaseURI() )
     {
@@ -145,23 +145,21 @@ ScriptingFrameworkURIHelper::initBaseURI()
     uno::Sequence< OUString > children =
         m_xSimpleFileAccess->getFolderContents( uri, true );
 
-    for ( sal_Int32 i = 0; i < children.getLength(); i++ )
-    {
-        OUString child = children[i];
+    auto pChild = std::find_if(children.begin(), children.end(), [&test](const OUString& child) {
         sal_Int32 idx = child.lastIndexOf(test);
-
-        if ( idx != -1 && (idx + test.getLength()) == child.getLength() )
+        return idx != -1 && (idx + test.getLength()) == child.getLength();
+    });
+    if (pChild != children.end())
+    {
+        if ( bAppendScriptsPart )
         {
-            if ( bAppendScriptsPart )
-            {
-                m_sBaseURI = child.concat( SCRIPTS_PART );
-            }
-            else
-            {
-                m_sBaseURI = child;
-            }
-            return true;
+            m_sBaseURI = pChild->concat( SCRIPTS_PART );
         }
+        else
+        {
+            m_sBaseURI = *pChild;
+        }
+        return true;
     }
     return false;
 }
@@ -185,8 +183,7 @@ ScriptingFrameworkURIHelper::getLanguagePart(const OUString& rStorageURI)
 OUString
 ScriptingFrameworkURIHelper::getLanguagePath(const OUString& rLanguagePart)
 {
-    OUString result;
-    result = rLanguagePart.replace('|', '/');
+    OUString result = rLanguagePart.replace('|', '/');
     return result;
 }
 
@@ -241,8 +238,8 @@ ScriptingFrameworkURIHelper::getRootStorageURI()
 OUString SAL_CALL
 ScriptingFrameworkURIHelper::getImplementationName()
 {
-    return OUString(
-        "com.sun.star.script.provider.ScriptURIHelper" );
+    return
+        "com.sun.star.script.provider.ScriptURIHelper";
 }
 
 sal_Bool SAL_CALL
@@ -254,15 +251,17 @@ ScriptingFrameworkURIHelper::supportsService( const OUString& serviceName )
 uno::Sequence< OUString > SAL_CALL
 ScriptingFrameworkURIHelper::getSupportedServiceNames()
 {
-    OUString serviceNameList[] = {
-        OUString(
-            "com.sun.star.script.provider.ScriptURIHelper" ) };
-
-    uno::Sequence< OUString > serviceNames = uno::Sequence <
-        OUString > ( serviceNameList, 1 );
-
-    return serviceNames;
+    return { "com.sun.star.script.provider.ScriptURIHelper" };
 }
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+scripting_ScriptingFrameworkURIHelper_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new ScriptingFrameworkURIHelper(context));
 }
+
+}
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

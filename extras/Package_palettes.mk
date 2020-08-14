@@ -11,14 +11,15 @@ $(eval $(call gb_Package_Package,extras_palettes,$(SRCDIR)/extras/source/palette
 
 $(eval $(call gb_Package_add_files,extras_palettes,$(LIBO_SHARE_FOLDER)/palette,\
 	arrowhd.soe \
-	breeze.soc \
 	chart-palettes.soc \
 	classic.sog \
 	freecolour-hlc.soc \
 	hatching.soh \
 	html.soc \
 	libreoffice.soc \
+	material.soc \
 	modern.sog \
+	compatibility.soc \
 	standard.sob \
 	standard.soc \
 	standard.sod \
@@ -27,7 +28,6 @@ $(eval $(call gb_Package_add_files,extras_palettes,$(LIBO_SHARE_FOLDER)/palette,
 	standard.soh \
 	standard.sop \
 	styles.sod \
-	tango.soc \
 	tonal.soc \
 ))
 

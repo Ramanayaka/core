@@ -19,31 +19,17 @@
 #ifndef INCLUDED_SW_INC_PAM_HXX
 #define INCLUDED_SW_INC_PAM_HXX
 
-#include <stddef.h>
 #include <sal/types.h>
-#include <tools/mempool.hxx>
-#include <cshtyp.hxx>
-#include <ring.hxx>
-#include <index.hxx>
-#include <ndindex.hxx>
+#include "ring.hxx"
+#include "index.hxx"
+#include "ndindex.hxx"
 #include "swdllapi.h"
 
 #include <iostream>
 
-class SwFormat;
-class SfxPoolItem;
-class SfxItemSet;
 class SwDoc;
-class SwNode;
-class SwContentNode;
 class SwPaM;
 class Point;
-namespace i18nutil {
-    struct SearchOptions2;
-}
-namespace utl {
-    class TextSearch;
-}
 
 /// Marks a position in the document model.
 struct SAL_WARN_UNUSED SW_DLLPUBLIC SwPosition
@@ -69,7 +55,7 @@ struct SAL_WARN_UNUSED SW_DLLPUBLIC SwPosition
     bool operator >=(const SwPosition &) const;
     bool operator ==(const SwPosition &) const;
     bool operator !=(const SwPosition &) const;
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 SW_DLLPUBLIC std::ostream &operator <<(std::ostream& s, const SwPosition& position);
@@ -139,12 +125,12 @@ SW_DLLPUBLIC extern SwMoveFnCollection const & fnMoveBackward;
 
 using SwGoInDoc = auto (*)(SwPaM& rPam, SwMoveFnCollection const & fnMove) -> bool;
 SW_DLLPUBLIC bool GoInDoc( SwPaM&, SwMoveFnCollection const &);
-SW_DLLPUBLIC bool GoInSection( SwPaM&, SwMoveFnCollection const &);
+bool GoInSection( SwPaM&, SwMoveFnCollection const &);
 SW_DLLPUBLIC bool GoInNode( SwPaM&, SwMoveFnCollection const &);
 SW_DLLPUBLIC bool GoInContent( SwPaM&, SwMoveFnCollection const &);
-SW_DLLPUBLIC bool GoInContentCells( SwPaM&, SwMoveFnCollection const &);
-SW_DLLPUBLIC bool GoInContentSkipHidden( SwPaM&, SwMoveFnCollection const &);
-SW_DLLPUBLIC bool GoInContentCellsSkipHidden( SwPaM&, SwMoveFnCollection const &);
+bool GoInContentCells( SwPaM&, SwMoveFnCollection const &);
+bool GoInContentSkipHidden( SwPaM&, SwMoveFnCollection const &);
+bool GoInContentCellsSkipHidden( SwPaM&, SwMoveFnCollection const &);
 
 /// PaM is Point and Mark: a selection of the document model.
 class SAL_WARN_UNUSED SW_DLLPUBLIC SwPaM : public sw::Ring<SwPaM>
@@ -154,8 +140,6 @@ class SAL_WARN_UNUSED SW_DLLPUBLIC SwPaM : public sw::Ring<SwPaM>
     SwPosition * m_pPoint; ///< points at either m_Bound1 or m_Bound2
     SwPosition * m_pMark;  ///< points at either m_Bound1 or m_Bound2
     bool m_bIsInFrontOfLabel;
-
-    SwPaM* MakeRegion( SwMoveFnCollection const & fnMove, const SwPaM * pOrigRg );
 
     SwPaM(SwPaM const& rPaM) = delete;
 
@@ -183,26 +167,6 @@ public:
     /// Movement of cursor.
     bool Move( SwMoveFnCollection const & fnMove = fnMoveForward,
                 SwGoInDoc fnGo = GoInContent );
-
-    /// Search.
-    bool Find(  const i18nutil::SearchOptions2& rSearchOpt,
-                bool bSearchInNotes,
-                utl::TextSearch& rSText,
-                SwMoveFnCollection const & fnMove = fnMoveForward,
-                const SwPaM *pPam =nullptr, bool bInReadOnly = false);
-    bool Find(  const SwFormat& rFormat,
-                SwMoveFnCollection const & fnMove = fnMoveForward,
-                const SwPaM *pPam =nullptr, bool bInReadOnly = false);
-    bool Find(  const SfxPoolItem& rAttr, bool bValue,
-                SwMoveFnCollection const & fnMove = fnMoveForward,
-                const SwPaM *pPam =nullptr, bool bInReadOnly = false );
-    bool Find(  const SfxItemSet& rAttr, bool bNoColls,
-                SwMoveFnCollection const & fnMove,
-                const SwPaM *pPam, bool bInReadOnly, bool bMoveFirst );
-
-    bool DoSearch( const i18nutil::SearchOptions2& rSearchOpt, utl::TextSearch& rSText,
-                   SwMoveFnCollection const & fnMove, bool bSrchForward, bool bRegSearch, bool bChkEmptyPara, bool bChkParaEnd,
-                   sal_Int32 &nStart, sal_Int32 &nEnd, sal_Int32 nTextLen, SwNode* pNode, SwPaM* pPam);
 
     bool IsInFrontOfLabel() const        { return m_bIsInFrontOfLabel; }
     void SetInFrontOfLabel_( bool bNew ) { m_bIsInFrontOfLabel = bNew; }
@@ -295,8 +259,6 @@ public:
         return *Start() <= rPos && rPos <= *End();
     }
 
-    DECL_FIXEDMEMPOOL_NEWDEL(SwPaM);
-
     OUString GetText() const;
     void InvalidatePaM();
     SwPaM* GetNext()
@@ -310,12 +272,12 @@ public:
     bool IsMultiSelection() const
         { return !unique(); }
 
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 SW_DLLPUBLIC std::ostream &operator <<(std::ostream& s, const SwPaM& pam);
 
-bool CheckNodesRange( const SwNodeIndex&, const SwNodeIndex&, bool bChkSection );
+bool CheckNodesRange(const SwNodeIndex&, const SwNodeIndex&, bool bChkSection);
 
 #endif // INCLUDED_SW_INC_PAM_HXX
 

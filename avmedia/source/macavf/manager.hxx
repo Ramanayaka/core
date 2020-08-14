@@ -17,40 +17,33 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_AVMEDIA_SOURCE_MACAVF_MANAGER_HXX
-#define INCLUDED_AVMEDIA_SOURCE_MACAVF_MANAGER_HXX
+#pragma once
 
 #include "macavfcommon.hxx"
 #include <cppuhelper/implbase.hxx>
 
-#include "com/sun/star/media/XManager.hpp"
+#include <com/sun/star/media/XManager.hpp>
 
 
-namespace avmedia { namespace macavf {
+namespace avmedia::macavf {
 
 class Manager : public ::cppu::WeakImplHelper< css::media::XManager,
                                                css::lang::XServiceInfo >
 {
 public:
 
-    Manager( const css::uno::Reference< css::lang::XMultiServiceFactory >& rxMgr );
+    Manager();
     virtual ~Manager() override;
 
     // XManager
-    virtual css::uno::Reference< css::media::XPlayer > SAL_CALL createPlayer( const ::rtl::OUString& aURL ) override;
+    virtual css::uno::Reference< css::media::XPlayer > SAL_CALL createPlayer( const OUString& aURL ) override;
 
     // XServiceInfo
-    virtual ::rtl::OUString SAL_CALL getImplementationName(  ) override;
-    virtual sal_Bool SAL_CALL supportsService( const ::rtl::OUString& ServiceName ) override;
-    virtual css::uno::Sequence< ::rtl::OUString > SAL_CALL getSupportedServiceNames(  ) override;
-private:
-
-    css::uno::Reference< css::lang::XMultiServiceFactory > mxMgr;
+    virtual OUString SAL_CALL getImplementationName(  ) override;
+    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 };
 
-} // namespace macavf
-} // namespace avmedia
-
-#endif // INCLUDED_AVMEDIA_SOURCE_MACAVF_MANAGER_HXX
+} // namespace avmedia::macavf
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

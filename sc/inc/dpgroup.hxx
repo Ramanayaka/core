@@ -40,7 +40,6 @@ class ScDPGroupItem
 
 public:
                 ScDPGroupItem( const ScDPItemData& rName );
-                ~ScDPGroupItem();
 
     void        AddElement( const ScDPItemData& rName );
 
@@ -51,14 +50,12 @@ public:
     void        FillGroupFilter( ScDPFilteredCache::GroupFilter& rFilter ) const;
 };
 
-typedef ::std::vector<ScDPGroupItem> ScDPGroupItemVec;
-
 class ScDPGroupDimension
 {
     long                        nSourceDim;
     long                        nGroupDim;
-    OUString               aGroupName;
-    ScDPGroupItemVec            aItems;
+    OUString                    aGroupName;
+    std::vector<ScDPGroupItem>  aItems;
     mutable std::vector<SCROW> maMemberEntries;
     bool mbDateDimension;
 public:
@@ -88,8 +85,6 @@ public:
     bool IsDateDimension() const { return mbDateDimension;}
 };
 
-typedef ::std::vector<ScDPGroupDimension> ScDPGroupDimensionVec;
-
 class SC_DLLPUBLIC ScDPNumGroupDimension
 {
     mutable ScDPNumGroupInfo    aGroupInfo;         // settings
@@ -117,17 +112,15 @@ public:
 
 //  proxy implementation of ScDPTableData to add grouped items
 
-class ScDPGroupTableData : public ScDPTableData
+class ScDPGroupTableData final : public ScDPTableData
 {
-    typedef std::unordered_set< OUString, OUStringHash > StringHashSet;
-
     std::shared_ptr<ScDPTableData> pSourceData;
     long                    nSourceCount;
-    ScDPGroupDimensionVec   aGroups;
+    std::vector<ScDPGroupDimension>
+                            aGroups;
     std::unique_ptr<ScDPNumGroupDimension[]>
                             pNumGroups;     // array[nSourceCount]
     ScDocument*             pDoc;
-    StringHashSet           aGroupNames;
 
     void FillGroupValues(std::vector<SCROW>& rItems, const std::vector<long>& rDims);
     virtual long                GetSourceDim( long nDim ) override;
@@ -157,7 +150,7 @@ public:
     virtual OUString                getDimensionName(long nColumn) override;
     virtual bool                    getIsDataLayoutDimension(long nColumn) override;
     virtual bool                    IsDateDimension(long nDim) override;
-    virtual sal_uLong               GetNumberFormat(long nDim) override;
+    virtual sal_uInt32              GetNumberFormat(long nDim) override;
     virtual void                    DisposeData() override;
     virtual void                    SetEmptyFlags( bool bIgnoreEmptyRows, bool bRepeatIfEmpty ) override;
 

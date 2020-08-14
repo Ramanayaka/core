@@ -17,10 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include "common.hxx"
 #include "exp_share.hxx"
+#include <xmlscript/xmlns.h>
 
 #include <o3tl/any.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <tools/diagnose_ex.h>
 
@@ -31,13 +32,12 @@
 #include <com/sun/star/awt/FontStrikeout.hpp>
 #include <com/sun/star/awt/FontType.hpp>
 #include <com/sun/star/awt/FontUnderline.hpp>
-#include <com/sun/star/awt/FontWeight.hpp>
-#include <com/sun/star/awt/FontWidth.hpp>
 #include <com/sun/star/awt/ImagePosition.hpp>
 #include <com/sun/star/awt/ImageScaleMode.hpp>
 #include <com/sun/star/awt/LineEndFormat.hpp>
 #include <com/sun/star/awt/PushButtonType.hpp>
 #include <com/sun/star/awt/VisualEffect.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/util/Date.hpp>
 #include <com/sun/star/util/Time.hpp>
 #include <tools/date.hxx>
@@ -53,17 +53,18 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/Locale.hpp>
-#include <com/sun/star/util/NumberFormat.hpp>
 
 #include <com/sun/star/view/SelectionType.hpp>
 
 #include <com/sun/star/form/binding/XListEntrySink.hpp>
 #include <com/sun/star/form/binding/XBindableValue.hpp>
-#include <com/sun/star/form/binding/XValueBinding.hpp>
 #include <com/sun/star/table/CellAddress.hpp>
 #include <com/sun/star/table/CellRangeAddress.hpp>
 #include <com/sun/star/document/XStorageBasedDocument.hpp>
-#include <com/sun/star/document/GraphicObjectResolver.hpp>
+#include <com/sun/star/document/GraphicStorageHandler.hpp>
+#include <com/sun/star/document/XGraphicStorageHandler.hpp>
+#include <com/sun/star/graphic/XGraphic.hpp>
+#include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
 
 #include <comphelper/processfactory.hxx>
 #include <i18nlangtag/languagetag.hxx>
@@ -526,381 +527,394 @@ void ElementDescriptor::readHexLongAttr( OUString const & rPropName, OUString co
 
 void ElementDescriptor::readDateFormatAttr( OUString const & rPropName, OUString const & rAttrName )
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    if (beans::PropertyState_DEFAULT_VALUE == _xPropState->getPropertyState( rPropName ))
+        return;
+
+    Any a( _xProps->getPropertyValue( rPropName ) );
+    if (auto n = o3tl::tryAccess<sal_Int16>(a))
     {
-        Any a( _xProps->getPropertyValue( rPropName ) );
-        if (auto n = o3tl::tryAccess<sal_Int16>(a))
+        switch (*n)
         {
-            switch (*n)
-            {
-            case 0:
-                addAttribute( rAttrName, "system_short" );
-                break;
-            case 1:
-                addAttribute( rAttrName, "system_short_YY" );
-                break;
-            case 2:
-                addAttribute( rAttrName, "system_short_YYYY" );
-                break;
-            case 3:
-                addAttribute( rAttrName, "system_long" );
-                break;
-            case 4:
-                addAttribute( rAttrName, "short_DDMMYY" );
-                break;
-            case 5:
-                addAttribute( rAttrName, "short_MMDDYY" );
-                break;
-            case 6:
-                addAttribute( rAttrName, "short_YYMMDD" );
-                break;
-            case 7:
-                addAttribute( rAttrName, "short_DDMMYYYY" );
-                break;
-            case 8:
-                addAttribute( rAttrName, "short_MMDDYYYY" );
-                break;
-            case 9:
-                addAttribute( rAttrName, "short_YYYYMMDD" );
-                break;
-            case 10:
-                addAttribute( rAttrName, "short_YYMMDD_DIN5008" );
-                break;
-            case 11:
-                addAttribute( rAttrName, "short_YYYYMMDD_DIN5008" );
-                break;
-            default:
-                SAL_WARN( "xmlscript.xmldlg", "### unexpected date format!" );
-                break;
-            }
+        case 0:
+            addAttribute( rAttrName, "system_short" );
+            break;
+        case 1:
+            addAttribute( rAttrName, "system_short_YY" );
+            break;
+        case 2:
+            addAttribute( rAttrName, "system_short_YYYY" );
+            break;
+        case 3:
+            addAttribute( rAttrName, "system_long" );
+            break;
+        case 4:
+            addAttribute( rAttrName, "short_DDMMYY" );
+            break;
+        case 5:
+            addAttribute( rAttrName, "short_MMDDYY" );
+            break;
+        case 6:
+            addAttribute( rAttrName, "short_YYMMDD" );
+            break;
+        case 7:
+            addAttribute( rAttrName, "short_DDMMYYYY" );
+            break;
+        case 8:
+            addAttribute( rAttrName, "short_MMDDYYYY" );
+            break;
+        case 9:
+            addAttribute( rAttrName, "short_YYYYMMDD" );
+            break;
+        case 10:
+            addAttribute( rAttrName, "short_YYMMDD_DIN5008" );
+            break;
+        case 11:
+            addAttribute( rAttrName, "short_YYYYMMDD_DIN5008" );
+            break;
+        default:
+            SAL_WARN( "xmlscript.xmldlg", "### unexpected date format!" );
+            break;
         }
-        else
-            OSL_FAIL( "### unexpected property type!" );
     }
+    else
+        OSL_FAIL( "### unexpected property type!" );
 }
 
 void ElementDescriptor::readDateAttr( OUString const & rPropName, OUString const & rAttrName )
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    if (beans::PropertyState_DEFAULT_VALUE == _xPropState->getPropertyState( rPropName ))
+        return;
+
+    Any a( _xProps->getPropertyValue( rPropName ) );
+    if (a.getValueTypeClass() == TypeClass_STRUCT && a.getValueType() == cppu::UnoType<util::Date>::get())
     {
-        Any a( _xProps->getPropertyValue( rPropName ) );
-        if (a.getValueTypeClass() == TypeClass_STRUCT && a.getValueType() == cppu::UnoType<util::Date>::get())
+        util::Date aUDate;
+        if (a >>= aUDate)
         {
-            util::Date aUDate;
-            if (a >>= aUDate)
-            {
-                ::Date aTDate(aUDate);
-                addAttribute( rAttrName, OUString::number( aTDate.GetDate() ) );
-            }
-            else
-                OSL_FAIL( "### internal error" );
+            ::Date aTDate(aUDate);
+            addAttribute( rAttrName, OUString::number( aTDate.GetDate() ) );
         }
         else
-            OSL_FAIL( "### unexpected property type!" );
+            OSL_FAIL( "### internal error" );
     }
+    else
+        OSL_FAIL( "### unexpected property type!" );
 }
 
 void ElementDescriptor::readTimeAttr( OUString const & rPropName, OUString const & rAttrName )
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    if (beans::PropertyState_DEFAULT_VALUE == _xPropState->getPropertyState( rPropName ))
+        return;
+
+    Any a( _xProps->getPropertyValue( rPropName ) );
+    if (a.getValueTypeClass() == TypeClass_STRUCT && a.getValueType() == cppu::UnoType<util::Time>::get())
     {
-        Any a( _xProps->getPropertyValue( rPropName ) );
-        if (a.getValueTypeClass() == TypeClass_STRUCT && a.getValueType() == cppu::UnoType<util::Time>::get())
+        util::Time aUTime;
+        if (a >>= aUTime)
         {
-            util::Time aUTime;
-            if (a >>= aUTime)
-            {
-                ::tools::Time aTTime(aUTime);
-                addAttribute( rAttrName, OUString::number( aTTime.GetTime() / ::tools::Time::nanoPerCenti ) );
-            }
-            else
-                OSL_FAIL( "### internal error" );
+            ::tools::Time aTTime(aUTime);
+            addAttribute( rAttrName, OUString::number( aTTime.GetTime() / ::tools::Time::nanoPerCenti ) );
         }
         else
-            OSL_FAIL( "### unexpected property type!" );
+            OSL_FAIL( "### internal error" );
     }
+    else
+        OSL_FAIL( "### unexpected property type!" );
 }
 
 void ElementDescriptor::readTimeFormatAttr( OUString const & rPropName, OUString const & rAttrName )
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    if (beans::PropertyState_DEFAULT_VALUE == _xPropState->getPropertyState( rPropName ))
+        return;
+
+    Any a( _xProps->getPropertyValue( rPropName ) );
+    if (auto n = o3tl::tryAccess<sal_Int16>(a))
     {
-        Any a( _xProps->getPropertyValue( rPropName ) );
-        if (auto n = o3tl::tryAccess<sal_Int16>(a))
+        switch (*n)
         {
-            switch (*n)
-            {
-            case 0:
-                addAttribute( rAttrName, "24h_short" );
-                break;
-            case 1:
-                addAttribute( rAttrName, "24h_long" );
-                break;
-            case 2:
-                addAttribute( rAttrName, "12h_short" );
-                break;
-            case 3:
-                addAttribute( rAttrName, "12h_long" );
-                break;
-            case 4:
-                addAttribute( rAttrName, "Duration_short" );
-                break;
-            case 5:
-                addAttribute( rAttrName, "Duration_long" );
-                break;
-            default:
-                SAL_WARN( "xmlscript.xmldlg", "### unexpected time format!" );
-                break;
-            }
+        case 0:
+            addAttribute( rAttrName, "24h_short" );
+            break;
+        case 1:
+            addAttribute( rAttrName, "24h_long" );
+            break;
+        case 2:
+            addAttribute( rAttrName, "12h_short" );
+            break;
+        case 3:
+            addAttribute( rAttrName, "12h_long" );
+            break;
+        case 4:
+            addAttribute( rAttrName, "Duration_short" );
+            break;
+        case 5:
+            addAttribute( rAttrName, "Duration_long" );
+            break;
+        default:
+            SAL_WARN( "xmlscript.xmldlg", "### unexpected time format!" );
+            break;
         }
-        else
-            OSL_FAIL( "### unexpected property type!" );
     }
+    else
+        OSL_FAIL( "### unexpected property type!" );
 }
 
 void ElementDescriptor::readAlignAttr( OUString const & rPropName, OUString const & rAttrName )
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    if (beans::PropertyState_DEFAULT_VALUE == _xPropState->getPropertyState( rPropName ))
+        return;
+
+    Any a( _xProps->getPropertyValue( rPropName ) );
+    if (auto n = o3tl::tryAccess<sal_Int16>(a))
     {
-        Any a( _xProps->getPropertyValue( rPropName ) );
-        if (auto n = o3tl::tryAccess<sal_Int16>(a))
+        switch (*n)
         {
-            switch (*n)
-            {
-            case 0:
-                addAttribute( rAttrName, "left" );
-                break;
-            case 1:
-                addAttribute( rAttrName, "center" );
-                break;
-            case 2:
-                addAttribute( rAttrName, "right" );
-                break;
-            default:
-                SAL_WARN( "xmlscript.xmldlg", "### illegal alignment value!" );
-                break;
-            }
+        case 0:
+            addAttribute( rAttrName, "left" );
+            break;
+        case 1:
+            addAttribute( rAttrName, "center" );
+            break;
+        case 2:
+            addAttribute( rAttrName, "right" );
+            break;
+        default:
+            SAL_WARN( "xmlscript.xmldlg", "### illegal alignment value!" );
+            break;
         }
-        else
-            OSL_FAIL( "### unexpected property type!" );
     }
+    else
+        OSL_FAIL( "### unexpected property type!" );
 }
 
 void ElementDescriptor::readVerticalAlignAttr( OUString const & rPropName, OUString const & rAttrName )
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    if (beans::PropertyState_DEFAULT_VALUE == _xPropState->getPropertyState( rPropName ))
+        return;
+
+    Any a( _xProps->getPropertyValue( rPropName ) );
+    if (a.getValueTypeClass() == TypeClass_ENUM && a.getValueType() == cppu::UnoType<style::VerticalAlignment>::get())
     {
-        Any a( _xProps->getPropertyValue( rPropName ) );
-        if (a.getValueTypeClass() == TypeClass_ENUM && a.getValueType() == cppu::UnoType<style::VerticalAlignment>::get())
+        style::VerticalAlignment eAlign;
+        a >>= eAlign;
+        switch (eAlign)
         {
-            style::VerticalAlignment eAlign;
-            a >>= eAlign;
-            switch (eAlign)
-            {
-            case style::VerticalAlignment_TOP:
-                addAttribute( rAttrName, "top" );
-                break;
-            case style::VerticalAlignment_MIDDLE:
-                addAttribute( rAttrName, "center" );
-                break;
-            case style::VerticalAlignment_BOTTOM:
-                addAttribute( rAttrName, "bottom" );
-                break;
-            default:
-                SAL_WARN( "xmlscript.xmldlg", "### illegal vertical alignment value!" );
-                break;
-            }
+        case style::VerticalAlignment_TOP:
+            addAttribute( rAttrName, "top" );
+            break;
+        case style::VerticalAlignment_MIDDLE:
+            addAttribute( rAttrName, "center" );
+            break;
+        case style::VerticalAlignment_BOTTOM:
+            addAttribute( rAttrName, "bottom" );
+            break;
+        default:
+            SAL_WARN( "xmlscript.xmldlg", "### illegal vertical alignment value!" );
+            break;
         }
-        else
-            OSL_FAIL( "### unexpected property type!" );
     }
+    else
+        OSL_FAIL( "### unexpected property type!" );
 }
 
-void ElementDescriptor::readImageURLAttr( OUString const & rPropName, OUString const & rAttrName )
+void ElementDescriptor::readImageOrGraphicAttr(OUString const & rAttrName)
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    OUString sURL;
+    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState("Graphic"))
     {
-        OUString sURL;
-        _xProps->getPropertyValue( rPropName ) >>= sURL;
-
-        if ( sURL.startsWith( XMLSCRIPT_GRAPHOBJ_URLPREFIX ) )
+        uno::Reference<graphic::XGraphic> xGraphic;
+        _xProps->getPropertyValue("Graphic") >>= xGraphic;
+        if (xGraphic.is())
         {
             Reference< document::XStorageBasedDocument > xDocStorage( _xDocument, UNO_QUERY );
             if ( xDocStorage.is() )
             {
                 Reference<XComponentContext> xContext = ::comphelper::getProcessComponentContext();
-                uno::Reference< document::XGraphicObjectResolver > xGraphicResolver =
-                    document::GraphicObjectResolver::createWithStorage( xContext, xDocStorage->getDocumentStorage() );
-                sURL = xGraphicResolver->resolveGraphicObjectURL( sURL );
+                uno::Reference<document::XGraphicStorageHandler> xGraphicStorageHandler;
+                xGraphicStorageHandler.set(document::GraphicStorageHandler::createWithStorage(xContext, xDocStorage->getDocumentStorage()));
+                if (xGraphicStorageHandler.is())
+                {
+                    sURL = xGraphicStorageHandler->saveGraphic(xGraphic);
+                }
             }
         }
-        if ( !sURL.isEmpty() )
-                addAttribute( rAttrName, sURL );
     }
+    // tdf#130793 Above fails if the dialog is not part of a document. Export the ImageURL then.
+    if (sURL.isEmpty()
+        && beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState("ImageURL"))
+    {
+        _xProps->getPropertyValue("ImageURL") >>= sURL;
+    }
+    if (!sURL.isEmpty())
+        addAttribute(rAttrName, sURL);
 }
 
 void ElementDescriptor::readImageAlignAttr( OUString const & rPropName, OUString const & rAttrName )
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    if (beans::PropertyState_DEFAULT_VALUE == _xPropState->getPropertyState( rPropName ))
+        return;
+
+    Any a( _xProps->getPropertyValue( rPropName ) );
+    if (auto n = o3tl::tryAccess<sal_Int16>(a))
     {
-        Any a( _xProps->getPropertyValue( rPropName ) );
-        if (auto n = o3tl::tryAccess<sal_Int16>(a))
+        switch (*n)
         {
-            switch (*n)
-            {
-            case 0:
-                addAttribute( rAttrName, "left" );
-                break;
-            case 1:
-                addAttribute( rAttrName, "top" );
-                break;
-            case 2:
-                addAttribute( rAttrName, "right" );
-                break;
-            case 3:
-                addAttribute( rAttrName, "bottom" );
-                break;
-            default:
-                SAL_WARN( "xmlscript.xmldlg", "### illegal image alignment value!" );
-                break;
-            }
+        case 0:
+            addAttribute( rAttrName, "left" );
+            break;
+        case 1:
+            addAttribute( rAttrName, "top" );
+            break;
+        case 2:
+            addAttribute( rAttrName, "right" );
+            break;
+        case 3:
+            addAttribute( rAttrName, "bottom" );
+            break;
+        default:
+            SAL_WARN( "xmlscript.xmldlg", "### illegal image alignment value!" );
+            break;
         }
-        else
-            OSL_FAIL( "### unexpected property type!" );
     }
+    else
+        OSL_FAIL( "### unexpected property type!" );
 }
 
 void ElementDescriptor::readImagePositionAttr( OUString const & rPropName, OUString const & rAttrName )
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    if (beans::PropertyState_DEFAULT_VALUE == _xPropState->getPropertyState( rPropName ))
+        return;
+
+    Any a( _xProps->getPropertyValue( rPropName ) );
+    auto n = o3tl::tryAccess<sal_Int16>(a);
+    if (!n)
+        return;
+
+    switch (*n)
     {
-        Any a( _xProps->getPropertyValue( rPropName ) );
-        if (auto n = o3tl::tryAccess<sal_Int16>(a))
-        {
-            switch (*n)
-            {
-            case awt::ImagePosition::LeftTop:
-                addAttribute( rAttrName, "left-top" );
-                break;
-            case awt::ImagePosition::LeftCenter:
-                addAttribute( rAttrName, "left-center" );
-                break;
-            case awt::ImagePosition::LeftBottom:
-                addAttribute( rAttrName, "left-bottom" );
-                break;
-            case awt::ImagePosition::RightTop:
-                addAttribute( rAttrName, "right-top" );
-                break;
-            case awt::ImagePosition::RightCenter:
-                addAttribute( rAttrName, "right-center" );
-                break;
-            case awt::ImagePosition::RightBottom:
-                addAttribute( rAttrName, "right-bottom" );
-                break;
-            case awt::ImagePosition::AboveLeft:
-                addAttribute( rAttrName, "top-left" );
-                break;
-            case awt::ImagePosition::AboveCenter:
-                addAttribute( rAttrName, "top-center" );
-                break;
-            case awt::ImagePosition::AboveRight:
-                addAttribute( rAttrName, "top-right" );
-                break;
-            case awt::ImagePosition::BelowLeft:
-                addAttribute( rAttrName, "bottom-left" );
-                break;
-            case awt::ImagePosition::BelowCenter:
-                addAttribute( rAttrName, "bottom-center" );
-                break;
-            case awt::ImagePosition::BelowRight:
-                addAttribute( rAttrName, "bottom-right" );
-                break;
-            case awt::ImagePosition::Centered:
-                addAttribute( rAttrName, "center" );
-                break;
-            default:
-                SAL_WARN( "xmlscript.xmldlg", "### illegal image position value!" );
-                break;
-            }
-        }
+    case awt::ImagePosition::LeftTop:
+        addAttribute( rAttrName, "left-top" );
+        break;
+    case awt::ImagePosition::LeftCenter:
+        addAttribute( rAttrName, "left-center" );
+        break;
+    case awt::ImagePosition::LeftBottom:
+        addAttribute( rAttrName, "left-bottom" );
+        break;
+    case awt::ImagePosition::RightTop:
+        addAttribute( rAttrName, "right-top" );
+        break;
+    case awt::ImagePosition::RightCenter:
+        addAttribute( rAttrName, "right-center" );
+        break;
+    case awt::ImagePosition::RightBottom:
+        addAttribute( rAttrName, "right-bottom" );
+        break;
+    case awt::ImagePosition::AboveLeft:
+        addAttribute( rAttrName, "top-left" );
+        break;
+    case awt::ImagePosition::AboveCenter:
+        addAttribute( rAttrName, "top-center" );
+        break;
+    case awt::ImagePosition::AboveRight:
+        addAttribute( rAttrName, "top-right" );
+        break;
+    case awt::ImagePosition::BelowLeft:
+        addAttribute( rAttrName, "bottom-left" );
+        break;
+    case awt::ImagePosition::BelowCenter:
+        addAttribute( rAttrName, "bottom-center" );
+        break;
+    case awt::ImagePosition::BelowRight:
+        addAttribute( rAttrName, "bottom-right" );
+        break;
+    case awt::ImagePosition::Centered:
+        addAttribute( rAttrName, "center" );
+        break;
+    default:
+        SAL_WARN( "xmlscript.xmldlg", "### illegal image position value!" );
+        break;
     }
 }
 
 void ElementDescriptor::readButtonTypeAttr( OUString const & rPropName, OUString const & rAttrName )
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    if (beans::PropertyState_DEFAULT_VALUE == _xPropState->getPropertyState( rPropName ))
+        return;
+
+    Any a( _xProps->getPropertyValue( rPropName ) );
+    auto n = o3tl::tryAccess<sal_Int16>(a);
+    if (!n)
+        return;
+
+    switch (static_cast<awt::PushButtonType>(*n))
     {
-        Any a( _xProps->getPropertyValue( rPropName ) );
-        if (auto n = o3tl::tryAccess<sal_Int16>(a))
-        {
-            switch ((awt::PushButtonType)*n)
-            {
-            case awt::PushButtonType_STANDARD:
-                addAttribute( rAttrName, "standard" );
-                break;
-            case awt::PushButtonType_OK:
-                addAttribute( rAttrName, "ok" );
-                break;
-            case awt::PushButtonType_CANCEL:
-                addAttribute( rAttrName, "cancel" );
-                break;
-            case awt::PushButtonType_HELP:
-                addAttribute( rAttrName, "help" );
-                break;
-            default:
-                SAL_WARN( "xmlscript.xmldlg", "### illegal button-type value!" );
-                break;
-            }
-        }
+    case awt::PushButtonType_STANDARD:
+        addAttribute( rAttrName, "standard" );
+        break;
+    case awt::PushButtonType_OK:
+        addAttribute( rAttrName, "ok" );
+        break;
+    case awt::PushButtonType_CANCEL:
+        addAttribute( rAttrName, "cancel" );
+        break;
+    case awt::PushButtonType_HELP:
+        addAttribute( rAttrName, "help" );
+        break;
+    default:
+        SAL_WARN( "xmlscript.xmldlg", "### illegal button-type value!" );
+        break;
     }
 }
 
 void ElementDescriptor::readOrientationAttr( OUString const & rPropName, OUString const & rAttrName )
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    if (beans::PropertyState_DEFAULT_VALUE == _xPropState->getPropertyState( rPropName ))
+        return;
+
+    Any a( _xProps->getPropertyValue( rPropName ) );
+    auto n = o3tl::tryAccess<sal_Int32>(a);
+    if (!n)
+        return;
+
+    switch (*n)
     {
-        Any a( _xProps->getPropertyValue( rPropName ) );
-        if (auto n = o3tl::tryAccess<sal_Int16>(a))
-        {
-            switch (*n)
-            {
-            case 0:
-                addAttribute( rAttrName, "horizontal" );
-                break;
-            case 1:
-                addAttribute( rAttrName, "vertical" );
-                break;
-            default:
-                SAL_WARN( "xmlscript.xmldlg", "### illegal orientation value!" );
-                break;
-            }
-        }
+    case 0:
+        addAttribute( rAttrName, "horizontal" );
+        break;
+    case 1:
+        addAttribute( rAttrName, "vertical" );
+        break;
+    default:
+        SAL_WARN( "xmlscript.xmldlg", "### illegal orientation value!" );
+        break;
     }
 }
 
 void ElementDescriptor::readLineEndFormatAttr( OUString const & rPropName, OUString const & rAttrName )
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    if (beans::PropertyState_DEFAULT_VALUE == _xPropState->getPropertyState( rPropName ))
+        return;
+
+    Any a( _xProps->getPropertyValue( rPropName ) );
+    auto n = o3tl::tryAccess<sal_Int16>(a);
+    if (!n)
+        return;
+
+    switch (*n)
     {
-        Any a( _xProps->getPropertyValue( rPropName ) );
-        if (auto n = o3tl::tryAccess<sal_Int16>(a))
-        {
-            switch (*n)
-            {
-            case awt::LineEndFormat::CARRIAGE_RETURN:
-                addAttribute( rAttrName, "carriage-return" );
-                break;
-            case awt::LineEndFormat::LINE_FEED:
-                addAttribute( rAttrName, "line-feed" );
-                break;
-            case awt::LineEndFormat::CARRIAGE_RETURN_LINE_FEED:
-                addAttribute( rAttrName, "carriage-return-line-feed" );
-                break;
-            default:
-                SAL_WARN( "xmlscript.xmldlg", "### illegal line end format value!" );
-                break;
-            }
-        }
+    case awt::LineEndFormat::CARRIAGE_RETURN:
+        addAttribute( rAttrName, "carriage-return" );
+        break;
+    case awt::LineEndFormat::LINE_FEED:
+        addAttribute( rAttrName, "line-feed" );
+        break;
+    case awt::LineEndFormat::CARRIAGE_RETURN_LINE_FEED:
+        addAttribute( rAttrName, "carriage-return-line-feed" );
+        break;
+    default:
+        SAL_WARN( "xmlscript.xmldlg", "### illegal line end format value!" );
+        break;
     }
 }
 
@@ -917,7 +931,7 @@ void ElementDescriptor::readDataAwareAttr( OUString const & rAttrName )
         try
         {
             Reference< beans::XPropertySet > xConvertor( xFac->createInstance( "com.sun.star.table.CellAddressConversion" ), uno::UNO_QUERY );
-        Reference< beans::XPropertySet > xBindable( xBinding->getValueBinding(), UNO_QUERY );
+            Reference< beans::XPropertySet > xBindable( xBinding->getValueBinding(), UNO_QUERY );
             if ( xBindable.is() )
             {
                 table::CellAddress aAddress;
@@ -937,62 +951,63 @@ void ElementDescriptor::readDataAwareAttr( OUString const & rAttrName )
         }
     }
     Reference< form::binding::XListEntrySink > xEntrySink( _xProps, UNO_QUERY );
-    if ( xEntrySink.is() && rAttrName == XMLNS_DIALOGS_PREFIX ":source-cell-range" )
+    if ( !(xEntrySink.is() && rAttrName == XMLNS_DIALOGS_PREFIX ":source-cell-range") )
+        return;
+
+    Reference< beans::XPropertySet > xListSource( xEntrySink->getListEntrySource(), UNO_QUERY );
+    if ( !xListSource.is() )
+        return;
+
+    try
     {
-        Reference< beans::XPropertySet > xListSource( xEntrySink->getListEntrySource(), UNO_QUERY );
-        if ( xListSource.is() )
-        {
-            try
-            {
-                Reference< beans::XPropertySet > xConvertor( xFac->createInstance( "com.sun.star.table.CellRangeAddressConversion" ), uno::UNO_QUERY );
+        Reference< beans::XPropertySet > xConvertor( xFac->createInstance( "com.sun.star.table.CellRangeAddressConversion" ), uno::UNO_QUERY );
 
-                table::CellRangeAddress aAddress;
-                xListSource->getPropertyValue( "CellRange" ) >>= aAddress;
+        table::CellRangeAddress aAddress;
+        xListSource->getPropertyValue( "CellRange" ) >>= aAddress;
 
-                OUString sAddress;
-                xConvertor->setPropertyValue( "Address", makeAny( aAddress ) );
-                xConvertor->getPropertyValue( "PersistentRepresentation" ) >>= sAddress;
-                SAL_INFO("xmlscript.xmldlg","**** cell range source list " << sAddress );
-                if ( !sAddress.isEmpty() )
-                    addAttribute( rAttrName, sAddress );
-            }
-            catch( uno::Exception& )
-            {
-            }
-        }
+        OUString sAddress;
+        xConvertor->setPropertyValue( "Address", makeAny( aAddress ) );
+        xConvertor->getPropertyValue( "PersistentRepresentation" ) >>= sAddress;
+        SAL_INFO("xmlscript.xmldlg","**** cell range source list " << sAddress );
+        if ( !sAddress.isEmpty() )
+            addAttribute( rAttrName, sAddress );
+    }
+    catch( uno::Exception& )
+    {
     }
 }
 
 void ElementDescriptor::readSelectionTypeAttr( OUString const & rPropName, OUString const & rAttrName )
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    if (beans::PropertyState_DEFAULT_VALUE == _xPropState->getPropertyState( rPropName ))
+        return;
+
+    Any aSelectionType ( _xProps->getPropertyValue( rPropName ) );
+
+    if (aSelectionType.getValueTypeClass() != TypeClass_ENUM ||
+        aSelectionType.getValueType() != cppu::UnoType<view::SelectionType>::get())
+        return;
+
+    ::view::SelectionType eSelectionType;
+    aSelectionType >>= eSelectionType;
+
+    switch (eSelectionType)
     {
-        Any aSelectionType ( _xProps->getPropertyValue( rPropName ) );
-
-        if (aSelectionType.getValueTypeClass() == TypeClass_ENUM && aSelectionType.getValueType() == cppu::UnoType<view::SelectionType>::get())
-        {
-            ::view::SelectionType eSelectionType;
-            aSelectionType >>= eSelectionType;
-
-            switch (eSelectionType)
-            {
-                case ::view::SelectionType_NONE:
-                    addAttribute( rAttrName, "none" );
-                    break;
-                case ::view::SelectionType_SINGLE:
-                    addAttribute( rAttrName, "single" );
-                    break;
-                case ::view::SelectionType_MULTI:
-                    addAttribute( rAttrName, "multi" );
-                    break;
-                case ::view::SelectionType_RANGE:
-                    addAttribute( rAttrName, "range" );
-                    break;
-                default:
-                    SAL_WARN( "xmlscript.xmldlg", "### illegal selection type value!" );
-                    break;
-            }
-        }
+        case ::view::SelectionType_NONE:
+            addAttribute( rAttrName, "none" );
+            break;
+        case ::view::SelectionType_SINGLE:
+            addAttribute( rAttrName, "single" );
+            break;
+        case ::view::SelectionType_MULTI:
+            addAttribute( rAttrName, "multi" );
+            break;
+        case ::view::SelectionType_RANGE:
+            addAttribute( rAttrName, "range" );
+            break;
+        default:
+            SAL_WARN( "xmlscript.xmldlg", "### illegal selection type value!" );
+            break;
     }
 }
 
@@ -1014,31 +1029,31 @@ void ElementDescriptor::readScrollableSettings()
 
 void ElementDescriptor::readImageScaleModeAttr( OUString const & rPropName, OUString const & rAttrName )
 {
-    if (beans::PropertyState_DEFAULT_VALUE != _xPropState->getPropertyState( rPropName ))
+    if (beans::PropertyState_DEFAULT_VALUE == _xPropState->getPropertyState( rPropName ))
+        return;
+
+    Any aImageScaleMode( _xProps->getPropertyValue( rPropName ) );
+
+    if (aImageScaleMode.getValueTypeClass() != TypeClass_SHORT)
+        return;
+
+    sal_Int16 nImageScaleMode = 0;
+    aImageScaleMode >>= nImageScaleMode;
+
+    switch(nImageScaleMode)
     {
-        Any aImageScaleMode( _xProps->getPropertyValue( rPropName ) );
-
-        if (aImageScaleMode.getValueTypeClass() == TypeClass_SHORT)
-        {
-            sal_Int16 nImageScaleMode = 0;
-            aImageScaleMode >>= nImageScaleMode;
-
-            switch(nImageScaleMode)
-            {
-                case ::awt::ImageScaleMode::NONE:
-                    addAttribute( rAttrName, "none" );
-                    break;
-                case ::awt::ImageScaleMode::ISOTROPIC:
-                    addAttribute( rAttrName, "isotropic" );
-                    break;
-                case ::awt::ImageScaleMode::ANISOTROPIC:
-                    addAttribute( rAttrName, "anisotropic" );
-                    break;
-                default:
-                    OSL_ENSURE( false, "### illegal image scale mode value.");
-                    break;
-            }
-        }
+        case ::awt::ImageScaleMode::NONE:
+            addAttribute( rAttrName, "none" );
+            break;
+        case ::awt::ImageScaleMode::ISOTROPIC:
+            addAttribute( rAttrName, "isotropic" );
+            break;
+        case ::awt::ImageScaleMode::ANISOTROPIC:
+            addAttribute( rAttrName, "anisotropic" );
+            break;
+        default:
+            OSL_ENSURE( false, "### illegal image scale mode value.");
+            break;
     }
 }
 
@@ -1047,15 +1062,15 @@ void ElementDescriptor::readDefaults( bool supportPrintable, bool supportVisible
     Any a( _xProps->getPropertyValue( "Name" ) );
 
     // The following is a hack to allow 'form' controls to override the default
-    // control supported by dialogs. This should work well for both vba support and
-    // normal openoffice ( when normal 'Dialogs' decide to support form control models )
+    // control supported by dialogs. This should work well for both VBA support and
+    // normal LibreOffice (when normal 'Dialogs' decide to support form control models)
     // In the future VBA support might require custom models ( and not the just the form
     // variant of a control that we currently use ) In this case the door is still open,
     // we just need to define a new way for the 'ServiceName' to be extracted from the
     // incoming model. E.g. the use of supporting service
     // "com.sun.star.form.FormComponent", 'ServiceName' and XPersistObject
     // is only an implementation detail here, in the future some other
-    // method ( perhaps a custom prop ) could be used instead.
+    // method (perhaps a custom prop) could be used instead.
     Reference< lang::XServiceInfo > xSrvInfo( _xProps, UNO_QUERY );
     if ( xSrvInfo.is() && xSrvInfo->supportsService( "com.sun.star.form.FormComponent" ) )
     {
@@ -1098,7 +1113,7 @@ void ElementDescriptor::readDefaults( bool supportPrintable, bool supportVisible
     }
     catch( Exception& )
     {
-        DBG_UNHANDLED_EXCEPTION();
+        DBG_UNHANDLED_EXCEPTION("xmlscript.xmldlg");
     }
     // force writing of pos/size
     a = _xProps->getPropertyValue( "PositionX" );
@@ -1135,100 +1150,99 @@ void ElementDescriptor::readDefaults( bool supportPrintable, bool supportVisible
 void ElementDescriptor::readEvents()
 {
     Reference< script::XScriptEventsSupplier > xSupplier( _xProps, UNO_QUERY );
-    if (xSupplier.is())
+    if (!xSupplier.is())
+        return;
+
+    Reference< container::XNameContainer > xEvents( xSupplier->getEvents() );
+    if (!xEvents.is())
+        return;
+
+    const Sequence< OUString > aNames( xEvents->getElementNames() );
+    for ( const auto& rName : aNames )
     {
-        Reference< container::XNameContainer > xEvents( xSupplier->getEvents() );
-        if (xEvents.is())
+        script::ScriptEventDescriptor descr;
+        if (xEvents->getByName( rName ) >>= descr)
         {
-            Sequence< OUString > aNames( xEvents->getElementNames() );
-            OUString const * pNames = aNames.getConstArray();
-            for ( sal_Int32 nPos = 0; nPos < aNames.getLength(); ++nPos )
+            SAL_WARN_IF( descr.ListenerType.isEmpty() ||
+                        descr.EventMethod.isEmpty() ||
+                        descr.ScriptCode.isEmpty() ||
+                        descr.ScriptType.isEmpty() , "xmlscript.xmldlg", "### invalid event descr!" );
+
+            OUString aEventName;
+
+            if (descr.AddListenerParam.isEmpty())
             {
-                script::ScriptEventDescriptor descr;
-                if (xEvents->getByName( pNames[ nPos ] ) >>= descr)
+                // detection of event-name
+                OString listenerType( OUStringToOString( descr.ListenerType, RTL_TEXTENCODING_ASCII_US ) );
+                OString eventMethod( OUStringToOString( descr.EventMethod, RTL_TEXTENCODING_ASCII_US ) );
+                StringTriple const * p = g_pEventTranslations;
+                while (p->first)
                 {
-                    SAL_WARN_IF( descr.ListenerType.isEmpty() ||
-                                descr.EventMethod.isEmpty() ||
-                                descr.ScriptCode.isEmpty() ||
-                                descr.ScriptType.isEmpty() , "xmlscript.xmldlg", "### invalid event descr!" );
-
-                    OUString aEventName;
-
-                    if (descr.AddListenerParam.isEmpty())
+                    if (0 == ::rtl_str_compare( p->second, eventMethod.getStr() ) &&
+                        0 == ::rtl_str_compare( p->first, listenerType.getStr() ))
                     {
-                        // detection of event-name
-                        OString listenerType( OUStringToOString( descr.ListenerType, RTL_TEXTENCODING_ASCII_US ) );
-                        OString eventMethod( OUStringToOString( descr.EventMethod, RTL_TEXTENCODING_ASCII_US ) );
-                        StringTriple const * p = g_pEventTranslations;
-                        while (p->first)
-                        {
-                            if (0 == ::rtl_str_compare( p->second, eventMethod.getStr() ) &&
-                                0 == ::rtl_str_compare( p->first, listenerType.getStr() ))
-                            {
-                                aEventName = OUString( p->third, ::rtl_str_getLength( p->third ), RTL_TEXTENCODING_ASCII_US );
-                                break;
-                            }
-                            ++p;
-                        }
+                        aEventName = OUString( p->third, ::rtl_str_getLength( p->third ), RTL_TEXTENCODING_ASCII_US );
+                        break;
                     }
+                    ++p;
+                }
+            }
 
-                    ElementDescriptor * pElem;
-                    Reference< xml::sax::XAttributeList > xElem;
+            ElementDescriptor * pElem;
+            Reference< xml::sax::XAttributeList > xElem;
 
-                    if (!aEventName.isEmpty()) // script:event
-                    {
-                        pElem = new ElementDescriptor( XMLNS_SCRIPT_PREFIX ":event" );
-                        xElem = pElem;
+            if (!aEventName.isEmpty()) // script:event
+            {
+                pElem = new ElementDescriptor( XMLNS_SCRIPT_PREFIX ":event" );
+                xElem = pElem;
 
-                        pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":event-name", aEventName );
-                    }
-                    else // script:listener-event
-                    {
-                        pElem = new ElementDescriptor( XMLNS_SCRIPT_PREFIX ":listener-event" );
-                        xElem = pElem;
+                pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":event-name", aEventName );
+            }
+            else // script:listener-event
+            {
+                pElem = new ElementDescriptor( XMLNS_SCRIPT_PREFIX ":listener-event" );
+                xElem = pElem;
 
-                        pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":listener-type", descr.ListenerType );
-                        pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":listener-method", descr.EventMethod );
+                pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":listener-type", descr.ListenerType );
+                pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":listener-method", descr.EventMethod );
 
-                        if (!descr.AddListenerParam.isEmpty())
-                        {
-                            pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":listener-param", descr.AddListenerParam );
-                        }
-                    }
-                    if ( descr.ScriptType == "StarBasic" )
-                    {
-                        // separate optional location
-                        sal_Int32 nIndex = descr.ScriptCode.indexOf( ':' );
-                        if (nIndex >= 0)
-                        {
-                            pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":location", descr.ScriptCode.copy( 0, nIndex ) );
-                            pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":macro-name", descr.ScriptCode.copy( nIndex +1 ) );
-                        }
-                        else
-                        {
-                            pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":macro-name", descr.ScriptCode );
-                        }
-                    }
-                    else
-                    {
-                        pElem->addAttribute(XMLNS_SCRIPT_PREFIX ":macro-name", descr.ScriptCode );
-                    }
-
-                    // language
-                    pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":language", descr.ScriptType );
-
-                    addSubElement( xElem );
+                if (!descr.AddListenerParam.isEmpty())
+                {
+                    pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":listener-param", descr.AddListenerParam );
+                }
+            }
+            if ( descr.ScriptType == "StarBasic" )
+            {
+                // separate optional location
+                sal_Int32 nIndex = descr.ScriptCode.indexOf( ':' );
+                if (nIndex >= 0)
+                {
+                    pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":location", descr.ScriptCode.copy( 0, nIndex ) );
+                    pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":macro-name", descr.ScriptCode.copy( nIndex +1 ) );
                 }
                 else
                 {
-                    SAL_WARN( "xmlscript.xmldlg", "### unexpected event type in container!" );
+                    pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":macro-name", descr.ScriptCode );
                 }
             }
+            else
+            {
+                pElem->addAttribute(XMLNS_SCRIPT_PREFIX ":macro-name", descr.ScriptCode );
+            }
+
+            // language
+            pElem->addAttribute( XMLNS_SCRIPT_PREFIX ":language", descr.ScriptType );
+
+            addSubElement( xElem );
+        }
+        else
+        {
+            SAL_WARN( "xmlscript.xmldlg", "### unexpected event type in container!" );
         }
     }
 }
 
-inline bool equalFont( Style const & style1, Style const & style2 )
+static bool equalFont( Style const & style1, Style const & style2 )
 {
     awt::FontDescriptor const & f1 = style1._descr;
     awt::FontDescriptor const & f2 = style2._descr;
@@ -1239,7 +1253,7 @@ inline bool equalFont( Style const & style1, Style const & style2 )
         f1.StyleName == f2.StyleName &&
         f1.Family == f2.Family &&
         f1.CharSet == f2.CharSet &&
-        f1.Pitch == f2.CharSet &&
+        f1.Pitch == f2.Pitch &&
         f1.CharacterWidth == f2.CharacterWidth &&
         f1.Weight == f2.Weight &&
         f1.Slant == f2.Slant &&
@@ -1262,7 +1276,7 @@ OUString StyleBag::getStyleId( Style const & rStyle )
     }
 
     // lookup existing style
-    for (Style* pStyle : _styles)
+    for (auto const & pStyle : _styles)
     {
         short demanded_defaults = ~rStyle._set & rStyle._all;
         // test, if defaults are not set
@@ -1324,39 +1338,35 @@ OUString StyleBag::getStyleId( Style const & rStyle )
     }
 
     // no appr style found, append new
-    Style * pStyle = new Style( rStyle );
+    std::unique_ptr<Style> pStyle(new Style( rStyle ));
     pStyle->_id = OUString::number( _styles.size() );
-    _styles.push_back( pStyle );
-    return pStyle->_id;
+    _styles.push_back( std::move(pStyle) );
+    return _styles.back()->_id;
 }
 
 StyleBag::~StyleBag()
 {
-    for (Style* _style : _styles)
-    {
-        delete _style;
-    }
 }
 
 void StyleBag::dump( Reference< xml::sax::XExtendedDocumentHandler > const & xOut )
 {
-    if (! _styles.empty())
+    if ( _styles.empty())
+        return;
+
+    OUString aStylesName( XMLNS_DIALOGS_PREFIX ":styles" );
+    xOut->ignorableWhitespace( OUString() );
+    xOut->startElement( aStylesName, Reference< xml::sax::XAttributeList >() );
+    // export styles
+    for (auto const & _style : _styles)
     {
-        OUString aStylesName( XMLNS_DIALOGS_PREFIX ":styles" );
-        xOut->ignorableWhitespace( OUString() );
-        xOut->startElement( aStylesName, Reference< xml::sax::XAttributeList >() );
-        // export styles
-        for (Style* _style : _styles)
-        {
-            Reference< xml::sax::XAttributeList > xAttr( _style->createElement() );
-            static_cast< ElementDescriptor * >( xAttr.get() )->dump( xOut.get() );
-        }
-        xOut->ignorableWhitespace( OUString() );
-        xOut->endElement( aStylesName );
+        Reference< xml::sax::XAttributeList > xAttr( _style->createElement() );
+        static_cast< ElementDescriptor * >( xAttr.get() )->dump( xOut.get() );
     }
+    xOut->ignorableWhitespace( OUString() );
+    xOut->endElement( aStylesName );
 }
 
-void SAL_CALL exportDialogModel(
+void exportDialogModel(
     Reference< xml::sax::XExtendedDocumentHandler > const & xOut,
     Reference< container::XNameContainer > const & xDialogModel,
     Reference< frame::XModel > const & xDocument )
@@ -1390,7 +1400,7 @@ void SAL_CALL exportDialogModel(
     // dump out stylebag
     all_styles.dump( xOut );
 
-    if ( xDialogModel->getElementNames().getLength() )
+    if ( xDialogModel->getElementNames().hasElements() )
     {
         // open up bulletinboard
         OUString aBBoardName( XMLNS_DIALOGS_PREFIX ":bulletinboard" );

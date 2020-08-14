@@ -7,31 +7,30 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "columniterator.hxx"
-#include "column.hxx"
-#include "document.hxx"
-#include "table.hxx"
+#include <columniterator.hxx>
+#include <column.hxx>
+#include <document.hxx>
+#include <table.hxx>
 
 #include <osl/diagnose.h>
 
-ScColumnTextWidthIterator::ScColumnTextWidthIterator(ScColumn& rCol, SCROW nStartRow, SCROW nEndRow) :
-    mrCellTextAttrs(rCol.maCellTextAttrs),
+ScColumnTextWidthIterator::ScColumnTextWidthIterator(const ScDocument& rDoc, ScColumn& rCol, SCROW nStartRow, SCROW nEndRow) :
     mnEnd(static_cast<size_t>(nEndRow)),
-    mnCurPos(0),
-    miBlockCur(mrCellTextAttrs.begin()),
-    miBlockEnd(mrCellTextAttrs.end())
+    mnCurPos(0)
 {
-    init(nStartRow, nEndRow);
+    miBlockCur = rCol.maCellTextAttrs.begin();
+    miBlockEnd = rCol.maCellTextAttrs.end();
+    init(rDoc, nStartRow, nEndRow);
 }
 
-ScColumnTextWidthIterator::ScColumnTextWidthIterator(ScDocument& rDoc, const ScAddress& rStartPos, SCROW nEndRow) :
-    mrCellTextAttrs(rDoc.maTabs[rStartPos.Tab()]->aCol[rStartPos.Col()].maCellTextAttrs),
+ScColumnTextWidthIterator::ScColumnTextWidthIterator(const ScDocument& rDoc, const ScAddress& rStartPos, SCROW nEndRow) :
     mnEnd(static_cast<size_t>(nEndRow)),
-    mnCurPos(0),
-    miBlockCur(mrCellTextAttrs.begin()),
-    miBlockEnd(mrCellTextAttrs.end())
+    mnCurPos(0)
 {
-    init(rStartPos.Row(), nEndRow);
+    auto & rCellTextAttrs = rDoc.maTabs[rStartPos.Tab()]->aCol[rStartPos.Col()].maCellTextAttrs;
+    miBlockCur = rCellTextAttrs.begin();
+    miBlockEnd = rCellTextAttrs.end();
+    init(rDoc, rStartPos.Row(), nEndRow);
 }
 
 void ScColumnTextWidthIterator::next()
@@ -88,9 +87,9 @@ void ScColumnTextWidthIterator::setValue(sal_uInt16 nVal)
     miDataCur->mnTextWidth = nVal;
 }
 
-void ScColumnTextWidthIterator::init(SCROW nStartRow, SCROW nEndRow)
+void ScColumnTextWidthIterator::init(const ScDocument& rDoc, SCROW nStartRow, SCROW nEndRow)
 {
-    if (!ValidRow(nStartRow) || !ValidRow(nEndRow))
+    if (!rDoc.ValidRow(nStartRow) || !rDoc.ValidRow(nEndRow))
         miBlockCur = miBlockEnd;
 
     size_t nStart = static_cast<size_t>(nStartRow);
@@ -172,7 +171,8 @@ namespace sc {
 
 ColumnIterator::ColumnIterator( const CellStoreType& rCells, SCROW nRow1, SCROW nRow2 ) :
     maPos(rCells.position(nRow1)),
-    maPosEnd(rCells.position(maPos.first, nRow2+1))
+    maPosEnd(rCells.position(maPos.first, nRow2)),
+    mbComplete(false)
 {
 }
 
@@ -180,7 +180,10 @@ ColumnIterator::~ColumnIterator() {}
 
 void ColumnIterator::next()
 {
-    maPos = CellStoreType::next_position(maPos);
+    if ( maPos == maPosEnd)
+        mbComplete = true;
+    else
+        maPos = CellStoreType::next_position(maPos);
 }
 
 SCROW ColumnIterator::getRow() const
@@ -190,7 +193,7 @@ SCROW ColumnIterator::getRow() const
 
 bool ColumnIterator::hasCell() const
 {
-    return maPos != maPosEnd;
+    return !mbComplete;
 }
 
 mdds::mtv::element_t ColumnIterator::getType() const

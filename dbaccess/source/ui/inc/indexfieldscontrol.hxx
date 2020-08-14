@@ -20,10 +20,10 @@
 #ifndef INCLUDED_DBACCESS_SOURCE_UI_INC_INDEXFIELDSCONTROL_HXX
 #define INCLUDED_DBACCESS_SOURCE_UI_INC_INDEXFIELDSCONTROL_HXX
 
-#include "moduledbu.hxx"
 #include <svtools/editbrowsebox.hxx>
-#include "indexcollection.hxx"
+#include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
+#include "indexes.hxx"
 
 namespace dbaui
 {
@@ -31,10 +31,8 @@ namespace dbaui
     class DbaMouseDownListBoxController;
 
     // IndexFieldsControl
-    class IndexFieldsControl : public ::svt::EditBrowseBox
+    class IndexFieldsControl final : public ::svt::EditBrowseBox
     {
-        OModuleClient               m_aModuleClient;
-    protected:
         IndexFields                 m_aSavedValue;
 
         IndexFields                 m_aFields;          // !! order matters !!
@@ -51,7 +49,7 @@ namespace dbaui
         bool                        m_bAddIndexAppendix;
 
     public:
-        IndexFieldsControl( vcl::Window* _pParent, WinBits nWinStyle);
+        IndexFieldsControl(const css::uno::Reference<css::awt::XWindow> &rParent);
         virtual ~IndexFieldsControl() override;
         virtual void dispose() override;
 
@@ -69,7 +67,7 @@ namespace dbaui
         void SetModifyHdl(const Link<IndexFieldsControl&,void>& _rHdl) { m_aModifyHdl = _rHdl; }
         virtual OUString GetCellText(long _nRow,sal_uInt16 nColId) const override;
 
-    protected:
+    private:
         // EditBrowseBox overridables
         virtual void PaintCell( OutputDevice& _rDev, const tools::Rectangle& _rRect, sal_uInt16 _nColumnId ) const override;
         virtual bool SeekRow(long nRow) override;
@@ -79,15 +77,13 @@ namespace dbaui
         ::svt::CellController*  GetController(long _nRow, sal_uInt16 _nColumnId) override;
         void                InitController(::svt::CellControllerRef&, long _nRow, sal_uInt16 _nColumnId) override;
 
-    protected:
         OUString GetRowCellText(const IndexFields::const_iterator& _rRow,sal_uInt16 nColId) const;
         bool implGetFieldDesc(long _nRow, IndexFields::const_iterator& _rPos);
 
-        bool isNewField() const { return GetCurRow() >= (sal_Int32)m_aFields.size(); }
+        bool isNewField() const { return GetCurRow() >= static_cast<sal_Int32>(m_aFields.size()); }
 
         DECL_LINK( OnListEntrySelected, DbaMouseDownListBoxController&, void );
 
-    private:
         using ::svt::EditBrowseBox::Init;
     };
 

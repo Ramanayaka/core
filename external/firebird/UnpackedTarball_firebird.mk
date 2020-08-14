@@ -13,6 +13,14 @@ $(eval $(call gb_UnpackedTarball_set_tarball,firebird,$(FIREBIRD_TARBALL)))
 
 $(eval $(call gb_UnpackedTarball_set_patchlevel,firebird,0))
 
+$(eval $(call gb_UnpackedTarball_update_autoconf_configs,firebird,\
+	builds/make.new/config \
+	extern/editline \
+))
+
+# * external/firebird/0001-Make-comparison-operator-member-functions-const.patch.1 is upstream at
+#   <https://github.com/FirebirdSQL/firebird/pull/227> "Make comparison operator member functions
+#   const":
 $(eval $(call gb_UnpackedTarball_add_patches,firebird,\
         external/firebird/firebird.disable-ib-util-not-found.patch.1 \
 		external/firebird/firebird-Engine12.patch \
@@ -23,6 +31,11 @@ $(eval $(call gb_UnpackedTarball_add_patches,firebird,\
 		external/firebird/libc++.patch \
 		external/firebird/0001-Avoid-hangup-in-SS-when-error-happens-at-system-atta.patch.1 \
 		external/firebird/0002-Backported-fix-for-CORE-5452-Segfault-when-engine-s-.patch.1 \
+		external/firebird/c++17.patch \
+		external/firebird/ubsan.patch \
+		external/firebird/asan.patch \
+		external/firebird/firebird-tdf125284.patch.1 \
+		external/firebird/0001-Make-comparison-operator-member-functions-const.patch.1 \
 ))
 
 ifeq ($(OS),WNT)
@@ -37,6 +50,12 @@ $(eval $(call gb_UnpackedTarball_add_patches,firebird,\
 	external/firebird/firebird-configure-x86-64-macosx.patch.1 \
 	external/firebird/firebird-macosx.patch.1 \
 	external/firebird/macosx-elcapitan-dyld.patch \
+))
+endif
+
+ifneq ($(filter -fsanitize=%,$(CC)),)
+$(eval $(call gb_UnpackedTarball_add_patches,firebird, \
+    external/firebird/sanitizer.patch \
 ))
 endif
 

@@ -7,26 +7,21 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 #include "xltoolbar.hxx"
-#include <rtl/ustrbuf.hxx>
-#include <stdarg.h>
+#include <sal/log.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/document/IndexedPropertyValues.hpp>
 #include <com/sun/star/ui/XUIConfigurationPersistence.hpp>
 #include <com/sun/star/ui/theModuleUIConfigurationManagerSupplier.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XSingleComponentFactory.hpp>
-#include <com/sun/star/lang/XMultiComponentFactory.hpp>
-#include <com/sun/star/ui/XImageManager.hpp>
 #include <com/sun/star/ui/ItemType.hpp>
-#include <fstream>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
-#include <vcl/graph.hxx>
 #include <map>
 
 using namespace com::sun::star;
 
 typedef std::map< sal_Int16, OUString > IdToString;
+
+namespace {
 
 class MSOExcelCommandConvertor : public MSOCommandConvertor
 {
@@ -37,6 +32,8 @@ public:
     virtual OUString MSOCommandToOOCommand( sal_Int16 msoCmd ) override;
     virtual OUString MSOTCIDToOOCommand( sal_Int16 key ) override;
 };
+
+}
 
 MSOExcelCommandConvertor::MSOExcelCommandConvertor()
 {
@@ -108,38 +105,34 @@ void ScCTB::Print( FILE* fp )
     indent_printf( fp, "  nViews 0x%x\n", nViews);
     tb.Print( fp );
 
-    std::vector<TBVisualData>::iterator visData_end = rVisualData.end();
     sal_Int32 counter = 0;
-    for ( std::vector<TBVisualData>::iterator it = rVisualData.begin(); it != visData_end; ++it )
+    for ( auto& rItem : rVisualData )
     {
-
         indent_printf( fp, "  TBVisualData [%d]\n", counter++ );
         Indent b;
-        it->Print( fp );
+        rItem.Print( fp );
     }
     indent_printf( fp, "  ectbid 0x%x\n", ectbid);
-    std::vector<ScTBC>::iterator it_end = rTBC.end();
     counter = 0;
-    for ( std::vector<ScTBC>::iterator it = rTBC.begin(); it != it_end; ++it )
+    for ( auto& rItem : rTBC )
     {
         indent_printf( fp, "  ScTBC [%d]\n", counter++);
         Indent c;
-        it->Print( fp );
+        rItem.Print( fp );
     }
 }
 #endif
 
-bool ScCTB::IsMenuToolbar()
+bool ScCTB::IsMenuToolbar() const
 {
     return tb.IsMenuToolbar();
 }
 
 bool ScCTB::ImportMenuTB( ScCTBWrapper& rWrapper, const css::uno::Reference< css::container::XIndexContainer >& xMenuDesc, CustomToolBarImportHelper& helper )
 {
-    sal_Int32 index = 0;
-    for ( std::vector< ScTBC >::iterator it =  rTBC.begin(); it != rTBC.end(); ++it, ++index )
+    for ( auto& rItem : rTBC )
     {
-        if ( !it->ImportToolBarControl( rWrapper, xMenuDesc, helper, IsMenuToolbar() ) )
+        if ( !rItem.ImportToolBarControl( rWrapper, xMenuDesc, helper, IsMenuToolbar() ) )
             return false;
     }
     return true;
@@ -155,7 +148,7 @@ bool ScCTB::ImportCustomToolBar( ScCTBWrapper& rWrapper, CustomToolBarImportHelp
             return true;  // didn't fail, just ignoring
 
         // Create default setting
-        uno::Reference< container::XIndexContainer > xIndexContainer( helper.getCfgManager()->createSettings(), uno::UNO_QUERY_THROW );
+        uno::Reference< container::XIndexContainer > xIndexContainer( helper.getCfgManager()->createSettings(), uno::UNO_SET_THROW );
         uno::Reference< container::XIndexAccess > xIndexAccess( xIndexContainer, uno::UNO_QUERY_THROW );
         uno::Reference< beans::XPropertySet > xProps( xIndexContainer, uno::UNO_QUERY_THROW );
         WString& name = tb.getName();
@@ -163,9 +156,9 @@ bool ScCTB::ImportCustomToolBar( ScCTBWrapper& rWrapper, CustomToolBarImportHelp
         xProps->setPropertyValue("UIName", uno::makeAny( name.getString() ) );
 
         OUString sToolBarName = "private:resource/toolbar/custom_" + name.getString();
-        for ( std::vector< ScTBC >::iterator it =  rTBC.begin(); it != rTBC.end(); ++it )
+        for ( auto& rItem : rTBC )
         {
-            if ( !it->ImportToolBarControl( rWrapper, xIndexContainer, helper, IsMenuToolbar() ) )
+            if ( !rItem.ImportToolBarControl( rWrapper, xIndexContainer, helper, IsMenuToolbar() ) )
                 return false;
         }
 
@@ -228,13 +221,13 @@ ScTBC::Read(SvStream &rS)
     sal_uInt8 tct = tbch.getTct();
     if (  ( tcid != 0x0001 && tcid != 0x06CC && tcid != 0x03D8 && tcid != 0x03EC && tcid != 0x1051 ) && ( ( tct > 0 && tct < 0x0B ) || ( ( tct > 0x0B && tct < 0x10 ) || tct == 0x15 ) ) )
     {
-        tbcCmd.reset( new TBCCmd );
+        tbcCmd = std::make_shared<TBCCmd>();
         if ( !  tbcCmd->Read( rS ) )
             return false;
     }
     if ( tct != 0x16 )
     {
-        tbcd.reset( new TBCData( tbch ) );
+        tbcd = std::make_shared<TBCData>( tbch );
         if ( !tbcd->Read( rS ) )
             return false;
     }
@@ -259,12 +252,11 @@ bool ScTBC::ImportToolBarControl( ScCTBWrapper& rWrapper, const css::uno::Refere
 {
     // how to identify built-in-command ?
 //    bool bBuiltin = false;
-    if ( tbcd.get() )
+    if ( tbcd )
     {
         std::vector< css::beans::PropertyValue > props;
         bool bBeginGroup = false;
-        if ( ! tbcd->ImportToolBarControl( helper, props, bBeginGroup, bIsMenuToolbar ) )
-            return false;
+        tbcd->ImportToolBarControl( helper, props, bBeginGroup, bIsMenuToolbar );
         TBCMenuSpecific* pMenu = tbcd->getMenuSpecific();
         if ( pMenu )
         {
@@ -280,7 +272,7 @@ bool ScTBC::ImportToolBarControl( ScCTBWrapper& rWrapper, const css::uno::Refere
                      return false;
                  if ( !bIsMenuToolbar )
                  {
-                     if ( !helper.createMenu( pMenu->Name(), uno::Reference< container::XIndexAccess >( xMenuDesc, uno::UNO_QUERY ) ) )
+                     if ( !helper.createMenu( pMenu->Name(), xMenuDesc ) )
                          return false;
                  }
                  else
@@ -376,11 +368,10 @@ ScCTBWrapper::Print( FILE* fp )
     Indent a;
     indent_printf( fp, "[ 0x%x ] ScCTBWrapper -- dump\n", nOffSet );
     ctbSet.Print( fp );
-    std::vector<ScCTB>::iterator it_end = rCTB.end();
-    for ( std::vector<ScCTB>::iterator it = rCTB.begin(); it != it_end; ++it )
+    for ( auto& rItem : rCTB )
     {
         Indent b;
-        it->Print( fp );
+        rItem.Print( fp );
     }
 }
 #endif
@@ -388,14 +379,9 @@ ScCTBWrapper::Print( FILE* fp )
 ScCTB* ScCTBWrapper::GetCustomizationData( const OUString& sTBName )
 {
     ScCTB* pCTB = nullptr;
-    for ( std::vector< ScCTB >::iterator it = rCTB.begin(); it != rCTB.end(); ++it )
-    {
-        if ( it->GetName().equals( sTBName ) )
-        {
-            pCTB = &(*it);
-            break;
-        }
-    }
+    auto it = std::find_if(rCTB.begin(), rCTB.end(), [&sTBName](ScCTB& rItem) { return rItem.GetName() == sTBName; });
+    if (it != rCTB.end())
+        pCTB = &(*it);
     return pCTB;
 }
 
@@ -407,8 +393,7 @@ void ScCTBWrapper::ImportCustomToolBar( SfxObjectShell& rDocSh )
     uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
     uno::Reference< ui::XModuleUIConfigurationManagerSupplier > xAppCfgSupp( ui::theModuleUIConfigurationManagerSupplier::get(xContext) );
 
-    std::vector<ScCTB>::iterator it_end = rCTB.end();
-    for ( std::vector<ScCTB>::iterator it = rCTB.begin(); it != it_end; ++it )
+    for ( auto& rItem : rCTB )
     {
         // for each customtoolbar
         CustomToolBarImportHelper helper( rDocSh, xAppCfgSupp->getUIConfigurationManager( "com.sun.star.sheet.SpreadsheetDocument" ) );
@@ -418,11 +403,8 @@ void ScCTBWrapper::ImportCustomToolBar( SfxObjectShell& rDocSh )
         // such menus will be dealt with when they are encountered
         // as part of importing the appropriate MenuSpecific toolbar control )
 
-        if ( !(*it).IsMenuToolbar() )
-        {
-            if ( !(*it).ImportCustomToolBar( *this, helper ) )
-                return;
-        }
+        if ( !rItem.IsMenuToolbar() && !rItem.ImportCustomToolBar( *this, helper ) )
+            return;
     }
 }
 

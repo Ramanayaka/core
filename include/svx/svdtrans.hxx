@@ -21,51 +21,43 @@
 #define INCLUDED_SVX_SVDTRANS_HXX
 
 #include <rtl/ustring.hxx>
-#include <sal/log.hxx>
 #include <svx/svxdllapi.h>
+#include <tools/fldunit.hxx>
 #include <tools/fract.hxx>
 #include <tools/gen.hxx>
+#include <tools/helpers.hxx>
+#include <tools/mapunit.hxx>
 #include <tools/poly.hxx>
-#include <vcl/field.hxx>
-#include <vcl/mapmod.hxx>
 
 // The DrawingEngine's angles are specified in 1/100th degrees
 // We need to convert these angles to radians, in order to be able
 // to process them with trigonometric functions.
-// This is done, using the constant nPi180.
+// This is done, using the constant F_PI18000.
 //
 // Example usage:
 // nAngle ... is an angle in 1/100 Deg
 //
 // Which is converted, by this:
-//   double nSin=sin(nAngle*nPi180);
+//   double nSin=sin(nAngle*F_PI18000);
 //
 // To convert it back, we use division.
-const double nPi=3.14159265358979323846;
-const double nPi180=0.000174532925199432957692222; // If we have too few digits, we get tan(4500*nPi180)!=1.0
 
 // That maximum shear angle
 #define SDRMAXSHEAR 8900
 
 class XPolygon;
 class XPolyPolygon;
-namespace svx
-{
-    inline long Round(double a) { return a>0.0 ? (long)(a+0.5) : -(long)((-a)+0.5); }
-}
 
-inline void MoveRect(tools::Rectangle& rRect, const Size& S)    { rRect.Move(S.Width(),S.Height()); }
-inline void MovePoint(Point& rPnt, const Size& S)        { rPnt.X()+=S.Width(); rPnt.Y()+=S.Height(); }
 inline void MovePoly(tools::Polygon& rPoly, const Size& S)      { rPoly.Move(S.Width(),S.Height()); }
 void MoveXPoly(XPolygon& rPoly, const Size& S);
 
-SVX_DLLPUBLIC void ResizeRect(tools::Rectangle& rRect, const Point& rRef, const Fraction& xFact, const Fraction& yFact);
+SVXCORE_DLLPUBLIC void ResizeRect(tools::Rectangle& rRect, const Point& rRef, const Fraction& xFact, const Fraction& yFact);
 inline void ResizePoint(Point& rPnt, const Point& rRef, const Fraction& xFract, const Fraction& yFract);
 void ResizePoly(tools::Polygon& rPoly, const Point& rRef, const Fraction& xFact, const Fraction& yFact);
 void ResizeXPoly(XPolygon& rPoly, const Point& rRef, const Fraction& xFact, const Fraction& yFact);
 
 inline void RotatePoint(Point& rPnt, const Point& rRef, double sn, double cs);
-SVX_DLLPUBLIC void RotatePoly(tools::Polygon& rPoly, const Point& rRef, double sn, double cs);
+SVXCORE_DLLPUBLIC void RotatePoly(tools::Polygon& rPoly, const Point& rRef, double sn, double cs);
 void RotateXPoly(XPolygon& rPoly, const Point& rRef, double sn, double cs);
 void RotateXPoly(XPolyPolygon& rPoly, const Point& rRef, double sn, double cs);
 
@@ -73,7 +65,7 @@ void MirrorPoint(Point& rPnt, const Point& rRef1, const Point& rRef2);
 void MirrorXPoly(XPolygon& rPoly, const Point& rRef1, const Point& rRef2);
 
 inline void ShearPoint(Point& rPnt, const Point& rRef, double tn, bool bVShear = false);
-SVX_DLLPUBLIC void ShearPoly(tools::Polygon& rPoly, const Point& rRef, double tn);
+SVXCORE_DLLPUBLIC void ShearPoly(tools::Polygon& rPoly, const Point& rRef, double tn);
 void ShearXPoly(XPolygon& rPoly, const Point& rRef, double tn, bool bVShear = false);
 
 /**
@@ -115,27 +107,27 @@ inline void ResizePoint(Point& rPnt, const Point& rRef, const Fraction& xFract, 
 {
     double nxFract = xFract.IsValid() ? static_cast<double>(xFract) : 1.0;
     double nyFract = yFract.IsValid() ? static_cast<double>(yFract) : 1.0;
-    rPnt.X() = rRef.X() + svx::Round( (rPnt.X() - rRef.X()) * nxFract );
-    rPnt.Y() = rRef.Y() + svx::Round( (rPnt.Y() - rRef.Y()) * nyFract );
+    rPnt.setX(rRef.X() + FRound( (rPnt.X() - rRef.X()) * nxFract ));
+    rPnt.setY(rRef.Y() + FRound( (rPnt.Y() - rRef.Y()) * nyFract ));
 }
 
 inline void RotatePoint(Point& rPnt, const Point& rRef, double sn, double cs)
 {
     long dx=rPnt.X()-rRef.X();
     long dy=rPnt.Y()-rRef.Y();
-    rPnt.X()=svx::Round(rRef.X()+dx*cs+dy*sn);
-    rPnt.Y()=svx::Round(rRef.Y()+dy*cs-dx*sn);
+    rPnt.setX(FRound(rRef.X()+dx*cs+dy*sn));
+    rPnt.setY(FRound(rRef.Y()+dy*cs-dx*sn));
 }
 
 inline void ShearPoint(Point& rPnt, const Point& rRef, double tn, bool bVShear)
 {
     if (!bVShear) { // Horizontal
         if (rPnt.Y()!=rRef.Y()) { // else not needed
-            rPnt.X()-=svx::Round((rPnt.Y()-rRef.Y())*tn);
+            rPnt.AdjustX(-FRound((rPnt.Y()-rRef.Y())*tn));
         }
     } else { // or else vertical
         if (rPnt.X()!=rRef.X()) { // else not needed
-            rPnt.Y()-=svx::Round((rPnt.X()-rRef.X())*tn);
+            rPnt.AdjustY(-FRound((rPnt.X()-rRef.X())*tn));
         }
     }
 }
@@ -145,12 +137,12 @@ inline double GetCrookAngle(Point& rPnt, const Point& rCenter, const Point& rRad
     double nAngle;
     if (bVertical) {
         long dy=rPnt.Y()-rCenter.Y();
-        nAngle=(double)dy/(double)rRad.Y();
-        rPnt.Y()=rCenter.Y();
+        nAngle=static_cast<double>(dy)/static_cast<double>(rRad.Y());
+        rPnt.setY(rCenter.Y());
     } else {
         long dx=rCenter.X()-rPnt.X();
-        nAngle=(double)dx/(double)rRad.X();
-        rPnt.X()=rCenter.X();
+        nAngle=static_cast<double>(dx)/static_cast<double>(rRad.X());
+        rPnt.setX(rCenter.X());
     }
     return nAngle;
 }
@@ -167,11 +159,11 @@ inline double GetCrookAngle(Point& rPnt, const Point& rCenter, const Point& rRad
  * @return the returned value is in the range of -180.00..179.99 deg
  * and is in 1/100 deg units
  */
-SVX_DLLPUBLIC long GetAngle(const Point& rPnt);
+SVXCORE_DLLPUBLIC long GetAngle(const Point& rPnt);
 
-long NormAngle180(long a); /// Normalize angle to -180.00..179.99
+long NormAngle18000(long a); /// Normalize angle to -180.00..179.99
 
-SVX_DLLPUBLIC long NormAngle360(long a); /// Normalize angle to 0.00..359.99
+SVXCORE_DLLPUBLIC long NormAngle36000(long a); /// Normalize angle to 0.00..359.99
 
 sal_uInt16 GetAngleSector(long nAngle); /// Determine sector within the cartesian coordinate system
 
@@ -209,7 +201,7 @@ long GetLen(const Point& rPnt);
  *  - Determining the shear angle from the line 0-3 to the perpendicular line.
  *
  * We need to keep in mind that the polygon can be mirrored when it was
- * transformed in the mean time (e.g. mirror or resize with negative factor).
+ * transformed in the meantime (e.g. mirror or resize with negative factor).
  * In that case, we first need to normalize, by swapping points (0 with 3 and 1
  * with 2), so that it has the right orientation.
  *
@@ -235,12 +227,12 @@ public:
 tools::Polygon Rect2Poly(const tools::Rectangle& rRect, const GeoStat& rGeo);
 void Poly2Rect(const tools::Polygon& rPol, tools::Rectangle& rRect, GeoStat& rGeo);
 
-SVX_DLLPUBLIC void OrthoDistance8(const Point& rPt0, Point& rPt, bool bBigOrtho);
-SVX_DLLPUBLIC void OrthoDistance4(const Point& rPt0, Point& rPt, bool bBigOrtho);
+void OrthoDistance8(const Point& rPt0, Point& rPt, bool bBigOrtho);
+void OrthoDistance4(const Point& rPt0, Point& rPt, bool bBigOrtho);
 
 // Multiplication and subsequent division
 // Calculation and intermediate values are in BigInt
-SVX_DLLPUBLIC long BigMulDiv(long nVal, long nMul, long nDiv);
+SVXCORE_DLLPUBLIC long BigMulDiv(long nVal, long nMul, long nDiv);
 
 class FrPair {
     Fraction aX;
@@ -257,7 +249,7 @@ public:
 };
 
 // To convert units of measurement
-SVX_DLLPUBLIC FrPair GetMapFactor(MapUnit eS, MapUnit eD);
+SVXCORE_DLLPUBLIC FrPair GetMapFactor(MapUnit eS, MapUnit eD);
 FrPair GetMapFactor(FieldUnit eS, FieldUnit eD);
 
 inline bool IsMetric(MapUnit eU) {
@@ -270,15 +262,17 @@ inline bool IsInch(MapUnit eU) {
 }
 
 inline bool IsMetric(FieldUnit eU) {
-    return (eU==FUNIT_MM || eU==FUNIT_CM || eU==FUNIT_M || eU==FUNIT_KM || eU==FUNIT_100TH_MM);
+    return (eU == FieldUnit::MM || eU == FieldUnit::CM || eU == FieldUnit::M
+            || eU == FieldUnit::KM || eU == FieldUnit::MM_100TH);
 }
 
 inline bool IsInch(FieldUnit eU) {
-    return (eU==FUNIT_TWIP || eU==FUNIT_POINT || eU==FUNIT_PICA ||
-            eU==FUNIT_INCH || eU==FUNIT_FOOT || eU==FUNIT_MILE);
+    return (eU == FieldUnit::TWIP || eU == FieldUnit::POINT
+            || eU == FieldUnit::PICA || eU == FieldUnit::INCH
+            || eU == FieldUnit::FOOT || eU == FieldUnit::MILE);
 }
 
-class SVX_DLLPUBLIC SdrFormatter {
+class SVXCORE_DLLPUBLIC SdrFormatter {
     long      nMul_;
     long      nDiv_;
     short     nComma_;
@@ -297,10 +291,9 @@ public:
         , eDstMU(eDst)
     {
     }
-    void TakeStr(long nVal, OUString& rStr) const;
-    static void TakeUnitStr(MapUnit eUnit, OUString& rStr);
-    static void TakeUnitStr(FieldUnit eUnit, OUString& rStr);
-    static OUString GetUnitStr(FieldUnit eUnit) { OUString aStr; TakeUnitStr(eUnit,aStr); return aStr; }
+    OUString GetStr(long nVal) const;
+    static OUString GetUnitStr(MapUnit eUnit);
+    static OUString GetUnitStr(FieldUnit eUnit);
 };
 
 

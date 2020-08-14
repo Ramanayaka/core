@@ -23,26 +23,22 @@
 
 #include <sfx2/request.hxx>
 #include <svl/eitem.hxx>
-#include <basic/sbxvar.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/bindings.hxx>
 
 #include <view.hxx>
 #include <wrtsh.hxx>
 #include <textsh.hxx>
-#include <num.hxx>
 #include <edtwin.hxx>
 #include <doc.hxx>
 #include <docsh.hxx>
 
 #include <cmdid.h>
-#include <globals.h>
 #include <globals.hrc>
 
 #include <svx/svdouno.hxx>
 #include <svx/fmshell.hxx>
 #include <svx/sdrobjectfilter.hxx>
-#include "outline.hxx"
 
 using namespace ::com::sun::star;
 
@@ -140,22 +136,27 @@ void SwTextShell::ExecMove(SfxRequest &rReq)
             bRet = rSh.RightMargin( false, false );
             break;
         case FN_START_OF_DOCUMENT_SEL:
-            bRet = rSh.SttDoc( true );
+            bRet = rSh.StartOfSection( true );
             break;
         case FN_START_OF_DOCUMENT:
-            bRet = rSh.SttDoc();
+            bRet = rSh.StartOfSection();
             break;
         case FN_END_OF_DOCUMENT_SEL:
-            bRet = rSh.EndDoc( true );
+            bRet = rSh.EndOfSection( true );
             break;
         case FN_END_OF_DOCUMENT:
-            bRet = rSh.EndDoc();
+            bRet = rSh.EndOfSection();
             break;
         case FN_SELECT_WORD:
             bRet = rSh.SelNearestWrd();
             break;
+        case FN_SELECT_SENTENCE:
+            rSh.SelSentence( nullptr );
+            bRet = true;
+            break;
         case SID_SELECTALL:
-            bRet = 0 != rSh.SelAll();
+            rSh.SelAll();
+            bRet = true;
             break;
         default:
             OSL_FAIL("wrong dispatcher");
@@ -329,7 +330,7 @@ void SwTextShell::ExecMoveMisc(SfxRequest &rReq)
 
                 std::unique_ptr< svx::ISdrObjectFilter > pFilter( FmFormShell::CreateFocusableControlFilter(
                     *pDrawView, *pWindow ) );
-                if ( !pFilter.get() )
+                if (!pFilter)
                     break;
 
                 const SdrObject* pNearestControl = rSh.GetBestObject( true, GotoObjFlags::DrawControl, false, pFilter.get() );
@@ -439,13 +440,13 @@ void SwTextShell::ExecMoveMisc(SfxRequest &rReq)
     {
         if ( !bInHeader )
         {
-            rSh.SetShowHeaderFooterSeparator( Footer, true );
-            rSh.SetShowHeaderFooterSeparator( Header, false );
+            rSh.SetShowHeaderFooterSeparator( FrameControlType::Footer, true );
+            rSh.SetShowHeaderFooterSeparator( FrameControlType::Header, false );
         }
         else
         {
-            rSh.SetShowHeaderFooterSeparator( Header, true );
-            rSh.SetShowHeaderFooterSeparator( Footer, false );
+            rSh.SetShowHeaderFooterSeparator( FrameControlType::Header, true );
+            rSh.SetShowHeaderFooterSeparator( FrameControlType::Footer, false );
         }
 
         // Force repaint

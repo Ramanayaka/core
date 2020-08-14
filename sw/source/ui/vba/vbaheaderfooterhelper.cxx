@@ -18,12 +18,9 @@
  */
 #include "vbaheaderfooterhelper.hxx"
 #include "wordvbahelper.hxx"
-#include <comphelper/processfactory.hxx>
-#include <com/sun/star/text/XTextViewCursorSupplier.hpp>
 #include <com/sun/star/text/XTextRangeCompare.hpp>
 #include <com/sun/star/text/XTextRange.hpp>
-#include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
+#include <com/sun/star/text/XPageCursor.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 
@@ -51,12 +48,11 @@ bool HeaderFooterHelper::isHeader( const uno::Reference< frame::XModel >& xModel
     if( !isHeaderFooter( xCurrentText ) )
         return false;
 
-    OUString aPropIsShared = "HeaderIsShared";
     OUString aPropText = "HeaderText";
     uno::Reference< style::XStyle > xPageStyle = word::getCurrentPageStyle( xModel );
     uno::Reference< beans::XPropertySet > xPageProps( xPageStyle, uno::UNO_QUERY_THROW );
     bool isShared = true;
-    xPageProps->getPropertyValue( aPropIsShared ) >>= isShared;
+    xPageProps->getPropertyValue( "HeaderIsShared" ) >>= isShared;
     if( !isShared )
     {
         uno::Reference< text::XPageCursor > xPageCursor( word::getXTextViewCursor( xModel ), uno::UNO_QUERY_THROW );
@@ -117,12 +113,11 @@ bool HeaderFooterHelper::isFooter( const uno::Reference< frame::XModel >& xModel
     if( !isHeaderFooter( xCurrentText ) )
         return false;
 
-    OUString aPropIsShared = "FooterIsShared";
     OUString aPropText = "FooterText";
     uno::Reference< style::XStyle > xPageStyle = word::getCurrentPageStyle( xModel );
     uno::Reference< beans::XPropertySet > xPageProps( xPageStyle, uno::UNO_QUERY_THROW );
     bool isShared = true;
-    xPageProps->getPropertyValue( aPropIsShared ) >>= isShared;
+    xPageProps->getPropertyValue( "FooterIsShared" ) >>= isShared;
     if( !isShared )
     {
         uno::Reference< text::XPageCursor > xPageCursor( word::getXTextViewCursor( xModel ), uno::UNO_QUERY_THROW );

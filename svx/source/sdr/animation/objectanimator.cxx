@@ -18,13 +18,10 @@
  */
 
 #include <svx/sdr/animation/objectanimator.hxx>
-#include <svx/sdr/animation/animationstate.hxx>
 
 
-namespace sdr
+namespace sdr::animation
 {
-    namespace animation
-    {
         primitiveAnimator::primitiveAnimator()
         :   Scheduler()
         {
@@ -33,7 +30,7 @@ namespace sdr
         primitiveAnimator::~primitiveAnimator()
         {
         }
-    } // end of namespace animation
-} // end of namespace sdr
+
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

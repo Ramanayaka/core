@@ -54,10 +54,17 @@ public:
     virtual void DataChanged( const DataChangedEvent& rDCEvt ) override;
     virtual void RequestHelp( const HelpEvent& rHEvt ) override;
 
+    /// For LibreOfficeKit, we need to route these to the mouse events.
+    virtual void LogicMouseButtonDown(const MouseEvent&) override;
+    virtual void LogicMouseButtonUp(const MouseEvent&) override;
+    virtual void LogicMouseMove(const MouseEvent&) override;
+
     void ForceInvalidate();
     virtual void Invalidate( InvalidateFlags nFlags = InvalidateFlags::NONE ) override;
     virtual void Invalidate( const tools::Rectangle& rRect, InvalidateFlags nFlags = InvalidateFlags::NONE ) override;
     virtual void Invalidate( const vcl::Region& rRegion, InvalidateFlags nFlags = InvalidateFlags::NONE ) override;
+    /// Notify the LOK client about an invalidated area.
+    virtual void LogicInvalidate( const tools::Rectangle* pRectangle ) override;
 
     virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
 
@@ -65,10 +72,17 @@ public:
 
     ChartController* GetController();
 
+    virtual bool IsChart() const override { return true; }
+    vcl::Window* GetParentEditWin();
+
+private:
+    // returns the chart bounding box in twips
+    tools::Rectangle GetBoundingBox();
+
 private:
     ChartController* m_pWindowController;
     bool m_bInPaint;
-    VclPtr<vcl::Window> m_pOpenGLWindow;
+    VclPtr<vcl::Window> m_pViewShellWindow;
 
     void adjustHighContrastMode();
 };

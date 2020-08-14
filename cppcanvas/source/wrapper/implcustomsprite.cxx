@@ -18,23 +18,20 @@
  */
 
 
-#include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <osl/diagnose.h>
 
 #include "implcustomsprite.hxx"
 #include "implcanvas.hxx"
 
 using namespace ::com::sun::star;
 
-namespace cppcanvas
+namespace cppcanvas::internal
 {
-    namespace internal
-    {
         ImplCustomSprite::ImplCustomSprite( const uno::Reference< rendering::XSpriteCanvas >&       rParentCanvas,
                                             const uno::Reference< rendering::XCustomSprite >&       rSprite,
                                             const ImplSpriteCanvas::TransformationArbiterSharedPtr& rTransformArbiter ) :
             ImplSprite( rParentCanvas,
-                        uno::Reference< rendering::XSprite >(rSprite,
-                                                             uno::UNO_QUERY),
+                        rSprite,
                         rTransformArbiter ),
             mpLastCanvas(),
             mxCustomSprite( rSprite )
@@ -60,15 +57,14 @@ namespace cppcanvas
                 return CanvasSharedPtr();
 
             // cache content canvas C++ wrapper
-            if( mpLastCanvas.get() == nullptr ||
+            if( !mpLastCanvas ||
                 mpLastCanvas->getUNOCanvas() != xCanvas )
             {
-                mpLastCanvas = CanvasSharedPtr( new ImplCanvas( xCanvas ) );
+                mpLastCanvas = std::make_shared<ImplCanvas>( xCanvas );
             }
 
             return mpLastCanvas;
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

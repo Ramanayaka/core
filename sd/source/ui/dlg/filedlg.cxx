@@ -17,29 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <comphelper/processfactory.hxx>
+#include <config_features.h>
+
+#include <com/sun/star/media/XPlayer.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/ui/dialogs/CommonFilePickerElementIds.hpp>
-#include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
-#include <com/sun/star/ui/dialogs/ListboxControlActions.hpp>
 #include <com/sun/star/ui/dialogs/ExtendedFilePickerElementIds.hpp>
 #include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
+#include <com/sun/star/ui/dialogs/XFilePicker3.hpp>
 #include <com/sun/star/ui/dialogs/XFilePickerControlAccess.hpp>
-#include <com/sun/star/ui/dialogs/XFilePickerListener.hpp>
-#include <com/sun/star/ui/dialogs/XFilePickerNotifier.hpp>
-#include <com/sun/star/ui/dialogs/XFilePicker2.hpp>
-#include <vcl/msgbox.hxx>
+#include <com/sun/star/ui/dialogs/FilePickerEvent.hpp>
 #include <vcl/idle.hxx>
-#include <sal/types.h>
-#include <osl/thread.hxx>
+#include <osl/diagnose.h>
 #include <vcl/svapp.hxx>
 #include <sfx2/filedlghelper.hxx>
 #include <avmedia/mediawindow.hxx>
-#include "filedlg.hxx"
-#include "sdresid.hxx"
-#include "strings.hrc"
-#include <vcl/graphicfilter.hxx>
+#include <filedlg.hxx>
+#include <sdresid.hxx>
+#include <strings.hrc>
+#include <officecfg/Office/Impress.hxx>
 
 // -----------      SdFileDialog_Imp        ---------------------------
 
@@ -52,35 +47,26 @@ private:
 
     css::uno::Reference< css::media::XPlayer > mxPlayer;
     ImplSVEvent * mnPlaySoundEvent;
-    bool mbUsableSelection;
     bool mbLabelPlaying;
     Idle maUpdateIdle;
-
-    void CheckSelectionState();
 
     DECL_LINK( PlayMusicHdl, void *, void );
     DECL_LINK( IsMusicStoppedHdl, Timer *, void );
 
 public:
-    explicit SdFileDialog_Imp();
+    explicit SdFileDialog_Imp(weld::Window *pParent);
     virtual ~SdFileDialog_Imp() override;
 
-    ErrCode Execute();
-
     // overwritten from FileDialogHelper, to receive user feedback
-    virtual void SAL_CALL ControlStateChanged( const css::ui::dialogs::FilePickerEvent& aEvent ) override;
+    virtual void ControlStateChanged( const css::ui::dialogs::FilePickerEvent& aEvent ) override;
 };
 
-void SAL_CALL SdFileDialog_Imp::ControlStateChanged( const css::ui::dialogs::FilePickerEvent& aEvent )
+void SdFileDialog_Imp::ControlStateChanged( const css::ui::dialogs::FilePickerEvent& aEvent )
 {
     SolarMutexGuard aGuard;
 
     switch( aEvent.ElementId )
     {
-        case css::ui::dialogs::CommonFilePickerElementIds::LISTBOX_FILTER:
-            CheckSelectionState();
-            break;
-
         case css::ui::dialogs::ExtendedFilePickerElementIds::PUSHBUTTON_PLAY:
             if( mxControlAccess.is() )
             {
@@ -105,6 +91,7 @@ IMPL_LINK_NOARG(SdFileDialog_Imp, PlayMusicHdl, void*, void)
         mxPlayer.clear();
     }
 
+#if HAVE_FEATURE_AVMEDIA
     if( mbLabelPlaying )
     {
         try
@@ -127,9 +114,8 @@ IMPL_LINK_NOARG(SdFileDialog_Imp, PlayMusicHdl, void*, void)
         {
             try
             {
-                mxPlayer.set( avmedia::MediaWindow::createPlayer( aUrl, "" ), css::uno::UNO_QUERY_THROW );
+                mxPlayer.set( avmedia::MediaWindow::createPlayer( aUrl, "" ), css::uno::UNO_SET_THROW );
                 mxPlayer->start();
-                maUpdateIdle.SetPriority( TaskPriority::LOW );
                 maUpdateIdle.Start();
             }
             catch (const css::uno::Exception&)
@@ -154,6 +140,7 @@ IMPL_LINK_NOARG(SdFileDialog_Imp, PlayMusicHdl, void*, void)
             }
         }
     }
+#endif
 }
 
 IMPL_LINK_NOARG(SdFileDialog_Imp, IsMusicStoppedHdl, Timer *, void)
@@ -167,73 +154,49 @@ IMPL_LINK_NOARG(SdFileDialog_Imp, IsMusicStoppedHdl, Timer *, void)
         return;
     }
 
-    if( mxControlAccess.is() )
+    if( !mxControlAccess.is() )
+        return;
+
+    try
     {
-        try
-        {
-            mxControlAccess->setLabel( css::ui::dialogs::ExtendedFilePickerElementIds::PUSHBUTTON_PLAY,
-                                       SdResId( STR_PLAY ) );
-            mbLabelPlaying = false;
-        }
-        catch (const css::lang::IllegalArgumentException&)
-        {
+        mxControlAccess->setLabel( css::ui::dialogs::ExtendedFilePickerElementIds::PUSHBUTTON_PLAY,
+                                   SdResId( STR_PLAY ) );
+        mbLabelPlaying = false;
+    }
+    catch (const css::lang::IllegalArgumentException&)
+    {
 #ifdef DBG_UTIL
-            OSL_FAIL( "Cannot access play button" );
+        OSL_FAIL( "Cannot access play button" );
 #endif
-        }
     }
 }
 
-// check whether to disable the "selection" checkbox
-void SdFileDialog_Imp::CheckSelectionState()
-{
-    if( mbUsableSelection && mxControlAccess.is() )
-    {
-        OUString  aCurrFilter( GetCurrentFilter() );
-
-        try
-        {
-            if( aCurrFilter.isEmpty() || ( aCurrFilter == SdResId( STR_EXPORT_HTML_NAME ) ) )
-                mxControlAccess->enableControl( css::ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_SELECTION, false );
-            else
-                mxControlAccess->enableControl( css::ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_SELECTION, true );
-        }
-        catch (const css::lang::IllegalArgumentException&)
-        {
-#ifdef DBG_UTIL
-            OSL_FAIL( "Cannot access \"selection\" checkbox" );
-#endif
-        }
-    }
-}
-
-SdFileDialog_Imp::SdFileDialog_Imp() :
-    FileDialogHelper( css::ui::dialogs::TemplateDescription::FILEOPEN_LINK_PLAY ),
-    mnPlaySoundEvent( nullptr ),
-    mbUsableSelection( false ),
-    mbLabelPlaying(false)
+SdFileDialog_Imp::SdFileDialog_Imp(weld::Window* pParent)
+    : FileDialogHelper(css::ui::dialogs::TemplateDescription::FILEOPEN_LINK_PLAY, FileDialogFlags::NONE, pParent)
+    , mnPlaySoundEvent(nullptr)
+    , mbLabelPlaying(false)
 {
     maUpdateIdle.SetInvokeHandler(LINK(this, SdFileDialog_Imp, IsMusicStoppedHdl));
     maUpdateIdle.SetDebugName( "SdFileDialog_Imp maUpdateIdle" );
 
-    css::uno::Reference < css::ui::dialogs::XFilePicker2 > xFileDlg = GetFilePicker();
+    css::uno::Reference < css::ui::dialogs::XFilePicker3 > xFileDlg = GetFilePicker();
 
     // get the control access
     mxControlAccess.set( xFileDlg, css::uno::UNO_QUERY );
 
-    if( mxControlAccess.is() )
+    if( !mxControlAccess.is() )
+        return;
+
+    try
     {
-        try
-        {
-            mxControlAccess->setLabel( css::ui::dialogs::ExtendedFilePickerElementIds::PUSHBUTTON_PLAY,
-                                       SdResId( STR_PLAY ) );
-        }
-        catch (const css::lang::IllegalArgumentException&)
-        {
+        mxControlAccess->setLabel( css::ui::dialogs::ExtendedFilePickerElementIds::PUSHBUTTON_PLAY,
+                                   SdResId( STR_PLAY ) );
+    }
+    catch (const css::lang::IllegalArgumentException&)
+    {
 #ifdef DBG_UTIL
-            OSL_FAIL( "Cannot set play button label" );
+        OSL_FAIL( "Cannot set play button label" );
 #endif
-        }
     }
 }
 
@@ -243,21 +206,13 @@ SdFileDialog_Imp::~SdFileDialog_Imp()
         Application::RemoveUserEvent( mnPlaySoundEvent );
 }
 
-ErrCode SdFileDialog_Imp::Execute()
-{
-    // make sure selection checkbox is disabled if HTML is current filter!
-    CheckSelectionState();
-    return FileDialogHelper::Execute();
-}
-
 // -----------      SdOpenSoundFileDialog       -----------------------
 
 // these are simple forwarders
-SdOpenSoundFileDialog::SdOpenSoundFileDialog() :
-    mpImpl( new SdFileDialog_Imp() )
+SdOpenSoundFileDialog::SdOpenSoundFileDialog(weld::Window *pParent)
+    : mpImpl(new SdFileDialog_Imp(pParent))
 {
-    OUString aDescr;
-    aDescr = SdResId(STR_ALL_FILES);
+    OUString aDescr = SdResId(STR_ALL_FILES);
     mpImpl->AddFilter( aDescr, "*.*");
 
     // setup filter
@@ -278,6 +233,9 @@ SdOpenSoundFileDialog::SdOpenSoundFileDialog() :
     aDescr = SdResId(STR_MIDI_FILE);
     mpImpl->AddFilter( aDescr, "*.mid" );
 #endif
+
+    // Restore last selected path
+    mpImpl->SetDisplayDirectory(officecfg::Office::Impress::Sound::Path::get());
 }
 
 SdOpenSoundFileDialog::~SdOpenSoundFileDialog()
@@ -291,6 +249,12 @@ ErrCode SdOpenSoundFileDialog::Execute()
 
 OUString SdOpenSoundFileDialog::GetPath() const
 {
+    // Save last selected path
+    std::shared_ptr<comphelper::ConfigurationChanges> batch(
+        comphelper::ConfigurationChanges::create());
+    officecfg::Office::Impress::Sound::Path::set(mpImpl->GetPath(), batch);
+    batch->commit();
+
     return mpImpl->GetPath();
 }
 
@@ -300,10 +264,10 @@ void SdOpenSoundFileDialog::SetPath( const OUString& rPath )
 }
 
 // WIP, please don't remove, dear Clang plugins
-bool SdOpenSoundFileDialog::IsInsertAsLinkSelected()
+bool SdOpenSoundFileDialog::IsInsertAsLinkSelected() const
 {
     bool bInsertAsLinkSelected = false;
-    css::uno::Reference<css::ui::dialogs::XFilePicker2> const xFilePicker(mpImpl->GetFilePicker());
+    css::uno::Reference<css::ui::dialogs::XFilePicker3> const xFilePicker(mpImpl->GetFilePicker());
     css::uno::Reference<css::ui::dialogs::XFilePickerControlAccess> const xControlAccess(xFilePicker, css::uno::UNO_QUERY_THROW);
     xControlAccess->getValue(css::ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_LINK, 0) >>= bInsertAsLinkSelected;
     return bInsertAsLinkSelected;

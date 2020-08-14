@@ -31,17 +31,13 @@
 #include <com/sun/star/uno/Sequence.h>
 
 #include <com/sun/star/uno/XInterface.hpp>
-#include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/xml/xpath/XXPathAPI.hpp>
 #include <com/sun/star/xml/dom/XNode.hpp>
 #include <com/sun/star/xml/dom/XNodeList.hpp>
 #include <com/sun/star/xml/xpath/XXPathObject.hpp>
 #include <com/sun/star/xml/xpath/XXPathExtension.hpp>
-#include <com/sun/star/xml/xpath/Libxml2ExtensionHandle.hpp>
-#include <com/sun/star/xml/xpath/XPathException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 namespace XPath
 {
@@ -60,23 +56,12 @@ namespace XPath
     private:
         ::osl::Mutex m_Mutex;
         nsmap_t m_nsmap;
-        const css::uno::Reference< css::lang::XMultiServiceFactory > m_aFactory;
+        const css::uno::Reference< css::uno::XComponentContext > m_xContext;
         extensions_t m_extensions;
 
     public:
         // ctor
-        explicit CXPathAPI(
-            const css::uno::Reference< css::lang::XMultiServiceFactory >&
-                rSMgr);
-
-        // static helpers for service info and component management
-        static const char* aImplementationName;
-        static const char* aSupportedServiceNames[];
-        static OUString _getImplementationName();
-        static css::uno::Sequence< OUString > _getSupportedServiceNames();
-        static css::uno::Reference< XInterface > _getInstance(
-            const css::uno::Reference< css::lang::XMultiServiceFactory >&
-                rSMgr);
+        explicit CXPathAPI( const css::uno::Reference< css::uno::XComponentContext >& );
 
         // XServiceInfo
         virtual OUString SAL_CALL getImplementationName() override;

@@ -20,27 +20,23 @@
 #ifndef INCLUDED_SVX_CHARTHELPER_HXX
 #define INCLUDED_SVX_CHARTHELPER_HXX
 
-#include <com/sun/star/uno/Reference.hxx>
-#include <drawinglayer/primitive2d/baseprimitive2d.hxx>
+#include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
 #include <sal/types.h>
 #include <svx/svxdllapi.h>
 
-namespace com { namespace sun { namespace star {
-    namespace chart2 { class XDiagram; }
+namespace com::sun::star {
     namespace embed { class XEmbeddedObject; }
     namespace frame { class XModel; }
-} } }
+    namespace uno { template <typename > class Reference; }
+}
 
 namespace basegfx { class B2DRange; }
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC ChartHelper
+class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC ChartHelper
 {
 public:
-    /// Check that the XDiagram is a real 3D chart.
-    static bool isGL3DDiagram(const css::uno::Reference<css::chart2::XDiagram>& xDiagram);
-
     /// Use chart's XUpdatable::update() to update values.
-    static void updateChart( const css::uno::Reference< css::frame::XModel >& rXModel, bool bHardUpdate );
+    static void updateChart( const css::uno::Reference< css::frame::XModel >& rXModel );
 
     // try to access rXModel in case of a chart to get the chart content
     // as sequence of primitives. Return range of primitives (chart size) in rRange;

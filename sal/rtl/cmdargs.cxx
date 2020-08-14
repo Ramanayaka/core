@@ -18,6 +18,7 @@
  */
 
 #include <osl/mutex.hxx>
+#include <rtl/alloc.h>
 #include <rtl/process.h>
 #include <rtl/ustring.hxx>
 
@@ -36,7 +37,7 @@ ArgHolder::~ArgHolder()
     while (g_nCommandArgCount > 0)
         rtl_uString_release (g_ppCommandArgs[--g_nCommandArgCount]);
 
-    rtl_freeMemory (g_ppCommandArgs);
+    free (g_ppCommandArgs);
     g_ppCommandArgs = nullptr;
 }
 
@@ -47,31 +48,31 @@ ArgHolder argHolder;
 void init()
 {
     osl::MutexGuard guard( osl::Mutex::getGlobalMutex() );
-    if (!g_ppCommandArgs)
-    {
-        sal_Int32 i, n = osl_getCommandArgCount();
+    if (g_ppCommandArgs)
+        return;
 
-        g_ppCommandArgs =
-            static_cast<rtl_uString**>(rtl_allocateZeroMemory (n * sizeof(rtl_uString*)));
-        for (i = 0; i < n; i++)
+    sal_Int32 i, n = osl_getCommandArgCount();
+
+    g_ppCommandArgs =
+        static_cast<rtl_uString**>(rtl_allocateZeroMemory (n * sizeof(rtl_uString*)));
+    for (i = 0; i < n; i++)
+    {
+        rtl_uString * pArg = nullptr;
+        osl_getCommandArg (i, &pArg);
+        if ((pArg->buffer[0] == '-' || pArg->buffer[0] == '/') &&
+             pArg->buffer[1] == 'e' &&
+             pArg->buffer[2] == 'n' &&
+             pArg->buffer[3] == 'v' &&
+             pArg->buffer[4] == ':' &&
+            rtl_ustr_indexOfChar (&(pArg->buffer[5]), '=') >= 0 )
         {
-            rtl_uString * pArg = nullptr;
-            osl_getCommandArg (i, &pArg);
-            if ((pArg->buffer[0] == '-' || pArg->buffer[0] == '/') &&
-                 pArg->buffer[1] == 'e' &&
-                 pArg->buffer[2] == 'n' &&
-                 pArg->buffer[3] == 'v' &&
-                 pArg->buffer[4] == ':' &&
-                rtl_ustr_indexOfChar (&(pArg->buffer[5]), '=') >= 0 )
-            {
-                // ignore.
-                rtl_uString_release (pArg);
-            }
-            else
-            {
-                // assign.
-                g_ppCommandArgs[g_nCommandArgCount++] = pArg;
-            }
+            // ignore.
+            rtl_uString_release (pArg);
+        }
+        else
+        {
+            // assign.
+            g_ppCommandArgs[g_nCommandArgCount++] = pArg;
         }
     }
 }
@@ -85,7 +86,7 @@ oslProcessError SAL_CALL rtl_getAppCommandArg (
     oslProcessError result = osl_Process_E_NotFound;
     if( nArg < g_nCommandArgCount )
     {
-         rtl_uString_assign( ppCommandArg, g_ppCommandArgs[nArg] );
+        rtl_uString_assign( ppCommandArg, g_ppCommandArgs[nArg] );
         result = osl_Process_E_None;
     }
     return result;

@@ -17,20 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "TemplateScanner.hxx"
+#include <TemplateScanner.hxx>
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/documentconstants.hxx>
-#include <comphelper/string.hxx>
 
-#include <vcl/svapp.hxx>
-#include <vcl/settings.hxx>
 #include <sfx2/doctempl.hxx>
-#include <sfx2/templatelocnames.hrc>
 #include <com/sun/star/frame/DocumentTemplates.hpp>
 #include <com/sun/star/frame/XDocumentTemplates.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <com/sun/star/ucb/XContentAccess.hpp>
 #include <com/sun/star/sdbc/XResultSet.hpp>
 #include <com/sun/star/sdbc/XRow.hpp>
@@ -108,40 +102,6 @@ int Classify (const OUString&, const OUString& rsURL)
 namespace sd
 {
 
-TemplateEntryCompare::TemplateEntryCompare():
-    mpStringSorter(new comphelper::string::NaturalStringSorter(
-                       ::comphelper::getProcessComponentContext(),
-                       Application::GetSettings().GetLanguageTag().getLocale())) {}
-
-bool TemplateEntryCompare::operator()(TemplateEntry* pA, TemplateEntry* pB) const
-{
-    return 0 > mpStringSorter->compare(pA->msTitle, pB->msTitle);
-}
-
-void TemplateDir::EnableSorting(bool bSortingEnabled)
-{
-    mbSortingEnabled = bSortingEnabled;
-    if (mbSortingEnabled)
-    {
-        if (mpEntryCompare.get() == nullptr)
-            mpEntryCompare.reset(new TemplateEntryCompare);
-
-        ::std::sort(maEntries.begin(), maEntries.end(), *mpEntryCompare);
-    }
-}
-
-void TemplateDir::InsertEntry(TemplateEntry* pNewEntry)
-{
-    if (mbSortingEnabled)
-    {
-        ::std::vector<TemplateEntry*>::iterator aPlaceToInsert =
-            ::std::upper_bound(maEntries.begin(), maEntries.end(), pNewEntry, *mpEntryCompare);
-        maEntries.insert(aPlaceToInsert, pNewEntry);
-    }
-    else
-        maEntries.push_back(pNewEntry);
-}
-
 class TemplateScanner::FolderDescriptorList
     : public ::std::multiset<FolderDescriptor,FolderDescriptor::Comparator>
 {
@@ -150,9 +110,6 @@ class TemplateScanner::FolderDescriptorList
 TemplateScanner::TemplateScanner()
     : meState(INITIALIZE_SCANNING),
       maFolderContent(),
-      mpTemplateDirectory(nullptr),
-      maFolderList(),
-      mpLastAddedEntry(nullptr),
       mpFolderDescriptors(new FolderDescriptorList),
       mxTemplateRoot(),
       mxFolderEnvironment(),
@@ -165,14 +122,6 @@ TemplateScanner::TemplateScanner()
 
 TemplateScanner::~TemplateScanner()
 {
-    mpFolderDescriptors.reset();
-
-    // Delete all entries of the template list that have not been
-    // transferred to another object.
-    std::vector<TemplateDir*>::iterator I;
-    for (I=maFolderList.begin(); I!=maFolderList.end(); ++I)
-        if (*I != nullptr)
-            delete *I;
 }
 
 TemplateScanner::State TemplateScanner::GetTemplateRoot()
@@ -224,7 +173,7 @@ TemplateScanner::State TemplateScanner::ScanEntry()
             OUString sContentType (xRow->getString (3));
 
             OUString aId = xContentAccess->queryContentIdentifierString();
-            ::ucbhelper::Content  aContent = ::ucbhelper::Content (aId, mxEntryEnvironment, comphelper::getProcessComponentContext());
+            ::ucbhelper::Content aContent(aId, mxEntryEnvironment, comphelper::getProcessComponentContext());
             if (aContent.isDocument ())
             {
                 //  Check whether the entry is an impress template.  If so
@@ -240,8 +189,7 @@ TemplateScanner::State TemplateScanner::ScanEntry()
                     ||  (sContentType == "Impress 2.0"))
                 {
                     OUString sLocalisedTitle = SfxDocumentTemplates::ConvertResourceString(sTitle);
-                    mpLastAddedEntry = new TemplateEntry(sLocalisedTitle, sTargetURL);
-                    mpTemplateDirectory->InsertEntry(mpLastAddedEntry);
+                    mpTemplateEntries.push_back(std::make_unique<TemplateEntry>(sLocalisedTitle, sTargetURL));
                 }
             }
 
@@ -250,17 +198,6 @@ TemplateScanner::State TemplateScanner::ScanEntry()
         }
         else
         {
-            if (mpTemplateDirectory->maEntries.empty())
-            {
-                delete mpTemplateDirectory;
-                mpTemplateDirectory = nullptr;
-            }
-            else
-            {
-                SolarMutexGuard aGuard;
-                maFolderList.push_back(mpTemplateDirectory);
-            }
-
             // Continue with scanning the next folder.
             eNextState = SCAN_FOLDER;
         }
@@ -286,7 +223,7 @@ TemplateScanner::State TemplateScanner::InitializeFolderScanning()
         aProps[0] = TITLE;
         aProps[1] = "TargetDirURL";
 
-        //  Create an cursor to iterate over the template folders.
+        //  Create a cursor to iterate over the template folders.
         mxFolderResultSet.set( aTemplateDir.createCursor(aProps, ::ucbhelper::INCLUDE_FOLDERS_ONLY));
         if (mxFolderResultSet.is())
             eNextState = GATHER_FOLDER_LIST;
@@ -333,7 +270,7 @@ TemplateScanner::State TemplateScanner::ScanFolder()
 {
     State eNextState (ERROR);
 
-    if (mpFolderDescriptors->size() > 0)
+    if (!mpFolderDescriptors->empty())
     {
         FolderDescriptor aDescriptor (*mpFolderDescriptors->begin());
         mpFolderDescriptors->erase(mpFolderDescriptors->begin());
@@ -345,9 +282,8 @@ TemplateScanner::State TemplateScanner::ScanFolder()
         {
             // Scan the folder and insert it into the list of template
             // folders.
-            mpTemplateDirectory = new TemplateDir;
-            mpTemplateDirectory->EnableSorting(false);
             // Continue with scanning all entries in the folder.
+            mpTemplateEntries.clear();
             eNextState = INITIALIZE_ENTRY_SCAN;
         }
     }
@@ -395,12 +331,10 @@ void TemplateScanner::RunNextStep()
         case DONE:
         case ERROR:
             mxTemplateRoot.clear();
-            mxTemplateRoot.clear();
             mxFolderEnvironment.clear();
             mxEntryEnvironment.clear();
             mxFolderResultSet.clear();
             mxEntryResultSet.clear();
-            mpLastAddedEntry = nullptr;
             break;
         default:
             break;

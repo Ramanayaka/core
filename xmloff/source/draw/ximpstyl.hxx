@@ -20,7 +20,10 @@
 #ifndef INCLUDED_XMLOFF_SOURCE_DRAW_XIMPSTYL_HXX
 #define INCLUDED_XMLOFF_SOURCE_DRAW_XIMPSTYL_HXX
 
+#include <svl/zforlist.hxx>
 #include <xmloff/xmlictxt.hxx>
+#include <xmloff/xmlimppr.hxx>
+#include <xmloff/xmlnumfi.hxx>
 #include "sdxmlimp_impl.hxx"
 #include "ximppage.hxx"
 #include <xmloff/xmlstyle.hxx>
@@ -68,7 +71,6 @@ public:
 
 class SdXMLPageMasterContext: public SvXMLStyleContext
 {
-    OUString               msName;
     rtl::Reference<SdXMLPageMasterStyleContext> mxPageMasterStyle;
 
     const SdXMLImport& GetSdImport() const { return static_cast<const SdXMLImport&>(GetImport()); }
@@ -82,7 +84,7 @@ public:
         const OUString& rLName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList);
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
 
@@ -93,26 +95,26 @@ public:
 
 class SdXMLMasterPageContext: public SdXMLGenericPageContext
 {
-    OUString               msPageMasterName;
     OUString               msName;
     OUString               msDisplayName;
-    OUString               msStyleName;
 
 public:
 
     SdXMLMasterPageContext(
         SdXMLImport& rImport,
-        sal_uInt16 nPrfx,
-        const OUString& rLName,
-        const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList,
-        css::uno::Reference< css::drawing::XShapes >& rShapes);
+        sal_Int32 nElement,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList,
+        css::uno::Reference< css::drawing::XShapes > const & rShapes);
     virtual ~SdXMLMasterPageContext() override;
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
 
-    virtual void EndElement() override;
+    virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
 
     const OUString& GetDisplayName() const { return msDisplayName; }
 
@@ -124,9 +126,6 @@ class SdXMLPresentationPlaceholderContext: public SvXMLImportContext
 {
     OUString               msName;
     sal_Int32                   mnX;
-    sal_Int32                   mnY;
-    sal_Int32                   mnWidth;
-    sal_Int32                   mnHeight;
 
     const SdXMLImport& GetSdImport() const { return static_cast<const SdXMLImport&>(GetImport()); }
     SdXMLImport& GetSdImport() { return static_cast<SdXMLImport&>(GetImport()); }
@@ -147,7 +146,6 @@ public:
 
 class SdXMLPresentationPageLayoutContext: public SvXMLStyleContext
 {
-    OUString               msName;
     std::vector< rtl::Reference< SdXMLPresentationPlaceholderContext > >
                            maList;
     sal_uInt16             mnTypeId;
@@ -163,7 +161,7 @@ public:
         const OUString& rLName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList);
 
-    virtual SvXMLImportContext *CreateChildContext(
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix, const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;
 
@@ -185,8 +183,8 @@ class SdXMLStylesContext : public SvXMLStylesContext
 
     void ImpSetGraphicStyles() const;
     void ImpSetCellStyles() const;
-    void ImpSetGraphicStyles( css::uno::Reference< css::container::XNameAccess >& xPageStyles,
-        sal_uInt16 nFamily, const OUString& rPrefix) const;
+    void ImpSetGraphicStyles( css::uno::Reference< css::container::XNameAccess > const & xPageStyles,
+        XmlStyleFamily nFamily, const OUString& rPrefix) const;
 
 protected:
     virtual SvXMLStyleContext* CreateStyleChildContext(
@@ -195,13 +193,13 @@ protected:
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList) override;
 
     virtual SvXMLStyleContext *CreateStyleStyleChildContext(
-        sal_uInt16 nFamily,
+        XmlStyleFamily nFamily,
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList) override;
 
     virtual SvXMLStyleContext *CreateDefaultStyleStyleChildContext(
-        sal_uInt16 nFamily, sal_uInt16 nPrefix,
+        XmlStyleFamily nFamily, sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference<
             css::xml::sax::XAttributeList > & xAttrList ) override;
@@ -209,14 +207,12 @@ public:
 
     SdXMLStylesContext(
         SdXMLImport& rImport,
-        const OUString& rLName,
-        const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList,
         bool bIsAutoStyle);
 
     virtual void EndElement() override;
-    virtual rtl::Reference< SvXMLImportPropertyMapper > GetImportPropertyMapper(sal_uInt16 nFamily) const override;
+    virtual rtl::Reference< SvXMLImportPropertyMapper > GetImportPropertyMapper(XmlStyleFamily nFamily) const override;
 
-    void SetMasterPageStyles(SdXMLMasterPageContext& rMaster) const;
+    void SetMasterPageStyles(SdXMLMasterPageContext const & rMaster) const;
 
     css::uno::Reference< css::container::XNameAccess > getPageLayouts() const;
 };
@@ -232,11 +228,15 @@ class SdXMLMasterStylesContext : public SvXMLImportContext
 
 public:
 
-    SdXMLMasterStylesContext(
-        SdXMLImport& rImport,
-        const OUString& rLName);
+    SdXMLMasterStylesContext(SdXMLImport& rImport);
 
-    virtual SvXMLImportContext* CreateChildContext(
+    virtual void SAL_CALL startFastElement( sal_Int32 /*nElement*/,
+                const css::uno::Reference< css::xml::sax::XFastAttributeList >& ) override {}
+
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+                sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
+
+    virtual SvXMLImportContextRef CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const css::uno::Reference< css::xml::sax::XAttributeList >& xAttrList ) override;

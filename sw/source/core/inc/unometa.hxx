@@ -72,7 +72,7 @@ protected:
 
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::uno::RuntimeException
-    void SAL_CALL AttachImpl(
+    void AttachImpl(
             const css::uno::Reference< css::text::XTextRange > & xTextRange,
             const sal_uInt16 nWhich);
 
@@ -84,7 +84,7 @@ protected:
     /// @param pDoc and pMeta != 0, but not & because of ImplInheritanceHelper
     SwXMeta(SwDoc *const pDoc, ::sw::Meta *const pMeta,
         css::uno::Reference< css::text::XText> const&  xParentText,
-        TextRangeList_t const*const pPortions);
+        std::unique_ptr<TextRangeList_t const> pPortions);
 
     SwXMeta(SwDoc *const pDoc);
 
@@ -101,7 +101,7 @@ public:
 
     /// init params with position of the attribute content (w/out CH_TXTATR)
     bool SetContentRange( SwTextNode *& rpNode, sal_Int32 & rStart, sal_Int32 & rEnd) const;
-    css::uno::Reference< css::text::XText > GetParentText() const;
+    css::uno::Reference< css::text::XText > const & GetParentText() const;
 
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::uno::RuntimeException
@@ -205,7 +205,7 @@ private:
 
     SwXMetaField(SwDoc *const pDoc, ::sw::Meta *const pMeta,
         css::uno::Reference< css::text::XText> const& xParentText,
-        TextRangeList_t const*const pPortions);
+        std::unique_ptr<TextRangeList_t const> pPortions);
 
     friend css::uno::Reference<css::rdf::XMetadatable>
         SwXMeta::CreateXMeta(SwDoc &, bool);

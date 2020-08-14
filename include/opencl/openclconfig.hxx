@@ -14,8 +14,10 @@
 #include <set>
 
 #include <opencl/opencldllapi.h>
-#include <opencl/platforminfo.hxx>
 #include <rtl/ustring.hxx>
+
+struct OpenCLDeviceInfo;
+struct OpenCLPlatformInfo;
 
 struct OPENCL_DLLPUBLIC OpenCLConfig
 {
@@ -74,8 +76,8 @@ struct OPENCL_DLLPUBLIC OpenCLConfig
 
     typedef std::set<ImplMatcher> ImplMatcherSet;
 
-    ImplMatcherSet maBlackList;
-    ImplMatcherSet maWhiteList;
+    ImplMatcherSet maDenyList;
+    ImplMatcherSet maAllowList;
 
     OpenCLConfig();
 

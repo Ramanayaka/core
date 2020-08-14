@@ -20,9 +20,7 @@
 #ifndef INCLUDED_SVX_SOURCE_INC_FORMTOOLBARS_HXX
 #define INCLUDED_SVX_SOURCE_INC_FORMTOOLBARS_HXX
 
-#include "fmdocumentclassification.hxx"
 #include <com/sun/star/frame/XLayoutManager.hpp>
-#include <svx/svxdllapi.h>
 
 namespace svxform
 {
@@ -36,7 +34,7 @@ namespace svxform
             @param _rxFrame
                 the frame to analyze
         */
-        SVX_DLLPUBLIC FormToolboxes(
+        FormToolboxes(
             const css::uno::Reference< css::frame::XFrame >& _rxFrame
         );
 
@@ -44,16 +42,16 @@ namespace svxform
         /** retrieves the URI for the toolbox associated with the given slot, depending
             on the type of our document
         */
-        SVX_DLLPUBLIC static OUString
+        static OUString
                 getToolboxResourceName( sal_uInt16 _nSlotId );
 
         /** toggles the toolbox associated with the given slot
         */
-        SVX_DLLPUBLIC void    toggleToolbox( sal_uInt16 _nSlotId ) const;
+        void    toggleToolbox( sal_uInt16 _nSlotId ) const;
 
         /** determines whether the toolbox associated with the given slot is currently visible
         */
-        SVX_DLLPUBLIC bool    isToolboxVisible( sal_uInt16 _nSlotId ) const;
+        bool    isToolboxVisible( sal_uInt16 _nSlotId ) const;
 
     };
 

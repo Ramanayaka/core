@@ -20,23 +20,21 @@
 #ifndef INCLUDED_SVTOOLS_FRAMESTATUSLISTENER_HXX
 #define INCLUDED_SVTOOLS_FRAMESTATUSLISTENER_HXX
 
-#include <svtools/svtdllapi.h>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/util/XURLTransformer.hpp>
-#include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/frame/XFrameActionListener.hpp>
-#include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/frame/XStatusListener.hpp>
 #include <cppuhelper/weak.hxx>
-#include <cppuhelper/interfacecontainer.hxx>
 #include <cppuhelper/basemutex.hxx>
 
 #include <unordered_map>
 
+namespace com :: sun :: star :: frame { class XDispatch; }
+namespace com :: sun :: star :: frame { class XFrame; }
+namespace com :: sun :: star :: uno { class XComponentContext; }
+
 namespace svt
 {
 
-class SVT_DLLPUBLIC FrameStatusListener : public css::frame::XStatusListener,
+class FrameStatusListener : public css::frame::XStatusListener,
                             public css::frame::XFrameActionListener,
                             public css::lang::XComponent,
                             public ::cppu::BaseMutex,
@@ -81,8 +79,7 @@ class SVT_DLLPUBLIC FrameStatusListener : public css::frame::XStatusListener,
         };
 
         typedef std::unordered_map< OUString,
-                                    css::uno::Reference< css::frame::XDispatch >,
-                                    OUStringHash > URLToDispatchMap;
+                                    css::uno::Reference< css::frame::XDispatch > > URLToDispatchMap;
 
         bool                                                      m_bDisposed : 1;
         css::uno::Reference< css::frame::XFrame >                 m_xFrame;

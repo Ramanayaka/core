@@ -20,21 +20,21 @@
 
 #include <tools/solar.h>
 #include <vcl/svapp.hxx>
-#include <vcl/bitmap.hxx>
-#include <vcl/bitmapex.hxx>
-#include <vcl/animate.hxx>
 #include <vcl/gdimtf.hxx>
-#include <vcl/window.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/metaact.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/cvtgrf.hxx>
-#include <vcl/bitmapaccess.hxx>
+#include <vcl/BitmapTools.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/tempfile.hxx>
 #include <osl/process.h>
 #include <osl/file.hxx>
 #include <osl/thread.h>
+#include <rtl/byteseq.hxx>
+#include <sal/log.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
+#include <o3tl/safeint.hxx>
 #include <memory>
 
 class FilterConfigItem;
@@ -50,11 +50,11 @@ class FilterConfigItem;
 |*
 *************************************************************************/
 
-static sal_uInt8* ImplSearchEntry( sal_uInt8* pSource, sal_uInt8 const * pDest, sal_uLong nComp, sal_uLong nSize )
+static sal_uInt8* ImplSearchEntry( sal_uInt8* pSource, sal_uInt8 const * pDest, size_t nComp, size_t nSize )
 {
     while ( nComp-- >= nSize )
     {
-        sal_uLong i;
+        size_t i;
         for ( i = 0; i < nSize; i++ )
         {
             if ( ( pSource[i]&~0x20 ) != ( pDest[i]&~0x20 ) )
@@ -95,8 +95,10 @@ static long ImplGetNumber(sal_uInt8* &rBuf, sal_uInt32& nSecurityCount)
                     nSecurityCount = 1;         // error parsing the bounding box values
                 else if ( bValid )
                 {
-                    nRetValue *= 10;
-                    nRetValue += *rBuf - '0';
+                    const bool bFail = o3tl::checked_multiply<long>(nRetValue, 10, nRetValue) ||
+                                       o3tl::checked_add<long>(nRetValue, *rBuf - '0', nRetValue);
+                    if (bFail)
+                        return 0;
                 }
                 break;
         }
@@ -126,22 +128,21 @@ static void MakeAsMeta(Graphic &rGraphic)
 {
     ScopedVclPtrInstance< VirtualDevice > pVDev;
     GDIMetaFile     aMtf;
-    Bitmap          aBmp( rGraphic.GetBitmap() );
-    Size            aSize = aBmp.GetPrefSize();
+    Size            aSize = rGraphic.GetPrefSize();
 
     if( !aSize.Width() || !aSize.Height() )
         aSize = Application::GetDefaultDevice()->PixelToLogic(
-            aBmp.GetSizePixel(), MapUnit::Map100thMM );
+            rGraphic.GetSizePixel(), MapMode(MapUnit::Map100thMM));
     else
         aSize = OutputDevice::LogicToLogic( aSize,
-            aBmp.GetPrefMapMode(), MapUnit::Map100thMM );
+            rGraphic.GetPrefMapMode(), MapMode(MapUnit::Map100thMM));
 
     pVDev->EnableOutput( false );
     aMtf.Record( pVDev );
-    pVDev->DrawBitmap( Point(), aSize, rGraphic.GetBitmap() );
+    pVDev->DrawBitmapEx( Point(), aSize, rGraphic.GetBitmapEx() );
     aMtf.Stop();
     aMtf.WindStart();
-    aMtf.SetPrefMapMode( MapUnit::Map100thMM );
+    aMtf.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
     aMtf.SetPrefSize( aSize );
     rGraphic = aMtf;
 }
@@ -150,7 +151,7 @@ static oslProcessError runProcessWithPathSearch(const OUString &rProgName,
     rtl_uString* pArgs[], sal_uInt32 nArgs, oslProcess *pProcess,
     oslFileHandle *pIn, oslFileHandle *pOut, oslFileHandle *pErr)
 {
-    oslProcessError result;
+    oslProcessError result = osl_Process_E_None;
     oslSecurity pSecurity = osl_getCurrentSecurity();
 #ifdef _WIN32
     /*
@@ -169,15 +170,15 @@ static oslProcessError runProcessWithPathSearch(const OUString &rProgName,
      *
      */
     OUString url;
-    OUString path(reinterpret_cast<const sal_Unicode*>(_wgetenv(L"PATH")));
+    OUString path(o3tl::toU(_wgetenv(L"PATH")));
 
     oslFileError err = osl_searchFileURL(rProgName.pData, path.pData, &url.pData);
     if (err != osl_File_E_None)
-        return osl_Process_E_NotFound;
-
-    result = osl_executeProcess_WithRedirectedIO(url.pData,
-    pArgs, nArgs, osl_Process_HIDDEN,
-        pSecurity, nullptr, nullptr, 0, pProcess, pIn, pOut, pErr);
+        result = osl_Process_E_NotFound;
+    else
+        result = osl_executeProcess_WithRedirectedIO(url.pData,
+            pArgs, nArgs, osl_Process_HIDDEN,
+            pSecurity, nullptr, nullptr, 0, pProcess, pIn, pOut, pErr);
 #else
     result = osl_executeProcess_WithRedirectedIO(rProgName.pData,
         pArgs, nArgs, osl_Process_SEARCHPATH | osl_Process_HIDDEN,
@@ -219,9 +220,14 @@ static bool RenderAsEMF(const sal_uInt8* pBuf, sal_uInt32 nBytesRead, Graphic &r
     //-usebbfrominput forces pstoedit to take the original ps bounding box
     //as the bounding box as it sees it, instead of calculating its own
     //which also doesn't work for this example
+    //
+    //Under Linux, positioning of letters within pstoedit is very approximate.
+    //Using the -nfw option delegates the positioning to the reader, and we
+    //will do a proper job.  The option is ignored on Windows.
     OUString arg1("-usebbfrominput");   //-usebbfrominput use the original ps bounding box
     OUString arg2("-f");
-    OUString arg3("emf:-OO -drawbb");   //-drawbb mark out the bounding box extent with bg pixels
+    OUString arg3("emf:-OO -drawbb -nfw"); //-drawbb mark out the bounding box extent with bg pixels
+                                           //-nfw delegate letter placement to us
     rtl_uString *args[] =
     {
         arg1.pData, arg2.pData, arg3.pData, input.pData, output.pData
@@ -230,7 +236,7 @@ static bool RenderAsEMF(const sal_uInt8* pBuf, sal_uInt32 nBytesRead, Graphic &r
     oslFileHandle pIn = nullptr;
     oslFileHandle pOut = nullptr;
     oslFileHandle pErr = nullptr;
-        oslProcessError eErr = runProcessWithPathSearch(
+    oslProcessError eErr = runProcessWithPathSearch(
             "pstoedit" EXESUFFIX,
             args, SAL_N_ELEMENTS(args),
             &aProcess, &pIn, &pOut, &pErr);
@@ -265,12 +271,16 @@ static bool RenderAsEMF(const sal_uInt8* pBuf, sal_uInt32 nBytesRead, Graphic &r
     return bRet;
 }
 
+namespace {
+
 struct WriteData
 {
     oslFileHandle   m_pFile;
     const sal_uInt8 *m_pBuf;
     sal_uInt32      m_nBytesToWrite;
 };
+
+}
 
 extern "C" {
 
@@ -292,15 +302,21 @@ static void WriteFileInThread(void *wData)
 }
 
 static bool RenderAsBMPThroughHelper(const sal_uInt8* pBuf, sal_uInt32 nBytesRead,
-    Graphic &rGraphic, const OUString &rProgName, rtl_uString *pArgs[], size_t nArgs)
+                                     Graphic& rGraphic,
+                                     std::initializer_list<OUStringLiteral> aProgNames,
+                                     rtl_uString* pArgs[], size_t nArgs)
 {
-    oslProcess aProcess;
+    oslProcess aProcess = nullptr;
     oslFileHandle pIn = nullptr;
     oslFileHandle pOut = nullptr;
     oslFileHandle pErr = nullptr;
-        oslProcessError eErr = runProcessWithPathSearch(rProgName,
-            pArgs, nArgs,
-            &aProcess, &pIn, &pOut, &pErr);
+    oslProcessError eErr = osl_Process_E_Unknown;
+    for (const auto& rProgName : aProgNames)
+    {
+        eErr = runProcessWithPathSearch(rProgName, pArgs, nArgs, &aProcess, &pIn, &pOut, &pErr);
+        if (eErr == osl_Process_E_None)
+            break;
+    }
     if (eErr!=osl_Process_E_None)
         return false;
 
@@ -358,7 +374,7 @@ static bool RenderAsBMPThroughConvert(const sal_uInt8* pBuf, sal_uInt32 nBytesRe
         arg1.pData, arg2.pData, arg3.pData, arg4.pData
     };
     return RenderAsBMPThroughHelper(pBuf, nBytesRead, rGraphic,
-        ("convert" EXESUFFIX),
+        { "convert" EXESUFFIX },
         args,
         SAL_N_ELEMENTS(args));
 }
@@ -385,9 +401,13 @@ static bool RenderAsBMPThroughGS(const sal_uInt8* pBuf, sal_uInt32 nBytesRead,
     };
     return RenderAsBMPThroughHelper(pBuf, nBytesRead, rGraphic,
 #ifdef _WIN32
-        "gswin32c" EXESUFFIX,
+        // Try both 32-bit and 64-bit ghostscript executable name
+        {
+            "gswin32c" EXESUFFIX,
+            "gswin64c" EXESUFFIX,
+        },
 #else
-        "gs" EXESUFFIX,
+        { "gs" EXESUFFIX },
 #endif
         args,
         SAL_N_ELEMENTS(args));
@@ -401,18 +421,9 @@ static bool RenderAsBMP(const sal_uInt8* pBuf, sal_uInt32 nBytesRead, Graphic &r
         return RenderAsBMPThroughConvert(pBuf, nBytesRead, rGraphic);
 }
 
-namespace
-{
-    bool checkSeek(SvStream &rSt, sal_uInt32 nOffset)
-    {
-        const sal_uInt64 nMaxSeek(rSt.Tell() + rSt.remainingSize());
-        return (nOffset <= nMaxSeek && rSt.Seek(nOffset) == nOffset);
-    }
-}
-
 // this method adds a replacement action containing the original wmf or tiff replacement,
 // so the original eps can be written when storing to ODF.
-void CreateMtfReplacementAction( GDIMetaFile& rMtf, SvStream& rStrm, sal_uInt32 nOrigPos, sal_uInt32 nPSSize,
+static void CreateMtfReplacementAction( GDIMetaFile& rMtf, SvStream& rStrm, sal_uInt32 nOrigPos, sal_uInt32 nPSSize,
                                 sal_uInt32 nPosWMF, sal_uInt32 nSizeWMF, sal_uInt32 nPosTIFF, sal_uInt32 nSizeTIFF )
 {
     OString aComment("EPSReplacementGraphic");
@@ -453,7 +464,7 @@ void CreateMtfReplacementAction( GDIMetaFile& rMtf, SvStream& rStrm, sal_uInt32 
 }
 
 //there is no preview -> make a red box
-void MakePreview(sal_uInt8* pBuf, sal_uInt32 nBytesRead,
+static void MakePreview(sal_uInt8* pBuf, sal_uInt32 nBytesRead,
     long nWidth, long nHeight, Graphic &rGraphic)
 {
     GDIMetaFile aMtf;
@@ -462,7 +473,7 @@ void MakePreview(sal_uInt8* pBuf, sal_uInt32 nBytesRead,
 
     pVDev->EnableOutput( false );
     aMtf.Record( pVDev );
-    pVDev->SetLineColor( Color( COL_RED ) );
+    pVDev->SetLineColor( COL_RED );
     pVDev->SetFillColor();
 
     aFont.SetColor( COL_LIGHTRED );
@@ -487,7 +498,7 @@ void MakePreview(sal_uInt8* pBuf, sal_uInt32 nBytesRead,
             --nRemainingBytes;
         }
         nLen = ImplGetLen(pDest, std::min<sal_uInt32>(nRemainingBytes, 32));
-        if (static_cast<sal_uInt32>(nLen) < nRemainingBytes)
+        if (o3tl::make_unsigned(nLen) < nRemainingBytes)
         {
             sal_uInt8 aOldValue(pDest[ nLen ]); pDest[ nLen ] = 0;
             if ( strcmp( reinterpret_cast<char*>(pDest), "none" ) != 0 )
@@ -510,7 +521,7 @@ void MakePreview(sal_uInt8* pBuf, sal_uInt32 nBytesRead,
             --nRemainingBytes;
         }
         nLen = ImplGetLen(pDest, std::min<sal_uInt32>(nRemainingBytes, 32));
-        if (static_cast<sal_uInt32>(nLen) < nRemainingBytes)
+        if (o3tl::make_unsigned(nLen) < nRemainingBytes)
         {
             sal_uInt8 aOldValue(pDest[nLen]); pDest[nLen] = 0;
             const char* pStr = reinterpret_cast<char*>(pDest);
@@ -530,7 +541,7 @@ void MakePreview(sal_uInt8* pBuf, sal_uInt32 nBytesRead,
             --nRemainingBytes;
         }
         nLen = ImplGetLen(pDest, std::min<sal_uInt32>(nRemainingBytes, 32));
-        if (static_cast<sal_uInt32>(nLen) < nRemainingBytes)
+        if (o3tl::make_unsigned(nLen) < nRemainingBytes)
         {
             sal_uInt8 aOldValue(pDest[ nLen ]); pDest[ nLen ] = 0;
             if ( strcmp( reinterpret_cast<char*>(pDest), "none" ) != 0 )
@@ -559,7 +570,7 @@ void MakePreview(sal_uInt8* pBuf, sal_uInt32 nBytesRead,
     pVDev->Pop();
     aMtf.Stop();
     aMtf.WindStart();
-    aMtf.SetPrefMapMode( MapUnit::MapPoint );
+    aMtf.SetPrefMapMode(MapMode(MapUnit::MapPoint));
     aMtf.SetPrefSize( Size( nWidth, nHeight ) );
     rGraphic = aMtf;
 }
@@ -567,7 +578,7 @@ void MakePreview(sal_uInt8* pBuf, sal_uInt32 nBytesRead,
 //================== GraphicImport - the exported function ================
 
 
-extern "C" SAL_DLLPUBLIC_EXPORT bool SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT bool
 ipsGraphicImport( SvStream & rStream, Graphic & rGraphic, FilterConfigItem* )
 {
     if ( rStream.GetError() )
@@ -642,7 +653,7 @@ ipsGraphicImport( SvStream & rStream, Graphic & rGraphic, FilterConfigItem* )
         if ( nBytesRead == nPSSize )
         {
             sal_uInt32 nSecurityCount = 32;
-            // if there is no tiff/wmf preview, we will parse for an preview in
+            // if there is no tiff/wmf preview, we will parse for a preview in
             // the eps prolog
             if (!bHasPreview && nBytesRead >= nSecurityCount)
             {
@@ -657,13 +668,17 @@ ipsGraphicImport( SvStream & rStream, Graphic & rGraphic, FilterConfigItem* )
                     long nBitDepth = ImplGetNumber(pDest, nSecurityCount);
                     long nScanLines = ImplGetNumber(pDest, nSecurityCount);
                     pDest = ImplSearchEntry(pDest, reinterpret_cast<sal_uInt8 const *>("%"), nSecurityCount, 1);       // go to the first Scanline
-                    if (pDest && nWidth && nHeight && ( ( nBitDepth == 1 ) || ( nBitDepth == 8 ) ) && nScanLines)
+                    bOk = pDest && nWidth > 0 && nHeight > 0 && ( ( nBitDepth == 1 ) || ( nBitDepth == 8 ) ) && nScanLines;
+                    if (bOk)
+                    {
+                        long nResult;
+                        bOk = !o3tl::checked_multiply(nWidth, nHeight, nResult) && nResult <= SAL_MAX_INT32/2/3;
+                    }
+                    if (bOk)
                     {
                         rStream.Seek( nBufStartPos + ( pDest - pBuf.get() ) );
 
-                        Bitmap aBitmap( Size( nWidth, nHeight ), 1 );
-                        BitmapWriteAccess* pAcc = aBitmap.AcquireWriteAccess();
-                        if ( pAcc )
+                        vcl::bitmap::RawBitmap aBitmap( Size( nWidth, nHeight ), 24 );
                         {
                             bool bIsValid = true;
                             sal_uInt8 nDat = 0;
@@ -671,14 +686,17 @@ ipsGraphicImport( SvStream & rStream, Graphic & rGraphic, FilterConfigItem* )
                             for (long y = 0; bIsValid && y < nHeight; ++y)
                             {
                                 int nBitsLeft = 0;
-                                for (long x = 0; bIsValid && x < nWidth; ++x)
+                                for (long x = 0; x < nWidth; ++x)
                                 {
                                     if ( --nBitsLeft < 0 )
                                     {
                                         while ( bIsValid && ( nBitsLeft != 7 ) )
                                         {
-                                            rStream.ReadChar( nByte );
-                                            switch ( nByte )
+                                            rStream.ReadChar(nByte);
+                                            bIsValid = rStream.good();
+                                            if (!bIsValid)
+                                                break;
+                                            switch (nByte)
                                             {
                                                 case 0x0a :
                                                     if ( --nScanLines < 0 )
@@ -713,11 +731,13 @@ ipsGraphicImport( SvStream & rStream, Graphic & rGraphic, FilterConfigItem* )
                                             }
                                         }
                                     }
+                                    if (!bIsValid)
+                                        break;
                                     if ( nBitDepth == 1 )
-                                        pAcc->SetPixelIndex( y, x, static_cast<sal_uInt8>(nDat >> nBitsLeft) & 1 );
+                                        aBitmap.SetPixel( y, x, Color(static_cast<sal_uInt8>(nDat >> nBitsLeft) & 1) );
                                     else
                                     {
-                                        pAcc->SetPixelIndex( y, x, nDat ? 1 : 0 );  // nBitDepth == 8
+                                        aBitmap.SetPixel( y, x, nDat ? COL_WHITE : COL_BLACK );  // nBitDepth == 8
                                         nBitsLeft = 0;
                                     }
                                 }
@@ -726,23 +746,18 @@ ipsGraphicImport( SvStream & rStream, Graphic & rGraphic, FilterConfigItem* )
                             {
                                 ScopedVclPtrInstance<VirtualDevice> pVDev;
                                 GDIMetaFile     aMtf;
-                                Size            aSize;
+                                Size            aSize( nWidth, nHeight );
                                 pVDev->EnableOutput( false );
                                 aMtf.Record( pVDev );
-                                aSize = aBitmap.GetPrefSize();
-                                if( !aSize.Width() || !aSize.Height() )
-                                    aSize = Application::GetDefaultDevice()->PixelToLogic( aBitmap.GetSizePixel(), MapUnit::Map100thMM );
-                                else
-                                    aSize = OutputDevice::LogicToLogic( aSize, aBitmap.GetPrefMapMode(), MapUnit::Map100thMM );
-                                pVDev->DrawBitmap( Point(), aSize, aBitmap );
+                                aSize = OutputDevice::LogicToLogic(aSize, MapMode(), MapMode(MapUnit::Map100thMM));
+                                pVDev->DrawBitmapEx( Point(), aSize, vcl::bitmap::CreateFromData(std::move(aBitmap)) );
                                 aMtf.Stop();
                                 aMtf.WindStart();
-                                aMtf.SetPrefMapMode( MapUnit::Map100thMM );
+                                aMtf.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
                                 aMtf.SetPrefSize( aSize );
                                 aGraphic = aMtf;
                                 bHasPreview = bRetValue = true;
                             }
-                            Bitmap::ReleaseAccess( pAcc );
                         }
                     }
                 }
@@ -760,15 +775,18 @@ ipsGraphicImport( SvStream & rStream, Graphic & rGraphic, FilterConfigItem* )
                 {
                     nNumb[ i ] = ImplGetNumber(pDest, nSecurityCount);
                 }
-                if ( nSecurityCount)
+                bool bFail = nSecurityCount == 0;
+                long nWidth(0), nHeight(0);
+                if (!bFail)
+                    bFail = o3tl::checked_sub(nNumb[2], nNumb[0], nWidth) || o3tl::checked_add(nWidth, 1L, nWidth);
+                if (!bFail)
+                    bFail = o3tl::checked_sub(nNumb[3], nNumb[1], nHeight) || o3tl::checked_add(nHeight, 1L, nHeight);
+                if (!bFail && nWidth > 0 && nHeight > 0)
                 {
                     GDIMetaFile aMtf;
 
-                    long nWidth =  nNumb[2] - nNumb[0] + 1;
-                    long nHeight = nNumb[3] - nNumb[1] + 1;
-
                     // if there is no preview -> try with gs to make one
-                    if (!bHasPreview && !utl::ConfigManager::IsAvoidConfig())
+                    if (!bHasPreview && !utl::ConfigManager::IsFuzzing())
                     {
                         bHasPreview = RenderAsEMF(pBuf.get(), nBytesRead, aGraphic);
                         if (!bHasPreview)
@@ -787,7 +805,7 @@ ipsGraphicImport( SvStream & rStream, Graphic & rGraphic, FilterConfigItem* )
                                                                       aGfxLink, aGraphic.GetGDIMetaFile() ) ) );
                     CreateMtfReplacementAction( aMtf, rStream, nOrigPos, nPSSize, nPosWMF, nSizeWMF, nPosTIFF, nSizeTIFF );
                     aMtf.WindStart();
-                    aMtf.SetPrefMapMode( MapUnit::MapPoint );
+                    aMtf.SetPrefMapMode(MapMode(MapUnit::MapPoint));
                     aMtf.SetPrefSize( Size( nWidth, nHeight ) );
                     rGraphic = aMtf;
                     bRetValue = true;

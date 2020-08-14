@@ -23,7 +23,6 @@ $(eval $(call gb_Module_add_targets,filter,\
 	CustomTarget_svg \
     Library_gie \
 	Library_filterconfig \
-	Library_flash \
     Library_icg \
 	Library_msfilter \
 	Library_odfflatxml \
@@ -40,26 +39,18 @@ $(eval $(call gb_Module_add_targets,filter,\
 	Package_docbook \
 	Package_xhtml \
 	Package_xslt \
-))
-
-$(eval $(call gb_Module_add_l10n_targets,filter,\
-	AllLangResTarget_eps \
-	AllLangResTarget_pdffilter \
-	AllLangResTarget_t602filter \
-	AllLangResTarget_xsltdlg \
 	UIConfig_filter \
 ))
 
-ifneq (,$(filter DESKTOP,$(BUILD_TYPE)))
-$(eval $(call gb_Module_add_targets,filter,\
-	Executable_svg2odf \
+$(eval $(call gb_Module_add_l10n_targets,filter,\
+	AllLangMoTarget_flt \
 ))
-endif
 
 $(eval $(call gb_Module_add_check_targets,filter,\
     CppunitTest_filter_xslt \
     CppunitTest_filter_priority \
     CppunitTest_filter_msfilter \
+    CppunitTest_filter_textfilterdetect \
 ))
 
 ifneq ($(DISABLE_CVE_TESTS),TRUE)
@@ -75,6 +66,7 @@ $(eval $(call gb_Module_add_check_targets,filter,\
     CppunitTest_filter_ras_test \
     CppunitTest_filter_tiff_test \
     CppunitTest_filter_tga_test \
+    CppunitTest_filter_svg \
 ))
 endif
 

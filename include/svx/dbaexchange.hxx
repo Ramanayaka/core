@@ -23,13 +23,14 @@
 #include <sal/config.h>
 
 #include <o3tl/typed_flags_set.hxx>
-#include <svtools/transfer.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/sdbc/XConnection.hpp>
+#include <vcl/transfer.hxx>
+#include <com/sun/star/beans/PropertyValue.hpp>
 #include <svx/dataaccessdescriptor.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <svx/svxdllapi.h>
 
+namespace com::sun::star::sdbc { class XConnection; }
+namespace com::sun::star::beans { class XPropertySet; }
 
 // column transfer formats
 enum class ColumnTransferFormatFlags
@@ -50,29 +51,17 @@ namespace svx
 
     //= OColumnTransferable
 
-    class SAL_WARN_UNUSED SVX_DLLPUBLIC OColumnTransferable : public TransferableHelper
+    class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC OColumnTransferable final : public TransferDataContainer
     {
-    protected:
-        ODataAccessDescriptor      m_aDescriptor;
-        OUString                   m_sCompatibleFormat;
-        ColumnTransferFormatFlags  m_nFormatFlags;
-
     public:
-        /** construct the transferable
-        */
-        OColumnTransferable(
-             const OUString& _rDatasource
-            ,const OUString& _rCommand
-            ,const OUString& _rFieldName
-            ,ColumnTransferFormatFlags  _nFormats
-        );
+        OColumnTransferable(ColumnTransferFormatFlags nFormats);
 
         /** construct the transferable from a data access descriptor
 
             Note that some of the aspects, in particular all which cannot be represented
             as string, can only be transported via the CTF_COLUMN_DESCRIPTOR format.
 
-        @param _rDescriptor
+        @param rDescriptor
             The descriptor for the column. It must contain at least
             <ul><li>information sufficient to create a connection, that is, either one of DataSource, DatabaseLocation,
                     ConnectionResource, and DataAccessDescriptorProperty::Connection</li>
@@ -81,10 +70,8 @@ namespace svx
                 <li>a ColumnName or ColumnObject</li>
             </ul>
         */
-        OColumnTransferable(
-            const ODataAccessDescriptor& _rDescriptor,
-            ColumnTransferFormatFlags    _nFormats
-        );
+        void setDescriptor(const ODataAccessDescriptor& rDescriptor);
+
 
         /** construct the transferable from a DatabaseForm component and a field name
 
@@ -140,26 +127,13 @@ namespace svx
         static ODataAccessDescriptor
                         extractColumnDescriptor(const TransferableDataHelper& _rData);
 
-        /** adds the data contained in the object to the given data container
-            <p>This method helps you treating this class as simple container class:<br/>
-            At the moment, it is a data container and a transferable.
-            Using <method>addDataToContainer</method>, you can treat the class as dumb data container,
-            doing the Drag'n'Drop with a TransferDataContainer instance (which may contain
-            additional formats)</p>
-            @TODO
-                split this class into a two separate classes: one for the data container aspect, one for
-                the transfer aspect
-        */
-        void addDataToContainer( TransferDataContainer* _pContainer );
-
-    protected:
+    private:
         // TransferableHelper overridables
         virtual void        AddSupportedFormats() override;
         virtual bool GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;
 
         static SotClipboardFormatId  getDescriptorFormatId();
 
-    private:
         SVX_DLLPRIVATE void implConstruct(
             const OUString&  _rDatasource
             ,const OUString& _rConnectionResource
@@ -167,6 +141,10 @@ namespace svx
             ,const OUString& _rCommand
             ,const OUString& _rFieldName
         );
+
+        ODataAccessDescriptor      m_aDescriptor;
+        OUString                   m_sCompatibleFormat;
+        ColumnTransferFormatFlags  m_nFormatFlags;
     };
 
 
@@ -174,7 +152,7 @@ namespace svx
 
     /** class for transferring data access objects (tables, queries, statements ...)
     */
-    class SAL_WARN_UNUSED SVX_DLLPUBLIC ODataAccessObjectTransferable : public TransferableHelper
+    class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC ODataAccessObjectTransferable : public TransferDataContainer
     {
         ODataAccessDescriptor   m_aDescriptor;
         OUString         m_sCompatibleObjectDescription;
@@ -196,6 +174,13 @@ namespace svx
             ,const css::uno::Reference< css::sdbc::XConnection >& _rxConnection
         );
 
+        void Update(
+            const OUString&  _rDatasourceOrLocation,
+            const sal_Int32 _nCommandType,
+            const OUString& _rCommand,
+            const css::uno::Reference< css::sdbc::XConnection >& _rxConnection
+        );
+
         /** should be used when copying a query object and no connection is available.
             @param  _rDatasource
                 The data source name.
@@ -210,11 +195,19 @@ namespace svx
             ,const OUString& _rCommand
         );
 
+        void Update(
+            const OUString& _rDatasourceOrLocation,
+            const sal_Int32 _nCommandType,
+            const OUString& _rCommand
+        );
+
         /** with this ctor, only the object descriptor format will be provided
         */
         ODataAccessObjectTransferable(
             const css::uno::Reference< css::beans::XPropertySet >& _rxLivingForm
         );
+
+        ODataAccessObjectTransferable();
 
         /** checks whether or not an object descriptor can be extracted from the data flavor vector given
             @param _rFlavors
@@ -224,7 +217,7 @@ namespace svx
         */
         static bool canExtractObjectDescriptor(const DataFlavorExVector& _rFlavors);
 
-        /** extracts a object descriptor from the transferable given
+        /** extracts an object descriptor from the transferable given
         */
         static ODataAccessDescriptor
                         extractObjectDescriptor(const TransferableDataHelper& _rData);
@@ -260,12 +253,12 @@ namespace svx
 
     /** class for transferring multiple columns
     */
-    class SAL_WARN_UNUSED SVX_DLLPUBLIC OMultiColumnTransferable : public TransferableHelper
+    class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC OMultiColumnTransferable final : public TransferDataContainer
     {
-        css::uno::Sequence< css::beans::PropertyValue >   m_aDescriptors;
-
     public:
-        OMultiColumnTransferable(const css::uno::Sequence< css::beans::PropertyValue >& _aDescriptors);
+        OMultiColumnTransferable();
+
+        void setDescriptors(const css::uno::Sequence< css::beans::PropertyValue >& rDescriptors);
 
         /** checks whether or not an object descriptor can be extracted from the data flavor vector given
             @param _rFlavors
@@ -275,15 +268,17 @@ namespace svx
         */
         static bool canExtractDescriptor(const DataFlavorExVector& _rFlavors);
 
-        /** extracts a object descriptor from the transferable given
+        /** extracts an object descriptor from the transferable given
         */
         static css::uno::Sequence< css::beans::PropertyValue > extractDescriptor(const TransferableDataHelper& _rData);
 
-    protected:
+    private:
         virtual void        AddSupportedFormats() override;
         virtual bool GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;
         virtual void        ObjectReleased() override;
         static SotClipboardFormatId  getDescriptorFormatId();
+
+        css::uno::Sequence< css::beans::PropertyValue >   m_aDescriptors;
     };
 
 

@@ -17,32 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "scitems.hxx"
-#include <editeng/eeitem.hxx>
+#include <scitems.hxx>
 
-#include <svx/algitem.hxx>
 #include <editeng/wghtitem.hxx>
 #include <editeng/postitem.hxx>
 #include <editeng/udlnitem.hxx>
-#include <editeng/fontitem.hxx>
-#include <editeng/fhgtitem.hxx>
 #include <editeng/justifyitem.hxx>
-#include <svl/style.hxx>
 #include <svtools/rtfout.hxx>
 #include <svtools/rtfkeywd.hxx>
+#include <tools/stream.hxx>
 
-#include "rtfexp.hxx"
-#include "filter.hxx"
-#include "cellvalue.hxx"
-#include "document.hxx"
-#include "patattr.hxx"
-#include "attrib.hxx"
-#include "cellform.hxx"
-#include "editutil.hxx"
-#include "stlpool.hxx"
-#include "ftools.hxx"
+#include <rtfexp.hxx>
+#include <cellvalue.hxx>
+#include <document.hxx>
+#include <patattr.hxx>
+#include <attrib.hxx>
+#include <cellform.hxx>
+#include <editutil.hxx>
+#include <ftools.hxx>
 
-void ScFormatFilterPlugin::ScExportRTF( SvStream& rStrm, ScDocument* pDoc,
+void ScFormatFilterPluginImpl::ScExportRTF( SvStream& rStrm, ScDocument* pDoc,
         const ScRange& rRange, const rtl_TextEncoding /*eNach*/ )
 {
     ScRTFExport aEx( rStrm, pDoc, rRange );
@@ -52,7 +46,7 @@ void ScFormatFilterPlugin::ScExportRTF( SvStream& rStrm, ScDocument* pDoc,
 ScRTFExport::ScRTFExport( SvStream& rStrmP, ScDocument* pDocP, const ScRange& rRangeP )
             :
             ScExportBase( rStrmP, pDocP, rRangeP ),
-            pCellX( new sal_uLong[ MAXCOL+2 ] )
+            pCellX( new sal_uLong[ pDoc->MaxCol()+2 ] )
 {
 }
 
@@ -81,7 +75,7 @@ void ScRTFExport::WriteTab( SCTAB nTab )
     rStrm.WriteChar( '{' ).WriteCharPtr( SAL_NEWLINE_STRING );
     if ( pDoc->HasTable( nTab ) )
     {
-        memset( &pCellX[0], 0, (MAXCOL+2) * sizeof(sal_uLong) );
+        memset( &pCellX[0], 0, (pDoc->MaxCol()+2) * sizeof(sal_uLong) );
         SCCOL nCol;
         SCCOL nEndCol = aRange.aEnd.Col();
         for ( nCol = aRange.aStart.Col(); nCol <= nEndCol; nCol++ )
@@ -101,38 +95,38 @@ void ScRTFExport::WriteTab( SCTAB nTab )
 void ScRTFExport::WriteRow( SCTAB nTab, SCROW nRow )
 {
     rStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TROWD ).WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TRGAPH ).WriteCharPtr( "30" ).WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TRLEFT ).WriteCharPtr( "-30" );
-    rStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TRRH ).WriteCharPtr( OString::number(pDoc->GetRowHeight(nRow, nTab)).getStr() );
+    rStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_TRRH ).WriteOString( OString::number(pDoc->GetRowHeight(nRow, nTab)) );
     SCCOL nCol;
     SCCOL nEndCol = aRange.aEnd.Col();
     for ( nCol = aRange.aStart.Col(); nCol <= nEndCol; nCol++ )
     {
         const ScPatternAttr* pAttr = pDoc->GetPattern( nCol, nRow, nTab );
-        const ScMergeAttr&      rMergeAttr      = static_cast<const ScMergeAttr&>(      pAttr->GetItem( ATTR_MERGE ));
-        const SvxVerJustifyItem& rVerJustifyItem= static_cast<const SvxVerJustifyItem&>(pAttr->GetItem( ATTR_VER_JUSTIFY ));
+        const ScMergeAttr&      rMergeAttr      = pAttr->GetItem( ATTR_MERGE );
+        const SvxVerJustifyItem& rVerJustifyItem= pAttr->GetItem( ATTR_VER_JUSTIFY );
 
-        const sal_Char* pChar;
+        const char* pChar;
 
         if ( rMergeAttr.GetColMerge() != 0 )
             rStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_CLMGF );
         else
         {
-            const ScMergeFlagAttr& rMergeFlagAttr = static_cast<const ScMergeFlagAttr&>( pAttr->GetItem( ATTR_MERGE_FLAG ) );
+            const ScMergeFlagAttr& rMergeFlagAttr = pAttr->GetItem( ATTR_MERGE_FLAG );
             if ( rMergeFlagAttr.IsHorOverlapped() )
                 rStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_CLMRG );
         }
 
         switch( rVerJustifyItem.GetValue() )
         {
-            case SVX_VER_JUSTIFY_TOP:       pChar = OOO_STRING_SVTOOLS_RTF_CLVERTALT;   break;
-            case SVX_VER_JUSTIFY_CENTER:    pChar = OOO_STRING_SVTOOLS_RTF_CLVERTALC;   break;
-            case SVX_VER_JUSTIFY_BOTTOM:    pChar = OOO_STRING_SVTOOLS_RTF_CLVERTALB;   break;
-            case SVX_VER_JUSTIFY_STANDARD:  pChar = OOO_STRING_SVTOOLS_RTF_CLVERTALB;   break;  //! Bottom
-            default:                        pChar = nullptr;           break;
+            case SvxCellVerJustify::Top:       pChar = OOO_STRING_SVTOOLS_RTF_CLVERTALT;   break;
+            case SvxCellVerJustify::Center:    pChar = OOO_STRING_SVTOOLS_RTF_CLVERTALC;   break;
+            case SvxCellVerJustify::Bottom:    pChar = OOO_STRING_SVTOOLS_RTF_CLVERTALB;   break;
+            case SvxCellVerJustify::Standard:  pChar = OOO_STRING_SVTOOLS_RTF_CLVERTALB;   break;  //! Bottom
+            default:                           pChar = nullptr;           break;
         }
         if ( pChar )
             rStrm.WriteCharPtr( pChar );
 
-        rStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_CELLX ).WriteCharPtr( OString::number(pCellX[nCol+1]).getStr() );
+        rStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_CELLX ).WriteOString( OString::number(pCellX[nCol+1]) );
         if ( (nCol & 0x0F) == 0x0F )
             rStrm.WriteCharPtr( SAL_NEWLINE_STRING ); // Do not let lines get too long
     }
@@ -155,7 +149,7 @@ void ScRTFExport::WriteCell( SCTAB nTab, SCROW nRow, SCCOL nCol )
 {
     const ScPatternAttr* pAttr = pDoc->GetPattern( nCol, nRow, nTab );
 
-    const ScMergeFlagAttr& rMergeFlagAttr = static_cast<const ScMergeFlagAttr&>( pAttr->GetItem( ATTR_MERGE_FLAG ) );
+    const ScMergeFlagAttr& rMergeFlagAttr = pAttr->GetItem( ATTR_MERGE_FLAG );
     if ( rMergeFlagAttr.IsHorOverlapped() )
     {
         rStrm.WriteCharPtr( OOO_STRING_SVTOOLS_RTF_CELL );
@@ -183,7 +177,7 @@ void ScRTFExport::WriteCell( SCTAB nTab, SCROW nRow, SCCOL nCol )
         default:
         {
             bValueData = pDoc->HasValueData(aPos);
-            sal_uLong nFormat = pAttr->GetNumberFormat(pFormatter);
+            sal_uInt32 nFormat = pAttr->GetNumberFormat(pFormatter);
             Color* pColor;
             aContent = ScCellFormat::GetString(*pDoc, aPos, nFormat, &pColor, *pFormatter);
         }
@@ -191,12 +185,12 @@ void ScRTFExport::WriteCell( SCTAB nTab, SCROW nRow, SCCOL nCol )
 
     bool bResetAttr(false);
 
-    const SvxHorJustifyItem&    rHorJustifyItem = static_cast<const SvxHorJustifyItem&>(pAttr->GetItem( ATTR_HOR_JUSTIFY ));
-    const SvxWeightItem&        rWeightItem     = static_cast<const SvxWeightItem&>(    pAttr->GetItem( ATTR_FONT_WEIGHT ));
-    const SvxPostureItem&       rPostureItem    = static_cast<const SvxPostureItem&>(   pAttr->GetItem( ATTR_FONT_POSTURE ));
-    const SvxUnderlineItem&     rUnderlineItem  = static_cast<const SvxUnderlineItem&>( pAttr->GetItem( ATTR_FONT_UNDERLINE ));
+    const SvxHorJustifyItem&    rHorJustifyItem = pAttr->GetItem( ATTR_HOR_JUSTIFY );
+    const SvxWeightItem&        rWeightItem     = pAttr->GetItem( ATTR_FONT_WEIGHT );
+    const SvxPostureItem&       rPostureItem    = pAttr->GetItem( ATTR_FONT_POSTURE );
+    const SvxUnderlineItem&     rUnderlineItem  = pAttr->GetItem( ATTR_FONT_UNDERLINE );
 
-    const sal_Char* pChar;
+    const char* pChar;
 
     switch( rHorJustifyItem.GetValue() )
     {

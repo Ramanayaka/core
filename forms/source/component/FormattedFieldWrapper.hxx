@@ -20,10 +20,13 @@
 #ifndef INCLUDED_FORMS_SOURCE_COMPONENT_FORMATTEDFIELDWRAPPER_HXX
 #define INCLUDED_FORMS_SOURCE_COMPONENT_FORMATTEDFIELDWRAPPER_HXX
 
-#include "FormComponent.hxx"
+#include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase3.hxx>
+#include <com/sun/star/io/XPersistObject.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/util/XCloneable.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <rtl/ref.hxx>
 
 namespace frm
 {
@@ -37,21 +40,18 @@ typedef ::cppu::WeakAggImplHelper3  <   css::io::XPersistObject
                                     ,   css::util::XCloneable
                                     >   OFormattedFieldWrapper_Base;
 
-class OFormattedFieldWrapper : public OFormattedFieldWrapper_Base
+class OFormattedFieldWrapper final : public OFormattedFieldWrapper_Base
 {
     css::uno::Reference< css::uno::XComponentContext> m_xContext;
 
-protected:
     css::uno::Reference< css::uno::XAggregation>      m_xAggregate;
 
     rtl::Reference< OEditModel > m_pEditPart;
     // if we act as formatted this is used to write the EditModel part
     css::uno::Reference< css::io::XPersistObject>     m_xFormattedPart;
 
-private:
     OFormattedFieldWrapper(const css::uno::Reference< css::uno::XComponentContext>& _rxFactory);
 
-protected:
     virtual ~OFormattedFieldWrapper() override;
 
 public:
@@ -78,7 +78,7 @@ public:
     // XCloneable
     virtual css::uno::Reference< css::util::XCloneable > SAL_CALL createClone(  ) override;
 
-protected:
+private:
     /// ensure we're in a defined state, which means a FormattedModel _OR_ an EditModel
     void ensureAggregate();
 };

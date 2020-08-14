@@ -17,8 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "WrappedDefaultProperty.hxx"
-#include "macros.hxx"
+#include <WrappedDefaultProperty.hxx>
+#include <tools/diagnose_ex.h>
+
+#include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/beans/XPropertyState.hpp>
 
 using namespace ::com::sun::star;
 
@@ -42,7 +45,7 @@ void WrappedDefaultProperty::setPropertyToDefault(
 {
     Reference< beans::XPropertySet > xInnerPropSet( xInnerPropertyState, uno::UNO_QUERY );
     if( xInnerPropSet.is())
-        this->setPropertyValue( m_aOuterDefaultValue, xInnerPropSet );
+        setPropertyValue( m_aOuterDefaultValue, xInnerPropSet );
 }
 
 uno::Any WrappedDefaultProperty::getPropertyDefault(
@@ -58,13 +61,13 @@ beans::PropertyState WrappedDefaultProperty::getPropertyState(
     try
     {
         Reference< beans::XPropertySet > xInnerProp( xInnerPropertyState, uno::UNO_QUERY_THROW );
-        uno::Any aValue = this->getPropertyValue( xInnerProp );
-        if( m_aOuterDefaultValue == this->convertInnerToOuterValue( aValue ))
+        uno::Any aValue = getPropertyValue( xInnerProp );
+        if( m_aOuterDefaultValue == convertInnerToOuterValue( aValue ))
             aState = beans::PropertyState_DEFAULT_VALUE;
     }
-    catch( const beans::UnknownPropertyException& ex )
+    catch( const beans::UnknownPropertyException& )
     {
-        ASSERT_EXCEPTION( ex );
+        DBG_UNHANDLED_EXCEPTION("chart2");
     }
     return aState;
 }

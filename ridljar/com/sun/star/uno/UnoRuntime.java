@@ -23,6 +23,8 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.UUID;
+import java.util.WeakHashMap;
 
 import com.sun.star.lib.uno.typedesc.FieldDescription;
 import com.sun.star.lib.uno.typedesc.TypeDescription;
@@ -52,13 +54,14 @@ public class UnoRuntime {
      * Also, this class might be changed to become <code>final</code> in a
      * future version.
      */
+    @Deprecated
     public UnoRuntime() {}
 
     /**
-     * Generates a world wide unique identifier string.
+     * Generates a worldwide unique identifier string.
      *
      * <p>It is guaranteed that every invocation of this method generates a new
-     * ID, which is unique within the VM.  The quality of &ldquo;world wide
+     * ID, which is unique within the VM.  The quality of &ldquo;worldwide
      * unique&rdquo; will depend on the actual implementation, you should look
      * at the source to determine if it meets your requirements.</p>
      *
@@ -87,7 +90,7 @@ public class UnoRuntime {
     }
 
     /**
-     * Generates a world wide unique object identifier (OID) for the given
+     * Generates a worldwide unique object identifier (OID) for the given
      * Java object.
      *
      * <p>It is guaranteed that subsequent calls to this method with the same
@@ -96,7 +99,7 @@ public class UnoRuntime {
      * <p>This method is generally of little use for client code.  It should be
      * considered a mistake that this method is published at all.</p>
      *
-     * @param object any object for which a OID shall be generated; must not be
+     * @param object any object for which an OID shall be generated; must not be
      * <code>null</code>
      * @return the generated OID
      * @see com.sun.star.uno.IQueryInterface#getOid
@@ -106,7 +109,16 @@ public class UnoRuntime {
         if (object instanceof IQueryInterface) {
             oid = ((IQueryInterface) object).getOid();
         }
-        return oid == null ? object.hashCode() + oidSuffix : oid;
+        if (oid == null) {
+            synchronized (oidMap) {
+                 oid = oidMap.get(object);
+                 if (oid == null) {
+                     oid = UUID.randomUUID().toString() + oidSuffix;
+                     oidMap.put(object, oid);
+                 }
+            }
+        }
+        return oid;
     }
 
     /**
@@ -318,7 +330,7 @@ public class UnoRuntime {
             return Integer.valueOf(0);
         case TypeClass.HYPER_value:
         case TypeClass.UNSIGNED_HYPER_value:
-            return Long.valueOf(0L);
+            return Long.valueOf(0);
         case TypeClass.FLOAT_value:
             return new Float(0.0f);
         case TypeClass.DOUBLE_value:
@@ -411,6 +423,7 @@ public class UnoRuntime {
      * @deprecated As of UDK&nbsp;3.2.0, this method is deprecated, without
      * offering a replacement.
      */
+    @Deprecated
     public static IEnvironment getEnvironment(String name, Object context)
         throws java.lang.Exception
     {
@@ -454,6 +467,7 @@ public class UnoRuntime {
      * @deprecated As of UDK&nbsp;3.2.0, this method is deprecated, without
      * offering a replacement.
      */
+    @Deprecated
     public static IBridge getBridge(
         IEnvironment from, IEnvironment to, Object[] args)
         throws java.lang.Exception
@@ -512,6 +526,7 @@ public class UnoRuntime {
      * @deprecated As of UDK&nbsp;3.2.0, this method is deprecated, without
      * offering a replacement.
      */
+    @Deprecated
     public static IBridge getBridgeByName(
         String from, Object fromContext, String to, Object toContext,
         Object[] args) throws java.lang.Exception
@@ -530,6 +545,7 @@ public class UnoRuntime {
      * @deprecated As of UDK&nbsp;3.2.0, this method is deprecated, without
      * offering a replacement.
      */
+    @Deprecated
     public static IBridge[] getBridges() {
         ArrayList<Object> l = new ArrayList<Object>();
         synchronized (bridges) {
@@ -561,6 +577,7 @@ public class UnoRuntime {
      * @deprecated As of UDK&nbsp;3.2.0, this method is deprecated, without
      * offering a replacement.
      */
+    @Deprecated
     public static IMapping getMapping(IEnvironment from, IEnvironment to)
         throws java.lang.Exception
     {
@@ -592,6 +609,7 @@ public class UnoRuntime {
      * @deprecated As of UDK&nbsp;3.2.0, this method is deprecated, without
      * offering a replacement.
      */
+    @Deprecated
     public static IMapping getMappingByName(String from, String to)
         throws java.lang.Exception
     {
@@ -610,6 +628,7 @@ public class UnoRuntime {
      * @deprecated As of UDK&nbsp;3.2.0, this method is deprecated, without
      * offering a replacement.
      */
+    @Deprecated
     public static boolean reset() {
         synchronized (bridges) {
             for (Iterator<java.lang.ref.WeakReference<IBridge>> i = bridges.values().iterator(); i.hasNext();) {
@@ -640,6 +659,7 @@ public class UnoRuntime {
     /**
      * @deprecated As of UDK&nbsp;3.2.0, do not use this internal field.
      */
+    @Deprecated
     public static final boolean DEBUG = false;
 
     private static final class BridgeTurner implements IBridge {
@@ -690,6 +710,7 @@ public class UnoRuntime {
         private final IBridge bridge;
     }
 
+    private static final WeakHashMap<Object,String> oidMap = new WeakHashMap<Object,String>();
     private static final String uniqueKeyHostPrefix
     = Integer.toString(new Object().hashCode(), 16) + ":";
     private static final Object uniqueKeyLock = new Object();

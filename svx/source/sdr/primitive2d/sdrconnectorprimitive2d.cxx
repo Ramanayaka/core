@@ -18,9 +18,8 @@
  */
 
 #include <sdr/primitive2d/sdrconnectorprimitive2d.hxx>
-#include <svx/sdr/primitive2d/sdrdecompositiontools.hxx>
+#include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 #include <svx/sdr/primitive2d/svx_primitivetypes2d.hxx>
 #include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
@@ -29,10 +28,8 @@
 using namespace com::sun::star;
 
 
-namespace drawinglayer
+namespace drawinglayer::primitive2d
 {
-    namespace primitive2d
-    {
         void SdrConnectorPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*aViewInformation*/) const
         {
             Primitive2DContainer aRetval;
@@ -64,7 +61,6 @@ namespace drawinglayer
                         getSdrLSTAttribute().getText(),
                         getSdrLSTAttribute().getLine(),
                         false,
-                        false,
                         false));
             }
 
@@ -80,7 +76,7 @@ namespace drawinglayer
         }
 
         SdrConnectorPrimitive2D::SdrConnectorPrimitive2D(
-            const attribute::SdrLineShadowTextAttribute& rSdrLSTAttribute,
+            const attribute::SdrLineEffectsTextAttribute& rSdrLSTAttribute,
             const ::basegfx::B2DPolygon& rUnitPolygon)
         :   BufferedDecompositionPrimitive2D(),
             maSdrLSTAttribute(rSdrLSTAttribute),
@@ -104,7 +100,6 @@ namespace drawinglayer
         // provide unique ID
         ImplPrimitive2DIDBlock(SdrConnectorPrimitive2D, PRIMITIVE2D_ID_SDRCONNECTORPRIMITIVE2D)
 
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

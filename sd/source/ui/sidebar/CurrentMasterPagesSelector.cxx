@@ -19,28 +19,23 @@
 
 #include "CurrentMasterPagesSelector.hxx"
 #include "PreviewValueSet.hxx"
-#include "ViewShellBase.hxx"
-#include "DrawViewShell.hxx"
-#include "drawdoc.hxx"
-#include "sdpage.hxx"
+#include <ViewShellBase.hxx>
+#include <DrawViewShell.hxx>
+#include <drawdoc.hxx>
+#include <sdpage.hxx>
 #include "MasterPageContainer.hxx"
+#include "MasterPageContainerProviders.hxx"
 #include "MasterPageDescriptor.hxx"
-#include "EventMultiplexer.hxx"
-#include "app.hrc"
-#include "DrawDocShell.hxx"
-#include "res_bmp.hrc"
-#include "sdresid.hxx"
-#include "helpids.h"
+#include <EventMultiplexer.hxx>
+#include <DrawDocShell.hxx>
 
-#include <vcl/image.hxx>
-#include <svx/svdmodel.hxx>
-#include <sfx2/request.hxx>
+#include <helpids.h>
 
 #include <set>
 
 using namespace ::com::sun::star;
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 VclPtr<vcl::Window> CurrentMasterPagesSelector::Create (
     vcl::Window* pParent,
@@ -51,7 +46,7 @@ VclPtr<vcl::Window> CurrentMasterPagesSelector::Create (
     if (pDocument == nullptr)
         return nullptr;
 
-    std::shared_ptr<MasterPageContainer> pContainer (new MasterPageContainer());
+    auto pContainer = std::make_shared<MasterPageContainer>();
 
     VclPtrInstance<CurrentMasterPagesSelector> pSelector(
             pParent,
@@ -127,24 +122,23 @@ void CurrentMasterPagesSelector::Fill (ItemList& rItemList)
 
         // Use the name of the master page to avoid duplicate entries.
         OUString sName (pMasterPage->GetName());
-        if (aMasterPageNames.find(sName)!=aMasterPageNames.end())
+        if (!aMasterPageNames.insert(sName).second)
             continue;
-        aMasterPageNames.insert (sName);
 
         // Look up the master page in the container and, when it is not yet
         // in it, insert it.
         MasterPageContainer::Token aToken = mpContainer->GetTokenForPageObject(pMasterPage);
         if (aToken == MasterPageContainer::NIL_TOKEN)
         {
-            SharedMasterPageDescriptor pDescriptor (new MasterPageDescriptor(
+            SharedMasterPageDescriptor pDescriptor = std::make_shared<MasterPageDescriptor>(
                 MasterPageContainer::MASTERPAGE,
                 nIndex,
                 OUString(),
                 pMasterPage->GetName(),
                 OUString(),
                 pMasterPage->IsPrecious(),
-                std::shared_ptr<PageObjectProvider>(new ExistingPageProvider(pMasterPage)),
-                std::shared_ptr<PreviewProvider>(new PagePreviewProvider())));
+                std::make_shared<ExistingPageProvider>(pMasterPage),
+                std::make_shared<PagePreviewProvider>());
             aToken = mpContainer->PutMasterPage(pDescriptor);
         }
 
@@ -154,7 +148,7 @@ void CurrentMasterPagesSelector::Fill (ItemList& rItemList)
 
 OUString CurrentMasterPagesSelector::GetContextMenuUIFile() const
 {
-    return OUString("modules/simpress/ui/currentmastermenu.ui");
+    return "modules/simpress/ui/currentmastermenu.ui";
 }
 
 void CurrentMasterPagesSelector::UpdateSelection()
@@ -183,21 +177,20 @@ void CurrentMasterPagesSelector::UpdateSelection()
             else
             {
                 SdrPage& rMasterPage (pPage->TRG_GetMasterPage());
-                SdPage* pMasterPage = static_cast<SdPage*>(&rMasterPage);
-                if (pMasterPage != nullptr)
-                    aNames.insert (pMasterPage->GetName());
+                assert(dynamic_cast<SdPage*>(&rMasterPage));
+                aNames.insert(static_cast<SdPage&>(rMasterPage).GetName());
             }
         }
     }
 
     // Find the items for the master pages in the set.
-    sal_uInt16 nItemCount (PreviewValueSet::GetItemCount());
+    sal_uInt16 nItemCount (mxPreviewValueSet->GetItemCount());
     for (nIndex=1; nIndex<=nItemCount && bLoop; nIndex++)
     {
-        OUString sName (PreviewValueSet::GetItemText (nIndex));
+        OUString sName (mxPreviewValueSet->GetItemText (nIndex));
         if (aNames.find(sName) != aNames.end())
         {
-            PreviewValueSet::SelectItem (nIndex);
+            mxPreviewValueSet->SelectItem (nIndex);
         }
     }
 }
@@ -278,6 +271,6 @@ IMPL_LINK(CurrentMasterPagesSelector,EventMultiplexerListener,
     }
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

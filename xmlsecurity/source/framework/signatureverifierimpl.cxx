@@ -18,17 +18,13 @@
  */
 
 
-#include "framework/signatureverifierimpl.hxx"
+#include <framework/signatureverifierimpl.hxx>
+#include <framework/xmlsignaturetemplateimpl.hxx>
 #include <com/sun/star/xml/crypto/XXMLSignatureTemplate.hpp>
-#include <com/sun/star/xml/wrapper/XXMLElementWrapper.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <comphelper/processfactory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/diagnose.h>
+#include <rtl/ref.hxx>
 
-namespace cssu = com::sun::star::uno;
-namespace cssl = com::sun::star::lang;
-namespace cssxc = com::sun::star::xml::crypto;
 
 #define IMPLEMENTATION_NAME "com.sun.star.xml.security.framework.SignatureVerifierImpl"
 
@@ -41,27 +37,6 @@ SignatureVerifierImpl::~SignatureVerifierImpl()
 {
 }
 
-bool SignatureVerifierImpl::checkReady() const
-/****** SignatureVerifierImpl/checkReady *************************************
- *
- *   NAME
- *  checkReady -- checks the conditions for the signature verification.
- *
- *   SYNOPSIS
- *  bReady = checkReady( );
- *
- *   FUNCTION
- *  checks whether all following conditions are satisfied:
- *  1. the result listener is ready;
- *  2. the SignatureEngine is ready.
- *
- *   RESULT
- *  bReady - true if all conditions are satisfied, false otherwise
- ******************************************************************************/
-{
-    return (m_xResultListener.is() && SignatureEngine::checkReady());
-}
-
 void SignatureVerifierImpl::notifyResultListener() const
 /****** SignatureVerifierImpl/notifyResultListener ***************************
  *
@@ -69,56 +44,51 @@ void SignatureVerifierImpl::notifyResultListener() const
  *  notifyResultListener -- notifies the listener about the verify result.
  ******************************************************************************/
 {
-    cssu::Reference< cssxc::sax::XSignatureVerifyResultListener >
-        xSignatureVerifyResultListener ( m_xResultListener , cssu::UNO_QUERY ) ;
+    css::uno::Reference< css::xml::crypto::sax::XSignatureVerifyResultListener >
+        xSignatureVerifyResultListener ( m_xResultListener , css::uno::UNO_QUERY ) ;
 
     xSignatureVerifyResultListener->signatureVerified( m_nSecurityId, m_nStatus );
 }
 
-void SignatureVerifierImpl::startEngine( const cssu::Reference<
-    cssxc::XXMLSignatureTemplate >&
-    xSignatureTemplate)
+void SignatureVerifierImpl::startEngine( const rtl::Reference<XMLSignatureTemplateImpl>& xSignatureTemplate)
 /****** SignatureVerifierImpl/startEngine ************************************
  *
  *   NAME
  *  startEngine -- verifies the signature.
- *
- *   SYNOPSIS
- *  startEngine( xSignatureTemplate );
  *
  *   INPUTS
  *  xSignatureTemplate - the signature template (along with all referenced
  *  elements) to be verified.
  ******************************************************************************/
 {
-    cssu::Reference< cssxc::XXMLSignatureTemplate > xResultTemplate;
+    css::uno::Reference< css::xml::crypto::XXMLSignatureTemplate > xResultTemplate;
     try
     {
-        xResultTemplate = m_xXMLSignature->validate(xSignatureTemplate, m_xXMLSecurityContext);
+        xResultTemplate = m_xXMLSignature->validate(css::uno::Reference<css::xml::crypto::XXMLSignatureTemplate>(xSignatureTemplate.get()), m_xXMLSecurityContext);
         m_nStatus = xResultTemplate->getStatus();
     }
-    catch( cssu::Exception& )
+    catch( css::uno::Exception& )
     {
-        m_nStatus = cssxc::SecurityOperationStatus_RUNTIMEERROR_FAILED;
+        m_nStatus = css::xml::crypto::SecurityOperationStatus_RUNTIMEERROR_FAILED;
     }
 }
 
 /* XSignatureVerifyResultBroadcaster */
 void SAL_CALL SignatureVerifierImpl::addSignatureVerifyResultListener(
-    const cssu::Reference< cssxc::sax::XSignatureVerifyResultListener >& listener )
+    const css::uno::Reference< css::xml::crypto::sax::XSignatureVerifyResultListener >& listener )
 {
     m_xResultListener = listener;
     tryToPerform();
 }
 
 void SAL_CALL SignatureVerifierImpl::removeSignatureVerifyResultListener(
-    const cssu::Reference< cssxc::sax::XSignatureVerifyResultListener >&)
+    const css::uno::Reference< css::xml::crypto::sax::XSignatureVerifyResultListener >&)
 {
 }
 
 /* XInitialization */
 void SAL_CALL SignatureVerifierImpl::initialize(
-    const cssu::Sequence< cssu::Any >& aArguments )
+    const css::uno::Sequence< css::uno::Any >& aArguments )
 {
     OSL_ASSERT(aArguments.getLength() == 5);
 
@@ -136,19 +106,13 @@ void SAL_CALL SignatureVerifierImpl::initialize(
 
 OUString SignatureVerifierImpl_getImplementationName ()
 {
-    return OUString( IMPLEMENTATION_NAME );
+    return IMPLEMENTATION_NAME;
 }
 
-cssu::Sequence< OUString > SAL_CALL SignatureVerifierImpl_getSupportedServiceNames(  )
+css::uno::Sequence< OUString > SignatureVerifierImpl_getSupportedServiceNames(  )
 {
-    cssu::Sequence<OUString> aRet { "com.sun.star.xml.crypto.sax.SignatureVerifier" };
+    css::uno::Sequence<OUString> aRet { "com.sun.star.xml.crypto.sax.SignatureVerifier" };
     return aRet;
-}
-
-cssu::Reference< cssu::XInterface > SAL_CALL SignatureVerifierImpl_createInstance(
-    const cssu::Reference< cssl::XMultiServiceFactory >& /*rSMgr*/)
-{
-    return static_cast<cppu::OWeakObject*>(new SignatureVerifierImpl);
 }
 
 /* XServiceInfo */
@@ -162,7 +126,7 @@ sal_Bool SAL_CALL SignatureVerifierImpl::supportsService( const OUString& rServi
     return cppu::supportsService(this, rServiceName);
 }
 
-cssu::Sequence< OUString > SAL_CALL SignatureVerifierImpl::getSupportedServiceNames(  )
+css::uno::Sequence< OUString > SAL_CALL SignatureVerifierImpl::getSupportedServiceNames(  )
 {
     return SignatureVerifierImpl_getSupportedServiceNames();
 }

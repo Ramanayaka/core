@@ -7,8 +7,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include "types.hxx"
-#include "scmatrix.hxx"
+#include <types.hxx>
+#include <scmatrix.hxx>
 
 namespace sc {
 
@@ -23,11 +23,9 @@ bool RangeMatrix::isRangeValid() const
 }
 
 MultiDataCellState::MultiDataCellState() :
-    meState(StateType::Invalid),
-    mnCol1(-1), mnRow1(-1), mnTab1(-1) {}
+    mnRow1(-1), mnCol1(-1), meState(StateType::Invalid) {}
 MultiDataCellState::MultiDataCellState( StateType eState ) :
-    meState(eState),
-    mnCol1(-1), mnRow1(-1), mnTab1(-1) {}
+    mnRow1(-1), mnCol1(-1), meState(eState) {}
 
 }
 

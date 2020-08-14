@@ -27,13 +27,12 @@
 #include <sfx2/lnkbase.hxx>
 #include <sfx2/Metadatable.hxx>
 
-#include <frmfmt.hxx>
+#include "frmfmt.hxx"
 #include <vector>
 
-namespace com { namespace sun { namespace star {
+namespace com::sun::star {
     namespace text { class XTextSection; }
-} } }
-
+}
 class SwSectionFormat;
 class SwDoc;
 class SwSection;
@@ -43,18 +42,18 @@ class SwServerObject;
 
 typedef std::vector<SwSection*> SwSections;
 
-enum SectionType { CONTENT_SECTION,
-                    TOX_HEADER_SECTION,
-                    TOX_CONTENT_SECTION,
-                    DDE_LINK_SECTION    = OBJECT_CLIENT_DDE,
-                    FILE_LINK_SECTION   = OBJECT_CLIENT_FILE
+enum class SectionType { Content,
+                    ToxHeader,
+                    ToxContent,
+                    DdeLink    = static_cast<int>(sfx2::SvBaseLinkObjectType::ClientDde),
+                    FileLink   = static_cast<int>(sfx2::SvBaseLinkObjectType::ClientFile)
                     };
 
-enum LinkCreateType
+enum class LinkCreateType
 {
-    CREATE_NONE,            // Do nothing.
-    CREATE_CONNECT,         // Connect created link.
-    CREATE_UPDATE           // Connect created link and update it.
+    NONE,            // Do nothing.
+    Connect,         // Connect created link.
+    Update           // Connect created link and update it.
 };
 
 class SW_DLLPUBLIC SwSectionData
@@ -128,7 +127,7 @@ public:
     void SetPassword(css::uno::Sequence<sal_Int8> const& rNew)
                                             { m_Password = rNew; }
     bool IsLinkType() const
-    { return (DDE_LINK_SECTION == m_eType) || (FILE_LINK_SECTION == m_eType); }
+    { return (SectionType::DdeLink == m_eType) || (SectionType::FileLink == m_eType); }
 
     bool IsConnectFlag() const                  { return m_bConnectFlag; }
     void SetConnectFlag(bool const bFlag){ m_bConnectFlag = bFlag; }
@@ -166,7 +165,7 @@ public:
 
     void SetSectionData(SwSectionData const& rData);
 
-    OUString GetSectionName() const         { return m_Data.GetSectionName(); }
+    const OUString& GetSectionName() const         { return m_Data.GetSectionName(); }
     void SetSectionName(OUString const& rName){ m_Data.SetSectionName(rName); }
     SectionType GetType() const             { return m_Data.GetType(); }
     void SetType(SectionType const eType)   { return m_Data.SetType(eType); }
@@ -196,13 +195,13 @@ public:
 
     inline SwSection* GetParent() const;
 
-    OUString GetCondition() const           { return m_Data.GetCondition(); }
+    OUString const & GetCondition() const           { return m_Data.GetCondition(); }
     void SetCondition(OUString const& rNew) { m_Data.SetCondition(rNew); }
 
-    OUString GetLinkFileName() const;
+    OUString const & GetLinkFileName() const;
     void SetLinkFileName(OUString const& rNew);
     // Password of linked file (only valid during runtime!)
-    OUString GetLinkFilePassword() const
+    OUString const & GetLinkFilePassword() const
         { return m_Data.GetLinkFilePassword(); }
     void SetLinkFilePassword(OUString const& rS)
         { m_Data.SetLinkFilePassword(rS); }
@@ -248,11 +247,11 @@ public:
 };
 
 // #i117863#
-class SwSectionFrameMoveAndDeleteHint : public SfxHint
+class SwSectionFrameMoveAndDeleteHint final : public SfxHint
 {
     public:
         SwSectionFrameMoveAndDeleteHint( const bool bSaveContent )
-            : SfxHint( SfxHintId::Dying )
+            : SfxHint( SfxHintId::SwSectionFrameMoveAndDelete )
             , mbSaveContent( bSaveContent )
         {}
 
@@ -267,7 +266,7 @@ class SwSectionFrameMoveAndDeleteHint : public SfxHint
 
 enum class SectionSort { Not, Pos };
 
-class SW_DLLPUBLIC SwSectionFormat
+class SW_DLLPUBLIC SwSectionFormat final
     : public SwFrameFormat
     , public ::sfx2::Metadatable
 {
@@ -281,7 +280,6 @@ class SW_DLLPUBLIC SwSectionFormat
 
     SAL_DLLPRIVATE void UpdateParent();      // Parent has been changed.
 
-protected:
     SwSectionFormat( SwFrameFormat* pDrvdFrame, SwDoc *pDoc );
     virtual void Modify( const SfxPoolItem* pOld, const SfxPoolItem* pNew ) override;
 
@@ -330,7 +328,8 @@ public:
     virtual bool IsInUndo() const override;
     virtual bool IsInContent() const override;
     virtual css::uno::Reference< css::rdf::XMetadatable > MakeUnoObject() override;
-    void dumpAsXml(struct _xmlTextWriter* pWriter) const;
+    virtual bool supportsFullDrawingLayerFillAttributeSet() const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 
 };
 

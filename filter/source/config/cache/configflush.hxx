@@ -27,8 +27,7 @@
 #include <cppuhelper/implbase.hxx>
 
 
-namespace filter{
-    namespace config{
+namespace filter::config {
 
 
 /** @short      supports registration of XRefreshListener
@@ -37,17 +36,12 @@ namespace filter{
     @descr      Such refresh listener will be called in case the
                 type/filter configuration will be changed at runtime.
  */
-class ConfigFlush : public BaseLock
+class ConfigFlush final : public BaseLock
                   , public ::cppu::WeakImplHelper<
                                                     css::util::XRefreshable,
                                                     css::lang::XServiceInfo
                                                   >
 {
-
-    // member
-
-    protected:
-
         /** @short  holds all listener, which are registered at this instance. */
         ::cppu::OMultiTypeInterfaceContainerHelper m_lListener;
 
@@ -90,16 +84,9 @@ class ConfigFlush : public BaseLock
         virtual void SAL_CALL addRefreshListener(const css::uno::Reference< css::util::XRefreshListener >& xListener) override;
 
         virtual void SAL_CALL removeRefreshListener(const css::uno::Reference< css::util::XRefreshListener >& xListener) override;
-
-
-        // interface to register/create this instance as an UNO service
-        static OUString impl_getImplementationName();
-        static css::uno::Sequence< OUString > impl_getSupportedServiceNames();
-        static css::uno::Reference< css::uno::XInterface > impl_createInstance(const css::uno::Reference< css::lang::XMultiServiceFactory >& xSMGR);
 };
 
-    } // namespace config
-} // namespace filter
+} // namespace filter::config
 
 #endif // INCLUDED_FILTER_SOURCE_CONFIG_CACHE_CONFIGFLUSH_HXX
 

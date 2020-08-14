@@ -18,23 +18,19 @@
  */
 
 #include "FullScreenPane.hxx"
-#include "ViewShellBase.hxx"
-#include <cppcanvas/vclfactory.hxx>
-#include <sfx2/dispatch.hxx>
+#include <vcl/vclevent.hxx>
 #include <vcl/wrkwin.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/dialog.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/util/URL.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 
-namespace sd { namespace framework {
+namespace sd::framework {
 
 FullScreenPane::FullScreenPane (
     const Reference<XComponentContext>& rxComponentContext,
@@ -55,10 +51,10 @@ FullScreenPane::FullScreenPane (
     sal_Int32 nScreenNumber = 1;
     ExtractArguments(rxPaneId, nScreenNumber);
 
-    if (mpWorkWindow.get() == nullptr)
+    if (!mpWorkWindow)
         return;
 
-    // Create a new top-leve window that is displayed full screen.
+    // Create a new top-level window that is displayed full screen.
     mpWorkWindow->ShowFullScreenMode(true, nScreenNumber);
     // For debugging (non-fullscreen) use mpWorkWindow->SetScreenNumber(nScreenNumber);
     mpWorkWindow->SetMenuBarMode(MenuBarMode::Hide);
@@ -104,7 +100,7 @@ void SAL_CALL FullScreenPane::disposing()
 {
     mpWindow.disposeAndClear();
 
-    if (mpWorkWindow.get() != nullptr)
+    if (mpWorkWindow)
     {
         Link<VclWindowEvent&,void> aWindowEventHandler (LINK(this, FullScreenPane, WindowEventHandler));
         mpWorkWindow->RemoveEventListener(aWindowEventHandler);
@@ -151,21 +147,21 @@ void SAL_CALL FullScreenPane::setAccessible (
 {
     ThrowIfDisposed();
 
-    if (mpWindow != nullptr)
+    if (mpWindow == nullptr)
+        return;
+
+    Reference<lang::XInitialization> xInitializable (rxAccessible, UNO_QUERY);
+    if (xInitializable.is())
     {
-        Reference<lang::XInitialization> xInitializable (rxAccessible, UNO_QUERY);
-        if (xInitializable.is())
-        {
-            vcl::Window* pParentWindow = mpWindow->GetParent();
-            Reference<css::accessibility::XAccessible> xAccessibleParent;
-            if (pParentWindow != nullptr)
-                xAccessibleParent = pParentWindow->GetAccessible();
-            Sequence<Any> aArguments (1);
-            aArguments[0] <<= xAccessibleParent;
-            xInitializable->initialize(aArguments);
-        }
-        GetWindow()->SetAccessible(rxAccessible);
+        vcl::Window* pParentWindow = mpWindow->GetParent();
+        Reference<css::accessibility::XAccessible> xAccessibleParent;
+        if (pParentWindow != nullptr)
+            xAccessibleParent = pParentWindow->GetAccessible();
+        Sequence<Any> aArguments (1);
+        aArguments[0] <<= xAccessibleParent;
+        xInitializable->initialize(aArguments);
     }
+    GetWindow()->SetAccessible(rxAccessible);
 }
 
 IMPL_LINK(FullScreenPane, WindowEventHandler, VclWindowEvent&, rEvent, void)
@@ -190,26 +186,23 @@ IMPL_LINK(FullScreenPane, WindowEventHandler, VclWindowEvent&, rEvent, void)
 Reference<rendering::XCanvas> FullScreenPane::CreateCanvas()
 {
     VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow(mxWindow);
-    if (pWindow)
-    {
-        Sequence<Any> aArg (5);
-
-        // common: first any is VCL pointer to window (for VCL canvas)
-        aArg[0] <<= reinterpret_cast<sal_Int64>(pWindow.get());
-        aArg[1] = Any();
-        aArg[2] <<= css::awt::Rectangle();
-        aArg[3] <<= false;
-        aArg[4] <<= mxWindow;
-
-        Reference<lang::XMultiServiceFactory> xFactory (
-            mxComponentContext->getServiceManager(), UNO_QUERY_THROW);
-        return Reference<rendering::XCanvas>(
-            xFactory->createInstanceWithArguments("com.sun.star.rendering.SpriteCanvas.VCL",
-                aArg),
-            UNO_QUERY);
-    }
-    else
+    if (!pWindow)
         throw RuntimeException();
+
+    Sequence<Any> aArg(4);
+
+    // common: first any is VCL pointer to window (for VCL canvas)
+    aArg[0] <<= reinterpret_cast<sal_Int64>(pWindow.get());
+    aArg[1] <<= css::awt::Rectangle();
+    aArg[2] <<= false;
+    aArg[3] <<= mxWindow;
+
+    Reference<lang::XMultiServiceFactory> xFactory (
+        mxComponentContext->getServiceManager(), UNO_QUERY_THROW);
+    return Reference<rendering::XCanvas>(
+        xFactory->createInstanceWithArguments("com.sun.star.rendering.SpriteCanvas.VCL",
+            aArg),
+        UNO_QUERY);
 }
 
 void FullScreenPane::ExtractArguments (
@@ -218,25 +211,17 @@ void FullScreenPane::ExtractArguments (
 {
     // Extract arguments from the resource URL.
     const util::URL aURL = rxPaneId->getFullResourceURL();
-    sal_Int32 nIndex = 0;
-    while (nIndex >= 0)
+    for (sal_Int32 nIndex{ 0 }; nIndex >= 0; )
     {
         const OUString aToken = aURL.Arguments.getToken(0, '&', nIndex);
-        if (!aToken.isEmpty())
+        OUString sValue;
+        if (aToken.startsWith("ScreenNumber=", &sValue))
         {
-            // Split at the first '='.
-            const sal_Int32 nAssign = aToken.indexOf('=');
-            const OUString sKey = aToken.copy(0, nAssign);
-            const OUString sValue = aToken.copy(nAssign+1);
-
-            if (sKey == "ScreenNumber")
-            {
-                rnScreenNumberReturnValue = sValue.toInt32();
-            }
+            rnScreenNumberReturnValue = sValue.toInt32();
         }
     }
 }
 
-} } // end of namespace sd::framework
+} // end of namespace sd::framework
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

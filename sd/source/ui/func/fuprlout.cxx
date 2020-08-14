@@ -17,40 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "fuprlout.hxx"
-#include <vcl/wrkwin.hxx>
+#include <fuprlout.hxx>
 #include <sfx2/dispatch.hxx>
-#include <svl/itempool.hxx>
-#include <sot/storage.hxx>
-#include <vcl/msgbox.hxx>
-#include <svx/svdundo.hxx>
 
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/request.hxx>
+#include <svl/stritem.hxx>
 
-#include "drawdoc.hxx"
-#include "sdpage.hxx"
-#include "pres.hxx"
-#include "DrawViewShell.hxx"
-#include "FrameView.hxx"
-#include "stlpool.hxx"
-#include "View.hxx"
-#include "glob.hrc"
-#include "glob.hxx"
-#include "strings.hrc"
-#include "strmname.h"
-#include "app.hrc"
-#include "DrawDocShell.hxx"
-#include "SlideSorterViewShell.hxx"
-#include "unprlout.hxx"
-#include "unchss.hxx"
-#include "unmovss.hxx"
-#include "sdattr.hxx"
-#include "sdresid.hxx"
-#include "drawview.hxx"
-#include <editeng/outliner.hxx>
-#include <editeng/editdata.hxx>
-#include "sdabstdlg.hxx"
+#include <sdattr.hrc>
+#include <drawdoc.hxx>
+#include <sdpage.hxx>
+#include <pres.hxx>
+#include <DrawViewShell.hxx>
+#include <View.hxx>
+#include <glob.hxx>
+#include <app.hrc>
+#include <DrawDocShell.hxx>
+#include <SlideSorterViewShell.hxx>
+#include <Window.hxx>
+#include <drawview.hxx>
+#include <sdabstdlg.hxx>
 #include <memory>
 
 namespace sd
@@ -111,9 +97,8 @@ void FuPresentationLayout::DoExecute( SfxRequest& rReq )
                 pSlideSorterViewShell->GetPageSelection());
             if (xSelection)
             {
-                for (auto it = xSelection->begin(); it != xSelection->end(); ++it)
+                for (SdPage *pPage : *xSelection)
                 {
-                    SdPage *pPage = *it;
                     if (pPage->IsSelected() || pPage->GetPageKind() != PageKind::Standard)
                         continue;
                     mpDoc->SetSelected(pPage, true);
@@ -174,9 +159,9 @@ void FuPresentationLayout::DoExecute( SfxRequest& rReq )
     else
     {
         SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
-        ScopedVclPtr<AbstractSdPresLayoutDlg> pDlg(pFact ? pFact->CreateSdPresLayoutDlg(mpDocSh, aSet ) : nullptr);
+        ScopedVclPtr<AbstractSdPresLayoutDlg> pDlg(pFact->CreateSdPresLayoutDlg(mpWindow ? mpWindow->GetFrameWeld() : nullptr, mpDocSh, aSet));
 
-        sal_uInt16 nResult = pDlg ? pDlg->Execute() : static_cast<short>(RET_CANCEL);
+        sal_uInt16 nResult = pDlg->Execute();
 
         switch (nResult)
         {
@@ -199,94 +184,93 @@ void FuPresentationLayout::DoExecute( SfxRequest& rReq )
         }
     }
 
-    if (!bError)
+    if (bError)
+        return;
+
+    mpDocSh->SetWaitCursor( true );
+
+    /* Here, we only exchange masterpages, therefore the current page
+       remains the current page. To prevent calling PageOrderChangedHint
+       during insertion and extraction of the masterpages, we block. */
+    /* That isn't quite right. If the masterpageview is active and you are
+       removing a masterpage, it's possible that you are removing the
+       current masterpage. So you have to call ResetActualPage ! */
+    if( dynamic_cast< const DrawViewShell *>( mpViewShell ) !=  nullptr && !bCheckMasters )
+        static_cast<DrawView*>(mpView)->BlockPageOrderChangedHint(true);
+
+    if (bLoad)
     {
-        mpDocSh->SetWaitCursor( true );
+        sal_Int32 nIdx{ 0 };
+        OUString aFileName = aFile.getToken(0, DOCUMENT_TOKEN, nIdx);
+        SdDrawDocument* pTempDoc = mpDoc->OpenBookmarkDoc( aFileName );
 
-        /* Here, we only exchange masterpages, therefore the current page
-           remains the current page. To prevent calling PageOrderChangedHint
-           during insertion and extraction of the masterpages, we block. */
-        /* That isn't quite right. If the masterpageview is active and you are
-           removing a masterpage, it's possible that you are removing the
-           current masterpage. So you have to call ResetActualPage ! */
-        if( dynamic_cast< const DrawViewShell *>( mpViewShell ) !=  nullptr && !bCheckMasters )
-            static_cast<DrawView*>(mpView)->BlockPageOrderChangedHint(true);
+        // #69581: If I chose the standard-template I got no filename and so I get no
+        //         SdDrawDocument-Pointer. But the method SetMasterPage is able to handle
+        //         a NULL-pointer as a Standard-template ( look at SdDrawDocument::SetMasterPage )
+        OUString aLayoutName;
+        if( pTempDoc )
+            aLayoutName = aFile.getToken(0, DOCUMENT_TOKEN, nIdx);
+        for (auto nSelectedPage : aSelectedPageNums)
+            mpDoc->SetMasterPage(nSelectedPage, aLayoutName, pTempDoc, bMasterPage, bCheckMasters);
+        mpDoc->CloseBookmarkDoc();
+    }
+    else
+    {
+        // use master page with the layout name aFile from current Doc
+        for (auto nSelectedPage : aSelectedPageNums)
+            mpDoc->SetMasterPage(nSelectedPage, aFile, mpDoc, bMasterPage, bCheckMasters);
+    }
 
-        if (bLoad)
+    // remove blocking
+    if( dynamic_cast< const DrawViewShell *>( mpViewShell ) !=  nullptr && !bCheckMasters )
+        static_cast<DrawView*>(mpView)->BlockPageOrderChangedHint(false);
+
+    // if the master page was visible, show it again
+    if (!aSelectedPages.empty())
+    {
+        if (bOnMaster)
         {
-            OUString aFileName = aFile.getToken(0, DOCUMENT_TOKEN);
-            SdDrawDocument* pTempDoc = mpDoc->OpenBookmarkDoc( aFileName );
+            if( dynamic_cast< const DrawViewShell *>( mpViewShell ) !=  nullptr)
+            {
+                ::sd::View* pView =
+                      static_cast<DrawViewShell*>(mpViewShell)->GetView();
+                for (auto pSelectedPage : aSelectedPages)
+                {
+                    sal_uInt16 nPgNum = pSelectedPage->TRG_GetMasterPage().GetPageNum();
 
-            // #69581: If I chose the standard-template I got no filename and so I get no
-            //         SdDrawDocument-Pointer. But the method SetMasterPage is able to handle
-            //         a NULL-pointer as a Standard-template ( look at SdDrawDocument::SetMasterPage )
-            OUString aLayoutName;
-            if( pTempDoc )
-                aLayoutName = aFile.getToken(1, DOCUMENT_TOKEN);
-            for (auto nSelectedPage : aSelectedPageNums)
-                mpDoc->SetMasterPage(nSelectedPage, aLayoutName, pTempDoc, bMasterPage, bCheckMasters);
-            mpDoc->CloseBookmarkDoc();
+                    if (static_cast<DrawViewShell*>(mpViewShell)->GetPageKind() == PageKind::Notes)
+                        nPgNum++;
+
+                    pView->HideSdrPage();
+                    pView->ShowSdrPage(pView->GetModel()->GetMasterPage(nPgNum));
+                }
+            }
+
+            // force update of TabBar
+            mpViewShell->GetViewFrame()->GetDispatcher()->Execute(SID_MASTERPAGE, SfxCallMode::ASYNCHRON | SfxCallMode::RECORD);
         }
         else
         {
-            // use master page with the layout name aFile from current Doc
-            for (auto nSelectedPage : aSelectedPageNums)
-                mpDoc->SetMasterPage(nSelectedPage, aFile, mpDoc, bMasterPage, bCheckMasters);
+            for (auto pSelectedPage : aSelectedPages)
+                pSelectedPage->SetAutoLayout(pSelectedPage->GetAutoLayout());
         }
-
-        // remove blocking
-        if( dynamic_cast< const DrawViewShell *>( mpViewShell ) !=  nullptr && !bCheckMasters )
-            static_cast<DrawView*>(mpView)->BlockPageOrderChangedHint(false);
-
-        // if the master page was visible, show it again
-        if (!aSelectedPages.empty())
-        {
-            if (bOnMaster)
-            {
-                if( dynamic_cast< const DrawViewShell *>( mpViewShell ) !=  nullptr)
-                {
-                    ::sd::View* pView =
-                          static_cast<DrawViewShell*>(mpViewShell)->GetView();
-                    for (auto pSelectedPage : aSelectedPages)
-                    {
-                        sal_uInt16 nPgNum = pSelectedPage->TRG_GetMasterPage().GetPageNum();
-
-                        if (static_cast<DrawViewShell*>(mpViewShell)->GetPageKind() == PageKind::Notes)
-                            nPgNum++;
-
-                        pView->HideSdrPage();
-                        pView->ShowSdrPage(pView->GetModel()->GetMasterPage(nPgNum));
-                    }
-                }
-
-                // force update of TabBar
-                mpViewShell->GetViewFrame()->GetDispatcher()->Execute(SID_MASTERPAGE, SfxCallMode::ASYNCHRON | SfxCallMode::RECORD);
-            }
-            else
-            {
-                for (auto pSelectedPage : aSelectedPages)
-                    pSelectedPage->SetAutoLayout(pSelectedPage->GetAutoLayout());
-            }
-        }
-
-        //Undo transfer to document selection
-        for (auto pPage : aUnselect)
-            mpDoc->SetSelected(pPage, false);
-
-
-        // fake a mode change to repaint the page tab bar
-        if( mpViewShell && dynamic_cast< const DrawViewShell *>( mpViewShell ) !=  nullptr )
-        {
-            DrawViewShell* pDrawViewSh =
-                static_cast<DrawViewShell*>(mpViewShell);
-            EditMode eMode = pDrawViewSh->GetEditMode();
-            bool bLayer = pDrawViewSh->IsLayerModeActive();
-            pDrawViewSh->ChangeEditMode( eMode, !bLayer );
-            pDrawViewSh->ChangeEditMode( eMode, bLayer );
-        }
-
-        mpDocSh->SetWaitCursor( false );
     }
+
+    //Undo transfer to document selection
+    for (auto pPage : aUnselect)
+        mpDoc->SetSelected(pPage, false);
+
+
+    // fake a mode change to repaint the page tab bar
+    if( auto pDrawViewSh = dynamic_cast<DrawViewShell *>( mpViewShell ) )
+    {
+        EditMode eMode = pDrawViewSh->GetEditMode();
+        bool bLayer = pDrawViewSh->IsLayerModeActive();
+        pDrawViewSh->ChangeEditMode( eMode, !bLayer );
+        pDrawViewSh->ChangeEditMode( eMode, bLayer );
+    }
+
+    mpDocSh->SetWaitCursor( false );
 }
 
 } // end of namespace sd

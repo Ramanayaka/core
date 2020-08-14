@@ -20,10 +20,8 @@
 #ifndef INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSINSERTIONINDICATOROVERLAY_HXX
 #define INCLUDED_SD_SOURCE_UI_SLIDESORTER_INC_VIEW_SLSINSERTIONINDICATOROVERLAY_HXX
 
-#include "model/SlsSharedPageDescriptor.hxx"
-#include "view/SlsILayerPainter.hxx"
-#include "controller/SlsTransferableData.hxx"
-#include "sdxfer.hxx"
+#include <view/SlsILayerPainter.hxx>
+#include <controller/SlsTransferableData.hxx>
 
 #include <tools/gen.hxx>
 #include <vcl/bitmapex.hxx>
@@ -31,20 +29,15 @@
 #include <vector>
 
 class OutputDevice;
+class SdTransferable;
 
-namespace sd { namespace slidesorter {
-class SlideSorter;
-} }
+namespace sd::slidesorter { class SlideSorter; }
 
-namespace sd { namespace slidesorter { namespace controller {
-class Transferable;
-} } }
-
-namespace sd { namespace slidesorter { namespace view {
+namespace sd::slidesorter::view {
 
 class FramePainter;
 
-/** The insertion indicator is painted as a vertical or horizonal bar
+/** The insertion indicator is painted as a vertical or horizontal bar
     in the space between slides.
 */
 class InsertionIndicatorOverlay
@@ -53,7 +46,7 @@ class InsertionIndicatorOverlay
 {
 public:
     InsertionIndicatorOverlay (SlideSorter& rSlideSorter);
-    virtual ~InsertionIndicatorOverlay() override;
+    virtual ~InsertionIndicatorOverlay() COVERITY_NOEXCEPT_FALSE override;
 
     virtual void SetLayerInvalidator (const SharedILayerInvalidator& rpInvalidator) override;
 
@@ -84,7 +77,6 @@ private:
     // Center of the insertion indicator.
     Point maLocation;
     BitmapEx maIcon;
-    Point maIconOffset;
     std::unique_ptr<FramePainter> mpShadowPainter;
 
     Point PaintRepresentatives (
@@ -105,7 +97,7 @@ private:
         const sal_Int32 nSelectionCount);
 };
 
-} } } // end of namespace ::sd::slidesorter::view
+} // end of namespace ::sd::slidesorter::view
 
 #endif
 

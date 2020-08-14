@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <sal/config.h>
+#include <sal/log.hxx>
 
 #include <cstddef>
 
@@ -26,12 +27,15 @@
 #include <unotextcursor.hxx>
 #include <unotextrange.hxx>
 #include <unocrsr.hxx>
-#include "doc.hxx"
+#include <ndtxt.hxx>
+#include <doc.hxx>
 #include <IDocumentContentOperations.hxx>
 #include <IDocumentStylePoolAccess.hxx>
 #include <tools/datetime.hxx>
-#include "poolfmt.hxx"
-#include "unoredline.hxx"
+#include <poolfmt.hxx>
+#include <unoredline.hxx>
+#include <DocumentRedlineManager.hxx>
+#include "xmlimp.hxx"
 #include <o3tl/any.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <vcl/svapp.hxx>
@@ -42,7 +46,6 @@ using namespace ::xmloff::token;
 
 using ::com::sun::star::text::XTextCursor;
 using ::com::sun::star::text::XTextRange;
-using ::com::sun::star::text::XText;
 using ::com::sun::star::text::XWordCursor;
 using ::com::sun::star::lang::XUnoTunnel;
 using ::com::sun::star::beans::XPropertySet;
@@ -58,7 +61,7 @@ static SwDoc* lcl_GetDocViaTunnel( Reference<XTextCursor> const & rCursor )
     OTextCursorHelper *const pXCursor =
         ::sw::UnoTunnelGetImplementation<OTextCursorHelper>(xTunnel);
     OSL_ENSURE( pXCursor, "OTextCursorHelper missing" );
-    return (pXCursor) ? pXCursor->GetDoc() : nullptr;
+    return pXCursor ? pXCursor->GetDoc() : nullptr;
 }
 
 static SwDoc* lcl_GetDocViaTunnel( Reference<XTextRange> const & rRange )
@@ -69,7 +72,7 @@ static SwDoc* lcl_GetDocViaTunnel( Reference<XTextRange> const & rRange )
         ::sw::UnoTunnelGetImplementation<SwXTextRange>(xTunnel);
     // #i115174#: this may be a SvxUnoTextRange
     // OSL_ENSURE( pXRange, "SwXTextRange missing" );
-    return (pXRange) ? &pXRange->GetDoc() : nullptr;
+    return pXRange ? &pXRange->GetDoc() : nullptr;
 }
 
 // XTextRangeOrNodeIndexPosition: store a position into the text
@@ -80,6 +83,8 @@ static SwDoc* lcl_GetDocViaTunnel( Reference<XTextRange> const & rRange )
 // the matter that (e.g in section import) we delete a few characters,
 // which may cause bookmarks (as used by XTextRange) to be deleted.
 
+namespace {
+
 class XTextRangeOrNodeIndexPosition
 {
     Reference<XTextRange> xRange;
@@ -88,29 +93,29 @@ class XTextRangeOrNodeIndexPosition
 public:
     XTextRangeOrNodeIndexPosition();
 
-    void Set( Reference<XTextRange> & rRange );
-    void Set( SwNodeIndex& rIndex );
-    void SetAsNodeIndex( Reference<XTextRange> & rRange );
+    void Set( Reference<XTextRange> const & rRange );
+    void Set( SwNodeIndex const & rIndex );
+    void SetAsNodeIndex( Reference<XTextRange> const & rRange );
 
     void CopyPositionInto(SwPosition& rPos, SwDoc & rDoc);
     SwDoc* GetDoc();
 
-    bool IsValid();
+    bool IsValid() const;
 };
 
-XTextRangeOrNodeIndexPosition::XTextRangeOrNodeIndexPosition() :
-    xRange(nullptr),
-    pIndex(nullptr)
+}
+
+XTextRangeOrNodeIndexPosition::XTextRangeOrNodeIndexPosition()
 {
 }
 
-void XTextRangeOrNodeIndexPosition::Set( Reference<XTextRange> & rRange )
+void XTextRangeOrNodeIndexPosition::Set( Reference<XTextRange> const & rRange )
 {
     xRange = rRange->getStart();    // set bookmark
     pIndex.reset();
 }
 
-void XTextRangeOrNodeIndexPosition::Set( SwNodeIndex& rIndex )
+void XTextRangeOrNodeIndexPosition::Set( SwNodeIndex const & rIndex )
 {
     pIndex.reset( new SwNodeIndex(rIndex) );
     (*pIndex)-- ;   // previous node!!!
@@ -118,7 +123,7 @@ void XTextRangeOrNodeIndexPosition::Set( SwNodeIndex& rIndex )
 }
 
 void XTextRangeOrNodeIndexPosition::SetAsNodeIndex(
-    Reference<XTextRange> & rRange )
+    Reference<XTextRange> const & rRange )
 {
     // XTextRange -> XTunnel -> SwXTextRange
     SwDoc* pDoc = lcl_GetDocViaTunnel(rRange);
@@ -167,7 +172,7 @@ SwDoc* XTextRangeOrNodeIndexPosition::GetDoc()
     return (nullptr != pIndex) ? pIndex->GetNodes().GetDoc() : lcl_GetDocViaTunnel(xRange);
 }
 
-bool XTextRangeOrNodeIndexPosition::IsValid()
+bool XTextRangeOrNodeIndexPosition::IsValid() const
 {
     return ( xRange.is() || (pIndex != nullptr) );
 }
@@ -180,7 +185,7 @@ public:
     ~RedlineInfo();
 
     // redline type (insert, delete, ...)
-    RedlineType_t eType;
+    RedlineType eType;
 
     // info fields:
     OUString sAuthor;               // change author string
@@ -207,7 +212,7 @@ public:
 };
 
 RedlineInfo::RedlineInfo() :
-    eType(nsRedlineType_t::REDLINE_INSERT),
+    eType(RedlineType::Insert),
     sAuthor(),
     sComment(),
     aDateTime(),
@@ -226,30 +231,33 @@ RedlineInfo::~RedlineInfo()
     delete pNextRedline;
 }
 
-static const char g_sShowChanges[] = "ShowChanges";
-static const char g_sRecordChanges[] = "RecordChanges";
-static const char g_sRedlineProtectionKey[] = "RedlineProtectionKey";
+const char g_sShowChanges[] = "ShowChanges";
+const char g_sRecordChanges[] = "RecordChanges";
+const char g_sRedlineProtectionKey[] = "RedlineProtectionKey";
 
 XMLRedlineImportHelper::XMLRedlineImportHelper(
+    SvXMLImport & rImport,
     bool bNoRedlinesPlease,
     const Reference<XPropertySet> & rModel,
-    const Reference<XPropertySet> & rImportInfo ) :
-        sInsertion( GetXMLToken( XML_INSERTION )),
-        sDeletion( GetXMLToken( XML_DELETION )),
-        sFormatChange( GetXMLToken( XML_FORMAT_CHANGE )),
-        aRedlineMap(),
-        bIgnoreRedlines(bNoRedlinesPlease),
-        xModelPropertySet(rModel),
-        xImportInfoPropertySet(rImportInfo)
+    const Reference<XPropertySet> & rImportInfo )
+    :   m_rImport(rImport)
+    ,
+        m_sInsertion( GetXMLToken( XML_INSERTION )),
+        m_sDeletion( GetXMLToken( XML_DELETION )),
+        m_sFormatChange( GetXMLToken( XML_FORMAT_CHANGE )),
+        m_aRedlineMap(),
+        m_bIgnoreRedlines(bNoRedlinesPlease),
+        m_xModelPropertySet(rModel),
+        m_xImportInfoPropertySet(rImportInfo)
 {
     // check to see if redline mode is handled outside of component
     bool bHandleShowChanges = true;
     bool bHandleRecordChanges = true;
     bool bHandleProtectionKey = true;
-    if ( xImportInfoPropertySet.is() )
+    if ( m_xImportInfoPropertySet.is() )
     {
         Reference<XPropertySetInfo> xInfo =
-            xImportInfoPropertySet->getPropertySetInfo();
+            m_xImportInfoPropertySet->getPropertySetInfo();
 
         bHandleShowChanges = ! xInfo->hasPropertyByName( g_sShowChanges );
         bHandleRecordChanges = ! xInfo->hasPropertyByName( g_sRecordChanges );
@@ -257,33 +265,32 @@ XMLRedlineImportHelper::XMLRedlineImportHelper(
     }
 
     // get redline mode
-    bShowChanges = *o3tl::doAccess<bool>(
-        ( bHandleShowChanges ? xModelPropertySet : xImportInfoPropertySet )
+    m_bShowChanges = *o3tl::doAccess<bool>(
+        ( bHandleShowChanges ? m_xModelPropertySet : m_xImportInfoPropertySet )
         ->getPropertyValue( g_sShowChanges ));
-    bRecordChanges = *o3tl::doAccess<bool>(
-        ( bHandleRecordChanges ? xModelPropertySet : xImportInfoPropertySet )
+    m_bRecordChanges = *o3tl::doAccess<bool>(
+        ( bHandleRecordChanges ? m_xModelPropertySet : m_xImportInfoPropertySet )
         ->getPropertyValue( g_sRecordChanges ));
     {
-        Any aAny = (bHandleProtectionKey  ? xModelPropertySet
-                                          : xImportInfoPropertySet )
+        Any aAny = (bHandleProtectionKey  ? m_xModelPropertySet
+                                          : m_xImportInfoPropertySet )
                         ->getPropertyValue( g_sRedlineProtectionKey );
-        aAny >>= aProtectionKey;
+        aAny >>= m_aProtectionKey;
     }
 
     // set redline mode to "don't record changes"
     if( bHandleRecordChanges )
     {
-        xModelPropertySet->setPropertyValue( g_sRecordChanges, makeAny(false) );
+        m_xModelPropertySet->setPropertyValue( g_sRecordChanges, makeAny(false) );
     }
 }
 
 XMLRedlineImportHelper::~XMLRedlineImportHelper()
 {
     // delete all left over (and obviously incomplete) RedlineInfos (and map)
-    RedlineMapType::iterator aFind = aRedlineMap.begin();
-    for( ; aRedlineMap.end() != aFind; ++aFind )
+    for( const auto& rEntry : m_aRedlineMap )
     {
-        RedlineInfo* pInfo = aFind->second;
+        RedlineInfo* pInfo = rEntry.second;
 
         // left-over redlines. Insert them if possible (but assert),
         // and delete the incomplete ones. Finally, delete it.
@@ -313,17 +320,17 @@ XMLRedlineImportHelper::~XMLRedlineImportHelper()
         }
         delete pInfo;
     }
-    aRedlineMap.clear();
+    m_aRedlineMap.clear();
 
     // set redline mode, either to info property set, or directly to
     // the document
     bool bHandleShowChanges = true;
     bool bHandleRecordChanges = true;
     bool bHandleProtectionKey = true;
-    if ( xImportInfoPropertySet.is() )
+    if ( m_xImportInfoPropertySet.is() )
     {
         Reference<XPropertySetInfo> xInfo =
-            xImportInfoPropertySet->getPropertySetInfo();
+            m_xImportInfoPropertySet->getPropertySetInfo();
 
         bHandleShowChanges = ! xInfo->hasPropertyByName( g_sShowChanges );
         bHandleRecordChanges = ! xInfo->hasPropertyByName( g_sRecordChanges );
@@ -335,23 +342,30 @@ XMLRedlineImportHelper::~XMLRedlineImportHelper()
     {
         Any aAny;
 
-        aAny <<= bShowChanges;
+        aAny <<= m_bShowChanges;
         if ( bHandleShowChanges )
-            xModelPropertySet->setPropertyValue( g_sShowChanges, aAny );
+        {
+            aAny <<= true;
+            m_xModelPropertySet->setPropertyValue( g_sShowChanges, aAny );
+            // TODO maybe we need some property for the view-setting?
+            SwDoc *const pDoc(SwImport::GetDocFromXMLImport(m_rImport));
+            assert(pDoc);
+            pDoc->GetDocumentRedlineManager().SetHideRedlines(!m_bShowChanges);
+        }
         else
-            xImportInfoPropertySet->setPropertyValue( g_sShowChanges, aAny );
+            m_xImportInfoPropertySet->setPropertyValue( g_sShowChanges, aAny );
 
-        aAny <<= bRecordChanges;
+        aAny <<= m_bRecordChanges;
         if ( bHandleRecordChanges )
-            xModelPropertySet->setPropertyValue( g_sRecordChanges, aAny );
+            m_xModelPropertySet->setPropertyValue( g_sRecordChanges, aAny );
         else
-            xImportInfoPropertySet->setPropertyValue( g_sRecordChanges, aAny );
+            m_xImportInfoPropertySet->setPropertyValue( g_sRecordChanges, aAny );
 
-        aAny <<= aProtectionKey;
+        aAny <<= m_aProtectionKey;
         if ( bHandleProtectionKey )
-            xModelPropertySet->setPropertyValue( g_sRedlineProtectionKey, aAny );
+            m_xModelPropertySet->setPropertyValue( g_sRedlineProtectionKey, aAny );
         else
-            xImportInfoPropertySet->setPropertyValue( g_sRedlineProtectionKey, aAny);
+            m_xImportInfoPropertySet->setPropertyValue( g_sRedlineProtectionKey, aAny);
     }
     catch (const uno::RuntimeException &) // fdo#65882
     {
@@ -375,18 +389,18 @@ void XMLRedlineImportHelper::Add(
     // 3b) attach to existing redline
 
     // ad 1)
-    RedlineType_t eType;
-    if (rType.equals(sInsertion))
+    RedlineType eType;
+    if (rType == m_sInsertion)
     {
-        eType = nsRedlineType_t::REDLINE_INSERT;
+        eType = RedlineType::Insert;
     }
-    else if (rType.equals(sDeletion))
+    else if (rType == m_sDeletion)
     {
-        eType = nsRedlineType_t::REDLINE_DELETE;
+        eType = RedlineType::Delete;
     }
-    else if (rType.equals(sFormatChange))
+    else if (rType == m_sFormatChange)
     {
-        eType = nsRedlineType_t::REDLINE_FORMAT;
+        eType = RedlineType::Format;
     }
     else
     {
@@ -405,26 +419,22 @@ void XMLRedlineImportHelper::Add(
     pInfo->bMergeLastParagraph = bMergeLastPara;
 
     // ad 3)
-    if (aRedlineMap.end() == aRedlineMap.find(rId))
-    {
-        // 3a) insert into map
-        aRedlineMap[rId] = pInfo;
-    }
-    else
-    {
-        // 3b) we already have a redline with this name: hierarchical redlines
-        // insert pInfo as last element in the chain.
-        // (hierarchy sanity checking happens on inserting into the document)
+    auto itPair = m_aRedlineMap.emplace(rId, pInfo);
+    if (itPair.second)
+        return;
 
-        // find last element
-        RedlineInfo* pInfoChain;
-        for( pInfoChain = aRedlineMap[rId];
-            nullptr != pInfoChain->pNextRedline;
-            pInfoChain = pInfoChain->pNextRedline) ; // empty loop
+    // 3b) we already have a redline with this name: hierarchical redlines
+    // insert pInfo as last element in the chain.
+    // (hierarchy sanity checking happens on inserting into the document)
 
-        // insert as last element
-        pInfoChain->pNextRedline = pInfo;
-    }
+    // find last element
+    RedlineInfo* pInfoChain;
+    for( pInfoChain = itPair.first->second;
+        nullptr != pInfoChain->pNextRedline;
+        pInfoChain = pInfoChain->pNextRedline) ; // empty loop
+
+    // insert as last element
+    pInfoChain->pNextRedline = pInfo;
 }
 
 Reference<XTextCursor> XMLRedlineImportHelper::CreateRedlineTextSection(
@@ -437,8 +447,8 @@ Reference<XTextCursor> XMLRedlineImportHelper::CreateRedlineTextSection(
     SolarMutexGuard aGuard;
 
     // get RedlineInfo
-    RedlineMapType::iterator aFind = aRedlineMap.find(rId);
-    if (aRedlineMap.end() != aFind)
+    RedlineMapType::iterator aFind = m_aRedlineMap.find(rId);
+    if (m_aRedlineMap.end() != aFind)
     {
         // get document from old cursor (via tunnel)
         SwDoc* pDoc = lcl_GetDocViaTunnel(xOldCursor);
@@ -480,47 +490,47 @@ Reference<XTextCursor> XMLRedlineImportHelper::CreateRedlineTextSection(
 void XMLRedlineImportHelper::SetCursor(
     const OUString& rId,
     bool bStart,
-    Reference<XTextRange> & rRange,
+    Reference<XTextRange> const & rRange,
     bool bIsOutsideOfParagraph)
 {
-    RedlineMapType::iterator aFind = aRedlineMap.find(rId);
-    if (aRedlineMap.end() != aFind)
-    {
-        // RedlineInfo found; now set Cursor
-        RedlineInfo* pInfo = aFind->second;
-        if (bIsOutsideOfParagraph)
-        {
-            // outside of paragraph: remember SwNodeIndex
-            if (bStart)
-            {
-                pInfo->aAnchorStart.SetAsNodeIndex(rRange);
-            }
-            else
-            {
-                pInfo->aAnchorEnd.SetAsNodeIndex(rRange);
-            }
+    RedlineMapType::iterator aFind = m_aRedlineMap.find(rId);
+    if (m_aRedlineMap.end() == aFind)
+        return;
 
-            // also remember that we expect an adjustment for this redline
-            pInfo->bNeedsAdjustment = true;
+    // RedlineInfo found; now set Cursor
+    RedlineInfo* pInfo = aFind->second;
+    if (bIsOutsideOfParagraph)
+    {
+        // outside of paragraph: remember SwNodeIndex
+        if (bStart)
+        {
+            pInfo->aAnchorStart.SetAsNodeIndex(rRange);
         }
         else
         {
-            // inside of a paragraph: use regular XTextRanges (bookmarks)
-            if (bStart)
-                pInfo->aAnchorStart.Set(rRange);
-            else
-                pInfo->aAnchorEnd.Set(rRange);
+            pInfo->aAnchorEnd.SetAsNodeIndex(rRange);
         }
 
-        // if this Cursor was the last missing info, we insert the
-        // node into the document
-        // then we can remove the entry from the map and destroy the object
-        if (IsReady(pInfo))
-        {
-            InsertIntoDocument(pInfo);
-            aRedlineMap.erase(rId);
-            delete pInfo;
-        }
+        // also remember that we expect an adjustment for this redline
+        pInfo->bNeedsAdjustment = true;
+    }
+    else
+    {
+        // inside of a paragraph: use regular XTextRanges (bookmarks)
+        if (bStart)
+            pInfo->aAnchorStart.Set(rRange);
+        else
+            pInfo->aAnchorEnd.Set(rRange);
+    }
+
+    // if this Cursor was the last missing info, we insert the
+    // node into the document
+    // then we can remove the entry from the map and destroy the object
+    if (IsReady(pInfo))
+    {
+        InsertIntoDocument(pInfo);
+        m_aRedlineMap.erase(rId);
+        delete pInfo;
     }
     // else: unknown Id -> ignore
 }
@@ -534,26 +544,26 @@ void XMLRedlineImportHelper::AdjustStartNodeCursor(
     // start + end nodes are treated the same. For either it's
     // necessary that the target node already exists.
 
-    RedlineMapType::iterator aFind = aRedlineMap.find(rId);
-    if (aRedlineMap.end() != aFind)
+    RedlineMapType::iterator aFind = m_aRedlineMap.find(rId);
+    if (m_aRedlineMap.end() == aFind)
+        return;
+
+    // RedlineInfo found; now set Cursor
+    RedlineInfo* pInfo = aFind->second;
+
+    pInfo->bNeedsAdjustment = false;
+
+    // if now ready, insert into document
+    if( IsReady(pInfo) )
     {
-        // RedlineInfo found; now set Cursor
-        RedlineInfo* pInfo = aFind->second;
-
-        pInfo->bNeedsAdjustment = false;
-
-        // if now ready, insert into document
-        if( IsReady(pInfo) )
-        {
-            InsertIntoDocument(pInfo);
-            aRedlineMap.erase(rId);
-            delete pInfo;
-        }
+        InsertIntoDocument(pInfo);
+        m_aRedlineMap.erase(rId);
+        delete pInfo;
     }
     // else: can't find redline -> ignore
 }
 
-inline bool XMLRedlineImportHelper::IsReady(RedlineInfo* pRedline)
+inline bool XMLRedlineImportHelper::IsReady(const RedlineInfo* pRedline)
 {
     // we can insert a redline if we have start & end, and we don't
     // expect adjustments for either of these
@@ -600,25 +610,34 @@ void XMLRedlineImportHelper::InsertIntoDocument(RedlineInfo* pRedlineInfo)
     // 2) check for:
     //    a) bIgnoreRedline (e.g. insert mode)
     //    b) illegal PaM range (CheckNodesRange())
+    //    c) redline with empty content section (quite useless)
     // 3) normal case: insert redline
+    SwTextNode const* pTempNode(nullptr);
     if( !aPaM.HasMark() && (pRedlineInfo->pContentIndex == nullptr) )
     {
         // these redlines have no function, and will thus be ignored (just as
         // in sw3io), so no action here
     }
-    else if ( bIgnoreRedlines ||
+    else if ( m_bIgnoreRedlines ||
          !CheckNodesRange( aPaM.GetPoint()->nNode,
                            aPaM.GetMark()->nNode,
-                           true ) )
+                           true )
+         || (pRedlineInfo->pContentIndex
+             && (pRedlineInfo->pContentIndex->GetIndex() + 2
+                 == pRedlineInfo->pContentIndex->GetNode().EndOfSectionIndex())
+             && (pTempNode = pDoc->GetNodes()[pRedlineInfo->pContentIndex->GetIndex() + 1]->GetTextNode()) != nullptr
+             && pTempNode->GetText().isEmpty()
+             && !pTempNode->GetpSwpHints()
+             && !pTempNode->GetAnchoredFlys()))
     {
         // ignore redline (e.g. file loaded in insert mode):
         // delete 'deleted' redlines and forget about the whole thing
-        if (nsRedlineType_t::REDLINE_DELETE == pRedlineInfo->eType)
+        if (RedlineType::Delete == pRedlineInfo->eType)
         {
             pDoc->getIDocumentContentOperations().DeleteRange(aPaM);
             // And what about the "deleted nodes"?
             // They have to be deleted as well (#i80689)!
-            if( bIgnoreRedlines && pRedlineInfo->pContentIndex != nullptr )
+            if( m_bIgnoreRedlines && pRedlineInfo->pContentIndex != nullptr )
             {
                 SwNodeIndex aIdx( *pRedlineInfo->pContentIndex );
                 const SwNode* pEnd = aIdx.GetNode().EndOfSectionNode();
@@ -691,8 +710,8 @@ SwRedlineData* XMLRedlineImportHelper::ConvertRedline(
     //    ( check presence and sanity of hierarchical redline info )
     SwRedlineData* pNext = nullptr;
     if ( (nullptr != pRedlineInfo->pNextRedline) &&
-         (nsRedlineType_t::REDLINE_DELETE == pRedlineInfo->eType) &&
-         (nsRedlineType_t::REDLINE_INSERT == pRedlineInfo->pNextRedline->eType) )
+         (RedlineType::Delete == pRedlineInfo->eType) &&
+         (RedlineType::Insert == pRedlineInfo->pNextRedline->eType) )
     {
         pNext = ConvertRedline(pRedlineInfo->pNextRedline, pDoc);
     }
@@ -708,18 +727,18 @@ SwRedlineData* XMLRedlineImportHelper::ConvertRedline(
 
 void XMLRedlineImportHelper::SetShowChanges( bool bShow )
 {
-    bShowChanges = bShow;
+    m_bShowChanges = bShow;
 }
 
 void XMLRedlineImportHelper::SetRecordChanges( bool bRecord )
 {
-    bRecordChanges = bRecord;
+    m_bRecordChanges = bRecord;
 }
 
 void XMLRedlineImportHelper::SetProtectionKey(
     const Sequence<sal_Int8> & rKey )
 {
-    aProtectionKey = rKey;
+    m_aProtectionKey = rKey;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

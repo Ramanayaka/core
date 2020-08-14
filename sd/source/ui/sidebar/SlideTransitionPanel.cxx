@@ -18,11 +18,11 @@
  */
 
 #include "SlideTransitionPanel.hxx"
-#include "createslidetransitionpanel.hxx"
+#include <createslidetransitionpanel.hxx>
 
-#include "ViewShellBase.hxx"
+#include <ViewShellBase.hxx>
 
-namespace sd { namespace sidebar {
+namespace sd::sidebar {
 
 SlideTransitionPanel::SlideTransitionPanel (
     vcl::Window* pParentWindow,
@@ -32,6 +32,7 @@ SlideTransitionPanel::SlideTransitionPanel (
     : PanelBase(pParentWindow, rViewShellBase),
       mxFrame( rxFrame )
 {
+    SetStyle( GetStyle() | WB_DIALOGCONTROL );
 #ifdef DEBUG
     SetText(OUString("sd:SlideTransitionPanel"));
 #endif
@@ -55,6 +56,6 @@ css::ui::LayoutSize SlideTransitionPanel::GetHeightForWidth (const sal_Int32 /*n
     return css::ui::LayoutSize(nMinimumHeight,-1, nMinimumHeight);
 }
 
-} } // end of namespace sd::sidebar
+} // end of namespace sd::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

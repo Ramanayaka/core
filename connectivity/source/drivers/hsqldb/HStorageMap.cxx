@@ -17,22 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "hsqldb/HStorageMap.hxx"
+#include <hsqldb/HStorageMap.hxx>
 #include <comphelper/types.hxx>
 #include <com/sun/star/embed/XTransactionBroadcaster.hpp>
 #include <com/sun/star/embed/XTransactedObject.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <osl/diagnose.h>
-#include <osl/thread.h>
+#include <sal/log.hxx>
 #include <uno/mapping.hxx>
 #include <algorithm>
 
-namespace connectivity
+namespace connectivity::hsqldb
 {
-
-    namespace hsqldb
-    {
 
         using namespace ::com::sun::star::uno;
         using namespace ::com::sun::star::lang;
@@ -55,7 +52,7 @@ namespace connectivity
                     m_xInputStream->closeInput();
                     m_xInputStream.clear();
                 }
-                // this is done implicity by the closing of the input stream
+                // this is done implicitly by the closing of the input stream
                 else if ( m_xOutputStream.is() )
                 {
                     m_xOutputStream->closeOutput();
@@ -122,13 +119,13 @@ namespace connectivity
             }
         }
 
-        TStorages& lcl_getStorageMap()
+        static TStorages& lcl_getStorageMap()
         {
             static TStorages s_aMap;
             return s_aMap;
         }
 
-        OUString lcl_getNextCount()
+        static OUString lcl_getNextCount()
         {
             static sal_Int32 s_nCount = 0;
             return OUString::number(s_nCount++);
@@ -236,25 +233,25 @@ namespace connectivity
         {
             TStorages& rMap = lcl_getStorageMap();
             TStorages::iterator aFind = rMap.find(_sKey);
-            if ( aFind != rMap.end() )
+            if ( aFind == rMap.end() )
+                return;
+
+            try
             {
-                try
+                if ( _xListener.is() )
                 {
-                    if ( _xListener.is() )
-                    {
-                        Reference<XTransactionBroadcaster> xBroad(aFind->second.mapStorage(),UNO_QUERY);
-                        if ( xBroad.is() )
-                            xBroad->removeTransactionListener(_xListener);
-                        Reference<XTransactedObject> xTrans(aFind->second.mapStorage(),UNO_QUERY);
-                        if ( xTrans.is() )
-                            xTrans->commit();
-                    }
+                    Reference<XTransactionBroadcaster> xBroad(aFind->second.mapStorage(),UNO_QUERY);
+                    if ( xBroad.is() )
+                        xBroad->removeTransactionListener(_xListener);
+                    Reference<XTransactedObject> xTrans(aFind->second.mapStorage(),UNO_QUERY);
+                    if ( xTrans.is() )
+                        xTrans->commit();
                 }
-                catch(const Exception&)
-                {
-                }
-                rMap.erase(aFind);
             }
+            catch(const Exception&)
+            {
+            }
+            rMap.erase(aFind);
         }
 
         TStreamMap::mapped_type StorageContainer::registerStream(JNIEnv * env,jstring name, jstring key,sal_Int32 _nMode)
@@ -285,13 +282,13 @@ namespace connectivity
                         {
                             try
                             {
-                                pHelper.reset(new StreamHelper(storage->openStreamElement(sName,_nMode)));
+                                pHelper = std::make_shared<StreamHelper>(storage->openStreamElement(sName,_nMode));
                             }
                             catch(const Exception&)
                             {
                                 OUString sStrippedName = removeOldURLPrefix(sOrgName);
 
-                                if ( ((_nMode & ElementModes::WRITE) != ElementModes::WRITE ) )
+                                if ( (_nMode & ElementModes::WRITE) != ElementModes::WRITE )
                                 {
                                     bool bIsStream = true;
                                     try
@@ -305,9 +302,9 @@ namespace connectivity
                                     if ( !bIsStream )
                                         return pHelper; // readonly file without data stream
                                 }
-                                pHelper.reset( new StreamHelper(storage->openStreamElement( sStrippedName, _nMode ) ) );
+                                pHelper = std::make_shared<StreamHelper>(storage->openStreamElement( sStrippedName, _nMode ) );
                             }
-                            aFind->second.streams.insert(TStreamMap::value_type(sName,pHelper));
+                            aFind->second.streams.emplace(sName,pHelper);
                         }
                         catch(const Exception& e)
                         {
@@ -352,16 +349,12 @@ namespace connectivity
         {
             if (env->ExceptionCheck())
                 env->ExceptionClear();
-            SAL_WARN("connectivity.hsqldb", "forwarding Exception: " << _aException.Message );
+            SAL_WARN("connectivity.hsqldb", "forwarding Exception: " << _aException );
             OString cstr( OUStringToOString(_aException.Message, RTL_TEXTENCODING_JAVA_UTF8 ) );
             env->ThrowNew(env->FindClass("java/io/IOException"), cstr.getStr());
         }
 
-    }   // namespace hsqldb
-
-
-}
-// namespace connectivity
+} // namespace
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

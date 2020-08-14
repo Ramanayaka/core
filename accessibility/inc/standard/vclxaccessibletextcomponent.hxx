@@ -17,14 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETEXTCOMPONENT_HXX
-#define INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETEXTCOMPONENT_HXX
+#pragma once
 
+#include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <toolkit/awt/vclxaccessiblecomponent.hxx>
 #include <comphelper/accessibletexthelper.hxx>
 
 
-//  class VCLXAccessibleTextComponent
 
 
 typedef ::cppu::ImplHelper1 <
@@ -34,9 +33,9 @@ class VCLXAccessibleTextComponent : public VCLXAccessibleComponent,
                                     public ::comphelper::OCommonAccessibleText,
                                     public VCLXAccessibleTextComponent_BASE
 {
-protected:
     OUString                                m_sText;
 
+protected:
     void                                    SetText( const OUString& sText );
 
     virtual void                            ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
@@ -51,7 +50,6 @@ protected:
 
 public:
     VCLXAccessibleTextComponent( VCLXWindow* pVCLXWindow );
-    virtual ~VCLXAccessibleTextComponent() override;
 
     // XInterface
     DECLARE_XINTERFACE()
@@ -77,9 +75,9 @@ public:
     virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
     virtual sal_Bool SAL_CALL copyText( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
+    virtual sal_Bool SAL_CALL scrollSubstringTo( sal_Int32 nStartIndex, sal_Int32 nEndIndex, css::accessibility::AccessibleScrollType aScrollType) override;
 };
 
 
-#endif // INCLUDED_ACCESSIBILITY_INC_STANDARD_VCLXACCESSIBLETEXTCOMPONENT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

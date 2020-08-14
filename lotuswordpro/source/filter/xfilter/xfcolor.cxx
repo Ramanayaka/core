@@ -57,15 +57,12 @@
  * @file
  * Color object to serial to xml filter.
  ************************************************************************/
-#include <string.h>
 #include <stdio.h>
-#include "xfcolor.hxx"
+#include <xfilter/xfcolor.hxx>
 
 OUString XFColor::ToString() const
 {
-    char    buf[8];
-
-    memset(buf, 0, 8);
+    char    buf[8] = {};
     sprintf(buf,"#%2x%2x%2x",m_nRed, m_nGreen, m_nBlue);
     for( int i=1; i<7;i++ )
     {
@@ -75,7 +72,7 @@ OUString XFColor::ToString() const
     return OUString::createFromAscii(buf);
 }
 
-bool operator==(XFColor& c1, XFColor& c2)
+bool operator==(XFColor const & c1, XFColor const & c2)
 {
     return (
         (c1.m_nRed==c2.m_nRed)&&
@@ -84,7 +81,7 @@ bool operator==(XFColor& c1, XFColor& c2)
         );
 }
 
-bool operator!=(XFColor& c1, XFColor& c2)
+bool operator!=(XFColor const & c1, XFColor const & c2)
 {
     return !(c1==c2);
 }

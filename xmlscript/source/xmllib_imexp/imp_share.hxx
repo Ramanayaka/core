@@ -17,19 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_XMLSCRIPT_SOURCE_XMLLIB_IMEXP_IMP_SHARE_HXX
-#define INCLUDED_XMLSCRIPT_SOURCE_XMLLIB_IMEXP_IMP_SHARE_HXX
+#pragma once
 
 #include <xmlscript/xmllib_imexp.hxx>
 
 #include <cppuhelper/implbase.hxx>
-
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-
-#include <com/sun/star/awt/XControlModel.hpp>
-#include <com/sun/star/awt/FontDescriptor.hpp>
 
 #include <com/sun/star/xml/input/XRoot.hpp>
 #include <com/sun/star/xml/sax/SAXException.hpp>
@@ -110,7 +102,7 @@ struct LibraryImport
     friend class LibraryElement;
 
     LibDescriptorArray* mpLibArray;
-    LibDescriptor*      mpLibDesc;      // Single library mode
+    LibDescriptor* const mpLibDesc;      // Single library mode
 
     sal_Int32 XMLNS_LIBRARY_UID;
     sal_Int32 XMLNS_XLINK_UID;
@@ -155,7 +147,7 @@ protected:
     rtl::Reference<LibraryImport>  mxImport;
     rtl::Reference<LibElementBase> mxParent;
 private:
-    OUString _aLocalName;
+    OUString const _aLocalName;
     css::uno::Reference< css::xml::input::XAttributes > _xAttributes;
 
 public:
@@ -185,7 +177,6 @@ class LibrariesElement : public LibElementBase
 {
     friend class LibraryElement;
 
-protected:
     std::vector< LibDescriptor > mLibDescriptors;
 
 public:
@@ -204,7 +195,6 @@ public:
 
 class LibraryElement : public LibElementBase
 {
-protected:
     std::vector< OUString > mElements;
 
 public:
@@ -224,6 +214,5 @@ public:
 
 }
 
-#endif // INCLUDED_XMLSCRIPT_SOURCE_XMLLIB_IMEXP_IMP_SHARE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

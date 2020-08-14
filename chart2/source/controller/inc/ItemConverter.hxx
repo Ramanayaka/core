@@ -21,11 +21,13 @@
 
 #include <unotools/eventlisteneradapter.hxx>
 #include <svl/itemset.hxx>
-#include <com/sun/star/beans/XPropertySet.hpp>
 
 #include <utility>
 
-namespace chart { namespace wrapper {
+namespace com::sun::star::beans { class XPropertySet; }
+namespace com::sun::star::beans { class XPropertySetInfo; }
+
+namespace chart::wrapper {
 
 
 /** This class serves for conversion between properties of an XPropertySet and
@@ -188,7 +190,7 @@ private:
     SfxItemPool&                                    m_rItemPool;
 };
 
-}}
+}
 
 // INCLUDED_CHART2_SOURCE_CONTROLLER_INC_ITEMCONVERTER_HXX
 #endif

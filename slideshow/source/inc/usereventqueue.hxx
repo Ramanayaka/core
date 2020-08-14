@@ -28,8 +28,7 @@
 
 /* Definition of UserEventQueue class */
 
-namespace slideshow {
-namespace internal {
+namespace slideshow::internal {
 
 class AllAnimationEventHandler;
 class ShapeClickEventHandler;
@@ -42,7 +41,7 @@ class MouseLeaveHandler;
 
 /** This class schedules user-activated events.
 
-    This class registeres at the EventMultiplexer and fires
+    This class registers at the EventMultiplexer and fires
     events registered for certain user actions. Note that all
     events will not be fired immediately after the user action
     occurred, but always added to the EventQueue (and fired the
@@ -62,7 +61,7 @@ public:
 
         @param rEventMultiplexer
         The slideshow-global event source, where this class
-        registeres its event handlers.
+        registers its event handlers.
 
         @param rEventQueue
         Reference to the main event queue. Since we hold this
@@ -217,7 +216,7 @@ public:
 
     /** Typically skipping the current effect is triggered by mouse clicks
         or key presses that trigger the next effect.  This method allows the
-        skipping of effects to be triggered programatically.
+        skipping of effects to be triggered programmatically.
     */
     void callSkipEffectEventHandler();
 
@@ -257,15 +256,13 @@ private:
     ::std::shared_ptr<ClickEventHandler>          mpClickEventHandler;
     ::std::shared_ptr<SkipEffectEventHandler>     mpSkipEffectEventHandler;
     ::std::shared_ptr<ShapeClickEventHandler>     mpShapeDoubleClickEventHandler;
-    ::std::shared_ptr<ClickEventHandler>          mpDoubleClickEventHandler;
     ::std::shared_ptr<MouseEnterHandler>          mpMouseEnterHandler;
     ::std::shared_ptr<MouseLeaveHandler>          mpMouseLeaveHandler;
 
     bool                                            mbAdvanceOnClick;
 };
 
-} // namespace internal
-} // namespace presentation
+} // namespace presentation::internal
 
 #endif // INCLUDED_SLIDESHOW_SOURCE_INC_USEREVENTQUEUE_HXX
 

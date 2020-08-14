@@ -24,46 +24,20 @@
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <comphelper/listenernotification.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
-#include <comphelper/processfactory.hxx>
-#include <com/sun/star/awt/WindowEvent.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/util/XModifyListener.hpp>
 #include <com/sun/star/awt/XPaintListener.hpp>
-#include <com/sun/star/awt/XPointer.hpp>
 #include <com/sun/star/presentation/XSlideShowView.hpp>
-#include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
-#include <com/sun/star/rendering/XSpriteCanvas.hpp>
-#include <basegfx/matrix/b2dhommatrix.hxx>
-#include <basegfx/tools/canvastools.hxx>
 #include <cppcanvas/spritecanvas.hxx>
-#include <vcl/help.hxx>
-#include <unotools/pathoptions.hxx>
-#include <unotools/saveopt.hxx>
-#include <sfx2/bindings.hxx>
-#include <sfx2/dispatch.hxx>
-#include <sfx2/viewfrm.hxx>
-#include <basic/sbstar.hxx>
-#include <svx/svdpagv.hxx>
-#include <svx/fmshell.hxx>
 
-#include <svx/svxids.hrc>
-#include "sdmod.hxx"
-#include "cusshow.hxx"
-#include "ViewShellBase.hxx"
-#include "PresentationViewShell.hxx"
-#include "ViewShell.hxx"
-#include "drawview.hxx"
-#include "slideshow.hxx"
-#include "drawdoc.hxx"
-#include "showwindow.hxx"
-#include "optsitem.hxx"
-#include "FrameView.hxx"
-#include "DrawDocShell.hxx"
+#include <slideshow.hxx>
 
-#include "app.hrc"
+namespace com::sun::star::awt { class XPointer; }
+namespace com::sun::star::awt { class XWindow; }
+namespace com::sun::star::awt { class XWindowPeer; }
+namespace com::sun::star::awt { struct WindowEvent; }
+namespace com::sun::star::rendering { class XSpriteCanvas; }
+class SdDrawDocument;
 
 namespace sd
 {
@@ -96,7 +70,7 @@ struct WrappedMouseMotionEvent : public css::lang::EventObject
 
 // SlideShowViewListeners
 typedef std::vector< css::uno::WeakReference< css::util::XModifyListener > > ViewListenerVector;
-class SlideShowViewListeners
+class SlideShowViewListeners final
 {
 public:
     SlideShowViewListeners( ::osl::Mutex& rMutex );
@@ -107,7 +81,7 @@ public:
     void    notify( const css::lang::EventObject& _rEvent );
     void    disposing( const css::lang::EventObject& _rEventSource );
 
-protected:
+private:
     ViewListenerVector maListeners;
     ::osl::Mutex& mrMutex;
 };
@@ -181,7 +155,7 @@ public:
     virtual void SAL_CALL disposing( const css::lang::EventObject& ) override;
 
     /// @throws css::uno::RuntimeException
-    void SAL_CALL paint( const css::awt::PaintEvent& e );
+    void paint( const css::awt::PaintEvent& e );
 
     // XSlideShowView methods
     virtual css::uno::Reference< css::rendering::XSpriteCanvas > SAL_CALL getCanvas(  ) override;
@@ -241,7 +215,6 @@ private:
                                             mpMouseMotionListeners;
     SdDrawDocument*                         mpDoc;
     bool                                    mbIsMouseMotionListener;
-    ::tools::Rectangle                               maPresentationArea;
     AnimationMode                           meAnimationMode;
     bool                                    mbFirstPaint;
     bool                                    mbFullScreen;

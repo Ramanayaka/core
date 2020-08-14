@@ -17,11 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_XMLSCRIPT_SOURCE_XMLDLG_IMEXP_EXP_SHARE_HXX
-#define INCLUDED_XMLSCRIPT_SOURCE_XMLDLG_IMEXP_EXP_SHARE_HXX
+#pragma once
 
-#include "common.hxx"
-#include "misc.hxx"
 #include <xmlscript/xmldlg_imexp.hxx>
 #include <xmlscript/xml_helper.hxx>
 #include <osl/diagnose.h>
@@ -31,6 +28,7 @@
 #include <com/sun/star/awt/FontDescriptor.hpp>
 #include <com/sun/star/awt/FontEmphasisMark.hpp>
 #include <com/sun/star/awt/FontRelief.hpp>
+#include <memory>
 #include <vector>
 
 
@@ -75,7 +73,7 @@ struct Style
 };
 class StyleBag
 {
-    ::std::vector< Style * > _styles;
+    ::std::vector< std::unique_ptr<Style> > _styles;
 
 public:
     ~StyleBag() ;
@@ -139,8 +137,6 @@ public:
         OUString const & rPropName, OUString const & rAttrName );
     void readVerticalAlignAttr(
         OUString const & rPropName, OUString const & rAttrName );
-    void readImageURLAttr(
-        OUString const & rPropName, OUString const & rAttrName );
     void readImageAlignAttr(
         OUString const & rPropName, OUString const & rAttrName );
     void readImagePositionAttr(
@@ -163,8 +159,10 @@ public:
         OUString const & rPropName, OUString const & rAttrName );
     void readImageScaleModeAttr(
         OUString const & rPropName, OUString const & rAttrName );
-    void readDataAwareAttr(
-        OUString const & rAttrName );
+
+    void readDataAwareAttr(OUString const & rAttrName );
+    void readImageOrGraphicAttr(OUString const & rAttrName );
+
     void addBoolAttr(
         OUString const & rAttrName, bool bValue )
         { addAttribute( rAttrName, OUString::boolean(bValue) ); }
@@ -200,6 +198,7 @@ public:
     void readScrollBarModel( StyleBag * all_styles );
     void readSpinButtonModel( StyleBag * all_styles );
     void readFixedHyperLinkModel( StyleBag * all_styles );
+    void readGridControlModel( StyleBag * all_styles );
 };
 
 template<typename T>
@@ -255,6 +254,5 @@ inline bool ElementDescriptor::readProp(
 
 }
 
-#endif // INCLUDED_XMLSCRIPT_SOURCE_XMLDLG_IMEXP_EXP_SHARE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

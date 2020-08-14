@@ -10,35 +10,26 @@
 #ifndef INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFREFERENCEPROPERTIES_HXX
 #define INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFREFERENCEPROPERTIES_HXX
 
-#include <rtfsprm.hxx>
+#include "rtfsprm.hxx"
 
-namespace writerfilter
-{
-namespace rtftok
+namespace writerfilter::rtftok
 {
 /// Sends RTFSprm instances to DomainMapper.
-class RTFReferenceProperties
-    : public writerfilter::Reference<Properties>
+class RTFReferenceProperties : public writerfilter::Reference<Properties>
 {
 public:
-    RTFReferenceProperties(const RTFSprms& rAttributes, const RTFSprms& rSprms);
-    explicit RTFReferenceProperties(const RTFSprms& rAttributes);
-    virtual ~RTFReferenceProperties();
+    RTFReferenceProperties(RTFSprms aAttributes, RTFSprms aSprms);
+    explicit RTFReferenceProperties(RTFSprms aAttributes);
+    ~RTFReferenceProperties() override;
     void resolve(Properties& rHandler) override;
-    RTFSprms& getAttributes()
-    {
-        return m_aAttributes;
-    }
-    RTFSprms& getSprms()
-    {
-        return m_aSprms;
-    }
+    RTFSprms& getAttributes() { return m_aAttributes; }
+    RTFSprms& getSprms() { return m_aSprms; }
+
 private:
     RTFSprms m_aAttributes;
     RTFSprms m_aSprms;
 };
-} // namespace rtftok
-} // namespace writerfilter
+} // namespace writerfilter::rtftok
 
 #endif // INCLUDED_WRITERFILTER_SOURCE_RTFTOK_RTFREFERENCEPROPERTIES_HXX
 

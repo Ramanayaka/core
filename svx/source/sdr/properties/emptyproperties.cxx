@@ -19,36 +19,29 @@
 
 #include <sal/config.h>
 
-#include <o3tl/make_unique.hxx>
 #include <sdr/properties/emptyproperties.hxx>
 #include <svl/itemset.hxx>
-#include <svx/svddef.hxx>
 #include <svx/svdobj.hxx>
-#include <svx/svdpool.hxx>
-#include <vcl/outdev.hxx>
 
 
-namespace sdr
+namespace sdr::properties
 {
-    namespace properties
-    {
         // create a new itemset
         std::unique_ptr<SfxItemSet> EmptyProperties::CreateObjectSpecificItemSet(SfxItemPool& rPool)
         {
             // Basic implementation; Basic object has NO attributes
             assert(!"EmptyProperties::CreateObjectSpecificItemSet() should never be called");
-            return o3tl::make_unique<SfxItemSet>(rPool);
+            return std::make_unique<SfxItemSet>(rPool);
         }
 
         EmptyProperties::EmptyProperties(SdrObject& rObj)
-        :   BaseProperties(rObj),
-            mpEmptyItemSet(nullptr)
+        :   BaseProperties(rObj)
         {
         }
 
-        BaseProperties& EmptyProperties::Clone(SdrObject& rObj) const
+        std::unique_ptr<BaseProperties> EmptyProperties::Clone(SdrObject& rObj) const
         {
-            return *(new EmptyProperties(rObj));
+            return std::unique_ptr<BaseProperties>(new EmptyProperties(rObj));
         }
 
         const SfxItemSet& EmptyProperties::GetObjectItemSet() const
@@ -120,7 +113,6 @@ namespace sdr
             assert(!"EmptyProperties::GetStyleSheet() should never be called");
             return nullptr;
         }
-    } // end of namespace properties
-} // end of namespace sdr
+} // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,34 +22,31 @@
 
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <svx/sdr/attribute/sdrlinefillshadowtextattribute.hxx>
+#include <sdr/attribute/sdrlinefilleffectstextattribute.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 
 
 // predefines
 
 
-namespace drawinglayer
-{
-    namespace primitive2d
+namespace drawinglayer::primitive2d
     {
-        class SdrCaptionPrimitive2D : public BufferedDecompositionPrimitive2D
+        class SdrCaptionPrimitive2D final : public BufferedDecompositionPrimitive2D
         {
         private:
             ::basegfx::B2DHomMatrix                     maTransform;
-            attribute::SdrLineFillShadowTextAttribute   maSdrLFSTAttribute;
+            attribute::SdrLineFillEffectsTextAttribute   maSdrLFSTAttribute;
             ::basegfx::B2DPolygon                       maTail;
             double                                      mfCornerRadiusX;    // [0.0..1.0] relative to 1/2 width
             double                                      mfCornerRadiusY;    // [0.0..1.0] relative to 1/2 height
 
-        protected:
             // local decomposition.
             virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
 
         public:
             SdrCaptionPrimitive2D(
                 const ::basegfx::B2DHomMatrix& rTransform,
-                const attribute::SdrLineFillShadowTextAttribute& rSdrLFSTAttribute,
+                const attribute::SdrLineFillEffectsTextAttribute& rSdrLFSTAttribute,
                 const ::basegfx::B2DPolygon& rTail,
                 double fCornerRadiusX,
                 double fCornerRadiusY);
@@ -59,16 +56,15 @@ namespace drawinglayer
 
             // data access
             const ::basegfx::B2DHomMatrix& getTransform() const { return maTransform; }
-            const attribute::SdrLineFillShadowTextAttribute& getSdrLFSTAttribute() const { return maSdrLFSTAttribute; }
+            const attribute::SdrLineFillEffectsTextAttribute& getSdrLFSTAttribute() const { return maSdrLFSTAttribute; }
             const ::basegfx::B2DPolygon& getTail() const { return maTail; }
             double getCornerRadiusX() const { return mfCornerRadiusX; }
             double getCornerRadiusY() const { return mfCornerRadiusY; }
 
             // provide unique ID
-            DeclPrimitive2DIDBlock()
+            virtual sal_uInt32 getPrimitive2DID() const override;
         };
-    } // end of namespace primitive2d
-} // end of namespace drawinglayer
+} // end of namespace drawinglayer::primitive2d
 
 
 #endif // INCLUDED_SVX_INC_SDR_PRIMITIVE2D_SDRCAPTIONPRIMITIVE2D_HXX

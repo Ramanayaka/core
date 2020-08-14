@@ -19,10 +19,10 @@
 
 #include <vector>
 #include <string.h>
-#include <rtl/string.h>
-#include "comphelper/processfactory.hxx"
-#include "comphelper/sequence.hxx"
-#include "ucbhelper/simplecertificatevalidationrequest.hxx"
+#include <sal/log.hxx>
+#include <comphelper/processfactory.hxx>
+#include <comphelper/sequence.hxx>
+#include <ucbhelper/simplecertificatevalidationrequest.hxx>
 
 #include "AprEnv.hxx"
 #include <apr_strings.h>
@@ -33,7 +33,6 @@
 #include "SerfRequestProcessor.hxx"
 #include "SerfCallbacks.hxx"
 #include "SerfInputStream.hxx"
-#include "UCBDeadPropertyValue.hxx"
 
 #include <com/sun/star/xml/crypto/SEInitializer.hpp>
 #include <com/sun/star/xml/crypto/XSecurityEnvironment.hpp>
@@ -461,7 +460,7 @@ apr_status_t SerfSession::verifySerfCertificateChain (
         {
             uno::Reference< security::XCertificateExtension >element = extensions[i];
 
-            const rtl::OString aId ( reinterpret_cast<const sal_Char *>(const_cast<const signed char *>(element->getExtensionId().getArray())), element->getExtensionId().getLength());
+            const OString aId ( reinterpret_cast<const char *>(const_cast<const signed char *>(element->getExtensionId().getArray())), element->getExtensionId().getLength());
             if ( aId.equals( OID_SUBJECT_ALTERNATIVE_NAME ) )
             {
                 uno::Reference< security::XSanExtension > sanExtension ( element, uno::UNO_QUERY );
@@ -470,7 +469,7 @@ apr_status_t SerfSession::verifySerfCertificateChain (
             }
         }
 
-        uno::Sequence< ::rtl::OUString > certHostNames(altNames.getLength() + 1);
+        uno::Sequence< OUString > certHostNames(altNames.getLength() + 1);
         certHostNames[0] = sServerCertificateSubject;
         for( int n = 0; n < altNames.getLength(); ++n )
         {
@@ -614,7 +613,7 @@ void SerfSession::PROPFIND( const OUString & inPath,
          ioResources.empty() )
     {
         m_aEnv = DAVRequestEnvironment();
-        throw DAVException( DAVException::DAV_HTTP_ERROR, inPath, (sal_uInt16)APR_EGENERAL );
+        throw DAVException( DAVException::DAV_HTTP_ERROR, inPath, APR_EGENERAL );
     }
     HandleError( aReqProc );
 }
@@ -642,7 +641,7 @@ void SerfSession::PROPFIND( const OUString & inPath,
          ioResInfo.empty() )
     {
         m_aEnv = DAVRequestEnvironment();
-        throw DAVException( DAVException::DAV_HTTP_ERROR, inPath, (sal_uInt16)APR_EGENERAL );
+        throw DAVException( DAVException::DAV_HTTP_ERROR, inPath, APR_EGENERAL );
     }
     HandleError( aReqProc );
 }
@@ -1120,7 +1119,7 @@ void SerfSession::abort()
 }
 
 
-const ucbhelper::InternetProxyServer & SerfSession::getProxySettings() const
+ucbhelper::InternetProxyServer SerfSession::getProxySettings() const
 {
     if ( m_aUri.GetScheme() == "http" || m_aUri.GetScheme() == "https" )
     {

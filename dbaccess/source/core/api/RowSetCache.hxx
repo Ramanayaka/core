@@ -20,23 +20,10 @@
 #define INCLUDED_DBACCESS_SOURCE_CORE_API_ROWSETCACHE_HXX
 
 #include <connectivity/CommonTools.hxx>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/sdbc/XPreparedStatement.hpp>
+#include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/sdbc/XConnection.hpp>
 #include <com/sun/star/sdb/XSingleSelectQueryAnalyzer.hpp>
-#include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
-#include <com/sun/star/sdbc/XWarningsSupplier.hpp>
-#include <com/sun/star/sdb/XResultSetAccess.hpp>
-#include <com/sun/star/sdbc/XRow.hpp>
-#include <com/sun/star/sdbc/XColumnLocate.hpp>
-#include <com/sun/star/sdbcx/XRowLocate.hpp>
-#include <com/sun/star/sdbc/XRowUpdate.hpp>
-#include <com/sun/star/sdbc/XResultSetUpdate.hpp>
-#include <com/sun/star/sdb/XRowSetApproveBroadcaster.hpp>
-#include <com/sun/star/sdbc/ResultSetType.hpp>
-#include <com/sun/star/sdbcx/XDeleteRows.hpp>
-#include <comphelper/propertycontainer.hxx>
-#include <comphelper/proparrhlp.hxx>
+#include <com/sun/star/sdbc/XResultSetMetaData.hpp>
 #include "RowSetRow.hxx"
 #include "RowSetCacheIterator.hxx"
 
@@ -65,14 +52,14 @@ namespace dbaccess
 
         rtl::Reference<OCacheSet>                             m_xCacheSet; // is a bookmarkable, keyset or static resultset
 
-        ORowSetMatrix*                  m_pMatrix;              // represent the table struct
+        std::unique_ptr<ORowSetMatrix>  m_pMatrix;              // represent the table struct
         ORowSetMatrix::iterator         m_aMatrixIter;          // represent a row of the table
         ORowSetMatrix::iterator         m_aMatrixEnd;           // present the row behind the last row of the table
         ORowSetCacheMap                 m_aCacheIterators;
         TOldRowSetRows                  m_aOldRows;
 
-        ORowSetMatrix*                  m_pInsertMatrix;        // represent the rows which should be inserted normally this is only one
-        ORowSetMatrix::iterator         m_aInsertRow;           // represent a insert row
+        std::unique_ptr<ORowSetMatrix>  m_pInsertMatrix;        // represent the rows which should be inserted normally this is only one
+        ORowSetMatrix::iterator         m_aInsertRow;           // represent an insert row
 
         connectivity::OSQLTable         m_aUpdateTable;         // used for updates/deletes and inserts
 
@@ -104,7 +91,7 @@ namespace dbaccess
                         );
 
         void impl_updateRowFromCache_throw(ORowSetValueVector::Vector& io_aRow
-                                   ,std::vector<sal_Int32>& o_ChangedColumns
+                                   ,std::vector<sal_Int32> const & o_ChangedColumns
                                    );
         // checks and set the flags isAfterLast isLast and position when afterlast is true
         void checkPositionFlags();
@@ -137,7 +124,7 @@ namespace dbaccess
         ~ORowSetCache();
 
 
-        // called from the rowset when a updateXXX was called for the first time
+        // called from the rowset when an updateXXX was called for the first time
         void setUpdateIterator(const ORowSetMatrix::iterator& _rOriginalRow);
         ORowSetCacheIterator createIterator(ORowSetBase* _pRowSet);
         void deleteIterator(const ORowSetBase* _pRowSet);
@@ -148,7 +135,7 @@ namespace dbaccess
         void deregisterOldRow(const TORowSetOldRowHelperRef& _rRow);
 
     // css::sdbc::XResultSetMetaDataSupplier
-        const css::uno::Reference< css::sdbc::XResultSetMetaData >& getMetaData(  ) { return m_xMetaData;}
+        const css::uno::Reference< css::sdbc::XResultSetMetaData >& getMetaData(  ) const { return m_xMetaData;}
 
     // css::sdbcx::XRowLocate
         css::uno::Any getBookmark(  );
@@ -172,13 +159,13 @@ namespace dbaccess
         bool next(  );
         bool isBeforeFirst(  ) const { return m_bBeforeFirst;}
         bool isAfterLast(  ) const { return m_bAfterLast;}
-        bool isFirst(  );
-        bool isLast(  );
-        bool beforeFirst(  );
-        bool afterLast(  );
+        bool isFirst(  ) const;
+        bool isLast(  ) const;
+        void beforeFirst(  );
+        void afterLast(  );
         bool first(  );
         bool last(  );
-        sal_Int32 getRow(  );
+        sal_Int32 getRow(  ) const;
         bool absolute( sal_Int32 row );
         bool relative( sal_Int32 rows );
         bool previous(  );
@@ -190,7 +177,7 @@ namespace dbaccess
         bool insertRow(std::vector< css::uno::Any >& o_aBookmarks);
         void resetInsertRow(bool _bClearInsertRow);
 
-        void updateRow( ORowSetMatrix::iterator& _rUpdateRow,std::vector< css::uno::Any >& o_aBookmarks );
+        void updateRow( ORowSetMatrix::iterator const & _rUpdateRow, std::vector< css::uno::Any >& o_aBookmarks );
         bool deleteRow();
         void cancelRowUpdates(  );
         void moveToInsertRow(  );

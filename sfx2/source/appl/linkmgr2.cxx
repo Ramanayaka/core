@@ -19,6 +19,7 @@
 
 #include <comphelper/string.hxx>
 #include <sfx2/linkmgr.hxx>
+#include <sfx2/sfxsids.hrc>
 #include <com/sun/star/document/UpdateDocMode.hpp>
 #include <osl/file.hxx>
 #include <sfx2/objsh.hxx>
@@ -27,7 +28,9 @@
 #include <tools/urlobj.hxx>
 #include <sot/exchange.hxx>
 #include <tools/debug.hxx>
-#include <vcl/msgbox.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/weld.hxx>
+#include <vcl/gdimtf.hxx>
 #include <sfx2/lnkbase.hxx>
 #include <sfx2/app.hxx>
 #include <vcl/graph.hxx>
@@ -35,13 +38,14 @@
 #include <svl/eitem.hxx>
 #include <svl/intitem.hxx>
 #include <i18nlangtag/languagetag.hxx>
-#include <sfx2/request.hxx>
 #include <vcl/dibtools.hxx>
-#include "unotools/charclass.hxx"
+#include <unotools/charclass.hxx>
+#include <unotools/securityoptions.hxx>
+#include <vcl/GraphicLoader.hxx>
 
 #include "fileobj.hxx"
 #include "impldde.hxx"
-#include "app.hrc"
+#include <sfx2/strings.hrc>
 #include <sfx2/sfxresid.hxx>
 
 #include <com/sun/star/lang/XComponent.hpp>
@@ -55,6 +59,8 @@ using ::com::sun::star::util::XCloseable;
 namespace sfx2
 {
 
+namespace {
+
 class SvxInternalLink : public sfx2::SvLinkSource
 {
 public:
@@ -62,6 +68,8 @@ public:
 
     virtual bool Connect( sfx2::SvBaseLink* ) override;
 };
+
+}
 
 LinkManager::LinkManager(SfxObjectShell* p)
     : pPersist( p )
@@ -87,10 +95,9 @@ void LinkManager::InsertCachedComp(const Reference<XComponent>& xComp)
 
 void LinkManager::CloseCachedComps()
 {
-    CompVector::iterator itr = maCachedComps.begin(), itrEnd = maCachedComps.end();
-    for (; itr != itrEnd; ++itr)
+    for (const auto& rxCachedComp : maCachedComps)
     {
-        Reference<XCloseable> xCloseable(*itr, UNO_QUERY);
+        Reference<XCloseable> xCloseable(rxCachedComp, UNO_QUERY);
         if (!xCloseable.is())
             continue;
 
@@ -99,7 +106,7 @@ void LinkManager::CloseCachedComps()
     maCachedComps.clear();
 }
 
-void LinkManager::Remove( SvBaseLink *pLink )
+void LinkManager::Remove( SvBaseLink const *pLink )
 {
     // No duplicate links inserted
     bool bFound = false;
@@ -128,22 +135,22 @@ void LinkManager::Remove( SvBaseLink *pLink )
 
 void LinkManager::Remove( size_t nPos, size_t nCnt )
 {
-    if( nCnt && nPos < aLinkTbl.size() )
-    {
-        if (sal::static_int_cast<size_t>(nPos + nCnt) > aLinkTbl.size())
-            nCnt = aLinkTbl.size() - nPos;
+    if( !nCnt || nPos >= aLinkTbl.size() )
+        return;
 
-        for( size_t n = nPos; n < nPos + nCnt; ++n)
+    if (sal::static_int_cast<size_t>(nPos + nCnt) > aLinkTbl.size())
+        nCnt = aLinkTbl.size() - nPos;
+
+    for( size_t n = nPos; n < nPos + nCnt; ++n)
+    {
+        tools::SvRef<SvBaseLink>& rTmp = aLinkTbl[ n ];
+        if( rTmp.is() )
         {
-            tools::SvRef<SvBaseLink>& rTmp = aLinkTbl[ n ];
-            if( rTmp.is() )
-            {
-                rTmp->Disconnect();
-                rTmp->SetLinkManager( nullptr );
-            }
+            rTmp->Disconnect();
+            rTmp->SetLinkManager( nullptr );
         }
-        aLinkTbl.erase( aLinkTbl.begin() + nPos, aLinkTbl.begin() + nPos + nCnt );
     }
+    aLinkTbl.erase( aLinkTbl.begin() + nPos, aLinkTbl.begin() + nPos + nCnt );
 }
 
 bool LinkManager::Insert( SvBaseLink* pLink )
@@ -160,12 +167,12 @@ bool LinkManager::Insert( SvBaseLink* pLink )
     }
 
     pLink->SetLinkManager( this );
-    aLinkTbl.push_back( tools::SvRef<SvBaseLink>(pLink) );
+    aLinkTbl.emplace_back(pLink );
     return true;
 }
 
 bool LinkManager::InsertLink( SvBaseLink * pLink,
-                                sal_uInt16 nObjType,
+                                SvBaseLinkObjectType nObjType,
                                 SfxLinkUpdateMode nUpdateMode,
                                 const OUString* pName )
 {
@@ -182,25 +189,25 @@ void LinkManager::InsertDDELink( SvBaseLink * pLink,
                                     const OUString& rTopic,
                                     const OUString& rItem )
 {
-    if( !( OBJECT_CLIENT_SO & pLink->GetObjType() ) )
+    if( !isClientType( pLink->GetObjType() ) )
         return;
 
     OUString sCmd;
     ::sfx2::MakeLnkName( sCmd, &rServer, rTopic, rItem );
 
-    pLink->SetObjType( OBJECT_CLIENT_DDE );
+    pLink->SetObjType( SvBaseLinkObjectType::ClientDde );
     pLink->SetName( sCmd );
     Insert( pLink );
 }
 
 void LinkManager::InsertDDELink( SvBaseLink * pLink )
 {
-    DBG_ASSERT( OBJECT_CLIENT_SO & pLink->GetObjType(), "no OBJECT_CLIENT_SO" );
-    if( !( OBJECT_CLIENT_SO & pLink->GetObjType() ) )
+    DBG_ASSERT( isClientType(pLink->GetObjType()), "no OBJECT_CLIENT_SO" );
+    if( !isClientType( pLink->GetObjType() ) )
         return;
 
-    if( pLink->GetObjType() == OBJECT_CLIENT_SO )
-        pLink->SetObjType( OBJECT_CLIENT_DDE );
+    if( pLink->GetObjType() == SvBaseLinkObjectType::ClientSo )
+        pLink->SetObjType( SvBaseLinkObjectType::ClientDde );
 
     Insert( pLink );
 }
@@ -213,14 +220,14 @@ bool LinkManager::GetDisplayNames( const SvBaseLink * pLink,
                                         OUString* pFilter )
 {
     bool bRet = false;
-    const OUString sLNm( pLink->GetLinkSourceName() );
+    const OUString& sLNm( pLink->GetLinkSourceName() );
     if( !sLNm.isEmpty() )
     {
         switch( pLink->GetObjType() )
         {
-            case OBJECT_CLIENT_FILE:
-            case OBJECT_CLIENT_GRF:
-            case OBJECT_CLIENT_OLE:
+            case SvBaseLinkObjectType::ClientFile:
+            case SvBaseLinkObjectType::ClientGraphic:
+            case SvBaseLinkObjectType::ClientOle:
                 {
                     sal_Int32 nPos = 0;
                     OUString sFile( sLNm.getToken( 0, ::sfx2::cTokenSeparator, nPos ) );
@@ -235,16 +242,16 @@ bool LinkManager::GetDisplayNames( const SvBaseLink * pLink,
 
                     if( pType )
                     {
-                        sal_uInt16 nObjType = pLink->GetObjType();
+                        SvBaseLinkObjectType nObjType = pLink->GetObjType();
                         *pType = SfxResId(
-                                    ( OBJECT_CLIENT_FILE == nObjType || OBJECT_CLIENT_OLE == nObjType )
+                                    ( SvBaseLinkObjectType::ClientFile == nObjType || SvBaseLinkObjectType::ClientOle == nObjType )
                                             ? RID_SVXSTR_FILELINK
                                             : RID_SVXSTR_GRAFIKLINK);
                     }
                     bRet = true;
                 }
                 break;
-            case OBJECT_CLIENT_DDE:
+            case SvBaseLinkObjectType::ClientDde:
                 {
                     sal_Int32 nTmp = 0;
                     OUString sServer( sLNm.getToken( 0, cTokenSeparator, nTmp ) );
@@ -270,7 +277,7 @@ bool LinkManager::GetDisplayNames( const SvBaseLink * pLink,
 void LinkManager::UpdateAllLinks(
     bool bAskUpdate,
     bool bUpdateGrfLinks,
-    vcl::Window* pParentWin )
+    weld::Window* pParentWin )
 {
     // First make a copy of the array in order to update links
     // links in ... no contact between them!
@@ -290,7 +297,7 @@ void LinkManager::UpdateAllLinks(
     {
         // search first in the array after the entry
         bool bFound = false;
-        for(tools::SvRef<SvBaseLink> & i : aLinkTbl)
+        for(const tools::SvRef<SvBaseLink> & i : aLinkTbl)
             if( pLink == i.get() )
             {
                 bFound = true;
@@ -302,12 +309,20 @@ void LinkManager::UpdateAllLinks(
 
         // Graphic-Links not to update yet
         if( !pLink->IsVisible() ||
-            ( !bUpdateGrfLinks && OBJECT_CLIENT_GRF == pLink->GetObjType() ))
+            ( !bUpdateGrfLinks && SvBaseLinkObjectType::ClientGraphic == pLink->GetObjType() ))
             continue;
 
         if( bAskUpdate )
         {
-            int nRet = ScopedVclPtrInstance<QueryBox>(pParentWin, WB_YES_NO | WB_DEF_YES, SfxResId( STR_QUERY_UPDATE_LINKS ))->Execute();
+            OUString aMsg = SfxResId(STR_QUERY_UPDATE_LINKS);
+            INetURLObject aURL(pPersist->getDocumentBaseURL());
+            aMsg = aMsg.replaceFirst("%{filename}", aURL.GetLastName());
+
+            std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(pParentWin,
+                                                           VclMessageType::Question, VclButtonsType::YesNo, aMsg));
+            xQueryBox->set_default_response(RET_YES);
+
+            int nRet = xQueryBox->run();
             if( RET_YES != nRet )
             {
                 SfxObjectShell* pShell = pLink->GetLinkManager()->GetPersist();
@@ -328,17 +343,17 @@ void LinkManager::UpdateAllLinks(
     CloseCachedComps();
 }
 
-SvLinkSourceRef LinkManager::CreateObj( SvBaseLink * pLink )
+SvLinkSourceRef LinkManager::CreateObj( SvBaseLink const * pLink )
 {
     switch( pLink->GetObjType() )
     {
-        case OBJECT_CLIENT_FILE:
-        case OBJECT_CLIENT_GRF:
-        case OBJECT_CLIENT_OLE:
+        case SvBaseLinkObjectType::ClientFile:
+        case SvBaseLinkObjectType::ClientGraphic:
+        case SvBaseLinkObjectType::ClientOle:
             return new SvFileObject;
-        case OBJECT_INTERN:
+        case SvBaseLinkObjectType::Internal:
             return new SvxInternalLink;
-        case OBJECT_CLIENT_DDE:
+        case SvBaseLinkObjectType::ClientDde:
             return new SvDDEObject;
         default:
             return SvLinkSourceRef();
@@ -365,7 +380,7 @@ void MakeLnkName( OUString& rName, const OUString* pType, const OUString& rFile,
     if( pType )
     {
         rName = comphelper::string::strip(*pType, ' ')
-            + OUStringLiteral1(cTokenSeparator);
+            + OUStringChar(cTokenSeparator);
     }
     else
         rName.clear();
@@ -373,11 +388,11 @@ void MakeLnkName( OUString& rName, const OUString* pType, const OUString& rFile,
     rName += rFile;
 
     rName = comphelper::string::strip(rName, ' ')
-        + OUStringLiteral1(cTokenSeparator);
+        + OUStringChar(cTokenSeparator);
     rName = comphelper::string::strip(rName, ' ') + rLink;
     if( pFilter )
     {
-        rName += OUStringLiteral1(cTokenSeparator) + *pFilter;
+        rName += OUStringChar(cTokenSeparator) + *pFilter;
         rName = comphelper::string::strip(rName, ' ');
     }
 }
@@ -433,14 +448,14 @@ void LinkManager::LinkServerShell(const OUString& rPath, SfxObjectShell& rServer
     }
 }
 
-bool LinkManager::InsertFileLink(
-    sfx2::SvBaseLink& rLink, sal_uInt16 nFileType, const OUString& rFileNm,
+void LinkManager::InsertFileLink(
+    sfx2::SvBaseLink& rLink, SvBaseLinkObjectType nFileType, const OUString& rFileNm,
     const OUString* pFilterNm, const OUString* pRange)
 {
-    if (!(OBJECT_CLIENT_SO & rLink.GetObjType()))
-        return false;
+    if (!isClientType(rLink.GetObjType()))
+        return;
 
-    OUStringBuffer aBuf;
+    OUStringBuffer aBuf(64);
     aBuf.append(rFileNm);
     aBuf.append(sfx2::cTokenSeparator);
 
@@ -454,22 +469,24 @@ bool LinkManager::InsertFileLink(
     }
 
     OUString aCmd = aBuf.makeStringAndClear();
-    return InsertLink(&rLink, nFileType, SfxLinkUpdateMode::ONCALL, &aCmd);
+    InsertLink(&rLink, nFileType, SfxLinkUpdateMode::ONCALL, &aCmd);
 }
 
 // A transfer is aborted, so cancel all download media
 // (for now this is only of interest for the file links!)
 void LinkManager::CancelTransfers()
 {
-    SvFileObject* pFileObj;
-    sfx2::SvBaseLink* pLnk;
 
     const sfx2::SvBaseLinks& rLnks = GetLinks();
     for( size_t n = rLnks.size(); n; )
-        if( nullptr != ( pLnk = &(*rLnks[ --n ])) &&
-            OBJECT_CLIENT_FILE == (OBJECT_CLIENT_FILE & pLnk->GetObjType()) &&
-            nullptr != ( pFileObj = static_cast<SvFileObject*>(pLnk->GetObj()) ) )
-            pFileObj->CancelTransfers();
+    {
+        const sfx2::SvBaseLink& rLnk = *rLnks[--n];
+        if (isClientFileType(rLnk.GetObjType()))
+        {
+            if (SvFileObject* pFileObj = static_cast<SvFileObject*>(rLnk.GetObj()))
+                pFileObj->CancelTransfers();
+        }
+    }
 }
 
 // For the purpose of sending Status information from the file object to
@@ -489,14 +506,35 @@ SotClipboardFormatId LinkManager::RegisterStatusInfoId()
     return nFormat;
 }
 
-bool LinkManager::GetGraphicFromAny( const OUString& rMimeType,
-                                const css::uno::Any & rValue,
-                                Graphic& rGrf )
+bool LinkManager::GetGraphicFromAny(const OUString& rMimeType,
+                                    const css::uno::Any & rValue,
+                                    Graphic& rGraphic,
+                                    weld::Window* pParentWin)
 {
     bool bRet = false;
-    css::uno::Sequence< sal_Int8 > aSeq;
-    if( rValue.hasValue() && ( rValue >>= aSeq ) )
+
+    if (!rValue.hasValue())
+        return bRet;
+
+    if (rValue.has<OUString>())
     {
+        OUString sReferer;
+        SfxObjectShell* sh = GetPersist();
+        if (sh && sh->HasName())
+            sReferer = sh->GetMedium()->GetName();
+
+        OUString sURL = rValue.get<OUString>();
+        if (!SvtSecurityOptions().isUntrustedReferer(sReferer))
+            rGraphic = vcl::graphic::loadFromURL(sURL, pParentWin);
+        if (rGraphic.IsNone())
+            rGraphic.SetDefaultType();
+        rGraphic.setOriginURL(sURL);
+        return true;
+    }
+    else if (rValue.has<css::uno::Sequence<sal_Int8>>())
+    {
+        auto aSeq = rValue.get<css::uno::Sequence<sal_Int8>>();
+
         SvMemoryStream aMemStm( const_cast<sal_Int8 *>(aSeq.getConstArray()), aSeq.getLength(),
                                 StreamMode::READ );
         aMemStm.Seek( 0 );
@@ -505,7 +543,7 @@ bool LinkManager::GetGraphicFromAny( const OUString& rMimeType,
         {
         case SotClipboardFormatId::SVXB:
             {
-                ReadGraphic( aMemStm, rGrf );
+                ReadGraphic( aMemStm, rGraphic );
                 bRet = true;
             }
             break;
@@ -513,7 +551,7 @@ bool LinkManager::GetGraphicFromAny( const OUString& rMimeType,
             {
                 GDIMetaFile aMtf;
                 aMtf.Read( aMemStm );
-                rGrf = aMtf;
+                rGraphic = aMtf;
                 bRet = true;
             }
             break;
@@ -521,7 +559,7 @@ bool LinkManager::GetGraphicFromAny( const OUString& rMimeType,
             {
                 Bitmap aBmp;
                 ReadDIB(aBmp, aMemStm, true);
-                rGrf = aBmp;
+                rGraphic = aBmp;
                 bRet = true;
             }
             break;
@@ -531,7 +569,7 @@ bool LinkManager::GetGraphicFromAny( const OUString& rMimeType,
     return bRet;
 }
 
-OUString lcl_DDE_RelToAbs( const OUString& rTopic, const OUString& rBaseURL )
+static OUString lcl_DDE_RelToAbs( const OUString& rTopic, const OUString& rBaseURL )
 {
     OUString sRet;
     INetURLObject aURL( rTopic );
@@ -626,14 +664,15 @@ bool SvxInternalLink::Connect( sfx2::SvBaseLink* pLink )
         // then try to download the file:
         INetURLObject aURL( sTopic );
         INetProtocol eOld = aURL.GetProtocol();
-        aURL.SetURL( sTopic = lcl_DDE_RelToAbs( sTopic, sReferer ) );
+        sTopic = lcl_DDE_RelToAbs( sTopic, sReferer );
+        aURL.SetURL( sTopic );
         if( INetProtocol::NotValid != eOld ||
             INetProtocol::Http != aURL.GetProtocol() )
         {
             SfxStringItem aName( SID_FILE_NAME, sTopic );
             SfxBoolItem aMinimized(SID_MINIMIZED, true);
             SfxBoolItem aHidden(SID_HIDDEN, true);
-            SfxStringItem aTarget( SID_TARGETNAME, OUString("_blank") );
+            SfxStringItem aTarget( SID_TARGETNAME, "_blank" );
             SfxStringItem aReferer( SID_REFERER, sReferer );
             SfxUInt16Item aUpdate( SID_UPDATEDOCMODE, nUpdateMode );
             SfxBoolItem aReadOnly(SID_DOC_READONLY, false);

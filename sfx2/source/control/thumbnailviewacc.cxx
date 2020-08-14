@@ -21,10 +21,13 @@
 
 #include <comphelper/servicehelper.hxx>
 #include <sfx2/thumbnailview.hxx>
-#include <sfx2/thumbnailviewitem.hxx>
+#include <thumbnailviewitem.hxx>
 #include <unotools/accessiblestatesethelper.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <sal/log.hxx>
+#include <tools/debug.hxx>
+#include <tools/diagnose_ex.h>
 
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
@@ -33,10 +36,9 @@
 
 using namespace ::com::sun::star;
 
-ThumbnailViewAcc::ThumbnailViewAcc( ThumbnailView* pParent, bool bIsTransientChildrenDisabled ) :
+ThumbnailViewAcc::ThumbnailViewAcc( ThumbnailView* pParent ) :
     ValueSetAccComponentBase (m_aMutex),
     mpParent( pParent ),
-    mbIsTransientChildrenDisabled( bIsTransientChildrenDisabled ),
     mbIsFocused(false)
 {
 }
@@ -47,26 +49,25 @@ ThumbnailViewAcc::~ThumbnailViewAcc()
 
 void ThumbnailViewAcc::FireAccessibleEvent( short nEventId, const uno::Any& rOldValue, const uno::Any& rNewValue )
 {
-    if( nEventId )
+    if( !nEventId )
+        return;
+
+    ::std::vector< uno::Reference< accessibility::XAccessibleEventListener > > aTmpListeners( mxEventListeners );
+    accessibility::AccessibleEventObject aEvtObject;
+
+    aEvtObject.EventId = nEventId;
+    aEvtObject.Source = static_cast<uno::XWeak*>(this);
+    aEvtObject.NewValue = rNewValue;
+    aEvtObject.OldValue = rOldValue;
+
+    for (auto const& tmpListener : aTmpListeners)
     {
-        ::std::vector< uno::Reference< accessibility::XAccessibleEventListener > > aTmpListeners( mxEventListeners );
-        accessibility::AccessibleEventObject aEvtObject;
-
-        aEvtObject.EventId = nEventId;
-        aEvtObject.Source = static_cast<uno::XWeak*>(this);
-        aEvtObject.NewValue = rNewValue;
-        aEvtObject.OldValue = rOldValue;
-
-        for (::std::vector< uno::Reference< accessibility::XAccessibleEventListener > >::const_iterator aIter( aTmpListeners.begin() ), aEnd( aTmpListeners.end() );
-            aIter != aEnd ; ++aIter)
+        try
         {
-            try
-            {
-                (*aIter)->notifyEvent( aEvtObject );
-            }
-            catch(const uno::Exception&)
-            {
-            }
+            tmpListener->notifyEvent( aEvtObject );
+        }
+        catch(const uno::Exception&)
+        {
         }
     }
 }
@@ -86,8 +87,7 @@ ThumbnailViewAcc* ThumbnailViewAcc::getImplementation( const uno::Reference< uno
 {
     try
     {
-        uno::Reference< lang::XUnoTunnel > xUnoTunnel( rxData, uno::UNO_QUERY );
-        return( xUnoTunnel.is() ? reinterpret_cast<ThumbnailViewAcc*>(sal::static_int_cast<sal_IntPtr>(xUnoTunnel->getSomething( ThumbnailViewAcc::getUnoTunnelId() ))) : nullptr );
+        return comphelper::getUnoTunnelImplementation<ThumbnailViewAcc>(rxData);
     }
     catch(const css::uno::Exception&)
     {
@@ -138,14 +138,12 @@ uno::Reference< accessibility::XAccessible > SAL_CALL ThumbnailViewAcc::getAcces
 {
     ThrowIfDisposed();
     const SolarMutexGuard aSolarGuard;
-    uno::Reference< accessibility::XAccessible >    xRet;
     ThumbnailViewItem* pItem = getItem (sal::static_int_cast< sal_uInt16 >(i));
 
-    if( pItem )
-        xRet = pItem->GetAccessible( mbIsTransientChildrenDisabled );
-    else
+    if( !pItem )
         throw lang::IndexOutOfBoundsException();
 
+    uno::Reference< accessibility::XAccessible >  xRet = pItem->GetAccessible( /*bIsTransientChildrenDisabled*/false );
     return xRet;
 }
 
@@ -191,15 +189,13 @@ sal_Int16 SAL_CALL ThumbnailViewAcc::getAccessibleRole()
     ThrowIfDisposed();
     // #i73746# As the Java Access Bridge (v 2.0.1) uses "managesDescendants"
     // always if the role is LIST, we need a different role in this case
-    return (mbIsTransientChildrenDisabled
-            ? accessibility::AccessibleRole::PANEL
-            : accessibility::AccessibleRole::LIST );
+    return accessibility::AccessibleRole::LIST;
 }
 
 OUString SAL_CALL ThumbnailViewAcc::getAccessibleDescription()
 {
     ThrowIfDisposed();
-    return OUString("ThumbnailView");
+    return "ThumbnailView";
 }
 
 OUString SAL_CALL ThumbnailViewAcc::getAccessibleName()
@@ -238,8 +234,7 @@ uno::Reference< accessibility::XAccessibleStateSet > SAL_CALL ThumbnailViewAcc::
     pStateSet->AddState (accessibility::AccessibleStateType::SENSITIVE);
     pStateSet->AddState (accessibility::AccessibleStateType::SHOWING);
     pStateSet->AddState (accessibility::AccessibleStateType::VISIBLE);
-    if ( !mbIsTransientChildrenDisabled )
-        pStateSet->AddState (accessibility::AccessibleStateType::MANAGES_DESCENDANTS);
+    pStateSet->AddState (accessibility::AccessibleStateType::MANAGES_DESCENDANTS);
     pStateSet->AddState (accessibility::AccessibleStateType::FOCUSABLE);
     if (mbIsFocused)
         pStateSet->AddState (accessibility::AccessibleStateType::FOCUSED);
@@ -270,22 +265,22 @@ void SAL_CALL ThumbnailViewAcc::addAccessibleEventListener( const uno::Reference
     ThrowIfDisposed();
     ::osl::MutexGuard aGuard (m_aMutex);
 
-    if( rxListener.is() )
+    if( !rxListener.is() )
+        return;
+
+    bool bFound = false;
+
+    for (auto const& eventListener : mxEventListeners)
     {
-        std::vector< uno::Reference< accessibility::XAccessibleEventListener > >::const_iterator aIter = mxEventListeners.begin();
-        bool bFound = false;
-
-        while( !bFound && ( aIter != mxEventListeners.end() ) )
+        if( eventListener == rxListener )
         {
-            if( *aIter == rxListener )
-                bFound = true;
-            else
-                ++aIter;
+            bFound = true;
+            break;
         }
-
-        if (!bFound)
-            mxEventListeners.push_back( rxListener );
     }
+
+    if (!bFound)
+        mxEventListeners.push_back( rxListener );
 }
 
 void SAL_CALL ThumbnailViewAcc::removeAccessibleEventListener( const uno::Reference< accessibility::XAccessibleEventListener >& rxListener )
@@ -327,7 +322,7 @@ uno::Reference< accessibility::XAccessible > SAL_CALL ThumbnailViewAcc::getAcces
         if( THUMBNAILVIEW_ITEM_NONEITEM != nItemPos )
         {
             ThumbnailViewItem *const pItem = mpParent->mFilteredItemList[nItemPos];
-            xRet = pItem->GetAccessible( mbIsTransientChildrenDisabled );
+            xRet = pItem->GetAccessible( /*bIsTransientChildrenDisabled*/false );
         }
     }
 
@@ -397,14 +392,14 @@ void SAL_CALL ThumbnailViewAcc::grabFocus()
 sal_Int32 SAL_CALL ThumbnailViewAcc::getForeground(  )
 {
     ThrowIfDisposed();
-    sal_uInt32 nColor = Application::GetSettings().GetStyleSettings().GetWindowTextColor().GetColor();
+    Color nColor = Application::GetSettings().GetStyleSettings().GetWindowTextColor();
     return static_cast<sal_Int32>(nColor);
 }
 
 sal_Int32 SAL_CALL ThumbnailViewAcc::getBackground(  )
 {
     ThrowIfDisposed();
-    sal_uInt32 nColor = Application::GetSettings().GetStyleSettings().GetWindowColor().GetColor();
+    Color nColor = Application::GetSettings().GetStyleSettings().GetWindowColor();
     return static_cast<sal_Int32>(nColor);
 }
 
@@ -414,12 +409,10 @@ void SAL_CALL ThumbnailViewAcc::selectAccessibleChild( sal_Int32 nChildIndex )
     const SolarMutexGuard aSolarGuard;
     ThumbnailViewItem* pItem = getItem (sal::static_int_cast< sal_uInt16 >(nChildIndex));
 
-    if(pItem != nullptr)
-    {
-        mpParent->SelectItem( pItem->mnId );
-    }
-    else
+    if(pItem == nullptr)
         throw lang::IndexOutOfBoundsException();
+
+    mpParent->SelectItem( pItem->mnId );
 }
 
 sal_Bool SAL_CALL ThumbnailViewAcc::isAccessibleChildSelected( sal_Int32 nChildIndex )
@@ -427,20 +420,16 @@ sal_Bool SAL_CALL ThumbnailViewAcc::isAccessibleChildSelected( sal_Int32 nChildI
     ThrowIfDisposed();
     const SolarMutexGuard aSolarGuard;
     ThumbnailViewItem* pItem = getItem (sal::static_int_cast< sal_uInt16 >(nChildIndex));
-    bool            bRet = false;
 
-    if (pItem != nullptr)
-        bRet = mpParent->IsItemSelected( pItem->mnId );
-    else
+    if (pItem == nullptr)
         throw lang::IndexOutOfBoundsException();
 
-    return bRet;
+    return mpParent->IsItemSelected( pItem->mnId );
 }
 
 void SAL_CALL ThumbnailViewAcc::clearAccessibleSelection()
 {
     ThrowIfDisposed();
-    const SolarMutexGuard aSolarGuard;
 }
 
 void SAL_CALL ThumbnailViewAcc::selectAllAccessibleChildren()
@@ -477,7 +466,7 @@ uno::Reference< accessibility::XAccessible > SAL_CALL ThumbnailViewAcc::getSelec
         ThumbnailViewItem* pItem = getItem(i);
 
         if( pItem && mpParent->IsItemSelected( pItem->mnId ) && ( nSelectedChildIndex == static_cast< sal_Int32 >( nSel++ ) ) )
-            xRet = pItem->GetAccessible( mbIsTransientChildrenDisabled );
+            xRet = pItem->GetAccessible( /*bIsTransientChildrenDisabled*/false );
     }
 
     return xRet;
@@ -497,7 +486,7 @@ sal_Int64 SAL_CALL ThumbnailViewAcc::getSomething( const uno::Sequence< sal_Int8
 {
     sal_Int64 nRet;
 
-    if( ( rId.getLength() == 16 ) && ( 0 == memcmp( ThumbnailViewAcc::getUnoTunnelId().getConstArray(), rId.getConstArray(), 16 ) ) )
+    if( isUnoTunnelId<ThumbnailViewAcc>(rId) )
         nRet = reinterpret_cast< sal_Int64 >( this );
     else
         nRet = 0;
@@ -522,21 +511,17 @@ void SAL_CALL ThumbnailViewAcc::disposing()
     }
 
     // Inform all listeners that this objects is disposing.
-    ::std::vector<uno::Reference<accessibility::XAccessibleEventListener> >::const_iterator
-          aListenerIterator (aListenerListCopy.begin());
     lang::EventObject aEvent (static_cast<accessibility::XAccessible*>(this));
-    while (aListenerIterator != aListenerListCopy.end())
+    for (auto const& listener : aListenerListCopy)
     {
         try
         {
-            (*aListenerIterator)->disposing (aEvent);
+            listener->disposing (aEvent);
         }
         catch(const uno::Exception&)
         {
             // Ignore exceptions.
         }
-
-        ++aListenerIterator;
     }
 }
 
@@ -565,6 +550,466 @@ void ThumbnailViewAcc::ThrowIfDisposed()
     }
 }
 
+SfxThumbnailViewAcc::SfxThumbnailViewAcc( SfxThumbnailView* pParent ) :
+    ValueSetAccComponentBase (m_aMutex),
+    mpParent( pParent )
+{
+}
+
+SfxThumbnailViewAcc::~SfxThumbnailViewAcc()
+{
+}
+
+namespace
+{
+    class theSfxValueSetAccUnoTunnelId : public rtl::Static< UnoTunnelIdInit, theSfxValueSetAccUnoTunnelId > {};
+}
+
+const uno::Sequence< sal_Int8 >& SfxThumbnailViewAcc::getUnoTunnelId()
+{
+    return theSfxValueSetAccUnoTunnelId::get().getSeq();
+}
+
+uno::Reference< accessibility::XAccessibleContext > SAL_CALL SfxThumbnailViewAcc::getAccessibleContext()
+{
+    ThrowIfDisposed();
+    return this;
+}
+
+sal_Int32 SAL_CALL SfxThumbnailViewAcc::getAccessibleChildCount()
+{
+    const SolarMutexGuard aSolarGuard;
+    ThrowIfDisposed();
+
+    sal_Int32 nCount = mpParent->ImplGetVisibleItemCount();
+    return nCount;
+}
+
+uno::Reference< accessibility::XAccessible > SAL_CALL SfxThumbnailViewAcc::getAccessibleChild( sal_Int32 i )
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+    ThumbnailViewItem* pItem = getItem (sal::static_int_cast< sal_uInt16 >(i));
+
+    if( !pItem )
+        throw lang::IndexOutOfBoundsException();
+
+    uno::Reference< accessibility::XAccessible >  xRet = pItem->GetAccessible( /*bIsTransientChildrenDisabled*/false );
+    return xRet;
+}
+
+uno::Reference< accessibility::XAccessible > SAL_CALL SfxThumbnailViewAcc::getAccessibleParent()
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+    return mpParent->GetDrawingArea()->get_accessible_parent();
+}
+
+sal_Int32 SAL_CALL SfxThumbnailViewAcc::getAccessibleIndexInParent()
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+
+    // -1 for child not found/no parent (according to specification)
+    sal_Int32 nRet = -1;
+
+    uno::Reference<accessibility::XAccessible> xParent(getAccessibleParent());
+    if (!xParent)
+        return nRet;
+
+    try
+    {
+        uno::Reference<accessibility::XAccessibleContext> xParentContext(xParent->getAccessibleContext());
+
+        //  iterate over parent's children and search for this object
+        if ( xParentContext.is() )
+        {
+            sal_Int32 nChildCount = xParentContext->getAccessibleChildCount();
+            for ( sal_Int32 nChild = 0; ( nChild < nChildCount ) && ( -1 == nRet ); ++nChild )
+            {
+                uno::Reference<XAccessible> xChild(xParentContext->getAccessibleChild(nChild));
+                if ( xChild.get() == this )
+                    nRet = nChild;
+            }
+        }
+    }
+    catch (const uno::Exception&)
+    {
+        TOOLS_WARN_EXCEPTION( "sfx", "OAccessibleContextHelper::getAccessibleIndexInParent" );
+    }
+
+    return nRet;
+}
+
+sal_Int16 SAL_CALL SfxThumbnailViewAcc::getAccessibleRole()
+{
+    ThrowIfDisposed();
+    // #i73746# As the Java Access Bridge (v 2.0.1) uses "managesDescendants"
+    // always if the role is LIST, we need a different role in this case
+    return accessibility::AccessibleRole::LIST;
+}
+
+OUString SAL_CALL SfxThumbnailViewAcc::getAccessibleDescription()
+{
+    ThrowIfDisposed();
+    return "ThumbnailView";
+}
+
+OUString SAL_CALL SfxThumbnailViewAcc::getAccessibleName()
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+    OUString              aRet;
+
+    if (mpParent)
+    {
+        aRet = mpParent->GetAccessibleName();
+    }
+
+    return aRet;
+}
+
+uno::Reference< accessibility::XAccessibleRelationSet > SAL_CALL SfxThumbnailViewAcc::getAccessibleRelationSet()
+{
+    ThrowIfDisposed();
+    return uno::Reference< accessibility::XAccessibleRelationSet >();
+}
+
+uno::Reference< accessibility::XAccessibleStateSet > SAL_CALL SfxThumbnailViewAcc::getAccessibleStateSet()
+{
+    ThrowIfDisposed();
+    ::utl::AccessibleStateSetHelper* pStateSet = new ::utl::AccessibleStateSetHelper();
+
+    // Set some states.
+    pStateSet->AddState (accessibility::AccessibleStateType::ENABLED);
+    pStateSet->AddState (accessibility::AccessibleStateType::SENSITIVE);
+    pStateSet->AddState (accessibility::AccessibleStateType::SHOWING);
+    pStateSet->AddState (accessibility::AccessibleStateType::VISIBLE);
+    pStateSet->AddState (accessibility::AccessibleStateType::MANAGES_DESCENDANTS);
+    pStateSet->AddState (accessibility::AccessibleStateType::FOCUSABLE);
+
+    return pStateSet;
+}
+
+lang::Locale SAL_CALL SfxThumbnailViewAcc::getLocale()
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+    uno::Reference< accessibility::XAccessible >    xParent( getAccessibleParent() );
+    lang::Locale                                    aRet( "", "", "" );
+
+    if( xParent.is() )
+    {
+        uno::Reference< accessibility::XAccessibleContext > xParentContext( xParent->getAccessibleContext() );
+
+        if( xParentContext.is() )
+            aRet = xParentContext->getLocale ();
+    }
+
+    return aRet;
+}
+
+void SAL_CALL SfxThumbnailViewAcc::addAccessibleEventListener( const uno::Reference< accessibility::XAccessibleEventListener >& rxListener )
+{
+    ThrowIfDisposed();
+    ::osl::MutexGuard aGuard (m_aMutex);
+
+    if( !rxListener.is() )
+        return;
+
+    bool bFound = false;
+
+    for (auto const& eventListener : mxEventListeners)
+    {
+        if( eventListener == rxListener )
+        {
+            bFound = true;
+            break;
+        }
+    }
+
+    if (!bFound)
+        mxEventListeners.push_back( rxListener );
+}
+
+void SAL_CALL SfxThumbnailViewAcc::removeAccessibleEventListener( const uno::Reference< accessibility::XAccessibleEventListener >& rxListener )
+{
+    ThrowIfDisposed();
+    ::osl::MutexGuard aGuard (m_aMutex);
+
+    if( rxListener.is() )
+    {
+        std::vector< uno::Reference< accessibility::XAccessibleEventListener > >::iterator aIter =
+            std::find(mxEventListeners.begin(), mxEventListeners.end(), rxListener);
+
+        if (aIter != mxEventListeners.end())
+            mxEventListeners.erase( aIter );
+    }
+}
+
+sal_Bool SAL_CALL SfxThumbnailViewAcc::containsPoint( const awt::Point& aPoint )
+{
+    ThrowIfDisposed();
+    const awt::Rectangle    aRect( getBounds() );
+    const Point             aSize( aRect.Width, aRect.Height );
+    const Point             aNullPoint, aTestPoint( aPoint.X, aPoint.Y );
+
+    return tools::Rectangle( aNullPoint, aSize ).IsInside( aTestPoint );
+}
+
+uno::Reference< accessibility::XAccessible > SAL_CALL SfxThumbnailViewAcc::getAccessibleAtPoint( const awt::Point& aPoint )
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+    const sal_uInt16                                    nItemId = mpParent->GetItemId( Point( aPoint.X, aPoint.Y ) );
+    uno::Reference< accessibility::XAccessible >    xRet;
+
+    if ( nItemId )
+    {
+        const size_t nItemPos = mpParent->GetItemPos( nItemId );
+
+        if( THUMBNAILVIEW_ITEM_NONEITEM != nItemPos )
+        {
+            ThumbnailViewItem *const pItem = mpParent->mFilteredItemList[nItemPos];
+            xRet = pItem->GetAccessible( /*bIsTransientChildrenDisabled*/false );
+        }
+    }
+
+    return xRet;
+}
+
+awt::Rectangle SAL_CALL SfxThumbnailViewAcc::getBounds()
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+    const Point         aOutPos;
+    const Size          aOutSize( mpParent->GetOutputSizePixel() );
+    awt::Rectangle      aRet;
+
+    aRet.X = aOutPos.X();
+    aRet.Y = aOutPos.Y();
+    aRet.Width = aOutSize.Width();
+    aRet.Height = aOutSize.Height();
+
+    return aRet;
+}
+
+awt::Point SAL_CALL SfxThumbnailViewAcc::getLocation()
+{
+    ThrowIfDisposed();
+    const awt::Rectangle    aRect( getBounds() );
+    awt::Point              aRet;
+
+    aRet.X = aRect.X;
+    aRet.Y = aRect.Y;
+
+    return aRet;
+}
+
+awt::Point SAL_CALL SfxThumbnailViewAcc::getLocationOnScreen()
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+    awt::Point aScreenLoc(0, 0);
+
+    uno::Reference<accessibility::XAccessible> xParent(getAccessibleParent());
+    if (xParent)
+    {
+        uno::Reference<accessibility::XAccessibleContext> xParentContext(xParent->getAccessibleContext());
+        uno::Reference<accessibility::XAccessibleComponent> xParentComponent(xParentContext, css::uno::UNO_QUERY);
+        OSL_ENSURE( xParentComponent.is(), "SfxThumbnailViewAcc::getLocationOnScreen: no parent component!" );
+        if ( xParentComponent.is() )
+        {
+            awt::Point aParentScreenLoc( xParentComponent->getLocationOnScreen() );
+            awt::Point aOwnRelativeLoc( getLocation() );
+            aScreenLoc.X = aParentScreenLoc.X + aOwnRelativeLoc.X;
+            aScreenLoc.Y = aParentScreenLoc.Y + aOwnRelativeLoc.Y;
+        }
+    }
+
+    return aScreenLoc;
+}
+
+awt::Size SAL_CALL SfxThumbnailViewAcc::getSize()
+{
+    ThrowIfDisposed();
+    const awt::Rectangle    aRect( getBounds() );
+    awt::Size               aRet;
+
+    aRet.Width = aRect.Width;
+    aRet.Height = aRect.Height;
+
+    return aRet;
+}
+
+void SAL_CALL SfxThumbnailViewAcc::grabFocus()
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+    mpParent->GrabFocus();
+}
+
+sal_Int32 SAL_CALL SfxThumbnailViewAcc::getForeground(  )
+{
+    ThrowIfDisposed();
+    Color nColor = Application::GetSettings().GetStyleSettings().GetWindowTextColor();
+    return static_cast<sal_Int32>(nColor);
+}
+
+sal_Int32 SAL_CALL SfxThumbnailViewAcc::getBackground(  )
+{
+    ThrowIfDisposed();
+    Color nColor = Application::GetSettings().GetStyleSettings().GetWindowColor();
+    return static_cast<sal_Int32>(nColor);
+}
+
+void SAL_CALL SfxThumbnailViewAcc::selectAccessibleChild( sal_Int32 nChildIndex )
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+    ThumbnailViewItem* pItem = getItem (sal::static_int_cast< sal_uInt16 >(nChildIndex));
+
+    if(pItem == nullptr)
+        throw lang::IndexOutOfBoundsException();
+
+    mpParent->SelectItem( pItem->mnId );
+}
+
+sal_Bool SAL_CALL SfxThumbnailViewAcc::isAccessibleChildSelected( sal_Int32 nChildIndex )
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+    ThumbnailViewItem* pItem = getItem (sal::static_int_cast< sal_uInt16 >(nChildIndex));
+
+    if (pItem == nullptr)
+        throw lang::IndexOutOfBoundsException();
+
+    return mpParent->IsItemSelected( pItem->mnId );
+}
+
+void SAL_CALL SfxThumbnailViewAcc::clearAccessibleSelection()
+{
+    ThrowIfDisposed();
+}
+
+void SAL_CALL SfxThumbnailViewAcc::selectAllAccessibleChildren()
+{
+    ThrowIfDisposed();
+    // unsupported due to single selection only
+}
+
+sal_Int32 SAL_CALL SfxThumbnailViewAcc::getSelectedAccessibleChildCount()
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+    sal_Int32           nRet = 0;
+
+    for( sal_uInt16 i = 0, nCount = getItemCount(); i < nCount; i++ )
+    {
+        ThumbnailViewItem* pItem = getItem (i);
+
+        if( pItem && mpParent->IsItemSelected( pItem->mnId ) )
+            ++nRet;
+    }
+
+    return nRet;
+}
+
+uno::Reference< accessibility::XAccessible > SAL_CALL SfxThumbnailViewAcc::getSelectedAccessibleChild( sal_Int32 nSelectedChildIndex )
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+    uno::Reference< accessibility::XAccessible >    xRet;
+
+    for( sal_uInt16 i = 0, nCount = getItemCount(), nSel = 0; ( i < nCount ) && !xRet.is(); i++ )
+    {
+        ThumbnailViewItem* pItem = getItem(i);
+
+        if( pItem && mpParent->IsItemSelected( pItem->mnId ) && ( nSelectedChildIndex == static_cast< sal_Int32 >( nSel++ ) ) )
+            xRet = pItem->GetAccessible( /*bIsTransientChildrenDisabled*/false );
+    }
+
+    return xRet;
+}
+
+void SAL_CALL SfxThumbnailViewAcc::deselectAccessibleChild( sal_Int32 )
+{
+    ThrowIfDisposed();
+    const SolarMutexGuard aSolarGuard;
+    // Because of the single selection we can reset the whole selection when
+    // the specified child is currently selected.
+//FIXME TODO    if (isAccessibleChildSelected(nChildIndex))
+//FIXME TODO        ;
+}
+
+sal_Int64 SAL_CALL SfxThumbnailViewAcc::getSomething( const uno::Sequence< sal_Int8 >& rId )
+{
+    sal_Int64 nRet;
+
+    if( isUnoTunnelId<SfxThumbnailViewAcc>(rId) )
+        nRet = reinterpret_cast< sal_Int64 >( this );
+    else
+        nRet = 0;
+
+    return nRet;
+}
+
+void SAL_CALL SfxThumbnailViewAcc::disposing()
+{
+    ::std::vector<uno::Reference<accessibility::XAccessibleEventListener> > aListenerListCopy;
+
+    {
+        // Make a copy of the list and clear the original.
+        const SolarMutexGuard aSolarGuard;
+        ::osl::MutexGuard aGuard (m_aMutex);
+        aListenerListCopy = mxEventListeners;
+        mxEventListeners.clear();
+
+        // Reset the pointer to the parent.  It has to be the one who has
+        // disposed us because he is dying.
+        mpParent = nullptr;
+    }
+
+    // Inform all listeners that this objects is disposing.
+    lang::EventObject aEvent (static_cast<accessibility::XAccessible*>(this));
+    for (auto const& listener : aListenerListCopy)
+    {
+        try
+        {
+            listener->disposing (aEvent);
+        }
+        catch(const uno::Exception&)
+        {
+            // Ignore exceptions.
+        }
+    }
+}
+
+sal_uInt16 SfxThumbnailViewAcc::getItemCount() const
+{
+    return mpParent->ImplGetVisibleItemCount();
+}
+
+ThumbnailViewItem* SfxThumbnailViewAcc::getItem (sal_uInt16 nIndex) const
+{
+    return mpParent->ImplGetVisibleItem (nIndex);
+}
+
+void SfxThumbnailViewAcc::ThrowIfDisposed()
+{
+    if (rBHelper.bDisposed || rBHelper.bInDispose)
+    {
+        SAL_WARN("sfx", "Calling disposed object. Throwing exception:");
+        throw lang::DisposedException (
+            "object has been already disposed",
+            static_cast<uno::XWeak*>(this));
+    }
+    else
+    {
+        DBG_ASSERT (mpParent!=nullptr, "ValueSetAcc not disposed but mpParent == NULL");
+    }
+}
+
 ThumbnailViewItemAcc::ThumbnailViewItemAcc( ThumbnailViewItem* pParent, bool bIsTransientChildrenDisabled ) :
     mpParent( pParent ),
     mbIsTransientChildrenDisabled( bIsTransientChildrenDisabled )
@@ -573,32 +1018,6 @@ ThumbnailViewItemAcc::ThumbnailViewItemAcc( ThumbnailViewItem* pParent, bool bIs
 
 ThumbnailViewItemAcc::~ThumbnailViewItemAcc()
 {
-}
-
-void ThumbnailViewItemAcc::FireAccessibleEvent( short nEventId, const uno::Any& rOldValue, const uno::Any& rNewValue )
-{
-    if( nEventId )
-    {
-        ::std::vector< uno::Reference< accessibility::XAccessibleEventListener > > aTmpListeners( mxEventListeners );
-        accessibility::AccessibleEventObject aEvtObject;
-
-        aEvtObject.EventId = nEventId;
-        aEvtObject.Source = static_cast<uno::XWeak*>(this);
-        aEvtObject.NewValue = rNewValue;
-        aEvtObject.OldValue = rOldValue;
-
-        for (::std::vector< uno::Reference< accessibility::XAccessibleEventListener > >::const_iterator aIter( aTmpListeners.begin() ), aEnd( aTmpListeners.end() );
-            aIter != aEnd ; ++aIter)
-        {
-            try
-            {
-                (*aIter)->notifyEvent( aEvtObject );
-            }
-            catch(const uno::Exception&)
-            {
-            }
-        }
-    }
 }
 
 void ThumbnailViewItemAcc::ParentDestroyed()
@@ -622,11 +1041,7 @@ ThumbnailViewItemAcc* ThumbnailViewItemAcc::getImplementation( const uno::Refere
 {
     try
     {
-        uno::Reference< lang::XUnoTunnel > xUnoTunnel( rxData, uno::UNO_QUERY );
-        return( xUnoTunnel.is() ?
-                reinterpret_cast<ThumbnailViewItemAcc*>(sal::static_int_cast<sal_IntPtr>(
-                        xUnoTunnel->getSomething( ThumbnailViewItemAcc::getUnoTunnelId() ))) :
-                nullptr );
+        return comphelper::getUnoTunnelImplementation<ThumbnailViewItemAcc>(rxData);
     }
     catch(const css::uno::Exception&)
     {
@@ -655,7 +1070,7 @@ uno::Reference< accessibility::XAccessible > SAL_CALL ThumbnailViewItemAcc::getA
     uno::Reference< accessibility::XAccessible >    xRet;
 
     if( mpParent )
-        xRet = mpParent->mrParent.GetAccessible();
+        xRet = mpParent->mrParent.getAccessible();
 
     return xRet;
 }
@@ -676,7 +1091,7 @@ sal_Int32 SAL_CALL ThumbnailViewItemAcc::getAccessibleIndexInParent()
         for (sal_uInt16 i=0; i<nCount && !bDone; i++)
         {
             // Guard the retrieval of the i-th child with a try/catch block
-            // just in case the number of children changes in the mean time.
+            // just in case the number of children changes in the meantime.
             try
             {
                 pItem = mpParent->mrParent.ImplGetVisibleItem (i);
@@ -720,9 +1135,7 @@ OUString SAL_CALL ThumbnailViewItemAcc::getAccessibleName()
 
         if( aRet.isEmpty() )
         {
-            OUStringBuffer aBuffer("Item ");
-            aBuffer.append(static_cast<sal_Int32>(mpParent->mnId));
-            aRet = aBuffer.makeStringAndClear();
+            aRet = "Item " + OUString::number(static_cast<sal_Int32>(mpParent->mnId));
         }
     }
 
@@ -784,22 +1197,22 @@ void SAL_CALL ThumbnailViewItemAcc::addAccessibleEventListener( const uno::Refer
 {
     const ::osl::MutexGuard aGuard( maMutex );
 
-    if( rxListener.is() )
+    if( !rxListener.is() )
+        return;
+
+    bool bFound = false;
+
+    for (auto const& eventListener : mxEventListeners)
     {
-           ::std::vector< uno::Reference< accessibility::XAccessibleEventListener > >::const_iterator aIter = mxEventListeners.begin();
-        bool bFound = false;
-
-        while( !bFound && ( aIter != mxEventListeners.end() ) )
+        if( eventListener == rxListener )
         {
-            if( *aIter == rxListener )
-                bFound = true;
-            else
-                ++aIter;
+            bFound = true;
+            break;
         }
-
-        if (!bFound)
-            mxEventListeners.push_back( rxListener );
     }
+
+    if (!bFound)
+        mxEventListeners.push_back( rxListener );
 }
 
 void SAL_CALL ThumbnailViewItemAcc::removeAccessibleEventListener( const uno::Reference< accessibility::XAccessibleEventListener >& rxListener )
@@ -839,8 +1252,19 @@ awt::Rectangle SAL_CALL ThumbnailViewItemAcc::getBounds()
     if( mpParent )
     {
         tools::Rectangle   aRect( mpParent->getDrawArea() );
-        Point       aOrigin;
-        tools::Rectangle   aParentRect( aOrigin, mpParent->mrParent.GetOutputSizePixel() );
+        tools::Rectangle   aParentRect;
+
+        // get position of the accessible parent in screen coordinates
+        uno::Reference< XAccessible > xParent = getAccessibleParent();
+        if ( xParent.is() )
+        {
+            uno::Reference<XAccessibleComponent> xParentComponent(xParent->getAccessibleContext(), uno::UNO_QUERY);
+            if (xParentComponent.is())
+            {
+                awt::Size aParentSize = xParentComponent->getSize();
+                aParentRect = tools::Rectangle(0, 0, aParentSize.Width, aParentSize.Height);
+            }
+        }
 
         aRect.Intersection( aParentRect );
 
@@ -872,10 +1296,22 @@ awt::Point SAL_CALL ThumbnailViewItemAcc::getLocationOnScreen()
     if( mpParent )
     {
         const Point aPos = mpParent->getDrawArea().TopLeft();
-        const Point aScreenPos( mpParent->mrParent.OutputToAbsoluteScreenPixel( aPos ) );
 
-        aRet.X = aScreenPos.X();
-        aRet.Y = aScreenPos.Y();
+        aRet.X = aPos.X();
+        aRet.Y = aPos.Y();
+
+        // get position of the accessible parent in screen coordinates
+        uno::Reference< XAccessible > xParent = getAccessibleParent();
+        if ( xParent.is() )
+        {
+            uno::Reference<XAccessibleComponent> xParentComponent(xParent->getAccessibleContext(), uno::UNO_QUERY);
+            if (xParentComponent.is())
+            {
+                awt::Point aParentScreenLoc = xParentComponent->getLocationOnScreen();
+                aRet.X += aParentScreenLoc.X;
+                aRet.Y += aParentScreenLoc.Y;
+            }
+        }
     }
 
     return aRet;
@@ -899,20 +1335,20 @@ void SAL_CALL ThumbnailViewItemAcc::grabFocus()
 
 sal_Int32 SAL_CALL ThumbnailViewItemAcc::getForeground(  )
 {
-    sal_uInt32 nColor = Application::GetSettings().GetStyleSettings().GetWindowTextColor().GetColor();
+    Color nColor = Application::GetSettings().GetStyleSettings().GetWindowTextColor();
     return static_cast<sal_Int32>(nColor);
 }
 
 sal_Int32 SAL_CALL ThumbnailViewItemAcc::getBackground(  )
 {
-    return static_cast<sal_Int32>(Application::GetSettings().GetStyleSettings().GetWindowColor().GetColor());
+    return static_cast<sal_Int32>(Application::GetSettings().GetStyleSettings().GetWindowColor());
 }
 
 sal_Int64 SAL_CALL ThumbnailViewItemAcc::getSomething( const uno::Sequence< sal_Int8 >& rId )
 {
     sal_Int64 nRet;
 
-    if( ( rId.getLength() == 16 ) && ( 0 == memcmp( ThumbnailViewItemAcc::getUnoTunnelId().getConstArray(), rId.getConstArray(), 16 ) ) )
+    if( isUnoTunnelId<ThumbnailViewItemAcc>(rId) )
         nRet = reinterpret_cast< sal_Int64 >( this );
     else
         nRet = 0;

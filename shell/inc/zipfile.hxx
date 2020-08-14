@@ -20,11 +20,10 @@
 #ifndef INCLUDED_SHELL_INC_INTERNAL_ZIPFILE_HXX
 #define INCLUDED_SHELL_INC_INTERNAL_ZIPFILE_HXX
 
-#include <zlib.h>
-
 #include <string>
 #include <vector>
 #include <memory>
+#include "filepath.hxx"
 
 class StreamInterface;
 
@@ -34,7 +33,6 @@ class StreamInterface;
 class ZipFile
 {
 public:
-
     typedef std::vector<std::string>   Directory_t;
     typedef std::unique_ptr<Directory_t> DirectoryPtr_t;
     typedef std::vector<char>          ZipContentBuffer_t;
@@ -54,7 +52,7 @@ public:
             IOException if the specified file doesn't exist
             AccessViolationException if read access to the file is denied
     */
-    static bool IsZipFile(const std::string &FileName);
+    static bool IsZipFile(const Filepath_t &FileName);
 
     static bool IsZipFile(void *stream);
 
@@ -74,7 +72,7 @@ public:
             IOException if the specified file doesn't exist or is no zip file
             AccessViolationException if read access to the file is denied
     */
-    static bool IsValidZipFileVersionNumber(const std::string &FileName);
+    static bool IsValidZipFileVersionNumber(const Filepath_t &FileName);
 
     static bool IsValidZipFileVersionNumber(void *stream);
 
@@ -92,7 +90,7 @@ public:
             WrongZipVersionException if the zip file cannot be uncompressed
             with the used zlib version
     */
-    ZipFile(const std::string &FileName);
+    ZipFile(const Filepath_t &FileName);
 
     ZipFile(StreamInterface *stream);
 
@@ -115,7 +113,7 @@ public:
 
     @throws     std::bad_alloc if the necessary buffer could not be
                 allocated
-                ZipException if an zip error occurs
+                ZipException if a zip error occurs
                 ZipContentMissException if the specified zip content
                 does not exist in this zip file
     */
@@ -138,7 +136,7 @@ private:
     /** Returns the length of the longest file name
         in the current zip file
 
-        @throws ZipException if an zip error occurs
+        @throws ZipException if a zip error occurs
     */
     long GetFileLongestFileNameLength() const;
 

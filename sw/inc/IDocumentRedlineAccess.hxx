@@ -25,20 +25,16 @@
 #include <cstddef>
 
 #include <sal/types.h>
-#include <tools/solar.h>
 
-#include <limits.h>
-
-#include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/uno/Sequence.h>
 #include <o3tl/typed_flags_set.hxx>
+#include <svx/ctredlin.hxx>
 
-#include <docary.hxx>
+#include "docary.hxx"
 
 class SwRangeRedline;
 class SwTableRowRedline;
 class SwTableCellRedline;
-class SwRedlineTable;
-class SwExtraRedlineTable;
 class SwPaM;
 struct SwPosition;
 class SwStartNode;
@@ -57,51 +53,29 @@ enum class RedlineFlags
     // remove the original Redlines together with their content
     // (Clipboard/text modules).
     DeleteRedlines       = 0x100,
-    // When deleting within a RedlineObject
-    // ignore the DeleteRedline during Append.
-    IgnoreDeleteRedlines = 0x200,
     // don't combine any redlines. This flag may be only used in Undo.
     DontCombineRedlines  = 0x400,
 };
 namespace o3tl
 {
-    template<> struct typed_flags<RedlineFlags> : is_typed_flags<RedlineFlags, 0x733> {};
+    template<> struct typed_flags<RedlineFlags> : is_typed_flags<RedlineFlags, 0x533> {};
 }
 
-typedef sal_uInt16 RedlineType_t;
-namespace nsRedlineType_t
+inline OUString SwRedlineTypeToOUString(RedlineType eType)
 {
-    // Range of RedlineTypes is 0 to 127.
-    const RedlineType_t REDLINE_INSERT = 0x0;// Content has been inserted.
-    const RedlineType_t REDLINE_DELETE = 0x1;// Content has been deleted.
-    const RedlineType_t REDLINE_FORMAT = 0x2;// Attributes have been applied.
-    const RedlineType_t REDLINE_TABLE = 0x3;// Table structure has been altered.
-    const RedlineType_t REDLINE_FMTCOLL = 0x4;// Style has been altered (Autoformat!).
-    const RedlineType_t REDLINE_PARAGRAPH_FORMAT = 0x5;// Paragraph attributes have been changed.
-    const RedlineType_t REDLINE_TABLE_ROW_INSERT = 0x6;// Table row has been inserted.
-    const RedlineType_t REDLINE_TABLE_ROW_DELETE = 0x7;// Table row has been deleted.
-    const RedlineType_t REDLINE_TABLE_CELL_INSERT = 0x8;// Table cell has been inserted.
-    const RedlineType_t REDLINE_TABLE_CELL_DELETE = 0x9;// Table cell has been deleted.
-
-    // When larger than 128, flags can be inserted.
-    const RedlineType_t REDLINE_NO_FLAG_MASK = 0x7F;
-    const RedlineType_t REDLINE_FORM_AUTOFMT = 0x80;// Can be a flag in RedlineType.
-
-    inline OUString SwRedlineTypeToOUString(RedlineType_t eType)
+    OUString sRet;
+    switch(eType)
     {
-        OUString sRet;
-        switch(eType & nsRedlineType_t::REDLINE_NO_FLAG_MASK)
-        {
-            case nsRedlineType_t::REDLINE_INSERT: sRet = "Insert"; break;
-            case nsRedlineType_t::REDLINE_DELETE: sRet = "Delete"; break;
-            case nsRedlineType_t::REDLINE_FORMAT: sRet = "Format"; break;
-            case nsRedlineType_t::REDLINE_PARAGRAPH_FORMAT: sRet = "ParagraphFormat"; break;
-            case nsRedlineType_t::REDLINE_TABLE:  sRet = "TextTable"; break;
-            case nsRedlineType_t::REDLINE_FMTCOLL:sRet = "Style"; break;
-        }
-        return sRet;
+        case RedlineType::Insert: sRet = "Insert"; break;
+        case RedlineType::Delete: sRet = "Delete"; break;
+        case RedlineType::Format: sRet = "Format"; break;
+        case RedlineType::ParagraphFormat: sRet = "ParagraphFormat"; break;
+        case RedlineType::Table:  sRet = "TextTable"; break;
+        case RedlineType::FmtColl:sRet = "Style"; break;
+        default: break;
     }
-}
+    return sRet;
+};
 
 class IDocumentRedlineAccess
 {
@@ -159,34 +133,42 @@ public:
 
     virtual bool IsInRedlines(const SwNode& rNode) const = 0;
 
+    enum class AppendResult { IGNORED, MERGED, APPENDED };
     /** Append a new redline
 
-        @param pPtr
+        @param pNewRedl redline to insert
 
         @param bCallDelete
+            if set, then for a new DELETE redline that is inserted so that it
+            overlaps an existing INSERT redline with the same author, the
+            overlapping range is deleted, i.e. the new DELETE removes
+            existing INSERT for that range
 
         @returns
+            APPENDED if pNewRedl is still alive and was appended
+            MERGED if pNewRedl was deleted but has been merged with existing one
+            IGNORED if pNewRedl was deleted and ignored/invalid
     */
-    virtual bool AppendRedline(/*[in]*/SwRangeRedline* pPtr, /*[in]*/bool bCallDelete) = 0;
+    virtual AppendResult AppendRedline(/*[in]*/SwRangeRedline* pNewRedl, /*[in]*/bool bCallDelete) = 0;
 
-    virtual bool AppendTableRowRedline(/*[in]*/SwTableRowRedline* pPtr, /*[in]*/bool bCallDelete) = 0;
-    virtual bool AppendTableCellRedline(/*[in]*/SwTableCellRedline* pPtr, /*[in]*/bool bCallDelete) = 0;
+    virtual bool AppendTableRowRedline(/*[in]*/SwTableRowRedline* pPtr) = 0;
+    virtual bool AppendTableCellRedline(/*[in]*/SwTableCellRedline* pPtr) = 0;
 
     virtual bool SplitRedline(/*[in]*/const SwPaM& rPam) = 0;
 
     virtual bool DeleteRedline(
         /*[in]*/const SwPaM& rPam,
         /*[in]*/bool bSaveInUndo,
-        /*[in]*/sal_uInt16 nDelType) = 0;
+        /*[in]*/RedlineType nDelType) = 0;
 
     virtual bool DeleteRedline(
         /*[in]*/const SwStartNode& rSection,
         /*[in]*/bool bSaveInUndo,
-        /*[in]*/sal_uInt16 nDelType) = 0;
+        /*[in]*/RedlineType nDelType) = 0;
 
     virtual SwRedlineTable::size_type GetRedlinePos(
         /*[in]*/const SwNode& rNode,
-        /*[in]*/sal_uInt16 nType) const = 0;
+        /*[in]*/RedlineType nType) const = 0;
 
     virtual void CompressRedlines() = 0;
 
@@ -202,6 +184,8 @@ public:
 
     virtual bool AcceptRedline(/*[in]*/const SwPaM& rPam, /*[in]*/bool bCallDelete) = 0;
 
+    virtual void AcceptRedlineParagraphFormatting(/*[in]*/const SwPaM& rPam ) = 0;
+
     virtual bool RejectRedline(/*[in]*/SwRedlineTable::size_type nPos, /*[in]*/bool bCallDelete) = 0;
 
     virtual bool RejectRedline(/*[in]*/const SwPaM& rPam, /*[in]*/bool bCallDelete) = 0;
@@ -209,6 +193,8 @@ public:
     virtual const SwRangeRedline* SelNextRedline(/*[in]*/SwPaM& rPam) const = 0;
 
     virtual const SwRangeRedline* SelPrevRedline(/*[in]*/SwPaM& rPam) const = 0;
+
+    virtual void AcceptAllRedline(/*[in]*/bool bAcceptReject) = 0;
 
     // Representation has changed, invalidate all Redlines.
     virtual void UpdateRedlineAttr() = 0;

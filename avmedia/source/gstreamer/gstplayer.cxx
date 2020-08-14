@@ -30,7 +30,7 @@
 #include <math.h>
 
 #include <cppuhelper/supportsservice.hxx>
-
+#include <sal/log.hxx>
 #include <rtl/string.hxx>
 #include <salhelper/thread.hxx>
 #include <vcl/svapp.hxx>
@@ -41,27 +41,18 @@
 #include "gstframegrabber.hxx"
 #include "gstwindow.hxx"
 
-#ifdef AVMEDIA_GST_0_10
-#  define AVMEDIA_GST_PLAYER_IMPLEMENTATIONNAME "com.sun.star.comp.avmedia.Player_GStreamer_0_10"
-#  define AVMEDIA_GST_PLAYER_SERVICENAME        "com.sun.star.media.Player_GStreamer_0_10"
-#else
-#  include <gst/video/videooverlay.h>
-#  define AVMEDIA_GST_PLAYER_IMPLEMENTATIONNAME "com.sun.star.comp.avmedia.Player_GStreamer"
-#  define AVMEDIA_GST_PLAYER_SERVICENAME        "com.sun.star.media.Player_GStreamer"
-#endif
+#include <gst/video/videooverlay.h>
+#define AVMEDIA_GST_PLAYER_IMPLEMENTATIONNAME "com.sun.star.comp.avmedia.Player_GStreamer"
+#define AVMEDIA_GST_PLAYER_SERVICENAME        "com.sun.star.media.Player_GStreamer"
 
 #include <gst/pbutils/missing-plugins.h>
 #include <gst/pbutils/pbutils.h>
 
-#ifdef AVMEDIA_GST_0_10
-#  define AVVERSION "gst 0.10: "
-#else
-#  define AVVERSION "gst 1.0: "
-#endif
+#define AVVERSION "gst 1.0: "
 
 using namespace ::com::sun::star;
 
-namespace avmedia { namespace gstreamer {
+namespace avmedia::gstreamer {
 
 namespace {
 
@@ -134,7 +125,7 @@ void MissingPluginInstaller::report(
         return;
     }
     std::size_t len = std::strlen(det);
-    if (len > sal_uInt32(SAL_MAX_INT32)) {
+    if (len > SAL_MAX_INT32) {
         SAL_WARN("avmedia.gstreamer", "detail string too long");
         g_free(det);
         return;
@@ -226,10 +217,10 @@ void MissingPluginInstaller::detach(Player const * source) {
 void MissingPluginInstaller::processQueue() {
     assert(!queued_.empty());
     assert(currentDetails_.empty());
-    for (auto i = queued_.begin(); i != queued_.end(); ++i) {
-        reported_.insert(i->first);
-        currentDetails_.push_back(i->first);
-        currentSources_.insert(i->second.begin(), i->second.end());
+    for (const auto& rEntry : queued_) {
+        reported_.insert(rEntry.first);
+        currentDetails_.push_back(rEntry.first);
+        currentSources_.insert(rEntry.second.begin(), rEntry.second.end());
     }
     queued_.clear();
 }
@@ -266,7 +257,9 @@ void MissingPluginInstallerThread::execute() {
             details.swap(inst.currentDetails_);
         }
         std::vector<char *> args;
-        for (auto const & i: details) {
+        args.reserve(details.size());
+        for (auto const& i : details)
+        {
             args.push_back(const_cast<char *>(i.getStr()));
         }
         args.push_back(nullptr);
@@ -289,9 +282,6 @@ Player::Player() :
     GstPlayer_BASE( m_aMutex ),
     mpPlaybin( nullptr ),
     mpVolumeControl( nullptr ),
-#if defined(ENABLE_GTKSINK)
-    mpGtkWidget( nullptr ),
-#endif
     mbUseGtkSink( false ),
     mbFakeVideo (false ),
     mnUnmutedVolume( 0 ),
@@ -299,6 +289,7 @@ Player::Player() :
     mbMuted( false ),
     mbLooping( false ),
     mbInitialized( false ),
+    mpDisplay( nullptr ),
     mnWindowID( 0 ),
     mpXOverlay( nullptr ),
     mnDuration( 0 ),
@@ -348,14 +339,6 @@ void SAL_CALL Player::disposing()
     // Release the elements and pipeline
     if( mbInitialized )
     {
-#if defined(ENABLE_GTKSINK)
-        if (mpGtkWidget)
-        {
-            gtk_widget_destroy(mpGtkWidget);
-            mpGtkWidget = nullptr;
-        }
-#endif
-
         if( mpPlaybin )
         {
             gst_element_set_state( mpPlaybin, GST_STATE_NULL );
@@ -385,7 +368,7 @@ static gboolean pipeline_bus_callback( GstBus *, GstMessage *message, gpointer d
 
     pPlayer->processMessage( message );
 
-    return TRUE;
+    return true;
 }
 
 
@@ -428,28 +411,27 @@ void Player::processMessage( GstMessage *message )
     }
 }
 
+#define LCL_WAYLAND_DISPLAY_HANDLE_CONTEXT_TYPE "GstWaylandDisplayHandleContextType"
 
-static gboolean wrap_element_query_position (GstElement *element, GstFormat format, gint64 *cur)
+static bool lcl_is_wayland_display_handle_need_context_message(GstMessage* msg)
 {
-#ifdef AVMEDIA_GST_0_10
-    GstFormat my_format = format;
-    return gst_element_query_position( element, &my_format, cur) && my_format == format && *cur > 0;
-#else
-    return gst_element_query_position( element, format, cur );
-#endif
+    g_return_val_if_fail(GST_IS_MESSAGE(msg), false);
+
+    if (GST_MESSAGE_TYPE(msg) != GST_MESSAGE_NEED_CONTEXT)
+        return false;
+    const gchar *type = nullptr;
+    if (!gst_message_parse_context_type(msg, &type))
+        return false;
+    return !g_strcmp0(type, LCL_WAYLAND_DISPLAY_HANDLE_CONTEXT_TYPE);
 }
 
-
-static gboolean wrap_element_query_duration (GstElement *element, GstFormat format, gint64 *duration)
+static GstContext* lcl_wayland_display_handle_context_new(void* display)
 {
-#ifdef AVMEDIA_GST_0_10
-    GstFormat my_format = format;
-    return gst_element_query_duration( element, &my_format, duration) && my_format == format && *duration > 0;
-#else
-    return gst_element_query_duration( element, format, duration );
-#endif
+    GstContext *context = gst_context_new(LCL_WAYLAND_DISPLAY_HANDLE_CONTEXT_TYPE, true);
+    gst_structure_set (gst_context_writable_structure (context),
+                       "handle", G_TYPE_POINTER, display, nullptr);
+    return context;
 }
-
 
 GstBusSyncReply Player::processSyncMessage( GstMessage *message )
 {
@@ -469,86 +451,38 @@ GstBusSyncReply Player::processSyncMessage( GstMessage *message )
 
     if (!mbUseGtkSink)
     {
-#ifdef AVMEDIA_GST_0_10
-        if (message->structure &&
-            !strcmp( gst_structure_get_name( message->structure ), "prepare-xwindow-id" ) )
-#else
         if (gst_is_video_overlay_prepare_window_handle_message (message) )
-#endif
         {
             SAL_INFO( "avmedia.gstreamer", AVVERSION << this << " processSyncMessage prepare window id: " <<
-                      GST_MESSAGE_TYPE_NAME( message ) << " " << (int)mnWindowID );
+                      GST_MESSAGE_TYPE_NAME( message ) << " " << static_cast<int>(mnWindowID) );
             if( mpXOverlay )
                 g_object_unref( G_OBJECT ( mpXOverlay ) );
             g_object_set( GST_MESSAGE_SRC( message ), "force-aspect-ratio", FALSE, nullptr );
             mpXOverlay = GST_VIDEO_OVERLAY( GST_MESSAGE_SRC( message ) );
             g_object_ref( G_OBJECT ( mpXOverlay ) );
             if ( mnWindowID != 0 )
+            {
                 gst_video_overlay_set_window_handle( mpXOverlay, mnWindowID );
+                gst_video_overlay_handle_events(mpXOverlay, 0); // Let the parent window handle events.
+                if (maArea.Width > 0 && maArea.Height > 0)
+                    gst_video_overlay_set_render_rectangle(mpXOverlay, maArea.X, maArea.Y, maArea.Width, maArea.Height);
+            }
+
+            return GST_BUS_DROP;
+        }
+        else if (lcl_is_wayland_display_handle_need_context_message(message))
+        {
+            GstContext *context = lcl_wayland_display_handle_context_new(mpDisplay);
+            gst_element_set_context(GST_ELEMENT(GST_MESSAGE_SRC(message)), context);
+
             return GST_BUS_DROP;
         }
     }
 
-#ifdef AVMEDIA_GST_0_10
-    if( GST_MESSAGE_TYPE( message ) == GST_MESSAGE_STATE_CHANGED ) {
-        if( message->src == GST_OBJECT( mpPlaybin ) ) {
-            GstState newstate, pendingstate;
-
-            gst_message_parse_state_changed (message, nullptr, &newstate, &pendingstate);
-
-            SAL_INFO( "avmedia.gstreamer", AVVERSION << this << " state change received, new state " << (int)newstate << " pending " << (int)pendingstate );
-            if( newstate == GST_STATE_PAUSED &&
-                pendingstate == GST_STATE_VOID_PENDING ) {
-
-                SAL_INFO( "avmedia.gstreamer", AVVERSION << this << " change to paused received" );
-
-                if( mnDuration == 0) {
-                    gint64 gst_duration = 0;
-                    if( wrap_element_query_duration( mpPlaybin, GST_FORMAT_TIME, &gst_duration) )
-                        mnDuration = gst_duration;
-                }
-
-                if( mnWidth == 0 ) {
-                    GList *pStreamInfo = nullptr;
-
-                    g_object_get( G_OBJECT( mpPlaybin ), "stream-info", &pStreamInfo, nullptr );
-
-                    for ( ; pStreamInfo != nullptr; pStreamInfo = pStreamInfo->next) {
-                        GObject *pInfo = G_OBJECT( pStreamInfo->data );
-
-                        if( !pInfo )
-                            continue;
-
-                        int nType;
-                        g_object_get( pInfo, "type", &nType, nullptr );
-                        GEnumValue *pValue = g_enum_get_value( G_PARAM_SPEC_ENUM( g_object_class_find_property( G_OBJECT_GET_CLASS( pInfo ), "type" ) )->enum_class,
-                                                               nType );
-
-                        if( !g_ascii_strcasecmp( pValue->value_nick, "video" ) ) {
-                            GstStructure *pStructure;
-                            GstPad *pPad;
-
-                            g_object_get( pInfo, "object", &pPad, nullptr );
-                            pStructure = gst_caps_get_structure( GST_PAD_CAPS( pPad ), 0 );
-                            if( pStructure ) {
-                                gst_structure_get_int( pStructure, "width", &mnWidth );
-                                gst_structure_get_int( pStructure, "height", &mnHeight );
-                                SAL_INFO( "avmedia.gstreamer", AVVERSION "queried size: " << mnWidth << "x" << mnHeight );
-                            }
-                            g_object_unref (pPad);
-                        }
-                    }
-
-                    maSizeCondition.set();
-                }
-            }
-        }
-#else
-    // We get to use the exciting new playbin2 ! (now known as playbin)
     if( GST_MESSAGE_TYPE( message ) == GST_MESSAGE_ASYNC_DONE ) {
         if( mnDuration == 0) {
             gint64 gst_duration = 0;
-            if( wrap_element_query_duration( mpPlaybin, GST_FORMAT_TIME, &gst_duration) )
+            if( gst_element_query_duration( mpPlaybin, GST_FORMAT_TIME, &gst_duration) )
                 mnDuration = gst_duration;
         }
         if( mnWidth == 0 ) {
@@ -577,7 +511,6 @@ GstBusSyncReply Player::processSyncMessage( GstMessage *message )
 
             maSizeCondition.set();
         }
-#endif // AVMEDIA_GST_0_10
     } else if (gst_is_missing_plugin_message(message)) {
         TheMissingPluginInstaller::get().report(this, message);
         if( mnWidth == 0 ) {
@@ -596,14 +529,6 @@ GstBusSyncReply Player::processSyncMessage( GstMessage *message )
 
 void Player::preparePlaybin( const OUString& rURL, GstElement *pSink )
 {
-#if defined(ENABLE_GTKSINK)
-    if (mpGtkWidget)
-    {
-        gtk_widget_destroy(mpGtkWidget);
-        mpGtkWidget = nullptr;
-    }
-#endif
-
     if (mpPlaybin != nullptr)
     {
         gst_element_set_state( mpPlaybin, GST_STATE_NULL );
@@ -619,11 +544,18 @@ void Player::preparePlaybin( const OUString& rURL, GstElement *pSink )
     mpVolumeControl = gst_element_factory_make( "volume", nullptr );
     GstElement *pAudioSink = gst_element_factory_make( "autoaudiosink", nullptr );
     GstElement* pAudioOutput = gst_bin_new("audio-output-bin");
-    gst_bin_add_many(GST_BIN(pAudioOutput), mpVolumeControl, pAudioSink, nullptr);
-    gst_element_link(mpVolumeControl, pAudioSink);
-    GstPad *pPad = gst_element_get_static_pad(mpVolumeControl, "sink");
-    gst_element_add_pad(GST_ELEMENT(pAudioOutput), gst_ghost_pad_new("sink", pPad));
-    gst_object_unref(GST_OBJECT(pPad));
+    assert(pAudioOutput);
+    if (pAudioSink)
+        gst_bin_add(GST_BIN(pAudioOutput), pAudioSink);
+    if (mpVolumeControl)
+    {
+        gst_bin_add(GST_BIN(pAudioOutput), mpVolumeControl);
+        if (pAudioSink)
+            gst_element_link(mpVolumeControl, pAudioSink);
+        GstPad *pPad = gst_element_get_static_pad(mpVolumeControl, "sink");
+        gst_element_add_pad(GST_ELEMENT(pAudioOutput), gst_ghost_pad_new("sink", pPad));
+        gst_object_unref(GST_OBJECT(pPad));
+    }
     g_object_set(G_OBJECT(mpPlaybin), "audio-sink", pAudioOutput, nullptr);
 
     if( pSink != nullptr ) // used for getting preferred size etc.
@@ -646,11 +578,7 @@ void Player::preparePlaybin( const OUString& rURL, GstElement *pSink )
     mnWatchID = gst_bus_add_watch( pBus, pipeline_bus_callback, this );
     mbWatchID = true;
     SAL_INFO( "avmedia.gstreamer", AVVERSION << this << " set sync handler" );
-#ifdef AVMEDIA_GST_0_10
-    gst_bus_set_sync_handler( pBus, pipeline_bus_sync_handler, this );
-#else
     gst_bus_set_sync_handler( pBus, pipeline_bus_sync_handler, this, nullptr );
-#endif
     g_object_unref( pBus );
 }
 
@@ -732,7 +660,7 @@ double SAL_CALL Player::getDuration()
     ::osl::MutexGuard aGuard(m_aMutex);
 
     // slideshow checks for non-zero duration, so cheat here
-    double duration = 0.01;
+    double duration = 0.3;
 
     if( mpPlaybin && mnDuration > 0 ) {
         duration = mnDuration / GST_SECOND;
@@ -746,19 +674,20 @@ void SAL_CALL Player::setMediaTime( double fTime )
 {
     ::osl::MutexGuard aGuard(m_aMutex);
 
-    if( mpPlaybin ) {
-        gint64 gst_position = llround (fTime * GST_SECOND);
+    if( !mpPlaybin )
+        return;
 
-        gst_element_seek( mpPlaybin, 1.0,
-                          GST_FORMAT_TIME,
-                          GST_SEEK_FLAG_FLUSH,
-                          GST_SEEK_TYPE_SET, gst_position,
-                          GST_SEEK_TYPE_NONE, 0 );
-        if( !isPlaying() )
-            gst_element_set_state( mpPlaybin, GST_STATE_PAUSED );
+    gint64 gst_position = llround (fTime * GST_SECOND);
 
-        SAL_INFO( "avmedia.gstreamer", AVVERSION "seek to: " << gst_position << " ns original: " << fTime << " s" );
-    }
+    gst_element_seek( mpPlaybin, 1.0,
+                      GST_FORMAT_TIME,
+                      GST_SEEK_FLAG_FLUSH,
+                      GST_SEEK_TYPE_SET, gst_position,
+                      GST_SEEK_TYPE_NONE, 0 );
+    if( !isPlaying() )
+        gst_element_set_state( mpPlaybin, GST_STATE_PAUSED );
+
+    SAL_INFO( "avmedia.gstreamer", AVVERSION "seek to: " << gst_position << " ns original: " << fTime << " s" );
 }
 
 
@@ -771,7 +700,7 @@ double SAL_CALL Player::getMediaTime()
     if( mpPlaybin ) {
         // get current position in the stream
         gint64 gst_position;
-        if( wrap_element_query_position( mpPlaybin, GST_FORMAT_TIME, &gst_position ) )
+        if( gst_element_query_position( mpPlaybin, GST_FORMAT_TIME, &gst_position ) )
             position = gst_position / GST_SECOND;
     }
 
@@ -802,7 +731,7 @@ void SAL_CALL Player::setMute( sal_Bool bSet )
     SAL_INFO( "avmedia.gstreamer", AVVERSION "set mute: " << bSet << " muted: " << mbMuted << " unmuted volume: " << mnUnmutedVolume );
 
     // change the volume to 0 or the unmuted volume
-    if(  mpPlaybin && mbMuted != bool(bSet) )
+    if (mpVolumeControl && mbMuted != bool(bSet))
     {
         double nVolume = mnUnmutedVolume;
         if( bSet )
@@ -834,7 +763,7 @@ void SAL_CALL Player::setVolumeDB( sal_Int16 nVolumeDB )
     SAL_INFO( "avmedia.gstreamer", AVVERSION "set volume: " << nVolumeDB << " gst volume: " << mnUnmutedVolume );
 
     // change volume
-    if( !mbMuted && mpPlaybin )
+    if (mpVolumeControl && !mbMuted)
     {
         g_object_set( G_OBJECT( mpVolumeControl ), "volume", mnUnmutedVolume, nullptr );
     }
@@ -847,12 +776,13 @@ sal_Int16 SAL_CALL Player::getVolumeDB()
 
     sal_Int16 nVolumeDB(0);
 
-    if( mpPlaybin ) {
+    if (mpVolumeControl)
+    {
         double nGstVolume = 0.0;
 
         g_object_get( G_OBJECT( mpVolumeControl ), "volume", &nGstVolume, nullptr );
 
-        nVolumeDB = (sal_Int16) ( 20.0*log10 ( nGstVolume ) );
+        nVolumeDB = static_cast<sal_Int16>( 20.0*log10 ( nGstVolume ) );
     }
 
     return nVolumeDB;
@@ -885,13 +815,16 @@ awt::Size SAL_CALL Player::getPreferredPlayerWindowSize()
     return aSize;
 }
 
-
 uno::Reference< ::media::XPlayerWindow > SAL_CALL Player::createPlayerWindow( const uno::Sequence< uno::Any >& rArguments )
 {
     ::osl::MutexGuard aGuard(m_aMutex);
 
     uno::Reference< ::media::XPlayerWindow >    xRet;
-    awt::Size                                   aSize( getPreferredPlayerWindowSize() );
+
+    if (rArguments.getLength() > 1)
+       rArguments[1] >>= maArea;
+
+    awt::Size aSize = getPreferredPlayerWindowSize();
 
     if( mbFakeVideo )
         preparePlaybin( maURL, nullptr );
@@ -900,52 +833,65 @@ uno::Reference< ::media::XPlayerWindow > SAL_CALL Player::createPlayerWindow( co
 
     if( aSize.Width > 0 && aSize.Height > 0 )
     {
-        ::avmedia::gstreamer::Window* pWindow = new ::avmedia::gstreamer::Window;
-
-        xRet = pWindow;
-
-        if( rArguments.getLength() > 2 )
+        if (rArguments.getLength() <= 2)
         {
-            sal_IntPtr pIntPtr = 0;
-            rArguments[ 2 ] >>= pIntPtr;
-            SystemChildWindow *pParentWindow = reinterpret_cast< SystemChildWindow* >( pIntPtr );
-            const SystemEnvData* pEnvData = pParentWindow ? pParentWindow->GetSystemData() : nullptr;
-            OSL_ASSERT(pEnvData);
-            if (pEnvData)
-            {
-#if defined(ENABLE_GTKSINK)
-                GstElement *pVideosink = g_strcmp0(pEnvData->pToolkit, "gtk3") == 0 ?
-                                           gst_element_factory_make("gtksink", "gtksink") : nullptr;
-                if (pVideosink)
-                {
-                    mbUseGtkSink = true;
-                    g_object_get(pVideosink, "widget", &mpGtkWidget, nullptr);
-                    GtkWidget *pParent = static_cast<GtkWidget*>(pEnvData->pWidget);
-                    gtk_container_add (GTK_CONTAINER(pParent), mpGtkWidget);
-
-                    g_object_set( G_OBJECT( mpPlaybin ), "video-sink", pVideosink, nullptr);
-                    g_object_set( G_OBJECT( mpPlaybin ), "force-aspect-ratio", FALSE, nullptr);
-
-                    gtk_widget_show_all (pParent);
-                }
-                else
-#endif
-                {
-                    mbUseGtkSink = false;
-                    mnWindowID = pEnvData->aWindow;
-                    SAL_INFO( "avmedia.gstreamer", AVVERSION "set window id to " << (int)mnWindowID << " XOverlay " << mpXOverlay);
-                    gst_element_set_state( mpPlaybin, GST_STATE_PAUSED );
-                    if ( mpXOverlay != nullptr )
-                        gst_video_overlay_set_window_handle( mpXOverlay, mnWindowID );
-                }
-
-            }
+            xRet = new ::avmedia::gstreamer::Window;
+            return xRet;
         }
+
+        sal_IntPtr pIntPtr = 0;
+        rArguments[ 2 ] >>= pIntPtr;
+        SystemChildWindow *pParentWindow = reinterpret_cast< SystemChildWindow* >( pIntPtr );
+        if (!pParentWindow)
+            return nullptr;
+
+        const SystemEnvData* pEnvData = pParentWindow->GetSystemData();
+        if (!pEnvData)
+            return nullptr;
+
+        // tdf#124027: the position of embedded window is identical w/ the position
+        // of media object in all other vclplugs (kf5, gen), in gtk3 w/o gtksink it
+        // needs to be translated
+        if (pEnvData->toolkit == SystemEnvData::Toolkit::Gtk3)
+        {
+            Point aPoint = pParentWindow->GetPosPixel();
+            maArea.X = aPoint.getX();
+            maArea.Y = aPoint.getY();
+        }
+
+        mbUseGtkSink = false;
+
+        GstElement *pVideosink = static_cast<GstElement*>(pParentWindow->CreateGStreamerSink());
+        if (pVideosink)
+        {
+            if (pEnvData->toolkit == SystemEnvData::Toolkit::Gtk3)
+                mbUseGtkSink = true;
+        }
+        else
+        {
+            if (pEnvData->platform == SystemEnvData::Platform::Wayland)
+                pVideosink = gst_element_factory_make("waylandsink", "video-output");
+            else
+                pVideosink = gst_element_factory_make("autovideosink", "video-output");
+            if (!pVideosink)
+                return nullptr;
+        }
+
+        xRet = new ::avmedia::gstreamer::Window;
+
+        g_object_set(G_OBJECT(mpPlaybin), "video-sink", pVideosink, nullptr);
+        g_object_set(G_OBJECT(mpPlaybin), "force-aspect-ratio", FALSE, nullptr);
+
+        mnWindowID = pEnvData->aWindow;
+        mpDisplay = pEnvData->pDisplay;
+        SAL_INFO( "avmedia.gstreamer", AVVERSION "set window id to " << static_cast<int>(mnWindowID) << " XOverlay " << mpXOverlay);
+        gst_element_set_state( mpPlaybin, GST_STATE_PAUSED );
+        if ( mpXOverlay != nullptr )
+            gst_video_overlay_set_window_handle( mpXOverlay, mnWindowID );
     }
 
     return xRet;
 }
-
 
 uno::Reference< media::XFrameGrabber > SAL_CALL Player::createFrameGrabber()
 {
@@ -963,7 +909,7 @@ uno::Reference< media::XFrameGrabber > SAL_CALL Player::createFrameGrabber()
 
 OUString SAL_CALL Player::getImplementationName()
 {
-    return OUString( AVMEDIA_GST_PLAYER_IMPLEMENTATIONNAME );
+    return AVMEDIA_GST_PLAYER_IMPLEMENTATIONNAME;
 }
 
 
@@ -978,7 +924,6 @@ uno::Sequence< OUString > SAL_CALL Player::getSupportedServiceNames()
     return { AVMEDIA_GST_PLAYER_SERVICENAME };
 }
 
-} // namespace gstreamer
-} // namespace avmedia
+} // namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

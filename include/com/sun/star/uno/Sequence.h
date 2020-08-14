@@ -19,14 +19,15 @@
 #ifndef INCLUDED_COM_SUN_STAR_UNO_SEQUENCE_H
 #define INCLUDED_COM_SUN_STAR_UNO_SEQUENCE_H
 
-#include <typelib/typedescription.h>
-#include <uno/sequence2.h>
-#include <com/sun/star/uno/Type.h>
-#include <rtl/alloc.h>
+#include "typelib/typedescription.h"
+#include "uno/sequence2.h"
+#include "com/sun/star/uno/Type.h"
+#include "rtl/alloc.h"
 
 #include <new>
 
 #if defined LIBO_INTERNAL_ONLY
+#include <cassert>
 #include <initializer_list>
 #endif
 
@@ -151,6 +152,15 @@ public:
     bool SAL_CALL hasElements() const
         { return (_pSequence->nElements > 0); }
 
+#if defined LIBO_INTERNAL_ONLY
+    /** This function allows to use Sequence in cases where  std::size is needed, and the like.
+
+        @since LibreOffice 6.4
+    */
+    sal_uInt32 size() const
+        { assert(getLength() >= 0); return static_cast<sal_uInt32>(getLength()); }
+#endif
+
     /** Gets a pointer to elements array for reading.
         If the sequence has a length of 0, then the returned pointer is
         undefined.
@@ -171,28 +181,28 @@ public:
     */
     inline E * SAL_CALL getArray();
 
-    /** This function allows to use Sequence in standard algorightms, like std::find
+    /** This function allows to use Sequence in standard algorithms, like std::find
         and others.
 
         @since LibreOffice 4.2
     */
     inline E * begin();
 
-    /** This function allows to use Sequence in standard algorightms, like std::find
+    /** This function allows to use Sequence in standard algorithms, like std::find
         and others.
 
         @since LibreOffice 4.2
     */
     inline E const * begin() const;
 
-    /** This function allows to use Sequence in standard algorightms, like std::find
+    /** This function allows to use Sequence in standard algorithms, like std::find
         and others.
 
         @since LibreOffice 4.2
     */
     inline E * end();
 
-    /** This function allows to use Sequence in standard algorightms, like std::find
+    /** This function allows to use Sequence in standard algorithms, like std::find
         and others.
 
         @since LibreOffice 4.2
@@ -226,7 +236,7 @@ public:
     */
     inline bool SAL_CALL operator == ( const Sequence & rSeq ) const;
 
-    /** Unequality operator: Compares two sequences.
+    /** Inequality operator: Compares two sequences.
 
         @param rSeq another sequence of same type (right side)
         @return false if both sequences are equal, true otherwise

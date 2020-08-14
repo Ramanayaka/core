@@ -13,32 +13,19 @@
 #include <sal/config.h>
 #include <sal/types.h>
 #include <vcl/dllapi.h>
-
-class OpenGLZoneTest;
-class OpenGLWatchdogThread;
+#include <comphelper/crashzone.hxx>
 
 /**
  * We want to be able to detect if a given crash came
  * from the OpenGL code, so use this helper to track that.
  */
-class VCL_DLLPUBLIC OpenGLZone {
-    friend class OpenGLZoneTest;
-    friend class OpenGLWatchdogThread;
-    friend class OpenGLSalGraphicsImpl;
-
-    /// how many times have we entered a GL zone
-    static volatile sal_uInt64 gnEnterCount;
-    /// how many times have we left a new GL zone
-    static volatile sal_uInt64 gnLeaveCount;
-
-    static void enter();
-    static void leave();
+class VCL_DLLPUBLIC OpenGLZone : public CrashZone< OpenGLZone > {
 public:
-     OpenGLZone() { gnEnterCount++; }
-    ~OpenGLZone() { gnLeaveCount++; }
-    static bool isInZone() { return gnEnterCount != gnLeaveCount; }
     static void hardDisable();
     static void relaxWatchdogTimings();
+    static const CrashWatchdogTimingsValues& getCrashWatchdogTimingsValues();
+    static void checkDebug( int nUnchanged, const CrashWatchdogTimingsValues& aTimingValues );
+    static const char* name() { return "OpenGL"; }
 };
 
 /// Create this to not only enter the zone, but set VCL context.

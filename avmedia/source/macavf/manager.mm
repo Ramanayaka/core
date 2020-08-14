@@ -21,13 +21,13 @@
 #include "player.hxx"
 #include <tools/urlobj.hxx>
 #include <osl/diagnose.h>
+#include <rtl/ref.hxx>
 
 using namespace ::com::sun::star;
 
-namespace avmedia { namespace macavf {
+namespace avmedia::macavf {
 
-Manager::Manager( const uno::Reference< lang::XMultiServiceFactory >& rxMgr ) :
-    mxMgr( rxMgr )
+Manager::Manager()
 {
 }
 
@@ -36,37 +36,42 @@ Manager::~Manager()
 {}
 
 
-uno::Reference< media::XPlayer > SAL_CALL Manager::createPlayer( const ::rtl::OUString& rURL )
+uno::Reference< media::XPlayer > SAL_CALL Manager::createPlayer( const OUString& rURL )
 {
-    Player*                             pPlayer( new Player( mxMgr ) );
-    uno::Reference< media::XPlayer >    xRet( pPlayer );
+    rtl::Reference<Player>              xPlayer( new Player() );
     INetURLObject                       aURL( rURL );
 
-    if( !pPlayer->create( aURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous ) )  )
-        xRet.clear();
+    if( !xPlayer->create( aURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous ) )  )
+        return {};
 
-    return xRet;
+    return uno::Reference<media::XPlayer>(xPlayer.get());
 }
 
 
-::rtl::OUString SAL_CALL Manager::getImplementationName(  )
+OUString SAL_CALL Manager::getImplementationName(  )
 {
-    return ::rtl::OUString( AVMEDIA_MACAVF_MANAGER_IMPLEMENTATIONNAME );
+    return "com.sun.star.comp.avmedia.Manager_MacAVF";
 }
 
 
-sal_Bool SAL_CALL Manager::supportsService( const ::rtl::OUString& ServiceName )
+sal_Bool SAL_CALL Manager::supportsService( const OUString& ServiceName )
 {
-    return ServiceName == AVMEDIA_MACAVF_MANAGER_SERVICENAME;
+    return ServiceName == "com.sun.star.media.Manager_MacAVF";
 }
 
 
-uno::Sequence< ::rtl::OUString > SAL_CALL Manager::getSupportedServiceNames(  )
+uno::Sequence< OUString > SAL_CALL Manager::getSupportedServiceNames(  )
 {
-    return { AVMEDIA_MACAVF_MANAGER_SERVICENAME };
+    return { "com.sun.star.media.Manager_MacAVF" };
 }
 
-} // namespace macavf
-} // namespace avmedia
+} // namespace avmedia::macavf
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+com_sun_star_comp_avmedia_Manager_MacAVF_get_implementation(
+    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new ::avmedia::macavf::Manager());
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,20 +20,16 @@
 
 #include <tools/diagnose_ex.h>
 
-#include <comphelper/anytostring.hxx>
-#include <cppuhelper/exc_hlp.hxx>
-
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/range/b2irange.hxx>
-#include <basegfx/tools/canvastools.hxx>
+#include <basegfx/utils/canvastools.hxx>
 
-#include <cppcanvas/spritecanvas.hxx>
+#include <cppcanvas/canvas.hxx>
 #include <canvas/canvastools.hxx>
 
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
@@ -48,15 +44,13 @@
 #include <com/sun/star/frame/XSynchronousFrameLoader.hpp>
 
 #include "viewappletshape.hxx"
-#include "tools.hxx"
+#include <tools.hxx>
 
 
 using namespace ::com::sun::star;
 
-namespace slideshow
+namespace slideshow::internal
 {
-    namespace internal
-    {
         ViewAppletShape::ViewAppletShape( const ViewLayerSharedPtr&                       rViewLayer,
                                           const uno::Reference< drawing::XShape >&        rxShape,
                                           const OUString&                          rServiceName,
@@ -75,7 +69,7 @@ namespace slideshow
 
             uno::Reference<lang::XMultiComponentFactory> xFactory(
                 mxComponentContext->getServiceManager(),
-                uno::UNO_QUERY_THROW );
+                uno::UNO_SET_THROW );
 
             mxViewer.set( xFactory->createInstanceWithContext( rServiceName,
                                                                mxComponentContext),
@@ -103,9 +97,9 @@ namespace slideshow
             {
                 endApplet();
             }
-            catch (const uno::Exception &e)
+            catch (const uno::Exception &)
             {
-                SAL_WARN("slideshow", "" << e.Message);
+                TOOLS_WARN_EXCEPTION("slideshow", "");
             }
         }
 
@@ -161,7 +155,7 @@ namespace slideshow
                     mxFrame->initialize( xOwnWindow );
 
                     uno::Reference < frame::XSynchronousFrameLoader > xLoader( mxViewer,
-                                                                               uno::UNO_QUERY_THROW );
+                                                                               uno::UNO_SET_THROW );
                     xLoader->load( uno::Sequence < beans::PropertyValue >(),
                                    uno::Reference<frame::XFrame>(mxFrame, uno::UNO_QUERY_THROW) );
 
@@ -259,7 +253,6 @@ namespace slideshow
 
             return true;
         }
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

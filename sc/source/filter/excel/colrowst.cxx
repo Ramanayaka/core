@@ -17,18 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "colrowst.hxx"
+#include <colrowst.hxx>
 
-#include <string.h>
-
-#include "document.hxx"
-#include "root.hxx"
-#include "ftools.hxx"
-#include "xltable.hxx"
-#include "xistream.hxx"
-#include "xistyle.hxx"
-#include "queryparam.hxx"
-#include "excimp8.hxx"
+#include <document.hxx>
+#include <ftools.hxx>
+#include <xltable.hxx>
+#include <xistyle.hxx>
+#include <excimp8.hxx>
+#include <table.hxx>
 
 XclImpColRowSettings::XclImpColRowSettings( const XclImpRoot& rRoot ) :
     XclImpRoot( rRoot ),
@@ -68,12 +64,13 @@ void XclImpColRowSettings::SetDefWidth( sal_uInt16 nDefWidth, bool bStdWidthRec 
 
 void XclImpColRowSettings::SetWidthRange( SCCOL nCol1, SCCOL nCol2, sal_uInt16 nWidth )
 {
-    nCol2 = ::std::min( nCol2, MAXCOL );
+    ScDocument& rDoc = GetDoc();
+    nCol2 = ::std::min( nCol2, rDoc.MaxCol() );
     if (nCol2 == 256)
         // In BIFF8, the column range is 0-255, and the use of 256 probably
         // means the range should extend to the max column if the loading app
         // support columns beyond 255.
-        nCol2 = MAXCOL;
+        nCol2 = rDoc.MaxCol();
 
     nCol1 = ::std::min( nCol1, nCol2 );
     maColWidths.insert_back(nCol1, nCol2+1, nWidth);
@@ -85,7 +82,7 @@ void XclImpColRowSettings::SetWidthRange( SCCOL nCol1, SCCOL nCol2, sal_uInt16 n
 
 void XclImpColRowSettings::HideCol( SCCOL nCol )
 {
-    if (!ValidCol(nCol))
+    if (!GetDoc().ValidCol(nCol))
         return;
 
     ApplyColFlag(nCol, ExcColRowFlags::Hidden);
@@ -93,7 +90,7 @@ void XclImpColRowSettings::HideCol( SCCOL nCol )
 
 void XclImpColRowSettings::HideColRange( SCCOL nCol1, SCCOL nCol2 )
 {
-    nCol2 = ::std::min( nCol2, MAXCOL );
+    nCol2 = ::std::min( nCol2, GetDoc().MaxCol() );
     nCol1 = ::std::min( nCol1, nCol2 );
 
     for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol)
@@ -114,7 +111,7 @@ void XclImpColRowSettings::SetDefHeight( sal_uInt16 nDefHeight, sal_uInt16 nFlag
 
 void XclImpColRowSettings::SetHeight( SCROW nScRow, sal_uInt16 nHeight )
 {
-    if (!ValidRow(nScRow))
+    if (!GetDoc().ValidRow(nScRow))
         return;
 
     sal_uInt16 nRawHeight = nHeight & EXC_ROW_HEIGHTMASK;
@@ -135,7 +132,7 @@ void XclImpColRowSettings::SetHeight( SCROW nScRow, sal_uInt16 nHeight )
 
 void XclImpColRowSettings::SetRowSettings( SCROW nScRow, sal_uInt16 nHeight, sal_uInt16 nFlags )
 {
-    if (!ValidRow(nScRow))
+    if (!GetDoc().ValidRow(nScRow))
         return;
 
     SetHeight(nScRow, nHeight);
@@ -155,7 +152,7 @@ void XclImpColRowSettings::SetRowSettings( SCROW nScRow, sal_uInt16 nHeight, sal
 
 void XclImpColRowSettings::SetManualRowHeight( SCROW nScRow )
 {
-    if (!ValidRow(nScRow))
+    if (!GetDoc().ValidRow(nScRow))
         return;
 
     ExcColRowFlags nFlagVal = ExcColRowFlags::NONE;
@@ -170,8 +167,8 @@ void XclImpColRowSettings::SetDefaultXF( SCCOL nCol1, SCCOL nCol2, sal_uInt16 nX
 {
     /*  assign the default column formatting here to ensure that
         explicit cell formatting is not overwritten. */
-    OSL_ENSURE( (nCol1 <= nCol2) && ValidCol( nCol2 ), "XclImpColRowSettings::SetDefaultXF - invalid column index" );
-    nCol2 = ::std::min( nCol2, MAXCOL );
+    OSL_ENSURE( (nCol1 <= nCol2) && GetDoc().ValidCol( nCol2 ), "XclImpColRowSettings::SetDefaultXF - invalid column index" );
+    nCol2 = ::std::min( nCol2, GetDoc().MaxCol() );
     nCol1 = ::std::min( nCol1, nCol2 );
     XclImpXFRangeBuffer& rXFRangeBuffer = GetXFRangeBuffer();
     for( SCCOL nCol = nCol1; nCol <= nCol2; ++nCol )
@@ -188,7 +185,7 @@ void XclImpColRowSettings::Convert( SCTAB nScTab )
     // column widths ----------------------------------------------------------
 
     maColWidths.build_tree();
-    for( SCCOL nCol = 0; nCol <= MAXCOL; ++nCol )
+    for (SCCOL nCol = 0; nCol <= rDoc.MaxCol(); ++nCol)
     {
         sal_uInt16 nWidth = mnDefWidth;
         if (GetColFlag(nCol, ExcColRowFlags::Used))
@@ -212,22 +209,19 @@ void XclImpColRowSettings::Convert( SCTAB nScTab )
     // row heights ------------------------------------------------------------
 
     // #i54252# set default row height
-    rDoc.SetRowHeightOnly( 0, MAXROW, nScTab, mnDefHeight );
+    rDoc.SetRowHeightOnly( 0, rDoc.MaxRow(), nScTab, mnDefHeight );
     if( ::get_flag( mnDefRowFlags, EXC_DEFROW_UNSYNCED ) )
         // first access to row flags, do not ask for old flags
-        rDoc.SetRowFlags( 0, MAXROW, nScTab, CRFlags::ManualSize );
+        rDoc.SetRowFlags( 0, rDoc.MaxRow(), nScTab, CRFlags::ManualSize );
 
     maRowHeights.build_tree();
     if (!maRowHeights.is_tree_valid())
         return;
 
-    ColRowFlagsType::const_iterator itrFlags = maRowFlags.begin(), itrFlagsEnd = maRowFlags.end();
     SCROW nPrevRow = -1;
     ExcColRowFlags nPrevFlags = ExcColRowFlags::NONE;
-    for (; itrFlags != itrFlagsEnd; ++itrFlags)
+    for (const auto& [nRow, nFlags] : maRowFlags)
     {
-        SCROW nRow = itrFlags->first;
-        ExcColRowFlags nFlags = itrFlags->second;
         if (nPrevRow >= 0)
         {
             sal_uInt16 nHeight = 0;
@@ -280,7 +274,7 @@ void XclImpColRowSettings::ConvertHiddenFlags( SCTAB nScTab )
     ScDocument& rDoc = GetDoc();
 
     // hide the columns
-    for( SCCOL nCol = 0; nCol <= MAXCOL; ++nCol )
+    for( SCCOL nCol : rDoc.GetColumnsRange(nScTab, 0, rDoc.MaxCol()) )
         if (GetColFlag(nCol, ExcColRowFlags::Hidden))
             rDoc.ShowCol( nCol, nScTab, false );
 
@@ -301,7 +295,7 @@ void XclImpColRowSettings::ConvertHiddenFlags( SCTAB nScTab )
     // In case the excel row limit is lower than calc's, use the visibility of
     // the last row and extend it to calc's last row.
     SCROW nLastXLRow = GetRoot().GetXclMaxPos().Row();
-    if (nLastXLRow < MAXROW)
+    if (nLastXLRow < rDoc.MaxRow())
     {
         bool bHidden = false;
         if (!maHiddenRows.search(nLastXLRow, bHidden).second)
@@ -312,11 +306,8 @@ void XclImpColRowSettings::ConvertHiddenFlags( SCTAB nScTab )
 
     SCROW nPrevRow = -1;
     bool bPrevHidden = false;
-    RowHiddenType::const_iterator itr = maHiddenRows.begin(), itrEnd = maHiddenRows.end();
-    for (; itr != itrEnd; ++itr)
+    for (const auto& [nRow, bHidden] : maHiddenRows)
     {
-        SCROW nRow = itr->first;
-        bool bHidden = itr->second;
         if (nPrevRow >= 0)
         {
             if (bPrevHidden)
@@ -336,8 +327,8 @@ void XclImpColRowSettings::ConvertHiddenFlags( SCTAB nScTab )
     }
 
     // #i47438# if default row format is hidden, hide remaining rows
-    if( ::get_flag( mnDefRowFlags, EXC_DEFROW_HIDDEN ) && (mnLastScRow < MAXROW) )
-        rDoc.ShowRows( mnLastScRow + 1, MAXROW, nScTab, false );
+    if( ::get_flag( mnDefRowFlags, EXC_DEFROW_HIDDEN ) && (mnLastScRow < rDoc.MaxRow()) )
+        rDoc.ShowRows( mnLastScRow + 1, rDoc.MaxRow(), nScTab, false );
 }
 
 void XclImpColRowSettings::ApplyColFlag(SCCOL nCol, ExcColRowFlags nNewVal)

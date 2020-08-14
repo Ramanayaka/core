@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <cmath>
 #include <memory>
 #include <stdlib.h>
 
@@ -37,6 +40,7 @@
 #include <editeng/brushitem.hxx>
 #include <editeng/wghtitem.hxx>
 #include <editeng/fhgtitem.hxx>
+#include <editeng/borderline.hxx>
 #include <editeng/boxitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/lrspitem.hxx>
@@ -47,10 +51,9 @@
 #include <editeng/frmdiritem.hxx>
 #include <editeng/orphitem.hxx>
 #include <svtools/svparser.hxx>
-#include <swtypes.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
-#include <o3tl/make_unique.hxx>
+#include <sal/log.hxx>
+#include <osl/diagnose.h>
 
 #include "css1kywd.hxx"
 #include "svxcss1.hxx"
@@ -66,7 +69,7 @@ typedef void (*FnParseCSS1Prop)( const CSS1Expression *pExpr,
                                  SvxCSS1PropertyInfo& rPropInfo,
                                  const SvxCSS1Parser& rParser );
 
-static CSS1PropertyEnum const aFontSizeTable[] =
+CSS1PropertyEnum const aFontSizeTable[] =
 {
     { "xx-small",    0                   },
     { "x-small",     1                   },
@@ -78,7 +81,7 @@ static CSS1PropertyEnum const aFontSizeTable[] =
     { nullptr,                    0                   }
 };
 
-static CSS1PropertyEnum const aFontWeightTable[] =
+CSS1PropertyEnum const aFontWeightTable[] =
 {
     { "extra-light", WEIGHT_NORMAL       }, // WEIGHT_ULTRALIGHT (OBS)
     { "light",       WEIGHT_NORMAL       }, // WEIGHT_LIGHT (OBSOLETE)
@@ -93,7 +96,7 @@ static CSS1PropertyEnum const aFontWeightTable[] =
     { nullptr,                    0                   }
 };
 
-static CSS1PropertyEnum const aFontStyleTable[] =
+CSS1PropertyEnum const aFontStyleTable[] =
 {
     { "normal",      ITALIC_NONE         },
     { "italic",      ITALIC_NORMAL       },
@@ -101,30 +104,30 @@ static CSS1PropertyEnum const aFontStyleTable[] =
     { nullptr,                    0                   }
 };
 
-static CSS1PropertyEnum const aFontVariantTable[] =
+CSS1PropertyEnum const aFontVariantTable[] =
 {
-    { "normal",      (sal_uInt16)SvxCaseMap::NotMapped      },
-    { "small-caps",  (sal_uInt16)SvxCaseMap::SmallCaps    },
+    { "normal",      sal_uInt16(SvxCaseMap::NotMapped)      },
+    { "small-caps",  sal_uInt16(SvxCaseMap::SmallCaps)    },
     { nullptr,                    0                   }
 };
 
-static CSS1PropertyEnum const aTextTransformTable[] =
+CSS1PropertyEnum const aTextTransformTable[] =
 {
-    { "uppercase",  (sal_uInt16)SvxCaseMap::Uppercase },
-    { "lowercase",  (sal_uInt16)SvxCaseMap::Lowercase   },
-    { "capitalize", (sal_uInt16)SvxCaseMap::Capitalize     },
+    { "uppercase",  sal_uInt16(SvxCaseMap::Uppercase) },
+    { "lowercase",  sal_uInt16(SvxCaseMap::Lowercase)   },
+    { "capitalize", sal_uInt16(SvxCaseMap::Capitalize)     },
     { nullptr,                   0                     }
 };
 
-static CSS1PropertyEnum const aDirectionTable[] =
+CSS1PropertyEnum const aDirectionTable[] =
 {
-    { "ltr",         (sal_uInt16)SvxFrameDirection::Horizontal_LR_TB  },
-    { "rtl",         (sal_uInt16)SvxFrameDirection::Horizontal_RL_TB  },
-    { "inherit",     (sal_uInt16)SvxFrameDirection::Environment       },
+    { "ltr",         sal_uInt16(SvxFrameDirection::Horizontal_LR_TB)  },
+    { "rtl",         sal_uInt16(SvxFrameDirection::Horizontal_RL_TB)  },
+    { "inherit",     sal_uInt16(SvxFrameDirection::Environment)       },
     { nullptr,                    0                   }
 };
 
-static CSS1PropertyEnum const aBGRepeatTable[] =
+CSS1PropertyEnum const aBGRepeatTable[] =
 {
     { "repeat",      GPOS_TILED                  },
     { "repeat-x",    GPOS_TILED                  },
@@ -133,7 +136,7 @@ static CSS1PropertyEnum const aBGRepeatTable[] =
     { nullptr,                    0                           }
 };
 
-static CSS1PropertyEnum const aBGHoriPosTable[] =
+CSS1PropertyEnum const aBGHoriPosTable[] =
 {
     { "left",        GPOS_LT                 },
     { "center",      GPOS_MT                 },
@@ -141,7 +144,7 @@ static CSS1PropertyEnum const aBGHoriPosTable[] =
     { nullptr,                    0                       }
 };
 
-static CSS1PropertyEnum const aBGVertPosTable[] =
+CSS1PropertyEnum const aBGVertPosTable[] =
 {
     { "top",         GPOS_LT                 },
     { "middle",      GPOS_LM                 },
@@ -149,16 +152,16 @@ static CSS1PropertyEnum const aBGVertPosTable[] =
     { nullptr,                    0                       }
 };
 
-static CSS1PropertyEnum const aTextAlignTable[] =
+CSS1PropertyEnum const aTextAlignTable[] =
 {
-    { "left",        (sal_uInt16)SvxAdjust::Left     },
-    { "center",      (sal_uInt16)SvxAdjust::Center   },
-    { "right",       (sal_uInt16)SvxAdjust::Right    },
-    { "justify",     (sal_uInt16)SvxAdjust::Block    },
+    { "left",        sal_uInt16(SvxAdjust::Left)     },
+    { "center",      sal_uInt16(SvxAdjust::Center)   },
+    { "right",       sal_uInt16(SvxAdjust::Right)    },
+    { "justify",     sal_uInt16(SvxAdjust::Block)    },
     { nullptr,                    0                   }
 };
 
-static CSS1PropertyEnum const aBorderWidthTable[] =
+CSS1PropertyEnum const aBorderWidthTable[] =
 {
     { "thin",        0   },  // DEF_LINE_WIDTH_0 / DEF_DOUBLE_LINE0
     { "medium",      1   },  // DEF_LINE_WIDTH_1 / DEF_DOUBLE_LINE1
@@ -166,9 +169,13 @@ static CSS1PropertyEnum const aBorderWidthTable[] =
     { nullptr,                    0   }
 };
 
+namespace {
+
 enum CSS1BorderStyle { CSS1_BS_NONE, CSS1_BS_SINGLE, CSS1_BS_DOUBLE, CSS1_BS_DOTTED, CSS1_BS_DASHED, CSS1_BS_GROOVE, CSS1_BS_RIDGE, CSS1_BS_INSET, CSS1_BS_OUTSET };
 
-static CSS1PropertyEnum const aBorderStyleTable[] =
+}
+
+CSS1PropertyEnum const aBorderStyleTable[] =
 {
     { "none",        CSS1_BS_NONE        },
     { "dotted",      CSS1_BS_DOTTED      },
@@ -182,15 +189,15 @@ static CSS1PropertyEnum const aBorderStyleTable[] =
     { nullptr,                    0                   }
 };
 
-static CSS1PropertyEnum const aFloatTable[] =
+CSS1PropertyEnum const aFloatTable[] =
 {
-    { "left",    (sal_uInt16)SvxAdjust::Left         },
-    { "right",   (sal_uInt16)SvxAdjust::Right        },
-    { "none",    (sal_uInt16)SvxAdjust::End          },
+    { "left",    sal_uInt16(SvxAdjust::Left)         },
+    { "right",   sal_uInt16(SvxAdjust::Right)        },
+    { "none",    sal_uInt16(SvxAdjust::End)          },
     { nullptr,                0                       }
 };
 
-static CSS1PropertyEnum const aPositionTable[] =
+CSS1PropertyEnum const aPositionTable[] =
 {
     { "absolute",    SVX_CSS1_POS_ABSOLUTE   },
     { "relative",    SVX_CSS1_POS_RELATIVE   },
@@ -199,7 +206,7 @@ static CSS1PropertyEnum const aPositionTable[] =
 };
 
 // Feature: PrintExt
-static CSS1PropertyEnum const aSizeTable[] =
+CSS1PropertyEnum const aSizeTable[] =
 {
     { "auto",        SVX_CSS1_STYPE_AUTO         },
     { "landscape",   SVX_CSS1_STYPE_LANDSCAPE    },
@@ -207,7 +214,7 @@ static CSS1PropertyEnum const aSizeTable[] =
     { nullptr,                    0                           }
 };
 
-static CSS1PropertyEnum const aPageBreakTable[] =
+CSS1PropertyEnum const aPageBreakTable[] =
 {
     { "auto",        SVX_CSS1_PBREAK_AUTO        },
     { "always",      SVX_CSS1_PBREAK_ALWAYS      },
@@ -217,7 +224,7 @@ static CSS1PropertyEnum const aPageBreakTable[] =
     { nullptr,                    0                           }
 };
 
-static CSS1PropertyEnum const aNumberStyleTable[] =
+CSS1PropertyEnum const aNumberStyleTable[] =
 {
     { "decimal",          SVX_NUM_ARABIC              },
     { "lower-alpha",      SVX_NUM_CHARS_LOWER_LETTER  },
@@ -229,7 +236,7 @@ static CSS1PropertyEnum const aNumberStyleTable[] =
     { nullptr,            0                           }
 };
 
-static CSS1PropertyEnum const aBulletStyleTable[] =
+CSS1PropertyEnum const aBulletStyleTable[] =
 {
     { "circle",      HTML_BULLETCHAR_CIRCLE   },
     { "disc",        HTML_BULLETCHAR_DISC     },
@@ -238,7 +245,7 @@ static CSS1PropertyEnum const aBulletStyleTable[] =
 };
 
 
-static sal_uInt16 const aBorderWidths[] =
+sal_uInt16 const aBorderWidths[] =
 {
     DEF_LINE_WIDTH_0,
     DEF_LINE_WIDTH_5,
@@ -247,6 +254,8 @@ static sal_uInt16 const aBorderWidths[] =
 
 #undef SBORDER_ENTRY
 #undef DBORDER_ENTRY
+
+namespace {
 
 struct SvxCSS1ItemIds
 {
@@ -287,6 +296,8 @@ struct SvxCSS1ItemIds
     sal_uInt16 nDirection;
 };
 
+}
+
 static SvxCSS1ItemIds aItemIds;
 
 struct SvxCSS1BorderInfo
@@ -299,11 +310,6 @@ struct SvxCSS1BorderInfo
     SvxCSS1BorderInfo() :
         aColor( COL_BLACK ), nAbsWidth( USHRT_MAX ),
         nNamedWidth( USHRT_MAX ), eStyle( CSS1_BS_NONE )
-    {}
-
-    SvxCSS1BorderInfo( const SvxCSS1BorderInfo& rInfo ) :
-        aColor( rInfo.aColor ), nAbsWidth( rInfo.nAbsWidth ),
-        nNamedWidth( rInfo.nNamedWidth ), eStyle( rInfo.eStyle )
     {}
 
     void SetBorderLine( SvxBoxItemLine nLine, SvxBoxItem &rBoxItem ) const;
@@ -363,9 +369,6 @@ void SvxCSS1BorderInfo::SetBorderLine( SvxBoxItemLine nLine, SvxBoxItem &rBoxIte
 
 SvxCSS1PropertyInfo::SvxCSS1PropertyInfo()
 {
-    for(SvxCSS1BorderInfo* & rp : m_aBorderInfos)
-        rp = nullptr;
-
     Clear();
 }
 
@@ -401,24 +404,19 @@ SvxCSS1PropertyInfo::SvxCSS1PropertyInfo( const SvxCSS1PropertyInfo& rProp ) :
     m_ePageBreakBefore( rProp.m_ePageBreakBefore ),
     m_ePageBreakAfter( rProp.m_ePageBreakAfter )
 {
-    for( size_t i=0; i<SAL_N_ELEMENTS(m_aBorderInfos); ++i )
-        m_aBorderInfos[i] = rProp.m_aBorderInfos[i]
-                            ? new SvxCSS1BorderInfo( *rProp.m_aBorderInfos[i] )
-                            : nullptr;
+    for( size_t i=0; i<m_aBorderInfos.size(); ++i )
+        if (rProp.m_aBorderInfos[i])
+            m_aBorderInfos[i].reset( new SvxCSS1BorderInfo( *rProp.m_aBorderInfos[i] ) );
 }
 
 SvxCSS1PropertyInfo::~SvxCSS1PropertyInfo()
 {
-    DestroyBorderInfos();
 }
 
 void SvxCSS1PropertyInfo::DestroyBorderInfos()
 {
-    for(SvxCSS1BorderInfo* & rp : m_aBorderInfos)
-    {
-        delete rp;
-        rp = nullptr;
-    }
+    for(auto & rp : m_aBorderInfos)
+        rp.reset();
 }
 
 void SvxCSS1PropertyInfo::Clear()
@@ -432,7 +430,7 @@ void SvxCSS1PropertyInfo::Clear()
 
     m_ePosition = SVX_CSS1_POS_NONE;
     m_nTopBorderDistance = m_nBottomBorderDistance =
-    m_nLeftBorderDistance = m_nRightBorderDistance = USHRT_MAX;
+    m_nLeftBorderDistance = m_nRightBorderDistance = UNSET_BORDER_DISTANCE;
 
     m_nNumberingType = SVX_NUM_CHARS_UPPER_LETTER;
     m_cBulletChar = ' ';
@@ -470,24 +468,19 @@ void SvxCSS1PropertyInfo::Merge( const SvxCSS1PropertyInfo& rProp )
     if( rProp.m_bTextIndent )
         m_bTextIndent = true;
 
-    for( size_t i=0; i<SAL_N_ELEMENTS(m_aBorderInfos); ++i )
+    for( size_t i=0; i<m_aBorderInfos.size(); ++i )
     {
         if( rProp.m_aBorderInfos[i] )
-        {
-            if( m_aBorderInfos[i] )
-                delete m_aBorderInfos[i];
-
-            m_aBorderInfos[i] = new SvxCSS1BorderInfo( *rProp.m_aBorderInfos[i] );
-        }
+            m_aBorderInfos[i].reset( new SvxCSS1BorderInfo( *rProp.m_aBorderInfos[i] ) );
     }
 
-    if( USHRT_MAX != rProp.m_nTopBorderDistance )
+    if( UNSET_BORDER_DISTANCE != rProp.m_nTopBorderDistance )
         m_nTopBorderDistance = rProp.m_nTopBorderDistance;
-    if( USHRT_MAX != rProp.m_nBottomBorderDistance )
+    if( UNSET_BORDER_DISTANCE != rProp.m_nBottomBorderDistance )
         m_nBottomBorderDistance = rProp.m_nBottomBorderDistance;
-    if( USHRT_MAX != rProp.m_nLeftBorderDistance )
+    if( UNSET_BORDER_DISTANCE != rProp.m_nLeftBorderDistance )
         m_nLeftBorderDistance = rProp.m_nLeftBorderDistance;
-    if( USHRT_MAX != rProp.m_nRightBorderDistance )
+    if( UNSET_BORDER_DISTANCE != rProp.m_nRightBorderDistance )
         m_nRightBorderDistance = rProp.m_nRightBorderDistance;
 
     m_nColumnCount = rProp.m_nColumnCount;
@@ -549,9 +542,9 @@ SvxCSS1BorderInfo *SvxCSS1PropertyInfo::GetBorderInfo( SvxBoxItemLine nLine, boo
     }
 
     if( !m_aBorderInfos[nPos] && bCreate )
-        m_aBorderInfos[nPos] = new SvxCSS1BorderInfo;
+        m_aBorderInfos[nPos].reset( new SvxCSS1BorderInfo );
 
-    return m_aBorderInfos[nPos];
+    return m_aBorderInfos[nPos].get();
 }
 
 void SvxCSS1PropertyInfo::CopyBorderInfo( SvxBoxItemLine nSrcLine, SvxBoxItemLine nDstLine,
@@ -592,38 +585,38 @@ void SvxCSS1PropertyInfo::SetBoxItem( SfxItemSet& rItemSet,
                                       sal_uInt16 nMinBorderDist,
                                       const SvxBoxItem *pDfltItem )
 {
-    bool bChg = m_nTopBorderDistance != USHRT_MAX ||
-                m_nBottomBorderDistance != USHRT_MAX ||
-                m_nLeftBorderDistance != USHRT_MAX ||
-                m_nRightBorderDistance != USHRT_MAX;
+    bool bChg = m_nTopBorderDistance != UNSET_BORDER_DISTANCE ||
+                m_nBottomBorderDistance != UNSET_BORDER_DISTANCE ||
+                m_nLeftBorderDistance != UNSET_BORDER_DISTANCE ||
+                m_nRightBorderDistance != UNSET_BORDER_DISTANCE;
 
-    for( size_t i=0; !bChg && i<SAL_N_ELEMENTS(m_aBorderInfos); ++i )
+    for( size_t i=0; !bChg && i<m_aBorderInfos.size(); ++i )
         bChg = m_aBorderInfos[i]!=nullptr;
 
     if( !bChg )
         return;
 
-    SvxBoxItem aBoxItem( aItemIds.nBox );
+    std::shared_ptr<SvxBoxItem> aBoxItem(std::make_shared<SvxBoxItem>(aItemIds.nBox));
     if( pDfltItem )
-        aBoxItem = *pDfltItem;
+        aBoxItem.reset(pDfltItem->Clone());
 
     SvxCSS1BorderInfo *pInfo = GetBorderInfo( SvxBoxItemLine::TOP, false );
     if( pInfo )
-        pInfo->SetBorderLine( SvxBoxItemLine::TOP, aBoxItem );
+        pInfo->SetBorderLine( SvxBoxItemLine::TOP, *aBoxItem );
 
     pInfo = GetBorderInfo( SvxBoxItemLine::BOTTOM, false );
     if( pInfo )
-        pInfo->SetBorderLine( SvxBoxItemLine::BOTTOM, aBoxItem );
+        pInfo->SetBorderLine( SvxBoxItemLine::BOTTOM, *aBoxItem );
 
     pInfo = GetBorderInfo( SvxBoxItemLine::LEFT, false );
     if( pInfo )
-        pInfo->SetBorderLine( SvxBoxItemLine::LEFT, aBoxItem );
+        pInfo->SetBorderLine( SvxBoxItemLine::LEFT, *aBoxItem );
 
     pInfo = GetBorderInfo( SvxBoxItemLine::RIGHT, false );
     if( pInfo )
-        pInfo->SetBorderLine( SvxBoxItemLine::RIGHT, aBoxItem );
+        pInfo->SetBorderLine( SvxBoxItemLine::RIGHT, *aBoxItem );
 
-    for( size_t i=0; i<SAL_N_ELEMENTS(m_aBorderInfos); ++i )
+    for( size_t i=0; i<m_aBorderInfos.size(); ++i )
     {
         SvxBoxItemLine nLine = SvxBoxItemLine::TOP;
         sal_uInt16 nDist = 0;
@@ -631,26 +624,26 @@ void SvxCSS1PropertyInfo::SetBoxItem( SfxItemSet& rItemSet,
         {
         case 0: nLine = SvxBoxItemLine::TOP;
                 nDist = m_nTopBorderDistance;
-                m_nTopBorderDistance = USHRT_MAX;
+                m_nTopBorderDistance = UNSET_BORDER_DISTANCE;
                 break;
         case 1: nLine = SvxBoxItemLine::BOTTOM;
                 nDist = m_nBottomBorderDistance;
-                m_nBottomBorderDistance = USHRT_MAX;
+                m_nBottomBorderDistance = UNSET_BORDER_DISTANCE;
                 break;
         case 2: nLine = SvxBoxItemLine::LEFT;
                 nDist = m_nLeftBorderDistance;
-                m_nLeftBorderDistance = USHRT_MAX;
+                m_nLeftBorderDistance = UNSET_BORDER_DISTANCE;
                 break;
         case 3: nLine = SvxBoxItemLine::RIGHT;
                 nDist = m_nRightBorderDistance;
-                m_nRightBorderDistance = USHRT_MAX;
+                m_nRightBorderDistance = UNSET_BORDER_DISTANCE;
                 break;
         }
 
-        if( aBoxItem.GetLine( nLine ) )
+        if( aBoxItem->GetLine( nLine ) )
         {
-            if( USHRT_MAX == nDist )
-                nDist = aBoxItem.GetDistance( nLine );
+            if( UNSET_BORDER_DISTANCE == nDist )
+                nDist = aBoxItem->GetDistance( nLine );
 
             if( nDist < nMinBorderDist )
                 nDist = nMinBorderDist;
@@ -660,10 +653,10 @@ void SvxCSS1PropertyInfo::SetBoxItem( SfxItemSet& rItemSet,
             nDist = 0U;
         }
 
-        aBoxItem.SetDistance( nDist, nLine );
+        aBoxItem->SetDistance( nDist, nLine );
     }
 
-    rItemSet.Put( aBoxItem );
+    rItemSet.Put( *aBoxItem );
 
     DestroyBorderInfos();
 }
@@ -681,13 +674,13 @@ void SvxCSS1Parser::StyleParsed( const CSS1Selector * /*pSelector*/,
     // you see nothing is happening here
 }
 
-bool SvxCSS1Parser::SelectorParsed( CSS1Selector *pSelector, bool bFirst )
+void SvxCSS1Parser::SelectorParsed( std::unique_ptr<CSS1Selector> pSelector, bool bFirst )
 {
     if( bFirst )
     {
         OSL_ENSURE( pSheetItemSet, "Where is the Item-Set for Style-Sheets?" );
 
-        for (std::unique_ptr<CSS1Selector> & rpSelection : m_Selectors)
+        for (const std::unique_ptr<CSS1Selector> & rpSelection : m_Selectors)
         {
             StyleParsed(rpSelection.get(), *pSheetItemSet, *pSheetPropInfo);
         }
@@ -698,34 +691,16 @@ bool SvxCSS1Parser::SelectorParsed( CSS1Selector *pSelector, bool bFirst )
         m_Selectors.clear();
     }
 
-    m_Selectors.push_back(std::unique_ptr<CSS1Selector>(pSelector));
-
-    return false; // Selector saved. Deleting deadly!
-}
-
-bool SvxCSS1Parser::DeclarationParsed( const OUString& rProperty,
-                                       const CSS1Expression *pExpr )
-{
-    OSL_ENSURE( pExpr, "DeclarationParsed() without Expression" );
-
-    if( !pExpr )
-        return true;
-
-    ParseProperty( rProperty, pExpr );
-
-    return true;    // the declaration isn't needed anymore. Delete it!
+    m_Selectors.push_back(std::move(pSelector));
 }
 
 SvxCSS1Parser::SvxCSS1Parser( SfxItemPool& rPool, const OUString& rBaseURL,
-                              sal_uInt16 *pWhichIds, sal_uInt16 nWhichIds ) :
+                              sal_uInt16 const *pWhichIds, sal_uInt16 nWhichIds ) :
     CSS1Parser(),
     sBaseURL( rBaseURL ),
-    pSheetItemSet(nullptr),
     pItemSet(nullptr),
     pPropInfo( nullptr ),
-    nMinFixLineSpace(  MM50/2 ),
     eDfltEnc( RTL_TEXTENCODING_DONTKNOW ),
-    nScriptFlags( Css1ScriptFlags::AllMask ),
     bIgnoreFontFamily( false )
 {
     // also initialize item IDs
@@ -771,14 +746,14 @@ SvxCSS1Parser::SvxCSS1Parser( SfxItemPool& rPool, const OUString& rBaseURL,
     if( pWhichIds && nWhichIds )
         BuildWhichTable( aWhichMap, pWhichIds, nWhichIds );
 
-    pSheetItemSet = new SfxItemSet( rPool, &aWhichMap[0] );
-    pSheetPropInfo = new SvxCSS1PropertyInfo;
+    pSheetItemSet.reset( new SfxItemSet( rPool, aWhichMap.data() ) );
+    pSheetPropInfo.reset( new SvxCSS1PropertyInfo );
 }
 
 SvxCSS1Parser::~SvxCSS1Parser()
 {
-    delete pSheetItemSet;
-    delete pSheetPropInfo;
+    pSheetItemSet.reset();
+    pSheetPropInfo.reset();
 }
 
 void SvxCSS1Parser::InsertId( const OUString& rId,
@@ -843,12 +818,12 @@ SvxCSS1MapEntry* SvxCSS1Parser::GetTag( const OUString& rTag )
 
 bool SvxCSS1Parser::ParseStyleSheet( const OUString& rIn )
 {
-    pItemSet = pSheetItemSet;
-    pPropInfo = pSheetPropInfo;
+    pItemSet = pSheetItemSet.get();
+    pPropInfo = pSheetPropInfo.get();
 
-    bool bSuccess = CSS1Parser::ParseStyleSheet( rIn );
+    CSS1Parser::ParseStyleSheet( rIn );
 
-    for (std::unique_ptr<CSS1Selector> & rpSelector : m_Selectors)
+    for (const std::unique_ptr<CSS1Selector> & rpSelector : m_Selectors)
     {
         StyleParsed(rpSelector.get(), *pSheetItemSet, *pSheetPropInfo);
     }
@@ -861,7 +836,7 @@ bool SvxCSS1Parser::ParseStyleSheet( const OUString& rIn )
     pItemSet = nullptr;
     pPropInfo = nullptr;
 
-    return bSuccess;
+    return true;
 }
 
 void SvxCSS1Parser::ParseStyleOption( const OUString& rIn,
@@ -940,7 +915,7 @@ void SvxCSS1Parser::InsertMapEntry( const OUString& rKey,
     CSS1Map::iterator itr = rMap.find(rKey);
     if (itr == rMap.end())
     {
-        rMap.insert(std::make_pair(rKey, o3tl::make_unique<SvxCSS1MapEntry>(rItemSet, rProp)));
+        rMap.insert(std::make_pair(rKey, std::make_unique<SvxCSS1MapEntry>(rItemSet, rProp)));
     }
     else
     {
@@ -978,7 +953,7 @@ void SvxCSS1Parser::MergeStyles( const SfxItemSet& rSrcSet,
             if( rSrcInfo.m_bRightMargin )
                 aLRSpace.SetRight( rNewLRSpace.GetRight() );
             if( rSrcInfo.m_bTextIndent )
-                aLRSpace.SetTextFirstLineOfst( rNewLRSpace.GetTextFirstLineOfst() );
+                aLRSpace.SetTextFirstLineOffset( rNewLRSpace.GetTextFirstLineOffset() );
 
             rTargetSet.Put( aLRSpace );
         }
@@ -1022,15 +997,23 @@ static void ParseCSS1_font_size( const CSS1Expression *pExpr,
         break;
     case CSS1_PIXLENGTH:
         {
-            long nPWidth = 0;
-            long nPHeight = (long)pExpr->GetNumber();
-            SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
-            nHeight = (sal_uLong)nPHeight;
+            double fHeight = pExpr->GetNumber();
+            if (fHeight < SAL_MAX_INT32/2.0 && fHeight > SAL_MIN_INT32/2.0)
+            {
+                long nPHeight = static_cast<long>(fHeight);
+                long nPWidth = 0;
+                SvxCSS1Parser::PixelToTwip(nPWidth, nPHeight);
+                nHeight = static_cast<sal_uLong>(nPHeight);
+            }
+            else
+            {
+                SAL_WARN("sw.html", "out-of-size pxlength: " << fHeight);
+            }
         }
         break;
     case CSS1_PERCENTAGE:
         // only for drop caps!
-        nPropHeight = (sal_uInt16)pExpr->GetNumber();
+        nPropHeight = static_cast<sal_uInt16>(pExpr->GetNumber());
         break;
     case CSS1_IDENT:
         {
@@ -1052,18 +1035,11 @@ static void ParseCSS1_font_size( const CSS1Expression *pExpr,
     {
         SvxFontHeightItem aFontHeight( nHeight, nPropHeight,
                                        aItemIds.nFontHeight );
-        if( rParser.IsSetWesternProps() )
-            rItemSet.Put( aFontHeight );
-        if( rParser.IsSetCJKProps() )
-        {
-            aFontHeight.SetWhich( aItemIds.nFontHeightCJK );
-            rItemSet.Put( aFontHeight );
-        }
-        if( rParser.IsSetCTLProps() )
-        {
-            aFontHeight.SetWhich( aItemIds.nFontHeightCTL );
-            rItemSet.Put( aFontHeight );
-        }
+        rItemSet.Put( aFontHeight );
+        aFontHeight.SetWhich( aItemIds.nFontHeightCJK );
+        rItemSet.Put( aFontHeight );
+        aFontHeight.SetWhich( aItemIds.nFontHeightCTL );
+        rItemSet.Put( aFontHeight );
     }
 }
 
@@ -1074,7 +1050,7 @@ static void ParseCSS1_font_family( const CSS1Expression *pExpr,
 {
     OSL_ENSURE( pExpr, "no expression" );
 
-    OUString aName, aStyleName;
+    OUStringBuffer aName;
     rtl_TextEncoding eEnc = rParser.GetDfltEncoding();
     const FontList *pFList = rParser.GetFontList();
     bool bFirst = true;
@@ -1115,8 +1091,8 @@ static void ParseCSS1_font_family( const CSS1Expression *pExpr,
                     }
                 }
                 if( !bFirst )
-                    aName += ";";
-                aName += aIdent;
+                    aName.append(";");
+                aName.append(aIdent);
             }
         }
 
@@ -1126,27 +1102,20 @@ static void ParseCSS1_font_family( const CSS1Expression *pExpr,
 
     if( !aName.isEmpty() && !rParser.IsIgnoreFontFamily() )
     {
-        SvxFontItem aFont( FAMILY_DONTKNOW, aName, aStyleName, PITCH_DONTKNOW,
+        SvxFontItem aFont( FAMILY_DONTKNOW, aName.makeStringAndClear(), OUString(), PITCH_DONTKNOW,
                             eEnc, aItemIds.nFont );
-        if( rParser.IsSetWesternProps() )
-            rItemSet.Put( aFont );
-        if( rParser.IsSetCJKProps() )
-        {
-            aFont.SetWhich( aItemIds.nFontCJK );
-            rItemSet.Put( aFont );
-        }
-        if( rParser.IsSetCTLProps() )
-        {
-            aFont.SetWhich( aItemIds.nFontCTL );
-            rItemSet.Put( aFont );
-        }
+        rItemSet.Put( aFont );
+        aFont.SetWhich( aItemIds.nFontCJK );
+        rItemSet.Put( aFont );
+        aFont.SetWhich( aItemIds.nFontCTL );
+        rItemSet.Put( aFont );
     }
 }
 
 static void ParseCSS1_font_weight( const CSS1Expression *pExpr,
                                    SfxItemSet &rItemSet,
                                    SvxCSS1PropertyInfo& /*rPropInfo*/,
-                                   const SvxCSS1Parser& rParser )
+                                   const SvxCSS1Parser& /*rParser*/ )
 {
     OSL_ENSURE( pExpr, "no expression" );
 
@@ -1159,39 +1128,25 @@ static void ParseCSS1_font_weight( const CSS1Expression *pExpr,
             if( SvxCSS1Parser::GetEnum( aFontWeightTable, pExpr->GetString(),
                                         nWeight ) )
             {
-                SvxWeightItem aWeight( (FontWeight)nWeight, aItemIds.nWeight );
-                if( rParser.IsSetWesternProps() )
-                    rItemSet.Put( aWeight );
-                if( rParser.IsSetCJKProps() )
-                {
-                    aWeight.SetWhich( aItemIds.nWeightCJK );
-                    rItemSet.Put( aWeight );
-                }
-                if( rParser.IsSetCTLProps() )
-                {
-                    aWeight.SetWhich( aItemIds.nWeightCTL );
-                    rItemSet.Put( aWeight );
-                }
+                SvxWeightItem aWeight( static_cast<FontWeight>(nWeight), aItemIds.nWeight );
+                rItemSet.Put( aWeight );
+                aWeight.SetWhich( aItemIds.nWeightCJK );
+                rItemSet.Put( aWeight );
+                aWeight.SetWhich( aItemIds.nWeightCTL );
+                rItemSet.Put( aWeight );
             }
         }
         break;
     case CSS1_NUMBER:
         {
-            sal_uInt16 nWeight = (sal_uInt16)pExpr->GetNumber();
+            sal_uInt16 nWeight = static_cast<sal_uInt16>(pExpr->GetNumber());
             SvxWeightItem aWeight( nWeight>400 ? WEIGHT_BOLD : WEIGHT_NORMAL,
                                    aItemIds.nWeight );
-            if( rParser.IsSetWesternProps() )
-                rItemSet.Put( aWeight );
-            if( rParser.IsSetCJKProps() )
-            {
-                aWeight.SetWhich( aItemIds.nWeightCJK );
-                rItemSet.Put( aWeight );
-            }
-            if( rParser.IsSetCTLProps() )
-            {
-                aWeight.SetWhich( aItemIds.nWeightCTL );
-                rItemSet.Put( aWeight );
-            }
+            rItemSet.Put( aWeight );
+            aWeight.SetWhich( aItemIds.nWeightCJK );
+            rItemSet.Put( aWeight );
+            aWeight.SetWhich( aItemIds.nWeightCTL );
+            rItemSet.Put( aWeight );
         }
         break;
 
@@ -1203,7 +1158,7 @@ static void ParseCSS1_font_weight( const CSS1Expression *pExpr,
 static void ParseCSS1_font_style( const CSS1Expression *pExpr,
                                   SfxItemSet &rItemSet,
                                   SvxCSS1PropertyInfo& /*rPropInfo*/,
-                                  const SvxCSS1Parser& rParser )
+                                  const SvxCSS1Parser& /*rParser*/ )
 {
     OSL_ENSURE( pExpr, "no expression" );
 
@@ -1227,7 +1182,7 @@ static void ParseCSS1_font_style( const CSS1Expression *pExpr,
             sal_uInt16 nItalic;
             if( SvxCSS1Parser::GetEnum( aFontStyleTable, rValue, nItalic ) )
             {
-                eItalic = (FontItalic)nItalic;
+                eItalic = static_cast<FontItalic>(nItalic);
                 if( !bCaseMap && ITALIC_NONE==eItalic )
                 {
                     // for 'normal' we must also exclude case-map
@@ -1251,18 +1206,11 @@ static void ParseCSS1_font_style( const CSS1Expression *pExpr,
     if( bPosture )
     {
         SvxPostureItem aPosture( eItalic, aItemIds.nPosture );
-        if( rParser.IsSetWesternProps() )
-            rItemSet.Put( aPosture );
-        if( rParser.IsSetCJKProps() )
-        {
-            aPosture.SetWhich( aItemIds.nPostureCJK );
-            rItemSet.Put( aPosture );
-        }
-        if( rParser.IsSetCTLProps() )
-        {
-            aPosture.SetWhich( aItemIds.nPostureCTL );
-            rItemSet.Put( aPosture );
-        }
+        rItemSet.Put( aPosture );
+        aPosture.SetWhich( aItemIds.nPostureCJK );
+        rItemSet.Put( aPosture );
+        aPosture.SetWhich( aItemIds.nPostureCTL );
+        rItemSet.Put( aPosture );
     }
 
     if( bCaseMap )
@@ -1285,7 +1233,7 @@ static void ParseCSS1_font_variant( const CSS1Expression *pExpr,
             if( SvxCSS1Parser::GetEnum( aFontVariantTable, pExpr->GetString(),
                                         nCaseMap ) )
             {
-                rItemSet.Put( SvxCaseMapItem( (SvxCaseMap)nCaseMap,
+                rItemSet.Put( SvxCaseMapItem( static_cast<SvxCaseMap>(nCaseMap),
                                                 aItemIds.nCaseMap ) );
             }
             break;
@@ -1312,7 +1260,7 @@ static void ParseCSS1_text_transform( const CSS1Expression *pExpr,
             if( SvxCSS1Parser::GetEnum( aTextTransformTable, pExpr->GetString(),
                                         nCaseMap ) )
             {
-                rItemSet.Put( SvxCaseMapItem( (SvxCaseMap)nCaseMap,
+                rItemSet.Put( SvxCaseMapItem( static_cast<SvxCaseMap>(nCaseMap),
                                                 aItemIds.nCaseMap ) );
             }
             break;
@@ -1482,15 +1430,15 @@ static void ParseCSS1_background( const CSS1Expression *pExpr,
                 // only distinguish between 0 and !0. Therefore pixel
                 // can be handled like all other units.
 
-                sal_uLong nLength = (sal_uLong)pExpr->GetNumber();
+                bool nonZero = std::trunc(pExpr->GetNumber()) != 0.0;
                 if( !bHori )
                 {
-                    ePos = nLength ? GPOS_MM : GPOS_LT;
+                    ePos = nonZero ? GPOS_MM : GPOS_LT;
                     bHori = true;
                 }
                 else if( !bVert )
                 {
-                    MergeVert( ePos, (nLength ? GPOS_LM : GPOS_LT) );
+                    MergeVert( ePos, (nonZero ? GPOS_LM : GPOS_LT) );
                     bVert = true;
                 }
             }
@@ -1500,7 +1448,7 @@ static void ParseCSS1_background( const CSS1Expression *pExpr,
             {
                 // the percentage is converted to an enum
 
-                sal_uInt16 nPerc = (sal_uInt16)pExpr->GetNumber();
+                sal_uInt16 nPerc = static_cast<sal_uInt16>(pExpr->GetNumber());
                 if( !bHori )
                 {
                     ePos = nPerc < 25 ? GPOS_LT
@@ -1529,17 +1477,17 @@ static void ParseCSS1_background( const CSS1Expression *pExpr,
                 }
                 if( SvxCSS1Parser::GetEnum( aBGRepeatTable, rValue, nEnum ) )
                 {
-                    eRepeat = (SvxGraphicPosition)nEnum;
+                    eRepeat = static_cast<SvxGraphicPosition>(nEnum);
                 }
                 else if( SvxCSS1Parser::GetEnum( aBGHoriPosTable, rValue, nEnum ) )
                 {
                     // <position>, horizontal
-                    MergeHori( ePos, (SvxGraphicPosition)nEnum );
+                    MergeHori( ePos, static_cast<SvxGraphicPosition>(nEnum) );
                 }
                 else if( SvxCSS1Parser::GetEnum( aBGVertPosTable, rValue, nEnum ) )
                 {
                     // <position>, vertical
-                    MergeVert( ePos, (SvxGraphicPosition)nEnum );
+                    MergeVert( ePos, static_cast<SvxGraphicPosition>(nEnum) );
                 }
                 else if( !bColor )
                 {
@@ -1568,23 +1516,23 @@ static void ParseCSS1_background( const CSS1Expression *pExpr,
     if( GPOS_NONE == eRepeat )
         eRepeat = ePos;
 
-    if( bTransparent || bColor || !aURL.isEmpty() )
+    if( !(bTransparent || bColor || !aURL.isEmpty()) )
+        return;
+
+    SvxBrushItem aBrushItem( aItemIds.nBrush );
+
+    if( bTransparent )
+        aBrushItem.SetColor( COL_TRANSPARENT);
+    else if( bColor )
+        aBrushItem.SetColor( aColor );
+
+    if( !aURL.isEmpty() )
     {
-        SvxBrushItem aBrushItem( aItemIds.nBrush );
-
-        if( bTransparent )
-            aBrushItem.SetColor( Color(COL_TRANSPARENT));
-        else if( bColor )
-            aBrushItem.SetColor( aColor );
-
-        if( !aURL.isEmpty() )
-        {
-            aBrushItem.SetGraphicLink( URIHelper::SmartRel2Abs( INetURLObject( rParser.GetBaseURL()), aURL, Link<OUString *, bool>(), false ) );
-            aBrushItem.SetGraphicPos( eRepeat );
-        }
-
-        rItemSet.Put( aBrushItem );
+        aBrushItem.SetGraphicLink( URIHelper::SmartRel2Abs( INetURLObject( rParser.GetBaseURL()), aURL, Link<OUString *, bool>(), false ) );
+        aBrushItem.SetGraphicPos( eRepeat );
     }
+
+    rItemSet.Put( aBrushItem );
 }
 
 static void ParseCSS1_background_color( const CSS1Expression *pExpr,
@@ -1625,7 +1573,7 @@ static void ParseCSS1_background_color( const CSS1Expression *pExpr,
         SvxBrushItem aBrushItem( aItemIds.nBrush );
 
         if( bTransparent )
-            aBrushItem.SetColor( Color(COL_TRANSPARENT) );
+            aBrushItem.SetColor( COL_TRANSPARENT );
         else if( bColor )
             aBrushItem.SetColor( aColor);
 
@@ -1636,36 +1584,38 @@ static void ParseCSS1_background_color( const CSS1Expression *pExpr,
 static void ParseCSS1_line_height( const CSS1Expression *pExpr,
                                    SfxItemSet &rItemSet,
                                    SvxCSS1PropertyInfo& /*rPropInfo*/,
-                                   const SvxCSS1Parser& rParser )
+                                   const SvxCSS1Parser& )
 {
     OSL_ENSURE( pExpr, "no expression" );
 
     sal_uInt16 nHeight = 0;
-    sal_uInt8 nPropHeight = 0;
+    sal_uInt16 nPropHeight = 0;
 
     switch( pExpr->GetType() )
     {
     case CSS1_LENGTH:
-        nHeight = (sal_uInt16)pExpr->GetULength();
+        nHeight = static_cast<sal_uInt16>(pExpr->GetULength());
         break;
     case CSS1_PIXLENGTH:
         {
-            long nPWidth = 0;
-            long nPHeight = (long)pExpr->GetNumber();
-            SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
-            nHeight = (sal_uInt16)nPHeight;
+            double fHeight = pExpr->GetNumber();
+            if (fHeight < SAL_MAX_INT32/2.0 && fHeight > SAL_MIN_INT32/2.0)
+            {
+                long nPHeight = static_cast<long>(fHeight);
+                long nPWidth = 0;
+                SvxCSS1Parser::PixelToTwip(nPWidth, nPHeight);
+                nHeight = static_cast<sal_uInt16>(nPHeight);
+            }
         }
         break;
     case CSS1_PERCENTAGE:
         {
-            sal_uInt16 nPHeight = (sal_uInt16)pExpr->GetNumber();
-            nPropHeight = nPHeight <= 200 ? (sal_uInt8)nPHeight : 200;
+            nPropHeight = static_cast<sal_uInt16>(pExpr->GetNumber());
         }
         break;
     case CSS1_NUMBER:
         {
-            sal_uInt16 nPHeight = (sal_uInt16)(pExpr->GetNumber() * 100);
-            nPropHeight = nPHeight <= 200 ? (sal_uInt8)nPHeight : 200;
+            nPropHeight = static_cast<sal_uInt16>(pExpr->GetNumber() * 100);
         }
         break;
     default:
@@ -1674,8 +1624,8 @@ static void ParseCSS1_line_height( const CSS1Expression *pExpr,
 
     if( nHeight )
     {
-        if( nHeight < rParser.GetMinFixLineSpace() )
-            nHeight = rParser.GetMinFixLineSpace();
+        if( nHeight < SvxCSS1Parser::GetMinFixLineSpace() )
+            nHeight = SvxCSS1Parser::GetMinFixLineSpace();
         SvxLineSpacingItem aLSItem( nHeight, aItemIds.nLineSpacing );
         aLSItem.SetLineHeight( nHeight );
         // interpret <line-height> attribute as minimum line height
@@ -1703,22 +1653,22 @@ static void ParseCSS1_list_style_type( const CSS1Expression *pExpr,
 {
     OSL_ENSURE( pExpr, "no expression" );
 
-    if( pExpr->GetType() == CSS1_IDENT )
-    {
-        const OUString& rValue = pExpr->GetString();
+    if( pExpr->GetType() != CSS1_IDENT )
+        return;
 
-        // values are context-dependent, so fill both
-        sal_uInt16 nEnum;
-        if( SvxCSS1Parser::GetEnum( aNumberStyleTable, rValue, nEnum ) )
-        {
-            rPropInfo.m_bNumbering = true;
-            rPropInfo.m_nNumberingType = (SvxNumType)nEnum;
-        }
-        if( SvxCSS1Parser::GetEnum( aBulletStyleTable, rValue, nEnum ) )
-        {
-            rPropInfo.m_bBullet = true;
-            rPropInfo.m_cBulletChar = nEnum;
-        }
+    const OUString& rValue = pExpr->GetString();
+
+    // values are context-dependent, so fill both
+    sal_uInt16 nEnum;
+    if( SvxCSS1Parser::GetEnum( aNumberStyleTable, rValue, nEnum ) )
+    {
+        rPropInfo.m_bNumbering = true;
+        rPropInfo.m_nNumberingType = static_cast<SvxNumType>(nEnum);
+    }
+    if( SvxCSS1Parser::GetEnum( aBulletStyleTable, rValue, nEnum ) )
+    {
+        rPropInfo.m_bBullet = true;
+        rPropInfo.m_cBulletChar = nEnum;
     }
 }
 
@@ -1748,20 +1698,20 @@ static void ParseCSS1_font( const CSS1Expression *pExpr,
 
             if( SvxCSS1Parser::GetEnum( aFontStyleTable, rValue, nEnum ) )
             {
-                eItalic = (FontItalic)nEnum;
+                eItalic = static_cast<FontItalic>(nEnum);
             }
             else if( SvxCSS1Parser::GetEnum( aFontVariantTable, rValue, nEnum ) )
             {
-                eCaseMap = (SvxCaseMap)nEnum;
+                eCaseMap = static_cast<SvxCaseMap>(nEnum);
             }
             else if( SvxCSS1Parser::GetEnum( aFontWeightTable, rValue, nEnum ) )
             {
-                eWeight = (FontWeight)nEnum;
+                eWeight = static_cast<FontWeight>(nEnum);
             }
         }
         else
         {
-            eWeight = (sal_uInt16)pExpr->GetNumber() > 400 ? WEIGHT_BOLD
+            eWeight = static_cast<sal_uInt16>(pExpr->GetNumber()) > 400 ? WEIGHT_BOLD
                                                        : WEIGHT_NORMAL;
         }
 
@@ -1774,34 +1724,20 @@ static void ParseCSS1_font( const CSS1Expression *pExpr,
     // Since "font" resets all values for which nothing is specified,
     // we do it here.
     SvxPostureItem aPosture( eItalic, aItemIds.nPosture );
-    if( rParser.IsSetWesternProps() )
-        rItemSet.Put( aPosture );
-    if( rParser.IsSetCJKProps() )
-    {
-        aPosture.SetWhich( aItemIds.nPostureCJK );
-        rItemSet.Put( aPosture );
-    }
-    if( rParser.IsSetCTLProps() )
-    {
-        aPosture.SetWhich( aItemIds.nPostureCTL );
-        rItemSet.Put( aPosture );
-    }
+    rItemSet.Put( aPosture );
+    aPosture.SetWhich( aItemIds.nPostureCJK );
+    rItemSet.Put( aPosture );
+    aPosture.SetWhich( aItemIds.nPostureCTL );
+    rItemSet.Put( aPosture );
 
     rItemSet.Put( SvxCaseMapItem( eCaseMap, aItemIds.nCaseMap ) );
 
     SvxWeightItem aWeight( eWeight, aItemIds.nWeight );
-    if( rParser.IsSetWesternProps() )
-        rItemSet.Put( aWeight );
-    if( rParser.IsSetCJKProps() )
-    {
-        aWeight.SetWhich( aItemIds.nWeightCJK );
-        rItemSet.Put( aWeight );
-    }
-    if( rParser.IsSetCTLProps() )
-    {
-        aWeight.SetWhich( aItemIds.nWeightCTL );
-        rItemSet.Put( aWeight );
-    }
+    rItemSet.Put( aWeight );
+    aWeight.SetWhich( aItemIds.nWeightCJK );
+    rItemSet.Put( aWeight );
+    aWeight.SetWhich( aItemIds.nWeightCTL );
+    rItemSet.Put( aWeight );
 
     // font-size
     CSS1Expression aExpr( pExpr->GetType(), pExpr->GetString(),
@@ -1839,16 +1775,20 @@ static void ParseCSS1_letter_spacing( const CSS1Expression *pExpr,
     switch( pExpr->GetType() )
     {
     case CSS1_LENGTH:
-        rItemSet.Put( SvxKerningItem( (short)pExpr->GetSLength(),
+        rItemSet.Put( SvxKerningItem( static_cast<short>(pExpr->GetSLength()),
                                       aItemIds.nKerning ) );
         break;
 
     case CSS1_PIXLENGTH:
         {
-            long nPWidth = (long)pExpr->GetNumber();
-            long nPHeight = 0;
-            SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
-            rItemSet.Put( SvxKerningItem( (short)nPWidth, aItemIds.nKerning ) );
+            double fHeight = pExpr->GetNumber();
+            if (fHeight < SAL_MAX_INT32/2.0 && fHeight > SAL_MIN_INT32/2.0)
+            {
+                long nPWidth = static_cast<long>(fHeight);
+                long nPHeight = 0;
+                SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
+                rItemSet.Put( SvxKerningItem( static_cast<short>(nPWidth), aItemIds.nKerning ) );
+            }
         }
         break;
 
@@ -1856,7 +1796,7 @@ static void ParseCSS1_letter_spacing( const CSS1Expression *pExpr,
         if( pExpr->GetNumber() == 0 )
         {
             // normally unnecessary, but we are tolerant
-            rItemSet.Put( SvxKerningItem( (short)0, aItemIds.nKerning ) );
+            rItemSet.Put( SvxKerningItem( short(0), aItemIds.nKerning ) );
         }
         break;
 
@@ -1864,7 +1804,7 @@ static void ParseCSS1_letter_spacing( const CSS1Expression *pExpr,
     case CSS1_STRING: // As a precaution also MS-IE
         if( pExpr->GetString().equalsIgnoreAsciiCase( "normal" ) )
         {
-            rItemSet.Put( SvxKerningItem( (short)0, aItemIds.nKerning ) );
+            rItemSet.Put( SvxKerningItem( short(0), aItemIds.nKerning ) );
         }
         break;
     default:
@@ -1993,7 +1933,7 @@ static void ParseCSS1_text_align( const CSS1Expression *pExpr,
         if( SvxCSS1Parser::GetEnum( aTextAlignTable, pExpr->GetString(),
                                     nAdjust ) )
         {
-            rItemSet.Put( SvxAdjustItem( (SvxAdjust)nAdjust,
+            rItemSet.Put( SvxAdjustItem( static_cast<SvxAdjust>(nAdjust),
                                          aItemIds.nAdjust ) );
         }
     }
@@ -2011,16 +1951,20 @@ static void ParseCSS1_text_indent( const CSS1Expression *pExpr,
     switch( pExpr->GetType() )
     {
     case CSS1_LENGTH:
-        nIndent = (short)pExpr->GetSLength();
+        nIndent = static_cast<short>(pExpr->GetSLength());
         bSet = true;
         break;
     case CSS1_PIXLENGTH:
         {
-            long nPWidth = (long)pExpr->GetNumber();
-            long nPHeight = 0;
-            SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
-            nIndent = (short)nPWidth;
-            bSet = true;
+            double fWidth = pExpr->GetNumber();
+            if (fWidth < SAL_MAX_INT32/2.0 && fWidth > SAL_MIN_INT32/2.0)
+            {
+                long nPWidth = static_cast<long>(fWidth);
+                long nPHeight = 0;
+                SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
+                nIndent = static_cast<short>(nPWidth);
+                bSet = true;
+            }
         }
         break;
     case CSS1_PERCENTAGE:
@@ -2030,24 +1974,24 @@ static void ParseCSS1_text_indent( const CSS1Expression *pExpr,
         ;
     }
 
-    if( bSet )
+    if( !bSet )
+        return;
+
+    const SfxPoolItem* pItem;
+    if( SfxItemState::SET == rItemSet.GetItemState( aItemIds.nLRSpace, false,
+                                               &pItem ) )
     {
-        const SfxPoolItem* pItem;
-        if( SfxItemState::SET == rItemSet.GetItemState( aItemIds.nLRSpace, false,
-                                                   &pItem ) )
-        {
-            SvxLRSpaceItem aLRItem( *static_cast<const SvxLRSpaceItem*>(pItem) );
-            aLRItem.SetTextFirstLineOfst( nIndent );
-            rItemSet.Put( aLRItem );
-        }
-        else
-        {
-            SvxLRSpaceItem aLRItem( aItemIds.nLRSpace );
-            aLRItem.SetTextFirstLineOfst( nIndent );
-            rItemSet.Put( aLRItem );
-        }
-        rPropInfo.m_bTextIndent = true;
+        SvxLRSpaceItem aLRItem( *static_cast<const SvxLRSpaceItem*>(pItem) );
+        aLRItem.SetTextFirstLineOffset( nIndent );
+        rItemSet.Put( aLRItem );
     }
+    else
+    {
+        SvxLRSpaceItem aLRItem( aItemIds.nLRSpace );
+        aLRItem.SetTextFirstLineOffset( nIndent );
+        rItemSet.Put( aLRItem );
+    }
+    rPropInfo.m_bTextIndent = true;
 }
 
 static void ParseCSS1_margin_left( const CSS1Expression *pExpr,
@@ -2069,10 +2013,18 @@ static void ParseCSS1_margin_left( const CSS1Expression *pExpr,
         break;
     case CSS1_PIXLENGTH:
         {
-            nLeft = (long)pExpr->GetNumber();
-            long nPHeight = 0;
-            SvxCSS1Parser::PixelToTwip( nLeft, nPHeight );
-            bSet = true;
+            double fLeft = pExpr->GetNumber();
+            if (fLeft < SAL_MAX_INT32/2.0 && fLeft > SAL_MIN_INT32/2.0)
+            {
+                nLeft = static_cast<long>(fLeft);
+                long nPHeight = 0;
+                SvxCSS1Parser::PixelToTwip( nLeft, nPHeight );
+                bSet = true;
+            }
+            else
+            {
+                SAL_WARN("sw.html", "out-of-size pxlength: " << fLeft);
+            }
         }
         break;
     case CSS1_PERCENTAGE:
@@ -2082,27 +2034,27 @@ static void ParseCSS1_margin_left( const CSS1Expression *pExpr,
         ;
     }
 
-    if( bSet )
+    if( !bSet )
+        return;
+
+    rPropInfo.m_nLeftMargin = nLeft;
+    if( nLeft < 0 )
+        nLeft = 0;
+    const SfxPoolItem* pItem;
+    if( SfxItemState::SET == rItemSet.GetItemState( aItemIds.nLRSpace, false,
+                                               &pItem ) )
     {
-        rPropInfo.m_nLeftMargin = nLeft;
-        if( nLeft < 0 )
-            nLeft = 0;
-        const SfxPoolItem* pItem;
-        if( SfxItemState::SET == rItemSet.GetItemState( aItemIds.nLRSpace, false,
-                                                   &pItem ) )
-        {
-            SvxLRSpaceItem aLRItem( *static_cast<const SvxLRSpaceItem*>(pItem) );
-            aLRItem.SetTextLeft( (sal_uInt16)nLeft );
-            rItemSet.Put( aLRItem );
-        }
-        else
-        {
-            SvxLRSpaceItem aLRItem( aItemIds.nLRSpace );
-            aLRItem.SetTextLeft( (sal_uInt16)nLeft );
-            rItemSet.Put( aLRItem );
-        }
-        rPropInfo.m_bLeftMargin = true;
+        SvxLRSpaceItem aLRItem( *static_cast<const SvxLRSpaceItem*>(pItem) );
+        aLRItem.SetTextLeft( static_cast<sal_uInt16>(nLeft) );
+        rItemSet.Put( aLRItem );
     }
+    else
+    {
+        SvxLRSpaceItem aLRItem( aItemIds.nLRSpace );
+        aLRItem.SetTextLeft( static_cast<sal_uInt16>(nLeft) );
+        rItemSet.Put( aLRItem );
+    }
+    rPropInfo.m_bLeftMargin = true;
 }
 
 static void ParseCSS1_margin_right( const CSS1Expression *pExpr,
@@ -2124,10 +2076,14 @@ static void ParseCSS1_margin_right( const CSS1Expression *pExpr,
         break;
     case CSS1_PIXLENGTH:
         {
-            nRight = (long)pExpr->GetNumber();
-            long nPHeight = 0;
-            SvxCSS1Parser::PixelToTwip( nRight, nPHeight );
-            bSet = true;
+            double fRight = pExpr->GetNumber();
+            if (fRight < SAL_MAX_INT32/2.0 && fRight > SAL_MIN_INT32/2.0)
+            {
+                nRight = static_cast<long>(fRight);
+                long nPHeight = 0;
+                SvxCSS1Parser::PixelToTwip( nRight, nPHeight );
+                bSet = true;
+            }
         }
         break;
     case CSS1_PERCENTAGE:
@@ -2137,27 +2093,27 @@ static void ParseCSS1_margin_right( const CSS1Expression *pExpr,
         ;
     }
 
-    if( bSet )
+    if( !bSet )
+        return;
+
+    rPropInfo.m_nRightMargin = nRight;
+    if( nRight < 0 )
+        nRight = 0;
+    const SfxPoolItem* pItem;
+    if( SfxItemState::SET == rItemSet.GetItemState( aItemIds.nLRSpace, false,
+                                               &pItem ) )
     {
-        rPropInfo.m_nRightMargin = nRight;
-        if( nRight < 0 )
-            nRight = 0;
-        const SfxPoolItem* pItem;
-        if( SfxItemState::SET == rItemSet.GetItemState( aItemIds.nLRSpace, false,
-                                                   &pItem ) )
-        {
-            SvxLRSpaceItem aLRItem( *static_cast<const SvxLRSpaceItem*>(pItem) );
-            aLRItem.SetRight( (sal_uInt16)nRight );
-            rItemSet.Put( aLRItem );
-        }
-        else
-        {
-            SvxLRSpaceItem aLRItem( aItemIds.nLRSpace );
-            aLRItem.SetRight( (sal_uInt16)nRight );
-            rItemSet.Put( aLRItem );
-        }
-        rPropInfo.m_bRightMargin = true;
+        SvxLRSpaceItem aLRItem( *static_cast<const SvxLRSpaceItem*>(pItem) );
+        aLRItem.SetRight( static_cast<sal_uInt16>(nRight) );
+        rItemSet.Put( aLRItem );
     }
+    else
+    {
+        SvxLRSpaceItem aLRItem( aItemIds.nLRSpace );
+        aLRItem.SetRight( static_cast<sal_uInt16>(nRight) );
+        rItemSet.Put( aLRItem );
+    }
+    rPropInfo.m_bRightMargin = true;
 }
 
 static void ParseCSS1_margin_top( const CSS1Expression *pExpr,
@@ -2176,19 +2132,23 @@ static void ParseCSS1_margin_top( const CSS1Expression *pExpr,
             long nTmp = pExpr->GetSLength();
             if( nTmp < 0 )
                 nTmp = 0;
-            nUpper = (sal_uInt16)nTmp;
+            nUpper = static_cast<sal_uInt16>(nTmp);
             bSet = true;
         }
         break;
     case CSS1_PIXLENGTH:
         {
-            long nPWidth = 0;
-            long nPHeight =  (long)pExpr->GetNumber();
-            if( nPHeight < 0 )
-                nPHeight = 0;
-            SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
-            nUpper = (sal_uInt16)nPHeight;
-            bSet = true;
+            double fHeight = pExpr->GetNumber();
+            if (fHeight < SAL_MAX_INT32/2.0 && fHeight > SAL_MIN_INT32/2.0)
+            {
+                long nPWidth = 0;
+                long nPHeight =  static_cast<long>(fHeight);
+                if( nPHeight < 0 )
+                    nPHeight = 0;
+                SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
+                nUpper = static_cast<sal_uInt16>(nPHeight);
+                bSet = true;
+            }
         }
         break;
     case CSS1_PERCENTAGE:
@@ -2198,24 +2158,24 @@ static void ParseCSS1_margin_top( const CSS1Expression *pExpr,
         ;
     }
 
-    if( bSet )
+    if( !bSet )
+        return;
+
+    const SfxPoolItem* pItem;
+    if( SfxItemState::SET == rItemSet.GetItemState( aItemIds.nULSpace, false,
+                                               &pItem ) )
     {
-        const SfxPoolItem* pItem;
-        if( SfxItemState::SET == rItemSet.GetItemState( aItemIds.nULSpace, false,
-                                                   &pItem ) )
-        {
-            SvxULSpaceItem aULItem( *static_cast<const SvxULSpaceItem*>(pItem) );
-            aULItem.SetUpper( nUpper );
-            rItemSet.Put( aULItem );
-        }
-        else
-        {
-            SvxULSpaceItem aULItem( aItemIds.nULSpace );
-            aULItem.SetUpper( nUpper );
-            rItemSet.Put( aULItem );
-        }
-        rPropInfo.m_bTopMargin = true;
+        SvxULSpaceItem aULItem( *static_cast<const SvxULSpaceItem*>(pItem) );
+        aULItem.SetUpper( nUpper );
+        rItemSet.Put( aULItem );
     }
+    else
+    {
+        SvxULSpaceItem aULItem( aItemIds.nULSpace );
+        aULItem.SetUpper( nUpper );
+        rItemSet.Put( aULItem );
+    }
+    rPropInfo.m_bTopMargin = true;
 }
 
 static void ParseCSS1_margin_bottom( const CSS1Expression *pExpr,
@@ -2234,19 +2194,23 @@ static void ParseCSS1_margin_bottom( const CSS1Expression *pExpr,
             long nTmp = pExpr->GetSLength();
             if( nTmp < 0 )
                 nTmp = 0;
-            nLower = (sal_uInt16)nTmp;
+            nLower = static_cast<sal_uInt16>(nTmp);
             bSet = true;
         }
         break;
     case CSS1_PIXLENGTH:
         {
-            long nPWidth = 0;
-            long nPHeight =  (long)pExpr->GetNumber();
-            if( nPHeight < 0 )
-                nPHeight = 0;
-            SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
-            nLower = (sal_uInt16)nPHeight;
-            bSet = true;
+            double fHeight = pExpr->GetNumber();
+            if (fHeight < SAL_MAX_INT32/2.0 && fHeight > SAL_MIN_INT32/2.0)
+            {
+                long nPWidth = 0;
+                long nPHeight =  static_cast<long>(fHeight);
+                if( nPHeight < 0 )
+                    nPHeight = 0;
+                SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
+                nLower = static_cast<sal_uInt16>(nPHeight);
+                bSet = true;
+            }
         }
         break;
     case CSS1_PERCENTAGE:
@@ -2256,24 +2220,24 @@ static void ParseCSS1_margin_bottom( const CSS1Expression *pExpr,
         ;
     }
 
-    if( bSet )
+    if( !bSet )
+        return;
+
+    const SfxPoolItem* pItem;
+    if( SfxItemState::SET == rItemSet.GetItemState( aItemIds.nULSpace, false,
+                                               &pItem ) )
     {
-        const SfxPoolItem* pItem;
-        if( SfxItemState::SET == rItemSet.GetItemState( aItemIds.nULSpace, false,
-                                                   &pItem ) )
-        {
-            SvxULSpaceItem aULItem( *static_cast<const SvxULSpaceItem*>(pItem) );
-            aULItem.SetLower( nLower );
-            rItemSet.Put( aULItem );
-        }
-        else
-        {
-            SvxULSpaceItem aULItem( aItemIds.nULSpace );
-            aULItem.SetLower( nLower );
-            rItemSet.Put( aULItem );
-        }
-        rPropInfo.m_bBottomMargin = true;
+        SvxULSpaceItem aULItem( *static_cast<const SvxULSpaceItem*>(pItem) );
+        aULItem.SetLower( nLower );
+        rItemSet.Put( aULItem );
     }
+    else
+    {
+        SvxULSpaceItem aULItem( aItemIds.nULSpace );
+        aULItem.SetLower( nLower );
+        rItemSet.Put( aULItem );
+    }
+    rPropInfo.m_bBottomMargin = true;
 }
 
 static void ParseCSS1_margin( const CSS1Expression *pExpr,
@@ -2301,10 +2265,18 @@ static void ParseCSS1_margin( const CSS1Expression *pExpr,
             break;
         case CSS1_PIXLENGTH:
             {
-                long nPWidth = 0;
-                nMargin =  (long)pExpr->GetNumber();
-                SvxCSS1Parser::PixelToTwip( nPWidth, nMargin );
-                bSetThis = true;
+                double fMargin = pExpr->GetNumber();
+                if (fMargin < SAL_MAX_INT32/2.0 && fMargin > SAL_MIN_INT32/2.0)
+                {
+                    nMargin =  static_cast<long>(fMargin);
+                    long nPWidth = 0;
+                    SvxCSS1Parser::PixelToTwip( nPWidth, nMargin );
+                    bSetThis = true;
+                }
+                else
+                {
+                    SAL_WARN("sw.html", "out-of-size pxlength: " << fMargin);
+                }
             }
             break;
         case CSS1_PERCENTAGE:
@@ -2367,59 +2339,57 @@ static void ParseCSS1_margin( const CSS1Expression *pExpr,
         {
             SvxLRSpaceItem aLRItem( *static_cast<const SvxLRSpaceItem*>(pItem) );
             if( bSetMargins[3] )
-                aLRItem.SetLeft( (sal_uInt16)nMargins[3] );
+                aLRItem.SetLeft( static_cast<sal_uInt16>(nMargins[3]) );
             if( bSetMargins[1] )
-                aLRItem.SetRight( (sal_uInt16)nMargins[1] );
+                aLRItem.SetRight( static_cast<sal_uInt16>(nMargins[1]) );
             rItemSet.Put( aLRItem );
         }
         else
         {
             SvxLRSpaceItem aLRItem( aItemIds.nLRSpace );
             if( bSetMargins[3] )
-                aLRItem.SetLeft( (sal_uInt16)nMargins[3] );
+                aLRItem.SetLeft( static_cast<sal_uInt16>(nMargins[3]) );
             if( bSetMargins[1] )
-                aLRItem.SetRight( (sal_uInt16)nMargins[1] );
+                aLRItem.SetRight( static_cast<sal_uInt16>(nMargins[1]) );
             rItemSet.Put( aLRItem );
         }
     }
 
-    if( bSetMargins[0] || bSetMargins[2] )
+    if( !(bSetMargins[0] || bSetMargins[2]) )
+        return;
+
+    if( nMargins[0] < 0 )
+        nMargins[0] = 0;
+    if( nMargins[2] < 0 )
+        nMargins[2] = 0;
+
+    const SfxPoolItem* pItem;
+    if( SfxItemState::SET == rItemSet.GetItemState( aItemIds.nULSpace, false,
+                                               &pItem ) )
     {
-        if( nMargins[0] < 0 )
-            nMargins[0] = 0;
-        if( nMargins[2] < 0 )
-            nMargins[2] = 0;
-
-        const SfxPoolItem* pItem;
-        if( SfxItemState::SET == rItemSet.GetItemState( aItemIds.nULSpace, false,
-                                                   &pItem ) )
-        {
-            SvxULSpaceItem aULItem( *static_cast<const SvxULSpaceItem*>(pItem) );
-            if( bSetMargins[0] )
-                aULItem.SetUpper( (sal_uInt16)nMargins[0] );
-            if( bSetMargins[2] )
-                aULItem.SetLower( (sal_uInt16)nMargins[2] );
-            rItemSet.Put( aULItem );
-        }
-        else
-        {
-            SvxULSpaceItem aULItem( aItemIds.nULSpace );
-            if( bSetMargins[0] )
-                aULItem.SetUpper( (sal_uInt16)nMargins[0] );
-            if( bSetMargins[2] )
-                aULItem.SetLower( (sal_uInt16)nMargins[2] );
-            rItemSet.Put( aULItem );
-        }
-
-        rPropInfo.m_bTopMargin |= bSetMargins[0];
-        rPropInfo.m_bBottomMargin |= bSetMargins[2];
+        SvxULSpaceItem aULItem( *static_cast<const SvxULSpaceItem*>(pItem) );
+        if( bSetMargins[0] )
+            aULItem.SetUpper( static_cast<sal_uInt16>(nMargins[0]) );
+        if( bSetMargins[2] )
+            aULItem.SetLower( static_cast<sal_uInt16>(nMargins[2]) );
+        rItemSet.Put( aULItem );
     }
+    else
+    {
+        SvxULSpaceItem aULItem( aItemIds.nULSpace );
+        if( bSetMargins[0] )
+            aULItem.SetUpper( static_cast<sal_uInt16>(nMargins[0]) );
+        if( bSetMargins[2] )
+            aULItem.SetLower( static_cast<sal_uInt16>(nMargins[2]) );
+        rItemSet.Put( aULItem );
+    }
+
+    rPropInfo.m_bTopMargin |= bSetMargins[0];
+    rPropInfo.m_bBottomMargin |= bSetMargins[2];
 }
 
 static bool ParseCSS1_padding_xxx( const CSS1Expression *pExpr,
-                                   SfxItemSet & /*rItemSet*/,
                                    SvxCSS1PropertyInfo& rPropInfo,
-                                   const SvxCSS1Parser& /*rParser*/,
                                    SvxBoxItemLine nWhichLine )
 {
     OSL_ENSURE( pExpr, "no expression" );
@@ -2434,23 +2404,27 @@ static bool ParseCSS1_padding_xxx( const CSS1Expression *pExpr,
             long nTmp = pExpr->GetSLength();
             if( nTmp < 0 )
                 nTmp = 0;
-            else if( nTmp > USHRT_MAX-1 )
-                nTmp = USHRT_MAX-1;
-            nDist = (sal_uInt16)nTmp;
+            else if( nTmp > SvxCSS1PropertyInfo::UNSET_BORDER_DISTANCE-1 )
+                nTmp = SvxCSS1PropertyInfo::UNSET_BORDER_DISTANCE-1;
+            nDist = static_cast<sal_uInt16>(nTmp);
             bSet = true;
         }
         break;
     case CSS1_PIXLENGTH:
         {
-            long nPWidth = (long)pExpr->GetNumber();
-            long nPHeight = 0;
-            if( nPWidth < 0 )
-                nPWidth = 0;
-            SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
-            if( nPWidth > USHRT_MAX-1 )
-                nPWidth = USHRT_MAX-1;
-            nDist = (sal_uInt16)nPWidth;
-            bSet = true;
+            double fWidth = pExpr->GetNumber();
+            if (fWidth < SAL_MAX_INT32/2.0 && fWidth > SAL_MIN_INT32/2.0)
+            {
+                long nPWidth = static_cast<long>(fWidth);
+                long nPHeight = 0;
+                if( nPWidth < 0 )
+                    nPWidth = 0;
+                SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
+                if( nPWidth > SvxCSS1PropertyInfo::UNSET_BORDER_DISTANCE-1 )
+                    nPWidth = SvxCSS1PropertyInfo::UNSET_BORDER_DISTANCE-1;
+                nDist = static_cast<sal_uInt16>(nPWidth);
+                bSet = true;
+            }
         }
         break;
     case CSS1_PERCENTAGE:
@@ -2475,50 +2449,47 @@ static bool ParseCSS1_padding_xxx( const CSS1Expression *pExpr,
 }
 
 static void ParseCSS1_padding_top( const CSS1Expression *pExpr,
-                                   SfxItemSet &rItemSet,
+                                   SfxItemSet & /*rItemSet*/,
                                    SvxCSS1PropertyInfo& rPropInfo,
-                                   const SvxCSS1Parser& rParser )
+                                   const SvxCSS1Parser& /*rParser*/ )
 {
-    ParseCSS1_padding_xxx( pExpr, rItemSet, rPropInfo, rParser, SvxBoxItemLine::TOP );
+    ParseCSS1_padding_xxx( pExpr, rPropInfo, SvxBoxItemLine::TOP );
 }
 
 static void ParseCSS1_padding_bottom( const CSS1Expression *pExpr,
-                                      SfxItemSet &rItemSet,
+                                      SfxItemSet & /*rItemSet*/,
                                       SvxCSS1PropertyInfo& rPropInfo,
-                                      const SvxCSS1Parser& rParser )
+                                      const SvxCSS1Parser& /*rParser*/ )
 {
-    ParseCSS1_padding_xxx( pExpr, rItemSet, rPropInfo, rParser,
-                           SvxBoxItemLine::BOTTOM );
+    ParseCSS1_padding_xxx( pExpr, rPropInfo, SvxBoxItemLine::BOTTOM );
 }
 
 static void ParseCSS1_padding_left( const CSS1Expression *pExpr,
-                                    SfxItemSet &rItemSet,
+                                    SfxItemSet & /*rItemSet*/,
                                     SvxCSS1PropertyInfo& rPropInfo,
-                                    const SvxCSS1Parser& rParser )
+                                    const SvxCSS1Parser& /*rParser*/ )
 {
-    ParseCSS1_padding_xxx( pExpr, rItemSet, rPropInfo, rParser, SvxBoxItemLine::LEFT );
+    ParseCSS1_padding_xxx( pExpr, rPropInfo, SvxBoxItemLine::LEFT );
 }
 
 static void ParseCSS1_padding_right( const CSS1Expression *pExpr,
-                                     SfxItemSet &rItemSet,
+                                     SfxItemSet & /*rItemSet*/,
                                      SvxCSS1PropertyInfo& rPropInfo,
-                                     const SvxCSS1Parser& rParser )
+                                     const SvxCSS1Parser& /*rParser*/ )
 {
-    ParseCSS1_padding_xxx( pExpr, rItemSet, rPropInfo, rParser,
-                           SvxBoxItemLine::RIGHT );
+    ParseCSS1_padding_xxx( pExpr, rPropInfo, SvxBoxItemLine::RIGHT );
 }
 
 static void ParseCSS1_padding( const CSS1Expression *pExpr,
-                               SfxItemSet &rItemSet,
+                               SfxItemSet & /*rItemSet*/,
                                SvxCSS1PropertyInfo& rPropInfo,
-                               const SvxCSS1Parser& rParser )
+                               const SvxCSS1Parser& /*rParser*/ )
 {
     int n=0;
     while( n<4 && pExpr && !pExpr->GetOp() )
     {
         SvxBoxItemLine nLine = n==0 || n==2 ? SvxBoxItemLine::BOTTOM : SvxBoxItemLine::LEFT;
-        if( ParseCSS1_padding_xxx( pExpr, rItemSet, rPropInfo, rParser,
-                                   nLine ) )
+        if( ParseCSS1_padding_xxx( pExpr, rPropInfo, nLine ) )
         {
             if( n==0 )
             {
@@ -2568,7 +2539,7 @@ static void ParseCSS1_border_xxx( const CSS1Expression *pExpr,
                 }
                 else if( SvxCSS1Parser::GetEnum( aBorderStyleTable, rValue, nValue ) )
                 {
-                    eStyle = (CSS1BorderStyle)nValue;
+                    eStyle = static_cast<CSS1BorderStyle>(nValue);
                 }
                 else if( pExpr->GetColor( aColor ) )
                 {
@@ -2578,21 +2549,22 @@ static void ParseCSS1_border_xxx( const CSS1Expression *pExpr,
             break;
 
         case CSS1_LENGTH:
-            nWidth = (sal_uInt16)pExpr->GetULength();
+            nWidth = static_cast<sal_uInt16>(pExpr->GetULength());
             break;
 
         case CSS1_PIXLENGTH:
             {
-                bool bHori = nWhichLine == SvxBoxItemLine::TOP ||
-                             nWhichLine == SvxBoxItemLine::BOTTOM;
                 // One Pixel becomes a hairline (is prettier)
-                long nWidthL = (long)pExpr->GetNumber();
-                if( nWidthL > 1 )
+                double fWidth = pExpr->GetNumber();
+                if (fWidth > 1.0 && fWidth < SAL_MAX_INT32/2.0)
                 {
-                    long nPWidth = bHori ? 0 : nWidthL;
-                    long nPHeight = bHori ? nWidthL : 0;
+                    bool bHori = nWhichLine == SvxBoxItemLine::TOP ||
+                                 nWhichLine == SvxBoxItemLine::BOTTOM;
+
+                    long nPWidth = bHori ? 0 : fWidth;
+                    long nPHeight = bHori ? fWidth : 0;
                     SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
-                    nWidth = (sal_uInt16)(bHori ? nPHeight : nPWidth);
+                    nWidth = static_cast<sal_uInt16>(bHori ? nPHeight : nPWidth);
                 }
                 else
                     nWidth = 1;
@@ -2653,18 +2625,24 @@ static void ParseCSS1_border_xxx_width( const CSS1Expression *pExpr,
         break;
 
     case CSS1_LENGTH:
-        nWidth = (sal_uInt16)pExpr->GetULength();
+        nWidth = static_cast<sal_uInt16>(pExpr->GetULength());
         break;
 
     case CSS1_PIXLENGTH:
         {
-            bool bHori = nWhichLine == SvxBoxItemLine::TOP ||
-                         nWhichLine == SvxBoxItemLine::BOTTOM;
-            long nWidthL = (long)pExpr->GetNumber();
-            long nPWidth = bHori ? 0 : nWidthL;
-            long nPHeight = bHori ? nWidthL : 0;
-            SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
-            nWidth = (sal_uInt16)(bHori ? nPHeight : nPWidth);
+            double fLength = pExpr->GetNumber();
+            if (fLength < SAL_MAX_INT32/2.0 && fLength > SAL_MIN_INT32/2.0)
+            {
+                long nWidthL = static_cast<long>(fLength);
+
+                bool bHori = nWhichLine == SvxBoxItemLine::TOP ||
+                             nWhichLine == SvxBoxItemLine::BOTTOM;
+
+                long nPWidth = bHori ? 0 : nWidthL;
+                long nPHeight = bHori ? nWidthL : 0;
+                SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
+                nWidth = static_cast<sal_uInt16>(bHori ? nPHeight : nPWidth);
+            }
         }
         break;
 
@@ -2768,7 +2746,7 @@ static void ParseCSS1_border_style( const CSS1Expression *pExpr,
             SvxCSS1Parser::GetEnum( aBorderStyleTable, pExpr->GetString(),
                                     nValue ) )
         {
-            rPropInfo.GetBorderInfo( nLine )->eStyle = (CSS1BorderStyle)nValue;
+            rPropInfo.GetBorderInfo( nLine )->eStyle = static_cast<CSS1BorderStyle>(nValue);
         }
         rPropInfo.CopyBorderInfo( n, SVX_CSS1_BORDERINFO_STYLE );
 
@@ -2828,7 +2806,7 @@ static void ParseCSS1_float( const CSS1Expression *pExpr,
     {
         sal_uInt16 nFloat;
         if( SvxCSS1Parser::GetEnum( aFloatTable, pExpr->GetString(), nFloat ) )
-            rPropInfo.m_eFloat = (SvxAdjust)nFloat;
+            rPropInfo.m_eFloat = static_cast<SvxAdjust>(nFloat);
     }
 }
 
@@ -2843,7 +2821,7 @@ static void ParseCSS1_position( const CSS1Expression *pExpr,
     {
         sal_uInt16 nPos;
         if( SvxCSS1Parser::GetEnum( aPositionTable, pExpr->GetString(), nPos ) )
-            rPropInfo.m_ePosition = (SvxCSS1Position)nPos;
+            rPropInfo.m_ePosition = static_cast<SvxCSS1Position>(nPos);
     }
 }
 
@@ -2870,17 +2848,21 @@ static void ParseCSS1_length( const CSS1Expression *pExpr,
     case CSS1_PIXLENGTH:
     case CSS1_NUMBER:       // because of Netscape and IE
         {
-            long nWidthL = (long)pExpr->GetNumber();
-            long nPWidth = bHori ? 0 : nWidthL;
-            long nPHeight = bHori ? nWidthL : 0;
-            SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
-            rLength = (bHori ? nPHeight : nPWidth);
-            rLengthType = SVX_CSS1_LTYPE_TWIP;
+            double fLength = pExpr->GetNumber();
+            if (fLength < SAL_MAX_INT32/2.0 && fLength > SAL_MIN_INT32/2.0)
+            {
+                long nWidthL = static_cast<long>(fLength);
+                long nPWidth = bHori ? 0 : nWidthL;
+                long nPHeight = bHori ? nWidthL : 0;
+                SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
+                rLength = (bHori ? nPHeight : nPWidth);
+                rLengthType = SVX_CSS1_LTYPE_TWIP;
+            }
         }
         break;
 
     case CSS1_PERCENTAGE:
-        rLength = (long)pExpr->GetNumber();
+        rLength = static_cast<long>(pExpr->GetNumber());
         if( rLength > 100 )
             rLength = 100;
         rLengthType = SVX_CSS1_LTYPE_PERCENTAGE;
@@ -2940,7 +2922,7 @@ static void ParseCSS1_size( const CSS1Expression *pExpr,
                 if( SvxCSS1Parser::GetEnum( aSizeTable, pExpr->GetString(),
                                             nValue ) )
                 {
-                    rPropInfo.m_eSizeType = (SvxCSS1SizeType)nValue;
+                    rPropInfo.m_eSizeType = static_cast<SvxCSS1SizeType>(nValue);
                 }
             }
             break;
@@ -2953,8 +2935,11 @@ static void ParseCSS1_size( const CSS1Expression *pExpr,
             break;
 
         case CSS1_PIXLENGTH:
+        {
+            double fHeight = pExpr->GetNumber();
+            if (fHeight < SAL_MAX_INT32/2.0 && fHeight > SAL_MIN_INT32/2.0)
             {
-                long nPHeight = (long)pExpr->GetNumber();
+                long nPHeight = static_cast<long>(fHeight);
                 long nPWidth = n==0 ? nPHeight : 0;
                 SvxCSS1Parser::PixelToTwip( nPWidth, nPHeight );
                 rPropInfo.m_nHeight = nPHeight;
@@ -2963,7 +2948,7 @@ static void ParseCSS1_size( const CSS1Expression *pExpr,
                 rPropInfo.m_eSizeType = SVX_CSS1_STYPE_TWIP;
             }
             break;
-
+        }
         default:
             ;
         }
@@ -2982,7 +2967,7 @@ static void ParseCSS1_page_break_xxx( const CSS1Expression *pExpr,
         if( SvxCSS1Parser::GetEnum( aPageBreakTable, pExpr->GetString(),
                                     nValue ) )
         {
-            rPBreak = (SvxCSS1PageBreak)nValue;
+            rPBreak = static_cast<SvxCSS1PageBreak>(nValue);
         }
     }
 }
@@ -3037,7 +3022,7 @@ static void ParseCSS1_widows( const CSS1Expression *pExpr,
     if( CSS1_NUMBER == pExpr->GetType() )
     {
         sal_uInt8 nVal = pExpr->GetNumber() <= 255
-                        ? (sal_uInt8)pExpr->GetNumber()
+                        ? static_cast<sal_uInt8>(pExpr->GetNumber())
                         : 255;
         SvxWidowsItem aWidowsItem( nVal, aItemIds.nWidows );
         rItemSet.Put( aWidowsItem );
@@ -3052,7 +3037,7 @@ static void ParseCSS1_orphans( const CSS1Expression *pExpr,
     if( CSS1_NUMBER == pExpr->GetType() )
     {
         sal_uInt8 nVal = pExpr->GetNumber() <= 255
-                        ? (sal_uInt8)pExpr->GetNumber()
+                        ? static_cast<sal_uInt8>(pExpr->GetNumber())
                         : 255;
         SvxOrphansItem aOrphansItem( nVal, aItemIds.nOrphans );
         rItemSet.Put( aOrphansItem );
@@ -3062,133 +3047,118 @@ static void ParseCSS1_orphans( const CSS1Expression *pExpr,
 static void ParseCSS1_so_language( const CSS1Expression *pExpr,
                                SfxItemSet &rItemSet,
                                SvxCSS1PropertyInfo& /*rPropInfo*/,
-                               const SvxCSS1Parser& rParser )
+                               const SvxCSS1Parser& /*rParser*/ )
 {
-    if( CSS1_IDENT == pExpr->GetType() ||
-        CSS1_STRING == pExpr->GetType() )
+    if( CSS1_IDENT != pExpr->GetType() && CSS1_STRING != pExpr->GetType() )
+        return;
+
+    LanguageType eLang = LanguageTag::convertToLanguageTypeWithFallback( pExpr->GetString() );
+    if( LANGUAGE_DONTKNOW != eLang )
     {
-        LanguageType eLang = LanguageTag::convertToLanguageTypeWithFallback( pExpr->GetString() );
-        if( LANGUAGE_DONTKNOW != eLang )
-        {
-            SvxLanguageItem aLang( eLang, aItemIds.nLanguage );
-            if( rParser.IsSetWesternProps() )
-                rItemSet.Put( aLang );
-            if( rParser.IsSetCJKProps() )
-            {
-                aLang.SetWhich( aItemIds.nLanguageCJK );
-                rItemSet.Put( aLang );
-            }
-            if( rParser.IsSetCTLProps() )
-            {
-                aLang.SetWhich( aItemIds.nLanguageCTL );
-                rItemSet.Put( aLang );
-            }
-        }
+        SvxLanguageItem aLang( eLang, aItemIds.nLanguage );
+        rItemSet.Put( aLang );
+        aLang.SetWhich( aItemIds.nLanguageCJK );
+        rItemSet.Put( aLang );
+        aLang.SetWhich( aItemIds.nLanguageCTL );
+        rItemSet.Put( aLang );
     }
 }
+
+static void ParseCSS1_visibility(const CSS1Expression* pExpr, SfxItemSet& /*rItemSet*/,
+                                 SvxCSS1PropertyInfo& rPropInfo, const SvxCSS1Parser& /*rParser*/)
+{
+    if (pExpr->GetType() != CSS1_IDENT)
+        return;
+
+    rPropInfo.m_bVisible = pExpr->GetString() != "hidden";
+}
+
+namespace {
 
 // the assignment of property to parsing function
 struct CSS1PropEntry
 {
-    union
-    {
-        const sal_Char  *sName;
-        OUString          *pName;
-    };
+    const char * pName;
     FnParseCSS1Prop pFunc;
 };
 
+}
+
 #define CSS1_PROP_ENTRY(p) \
-    {   { sCSS1_P_##p }, ParseCSS1_##p }
+    { sCSS1_P_##p, ParseCSS1_##p }
 
 // the table with assignments
-static CSS1PropEntry aCSS1PropFnTab[] =
+CSS1PropEntry const aCSS1PropFnTab[] =
 {
     CSS1_PROP_ENTRY(background),
     CSS1_PROP_ENTRY(background_color),
-    CSS1_PROP_ENTRY(border_top_width),
-    CSS1_PROP_ENTRY(border_right_width),
+    CSS1_PROP_ENTRY(border),
+    CSS1_PROP_ENTRY(border_bottom),
     CSS1_PROP_ENTRY(border_bottom_width),
-    CSS1_PROP_ENTRY(border_left_width),
-    CSS1_PROP_ENTRY(border_width),
     CSS1_PROP_ENTRY(border_color),
+    CSS1_PROP_ENTRY(border_left),
+    CSS1_PROP_ENTRY(border_left_width),
+    CSS1_PROP_ENTRY(border_right),
+    CSS1_PROP_ENTRY(border_right_width),
     CSS1_PROP_ENTRY(border_style),
     CSS1_PROP_ENTRY(border_top),
-    CSS1_PROP_ENTRY(border_right),
-    CSS1_PROP_ENTRY(border_bottom),
-    CSS1_PROP_ENTRY(border_left),
-    CSS1_PROP_ENTRY(border),
+    CSS1_PROP_ENTRY(border_top_width),
+    CSS1_PROP_ENTRY(border_width),
     CSS1_PROP_ENTRY(color),
     CSS1_PROP_ENTRY(column_count),
     CSS1_PROP_ENTRY(direction),
     CSS1_PROP_ENTRY(float),
-    CSS1_PROP_ENTRY(font_size),
+    CSS1_PROP_ENTRY(font),
     CSS1_PROP_ENTRY(font_family),
+    CSS1_PROP_ENTRY(font_size),
     CSS1_PROP_ENTRY(font_style),
     CSS1_PROP_ENTRY(font_variant),
     CSS1_PROP_ENTRY(font_weight),
+    CSS1_PROP_ENTRY(height),
+    CSS1_PROP_ENTRY(left),
     CSS1_PROP_ENTRY(letter_spacing),
     CSS1_PROP_ENTRY(line_height),
     CSS1_PROP_ENTRY(list_style_type),
-    CSS1_PROP_ENTRY(font),
+    CSS1_PROP_ENTRY(margin),
+    CSS1_PROP_ENTRY(margin_bottom),
+    CSS1_PROP_ENTRY(margin_left),
+    CSS1_PROP_ENTRY(margin_right),
+    CSS1_PROP_ENTRY(margin_top),
+    CSS1_PROP_ENTRY(orphans),
+    CSS1_PROP_ENTRY(padding),
+    CSS1_PROP_ENTRY(padding_bottom),
+    CSS1_PROP_ENTRY(padding_left),
+    CSS1_PROP_ENTRY(padding_right),
+    CSS1_PROP_ENTRY(padding_top),
+    CSS1_PROP_ENTRY(page_break_after),
+    CSS1_PROP_ENTRY(page_break_before),
+    CSS1_PROP_ENTRY(page_break_inside),
+    CSS1_PROP_ENTRY(position),
+    CSS1_PROP_ENTRY(size),
+    CSS1_PROP_ENTRY(so_language),
     CSS1_PROP_ENTRY(text_align),
     CSS1_PROP_ENTRY(text_decoration),
     CSS1_PROP_ENTRY(text_indent),
     CSS1_PROP_ENTRY(text_transform),
-    CSS1_PROP_ENTRY(margin_left),
-    CSS1_PROP_ENTRY(margin_right),
-    CSS1_PROP_ENTRY(margin_top),
-    CSS1_PROP_ENTRY(margin_bottom),
-    CSS1_PROP_ENTRY(margin),
-    CSS1_PROP_ENTRY(padding_top),
-    CSS1_PROP_ENTRY(padding_bottom),
-    CSS1_PROP_ENTRY(padding_left),
-    CSS1_PROP_ENTRY(padding_right),
-    CSS1_PROP_ENTRY(padding),
-    CSS1_PROP_ENTRY(position),
-    CSS1_PROP_ENTRY(left),
     CSS1_PROP_ENTRY(top),
-    CSS1_PROP_ENTRY(width),
-    CSS1_PROP_ENTRY(height),
-    CSS1_PROP_ENTRY(size),
-    CSS1_PROP_ENTRY(page_break_before),
-    CSS1_PROP_ENTRY(page_break_after),
-    CSS1_PROP_ENTRY(page_break_inside),
+    CSS1_PROP_ENTRY(visibility),
     CSS1_PROP_ENTRY(widows),
-    CSS1_PROP_ENTRY(orphans),
-    CSS1_PROP_ENTRY(so_language)
+    CSS1_PROP_ENTRY(width),
 };
 
-extern "C"
+#if !defined NDEBUG
+static bool CSS1PropEntryCompare( const CSS1PropEntry &lhs, const CSS1PropEntry &rhs)
 {
-static int SAL_CALL CSS1PropEntryCompare( const void *pFirst, const void *pSecond)
-{
-    int nRet;
-    if( static_cast<const CSS1PropEntry*>(pFirst)->pFunc )
-    {
-        if( static_cast<const CSS1PropEntry*>(pSecond)->pFunc )
-            nRet = strcmp( static_cast<const CSS1PropEntry*>(pFirst)->sName ,
-                    static_cast<const CSS1PropEntry*>(pSecond)->sName );
-        else
-            nRet = -1 * static_cast<const CSS1PropEntry*>(pSecond)->pName->compareToAscii(
-                            static_cast<const CSS1PropEntry*>(pFirst)->sName );
-    }
-    else
-    {
-        if( static_cast<const CSS1PropEntry*>(pSecond)->pFunc )
-            nRet = static_cast<const CSS1PropEntry*>(pFirst)->pName->compareToAscii(
-                        static_cast<const CSS1PropEntry*>(pSecond)->sName );
-        else
-            nRet = static_cast<const CSS1PropEntry*>(pFirst)->pName->compareTo(
-                        *static_cast<const CSS1PropEntry*>(pSecond)->pName );
-    }
-
-    return nRet;
+    return strcmp(lhs.pName, rhs.pName) < 0;
 }
+#endif
+static bool CSS1PropEntryFindCompare(CSS1PropEntry const & lhs, OUString const & s)
+{
+    return s.compareToIgnoreAsciiCaseAscii(lhs.pName) > 0;
 }
 
-void SvxCSS1Parser::ParseProperty( const OUString& rProperty,
-                                   const CSS1Expression *pExpr )
+void SvxCSS1Parser::DeclarationParsed( const OUString& rProperty,
+                                       std::unique_ptr<CSS1Expression> pExpr )
 {
     OSL_ENSURE( pItemSet, "DeclarationParsed() without ItemSet" );
 
@@ -3196,27 +3166,16 @@ void SvxCSS1Parser::ParseProperty( const OUString& rProperty,
 
     if( !bSortedPropFns )
     {
-        qsort( static_cast<void*>(aCSS1PropFnTab),
-                sizeof( aCSS1PropFnTab ) / sizeof( CSS1PropEntry ),
-                sizeof( CSS1PropEntry ),
-                CSS1PropEntryCompare );
+        assert( std::is_sorted( std::begin(aCSS1PropFnTab), std::end(aCSS1PropFnTab),
+                                CSS1PropEntryCompare ) );
         bSortedPropFns = true;
     }
 
-    OUString aTmp( rProperty.toAsciiLowerCase() );
-
-    CSS1PropEntry aSrch;
-    aSrch.pName = &aTmp;
-    aSrch.pFunc = nullptr;
-
-    void* pFound;
-    if( nullptr != ( pFound = bsearch( &aSrch,
-                        static_cast<void*>(aCSS1PropFnTab),
-                        sizeof( aCSS1PropFnTab ) / sizeof( CSS1PropEntry ),
-                        sizeof( CSS1PropEntry ),
-                        CSS1PropEntryCompare )))
+    auto it = std::lower_bound( std::begin(aCSS1PropFnTab), std::end(aCSS1PropFnTab), rProperty,
+                                CSS1PropEntryFindCompare );
+    if( it != std::end(aCSS1PropFnTab) && !CSS1PropEntryFindCompare(*it,rProperty)  )
     {
-        (static_cast<CSS1PropEntry*>(pFound)->pFunc)( pExpr, *pItemSet, *pPropInfo, *this );
+        it->pFunc( pExpr.get(), *pItemSet, *pPropInfo, *this );
     }
 }
 

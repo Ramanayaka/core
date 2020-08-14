@@ -18,29 +18,28 @@
  */
 
 #include <osl/mutex.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <unotools/accessiblestatesethelper.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <cppuhelper/typeprovider.hxx>
 #include <vcl/svapp.hxx>
 #include <cellfrm.hxx>
 #include <tabfrm.hxx>
 #include <swtable.hxx>
-#include "crsrsh.hxx"
-#include "viscrs.hxx"
-#include <accfrmobj.hxx>
-#include <accfrmobjslist.hxx>
-#include "frmfmt.hxx"
-#include "cellatr.hxx"
-#include "accmap.hxx"
-#include <acccell.hxx>
+#include <crsrsh.hxx>
+#include <viscrs.hxx>
+#include "accfrmobj.hxx"
+#include "accfrmobjslist.hxx"
+#include <frmfmt.hxx>
+#include <cellatr.hxx>
+#include <accmap.hxx>
+#include "acccell.hxx"
 
 #include <cfloat>
-#include <limits.h>
 
-#include <ndtxt.hxx>
 #include <editeng/brushitem.hxx>
 #include <swatrset.hxx>
 #include <frmatr.hxx>
@@ -50,7 +49,7 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 using namespace sw::access;
 
-const sal_Char sImplementationName[] = "com.sun.star.comp.Writer.SwAccessibleCellView";
+const char sImplementationName[] = "com.sun.star.comp.Writer.SwAccessibleCellView";
 
 bool SwAccessibleCell::IsSelected()
 {
@@ -59,9 +58,8 @@ bool SwAccessibleCell::IsSelected()
     assert(GetMap());
     const SwViewShell *pVSh = GetMap()->GetShell();
     assert(pVSh);
-    if( dynamic_cast<const SwCursorShell*>( pVSh) !=  nullptr )
+    if( auto pCSh = dynamic_cast<const SwCursorShell*>(pVSh) )
     {
-        const SwCursorShell *pCSh = static_cast< const SwCursorShell * >( pVSh );
         if( pCSh->IsTableMode() )
         {
             const SwCellFrame *pCFrame =
@@ -88,11 +86,14 @@ void SwAccessibleCell::GetStates( ::utl::AccessibleStateSetHelper& rStateSet )
     //Add resizable state to table cell.
     rStateSet.AddState( AccessibleStateType::RESIZABLE );
 
+    if (IsDisposing()) // tdf#135098
+        return;
+
     // SELECTED
     if( IsSelected() )
     {
         rStateSet.AddState( AccessibleStateType::SELECTED );
-        assert(m_bIsSelected && "bSelected out of sync");
+        SAL_WARN_IF(!m_bIsSelected, "sw.a11y", "bSelected out of sync");
         ::rtl::Reference < SwAccessibleContext > xThis( this );
         GetMap()->SetCursorContext( xThis );
     }
@@ -240,7 +241,7 @@ OUString SAL_CALL SwAccessibleCell::getAccessibleDescription()
 
 OUString SAL_CALL SwAccessibleCell::getImplementationName()
 {
-    return OUString(sImplementationName);
+    return sImplementationName;
 }
 
 sal_Bool SAL_CALL SwAccessibleCell::supportsService(const OUString& sTestServiceName)
@@ -250,11 +251,7 @@ sal_Bool SAL_CALL SwAccessibleCell::supportsService(const OUString& sTestService
 
 uno::Sequence< OUString > SAL_CALL SwAccessibleCell::getSupportedServiceNames()
 {
-    uno::Sequence< OUString > aRet(2);
-    OUString* pArray = aRet.getArray();
-    pArray[0] = "com.sun.star.table.AccessibleCellView";
-    pArray[1] = sAccessibleServiceName;
-    return aRet;
+    return { "com.sun.star.table.AccessibleCellView", sAccessibleServiceName };
 }
 
 void SwAccessibleCell::Dispose(bool bRecursive, bool bCanSkipInvisible)
@@ -310,15 +307,9 @@ uno::Any SwAccessibleCell::queryInterface( const uno::Type& rType )
 // XTypeProvider
 uno::Sequence< uno::Type > SAL_CALL SwAccessibleCell::getTypes()
 {
-    uno::Sequence< uno::Type > aTypes( SwAccessibleContext::getTypes() );
-
-    sal_Int32 nIndex = aTypes.getLength();
-    aTypes.realloc( nIndex + 1 );
-
-    uno::Type* pTypes = aTypes.getArray();
-    pTypes[nIndex] = ::cppu::UnoType<XAccessibleValue>::get();
-
-    return aTypes;
+    return cppu::OTypeCollection(
+        ::cppu::UnoType<XAccessibleValue>::get(),
+        SwAccessibleContext::getTypes() ).getTypes();
 }
 
 uno::Sequence< sal_Int8 > SAL_CALL SwAccessibleCell::getImplementationId()
@@ -406,9 +397,7 @@ css::uno::Any SAL_CALL SwAccessibleCell::getExtendedAttributes()
     const SwTableBoxFormula& tbl_formula = pFrameFormat->GetTableBoxFormula();
 
     OUString strFormula = ReplaceFourChar(tbl_formula.GetFormula());
-    OUString strFor("Formula:");
-    strFor += strFormula;
-    strFor += ";" ;
+    OUString strFor = "Formula:" + strFormula + ";";
     strRet <<= strFor;
 
     return strRet;
@@ -419,21 +408,21 @@ sal_Int32 SAL_CALL SwAccessibleCell::getBackground()
     SolarMutexGuard g;
 
     const SvxBrushItem &rBack = GetFrame()->GetAttrSet()->GetBackground();
-    sal_uInt32 crBack = rBack.GetColor().GetColor();
+    Color crBack = rBack.GetColor();
 
     if (COL_AUTO == crBack)
     {
         uno::Reference<XAccessible> xAccDoc = getAccessibleParent();
         if (xAccDoc.is())
         {
-            uno::Reference<XAccessibleComponent> xCompoentDoc(xAccDoc, uno::UNO_QUERY);
-            if (xCompoentDoc.is())
+            uno::Reference<XAccessibleComponent> xComponentDoc(xAccDoc, uno::UNO_QUERY);
+            if (xComponentDoc.is())
             {
-                crBack = (sal_uInt32)xCompoentDoc->getBackground();
+                crBack = Color(xComponentDoc->getBackground());
             }
         }
     }
-    return crBack;
+    return sal_Int32(crBack);
 }
 
 // XAccessibleSelection

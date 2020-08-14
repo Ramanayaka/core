@@ -22,16 +22,16 @@
 
 #include <svx/fmview.hxx>
 
-#include "global.hxx"
+#include <global.hxx>
 
-namespace com { namespace sun { namespace star { namespace datatransfer { class XTransferable; } } } }
+namespace com::sun::star::datatransfer { class XTransferable; }
 
 class ScDocument;
 class ScViewData;
 class ScDrawObjData;
 class SdrUndoManager;
 
-class ScDrawView: public FmFormView
+class ScDrawView final : public FmFormView
 {
     ScViewData*             pViewData;
     VclPtr<OutputDevice>    pDev;                   //! needed ?
@@ -39,13 +39,12 @@ class ScDrawView: public FmFormView
     SCTAB                   nTab;
     Fraction                aScaleX;                // Factor for Drawing-MapMode
     Fraction                aScaleY;
-    SdrDropMarkerOverlay*   pDropMarker;
+    std::unique_ptr<SdrDropMarkerOverlay> pDropMarker;
     SdrObject*              pDropMarkObj;
     bool                    bInConstruct;
 
     void            Construct();
 
-protected:
     virtual void    ModelHasChanged() override;
 
     // add custom handles (used by other apps, e.g. AnchorPos)
@@ -57,8 +56,11 @@ protected:
     virtual SdrUndoManager* getSdrUndoManagerForEnhancedTextEdit() const override;
 
 public:
-                    ScDrawView( OutputDevice* pOut, ScViewData* pData );
-    virtual         ~ScDrawView() override;
+    ScDrawView(
+        OutputDevice* pOut,
+        ScViewData* pData);
+
+    virtual ~ScDrawView() override;
 
     virtual void    MarkListHasChanged() override;
     virtual void    Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
@@ -101,7 +103,7 @@ public:
     void            CalcNormScale( Fraction& rFractX, Fraction& rFractY ) const;
 
     void            SetPageAnchored();
-    void            SetCellAnchored();
+    void            SetCellAnchored(bool bResizeWithCell);
     ScAnchorType    GetAnchorType() const;
 
     void            UpdateIMap( SdrObject* pObj );
@@ -109,12 +111,13 @@ public:
     void            UpdateUserViewOptions();
 
     void            SetMarkedOriginalSize();
+    void            FitToCellSize();
 
     bool            SelectObject( const OUString& rName );
     bool            HasMarkedControl() const;
     bool            HasMarkedInternal() const;
 
-    void            InsertObjectSafe(SdrObject* pObj, SdrPageView& rPV);
+    bool            InsertObjectSafe(SdrObject* pObj, SdrPageView& rPV);
 
     /** Returns the selected object, if it is the caption object of a cell note.
         @param ppCaptData  (out-param) If not null, returns the pointer to the caption object data. */
@@ -138,7 +141,7 @@ public:
     css::uno::Reference< css::datatransfer::XTransferable > CopyToTransferable();
 
     SdrObject*  GetObjectByName(const OUString& rName);
-    bool        GetObjectIsMarked(  SdrObject * pObject );
+    bool        GetObjectIsMarked( const SdrObject * pObject );
     void        SelectCurrentViewObject( const OUString& rName );
 
     // #i123922# helper which checks if a Graphic may be applied to an existing
@@ -152,10 +155,25 @@ public:
         const OUString& rFilter);
 
     static void CheckOle( const SdrMarkList& rMarkList, bool& rAnyOle, bool& rOneOle );
+
     void SyncForGrid( SdrObject* pObj );
+
+    bool calculateGridOffsetForSdrObject(
+        SdrObject& rSdrObject,
+        basegfx::B2DVector& rTarget) const;
+    bool calculateGridOffsetForB2DRange(
+        const basegfx::B2DRange& rB2DRange,
+        basegfx::B2DVector& rTarget) const;
+    void resetGridOffsetsForAllSdrPageViews();
 
     /// See SdrMarkView::GetSfxViewShell().
     SfxViewShell* GetSfxViewShell() const override;
+
+    // Do not create ObjectContact locally, but offer a call to allow override
+    // and to create own derivations of ObjectContact
+    virtual sdr::contact::ObjectContact* createViewSpecificObjectContact(
+        SdrPageWindow& rPageWindow,
+        const char* pDebugName) const override;
 };
 
 extern Point aDragStartDiff;

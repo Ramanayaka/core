@@ -20,13 +20,10 @@
 #define INCLUDED_SW_SOURCE_UI_DBUI_ADDRESSLISTDIALOG_HXX
 
 #include <sfx2/basedlgs.hxx>
-#include <vcl/button.hxx>
-#include <svtools/svtabbx.hxx>
-#include <svtools/headbar.hxx>
 #include <swdbdata.hxx>
-#include "sharedconnection.hxx"
+#include <sharedconnection.hxx>
 
-namespace com{namespace sun{namespace star{
+namespace com::sun::star{
     namespace container{
         class XNameAccess;
     }
@@ -39,65 +36,65 @@ namespace com{namespace sun{namespace star{
     namespace sdbcx{
         class XColumnsSupplier;
     }
-}}}
+}
 class SwMailMergeAddressBlockPage;
-class SwAddrSourceLB;
 
-class SwAddressListDialog : public SfxModalDialog
+struct AddressUserData_Impl;
+
+class SwAddressListDialog : public SfxDialogController
 {
-    VclPtr<FixedText>      m_pDescriptionFI;
-
-    VclPtr<SwAddrSourceLB> m_pListLB;
-
-    VclPtr<PushButton>     m_pLoadListPB;
-    VclPtr<PushButton>     m_pCreateListPB;
-    VclPtr<PushButton>     m_pFilterPB;
-    VclPtr<PushButton>     m_pEditPB;
-    VclPtr<PushButton>     m_pTablePB;
-
-    VclPtr<OKButton>       m_pOK;
-
-    OUString        m_sName;
-    OUString        m_sTable;
     OUString        m_sConnecting;
-
-    SvTreeListEntry*    m_pCreatedDataSource;
 
     bool            m_bInSelectHdl;
 
-    VclPtr<SwMailMergeAddressBlockPage> m_pAddressPage;
+    SwMailMergeAddressBlockPage* m_pAddressPage;
 
     css::uno::Reference< css::sdb::XDatabaseContext> m_xDBContext;
 
     SwDBData                                         m_aDBData;
 
-    void DetectTablesAndQueries(SvTreeListEntry* pSelect, bool bWidthDialog);
+    std::vector<std::unique_ptr<AddressUserData_Impl>> m_aUserData;
 
-    DECL_LINK(FilterHdl_Impl, Button*, void);
-    DECL_LINK(LoadHdl_Impl, Button*, void);
-    DECL_LINK(CreateHdl_Impl, Button*, void);
-    DECL_LINK(ListBoxSelectHdl_Impl, SvTreeListBox*, void);
-    DECL_LINK(EditHdl_Impl, Button*, void);
-    DECL_LINK(TableSelectHdl_Impl, Button*, void);
-    DECL_LINK(OKHdl_Impl, Button*, void);
+    std::unique_ptr<weld::Label>    m_xDescriptionFI;
+    std::unique_ptr<weld::Label>    m_xConnecting;
+    std::unique_ptr<weld::TreeView> m_xListLB;
+    std::unique_ptr<weld::Button>   m_xLoadListPB;
+    std::unique_ptr<weld::Button>   m_xRemovePB;
+    std::unique_ptr<weld::Button>   m_xCreateListPB;
+    std::unique_ptr<weld::Button>   m_xFilterPB;
+    std::unique_ptr<weld::Button>   m_xEditPB;
+    std::unique_ptr<weld::Button>   m_xTablePB;
+    std::unique_ptr<weld::Button>   m_xOK;
+    std::unique_ptr<weld::TreeIter> m_xIter;
+
+    void DetectTablesAndQueries(int Select, bool bWidthDialog);
+
+    DECL_LINK(FilterHdl_Impl, weld::Button&, void);
+    DECL_LINK(LoadHdl_Impl, weld::Button&, void);
+    DECL_LINK(CreateHdl_Impl, weld::Button&, void);
+    DECL_LINK(RemoveHdl_Impl, weld::Button&, void);
+    DECL_LINK(ListBoxSelectHdl_Impl, weld::TreeView&, void);
+    DECL_LINK(EditHdl_Impl, weld::Button&, void);
+    DECL_LINK(TableSelectHdl_Impl, weld::Button&, void);
+    void TableSelectHdl(const weld::Button* pButton);
+    DECL_LINK(OKHdl_Impl, weld::Button&, void);
 
     DECL_LINK(StaticListBoxSelectHdl_Impl, void*, void);
 
 public:
     SwAddressListDialog(SwMailMergeAddressBlockPage* pParent);
     virtual ~SwAddressListDialog() override;
-    virtual void dispose() override;
 
     css::uno::Reference< css::sdbc::XDataSource>
-                        GetSource();
+                        GetSource() const;
 
-    SharedConnection    GetConnection();
+    SharedConnection    GetConnection() const;
 
     css::uno::Reference< css::sdbcx::XColumnsSupplier>
-                        GetColumnsSupplier();
+                        GetColumnsSupplier() const;
 
     const SwDBData&     GetDBData() const       {return m_aDBData;}
-    OUString     GetFilter();
+    OUString     GetFilter() const;
 };
 #endif
 

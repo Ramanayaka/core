@@ -7,6 +7,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <sal/config.h>
+
+#include <cstddef>
+
+#include <sal/types.h>
+
 #include "redundantcast.hxx"
 
 void f1(char *) {}
@@ -290,11 +296,152 @@ void testCStyleCast() {
     (void)e;
 }
 
+template<typename T>
+struct EnumItemInterface {
+    T GetValue() { return static_cast<T>(0); }
+};
+class Enum1Item : public EnumItemInterface<Enum1> {
+};
+bool testCStyleCastOfTemplateMethodResult(Enum1Item* item) {
+    return (Enum1)item->GetValue() == Enum1::X; // expected-error {{redundant cstyle cast from 'Enum1' to 'Enum1' [loplugin:redundantcast]}}
+}
+
+using T1 = int;
+T1 nt1r() { return 0; }
+void testArithmeticTypedefs() {
+    (void) static_cast<T1>(nir());
+    (void) T1(nir());
+    (void) (T1) nir();
+    (void) static_cast<int>(nt1r());
+    (void) int(nt1r());
+    (void) (int) nt1r();
+    using T2 = T1;
+    (void) static_cast<T2>(nt1r());
+    (void) T2(nt1r());
+    (void) (T2) nt1r();
+    (void) static_cast<T1>(nt1r()); // expected-error {{redundant}}
+    (void) T1(nt1r()); // expected-error {{redundant}}
+    (void) (T1) nt1r(); // expected-error {{redundant}}
+
+    T1 const c{};
+    (void) static_cast<T1>(c); // expected-error {{redundant}}
+}
+
+void testReinterpretConstCast() {
+    int n = 0;
+    (void) reinterpret_cast<std::size_t>((const_cast<int const *>(&n))); // expected-error-re {{redundant const_cast from 'int *' to 'const int *' within reinterpret_cast to fundamental type 'std::size_t' (aka 'unsigned {{.+}}') [loplugin:redundantcast]}}
+}
+
+void testDynamicCast() {
+
+    struct S1 { virtual ~S1(); };
+    struct S2 final: S1 {};
+    struct S3: S1 {};
+
+    S1 * s1 = nullptr;
+    S2 * s2 = nullptr;
+
+    (void) dynamic_cast<S2 *>(s1);
+    (void) dynamic_cast<S1 *>(s2);
+    (void) dynamic_cast<S2 *>(s2); // expected-error {{redundant dynamic cast from 'S2 *' to 'S2 *' [loplugin:redundantcast]}}
+    (void) dynamic_cast<S3 *>(s2);
+}
+
+void overload(int);
+void overload(long);
+void nonOverload();
+
+struct Overload {
+    int overload();
+    long overload() const;
+    void nonOverload();
+};
+
+void testOverloadResolution() {
+    (void) static_cast<void (*)(long)>(overload);
+    (void) static_cast<void (*)(long)>((overload));
+    (void) static_cast<void (*)(long)>(&overload);
+    (void) static_cast<void (*)(long)>((&overload));
+    (void) static_cast<void (*)(long)>(&((overload)));
+    (void) static_cast<void (*)()>(nonOverload); // expected-error {{static_cast from 'void (*)()' prvalue to 'void (*)()' prvalue is redundant [loplugin:redundantcast]}}
+    (void) static_cast<void (*)()>((nonOverload)); // expected-error {{static_cast from 'void (*)()' prvalue to 'void (*)()' prvalue is redundant [loplugin:redundantcast]}}
+    (void) static_cast<void (*)()>(&nonOverload); // expected-error {{static_cast from 'void (*)()' prvalue to 'void (*)()' prvalue is redundant [loplugin:redundantcast]}}
+    (void) static_cast<void (*)()>((&nonOverload)); // expected-error {{static_cast from 'void (*)()' prvalue to 'void (*)()' prvalue is redundant [loplugin:redundantcast]}}
+    (void) static_cast<void (*)()>(&((nonOverload))); // expected-error {{static_cast from 'void (*)()' prvalue to 'void (*)()' prvalue is redundant [loplugin:redundantcast]}}
+    (void) static_cast<long (Overload::*)() const>(&Overload::overload);
+    (void) static_cast<void (Overload::*)()>(&Overload::nonOverload); // expected-error {{static_cast from 'void (Overload::*)()' prvalue to 'void (Overload::*)()' prvalue is redundant [loplugin:redundantcast]}}
+
+    using OverloadFn = void (*)(long);
+    (void) OverloadFn(overload);
+    using NonOverloadFn = void (*)();
+    (void) NonOverloadFn(nonOverload); // expected-error {{redundant functional cast from 'void (*)()' to 'NonOverloadFn' (aka 'void (*)()') [loplugin:redundantcast]}}
+    using OverloadMemFn = long (Overload::*)() const;
+    (void) OverloadMemFn(&Overload::overload);
+    using NonOverloadMemFn = void (Overload::*)();
+    (void) NonOverloadMemFn(&Overload::nonOverload); // expected-error {{redundant functional cast from 'void (Overload::*)()' to 'NonOverloadMemFn' (aka 'void (Overload::*)()') [loplugin:redundantcast]}}
+};
+
+void testIntermediaryStaticCast() {
+    int n = 0;
+    n = static_cast<double>(n); // expected-error {{suspicious static_cast from 'int' to 'double', result is implicitly cast to 'int' [loplugin:redundantcast]}}
+    n = double(n); // expected-error {{suspicious functional cast from 'int' to 'double', result is implicitly cast to 'int' [loplugin:redundantcast]}}
+    double d = 0.0;
+    d = static_cast<int>(d) + 1.0; // expected-error {{suspicious static_cast from 'double' to 'int', result is implicitly cast to 'double' [loplugin:redundantcast]}}
+    d = int(d) + 1.0; // expected-error {{suspicious functional cast from 'double' to 'int', result is implicitly cast to 'double' [loplugin:redundantcast]}}
+};
+
+void testArrayDecay() {
+    (void) static_cast<char const *>(""); // expected-error {{redundant static_cast from 'const char [1]' to 'const char *' [loplugin:redundantcast]}}
+    (void) reinterpret_cast<char const *>(""); // expected-error {{redundant reinterpret_cast from 'const char [1]' to 'const char *' [loplugin:redundantcast]}}
+    (void) reinterpret_cast<char const *>(u8"");
+}
+
+void testNew() {
+    class A {};
+    class B : public A {};
+    A* p = static_cast<A*>(new B); // expected-error {{redundant static_cast from 'B *' to 'A *' [loplugin:redundantcast]}}
+    (void)p;
+    // no warning expected for resolving-ambiguity cast
+    class C : public A {};
+    class D : public B, public C {};
+    p = static_cast<B*>(new D);
+    // no warning expected for down-cast
+    auto p2 = static_cast<B*>(p);
+    (void)p2;
+}
+
+using F = void (*)();
+auto testNullFunctionPointer(int i, F p) {
+    switch (i) {
+    case 0:
+        return static_cast<F>(nullptr);
+    case 1:
+        return F(nullptr);
+    default:
+        return p;
+    }
+}
+
+void testSalIntTypes() {
+    sal_Int16 const n = 0;
+    (void) static_cast<sal_Int16>(n); // expected-error-re {{static_cast from 'const sal_Int16' (aka 'const {{.+}}') lvalue to 'sal_Int16' (aka '{{.+}}') prvalue is redundant or should be written as an explicit construction of a temporary [loplugin:redundantcast]}}
+    (void) static_cast<::sal_Int16>(n); // expected-error-re {{static_cast from 'const sal_Int16' (aka 'const {{.+}}') lvalue to '::sal_Int16' (aka '{{.+}}') prvalue is redundant or should be written as an explicit construction of a temporary [loplugin:redundantcast]}}
+    (void) static_cast<short>(n); // doesn't warn, even if 'sal_Int16' is 'short'
+    using Other = sal_Int16;
+    (void) static_cast<Other>(n); // doesn't warn either
+}
+
 int main() {
     testConstCast();
     testStaticCast();
     testFunctionalCast();
     testCStyleCast();
+    testCStyleCastOfTemplateMethodResult(nullptr);
+    testReinterpretConstCast();
+    testDynamicCast();
+    testIntermediaryStaticCast();
+    testArrayDecay();
+    testSalIntTypes();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

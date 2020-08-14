@@ -18,9 +18,13 @@
  */
 
 #include "scrollbar.hxx"
+#include <property.hxx>
+#include <services.hxx>
+#include <comphelper/property.hxx>
 #include <comphelper/streamsection.hxx>
 #include <comphelper/basicio.hxx>
 #include <rtl/math.hxx>
+#include <com/sun/star/form/FormComponentType.hpp>
 
 namespace frm
 {
@@ -47,17 +51,17 @@ namespace frm
         double nExternalValue = 0;
         if ( _rExternalValue >>= nExternalValue )
         {
-            if ( ::rtl::math::isInf( nExternalValue ) )
+            if ( std::isinf( nExternalValue ) )
             {
                 // set the minimum or maximum of the scroll values
-                OUString sLimitPropertyName = ::rtl::math::isSignBitSet( nExternalValue )
+                OUString sLimitPropertyName = std::signbit( nExternalValue )
                     ? _rMinValueName : _rMaxValueName;
                 if ( _rxProperties.is() )
                     _rxProperties->getPropertyValue( sLimitPropertyName ) >>= nControlValue;
             }
             else
             {
-                nControlValue = (sal_Int32)::rtl::math::round( nExternalValue );
+                nControlValue = static_cast<sal_Int32>(::rtl::math::round( nExternalValue ));
             }
         }
         else
@@ -75,7 +79,7 @@ namespace frm
         Any aExternalDoubleValue;
         sal_Int32 nScrollValue = 0;
         if ( _rControlIntValue >>= nScrollValue )
-            aExternalDoubleValue <<= (double)nScrollValue;
+            aExternalDoubleValue <<= static_cast<double>(nScrollValue);
         else
         {
             OSL_FAIL( "translateControlIntToExternalDoubleValue: no integer scroll value!" );
@@ -108,7 +112,7 @@ namespace frm
 
     OUString SAL_CALL OScrollBarModel::getImplementationName()
     {
-        return OUString( "com.sun.star.comp.forms.OScrollBarModel" );
+        return "com.sun.star.comp.forms.OScrollBarModel";
     }
 
         // note that we're passing OControlModel as "base class". This is because
@@ -117,9 +121,7 @@ namespace frm
         // to benefit from the functionality for binding to spreadsheet cells
     Sequence< OUString > SAL_CALL OScrollBarModel::getSupportedServiceNames()
     {
-        Sequence< OUString > aOwnNames( 2 );
-        aOwnNames[ 0 ] = FRM_SUN_COMPONENT_SCROLLBAR;
-        aOwnNames[ 1 ] = BINDABLE_INTEGER_VALUE_RANGE;
+        Sequence< OUString > aOwnNames { FRM_SUN_COMPONENT_SCROLLBAR, BINDABLE_INTEGER_VALUE_RANGE };
 
         return ::comphelper::combineSequences(
             getAggregateServiceNames(),
@@ -196,7 +198,7 @@ namespace frm
         switch ( _nHandle )
         {
         case PROPERTY_ID_DEFAULT_SCROLL_VALUE:
-            aReturn <<= (sal_Int32)0;
+            aReturn <<= sal_Int32(0);
             break;
 
         default:
@@ -224,13 +226,13 @@ namespace frm
 
     Any OScrollBarModel::getDefaultForReset() const
     {
-        return makeAny( (sal_Int32)m_nDefaultScrollValue );
+        return makeAny( m_nDefaultScrollValue );
     }
 
 
     OUString SAL_CALL OScrollBarModel::getServiceName()
     {
-        return OUString(FRM_SUN_COMPONENT_SCROLLBAR);
+        return FRM_SUN_COMPONENT_SCROLLBAR;
     }
 
 
@@ -295,7 +297,7 @@ namespace frm
 
 }   // namespace frm
 
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface* SAL_CALL
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_forms_OScrollBarModel_get_implementation(css::uno::XComponentContext* component,
         css::uno::Sequence<css::uno::Any> const &)
 {

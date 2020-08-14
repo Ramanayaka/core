@@ -17,14 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vbahelper/helperdecl.hxx>
 #include <tools/urlobj.hxx>
-#include <boost/optional.hpp>
-#include <comphelper/unwrapargs.hxx>
-#include <comphelper/servicehelper.hxx>
 
-#include <com/sun/star/util/XModifiable.hpp>
 #include <com/sun/star/util/XProtectable.hpp>
+#include <com/sun/star/sheet/XNamedRanges.hpp>
 #include <com/sun/star/sheet/XSpreadsheetView.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
@@ -32,8 +28,6 @@
 #include <ooo/vba/excel/XlFileFormat.hpp>
 #include <ooo/vba/excel/XApplication.hpp>
 
-#include "scextopt.hxx"
-#include "service.hxx"
 #include "vbaworksheet.hxx"
 #include "vbaworksheets.hxx"
 #include "vbaworkbook.hxx"
@@ -43,9 +37,8 @@
 #include "vbapalette.hxx"
 #include <osl/file.hxx>
 #include "vbanames.hxx"
-#include "nameuno.hxx"
-#include "docoptio.hxx"
-#include "unonames.hxx"
+#include <docoptio.hxx>
+#include <docsh.hxx>
 
 // Much of the impl. for the equivalent UNO module is
 // sc/source/ui/unoobj/docuno.cxx, viewuno.cxx
@@ -57,24 +50,20 @@ uno::Sequence< sal_Int32 > ScVbaWorkbook::ColorData;
 
 void ScVbaWorkbook::initColorData( const uno::Sequence< sal_Int32 >& sColors )
 {
-        const sal_Int32* pSource = sColors.getConstArray();
-        sal_Int32* pDest = ColorData.getArray();
-        const sal_Int32* pEnd = pSource + sColors.getLength();
-        for ( ; pSource != pEnd; ++pSource, ++pDest )
-            *pDest = *pSource;
+    std::copy(sColors.begin(), sColors.end(), ColorData.begin());
 }
 
 void SAL_CALL
 ScVbaWorkbook::ResetColors(  )
 {
-        uno::Reference< container::XIndexAccess > xIndexAccess( ScVbaPalette::getDefaultPalette(), uno::UNO_QUERY_THROW );
+        uno::Reference< container::XIndexAccess > xIndexAccess( ScVbaPalette::getDefaultPalette(), uno::UNO_SET_THROW );
         sal_Int32 nLen = xIndexAccess->getCount();
         ColorData.realloc( nLen );
 
         uno::Sequence< sal_Int32 > dDefaultColors( nLen );
         sal_Int32* pDest = dDefaultColors.getArray();
         for ( sal_Int32 index=0; index < nLen; ++pDest, ++index )
-            xIndexAccess->getByIndex( index )  >>= (*pDest);
+            xIndexAccess->getByIndex( index )  >>= *pDest;
         initColorData( dDefaultColors );
 }
 
@@ -95,41 +84,38 @@ ScVbaWorkbook::Colors( const ::uno::Any& Index )
 
 bool ScVbaWorkbook::setFilterPropsFromFormat( sal_Int32 nFormat, uno::Sequence< beans::PropertyValue >& rProps )
 {
-    bool bRes = false;
-    for ( sal_Int32 index = 0; index < rProps.getLength(); ++index )
+    auto pProp = std::find_if(rProps.begin(), rProps.end(),
+        [](const beans::PropertyValue& rProp) { return rProp.Name == "FilterName"; });
+    bool bRes = pProp != rProps.end();
+    if (bRes)
     {
-        if ( rProps[ index ].Name == "FilterName" )
+        switch( nFormat )
         {
-            switch( nFormat )
-            {
-                case excel::XlFileFormat::xlCSV:
-                    rProps[ index ].Value <<= OUString("Text - txt - csv (StarCalc)");
-                    break;
-                case excel::XlFileFormat::xlDBF4:
-                    rProps[ index ].Value <<= OUString("DBF");
-                    break;
-                case excel::XlFileFormat::xlDIF:
-                    rProps[ index ].Value <<= OUString("DIF");
-                    break;
-                case excel::XlFileFormat::xlWK3:
-                    rProps[ index ].Value <<= OUString("Lotus");
-                    break;
-                case excel::XlFileFormat::xlExcel4Workbook:
-                    rProps[ index ].Value <<= OUString("MS Excel 4.0");
-                    break;
-                case excel::XlFileFormat::xlExcel5:
-                    rProps[ index ].Value <<= OUString("MS Excel 5.0/95");
-                    break;
-                case excel::XlFileFormat::xlHtml:
-                    rProps[ index ].Value <<= OUString("HTML (StarCalc)");
-                    break;
-                case excel::XlFileFormat::xlExcel9795:
-                default:
-                    rProps[ index ].Value <<= OUString("MS Excel 97");
-                    break;
-            }
-            bRes = true;
-            break;
+            case excel::XlFileFormat::xlCSV:
+                pProp->Value <<= OUString(SC_TEXT_CSV_FILTER_NAME);
+                break;
+            case excel::XlFileFormat::xlDBF4:
+                pProp->Value <<= OUString("DBF");
+                break;
+            case excel::XlFileFormat::xlDIF:
+                pProp->Value <<= OUString("DIF");
+                break;
+            case excel::XlFileFormat::xlWK3:
+                pProp->Value <<= OUString("Lotus");
+                break;
+            case excel::XlFileFormat::xlExcel4Workbook:
+                pProp->Value <<= OUString("MS Excel 4.0");
+                break;
+            case excel::XlFileFormat::xlExcel5:
+                pProp->Value <<= OUString("MS Excel 5.0/95");
+                break;
+            case excel::XlFileFormat::xlHtml:
+                pProp->Value <<= OUString("HTML (StarCalc)");
+                break;
+            case excel::XlFileFormat::xlExcel9795:
+            default:
+                pProp->Value <<= OUString("MS Excel 97");
+                break;
         }
     }
     return bRes;
@@ -150,7 +136,7 @@ ScVbaWorkbook::getFileFormat(  )
            aArgs[1].Value >>= aFilterName;
         }
 
-        if (aFilterName == "Text - txt - csv (StarCalc)") {
+        if (aFilterName == SC_TEXT_CSV_FILTER_NAME) {
             aFileFormat = excel::XlFileFormat::xlCSV; //xlFileFormat.
         }
 
@@ -199,8 +185,11 @@ ScVbaWorkbook::getFileFormat(  )
 void
 ScVbaWorkbook::init()
 {
-    if ( !ColorData.getLength() )
+    if ( !ColorData.hasElements() )
         ResetColors();
+    uno::Reference< frame::XModel > xModel = getModel();
+    if ( xModel.is() )
+        excel::getDocShell( xModel )->RegisterAutomationWorkbookObject( this );
 }
 
 ScVbaWorkbook::ScVbaWorkbook(   const css::uno::Reference< ov::XHelperInterface >& xParent, const css::uno::Reference< css::uno::XComponentContext >& xContext, css::uno::Reference< css::frame::XModel > const & xModel ) : ScVbaWorkbook_BASE( xParent, xContext, xModel )
@@ -245,7 +234,7 @@ ScVbaWorkbook::Worksheets( const uno::Any& aIndex )
         return uno::Any( xWorkSheets );
     }
     // pass on to collection
-    return uno::Any( xWorkSheets->Item( aIndex, uno::Any() ) );
+    return xWorkSheets->Item( aIndex, uno::Any() );
 }
 uno::Any SAL_CALL
 ScVbaWorkbook::Windows( const uno::Any& aIndex )
@@ -254,7 +243,7 @@ ScVbaWorkbook::Windows( const uno::Any& aIndex )
     uno::Reference< excel::XWindows >  xWindows( new ScVbaWindows( getParent(), mxContext ) );
     if ( aIndex.getValueTypeClass() == uno::TypeClass_VOID )
         return uno::Any( xWindows );
-    return uno::Any( xWindows->Item( aIndex, uno::Any() ) );
+    return xWindows->Item( aIndex, uno::Any() );
 }
 
 void SAL_CALL
@@ -278,18 +267,36 @@ ScVbaWorkbook::getProtectStructure()
 
 sal_Bool SAL_CALL ScVbaWorkbook::getPrecisionAsDisplayed()
 {
-    uno::Reference< frame::XModel > xModel( getModel(), uno::UNO_QUERY_THROW );
+    uno::Reference< frame::XModel > xModel( getModel(), uno::UNO_SET_THROW );
     ScDocument& rDoc = excel::getDocShell( xModel )->GetDocument();
     return rDoc.GetDocOptions().IsCalcAsShown();
 }
 
 void SAL_CALL ScVbaWorkbook::setPrecisionAsDisplayed( sal_Bool _precisionAsDisplayed )
 {
-    uno::Reference< frame::XModel > xModel( getModel(), uno::UNO_QUERY_THROW );
+    uno::Reference< frame::XModel > xModel( getModel(), uno::UNO_SET_THROW );
     ScDocument& rDoc = excel::getDocShell( xModel )->GetDocument();
     ScDocOptions aOpt = rDoc.GetDocOptions();
     aOpt.SetCalcAsShown( _precisionAsDisplayed );
     rDoc.SetDocOptions( aOpt );
+}
+
+OUString SAL_CALL ScVbaWorkbook::getAuthor()
+{
+    uno::Reference<document::XDocumentPropertiesSupplier> xDPS( getModel(), uno::UNO_QUERY );
+    if (!xDPS.is())
+        return "?";
+    uno::Reference<document::XDocumentProperties> xDocProps = xDPS->getDocumentProperties();
+    return xDocProps->getAuthor();
+}
+
+void SAL_CALL ScVbaWorkbook::setAuthor( const OUString& _author )
+{
+    uno::Reference<document::XDocumentPropertiesSupplier> xDPS( getModel(), uno::UNO_QUERY );
+    if (!xDPS.is())
+        return;
+    uno::Reference<document::XDocumentProperties> xDocProps = xDPS->getDocumentProperties();
+    xDocProps->setAuthor( _author );
 }
 
 void
@@ -348,8 +355,6 @@ ScVbaWorkbook::SaveAs( const uno::Any& FileName, const uno::Any& FileFormat, con
     setFilterPropsFromFormat( nFileFormat, storeProps );
 
     uno::Reference< frame::XStorable > xStor( getModel(), uno::UNO_QUERY_THROW );
-    OUString sFilterName;
-    storeProps[0].Value >>= sFilterName;
     xStor->storeAsURL( sURL, storeProps );
 }
 
@@ -373,25 +378,23 @@ ScVbaWorkbook::Names( const uno::Any& aIndex )
     uno::Reference< sheet::XNamedRanges > xNamedRanges(  xProps->getPropertyValue("NamedRanges"), uno::UNO_QUERY_THROW );
     uno::Reference< XCollection > xNames( new ScVbaNames( this, mxContext, xNamedRanges, xModel ) );
     if ( aIndex.hasValue() )
-        return uno::Any( xNames->Item( aIndex, uno::Any() ) );
+        return xNames->Item( aIndex, uno::Any() );
     return uno::Any( xNames );
 }
 
 OUString
 ScVbaWorkbook::getServiceImplName()
 {
-    return OUString("ScVbaWorkbook");
+    return "ScVbaWorkbook";
 }
 
 uno::Sequence< OUString >
 ScVbaWorkbook::getServiceNames()
 {
-    static uno::Sequence< OUString > aServiceNames;
-    if ( aServiceNames.getLength() == 0 )
+    static uno::Sequence< OUString > const aServiceNames
     {
-        aServiceNames.realloc( 1 );
-        aServiceNames[ 0 ] = "ooo.vba.excel.Workbook";
-    }
+        "ooo.vba.excel.Workbook"
+    };
     return aServiceNames;
 }
 
@@ -405,22 +408,19 @@ ScVbaWorkbook::getCodeName()
 sal_Int64
 ScVbaWorkbook::getSomething(const uno::Sequence<sal_Int8 >& rId )
 {
-    if (rId.getLength() == 16 &&
-        0 == memcmp( ScVbaWorksheet::getUnoTunnelId().getConstArray(), rId.getConstArray(), 16 ))
+    if (isUnoTunnelId<ScVbaWorksheet>(rId))
     {
         return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_IntPtr>(this));
     }
     return 0;
 }
 
-namespace workbook
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+Calc_ScVbaWorkbook_get_implementation(
+    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const& args)
 {
-namespace sdecl = comphelper::service_decl;
-sdecl::vba_service_class_<ScVbaWorkbook, sdecl::with_args<true> > const serviceImpl;
-sdecl::ServiceDecl const serviceDecl(
-    serviceImpl,
-    "ScVbaWorkbook",
-    "ooo.vba.excel.Workbook" );
+    return cppu::acquire(new ScVbaWorkbook(args, context));
 }
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

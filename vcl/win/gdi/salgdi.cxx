@@ -29,13 +29,20 @@
 #include <win/salgdi.h>
 #include <win/salframe.h>
 #include <win/salvd.h>
+#include <win/winlayout.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 
-#include "salgdiimpl.hxx"
+#include <salgdiimpl.hxx>
 #include "gdiimpl.hxx"
-#include "opengl/win/gdiimpl.hxx"
+#include <opengl/win/gdiimpl.hxx>
 
 #include <vcl/opengl/OpenGLHelper.hxx>
+
+#include <config_features.h>
+#include <vcl/skia/SkiaHelper.hxx>
+#if HAVE_FEATURE_SKIA
+#include <skia/win/gdiimpl.hxx>
+#endif
 
 
 #define DITHER_PAL_DELTA                51
@@ -44,14 +51,32 @@
 #define DITHER_MAX_SYSCOLOR             16
 #define DITHER_EXTRA_COLORS             1
 
+namespace
+{
+
 struct SysColorEntry
 {
     DWORD           nRGB;
     SysColorEntry*  pNext;
 };
 
-static SysColorEntry* pFirstSysColor = nullptr;
-static SysColorEntry* pActSysColor = nullptr;
+SysColorEntry* pFirstSysColor = nullptr;
+SysColorEntry* pActSysColor = nullptr;
+
+void DeleteSysColorList()
+{
+    SysColorEntry* pEntry = pFirstSysColor;
+    pActSysColor = pFirstSysColor = nullptr;
+
+    while( pEntry )
+    {
+        SysColorEntry* pTmp = pEntry->pNext;
+        delete pEntry;
+        pEntry = pTmp;
+    }
+}
+
+} // namespace
 
 // Blue7
 static PALETTEENTRY aImplExtraColor1 =
@@ -115,8 +140,9 @@ void ImplInitSalGDI()
     pSalData->mpHDCCache = new HDCCache[ CACHESIZE_HDC ];
     memset( pSalData->mpHDCCache, 0, CACHESIZE_HDC * sizeof( HDCCache ) );
 
-    // initialize temporary font list
-    pSalData->mpTempFontItem = nullptr;
+    // initialize temporary font lists
+    pSalData->mpSharedTempFontItem = nullptr;
+    pSalData->mpOtherTempFontItem = nullptr;
 
     // support palettes for 256 color displays
     HDC hDC = GetDC( nullptr );
@@ -133,7 +159,7 @@ void ImplInitSalGDI()
         HBITMAP     hBmpOld = static_cast<HBITMAP>(::SelectObject( hMemDC, hMemBmp ));
         HBRUSH      hMemBrush = ::CreateSolidBrush( PALETTERGB( 175, 171, 169 ) );
         HBRUSH      hBrushOld = static_cast<HBRUSH>(::SelectObject( hMemDC, hMemBrush ));
-        bool        bDither16 = TRUE;
+        bool        bDither16 = true;
 
         ::PatBlt( hMemDC, 0, 0, 8, 8, PATCOPY );
         const COLORREF aCol( ::GetPixel( hMemDC, 0, 0 ) );
@@ -141,7 +167,7 @@ void ImplInitSalGDI()
         for( int nY = 0; ( nY < 8 ) && bDither16; nY++ )
             for( int nX = 0; ( nX < 8 ) && bDither16; nX++ )
                 if( ::GetPixel( hMemDC, nX, nY ) != aCol )
-                    bDither16 = FALSE;
+                    bDither16 = false;
 
         ::SelectObject( hMemDC, hBrushOld );
         ::DeleteObject( hMemBrush );
@@ -170,14 +196,14 @@ void ImplInitSalGDI()
             pBIH->biPlanes = 1;
             pBIH->biBitCount = 24;
 
-            for( n = 0; n < 256L; n++ )
+            for( n = 0; n < 256; n++ )
                 pSalData->mpDitherDiff[ n ] = n - ( n & 248L );
 
-            for( n = 0; n < 256L; n++ )
-                pSalData->mpDitherLow[ n ] = (BYTE) ( n & 248 );
+            for( n = 0; n < 256; n++ )
+                pSalData->mpDitherLow[ n ] = static_cast<BYTE>( n & 248 );
 
-            for( n = 0; n < 256L; n++ )
-                pSalData->mpDitherHigh[ n ] = (BYTE) std::min( pSalData->mpDitherLow[ n ] + 8L, 255L );
+            for( n = 0; n < 256; n++ )
+                pSalData->mpDitherHigh[ n ] = static_cast<BYTE>(std::min( pSalData->mpDitherLow[ n ] + 8, 255 ));
         }
     }
     else if ( (nRasterCaps & RC_PALETTE) && (nBitCount == 8) )
@@ -192,7 +218,7 @@ void ImplInitSalGDI()
         // create logical palette
         pLogPal = reinterpret_cast<LOGPALETTE*>(new char[ sizeof( LOGPALETTE ) + ( nTotalCount * sizeof( PALETTEENTRY ) ) ]);
         pLogPal->palVersion = 0x0300;
-        pLogPal->palNumEntries = (sal_uInt16) nTotalCount;
+        pLogPal->palNumEntries = static_cast<sal_uInt16>(nTotalCount);
         pPalEntry = pLogPal->palPalEntry;
 
         // Standard colors
@@ -246,16 +272,16 @@ void ImplInitSalGDI()
             pBIH->biBitCount = 8;
 
             for( n = 0; n < nDitherPalCount; n++ )
-                pColors[ n ] = (short)( n + DITHER_MAX_SYSCOLOR );
+                pColors[ n ] = static_cast<short>( n + DITHER_MAX_SYSCOLOR );
 
-            for( n = 0; n < 256L; n++ )
-                pSalData->mpDitherDiff[ n ] = n % 51L;
+            for( n = 0; n < 256; n++ )
+                pSalData->mpDitherDiff[ n ] = n % 51;
 
-            for( n = 0; n < 256L; n++ )
-                pSalData->mpDitherLow[ n ] = (BYTE) ( n / 51L );
+            for( n = 0; n < 256; n++ )
+                pSalData->mpDitherLow[ n ] = static_cast<BYTE>( n / 51 );
 
-            for( n = 0; n < 256L; n++ )
-                pSalData->mpDitherHigh[ n ] = (BYTE)std::min( pSalData->mpDitherLow[ n ] + 1, 5 );
+            for( n = 0; n < 256; n++ )
+                pSalData->mpDitherHigh[ n ] = static_cast<BYTE>(std::min( pSalData->mpDitherLow[ n ] + 1, 5 ));
         }
 
         // get system color entries
@@ -314,15 +340,7 @@ void ImplFreeSalGDI()
         delete[] pSalData->mpDitherHigh;
     }
 
-    // delete SysColorList
-    SysColorEntry* pEntry = pFirstSysColor;
-    while( pEntry )
-    {
-        SysColorEntry* pTmp = pEntry->pNext;
-        delete pEntry;
-        pEntry = pTmp;
-    }
-    pFirstSysColor = nullptr;
+    DeleteSysColorList();
 
     // delete icon cache
     SalIcon* pIcon = pSalData->mpFirstIcon;
@@ -337,17 +355,17 @@ void ImplFreeSalGDI()
     }
 
     // delete temporary font list
-    ImplReleaseTempFonts( *pSalData );
+    ImplReleaseTempFonts(*pSalData, true);
 
     pSalData->mbResourcesAlreadyFreed = true;
 }
 
-int ImplIsSysColorEntry( SalColor nSalColor )
+int ImplIsSysColorEntry( Color nColor )
 {
     SysColorEntry*  pEntry = pFirstSysColor;
-    const DWORD     nTestRGB = (DWORD)RGB( SALCOLOR_RED( nSalColor ),
-                                           SALCOLOR_GREEN( nSalColor ),
-                                           SALCOLOR_BLUE( nSalColor ) );
+    const DWORD     nTestRGB = static_cast<DWORD>(RGB( nColor.GetRed(),
+                                           nColor.GetGreen(),
+                                           nColor.GetBlue() ));
 
     while ( pEntry )
     {
@@ -408,15 +426,7 @@ static void ImplInsertSysColorEntry( int nSysIndex )
 
 void ImplUpdateSysColorEntries()
 {
-    // delete old SysColorList
-    SysColorEntry* pEntry = pFirstSysColor;
-    while( pEntry )
-    {
-        SysColorEntry* pTmp = pEntry->pNext;
-        delete pEntry;
-        pEntry = pTmp;
-    }
-    pActSysColor = pFirstSysColor = nullptr;
+    DeleteSysColorList();
 
     // create new sys color list
     ImplInsertSysColorEntry( COLOR_ACTIVEBORDER );
@@ -537,21 +547,34 @@ void ImplClearHDCCache( SalData* pData )
     }
 }
 
-OpenGLCompatibleDC::OpenGLCompatibleDC(SalGraphics &rGraphics, int x, int y, int width, int height)
+std::unique_ptr< CompatibleDC > CompatibleDC::create(SalGraphics &rGraphics, int x, int y, int width, int height)
+{
+#if HAVE_FEATURE_SKIA
+    if (SkiaHelper::isVCLSkiaEnabled())
+        return std::make_unique< SkiaCompatibleDC >( rGraphics, x, y, width, height );
+#endif
+    if (OpenGLHelper::isVCLOpenGLEnabled())
+        return std::make_unique< OpenGLCompatibleDC >( rGraphics, x, y, width, height );
+    return std::unique_ptr< CompatibleDC >( new CompatibleDC( rGraphics, x, y, width, height ));
+}
+
+CompatibleDC::CompatibleDC(SalGraphics &rGraphics, int x, int y, int width, int height, bool disable)
     : mhBitmap(nullptr)
     , mpData(nullptr)
     , maRects(0, 0, width, height, x, y, width, height)
+    , mpImpl(nullptr)
 {
     WinSalGraphics& rWinGraphics = static_cast<WinSalGraphics&>(rGraphics);
-    mpImpl = dynamic_cast<WinOpenGLSalGraphicsImpl*>(rWinGraphics.mpImpl.get());
 
-    if (!mpImpl)
+    if( disable )
     {
         // we avoid the OpenGL drawing, instead we draw directly to the DC
         mhCompatibleDC = rWinGraphics.getHDC();
         return;
     }
 
+    mpImpl = dynamic_cast<WinSalGraphicsImplBase*>(rWinGraphics.GetImpl());
+    assert(mpImpl != nullptr);
     mhCompatibleDC = CreateCompatibleDC(rWinGraphics.getHDC());
 
     // move the origin so that we always paint at 0,0 - to keep the bitmap
@@ -563,7 +586,7 @@ OpenGLCompatibleDC::OpenGLCompatibleDC(SalGraphics &rGraphics, int x, int y, int
     mhOrigBitmap = static_cast<HBITMAP>(SelectObject(mhCompatibleDC, mhBitmap));
 }
 
-OpenGLCompatibleDC::~OpenGLCompatibleDC()
+CompatibleDC::~CompatibleDC()
 {
     if (mpImpl)
     {
@@ -573,7 +596,7 @@ OpenGLCompatibleDC::~OpenGLCompatibleDC()
     }
 }
 
-void OpenGLCompatibleDC::fill(sal_uInt32 color)
+void CompatibleDC::fill(sal_uInt32 color)
 {
     if (!mpData)
         return;
@@ -581,23 +604,6 @@ void OpenGLCompatibleDC::fill(sal_uInt32 color)
     sal_uInt32 *p = mpData;
     for (int i = maRects.mnSrcWidth * maRects.mnSrcHeight; i > 0; --i)
         *p++ = color;
-}
-
-OpenGLTexture* OpenGLCompatibleDC::getTexture()
-{
-    if (!mpImpl)
-        return nullptr;
-
-    // turn what's in the mpData into a texture
-    return new OpenGLTexture(maRects.mnSrcWidth, maRects.mnSrcHeight, GL_BGRA, GL_UNSIGNED_BYTE, mpData);
-}
-
-bool OpenGLCompatibleDC::copyToTexture(OpenGLTexture& aTexture)
-{
-    if (!mpImpl)
-        return false;
-
-    return aTexture.CopyData(maRects.mnSrcWidth, maRects.mnSrcHeight, GL_BGRA, GL_UNSIGNED_BYTE, reinterpret_cast<sal_uInt8*>(mpData));
 }
 
 WinSalGraphics::WinSalGraphics(WinSalGraphics::Type eType, bool bScreen, HWND hWnd, SalGeometryProvider *pProvider):
@@ -615,17 +621,15 @@ WinSalGraphics::WinSalGraphics(WinSalGraphics::Type eType, bool bScreen, HWND hW
     mpStdClipRgnData(nullptr),
     mnPenWidth(GSL_PEN_WIDTH)
 {
+#if HAVE_FEATURE_SKIA
+    if (SkiaHelper::isVCLSkiaEnabled() && !mbPrinter)
+        mpImpl.reset(new WinSkiaSalGraphicsImpl(*this, pProvider));
+    else
+#endif
     if (OpenGLHelper::isVCLOpenGLEnabled() && !mbPrinter)
         mpImpl.reset(new WinOpenGLSalGraphicsImpl(*this, pProvider));
     else
         mpImpl.reset(new WinSalGraphicsImpl(*this));
-
-    for( int i = 0; i < MAX_FALLBACK; ++i )
-    {
-        mhFonts[ i ] = nullptr;
-        mpWinFontData[ i ]  = nullptr;
-        mpWinFontEntry[ i ] = nullptr;
-    }
 }
 
 WinSalGraphics::~WinSalGraphics()
@@ -730,9 +734,9 @@ void WinSalGraphics::SetLineColor()
     mpImpl->SetLineColor();
 }
 
-void WinSalGraphics::SetLineColor( SalColor nSalColor )
+void WinSalGraphics::SetLineColor( Color nColor )
 {
-    mpImpl->SetLineColor( nSalColor );
+    mpImpl->SetLineColor( nColor );
 }
 
 void WinSalGraphics::SetFillColor()
@@ -740,14 +744,14 @@ void WinSalGraphics::SetFillColor()
     mpImpl->SetFillColor();
 }
 
-void WinSalGraphics::SetFillColor( SalColor nSalColor )
+void WinSalGraphics::SetFillColor( Color nColor )
 {
-    mpImpl->SetFillColor( nSalColor );
+    mpImpl->SetFillColor( nColor );
 }
 
-void WinSalGraphics::SetXORMode( bool bSet)
+void WinSalGraphics::SetXORMode( bool bSet, bool bInvertOnly )
 {
-    mpImpl->SetXORMode( bSet);
+    mpImpl->SetXORMode( bSet, bInvertOnly );
 }
 
 void WinSalGraphics::SetROPLineColor( SalROPColor nROPColor )
@@ -765,9 +769,9 @@ void WinSalGraphics::drawPixel( long nX, long nY )
     mpImpl->drawPixel( nX, nY );
 }
 
-void WinSalGraphics::drawPixel( long nX, long nY, SalColor nSalColor )
+void WinSalGraphics::drawPixel( long nX, long nY, Color nColor )
 {
-    mpImpl->drawPixel( nX, nY, nSalColor );
+    mpImpl->drawPixel( nX, nY, nColor );
 }
 
 void WinSalGraphics::drawLine( long nX1, long nY1, long nX2, long nY2 )
@@ -831,7 +835,7 @@ static BYTE* ImplSearchEntry( BYTE* pSource, BYTE const * pDest, sal_uLong nComp
 
 static bool ImplGetBoundingBox( double* nNumb, BYTE* pSource, sal_uLong nSize )
 {
-    bool    bRetValue = FALSE;
+    bool    bRetValue = false;
     BYTE* pDest = ImplSearchEntry( pSource, reinterpret_cast<BYTE const *>("%%BoundingBox:"), nSize, 14 );
     if ( pDest )
     {
@@ -846,9 +850,9 @@ static bool ImplGetBoundingBox( double* nNumb, BYTE* pSource, sal_uLong nSize )
         for ( i = 0; ( i < 4 ) && nSizeLeft; i++ )
         {
             int     nDivision = 1;
-            bool    bDivision = FALSE;
-            bool    bNegative = FALSE;
-            bool    bValid = TRUE;
+            bool    bDivision = false;
+            bool    bNegative = false;
+            bool    bValid = true;
 
             while ( ( --nSizeLeft ) && ( ( *pDest == ' ' ) || ( *pDest == 0x9 ) ) ) pDest++;
             BYTE nByte = *pDest;
@@ -858,12 +862,12 @@ static bool ImplGetBoundingBox( double* nNumb, BYTE* pSource, sal_uLong nSize )
                 {
                     case '.' :
                         if ( bDivision )
-                            bValid = FALSE;
+                            bValid = false;
                         else
-                            bDivision = TRUE;
+                            bDivision = true;
                         break;
                     case '-' :
-                        bNegative = TRUE;
+                        bNegative = true;
                         break;
                     default :
                         if ( ( nByte < '0' ) || ( nByte > '9' ) )
@@ -886,14 +890,14 @@ static bool ImplGetBoundingBox( double* nNumb, BYTE* pSource, sal_uLong nSize )
                 nNumb[i] /= nDivision;
         }
         if ( i == 4 )
-            bRetValue = TRUE;
+            bRetValue = true;
     }
     return bRetValue;
 }
 
 #define POSTSCRIPT_BUFSIZE 0x4000           // MAXIMUM BUFSIZE EQ 0xFFFF
 
-bool WinSalGraphics::drawEPS( long nX, long nY, long nWidth, long nHeight, void* pPtr, sal_uLong nSize )
+bool WinSalGraphics::drawEPS( long nX, long nY, long nWidth, long nHeight, void* pPtr, sal_uInt32 nSize )
 {
     bool bRetValue = false;
 
@@ -984,7 +988,7 @@ bool WinSalGraphics::drawEPS( long nX, long nY, long nWidth, long nHeight, void*
 
                 // #107797# Write out buffer
 
-                *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = (sal_uInt16)( aBuf.getLength() - 2 );
+                *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = static_cast<sal_uInt16>( aBuf.getLength() - 2 );
                 Escape ( getHDC(), nEscape, aBuf.getLength(), aBuf.getStr(), nullptr );
 
                 // #107797# Write out EPS transformation code
@@ -1003,7 +1007,7 @@ bool WinSalGraphics::drawEPS( long nX, long nY, long nWidth, long nHeight, void*
                 aBuf.append( nY - ( dM22 * nBoundingBox[3] ) );
                 aBuf.append( "] concat\n"
                              "%%BeginDocument:\n" );
-                *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = (sal_uInt16)( aBuf.getLength() - 2 );
+                *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = static_cast<sal_uInt16>( aBuf.getLength() - 2 );
                 Escape ( getHDC(), nEscape, aBuf.getLength(), aBuf.getStr(), nullptr );
 
                 // #107797# Write out actual EPS content
@@ -1017,7 +1021,7 @@ bool WinSalGraphics::drawEPS( long nX, long nY, long nWidth, long nHeight, void*
                         nDoNow = POSTSCRIPT_BUFSIZE - 2;
                     // the following is based on the string buffer allocation
                     // of size POSTSCRIPT_BUFSIZE at construction time of aBuf
-                    *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = (sal_uInt16)nDoNow;
+                    *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = static_cast<sal_uInt16>(nDoNow);
                     memcpy( const_cast<char *>(aBuf.getStr() + 2), static_cast<BYTE*>(pPtr) + nSize - nToDo, nDoNow );
                     sal_uLong nResult = Escape ( getHDC(), nEscape, nDoNow + 2, aBuf.getStr(), nullptr );
                     if (!nResult )
@@ -1033,9 +1037,9 @@ bool WinSalGraphics::drawEPS( long nX, long nY, long nWidth, long nHeight, void*
                              "count op_count_salWin sub {pop} repeat\n"
                              "countdictstack dict_count_salWin sub {end} repeat\n"
                              "b4_Inc_state_salWin restore\n\n" );
-                *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = (sal_uInt16)( aBuf.getLength() - 2 );
+                *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = static_cast<sal_uInt16>( aBuf.getLength() - 2 );
                 Escape ( getHDC(), nEscape, aBuf.getLength(), aBuf.getStr(), nullptr );
-                bRetValue = TRUE;
+                bRetValue = true;
             }
         }
     }

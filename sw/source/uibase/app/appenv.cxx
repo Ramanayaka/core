@@ -17,31 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <cstdarg>
-
 #include <hintids.hxx>
 
 #include <comphelper/string.hxx>
 #include <sfx2/request.hxx>
-#include <svx/svxids.hrc>
 
-#include <svtools/svmedit.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/wrkwin.hxx>
-#include <sfx2/app.hxx>
-#include <sfx2/docfac.hxx>
+#include <sfx2/bindings.hxx>
 #include <sfx2/printer.hxx>
-#include <vcl/msgbox.hxx>
-#include <sfx2/dispatch.hxx>
+#include <sfx2/viewfrm.hxx>
 #include <editeng/boxitem.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/pbinitem.hxx>
 #include <editeng/paperinf.hxx>
-#include <editeng/formatbreakitem.hxx>
 #include <fmthdft.hxx>
 #include <swwait.hxx>
-#include <paratr.hxx>
 #include <swmodule.hxx>
 #include <wrtsh.hxx>
 #include <view.hxx>
@@ -50,7 +40,7 @@
 #include <fldbas.hxx>
 #include <swundo.hxx>
 #include <IDocumentDeviceAccess.hxx>
-#include <dbmgr.hxx>
+#include <dialoghelp.hxx>
 #include <fmtcol.hxx>
 #include <frmmgr.hxx>
 #include <fldmgr.hxx>
@@ -61,15 +51,10 @@
 #include <fmtpdsc.hxx>
 
 #include <cmdid.h>
-#include <globals.hrc>
-#include <app.hrc>
-#include <poolfmt.hrc>
-#include "swabstdlg.hxx"
-#include "envelp.hrc"
-#include "envimg.hxx"
-#include <appenv.hxx>
-
-#include <memory>
+#include <strings.hrc>
+#include <swabstdlg.hxx>
+#include <envimg.hxx>
+#include "appenv.hxx"
 
 #define ENV_NEWDOC      RET_OK
 #define ENV_INSERT      RET_USER
@@ -111,11 +96,10 @@ OUString InsertLabEnvText( SwWrtShell& rSh, SwFieldMgr& rFieldMgr, const OUStrin
 
                     // Database fields must contain at least 3 points!
                     OUString sDBName( sTmpText.copy( 1, sTmpText.getLength() - 2));
-                    sal_uInt16 nCnt = comphelper::string::getTokenCount(sDBName, '.');
-                    if (nCnt >= 3)
+                    if (comphelper::string::getTokenCount(sDBName, '.') >= 3)
                     {
                         sDBName = ::ReplacePoint(sDBName, true);
-                        SwInsertField_Data aData(TYP_DBFLD, 0, sDBName, aEmptyOUStr, 0, &rSh );
+                        SwInsertField_Data aData(SwFieldTypesEnum::Database, 0, sDBName, OUString(), 0, &rSh);
                         rFieldMgr.InsertField( aData );
                         sRet = sDBName;
                         bField = true;
@@ -125,14 +109,14 @@ OUString InsertLabEnvText( SwWrtShell& rSh, SwFieldMgr& rFieldMgr, const OUStrin
             if ( !bField )
                 rSh.Insert( sTmpText );
         }
-        rSh.InsertLineBreak();
+        rSh.SplitNode();
     }
     rSh.DelLeft();  // Again remove last linebreak
 
     return sRet;
 }
 
-static void lcl_CopyCollAttr(SwWrtShell* pOldSh, SwWrtShell* pNewSh, sal_uInt16 nCollId)
+static void lcl_CopyCollAttr(SwWrtShell const * pOldSh, SwWrtShell* pNewSh, sal_uInt16 nCollId)
 {
     sal_uInt16 nCollCnt = pOldSh->GetTextFormatCollCount();
     for( sal_uInt16 nCnt = 0; nCnt < nCollCnt; ++nCnt )
@@ -162,11 +146,10 @@ void SwModule::InsertEnv( SfxRequest& rReq )
     xDocSh->DoInitNew();
     pFrame = SfxViewFrame::LoadHiddenDocument( *xDocSh, SFX_INTERFACE_NONE );
     pNewView = static_cast<SwView*>( pFrame->GetViewShell());
-    pNewView->AttrChangedNotify( &pNewView->GetWrtShell() ); // so that SelectShell is being called
+    pNewView->AttrChangedNotify(nullptr); // so that SelectShell is being called
     pSh = pNewView->GetWrtShellPtr();
 
-    OUString aTmp( SwResId(STR_ENV_TITLE) );
-    aTmp += OUString::number( ++nTitleNo );
+    OUString aTmp = SwResId(STR_ENV_TITLE) + OUString::number( ++nTitleNo );
     xDocSh->SetTitle( aTmp );
 
     // if applicable, copy the old Collections "Sender" and "Receiver" to
@@ -206,7 +189,6 @@ void SwModule::InsertEnv( SfxRequest& rReq )
 
     }
 
-    vcl::Window *pParent = pOldSh ? pOldSh->GetWin() : nullptr;
     ScopedVclPtr<SfxAbstractTabDialog> pDlg;
     short nMode = ENV_INSERT;
 
@@ -214,10 +196,7 @@ void SwModule::InsertEnv( SfxRequest& rReq )
     if ( !pItem )
     {
         SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-        OSL_ENSURE(pFact, "SwAbstractDialogFactory fail!");
-
-        pDlg.disposeAndReset(pFact->CreateSwEnvDlg( pParent, aSet, pOldSh, pTempPrinter, !bEnvChange ));
-        OSL_ENSURE(pDlg, "Dialog creation failed!");
+        pDlg.disposeAndReset(pFact->CreateSwEnvDlg(GetFrameWeld(pMyDocSh), aSet, pOldSh, pTempPrinter, !bEnvChange));
         nMode = pDlg->Execute();
     }
     else
@@ -244,7 +223,7 @@ void SwModule::InsertEnv( SfxRequest& rReq )
         {
             OSL_ENSURE(pOldSh, "No document - wasn't 'Insert' disabled???");
             SvxPaperBinItem aItem( RES_PAPER_BIN );
-            aItem.SetValue((sal_uInt8)pSh->getIDocumentDeviceAccess().getPrinter(true)->GetPaperBin());
+            aItem.SetValue(static_cast<sal_uInt8>(pSh->getIDocumentDeviceAccess().getPrinter(true)->GetPaperBin()));
             pOldSh->GetPageDescFromPool(RES_POOLPAGE_JAKET)->GetMaster().SetFormatAttr(aItem);
         }
 
@@ -309,7 +288,7 @@ void SwModule::InsertEnv( SfxRequest& rReq )
             else
             {
                 OUString sFollowName(pFollow->GetName());
-                pSh->InsertPageBreak(&sFollowName, boost::none);
+                pSh->InsertPageBreak(&sFollowName, std::nullopt);
             }
             pSh->SttEndDoc(true);
         }
@@ -329,7 +308,7 @@ void SwModule::InsertEnv( SfxRequest& rReq )
             }
         }
 
-        SET_CURR_SHELL(pSh);
+        CurrShell aCurr(pSh);
         pSh->SetNewDoc();   // Avoid performance problems
 
         // Remember Flys of this site
@@ -345,19 +324,19 @@ void SwModule::InsertEnv( SfxRequest& rReq )
 
     // Borders (are put together by Shift-Offset and alignment)
         Size aPaperSize = pPrt->PixelToLogic( pPrt->GetPaperSizePixel(),
-                                              MapUnit::MapTwip);
+                                              MapMode(MapUnit::MapTwip));
         if ( !aPaperSize.Width() && !aPaperSize.Height() )
                     aPaperSize = SvxPaperInfo::GetPaperSize(PAPER_A4);
         if ( aPaperSize.Width() > aPaperSize.Height() )
             Swap( aPaperSize );
 
-        long lLeft  = rItem.lShiftRight,
-             lUpper = rItem.lShiftDown;
+        long lLeft  = rItem.m_nShiftRight,
+             lUpper = rItem.m_nShiftDown;
 
-        sal_uInt16 nPageW = (sal_uInt16) std::max(rItem.lWidth, rItem.lHeight),
-               nPageH = (sal_uInt16) std::min(rItem.lWidth, rItem.lHeight);
+        sal_uInt16 nPageW = static_cast<sal_uInt16>(std::max(rItem.m_nWidth, rItem.m_nHeight)),
+               nPageH = static_cast<sal_uInt16>(std::min(rItem.m_nWidth, rItem.m_nHeight));
 
-        switch (rItem.eAlign)
+        switch (rItem.m_eAlign)
         {
             case ENV_HOR_LEFT: break;
             case ENV_HOR_CNTR: lLeft  += std::max(0L, long(aPaperSize.Width() - nPageW)) / 2;
@@ -372,8 +351,8 @@ void SwModule::InsertEnv( SfxRequest& rReq )
         }
         SvxLRSpaceItem aLRMargin( RES_LR_SPACE );
         SvxULSpaceItem aULMargin( RES_UL_SPACE );
-        aLRMargin.SetLeft ((sal_uInt16) lLeft );
-        aULMargin.SetUpper((sal_uInt16) lUpper);
+        aLRMargin.SetLeft (static_cast<sal_uInt16>(lLeft) );
+        aULMargin.SetUpper(static_cast<sal_uInt16>(lUpper));
         aLRMargin.SetRight(0);
         aULMargin.SetLower(0);
         rFormat.SetFormatAttr(aLRMargin);
@@ -389,7 +368,7 @@ void SwModule::InsertEnv( SfxRequest& rReq )
         pDesc->SetUseOn(UseOnPage::All);
 
         // Page size
-        rFormat.SetFormatAttr(SwFormatFrameSize(ATT_FIX_SIZE,
+        rFormat.SetFormatAttr(SwFormatFrameSize(SwFrameSize::Fixed,
                                             nPageW + lLeft, nPageH + lUpper));
 
         // Set type of page numbering
@@ -402,8 +381,8 @@ void SwModule::InsertEnv( SfxRequest& rReq )
             pDesc->SetFollow(pFollow);
 
         // Landscape
-        pDesc->SetLandscape( rItem.eAlign >= ENV_VER_LEFT &&
-                             rItem.eAlign <= ENV_VER_RGHT);
+        pDesc->SetLandscape( rItem.m_eAlign >= ENV_VER_LEFT &&
+                             rItem.m_eAlign <= ENV_VER_RGHT);
 
         // Apply page description
 
@@ -416,29 +395,29 @@ void SwModule::InsertEnv( SfxRequest& rReq )
         pSh->ChgCurPageDesc(*pDesc);
 
         // Insert Frame
-        SwFlyFrameAttrMgr aMgr(false, pSh, Frmmgr_Type::ENVELP);
+        SwFlyFrameAttrMgr aMgr(false, pSh, Frmmgr_Type::ENVELP, nullptr);
         SwFieldMgr aFieldMgr;
-        aMgr.SetHeightSizeType(ATT_VAR_SIZE);
+        aMgr.SetHeightSizeType(SwFrameSize::Variable);
 
         // Overwrite defaults!
         aMgr.GetAttrSet().Put( SvxBoxItem(RES_BOX) );
-        aMgr.SetULSpace( 0L, 0L );
-        aMgr.SetLRSpace( 0L, 0L );
+        aMgr.SetULSpace( 0, 0 );
+        aMgr.SetLRSpace( 0, 0 );
 
         // Sender
-        if (rItem.bSend)
+        if (rItem.m_bSend)
         {
             pSh->SttEndDoc(true);
             aMgr.InsertFlyFrame(RndStdIds::FLY_AT_PAGE,
-                Point(rItem.lSendFromLeft + lLeft, rItem.lSendFromTop  + lUpper),
-                Size (rItem.lAddrFromLeft - rItem.lSendFromLeft, 0));
+                Point(rItem.m_nSendFromLeft + lLeft, rItem.m_nSendFromTop  + lUpper),
+                Size (rItem.m_nAddrFromLeft - rItem.m_nSendFromLeft, 0));
 
             pSh->EnterSelFrameMode();
             pSh->SetFlyName(sSendMark);
             pSh->UnSelectFrame();
             pSh->LeaveSelFrameMode();
             pSh->SetTextFormatColl( pSend );
-            InsertLabEnvText( *pSh, aFieldMgr, rItem.aSendText );
+            InsertLabEnvText( *pSh, aFieldMgr, rItem.m_aSendText );
             aMgr.UpdateAttrMgr();
         }
 
@@ -446,14 +425,14 @@ void SwModule::InsertEnv( SfxRequest& rReq )
         pSh->SttEndDoc(true);
 
         aMgr.InsertFlyFrame(RndStdIds::FLY_AT_PAGE,
-            Point(rItem.lAddrFromLeft + lLeft, rItem.lAddrFromTop  + lUpper),
-            Size (nPageW - rItem.lAddrFromLeft - 566, 0));
+            Point(rItem.m_nAddrFromLeft + lLeft, rItem.m_nAddrFromTop  + lUpper),
+            Size (nPageW - rItem.m_nAddrFromLeft - 566, 0));
         pSh->EnterSelFrameMode();
         pSh->SetFlyName(sAddrMark);
         pSh->UnSelectFrame();
         pSh->LeaveSelFrameMode();
         pSh->SetTextFormatColl( pAddr );
-        InsertLabEnvText(*pSh, aFieldMgr, rItem.aAddrText);
+        InsertLabEnvText(*pSh, aFieldMgr, rItem.m_aAddrText);
 
         // Move Flys to the "old" pages
         if (!aFlyArr.empty())
@@ -473,7 +452,7 @@ void SwModule::InsertEnv( SfxRequest& rReq )
         {
             pFrame->GetFrame().Appear();
 
-            if ( rItem.aAddrText.indexOf('<') >= 0 )
+            if ( rItem.m_aAddrText.indexOf('<') >= 0 )
             {
                 static sal_uInt16 const aInva[] =
                                     {

@@ -25,11 +25,8 @@
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlstyle.hxx>
 #include <xmloff/families.hxx>
-#include <xmloff/xmlprmap.hxx>
-#include <xmloff/prstylei.hxx>
 #include <xmloff/xmlimp.hxx>
-#include "XMLEventImportHelper.hxx"
-#include <xmloff/xmlimppr.hxx>
+#include <XMLEventImportHelper.hxx>
 #include <xmloff/xmlnumfi.hxx>
 #include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 #include <com/sun/star/form/FormSubmitEncoding.hpp>
@@ -38,21 +35,14 @@
 #include <com/sun/star/form/NavigationBarMode.hpp>
 #include <com/sun/star/form/TabulatorCycle.hpp>
 #include <com/sun/star/form/FormButtonType.hpp>
-#include <com/sun/star/awt/ScrollBarOrientation.hpp>
-#include <com/sun/star/awt/VisualEffect.hpp>
 #include <com/sun/star/form/ListSourceType.hpp>
-#include <tools/gen.hxx>
-#include <com/sun/star/lang/Locale.hpp>
-#include <xmloff/controlpropertyhdl.hxx>
-#include "controlpropertymap.hxx"
 #include "formevents.hxx"
 #include "formcellbinding.hxx"
 #include <xmloff/xformsimport.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <rtl/strbuf.hxx>
 #include <algorithm>
-#include <functional>
 
 namespace xmloff
 {
@@ -77,9 +67,7 @@ OFormLayerXMLImport_Impl::OFormLayerXMLImport_Impl(SvXMLImport& _rImporter)
     m_aAttributeMetaData.addStringProperty(
         OAttributeMetaData::getCommonControlAttributeName(CCAFlags::Name), PROPERTY_NAME);
     m_aAttributeMetaData.addStringProperty(
-            OAttributeMetaData::getSpecialAttributeName(SCAFlags::GroupName), PROPERTY_GROUP_NAME);
-        m_aAttributeMetaData.addStringProperty(
-        OAttributeMetaData::getCommonControlAttributeName(CCAFlags::ImageData), PROPERTY_IMAGEURL);
+        OAttributeMetaData::getSpecialAttributeName(SCAFlags::GroupName), PROPERTY_GROUP_NAME);
     m_aAttributeMetaData.addStringProperty(
         OAttributeMetaData::getCommonControlAttributeName(CCAFlags::Label), PROPERTY_LABEL);
     m_aAttributeMetaData.addStringProperty(
@@ -245,49 +233,49 @@ void OFormLayerXMLImport_Impl::applyControlNumberStyle(const Reference< XPropert
         m_xAutoStyles.set(m_rImporter.GetShapeImport()->GetAutoStylesContext());
     }
 
-    if (m_xAutoStyles.is())
+    if (!m_xAutoStyles.is())
+        return;
+
+    const SvXMLStyleContext* pStyle = m_xAutoStyles->FindStyleChildContext(XmlStyleFamily::DATA_STYLE, _rControlNumerStyleName);
+    if (pStyle)
     {
-        const SvXMLStyleContext* pStyle = m_xAutoStyles->FindStyleChildContext(XML_STYLE_FAMILY_DATA_STYLE, _rControlNumerStyleName);
-        if (pStyle)
+        const SvXMLNumFormatContext* pDataStyle = static_cast<const SvXMLNumFormatContext*>(pStyle);
+
+        // set this format at the control model
+        try
         {
-            const SvXMLNumFormatContext* pDataStyle = static_cast<const SvXMLNumFormatContext*>(pStyle);
+            // the models number format supplier and formats
+            Reference< XNumberFormatsSupplier > xFormatsSupplier;
+            _rxControlModel->getPropertyValue(PROPERTY_FORMATSSUPPLIER) >>= xFormatsSupplier;
+            Reference< XNumberFormats > xFormats;
+            if (xFormatsSupplier.is())
+                xFormats = xFormatsSupplier->getNumberFormats();
+            OSL_ENSURE(xFormats.is(), "OFormLayerXMLImport_Impl::applyControlNumberStyle: could not obtain the controls number formats!");
 
-            // set this format at the control model
-            try
+            // obtain a key
+            if (xFormats.is())
             {
-                // the models number format supplier and formats
-                Reference< XNumberFormatsSupplier > xFormatsSupplier;
-                _rxControlModel->getPropertyValue(PROPERTY_FORMATSSUPPLIER) >>= xFormatsSupplier;
-                Reference< XNumberFormats > xFormats;
-                if (xFormatsSupplier.is())
-                    xFormats = xFormatsSupplier->getNumberFormats();
-                OSL_ENSURE(xFormats.is(), "OFormLayerXMLImport_Impl::applyControlNumberStyle: could not obtain the controls number formats!");
+                sal_Int32 nFormatKey = const_cast<SvXMLNumFormatContext*>(pDataStyle)->CreateAndInsert( xFormatsSupplier );
+                OSL_ENSURE(-1 != nFormatKey, "OFormLayerXMLImport_Impl::applyControlNumberStyle: could not obtain a format key!");
 
-                // obtain a key
-                if (xFormats.is())
-                {
-                    sal_Int32 nFormatKey = const_cast<SvXMLNumFormatContext*>(pDataStyle)->CreateAndInsert( xFormatsSupplier );
-                    OSL_ENSURE(-1 != nFormatKey, "OFormLayerXMLImport_Impl::applyControlNumberStyle: could not obtain a format key!");
-
-                    // set the format on the control model
-                    _rxControlModel->setPropertyValue(PROPERTY_FORMATKEY, makeAny(nFormatKey));
-                }
-            }
-            catch(const Exception&)
-            {
-                OSL_FAIL("OFormLayerXMLImport_Impl::applyControlNumberStyle: couldn't set the format!");
+                // set the format on the control model
+                _rxControlModel->setPropertyValue(PROPERTY_FORMATKEY, makeAny(nFormatKey));
             }
         }
-        else
-            OSL_FAIL("OFormLayerXMLImport_Impl::applyControlNumberStyle: did not find the style with the given name!");
+        catch(const Exception&)
+        {
+            OSL_FAIL("OFormLayerXMLImport_Impl::applyControlNumberStyle: couldn't set the format!");
+        }
     }
+    else
+        OSL_FAIL("OFormLayerXMLImport_Impl::applyControlNumberStyle: did not find the style with the given name!");
 }
 
 void OFormLayerXMLImport_Impl::registerCellValueBinding( const Reference< XPropertySet >& _rxControlModel, const OUString& _rCellAddress )
 {
     OSL_ENSURE( _rxControlModel.is() && !_rCellAddress.isEmpty(),
         "OFormLayerXMLImport_Impl::registerCellValueBinding: invalid arguments!" );
-    m_aCellValueBindings.push_back( ModelStringPair( _rxControlModel, _rCellAddress ) );
+    m_aCellValueBindings.emplace_back( _rxControlModel, _rCellAddress );
 }
 
 void OFormLayerXMLImport_Impl::registerXFormsValueBinding(
@@ -297,8 +285,7 @@ void OFormLayerXMLImport_Impl::registerXFormsValueBinding(
     // TODO: is an empty binding name allowed?
     OSL_ENSURE( _rxControlModel.is(), "need  model" );
 
-    m_aXFormsValueBindings.push_back(
-        ModelStringPair( _rxControlModel, _rBindingID ) );
+    m_aXFormsValueBindings.emplace_back( _rxControlModel, _rBindingID );
 }
 
 void OFormLayerXMLImport_Impl::registerXFormsListBinding(
@@ -308,8 +295,7 @@ void OFormLayerXMLImport_Impl::registerXFormsListBinding(
     // TODO: is an empty binding name allowed?
     OSL_ENSURE( _rxControlModel.is(), "need  model" );
 
-    m_aXFormsListBindings.push_back(
-        ModelStringPair( _rxControlModel, _rBindingID ) );
+    m_aXFormsListBindings.emplace_back( _rxControlModel, _rBindingID );
 }
 
 void OFormLayerXMLImport_Impl::registerXFormsSubmission(
@@ -319,15 +305,14 @@ void OFormLayerXMLImport_Impl::registerXFormsSubmission(
     // TODO: is an empty binding name allowed?
     OSL_ENSURE( _rxControlModel.is(), "need  model" );
 
-    m_aXFormsSubmissions.push_back(
-        ModelStringPair( _rxControlModel, _rSubmissionID ) );
+    m_aXFormsSubmissions.emplace_back( _rxControlModel, _rSubmissionID );
 }
 
 void OFormLayerXMLImport_Impl::registerCellRangeListSource( const Reference< XPropertySet >& _rxControlModel, const OUString& _rCellRangeAddress )
 {
     OSL_ENSURE( _rxControlModel.is() && !_rCellRangeAddress.isEmpty(),
         "OFormLayerXMLImport_Impl::registerCellRangeListSource: invalid arguments!" );
-    m_aCellRangeListSources.push_back( ModelStringPair( _rxControlModel, _rCellRangeAddress ) );
+    m_aCellRangeListSources.emplace_back( _rxControlModel, _rCellRangeAddress );
 }
 const SvXMLStyleContext* OFormLayerXMLImport_Impl::getStyleElement(const OUString& _rStyleName) const
 {
@@ -335,7 +320,7 @@ const SvXMLStyleContext* OFormLayerXMLImport_Impl::getStyleElement(const OUStrin
         // did you use setAutoStyleContext?
 
     const SvXMLStyleContext* pControlStyle =
-        m_xAutoStyles.is() ? m_xAutoStyles->FindStyleChildContext( XML_STYLE_FAMILY_TEXT_PARAGRAPH, _rStyleName ) : nullptr;
+        m_xAutoStyles.is() ? m_xAutoStyles->FindStyleChildContext( XmlStyleFamily::TEXT_PARAGRAPH, _rStyleName ) : nullptr;
     OSL_ENSURE( pControlStyle || !m_xAutoStyles.is(),
                 OStringBuffer("OFormLayerXMLImport_Impl::getStyleElement: did not find the style named \"").append(OUStringToOString(_rStyleName, RTL_TEXTENCODING_ASCII_US)).append("\"!").getStr() );
     return pControlStyle;
@@ -367,7 +352,7 @@ void OFormLayerXMLImport_Impl::registerControlReferences(const Reference< XPrope
 {
     OSL_ENSURE(!_rReferringControls.isEmpty(), "OFormLayerXMLImport_Impl::registerControlReferences: invalid (empty) control id list!");
     OSL_ENSURE(_rxControl.is(), "OFormLayerXMLImport_Impl::registerControlReferences: invalid (NULL) control!");
-    m_aControlReferences.push_back( ModelStringPair( _rxControl, _rReferringControls ) );
+    m_aControlReferences.emplace_back( _rxControl, _rReferringControls );
 }
 
 void OFormLayerXMLImport_Impl::startPage(const Reference< XDrawPage >& _rxDrawPage)
@@ -381,9 +366,7 @@ void OFormLayerXMLImport_Impl::startPage(const Reference< XDrawPage >& _rxDrawPa
         return;
 
     // add a new entry to our page map
-    ::std::pair< MapDrawPage2Map::iterator, bool > aPagePosition;
-    aPagePosition =
-        m_aControlIds.insert(MapDrawPage2Map::value_type(_rxDrawPage, MapString2PropertySet()));
+    ::std::pair< MapDrawPage2Map::iterator, bool > aPagePosition = m_aControlIds.emplace(_rxDrawPage, MapString2PropertySet());
     OSL_ENSURE(aPagePosition.second, "OFormLayerXMLImport_Impl::startPage: already imported this page!");
     m_aCurrentPageIds = aPagePosition.first;
 }
@@ -396,23 +379,17 @@ void OFormLayerXMLImport_Impl::endPage()
     try
     {
         static const sal_Unicode s_nSeparator = ',';
-        OUString sReferring;
         OUString sCurrentReferring;
         OUString sSeparator(&s_nSeparator, 1);
         Reference< XPropertySet > xCurrentReferring;
         sal_Int32 nSeparator, nPrevSep;
-        ::std::vector< ModelStringPair >::const_iterator aEnd = m_aControlReferences.end();
-        for (   ::std::vector< ModelStringPair >::const_iterator aReferences = m_aControlReferences.begin();
-                aReferences != aEnd;
-                ++aReferences
-            )
+        for ( const auto& rReferences : m_aControlReferences )
         {
             // the list of control ids is comma separated
 
             // in a list of n ids there are only n-1 separators ... have to catch this last id
             // -> normalize the list
-            sReferring = aReferences->second;
-            sReferring += sSeparator;
+            OUString sReferring = rReferences.second + sSeparator;
 
             nPrevSep = -1;
             while (-1 != (nSeparator = sReferring.indexOf(s_nSeparator, nPrevSep + 1)))
@@ -421,7 +398,7 @@ void OFormLayerXMLImport_Impl::endPage()
                 xCurrentReferring = lookupControlId(sCurrentReferring);
                 if (xCurrentReferring.is())
                     // if this condition fails, this is an error, but lookupControlId should have asserted this ...
-                    xCurrentReferring->setPropertyValue( PROPERTY_CONTROLLABEL, makeAny( aReferences->first ) );
+                    xCurrentReferring->setPropertyValue( PROPERTY_CONTROLLABEL, makeAny( rReferences.first ) );
 
                 nPrevSep = nSeparator;
             }
@@ -478,18 +455,10 @@ SvXMLImportContext* OFormLayerXMLImport_Impl::createContext(const sal_uInt16 _nP
         if ( m_xCurrentPageFormsSupp.is() )
             pContext = new OFormImport(*this, *this, _nPrefix, _rLocalName, m_xCurrentPageFormsSupp->getForms() );
     }
-    else if (  ( _nPrefix == XML_NAMESPACE_XFORMS
-            && ( xmloff::token::IsXMLToken( _rLocalName, xmloff::token::XML_MODEL ) ) )
-            )
+    else if ( _nPrefix == XML_NAMESPACE_XFORMS
+              && xmloff::token::IsXMLToken( _rLocalName, xmloff::token::XML_MODEL ) )
     {
         pContext = createXFormsModelContext( m_rImporter, _nPrefix, _rLocalName );
-    }
-
-    if ( !pContext )
-    {
-        OSL_FAIL( "unknown element" );
-        pContext =
-            new SvXMLImportContext(m_rImporter, _nPrefix, _rLocalName);
     }
 
     return pContext;
@@ -506,21 +475,17 @@ void OFormLayerXMLImport_Impl::documentDone( )
         &&  FormCellBindingHelper::isCellBindingAllowed( rImport.GetModel() )
         )
     {
-        ::std::vector< ModelStringPair >::const_iterator aEnd = m_aCellValueBindings.end();
-        for (   ::std::vector< ModelStringPair >::const_iterator aCellBindings = m_aCellValueBindings.begin();
-                aCellBindings != aEnd;
-                ++aCellBindings
-            )
+        for ( const auto& rCellBindings : m_aCellValueBindings )
         {
             try
             {
-                FormCellBindingHelper aHelper( aCellBindings->first, rImport.GetModel() );
+                FormCellBindingHelper aHelper( rCellBindings.first, rImport.GetModel() );
                 OSL_ENSURE( aHelper.isCellBindingAllowed(), "OFormLayerXMLImport_Impl::documentDone: can't bind this control model!" );
                 if ( aHelper.isCellBindingAllowed() )
                 {
                     // There are special bindings for listboxes. See
                     // OListAndComboImport::doRegisterCellValueBinding for a comment on this HACK.
-                    OUString sBoundCellAddress( aCellBindings->second );
+                    OUString sBoundCellAddress( rCellBindings.second );
                     sal_Int32 nIndicator = sBoundCellAddress.lastIndexOf( ":index" );
 
                     bool bUseIndexBinding = false;
@@ -546,18 +511,15 @@ void OFormLayerXMLImport_Impl::documentDone( )
         &&  FormCellBindingHelper::isListCellRangeAllowed( rImport.GetModel() )
         )
     {
-        for (   ::std::vector< ModelStringPair >::const_iterator aRangeBindings = m_aCellRangeListSources.begin();
-                aRangeBindings != m_aCellRangeListSources.end();
-                ++aRangeBindings
-            )
+        for ( const auto& rRangeBindings : m_aCellRangeListSources )
         {
             try
             {
-                FormCellBindingHelper aHelper( aRangeBindings->first, rImport.GetModel() );
+                FormCellBindingHelper aHelper( rRangeBindings.first, rImport.GetModel() );
                 OSL_ENSURE( aHelper.isListCellRangeAllowed(), "OFormLayerXMLImport_Impl::documentDone: can't bind this control model!" );
                 if ( aHelper.isListCellRangeAllowed() )
                 {
-                    aHelper.setListSource( aHelper.createCellListSourceFromStringAddress( aRangeBindings->second ) );
+                    aHelper.setListSource( aHelper.createCellListSourceFromStringAddress( rRangeBindings.second ) );
                 }
             }
             catch( const Exception& )
@@ -569,13 +531,13 @@ void OFormLayerXMLImport_Impl::documentDone( )
     }
 
     // process XForms-bindings; call registerXFormsValueBinding for each
-    for (auto& aXFormsValueBinding : m_aXFormsValueBindings)
+    for (const auto& aXFormsValueBinding : m_aXFormsValueBindings)
         bindXFormsValueBinding(rImport.GetModel(), aXFormsValueBinding);
     // same for list bindings
-    for (auto& aXFormsListBindings : m_aXFormsListBindings)
+    for (const auto& aXFormsListBindings : m_aXFormsListBindings)
         bindXFormsListBinding(rImport.GetModel(), aXFormsListBindings);
     // same for submissions
-    for (auto& aXFormsSubmission : m_aXFormsSubmissions)
+    for (const auto& aXFormsSubmission : m_aXFormsSubmissions)
         bindXFormsSubmission(rImport.GetModel(), aXFormsSubmission);
 }
 

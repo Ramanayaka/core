@@ -18,10 +18,9 @@
  */
 
 
-#include <dynamicresultsetwrapper.hxx>
-#include <ucbhelper/macros.hxx>
+#include "dynamicresultsetwrapper.hxx"
+#include <cppuhelper/queryinterface.hxx>
 #include <osl/diagnose.h>
-#include <rtl/ustring.hxx>
 #include <com/sun/star/ucb/AlreadyInitializedException.hpp>
 #include <com/sun/star/ucb/ListActionType.hpp>
 #include <com/sun/star/ucb/ListenerAlreadySetException.hpp>
@@ -36,7 +35,6 @@ using namespace com::sun::star::uno;
 using namespace comphelper;
 
 
-// class DynamicResultSetWrapper
 
 
 DynamicResultSetWrapper::DynamicResultSetWrapper(
@@ -45,29 +43,23 @@ DynamicResultSetWrapper::DynamicResultSetWrapper(
 
                 : m_bDisposed( false )
                 , m_bInDispose( false )
-                , m_pDisposeEventListeners( nullptr )
                 , m_xContext( rxContext )
                 , m_bStatic( false )
                 , m_bGotWelcome( false )
                 , m_xSource( xOrigin )
-                , m_xSourceResultOne( nullptr )
-                , m_xSourceResultTwo( nullptr )
             //  , m_xSourceResultCurrent( NULL )
             //  , m_bUseOne( NULL )
-                , m_xMyResultOne( nullptr )
-                , m_xMyResultTwo( nullptr )
-                , m_xListener( nullptr )
 {
     m_xMyListenerImpl = new DynamicResultSetWrapperListener( this );
     //call impl_init() at the end of constructor of derived class
 };
 
-void SAL_CALL DynamicResultSetWrapper::impl_init()
+void DynamicResultSetWrapper::impl_init()
 {
     //call this at the end of constructor of derived class
 
 
-    Reference< XDynamicResultSet > xSource = nullptr;
+    Reference< XDynamicResultSet > xSource;
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
         xSource = m_xSource;
@@ -82,14 +74,14 @@ DynamicResultSetWrapper::~DynamicResultSetWrapper()
     //call impl_deinit() at start of destructor of derived class
 };
 
-void SAL_CALL DynamicResultSetWrapper::impl_deinit()
+void DynamicResultSetWrapper::impl_deinit()
 {
     //call this at start of destructor of derived class
 
     m_xMyListenerImpl->impl_OwnerDies();
 }
 
-void SAL_CALL DynamicResultSetWrapper::impl_EnsureNotDisposed()
+void DynamicResultSetWrapper::impl_EnsureNotDisposed()
 {
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
     if( m_bDisposed )
@@ -97,7 +89,7 @@ void SAL_CALL DynamicResultSetWrapper::impl_EnsureNotDisposed()
 }
 
 //virtual
-void SAL_CALL DynamicResultSetWrapper::impl_InitResultSetOne( const Reference< XResultSet >& xResultSet )
+void DynamicResultSetWrapper::impl_InitResultSetOne( const Reference< XResultSet >& xResultSet )
 {
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
     OSL_ENSURE( !m_xSourceResultOne.is(), "Source ResultSet One is set already" );
@@ -106,7 +98,7 @@ void SAL_CALL DynamicResultSetWrapper::impl_InitResultSetOne( const Reference< X
 }
 
 //virtual
-void SAL_CALL DynamicResultSetWrapper::impl_InitResultSetTwo( const Reference< XResultSet >& xResultSet )
+void DynamicResultSetWrapper::impl_InitResultSetTwo( const Reference< XResultSet >& xResultSet )
 {
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
     OSL_ENSURE( !m_xSourceResultTwo.is(), "Source ResultSet Two is set already" );
@@ -119,9 +111,9 @@ css::uno::Any SAL_CALL DynamicResultSetWrapper::queryInterface( const css::uno::
 {
     //list all interfaces inclusive baseclasses of interfaces
     css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< XComponent* >(this)), //base of XDynamicResultSet
-                                               (static_cast< XDynamicResultSet* >(this)),
-                                               (static_cast< XSourceInitialization* >(this))
+                                               static_cast< XComponent* >(this), //base of XDynamicResultSet
+                                               static_cast< XDynamicResultSet* >(this),
+                                               static_cast< XSourceInitialization* >(this)
                                                );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
@@ -140,7 +132,7 @@ void SAL_CALL DynamicResultSetWrapper::dispose()
             return;
         m_bInDispose = true;
 
-        xSourceComponent.set(m_xSource, UNO_QUERY);
+        xSourceComponent = m_xSource;
 
         if( m_pDisposeEventListeners && m_pDisposeEventListeners->getLength() )
         {
@@ -192,7 +184,7 @@ void SAL_CALL DynamicResultSetWrapper::removeEventListener( const Reference< XEv
 
 
 //virtual
-void SAL_CALL DynamicResultSetWrapper::impl_disposing( const EventObject& )
+void DynamicResultSetWrapper::impl_disposing( const EventObject& )
 {
     impl_EnsureNotDisposed();
 
@@ -210,7 +202,7 @@ void SAL_CALL DynamicResultSetWrapper::impl_disposing( const EventObject& )
 }
 
 //virtual
-void SAL_CALL DynamicResultSetWrapper::impl_notify( const ListEvent& Changes )
+void DynamicResultSetWrapper::impl_notify( const ListEvent& Changes )
 {
     impl_EnsureNotDisposed();
     //@todo
@@ -228,9 +220,11 @@ void SAL_CALL DynamicResultSetWrapper::impl_notify( const ListEvent& Changes )
 
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
-        for( long i=0; !m_bGotWelcome && i<Changes.Changes.getLength(); i++ )
+        for( ListAction& rAction : aNewEvent.Changes )
         {
-            ListAction& rAction = aNewEvent.Changes[i];
+            if (m_bGotWelcome)
+                break;
+
             switch( rAction.ListActionType )
             {
                 case ListActionType::WELCOME:
@@ -245,7 +239,7 @@ void SAL_CALL DynamicResultSetWrapper::impl_notify( const ListEvent& Changes )
                         aWelcome.Old = m_xMyResultOne;
                         aWelcome.New = m_xMyResultTwo;
 
-                         rAction.ActionInfo <<= aWelcome;
+                        rAction.ActionInfo <<= aWelcome;
                     }
                     else
                     {
@@ -291,8 +285,8 @@ void SAL_CALL DynamicResultSetWrapper::setSource( const Reference< XInterface > 
     OSL_ENSURE( xSourceDynamic.is(),
         "the given source is not of required type XDynamicResultSet" );
 
-    Reference< XDynamicResultSetListener > xListener = nullptr;
-    Reference< XDynamicResultSetListener > xMyListenerImpl = nullptr;
+    Reference< XDynamicResultSetListener > xListener;
+    Reference< XDynamicResultSetListener > xMyListenerImpl;
 
     bool bStatic = false;
     {
@@ -320,8 +314,8 @@ Reference< XResultSet > SAL_CALL DynamicResultSetWrapper::getStaticResultSet()
 {
     impl_EnsureNotDisposed();
 
-    Reference< XDynamicResultSet > xSource = nullptr;
-    Reference< XEventListener > xMyListenerImpl = nullptr;
+    Reference< XDynamicResultSet > xSource;
+    Reference< XEventListener > xMyListenerImpl;
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
         if( m_xListener.is() )
@@ -329,7 +323,7 @@ Reference< XResultSet > SAL_CALL DynamicResultSetWrapper::getStaticResultSet()
 
         xSource = m_xSource;
         m_bStatic = true;
-        xMyListenerImpl.set( css::uno::Reference< css::ucb::XDynamicResultSetListener >(m_xMyListenerImpl.get()), UNO_QUERY );
+        xMyListenerImpl = m_xMyListenerImpl.get();
     }
 
     if( xSource.is() )
@@ -350,8 +344,8 @@ void SAL_CALL DynamicResultSetWrapper::setListener( const Reference< XDynamicRes
 {
     impl_EnsureNotDisposed();
 
-    Reference< XDynamicResultSet > xSource = nullptr;
-    Reference< XDynamicResultSetListener > xMyListenerImpl = nullptr;
+    Reference< XDynamicResultSet > xSource;
+    Reference< XDynamicResultSetListener > xMyListenerImpl;
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
         if( m_xListener.is() )
@@ -413,7 +407,7 @@ sal_Int16 SAL_CALL DynamicResultSetWrapper::getCapabilities()
     impl_EnsureNotDisposed();
 
     m_aSourceSet.wait();
-    Reference< XDynamicResultSet > xSource = nullptr;
+    Reference< XDynamicResultSet > xSource;
     {
         osl::Guard< osl::Mutex > aGuard( m_aMutex );
         xSource = m_xSource;
@@ -422,7 +416,6 @@ sal_Int16 SAL_CALL DynamicResultSetWrapper::getCapabilities()
 }
 
 
-// class DynamicResultSetWrapperListener
 
 
 DynamicResultSetWrapperListener::DynamicResultSetWrapperListener(
@@ -455,8 +448,8 @@ void SAL_CALL DynamicResultSetWrapperListener::release()
 css::uno::Any SAL_CALL DynamicResultSetWrapperListener::queryInterface( const css::uno::Type & rType )
 {
     css::uno::Any aRet = cppu::queryInterface( rType,
-                                               (static_cast< XDynamicResultSetListener* >(this)),
-                                               (static_cast< XEventListener* >(this))
+                                               static_cast< XDynamicResultSetListener* >(this),
+                                               static_cast< XEventListener* >(this)
                                                );
     return aRet.hasValue() ? aRet : OWeakObject::queryInterface( rType );
 }
@@ -485,7 +478,7 @@ void SAL_CALL DynamicResultSetWrapperListener::notify( const ListEvent& Changes 
 // own methods:
 
 
-void SAL_CALL DynamicResultSetWrapperListener::impl_OwnerDies()
+void DynamicResultSetWrapperListener::impl_OwnerDies()
 {
     osl::Guard< osl::Mutex > aGuard( m_aMutex );
 

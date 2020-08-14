@@ -21,10 +21,12 @@
 
 #include <o3tl/any.hxx>
 #include <osl/diagnose.h>
+#include <sal/log.hxx>
 #include <set>
-#include <xmloff/xmlnmspe.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlprcon.hxx>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/style/XStyle.hpp>
 #include <com/sun/star/style/XAutoStyleFamily.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
@@ -34,10 +36,11 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/prstylei.hxx>
-#include <xmloff/attrlist.hxx>
 #include <xmloff/xmlerror.hxx>
 #include <xmloff/xmltypes.hxx>
 #include <xmloff/maptype.hxx>
+#include <xmloff/xmlimppr.hxx>
+#include <xmloff/xmlprmap.hxx>
 #include <comphelper/sequence.hxx>
 #include <com/sun/star/drawing/FillStyle.hpp>
 
@@ -57,7 +60,7 @@ void XMLPropStyleContext::SetAttribute( sal_uInt16 nPrefixKey,
 {
     if( XML_NAMESPACE_STYLE == nPrefixKey && IsXMLToken( rLocalName, XML_FAMILY ) )
     {
-        SAL_WARN_IF( GetFamily() != static_cast<SvXMLStylesContext *>(mxStyles.get())->GetFamily( rValue ), "xmloff", "unexpected style family" );
+        SAL_WARN_IF( GetFamily() != SvXMLStylesContext::GetFamily( rValue ), "xmloff", "unexpected style family" );
     }
     else
     {
@@ -77,7 +80,7 @@ namespace
             aSet.insert("BackColorRGB");
             aSet.insert("BackTransparent");
             aSet.insert("BackColorTransparency");
-            aSet.insert("BackGraphicURL");
+            aSet.insert("BackGraphic");
             aSet.insert("BackGraphicFilter");
             aSet.insert("BackGraphicLocation");
             aSet.insert("BackGraphicTransparency");
@@ -93,7 +96,7 @@ namespace
             aSet.insert("HeaderBackColorRGB");
             aSet.insert("HeaderBackTransparent");
             aSet.insert("HeaderBackColorTransparency");
-            aSet.insert("HeaderBackGraphicURL");
+            aSet.insert("HeaderBackGraphic");
             aSet.insert("HeaderBackGraphicFilter");
             aSet.insert("HeaderBackGraphicLocation");
             aSet.insert("HeaderBackGraphicTransparency");
@@ -109,7 +112,7 @@ namespace
             aSet.insert("FooterBackColorRGB");
             aSet.insert("FooterBackTransparent");
             aSet.insert("FooterBackColorTransparency");
-            aSet.insert("FooterBackGraphicURL");
+            aSet.insert("FooterBackGraphic");
             aSet.insert("FooterBackGraphicFilter");
             aSet.insert("FooterBackGraphicLocation");
             aSet.insert("FooterBackGraphicTransparency");
@@ -128,7 +131,7 @@ namespace
             aSet.insert("ParaBackTransparent");
             aSet.insert("ParaBackGraphicLocation");
             aSet.insert("ParaBackGraphicFilter");
-            aSet.insert("ParaBackGraphicURL");
+            aSet.insert("ParaBackGraphic");
 
             // These are not used in aXMLParaPropMap definition, thus not needed here
             // aSet.insert("ParaBackColorTransparency");
@@ -140,15 +143,15 @@ namespace
 
 
 
+const OUStringLiteral gsIsPhysical(  "IsPhysical"  );
+const OUStringLiteral gsFollowStyle(  "FollowStyle"  );
 
 XMLPropStyleContext::XMLPropStyleContext( SvXMLImport& rImport,
         sal_uInt16 nPrfx, const OUString& rLName,
         const Reference< XAttributeList > & xAttrList,
-        SvXMLStylesContext& rStyles, sal_uInt16 nFamily,
+        SvXMLStylesContext& rStyles, XmlStyleFamily nFamily,
         bool bDefault )
 :   SvXMLStyleContext( rImport, nPrfx, rLName, xAttrList, nFamily, bDefault )
-,   msIsPhysical(  "IsPhysical"  )
-,   msFollowStyle(  "FollowStyle"  )
 ,   mxStyles( &rStyles )
 {
 }
@@ -172,12 +175,12 @@ const OldFillStyleDefinitionSet& XMLPropStyleContext::getFooterSet()
     return theFooterSet::get();
 }
 
-SvXMLImportContext *XMLPropStyleContext::CreateChildContext(
+SvXMLImportContextRef XMLPropStyleContext::CreateChildContext(
         sal_uInt16 nPrefix,
         const OUString& rLocalName,
         const Reference< XAttributeList > & xAttrList )
 {
-    SvXMLImportContext *pContext = nullptr;
+    SvXMLImportContextRef xContext;
 
     sal_uInt32 nFamily = 0;
     if( XML_NAMESPACE_STYLE == nPrefix || XML_NAMESPACE_LO_EXT == nPrefix )
@@ -208,29 +211,27 @@ SvXMLImportContext *XMLPropStyleContext::CreateChildContext(
     if( nFamily )
     {
         rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap =
-            static_cast<SvXMLStylesContext *>(mxStyles.get())->GetImportPropertyMapper(
-                                                        GetFamily() );
+            mxStyles->GetImportPropertyMapper( GetFamily() );
         if( xImpPrMap.is() )
-            pContext = new SvXMLPropertySetContext( GetImport(), nPrefix,
+            xContext = new SvXMLPropertySetContext( GetImport(), nPrefix,
                                                     rLocalName, xAttrList,
                                                     nFamily,
                                                     maProperties,
                                                     xImpPrMap );
     }
 
-    if( !pContext )
-        pContext = SvXMLStyleContext::CreateChildContext( nPrefix, rLocalName,
+    if (!xContext)
+        xContext = SvXMLStyleContext::CreateChildContext( nPrefix, rLocalName,
                                                           xAttrList );
 
-    return pContext;
+    return xContext;
 }
 
 void XMLPropStyleContext::FillPropertySet(
             const Reference< XPropertySet > & rPropSet )
 {
     rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap =
-        static_cast<SvXMLStylesContext *>(mxStyles.get())->GetImportPropertyMapper(
-                                                                GetFamily() );
+        mxStyles->GetImportPropertyMapper( GetFamily() );
     SAL_WARN_IF( !xImpPrMap.is(), "xmloff", "There is the import prop mapper" );
     if( xImpPrMap.is() )
         xImpPrMap->FillPropertySet( maProperties, rPropSet );
@@ -244,8 +245,7 @@ Reference < XStyle > XMLPropStyleContext::Create()
 {
     Reference < XStyle > xNewStyle;
 
-    OUString sServiceName(
-        static_cast<SvXMLStylesContext *>(mxStyles.get())->GetServiceName( GetFamily() ) );
+    OUString sServiceName = mxStyles->GetServiceName( GetFamily() );
     if( !sServiceName.isEmpty() )
     {
         Reference< XMultiServiceFactory > xFactory( GetImport().GetModel(),
@@ -264,19 +264,19 @@ Reference < XStyle > XMLPropStyleContext::Create()
 
 void XMLPropStyleContext::CreateAndInsert( bool bOverwrite )
 {
-    SvXMLStylesContext* pSvXMLStylesContext = static_cast< SvXMLStylesContext* >(mxStyles.get());
+    SvXMLStylesContext* pSvXMLStylesContext = mxStyles.get();
     rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap = pSvXMLStylesContext->GetImportPropertyMapper(GetFamily());
     OSL_ENSURE(xImpPrMap.is(), "There is no import prop mapper");
 
     // need to filter out old fill definitions when the new ones are used. The new
     // ones are used when a FillStyle is defined
-    const bool bTakeCareOfDrawingLayerFillStyle(xImpPrMap.is() && GetFamily() == XML_STYLE_FAMILY_TEXT_PARAGRAPH);
+    const bool bTakeCareOfDrawingLayerFillStyle(xImpPrMap.is() && GetFamily() == XmlStyleFamily::TEXT_PARAGRAPH);
     bool bDrawingLayerFillStylesUsed(false);
 
     if(bTakeCareOfDrawingLayerFillStyle)
     {
         // check if new FillStyles are used and if so mark old ones with -1
-        static ::rtl::OUString s_FillStyle("FillStyle");
+        static OUString s_FillStyle("FillStyle");
 
         if(doNewDrawingLayerFillStyleDefinitionsExist(s_FillStyle))
         {
@@ -286,7 +286,7 @@ void XMLPropStyleContext::CreateAndInsert( bool bOverwrite )
     }
 
     if( pSvXMLStylesContext->IsAutomaticStyle()
-        && ( GetFamily() == XML_STYLE_FAMILY_TEXT_TEXT || GetFamily() == XML_STYLE_FAMILY_TEXT_PARAGRAPH ) )
+        && ( GetFamily() == XmlStyleFamily::TEXT_TEXT || GetFamily() == XmlStyleFamily::TEXT_PARAGRAPH ) )
     {
         // Need to translate StyleName from temp MapNames to names
         // used in already imported items (already exist in the pool). This
@@ -311,7 +311,7 @@ void XMLPropStyleContext::CreateAndInsert( bool bOverwrite )
             sal_Int32 nLen = aValues.getLength();
             if( nLen )
             {
-                if( GetFamily() == XML_STYLE_FAMILY_TEXT_PARAGRAPH )
+                if( GetFamily() == XmlStyleFamily::TEXT_PARAGRAPH )
                 {
                     aValues.realloc( nLen + 2 );
                     PropertyValue *pProps = aValues.getArray() + nLen;
@@ -341,9 +341,9 @@ void XMLPropStyleContext::CreateAndInsert( bool bOverwrite )
                 if( xAutoStyle.is() )
                 {
                     Sequence< OUString > aPropNames(1);
-                    aPropNames[0] = GetFamily() == XML_STYLE_FAMILY_TEXT_PARAGRAPH ?
-                        OUString("ParaAutoStyleName") :
-                        OUString("CharAutoStyleName");
+                    aPropNames[0] = GetFamily() == XmlStyleFamily::TEXT_PARAGRAPH ?
+                        OUStringLiteral("ParaAutoStyleName") :
+                        OUStringLiteral("CharAutoStyleName");
                     Sequence< Any > aAny = xAutoStyle->getPropertyValues( aPropNames );
                     if( aAny.hasElements() )
                     {
@@ -364,7 +364,7 @@ void XMLPropStyleContext::CreateAndInsert( bool bOverwrite )
         Reference < XNameContainer > xFamilies = pSvXMLStylesContext->GetStylesContainer( GetFamily() );
         if( !xFamilies.is() )
         {
-            SAL_WARN("xmloff", "no styles container for family " << GetFamily());
+            SAL_WARN("xmloff", "no styles container for family " << static_cast<int>(GetFamily()));
             return;
         }
 
@@ -387,9 +387,9 @@ void XMLPropStyleContext::CreateAndInsert( bool bOverwrite )
         Reference < XPropertySet > xPropSet( mxStyle, UNO_QUERY );
         Reference< XPropertySetInfo > xPropSetInfo =
                     xPropSet->getPropertySetInfo();
-        if( !bNew && xPropSetInfo->hasPropertyByName( msIsPhysical ) )
+        if( !bNew && xPropSetInfo->hasPropertyByName( gsIsPhysical ) )
         {
-            Any aAny = xPropSet->getPropertyValue( msIsPhysical );
+            Any aAny = xPropSet->getPropertyValue( gsIsPhysical );
             bNew = !*o3tl::doAccess<bool>(aAny);
         }
         SetNew( bNew );
@@ -453,102 +453,102 @@ void XMLPropStyleContext::CreateAndInsert( bool bOverwrite )
 
 void XMLPropStyleContext::Finish( bool bOverwrite )
 {
-    if( mxStyle.is() && (IsNew() || bOverwrite) )
+    if( !mxStyle.is() || !(IsNew() || bOverwrite) )
+        return;
+
+    // The families container must exist
+    Reference < XNameContainer > xFamilies = mxStyles->GetStylesContainer( GetFamily() );
+    SAL_WARN_IF( !xFamilies.is(), "xmloff", "Families lost" );
+    if( !xFamilies.is() )
+        return;
+
+    // connect parent
+    OUString sParent( GetParentName() );
+    if( !sParent.isEmpty() )
+        sParent = GetImport().GetStyleDisplayName( GetFamily(), sParent );
+    if( !sParent.isEmpty() && !xFamilies->hasByName( sParent ) )
+        sParent.clear();
+
+    if( sParent != mxStyle->getParentStyle() )
     {
-        // The families container must exist
-        Reference < XNameContainer > xFamilies =
-            static_cast<SvXMLStylesContext *>(mxStyles.get())->GetStylesContainer( GetFamily() );
-        SAL_WARN_IF( !xFamilies.is(), "xmloff", "Families lost" );
-        if( !xFamilies.is() )
-            return;
-
-        // connect parent
-        OUString sParent( GetParentName() );
-        if( !sParent.isEmpty() )
-            sParent = GetImport().GetStyleDisplayName( GetFamily(), sParent );
-        if( !sParent.isEmpty() && !xFamilies->hasByName( sParent ) )
-            sParent.clear();
-
-        if( sParent != mxStyle->getParentStyle() )
+        // this may except if setting the parent style forms a
+        // circle in the style dependencies; especially if the parent
+        // style is the same as the current style
+        try
         {
-            // this may except if setting the parent style forms a
-            // circle in the style dependencies; especially if the parent
-            // style is the same as the current style
-            try
-            {
-                mxStyle->setParentStyle( sParent );
-            }
-            catch(const uno::Exception& e)
-            {
-                // according to the API definition, I would expect a
-                // container::NoSuchElementException. But it throws an
-                // uno::RuntimeException instead. I catch
-                // uno::Exception in order to process both of them.
-
-                // We can't set the parent style. For a proper
-                // Error-Message, we should pass in the name of the
-                // style, as well as the desired parent style.
-                Sequence<OUString> aSequence(2);
-
-                // getName() throws no non-Runtime exception:
-                aSequence[0] = mxStyle->getName();
-                aSequence[1] = sParent;
-
-                GetImport().SetError(
-                    XMLERROR_FLAG_ERROR | XMLERROR_PARENT_STYLE_NOT_ALLOWED,
-                    aSequence, e.Message, nullptr );
-            }
+            mxStyle->setParentStyle( sParent );
         }
-
-        // connect follow
-        OUString sFollow( GetFollow() );
-        if( !sFollow.isEmpty() )
-            sFollow = GetImport().GetStyleDisplayName( GetFamily(), sFollow );
-        if( sFollow.isEmpty() || !xFamilies->hasByName( sFollow ) )
-            sFollow = mxStyle->getName();
-
-        Reference < XPropertySet > xPropSet( mxStyle, UNO_QUERY );
-        Reference< XPropertySetInfo > xPropSetInfo =
-            xPropSet->getPropertySetInfo();
-        if( xPropSetInfo->hasPropertyByName( msFollowStyle ) )
+        catch(const uno::Exception& e)
         {
-            Any aAny = xPropSet->getPropertyValue( msFollowStyle );
-            OUString sCurrFollow;
-            aAny >>= sCurrFollow;
-            if( sCurrFollow != sFollow )
-            {
-                xPropSet->setPropertyValue( msFollowStyle, Any(sFollow) );
-            }
-        }
+            // according to the API definition, I would expect a
+            // container::NoSuchElementException. But it throws an
+            // uno::RuntimeException instead. I catch
+            // uno::Exception in order to process both of them.
 
-        if ( xPropSetInfo->hasPropertyByName( "Hidden" ) )
-        {
-            xPropSet->setPropertyValue( "Hidden", uno::makeAny( IsHidden( ) ) );
-        }
+            // We can't set the parent style. For a proper
+            // Error-Message, we should pass in the name of the
+            // style, as well as the desired parent style.
+            Sequence<OUString> aSequence(2);
 
+            // getName() throws no non-Runtime exception:
+            aSequence[0] = mxStyle->getName();
+            aSequence[1] = sParent;
+
+            GetImport().SetError(
+                XMLERROR_FLAG_ERROR | XMLERROR_PARENT_STYLE_NOT_ALLOWED,
+                aSequence, e.Message, nullptr );
+        }
     }
+
+    // connect follow
+    OUString sFollow( GetFollow() );
+    if( !sFollow.isEmpty() )
+        sFollow = GetImport().GetStyleDisplayName( GetFamily(), sFollow );
+    if( sFollow.isEmpty() || !xFamilies->hasByName( sFollow ) )
+        sFollow = mxStyle->getName();
+
+    Reference < XPropertySet > xPropSet( mxStyle, UNO_QUERY );
+    Reference< XPropertySetInfo > xPropSetInfo =
+        xPropSet->getPropertySetInfo();
+    if( xPropSetInfo->hasPropertyByName( gsFollowStyle ) )
+    {
+        Any aAny = xPropSet->getPropertyValue( gsFollowStyle );
+        OUString sCurrFollow;
+        aAny >>= sCurrFollow;
+        if( sCurrFollow != sFollow )
+        {
+            xPropSet->setPropertyValue( gsFollowStyle, Any(sFollow) );
+        }
+    }
+
+    if ( xPropSetInfo->hasPropertyByName( "Hidden" ) )
+    {
+        xPropSet->setPropertyValue( "Hidden", uno::makeAny( IsHidden( ) ) );
+    }
+
 }
 
 bool XMLPropStyleContext::doNewDrawingLayerFillStyleDefinitionsExist(
     const OUString& rFillStyleTag) const
 {
-    if(maProperties.size() && rFillStyleTag.getLength())
+    if(!maProperties.empty() && rFillStyleTag.getLength())
     {
-        const rtl::Reference< XMLPropertySetMapper >& rMapper = GetStyles()->GetImportPropertyMapper(GetFamily())->getPropertySetMapper();
+        // no & to avoid non-obvious UAF due to the 2nd temp Reference
+        const rtl::Reference<XMLPropertySetMapper> rMapper = GetStyles()->GetImportPropertyMapper(GetFamily())->getPropertySetMapper();
 
         if(rMapper.is())
         {
-            for(::std::vector< XMLPropertyState >::const_iterator a = maProperties.begin(); a != maProperties.end(); ++a)
+            for(const auto& a : maProperties)
             {
-                if(a->mnIndex != -1)
+                if(a.mnIndex != -1)
                 {
-                    const OUString& rPropName = rMapper->GetEntryAPIName(a->mnIndex);
+                    const OUString& rPropName = rMapper->GetEntryAPIName(a.mnIndex);
 
                     if(rPropName == rFillStyleTag)
                     {
                         FillStyle eFillStyle(FillStyle_NONE);
 
-                        if(a->maValue >>= eFillStyle)
+                        if(a.maValue >>= eFillStyle)
                         {
                             // okay, type was good, FillStyle is set
                         }
@@ -557,7 +557,7 @@ bool XMLPropStyleContext::doNewDrawingLayerFillStyleDefinitionsExist(
                             // also try an int (see XFillStyleItem::PutValue)
                             sal_Int32 nFillStyle(0);
 
-                            if(a->maValue >>= nFillStyle)
+                            if(a.maValue >>= nFillStyle)
                             {
                                 eFillStyle = static_cast< FillStyle >(nFillStyle);
                             }
@@ -577,24 +577,24 @@ bool XMLPropStyleContext::doNewDrawingLayerFillStyleDefinitionsExist(
 void XMLPropStyleContext::deactivateOldFillStyleDefinitions(
     const OldFillStyleDefinitionSet& rHashSetOfTags)
 {
-    if(!rHashSetOfTags.empty() && maProperties.size())
+    if(rHashSetOfTags.empty() || maProperties.empty())
+        return;
+
+    const rtl::Reference< XMLPropertySetMapper >& rMapper = GetStyles()->GetImportPropertyMapper(GetFamily())->getPropertySetMapper();
+
+    if(!rMapper.is())
+        return;
+
+    for(auto& a : maProperties)
     {
-        const rtl::Reference< XMLPropertySetMapper >& rMapper = GetStyles()->GetImportPropertyMapper(GetFamily())->getPropertySetMapper();
-
-        if(rMapper.is())
+        if(a.mnIndex != -1)
         {
-            for(::std::vector< XMLPropertyState >::iterator a = maProperties.begin(); a != maProperties.end(); ++a)
-            {
-                if(a->mnIndex != -1)
-                {
-                    const OUString& rPropName = rMapper->GetEntryAPIName(a->mnIndex);
+            const OUString& rPropName = rMapper->GetEntryAPIName(a.mnIndex);
 
-                    if(rHashSetOfTags.find(rPropName) != rHashSetOfTags.end())
-                    {
-                        // mark entry as inactive
-                        a->mnIndex = -1;
-                    }
-                }
+            if(rHashSetOfTags.find(rPropName) != rHashSetOfTags.end())
+            {
+                // mark entry as inactive
+                a.mnIndex = -1;
             }
         }
     }
@@ -602,46 +602,46 @@ void XMLPropStyleContext::deactivateOldFillStyleDefinitions(
 
 void XMLPropStyleContext::translateNameBasedDrawingLayerFillStyleDefinitionsToStyleDisplayNames()
 {
-    if(maProperties.size())
+    if(maProperties.empty())
+        return;
+
+    const rtl::Reference< XMLPropertySetMapper >& rMapper = GetStyles()->GetImportPropertyMapper(GetFamily())->getPropertySetMapper();
+
+    if(!rMapper.is())
+        return;
+
+    static OUString s_FillGradientName("FillGradientName");
+    static OUString s_FillHatchName("FillHatchName");
+    static OUString s_FillBitmapName("FillBitmapName");
+    static OUString s_FillTransparenceGradientName("FillTransparenceGradientName");
+
+    for(auto& a : maProperties)
     {
-        const rtl::Reference< XMLPropertySetMapper >& rMapper = GetStyles()->GetImportPropertyMapper(GetFamily())->getPropertySetMapper();
-
-        if(rMapper.is())
+        if(a.mnIndex != -1)
         {
-            static OUString s_FillGradientName("FillGradientName");
-            static OUString s_FillHatchName("FillHatchName");
-            static OUString s_FillBitmapName("FillBitmapName");
-            static OUString s_FillTransparenceGradientName("FillTransparenceGradientName");
+            const OUString& rPropName = rMapper->GetEntryAPIName(a.mnIndex);
+            XmlStyleFamily aStyleFamily(XmlStyleFamily::DATA_STYLE);
 
-            for(::std::vector< XMLPropertyState >::iterator a = maProperties.begin(); a != maProperties.end(); ++a)
+            if(rPropName == s_FillGradientName || rPropName == s_FillTransparenceGradientName)
             {
-                if(a->mnIndex != -1)
-                {
-                    const OUString& rPropName = rMapper->GetEntryAPIName(a->mnIndex);
-                    sal_uInt16 aStyleFamily(0);
+                aStyleFamily = XmlStyleFamily::SD_GRADIENT_ID;
+            }
+            else if(rPropName == s_FillHatchName)
+            {
+                aStyleFamily = XmlStyleFamily::SD_HATCH_ID;
+            }
+            else if(rPropName == s_FillBitmapName)
+            {
+                aStyleFamily = XmlStyleFamily::SD_FILL_IMAGE_ID;
+            }
 
-                    if(rPropName == s_FillGradientName || rPropName == s_FillTransparenceGradientName)
-                    {
-                        aStyleFamily = XML_STYLE_FAMILY_SD_GRADIENT_ID;
-                    }
-                    else if(rPropName == s_FillHatchName)
-                    {
-                        aStyleFamily = XML_STYLE_FAMILY_SD_HATCH_ID;
-                    }
-                    else if(rPropName == s_FillBitmapName)
-                    {
-                        aStyleFamily = XML_STYLE_FAMILY_SD_FILL_IMAGE_ID;
-                    }
+            if(aStyleFamily != XmlStyleFamily::DATA_STYLE)
+            {
+                OUString sStyleName;
 
-                    if(aStyleFamily)
-                    {
-                        OUString sStyleName;
-
-                        a->maValue >>= sStyleName;
-                        sStyleName = GetImport().GetStyleDisplayName( aStyleFamily, sStyleName );
-                        a->maValue <<= sStyleName;
-                    }
-                }
+                a.maValue >>= sStyleName;
+                sStyleName = GetImport().GetStyleDisplayName( aStyleFamily, sStyleName );
+                a.maValue <<= sStyleName;
             }
         }
     }

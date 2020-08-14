@@ -24,14 +24,14 @@
 #include <drawingml/textbodyproperties.hxx>
 #include <drawingml/textliststyle.hxx>
 
-namespace com { namespace sun { namespace star {
-    namespace text { class XText; }
-    namespace text { class XTextCursor; }
-} } }
+namespace com::sun::star::text {
+    class XText;
+    class XTextCursor;
+}
 
-namespace oox { namespace core { class XmlFilterBase; } }
+namespace oox::core { class XmlFilterBase; }
 
-namespace oox { namespace drawingml {
+namespace oox::drawingml {
 
 class TextParagraph;
 typedef RefVector< TextParagraph > TextParagraphVector;
@@ -41,10 +41,11 @@ class TextBody
 public:
     TextBody();
     TextBody( const TextBodyPtr& pBody );
-    ~TextBody();
 
     const TextParagraphVector&          getParagraphs() const { return maParagraphs; }
     TextParagraph&                      addParagraph();
+    /// Appends an existing paragraph to this text body.
+    void appendParagraph(std::shared_ptr<TextParagraph> pTextParagraph);
 
     const TextListStyle&                getTextListStyle() const { return maTextListStyle; }
     TextListStyle&                      getTextListStyle() { return maTextListStyle; }
@@ -60,6 +61,7 @@ public:
                             const TextCharacterProperties& rTextStyleProperties,
                             const TextListStylePtr& pMasterTextListStyle ) const;
     bool isEmpty() const;
+    OUString toString() const;
 
     void                ApplyStyleEmpty(
                             const ::oox::core::XmlFilterBase& rFilterBase,
@@ -72,7 +74,7 @@ protected:
     TextListStyle       maTextListStyle;
 };
 
-} }
+}
 
 #endif // INCLUDED_OOX_DRAWINGML_TEXTBODY_HXX
 

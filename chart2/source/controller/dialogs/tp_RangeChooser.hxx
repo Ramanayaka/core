@@ -20,16 +20,12 @@
 #ifndef INCLUDED_CHART2_SOURCE_CONTROLLER_DIALOGS_TP_RANGECHOOSER_HXX
 #define INCLUDED_CHART2_SOURCE_CONTROLLER_DIALOGS_TP_RANGECHOOSER_HXX
 
-#include "RangeSelectionListener.hxx"
-#include "TabPageNotifiable.hxx"
+#include <RangeSelectionListener.hxx>
 
-#include <com/sun/star/chart2/XChartDocument.hpp>
-#include <com/sun/star/chart2/data/XDataProvider.hpp>
-#include <com/sun/star/chart2/XChartTypeTemplate.hpp>
-#include <svtools/wizardmachine.hxx>
-#include <vcl/edit.hxx>
-#include <vcl/fixed.hxx>
-#include <com/sun/star/sheet/XRangeSelection.hpp>
+#include <vcl/wizardmachine.hxx>
+
+namespace chart { class TabPageNotifiable; }
+namespace com::sun::star::chart2 { class XChartTypeTemplate; }
 
 namespace chart
 {
@@ -37,64 +33,41 @@ namespace chart
 class ChartTypeTemplateProvider;
 class DialogModel;
 
-class RangeChooserTabPage : public svt::OWizardPage, public RangeSelectionListenerParent
+class RangeChooserTabPage final : public vcl::OWizardPage, public RangeSelectionListenerParent
 {
 public:
 
-    RangeChooserTabPage( vcl::Window* pParent
-                , DialogModel & rDialogModel
-                , ChartTypeTemplateProvider* pTemplateProvider
-                , Dialog * pParentDialog
-                , bool bHideDescription = false );
+    RangeChooserTabPage(weld::Container* pPage, weld::DialogController* pController, DialogModel & rDialogModel,
+                        ChartTypeTemplateProvider* pTemplateProvider,
+                        bool bHideDescription = false);
     virtual ~RangeChooserTabPage() override;
-    virtual void dispose() override;
 
     //RangeSelectionListenerParent
     virtual void listeningFinished( const OUString & rNewRange ) override;
     virtual void disposingRangeSelection() override;
 
+    virtual void Activate() override;
+
     void commitPage();
 
-protected: //methods
+private:
 
     //OWizardPage
-    virtual void ActivatePage() override;
-    virtual bool commitPage( ::svt::WizardTypes::CommitPageReason eReason ) override;
+    virtual bool commitPage( ::vcl::WizardTypes::CommitPageReason eReason ) override;
 
     //TabPage
-    virtual void DeactivatePage() override;
+    virtual void Deactivate() override;
 
     void initControlsFromModel();
     void changeDialogModelAccordingToControls();
     bool isValid();
     void setDirty();
 
-    DECL_LINK( ChooseRangeHdl, Button*, void );
-    DECL_LINK( ControlChangedHdl, Edit&, void );
-    DECL_LINK( ControlChangedCheckBoxHdl, CheckBox&, void );
-    DECL_LINK( ControlChangedRadioHdl, RadioButton&, void );
-    DECL_LINK( ControlEditedHdl, Edit&, void );
-
-protected: //member
-
-    VclPtr<FixedText>       m_pFT_Caption;
-    VclPtr<FixedText>       m_pFT_Range;
-    VclPtr<Edit>            m_pED_Range;
-    VclPtr<PushButton>      m_pIB_Range;
-
-    VclPtr<RadioButton>     m_pRB_Rows;
-    VclPtr<RadioButton>     m_pRB_Columns;
-
-    VclPtr<CheckBox>        m_pCB_FirstRowAsLabel;
-    VclPtr<CheckBox>        m_pCB_FirstColumnAsLabel;
-    VclPtr<FixedText>       m_pFTTitle;
-
-    VclPtr<FixedLine>       m_pFL_TimeBased;
-    VclPtr<CheckBox>        m_pCB_TimeBased;
-    VclPtr<FixedText>       m_pFT_TimeStart;
-    VclPtr<Edit>            m_pEd_TimeStart;
-    VclPtr<FixedText>       m_pFT_TimeEnd;
-    VclPtr<Edit>            m_pEd_TimeEnd;
+    DECL_LINK( ChooseRangeHdl, weld::Button&, void );
+    DECL_LINK( ControlChangedHdl, weld::Entry&, void );
+    DECL_LINK( ControlChangedCheckBoxHdl, weld::ToggleButton&, void );
+    DECL_LINK( ControlChangedRadioHdl, weld::ToggleButton&, void );
+    DECL_LINK( ControlEditedHdl, weld::Entry&, void );
 
     sal_Int32       m_nChangingControlCalls;
     bool            m_bIsDirty;
@@ -104,9 +77,23 @@ protected: //member
     ChartTypeTemplateProvider*                              m_pTemplateProvider;
 
     DialogModel &                                           m_rDialogModel;
-    VclPtr<Dialog>                                          m_pParentDialog;
     TabPageNotifiable *                                     m_pTabPageNotifiable;
 
+    std::unique_ptr<weld::Label> m_xFT_Caption;
+    std::unique_ptr<weld::Label> m_xFT_Range;
+    std::unique_ptr<weld::Entry> m_xED_Range;
+    std::unique_ptr<weld::Button> m_xIB_Range;
+    std::unique_ptr<weld::RadioButton> m_xRB_Rows;
+    std::unique_ptr<weld::RadioButton> m_xRB_Columns;
+    std::unique_ptr<weld::CheckButton> m_xCB_FirstRowAsLabel;
+    std::unique_ptr<weld::CheckButton> m_xCB_FirstColumnAsLabel;
+    std::unique_ptr<weld::Label> m_xFTTitle;
+    std::unique_ptr<weld::Widget> m_xFL_TimeBased;
+    std::unique_ptr<weld::CheckButton> m_xCB_TimeBased;
+    std::unique_ptr<weld::Label> m_xFT_TimeStart;
+    std::unique_ptr<weld::Entry> m_xEd_TimeStart;
+    std::unique_ptr<weld::Label> m_xFT_TimeEnd;
+    std::unique_ptr<weld::Entry> m_xEd_TimeEnd;
 };
 
 } //namespace chart

@@ -19,24 +19,22 @@
 
 #include <sal/config.h>
 
-#include <cstdlib>
-
 #include "psputil.hxx"
 #include "glyphset.hxx"
 
-#include "unx/printergfx.hxx"
-#include "unx/printerjob.hxx"
-#include "unx/fontmanager.hxx"
-#include <vcl/strhelper.hxx>
-#include "printerinfomanager.hxx"
+#include <unx/printergfx.hxx>
+#include <unx/printerjob.hxx>
+#include <unx/fontmanager.hxx>
+#include <strhelper.hxx>
+#include <printerinfomanager.hxx>
 
-#include "tools/color.hxx"
-#include "tools/poly.hxx"
-#include "tools/stream.hxx"
+#include <tools/color.hxx>
+#include <tools/poly.hxx>
+#include <tools/stream.hxx>
 
 using namespace psp ;
 
-static const sal_Int32 nMaxTextColumn = 80;
+const sal_Int32 nMaxTextColumn = 80;
 
 GraphicsStatus::GraphicsStatus() :
         maEncoding(RTL_TEXTENCODING_DONTKNOW),
@@ -49,7 +47,7 @@ GraphicsStatus::GraphicsStatus() :
 }
 
 /*
- * non graphics graphics routines
+ * non graphics routines
  */
 
 void
@@ -75,8 +73,8 @@ PrinterGfx::Init (const JobData& rData)
     mbColor         = rData.m_nColorDevice ? ( rData.m_nColorDevice != -1 ) : ( rData.m_pParser == nullptr || rData.m_pParser->isColorDevice() );
     int nRes = rData.m_aContext.getRenderResolution();
     mnDpi           = nRes;
-    mfScaleX        = 72.0 / (double)mnDpi;
-    mfScaleY        = 72.0 / (double)mnDpi;
+    mfScaleX        = 72.0 / static_cast<double>(mnDpi);
+    mfScaleY        = 72.0 / static_cast<double>(mnDpi);
     const PrinterInfo& rInfo( PrinterInfoManager::get().getPrinterInfo( rData.m_aPrinterName ) );
     mbUploadPS42Fonts = rInfo.m_pParser && rInfo.m_pParser->isType42Capable();
 }
@@ -103,7 +101,7 @@ PrinterGfx::PrinterGfx()
     maVirtualStatus.mnTextHeight = 12;
     maVirtualStatus.mnTextWidth = 0;
 
-    maGraphicsStack.push_back( GraphicsStatus() );
+    maGraphicsStack.emplace_back( );
 }
 
 PrinterGfx::~PrinterGfx()
@@ -131,7 +129,7 @@ PrinterGfx::Clear()
 
     maClipRegion.clear();
     maGraphicsStack.clear();
-    maGraphicsStack.push_back( GraphicsStatus() );
+    maGraphicsStack.emplace_back( );
 }
 
 /*
@@ -156,7 +154,7 @@ void
 PrinterGfx::UnionClipRegion (sal_Int32 nX,sal_Int32 nY,sal_Int32 nDX,sal_Int32 nDY)
 {
     if( nDX && nDY )
-        maClipRegion.push_back (tools::Rectangle(Point(nX,nY ), Size(nDX,nDY)));
+        maClipRegion.emplace_back(Point(nX,nY ), Size(nDX,nDY));
 }
 
 bool
@@ -171,8 +169,8 @@ PrinterGfx::JoinVerticalClipRectangles( std::list< tools::Rectangle >::iterator&
     std::list< Point > leftside, rightside;
 
     tools::Rectangle aLastRect( *it );
-    leftside.push_back( Point( it->Left(), it->Top() ) );
-    rightside.push_back( Point( it->Right()+1, it->Top() ) );
+    leftside.emplace_back( it->Left(), it->Top() );
+    rightside.emplace_back( it->Right()+1, it->Top() );
     while( nextit != maClipRegion.end() )
     {
         tempit = nextit;
@@ -192,8 +190,8 @@ PrinterGfx::JoinVerticalClipRectangles( std::list< tools::Rectangle >::iterator&
                     std::abs( aLastRect.Right() - nextit->Right() ) > 2
                     )
                 {
-                    leftside.push_back( Point( aLastRect.Left(), aLastRect.Bottom()+1 ) );
-                    rightside.push_back( Point( aLastRect.Right()+1, aLastRect.Bottom()+1 ) );
+                    leftside.emplace_back( aLastRect.Left(), aLastRect.Bottom()+1 );
+                    rightside.emplace_back( aLastRect.Right()+1, aLastRect.Bottom()+1 );
                 }
                 aLastRect = *nextit;
                 leftside.push_back( aLastRect.TopLeft() );
@@ -206,8 +204,8 @@ PrinterGfx::JoinVerticalClipRectangles( std::list< tools::Rectangle >::iterator&
     if( leftside.size() > 1 )
     {
         // push the last coordinates
-        leftside.push_back( Point( aLastRect.Left(), aLastRect.Bottom()+1 ) );
-        rightside.push_back( Point( aLastRect.Right()+1, aLastRect.Bottom()+1 ) );
+        leftside.emplace_back( aLastRect.Left(), aLastRect.Bottom()+1 );
+        rightside.emplace_back( aLastRect.Right()+1, aLastRect.Bottom()+1 );
 
         // cool, we can concatenate rectangles
         const int nDX = -65536, nDY = 65536;
@@ -226,7 +224,7 @@ PrinterGfx::JoinVerticalClipRectangles( std::list< tools::Rectangle >::iterator&
                 nNewDX = aPoint.X() - aLastPoint.X();
                 nNewDY = aPoint.Y() - aLastPoint.Y();
                 if( nNewDX != 0 &&
-                    (double)nNewDY/(double)nNewDX == (double)nDY/(double)nDX )
+                    static_cast<double>(nNewDY)/static_cast<double>(nNewDX) == double(nDY)/double(nDX) )
                     continue;
             }
             PSBinLineTo (aPoint, rOldPoint, rColumn);
@@ -245,7 +243,7 @@ PrinterGfx::JoinVerticalClipRectangles( std::list< tools::Rectangle >::iterator&
                 nNewDX = aPoint.X() - aLastPoint.X();
                 nNewDY = aPoint.Y() - aLastPoint.Y();
                 if( nNewDX != 0 &&
-                    (double)nNewDY/(double)nNewDX == (double)nDY/(double)nDX )
+                    static_cast<double>(nNewDY)/static_cast<double>(nNewDX) == double(nDY)/double(nDX) )
                     continue;
             }
             PSBinLineTo (aPoint, rOldPoint, rColumn);
@@ -299,23 +297,23 @@ PrinterGfx::EndSetClipRegion()
 void
 PrinterGfx::DrawRect (const tools::Rectangle& rRectangle )
 {
-    char pRect [128];
-    sal_Int32 nChar = 0;
+    OStringBuffer pRect;
 
-    nChar  = psp::getValueOf (rRectangle.TopLeft().X(),     pRect);
-    nChar += psp::appendStr (" ",                           pRect + nChar);
-    nChar += psp::getValueOf (rRectangle.TopLeft().Y(),     pRect + nChar);
-    nChar += psp::appendStr (" ",                           pRect + nChar);
-    nChar += psp::getValueOf (rRectangle.GetWidth(),        pRect + nChar);
-    nChar += psp::appendStr (" ",                           pRect + nChar);
-    nChar += psp::getValueOf (rRectangle.GetHeight(),       pRect + nChar);
-    nChar += psp::appendStr (" ",                           pRect + nChar);
+    psp::getValueOf (rRectangle.TopLeft().X(),     pRect);
+    psp::appendStr (" ",                           pRect);
+    psp::getValueOf (rRectangle.TopLeft().Y(),     pRect);
+    psp::appendStr (" ",                           pRect);
+    psp::getValueOf (rRectangle.GetWidth(),        pRect);
+    psp::appendStr (" ",                           pRect);
+    psp::getValueOf (rRectangle.GetHeight(),       pRect);
+    psp::appendStr (" ",                           pRect);
+    auto const rect = pRect.makeStringAndClear();
 
     if( maFillColor.Is() )
     {
         PSSetColor (maFillColor);
         PSSetColor ();
-        WritePS (mpPageBody, pRect, nChar);
+        WritePS (mpPageBody, rect);
         WritePS (mpPageBody, "rectfill\n");
     }
     if( maLineColor.Is() )
@@ -323,7 +321,7 @@ PrinterGfx::DrawRect (const tools::Rectangle& rRectangle )
         PSSetColor (maLineColor);
         PSSetColor ();
         PSSetLineWidth ();
-        WritePS (mpPageBody, pRect, nChar);
+        WritePS (mpPageBody, rect);
         WritePS (mpPageBody, "rectstroke\n");
     }
 }
@@ -378,7 +376,7 @@ void
 PrinterGfx::DrawPolygon (sal_uInt32 nPoints, const Point* pPath)
 {
     // premature end of operation
-    if (!(nPoints > 1) || (pPath == nullptr) || !(maFillColor.Is() || maLineColor.Is()))
+    if (nPoints <= 0 || (pPath == nullptr) || !(maFillColor.Is() || maLineColor.Is()))
         return;
 
     // setup closed path
@@ -476,60 +474,60 @@ void
 PrinterGfx::DrawPolyLineBezier (sal_uInt32 nPoints, const Point* pPath, const PolyFlags* pFlgAry)
 {
     const sal_uInt32 nBezString= 1024;
-    sal_Char pString[nBezString];
+    char pString[nBezString];
 
-    if ( nPoints > 1 && maLineColor.Is() && pPath )
+    if ( nPoints <= 1 || !maLineColor.Is() || !pPath )
+        return;
+
+    PSSetColor (maLineColor);
+    PSSetColor ();
+    PSSetLineWidth ();
+
+    snprintf(pString, nBezString, "%li %li moveto\n", pPath[0].X(), pPath[0].Y());
+    WritePS(mpPageBody, pString);
+
+    // Handle the drawing of mixed lines mixed with curves
+    // - a normal point followed by a normal point is a line
+    // - a normal point followed by 2 control points and a normal point is a curve
+    for (unsigned int i=1; i<nPoints;)
     {
-        PSSetColor (maLineColor);
-        PSSetColor ();
-        PSSetLineWidth ();
-
-        snprintf(pString, nBezString, "%li %li moveto\n", pPath[0].X(), pPath[0].Y());
-        WritePS(mpPageBody, pString);
-
-        // Handle the drawing of mixed lines mixed with curves
-        // - a normal point followed by a normal point is a line
-        // - a normal point followed by 2 control points and a normal point is a curve
-        for (unsigned int i=1; i<nPoints;)
+        if (pFlgAry[i] != PolyFlags::Control) //If the next point is a PolyFlags::Normal, we're drawing a line
         {
-            if (pFlgAry[i] != PolyFlags::Control) //If the next point is a PolyFlags::Normal, we're drawing a line
-            {
-                snprintf(pString, nBezString, "%li %li lineto\n", pPath[i].X(), pPath[i].Y());
-                i++;
-            }
-            else //Otherwise we're drawing a spline
-            {
-                if (i+2 >= nPoints)
-                    return; //Error: wrong sequence of contol/normal points somehow
-                if ((pFlgAry[i] == PolyFlags::Control) && (pFlgAry[i+1] == PolyFlags::Control) &&
-                    (pFlgAry[i+2] != PolyFlags::Control))
-                {
-                    snprintf(pString, nBezString, "%li %li %li %li %li %li curveto\n",
-                             pPath[i].X(), pPath[i].Y(),
-                             pPath[i+1].X(), pPath[i+1].Y(),
-                             pPath[i+2].X(), pPath[i+2].Y());
-                }
-                else
-                {
-                    OSL_FAIL( "PrinterGfx::DrawPolyLineBezier: Strange output" );
-                }
-                i+=3;
-            }
-            WritePS(mpPageBody, pString);
+            snprintf(pString, nBezString, "%li %li lineto\n", pPath[i].X(), pPath[i].Y());
+            i++;
         }
-
-        // now draw outlines
-        WritePS (mpPageBody, "stroke\n");
+        else //Otherwise we're drawing a spline
+        {
+            if (i+2 >= nPoints)
+                return; //Error: wrong sequence of control/normal points somehow
+            if ((pFlgAry[i] == PolyFlags::Control) && (pFlgAry[i+1] == PolyFlags::Control) &&
+                (pFlgAry[i+2] != PolyFlags::Control))
+            {
+                snprintf(pString, nBezString, "%li %li %li %li %li %li curveto\n",
+                         pPath[i].X(), pPath[i].Y(),
+                         pPath[i+1].X(), pPath[i+1].Y(),
+                         pPath[i+2].X(), pPath[i+2].Y());
+            }
+            else
+            {
+                OSL_FAIL( "PrinterGfx::DrawPolyLineBezier: Strange output" );
+            }
+            i+=3;
+        }
+        WritePS(mpPageBody, pString);
     }
+
+    // now draw outlines
+    WritePS (mpPageBody, "stroke\n");
 }
 
 void
 PrinterGfx::DrawPolygonBezier (sal_uInt32 nPoints, const Point* pPath, const PolyFlags* pFlgAry)
 {
     const sal_uInt32 nBezString = 1024;
-    sal_Char pString[nBezString];
+    char pString[nBezString];
     // premature end of operation
-    if (!(nPoints > 1) || (pPath == nullptr) || !(maFillColor.Is() || maLineColor.Is()))
+    if (nPoints <= 0 || (pPath == nullptr) || !(maFillColor.Is() || maLineColor.Is()))
         return;
 
     snprintf(pString, nBezString, "%li %li moveto\n", pPath[0].X(), pPath[0].Y());
@@ -545,7 +543,7 @@ PrinterGfx::DrawPolygonBezier (sal_uInt32 nPoints, const Point* pPath, const Pol
         else
         {
             if (i+2 >= nPoints)
-                return; //Error: wrong sequence of contol/normal points somehow
+                return; //Error: wrong sequence of control/normal points somehow
             if ((pFlgAry[i] == PolyFlags::Control) && (pFlgAry[i+1] == PolyFlags::Control) &&
                     (pFlgAry[i+2] != PolyFlags::Control))
             {
@@ -583,7 +581,7 @@ void
 PrinterGfx::DrawPolyPolygonBezier (sal_uInt32 nPoly, const sal_uInt32 * pPoints, const Point* const * pPtAry, const PolyFlags* const* pFlgAry)
 {
     const sal_uInt32 nBezString = 1024;
-    sal_Char pString[nBezString];
+    char pString[nBezString];
     if ( !nPoly || !pPtAry || !pPoints || !(maFillColor.Is() || maLineColor.Is()))
         return;
 
@@ -609,7 +607,7 @@ PrinterGfx::DrawPolyPolygonBezier (sal_uInt32 nPoly, const sal_uInt32 * pPoints,
             else
             {
                 if (j+2 >= nPoints)
-                    break; //Error: wrong sequence of contol/normal points somehow
+                    break; //Error: wrong sequence of control/normal points somehow
                 if ((pFlgAry[i][j] == PolyFlags::Control) && (pFlgAry[i][j+1] == PolyFlags::Control) && (pFlgAry[i][j+2] != PolyFlags::Control))
                 {
                     snprintf(pString, nBezString, "%li %li %li %li %li %li curveto\n",
@@ -671,13 +669,12 @@ PrinterGfx::PSSetLineWidth ()
 {
     if( currentState().mfLineWidth != maVirtualStatus.mfLineWidth )
     {
-        char pBuffer[128];
-        sal_Int32 nChar = 0;
+        OStringBuffer pBuffer;
 
         currentState().mfLineWidth = maVirtualStatus.mfLineWidth;
-        nChar  = psp::getValueOfDouble (pBuffer, maVirtualStatus.mfLineWidth, 5);
-        nChar += psp::appendStr (" setlinewidth\n", pBuffer + nChar);
-        WritePS (mpPageBody, pBuffer, nChar);
+        psp::getValueOfDouble (pBuffer, maVirtualStatus.mfLineWidth, 5);
+        psp::appendStr (" setlinewidth\n", pBuffer);
+        WritePS (mpPageBody, pBuffer.makeStringAndClear());
     }
 }
 
@@ -686,112 +683,111 @@ PrinterGfx::PSSetColor ()
 {
     PrinterColor& rColor( maVirtualStatus.maColor );
 
-    if( currentState().maColor != rColor )
+    if( currentState().maColor == rColor )
+        return;
+
+    currentState().maColor = rColor;
+
+    OStringBuffer pBuffer;
+
+    if( mbColor )
     {
-        currentState().maColor = rColor;
-
-        char pBuffer[128];
-        sal_Int32 nChar = 0;
-
-        if( mbColor )
-        {
-            nChar  = psp::getValueOfDouble (pBuffer,
-                                            (double)rColor.GetRed() / 255.0, 5);
-            nChar += psp::appendStr (" ", pBuffer + nChar);
-            nChar += psp::getValueOfDouble (pBuffer + nChar,
-                                            (double)rColor.GetGreen() / 255.0, 5);
-            nChar += psp::appendStr (" ", pBuffer + nChar);
-            nChar += psp::getValueOfDouble (pBuffer + nChar,
-                                            (double)rColor.GetBlue() / 255.0, 5);
-            nChar += psp::appendStr (" setrgbcolor\n", pBuffer + nChar );
-        }
-        else
-        {
-            Color aColor( rColor.GetRed(), rColor.GetGreen(), rColor.GetBlue() );
-            sal_uInt8 nCol = aColor.GetLuminance();
-            nChar  = psp::getValueOfDouble( pBuffer, (double)nCol / 255.0, 5 );
-            nChar += psp::appendStr( " setgray\n", pBuffer + nChar );
-        }
-
-        WritePS (mpPageBody, pBuffer, nChar);
+        psp::getValueOfDouble (pBuffer,
+                                        static_cast<double>(rColor.GetRed()) / 255.0, 5);
+        psp::appendStr (" ", pBuffer);
+        psp::getValueOfDouble (pBuffer,
+                                        static_cast<double>(rColor.GetGreen()) / 255.0, 5);
+        psp::appendStr (" ", pBuffer);
+        psp::getValueOfDouble (pBuffer,
+                                        static_cast<double>(rColor.GetBlue()) / 255.0, 5);
+        psp::appendStr (" setrgbcolor\n", pBuffer );
     }
+    else
+    {
+        Color aColor( rColor.GetRed(), rColor.GetGreen(), rColor.GetBlue() );
+        sal_uInt8 nCol = aColor.GetLuminance();
+        psp::getValueOfDouble( pBuffer, static_cast<double>(nCol) / 255.0, 5 );
+        psp::appendStr( " setgray\n", pBuffer );
+    }
+
+    WritePS (mpPageBody, pBuffer.makeStringAndClear());
 }
 
 void
 PrinterGfx::PSSetFont ()
 {
     GraphicsStatus& rCurrent( currentState() );
-    if( maVirtualStatus.maFont          != rCurrent.maFont          ||
-        maVirtualStatus.mnTextHeight    != rCurrent.mnTextHeight    ||
-        maVirtualStatus.maEncoding      != rCurrent.maEncoding      ||
-        maVirtualStatus.mnTextWidth     != rCurrent.mnTextWidth     ||
-        maVirtualStatus.mbArtBold       != rCurrent.mbArtBold       ||
-        maVirtualStatus.mbArtItalic     != rCurrent.mbArtItalic
+    if( !(maVirtualStatus.maFont          != rCurrent.maFont          ||
+          maVirtualStatus.mnTextHeight    != rCurrent.mnTextHeight    ||
+          maVirtualStatus.maEncoding      != rCurrent.maEncoding      ||
+          maVirtualStatus.mnTextWidth     != rCurrent.mnTextWidth     ||
+          maVirtualStatus.mbArtBold       != rCurrent.mbArtBold       ||
+          maVirtualStatus.mbArtItalic     != rCurrent.mbArtItalic)
         )
+        return;
+
+    rCurrent.maFont              = maVirtualStatus.maFont;
+    rCurrent.maEncoding          = maVirtualStatus.maEncoding;
+    rCurrent.mnTextWidth         = maVirtualStatus.mnTextWidth;
+    rCurrent.mnTextHeight        = maVirtualStatus.mnTextHeight;
+    rCurrent.mbArtItalic         = maVirtualStatus.mbArtItalic;
+    rCurrent.mbArtBold           = maVirtualStatus.mbArtBold;
+
+    sal_Int32 nTextHeight = rCurrent.mnTextHeight;
+    sal_Int32 nTextWidth  = rCurrent.mnTextWidth ? rCurrent.mnTextWidth
+                                                 : rCurrent.mnTextHeight;
+
+    OStringBuffer pSetFont;
+
+    // postscript based fonts need reencoding
+    if (   (   rCurrent.maEncoding == RTL_TEXTENCODING_MS_1252)
+        || (   rCurrent.maEncoding == RTL_TEXTENCODING_ISO_8859_1)
+        || (   rCurrent.maEncoding >= RTL_TEXTENCODING_USER_START
+            && rCurrent.maEncoding <= RTL_TEXTENCODING_USER_END)
+       )
     {
-        rCurrent.maFont              = maVirtualStatus.maFont;
-        rCurrent.maEncoding          = maVirtualStatus.maEncoding;
-        rCurrent.mnTextWidth         = maVirtualStatus.mnTextWidth;
-        rCurrent.mnTextHeight        = maVirtualStatus.mnTextHeight;
-        rCurrent.mbArtItalic         = maVirtualStatus.mbArtItalic;
-        rCurrent.mbArtBold           = maVirtualStatus.mbArtBold;
+        OString aReencodedFont =
+                    psp::GlyphSet::GetReencodedFontName (rCurrent.maEncoding,
+                                                            rCurrent.maFont);
 
-        sal_Int32 nTextHeight = rCurrent.mnTextHeight;
-        sal_Int32 nTextWidth  = rCurrent.mnTextWidth ? rCurrent.mnTextWidth
-                                                     : rCurrent.mnTextHeight;
-
-        sal_Char  pSetFont [256];
-        sal_Int32 nChar = 0;
-
-        // postscript based fonts need reencoding
-        if (   (   rCurrent.maEncoding == RTL_TEXTENCODING_MS_1252)
-            || (   rCurrent.maEncoding == RTL_TEXTENCODING_ISO_8859_1)
-            || (   rCurrent.maEncoding >= RTL_TEXTENCODING_USER_START
-                && rCurrent.maEncoding <= RTL_TEXTENCODING_USER_END)
-           )
-        {
-            OString aReencodedFont =
-                        psp::GlyphSet::GetReencodedFontName (rCurrent.maEncoding,
-                                                                rCurrent.maFont);
-
-            nChar += psp::appendStr  ("(",          pSetFont + nChar);
-            nChar += psp::appendStr  (aReencodedFont.getStr(),
-                                                    pSetFont + nChar);
-            nChar += psp::appendStr  (") cvn findfont ",
-                                                    pSetFont + nChar);
-        }
-        else
-        // tt based fonts mustn't reencode, the encoding is implied by the fontname
-        // same for symbol type1 fonts, don't try to touch them
-        {
-            nChar += psp::appendStr  ("(",          pSetFont + nChar);
-            nChar += psp::appendStr  (rCurrent.maFont.getStr(),
-                                                    pSetFont + nChar);
-            nChar += psp::appendStr  (") cvn findfont ",
-                                                    pSetFont + nChar);
-        }
-
-        if( ! rCurrent.mbArtItalic )
-        {
-            nChar += psp::getValueOf (nTextWidth,   pSetFont + nChar);
-            nChar += psp::appendStr  (" ",          pSetFont + nChar);
-            nChar += psp::getValueOf (-nTextHeight, pSetFont + nChar);
-            nChar += psp::appendStr  (" matrix scale makefont setfont\n", pSetFont + nChar);
-        }
-        else // skew 15 degrees to right
-        {
-            nChar += psp::appendStr  ( " [",        pSetFont + nChar);
-            nChar += psp::getValueOf (nTextWidth,   pSetFont + nChar);
-            nChar += psp::appendStr  (" 0 ",        pSetFont + nChar);
-            nChar += psp::getValueOfDouble (pSetFont + nChar, 0.27*(double)nTextWidth, 3 );
-            nChar += psp::appendStr  ( " ",         pSetFont + nChar);
-            nChar += psp::getValueOf (-nTextHeight, pSetFont + nChar);
-
-            nChar += psp::appendStr  (" 0 0] makefont setfont\n", pSetFont + nChar);
-        }
-
-        WritePS (mpPageBody, pSetFont, nChar);
+        psp::appendStr  ("(",          pSetFont);
+        psp::appendStr  (aReencodedFont.getStr(),
+                                                pSetFont);
+        psp::appendStr  (") cvn findfont ",
+                                                pSetFont);
     }
+    else
+    // tt based fonts mustn't reencode, the encoding is implied by the fontname
+    // same for symbol type1 fonts, don't try to touch them
+    {
+        psp::appendStr  ("(",          pSetFont);
+        psp::appendStr  (rCurrent.maFont.getStr(),
+                                                pSetFont);
+        psp::appendStr  (") cvn findfont ",
+                                                pSetFont);
+    }
+
+    if( ! rCurrent.mbArtItalic )
+    {
+        psp::getValueOf (nTextWidth,   pSetFont);
+        psp::appendStr  (" ",          pSetFont);
+        psp::getValueOf (-nTextHeight, pSetFont);
+        psp::appendStr  (" matrix scale makefont setfont\n", pSetFont);
+    }
+    else // skew 15 degrees to right
+    {
+        psp::appendStr  ( " [",        pSetFont);
+        psp::getValueOf (nTextWidth,   pSetFont);
+        psp::appendStr  (" 0 ",        pSetFont);
+        psp::getValueOfDouble (pSetFont, 0.27*static_cast<double>(nTextWidth), 3 );
+        psp::appendStr  ( " ",         pSetFont);
+        psp::getValueOf (-nTextHeight, pSetFont);
+
+        psp::appendStr  (" 0 0] makefont setfont\n", pSetFont);
+    }
+
+    WritePS (mpPageBody, pSetFont.makeStringAndClear());
+
 }
 
 void
@@ -807,33 +803,29 @@ PrinterGfx::PSRotate (sal_Int32 nAngle)
     sal_Int32 nFullAngle  = nPostScriptAngle / 10;
     sal_Int32 nTenthAngle = nPostScriptAngle % 10;
 
-    sal_Char  pRotate [48];
-    sal_Int32 nChar = 0;
+    OStringBuffer pRotate;
 
-    nChar  = psp::getValueOf (nFullAngle,  pRotate);
-    nChar += psp::appendStr (".",          pRotate + nChar);
-    nChar += psp::getValueOf (nTenthAngle, pRotate + nChar);
-    nChar += psp::appendStr (" rotate\n",  pRotate + nChar);
+    psp::getValueOf (nFullAngle,  pRotate);
+    psp::appendStr (".",          pRotate);
+    psp::getValueOf (nTenthAngle, pRotate);
+    psp::appendStr (" rotate\n",  pRotate);
 
-    WritePS (mpPageBody, pRotate, nChar);
+    WritePS (mpPageBody, pRotate.makeStringAndClear());
 }
 
 void
-PrinterGfx::PSPointOp (const Point& rPoint, const sal_Char* pOperator)
+PrinterGfx::PSPointOp (const Point& rPoint, const char* pOperator)
 {
-    sal_Char  pPSCommand [48];
-    sal_Int32 nChar = 0;
+    OStringBuffer pPSCommand;
 
-    nChar  = psp::getValueOf (rPoint.X(), pPSCommand);
-    nChar += psp::appendStr  (" ",        pPSCommand + nChar);
-    nChar += psp::getValueOf (rPoint.Y(), pPSCommand + nChar);
-    nChar += psp::appendStr  (" ",        pPSCommand + nChar);
-    nChar += psp::appendStr  (pOperator,  pPSCommand + nChar);
-    nChar += psp::appendStr  ("\n",       pPSCommand + nChar);
+    psp::getValueOf (rPoint.X(), pPSCommand);
+    psp::appendStr  (" ",        pPSCommand);
+    psp::getValueOf (rPoint.Y(), pPSCommand);
+    psp::appendStr  (" ",        pPSCommand);
+    psp::appendStr  (pOperator,  pPSCommand);
+    psp::appendStr  ("\n",       pPSCommand);
 
-    DBG_ASSERT (nChar < 48, "Buffer overflow in PSPointOp");
-
-    WritePS (mpPageBody, pPSCommand);
+    WritePS (mpPageBody, pPSCommand.makeStringAndClear());
 }
 
 void
@@ -916,19 +908,18 @@ void
 PrinterGfx::PSBinPath (const Point& rCurrent, Point& rOld,
                        pspath_t eType, sal_Int32& nColumn)
 {
-    sal_Char  pPath[48] = {0};
+    OStringBuffer pPath;
     sal_Int32 nChar;
 
     // create the hex representation of the dx and dy path shift, store the field
     // width as it is needed for the building the command
-    sal_Int32 nXPrec = getAlignedHexValueOf (rCurrent.X() - rOld.X(), pPath + 1);
-    sal_Int32 nYPrec = getAlignedHexValueOf (rCurrent.Y() - rOld.Y(), pPath + 1 + nXPrec);
-    pPath [ 1 + nXPrec + nYPrec ] = 0;
+    sal_Int32 nXPrec = getAlignedHexValueOf (rCurrent.X() - rOld.X(), pPath);
+    sal_Int32 nYPrec = getAlignedHexValueOf (rCurrent.Y() - rOld.Y(), pPath);
 
-    // build the command, it is a char with bit represention 000cxxyy
+    // build the command, it is a char with bit representation 000cxxyy
     // c represents the char, xx and yy repr. the field width of the dx and dy shift,
     // dx and dy represent the number of bytes to read after the opcode
-    sal_Char cCmd = (eType == lineto ? (sal_Char)0x00 : (sal_Char)0x10);
+    char cCmd = (eType == lineto ? char(0x00) : char(0x10));
     switch (nYPrec)
     {
         case 2: break;
@@ -946,7 +937,8 @@ PrinterGfx::PSBinPath (const Point& rCurrent, Point& rOld,
         default:    OSL_FAIL("invalid y precision in binary path");
     }
     cCmd += 'A';
-    pPath[0] = cCmd;
+    pPath.insert(0, cCmd);
+    auto const path = pPath.makeStringAndClear();
 
     // write the command to file,
     // line breaking at column nMaxTextColumn (80)
@@ -955,15 +947,15 @@ PrinterGfx::PSBinPath (const Point& rCurrent, Point& rOld,
     {
         sal_Int32 nSegment = nMaxTextColumn - nColumn;
 
-        WritePS (mpPageBody, pPath, nSegment);
+        WritePS (mpPageBody, path.copy(0, nSegment));
         WritePS (mpPageBody, "\n", 1);
-        WritePS (mpPageBody, pPath + nSegment, nChar - nSegment);
+        WritePS (mpPageBody, path.copy(nSegment));
 
         nColumn  = nChar - nSegment;
     }
     else
     {
-        WritePS (mpPageBody, pPath, nChar);
+        WritePS (mpPageBody, path);
 
         nColumn += nChar;
     }
@@ -974,38 +966,35 @@ PrinterGfx::PSBinPath (const Point& rCurrent, Point& rOld,
 void
 PrinterGfx::PSScale (double fScaleX, double fScaleY)
 {
-    sal_Char  pScale [48];
-    sal_Int32 nChar = 0;
+    OStringBuffer pScale;
 
-    nChar  = psp::getValueOfDouble (pScale, fScaleX, 5);
-    nChar += psp::appendStr        (" ", pScale + nChar);
-    nChar += psp::getValueOfDouble (pScale + nChar, fScaleY, 5);
-    nChar += psp::appendStr        (" scale\n", pScale + nChar);
+    psp::getValueOfDouble (pScale, fScaleX, 5);
+    psp::appendStr        (" ", pScale);
+    psp::getValueOfDouble (pScale, fScaleY, 5);
+    psp::appendStr        (" scale\n", pScale);
 
-    WritePS (mpPageBody, pScale, nChar);
+    WritePS (mpPageBody, pScale.makeStringAndClear());
 }
 
 /* psshowtext helper routines: draw an hex string for show/xshow */
 void
 PrinterGfx::PSHexString (const unsigned char* pString, sal_Int16 nLen)
 {
-    sal_Char pHexString [128];
-    sal_Int32 nChar = 0;
-
-    nChar = psp::appendStr ("<", pHexString);
+    OStringBuffer pHexString;
+    sal_Int32 nChar = psp::appendStr ("<", pHexString);
     for (int i = 0; i < nLen; i++)
     {
         if (nChar >= (nMaxTextColumn - 1))
         {
-            nChar += psp::appendStr ("\n", pHexString + nChar);
-            WritePS (mpPageBody, pHexString, nChar);
+            psp::appendStr ("\n", pHexString);
+            WritePS (mpPageBody, pHexString.makeStringAndClear());
             nChar = 0;
         }
-        nChar += psp::getHexValueOf ((sal_Int32)pString[i], pHexString + nChar);
+        nChar += psp::getHexValueOf (static_cast<sal_Int32>(pString[i]), pHexString);
     }
 
-    nChar += psp::appendStr (">\n", pHexString + nChar);
-    WritePS (mpPageBody, pHexString, nChar);
+    psp::appendStr (">\n", pHexString);
+    WritePS (mpPageBody, pHexString.makeStringAndClear());
 }
 
 void
@@ -1021,15 +1010,15 @@ PrinterGfx::PSShowGlyph (const unsigned char nGlyphId)
         PSRotate (mnTextAngle);
     }
 
-    sal_Char pBuffer[256];
+    char pBuffer[256];
     if( maVirtualStatus.mbArtBold )
     {
         sal_Int32 nLW = maVirtualStatus.mnTextWidth;
         if( nLW == 0 )
             nLW = maVirtualStatus.mnTextHeight;
         else
-            nLW = nLW < maVirtualStatus.mnTextHeight ? nLW : maVirtualStatus.mnTextHeight;
-        psp::getValueOfDouble( pBuffer, (double)nLW / 30.0 );
+            nLW = std::min(nLW, maVirtualStatus.mnTextHeight);
+        psp::getValueOfDouble( pBuffer, static_cast<double>(nLW) / 30.0 );
     }
 
     // dispatch to the drawing method
@@ -1066,7 +1055,7 @@ PrinterGfx::DrawEPS( const tools::Rectangle& rBoundingBox, void* pPtr, sal_uInt3
     OString aDocTitle;
     double fLeft = 0, fRight = 0, fTop = 0, fBottom = 0;
     bool bEndComments = false;
-    while( ! aStream.IsEof()
+    while( ! aStream.eof()
            && ( ( fLeft == 0 && fRight == 0 && fTop == 0 && fBottom == 0 ) ||
                 ( aDocTitle.isEmpty() && !bEndComments ) )
            )
@@ -1077,7 +1066,7 @@ PrinterGfx::DrawEPS( const tools::Rectangle& rBoundingBox, void* pPtr, sal_uInt3
             char cChar = aLine[1];
             if( cChar == '%' )
             {
-                if( aLine.matchIgnoreAsciiCase( OString( "%%BoundingBox:") ) )
+                if( aLine.matchIgnoreAsciiCase( "%%BoundingBox:" ) )
                 {
                     aLine = WhitespaceToSpace( aLine.getToken(1, ':') );
                     if( !aLine.isEmpty() && aLine.indexOf( "atend" ) == -1 )
@@ -1106,10 +1095,10 @@ PrinterGfx::DrawEPS( const tools::Rectangle& rBoundingBox, void* pPtr, sal_uInt3
 
     if( fLeft != fRight && fTop != fBottom )
     {
-        double fScaleX = (double)rBoundingBox.GetWidth()/(fRight-fLeft);
-        double fScaleY = -(double)rBoundingBox.GetHeight()/(fTop-fBottom);
-        Point aTranslatePoint( (int)(rBoundingBox.Left()-fLeft*fScaleX),
-                               (int)(rBoundingBox.Bottom()+1-fBottom*fScaleY) );
+        double fScaleX = static_cast<double>(rBoundingBox.GetWidth())/(fRight-fLeft);
+        double fScaleY = -static_cast<double>(rBoundingBox.GetHeight())/(fTop-fBottom);
+        Point aTranslatePoint( static_cast<int>(rBoundingBox.Left()-fLeft*fScaleX),
+                               static_cast<int>(rBoundingBox.Bottom()+1-fBottom*fScaleY) );
         // prepare EPS
         WritePS( mpPageBody,
                  "/b4_Inc_state save def\n"

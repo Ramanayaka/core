@@ -20,11 +20,11 @@
 // include files
 
 #include <sal/types.h>
-#include "cppunit/TestAssert.h"
-#include "cppunit/TestFixture.h"
-#include "cppunit/extensions/HelperMacros.h"
-#include "cppunit/plugin/TestPlugIn.h"
-#include <osl_Mutex_Const.h>
+#include <cppunit/TestAssert.h>
+#include <cppunit/TestFixture.h>
+#include <cppunit/extensions/HelperMacros.h>
+#include <cppunit/plugin/TestPlugIn.h>
+#include "osl_Mutex_Const.h"
 
 using namespace osl;
 
@@ -32,14 +32,11 @@ using namespace osl;
 */
 namespace ThreadHelper
 {
-    void thread_sleep_tenth_sec(sal_uInt32 _nTenthSec)
+    static void thread_sleep_tenth_sec(sal_uInt32 _nTenthSec)
     {
-        TimeValue nTV;
-        nTV.Seconds = _nTenthSec/10;
-        nTV.Nanosec = ( (_nTenthSec%10 ) * 100000000 );
-        osl_waitThread(&nTV);
+        osl::Thread::wait(std::chrono::milliseconds(_nTenthSec * 100));
     }
-    void thread_sleep( sal_uInt32 _nSec )
+    static void thread_sleep( sal_uInt32 _nSec )
     {
         /// print statement in thread process must use fflush() to force display.
         // t_print("# wait %d seconds. ", _nSec );
@@ -51,6 +48,8 @@ namespace ThreadHelper
 }
 
 // Beginning of the test cases for osl_Mutex class
+
+namespace {
 
 /** mutually exclusive data
 */
@@ -148,7 +147,7 @@ protected:
         sal_Int8 nPos = pChain->pos;
         oslThreadIdentifier oId = getIdentifier( );
         //write data
-                sal_Int8 i;
+        sal_Int8 i;
         for ( i = 0; i < 5; i++ )
         {
             pChain->buffer[ nPos + i ] = oId;
@@ -232,6 +231,8 @@ protected:
     }
 };
 
+}
+
 namespace osl_Mutex
 {
 
@@ -256,7 +257,7 @@ namespace osl_Mutex
 
         /** Create two threads to write data to the same buffer, use Mutex to assure
             during one thread write data five times, the other thread should not begin writing.
-            the two threads wrote two different datas: their thread ID, so we can check the datas
+            the two threads wrote two different data: their thread ID, so we can check the data
             in buffer to know the order of the two threads writing
         */
         void ctor_001()
@@ -273,7 +274,7 @@ namespace osl_Mutex
 
             bool bRes = false;
 
-            // every 5 datas should the same
+            // every 5 data should the same
             // LLA: this is not a good check, it's too fix
             if (m_Data.buffer[0] == m_Data.buffer[1] &&
                 m_Data.buffer[1] == m_Data.buffer[2] &&
@@ -312,7 +313,7 @@ namespace osl_Mutex
 
             bool bRes = false;
 
-            // every 5 datas should the same
+            // every 5 data should the same
             if ( ( m_Res.data1 == 0 ) && ( m_Res.data2 == 3 ) )
                 bRes = true;
 
@@ -412,8 +413,8 @@ namespace osl_Mutex
             if (bRes2)
                 aMutex.release();
 
-        CPPUNIT_ASSERT_MESSAGE("Try to acquire Mutex", !bRes1);
-        CPPUNIT_ASSERT_MESSAGE("Try to acquire Mutex", bRes2);
+            CPPUNIT_ASSERT_MESSAGE("Try to acquire Mutex", !bRes1);
+            CPPUNIT_ASSERT_MESSAGE("Try to acquire Mutex", bRes2);
         }
 
         CPPUNIT_TEST_SUITE(tryToAcquire);
@@ -527,6 +528,8 @@ CPPUNIT_TEST_SUITE_NAMED_REGISTRATION(osl_Mutex::getGlobalMutex, "osl_Mutex");
 
 // Beginning of the test cases for osl_Guard class
 
+namespace {
+
 class GuardThread : public Thread
 {
 public:
@@ -547,6 +550,8 @@ protected:
         ThreadHelper::thread_sleep_tenth_sec( 2 );
     }
 };
+
+}
 
 namespace osl_Guard
 {
@@ -610,6 +615,8 @@ CPPUNIT_TEST_SUITE_NAMED_REGISTRATION(osl_Guard::ctor, "osl_Guard");
 
 // Beginning of the test cases for osl_ClearableGuard class
 
+namespace {
+
 /** Thread for test ClearableGuard
  */
 class ClearGuardThread : public Thread
@@ -637,6 +644,8 @@ protected:
         ThreadHelper::thread_sleep( 2 );
     }
 };
+
+}
 
 namespace osl_ClearableGuard
 {
@@ -751,6 +760,8 @@ CPPUNIT_TEST_SUITE_NAMED_REGISTRATION( osl_ClearableGuard::clear, "osl_Clearable
 
 // Beginning of the test cases for osl_ResettableGuard class
 
+namespace {
+
 /** Thread for test ResettableGuard
  */
 class ResetGuardThread : public Thread
@@ -776,6 +787,8 @@ protected:
         ThreadHelper::thread_sleep_tenth_sec( 2 );
     }
 };
+
+}
 
 namespace osl_ResettableGuard
 {

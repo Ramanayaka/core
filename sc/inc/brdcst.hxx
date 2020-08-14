@@ -22,9 +22,7 @@
 #include "address.hxx"
 #include <svl/hint.hxx>
 
-class SvtBroadcaster;
-
-class ScHint : public SfxHint
+class ScHint final : public SfxHint
 {
     ScAddress   aAddress;
 
@@ -34,7 +32,7 @@ public:
           ScAddress&    GetAddress()       { return aAddress; }
 };
 
-class ScAreaChangedHint : public SfxHint
+class ScAreaChangedHint final : public SfxHint
 {
 private:
     ScRange aNewRange;

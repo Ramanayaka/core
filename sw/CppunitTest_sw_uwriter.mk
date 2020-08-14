@@ -11,6 +11,8 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,sw_uwriter))
 
+$(eval $(call gb_CppunitTest_use_common_precompiled_header,sw_uwriter))
+
 $(eval $(call gb_CppunitTest_add_exception_objects,sw_uwriter, \
     sw/qa/core/uwriter \
     sw/qa/core/Test-BigPtrArray \
@@ -35,6 +37,7 @@ $(eval $(call gb_CppunitTest_use_libraries,sw_uwriter, \
     i18nlangtag \
     i18nutil \
     lng \
+    msfilter \
     oox \
     sal \
     salhelper \
@@ -71,7 +74,11 @@ $(eval $(call gb_CppunitTest_set_include,sw_uwriter,\
     $$(INCLUDE) \
 ))
 
-$(eval $(call gb_CppunitTest_use_sdk_api,sw_uwriter))
+$(eval $(call gb_CppunitTest_use_api,sw_uwriter,\
+	udkapi \
+	offapi \
+	oovbaapi \
+))
 
 $(eval $(call gb_CppunitTest_use_ure,sw_uwriter))
 $(eval $(call gb_CppunitTest_use_vcl,sw_uwriter))
